@@ -1,7 +1,7 @@
 # Appendix A. Keywords, directives, types and current status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.51.2**. Status inventory schema: **1**.
+Current compiler: **coax0 0.52.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -133,7 +133,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | `fixed32 fixed64` | (E0301) | reserved | — |
 | `v2 v3 v4 quat m3 m4` | (E0301) | reserved | — |
 | `Any` | (E0301); planned for tools and logging only | reserved | — |
-| `*T`, `*T?`, `Handle(T)`, lane types | Raw pointers and handles remain planned; tagged optionals are recorded separately | designed | — |
+| `*T`, `*T?`, lane types | Raw pointers and lane types remain planned; handles and tagged optionals are recorded separately | designed | — |
 | `T?` | Interned none/some values, nested optionals, explicit some construction and none default; no implicit payload conversion | works | 0.48.0 |
 | `Result(T,E)` | Compiler-owned ok/err values with checked direct-result handling and transfer; Result containment and general async ownership remain outside the initial profile | partial | 0.48.0 |
 
@@ -181,6 +181,11 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | General ownership | Transfer, destruction and complete region/lifetime rules remain planned | designed | — |
 | Apple C11 host | Tested Apple LP64 host; target support requires runtime/ABI/debugging evidence | partial | — |
 | Coaxial browser path | Current Wasm/WebGPU consumers; general target layout/runtime/debugging remain incomplete | partial | — |
+| Typed lifetime handles | Handle(T) and caller-backed Store(T), optional stale lookup and generation retirement; Aethyr and Everglade adoption; store provenance and regions remain caller obligations | partial | 0.52.0 |
+| Enforced procedure effects | Transitive capability subset checks with shortest paths; declarations required on authority, C exports and foreign procedures; native summaries remain trusted and callback values remain planned | partial | 0.52.0 |
+| In-memory transactions | Scoped reachable-state before-images; undo escaping Result errors or optional absence, including try and nested cleanup; no external effects, fatal traps do not roll back | partial | 0.52.0 |
+| Owned persisted records | #persisted recursively admits owned values and stable IDs, refusing borrowed descriptors and process-local handles; generic instances are checked | works | 0.52.0 |
+| Published surface compatibility | coax compat compares concrete native LP64 signatures, C ABI, effects, saved fields and defaults; production baselines suppress only pre-existing failures; serializers and generic facades have separate contracts | partial | 0.52.0 |
 
 Annotations such as `@range` and `@unit` are lexed but not accepted yet.
 The accepted grammar and focused implementation tests remain separate evidence

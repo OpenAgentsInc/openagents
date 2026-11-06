@@ -14,7 +14,7 @@ LabReplay :: struct {playing:bool;clock:f32;from:int;to:int;anim:f32=1;detached:
   for i:0..<20 {lbr_frame(s[..],0.25);}#assert s[0].anim==1;
 }
 lbr_active :: (phase:int,hash:string)->bool {b:=lb_block(phase,hash);return b>=0 && LAB_BLOCKS[b].active;}
-lbr_admitted :: (s:[]LabReplay,from:int,to:int) #export_c {
+lbr_admitted :: (s:[]LabReplay,from:int,to:int) #export_c #effects(all) {
   s[0].from=from;s[0].to=to;s[0].anim=ifx s[0].reduced then 1.0f32 else 0.0f32;s[0].detached=0;s[0].attached=0;
   for phase,i:[2]int.[from,to] {snap:=LAB_SNAPSHOTS[phase];for b:snap.first..<snap.first+snap.count {row:=LAB_BLOCKS[b];if row.active && !lbr_active(ifx i==0 then to else from,row.hash) {if i==0 {s[0].detached+=1;}else {s[0].attached+=1;}}}}
 }

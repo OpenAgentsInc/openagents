@@ -110,16 +110,16 @@ then the per-reply cap.
 // What ends the turn when a reply's draw limit is spent (n is that limit,
 // the least of the four) or when one of them leaves nothing (n is 0):
 // tokens first, then the deadline, then the window, else the per-reply cap.
-hl_binding :: (n:int,tokens:int,time:int,room:int)->HlStop {
+hl_binding :: (n:int,tokens:int,time:int,room:int)->HlStop #effects(all) {
     if tokens<=n {return HlStop.tokens;}
     if time<=n {return HlStop.deadline;}
     if room<=n {return HlStop.window;}
     return HlStop.length;
 }
-hl_least :: (a:int,b:int)->int {return (a+b-cast(int)abs(f64(a-b)))/2;}
+hl_least :: (a:int,b:int)->int #effects(all) {return (a+b-cast(int)abs(f64(a-b)))/2;}
 // A reply of limit draws reads at most positions 0..at+limit-1, so the
 // clock may reach ticks+at+limit-1 and no further.
-hl_draws :: (g:NeReply)->int {return ifx g.stop==NeStop.assistant_end || g.stop==NeStop.bos then g.written+1 else g.written;}
+hl_draws :: (g:NeReply)->int #effects(all) {return ifx g.stop==NeStop.assistant_end || g.stop==NeStop.bos then g.written+1 else g.written;}
 ```
 
 ## A turn by hand
@@ -182,15 +182,15 @@ separate from computing, so a malformed call cannot reach the arithmetic.
 ```jai
 // The calculator's call: "a op b", each number one to four decimal digits,
 // op one of + - *. The grammar is chapter 136's; parsing runs nothing.
-hl_digits :: (s:string,at:int)->int {e:=at;while e<s.count && s[e]>='0' && s[e]<='9' {e+=1;}return e-at;}
-hl_number :: (s:string,at:int,n:int)->int {x:=0;for i:at..<at+n {x=x*10+cast(int)(s[i]-'0');}return x;}
-hl_parse :: (s:string)->HlCall {
+hl_digits :: (s:string,at:int)->int #effects(all) {e:=at;while e<s.count && s[e]>='0' && s[e]<='9' {e+=1;}return e-at;}
+hl_number :: (s:string,at:int,n:int)->int #effects(all) {x:=0;for i:at..<at+n {x=x*10+cast(int)(s[i]-'0');}return x;}
+hl_parse :: (s:string)->HlCall #effects(all) {
     da:=hl_digits(s,0);if da<1 || da>4 || da>=s.count {return HlCall.{};}
     op:=s[da];if op!='+' && op!='-' && op!='*' {return HlCall.{};}
     db:=hl_digits(s,da+1);if db<1 || db>4 || da+1+db!=s.count {return HlCall.{};}
     return HlCall.{ok=true,a=hl_number(s,0,da),op=op,b=hl_number(s,da+1,db)};
 }
-hl_apply :: (c:HlCall)->int {if c.op=='+' {return c.a+c.b;}if c.op=='-' {return c.a-c.b;}return c.a*c.b;}
+hl_apply :: (c:HlCall)->int #effects(all) {if c.op=='+' {return c.a+c.b;}if c.op=='-' {return c.a-c.b;}return c.a*c.b;}
 ```
 
 <!-- source: psionic/lib/harness/loop.coax tool -->
@@ -201,7 +201,7 @@ hl_apply :: (c:HlCall)->int {if c.op=='+' {return c.a+c.b;}if c.op=='-' {return 
 // is malformed and runs nothing. The
 // output goes to out between <|output_start|> and <|output_end|>, or, when
 // out cannot hold it, nowhere.
-hl_tool :: (table:[]u8,base:int,reply:[]int,out:[]int)->HlTool {
+hl_tool :: (table:[]u8,base:int,reply:[]int,out:[]int)->HlTool #effects(all) {
     s:=0;while s<reply.count && reply[s]!=base+NC_PYTHON_START {s+=1;}
     if s==reply.count {return HlTool.{stop=HlStop.malformed};}
     call:=reply[s+1..<reply.count-1];
@@ -230,7 +230,7 @@ does.
 // script's tokens through chapter 126's own stop rule (ne_after), so it
 // stops, keeps tokens and counts positions exactly as the engine does. A
 // script reply that ends before it stops is the model's failure.
-hl_reply :: (m:HlModel,k:int,prompt:[]int,seed:u64,limit:int,out:[]int)->NeReply {
+hl_reply :: (m:HlModel,k:int,prompt:[]int,seed:u64,limit:int,out:[]int)->NeReply #effects(all) {
     if m.engine {return ne_generate(m.c,m.w,m.base,prompt,m.options,seed,limit,out,m.work,false);}
     if k+1>=m.starts.count || m.starts[k]<0 || m.starts[k+1]>m.script.count {return NeReply.{status=NeStatus.shape};}
     r:=m.script[m.starts[k]..<m.script.count];python:=false;at:=prompt.count;
@@ -261,7 +261,7 @@ checks, the cancel and the clock, before the tool runs.
 // Before each request it checks the cancel, the step count, and what the
 // tokens, the clock and the window leave; a request whose worst case would
 // pass the deadline gets a smaller limit, and one with no room is refused.
-hl_run :: (m:HlModel,b:HlBudget,seed:u64,prompt:int,ids:[]int,steps:[]HlStep)->HlTurn {
+hl_run :: (m:HlModel,b:HlBudget,seed:u64,prompt:int,ids:[]int,steps:[]HlStep)->HlTurn #effects(all) {
     t:=HlTurn.{at=prompt,reply=prompt};context:=m.c.context;
     if prompt<1 || ids.count<context || b.steps<0 || steps.count<b.steps || b.reply<1 || b.tool<0 {t.stop=HlStop.shape;return t;}
     while true {
@@ -308,7 +308,7 @@ script fails it.
 // The record replays: step k's request, rebuilt from ids[0..<seen] and its
 // seed, gives the recorded reply token for token, the tool gives the
 // recorded output, and the steps tile the transcript with nothing between.
-hl_replay :: (m:HlModel,seed:u64,prompt:int,ids:[]int,t:HlTurn,steps:[]HlStep,scratch:[]int)->bool {
+hl_replay :: (m:HlModel,seed:u64,prompt:int,ids:[]int,t:HlTurn,steps:[]HlStep,scratch:[]int)->bool #effects(all) {
     at:=prompt;
     for k:0..<t.steps {
         s:=steps[k];if s.seen!=at || s.seed!=cr_bits(seed,cast(u64)k) || s.limit>scratch.count {return false;}

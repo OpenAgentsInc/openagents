@@ -49,7 +49,7 @@ each row's outcome is one tick after its time.
 // (2, 3), near-duplicate content (4, 5), a paraphrase declared by provenance
 // (6, 7) and an exact copy (8, 9). Rows 10 to 13 are independent. Feature 0
 // is known with its row; feature 1 is known one tick after the outcome.
-sp_fixture :: (rows:[]SpRow,tokens:[]u8,cells:[]SpCell) {
+sp_fixture :: (rows:[]SpRow,tokens:[]u8,cells:[]SpCell) #effects(all) {
     text:=[51]u8.[1,2,3,4, 5,6,7, 8,9,10,11, 0,1, 12,13,14,12, 12,13,14,12,0, 3,5,7,9, 9,7,5,3, 2,4,6, 2,4,6, 11,10,9,8, 6,5,4, 13,12,1,0, 14,0,13,1];
     lens:=[14]int.[4,3,4,2,4,5,4,4,3,3,4,3,4,4];
     tasks:=[14]int.[1,1,2,3,4,5,6,7,8,9,10,11,12,13];
@@ -102,7 +102,7 @@ renaming starts there:
 // shared task or session, a derived link, or near-duplicate content, and the
 // joining is transitive. A label is never larger than its rows' indexes, so
 // the group being renamed starts at its own label.
-sp_groups :: (rows:[]SpRow,tokens:[]u8,label:[]int) {
+sp_groups :: (rows:[]SpRow,tokens:[]u8,label:[]int) #effects(all) {
     for i:0..<rows.count {label[i]=i;}
     for i:0..<rows.count {for j:i+1..<rows.count {
         a:=label[i];b:=label[j];
@@ -127,7 +127,7 @@ and later when any is later than `valid_end`.
 // Gives each group one split from its latest time: at or before train_end is
 // training, at or before valid_end is validation, anything later is test. A
 // group is late when any of its rows is.
-sp_assign :: (rows:[]SpRow,tokens:[]u8,plan:SpPlan,splits:[]PkSplit)->SpStatus #export_c {
+sp_assign :: (rows:[]SpRow,tokens:[]u8,plan:SpPlan,splits:[]PkSplit)->SpStatus #export_c #effects(all) {
     s:=sp_rows(rows,tokens);if s!=SpStatus.ok {return s;}
     if splits.count!=rows.count || plan.train_end<0 || plan.valid_end<plan.train_end {return SpStatus.shape;}
     label:[64]int;sp_groups(rows,tokens,label[..]);late:[64]bool;later:[64]bool;
@@ -176,7 +176,7 @@ only when the five pair counts are all zero.
 // Counts every pair of rows in different splits that shares content, a task,
 // a session, a derived link or near-duplicate content, and every feature known
 // after its row's outcome. A clean split has all six counts zero.
-sp_audit :: (rows:[]SpRow,tokens:[]u8,splits:[]PkSplit,cells:[]SpCell,features:int)->SpAudit #export_c {
+sp_audit :: (rows:[]SpRow,tokens:[]u8,splits:[]PkSplit,cells:[]SpCell,features:int)->SpAudit #export_c #effects(all) {
     s:=sp_rows(rows,tokens);if s!=SpStatus.ok {return SpAudit.{status=s};}
     if splits.count!=rows.count || features<0 || features>16 || cells.count!=rows.count*features {return SpAudit.{status=SpStatus.shape};}
     a:=SpAudit.{};ids:[64][32]u8;for i:0..<rows.count {ids[i]=sp_content(rows[i],tokens);}
@@ -197,7 +197,7 @@ sp_audit :: (rows:[]SpRow,tokens:[]u8,splits:[]PkSplit,cells:[]SpCell,features:i
 ```jai
 // Turns an admitted, leak-free split into chapter 122's packed documents.
 // A split with any cross-split pair is refused and nothing is written.
-sp_docs :: (rows:[]SpRow,tokens:[]u8,splits:[]PkSplit,docs:[]PkDoc)->SpStatus #export_c {
+sp_docs :: (rows:[]SpRow,tokens:[]u8,splits:[]PkSplit,docs:[]PkDoc)->SpStatus #export_c #effects(all) {
     none:[1]SpCell;a:=sp_audit(rows,tokens,splits,none[0..<0],0);if a.status!=SpStatus.ok {return a.status;}
     if docs.count!=rows.count {return SpStatus.shape;}
     if a.exact!=0 || a.task!=0 || a.session!=0 || a.derived!=0 || a.near!=0 {return SpStatus.leak;}
@@ -230,7 +230,7 @@ scale    sqrt(3.5)                      = 1.8708286933869707
 ```jai
 // Mean and population standard deviation of one feature over training rows
 // only. A feature known after the outcome is refused, not fitted.
-sp_fit :: (rows:[]SpRow,splits:[]PkSplit,cells:[]SpCell,features:int,f:int)->SpFit #export_c {
+sp_fit :: (rows:[]SpRow,splits:[]PkSplit,cells:[]SpCell,features:int,f:int)->SpFit #export_c #effects(all) {
     if splits.count!=rows.count || rows.count>SP_ROWS || features<1 || f<0 || f>=features || cells.count!=rows.count*features {return SpFit.{status=SpStatus.shape};}
     sum:=0.0;n:=0;
     for i:0..<rows.count {c:=cells[i*features+f];

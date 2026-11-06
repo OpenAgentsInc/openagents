@@ -144,7 +144,7 @@ with `02`. `03 || x` decodes to `−G`, whose y is `p` minus G's y and ends in
 // A SEC 1 public key: 33 bytes with prefix 02 or 03, or 65 bytes with
 // prefix 04. Anything else, including infinity's one-byte 00 and the hybrid
 // prefixes 06 and 07, refuses with ok false and the value infinity.
-se_decode :: (bytes: [] u8) -> SgResult #export_c {
+se_decode :: (bytes: [] u8) -> SgResult #export_c #effects(all) {
   // Compressed: lift_x, then negate y when the prefix's low bit says odd.
   if bytes.count == SE_COMPRESSED { return sg_decode_public(bytes); }
   r: SgResult; r.value = sg_infinity();
@@ -161,7 +161,7 @@ se_decode :: (bytes: [] u8) -> SgResult #export_c {
 }
 // A BIP-340 x-only public key: 32 bytes of x, lifted to the point with
 // even y. It refuses x >= p and an x with no point.
-se_decode_xonly :: (bytes: [] u8) -> SgResult #export_c {
+se_decode_xonly :: (bytes: [] u8) -> SgResult #export_c #effects(all) {
   return sg_lift_x_public(bytes);
 }
 ```
@@ -187,7 +187,7 @@ The explicit check stays because it states the rule.
 // SE_UNCOMPRESSED) to out[0..<form] and returns form. Returns 0, and writes
 // nothing, for an unknown form, a short output, an invalid point or
 // infinity, which has no encoding in any of the three forms.
-se_encode :: (a: SgPoint, form: int, out: [] u8) -> int #export_c {
+se_encode :: (a: SgPoint, form: int, out: [] u8) -> int #export_c #effects(all) {
   if form != SE_XONLY && form != SE_COMPRESSED && form != SE_UNCOMPRESSED { return 0; }
   if out.count < form { return 0; }
   // Prefix 02 or 03, then x; a length of 1 is infinity.
@@ -203,7 +203,7 @@ se_encode :: (a: SgPoint, form: int, out: [] u8) -> int #export_c {
 }
 // 1 when a's y is odd, 0 when it is even, and -1 for an invalid point or
 // infinity. An x-only key drops this bit; Taproot carries it separately.
-se_parity :: (a: SgPoint) -> int #export_c {
+se_parity :: (a: SgPoint) -> int #export_c #effects(all) {
   c := sg_encode_public(a);
   if !c.ok || c.length != SE_COMPRESSED { return -1; }
   return cast(int) (c.bytes[0] & 1);

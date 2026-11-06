@@ -99,7 +99,7 @@ saved and there are no backward steps.
 ```jai
 // Which operand values a node's rule reads in backward, given which of its
 // operands need a gradient.
-ad_reads :: (n:TiNode,custom:bool,need_a:bool,need_b:bool)->[2]bool {
+ad_reads :: (n:TiNode,custom:bool,need_a:bool,need_b:bool)->[2]bool #effects(all) {
     r:[2]bool;
     if custom {r[0]=true;r[1]=ti_binary(n.op);}
     else if n.op==TiOp.registered || n.op==TiOp.relu || n.op==TiOp.layernorm || n.op==TiOp.maxpool2d {r[0]=true;}
@@ -121,7 +121,7 @@ operands and the output, because the library cannot know which it uses.
 
 <!-- source: psionic/lib/autodiff.coax tape -->
 ```jai
-ad_tape :: (p:TiProgram,mode:AdMode,registry:OrRegistry)->AdTape {
+ad_tape :: (p:TiProgram,mode:AdMode,registry:OrRegistry)->AdTape #effects(all) {
     t:AdTape;t.program=p;t.mode=mode;
     t.plan=ti_compile(p,TiTarget.{},false);
     if t.plan.status!=TiStatus.ok {t.status=AdStatus.program;return t;}
@@ -213,7 +213,7 @@ both contributions add into one gradient buffer for `x`'s storage.
 ```jai
 // First fit: the lowest offset that overlaps no block live at any of the
 // same steps. Lifetimes are inclusive, so a step never writes what it reads.
-ad_place :: (arena:AdArena,size:int,first:int,last:int)->AdArena {
+ad_place :: (arena:AdArena,size:int,first:int,last:int)->AdArena #effects(all) {
     a:=arena;best:=0;moved:=true;
     while moved {
         moved=false;
@@ -239,7 +239,7 @@ ends, so a step never writes over something it reads.
 ```jai
 // The vector-Jacobian product of one built-in node, added into its
 // operands' gradients. dy is the node's own gradient, contiguous.
-ad_rule :: (t:AdTape,i:int,inputs:[]f32,values:[]f32,grads:[]f64) {
+ad_rule :: (t:AdTape,i:int,inputs:[]f32,values:[]f32,grads:[]f64) #effects(all) {
     n:=t.program.nodes[i];s:=t.plan.values[i].view.shape;dy:=t.grad_at[i];
     a:=t.plan.values[n.a].view.shape;need_a:=t.wants[n.a];need_b:=ti_binary(n.op) && t.wants[n.b];
     for j:0..<ad_count(s) {
@@ -291,7 +291,7 @@ ad_rule :: (t:AdTape,i:int,inputs:[]f32,values:[]f32,grads:[]f64) {
 }
 // Layer norm over the last axis, recomputed from x in f64:
 // dx = (dy - mean(dy) - xhat * mean(dy * xhat)) / sigma.
-ad_layernorm :: (t:AdTape,i:int,inputs:[]f32,values:[]f32,grads:[]f64) {
+ad_layernorm :: (t:AdTape,i:int,inputs:[]f32,values:[]f32,grads:[]f64) #effects(all) {
     n:=t.program.nodes[i];a:=t.plan.values[n.a].view.shape;width:=a.dims[a.rank-1];dy:=t.grad_at[i];
     for row:0..<ad_count(a)/width {
         base:=row*width;mean:f64=0;
@@ -341,7 +341,7 @@ not derivatives of the rounding map.
 // Run steps until the tape ends or a step needs the caller. Gradients born
 // at a step are cleared first; the output's gradient is seeded with ones, so
 // the result is the gradient of the sum of the output's elements.
-ad_run :: (t:AdTape,cursor:AdCursor,inputs:[]f32,values:[]f32,grads:[]f64,flags:[]u8)->AdRun {
+ad_run :: (t:AdTape,cursor:AdCursor,inputs:[]f32,values:[]f32,grads:[]f64,flags:[]u8)->AdRun #effects(all) {
     run:=AdRun.{cursor=cursor};
     if t.status!=AdStatus.ok || cursor.pending {run.status=AdStatus.state;return run;}
     if inputs.count<t.plan.input_elements || values.count<t.values.top || grads.count<t.grads.top {run.status=AdStatus.capacity;return run;}
@@ -381,7 +381,7 @@ ad_run :: (t:AdTape,cursor:AdCursor,inputs:[]f32,values:[]f32,grads:[]f64,flags:
     return run;
 }
 // The caller ran the call; fold its result in and move past the step.
-ad_finish :: (t:AdTape,cursor:AdCursor,values:[]f32,grads:[]f64,flags:[]u8)->AdRun {
+ad_finish :: (t:AdTape,cursor:AdCursor,values:[]f32,grads:[]f64,flags:[]u8)->AdRun #effects(all) {
     run:=AdRun.{cursor=cursor};
     if !cursor.pending {run.status=AdStatus.state;return run;}
     st:=t.steps[cursor.next];n:=t.program.nodes[st.node];
@@ -422,14 +422,14 @@ a built-in rule.
 <!-- source: psionic/lib/autodiff.coax publish -->
 ```jai
 // A node's value, after its forward step has run.
-ad_value :: (t:AdTape,cursor:AdCursor,x:int,inputs:[]f32,values:[]f32,out:[]f32)->AdStatus {
+ad_value :: (t:AdTape,cursor:AdCursor,x:int,inputs:[]f32,values:[]f32,out:[]f32)->AdStatus #effects(all) {
     if x<0 || x>=t.program.count {return AdStatus.state;}
     if t.program.nodes[t.root[x]].op!=TiOp.input && (cursor.next<=t.value_born[t.root[x]] || cursor.next>t.value_dies[t.root[x]]+1) {return AdStatus.state;}
     for j:0..<ad_count(t.plan.values[x].view.shape) {out[j]=f32(ad_read(t,x,j,inputs,values));}
     return AdStatus.ok;
 }
 // An input's gradient, rounded once to f32, after the whole tape has run.
-ad_gradient :: (t:AdTape,cursor:AdCursor,x:int,grads:[]f64,out:[]f32)->AdStatus {
+ad_gradient :: (t:AdTape,cursor:AdCursor,x:int,grads:[]f64,out:[]f32)->AdStatus #effects(all) {
     if x<0 || x>=t.program.count || t.program.nodes[x].op!=TiOp.input || !t.mode.grad[x] {return AdStatus.state;}
     if !t.mode.enabled {return AdStatus.mode;}
     if cursor.next<t.count || cursor.pending {return AdStatus.state;}

@@ -2,7 +2,7 @@
 // and the selected compiler's authenticated package. No realm/image claim.
 #import "Basic";
 #load "reference-frame-tool-files.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {return 2;}out:=args_at(a[..],0);package_arg:=args_at(a[..],1);uniform_arg:=args_at(a[..],2);if !fs_mkdir(out) {return 1;}paths:[5][4096]u8;directory:=fs_realpath(out,paths[0][..]);package:=fs_realpath(package_arg,paths[1][..]);uniform:=fs_join(directory,"u.bin",paths[2][..]);if directory.count==0 || package.count==0 || !rff_copy(uniform_arg,uniform) {return 1;}bytes:[262144]u8;nodes:[16384]JvNode;doc:[1]Jv;if !rtq_json_file(package,bytes[..],nodes[..],doc[..]) {return 1;}d:=doc[0];profile:=jv_int(d,jv_get(d,0,"profile_index"),-1);size:=fs_size(uniform);hash:[64]u8;if profile<0 || size<1 || !rtq_hash_file(uniform,hash[..]) {return 1;}
   // Compiler reflection counts bytes; FrameCounts records uint32 words.
   entries:=jv_get(d,0,"entries");stride:=0;for i:0..<jv_len(d,entries) {row:=jv_at(d,entries,i);if jv_int(d,jv_get(d,row,"entry_index"),-1)==12 {bytes_per_vertex:=jv_int(d,jv_get(d,row,"vertex_stride"),-1);if bytes_per_vertex<4 || bytes_per_vertex%4!=0 {return 1;}stride=bytes_per_vertex/4;}}if stride<1 {return 1;}

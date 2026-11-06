@@ -69,7 +69,7 @@ nc_block :: (c:NcConfig,l:int)->NcBlock {
 nc_head :: (c:NcConfig)->int {at:=nc_wte(c)+nc_padded(c)*c.width;for i:0..<c.layers {at+=nc_block_size(c,i);}return at;}
 nc_smear_gate :: (c:NcConfig)->int {return nc_head(c)+nc_padded(c)*c.width;}
 nc_ve_layers :: (c:NcConfig)->int {n:=0;for l:0..<c.layers {if nc_has_ve(c,l) {n+=1;}}return n;}
-nc_parameter_count :: (c:NcConfig)->int #export_c {return nc_smear_gate(c)+NC_SMEAR+nc_ve_layers(c)*nc_padded(c)*nc_kv_width(c);}
+nc_parameter_count :: (c:NcConfig)->int #export_c #effects(all) {return nc_smear_gate(c)+NC_SMEAR+nc_ve_layers(c)*nc_padded(c)*nc_kv_width(c);}
 nc_tensor_count :: (c:NcConfig)->int {return 5+6*c.layers+2*nc_ve_layers(c)+2;}
 // book:end layout
 nc_put :: (out:[]NcTensor,at:int,kind:NcKind,layer:int,rows:int,cols:int,offset:int)->int {
@@ -187,7 +187,7 @@ nc_loss :: (c:NcConfig,logits:[]f64,tokens:[]int)->f64 {
 // The training path over a whole sequence (the reference asserts T > 1). It
 // also fills the cache, so it doubles as the prefill. blocks, when not empty,
 // receives each layer's residual output per position.
-nc_forward :: (c:NcConfig,p:[]f64,tokens:[]int,cache:[]f64,work:[]f64,logits:[]f64,blocks:[]f64,overlap:bool)->NcResult #export_c {
+nc_forward :: (c:NcConfig,p:[]f64,tokens:[]int,cache:[]f64,work:[]f64,logits:[]f64,blocks:[]f64,overlap:bool)->NcResult #export_c #effects(all) {
     status:=nc_admit(c,p,cache);if status!=NcStatus.ok {return NcResult.{status=status};}
     n:=tokens.count;if n<2 || n>c.context {return NcResult.{status=NcStatus.shape};}
     for x:tokens {if x<0 || x>=c.vocab {return NcResult.{status=NcStatus.token};}}
@@ -197,7 +197,7 @@ nc_forward :: (c:NcConfig,p:[]f64,tokens:[]int,cache:[]f64,work:[]f64,logits:[]f
     return NcResult.{written=n*c.vocab,loss=nc_loss(c,logits,tokens)};
 }
 // One token at position `filled` of a cache that holds positions 0..filled-1.
-nc_decode :: (c:NcConfig,p:[]f64,cache:[]f64,filled:int,token:int,work:[]f64,logits:[]f64,overlap:bool)->NcResult #export_c {
+nc_decode :: (c:NcConfig,p:[]f64,cache:[]f64,filled:int,token:int,work:[]f64,logits:[]f64,overlap:bool)->NcResult #export_c #effects(all) {
     status:=nc_admit(c,p,cache);if status!=NcStatus.ok {return NcResult.{status=status};}
     if filled<0 || filled>=c.context {return NcResult.{status=NcStatus.position};}if token<0 || token>=c.vocab {return NcResult.{status=NcStatus.token};}
     if work.count<nc_work_count(c,1) || logits.count<c.vocab {return NcResult.{status=NcStatus.capacity};}if overlap {return NcResult.{status=NcStatus.alias};}
@@ -209,7 +209,7 @@ nc_decode :: (c:NcConfig,p:[]f64,cache:[]f64,filled:int,token:int,work:[]f64,log
 // Deterministic weights, per tensor k of the inventory and element e:
 // scale*sin(0.61e + 1.3k + 0.25) + offset; psionic/tests/nanochat_oracle.py
 // builds the same values by state_dict name.
-nc_formula :: (c:NcConfig,head:f64,p:[]f64) #export_c {
+nc_formula :: (c:NcConfig,head:f64,p:[]f64) #export_c #effects(all) {
     inv:[NC_TENSORS_MAX]NcTensor;n:=nc_inventory(c,inv[..]);
     for k:0..<n {t:=inv[k];scale:=0.0;offset:=0.0;
         if t.kind==NcKind.resid {scale=0.1;offset=1;}if t.kind==NcKind.x0 {scale=0.2;offset=0.1;}

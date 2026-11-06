@@ -88,36 +88,36 @@
 
 DV_COMMON_NAMES :: [8]string.["input_layernorm.weight","post_attention_layernorm.weight","self_attn.q_proj.weight","self_attn.kv_a_proj_with_mqa.weight","self_attn.kv_a_layernorm.weight","self_attn.kv_b_proj.weight","self_attn.o_proj.weight","mlp.gate.weight"];
 DV_FFN_NAMES :: [3]string.["gate_proj.weight","up_proj.weight","down_proj.weight"];
-dv_name_piece :: (out:[]u8,at:int,text:string)->int {for i:0..<text.count {out[at+i]=text[i];}return at+text.count;}
-dv_name_int :: (out:[]u8,at:int,value:int)->int {n:=at;v:=value;if v>=100 {out[n]='0'+cast(u8)(v/100);n+=1;}if v>=10 {out[n]='0'+cast(u8)((v/10)%10);n+=1;}out[n]='0'+cast(u8)(v%10);return n+1;}
-dv_name_layer :: (layer:int,out:[]u8)->int {n:=dv_name_piece(out,0,"model.layers.");n=dv_name_int(out,n,layer);return dv_name_piece(out,n,".");}
-dv_common_name :: (layer:int,slot:int,out:[]u8)->int {n:=dv_name_layer(layer,out);return dv_name_piece(out,n,DV_COMMON_NAMES[slot]);}
-dv_ffn_name :: (layer:int,expert:int,slot:int,out:[]u8)->int {
+dv_name_piece :: (out:[]u8,at:int,text:string)->int #effects(all) {for i:0..<text.count {out[at+i]=text[i];}return at+text.count;}
+dv_name_int :: (out:[]u8,at:int,value:int)->int #effects(all) {n:=at;v:=value;if v>=100 {out[n]='0'+cast(u8)(v/100);n+=1;}if v>=10 {out[n]='0'+cast(u8)((v/10)%10);n+=1;}out[n]='0'+cast(u8)(v%10);return n+1;}
+dv_name_layer :: (layer:int,out:[]u8)->int #effects(all) {n:=dv_name_piece(out,0,"model.layers.");n=dv_name_int(out,n,layer);return dv_name_piece(out,n,".");}
+dv_common_name :: (layer:int,slot:int,out:[]u8)->int #effects(all) {n:=dv_name_layer(layer,out);return dv_name_piece(out,n,DV_COMMON_NAMES[slot]);}
+dv_ffn_name :: (layer:int,expert:int,slot:int,out:[]u8)->int #effects(all) {
     n:=dv_name_layer(layer,out);n=dv_name_piece(out,n,"mlp.");
     if expert==-1 {n=dv_name_piece(out,n,"shared_experts.");}else if expert>=0 {n=dv_name_piece(out,n,"experts.");n=dv_name_int(out,n,expert);n=dv_name_piece(out,n,".");}
     return dv_name_piece(out,n,DV_FFN_NAMES[slot]);
 }
-dv_tensor_count :: (s:DvShape)->int {return 3+10*s.dense_layers+(s.layers-s.dense_layers)*(11+3*s.experts);}
-dv_tensor_bounds :: (x:DvTensor)->bool {return x.begin>=8 && x.end>=x.begin;}
-dv_tensor_valid :: (x:DvTensor)->bool {return x.rank>=1 && x.rank<=2 && x.rows>=1 && x.rows<=151936 && x.cols>=1 && x.cols<=32768 && (x.rank!=1 || x.cols==1) && dv_tensor_bounds(x) && x.end-x.begin==2*x.rows*x.cols;}
-dv_file_index :: (i:int,n:int)->bool {return i>=0 && i<n;}
-dv_layout :: (p:DvProfile,files:[]DsFile)->DsStatus {
+dv_tensor_count :: (s:DvShape)->int #effects(all) {return 3+10*s.dense_layers+(s.layers-s.dense_layers)*(11+3*s.experts);}
+dv_tensor_bounds :: (x:DvTensor)->bool #effects(all) {return x.begin>=8 && x.end>=x.begin;}
+dv_tensor_valid :: (x:DvTensor)->bool #effects(all) {return x.rank>=1 && x.rank<=2 && x.rows>=1 && x.rows<=151936 && x.cols>=1 && x.cols<=32768 && (x.rank!=1 || x.cols==1) && dv_tensor_bounds(x) && x.end-x.begin==2*x.rows*x.cols;}
+dv_file_index :: (i:int,n:int)->bool #effects(all) {return i>=0 && i<n;}
+dv_layout :: (p:DvProfile,files:[]DsFile)->DsStatus #effects(all) {
     if files.count<1 || files.count>10 || p.pins.count!=files.count || p.payload.count!=files.count || p.tensors.count!=dv_tensor_count(p.shape) {return DsStatus.weights;}
     cursor:[10]int;for i:0..<files.count {start:=p.payload[i];if start!=0 && (start<8 || start>files[i].data.count) {return DsStatus.format;}cursor[i]=start;}
     for t:p.tensors {if !dv_tensor_valid(t) || !dv_file_index(t.file,files.count) {return DsStatus.format;}
         if t.begin!=cursor[t.file] || t.end>files[t.file].data.count {return DsStatus.format;}cursor[t.file]=t.end;}
     for i:0..<files.count {if p.payload[i]!=0 && cursor[i]!=files[i].data.count {return DsStatus.format;}}return DsStatus.ok;
 }
-dv_find_tensor :: (p:DvProfile,files:[]DsFile,name:string,rank:int,rows:int,cols:int)->DvBound {
+dv_find_tensor :: (p:DvProfile,files:[]DsFile,name:string,rank:int,rows:int,cols:int)->DvBound #effects(all) {
     for t:p.tensors {if t.name==name {if t.rank!=rank || t.rows!=rows || t.cols!=cols {return DvBound.{status=DsStatus.weights};}return DvBound.{data=files[t.file].data[t.begin..<t.end]};}}
     return DvBound.{status=DsStatus.weights};
 }
-dv_bind_expert :: (p:DvProfile,files:[]DsFile,layer:int,expert:int,hidden:int)->DvBoundExpert {
+dv_bind_expert :: (p:DvProfile,files:[]DsFile,layer:int,expert:int,hidden:int)->DvBoundExpert #effects(all) {
     e:=DvExpert.{};for slot:0..<3 {name:[128]u8;n:=dv_ffn_name(layer,expert,slot,name[..]);rows:=hidden;cols:=p.shape.width;if slot==2 {rows=p.shape.width;cols=hidden;}
         found:=dv_find_tensor(p,files,cast(string)name[0..<n],2,rows,cols);if found.status!=DsStatus.ok {return DvBoundExpert.{status=found.status};}e.p[slot]=found.data;}return DvBoundExpert.{expert=e};
 }
 // book:begin bind
-dv_bind_profile :: (p:DvProfile,files:[]DsFile,blocks:[]DvBlock,experts:[]DvExpert,draft:[]DvBlock,draft_experts:[]DvExpert,out:[]DvModel,overlap:bool)->DsResult #export_c {
+dv_bind_profile :: (p:DvProfile,files:[]DsFile,blocks:[]DvBlock,experts:[]DvExpert,draft:[]DvBlock,draft_experts:[]DvExpert,out:[]DvModel,overlap:bool)->DsResult #export_c #effects(all) {
     s:=p.shape;if !dv_shape(s) {return DsResult.{status=DsStatus.shape};}if overlap {return DsResult.{status=DsStatus.alias};}
     count:=(s.layers-s.dense_layers)*s.experts;if blocks.count<s.layers || experts.count<count || draft.count<s.layers || draft_experts.count<count || out.count<1 {return DsResult.{status=DsStatus.capacity};}
     status:=dv_layout(p,files);if status!=DsStatus.ok {return DsResult.{status=status};}
@@ -140,7 +140,7 @@ dv_bind_profile :: (p:DvProfile,files:[]DsFile,blocks:[]DvBlock,experts:[]DvExpe
     m.blocks=blocks[0..<s.layers];out[0]=m;return DsResult.{written=s.layers};
 }
 // book:end bind
-dv_original_profile :: (capacity:int,pins:[]DsArtifact,tensors:[]DvTensor,payload:[]int)->DvProfile #export_c {
+dv_original_profile :: (capacity:int,pins:[]DsArtifact,tensors:[]DvTensor,payload:[]int)->DvProfile #export_c #effects(all) {
     if pins.count<DV_ORIGINAL_PINS.count || tensors.count<DV_ORIGINAL_TENSORS.count || payload.count<DV_ORIGINAL_PAYLOAD.count {return DvProfile.{};}
     for i:0..<DV_ORIGINAL_PINS.count {pins[i]=DV_ORIGINAL_PINS[i];payload[i]=DV_ORIGINAL_PAYLOAD[i];}
     for i:0..<DV_ORIGINAL_TENSORS.count {tensors[i]=DV_ORIGINAL_TENSORS[i];}

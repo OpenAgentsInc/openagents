@@ -5,7 +5,7 @@
 bfc_replace :: (text:string,needle:string,replacement:string,out:[]u8)->string {
   o:[1]Jo;jo_start(o[..],out);at:=0;while at<text.count {found:=rtq_find(text,needle,at);if found<0 {jo_put(o[..],text[at..<text.count]);break;}jo_put(o[..],text[at..<found]);jo_put(o[..],replacement);at=found+needle.count;}return ifx o[0].bad then "" else jo_text(o[..]);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}config:[4][4096]u8;compiler:=proc_getenv("AETHYR_BUILD_REAL_COAX",config[0][..]);fault:=proc_getenv("AETHYR_BUILD_FAULT",config[1][..]);dependency:=proc_getenv("AETHYR_BUILD_DEPENDENCY",config[2][..]);self:=proc_getenv("AETHYR_BUILD_SELF",config[3][..]);if compiler.count==0 || fault.count==0 || dependency.count==0 || self.count==0 || args_count(a[..])<1 {return 2;}
   argv:[256]string;argv[0]=compiler;count:=args_count(a[..]);if count>=256 {return 2;}for i:0..<count {argv[i+1]=args_at(a[..],i);}stdout:[RTQ_FILE]u8;stderr:[65536]u8;env:[]string;r:=rtq_run_raw(argv[0..<count+1],env,RTQ_DEADLINE_MS,stdout[..],stderr[..]);if r.started!=0 || r.cut || r.timed_out {return 30;}out:=cast(string)stdout[0..<r.out_n];err:=cast(string)stderr[0..<r.err_n];changed:[1048576]u8;other:[1048576]u8;
   command:=args_at(a[..],0);if command=="deps" {

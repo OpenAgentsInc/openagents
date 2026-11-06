@@ -22,12 +22,12 @@ GSLayout :: struct {status:GStatus;lists:int;final:int;ids:GDRef;counts:GDRef;fl
 // book:begin admit
 // Chapter 53's options, with top-k bounded so one item can rank the kept IDs.
 // Temperature 0 is greedy and needs a list of one.
-gs_options :: (o:NxOptions,seed:u64,vocab:int)->GStatus #export_c {
+gs_options :: (o:NxOptions,seed:u64,vocab:int)->GStatus #export_c #effects(all) {
     if !nx_options(o,vocab) || (o.temperature!=0 && (o.top_k<1 || o.top_k>GS_TOPK)) || seed>>63!=0 {return GStatus.shape;}
     return GStatus.ok;
 }
-gs_k :: (o:NxOptions)->int {if o.temperature==0 {return 1;}return o.top_k;}
-gs_layout :: (p:GDPlan,vocab:int,k:int)->GSLayout #export_c {
+gs_k :: (o:NxOptions)->int #effects(all) {if o.temperature==0 {return 1;}return o.top_k;}
+gs_layout :: (p:GDPlan,vocab:int,k:int)->GSLayout #export_c #effects(all) {
     n:=gs_lists(vocab,GS_PART);total:=n;m:=n;
     while m>1 {m=gs_up(m);total+=m;}
     b:=16+GS_SCRATCH;r:=GSLayout.{lists=total,final=total-1};
@@ -39,16 +39,16 @@ gs_layout :: (p:GDPlan,vocab:int,k:int)->GSLayout #export_c {
 }
 // The control words a sampled request starts from: the last prompt ID at
 // its position, nothing emitted. Written once, before the first step.
-gs_control :: (s:GShape,token:int,position:int,out:[]int)->GResult #export_c {
+gs_control :: (s:GShape,token:int,position:int,out:[]int)->GResult #export_c #effects(all) {
     if token<0 || token>=s.vocab || position<0 || position>=s.capacity {return GResult.{status=GStatus.state};}
     if out.count<8 {return GResult.{status=GStatus.capacity};}
     for i:0..<8 {out[i]=0;}out[1]=token;out[2]=position;return GResult.{written=8};
 }
 // book:end admit
-gs_max :: (a:int,b:int)->int {return (a+b+cast(int)abs(f64(a-b)))/2;}
-gs_kernel_name :: (kind:int)->string #export_c {if kind<GD_KINDS || kind>=GS_KINDS {return "";}return GS_NAMES[kind-GD_KINDS];}
-gs_kinds :: ()->int #export_c {return GS_KINDS;}
-gs_emit :: (w:GDWriter,kind:int,items:int,ni:int,nv:int,ints:GDScalars,views:GDViews)->GDWriter {
+gs_max :: (a:int,b:int)->int #effects(all) {return (a+b+cast(int)abs(f64(a-b)))/2;}
+gs_kernel_name :: (kind:int)->string #export_c #effects(all) {if kind<GD_KINDS || kind>=GS_KINDS {return "";}return GS_NAMES[kind-GD_KINDS];}
+gs_kinds :: ()->int #export_c #effects(all) {return GS_KINDS;}
+gs_emit :: (w:GDWriter,kind:int,items:int,ni:int,nv:int,ints:GDScalars,views:GDViews)->GDWriter #effects(all) {
     result:=w;if result.result.status!=GStatus.ok {return result;}
     if kind<GD_KINDS || kind>=GS_KINDS || items<1 || items>4294967295 {result.result.status=GStatus.shape;return result;}
     if result.result.ops>=w.ops.count || ni+nv>w.args.count-result.result.args {result.result.status=GStatus.capacity;return result;}
@@ -62,7 +62,7 @@ gs_emit :: (w:GDWriter,kind:int,items:int,ni:int,nv:int,ints:GDScalars,views:GDV
 // gd_program's step with every position-dependent launch replaced: the same
 // kernels run through gs_* wrappers that read control[2], launched over the
 // largest span, and gk_argmax_part/gk_choose replaced by the sampler.
-gs_program :: (s:GShape,p:GDPlan,params:[]GDParam,o:NxOptions,seed:u64,limit:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+gs_program :: (s:GShape,p:GDPlan,params:[]GDParam,o:NxOptions,seed:u64,limit:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c #effects(all) {
     if p.status!=GStatus.ok || !g_shape(s) || s.capacity>4096 || gs_options(o,seed,s.vocab)!=GStatus.ok {return GDProgram.{status=GStatus.shape};}
     if limit<1 || limit>s.capacity {return GDProgram.{status=GStatus.state};}
     k:=gs_k(o);lay:=gs_layout(p,s.vocab,k);

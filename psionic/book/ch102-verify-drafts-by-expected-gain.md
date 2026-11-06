@@ -81,14 +81,14 @@ DlLine :: struct {status:DlStatus;base:f64;slope:f64;}
 ```jai
 // E(k): one token always (correction or bonus), plus the chance that each
 // of the first k drafts survives with all those before it.
-dl_expected :: (accept:[]f64,k:int)->f64 #export_c {
+dl_expected :: (accept:[]f64,k:int)->f64 #export_c #effects(all) {
     total:=1.0;alive:=1.0;
     for i:0..<k {alive*=accept[i];total+=alive;}
     return total;
 }
 // Chapter 75's sampled acceptance for one position whose target and draft
 // distributions do not depend on earlier drafts: the overlap sum min(p, q).
-dl_overlap :: (target:[]f64,draft:[]f64)->f64 #export_c {
+dl_overlap :: (target:[]f64,draft:[]f64)->f64 #export_c #effects(all) {
     s:=0.0;for i:0..<target.count {s+=(target[i]+draft[i]-abs(target[i]-draft[i]))/2;}return s;
 }
 ```
@@ -105,7 +105,7 @@ the sum of min(p(x), q(x)). (p + q − |p − q|) / 2 is that minimum.
 // accept[i] for drafts 0..n-1 and cost[k] for k = 0..n: the k in 0..n with
 // the highest E(k) / c(k). Only a strictly higher rate moves the choice, so
 // ties go to the shorter block and k = 0 is kept unless drafting gains.
-dl_choose :: (accept:[]f64,cost:[]f64)->DlChoice #export_c {
+dl_choose :: (accept:[]f64,cost:[]f64)->DlChoice #export_c #effects(all) {
     n:=accept.count;
     if n>DL_MAX || cost.count!=n+1 {return DlChoice.{status=DlStatus.shape};}
     for a:accept {if !dl_probability(a) {return DlChoice.{status=DlStatus.probability};}}
@@ -119,7 +119,7 @@ dl_choose :: (accept:[]f64,cost:[]f64)->DlChoice #export_c {
 }
 // When every block costs at least as much as k + 1 decode steps, no
 // acceptance can pay: E(k) <= k + 1, so E(k) / c(k) <= 1 / c(0).
-dl_never :: (cost:[]f64)->bool #export_c {
+dl_never :: (cost:[]f64)->bool #export_c #effects(all) {
     for k:1..<cost.count {if cost[k]<cast(f64)(k+1)*cost[0] {return false;}}return true;
 }
 ```
@@ -146,7 +146,7 @@ toward one half rather than trusted at 0 or 1.
 ```jai
 // The measured inputs. mean[k-1] is the mean time of a k-draft block, for
 // k = 1..n; a least-squares line through those n points. At least two.
-dl_fit :: (mean:[]f64)->DlLine #export_c {
+dl_fit :: (mean:[]f64)->DlLine #export_c #effects(all) {
     n:=mean.count;if n<2 || n>DL_MAX {return DlLine.{status=DlStatus.shape};}
     for m:mean {if !dl_time(m) {return DlLine.{status=DlStatus.cost};}}
     sx:=0.0;sy:=0.0;for i:0..<n {sx+=cast(f64)(i+1);sy+=mean[i];}
@@ -156,7 +156,7 @@ dl_fit :: (mean:[]f64)->DlLine #export_c {
 }
 // cost[0] is the measured decode step; cost[k] = base + slope * k. Refused
 // when the line gives a time that is not positive.
-dl_costs :: (step:f64,line:DlLine,cost:[]f64)->DlStatus #export_c {
+dl_costs :: (step:f64,line:DlLine,cost:[]f64)->DlStatus #export_c #effects(all) {
     if line.status!=DlStatus.ok || cost.count<1 || cost.count>DL_MAX+1 {return DlStatus.shape;}
     if !dl_time(step) {return DlStatus.cost;}
     cost[0]=step;
@@ -167,7 +167,7 @@ dl_costs :: (step:f64,line:DlLine,cost:[]f64)->DlStatus #export_c {
 // draft i after drafts 0..i-1 were accepted, and accepted[i] of them kept it.
 // Laplace's rule, (accepted + 1) / (reached + 2), so a position never seen
 // is a coin flip rather than certain.
-dl_calibrate :: (reached:[]int,accepted:[]int,accept:[]f64)->DlStatus #export_c {
+dl_calibrate :: (reached:[]int,accepted:[]int,accept:[]f64)->DlStatus #export_c #effects(all) {
     n:=reached.count;if n>DL_MAX || accepted.count!=n || accept.count<n {return DlStatus.shape;}
     for i:0..<n {if accepted[i]<0 || accepted[i]>reached[i] {return DlStatus.count;}}
     for i:0..<n {accept[i]=cast(f64)(accepted[i]+1)/cast(f64)(reached[i]+2);}

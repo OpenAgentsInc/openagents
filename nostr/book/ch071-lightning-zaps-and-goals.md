@@ -131,7 +131,7 @@ prefix `lnurl`, its bytes as 5-bit words, in the request's `lnurl` tag.
 // https://domain/.well-known/lnurlp/name, or http:// for an .onion domain.
 // The name is a-z 0-9 - _ . and the domain two or more dot-separated
 // labels of a-z 0-9 -, all lower case. Its length in out, or -1.
-n57_lnurlp :: (address:string,out:[]u8)->int {
+n57_lnurlp :: (address:string,out:[]u8)->int #effects(all) {
   at:=0;
   while at<address.count && n57_name_ok(address[at]) {at+=1;}
   if at==0 || at>=address.count || address[at]!='@' {return -1;}
@@ -149,13 +149,13 @@ n57_lnurlp :: (address:string,out:[]u8)->int {
 }
 // The URL as NIP-57's lnurl tag carries it: bech32, prefix lnurl, the URL's
 // bytes as 5-bit words. Its length in out, or -1.
-n57_lnurl :: (url:string,out:[]u8)->int {
+n57_lnurl :: (url:string,out:[]u8)->int #effects(all) {
   r:=bech32_encode_checked("lnurl",url,true,out,true,false);
   if r.error!=NC_OK {return -1;}
   return r.written;
 }
 // Whether s is an lnurl: bech32 with prefix lnurl.
-n57_is_lnurl :: (s:string)->bool {
+n57_is_lnurl :: (s:string)->bool #effects(all) {
   hrp:[90]u8;w:[N57_MAX_URL*2]u8;
   r:=bech32_decode_checked(s,hrp[..],w[..],true,false);
   return r.error==NC_OK && cast(string)hrp[0..<r.hrp_written]=="lnurl";
@@ -178,7 +178,7 @@ N57_PAY_KEYS :: [6] string.["tag", "callback", "minSendable", "maxSendable", "al
 // The LNURL-pay response, read for a zap: tag payRequest, allowsNostr true,
 // nostrPubkey a key, an https callback, and 1 <= minSendable <= maxSendable.
 // Other keys are skipped; a key given twice refuses.
-n57_pay :: (text:string)->N57Pay {
+n57_pay :: (text:string)->N57Pay #effects(all) {
   p:N57Pay;j:[1]Json;json_start(j[..],text);
   if json_next(j[..])!=JSON_OBJECT {return p;}
   seen:=0;is_pay:=false;allows:=false;has_key:=false;
@@ -227,7 +227,7 @@ percent-encoded, next to `amount` and `lnurl`.
 // ""), p, then e and k when event is not "". Its length in out, or -1 for a
 // relay that is not ws:// or wss://, no relays, an amount out of range, a
 // key or id that is not 64 lowercase hex digits, or an lnurl that is not one.
-n57_request_tags :: (relays:[]string,msat:int,lnurl:string,recipient:string,event:string,kind:int,out:[]u8)->int {
+n57_request_tags :: (relays:[]string,msat:int,lnurl:string,recipient:string,event:string,kind:int,out:[]u8)->int #effects(all) {
   k:[32]u8;
   if relays.count==0 || msat<1 || msat>X402_MAX_MSAT || !ne_lower_hex(recipient,k[..]) {return -1;}
   if event!="" && !ne_lower_hex(event,k[..]) {return -1;}
@@ -245,7 +245,7 @@ n57_request_tags :: (relays:[]string,msat:int,lnurl:string,recipient:string,even
 }
 // s percent-encoded for a URL query: A-Z a-z 0-9 - _ . ~ as they are,
 // every other byte as %XX.
-n57_query :: (out:[]u8,at:int,s:string)->int {
+n57_query :: (out:[]u8,at:int,s:string)->int #effects(all) {
   digits:="0123456789ABCDEF";n:=at;
   for c:s {
     plain:=(c>='A' && c<='Z') || (c>='a' && c<='z') || (c>='0' && c<='9') || c=='-' || c=='_' || c=='.' || c=='~';
@@ -258,7 +258,7 @@ n57_query :: (out:[]u8,at:int,s:string)->int {
 }
 // The GET URL that sends the signed zap request to the server's callback
 // (Appendix B): amount, nostr (the request JSON, percent-encoded), lnurl.
-n57_callback :: (callback:string,msat:int,request:string,lnurl:string,out:[]u8)->int {
+n57_callback :: (callback:string,msat:int,request:string,lnurl:string,out:[]u8)->int #effects(all) {
   q:=false;for c:callback {if c=='?' {q=true;}}
   n:=json_raw(out,0,callback);n=json_raw(out,n,ifx q then "&amount=" else "?amount=");
   n=json_write_int(out,n,msat);n=json_raw(out,n,"&nostr=");n=n57_query(out,n,request);
@@ -279,7 +279,7 @@ coordinate, and at most one `P`.
 // an amount that is a positive msat number, a tags that are addresses, at
 // most one P, at most one lnurl, and it an lnurl. The signature is the
 // caller's to verify (n57_receipt does).
-n57_request :: (e:NostrEvent)->N57Request {
+n57_request :: (e:NostrEvent)->N57Request #effects(all) {
   r:N57Request;if e.error!=NE_OK {return r;}
   if e.kind!=N57_KIND_REQUEST {return n57_rrefuse(r,N57R_KIND,-1);}
   ps:=0;es:=0;i:=0;
@@ -335,7 +335,7 @@ hash and 4 are padding.
 <!-- source: coax/lib/nostr/nip57.coax invoice -->
 ```jai
 // 52 five-bit words from at as 32 bytes; the last 4 bits are padding.
-n57_bytes32 :: (w:[]u8,at:int)->[32]u8 {
+n57_bytes32 :: (w:[]u8,at:int)->[32]u8 #effects(all) {
   k:[32]u8;
   for b:0..<256 {k[b/8]|=cast(u8)(((cast(int)w[at+b/5]>>(4-b%5))&1)<<(7-b%8));}
   return k;
@@ -346,7 +346,7 @@ n57_bytes32 :: (w:[]u8,at:int)->[32]u8 {
 // up to the 104-word signature. The first p and the first h of 52 words are
 // kept; other fields are skipped, as BOLT #11 says a reader must. The
 // signature is not verified.
-n57_invoice :: (text:string)->N57Invoice {
+n57_invoice :: (text:string)->N57Invoice #effects(all) {
   v:N57Invoice;hrp:[90]u8;w:[N57_MAX_INVOICE]u8;
   r:=bech32_decode_checked(text,hrp[..],w[..],true,false);
   if r.error!=NC_OK {return v;}
@@ -393,7 +393,7 @@ first:
 // n32_tag it reads values longer than 256 bytes: an invoice, a zap request.
 // Tags that do not read as arrays of strings read as no tags.
 N57Value :: struct {tags:int; n:int;}
-n57_long :: (e:NostrEvent,name:string,out:[]u8)->N57Value {
+n57_long :: (e:NostrEvent,name:string,out:[]u8)->N57Value #effects(all) {
   r:N57Value;nothing:N57Value;j:[1]Json;
   if !nt_start(j[..],e) {return r;}
   tok:=json_next(j[..]);
@@ -428,7 +428,7 @@ all of them, in this order, and the ones that follow from them:
 // keeps Appendix D; the invoice's amount is the request's amount when it
 // names one; every p and e of the receipt is the request's, and its P the
 // request's signer; the lnurl matches; a preimage hashes to the payment hash.
-n57_receipt :: (e:NostrEvent,nostr_pubkey:[32]u8,lnurl:string)->N57Zap {
+n57_receipt :: (e:NostrEvent,nostr_pubkey:[32]u8,lnurl:string)->N57Zap #effects(all) {
   z:N57Zap;if e.error!=NE_OK {return z;}
   if e.kind!=N57_KIND_RECEIPT {return n57_zrefuse(z,N57_KIND);}
   if !ns_equal32(e.public_key,nostr_pubkey) {return n57_zrefuse(z,N57_SIGNER);}
@@ -516,11 +516,11 @@ says receipts published after `closed_at` should not count.
 
 <!-- source: coax/lib/nostr/nip75.coax goal -->
 ```jai
-n75_refuse :: (g:N75Goal,status:int,at:int)->N75Goal {o:=g;o.status=status;o.at=at;return o;}
+n75_refuse :: (g:N75Goal,status:int,at:int)->N75Goal #effects(all) {o:=g;o.status=status;o.at=at;return o;}
 // A goal: kind 9041, one amount tag with a positive msat number, one relays
 // tag whose first relay is ws:// or wss://, at most one closed_at, a
 // positive number of seconds.
-n75_goal :: (e:NostrEvent)->N75Goal {
+n75_goal :: (e:NostrEvent)->N75Goal #effects(all) {
   g:N75Goal;if e.error!=NE_OK {return g;}
   if e.kind!=N75_KIND_GOAL {return n75_refuse(g,N75_KIND,-1);}
   g.id=e.id;g.author=e.public_key;
@@ -561,7 +561,7 @@ duplicate.
 <!-- source: coax/lib/nostr/nip75.coax tally -->
 ```jai
 // One valid receipt z added to the progress p of goal g at time now.
-n75_add :: (p:N75Progress,g:N75Goal,z:N57Zap,now:int)->N75Progress {
+n75_add :: (p:N75Progress,g:N75Goal,z:N57Zap,now:int)->N75Progress #effects(all) {
   r:=p;
   if !z.request.has_event || !ns_equal32(z.request.event,g.id) || !ns_equal32(z.request.recipient,g.author) {r.other+=1;return r;}
   if g.closed_at!= -1 && z.created_at>g.closed_at {r.late+=1;return r;}
@@ -574,7 +574,7 @@ n75_add :: (p:N75Progress,g:N75Goal,z:N57Zap,now:int)->N75Progress {
 // The goal's progress at time now from the receipts in set, checked
 // against the nostrPubkey of the goal author's LNURL server and, when not
 // "", the author's lnurl. Events of other kinds are passed over.
-n75_tally :: (goal:NostrEvent,set:[]NostrEvent,server:[32]u8,lnurl:string,now:int)->N75Progress {
+n75_tally :: (goal:NostrEvent,set:[]NostrEvent,server:[32]u8,lnurl:string,now:int)->N75Progress #effects(all) {
   p:N75Progress;g:=n75_goal(goal);p.status=g.status;
   if g.status!=N75_OK {return p;}
   for e:set {

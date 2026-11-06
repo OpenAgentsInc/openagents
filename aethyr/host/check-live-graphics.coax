@@ -7,7 +7,7 @@
 #load "../render/tests/compare-frames-policy.coax";
 #load "../render/tests/qualification-files.coax";
 #load "../../coax/lib/sys/args.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: check-live-graphics REFERENCE_RGBA32F ACTUAL FORMAT NEW_RECEIPT");return 2;}
   reference:=args_at(a[..],0);actual:=args_at(a[..],1);format:=cf_format(args_at(a[..],2));receipt:=args_at(a[..],3);
   r:=cf_begin(320,180,format,fs_size(reference),fs_size(actual));if r.status!=CFStatus.ok || fs_exists(receipt) {return 2;}

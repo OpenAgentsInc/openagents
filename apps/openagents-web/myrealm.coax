@@ -580,7 +580,7 @@ SAMPLE :: "realm built\nname A World You Built\nstyle lowpoly\nground meadow\nti
 
 // ---- in from the host
 
-realm_message :: (s: [] MyRealm, t: [] Track, kind: int, text: string) #export_c {
+realm_message :: (s: [] MyRealm, t: [] Track, kind: int, text: string) #export_c #effects(all) {
   begin(s);
   if access_take(s[0].acc[..], kind, text) { return; }
   if kind == MSG_PACK {
@@ -839,9 +839,9 @@ press_due_go :: (s: [] MyRealm) {
   if b == BTN_PUBLISH { publish_press(s); } if b == BTN_FORK { fork_press(s); }
 }
 // The face asks GET /api/playtest/access once (access.coax) and says the id its answer comes under.
-realm_access_wants :: (s: [] MyRealm) -> bool #export_c { return access_wants(s[0].acc[..]); }
-realm_access_sent :: (s: [] MyRealm, id: int) #export_c { access_sent(s[0].acc[..], id); }
-realm_requested :: (s: [] MyRealm, id: int) #export_c {
+realm_access_wants :: (s: [] MyRealm) -> bool #export_c #effects(all) { return access_wants(s[0].acc[..]); }
+realm_access_sent :: (s: [] MyRealm, id: int) #export_c #effects(all) { access_sent(s[0].acc[..], id); }
+realm_requested :: (s: [] MyRealm, id: int) #export_c #effects(all) {
   s[0].req_ready = false; s[0].req_id = id;
   if id < 0 && s[0].req_what == REQ_SPEC && !s[0].spec_ready { s[0].spec_failed = true; }
   if id < 0 && s[0].req_what == REQ_TALK { s[0].talk_wait = false; }
@@ -894,7 +894,7 @@ spec_keep :: (s: [] MyRealm, text: string) { v: [2] int; spec_sums(text, v[..]);
 
 // ---- the pack's catalog
 
-realm_catalog :: (s: [] MyRealm, text: string) #export_c {
+realm_catalog :: (s: [] MyRealm, text: string) #export_c #effects(all) {
   begin(s);
   s[0].mesh_n = 0;
   i := 0;
@@ -917,7 +917,7 @@ realm_catalog :: (s: [] MyRealm, text: string) #export_c {
   s[0].pack_ready = true; s[0].laid = false;
   lay_out(s);
 }
-realm_pack_failed :: (s: [] MyRealm) #export_c { if !s[0].pack_ready { s[0].pack_failed = true; } }
+realm_pack_failed :: (s: [] MyRealm) #export_c #effects(all) { if !s[0].pack_ready { s[0].pack_failed = true; } }
 mesh_named :: (s: [] MyRealm, name: string) -> int {
   for m: 0..<s[0].mesh_n { if cast(string) s[0].mesh_name[m * NAME..<m * NAME + s[0].mesh_name_n[m]] == name { return m; } }
   return -1;
@@ -1582,8 +1582,8 @@ round_cone :: (s: [] MyRealm, ax: f32, ay: f32, az: f32, ra: f32, bx: f32, by: f
   shaped(s, ROUND, ax, ay, az, 0, rb, ra, bx, by, bz, r, g, b);
 }
 ball :: (s: [] MyRealm, x: f32, y: f32, z: f32, radius: f32, r: f32, g: f32, b: f32) { round_cone(s, x, y, z, radius, x, y, z, radius, r, g, b); }
-realm_draw_count :: (s: [] MyRealm) -> int #export_c { return ifx s[0].laid then s[0].draw_n else 0; }
-realm_object_count :: (s: [] MyRealm) -> int #export_c { return ifx s[0].laid then s[0].object_n else 0; }
+realm_draw_count :: (s: [] MyRealm) -> int #export_c #effects(all) { return ifx s[0].laid then s[0].draw_n else 0; }
+realm_object_count :: (s: [] MyRealm) -> int #export_c #effects(all) { return ifx s[0].laid then s[0].object_n else 0; }
 
 // ---- walking
 
@@ -1833,7 +1833,7 @@ fly :: (s: [] MyRealm) { if s[0].tools[TOOL_FLY] { s[0].flying = !s[0].flying; i
 toggle_pane :: (s: [] MyRealm, pane: int) {
   s[0].pane = ifx s[0].pane == pane then PANE_NONE else pane;
 }
-realm_key :: (s: [] MyRealm, t: [] Track, key: int, down: bool) -> bool #export_c {
+realm_key :: (s: [] MyRealm, t: [] Track, key: int, down: bool) -> bool #export_c #effects(all) {
   begin(s);
   used := redit_key(s[0].ed[..], key, down);
   if used > 0 { return used == 1; }
@@ -1858,7 +1858,7 @@ realm_key :: (s: [] MyRealm, t: [] Track, key: int, down: bool) -> bool #export_
   if key == KEY_ESCAPE { if s[0].pane != PANE_NONE || s[0].map_open { s[0].pane = PANE_NONE; s[0].map_open = false; } else { leave(s); } return true; }
   return false;
 }
-realm_blur :: (s: [] MyRealm) #export_c { s[0].pad_x = 0; s[0].pad_y = 0; s[0].pad_jump = input_release(s[0].pad_jump); talk_let_go(s); s[0].held = 0; s[0].stick = false; s[0].turning = false; s[0].press = -1; s[0].row_press = -1; s[0].cell_press = -1; }
+realm_blur :: (s: [] MyRealm) #export_c #effects(all) { s[0].pad_x = 0; s[0].pad_y = 0; s[0].pad_jump = input_release(s[0].pad_jump); talk_let_go(s); s[0].held = 0; s[0].stick = false; s[0].turning = false; s[0].press = -1; s[0].row_press = -1; s[0].cell_press = -1; }
 can_build :: (s: [] MyRealm) -> bool { return s[0].spec_ready && s[0].slug_n > 0 && (s[0].owner || s[0].tools[TOOL_BUILD]); }
 leave :: (s: [] MyRealm) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/worlds"); s[0].action = ACT_NAVIGATE; } }
 go_new :: (s: [] MyRealm) { if s[0].action == 0 && !access_hides_make(s[0].acc[..]) { s[0].out_n = put(s[0].outbox[..], 0, "/worlds/new"); s[0].action = ACT_NAVIGATE; } }
@@ -2124,7 +2124,7 @@ button_at :: (s: [] MyRealm, x: f32, y: f32) -> int {
   return -1;
 }
 cell_at :: (s: [] MyRealm, x: f32, y: f32) -> int { for i: 0..<THINGS { if s[0].cell_shown[i] && inside(s[0].cells[i], x, y) { return i; } } return -1; }
-realm_label :: (s: [] MyRealm, x: f32, y: f32) -> string #export_c {
+realm_label :: (s: [] MyRealm, x: f32, y: f32) -> string #export_c #effects(all) {
   b := button_at(s, x, y);
   if b == BTN_BACK { return "realms"; }
   if b == BTN_BUILD { return "build"; } if b == BTN_MAP { return "map"; } if b == BTN_FLY { return "fly"; } if b == BTN_JUMP { return "jump"; }
@@ -2151,7 +2151,7 @@ press_button :: (s: [] MyRealm, t: [] Track, b: int) {
   if b == BTN_PUBLISH { publish_press(s); }
   if b == BTN_FORK { fork_press(s); }
 }
-realm_pointer :: (s: [] MyRealm, t: [] Track, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+realm_pointer :: (s: [] MyRealm, t: [] Track, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   begin(s);
   if s[0].press < 0 && s[0].cell_press < 0 && redit_pointer(s[0].ed[..], x, y, phase, id) {
     if redit_open(s[0].ed[..]) { s[0].pane = PANE_NONE; talk_close(s); }   // one pane at a time
@@ -2212,7 +2212,7 @@ realm_pointer :: (s: [] MyRealm, t: [] Track, x: f32, y: f32, phase: int, kind: 
 //   thing e's place (cm), 1200 + 2e and 1201 + 2e where it is on the screen (CSS pixels, -1 out of
 //   view), 1400 + e its kind (EK_*, -1 none); 1500 + 4c..1503 + 4c the BUILD pane's cell c.
 PROBE_NONE :: -99999;
-realm_probe :: (s: [] MyRealm, f: int) -> int #export_c {
+realm_probe :: (s: [] MyRealm, f: int) -> int #export_c #effects(all) {
   if f == 0 { return ifx s[0].spec_ready then 1 else 0; }
   if f == 1 { return ifx s[0].owner then 1 else 0; }
   if f == 2 { return s[0].server_rev; }
@@ -2296,15 +2296,15 @@ realm_probe :: (s: [] MyRealm, f: int) -> int #export_c {
   }
   return PROBE_NONE;
 }
-realm_cursor :: (s: [] MyRealm) -> int #export_c { return ifx s[0].hover >= 0 then 1 else 0; }
-realm_action :: (s: [] MyRealm) -> int #export_c {
+realm_cursor :: (s: [] MyRealm) -> int #export_c #effects(all) { return ifx s[0].hover >= 0 then 1 else 0; }
+realm_action :: (s: [] MyRealm) -> int #export_c #effects(all) {
   if s[0].action == 0 { v := talk_action(s); if v != 0 { return v; } }
   if s[0].action == 0 { e := redit_take_action(s[0].ed[..], s[0].outbox[..]); if e.kind != 0 { s[0].out_n = e.n; return e.kind; } }
   if s[0].action == 0 && s[0].kept_due && forge_owner(s) { s[0].kept_due = false; s[0].out_n = kept_text(s, s[0].outbox[..]); return ACT_KEEP; }
   a := s[0].action; s[0].action = 0; return a;
 }
-realm_wants_text :: (s: [] MyRealm) -> bool #export_c { return redit_typing(s[0].ed[..]) || (s[0].talk_p >= 0 && !s[0].voice_held); }
-realm_action_done :: (s: [] MyRealm) #export_c { s[0].out_n = 0; }
+realm_wants_text :: (s: [] MyRealm) -> bool #export_c #effects(all) { return redit_typing(s[0].ed[..]) || (s[0].talk_p >= 0 && !s[0].voice_held); }
+realm_action_done :: (s: [] MyRealm) #export_c #effects(all) { s[0].out_n = 0; }
 
 // ---- the look
 
@@ -2672,7 +2672,7 @@ VIVID_SKY :: [3] f32.[0.7, 0.85, 1.12]; MUTED_HAZE :: [3] f32.[0.62, 0.64, 0.62]
 POOL_SHARE :: [4] f32.[0, 0.3, 0.7, 1.1];
 STARS :: [4] f32.[0, 0.1, 0.35, 1];
 
-realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   begin(s);
   s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = still;
@@ -2780,9 +2780,9 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
   return n;
 }
 
-coaxial_myrealm_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_myrealm_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_myrealm_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_myrealm_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_myrealm_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_myrealm_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // ---- checks
 

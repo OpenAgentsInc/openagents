@@ -204,7 +204,7 @@ ffs_blocked_take :: (g: [] Social, t: string, obj: int) {
 // ---- what the face sends
 
 // The body for the kind asked (ASK_*), or 0.
-ffs_body :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c {
+ffs_body :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c #effects(all) {
   g := s[0].social[..];
   o := 0;
   if kind == ASK_MESSAGE {
@@ -230,7 +230,7 @@ ffs_body :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c {
   } else { return 0; }
   return ifx o > 0 then o else 0;
 }
-ffs_url :: (kind: int, out: [] u8) -> int #export_c {
+ffs_url :: (kind: int, out: [] u8) -> int #export_c #effects(all) {
   if kind == ASK_CHAT { return room_url(FF_ROOM, true, out); }
   if kind == ASK_INBOX || kind == ASK_MESSAGE { return ffs_put(out, 0, "/api/playtest/inbox"); }
   if kind == ASK_READ { return ffs_put(out, 0, "/api/playtest/inbox/read"); }
@@ -239,7 +239,7 @@ ffs_url :: (kind: int, out: [] u8) -> int #export_c {
   return -1;
 }
 // The next thing to send, taken (0: nothing).
-ffs_next :: (s: [] Fairy) -> int #export_c {
+ffs_next :: (s: [] Fairy) -> int #export_c #effects(all) {
   g := s[0].social[..];
   if g[0].chat_send { g[0].chat_send = false; return ASK_CHAT; }
   if g[0].msg_send { g[0].msg_send = false; return ASK_MESSAGE; }
@@ -249,16 +249,16 @@ ffs_next :: (s: [] Fairy) -> int #export_c {
   if g[0].ask_inbox { g[0].ask_inbox = false; return ASK_INBOX; }
   return 0;
 }
-ffs_chat_line :: (s: [] Fairy) -> string #export_c { return cast(string) s[0].social[0].line[0..<s[0].social[0].line_n]; }
-ffs_room :: () -> string #export_c { return FF_ROOM; }
+ffs_chat_line :: (s: [] Fairy) -> string #export_c #effects(all) { return cast(string) s[0].social[0].line[0..<s[0].social[0].line_n]; }
+ffs_room :: () -> string #export_c #effects(all) { return FF_ROOM; }
 // How often the face posts where you are and hears where the others are. A move shows on another
 // screen after at most two of these (yours posted, theirs asked) and a round trip each.
-ffs_room_every :: () -> f32 #export_c { return f32(FF_ROOM_EVERY); }
+ffs_room_every :: () -> f32 #export_c #effects(all) { return f32(FF_ROOM_EVERY); }
 // The face asks the inbox now and then, and right after the pane opens.
-ffs_ask_inbox :: (s: [] Fairy) #export_c { s[0].social[0].ask_inbox = true; }
+ffs_ask_inbox :: (s: [] Fairy) #export_c #effects(all) { s[0].social[0].ask_inbox = true; }
 
 // What came back for kind (ASK_*): the status and the body after it.
-ffs_answer :: (s: [] Fairy, kind: int, answer: string) #export_c {
+ffs_answer :: (s: [] Fairy, kind: int, answer: string) #export_c #effects(all) {
   g := s[0].social[..];
   nl := 0;
   while nl < answer.count && answer[nl] != 10 { nl += 1; }
@@ -786,13 +786,13 @@ ffs_hud :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, above: f32) -> int {
 // out on the server, migrations/0037_analytics_team.sql)
 
 // A line said (ASK_CHAT) or a message sent (ASK_MESSAGE).
-ffs_track_sent :: (t: [] Track, kind: int) #export_c {
+ffs_track_sent :: (t: [] Track, kind: int) #export_c #effects(all) {
   ev := ifx kind == ASK_CHAT then "chat" else ifx kind == ASK_MESSAGE then "message" else "";
   if ev.count == 0 { return; }
   if track_begin(t, ev) { track_str(t, "room", FF_ROOM); track_str(t, "world", "fairy-forest"); track_end(t); }
 }
 // Who is here: when you come in, and whenever the number changes.
-ffs_track_here :: (t: [] Track, here: int, full: bool) #export_c {
+ffs_track_here :: (t: [] Track, here: int, full: bool) #export_c #effects(all) {
   if track_begin(t, "presence") { track_str(t, "room", FF_ROOM); track_int(t, "here", here); track_bool(t, "full", full); track_end(t); }
 }
 

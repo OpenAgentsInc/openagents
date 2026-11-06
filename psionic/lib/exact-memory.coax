@@ -102,11 +102,11 @@ EM_VALUE_MAX :: 2147483647;
 // Key k sits at the point (2k, -k*k); query q is the direction (q, 1).
 // Their dot product is q*q - (k-q)*(k-q), so the match k = q scores highest
 // by at least 1 over every other integer key.
-em_score :: (k:int,q:int)->int {return 2*k*q-k*k;}
+em_score :: (k:int,q:int)->int #effects(all) {return 2*k*q-k*k;}
 // book:end score
 
 // book:begin read
-em_read :: (keys:[]int,values:[]int,count:int,q:int)->EmRead #export_c {
+em_read :: (keys:[]int,values:[]int,count:int,q:int)->EmRead #export_c #effects(all) {
     if count<0 || count>keys.count || count>values.count {return EmRead.{status=EmStatus.capacity};}
     if q< -EM_KEY_MAX || q>EM_KEY_MAX {return EmRead.{status=EmStatus.range};}
     for t:0..<count {if keys[t]< -EM_KEY_MAX || keys[t]>EM_KEY_MAX {return EmRead.{status=EmStatus.range};}}
@@ -123,12 +123,12 @@ em_read :: (keys:[]int,values:[]int,count:int,q:int)->EmRead #export_c {
 // book:begin sum
 // Equal scores give every earlier position the same weight 1/t, so attention
 // returns the mean; the mean times t is the running sum, exact as a fraction.
-em_mean :: (values:[]int,count:int)->EmSum #export_c {
+em_mean :: (values:[]int,count:int)->EmSum #export_c #effects(all) {
     if count<1 || count>values.count {return EmSum.{status=EmStatus.capacity};}
     n:=0;for t:0..<count {n+=values[t];if n< -EM_VALUE_MAX || n>EM_VALUE_MAX {return EmSum.{status=EmStatus.range};}}
     return EmSum.{numerator=n,denominator=count};
 }
-em_prefix_sums :: (values:[]int,sums:[]int)->EmStatus #export_c {
+em_prefix_sums :: (values:[]int,sums:[]int)->EmStatus #export_c #effects(all) {
     stage:[256]int;if sums.count<values.count || values.count>256 {return EmStatus.capacity;}
     for t:0..<values.count {
         m:=em_mean(values,t+1);if m.status!=EmStatus.ok {return m.status;}
@@ -143,7 +143,7 @@ em_prefix_sums :: (values:[]int,sums:[]int)->EmStatus #export_c {
 // The chapter 226 machine with no memory of its own: before every step its
 // view of memory is rebuilt from nothing but hard-max reads over the stores
 // already in its trace, and an address never stored reads as zero.
-em_pass :: (program:[]TmOp,budget:int,trace:[]int,outputs:[]int,keys:[]int,values:[]int,publish:bool)->TmResult {
+em_pass :: (program:[]TmOp,budget:int,trace:[]int,outputs:[]int,keys:[]int,values:[]int,publish:bool)->TmResult #effects(all) {
     s:TmState;ip:=0;steps:=0;stores:=0;stage_out:[64]int;row:[4]int;bytes:[16]u8;
     sha:[112]u8;ok:=sha256_init(sha[..])==SHA_OK;
     while true {
@@ -171,7 +171,7 @@ em_pass :: (program:[]TmOp,budget:int,trace:[]int,outputs:[]int,keys:[]int,value
     for i:0..<s.outputs {outputs[i]=stage_out[i];}
     return result;
 }
-em_run :: (program:[]TmOp,budget:int,trace:[]int,outputs:[]int,keys:[]int,values:[]int,overlap:bool)->TmResult #export_c {
+em_run :: (program:[]TmOp,budget:int,trace:[]int,outputs:[]int,keys:[]int,values:[]int,overlap:bool)->TmResult #export_c #effects(all) {
     admitted:=tm_admit(program);if admitted!=TmStatus.ok {return TmResult.{status=admitted};}
     if budget<1 || budget>TM_STEPS_MAX {return TmResult.{status=TmStatus.budget};}
     if outputs.count<1 {return TmResult.{status=TmStatus.capacity};}

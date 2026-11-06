@@ -12,21 +12,21 @@ pm_fract :: (x:f32)->f32 { return x-floor(x); }
 #test "particle live lattice uses the portable integer noise profile" {
   #assert f32_bits(verse_particle_hash(1,2,3))==0x3f42352b;
 }
-verse_particle_hash :: (seed:f32,i:f32,k:f32)->f32 #export_c {
+verse_particle_hash :: (seed:f32,i:f32,k:f32)->f32 #export_c #effects(all) {
   return render_noise3(seed,i,k);
 }
 // How long a particle lives, seconds.
-verse_particle_life :: (kind:f32)->f32 #export_c {
+verse_particle_life :: (kind:f32)->f32 #export_c #effects(all) {
   if kind<0.5f32 { return 1.6f32; }
   if kind<1.5f32 { return 14.0f32; }
   return 7.0f32;
 }
 // How far through its life particle i is at time t, in [0, 1).
-verse_particle_age :: (kind:f32,seed:f32,i:f32,t:f32,speed:f32)->f32 #export_c {
+verse_particle_age :: (kind:f32,seed:f32,i:f32,t:f32,speed:f32)->f32 #export_c #effects(all) {
   return pm_fract(t*speed/verse_particle_life(kind)+verse_particle_hash(seed,i,0.0f32));
 }
 // Its offset from the emitter along axis (0 x, 1 y, 2 z), metres; radius is the emitter's size.
-verse_particle_offset :: (kind:f32,seed:f32,i:f32,t:f32,speed:f32,radius:f32,axis:f32)->f32 #export_c {
+verse_particle_offset :: (kind:f32,seed:f32,i:f32,t:f32,speed:f32,radius:f32,axis:f32)->f32 #export_c #effects(all) {
   a:=verse_particle_age(kind,seed,i,t,speed);
   h:=verse_particle_hash(seed,i,axis+1.0f32);
   w:=t*speed;
@@ -45,7 +45,7 @@ verse_particle_offset :: (kind:f32,seed:f32,i:f32,t:f32,speed:f32,radius:f32,axi
   return (h*2.0f32-1.0f32)*radius+wander;
 }
 // Its light, 0 to about 1, before the emitter's colour; flicker is the emitter's.
-verse_particle_glow :: (kind:f32,seed:f32,i:f32,t:f32,speed:f32,flicker:f32)->f32 #export_c {
+verse_particle_glow :: (kind:f32,seed:f32,i:f32,t:f32,speed:f32,flicker:f32)->f32 #export_c #effects(all) {
   a:=verse_particle_age(kind,seed,i,t,speed);
   h:=verse_particle_hash(seed,i,5.0f32);
   if kind<0.5f32 {
@@ -61,7 +61,7 @@ verse_particle_glow :: (kind:f32,seed:f32,i:f32,t:f32,speed:f32,flicker:f32)->f3
   return p2*p2*p*pm_lo(1.0f32,pm_lo(a,1.0f32-a)*8.0f32);
 }
 // Its size, metres across.
-verse_particle_size :: (kind:f32,seed:f32,i:f32,t:f32,speed:f32,size:f32)->f32 #export_c {
+verse_particle_size :: (kind:f32,seed:f32,i:f32,t:f32,speed:f32,size:f32)->f32 #export_c #effects(all) {
   a:=verse_particle_age(kind,seed,i,t,speed);
   if kind<0.5f32 { return size*(1.0f32-a*0.6f32); }
   return size*(0.7f32+0.6f32*verse_particle_hash(seed,i,6.0f32));

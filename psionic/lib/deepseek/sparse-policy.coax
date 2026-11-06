@@ -84,25 +84,25 @@
     for v:out {#assert v==88;}for v:bytes {#assert v==77;}
 }
 
-da_flash_links :: (layer:int)->DaLinks #export_c {
+da_flash_links :: (layer:int)->DaLinks #export_c #effects(all) {
     if layer<0 || layer>=43 {return DaLinks.{status=DkStatus.shape};}
     ratio:=ifx layer>=2 && layer<20 then 2 else (ifx layer>=20 && layer<40 then 1 else 0);kv:=-1;index:=-1;candidate:=-1;
     if ratio>0 {for owner:[4]int.[2,8,14,20] {if owner<=layer {kv=owner;}}for owner:[8]int.[2,8,14,20,24,28,32,36] {if owner<=layer {index=owner;}}if layer>=20 {candidate=20;}}
     return DaLinks.{layer=layer,ratio=ratio,kv=kv,index=index,candidate=candidate,produce_kv=kv==layer,produce_index=index==layer,produce_candidates=candidate==layer};
 }
-da_window :: (position:int,window:int,capacity:int)->DaWindow #export_c {
+da_window :: (position:int,window:int,capacity:int)->DaWindow #export_c #effects(all) {
     if window<1 || window>128 || capacity<1 || capacity>1048576 {return DaWindow.{status=DkStatus.shape};}
     if position<0 || position>=capacity {return DaWindow.{status=DkStatus.format};}
     count:=ifx da_before(position+1,window) then position+1 else window;first:=position+1-count;
     return DaWindow.{count=count,slot=position%window,oldest=first%window,first=first,next=position+1};
 }
-da_reuse :: (layer:int,position:int,kv:DaStamp,index:DaStamp,candidate:DaStamp)->DkStatus #export_c {
+da_reuse :: (layer:int,position:int,kv:DaStamp,index:DaStamp,candidate:DaStamp)->DkStatus #export_c #effects(all) {
     link:=da_flash_links(layer);if link.status!=DkStatus.ok {return link.status;}if position<0 || position>=1048576 {return DkStatus.format;}
     if link.ratio>0 {if kv.layer!=link.kv || kv.next<position+1 || kv.next>1048576 || index.layer!=link.index || index.next!=position+1 {return DkStatus.format;}}
     if link.candidate==20 {if candidate.layer!=link.candidate || candidate.next!=position+1 {return DkStatus.format;}}return DkStatus.ok;
 }
-da_better :: (a:f32,ai:int,b:f32,bi:int)->bool {return a>b || (a==b && ai<bi);}
-da_heap :: (scores:[]f32,heap:[]int,count:int,capacity:int,candidate:int)->int {
+da_better :: (a:f32,ai:int,b:f32,bi:int)->bool #effects(all) {return a>b || (a==b && ai<bi);}
+da_heap :: (scores:[]f32,heap:[]int,count:int,capacity:int,candidate:int)->int #effects(all) {
     if capacity==0 {return count;}n:=count;
     if n<capacity {at:=n;heap[at]=candidate;n+=1;
         while at>0 {parent:=(at+1)/2-1;if !da_better(scores[heap[parent]],heap[parent],scores[heap[at]],heap[at]) {break;}swap:=heap[parent];heap[parent]=heap[at];heap[at]=swap;at=parent;}return n;}
@@ -111,19 +111,19 @@ da_heap :: (scores:[]f32,heap:[]int,count:int,capacity:int,candidate:int)->int {
         if !da_better(scores[heap[at]],heap[at],scores[heap[child]],heap[child]) {break;}swap:=heap[at];heap[at]=heap[child];heap[child]=swap;at=child;}
     return n;
 }
-da_before :: (a:int,b:int)->bool {return a<b;}
-da_select_shape :: (n:int,visible:int,keep:int,limit:int)->bool {return n>=0 && n<=1048576 && visible>=0 && visible<=n && keep>=1 && keep<=limit;}
-da_block_width :: (block:int)->bool {return block>=1 && block<=8;}
-da_score_finite :: (bits:u32)->bool {return (bits&0x7fffffff)<0x7f800000;}
-da_position_order :: (heap:[]int,count:int) {for i:1..<count {v:=heap[i];j:=i;while j>0 && da_before(v,heap[j-1]) {heap[j]=heap[j-1];j-=1;}heap[j]=v;}}
-da_select :: (scores:[]f32,visible:int,mask:[]u8,keep:int,out:[]int,heap:[]int,overlap:bool)->DaSelection #export_c {
+da_before :: (a:int,b:int)->bool #effects(all) {return a<b;}
+da_select_shape :: (n:int,visible:int,keep:int,limit:int)->bool #effects(all) {return n>=0 && n<=1048576 && visible>=0 && visible<=n && keep>=1 && keep<=limit;}
+da_block_width :: (block:int)->bool #effects(all) {return block>=1 && block<=8;}
+da_score_finite :: (bits:u32)->bool #effects(all) {return (bits&0x7fffffff)<0x7f800000;}
+da_position_order :: (heap:[]int,count:int) #effects(all) {for i:1..<count {v:=heap[i];j:=i;while j>0 && da_before(v,heap[j-1]) {heap[j]=heap[j-1];j-=1;}heap[j]=v;}}
+da_select :: (scores:[]f32,visible:int,mask:[]u8,keep:int,out:[]int,heap:[]int,overlap:bool)->DaSelection #export_c #effects(all) {
     n:=scores.count;if !da_select_shape(n,visible,keep,512) {return DaSelection.{status=DkStatus.shape};}
     if mask.count!=n || out.count<keep || heap.count<keep {return DaSelection.{status=DkStatus.capacity};}if overlap {return DaSelection.{status=DkStatus.alias};}
     count:=0;for i:0..<visible {if mask[i]>1 {return DaSelection.{status=DkStatus.format};}if mask[i]==1 {
         if !da_score_finite(f32_bits(scores[i])) {return DaSelection.{status=DkStatus.number};}count=da_heap(scores,heap,count,keep,i);}}
     da_position_order(heap,count);for i:0..<count {out[i]=heap[i];}return DaSelection.{count=count};
 }
-da_candidates :: (scores:[]f32,visible:int,block_size:int,keep:int,out:[]u8,stage:[]u8,blocks:[]f32,heap:[]int,overlap:bool)->DaSelection #export_c {
+da_candidates :: (scores:[]f32,visible:int,block_size:int,keep:int,out:[]u8,stage:[]u8,blocks:[]f32,heap:[]int,overlap:bool)->DaSelection #export_c #effects(all) {
     n:=scores.count;if !da_select_shape(n,visible,keep,2048) || !da_block_width(block_size) {return DaSelection.{status=DkStatus.shape};}
     total:=(n+block_size-1)/block_size;
     if out.count<n || stage.count<n || blocks.count<total || heap.count<keep {return DaSelection.{status=DkStatus.capacity};}if overlap {return DaSelection.{status=DkStatus.alias};}

@@ -2,7 +2,7 @@
 // adapting only its measured shadowed SDK hook to the actual device method.
 #import "Basic";
 #load "render-test-origin.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}source:[65536]u8;n:=fs_read(args_at(a[..],0),source[..]);if n<1 {return 1;}
   before:="(()=>{globalThis.renderTestResources=coaxial.renderResources();const original=GPUDevice.prototype.createRenderPipelineAsync;GPUDevice.prototype.createRenderPipelineAsync=function(d){return globalThis.renderTestFailPipeline?Promise.reject(Error(\"planted pipeline creation failure\")):original.call(this,d)};return coaxial.renderBank()})()";
   after:="(async()=>{globalThis.renderTestResources=coaxial.renderResources();const {RenderHost}=await import('/coaxial/render.js'),make=RenderHost.prototype.makePipeline,owned=new WeakMap();globalThis.renderTestActualPipelineCalls=0;globalThis.renderTestActualPipelineBlocks=0;RenderHost.prototype.makePipeline=function(entry){const device=this.device;if(!owned.has(device)){const original=device.createRenderPipelineAsync;device.createRenderPipelineAsync=function(d){renderTestActualPipelineCalls++;if(globalThis.renderTestFailPipeline){renderTestActualPipelineBlocks++;return Promise.reject(Error(\"planted pipeline creation failure\"))}return original.call(this,d)};owned.set(device,true)}return make.call(this,entry)};return coaxial.renderBank()})()";

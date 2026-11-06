@@ -30,7 +30,7 @@ RmDirectory :: struct {
 
 // The shard this server is (the host's OA_ROOM_SHARD; 1 when unset): it seats only tickets for
 // itself, and only sockets whose path names it or no sharv[0].dir.
-rm_shard :: (v: [] RmServer, shard: int) #export_c {
+rm_shard :: (v: [] RmServer, shard: int) #export_c #effects(all) {
   if shard >= 1 && shard <= 99 { v[0].shard = shard; }
 }
 
@@ -114,7 +114,7 @@ dir_lines :: (v: [] RmServer, b: [] u8, rooms: [] int) -> int {
 
 // Called by the host once a second: when the report is due, it is written into dir.out with its MAC
 // (dir.mac). Its length, 0 when nothing is due (or no key: the directory takes only signed reports).
-rm_directory_due :: (v: [] RmServer) -> int #export_c {
+rm_directory_due :: (v: [] RmServer) -> int #export_c #effects(all) {
   v[0].dir.out_n = 0;
   if v[0].tkey_n == 0 { return 0; }
   lines: [DIR_BODY] u8; rooms: [1] int;
@@ -142,7 +142,7 @@ rm_directory_due :: (v: [] RmServer) -> int #export_c {
 
 // The report names the process's generation (the host sets it when OA_ROOM_DIR_GEN=1): an API from
 // before migration 0133 refuses a report with a g line, so it is on only once the API has it.
-rm_dir_gen :: (v: [] RmServer, on: bool) #export_c { v[0].dir_gen = on; }
+rm_dir_gen :: (v: [] RmServer, on: bool) #export_c #effects(all) { v[0].dir_gen = on; }
 
 // book:begin drain
 // A drain (#12797), asked before a deploy replaces this shard: POST /api/room/sK/drain with X-Room-At
@@ -152,7 +152,7 @@ rm_dir_gen :: (v: [] RmServer, on: bool) #export_c { v[0].dir_gen = on; }
 // seconds for the world events under way to end, tells every page "restarting" and closes its socket
 // (rm_drain_tell), saves every seat's vitals, and says "drain done" in its health once the API has them.
 // True when the ask is this shard's and signed.
-rm_drain_ask :: (v: [] RmServer, at: int, wait: int, mac: string) -> bool #export_c {
+rm_drain_ask :: (v: [] RmServer, at: int, wait: int, mac: string) -> bool #export_c #effects(all) {
   if v[0].tkey_n == 0 || mac.count != 64 || wait < 0 || wait > 3600 { return false; }
   if at < v[0].wall_ms - 60000 || at > v[0].wall_ms + 60000 { return false; }
   b: [96] u8;
@@ -174,7 +174,7 @@ rm_drain_ask :: (v: [] RmServer, at: int, wait: int, mac: string) -> bool #expor
 }
 // Every page seated in an everglade room is told "r 0 restarting" and its socket closed (the host closes
 // a kicked one); the page asks the directory again and sits on another shard. How many were told.
-rm_drain_tell :: (v: [] RmServer) -> int #export_c {
+rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
   rm_checkpoint_finish(v);
   v[0].drain = true;
   told := 0;

@@ -11,7 +11,7 @@ HostAudioMemory :: struct {words:[HOST_AUDIO_ASSETS]int;total:int;}
  for frames:[3]int.[4194305,8388608,9223372036854775807] {#assert ham_extent(frames,2)==0;}
  for channels:[5]int.[-1,0,3,8388608,9223372036854775807] {#assert ham_extent(1,channels)==0;}
 }
-ham_extent :: (frames:int,channels:int)->int #export_c {
+ham_extent :: (frames:int,channels:int)->int #export_c #effects(all) {
  if frames<1 || channels<1 || channels>2 {return 0;}
  if frames>HOST_AUDIO_WORDS/channels {return 0;}
  return frames*channels;
@@ -30,12 +30,12 @@ ham_extent :: (frames:int,channels:int)->int #export_c {
   for i:0..<128 {#assert ham_reserve(s[..],1)==i;}#assert s[0].total==128 && ham_reserve(s[..],1)== -1;
   for i:0..<128 {#assert ham_release(s[..],i);}#assert s[0].total==0;
 }
-ham_reserve :: (s:[]HostAudioMemory,words:int)->int #export_c {
+ham_reserve :: (s:[]HostAudioMemory,words:int)->int #export_c #effects(all) {
   if words<1 || words>HOST_AUDIO_WORDS-s[0].total {return -1;}
   for i:0..<HOST_AUDIO_ASSETS {if s[0].words[i]==0 {s[0].words[i]=words;s[0].total+=words;return i;}}return -1;
 }
-ham_words :: (s:[]HostAudioMemory,id:int)->int #export_c {if id<0 || id>=HOST_AUDIO_ASSETS {return -1;}return s[0].words[id];}
-ham_release :: (s:[]HostAudioMemory,id:int)->bool #export_c {
+ham_words :: (s:[]HostAudioMemory,id:int)->int #export_c #effects(all) {if id<0 || id>=HOST_AUDIO_ASSETS {return -1;}return s[0].words[id];}
+ham_release :: (s:[]HostAudioMemory,id:int)->bool #export_c #effects(all) {
   if id<0 || id>=HOST_AUDIO_ASSETS || s[0].words[id]==0 {return false;}
   s[0].total-=s[0].words[id];s[0].words[id]=0;return true;
 }

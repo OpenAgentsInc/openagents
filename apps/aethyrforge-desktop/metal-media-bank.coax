@@ -15,7 +15,7 @@ mmb_differences :: (left:[]u8,right:[]u8)->int {if left.count!=right.count {retu
 #test "media GPU byte comparison counts every differing lane and rejects wrong extents" {
  left:=[5]u8.[0,1,2,3,255];right:=[5]u8.[0,2,2,4,0];#assert mmb_differences(left[..],left[..])==0&&mmb_differences(left[..],right[..])==3&&mmb_differences(left[..],right[0..<4])== -1;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4 {tool_errln("usage: metal-media-bank ROOT RESOURCES EFFECTS NEW_OUTPUT");return 2;}
  root:=args_at(a[..],0);res:=args_at(a[..],1);effects:=args_at(a[..],2);dir:=args_at(a[..],3);paths:[10][4096]u8;
  if !fs_mkdir(dir) {return 1;}sourceDir:=fs_join(res,"web/realms/everglade/hotbar",paths[0][..]);facts:[65536]u8;fn:=fs_read(fs_join(root,"verse/native/everglade.facts",paths[1][..]),facts[..]);if fn<1 {return 1;}while fn>0&&facts[fn-1]=='\n' {fn-=1;}

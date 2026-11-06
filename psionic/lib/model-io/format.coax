@@ -94,12 +94,12 @@ PwWord :: struct { status: PwStatus; bits: u32; }
     #assert !pw_window(8,0,9223372036854775807,8,8);
 }
 
-pw_file_size :: (n:int)->bool {return n>=10 && n<=PW_FILE_MAX;}
-pw_header_size :: (n:u64,file:int)->bool {return n>=2 && n<=PW_HEADER_MAX && n<=cast(u64)(file-8);}
-pw_dtype_known :: (tag:u8)->bool {return tag<=1;}
-pw_width :: (dtype:PwDtype)->int {if dtype==PwDtype.bf16 {return 2;}return 4;}
+pw_file_size :: (n:int)->bool #effects(all) {return n>=10 && n<=PW_FILE_MAX;}
+pw_header_size :: (n:u64,file:int)->bool #effects(all) {return n>=2 && n<=PW_HEADER_MAX && n<=cast(u64)(file-8);}
+pw_dtype_known :: (tag:u8)->bool #effects(all) {return tag<=1;}
+pw_width :: (dtype:PwDtype)->int #effects(all) {if dtype==PwDtype.bf16 {return 2;}return 4;}
 // book:begin header
-pw_header :: (file:[]u8)->PwHeader #export_c {
+pw_header :: (file:[]u8)->PwHeader #export_c #effects(all) {
     if !pw_file_size(file.count) {return PwHeader.{status=PwStatus.size};}
     length:u64=0;
     for i:0..<8 {length |= cast(u64)file[i] << (i*8);}
@@ -108,11 +108,11 @@ pw_header :: (file:[]u8)->PwHeader #export_c {
     return PwHeader.{data=8+cast(int)length};
 }
 // book:end header
-pw_count_fits :: (elements:int,extent:int,width:int)->bool {
+pw_count_fits :: (elements:int,extent:int,width:int)->bool #effects(all) {
     if elements<1 || extent<1 || width<1 {return false;}
     return extent<=PW_FILE_MAX/width/elements;
 }
-pw_shape_size :: (s:PsionicShape,dtype:PwDtype)->PwSize #export_c {
+pw_shape_size :: (s:PsionicShape,dtype:PwDtype)->PwSize #export_c #effects(all) {
     if !pw_dtype_known(cast(u8)dtype) {return PwSize.{status=PwStatus.unsupported};}
     if s.rank<0 || s.rank>4 {return PwSize.{status=PwStatus.shape};}
     for i:0..<4 {
@@ -127,8 +127,8 @@ pw_shape_size :: (s:PsionicShape,dtype:PwDtype)->PwSize #export_c {
     return PwSize.{elements=elements,bytes=elements*width};
 }
 // book:begin bf16
-pw_bf16_bits :: (word:u16)->u32 #export_c {return cast(u32)word << 16;}
-pw_word :: (data:[]u8,at:int,width:int)->PwWord #export_c {
+pw_bf16_bits :: (word:u16)->u32 #export_c #effects(all) {return cast(u32)word << 16;}
+pw_word :: (data:[]u8,at:int,width:int)->PwWord #export_c #effects(all) {
     if width!=2 && width!=4 {return PwWord.{status=PwStatus.unsupported};}
     if at<0 || width>data.count || at>data.count-width {return PwWord.{status=PwStatus.offsets};}
     bits:u32=0;
@@ -136,7 +136,7 @@ pw_word :: (data:[]u8,at:int,width:int)->PwWord #export_c {
     return PwWord.{bits=bits};
 }
 // book:end bf16
-pw_window :: (elements:int,first:int,count:int,output:int,scratch:int)->bool #export_c {
+pw_window :: (elements:int,first:int,count:int,output:int,scratch:int)->bool #export_c #effects(all) {
     if first<0 || count<1 || count>PW_WINDOW_MAX || count>elements {return false;}
     if first>elements-count || output<count || scratch<count {return false;}
     return true;

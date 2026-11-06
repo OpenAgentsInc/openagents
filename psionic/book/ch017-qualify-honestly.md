@@ -109,7 +109,7 @@ one meaning has one encoding:
 
 <!-- source: psionic/lib/qualify.coax digest -->
 ```jai
-qy_policy_valid :: (p:QyPolicy)->bool {
+qy_policy_valid :: (p:QyPolicy)->bool #effects(all) {
     if p.mode==QyMode.unknown || p.unit==QyUnit.unknown {return false;}
     if p.values<1 || p.values>QY_MAX_VALUES || !qy_threshold(p.value_abs) {return false;}
     if p.distribution {if !qy_threshold(p.tv_max) {return false;}} else if f64_bits(p.tv_max)!=0 {return false;}
@@ -119,7 +119,7 @@ qy_policy_valid :: (p:QyPolicy)->bool {
     return qy_name_ok(p.profile) && qy_name_ok(p.reference_profile) && qy_known(p.dataset);
 }
 // Every field, in a fixed order: change any threshold and the identity changes.
-qy_policy_digest :: (p:QyPolicy)->[32]u8 {
+qy_policy_digest :: (p:QyPolicy)->[32]u8 #effects(all) {
     out:[32]u8;if !qy_policy_valid(p) {return out;}
     buf:[172]u8;for i:0..<25 {buf[i]=QY_POLICY_TAG[i];}
     buf[25]=cast(u8)p.mode;buf[26]=cast(u8)p.unit;buf[27]=ifx p.distribution then 1 else 0;
@@ -146,15 +146,15 @@ policies for chapter 14's evidence and pins their digests:
 
 <!-- source: psionic/lib/qualify-elephant.coax policies -->
 ```jai
-ye_layer0_policy :: ()->QyPolicy {
+ye_layer0_policy :: ()->QyPolicy #effects(all) {
     return QyPolicy.{mode=QyMode.one_block,unit=QyUnit.hidden,values=4096,value_abs=0.000003,
         profile=qy_name(YE_PROFILE),reference_profile=qy_name(YE_REFERENCE),dataset=qy_text_digest(YE_LAYER0_INPUT)};
 }
-ye_decision_policy :: ()->QyPolicy {
+ye_decision_policy :: ()->QyPolicy #effects(all) {
     return QyPolicy.{mode=QyMode.replay,unit=QyUnit.probability,values=2,value_abs=0.0005,distribution=true,tv_max=0.0005,
         top=1,near_tie=0.0005,regret_max=0.0005,profile=qy_name(YE_PROFILE),reference_profile=qy_name(YE_REFERENCE),dataset=qy_hex(YE_REQUEST_FILE)};
 }
-ye_mass_policy :: ()->QyPolicy {
+ye_mass_policy :: ()->QyPolicy #effects(all) {
     return QyPolicy.{mode=QyMode.replay,unit=QyUnit.probability,values=1,value_abs=0.0005,
         profile=qy_name(YE_PROFILE),reference_profile=qy_name(YE_REFERENCE),dataset=qy_hex(YE_REQUEST_FILE)};
 }
@@ -221,7 +221,7 @@ This is what chapter 14 recorded about its own candidate:
 
 <!-- source: psionic/lib/qualify-elephant.coax history -->
 ```jai
-ye_record :: (i:int)->QyRecord {
+ye_record :: (i:int)->QyRecord #effects(all) {
     r:=QyRecord.{dataset=ye_policy(i).dataset,model=qy_hex(YE_MODEL),compiler=qy_name("coax0 0.16.0"),
         reference_profile=qy_name(YE_REFERENCE),role=QyRole.development};
     // Not recorded in chapter 14: the digest of the sources built, and the
@@ -248,7 +248,7 @@ a development set and qualifies only on a confirmation set:
 
 <!-- source: psionic/lib/qualify.coax qualify -->
 ```jai
-qy_qualify :: (p:QyPolicy,r:QyRecord,candidate:[]f64,reference:[]f64)->QyReport {
+qy_qualify :: (p:QyPolicy,r:QyRecord,candidate:[]f64,reference:[]f64)->QyReport #effects(all) {
     if !qy_policy_valid(p) {return QyReport.{verdict=QyVerdict.failed,cause=QyCause.policy,worst=-1,first_over=-1};}
     x:=qy_compare(p,candidate,reference);x.policy=qy_policy_digest(p);x.unknown=qy_unknown(r);
     wrong:=QyCause.none;
@@ -273,7 +273,7 @@ qy_qualify :: (p:QyPolicy,r:QyRecord,candidate:[]f64,reference:[]f64)->QyReport 
     return x;
 }
 // The process exit status: 0 only when the verdict meets the claim.
-qy_exit :: (x:QyReport,claim:QyVerdict)->int #export_c {
+qy_exit :: (x:QyReport,claim:QyVerdict)->int #export_c #effects(all) {
     if claim!=QyVerdict.agrees && claim!=QyVerdict.qualified {return 2;}
     if x.verdict==QyVerdict.failed {return 1;}
     if x.verdict==QyVerdict.qualified {return 0;}
@@ -296,7 +296,7 @@ no logic of its own:
 <!-- source: psionic/lib/qualify-gate.coax gate -->
 ```jai
 // Prints case k's report and returns the status the process exits with.
-ye_gate :: (k:int)->int #export_c {
+ye_gate :: (k:int)->int #export_c #effects(all) {
     c:[4096]f64;r:[4096]f64;
     if k==0 {
         names:=[3]string.["chapter 14, layer 0 of token 32","chapter 14, decision probabilities","chapter 14, decision slot mass"];

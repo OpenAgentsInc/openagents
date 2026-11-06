@@ -79,7 +79,7 @@ rj_run :: (c: [] RelayConn, h: [] RjHeard, a: int, seq: [] int, ms: int) -> bool
 // The players other than seat `me` this socket has now.
 rj_others :: (h: [] RjHeard, me: int) -> int { n := 0; for s: 0..<RJ_SEATS { if s != me && h[0].seen[s] { n += 1; } } return n; }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("rejoin-check: bad arguments"); return 2; }
   kb: [128] u8;

@@ -239,20 +239,20 @@ CP_COMMANDS :: [14]string.["run","build","lib","c","header","check","layout","de
  #assert CP_message(error)==messages[cast(int)error];
 }
 
-cp_source :: (command:string)->bool {
+cp_source :: (command:string)->bool #effects(all) {
  return command=="run" || command=="build" || command=="lib" || command=="c" || command=="checks-c" || command=="header" || command=="check" || command=="layout" || command=="deps" || command=="test" || command=="mutate" || command=="metal" || command=="cuda" || command=="metal-compute" || command=="spirv";
 }
-cp_native :: (command:string)->bool {return command=="run" || command=="build" || command=="lib";}
-cp_choice :: (text:string,count:int)->bool {return count>=0 && count<=1 && (count==1 || text.count==0);}
-cp_refuse :: (error:CP_Error)->CP_Profile {profile:CP_Profile;profile.error=error;return profile;}
+cp_native :: (command:string)->bool #effects(all) {return command=="run" || command=="build" || command=="lib";}
+cp_choice :: (text:string,count:int)->bool #effects(all) {return count>=0 && count<=1 && (count==1 || text.count==0);}
+cp_refuse :: (error:CP_Error)->CP_Profile #effects(all) {profile:CP_Profile;profile.error=error;return profile;}
 
 // Schema one identifies the six selection bits, including whether the host
 // compiles natively. It is not an artifact digest, target identity or ABI proof.
-cp_identity :: (arithmetic:int,optimization:int,development:bool,debug:bool,native:bool)->int {
+cp_identity :: (arithmetic:int,optimization:int,development:bool,debug:bool,native:bool)->int #effects(all) {
  return arithmetic+2*optimization+(ifx development then 8 else 0)+(ifx debug then 16 else 0)+(ifx native then 32 else 0);
 }
 
-CP_resolve :: (command:string,request:CP_Request)->CP_Profile #export_c {
+CP_resolve :: (command:string,request:CP_Request)->CP_Profile #export_c #effects(all) {
  if !cp_source(command) {return cp_refuse(CP_Error.command);}
  if !cp_choice(request.arithmetic,request.arithmetic_count) {return cp_refuse(CP_Error.arithmetic_count);}
  if !cp_choice(request.optimization,request.optimization_count) {return cp_refuse(CP_Error.optimization_count);}
@@ -289,7 +289,7 @@ CP_resolve :: (command:string,request:CP_Request)->CP_Profile #export_c {
  return profile;
 }
 
-CP_message :: (error:CP_Error)->string #export_c {
+CP_message :: (error:CP_Error)->string #export_c #effects(all) {
  if error==CP_Error.none {return "";}
  if error==CP_Error.command {return "semantic profiles require a source command";}
  if error==CP_Error.arithmetic_count {return "--arithmetic may be supplied once";}

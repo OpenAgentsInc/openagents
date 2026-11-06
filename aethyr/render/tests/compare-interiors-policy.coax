@@ -5,11 +5,11 @@
 #authority;
 #load "compare-interiors-checks.coax";
 CFIResult :: struct {valid:bool;full:CFResult;checked:CFResult;masked_pixels:int;excluded_colour_failures:int;width:int;format:int;}
-cfi_begin :: (width:int,height:int,format:int,cpu_bytes:int,gpu_bytes:int,mask_bytes:int)->CFIResult {
+cfi_begin :: (width:int,height:int,format:int,cpu_bytes:int,gpu_bytes:int,mask_bytes:int)->CFIResult #effects(all) {
  r:=CFIResult.{width=width,format=format};r.full=cf_begin(width,height,format,cpu_bytes,gpu_bytes);r.checked=r.full;r.checked.channels=0;
  r.valid=r.full.status==CFStatus.ok && mask_bytes==r.full.pixels;return r;
 }
-cfi_accumulate :: (prior:CFIResult,cpu:[]u8,gpu:[]u8,mask:[]u8,format:int,width:int,first:int)->CFIResult {
+cfi_accumulate :: (prior:CFIResult,cpu:[]u8,gpu:[]u8,mask:[]u8,format:int,width:int,first:int)->CFIResult #effects(all) {
  r:=prior;
  if !r.valid {return r;}
  if format!=r.format || width!=r.width || cpu.count%16!=0 || mask.count!=cpu.count/16 || gpu.count!=mask.count*cf_stride(format) || first!=r.checked.processed {r.valid=false;return r;}
@@ -24,7 +24,7 @@ cfi_accumulate :: (prior:CFIResult,cpu:[]u8,gpu:[]u8,mask:[]u8,format:int,width:
  }
  r.excluded_colour_failures=r.full.colour_failures-r.checked.colour_failures;return r;
 }
-cfi_done :: (prior:CFIResult)->CFIResult {
+cfi_done :: (prior:CFIResult)->CFIResult #effects(all) {
  r:=prior;if !r.valid {return r;}r.full=cf_done(r.full);r.checked=cf_done(r.checked);
  r.valid=r.full.processed==r.full.pixels && r.checked.processed==r.full.pixels && r.masked_pixels<r.full.pixels;
  // Every original value was decoded by the full comparator. Nonfinite values

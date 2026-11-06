@@ -68,8 +68,8 @@ WsResult :: struct {code:u32;before_version:int;after_version:int;after_digest:s
 // book:end record
 
 // book:begin admit
-ws_out :: (code:u32)->WsResult {r:WsResult;r.code=code;return r;}
-ws_change :: (b:WsBinding,res:[]WsResource,grants:[]WsGrant,kept:[]WsRetained,n:[]int,c:WsChange,now:int)->WsResult {
+ws_out :: (code:u32)->WsResult #effects(all) {r:WsResult;r.code=code;return r;}
+ws_change :: (b:WsBinding,res:[]WsResource,grants:[]WsGrant,kept:[]WsRetained,n:[]int,c:WsChange,now:int)->WsResult #effects(all) {
   if c.signer!=c.actor {return ws_out(WS_IDENTITY);}
   if c.expires_at<=c.issued_at || c.expires_at-c.issued_at>WS_WINDOW || c.issued_at>now+WS_SKEW {return ws_out(WS_MALFORMED);}
   if now>=c.expires_at {return ws_out(WS_EXPIRED);}

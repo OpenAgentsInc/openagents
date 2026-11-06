@@ -58,18 +58,18 @@ QrResult :: struct {status:int;version:int;size:int;count:int;mask:int;penalty:i
  #assert qr_version_valid(version)==(version>=1 && version<=15);
 }
 
-qr_version_valid :: (version:int)->bool {return version>=1 && version<=15;}
-qr_raw_modules :: (version:int)->int {
+qr_version_valid :: (version:int)->bool #effects(all) {return version>=1 && version<=15;}
+qr_raw_modules :: (version:int)->int #effects(all) {
  #assert qr_version_valid(version);
  bits:=(16*version+128)*version+64;
  if version>=2 {align:=version/7+2;bits-=(25*align-10)*align-55;if version>=7 {bits-=36;}}
  return bits;
 }
-qr_data_words :: (version:int)->int {return qr_raw_modules(version)/8-QR_ECC[version]*QR_BLOCKS[version];}
+qr_data_words :: (version:int)->int #effects(all) {return qr_raw_modules(version)/8-QR_ECC[version]*QR_BLOCKS[version];}
 // The4-bit mode plus8/16-bit count consumes exactly two/three whole bytes
 // when rounding payload capacity down. No partial-byte capacity is exposed.
-qr_capacity :: (version:int)->int {return qr_data_words(version)-(ifx version<10 then 2 else 3);}
-qr_admit :: (length:int,capacity:int,mask:int,overlap:bool)->QrAdmission #export_c {
+qr_capacity :: (version:int)->int #effects(all) {return qr_data_words(version)-(ifx version<10 then 2 else 3);}
+qr_admit :: (length:int,capacity:int,mask:int,overlap:bool)->QrAdmission #export_c #effects(all) {
  if length<0 || length>412 {return QrAdmission.{status=1};}
  if mask< -1 || mask>7 {return QrAdmission.{status=3};}
  if overlap {return QrAdmission.{status=4};}
@@ -78,18 +78,18 @@ qr_admit :: (length:int,capacity:int,mask:int,overlap:bool)->QrAdmission #export
  return QrAdmission.{version=version,size=size,count=size*size};
 }
 // Alphanumeric: 11 bits a pair, 6 for an odd last one, after the 4-bit mode and a 9/11-bit count.
-qr_alnum_capacity :: (version:int)->int {
+qr_alnum_capacity :: (version:int)->int #effects(all) {
  bits:=qr_data_words(version)*8-4-(ifx version<10 then 9 else 11);
  return bits/11*2+(ifx bits%11>=6 then 1 else 0);
 }
-qr_alnum_value :: (byte:int)->int {
+qr_alnum_value :: (byte:int)->int #effects(all) {
  if byte>=48 && byte<=57 {return byte-48;}
  if byte>=65 && byte<=90 {return byte-55;}
  if byte==32 {return 36;}if byte==36 {return 37;}if byte==37 {return 38;}if byte==42 {return 39;}
  if byte==43 {return 40;}if byte==45 {return 41;}if byte==46 {return 42;}if byte==47 {return 43;}if byte==58 {return 44;}
  return -1;
 }
-qr_admit_alnum :: (length:int,capacity:int,mask:int,overlap:bool)->QrAdmission #export_c {
+qr_admit_alnum :: (length:int,capacity:int,mask:int,overlap:bool)->QrAdmission #export_c #effects(all) {
  if length<0 || length>600 {return QrAdmission.{status=1};}
  if mask< -1 || mask>7 {return QrAdmission.{status=3};}
  if overlap {return QrAdmission.{status=4};}

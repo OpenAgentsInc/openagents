@@ -272,7 +272,7 @@ PkStanding :: struct {last_seq:int;agreed:int;disagreed:int;unverifiable:int;uns
 PkAdmit :: enum u8 {ok;forged;suspended;replayed;peer;request;stage;model;profile;input;output;use;}
 
 // delivered is the digest of the output bytes the buyer actually received.
-pk_admit :: (r:PkReceipt,jb:PkJob,delivered:string,st:PkStanding)->PkAdmit #export_c {
+pk_admit :: (r:PkReceipt,jb:PkJob,delivered:string,st:PkStanding)->PkAdmit #export_c #effects(all) {
     if !r.mac_ok {return PkAdmit.forged;}
     if st.suspended {return PkAdmit.suspended;}
     if r.seq<=st.last_seq {return PkAdmit.replayed;}
@@ -334,14 +334,14 @@ check sets `agreed` back to 0, so probation starts again.
 // receipt is checked.
 PkPolicy :: struct {probation:int;floor:int;high_value:int;}
 
-pk_policy_valid :: (p:PkPolicy)->bool {
+pk_policy_valid :: (p:PkPolicy)->bool #effects(all) {
     return p.probation>=1 && p.probation<=1024 && p.floor>=1 && p.floor<=256 && bl_in(p.high_value,BL_MSAT_MOST);
 }
 // The sampling threshold out of 256, or -1 for a policy or price out of
 // bounds. A peer on probation and a high-value receipt are always checked;
 // after probation the threshold falls as 256*probation/(agreed+1). A
 // failure sets agreed back to 0, so probation starts again.
-pk_threshold :: (p:PkPolicy,st:PkStanding,price:int)->int #export_c {
+pk_threshold :: (p:PkPolicy,st:PkStanding,price:int)->int #export_c #effects(all) {
     if !pk_policy_valid(p) || !bl_in(price,BL_MSAT_MOST) || st.agreed<0 {return -1;}
     if st.agreed<p.probation || price>=p.high_value {return 256;}
     return 256*p.probation/(st.agreed+1);
@@ -350,7 +350,7 @@ pk_threshold :: (p:PkPolicy,st:PkStanding,price:int)->int #export_c {
 // is checked. The draw comes from a secret only the checker holds and the
 // receipt's digest, so a peer cannot know which answers will be checked
 // when it commits to them.
-pk_sampled :: (p:PkPolicy,st:PkStanding,price:int,draw:int)->bool #export_c {
+pk_sampled :: (p:PkPolicy,st:PkStanding,price:int,draw:int)->bool #export_c #effects(all) {
     t:=pk_threshold(p,st,price);
     if t<0 {return false;}
     return ms_selected(draw,t) || ms_selected(draw,p.floor);
@@ -417,10 +417,10 @@ PkReason :: enum u8 {none;exact;within;bits;distance;shape;number;profile;refere
 PkCompare :: struct {verdict:PkVerdict;reason:PkReason;worst:f64;at:int=-1;tolerance:int;}
 PK_VALUES :: 4096;
 
-pk_finite :: (x:f32)->bool {return (f32_bits(x)&0x7fffffff)<0x7f800000;}
+pk_finite :: (x:f32)->bool #effects(all) {return (f32_bits(x)&0x7fffffff)<0x7f800000;}
 // claimed is the receipt's profile; reference is the checker's own run of
 // the same input, ref_ok whether that run finished.
-pk_compare :: (profiles:[]PkProfile,claimed:string,peer:[]f32,reference:[]f32,ref_ok:bool)->PkCompare #export_c {
+pk_compare :: (profiles:[]PkProfile,claimed:string,peer:[]f32,reference:[]f32,ref_ok:bool)->PkCompare #export_c #effects(all) {
     k:=-1;
     for i:0..<profiles.count {if k<0 && profiles[i].name==claimed {k=i;}}
     if k<0 || !bl_in(profiles[k].tolerance_ppb,1000000000) {return PkCompare.{verdict=PkVerdict.unverifiable,reason=PkReason.profile};}
@@ -497,7 +497,7 @@ PkSettle :: struct {cause:PkCause;price:int;standing:PkStanding;}
 // work that disagrees is withheld and suspends the peer until its owner
 // decides; work that could not be verified is held for the owner. A sampled
 // receipt needs a verdict and an unsampled one must not have one.
-pk_settle :: (st:PkStanding,s:BlSchedule,seq:int,use:BlUse,sampled:bool,c:PkCompare)->PkSettle #export_c {
+pk_settle :: (st:PkStanding,s:BlSchedule,seq:int,use:BlUse,sampled:bool,c:PkCompare)->PkSettle #export_c #effects(all) {
     p:=bl_price(s,use);
     if p.cause==BlCause.schedule {return PkSettle.{cause=PkCause.schedule,standing=st};}
     if p.cause!=BlCause.none {return PkSettle.{cause=PkCause.use,standing=st};}
@@ -580,7 +580,7 @@ index.
 PkRecord :: struct {receipt:string;output:string;reference:string;seq:int;use:BlUse;sampled:bool;compare:PkCompare;}
 PkRecount :: struct {cause:PkCause;at:int=-1;standing:PkStanding;}
 
-pk_recount :: (s:BlSchedule,records:[]PkRecord)->PkRecount #export_c {
+pk_recount :: (s:BlSchedule,records:[]PkRecord)->PkRecount #export_c #effects(all) {
     st:=PkStanding.{};
     for i:0..<records.count {
         r:=records[i];

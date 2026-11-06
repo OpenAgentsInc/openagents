@@ -32,10 +32,10 @@ FiSignatureCheck :: struct {verified:bool;header:FiProtected;}
  #assert !fi_jws_decoded_ok(NC_INVALID,256,256);
  #assert !fi_jws_decoded_ok(NC_OK,255,256);
 }
-fi_jws_decoded_ok :: (error:u32,written:int,expected:int)->bool {
+fi_jws_decoded_ok :: (error:u32,written:int,expected:int)->bool #effects(all) {
  return error==NC_OK && written==expected;
 }
-fi_jws_signature :: (token:[]u8,modulus:[]u8)->FiSignatureCheck #export_c {
+fi_jws_signature :: (token:[]u8,modulus:[]u8)->FiSignatureCheck #export_c #effects(all) {
  text:=cast(string)token;parts:=fi_compact_parse(text);if !parts.ok {return FiSignatureCheck.{};}
  header_bytes:[2048]u8;
  header:=fi_b64url_decode(text[0..<parts.protected_end],header_bytes[..]);

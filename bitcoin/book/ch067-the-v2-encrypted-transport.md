@@ -111,7 +111,7 @@ V2Cipher :: struct {
   send_terminator: [16] u8; recv_terminator: [16] u8;
   session_id: [32] u8;
 }
-v2_cipher_init :: (c: [] V2Cipher, secret: [] u8, magic: [4] u8, initiating: bool) -> int {
+v2_cipher_init :: (c: [] V2Cipher, secret: [] u8, magic: [4] u8, initiating: bool) -> int #effects(all) {
   if c.count != 1 || secret.count != 32 { return V2_KEYS; }
   salt: [28] u8; name := "bitcoin_v2_shared_secret";
   for i: 0..<24 { salt[i] = name[i]; } for i: 0..<4 { salt[24 + i] = magic[i]; }
@@ -136,7 +136,7 @@ v2_cipher_init :: (c: [] V2Cipher, secret: [] u8, magic: [4] u8, initiating: boo
   for i: 0..<32 { prk[i] = 0; for k: 0..<6 { okm[k][i] = 0; } }
   return ifx ok then V2_OK else V2_KEYS;
 }
-v2_stream :: (key: [32] u8) -> V2Stream { return V2Stream.{key = key, at = 64}; }
+v2_stream :: (key: [32] u8) -> V2Stream #effects(all) { return V2Stream.{key = key, at = 64}; }
 ```
 
 Core's `BIP324Cipher::Initialize` also wipes the secret and every derived
@@ -162,7 +162,7 @@ nothing in memory can decrypt the packets it covered.
 // nonce 0 || rekeys and the block counter from 0. After 224 chunks, the
 // next 32 keystream bytes become the key. Lengths are 3-byte chunks, and
 // 224 * 3 + 32 = 704 = 11 * 64, so a rekey always starts a fresh block.
-v2_stream_byte :: (s: [] V2Stream) -> u8 {
+v2_stream_byte :: (s: [] V2Stream) -> u8 #effects(all) {
   if s[0].at == 64 {
     nonce: [12] u8; stored := cb_store_le64(nonce[..], 4, s[0].chunk / V2_REKEY);
     r := chacha20_block_checked(s[0].key[..], nonce[..], s[0].block, s[0].buffer[..], false);
@@ -171,7 +171,7 @@ v2_stream_byte :: (s: [] V2Stream) -> u8 {
   b := s[0].buffer[s[0].at]; s[0].buffer[s[0].at] = 0; s[0].at += 1;
   return b;
 }
-v2_stream_crypt :: (s: [] V2Stream, chunk: [] u8) {
+v2_stream_crypt :: (s: [] V2Stream, chunk: [] u8) #effects(all) {
   for i: 0..<chunk.count { chunk[i] ^= v2_stream_byte(s); }
   if (s[0].chunk + 1) % V2_REKEY == 0 {
     for i: 0..<32 { s[0].key[i] = v2_stream_byte(s); }
@@ -202,13 +202,13 @@ because `p mod 224` stays below 224.
 // (packet mod 224) as 4 bytes || (packet / 224) as 8 bytes, little-endian.
 // After the 224th packet with a key, the new key is the first 32 bytes of
 // the keystream for nonce ffffffff || the same 8 bytes.
-v2_nonce :: (packet: u64) -> [12] u8 {
+v2_nonce :: (packet: u64) -> [12] u8 #effects(all) {
   nonce: [12] u8;
   a := cb_store_le32(nonce[..], 0, cast(u32) (packet % V2_REKEY));
   b := cb_store_le64(nonce[..], 4, packet / V2_REKEY);
   return nonce;
 }
-v2_aead_next :: (a: [] V2Aead) {
+v2_aead_next :: (a: [] V2Aead) #effects(all) {
   if (a[0].packet + 1) % V2_REKEY == 0 {
     nonce := v2_nonce(a[0].packet); for i: 0..<4 { nonce[i] = 0xff; }
     block: [64] u8;
@@ -219,7 +219,7 @@ v2_aead_next :: (a: [] V2Aead) {
 }
 // XOR text with the ChaCha20 keystream from block counter 1, one block at a
 // time, so the length is not limited to one call's 1 MiB.
-v2_xor :: (key: [] u8, nonce: [] u8, text: [] u8) {
+v2_xor :: (key: [] u8, nonce: [] u8, text: [] u8) #effects(all) {
   block: [64] u8;
   for b: 0..<(text.count + 63) / 64 {
     r := chacha20_block_checked(key, nonce, cast(u32) (b + 1), block[..], false);
@@ -229,7 +229,7 @@ v2_xor :: (key: [] u8, nonce: [] u8, text: [] u8) {
 }
 // RFC 8439's tag: Poly1305 over aad, zeros to 16, ciphertext, zeros to 16,
 // and both lengths, fed to Poly1305 in pieces of at most 1 MiB.
-v2_tag :: (key: [] u8, nonce: [] u8, aad: [] u8, cipher: [] u8, tag: [] u8) {
+v2_tag :: (key: [] u8, nonce: [] u8, aad: [] u8, cipher: [] u8, tag: [] u8) #effects(all) {
   block: [64] u8; state: [1] Poly1305State; zeros: [16] u8; lengths: [16] u8;
   r := chacha20_block_checked(key, nonce, 0, block[..], false);
   #assert poly1305_init(state[..], block[0..<32], false) == POLY_OK;
@@ -250,7 +250,7 @@ v2_tag :: (key: [] u8, nonce: [] u8, aad: [] u8, cipher: [] u8, tag: [] u8) {
   #assert poly1305_final(state[..], tag, false) == POLY_OK;
 }
 // Seal text in place and write its tag after it.
-v2_aead_seal :: (a: [] V2Aead, aad: [] u8, text: [] u8, tag: [] u8) {
+v2_aead_seal :: (a: [] V2Aead, aad: [] u8, text: [] u8, tag: [] u8) #effects(all) {
   nonce := v2_nonce(a[0].packet);
   v2_xor(a[0].key[..], nonce[..], text);
   v2_tag(a[0].key[..], nonce[..], aad, text, tag);
@@ -258,7 +258,7 @@ v2_aead_seal :: (a: [] V2Aead, aad: [] u8, text: [] u8, tag: [] u8) {
 }
 // Check the tag, then decrypt in place. A bad tag leaves text as it was.
 // Either way the packet counts, as in Core.
-v2_aead_open :: (a: [] V2Aead, aad: [] u8, text: [] u8, tag: [] u8) -> bool {
+v2_aead_open :: (a: [] V2Aead, aad: [] u8, text: [] u8, tag: [] u8) -> bool #effects(all) {
   nonce := v2_nonce(a[0].packet); want: [16] u8;
   v2_tag(a[0].key[..], nonce[..], aad, text, want[..]);
   ok := cb_ct_equal(want[..], tag) == CB_MAX64;
@@ -299,7 +299,7 @@ buffer into the packet, and opening turns it back.
 // the header byte and the contents, with its tag. The caller has written
 // the n bytes of contents at packet[4..<4+n]; seal turns
 // packet[0..<n+20] into the packet and returns n + 20, or -1.
-v2_packet_seal :: (c: [] V2Cipher, n: int, aad: [] u8, ignore: bool, packet: [] u8) -> int {
+v2_packet_seal :: (c: [] V2Cipher, n: int, aad: [] u8, ignore: bool, packet: [] u8) -> int #effects(all) {
   if n < 0 || n > V2_MAX_PACKET || packet.count < n + V2_EXPANSION { return -1; }
   packet[0] = cast(u8) (n & 255); packet[1] = cast(u8) ((n >> 8) & 255); packet[2] = cast(u8) (n >> 16);
   v2_stream_crypt(c[0].send_l[..], packet[0..<3]);
@@ -310,7 +310,7 @@ v2_packet_seal :: (c: [] V2Cipher, n: int, aad: [] u8, ignore: bool, packet: [] 
 // The receiver first decrypts the 3-byte length, to know how many more
 // bytes to read: n + 17. Core refuses a length above V2_MAX_CONTENTS here.
 V2Length :: struct { code: int; n: int; }
-v2_packet_length_vartime :: (c: [] V2Cipher, first: [] u8) -> V2Length {
+v2_packet_length_vartime :: (c: [] V2Cipher, first: [] u8) -> V2Length #effects(all) {
   if first.count < 3 { return V2Length.{code = V2_TRUNCATED}; }
   b: [3] u8; for i: 0..<3 { b[i] = first[i]; }
   v2_stream_crypt(c[0].recv_l[..], b[..]);
@@ -320,7 +320,7 @@ v2_packet_length_vartime :: (c: [] V2Cipher, first: [] u8) -> V2Length {
 // Then the rest, rest = packet[3..<n+20], is opened in place: on success
 // the contents are rest[1..<1+n].
 V2Opened :: struct { code: int; ignore: bool; }
-v2_packet_open :: (c: [] V2Cipher, aad: [] u8, rest: [] u8) -> V2Opened {
+v2_packet_open :: (c: [] V2Cipher, aad: [] u8, rest: [] u8) -> V2Opened #effects(all) {
   if rest.count < V2_HEADER + V2_TAG { return V2Opened.{code = V2_TRUNCATED}; }
   n := rest.count - V2_HEADER - V2_TAG;
   if !v2_aead_open(c[0].recv_p[..], aad, rest[0..<1 + n], rest[1 + n..<rest.count]) { return V2Opened.{code = V2_BAD_TAG}; }
@@ -359,7 +359,7 @@ that packet's tag.
 // every byte, as Core does. The garbage becomes the AAD of the first
 // packet, so a man in the middle cannot change it.
 V2Garbage :: struct { code: int; n: int; }
-v2_garbage_vartime :: (received: [] u8, terminator: [16] u8) -> V2Garbage {
+v2_garbage_vartime :: (received: [] u8, terminator: [16] u8) -> V2Garbage #effects(all) {
   t := terminator;
   for end: V2_TERMINATOR..<received.count + 1 {
     if end > V2_MAX_GARBAGE + V2_TERMINATOR { return V2Garbage.{code = V2_NO_TERMINATOR}; }
@@ -373,7 +373,7 @@ v2_garbage_vartime :: (received: [] u8, terminator: [16] u8) -> V2Garbage {
 // A responder that reads magic || "version" and five zeros where a key
 // should be is talking to a v1 peer: those are the first 16 bytes of a v1
 // version message (chapter 65).
-v2_looks_like_v1_vartime :: (first: [] u8, magic: [4] u8) -> bool {
+v2_looks_like_v1_vartime :: (first: [] u8, magic: [4] u8) -> bool #effects(all) {
   if first.count < 16 { return false; }
   want := [12] u8.['v', 'e', 'r', 's', 'i', 'o', 'n', 0, 0, 0, 0, 0];
   for i: 0..<4 { if first[i] != magic[i] { return false; } }
@@ -404,13 +404,13 @@ V2_MESSAGE_IDS :: [38] string.["", "addr", "block", "blocktxn", "cmpctblock", "f
   "getheaders", "headers", "inv", "mempool", "merkleblock", "notfound", "ping", "pong",
   "sendcmpct", "tx", "getcfilters", "cfilter", "getcfheaders", "cfheaders", "getcfcheckpt",
   "cfcheckpt", "addrv2", "", "", "", "", "", "", "", "", "feature"];
-v2_message_id :: (command: string) -> int {
+v2_message_id :: (command: string) -> int #effects(all) {
   for i: 1..<V2_MESSAGE_IDS.count { if V2_MESSAGE_IDS[i].count > 0 && V2_MESSAGE_IDS[i] == command { return i; } }
   return 0;
 }
 // Contents for a message: the short ID when there is one, else 0 and the
 // padded command. Returns the length, or -1.
-v2_contents_write_vartime :: (command: string, payload: [] u8, out: [] u8) -> int {
+v2_contents_write_vartime :: (command: string, payload: [] u8, out: [] u8) -> int #effects(all) {
   id := v2_message_id(command);
   head := ifx id > 0 then 1 else 1 + P2P_COMMAND;
   if command.count > P2P_COMMAND || out.count < head + payload.count { return -1; }
@@ -423,7 +423,7 @@ v2_contents_write_vartime :: (command: string, payload: [] u8, out: [] u8) -> in
 // payload starts. An unknown ID, a short long-form type, or a bad padding
 // is V2_BAD_TYPE. The command is either a table entry or contents[1..<1+n].
 V2Contents :: struct { code: int; id: int; command_n: int; payload: int; }
-v2_contents_read_vartime :: (contents: [] u8) -> V2Contents {
+v2_contents_read_vartime :: (contents: [] u8) -> V2Contents #effects(all) {
   if contents.count == 0 { return V2Contents.{code = V2_BAD_TYPE}; }
   id := cast(int) contents[0];
   if id != 0 {

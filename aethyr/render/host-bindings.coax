@@ -15,22 +15,22 @@ RENDER_HOST_PIPELINE_TEMPLATE :: FrameCounts.{width=1,height=1,vertex_stride=1,h
   draw_count=2,water_draws=1,grass_instances=1,particle_instances=1,surface_vertices=1,caster_vertices=1,caster_instances=1};
 #load "tests/host-bindings-checks.coax";
 
-render_host_binding_count :: (rhbd_profile:int,rhbd_set:int)->int {
+render_host_binding_count :: (rhbd_profile:int,rhbd_set:int)->int #effects(all) {
   if rhbd_set==2 {return ifx render_catalog(rhbd_profile).features.media then render_media_binding_count() else -1;}
   return render_catalog_binding_count(rhbd_profile,rhbd_set);
 }
-render_host_binding :: (rhbd_profile:int,rhbd_set:int,rhbd_resource:int)->RenderHostBinding {
+render_host_binding :: (rhbd_profile:int,rhbd_set:int,rhbd_resource:int)->RenderHostBinding #effects(all) {
   rhbd_count:=render_host_binding_count(rhbd_profile,rhbd_set);
   if rhbd_resource<0 || rhbd_resource>=rhbd_count {return RenderHostBinding.{};}
   rhbd_binding:=ifx rhbd_set==2 then render_media_binding(rhbd_resource) else render_catalog_binding(rhbd_profile,rhbd_set,rhbd_resource);
   return RenderHostBinding.{valid=true,binding=rhbd_binding,source=render_binding_source(rhbd_profile,rhbd_set,rhbd_resource)};
 }
-render_host_use_count :: (rhbd_profile:int,rhbd_entry:int)->int {
+render_host_use_count :: (rhbd_profile:int,rhbd_entry:int)->int #effects(all) {
   if rhbd_entry<0 || rhbd_entry>13 {return -1;}
   if rhbd_entry==13 {return ifx render_catalog(rhbd_profile).features.media then render_media_use_count() else -1;}
   return render_catalog_use_count(rhbd_profile,cast(RenderPassId)rhbd_entry);
 }
-render_host_use :: (rhbd_profile:int,rhbd_entry:int,rhbd_slot:int)->RenderHostUse {
+render_host_use :: (rhbd_profile:int,rhbd_entry:int,rhbd_slot:int)->RenderHostUse #effects(all) {
   rhbd_count:=render_host_use_count(rhbd_profile,rhbd_entry);
   if rhbd_slot<0 || rhbd_slot>=rhbd_count {return RenderHostUse.{};}
   rhbd_set:=2;rhbd_use:=RenderUse.{};
@@ -44,7 +44,7 @@ render_host_use :: (rhbd_profile:int,rhbd_entry:int,rhbd_slot:int)->RenderHostUs
 }
 // The bit width retains empty layout groups below the highest active group.
 // Canonical binding admission bounds group indices before this projection.
-render_host_group_count :: (rhbd_profile:int,rhbd_entry:int)->int {
+render_host_group_count :: (rhbd_profile:int,rhbd_entry:int)->int #effects(all) {
   rhbd_mask:u32;rhbd_count:=render_host_use_count(rhbd_profile,rhbd_entry);
   for rhbd_slot:0..<rhbd_count {
     rhbd_use:=render_host_use(rhbd_profile,rhbd_entry,rhbd_slot);
@@ -56,7 +56,7 @@ render_host_group_count :: (rhbd_profile:int,rhbd_entry:int)->int {
 }
 // Formatting is for the fixed source-origin transport names below; it grants
 // no resource admission. Refusal leaves scratch unchanged.
-rhb_numbered_name :: (rhbn_prefix:string,rhbn_suffix:string,rhbn_index:int,rhbn_limit:int,rhbn_out:[]u8)->string {
+rhb_numbered_name :: (rhbn_prefix:string,rhbn_suffix:string,rhbn_index:int,rhbn_limit:int,rhbn_out:[]u8)->string #effects(all) {
   if rhbn_index<0 || rhbn_index>=rhbn_limit {return "";}
   rhbn_digits:=ifx rhbn_index>=10 then 2 else 1;
   if rhbn_index>=100 {rhbn_digits=3;}
@@ -71,7 +71,7 @@ rhb_numbered_name :: (rhbn_prefix:string,rhbn_suffix:string,rhbn_index:int,rhbn_
   for rhbn_at:0..<rhbn_suffix.count {rhbn_out[rhbn_prefix.count+rhbn_digits+rhbn_at]=rhbn_suffix[rhbn_at];}
   return cast(string)rhbn_out[0..<rhbn_length];
 }
-render_host_buffer_name :: (rhbn_source:RenderBindingSource,rhbn_out:[]u8)->string {
+render_host_buffer_name :: (rhbn_source:RenderBindingSource,rhbn_out:[]u8)->string #effects(all) {
   if rhbn_source.kind==RenderSourceKind.main_uniform {return "u.bin";}
   if rhbn_source.kind==RenderSourceKind.immutable_storage_asset && rhbn_source.index==0 {return "vertices.bin";}
   if rhbn_source.kind==RenderSourceKind.mesh_asset && rhbn_source.index==0 {return "mesh.bin";}
@@ -79,17 +79,17 @@ render_host_buffer_name :: (rhbn_source:RenderBindingSource,rhbn_out:[]u8)->stri
   if rhbn_source.kind==RenderSourceKind.dynamic_store {return rhb_numbered_name("s",".bin",rhbn_source.index,48,rhbn_out);}
   return "";
 }
-render_host_texture_name :: (rhbn_source:RenderBindingSource,rhbn_out:[]u8)->string {
+render_host_texture_name :: (rhbn_source:RenderBindingSource,rhbn_out:[]u8)->string #effects(all) {
   if rhbn_source.kind==RenderSourceKind.layers {return "layers";}
   if rhbn_source.kind==RenderSourceKind.sans_atlas {return "sans_atlas";}
   if rhbn_source.kind==RenderSourceKind.media_image {return rhb_numbered_name("media_image-","",rhbn_source.index,RENDER_MEDIA_ITEMS,rhbn_out);}
   return "";
 }
-render_host_clear :: ()->RenderHostClear {return RenderHostClear.{colour=[4]f32.[0,0,0,1],depth=1};}
+render_host_clear :: ()->RenderHostClear #effects(all) {return RenderHostClear.{colour=[4]f32.[0,0,0,1],depth=1};}
 // Only called with a canonical bounded graph. This is pipeline compatibility
 // metadata, not frame admission or the targets of a later actual draw. Bloom's
 // first target is q0; all five bloom targets have the same physical format.
-rhb_pipeline_graph :: (rhbd_plan:RenderPlan,rhbd_entry:int)->RenderHostPipeline {
+rhb_pipeline_graph :: (rhbd_plan:RenderPlan,rhbd_entry:int)->RenderHostPipeline #effects(all) {
   rhbd_c0:=RenderTarget.none;rhbd_c1:=RenderTarget.none;rhbd_depth:=RenderTarget.none;
   for rhbd_at:0..<rhbd_plan.count {
     rhbd_op:=rhbd_plan.ops[rhbd_at];
@@ -105,7 +105,7 @@ rhb_pipeline_graph :: (rhbd_plan:RenderPlan,rhbd_entry:int)->RenderHostPipeline 
   }
   return RenderHostPipeline.{};
 }
-render_host_pipeline :: (rhbd_profile:int,rhbd_entry:int)->RenderHostPipeline {
+render_host_pipeline :: (rhbd_profile:int,rhbd_entry:int)->RenderHostPipeline #effects(all) {
   if render_host_use_count(rhbd_profile,rhbd_entry)== -1 {return RenderHostPipeline.{};}
   rhbd_meta:=render_catalog(rhbd_profile);
   return rhb_pipeline_graph(render_plan(rhbd_meta.features,RENDER_HOST_PIPELINE_TEMPLATE,RenderReadiness.ready,true),rhbd_entry);

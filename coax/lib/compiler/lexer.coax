@@ -3,55 +3,55 @@
 #authority;
 LX_Mul :: struct {value:u64;overflow:bool;}
 
-LX_mul :: (value:u64,digit:u64,base:u64)->LX_Mul {
+LX_mul :: (value:u64,digit:u64,base:u64)->LX_Mul #effects(all) {
   lo:=cast(u64)cast,trunc(u32)value*base+digit;
   hi:=(value>>32)*base+(lo>>32);
   return LX_Mul.{value=(cast(u64)cast,trunc(u32)hi<<32) | cast(u64)cast,trunc(u32)lo,overflow=hi>4294967295};
 }
 // Fixed-width unsigned limbs, modulo 2^(32*count). Decimal conversion retains
 // at most 800 significant digits; its largest scaled operand is below 4096 bits.
-LX_big_mul :: (a:[] u32,digit:u32) {
+LX_big_mul :: (a:[] u32,digit:u32) #effects(all) {
   carry:=cast(u64)digit;for i:0..<a.count {v:=cast(u64)a[i]*10+carry;a[i]=cast,trunc(u32)v;carry=v>>32;}
 }
-LX_big_bits :: (a:[] u32)->int {
+LX_big_bits :: (a:[] u32)->int #effects(all) {
   n:=a.count;while n>0 {n-=1;if a[n]!=0 {v:=a[n];bits:=0;while v!=0 {bits+=1;v=v>>1;}return n*32+bits;}}return 0;
 }
-LX_limb :: (a:[] u32,index:int,shift:int)->u32 {
+LX_limb :: (a:[] u32,index:int,shift:int)->u32 #effects(all) {
   word:=shift/32;bit:=shift%32;at:=index-word;v:u32=0;
   if at>=0 && at<a.count {v=a[at]<<bit;}
   if bit!=0 && at>0 && at-1<a.count {v=v | (a[at-1]>>(32-bit));}return v;
 }
-LX_big_shift :: (a:[] u32,shift:int) {i:=a.count;while i>0 {i-=1;a[i]=LX_limb(a,i,shift);}}
-LX_words :: (bits:int)->int {return (bits+31)/32;}
-LX_compare_scaled :: (a:[] u32,left:int,b:[] u32,right:int)->int {
+LX_big_shift :: (a:[] u32,shift:int) #effects(all) {i:=a.count;while i>0 {i-=1;a[i]=LX_limb(a,i,shift);}}
+LX_words :: (bits:int)->int #effects(all) {return (bits+31)/32;}
+LX_compare_scaled :: (a:[] u32,left:int,b:[] u32,right:int)->int #effects(all) {
   ab:=LX_big_bits(a);bb:=LX_big_bits(b);if ab!=0 {ab+=left;}if bb!=0 {bb+=right;}
   if ab<bb {return -1;}if ab>bb {return 1;}
   words:=LX_words(ab);for j:0..<words {i:=words-1-j;x:=LX_limb(a,i,left);y:=LX_limb(b,i,right);if x<y {return -1;}if x>y {return 1;}}return 0;
 }
-LX_big_cmp :: (a:[] u32,b:[] u32,shift:int)->int {return LX_compare_scaled(a,0,b,shift);}
+LX_big_cmp :: (a:[] u32,b:[] u32,shift:int)->int #effects(all) {return LX_compare_scaled(a,0,b,shift);}
 LX_Shifts :: struct {positive:int;negative:int;}
-LX_signed_shift :: (n:int)->LX_Shifts {
+LX_signed_shift :: (n:int)->LX_Shifts #effects(all) {
   // Split a bounded signed shift without two equivalent zero-shift branches.
   mask:=n>>63;return LX_Shifts.{positive=n & (mask ^ -1),negative=(-n) & mask};
 }
-LX_binary_exp :: (n:[] u32,d:[] u32)->int {
+LX_binary_exp :: (n:[] u32,d:[] u32)->int #effects(all) {
   exponent:=LX_big_bits(n)-LX_big_bits(d);shift:=LX_signed_shift(exponent);
   if LX_compare_scaled(n,shift.negative,d,shift.positive)<0 {exponent-=1;}return exponent;
 }
 LX_Format :: struct {scale:int;subnormal:bool;}
-LX_format :: (exponent:int)->LX_Format {
+LX_format :: (exponent:int)->LX_Format #effects(all) {
   if exponent< -1022 {return LX_Format.{scale=1074,subnormal=true};}
   return LX_Format.{scale=52-exponent};
 }
-LX_big_sub :: (a:[] u32,b:[] u32,shift:int) {
+LX_big_sub :: (a:[] u32,b:[] u32,shift:int) #effects(all) {
   borrow:u64=0;
   for i:0..<a.count {v:=cast(u64)a[i];need:=cast(u64)LX_limb(b,i,shift)+borrow;
     if v<need {a[i]=cast(u32)(4294967296+v-need);borrow=1;}else {a[i]=cast(u32)(v-need);borrow=0;}}
 }
-LX_exp :: (value:int,digit:int,limit:int)->int {if value>(limit-digit)/10 {return limit;}return value*10+digit;}
+LX_exp :: (value:int,digit:int,limit:int)->int #effects(all) {if value>(limit-digit)/10 {return limit;}return value*10+digit;}
 LX_Decimal :: struct {significant:int;kept:int;fraction:int;sticky:bool;exponent:int;}
-LX_exp_limit :: (length:int)->int {return length+2048;}
-LX_read_decimal :: (text:string,numerator:[] u32)->LX_Decimal {
+LX_exp_limit :: (length:int)->int #effects(all) {return length+2048;}
+LX_read_decimal :: (text:string,numerator:[] u32)->LX_Decimal #effects(all) {
   significant:=0;kept:=0;fraction:=0;after_dot:=false;sticky:=false;at:=0;
   while at<text.count {
     c:=text[at];if c==101 || c==69 {break;}at+=1;
@@ -66,14 +66,14 @@ LX_read_decimal :: (text:string,numerator:[] u32)->LX_Decimal {
   if negative {exponent=-exponent;}
   return LX_Decimal.{significant=significant,kept=kept,fraction=fraction,sticky=sticky,exponent=exponent};
 }
-LX_divide53 :: (numerator:[] u32,denominator:[] u32)->u64 {
+LX_divide53 :: (numerator:[] u32,denominator:[] u32)->u64 #effects(all) {
   quotient:u64=0;
   for j:0..<53 {bit:=52-j;if LX_big_cmp(numerator,denominator,bit)>=0 {LX_big_sub(numerator,denominator,bit);quotient=quotient | (cast(u64)1<<bit);}}
   return quotient;
 }
 // The rounding of a read decimal: numerator holds its kept digits and
 // denominator 1, both wide enough for every value the steps below make.
-LX_convert :: (parsed:LX_Decimal,numerator:[] u32,denominator:[] u32)->u64 {
+LX_convert :: (parsed:LX_Decimal,numerator:[] u32,denominator:[] u32)->u64 #effects(all) {
   significant:=parsed.significant;fraction:=parsed.fraction;kept:=parsed.kept;exponent:=parsed.exponent;sticky:=parsed.sticky;
   if significant==0 {return 0;}
   position:=significant-fraction+exponent;
@@ -93,7 +93,7 @@ LX_convert :: (parsed:LX_Decimal,numerator:[] u32,denominator:[] u32)->u64 {
   return (cast(u64)(binary_exp+1023)<<52) | (quotient&4503599627370495);
 }
 // The bignum path: 128 limbs hold 800 kept digits and every scaled operand.
-LX_decimal_big :: (text:string)->u64 {
+LX_decimal_big :: (text:string)->u64 #effects(all) {
   numerator:[128] u32;denominator:[128] u32;denominator[0]=1;
   return LX_convert(LX_read_decimal(text,numerator[..]),numerator[..],denominator[..]);
 }
@@ -105,18 +105,18 @@ LX_decimal_big :: (text:string)->u64 {
 // is below 2^124 and its denominator below 2^72 before the same 52-bit
 // shift. Every operand fits, so the bits are the bignum path's, at a sixteenth
 // of the limb work. Anything else takes the bignum path.
-LX_fast :: (parsed:LX_Decimal)->bool {
+LX_fast :: (parsed:LX_Decimal)->bool #effects(all) {
   scale:=parsed.exponent-parsed.fraction;
   return parsed.significant<=15 && scale<=22 && scale>= -22;
 }
 LX_Converted :: struct {bits:u64;fast:bool;}
-LX_convert_text :: (text:string)->LX_Converted {
+LX_convert_text :: (text:string)->LX_Converted #effects(all) {
   numerator:[8] u32;denominator:[8] u32;denominator[0]=1;
   parsed:=LX_read_decimal(text,numerator[..]);
   if LX_fast(parsed) {return LX_Converted.{bits=LX_convert(parsed,numerator[..],denominator[..]),fast=true};}
   return LX_Converted.{bits=LX_decimal_big(text)};
 }
-LX_decimal :: (text:string)->u64 #export_c {return LX_convert_text(text).bits;}
+LX_decimal :: (text:string)->u64 #export_c #effects(all) {return LX_convert_text(text).bits;}
 
 LX_Kind :: enum u8 {
   k_eof = 0;
@@ -181,31 +181,31 @@ LX_Diagnostic :: struct {code:string;message:string;fix:string;loc:LX_Loc;}
 LX_Item :: struct {has_token:bool;token:LX_Token;diagnostic:LX_Diagnostic;}
 LX_State :: struct {pos:int;line:int;line_start:int;mode:int;start:int;start_line:int;start_column:int;decoded_count:int;}
 LX_Caps :: struct {decoded:int;diagnostic:int;}
-LX_keyword :: (t:string)->bool {
+LX_keyword :: (t:string)->bool #effects(all) {
   words:=[41] string.["struct","union","enum","enum_flags","if","else","ifx","then","while","for","break","continue","return","defer","switch","case","using","cast","xx","inline","no_inline","job","pure","strict","deterministic","shader","try","or_else","push_context","null","true","false","it","it_index","size_of","type_of","type_info","Type","Code","remove","constraint"];
   for w:words {if t==w {return true;}}return false;
 }
-LX_name :: (kind:u32)->string #export_c {
+LX_name :: (kind:u32)->string #export_c #effects(all) {
   words:=[55] string.["end of file","identifier","keyword","integer","float","string","directive","annotation","'('","')'","'{'","'}'","'['","']'","','","';'","':'","'::'","':='","'->'","'.'","'..'","'..<'","'='","'+='","'-='","'*='","'/='","'%='","'&='","'|='","'^='","'<<='","'>>='","'+'","'-'","'*'","'/'","'%'","'&'","'|'","'^'","'<<'","'>>'","'=='","'!='","'<'","'<='","'>'","'>='","'&&'","'||'","'!'","'$' name","'?'"];
   index:=cast(int)kind;if index>=words.count {return "?";}return words[index];
 }
-LX_source :: (count:int)->bool {return count>=0 && count<=2147483646;}
-LX_begin :: (count:int)->LX_State #export_c {s:=LX_State.{line=1};if !LX_source(count) {s.mode=2;}return s;}
-LX_capacities :: (count:int)->LX_Caps #export_c {if !LX_source(count) {return LX_Caps.{diagnostic=64};}return LX_Caps.{decoded=count+1,diagnostic=64};}
-LX_start :: (s:[] LX_State) {s[0].start=s[0].pos;s[0].start_line=s[0].line;s[0].start_column=s[0].pos-s[0].line_start+1;}
-LX_location :: (s:[] LX_State,at:int)->LX_Loc {return LX_Loc.{line=s[0].line,column=at-s[0].line_start+1,offset=at};}
-LX_saved :: (s:[] LX_State)->LX_Loc {return LX_Loc.{line=s[0].start_line,column=s[0].start_column,offset=s[0].start};}
-LX_alpha :: (c:u8)->bool {return (c>=65 && c<=90) || (c>=97 && c<=122) || c==95;}
-LX_digit :: (c:u8)->bool {return c>=48 && c<=57;}
-LX_ident :: (c:u8)->bool {return LX_alpha(c) || LX_digit(c);}
-LX_at :: (text:string,at:int)->u8 {if at<0 || at>=text.count {return 0;}return text[at];}
-LX_has :: (text:string,at:int,pattern:string)->bool {return at>=0 && at<=text.count && pattern.count<=text.count-at && text[at..<at+pattern.count]==pattern;}
-LX_newline :: (s:[] LX_State) {s[0].line+=1;s[0].line_start=s[0].pos+1;}
-LX_escape :: (c:u8,character:bool)->int {
+LX_source :: (count:int)->bool #effects(all) {return count>=0 && count<=2147483646;}
+LX_begin :: (count:int)->LX_State #export_c #effects(all) {s:=LX_State.{line=1};if !LX_source(count) {s.mode=2;}return s;}
+LX_capacities :: (count:int)->LX_Caps #export_c #effects(all) {if !LX_source(count) {return LX_Caps.{diagnostic=64};}return LX_Caps.{decoded=count+1,diagnostic=64};}
+LX_start :: (s:[] LX_State) #effects(all) {s[0].start=s[0].pos;s[0].start_line=s[0].line;s[0].start_column=s[0].pos-s[0].line_start+1;}
+LX_location :: (s:[] LX_State,at:int)->LX_Loc #effects(all) {return LX_Loc.{line=s[0].line,column=at-s[0].line_start+1,offset=at};}
+LX_saved :: (s:[] LX_State)->LX_Loc #effects(all) {return LX_Loc.{line=s[0].start_line,column=s[0].start_column,offset=s[0].start};}
+LX_alpha :: (c:u8)->bool #effects(all) {return (c>=65 && c<=90) || (c>=97 && c<=122) || c==95;}
+LX_digit :: (c:u8)->bool #effects(all) {return c>=48 && c<=57;}
+LX_ident :: (c:u8)->bool #effects(all) {return LX_alpha(c) || LX_digit(c);}
+LX_at :: (text:string,at:int)->u8 #effects(all) {if at<0 || at>=text.count {return 0;}return text[at];}
+LX_has :: (text:string,at:int,pattern:string)->bool #effects(all) {return at>=0 && at<=text.count && pattern.count<=text.count-at && text[at..<at+pattern.count]==pattern;}
+LX_newline :: (s:[] LX_State) #effects(all) {s[0].line+=1;s[0].line_start=s[0].pos+1;}
+LX_escape :: (c:u8,character:bool)->int #effects(all) {
   if c==110 {return 10;}if c==116 {return 9;}if c==114 {return 13;}if c==48 {return 0;}if c==92 {return 92;}
   if character && c==39 {return 39;}if !character && c==34 {return 34;}return -1;
 }
-LX_static :: (tag:int,loc:LX_Loc)->LX_Diagnostic {
+LX_static :: (tag:int,loc:LX_Loc)->LX_Diagnostic #effects(all) {
   d:=LX_Diagnostic.{loc=loc};
   if tag==1 {d.code="E0101";d.message="block comment is never closed";d.fix="add '*/'";}
   else if tag==3 {d.code="E0103";d.message="number has no digits after its base prefix";}
@@ -219,18 +219,18 @@ LX_static :: (tag:int,loc:LX_Loc)->LX_Diagnostic {
   else {d.code="E0111";d.message="lexer storage budget exceeded";}
   return d;
 }
-LX_dynamic :: (escape:bool,byte:u8,loc:LX_Loc,out:[] u8)->LX_Diagnostic {
+LX_dynamic :: (escape:bool,byte:u8,loc:LX_Loc,out:[] u8)->LX_Diagnostic #effects(all) {
   prefix:="unexpected character '";d:=LX_Diagnostic.{code="E0108",loc=loc};
   if escape {prefix="unknown escape '\\";d.code="E0105";d.fix="use one of \\n \\t \\r \\0 \\\\ \\\"";}
   if out.count<prefix.count+2 {return LX_static(11,loc);}
   for c,i:prefix {out[i]=c;}out[prefix.count]=byte;out[prefix.count+1]=39;d.message=cast(string)out[0..<prefix.count+2];
   return d;
 }
-LX_item :: (s:[] LX_State,kind:LX_Kind)->LX_Item {return LX_Item.{has_token=true,token=LX_Token.{kind=kind,text_begin=s[0].start,text_end=s[0].pos,loc=LX_saved(s)}};}
-LX_error :: (s:[] LX_State,tag:int)->LX_Item {return LX_Item.{diagnostic=LX_static(tag,LX_saved(s))};}
-LX_eof :: (text:string,s:[] LX_State)->LX_Item {return LX_Item.{has_token=true,token=LX_Token.{kind=LX_Kind.k_eof,text_begin=text.count,text_end=text.count,loc=LX_location(s,text.count)}};}
-LX_store :: (s:[] LX_State,out:[] u8,byte:u8)->bool {if s[0].decoded_count>=out.count {s[0].mode=3;return false;}out[s[0].decoded_count]=byte;s[0].decoded_count+=1;return true;}
-LX_string :: (text:string,s:[] LX_State,out:[] u8,message:[] u8)->LX_Item {
+LX_item :: (s:[] LX_State,kind:LX_Kind)->LX_Item #effects(all) {return LX_Item.{has_token=true,token=LX_Token.{kind=kind,text_begin=s[0].start,text_end=s[0].pos,loc=LX_saved(s)}};}
+LX_error :: (s:[] LX_State,tag:int)->LX_Item #effects(all) {return LX_Item.{diagnostic=LX_static(tag,LX_saved(s))};}
+LX_eof :: (text:string,s:[] LX_State)->LX_Item #effects(all) {return LX_Item.{has_token=true,token=LX_Token.{kind=LX_Kind.k_eof,text_begin=text.count,text_end=text.count,loc=LX_location(s,text.count)}};}
+LX_store :: (s:[] LX_State,out:[] u8,byte:u8)->bool #effects(all) {if s[0].decoded_count>=out.count {s[0].mode=3;return false;}out[s[0].decoded_count]=byte;s[0].decoded_count+=1;return true;}
+LX_string :: (text:string,s:[] LX_State,out:[] u8,message:[] u8)->LX_Item #effects(all) {
   closed:=false;
   while s[0].pos<text.count {
     c:=text[s[0].pos];if c==34 {closed=true;s[0].pos+=1;break;}if c==10 {break;}
@@ -244,7 +244,7 @@ LX_string :: (text:string,s:[] LX_State,out:[] u8,message:[] u8)->LX_Item {
   s[0].mode=0;r:=LX_item(s,LX_Kind.k_string_lit);r.token.decoded=true;r.token.decoded_count=s[0].decoded_count;
   if !closed {r.diagnostic=LX_static(6,LX_saved(s));}return r;
 }
-LX_character :: (text:string,s:[] LX_State)->LX_Item {
+LX_character :: (text:string,s:[] LX_State)->LX_Item #effects(all) {
   at:=s[0].pos;value:= -1;
   if at+2<text.count && text[at+1]!=92 && text[at+1]!=39 && text[at+2]==39 && text[at+1]<128 {value=cast(int)text[at+1];s[0].pos+=3;}
   else if at+3<text.count && text[at+1]==92 && text[at+3]==39 {value=LX_escape(text[at+2],true);s[0].pos+=4;}
@@ -254,16 +254,16 @@ LX_character :: (text:string,s:[] LX_State)->LX_Item {
   }
   r:=LX_item(s,LX_Kind.k_int_lit);r.token.int_value=cast(u64)value;return r;
 }
-LX_exponent :: (text:string,at:int)->bool {
+LX_exponent :: (text:string,at:int)->bool #effects(all) {
   if LX_at(text,at)!=101 && LX_at(text,at)!=69 {return false;}
   return LX_digit(LX_at(text,at+1)) || ((LX_at(text,at+1)==43 || LX_at(text,at+1)==45) && LX_digit(LX_at(text,at+2)));
 }
-LX_value_digit :: (c:u8,base:int)->int {
+LX_value_digit :: (c:u8,base:int)->int #effects(all) {
   if LX_digit(c) {return cast(int)c-48;}
   if base==16 && c>=97 && c<=102 {return cast(int)c-97+10;}
   if base==16 && c>=65 && c<=70 {return cast(int)c-65+10;}return -1;
 }
-LX_number :: (text:string,s:[] LX_State)->LX_Item {
+LX_number :: (text:string,s:[] LX_State)->LX_Item #effects(all) {
   base:=10;value:u64=0;overflow:=false;have_digits:=false;
   if LX_has(text,s[0].pos,"0x") {base=16;s[0].pos+=2;}else if LX_has(text,s[0].pos,"0b") {base=2;s[0].pos+=2;}
   while s[0].pos<text.count {
@@ -290,7 +290,7 @@ LX_number :: (text:string,s:[] LX_State)->LX_Item {
   r:=LX_item(s,LX_Kind.k_int_lit);r.token.int_value=value;
   if !have_digits {r.diagnostic=LX_static(3,LX_saved(s));}else if overflow {r.diagnostic=LX_static(4,LX_saved(s));}return r;
 }
-LX_punctuation :: (text:string,at:int)->LX_Token {
+LX_punctuation :: (text:string,at:int)->LX_Token #effects(all) {
   three:=[3] string.["..<","<<=",">>="];
   tk:=[3] LX_Kind.[LX_Kind.k_dotdotlt,LX_Kind.k_shl_equal,LX_Kind.k_shr_equal];
   for p,i:three {if LX_has(text,at,p) {return LX_Token.{kind=tk[i],text_end=3};}}
@@ -301,7 +301,7 @@ LX_punctuation :: (text:string,at:int)->LX_Token {
   single:=[23] LX_Kind.[LX_Kind.k_lparen,LX_Kind.k_rparen,LX_Kind.k_lbrace,LX_Kind.k_rbrace,LX_Kind.k_lbracket,LX_Kind.k_rbracket,LX_Kind.k_comma,LX_Kind.k_semicolon,LX_Kind.k_colon,LX_Kind.k_dot,LX_Kind.k_equal,LX_Kind.k_plus,LX_Kind.k_minus,LX_Kind.k_star,LX_Kind.k_slash,LX_Kind.k_percent,LX_Kind.k_lt,LX_Kind.k_gt,LX_Kind.k_bang,LX_Kind.k_amp,LX_Kind.k_pipe,LX_Kind.k_caret,LX_Kind.k_question];
   c:=LX_at(text,at);for b,i:one {if c==b {return LX_Token.{kind=single[i],text_end=1};}}return LX_Token.{};
 }
-LX_next :: (text:string,s:[] LX_State,decoded:[] u8,message:[] u8)->LX_Item #export_c {
+LX_next :: (text:string,s:[] LX_State,decoded:[] u8,message:[] u8)->LX_Item #export_c #effects(all) {
   if s[0].mode==2 {s[0].mode=3;return LX_Item.{diagnostic=LX_static(11,LX_location(s,0))};}
   if s[0].mode==3 {return LX_eof(text,s);}
   if s[0].mode==1 {return LX_string(text,s,decoded,message);}

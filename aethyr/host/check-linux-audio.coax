@@ -5,21 +5,21 @@
 #load "pcm-compare.coax";
 #load "../render/tests/qualification-files.coax";
 #load "../../coax/lib/sys/args.coax";
-hva_open :: ()->int #foreign;
-hva_wav :: (name:[]u8,bytes:[]u8)->int #foreign;
-hva_raw :: (bytes:[]u8,channels:int)->int #foreign;
-hva_asset :: (id:int,out:[]u8)->int #foreign;
-hva_channels :: (id:int)->int #foreign;
-hva_command :: (line:[]u8,asset:int,channels:int,started:bool)->int #foreign;
-hva_block :: (out:[]u8)->int #foreign;
-hva_reset :: () #foreign;
-hva_info :: (field:int)->int #foreign;
-hva_device_open :: ()->int #foreign;
-hva_device_start :: ()->int #foreign;
-hva_device_pause :: (paused:bool)->int #foreign;
-hva_device_info :: (field:int)->int #foreign;
-hva_device_close :: () #foreign;
-hva_close :: () #foreign;
+hva_open :: ()->int #foreign #effects(all);
+hva_wav :: (name:[]u8,bytes:[]u8)->int #foreign #effects(all);
+hva_raw :: (bytes:[]u8,channels:int)->int #foreign #effects(all);
+hva_asset :: (id:int,out:[]u8)->int #foreign #effects(all);
+hva_channels :: (id:int)->int #foreign #effects(all);
+hva_command :: (line:[]u8,asset:int,channels:int,started:bool)->int #foreign #effects(all);
+hva_block :: (out:[]u8)->int #foreign #effects(all);
+hva_reset :: () #foreign #effects(all);
+hva_info :: (field:int)->int #foreign #effects(all);
+hva_device_open :: ()->int #foreign #effects(all);
+hva_device_start :: ()->int #foreign #effects(all);
+hva_device_pause :: (paused:bool)->int #foreign #effects(all);
+hva_device_info :: (field:int)->int #foreign #effects(all);
+hva_device_close :: () #foreign #effects(all);
+hva_close :: () #foreign #effects(all);
 hla_path :: (dir:string,name:string,out:[]u8)->string {return fs_join(dir,fs_base(name),out);}
 hla_command :: (line:string,asset:int,channels:int,started:bool)->int {bytes:[2048]u8;if line.count>bytes.count {return -1;}for b,i:line {bytes[i]=b;}return hva_command(bytes[0..<line.count],asset,channels,started);}
 hla_integer :: (o:[]Jo,key:string,value:int) {jo_key(o,key);jo_int(o,value);}
@@ -36,7 +36,7 @@ hla_device_json :: (o:[]Jo,v:HostAudioDeviceObserved) {
  hla_integer(o,"resumed_callbacks",v.resumed_callbacks);hla_integer(o,"resumed_frames",v.resumed_frames);hla_integer(o,"resumed_coax",v.resumed_coax);
  hla_integer(o,"closed_coax",v.closed_coax);hla_integer(o,"after_close_coax",v.after_close_coax);hla_integer(o,"failures",v.failures);hla_integer(o,"node",v.node);hla_integer(o,"nonzero_device_samples",v.nonzero);jo_end(o);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<6||args_count(a[..])>7||(args_count(a[..])==7&&args_at(a[..],6)!="--device-only") {tool_errln("usage: check-linux-audio BANK.json BANK_DIR PLAN.json PLAN_DIR NEW_OUT REPO [--device-only]");return 2;}
  out:=args_at(a[..],4);repo:=args_at(a[..],5);paths:[8][4096]u8;if !fs_mkdir(out)||!fs_mkdir(fs_join(out,"decoded",paths[0][..])) {return 1;}
  inputs:[1]RtqInputs;for file:[4]string.[args_at(a[..],0),args_at(a[..],2),fs_join(repo,"verse/native/audio-host.c",paths[0][..]),fs_join(repo,"verse/native/audio-pipewire.c",paths[1][..])] {if !rtq_input_add(inputs[..],file) {return 1;}}

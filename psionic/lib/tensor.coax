@@ -194,7 +194,7 @@ PsionicCopy :: struct { status: PsionicTensorStatus; written: int; }
 }
 
 // book:begin layout
-psionic_tensor_layout :: (shape: PsionicShape) -> PsionicLayout #export_c {
+psionic_tensor_layout :: (shape: PsionicShape) -> PsionicLayout #export_c #effects(all) {
     if shape.rank < 0 || shape.rank > 4 { return PsionicLayout.{status = PsionicTensorStatus.rank}; }
     for axis: 0..<4 {
         if axis < shape.rank {
@@ -216,7 +216,7 @@ psionic_tensor_layout :: (shape: PsionicShape) -> PsionicLayout #export_c {
 // book:end layout
 
 // book:begin index
-psionic_tensor_index :: (shape: PsionicShape, coordinates: [4] int) -> PsionicIndex #export_c {
+psionic_tensor_index :: (shape: PsionicShape, coordinates: [4] int) -> PsionicIndex #export_c #effects(all) {
     layout := psionic_tensor_layout(shape);
     if layout.status != PsionicTensorStatus.ok { return PsionicIndex.{status = layout.status}; }
     for axis: 0..<4 {
@@ -234,12 +234,12 @@ psionic_tensor_index :: (shape: PsionicShape, coordinates: [4] int) -> PsionicIn
 }
 // book:end index
 
-psionic_tensor_finite_bits :: (bits: u32) -> bool { return (bits & 0x7fffffff) < 0x7f800000; }
+psionic_tensor_finite_bits :: (bits: u32) -> bool #effects(all) { return (bits & 0x7fffffff) < 0x7f800000; }
 
 // Internal checked boundary: overlap is observed by the native adapter, not guessed here.
 // book:begin copy
 psionic_tensor_copy_checked :: (shape: PsionicShape, source: [] f32, destination: [] f32,
-        scratch: [] f32, overlap: bool) -> PsionicCopy #export_c {
+        scratch: [] f32, overlap: bool) -> PsionicCopy #export_c #effects(all) {
     layout := psionic_tensor_layout(shape);
     if layout.status != PsionicTensorStatus.ok { return PsionicCopy.{status = layout.status}; }
     if source.count != layout.elements || destination.count < layout.elements || scratch.count < layout.elements {

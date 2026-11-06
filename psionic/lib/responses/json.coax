@@ -11,7 +11,7 @@ RsJson :: struct {ok:bool;count:int;bytes:int;}
     #assert !rs_json("{\"x\":\"\\ud800\"}",nodes[..],arena[..]).ok && !rs_json("{} {}",nodes[..],arena[..]).ok;
     #assert !rs_json("[1,]",nodes[..],arena[..]).ok && !rs_json("{}",nodes[0..<0],arena[..]).ok;
 }
-rs_json :: (text:string,nodes:[]RsNode,arena:[]u8)->RsJson #export_c {
+rs_json :: (text:string,nodes:[]RsNode,arena:[]u8)->RsJson #export_c #effects(all) {
     if text.count>RS_BODY {return RsJson.{};}j:[1]Json;json_start(j[..],text);stack:[16]int;depth:=0;n:=0;at:=0;key:="";
     while true {tok:=json_next(j[..]);if tok==JSON_ERROR {return RsJson.{};}if tok==JSON_END {break;}
         if j[0].key {size:=json_unescape(json_text(j[..]),arena[at..<arena.count]);if size<0 {return RsJson.{};}key=cast(string)arena[at..<at+size];at+=size;continue;}
@@ -25,13 +25,13 @@ rs_json :: (text:string,nodes:[]RsNode,arena:[]u8)->RsJson #export_c {
         if tok==JSON_OBJECT || tok==JSON_ARRAY {if depth>=16 {return RsJson.{};}stack[depth]=n;depth+=1;}n+=1;
     }return RsJson.{ok=n>0 && depth==0,count=n,bytes=at};
 }
-rs_get :: (nodes:[]RsNode,parent:int,key:string)->int {if parent<0 || parent>=nodes.count {return -1;}i:=parent+1;while i<nodes[parent].next {if nodes[i].key==key {return i;}i=nodes[i].next;}return -1;}
-rs_string :: (nodes:[]RsNode,index:int)->string {if index<0 || index>=nodes.count || nodes[index].kind!=JSON_STRING {return "";}return nodes[index].text;}
-rs_kind :: (nodes:[]RsNode,index:int,kind:int)->bool {return index>=0 && index<nodes.count && nodes[index].kind==kind;}
-rs_keys :: (nodes:[]RsNode,parent:int,allowed:[]string)->bool {
+rs_get :: (nodes:[]RsNode,parent:int,key:string)->int #effects(all) {if parent<0 || parent>=nodes.count {return -1;}i:=parent+1;while i<nodes[parent].next {if nodes[i].key==key {return i;}i=nodes[i].next;}return -1;}
+rs_string :: (nodes:[]RsNode,index:int)->string #effects(all) {if index<0 || index>=nodes.count || nodes[index].kind!=JSON_STRING {return "";}return nodes[index].text;}
+rs_kind :: (nodes:[]RsNode,index:int,kind:int)->bool #effects(all) {return index>=0 && index<nodes.count && nodes[index].kind==kind;}
+rs_keys :: (nodes:[]RsNode,parent:int,allowed:[]string)->bool #effects(all) {
     if !rs_kind(nodes,parent,JSON_OBJECT) {return false;}i:=parent+1;while i<nodes[parent].next {found:=false;for key:allowed {if nodes[i].key==key {found=true;}}if !found {return false;}i=nodes[i].next;}return true;
 }
-rs_raw :: (text:string,nodes:[]RsNode,index:int)->string {if index<0 || index>=nodes.count {return "";}return text[nodes[index].begin..<nodes[index].end];}
+rs_raw :: (text:string,nodes:[]RsNode,index:int)->string #effects(all) {if index<0 || index>=nodes.count {return "";}return text[nodes[index].begin..<nodes[index].end];}
 #test "tree lookup and key admission stay inside the selected object" {
     nodes:[16]RsNode;arena:[64]u8;text:="{\"a\":{\"z\":1},\"b\":\"B\"}";r:=rs_json(text,nodes[..],arena[..]);#assert r.ok;
     a:=rs_get(nodes[..],0,"a");b:=rs_get(nodes[..],0,"b");#assert a==1 && b==3 && rs_string(nodes[..],b)=="B" && rs_get(nodes[..],0,"z")== -1;

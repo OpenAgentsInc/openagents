@@ -1481,7 +1481,7 @@ ab_fields :: (s: [] Everglade, out: [] DemoField) -> int {
 }
 // The same fields for the river's floats (everglade-face.c hands them to river.coax
 // everglade_river_fields): AB_FIELD_FLOATS numbers each, kind first. How many.
-everglade_spell_fields :: (s: [] Everglade, out: [] f32) -> int #export_c {
+everglade_spell_fields :: (s: [] Everglade, out: [] f32) -> int #export_c #effects(all) {
   if !sp_on(s) { return 0; }
   w := sp_dm(s);
   n := 0;
@@ -1599,7 +1599,7 @@ ab_perch :: (s: [] Everglade, i: int) {
 // rising. y and vy are over the floor you walk on, as the player's are.
 SpLift :: struct { on: bool; y: f32; vy: f32; dx: f32; dz: f32; }
 // Every seat's copy in a room lifts it too (everglade-room-abilities.coax eg_ra_lift).
-everglade_lift :: (s: [] Everglade, x: f32, z: f32, y0: f32, vy0: f32, y1: f32, vy1: f32, dt: f32) -> SpLift #export_c {
+everglade_lift :: (s: [] Everglade, x: f32, z: f32, y0: f32, vy0: f32, y1: f32, vy1: f32, dt: f32) -> SpLift #export_c #effects(all) {
   out := SpLift.{on = false, y = y1, vy = vy1, dx = 0, dz = 0};
   if !sp_on(s) || !(dt > 0) || !finite(y0) || !finite(y1) { return out; }
   out = ab_lift_of(s, ab_of(s), x, z, y0, vy0, y1, vy1, dt, true);

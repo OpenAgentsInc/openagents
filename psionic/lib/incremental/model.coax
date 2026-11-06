@@ -49,8 +49,8 @@ IAS_DEC :: [15]int.[616772480,616771840,410240,4353280,1071360,1076480,1066240,5
  #assert !ias_sha("abd","ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
 }
 ias_sha :: (s:string,digest:string)->bool {b:[64]u8;return S_hex(S_hash(s),b[..]) && cast(string)b[..]==digest;}
-ias_model_identity :: (file:[]u8,json:[]u8)->bool #export_c {
+ias_model_identity :: (file:[]u8,json:[]u8)->bool #export_c #effects(all) {
  if !ias_sizes(file.count,json.count) {return false;}
  return ias_identity(true,true,ias_sha(cast(string)file,IAS_MODEL_SHA),ias_sha(cast(string)json,IAS_TOKEN_SHA));
 }
-ias_model_tokens :: (json:[]u8,nodes:[]JvNode,bytes:[]u8,pieces:[]string)->bool #export_c {return pk_vocab(cast(string)json,1024,nodes,bytes,pieces).status==PkStatus.ok;}
+ias_model_tokens :: (json:[]u8,nodes:[]JvNode,bytes:[]u8,pieces:[]string)->bool #export_c #effects(all) {return pk_vocab(cast(string)json,1024,nodes,bytes,pieces).status==PkStatus.ok;}

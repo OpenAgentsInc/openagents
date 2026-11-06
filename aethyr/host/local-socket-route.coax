@@ -12,7 +12,7 @@
   #assert htr_local_target("local:/api/room/relay/everglade/local-1?re=1","ws://127.0.0.1:9170",out[0..<56])== -1&&out[52]==37;
   #assert htr_local_target("local:/api/room/relay/everglade/local-1?re=1","ws://127.0.0.1:9170",out[0..<57])==57&&cast(string)out[0..<57]=="ws://127.0.0.1:9170/api/room/relay/everglade/local-1?re=1"&&out[57]==37;
 }
-htr_local_target :: (uri:string,origin:string,out:[]u8)->int #export_c {
+htr_local_target :: (uri:string,origin:string,out:[]u8)->int #export_c #effects(all) {
   if !htr_local_uri(uri) || !htr_local_origin(origin) {return -1;}
   path:=uri[6..<uri.count];n:=origin.count+path.count;if n>out.count {return -1;}
   for b,i:origin {out[i]=b;}for b,i:path {out[origin.count+i]=b;}return n;

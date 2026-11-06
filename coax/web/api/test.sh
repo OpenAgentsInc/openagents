@@ -15,10 +15,10 @@ if [[ ! -x "$cli_coax" ]]; then
   common="$(git -C "$here" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
   [[ -n "$common" ]] && cli_coax="$(dirname "$common")/coax/bin/coax"
 fi
-if [[ -x "$repo_root/coax/bin/coax" ]]; then
+if [[ -x "$cli_coax" ]]; then
   "$here/nip98.sh" --check || echo 'nip98: the C cache differs from this compiler'"'"'s output (the image builds from source; regenerate with nip98.sh --generate)' >&2
-  (cd "$repo_root" && coax/bin/coax test coax/web/api/nip98.coax --run-steps 250000000 | tail -1)
-  (cd "$repo_root" && coax/bin/coax test coax/web/api/nip98_checks.coax --steps 4000000000 --run-steps 250000000 | tail -1)
+  (cd "$repo_root" && "$cli_coax" test coax/web/api/nip98.coax --run-steps 250000000 | tail -1)
+  (cd "$repo_root" && "$cli_coax" test coax/web/api/nip98_checks.coax --steps 4000000000 --run-steps 250000000 | tail -1)
 fi
 "$here/test-deploy-command.sh"
 PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_verify_test.py"

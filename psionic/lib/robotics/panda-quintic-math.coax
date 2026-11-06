@@ -36,24 +36,24 @@
  #assert !pqt_second_half(1,4) && !pqt_second_half(2,4) && pqt_second_half(3,4);mid:=pqt_basis(2,4);#assert f64_bits(mid[2])==0;
 }
 
-pqt_cv :: ()->pfku.Quantity(UnitOne,f64) {x:pfku.Quantity(UnitOne,f64);x.value=1.875;return x;}
-pqt_ca :: ()->pfku.Quantity(UnitOne,f64) {x:pfku.Quantity(UnitOne,f64);x.value=5.773502691896258;return x;}
-pqt_words :: (x:PqtEdge)->[28]u64 {w:[28]u64;for i:0..<7 {w[i]=f64_bits(x.q0[i].value);w[7+i]=f64_bits(x.q1[i].value);w[14+i]=f64_bits(x.vlim[i].value);w[21+i]=f64_bits(x.alim[i].value);}return w;}
-pqt_admit :: (words:[28]u64)->PqtStatus {lo:=pik_lower();hi:=pik_upper();for i:0..<28 {if !pm_finite_bits(words[i]) {return PqtStatus.number;}value:=f64_from_bits(words[i]);if i<14 {if value<lo[i%7] || value>hi[i%7] {return PqtStatus.limits;}}else {upper:=ifx i<21 then 20.0 else 100.0;if value<0.001 || value>upper {return PqtStatus.range;}}}return PqtStatus.ok;}
-pqt_quantize :: (required:pfku.Quantity(pfku.Second,f64))->PqtPlan {
+pqt_cv :: ()->pfku.Quantity(UnitOne,f64) #effects(all) {x:pfku.Quantity(UnitOne,f64);x.value=1.875;return x;}
+pqt_ca :: ()->pfku.Quantity(UnitOne,f64) #effects(all) {x:pfku.Quantity(UnitOne,f64);x.value=5.773502691896258;return x;}
+pqt_words :: (x:PqtEdge)->[28]u64 #effects(all) {w:[28]u64;for i:0..<7 {w[i]=f64_bits(x.q0[i].value);w[7+i]=f64_bits(x.q1[i].value);w[14+i]=f64_bits(x.vlim[i].value);w[21+i]=f64_bits(x.alim[i].value);}return w;}
+pqt_admit :: (words:[28]u64)->PqtStatus #effects(all) {lo:=pik_lower();hi:=pik_upper();for i:0..<28 {if !pm_finite_bits(words[i]) {return PqtStatus.number;}value:=f64_from_bits(words[i]);if i<14 {if value<lo[i%7] || value>hi[i%7] {return PqtStatus.limits;}}else {upper:=ifx i<21 then 20.0 else 100.0;if value<0.001 || value>upper {return PqtStatus.range;}}}return PqtStatus.ok;}
+pqt_quantize :: (required:pfku.Quantity(pfku.Second,f64))->PqtPlan #effects(all) {
  out:PqtPlan;out.status=PqtStatus.duration;scaled:=required.value*500;if scaled>999999 {return out;}
  integral:=floor(scaled);ticks:=cast(int)integral;if pik_greater(scaled,integral) {ticks+=1;}out.timing.steps=ticks+1;out.timing.total_nanoseconds=out.timing.steps*2000000;out.timing.duration.value=f64(out.timing.steps)/500;out.timing.required_estimate=required;out.status=PqtStatus.ok;return out;
 }
-pqt_plan_owned :: (x:PqtEdge)->PqtPlan {
+pqt_plan_owned :: (x:PqtEdge)->PqtPlan #effects(all) {
  same:=true;for i:0..<7 {if x.q0[i].value!=x.q1[i].value {same=false;}}if same {return PqtPlan.{};}
  required:pfku.Quantity(pfku.Second,f64);for i:0..<7 {distance:pfku.Quantity(pfku.Radian,f64);distance.value=abs(x.q1[i].value-x.q0[i].value);velocity:=convert_unit(pfku.Second,(pqt_cv()*distance)/x.vlim[i]);squared:=convert_unit(UnitProduct(pfku.Second,pfku.Second),(pqt_ca()*distance)/x.alim[i]);acceleration:pfku.Quantity(pfku.Second,f64);acceleration.value=sqrt(squared.value);if pik_greater(velocity.value,required.value) {required=velocity;}if pik_greater(acceleration.value,required.value) {required=acceleration;}}
  return pqt_quantize(required);
 }
-pqt_second_half :: (tick:int,steps:int)->bool {return tick>steps-tick;}
-pqt_basis :: (tick:int,steps:int)->[3]f64 {
+pqt_second_half :: (tick:int,steps:int)->bool #effects(all) {return tick>steps-tick;}
+pqt_basis :: (tick:int,steps:int)->[3]f64 #effects(all) {
  remaining:=steps-tick;second:=pqt_second_half(tick,steps);near:=ifx second then remaining else tick;v:=f64(near)/f64(steps);v2:=v*v;v3:=v2*v;inner:= -15+6*v;b:=v3*(10+v*inner);w:=1-v;first:=(30*v2)*(w*w);second_derivative:=((60*v)*w)*(1-2*v);return [3]f64.[b,first,ifx second then -second_derivative else second_derivative];
 }
-pqt_sample_owned :: (x:PqtEdge,timing:PqtTiming,tick:int)->PqtSample {
+pqt_sample_owned :: (x:PqtEdge,timing:PqtTiming,tick:int)->PqtSample #effects(all) {
  out:PqtSample;if tick==timing.steps {out.angle=x.q1;return out;}if tick==0 {out.angle=x.q0;return out;}
  basis:=pqt_basis(tick,timing.steps);b:pfku.Quantity(UnitOne,f64);b.value=basis[0];first:pfku.Quantity(UnitOne,f64);first.value=basis[1];second:pfku.Quantity(UnitOne,f64);second.value=basis[2];second_half:=pqt_second_half(tick,timing.steps);
  for i:0..<7 {distance:=x.q1[i]-x.q0[i];out.angle[i]=ifx second_half then x.q1[i]-convert_unit(pfku.Radian,distance*b) else x.q0[i]+convert_unit(pfku.Radian,distance*b);out.rate[i]=convert_unit(PqtRate,(distance*first)/timing.duration);out.acceleration[i]=convert_unit(PqtAcceleration,(distance*second)/(timing.duration*timing.duration));}return out;

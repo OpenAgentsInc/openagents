@@ -74,13 +74,13 @@ FxMapBuild :: struct {status:FxStatus;map:FxMapped;}
   shared:=[1]f32.[0];rows:[17]f32;out:=[1]f64.[77];w:FxWork;forged:=m.map;forged.batch=17;
   #assert fx_vmap_apply(forged,shared[..],rows[..],out[..],w,false).status==FxStatus.limit && out[0]==77;
 }
-fx_vmap :: (f:FxFunction,axes:[]int,batch:int)->FxMapBuild #export_c {
+fx_vmap :: (f:FxFunction,axes:[]int,batch:int)->FxMapBuild #export_c #effects(all) {
   l:=fx_layout(f);if l.status!=FxStatus.ok {return FxMapBuild.{status=l.status};}
   if batch<1 || batch>FX_BATCH || axes.count!=l.domain {return FxMapBuild.{status=FxStatus.shape};}
   if f.count*batch>FX_BATCH_ELEMENTS || !fx_work_allowed(l,fx_requests(f)*batch) {return FxMapBuild.{status=FxStatus.limit};}
   m:=FxMapped.{function=f,batch=batch};for j:0..<l.domain {if axes[j]!=0 && axes[j]!=-1 {return FxMapBuild.{status=FxStatus.shape};}m.shared[j]=axes[j]== -1;}return FxMapBuild.{map=m};
 }
-fx_vmap_apply :: (m:FxMapped,shared:[]f32,rows:[]f32,out:[]f64,w:FxWork,overlap:bool)->FxRun #export_c {
+fx_vmap_apply :: (m:FxMapped,shared:[]f32,rows:[]f32,out:[]f64,w:FxWork,overlap:bool)->FxRun #export_c #effects(all) {
   f:=m.function;l:=fx_layout(f);if l.status!=FxStatus.ok {return FxRun.{status=l.status};}
   if m.batch<1 || m.batch>FX_BATCH || shared.count!=l.domain || rows.count!=m.batch*l.domain {return FxRun.{status=FxStatus.shape};}
   count:=m.batch*f.count;if count>FX_BATCH_ELEMENTS || !fx_work_allowed(l,fx_requests(f)*m.batch) {return FxRun.{status=FxStatus.limit};}

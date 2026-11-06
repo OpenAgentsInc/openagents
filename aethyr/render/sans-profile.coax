@@ -34,7 +34,7 @@ RenderSansGlyph :: struct {
 
 // One coverage byte per texel, or four equal RGBA bytes after premultiplying
 // the white glyph. Every rsp_mip is independently rasterized at its own font size.
-render_sans_level :: (rsp_level_index: int) -> RenderSansLevel {
+render_sans_level :: (rsp_level_index: int) -> RenderSansLevel #effects(all) {
   if rsp_level_index < 0 || rsp_level_index >= SANS_LEVELS { return RenderSansLevel.{}; }
   rsp_result := RenderSansLevel.{valid = true, level = rsp_level_index};
   rsp_result.cell = int(SANS_CELL) >> rsp_level_index;
@@ -52,7 +52,7 @@ render_sans_level :: (rsp_level_index: int) -> RenderSansLevel {
   return rsp_result;
 }
 
-render_sans_profile :: () -> RenderSansProfile {
+render_sans_profile :: () -> RenderSansProfile #effects(all) {
   rsp_first_mip := render_sans_level(0); rsp_final_mip := render_sans_level(SANS_LEVELS - 1);
   return RenderSansProfile.{glyphs = SANS_GLYPHS, columns = SANS_COLUMNS, rows = SANS_ROWS,
     cell = int(SANS_CELL), levels = SANS_LEVELS, width = rsp_first_mip.width, height = rsp_first_mip.height,
@@ -61,13 +61,13 @@ render_sans_profile :: () -> RenderSansProfile {
     family = SANS_FAMILY, format = "rgba8unorm", fill = "#fff", text_baseline = "alphabetic", premultiplied_alpha = true};
 }
 
-render_sans_index :: (rsp_code: u32) -> int {
+render_sans_index :: (rsp_code: u32) -> int #effects(all) {
   if rsp_code >= 32 && rsp_code <= 126 { return int(rsp_code) - 32; }
   for rsp_extra_index: 0..<SANS_EXTRA.count { if SANS_EXTRA[rsp_extra_index] == rsp_code { return 95 + rsp_extra_index; } }
   return -1;
 }
 
-render_sans_glyph :: (rsp_level_index: int, rsp_glyph_index: int) -> RenderSansGlyph {
+render_sans_glyph :: (rsp_level_index: int, rsp_glyph_index: int) -> RenderSansGlyph #effects(all) {
   if rsp_glyph_index < 0 || rsp_glyph_index >= SANS_GLYPHS { return RenderSansGlyph.{}; }
   rsp_mip := render_sans_level(rsp_level_index);
   if !rsp_mip.valid { return RenderSansGlyph.{}; }

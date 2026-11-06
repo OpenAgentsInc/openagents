@@ -9,7 +9,7 @@
   #assert refund_ok(7, 7);
 }
 
-refund_ok :: (paid: int, refund: int) -> bool {
+refund_ok :: (paid: int, refund: int) -> bool #effects(all) {
   return refund >= 0 && refund <= paid;
 }
 

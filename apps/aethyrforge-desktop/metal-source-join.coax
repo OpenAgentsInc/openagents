@@ -37,7 +37,7 @@ msj_hash :: (path:string,out:[]u8)->bool {
  at:=0;while at<size {n:=ifx size-at<data.count then size-at else data.count;if fs_read_at(path,at,data[0..<n])!=n || sha256_update_checked(state[..],data[0..<n],false)!=SHA_OK {return false;}at+=n;}
  digest:[32]u8;if fs_size(path)!=size || sha256_final_checked(state[..],digest[..],false)!=SHA_OK {return false;}digits:="0123456789abcdef";for i:0..<32 {out[i*2]=digits[int(digest[i]>>4)];out[i*2+1]=digits[int(digest[i]&15)];}return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: metal-source-join GENERATED.C ORIGINAL_ROOT PREPARED_ROOT OUTPUT.json");return 2;}
  c:=args_at(a[..],0);origin:=args_at(a[..],1);prepared:=args_at(a[..],2);prefix:[65536]u8;n:=fs_read_at(c,0,prefix[..]);if n<1 {return 1;}text:=cast(string)prefix[0..<n];marker:="static const struct coax_source_range coax_source_ranges[] = {\n";start:=msj_find(text,marker,0);if start<0 {return 1;}at:=start+marker.count;end:=msj_find(text,"};",at);if end<0 {return 1;}
  out:[262144]u8;o:[1]Jo;jo_start(o[..],out[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.metal.compiled-source-observation.v1");jo_key(o[..],"generated_c");jo_str(o[..],c);hash:[64]u8;if !msj_hash(c,hash[..]) {return 1;}jo_key(o[..],"generated_c_sha256");jo_str(o[..],cast(string)hash[..]);jo_key(o[..],"sources");jo_arr(o[..]);count:=0;different:=0;

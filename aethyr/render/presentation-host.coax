@@ -24,7 +24,7 @@ RenderHostPresentation :: struct {enabled:bool;plan:RenderPresentation;}
  #assert p.plan.uniform.valid&&p.plan.image.valid&&p.plan.sample.valid&&p.plan.state.valid&&p.plan.sampler.status==expected.sampler.status;
  for i:0..<8 {#assert f32_bits(p.plan.uniforms[i])==f32_bits(expected.uniforms[i]);}
 }
-render_host_presentation :: (version:int,profile:int,width:int,height:int,format:int,maximum:int)->RenderHostPresentation #export_c {
+render_host_presentation :: (version:int,profile:int,width:int,height:int,format:int,maximum:int)->RenderHostPresentation #export_c #effects(all) {
  if !hrm_presentation(version,profile) {return RenderHostPresentation.{};}
  return RenderHostPresentation.{enabled=true,plan=render_presentation_quantized_v1(profile,width,height,format,maximum)};
 }

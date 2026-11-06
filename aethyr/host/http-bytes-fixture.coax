@@ -6,4 +6,4 @@
  #assert !hfb_message(s[..],920,"/api/host-contract/ok")&&hf_take_effect(s[..]).op==4;
  #assert !hfb_message(s[..],901,"")&&s[0].count==3;
 }
-hfb_message::(s:[]HostFixture,kind:int,text:string)->bool #export_c {hf_message(s,kind,text);return kind==922;}
+hfb_message::(s:[]HostFixture,kind:int,text:string)->bool #export_c #effects(all) {hf_message(s,kind,text);return kind==922;}

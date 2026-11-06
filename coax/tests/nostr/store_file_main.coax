@@ -5,8 +5,8 @@
 #load "../../lib/nostr/store_saved.coax";
 #load "store_fixtures.coax";
 
-sfm_phase :: () -> int #foreign;
-sfm_out :: (v: int) -> int #foreign;
+sfm_phase :: () -> int #foreign #effects(all);
+sfm_out :: (v: int) -> int #foreign #effects(all);
 
 SFM_NOW :: 1000;
 sfm_put :: (v: int) { ok := sfm_out(v); }

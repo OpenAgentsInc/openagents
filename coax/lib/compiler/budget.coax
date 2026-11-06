@@ -77,7 +77,7 @@ CB_MAX_TRAVERSAL :: 134217728;
  #assert !CB_near(0,18446744073709551615);
 }
 
-CB_parse_steps :: (text:string)->u64 #export_c {
+CB_parse_steps :: (text:string)->u64 #export_c #effects(all) {
  if text.count==0 {return 0;}
  value:u64=0;
  for c:text {
@@ -88,22 +88,22 @@ CB_parse_steps :: (text:string)->u64 #export_c {
  }
  return value;
 }
-CB_admit :: (current:u64,extra:u64,maximum:u64)->bool #export_c {
+CB_admit :: (current:u64,extra:u64,maximum:u64)->bool #export_c #effects(all) {
  return current<=maximum && extra<=maximum-current;
 }
 
-CB_default_steps :: ()->u64 #export_c {return CB_DEFAULT_RUN_STEPS;}
-CB_slot_limit :: ()->u64 #export_c {return CB_MAX_SLOTS;}
-CB_container_limit :: ()->u64 #export_c {return CB_MAX_CONTAINERS;}
-CB_test_slot_limit :: ()->u64 #export_c {return CB_MAX_TEST_SLOTS;}
-CB_test_container_limit :: ()->u64 #export_c {return CB_MAX_TEST_CONTAINERS;}
+CB_default_steps :: ()->u64 #export_c #effects(all) {return CB_DEFAULT_RUN_STEPS;}
+CB_slot_limit :: ()->u64 #export_c #effects(all) {return CB_MAX_SLOTS;}
+CB_container_limit :: ()->u64 #export_c #effects(all) {return CB_MAX_CONTAINERS;}
+CB_test_slot_limit :: ()->u64 #export_c #effects(all) {return CB_MAX_TEST_SLOTS;}
+CB_test_container_limit :: ()->u64 #export_c #effects(all) {return CB_MAX_TEST_CONTAINERS;}
 
-CB_string_live_limit :: ()->u64 #export_c {return CB_MAX_STRING_LIVE;}
-CB_string_work_limit :: ()->u64 #export_c {return CB_MAX_STRING_WORK;}
+CB_string_live_limit :: ()->u64 #export_c #effects(all) {return CB_MAX_STRING_LIVE;}
+CB_string_work_limit :: ()->u64 #export_c #effects(all) {return CB_MAX_STRING_WORK;}
 
-CB_traversal_limit :: ()->u64 #export_c {return CB_MAX_TRAVERSAL;}
+CB_traversal_limit :: ()->u64 #export_c #effects(all) {return CB_MAX_TRAVERSAL;}
 // A build that uses more than three quarters of a limit is reported, so the
 // limit is raised before a build fails: 4*used > 3*limit, without overflow.
-CB_near :: (used:u64,limit:u64)->bool #export_c {
+CB_near :: (used:u64,limit:u64)->bool #export_c #effects(all) {
  return used>limit/4*3+limit%4*3/4;
 }

@@ -1,7 +1,7 @@
 // Focused projection witness admission and publication oracles; outside compiler input.
 #authority;
-PP_path :: ()->BS_Path {p:=BS_Path.{count=1};p.steps[0]=BS_Step.{kind=BS_FIELD};return p;}
-PP_init :: (b:CB_Context)->CB_QueryProjection {
+PP_path :: ()->BS_Path #effects(all) {p:=BS_Path.{count=1};p.steps[0]=BS_Step.{kind=BS_FIELD};return p;}
+PP_init :: (b:CB_Context)->CB_QueryProjection #effects(all) {
  for i:0..<16 {b.c.types[i]=CK_builtin(i);}b.c.state[0]=CK_State.{used=15,type_count=18};b.state[0]=CB_State.{queries=2,loc=CK_Loc.{line=906,column=7,offset=90607}};
  b.c.types[16]=CK_Type.{kind=CK_Kind.struct_,decl=2,retain_fields=2};b.c.types[17]=CK_Type.{kind=CK_Kind.view,elem=12};b.c.nodes[2]=CK_Node.{kind=CK_Tag.struct_,head=4};b.c.nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_query=1};b.c.nodes[4]=CK_Node.{kind=CK_Tag.field,type=12};
  path:=PP_path();b.queries[0]=CK_BorrowQuery.{kind=2,decl=3,type=12,status=2,path=path};b.queries[1]=CK_BorrowQuery.{kind=4,decl=16,type=2,status=2,count=4};b.queries[1].path.steps[0].index=4;

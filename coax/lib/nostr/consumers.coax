@@ -124,26 +124,26 @@ CP_RECORD :: [CP_CONSUMERS * CP_AXES] string.[
   "docs/verification/2026-11-03-nostr-consumers.md", "docs/verification/2026-11-03-nostr-consumers.md", "", "docs/verification/2026-11-03-nostr-consumers.md"];
 CP_KEYS :: [CP_CONSUMERS] u8.[2, 2, 1, 1, 1, 2, 2, 2, 0, 2];
 
-cp_ok_consumer :: (c: int) -> bool { return c >= 0 && c < CP_CONSUMERS; }
-cp_ok_axis :: (a: int) -> bool { return a >= 0 && a < CP_AXES; }
+cp_ok_consumer :: (c: int) -> bool #effects(all) { return c >= 0 && c < CP_CONSUMERS; }
+cp_ok_axis :: (a: int) -> bool #effects(all) { return a >= 0 && a < CP_AXES; }
 
-cp_name :: (c: int) -> string #export_c { return ifx cp_ok_consumer(c) then CP_NAMES[c] else ""; }
-cp_target :: (c: int) -> string #export_c { return ifx cp_ok_consumer(c) then CP_TARGET_NAMES[CP_TARGET[c]] else ""; }
-cp_build :: (c: int) -> string #export_c { return ifx cp_ok_consumer(c) then CP_BUILD[c] else ""; }
-cp_compiler :: (c: int) -> string #export_c { return ifx cp_ok_consumer(c) then CP_COMPILER[c] else ""; }
-cp_keys :: (c: int) -> string #export_c { return ifx cp_ok_consumer(c) then CP_KEY_NAMES[CP_KEYS[c]] else ""; }
-cp_state :: (c: int, a: int) -> int #export_c {
+cp_name :: (c: int) -> string #export_c #effects(all) { return ifx cp_ok_consumer(c) then CP_NAMES[c] else ""; }
+cp_target :: (c: int) -> string #export_c #effects(all) { return ifx cp_ok_consumer(c) then CP_TARGET_NAMES[CP_TARGET[c]] else ""; }
+cp_build :: (c: int) -> string #export_c #effects(all) { return ifx cp_ok_consumer(c) then CP_BUILD[c] else ""; }
+cp_compiler :: (c: int) -> string #export_c #effects(all) { return ifx cp_ok_consumer(c) then CP_COMPILER[c] else ""; }
+cp_keys :: (c: int) -> string #export_c #effects(all) { return ifx cp_ok_consumer(c) then CP_KEY_NAMES[CP_KEYS[c]] else ""; }
+cp_state :: (c: int, a: int) -> int #export_c #effects(all) {
   return ifx cp_ok_consumer(c) && cp_ok_axis(a) then cast(int) CP_STATE[c * CP_AXES + a] else CS_ABSENT;
 }
-cp_source :: (c: int, a: int) -> string #export_c { return ifx cp_ok_consumer(c) && cp_ok_axis(a) then CP_SOURCE[c * CP_AXES + a] else ""; }
-cp_symbol :: (c: int, a: int) -> string #export_c { return ifx cp_ok_consumer(c) && cp_ok_axis(a) then CP_SYMBOL[c * CP_AXES + a] else ""; }
-cp_record :: (c: int, a: int) -> string #export_c { return ifx cp_ok_consumer(c) && cp_ok_axis(a) then CP_RECORD[c * CP_AXES + a] else ""; }
+cp_source :: (c: int, a: int) -> string #export_c #effects(all) { return ifx cp_ok_consumer(c) && cp_ok_axis(a) then CP_SOURCE[c * CP_AXES + a] else ""; }
+cp_symbol :: (c: int, a: int) -> string #export_c #effects(all) { return ifx cp_ok_consumer(c) && cp_ok_axis(a) then CP_SYMBOL[c * CP_AXES + a] else ""; }
+cp_record :: (c: int, a: int) -> string #export_c #effects(all) { return ifx cp_ok_consumer(c) && cp_ok_axis(a) then CP_RECORD[c * CP_AXES + a] else ""; }
 
 // Whether one axis may count toward a complete profile: unused, or done in
 // Coax with a record, or (key storage and transport only) by the host with a
 // record. `recorded` is whether the consumer's record for this axis exists
 // and names its source; the report tool measures it, nobody asserts it.
-cp_axis_ok :: (state: int, axis: int, recorded: bool) -> bool #export_c {
+cp_axis_ok :: (state: int, axis: int, recorded: bool) -> bool #export_c #effects(all) {
   if !cp_ok_axis(axis) { return false; }
   if state == CS_UNUSED { return true; }
   if state == CS_COAX { return recorded; }
@@ -155,7 +155,7 @@ cp_axis_ok :: (state: int, axis: int, recorded: bool) -> bool #export_c {
 // it (bit a: axis a), given which records the registry names and which the
 // report found. A found record counts only where one is named. A consumer
 // that uses no axis, or a view that isn't four states, is blocked on every axis.
-cp_rule :: (states: [] int, named: u32, found: u32) -> u32 #export_c {
+cp_rule :: (states: [] int, named: u32, found: u32) -> u32 #export_c #effects(all) {
   if states.count != CP_AXES { return 15; }
   mask := cast(u32) 0; used := false;
   for a: 0..<CP_AXES {
@@ -165,10 +165,10 @@ cp_rule :: (states: [] int, named: u32, found: u32) -> u32 #export_c {
   }
   return ifx used then mask else 15;
 }
-cp_has :: (record: string) -> bool #export_c { return record.count > 0; }
+cp_has :: (record: string) -> bool #export_c #effects(all) { return record.count > 0; }
 
 // The mask of axes whose records the registry names (what `found` can be at most).
-cp_named :: (c: int) -> u32 #export_c {
+cp_named :: (c: int) -> u32 #export_c #effects(all) {
   if !cp_ok_consumer(c) { return 0; }
   m := cast(u32) 0;
   for a: 0..<CP_AXES { if cp_has(CP_RECORD[c * CP_AXES + a]) { m |= cast(u32) 1 << a; } }
@@ -177,14 +177,14 @@ cp_named :: (c: int) -> u32 #export_c {
 
 // The axes that keep consumer c's profile incomplete, given which of its
 // records the report found (bit a of found). An unknown consumer: all four.
-cp_blockers :: (c: int, found: u32) -> u32 #export_c {
+cp_blockers :: (c: int, found: u32) -> u32 #export_c #effects(all) {
   if !cp_ok_consumer(c) { return 15; }
   st: [CP_AXES] int;
   for a: 0..<CP_AXES { st[a] = cp_state(c, a); }
   return cp_rule(st[..], cp_named(c), found);
 }
-cp_done :: (blockers: u32) -> bool #export_c { return blockers == 0; }
-cp_complete :: (c: int, found: u32) -> bool #export_c { return cp_ok_consumer(c) && cp_done(cp_blockers(c, found)); }
+cp_done :: (blockers: u32) -> bool #export_c #effects(all) { return blockers == 0; }
+cp_complete :: (c: int, found: u32) -> bool #export_c #effects(all) { return cp_ok_consumer(c) && cp_done(cp_blockers(c, found)); }
 
 // ---- checks
 

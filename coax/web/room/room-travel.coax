@@ -222,7 +222,7 @@ trv_carry :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   }
 }
 // The counts for the minute log: 0 asked, 1 routed, 2 full, 3 refused, 4 arrived, 5 aborted, 6 intents dropped in a cutover.
-rm_travel_stat :: (v: [] RmServer, which: int) -> int #export_c {
+rm_travel_stat :: (v: [] RmServer, which: int) -> int #export_c #effects(all) {
   t := v[0].trv;
   if which == 0 { return t.asked; }
   if which == 1 { return t.routed; }

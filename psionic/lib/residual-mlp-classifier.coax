@@ -112,7 +112,7 @@ rml_eval :: (m:MdlModel,t:AdTape,prediction:int,p:[]f64,w:[]RmlWork,images:[]u8,
     return r;
 }
 
-rml_oracle :: (images:[]u8,labels:[]u8,params:[]f64,gradient:[]f64,scores:[]f32,features:[]f32)->RmlFirst #export_c {
+rml_oracle :: (images:[]u8,labels:[]u8,params:[]f64,gradient:[]f64,scores:[]f32,features:[]f32)->RmlFirst #export_c #effects(all) {
     d:=mn_admit(images,labels);if d.status!=MnStatus.ok {return RmlFirst.{status=RmlStatus.data};}
     def:=rml_definition();m:=def.model;q:=mtr_plan(m);w:[1]RmlWork;
     if !rml_capture(params.count,gradient.count,scores.count,features.count) || !rml_fit(q,w[..]) {return RmlFirst.{status=RmlStatus.capacity};}
@@ -127,7 +127,7 @@ rml_oracle :: (images:[]u8,labels:[]u8,params:[]f64,gradient:[]f64,scores:[]f32,
     return RmlFirst.{loss=step.loss,parameters=q.parameters,inputs=q.inputs,values=q.values,adjoints=q.adjoints,flags=q.flags};
 }
 
-rml_synthetic :: ()->bool #export_c {
+rml_synthetic :: ()->bool #export_c #effects(all) {
     def:=rml_definition();m:=def.model;q:=mtr_plan(m);w:[1]RmlWork;p:[3329]f64;
     if !rml_fit(q,w[..]) {return false;}
     #assert mn_target(7,w[0].inputs[196..<206])==MnStatus.ok;
@@ -143,7 +143,7 @@ rml_synthetic :: ()->bool #export_c {
 
 // Dataset-free state and inference preflight. Coax owns every comparison;
 // callers use the retained prediction node instead of guessing a graph index.
-rml_state_preflight :: ()->bool #export_c {
+rml_state_preflight :: ()->bool #export_c #effects(all) {
     def:=rml_definition();m:=def.model;inputs:[3536]f32;fresh_inputs:[3536]f32;
     if mdl_init(m,11821,inputs[..])!=MdlStatus.ok || mdl_init(m,999,fresh_inputs[..])!=MdlStatus.ok {return false;}
     for j:0..<196 {v:=f32(f64(j%13-6)/8);inputs[j]=v;fresh_inputs[j]=v;}

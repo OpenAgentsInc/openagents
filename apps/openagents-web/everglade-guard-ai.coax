@@ -7,8 +7,8 @@
 EgGuardAi :: struct {input:GaInput;url:[2048]u8;url_n:int;generation:int=1;hidden:bool;focused:bool;
   cap_rehearse:bool;cap_you:Point;cap_up:bool;stage_hunt:bool;float_up:bool;}
 
-everglade_guard_invalidate :: (s:[]Everglade) #export_c {s[0].guard_ai.input.epoch+=1;}
-everglade_guard_message :: (s:[]Everglade,kind:int,text:string) #export_c {
+everglade_guard_invalidate :: (s:[]Everglade) #export_c #effects(all) {s[0].guard_ai.input.epoch+=1;}
+everglade_guard_message :: (s:[]Everglade,kind:int,text:string) #export_c #effects(all) {
   if kind==MSG_FACTS {
     if !s[0].guard_ai.input.configured {url:=fact(text,"url");if url.count<=2048 {for i:0..<url.count {s[0].guard_ai.url[i]=url[i];}s[0].guard_ai.url_n=url.count;}s[0].guard_ai.input.configured=true;}
     if fact(text,"clip")=="1" {s[0].guard_ai.input.blocked=true;everglade_guard_invalidate(s);}
@@ -36,12 +36,12 @@ everglade_guard_tick :: (s:[]Everglade,you:Point,c:FolkClock) {
   s[0].guard_ai.input.boundary=true;
 }
 
-everglade_guard_take :: (s:[]Everglade)->GaInput #export_c {
+everglade_guard_take :: (s:[]Everglade)->GaInput #export_c #effects(all) {
   input:=s[0].guard_ai.input;input.url=cast(string)s[0].guard_ai.url[0..<s[0].guard_ai.url_n];
   s[0].guard_ai.input.boundary=false;return input;
 }
 
-everglade_guard_focus :: (s:[]Everglade,focused:bool) #export_c {
+everglade_guard_focus :: (s:[]Everglade,focused:bool) #export_c #effects(all) {
   if !focused {everglade_guard_invalidate(s);}
   s[0].guard_ai.focused=focused;s[0].guard_ai.input.suspended=s[0].guard_ai.hidden || !focused;
 }
@@ -69,7 +69,7 @@ everglade_captain_frame :: (s:[]Everglade,you:Point) {
   }
 }
 // out: the face's buffer the request is written into.
-everglade_captain_effect :: (s:[]Everglade,c:[]Captain,now_ms:int,out:[]u8)->CapEffect #export_c {
+everglade_captain_effect :: (s:[]Everglade,c:[]Captain,now_ms:int,out:[]u8)->CapEffect #export_c #effects(all) {
   if s[0].guard_ai.cap_rehearse {c[0].mode=CAP_REHEARSE;}else if s[0].guard_ai.input.configured && c[0].mode==CAP_OFF {c[0].mode=CAP_REMOTE;}
   c[0].blocked=s[0].guard_ai.input.blocked;
   c[0].suspended=c[0].mode==CAP_REMOTE && (s[0].guard_ai.input.suspended || !s[0].guard_ai.input.configured);
@@ -78,13 +78,13 @@ everglade_captain_effect :: (s:[]Everglade,c:[]Captain,now_ms:int,out:[]u8)->Cap
   if !c[0].send {return CapEffect.{};}
   return CapEffect.{url=CAP_URL,body=cast(string)out[0..<c[0].body_n],timeout_ms=hi_w(c[0].expires_ms-now_ms,1),sequence=c[0].sequence};
 }
-everglade_captain_sent :: (c:[]Captain,sequence:int,started:bool) #export_c {cap_sent(c,sequence,started);}
-everglade_captain_pending :: (c:[]Captain,sequence:int)->bool #export_c {return c[0].phase==1 && c[0].sequence==sequence;}
-everglade_captain_receive :: (s:[]Everglade,c:[]Captain,sequence:int,now_ms:int,text:string) #export_c {
+everglade_captain_sent :: (c:[]Captain,sequence:int,started:bool) #export_c #effects(all) {cap_sent(c,sequence,started);}
+everglade_captain_pending :: (c:[]Captain,sequence:int)->bool #export_c #effects(all) {return c[0].phase==1 && c[0].sequence==sequence;}
+everglade_captain_receive :: (s:[]Everglade,c:[]Captain,sequence:int,now_ms:int,text:string) #export_c #effects(all) {
   if !s[0].wv.started {return;}
   cap_receive(c,watch_w(s),sequence,now_ms,text);
 }
-everglade_captain_probe :: (cs:[]Captain,field:int)->int #export_c {
+everglade_captain_probe :: (cs:[]Captain,field:int)->int #export_c #effects(all) {
   c:=cs[0];
   if field==0 {return c.mode;}if field==1 {return c.attempts;}if field==2 {return c.accepted;}if field==3 {return c.refused;}
   if field==4 {return c.timeouts;}if field==5 {return ifx c.disabled then 1 else 0;}return 0;

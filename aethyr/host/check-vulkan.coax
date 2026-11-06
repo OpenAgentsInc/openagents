@@ -5,24 +5,24 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/args.coax";
-hvn_open :: ()->int #foreign;
-hvn_memory :: (field:int)->int #foreign;
-hvn_observe :: (event:int,field:int)->int #foreign;
-hvn_reset :: () #foreign;
-hvn_asset :: (index:int,bytes:[]u8) #foreign;
-hvn_frame :: (w:f32,h:f32,dpr:f32,dt:f32,still:int) #foreign;
-hvn_key :: (key:int,mods:int,down:int) #foreign;
-hvn_pointer :: (x:f32,y:f32,phase:int,kind:int,id:int) #foreign;
-hvn_wheel :: (dy:f32) #foreign;
-hvn_blur :: () #foreign;
-hvn_send :: (kind:int,bytes:[]u8) #foreign;
-hvn_close :: () #foreign;
+hvn_open :: ()->int #foreign #effects(all);
+hvn_memory :: (field:int)->int #foreign #effects(all);
+hvn_observe :: (event:int,field:int)->int #foreign #effects(all);
+hvn_reset :: () #foreign #effects(all);
+hvn_asset :: (index:int,bytes:[]u8) #foreign #effects(all);
+hvn_frame :: (w:f32,h:f32,dpr:f32,dt:f32,still:int) #foreign #effects(all);
+hvn_key :: (key:int,mods:int,down:int) #foreign #effects(all);
+hvn_pointer :: (x:f32,y:f32,phase:int,kind:int,id:int) #foreign #effects(all);
+hvn_wheel :: (dy:f32) #foreign #effects(all);
+hvn_blur :: () #foreign #effects(all);
+hvn_send :: (kind:int,bytes:[]u8) #foreign #effects(all);
+hvn_close :: () #foreign #effects(all);
 hvn_rows :: (out:[][8]int)->int {
   n:=hvn_observe(-1,2);if n<0 || n>out.count {return -1;}
   for i:0..<n {for k:0..<8 {out[i][k]=hvn_observe(i,k);}}return n;
 }
 hvn_json_rows :: (o:[]Jo,rows:[][8]int) {jo_arr(o);for row:rows {jo_arr(o);for v:row {jo_int(o,v);}jo_end(o);}jo_end(o);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {tool_errln("usage: check-vulkan OUT_CORE.json");return 2;}
   if hvn_open()!=1 {return 1;}defer {hvn_close();}
   version:=hvn_observe(-1,0);constructed:=hvn_observe(-1,1);

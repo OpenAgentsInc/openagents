@@ -4,7 +4,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "adoption.coax";
 RENDER_WEB_SHARED :: false;
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;
   if !args_load(args[..]) || args_count(args[..]) != 2 { return 2; }
   route := render_adoption(args_at(args[..], 0), args_at(args[..], 1));

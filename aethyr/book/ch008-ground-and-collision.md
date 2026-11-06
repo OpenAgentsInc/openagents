@@ -66,7 +66,7 @@ stored vertex is copied, including a negative zero.
 // A point beyond the rectangle reads its nearest edge. At the exact north/east edge the
 // last cell has fraction 1, not an epsilon below it, so every stored vertex is exact.
 ground_sample :: (g: Ground, heights: [] f32,
-    x: units.Quantity(units.Metre, f32), z: units.Quantity(units.Metre, f32)) -> GroundSample {
+    x: units.Quantity(units.Metre, f32), z: units.Quantity(units.Metre, f32)) -> GroundSample #effects(all) {
   out: GroundSample;
   count := ground_points(g);
   if count == 0 || heights.count < count || !ground_finite(x.value) || !ground_finite(z.value) { return out; }

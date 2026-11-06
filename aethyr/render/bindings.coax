@@ -106,7 +106,7 @@ RenderUse :: struct {
   #assert render_bindings(b[..])==RenderBindingStatus.invalid;
 }
 
-render_bindings :: (bindings:[]RenderBinding)->RenderBindingStatus {
+render_bindings :: (bindings:[]RenderBinding)->RenderBindingStatus #effects(all) {
   if bindings.count>RENDER_RESOURCES {return RenderBindingStatus.capacity;}
   if bindings.count==0 {return RenderBindingStatus.invalid;}
   for i:0..<bindings.count {
@@ -124,17 +124,17 @@ render_bindings :: (bindings:[]RenderBinding)->RenderBindingStatus {
   }
   return RenderBindingStatus.ok;
 }
-render_native_kind :: (kind:RenderResourceKind)->int {
+render_native_kind :: (kind:RenderResourceKind)->int #effects(all) {
   if kind==RenderResourceKind.uniform || kind==RenderResourceKind.storage {return 1;}
   if kind==RenderResourceKind.image2d || kind==RenderResourceKind.image_array || kind==RenderResourceKind.depth {return 2;}
   return 3;
 }
-render_native_shape :: (kind:RenderResourceKind)->int {
+render_native_shape :: (kind:RenderResourceKind)->int #effects(all) {
   if kind==RenderResourceKind.image_array || kind==RenderResourceKind.comparison {return 1;}
   if kind==RenderResourceKind.depth {return 2;}
   return 0;
 }
-render_uses :: (bindings:[]RenderBinding,uses:[]RenderUse)->RenderBindingStatus {
+render_uses :: (bindings:[]RenderBinding,uses:[]RenderUse)->RenderBindingStatus #effects(all) {
   status:=render_bindings(bindings);
   if status!=RenderBindingStatus.ok {return status;}
   if uses.count>RENDER_NATIVE_BINDINGS {return RenderBindingStatus.capacity;}

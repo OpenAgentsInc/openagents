@@ -110,7 +110,7 @@ es_verify :: (archive: string, rows: [] EsRow, data: [] u8, restore: string) -> 
   removed := fs_remove(temp);
   return ok && removed;
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args; if !args_load(args[..]) || args_count(args[..]) < 2 { tool_errln("usage: evidence-sources pack|verify ARCHIVE.tar.gz [--retire|--restore NEW_DIR]"); return 2; }
   mode := args_at(args[..], 0); archive := args_at(args[..], 1);
   index_buf: [8192] u8; hash_buf: [8192] u8;

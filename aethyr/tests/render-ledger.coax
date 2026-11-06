@@ -96,7 +96,7 @@ rl_run :: (c: [] Cdp, url: string, r: [] RenderLedgerRun) -> bool {
   rl_show(c, "after loss");
   return true;
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   url := args_at(a[..], 0);

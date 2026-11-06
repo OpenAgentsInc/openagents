@@ -43,17 +43,17 @@ HOST_FRAME_JPEG_BYTES :: 1048576;
  #assert hfj_attach(33,"{}","YWJj",out[0..<15])== -1;
  #assert hfj_attach(33,"","YWJj",out[..])==0;
 }
-hfj_encode :: (pixels:[]u8,width:int,height:int,bgra:bool,work:[]u8,jpeg:[]u8)->int #export_c {
+hfj_encode :: (pixels:[]u8,width:int,height:int,bgra:bool,work:[]u8,jpeg:[]u8)->int #export_c #effects(all) {
  extent:=hpi_extent(width,height);if extent.width!=width||width<1 {return -1;}
  bytes:=width*height*4;if pixels.count!=bytes||work.count<bytes {return -1;}
  for i:0..<width*height {at:=i*4;work[at]=pixels[at+(ifx bgra then 2 else 0)];work[at+1]=pixels[at+1];work[at+2]=pixels[at+(ifx bgra then 0 else 2)];work[at+3]=pixels[at+3];}
  return jpe_encode(work[0..<bytes],width,height,4,int(extent.quality*100),false,false,jpeg);
 }
-hfj_jpeg_bytes :: (bytes:int)->bool #export_c {return bytes>0&&bytes<=HOST_FRAME_JPEG_BYTES;}
-hfj_capacity :: ()->int #export_c {return HOST_FRAME_JPEG_BYTES;}
-hfj_base64_bytes :: (bytes:int)->int #export_c {return ifx hfj_jpeg_bytes(bytes) then b64_encoded_size(bytes) else -1;}
-hfj_base64 :: (jpeg:[]u8,out:[]u8)->int #export_c {if !hfj_jpeg_bytes(jpeg.count) {return -1;}return b64_encode(cast(string)jpeg,out);}
-hfj_attach :: (flags:int,body:string,image:string,out:[]u8)->int #export_c {
+hfj_jpeg_bytes :: (bytes:int)->bool #export_c #effects(all) {return bytes>0&&bytes<=HOST_FRAME_JPEG_BYTES;}
+hfj_capacity :: ()->int #export_c #effects(all) {return HOST_FRAME_JPEG_BYTES;}
+hfj_base64_bytes :: (bytes:int)->int #export_c #effects(all) {return ifx hfj_jpeg_bytes(bytes) then b64_encoded_size(bytes) else -1;}
+hfj_base64 :: (jpeg:[]u8,out:[]u8)->int #export_c #effects(all) {if !hfj_jpeg_bytes(jpeg.count) {return -1;}return b64_encode(cast(string)jpeg,out);}
+hfj_attach :: (flags:int,body:string,image:string,out:[]u8)->int #export_c #effects(all) {
  if (flags&1)==0||body.count==0||image.count==0 {return hpi_copy(body,out);}
  start:=0;if (flags&16)!=0 {line:=-1;for c,i:body {if c=='\n' {line=i;break;}}if line<0 {return -1;}start=line+1;}
  n:=hpi_attach(body[start..<body.count],image,out);if n== -1 {return -1;}if start>out.count-n {return -1;}

@@ -29,16 +29,16 @@ HostSocketControl :: struct {send:bool;stop:bool;error:bool;}
  close:=hsq_control(2);#assert !close.send&&close.stop&&!close.error;
  for command:[4]int.[-1,3,4,9223372036854775807] {fail:=hsq_control(command);#assert !fail.send&&fail.stop&&fail.error;}
 }
-hsq_plan :: (capacity:int)->HostSocketQueuePlan #export_c {
+hsq_plan :: (capacity:int)->HostSocketQueuePlan #export_c #effects(all) {
  if capacity<0||capacity>HOST_INBOX_CAPACITY {return HostSocketQueuePlan.{};}
  return HostSocketQueuePlan.{valid=true,workers=4,events=HOST_INBOX_EVENTS,input_bytes=capacity,input_total=capacity*4,output_bytes=HOST_SOCKET_COMMAND_BYTES,output_total=HOST_SOCKET_COMMAND_BYTES*4};
 }
-hsq_send :: (q:[]HostInboxQueue,bytes:int)->HostSocketSend #export_c {
+hsq_send :: (q:[]HostInboxQueue,bytes:int)->HostSocketSend #export_c #effects(all) {
  if q[0].capacity==HOST_SOCKET_COMMAND_BYTES {g:=hiq_reserve(q,bytes);if g.status==HostInboxStatus.ok {return HostSocketSend.{accepted=true,lease=g.lease};}}
  return hsq_failure();
 }
-hsq_failure :: ()->HostSocketSend #export_c {return HostSocketSend.{error=3,close=2};}
-hsq_control :: (command:int)->HostSocketControl #export_c {
+hsq_failure :: ()->HostSocketSend #export_c #effects(all) {return HostSocketSend.{error=3,close=2};}
+hsq_control :: (command:int)->HostSocketControl #export_c #effects(all) {
  if command==0 {return HostSocketControl.{};}if command==1 {return HostSocketControl.{send=true};}
  if command==2 {return HostSocketControl.{stop=true};}return HostSocketControl.{stop=true,error=true};
 }

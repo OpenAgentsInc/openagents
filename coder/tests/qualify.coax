@@ -72,7 +72,7 @@ qs_check :: (manifest:string)->bool {
   return !ar[0].full;
 }
 qs_saved :: (dir:string,name:string,s:string)->bool {p:[4096]u8;return fs_write(pe_join(dir,name,p[..]),s);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}mode:=args_at(a[..],0);
   out:=args_value(a[..],"--out","");if out.count==0 {return 2;}
   if mode=="seal" {

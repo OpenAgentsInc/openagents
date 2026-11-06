@@ -444,7 +444,7 @@ DKD_WIDTH :: 128;    // key and value width per head
 // state[(h*128 + r)*128 + c] for key row r and value column c, and receives
 // the carried state.
 dkd_chunk :: (item:int,tokens:int,chunk:int,heads:int,key_heads:int,channels:int,conv:[]f32,q:[]f32,k:[]f32,
-    beta:[]f32,decay:[]f32,out:[]f32,state:[]f32) #export_c {
+    beta:[]f32,decay:[]f32,out:[]f32,state:[]f32) #export_c #effects(all) {
     // Registers: st, each thread's 16 state rows, and uu, its column's
     // corrections for the chunk. Shared: the chunk's keys; per-slice partial
     // sums pu (predictions) and py (reads); D (k . k) and D (q . k); G,
@@ -588,13 +588,13 @@ views do not fit before any byte moves:
 // What dkd_chunk needs: 128 threads; shared keys and two partial-sum
 // tables (16 x 128 f32 each), two 16 x 16 f32 tables and three rows of 16.
 DKP_NEEDS :: DaNeeds.{threads=128,shared=26816,mma=false};
-dkp_admit :: (major:int,minor:int,max_threads:int,max_shared:int)->DaStatus #export_c {
+dkp_admit :: (major:int,minor:int,max_threads:int,max_shared:int)->DaStatus #export_c #effects(all) {
     return da_admit(DKP_NEEDS,DaDevice.{major=major,minor=minor,max_threads=max_threads,max_shared=max_shared});
 }
 // The checks a launch must pass, in order: chapter 11's head bounds, the
 // prompt and chunk ranges, then every view's exact length. counts: conv, q,
 // k, beta, decay, out and state view lengths.
-dkp_check :: (tokens:int,chunk:int,heads:int,key_heads:int,conv:int,q:int,k:int,beta:int,decay:int,out:int,state:int)->DkStatus #export_c {
+dkp_check :: (tokens:int,chunk:int,heads:int,key_heads:int,conv:int,q:int,k:int,beta:int,decay:int,out:int,state:int)->DkStatus #export_c #effects(all) {
     if key_heads<1 || key_heads>16 || heads<key_heads || heads>48 || heads%key_heads!=0 {return DkStatus.shape;}
     if tokens<1 || tokens>4096 || chunk<1 || chunk>DKD_CHUNK {return DkStatus.range;}
     if conv!=tokens*(key_heads*256+heads*128) || q!=tokens*key_heads*128 || k!=q {return DkStatus.capacity;}
@@ -602,7 +602,7 @@ dkp_check :: (tokens:int,chunk:int,heads:int,key_heads:int,conv:int,q:int,k:int,
     return DkStatus.ok;
 }
 // Groups of a launch: one per value head and block of 16 value columns.
-dkp_groups :: (heads:int)->int #export_c {return heads*8;}
+dkp_groups :: (heads:int)->int #export_c #effects(all) {return heads*8;}
 ```
 
 A chunk of 17, a prompt of 4,097 tokens, 49 value heads, 3 value heads over

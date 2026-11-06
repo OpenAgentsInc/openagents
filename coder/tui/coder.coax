@@ -89,16 +89,16 @@ cd_local_agents :: (json: bool) -> int {
   released := cxproc_release(h); return la_print(r[..], json);
 }
 
-cxterm_keys :: (on: int) -> int #foreign;
-cxproc_sleep_ms :: (ms: int) -> int #foreign;
-cxterm_size :: () -> int #foreign;
-cxterm_byte :: (timeout_ms: int) -> int #foreign;
-cxterm_write :: (s: [] u8) -> int #foreign;
-cxterm_watch :: () -> int #foreign;
-cxterm_stopped :: () -> int #foreign;
-cxterm_resized :: () -> int #foreign;
-cxproc_pty :: (h: int, cols: int, rows: int) -> int #foreign;
-cxproc_pty_resize :: (h: int, cols: int, rows: int) -> int #foreign;
+cxterm_keys :: (on: int) -> int #foreign #effects(all);
+cxproc_sleep_ms :: (ms: int) -> int #foreign #effects(all);
+cxterm_size :: () -> int #foreign #effects(all);
+cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+cxterm_watch :: () -> int #foreign #effects(all);
+cxterm_stopped :: () -> int #foreign #effects(all);
+cxterm_resized :: () -> int #foreign #effects(all);
+cxproc_pty :: (h: int, cols: int, rows: int) -> int #foreign #effects(all);
+cxproc_pty_resize :: (h: int, cols: int, rows: int) -> int #foreign #effects(all);
 
 CODER_VERSION :: "0.1.0";
 ENGINE_ECHO :: 0; ENGINE_CLAUDE :: 1; ENGINE_CODEX :: 2; ENGINE_MICRO :: 3; ENGINE_PSIONIC :: 4; ENGINE_CURSOR :: 5;
@@ -2339,10 +2339,10 @@ cd_cmd_route :: (task: string, json: bool) -> int {
   return ifx rt[0].ok then 0 else 1;
 }
 
-cxproc_pid_alive :: (pid: int) -> int #foreign;
-cxproc_detach :: (h: int) -> int #foreign;
-cxproc_quiet :: (h: int) -> int #foreign;
-cxproc_pid_signal :: (pid: int, sig: int) -> int #foreign;
+cxproc_pid_alive :: (pid: int) -> int #foreign #effects(all);
+cxproc_detach :: (h: int) -> int #foreign #effects(all);
+cxproc_quiet :: (h: int) -> int #foreign #effects(all);
+cxproc_pid_signal :: (pid: int, sig: int) -> int #foreign #effects(all);
 
 cd_atoi :: (s: string) -> int { v := 0; for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); } return v; }
 
@@ -2442,7 +2442,7 @@ cd_cmd_stop :: (id_in: string, json: bool) -> int {
   return 1;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   args_b: [1] Args; args := args_b[..];
   if !args_load(args) { tool_errln("coder: bad arguments"); return 2; }
   verb := cd_positional(args, 0);

@@ -154,7 +154,7 @@ RenderHostNamedBuffer.{name="buffer-48"}];
  #assert rhi_q.name=="generated" && rhi_q.words.count==0 && rhi_q.observed.source_capacity==0 && rhi_q.observed.logical_payload==0 && rhi_q.observed.initialized_highwater==0 && rhi_q.observed.gpu_bytes==0;
 }
 
-render_host_named_buffers :: (rhi_named:[]RenderHostNamedBuffer)->RenderResourceStatus {
+render_host_named_buffers :: (rhi_named:[]RenderHostNamedBuffer)->RenderResourceStatus #effects(all) {
  if rhi_named.count>RENDER_RESOURCES {return RenderResourceStatus.capacity;}
  for rhi_i:0..<rhi_named.count {
   if rhi_named[rhi_i].name.count==0 {return RenderResourceStatus.invalid;}
@@ -162,10 +162,10 @@ render_host_named_buffers :: (rhi_named:[]RenderHostNamedBuffer)->RenderResource
  }
  return RenderResourceStatus.ok;
 }
-rhi_find_named :: (rhi_name:string,rhi_named:[]RenderHostNamedBuffer)->int {
+rhi_find_named :: (rhi_name:string,rhi_named:[]RenderHostNamedBuffer)->int #effects(all) {
  for rhi_i:0..<rhi_named.count {if rhi_named[rhi_i].name==rhi_name {return rhi_i;}}return -1;
 }
-render_host_resolve_buffer :: (rhi_profile:int,rhi_set:int,rhi_resource:int,rhi_named:[]RenderHostNamedBuffer,rhi_generated:RenderHostNamedBuffer)->RenderHostBufferReceipt {
+render_host_resolve_buffer :: (rhi_profile:int,rhi_set:int,rhi_resource:int,rhi_named:[]RenderHostNamedBuffer,rhi_generated:RenderHostNamedBuffer)->RenderHostBufferReceipt #effects(all) {
  rhi_status:=render_host_named_buffers(rhi_named);
  if rhi_status!=RenderResourceStatus.ok {return RenderHostBufferReceipt.{status=rhi_status};}
  rhi_binding:=render_host_binding(rhi_profile,rhi_set,rhi_resource);
@@ -181,7 +181,7 @@ render_host_resolve_buffer :: (rhi_profile:int,rhi_set:int,rhi_resource:int,rhi_
  if !render_span_fits(rhi_first,rhi_words,0,cast(u64)rhi_buffer.words.count) {return RenderHostBufferReceipt.{status=RenderResourceStatus.capacity};}
  return RenderHostBufferReceipt.{status=RenderResourceStatus.ok,named_index=rhi_at,view=rhi_view,stride=rhi_binding.binding.stride,words=rhi_buffer.words[cast(int)rhi_first..<cast(int)(rhi_first+rhi_words)]};
 }
-render_host_geometry_buffers :: (rhi_profile:int,rhi_named:[]RenderHostNamedBuffer,rhi_out:[]RenderGeometryBuffer)->RenderHostGeometryBuffers {
+render_host_geometry_buffers :: (rhi_profile:int,rhi_named:[]RenderHostNamedBuffer,rhi_out:[]RenderGeometryBuffer)->RenderHostGeometryBuffers #effects(all) {
  if !render_catalog(rhi_profile).valid {return RenderHostGeometryBuffers.{};}
  rhi_status:=render_host_named_buffers(rhi_named);
  if rhi_status!=RenderResourceStatus.ok {return RenderHostGeometryBuffers.{status=rhi_status};}
@@ -209,7 +209,7 @@ render_host_geometry_buffers :: (rhi_profile:int,rhi_named:[]RenderHostNamedBuff
 
 // The caller owns and has admitted every word in this precise initialized
 // span. Its metadata is shared by working CPU uniforms and generated GPU data.
-render_host_owned_buffer :: (rhi_name:string,rhi_words:[]u32)->RenderHostNamedBuffer {
+render_host_owned_buffer :: (rhi_name:string,rhi_words:[]u32)->RenderHostNamedBuffer #effects(all) {
  rhi_bytes:=cast(u64)rhi_words.count*4;
  return RenderHostNamedBuffer.{name=rhi_name,words=rhi_words,observed=RenderBufferObserved.{source_capacity=rhi_bytes,logical_payload=rhi_bytes,initialized_highwater=rhi_bytes,gpu_bytes=rhi_bytes,upload_bytes=0,offset=0,alignment=4,zero_initialized=false}};
 }
@@ -224,7 +224,7 @@ render_host_owned_buffer :: (rhi_name:string,rhi_words:[]u32)->RenderHostNamedBu
  #assert render_host_buffer_bytes(18446744073709551615,18446744073709551615).status==RenderResourceStatus.capacity;
  #assert render_host_buffer_bytes(18446744073709551600,18446744073709551615).status==RenderResourceStatus.ok && render_host_buffer_bytes(18446744073709551600,18446744073709551615).bytes==18446744073709551600;
 }
-render_host_buffer_bytes :: (rhi_raw:u64,rhi_device:u64)->RenderBufferView {
+render_host_buffer_bytes :: (rhi_raw:u64,rhi_device:u64)->RenderBufferView #effects(all) {
  return render_buffer_view(RenderBinding.{name="physical-buffer",kind=RenderResourceKind.storage,stride=4},RenderBufferMode.legacy_capacity,RenderBufferObserved.{source_capacity=rhi_raw,gpu_bytes=rhi_device,zero_initialized=true});
 }
 
@@ -243,7 +243,7 @@ render_host_buffer_bytes :: (rhi_raw:u64,rhi_device:u64)->RenderBufferView {
  #assert rhi_view.status==RenderResourceStatus.ok && rhi_view.view.bytes==16 && rhi_view.words.count==4;
  #assert rhi_view.words[0]==0 && rhi_view.words[1]==0 && rhi_view.words[2]==0 && rhi_view.words[3]==0;
 }
-render_host_mesh_placeholder :: (rhi_profile:int,rhi_set:int,rhi_resource:int,rhi_device:u64)->RenderBufferView {
+render_host_mesh_placeholder :: (rhi_profile:int,rhi_set:int,rhi_resource:int,rhi_device:u64)->RenderBufferView #effects(all) {
  if render_host_binding(rhi_profile,rhi_set,rhi_resource).source.kind!=RenderSourceKind.mesh_asset {return RenderBufferView.{};}
  return render_host_buffer_bytes(16,rhi_device);
 }

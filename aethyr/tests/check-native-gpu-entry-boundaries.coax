@@ -3,7 +3,7 @@
 #load "native-gpu-emissions.coax";
 eb_env :: (key:string,value:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],key);jo_put(o[..],"=");jo_put(o[..],value);return jo_text(o[..]);}
 eb_label :: (index:int,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"case-");jo_int(o[..],index);return jo_text(o[..]);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}work:=args_value(a[..],"--work-dir","");controller:=args_value(a[..],"--controller","");fixture:=args_value(a[..],"--fixture-compiler","");ssh_fixture:=args_value(a[..],"--fixture-ssh","");real:=args_value(a[..],"--real-coax","");receipt:=args_value(a[..],"--receipt","");
   if work=="" || controller=="" || fixture=="" || ssh_fixture=="" || real=="" || receipt=="" || fs_exists(work) || fs_exists(receipt) || !fs_mkdir(work) {return 2;}
   paths:[8][4096]u8;out:[1048576]u8;err:[65536]u8;none:[]string;deadline:=proc_deadline(810000,proc_now_ms());bin:=fs_join(work,"bin",paths[0][..]);if !fs_mkdir(bin) {return 1;}link:=fs_join(bin,"ssh",paths[1][..]);ln:=[4]string.["ln","-s",ssh_fixture,link];r:=rtq_command(ln[..],none,deadline,work,"no-network-link",out[..],err[..]);if !rtq_ok(r) {return 1;}

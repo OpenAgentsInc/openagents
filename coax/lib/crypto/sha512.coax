@@ -26,7 +26,7 @@ Sha512Info :: struct { error: u32; phase: u32; total: u64; buffered: u32; }
 // The state is: "S512", version 1, the phase (1 active, 2 final), 0, the
 // number of buffered bytes (0 to 127), the total byte count (big-endian u64),
 // the eight hash words (big-endian) and the 128-byte partial block.
-sha512_header :: (state: [] u8) -> Sha512Info {
+sha512_header :: (state: [] u8) -> Sha512Info #effects(all) {
   bad := Sha512Info.{error = SHA512_BAD_STATE};
   if state.count != SHA512_STATE_BYTES { return bad; }
   if state[0] != 'S' || state[1] != '5' || state[2] != '1' || state[3] != '2' || state[4] != 1 || state[6] != 0 { return bad; }
@@ -40,36 +40,36 @@ sha512_header :: (state: [] u8) -> Sha512Info {
 // book:end state
 
 // Big-endian 64-bit words at a position the caller has already checked.
-sha512_get64 :: (data: [] u8, at: int) -> u64 {
+sha512_get64 :: (data: [] u8, at: int) -> u64 #effects(all) {
   x: u64 = 0;
   for j: 0..<8 { x = x | (cast(u64) data[at + j] << ((7 - j) * 8)); }
   return x;
 }
-sha512_put64 :: (out: [] u8, at: int, x: u64) {
+sha512_put64 :: (out: [] u8, at: int, x: u64) #effects(all) {
   for j: 0..<8 { out[at + j] = cast,trunc(u8) (x >> ((7 - j) * 8)); }
 }
-sha512_state_size :: () -> int #export_c { return SHA512_STATE_BYTES; }
-sha512_input_ok :: (n: int) -> bool { return n >= 0 && n <= SHA512_MAX; }
-sha512_request :: (input: int, output: int, overlap: bool) -> u32 {
+sha512_state_size :: () -> int #export_c #effects(all) { return SHA512_STATE_BYTES; }
+sha512_input_ok :: (n: int) -> bool #effects(all) { return n >= 0 && n <= SHA512_MAX; }
+sha512_request :: (input: int, output: int, overlap: bool) -> u32 #effects(all) {
   if !sha512_input_ok(input) { return SHA512_BAD_INPUT; }
   if !cb_span(output, 0, 64) { return SHA512_BAD_OUTPUT; }
   if overlap { return SHA512_ALIAS; }
   return SHA512_OK;
 }
-sha512_update_limit :: (total: u64, count: int) -> u32 #export_c {
+sha512_update_limit :: (total: u64, count: int) -> u32 #export_c #effects(all) {
   if !sha512_input_ok(count) { return SHA512_BAD_INPUT; }
   if cast(u64) count > SHA512_MAX_TOTAL - total { return SHA512_LENGTH; }
   return SHA512_OK;
 }
 // Compress the state's full partial block into its hash words.
-sha512_absorb :: (state: [] u8) {
+sha512_absorb :: (state: [] u8) #effects(all) {
   h: [8] u64; w: [80] u64;
   for i: 0..<8 { h[i] = sha512_get64(state, 16 + i * 8); }
   S512_compress(h[..], state, 80, w[..]);
   for i: 0..<8 { sha512_put64(state, 16 + i * 8, h[i]); }
   for i: 0..<8 { h[i] = 0; } // mutant: equivalent (erases a dead local; no result reads it)
 }
-sha512_init :: (state: [] u8) -> u32 #export_c {
+sha512_init :: (state: [] u8) -> u32 #export_c #effects(all) {
   if state.count != SHA512_STATE_BYTES { return SHA512_BAD_STATE; }
   state[0] = 'S'; state[1] = '5'; state[2] = '1'; state[3] = '2';
   state[4] = 1; state[5] = cast(u8) SHA512_ACTIVE; state[6] = 0; state[7] = 0;
@@ -79,12 +79,12 @@ sha512_init :: (state: [] u8) -> u32 #export_c {
   for i: 80..<208 { state[i] = 0; }
   return SHA512_OK;
 }
-sha512_info :: (state: [] u8) -> Sha512Info #export_c { return sha512_header(state); }
+sha512_info :: (state: [] u8) -> Sha512Info #export_c #effects(all) { return sha512_header(state); }
 
 // book:begin stream
 // Append input to the stream. Every check comes first, so a refusal leaves
 // the state unchanged.
-sha512_update_checked :: (state: [] u8, input: [] u8, overlap: bool) -> u32 {
+sha512_update_checked :: (state: [] u8, input: [] u8, overlap: bool) -> u32 #effects(all) {
   info := sha512_header(state);
   if info.error != SHA512_OK { return info.error; }
   if info.phase != SHA512_ACTIVE { return SHA512_PHASE; }
@@ -103,7 +103,7 @@ sha512_update_checked :: (state: [] u8, input: [] u8, overlap: bool) -> u32 {
 // Pad, compress the last one or two blocks and write the 64-byte digest.
 // The final state keeps the hash words and erases the partial block, so a
 // second call writes the same digest.
-sha512_final_checked :: (state: [] u8, out: [] u8, overlap: bool) -> u32 {
+sha512_final_checked :: (state: [] u8, out: [] u8, overlap: bool) -> u32 #effects(all) {
   info := sha512_header(state);
   if info.error != SHA512_OK { return info.error; }
   if !cb_span(out.count, 0, 64) { return SHA512_BAD_OUTPUT; }
@@ -121,7 +121,7 @@ sha512_final_checked :: (state: [] u8, out: [] u8, overlap: bool) -> u32 {
 }
 // book:end stream
 
-sha512_hash_checked :: (input: [] u8, out: [] u8, overlap: bool) -> u32 {
+sha512_hash_checked :: (input: [] u8, out: [] u8, overlap: bool) -> u32 #effects(all) {
   status := sha512_request(input.count, out.count, overlap);
   if status != SHA512_OK { return status; }
   state: [208] u8;
@@ -135,8 +135,8 @@ sha512_hash_checked :: (input: [] u8, out: [] u8, overlap: bool) -> u32 {
 // The digest of two inputs one after the other (HMAC's key pad, then its
 // message) into out[0..<64]. It reads every input byte before it writes out,
 // so out may be one of the inputs (PBKDF2 hashes U into U).
-sha512_two_ok :: (a: int, b: int, out: int) -> bool { return out >= 64 && a >= 0 && b >= 0 && b <= SHA512_MAX - a; }
-sha512_two :: (a: [] u8, b: [] u8, out: [] u8) -> bool #export_c {
+sha512_two_ok :: (a: int, b: int, out: int) -> bool #effects(all) { return out >= 64 && a >= 0 && b >= 0 && b <= SHA512_MAX - a; }
+sha512_two :: (a: [] u8, b: [] u8, out: [] u8) -> bool #export_c #effects(all) {
   if !sha512_two_ok(a.count, b.count, out.count) { return false; }
   h := S512_IV; w: [80] u64;
   block: [128] u8; used := 0;
@@ -151,10 +151,10 @@ sha512_two :: (a: [] u8, b: [] u8, out: [] u8) -> bool #export_c {
   for i: 0..<8 { h[i] = 0; } // mutant: equivalent (erases a dead local; no result reads it)
   return true;
 }
-sha512 :: (input: [] u8, out: [] u8) -> bool #export_c { none: [1] u8; return sha512_two(input, none[0..<0], out); }
+sha512 :: (input: [] u8, out: [] u8) -> bool #export_c #effects(all) { none: [1] u8; return sha512_two(input, none[0..<0], out); }
 // HMAC-SHA512(key, msg) into out[0..<64]. out may be msg.
-hmac_sha512_ok :: (key: int, msg: int, out: int) -> bool { return out >= 64 && key >= 0 && key <= SHA512_MAX && msg >= 0 && msg <= SHA512_MAX - 128; }
-hmac_sha512 :: (key: [] u8, msg: [] u8, out: [] u8) -> bool #export_c {
+hmac_sha512_ok :: (key: int, msg: int, out: int) -> bool #effects(all) { return out >= 64 && key >= 0 && key <= SHA512_MAX && msg >= 0 && msg <= SHA512_MAX - 128; }
+hmac_sha512 :: (key: [] u8, msg: [] u8, out: [] u8) -> bool #export_c #effects(all) {
   if !hmac_sha512_ok(key.count, msg.count, out.count) { return false; }
   // A key longer than a block is hashed first (RFC 2104).
   k: [128] u8;
@@ -171,10 +171,10 @@ hmac_sha512 :: (key: [] u8, msg: [] u8, out: [] u8) -> bool #export_c {
   return ok;
 }
 // PBKDF2-HMAC-SHA512 (RFC 8018), one 64-byte block: what BIP-39 asks (dkLen 64).
-pbkdf2_hmac_sha512_ok :: (password: int, salt: int, rounds: int, out: int) -> bool {
+pbkdf2_hmac_sha512_ok :: (password: int, salt: int, rounds: int, out: int) -> bool #effects(all) {
   return out >= 64 && rounds >= 1 && password >= 0 && password <= SHA512_MAX && salt >= 0 && salt <= 1024;
 }
-pbkdf2_hmac_sha512 :: (password: [] u8, salt: [] u8, rounds: int, out: [] u8) -> bool #export_c {
+pbkdf2_hmac_sha512 :: (password: [] u8, salt: [] u8, rounds: int, out: [] u8) -> bool #export_c #effects(all) {
   if !pbkdf2_hmac_sha512_ok(password.count, salt.count, rounds, out.count) { return false; }
   s: [1028] u8;
   for i: 0..<salt.count { s[i] = salt[i]; }
@@ -196,12 +196,12 @@ pbkdf2_hmac_sha512 :: (password: [] u8, salt: [] u8, rounds: int, out: [] u8) ->
 }
 
 // A string's bytes in buf (tests and callers holding text).
-sha512_bytes :: (t: string, buf: [] u8) -> [] u8 {
+sha512_bytes :: (t: string, buf: [] u8) -> [] u8 #effects(all) {
   n := ifx t.count < buf.count then t.count else buf.count; // mutant: equivalent (at equal counts both arms are the same)
   for i: 0..<n { buf[i] = t[i]; }
   return buf[0..<n];
 }
-sha512_hexeq :: (got: [] u8, want: string) -> bool {
+sha512_hexeq :: (got: [] u8, want: string) -> bool #effects(all) {
   digits := "0123456789abcdef";
   if want.count != got.count * 2 { return false; }
   for i: 0..<got.count { if digits[cast(int) (got[i] >> 4)] != want[2 * i] || digits[cast(int) (got[i] & 15)] != want[2 * i + 1] { return false; } }

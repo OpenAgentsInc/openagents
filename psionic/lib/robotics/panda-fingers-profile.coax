@@ -13,7 +13,7 @@
  }
 }
 
-pff_profile :: ()->[4]PffNode #export_c {
+pff_profile :: ()->[4]PffNode #export_c #effects(all) {
  nodes:[4]PffNode;nodes[0].parent=10;nodes[1].parent=12;nodes[2].parent=10;nodes[3].parent=14;
  nodes[1].joint= -1;nodes[2].joint=1;nodes[3].joint= -1;
  nodes[0].offset=[3]f64.[0,0,0.0524];nodes[1].offset=[3]f64.[0,0.0085,0.056];nodes[2].offset=[3]f64.[0,0,0.0524];nodes[3].offset=[3]f64.[0,-0.0085,0.056];

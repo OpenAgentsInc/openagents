@@ -53,34 +53,34 @@ FrWindow :: struct {decision:FrDecision;probe:bool;offset:int;count:int;}
  if mode==5 {#assert d.fault==FrFault.capacity && d.error.domain==2 && d.error.code==3 && d.error.operation==FrOp.read;}
 }
 
-fr_good :: (value:int)->FrDecision {return FrDecision.{value=value};}
-fr_problem :: (fault:FrFault,operation:FrOp)->FrDecision {return FrDecision.{fault=fault,error=FrDetail.{domain=2,code=cast(int)fault,operation=operation}};}
-fr_os_error :: (raw:int,operation:FrOp)->FrDecision {return FrDecision.{fault=FrFault.posix,error=FrDetail.{domain=1,code=raw,operation=operation}};}
-fr_path_policy :: (path:string)->FrDecision #export_c {
+fr_good :: (value:int)->FrDecision #effects(all) {return FrDecision.{value=value};}
+fr_problem :: (fault:FrFault,operation:FrOp)->FrDecision #effects(all) {return FrDecision.{fault=fault,error=FrDetail.{domain=2,code=cast(int)fault,operation=operation}};}
+fr_os_error :: (raw:int,operation:FrOp)->FrDecision #effects(all) {return FrDecision.{fault=FrFault.posix,error=FrDetail.{domain=1,code=raw,operation=operation}};}
+fr_path_policy :: (path:string)->FrDecision #export_c #effects(all) {
  if path.count<1 || path.count>FR_PATH_MAX {return fr_problem(FrFault.invalid_path,FrOp.open);}
  for byte:path {if byte==0 {return fr_problem(FrFault.invalid_path,FrOp.open);}}
  return fr_good(0);
 }
-fr_extent_policy :: (capacity:int,reports:int)->FrDecision {
+fr_extent_policy :: (capacity:int,reports:int)->FrDecision #effects(all) {
  if capacity<0 || capacity>FR_CAP_MAX || reports<1 {return fr_problem(FrFault.descriptor,FrOp.open);}return fr_good(0);
 }
-fr_open_policy :: (raw:int)->FrDecision {
+fr_open_policy :: (raw:int)->FrDecision #effects(all) {
  if raw<0 {return fr_os_error(raw,FrOp.open);}if raw>2147483647 {return fr_problem(FrFault.descriptor,FrOp.open);}return fr_good(raw);
 }
-fr_stat_policy :: (raw:int,mode:int,size:int)->FrDecision {
+fr_stat_policy :: (raw:int,mode:int,size:int)->FrDecision #effects(all) {
  if raw<0 {return fr_os_error(raw,FrOp.stat);}
  if raw!=0 || mode<0 || mode>4294967295 || size<0 {return fr_problem(FrFault.descriptor,FrOp.stat);}
  if (mode&61440)!=32768 {return fr_problem(FrFault.wrong_kind,FrOp.stat);}return fr_good(0);
 }
-fr_window_policy :: (used:int,capacity:int)->FrWindow {
+fr_window_policy :: (used:int,capacity:int)->FrWindow #effects(all) {
  if used<0 || capacity<0 || used>capacity || capacity>FR_CAP_MAX {return FrWindow.{decision=fr_problem(FrFault.descriptor,FrOp.read)};}
  if used==capacity {return FrWindow.{probe=true,count=1};}return FrWindow.{offset=used,count=capacity-used};
 }
-fr_read_policy :: (raw:int,requested:int,probe:bool)->FrDecision {
+fr_read_policy :: (raw:int,requested:int,probe:bool)->FrDecision #effects(all) {
  if requested<1 || requested>FR_CAP_MAX || (probe && requested!=1) {return fr_problem(FrFault.descriptor,FrOp.read);}
  if raw<0 {return fr_os_error(raw,FrOp.read);}if raw>requested {return fr_problem(FrFault.descriptor,FrOp.read);}
  if probe && raw!=0 {return fr_problem(FrFault.capacity,FrOp.read);}return fr_good(raw);
 }
-fr_close_policy :: (raw:int)->FrDecision {
+fr_close_policy :: (raw:int)->FrDecision #effects(all) {
  if raw<0 {return fr_os_error(raw,FrOp.close);}if raw!=0 {return fr_problem(FrFault.descriptor,FrOp.close);}return fr_good(0);
 }

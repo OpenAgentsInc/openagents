@@ -22,7 +22,7 @@ c2_slice::(asked:bool,value:string)->int {
   if !asked||value=="runtime"{return 0;}
   if value=="capacity"{return 1;}if value=="matrix"{return 2;}return -1;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]){return 2;}
   if args_count(a[..])==3&&args_at(a[..],0)=="proxy"{return c2_proxy(args_at(a[..],1),args_at(a[..],2));}
   slice_b:[32]u8;slice:=c2_slice(proc_has_env("C2_FAULT_SLICE"),proc_getenv("C2_FAULT_SLICE",slice_b[..]));

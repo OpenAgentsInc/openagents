@@ -34,7 +34,7 @@
 #load "../api/nip98.coax";
 
 RT_LABEL :: "openagents runner-sign test key";
-cxproc_wall_us :: () -> int #foreign;   // process-native.c: CLOCK_REALTIME, for NIP-98's created_at window
+cxproc_wall_us :: () -> int #foreign #effects(all);   // process-native.c: CLOCK_REALTIME, for NIP-98's created_at window
 rt_unix :: () -> int { return cxproc_wall_us() / 1000000; }
 RT_SLUG :: "transport-check";
 RT_REQ_MAX :: 65536;
@@ -344,7 +344,7 @@ rt_capture :: (file: string, origin: string) -> int {
   return ifx mine then 0 else 1;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   loaded := args_load(a[..]);
   capture := args_value(a[..], "--capture", "");

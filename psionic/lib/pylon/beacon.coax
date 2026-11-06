@@ -46,7 +46,7 @@ PB_IDENTITY :: "elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcd
 PB_CAPABILITY :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:pylon/decision";
 PB_CONTENT :: "{\"class\":{\"family\":\"gpu\",\"memory_gb\":16,\"tier\":\"medium\"},\"generation\":7,\"label\":\"Studio GPU\",\"observed_at\":1791400000,\"pools\":[],\"provider\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"pylon\":\"studio-gpu\",\"requires\":[],\"services\":[{\"capability\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:pylon/decision\",\"lanes\":[\"cj-decision\"],\"model\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"offering\":null,\"price_hint_msat\":null}],\"settlement\":[\"free-v1\"],\"since\":1791380000,\"slots\":{\"free\":1,\"total\":1},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v1\",\"valid_until\":1791400300}";
 
-pb_fixture :: (lanes:[]string,services:[]PbService,settlement:[]string)->PbBeacon {
+pb_fixture :: (lanes:[]string,services:[]PbService,settlement:[]string)->PbBeacon #effects(all) {
     lanes[0]="cj-decision";settlement[0]="free-v1";
     services[0]=PbService.{capability=PB_CAPABILITY,model=PB_IDENTITY,lanes=lanes[0..<1]};
     return PbBeacon.{provider=PB_KEY,pylon="studio-gpu",label="Studio GPU",status=PbStatus.online,generation=7,since=1791380000,observed_at=1791400000,valid_until=1791400300,
@@ -56,7 +56,7 @@ pb_fixture :: (lanes:[]string,services:[]PbService,settlement:[]string)->PbBeaco
 // The tests stand a fixed digest in for SHA-256; host.coax checks the real one.
 PB_X :: "1111111111111111111111111111111111111111111111111111111111111111";
 PB_Y :: "2222222222222222222222222222222222222222222222222222222222222222";
-pb_tags_for :: (out:[]u8,content:string,expiration:string,extra:string)->string {
+pb_tags_for :: (out:[]u8,content:string,expiration:string,extra:string)->string #effects(all) {
     n:=json_raw(out,0,"[[\"d\",\"studio-gpu\"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",\"");n=json_raw(out,n,PB_X);
     n=json_raw(out,n,"\"],[\"expiration\",\"");n=json_raw(out,n,expiration);n=json_raw(out,n,"\"]");n=json_raw(out,n,extra);n=json_raw(out,n,"]");
     return cast(string)out[0..<n];
@@ -133,15 +133,15 @@ pb_tags_for :: (out:[]u8,content:string,expiration:string,extra:string)->string 
     #assert pb_read(30200,PB_KEY,pb_tags_for(tags[..],other,"1791400300",""),other,PB_X).code==PbCode.slug;
 }
 // Each case replaces one exact piece of the fixture's content.
-pb_case :: (out:[]u8,from:string,to:string)->string {
+pb_case :: (out:[]u8,from:string,to:string)->string #effects(all) {
     at:=pb_index(PB_CONTENT,from);
     n:=json_raw(out,0,PB_CONTENT[0..<at]);n=json_raw(out,n,to);n=json_raw(out,n,PB_CONTENT[at+from.count..<PB_CONTENT.count]);
     return cast(string)out[0..<n];
 }
-pb_code :: (content:string)->PbCode {
+pb_code :: (content:string)->PbCode #effects(all) {
     tags:[512]u8;return pb_read(30200,PB_KEY,pb_tags_for(tags[..],content,"1791400300",""),content,PB_X).code;
 }
-pb_cases :: (lo:int,hi:int) {
+pb_cases :: (lo:int,hi:int) #effects(all) {
     c:[2048]u8;
     froms:=[50]string.["\"v\":\"openagents.pylon-beacon.v1\"","\"v\":\"openagents.pylon-beacon.v1\"","\"requires\":[]","\"requires\":[]","\"pylon\":\"studio-gpu\"","\"pylon\":\"studio-gpu\"",
         "\"label\":\"Studio GPU\"","\"label\":\"Studio GPU\"","\"status\":\"online\"","\"status\":\"online\"","\"generation\":7","\"generation\":7","\"since\":1791380000","\"since\":1791380000",
@@ -188,7 +188,7 @@ pb_cases :: (lo:int,hi:int) {
     #assert pb_code(pb_case(c[..],"\"services\":[{","\"services\":[1,{"))==PbCode.services;
 }
 // A content with n copies of the fixture's service, or n settlement or pool entries.
-pb_many :: (out:[]u8,what:int,n:int)->string {
+pb_many :: (out:[]u8,what:int,n:int)->string #effects(all) {
     svc:="{\"capability\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:pylon/decision\",\"lanes\":[\"cj-decision\"],\"model\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"offering\":null,\"price_hint_msat\":null}";
     keys:=[3]string.["\"services\":[","\"settlement\":[","\"pools\":["];
     cut:=[3]string.["],\"settlement\"","],\"since\"","],\"provider\""];
@@ -335,18 +335,18 @@ pb_many :: (out:[]u8,what:int,n:int)->string {
     #assert pb_status_name(PbStatus.online)=="online" && pb_status_name(PbStatus.draining)=="draining" && pb_status_name(PbStatus.offline)=="offline";
 }
 
-pb_index :: (text:string,needle:string)->int {
+pb_index :: (text:string,needle:string)->int #effects(all) {
     i:=0;while i+needle.count<=text.count {if text[i..<i+needle.count]==needle {return i;}i+=1;}return -1;
 }
-pb_find :: (text:string,needle:string)->bool {return pb_index(text,needle)>=0;}
-pb_slug :: (s:string,most:int)->bool {
+pb_find :: (text:string,needle:string)->bool #effects(all) {return pb_index(text,needle)>=0;}
+pb_slug :: (s:string,most:int)->bool #effects(all) {
     if s.count<1 || s.count>most {return false;}
     for c:s {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-' || c=='_') {return false;}}
     return true;
 }
-pb_status_name :: (s:PbStatus)->string {names:=[3]string.["online","draining","offline"];return names[cast(int)s];}
+pb_status_name :: (s:PbStatus)->string #effects(all) {names:=[3]string.["online","draining","offline"];return names[cast(int)s];}
 // <name>@sha256:<64 hex> or <name>@gguf-tensors:sha256:<64 hex>, at most 128 bytes.
-pb_identity :: (model:string)->bool {
+pb_identity :: (model:string)->bool #effects(all) {
     if model.count>PB_MODEL {return false;}
     at:=pb_index(model,"@");if at<1 {return false;}
     rest:=model[at+1..<model.count];
@@ -355,28 +355,28 @@ pb_identity :: (model:string)->bool {
     return false;
 }
 // A response's model: the identity's name before '@'.
-pb_identity_name :: (identity:string)->string {at:=pb_index(identity,"@");if at<0 {return identity;}return identity[0..<at];}
-pb_capability :: (out:[]u8,provider:string)->int {
+pb_identity_name :: (identity:string)->string #effects(all) {at:=pb_index(identity,"@");if at<0 {return identity;}return identity[0..<at];}
+pb_capability :: (out:[]u8,provider:string)->int #effects(all) {
     if !pt_hex64(provider) {return -1;}n:=json_raw(out,0,provider);return json_raw(out,n,":pylon/decision");
 }
 // tier from the family's measure: unified-memory and gpu in GB, cpu in cores.
-pb_tier :: (family:string,amount:int)->string {
+pb_tier :: (family:string,amount:int)->string #effects(all) {
     bands:=[3]int.[16,32,96];
     if family=="gpu" {bands=[3]int.[12,24,48];}else if family=="cpu" {bands=[3]int.[8,16,64];}else if family!="unified-memory" {return "";}
     if amount<0 {return "";}if amount<bands[0] {return "small";}if amount<bands[1] {return "medium";}if amount<bands[2] {return "large";}return "xl";
 }
 // memory_gb: 8 to 512 in powers of two, rounded down; -1 under 8.
-pb_memory_gb :: (gb:int)->int {
+pb_memory_gb :: (gb:int)->int #effects(all) {
     if gb<8 {return -1;}v:=8;while v<512 && v*2<=gb {v*=2;}return v;
 }
-pb_memory_ok :: (gb:int)->bool {return pb_memory_gb(gb)==gb;}
+pb_memory_ok :: (gb:int)->bool #effects(all) {return pb_memory_gb(gb)==gb;}
 
 // ---- the writer
-pb_strings :: (out:[]u8,at:int,values:[]string)->int {
+pb_strings :: (out:[]u8,at:int,values:[]string)->int #effects(all) {
     n:=json_raw(out,at,"[");for i:0..<values.count {if i>0 {n=json_raw(out,n,",");}n=json_write_string(out,n,values[i]);}return json_raw(out,n,"]");
 }
 // The content, keys in JCS order. meta is the caller's JCS object or empty.
-pb_content :: (b:PbBeacon,out:[]u8)->int {
+pb_content :: (b:PbBeacon,out:[]u8)->int #effects(all) {
     n:=json_raw(out,0,"{\"class\":{\"family\":");n=json_write_string(out,n,b.hardware.family);n=json_raw(out,n,",\"memory_gb\":");n=json_write_int(out,n,b.hardware.memory_gb);
     n=json_raw(out,n,",\"tier\":");n=json_write_string(out,n,b.hardware.tier);n=json_raw(out,n,"},\"generation\":");n=json_write_int(out,n,b.generation);
     n=json_raw(out,n,",\"label\":");n=json_write_string(out,n,b.label);
@@ -400,7 +400,7 @@ pb_content :: (b:PbBeacon,out:[]u8)->int {
 // The unsigned 30200 template, created_at = observed_at, for content (what
 // pb_content wrote for b) and digest (its lowercase SHA-256). The writer
 // emits only what its own reader admits; -1 otherwise.
-pb_write :: (b:PbBeacon,auth:PbAuth,content:string,digest:string,out:[]u8)->int #export_c {
+pb_write :: (b:PbBeacon,auth:PbAuth,content:string,digest:string,out:[]u8)->int #export_c #effects(all) {
     tags:[1024]u8;t:=json_raw(tags[..],0,"[[\"d\",");t=json_write_string(tags[..],t,b.pylon);
     t=json_raw(tags[..],t,"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",");t=json_write_string(tags[..],t,digest);
     t=json_raw(tags[..],t,"],[\"expiration\",\"");t=json_write_int(tags[..],t,b.valid_until);t=json_raw(tags[..],t,"\"]");
@@ -415,14 +415,14 @@ pb_write :: (b:PbBeacon,auth:PbAuth,content:string,digest:string,out:[]u8)->int 
 
 // ---- the reader
 PbInt :: struct {ok:bool;value:int;}
-pb_uint :: (j:[]Json,t:int)->PbInt {
+pb_uint :: (j:[]Json,t:int)->PbInt #effects(all) {
     if t!=JSON_NUMBER {return PbInt.{};}v:=json_int(json_text(j));if !v.ok || v.value<0 {return PbInt.{};}return PbInt.{ok=true,value=v.value};
 }
-pb_field :: (key:string)->int {
+pb_field :: (key:string)->int #effects(all) {
     names:=[17]string.["v","requires","provider","pylon","label","status","generation","since","observed_at","valid_until","class","slots","services","settlement","pools","meta","group"];
     for i:0..<17 {if json_is(key,names[i]) {return i+1;}}return -1;
 }
-pb_class :: (j:[]Json,r:[]PbRead)->bool {
+pb_class :: (j:[]Json,r:[]PbRead)->bool #effects(all) {
     family:=false;tiered:=false;memory:=false;
     while true {
         t:=json_next(j);if t==JSON_OBJECT_END {break;}
@@ -438,7 +438,7 @@ pb_class :: (j:[]Json,r:[]PbRead)->bool {
     if !memory || !(f=="unified-memory" || f=="gpu" || f=="cpu") {return false;}
     return tier=="small" || tier=="medium" || tier=="large" || tier=="xl";
 }
-pb_slots :: (j:[]Json,r:[]PbRead)->bool {
+pb_slots :: (j:[]Json,r:[]PbRead)->bool #effects(all) {
     free:=false;total:=false;
     while true {
         t:=json_next(j);if t==JSON_OBJECT_END {break;}
@@ -449,12 +449,12 @@ pb_slots :: (j:[]Json,r:[]PbRead)->bool {
     }
     return free && total && r[0].free<=r[0].total && r[0].total<=PB_SLOTS;
 }
-pb_lane :: (raw:string)->int {
+pb_lane :: (raw:string)->int #effects(all) {
     names:=[4]string.["cj-execution","cj-conversation","cj-decision","nip90-5050"];
     for i:0..<4 {if json_is(raw,names[i]) {return i;}}return -1;
 }
 // One service object; the code it refuses with, or ok.
-pb_service :: (j:[]Json,signer:string,r:[]PbRead)->PbCode {
+pb_service :: (j:[]Json,signer:string,r:[]PbRead)->PbCode #effects(all) {
     seen:=0;lanes:=0;model:="";capability:="";
     while true {
         t:=json_next(j);if t==JSON_OBJECT_END {break;}
@@ -482,7 +482,7 @@ pb_service :: (j:[]Json,signer:string,r:[]PbRead)->PbCode {
     }
     return PbCode.ok;
 }
-pb_list :: (j:[]Json,t:int,most:int,slugs:bool)->bool {
+pb_list :: (j:[]Json,t:int,most:int,slugs:bool)->bool #effects(all) {
     if t!=JSON_ARRAY {return false;}
     seen:[16]string;count:=0;v:=json_next(j);
     while v!=JSON_ARRAY_END {
@@ -493,7 +493,7 @@ pb_list :: (j:[]Json,t:int,most:int,slugs:bool)->bool {
     }
     return slugs || count>0;
 }
-pb_body :: (content:string,signer:string,r:[]PbRead)->PbCode {
+pb_body :: (content:string,signer:string,r:[]PbRead)->PbCode #effects(all) {
     j:[1]Json;json_start(j[..],content);if json_next(j[..])!=JSON_OBJECT {return PbCode.json;}
     seen:=0;
     while true {
@@ -537,7 +537,7 @@ pb_body :: (content:string,signer:string,r:[]PbRead)->PbCode {
 }
 // signer is the verified event's pubkey; content its unescaped content;
 // digest the lowercase SHA-256 of content.
-pb_read :: (kind:int,signer:string,tags:string,content:string,digest:string)->PbRead #export_c {
+pb_read :: (kind:int,signer:string,tags:string,content:string,digest:string)->PbRead #export_c #effects(all) {
     r:=[1]PbRead.[PbRead.{}];
     if kind!=PB_KIND {return PbRead.{code=PbCode.kind};}
     if !pt_hex64(signer) {return PbRead.{code=PbCode.provider};}
@@ -556,7 +556,7 @@ pb_read :: (kind:int,signer:string,tags:string,content:string,digest:string)->Pb
 
 // ---- freshness, by the reader's receipt time
 // book:begin fresh
-pb_fresh :: (r:PbRead,received:int,held:PbHeld)->PbFresh #export_c {
+pb_fresh :: (r:PbRead,received:int,held:PbHeld)->PbFresh #export_c #effects(all) {
     if r.observed_at>received+PB_FUTURE {return PbFresh.future;}
     if held.present {
         if r.generation<held.generation {return PbFresh.rollback;}
@@ -565,30 +565,30 @@ pb_fresh :: (r:PbRead,received:int,held:PbHeld)->PbFresh #export_c {
     if received>r.valid_until || received>r.observed_at+PB_WINDOW {return PbFresh.stale;}
     return PbFresh.fresh;
 }
-pb_show :: (r:PbRead,f:PbFresh)->PbShow {
+pb_show :: (r:PbRead,f:PbFresh)->PbShow #effects(all) {
     if f!=PbFresh.fresh {return PbShow.unknown;}return cast(PbShow)cast(int)r.status;
 }
 // Whether a buyer may send this pylon a decision job now.
-pb_routable :: (r:PbRead,f:PbFresh)->bool #export_c {
+pb_routable :: (r:PbRead,f:PbFresh)->bool #export_c #effects(all) {
     return r.code==PbCode.ok && f==PbFresh.fresh && r.status==PbStatus.online && r.free>0 && r.decision;
 }
 // book:end fresh
 
 // ---- the provider's lifecycle and republish schedule
-pb_start :: (life:PbLife,now:int)->PbLife #export_c {
+pb_start :: (life:PbLife,now:int)->PbLife #export_c #effects(all) {
     l:=life;if l.status!=PbStatus.offline {return l;}
     l.status=PbStatus.online;l.generation+=1;l.since=now;return l;
 }
-pb_drain :: (life:PbLife)->PbLife #export_c {l:=life;if l.status==PbStatus.online {l.status=PbStatus.draining;}return l;}
-pb_stop :: (life:PbLife)->PbLife #export_c {l:=life;l.status=PbStatus.offline;return l;}
+pb_drain :: (life:PbLife)->PbLife #export_c #effects(all) {l:=life;if l.status==PbStatus.online {l.status=PbStatus.draining;}return l;}
+pb_stop :: (life:PbLife)->PbLife #export_c #effects(all) {l:=life;l.status=PbStatus.offline;return l;}
 // services is the caller's revision number of its service list.
-pb_snap :: (life:PbLife,free:int,services:int)->PbSnap #export_c {return PbSnap.{status=life.status,generation=life.generation,free=free,services=services};}
-pb_sent :: (life:PbLife,snap:PbSnap,now:int)->PbLife #export_c {l:=life;l.published=now;l.sent=snap;return l;}
+pb_snap :: (life:PbLife,free:int,services:int)->PbSnap #export_c #effects(all) {return PbSnap.{status=life.status,generation=life.generation,free=free,services=services};}
+pb_sent :: (life:PbLife,snap:PbSnap,now:int)->PbLife #export_c #effects(all) {l:=life;l.published=now;l.sent=snap;return l;}
 // When the next beacon is due: 0 for at once, -1 for never (offline and
 // already said so), -2 for a refresh outside 60..240. A change goes out no
 // sooner than 10 s after the last; an unchanged online or draining beacon
 // every refresh seconds.
-pb_next :: (life:PbLife,now:PbSnap,refresh:int)->int #export_c {
+pb_next :: (life:PbLife,now:PbSnap,refresh:int)->int #export_c #effects(all) {
     if life.published==-1 {return 0;}
     s:=life.sent;
     if now.status!=s.status || now.generation!=s.generation || now.free!=s.free || now.services!=s.services {return life.published+PB_SPACING;}
@@ -596,8 +596,8 @@ pb_next :: (life:PbLife,now:PbSnap,refresh:int)->int #export_c {
     if refresh<PB_REFRESH_MIN || refresh>PB_REFRESH_MAX {return -2;}
     return life.published+refresh;
 }
-pb_due :: (life:PbLife,now:PbSnap,refresh:int,clock:int)->bool #export_c {next:=pb_next(life,now,refresh);return next>=0 && clock>=next;}
+pb_due :: (life:PbLife,now:PbSnap,refresh:int,clock:int)->bool #export_c #effects(all) {next:=pb_next(life,now,refresh);return next>=0 && clock>=next;}
 // observed_at+ttl for a ttl of 1 to 300 seconds; -1 otherwise.
-pb_valid_until :: (observed_at:int,ttl:int)->int #export_c {
+pb_valid_until :: (observed_at:int,ttl:int)->int #export_c #effects(all) {
     if ttl<1 || ttl>PB_WINDOW {return -1;}return observed_at+ttl;
 }

@@ -30,19 +30,19 @@
     #assert e.error==NC_OK && !mo_authenticate(keys[..],cast(string)encoded[0..<e.written],plain[0..<0]);
 }
 
-mo_keys :: (conversation:[]u8,payload:string,out:[]u8)->bool #export_c {
+mo_keys :: (conversation:[]u8,payload:string,out:[]u8)->bool #export_c #effects(all) {
     raw:[98304]u8;r:=base64_decode_checked(payload,raw[..],false);
     if r.error!=NC_OK || r.written<99 || raw[0]!=2 {return false;}
     return nip44_message_keys_checked(conversation,raw[1..<33],out,false)==NIP44_OK;
 }
 // Only COMPAT payloads up to65535 plaintext bytes. Output never escapes;
 // the supplied private plaintext is compared only after MAC and padding.
-mo_authenticate :: (keys:[]u8,payload:string,plaintext:[]u8)->bool #export_c {
+mo_authenticate :: (keys:[]u8,payload:string,plaintext:[]u8)->bool #export_c #effects(all) {
     padded:[65538]u8;return mo_authenticate_work(keys,payload,plaintext,padded[..]);
 }
 // Internal helper: caller scratch must be exclusively owned and disjoint from
 // keys, payload and expected plaintext. Public wrapper supplies fresh storage.
-mo_authenticate_work :: (keys:[]u8,payload:string,plaintext:[]u8,padded:[]u8)->bool {
+mo_authenticate_work :: (keys:[]u8,payload:string,plaintext:[]u8,padded:[]u8)->bool #effects(all) {
     if keys.count!=76 {return false;}
     raw:[98304]u8;r:=base64_decode_checked(payload,raw[..],false);
     if r.error!=NC_OK || r.written<99 || raw[0]!=2 {return false;}

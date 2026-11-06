@@ -4,13 +4,13 @@
 #load "../../coax/lib/nostr/json.coax";
 #load "newland-targets.coax";
 #load "home-capacity.coax";
-home_clear :: (slot:int)->int #foreign;
-home_push :: (slot:int,byte:int)->int #foreign;
-home_output_size :: ()->int #foreign;
-home_output_byte :: (i:int)->int #foreign;
-home_copy_output :: (slot:int)->int #foreign;
-home_call :: (op:int,a:int,b:int,now:int)->int #foreign;
-home_wall :: ()->int #foreign;
+home_clear :: (slot:int)->int #foreign #effects(all);
+home_push :: (slot:int,byte:int)->int #foreign #effects(all);
+home_output_size :: ()->int #foreign #effects(all);
+home_output_byte :: (i:int)->int #foreign #effects(all);
+home_copy_output :: (slot:int)->int #foreign #effects(all);
+home_call :: (op:int,a:int,b:int,now:int)->int #foreign #effects(all);
+home_wall :: ()->int #foreign #effects(all);
 HOME_ROW :: 2048;
 HOME_KNOWN :: 32768;
 HOME_FEED_BYTES :: 131072;   // a frame's share of a project's kept events into its fold
@@ -349,11 +349,11 @@ hn_seed_known :: (s:[]LandState) {
     while true {t:=json_next(j[..]);if t==JSON_ARRAY_END {break;}if t!=JSON_STRING {break;}id:=json_text(j[..]);at:=s[0].known_n[k]*65;if id.count!=64 || at+65>HOME_KNOWN {break;}for i:0..<64 {s[0].known[k][at+i]=id[i];}s[0].known[k][at+64]=10;s[0].known_n[k]+=1;}
   }
 }
-coaxial_land_network_opened :: (s:[]LandState,role:int,id:int) #export_c {
+coaxial_land_network_opened :: (s:[]LandState,role:int,id:int) #export_c #effects(all) {
   n:=s[0].net[..];if role==0 {n[0].watch=ifx id<0 then 0 else id+1;if id<0 {n[0].watch_state=0;n[0].retry_watch=n[0].now+3;}}
   else {n[0].socket=ifx id<0 then 0 else id+1;if id<0 {hn_fail(s);}}
 }
-coaxial_land_network_tick :: (s:[]LandState) #export_c {
+coaxial_land_network_tick :: (s:[]LandState) #export_c #effects(all) {
   wall:=home_wall();if wall>0 {s[0].wall=wall;s[0].wall_age=s[0].data_age;}
   n:=s[0].net[..];n[0].now=s[0].data_age;if s[0].wall<=0 {return;}
   if !n[0].started {hn_seed_known(s);n[0].started=true;}
@@ -373,7 +373,7 @@ coaxial_land_network_tick :: (s:[]LandState) #export_c {
     if n[0].now>=n[0].due || n[0].dirty!=0 {if !hn_begin_project(s,k) {hn_fail(s);}}
   }
 }
-coaxial_land_network_message :: (s:[]LandState,kind:int,text:string) #export_c {
+coaxial_land_network_message :: (s:[]LandState,kind:int,text:string) #export_c #effects(all) {
   wall:=home_wall();if wall>0 {s[0].wall=wall;s[0].wall_age=s[0].data_age;}
   n:=s[0].net[..];n[0].now=s[0].data_age;
   if kind==768 {hn_stored(s,text);return;}if kind==769 {hn_persisted(s,text);return;}
@@ -409,4 +409,4 @@ coaxial_land_network_message :: (s:[]LandState,kind:int,text:string) #export_c {
 }
 
 // Read-only, generic host probe: project mask, watch bit and beacon/refresh counters.
-coaxial_land_network_probe :: (s:[]LandState)->int #export_c {n:=s[0].net[..];return n[0].ready | (ifx n[0].watch_state==2 then 64 else 0) | (ifx n[0].beacon_ended then 128 else 0) | (lo_int(s[0].beacons_received,255)<<8) | (lo_int(n[0].refreshes,255)<<16);}
+coaxial_land_network_probe :: (s:[]LandState)->int #export_c #effects(all) {n:=s[0].net[..];return n[0].ready | (ifx n[0].watch_state==2 then 64 else 0) | (ifx n[0].beacon_ended then 128 else 0) | (lo_int(s[0].beacons_received,255)<<8) | (lo_int(n[0].refreshes,255)<<16);}

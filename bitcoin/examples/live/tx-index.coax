@@ -2,4 +2,4 @@
 // tool.sh: run-steps 250000000
 #run_steps 250000000;
 #load "../../platform/index-file.coax";
-tool_main :: () -> int #export_c { return index_file_main(false); }
+tool_main :: () -> int #export_c #effects(all) { return index_file_main(false); }

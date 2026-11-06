@@ -9,6 +9,6 @@ FX_WORK :: 67108864;
   f=FxFunction.{count=1};f.program.count=1;f.program.output=0;f.program.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[1,0,0,0]},2);l=fx_layout(f);#assert fx_work_unit(l)==16 && fx_work_allowed(l,FX_WORK/16);
   f.program.nodes[0].input_base=39;l=fx_layout(f);#assert fx_work_unit(l)==53 && !fx_work_allowed(l,(FX_WORK+1)/53);
 }
-fx_requests :: (f:FxFunction)->int {return 1+f.count;}
-fx_work_unit :: (l:FxLayout)->int {return 8*l.tape.plan.work+(4*l.tape.program.count+8)*l.cells+l.domain+l.codomain;}
-fx_work_allowed :: (l:FxLayout,requests:int)->bool {return requests>0 && requests<=FX_WORK/fx_work_unit(l);}
+fx_requests :: (f:FxFunction)->int #effects(all) {return 1+f.count;}
+fx_work_unit :: (l:FxLayout)->int #effects(all) {return 8*l.tape.plan.work+(4*l.tape.program.count+8)*l.cells+l.domain+l.codomain;}
+fx_work_allowed :: (l:FxLayout,requests:int)->bool #effects(all) {return requests>0 && requests<=FX_WORK/fx_work_unit(l);}

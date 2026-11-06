@@ -245,7 +245,7 @@ mb_manifest :: (work:string)->bool {
  }
  jo_end(o[..]);jo_end(o[..]);return !o[0].bad&&metal_package_parse(jo_text(o[..]),p,base[0..<n]).status==RenderPackageStatus.ok&&fs_write(fs_join(render,"metal.json",paths[4][..]),jo_text(o[..]));
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<2 {tool_errln("usage: metal-build ROOT UNIT|shaders [--coax COMPILER] [--out DIRECTORY]");return 2;}
  root:=args_at(a[..],0);task:=args_at(a[..],1);paths:[2][4096]u8;work:=args_value(a[..],"--out",fs_join(root,"apps/aethyrforge-desktop/build/metal",paths[0][..]));
  compiler:=args_value(a[..],"--coax",fs_join(root,"coax/bin/coax",paths[1][..]));if !fs_mkdir(work) {return 1;}

@@ -170,8 +170,8 @@ WS_CLOSE_NO_STATUS :: 1005; WS_CLOSE_INVALID_DATA :: 1007; WS_CLOSE_TOO_BIG :: 1
   r := wx("a%81%ff%0a", b[..]);
   #assert r.count == 4 && r[0] == 'a' && r[1] == 129 && r[2] == 255 && r[3] == 10 && wx("", b[..]).count == 0;
 }
-wx_digit :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
-wx :: (spec: string, out: [] u8) -> string {
+wx_digit :: (c: u8) -> int #effects(all) { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+wx :: (spec: string, out: [] u8) -> string #effects(all) {
   n := 0; i := 0;
   while i < spec.count {
     if spec[i] == '%' { out[n] = cast(u8) (wx_digit(spec[i + 1]) * 16 + wx_digit(spec[i + 2])); i += 3; }
@@ -184,7 +184,7 @@ wx :: (spec: string, out: [] u8) -> string {
 // ---- handshake ------------------------------------------------------------
 
 // Standard base64 with padding; -1 when out is too small.
-ws_b64 :: (input: string, out: [] u8) -> int {
+ws_b64 :: (input: string, out: [] u8) -> int #effects(all) {
   needed := (input.count + 2) / 3 * 4;
   if out.count < needed { return -1; }
   at := 0; w := 0;
@@ -200,11 +200,11 @@ ws_b64 :: (input: string, out: [] u8) -> int {
   return needed;
 }
 // Sec-WebSocket-Key: base64 of 16 random bytes (from the entropy contract).
-ws_key :: (nonce: [] u8, out: [] u8) -> bool {
+ws_key :: (nonce: [] u8, out: [] u8) -> bool #effects(all) {
   return nonce.count == 16 && ws_b64(cast(string) nonce, out) == 24;
 }
 // The Sec-WebSocket-Accept value a server must return for key.
-ws_accept_of :: (key: string, out: [] u8) -> bool {
+ws_accept_of :: (key: string, out: [] u8) -> bool #effects(all) {
   if key.count < 1 || key.count > 64 || out.count < 28 { return false; }
   buf: [100] u8;
   for i: 0..<key.count { buf[i] = key[i]; }
@@ -214,13 +214,13 @@ ws_accept_of :: (key: string, out: [] u8) -> bool {
   return ok && ws_b64(cast(string) digest[..], out) == 28;
 }
 // A visible ASCII byte, space or tab: what a header value may hold.
-ws_header_char :: (c: u8) -> bool { return c == '\t' || (c >= ' ' && c < cast(u8) 127); }
-ws_put :: (out: [] u8, at: int, s: string) -> int {
+ws_header_char :: (c: u8) -> bool #effects(all) { return c == '\t' || (c >= ' ' && c < cast(u8) 127); }
+ws_put :: (out: [] u8, at: int, s: string) -> int #effects(all) {
   if at < 0 || at + s.count > out.count { return -1; }
   for i: 0..<s.count { out[at + i] = s[i]; }
   return at + s.count;
 }
-ws_digits :: (out: [] u8, at: int, v: int) -> int {
+ws_digits :: (out: [] u8, at: int, v: int) -> int #effects(all) {
   tmp: [8] u8; k := 0; x := v;
   while true {
     tmp[k] = cast(u8) ('0' + x % 10); x /= 10; k += 1;
@@ -233,7 +233,7 @@ ws_digits :: (out: [] u8, at: int, v: int) -> int {
 // The client's opening request into out; its length, or -1 when an input is
 // refused (empty or oversized host, a path not starting with "/", spaces,
 // controls or non-ASCII anywhere, port outside 1..65535) or out is too small.
-ws_request :: (host: string, port: int, path: string, key: string, out: [] u8) -> int {
+ws_request :: (host: string, port: int, path: string, key: string, out: [] u8) -> int #effects(all) {
   if host.count < 1 || host.count > WS_HOST_MAX || port < 1 || port > 65535 { return -1; }
   if path.count > WS_PATH_MAX || (path.count > 0 && path[0] != '/') || key.count < 1 { return -1; }
   for c: host { if c <= ' ' || c >= cast(u8) 127 { return -1; } }
@@ -248,20 +248,20 @@ ws_request :: (host: string, port: int, path: string, key: string, out: [] u8) -
   n = ws_put(out, n, key);
   return ws_put(out, n, "\r\nSec-WebSocket-Version: 13\r\n\r\n");
 }
-ws_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
-ws_ieq :: (a: string, b: string) -> bool {
+ws_lower :: (c: u8) -> u8 #effects(all) { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+ws_ieq :: (a: string, b: string) -> bool #effects(all) {
   if a.count != b.count { return false; }
   for i: 0..<a.count { if ws_lower(a[i]) != ws_lower(b[i]) { return false; } }
   return true;
 }
-ws_trim :: (s: string) -> string {
+ws_trim :: (s: string) -> string #effects(all) {
   from := 0; to := s.count;
   while from < to && (s[from] == ' ' || s[from] == '\t') { from += 1; }
   while to > from && (s[to - 1] == ' ' || s[to - 1] == '\t') { to -= 1; }
   return s[from..<to];
 }
 // A comma-separated header value holds token (case-insensitive).
-ws_has_token :: (value: string, token: string) -> bool {
+ws_has_token :: (value: string, token: string) -> bool #effects(all) {
   from := 0;
   for i: 0..<value.count + 1 {
     if i == value.count || value[i] == ',' {
@@ -271,9 +271,9 @@ ws_has_token :: (value: string, token: string) -> bool {
   }
   return false;
 }
-ws_starts :: (s: string, prefix: string) -> bool { return s.count >= prefix.count && s[0..<prefix.count] == prefix; }
+ws_starts :: (s: string, prefix: string) -> bool #effects(all) { return s.count >= prefix.count && s[0..<prefix.count] == prefix; }
 // The offset just past the first CRLFCRLF, or 0.
-ws_find_end :: (s: string) -> int {
+ws_find_end :: (s: string) -> int #effects(all) {
   i := 3;
   while i < s.count {
     if s[i - 3] == '\r' && s[i - 2] == '\n' && s[i - 1] == '\r' && s[i] == '\n' { return i + 1; }
@@ -283,7 +283,7 @@ ws_find_end :: (s: string) -> int {
 }
 // Admits the server's response head from the bytes read so far. consumed is
 // the head's length on WS_HELLO_OK: frames may follow in the same read.
-ws_response :: (bytes: string, key: string) -> WsHello #export_c {
+ws_response :: (bytes: string, key: string) -> WsHello #export_c #effects(all) {
   end := ws_find_end(bytes);
   if end == 0 {
     if bytes.count >= WS_HELLO_MAX { return WsHello.{status = WS_HELLO_TOO_BIG}; }
@@ -420,11 +420,11 @@ ws_response :: (bytes: string, key: string) -> WsHello #export_c {
   #assert ws_frame_read(wx("%82%00", xp[3072..<3328]), -1).status == WS_FRAME_OK && ws_frame_read(wx("%82%01x", xp[3328..<3584]), 0).status == WS_FRAME_TOO_BIG;
 }
 
-ws_op_ok :: (op: int) -> bool { return (op >= 0 && op <= 2) || (op >= 8 && op <= 10); }
+ws_op_ok :: (op: int) -> bool #effects(all) { return (op >= 0 && op <= 2) || (op >= 8 && op <= 10); }
 // One masked client frame into out; its length, or -1 when the opcode is
 // unknown, a control frame is fragmented or over 125 bytes, the mask is not
 // four bytes, or out is too small.
-ws_frame_write :: (op: int, fin: bool, payload: string, mask: [] u8, out: [] u8) -> int {
+ws_frame_write :: (op: int, fin: bool, payload: string, mask: [] u8, out: [] u8) -> int #effects(all) {
   if !ws_op_ok(op) || mask.count != 4 { return -1; }
   if op >= 8 && (!fin || payload.count > 125) { return -1; }
   n := payload.count;
@@ -449,7 +449,7 @@ ws_frame_write :: (op: int, fin: bool, payload: string, mask: [] u8, out: [] u8)
 // WS_FRAME_OK the payload is bytes[header..<total] (servers do not mask).
 // WS_FRAME_MORE means wait for more bytes (header and length tell how many
 // once the length is known). limit caps one frame's payload.
-ws_frame_read :: (bytes: string, limit: int) -> WsFrame {
+ws_frame_read :: (bytes: string, limit: int) -> WsFrame #effects(all) {
   f: WsFrame; f.status = WS_FRAME_MORE;
   if bytes.count < 2 { return f; }
   b0 := cast(int) bytes[0]; b1 := cast(int) bytes[1];
@@ -548,7 +548,7 @@ ws_frame_read :: (bytes: string, limit: int) -> WsFrame {
 }
 
 // RFC 3629 UTF-8 with no overlongs, surrogates or values above U+10FFFF.
-ws_utf8 :: (s: string) -> bool {
+ws_utf8 :: (s: string) -> bool #effects(all) {
   i := 0;
   while i < s.count {
     c := s[i]; need: int = ---; low: u8 = 0x80; high: u8 = 0xbf;
@@ -571,26 +571,26 @@ ws_utf8 :: (s: string) -> bool {
   return true;
 }
 // Codes a peer may send in a close frame (RFC 6455 section 7.4).
-ws_close_code_ok :: (code: int) -> bool {
+ws_close_code_ok :: (code: int) -> bool #effects(all) {
   if code >= 3000 && code <= 4999 { return true; }
   return (code >= 1000 && code <= 1003) || (code >= 1007 && code <= 1011);
 }
 // The code in a received close payload, WS_CLOSE_NO_STATUS when it has none,
 // or -1 when the payload is malformed (one byte, a bad code, a non-UTF-8 reason).
-ws_close_code :: (payload: string) -> int {
+ws_close_code :: (payload: string) -> int #effects(all) {
   if payload.count == 0 { return WS_CLOSE_NO_STATUS; }
   if payload.count == 1 { return -1; }
   code := (cast(int) payload[0] << 8) | cast(int) payload[1];
   if !ws_close_code_ok(code) || !ws_utf8(payload[2..<payload.count]) { return -1; }
   return code;
 }
-ws_close_write :: (code: int, mask: [] u8, out: [] u8) -> int {
+ws_close_write :: (code: int, mask: [] u8, out: [] u8) -> int #effects(all) {
   if !ws_close_code_ok(code) { return -1; }
   body := [2] u8.[cast,trunc(u8) (code >> 8), cast,trunc(u8) code];
   return ws_frame_write(WS_OP_CLOSE, true, cast(string) body[..], mask, out);
 }
 // The close code to send for a refused frame or message, 0 for none.
-ws_error_code :: (event: int) -> int {
+ws_error_code :: (event: int) -> int #effects(all) {
   if event == WS_EV_UTF8 { return WS_CLOSE_INVALID_DATA; }
   if event == WS_EV_TOO_BIG { return WS_CLOSE_TOO_BIG; }
   if event >= WS_EV_CONTINUATION { return WS_CLOSE_PROTOCOL; }
@@ -599,7 +599,7 @@ ws_error_code :: (event: int) -> int {
 // Feeds one admitted frame and its payload. Data frames collect into msg
 // (WS_EV_MESSAGE when the final fragment lands: r[0].op and r[0].used say
 // what it is); control frames pass through between fragments untouched.
-ws_take :: (r: [] WsReader, f: WsFrame, payload: string, msg: [] u8) -> int {
+ws_take :: (r: [] WsReader, f: WsFrame, payload: string, msg: [] u8) -> int #effects(all) {
   if f.op == WS_OP_PING { return WS_EV_PING; }
   if f.op == WS_OP_PONG { return WS_EV_PONG; }
   if f.op == WS_OP_CLOSE { return ifx ws_close_code(payload) == -1 then WS_EV_BAD_CLOSE else WS_EV_CLOSE; }

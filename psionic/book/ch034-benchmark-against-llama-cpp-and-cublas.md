@@ -94,7 +94,7 @@ The two methods share their admission rule: 5 to 1,024 runs, each positive.
 <!-- source: psionic/lib/comparator.coax admit -->
 ```jai
 // The checks both methods share: 5 to 1,024 runs, each a positive time.
-cm_admit :: (x:[]int)->CmStats {
+cm_admit :: (x:[]int)->CmStats #effects(all) {
     st:=CmStats.{n=x.count};
     if x.count<CM_RUNS_MIN {st.status=CmStatus.few;return st;}
     if x.count>CM_RUNS_MAX {st.status=CmStatus.capacity;return st;}
@@ -109,7 +109,7 @@ distances from it.
 <!-- source: psionic/lib/comparator.coax two-pass -->
 ```jai
 // First pass: the mean. Second pass: squared distances from it.
-cm_two_pass :: (x:[]int)->CmStats #export_c {
+cm_two_pass :: (x:[]int)->CmStats #export_c #effects(all) {
     st:=cm_admit(x);
     if st.status!=CmStatus.ok {return st;}
     sum:=0.0;
@@ -130,7 +130,7 @@ holds their mean and `m2`, their summed squared distances from that mean.
 // One pass: after k runs, mean is their mean and m2 their summed squared
 // distances from it. Run k+1 moves the mean by d / (k + 1) and adds
 // d * (x - new mean) to m2, where d = x - old mean.
-cm_welford :: (x:[]int)->CmStats #export_c {
+cm_welford :: (x:[]int)->CmStats #export_c #effects(all) {
     st:=cm_admit(x);
     if st.status!=CmStatus.ok {return st;}
     mean:=0.0;m2:=0.0;k:=0;
@@ -172,7 +172,7 @@ five such runs.
 
 <!-- source: psionic/lib/comparator.coax compare -->
 ```jai
-cm_same_work :: (a:CmWork,b:CmWork)->CmReason {
+cm_same_work :: (a:CmWork,b:CmWork)->CmReason #effects(all) {
     if a.file!=b.file {return CmReason.file;}
     known:=a.weights!=CmFormat.unknown && a.activations!=CmFormat.unknown && a.accumulate!=CmFormat.unknown;
     if !known || a.weights!=b.weights || a.activations!=b.activations || a.accumulate!=b.accumulate {return CmReason.format;}
@@ -181,7 +181,7 @@ cm_same_work :: (a:CmWork,b:CmWork)->CmReason {
 }
 // Side a against side b. The mean of each side is in nanoseconds, so lower
 // is faster.
-cm_compare :: (a:CmSide,sa:CmStats,b:CmSide,sb:CmStats)->CmCall #export_c {
+cm_compare :: (a:CmSide,sa:CmStats,b:CmSide,sb:CmStats)->CmCall #export_c #effects(all) {
     call:=CmCall.{verdict=CmVerdict.refused};
     if a.engine==0 || a.build==0 || a.machine==0 || b.engine==0 || b.build==0 || b.machine==0 {call.reason=CmReason.unbound;return call;}
     if a.machine!=b.machine {call.reason=CmReason.machine;return call;}

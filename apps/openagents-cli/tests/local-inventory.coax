@@ -2,4 +2,4 @@
 #import "Basic";
 #load "../../../coax/lib/sys/openagents-paths.coax";
 #load "../../../coax/lib/agent/local-agents-host.coax";
-tool_main :: () -> int #export_c { return la_command(true); }
+tool_main :: () -> int #export_c #effects(all) { return la_command(true); }

@@ -85,7 +85,7 @@ cf_input_json :: (o:[]Jo,path:string,format:string,bytes:int,hash:string) {
   jo_obj(o);jo_key(o,"path");jo_str(o,path);jo_key(o,"format");jo_str(o,format);
   jo_key(o,"bytes");jo_int(o,bytes);jo_key(o,"sha256");jo_str(o,hash);jo_end(o);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) {tool_errln("comparison: arguments exceed the bound");return 2;}
   width:=args_whole(args_value(args[..],"--width",""));height:=args_whole(args_value(args[..],"--height",""));
   format_text:=args_value(args[..],"--gpu-format","");format:=cf_format(format_text);

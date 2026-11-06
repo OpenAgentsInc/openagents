@@ -131,7 +131,7 @@ half decoder makes that leading bit explicit:
 
 <!-- source: psionic/lib/tensor-device-kernels.coax decode -->
 ```jai
-tdk_decode_bits :: (word:u32,dtype:int)->u32 {
+tdk_decode_bits :: (word:u32,dtype:int)->u32 #effects(all) {
     if dtype==0 {return word;}if dtype==2 {return word<<16;}
     sign:=(word&0x8000)<<16;exponent:=int((word>>10)&31);fraction:=word&1023;
     if exponent==31 {return sign|0x7f800000|(fraction<<13);}
@@ -170,7 +170,7 @@ The teaching generator is Counter32-v1:
 
 <!-- source: psionic/lib/tensor-device-kernels.coax rng -->
 ```jai
-tdk_word :: (seed:u32,stream:u32,counter:u32)->u32 {
+tdk_word :: (seed:u32,stream:u32,counter:u32)->u32 #effects(all) {
     x:=add_wrap(seed,mul_wrap(0x9e3779b9,add_wrap(counter,1)));x^=mul_wrap(stream,0x85ebca6b);
     x^=x>>16;x=mul_wrap(x,0x7feb352d);x^=x>>15;x=mul_wrap(x,0x846ca68b);x^=x>>16;return x;
 }
@@ -222,7 +222,7 @@ The shared program is:
 
 <!-- source: psionic/lib/tensor-device-kernels.coax program -->
 ```jai
-tdk_program :: (item:int,ad:int,bd:int,od:int,seed:u32,stream:u32,first:int,keep:int,training:int,meta:[]int,a:[]u8,b:[]u8,out:[]u8,flags:[]u8) #export_c {
+tdk_program :: (item:int,ad:int,bd:int,od:int,seed:u32,stream:u32,first:int,keep:int,training:int,meta:[]int,a:[]u8,b:[]u8,out:[]u8,flags:[]u8) #export_c #effects(all) {
     ab:=tdk_decode_bits(tdk_get(a,tdk_address(item,meta,false),ad),ad);bb:=tdk_decode_bits(tdk_get(b,tdk_address(item,meta,true),bd),bd);flags[item]=0;
     if !tdk_finite(ab) || !tdk_finite(bb) {flags[item]=1;return;}
     sum:=f32_from_bits(ab)+f32_from_bits(bb);if !tdk_finite(f32_bits(sum)) {flags[item]=2;return;}

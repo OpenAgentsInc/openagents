@@ -1,4 +1,4 @@
 // Actual ordinary host at held/cut physical pack boundaries.
 #authority;
 #test "pending stream retirement and cut pack never publish an asset prefix" {held:=[13]int.[1,1,1,0,1,0,0,1,0,0,1,8388608,1];cut:=[13]int.[1,0,0,0,0,0,4,4,0,1,0,1,8388608];#assert hphr_accept(held[..],false)&&hphr_accept(cut[..],true);for i:0..<13{held[i]+=1;cut[i]+=1;#assert !hphr_accept(held[..],false)&&!hphr_accept(cut[..],true);held[i]-=1;cut[i]-=1;}#assert !hphr_accept(held[0..<12],false);}
-hphr_accept :: (v:[]int,cut:bool)->bool #export_c {if v.count!=13{return false;}held:=[13]int.[1,1,1,0,1,0,0,1,0,0,1,8388608,1];failed:=[13]int.[1,0,0,0,0,0,4,4,0,1,0,1,8388608];for i:0..<13{if v[i]!=(ifx cut then failed[i] else held[i]){return false;}}return true;}
+hphr_accept :: (v:[]int,cut:bool)->bool #export_c #effects(all) {if v.count!=13{return false;}held:=[13]int.[1,1,1,0,1,0,0,1,0,0,1,8388608,1];failed:=[13]int.[1,0,0,0,0,0,4,4,0,1,0,1,8388608];for i:0..<13{if v[i]!=(ifx cut then failed[i] else held[i]){return false;}}return true;}

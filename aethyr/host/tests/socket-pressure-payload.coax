@@ -6,7 +6,7 @@
  #assert hsp_payload(999999,out[..])&&cast(string)out[0..<6]=="999999";
  for i:0..<128 {out[i]=17;}#assert !hsp_payload(-1,out[..])&&!hsp_payload(1000000,out[..])&&!hsp_payload(0,out[0..<127]);for byte:out {#assert byte==17;}
 }
-hsp_payload :: (index:int,out:[]u8)->bool #export_c {
+hsp_payload :: (index:int,out:[]u8)->bool #export_c #effects(all) {
  if index<0||index>999999||out.count<128 {return false;}value:=index;
  for i:0..<6 {out[5-i]=u8('0'+value%10);value/=10;}for i:6..<128 {out[i]='x';}return true;
 }

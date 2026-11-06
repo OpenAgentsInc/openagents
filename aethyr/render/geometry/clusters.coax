@@ -59,7 +59,7 @@ Clusters :: struct {leaf:[CLUSTER_LEAVES]ClusterLeaf;count:int;vertices:int;tria
   #assert !clusters_build(c[..],p[..],i[..],512) && c[0].triangles==512*124;
 }
 
-clusters_build :: (out:[]Clusters,p:[]Point,indices:[]u32,capacity:int)->bool {
+clusters_build :: (out:[]Clusters,p:[]Point,indices:[]u32,capacity:int)->bool #effects(all) {
   if capacity<1 || capacity>CLUSTER_LEAVES || p.count==0 || indices.count==0 || indices.count%3!=0 {return false;}
   for v:p {if !finite3(v) {return false;}}
   for v:indices {if cast(int)v>=p.count {return false;}}

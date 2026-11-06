@@ -20,7 +20,7 @@
 # prints its time when it ends, and the run ends with the units that failed.
 set -uo pipefail
 cd "$(dirname "$0")/.."
-COAX=bin/coax
+COAX="${COAX:-bin/coax}"
 # Units compare stderr between runs, so no build-worker notice
 # (src/jobs.cpp) may depend on what else runs on the machine. None does:
 # the notices go only to a terminal, so the suite runs as a unit run by hand

@@ -36,20 +36,20 @@
 
 }
 
-oi_push :: (p:[]OiProgram,node:TpNode)->int {
+oi_push :: (p:[]OiProgram,node:TpNode)->int #effects(all) {
   if p[0].status!=OsStatus.ok {return -1;}
   n:=tp_push(p[0].nodes[..],p[0].count,node);if n== -1 {p[0].status=OsStatus.capacity;return -1;}p[0].count=n;return n-1;
 }
-oi_binary :: (p:[]OiProgram,op:TpOp,a:int,b:int)->int {return oi_push(p,tp_b(op,a,b));}
-oi_rhs :: (p:[]OiProgram,s:OiPair,u:int)->OiPair {
+oi_binary :: (p:[]OiProgram,op:TpOp,a:int,b:int)->int #effects(all) {return oi_push(p,tp_b(op,a,b));}
+oi_rhs :: (p:[]OiProgram,s:OiPair,u:int)->OiPair #effects(all) {
   cv:=oi_binary(p,TpOp.mul,1,s.v);kq:=oi_binary(p,TpOp.mul,0,s.q);left:=oi_binary(p,TpOp.sub,u,cv);return OiPair.{q=s.v,v=oi_binary(p,TpOp.sub,left,kq)};
 }
-oi_shift :: (p:[]OiProgram,s:OiPair,k:OiPair,h:int)->OiPair {
+oi_shift :: (p:[]OiProgram,s:OiPair,k:OiPair,h:int)->OiPair #effects(all) {
   hq:=oi_binary(p,TpOp.mul,h,k.q);hv:=oi_binary(p,TpOp.mul,h,k.v);return OiPair.{q=oi_binary(p,TpOp.add,s.q,hq),v=oi_binary(p,TpOp.add,s.v,hv)};
 }
 // book:begin step
 // Node order exactly follows os_step, including its left-associated sums.
-oi_rk4 :: (p:[]OiProgram,s:OiPair,u:int,two:int,half:int,full:int,sixth:int)->OiPair {
+oi_rk4 :: (p:[]OiProgram,s:OiPair,u:int,two:int,half:int,full:int,sixth:int)->OiPair #effects(all) {
   a:=oi_rhs(p,s,u);b:=oi_rhs(p,oi_shift(p,s,a,half),u);c:=oi_rhs(p,oi_shift(p,s,b,half),u);
   d:=oi_rhs(p,oi_shift(p,s,c,full),u);
   bq:=oi_binary(p,TpOp.mul,two,b.q);cq:=oi_binary(p,TpOp.mul,two,c.q);
@@ -60,7 +60,7 @@ oi_rk4 :: (p:[]OiProgram,s:OiPair,u:int,two:int,half:int,full:int,sixth:int)->Oi
   return OiPair.{q=oi_binary(p,TpOp.add,s.q,dq),v=oi_binary(p,TpOp.add,s.v,dv)};
 }
 // book:end step
-oi_program :: (data:OiData)->OiProgram #export_c {
+oi_program :: (data:OiData)->OiProgram #export_c #effects(all) {
   admitted:=oi_data_ok(data);if admitted!=OsStatus.ok {return OiProgram.{status=admitted};}
   arena:[1]OiProgram;g:=arena[..];k_index:=oi_push(g,tp_p(0));c_index:=oi_push(g,tp_p(1));two:=oi_push(g,tp_c(2));half:=oi_push(g,tp_c(OS_DT/2));full:=oi_push(g,tp_c(OS_DT));sixth:=oi_push(g,tp_c(OS_DT/6));total:=oi_push(g,tp_c(0));
   for episode:0..<data.episodes {
@@ -73,13 +73,13 @@ oi_program :: (data:OiData)->OiProgram #export_c {
   }
   scale:=oi_push(g,tp_c(0.5/f64(g[0].observations)));output:=oi_binary(g,TpOp.mul,total,scale);return arena[0];
 }
-oi_program_ok :: (program:OiProgram)->bool #export_c {
+oi_program_ok :: (program:OiProgram)->bool #export_c #effects(all) {
   if program.status!=OsStatus.ok || program.count<1 || program.count>4096 || program.states<1 || program.states>72 || program.observations<1 || program.observations>program.states {return false;}
   for i:0..<program.states {if program.q_node[i]<0 || program.q_node[i]>=program.count || program.v_node[i]<0 || program.v_node[i]>=program.count {return false;}}
   nodes:=program.nodes;return tp_admit(nodes[0..<program.count],2)==TpStatus.ok;
 }
 // book:begin objective
-oi_value :: (program:OiProgram,spring:f64,damping:f64,gradient:bool)->OiValue #export_c {
+oi_value :: (program:OiProgram,spring:f64,damping:f64,gradient:bool)->OiValue #export_c #effects(all) {
   if !oi_program_ok(program) {return OiValue.{status=OsStatus.shape};}
   params:=[2]f64.[spring,damping];for x:params {if !os_finite(x) {return OiValue.{status=OsStatus.number};}}
   if spring<0.5 || spring>4 || damping<0.1 || damping>1 {return OiValue.{status=OsStatus.parameters};}

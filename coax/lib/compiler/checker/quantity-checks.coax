@@ -780,7 +780,7 @@
  for i:16..<state[0].type_count {if types[i].carrier!=0 && !nodes[types[i].decl].generic {#assert (types[i].carrier==6 || types[i].carrier==7) && nodes[types[types[i].unit].decl].quantity==1 && types[i].size==types[types[i].carrier].size && types[i].alignment==types[types[i].carrier].alignment;}}
  for i:1..<state[0].used+1 {if nodes[i].kind==CK_Tag.expr_binary {#assert types[nodes[i].type].carrier==0;}}
 }
-CK_quantity_fixture :: (c:CK_Context) {
+CK_quantity_fixture :: (c:CK_Context) #effects(all) {
   for i:0..<c.nodes.count {c.nodes[i]=CK_Node.{};}for j:0..<c.types.count {i:=c.types.count-1-j;c.types[i]=CK_Type.{};}
   c.state[0]=CK_State.{used=20,type_count=23};
   c.nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};c.nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="Metre",quantity=1,type=16,next=16,unit=Q_Unit.{length=1,numerator=1,denominator=1}};

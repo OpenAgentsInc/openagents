@@ -7,7 +7,7 @@
 #load "action-packet-conformance.coax";
 // Preserve SDK diagnostics as bytes using the existing qualification runner.
 proc_run_bytes :: (argv:[]string,env:[]string,timeout:int,out:[]u8,err:[]u8)->ProcRun{return rtq_run_raw(argv,env,timeout,out,err);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4{return 2;}root:=args_at(a[..],0);exe:=args_at(a[..],1);resources:=args_at(a[..],2);report:=args_at(a[..],3);dir:=fs_dir(exe);paths:[2][4096]u8;inputs:[1]RtqInputs;
  for file:[16]string.["MetalActionPacket","MetalRealm.o","MetalRender.o","MetalRender.c","MetalRender.h","RenderTexture.o","RenderTexture.c","RenderTexture.h","action-fixture.o","action-fixture.c","action-fixture.h","action-face.o","action-face-no-cap.o","libactionfixture.dylib","libactionfixture-no-cap.dylib","build-inputs.sha256"]{if !rtq_input_add(inputs[..],fs_join(dir,file,paths[0][..])){return 1;}}
  for file:[10]string.["apps/aethyrforge-desktop/MetalRealm.m","apps/aethyrforge-desktop/metal-host.h","apps/aethyrforge-desktop/metal-producer.h","apps/aethyrforge-desktop/metal-sockets.h","apps/aethyrforge-desktop/tests/MetalActionPacket.swift","aethyr/host/tests/fixture-face.c","aethyr/host/tests/action-fixture-face.c","aethyr/host/tests/action-missing-face.c","verse/native/render-images.c","verse/native/render-images.h"]{if !rtq_input_add(inputs[..],fs_join(root,file,paths[0][..])){return 1;}}

@@ -109,17 +109,17 @@ holds `V || tag || x || h`, so one HMAC call covers both lengths:
 <!-- source: coax/lib/crypto/ecdsa_sign.coax drbg -->
 ```jai
 // One HMAC-SHA256 under K over buf[0..<n], into out (never K itself).
-ec_hmac :: (w: [] EcdsaWork, n: int, out: [] u8) {
+ec_hmac :: (w: [] EcdsaWork, n: int, out: [] u8) #effects(all) {
   #assert hmac_sha256_checked(w[0].hk[..], w[0].buf[0..<n], out, false) == SHA_OK;
 }
 // V = HMAC_K(V).
-ec_next :: (w: [] EcdsaWork) {
+ec_next :: (w: [] EcdsaWork) #effects(all) {
   for i: 0..<32 { w[0].buf[i] = w[0].hv[i]; }
   ec_hmac(w, 32, w[0].hv[..]);
 }
 // K = HMAC_K(V || tag [|| key || h]), then V = HMAC_K(V). key and h are
 // already in buf[33..<97]; n is 33 without them and 97 with them.
-ec_step :: (w: [] EcdsaWork, tag: u8, n: int) {
+ec_step :: (w: [] EcdsaWork, tag: u8, n: int) #effects(all) {
   for i: 0..<32 { w[0].buf[i] = w[0].hv[i]; }
   w[0].buf[32] = tag;
   ec_hmac(w, n, w[0].t[..]);
@@ -137,8 +137,8 @@ is `ec_seed` with no extra data:
 // first two candidates for key and hash, into w.first and w.second.
 // bits2octets(h) is h mod n. data is empty or 32 bytes of extra data
 // (section 3.6). buf holds V || tag || key || h || data.
-ec_candidates :: (key: [] u8, hash: [] u8, w: [] EcdsaWork) { ec_seed(key, hash, hash[0..<0], w); }
-ec_seed :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork) {
+ec_candidates :: (key: [] u8, hash: [] u8, w: [] EcdsaWork) #effects(all) { ec_seed(key, hash, hash[0..<0], w); }
+ec_seed :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork) #effects(all) {
   z := sc_reduce_bytes(hash);                      // the message hash is public
   for i: 0..<32 { w[0].hv[i] = 1; w[0].hk[i] = 0; w[0].buf[33+i] = key[i]; }   // b, c: V = 01..01, K = 00..00
   #assert ss_write(z.value, w[0].buf[65..<97]);
@@ -172,7 +172,7 @@ second otherwise:
 ```jai
 // k = the first candidate in [1, n-1], chosen with a mask; valid is 0 when
 // neither is. ss_key loads a candidate without a branch (chapter 24).
-ec_pick :: (w: [] EcdsaWork) {
+ec_pick :: (w: [] EcdsaWork) #effects(all) {
   #assert ss_key(w[0].first[..], w[0].a[..], false) && ss_key(w[0].second[..], w[0].b[..], false);
   w[0].k = sc_select(w[0].a[0].valid, w[0].a[0].safe, w[0].b[0].safe);
   w[0].valid = w[0].a[0].valid | w[0].b[0].valid;
@@ -199,14 +199,14 @@ borrow means `2s >= n`. It computes `n - s` either way and selects:
 ```jai
 // 1 when s > (n-1)/2, else 0. For s < n, that holds exactly when 2s >= n,
 // so compute 2s in nine limbs, subtract n, and read the borrow.
-ec_high :: (s: ScScalar) -> u64 {
+ec_high :: (s: ScScalar) -> u64 #effects(all) {
   wide: [9] u32; carry: u32;
   for i: 0..<8 { wide[i] = (s.limbs[i] << 1) | carry; carry = s.limbs[i] >> 31; }
   wide[8] = carry;
   return sc_subtract_n(wide).borrow ^ 1;
 }
 // n - s when s is in the high half, selected on that bit.
-ec_low :: (s: ScScalar) -> ScScalar {
+ec_low :: (s: ScScalar) -> ScScalar #effects(all) {
   return sc_select(ec_high(s), sc_negate(s), s);
 }
 ```
@@ -224,7 +224,7 @@ example below is high.
 // 6979's nonce (with data as extra data when it isn't empty), into out:
 // r || s (32 bytes each, s in the low half), then the recovery ID when out
 // has 65 bytes. The caller checks the views.
-ec_sign :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork, out: [] u8) -> bool {
+ec_sign :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork, out: [] u8) -> bool #effects(all) {
   #assert ss_key(key, w[0].key[..], false);              // d, or 1 with valid = 0
   ec_seed(key, hash, data, w);
   ec_pick(w);                                            // k
@@ -246,7 +246,7 @@ ec_sign :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork, out: [] u8) -
 // The low-S ECDSA signature r || s (32 bytes each). Views are stable and
 // disjoint (overlap is the host's truthful observation). out is written
 // only when the result is true; the workspace is cleared either way.
-ecdsa_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c {
+ecdsa_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c #effects(all) {
   if !ec_views(key, hash, w, out, overlap, 64) { return false; }
   return ec_sign(key, hash, hash[0..<0], w, out);
 }
@@ -395,7 +395,7 @@ bit is set. It refuses `r` or `s` equal to 0 or at least `n`:
 ```jai
 // The DER encoding of a compact r || s, into out (72 bytes are always
 // enough); its length, or -1 when r or s is not in [1, n-1] or out is short.
-ecdsa_der :: (sig:[]u8,out:[]u8)->int #export_c {
+ecdsa_der :: (sig:[]u8,out:[]u8)->int #export_c #effects(all) {
   if sig.count!=64 || out.count<72 {return -1;}
   r:=sc_load(sig[0..<32]);s:=sc_load(sig[32..<64]);
   if sc_is_zero(r.value) || sc_is_zero(s.value) {return -1;}    // sc_load zeroes a value at least n

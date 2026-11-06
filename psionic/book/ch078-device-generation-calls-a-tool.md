@@ -52,7 +52,7 @@ reason.
 
 <!-- source: psionic/lib/device-tools.coax route -->
 ```jai
-dx_route :: (d:DxDevice)->DxRoute #export_c {
+dx_route :: (d:DxDevice)->DxRoute #export_c #effects(all) {
     if !d.present {return DxRoute.{why=DxWhy.device};}
     if !d.resident {return DxRoute.{why=DxWhy.resident};}
     if d.vocab<1 || d.vocab>DX_VOCAB || d.limit<0 {return DxRoute.{why=DxWhy.shape};}
@@ -76,7 +76,7 @@ builds the mask with `gt_mask`, and only then calls chapter 53's
 
 <!-- source: psionic/lib/device-tools.coax choose -->
 ```jai
-dx_choose :: (alternatives:[]string,prefix:string,pieces:[]string,logits:[]f32,mask:[]u8,stage:[]u8,options:GSampling,state:GGeneration,cancel:bool,probabilities:[]f64,work:GSampleWork)->GEmission #export_c {
+dx_choose :: (alternatives:[]string,prefix:string,pieces:[]string,logits:[]f32,mask:[]u8,stage:[]u8,options:GSampling,state:GGeneration,cancel:bool,probabilities:[]f64,work:GSampleWork)->GEmission #export_c #effects(all) {
     if logits.count!=pieces.count {return GEmission.{status=GStatus.capacity};}
     masked:=gt_mask(alternatives,prefix,pieces,mask,stage,false);if masked.status!=GStatus.ok {return GEmission.{status=masked.status};}
     return gg_emit(logits,mask[0..<logits.count],options,state,cancel,probabilities,work,false);
@@ -111,7 +111,7 @@ the declared values.
 
 <!-- source: psionic/lib/device-tools.coax grant -->
 ```jai
-dx_grant :: (tools:[]GTool,granted:[]bool,record:HmRecord,bytes:string)->DxGrant #export_c {
+dx_grant :: (tools:[]GTool,granted:[]bool,record:HmRecord,bytes:string)->DxGrant #export_c #effects(all) {
     if tools.count<1 || tools.count>DX_TOOLS_MAX || granted.count!=tools.count {return DxGrant.{why=DxWhy.shape};}
     if !gt_interval(record.recipient_begin,record.recipient_end,bytes.count) {return DxGrant.{why=DxWhy.call,status=GStatus.capacity};}
     name:=bytes[record.recipient_begin..<record.recipient_end];
@@ -136,7 +136,7 @@ be released (`release`).
 
 <!-- source: psionic/lib/device-tools.coax next -->
 ```jai
-dx_next :: (phase:DxPhase,event:DxEvent)->DxStep #export_c {
+dx_next :: (phase:DxPhase,event:DxEvent)->DxStep #export_c #effects(all) {
     live:=phase!=DxPhase.idle && phase!=DxPhase.done && phase!=DxPhase.cancelled && phase!=DxPhase.refused;
     if event==DxEvent.cancel && live {return DxStep.{phase=DxPhase.cancelled,release=true};}
     if event==DxEvent.release && phase!=DxPhase.idle && !live {return DxStep.{phase=DxPhase.idle};}
@@ -173,7 +173,7 @@ device prefill or step, and each needs exactly one transfer:
 
 <!-- source: psionic/lib/device-tools.coax audit -->
 ```jai
-dx_audit :: (r:DxReceipt,route:DxRoute)->DxWhy #export_c {
+dx_audit :: (r:DxReceipt,route:DxRoute)->DxWhy #export_c #effects(all) {
     if route.why!=DxWhy.none {return route.why;}
     if r.prefills<0 || r.steps<0 || r.masked<0 || r.transferred<0 {return DxWhy.shape;}
     if r.masked>r.prefills+r.steps {return DxWhy.state;}

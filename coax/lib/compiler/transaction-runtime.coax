@@ -1,0 +1,59 @@
+// Undo-log byte copies and scope decisions, shared by the evaluator and the
+// emitted C runtime. The native envelope owns allocation and valid disjoint
+// source/backup spans; it never decides whether a return commits or rolls back.
+#authority;
+
+#forall "only an escaping err or none rolls a transaction back" kind: 0..<3, tag: 0..<2, returning: bool {
+  #assert TX_abort(kind, cast(u32) tag, returning) == (returning && ((kind == 1 && tag == 1) || (kind == 2 && tag == 0)));
+}
+#test "transaction byte extents are exact or refuse before multiplication" {
+  #assert TX_bytes(0, 4) == 0 && TX_bytes(3, 4) == 12;
+  #assert TX_bytes(-1, 4) == -1 && TX_bytes(1, 0) == -1 && TX_bytes(1, -1) == -1;
+  #assert TX_bytes(9223372036854775807, 1) == 9223372036854775807;
+  #assert TX_bytes(4611686018427387903, 2) == 9223372036854775806;
+  #assert TX_bytes(4611686018427387904, 2) == -1;
+  #assert TX_effects() == 56;
+}
+#forall "undo-log copies restore every byte and preserve spare storage" n: 0..<9 {
+  original: [8] u8; backup: [9] u8;
+  for i: 0..<8 { original[i] = cast(u8) (i * 17 + 3); backup[i] = 99; }
+  backup[8] = 77;
+  #assert TX_copy(original[0..<n], backup[0..<n]);
+  for i: 0..<n { #assert backup[i] == cast(u8) (i * 17 + 3); original[i] = 0; }
+  for i: n..<8 { #assert backup[i] == 99; }
+  #assert TX_copy(backup[0..<n], original[0..<n]);
+  for i: 0..<8 { #assert original[i] == cast(u8) (i * 17 + 3); }
+  #assert backup[8] == 77;
+  if n > 0 { #assert !TX_copy(original[0..<n], backup[0..<n - 1]) && backup[8] == 77; }
+}
+#forall "a containing before-image covers only its exact unsigned interval" start:0..<4, width:0..<5, inner:0..<9, count:0..<5 {
+  expected:=inner>=start && inner+count<=start+width;
+  #assert TX_covers(cast(u64)start,width,cast(u64)inner,count)==expected;
+}
+#test "undo extents and traversal bounds refuse malformed or excessive requests" {
+  #assert !TX_covers(0,-1,0,0) && !TX_covers(0,1,0,-1);
+  #assert TX_covers(18446744073709551614,1,18446744073709551615,0);
+  #assert !TX_covers(18446744073709551614,1,18446744073709551615,1);
+  #assert !TX_depth(-1) && TX_depth(0) && TX_depth(255) && TX_depth(256) && !TX_depth(257);
+}
+TX_covers :: (outer:u64,bytes:int,inner:u64,count:int)->bool #export_c #effects(traps) {
+  if bytes<0 || count<0 || inner<outer {return false;}
+  delta:=inner-outer;
+  return delta<=cast(u64)bytes && cast(u64)count<=cast(u64)bytes-delta;
+}
+TX_depth :: (depth:int)->bool #export_c #effects(computes) {return depth>=0 && depth<=256;}
+
+TX_abort :: (kind: int, tag: u32, returning: bool) -> bool #export_c #effects(all) {
+  return returning && ((kind == 1 && tag == 1) || (kind == 2 && tag == 0));
+}
+TX_bytes :: (count: int, width: int) -> int #export_c #effects(all) {
+  if count < 0 || width <= 0 { return -1; }
+  if count > 9223372036854775807 / width { return -1; }
+  return count * width;
+}
+TX_effects :: () -> u32 #export_c #effects(all) { return 56; } // reads, writes, traps
+TX_copy :: (from: [] const u8, to: [] u8) -> bool #export_c #effects(all) {
+  if from.count != to.count { return false; }
+  for i: 0..<from.count { to[i] = from[i]; }
+  return true;
+}

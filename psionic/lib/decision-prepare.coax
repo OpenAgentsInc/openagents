@@ -19,7 +19,7 @@ PrResult :: struct {status:PrStatus;cause:int;written:int;prefix:int;slots:int;k
     #assert ps_prepare(table[..],state,q,options[..],out[..],w,true).status==PrStatus.alias;
     #assert ps_prepare(table[..],state,q,options[0..<0],out[..],w,true).status==PrStatus.render;
 }
-ps_prepare :: (table:[]u8,state:PtEntry,question:PtQuestion,options:[]PtOption,out:[]int,work:PrWorkspace,overlap:bool)->PrResult #export_c {
+ps_prepare :: (table:[]u8,state:PtEntry,question:PtQuestion,options:[]PtOption,out:[]int,work:PrWorkspace,overlap:bool)->PrResult #export_c #effects(all) {
     if !pt_question_count(cast(u8)question.kind,options.count) {return PrResult.{status=PrStatus.render,cause=cast(int)PtStatus.range};}
     if overlap {return PrResult.{status=PrStatus.alias};}
     rendered:=pt_render_checked(state,question,options,work.prompt,work.render_work,false);

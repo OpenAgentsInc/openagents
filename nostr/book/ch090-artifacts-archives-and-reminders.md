@@ -72,7 +72,7 @@ envelope or grant access.
 
 <!-- source: coax/lib/nostr/nipar.coax read -->
 ```jai
-ar_envelope :: (e:NostrEvent)->ArEnvelope {
+ar_envelope :: (e:NostrEvent)->ArEnvelope #effects(all) {
   r:ArEnvelope;seen:[8]int;k:=0;others:=false;
   while true {
     t:=g29_tag(e,k);
@@ -126,7 +126,7 @@ acknowledgement never sees a false conflict.
 
 <!-- source: coax/lib/nostr/nipar.coax submit -->
 ```jai
-ar_submit :: (arts:[]ArArtifact,n:[]int,e:NostrEvent,writable:[]ArText)->ArResult {
+ar_submit :: (arts:[]ArArtifact,n:[]int,e:NostrEvent,writable:[]ArText)->ArResult #effects(all) {
   if e.error!=NE_OK || !e.verified {return ar_result(AR_EVENT,-1);}
   if e.kind!=AR_KIND_ARTIFACT {return ar_result(AR_KIND,-1);}
   env:=ar_envelope(e);
@@ -180,11 +180,11 @@ keeps the artifact's `root`.
 <!-- source: coax/lib/nostr/nipar.coax access -->
 ```jai
 // In current-state queries: not deleted, and the reader can read its home.
-ar_current :: (a:ArArtifact,readable:[]ArText)->bool {return !a.deleted && ar_can(readable,a.h);}
+ar_current :: (a:ArArtifact,readable:[]ArText)->bool #effects(all) {return !a.deleted && ar_can(readable,a.h);}
 // A lookup by d: the current revision, a deletion included.
-ar_lookup :: (a:ArArtifact,readable:[]ArText)->bool {return ar_can(readable,a.h);}
+ar_lookup :: (a:ArArtifact,readable:[]ArText)->bool #effects(all) {return ar_can(readable,a.h);}
 // The k'th accepted revision, under the access of the channel it was in.
-ar_revision_visible :: (a:ArArtifact,k:int,readable:[]ArText)->bool {return k>=0 && k<a.ids_n && ar_can(readable,a.homes[k]);}
+ar_revision_visible :: (a:ArArtifact,k:int,readable:[]ArText)->bool #effects(all) {return k>=0 && k<a.ids_n && ar_can(readable,a.homes[k]);}
 ```
 
 Every read needs read permission in the channel the revision belongs to.
@@ -234,7 +234,7 @@ Anything else is `IA_DENIED`.
 // A request at the relay's clock now: its form, freshness, and the consent
 // path. admins is the relay's admin policy; banned says the target is barred
 // by access control; profile holds the target's latest kind 0, if any.
-ia_decide :: (e:NostrEvent,now:int,admins:[][32]u8,banned:bool,profile:[]NostrEvent)->IaRequest {
+ia_decide :: (e:NostrEvent,now:int,admins:[][32]u8,banned:bool,profile:[]NostrEvent)->IaRequest #effects(all) {
   r:=ia_read(e);
   if r.status!=IA_OK {return r;}
   if e.created_at<now-IA_FRESH || e.created_at>now+IA_FRESH {return ia_fail(r,IA_STALE);}
@@ -288,7 +288,7 @@ reason to refuse.
 <!-- source: coax/lib/nostr/niper.coax number -->
 ```jai
 // A decimal Unix time: its value, or -1.
-er_number :: (s:N32Text)->int {
+er_number :: (s:N32Text)->int #effects(all) {
   c:=s;if c.n==0 || (c.b[0]=='0' && c.n>1) {return -1;}
   v:=0;
   for i:0..<c.n {
@@ -310,20 +310,20 @@ status, so it decides only by this order.
 
 <!-- source: coax/lib/nostr/niper.coax store -->
 ```jai
-er_same :: (a:ErReminder,b:ErReminder)->bool {x:=b;return ns_equal32(a.author,b.author) && n32_is(a.d,cast(string)x.d.b[0..<x.d.n]);}
-er_lower :: (a:[32]u8,b:[32]u8)->bool {
+er_same :: (a:ErReminder,b:ErReminder)->bool #effects(all) {x:=b;return ns_equal32(a.author,b.author) && n32_is(a.d,cast(string)x.d.b[0..<x.d.n]);}
+er_lower :: (a:[32]u8,b:[32]u8)->bool #effects(all) {
   for i:0..<32 {if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}}
   return false;
 }
 // Does a replace b at the same address? Later created_at, then lower id.
-er_wins :: (a:ErReminder,b:ErReminder)->bool {
+er_wins :: (a:ErReminder,b:ErReminder)->bool #effects(all) {
   if a.created_at>b.created_at {return true;}
   if a.created_at<b.created_at {return false;}
   return er_lower(a.id,b.id);
 }
 // The relay keeps one head per address: ER_OK when r is stored (new, or it
 // replaced the head), ER_OLDER when the head stays.
-er_store :: (heads:[]ErReminder,n:[]int,r:ErReminder)->int {
+er_store :: (heads:[]ErReminder,n:[]int,r:ErReminder)->int #effects(all) {
   if r.status!=ER_OK {return r.status;}
   for i:0..<n[0] {
     if !er_same(heads[i],r) {continue;}
@@ -361,7 +361,7 @@ notifies, even if a faulty client left `not_before` on it.
 <!-- source: coax/lib/nostr/niper.coax fire -->
 ```jai
 // The client's local check for the head r with plaintext c at its clock.
-er_fire :: (r:ErReminder,c:ErContent,now:int)->int {
+er_fire :: (r:ErReminder,c:ErContent,now:int)->int #effects(all) {
   if r.status!=ER_OK || c.status!=ER_OK {return ER_SHAPE;}
   if c.state!=ER_PENDING {return ER_TERMINAL;}
   if !r.has_nb {return ER_BOOKMARK;}
@@ -369,7 +369,7 @@ er_fire :: (r:ErReminder,c:ErContent,now:int)->int {
 }
 // The notification path: what is held per address, and the ids notified.
 ErNotifier :: struct {held:[ER_MAX_HELD]ErReminder; held_n:int; fired:[ER_MAX_FIRED][32]u8; fired_n:int;}
-er_deliver :: (nt:[]ErNotifier,r:ErReminder,c:ErContent,now:int)->int {
+er_deliver :: (nt:[]ErNotifier,r:ErReminder,c:ErContent,now:int)->int #effects(all) {
   if r.status!=ER_OK {return r.status;}
   k:=0;
   for i:0..<nt[0].held_n {if !er_same(nt[0].held[i],r) {nt[0].held[k]=nt[0].held[i];k+=1;}}
@@ -382,7 +382,7 @@ er_deliver :: (nt:[]ErNotifier,r:ErReminder,c:ErContent,now:int)->int {
 }
 // At now, the held reminders that are due: their ids into out, each id once
 // ever; they leave the held set.
-er_tick :: (nt:[]ErNotifier,now:int,out:[][32]u8)->int {
+er_tick :: (nt:[]ErNotifier,now:int,out:[][32]u8)->int #effects(all) {
   m:=0;k:=0;
   for i:0..<nt[0].held_n {
     h:=nt[0].held[i];

@@ -19,11 +19,11 @@
 #load "store_delete.coax";
 #load "event_verify_fast.coax";
 
-cxstore_load :: () -> int #foreign;
-cxstore_byte :: (i: int) -> int #foreign;
-cxstore_put :: (b: int) -> int #foreign;
-cxstore_commit :: () -> int #foreign;
-cxstore_truncate :: (n: int) -> int #foreign;
+cxstore_load :: () -> int #foreign #effects(all);
+cxstore_byte :: (i: int) -> int #foreign #effects(all);
+cxstore_put :: (b: int) -> int #foreign #effects(all);
+cxstore_commit :: () -> int #foreign #effects(all);
+cxstore_truncate :: (n: int) -> int #foreign #effects(all);
 
 // A replay: ok, how many frames it read, stored and kept (a duplicate or a
 // replaced version), whether it cut a partial append, and when refused, the

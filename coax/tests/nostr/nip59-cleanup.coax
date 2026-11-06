@@ -1,7 +1,7 @@
 // Actual runtime observation, shared by optimized native, sanitizers and Wasm.
 #run_steps 250000000;
 #load "../../lib/nostr/nip59.coax";
-nip59_cleanup_check :: ()->int #export_c {
+nip59_cleanup_check :: ()->int #export_c #effects(all) {
   work:[NIP59_WORK]u8;wrap:[NIP59_REGION]u8;plain:[NIP59_REGION]u8;fresh:=n59_fresh(1);
   for i:0..<work.count {work[i]=165;}for i:0..<plain.count {plain[i]=165;}
   written:=n59_wrap_text(fresh[..],"private runtime cleanup",work[..],wrap[..]);

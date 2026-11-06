@@ -28,7 +28,7 @@ wd_linear_items :: (rows: int, n_out: int) -> int { return ((rows + 63) / 64) * 
 // when bias is 0. Item i is the tile of rows 64 (i / tiles) and outputs
 // 32 (i % tiles), tiles = ceil(n_out / 32): the simdgroups multiply 32-wide
 // slices of x and w staged in threadgroup memory, zero past the edges.
-wd_linear :: (item: int, rows: int, n_in: int, n_out: int, act: int, bias: int, x: [] f32, w: [] f32, b: [] f32, y: [] f32) #export_c {
+wd_linear :: (item: int, rows: int, n_in: int, n_out: int, act: int, bias: int, x: [] f32, w: [] f32, b: [] f32, y: [] f32) #export_c #effects(all) {
   tiles := (n_out + 31) / 32; r0 := item / tiles * 64; o0 := item % tiles * 32;
   a: [2048] f32; bt: [1024] f32; acc: [2048] f32;
   for s: 0..<(n_in + 31) / 32 {
@@ -64,7 +64,7 @@ wd_linear :: (item: int, rows: int, n_in: int, n_out: int, act: int, bias: int, 
 // i / nq and query i % nq. One pass over the keys with a running maximum
 // (the scores are rescaled when it grows), so no score array is kept.
 // Heads have 64 dimensions, as in every Whisper model.
-wd_attend :: (item: int, nq: int, nk: int, d: int, heads: int, q: [] f32, k: [] f32, v: [] f32, out: [] f32) #export_c {
+wd_attend :: (item: int, nq: int, nk: int, d: int, heads: int, q: [] f32, k: [] f32, v: [] f32, out: [] f32) #export_c #effects(all) {
   h := item / nq; t := item % nq; hd := h * WD_HEAD;
   qr: [64] f32; acc: [64] f32;
   for i: 0..<WD_HEAD { qr[i] = q[t * d + hd + i] * 0.125; }
@@ -95,7 +95,7 @@ wd_attend :: (item: int, nq: int, nk: int, d: int, heads: int, q: [] f32, k: [] 
 WD_ROWS_OUT :: 4;
 WD_RT :: 128;
 wd_rows_items :: (n_out: int) -> int { return (n_out + WD_ROWS_OUT - 1) / WD_ROWS_OUT; }
-wd_rows :: (item: int, rows: int, n_in: int, n_out: int, act: int, bias: int, x: [] f32, w: [] f32, b: [] f32, y: [] f32) #export_c {
+wd_rows :: (item: int, rows: int, n_in: int, n_out: int, act: int, bias: int, x: [] f32, w: [] f32, b: [] f32, y: [] f32) #export_c #effects(all) {
   part: [WD_RT * 8 * WD_ROWS_OUT] f32;
   o0 := item * WD_ROWS_OUT;
   for thread: 0..<WD_RT {
@@ -150,7 +150,7 @@ wd_half :: (word: u32, high: bool) -> f32 {
 // slot and position from sp (wd_slot_pos): key at (slot ctx + pos) e,
 // value vstride later.
 wd_rowsh :: (item: int, rows: int, n_in: int, n_out: int, act: int, bias: int, x: [] f32, w: [] u32, b: [] f32, y: [] f32,
-             sp: int, ctx: int, vstride: int, kvc: [] f32) #export_c {
+             sp: int, ctx: int, vstride: int, kvc: [] f32) #export_c #effects(all) {
   part: [WD_RT * 8 * WD_ROWS_OUT] f32; red: [WD_RT] f32;
   o0 := item * WD_ROWS_OUT; nw := n_in / 2;
   wo := w[o0 * nw..<w.count];  // the group's weight rows, so each index is small
@@ -202,7 +202,7 @@ WD_MR :: 5;
 WD_MO :: 4;
 WD_MT :: 32;
 wd_mv_items :: (n_out: int) -> int { return (n_out + WD_MO - 1) / WD_MO; }
-wd_mv :: (item: int, rows: int, n_in: int, n_out: int, act: int, bias: int, x: [] f32, w: [] u32, b: [] f32, y: [] f32) #export_c {
+wd_mv :: (item: int, rows: int, n_in: int, n_out: int, act: int, bias: int, x: [] f32, w: [] u32, b: [] f32, y: [] f32) #export_c #effects(all) {
   part: [WD_MT * WD_MR * WD_MO] f32;
   o0 := item * WD_MO; nw := n_in / 2;
   wo := w[o0 * nw..<w.count];
@@ -280,7 +280,7 @@ wd_rule_chunks :: (V: int, beg: int) -> int { return wd_text_chunks(beg) + (V - 
 // the chunk's values, so the group's memory stays small enough for several
 // groups to share a GPU core. The best lists are merged in pairs, from gv
 // and gi to hv and hk and back, half as many lists each time.
-wd_rules_part :: (item: int, V: int, beg: int, prm: [] f32, logits: [] f32, rec: [] f64) #export_c {
+wd_rules_part :: (item: int, V: int, beg: int, prm: [] f32, logits: [] f32, rec: [] f64) #export_c #effects(all) {
   tc := wd_text_chunks(beg); chunks := wd_rule_chunks(V, beg);
   r := item / chunks; c := item % chunks;
   c0 := ifx c < tc then c * WD_CH else beg + (c - tc) * WD_CH;
@@ -434,7 +434,7 @@ wd_rules_part :: (item: int, V: int, beg: int, prm: [] f32, logits: [] f32, rec:
 // order, so at most WD_RJC chunks a row.
 WD_RJ :: 32;
 WD_RJC :: 64;
-wd_rules_join :: (item: int, V: int, beg: int, k: int, rec: [] f64, top: [] f32) #export_c {
+wd_rules_join :: (item: int, V: int, beg: int, k: int, rec: [] f64, top: [] f32) #export_c #effects(all) {
   tc := wd_text_chunks(beg); chunks := wd_rule_chunks(V, beg); R0 := item * chunks * WD_REC;
   t1: [WD_RJ] f32; t2: [WD_RJ] f32; ec: [WD_RJC] f64;
   tv: [WD_RJ * 5] f32; ti: [WD_RJ * 5] f32; uv: [WD_RJ * 5] f32; ui: [WD_RJ * 5] f32;
@@ -565,7 +565,7 @@ wd_rules_join :: (item: int, V: int, beg: int, k: int, rec: [] f64, top: [] f32)
 }
 // ka[i] and va[i] into kb[i] and vb[i]: a row's keys and values into its
 // self-attention cache slot.
-wd_store :: (item: int, ka: [] f32, va: [] f32, kb: [] f32, vb: [] f32) #export_c { kb[item] = ka[item]; vb[item] = va[item]; }
+wd_store :: (item: int, ka: [] f32, va: [] f32, kb: [] f32, vb: [] f32) #export_c #effects(all) { kb[item] = ka[item]; vb[item] = va[item]; }
 
 // Attention for a few queries (the decoder's rows) in two launches, as
 // ggml-metal's vector flash attention splits the keys. Not causal (causal
@@ -582,7 +582,7 @@ WD_CHUNK :: 128;
 WD_PART :: 66;
 wd_chunks :: (nk: int) -> int { return (nk + WD_CHUNK - 1) / WD_CHUNK; }
 wd_slot_pos :: (sp: int, t: int) -> int { return (sp >> (12 * t)) & 4095; }
-wd_part :: (item: int, nq: int, nk: int, d: int, heads: int, ctx: int, sp: int, causal: int, q: [] f32, k: [] f32, v: [] f32, part: [] f32, out: [] f32) #export_c {
+wd_part :: (item: int, nq: int, nk: int, d: int, heads: int, ctx: int, sp: int, causal: int, q: [] f32, k: [] f32, v: [] f32, part: [] f32, out: [] f32) #export_c #effects(all) {
   C := wd_chunks(nk); qi := item / C; j0 := item % C * WD_CHUNK;
   h := qi / nq; t := qi % nq; hd := h * WD_HEAD;
   n := nk; base := 0;
@@ -627,7 +627,7 @@ wd_part :: (item: int, nq: int, nk: int, d: int, heads: int, ctx: int, sp: int, 
 // cross-attention of the decoder's rows, at most 8): item i is head i / C
 // and chunk i % C, and its 128 threads score their key for every query, so
 // each key and value is read once for all the queries.
-wd_cross :: (item: int, nq: int, nk: int, d: int, heads: int, q: [] f32, k: [] f32, v: [] f32, part: [] f32) #export_c {
+wd_cross :: (item: int, nq: int, nk: int, d: int, heads: int, q: [] f32, k: [] f32, v: [] f32, part: [] f32) #export_c #effects(all) {
   C := wd_chunks(nk); h := item / C; c0 := item % C; j0 := c0 * WD_CHUNK; hd := h * WD_HEAD;
   qr: [512] f32; s: [1024] f32; red: [8] f32; tot: [8] f32; acc: [1024] f32;
   kc := k[j0 * d..<k.count]; vc := v[j0 * d..<v.count];  // the chunk's first key, so each index is small
@@ -677,7 +677,7 @@ wd_cross :: (item: int, nq: int, nk: int, d: int, heads: int, q: [] f32, k: [] f
 }
 // wd_join: item i is head i / nq and query i % nq; its 64 threads rescale
 // the chunks to their largest score and write dimension thread of out.
-wd_join :: (item: int, nq: int, nk: int, d: int, part: [] f32, out: [] f32) #export_c {
+wd_join :: (item: int, nq: int, nk: int, d: int, part: [] f32, out: [] f32) #export_c #effects(all) {
   C := wd_chunks(nk); h := item / nq; t := item % nq;
   pi := part[item * C * WD_PART..<part.count];  // this query's chunks
   for thread: 0..<WD_HEAD {
@@ -699,7 +699,7 @@ wd_join :: (item: int, nq: int, nk: int, d: int, part: [] f32, out: [] f32) #exp
 // and the 64-query by 32-key tile i % (qt kt) (qt = ceil(nq / 64), kt =
 // ceil(nk / 32)) of s = q k^T / 8.
 wd_scores_items :: (nq: int, nk: int, heads: int) -> int { return heads * ((nq + 63) / 64) * ((nk + 31) / 32); }
-wd_scores :: (item: int, nq: int, nk: int, d: int, heads: int, q: [] f32, k: [] f32, s: [] f32) #export_c {
+wd_scores :: (item: int, nq: int, nk: int, d: int, heads: int, q: [] f32, k: [] f32, s: [] f32) #export_c #effects(all) {
   kt := (nk + 31) / 32; per := ((nq + 63) / 64) * kt;
   h := item / per; tile := item % per; t0 := tile / kt * 64; j0 := tile % kt * 32; hd := h * WD_HEAD;
   a: [2048] f32; bt: [1024] f32; acc: [2048] f32;
@@ -729,7 +729,7 @@ wd_scores :: (item: int, nq: int, nk: int, d: int, heads: int, q: [] f32, k: [] 
 }
 // Each row of s (item i is row i) becomes its softmax, by a group of 128
 // threads: each reduces its own strided values, then all read the parts.
-wd_softmax :: (item: int, nk: int, s: [] f32) #export_c {
+wd_softmax :: (item: int, nk: int, s: [] f32) #export_c #effects(all) {
   part: [128] f32;
   base := item * nk;
   for thread: 0..<WD_THREADS {
@@ -754,7 +754,7 @@ wd_softmax :: (item: int, nk: int, s: [] f32) #export_c {
 // out = s v: item i is head i / (qt 2) and the 64-query by 32-dimension tile
 // i % (qt 2); the keys are the product's inner dimension.
 wd_values_items :: (nq: int, heads: int) -> int { return heads * ((nq + 63) / 64) * 2; }
-wd_values :: (item: int, nq: int, nk: int, d: int, heads: int, s: [] f32, v: [] f32, out: [] f32) #export_c {
+wd_values :: (item: int, nq: int, nk: int, d: int, heads: int, s: [] f32, v: [] f32, out: [] f32) #export_c #effects(all) {
   per := ((nq + 63) / 64) * 2;
   h := item / per; tile := item % per; t0 := tile / 2 * 64; c0 := tile % 2 * 32; hd := h * WD_HEAD;
   a: [2048] f32; bt: [1024] f32; acc: [2048] f32;

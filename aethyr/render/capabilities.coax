@@ -71,7 +71,7 @@ RenderDeviceCapabilities :: struct {backend:RenderBackend;helper_enabled:bool;in
  rc_dev.helper_enabled=true;rc_dev.int64_enabled=false;#assert render_capabilities_admit(rc_req,rc_dev,true)==RenderCapabilityStatus.int64_unavailable;
 }
 
-render_capabilities_admit :: (rc_req:RenderShaderRequirements,rc_dev:RenderDeviceCapabilities,rc_portable_fine:bool)->RenderCapabilityStatus {
+render_capabilities_admit :: (rc_req:RenderShaderRequirements,rc_dev:RenderDeviceCapabilities,rc_portable_fine:bool)->RenderCapabilityStatus #effects(all) {
   if rc_req.reflection_schema!=2 || (rc_req.tree_version!=2 && rc_req.tree_version!=3) ||
     rc_req.derivatives<0 || rc_req.derivatives>3 || rc_req.control<0 || rc_req.control>3 ||
     (rc_dev.backend!=RenderBackend.webgpu && rc_dev.backend!=RenderBackend.vulkan && rc_dev.backend!=RenderBackend.reference && rc_dev.backend!=RenderBackend.metal) {return RenderCapabilityStatus.invalid;}

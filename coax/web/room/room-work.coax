@@ -11,7 +11,7 @@
   #assert rm_work_request_ready("GET /api/room/s1/relay/everglade/pair-ready HTTP/1.1\r\n\r\n",true);
   #assert !rm_work_request_ready("GET /api/room/s1/s1/relay/everglade/pair-ready HTTP/1.1\r\n\r\n",false);
 }
-rm_work_request_ready::(request:string,prepared:bool)->bool #export_c{
+rm_work_request_ready::(request:string,prepared:bool)->bool #export_c #effects(all) {
   if rm_path_shard(request)>0{
     line:[1024]u8;n:=rm_path_unshard(request,line[..]);
     if n<0||n>=request.count{return false;}
@@ -72,7 +72,7 @@ rm_work_of::(v:[]RmServer,k:int)->[]WorkBudget {
   live:=0;for q:0..<EG_ROOMS{if v[0].eg[q].live{live+=1;}}
   b:=v[0].eg[k].work[..];wb_rate(b,wb_share(live));return b;
 }
-rm_work_done::(v:[]RmServer,k:int,cost_us:int) #export_c {
+rm_work_done::(v:[]RmServer,k:int,cost_us:int) #export_c #effects(all) {
   if !rm_eg_live(v,k){return;}
   b:=rm_work_of(v,k);ignored_ready:=wb_ready(b,v[0].mono_ms);
   ignored_charge:=wb_charge(b,cost_us);
@@ -96,7 +96,7 @@ rm_work_begin::(v:[]RmServer,k:int)->bool {
   return false;
 }
 // Process-wide gauges/totals, with the room of the largest measured tick.
-rm_work_stats::(v:[]RmServer,out:[]int) #export_c {
+rm_work_stats::(v:[]RmServer,out:[]int) #export_c #effects(all) {
   if out.count<8{return;}for i:0..<8{out[i]=0;}out[1]=WB_BURST;out[7]=-1;
   for k:0..<EG_ROOMS{if !rm_eg_live(v,k){continue;}b:=v[0].eg[k].work[0];out[0]+=1;
     if b.credit<out[1]{out[1]=b.credit;}if b.last>out[2]{out[2]=b.last;out[7]=k;}

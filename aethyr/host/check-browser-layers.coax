@@ -4,7 +4,7 @@
 #load "layers-conformance.coax";
 hl_line :: (text:string,wanted:int)->string {start:=0;line:=0;for c,i:text {if c=='\n' {if line==wanted {return rtq_trim(text[start..<i]);}line+=1;start=i+1;}}return ifx line==wanted then rtq_trim(text[start..<text.count]) else "";}
 hl_spawn :: (argv:[]string)->int {h:=proc_new();if h<0 {return -1;}for arg:argv {if !proc_arg(h,arg){_:=proc_release(h);return -1;}}if proc_start(h)!=0 {_:=proc_release(h);return -1;}return h;}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {tool_errln("usage: check-browser-layers REACTOR.wasm NATIVE_FIXTURE_DIR NEW_OUT");return 2;}
  paths:[10][4096]u8;wasm:=args_at(a[..],0);fixture:=args_at(a[..],1);out:=args_at(a[..],2);if !fs_mkdir(out) {return 2;}listing:[1]FsList;if fs_list(out,listing[..])!=0 {return 2;}
  site:=fs_join(out,"site",paths[0][..]);if !fs_mkdir(site) {return 1;}binary:[2097152]u8;n:=fs_read(wasm,binary[..]);if n<1||!fs_write(fs_join(site,"host-layers.wasm",paths[1][..]),cast(string)binary[0..<n])||!fs_write(fs_join(site,"index.html",paths[1][..]),"<!doctype html><title>Canonical layer fixture</title>") {return 1;}

@@ -46,7 +46,7 @@
 
 // event, read by nostr_event_read, with its signature checked: verified
 // only when the read was complete, its id recomputed and the signature valid.
-ne_signed_fast :: (event: NostrEvent) -> NostrEvent {
+ne_signed_fast :: (event: NostrEvent) -> NostrEvent #effects(all) {
   e := event;
   if e.error != NE_OK { e.verified = false; return e; }
   if !ne_same_id(e) { e.error = NE_ID; e.written = 0; e.verified = false; return e; }

@@ -1,7 +1,7 @@
 // Frozen SDK-codec observation; this does not admit ordinary decoder allocations.
 #load "../../coax/web/wasm-chrome.coax";
 #load "pcm-compare.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {tool_errln("usage: check-browser-codec LOCAL_URL NATIVE_DECODE.json NEW_OUTPUT_DIR");return 2;}
  url:=args_at(a[..],0);dir:=args_at(a[..],2);if url.count<17||url[0..<17]!="http://127.0.0.1:"||!fs_mkdir(dir) {return 2;}
  meta:[65536]u8;nodes:[8192]JvNode;m:[1]Jv;n:=fs_read(args_at(a[..],1),meta[..]);if n<0||!jv_parse(m[..],cast(string)meta[0..<n],nodes[..]) {return 1;}

@@ -34,7 +34,7 @@ OeMetric :: struct {status:OsStatus;episodes:int;completed:int;one_rows:int;roll
   train:=oe_evaluate(f,0,0);#assert train.first_episode==0 && train.first_tick==0 && train.roll_refused==8 && train.completed==0;
 }
 // book:begin evaluation
-oe_evaluate :: (fit:OeFit,kind:int,split:int)->OeMetric #export_c {
+oe_evaluate :: (fit:OeFit,kind:int,split:int)->OeMetric #export_c #effects(all) {
   if kind<0 || kind>3 || split<0 || split>2 {return OeMetric.{status=OsStatus.shape};}
   if !oe_fit_ok(fit) {return OeMetric.{status=OsStatus.parameters};}
   m:OeMetric;count:=ifx split==0 then 8 else 4;first:=ifx split==0 then 0 else (ifx split==1 then 100 else 200);
@@ -58,4 +58,4 @@ oe_evaluate :: (fit:OeFit,kind:int,split:int)->OeMetric #export_c {
 // book:end evaluation
 
 // Choose b on ties, preserving the second input word even for signed zero.
-oe_larger :: (a:f64,b:f64)->f64 {return ifx a>b then a else b;}
+oe_larger :: (a:f64,b:f64)->f64 #effects(all) {return ifx a>b then a else b;}

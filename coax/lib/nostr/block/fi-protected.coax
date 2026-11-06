@@ -30,18 +30,18 @@ FiProtected :: struct {ok:bool;typ:int;kid:[128]u8;kid_count:int;}
  #assert fi_protected_unescaped_ok(0) && !fi_protected_unescaped_ok(-1);
  #assert fi_protected_field("alg")==1 && fi_protected_field("typ")==2 && fi_protected_field("kid")==4 && fi_protected_field("")==0;
 }
-fi_protected_unescaped_ok :: (n:int)->bool {return n>=0;}
-fi_protected_field :: (name:string)->int {
+fi_protected_unescaped_ok :: (n:int)->bool #effects(all) {return n>=0;}
+fi_protected_field :: (name:string)->int #effects(all) {
  if name=="alg" {return 1;}if name=="typ" {return 2;}if name=="kid" {return 4;}return 0;
 }
-fi_protected_typ :: (value:string)->int {
+fi_protected_typ :: (value:string)->int #effects(all) {
  if value=="nip-fi+jwt" {return 1;}if value=="nip-fi-agent+jwt" {return 2;}if value=="at+jwt" {return 3;}return 0;
 }
-fi_protected_visible :: (value:string)->bool {
+fi_protected_visible :: (value:string)->bool #effects(all) {
  if value.count<1 || value.count>128 {return false;}
  for b:value {if b<33 || b>126 {return false;}}return true;
 }
-fi_protected_parse :: (text:string)->FiProtected #export_c {
+fi_protected_parse :: (text:string)->FiProtected #export_c #effects(all) {
  result:FiProtected;j:[1]Json;json_start(j[..],text);
  if json_next(j[..])!=JSON_OBJECT {return FiProtected.{};}
  seen:=0;

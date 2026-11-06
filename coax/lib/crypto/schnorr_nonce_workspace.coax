@@ -35,11 +35,11 @@ SN_NONCE_TAG :: #run S_hash("BIP0340/nonce");
 #forall "nonce preflight combines both operation results" tag_ok:bool,aux_ok:bool {
   #assert sn_both(tag_ok,aux_ok)==(tag_ok && aux_ok);
 }
-sn_both :: (a:bool,b:bool)->bool {return a && b;}
+sn_both :: (a:bool,b:bool)->bool #effects(all) {return a && b;}
 SnNonce :: struct {sha:[1]ShaOwned;tag:[32]u8;digest:[32]u8;t:[32]u8;}
 // key contains the already parity-normalized scalar. Views must be valid,
 // stable, mutually disjoint and accurately described; output is secret too.
-sn_nonce :: (key:[]u8,pub:[]u8,aux:[]u8,message:[]u8,work:[]SnNonce,out:[]u8,overlap:bool)->bool #export_c {
+sn_nonce :: (key:[]u8,pub:[]u8,aux:[]u8,message:[]u8,work:[]SnNonce,out:[]u8,overlap:bool)->bool #export_c #effects(all) {
   if work.count!=1 || key.count!=32 || pub.count!=32 || aux.count!=32 || !sha256_input_ok(message.count) || !cb_span(out.count,0,32) || overlap {return false;}
   tagvalue:=SN_AUX_TAG;tag_ok:=sha256_emit(tagvalue.words[..],work[0].tag[..])==SHA_OK;
   aux_ok:=so_init(work[0].sha[..]) && so_update(work[0].sha[..],work[0].tag[..],false) && so_update(work[0].sha[..],work[0].tag[..],false) && so_update(work[0].sha[..],aux,false) && so_finish(work[0].sha[..],work[0].digest[..],false);

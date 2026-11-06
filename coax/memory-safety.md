@@ -1,6 +1,6 @@
 # Memory safety in Coax (proposal)
 
-Written 2026-11-05. Status: proposal. Nothing here is implemented, and the
+Written 2026-11-05. The general guarantee remains a proposal, and the
 spec's current rule still holds: "Do not promise general memory safety"
 ([spec.md](spec.md) §3). This doc says why we should change that rule, which
 approach to take, what the guarantee would cover, and what stays trusted.
@@ -49,10 +49,10 @@ Enforcement is still proposed.
 | Allocation | Not implemented in Coax; native hosts own allocation. |
 | View lifetimes | Partial. E0383 rejects known local backing returned directly or retained in caller or static storage ([verification-return-borrows.md](verification-return-borrows.md), [verification-retained-stores.md](verification-retained-stores.md)). Recursive and unmodeled helper relations, regions and transfer lifetimes are open (R3). |
 | Views in records | Allowed and common (for example `EntityStore.gen: [] int` in `aethyr/entity.coax`). Their lifetime isn't tracked. |
-| Persistent references | Hand-rolled. `aethyr/entity.coax` packs slot and generation into an `int` and checks the generation in each accessor. `Handle(T)` is planned. |
+| Persistent references | `Handle(T)` and `Store(T)` check generation and retire exhausted slots. Aethyr and Everglade use typed lifetimes; saved state uses stable IDs. Store provenance and view regions remain caller obligations. |
 | Foreign calls | About 1,100 `#foreign` declarations in 184 files. Each is trusted. |
 | Concurrency | No jobs, atomics or race checking yet (§12). |
-| Effects | `coax deps --effects` reports them ([EFFECTS.md](EFFECTS.md)); nothing enforces them. |
+| Effects | Procedure bounds are enforced, including transitive calls. Everglade's shared rules exclude clock, I/O and foreign effects. Native summaries remain trusted. See [checked-state.md](checked-state.md). |
 
 Spatial safety is mostly in place. Temporal safety (dangling views), the
 foreign boundary and future concurrency are the gaps.

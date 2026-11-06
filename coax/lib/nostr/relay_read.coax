@@ -71,17 +71,17 @@ RLR_AUTH_REQUIRED :: "auth-required:";
 }
 
 // ["EVENT",<sub>,<event>] in out, for checks.
-rlr_event_frame :: (sub: string, event: string, out: [] u8) -> string {
+rlr_event_frame :: (sub: string, event: string, out: [] u8) -> string #effects(all) {
   n := json_raw(out, 0, "[\"EVENT\",");n = json_write_string(out, n, sub);n = json_raw(out, n, ",");
   n = json_raw(out, n, event);n = json_raw(out, n, "]");return cast(string) out[0..<n];
 }
-rlr_auth_required :: (message: string) -> bool {
+rlr_auth_required :: (message: string) -> bool #effects(all) {
   return message.count >= RLR_AUTH_REQUIRED.count && message[0..<RLR_AUTH_REQUIRED.count] == RLR_AUTH_REQUIRED;
 }
 // The relay.coax input for one relay text frame. scratch is the event
 // verifier's id-preimage scratch (NE_MAX_OUTPUT bytes covers any event);
 // overlap is the host's truthful observation that scratch aliases text.
-rl_read :: (text: string, scratch: [] u8, overlap: bool) -> RlIn {
+rl_read :: (text: string, scratch: [] u8, overlap: bool) -> RlIn #effects(all) {
   in: RlIn; m := nostr_message_read(text);
   if m.error != NM_OK { return in; }
   if m.type == NM_NOTICE { in.kind = RL_IN_NOTICE; return in; }

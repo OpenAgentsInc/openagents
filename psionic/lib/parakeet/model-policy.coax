@@ -35,14 +35,14 @@ PkRtSpan :: struct {status:PkRtStatus;begin:int;end:int;}
  #assert pkrt_text_fits(n,cap)==(cap>n);
 }
 
-pkrt_span :: (a:int,b:int,n:int,payload:int)->bool {return a>=0 && b>a && b<=payload && b-a==n;}
-pkrt_pinned :: (bytes:string,expected:string)->bool {hex:[64]u8;return S_hex(S_hash(bytes),hex[..]) && cast(string)hex[..]==expected;}
-pkrt_text_fits :: (n:int,cap:int)->bool {return n>=0 && n<cap;}
-pkrt_header :: (file:[]u8)->int {
+pkrt_span :: (a:int,b:int,n:int,payload:int)->bool #effects(all) {return a>=0 && b>a && b<=payload && b-a==n;}
+pkrt_pinned :: (bytes:string,expected:string)->bool #effects(all) {hex:[64]u8;return S_hex(S_hash(bytes),hex[..]) && cast(string)hex[..]==expected;}
+pkrt_text_fits :: (n:int,cap:int)->bool #effects(all) {return n>=0 && n<cap;}
+pkrt_header :: (file:[]u8)->int #effects(all) {
  if file.count<10 {return -1;}n:u64;for i:0..<8 {n|=cast(u64)file[i]<<(8*i);}
  if n<2 || n>cast(u64)PKRT_HEADER_MAX || n>cast(u64)(file.count-8) {return -1;}return 8+cast(int)n;
 }
-pkrt_tensor :: (d:Jv,at:int,t:TdtTensor,payload:int)->PkRtSpan {
+pkrt_tensor :: (d:Jv,at:int,t:TdtTensor,payload:int)->PkRtSpan #effects(all) {
  if jv_kind(d,at)!=JV_OBJECT || jv_len(d,at)!=3 {return PkRtSpan.{status=PkRtStatus.tensor};}
  dtype:=jv_get(d,at,"dtype");shape:=jv_get(d,at,"shape");offsets:=jv_get(d,at,"data_offsets");
  if jv_kind(d,dtype)!=JV_STRING || !jv_raw_eq(jv_raw(d,dtype),t.dtype) || jv_kind(d,shape)!=JV_ARRAY || jv_len(d,shape)!=t.rank || jv_kind(d,offsets)!=JV_ARRAY || jv_len(d,offsets)!=2 {return PkRtSpan.{status=PkRtStatus.tensor};}
@@ -51,7 +51,7 @@ pkrt_tensor :: (d:Jv,at:int,t:TdtTensor,payload:int)->PkRtSpan {
  if !pkrt_span(a.value,b.value,count*width,payload) {return PkRtSpan.{status=PkRtStatus.tensor};}return PkRtSpan.{begin=a.value,end=b.value};
 }
 // The complete exact inventory is admitted before offsets are published.
-pkmp_layout :: (header:string,payload:int,c:TdtConfig,nodes:[]JvNode,offsets:[]int)->PkRtStatus {
+pkmp_layout :: (header:string,payload:int,c:TdtConfig,nodes:[]JvNode,offsets:[]int)->PkRtStatus #effects(all) {
  if !pkmp_config(c) {return PkRtStatus.tensor;}expected:=tdt_expected_count(c);
  if offsets.count<expected {return PkRtStatus.capacity;}d:[1]Jv;if !jv_parse(d[..],header,nodes) || jv_kind(d[0],0)!=JV_OBJECT {return PkRtStatus.header;}
  count:=jv_len(d[0],0);
@@ -73,10 +73,10 @@ pkmp_layout :: (header:string,payload:int,c:TdtConfig,nodes:[]JvNode,offsets:[]i
 
 #test "Parakeet model policy pinned file size is exact" {for n:[5]int.[-1,0,2508311119,2508311120,2508311121] {#assert pkmp_model_size(n)==(n==2508311120);}}
 #test "Parakeet model policy tokenizer input size is bounded" {for n:[5]int.[-1,0,1,4194304,4194305] {#assert pkmp_tokenizer_size(n)==(n>=1 && n<=4194304);}}
-pkmp_model_size :: (n:int)->bool {return n==PKRT_FILE_BYTES;}
-pkmp_tokenizer_size :: (n:int)->bool {return n>=1 && n<=PKRT_JSON_MAX;}
+pkmp_model_size :: (n:int)->bool #effects(all) {return n==PKRT_FILE_BYTES;}
+pkmp_tokenizer_size :: (n:int)->bool #effects(all) {return n>=1 && n<=PKRT_JSON_MAX;}
 
-pkmp_config :: (c:TdtConfig)->bool {
+pkmp_config :: (c:TdtConfig)->bool #effects(all) {
  if c.durations>8 {return false;}
  return cf_shape_check(pk_encoder(c))==CfStatus.ok && tdt_shape_check(pk_decoder(c))==TdtStatus.ok;
 }
@@ -105,7 +105,7 @@ pkmp_config :: (c:TdtConfig)->bool {
  for text:[2]string.["{\"dtype\":\"F32\",\"shape\":[2.5,3],\"data_offsets\":[0,24]}","{\"dtype\":\"F32\",\"shape\":[2,3],\"data_offsets\":[0,0.5]}"] {#assert jv_parse(d[..],text,nodes[..]);#assert pkrt_tensor(d[0],0,t,24).status==PkRtStatus.tensor;}
 }
 
-pkmp_int :: (d:Jv,at:int)->JsonInt {if jv_kind(d,at)!=JV_NUMBER {return JsonInt.{};}return json_int(jv_raw(d,at));}
+pkmp_int :: (d:Jv,at:int)->JsonInt #effects(all) {if jv_kind(d,at)!=JV_NUMBER {return JsonInt.{};}return json_int(jv_raw(d,at));}
 #test "Parakeet model policy numbers cannot be strings and malformed decimals have explicit failure" {
  nodes:[64]JvNode;d:[1]Jv;
  for text:[4]string.["\"24\"","2.5","1e3","9223372036854775808"] {#assert jv_parse(d[..],text,nodes[..]);#assert !pkmp_int(d[0],0).ok;}

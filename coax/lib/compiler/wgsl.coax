@@ -33,8 +33,8 @@ WG_VOID :: 0;
 // A variant's word for a parameter: a resource's binding (its name id), a pointer to the
 // caller's local array (bit 31 and the array's type), or WG_NONE, not a resource.
 WG_PTR :: 0x80000000; WG_NONE :: 0xFFFFFFFF;
-WG_work_words :: ()->int #export_c {return WG_W_WORDS;}
-WG_out_bytes :: ()->int #export_c {return 4194304;}
+WG_work_words :: ()->int #export_c #effects(all) {return WG_W_WORDS;}
+WG_out_bytes :: ()->int #export_c #effects(all) {return 4194304;}
 
 WgState :: struct {
   at:int; n:int; ok:bool; reason:u32; mute:int; indent:int;
@@ -43,7 +43,7 @@ WgState :: struct {
   whole:bool; var:int; pool:int; tree_version:u32;
 }
 
-WG_reason_text :: (reason:u32)->string #export_c {
+WG_reason_text :: (reason:u32)->string #export_c #effects(all) {
   texts:=[10] string.["","a malformed tree","WGSL larger than its buffer","more types, procedures, entries, variants or locals than it holds",
     "a type or operation WGSL does not take here yet","an entry of a stage this mode does not write","a procedure without its names",
     "a resource without its group and binding","an entry whose parameters or result are not a vertex's or a fragment's",
@@ -53,26 +53,26 @@ WG_reason_text :: (reason:u32)->string #export_c {
 }
 
 
-wg_fail :: (s:[]WgState,reason:u32) {if s[0].ok {s[0].ok=false;s[0].reason=reason;}}
-wg_next :: (s:[]WgState,tree:[]u32)->u32 {
+wg_fail :: (s:[]WgState,reason:u32) #effects(all) {if s[0].ok {s[0].ok=false;s[0].reason=reason;}}
+wg_next :: (s:[]WgState,tree:[]u32)->u32 #effects(all) {
   // past the end: a failure, and 0, which no code reads as anything but another
   if s[0].at>=tree.count {wg_fail(s,1);return 0;} // mutant: equivalent (0 or 1 after a failure is refused either way)
   v:=tree[s[0].at];s[0].at+=1;return v;
 }
 // The next word without reading it; 0 past the end.
-wg_peek :: (s:[]WgState,tree:[]u32)->u32 {
+wg_peek :: (s:[]WgState,tree:[]u32)->u32 #effects(all) {
   if s[0].at>=tree.count {return 0;} // mutant: equivalent (past the end, what follows reads past it and fails)
   return tree[s[0].at];
 }
 
 // ---- text
-wg_put :: (s:[]WgState,out:[]u8,t:string) {
+wg_put :: (s:[]WgState,out:[]u8,t:string) #effects(all) {
   if s[0].mute>0 {return;}
   if s[0].n+t.count>out.count {wg_fail(s,2);return;}
   for i:0..<t.count {out[s[0].n+i]=t[i];}
   s[0].n+=t.count;
 }
-wg_dec :: (s:[]WgState,out:[]u8,v:u32) {
+wg_dec :: (s:[]WgState,out:[]u8,v:u32) #effects(all) {
   d:[12] u8;n:=0;x:=v;
   while x>=10 {d[n]=cast,trunc(u8)(48+x%10);x/=10;n+=1;}
   d[n]=cast,trunc(u8)(48+x);n+=1;
@@ -81,15 +81,15 @@ wg_dec :: (s:[]WgState,out:[]u8,v:u32) {
   wg_put(s,out,cast(string)r[0..<n]);
 }
 // v as `digits` hexadecimal digits, the high one first.
-wg_hex :: (s:[]WgState,out:[]u8,v:u32,digits:int) {
+wg_hex :: (s:[]WgState,out:[]u8,v:u32,digits:int) #effects(all) {
   h:="0123456789abcdef";r:[8] u8;
   for i:0..<digits {r[i]=h[cast(int)((v>>cast(u32)(4*(digits-1-i)))&15)];}
   wg_put(s,out,cast(string)r[0..<digits]);
 }
-wg_tab :: (s:[]WgState,out:[]u8) {for i:0..<s[0].indent {wg_put(s,out,"  ");}}
+wg_tab :: (s:[]WgState,out:[]u8) #effects(all) {for i:0..<s[0].indent {wg_put(s,out,"  ");}}
 
 // ---- names: line p is procedure p's name, then its locals'
-wg_line :: (names:string,p:int)->string {
+wg_line :: (names:string,p:int)->string #effects(all) {
   at:=0;
   for i:0..<p {
     while at<names.count && names[at]!='\n' {at+=1;}
@@ -101,7 +101,7 @@ wg_line :: (names:string,p:int)->string {
   return names[at..<e];
 }
 // Word k of a line (0 the procedure's name), "" past its end.
-wg_word :: (line:string,k:int)->string {
+wg_word :: (line:string,k:int)->string #effects(all) {
   at:=0;
   for i:0..<k {
     while at<line.count && line[at]!=' ' {at+=1;}
@@ -112,20 +112,20 @@ wg_word :: (line:string,k:int)->string {
   while e<line.count && line[e]!=' ' {e+=1;}
   return line[at..<e];
 }
-wg_proc_name :: (s:[]WgState,names:string,w:[]u32,out:[]u8,p:int) {
+wg_proc_name :: (s:[]WgState,names:string,w:[]u32,out:[]u8,p:int) #effects(all) {
   if w[WG_W_ROOT+p]==0 {wg_put(s,out,"coax_p_");}
   wg_put(s,out,wg_word(wg_line(names,p),0));
 }
 // A module's variant v (its place in the pool): coax_p_NAME, coax_p_NAME_K for its procedure's K-th.
-wg_variant_name :: (s:[]WgState,names:string,w:[]u32,out:[]u8,v:int) {
+wg_variant_name :: (s:[]WgState,names:string,w:[]u32,out:[]u8,v:int) #effects(all) {
   wg_put(s,out,"coax_p_");wg_put(s,out,wg_word(wg_line(names,cast(int)w[WG_W_POOL+v]),0));
   seq:=w[WG_W_POOL+v+1];
   if seq>0 {wg_put(s,out,"_");wg_dec(s,out,seq);}
 }
-wg_first :: (names:string,w:[]u32)->string {return wg_word(wg_line(names,cast(int)w[WG_W_FIRST]),0);}
+wg_first :: (names:string,w:[]u32)->string #effects(all) {return wg_word(wg_line(names,cast(int)w[WG_W_FIRST]),0);}
 // Local i of the procedure being written: p_NAME for a parameter, l_NAME, or l_NAME_I
 // when an earlier local has its name.
-wg_local :: (s:[]WgState,names:string,out:[]u8,i:int,param:bool) {
+wg_local :: (s:[]WgState,names:string,out:[]u8,i:int,param:bool) #effects(all) {
   line:=wg_line(names,s[0].proc);
   n:=wg_word(line,1+i);
   wg_put(s,out,ifx param then "p_" else "l_");
@@ -136,16 +136,16 @@ wg_local :: (s:[]WgState,names:string,out:[]u8,i:int,param:bool) {
 // ---- types: the scalars, 1 bool 2 f32 3 s32 4 u32, and in a module 5 int, which WGSL
 // has no room for, as an i32; their kind, or 0 refused. Every type a signature, a struct
 // or an array names is one of the tree's (wg_head).
-wg_tk :: (tree:[]u32,w:[]u32,t:u32)->u32 {return tree[cast(int)w[WG_W_TYPE+cast(int)t]];}
-wg_part :: (tree:[]u32,w:[]u32,t:u32,i:int)->u32 {return tree[cast(int)w[WG_W_TYPE+cast(int)t]+i];}
-wg_scalar :: (s:[]WgState,tree:[]u32,w:[]u32,t:u32)->u32 {
+wg_tk :: (tree:[]u32,w:[]u32,t:u32)->u32 #effects(all) {return tree[cast(int)w[WG_W_TYPE+cast(int)t]];}
+wg_part :: (tree:[]u32,w:[]u32,t:u32,i:int)->u32 #effects(all) {return tree[cast(int)w[WG_W_TYPE+cast(int)t]+i];}
+wg_scalar :: (s:[]WgState,tree:[]u32,w:[]u32,t:u32)->u32 #effects(all) {
   if cast(int)t>=s[0].types {wg_fail(s,1);return 0;} // mutant: equivalent (after a failure the kind is not kept)
   k:=wg_tk(tree,w,t);
   if k<1 || k>(ifx s[0].whole then cast(u32)5 else cast(u32)4) {wg_fail(s,4);return 0;} // mutant: equivalent (after a failure the kind is not kept)
   return k;
 }
 // A struct of two to four f32 fields in order is a vector: how many, else 0.
-wg_vector :: (tree:[]u32,w:[]u32,t:u32)->int {
+wg_vector :: (tree:[]u32,w:[]u32,t:u32)->int #effects(all) {
   if wg_tk(tree,w,t)!=7 {return 0;} // mutant: equivalent (every caller asks of a struct, or whether it is a vec4)
   n:=cast(int)wg_part(tree,w,t,1);
   if n<2 || n>4 {return 0;}
@@ -153,11 +153,11 @@ wg_vector :: (tree:[]u32,w:[]u32,t:u32)->int {
   return n;
 }
 // A view, texture or sampler, which a module binds rather than passes.
-wg_resource :: (s:[]WgState,tree:[]u32,w:[]u32,t:u32)->bool {return s[0].whole && wg_tk(tree,w,t)>=9;}
+wg_resource :: (s:[]WgState,tree:[]u32,w:[]u32,t:u32)->bool #effects(all) {return s[0].whole && wg_tk(tree,w,t)>=9;}
 WG_TYPE_TEXT :: [6] string.["","bool","f32","i32","u32","i32"];
 WG_ZERO_TEXT :: [6] string.["","false","0.0f","0i","0u","0i"];
 WG_FIELD :: [4] string.["x","y","z","w"];
-wg_type :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,t:u32) {
+wg_type :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,t:u32) #effects(all) {
   if cast(int)t>=s[0].types {wg_fail(s,1);return;}
   k:=wg_tk(tree,w,t);
   if s[0].whole && k==7 {
@@ -169,18 +169,18 @@ wg_type :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,t:u32) {
   wg_put(s,out,WG_TYPE_TEXT[cast(int)wg_scalar(s,tree,w,t)]);
 }
 // A value's zero: a scalar's literal, a struct's, vector's or array's constructor with nothing.
-wg_zero :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,t:u32) {
+wg_zero :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,t:u32) #effects(all) {
   if cast(int)t<s[0].types && wg_tk(tree,w,t)>=7 {wg_type(s,tree,w,out,t);wg_put(s,out,"()");return;}
   wg_put(s,out,WG_ZERO_TEXT[cast(int)wg_scalar(s,tree,w,t)]);
 }
 // Field i: a vector's component, and the same names for a struct's first four.
-wg_field :: (s:[]WgState,out:[]u8,i:u32) {
+wg_field :: (s:[]WgState,out:[]u8,i:u32) #effects(all) {
   if i<4 {wg_put(s,out,WG_FIELD[cast(int)i]);return;}
   wg_put(s,out,"f");wg_dec(s,out,i);
 }
 
 // A constant of kind k from its word: exact, and wrapped when negative so no `--` forms.
-wg_const :: (s:[]WgState,names:string,w:[]u32,out:[]u8,k:u32,v:u32) {
+wg_const :: (s:[]WgState,names:string,w:[]u32,out:[]u8,k:u32,v:u32) #effects(all) {
   if k==1 {wg_put(s,out,ifx v!=0 then "true" else "false");return;}
   if k==4 {wg_dec(s,out,v);wg_put(s,out,"u");return;}
   if k==3 {
@@ -207,25 +207,25 @@ wg_const :: (s:[]WgState,names:string,w:[]u32,out:[]u8,k:u32,v:u32) {
 }
 
 // ---- procedures: their signatures (ret, params, the params' types, locals, their types, length, body)
-wg_sig :: (w:[]u32,p:int)->int {return cast(int)w[WG_W_PROC+p];}
-wg_params :: (tree:[]u32,w:[]u32,p:int)->int {return cast(int)tree[wg_sig(w,p)+1];}
-wg_ret :: (tree:[]u32,w:[]u32,p:int)->u32 {return tree[wg_sig(w,p)];}
-wg_locals_at :: (tree:[]u32,w:[]u32,p:int)->int {return wg_sig(w,p)+2+wg_params(tree,w,p);}
+wg_sig :: (w:[]u32,p:int)->int #effects(all) {return cast(int)w[WG_W_PROC+p];}
+wg_params :: (tree:[]u32,w:[]u32,p:int)->int #effects(all) {return cast(int)tree[wg_sig(w,p)+1];}
+wg_ret :: (tree:[]u32,w:[]u32,p:int)->u32 #effects(all) {return tree[wg_sig(w,p)];}
+wg_locals_at :: (tree:[]u32,w:[]u32,p:int)->int #effects(all) {return wg_sig(w,p)+2+wg_params(tree,w,p);}
 // Local i of the procedure being written, if it has one.
-wg_has_local :: (s:[]WgState,tree:[]u32,w:[]u32,i:int)->bool {
+wg_has_local :: (s:[]WgState,tree:[]u32,w:[]u32,i:int)->bool #effects(all) {
   if i>=cast(int)tree[wg_locals_at(tree,w,s[0].proc)] {wg_fail(s,1);return false;} // mutant: equivalent (after a failure what is written is not kept)
   return true;
 }
-wg_local_type :: (tree:[]u32,w:[]u32,p:int,i:int)->u32 {return tree[wg_locals_at(tree,w,p)+1+i];}
+wg_local_type :: (tree:[]u32,w:[]u32,p:int,i:int)->u32 #effects(all) {return tree[wg_locals_at(tree,w,p)+1+i];}
 // The word of the variant being written for its parameter i (WG_NONE for any other local).
-wg_bound :: (s:[]WgState,tree:[]u32,w:[]u32,i:int)->u32 {
+wg_bound :: (s:[]WgState,tree:[]u32,w:[]u32,i:int)->u32 #effects(all) {
   if i>=wg_params(tree,w,s[0].proc) {return WG_NONE;}
   return w[WG_W_POOL+s[0].var+2+i];
 }
 // Binding id's line in a module's names: its name, group, binding, and `uniform COUNT` for a uniform block.
-wg_binding :: (s:[]WgState,names:string,id:u32)->string {return wg_line(names,s[0].procs+cast(int)id);}
+wg_binding :: (s:[]WgState,names:string,id:u32)->string #effects(all) {return wg_line(names,s[0].procs+cast(int)id);}
 // Whether local i is bound to a uniform block.
-wg_uniform :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,i:int)->bool {
+wg_uniform :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,i:int)->bool #effects(all) {
   if !wg_has_local(s,tree,w,i) || !wg_resource(s,tree,w,wg_local_type(tree,w,s[0].proc,i)) || w[WG_W_ALIAS+i]!=0 {return false;}
   id:=wg_bound(s,tree,w,i);
   return id<WG_PTR && wg_word(wg_binding(s,names,id),3)=="uniform"; // mutant: equivalent (no pointer is to type 0, void)
@@ -233,7 +233,7 @@ wg_uniform :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,i:int)->bool {
 // A local as an expression or a place: in a module a resource is its binding's variable,
 // named as the binding, a view of a local array is that array, and a view given as a
 // pointer is what it points to.
-wg_ref_local :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,i:int) {
+wg_ref_local :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,i:int) #effects(all) {
   if !wg_has_local(s,tree,w,i) {return;}
   if !wg_resource(s,tree,w,wg_local_type(tree,w,s[0].proc,i)) {wg_local(s,names,out,i,false);return;}
   a:=w[WG_W_ALIAS+i];
@@ -246,7 +246,7 @@ wg_ref_local :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,i:int) {
 // A place: a local; in a module also a field of a place and an element of a place, where
 // a uniform block's float i is its vector i/4's component i%4, read by its helper
 // (wg_global) so the index is reckoned once. A uniform block is not stored to.
-wg_place :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,store:bool) {
+wg_place :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,store:bool) #effects(all) {
   c:=wg_next(s,tree);
   if c==40 {wg_ref_local(s,tree,names,w,out,cast(int)wg_next(s,tree));return;}
   if s[0].whole && c==41 {wg_place(s,tree,names,w,out,store);wg_put(s,out,".");wg_field(s,out,wg_next(s,tree));return;}
@@ -273,12 +273,12 @@ wg_place :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,store:bool) {
 WG_OPS :: [19] string.[""," + "," - "," * "," / "," % "," < "," <= "," > "," >= "," == "," != "," && "," || "," & "," | "," ^ "," << "," >> "];
 WG_MATH :: [9] string.["","sin(","cos(","tan(","exp(","log(","sqrt(","floor(","abs("];
 // The expression at `at`, written; the reading goes on from where it ends.
-wg_expr_from :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,at:int) {s[0].at=at;wg_expr(s,tree,names,w,out);}
+wg_expr_from :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,at:int) #effects(all) {s[0].at=at;wg_expr(s,tree,names,w,out);}
 // Past the expression at the reading, writing nothing.
-wg_skip :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {s[0].mute+=1;wg_expr(s,tree,names,w,out);s[0].mute-=1;}
+wg_skip :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) #effects(all) {s[0].mute+=1;wg_expr(s,tree,names,w,out);s[0].mute-=1;}
 // A call in a module: its resource arguments, the caller's bindings or local arrays,
 // pick the variant of the procedure for them, and the others are its arguments.
-wg_call :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,p:int,n:int) {
+wg_call :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,p:int,n:int) #effects(all) {
   if n>WG_ARGS {wg_fail(s,3);return;}
   ids:[WG_ARGS] u32;sig:=wg_sig(w,p);args:=s[0].at;
   for i:0..<n {
@@ -314,7 +314,7 @@ wg_call :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,p:int,n:int) {
 }
 // Procedure p's variant for the words ids: the one there is, else a new one at the end
 // of the pool; -1 when the pool has no room.
-wg_variant :: (s:[]WgState,tree:[]u32,w:[]u32,p:int,ids:[]u32)->int {
+wg_variant :: (s:[]WgState,tree:[]u32,w:[]u32,p:int,ids:[]u32)->int #effects(all) {
   seq:u32=0;r:=0;
   while r<s[0].pool {
     q:=cast(int)w[WG_W_POOL+r];
@@ -340,7 +340,7 @@ wg_variant :: (s:[]WgState,tree:[]u32,w:[]u32,p:int,ids:[]u32)->int {
 WG_GPU :: [19] string.["","discard","textureSample(","textureSampleLevel(","textureSample(","textureSampleLevel(","textureSampleBias(",
   "textureLoad(","textureLoad(","textureSampleCompareLevel(","textureDimensions(","textureDimensions(","dpdx(","dpdy(","fwidth(","dpdxFine(","dpdyFine(","fwidthFine(","discard"];
 WG_GPU_ARGS :: [19] int.[0,0,3,4,4,5,5,4,4,4,1,1,1,1,1,1,1,1,0];
-wg_gpu :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
+wg_gpu :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) #effects(all) {
   g:=cast(int)wg_next(s,tree);t:=wg_next(s,tree);n:=cast(int)wg_next(s,tree);
   if g<1 || g>18 || n!=WG_GPU_ARGS[g] {wg_fail(s,1);return;}
   if g>=15 && s[0].tree_version!=3 {wg_fail(s,1);return;}
@@ -355,7 +355,7 @@ wg_gpu :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
   wg_put(s,out,ifx g==10 then ").x" else (ifx g==11 then ").y" else ")"));
 }
 // Whether procedure p is a dotN of two vectors of N f32 giving an f32 (N 2 to 4).
-wg_is_dot :: (tree:[]u32,names:string,w:[]u32,p:int)->bool {
+wg_is_dot :: (tree:[]u32,names:string,w:[]u32,p:int)->bool #effects(all) {
   name:=wg_word(wg_line(names,p),0);
   if name.count!=4 || name[0..<3]!="dot" || name[3]<'2' || name[3]>'4' {return false;} // mutant: equivalent (past 4 no vector has that width)
   sig:=wg_sig(w,p);d:=cast(int)(name[3]-'0');
@@ -363,7 +363,7 @@ wg_is_dot :: (tree:[]u32,names:string,w:[]u32,p:int)->bool {
 }
 // A view's count: a local array's length, a storage buffer's arrayLength (a uniform
 // block has none).
-wg_count :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
+wg_count :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) #effects(all) {
   if wg_next(s,tree)!=40 {wg_fail(s,4);return;}
   i:=cast(int)wg_next(s,tree);
   if !wg_has_local(s,tree,w,i) {return;}
@@ -374,7 +374,7 @@ wg_count :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
   if id<WG_PTR {wg_put(s,out,"i32(arrayLength(&");wg_ref_local(s,tree,names,w,out,i);wg_put(s,out,"))");return;} // mutant: equivalent (no pointer is to type 0, void)
   wg_dec(s,out,wg_part(tree,w,id-WG_PTR,2));wg_put(s,out,"i");
 }
-wg_expr :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
+wg_expr :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) #effects(all) {
   k:=wg_next(s,tree);
   if k==16 {
     t:=wg_next(s,tree);v:=wg_next(s,tree);kind:=wg_scalar(s,tree,w,t);
@@ -477,7 +477,7 @@ wg_expr :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
 }
 
 // ---- statements
-wg_stmt :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
+wg_stmt :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) #effects(all) {
   if !s[0].ok {return;}
   k:=wg_next(s,tree);
   if k==1 {
@@ -538,7 +538,7 @@ wg_stmt :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
   wg_fail(s,1);
 }
 // A statement as the braced body WGSL wants after if, else, while and for.
-wg_body :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
+wg_body :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) #effects(all) {
   if wg_peek(s,tree)==1 {wg_stmt(s,tree,names,w,out);return;}
   wg_tab(s,out);wg_put(s,out,"{\n");s[0].indent+=1;
   wg_stmt(s,tree,names,w,out);
@@ -549,7 +549,7 @@ wg_body :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
 // assignable), its other locals, its body, and a return of zero when the body does not
 // end in one (WGSL asks every path to return).
 // Procedure p: in a module its variant v (at v in the pool).
-wg_proc :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,p:int,v:int) {
+wg_proc :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,p:int,v:int) #effects(all) {
   s[0].proc=p;s[0].var=v;
   sig:=wg_sig(w,p);np:=wg_params(tree,w,p);ret:=wg_ret(tree,w,p);
   at:=wg_locals_at(tree,w,p);nl:=cast(int)tree[at];
@@ -591,7 +591,7 @@ wg_proc :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,p:int,v:int) {
 }
 
 // The helpers a module uses, under the first entry's name.
-wg_helpers :: (s:[]WgState,names:string,w:[]u32,out:[]u8) {
+wg_helpers :: (s:[]WgState,names:string,w:[]u32,out:[]u8) #effects(all) {
   root:=wg_first(names,w);
   if s[0].bits {wg_put(s,out,"fn coax_bits_");wg_put(s,out,root);wg_put(s,out,"(b: u32) -> f32 {\n  return bitcast<f32>(b);\n}\n");}
   if s[0].pow {
@@ -606,9 +606,9 @@ wg_helpers :: (s:[]WgState,names:string,w:[]u32,out:[]u8) {
 
 // The tree's types and procedures, where each starts: 0, or the refusal.
 // Type t named by the tree is one of its types.
-wg_type_ref :: (s:[]WgState,tree:[]u32,types:int) {if cast(int)wg_next(s,tree)>=types {wg_fail(s,1);}}
+wg_type_ref :: (s:[]WgState,tree:[]u32,types:int) #effects(all) {if cast(int)wg_next(s,tree)>=types {wg_fail(s,1);}}
 // n type words; a refused one ends the reading.
-wg_type_refs :: (s:[]WgState,tree:[]u32,types:int,n:int) {
+wg_type_refs :: (s:[]WgState,tree:[]u32,types:int,n:int) #effects(all) {
   for i:0..<n {
     if !s[0].ok {return;} // mutant: equivalent (only how long a refusal takes)
     wg_type_ref(s,tree,types);
@@ -616,7 +616,7 @@ wg_type_refs :: (s:[]WgState,tree:[]u32,types:int,n:int) {
 }
 // The tree's types and procedures, where each starts, every type they name one of the
 // tree's: 0, or the reason it is refused.
-wg_head :: (s:[]WgState,tree:[]u32,w:[]u32)->int {
+wg_head :: (s:[]WgState,tree:[]u32,w:[]u32)->int #effects(all) {
   s[0].ok=true;
   if w.count<WG_W_POOL {return 2;}
   s[0].tree_version=wg_next(s,tree);
@@ -656,7 +656,7 @@ wg_head :: (s:[]WgState,tree:[]u32,w:[]u32)->int {
   // 0, or what a type's or procedure's reading refused
   return cast(int)s[0].reason;
 }
-WG_emit :: (tree:[]u32,names:string,out:[]u8,work:[]u32)->int #export_c {
+WG_emit :: (tree:[]u32,names:string,out:[]u8,work:[]u32)->int #export_c #effects(all) {
   st:[1] WgState;s:=st[..];w:=work;
   head:=wg_head(s,tree,w);
   if head!=0 {return -head;}
@@ -692,9 +692,9 @@ WG_emit :: (tree:[]u32,names:string,out:[]u8,work:[]u32)->int #export_c {
 // (coax_in_N attributes, coax_io_N varyings, coax_out_N targets), as
 // lib/compiler/shader.coax's interface rules have them.
 
-wg_round :: (x:int,a:int)->int {return (x+a-1)/a*a;} // mutant: equivalent (every size, offset and alignment here is a multiple of 4)
+wg_round :: (x:int,a:int)->int #effects(all) {return (x+a-1)/a*a;} // mutant: equivalent (every size, offset and alignment here is a multiple of 4)
 // WGSL's alignment and size of a type a storage buffer holds (wg_kept says whether it can).
-wg_align :: (tree:[]u32,w:[]u32,t:u32)->int {
+wg_align :: (tree:[]u32,w:[]u32,t:u32)->int #effects(all) {
   k:=wg_tk(tree,w,t);
   if k==8 {return wg_align(tree,w,wg_part(tree,w,t,1));}
   v:=wg_vector(tree,w,t);
@@ -708,7 +708,7 @@ wg_align :: (tree:[]u32,w:[]u32,t:u32)->int {
   }
   return a;
 }
-wg_wsize :: (tree:[]u32,w:[]u32,t:u32)->int {
+wg_wsize :: (tree:[]u32,w:[]u32,t:u32)->int #effects(all) {
   k:=wg_tk(tree,w,t);
   if k==8 {e:=wg_part(tree,w,t,1);return cast(int)wg_part(tree,w,t,2)*wg_round(wg_wsize(tree,w,e),wg_align(tree,w,e));}
   if k!=7 {return 4;}
@@ -720,7 +720,7 @@ wg_wsize :: (tree:[]u32,w:[]u32,t:u32)->int {
 }
 // Whether WGSL lays t out as the tree's C layout does: f32s, i32s, u32s, and arrays and
 // structs of them with each element and field where C has it and the same size.
-wg_kept :: (tree:[]u32,w:[]u32,t:u32)->bool {
+wg_kept :: (tree:[]u32,w:[]u32,t:u32)->bool #effects(all) {
   k:=wg_tk(tree,w,t);
   if k>=2 && k<=4 {return true;}
   if k==8 {e:=wg_part(tree,w,t,1);return wg_kept(tree,w,e) && wg_round(wg_wsize(tree,w,e),wg_align(tree,w,e))==cast(int)wg_part(tree,w,t,3);}
@@ -740,7 +740,7 @@ wg_kept :: (tree:[]u32,w:[]u32,t:u32)->bool {
   return wg_round(off,wg_align(tree,w,t))==cast(int)wg_part(tree,w,t,2+2*n);
 }
 // A view's elements as a storage buffer's: kept, and as far apart as C has them.
-wg_stored :: (tree:[]u32,w:[]u32,t:u32)->bool {
+wg_stored :: (tree:[]u32,w:[]u32,t:u32)->bool #effects(all) {
   if !wg_kept(tree,w,t) {return false;}
   size:=ifx wg_tk(tree,w,t)==7 then cast(int)wg_part(tree,w,t,2+2*cast(int)wg_part(tree,w,t,1)) else 4;
   return wg_round(wg_wsize(tree,w,t),wg_align(tree,w,t))==size;
@@ -750,7 +750,7 @@ wg_stored :: (tree:[]u32,w:[]u32,t:u32)->bool {
 // position and varyings at locations, an integer or #flat one flat; WG_OUT color targets.
 WG_IN :: 1; WG_IO :: 2; WG_OUT :: 4;
 WG_IO_NAME :: [5] string.["coax_t","coax_in_","coax_io_","","coax_out_"];
-wg_struct :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,t:u32,io:int) {
+wg_struct :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,t:u32,io:int) #effects(all) {
   wg_put(s,out,"struct ");wg_put(s,out,WG_IO_NAME[io]);wg_dec(s,out,t);wg_put(s,out," {\n");
   n:=cast(int)wg_part(tree,w,t,1);
   if n==0 {wg_fail(s,4);return;}
@@ -770,7 +770,7 @@ wg_struct :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,t:u32,io:int) {
   wg_put(s,out,"}\n");
 }
 // Struct t's value from the one named `from` of the struct `into`N: into_t(from.x, from.y, ...).
-wg_convert :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,into:string,t:u32,from:string) {
+wg_convert :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,into:string,t:u32,from:string) #effects(all) {
   wg_put(s,out,into);wg_dec(s,out,t);wg_put(s,out,"(");
   for i:0..<cast(int)wg_part(tree,w,t,1) {
     if i>0 {wg_put(s,out,", ");}
@@ -779,25 +779,25 @@ wg_convert :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,into:string,t:u32,from:st
   wg_put(s,out,")");
 }
 // Entry e's tree, procedure, and how many of its parameters come before its resources.
-wg_entry_at :: (w:[]u32,e:int)->int {return cast(int)w[WG_W_ENTRY+e];}
-wg_entry_proc :: (tree:[]u32,w:[]u32,e:int)->int {return cast(int)tree[wg_entry_at(w,e)+1];}
-wg_plain :: (s:[]WgState,tree:[]u32,w:[]u32,p:int)->int {
+wg_entry_at :: (w:[]u32,e:int)->int #effects(all) {return cast(int)w[WG_W_ENTRY+e];}
+wg_entry_proc :: (tree:[]u32,w:[]u32,e:int)->int #effects(all) {return cast(int)tree[wg_entry_at(w,e)+1];}
+wg_plain :: (s:[]WgState,tree:[]u32,w:[]u32,p:int)->int #effects(all) {
   sig:=wg_sig(w,p);
   plain:=0; // mutant: equivalent (an entry with a shape has a plain parameter first)
   for i:0..<wg_params(tree,w,p) {if !wg_resource(s,tree,w,tree[sig+2+i]) {plain=i+1;}}
   return plain;
 }
 // A struct whose first field is a vec4, a stage's position.
-wg_staged :: (tree:[]u32,w:[]u32,t:u32)->bool {
+wg_staged :: (tree:[]u32,w:[]u32,t:u32)->bool #effects(all) {
   if wg_tk(tree,w,t)!=7 || wg_vector(tree,w,t)!=0 || wg_vector(tree,w,wg_part(tree,w,t,2))!=4 {return false;}
   for i:0..<cast(int)wg_part(tree,w,t,1) {if wg_depth(tree,w,t,i) {return false;}}
   return true;
 }
 // Whether struct t's field i is written #depth (bit 30 of its offset).
-wg_depth :: (tree:[]u32,w:[]u32,t:u32,i:int)->bool {return (wg_part(tree,w,t,3+2*i)&0x40000000)!=0;} // mutant: equivalent (no offset reaches bit 0)
-wg_mark :: (w:[]u32,t:u32,io:u32) {w[WG_W_IO+cast(int)t]|=io;}
+wg_depth :: (tree:[]u32,w:[]u32,t:u32,i:int)->bool #effects(all) {return (wg_part(tree,w,t,3+2*i)&0x40000000)!=0;} // mutant: equivalent (no offset reaches bit 0)
+wg_mark :: (w:[]u32,t:u32,io:u32) #effects(all) {w[WG_W_IO+cast(int)t]|=io;}
 // Whether entry e has a vertex's or a fragment's shape, marking the interface structs it needs.
-wg_shape :: (s:[]WgState,tree:[]u32,w:[]u32,e:int)->bool {
+wg_shape :: (s:[]WgState,tree:[]u32,w:[]u32,e:int)->bool #effects(all) {
   stage:=tree[wg_entry_at(w,e)];p:=wg_entry_proc(tree,w,e);
   sig:=wg_sig(w,p);ret:=wg_ret(tree,w,p);plain:=wg_plain(s,tree,w,p);
   if stage==0 {
@@ -839,7 +839,7 @@ wg_shape :: (s:[]WgState,tree:[]u32,w:[]u32,e:int)->bool {
 // Binding id's module variable, of type t.
 WG_TEXTURES :: [3] string.["texture_2d<f32>","texture_2d_array<f32>","texture_depth_2d"];
 WG_SAMPLERS :: [2] string.["sampler","sampler_comparison"];
-wg_global :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,id:u32,t:u32) {
+wg_global :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,id:u32,t:u32) #effects(all) {
   line:=wg_binding(s,names,id);name:=wg_word(line,0);
   if wg_word(line,2).count==0 {wg_fail(s,7);return;}
   k:=wg_tk(tree,w,t);d:=cast(int)wg_part(tree,w,t,1);
@@ -862,7 +862,7 @@ wg_global :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,id:u32,t:u32)
   wg_put(s,out,";\n");
 }
 // Whether a resource of entry e before its parameter i, or of an earlier entry, has binding id.
-wg_seen :: (s:[]WgState,tree:[]u32,w:[]u32,e:int,i:int,id:u32)->bool {
+wg_seen :: (s:[]WgState,tree:[]u32,w:[]u32,e:int,i:int,id:u32)->bool #effects(all) {
   for f:0..<e+1 {
     at:=wg_entry_at(w,f);p:=wg_entry_proc(tree,w,f);sig:=wg_sig(w,p);
     n:=ifx f==e then i else wg_params(tree,w,p);
@@ -873,7 +873,7 @@ wg_seen :: (s:[]WgState,tree:[]u32,w:[]u32,e:int,i:int,id:u32)->bool {
   return false;
 }
 // Entry e's variant: its procedure with the entry's bindings.
-wg_entry_variant :: (s:[]WgState,tree:[]u32,w:[]u32,e:int)->int {
+wg_entry_variant :: (s:[]WgState,tree:[]u32,w:[]u32,e:int)->int #effects(all) {
   at:=wg_entry_at(w,e);p:=wg_entry_proc(tree,w,e);sig:=wg_sig(w,p);np:=wg_params(tree,w,p);
   if np>WG_ARGS {
     wg_fail(s,3);
@@ -884,7 +884,7 @@ wg_entry_variant :: (s:[]WgState,tree:[]u32,w:[]u32,e:int)->int {
   return wg_variant(s,tree,w,p,ids[0..<np]);
 }
 // Entry e's wrapper.
-wg_wrapper :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,e:int) {
+wg_wrapper :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,e:int) #effects(all) {
   stage:=tree[wg_entry_at(w,e)];p:=wg_entry_proc(tree,w,e);
   sig:=wg_sig(w,p);ret:=wg_ret(tree,w,p);plain:=wg_plain(s,tree,w,p);
   v:=wg_entry_variant(s,tree,w,e);
@@ -927,7 +927,7 @@ wg_wrapper :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,e:int) {
   wg_put(s,out,"}\n");
 }
 
-WG_module :: (tree:[]u32,names:string,out:[]u8,work:[]u32)->int #export_c {
+WG_module :: (tree:[]u32,names:string,out:[]u8,work:[]u32)->int #export_c #effects(all) {
   st:[1] WgState;s:=st[..];w:=work;
   head:=wg_head(s,tree,w);
   if head!=0 {return -head;}
@@ -981,7 +981,7 @@ WG_module :: (tree:[]u32,names:string,out:[]u8,work:[]u32)->int #export_c {
 
 // ---- checks: trees from `coax spirv FILE --fragment NAME --tree`, the entry's stage made 2
 // A tree's text: words of decimal digits, each after one space.
-wg_parse :: (text:string,out:[]u32)->int {
+wg_parse :: (text:string,out:[]u32)->int #effects(all) {
   n:=0;v:u32=0;
   for i:0..<text.count {
     if text[i]==' ' {out[n]=v;n+=1;v=0;}
@@ -990,12 +990,12 @@ wg_parse :: (text:string,out:[]u32)->int {
   out[n]=v;
   return n+1;
 }
-wg_try :: (text:string,names:string,out:[]u8)->int {
+wg_try :: (text:string,names:string,out:[]u8)->int #effects(all) {
   t:[4096] u32;work:[WG_W_WORDS] u32;
   return WG_emit(t[0..<wg_parse(text,t[..])],names,out,work[..]);
 }
 // The WGSL of a tree that must be written.
-wg_text :: (text:string,names:string,out:[]u8)->string {return cast(string)out[0..<wg_try(text,names,out)];}
+wg_text :: (text:string,names:string,out:[]u8)->string #effects(all) {return cast(string)out[0..<wg_try(text,names,out)];}
 WG_SAMPLE_MIX :: "2 6 0 1 2 3 4 5 3 2 4 2 3 4 1 14 2 3 4 1 2 3 4 1 2 3 4 2 2 2 456 1 15 3 40 4 19 1 19 2 19 3 18 0 16 2 1073741824 19 4 18 0 16 2 1077936128 18 0 3 40 5 19 1 19 2 19 1 19 5 18 1 16 3 7 19 17 18 1 16 3 2 19 18 18 1 16 3 1 20 18 1 3 40 6 19 1 19 2 19 1 19 1 19 1 19 3 18 2 16 4 3 19 14 18 2 16 4 5 19 15 18 2 16 4 1 19 16 18 2 16 4 9 19 17 18 2 16 4 2 19 18 18 2 16 4 1 3 40 6 19 1 18 6 19 1 18 2 16 4 1 3 40 7 19 13 19 12 19 12 21 18 3 19 13 19 7 18 0 18 4 19 9 18 0 18 4 19 11 18 0 18 4 19 10 18 0 18 4 2 22 1 1 18 0 3 40 8 16 2 0 8 9 16 3 0 18 1 1 3 6 0 19 10 18 9 16 3 3 1 1 10 6 0 19 8 18 9 16 3 9 1 1 9 3 40 8 19 1 18 8 29 2 18 9 3 40 10 16 4 0 7 19 6 18 10 18 2 1 1 3 40 10 19 1 18 10 16 4 1 3 40 11 24 18 7 19 1 19 1 19 1 19 1 19 1 19 1 19 1 23 1 1 18 0 23 2 1 18 0 23 3 1 18 0 23 4 1 18 0 23 5 1 18 0 23 6 1 18 0 23 7 1 18 0 23 8 1 18 0 19 1 23 9 2 18 0 16 2 1073741824 23 9 2 18 0 18 4 3 40 12 30 2 19 1 19 1 19 1 30 4 18 11 29 4 18 5 18 6 18 10 3 40 13 19 1 19 2 19 1 20 16 2 0 16 2 1069547520 16 2 713624 29 2 19 2 20 16 3 2147483647 16 3 1 6 1 19 6 18 13 16 2 0 1 1 3 40 13 16 2 1065353216 6 1 19 8 18 13 16 2 1073741824 1 1 3 40 13 16 2 1073741824 1 1 3 40 13 16 2 1056964608 4 19 1 19 1 22 2 2 19 1 19 1 18 12 18 8 18 13 18 0 29 2 19 4 18 1 16 3 3 29 2 19 4 18 2 16 4 2 0 1 2 2 2 2 19 1 2 3 40 1 18 0 6 0 19 8 18 1 16 2 0 1 1 5 2 2 2 2 2 2 2 18 1 2 6 0 19 8 18 0 18 1 1 1 4 18 0 4 18 1 1 2 0 0 1 2 3";
 WG_NAMES_MIX :: "mix x n m flag y i k b t j c z w q\nnothing a x\nhi a b\n";
 WG_WGSL_MIX :: "fn mix(p_x: f32, p_n: i32, p_m: u32, p_flag: bool) -> f32 {\n  var l_x: f32 = p_x;\n  var l_n: i32 = p_n;\n  var l_m: u32 = p_m;\n  var l_flag: bool = p_flag;\n  var l_y: f32;\n  var l_i: i32;\n  var l_k: u32;\n  var l_b: bool;\n  var l_t: f32;\n  var l_j: i32;\n  var l_c: u32;\n  var l_z: f32;\n  var l_w: f32;\n  var l_q: f32;\n  l_y = (((l_x * 0x1.000000p1f) - (l_x / 0x1.800000p1f)) + l_x);\n  l_i = ((((l_n % 7i) + (l_n << u32(2i))) - (l_n >> u32(1i))) + (-l_n));\n  l_k = ((((((l_m * 3u) + (l_m & 5u)) + (l_m | 1u)) + (l_m ^ 9u)) - (l_m << u32(2u))) + (l_m >> u32(1u)));\n  l_k = (l_k + (l_m + 1u));\n  l_b = ((((!l_flag) && ((l_x <= l_y) || (l_x >= l_y))) && (l_x != l_y)) || (l_x == l_y));\n  coax_p_nothing(l_x);\n  l_t = 0.0f;\n  {\n    let coax_from: i32 = 0i;\n    let coax_to: i32 = l_n;\n    for (l_j = coax_from; l_j < coax_to; l_j = l_j + 1i)\n    {\n      if ((l_j == 3i))\n      {\n        continue;\n      }\n      if ((l_j > 9i))\n      {\n        break;\n      }\n      l_t = (l_t + f32(l_j));\n    }\n  }\n  l_c = 0u;\n  while ((l_c < l_m))\n  {\n    l_c = (l_c + 1u);\n  }\n  l_z = select(((l_x * l_x) + coax_pow_mix(l_x, l_y)), (((((((sin(l_x) + cos(l_x)) + tan(l_x)) + exp(l_x)) + log(l_x)) + sqrt(l_x)) + floor(l_x)) + abs(l_x)), l_b);\n  l_w = bitcast<f32>((((bitcast<u32>(l_z) + u32(l_i)) + l_k) + l_c));\n  l_q = ((((-0.0f) + 0x1.800000p0f) - 0x0.15c730p-126f) + f32(((-2147483647i) - 1i)));\n  if ((l_q < 0.0f))\n  {\n    l_q = 0x1.000000p0f;\n  }\n  else\n  {\n    if ((l_q > 0x1.000000p1f))\n    {\n      l_q = 0x1.000000p1f;\n    }\n    else\n    {\n      l_q = 0x1.000000p-1f;\n    }\n  }\n  return ((coax_p_hi(((l_w + l_t) + l_q), l_x) + f32((l_n / 3i))) + f32((l_m / 2u)));\n}\nfn coax_p_nothing(p_a: f32) {\n  var l_a: f32 = p_a;\n  var l_x: f32;\n  l_x = l_a;\n  if ((l_x > 0.0f))\n  {\n    return;\n  }\n}\nfn coax_p_hi(p_a: f32, p_b: f32) -> f32 {\n  var l_a: f32 = p_a;\n  var l_b: f32 = p_b;\n  if ((l_a > l_b))\n  {\n    return l_a;\n  }\n  return l_b;\n}\nfn coax_bits_mix(b: u32) -> f32 {\n  return bitcast<f32>(b);\n}\nfn coax_pow_mix(x: f32, y: f32) -> f32 {\n  if (y == 0.0f) {\n    return 1.0f;\n  }\n  if (x == 0.0f) {\n    return select(coax_bits_mix(0x7f800000u), 0.0f, y > 0.0f);\n  }\n  let r = pow(abs(x), y);\n  if (!(x < 0.0f)) {\n    return r;\n  }\n  if (floor(y) != y) {\n    return coax_bits_mix(0x7fc00000u);\n  }\n  if (fract(y * 0.5f) != 0.0f) {\n    return -r;\n  }\n  return r;\n}\n";
@@ -1176,11 +1176,11 @@ WG_WGSL_K :: "fn k(p_x: f32, p_n: i32) -> f32 {\n  var l_x: f32 = p_x;\n  var l_
 
 
 // ---- module checks: trees from `coax wgsl FILE --vertices A --fragments B --bindings F --tree`
-wg_mtry :: (text:string,names:string,out:[]u8)->int {
+wg_mtry :: (text:string,names:string,out:[]u8)->int #effects(all) {
   t:[8192] u32;work:[WG_W_WORDS] u32;
   return WG_module(t[0..<wg_parse(text,t[..])],names,out,work[..]);
 }
-wg_mtext :: (text:string,names:string,out:[]u8)->string {return cast(string)out[0..<wg_mtry(text,names,out)];}
+wg_mtext :: (text:string,names:string,out:[]u8)->string #effects(all) {return cast(string)out[0..<wg_mtry(text,names,out)];}
 // Three vertex entries (attributes and varyings; the position alone; varyings no fragment
 // takes) and three fragment entries (varyings, front facing and two targets; the position;
 // varyings no vertex gives, and no target): a uniform block, storage buffers of structs and
@@ -1201,7 +1201,7 @@ WG_SAMPLE_DOT :: "2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 3 2 0 
 WG_NAMES_DOT :: "fs pos a b c\nv2 x y\nv3 x y z\nv4 x y z w\ndot2 a b\npick a b\nkcip a b\ndot3 a b\ntwice a b\none a\ndot4 a b\ndot5 a b\npos\n";
 WG_WGSL_DOT :: "fn coax_p_fs(p_pos: vec4f) -> vec4f {\n  var l_pos: vec4f = p_pos;\n  var l_a: vec2f;\n  var l_b: vec3f;\n  var l_c: vec4f;\n  l_a = coax_p_v2(l_pos.x, l_pos.y);\n  l_b = coax_p_v3(l_pos.x, 0x1.000000p0f, 0x1.000000p1f);\n  l_c = coax_p_v4(l_pos.x, l_pos.y, l_pos.z, l_pos.w);\n  return vec4f(((dot(l_a, l_a) + coax_p_pick(l_a, l_b)) + coax_p_kcip(l_b, l_a)), ((dot(l_b, l_b) + (coax_p_twice(l_a, l_a)).y) + coax_p_one(l_a)), (dot(l_c, l_c) + coax_p_dot5(l_a, l_a)), 0x1.000000p0f);\n}\nfn coax_p_v2(p_x: f32, p_y: f32) -> vec2f {\n  var l_x: f32 = p_x;\n  var l_y: f32 = p_y;\n  return vec2f(l_x, l_y);\n}\nfn coax_p_v3(p_x: f32, p_y: f32, p_z: f32) -> vec3f {\n  var l_x: f32 = p_x;\n  var l_y: f32 = p_y;\n  var l_z: f32 = p_z;\n  return vec3f(l_x, l_y, l_z);\n}\nfn coax_p_v4(p_x: f32, p_y: f32, p_z: f32, p_w: f32) -> vec4f {\n  var l_x: f32 = p_x;\n  var l_y: f32 = p_y;\n  var l_z: f32 = p_z;\n  var l_w: f32 = p_w;\n  return vec4f(l_x, l_y, l_z, l_w);\n}\nfn coax_p_pick(p_a: vec2f, p_b: vec3f) -> f32 {\n  var l_a: vec2f = p_a;\n  var l_b: vec3f = p_b;\n  return (l_a.x * l_b.z);\n}\nfn coax_p_kcip(p_a: vec3f, p_b: vec2f) -> f32 {\n  var l_a: vec3f = p_a;\n  var l_b: vec2f = p_b;\n  return (l_a.z * l_b.x);\n}\nfn coax_p_twice(p_a: vec2f, p_b: vec2f) -> vec2f {\n  var l_a: vec2f = p_a;\n  var l_b: vec2f = p_b;\n  return coax_p_v2((l_a.x + l_b.x), l_a.y);\n}\nfn coax_p_one(p_a: vec2f) -> f32 {\n  var l_a: vec2f = p_a;\n  return l_a.y;\n}\nfn coax_p_dot5(p_a: vec2f, p_b: vec2f) -> f32 {\n  var l_a: vec2f = p_a;\n  var l_b: vec2f = p_b;\n  return (l_a.x * l_b.y);\n}\n@fragment\nfn fs(@builtin(position) coax_pos: vec4f) -> @location(0) vec4f {\n  let coax_r = coax_p_fs(coax_pos);\n  return coax_r;\n}\n";
 // Whether text holds part.
-wg_has :: (text:string,part:string)->bool {
+wg_has :: (text:string,part:string)->bool #effects(all) {
   for i:0..<text.count-part.count+1 {if text[i..<i+part.count]==part {return true;}}
   return false;
 }
@@ -1445,7 +1445,7 @@ WG_WGSL_DEPTH :: "struct coax_t7 {\n  x: vec4f,\n  y: f32,\n  z: vec4f,\n}\nstru
   #assert wg_mtry("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 0 1 6 1 6 2 1 0 1 0 1 0 0 0 0 0 0","fs pos\npos\n",out[..])==-1;
 }
 // A module with every word of its work view fill (wg_mtry's are 0).
-wg_mfill :: (text:string,names:string,out:[]u8,fill:u32)->int {
+wg_mfill :: (text:string,names:string,out:[]u8,fill:u32)->int #effects(all) {
   t:[8192] u32;work:[WG_W_WORDS] u32;
   for i:0..<WG_W_WORDS {work[i]=fill;} // mutant: equivalent (a module's output is the same whatever the work view held)
   return WG_module(t[0..<wg_parse(text,t[..])],names,out,work[..]);

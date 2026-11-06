@@ -3,7 +3,7 @@
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
 #load "../../../verse/everglade/guard-guide-eval-wire.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}command:=args_at(a[..],0);out:[16384]u8;
   if command=="manifest" {for i:0..<13 {n:=gge_manifest(i,out[..]);if n<0 {return 2;}print("%\n",cast(string)out[0..<n]);}return 0;}
   if command=="request" {

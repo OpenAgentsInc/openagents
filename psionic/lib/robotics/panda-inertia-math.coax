@@ -27,15 +27,15 @@
  for i:0..<27 {a.linear[i]=f64(i)+1;a.angular[i]=f64(i)-13;}#assert pm_metric(3,a,[9]f64.[2,1,0,1,4,2,0,2,6],1,4)==2385;#assert pm_gravity(3,a,[3]f64.[2,-3,5],1)== -213;
 }
 
-pm_com :: (pose:PfkPose,offset:[3]f64)->[3]f64 {
+pm_com :: (pose:PfkPose,offset:[3]f64)->[3]f64 #effects(all) {
  return [3]f64.[pose.position.x+pose.rotation[0]*offset[0]+pose.rotation[1]*offset[1]+pose.rotation[2]*offset[2],pose.position.y+pose.rotation[3]*offset[0]+pose.rotation[4]*offset[1]+pose.rotation[5]*offset[2],pose.position.z+pose.rotation[6]*offset[0]+pose.rotation[7]*offset[1]+pose.rotation[8]*offset[2]];
 }
-pm_inertia :: (pose:PfkPose,inertial:[4]f64,principal:[3]f64)->[9]f64 {
+pm_inertia :: (pose:PfkPose,inertial:[4]f64,principal:[3]f64)->[9]f64 #effects(all) {
  local:=pfk_matrix(pfk_normalize(inertial).value);world:[9]f64;result:[9]f64;
  for i:0..<3 {for j:0..<3 {world[i*3+j]=pose.rotation[i*3]*local[j]+pose.rotation[i*3+1]*local[3+j]+pose.rotation[i*3+2]*local[6+j];}}
  for i:0..<3 {for j:0..<3 {for k:0..<3 {result[i*3+j]+=world[i*3+k]*principal[k]*world[j*3+k];}}}return result;
 }
-pm_columns :: (com:[3]f64,ancestors:int,poses:PffOutput)->PmColumns {
+pm_columns :: (com:[3]f64,ancestors:int,poses:PffOutput)->PmColumns #effects(all) {
  c:PmColumns;for joint:0..<7 {if (ancestors&(1<<joint))==0 {continue;}
   pose:=poses.arm.links[joint+2];ax:=pose.rotation[2];ay:=pose.rotation[5];az:=pose.rotation[8];dx:=com[0]-pose.position.x;dy:=com[1]-pose.position.y;dz:=com[2]-pose.position.z;
    c.linear[joint]=ay*dz-az*dy;c.linear[9+joint]=az*dx-ax*dz;c.linear[18+joint]=ax*dy-ay*dx;
@@ -44,13 +44,13 @@ pm_columns :: (com:[3]f64,ancestors:int,poses:PffOutput)->PmColumns {
  if (ancestors&128)!=0 {for row:0..<3 {c.linear[row*9+7]=poses.fingers[0].rotation[row*3+1];}}
  if (ancestors&256)!=0 {for row:0..<3 {c.linear[row*9+8]=poses.fingers[2].rotation[row*3+1];}}return c;
 }
-pm_metric :: (mass:f64,c:PmColumns,inertia:[9]f64,i:int,j:int)->f64 {
+pm_metric :: (mass:f64,c:PmColumns,inertia:[9]f64,i:int,j:int)->f64 #effects(all) {
  value:f64=0;for row:0..<3 {value+=mass*c.linear[row*9+i]*c.linear[row*9+j];for col:0..<3 {value+=c.angular[row*9+i]*inertia[row*3+col]*c.angular[col*9+j];}}return value;
 }
-pm_gravity :: (mass:f64,c:PmColumns,gravity:[3]f64,j:int)->f64 {
+pm_gravity :: (mass:f64,c:PmColumns,gravity:[3]f64,j:int)->f64 #effects(all) {
  value:f64=0;for row:0..<3 {value-=mass*c.linear[row*9+j]*gravity[row];}return value;
 }
-pm_pack :: (m:[81]f64,g:[9]f64)->PmOutput {
+pm_pack :: (m:[81]f64,g:[9]f64)->PmOutput #effects(all) {
  out:PmOutput;for i:0..<7 {for j:0..<7 {out.hinge_hinge[i*7+j].value=m[i*9+j];}for j:0..<2 {out.hinge_slide[i*2+j].value=m[i*9+7+j];out.slide_hinge[j*7+i].value=m[(j+7)*9+i];}out.hinge_gravity[i].value=g[i];}
  for i:0..<2 {for j:0..<2 {out.slide_slide[i*2+j].value=m[(i+7)*9+j+7];}out.slide_gravity[i].value=g[i+7];}return out;
 }

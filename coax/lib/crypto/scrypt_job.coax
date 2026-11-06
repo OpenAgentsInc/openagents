@@ -90,17 +90,17 @@ ScryptJob :: struct {policy:ScryptCleanup;secret:[1]Nip49Scrypt;key:[32]u8;scrat
 // Caller initializes the session to zero, keeps it and scratch stable/disjoint,
 // passes NFKC UTF-8, and preserves the same scratch for every operation. A
 // false return can still leave cleanup pending; inspect sj_next in either case.
-sj_start :: (session:[]ScryptJob,password:[]u8,salt:[]u8,scratch:[]u8,log_n:int,overlap:bool)->bool #export_c {
+sj_start :: (session:[]ScryptJob,password:[]u8,salt:[]u8,scratch:[]u8,log_n:int,overlap:bool)->bool #export_c #effects(all) {
   if session.count!=1 || session[0].active || !nip49_scrypt_params(password.count,salt.count,scratch.count,log_n,overlap) {return false;}
   session[0]=ScryptJob.{policy=sc_begin(),scratch_count=scratch.count,active=true};
   ok:=nip49_scrypt_start(session[0].secret[..],password,salt,scratch,log_n,false);
   return sj_start_result(session,ok);
 }
-sj_start_result :: (session:[]ScryptJob,ok:bool)->bool {
+sj_start_result :: (session:[]ScryptJob,ok:bool)->bool #effects(all) {
   if !ok {session[0].policy=sc_stop(session[0].policy,SC_FAILURE);}
   return ok;
 }
-sj_step :: (session:[]ScryptJob,scratch:[]u8,budget:int,overlap:bool)->bool #export_c {
+sj_step :: (session:[]ScryptJob,scratch:[]u8,budget:int,overlap:bool)->bool #export_c #effects(all) {
   if session.count!=1 {return false;}
   if !session[0].active {return false;}
   if !sc_valid(session[0].policy) {return false;}
@@ -116,19 +116,19 @@ sj_step :: (session:[]ScryptJob,scratch:[]u8,budget:int,overlap:bool)->bool #exp
   }
   return true;
 }
-sj_finish_result :: (session:[]ScryptJob,ok:bool)->bool {
+sj_finish_result :: (session:[]ScryptJob,ok:bool)->bool #effects(all) {
   session[0].policy=sc_stop(session[0].policy,ifx ok then SC_SUCCESS else SC_FAILURE);
   return ok;
 }
 // True means the request was processed; a prior failure may remain sticky.
-sj_cancel :: (session:[]ScryptJob)->bool #export_c {
+sj_cancel :: (session:[]ScryptJob)->bool #export_c #effects(all) {
   if session.count!=1 {return false;}
   if !session[0].active {return false;}
   if !sc_valid(session[0].policy) {return false;}
   if session[0].policy.phase==SC_PUBLISHED {return false;}
   session[0].policy=sc_stop(session[0].policy,SC_CANCEL);return true;
 }
-sj_next :: (session:[]ScryptJob)->int #export_c {
+sj_next :: (session:[]ScryptJob)->int #export_c #effects(all) {
   if session.count!=1 {return SJ_INVALID;}
   if !session[0].active {return SJ_INVALID;}
   if !sc_valid(session[0].policy) {return SJ_INVALID;}
@@ -141,16 +141,16 @@ sj_next :: (session:[]ScryptJob)->int #export_c {
   return SC_KEY;
 }
 // Host calls only after real wiping of exactly the region returned by sj_next.
-sj_ack :: (session:[]ScryptJob,region:int,erased:bool)->bool #export_c {
+sj_ack :: (session:[]ScryptJob,region:int,erased:bool)->bool #export_c #effects(all) {
   if session.count!=1 {return false;}
   if region<=0 {return false;}
   if region!=sj_next(session) {return false;}
   if !erased {return false;}
   session[0].policy=sc_ack(session[0].policy,region,true);return true;
 }
-sj_output_admit :: (count:int,overlap:bool)->bool {return !overlap && count>=32 && count<=CB_MAX_BYTES;}
+sj_output_admit :: (count:int,overlap:bool)->bool #effects(all) {return !overlap && count>=32 && count<=CB_MAX_BYTES;}
 // Publication copies the key; the host must erase the staged key after use.
-sj_publish :: (session:[]ScryptJob,out:[]u8,overlap:bool)->bool #export_c {
+sj_publish :: (session:[]ScryptJob,out:[]u8,overlap:bool)->bool #export_c #effects(all) {
   if session.count!=1 {return false;}
   if !session[0].active {return false;}
   if !sj_output_admit(out.count,overlap) {return false;}

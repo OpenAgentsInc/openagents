@@ -99,7 +99,7 @@ TXC_CB_MIN :: 2;                // a coinbase scriptSig's bounds in CheckTransac
 TXC_CB_MAX :: 100;
 // MAX_MONEY is chapter 40's FEE_MAX_MONEY, MAX_BLOCK_WEIGHT its
 // FEE_MAX_BLOCK_WEIGHT, and WITNESS_SCALE_FACTOR chapter 34's TX_SCALE.
-txc_money_range :: (v: int) -> bool #export_c { return v >= 0 && v <= FEE_MAX_MONEY; }
+txc_money_range :: (v: int) -> bool #export_c #effects(all) { return v >= 0 && v <= FEE_MAX_MONEY; }
 ```
 
 ## Outpoints
@@ -112,11 +112,11 @@ has the null outpoint: 32 zero bytes and index `0xffffffff`.
 ```jai
 // An outpoint is 36 bytes: the txid, then the output index. It is null
 // when the txid is zero and the index is 0xffffffff.
-txc_null_vartime :: (b: [] u8, at: int) -> bool #export_c {
+txc_null_vartime :: (b: [] u8, at: int) -> bool #export_c #effects(all) {
   for i: 0..<32 { if b[at+i] != 0 { return false; } }
   return tx_le_vartime(b, at + 32, 4) == 0xffffffff;
 }
-txc_same_vartime :: (b: [] u8, x: int, y: int) -> bool #export_c {
+txc_same_vartime :: (b: [] u8, x: int, y: int) -> bool #export_c #effects(all) {
   for i: 0..<36 { if b[x+i] != b[y+i] { return false; } }
   return true;
 }
@@ -132,7 +132,7 @@ txc_same_vartime :: (b: [] u8, x: int, y: int) -> bool #export_c {
 // by tx_read_vartime. The size is the stripped size: the witness is not
 // counted, because it is not yet known to be the right one. The duplicate
 // search compares every pair of inputs; Core sorts them into a set.
-txcheck_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut) -> int #export_c {
+txcheck_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut) -> int #export_c #effects(all) {
   if t.code != TX_OK { return TXC_CONTEXT; }
   if t.nin == 0 { return TXC_VIN_EMPTY; }
   if t.nout == 0 { return TXC_VOUT_EMPTY; }
@@ -221,7 +221,7 @@ TxcCoin :: struct { found: bool; value: int; height: int; coinbase: bool; }
 TxcInputs :: struct { code: int; fee: int; }
 // Core's CheckTxInputs for a transaction that passed CheckTransaction,
 // spent in a block at spend_height. coins holds one coin per input.
-txcheck_inputs_vartime :: (b: [] u8, t: Tx, outs: [] TxOut, coins: [] TxcCoin, spend_height: int) -> TxcInputs #export_c {
+txcheck_inputs_vartime :: (b: [] u8, t: Tx, outs: [] TxOut, coins: [] TxcCoin, spend_height: int) -> TxcInputs #export_c #effects(all) {
   r: TxcInputs;
   if t.code != TX_OK || coins.count != t.nin { r.code = TXC_CONTEXT; return r; }
   for k: 0..<coins.count { if !coins[k].found { r.code = TXC_MISSING; return r; } }
@@ -277,7 +277,7 @@ is compared with the median time past of the 11 blocks before (chapter
 // height must be final. Before CSV, IsFinalTx compares time lock times
 // with the block's own time; from CSV's height (BIP-113) with the median
 // time past of the 11 blocks before it.
-txcheck_final_vartime :: (p: ChainParams, b: [] u8, t: Tx, ins: [] TxIn, height: int, prev_mtp: int, block_time: int) -> int #export_c {
+txcheck_final_vartime :: (p: ChainParams, b: [] u8, t: Tx, ins: [] TxIn, height: int, prev_mtp: int, block_time: int) -> int #export_c #effects(all) {
   if t.code != TX_OK { return TXC_CONTEXT; }
   cutoff := ifx chain_deployment_active(p, DEP_CSV, height) then prev_mtp else block_time;
   if !locktime_final_vartime(b, t, ins, height, cutoff) { return TXC_NONFINAL; }

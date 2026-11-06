@@ -54,10 +54,10 @@ the wrong side of a line?
 
 <!-- source: psionic/lib/verdict.coax side -->
 ```jai
-vd :: (verdict:VdVerdict,reason:VdReason)->VdResult {return VdResult.{verdict=verdict,reason=reason};}
+vd :: (verdict:VdVerdict,reason:VdReason)->VdResult #effects(all) {return VdResult.{verdict=verdict,reason=reason};}
 // 1 when at most 1 in 40 replicates fall at or below the line, -1 when at
 // most 1 in 40 fall above it, 0 otherwise.
-vd_side :: (below:int,replicates:int)->int {
+vd_side :: (below:int,replicates:int)->int #effects(all) {
     if below*VD_CLEAR<=replicates {return 1;}
     if (replicates-below)*VD_CLEAR<=replicates {return -1;}
     return 0;
@@ -73,7 +73,7 @@ is the usual 95 percent two-sided rule, read one side at a time.
 ```jai
 // A candidate's per-item scores b against a baseline's a (higher is better),
 // on one partition, with the floor measured for the baseline's blocks.
-vd_decision :: (a:[]f64,b:[]f64,task:[]int,part:[]int,which:int,seeds:NsFloor,ceiling:f64,seed:u64,replicates:int)->VdDecision #export_c {
+vd_decision :: (a:[]f64,b:[]f64,task:[]int,part:[]int,which:int,seeds:NsFloor,ceiling:f64,seed:u64,replicates:int)->VdDecision #export_c #effects(all) {
     measured:=seeds.status==NsStatus.ok && seeds.blocks>=2;
     noise:=ifx measured then seeds.floor else 0.0;
     d:=VdDecision.{room=ns_headroom(a,part,which,ceiling,noise),gain=ns_boot(a,b,task,part,which,noise,seed,replicates)};
@@ -126,7 +126,7 @@ asks for a floor, which this suite doesn't have either.
 // Yes-or-no probabilities of a baseline a and a candidate b on the same
 // labelled items. Log loss decides; more confident errors block a pass;
 // calibration error and accuracy are reported and decide nothing.
-vd_probability :: (a:[]f64,b:[]f64,y:[]f64,task:[]int,seed:u64,replicates:int)->VdProbability #export_c {
+vd_probability :: (a:[]f64,b:[]f64,y:[]f64,task:[]int,seed:u64,replicates:int)->VdProbability #export_c #effects(all) {
     n:=y.count;
     if n<1 || n>NS_ITEMS_MAX || a.count!=n || b.count!=n || task.count!=n {return VdProbability.{status=VdStatus.shape};}
     if replicates<2 || replicates>NS_REPLICATES_MAX {return VdProbability.{status=VdStatus.shape};}
@@ -189,8 +189,8 @@ the map that chapter 215 served.
 ```jai
 // Cost and seconds per decision against limits written before the run. Over
 // a limit fails; unmeasured makes a pass unverifiable; a failure stays.
-vd_measured :: (v:f64)->bool {return tb_in(v,0,NS_BIG);}
-vd_evaluate :: (quality:VdResult,cost:f64,seconds:f64,cost_limit:f64,seconds_limit:f64)->VdResult #export_c {
+vd_measured :: (v:f64)->bool #effects(all) {return tb_in(v,0,NS_BIG);}
+vd_evaluate :: (quality:VdResult,cost:f64,seconds:f64,cost_limit:f64,seconds_limit:f64)->VdResult #export_c #effects(all) {
     if quality.verdict==VdVerdict.failed {return quality;}
     if vd_measured(cost) && vd_measured(cost_limit) && cost>cost_limit {return vd(VdVerdict.failed,VdReason.over_cost);}
     if vd_measured(seconds) && vd_measured(seconds_limit) && seconds>seconds_limit {return vd(VdVerdict.failed,VdReason.over_time);}

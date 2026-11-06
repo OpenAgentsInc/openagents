@@ -23,7 +23,7 @@ never leaks into the resulting sequence.
 
 <!-- source: psionic/lib/tokenizer-families.coax wordpiece -->
 ```jai
-tf_wordpiece :: (v:[]TfPiece,input:string,unknown:int)->TfResult #export_c {
+tf_wordpiece :: (v:[]TfPiece,input:string,unknown:int)->TfResult #export_c #effects(all) {
  if !tf_ascii_size(input.count) {return TfResult.{status=TfStatus.size};}if !tf_vocab(v) || unknown<0 || unknown>65535 {return TfResult.{status=TfStatus.vocabulary};}
  clean:[256]u8;n:=0;for c:input {if c>=128 {return TfResult.{status=TfStatus.unsupported};}mapped:=TF_BERT_ASCII[c];if mapped==-1 {continue;}clean[n]=cast(u8)mapped;n+=1;}
  r:=TfResult.{};at:=0;
@@ -50,7 +50,7 @@ an internal or repeated U+2581, so pieces cannot span those word boundaries.
 
 <!-- source: psionic/lib/tokenizer-families.coax unigram -->
 ```jai
-tf_unigram :: (v:[]TfPiece,input:string,unknown:int)->TfResult #export_c {
+tf_unigram :: (v:[]TfPiece,input:string,unknown:int)->TfResult #export_c #effects(all) {
  if !tf_text_size(input.count) {return TfResult.{status=TfStatus.size};}if !tf_utf8(input) {return TfResult.{status=TfStatus.unsupported};}if !tf_vocab(v) || unknown<0 || unknown>65535 {return TfResult.{status=TfStatus.vocabulary};}
  scores:[1025]f64;previous:[1025]int;tokens:[1025]int;seen:[1025]bool;seen[0]=true;minimum:=v[tf_minimum(v)].score;
  for at:0..<input.count {if !seen[at] {continue;}
@@ -86,7 +86,7 @@ sentinel. Message content is emitted as data and is never parsed again.
 
 <!-- source: psionic/lib/chat-template.coax compile -->
 ```jai
-jt_compile :: (s:string)->JtProgram {
+jt_compile :: (s:string)->JtProgram #effects(all) {
  if s.count>4096 {return JtProgram.{status=TfStatus.size};}p:=JtProgram.{};at:=0;loop:=-1;depth:=0;otherwise:[8]bool;
  while at<s.count {
   if jt_starts(s,at,"{{") || jt_starts(s,at,"{%") {expression:=s[at+1]=='{';close:=ifx expression then "}}" else "%}";begin:=at+2;end:=begin;while end<s.count && !jt_starts(s,end,close) {end+=1;}if end==s.count {return JtProgram.{status=TfStatus.unsupported};}body:=jt_trim(s[begin..<end]);at=end+2;

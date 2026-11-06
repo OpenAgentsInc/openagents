@@ -79,7 +79,7 @@ ask  ask + per_second · person_seconds
 // The expected cost of answering at probability p of yes: no is wrong with
 // probability p, yes with 1 - p, and asking costs the same either way.
 // The cheapest wins; a tie keeps the earlier of no, yes, ask.
-th_answer :: (c:ThCosts,p:f64)->ThChoice {
+th_answer :: (c:ThCosts,p:f64)->ThChoice #effects(all) {
     best:=ThChoice.{action=ThAction.no,cost=p*c.wrong_no};
     yes:=(1-p)*c.wrong_yes;if yes<best.cost {best=ThChoice.{action=ThAction.yes,cost=yes};}
     ask:=c.ask+c.per_second*c.person_seconds;if ask<best.cost {best=ThChoice.{action=ThAction.ask,cost=ask};}
@@ -105,19 +105,19 @@ answer after each reading, weighted by how likely that reading is:
 ```jai
 // Mammoth's evidence points the right way with probability rho. Its answer
 // moves p by Bayes' rule, and the consumer then answers at Mammoth's p.
-th_posterior :: (p:f64,rho:f64,up:bool)->f64 {
+th_posterior :: (p:f64,rho:f64,up:bool)->f64 #effects(all) {
     if up {return p*rho/(p*rho+(1-p)*(1-rho));}
     return p*(1-rho)/(p*(1-rho)+(1-p)*rho);
 }
 // The expected cost of escalating: Mammoth's call and wait, then the answer
 // at each of its two readings, weighted by how likely that reading is.
-th_escalate :: (c:ThCosts,p:f64,rho:f64)->f64 {
+th_escalate :: (c:ThCosts,p:f64,rho:f64)->f64 #effects(all) {
     up:=p*rho+(1-p)*(1-rho);
     after:=up*th_answer(c,th_posterior(p,rho,true)).cost+(1-up)*th_answer(c,th_posterior(p,rho,false)).cost;
     return c.mammoth_dollars+c.per_second*c.mammoth_seconds+after;
 }
 // Escalate only when it is strictly cheaper than the best answer now.
-th_best :: (c:ThCosts,p:f64,rho:f64)->ThChoice #export_c {
+th_best :: (c:ThCosts,p:f64,rho:f64)->ThChoice #export_c #effects(all) {
     now:=th_answer(c,p);e:=th_escalate(c,p,rho);
     if e<now.cost {return ThChoice.{action=ThAction.escalate,cost=e};}
     return now;
@@ -148,7 +148,7 @@ the thresholds, and they are read off the expected costs rather than chosen:
 // at each change, halving between the last probability with the old action and
 // the first with the new one, until the two are adjacent numbers, finds the
 // first probability where the old action stops.
-th_record :: (c:ThCosts,rho:f64)->ThRecord #export_c {
+th_record :: (c:ThCosts,rho:f64)->ThRecord #export_c #effects(all) {
     if !th_costs_ok(c) || !(rho>0.5 && rho<1) {return ThRecord.{status=ThStatus.shape};}
     r:=ThRecord.{version=TH_VERSION,rho=rho,bands=1};last:=0.0;
     for k:1..<TH_GRID+1 {
@@ -168,7 +168,7 @@ th_record :: (c:ThCosts,rho:f64)->ThRecord #export_c {
     return r;
 }
 // The action of the last band whose edge is at most p.
-th_decide :: (r:ThRecord,p:f64)->ThAction #export_c {
+th_decide :: (r:ThRecord,p:f64)->ThAction #export_c #effects(all) {
     k:=0;
     for b:1..<r.bands {if r.edge[b]<=p {k=b;}}
     return r.action[k];
@@ -202,7 +202,7 @@ The data are synthetic and calibrated by construction:
 // Mammoth's evidence, right with probability rho, at 3i+2. A draw u gives
 // "yes" when u + p reaches 1, which happens with probability p, and Mammoth
 // is wrong when u + (1 - rho) reaches 1. Mammoth reports Bayes' rule.
-th_simulate :: (seed:u64,rho:f64,elephant:[]f64,mammoth:[]f64,label:[]f64,overlap:bool)->ThStatus #export_c {
+th_simulate :: (seed:u64,rho:f64,elephant:[]f64,mammoth:[]f64,label:[]f64,overlap:bool)->ThStatus #export_c #effects(all) {
     n:=elephant.count;
     if n<1 || n>TH_ITEMS_MAX || !(rho>0.5 && rho<1) {return ThStatus.shape;}
     if mammoth.count<n || label.count<n {return ThStatus.capacity;}
@@ -216,7 +216,7 @@ th_simulate :: (seed:u64,rho:f64,elephant:[]f64,mammoth:[]f64,label:[]f64,overla
 }
 // Mammoth's evidence pointed up when its probability exceeds Elephant's;
 // rho is estimated as the share of items where that direction was right.
-th_rho :: (elephant:[]f64,mammoth:[]f64,label:[]f64)->ThValue #export_c {
+th_rho :: (elephant:[]f64,mammoth:[]f64,label:[]f64)->ThValue #export_c #effects(all) {
     n:=elephant.count;
     if n<1 || n>TH_ITEMS_MAX || mammoth.count!=n || label.count!=n {return ThValue.{status=ThStatus.shape};}
     if !th_unit(elephant) || !th_unit(mammoth) {return ThValue.{status=ThStatus.number};}
@@ -239,7 +239,7 @@ confirmation items drawn and scored, once:
 // likely label (yes from 0.5); the fixed rule escalates when 0.2 < p < 0.8.
 // The record decides by its bands, and after escalating answers by costs.
 ThItem :: struct {cost:f64;seconds:f64;wrong:bool;asked:bool;escalated:bool;}
-th_item :: (c:ThCosts,policy:ThPolicy,r:ThRecord,p:f64,q:f64,y:f64)->ThItem {
+th_item :: (c:ThCosts,policy:ThPolicy,r:ThRecord,p:f64,q:f64,y:f64)->ThItem #effects(all) {
     t:=ThItem.{seconds=c.elephant_seconds};dollars:=c.elephant_dollars;a:=ThAction.no;
     if p>=0.5 {a=ThAction.yes;}
     if policy==ThPolicy.mammoth {t.seconds=0;dollars=0;t.escalated=true;}
@@ -256,7 +256,7 @@ th_item :: (c:ThCosts,policy:ThPolicy,r:ThRecord,p:f64,q:f64,y:f64)->ThItem {
     t.cost=dollars+c.per_second*t.seconds;
     return t;
 }
-th_run :: (c:ThCosts,policy:ThPolicy,r:ThRecord,elephant:[]f64,mammoth:[]f64,label:[]f64,cost:[]f64,overlap:bool)->ThReport #export_c {
+th_run :: (c:ThCosts,policy:ThPolicy,r:ThRecord,elephant:[]f64,mammoth:[]f64,label:[]f64,cost:[]f64,overlap:bool)->ThReport #export_c #effects(all) {
     n:=elephant.count;
     if n<2 || n>TH_ITEMS_MAX || mammoth.count!=n || label.count!=n || !th_costs_ok(c) {return ThReport.{status=ThStatus.shape};}
     if policy==ThPolicy.record && (r.status!=ThStatus.ok || r.version!=TH_VERSION) {return ThReport.{status=ThStatus.shape};}
@@ -277,14 +277,14 @@ th_run :: (c:ThCosts,policy:ThPolicy,r:ThRecord,elephant:[]f64,mammoth:[]f64,lab
     return report;
 }
 // Mean and 1.96 standard errors, with the n - 1 sample variance.
-th_interval :: (x:[]f64)->ThValue {
+th_interval :: (x:[]f64)->ThValue #effects(all) {
     s:PsionicAccumulator;for v:x {s=psionic_ops_accumulate(s,v);}
     mean:=psionic_ops_total(s)/f64(x.count);
     d:PsionicAccumulator;for v:x {e:=v-mean;d=psionic_ops_accumulate(d,e*e);}
     return ThValue.{value=mean,half=1.96*sqrt(psionic_ops_total(d)/f64(x.count-1)/f64(x.count))};
 }
 // A paired comparison: the mean of a - b per item, with its interval.
-th_paired :: (a:[]f64,b:[]f64,scratch:[]f64,overlap:bool)->ThValue #export_c {
+th_paired :: (a:[]f64,b:[]f64,scratch:[]f64,overlap:bool)->ThValue #export_c #effects(all) {
     n:=a.count;
     if n<2 || n>TH_ITEMS_MAX || b.count!=n {return ThValue.{status=ThStatus.shape};}
     if scratch.count<n {return ThValue.{status=ThStatus.capacity};}

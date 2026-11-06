@@ -19,7 +19,7 @@ hcp_field :: (head:string,name:string)->string {
 }
 hcp_path :: (raw:string)->string {at:=4;while at<raw.count&&raw[at]!=' '{at+=1;}return ifx at>=4&&raw.count>=4 then raw[4..<at] else "";}
 hcp_send :: (h:int,bytes:string)->bool {for b:bytes{if cxsock_write(h,int(b))!=0{return false;}}return cxsock_flush(h,500)==0;}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=1{return 2;}report:=args_at(a[..],0);listener:=cxsock_listen(9172);if listener<0{return 1;}defer{closed:=cxsock_close(listener);}
  bytes:[32768]u8;records:[1]Jo;jo_start(records[..],bytes[..]);jo_arr(records[..]);deadline:=cxsock_now_ms()+120000;
  while cxsock_now_ms()<deadline {

@@ -7,7 +7,7 @@
 #load "../../../verse/everglade/guard-guide-eval-wire.coax";
 #load "../../lib/serve-request.coax";
 #load "../../lib/decision-prepare.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) {return 2;}path:=args_at(args[..],0);
   if !guard_token_input_size(fs_size(path)) {tool_errln("pinned tokenizer file size refused");return 2;}
   table:[8277996]u8;n:=fs_read(path,table[..]);if n!=table.count || !pt_admit(table[..]) {tool_errln("pinned tokenizer identity refused");return 2;}

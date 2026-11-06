@@ -61,7 +61,7 @@ hc_test :: (c:[]HcCache,r:[]HcRoom) {
 }
 hc_hash :: (c:[]HcCache,id:[]u8)->int {return (cast(int)id[0]*256+cast(int)id[1]+cast(int)id[2]*65536)&(c[0].slot.count-1);}
 hc_same :: (c:[]HcCache,i:int,id:[]u8)->bool {for b:0..<32 {if c[0].id[i*32+b]!=id[b] {return false;}}return true;}
-hc_find :: (c:[]HcCache,id:[]u8)->int #export_c {
+hc_find :: (c:[]HcCache,id:[]u8)->int #export_c #effects(all) {
   if id.count!=32 || c[0].slot.count<2 {return -1;}h:=hc_hash(c,id);mask:=c[0].slot.count-1;
   for probe:0..<c[0].slot.count {v:=c[0].slot[(h+probe)&mask];if v==0 {return -1;}if hc_same(c,v-1,id) {return v-1;}}
   return -1;
@@ -93,7 +93,7 @@ hc_write :: (out:[]u8,at:int,k:int,id:[]u8,created:int,kind:int,dkey:int,json:st
   for i:0..<json.count {out[n+i]=json[i];}n+=json.count;out[n]=10;return n+1;
 }
 // The build's writer: an event Coax admits here, as one entry. -1 refused.
-hc_entry :: (text:string,k:int,out:[]u8)->int #export_c {
+hc_entry :: (text:string,k:int,out:[]u8)->int #export_c #effects(all) {
   scratch:[NE_MAX_OUTPUT]u8;e:=lr_event(text,scratch[..]);if e.error!=NE_OK || !e.verified {return -1;}
   return hc_write(out,0,k,e.id[..],e.created_at,e.kind,hc_dkey(e),text);
 }
@@ -119,8 +119,8 @@ hc_add :: (c:[]HcCache,k:int,e:NostrEvent)->int {
 // Entries, synced lines and a head line from the page's storage or the
 // build's seed, all written by hc_write and hc_head. Returns entries kept, or
 // -1 at the first malformed line (what came before it stays).
-hc_absorb :: (c:[]HcCache,text:string)->int #export_c {return hc_read(c,text,false);}
-hc_read :: (c:[]HcCache,text:string,seed:bool)->int #export_c {
+hc_absorb :: (c:[]HcCache,text:string)->int #export_c #effects(all) {return hc_read(c,text,false);}
+hc_read :: (c:[]HcCache,text:string,seed:bool)->int #export_c #effects(all) {
   c[0].seeding=seed;r:=hc_lines(c,text);c[0].seeding=false;return r;
 }
 hc_lines :: (c:[]HcCache,text:string)->int {
@@ -143,13 +143,13 @@ hc_lines :: (c:[]HcCache,text:string)->int {
   }
   return kept;
 }
-hc_json :: (c:[]HcCache,i:int)->string #export_c {return ifx i>=0 && i<c[0].n then cast(string)c[0].bytes[c[0].from[i]+HC_HEAD..<c[0].from[i]+c[0].size[i]-1] else "";}
-hc_next :: (c:[]HcCache,k:int,i:int)->int #export_c {for e:hi_cache(i,0)..<c[0].n {if !c[0].dead[e] && c[0].project[e]==k {return e;}}return -1;}
+hc_json :: (c:[]HcCache,i:int)->string #export_c #effects(all) {return ifx i>=0 && i<c[0].n then cast(string)c[0].bytes[c[0].from[i]+HC_HEAD..<c[0].from[i]+c[0].size[i]-1] else "";}
+hc_next :: (c:[]HcCache,k:int,i:int)->int #export_c #effects(all) {for e:hi_cache(i,0)..<c[0].n {if !c[0].dead[e] && c[0].project[e]==k {return e;}}return -1;}
 hi_cache :: (a:int,b:int)->int {return ifx a>b then a else b;}
-hc_newest :: (c:[]HcCache,k:int)->int #export_c {t:=0;for e:0..<c[0].n {if !c[0].dead[e] && c[0].project[e]==k && c[0].at[e]>t {t=c[0].at[e];}}return t;}
+hc_newest :: (c:[]HcCache,k:int)->int #export_c #effects(all) {t:=0;for e:0..<c[0].n {if !c[0].dead[e] && c[0].project[e]==k && c[0].at[e]>t {t=c[0].at[e];}}return t;}
 // The issue ids of project k's entries, 50 from offset, for the follow-up
 // queries; 0 when there are no more.
-hc_issue_ids :: (c:[]HcCache,k:int,offset:int,out:[]u8)->int #export_c {
+hc_issue_ids :: (c:[]HcCache,k:int,offset:int,out:[]u8)->int #export_c #effects(all) {
   n:=json_raw(out,0,"[");count:=0;seen:=0;hex:="0123456789abcdef";
   for e:0..<c[0].n {
     if c[0].dead[e] || c[0].project[e]!=k || c[0].kind[e]!=1621 {continue;}
@@ -161,7 +161,7 @@ hc_issue_ids :: (c:[]HcCache,k:int,offset:int,out:[]u8)->int #export_c {
 }
 // Of the 64-hex ids a line each in known, from the offset-th for 50, the ones
 // not here, as a JSON array; 0 when all of them are.
-hc_missing :: (c:[]HcCache,known:string,offset:int,out:[]u8)->int #export_c {
+hc_missing :: (c:[]HcCache,known:string,offset:int,out:[]u8)->int #export_c #effects(all) {
   n:=json_raw(out,0,"[");count:=0;
   for i:offset..<offset+50 {
     at:=i*65;if at+64>known.count {break;}text:=known[at..<at+64];id:[32]u8;ok:=true;
@@ -174,13 +174,13 @@ hc_missing :: (c:[]HcCache,known:string,offset:int,out:[]u8)->int #export_c {
 // Chunk records: every entry in order (a replaced one too: reading it back
 // replaces it again), a chunk at most HC_CHUNK bytes. Entries only append, so
 // a full chunk never changes until hc_compact rewrites them all.
-hc_chunk_of :: (c:[]HcCache,entry:int)->int #export_c {
+hc_chunk_of :: (c:[]HcCache,entry:int)->int #export_c #effects(all) {
   chunk:=0;size:=0;
   for e:0..<c[0].n {if size>0 && size+c[0].size[e]>HC_CHUNK {chunk+=1;size=0;}if e>=entry {return chunk;}size+=c[0].size[e];}
   return chunk;
 }
-hc_chunks :: (c:[]HcCache)->int #export_c {return ifx c[0].n==0 then 0 else hc_chunk_of(c,c[0].n-1)+1;}
-hc_pack :: (c:[]HcCache,chunk:int,out:[]u8)->int #export_c {
+hc_chunks :: (c:[]HcCache)->int #export_c #effects(all) {return ifx c[0].n==0 then 0 else hc_chunk_of(c,c[0].n-1)+1;}
+hc_pack :: (c:[]HcCache,chunk:int,out:[]u8)->int #export_c #effects(all) {
   at:=0;size:=0;n:=0;
   for e:0..<c[0].n {
     if size>0 && size+c[0].size[e]>HC_CHUNK {at+=1;size=0;}size+=c[0].size[e];
@@ -189,7 +189,7 @@ hc_pack :: (c:[]HcCache,chunk:int,out:[]u8)->int #export_c {
   }
   return n;
 }
-hc_head :: (c:[]HcCache,chunks:int,out:[]u8)->int #export_c {
+hc_head :: (c:[]HcCache,chunks:int,out:[]u8)->int #export_c #effects(all) {
   n:=hc_head_lines(c,chunks,out);if n<0 || chunks==0 {return n;}
   for k:0..<HC_PROJECTS {m:=c[0].proj_n[k];if m<=0 || c[0].snap[k]<=0 || n+HC_PROJ_HEAD+m+1>out.count || n+HC_PROJ_HEAD+m+1>HC_CHUNK {continue;}
     out[n]='P';out[n+1]=cast(u8)(48+k);out[n+2]=' ';z:=hc_digits(out,n+3,c[0].proj_count[k],7,10);out[z]=' ';z=hc_digits(out,z+1,c[0].proj_key[k],13,10);out[z]=' ';z=hc_digits(out,z+1,m,7,10);out[z]=10;z+=1;
@@ -203,7 +203,7 @@ hc_head_lines :: (c:[]HcCache,chunks:int,out:[]u8)->int {
 }
 // Keep the live entries (and, when drop names one, not that project's), in
 // order, packed to the front, with a fresh index.
-hc_compact :: (c:[]HcCache,drop:int) #export_c {
+hc_compact :: (c:[]HcCache,drop:int) #export_c #effects(all) {
   n:=0;used:=0;
   for i:0..<c[0].slot.count {c[0].slot[i]=0;}
   for e:0..<c[0].n {
@@ -219,14 +219,14 @@ hc_compact :: (c:[]HcCache,drop:int) #export_c {
 // it says is complete becomes complete here.
 // Read back whole from storage, with nothing dropped, the records already
 // say what is here: nothing to write until something changes.
-hc_commit :: (c:[]HcCache,keep:bool) #export_c {
+hc_commit :: (c:[]HcCache,keep:bool) #export_c #effects(all) {
   for k:0..<HC_PROJECTS {if keep && c[0].pending[k]>c[0].synced[k] {c[0].synced[k]=c[0].pending[k];}c[0].pending[k]=0;}
   if keep && c[0].skipped==0 && !c[0].rewrite && c[0].from_store {c[0].dirty=false;}c[0].skipped=0;c[0].from_store=false;
 }
-hc_settle :: (c:[]HcCache,k:int) #export_c {if k>=0 && k<HC_PROJECTS {t:=hc_newest(c,k);c[0].synced[k]=ifx t>0 then t else 1;if !c[0].dirty {c[0].dirty_from=c[0].n;}c[0].dirty=true;}}
+hc_settle :: (c:[]HcCache,k:int) #export_c #effects(all) {if k>=0 && k<HC_PROJECTS {t:=hc_newest(c,k);c[0].synced[k]=ifx t>0 then t else 1;if !c[0].dirty {c[0].dirty_from=c[0].n;}c[0].dirty=true;}}
 // A save's start: what it will say is complete is what is complete now; the
 // first chunk to write (0 after hc_compact), or -1 when nothing changed.
-hc_persist_begin :: (c:[]HcCache)->int #export_c {
+hc_persist_begin :: (c:[]HcCache)->int #export_c #effects(all) {
   if !c[0].dirty {return -1;}for k:0..<HC_PROJECTS {c[0].snap[k]=c[0].synced[k];}c[0].dirty=false;
   return ifx c[0].rewrite then 0 else hc_chunk_of(c,c[0].dirty_from);
 }
@@ -241,9 +241,9 @@ hc_set_projection :: (c:[]HcCache,k:int,text:string,count:int,key:int) {
   if text.count>w {c[0].proj_n[k]=0;return;}for i:0..<text.count {c[0].proj[k*w+i]=text[i];}c[0].proj_n[k]=text.count;c[0].proj_count[k]=count;c[0].proj_key[k]=key;
 }
 // A fold just made from what project k holds now.
-hc_keep_projection :: (c:[]HcCache,k:int,text:string) #export_c {hc_set_projection(c,k,text,hc_count(c,k),hc_key(c,k));if !c[0].dirty {c[0].dirty_from=c[0].n;}c[0].dirty=true;}
+hc_keep_projection :: (c:[]HcCache,k:int,text:string) #export_c #effects(all) {hc_set_projection(c,k,text,hc_count(c,k),hc_key(c,k));if !c[0].dirty {c[0].dirty_from=c[0].n;}c[0].dirty=true;}
 // The kept fold of project k when it was made from exactly what k holds; "" otherwise.
-hc_projection :: (c:[]HcCache,k:int)->string #export_c {
+hc_projection :: (c:[]HcCache,k:int)->string #export_c #effects(all) {
   if k<0 || k>=HC_PROJECTS || c[0].proj_n[k]<=0 || c[0].synced[k]<=0 || c[0].proj_count[k]!=hc_count(c,k) || c[0].proj_key[k]!=hc_key(c,k) {return "";}
   w:=c[0].proj.count/HC_PROJECTS;return cast(string)c[0].proj[k*w..<k*w+c[0].proj_n[k]];
 }

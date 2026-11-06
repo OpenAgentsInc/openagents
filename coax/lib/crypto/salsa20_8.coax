@@ -28,7 +28,7 @@
   #assert out[16]==0xa5a5a5a5;
 }
 
-salsa20_8_words :: (input:[16]u32)->[16]u32 {
+salsa20_8_words :: (input:[16]u32)->[16]u32 #effects(all) {
   x:=input;
   for round:0..<4 {
     x[4]^=rotl(add_wrap(x[0],x[12]),7); x[8]^=rotl(add_wrap(x[4],x[0]),9);
@@ -54,7 +54,7 @@ salsa20_8_words :: (input:[16]u32)->[16]u32 {
 
 // Internal ABI: the host or a checked adapter must supply valid views and
 // a truthful overlap observation. This alone is not a public pointer gate.
-salsa20_8_core :: (input:[]u32,out:[]u32,overlap:bool)->bool #export_c {
+salsa20_8_core :: (input:[]u32,out:[]u32,overlap:bool)->bool #export_c #effects(all) {
   if input.count<16 || out.count<16 || overlap {return false;}
   words:[16]u32;for i:0..<16 {words[i]=input[i];}
   words=salsa20_8_words(words);

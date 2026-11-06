@@ -122,7 +122,7 @@ comparison into an admission verdict.
 
 <!-- source: psionic/lib/deepseek/router-compare.coax compare -->
 ```jai
-dr_compare :: (a:DrRoute,b:DrRoute)->DrComparison #export_c {
+dr_compare :: (a:DrRoute,b:DrRoute)->DrComparison #export_c #effects(all) {
     if a.status!=DrStatus.ok || b.status!=DrStatus.ok || a.experts!=b.experts || a.count!=b.count || a.profile!=b.profile || a.count<1 || a.count>8 {return DrComparison.{status=DrStatus.shape};}
     r:=DrComparison.{reference=a,candidate=b,identical_ids=true};
     for i:0..<a.count {if a.ids[i]!=b.ids[i] {r.identical_ids=false;}

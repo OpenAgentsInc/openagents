@@ -43,7 +43,7 @@
 AeadSpan :: struct {address:u64;length:int;}
 // Order: operation, workspace, key, nonce, AAD, input, output. Empty spans
 // carry no access; all nonempty spans are bounded and pairwise disjoint.
-aa_admit :: (spans:[]AeadSpan,seal:bool,narrow:bool)->bool #export_c {
+aa_admit :: (spans:[]AeadSpan,seal:bool,narrow:bool)->bool #export_c #effects(all) {
   if spans.count!=7 {return false;}
   for i:0..<7 {
     s:=spans[i];if !sa_span(s.address,s.length,1048576) {return false;}

@@ -92,15 +92,15 @@ The code writes `~x` as `x ^ RMD_ONES`, which flips every bit:
 ```jai
 // Word arithmetic. Sums widen to u64 and keep the low 32 bits, so they wrap
 // the same way in checked and native builds. `x ^ RMD_ONES` is NOT x.
-R_rol :: (x: u32, n: int) -> u32 {
+R_rol :: (x: u32, n: int) -> u32 #effects(all) {
   if n == 0 { return x; }
   return (x << n) | (x >> (32 - n));
 }
-R_sum2 :: (a: u32, b: u32) -> u32 { return cast,trunc(u32) (cast(u64) a + cast(u64) b); }
-R_sum3 :: (a: u32, b: u32, c: u32) -> u32 { return cast,trunc(u32) (cast(u64) a + cast(u64) b + cast(u64) c); }
-R_sum4 :: (a: u32, b: u32, c: u32, d: u32) -> u32 { return cast,trunc(u32) (cast(u64) a + cast(u64) b + cast(u64) c + cast(u64) d); }
+R_sum2 :: (a: u32, b: u32) -> u32 #effects(all) { return cast,trunc(u32) (cast(u64) a + cast(u64) b); }
+R_sum3 :: (a: u32, b: u32, c: u32) -> u32 #effects(all) { return cast,trunc(u32) (cast(u64) a + cast(u64) b + cast(u64) c); }
+R_sum4 :: (a: u32, b: u32, c: u32, d: u32) -> u32 #effects(all) { return cast,trunc(u32) (cast(u64) a + cast(u64) b + cast(u64) c + cast(u64) d); }
 // The five boolean functions. The step number j picks one; it is public.
-R_f :: (j: int, x: u32, y: u32, z: u32) -> u32 {
+R_f :: (j: int, x: u32, y: u32, z: u32) -> u32 #effects(all) {
   if j < 16 { return x ^ y ^ z; }
   if j < 32 { return (x & y) | ((x ^ RMD_ONES) & z); }
   if j < 48 { return (x | (y ^ RMD_ONES)) ^ z; }
@@ -152,7 +152,7 @@ The code names the primed variables `ap` to `ep`:
 ```jai
 // One 64-byte block into the five chaining words `h`. The left and right
 // lines run the same 80 steps with different tables, then cross-combine.
-R_compress :: (h: [] u32, block: [] u8) -> bool {
+R_compress :: (h: [] u32, block: [] u8) -> bool #effects(all) {
   if h.count != 5 || block.count != 64 { return false; }
   k := [5] u32.[0x00000000, 0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xa953fd4e];
   kp := [5] u32.[0x50a28be6, 0x5c4dd124, 0x6d703ef3, 0x7a6d76e9, 0x00000000];
@@ -250,7 +250,7 @@ The calls are the same as chapter 4's:
 
 <!-- source: coax/lib/crypto/ripemd160.coax stream -->
 ```jai
-ripemd160_update_checked :: (state: [] u8, input: [] u8, overlap: bool) -> u32 {
+ripemd160_update_checked :: (state: [] u8, input: [] u8, overlap: bool) -> u32 #effects(all) {
   w := ripemd160_unpack(state);
   if !w.ok { return RMD_BAD_STATE; }
   if w.phase != RMD_ACTIVE { return RMD_PHASE; }
@@ -268,7 +268,7 @@ ripemd160_update_checked :: (state: [] u8, input: [] u8, overlap: bool) -> u32 {
   return ripemd160_pack(w, state);
 }
 // Padding is MD4's: 0x80, zeros, and the bit length as a little-endian u64.
-ripemd160_final_checked :: (state: [] u8, out: [] u8, overlap: bool) -> u32 {
+ripemd160_final_checked :: (state: [] u8, out: [] u8, overlap: bool) -> u32 #effects(all) {
   w := ripemd160_unpack(state);
   if !w.ok { return RMD_BAD_STATE; }
   if !cb_span(out.count, 0, RMD_DIGEST_BYTES) { return RMD_BAD_OUTPUT; }
@@ -315,7 +315,7 @@ HASH160 runs SHA-256 and then RIPEMD-160 on the 32-byte result:
 ```jai
 // HASH160(x) = RIPEMD160(SHA256(x)). The checks run before either hash, so
 // a refusal writes nothing.
-hash160_checked :: (input: [] u8, out: [] u8, overlap: bool) -> u32 #export_c {
+hash160_checked :: (input: [] u8, out: [] u8, overlap: bool) -> u32 #export_c #effects(all) {
   status := ripemd160_request(input.count, out.count, overlap);
   if status != RMD_OK { return status; }
   inner: [32] u8;

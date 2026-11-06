@@ -74,18 +74,18 @@
 }
 
 // ASCII domain of Python lower() then re.sub(r"[^\w\s]", "", text).
-gr_map :: (c:u8)->int {
+gr_map :: (c:u8)->int #effects(all) {
   if c>=128 {return -2;}
   if c>=65 && c<=90 {return cast(int)c+32;}
   if (c>=97 && c<=122) || (c>=48 && c<=57) || c==95 || (c>=9 && c<=13) || (c>=28 && c<=32) {return cast(int)c;}
   return -1;
 }
-gr_context :: (n:int)->bool {return n>=137 && n<=512;}
-gr_language_count :: (n:int)->bool {return n>=0 && n<=4096;}
-gr_padding :: (pad:int,n:int)->bool {return pad==0 || (pad>=n && pad<=512);}
-gr_write :: (out:[]u8,at:int,s:string)->int {for i:0..<s.count {out[at+i]=s[i];}return at+s.count;}
+gr_context :: (n:int)->bool #effects(all) {return n>=137 && n<=512;}
+gr_language_count :: (n:int)->bool #effects(all) {return n>=0 && n<=4096;}
+gr_padding :: (pad:int,n:int)->bool #effects(all) {return pad==0 || (pad>=n && pad<=512);}
+gr_write :: (out:[]u8,at:int,s:string)->int #effects(all) {for i:0..<s.count {out[at+i]=s[i];}return at+s.count;}
 // book:begin render
-gr_render :: (instruction:string,out:[]u8,work:[]u8,overlap:bool)->GrRead #export_c {
+gr_render :: (instruction:string,out:[]u8,work:[]u8,overlap:bool)->GrRead #export_c #effects(all) {
   if !gr_language_count(instruction.count) {return GrRead.{status=GrStatus.size};}
   if overlap {return GrRead.{status=GrStatus.overlap};}
   prefix:="<|im_start|>user\n";start:="<|vision_start|>";image:="<|image_pad|>";end:="<|vision_end|>";suffix:="<|im_end|>\n";
@@ -98,13 +98,13 @@ gr_render :: (instruction:string,out:[]u8,work:[]u8,overlap:bool)->GrRead #expor
   at=gr_write(work,at,suffix);for i:0..<at {out[i]=work[i];}return GrRead.{written=at};
 }
 // book:end render
-gr_token :: (i:int,id:int,n:int)->bool {
+gr_token :: (i:int,id:int,n:int)->bool #effects(all) {
   if i==0 {return id==151644;}if i==1 {return id==872;}if i==2 || i==n-1 {return id==198;}
   if i==3 || i==69 {return id==151652;}if i==68 || i==134 {return id==151653;}
   if i==n-2 {return id==151645;}if i<135 {return id==151655;}
   return id>=0 && id<151643;
 }
-gr_slot :: (i:int)->GrSlot {
+gr_slot :: (i:int)->GrSlot #effects(all) {
   if i<4 {return GrSlot.{t=i,h=i,w=i};}
   if i<68 {p:=i-4;return GrSlot.{t=4,h=4+p/8,w=4+p%8,image=true};}
   if i<70 {p:=i-56;return GrSlot.{t=p,h=p,w=p};}
@@ -114,7 +114,7 @@ gr_slot :: (i:int)->GrSlot {
 // book:begin plan
 // Output is six contiguous arrays: IDs,attention,image,t-position,h-position,w-position.
 // Tokenization itself is existing pt_encode_checked with the admitted private Cosmos table.
-gr_plan :: (tokens:[]int,pad_to:int,out:[]int,overlap:bool)->GrRead #export_c {
+gr_plan :: (tokens:[]int,pad_to:int,out:[]int,overlap:bool)->GrRead #export_c #effects(all) {
   n:=tokens.count;if !gr_context(n) || !gr_padding(pad_to,n) {return GrRead.{status=GrStatus.size};}
   count:=n;if pad_to!=0 {count=pad_to;}
   if out.count<6*count {return GrRead.{status=GrStatus.capacity};}

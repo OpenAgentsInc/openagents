@@ -31,7 +31,7 @@ fp_page :: (realm: string) -> string { return ifx realm == "verse" || realm == "
 fp_mesh :: (realm: string) -> string { return ifx realm == "orbitleague" then "apps/openagents-web/realms/orbit-league/assets/roadster.bin" else ""; }
 FP_SIZE :: "320 180";
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 2 { tool_errln("usage: flat-pass HOST REALM [--allow N] [--keep DIR] [--emit DIR]"); return 2; }
   realm := args_at(a[..], 1);

@@ -58,21 +58,21 @@ MATH_BIG :: 1000000.0;                  // past this, an angle is refused: 0 for
 
 // sin and cos of r in [-pi/4, pi/4], by their Taylor series to r^13 and r^14: off by at most
 // 3e-14 and 2e-15, far inside an f32's half step (6e-8), and every term counts.
-math_sin_near :: (r: f64) -> f64 {
+math_sin_near :: (r: f64) -> f64 #effects(all) {
   z := r * r;
   return r + r * z * (-1.0 / 6 + z * (1.0 / 120 + z * (-1.0 / 5040 + z * (1.0 / 362880 + z * (-1.0 / 39916800 + z * (1.0 / 6227020800))))));
 }
-math_cos_near :: (r: f64) -> f64 {
+math_cos_near :: (r: f64) -> f64 #effects(all) {
   z := r * r;
   return 1 + z * (-1.0 / 2 + z * (1.0 / 24 + z * (-1.0 / 720 + z * (1.0 / 40320 + z * (-1.0 / 3628800 + z * (1.0 / 479001600 + z * (-1.0 / 87178291200)))))));
 }
 // The quarter turn x is in, and how far past it: x = k pi/2 + r.
 MathTurn :: struct { k: int; r: f64; }
-math_turn :: (x: f64) -> MathTurn {
+math_turn :: (x: f64) -> MathTurn #effects(all) {
   k := floor(x * MATH_TWO_OVER_PI + 0.5);
   return MathTurn.{k = cast(int) k, r = (x - k * MATH_PIO2_HI) - k * MATH_PIO2_LO};
 }
-math_sin_f64 :: (x: f64) -> f64 {
+math_sin_f64 :: (x: f64) -> f64 #effects(all) {
   t := math_turn(x);
   q := t.k & 3;
   if q == 0 { return math_sin_near(t.r); }
@@ -80,12 +80,12 @@ math_sin_f64 :: (x: f64) -> f64 {
   if q == 2 { return -math_sin_near(t.r); }
   return -math_cos_near(t.r);
 }
-math_finite :: (x: f32) -> bool { return x == x && x < MATH_BIG && x > -MATH_BIG; }
-math_sin :: (x: f32) -> f32 {
+math_finite :: (x: f32) -> bool #effects(all) { return x == x && x < MATH_BIG && x > -MATH_BIG; }
+math_sin :: (x: f32) -> f32 #effects(all) {
   if !math_finite(x) { return 0; }
   return cast(f32) math_sin_f64(cast(f64) x);
 }
-math_cos :: (x: f32) -> f32 {
+math_cos :: (x: f32) -> f32 #effects(all) {
   if !math_finite(x) { return 1; }
   t := math_turn(cast(f64) x);
   q := t.k & 3;
@@ -97,7 +97,7 @@ math_cos :: (x: f32) -> f32 {
 
 // e^x for x in [-700, 700], else 0 or 1e300: 2^k e^r, |r| <= ln 2 / 2, by the series to r^11 (off
 // by at most 7e-15 of e^r).
-math_exp_f64 :: (x: f64) -> f64 {
+math_exp_f64 :: (x: f64) -> f64 #effects(all) {
   if x < -700 { return 0; }
   if x > 700 { return 1.0e300; }
   k := floor(x / (MATH_LN2_HI + MATH_LN2_LO) + 0.5);
@@ -109,7 +109,7 @@ math_exp_f64 :: (x: f64) -> f64 {
 }
 // ln x for x > 0 and finite: x = m 2^e with m in [1, 2), and ln m = 2 atanh(s), s = (m - 1)/(m + 1)
 // <= 1/3, by its series to s^27 (off by at most 1e-15).
-math_log_f64 :: (x: f64) -> f64 {
+math_log_f64 :: (x: f64) -> f64 #effects(all) {
   bits := f64_bits(x);
   e := cast(int) ((bits >> 52) & 2047) - 1023;
   m := f64_from_bits((bits & 4503599627370495) | 4607182418800017408);   // the mantissa, in [1, 2)
@@ -122,10 +122,10 @@ math_log_f64 :: (x: f64) -> f64 {
 // Finite positive binary32 bases and finite exponents, independent of the
 // trigonometric angle limit. Invalid operands or an overflowing result give 0;
 // b = 0 gives 1 even for an invalid base. Underflow may also round to 0.
-math_power_fits :: (value: f64) -> bool {
+math_power_fits :: (value: f64) -> bool #effects(all) {
   return value <= cast(f64) f32_from_bits(0x7f7fffff);
 }
-math_pow :: (a: f32, b: f32) -> f32 {
+math_pow :: (a: f32, b: f32) -> f32 #effects(all) {
   if b == 0 { return 1; }
   if !(a > 0) || (f32_bits(a) & 2147483647) >= 2139095040 || (f32_bits(b) & 2147483647) >= 2139095040 { return 0; }
   // Preserve the endpoints exactly rather than taking a log/exp round trip.

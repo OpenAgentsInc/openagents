@@ -8,7 +8,7 @@ hc_expect :: (c:[]Cdp,expr:string,want:string)->bool {
   if got!=want {tool_err("host transport differs for ");tool_errln(expr);tool_err("received ");tool_errln(got);tool_errln(cdp_error(c));return false;}
   return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {tool_errln("usage: check-transport FIXTURE.wasm");return 2;}
   wasm:[16777216]u8;js:[65536]u8;http:[65536]u8;
   wn:=fs_read(args_at(a[..],0),wasm[..]);jn:=fs_read("coax/web/host-transport.js",js[..]);

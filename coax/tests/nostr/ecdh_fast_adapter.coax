@@ -1,5 +1,5 @@
 // Test-only access to the experimental fused arithmetic.
 #load "../../lib/crypto/ecdh_fast.coax";
-ef_test_add :: (a:Sf32,b:Sf32)->Sf32 #export_c {return ef_field_add(a,b);}
-ef_test_mul :: (a:Sf32,b:Sf32)->Sf32 #export_c {return ef_field_mul(a,b);}
-ef_test_inverse :: (a:Sf32)->Sf32 #export_c {return ef_inverse(a);}
+ef_test_add :: (a:Sf32,b:Sf32)->Sf32 #export_c #effects(all) {return ef_field_add(a,b);}
+ef_test_mul :: (a:Sf32,b:Sf32)->Sf32 #export_c #effects(all) {return ef_field_mul(a,b);}
+ef_test_inverse :: (a:Sf32)->Sf32 #export_c #effects(all) {return ef_inverse(a);}

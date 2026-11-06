@@ -26,25 +26,25 @@ GSA_ARMOR_MAX :: 4158;  // the profile's armor bound
 GsaSignature :: struct {armor:[]u8;consistent:bool;owner:bool;}
 
 // Each writer returns the next offset, or -1 once anything fails to fit.
-gsa_put :: (out:[]u8,at:int,s:string)->int {
+gsa_put :: (out:[]u8,at:int,s:string)->int #effects(all) {
  if at<0 || at+s.count>out.count {return -1;}
  for i:0..<s.count {out[at+i]=s[i];}
  return at+s.count;
 }
-gsa_hex :: (out:[]u8,at:int,b:[]u8)->int {
+gsa_hex :: (out:[]u8,at:int,b:[]u8)->int #effects(all) {
  digits:="0123456789abcdef";
  if at<0 || at+2*b.count>out.count {return -1;}
  for i:0..<b.count {out[at+2*i]=digits[cast(int)(b[i]>>4)];out[at+2*i+1]=digits[cast(int)(b[i]&15)];}
  return at+2*b.count;
 }
-gsa_decimal :: (out:[]u8,at:int,v:u32)->int {
+gsa_decimal :: (out:[]u8,at:int,v:u32)->int #effects(all) {
  digits:[10]u8;n:=0;x:=v;
  while true {digits[n]=cast(u8)(48+cast(int)(x%10));n+=1;x/=10;if x==0 {break;}}
  if at<0 || at+n>out.count {return -1;}
  for i:0..<n {out[at+i]=digits[n-1-i];}
  return at+n;
 }
-gsa_base64 :: (out:[]u8,at:int,data:[]u8)->int {
+gsa_base64 :: (out:[]u8,at:int,data:[]u8)->int #effects(all) {
  alphabet:="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
  if at<0 || at+(data.count+2)/3*4>out.count {return -1;}
  i:=0;o:=at;
@@ -63,17 +63,17 @@ gsa_base64 :: (out:[]u8,at:int,data:[]u8)->int {
  return o;
 }
 // Printable ASCII that JSON writes without an escape.
-gsa_plain :: (s:string)->bool {
+gsa_plain :: (s:string)->bool #effects(all) {
  for i:0..<s.count {c:=s[i];if c<32 || c>126 || c=='"' || c=='\\' {return false;}}
  return true;
 }
-gsa_same :: (a:[]u8,b:[]u8)->bool {
+gsa_same :: (a:[]u8,b:[]u8)->bool #effects(all) {
  if a.count!=b.count {return false;}
  for i:0..<a.count {if a[i]!=b[i] {return false;}}
  return true;
 }
 
-gsa_read :: (wire:[]u8)->GsaSignature #export_c {
+gsa_read :: (wire:[]u8)->GsaSignature #export_c #effects(all) {
  s:=GS_GitSignature_decode(wire);if s.error!=0 {return GsaSignature.{};}
  // Required presence of armor, v, pk, sig, t and each oa element is the decoder's.
  armor:=GS_GitSignature_get_armor(s).value;pk:=GS_GitSignature_get_pubkey(s).value;

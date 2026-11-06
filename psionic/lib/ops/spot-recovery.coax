@@ -22,7 +22,7 @@
   #assert spot_recovery_action("openagentsgemini","us-central1-b","psionic-rtx6000-pylon","TERMINATED","true")==-1;
   #assert spot_recovery_action("openagentsgemini","us-central1-b","psionic-rtx6000-pylon","RUNNING","")==-1;
 }
-spot_recovery_action :: (project:string,zone:string,vm:string,status:string,dry:string)->int #export_c {
+spot_recovery_action :: (project:string,zone:string,vm:string,status:string,dry:string)->int #export_c #effects(all) {
   if project!="openagentsgemini" || zone!="us-central1-b" || vm!="psionic-rtx6000-pylon" {return -1;}
   if dry!="0" && dry!="1" {return -1;}
   if status=="RUNNING" {return 0;}

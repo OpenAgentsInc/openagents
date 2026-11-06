@@ -83,26 +83,26 @@ binary32 once, and every decision at 0.5 is the same.
 // type; a nested message is written after a five-byte gap, then moved back
 // once its length is known, so every length is the shortest varint, as
 // onnx's own serializer writes it.
-ow_var :: (out:[]u8,at:int,v:u64)->int {
+ow_var :: (out:[]u8,at:int,v:u64)->int #effects(all) {
     p:=at;x:=v;
     while x>=128 {out[p]=cast,trunc(u8)(x|128);x>>=7;p+=1;}
     out[p]=cast(u8)x;return p+1;
 }
-ow_int :: (out:[]u8,at:int,number:u64,v:u64)->int {return ow_var(out,ow_var(out,at,number*8),v);}
-ow_text :: (out:[]u8,at:int,number:u64,text:string)->int {
+ow_int :: (out:[]u8,at:int,number:u64,v:u64)->int #effects(all) {return ow_var(out,ow_var(out,at,number*8),v);}
+ow_text :: (out:[]u8,at:int,number:u64,text:string)->int #effects(all) {
     p:=ow_var(out,ow_var(out,at,number*8+2),cast(u64)text.count);
     for c,i:text {out[p+i]=c;}
     return p+text.count;
 }
-ow_parts :: (out:[]u8,at:int,number:u64,a:string,b:string,c:string)->int {
+ow_parts :: (out:[]u8,at:int,number:u64,a:string,b:string,c:string)->int #effects(all) {
     p:=ow_var(out,ow_var(out,at,number*8+2),cast(u64)(a.count+b.count+c.count));
     for x:a {out[p]=x;p+=1;}
     for x:b {out[p]=x;p+=1;}
     for x:c {out[p]=x;p+=1;}
     return p;
 }
-ow_open :: (out:[]u8,at:int,number:u64)->int {return ow_var(out,at,number*8+2)+5;}
-ow_close :: (out:[]u8,body:int,end:int)->int {
+ow_open :: (out:[]u8,at:int,number:u64)->int #effects(all) {return ow_var(out,at,number*8+2)+5;}
+ow_close :: (out:[]u8,body:int,end:int)->int #effects(all) {
     p:=ow_var(out,body-5,cast(u64)(end-body));
     for i:0..<end-body {out[p+i]=out[body+i];}
     return p+end-body;
@@ -120,7 +120,7 @@ the file is written once, in order, with no size pass first.
 ```jai
 // A graph input or output: a float tensor with static dimensions. An
 // initializer: dimensions, FLOAT, the name, then the values as raw bytes.
-ow_value :: (out:[]u8,at:int,number:u64,name:string,shape:OxShape)->int {
+ow_value :: (out:[]u8,at:int,number:u64,name:string,shape:OxShape)->int #effects(all) {
     v:=ow_open(out,at,number);p:=ow_text(out,v,1,name);
     t:=ow_open(out,p,2);tensor:=ow_open(out,t,1);p=ow_int(out,tensor,1,OX_FLOAT);
     s:=ow_open(out,p,2);p=s;
@@ -128,7 +128,7 @@ ow_value :: (out:[]u8,at:int,number:u64,name:string,shape:OxShape)->int {
     p=ow_close(out,s,p);p=ow_close(out,tensor,p);p=ow_close(out,t,p);
     return ow_close(out,v,p);
 }
-ow_tensor :: (out:[]u8,at:int,stem:string,suffix:string,shape:OxShape,values:[]f32)->int {
+ow_tensor :: (out:[]u8,at:int,stem:string,suffix:string,shape:OxShape,values:[]f32)->int #effects(all) {
     t:=ow_open(out,at,5);p:=t;
     for i:0..<shape.rank {p=ow_int(out,p,1,cast(u64)shape.dims[i]);}
     p=ow_int(out,p,2,OX_FLOAT);p=ow_parts(out,p,8,stem,suffix,"");
@@ -151,7 +151,7 @@ dimension, because chapter 220 refuses symbolic shapes.
 // "/stem/Gemm" and its weights "stem.weight" and "stem.bias": with no slash in
 // the stem, those are the names chapter 220 gives them back. The file is
 // staged, read back, and copied out only if 161 admits it.
-ow_check :: (g:OwGraph,values:[]f32)->OwResult {
+ow_check :: (g:OwGraph,values:[]f32)->OwResult #effects(all) {
     if g.node_count>OX_NODES_MAX || g.weight_count>OX_VALUES_MAX {return OwResult.{status=OwStatus.capacity,node=-1};}
     if g.node_count==0 {return OwResult.{status=OwStatus.shape,node=-1};}
     for k:0..<g.node_count {n:=g.nodes[k];
@@ -168,14 +168,14 @@ ow_check :: (g:OwGraph,values:[]f32)->OwResult {
     }
     return OwResult.{};
 }
-ow_name :: (out:[]u8,at:int,number:u64,g:OwGraph,k:int)->int {
+ow_name :: (out:[]u8,at:int,number:u64,g:OwGraph,k:int)->int #effects(all) {
     if k==-1 {return ow_text(out,at,number,g.input);}
     if k==g.node_count-1 {return ow_text(out,at,number,g.output);}
     digit:=[1]u8.[cast(u8)(49+k)];
     if k<9 {return ow_parts(out,at,number,"t",cast(string)digit[..],"");}
     digit[0]=cast(u8)(39+k);return ow_parts(out,at,number,"t1",cast(string)digit[..],"");
 }
-ow_write :: (g:OwGraph,values:[]f32,out:[]u8)->OwResult {
+ow_write :: (g:OwGraph,values:[]f32,out:[]u8)->OwResult #effects(all) {
     r:=ow_check(g,values);if r.status!=OwStatus.ok {return r;}
     file:[OX_BYTES_MAX]u8;
     p:=ow_int(file[..],0,1,OW_IR);p=ow_text(file[..],p,2,"psionic");
@@ -243,7 +243,7 @@ file never shares a weight.
 // with chapter 4's accumulator, then rounded once to binary32. The logistic
 // model becomes two columns, 0 and z, so a two-class Softmax gives sigmoid(z)
 // as its second output.
-ow_from_tabular :: (m:TbModel,params:[]f64,mean:[]f64,sd:[]f64,values:[]f32,stem:string)->OwFold {
+ow_from_tabular :: (m:TbModel,params:[]f64,mean:[]f64,sd:[]f64,values:[]f32,stem:string)->OwFold #effects(all) {
     if m.hidden!=0 {return OwFold.{status=OwStatus.op};}
     d:=m.features;
     if !tb_model_ok(m) || params.count<d+1 || mean.count<d || sd.count<d {return OwFold.{status=OwStatus.shape};}

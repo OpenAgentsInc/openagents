@@ -33,7 +33,7 @@
  old:=b[0];raw[6]=101;#assert pfk_forward_raw(raw[..],b[..])==PfkStatus.range;pfk_same_output(b[0],old);
 }
 
-pfk_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),output:[]PfkOutput)->PfkStatus #export_c {
+pfk_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),output:[]PfkOutput)->PfkStatus #export_c #effects(all) {
  if angles.count!=7 || output.count!=1 {return PfkStatus.shape;}
  words:[7]u64;for i:0..<7 {words[i]=f64_bits(angles[i].value);}admission:=pfk_admit(words);if admission!=PfkStatus.ok {return admission;}
  nodes:=pfk_profile();rigids:[12]PfkRigid;fresh:PfkOutput;
@@ -49,8 +49,8 @@ pfk_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),output:[]PfkOutput)->Pfk
  // Grip site is identity-local in the source gripper0_eef body.
  fresh.grip=fresh.links[11];output[0]=fresh;return PfkStatus.ok;
 }
-pfk_forward_raw :: (radians:[]f64,output:[]PfkOutput)->PfkStatus #export_c {
+pfk_forward_raw :: (radians:[]f64,output:[]PfkOutput)->PfkStatus #export_c #effects(all) {
  if radians.count!=7 {return PfkStatus.shape;}angles:[7]pfku.Quantity(pfku.Radian,f64);for i:0..<7 {angles[i].value=radians[i];}return pfk_forward(angles[..],output);
 }
 
-pfk_admit :: (words:[7]u64)->PfkStatus {for bits:words {if !pfk_finite(bits) {return PfkStatus.number;}if abs(f64_from_bits(bits))>100 {return PfkStatus.range;}}return PfkStatus.ok;}
+pfk_admit :: (words:[7]u64)->PfkStatus #effects(all) {for bits:words {if !pfk_finite(bits) {return PfkStatus.number;}if abs(f64_from_bits(bits))>100 {return PfkStatus.range;}}return PfkStatus.ok;}

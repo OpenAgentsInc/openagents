@@ -4,6 +4,6 @@
  for i:0..<q.count{q[i]+=1;#assert !hicc_accept(q[..]);q[i]-=2;#assert !hicc_accept(q[..]);q[i]+=1;}
  #assert !hicc_accept(q[0..<17]);over:[19]int;#assert !hicc_accept(over[..]);
 }
-hicc_accept :: (q:[]int)->bool #export_c {
+hicc_accept :: (q:[]int)->bool #export_c #effects(all) {
  return q.count==18&&q[0]==7&&q[1]==64512&&q[2]==64512&&q[3]==1&&q[4]==1&&q[5]==1&&q[6]==1&&q[7]==1&&q[8]==1&&q[9]==112&&q[10]==1&&q[11]==0&&q[12]==8&&q[13]==134217728&&q[14]==1&&q[15]==1&&q[16]==0&&q[17]==1;
 }

@@ -31,7 +31,7 @@
  rows[0].height=1;#assert !hmn_observed(rows[..],607,text,0,"",true);rows[0].height=0;
  rows[1].url="//bad";#assert !hmn_observed(rows[..],607,text,0,"",true);
 }
-hmn_observed :: (rows:[]HostMediaNotice,kind:int,payload:string,dropped:int,error:string,bad_first:bool)->bool {
+hmn_observed :: (rows:[]HostMediaNotice,kind:int,payload:string,dropped:int,error:string,bad_first:bool)->bool #effects(all) {
  if rows.count!=7||kind!=htn_kind()||dropped!=0||error!="" {return false;}
  for row,i:rows {
   bad:=bad_first&&i==0;

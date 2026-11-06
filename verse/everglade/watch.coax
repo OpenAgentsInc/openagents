@@ -44,6 +44,7 @@
 #load "people-rig.coax";
 #load "../rules/srd5-combat.coax";
 #load "../../aethyr/stand.coax";
+#load "../../apps/openagents-web/everglade-handles.coax";
 
 WATCH_NEW :: 6;                        // the watch past the two gate guards
 WATCH_REIN :: 13;                      // the heat's responders at most at once: WANTED 5's roster (LADDER)
@@ -271,6 +272,7 @@ BRAVE_SHOUT :: "NOT IN MY TOWN!";
 
 // One of the town: how they stand toward you.
 Actor :: struct {
+  reference:Handle(EvergladeSpeaker); shout_owner:Handle(EvergladeSpeaker);
   mode: int; t: f32;              // the mode and the seconds in it
   after: int;                     // the mode they get up into, knocked down
   hp: int; max: int;
@@ -295,7 +297,7 @@ Actor :: struct {
   blind: bool;                    // Blinded (Sunbeam, Sunburst): their attack rolls at you have Disadvantage
   role: int; role_t: f32;         // the captain's plan for a hunting guard (ROLE_*, verse/everglade/captain.coax) and how long it holds
   foe: int;                       // the player (Watch.yous) they hunt, or last were alarmed by
-  born: int;                      // times they were stood up whole (watch_revive): a fresh face for the room's rules
+  born: int #counter;             // whole lives; exhausted actors retire instead of wrapping
 }
 
 // What the watch keeps of each player it answers (the page has one, yous[0]; the room server one
@@ -413,9 +415,11 @@ watch_start_you :: (w: [] Watch) {
 }
 watch_revive :: (w: [] Watch, i: int) {
   a := w[0].actors[i..<i + 1];
-  a[0].mode = WM_CALM; a[0].t = 0; a[0].after = WM_CALM; a[0].born += 1;
+  if a[0].born>=4294967294 {a[0].ready=false;a[0].mode=WM_DEAD;a[0].hp=0;a[0].shout= -1; a[0].shout_owner=a[0].reference;return;}
+  a[0].mode = WM_CALM; a[0].t = 0; a[0].after = WM_CALM; a[0].born = add_sat(a[0].born,1);
+  a[0].reference=Handle(EvergladeSpeaker).{value=(cast(u64)add_sat(a[0].born,1)<<32)|cast(u64)i};
   a[0].max = watch_stats(w, i).hp; a[0].hp = a[0].max;
-  a[0].swing = -1; a[0].struck = false; a[0].cool = 0; a[0].shout = -1; a[0].shout_t = 0;
+  a[0].swing = -1; a[0].struck = false; a[0].cool = 0; a[0].shout = -1; a[0].shout_owner=a[0].reference; a[0].shout_t = 0;
   a[0].hold = false; a[0].clip = PEOPLE_IDLE; a[0].speed = 0; a[0].sees = false;
   a[0].x = a[0].home_x; a[0].z = a[0].home_z; a[0].yaw = a[0].home_yaw;
   a[0].body.on = false; a[0].body.settle = -1;
@@ -425,6 +429,17 @@ watch_revive :: (w: [] Watch, i: int) {
   a[0].temp = 0; a[0].blind = false;
   a[0].role = ROLE_PRESS; a[0].role_t = 0;
   a[0].ready = true;
+}
+#test "speaker handles: the last actor life is usable once, then revival retires it without wrapping" {
+  w:[1]Watch;g:=EG_SPOTS;
+  w[0].actors[g].born=4294967293;watch_revive(w[..],g);
+  last:=w[0].actors[g].reference;
+  #assert w[0].actors[g].ready && w[0].actors[g].born==4294967294 && handle_slot(last)==g && handle_generation(last)==4294967295;
+  watch_revive(w[..],g);
+  #assert !w[0].actors[g].ready && w[0].actors[g].mode==WM_DEAD && w[0].actors[g].hp==0 && w[0].actors[g].shout== -1;
+  #assert w[0].actors[g].reference==last && w[0].actors[g].born==4294967294;
+  w[0].actors[g].born=9223372036854775807;watch_revive(w[..],g);
+  #assert w[0].actors[g].born==9223372036854775807 && !w[0].actors[g].ready;
 }
 
 // ---- the new watch's beats (as routines.coax walks the gate guards')
@@ -1069,7 +1084,7 @@ watch_alarm :: (w: [] Watch, i: int, you: Point, known: Point) {
     if a[0].mode == WM_CALM { a[0].x = a[0].home_x; a[0].z = a[0].home_z; a[0].yaw = a[0].home_yaw; }
     a[0].shout_t = 0;
     seed := cast(int) srd_roll(w[0].dice[..], 64);
-    a[0].shout = ifx watch_is_guard(i) then seed % WATCH_SHOUTS else ifx m == WM_FIGHT then 100 else ifx seed % 3 == 0 then seed % FOLK_SHOUTS else -1;
+    a[0].shout = ifx watch_is_guard(i) then seed % WATCH_SHOUTS else ifx m == WM_FIGHT then 100 else ifx seed % 3 == 0 then seed % FOLK_SHOUTS else -1; a[0].shout_owner=a[0].reference;
   }
   a[0].mode = m; a[0].t = 0;
 }
@@ -1161,7 +1176,7 @@ watch_throw :: (w: [] Watch, i: int, v: Point, heights: [] f32) {
   feet := watch_feet_y(w, heights, a[0].x, a[0].z);
   if !a[0].body.on { a[0].body.pitch = 0; a[0].body.x = a[0].x; a[0].body.z = a[0].z; a[0].body.y = feet + f32(TUMBLE_PELVIS); }
   a[0].body = tumble_kicked(a[0].body, v);
-  a[0].swing = -1; a[0].throwing = false; a[0].shout = -1;
+  a[0].swing = -1; a[0].throwing = false; a[0].shout = -1; a[0].shout_owner=a[0].reference;
 }
 
 // ---- a thrown body
@@ -1270,7 +1285,7 @@ watch_harm :: (w: [] Watch, i: int, amount: int, you: Point) {
   a[0].swing = -1; a[0].casting = -1; a[0].throwing = false;
   hunter := watch_is_guard(i) && !w[0].enemy_fire && amount > 0;
   if a[0].hp <= 0 {
-    a[0].hp = 0; a[0].mode = WM_DEAD; a[0].t = 0; a[0].shout = -1;
+    a[0].hp = 0; a[0].mode = WM_DEAD; a[0].t = 0; a[0].shout = -1; a[0].shout_owner=a[0].reference;
     if hunter { watch_you(w[..])[0].heat += HEAT_KILL; }
     return;
   }
@@ -1526,7 +1541,7 @@ watch_wave :: (w: [] Watch, l: int, you: Point) -> int {
       a[0].homed = true;
       a[0].mode = WM_CHASE; a[0].t = 0; a[0].foe = w[0].me;
       a[0].seen_x = you.x; a[0].seen_z = you.z;
-      a[0].shout = ifx came == 0 then 2 else -1; a[0].shout_t = 0;
+      a[0].shout = ifx came == 0 then 2 else -1; a[0].shout_owner=a[0].reference; a[0].shout_t = 0;
       came += 1; w[0].spawned += 1;
     }
   }
@@ -1614,7 +1629,7 @@ watch_calling :: (w: [] Watch, i: int, dt: f32, you: Point, toward: f32) -> bool
   if flat_gap(v3(a[0].x, 0, a[0].z), you) < f32(CALL_NEAR) || w[0].call_cool > 0 { a[0].role = ROLE_PRESS; a[0].role_t = 0; return false; }
   a[0].yaw = watch_turn(a[0].yaw, toward, 6 * dt);
   a[0].clip = PEOPLE_IDLE;
-  if a[0].shout != 2 { a[0].shout = 2; a[0].shout_t = 0; }   // GUARDS! TO ME!
+  if a[0].shout != 2 { a[0].shout = 2; a[0].shout_owner=a[0].reference; a[0].shout_t = 0; }   // GUARDS! TO ME!
   if a[0].role_t > f32(ROLE_HOLD) - f32(CALL_FOR) { return true; }
   a[0].role = ROLE_PRESS; a[0].role_t = 0;
   w[0].call_cool = f32(CALL_EVERY);
@@ -1636,7 +1651,7 @@ watch_help :: (w: [] Watch, you: Point) -> bool {
   a[0].homed = true;
   a[0].mode = WM_CHASE; a[0].t = 0; a[0].foe = w[0].me;
   a[0].seen_x = you.x; a[0].seen_z = you.z;
-  a[0].shout = 3; a[0].shout_t = 0;   // SEIZE THEM!
+  a[0].shout = 3; a[0].shout_owner=a[0].reference; a[0].shout_t = 0;   // SEIZE THEM!
   w[0].spawned += 1;
   return true;
 }
@@ -1647,7 +1662,7 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
   if !a[0].ready { watch_revive(w, i); }
   a[0].t += dt;
   a[0].speed = 0; a[0].hold = false;
-  if a[0].shout >= 0 { a[0].shout_t += dt; if a[0].shout_t > f32(SHOUT_FOR) { a[0].shout = -1; } }
+  if a[0].shout >= 0 { a[0].shout_t += dt; if a[0].shout_t > f32(SHOUT_FOR) { a[0].shout = -1; a[0].shout_owner=a[0].reference; } }
   a[0].sees = false;
   // thrown: the body flies and comes to rest, and only then do they lie (their fall's clock waits)
   if a[0].body.on || (a[0].body.settle >= 0 && a[0].body.settle < f32(TUMBLE_SETTLE)) {
@@ -1671,7 +1686,7 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
     a[0].clip = PEOPLE_DIE; a[0].hold = true;
     if watch_is_guard(i) && !watch_is_rein(i) && a[0].t >= f32(GUARD_BACK) {
       watch_revive(w, i);
-      if watch_you(w[..])[0].wanted && !watch_you(w[..])[0].dead { a[0].mode = WM_CHASE; a[0].foe = w[0].me; a[0].shout = 2; a[0].shout_t = 0; }
+      if watch_you(w[..])[0].wanted && !watch_you(w[..])[0].dead { a[0].mode = WM_CHASE; a[0].foe = w[0].me; a[0].shout = 2; a[0].shout_owner=a[0].reference; a[0].shout_t = 0; }
     }
     return;
   }
@@ -1728,7 +1743,7 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
     // you are up out of a sword's reach: a guard below shouts up at you and throws a spear; the brave wait
     if up > 0.3 && a[0].sees && gap <= f32(REACH) + 6 {
       a[0].yaw = watch_turn(a[0].yaw, toward, 6 * dt);
-      if !a[0].up_shouted { a[0].up_shouted = true; a[0].shout = UP_SHOUT; a[0].shout_t = 0; }
+      if !a[0].up_shouted { a[0].up_shouted = true; a[0].shout = UP_SHOUT; a[0].shout_owner=a[0].reference; a[0].shout_t = 0; }
       if guard && a[0].spear_cool <= 0 && reach3 <= f32(SPEAR_FAR) {
         a[0].swing = 0; a[0].struck = false; a[0].throwing = true;
         a[0].clip = PEOPLE_SLASH; a[0].hold = true;

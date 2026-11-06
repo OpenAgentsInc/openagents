@@ -10,23 +10,23 @@ RsRun :: struct {cursor:PkCursor;state:AwState;revision:int;}
 RsStep :: struct {status:RsStatus;run:RsRun;loss:f64;}
 RS_ROW :: 8;
 
-rs_model :: ()->[32]u8 {return rs_text("psionic.model.v1","bigram vocab=16 logits=binary64 init=zero");}
-rs_tokenizer :: ()->[32]u8 {return rs_text("psionic.tokenizer.v1","identity 0..14, BOS 15");}
-rs_text :: (tag:string,s:string)->[32]u8 {b:[64]u8;for i:0..<s.count {b[i]=cast(u8)byte_at(s,i);}return ck_digest(tag,b[0..<s.count]);}
+rs_model :: ()->[32]u8 #effects(all) {return rs_text("psionic.model.v1","bigram vocab=16 logits=binary64 init=zero");}
+rs_tokenizer :: ()->[32]u8 #effects(all) {return rs_text("psionic.tokenizer.v1","identity 0..14, BOS 15");}
+rs_text :: (tag:string,s:string)->[32]u8 #effects(all) {b:[64]u8;for i:0..<s.count {b[i]=cast(u8)byte_at(s,i);}return ck_digest(tag,b[0..<s.count]);}
 // The optimizer identity covers every group setting and the policy.
-rs_optimizer :: (groups:[]AwGroup,policy:AwPolicy)->[32]u8 {
+rs_optimizer :: (groups:[]AwGroup,policy:AwPolicy)->[32]u8 #effects(all) {
     b:[1032]u8;at:=0;
     for g:groups {at=ck_put64(b[..],at,cast(u64)g.first);at=ck_put64(b[..],at,cast(u64)g.count);for x:[5]f64.[g.lr,g.beta1,g.beta2,g.eps,g.decay] {at=ck_put64(b[..],at,f64_bits(x));}}
     b[at]=cast(u8)policy.compute;b[at+1]=cast(u8)policy.overflow;return ck_digest("psionic.optimizer.v1",b[0..<at+2]);
 }
-rs_ids :: (docs:[]PkDoc,tokens:[]u8,groups:[]AwGroup,policy:AwPolicy)->CkIds #export_c {
+rs_ids :: (docs:[]PkDoc,tokens:[]u8,groups:[]AwGroup,policy:AwPolicy)->CkIds #export_c #effects(all) {
     d:[32]u8;s:=pk_identity(docs,tokens,d[..]);#assert s==PkStatus.ok;
     return CkIds.{model=rs_model(),tokenizer=rs_tokenizer(),dataset=d,optimizer=rs_optimizer(groups,policy)};
 }
 // book:begin step
 // One step: the next packed row, mean cross-entropy over the transitions
 // whose target is not a BOS, its exact gradient, one AdamW update.
-rs_step :: (docs:[]PkDoc,tokens:[]u8,groups:[]AwGroup,policy:AwPolicy,run:RsRun,w:[]f64,m:[]f64,v:[]f64)->RsStep #export_c {
+rs_step :: (docs:[]PkDoc,tokens:[]u8,groups:[]AwGroup,policy:AwPolicy,run:RsRun,w:[]f64,m:[]f64,v:[]f64)->RsStep #export_c #effects(all) {
     row:[8]u8;next:=pk_next(docs,tokens,run.cursor,row[..],false);if next.status!=PkStatus.ok {return RsStep.{status=RsStatus.data,run=run};}
     g:[256]f64;loss:=0.0;pairs:=0;
     for i:1..<RS_ROW {if row[i]!=PK_BOS {pairs+=1;}}
@@ -40,11 +40,11 @@ rs_step :: (docs:[]PkDoc,tokens:[]u8,groups:[]AwGroup,policy:AwPolicy,run:RsRun,
     return RsStep.{run=RsRun.{cursor=next.cursor,state=r.state,revision=run.revision+1},loss=loss/f64(pairs)};
 }
 // book:end step
-rs_group :: ()->[1]AwGroup {return [1]AwGroup.[AwGroup.{first=0,count=256,lr=0.1,beta1=0.9,beta2=0.99,eps=1e-8,decay=0}];}
-rs_meta :: (ids:CkIds,run:RsRun)->CkMeta {return CkMeta.{ids=ids,revision=run.revision,cursor=run.cursor,state=run.state};}
+rs_group :: ()->[1]AwGroup #effects(all) {return [1]AwGroup.[AwGroup.{first=0,count=256,lr=0.1,beta1=0.9,beta2=0.99,eps=1e-8,decay=0}];}
+rs_meta :: (ids:CkIds,run:RsRun)->CkMeta #effects(all) {return CkMeta.{ids=ids,revision=run.revision,cursor=run.cursor,state=run.state};}
 // Restores a run from a checkpoint whose pointer is current, into w, m, v.
 // The record's metadata comes back with status ok only when every check passed.
-rs_resume :: (pointer:[]u8,bytes:[]u8,ids:CkIds,docs:[]PkDoc,w:[]f64,m:[]f64,v:[]f64)->CkRead #export_c {
+rs_resume :: (pointer:[]u8,bytes:[]u8,ids:CkIds,docs:[]PkDoc,w:[]f64,m:[]f64,v:[]f64)->CkRead #export_c #effects(all) {
     p:=ck_pointer_read(pointer);if p.status!=CkStatus.ok {return CkRead.{status=p.status};}
     sw:[256]f64;sm:[256]f64;sv:[256]f64;r:=ck_read(bytes,ids,sw[..],sm[..],sv[..],false);
     s:=ck_current(p,r);if s!=CkStatus.ok {return CkRead.{status=s};}
@@ -52,7 +52,7 @@ rs_resume :: (pointer:[]u8,bytes:[]u8,ids:CkIds,docs:[]PkDoc,w:[]f64,m:[]f64,v:[
     for i:0..<256 {w[i]=sw[i];m[i]=sm[i];v[i]=sv[i];}return r;
 }
 
-rs_close :: (a:f64,b:f64)->bool {return abs(a-b)<=1e-13*(1+abs(b));}
+rs_close :: (a:f64,b:f64)->bool #effects(all) {return abs(a-b)<=1e-13*(1+abs(b));}
 #test "the uninterrupted run matches the independent loss stream and weights" {
     docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);groups:=rs_group();want:=RS_LOSSES;final:=RS_WEIGHTS;
     w:[256]f64;m:[256]f64;v:[256]f64;run:=RsRun.{cursor=PkCursor.{seed=7}};

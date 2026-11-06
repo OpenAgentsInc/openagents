@@ -12,7 +12,7 @@
 #load "socket.coax";
 #load "project-fold.coax";
 #load "project-links.coax";
-project_frame_verified :: (frame: [] u8) -> bool #foreign;
+project_frame_verified :: (frame: [] u8) -> bool #foreign #effects(all);
 LIVE_INBOX :: 262144;
 LIVE_IDLE :: 0; LIVE_CONNECTING :: 1; LIVE_SYNCING :: 2; LIVE_LIVE :: 3; LIVE_OFFLINE :: 4;
 CONNECT_WAIT :: 10.0; BACKOFF_FIRST :: 1.0; BACKOFF_MOST :: 30.0;

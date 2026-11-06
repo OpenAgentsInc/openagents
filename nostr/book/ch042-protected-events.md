@@ -76,7 +76,7 @@ refusal. A `-` in a value position, as in `["t", "-"]`, doesn't count.
 // Whether the event carries the "-" tag. Tags were checked by the event
 // reader as arrays of strings; a forged record that breaks that is
 // N70_EVENT.
-nip70_tagged :: (e:NostrEvent)->int {
+nip70_tagged :: (e:NostrEvent)->int #effects(all) {
   j:[1]Json;if !nt_start(j[..],e) {return N70_EVENT;}
   found:=false;tok:=json_next(j[..]);
   while tok==JSON_ARRAY {
@@ -108,7 +108,7 @@ accepts.
 // The client's side: tags (a JSON array of arrays of strings) with ["-"]
 // appended, into out; unchanged, but for whitespace around it, when a "-"
 // tag is there.
-nip70_protect :: (tags:string,out:[]u8)->N70Tags {
+nip70_protect :: (tags:string,out:[]u8)->N70Tags #effects(all) {
   r:N70Tags;j:[1]Json;json_start(j[..],tags);first:=json_next(j[..]);
   span:=ne_tags(j[..]);
   if !span.ok || json_next(j[..])!=JSON_END {return r;}
@@ -146,7 +146,7 @@ does.
 // The rule. tagged: the event has the "-" tag. accepts: this relay takes
 // protected events at all. authed: the connection has authenticated some
 // key. as_author: one of its keys is the event's pubkey.
-nip70_decide :: (tagged:bool,accepts:bool,authed:bool,as_author:bool)->int {
+nip70_decide :: (tagged:bool,accepts:bool,authed:bool,as_author:bool)->int #effects(all) {
   if !tagged {return N70_ACCEPT;}
   if !accepts {return N70_CLOSED;}
   if !authed {return N70_AUTH_REQUIRED;}
@@ -204,7 +204,7 @@ connection's keys means something only once the signature holds.
 // A relay's NIP-70 admission of one EVENT on a connection whose
 // authenticated keys are auth. scratch holds the event's serialization and
 // then a repost's unescaped content. The signature is not verified here.
-nip70_admit :: (text:string,accepts:bool,auth:[]RrAuth,scratch:[]u8)->N70Admit {
+nip70_admit :: (text:string,accepts:bool,auth:[]RrAuth,scratch:[]u8)->N70Admit #effects(all) {
   a:N70Admit;
   e:=nostr_event_read(text,scratch,false);if e.error!=NE_OK {return a;}
   // The reader checked the tags, so nip70_tagged can't answer N70_EVENT.
@@ -217,7 +217,7 @@ nip70_admit :: (text:string,accepts:bool,auth:[]RrAuth,scratch:[]u8)->N70Admit {
 // A kind 6 or 16 repost whose content reads as a protected event. The
 // content is shorter unescaped than in the serialization, so it fits in
 // scratch.
-n70_embeds :: (e:NostrEvent,scratch:[]u8)->bool {
+n70_embeds :: (e:NostrEvent,scratch:[]u8)->bool #effects(all) {
   if e.kind!=6 && e.kind!=16 {return false;}
   n:=json_unescape(e.original[e.content_from..<e.content_to],scratch);
   #assert n>=0;
@@ -247,14 +247,14 @@ names its target by ID only and is not affected.
 <!-- source: coax/lib/nostr/nip70.coax reason -->
 ```jai
 // The OK message's machine-readable prefix and its text.
-nip70_prefix :: (d:int)->string {
+nip70_prefix :: (d:int)->string #effects(all) {
   if d==N70_ACCEPT {return "";}
   if d==N70_AUTH_REQUIRED {return "auth-required";}
   if d==N70_RESTRICTED || d==N70_CLOSED || d==N70_REPOST {return "restricted";}
   if d==N70_INVALID {return "invalid";}
   return "error";
 }
-nip70_text :: (d:int)->string {
+nip70_text :: (d:int)->string #effects(all) {
   if d==N70_ACCEPT {return "";}
   if d==N70_AUTH_REQUIRED || d==N70_RESTRICTED {return "this event may only be published by its author";}
   if d==N70_CLOSED {return "this relay does not accept protected events";}
@@ -264,7 +264,7 @@ nip70_text :: (d:int)->string {
 }
 // "prefix: text" into out: its length, 0 for an accepted event, or -1 when
 // out is too short.
-nip70_reason :: (d:int,out:[]u8)->int {
+nip70_reason :: (d:int,out:[]u8)->int #effects(all) {
   if d==N70_ACCEPT {return 0;}
   n:=json_raw(out,0,nip70_prefix(d));n=json_raw(out,n,": ");
   return json_raw(out,n,nip70_text(d));

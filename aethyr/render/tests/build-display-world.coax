@@ -2,7 +2,7 @@
 #import "Basic";
 #load "qualification-files.coax";
 #load "../../../coax/lib/sys/args.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: build-display-world ROOT NEW_OUT");return 2;}
  root:=args_at(a[..],0);out:=args_at(a[..],1);if !fs_mkdir(out) {return 1;}paths:[8][4096]u8;cache:=fs_join(out,"emitted",paths[0][..]);if !fs_mkdir(cache) {return 1;}
  argv:=[5]string.["bash",fs_join(root,"coax/web/wasm.sh",paths[1][..]),fs_join(root,"apps/openagents-web/everglade5e.coax",paths[2][..]),fs_join(root,"apps/openagents-web/everglade5e-face.c",paths[3][..]),fs_join(out,"everglade5e.wasm",paths[4][..])];

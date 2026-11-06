@@ -55,7 +55,7 @@ ct_cli :: (cli: string, socket: string, title: string, verb: string, a: string, 
   if a.count > 0 { av[n] = a; n += 1; } if b.count > 0 { av[n] = b; n += 1; }
   out: [8192] u8; err: [4096] u8; r := proc_run(av[0..<n], 5000, out[..], err[..]); return r.status;
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) || (args_count(a[..]) != 2 && args_count(a[..]) != 3) { return 2; }
   tmp: [4096] u8; dir := fs_temp("verse-control-", tmp[..]); if dir.count == 0 { return 1; }
   b: [2] [4096] u8; wl := fs_join(dir, "wayland", b[0][..]); socket := fs_join(dir, "desk.sock", b[1][..]);

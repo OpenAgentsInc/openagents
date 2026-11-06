@@ -58,7 +58,7 @@ gjc_summary :: (browser: Jv, native: Jv) -> bool {
   }
   return true;
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a:[1]Args;
   if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: grid-journey-compare BROWSER.jsonl NATIVE.jsonl REPLAY.json OUT.json");return 2;}
   bbytes:[1048576]u8;nbytes:[1048576]u8;rbytes:[1048576]u8;

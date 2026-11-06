@@ -8,7 +8,7 @@ dp_request :: (o:[]Jo,code:string) {
   jo_key(o,"uniform");jo_raw(o,"{\"size\":96,\"usage\":72}");jo_key(o,"readback");jo_raw(o,"{\"size\":256,\"usage\":9}");jo_key(o,"readback_row_bytes");jo_int(o,256);jo_key(o,"target_usage");jo_int(o,17);jo_key(o,"clear");jo_raw(o,"{\"r\":-1,\"g\":-1,\"b\":-1,\"a\":-1}");jo_key(o,"depth_clear");jo_int(o,1);jo_key(o,"layout");jo_raw(o,"[{\"binding\":0,\"visibility\":1,\"buffer\":{\"type\":\"uniform\",\"minBindingSize\":96}}]");
   jo_key(o,"cases");jo_arr(o);for index:0..<23 {c:=dp_case(index);jo_obj(o);jo_key(o,"size");jo_arr(o);jo_int(o,c.width);jo_int(o,c.height);jo_end(o);jo_key(o,"extent");jo_arr(o);jo_int(o,c.width);jo_int(o,c.height);jo_int(o,1);jo_end(o);jo_key(o,"depth_readback");jo_obj(o);jo_key(o,"size");jo_int(o,c.height*256);jo_key(o,"usage");jo_int(o,9);jo_end(o);jo_key(o,"vertices");jo_int(o,c.count);jo_key(o,"clip_words");jo_arr(o);for v:0..<6 {for lane:0..<4 {jo_int(o,cast(int)f32_bits(c.clips[v][lane]));}}jo_end(o);jo_key(o,"samples");jo_arr(o);for sample:0..<(ifx index<15 then 3 else 1) {x:=ifx index<15 then dp_pixel(sample,0) else 0;y:=ifx index<15 then dp_pixel(sample,1) else 1;jo_obj(o);jo_key(o,"origin");jo_arr(o);jo_int(o,x);jo_int(o,y);jo_int(o,0);jo_end(o);jo_key(o,"depth_byte_offset");jo_int(o,y*256+x*4);jo_end(o);}jo_end(o);jo_end(o);}jo_end(o);jo_end(o);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}if args_has(a[..],"--serve") {return gp_serve(args_value(a[..],"--serve",""));}
   plan:=args_value(a[..],"--plan","");output:=args_value(a[..],"--output","");wgsl:=args_value(a[..],"--shader","");if plan=="" {return 2;}
   text:[65536]u8;o:[1]Jo;jo_start(o[..],text[..]);dp_plan(o[..]);if o[0].bad {return 2;}

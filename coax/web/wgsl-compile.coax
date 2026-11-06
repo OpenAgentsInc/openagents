@@ -17,7 +17,7 @@
 WC_PORT :: "18742";
 WC_FILE :: 1000000;
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: wgsl-compile FILE.wgsl..."); return 2; }
   dir: [512] u8; page: [1024] u8; d := fs_temp("wgsl-compile-", dir[..]);

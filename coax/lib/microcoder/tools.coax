@@ -13,8 +13,8 @@
 #load "loop.coax";
 #load "../agent/native-profile.coax";
 #load "../sys/fs.coax";
-cxproc_platform :: ()->int #foreign;
-cxproc_flush_timeout :: (h:int,ms:int)->int #foreign;
+cxproc_platform :: ()->int #foreign #effects(all);
+cxproc_flush_timeout :: (h:int,ms:int)->int #foreign #effects(all);
 
 MC_COMMAND_SECONDS :: 30;
 MC_VIEW_BYTES :: 65536;

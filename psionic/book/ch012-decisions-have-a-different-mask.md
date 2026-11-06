@@ -57,7 +57,7 @@ publish the entire output and new cache entries together.
 
 <!-- source: psionic/lib/qwen-decision.coax block -->
 ```jai
-qd_block :: (s:QhShape,w:QhWeights,x:[]f32,rope:[]f32,start:int,count:int,cache:[]f32,out:[]f32,work:[]f32,overlap:bool)->QhResult #export_c {
+qd_block :: (s:QhShape,w:QhWeights,x:[]f32,rope:[]f32,start:int,count:int,cache:[]f32,out:[]f32,work:[]f32,overlap:bool)->QhResult #export_c #effects(all) {
     if !qh_valid(s) {return QhResult.{status=QhStatus.shape};}
     if !qd_block_valid(start,count,s.capacity) {return QhResult.{status=QhStatus.capacity};}
     d:=s.width;f:=s.hidden;q:=s.attention.heads*s.attention.head_dim;k:=s.attention.kv_heads*s.attention.head_dim;dim:=s.attention.head_dim;rot:=s.attention.rotary_dim;tokens:=start+count;
@@ -130,7 +130,7 @@ contract.
 
 <!-- source: psionic/lib/qwen-prefix.coax fork -->
 ```jai
-qp_fork :: (shape:QpShape,model:[32]u8,source:QpClaim,src:[]f32,dst:[]f32,scratch:[]f32,overlap:bool)->QpResult #export_c {
+qp_fork :: (shape:QpShape,model:[32]u8,source:QpClaim,src:[]f32,dst:[]f32,scratch:[]f32,overlap:bool)->QpResult #export_c #effects(all) {
     if !qp_valid(shape) {return QpResult.{status=QpStatus.shape};}
     if !qp_same_shape(shape,source.shape) || !qp_identity(model,source.model) {return QpResult.{status=QpStatus.identity};}
     if source.prefix<0 || source.prefix>shape.capacity {return QpResult.{status=QpStatus.capacity};}

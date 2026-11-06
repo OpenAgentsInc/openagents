@@ -148,18 +148,18 @@ AXI_META :: [1] u8.['E'];
   #assert axi_archive_vartime(table[..],c[..],batch[0..<c[0].n],a[..],b[..]) == LC_CAPACITY;
 }
 
-axi_context_vartime :: (table: [] u8, used: int) -> int #export_c {
+axi_context_vartime :: (table: [] u8, used: int) -> int #export_c #effects(all) {
   if txi_context_vartime(table,used).code != LC_OK { return LC_CONTEXT; }
   ek := AXI_META; ik := TXI_META;
   if !lc_same(lc_value_vartime(table,used,ek[..]),lc_value_vartime(table,used,ik[..])) { return LC_CONTEXT; }
   return LC_OK;
 }
-axi_sync_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8) -> bool {
+axi_sync_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8) -> bool #effects(all) {
   ik := TXI_META; ek := AXI_META; v: [48] u8; src := lc_value_vartime(table,c[0].used,ik[..]);
   for k: 0..<48 { v[k] = src[k]; }
   return lc_put_vartime(table,c,batch,ek[..],v[..]);
 }
-axi_init_vartime :: (chain: int, genesis: [] u8, table: [] u8, used: int, stage: [] u8, batch: [] u8) -> LcResult #export_c {
+axi_init_vartime :: (chain: int, genesis: [] u8, table: [] u8, used: int, stage: [] u8, batch: [] u8) -> LcResult #export_c #effects(all) {
   r := lc_init_vartime(chain,genesis,table,used,stage,batch); if r.code != LC_OK { return r; }
   c := [1] LcCursor.[LcCursor.{used=r.used,n=r.n}];
   if !txi_sync_vartime(stage,c[..],batch,0) || !axi_sync_vartime(stage,c[..],batch) || c[0].used > table.count { return LcResult.{code=LC_CAPACITY}; }
@@ -167,19 +167,19 @@ axi_init_vartime :: (chain: int, genesis: [] u8, table: [] u8, used: int, stage:
 }
 // Idempotent archive writes must agree byte for byte. Replays never replace
 // an old occurrence with a new location or a different spend.
-axi_archive_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, key: [] u8, value: [] u8) -> int {
+axi_archive_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, key: [] u8, value: [] u8) -> int #effects(all) {
   old := lc_value_vartime(table,c[0].used,key);
   if old.count != 0 { return ifx lc_same(old,value) then LC_OK else TXI_CORRUPT; }
   return ifx lc_put_vartime(table,c,batch,key,value) then LC_OK else LC_CAPACITY;
 }
 // Active membership is shared with the light chain, never stored as a second
 // independently updated bit. -1 means malformed; 0 stale; 1 active.
-axi_active_vartime :: (table: [] u8, used: int, hash: [] u8, height: int) -> int {
+axi_active_vartime :: (table: [] u8, used: int, hash: [] u8, height: int) -> int #effects(all) {
   hk: [33] u8; txi_blockkey('H',hash,hk[..]); h := lc_value_vartime(table,used,hk[..]);
   if h.count == 0 { return 0; }
   if h.count != 80 || kv_get32(h,0) != LC_VERSION || kv_get32(h,4) != height { return -1; } return 1;
 }
-axi_spend_vartime :: (table: [] u8, used: int, point: [] u8, height: int) -> AxiSpend #export_c {
+axi_spend_vartime :: (table: [] u8, used: int, point: [] u8, height: int) -> AxiSpend #export_c #effects(all) {
   if axi_context_vartime(table,used) != LC_OK || point.count != 36 { return AxiSpend.{code=LC_CONTEXT}; }
   prefix: [41] u8; prefix[0] = 'G'; for k: 0..<36 { prefix[1+k] = point[k]; } kv_put32(prefix[..],37,height);
   at := kv_find_vartime(table,used,prefix[..]).at; best := AxiSpend.{code=TXI_MISS};
@@ -196,14 +196,14 @@ axi_spend_vartime :: (table: [] u8, used: int, point: [] u8, height: int) -> Axi
   }
   return best;
 }
-axi_history_add :: (txs: [] AxiTx, count: int, id: [] u8, hash: [] u8, height: int, order: int) -> int {
+axi_history_add :: (txs: [] AxiTx, count: int, id: [] u8, hash: [] u8, height: int, order: int) -> int #effects(all) {
   for i: 0..<count { if lc_same(txs[i].txid[..],id) && lc_same(txs[i].block[..],hash) { return count; } }
   if count == txs.count { return -1; }
   txs[count] = AxiTx.{height=height,order=order}; for k: 0..<32 { txs[count].txid[k] = id[k]; txs[count].block[k] = hash[k]; } return count+1;
 }
 // Results are valid only on code=LC_OK. Caller-owned arrays are scratch on
 // refusal. Output status: 0 unspent, 1 spent, 2 replaced (historical BIP30).
-axi_query_vartime :: (table: [] u8, used: int, script: [] u8, outs: [] AxiOutput, txs: [] AxiTx) -> AxiResult #export_c {
+axi_query_vartime :: (table: [] u8, used: int, script: [] u8, outs: [] AxiOutput, txs: [] AxiTx) -> AxiResult #export_c #effects(all) {
   if axi_context_vartime(table,used) != LC_OK { return AxiResult.{code=LC_CONTEXT}; }
   prefix: [33] u8; prefix[0] = 'F'; #assert sha256_hash_checked(script,prefix[1..<33],false) == SHA_OK;
   at := kv_find_vartime(table,used,prefix[..]).at; r: AxiResult;

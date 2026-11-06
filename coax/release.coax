@@ -1,9 +1,9 @@
 // Canonical reviewed release/status catalogue. Generate with scripts/coax-release.sh --write.
 #import "Basic";
 #load "release-model.coax";
-IMPLEMENTATION_VERSION :: "0.51.2";
+IMPLEMENTATION_VERSION :: "0.52.0";
 STATUS_SCHEMA_VERSION :: 1;
-CATALOGUE :: [136]ReleaseFeature.[
+CATALOGUE :: [141]ReleaseFeature.[
   ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},
   ReleaseFeature.{id="keywords.while",section="Keywords",name="`while`",meaning="Loop",status="works",introduced=""},
   ReleaseFeature.{id="keywords.for",section="Keywords",name="`for` `break` `continue`",meaning="`for i: lo..<hi`, `for x, i: collection`; leave or skip an iteration",status="works",introduced=""},
@@ -97,7 +97,7 @@ CATALOGUE :: [136]ReleaseFeature.[
   ReleaseFeature.{id="types.fixed32-fixed64",section="Types",name="`fixed32 fixed64`",meaning="(E0301)",status="reserved",introduced=""},
   ReleaseFeature.{id="types.v2-v3-v4-quat-m3-m4",section="Types",name="`v2 v3 v4 quat m3 m4`",meaning="(E0301)",status="reserved",introduced=""},
   ReleaseFeature.{id="types.any",section="Types",name="`Any`",meaning="(E0301); planned for tools and logging only",status="reserved",introduced=""},
-  ReleaseFeature.{id="types.pointer-optional-handle",section="Types",name="`*T`, `*T?`, `Handle(T)`, lane types",meaning="Raw pointers and handles remain planned; tagged optionals are recorded separately",status="designed",introduced=""},
+  ReleaseFeature.{id="types.pointer-optional-handle",section="Types",name="`*T`, `*T?`, lane types",meaning="Raw pointers and lane types remain planned; handles and tagged optionals are recorded separately",status="designed",introduced=""},
   ReleaseFeature.{id="types.optional",section="Types",name="`T?`",meaning="Interned none/some values, nested optionals, explicit some construction and none default; no implicit payload conversion",status="works",introduced="0.48.0"},
   ReleaseFeature.{id="types.result",section="Types",name="`Result(T,E)`",meaning="Compiler-owned ok/err values with checked direct-result handling and transfer; Result containment and general async ownership remain outside the initial profile",status="partial",introduced="0.48.0"},
   ReleaseFeature.{id="compiler.result-handling",section="Capabilities",name="Checked recoverable error handling",meaning="Pending/consumed direct Results checked on branches, normal exits and implicit try exits; conservative loop/defer restrictions, active-payload borrows; canonical asynchronous ownership is a separate library protocol, not deep ownership",status="partial",introduced="0.48.0"},
@@ -140,6 +140,11 @@ CATALOGUE :: [136]ReleaseFeature.[
   ReleaseFeature.{id="ownership.full",section="Capabilities",name="General ownership",meaning="Transfer, destruction and complete region/lifetime rules remain planned",status="designed",introduced=""},
   ReleaseFeature.{id="target.apple",section="Capabilities",name="Apple C11 host",meaning="Tested Apple LP64 host; target support requires runtime/ABI/debugging evidence",status="partial",introduced=""},
   ReleaseFeature.{id="target.browser",section="Capabilities",name="Coaxial browser path",meaning="Current Wasm/WebGPU consumers; general target layout/runtime/debugging remain incomplete",status="partial",introduced=""},
+  ReleaseFeature.{id="types.handle",section="Capabilities",name="Typed lifetime handles",meaning="Handle(T) and caller-backed Store(T), optional stale lookup and generation retirement; Aethyr and Everglade adoption; store provenance and regions remain caller obligations",status="partial",introduced="0.52.0"},
+  ReleaseFeature.{id="effects.contracts",section="Capabilities",name="Enforced procedure effects",meaning="Transitive capability subset checks with shortest paths; declarations required on authority, C exports and foreign procedures; native summaries remain trusted and callback values remain planned",status="partial",introduced="0.52.0"},
+  ReleaseFeature.{id="state.transactions",section="Capabilities",name="In-memory transactions",meaning="Scoped reachable-state before-images; undo escaping Result errors or optional absence, including try and nested cleanup; no external effects, fatal traps do not roll back",status="partial",introduced="0.52.0"},
+  ReleaseFeature.{id="types.persisted",section="Capabilities",name="Owned persisted records",meaning="#persisted recursively admits owned values and stable IDs, refusing borrowed descriptors and process-local handles; generic instances are checked",status="works",introduced="0.52.0"},
+  ReleaseFeature.{id="source.compatibility",section="Capabilities",name="Published surface compatibility",meaning="coax compat compares concrete native LP64 signatures, C ABI, effects, saved fields and defaults; production baselines suppress only pre-existing failures; serializers and generic facades have separate contracts",status="partial",introduced="0.52.0"},
 ];
 
 #test "the authored catalogue passes its validation model" {

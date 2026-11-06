@@ -1,7 +1,7 @@
 // Native app and its real owned API/fetch processes, without a visible window.
 #load "linux-native.coax";
 #load "../../coax/lib/sys/tool.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   s:[1]ForgeNative;fgn_boot(s[..]);lab_start(s[0].lab[..]);lab_do(s[0].lab[..],221);
   good:=false;until:=proc_now_ms()+15000;
   while proc_now_ms()<until {fgn_lab_tick(s[..]);if s[0].lab[0].remote[0].model[0].ready {good=s[0].lab[0].remote[0].wn==7;break;}proc_sleep(20);}

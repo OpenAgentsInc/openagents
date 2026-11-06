@@ -237,11 +237,11 @@ StgRun :: struct {
 // Floats each stage owns for requests of up to `tokens` tokens: two
 // residual buffers, and work for a layer or the readout. Words of one
 // boundary mailbox.
-stg_stage_floats :: (s:MsShape,tokens:int)->int #export_c {
+stg_stage_floats :: (s:MsShape,tokens:int)->int #export_c #effects(all) {
     w:=ms_layer_work(s,tokens);r:=s.width+s.vocab;
     return 2*tokens*s.width+stg_max(w,r);
 }
-stg_mailbox_words :: (s:MsShape,tokens:int)->int #export_c {return STG_HEAD+tokens*s.width;}
+stg_mailbox_words :: (s:MsShape,tokens:int)->int #export_c #effects(all) {return STG_HEAD+tokens*s.width;}
 // Run requests (tokens[starts[r]..<starts[r+1]]) through stages cut[k]..<cut[k+1].
 // digests[k] is the artifact stage k loaded; the sender stamps its own.
 // logits[r*vocab..] receives request r's last-position logits.

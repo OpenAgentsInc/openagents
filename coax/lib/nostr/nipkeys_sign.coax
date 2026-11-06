@@ -196,7 +196,7 @@ KySignWork :: struct {k1:[32]u8;c1:[32]u8;k2:[32]u8;c2:[32]u8;data:[37]u8;i:[64]
 // The witness script k <sorted child keys at index i> n CHECKMULTISIG of a
 // one-path wallet, from the enrollments' branch keys b (each xpub's child
 // at the branch), into out; its length, or -1 when a key doesn't derive.
-ky_witness :: (w:KyWallet,b:[]KyExtKey,i:int,out:[]u8)->int {
+ky_witness :: (w:KyWallet,b:[]KyExtKey,i:int,out:[]u8)->int #effects(all) {
   keys:[KY_KEYS][33]u8;
   for j:0..<w.nenroll {
     c:=ky_child(b[j],i);
@@ -212,7 +212,7 @@ ky_witness :: (w:KyWallet,b:[]KyExtKey,i:int,out:[]u8)->int {
 }
 // Every slot's witness script, derived once at admission: each xpub read
 // once, each branch key derived once.
-ky_witnesses :: (w:KyWallet,e:[]KyEnrollment)->KyWitnesses {
+ky_witnesses :: (w:KyWallet,e:[]KyEnrollment)->KyWitnesses #effects(all) {
   r:KyWitnesses;b:[2][KY_KEYS]KyExtKey;
   for j:0..<w.nenroll {x:=ky_ext_key(e[j].key);b[0][j]=ky_child(x,0);b[1][j]=ky_child(x,1);}
   for k:0..<2*KY_GAP {r.n[k]=ky_witness(w,b[k/KY_GAP][..],k%KY_GAP,r.ws[k][..]);}
@@ -220,30 +220,30 @@ ky_witnesses :: (w:KyWallet,e:[]KyEnrollment)->KyWitnesses {
 }
 // book:end witness
 // Where a script sits among the wallet's: branch*KY_GAP + index, or -1.
-ky_slot :: (all:KyScripts,s:KyScript)->int {
+ky_slot :: (all:KyScripts,s:KyScript)->int #effects(all) {
   for k:0..<2*KY_GAP {if ky_same(all.s[k],s) {return k;}}
   return -1;
 }
 // Is s the P2WSH scriptPubKey of witness script ws (0x00 0x20 SHA-256(ws))?
-ky_ws_is :: (ws:[]u8,s:KyScript)->bool {
+ky_ws_is :: (ws:[]u8,s:KyScript)->bool #effects(all) {
   r:KyScript;r.n=34;r.b[1]=0x20;h:[32]u8;bt_sha(ws,h[..]);
   for k:0..<32 {r.b[2+k]=h[k];}
   return ky_same(r,s);
 }
 // The unsigned transaction inside a PSBT v0 that ky_psbt_read accepted.
-ky_unsigned :: (psbt:[]u8)->[]u8 {g:=ky_map(psbt,KY_MAGIC.count);return psbt[g.at[0]..<g.at[0]+g.n[0]];}
+ky_unsigned :: (psbt:[]u8)->[]u8 #effects(all) {g:=ky_map(psbt,KY_MAGIC.count);return psbt[g.at[0]..<g.at[0]+g.n[0]];}
 
 // ---- private derivation (secrets)
 // The compressed public key of key, by the comb, into work.pub; false for
 // a key outside [1, n-1]. The point is public.
-ky_pub :: (key:[]u8,work:[]KySignWork)->bool {
+ky_pub :: (key:[]u8,work:[]KySignWork)->bool #effects(all) {
   #assert ss_key(key,work[0].key[..],false) && sp_base(work[0].key[0].safe,work[0].point[..]) && sp_x(work[0].point[..],work[0].pub[1..<33]);
   work[0].pub[0]=cast(u8)(2+(work[0].point[0].odd&1));
   return ec_declassify(work[0].key[0].valid);
 }
 // parent + IL into child; false when IL >= n or the child is zero (BIP-32's
 // invalid children; whether a key is valid is public).
-ky_add_tweak :: (parent:[]u8,il:[]u8,child:[]u8)->bool {
+ky_add_tweak :: (parent:[]u8,il:[]u8,child:[]u8)->bool #effects(all) {
   t:=sc_load(il);c:=sc_add(t.value,sc_load(parent).value);
   #assert ss_write(c,child);
   return t.ok && ec_declassify(ec_nonzero(c));
@@ -251,7 +251,7 @@ ky_add_tweak :: (parent:[]u8,il:[]u8,child:[]u8)->bool {
 // book:begin child
 // BIP-32 CKDpriv at a normal index: HMAC-SHA512(chain, serP(kG) || index),
 // child key IL + k, chain code IR.
-ky_child_priv :: (key:[]u8,chain:[]u8,index:int,key_out:[]u8,chain_out:[]u8,work:[]KySignWork)->bool {
+ky_child_priv :: (key:[]u8,chain:[]u8,index:int,key_out:[]u8,chain_out:[]u8,work:[]KySignWork)->bool #effects(all) {
   if !ky_pub(key,work) {return false;}
   for k:0..<33 {work[0].data[k]=work[0].pub[k];}
   for k:0..<4 {work[0].data[33+k]=cast(u8)((index>>(8*(3-k)))&255);}
@@ -262,15 +262,15 @@ ky_child_priv :: (key:[]u8,chain:[]u8,index:int,key_out:[]u8,chain_out:[]u8,work
 // book:end child
 // The child key at a slot (branch slot/KY_GAP, index slot%KY_GAP) of an
 // account (key || chain code), into work.k2.
-ky_slot_key :: (account:[]u8,slot:int,work:[]KySignWork)->bool {
+ky_slot_key :: (account:[]u8,slot:int,work:[]KySignWork)->bool #effects(all) {
   return ky_child_priv(account[0..<32],account[32..<64],slot/KY_GAP,work[0].k1[..],work[0].c1[..],work) &&
     ky_child_priv(work[0].k1[..],work[0].c1[..],slot%KY_GAP,work[0].k2[..],work[0].c2[..],work);
 }
-ky_sign_clear :: (work:[]KySignWork) {fresh:KySignWork;work[0]=fresh;}
-ky_refusal :: (work:[]KySignWork,code:KyCode,retry:bool)->KySigned {ky_sign_clear(work);return KySigned.{code=code,retry=retry};}
+ky_sign_clear :: (work:[]KySignWork) #effects(all) {fresh:KySignWork;work[0]=fresh;}
+ky_refusal :: (work:[]KySignWork,code:KyCode,retry:bool)->KySigned #effects(all) {ky_sign_clear(work);return KySigned.{code=code,retry=retry};}
 // Does account (key || chain code) belong to enrollment me? Its public key
 // and chain code are the enrollment xpub's (both public).
-ky_account_is :: (e:[]KyEnrollment,me:int,account:[]u8,work:[]KySignWork)->bool {
+ky_account_is :: (e:[]KyEnrollment,me:int,account:[]u8,work:[]KySignWork)->bool #effects(all) {
   if me<0 || me>=e.count || account.count!=64 || work.count!=1 || !ky_pub(account[0..<32],work) {return false;}
   x:=ky_ext_key(e[me].key);
   for k:0..<33 {if work[0].pub[k]!=x.key[k] {return false;}}
@@ -285,7 +285,7 @@ ky_account_is :: (e:[]KyEnrollment,me:int,account:[]u8,work:[]KySignWork)->bool 
 // per input. An exact retry signs again, to the same bytes (RFC 6979).
 // account is the agent's account private key and chain code (64 bytes);
 // wit the wallet's witness scripts (ky_witnesses).
-ky_sign :: (w:KyWallet,wallet_digest:[32]u8,all:KyScripts,wit:KyWitnesses,e:[]KyEnrollment,me:int,r:KyRequest,psbt:[]u8,ceiling:int,now:int,l:[]KyLedger,account:[]u8,work:[]KySignWork)->KySigned {
+ky_sign :: (w:KyWallet,wallet_digest:[32]u8,all:KyScripts,wit:KyWitnesses,e:[]KyEnrollment,me:int,r:KyRequest,psbt:[]u8,ceiling:int,now:int,l:[]KyLedger,account:[]u8,work:[]KySignWork)->KySigned #effects(all) {
   code:=ky_sign_check(w,wallet_digest,all,r,psbt,ceiling,now);
   if !ky_account_is(e,me,account,work) {return ky_refusal(work,KyCode.xpub,false);}
   c:=ky_consume(l,e[me].agent,r,code);
@@ -313,7 +313,7 @@ ky_sign :: (w:KyWallet,wallet_digest:[32]u8,all:KyScripts,wit:KyWitnesses,e:[]Ky
 // PSBT_IN_PARTIAL_SIG (key 0x02 || public key, value the signature) before
 // its terminator. Into out; the length, or -1 (an unsigned result, a count
 // that isn't the PSBT's, or out too short).
-ky_psbt_signed :: (psbt:[]u8,sp:KySigned,out:[]u8)->int {
+ky_psbt_signed :: (psbt:[]u8,sp:KySigned,out:[]u8)->int #effects(all) {
   s:=sp;t:=ky_psbt_read(psbt);
   if s.code!=KyCode.ok || t.code!=KyCode.ok || s.nin!=t.nin {return -1;}
   need:=psbt.count;for k:0..<t.nin {need+=36+s.p[k].n;}
@@ -337,7 +337,7 @@ ky_psbt_signed :: (psbt:[]u8,sp:KySigned,out:[]u8)->int {
 // scripts. Each input's witness is 0, then a threshold of signatures in
 // the witness script's key order, then the witness script. Into out; the
 // length, or -1 when an input has fewer than a threshold of signatures.
-ky_combine :: (w:KyWallet,all:KyScripts,wit:KyWitnesses,psbt:[]u8,s:[]KySigned,out:[]u8)->int {
+ky_combine :: (w:KyWallet,all:KyScripts,wit:KyWitnesses,psbt:[]u8,s:[]KySigned,out:[]u8)->int #effects(all) {
   t:=ky_psbt_read(psbt);x:=wit;
   if t.code!=KyCode.ok {return -1;}
   d:[32]u8;bt_sha(psbt,d[..]);u:=ky_unsigned(psbt);
@@ -373,7 +373,7 @@ ky_combine :: (w:KyWallet,all:KyScripts,wit:KyWitnesses,psbt:[]u8,s:[]KySigned,o
 // signatures read, and needs the same bytes, so a signer can't slip in a
 // changed output, input or extra field. Returns the KySigned ky_combine
 // takes, or code psbt.
-ky_signed_read :: (psbt:[]u8,signed:[]u8)->KySigned {
+ky_signed_read :: (psbt:[]u8,signed:[]u8)->KySigned #effects(all) {
   bad:=KySigned.{code=KyCode.psbt};
   t:=ky_psbt_read(psbt);
   if t.code!=KyCode.ok || signed.count>4096 {return bad;}

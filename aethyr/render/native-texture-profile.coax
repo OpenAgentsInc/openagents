@@ -79,7 +79,7 @@ RenderNativeTextureMip :: struct {valid:bool;width:int;height:int;offset:u64;row
  #assert !render_native_texture_stage(1,RenderNativeTextureKind.sans,s.width,s.height,1,s.levels,s.coverage_bytes,s.rgba_bytes-1).valid;
 }
 
-render_native_texture_needs :: (ntp_profile:int)->RenderNativeTextureNeeds {
+render_native_texture_needs :: (ntp_profile:int)->RenderNativeTextureNeeds #effects(all) {
  if !render_catalog(ntp_profile).valid {return RenderNativeTextureNeeds.{};}
  result:=RenderNativeTextureNeeds.{valid=true};
  ntp_row:int;count:=render_catalog_binding_count(ntp_profile,0);
@@ -90,7 +90,7 @@ render_native_texture_needs :: (ntp_profile:int)->RenderNativeTextureNeeds {
   ntp_row+=1;
  }return result;
 }
-render_native_texture_stage :: (ntp_profile:int,ntp_kind:RenderNativeTextureKind,ntp_width:int,ntp_height:int,ntp_layers:int,ntp_levels:int,ntp_source_bytes:u64,ntp_capacity:u64)->RenderNativeTextureStage {
+render_native_texture_stage :: (ntp_profile:int,ntp_kind:RenderNativeTextureKind,ntp_width:int,ntp_height:int,ntp_layers:int,ntp_levels:int,ntp_source_bytes:u64,ntp_capacity:u64)->RenderNativeTextureStage #effects(all) {
  needs:=render_native_texture_needs(ntp_profile);if !needs.valid {return RenderNativeTextureStage.{};}
  result:=RenderNativeTextureStage.{};
  if ntp_kind==RenderNativeTextureKind.layers {
@@ -123,11 +123,11 @@ RenderNativeTextureObservation :: struct {known:bool;valid:bool;kind:RenderNativ
  #assert ntp_integer("92233720368547758070")==(-1);
  zero:=render_native_texture_observation("layers sheets layers.bin 0 0 0 0");#assert zero.valid && zero.width==0 && zero.height==0 && zero.layers==0 && zero.levels==0;
 }
-ntp_integer :: (text:string)->int {
+ntp_integer :: (text:string)->int #effects(all) {
  if text.count==0 {return -1;}value:int;
  for c:text {if c<'0' || c>'9' {return -1;}digit:=int(c)-'0';if value>(9223372036854775807-digit)/10 {return -1;}value=value*10+digit;}return value;
 }
-render_native_texture_observation :: (line:string)->RenderNativeTextureObservation {
+render_native_texture_observation :: (line:string)->RenderNativeTextureObservation #effects(all) {
  result:=RenderNativeTextureObservation.{};first:=0;while first<line.count && line[first]!=' ' {first+=1;}
  kind:=line[0..<first];if kind!="layers" && kind!="atlas" {return result;}result.known=true;
  parts:[6]string;count:int;start:=first+1;at:=start;
@@ -148,7 +148,7 @@ render_native_texture_observation :: (line:string)->RenderNativeTextureObservati
 }
 
 // Receipt is an unmodified result of render_native_texture_stage.
-render_native_texture_mip :: (ntp_stage:RenderNativeTextureStage,ntp_level:int)->RenderNativeTextureMip {
+render_native_texture_mip :: (ntp_stage:RenderNativeTextureStage,ntp_level:int)->RenderNativeTextureMip #effects(all) {
  if !ntp_stage.valid || ntp_level<0 || ntp_level>=ntp_stage.levels {return RenderNativeTextureMip.{};}
  if ntp_stage.kind==RenderNativeTextureKind.sans {
   m:=render_sans_level(ntp_level);return RenderNativeTextureMip.{valid=true,width=m.width,height=m.height,offset=m.rgba_offset,row_bytes=u64(m.width*4),layer_bytes=m.rgba_bytes};
@@ -156,7 +156,7 @@ render_native_texture_mip :: (ntp_stage:RenderNativeTextureStage,ntp_level:int)-
  offset:u64;for l:0..<ntp_level {side:=ntp_stage.width>>l;offset+=u64(side*side*4*ntp_stage.layers);}
  side:=ntp_stage.width>>ntp_level;return RenderNativeTextureMip.{valid=true,width=side,height=side,offset=offset,row_bytes=u64(side*4),layer_bytes=u64(side*side*4)};
 }
-render_native_sans_expand :: (ntp_coverage:[]u8,ntp_rgba:[]u8)->bool {
+render_native_sans_expand :: (ntp_coverage:[]u8,ntp_rgba:[]u8)->bool #effects(all) {
  if ntp_coverage.count>ntp_rgba.count/4 {return false;}
  for i:0..<ntp_coverage.count {for channel:0..<4 {ntp_rgba[i*4+channel]=ntp_coverage[i];}}return true;
 }
@@ -173,7 +173,7 @@ render_native_sans_expand :: (ntp_coverage:[]u8,ntp_rgba:[]u8)->bool {
  rows[0]=RenderNativeTextureStage.{valid=true};#assert !render_native_textures_complete(0,rows[0..<1]);
 }
 // Receipts are unmodified results of render_native_texture_stage for profile.
-render_native_textures_complete :: (ntp_profile:int,ntp_stages:[]RenderNativeTextureStage)->bool {
+render_native_textures_complete :: (ntp_profile:int,ntp_stages:[]RenderNativeTextureStage)->bool #effects(all) {
  needs:=render_native_texture_needs(ntp_profile);if !needs.valid {return false;}seen:u8;
  for stage:ntp_stages {
   if !stage.valid {return false;}bit:u8;

@@ -1,0 +1,72 @@
+// Process-local references. A Handle(T) names one slot generation, never a
+// durable identity. Different T instantiations are different nominal types.
+#module "coax.handle";
+#authority;
+#load "../tests/handles.coax";
+
+Handle :: struct($T: copyable) @id { value: u64; }
+StoreState :: struct { high: int; free_count: int; retired: int; }
+Store :: struct($T: copyable) {
+  values: [] $T;
+  generations: [] u32 #counter;
+  live: [] bool;
+  free: [] int;
+  state: [] StoreState;
+}
+
+handle_present :: (h: Handle($T: copyable)) -> bool #effects(computes) { return h.value != 0; }
+handle_same :: (a: Handle($T: copyable), b: Handle($T: copyable)) -> bool #effects(computes) { return a.value == b.value; }
+handle_slot :: (h: Handle($T: copyable)) -> int #effects(traps) { return cast(int) (h.value & 4294967295); }
+handle_generation :: (h: Handle($T: copyable)) -> u32 #effects(traps) { return cast(u32) (h.value >> 32); }
+
+// Backing columns are equally sized, zero-initialized and exclusively owned
+// by this store. Copying Store copies borrows, never ownership. A returned
+// view ends before removal/reuse or backing-storage invalidation (R3).
+store_at :: (s: Store($T: copyable), slot: int) -> Handle($T)? #effects(reads, traps) {
+  if slot < 0 || slot >= s.state[0].high || !s.live[slot] { return null; }
+  h: Handle($T);
+  h.value = (cast(u64) s.generations[slot] << 32) | cast(u64) slot;
+  return some(h);
+}
+store_has :: (s: Store($T: copyable), h: Handle($T: copyable)) -> bool #effects(reads, traps) {
+  slot := handle_slot(h);
+  return handle_present(h) && slot < s.state[0].high && s.live[slot] && s.generations[slot] == handle_generation(h);
+}
+store_get :: (s: Store($T: copyable), h: Handle($T: copyable)) -> ([] $T)? #effects(reads, traps) {
+  if !store_has(s, h) { return null; }
+  slot := handle_slot(h);
+  return some(s.values[slot..<slot + 1]);
+}
+store_get_live :: (s: Store($T: copyable), h: Handle($T: copyable)) -> [] $T #effects(reads, traps) {
+  #assert store_has(s, h);
+  slot := handle_slot(h);
+  return s.values[slot..<slot + 1];
+}
+store_put :: (s: Store($T: copyable), value: $T) -> Handle($T)? #effects(reads, writes, traps) {
+  slot: int;
+  if s.state[0].free_count > 0 {
+    s.state[0].free_count -= 1;
+    slot = s.free[s.state[0].free_count];
+  } else {
+    if s.state[0].high >= s.values.count { return null; }
+    slot = s.state[0].high;
+    s.state[0].high += 1;
+    s.generations[slot] = 1;
+  }
+  s.values[slot] = value;
+  s.live[slot] = true;
+  return store_at(s, slot);
+}
+store_remove :: (s: Store($T: copyable), h: Handle($T: copyable)) -> bool #effects(reads, writes, traps) {
+  switch store_get(s, h) { case none { return false; } case some(value) {} }
+  slot := handle_slot(h);
+  s.live[slot] = false;
+  if s.generations[slot] == 4294967295 {
+    s.state[0].retired += 1;
+  } else {
+    s.generations[slot] = add_sat(s.generations[slot], cast(u32) 1);
+    s.free[s.state[0].free_count] = slot;
+    s.state[0].free_count += 1;
+  }
+  return true;
+}

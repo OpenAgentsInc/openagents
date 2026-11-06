@@ -54,7 +54,7 @@ run :: (compiler: string, dir: string, body: string, out: [] u8) -> ProcRun {
 // check's steps agree, the parallel compile's way, and the stderr.
 FUNCTIONS :: "both() { n=$1; f=$2; shift 2; for m in seq par; do j=1; [ $m = par ] && j=4; COAX_CHECK_JOBS=$j COAX_CHECK_CACHE=\"$D/cache-$m-$n\" \"$C\" check \"$f\" \"$@\" --timings \"$D/$m-$n.json\" > \"$D/$m-$n.out\" 2> \"$D/$m-$n.err\"; echo $? > \"$D/$m-$n.status\"; grep -o '\"steps\":[0-9]*' \"$D/$m-$n.json\" > \"$D/$m-$n.steps\"; done; s=$(cat \"$D/seq-$n.status\"); same=different; cmp -s \"$D/seq-$n.out\" \"$D/par-$n.out\" && cmp -s \"$D/seq-$n.err\" \"$D/par-$n.err\" && cmp -s \"$D/seq-$n.status\" \"$D/par-$n.status\" && same=same; steps=different-steps; cmp -s \"$D/seq-$n.steps\" \"$D/par-$n.steps\" && steps=same-steps; way=$(grep -o '\"parallel_checks\":\"[a-z]*' \"$D/par-$n.json\" | sed 's/.*\"//'); echo \"$n status=$s $same $steps $way\"; cat \"$D/par-$n.err\"; }";
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: parallel-checks.coax COMPILER"); return 2; }
   compiler := args_at(a[..], 0);

@@ -69,13 +69,13 @@ OwWorld :: struct {
 }
 // book:end owners-profile
 
-ow_side_of :: (x: f32) -> int { return ifx x < 0 then 0 else 1; }
-ow_abs :: (a: f32) -> f32 { return abs(a); }
-ow_most :: (a: int, b: int) -> int { return cast(int) ((f32(a + b) + abs(f32(a - b))) / 2); }
-ow_dist :: (ax: f32, az: f32, bx: f32, bz: f32) -> f32 { dx := ax - bx; dz := az - bz; return sqrt(dx * dx + dz * dz); }
+ow_side_of :: (x: f32) -> int #effects(all) { return ifx x < 0 then 0 else 1; }
+ow_abs :: (a: f32) -> f32 #effects(all) { return abs(a); }
+ow_most :: (a: int, b: int) -> int #effects(all) { return cast(int) ((f32(a + b) + abs(f32(a - b))) / 2); }
+ow_dist :: (ax: f32, az: f32, bx: f32, bz: f32) -> f32 #effects(all) { dx := ax - bx; dz := az - bz; return sqrt(dx * dx + dz * dz); }
 
 // Adds an entity on the side its position is on.
-ow_add :: (w: [] OwWorld, e: OwEntity) -> int {
+ow_add :: (w: [] OwWorld, e: OwEntity) -> int #effects(all) {
   if w[0].n >= OW_MAX { return -1; }
   i := w[0].n; w[0].n += 1;
   s := ow_side_of(e.x);
@@ -88,7 +88,7 @@ ow_add :: (w: [] OwWorld, e: OwEntity) -> int {
 // book:begin owners-directory
 // The directory's one write: entity i from (from, gen) to `to` at gen + 1. False, and nothing
 // changes, if the directory is down or doesn't hold (from, gen).
-ow_cas :: (w: [] OwWorld, i: int, from: int, gen: int, to: int) -> bool {
+ow_cas :: (w: [] OwWorld, i: int, from: int, gen: int, to: int) -> bool #effects(all) {
   if !w[0].dir_up || w[0].dir_owner[i] != from || w[0].dir_gen[i] != gen { return false; }
   w[0].dir_owner[i] = to; w[0].dir_gen[i] = gen + 1;
   return true;
@@ -97,7 +97,7 @@ ow_cas :: (w: [] OwWorld, i: int, from: int, gen: int, to: int) -> bool {
 
 // Queues a message `delay` ticks away: its slot, or -1 (and counted lost) when the queue is full.
 // Messages between owners (any delay) are counted; a side's message to itself is not.
-ow_send :: (w: [] OwWorld, to: int, kind: int, id: int, gen: int, e: OwEntity, delay: int) -> int {
+ow_send :: (w: [] OwWorld, to: int, kind: int, id: int, gen: int, e: OwEntity, delay: int) -> int #effects(all) {
   if w[0].q_n >= OW_QUEUE { w[0].lost_messages += 1; return -1; }
   k := w[0].q_n;
   w[0].q[k] = OwMessage.{due = w[0].tick + delay, to = to, kind = kind, id = id, gen = gen, sent = w[0].tick, e = e};
@@ -109,7 +109,7 @@ ow_send :: (w: [] OwWorld, to: int, kind: int, id: int, gen: int, e: OwEntity, d
 // book:begin owners-receive
 // Side s takes what is due to it: replicas, handoffs, and hits in one order (sent tick, then
 // attacker). A down side receives nothing; what was due to it is lost.
-ow_receive :: (w: [] OwWorld, s: int) {
+ow_receive :: (w: [] OwWorld, s: int) #effects(all) {
   hits: [OW_QUEUE] OwMessage; hit_n := 0;
   keep := 0;
   for k: 0..<w[0].q_n {
@@ -151,7 +151,7 @@ ow_receive :: (w: [] OwWorld, s: int) {
 // book:begin owners-step
 // Side s steps the entities it owns: hits it may make (from its own state or a fresh replica),
 // movement, the line, and its replicas to the neighbour.
-ow_step_side :: (w: [] OwWorld, s: int) {
+ow_step_side :: (w: [] OwWorld, s: int) #effects(all) {
   sd := w[0].sides[s..<s + 1];
   if !sd[0].up { return; }
   other := 1 - s;
@@ -191,7 +191,7 @@ ow_step_side :: (w: [] OwWorld, s: int) {
   }
 }
 // One tick: both sides receive, then both step; replica age measured after.
-ow_tick :: (w: [] OwWorld) {
+ow_tick :: (w: [] OwWorld) #effects(all) {
   ow_receive(w, 0); ow_receive(w, 1);
   ow_step_side(w, 0); ow_step_side(w, 1);
   for i: 0..<w[0].n {
@@ -208,8 +208,8 @@ ow_tick :: (w: [] OwWorld) {
 // book:end owners-step
 
 // Entity i's state as its directory owner has it, and how many sides think they own it.
-ow_truth :: (w: [] OwWorld, i: int) -> OwEntity { return w[0].sides[w[0].dir_owner[i]].ent[i]; }
-ow_claims :: (w: [] OwWorld, i: int) -> int {
+ow_truth :: (w: [] OwWorld, i: int) -> OwEntity #effects(all) { return w[0].sides[w[0].dir_owner[i]].ent[i]; }
+ow_claims :: (w: [] OwWorld, i: int) -> int #effects(all) {
   n := 0;
   for s: 0..<2 { if w[0].sides[s].own[i] && w[0].dir_owner[i] == s && w[0].dir_gen[i] == w[0].sides[s].gen[i] { n += 1; } }
   return n;
@@ -365,7 +365,7 @@ ow_claims :: (w: [] OwWorld, i: int) -> int {
 }
 
 // A hit on entity 0 at side 0, sent at `sent` from `attacker` standing at (ax, 0).
-ow_hit_at :: (w: [] OwWorld, sent: int, attacker: int, ax: f32) {
+ow_hit_at :: (w: [] OwWorld, sent: int, attacker: int, ax: f32) #effects(all) {
   w[0].tick = sent;
   k := ow_send(w, 0, OW_HIT, 0, 0, OwEntity.{}, 0);
   w[0].q[k].attacker = attacker; w[0].q[k].ax = ax;

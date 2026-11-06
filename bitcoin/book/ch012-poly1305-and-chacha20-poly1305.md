@@ -165,7 +165,7 @@ bottom 14 of the high half:
 ```jai
 // Add a 128-bit number, given as its low and high 64 bits, to five 26-bit
 // limbs: bits 0-25, 26-51, 52-77, 78-103 and 104-127.
-poly_split :: (lo:u64,hi:u64,limbs:[]u64) {
+poly_split :: (lo:u64,hi:u64,limbs:[]u64) #effects(all) {
   limbs[0]+=lo&POLY_BASE_MASK;
   limbs[1]+=(lo>>26)&POLY_BASE_MASK;
   limbs[2]+=((lo>>52)|(hi<<12))&POLY_BASE_MASK;
@@ -173,7 +173,7 @@ poly_split :: (lo:u64,hi:u64,limbs:[]u64) {
   limbs[4]+=hi>>40;
 }
 // r is the first 16 key bytes, little-endian and clamped; s is the last 16.
-poly_start :: (state:[]Poly1305State,key:[]u8) {
+poly_start :: (state:[]Poly1305State,key:[]u8) #effects(all) {
   state[0]=Poly1305State.{phase=POLY_ACTIVE};
   lo:=cb_load_le64(key,0).value&POLY_CLAMP_LO;
   hi:=cb_load_le64(key,8).value&POLY_CLAMP_HI;
@@ -202,7 +202,7 @@ in `u64` with room to spare.
 // first `length` bytes are the message; the rest are zero. Adding 2^(8 *
 // length) appends the 0x01 byte. Limb i times limb j lands in limb i + j;
 // past limb 4 it wraps to limb i + j - 5 times 5, because 2^130 = 5 mod p.
-poly_block :: (state:[]Poly1305State,length:int) {
+poly_block :: (state:[]Poly1305State,length:int) #effects(all) {
   poly_split(cb_load_le64(state[0].block[..],0).value,cb_load_le64(state[0].block[..],8).value,state[0].h[..]);
   top:=length*8;state[0].h[top/26]+=cast(u64)1<<(top%26);
   for i:0..<5 {for j:0..<5 {
@@ -230,13 +230,13 @@ not enough:
 // What passes out of limb 4 is a multiple of 2^130, and 2^130 = 5 mod p, so
 // it comes back into limb 0 times 5. Three passes bring every limb below
 // 2^26 (coax/tests/nostr/poly1305_bounds.py checks this with Z3).
-poly_carry :: (x:[]u64) {
+poly_carry :: (x:[]u64) #effects(all) {
   for i:0..<5 {
     carry:=x[i]>>26;x[i]&=POLY_BASE_MASK;
     if i==4 {x[0]+=carry*5;} else {x[i+1]+=carry;}
   }
 }
-poly_normalize :: (x:[]u64) {poly_carry(x);poly_carry(x);poly_carry(x);}
+poly_normalize :: (x:[]u64) #effects(all) {poly_carry(x);poly_carry(x);poly_carry(x);}
 ```
 
 The `if` branches on the loop counter `i`, which is public, not on a limb.
@@ -295,7 +295,7 @@ above 130 bits becomes an all-ones or all-zeros mask that picks `h + 5 -
 // h is below 2^130 in canonical limbs, so h mod p is h or h - p. h + 5
 // reaches 2^130 exactly when h >= p, and then its low 130 bits are h - p.
 // The bit above them becomes a mask that selects without a branch.
-poly_reduce :: (h:[]u64,scratch:[]u64) {
+poly_reduce :: (h:[]u64,scratch:[]u64) #effects(all) {
   for i:0..<5 {scratch[i]=h[i];}scratch[0]+=5;
   for i:0..<4 {carry:=scratch[i]>>26;scratch[i]&=POLY_BASE_MASK;scratch[i+1]+=carry;}
   overflow:=scratch[4]>>26;scratch[4]&=POLY_BASE_MASK;
@@ -320,7 +320,7 @@ bytes follow:
 ```jai
 // Full blocks are taken as soon as they fill; a partial one waits in the
 // state for more bytes or for final.
-poly_absorb :: (state:[]Poly1305State,msg:[]u8) {
+poly_absorb :: (state:[]Poly1305State,msg:[]u8) #effects(all) {
   used:=state[0].used;
   for byte:msg {
     state[0].block[used]=byte;used+=1;
@@ -338,7 +338,7 @@ then erases the whole state:
 ```jai
 // The tag is (h mod p + s) mod 2^128, little-endian. Every field of the
 // state is erased afterwards.
-poly_finish :: (state:[]Poly1305State,out:[]u8) {
+poly_finish :: (state:[]Poly1305State,out:[]u8) #effects(all) {
   if state[0].used>0 {poly_block(state,state[0].used);}
   poly_reduce(state[0].h[..],state[0].product[..]);
   // The low 128 bits of h as two 64-bit halves; bits 128 and 129 drop out.
@@ -378,7 +378,7 @@ write anything:
 // than compute with it. The secret fields are folded into one value that is
 // tested once, so a valid state takes the same path whatever its key and
 // message.
-poly_check :: (state:[]Poly1305State)->u32 {
+poly_check :: (state:[]Poly1305State)->u32 #effects(all) {
   if state.count!=1 {return POLY_BAD_STATE;}
   if state[0].phase==0 {return POLY_PHASE;}
   used:=state[0].used;
@@ -390,28 +390,28 @@ poly_check :: (state:[]Poly1305State)->u32 {
   return POLY_OK;
 }
 // The size and overlap checks of one update's input and of final's output.
-poly_input :: (count:int,overlap:bool)->u32 {
+poly_input :: (count:int,overlap:bool)->u32 #effects(all) {
   if count<0 || count>CB_MAX_BYTES {return POLY_BAD_INPUT;}
   if count>0 && overlap {return POLY_ALIAS;}
   return POLY_OK;
 }
-poly_output :: (count:int,overlap:bool)->u32 {
+poly_output :: (count:int,overlap:bool)->u32 #effects(all) {
   if count<16 || count>CB_MAX_BYTES {return POLY_BAD_OUTPUT;}
   if overlap {return POLY_ALIAS;}
   return POLY_OK;
 }
-poly1305_init :: (state:[]Poly1305State,key:[]u8,overlap:bool)->u32 #export_c {
+poly1305_init :: (state:[]Poly1305State,key:[]u8,overlap:bool)->u32 #export_c #effects(all) {
   if state.count!=1 {return POLY_BAD_STATE;}
   if key.count!=32 {return POLY_BAD_KEY;}
   if overlap {return POLY_ALIAS;}
   poly_start(state,key);return POLY_OK;
 }
-poly1305_update :: (state:[]Poly1305State,msg:[]u8,overlap:bool)->u32 #export_c {
+poly1305_update :: (state:[]Poly1305State,msg:[]u8,overlap:bool)->u32 #export_c #effects(all) {
   status:=poly_check(state);if status!=POLY_OK {return status;}
   status=poly_input(msg.count,overlap);if status!=POLY_OK {return status;}
   poly_absorb(state,msg);return POLY_OK;
 }
-poly1305_final :: (state:[]Poly1305State,out:[]u8,overlap:bool)->u32 #export_c {
+poly1305_final :: (state:[]Poly1305State,out:[]u8,overlap:bool)->u32 #export_c #effects(all) {
   status:=poly_check(state);if status!=POLY_OK {return status;}
   status=poly_output(out.count,overlap);if status!=POLY_OK {return status;}
   poly_finish(state,out);return POLY_OK;
@@ -438,7 +438,7 @@ steps over a local state:
 ```jai
 // One-shot MAC for NIP-49 and the AEADs: the same steps over a local state,
 // which poly_finish erases.
-poly1305_checked :: (key:[]u8,msg:[]u8,out:[]u8,overlap:bool)->bool #export_c {
+poly1305_checked :: (key:[]u8,msg:[]u8,out:[]u8,overlap:bool)->bool #export_c #effects(all) {
   if !poly_admit(key.count,msg.count,out.count,overlap) {return false;}
   state:[1]Poly1305State;
   poly_start(state[..],key);poly_absorb(state[..],msg);poly_finish(state[..],out);
@@ -473,17 +473,17 @@ make the MAC inputs differ.
 ```jai
 // The one-time Poly1305 key is the first 32 bytes of the ChaCha20 block at
 // counter 0. The rest of that block is never used.
-ccp_poly_key :: (key:[]u8,nonce:[]u8,out:[]u8) {
+ccp_poly_key :: (key:[]u8,nonce:[]u8,out:[]u8) #effects(all) {
   words:=cc_block_words(cc_initial(key,nonce,0));
   for i:0..<8 {stored:=cb_store_le32(out,i*4,words.words[i]);}
   words=CcWords.{}; // mutant: equivalent (erases a dead local; no result reads it)
 }
 // Zero bytes that bring n up to a multiple of 16.
-ccp_pad :: (n:int)->int {return (16-n%16)%16;}
+ccp_pad :: (n:int)->int #effects(all) {return (16-n%16)%16;}
 // The tag is Poly1305 over the AAD, zeros to a multiple of 16, the
 // ciphertext, zeros to a multiple of 16, then the two lengths as 64-bit
 // little-endian numbers. The stream absorbs the pieces where they are.
-ccp_tag :: (key:[]u8,nonce:[]u8,aad:[]u8,cipher:[]u8,tag:[]u8) {
+ccp_tag :: (key:[]u8,nonce:[]u8,aad:[]u8,cipher:[]u8,tag:[]u8) #effects(all) {
   polykey:[32]u8;state:[1]Poly1305State;zeros:[16]u8;lengths:[16]u8;
   ccp_poly_key(key,nonce,polykey[..]);
   poly_start(state[..],polykey[..]);
@@ -512,7 +512,7 @@ so the MAC input is 160 bytes: the AAD and 4 zero bytes, the ciphertext and
 // Encrypt from counter 1 into the output, then tag the ciphertext there.
 // Admission has already made every ChaCha20 check pass: the key and nonce
 // sizes, and at most 2^14 blocks from counter 1.
-chacha20_poly1305_seal :: (key:[]u8,nonce:[]u8,aad:[]u8,plain:[]u8,out:[]u8,overlap:bool)->u32 #export_c {
+chacha20_poly1305_seal :: (key:[]u8,nonce:[]u8,aad:[]u8,plain:[]u8,out:[]u8,overlap:bool)->u32 #export_c #effects(all) {
   status:=ccp_admit(key.count,nonce.count,aad.count,plain.count,out.count,overlap,true);
   if status!=CCP_OK {return status;}
   n:=plain.count;
@@ -530,7 +530,7 @@ two tags with `cb_ct_equal`, which reads all 16 bytes whatever they hold
 ```jai
 // Recompute the tag over the received ciphertext and compare all 16 bytes
 // without a branch. Only a match decrypts; a mismatch writes nothing.
-chacha20_poly1305_open :: (key:[]u8,nonce:[]u8,aad:[]u8,box:[]u8,out:[]u8,overlap:bool)->u32 #export_c {
+chacha20_poly1305_open :: (key:[]u8,nonce:[]u8,aad:[]u8,box:[]u8,out:[]u8,overlap:bool)->u32 #export_c #effects(all) {
   status:=ccp_admit(key.count,nonce.count,aad.count,box.count,out.count,overlap,false);
   if status!=CCP_OK {return status;}
   n:=box.count-16;tag:[16]u8;
@@ -567,7 +567,7 @@ The statuses:
 // Every size and overlap check, before anything is written. To seal, text
 // is the plaintext and the output needs 16 more bytes for the tag. To open,
 // text is the ciphertext and tag, so it has at least 16 bytes.
-ccp_admit :: (key:int,nonce:int,aad:int,text:int,capacity:int,overlap:bool,seal:bool)->u32 #export_c {
+ccp_admit :: (key:int,nonce:int,aad:int,text:int,capacity:int,overlap:bool,seal:bool)->u32 #export_c #effects(all) {
   if key!=32 {return CCP_KEY;}
   if nonce!=12 {return CCP_NONCE;}
   if aad<0 || aad>CB_MAX_BYTES {return CCP_AAD;}

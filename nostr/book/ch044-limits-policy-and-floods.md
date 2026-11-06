@@ -103,11 +103,11 @@ minute.
 ```jai
 // Whether w no longer counts at now: never opened, RT_WINDOW seconds old,
 // or opened after now (the clock went back).
-rt_window_ended :: (w: RtWindow, now: int) -> bool {
+rt_window_ended :: (w: RtWindow, now: int) -> bool #effects(all) {
   return w.count == 0 || now - w.started >= RT_WINDOW || now < w.started;
 }
 // One message at now against limit: true lets it through and counts it.
-rt_take :: (w: [] RtWindow, limit: int, now: int) -> bool {
+rt_take :: (w: [] RtWindow, limit: int, now: int) -> bool #effects(all) {
   if rt_window_ended(w[0], now) { w[0].started = now; w[0].count = 0; }
   if w[0].count >= limit { return false; }
   w[0].count += 1;
@@ -342,7 +342,7 @@ or above 1,000,000 is refused, and no document is written:
 // are): base ends in "}}" and holds "\"limitation\":{" with no brace after
 // it but those two. An empty object gets no leading comma.
 RT_LIMITATION :: "\"limitation\":{";
-rt_nip11 :: (base: string, cfg: RtConfig, out: [] u8) -> int {
+rt_nip11 :: (base: string, cfg: RtConfig, out: [] u8) -> int #effects(all) {
   if !rt_config_ok(cfg) || !rt_ends(base, "}}") { return -1; }
   body := base[0..<base.count - 2];
   // the last "limitation":{ in the body

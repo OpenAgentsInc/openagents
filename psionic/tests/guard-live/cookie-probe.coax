@@ -61,7 +61,7 @@ cp_browser :: (c:[]Cdp,request:string,authorization:string,case_id:int,request_s
     jo_key(o[..],"session_script_readable");jo_bool(o[..],script_readable);jo_key(o[..],"decision_authorization_header");jo_bool(o[..],false);jo_end(o[..]);
     return !o[0].bad && fs_write(out,jo_text(o[..]));
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=11 || !args_has(a[..],"--live") {tool_errln("usage: cookie-probe --live --key FILE --signer FILE --request FILE --case 0..4 --out NEW_FILE");return 2;}
     key:=args_value(a[..],"--key","");signer:=args_value(a[..],"--signer","");request_path:=args_value(a[..],"--request","");out:=args_value(a[..],"--out","");case_id:=cp_case(args_value(a[..],"--case",""));
     if case_id<0 || fs_kind(key)!=FS_FILE || fs_kind(signer)!=FS_FILE || fs_kind(out)!=FS_NONE {tool_errln("cookie probe: invalid paths/case or existing output");return 2;}

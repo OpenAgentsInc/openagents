@@ -3,7 +3,7 @@
 #load "tests/http-target-observations.coax";
 #authority;
 HtuCase :: struct {input:string;target:string;}
-htu_cases :: ()->[10]HtuCase {
+htu_cases :: ()->[10]HtuCase #effects(all) {
   return [10]HtuCase.[
     HtuCase.{input="/api/host-contract/target/a/../b?x=é#gone",target="/api/host-contract/target/b?x=%C3%A9"},
     HtuCase.{input="/api/host-contract/target/a b",target="/api/host-contract/target/a%20b"},
@@ -16,8 +16,8 @@ htu_cases :: ()->[10]HtuCase {
     HtuCase.{input="/api/host-contract/target/a?x=  ",target="/api/host-contract/target/a?x="},
     HtuCase.{input="/api/host-contract/target/a/..//b",target="/api/host-contract/target//b"}];
 }
-htu_hash :: (s:string)->int {h:u32=2166136261;for c:s {h=mul_wrap(h^cast(u32)c,cast(u32)16777619);}return cast(int)h;}
-htu_expected :: ()->[30][8]int {
+htu_hash :: (s:string)->int #effects(all) {h:u32=2166136261;for c:s {h=mul_wrap(h^cast(u32)c,cast(u32)16777619);}return cast(int)h;}
+htu_expected :: ()->[30][8]int #effects(all) {
   rows:[30][8]int;
   for q,i:htu_cases() {
     rows[3*i]=[8]int.[4,920,0,0,0,0,q.input.count,htu_hash(q.input)];
@@ -34,7 +34,7 @@ htu_expected :: ()->[30][8]int {
 #forall "every HTTP physical request result and callback word participates" row:0..<30 {
   for word:0..<8 {rows:=htu_observed();rows[row][word]+=1;#assert !htu_rows(rows[..]);}
 }
-htu_rows :: (rows:[][8]int)->bool #export_c {
+htu_rows :: (rows:[][8]int)->bool #export_c #effects(all) {
   if rows.count!=30 {return false;}want:=htu_expected();
   for row,i:rows {for word,k:row {if word!=want[i][k] {return false;}}}return true;
 }

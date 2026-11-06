@@ -68,12 +68,12 @@ TravelWorld :: struct {
 }
 // book:end travel-profile
 
-travel_world :: (w: [] TravelWorld) {
+travel_world :: (w: [] TravelWorld) #effects(all) {
   w[0] = TravelWorld.{};
   w[0].rooms[0].id = 10; w[0].rooms[1].id = 20;
 }
 // Character c joins room r (index) with body b: the directory grants it, and the store is fenced.
-travel_join :: (w: [] TravelWorld, r: int, c: int, b: TravelBody) -> bool {
+travel_join :: (w: [] TravelWorld, r: int, c: int, b: TravelBody) -> bool #effects(all) {
   g := control_acquire(w[0].dir[..], CharacterId.{value = c}, w[0].rooms[r].id);
   if g.status != CONTROL_OK { return false; }
   body := b; body.here = true; body.gen = g.gen;
@@ -83,7 +83,7 @@ travel_join :: (w: [] TravelWorld, r: int, c: int, b: TravelBody) -> bool {
 }
 // Room r runs command `seq` for character c (it adds `xp`): only its owner, outside a cutover, and
 // only commands newer than the last it accepted. A lapsed cutover calls its journey off first.
-travel_command :: (w: [] TravelWorld, r: int, c: int, seq: int, xp: int) -> bool {
+travel_command :: (w: [] TravelWorld, r: int, c: int, seq: int, xp: int) -> bool #effects(all) {
   b := w[0].rooms[r].bodies[c];
   cut := travel_cut(w[0].rooms[r].cut_until[c], w[0].now);
   if cut == TRAVEL_CUT_LAPSED && w[0].rooms[r].up {
@@ -100,25 +100,25 @@ travel_command :: (w: [] TravelWorld, r: int, c: int, seq: int, xp: int) -> bool
 
 // book:begin travel-steps
 // One journey at a time: a record that is settled (none, done or aborted) can start another.
-travel_settled :: (w: [] TravelWorld) -> bool { st := w[0].rec[0].status; return st == TRAVEL_NONE || st == TRAVEL_DONE || st == TRAVEL_ABORTED; }
+travel_settled :: (w: [] TravelWorld) -> bool #effects(all) { st := w[0].rec[0].status; return st == TRAVEL_NONE || st == TRAVEL_DONE || st == TRAVEL_ABORTED; }
 // Whether a destination takes one more reservation: up and ready, with a place that is neither used
 // nor set aside for another journey. The room server asks it of its own rooms (coax/web/room/room-travel.coax).
-travel_admits :: (up: bool, ready: bool, used: int, reserved: int, capacity: int) -> int {
+travel_admits :: (up: bool, ready: bool, used: int, reserved: int, capacity: int) -> int #effects(all) {
   if !up || !ready { return TRAVEL_UNREADY; }
   if used + reserved >= capacity { return TRAVEL_FULL; }
   return TRAVEL_OK;
 }
 // A cutover that lapses at `until` (0: none), at now.
-travel_cut :: (until: int, now: int) -> int {
+travel_cut :: (until: int, now: int) -> int #effects(all) {
   if until == 0 { return TRAVEL_CUT_NONE; }
   if now < until { return TRAVEL_CUT_HELD; }
   return TRAVEL_CUT_LAPSED;
 }
 // Whether a reservation, live and lapsing at `until`, still holds its place at now.
-travel_holds :: (live: bool, until: int, now: int) -> bool { return live && now < until; }
+travel_holds :: (live: bool, until: int, now: int) -> bool #effects(all) { return live && now < until; }
 // Whether a capture at revision rev is saved: nothing posts it, or the store's receipt (acked) covers it.
-travel_saved :: (posts: bool, rev: int, acked: int) -> bool { return !posts || acked >= rev; }
-travel_reserve :: (w: [] TravelWorld, c: int, from: int, to: int) -> int {
+travel_saved :: (posts: bool, rev: int, acked: int) -> bool #effects(all) { return !posts || acked >= rev; }
+travel_reserve :: (w: [] TravelWorld, c: int, from: int, to: int) -> int #effects(all) {
   if !travel_settled(w) { return TRAVEL_WRONG_STEP; }
   d := w[0].rooms[to];
   why := travel_admits(d.up, d.ready, d.used, d.reserved, d.capacity);
@@ -127,7 +127,7 @@ travel_reserve :: (w: [] TravelWorld, c: int, from: int, to: int) -> int {
   w[0].rec[0] = TravelRecord.{status = TRAVEL_RESERVED, c = c, from = from, to = to};
   return TRAVEL_OK;
 }
-travel_prepare :: (w: [] TravelWorld) -> int {
+travel_prepare :: (w: [] TravelWorld) -> int #effects(all) {
   rec := w[0].rec[0];
   if rec.status != TRAVEL_RESERVED { return TRAVEL_WRONG_STEP; }
   if !w[0].rooms[rec.from].up { return TRAVEL_DOWN; }
@@ -138,7 +138,7 @@ travel_prepare :: (w: [] TravelWorld) -> int {
   return TRAVEL_OK;
 }
 // Repeating a commit that went through (its answer was lost) says OK again.
-travel_commit :: (w: [] TravelWorld) -> int {
+travel_commit :: (w: [] TravelWorld) -> int #effects(all) {
   rec := w[0].rec[0];
   if rec.status == TRAVEL_COMMITTED { return TRAVEL_OK; }
   if rec.status != TRAVEL_PREPARED { return TRAVEL_WRONG_STEP; }
@@ -147,7 +147,7 @@ travel_commit :: (w: [] TravelWorld) -> int {
   w[0].rec[0].status = TRAVEL_COMMITTED; w[0].rec[0].gen = g.gen;
   return TRAVEL_OK;
 }
-travel_activate :: (w: [] TravelWorld) -> int {
+travel_activate :: (w: [] TravelWorld) -> int #effects(all) {
   rec := w[0].rec[0];
   if rec.status != TRAVEL_COMMITTED { return TRAVEL_WRONG_STEP; }
   if !w[0].rooms[rec.to].up { return TRAVEL_DOWN; }
@@ -159,7 +159,7 @@ travel_activate :: (w: [] TravelWorld) -> int {
   }
   return TRAVEL_OK;
 }
-travel_route :: (w: [] TravelWorld) -> int {
+travel_route :: (w: [] TravelWorld) -> int #effects(all) {
   rec := w[0].rec[0];
   if rec.status != TRAVEL_COMMITTED || !w[0].rooms[rec.to].bodies[rec.c].here { return TRAVEL_WRONG_STEP; }
   w[0].route[rec.c] = rec.to;
@@ -168,13 +168,13 @@ travel_route :: (w: [] TravelWorld) -> int {
   return TRAVEL_OK;
 }
 // The source lets its copy go once it no longer owns the character; a down room does it on restart.
-travel_drop :: (w: [] TravelWorld, r: int, c: int) {
+travel_drop :: (w: [] TravelWorld, r: int, c: int) #effects(all) {
   b := w[0].rooms[r].bodies[c];
   if !w[0].rooms[r].up || !b.here || control_holds(w[0].dir[..], CharacterId.{value = c}, w[0].rooms[r].id, b.gen) == CONTROL_OK { return; }
   w[0].rooms[r].bodies[c].here = false; w[0].rooms[r].used -= 1; w[0].rooms[r].cut_until[c] = 0;
 }
 // Before commit only: the travel is called off, and the source takes commands again.
-travel_abort :: (w: [] TravelWorld) -> int {
+travel_abort :: (w: [] TravelWorld) -> int #effects(all) {
   rec := w[0].rec[0];
   if rec.status != TRAVEL_RESERVED && rec.status != TRAVEL_PREPARED { return TRAVEL_WRONG_STEP; }
   w[0].rec[0].status = TRAVEL_ABORTED;
@@ -187,9 +187,9 @@ travel_abort :: (w: [] TravelWorld) -> int {
 // book:begin travel-recover
 // Room r crashes: its reservations are gone; its bodies are durable. A cutover it held is settled
 // by the restart (an abort lifts it; a committed journey drops the body).
-travel_crash :: (w: [] TravelWorld, r: int) { w[0].rooms[r].up = false; w[0].rooms[r].reserved = 0; }
+travel_crash :: (w: [] TravelWorld, r: int) #effects(all) { w[0].rooms[r].up = false; w[0].rooms[r].reserved = 0; }
 // Room r restarts, and the travel record settles what was in flight. Returns the steps it took.
-travel_recover :: (w: [] TravelWorld, r: int) -> int {
+travel_recover :: (w: [] TravelWorld, r: int) -> int #effects(all) {
   w[0].rooms[r].up = true;
   rec := w[0].rec[0];
   steps := 0;

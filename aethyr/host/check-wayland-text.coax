@@ -32,7 +32,7 @@ hwtc_window::(root:string,out:string,compiler:string,sanitize:bool,inputs:[]RtqI
  run:=[3]string.["nice","-n15",binary];run_env:=[3]string.["LC_ALL=C.UTF-8","ASAN_OPTIONS=detect_leaks=1:abort_on_error=1","UBSAN_OPTIONS=halt_on_error=1"];r=rtq_command(run[..],run_env[..],proc_now_ms()+30000,out,"window-listener",stdout[..],stderr[..]);if !rtq_ok(r){return false;}path:=fs_join(out,"window-observations.json",paths[22][..]);if !fs_write(path,cast(string)stdout[0..<r.out_n]){return false;}
  bytes:[65536]u8;nodes:[512]JvNode;d:[1]Jv;if !rtq_json_file(path,bytes[..],nodes[..],d[..])||jv_raw(d[0],jv_get(d[0],0,"schema"))!="aethyr.host.wayland-text-window.v1"{return false;}list:=jv_get(d[0],0,"rows");if jv_len(d[0],list)!=6{return false;}rows:[24]int;for i:0..<6{row:=jv_at(d[0],list,i);if jv_len(d[0],row)!=4{return false;}for k:0..<4{rows[4*i+k]=jv_int(d[0],jv_at(d[0],row,k),-999);}}return hwtc_window_accept(rows[..]);
 }
-tool_main::()->int #export_c {
+tool_main::()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<2||args_count(a[..])>3||(args_count(a[..])==3&&args_at(a[..],2)!="--sanitize")||cxtool_os()!=2{tool_errln("usage: check-wayland-text ROOT NEW_OUT [--sanitize] (Linux in declared Wayland SDK)");return 2;}
  root:=args_at(a[..],0);out:=args_at(a[..],1);sanitize:=args_has(a[..],"--sanitize");if !fs_mkdir(out){return 1;}
  inputs:[1]RtqInputs;paths:[32][4096]u8;stdout:[1048576]u8;stderr:[1048576]u8;env:[]string;compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);if !rtq_input_add(inputs[..],compiler){return 1;}

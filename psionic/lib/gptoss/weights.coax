@@ -29,14 +29,14 @@ GProfile :: struct {status:GStatus;shape:GShape;pins:[]GArtifact;specs:[]GSpec;}
     #assert g_bind_original(2,8,files[..],blocks[..],draft[..],out[..],false).status==GStatus.shape;
 }
 
-g_original_shape :: (model:u8,capacity:int)->GShape #export_c {
+g_original_shape :: (model:u8,capacity:int)->GShape #export_c #effects(all) {
     if model>1 || !g_range(capacity,1,131072) {return GShape.{};}s:=G20_SHAPE;if model==1 {s=G120_SHAPE;}s.capacity=capacity;return s;
 }
-g_original_files :: (model:u8)->int #export_c {if model>1 {return 0;}return ifx model==0 then G20_ARTIFACTS.count else G120_ARTIFACTS.count;}
-g_original_filename :: (model:u8,index:int)->string #export_c {
+g_original_files :: (model:u8)->int #export_c #effects(all) {if model>1 {return 0;}return ifx model==0 then G20_ARTIFACTS.count else G120_ARTIFACTS.count;}
+g_original_filename :: (model:u8,index:int)->string #export_c #effects(all) {
     n:=g_original_files(model);if index<0 || index>=n {return "";}return ifx model==0 then G20_ARTIFACTS[index].name else G120_ARTIFACTS[index].name;
 }
-g_profile :: (model:u8,capacity:int,pins:[]GArtifact,specs:[]GSpec)->GProfile #export_c {
+g_profile :: (model:u8,capacity:int,pins:[]GArtifact,specs:[]GSpec)->GProfile #export_c #effects(all) {
     shape:=g_original_shape(model,capacity);if !g_shape(shape) {return GProfile.{status=GStatus.shape};}
     nf:=g_original_files(model);ns:=ifx model==0 then G20_SPECS.count else G120_SPECS.count;
     if pins.count<nf || specs.count<ns {return GProfile.{status=GStatus.capacity};}
@@ -44,19 +44,19 @@ g_profile :: (model:u8,capacity:int,pins:[]GArtifact,specs:[]GSpec)->GProfile #e
     for i:0..<ns {specs[i]=ifx model==0 then G20_SPECS[i] else G120_SPECS[i];}
     return GProfile.{shape=shape,pins=pins[0..<nf],specs=specs[0..<ns]};
 }
-g_tensor_name :: (layer:int,slot:int,out:[]u8)->int {
+g_tensor_name :: (layer:int,slot:int,out:[]u8)->int #effects(all) {
     prefix:="block.";for i:0..<6 {out[i]=prefix[i];}n:=6;if layer>=10 {out[n]=cast(u8)(layer/10)+'0';n+=1;}out[n]=cast(u8)(layer%10)+'0';n+=1;out[n]='.';n+=1;
     suffix:=G_SLOT_NAMES[slot];for c:suffix {out[n]=c;n+=1;}return n;
 }
-g_spec_find :: (specs:[]GSpec,name:string)->int {for i:0..<specs.count {if specs[i].name==name {return i;}}return -1;}
-g_spec_shape :: (x:GSpec,y:GSlot)->bool {if x.dtype!=y.dtype || x.rank!=y.rank {return false;}for i:0..<4 {if x.dims[i]!=y.dims[i] {return false;}}return true;}
-g_spec_bytes :: (x:GSpec)->int {
+g_spec_find :: (specs:[]GSpec,name:string)->int #effects(all) {for i:0..<specs.count {if specs[i].name==name {return i;}}return -1;}
+g_spec_shape :: (x:GSpec,y:GSlot)->bool #effects(all) {if x.dtype!=y.dtype || x.rank!=y.rank {return false;}for i:0..<4 {if x.dims[i]!=y.dims[i] {return false;}}return true;}
+g_spec_bytes :: (x:GSpec)->int #effects(all) {
     if x.dtype>1 || x.rank<1 || x.rank>4 {return -1;}n:=1;width:=ifx x.dtype==0 then 2 else 1;
     for i:0..<4 {if i<x.rank {if !pw_count_fits(n,x.dims[i],width) {return -1;}n*=x.dims[i];}else if x.dims[i]!=0 {return -1;}}
     return n*width;
 }
 // book:begin bind
-g_bind_trusted :: (s:GShape,pins:[]GArtifact,specs:[]GSpec,files:[]GFile,blocks:[]GBlock,draft:[]GBlock,out:[]GModel,overlap:bool)->GResult #export_c {
+g_bind_trusted :: (s:GShape,pins:[]GArtifact,specs:[]GSpec,files:[]GFile,blocks:[]GBlock,draft:[]GBlock,out:[]GModel,overlap:bool)->GResult #export_c #effects(all) {
     if !g_shape(s) {return GResult.{status=GStatus.shape};}
     if !g_file_count(files.count) || pins.count!=files.count || specs.count!=15*s.layers+3 {return GResult.{status=GStatus.weights};}
     if blocks.count<s.layers || draft.count<s.layers || out.count<1 {return GResult.{status=GStatus.capacity};}if overlap {return GResult.{status=GStatus.alias};}
@@ -84,8 +84,8 @@ g_bind_trusted :: (s:GShape,pins:[]GArtifact,specs:[]GSpec,files:[]GFile,blocks:
     for l:0..<s.layers {blocks[l]=draft[l];}m.blocks=blocks[0..<s.layers];out[0]=m;return GResult.{written=s.layers,bytes=total};
 }
 // book:end bind
-g_artifact_size :: (count:int,total:int)->bool {return count>=1 && total>=0 && count<=137438953472-total;}
-g_authenticate :: (pins:[]GArtifact,files:[]GFile)->GResult #export_c {
+g_artifact_size :: (count:int,total:int)->bool #effects(all) {return count>=1 && total>=0 && count<=137438953472-total;}
+g_authenticate :: (pins:[]GArtifact,files:[]GFile)->GResult #export_c #effects(all) {
     if !g_file_count(files.count) || pins.count!=files.count {return GResult.{status=GStatus.weights};}total:=0;
     for i:0..<files.count {
         p:=pins[i];f:=files[i];if !g_artifact_size(f.data.count,total) {return GResult.{status=GStatus.budget};}total+=f.data.count;
@@ -94,12 +94,12 @@ g_authenticate :: (pins:[]GArtifact,files:[]GFile)->GResult #export_c {
     }
     return GResult.{written=files.count,bytes=total};
 }
-g_bind_profile :: (profile:GProfile,files:[]GFile,blocks:[]GBlock,draft:[]GBlock,out:[]GModel,overlap:bool)->GResult #export_c {
+g_bind_profile :: (profile:GProfile,files:[]GFile,blocks:[]GBlock,draft:[]GBlock,out:[]GModel,overlap:bool)->GResult #export_c #effects(all) {
     if profile.status!=GStatus.ok {return GResult.{status=profile.status};}if overlap {return GResult.{status=GStatus.alias};}
     r:=g_authenticate(profile.pins,files);if r.status!=GStatus.ok {return r;}
     return g_bind_trusted(profile.shape,profile.pins,profile.specs,files,blocks,draft,out,overlap);
 }
-g_bind_original :: (model:u8,capacity:int,files:[]GFile,blocks:[]GBlock,draft:[]GBlock,out:[]GModel,overlap:bool)->GResult #export_c {
+g_bind_original :: (model:u8,capacity:int,files:[]GFile,blocks:[]GBlock,draft:[]GBlock,out:[]GModel,overlap:bool)->GResult #export_c #effects(all) {
     pins:[10]GArtifact;specs:[543]GSpec;profile:=g_profile(model,capacity,pins[..],specs[..]);
     return g_bind_profile(profile,files,blocks,draft,out,overlap);
 }
@@ -118,7 +118,7 @@ g_bind_original :: (model:u8,capacity:int,files:[]GFile,blocks:[]GBlock,draft:[]
     #assert g_artifact_size(1,137438953471) && !g_artifact_size(1,137438953472) && !g_artifact_size(0,0) && !g_artifact_size(1,-1) && !g_artifact_size(1,137438953473);
 }
 
-g_file_count :: (n:int)->bool {return n>=1 && n<=16;}
+g_file_count :: (n:int)->bool #effects(all) {return n>=1 && n<=16;}
 #test "original profile and artifact endpoints" {
     #assert g_shape(g_original_shape(0,1)) && g_shape(g_original_shape(1,131072)) && g_original_shape(0,131073).capacity==0;
     #assert g_original_filename(0,0)=="original/config.json" && g_original_filename(1,0)=="original/config.json";
@@ -253,7 +253,7 @@ g_file_count :: (n:int)->bool {return n>=1 && n<=16;}
     #assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
 }
 
-g_spec_window :: (x:GSpec,pin:GArtifact)->bool {n:=g_spec_bytes(x);return pin.header!=0 && n>=1 && x.begin>=pin.header && x.begin<=pin.bytes-n && x.end==x.begin+n;}
+g_spec_window :: (x:GSpec,pin:GArtifact)->bool #effects(all) {n:=g_spec_bytes(x);return pin.header!=0 && n>=1 && x.begin>=pin.header && x.begin<=pin.bytes-n && x.end==x.begin+n;}
 #test "single byte descriptor boundaries" {
     x:=GSpec.{dtype=1,rank=1,dims=[4]int.[1,0,0,0],begin=8,end=9};pin:=GArtifact.{header=8,bytes=9};#assert g_spec_window(x,pin);x.begin=9;x.end=10;#assert !g_spec_window(x,pin);
     x.begin=7;x.end=8;#assert !g_spec_window(x,pin);pin.header=0;#assert !g_spec_window(x,pin);

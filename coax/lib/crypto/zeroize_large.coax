@@ -48,25 +48,25 @@ ZeroLarge :: struct {length:int;cursor:int;phase:u32;}
 ZeroLargeChange :: struct {state:ZeroLarge;error:u32;}
 ZeroLargeSpan :: struct {offset:int;length:int;error:u32;}
 
-zero_large_valid :: (s:ZeroLarge)->bool {
+zero_large_valid :: (s:ZeroLarge)->bool #effects(all) {
   if s.length<0 || s.length>ZERO_LARGE_LIMIT || s.cursor<0 || s.cursor>s.length {return false;}
   if s.phase==ZERO_CLOSED {return s.cursor==s.length;}
   return s.phase==ZERO_CLOSING && s.cursor<s.length && s.cursor%ZERO_LIMIT==0;
 }
-zero_large_begin :: (length:int,present:bool)->ZeroLargeChange #export_c {
+zero_large_begin :: (length:int,present:bool)->ZeroLargeChange #export_c #effects(all) {
   if length<0 || length>ZERO_LARGE_LIMIT {return ZeroLargeChange.{error=ZERO_CAPACITY};}
   if length>0 && !present {return ZeroLargeChange.{error=ZERO_ADDRESS};}
   phase:=ifx length==0 then cast(u32)ZERO_CLOSED else cast(u32)ZERO_CLOSING;
   return ZeroLargeChange.{state=ZeroLarge.{length=length,phase=phase}};
 }
-zero_large_complete :: (s:ZeroLarge)->bool #export_c {return zero_large_valid(s) && s.phase==ZERO_CLOSED;}
-zero_large_next :: (s:ZeroLarge)->ZeroLargeSpan #export_c {
+zero_large_complete :: (s:ZeroLarge)->bool #export_c #effects(all) {return zero_large_valid(s) && s.phase==ZERO_CLOSED;}
+zero_large_next :: (s:ZeroLarge)->ZeroLargeSpan #export_c #effects(all) {
   if !zero_large_valid(s) || s.phase!=ZERO_CLOSING {return ZeroLargeSpan.{error=ZERO_STATE};}
   remaining:=s.length-s.cursor;length:=ZERO_LIMIT;
   if (remaining-1)/ZERO_LIMIT==0 {length=remaining;}
   return ZeroLargeSpan.{offset=s.cursor,length=length};
 }
-zero_large_ack :: (s:ZeroLarge,offset:int,length:int,status:u32)->ZeroLargeChange #export_c {
+zero_large_ack :: (s:ZeroLarge,offset:int,length:int,status:u32)->ZeroLargeChange #export_c #effects(all) {
   part:=zero_large_next(s);
   if part.error!=ZERO_OK || offset!=part.offset || length!=part.length {return ZeroLargeChange.{state=s,error=ZERO_STATE};}
   if status!=ZERO_OK {return ZeroLargeChange.{state=s,error=ZERO_EFFECT};}

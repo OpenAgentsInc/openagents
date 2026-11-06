@@ -36,7 +36,7 @@ td_sees :: (kind:int,window:int,block:int,query:int,key:int)->bool {
 // split keys would need. sinks is empty or one per head. tiles[item]
 // receives the number of tiles the group loaded.
 td_attend :: (item:int,heads:int,kv_heads:int,start:int,rows:int,tokens:int,kind:int,window:int,block:int,
-    q_stride:int,kv_stride:int,v_offset:int,q:[]f32,kv:[]f32,sinks:[]f32,out:[]f32,state:[]f32,tiles:[]int) #export_c {
+    q_stride:int,kv_stride:int,v_offset:int,q:[]f32,kv:[]f32,sinks:[]f32,out:[]f32,state:[]f32,tiles:[]int) #export_c #effects(all) {
     qr:[4096]f32;acc:[4096]f32;sc:[2048]f32;mx:[64]f32;den:[64]f32;kt:[2048]f32;vt:[2048]f32;
     head:=item%heads;kh:=head/(heads/kv_heads);r0:=item/heads*TD_THREADS;
     last:=r0+TD_THREADS-1;if last>=rows {last=rows-1;}
@@ -105,7 +105,7 @@ td_attend :: (item:int,heads:int,kv_heads:int,start:int,rows:int,tokens:int,kind
     }
 }
 // gpt-oss stores its sinks as BF16; the kernel reads f32.
-td_sinks :: (item:int,bits:[]u16,out:[]f32) #export_c {out[item]=f32_from_bits(cast(u32)bits[item]<<16);}
+td_sinks :: (item:int,bits:[]u16,out:[]f32) #export_c #effects(all) {out[item]=f32_from_bits(cast(u32)bits[item]<<16);}
 // book:end kernel
 
 

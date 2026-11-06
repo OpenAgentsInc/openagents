@@ -205,7 +205,7 @@ NoaHeld :: struct {read:bool; kinds:bool; times:bool;}
 
 // book:begin conditions
 // s as a canonical decimal number from 0 to max, or -1.
-noa_number :: (s:string,max:int)->int {
+noa_number :: (s:string,max:int)->int #effects(all) {
   if s.count==0 || (s[0]=='0' && s.count>1) {return -1;}
   v:=0;
   for c:s {
@@ -218,7 +218,7 @@ noa_number :: (s:string,max:int)->int {
 // Whether the conditions read, and whether an event of facts' kind and
 // created_at meets every kind= clause and every created_at clause. Every
 // clause is read; the caller decides which kinds of clause count.
-noa_conditions :: (text:string,facts:NoaFacts)->NoaHeld {
+noa_conditions :: (text:string,facts:NoaFacts)->NoaHeld #effects(all) {
   h:=NoaHeld.{read=true,kinds=true,times=true};bad:NoaHeld;
   if text.count==0 {return h;}
   from:=0;
@@ -243,7 +243,7 @@ noa_conditions :: (text:string,facts:NoaFacts)->NoaHeld {
 
 // book:begin preimage
 // "nostr:agent-auth:<agent hex>:<conditions>" into out: its length, or -1.
-noa_preimage :: (agent:[32]u8,conditions:string,out:[]u8)->int {
+noa_preimage :: (agent:[32]u8,conditions:string,out:[]u8)->int #effects(all) {
   if out.count<NOA_PREFIX.count+65+conditions.count {return -1;}
   key:=agent;hex:[64]u8;h:=hex_encode_checked(cast(string)key[..],hex[..],false);
   for i:0..<NOA_PREFIX.count {out[i]=NOA_PREFIX[i];}
@@ -255,7 +255,7 @@ noa_preimage :: (agent:[32]u8,conditions:string,out:[]u8)->int {
 }
 // The message the owner signs: sha256 of the preimage, into out (32
 // bytes). False when the conditions are longer than NOA_MAX_CONDITIONS.
-noa_hash :: (agent:[32]u8,conditions:string,out:[]u8)->bool {
+noa_hash :: (agent:[32]u8,conditions:string,out:[]u8)->bool #effects(all) {
   if conditions.count>NOA_MAX_CONDITIONS {return false;}
   text:[NOA_TEXT_MAX]u8;
   n:=noa_preimage(agent,conditions,text[..]);
@@ -265,15 +265,15 @@ noa_hash :: (agent:[32]u8,conditions:string,out:[]u8)->bool {
 
 // book:begin read
 // A tag value unescaped and read as lowercase hex of out.count bytes.
-noa_hex :: (raw:string,out:[]u8)->bool {
+noa_hex :: (raw:string,out:[]u8)->bool #effects(all) {
   buf:[128]u8;n:=json_unescape(raw,buf[..]);
   return n!=-1 && ne_lower_hex(cast(string)buf[0..<n],out);
 }
-noa_status :: (c:NoaClaim,status:int)->NoaClaim {r:=c;r.status=status;return r;}
+noa_status :: (c:NoaClaim,status:int)->NoaClaim #effects(all) {r:=c;r.status=status;return r;}
 // The event's auth tag read and checked up to the signature: NOA_UNCHECKED
 // with the owner, the signature, the conditions and the hash, or the first
 // refusal.
-noa_read :: (e:NostrEvent)->NoaClaim {
+noa_read :: (e:NostrEvent)->NoaClaim #effects(all) {
   c:NoaClaim;
   if e.error!=NE_OK || !e.verified {return c;}
   ev:=nt_event_of(e);
@@ -297,7 +297,7 @@ noa_read :: (e:NostrEvent)->NoaClaim {
 // book:begin decide
 // A read claim decided with the signature's verdict (signed) against an
 // event of this kind and time; kinds and times say which clauses count.
-noa_decide :: (c:NoaClaim,signed:bool,kind:int,created_at:int,kinds:bool,times:bool)->int {
+noa_decide :: (c:NoaClaim,signed:bool,kind:int,created_at:int,kinds:bool,times:bool)->int #effects(all) {
   if c.status!=NOA_UNCHECKED {return c.status;}
   if !signed {return NOA_SIGNATURE;}
   d:=c;h:=noa_conditions(cast(string)d.conditions[0..<d.n],NoaFacts.{kind=kind,created_at=created_at});
@@ -305,17 +305,17 @@ noa_decide :: (c:NoaClaim,signed:bool,kind:int,created_at:int,kinds:bool,times:b
   return NOA_OK;
 }
 // Whether the owner signed the claim's hash. Only a claim that read.
-noa_signed :: (c:NoaClaim)->bool {
+noa_signed :: (c:NoaClaim)->bool #effects(all) {
   d:=c;return d.status==NOA_UNCHECKED && nostr_verify_vartime(d.hash[..],d.owner[..],d.sig[..]);
 }
 // The whole NIP-OA check on one verified event: every clause evaluated.
-noa_check :: (e:NostrEvent)->NoaClaim {
+noa_check :: (e:NostrEvent)->NoaClaim #effects(all) {
   c:=noa_read(e);
   return noa_status(c,noa_decide(c,noa_signed(c),e.kind,e.created_at,true,true));
 }
 // The event's author is its signer. The owner is reported only as the key
 // that authorized it, and only when the tag verifies.
-noa_attribute :: (e:NostrEvent)->NoaAttribution {
+noa_attribute :: (e:NostrEvent)->NoaAttribution #effects(all) {
   c:=noa_check(e);a:=NoaAttribution.{author=e.public_key,status=c.status};
   if c.status==NOA_OK {a.authorized=true;a.owner=c.owner;}
   return a;
@@ -326,7 +326,7 @@ noa_attribute :: (e:NostrEvent)->NoaAttribution {
 // ["auth",owner,conditions,sig] into out at n, for an owner who signed
 // noa_hash's message: the new length, or -1 when the conditions don't read
 // or out is small.
-noa_write_tag :: (owner:[32]u8,conditions:string,sig:[64]u8,out:[]u8,at:int)->int {
+noa_write_tag :: (owner:[32]u8,conditions:string,sig:[64]u8,out:[]u8,at:int)->int #effects(all) {
   if !noa_conditions(conditions,NoaFacts.{}).read {return -1;}
   o:=owner;s:=sig;ohex:[64]u8;shex:[128]u8;
   h:=hex_encode_checked(cast(string)o[..],ohex[..],false);

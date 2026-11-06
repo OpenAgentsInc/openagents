@@ -116,7 +116,7 @@ RenderRuntimeFrame :: struct {
   #assert rt_r.status==RenderRuntimeStatus.ok && rt_r.frame.status==RenderFrameStatus.ok;
 }
 
-render_runtime_preflight :: (rt_profile:int,rt_c:FrameCounts,rt_limits:RenderFrameLimits,rt_uploads:[]RenderUpload)->RenderRuntimePreflight {
+render_runtime_preflight :: (rt_profile:int,rt_c:FrameCounts,rt_limits:RenderFrameLimits,rt_uploads:[]RenderUpload)->RenderRuntimePreflight #effects(all) {
   rt_r:=RenderRuntimePreflight.{status=RenderRuntimeStatus.bad_profile};rt_meta:=render_catalog(rt_profile);
   if !rt_meta.valid {return rt_r;}
   rt_r.status=RenderRuntimeStatus.bad_frame;
@@ -129,7 +129,7 @@ render_runtime_preflight :: (rt_profile:int,rt_c:FrameCounts,rt_limits:RenderFra
   rt_r.status=RenderRuntimeStatus.ok;return rt_r;
 }
 
-render_runtime_work :: (rt_c:FrameCounts,rt_plan:RenderPlan)->FrameCounts {
+render_runtime_work :: (rt_c:FrameCounts,rt_plan:RenderPlan)->FrameCounts #effects(all) {
   // The canonical plan owns readiness and feature decisions. Derive the work
   // that will actually execute from its operations instead of copying those
   // decisions here or letting a platform mask counts itself. Record ranges in
@@ -151,7 +151,7 @@ render_runtime_work :: (rt_c:FrameCounts,rt_plan:RenderPlan)->FrameCounts {
 }
 
 render_runtime_frame :: (rt_profile:int,rt_c:FrameCounts,rt_limits:RenderFrameLimits,rt_ready:RenderReadiness,rt_particles_ready:bool,
-    rt_uploads:[]RenderUpload,rt_words:[]u32,rt_indices:[]u32,rt_u:[]f32,rt_buffers:[]RenderGeometryBuffer,rt_hud:[]f32,rt_domains:[]RenderDrawDomain,rt_work_limit:int)->RenderRuntimeFrame {
+    rt_uploads:[]RenderUpload,rt_words:[]u32,rt_indices:[]u32,rt_u:[]f32,rt_buffers:[]RenderGeometryBuffer,rt_hud:[]f32,rt_domains:[]RenderDrawDomain,rt_work_limit:int)->RenderRuntimeFrame #effects(all) {
   rt_r:=RenderRuntimeFrame.{requested=rt_c};rt_pre:=render_runtime_preflight(rt_profile,rt_c,rt_limits,rt_uploads);
   rt_r.status=rt_pre.status;rt_r.frame=rt_pre.frame;
   if rt_pre.status!=RenderRuntimeStatus.ok {return rt_r;}

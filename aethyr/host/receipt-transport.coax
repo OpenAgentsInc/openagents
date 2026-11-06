@@ -17,7 +17,7 @@
   }}
   #assert jv_parse(d[..],"[]",nodes[..]) && !hcr_transport(d[0]);
 }
-hcr_transport :: (d:Jv)->bool {
+hcr_transport :: (d:Jv)->bool #effects(all) {
   if jv_kind(d,0)!=JV_OBJECT || jv_raw(d,jv_get(d,0,"schema"))!="aethyr.host.observations.v1" || jv_raw(d,jv_get(d,0,"scope"))!="transport" {return false;}
   host:=jv_raw(d,jv_get(d,0,"host"));if host!="web" && host!="vulkan" && host!="metal" {return false;}
   rows:[79][8]int;n:=hcr_rows(d,jv_get(d,0,"events"),rows[..]);

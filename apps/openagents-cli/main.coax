@@ -46,18 +46,18 @@
 
 CLI_VERSION :: "1.0.0-dev";
 
-cxcli_now_s :: () -> int #foreign;
-cxcli_hostname :: (out: [] u8) -> int #foreign;
-cxcli_isatty :: (fd: int) -> int #foreign;
-cxcli_read_line :: (out: [] u8, hide: int) -> int #foreign;
-cxcli_read_stdin :: (out: [] u8) -> int #foreign;
-cxcli_mkdir_private :: (path: [] u8) -> int #foreign;
-cxcli_write_private :: (path: [] u8, data: [] u8) -> int #foreign;
-cxcli_alive :: (pid: int) -> int #foreign;
-cxcli_exe_path :: (out: [] u8) -> int #foreign;
-cxcli_keychain_set :: (account: [] u8, secret: [] u8) -> int #foreign;
-cxcli_keychain_get :: (account: [] u8, out: [] u8) -> int #foreign;
-cxcli_keychain_remove :: (account: [] u8) -> int #foreign;
+cxcli_now_s :: () -> int #foreign #effects(all);
+cxcli_hostname :: (out: [] u8) -> int #foreign #effects(all);
+cxcli_isatty :: (fd: int) -> int #foreign #effects(all);
+cxcli_read_line :: (out: [] u8, hide: int) -> int #foreign #effects(all);
+cxcli_read_stdin :: (out: [] u8) -> int #foreign #effects(all);
+cxcli_mkdir_private :: (path: [] u8) -> int #foreign #effects(all);
+cxcli_write_private :: (path: [] u8, data: [] u8) -> int #foreign #effects(all);
+cxcli_alive :: (pid: int) -> int #foreign #effects(all);
+cxcli_exe_path :: (out: [] u8) -> int #foreign #effects(all);
+cxcli_keychain_set :: (account: [] u8, secret: [] u8) -> int #foreign #effects(all);
+cxcli_keychain_get :: (account: [] u8, out: [] u8) -> int #foreign #effects(all);
+cxcli_keychain_remove :: (account: [] u8) -> int #foreign #effects(all);
 // cxrand_draw comes from coax/lib/net/relay_conn.coax (loaded by relay.coax).
 
 usage :: () {
@@ -90,7 +90,7 @@ usage :: () {
 
 // ---- dispatch -----------------------------------------------------------------
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; r: [1] Rep;
   if !args_load(a[..]) { tool_errln("openagents: arguments too long"); return EXIT_USAGE; }
   domain := positional(a[..], 0);

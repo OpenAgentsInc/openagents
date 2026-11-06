@@ -26,17 +26,17 @@ np_mode :: (mode:int)->bool {return mode>=0 && mode<5;}
 np_label :: (error:int,verified:bool)->string {
   if error==0 && verified {return "VERIFIED";}return "REFUSED";
 }
-np_select :: (p:[]NostrProbe,mode:int)->bool #export_c {
+np_select :: (p:[]NostrProbe,mode:int)->bool #export_c #effects(all) {
   if p.count!=1 || !np_mode(mode) {return false;}
   p[0].mode=mode;p[0].pending=true;return true;
 }
-np_requested :: (p:[]NostrProbe)->int #export_c {
+np_requested :: (p:[]NostrProbe)->int #export_c #effects(all) {
   if p.count!=1 || !np_mode(p[0].mode) {return -1;}
   if !p[0].initialized || p[0].pending {return p[0].mode;}return -1;
 }
 // Scalar observations of the separately compiled shared verifier. The host
 // transports them; no signing, author or action authority is granted here.
-np_observed :: (p:[]NostrProbe,observation:[]int) #export_c {
+np_observed :: (p:[]NostrProbe,observation:[]int) #export_c #effects(all) {
   if p.count!=1 || observation.count!=4 {return;}
   p[0].error=observation[0];p[0].admission=observation[1];
   p[0].written=observation[2];p[0].verified=observation[3]==1;
@@ -46,7 +46,7 @@ np_slot :: (width:f32,height:f32,d:f32,index:int)->Box {
   r:=verse_hud_slot(width/d,height/d,0,index,5);
   return Box.{x0=r.x*d,y0=r.y*d,x1=(r.x+r.width)*d,y1=(r.y+r.height)*d};
 }
-np_pointer :: (p:[]NostrProbe,x:f32,y:f32,phase:int)->bool #export_c {
+np_pointer :: (p:[]NostrProbe,x:f32,y:f32,phase:int)->bool #export_c #effects(all) {
   if p.count!=1 || p[0].width<1 || p[0].height<1 || p[0].dpr<0.5 {return false;}
   hit:=-1;for i:0..<5 {if inside(np_slot(p[0].width,p[0].height,p[0].dpr,i),x,y) {hit=i;}}
   if phase==POINTER_DOWN {p[0].down=hit;return hit>=0;}
@@ -54,10 +54,10 @@ np_pointer :: (p:[]NostrProbe,x:f32,y:f32,phase:int)->bool #export_c {
   if phase==POINTER_UP {down:=p[0].down;p[0].down=-1;if hit>=0 && hit==down {return np_select(p,hit);}}
   return hit>=0;
 }
-np_key :: (p:[]NostrProbe,key:int)->bool #export_c {
+np_key :: (p:[]NostrProbe,key:int)->bool #export_c #effects(all) {
   if key>=49 && key<=53 {return np_select(p,key-49);}return false;
 }
-np_frame :: (p:[]NostrProbe,out:[]f32,u:[]f32,width:f32,height:f32,dpr:f32)->int #export_c {
+np_frame :: (p:[]NostrProbe,out:[]f32,u:[]f32,width:f32,height:f32,dpr:f32)->int #export_c #effects(all) {
   if p.count!=1 || u.count<16 || width<1 || height<1 || dpr<0.5 || dpr>4 {return 0;}
   p[0].width=width;p[0].height=height;p[0].dpr=dpr;p[0].frames+=1;
   for i:0..<16 {u[i]=0;}u[0]=width;u[1]=height;u[3]=1;u[4]=1;

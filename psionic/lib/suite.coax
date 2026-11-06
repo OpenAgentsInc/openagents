@@ -30,12 +30,12 @@ SU_BYTES :: 131072;
 
 // Checks precede the implementation. Expected digests come from
 // psionic/tests/suite_oracle.py --tests, which uses Python's hashlib.
-su_hex :: (d:[32]u8,text:string)->bool {
+su_hex :: (d:[32]u8,text:string)->bool #effects(all) {
     digits:="0123456789abcdef";
     for i:0..<32 {if text[2*i]!=digits[cast(int)(d[i]>>4)] || text[2*i+1]!=digits[cast(int)(d[i]&15)] {return false;}}
     return true;
 }
-su_small :: ()->[2]SuItem {
+su_small :: ()->[2]SuItem #effects(all) {
     items:[2]SuItem;
     items[0]=SuItem.{id="a",kind=1,state="s",gold=1,abstain=-1};
     items[1]=SuItem.{id="bc",kind=0,task=3,partition=2,state="",options=3,gold=2,abstain=1};
@@ -133,7 +133,7 @@ SMALL_GATE :: SuGate.{kind=1,clear=40,min_tasks=10,replicates=200,seed=5,cost_li
     g=SMALL_GATE;g.cost_limit=1.0e300;g.seconds_limit=0;#assert su_suite(items[..],questions[..],g,4).status==SuStatus.ok;
 }
 
-su_result :: (s:SuSuite,partition:int,system:u64,score:f64)->SuReceipt {
+su_result :: (s:SuSuite,partition:int,system:u64,score:f64)->SuReceipt #effects(all) {
     v:=[1]f64.[score];return SuReceipt.{suite=s,partition=partition,system=system,read=1,score=score,values=su_values(v[..])};
 }
 
@@ -210,17 +210,17 @@ su_result :: (s:SuSuite,partition:int,system:u64,score:f64)->SuReceipt {
 }
 
 // book:begin encode
-su_zero :: ()->[32]u8 {z:[32]u8;return z;}
-su_same :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+su_zero :: ()->[32]u8 #effects(all) {z:[32]u8;return z;}
+su_same :: (a:[32]u8,b:[32]u8)->bool #effects(all) {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
 // Little-endian u64s, and texts as a u64 length then their bytes.
-su_u64 :: (buf:[]u8,at:int,x:u64)->int {for i:0..<8 {buf[at+i]=cast(u8)((x>>(i*8))&255);}return at+8;}
-su_text :: (buf:[]u8,at:int,s:string)->int {p:=su_u64(buf,at,cast(u64)s.count);for i:0..<s.count {buf[p+i]=s[i];}return p+s.count;}
-su_flag :: (buf:[]u8,at:int,b:bool)->int {buf[at]=ifx b then 1 else 0;return at+1;}
-su_hash :: (bytes:[]u8)->[32]u8 {out:[32]u8;status:=sha256_hash_checked(bytes,out[..],false);#assert status==SHA_OK;return out;}
+su_u64 :: (buf:[]u8,at:int,x:u64)->int #effects(all) {for i:0..<8 {buf[at+i]=cast(u8)((x>>(i*8))&255);}return at+8;}
+su_text :: (buf:[]u8,at:int,s:string)->int #effects(all) {p:=su_u64(buf,at,cast(u64)s.count);for i:0..<s.count {buf[p+i]=s[i];}return p+s.count;}
+su_flag :: (buf:[]u8,at:int,b:bool)->int #effects(all) {buf[at]=ifx b then 1 else 0;return at+1;}
+su_hash :: (bytes:[]u8)->[32]u8 #effects(all) {out:[32]u8;status:=sha256_hash_checked(bytes,out[..],false);#assert status==SHA_OK;return out;}
 // book:end encode
 
-su_text_ok :: (s:string,lo:int,hi:int)->bool {return s.count>=lo && s.count<=hi;}
-su_item_ok :: (item:SuItem)->bool {
+su_text_ok :: (s:string,lo:int,hi:int)->bool #effects(all) {return s.count>=lo && s.count<=hi;}
+su_item_ok :: (item:SuItem)->bool #effects(all) {
     if !su_text_ok(item.id,1,SU_ID_MAX) || !su_text_ok(item.state,0,SU_STATE_MAX) || item.kind>2 {return false;}
     if item.task<0 || item.task>=SU_TASKS_MAX || item.partition<0 || item.partition>=SU_PARTITIONS {return false;}
     // A noul item has no options and answers yes (0) or no (1); the others have 2 to 8.
@@ -234,7 +234,7 @@ su_item_ok :: (item:SuItem)->bool {
     }
     return true;
 }
-su_gate_ok :: (g:SuGate)->SuStatus {
+su_gate_ok :: (g:SuGate)->SuStatus #effects(all) {
     if g.kind>1 || g.clear<1 || g.min_tasks<1 || g.replicates<2 {return SuStatus.shape;}
     if !(g.cost_limit>=0 && g.cost_limit<=1.0e300) || !(g.seconds_limit>=0 && g.seconds_limit<=1.0e300) {return SuStatus.number;}
     return SuStatus.ok;
@@ -244,7 +244,7 @@ su_gate_ok :: (g:SuGate)->SuStatus {
 // The items digest covers every item field, its task and partition, and the
 // set of locked partitions; the question digest covers only the questions;
 // the gate digest covers every gate setting.
-su_suite :: (items:[]SuItem,questions:[]string,gate:SuGate,locked:u64)->SuSuite #export_c {
+su_suite :: (items:[]SuItem,questions:[]string,gate:SuGate,locked:u64)->SuSuite #export_c #effects(all) {
     n:=items.count;
     if n<1 || n>SU_ITEMS_MAX || questions.count!=n {return SuSuite.{status=SuStatus.shape};}
     for item:items {if !su_item_ok(item) {return SuSuite.{status=SuStatus.shape};}}
@@ -275,14 +275,14 @@ su_suite :: (items:[]SuItem,questions:[]string,gate:SuGate,locked:u64)->SuSuite 
 }
 // book:end suite
 
-su_values :: (values:[]f64)->[32]u8 #export_c {
+su_values :: (values:[]f64)->[32]u8 #export_c #effects(all) {
     buf:[SU_BYTES]u8;at:=su_text(buf[..],0,"psionic.suite.values.v1");at=su_u64(buf[..],at,cast(u64)values.count);
     for v:values {at=su_u64(buf[..],at,f64_bits(v));}
     return su_hash(buf[0..<at]);
 }
 
 // book:begin store
-su_receipt_digest :: (r:SuReceipt)->[32]u8 #export_c {
+su_receipt_digest :: (r:SuReceipt)->[32]u8 #export_c #effects(all) {
     buf:[512]u8;at:=su_text(buf[..],0,"psionic.suite.receipt.v1");at=su_u64(buf[..],at,cast(u64)r.sequence);
     for i:0..<32 {buf[at+i]=r.previous[i];buf[at+32+i]=r.suite.items[i];buf[at+64+i]=r.suite.questions[i];buf[at+96+i]=r.suite.gate[i];}
     at+=128;at=su_u64(buf[..],at,r.suite.mask);at=su_u64(buf[..],at,cast(u64)r.partition);
@@ -292,7 +292,7 @@ su_receipt_digest :: (r:SuReceipt)->[32]u8 #export_c {
 }
 // Append at count: the receipt takes the next sequence number and the previous
 // receipt's digest. A locked partition of a suite's items can be read once.
-su_append :: (store:[]SuReceipt,count:int,r:SuReceipt)->SuAppend #export_c {
+su_append :: (store:[]SuReceipt,count:int,r:SuReceipt)->SuAppend #export_c #effects(all) {
     if count<0 || count>store.count || r.suite.status!=SuStatus.ok || r.read<1 {return SuAppend.{status=SuStatus.shape};}
     if r.partition<0 || r.partition>=SU_PARTITIONS {return SuAppend.{status=SuStatus.shape};}
     if !(r.score>=-1.0e300 && r.score<=1.0e300) {return SuAppend.{status=SuStatus.number};}
@@ -307,7 +307,7 @@ su_append :: (store:[]SuReceipt,count:int,r:SuReceipt)->SuAppend #export_c {
     return SuAppend.{count=count+1};
 }
 // The first receipt whose sequence, link or digest does not hold.
-su_verify :: (store:[]SuReceipt,count:int)->SuCheck #export_c {
+su_verify :: (store:[]SuReceipt,count:int)->SuCheck #export_c #effects(all) {
     if count<0 || count>store.count {return SuCheck.{status=SuStatus.shape};}
     for r,i:store[0..<count] {
         previous:=ifx i==0 then su_zero() else store[i-1].digest;
@@ -320,7 +320,7 @@ su_verify :: (store:[]SuReceipt,count:int)->SuCheck #export_c {
 // book:begin compare
 // Two results compare only over the same items, gate and partition; the
 // questions may differ, which is what rewording measures.
-su_compare :: (a:SuReceipt,b:SuReceipt)->SuComparison #export_c {
+su_compare :: (a:SuReceipt,b:SuReceipt)->SuComparison #export_c #effects(all) {
     if a.suite.status!=SuStatus.ok || b.suite.status!=SuStatus.ok {return SuComparison.{status=SuStatus.shape};}
     if !su_same(a.suite.items,b.suite.items) || a.suite.mask!=b.suite.mask {return SuComparison.{status=SuStatus.items};}
     if !su_same(a.suite.gate,b.suite.gate) {return SuComparison.{status=SuStatus.gate};}

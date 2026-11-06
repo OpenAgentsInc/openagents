@@ -79,7 +79,7 @@ After parsing, each message type has its own limit:
 DS_OK :: 0; DS_DISCONNECT :: 1; DS_MISBEHAVING :: 2;
 DS_FRAME :: 0; DS_FRAME_V2 :: 1; DS_INV :: 2; DS_GETDATA :: 3; DS_ADDR :: 4; DS_ADDRV2 :: 5; DS_HEADERS :: 6;
 DS_GETHEADERS :: 7; DS_GETBLOCKS :: 8; DS_FILTERLOAD :: 9; DS_FILTERADD :: 10;
-ds_check :: (kind: int, n: int, extra: int) -> int {
+ds_check :: (kind: int, n: int, extra: int) -> int #effects(all) {
   if kind == DS_FRAME { return ifx n > DS_MAX_SIZE || n > DS_MAX_MESSAGE then DS_DISCONNECT else DS_OK; }
   if kind == DS_FRAME_V2 { return ifx n > DS_V2_MAX_CONTENTS then DS_DISCONNECT else DS_OK; }
   if kind == DS_INV || kind == DS_GETDATA { return ifx n > DS_MAX_INV then DS_MISBEHAVING else DS_OK; }
@@ -130,7 +130,7 @@ pass of `MaybeDiscourageAndDisconnect` decides what that costs.
 // disconnected but their address is not discouraged. Everyone else is
 // both.
 DS_KEEP :: 0; DS_DROP :: 1; DS_DISCOURAGE :: 2;
-ds_punish :: (noban: bool, manual: bool, private_broadcast: bool, local: bool) -> int {
+ds_punish :: (noban: bool, manual: bool, private_broadcast: bool, local: bool) -> int #effects(all) {
   if noban || manual { return DS_KEEP; }
   if private_broadcast || local { return DS_DROP; }
   return DS_DISCOURAGE;
@@ -144,7 +144,7 @@ ds_punish :: (noban: bool, manual: bool, private_broadcast: bool, local: bool) -
 DS_BLOCK_UNSET :: 0; DS_BLOCK_CONSENSUS :: 1; DS_BLOCK_CACHED_INVALID :: 2; DS_BLOCK_INVALID_HEADER :: 3;
 DS_BLOCK_MUTATED :: 4; DS_BLOCK_MISSING_PREV :: 5; DS_BLOCK_INVALID_PREV :: 6; DS_BLOCK_TIME_FUTURE :: 7;
 DS_BLOCK_HEADER_LOW_WORK :: 8;
-ds_punish_block :: (result: int, via_compact: bool, inbound: bool) -> bool {
+ds_punish_block :: (result: int, via_compact: bool, inbound: bool) -> bool #effects(all) {
   if result == DS_BLOCK_CONSENSUS || result == DS_BLOCK_MUTATED { return !via_compact; }
   if result == DS_BLOCK_CACHED_INVALID { return !via_compact && !inbound; }
   return result == DS_BLOCK_INVALID_HEADER || result == DS_BLOCK_INVALID_PREV || result == DS_BLOCK_MISSING_PREV;
@@ -182,7 +182,7 @@ choose entries that collide.
 ```jai
 // MurmurHash3 (x86, 32 bits), as Core's hash.cpp: 4-byte little-endian
 // blocks mixed into h1, the tail, then the length and a final mix.
-ds_murmur3 :: (seed: u32, data: [] u8) -> u32 {
+ds_murmur3 :: (seed: u32, data: [] u8) -> u32 #effects(all) {
   h1 := seed; c1: u32 = 0xcc9e2d51; c2: u32 = 0x1b873593;
   n := data.count / 4;
   for i: 0..<n {
@@ -218,7 +218,7 @@ many addresses it uses. A set would grow without limit; a
 // memory stays fixed however many entries go in.
 // e^x, for the sizes below: x = k ln 2 + r with |r| at most ln 2 / 2,
 // then the series for e^r, doubled or halved k times.
-ds_exp :: (x: f64) -> f64 {
+ds_exp :: (x: f64) -> f64 #effects(all) {
   k := 0; r := x;
   while r > 0.34657359027997264 { r -= CN_LN2; k += 1; }
   while r < -0.34657359027997264 { r += CN_LN2; k -= 1; }
@@ -232,7 +232,7 @@ ds_exp :: (x: f64) -> f64 {
 // 50), n/2 rounded up a generation, and enough bits that three
 // generations stay at fp; two 64-bit words per 64 positions.
 RbSize :: struct { hash_funcs: int; per_generation: int; words: int; }
-ds_rb_size :: (n: int, fp: f64) -> RbSize {
+ds_rb_size :: (n: int, fp: f64) -> RbSize #effects(all) {
   log_fp := cn_ln(fp);
   k := cast(int) (log_fp / cn_ln(0.5) + 0.5);
   if k < 1 { k = 1; } if k > 50 { k = 50; }
@@ -245,25 +245,25 @@ ds_rb_size :: (n: int, fp: f64) -> RbSize {
 RbFilter :: struct { size: RbSize; this_generation: int; generation: int; tweak: u32; data: [] u64; }
 // A filter in the caller's words (at least size.words); Core draws the
 // tweak at random.
-ds_rb_init :: (f: [] RbFilter, n: int, fp: f64, tweak: u32, data: [] u64) -> bool {
+ds_rb_init :: (f: [] RbFilter, n: int, fp: f64, tweak: u32, data: [] u64) -> bool #effects(all) {
   s := ds_rb_size(n, fp);
   if data.count < s.words { return false; }
   f[0] = RbFilter.{size=s, data=data[0..<s.words]};
   ds_rb_reset(f, tweak);
   return true;
 }
-ds_rb_reset :: (f: [] RbFilter, tweak: u32) {
+ds_rb_reset :: (f: [] RbFilter, tweak: u32) #effects(all) {
   f[0].tweak = tweak; f[0].this_generation = 0; f[0].generation = 1;
   for i: 0..<f[0].data.count { f[0].data[i] = 0; }
 }
 // Hash n of key: MurmurHash3 seeded n * 0xFBA4C795 + tweak. Its low 6
 // bits pick the bit, FastRange32 of the whole picks the word pair.
 RbSpot :: struct { bit: u64; pos: int; }
-ds_rb_spot :: (f: [] RbFilter, n: int, key: [] u8) -> RbSpot {
+ds_rb_spot :: (f: [] RbFilter, n: int, key: [] u8) -> RbSpot #effects(all) {
   h := ds_murmur3(add_wrap(mul_wrap(cast,trunc(u32) n, 0xfba4c795), f[0].tweak), key);
   return RbSpot.{bit=cast(u64) (h & 0x3f), pos=cast(int) ((cast(u64) h * cast(u64) f[0].data.count) >> 32)};
 }
-ds_rb_insert :: (f: [] RbFilter, key: [] u8) {
+ds_rb_insert :: (f: [] RbFilter, key: [] u8) #effects(all) {
   if f[0].this_generation == f[0].size.per_generation {
     f[0].this_generation = 0;
     f[0].generation += 1;
@@ -288,7 +288,7 @@ ds_rb_insert :: (f: [] RbFilter, key: [] u8) {
     f[0].data[b] = (f[0].data[b] & (one ^ 0xffffffffffffffff)) | (g2 << s.bit);
   }
 }
-ds_rb_contains :: (f: [] RbFilter, key: [] u8) -> bool {
+ds_rb_contains :: (f: [] RbFilter, key: [] u8) -> bool #effects(all) {
   for n: 0..<f[0].size.hash_funcs {
     s := ds_rb_spot(f, n, key);
     if (((f[0].data[(s.pos - (s.pos & 1))] | f[0].data[s.pos | 1]) >> s.bit) & 1) == 0 { return false; }
@@ -329,26 +329,26 @@ it can't make the filter larger.
 DS_DISCOURAGE_N :: 50000; DS_DISCOURAGE_FP :: 0.000001;
 DsBan :: struct { addr: AmAddr; until: int; }
 DsBanMan :: struct { discouraged: [1] RbFilter; bans: [] DsBan; n_bans: int; }
-ds_banman_init :: (b: [] DsBanMan, tweak: u32, words: [] u64, bans: [] DsBan) -> bool {
+ds_banman_init :: (b: [] DsBanMan, tweak: u32, words: [] u64, bans: [] DsBan) -> bool #effects(all) {
   b[0] = DsBanMan.{bans=bans};
   return ds_rb_init(b[0].discouraged[..], DS_DISCOURAGE_N, DS_DISCOURAGE_FP, tweak, words);
 }
-ds_discourage :: (b: [] DsBanMan, a: AmAddr) {
+ds_discourage :: (b: [] DsBanMan, a: AmAddr) #effects(all) {
   k: [32] u8;
   ds_rb_insert(b[0].discouraged[..], am_addr_bytes(a, k[..]));
 }
-ds_is_discouraged :: (b: [] DsBanMan, a: AmAddr) -> bool {
+ds_is_discouraged :: (b: [] DsBanMan, a: AmAddr) -> bool #effects(all) {
   k: [32] u8;
   return ds_rb_contains(b[0].discouraged[..], am_addr_bytes(a, k[..]));
 }
-ds_ban :: (b: [] DsBanMan, a: AmAddr, until: int) -> bool {
+ds_ban :: (b: [] DsBanMan, a: AmAddr, until: int) -> bool #effects(all) {
   for i: 0..<b[0].n_bans { if am_same_ip(b[0].bans[i].addr, a) { b[0].bans[i].until = until; return true; } }
   if b[0].n_bans >= b[0].bans.count { return false; }
   b[0].bans[b[0].n_bans] = DsBan.{addr=a, until=until}; b[0].n_bans += 1;
   return true;
 }
 // IsBanned: until the ban's time has come.
-ds_is_banned :: (b: [] DsBanMan, a: AmAddr, now: int) -> bool {
+ds_is_banned :: (b: [] DsBanMan, a: AmAddr, now: int) -> bool #effects(all) {
   for i: 0..<b[0].n_bans { if am_same_ip(b[0].bans[i].addr, a) && now < b[0].bans[i].until { return true; } }
   return false;
 }
@@ -372,11 +372,11 @@ work.
 // Headers that don't connect cost the peer nothing: they may announce a
 // block on a chain we haven't seen. Core answers with getheaders, at
 // most once every 2 minutes per peer. last is 0 before the first.
-ds_getheaders_due :: (last: int, now: int) -> bool { return now - last > DS_HEADERS_RESPONSE; }
+ds_getheaders_due :: (last: int, now: int) -> bool #effects(all) { return now - last > DS_HEADERS_RESPONSE; }
 // GetAntiDoSWorkThreshold: the minimum chain work, or the tip's work
 // less 144 blocks' worth if that is more. A chain of headers below it
 // isn't stored.
-ds_threshold :: (tip_work: U256, tip_bits: u32, min_work: U256) -> U256 {
+ds_threshold :: (tip_work: U256, tip_bits: u32, min_work: U256) -> U256 #effects(all) {
   back := u256_mul32(pow_work_vartime(tip_bits), 144);
   if u256_compare_vartime(back, tip_work) > 0 { back = tip_work; }
   near := u256_sub(tip_work, back);
@@ -387,7 +387,7 @@ ds_threshold :: (tip_work: U256, tip_bits: u32, min_work: U256) -> U256 {
 // starts a presync, which only keeps commitments; a shorter one is
 // ignored, since the peer has nothing more to send.
 DS_ACCEPTED :: 0; DS_PRESYNC :: 1; DS_IGNORED :: 2;
-ds_headers_route :: (start_work: U256, bits: u32, count: int, threshold: U256) -> int {
+ds_headers_route :: (start_work: U256, bits: u32, count: int, threshold: U256) -> int #effects(all) {
   total := u256_add(start_work, u256_mul32(pow_work_vartime(bits), cast,trunc(u32) count));
   if u256_compare_vartime(total, threshold) < 0 { return ifx count == DS_MAX_HEADERS then DS_PRESYNC else DS_IGNORED; }
   return DS_ACCEPTED;
@@ -397,7 +397,7 @@ ds_headers_route :: (start_work: U256, bits: u32, count: int, threshold: U256) -
 // chain start's median time past (plus 2 hours), then a redownload
 // buffer of compressed headers.
 DsPresync :: struct { commitments: int; bytes: int; }
-ds_presync_bound :: (now: int, start_mtp: int, period: int, buffer: int) -> DsPresync {
+ds_presync_bound :: (now: int, start_mtp: int, period: int, buffer: int) -> DsPresync #effects(all) {
   c := 6 * (now - start_mtp + DS_MAX_FUTURE) / period;
   return DsPresync.{commitments=c, bytes=(c + 7) / 8 + buffer * DS_COMPRESSED_HEADER};
 }
@@ -428,11 +428,11 @@ the peer sends.
 // since the peer isn't reading our answers. Core counts each message's
 // memory with its allocation overhead; this counts bytes.
 DsBuf :: struct { msg: int; partial: int; queued: int; send: int; pause_recv: bool; pause_send: bool; peak: int; }
-ds_note :: (b: [] DsBuf) {
+ds_note :: (b: [] DsBuf) #effects(all) {
   m := b[0].partial + b[0].queued * b[0].msg + b[0].send;
   if m > b[0].peak { b[0].peak = m; }
 }
-ds_read :: (b: [] DsBuf, n: int) -> int {
+ds_read :: (b: [] DsBuf, n: int) -> int #effects(all) {
   if b[0].pause_recv { return 0; }
   b[0].partial += n;
   done := b[0].partial / b[0].msg; b[0].partial %= b[0].msg;
@@ -441,17 +441,17 @@ ds_read :: (b: [] DsBuf, n: int) -> int {
   ds_note(b);
   return done;
 }
-ds_take :: (b: [] DsBuf) -> bool {
+ds_take :: (b: [] DsBuf) -> bool #effects(all) {
   if b[0].pause_send || b[0].queued == 0 { return false; }
   b[0].queued -= 1;
   b[0].pause_recv = b[0].queued * b[0].msg > DS_RECV_FLOOD;
   return true;
 }
-ds_push :: (b: [] DsBuf, n: int) {
+ds_push :: (b: [] DsBuf, n: int) #effects(all) {
   b[0].send += n; b[0].pause_send = b[0].send > DS_SEND_MAX;
   ds_note(b);
 }
-ds_sent :: (b: [] DsBuf, n: int) {
+ds_sent :: (b: [] DsBuf, n: int) #effects(all) {
   b[0].send -= ifx n < b[0].send then n else b[0].send;
   b[0].pause_send = b[0].send > DS_SEND_MAX;
 }
@@ -459,8 +459,8 @@ ds_sent :: (b: [] DsBuf, n: int) {
 // the last read finds at most 5 MB queued, a partial message under 4 MB
 // and 64 KiB more. Processing stops once the send buffer passes 1 MB,
 // so the last answer finds at most 1 MB waiting and adds one message.
-ds_recv_bound :: () -> int { return DS_RECV_FLOOD + DS_MAX_MESSAGE + 24 + DS_READ_CHUNK; }
-ds_send_bound :: () -> int { return DS_SEND_MAX + DS_MAX_MESSAGE + 24; }
+ds_recv_bound :: () -> int #effects(all) { return DS_RECV_FLOOD + DS_MAX_MESSAGE + 24 + DS_READ_CHUNK; }
+ds_send_bound :: () -> int #effects(all) { return DS_SEND_MAX + DS_MAX_MESSAGE + 24; }
 ```
 
 ## Transaction announcements
@@ -471,7 +471,7 @@ ds_send_bound :: () -> int { return DS_SEND_MAX + DS_MAX_MESSAGE + 24; }
 // at most 5,000 announcements tracked; the rest are dropped (-1). The
 // request waits 2 s for a peer we didn't choose, 2 s for a txid while
 // wtxid peers exist, and 2 s when the peer has 100 requests in flight.
-ds_tx_delay :: (tracked: int, in_flight: int, preferred: bool, wtxid: bool, wtxid_peers: int, relay: bool) -> int {
+ds_tx_delay :: (tracked: int, in_flight: int, preferred: bool, wtxid: bool, wtxid_peers: int, relay: bool) -> int #effects(all) {
   if !relay && tracked >= DS_TX_ANNOUNCEMENTS { return -1; }
   d := 0;
   if !preferred { d += DS_TX_DELAY; }

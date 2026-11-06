@@ -70,7 +70,7 @@ is blocked, so a character's circle never clips a wall's corner:
 ```jai
 // The cell one step from c in direction k (0 to 7), or -1 when that leaves the grid, isn't
 // walkable, or is a diagonal past a blocked corner.
-nav_grid_step :: (g: NavGrid, walk: [] bool, c: int, k: int) -> int {
+nav_grid_step :: (g: NavGrid, walk: [] bool, c: int, k: int) -> int #effects(all) {
   x := c % g.nx + NAV_GRID_DX[k]; z := c / g.nx + NAV_GRID_DZ[k];
   if x < 0 || z < 0 || x >= g.nx || z >= g.nz { return -1; }
   to := z * g.nx + x;
@@ -101,7 +101,7 @@ again and needs no mark:
 // refused before anything is written. heap and slot are the search's own scratch; order,
 // when it isn't empty, gets the cells in the order they settled.
 nav_grid_flow :: (g: NavGrid, walk: [] bool, cost: [] f32, heap: [] s32, slot: [] s32, order: [] s32,
-                  goal: int, max_cost: f32, steps: int) -> NavFlow {
+                  goal: int, max_cost: f32, steps: int) -> NavFlow #effects(all) {
   out: NavFlow;
   if !nav_grid_ok(g) { out.status = NavFlowStatus.bad_grid; return out; }
   cells := nav_grid_cells(g);
@@ -148,7 +148,7 @@ no route and can be restarted from anywhere:
 ```jai
 // The neighbour of c lowest on the field (the first of equals in direction order), or -1 when
 // none is lower than c.
-nav_grid_downhill :: (g: NavGrid, walk: [] bool, cost: [] f32, c: int) -> int {
+nav_grid_downhill :: (g: NavGrid, walk: [] bool, cost: [] f32, c: int) -> int #effects(all) {
   best := -1; low := cost[c];
   for k: 0..<8 {
     to := nav_grid_step(g, walk, c, k);
@@ -172,7 +172,7 @@ NavWayStatus :: enum u8 { there; step; no_way; refused; }
 // reached nothing). `cost` is the walking distance from the cell, or from `nearest`.
 NavWay :: struct { status: NavWayStatus; next: int = -1; nearest: int = -1; cost: f32; }
 
-nav_grid_way :: (g: NavGrid, walk: [] bool, cost: [] f32, flow: NavFlow, from: int) -> NavWay {
+nav_grid_way :: (g: NavGrid, walk: [] bool, cost: [] f32, flow: NavFlow, from: int) -> NavWay #effects(all) {
   way: NavWay;
   way.status = NavWayStatus.refused;
   if flow.status != NavFlowStatus.ok || !nav_grid_ok(g) { return way; }

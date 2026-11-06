@@ -28,7 +28,7 @@ SgDecision :: struct {verdict:SgVerdict;reason:SgReason;base:CmStats;spec:CmStat
 // over a tenth of either mean decides nothing (chapter 34's rule). Then on
 // when saving - 2 se >= 5% of the base mean, off when saving + 2 se < 5% of
 // it, and too close to call between the two.
-sg_decide :: (same_outputs:bool,base:[]int,spec:[]int)->SgDecision #export_c {
+sg_decide :: (same_outputs:bool,base:[]int,spec:[]int)->SgDecision #export_c #effects(all) {
     d:=SgDecision.{verdict=SgVerdict.refused,reason=SgReason.outputs};
     if !same_outputs {return d;}
     d.reason=SgReason.pairs;if base.count!=spec.count {return d;}
@@ -44,13 +44,13 @@ sg_decide :: (same_outputs:bool,base:[]int,spec:[]int)->SgDecision #export_c {
     d.reason=SgReason.close;return d;
 }
 // Only an "on" verdict turns speculation on.
-sg_enabled :: (d:SgDecision)->bool #export_c {return d.verdict==SgVerdict.on;}
+sg_enabled :: (d:SgDecision)->bool #export_c #effects(all) {return d.verdict==SgVerdict.on;}
 // book:end decide
 
-sg_verdict_name :: (v:SgVerdict)->string #export_c {
+sg_verdict_name :: (v:SgVerdict)->string #export_c #effects(all) {
     names:=[4]string.["refused","on","off","too noisy"];return names[cast(int)v];
 }
-sg_reason_name :: (r:SgReason)->string #export_c {
+sg_reason_name :: (r:SgReason)->string #export_c #effects(all) {
     names:=[6]string.["none","speculative outputs differ from the target-only outputs","run counts differ","the timings were refused",
         "a spread over a tenth of the mean","within two standard errors of the threshold"];
     return names[cast(int)r];

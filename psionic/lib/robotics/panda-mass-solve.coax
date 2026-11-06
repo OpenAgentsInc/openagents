@@ -39,15 +39,15 @@
  #assert pms_publish(raw,out[0..<1])==PmsStatus.ok;for i:0..<7 {#assert out[0].hinge[i].value==raw.acceleration[i];}for i:0..<2 {#assert out[0].slide[i].value==raw.acceleration[i+7];}pms_same(out[1],old);
 }
 
-pms_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),net_hinge:[]pfku.Quantity(PmHingeGravity,f64),net_slide:[]pfku.Quantity(PmSlideGravity,f64),output:[]PmsOutput)->PmsStatus #export_c {
+pms_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),net_hinge:[]pfku.Quantity(PmHingeGravity,f64),net_slide:[]pfku.Quantity(PmSlideGravity,f64),output:[]PmsOutput)->PmsStatus #export_c #effects(all) {
  if net_hinge.count!=7 || net_slide.count!=2 || output.count!=1 {return PmsStatus.shape;}
  metric:[1]PmOutput;model:=pm_forward(angles,slides,metric[..]);if model!=PfkStatus.ok {return pms_model_status(model);}
  bits:[9]u64;for i:0..<7 {bits[i]=f64_bits(net_hinge[i].value);}for i:0..<2 {bits[7+i]=f64_bits(net_slide[i].value);}admission:=pms_forces_admit(bits);if admission!=PmsStatus.ok {return admission;}
  h:[7]pfku.Quantity(PmHingeGravity,f64);s:[2]pfku.Quantity(PmSlideGravity,f64);for i:0..<7 {h[i]=net_hinge[i];}for i:0..<2 {s[i]=net_slide[i];}
  problem:=pms_basis(metric[0],h,s);return pms_publish(pms_solve_force_admitted(problem.mass,problem.force),output);
 }
-pms_publish :: (solved:PmsRaw,output:[]PmsOutput)->PmsStatus {if output.count!=1 {return PmsStatus.shape;}if solved.status!=PmsStatus.ok {return solved.status;}output[0]=pms_restore(solved.acceleration);return PmsStatus.ok;}
-pms_forward_raw :: (radians:[]f64,metres:[]f64,net_hinge:[]f64,net_slide:[]f64,output:[]PmsOutput)->PmsStatus #export_c {
+pms_publish :: (solved:PmsRaw,output:[]PmsOutput)->PmsStatus #effects(all) {if output.count!=1 {return PmsStatus.shape;}if solved.status!=PmsStatus.ok {return solved.status;}output[0]=pms_restore(solved.acceleration);return PmsStatus.ok;}
+pms_forward_raw :: (radians:[]f64,metres:[]f64,net_hinge:[]f64,net_slide:[]f64,output:[]PmsOutput)->PmsStatus #export_c #effects(all) {
  if radians.count!=7 || metres.count!=2 || net_hinge.count!=7 || net_slide.count!=2 {return PmsStatus.shape;}
  q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);h:[7]pfku.Quantity(PmHingeGravity,f64);f:[2]pfku.Quantity(PmSlideGravity,f64);
  for i:0..<7 {q[i].value=radians[i];h[i].value=net_hinge[i];}for i:0..<2 {s[i].value=metres[i];f[i].value=net_slide[i];}return pms_forward(q[..],s[..],h[..],f[..],output);

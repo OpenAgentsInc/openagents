@@ -89,7 +89,7 @@ pt_read :: (n: [] EgNet) {
 
 // The roster's answer ("200\n{"party":...,"version":V,"until":U,"members":[{"id":..,"name":..,"hp":..,
 // "hp_max":..,"you":..},...]}", or {"party":null}; anything else: not reached).
-net_party :: (s: [] Everglade, answer: string) #export_c {
+net_party :: (s: [] Everglade, answer: string) #export_c #effects(all) {
   if !net_on(s) { return; }
   p := pt_of(net_of(s));
   p[0].reading = false;

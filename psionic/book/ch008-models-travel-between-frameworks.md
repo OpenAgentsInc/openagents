@@ -170,15 +170,15 @@ unreadable.
 
 <!-- source: psionic/lib/interchange.coax leases -->
 ```jai
-ic_access :: (s:IcLease)->IcStatus #export_c {
+ic_access :: (s:IcLease)->IcStatus #export_c #effects(all) {
     if !s.live || s.refs<1 || s.refs>1024 {return IcStatus.ownership;}
     return IcStatus.ok;
 }
-ic_retain :: (s:IcLease)->IcLeaseChange #export_c {
+ic_retain :: (s:IcLease)->IcLeaseChange #export_c #effects(all) {
     if ic_access(s)!=IcStatus.ok || s.refs>=1024 {return IcLeaseChange.{status=IcStatus.ownership};}
     n:=s;n.refs+=1;return IcLeaseChange.{next=n};
 }
-ic_release :: (s:IcLease)->IcLeaseChange #export_c {
+ic_release :: (s:IcLease)->IcLeaseChange #export_c #effects(all) {
     if ic_access(s)!=IcStatus.ok {return IcLeaseChange.{status=IcStatus.ownership};}
     n:=s;n.refs-=1;if n.refs==0 {n.live=false;}
     return IcLeaseChange.{next=n,dispose=n.refs==0};

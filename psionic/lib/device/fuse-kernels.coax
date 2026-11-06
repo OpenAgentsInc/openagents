@@ -25,7 +25,7 @@ fk_inv :: (sum:f32,cols:int,eps:f32)->f32 {return 1/sqrt(sum/f32(cols)+eps);}
 fk_relu1 :: (v:f32)->f32 {if v>0 {return v;}return 0;}
 
 // 0: item = row. out[row] = the inverse RMS of row `row` of a.
-fk_rms :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+fk_rms :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c #effects(all) {
     p:[128]f32;q:[128]f32;
     for thread:0..<FK_THREADS {
         s:f32=0;
@@ -44,19 +44,19 @@ fk_rms :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_
 }
 // 1: item = element. out = a * b[row] * c[col]: the row's inverse RMS, then
 // the column's gain.
-fk_scale :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+fk_scale :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c #effects(all) {
     out[item]=a[item]*b[item/cols]*c[item%cols];
 }
 // 2: out = a + b[col], the bias of the element's column.
-fk_bias :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+fk_bias :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c #effects(all) {
     out[item]=a[item]+b[item%cols];
 }
 // 3: out = max(a, 0).
-fk_relu :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+fk_relu :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c #effects(all) {
     out[item]=fk_relu1(a[item]);
 }
 // 4: out = a + b, the residual add.
-fk_add :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+fk_add :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c #effects(all) {
     out[item]=a[item]+b[item];
 }
 // book:end unfused
@@ -65,7 +65,7 @@ fk_add :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_
 // 5 = 0 then 1: item = row. The same reduction as fk_rms; then every thread
 // reads the row's total and scales its own columns. The inverse RMS stays
 // in registers instead of a buffer. a is x, b is the gain.
-fk_norm_scale :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+fk_norm_scale :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c #effects(all) {
     p:[128]f32;q:[128]f32;
     for thread:0..<FK_THREADS {
         s:f32=0;
@@ -89,7 +89,7 @@ fk_norm_scale :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #
     }
 }
 // 6 = 2, 3 then 4: item = element. a is x, b the bias, c the residual.
-fk_bias_relu_add :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+fk_bias_relu_add :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c #effects(all) {
     out[item]=fk_relu1(a[item]+b[item%cols])+c[item];
 }
 // book:end fused

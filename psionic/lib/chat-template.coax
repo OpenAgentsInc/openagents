@@ -16,15 +16,15 @@ JtResult :: struct {status:TfStatus;written:int;bytes:[8192]u8;}
  bad:=[12]string.["{{ range(4) }}","{% if add_generation_prompt %}{{ x }}{% endif %}","{% for message in messages %}","{% endfor %}","{% endif %}","{% else %}","{{ 'x' + }}","{{ 'x' | upper }}","{{ 'x }}","{% if nope %}x{% endif %}","{% for message in messages %}{% for message in messages %}{% endfor %}{% endfor %}","{{ message['content'] }}"];
  for t:bad {r:=jt_render(t,m[..],false,"","");#assert r.status==TfStatus.unsupported && r.written==0 && r.bytes[0]==0;}
 }
-jt_starts :: (s:string,at:int,word:string)->bool {if word.count>s.count-at {return false;}for i:0..<word.count {if s[at+i]!=word[i] {return false;}}return true;}
-jt_trim :: (s:string)->string {a:=0;b:=s.count;while a<b && tf_space(s[a]) {a+=1;}while b>a && tf_space(s[b-1]) {b-=1;}return s[a..<b];}
-jt_condition :: (s:string)->int {
+jt_starts :: (s:string,at:int,word:string)->bool #effects(all) {if word.count>s.count-at {return false;}for i:0..<word.count {if s[at+i]!=word[i] {return false;}}return true;}
+jt_trim :: (s:string)->string #effects(all) {a:=0;b:=s.count;while a<b && tf_space(s[a]) {a+=1;}while b>a && tf_space(s[b-1]) {b-=1;}return s[a..<b];}
+jt_condition :: (s:string)->int #effects(all) {
  if s=="message['role'] == 'user'" {return 1;}if s=="message['role'] == 'system'" {return 2;}if s=="message['role'] == 'assistant'" {return 3;}
  if s=="add_generation_prompt" {return 4;}if s=="loop.last and add_generation_prompt" {return 5;}return 0;
 }
-jt_push :: (p:JtProgram,kind:int,arg:string,target:int)->JtProgram {q:=p;if q.count==256 {return JtProgram.{status=TfStatus.size};}q.ops[q.count]=JtOp.{kind=kind,arg=arg,target=target};q.count+=1;return q;}
+jt_push :: (p:JtProgram,kind:int,arg:string,target:int)->JtProgram #effects(all) {q:=p;if q.count==256 {return JtProgram.{status=TfStatus.size};}q.ops[q.count]=JtOp.{kind=kind,arg=arg,target=target};q.count+=1;return q;}
 // Atoms: quoted strings (n/r/t/quote/backslash escapes), content, role, BOS, EOS.
-jt_expression :: (p:JtProgram,s:string,in_loop:bool)->JtProgram {
+jt_expression :: (p:JtProgram,s:string,in_loop:bool)->JtProgram #effects(all) {
  q:=p;at:=0;
  while true {while at<s.count && tf_space(s[at]) {at+=1;}if at==s.count {return JtProgram.{status=TfStatus.unsupported};}begin:=at;
   if s[at]=='\'' || s[at]=='"' {quote:=s[at];at+=1;closed:=false;while at<s.count {c:=s[at];at+=1;if c==quote {closed=true;break;}if c=='\\' {if at==s.count {return JtProgram.{status=TfStatus.unsupported};}e:=s[at];if e!='n' && e!='r' && e!='t' && e!='\\' && e!='\'' && e!='"' {return JtProgram.{status=TfStatus.unsupported};}at+=1;}}if !closed {return JtProgram.{status=TfStatus.unsupported};}q=jt_push(q,0,s[begin+1..<at-1],1);
@@ -34,7 +34,7 @@ jt_expression :: (p:JtProgram,s:string,in_loop:bool)->JtProgram {
  return JtProgram.{status=TfStatus.unsupported};
 }
 // book:begin compile
-jt_compile :: (s:string)->JtProgram {
+jt_compile :: (s:string)->JtProgram #effects(all) {
  if s.count>4096 {return JtProgram.{status=TfStatus.size};}p:=JtProgram.{};at:=0;loop:=-1;depth:=0;otherwise:[8]bool;
  while at<s.count {
   if jt_starts(s,at,"{{") || jt_starts(s,at,"{%") {expression:=s[at+1]=='{';close:=ifx expression then "}}" else "%}";begin:=at+2;end:=begin;while end<s.count && !jt_starts(s,end,close) {end+=1;}if end==s.count {return JtProgram.{status=TfStatus.unsupported};}body:=jt_trim(s[begin..<end]);at=end+2;
@@ -54,9 +54,9 @@ jt_compile :: (s:string)->JtProgram {
  if loop>=0 || depth!=0 {return JtProgram.{status=TfStatus.unsupported};}p.ops[p.count].kind=11;return p;
 }
 // book:end compile
-jt_truth :: (condition:int,role:string,last:bool,generation:bool)->bool {if condition==1 {return role=="user";}if condition==2 {return role=="system";}if condition==3 {return role=="assistant";}if condition==4 {return generation;}if condition==5 {return last && generation;}return false;}
-jt_append :: (r:JtResult,s:string,escapes:bool)->JtResult {q:=r;at:=0;while at<s.count {c:=s[at];at+=1;if escapes && c=='\\' {c=s[at];at+=1;if c=='n' {c=10;}else if c=='r' {c=13;}else if c=='t' {c=9;}}if q.written==8192 {return JtResult.{status=TfStatus.size};}q.bytes[q.written]=c;q.written+=1;}return q;}
-jt_render :: (template:string,messages:[]JtMessage,generation:bool,bos:string,eos:string)->JtResult #export_c {
+jt_truth :: (condition:int,role:string,last:bool,generation:bool)->bool #effects(all) {if condition==1 {return role=="user";}if condition==2 {return role=="system";}if condition==3 {return role=="assistant";}if condition==4 {return generation;}if condition==5 {return last && generation;}return false;}
+jt_append :: (r:JtResult,s:string,escapes:bool)->JtResult #effects(all) {q:=r;at:=0;while at<s.count {c:=s[at];at+=1;if escapes && c=='\\' {c=s[at];at+=1;if c=='n' {c=10;}else if c=='r' {c=13;}else if c=='t' {c=9;}}if q.written==8192 {return JtResult.{status=TfStatus.size};}q.bytes[q.written]=c;q.written+=1;}return q;}
+jt_render :: (template:string,messages:[]JtMessage,generation:bool,bos:string,eos:string)->JtResult #export_c #effects(all) {
  if messages.count>16 || bos.count>64 || eos.count>64 {return JtResult.{status=TfStatus.size};}if !tf_utf8(template) || !tf_utf8(bos) || !tf_utf8(eos) {return JtResult.{status=TfStatus.unsupported};}for m:messages {if m.role.count>16 || m.content.count>1024 {return JtResult.{status=TfStatus.size};}if !tf_utf8(m.role) || !tf_utf8(m.content) {return JtResult.{status=TfStatus.unsupported};}}
  p:=jt_compile(template);if p.status!=TfStatus.ok {return JtResult.{status=p.status};}r:=JtResult.{};pc:=0;index:int;depth:=0;active:[8]bool;taken:[8]bool;
  while true {op:=p.ops[pc];if op.kind==11 {return r;}pc+=1;role:="";content:="";if index<messages.count {role=messages[index].role;content=messages[index].content;}
@@ -120,7 +120,7 @@ jt_render :: (template:string,messages:[]JtMessage,generation:bool,bos:string,eo
  for levels:8..<10 {bytes:[1024]u8;n:=0;open:="{% if add_generation_prompt %}";close:="{% endif %}";for i:0..<levels {for c:open {bytes[n]=c;n+=1;}}for i:0..<levels {for c:close {bytes[n]=c;n+=1;}}p:=jt_compile(cast(string)bytes[0..<n]);if levels==8 {#assert p.status==TfStatus.ok && p.ops[p.count].kind==11;}else {#assert p.status==TfStatus.size;}}
 }
 
-jt_raw :: (s:string,begin:int,end:int,statement:bool)->string {
+jt_raw :: (s:string,begin:int,end:int,statement:bool)->string #effects(all) {
  if !statement {return s[begin..<end];}line:=end;while line>0 && s[line-1]!=10 {line-=1;}if line<begin {return s[begin..<end];}for i:line..<end {if s[i]!=32 && s[i]!=9 {return s[begin..<end];}}return s[begin..<line];
 }
 #test "Jinja strips line-leading block indentation and CRLF but keeps inline spaces" {

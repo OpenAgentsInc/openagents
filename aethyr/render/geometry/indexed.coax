@@ -49,7 +49,7 @@ IndexedRead :: struct { status:IndexedStatus; vertices:int; indices:int; bytes:i
   for k:0..<3 {bad:=i;bad[k]=3;#assert indexed_read(p[..],n[..],bad[..],84,"a","b").status==IndexedStatus.index;}
   i[2]=1;#assert indexed_read(p[..],n[..],i[..],84,"a","b").status==IndexedStatus.degenerate;
 }
-indexed_read :: (p:[]Point,n:[]Point,indices:[]u32,budget:int,source:string,licence:string)->IndexedRead {
+indexed_read :: (p:[]Point,n:[]Point,indices:[]u32,budget:int,source:string,licence:string)->IndexedRead #effects(all) {
   if p.count==0 || p.count!=n.count || indices.count==0 || indices.count%3!=0 {return IndexedRead.{status=IndexedStatus.shape};}
   if source=="" || licence=="" {return IndexedRead.{status=IndexedStatus.source};}
   bytes:=p.count*24+indices.count*4;

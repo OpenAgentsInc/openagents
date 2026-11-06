@@ -11,7 +11,7 @@ mbcc_write :: (d:Jv,node:int,target:int,replacement:string,o:[]Jo) {
     while child!=-1 {if kind==JV_OBJECT {jo_key(o,jv_key(d,child));}mbcc_write(d,child,target,replacement,o);child=d.nodes[child].next;}jo_end(o);
   }else {jv_write(d,node,o);}
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=6 {return 2;}
   image:=args_at(a[..],0);work:=args_at(a[..],1);qdir:=args_at(a[..],2);root:=args_at(a[..],3);compiler:=args_at(a[..],4);directory:=args_at(a[..],5);
   if !fs_mkdir(directory) {return 2;}

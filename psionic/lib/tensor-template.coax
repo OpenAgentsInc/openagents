@@ -29,15 +29,15 @@ TgSelect :: struct {status:TiStatus;hit:bool;slot:int;evict:u32;next:TgCache;}
     c=tg_install(s.next,s.slot,b,60);b.branch=true;s=tg_select(c,b,1);#assert !s.hit;
     #assert tg_select(c,b,101).status==TiStatus.budget;
 }
-tg_fixture :: ()->TgTemplate #export_c {t:TgTemplate;t.symbol_count=1;t.symbols[0]=TgSymbol.{minimum=1,maximum=8};t.choice=true;t.max_repeat=1;t.loop=TiNode.{op=TiOp.relu};t.programs[0]=ti_fixture();t.programs[0].nodes[0].shape.dims[0]=-1;t.programs[1]=t.programs[0];t.programs[1].nodes[7]=TiNode.{op=TiOp.multiply,a=6,b=6};return t;}
-tg_same_binding :: (a:TgBinding,b:TgBinding)->bool {if a.branch!=b.branch || a.repeat!=b.repeat {return false;}for i:0..<4 {if a.symbols[i]!=b.symbols[i] {return false;}}return true;}
-tg_schema :: (t:TgTemplate)->TiStatus {
+tg_fixture :: ()->TgTemplate #export_c #effects(all) {t:TgTemplate;t.symbol_count=1;t.symbols[0]=TgSymbol.{minimum=1,maximum=8};t.choice=true;t.max_repeat=1;t.loop=TiNode.{op=TiOp.relu};t.programs[0]=ti_fixture();t.programs[0].nodes[0].shape.dims[0]=-1;t.programs[1]=t.programs[0];t.programs[1].nodes[7]=TiNode.{op=TiOp.multiply,a=6,b=6};return t;}
+tg_same_binding :: (a:TgBinding,b:TgBinding)->bool #effects(all) {if a.branch!=b.branch || a.repeat!=b.repeat {return false;}for i:0..<4 {if a.symbols[i]!=b.symbols[i] {return false;}}return true;}
+tg_schema :: (t:TgTemplate)->TiStatus #effects(all) {
     if t.symbol_count<0 || t.symbol_count>4 || t.max_repeat<0 || t.max_repeat>4 {return TiStatus.capacity;}variants:=1;
     for i:0..<4 {s:=t.symbols[i];if i<t.symbol_count {if s.minimum<0 || s.maximum<s.minimum || s.maximum>TV_LIMIT || s.step<1 || (s.maximum-s.minimum)%s.step!=0 {return TiStatus.shape;}n:=(s.maximum-s.minimum)/s.step+1;if variants>64/n {return TiStatus.limit;}variants*=n;}}
     factor:=t.max_repeat+1;if t.choice {factor*=2;}if variants>64/factor {return TiStatus.limit;}
     if t.max_repeat>0 && t.loop.op!=TiOp.relu && t.loop.op!=TiOp.layernorm {return TiStatus.operation;}return TiStatus.ok;
 }
-tg_bind :: (t:TgTemplate,b:TgBinding)->TgBound #export_c {
+tg_bind :: (t:TgTemplate,b:TgBinding)->TgBound #export_c #effects(all) {
     status:=tg_schema(t);if status!=TiStatus.ok {return TgBound.{status=status};}
     if b.repeat<0 || b.repeat>t.max_repeat || (b.branch && !t.choice) {return TgBound.{status=TiStatus.capacity};}
     for i:0..<4 {if i<t.symbol_count {s:=t.symbols[i];if b.symbols[i]<s.minimum || b.symbols[i]>s.maximum || (b.symbols[i]-s.minimum)%s.step!=0 {return TgBound.{status=TiStatus.shape};}}else if b.symbols[i]!=0 {return TgBound.{status=TiStatus.shape};}}
@@ -47,14 +47,14 @@ tg_bind :: (t:TgTemplate,b:TgBinding)->TgBound #export_c {
     }
     for pass:0..<b.repeat {n:=t.loop;n.a=p.output;p.nodes[p.count]=n;p.output=p.count;p.count+=1;}return TgBound.{program=p};
 }
-tg_validate :: (t:TgTemplate,target:TiTarget)->TiStatus #export_c {
+tg_validate :: (t:TgTemplate,target:TiTarget)->TiStatus #export_c #effects(all) {
     status:=tg_schema(t);if status!=TiStatus.ok {return status;}variants:=1;for i:0..<t.symbol_count {s:=t.symbols[i];variants*=(s.maximum-s.minimum)/s.step+1;}
     choices:=1;if t.choice {choices=2;}for flat:0..<variants {b:TgBinding;n:=flat;for i:0..<t.symbol_count {s:=t.symbols[i];size:=(s.maximum-s.minimum)/s.step+1;b.symbols[i]=s.minimum+(n%size)*s.step;n/=size;}
         for branch:0..<choices {b.branch=branch==1;for repeat:0..<t.max_repeat+1 {b.repeat=repeat;bound:=tg_bind(t,b);if bound.status!=TiStatus.ok {return bound.status;}p:=ti_compile(bound.program,target,true);if p.status!=TiStatus.ok {return p.status;}}}
     }return TiStatus.ok;
 }
-tg_cache :: (resident:int,limit:int)->TgCache #export_c {return TgCache.{bytes=resident,limit=limit};}
-tg_select :: (c:TgCache,b:TgBinding,needed:int)->TgSelect #export_c {
+tg_cache :: (resident:int,limit:int)->TgCache #export_c #effects(all) {return TgCache.{bytes=resident,limit=limit};}
+tg_select :: (c:TgCache,b:TgBinding,needed:int)->TgSelect #export_c #effects(all) {
     if c.bytes<0 || c.bytes>c.limit || c.clock<0 || c.clock==9223372036854775807 || needed<0 {return TgSelect.{status=TiStatus.state};}if needed>c.limit {return TgSelect.{status=TiStatus.budget};}
     next:=c;next.clock+=1;for i:0..<4 {if c.entries[i].live && tg_same_binding(c.entries[i].binding,b) {next.entries[i].stamp=next.clock;return TgSelect.{hit=true,slot=i,next=next};}}
     evict:u32=0;slot:=-1;
@@ -63,9 +63,9 @@ tg_select :: (c:TgCache,b:TgBinding,needed:int)->TgSelect #export_c {
         oldest:=-1;for i:0..<4 {if next.entries[i].live {if oldest<0 || next.entries[i].stamp<next.entries[oldest].stamp {oldest=i;}}}if oldest<0 {return TgSelect.{status=TiStatus.budget};}next.bytes-=next.entries[oldest].bytes;next.entries[oldest].live=false;evict|=u32(1)<<u32(oldest);
     }return TgSelect.{status=TiStatus.state};
 }
-tg_install :: (c:TgCache,slot:int,b:TgBinding,bytes:int)->TgCache #export_c {next:=c;if slot<0 || slot>=4 || c.entries[slot].live || bytes<0 || bytes>c.limit-c.bytes {return c;}next.entries[slot]=TgEntry.{live=true,binding=b,bytes=bytes,stamp=c.clock};next.bytes+=bytes;return next;}
+tg_install :: (c:TgCache,slot:int,b:TgBinding,bytes:int)->TgCache #export_c #effects(all) {next:=c;if slot<0 || slot>=4 || c.entries[slot].live || bytes<0 || bytes>c.limit-c.bytes {return c;}next.entries[slot]=TgEntry.{live=true,binding=b,bytes=bytes,stamp=c.clock};next.bytes+=bytes;return next;}
 #test "template matching binds declared control flow and symbolic guards" {
     a:=tg_fixture();#assert tg_template_equal(a,a) && tg_find(tg_cache(0,100),TgBinding.{})== -1;b:=a;b.symbols[0].maximum=4;#assert !tg_template_equal(a,b);
 }
-tg_find :: (c:TgCache,b:TgBinding)->int #export_c {for i:0..<4 {if c.entries[i].live && tg_same_binding(c.entries[i].binding,b) {return i;}}return -1;}
-tg_template_equal :: (a:TgTemplate,b:TgTemplate)->bool #export_c {if a.symbol_count!=b.symbol_count || a.choice!=b.choice || a.max_repeat!=b.max_repeat || !ti_node_equal(a.loop,b.loop) {return false;}for i:0..<4 {if a.symbols[i].minimum!=b.symbols[i].minimum || a.symbols[i].maximum!=b.symbols[i].maximum || a.symbols[i].step!=b.symbols[i].step {return false;}}branches:=1;if a.choice {branches=2;}for branch:0..<branches {x:=a.programs[branch];y:=b.programs[branch];if x.count!=y.count || x.output!=y.output || x.count<1 || x.count>32 {return false;}for i:0..<x.count {if !ti_node_equal(x.nodes[i],y.nodes[i]) {return false;}}}return true;}
+tg_find :: (c:TgCache,b:TgBinding)->int #export_c #effects(all) {for i:0..<4 {if c.entries[i].live && tg_same_binding(c.entries[i].binding,b) {return i;}}return -1;}
+tg_template_equal :: (a:TgTemplate,b:TgTemplate)->bool #export_c #effects(all) {if a.symbol_count!=b.symbol_count || a.choice!=b.choice || a.max_repeat!=b.max_repeat || !ti_node_equal(a.loop,b.loop) {return false;}for i:0..<4 {if a.symbols[i].minimum!=b.symbols[i].minimum || a.symbols[i].maximum!=b.symbols[i].maximum || a.symbols[i].step!=b.symbols[i].step {return false;}}branches:=1;if a.choice {branches=2;}for branch:0..<branches {x:=a.programs[branch];y:=b.programs[branch];if x.count!=y.count || x.output!=y.output || x.count<1 || x.count>32 {return false;}for i:0..<x.count {if !ti_node_equal(x.nodes[i],y.nodes[i]) {return false;}}}return true;}

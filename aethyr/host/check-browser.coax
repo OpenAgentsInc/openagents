@@ -14,7 +14,7 @@ cb_spawn :: (argv:[]string)->int {p:=proc_new();if p<0{return -1;}for a:argv {if
 cb_text :: (c:[]Cdp,expr:string,out:[]u8)->int {n:=cdp_evaluate(c,expr);return ifx n<0 then -1 else jv_str(cdp_doc(c),n,out);}
 cb_copy :: (src:string,dst:string)->bool {b:[16777216]u8;n:=fs_read(src,b[..]);return n>=0 && fs_write(dst,cast(string)b[0..<n]);}
 cb_wait :: (c:[]Cdp,expr:string)->bool {deadline:=proc_now_ms()+5000;while proc_now_ms()<deadline {if wc_eval(c,expr)=="true" {return true;}proc_sleep(25);}return cb_expect(c,expr);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {tool_errln("usage: check-browser PREPARED_DIRECTORY");return 2;}
   paths:[10][4096]u8;dir:=fs_realpath(args_at(a[..],0),paths[0][..]);root:=fs_realpath(".",paths[1][..]);site:=fs_join(dir,"browser-site",paths[2][..]);
   if dir=="" || root=="" || !fs_mkdir(site) {return 1;}

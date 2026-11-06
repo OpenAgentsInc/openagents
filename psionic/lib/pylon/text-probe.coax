@@ -38,4 +38,4 @@ p90_probe_run :: (p:[]Py)->int {
     n=json_raw(out[..],n,",\"text\":");n=json_write_string(out[..],n,cast(string)q[0].answer[0..<q[0].answer_n]);n=json_raw(out[..],n,",\"elapsed_ms\":");n=json_write_int(out[..],n,cxsock_now_ms()-started);n=json_raw(out[..],n,"}");
     if n<0 {return 1;}print("%\n",cast(string)out[0..<n]);return 0;
 }
-p90_probe_entry :: () #export_c {p:[1]Py;code:=p90_probe_run(p[..]);x:=pyh_status(code);}
+p90_probe_entry :: () #export_c #effects(all) {p:[1]Py;code:=p90_probe_run(p[..]);x:=pyh_status(code);}

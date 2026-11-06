@@ -97,7 +97,7 @@ ffu_can :: (s: [] Fairy) -> bool {
 
 // ---- what the face sends: one at a time
 
-ffu_next :: (s: [] Fairy) -> int #export_c {
+ffu_next :: (s: [] Fairy) -> int #export_c #effects(all) {
   g := s[0].upgrade[..];
   if s[0].golden { return 0; }
   if g[0].ask_buy > 0 { return FFU_BUY; }
@@ -108,12 +108,12 @@ ffu_next :: (s: [] Fairy) -> int #export_c {
   return 0;
 }
 // It couldn't go yet (no player key): asked again later.
-ffu_later :: (s: [] Fairy, kind: int) #export_c {
+ffu_later :: (s: [] Fairy, kind: int) #export_c #effects(all) {
   if kind == FFU_GET { s[0].upgrade[0].ask_get = true; }
   if kind == FFU_CHECK { s[0].upgrade[0].ask_check = true; }
 }
-ffu_post :: (kind: int) -> bool #export_c { return kind != FFU_GET; }
-ffu_url :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c {
+ffu_post :: (kind: int) -> bool #export_c #effects(all) { return kind != FFU_GET; }
+ffu_url :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c #effects(all) {
   g := s[0].upgrade[..];
   o := 0;
   if kind == FFU_GET { o = ffs_put(out, 0, "/api/playtest/upgrades/fairy"); }
@@ -131,7 +131,7 @@ ffu_url :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c {
   return ifx o > 0 then o else 0;
 }
 // The body of a write (and for the answer, what it was about kept until it comes).
-ffu_body :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c {
+ffu_body :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c #effects(all) {
   g := s[0].upgrade[..];
   o := 0;
   if kind == FFU_BUY {
@@ -179,7 +179,7 @@ ffu_value :: (t: string, obj: int, key: string) -> string {
 }
 
 // What came back ("STATUS\n" and the JSON).
-ffu_answer :: (s: [] Fairy, kind: int, answer: string) #export_c {
+ffu_answer :: (s: [] Fairy, kind: int, answer: string) #export_c #effects(all) {
   g := s[0].upgrade[..];
   nl := 0;
   while nl < answer.count && answer[nl] != 10 { nl += 1; }
@@ -260,15 +260,15 @@ ffu_tick :: (s: [] Fairy) {
   if g[0].buy_state == BUY_SHOWN && s[0].time - g[0].polled > f64(FFU_POLL) { g[0].ask_check = true; g[0].polled = s[0].time; }
 }
 // The face encoded code into qr: status 0 and the grid's side, else nothing to show.
-ffu_qr_wanted :: (s: [] Fairy) -> bool #export_c { return s[0].upgrade[0].qr_want; }
-ffu_qr_done :: (s: [] Fairy, status: int, size: int) #export_c {
+ffu_qr_wanted :: (s: [] Fairy) -> bool #export_c #effects(all) { return s[0].upgrade[0].qr_want; }
+ffu_qr_done :: (s: [] Fairy, status: int, size: int) #export_c #effects(all) {
   g := s[0].upgrade[..];
   g[0].qr_want = false;
   g[0].qr_size = ifx status != 0 || size < 21 || size * size > FFU_QR then 0 else size;
 }
 // The host's action: 1 (go to) the wallet link, inside the tap. 0 none.
-ffu_action :: (s: [] Fairy) -> int #export_c { return ifx s[0].upgrade[0].wallet && s[0].upgrade[0].code_n > 0 then 1 else 0; }
-ffu_action_done :: (s: [] Fairy) #export_c { s[0].upgrade[0].wallet = false; }
+ffu_action :: (s: [] Fairy) -> int #export_c #effects(all) { return ifx s[0].upgrade[0].wallet && s[0].upgrade[0].code_n > 0 then 1 else 0; }
+ffu_action_done :: (s: [] Fairy) #export_c #effects(all) { s[0].upgrade[0].wallet = false; }
 
 // ---- keys and pointers
 

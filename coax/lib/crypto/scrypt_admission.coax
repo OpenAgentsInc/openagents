@@ -81,7 +81,7 @@
 }
 
 SA_MAX :: cast(u64)18446744073709551615;
-sa_span :: (address:u64,length:int,limit:int)->bool {
+sa_span :: (address:u64,length:int,limit:int)->bool #effects(all) {
   if length<0 || length>limit {return false;}
   if length==0 {return true;}
   if address==0 {return false;}
@@ -89,22 +89,22 @@ sa_span :: (address:u64,length:int,limit:int)->bool {
 }
 // Both spans must already satisfy sa_span; wrapped subtraction is used only
 // after address-range validation prevents either span from crossing the end.
-sa_overlap :: (a:u64,an:int,b:u64,bn:int)->bool {
+sa_overlap :: (a:u64,an:int,b:u64,bn:int)->bool #effects(all) {
   if an<1 || bn<1 {return false;}
   return sub_wrap(b,a)<cast(u64)an || sub_wrap(a,b)<cast(u64)bn;
 }
-sa_cost :: (log_n:int)->int {
+sa_cost :: (log_n:int)->int #effects(all) {
   if log_n<1 || log_n>18 {return 0;}
   return (1<<log_n)*1024;
 }
-sa_start :: (session:u64,sn:int,scratch:u64,mn:int,password:u64,pn:int,salt:u64,tn:int,log_n:int)->bool #export_c {
+sa_start :: (session:u64,sn:int,scratch:u64,mn:int,password:u64,pn:int,salt:u64,tn:int,log_n:int)->bool #export_c #effects(all) {
   if sn<1 || !sa_span(session,sn,1048576) || !sa_span(scratch,mn,268435456) || !sa_span(password,pn,1024) {return false;}
   if tn!=16 || salt==0 || salt>SA_MAX-16 {return false;}
   needed:=sa_cost(log_n);if needed==0 || mn<needed {return false;}
   if sa_overlap(session,sn,scratch,mn) || sa_overlap(session,sn,password,pn) || sa_overlap(session,sn,salt,tn) {return false;}
   return !sa_overlap(scratch,mn,password,pn) && !sa_overlap(scratch,mn,salt,tn) && !sa_overlap(password,pn,salt,tn);
 }
-sa_output :: (session:u64,sn:int,scratch:u64,mn:int,out:u64,on:int)->bool #export_c {
+sa_output :: (session:u64,sn:int,scratch:u64,mn:int,out:u64,on:int)->bool #export_c #effects(all) {
   if sn<1 || !sa_span(session,sn,1048576) || mn<2048 || !sa_span(scratch,mn,268435456) || on<32 || !sa_span(out,on,1048576) {return false;}
   return !sa_overlap(session,sn,scratch,mn) && !sa_overlap(session,sn,out,on) && !sa_overlap(scratch,mn,out,on);
 }
@@ -113,16 +113,16 @@ sa_output :: (session:u64,sn:int,scratch:u64,mn:int,out:u64,on:int)->bool #expor
 // address space. Host still validates real allocations and linear-memory size.
 // Internal width-only check: sa_start/sa_output must first validate the
 // nonnegative length and reject a nonempty null address.
-sa_span32 :: (address:u64,length:int)->bool {
+sa_span32 :: (address:u64,length:int)->bool #effects(all) {
   if length==0 {return true;}
   if (address>>32)!=0 {return false;}
   return cast(u64)length<=cast(u64)4294967295-address;
 }
-sa_start32 :: (session:u64,sn:int,scratch:u64,mn:int,password:u64,pn:int,salt:u64,tn:int,log_n:int)->bool #export_c {
+sa_start32 :: (session:u64,sn:int,scratch:u64,mn:int,password:u64,pn:int,salt:u64,tn:int,log_n:int)->bool #export_c #effects(all) {
   if !sa_start(session,sn,scratch,mn,password,pn,salt,tn,log_n) {return false;}
   return sa_span32(session,sn) && sa_span32(scratch,mn) && sa_span32(password,pn) && sa_span32(salt,tn);
 }
-sa_output32 :: (session:u64,sn:int,scratch:u64,mn:int,out:u64,on:int)->bool #export_c {
+sa_output32 :: (session:u64,sn:int,scratch:u64,mn:int,out:u64,on:int)->bool #export_c #effects(all) {
   if !sa_output(session,sn,scratch,mn,out,on) {return false;}
   return sa_span32(session,sn) && sa_span32(scratch,mn) && sa_span32(out,on);
 }

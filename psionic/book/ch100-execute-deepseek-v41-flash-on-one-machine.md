@@ -105,7 +105,7 @@ bytes against 501,382,611,408. It refuses this host.
 
 <!-- source: psionic/lib/deepseek/flash-plan.coax plan -->
 ```jai
-dv_plan :: (b:DvBytes,h:DvHost,context:int)->DvPlan #export_c {
+dv_plan :: (b:DvBytes,h:DvHost,context:int)->DvPlan #export_c #effects(all) {
     if b.routed<DV_EXPERTS || b.routed%DV_EXPERTS!=0 || b.shared<1 || b.engram<1 || b.dense<1 || b.embed<1 {return DvPlan.{status=DvVerdict.bytes};}
     if h.gpu<1 || h.ram<1 || h.reserve<0 || h.disk_free<0 || h.gpu_bw<1 || h.link_bw<1 || h.disk_bw<1 {return DvPlan.{status=DvVerdict.bytes};}
     kv:=dk_flash_cache_budget(context,1,0,h.gpu,h.gpu);if kv.status!=DkStatus.ok {return DvPlan.{status=DvVerdict.cache};}

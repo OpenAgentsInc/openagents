@@ -49,12 +49,12 @@ SHA3_RC :: [24] u64.[
   0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008];
 // The rotation of lane x + 5y in the rho step.
 SHA3_RHO :: [25] int.[0, 1, 62, 28, 27, 36, 44, 6, 55, 20, 3, 10, 43, 25, 39, 41, 45, 15, 21, 8, 18, 2, 61, 56, 14];
-sha3_rotl :: (x: u64, n: int) -> u64 {
+sha3_rotl :: (x: u64, n: int) -> u64 #effects(all) {
   if n == 0 { return x; }
   return (x << n) | (x >> (64 - n));
 }
 // Keccak-f[1600]: 24 rounds of theta, rho, pi, chi and iota.
-sha3_permute :: (a: [] u64) {
+sha3_permute :: (a: [] u64) #effects(all) {
   c: [5] u64; b: [25] u64;
   for round: 0..<24 {
     for x: 0..<5 { c[x] = a[x] ^ a[x + 5] ^ a[x + 10] ^ a[x + 15] ^ a[x + 20]; }
@@ -70,7 +70,7 @@ sha3_permute :: (a: [] u64) {
   }
 }
 // The padded message's byte at: SHA-3's domain bits 01, then pad10*1.
-sha3_padded :: (input: string, at: int, total: int) -> u8 {
+sha3_padded :: (input: string, at: int, total: int) -> u8 #effects(all) {
   if at < input.count { return input[at]; }
   v: u8 = 0;
   if at == input.count { v = 0x06; }
@@ -79,7 +79,7 @@ sha3_padded :: (input: string, at: int, total: int) -> u8 {
 }
 // SHA3-256 of input into out[0..<32]; false (out untouched) when input is
 // over SHA3_MAX_INPUT or out is shorter than 32.
-sha3_256 :: (input: string, out: [] u8) -> bool #export_c {
+sha3_256 :: (input: string, out: [] u8) -> bool #export_c #effects(all) {
   if input.count > SHA3_MAX_INPUT || out.count < 32 { return false; }
   total := (input.count / SHA3_RATE + 1) * SHA3_RATE;
   a: [25] u64;
@@ -97,7 +97,7 @@ sha3_256 :: (input: string, out: [] u8) -> bool #export_c {
   return true;
 }
 // book:end keccak
-sha3_same :: (d: [] u8, hex: string) -> bool {
+sha3_same :: (d: [] u8, hex: string) -> bool #effects(all) {
   digits := "0123456789abcdef";
   for i: 0..<32 {
     if hex[2 * i] != digits[cast(int) (d[i] >> 4)] || hex[2 * i + 1] != digits[cast(int) (d[i] & 15)] { return false; }

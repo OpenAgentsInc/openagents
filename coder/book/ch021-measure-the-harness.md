@@ -63,7 +63,7 @@ coax/bin/coax test psionic/lib/harness/measure.coax
 // The task as a prompt: <|bos|> <|user_start|>, the kind's letter (s, d or
 // p) and each value after a space, <|user_end|> <|assistant_start|>.
 // Tokens below 256 are bytes.
-mh_prompt :: (t:EnTask,ids:[]int)->int {
+mh_prompt :: (t:EnTask,ids:[]int)->int #effects(all) {
     ids[0]=HL_BOS;ids[1]=MH_USER;ids[2]=MH_KIND[cast(int)t.kind];at:=3;
     for i:0..<t.work.size {ids[at]=32;ids[at+1]=48+t.work.v[i];at+=2;}
     ids[at]=MH_USER_END;ids[at+1]=MH_ASSISTANT;return at+2;
@@ -85,7 +85,7 @@ lists the values. The running-sums task [1 2 3 4] is 13 tokens:
 // Its replies are fixed before the run, which a scripted model in chapter
 // 200's loop needs: the calculator is exact, so the sums it will return are
 // known. Returns the number of replies.
-mh_script :: (h:MhHarness,c:MhConfig,t:EnTask,r:int,q:int,script:[]int,starts:[]int)->int {
+mh_script :: (h:MhHarness,c:MhConfig,t:EnTask,r:int,q:int,script:[]int,starts:[]int)->int #effects(all) {
     n:=0;at:=0;
     if c.tools && t.kind==EnKind.prefix {
         sum:=t.work.v[0];
@@ -124,8 +124,8 @@ charges for it, and the run's record holds both.
 // when chapter 242's exact checker passes it. The digest covers the harness,
 // the configuration, the environment, r and q, the replies scripted, the
 // turn, each step's seed and every token of the transcript.
-mh_run :: (h:MhHarness,c:MhConfig,t:EnTask,r:int,q:int)->MhRun {tb:=NC_LEARNED;return mh_turn(tb[..],h,c,t,r,q);}
-mh_turn :: (tb:[]u8,h:MhHarness,c:MhConfig,t:EnTask,r:int,q:int)->MhRun {
+mh_run :: (h:MhHarness,c:MhConfig,t:EnTask,r:int,q:int)->MhRun #effects(all) {tb:=NC_LEARNED;return mh_turn(tb[..],h,c,t,r,q);}
+mh_turn :: (tb:[]u8,h:MhHarness,c:MhConfig,t:EnTask,r:int,q:int)->MhRun #effects(all) {
     out:MhRun;
     if !mh_harness_ok(h) || !mh_config_ok(c) || r<0 || q<0 || q>=h.runs {out.status=MhStatus.shape;return out;}
     script:[MH_SCRIPT_MAX]int;starts:[MH_STEPS_MAX+1]int;replies:=mh_script(h,c,t,r,q,script[..],starts[..]);
@@ -204,7 +204,7 @@ Tighter budgets end the same turn with chapter1's typed stops:
 
 <!-- source: psionic/lib/harness/measure.coax replay -->
 ```jai
-mh_run_replay :: (h:MhHarness,c:MhConfig,t:EnTask,r:int,q:int,claimed:MhRun)->bool {
+mh_run_replay :: (h:MhHarness,c:MhConfig,t:EnTask,r:int,q:int,claimed:MhRun)->bool #effects(all) {
     x:=mh_run(h,c,t,r,q);
     return x.status==claimed.status && x.stop==claimed.stop && x.solved==claimed.solved && x.steps==claimed.steps &&
         x.tokens==claimed.tokens && x.tools==claimed.tools && x.ticks==claimed.ticks && su_same(x.digest,claimed.digest);
@@ -222,25 +222,25 @@ when every field and the digest come out the same.
 
 <!-- source: psionic/lib/harness/measure.coax digests -->
 ```jai
-mh_harness_digest :: (h:MhHarness)->[32]u8 {
+mh_harness_digest :: (h:MhHarness)->[32]u8 #effects(all) {
     buf:[160]u8;at:=su_text(buf[..],0,"psionic.harness-bench.harness.v1");at=su_text(buf[..],at,"cpu-harness-loop-v1 agent-sim-tools-v1");
     at=su_u64(buf[..],at,cast(u64)h.context);at=su_u64(buf[..],at,cast(u64)h.tool);at=su_u64(buf[..],at,f64_bits(h.skill));
     at=su_u64(buf[..],at,h.seed);at=su_u64(buf[..],at,cast(u64)h.runs);at=su_u64(buf[..],at,cast(u64)h.block);
     return su_hash(buf[0..<at]);
 }
-mh_config_digest :: (c:MhConfig)->[32]u8 {
+mh_config_digest :: (c:MhConfig)->[32]u8 #effects(all) {
     buf:[96]u8;at:=su_text(buf[..],0,"psionic.harness-bench.config.v1");at=su_flag(buf[..],at,c.tools);
     at=su_u64(buf[..],at,cast(u64)c.steps);at=su_u64(buf[..],at,cast(u64)c.tokens);at=su_u64(buf[..],at,cast(u64)c.reply);
     return su_hash(buf[0..<su_u64(buf[..],at,cast(u64)c.deadline)]);
 }
-mh_gate_digest :: (g:MhGate)->[32]u8 {
+mh_gate_digest :: (g:MhGate)->[32]u8 #effects(all) {
     buf:[96]u8;at:=su_text(buf[..],0,"psionic.harness-bench.gate.v1");at=su_u64(buf[..],at,cast(u64)g.replicates);
     at=su_u64(buf[..],at,g.seed);at=su_u64(buf[..],at,f64_bits(g.cost_limit));
     return su_hash(buf[0..<su_u64(buf[..],at,f64_bits(g.time_limit))]);
 }
 // The suite's three digests, as in chapter 239: the items (every
 // environment, with the split), the questions (every prompt) and the gate.
-mh_suite :: (tasks:[]EnTask,split:int,g:MhGate)->MhSuite {
+mh_suite :: (tasks:[]EnTask,split:int,g:MhGate)->MhSuite #effects(all) {
     n:=tasks.count;
     if n<1 || n>MH_TASKS_MAX || split<0 || split>n || g.replicates<2 || g.replicates>NS_REPLICATES_MAX {return MhSuite.{status=MhStatus.shape};}
     if !tb_in(g.cost_limit,0,NS_BIG) || !tb_in(g.time_limit,0,NS_BIG) {return MhSuite.{status=MhStatus.shape};}
@@ -254,7 +254,7 @@ mh_suite :: (tasks:[]EnTask,split:int,g:MhGate)->MhSuite {
     return s;
 }
 // The suite was built from these tasks and its gate, and nothing changed since.
-mh_suite_ok :: (s:MhSuite,tasks:[]EnTask)->bool {
+mh_suite_ok :: (s:MhSuite,tasks:[]EnTask)->bool #effects(all) {
     if s.status!=MhStatus.ok {return false;}
     x:=mh_suite(tasks,s.split,s.gate);
     return x.status==MhStatus.ok && su_same(x.items,s.items) && su_same(x.questions,s.questions) && su_same(x.gates,s.gates);
@@ -274,12 +274,12 @@ what may change: the calculator and each of chapter1's budgets.
 
 <!-- source: psionic/lib/harness/measure.coax bench -->
 ```jai
-mh_chain :: (d:[32]u8,run:[32]u8)->[32]u8 {buf:[64]u8;for i:0..<32 {buf[i]=d[i];buf[32+i]=run[i];}return su_hash(buf[..]);}
+mh_chain :: (d:[32]u8,run:[32]u8)->[32]u8 #effects(all) {buf:[64]u8;for i:0..<32 {buf[i]=d[i];buf[32+i]=run[i];}return su_hash(buf[..]);}
 // Every task of one partition (0: development, 1: held out), once per run:
 // scores[q*n+i] is 1 when run q got task i right. The receipt binds the
 // suite, harness and configuration digests, the totals, the chain of run
 // digests and the digest of the scores.
-mh_bench :: (h:MhHarness,c:MhConfig,s:MhSuite,tasks:[]EnTask,partition:int,scores:[]f64)->MhReceipt {
+mh_bench :: (h:MhHarness,c:MhConfig,s:MhSuite,tasks:[]EnTask,partition:int,scores:[]f64)->MhReceipt #effects(all) {
     if !mh_harness_ok(h) || !mh_config_ok(c) || partition<0 || partition>1 {return MhReceipt.{status=MhStatus.shape};}
     if !mh_suite_ok(s,tasks) {return MhReceipt.{status=MhStatus.suite};}
     first:=ifx partition==0 then 0 else s.split;last:=ifx partition==0 then s.split else s.tasks;n:=last-first;
@@ -312,7 +312,7 @@ ticks in all; the calculator gets 3 of 6, with 74 tokens, 6 tool calls and
 
 <!-- source: psionic/lib/harness/measure.coax chain -->
 ```jai
-mh_receipt_digest :: (r:MhReceipt)->[32]u8 {
+mh_receipt_digest :: (r:MhReceipt)->[32]u8 #effects(all) {
     buf:[512]u8;at:=su_text(buf[..],0,"psionic.harness-bench.receipt.v1");at=su_u64(buf[..],at,cast(u64)r.sequence);
     for i:0..<32 {buf[at+i]=r.previous[i];buf[at+32+i]=r.items[i];buf[at+64+i]=r.questions[i];buf[at+96+i]=r.gates[i];buf[at+128+i]=r.harness[i];buf[at+160+i]=r.config[i];}
     at=su_u64(buf[..],at+192,cast(u64)r.partition);m:=r.totals;
@@ -323,7 +323,7 @@ mh_receipt_digest :: (r:MhReceipt)->[32]u8 {
 }
 // Append at count: the receipt takes the next sequence number and the
 // previous receipt's digest. index is the new count.
-mh_append :: (store:[]MhReceipt,count:int,r:MhReceipt)->MhCheck {
+mh_append :: (store:[]MhReceipt,count:int,r:MhReceipt)->MhCheck #effects(all) {
     if count<0 || count>store.count || r.status!=MhStatus.ok {return MhCheck.{status=MhStatus.shape};}
     if count==store.count {return MhCheck.{status=MhStatus.capacity};}
     e:=r;e.sequence=count;e.previous=ifx count==0 then su_zero() else store[count-1].digest;
@@ -331,7 +331,7 @@ mh_append :: (store:[]MhReceipt,count:int,r:MhReceipt)->MhCheck {
     return MhCheck.{index=count+1};
 }
 // The first receipt whose sequence, link or digest does not hold.
-mh_verify :: (store:[]MhReceipt,count:int)->MhCheck {
+mh_verify :: (store:[]MhReceipt,count:int)->MhCheck #effects(all) {
     if count<0 || count>store.count {return MhCheck.{status=MhStatus.shape};}
     for r,i:store[0..<count] {
         previous:=ifx i==0 then su_zero() else store[i-1].digest;
@@ -350,7 +350,7 @@ receipt that claims one more right run is found.
 
 <!-- source: psionic/lib/harness/measure.coax verdict -->
 ```jai
-mh_changes :: (a:MhConfig,b:MhConfig)->int {
+mh_changes :: (a:MhConfig,b:MhConfig)->int #effects(all) {
     n:=ifx a.tools!=b.tools then 1 else 0;
     for d:[4]int.[a.steps-b.steps,a.tokens-b.tokens,a.reply-b.reply,a.deadline-b.deadline] {if d!=0 {n+=1;}}
     return n;
@@ -362,7 +362,7 @@ mh_changes :: (a:MhConfig,b:MhConfig)->int {
 // scores that are not the pinned ones. Otherwise chapter 241's decision on
 // the per-task means over runs, beyond chapter 240's floor from the
 // baseline's seed blocks, then its evaluation of tokens and ticks per run.
-mh_verdict :: (store:[]MhReceipt,count:int,i:int,j:int,s:MhSuite,h:MhHarness,ac:MhConfig,bc:MhConfig,sa:[]f64,sb:[]f64)->MhVerdict {
+mh_verdict :: (store:[]MhReceipt,count:int,i:int,j:int,s:MhSuite,h:MhHarness,ac:MhConfig,bc:MhConfig,sa:[]f64,sb:[]f64)->MhVerdict #effects(all) {
     if i<0 || j<0 || i>=count || j>=count || i==j {return MhVerdict.{status=MhStatus.shape};}
     if mh_verify(store,count).status!=MhStatus.ok {return MhVerdict.{status=MhStatus.broken};}
     a:=store[i];b:=store[j];

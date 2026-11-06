@@ -33,8 +33,8 @@ FSR_FIELDS :: [5]string.["op","index","version","size_percent","scale_percent"];
   c.amount=401;#assert !fsr_plan(one,c,23).ok;
   one.things[0]=eg_thing(0,0,0,0,1);c.amount=100;#assert !fsr_plan(one,c,23).ok;
 }
-fsr_field :: (key:string)->int {for i:0..<FSR_FIELDS.count {if key==FSR_FIELDS[i] {return i;}}return FSR_FIELDS.count;}
-fsr_command :: (text:string,out:[]ForgeResize)->bool {
+fsr_field :: (key:string)->int #effects(all) {for i:0..<FSR_FIELDS.count {if key==FSR_FIELDS[i] {return i;}}return FSR_FIELDS.count;}
+fsr_command :: (text:string,out:[]ForgeResize)->bool #effects(all) {
   nodes:[16]JvNode;j:[1]Jv;if !jv_parse(j[..],text,nodes[..]) {return false;}v:=j[0];seen:u32=0;
   for i:1..<v.count {
     f:=fsr_field(jv_key(v,i));if f==FSR_FIELDS.count || (seen & (cast(u32)1 << cast(u32)f))!=0 {return false;}
@@ -49,8 +49,8 @@ fsr_command :: (text:string,out:[]ForgeResize)->bool {
   if c.relative {if c.amount<1 || c.amount>1600 {return false;}}else{if c.amount<25 || c.amount>400 {return false;}}
   out[0]=c;return true;
 }
-fsr_percent :: (current:int,amount:int,relative:bool)->int {return ifx relative then (current*amount+50)/100 else amount;}
-fsr_plan :: (before:EgEdits,c:ForgeResize,version:int)->ForgeScenePlan {
+fsr_percent :: (current:int,amount:int,relative:bool)->int #effects(all) {return ifx relative then (current*amount+50)/100 else amount;}
+fsr_plan :: (before:EgEdits,c:ForgeResize,version:int)->ForgeScenePlan #effects(all) {
   p:ForgeScenePlan;p.edits=before;
   if c.version!=version || c.index<0 || c.index>=before.n {return p;}
   percent:=fsr_percent(eg_round(before.things[c.index].size*100),c.amount,c.relative);

@@ -4,7 +4,7 @@ hpal_row :: (c:[]Cdp,rows:[]Jo,name:string,expression:string)->int {
   v:=cdp_evaluate(c,expression);if v<0 {tool_errln(cdp_error(c));return -1;}
   jo_obj(rows);jo_key(rows,"op");jo_str(rows,name);jo_key(rows,"result");jv_write(cdp_doc(c),v,rows);jo_end(rows);return v;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {tool_errln("usage: check-browser-audio-live LOCAL_URL OUT.json");return 2;}
   url:=args_at(a[..],0);if url.count<17 || url[0..<17]!="http://127.0.0.1:" {return 2;}
   c:[1]Cdp;if !cdp_launch(c[..],160,90,"coax-host-audio-live-") {return 1;}defer {cdp_close(c[..]);}

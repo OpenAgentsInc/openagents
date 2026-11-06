@@ -78,7 +78,7 @@ tlt_run :: (plan:TlPlan,tokens:[]int,logits:[]f64)->TlResult {
 // holds, and its run of Wo's columns. The result is device d's addend of the
 // output, written to its partials. Same arithmetic, in the same order, as
 // chapter 113's td_advance.
-tl_attend :: (p:TlPlan,d:int,l:int,shards:[]f64,works:[]f64,first:int,n:int,partials:[]f64) #export_c {
+tl_attend :: (p:TlPlan,d:int,l:int,shards:[]f64,works:[]f64,first:int,n:int,partials:[]f64) #export_c #effects(all) {
     s:=p.shape;w:=s.width;e:=s.head_width;q:=p.heads*e;k:=p.kv_heads*e;group:=s.heads/s.kv_heads;scale:=1/sqrt(f64(e));
     sh:=shards[d*p.shard..<(d+1)*p.shard];x:=works[d*tl_work_count(p)..<(d+1)*tl_work_count(p)];b:=tl_block(p,l);
     row:=tl_scratch(p);nm:=row+s.context;qs:=nm+w;cs:=nm;keys:=tl_keys(p,l);values:=tl_values(p,l);
@@ -97,7 +97,7 @@ tl_attend :: (p:TlPlan,d:int,l:int,shards:[]f64,works:[]f64,first:int,n:int,part
 // columns, again as an addend. The ReLU is (z + |z|) / 2, exact, so a column
 // at or below zero adds W2 * 0 * 0, a zero that leaves the sum's bits as
 // chapter 113's skipped term does.
-tl_ffn :: (p:TlPlan,d:int,l:int,shards:[]f64,works:[]f64,first:int,n:int,partials:[]f64) #export_c {
+tl_ffn :: (p:TlPlan,d:int,l:int,shards:[]f64,works:[]f64,first:int,n:int,partials:[]f64) #export_c #effects(all) {
     s:=p.shape;w:=s.width;
     sh:=shards[d*p.shard..<(d+1)*p.shard];x:=works[d*tl_work_count(p)..<(d+1)*tl_work_count(p)];b:=tl_block(p,l);
     nm:=tl_scratch(p);u:=tl_work_count(p)-p.hidden;
@@ -107,11 +107,11 @@ tl_ffn :: (p:TlPlan,d:int,l:int,shards:[]f64,works:[]f64,first:int,n:int,partial
 }
 // book:end halves
 // Device d's residual rows start as the tokens' embeddings.
-tl_embed :: (p:TlPlan,d:int,shards:[]f64,works:[]f64,tokens:[]int,first:int) #export_c {
+tl_embed :: (p:TlPlan,d:int,shards:[]f64,works:[]f64,tokens:[]int,first:int) #export_c #effects(all) {
     w:=p.shape.width;for t:0..<tokens.count {tl_rows(shards,d*p.shard+tokens[t]*w,works,d*tl_work_count(p)+(first+t)*w,w);}
 }
 // Device 0 alone computes the logits: the final norm and the replicated head.
-tl_head :: (p:TlPlan,shards:[]f64,works:[]f64,first:int,n:int,logits:[]f64) #export_c {
+tl_head :: (p:TlPlan,shards:[]f64,works:[]f64,first:int,n:int,logits:[]f64) #export_c #effects(all) {
     s:=p.shape;w:=s.width;sh:=shards[0..<p.shard];nm:=tl_scratch(p);
     for t:first..<first+n {_:=td_norm(works,t*w,sh,tl_final_norm(p),w,works,nm);td_matvec(sh,tl_unembed(p),s.vocab,w,works,nm,logits,(t-first)*s.vocab);}
 }
@@ -122,7 +122,7 @@ TlResult :: struct {status:TlStatus;written:int;}
 // device, an all-reduce, the FFN half, an all-reduce. Here the devices run
 // one after another; the threads harness runs the same calls in parallel
 // with a barrier between steps.
-tl_run :: (p:TlPlan,shards:[]f64,works:[]f64,partials:[]f64,reduced:[]f64,tokens:[]int,first:int,logits:[]f64)->TlResult #export_c {
+tl_run :: (p:TlPlan,shards:[]f64,works:[]f64,partials:[]f64,reduced:[]f64,tokens:[]int,first:int,logits:[]f64)->TlResult #export_c #effects(all) {
     status:=tl_admit(p,shards.count,works.count,partials.count,reduced.count,tokens,first,logits.count);if status!=TlStatus.ok {return TlResult.{status=status};}
     n:=tokens.count;
     for d:0..<p.devices {tl_embed(p,d,shards,works,tokens,first);}

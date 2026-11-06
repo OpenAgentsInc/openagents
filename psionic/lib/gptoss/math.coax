@@ -39,17 +39,17 @@
     #assert g_rms(x[..],scale[..],out[..],work[..],true).status==GStatus.alias;
 }
 
-g_projection :: (tag:u8,rows:int,columns:int)->GProjection #export_c {
+g_projection :: (tag:u8,rows:int,columns:int)->GProjection #export_c #effects(all) {
     if tag>1 || rows<1 || rows>201088 || columns<1 || columns>32768 {return GProjection.{status=GStatus.shape};}
     if !g_mac_fits(rows,columns) {return GProjection.{status=GStatus.budget};}
     values:=rows*columns;
     if tag==1 {if columns%32!=0 {return GProjection.{status=GStatus.shape};}return GProjection.{values=values,bytes=values/2,scales=values/32};}
     return GProjection.{values=values,bytes=values*2};
 }
-g_bf :: (bytes:[]u8,index:int)->f32 {return f32_from_bits(qm_bits(QmDtype.bf16,bytes,index));}
-g_bytes_finite :: (bytes:[]u8)->GStatus {for i:0..<bytes.count/2 {if !psionic_tensor_finite_bits(qm_bits(QmDtype.bf16,bytes,i)) {return GStatus.number;}}return GStatus.ok;}
+g_bf :: (bytes:[]u8,index:int)->f32 #effects(all) {return f32_from_bits(qm_bits(QmDtype.bf16,bytes,index));}
+g_bytes_finite :: (bytes:[]u8)->GStatus #effects(all) {for i:0..<bytes.count/2 {if !psionic_tensor_finite_bits(qm_bits(QmDtype.bf16,bytes,i)) {return GStatus.number;}}return GStatus.ok;}
 // book:begin project
-g_project :: (m:GMatrix,x:[]f32,bias:[]u8,out:[]f32,stage:[]f32,scratch:[]f32,overlap:bool)->GResult #export_c {
+g_project :: (m:GMatrix,x:[]f32,bias:[]u8,out:[]f32,stage:[]f32,scratch:[]f32,overlap:bool)->GResult #export_c #effects(all) {
     p:=g_projection(cast(u8)m.encoding,m.rows,m.columns);if p.status!=GStatus.ok {return GResult.{status=p.status};}
     if m.data.count!=p.bytes || m.scales.count!=p.scales || x.count!=m.columns || (bias.count!=0 && bias.count!=2*m.rows) || out.count<m.rows || stage.count<m.rows || scratch.count<m.rows {return GResult.{status=GStatus.capacity};}
     if overlap {return GResult.{status=GStatus.alias};}
@@ -85,7 +85,7 @@ g_project :: (m:GMatrix,x:[]f32,bias:[]u8,out:[]f32,stage:[]f32,scratch:[]f32,ov
 }
 // book:end project
 // book:begin norm
-g_rms :: (x:[]f32,scale:[]u8,out:[]f32,work:[]f32,overlap:bool)->GResult #export_c {
+g_rms :: (x:[]f32,scale:[]u8,out:[]f32,work:[]f32,overlap:bool)->GResult #export_c #effects(all) {
     d:=x.count;if d<1 || d>8192 {return GResult.{status=GStatus.shape};}
     if scale.count!=2*d || out.count<d || work.count<d {return GResult.{status=GStatus.capacity};}if overlap {return GResult.{status=GStatus.alias};}
     if go_data(x)!=GoStatus.ok {return GResult.{status=GStatus.number};}if g_bytes_finite(scale)!=GStatus.ok {return GResult.{status=GStatus.number};}

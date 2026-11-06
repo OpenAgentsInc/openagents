@@ -17,7 +17,7 @@ wsm_random :: (p:[]f64,trial:int)->WeResult {
         es[i]=WeEdit.{tensor=ts[t].name,index=at-ts[t].first,before=p[at],after=0};
     }return we_apply(WS_PROFILE,ts[..],p,id.digest,es[..]);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     print("model,method,site,changed,right,retained,confident_errors,nll,hint_effect,descriptive_repair,total\n");
     for model:0..<20 {
         p:[664]f64;

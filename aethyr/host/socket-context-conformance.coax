@@ -3,7 +3,7 @@
 #authority;
 HostOpeningObservation :: struct {path:string;origin:string;cookie:string;accepted:int;}
 #load "tests/socket-context-observations.coax";
-hsc_cases :: ()->[6]HostOpeningObservation {
+hsc_cases :: ()->[6]HostOpeningObservation #effects(all) {
  origin:="http://127.0.0.1:9172";
  return [6]HostOpeningObservation.[
   HostOpeningObservation.{path="/auth/before",origin=origin,accepted=0},
@@ -13,7 +13,7 @@ hsc_cases :: ()->[6]HostOpeningObservation {
   HostOpeningObservation.{path="/host",origin=origin,accepted=1},
   HostOpeningObservation.{path="/auth/after",origin="http://other.invalid",cookie="auth=one",accepted=0}];
 }
-hsc_rows :: ()->[26][8]int {
+hsc_rows :: ()->[26][8]int #effects(all) {
  rows:[26][8]int;at:=0;
  for text,i:[6]string.["ws://127.0.0.1:9172/auth/before","/seed","ws://127.0.0.1:9172/auth/after","ws://127.0.0.1:9172/other","ws://localhost:9172/host","ws://127.0.0.1:9172/auth/after"] {
   rows[at]=htc_row(ifx i==1 then 920 else 910,text);at+=1;rows[at]=htc_result(ifx i==1 then 4 else 1,0);at+=1;
@@ -28,12 +28,12 @@ hsc_rows :: ()->[26][8]int {
  for i:0..<6 {p:=peer;p[i].path="bad";#assert !hsc_peer(p[..]);p=peer;p[i].origin="bad";#assert !hsc_peer(p[..]);p=peer;p[i].cookie="bad";#assert !hsc_peer(p[..]);p=peer;p[i].accepted+=1;#assert !hsc_peer(p[..]);}
  for i:0..<26 {for field:0..<8 {r:=rows;r[i][field]+=1;#assert !hsc_client(r[..],0);}}
 }
-hsc_peer :: (rows:[]HostOpeningObservation)->bool #export_c {
+hsc_peer :: (rows:[]HostOpeningObservation)->bool #export_c #effects(all) {
  want:=hsc_cases();if rows.count!=want.count{return false;}
  for row,i:want {actual:=rows[i];if actual.path!=row.path||actual.origin!=row.origin||actual.cookie!=row.cookie||actual.accepted!=row.accepted{return false;}}
  return true;
 }
-hsc_client :: (rows:[][8]int,dropped:int)->bool #export_c {
+hsc_client :: (rows:[][8]int,dropped:int)->bool #export_c #effects(all) {
  want:=hsc_rows();if dropped!=0||rows.count!=want.count{return false;}
  for row,i:want {if !htc_equal(row,rows[i]) {return false;}}return true;
 }

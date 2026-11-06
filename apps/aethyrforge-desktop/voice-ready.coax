@@ -10,6 +10,6 @@
   #assert !forge_voice_warm(true,true,true,true,true,true,false);
   #assert !forge_voice_warm(true,true,true,true,true,false,true);
 }
-forge_voice_warm :: (scene:bool,visible:bool,authorized:bool,installed:bool,interactive:bool,pending:bool,ready:bool)->bool #export_c {
+forge_voice_warm :: (scene:bool,visible:bool,authorized:bool,installed:bool,interactive:bool,pending:bool,ready:bool)->bool #export_c #effects(all) {
   return scene && visible && authorized && installed && interactive && !pending && !ready;
 }

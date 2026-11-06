@@ -166,7 +166,7 @@ file to `at` and writes `buf[at ..< len]`.
 ```jai
 // Replays the journal buf[0 ..< total] for owner: the state into j, and
 // what to keep of the file. total 0 starts a new journal.
-cj_open :: (j: [] Cj, buf: [] u8, total: int, owner: [32] u8) -> CjOpen {
+cj_open :: (j: [] Cj, buf: [] u8, total: int, owner: [32] u8) -> CjOpen #effects(all) {
   fresh: Cj; j[0] = fresh; j[0].owner = owner;
   if buf.count < CJ_HEADER || total < 0 || total > buf.count { return CjOpen.{status = CJO_SMALL}; }
   h := cj_header(buf, total, owner);
@@ -238,7 +238,7 @@ without a second copy in the outbox.
 // set, before anything is sent: its publish slot. The same id again
 // returns the same slot and writes nothing, so an application that retries
 // after a restart cannot publish twice.
-cj_queue :: (j: [] Cj, buf: [] u8, id: [32] u8, relays: u64, bytes: string) -> int {
+cj_queue :: (j: [] Cj, buf: [] u8, id: [32] u8, relays: u64, bytes: string) -> int #effects(all) {
   if !j[0].open { return -CJ_SHUT; }
   k := cj_pub_of(j, id);
   if k >= 0 { return k; }
@@ -252,7 +252,7 @@ cj_queue :: (j: [] Cj, buf: [] u8, id: [32] u8, relays: u64, bytes: string) -> i
 }
 // Journals relay r's OK for your event id: CJK_ACKED when the publish was
 // pending there, CJK_UNKNOWN (nothing written) otherwise.
-cj_ok :: (j: [] Cj, buf: [] u8, id: [32] u8, r: int, outcome: int) -> int {
+cj_ok :: (j: [] Cj, buf: [] u8, id: [32] u8, r: int, outcome: int) -> int #effects(all) {
   if !j[0].open { return -CJ_SHUT; }
   k := cj_pub_of(j, id);
   if k < 0 || r < 0 || r >= OB_RELAYS || (j[0].pub[k].pending & (cast(u64) 1 << r)) == 0 { return CJK_UNKNOWN; }
@@ -293,7 +293,7 @@ and is a duplicate.
 // tags name. CJD_NEW: journaled and delivered (the tombstones first).
 // CJD_DUP: stored already. CJD_DELETED: its author asked to delete it.
 // Either of the last two moves the cursor when the event is newer.
-cj_deliver :: (j: [] Cj, buf: [] u8, sub: int, r: int, created_at: int, id: [32] u8, author: [32] u8, bytes: string, deletes: [] [32] u8) -> int {
+cj_deliver :: (j: [] Cj, buf: [] u8, sub: int, r: int, created_at: int, id: [32] u8, author: [32] u8, bytes: string, deletes: [] [32] u8) -> int #effects(all) {
   if !j[0].open { return -CJ_SHUT; }
   if !cj_sub_ok(sub) || !cj_relay_ok(j, r) || created_at < 0 || bytes.count < 1 || bytes.count > CJ_RECORD_MOST - CJ_EVENT_FIXED { return -CJ_ARG; }
   seen := ifx cj_tombed(j, id, author) then CJD_DELETED else ifx cj_find(j, id) >= 0 then CJD_DUP else CJD_NEW;

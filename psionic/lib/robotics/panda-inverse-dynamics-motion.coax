@@ -19,8 +19,8 @@
 }
 
 // References are fixed validated source topology; index is in0..15.
-pid_pose :: (poses:PffOutput,index:int)->PfkPose {if index<12 {return poses.arm.links[index];}return poses.fingers[index-12];}
-pid_motion :: (poses:PffOutput,velocities:[9]f64,accelerations:[9]f64)->[16]PidBodyMotion {
+pid_pose :: (poses:PffOutput,index:int)->PfkPose #effects(all) {if index<12 {return poses.arm.links[index];}return poses.fingers[index-12];}
+pid_motion :: (poses:PffOutput,velocities:[9]f64,accelerations:[9]f64)->[16]PidBodyMotion #effects(all) {
  motion:[16]PidBodyMotion;arm:=pfk_profile();fingers:=pff_profile();
  // Bodies0 and1 are fixed world/base bodies and retain exact zero motion.
  for body:2..<16 {

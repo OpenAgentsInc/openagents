@@ -38,25 +38,25 @@ FiParsedJwks :: struct {ok:bool;count:int;keys:[16]FiParsedKey;}
  e:=[3]u8.[1,0,1];#assert fi_jwk_exponent_ok(e[..]) && !fi_jwk_exponent_ok(e[0..<2]);
  for i:0..<3 {old:=e[i];e[i]=2;#assert !fi_jwk_exponent_ok(e[..]);e[i]=old;}
 }
-fi_jwk_length_ok :: (n:int)->bool {return n>=0;}
-fi_jwks_size_ok :: (n:int)->bool {return n>=0 && n<=524288;}
-fi_jwks_room :: (n:int)->bool {return n>=0 && n<16;}
-fi_jwks_count_ok :: (n:int)->bool {return n>=1 && n<=16;}
-fi_jwk_exponent_ok :: (e:[]u8)->bool {return e.count==3 && e[0]==1 && e[1]==0 && e[2]==1;}
-fi_jwk_modulus_ok :: (n:[]u8)->bool {
+fi_jwk_length_ok :: (n:int)->bool #effects(all) {return n>=0;}
+fi_jwks_size_ok :: (n:int)->bool #effects(all) {return n>=0 && n<=524288;}
+fi_jwks_room :: (n:int)->bool #effects(all) {return n>=0 && n<16;}
+fi_jwks_count_ok :: (n:int)->bool #effects(all) {return n>=1 && n<=16;}
+fi_jwk_exponent_ok :: (e:[]u8)->bool #effects(all) {return e.count==3 && e[0]==1 && e[1]==0 && e[2]==1;}
+fi_jwk_modulus_ok :: (n:[]u8)->bool #effects(all) {
  if n.count<256 || n.count>512 {return false;}
  return n[0]!=0 && (n.count!=256 || n[0]>=128) && (n[n.count-1]&1)!=0;
 }
-fi_jwk_field :: (name:string)->int {
+fi_jwk_field :: (name:string)->int #effects(all) {
  if name=="kid" {return 1;}if name=="kty" {return 2;}if name=="alg" {return 4;}
  if name=="use" {return 8;}if name=="n" {return 16;}if name=="e" {return 32;}
  if name=="key_ops" {return 64;}return 0;
 }
-fi_jwk_visible :: (text:string)->bool {
+fi_jwk_visible :: (text:string)->bool #effects(all) {
  if text.count<1 || text.count>128 {return false;}
  for b:text {if b<33 || b>126 {return false;}}return true;
 }
-fi_jwk_parse :: (j:[]Json)->FiParsedKey {
+fi_jwk_parse :: (j:[]Json)->FiParsedKey #effects(all) {
  key:FiParsedKey;seen:=0;
  while true {
   tok:=json_next(j);if tok==JSON_OBJECT_END {break;}
@@ -93,7 +93,7 @@ fi_jwk_parse :: (j:[]Json)->FiParsedKey {
  if !fi_jwk_modulus_ok(key.modulus[0..<key.modulus_count]) {return FiParsedKey.{};}
  key.ok=true;return key;
 }
-fi_jwks_parse :: (text:string)->FiParsedJwks #export_c {
+fi_jwks_parse :: (text:string)->FiParsedJwks #export_c #effects(all) {
  result:FiParsedJwks;if !fi_jwks_size_ok(text.count) {return result;}
  j:[1]Json;json_start(j[..],text);
  if json_next(j[..])!=JSON_OBJECT {return result;}

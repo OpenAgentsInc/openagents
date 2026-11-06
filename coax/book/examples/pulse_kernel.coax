@@ -14,7 +14,7 @@ route :: (channel: s32) -> s32 {
   return (channel * 17 + 5) % CHANNELS;
 }
 
-advance_pulses :: (pulses: [] Pulse, dt: f32) -> s64 #export_c {
+advance_pulses :: (pulses: [] Pulse, dt: f32) -> s64 #export_c #effects(all) {
   arrived: s64 = 0;
   for i: 0..<pulses.count {
     p := pulses[i];

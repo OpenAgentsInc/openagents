@@ -65,8 +65,8 @@ SC_RUN :: 1; SC_CLEAN :: 2; SC_DONE :: 3; SC_PUBLISHED :: 4;
 SC_SUCCESS :: 1; SC_FAILURE :: 2; SC_CANCEL :: 3;
 SC_SCRATCH :: 1; SC_STATE :: 2; SC_KEY :: 4;
 ScryptCleanup :: struct {phase:int;reason:int;pending:int;}
-sc_begin :: ()->ScryptCleanup #export_c {return ScryptCleanup.{phase=SC_RUN,pending=3};}
-sc_valid :: (s:ScryptCleanup)->bool #export_c {
+sc_begin :: ()->ScryptCleanup #export_c #effects(all) {return ScryptCleanup.{phase=SC_RUN,pending=3};}
+sc_valid :: (s:ScryptCleanup)->bool #export_c #effects(all) {
   if s.phase==SC_RUN {return s.reason==0 && s.pending==3;}
   if s.reason<SC_SUCCESS || s.reason>SC_CANCEL {return false;}
   if s.phase==SC_CLEAN {
@@ -77,13 +77,13 @@ sc_valid :: (s:ScryptCleanup)->bool #export_c {
   if s.phase==SC_DONE {return s.pending==0;}
   return s.phase==SC_PUBLISHED && s.reason==SC_SUCCESS && s.pending==0;
 }
-sc_stop :: (s:ScryptCleanup,reason:int)->ScryptCleanup #export_c {
+sc_stop :: (s:ScryptCleanup,reason:int)->ScryptCleanup #export_c #effects(all) {
   if !sc_valid(s) || reason<SC_SUCCESS || reason>SC_CANCEL {return s;}
   if s.phase==SC_RUN {return ScryptCleanup.{phase=SC_CLEAN,reason=reason,pending=ifx reason==SC_SUCCESS then 3 else 7};}
   if (s.phase==SC_CLEAN || s.phase==SC_DONE) && s.reason==SC_SUCCESS && reason!=SC_SUCCESS {next:=s;next.reason=reason;next.pending+=SC_KEY;next.phase=SC_CLEAN;return next;}
   return s;
 }
-sc_ack :: (s:ScryptCleanup,region:int,erased:bool)->ScryptCleanup #export_c {
+sc_ack :: (s:ScryptCleanup,region:int,erased:bool)->ScryptCleanup #export_c #effects(all) {
   if !sc_valid(s) || s.phase!=SC_CLEAN || !erased {return s;}
   if region!=SC_SCRATCH && region!=SC_STATE && region!=SC_KEY {return s;}
   if (s.pending & region)==0 {return s;}
@@ -91,8 +91,8 @@ sc_ack :: (s:ScryptCleanup,region:int,erased:bool)->ScryptCleanup #export_c {
   if next.pending==0 {next.phase=SC_DONE;}
   return next;
 }
-sc_publish :: (s:ScryptCleanup)->ScryptCleanup #export_c {
+sc_publish :: (s:ScryptCleanup)->ScryptCleanup #export_c #effects(all) {
   if !sc_valid(s) || s.phase!=SC_DONE || s.reason!=SC_SUCCESS {return s;}
   next:=s;next.phase=SC_PUBLISHED;return next;
 }
-sc_visible :: (s:ScryptCleanup)->bool #export_c {return sc_valid(s) && s.phase==SC_PUBLISHED;}
+sc_visible :: (s:ScryptCleanup)->bool #export_c #effects(all) {return sc_valid(s) && s.phase==SC_PUBLISHED;}

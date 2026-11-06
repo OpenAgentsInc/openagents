@@ -3,7 +3,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/agent/cursor/cursor.coax";
 
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   root_buf:[4096]u8; root:=fs_temp("coder-cursor-discovery-",root_buf[..]);
   if root.count==0 {return 1;}
   path_buf:[4096]u8; path:=fs_join(root,"cursor-agent",path_buf[..]);

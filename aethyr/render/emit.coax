@@ -95,7 +95,7 @@ RenderComparison :: struct {
 }
 
 render_emission_admit :: (em_schema:int, em_bindings:[]rb.RenderBinding, em_uses:[]rb.RenderUse,
-    em_reflected:[]RenderReflectedUse)->RenderEmissionStatus {
+    em_reflected:[]RenderReflectedUse)->RenderEmissionStatus #effects(all) {
   if em_schema!=RENDER_REFLECTION_SCHEMA {return RenderEmissionStatus.invalid;}
   if em_uses.count>rb.RENDER_NATIVE_BINDINGS || em_reflected.count>rb.RENDER_NATIVE_BINDINGS {return RenderEmissionStatus.capacity;}
   if rb.render_uses(em_bindings,em_uses)!=rb.RenderBindingStatus.ok {return RenderEmissionStatus.invalid;}
@@ -109,15 +109,15 @@ render_emission_admit :: (em_schema:int, em_bindings:[]rb.RenderBinding, em_uses
   }
   return RenderEmissionStatus.ok;
 }
-render_color_finite :: (em_value:f32)->bool {return em_value<=3.4028234663852886e38f32 && em_value>=-3.4028234663852886e38f32;}
-render_value_close :: (em_expected:f32,em_actual:f32)->bool {
+render_color_finite :: (em_value:f32)->bool #effects(all) {return em_value<=3.4028234663852886e38f32 && em_value>=-3.4028234663852886e38f32;}
+render_value_close :: (em_expected:f32,em_actual:f32)->bool #effects(all) {
   if !render_color_finite(em_expected) || !render_color_finite(em_actual) {return false;}
   em_scale:=abs(f64(em_expected));
   // (x+1+abs(x-1))/2 is max(x,1). Finite f32 inputs leave ample f64 range.
   em_scale=(em_scale+1+abs(em_scale-1))*0.5;
   return abs(f64(em_expected)-f64(em_actual))<=f64(f32(RENDER_COLOR_TOLERANCE))*em_scale;
 }
-render_compare :: (em_expected:[]f32,em_actual:[]f32,em_allow:int)->RenderComparison {
+render_compare :: (em_expected:[]f32,em_actual:[]f32,em_allow:int)->RenderComparison #effects(all) {
   em_out:RenderComparison; em_out.values=em_expected.count;
   if em_expected.count<1 || em_expected.count!=em_actual.count || em_allow<0 || em_allow>em_expected.count {em_out.status=RenderEmissionStatus.invalid;return em_out;}
   for em_i:0..<em_expected.count {

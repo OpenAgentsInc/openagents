@@ -6,7 +6,7 @@
     r:=rs_json(text,nodes[..],arena[..]);#assert r.ok && rs_schema(nodes[..],0);
     bad:="{\"type\":\"object\",\"properties\":{\"x\":{\"type\":\"array\"}}}";r=rs_json(bad,nodes[..],arena[..]);#assert r.ok && !rs_schema(nodes[..],0);
 }
-rs_schema :: (nodes:[]RsNode,index:int)->bool {
+rs_schema :: (nodes:[]RsNode,index:int)->bool #effects(all) {
     keys:=[5]string.["type","properties","required","additionalProperties","description"];
     if !rs_keys(nodes,index,keys[..]) || rs_string(nodes,rs_get(nodes,index,"type"))!="object" {return false;}
     props:=rs_get(nodes,index,"properties");if !rs_kind(nodes,props,JSON_OBJECT) {return false;}
@@ -20,8 +20,8 @@ rs_schema :: (nodes:[]RsNode,index:int)->bool {
     desc:=rs_get(nodes,index,"description");if desc>=0 && (nodes[desc].kind!=JSON_STRING || nodes[desc].text.count>1024) {return false;}
     return true;
 }
-rs_required :: (nodes:[]RsNode,schema:int,key:string)->bool {r:=rs_get(nodes,schema,"required");if r<0 {return false;}i:=r+1;while i<nodes[r].next {if nodes[i].text==key {return true;}i=nodes[i].next;}return false;}
-rs_arguments :: (schema_nodes:[]RsNode,schema:int,body:string,nodes:[]RsNode,arena:[]u8)->bool #export_c {
+rs_required :: (nodes:[]RsNode,schema:int,key:string)->bool #effects(all) {r:=rs_get(nodes,schema,"required");if r<0 {return false;}i:=r+1;while i<nodes[r].next {if nodes[i].text==key {return true;}i=nodes[i].next;}return false;}
+rs_arguments :: (schema_nodes:[]RsNode,schema:int,body:string,nodes:[]RsNode,arena:[]u8)->bool #export_c #effects(all) {
     r:=rs_json(body,nodes,arena);if !r.ok || nodes[0].kind!=JSON_OBJECT || body.count>8192 {return false;}
     props:=rs_get(schema_nodes,schema,"properties");i:=props+1;while i<schema_nodes[props].next {if rs_required(schema_nodes,schema,schema_nodes[i].key) && rs_get(nodes,0,schema_nodes[i].key)<0 {return false;}i=schema_nodes[i].next;}
     ap:=rs_get(schema_nodes,schema,"additionalProperties");i=1;while i<nodes[0].next {field:=rs_get(schema_nodes,props,nodes[i].key);if field<0 {if ap>=0 && schema_nodes[ap].kind==JSON_FALSE {return false;}i=nodes[i].next;continue;}
@@ -30,7 +30,7 @@ rs_arguments :: (schema_nodes:[]RsNode,schema:int,body:string,nodes:[]RsNode,are
         if kind=="integer" && !json_int(nodes[i].text).ok {return false;}en:=rs_get(schema_nodes,field,"enum");if en>=0 {found:=false;j:=en+1;while j<schema_nodes[en].next {if schema_nodes[j].text==nodes[i].text {found=true;}j=schema_nodes[j].next;}if !found {return false;}}i=nodes[i].next;
     }return true;
 }
-rs_tool_prompt :: (tools:[]RsTool,nodes:[]RsNode,out:[]u8)->int #export_c {
+rs_tool_prompt :: (tools:[]RsTool,nodes:[]RsNode,out:[]u8)->int #export_c #effects(all) {
     w:=[1]RsWriter.[RsWriter.{data=out}];rs_put(w[..],"# Tools\n\n## functions\n\nnamespace functions {\n\n");
     for tool:tools {if tool.description.count>0 {rs_put(w[..],"// ");for c:tool.description {one:=[1]u8.[ifx c==10 || c==13 then cast(u8)32 else c];rs_put(w[..],cast(string)one[..]);}rs_put(w[..],"\n");}
         rs_put(w[..],"type ");rs_put(w[..],tool.name);rs_put(w[..]," = (_: {\n");props:=rs_get(nodes,tool.schema,"properties");i:=props+1;

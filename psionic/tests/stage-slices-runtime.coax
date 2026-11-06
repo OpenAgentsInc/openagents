@@ -8,7 +8,7 @@
 
 // Whole: chapter 81's embedding, both layers and the readout in chunks of
 // 4,096 rows (the split reads out in chunks of 32,768).
-stg_slice_whole :: (s:MsShape,embed:[]u8,norm:[]u8,layers:[]MsLayer,tokens:[]int,hidden:[]f32,logits:[]f32,work:[]f32)->MsResult #export_c {
+stg_slice_whole :: (s:MsShape,embed:[]u8,norm:[]u8,layers:[]MsLayer,tokens:[]int,hidden:[]f32,logits:[]f32,work:[]f32)->MsResult #export_c #effects(all) {
     n:=tokens.count*s.width;
     if layers.count!=2 || hidden.count<2*n || logits.count<s.vocab {return MsResult.{status=MsStatus.capacity};}
     a:=hidden[0..<n];b:=hidden[n..<2*n];
@@ -22,9 +22,9 @@ stg_slice_whole :: (s:MsShape,embed:[]u8,norm:[]u8,layers:[]MsLayer,tokens:[]int
     return MsResult.{written=s.vocab};
 }
 // Stages 0..<1 and 1..<2; stage 1 loaded the artifact `second`.
-stg_slice_split :: (s:MsShape,second:u64,embed:[]u8,norm:[]u8,layers:[]MsLayer,tokens:[]int,logits:[]f32,mem:[]f32,wire:[]u32)->StgRun #export_c {
+stg_slice_split :: (s:MsShape,second:u64,embed:[]u8,norm:[]u8,layers:[]MsLayer,tokens:[]int,logits:[]f32,mem:[]f32,wire:[]u32)->StgRun #export_c #effects(all) {
     digests:=[2]u64.[STG_MINISTRAL_DIGEST,second];cut:=[3]int.[0,1,2];starts:=[2]int.[0,tokens.count];
     return stg_pipeline(s,digests[..],embed,norm,layers,cut[..],tokens,starts[..],logits,mem,wire);
 }
-stg_slice_floats :: (s:MsShape,tokens:int)->int #export_c {return stg_stage_floats(s,tokens);}
-stg_slice_words :: (s:MsShape,tokens:int)->int #export_c {return stg_mailbox_words(s,tokens);}
+stg_slice_floats :: (s:MsShape,tokens:int)->int #export_c #effects(all) {return stg_stage_floats(s,tokens);}
+stg_slice_words :: (s:MsShape,tokens:int)->int #export_c #effects(all) {return stg_mailbox_words(s,tokens);}

@@ -84,7 +84,7 @@ layers compute queries while reusing those keys. Thus the source-row count is
 
 <!-- source: psionic/lib/deepseek/cache.coax flash-budget -->
 ```jai
-dk_flash_cache_budget :: (context:int,chunk:int,drafts:int,cache_limit:int,step_limit:int)->DkBudget #export_c {
+dk_flash_cache_budget :: (context:int,chunk:int,drafts:int,cache_limit:int,step_limit:int)->DkBudget #export_c #effects(all) {
     if context<1 || context>1048576 || chunk<1 || chunk>context || drafts<0 || drafts>3 {return DkBudget.{status=DkStatus.shape};}
     // Four producers own both compressed KV and index keys: three ratio-2,
     // one ratio-1. The other four indexers own queries, not additional keys.

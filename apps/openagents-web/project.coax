@@ -23,7 +23,7 @@
 #load "analytics.coax";
 #load "project-intro.coax";
 // Separately compiled checked admission policy; no authority checks attach to the UI graph.
-project_row_count_fits :: (count:int,maximum:int)->bool #foreign;
+project_row_count_fits :: (count:int,maximum:int)->bool #foreign #effects(all);
 
 // page 0 is a real page (/projects/SLUG), 1 the demo (/projects/coax/demo).
 // The rest is the page's input: the pointer, the task open in the detail
@@ -2261,7 +2261,7 @@ step_pick :: (s: [] ProjectState, w: [] Work, by: int) {
 }
 clamp_int :: (a: int, low: int, high: int) -> int { if a < low { return low; } if a > high { return high; } return a; }
 
-coaxial_project_pointer :: (s: [] ProjectState, w: [] Work, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
+coaxial_project_pointer :: (s: [] ProjectState, w: [] Work, x: f32, y: f32, phase: int, kind: int) -> bool #export_c #effects(all) {
   if s.count < 1 || w.count < 1 || s[0].page != 0 || !w[0].read { return false; }
   d := hi(s[0].dpr, 1);
   s[0].px = x; s[0].py = y; s[0].pointed = true;
@@ -2286,7 +2286,7 @@ coaxial_project_pointer :: (s: [] ProjectState, w: [] Work, x: f32, y: f32, phas
   return click(s, w, x, y);
 }
 
-coaxial_project_key :: (s: [] ProjectState, w: [] Work, key: int, mods: int) -> bool #export_c {
+coaxial_project_key :: (s: [] ProjectState, w: [] Work, key: int, mods: int) -> bool #export_c #effects(all) {
   if s.count < 1 || w.count < 1 || s[0].page != 0 || !w[0].read || (mods & 10) != 0 { return false; }
   open := s[0].open > 0;
   if key == KEY_ESCAPE {
@@ -2314,13 +2314,13 @@ coaxial_project_key :: (s: [] ProjectState, w: [] Work, key: int, mods: int) -> 
 }
 
 // The wheel, CSS pixels down: scrolls the open panel.
-coaxial_project_wheel :: (s: [] ProjectState, dy: f32) #export_c {
+coaxial_project_wheel :: (s: [] ProjectState, dy: f32) #export_c #effects(all) {
   if s.count < 1 || s[0].open == 0 { return; }
   s[0].scroll = clamp(s[0].scroll + dy * hi(s[0].dpr, 1), 0, s[0].scroll_max);
 }
 
 // The pointer's cursor: 1 (a link) over a row, a related task or CLOSE.
-coaxial_project_cursor :: (s: [] ProjectState, w: [] Work) -> int #export_c {
+coaxial_project_cursor :: (s: [] ProjectState, w: [] Work) -> int #export_c #effects(all) {
   if s.count < 1 || w.count < 1 || s[0].page != 0 || s[0].touch || !s[0].pointed { return 0; }
   x := s[0].px; y := s[0].py;
   if project_intro(w) {
@@ -2342,20 +2342,20 @@ coaxial_project_cursor :: (s: [] ProjectState, w: [] Work) -> int #export_c {
 // The location's hash, n bytes in the inbox the relay's frames share
 // (host.js, at load and on every change): the task to open, or none. Read
 // at the next frame, once the work is.
-coaxial_project_hash :: (s: [] ProjectState, l: [] Live, n: int) #export_c {
+coaxial_project_hash :: (s: [] ProjectState, l: [] Live, n: int) #export_c #effects(all) {
   if s.count < 1 || l.count < 1 { return; }
   k := clamp_int(n, 0, 32);
   from := ifx k > 0 && l[0].inbox[0] == '#' then 1 else 0;
   s[0].want_n = put_text(s[0].want[..], 0, cast(string) l[0].inbox[from..<lo_int(k, from + 16)]);
   s[0].wanted = true;
 }
-coaxial_project_action :: (s: [] ProjectState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
-coaxial_project_action_done :: (s: [] ProjectState) #export_c { if s.count > 0 { s[0].action = 0; } }
+coaxial_project_action :: (s: [] ProjectState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_project_action_done :: (s: [] ProjectState) #export_c #effects(all) { if s.count > 0 { s[0].action = 0; } }
 
 // ---------------------------------------------------------------- the frame
 
 coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Live, out: [] f32, uniforms: [] f32,
-                          width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+                          width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || t.count < 1 || w.count < 1 || lv.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   step := clamp(dt, 0, 0.1);
   s[0].time += step;
@@ -2542,21 +2542,21 @@ live_links_apply :: (lv: [] Live, w: [] Work) {
 }
 
 // The host's messages: the relay socket's events (project-live.coax).
-coaxial_project_message :: (l: [] Live, kind: int, length: int) #export_c {
+coaxial_project_message :: (l: [] Live, kind: int, length: int) #export_c #effects(all) {
   if l.count < 1 || length < 0 || length > LIVE_INBOX { return; }
   if kind == MSG_PAGE_TEXT { if live_project(l, cast(string) l[0].inbox[0..<length]) {} return; }
   live_message(l, kind, length);
 }
 // The face carried out the pipe's open: the host's socket id, or -1.
-coaxial_project_opened :: (l: [] Live, id: int) #export_c {
+coaxial_project_opened :: (l: [] Live, id: int) #export_c #effects(all) {
   if l.count < 1 { return; }
   live_opened(l, id);
 }
-coaxial_project_inbox_cap :: () -> int #export_c { return LIVE_INBOX; }
+coaxial_project_inbox_cap :: () -> int #export_c #effects(all) { return LIVE_INBOX; }
 
-coaxial_project_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_project_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_project_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_project_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_project_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_project_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // ---------------------------------------------------------------- checks
 

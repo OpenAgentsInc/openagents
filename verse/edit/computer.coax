@@ -129,7 +129,7 @@ rc_start :: (c: [] RealmComputer, slug: string) { c[0].realm_n = redit_copy(c[0]
 
 // The record this browser kept (the wire keeps its key beside it): "host KEY", "request ID",
 // "paired asked|allowed", a line each. "" when it kept none.
-rc_restore :: (c: [] RealmComputer, text: string) #export_c {
+rc_restore :: (c: [] RealmComputer, text: string) #export_c #effects(all) {
   c[0].loaded = true;
   i := 0;
   while i < text.count {
@@ -147,7 +147,7 @@ rc_restore :: (c: [] RealmComputer, text: string) #export_c {
   c[0].last_poll = c[0].time - RC_CHECK_S;   // ask at once
 }
 // What to keep (the wire puts its key line first).
-rc_keep :: (c: [] RealmComputer, out: [] u8) -> int #export_c {
+rc_keep :: (c: [] RealmComputer, out: [] u8) -> int #export_c #effects(all) {
   n := 0;
   if c[0].host_n > 0 { n = redit_put(out, n, "host "); n = redit_put(out, n, rc_host(c)); n = redit_put(out, n, "\n"); }
   if c[0].request_n > 0 { n = redit_put(out, n, "request "); n = redit_put(out, n, rc_request(c)); n = redit_put(out, n, "\n"); }
@@ -155,9 +155,9 @@ rc_keep :: (c: [] RealmComputer, out: [] u8) -> int #export_c {
   if c[0].pair == RP_ALLOWED { n = redit_put(out, n, "paired allowed\n"); }
   return n;
 }
-rc_kept :: (c: [] RealmComputer) -> bool #export_c { k := c[0].keep_due; c[0].keep_due = false; return k; }
+rc_kept :: (c: [] RealmComputer) -> bool #export_c #effects(all) { k := c[0].keep_due; c[0].keep_due = false; return k; }
 // The wire makes a new key (after FORGET): true once.
-rc_new_key :: (c: [] RealmComputer) -> bool #export_c { k := c[0].new_key_due; c[0].new_key_due = false; return k; }
+rc_new_key :: (c: [] RealmComputer) -> bool #export_c #effects(all) { k := c[0].new_key_due; c[0].new_key_due = false; return k; }
 
 rc_note :: (c: [] RealmComputer, text: string) { c[0].why_n = redit_copy(c[0].why[..], text); }
 
@@ -202,7 +202,7 @@ rc_again :: (c: [] RealmComputer) {
 
 // ---- out: the one request the wire sends next
 
-rc_next_op :: (c: [] RealmComputer) -> int #export_c {
+rc_next_op :: (c: [] RealmComputer) -> int #export_c #effects(all) {
   if !c[0].loaded || c[0].op_out != RO_NONE || c[0].host_n == 0 { return RO_NONE; }
   if c[0].forget_due { return RO_FORGET; }
   if c[0].pair_due { return RO_PAIR; }
@@ -216,7 +216,7 @@ rc_next_op :: (c: [] RealmComputer) -> int #export_c {
   return RO_NONE;
 }
 // The wire sent it (or could not: sent false, and it is asked again later).
-rc_op_sent :: (c: [] RealmComputer, p_what: int, p_sent: bool) #export_c {
+rc_op_sent :: (c: [] RealmComputer, p_what: int, p_sent: bool) #export_c #effects(all) {
   c[0].last_poll = c[0].time;
   if !p_sent { return; }
   c[0].op_out = p_what; c[0].op_at = c[0].time;
@@ -273,7 +273,7 @@ rc_refused :: (c: [] RealmComputer, p_code: string) {
   rc_note(c, ifx p_code == "busy" then "Your computer is already running a job." else "Your computer turned that down.");
 }
 
-rc_reply :: (c: [] RealmComputer, text: string) #export_c {
+rc_reply :: (c: [] RealmComputer, text: string) #export_c #effects(all) {
   i := 0;
   while i < text.count {
     end := redit_line_end(text, i); line := text[i..<end]; i = end + 1;

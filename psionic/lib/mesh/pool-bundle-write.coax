@@ -2,7 +2,7 @@
 // codec assembly only; all authored admission/shape decisions are in that unit.
 // out/work are disjoint writable caller buffers; returned bytes live in out.
 // Publish only a nonnegative byte count. -1 is failure, never a usable prefix.
-mbp_write :: (policy:string,aggregate:string,events:[]string,out:[]u8,work:[]u8)->int #export_c {
+mbp_write :: (policy:string,aggregate:string,events:[]string,out:[]u8,work:[]u8)->int #export_c #effects(all) {
   overlap:=bytes_overlap(out,work)||bytes_overlap(policy,out)||bytes_overlap(policy,work)||bytes_overlap(aggregate,out)||bytes_overlap(aggregate,work);
   for event:events {overlap=overlap||bytes_overlap(event,out)||bytes_overlap(event,work);}
   if !mbp_inputs(policy,aggregate,events,overlap) {return -1;}

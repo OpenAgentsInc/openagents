@@ -38,7 +38,7 @@ as_actual :: (table:string,package:string,web:string,image:string,reference:stri
   receipt:[2048]u8;o:[1]Jo;jo_start(o[..],receipt[..]);jo_obj(o[..]);jo_key(o[..],"image_sha256");jo_str(o[..],cast(string)hash[..]);jo_key(o[..],"image_fence");jo_str(o[..],"equal");jo_key(o[..],"copied_containers");jo_int(o[..],1);jo_key(o[..],"status");jo_str(o[..],"actual typed table, original table bytes, complete container and receipt match");jo_end(o[..]);
   if !fs_write(fs_join(out,"actual-qualification.json",a[..]),jo_text(o[..])) {return false;}print("asset staging actual Everglade: original typed table, full container and receipt match; four delivery rows copy one container\n");return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) || args_count(args[..])<2 {tool_errln("usage: check-asset-staging OUT ASSET_BINARY [ROOT]");return 2;}
   out:=args_at(args[..],0);image:=args_at(args[..],1);root:=args_at(args[..],2);if root.count==0 {root=".";}
   if !fs_mkdir(out) {return 1;}paths:[12][FS_PATH_MAX]u8;

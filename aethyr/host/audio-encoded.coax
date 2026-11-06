@@ -10,7 +10,7 @@
  #assert hae_words(1048577,true)==0&&hae_words(1048577,false)==262145;
  #assert hae_words(8388608,false)==2097152&&hae_words(8388609,false)==0;
 }
-hae_words :: (bytes:int,companion:bool)->int #export_c {
+hae_words :: (bytes:int,companion:bool)->int #export_c #effects(all) {
  if bytes<1||bytes>(ifx companion then HOST_PCM_ASSET_BYTES else HOST_OPUS_SOURCE_BYTES) {return 0;}
  return (bytes+3)/4;
 }

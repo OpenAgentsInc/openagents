@@ -44,7 +44,7 @@ runs:
 <!-- source: psionic/lib/tape.coax admit -->
 ```jai
 // Operands name earlier nodes, so every program is acyclic and runs in order.
-tp_admit :: (nodes:[]TpNode,params:int)->TpStatus #export_c {
+tp_admit :: (nodes:[]TpNode,params:int)->TpStatus #export_c #effects(all) {
     if nodes.count<1 || nodes.count>TP_NODES_MAX || params<0 || params>TP_PARAMS_MAX {return TpStatus.shape;}
     for n,i:nodes {
         if cast(int)n.op>cast(int)TpOp.softplus {return TpStatus.shape;}
@@ -71,7 +71,7 @@ succeeds.
 ```jai
 // One operation's value. Where it has none in the domain (log of a number
 // that is not positive, exp past 230), the result is outside it and refused.
-tp_apply :: (op:TpOp,a:f64,b:f64)->f64 {
+tp_apply :: (op:TpOp,a:f64,b:f64)->f64 #effects(all) {
     if op==TpOp.add {return a+b;}
     if op==TpOp.sub {return a-b;}
     if op==TpOp.mul {return a*b;}
@@ -85,7 +85,7 @@ tp_apply :: (op:TpOp,a:f64,b:f64)->f64 {
     return tb_softplus(a);
 }
 // Every node's value, in order; the last node is the program's result.
-tp_forward :: (nodes:[]TpNode,params:[]f64,values:[]f64,overlap:bool)->TpStatus #export_c {
+tp_forward :: (nodes:[]TpNode,params:[]f64,values:[]f64,overlap:bool)->TpStatus #export_c #effects(all) {
     s:=tp_admit(nodes,params.count);
     if s!=TpStatus.ok {return s;}
     if values.count<nodes.count {return TpStatus.capacity;}
@@ -117,7 +117,7 @@ The backward pass runs on these saved values:
 <!-- source: psionic/lib/tape.coax backward -->
 ```jai
 // d out / d a and d out / d b from saved values only: the operands and the output.
-tp_partial_a :: (op:TpOp,a:f64,b:f64,out:f64)->f64 {
+tp_partial_a :: (op:TpOp,a:f64,b:f64,out:f64)->f64 #effects(all) {
     if op==TpOp.add || op==TpOp.sub {return 1;}
     if op==TpOp.mul {return b;}
     if op==TpOp.div {return 1/b;}
@@ -129,7 +129,7 @@ tp_partial_a :: (op:TpOp,a:f64,b:f64,out:f64)->f64 {
     if op==TpOp.sigmoid {return out*(1-out);}
     return tb_sigmoid(a);
 }
-tp_partial_b :: (op:TpOp,a:f64,b:f64,out:f64)->f64 {
+tp_partial_b :: (op:TpOp,a:f64,b:f64,out:f64)->f64 #effects(all) {
     if op==TpOp.add {return 1;}
     if op==TpOp.sub {return -1;}
     if op==TpOp.mul {return a;}
@@ -138,7 +138,7 @@ tp_partial_b :: (op:TpOp,a:f64,b:f64,out:f64)->f64 {
 // Adds d result / d parameter into `grads`, one entry per slot. The adjoint of
 // a node is the sum over everything that reads it, so a node read twice, or a
 // slot read by two nodes, accumulates. The caller zeroes `grads` between steps.
-tp_backward :: (nodes:[]TpNode,values:[]f64,grads:[]f64,overlap:bool)->TpStatus #export_c {
+tp_backward :: (nodes:[]TpNode,values:[]f64,grads:[]f64,overlap:bool)->TpStatus #export_c #effects(all) {
     s:=tp_admit(nodes,grads.count);
     if s!=TpStatus.ok {return s;}
     if values.count<nodes.count {return TpStatus.shape;}
@@ -199,7 +199,7 @@ takes 278 nodes for logistic regression and 1,602 for the hidden layer.
 <!-- source: psionic/lib/tape.coax tabular -->
 ```jai
 // Append one node; -1 once storage is full, and every later append stays -1.
-tp_push :: (nodes:[]TpNode,n:int,node:TpNode)->int {
+tp_push :: (nodes:[]TpNode,n:int,node:TpNode)->int #effects(all) {
     if n<0 || n>=nodes.count {return -1;}
     nodes[n]=node;
     return n+1;
@@ -207,7 +207,7 @@ tp_push :: (nodes:[]TpNode,n:int,node:TpNode)->int {
 // Chapter 103's models and mean loss over `rows`, as a program. Nodes 0 to P-1
 // read parameter slots 0 to P-1, in chapter 103's layout; each use of a
 // parameter reads its node, so its adjoint collects every use.
-tp_tabular :: (m:TbModel,x:[]f64,y:[]f64,rows:[]int,nodes:[]TpNode,overlap:bool)->TpBuild #export_c {
+tp_tabular :: (m:TbModel,x:[]f64,y:[]f64,rows:[]int,nodes:[]TpNode,overlap:bool)->TpBuild #export_c #effects(all) {
     d:=m.features;
     if !tb_model_ok(m) || x.count!=y.count*d || !tb_row_ok(rows,y.count) {return TpBuild.{status=TpStatus.shape};}
     if overlap {return TpBuild.{status=TpStatus.alias};}
@@ -254,7 +254,7 @@ backward:
 ```jai
 // A drop-in for chapter 103's tb_gradient: build the program, run it forward,
 // zero the gradients and run it backward. `nodes` and `values` are scratch.
-tp_gradient :: (m:TbModel,p:[]f64,x:[]f64,y:[]f64,rows:[]int,g:[]f64,nodes:[]TpNode,values:[]f64,overlap:bool)->TpStatus #export_c {
+tp_gradient :: (m:TbModel,p:[]f64,x:[]f64,y:[]f64,rows:[]int,g:[]f64,nodes:[]TpNode,values:[]f64,overlap:bool)->TpStatus #export_c #effects(all) {
     n:=tb_param_count(m);
     if p.count!=n || g.count!=n {return TpStatus.shape;}
     b:=tp_tabular(m,x,y,rows,nodes,overlap);
@@ -285,7 +285,7 @@ are all shared. The admission checks are now a separate procedure,
 ```jai
 // Chapter 103's trainer with the tape in place of the hand-written gradient:
 // the same admission, initialization, shuffle, batches, decay and staging.
-tp_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,order:[]int,nodes:[]TpNode,values:[]f64,overlap:bool)->TbTrain #export_c {
+tp_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,order:[]int,nodes:[]TpNode,values:[]f64,overlap:bool)->TbTrain #export_c #effects(all) {
     admitted:=tb_admit_train(m,c,x,y,rows,params,order,overlap);
     if admitted!=TbStatus.ok {return TbTrain.{status=admitted};}
     n:=tb_param_count(m);

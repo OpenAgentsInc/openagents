@@ -28,7 +28,7 @@ ias_front_sample :: (s:[]IasFront,v:f32) {
  s[0].ring[s[0].samples%512]=f64(value);s[0].previous=v;s[0].samples+=1;
 }
 ias_front_ready :: (s:[]IasFront,final:bool)->bool {return ifx final then s[0].frame<s[0].samples/160 else s[0].samples>=s[0].frame*160+256;}
-ias_front_tables :: (bank:[]f64,window:[]f64) #export_c {
+ias_front_tables :: (bank:[]f64,window:[]f64) #export_c #effects(all) {
  spec:=sf_nemo_spec();r:=sf_mel_bank(spec,bank);sf_place(spec,window);
  for i:0..<32896 {bank[i]=f64(f32(bank[i]));}for i:0..<512 {window[i]=f64(f32(window[i]));}
 }

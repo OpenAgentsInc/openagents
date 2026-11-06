@@ -135,13 +135,13 @@ studied by Ogita, Rump and Oishi in [Accurate Sum and Dot Product, algorithms
 
 <!-- source: psionic/lib/ops.coax accumulate -->
 ```jai
-psionic_ops_accumulate :: (s: PsionicAccumulator, value: f64) -> PsionicAccumulator {
+psionic_ops_accumulate :: (s: PsionicAccumulator, value: f64) -> PsionicAccumulator #effects(all) {
     next := s.sum + value;
     virtual_value := next - s.sum;
     error := (s.sum - (next - virtual_value)) + (value - virtual_value);
     return PsionicAccumulator.{sum = next, correction = s.correction + error};
 }
-psionic_ops_total :: (s: PsionicAccumulator) -> f64 { return s.sum + s.correction; }
+psionic_ops_total :: (s: PsionicAccumulator) -> f64 #effects(all) { return s.sum + s.correction; }
 ```
 
 For sums and exact widened `f32` products, the error-free residual identity
@@ -186,12 +186,12 @@ possibly overflowing `f32` product.
 
 <!-- source: psionic/lib/ops.coax reduce -->
 ```jai
-psionic_ops_row_sum :: (a: [] f32, base: int, width: int) -> f64 {
+psionic_ops_row_sum :: (a: [] f32, base: int, width: int) -> f64 #effects(all) {
     acc: PsionicAccumulator;
     for k: 0..<width { acc = psionic_ops_accumulate(acc, f64(a[base + k])); }
     return psionic_ops_total(acc);
 }
-psionic_ops_reduce :: (r: PsionicRequest, a: [] f32, b: [] f32, row: int, column: int) -> f64 {
+psionic_ops_reduce :: (r: PsionicRequest, a: [] f32, b: [] f32, row: int, column: int) -> f64 #effects(all) {
     if r.op == PsionicOp.sum { return psionic_ops_row_sum(a, row * r.width, r.width); }
     acc: PsionicAccumulator;
     for k: 0..<r.width {
@@ -247,7 +247,7 @@ have a finite difference. Exponential underflow to zero is allowed.
 
 <!-- source: psionic/lib/ops.coax softmax -->
 ```jai
-psionic_ops_softmax_row :: (r: PsionicRequest, a: [] f32, mask: [] u8, scratch: [] f32, base: int) {
+psionic_ops_softmax_row :: (r: PsionicRequest, a: [] f32, mask: [] u8, scratch: [] f32, base: int) #effects(all) {
     maximum := f64(a[base + psionic_ops_argmax(a, mask, base, r.width)]);
     acc: PsionicAccumulator;
     for col: 0..<r.width {
@@ -288,7 +288,7 @@ so LayerNorm returns `[-0.5,0.5]`.
 
 <!-- source: psionic/lib/ops.coax norm -->
 ```jai
-psionic_ops_norm_row :: (r: PsionicRequest, a: [] f32, scratch: [] f32, base: int) {
+psionic_ops_norm_row :: (r: PsionicRequest, a: [] f32, scratch: [] f32, base: int) #effects(all) {
     mean: f64 = 0;
     if r.op == PsionicOp.layernorm { mean = psionic_ops_row_sum(a, base, r.width) / f64(r.width); }
     squares: PsionicAccumulator;
@@ -326,7 +326,7 @@ from the request, validates data, and invokes the kernels:
 <!-- source: psionic/lib/ops.coax checked -->
 ```jai
 psionic_ops_checked :: (r: PsionicRequest, a: [] f32, b: [] f32, indices: [] int, mask: [] u8,
-        destination: [] f32, scratch: [] f32, overlap: bool) -> PsionicResult #export_c {
+        destination: [] f32, scratch: [] f32, overlap: bool) -> PsionicResult #export_c #effects(all) {
     p := psionic_ops_admit(r, a.count, b.count, indices.count, mask.count, destination.count, scratch.count, overlap);
     if p.status != PsionicOpStatus.ok { return PsionicResult.{status = p.status}; }
     for value: a { if !psionic_tensor_finite_bits(f32_bits(value)) { return PsionicResult.{status = PsionicOpStatus.number}; } }

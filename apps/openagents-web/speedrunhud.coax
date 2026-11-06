@@ -1052,9 +1052,9 @@ floor_grid :: (s: [] SpeedrunHud, out: [] f32, at: int, c: Cam) -> int {
 
 // ---- the page
 
-coaxial_speedrunhud_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_speedrunhud_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_speedrunhud_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_speedrunhud_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_speedrunhud_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_speedrunhud_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 speedrunhud_start :: (s: [] SpeedrunHud) {
   s[0].started = true; s[0].stage = -1; s[0].k = 1; s[0].fade = 1; s[0].k0 = 1;
@@ -1090,14 +1090,14 @@ stage_of :: (name: string) -> int {
   for i: 0..<STAGES { if STAGE_NAMES[i] == name { return i; } }
   return -1;
 }
-speedrunhud_stage :: (s: [] SpeedrunHud, url: string) #export_c {
+speedrunhud_stage :: (s: [] SpeedrunHud, url: string) #export_c #effects(all) {
   if !s[0].started { speedrunhud_start(s); }
   s[0].asked = true;
   s[0].stage = stage_of(query_value(url, "stage"));
   s[0].offset = count_of(query_value(url, "at"), 0) * TICKS / 1000;
 }
 // The page's facts (host.js message 600): the stage is in its url.
-speedrunhud_message :: (s: [] SpeedrunHud, kind: int, text: string) #export_c {
+speedrunhud_message :: (s: [] SpeedrunHud, kind: int, text: string) #export_c #effects(all) {
   if s.count < 1 || kind != 600 { return; }
   at := 0;
   while at < text.count {
@@ -1110,7 +1110,7 @@ speedrunhud_message :: (s: [] SpeedrunHud, kind: int, text: string) #export_c {
 }
 speedrunhud_time :: (s: [] SpeedrunHud) -> f32 { return f32(s[0].ticks + s[0].offset) / f32(TICKS); }
 
-speedrunhud_frame :: (s: [] SpeedrunHud, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+speedrunhud_frame :: (s: [] SpeedrunHud, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || u.count < UNIFORM_FLOATS || !(width > 0) || !(height > 0) { return 0; }
   if !s[0].started { speedrunhud_start(s); }
   step := ifx dt == dt then clamp(dt, 0, 0.25) else 0.0f32;

@@ -70,7 +70,7 @@ on what you see:
 <!-- source: aethyr/terrain.coax height -->
 ```jai
 // The height of the drawn surface at x, z (the edge's beyond it).
-verse_terrain_height :: (g: Ground, heights: [] f32, x: f32, z: f32) -> f32 #export_c {
+verse_terrain_height :: (g: Ground, heights: [] f32, x: f32, z: f32) -> f32 #export_c #effects(all) {
   q := ground_sample(g, heights, terrain_units.Quantity.{value = x}, terrain_units.Quantity.{value = z});
   return q.height.value;   // an invalid sample publishes the legacy zero height
 }

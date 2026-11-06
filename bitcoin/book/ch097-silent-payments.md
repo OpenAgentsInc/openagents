@@ -111,7 +111,7 @@ spend key:
 // BIP-352's BIP-32 paths: b_scan at m/352'/coin'/account'/1'/0 and b_spend
 // at m/352'/coin'/account'/0'/0, hardened so that the scan key can be
 // handed to a scanning server without exposing the spend key.
-silent_keys :: (seed: [] u8, coin: int, account: int, scan: [] u8, spend: [] u8) -> bool #export_c {
+silent_keys :: (seed: [] u8, coin: int, account: int, scan: [] u8, spend: [] u8) -> bool #export_c #effects(all) {
   if scan.count != 32 || spend.count != 32 || coin < 0 || account < 0 || coin >= BIP32_HARDENED || account >= BIP32_HARDENED { return false; }
   chain: [32] u8;
   path := [5] int.[BIP32_HARDENED + 352, BIP32_HARDENED + coin, BIP32_HARDENED + account, BIP32_HARDENED + 1, 0];
@@ -137,7 +137,7 @@ designed for. `b32_encode` with `extended` set allows that.
 // (testnets and signet), then the version (0, the character q) and the
 // 66 bytes ser_P(B_scan) || ser_P(B_m) in 5-bit groups: 116 characters on
 // mainnet, 117 on a testnet. Returns the length written, or -1.
-silent_address_vartime :: (testnet: bool, scan: [] u8, spend: [] u8, out: [] u8) -> int #export_c {
+silent_address_vartime :: (testnet: bool, scan: [] u8, spend: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if scan.count != 33 || spend.count != 33 || !sl_decode_vartime(scan).ok || !sl_decode_vartime(spend).ok { return -1; }
   body: [66] u8; words: [107] u8;
   for i: 0..<33 { body[i] = scan[i]; body[33 + i] = spend[i]; }
@@ -160,7 +160,7 @@ SlAddress :: struct { reason: int; testnet: bool; version: int; scan: [33] u8; s
 // versions 1 to 30 hold at least 66, and a version 0 sender reads the
 // first 66 and ignores the rest; version 31 is reserved for a change that
 // breaks compatibility, and refused. Both keys must be on the curve.
-silent_decode_vartime :: (text: string) -> SlAddress #export_c {
+silent_decode_vartime :: (text: string) -> SlAddress #export_c #effects(all) {
   r: SlAddress;
   hrp: [84] u8; words: [SL_ADDRESS_MAX] u8;
   if text.count > SL_ADDRESS_MAX { r.reason = SLA_NOT_BECH32M; return r; }
@@ -206,7 +206,7 @@ used.
 // its point, tweak G. The labeled address uses B_m = B_spend + tweak G.
 // m = 0 is reserved for change, which a wallet always scans for.
 SlLabel :: struct { m: int; point: [33] u8; tweak: [32] u8; }
-silent_label :: (b_scan: [] u8, m: int, out: [] SlLabel, w: [] SlWork) -> int #export_c {
+silent_label :: (b_scan: [] u8, m: int, out: [] SlLabel, w: [] SlWork) -> int #export_c #effects(all) {
   if b_scan.count != 32 || out.count != 1 || w.count != 1 || m < 0 || m > 0xffffffff { return SL_CAPACITY; }
   for i: 0..<32 { w[0].data[i] = b_scan[i]; }
   sl_put32(w[0].data[32..<36], m);
@@ -220,7 +220,7 @@ silent_label :: (b_scan: [] u8, m: int, out: [] SlLabel, w: [] SlWork) -> int #e
   return sl_done(w, SL_OK);
 }
 // B_m = B_spend + the label's point, into out (33 bytes).
-silent_labeled_spend_vartime :: (spend: [] u8, label: SlLabel, out: [] u8) -> int #export_c {
+silent_labeled_spend_vartime :: (spend: [] u8, label: SlLabel, out: [] u8) -> int #export_c #effects(all) {
   point := label.point;
   b := sl_decode_vartime(spend); l := sl_decode_vartime(point[..]);
   if !b.ok || !l.ok || out.count != 33 { return SL_BAD_KEY; }
@@ -259,7 +259,7 @@ four kinds of input, each with one public key in a known place:
 //
 // Only compressed and x-only keys count; an uncompressed key excludes the
 // input.
-silent_input_key_vartime :: (script_sig: [] u8, witness: [] u8, prevout: [] u8, out: [] u8) -> int #export_c {
+silent_input_key_vartime :: (script_sig: [] u8, witness: [] u8, prevout: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if out.count != 33 { return SL_IN_NONE; }
   ins: [1] TxIn; items: [SL_ITEMS] TxItem; n := 0;
   if witness.count > 0 {
@@ -311,13 +311,13 @@ silent_input_key_vartime :: (script_sig: [] u8, witness: [] u8, prevout: [] u8, 
 // Whether an input spends a witness version above 1 (OP_2 to OP_16 and a
 // program of 2 to 40 bytes). A transaction with one is not scanned: a
 // later version of silent payments may count those inputs.
-silent_future_witness_vartime :: (prevout: [] u8) -> bool #export_c {
+silent_future_witness_vartime :: (prevout: [] u8) -> bool #export_c #effects(all) {
   return prevout.count >= 4 && prevout.count <= 42 && prevout[0] >= 0x52 && prevout[0] <= 0x60 && cast(int) prevout[1] == prevout.count - 2;
 }
 // An outpoint as a transaction serializes it: the txid's 32 bytes as
 // stored (the reverse of how it is displayed), then the output index,
 // 4 bytes little-endian.
-silent_outpoint_vartime :: (txid: [] u8, vout: int, out: [] u8) -> bool #export_c {
+silent_outpoint_vartime :: (txid: [] u8, vout: int, out: [] u8) -> bool #export_c #effects(all) {
   if txid.count != 32 || out.count != 36 || vout < 0 || vout > 0xffffffff { return false; }
   for i: 0..<32 { out[i] = txid[i]; }
   for i: 0..<4 { out[32 + i] = cast(u8) ((vout >> (8 * i)) & 255); }
@@ -363,7 +363,7 @@ compared byte by byte as serialized, and the key sum A:
 // (not only BIP-352's). It binds the secret to this transaction: the same
 // keys spending other coins give other outputs. Into out (32 bytes);
 // false when it is 0 or not below n.
-silent_input_hash_vartime :: (outpoints: [] u8, a_point: [] u8, out: [] u8) -> bool #export_c {
+silent_input_hash_vartime :: (outpoints: [] u8, a_point: [] u8, out: [] u8) -> bool #export_c #effects(all) {
   if outpoints.count == 0 || outpoints.count % 36 != 0 || a_point.count != 33 || out.count != 32 { return false; }
   low := 0;
   for k: 1..<outpoints.count / 36 {
@@ -403,7 +403,7 @@ the parity, not a branch:
 // an odd y (the receiver reads that key as x-only, so as the even one).
 // keys holds 32 bytes per input of BIP-352's list, taproot says which are
 // P2TR. Writes a into out (32 bytes) and A = a G into a_point (33).
-silent_key_sum :: (keys: [] u8, taproot: [] bool, out: [] u8, a_point: [] u8, w: [] SlWork) -> int #export_c {
+silent_key_sum :: (keys: [] u8, taproot: [] bool, out: [] u8, a_point: [] u8, w: [] SlWork) -> int #export_c #effects(all) {
   if w.count != 1 || keys.count % 32 != 0 || taproot.count != keys.count / 32 || out.count != 32 || a_point.count != 33 { return SL_CAPACITY; }
   if keys.count == 0 { return SL_NO_INPUTS; }
   a := sc_small(0);
@@ -436,14 +436,14 @@ takes the next k:
 ```jai
 // t_k = hash_BIP0352/SharedSecret(ser_P(ecdh_shared_secret) || ser_32(k)),
 // from the shared secret in w.shared; false when it is 0 or not below n.
-sl_t :: (k: int, w: [] SlWork) -> ScLoad {
+sl_t :: (k: int, w: [] SlWork) -> ScLoad #effects(all) {
   for i: 0..<33 { w[0].data[i] = w[0].shared[i]; }
   sl_put32(w[0].data[33..<37], k);
   sl_tagged(w, "BIP0352/SharedSecret", w[0].data[..]);
   return sl_digest_scalar(w);
 }
 // P_k = B_m + t_k G, as an x-only key into out.
-sl_output :: (b_m: SgPoint, t: ScScalar, out: [] u8) -> bool {
+sl_output :: (b_m: SgPoint, t: ScScalar, out: [] u8) -> bool #effects(all) {
   e := sg_encode_public(sg_add(b_m, smb_multiply_web(t)).value);
   for i: 0..<32 { out[i] = e.bytes[1 + i]; }
   return e.length == 33;
@@ -461,7 +461,7 @@ SlSent :: struct { code: int; count: int; }
 // each recipient's shared secret (33 bytes): a secret. Sending fails
 // when no input counts, a = 0, input_hash is out of range or a group
 // is over K_max.
-silent_send :: (keys: [] u8, taproot: [] bool, outpoints: [] u8, recipients: [] u8, outputs: [] u8, shared: [] u8, w: [] SlWork) -> SlSent #export_c {
+silent_send :: (keys: [] u8, taproot: [] bool, outpoints: [] u8, recipients: [] u8, outputs: [] u8, shared: [] u8, w: [] SlWork) -> SlSent #export_c #effects(all) {
   r := recipients.count / 66;
   if w.count != 1 || recipients.count % 66 != 0 || r == 0 || outputs.count < 32 * r || (shared.count != 0 && shared.count < 33 * r) {
     return SlSent.{code=SL_CAPACITY};
@@ -539,7 +539,7 @@ sender's (input_hash·a)·B_scan.
 // the keys BIP-352's inputs give (33 bytes each), and the tweak
 // input_hash A (33 bytes). A server can publish the tweak for every
 // transaction; it reveals nothing without b_scan. Writes A too.
-silent_tweak_vartime :: (pubs: [] u8, outpoints: [] u8, tweak: [] u8, a_point: [] u8) -> int #export_c {
+silent_tweak_vartime :: (pubs: [] u8, outpoints: [] u8, tweak: [] u8, a_point: [] u8) -> int #export_c #effects(all) {
   if pubs.count % 33 != 0 || tweak.count != 33 || a_point.count != 33 { return SL_CAPACITY; }
   if pubs.count == 0 { return SL_NO_INPUTS; }
   sum := sg_infinity();
@@ -556,7 +556,7 @@ silent_tweak_vartime :: (pubs: [] u8, outpoints: [] u8, tweak: [] u8, a_point: [
 // ecdh_shared_secret = b_scan (input_hash A), the same point the sender
 // made as (input_hash a) B_scan, into w.shared. Copies it to out (33
 // bytes) when out has room: a secret.
-silent_shared :: (b_scan: [] u8, tweak: [] u8, out: [] u8, w: [] SlWork) -> int #export_c {
+silent_shared :: (b_scan: [] u8, tweak: [] u8, out: [] u8, w: [] SlWork) -> int #export_c #effects(all) {
   if b_scan.count != 32 || w.count != 1 || (out.count != 0 && out.count != 33) { return SL_CAPACITY; }
   p := sl_decode_vartime(tweak);
   b := sc_load(b_scan);
@@ -587,7 +587,7 @@ miss the outputs after it.
 SlFound :: struct { output: int; key: [32] u8; label: int; tweak: [32] u8; }
 SlScan :: struct { code: int; count: int; }
 // The label whose point is p's compressed encoding, or -1.
-sl_label_of_vartime :: (p: SgPoint, labels: [] SlLabel) -> int {
+sl_label_of_vartime :: (p: SgPoint, labels: [] SlLabel) -> int #effects(all) {
   e := sg_encode_public(p);
   if e.length != 33 { return -1; }
   for i: 0..<labels.count { if sl_same_vartime(e.bytes[..], labels[i].point[..]) { return i; } }
@@ -600,7 +600,7 @@ sl_label_of_vartime :: (p: SgPoint, labels: [] SlLabel) -> int {
 // points), is a label's point. A match moves on to k + 1; a k with no
 // match ends the scan, and so does k = limit. found must have room for
 // every output the scan can find.
-sl_scan_upto :: (b_scan: [] u8, spend: [] u8, tweak: [] u8, outputs: [] u8, labels: [] SlLabel, found: [] SlFound, limit: int, w: [] SlWork) -> SlScan {
+sl_scan_upto :: (b_scan: [] u8, spend: [] u8, tweak: [] u8, outputs: [] u8, labels: [] SlLabel, found: [] SlFound, limit: int, w: [] SlWork) -> SlScan #effects(all) {
   n := outputs.count / 32;
   if outputs.count % 32 != 0 || n > SL_MAX_OUTPUTS || spend.count != 33 { return SlScan.{code=SL_CAPACITY}; }
   b_spend := sl_decode_vartime(spend);
@@ -641,7 +641,7 @@ sl_scan_upto :: (b_scan: [] u8, spend: [] u8, tweak: [] u8, outputs: [] u8, labe
   sl_clear(w);
   return SlScan.{code=SL_OK, count=k};
 }
-silent_scan :: (b_scan: [] u8, spend: [] u8, tweak: [] u8, outputs: [] u8, labels: [] SlLabel, found: [] SlFound, w: [] SlWork) -> SlScan #export_c {
+silent_scan :: (b_scan: [] u8, spend: [] u8, tweak: [] u8, outputs: [] u8, labels: [] SlLabel, found: [] SlFound, w: [] SlWork) -> SlScan #export_c #effects(all) {
   return sl_scan_upto(b_scan, spend, tweak, outputs, labels, found, SL_K_MAX, w);
 }
 ```
@@ -662,7 +662,7 @@ is d·G itself.
 // (32 bytes). It signs a BIP-341 key-path spend as it is, with no
 // TapTweak: the output key is d G itself. A BIP-340 signer negates d
 // when d G has an odd y.
-silent_spend_key :: (b_spend: [] u8, tweak: [] u8, out: [] u8) -> bool #export_c {
+silent_spend_key :: (b_spend: [] u8, tweak: [] u8, out: [] u8) -> bool #export_c #effects(all) {
   if b_spend.count != 32 || tweak.count != 32 || out.count != 32 { return false; }
   b := sc_load(b_spend); t := sc_load(tweak);
   d := sc_add(b.value, t.value);
@@ -695,11 +695,11 @@ follows chapter 3's rules for all of them:
 // Every procedure that touches a secret takes one SlWork and clears it
 // before it returns.
 SlWork :: struct { sha: [1] ShaOwned; data: [37] u8; digest: [32] u8; shared: [33] u8; }
-sl_clear :: (w: [] SlWork) { fresh: SlWork; w[0] = fresh; }
-sl_done :: (w: [] SlWork, code: int) -> int { sl_clear(w); return code; }
+sl_clear :: (w: [] SlWork) #effects(all) { fresh: SlWork; w[0] = fresh; }
+sl_done :: (w: [] SlWork, code: int) -> int #effects(all) { sl_clear(w); return code; }
 // hash_tag(data): SHA-256(SHA-256(tag) || SHA-256(tag) || data) into
 // w.digest, with the erasable SHA-256.
-sl_tagged :: (w: [] SlWork, tag: string, data: [] u8) {
+sl_tagged :: (w: [] SlWork, tag: string, data: [] u8) #effects(all) {
   t: [32] u8; th: [32] u8; s := w[0].sha[..];
   for i: 0..<tag.count { t[i] = tag[i]; }
   #assert so_init(s) && so_update(s, t[0..<tag.count], false) && so_finish(s, th[..], false);
@@ -707,13 +707,13 @@ sl_tagged :: (w: [] SlWork, tag: string, data: [] u8) {
   #assert so_update(s, data, false) && so_finish(s, w[0].digest[..], false);
 }
 // The digest as a scalar; ok is false when it is 0 or not below n.
-sl_digest_scalar :: (w: [] SlWork) -> ScLoad {
+sl_digest_scalar :: (w: [] SlWork) -> ScLoad #effects(all) {
   r := sc_load(w[0].digest[..]);
   r.ok = r.ok && !sc_is_zero(r.value);
   return r;
 }
 // ser_32(i): four bytes, most significant first.
-sl_put32 :: (out: [] u8, i: int) { for j: 0..<4 { out[j] = cast(u8) ((i >> (8 * (3 - j))) & 255); } }
+sl_put32 :: (out: [] u8, i: int) #effects(all) { for j: 0..<4 { out[j] = cast(u8) ((i >> (8 * (3 - j))) & 255); } }
 ```
 
 The limits are chapter 101's. By-value copies of scalars aren't

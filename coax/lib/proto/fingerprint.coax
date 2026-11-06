@@ -6,12 +6,12 @@
 F_Limits :: struct {descriptor:int;runtime:int;source:int;}
 F_Result :: struct {written:int;provenance:int;error:string;}
 F_Writer :: struct {out:[] u8;at:int;error:string;}
-F_capacities :: ()->F_Limits #export_c {return F_Limits.{descriptor=8388608,runtime=1048576,source=8388608};}
-F_write :: (w:[] F_Writer,text:string) {
+F_capacities :: ()->F_Limits #export_c #effects(all) {return F_Limits.{descriptor=8388608,runtime=1048576,source=8388608};}
+F_write :: (w:[] F_Writer,text:string) #effects(all) {
   if text.count>w[0].out.count-w[0].at {w[0].error="fingerprint output budget";return;}
   for c:text {w[0].out[w[0].at]=c;w[0].at+=1;}
 }
-F_runtime :: (core:string,memory:string,out:[] u8)->F_Result #export_c {
+F_runtime :: (core:string,memory:string,out:[] u8)->F_Result #export_c #effects(all) {
   marker:="// @proto-runtime-checks\n";at:=0;
   while at+marker.count<=core.count {
     if core[at..<at+marker.count]==marker {
@@ -20,12 +20,12 @@ F_runtime :: (core:string,memory:string,out:[] u8)->F_Result #export_c {
     }at+=1;
   }return F_Result.{error="missing wire runtime check boundary"};
 }
-F_digest :: (w:[] F_Writer,digest:S_Digest) {
+F_digest :: (w:[] F_Writer,digest:S_Digest) #effects(all) {
   hex:[64] u8;if !S_hex(digest,hex[..]) {w[0].error="invalid fingerprint input length";return;}
   F_write(w,cast(string)hex[..]);
 }
-F_hash :: (w:[] F_Writer,input:string) {F_digest(w,S_hash(input));}
-F_package :: (raw:string,prefix:string,compiler:string,runtime:string,importer:string,fingerprints:string,body:string,out:[] u8)->F_Result #export_c {
+F_hash :: (w:[] F_Writer,input:string) #effects(all) {F_digest(w,S_hash(input));}
+F_package :: (raw:string,prefix:string,compiler:string,runtime:string,importer:string,fingerprints:string,body:string,out:[] u8)->F_Result #export_c #effects(all) {
   w:=[1] F_Writer.[F_Writer.{out=out}];
   F_write(w[..],"// coax-proto-v4 generator=coax0-coax-v1 compiler=");
   for c:compiler {one:=[1] u8.[c];if c==32 {one[0]=45;}F_write(w[..],cast(string)one[..]);}

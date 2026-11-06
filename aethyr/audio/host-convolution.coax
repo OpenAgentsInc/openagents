@@ -7,16 +7,16 @@
 #authority;
 AudioConvolution :: struct {block:int;parts:int;head:int;ready:bool;}
 AudioConvolutionLayout :: struct {valid:bool;words:int;history:int;}
-ac_block_size :: (block:int)->bool {
+ac_block_size :: (block:int)->bool #effects(all) {
  blocks:=[11]int.[1,2,4,8,16,32,64,128,256,512,1024];found:=false;for b:blocks {if block==b {found=true;}}
  return found;
 }
-ac_layout :: (block:int,parts:int)->AudioConvolutionLayout {
+ac_layout :: (block:int,parts:int)->AudioConvolutionLayout #effects(all) {
  if !ac_block_size(block) || parts<1 || parts>128 {return AudioConvolutionLayout.{};}
  return AudioConvolutionLayout.{valid=true,words=8*parts*(2*block)+6*block,history=4*parts*(2*block)};
 }
-ac_words :: (block:int,parts:int)->int #export_c {return ac_layout(block,parts).words;}
-ac_plane :: (w:[]f64,start:int,n:int)->[]f64 {return w[start..<start+n];}
+ac_words :: (block:int,parts:int)->int #export_c #effects(all) {return ac_layout(block,parts).words;}
+ac_plane :: (w:[]f64,start:int,n:int)->[]f64 #effects(all) {return w[start..<start+n];}
 #test "audio convolution admits exact measured workspace and refuses unsupported block or partition extents" {
  #assert ac_words(4,3)==216 && ac_words(1024,66)==1087488;
  #assert ac_layout(4,3).history==96 && ac_layout(1024,66).history==540672;
@@ -83,10 +83,10 @@ ac_plane :: (w:[]f64,start:int,n:int)->[]f64 {return w[start..<start+n];}
 }
 // https://www.w3.org/TR/webaudio/#dom-convolvernode-normalize, 48kHz
 // carrier profile. True-stereo four-channel IRs are explicitly unsupported.
-ac_scale :: (impulse:[]f32,channels:int,normalize:bool)->f64 {
+ac_scale :: (impulse:[]f32,channels:int,normalize:bool)->f64 #effects(all) {
  if !normalize {return 1;}power:=0.0;for x:impulse {power+=f64(x)*f64(x);}power=audio_max(sqrt(power/f64(impulse.count)),0.000125);return 0.00125*44100.0/48000.0/power;
 }
-ac_open :: (s:[]AudioConvolution,w:[]f64,block:int,impulse:[]f32,channels:int,normalize:bool)->bool #export_c {
+ac_open :: (s:[]AudioConvolution,w:[]f64,block:int,impulse:[]f32,channels:int,normalize:bool)->bool #export_c #effects(all) {
  if s.count!=1 || !ac_block_size(block) || (channels!=1 && channels!=2) || impulse.count<channels || impulse.count%channels!=0 {return false;}
  frames:=impulse.count/channels;parts:=(frames-1)/block+1;layout:=ac_layout(block,parts);if !layout.valid || w.count<layout.words {return false;}
  for x:impulse {if (f32_bits(x)&0x7fffffff)>0x3f800000 {return false;}}
@@ -94,7 +94,7 @@ ac_open :: (s:[]AudioConvolution,w:[]f64,block:int,impulse:[]f32,channels:int,no
  for channel:0..<2 {for part:0..<parts {base:=(channel*2*parts+2*part)*n;re:=ac_plane(w,base,n);im:=ac_plane(w,base+n,n);for i:0..<n {at:=part*block+i;re[i]=ifx i<block && at<frames then f64(impulse[at*channels+(ifx channels==1 then 0 else channel)])*scale else 0;im[i]=0;}sf_radix2(re,im);}}
  s[0]=AudioConvolution.{block=block,parts=parts,ready=true};return true;
 }
-ac_block :: (s:[]AudioConvolution,w:[]f64,input:[]f32,output:[]f32)->bool #export_c {
+ac_block :: (s:[]AudioConvolution,w:[]f64,input:[]f32,output:[]f32)->bool #export_c #effects(all) {
  if s.count!=1 || !s[0].ready {return false;}q:=s[0];b:=q.block;p:=q.parts;layout:=ac_layout(b,p);if !layout.valid {return false;}n:=2*b;
  if w.count<layout.words || input.count!=2*b || output.count!=2*b || q.head<0 || q.head>=p {return false;}
  for x:input {if (f32_bits(x)&0x7fffffff)>0x4e800000 {return false;}}

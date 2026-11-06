@@ -75,7 +75,7 @@ BIP-341 builds Q in three steps:
 // key with no script tree, or a script tree's 32-byte Merkle root (chapter
 // 42). Writes Q's x (32 bytes) and returns Q's y parity, 0 or 1, which a
 // script-path spend reveals in its control block.
-taproot_output_key_vartime :: (internal: [] u8, merkle: [] u8, output: [] u8) -> int {
+taproot_output_key_vartime :: (internal: [] u8, merkle: [] u8, output: [] u8) -> int #effects(all) {
   if output.count < SE_XONLY { return AD_CAPACITY; }
   if internal.count != SE_XONLY { return AD_BAD_KEY; }
   if merkle.count != 0 && merkle.count != 32 { return AD_BAD_ROOT; }
@@ -88,7 +88,7 @@ taproot_output_key_vartime :: (internal: [] u8, merkle: [] u8, output: [] u8) ->
 // Q = lift_x(internal) + tG for the 32-byte big-endian number t. BIP-341
 // refuses t >= n and Q at infinity. A TapTweak hash reaches neither for
 // any known key, but a t given directly reaches both.
-taproot_add_tweak_vartime :: (internal: [] u8, t: [] u8, output: [] u8) -> int {
+taproot_add_tweak_vartime :: (internal: [] u8, t: [] u8, output: [] u8) -> int #effects(all) {
   if output.count < SE_XONLY { return AD_CAPACITY; }
   if internal.count != SE_XONLY || t.count != 32 { return AD_BAD_KEY; }
   p := se_decode_xonly(internal);
@@ -190,7 +190,7 @@ does that step, so the tweak doesn't have to.
 ```jai
 // The internal key P = dG (public, into w.internal), then the tweak hash
 // TapTweak(P || merkle) into th.
-bt_internal :: (key:[]u8,merkle:[]u8,w:[]BtTapWork,th:[]u8) {
+bt_internal :: (key:[]u8,merkle:[]u8,w:[]BtTapWork,th:[]u8) #effects(all) {
   #assert ss_key(key,w[0].key[..],false) && sp_base(w[0].key[0].safe,w[0].point[..]) && sp_x(w[0].point[..],w[0].internal[..]);
   m:[64]u8;n:=bt_put(m[..],0,w[0].internal[..]);
   bt_tagged(BH_TAPTWEAK,m[0..<bt_put(m[..],n,merkle)],th);
@@ -198,7 +198,7 @@ bt_internal :: (key:[]u8,merkle:[]u8,w:[]BtTapWork,th:[]u8) {
 // The tweaked key d' + t into w.tweaked, where d' is d or n - d so that P
 // has an even y and t is the tweak hash th; false when t >= n. valid is
 // the masked result: d in [1, n-1] and d' + t not zero.
-bt_tweak :: (th:[]u8,w:[]BtTapWork)->bool {
+bt_tweak :: (th:[]u8,w:[]BtTapWork)->bool #effects(all) {
   t:=sc_load(th);                                       // public: from the public key
   tweaked:=sc_add(ss_even(w[0].key[0].safe,w[0].point[0].odd&1),t.value);
   #assert ss_write(tweaked,w[0].tweaked[..]);
@@ -246,7 +246,7 @@ The signer computes the signature hash, then signs it with d′:
 // disjoint; the workspace is cleared on every return. schnorr_sign_step
 // takes exactly six calls to publish; a refusal clears its workspace, and
 // the calls left can't reach a signature.
-bt_taproot_sign :: (key:[]u8,merkle:[]u8,sighash:[]u8,aux:[]u8,w:[]BtTapWork,out:[]u8,overlap:bool)->bool {
+bt_taproot_sign :: (key:[]u8,merkle:[]u8,sighash:[]u8,aux:[]u8,w:[]BtTapWork,out:[]u8,overlap:bool)->bool #effects(all) {
   if w.count!=1 || key.count!=32 || (merkle.count!=0 && merkle.count!=32) || sighash.count!=32 || aux.count!=32 || out.count!=64 || overlap {return false;}
   th:[32]u8;bt_internal(key,merkle,w,th[..]);
   if !bt_tweak(th[..],w) || !ec_declassify(w[0].valid) {return bt_tap_clear(w);}
@@ -268,7 +268,7 @@ TR_BAD_HASHTYPE :: -2;      // 65 bytes ending in 0x00
 // SIGHASH_DEFAULT (0), and 65 bytes carry the type in the last byte. That
 // byte must not be 0x00, because SIGHASH_DEFAULT is written by leaving it
 // out: one hash type, one encoding.
-taproot_sig_hashtype_vartime :: (sig: [] u8) -> int {
+taproot_sig_hashtype_vartime :: (sig: [] u8) -> int #effects(all) {
   if sig.count == 64 { return BT_DEFAULT; }
   if sig.count != 65 { return TR_BAD_SIZE; }
   if sig[64] == 0 { return TR_BAD_HASHTYPE; }
@@ -279,7 +279,7 @@ taproot_sig_hashtype_vartime :: (sig: [] u8) -> int {
 // after OP_1 0x20 in the spent scriptPubKey). The caller computes sighash
 // with the hash type above (chapter 43), which refuses a type BIP-341
 // doesn't define.
-taproot_key_path_verify_vartime :: (output_key: [] u8, sig: [] u8, sighash: [] u8) -> bool {
+taproot_key_path_verify_vartime :: (output_key: [] u8, sig: [] u8, sighash: [] u8) -> bool #effects(all) {
   if output_key.count != 32 || sighash.count != 32 || taproot_sig_hashtype_vartime(sig) < 0 { return false; }
   return schnorr_verify_vartime(sighash, output_key, sig[0..<64]);
 }

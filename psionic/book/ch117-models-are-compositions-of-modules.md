@@ -762,7 +762,7 @@ Forward products and sequential sums use the shared IR's binary32 profile.
 ```jai
 // Kernel [out,channels,kh,kw], bias [1,out,1,1], so addition broadcasts
 // over the batch and both spatial axes. Both use uniform fan-in bounds.
-mdl_conv2d :: (m:MdlModel,parent:int,name:string,x:int,out:int,kh:int,kw:int)->MdlModel {
+mdl_conv2d :: (m:MdlModel,parent:int,name:string,x:int,out:int,kh:int,kw:int)->MdlModel #effects(all) {
     if m.status!=MdlStatus.ok {return m;}
     if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
     s:=m.shapes[x];
@@ -779,7 +779,7 @@ mdl_conv2d :: (m:MdlModel,parent:int,name:string,x:int,out:int,kh:int,kw:int)->M
 
 // Keep the first axis as the batch. The ordinary reshape planner owns
 // contiguity and root lifetime checks; no data is copied by this layer.
-mdl_flatten :: (m:MdlModel,x:int)->MdlModel {
+mdl_flatten :: (m:MdlModel,x:int)->MdlModel #effects(all) {
     if m.status!=MdlStatus.ok {return m;}
     if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
     s:=m.shapes[x];if s.rank<2 {return mdl_fail(m,MdlStatus.shape);}
@@ -838,17 +838,17 @@ gives `dy` to the first largest element only, the one the forward chose.
 ```jai
 // Each output is the average (or the first largest value) of one window.
 // Pooling adds no parameters: it is a node, not a module with entries.
-mdl_pool :: (m:MdlModel,op:TiOp,x:int,height:int,width:int,stride:int)->MdlModel {
+mdl_pool :: (m:MdlModel,op:TiOp,x:int,height:int,width:int,stride:int)->MdlModel #effects(all) {
     if m.status!=MdlStatus.ok {return m;}
     if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
     s:=m.shapes[x];
     if s.rank!=4 || height<1 || width<1 || stride<1 || height>s.dims[2] || width>s.dims[3] {return mdl_fail(m,MdlStatus.shape);}
     return mdl_node(m,TiNode.{op=op,a=x,window=[2]int.[height,width],stride=stride});
 }
-mdl_avgpool2d :: (m:MdlModel,x:int,height:int,width:int,stride:int)->MdlModel {return mdl_pool(m,TiOp.avgpool2d,x,height,width,stride);}
-mdl_maxpool2d :: (m:MdlModel,x:int,height:int,width:int,stride:int)->MdlModel {return mdl_pool(m,TiOp.maxpool2d,x,height,width,stride);}
+mdl_avgpool2d :: (m:MdlModel,x:int,height:int,width:int,stride:int)->MdlModel #effects(all) {return mdl_pool(m,TiOp.avgpool2d,x,height,width,stride);}
+mdl_maxpool2d :: (m:MdlModel,x:int,height:int,width:int,stride:int)->MdlModel #effects(all) {return mdl_pool(m,TiOp.maxpool2d,x,height,width,stride);}
 // Global average pooling, ResNet's head: [N,C,H,W] -> [N,C,1,1].
-mdl_global_avgpool :: (m:MdlModel,x:int)->MdlModel {
+mdl_global_avgpool :: (m:MdlModel,x:int)->MdlModel #effects(all) {
     if m.status!=MdlStatus.ok {return m;}
     if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
     s:=m.shapes[x];if s.rank!=4 {return mdl_fail(m,MdlStatus.shape);}

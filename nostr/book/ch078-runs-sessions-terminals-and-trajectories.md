@@ -141,7 +141,7 @@ the JCS bytes together:
 <!-- source: coax/lib/nostr/run/journal.coax write -->
 ```jai
 // Writes the record's JSON in NIP-RUN field order; -1 when out is too small.
-run_record_write :: (r:RunRecord,out:[]u8)->int {
+run_record_write :: (r:RunRecord,out:[]u8)->int #effects(all) {
   if r.type<0 || r.type>=RN_TYPES {return -1;}
   at:=json_raw(out,0,"{\"run\":");at=json_write_string(out,at,r.run);
   at=json_raw(out,at,",\"seq\":");at=json_write_int(out,at,r.seq);
@@ -167,7 +167,7 @@ run_record_write :: (r:RunRecord,out:[]u8)->int {
 ```jai
 // The record's Digest into out (71 bytes). work holds the record's JSON,
 // then the schema line and the JCS form: twice the JSON plus 25 bytes.
-run_digest :: (r:RunRecord,work:[]u8,out:[]u8)->u32 {
+run_digest :: (r:RunRecord,work:[]u8,out:[]u8)->u32 #effects(all) {
   if r.type<0 || r.type>=RN_TYPES {return RN_MALFORMED;}
   n:=run_record_write(r,work);if n==-1 {return RN_LIMIT;}
   hashed:=work[n..<work.count];
@@ -212,7 +212,7 @@ applies them by sequence, starting at 0, and at each sequence:
 // controller the caller admitted for the created record. subjects is the
 // work table; work is digest scratch. The head is the last applied record;
 // error and at say where replay stopped.
-run_replay :: (records:[]RunRecord,first:string,subjects:[]RunSubject,work:[]u8)->RunHead {
+run_replay :: (records:[]RunRecord,first:string,subjects:[]RunSubject,work:[]u8)->RunHead #effects(all) {
   h:RunHead;h.seq=-1;h.controller=first;
   used:=[1]int.[0];admitted:=[1]bool.[false];unknowns:=[1]int.[0];
   run_id:="";
@@ -294,7 +294,7 @@ report verified success.
 ```jai
 // The state machine for one record, after its chain and signer checked.
 // admitted[0] is whether the run was admitted.
-rn_transition :: (r:RunRecord,admitted:[]bool,table:[]RunSubject,used:[]int,unknowns:[]int)->u32 {
+rn_transition :: (r:RunRecord,admitted:[]bool,table:[]RunSubject,used:[]int,unknowns:[]int)->u32 #effects(all) {
   if r.seq==0 {return ifx r.type==RN_CREATED then RN_OK else RN_ORDER;}
   if r.type==RN_CREATED {return RN_ORDER;}
   if r.type==RN_ADMITTED {if admitted[0] {return RN_ORDER;} admitted[0]=true;return RN_OK;}
@@ -353,7 +353,7 @@ replayed head:
 // retrieval hint, never the journal: one behind (lower sequence or older
 // generation) is stale and erases nothing; one ahead means records are
 // missing (incomplete); the same sequence with another Digest is a fork.
-run_head_check :: (h:RunHead,seq:int,digest:string,generation:int)->u32 {
+run_head_check :: (h:RunHead,seq:int,digest:string,generation:int)->u32 #effects(all) {
   if h.error!=RN_OK {return h.error;}
   mine:=h.digest;
   if seq>h.seq {return RN_GAP;}

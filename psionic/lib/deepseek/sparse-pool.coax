@@ -63,8 +63,8 @@
     }
 }
 
-da_norm_width :: (width:int)->bool {return width>=1 && width<=8192;}
-da_norm :: (x:[]u16,weight:[]u16,out:[]u16,stage:[]u16,overlap:bool)->DkResult #export_c {
+da_norm_width :: (width:int)->bool #effects(all) {return width>=1 && width<=8192;}
+da_norm :: (x:[]u16,weight:[]u16,out:[]u16,stage:[]u16,overlap:bool)->DkResult #export_c #effects(all) {
     n:=x.count;if !da_norm_width(n) {return DkResult.{status=DkStatus.shape};}
     if weight.count!=n || out.count<n || stage.count<n {return DkResult.{status=DkStatus.capacity};}if overlap {return DkResult.{status=DkStatus.alias};}
     sum:PsionicAccumulator;for b:x {if (b&0x7fff)>=0x7f80 {return DkResult.{status=DkStatus.number};}v:=f64(f32_from_bits(u32(b)<<16));sum=psionic_ops_accumulate(sum,v*v);}
@@ -74,14 +74,14 @@ da_norm :: (x:[]u16,weight:[]u16,out:[]u16,stage:[]u16,overlap:bool)->DkResult #
         if !psionic_ops_fits_f32(value) {return DkResult.{status=DkStatus.arithmetic};}r:=dk_bf16(f32(value));if r.status!=DkStatus.ok {return DkResult.{status=r.status};}stage[i]=r.bits;}
     for i:0..<n {out[i]=stage[i];}return DkResult.{written=n};
 }
-da_pool_plan :: (ratio:int,width:int)->DaPoolPlan #export_c {
+da_pool_plan :: (ratio:int,width:int)->DaPoolPlan #export_c #effects(all) {
     if ratio<1 || ratio>2 || width<32 || width/32>16 || width%32!=0 {return DaPoolPlan.{status=DkStatus.shape};}
     return DaPoolPlan.{floats=2*width,bits=3*width,begin=[4]int.[0,width,2*width,3*width]};
 }
-da_pool_views :: (work:[]u16,p:DaPoolPlan)->DaPoolViews {return DaPoolViews.{input=work[p.begin[0]..<p.begin[1]],normalized=work[p.begin[1]..<p.begin[2]],scratch=work[p.begin[2]..<p.begin[3]]};}
-da_gate_max :: (a:f32,b:f32)->f64 {return (f64(a)+f64(b)+abs(f64(a)-f64(b)))/2;}
-da_pair_finite :: (a:u32,b:u32)->bool {return da_score_finite(a) && da_score_finite(b);}
-da_pool :: (ratio:int,position:int,kv:[]f32,gate:[]f32,old_kv:[]f32,old_gate:[]f32,norm:[]u16,latent:[]u16,next_kv:[]f32,next_gate:[]f32,work:DaPoolWork,overlap:bool)->DaResult #export_c {
+da_pool_views :: (work:[]u16,p:DaPoolPlan)->DaPoolViews #effects(all) {return DaPoolViews.{input=work[p.begin[0]..<p.begin[1]],normalized=work[p.begin[1]..<p.begin[2]],scratch=work[p.begin[2]..<p.begin[3]]};}
+da_gate_max :: (a:f32,b:f32)->f64 #effects(all) {return (f64(a)+f64(b)+abs(f64(a)-f64(b)))/2;}
+da_pair_finite :: (a:u32,b:u32)->bool #effects(all) {return da_score_finite(a) && da_score_finite(b);}
+da_pool :: (ratio:int,position:int,kv:[]f32,gate:[]f32,old_kv:[]f32,old_gate:[]f32,norm:[]u16,latent:[]u16,next_kv:[]f32,next_gate:[]f32,work:DaPoolWork,overlap:bool)->DaResult #export_c #effects(all) {
     n:=kv.count;p:=da_pool_plan(ratio,n);if p.status!=DkStatus.ok {return DaResult.{status=p.status};}if position<0 || position>=1048576 {return DaResult.{status=DkStatus.format};}
     if gate.count!=n || old_kv.count!=n || old_gate.count!=n || norm.count!=n || latent.count<n || next_kv.count<n || next_gate.count<n || work.floats.count<p.floats || work.bits.count<p.bits {return DaResult.{status=DkStatus.capacity};}if overlap {return DaResult.{status=DkStatus.alias};}
     ready:=ratio==1 || position%2==1;views:=da_pool_views(work.bits,p);

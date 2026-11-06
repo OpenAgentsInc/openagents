@@ -138,10 +138,10 @@ millisatoshis that Coax and Python compute the same.
 <!-- source: coax/lib/lightning/pay.coax risk -->
 ```jai
 // BOLT 7's fee: fee_base_msat + amount * fee_proportional_millionths / 1,000,000.
-pay_fee :: (base: int, ppm: int, amount: int) -> int { return base + amount * ppm / 1000000; }
+pay_fee :: (base: int, ppm: int, amount: int) -> int #effects(all) { return base + amount * ppm / 1000000; }
 // Whether the edge can carry amount on top of what this payment already
 // has on it, as far as the payer knows.
-pay_usable :: (e: PayEdge, amount: int) -> bool {
+pay_usable :: (e: PayEdge, amount: int) -> bool #effects(all) {
   return !e.disabled && !e.failed && amount >= e.htlc_min && amount <= e.htlc_max && amount + e.inflight <= e.hi;
 }
 // The uniform model: the liquidity left is equally likely to be any
@@ -150,7 +150,7 @@ pay_usable :: (e: PayEdge, amount: int) -> bool {
 // whole msat. -log of the success probability would add correctly along
 // a route; this is its first-order term, exact enough near certainty and
 // the same in every implementation.
-pay_risk :: (e: PayEdge, amount: int) -> int {
+pay_risk :: (e: PayEdge, amount: int) -> int #effects(all) {
   lo := e.lo - e.inflight; hi := e.hi - e.inflight;
   if lo < 0 { lo = 0; }
   if amount <= lo { return 0; }
@@ -188,11 +188,11 @@ PayEdge :: struct {
   inflight: int;
 }
 PayMap :: struct { edges: [PAY_MAX_EDGES] PayEdge; n: int; }
-pay_find_edge :: (m: [] PayMap, scid: u64, from: [] u8) -> int {
+pay_find_edge :: (m: [] PayMap, scid: u64, from: [] u8) -> int #effects(all) {
   for i: 0..<m[0].n { if m[0].edges[i].scid == scid && lnh_same(m[0].edges[i].from[..], from) { return i; } }
   return -1;
 }
-pay_add_edge :: (m: [] PayMap, scid: u64, from: [] u8, to: [] u8, hi: int) -> int {
+pay_add_edge :: (m: [] PayMap, scid: u64, from: [] u8, to: [] u8, hi: int) -> int #effects(all) {
   k := pay_find_edge(m, scid, from);
   if k >= 0 { return k; }
   if m[0].n == PAY_MAX_EDGES { return -1; }
@@ -205,7 +205,7 @@ pay_add_edge :: (m: [] PayMap, scid: u64, from: [] u8, to: [] u8, hi: int) -> in
 // but the advertised limit: BOLT 7 says htlc_maximum_msat is at most the
 // channel's capacity, so the liquidity is somewhere in [0, htlc_max].
 // What the payer learned survives a refresh, cut to a lower htlc_max.
-pay_map_graph :: (m: [] PayMap, g: [] GspGraph) -> int {
+pay_map_graph :: (m: [] PayMap, g: [] GspGraph) -> int #effects(all) {
   for c: 0..<g[0].count {
     ch := g[0].channels[c];
     for d: 0..<2 {
@@ -228,7 +228,7 @@ pay_map_graph :: (m: [] PayMap, g: [] GspGraph) -> int {
 // BOLT 11's r field: each hint is a private path to the payee, one hop
 // per channel, each naming the node at the channel's start. The last
 // channel of a hint goes to the payee. Nothing bounds its liquidity.
-pay_map_hints :: (m: [] PayMap, inv: [] Invoice) -> int {
+pay_map_hints :: (m: [] PayMap, inv: [] Invoice) -> int #effects(all) {
   for j: 0..<inv[0].hops_n {
     h := inv[0].hops[j];
     to := inv[0].payee;
@@ -241,7 +241,7 @@ pay_map_hints :: (m: [] PayMap, inv: [] Invoice) -> int {
   return PAY_OK;
 }
 // The payer's own channel: it knows its balance exactly.
-pay_map_local :: (m: [] PayMap, k: int, spendable: int) { m[0].edges[k].lo = spendable; m[0].edges[k].hi = spendable; }
+pay_map_local :: (m: [] PayMap, k: int, spendable: int) #effects(all) { m[0].edges[k].lo = spendable; m[0].edges[k].hi = spendable; }
 ```
 
 ## Searching from the payee
@@ -267,7 +267,7 @@ current height, as LND and Core Lightning do by default.
 // payee. amount[i] and cltv[i] are the HTLC's amount and expiry on
 // channel i; the payer's own channel charges no fee.
 PayRoute :: struct { code: int; hops: int; edge: [PAY_MAX_HOPS] int; amount: [PAY_MAX_HOPS] int; cltv: [PAY_MAX_HOPS] int; fee: int; cost: int; }
-pay_node_index :: (ids: [] [33] u8, n: [] int, id: [] u8) -> int {
+pay_node_index :: (ids: [] [33] u8, n: [] int, id: [] u8) -> int #effects(all) {
   for i: 0..<n[0] { if lnh_same(ids[i][..], id) { return i; } }
   if n[0] == PAY_MAX_NODES { return -1; }
   for i: 0..<33 { ids[n[0]][i] = id[i]; }
@@ -281,7 +281,7 @@ pay_node_index :: (ids: [] [33] u8, n: [] int, id: [] u8) -> int {
 // is charged on what it forwards, which is known only from the payee's
 // end. The first node of least cost is settled; ties go to the lower
 // index, payee 0 and payer 1, then nodes in the order edges name them.
-pay_find_route :: (m: [] PayMap, payer: [] u8, payee: [] u8, amount: int, final_cltv: int, height: int) -> PayRoute {
+pay_find_route :: (m: [] PayMap, payer: [] u8, payee: [] u8, amount: int, final_cltv: int, height: int) -> PayRoute #effects(all) {
   ids: [PAY_MAX_NODES] [33] u8; n: [1] int;
   first_two := pay_node_index(ids[..], n[..], payee) + pay_node_index(ids[..], n[..], payer);
   if lnh_same(payer, payee) || amount <= 0 { return PayRoute.{code = PAY_NO_ROUTE}; }
@@ -347,7 +347,7 @@ that changes the hash breaks every HMAC after it.
 // and expiry it should see, and payment_data: the invoice's
 // payment_secret, which proves the payer read the invoice, and
 // total_msat, which tells it how much all parts add up to.
-pay_payload :: (m: [] PayMap, r: PayRoute, i: int, secret: [] u8, total: int, out: [] u8) -> int {
+pay_payload :: (m: [] PayMap, r: PayRoute, i: int, secret: [] u8, total: int, out: [] u8) -> int #effects(all) {
   v: [40] u8; at := 0;
   last := i == r.hops - 1;
   amt := ifx last then r.amount[i] else r.amount[i + 1];
@@ -365,7 +365,7 @@ pay_payload :: (m: [] PayMap, r: PayRoute, i: int, secret: [] u8, total: int, ou
 }
 // The onion for a route: each hop's node key and payload, wrapped under
 // the session key with the payment hash as associated data.
-pay_onion :: (m: [] PayMap, r: PayRoute, session: [] u8, hash: [] u8, secret: [] u8, total: int, out: [] u8) -> int {
+pay_onion :: (m: [] PayMap, r: PayRoute, session: [] u8, hash: [] u8, secret: [] u8, total: int, out: [] u8) -> int #effects(all) {
   h: [1] OnionHops; p: [64] u8;
   for i: 0..<r.hops {
     n := pay_payload(m, r, i, secret, total, p[..]);
@@ -376,7 +376,7 @@ pay_onion :: (m: [] PayMap, r: PayRoute, session: [] u8, hash: [] u8, secret: []
 }
 // A hop's payload, read: the fields it has, and whether it is whole.
 PayHop :: struct { code: int; amount: int; cltv: int; scid: u64; has_scid: bool; has_data: bool; secret: [32] u8; total: int; }
-pay_read_payload :: (b: [] u8) -> PayHop {
+pay_read_payload :: (b: [] u8) -> PayHop #effects(all) {
   r: PayHop; known := [4] u64.[2, 4, 6, 8];
   if tlv_check_vartime(b, known[..]) != LN_OK { return PayHop.{code = PAY_INVALID_ONION_PAYLOAD}; }
   a := onion_record_vartime(b, 2); c := onion_record_vartime(b, 4);
@@ -438,7 +438,7 @@ PayNode :: struct {
 }
 PAY_NET_NODES :: 5; PAY_NET_LINKS :: 6;
 PayNet :: struct { nodes: [PAY_NET_NODES] PayNode; n: int; links: [PAY_NET_LINKS] PayLink; links_n: int; height: int; }
-pay_end :: (net: [] PayNet, l: int, s: int) -> [] LnhNode { return net[0].links[l].end[s..<s + 1]; }
+pay_end :: (net: [] PayNet, l: int, s: int) -> [] LnhNode #effects(all) { return net[0].links[l].end[s..<s + 1]; }
 ```
 
 Chapter 109's channel writes the onion field of `update_add_htlc` as
@@ -453,21 +453,21 @@ already lets the node claim the HTLC it was offered.
 // Chapter 109's channel writes update_add_htlc's onion_routing_packet as
 // zeros and update_fail_htlc's reason empty: they mean nothing to the
 // channel. A node fills them into the message the channel just queued.
-pay_put_onion :: (n: [] LnhNode, onion: [] u8) {
+pay_put_onion :: (n: [] LnhNode, onion: [] u8) #effects(all) {
   k := n[0].out_n - 1;
   for i: 0..<ONION_PACKET { n[0].out[k].b[86 + i] = onion[i]; }
 }
-pay_put_reason :: (n: [] LnhNode, reason: [] u8) {
+pay_put_reason :: (n: [] LnhNode, reason: [] u8) #effects(all) {
   k := n[0].out_n - 1;
   ln_put16(n[0].out[k].b[..], 42, reason.count);
   for i: 0..<reason.count { n[0].out[k].b[44 + i] = reason[i]; }
   n[0].out[k].n = 44 + reason.count;
 }
-pay_free_out :: (node: [] PayNode) -> int {
+pay_free_out :: (node: [] PayNode) -> int #effects(all) {
   for i: 0..<PAY_SLOTS { if node[0].outs[i].state == PAY_OUT_FREE { return i; } }
   return -1;
 }
-pay_find_out :: (node: [] PayNode, l: int, s: int, id: int) -> int {
+pay_find_out :: (node: [] PayNode, l: int, s: int, id: int) -> int #effects(all) {
   for i: 0..<PAY_SLOTS {
     o := node[0].outs[i];
     if o.state != PAY_OUT_FREE && o.link == l && o.side == s && o.id == id { return i; }
@@ -476,7 +476,7 @@ pay_find_out :: (node: [] PayNode, l: int, s: int, id: int) -> int {
 }
 // Offers an HTLC on the node's end s of link l with its onion, and keeps
 // a record of it.
-pay_offer :: (net: [] PayNet, l: int, s: int, amount: int, hash: [] u8, expiry: int, onion: [] u8, in_slot: int, part: int) -> int {
+pay_offer :: (net: [] PayNet, l: int, s: int, amount: int, hash: [] u8, expiry: int, onion: [] u8, in_slot: int, part: int) -> int #effects(all) {
   k := net[0].links[l].node[s]; node := net[0].nodes[k..<k + 1];
   slot := pay_free_out(node);
   if slot < 0 { return LNH_FULL; }
@@ -489,7 +489,7 @@ pay_offer :: (net: [] PayNet, l: int, s: int, amount: int, hash: [] u8, expiry: 
 }
 // What a received message means to the node beyond its channel: an add
 // brings an onion, a fulfill a preimage, a fail a reason.
-pay_observe :: (net: [] PayNet, l: int, s: int, m: [] u8) -> int {
+pay_observe :: (net: [] PayNet, l: int, s: int, m: [] u8) -> int #effects(all) {
   k := net[0].links[l].node[s]; node := net[0].nodes[k..<k + 1];
   type := ln_u16(m, 0);
   if type == LNH_ADD {
@@ -559,8 +559,8 @@ PAY_MPP_TIMEOUT :: 23;
 // A failure message: the code, then its fields. The channel_update that
 // UPDATE errors may carry is left out, with a zero length, as BOLT 4 now
 // recommends: applying updates from errors fingerprints the payer.
-pay_put :: (out: [] u8, at: int, v: int, width: int) { for i: 0..<width { out[at + i] = cast(u8) ((v >> (8 * (width - 1 - i))) & 255); } }
-pay_failure :: (code: int, value: int, height: int, out: [] u8) -> int {
+pay_put :: (out: [] u8, at: int, v: int, width: int) #effects(all) { for i: 0..<width { out[at + i] = cast(u8) ((v >> (8 * (width - 1 - i))) & 255); } }
+pay_failure :: (code: int, value: int, height: int, out: [] u8) -> int #effects(all) {
   ln_put16(out, 0, code);
   if code == PAY_TEMPORARY_CHANNEL_FAILURE { ln_put16(out, 2, 0); return 4; }
   if code == PAY_FEE_INSUFFICIENT { pay_put(out, 2, value, 8); ln_put16(out, 10, 0); return 12; }
@@ -576,7 +576,7 @@ pay_failure :: (code: int, value: int, height: int, out: [] u8) -> int {
 <!-- source: coax/lib/lightning/pay.coax forward -->
 ```jai
 // Fails an incoming HTLC with an error packet as it goes back.
-pay_fail_in :: (net: [] PayNet, k: int, j: int, packet: [] u8) -> int {
+pay_fail_in :: (net: [] PayNet, k: int, j: int, packet: [] u8) -> int #effects(all) {
   x := net[0].nodes[k].ins[j];
   end := pay_end(net, x.link, x.side);
   if lnh_fail(end, x.id) != LNH_OK { return PAY_CHANNEL; }
@@ -586,7 +586,7 @@ pay_fail_in :: (net: [] PayNet, k: int, j: int, packet: [] u8) -> int {
 }
 // The erring node's packet: the failure under its um key, padded to 256
 // bytes, then its ammag layer (chapter 111).
-pay_fail_code :: (net: [] PayNet, k: int, j: int, code: int, value: int) -> int {
+pay_fail_code :: (net: [] PayNet, k: int, j: int, code: int, value: int) -> int #effects(all) {
   f: [16] u8; packet: [300] u8; ss := net[0].nodes[k].ins[j].ss;
   n := onion_error_create(ss[..], f[0..<pay_failure(code, value, net[0].height, f[..])], ONION_ERROR_PAD, packet[..]);
   return pay_fail_in(net, k, j, packet[0..<n]);
@@ -594,7 +594,7 @@ pay_fail_code :: (net: [] PayNet, k: int, j: int, code: int, value: int) -> int 
 // An HTLC now irrevocably committed: peel the onion. A forwarding node
 // checks its fee and CLTV delta against the policy it announced for the
 // next channel and offers the HTLC there; the payee checks the invoice.
-pay_on_htlc :: (net: [] PayNet, k: int, j: int) -> int {
+pay_on_htlc :: (net: [] PayNet, k: int, j: int) -> int #effects(all) {
   node := net[0].nodes[k..<k + 1]; x := node[0].ins[j];
   payload: [ONION_PAYLOADS] u8; next: [ONION_PACKET] u8;
   p := onion_peel(node[0].secret[..], x.onion[..], x.hash[..], payload[..], next[..]);
@@ -642,7 +642,7 @@ parts with `mpp_timeout` after at least 60 seconds without the rest.
 // two BOLT 4 keeps for a hop that cheated: an expiry or amount below what
 // the onion says. Parts are held until those with this hash reach
 // total_msat; then all are fulfilled together.
-pay_on_final :: (net: [] PayNet, k: int, j: int, hop: PayHop) -> int {
+pay_on_final :: (net: [] PayNet, k: int, j: int, hop: PayHop) -> int #effects(all) {
   node := net[0].nodes[k..<k + 1]; x := node[0].ins[j];
   unknown := x.amount;
   if x.expiry < hop.cltv { return pay_fail_code(net, k, j, PAY_FINAL_INCORRECT_CLTV, x.expiry); }
@@ -692,7 +692,7 @@ the error onion. Then every channel end with updates to sign signs them.
 // removal did; every end with changes to sign and no revocation awaited
 // signs. A failure is passed back only once its removal is final, so the
 // next node cannot still claim the HTLC it failed.
-pay_step :: (net: [] PayNet) -> int {
+pay_step :: (net: [] PayNet) -> int #effects(all) {
   moved := 0; buffer: [LNH_MSG] u8;
   for l: 0..<net[0].links_n {
     for s: 0..<2 {
@@ -739,7 +739,7 @@ pay_step :: (net: [] PayNet) -> int {
   return moved;
 }
 // Steps until nothing moves.
-pay_run :: (net: [] PayNet) -> int {
+pay_run :: (net: [] PayNet) -> int #effects(all) {
   while true {
     moved := pay_step(net);
     if moved < 0 { return PAY_CHANNEL; }
@@ -781,7 +781,7 @@ PayPayment :: struct {
 }
 // A payment of an invoice: the amount it asks, its payment_secret, and
 // multi-part if it offers basic_mpp (feature bit 16 or 17).
-pay_begin :: (p: [] PayPayment, payer: int, inv: [] Invoice, height: int) -> int {
+pay_begin :: (p: [] PayPayment, payer: int, inv: [] Invoice, height: int) -> int #effects(all) {
   p[0] = PayPayment.{payer = payer};
   f := inv[0].features[0..<inv[0].features_n];
   if !inv[0].has_amount || inv[0].amount_msat == 0 || (!ln_feature_set(f, 14) && !ln_feature_set(f, 15)) {
@@ -797,7 +797,7 @@ pay_begin :: (p: [] PayPayment, payer: int, inv: [] Invoice, height: int) -> int
 }
 // The payer's spendable balance on its end of a channel: chapter 109's
 // lnh_affords, solved for the amount.
-pay_spendable :: (end: [] LnhNode) -> int {
+pay_spendable :: (end: [] LnhNode) -> int #effects(all) {
   s := lnh_spec(end, true, LNH_ALL);
   fee := ifx end[0].funder then lnc_commit_fee(end[0].feerate, s.n + 1, false) else 0;
   v := s.to_local_msat - (end[0].their_cfg.reserve_sat + fee) * 1000;
@@ -805,13 +805,13 @@ pay_spendable :: (end: [] LnhNode) -> int {
 }
 // Each part's session key: SHA-256 of the payer's secret and the part's
 // number, so every onion is new and the example repeats.
-pay_session :: (node: [] PayNode, part: int, out: [] u8) {
+pay_session :: (node: [] PayNode, part: int, out: [] u8) #effects(all) {
   b: [33] u8;
   for i: 0..<32 { b[i] = node[0].secret[i]; }
   b[32] = cast(u8) part;
   lnh_sha(b[..], out);
 }
-pay_launch :: (net: [] PayNet, m: [] PayMap, p: [] PayPayment, r: PayRoute, amount: int) -> int {
+pay_launch :: (net: [] PayNet, m: [] PayMap, p: [] PayPayment, r: PayRoute, amount: int) -> int #effects(all) {
   k := p[0].payer; node := net[0].nodes[k..<k + 1];
   if p[0].parts_n == PAY_MAX_PARTS { return PAY_TOO_MANY; }
   i := p[0].parts_n; p[0].parts_n += 1;
@@ -837,7 +837,7 @@ pay_launch :: (net: [] PayNet, m: [] PayMap, p: [] PayPayment, r: PayRoute, amou
   p[0].parts[i] = part;
   return PAY_OK;
 }
-pay_settle_part :: (m: [] PayMap, p: [] PayPayment, i: int) {
+pay_settle_part :: (m: [] PayMap, p: [] PayPayment, i: int) #effects(all) {
   r := p[0].parts[i].route;
   for h: 0..<r.hops { m[0].edges[r.edge[h]].inflight -= r.amount[h]; }
 }
@@ -863,7 +863,7 @@ failure from the payee ends the payment, except `mpp_timeout`.
 // temporary_channel_failure lowers what the channel is known to carry to
 // less than what this payment had on it. An error from the payee ends
 // the payment.
-pay_learn :: (m: [] PayMap, p: [] PayPayment, i: int, reason: [] u8) {
+pay_learn :: (m: [] PayMap, p: [] PayPayment, i: int, reason: [] u8) #effects(all) {
   part := p[0].parts[i]; r := part.route;
   pubkeys: [PAY_MAX_HOPS * 33] u8;
   for h: 0..<r.hops { for b: 0..<33 { pubkeys[33 * h + b] = m[0].edges[r.edge[h]].to[b]; } }
@@ -905,7 +905,7 @@ a round changes nothing.
 // route carries into halves when the invoice allows it; run the network;
 // then read every part that came back. Returns PAY_PENDING while the
 // payment goes on.
-pay_round :: (net: [] PayNet, m: [] PayMap, p: [] PayPayment) -> int {
+pay_round :: (net: [] PayNet, m: [] PayMap, p: [] PayPayment) -> int #effects(all) {
   if p[0].code != PAY_PENDING { return p[0].code; }
   k := p[0].payer; node := net[0].nodes[k..<k + 1];
   for l: 0..<net[0].links_n {
@@ -953,7 +953,7 @@ pay_round :: (net: [] PayNet, m: [] PayMap, p: [] PayPayment) -> int {
   return p[0].code;
 }
 // Rounds until the payment ends.
-pay_invoice :: (net: [] PayNet, m: [] PayMap, p: [] PayPayment) -> int {
+pay_invoice :: (net: [] PayNet, m: [] PayMap, p: [] PayPayment) -> int #effects(all) {
   while pay_round(net, m, p) == PAY_PENDING { }
   return p[0].code;
 }
@@ -970,7 +970,7 @@ payee's key.
 <!-- source: coax/lib/lightning/pay.coax setup -->
 ```jai
 // A node's identity key, and an invoice it can be paid with.
-pay_node :: (net: [] PayNet, secret: [] u8) -> int {
+pay_node :: (net: [] PayNet, secret: [] u8) -> int #effects(all) {
   k := net[0].n; net[0].n += 1;
   for i: 0..<32 { net[0].nodes[k].secret[i] = secret[i]; }
   net[0].nodes[k].id = gsp_public(secret);
@@ -978,13 +978,13 @@ pay_node :: (net: [] PayNet, secret: [] u8) -> int {
 }
 // A channel opened with chapter 109's messages: node a funds it with
 // funding satoshis and pushes push msat to b.
-pay_config :: (funder: bool, funding: int, push: int, k: int) -> LnhConfig {
+pay_config :: (funder: bool, funding: int, push: int, k: int) -> LnhConfig #effects(all) {
   c := lnh_config(funder);
   c.funding_sat = funding; c.push_msat = push;
   for i: 2..<22 { c.spk[i] = cast(u8) (0x10 * k + i); }
   return c;
 }
-pay_open :: (net: [] PayNet, a: int, b: int, funding: int, push: int, scid: u64, announced: bool) -> int {
+pay_open :: (net: [] PayNet, a: int, b: int, funding: int, push: int, scid: u64, announced: bool) -> int #effects(all) {
   l := net[0].links_n; net[0].links_n += 1;
   net[0].links[l].node[0] = a; net[0].links[l].node[1] = b;
   net[0].links[l].scid = scid; net[0].links[l].announced = announced;
@@ -1003,13 +1003,13 @@ pay_open :: (net: [] PayNet, a: int, b: int, funding: int, push: int, scid: u64,
   if code == LNH_OK { code = lnh_flush(x, y); }
   return code;
 }
-pay_policy :: (net: [] PayNet, l: int, s: int, base: int, ppm: int, cltv: int, htlc_max: int) {
+pay_policy :: (net: [] PayNet, l: int, s: int, base: int, ppm: int, cltv: int, htlc_max: int) #effects(all) {
   net[0].links[l].policy[s] = PayPolicy.{fee_base = base, fee_ppm = ppm, cltv = cltv, htlc_min = 1000, htlc_max = htlc_max};
 }
 // A public channel's gossip, written and signed by its nodes and added
 // to a graph: the announcement with both funding keys, and each end's
 // channel_update. disabled sets the disable bit of end s.
-pay_announce :: (net: [] PayNet, l: int, g: [] GspGraph, timestamp: u64, disabled: int) -> int {
+pay_announce :: (net: [] PayNet, l: int, g: [] GspGraph, timestamp: u64, disabled: int) -> int #effects(all) {
   x := net[0].links[l]; m: [512] u8; f: [1] u8;
   a := net[0].nodes[x.node[0]].secret; b := net[0].nodes[x.node[1]].secret;
   n := gossip_announcement_write_vartime(g[0].chain[..], x.scid, a[..], b[..], x.end[0].funding_secret[..], x.end[1].funding_secret[..], f[0..<0], m[..]);
@@ -1028,7 +1028,7 @@ pay_announce :: (net: [] PayNet, l: int, g: [] GspGraph, timestamp: u64, disable
 // The payee's invoice: amount, payment_hash of a preimage made from k, a
 // payment_secret, payment_secret and basic_mpp features, and any route
 // hints. The payee keeps the preimage.
-pay_write_invoice :: (net: [] PayNet, payee: int, amount: int, k: int, hints: [] InvHop, out: [] u8) -> int {
+pay_write_invoice :: (net: [] PayNet, payee: int, amount: int, k: int, hints: [] InvHop, out: [] u8) -> int #effects(all) {
   node := net[0].nodes[payee..<payee + 1];
   v := node[0].invoices_n; node[0].invoices_n += 1;
   inv := PayInvoice.{amount = amount};
@@ -1048,7 +1048,7 @@ pay_write_invoice :: (net: [] PayNet, payee: int, amount: int, k: int, hints: []
   return ifx t.code == INV_OK then t.length else -1;
 }
 // Each end's balance, msat, as its own latest commitment says.
-pay_balance :: (net: [] PayNet, l: int, s: int) -> int { return lnh_spec(pay_end(net, l, s), true, LNH_NOW).to_local_msat; }
+pay_balance :: (net: [] PayNet, l: int, s: int) -> int #effects(all) { return lnh_spec(pay_end(net, l, s), true, LNH_NOW).to_local_msat; }
 ```
 
 ## The example

@@ -160,11 +160,11 @@ FetchStep :: struct { fetch: Fetch; previous: FetchPose; status: FollowerStatus;
 
 // The receipt consumes an already-paid realm clock, never an approximation
 // made from frame seconds. Its cursor detects duplicate and skipped calls.
-follower_cursor_ok :: (ff_cursor: FrameCursor) -> bool {
+follower_cursor_ok :: (ff_cursor: FrameCursor) -> bool #effects(all) {
   if !ff_cursor.started { return true; }
   return ff_cursor.frames > 0 && ff_cursor.ticks >= 0 && ff_cursor.carry_ns >= 0 && ff_cursor.carry_ns < tick.LOOP_STEP_NS;
 }
-follower_frame :: (ff_cursor: FrameCursor, ff_clock: tick.FrameClock, ff_targets: [] trace.StepTarget) -> FrameReceipt {
+follower_frame :: (ff_cursor: FrameCursor, ff_clock: tick.FrameClock, ff_targets: [] trace.StepTarget) -> FrameReceipt #effects(all) {
   ff_out: FrameReceipt; ff_out.cursor = ff_cursor;
   if !follower_cursor_ok(ff_cursor) { return ff_out; }
   if ff_clock.step_ns != tick.LOOP_STEP_NS || ff_clock.max_steps < 1 || ff_clock.max_steps > tick.LOOP_MAX_STEPS
@@ -197,16 +197,16 @@ follower_frame :: (ff_cursor: FrameCursor, ff_clock: tick.FrameClock, ff_targets
 // Only these four fields participate in grounded route motion. The
 // remaining fields retain their declared walking defaults and are not
 // claims that this route follower jumps, slides or owns a capsule.
-follower_profile :: () -> tuning.LocomotionProfile {
+follower_profile :: () -> tuning.LocomotionProfile #effects(all) {
   ff_p: tuning.LocomotionProfile;
   ff_p.walk_speed = 2.6; ff_p.run_speed = 5.2; ff_p.acceleration = 14; ff_p.turn_rate = 9;
   return ff_p;
 }
-follower_step_seconds :: () -> f32 { return f32(tick.LOOP_STEP_NS) / f32(tick.LOOP_SECOND); }
+follower_step_seconds :: () -> f32 #effects(all) { return f32(tick.LOOP_STEP_NS) / f32(tick.LOOP_SECOND); }
 
 follower_step :: (ff_f: Follower, ff_p: tuning.LocomotionProfile,
     ff_g: mesh.Ground, ff_heights: [] f32, ff_nodes: [] f32, ff_links: [] int, ff_half: f32,
-    ff_to: Point, ff_stop: f32, ff_blocks: [] f32, ff_radius: f32) -> FollowerStep {
+    ff_to: Point, ff_stop: f32, ff_blocks: [] f32, ff_radius: f32) -> FollowerStep #effects(all) {
   ff_out := FollowerStep.{follower = ff_f};
   if !tuning.locomotion_profile_ok(ff_p) { ff_out.status = FollowerStatus.bad_profile; return ff_out; }
   if !finite3(ff_f.pos) || !finite3(ff_f.vel) || !finite(ff_f.face) || !finite3(ff_to)
@@ -245,28 +245,28 @@ follower_step :: (ff_f: Follower, ff_p: tuning.LocomotionProfile,
   return ff_out;
 }
 
-fixed_hand :: (ff_feet: Point, ff_face: f32, ff_ahead: f32, ff_up: f32, ff_right: f32) -> Point {
+fixed_hand :: (ff_feet: Point, ff_face: f32, ff_ahead: f32, ff_up: f32, ff_right: f32) -> Point #effects(all) {
   ff_s := ff_math.math_sin(ff_face); ff_c := ff_math.math_cos(ff_face);
   return add(ff_feet, v3(ff_s * ff_ahead - ff_c * ff_right, ff_up, ff_c * ff_ahead + ff_s * ff_right));
 }
-fixed_throw_velocity :: (ff_yaw: f32, ff_lift: f32, ff_speed: f32, ff_carrier: Point) -> Point {
+fixed_throw_velocity :: (ff_yaw: f32, ff_lift: f32, ff_speed: f32, ff_carrier: Point) -> Point #effects(all) {
   ff_dir := v3(ff_math.math_sin(ff_yaw) * ff_math.math_cos(ff_lift), ff_math.math_sin(ff_lift), ff_math.math_cos(ff_yaw) * ff_math.math_cos(ff_lift));
   ff_v := times(ff_dir, ff_speed);
   if finite3(ff_carrier) { ff_v = add(ff_v, v3(ff_carrier.x, 0, ff_carrier.z)); }
   return ff_v;
 }
-fixed_ball_throw :: (ff_b: Ball, ff_hand: Point, ff_yaw: f32, ff_lift: f32, ff_carrier: Point) -> Ball {
+fixed_ball_throw :: (ff_b: Ball, ff_hand: Point, ff_yaw: f32, ff_lift: f32, ff_carrier: Point) -> Ball #effects(all) {
   if ff_b.held < 0 { return ff_b; }
   ff_next := verse_ball_release(ff_b, ff_hand, fixed_throw_velocity(ff_yaw, ff_lift, f32(THROW_SPEED), ff_carrier));
   ff_next.thrown = true; return ff_next;
 }
-fixed_mouth :: (ff_d: Follower) -> Point { return fixed_hand(ff_d.pos, ff_d.face, f32(MOUTH_AHEAD), f32(MOUTH_UP), 0); }
+fixed_mouth :: (ff_d: Follower) -> Point #effects(all) { return fixed_hand(ff_d.pos, ff_d.face, f32(MOUTH_AHEAD), f32(MOUTH_UP), 0); }
 
-fetch_pose :: (ff_f: Fetch) -> FetchPose {
+fetch_pose :: (ff_f: Fetch) -> FetchPose #effects(all) {
   return FetchPose.{ready = true, dog = ff_f.dog.pos, face = ff_f.dog.face, ball = ff_f.ball.pos, spin = ff_f.ball.spin};
 }
 // A pure drawing copy. No simulation state or cursor is written.
-fetch_draw :: (ff_f: Fetch, ff_previous: FetchPose, ff_alpha: f32) -> Fetch {
+fetch_draw :: (ff_f: Fetch, ff_previous: FetchPose, ff_alpha: f32) -> Fetch #effects(all) {
   if !ff_previous.ready { return ff_f; }
   ff_a := ifx finite(ff_alpha) then clamp(ff_alpha, 0, 1) else 0.0f32;
   ff_draw := ff_f;
@@ -283,7 +283,7 @@ fetch_draw :: (ff_f: Fetch, ff_previous: FetchPose, ff_alpha: f32) -> Fetch {
 // exactly the shared 1/64-second step. It owns no independent frame clock.
 fetch_step :: (ff_f: Fetch, ff_p: tuning.LocomotionProfile, ff_g: mesh.Ground, ff_heights: [] f32,
     ff_nodes: [] f32, ff_links: [] int, ff_half: f32, ff_you: Point, ff_hand: Point,
-    ff_spheres: [] f32, ff_boxes: [] f32, ff_blocks: [] f32, ff_enabled: bool, ff_auto_pick: bool) -> FetchStep {
+    ff_spheres: [] f32, ff_boxes: [] f32, ff_blocks: [] f32, ff_enabled: bool, ff_auto_pick: bool) -> FetchStep #effects(all) {
   ff_out := FetchStep.{fetch = ff_f, previous = fetch_pose(ff_f)};
   ff_next := ff_f; ff_b := ff_f.ball;
   if ff_b.held == 0 { ff_b = verse_ball_carry(ff_b, ff_hand); }
@@ -324,7 +324,7 @@ fetch_step :: (ff_f: Fetch, ff_p: tuning.LocomotionProfile, ff_g: mesh.Ground, f
 
 // A scene may apply one queued input command before stepping. Refusal restores the complete
 // pre-command state, while drawing always starts from that original published pose.
-fetch_publish :: (ff_before: Fetch, ff_stepped: FetchStep) -> FetchStep {
+fetch_publish :: (ff_before: Fetch, ff_stepped: FetchStep) -> FetchStep #effects(all) {
   ff_out := ff_stepped; ff_out.previous = fetch_pose(ff_before);
   if ff_stepped.status != FollowerStatus.ok { ff_out.fetch = ff_before; }
   return ff_out;

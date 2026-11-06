@@ -21,7 +21,7 @@ mhd_header :: (head:string,key:string)->string {
 }
 mhd_label :: (i:int,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"reply-");jo_int(o[..],i);return jo_text(o[..]);}
 mhd_reply :: (d:Jv,rows:int,text:string,expected:int)->bool {row:=jv_at(d,rows,expected-1);return jv_len(d,rows)==expected&&jv_int(d,jv_at(d,row,0),-1)==4&&jv_int(d,jv_at(d,row,1),-1)==512&&jv_int(d,jv_at(d,row,6),-1)==text.count&&jv_int(d,jv_at(d,row,7),-1)==int(hf_hash(text));}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]){return 2;}
  if args_at(a[..],0)=="--peer" {if args_count(a[..])!=5{return 2;}return hdr_peer(args_at(a[..],1),args_at(a[..],2),args_at(a[..],3),args_at(a[..],4));}
  if args_count(a[..])<4 {tool_errln("usage: metal-http-redirect ROOT RESOURCES SDK NEW_OUT [--existing]");return 2;}

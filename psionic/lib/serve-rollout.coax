@@ -344,19 +344,19 @@ RoSim :: struct {status:RrStatus;run:RrSim;ver:[256]int;served_by:[256]int;doc:[
 }
 
 // book:begin step
-ro_init :: (stable:RoDoc)->RoState {return RoState.{phase=RoPhase.idle,stable=stable,doc=stable};}
-ro_plan_ok :: (p:RoPlan)->bool {
+ro_init :: (stable:RoDoc)->RoState #effects(all) {return RoState.{phase=RoPhase.idle,stable=stable,doc=stable};}
+ro_plan_ok :: (p:RoPlan)->bool #effects(all) {
     if p.nsteps<1 || p.nsteps>p.steps.count || p.replicas<1 || p.replicas>RR_REPLICAS || p.samples<1 || p.p95_us<1 {return false;}
     if p.error_pct<0 || p.error_pct>100 || p.window_us<1 {return false;}
     last:=0;
     for k:0..<p.nsteps {if p.steps[k]<=last || p.steps[k]>99 {return false;}last=p.steps[k];}
     return true;
 }
-ro_obs_ok :: (o:RoObs)->bool {return o.served>=0 && o.errors>=0 && o.errors<=o.served && o.p95_us>=0 && o.golden_bad>=0;}
+ro_obs_ok :: (o:RoObs)->bool #effects(all) {return o.served>=0 && o.errors>=0 && o.errors<=o.served && o.p95_us>=0 && o.golden_bad>=0;}
 // A golden mismatch fails at once. Otherwise a window needs `samples`
 // finished canary requests; then the canary's errors so far must stay
 // within the budget and the window's P95 within the objective.
-ro_verdict :: (p:RoPlan,o:RoObs,served:int,errors:int)->RoVerdict {
+ro_verdict :: (p:RoPlan,o:RoObs,served:int,errors:int)->RoVerdict #effects(all) {
     if o.golden_bad>0 {return RoVerdict.golden;}
     if o.served<p.samples {return RoVerdict.wait;}
     if errors*100>p.error_pct*served {return RoVerdict.errors;}
@@ -364,9 +364,9 @@ ro_verdict :: (p:RoPlan,o:RoObs,served:int,errors:int)->RoVerdict {
     return RoVerdict.pass;
 }
 // Give up the canary: no new request goes to it; it drains.
-ro_revert :: (s:RoState,v:RoVerdict)->RoState {n:=s;n.phase=RoPhase.revert;n.share=0;n.seen=0;n.sent=0;n.verdict=v;return n;}
+ro_revert :: (s:RoState,v:RoVerdict)->RoState #effects(all) {n:=s;n.phase=RoPhase.revert;n.share=0;n.seen=0;n.sent=0;n.verdict=v;return n;}
 // One input. A refused input returns the state unchanged with its reason.
-ro_step :: (p:RoPlan,s:RoState,inp:RoInput)->RoStep {
+ro_step :: (p:RoPlan,s:RoState,inp:RoInput)->RoStep #effects(all) {
     r:=RoStep.{state=s,refusal=RoRefusal.phase};n:=s;
     if inp.event==RoEvent.begin {
         if s.phase!=RoPhase.idle {return r;}
@@ -422,7 +422,7 @@ ro_step :: (p:RoPlan,s:RoState,inp:RoInput)->RoStep {
 // The traffic split: with a share above 0, a new request goes to the other
 // build when that keeps its count at or below the step's share of the
 // requests seen this step.
-ro_pick :: (s:RoState)->RoPick {
+ro_pick :: (s:RoState)->RoPick #effects(all) {
     if s.share==0 {return RoPick.{state=s};}
     n:=s;n.seen+=1;
     if (n.sent+1)*100<=n.share*n.seen {n.sent+=1;return RoPick.{state=n,other=true};}
@@ -438,7 +438,7 @@ ro_pick :: (s:RoState)->RoPick {
 // by share and routed among their build's replicas; idle ready replicas
 // take their queue's head; the losing build's replicas with nothing left
 // stop, and when it has none left the controller hears drained.
-ro_sim :: (ro:RoRun,reqs:[]RrRequest,tok:[]int)->RoSim {
+ro_sim :: (ro:RoRun,reqs:[]RrRequest,tok:[]int)->RoSim #effects(all) {
     s:RoSim;off:RrScaler;cfg:=ro.cfg;mem:[1728]f64;
     s.status=rr_check(cfg,off,reqs,tok);
     if s.status!=RrStatus.ok {return s;}
@@ -534,18 +534,18 @@ ro_sim :: (ro:RoRun,reqs:[]RrRequest,tok:[]int)->RoSim {
     return ro_track(s,tr);
 }
 // book:end sim
-ro_track :: (from:RoSim,t:RoTrack)->RoSim {s:=from;s.inputs=t.inputs;s.log=t.log;s.state=t.state;return s;}
-ro_build_ok :: (b:RoBuild)->bool {return b.slow_pct>=100 && b.slow_pct<=1000 && b.err_every>=0;}
+ro_track :: (from:RoSim,t:RoTrack)->RoSim #effects(all) {s:=from;s.inputs=t.inputs;s.log=t.log;s.state=t.state;return s;}
+ro_build_ok :: (b:RoBuild)->bool #effects(all) {return b.slow_pct>=100 && b.slow_pct<=1000 && b.err_every>=0;}
 // Chapter 178's readiness machine for one golden warm-up: verify, map,
 // allocate, then the warm-up, whose answer matches its evidence or not.
-ro_ready :: (golden_ok:bool)->bool {
+ro_ready :: (golden_ok:bool)->bool #effects(all) {
     l:=cs_start(1);
     l=cs_step(l,CsEvent.verified,true);l=cs_step(l,CsEvent.mapped,true);l=cs_step(l,CsEvent.allocated,true);
     return cs_ready(cs_step(l,CsEvent.warmed,golden_ok));
 }
 // The canary's window: its requests that finished after the window opened
 // and by now, their errors, and the nearest-rank P95 of their latency.
-ro_observe :: (fate:[]RrFate,served_by:[]int,err:[]bool,reqs:[]RrRequest,version:int,opened:int,now:int)->RoObs {
+ro_observe :: (fate:[]RrFate,served_by:[]int,err:[]bool,reqs:[]RrRequest,version:int,opened:int,now:int)->RoObs #effects(all) {
     o:RoObs;lat:[256]int;
     for i:0..<reqs.count {
         f:=fate[i];
@@ -558,17 +558,17 @@ ro_observe :: (fate:[]RrFate,served_by:[]int,err:[]bool,reqs:[]RrRequest,version
     return o;
 }
 // Feed the controller one input and log it (the first 32).
-ro_apply :: (from:RoTrack,p:RoPlan,inp:RoInput,now:int)->RoTrack {
+ro_apply :: (from:RoTrack,p:RoPlan,inp:RoInput,now:int)->RoTrack #effects(all) {
     t:=from;r:=ro_step(p,t.state,inp);t.state=r.state;
     if t.inputs<RO_LOG {t.log[t.inputs]=RoLog.{at=now,event=inp.event,refusal=r.refusal,phase=r.state.phase,share=r.state.share,verdict=r.state.verdict};}
     t.inputs+=1;
     return t;
 }
 
-ro_phase_name :: (p:RoPhase)->string {names:=[6]string.["idle","warming","canary","verified","retire","revert"];return names[cast(int)p];}
-ro_event_name :: (e:RoEvent)->string {names:=[6]string.["begin","warm","window","promote","rollback","drained"];return names[cast(int)e];}
-ro_refusal_name :: (r:RoRefusal)->string {
+ro_phase_name :: (p:RoPhase)->string #effects(all) {names:=[6]string.["idle","warming","canary","verified","retire","revert"];return names[cast(int)p];}
+ro_event_name :: (e:RoEvent)->string #effects(all) {names:=[6]string.["begin","warm","window","promote","rollback","drained"];return names[cast(int)e];}
+ro_refusal_name :: (r:RoRefusal)->string #effects(all) {
     names:=[7]string.["none","not in this phase","capability document does not match","version not newer than the stable one","plan or observation out of bounds","no passing verdict at every step","rollback target is not the stable version"];
     return names[cast(int)r];
 }
-ro_verdict_name :: (v:RoVerdict)->string {names:=[6]string.["none","wait","pass","golden mismatch","error budget spent","P95 over the objective"];return names[cast(int)v];}
+ro_verdict_name :: (v:RoVerdict)->string #effects(all) {names:=[6]string.["none","wait","pass","golden mismatch","error budget spent","P95 over the objective"];return names[cast(int)v];}

@@ -11,8 +11,8 @@
 #load "../coax/lib/nn/onnx.coax";
 #load "../coax/lib/crypto/sha256-memory.coax";
 
-cxcam_stdin :: (out: [] u8, timeout_ms: int) -> int #foreign;
-cxcam_stdout :: (s: [] u8) -> int #foreign;
+cxcam_stdin :: (out: [] u8, timeout_ms: int) -> int #foreign #effects(all);
+cxcam_stdout :: (s: [] u8) -> int #foreign #effects(all);
 
 HK_NET :: 224;
 HK_IN :: 150528;               // 224 * 224 * 3

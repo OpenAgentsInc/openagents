@@ -181,7 +181,7 @@ explains these operations and composition exclusions.
 
 <!-- source: psionic/lib/text/unicode.coax normalize -->
 ```jai
-pt_normalize_checked :: (table:[]u8,input:string,output:[]u8,scalars:[]int,overlap:bool)->PtResult #export_c {
+pt_normalize_checked :: (table:[]u8,input:string,output:[]u8,scalars:[]int,overlap:bool)->PtResult #export_c #effects(all) {
     if !pt_text_count(input.count) {return PtResult.{status=PtStatus.size};}
     if overlap {return PtResult.{status=PtStatus.alias};}
     t:=pt_layout(table);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}
@@ -239,7 +239,7 @@ span oracle so a missing vocabulary merge cannot hide a wrong split.
 <!-- source: psionic/lib/text/tokenizer.coax pieces -->
 ```jai
 // The pinned split expression; numeric scalars are disjoint from word runs.
-pt_piece :: (table:[]u8,t:PtLayout,s:string,at:int)->int {
+pt_piece :: (table:[]u8,t:PtLayout,s:string,at:int)->int #effects(all) {
     end:=pt_contraction(s,at);if end>at {return end;}
     r:=pt_rune(s,at);if pt_has(table,t,r.cp,4) {return r.next;}
     pos:=at;if r.cp!=13 && r.cp!=10 {pos=r.next;}
@@ -297,7 +297,7 @@ the complete sequence.
 <!-- source: psionic/lib/text/tokenizer.coax encode -->
 ```jai
 // Only output is published. Stage/normal/scalars/symbols are disposable workspaces.
-pt_encode_checked :: (table:[]u8,input:string,output:[]int,stage:[]int,normal:[]u8,scalars:[]int,symbols:[]int,overlap:bool)->PtResult #export_c {
+pt_encode_checked :: (table:[]u8,input:string,output:[]int,stage:[]int,normal:[]u8,scalars:[]int,symbols:[]int,overlap:bool)->PtResult #export_c #effects(all) {
     if !pt_text_count(input.count) {return PtResult.{status=PtStatus.size};}
     if overlap {return PtResult.{status=PtStatus.alias};}
     t:=pt_layout(table);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}
@@ -351,7 +351,7 @@ suffix with its siblings.
 ```jai
 // `full` is the concatenation of complete branch encodings; ends are exclusive.
 // Tokenize the prefix candidate separately, then shrink it against EVERY branch.
-pt_split_checked :: (candidate:[]int,full:[]int,ends:[]int,output:[]PtBranch,overlap:bool)->PtSplit #export_c {
+pt_split_checked :: (candidate:[]int,full:[]int,ends:[]int,output:[]PtBranch,overlap:bool)->PtSplit #export_c #effects(all) {
     if !pt_branch_count(ends.count) || !pt_token_count(candidate.count) {return PtSplit.{status=PtStatus.size};}
     if output.count<ends.count {return PtSplit.{status=PtStatus.capacity};}
     if overlap {return PtSplit.{status=PtStatus.alias};}

@@ -74,9 +74,9 @@ le_rows :: (text: string, rows: [] LeRow) -> int {
 
 
 // argv (tool-native.c), without args.coax: its names are myrealm's too
-cxargs_count :: () -> int #foreign;
-cxargs_len :: (i: int) -> int #foreign;
-cxargs_byte :: (i: int, j: int) -> int #foreign;
+cxargs_count :: () -> int #foreign #effects(all);
+cxargs_len :: (i: int) -> int #foreign #effects(all);
+cxargs_byte :: (i: int, j: int) -> int #foreign #effects(all);
 LeArg :: struct { b: [512] u8; n: int; }
 le_arg :: (i: int, a: [] LeArg) -> string {
   k := cxargs_len(i); a[0].n = 0;
@@ -305,7 +305,7 @@ le_score :: (plans: string, rows: [] LeRow, n: int, set: string, why: bool) -> i
 }
 lo_int :: (a: int, b: int) -> int { return ifx a < b then a else b; }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] LeArg; argc := cxargs_count();
   tsv: [65536] u8; tn := fs_read("coax/web/api/eval_layout.tsv", tsv[..]);
   if argc < 2 || tn < 0 { print("usage (from the repository root): coax/web/tool.sh realm-layout-eval PLANS [--set tune|held] [--why]\n"); return 2; }

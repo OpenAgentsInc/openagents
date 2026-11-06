@@ -111,7 +111,7 @@ QueryGround :: struct { y: f32; gx: f32; gz: f32; steep: bool; shape: QueryShape
 
 // The flat height is a fallback, not a second floor hiding a mesh's valleys. Each admitted
 // mesh continues its nearest edge outside its rectangle. A clamped axis has zero slope.
-query_base_ground :: (c: Colliders, x: f32, z: f32) -> QueryGround {
+query_base_ground :: (c: Colliders, x: f32, z: f32) -> QueryGround #effects(all) {
   out := QueryGround.{y = c.ground};
   found := false;
   for i: 0..<c.heightfields.count {
@@ -128,7 +128,7 @@ query_base_ground :: (c: Colliders, x: f32, z: f32) -> QueryGround {
 // The highest surface at (x, z) at or below `below`: the ground, a box's top whose footprint is
 // less than `reach` away (a walker's radius), or a floor (within QUERY_FLOOR_PAD of its edge).
 // A surface only as high as one already found doesn't replace it.
-query_ground :: (c: Colliders, x: f32, z: f32, below: f32, reach: f32) -> QueryGround {
+query_ground :: (c: Colliders, x: f32, z: f32, below: f32, reach: f32) -> QueryGround #effects(all) {
   out := query_base_ground(c, x, z);
   for i: 0..<query_boxes(c) {
     b := query_box(c, i);
@@ -143,13 +143,13 @@ query_ground :: (c: Colliders, x: f32, z: f32, below: f32, reach: f32) -> QueryG
   return out;
 }
 // What feet at `feet` stand on: the highest surface they can step onto.
-query_stand :: (c: Colliders, x: f32, z: f32, feet: f32, reach: f32) -> QueryGround {
+query_stand :: (c: Colliders, x: f32, z: f32, feet: f32, reach: f32) -> QueryGround #effects(all) {
   return query_ground(c, x, z, feet + f32(QUERY_STEP_UP), reach);
 }
 
 // Runtime consumers refuse an incomplete scene instead of standing on a skipped mesh.
 // The legacy query_ground above retains its permissive malformed-shape behavior.
-query_ground_checked :: (c: Colliders, x: f32, z: f32, below: f32, reach: f32) -> QueryGround {
+query_ground_checked :: (c: Colliders, x: f32, z: f32, below: f32, reach: f32) -> QueryGround #effects(all) {
   if !query_finite(x) || !query_finite(z) || !query_finite(below) || !query_finite(reach) || reach < 0 {
     return QueryGround.{status = QueryStatus.invalid};
   }
@@ -162,7 +162,7 @@ query_ground_checked :: (c: Colliders, x: f32, z: f32, below: f32, reach: f32) -
   }
   return query_ground(c, x, z, below, reach);
 }
-query_stand_checked :: (c: Colliders, x: f32, z: f32, feet: f32, reach: f32) -> QueryGround {
+query_stand_checked :: (c: Colliders, x: f32, z: f32, feet: f32, reach: f32) -> QueryGround #effects(all) {
   return query_ground_checked(c, x, z, feet + f32(QUERY_STEP_UP), reach);
 }
 ```
@@ -173,7 +173,7 @@ realm host, and Dead Gears) reaches the ground through it:
 
 <!-- source: aethyr/walk.coax ground -->
 ```jai
-floor_under :: (w: World, x: f32, z: f32, feet: f32) -> StandHit {
+floor_under :: (w: World, x: f32, z: f32, feet: f32) -> StandHit #effects(all) {
   g := query_ground(colliders(w), x, z, feet + w.collision.step_up, w.collision.radius);
   return StandHit.{y = g.y, gx = g.gx, gz = g.gz};
 }
@@ -200,7 +200,7 @@ smallest `t`:
 // with the normal facing back along the ray.
 QueryHit :: struct { hit: bool; t: f32; point: WorldPoint; normal: WorldPoint; shape: QueryShape; index: int = -1; status: QueryStatus; }
 
-query_height_status :: (status: height_rays.GroundRayStatus) -> QueryStatus {
+query_height_status :: (status: height_rays.GroundRayStatus) -> QueryStatus #effects(all) {
   if status == height_rays.GroundRayStatus.invalid { return QueryStatus.invalid; }
   if status == height_rays.GroundRayStatus.terrain { return QueryStatus.terrain; }
   if status == height_rays.GroundRayStatus.exhausted { return QueryStatus.exhausted; }
@@ -209,7 +209,7 @@ query_height_status :: (status: height_rays.GroundRayStatus) -> QueryStatus {
 
 // The first t in [0, far] at which o + t d enters box low-high (slabs), and the face it enters by.
 QueryEntry :: struct { hit: bool; t: f32; normal: WorldPoint; }
-query_enter_box :: (low: WorldPoint, high: WorldPoint, o: WorldPoint, d: WorldPoint, far: f32) -> QueryEntry {
+query_enter_box :: (low: WorldPoint, high: WorldPoint, o: WorldPoint, d: WorldPoint, far: f32) -> QueryEntry #effects(all) {
   out: QueryEntry;
   enter := -f32(QUERY_TOO_BIG); leave := f32(QUERY_TOO_BIG);
   face: int; side: f32;   // the axis entered by, and the sign of its outward normal
@@ -235,7 +235,7 @@ query_enter_box :: (low: WorldPoint, high: WorldPoint, o: WorldPoint, d: WorldPo
 }
 // The first t in [0, far] at which o + t d enters the capsule a-b of radius r: its side, or a
 // sphere at either end.
-query_enter_capsule :: (a: WorldPoint, b: WorldPoint, r: f32, o: WorldPoint, d: WorldPoint, far: f32) -> QueryEntry {
+query_enter_capsule :: (a: WorldPoint, b: WorldPoint, r: f32, o: WorldPoint, d: WorldPoint, far: f32) -> QueryEntry #effects(all) {
   out: QueryEntry;
   gap := world_sub(o, query_nearest(a, b, o));
   if world_dot(gap, gap) <= r * r { out.hit = true; out.normal = world_scale(world_unit(d), -1); return out; }
@@ -271,7 +271,7 @@ query_enter_capsule :: (a: WorldPoint, b: WorldPoint, r: f32, o: WorldPoint, d: 
   return out;
 }
 // The first t in [0, far] at which o + t d reaches height y from above (the ground is solid below).
-query_enter_ground :: (y: f32, o: WorldPoint, d: WorldPoint, far: f32) -> QueryEntry {
+query_enter_ground :: (y: f32, o: WorldPoint, d: WorldPoint, far: f32) -> QueryEntry #effects(all) {
   out: QueryEntry;
   if o.y < y { out.hit = true; out.normal = world_scale(world_unit(d), -1); return out; }
   if !(d.y < 0) { return out; }
@@ -283,14 +283,14 @@ query_enter_ground :: (y: f32, o: WorldPoint, d: WorldPoint, far: f32) -> QueryE
 // Compare terrain times before narrowing them to the public f32 distance. Keep its
 // independently rounded surface point rather than reconstructing it from that distance.
 QuerySelection :: struct { hit: QueryHit; time: f64; }
-query_select :: (prior: QuerySelection, candidate: QueryHit, time: f64) -> QuerySelection {
+query_select :: (prior: QuerySelection, candidate: QueryHit, time: f64) -> QuerySelection #effects(all) {
   if !candidate.hit || (prior.hit.hit && time >= prior.time) { return prior; }
   return QuerySelection.{hit = candidate, time = time};
 }
-query_select_entry :: (prior: QuerySelection, e: QueryEntry, shape: QueryShape, index: int) -> QuerySelection {
+query_select_entry :: (prior: QuerySelection, e: QueryEntry, shape: QueryShape, index: int) -> QuerySelection #effects(all) {
   return query_select(prior, QueryHit.{hit = e.hit, t = e.t, normal = e.normal, shape = shape, index = index}, f64(e.t));
 }
-query_ray :: (c: Colliders, o: WorldPoint, d: WorldPoint, far: f32) -> QueryHit {
+query_ray :: (c: Colliders, o: WorldPoint, d: WorldPoint, far: f32) -> QueryHit #effects(all) {
   best: QuerySelection;
   if !query_point_finite(o) || !query_point_finite(d) || !query_finite(far) || !(world_dot(d, d) > 0) { return QueryHit.{status = QueryStatus.invalid}; }
   if c.heightfields.count > QUERY_HEIGHTFIELDS_MAX { return QueryHit.{status = QueryStatus.capacity}; }
@@ -333,7 +333,7 @@ QueryOverlapResult :: struct { status: QueryStatus; count: int; }
 // The colliders a sphere overlaps (closer than its radius), in collider order: the ground,
 // then boxes, then capsules, each by index. It writes as many as fit in `out` and returns how
 // many there are.
-query_overlap_checked :: (c: Colliders, centre: WorldPoint, r: f32, out: [] QueryId) -> QueryOverlapResult {
+query_overlap_checked :: (c: Colliders, centre: WorldPoint, r: f32, out: [] QueryId) -> QueryOverlapResult #effects(all) {
   n := 0;
   if !query_point_finite(centre) || !query_finite(r) || !(r > 0) { return QueryOverlapResult.{status = QueryStatus.invalid}; }
   if c.heightfields.count > QUERY_HEIGHTFIELDS_MAX { return QueryOverlapResult.{status = QueryStatus.capacity}; }
@@ -365,12 +365,12 @@ query_overlap_checked :: (c: Colliders, centre: WorldPoint, r: f32, out: [] Quer
 }
 // The legacy count API returns -1 on heightfield refusal. New consumers use the
 // checked result so an exhausted traversal can never be mistaken for a clear scene.
-query_overlap :: (c: Colliders, centre: WorldPoint, r: f32, out: [] QueryId) -> int {
+query_overlap :: (c: Colliders, centre: WorldPoint, r: f32, out: [] QueryId) -> int #effects(all) {
   q := query_overlap_checked(c, centre, r, out);
   if q.status != QueryStatus.ok && c.heightfields.count > 0 { return -1; }
   return q.count;
 }
-query_put :: (out: [] QueryId, n: int, shape: QueryShape, index: int) -> int {
+query_put :: (out: [] QueryId, n: int, shape: QueryShape, index: int) -> int #effects(all) {
   if n < out.count { out[n] = QueryId.{shape = shape, index = index}; }
   return n + 1;
 }
@@ -393,7 +393,7 @@ by `r`. So `query_sweep` casts a ray from the centre against grown shapes:
 // A sphere of radius r moving from `from` by `by` first touches a collider at t in [0, 1]: the
 // ray from its centre against each collider grown by r. A box grown by r is three boxes, each
 // grown by r along one axis, and its twelve edges as capsules of radius r.
-query_enter_grown_box :: (low: WorldPoint, high: WorldPoint, r: f32, o: WorldPoint, d: WorldPoint, far: f32) -> QueryEntry {
+query_enter_grown_box :: (low: WorldPoint, high: WorldPoint, r: f32, o: WorldPoint, d: WorldPoint, far: f32) -> QueryEntry #effects(all) {
   best: QueryEntry;
   for k: 0..<3 {
     g: [3] f32;
@@ -411,17 +411,17 @@ query_enter_grown_box :: (low: WorldPoint, high: WorldPoint, r: f32, o: WorldPoi
   return best;
 }
 // An end of the edge along axis k, at the low (0) or high (1) side of each other axis.
-query_corner :: (low: WorldPoint, high: WorldPoint, k: int, u: f32, v: f32, end: int) -> WorldPoint {
+query_corner :: (low: WorldPoint, high: WorldPoint, k: int, u: f32, v: f32, end: int) -> WorldPoint #effects(all) {
   side := [3] f32.[0, 0, 0];
   side[k] = f32(end);
   side[(k + 1) % 3] = u; side[(k + 2) % 3] = v;
   return world_point(low.x + (high.x - low.x) * side[0], low.y + (high.y - low.y) * side[1], low.z + (high.z - low.z) * side[2]);
 }
-query_sooner :: (a: QueryEntry, b: QueryEntry) -> QueryEntry {
+query_sooner :: (a: QueryEntry, b: QueryEntry) -> QueryEntry #effects(all) {
   if !b.hit || (a.hit && b.t >= a.t) { return a; }
   return b;
 }
-query_sweep :: (c: Colliders, from: WorldPoint, r: f32, by: WorldPoint) -> QueryHit {
+query_sweep :: (c: Colliders, from: WorldPoint, r: f32, by: WorldPoint) -> QueryHit #effects(all) {
   best: QuerySelection;
   if !query_point_finite(from) || !query_point_finite(by) || !query_finite(r) || !(r > 0) { return QueryHit.{status = QueryStatus.invalid}; }
   if c.heightfields.count > QUERY_HEIGHTFIELDS_MAX { return QueryHit.{status = QueryStatus.capacity}; }

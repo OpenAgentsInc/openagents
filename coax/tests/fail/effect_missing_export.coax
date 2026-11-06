@@ -1,0 +1,4 @@
+// expect: E0942
+marked :: () #effects(computes) {}
+published :: () #export_c {}
+main :: () {}

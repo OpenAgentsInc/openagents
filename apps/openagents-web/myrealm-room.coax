@@ -19,7 +19,7 @@ room_url_text :: (s: [] MyRealm) -> string { return cast(string) s[0].room_url[0
 room_body_text :: (s: [] MyRealm) -> string { return cast(string) s[0].room_body[0..<s[0].room_body_n]; }
 
 // True when a post is due: the url and body are ready, and the face sends them and says the id.
-realm_room_ask :: (s: [] MyRealm) -> bool #export_c {
+realm_room_ask :: (s: [] MyRealm) -> bool #export_c #effects(all) {
   if s[0].slug_n == 0 || !s[0].spec_ready || s[0].room_off { return false; }
   if s[0].room_req >= 0 {
     if s[0].time - s[0].room_at <= WAIT { return false; }
@@ -41,7 +41,7 @@ realm_room_ask :: (s: [] MyRealm) -> bool #export_c {
   return o > 0;
 }
 // The host's id for the post (-1: it had no slot, so the next is asked a second later).
-realm_room_sent :: (s: [] MyRealm, id: int) #export_c {
+realm_room_sent :: (s: [] MyRealm, id: int) #export_c #effects(all) {
   s[0].room_asked = true; s[0].room_next = s[0].time + ROOM_EVERY;
   s[0].room_req = id; s[0].room_at = s[0].time;
 }

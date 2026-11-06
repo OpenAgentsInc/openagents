@@ -16,20 +16,20 @@ SoTerminal :: union {
   unknown:SoResult;
 }
 
-so_request_start :: (owner:[]SoOwnedCall,c:SoClient,body:string,out:[]u8,err:[]u8)->Result(int,SoStartFailure) {
+so_request_start :: (owner:[]SoOwnedCall,c:SoClient,body:string,out:[]u8,err:[]u8)->Result(int,SoStartFailure) #effects(all) {
   ticket:=so_owned_start(owner,c,body,out,err);
   if ticket==0 {return Result(int,SoStartFailure).{err=SoStartFailure.unavailable};}
   return Result(int,SoStartFailure).{ok=ticket};
 }
 
-so_request_poll :: (owner:[]SoOwnedCall,ticket:int,wait_ms:int)->SoRequestPoll {
+so_request_poll :: (owner:[]SoOwnedCall,ticket:int,wait_ms:int)->SoRequestPoll #effects(all) {
   if owner.count<1 {return SoRequestPoll.{refused=SoTicketFailure.stale};}
   if !so_owned_matches(owner[0].phase,owner[0].generation,ticket) {return SoRequestPoll.{refused=SoTicketFailure.stale};}
   if so_owned_poll(owner,ticket,wait_ms) {return SoRequestPoll.{ready};}
   return SoRequestPoll.{pending};
 }
 
-so_request_snapshot :: (owner:[]SoOwnedCall,ticket:int,body:[]u8,err:[]u8,problem:[]u8)->Result(SoTerminal,SoSnapshotFailure) {
+so_request_snapshot :: (owner:[]SoOwnedCall,ticket:int,body:[]u8,err:[]u8,problem:[]u8)->Result(SoTerminal,SoSnapshotFailure) #effects(all) {
   if owner.count<1 {return Result(SoTerminal,SoSnapshotFailure).{err=SoSnapshotFailure.stale};}
   if !so_owned_matches(owner[0].phase,owner[0].generation,ticket) {return Result(SoTerminal,SoSnapshotFailure).{err=SoSnapshotFailure.stale};}
   if owner[0].phase!=SO_OWN_READY {return Result(SoTerminal,SoSnapshotFailure).{err=SoSnapshotFailure.pending};}
@@ -47,11 +47,11 @@ so_request_snapshot :: (owner:[]SoOwnedCall,ticket:int,body:[]u8,err:[]u8,proble
   return Result(SoTerminal,SoSnapshotFailure).{ok=SoTerminal.{answered=reply}};
 }
 
-so_request_cancel :: (owner:[]SoOwnedCall,ticket:int)->Result(void,SoTicketFailure) {
+so_request_cancel :: (owner:[]SoOwnedCall,ticket:int)->Result(void,SoTicketFailure) #effects(all) {
   if !so_owned_cancel(owner,ticket) {return Result(void,SoTicketFailure).{err=SoTicketFailure.stale};}
   return Result(void,SoTicketFailure).{ok};
 }
-so_request_discard :: (owner:[]SoOwnedCall,ticket:int)->Result(void,SoTicketFailure) {
+so_request_discard :: (owner:[]SoOwnedCall,ticket:int)->Result(void,SoTicketFailure) #effects(all) {
   if !so_owned_discard(owner,ticket) {return Result(void,SoTicketFailure).{err=SoTicketFailure.stale};}
   return Result(void,SoTicketFailure).{ok};
 }

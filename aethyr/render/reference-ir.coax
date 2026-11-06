@@ -19,24 +19,24 @@ RQPlace :: struct {ty:int;at:[4]int;buffer:[4]int;}
 RQFrame :: struct {proc:int;locals:int;values:int;result:RQValue;}
 RQFlow :: struct {returned:u32;breaking:u32;continuing:u32;}
 
-rq_ir_fail :: (m:[]RQMachine,status:RQStatus) {if m[0].status==RQStatus.ok {m[0].status=status;}}
-rq_ir_next :: (m:[]RQMachine,tree:[]u32)->int {
+rq_ir_fail :: (m:[]RQMachine,status:RQStatus) #effects(all) {if m[0].status==RQStatus.ok {m[0].status=status;}}
+rq_ir_next :: (m:[]RQMachine,tree:[]u32)->int #effects(all) {
  if m[0].status!=RQStatus.ok {return 0;}
  if m[0].steps>=m[0].budget {rq_ir_fail(m,RQStatus.budget);return 0;}
  if m[0].at<0 || m[0].at>=tree.count {rq_ir_fail(m,RQStatus.malformed);return 0;}
  n:=cast(int)tree[m[0].at];m[0].at+=1;m[0].steps+=1;return n;
 }
-rq_ir_meta_words :: ()->int {return RQ_IR_META;}
-rq_ir_type :: (meta:[]int,ty:int,k:int)->int {return meta[ty*8+k];}
-rq_ir_proc :: (meta:[]int,p:int,k:int)->int {return meta[RQ_IR_PROC+p*8+k];}
-rq_ir_prepare :: (tree:[]u32,meta:[]int)->RQProgram {return rq_ir_prepare_with_budget(tree,meta,4000000);}
-rq_ir_prepare_with_budget :: (tree:[]u32,meta:[]int,budget:int)->RQProgram {
+rq_ir_meta_words :: ()->int #effects(all) {return RQ_IR_META;}
+rq_ir_type :: (meta:[]int,ty:int,k:int)->int #effects(all) {return meta[ty*8+k];}
+rq_ir_proc :: (meta:[]int,p:int,k:int)->int #effects(all) {return meta[RQ_IR_PROC+p*8+k];}
+rq_ir_prepare :: (tree:[]u32,meta:[]int)->RQProgram #effects(all) {return rq_ir_prepare_with_budget(tree,meta,4000000);}
+rq_ir_prepare_with_budget :: (tree:[]u32,meta:[]int,budget:int)->RQProgram #effects(all) {
  if meta.count<RQ_IR_META {return RQProgram.{status=RQStatus.capacity};}
  if budget<1 || budget>4000000 {return RQProgram.{status=RQStatus.resource};}
  ms:=[1]RQMachine.[RQMachine.{budget=budget}];result:=rq_ir_prepare_work(tree,meta,ms[..]);
  if ms[0].status!=RQStatus.ok {result.status=ms[0].status;}result.prepare_steps=ms[0].steps;return result;
 }
-rq_ir_prepare_work :: (tree:[]u32,meta:[]int,ms:[]RQMachine)->RQProgram {
+rq_ir_prepare_work :: (tree:[]u32,meta:[]int,ms:[]RQMachine)->RQProgram #effects(all) {
  version:=rq_ir_next(ms[..],tree);nt:=rq_ir_next(ms[..],tree);
  if (version!=2 && version!=3) || nt<6 || nt>RQ_IR_TYPES {return RQProgram.{status=RQStatus.malformed};}
  ms[0].version=version;ms[0].types=nt;
@@ -107,17 +107,17 @@ rq_ir_prepare_work :: (tree:[]u32,meta:[]int,ms:[]RQMachine)->RQProgram {
  }
  return RQProgram.{version=version,types=nt,procs=np,entries=entries,entry_at=entry_at,tree_words=tree.count};
 }
-rq_ir_entry :: (program:RQProgram,tree:[]u32,meta:[]int,stage:int)->int {
+rq_ir_entry :: (program:RQProgram,tree:[]u32,meta:[]int,stage:int)->int #effects(all) {
  at:=program.entry_at;
  for e:0..<program.entries {s:=cast(int)tree[at];p:=cast(int)tree[at+1];if s==stage {return p;}at+=2+rq_ir_proc(meta,p,1);}
  return -1;
 }
-rq_ir_parameter_words :: (program:RQProgram,tree:[]u32,meta:[]int,stage:int)->int {
+rq_ir_parameter_words :: (program:RQProgram,tree:[]u32,meta:[]int,stage:int)->int #effects(all) {
  p:=rq_ir_entry(program,tree,meta,stage);if p<0 {return 0;}
  at:=rq_ir_proc(meta,p,7);n:=0;
  for j:0..<rq_ir_proc(meta,p,1) {n+=4*rq_ir_type(meta,cast(int)tree[at+j],2);}return n;
 }
-rq_ir_value :: (m:[]RQMachine,meta:[]int,memory:[]u32,ty:int)->RQValue {
+rq_ir_value :: (m:[]RQMachine,meta:[]int,memory:[]u32,ty:int)->RQValue #effects(all) {
  if ty<0 || ty>=m[0].types {rq_ir_fail(m,RQStatus.malformed);return RQValue.{};}
  n:=rq_ir_type(meta,ty,2);at:=m[0].used;
  if n*4>memory.count-at {rq_ir_fail(m,RQStatus.capacity);return RQValue.{};}
@@ -125,39 +125,39 @@ rq_ir_value :: (m:[]RQMachine,meta:[]int,memory:[]u32,ty:int)->RQValue {
 }
 // Values own four contiguous lanes inside the caller's larger arena. Exact
 // subviews enforce that ownership independently of unused arena tail space.
-rq_ir_value_words :: (memory:[]u32,v:RQValue)->[]u32 {return memory[v.at..<v.at+4*v.words];}
-rq_ir_transfer :: (memory:[]u32,to:RQValue,from:RQValue,mask:u32) {
+rq_ir_value_words :: (memory:[]u32,v:RQValue)->[]u32 #effects(all) {return memory[v.at..<v.at+4*v.words];}
+rq_ir_transfer :: (memory:[]u32,to:RQValue,from:RQValue,mask:u32) #effects(all) {
  target:=rq_ir_value_words(memory,to);source:=rq_ir_value_words(memory,from);
  active:=rq_active_lanes(mask);for active_index:0..<active.count {lane:=active.lanes[active_index];for j:0..<to.words {target[lane*to.words+j]=source[lane*from.words+j];}}
 }
-rq_ir_u64 :: (memory:[]u32,v:RQValue,lane:int)->u64 {
+rq_ir_u64 :: (memory:[]u32,v:RQValue,lane:int)->u64 #effects(all) {
  words:=rq_ir_value_words(memory,v);at:=lane*v.words;n:=cast(u64)words[at];if v.words==2 {n|=cast(u64)words[at+1]<<32;}return n;
 }
-rq_ir_put_u64 :: (memory:[]u32,v:RQValue,lane:int,n:u64) {
+rq_ir_put_u64 :: (memory:[]u32,v:RQValue,lane:int,n:u64) #effects(all) {
  words:=rq_ir_value_words(memory,v);at:=lane*v.words;words[at]=cast(u32)(n&4294967295);if v.words==2 {words[at+1]=cast(u32)(n>>32);}
 }
-rq_ir_f32 :: (memory:[]u32,v:RQValue,lane:int)->f32 {words:=rq_ir_value_words(memory,v);return f32_from_bits(words[lane*v.words]);}
-rq_ir_put_f32 :: (memory:[]u32,v:RQValue,lane:int,f:f32) {words:=rq_ir_value_words(memory,v);words[lane*v.words]=f32_bits(f);}
+rq_ir_f32 :: (memory:[]u32,v:RQValue,lane:int)->f32 #effects(all) {words:=rq_ir_value_words(memory,v);return f32_from_bits(words[lane*v.words]);}
+rq_ir_put_f32 :: (memory:[]u32,v:RQValue,lane:int,f:f32) #effects(all) {words:=rq_ir_value_words(memory,v);words[lane*v.words]=f32_bits(f);}
 
 #load "tests/reference-ir-checks.coax";
 
-rq_ir_local :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,f:RQFrame,id:int)->RQValue {
+rq_ir_local :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,f:RQFrame,id:int)->RQValue #effects(all) {
  if id<0 || id>=rq_ir_proc(meta,f.proc,2) {rq_ir_fail(m,RQStatus.malformed);return RQValue.{};}
  ty:=cast(int)tree[rq_ir_proc(meta,f.proc,3)+id];
  return RQValue.{ty=ty,at=cast(int)memory[f.locals+id],words=rq_ir_type(meta,ty,2)};
 }
-rq_ir_field :: (m:[]RQMachine,tree:[]u32,meta:[]int,ty:int,field:int)->RQValue {
+rq_ir_field :: (m:[]RQMachine,tree:[]u32,meta:[]int,ty:int,field:int)->RQValue #effects(all) {
  if rq_ir_type(meta,ty,0)!=7 {rq_ir_fail(m,RQStatus.malformed);return RQValue.{};}
  at:=rq_ir_type(meta,ty,1);count:=cast(int)tree[at+1];
  if field<0 || field>=count {rq_ir_fail(m,RQStatus.malformed);return RQValue.{};}
  offset:=0;for j:0..<field {offset+=rq_ir_type(meta,cast(int)tree[at+2+j*2],2);}
  child:=cast(int)tree[at+2+field*2];return RQValue.{ty=child,at=offset,words=rq_ir_type(meta,child,2)};
 }
-rq_ir_bool_mask :: (memory:[]u32,v:RQValue,mask:u32)->u32 {
+rq_ir_bool_mask :: (memory:[]u32,v:RQValue,mask:u32)->u32 #effects(all) {
  r:u32=0;active:=rq_active_lanes(mask);
  for k:0..<active.count {lane:=active.lanes[k];if memory[v.at+lane*v.words]!=0 {r|=cast(u32)1<<cast(u32)lane;}}return r;
 }
-rq_ir_binary :: (m:[]RQMachine,meta:[]int,memory:[]u32,op:int,a:RQValue,b:RQValue,mask:u32)->RQValue {
+rq_ir_binary :: (m:[]RQMachine,meta:[]int,memory:[]u32,op:int,a:RQValue,b:RQValue,mask:u32)->RQValue #effects(all) {
  if a.ty!=b.ty || op<1 || op>18 {rq_ir_fail(m,RQStatus.unsupported);return RQValue.{};}
  kind:=rq_ir_type(meta,a.ty,0);
  if kind<1 || kind>6 || (kind==1 && (op<10 || op>13)) || (kind==2 && (op==5 || op>=12)) || (kind>=3 && (op==12 || op==13)) {rq_ir_fail(m,RQStatus.unsupported);return RQValue.{};}
@@ -195,7 +195,7 @@ rq_ir_binary :: (m:[]RQMachine,meta:[]int,memory:[]u32,op:int,a:RQValue,b:RQValu
   }
  }return r;
 }
-rq_ir_math :: (m:[]RQMachine,meta:[]int,memory:[]u32,fn:int,args:[]RQValue,mask:u32)->RQValue {
+rq_ir_math :: (m:[]RQMachine,meta:[]int,memory:[]u32,fn:int,args:[]RQValue,mask:u32)->RQValue #effects(all) {
  if args.count<1 || args.count>2 || fn<1 || fn>9 || ((fn==9)!=(args.count==2)) {rq_ir_fail(m,RQStatus.unsupported);return RQValue.{};}
  for j:0..<args.count {if args[j].ty!=2 {rq_ir_fail(m,RQStatus.unsupported);return RQValue.{};}}
  r:=rq_ir_value(m,meta,memory,2);if m[0].status!=RQStatus.ok {return r;}
@@ -205,11 +205,11 @@ rq_ir_math :: (m:[]RQMachine,meta:[]int,memory:[]u32,fn:int,args:[]RQValue,mask:
   rq_ir_put_f32(memory,r,lane,v);
  }return r;
 }
-rq_ir_gpu_arity :: (fn:int)->int {
+rq_ir_gpu_arity :: (fn:int)->int #effects(all) {
  if fn<1 || fn>18 {return -1;}
  counts:=[18]int.[0,3,4,4,5,5,4,4,4,1,1,1,1,1,1,1,1,0];return counts[fn-1];
 }
-rq_ir_gpu :: (m:[]RQMachine,meta:[]int,memory:[]u32,res:RQResources,fn:int,ty:int,args:[]RQValue,mask:u32)->RQValue {
+rq_ir_gpu :: (m:[]RQMachine,meta:[]int,memory:[]u32,res:RQResources,fn:int,ty:int,args:[]RQValue,mask:u32)->RQValue #effects(all) {
  r:=rq_ir_value(m,meta,memory,ty);if m[0].status!=RQStatus.ok {return r;}
  arity:=rq_ir_gpu_arity(fn);if arity<0 {rq_ir_fail(m,RQStatus.unsupported);return r;}
  if args.count!=arity {rq_ir_fail(m,RQStatus.malformed);return r;}
@@ -230,7 +230,7 @@ rq_ir_gpu :: (m:[]RQMachine,meta:[]int,memory:[]u32,res:RQResources,fn:int,ty:in
  }
  return rq_ir_gpu_texture(m,meta,memory,res,fn,r,args,mask);
 }
-rq_ir_expr_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,f:RQFrame,mask:u32)->RQValue {
+rq_ir_expr_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,f:RQFrame,mask:u32)->RQValue #effects(all) {
  op:=rq_ir_next(m,tree);if m[0].status!=RQStatus.ok {return RQValue.{};}
  if op==16 || op==17 {
   ty:=rq_ir_next(m,tree);r:=rq_ir_value(m,meta,memory,ty);if m[0].status!=RQStatus.ok {return r;}
@@ -306,7 +306,7 @@ rq_ir_expr_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQReso
  return RQValue.{};
 }
 
-rq_ir_place_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,f:RQFrame,mask:u32)->RQPlace {
+rq_ir_place_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,f:RQFrame,mask:u32)->RQPlace #effects(all) {
  op:=rq_ir_next(m,tree);r:RQPlace;
  for lane:0..<4 {r.buffer[lane]=-1;}
  if m[0].status!=RQStatus.ok {return r;}
@@ -349,7 +349,7 @@ rq_ir_place_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQRes
  }
  return r;
 }
-rq_ir_integer :: (m:[]RQMachine,meta:[]int,memory:[]u32,v:RQValue,lane:int)->int {
+rq_ir_integer :: (m:[]RQMachine,meta:[]int,memory:[]u32,v:RQValue,lane:int)->int #effects(all) {
  kind:=rq_ir_type(meta,v.ty,0);bits:=rq_ir_u64(memory,v,lane);
  if kind==3 {return cast(int)cast,trunc(s32)bits;}
  if kind==5 {return cast,trunc(int)bits;}
@@ -358,12 +358,12 @@ rq_ir_integer :: (m:[]RQMachine,meta:[]int,memory:[]u32,v:RQValue,lane:int)->int
 }
 // Array length and indexing share the same owned-view admission. A logical
 // count may describe a prefix, but never elements outside its physical words.
-rq_ir_buffer_view :: (m:[]RQMachine,res:RQResources,index:int,element_bytes:int)->RQBuffer {
+rq_ir_buffer_view :: (m:[]RQMachine,res:RQResources,index:int,element_bytes:int)->RQBuffer #effects(all) {
  if cast,trunc(u64)index>=cast(u64)res.buffers.count {rq_ir_fail(m,RQStatus.resource);return RQBuffer.{};}
  b:=res.buffers[index];
  if b.count<0 || b.stride!=element_bytes || b.stride<1 || b.count>b.words.count*4/b.stride {rq_ir_fail(m,RQStatus.resource);return RQBuffer.{};}return b;
 }
-rq_ir_decode :: (m:[]RQMachine,tree:[]u32,meta:[]int,source:[]u32,byte:int,memory:[]u32,out:int,ty:int) {
+rq_ir_decode :: (m:[]RQMachine,tree:[]u32,meta:[]int,source:[]u32,byte:int,memory:[]u32,out:int,ty:int) #effects(all) {
  if m[0].status!=RQStatus.ok {return;}
  size:=rq_ir_type(meta,ty,3);kind:=rq_ir_type(meta,ty,0);
  if byte<0 || size>source.count*4-byte {rq_ir_fail(m,RQStatus.resource);return;}
@@ -385,7 +385,7 @@ rq_ir_decode :: (m:[]RQMachine,tree:[]u32,meta:[]int,source:[]u32,byte:int,memor
  }
  rq_ir_fail(m,RQStatus.unsupported);
 }
-rq_ir_load :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,place:RQPlace,mask:u32)->RQValue {
+rq_ir_load :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,place:RQPlace,mask:u32)->RQValue #effects(all) {
  r:=rq_ir_value(m,meta,memory,place.ty);if m[0].status!=RQStatus.ok {return r;}
  active:=rq_active_lanes(mask);for active_index:0..<active.count {lane:=active.lanes[active_index];
   at:=place.at[lane];out:=r.at+lane*r.words;
@@ -393,7 +393,7 @@ rq_ir_load :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,
   else {for j:0..<r.words {memory[out+j]=memory[at+j];}}
  }return r;
 }
-rq_ir_count :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,place:RQPlace,mask:u32)->RQValue {
+rq_ir_count :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,place:RQPlace,mask:u32)->RQValue #effects(all) {
  r:=rq_ir_value(m,meta,memory,5);if m[0].status!=RQStatus.ok {return r;}
  kind:=rq_ir_type(meta,place.ty,0);at:=rq_ir_type(meta,place.ty,1);
  active:=rq_active_lanes(mask);for active_index:0..<active.count {lane:=active.lanes[active_index];
@@ -407,7 +407,7 @@ rq_ir_count :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources
   rq_ir_put_u64(memory,r,lane,cast(u64)n);
  }return r;
 }
-rq_ir_convert :: (m:[]RQMachine,meta:[]int,memory:[]u32,ty:int,a:RQValue,bits:bool,mask:u32)->RQValue {
+rq_ir_convert :: (m:[]RQMachine,meta:[]int,memory:[]u32,ty:int,a:RQValue,bits:bool,mask:u32)->RQValue #effects(all) {
  r:=rq_ir_value(m,meta,memory,ty);if m[0].status!=RQStatus.ok {return r;}
  target:=rq_ir_type(meta,ty,0);source:=rq_ir_type(meta,a.ty,0);
  if target<2 || target>6 || source<2 || source>6 {rq_ir_fail(m,RQStatus.unsupported);return r;}
@@ -437,14 +437,14 @@ rq_ir_convert :: (m:[]RQMachine,meta:[]int,memory:[]u32,ty:int,a:RQValue,bits:bo
   }
  }return r;
 }
-rq_ir_store :: (m:[]RQMachine,meta:[]int,memory:[]u32,place:RQPlace,value:RQValue,mask:u32) {
+rq_ir_store :: (m:[]RQMachine,meta:[]int,memory:[]u32,place:RQPlace,value:RQValue,mask:u32) #effects(all) {
  if place.ty!=value.ty {rq_ir_fail(m,RQStatus.malformed);return;}
  active:=rq_active_lanes(mask);for active_index:0..<active.count {lane:=active.lanes[active_index];
   if place.buffer[lane]>=0 {rq_ir_fail(m,RQStatus.unsupported);return;}
   for j:0..<value.words {memory[place.at[lane]+j]=memory[value.at+lane*value.words+j];}
  }
 }
-rq_ir_stmt_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,f:RQFrame,mask:u32)->RQFlow {
+rq_ir_stmt_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,f:RQFrame,mask:u32)->RQFlow #effects(all) {
  op:=rq_ir_next(m,tree);r:RQFlow;if m[0].status!=RQStatus.ok {return r;}
  mark:=m[0].used;
  if op==1 {
@@ -517,7 +517,7 @@ rq_ir_stmt_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQReso
  }
  return r;
 }
-rq_ir_call :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,p:int,args:[]RQValue,mask:u32)->RQValue {
+rq_ir_call :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,p:int,args:[]RQValue,mask:u32)->RQValue #effects(all) {
  // Prepared immutable tree transport already bounds every call index.
  // The shared execution nesting budget also bounds recursive calls.
  if args.count!=rq_ir_proc(meta,p,1) {rq_ir_fail(m,RQStatus.malformed);return RQValue.{};}
@@ -535,7 +535,7 @@ rq_ir_call :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,
  if m[0].at!=rq_ir_proc(meta,p,5) || (ret!=0 && ((flow.returned|m[0].terminated)&mask)!=mask) || flow.breaking!=0 || flow.continuing!=0 {rq_ir_fail(m,RQStatus.malformed);}
  m[0].at=caller;m[0].used=mark;m[0].private_count=private_mark;return result;
 }
-rq_ir_run :: (program:RQProgram,tree:[]u32,meta:[]int,inputs:[]u32,res:RQResources,memory:[]u32,outputs:[]u32,stage:int,budget:int,coverage:u32,derivative:RQDerivative)->RQExecution {
+rq_ir_run :: (program:RQProgram,tree:[]u32,meta:[]int,inputs:[]u32,res:RQResources,memory:[]u32,outputs:[]u32,stage:int,budget:int,coverage:u32,derivative:RQDerivative)->RQExecution #effects(all) {
  if program.status!=RQStatus.ok {return RQExecution.{status=program.status};}
  if meta.count<RQ_IR_META || tree.count!=program.tree_words || program.types<6 || program.types>RQ_IR_TYPES || program.procs<1 || program.procs>RQ_IR_PROCS {return RQExecution.{status=RQStatus.malformed};}
  if budget<1 || budget>100000000 || coverage>15 {return RQExecution.{status=RQStatus.resource};}
@@ -554,17 +554,17 @@ rq_ir_run :: (program:RQProgram,tree:[]u32,meta:[]int,inputs:[]u32,res:RQResourc
  return RQExecution.{steps=ms[0].steps,discarded=ms[0].discarded,publish_mask=coverage&(ms[0].discarded^15),output_words=words};
 }
 
-rq_ir_lod :: (t:RQTexture,u:RQQuad,v:RQQuad,lane:int,mode:RQDerivative,bias:f32)->f32 {
+rq_ir_lod :: (t:RQTexture,u:RQQuad,v:RQQuad,lane:int,mode:RQDerivative,bias:f32)->f32 #effects(all) {
  dx:=rq_derivative(u,0,mode);dy:=rq_derivative(u,1,mode);vx:=rq_derivative(v,0,mode);vy:=rq_derivative(v,1,mode);
  w:=cast(f32)t.levels[0].width;h:=cast(f32)t.levels[0].height;
  ax:=dx.v[lane]*w;ay:=vx.v[lane]*h;bx:=dy.v[lane]*w;by:=vy.v[lane]*h;
  return rq_footprint_lod(ax*ax+ay*ay,bx*bx+by*by,bias);
 }
-rq_ir_color :: (memory:[]u32,r:RQValue,lane:int,color:RQColor) {
+rq_ir_color :: (memory:[]u32,r:RQValue,lane:int,color:RQColor) #effects(all) {
  at:=r.at+lane*r.words;memory[at]=f32_bits(color.r);
  if r.words==4 {memory[at+1]=f32_bits(color.g);memory[at+2]=f32_bits(color.b);memory[at+3]=f32_bits(color.a);}
 }
-rq_ir_gpu_texture :: (m:[]RQMachine,meta:[]int,memory:[]u32,res:RQResources,fn:int,r:RQValue,args:[]RQValue,mask:u32)->RQValue {
+rq_ir_gpu_texture :: (m:[]RQMachine,meta:[]int,memory:[]u32,res:RQResources,fn:int,r:RQValue,args:[]RQValue,mask:u32)->RQValue #effects(all) {
  // The registry dispatcher has already selected texture operations2..11.
  if rq_ir_type(meta,args[0].ty,0)!=10 || args[0].words!=1 || (fn<=7 && r.words!=4) || (fn>=8 && r.words!=1) {rq_ir_fail(m,RQStatus.malformed);return r;}
  if m[0].version==2 && (fn==10 || fn==11) && rq_ir_type(meta,args[0].ty,4)==1 {rq_ir_fail(m,RQStatus.unsupported);return r;}
@@ -603,17 +603,17 @@ rq_ir_gpu_texture :: (m:[]RQMachine,meta:[]int,memory:[]u32,res:RQResources,fn:i
  }return r;
 }
 
-rq_ir_expr :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,f:RQFrame,mask:u32)->RQValue {
+rq_ir_expr :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,f:RQFrame,mask:u32)->RQValue #effects(all) {
  if m[0].nesting>=RQ_IR_NESTING {rq_ir_fail(m,RQStatus.budget);return RQValue.{};}
  m[0].nesting+=1;r:=rq_ir_expr_inner(m,tree,meta,memory,res,f,mask&(m[0].terminated^15));m[0].nesting-=1;return r;
 }
 
-rq_ir_stmt :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,f:RQFrame,mask:u32)->RQFlow {
+rq_ir_stmt :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,f:RQFrame,mask:u32)->RQFlow #effects(all) {
  if m[0].nesting>=RQ_IR_NESTING {rq_ir_fail(m,RQStatus.budget);return RQFlow.{};}
  m[0].nesting+=1;r:=rq_ir_stmt_inner(m,tree,meta,memory,res,f,mask&(m[0].terminated^15));m[0].nesting-=1;return r;
 }
 
-rq_ir_place :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,f:RQFrame,mask:u32)->RQPlace {
+rq_ir_place :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,f:RQFrame,mask:u32)->RQPlace #effects(all) {
  if m[0].nesting>=RQ_IR_NESTING {rq_ir_fail(m,RQStatus.budget);return RQPlace.{};}
  m[0].nesting+=1;r:=rq_ir_place_inner(m,tree,meta,memory,res,f,mask&(m[0].terminated^15));m[0].nesting-=1;return r;
 }
@@ -621,7 +621,7 @@ rq_ir_place :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources
 // Structural admission follows node boundaries, never scans arbitrary words
 // for opcode-looking constants. The input is the compiler's checked typed tree;
 // this pass bounds its transport/control shape and enforces the op registry.
-rq_ir_shape_place :: (m:[]RQMachine,tree:[]u32,meta:[]int) {
+rq_ir_shape_place :: (m:[]RQMachine,tree:[]u32,meta:[]int) #effects(all) {
  if m[0].nesting>=RQ_IR_SYNTAX_DEPTH {rq_ir_fail(m,RQStatus.budget);return;}m[0].nesting+=1;
  op:=rq_ir_next(m,tree);
  if op==40 {local:=rq_ir_next(m,tree);}
@@ -630,11 +630,11 @@ rq_ir_shape_place :: (m:[]RQMachine,tree:[]u32,meta:[]int) {
  else {rq_ir_fail(m,RQStatus.malformed);}
  m[0].nesting-=1;
 }
-rq_ir_shape_expr :: (m:[]RQMachine,tree:[]u32,meta:[]int) {
+rq_ir_shape_expr :: (m:[]RQMachine,tree:[]u32,meta:[]int) #effects(all) {
  if m[0].nesting>=RQ_IR_SYNTAX_DEPTH {rq_ir_fail(m,RQStatus.budget);return;}m[0].nesting+=1;
  rq_ir_shape_expr_inner(m,tree,meta);m[0].nesting-=1;
 }
-rq_ir_shape_expr_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int) {
+rq_ir_shape_expr_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int) #effects(all) {
  op:=rq_ir_next(m,tree);if m[0].status!=RQStatus.ok {return;}
  if op==16 || op==17 || op==29 || op==30 || op==31 {
   ty:=rq_ir_next(m,tree);if ty>=m[0].types {rq_ir_fail(m,RQStatus.malformed);return;}
@@ -671,11 +671,11 @@ rq_ir_shape_expr_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int) {
  if op==27 || op==32 {rq_ir_shape_place(m,tree,meta);return;}
  rq_ir_fail(m,RQStatus.unsupported);
 }
-rq_ir_shape_stmt :: (m:[]RQMachine,tree:[]u32,meta:[]int) {
+rq_ir_shape_stmt :: (m:[]RQMachine,tree:[]u32,meta:[]int) #effects(all) {
  if m[0].nesting>=RQ_IR_SYNTAX_DEPTH {rq_ir_fail(m,RQStatus.budget);return;}m[0].nesting+=1;
  rq_ir_shape_stmt_inner(m,tree,meta);m[0].nesting-=1;
 }
-rq_ir_shape_stmt_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int) {
+rq_ir_shape_stmt_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int) #effects(all) {
  op:=rq_ir_next(m,tree);if m[0].status!=RQStatus.ok {return;}
  if op==1 {
   n:=rq_ir_next(m,tree);if !rq_ir_block_count_ok(n) {rq_ir_fail(m,RQStatus.capacity);return;}
@@ -708,7 +708,7 @@ rq_ir_shape_stmt_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int) {
 #load "tests/reference-ir-type-checks.coax";
 #load "tests/reference-ir-shape-checks.coax";
 // The syntax envelope is independent of the runtime work allowance.
-rq_ir_block_count_ok :: (count:int)->bool {return cast,trunc(u64)count<=1000000;}
+rq_ir_block_count_ok :: (count:int)->bool #effects(all) {return cast,trunc(u64)count<=1000000;}
 #load "tests/reference-ir-arena-checks.coax";
 
 #load "tests/reference-ir-transport-extra-checks.coax";

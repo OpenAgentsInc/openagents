@@ -1496,7 +1496,7 @@ aim_cell :: (s: [] Stair) -> int {
 
 // ---- in from the host
 
-stair_pointer :: (s: [] Stair, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+stair_pointer :: (s: [] Stair, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   stair_start(s);
   if kind != 0 { s[0].touch = true; }
   if tip_pointer(s, x, y, phase, kind, id) { s[0].hover_b = -1; s[0].hover = -1; return true; }
@@ -1605,7 +1605,7 @@ camera_pointer :: (s: [] Stair, x: f32, y: f32, phase: int, kind: int, id: int, 
   return false;
 }
 // The wheel zooms about the mouse.
-stair_wheel :: (s: [] Stair, dy: f32) -> bool #export_c {
+stair_wheel :: (s: [] Stair, dy: f32) -> bool #export_c #effects(all) {
   stair_start(s);
   if s[0].card_shot || s[0].tile <= 0 { return false; }
   if s[0].my < s[0].clip_y0 || s[0].my > s[0].clip_y1 { return false; }
@@ -1621,7 +1621,7 @@ long_press :: (s: [] Stair) {
   s[0].long_done = true; s[0].card = d; s[0].selected = -1;
 }
 
-stair_key :: (s: [] Stair, key: int, mods: int) -> bool #export_c {
+stair_key :: (s: [] Stair, key: int, mods: int) -> bool #export_c #effects(all) {
   stair_start(s);
   track_key(s[0].track[..], key, false);
   if key == KEY_ESCAPE { s[0].selected = -1; s[0].card = -1; s[0].pick = -1; return true; }
@@ -1636,15 +1636,15 @@ stair_key :: (s: [] Stair, key: int, mods: int) -> bool #export_c {
   if (key == 'u' || key == 'U') && s[0].card >= 0 { ok := upgrade(s, s[0].card); return true; }
   return false;
 }
-stair_key_up :: (s: [] Stair, key: int, mods: int) -> bool #export_c { track_key_up(s[0].track[..], key); return false; }
-stair_blur :: (s: [] Stair) #export_c { s[0].down_on = false; s[0].press = -1; track_blur(s[0].track[..]); }
-stair_cursor :: (s: [] Stair) -> int #export_c {
+stair_key_up :: (s: [] Stair, key: int, mods: int) -> bool #export_c #effects(all) { track_key_up(s[0].track[..], key); return false; }
+stair_blur :: (s: [] Stair) #export_c #effects(all) { s[0].down_on = false; s[0].press = -1; track_blur(s[0].track[..]); }
+stair_cursor :: (s: [] Stair) -> int #export_c #effects(all) {
   if s[0].hover_b >= 0 || s[0].tip_hover { return 1; }
   if s[0].hover >= 0 && (free_cell(s, s[0].hover) || defender_at(s, s[0].hover) >= 0) { return 1; }
   return 0;
 }
 
-stair_message :: (s: [] Stair, kind: int, t: string) #export_c {
+stair_message :: (s: [] Stair, kind: int, t: string) #export_c #effects(all) {
   stair_start(s);
   if coop_socket(s, kind, t) { coop_alone(s); return; }
   if kind == HOST_PAGE {
@@ -1755,13 +1755,13 @@ stage_highlight :: (s: [] Stair) {
   ok := start_wave(s);
   s[0].toast_t = 0;
 }
-stair_golden :: (s: [] Stair, on: bool) #export_c { s[0].golden = on; }
-stair_action :: (s: [] Stair) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
-stair_action_done :: (s: [] Stair) #export_c { s[0].out_n = 0; }
+stair_golden :: (s: [] Stair, on: bool) #export_c #effects(all) { s[0].golden = on; }
+stair_action :: (s: [] Stair) -> int #export_c #effects(all) { a := s[0].action; s[0].action = 0; return a; }
+stair_action_done :: (s: [] Stair) #export_c #effects(all) { s[0].out_n = 0; }
 
-coaxial_stair_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_stair_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_stair_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_stair_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_stair_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_stair_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // ---- drawing
 
@@ -2510,7 +2510,7 @@ stair_run :: (s: [] Stair, game: f32) {
   s[0].steps = loop_ran(l);
 }
 
-stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   stair_start(s);
   s[0].width = width; s[0].height = height; s[0].dpr = dpr; s[0].still = still;
   k := hi(dpr, 0.5);

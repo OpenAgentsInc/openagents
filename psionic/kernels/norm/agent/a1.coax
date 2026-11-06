@@ -9,16 +9,16 @@ a1_min :: (a:int,b:int)->int {if a<b {return a;}return b;}
 a1_c :: (knob:int,width:int)->int {return a1_min(knob/1000,width);}
 a1_m :: (knob:int,width:int)->int {return a1_min(knob%1000,width);}
 
-a1_knobs :: (item:int,knobs:[]int) #export_c {
+a1_knobs :: (item:int,knobs:[]int) #export_c #effects(all) {
     n:=0;
     for ci:0..<3 {for mi:0..<3 {knobs[n]=(32<<ci)*1000+(64<<mi);n+=1;}}
     knobs[n]=-1;
 }
-a1_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c {
+a1_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c #effects(all) {
     c:=a1_c(knob,width);m:=a1_m(knob,width);
     plan[0]=rows*c;plan[1]=rows*m;plan[2]=rows*c;
 }
-a1_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+a1_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c #effects(all) {
     c:=a1_c(knob,width);r:=item/c;j:=item-r*c;at:=r*width+j;
     n:=(width-j+c-1)/c;q:=n/4;
     s0:f64=0;s1:f64=0;s2:f64=0;s3:f64=0;
@@ -30,7 +30,7 @@ a1_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f3
     for k:4*q..<n {v:=f64(x[at+k*c]);s0+=v*v;}
     work[item]=(s0+s1)+(s2+s3);
 }
-a1_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+a1_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c #effects(all) {
     c:=a1_c(knob,width);m:=a1_m(knob,width);r:=item/m;k:=item-r*m;
     sum:f64=0;
     for j:0..<c {sum+=work[r*c+j];}

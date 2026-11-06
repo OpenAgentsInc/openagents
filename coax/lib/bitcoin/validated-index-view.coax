@@ -39,7 +39,7 @@ VxiView :: struct {code:int;used:int;tip:LcTip;}
   for i:0..<5 {key[1]=cast(u8)i;kv_put32(h[..],4,i+1);#assert lc_put_vartime(table[..],c[..],batch[..],key[..],h[..]);}
   #assert vxi_view(table[..],c[0].used,out[0..<c[0].used]).code==CS_OK;
 }
-vxi_view :: (table:[]u8,used:int,out:[]u8)->VxiView #export_c {
+vxi_view :: (table:[]u8,used:int,out:[]u8)->VxiView #export_c #effects(all) {
   meta:=vxi_context(table,used);if meta.code!=CS_OK {return VxiView.{code=CS_CONTEXT};}
   tip:=cs_tip_vartime(table,used);if used>out.count {return VxiView.{code=CS_CAPACITY};}
   for i:0..<used {out[i]=table[i];}count:=used;

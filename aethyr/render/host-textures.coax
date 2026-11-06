@@ -12,7 +12,7 @@ RenderHostTextureReceipt :: struct {
 }
 #load "tests/host-textures-checks.coax";
 
-render_host_named_textures :: (rht_named:[]RenderHostNamedTexture)->RenderResourceStatus {
+render_host_named_textures :: (rht_named:[]RenderHostNamedTexture)->RenderResourceStatus #effects(all) {
   if rht_named.count>RENDER_HOST_TEXTURES {return RenderResourceStatus.capacity;}
   for rht_i:0..<rht_named.count {
     if rht_named[rht_i].name.count==0 {return RenderResourceStatus.invalid;}
@@ -20,7 +20,7 @@ render_host_named_textures :: (rht_named:[]RenderHostNamedTexture)->RenderResour
   }
   return RenderResourceStatus.ok;
 }
-render_host_resolve_texture :: (rht_profile:int,rht_set:int,rht_resource:int,rht_named:[]RenderHostNamedTexture,rht_media_context:int)->RenderHostTextureReceipt {
+render_host_resolve_texture :: (rht_profile:int,rht_set:int,rht_resource:int,rht_named:[]RenderHostNamedTexture,rht_media_context:int)->RenderHostTextureReceipt #effects(all) {
   rht_status:=render_host_named_textures(rht_named);
   if rht_status!=RenderResourceStatus.ok {return RenderHostTextureReceipt.{status=rht_status};}
   rht_binding:=render_host_binding(rht_profile,rht_set,rht_resource);

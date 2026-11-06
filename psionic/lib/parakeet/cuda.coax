@@ -41,7 +41,7 @@ pkc_stage_x :: (thread:int,i:int,k0:int,r0:int,rows:int,n_in:int,x:[]f32)->f32 {
 pkc_stage_w :: (thread:int,i:int,k0:int,o0:int,n_out:int,n_in:int,w:[]f32)->f32 {
  e:=thread+PKC_LINEAR_THREADS*i;c:=e/PKC_STEP;q:=e%PKC_STEP;v:f32=0;if o0+c<n_out && k0+q<n_in {v=w[(o0+c)*n_in+k0+q];}return v;
 }
-pkc_linear :: (item:int,rows:int,n_in:int,n_out:int,bias:int,x:[]f32,w:[]f32,b:[]f32,y:[]f32) #export_c {
+pkc_linear :: (item:int,rows:int,n_in:int,n_out:int,bias:int,x:[]f32,w:[]f32,b:[]f32,y:[]f32) #export_c #effects(all) {
  tiles:=(n_out+PKC_COLS-1)/PKC_COLS;r0:=item/tiles*PKC_ROWS;o0:=item%tiles*PKC_COLS;steps:=(n_in+PKC_STEP-1)/PKC_STEP;
  xs:[2048]f32;ws:[1024]f32;acc:[2048]f32;pre:[3072]f32;
  for thread:0..<PKC_LINEAR_THREADS {
@@ -83,7 +83,7 @@ pkc_linear :: (item:int,rows:int,n_in:int,n_out:int,bias:int,x:[]f32,w:[]f32,b:[
 // order, divided by the sum. At most 256 keys: pkf_plan admits 2048 frames,
 // 256 after subsampling. Scores are pkd_attend's; the softmax is the direct
 // form rather than pkd_attend's online one, so the two agree within rounding.
-pkc_attend :: (item:int,n:int,d:int,heads:int,u:int,vbias:int,q:[]f32,k:[]f32,v:[]f32,p:[]f32,w:[]f32,out:[]f32) #export_c {
+pkc_attend :: (item:int,n:int,d:int,heads:int,u:int,vbias:int,q:[]f32,k:[]f32,v:[]f32,p:[]f32,w:[]f32,out:[]f32) #export_c #effects(all) {
  scores:[256]f32;probs:[256]f32;
  hd:=d/heads;h:=item/n;i:=item%n;at:=h*hd;scale:=1/sqrt(f32(hd));
  for thread:0..<PKC_THREADS {
@@ -143,7 +143,7 @@ pkc_rows_items :: (rows:int)->int {return (rows+PKC_ROWS_PER-1)/PKC_ROWS_PER;}
 // y[r] = b[r] + b[rows+r] + sum_k w[r*cols+k] x[k] + sum_k w[(rows+r)*cols+k] h[k],
 // which is W_ih x + b_ih + W_hh h + b_hh with both matrices and both biases
 // stored back to back, as tdt.coax lays them out.
-pkc_rows :: (item:int,rows:int,cols:int,second:int,w:[]f32,b:[]f32,x:[]f32,h:[]f32,y:[]f32) #export_c {
+pkc_rows :: (item:int,rows:int,cols:int,second:int,w:[]f32,b:[]f32,x:[]f32,h:[]f32,y:[]f32) #export_c #effects(all) {
  part:[128]f32;
  for thread:0..<PKC_THREADS {
   r:=item*PKC_ROWS_PER+thread/32;lane:=thread%32;v:f32=0;
@@ -165,16 +165,16 @@ pkc_rows :: (item:int,rows:int,cols:int,second:int,w:[]f32,b:[]f32,x:[]f32,h:[]f
 // The joint's input at one frame: z[k] = ReLU(e[k] + d[k]), the frame's
 // projection plus the prediction's, in binary64 rounded once (tdt.coax's
 // tdt_joint). pkc_rows then applies the head to z.
-pkc_joint_input :: (item:int,e:[]f32,d:[]f32,z:[]f32) #export_c {z[item]=f32(tdt_relu(f64(e[item])+f64(d[item])));}
+pkc_joint_input :: (item:int,e:[]f32,d:[]f32,z:[]f32) #export_c #effects(all) {z[item]=f32(tdt_relu(f64(e[item])+f64(d[item])));}
 // The LSTM cell for unit j of n, after every gate (order i, f, g, o) is
 // done: c = sigmoid(f) c + sigmoid(i) tanh(g), h = sigmoid(o) tanh(c), and
 // h is the next layer's input x.
-pkc_cell :: (item:int,n:int,gates:[]f32,c:[]f32,h:[]f32,x:[]f32) #export_c {
+pkc_cell :: (item:int,n:int,gates:[]f32,c:[]f32,h:[]f32,x:[]f32) #export_c #effects(all) {
  j:=item;
  c[j]=f32(tdt_sigmoid(f64(gates[n+j]))*f64(c[j])+tdt_sigmoid(f64(gates[j]))*tdt_tanh(f64(gates[2*n+j])));
  h[j]=f32(tdt_sigmoid(f64(gates[3*n+j]))*tdt_tanh(f64(c[j])));x[j]=h[j];
 }
-pkc_zero :: (item:int,x:[]f32) #export_c {x[item]=0;}
+pkc_zero :: (item:int,x:[]f32) #export_c #effects(all) {x[item]=0;}
 
 PKC_PICK_THREADS :: 256;
 pkc_finite :: (v:f32)->bool {return (f32_bits(v)&0x7f800000)!=0x7f800000;}
@@ -185,7 +185,7 @@ pkc_finite :: (v:f32)->bool {return (f32_bits(v)&0x7f800000)!=0x7f800000;}
 // logit is not finite (the decision is then refused). Thread t scans
 // indices t, t+256, ... in ascending order; thread 0 joins the 256
 // candidates, a larger value or an equal value at a lower index winning.
-pkc_pick :: (item:int,vocab:int,outputs:int,logits:[]f32,pick:[]f32) #export_c {
+pkc_pick :: (item:int,vocab:int,outputs:int,logits:[]f32,pick:[]f32) #export_c #effects(all) {
  bv:[256]f32;bi:[256]s32;bad:[256]s32;
  for thread:0..<PKC_PICK_THREADS {
   best:f32=0;at:s32= -1;wrong:s32=0;

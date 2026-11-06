@@ -22,23 +22,23 @@ MM_PROFILE :: "MXFP4-BF16-MMA-v1";
 // (chapter 37), 2^-20 per instruction covers the tensor core's own f32
 // accumulation (chapter 37's frozen conformance bound), and the rest covers
 // the f64 slice sum, the final f32 rounding and the bias add.
-mm_bound :: (instructions:int,magnitude:f64)->f64 {
+mm_bound :: (instructions:int,magnitude:f64)->f64 #effects(all) {
     return (1.0/65536.0+f64(instructions+2)/1048576.0)*magnitude;
 }
 // Two instructions (high and low limb) per 16-column step of one slice.
-mm_instructions :: (cols:int,slices:int)->int {return 2*(cols/16/slices);}
+mm_instructions :: (cols:int,slices:int)->int #effects(all) {return 2*(cols/16/slices);}
 // book:end profile
 
 // book:begin decode
 // One original coefficient as BF16 bits. The f32 product of an E2M1 value
 // (at most two significant bits) and a power of two is exact, and its low 16
 // bits are zero, so dropping them loses nothing.
-mm_coefficient :: (code:u8,power:f32)->u32 {
+mm_coefficient :: (code:u8,power:f32)->u32 #effects(all) {
     return f32_bits(gk_fp4(cast(u64)code)*power)>>16;
 }
 // One packed byte, two columns: the low nibble is the even column and goes
 // in the low half of the fragment word, as cu_mma_bf16_16x8x16 expects.
-mm_pair :: (byte:u8,power:f32)->u32 {
+mm_pair :: (byte:u8,power:f32)->u32 #effects(all) {
     return mm_coefficient(byte&15,power)|(mm_coefficient(byte>>4,power)<<16);
 }
 // book:end decode
@@ -49,7 +49,7 @@ mm_pair :: (byte:u8,power:f32)->u32 {
 // every slot shares one input, as the first expert projection does).
 // `padded` is tokens rounded up to 8; tokens from `tokens` to `padded` are
 // zero.
-mm_split :: (item:int,cols:int,tokens:int,padded:int,stride:int,x:[]f32,hi:[]u32,lo:[]u32) #export_c {
+mm_split :: (item:int,cols:int,tokens:int,padded:int,stride:int,x:[]f32,hi:[]u32,lo:[]u32) #export_c #effects(all) {
     half:=cols/2;p:=item%half;row:=item/half;token:=row%padded;slot:=row/padded;h:u32=0;l:u32=0;
     if token<tokens {
         at:=slot*stride+token*cols+2*p;a:=x[at];b:=x[at+1];
@@ -72,7 +72,7 @@ MM_TOKENS :: 32; // tokens per warp
 // partial[((slice*slots+slot)*tokens+token)*rows+row] for mm_finish, and
 // marks there 1 when the lane read a scale above 252 (chapter 60 refuses
 // them; chapter 66's kernels make such outputs non-finite instead).
-mm_part :: (item:int,rows:int,cols:int,tokens:int,slots:int,slices:int,packed:[]u8,scales:[]u8,ids:[]int,hi:[]u32,lo:[]u32,partial:[]f32,marks:[]u8) #export_c {
+mm_part :: (item:int,rows:int,cols:int,tokens:int,slots:int,slices:int,packed:[]u8,scales:[]u8,ids:[]int,hi:[]u32,lo:[]u32,partial:[]f32,marks:[]u8) #export_c #effects(all) {
     slice:=item%slices;rest:=item/slices;blocks:=rows/16;block:=rest%blocks;rest=rest/blocks;
     groups:=(tokens+MM_TOKENS-1)/MM_TOKENS;group:=rest%groups;slot:=rest/groups;
     expert:=ids[slot];r0:=block*16;t0:=group*MM_TOKENS;nb:=cols/32;half:=cols/2;per:=cols/16/slices;
@@ -120,7 +120,7 @@ mm_part :: (item:int,rows:int,cols:int,tokens:int,slots:int,slices:int,packed:[]
 // Item (slot*tokens+token)*rows+row: the slice partials added in f64 in
 // slice order, rounded to f32, plus the expert's BF16 bias, as gk_mx_finish.
 // A slice that read a scale above 252 marks the output bad.
-mm_finish :: (item:int,rows:int,tokens:int,slots:int,slices:int,ids:[]int,partial:[]f32,marks:[]u8,bias:[]u16,out:[]f32,flags:[]u8) #export_c {
+mm_finish :: (item:int,rows:int,tokens:int,slots:int,slices:int,ids:[]int,partial:[]f32,marks:[]u8,bias:[]u16,out:[]f32,flags:[]u8) #export_c #effects(all) {
     row:=item%rows;slot:=item/rows/tokens;sum:f64=0;
     bad:u8=0;
     for s:0..<slices {at:=s*slots*tokens*rows+item;sum+=f64(partial[at]);bad|=marks[at];}
@@ -133,7 +133,7 @@ mm_finish :: (item:int,rows:int,tokens:int,slots:int,slices:int,ids:[]int,partia
 // and the magnitude sum |w x| + |bias| that scales the bound. Slot s reads
 // its input from s*stride, token t at t*cols past that.
 MmReference :: struct {value:f64;magnitude:f64;}
-mm_reference :: (rows:int,cols:int,stride:int,expert:int,row:int,slot:int,token:int,packed:[]u8,scales:[]u8,bias:[]u16,x:[]f32)->MmReference {
+mm_reference :: (rows:int,cols:int,stride:int,expert:int,row:int,slot:int,token:int,packed:[]u8,scales:[]u8,bias:[]u16,x:[]f32)->MmReference #effects(all) {
     nb:=cols/32;sum:f64=0;mag:f64=0;
     for c:0..<cols {
         blk:=(expert*rows+row)*nb+c/32;byte:=packed[blk*16+c%32/2];
@@ -145,7 +145,7 @@ mm_reference :: (rows:int,cols:int,stride:int,expert:int,row:int,slot:int,token:
     return MmReference.{value=sum+b,magnitude=mag+abs(b)};
 }
 // Chapter 66's frozen comparison rule between two profiles' outputs.
-mm_rule_66 :: (candidate:f32,reference:f32)->bool {
+mm_rule_66 :: (candidate:f32,reference:f32)->bool #effects(all) {
     return abs(f64(candidate)-f64(reference))/(1+abs(f64(reference)))<0.0005;
 }
 

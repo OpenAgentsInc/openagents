@@ -73,11 +73,11 @@
   for i:0..<4 {#assert out[i]==7 && work[i]==9;}
 }
 
-gf_schedule :: (step:int)->GfSchedule #export_c {
+gf_schedule :: (step:int)->GfSchedule #export_c #effects(all) {
   if step<0 || step>=GF_STEPS {return GfSchedule.{status=GfStatus.time};}
   return GfSchedule.{bucket=step*250,dt=0.25f32};
 }
-gf_advance_admit :: (step:int,n:int,velocities:int,out:int,work:int,overlap:bool)->GfStatus #export_c {
+gf_advance_admit :: (step:int,n:int,velocities:int,out:int,work:int,overlap:bool)->GfStatus #export_c #effects(all) {
   if gf_schedule(step).status!=GfStatus.ok {return GfStatus.time;}
   if n<1 || n>GF_VALUES_MAX || velocities!=n {return GfStatus.shape;}
   if out<n || work<n {return GfStatus.capacity;}
@@ -86,7 +86,7 @@ gf_advance_admit :: (step:int,n:int,velocities:int,out:int,work:int,overlap:bool
 // `overlap` truthfully covers all writable/input and writable/writable spans.
 // Caller owns valid immutable typed extents. Scratch may change on arithmetic
 // refusal; the public destination changes only after every element succeeds.
-gf_advance :: (step:int,x:[]f32,velocity:[]f32,out:[]f32,work:[]f32,overlap:bool)->GfResult #export_c {
+gf_advance :: (step:int,x:[]f32,velocity:[]f32,out:[]f32,work:[]f32,overlap:bool)->GfResult #export_c #effects(all) {
   admitted:=gf_advance_admit(step,x.count,velocity.count,out.count,work.count,overlap);
   if admitted!=GfStatus.ok {return GfResult.{status=admitted};}
   for value:x {if !psionic_tensor_finite_bits(f32_bits(value)) {return GfResult.{status=GfStatus.number};}}
@@ -98,7 +98,7 @@ gf_advance :: (step:int,x:[]f32,velocity:[]f32,out:[]f32,work:[]f32,overlap:bool
   }
   for i:0..<x.count {out[i]=work[i];}return GfResult.{written=x.count};
 }
-gf_time_admit :: (kind:u8,width:int,bucket:int,out:int,work:int,overlap:bool)->GfStatus #export_c {
+gf_time_admit :: (kind:u8,width:int,bucket:int,out:int,work:int,overlap:bool)->GfStatus #export_c #effects(all) {
   if kind>1 {return GfStatus.kind;}
   if width<2 || width/2>GF_TIME_HALF_MAX || width%2!=0 || (kind==1 && width<4) {return GfStatus.shape;}
   if bucket<0 || bucket>=GF_BUCKETS {return GfStatus.time;}
@@ -107,7 +107,7 @@ gf_time_admit :: (kind:u8,width:int,bucket:int,out:int,work:int,overlap:bool)->G
 }
 // Explicit F32 stages match the two source expression orders. Transcendentals
 // use the CPU F64 math function narrowed to F32, not a GPU/BF16 parity claim.
-gf_time :: (kind:GfTimeKind,width:int,bucket:int,out:[]f32,work:[]f32,overlap:bool)->GfResult #export_c {
+gf_time :: (kind:GfTimeKind,width:int,bucket:int,out:[]f32,work:[]f32,overlap:bool)->GfResult #export_c #effects(all) {
   admitted:=gf_time_admit(cast(u8)kind,width,bucket,out.count,work.count,overlap);
   if admitted!=GfStatus.ok {return GfResult.{status=admitted};}
   half:=width/2;ln:=f32(log(10000.0f64));ratio:=ln/f32(half);

@@ -11,7 +11,7 @@ OpProposal :: struct {valid:bool;analysis:int;final:int;alpha:int;}
     #assert !op_parse("[1,1,0] prose").valid && !op_parse("[1,\"1\",0]").valid && !op_parse("[1,1,0.0]").valid;
     #assert !op_parse("{\"a\":0,\"b\":0,\"c\":0}").valid;
 }
-op_parse :: (text:string)->OpProposal #export_c {
+op_parse :: (text:string)->OpProposal #export_c #effects(all) {
     d:[1]Jv;nodes:[16]JvNode;r:OpProposal;
     if !jv_parse(d[..],text,nodes[..]) || jv_kind(d[0],0)!=JV_ARRAY || jv_len(d[0],0)!=3 {return r;}
     a:=jv_int(d[0],jv_at(d[0],0,0),-1);b:=jv_int(d[0],jv_at(d[0],0,1),-1);c:=jv_int(d[0],jv_at(d[0],0,2),-5);

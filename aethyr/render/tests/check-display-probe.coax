@@ -3,7 +3,7 @@
 #load "qualification-files.coax";
 #load "display-probe.coax";
 dpq_spawn :: (argv:[]string)->int {h:=proc_new();if h<0 {return -1;}for arg:argv {if !proc_arg(h,arg){_:=proc_release(h);return -1;}}if proc_start(h)!=0 {_:=proc_release(h);return -1;}return h;}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4 {tool_errln("usage: check-display-probe REACTOR PACKAGE_DIR PROBE_DIR NEW_OUT");return 2;}wasm:=args_at(a[..],0);package:=args_at(a[..],1);fixture:=args_at(a[..],2);out:=args_at(a[..],3);if !fs_mkdir(out) {return 1;}listing:[1]FsList;if fs_list(out,listing[..])!=0 {return 2;}
  paths:[8][4096]u8;site:=fs_join(out,"site",paths[0][..]);if !fs_mkdir(site)||!fs_write(fs_join(site,"index.html",paths[1][..]),"<!doctype html><title>Display conversion probe</title>") {return 1;}raw:[4194304]u8;wn:=fs_read(wasm,raw[..]);if wn<1||!fs_write(fs_join(site,"renderer.wasm",paths[1][..]),cast(string)raw[0..<wn]) {return 1;}
  inputs:[1]RtqInputs;for file:[5]string.[wasm,"coax/web/render.js","coax/web/render-face.c","aethyr/render/tests/display-probe-effects.js","aethyr/render/tests/display-probe.coax"] {if !rtq_input_add(inputs[..],file) {return 1;}}

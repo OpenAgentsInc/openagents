@@ -169,19 +169,19 @@ HostGrant :: struct {
   w:[4096]u8;g:=hgk_grant(8,w[..]);
   e:=hg_body(HG_GRANT_EPOCH1,g,HG_HOST_HEX,HG_DEVICE_HEX,HG_MAILBOX_HEX);#assert e.error==HG_OK && e.epoch==1;
 }
-hg_zero :: (b:[]u8) {for i:0..<b.count {b[i]=0;}}
-hg_right :: (name:string)->int {
+hg_zero :: (b:[]u8) #effects(all) {for i:0..<b.count {b[i]=0;}}
+hg_right :: (name:string)->int #effects(all) {
   names:=[7]string.["observe","operate","terminal","review","access_read","access_admin","world"];
   for i:0..<7 {if name==names[i] {return i;}}
   return -1;
 }
-hg_hex64 :: (s:string)->bool {
+hg_hex64 :: (s:string)->bool #effects(all) {
   if s.count!=64 {return false;}
   for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
   return true;
 }
 // Exactly one ["p", device], one ["h", <64-hex>] (copied to mailbox) and a ["t","oa:artifact:v1"].
-hg_tags :: (tags:string,device_hex:string,mailbox:[]u8)->bool {
+hg_tags :: (tags:string,device_hex:string,mailbox:[]u8)->bool #effects(all) {
   // A tag string longer than 256 decoded bytes fails closed.
   decoded:[256]u8;j:[1]Json;json_start(j[..],tags);
   if json_next(j[..])!=JSON_ARRAY {return false;}
@@ -205,20 +205,20 @@ hg_tags :: (tags:string,device_hex:string,mailbox:[]u8)->bool {
   }
   return t==JSON_ARRAY_END && ps==1 && hs==1 && topic;
 }
-hg_text :: (raw:string,out:[]u8)->string {
+hg_text :: (raw:string,out:[]u8)->string #effects(all) {
   n:=json_unescape(raw,out);if n<0 {return "";}return cast(string)out[0..<n]; // mutant: equivalent (n<=0 and n<1 also give "" exactly when n is 0)
 }
 // A grant field against its projection. Every signed string is nonempty, so
 // an absent projected field ("") never matches; proto3 writes no zero
 // scalar, so an absent number reads as 0.
-hg_same :: (signed:string,projected:H__pb_String)->bool {
+hg_same :: (signed:string,projected:H__pb_String)->bool #effects(all) {
   return projected.value==signed && projected.error==0;
 }
-hg_u64 :: (signed:int,projected:H__pb_U64)->bool {
+hg_u64 :: (signed:int,projected:H__pb_U64)->bool #effects(all) {
   return projected.value==cast(u64)signed && projected.error==0;
 }
-hg_relay_ok :: (relay:string)->bool {return relay.count>0 && relay.count<=256;}
-hg_number :: (raw:string)->int {
+hg_relay_ok :: (relay:string)->bool #effects(all) {return relay.count>0 && relay.count<=256;}
+hg_number :: (raw:string)->int #effects(all) {
   // JCS has admitted a safe integer token; only nonnegative digits pass here.
   if raw.count==0 || raw.count>16 {return -1;} // mutant: equivalent (17 digits fit int and exceed HG_MAX_SAFE below)
   v:=0;for c:raw {if c<'0' || c>'9' {return -1;}v=v*10+cast(int)(c-'0');}
@@ -227,11 +227,11 @@ hg_number :: (raw:string)->int {
   return v;
 }
 HG_FIELDS :: [13]string.["v","requires","grant","host","owner","device","relay","rights","epoch","origin","issued_at","expires_at","scope"];
-hg_field :: (name:string)->int {for i:0..<13 {if name==HG_FIELDS[i] {return i;}}return -1;}
+hg_field :: (name:string)->int #effects(all) {for i:0..<13 {if name==HG_FIELDS[i] {return i;}}return -1;}
 
 // The grant body (inline JSON, already JCS-admitted: no duplicate keys)
 // against the projection, the signer, this device and the mailbox.
-hg_body :: (body:string,projected:H_Grant,signer_hex:string,device_hex:string,mailbox:string)->HostGrant {
+hg_body :: (body:string,projected:H_Grant,signer_hex:string,device_hex:string,mailbox:string)->HostGrant #effects(all) {
   r:HostGrant;r.error=HG_GRANT;
   if projected.error!=0 {r.error=HG_PROJECTION;return r;}
   d:[1024]u8;j:[1]Json;json_start(j[..],body);
@@ -308,7 +308,7 @@ hg_body :: (body:string,projected:H_Grant,signer_hex:string,device_hex:string,ma
   if mismatch {r.error=HG_PROJECTION;return r;}
   r.error=HG_OK;return r;
 }
-hg_done :: (r:HostGrant,error:u32,work:[]u8)->HostGrant {
+hg_done :: (r:HostGrant,error:u32,work:[]u8)->HostGrant #effects(all) {
   hg_zero(work[0..<HG_WORK]);
   if error!=HG_OK {fail:HostGrant;fail.error=error;return fail;}
   return r;
@@ -319,7 +319,7 @@ hg_done :: (r:HostGrant,error:u32,work:[]u8)->HostGrant {
 // and x-only public key are given. On HG_OK, original is the exact signed
 // envelope (borrowed from access_wire) to retain beside the projection.
 // overlap is the host's truthful fact that any two views share memory.
-host_access_bind_checked :: (access_wire:[]u8,device_secret:[]u8,device_x:[]u8,work:[]u8,overlap:bool)->HostGrant #export_c {
+host_access_bind_checked :: (access_wire:[]u8,device_secret:[]u8,device_x:[]u8,work:[]u8,overlap:bool)->HostGrant #export_c #effects(all) {
   r:HostGrant;
   if device_secret.count!=32 || device_x.count!=32 || work.count<HG_WORK || overlap {return r;}
   access:=H_Access_decode(access_wire);
@@ -346,7 +346,7 @@ host_access_bind_checked :: (access_wire:[]u8,device_secret:[]u8,device_x:[]u8,w
 // recipient, decryption, envelope and grant. Split out so checks reach it
 // within a check budget (ECDH alone is about one); host_access_bind_checked
 // is the only caller outside checks.
-hg_open :: (text:string,e:NostrEvent,g:H_Grant,ck:[]u8,device_x:[]u8,work:[]u8)->HostGrant {
+hg_open :: (text:string,e:NostrEvent,g:H_Grant,ck:[]u8,device_x:[]u8,work:[]u8)->HostGrant #effects(all) {
   r:HostGrant;
   // 32 bytes always fit 64 without overlap: hex encoding cannot refuse here.
   dev:[64]u8;signer:[64]u8;mail:[64]u8;

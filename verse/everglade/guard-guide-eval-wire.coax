@@ -45,22 +45,22 @@ GgeObservation :: struct {valid:bool;status:int;result:GgeResult;}
   #assert ggew_summary("",out[..])>0;
 }
 
-ggew_hash :: (text:string,out:[]u8)->bool #export_c {
+ggew_hash :: (text:string,out:[]u8)->bool #export_c #effects(all) {
   if text.count>4096 || out.count<64 {return false;}bytes:[4096]u8;for i:0..<text.count {bytes[i]=text[i];}digest:[32]u8;
   hashed:=sha256_hash_checked(bytes[0..<text.count],digest[..],false);hex:="0123456789abcdef";
   for i:0..<32 {out[2*i]=hex[cast(int)(digest[i]>>4)];out[2*i+1]=hex[cast(int)(digest[i]&15)];}return true;
 }
-ggew_request :: (index:int,out:[]u8)->int #export_c {
+ggew_request :: (index:int,out:[]u8)->int #export_c #effects(all) {
   n:=gge_request(index,out);if n==-1 {return -1;}return ggew_frozen_length(index,cast(string)out[0..<n]);
 }
-ggew_frozen_length :: (index:int,text:string)->int {
+ggew_frozen_length :: (index:int,text:string)->int #effects(all) {
   if index<0 || index>=5 {return -1;}hash:[64]u8;if !ggew_hash(text,hash[..]) || cast(string)hash[..]!=GGE_REQUEST_SHA[index] {return -1;}return text.count;
 }
-ggew_member :: (d:Jv,key:string)->int {
+ggew_member :: (d:Jv,key:string)->int #effects(all) {
   if jv_kind(d,0)!=JV_OBJECT {return -1;}found:=-1;
   for i:0..<jv_len(d,0) {child:=jv_at(d,0,i);if jv_raw_eq(jv_key(d,child),key) {if found!=-1 {return -1;}found=child;}}return found;
 }
-ggew_observation :: (text:string)->GgeObservation #export_c {
+ggew_observation :: (text:string)->GgeObservation #export_c #effects(all) {
   if text.count>65536 {return GgeObservation.{};}nodes:[64]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {return GgeObservation.{};}
   v:=d[0];index:=jv_int(v,ggew_member(v,"case"),-1);elapsed:=jv_int(v,ggew_member(v,"elapsed_ms"),-1);status:=jv_int(v,ggew_member(v,"status"),-1);
   if index<0 || index>=5 || elapsed<0 || elapsed>GL_MAX_MS || status<0 || status>599 {return GgeObservation.{};}
@@ -68,14 +68,14 @@ ggew_observation :: (text:string)->GgeObservation #export_c {
   body:[8192]u8;n:=jv_str(v,ggew_member(v,"body"),body[..]);if n<0 {return GgeObservation.{};}
   r:=gge_evaluate(index,ifx status==200 then "200\n" else "",cast(string)body[0..<n],elapsed);return GgeObservation.{valid=true,status=status,result=r};
 }
-ggew_record :: (index:int,hash:string,elapsed:int,status:int,body:string,out:[]u8)->int #export_c {
+ggew_record :: (index:int,hash:string,elapsed:int,status:int,body:string,out:[]u8)->int #export_c #effects(all) {
   w:[1]Jo;jo_start(w[..],out);jo_obj(w[..]);jo_key(w[..],"case");jo_int(w[..],index);jo_key(w[..],"request_sha256");jo_str(w[..],hash);
   jo_key(w[..],"elapsed_ms");jo_int(w[..],elapsed);jo_key(w[..],"status");jo_int(w[..],status);jo_key(w[..],"body");jo_str(w[..],body);jo_end(w[..]);return ifx w[0].bad then -1 else w[0].n;
 }
-ggew_choice :: (w:[]Jo,action:int) {
+ggew_choice :: (w:[]Jo,action:int) #effects(all) {
   if action>=0 && action<5 {jo_str(w,GGE_OPTIONS[action]);}else {jo_null(w);}
 }
-ggew_result :: (r:GgeObservation,out:[]u8)->int #export_c {
+ggew_result :: (r:GgeObservation,out:[]u8)->int #export_c #effects(all) {
   e:=r.result;if !r.valid || e.index<0 || e.index>=5 {return -1;}w:[1]Jo;jo_start(w[..],out);jo_obj(w[..]);
   jo_key(w[..],"corpus");jo_str(w[..],GGE_CORPUS);jo_key(w[..],"candidate");jo_str(w[..],GGE_CANDIDATE);jo_key(w[..],"case");jo_int(w[..],e.index);
   jo_key(w[..],"split");jo_str(w[..],ifx e.split==1 then "heldout" else "development");jo_key(w[..],"request_sha256");jo_str(w[..],GGE_REQUEST_SHA[e.index]);
@@ -88,14 +88,14 @@ ggew_result :: (r:GgeObservation,out:[]u8)->int #export_c {
   jo_key(w[..],"local_rule_correct");jo_bool(w[..],e.rule_correct);jo_key(w[..],"always_quiet_correct");jo_bool(w[..],e.quiet_correct);jo_key(w[..],"forbidden");jo_bool(w[..],e.forbidden);
   jo_end(w[..]);return ifx w[0].bad then -1 else w[0].n;
 }
-ggew_latency :: (w:[]Jo,r:GlLatency) {
+ggew_latency :: (w:[]Jo,r:GlLatency) #effects(all) {
   jo_obj(w);jo_key(w,"count");jo_int(w,r.count);jo_key(w,"minimum");if r.ok {jo_int(w,r.minimum_ms);}else {jo_null(w);}
   jo_key(w,"median");if !r.ok {jo_null(w);}else if r.median_twice_ms%2==0 {jo_int(w,r.median_twice_ms/2);}else {
     b:[64]u8;t:[1]Jo;jo_start(t[..],b[..]);jo_int(t[..],r.median_twice_ms/2);jo_put(t[..],".5");jo_raw(w,jo_text(t[..]));
   }
   jo_key(w,"p95");if r.ok {jo_int(w,r.p95_ms);}else {jo_null(w);}jo_key(w,"maximum");if r.ok {jo_int(w,r.maximum_ms);}else {jo_null(w);}jo_end(w);
 }
-ggew_totals :: (t:GgeTotals,out:[]u8)->int {
+ggew_totals :: (t:GgeTotals,out:[]u8)->int #effects(all) {
   all:=t.elapsed;covered_times:=t.covered_elapsed;
   w:[1]Jo;jo_start(w[..],out);jo_obj(w[..]);jo_key(w[..],"corpus");jo_str(w[..],GGE_CORPUS);jo_key(w[..],"candidate");jo_str(w[..],GGE_CANDIDATE);
   jo_key(w[..],"labels_sha256");jo_str(w[..],GGE_LABEL_SHA);jo_key(w[..],"expected");jo_int(w[..],5);jo_key(w[..],"observed");jo_int(w[..],t.observed);
@@ -109,7 +109,7 @@ ggew_totals :: (t:GgeTotals,out:[]u8)->int {
   jo_key(w[..],"automatic_promotion");jo_bool(w[..],false);jo_key(w[..],"attempt_latency_ms");ggew_latency(w[..],gl_latency(all[0..<t.observed]));
   jo_key(w[..],"admitted_latency_ms");ggew_latency(w[..],gl_latency(covered_times[0..<t.covered]));jo_end(w[..]);return ifx w[0].bad then -1 else w[0].n;
 }
-ggew_summary :: (text:string,out:[]u8)->int #export_c {
+ggew_summary :: (text:string,out:[]u8)->int #export_c #effects(all) {
   if text.count>262144 {return -1;}totals:[1]GgeTotals;at:=0;
   while at<text.count {end:=at;while end<text.count && text[end]!='\n' {end+=1;}if end==at {return -1;}
     r:=ggew_observation(text[at..<end]);if !r.valid || !gge_add(totals[..],r.result) {return -1;}at=end+1;

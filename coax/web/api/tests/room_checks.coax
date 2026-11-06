@@ -25,7 +25,7 @@
 #load "api_harness.coax";
 #load "../../room/raid-identity.coax";
 
-cxproc_wall_us :: () -> int #foreign;
+cxproc_wall_us :: () -> int #foreign #effects(all);
 rc_wall_ms :: () -> int { return cxproc_wall_us() / 1000; }
 
 // A JSON body's member, by path, compared with text (a string's text, or a number's or literal's raw text).
@@ -2094,7 +2094,7 @@ rc_deploy :: (t: [] Ap, room_bin_in: string) {
   g := fs_remove(work_a); g = fs_remove(work_b);
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { return 2; }
   if args_count(a[..]) >= 1 && args_at(a[..], 0) == "proxy" {

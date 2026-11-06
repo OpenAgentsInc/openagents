@@ -41,26 +41,26 @@
  s:[1]RltState;#assert rlt_begin(0,s[..])==RlpStatus.ok;s[0].batch=129;s[0].optimizer.adam.step=516;for w:0..<16 {s[0].worlds[w].rng.counter=cast(u64)(w*8192+129*64);}#assert !rlt_state_ok(s[0]);s[0].batch=0;s[0].optimizer.adam.step=0;s[0].runseed=2;for w:0..<16 {s[0].worlds[w].rng.counter=cast(u64)(w*8192);s[0].worlds[w].rng.seed=2;}#assert !rlt_state_ok(s[0]);
 }
 // The helpers and state PODs are unsealed numeric observations, not provenance certificates.
-rlt_lower :: (K_old:f64)->f64 {x:=K_old-0.00390625;return ifx rcp_side(x,0.25,1)== -1 then 0.25 else x;}
-rlt_upper :: (K_old:f64)->f64 {x:=K_old+0.00390625;return ifx rcp_side(x,0.25,1)==1 then 1 else x;}
-rlt_project :: (K_old:f64,candidate:f64,output:[]f64)->RlpStatus #export_c {if output.count!=1 {return RlpStatus.shape;}if !rgp_finite2(f64_bits(K_old),f64_bits(candidate)) {return RlpStatus.number;}if !rlp_gain(K_old) {return RlpStatus.range;}lo:=rlt_lower(K_old);hi:=rlt_upper(K_old);side:=rcp_side(candidate,lo,hi);output[0]=ifx side== -1 then lo else ifx side==1 then hi else candidate;return RlpStatus.ok;}
-rlt_group :: ()->AwGroup {return AwGroup.{first=0,count=1,lr=0.001,beta1=0.9,beta2=0.999,eps=1e-8,decay=0};}
-rlt_optimizer_ok :: (s:RltOptimizer)->bool {return rlp_gain(s.K) && rgp_finite2(f64_bits(s.m),f64_bits(s.v)) && s.v>=0 && aw_state(s.adam) && s.adam.skipped==0;}
-rlt_epoch :: (K_old:f64,input:RltOptimizer,rows:[]RlpRow,output:[]RltEpoch)->RlpStatus #export_c {
+rlt_lower :: (K_old:f64)->f64 #effects(all) {x:=K_old-0.00390625;return ifx rcp_side(x,0.25,1)== -1 then 0.25 else x;}
+rlt_upper :: (K_old:f64)->f64 #effects(all) {x:=K_old+0.00390625;return ifx rcp_side(x,0.25,1)==1 then 1 else x;}
+rlt_project :: (K_old:f64,candidate:f64,output:[]f64)->RlpStatus #export_c #effects(all) {if output.count!=1 {return RlpStatus.shape;}if !rgp_finite2(f64_bits(K_old),f64_bits(candidate)) {return RlpStatus.number;}if !rlp_gain(K_old) {return RlpStatus.range;}lo:=rlt_lower(K_old);hi:=rlt_upper(K_old);side:=rcp_side(candidate,lo,hi);output[0]=ifx side== -1 then lo else ifx side==1 then hi else candidate;return RlpStatus.ok;}
+rlt_group :: ()->AwGroup #effects(all) {return AwGroup.{first=0,count=1,lr=0.001,beta1=0.9,beta2=0.999,eps=1e-8,decay=0};}
+rlt_optimizer_ok :: (s:RltOptimizer)->bool #effects(all) {return rlp_gain(s.K) && rgp_finite2(f64_bits(s.m),f64_bits(s.v)) && s.v>=0 && aw_state(s.adam) && s.adam.skipped==0;}
+rlt_epoch :: (K_old:f64,input:RltOptimizer,rows:[]RlpRow,output:[]RltEpoch)->RlpStatus #export_c #effects(all) {
  if rows.count<1 || rows.count>512 || output.count!=1 {return RlpStatus.shape;}if !rgp_finite2(f64_bits(K_old),f64_bits(input.K)) {return RlpStatus.number;}for r:rows {if !rlp_row_finite(r) {return RlpStatus.number;}}
  if !rlp_gain(K_old) {return RlpStatus.range;}if !rlt_optimizer_ok(input) || input.K<rlt_lower(K_old) || input.K>rlt_upper(K_old) {return RlpStatus.state;}for r:rows {if !rlp_row_domain(r) {return RlpStatus.range;}}
  fresh:RltEpoch;loss:f64=0;gradient:f64=0;block_count:=(rows.count+63)/64;for block_index:0..<block_count {start:=block_index*64;end:=ifx block_index==block_count-1 then rows.count else start+64;block:[1]RlpBlock;status:=rlp_block(input.K,rows[start..<end],block[..]);if status!=RlpStatus.ok {return status;}loss+=block[0].actual_loss_sum;gradient+=block[0].gradient_sum;fresh.clipped+=block[0].clipped;fresh.blocks+=1;}
  fresh.actual_loss_mean=loss/f64(rows.count);fresh.gradient_mean=gradient/f64(rows.count);p:=[1]f64.[input.K];m:=[1]f64.[input.m];v:=[1]f64.[input.v];g:=[1]f64.[fresh.gradient_mean];groups:=[1]AwGroup.[rlt_group()];compute:[1]f32;result:=aw_step(groups[..],AwPolicy.{},input.adam,p[..],g[..],m[..],v[..],compute[0..<0],false);if result.status!=AwStatus.ok {return RlpStatus.optimizer;}
  projected:[1]f64;#assert rlt_project(K_old,p[0],projected[..])==RlpStatus.ok;fresh.unprojectedK=p[0];fresh.projection=ifx p[0]!=projected[0] then 1 else 0;fresh.next=RltOptimizer.{K=projected[0],m=m[0],v=v[0],adam=result.state};fresh.rows=rows.count;output[0]=fresh;return RlpStatus.ok;
 }
-rlt_seed :: (seed:u64)->bool {return seed==0 || seed==1 || seed==7 || seed==13;}
-rlt_begin :: (seed:u64,output:[]RltState)->RlpStatus #export_c {if output.count!=1 {return RlpStatus.shape;}if !rlt_seed(seed) {return RlpStatus.range;}s:RltState;s.optimizer.K=0.25;s.runseed=seed;for w:0..<16 {s.worlds[w].x=ifx w<4 then -1.0 else ifx w<8 then -0.25 else ifx w<12 then 0.25 else 1.0;s.worlds[w].rng=CrSeed.{seed=seed,counter=cast(u64)(w*8192)};}output[0]=s;return RlpStatus.ok;}
-rlt_state_ok :: (s:RltState)->bool {if !rlt_index(s.batch) || !rlt_seed(s.runseed) || !rlt_optimizer_ok(s.optimizer) || s.optimizer.adam.step!=4*s.batch {return false;}for w:0..<16 {if !rgp_finite(f64_bits(s.worlds[w].x)) || abs(s.worlds[w].x)>16 || s.worlds[w].rng.seed!=s.runseed || s.worlds[w].rng.counter!=cast(u64)(w*8192+s.batch*64) {return false;}}return true;}
-rlt_batch :: (input:RltState,output:[]RltIteration)->RlpStatus #export_c {
+rlt_seed :: (seed:u64)->bool #effects(all) {return seed==0 || seed==1 || seed==7 || seed==13;}
+rlt_begin :: (seed:u64,output:[]RltState)->RlpStatus #export_c #effects(all) {if output.count!=1 {return RlpStatus.shape;}if !rlt_seed(seed) {return RlpStatus.range;}s:RltState;s.optimizer.K=0.25;s.runseed=seed;for w:0..<16 {s.worlds[w].x=ifx w<4 then -1.0 else ifx w<8 then -0.25 else ifx w<12 then 0.25 else 1.0;s.worlds[w].rng=CrSeed.{seed=seed,counter=cast(u64)(w*8192)};}output[0]=s;return RlpStatus.ok;}
+rlt_state_ok :: (s:RltState)->bool #effects(all) {if !rlt_index(s.batch) || !rlt_seed(s.runseed) || !rlt_optimizer_ok(s.optimizer) || s.optimizer.adam.step!=4*s.batch {return false;}for w:0..<16 {if !rgp_finite(f64_bits(s.worlds[w].x)) || abs(s.worlds[w].x)>16 || s.worlds[w].rng.seed!=s.runseed || s.worlds[w].rng.counter!=cast(u64)(w*8192+s.batch*64) {return false;}}return true;}
+rlt_batch :: (input:RltState,output:[]RltIteration)->RlpStatus #export_c #effects(all) {
  if output.count!=1 {return RlpStatus.shape;}if !rlt_state_ok(input) || input.batch==128 {return RlpStatus.state;}fresh:RltIteration;worlds:=input.worlds;collected:[1]RleBatch;#assert rle_rollout(16,32,input.optimizer.K,worlds[..],collected[..])==RlpStatus.ok;fresh.batch=collected[0];rows:[512]RlpRow;source_rows:=fresh.batch.rows;rlt_detach(source_rows[..],rows[..]);
  current:=input.optimizer;for epoch:0..<4 {next:[1]RltEpoch;status:=rlt_epoch(input.optimizer.K,current,rows[..],next[..]);if status!=RlpStatus.ok {return status;}fresh.epochs[epoch]=next[0];current=next[0].next;}
  fresh.next=input;fresh.next.optimizer=current;fresh.next.batch=input.batch+1;for w:0..<16 {fresh.next.worlds[w]=fresh.batch.next_worlds[w];}output[0]=fresh;return RlpStatus.ok;
 }
 
-rlt_index :: (batch:int)->bool {return batch>=0 && batch<=128;}
-rlt_detach :: (input:[]RleRow,output:[]RlpRow) {for r,i:input {output[i]=RlpRow.{x=r.x,action=r.action,old_logp=r.old_logp,advantage=r.target.advantage.value};}}
+rlt_index :: (batch:int)->bool #effects(all) {return batch>=0 && batch<=128;}
+rlt_detach :: (input:[]RleRow,output:[]RlpRow) #effects(all) {for r,i:input {output[i]=RlpRow.{x=r.x,action=r.action,old_logp=r.old_logp,advantage=r.target.advantage.value};}}

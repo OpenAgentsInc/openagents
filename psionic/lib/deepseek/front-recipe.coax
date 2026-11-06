@@ -37,15 +37,15 @@
     m[2].role=DfRole.assistant;#assert df_recipe(m[0..<4],false,out[..],tmp[..],false).status==DfStatus.format;
 }
 DfSegments :: struct {data:[]DfSegment;written:int;status:DfStatus;}
-df_segment :: (writer:DfSegments,s:DfSegment)->DfSegments {
+df_segment :: (writer:DfSegments,s:DfSegment)->DfSegments #effects(all) {
     w:=writer;if w.status!=DfStatus.ok {return w;}if w.written==w.data.count {w.status=DfStatus.capacity;return w;}w.data[w.written]=s;w.written+=1;return w;
 }
-df_plain :: (w:DfSegments,text:string)->DfSegments {return df_segment(w,DfSegment.{text=text});}
-df_special :: (w:DfSegments,s:DfSpecial)->DfSegments {return df_segment(w,DfSegment.{special=true,control=s});}
+df_plain :: (w:DfSegments,text:string)->DfSegments #effects(all) {return df_segment(w,DfSegment.{text=text});}
+df_special :: (w:DfSegments,s:DfSpecial)->DfSegments #effects(all) {return df_segment(w,DfSegment.{special=true,control=s});}
 // The non-schema text subset of V4.1's recipe. Supplied assistant content is
 // final-only; reasoning history is deliberately absent from this typed API.
 // book:begin recipe
-df_recipe :: (messages:[]DfMessage,thinking:bool,output:[]DfSegment,stage:[]DfSegment,overlap:bool)->DfRecipe #export_c {
+df_recipe :: (messages:[]DfMessage,thinking:bool,output:[]DfSegment,stage:[]DfSegment,overlap:bool)->DfRecipe #export_c #effects(all) {
     if overlap {return DfRecipe.{status=DfStatus.alias};}
     if messages.count<1 || messages.count>64 {return DfRecipe.{status=DfStatus.budget};}
     total:=0;for i:0..<messages.count {m:=messages[i];if m.content.count>65536-total {return DfRecipe.{status=DfStatus.budget};}total+=m.content.count;

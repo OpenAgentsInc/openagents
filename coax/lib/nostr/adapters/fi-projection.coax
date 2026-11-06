@@ -9,13 +9,13 @@
 #load "../../../tests/nostr/proto_wire_F.coax";
 #authority;
 FpaAssertion :: struct {original:[]u8;consistent:bool;}
-fpa_bytes :: (a:[]u8,b:[]u8)->bool {
+fpa_bytes :: (a:[]u8,b:[]u8)->bool #effects(all) {
  if a.count!=b.count {return false;}for i:0..<a.count {if a[i]!=b[i] {return false;}}return true;
 }
-fpa_claim_text :: (text:FiClaimText,actual:string)->bool {copy:=text;return cast(string)copy.bytes[0..<copy.count]==actual;}
+fpa_claim_text :: (text:FiClaimText,actual:string)->bool #effects(all) {copy:=text;return cast(string)copy.bytes[0..<copy.count]==actual;}
 // Return the original audience's JSON form, after the claims parser has checked
 // its member uniqueness and shape. This preserves a singleton array vs string.
-fpa_audience_form :: (raw:string)->int {
+fpa_audience_form :: (raw:string)->int #effects(all) {
  j:[1]Json;json_start(j[..],raw);if json_next(j[..])!=JSON_OBJECT {return 0;}
  name:[128]u8;token:=json_next(j[..]);
  while token==JSON_STRING {
@@ -27,7 +27,7 @@ fpa_audience_form :: (raw:string)->int {
  }
  return 0;
 }
-fpa_audience :: (aud:F_Audience,claims:FiClaimsProjection,form:int)->bool {
+fpa_audience :: (aud:F_Audience,claims:FiClaimsProjection,form:int)->bool #effects(all) {
  if claims.audience_count<1 {return false;}
  if claims.audience_count>16 {return false;}
  checked:=F_Audience_decode(aud.wire);if aud.error!=0 {return false;}if checked.error!=0 {return false;}
@@ -45,15 +45,15 @@ fpa_audience :: (aud:F_Audience,claims:FiClaimsProjection,form:int)->bool {
  // the nested iterator's exhaustion and error state deterministic.
  return index==claims.audience_count;
 }
-fpa_number :: (n:F_JsonNumber,expected:int)->bool {
+fpa_number :: (n:F_JsonNumber,expected:int)->bool #effects(all) {
  checked:=F_JsonNumber_decode(n.wire);if n.error!=0 {return false;}if checked.error!=0 {return false;}
  text:=F_JsonNumber_get_decimal(checked);parsed:=json_int(text.value);return parsed.ok && parsed.value==expected;
 }
-fpa_key :: (projected:[]u8,hex:FiClaimText)->bool {
+fpa_key :: (projected:[]u8,hex:FiClaimText)->bool #effects(all) {
  copy:=hex;decoded:[32]u8;result:=hex_decode_checked(cast(string)copy.bytes[0..<copy.count],decoded[..],false);
  return result.error==NC_OK && result.written==32 && fpa_bytes(projected,decoded[..]);
 }
-fpa_claims :: (projected:F_AssertionClaims,claims:FiClaimsProjection,form:int)->bool {
+fpa_claims :: (projected:F_AssertionClaims,claims:FiClaimsProjection,form:int)->bool #effects(all) {
  if projected.error!=0 {return false;}
  if !claims.ok {return false;}
  // The generated decoder requires and recursively validates singular fields.
@@ -69,7 +69,7 @@ fpa_claims :: (projected:F_AssertionClaims,claims:FiClaimsProjection,form:int)->
  if client.present && !fpa_claim_text(claims.client,client.value) {return false;}
  return true;
 }
-fpa_read :: (wire:[]u8)->FpaAssertion #export_c {
+fpa_read :: (wire:[]u8)->FpaAssertion #export_c #effects(all) {
  assertion:=F_Assertion_decode(wire);if assertion.error!=0 {return FpaAssertion.{};}
  original:=F_Assertion_get_original_compact_jws(assertion);header:=F_Assertion_get_protected_header(assertion);projected:=F_Assertion_get_claims(assertion);
  token:=cast(string)original.value;parts:=fi_compact_parse(token);if !parts.ok {return FpaAssertion.{};}

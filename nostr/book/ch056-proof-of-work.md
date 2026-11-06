@@ -63,7 +63,7 @@ zero.
 ```jai
 // NIP-13 difficulty: whole zero bytes count 8 each; the first nonzero byte
 // adds the zeros above its highest set bit, and counting stops there.
-nip13_difficulty :: (id:[32]u8)->int {
+nip13_difficulty :: (id:[32]u8)->int #effects(all) {
   n:=0;
   for i:0..<32 {
     b:=cast(int)id[i];
@@ -128,7 +128,7 @@ tag. The counter and target must be plain digits; a JSON escape such as
 ```jai
 // The event's nonce tag. Tags were checked by the event reader as arrays
 // of strings; a forged record that breaks that refuses as N13_EVENT.
-n13_nonce :: (e:NostrEvent)->N13Nonce {
+n13_nonce :: (e:NostrEvent)->N13Nonce #effects(all) {
   r:N13Nonce;j:[1]Json;if !nt_start(j[..],e) {return n13_bad(r,N13_EVENT);}
   tok:=json_next(j[..]);
   while tok==JSON_ARRAY {
@@ -171,7 +171,7 @@ reaches the target or `limit` tries are spent.
 // deterministic; NIP-13 suggests a live miner also update it. The final
 // tags (tags plus the nonce tag) are left in out[0..<tags_n].
 nip13_mine :: (pub:[32]u8,created_at:int,kind:int,tags:string,content:string,
-               target:int,start:int,limit:int,out:[]u8)->N13Mine {
+               target:int,start:int,limit:int,out:[]u8)->N13Mine #effects(all) {
   m:N13Mine;preimage:[N13_MAX_PREIMAGE]u8;
   if target<1 || target>N13_MAX_BITS || start<0 || limit<1 {return m;}
   if created_at<0 || kind<0 || kind>65535 {return m;}
@@ -247,7 +247,7 @@ configuration error.
 ```jai
 // A relay's NIP-13 admission. required is 0 (no proof of work asked) to
 // 256. The event's ID is recomputed from its fields before it is measured.
-nip13_admit :: (text:string,required:int,scratch:[]u8,overlap:bool)->N13Admit {
+nip13_admit :: (text:string,required:int,scratch:[]u8,overlap:bool)->N13Admit #effects(all) {
   a:N13Admit;a.required=required;
   if required<0 || required>N13_MAX_BITS {a.error=N13_POLICY;return a;}
   e:=nostr_event_read(text,scratch,overlap);if e.error!=NE_OK {return a;}
@@ -272,7 +272,7 @@ reason below has the same form.
 ```jai
 // The OK message's reason for a refusal: its length in out, 0 for an
 // admitted event, or -1 when out is too short.
-nip13_reason :: (a:N13Admit,out:[]u8)->int {
+nip13_reason :: (a:N13Admit,out:[]u8)->int #effects(all) {
   if a.error==N13_OK {return 0;}
   if a.error==N13_DIFFICULTY {
     n:=json_raw(out,0,"pow: difficulty ");n=json_write_int(out,n,a.difficulty);

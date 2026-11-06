@@ -15,8 +15,8 @@
 #load "../coax/lib/sys/proc.coax";
 #load "../coax/lib/json/json.coax";
 
-cxproc_uid :: () -> int #foreign;
-cxproc_wall_us :: () -> int #foreign;
+cxproc_uid :: () -> int #foreign #effects(all);
+cxproc_wall_us :: () -> int #foreign #effects(all);
 
 PM_USAGE :: "Usage: presentation-mode <on|off|toggle|status> [options]\n\nCommands:\n  on [--scale N]   Set the screen up to be watched: raise the monitor scale,\n                   put the camera view in the top right, and write down what\n                   the desktop was.\n  off              Put the desktop back from what was written down.\n  toggle           Enter when out, leave when in.\n  status           Say whether the mode is on, and since when.\n\nThe state lives in ~/.openagents/presentation-mode.json. Leaving reads that\nfile and needs nothing that entering left running, so `presentation-mode off`\nworks from a fresh process after whatever set the mode up has died.\n";
 
@@ -578,7 +578,7 @@ pm_status :: () -> int {
   return 0;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   verb := ifx ok && args_count(a[..]) > 0 then args_at(a[..], 0) else "";

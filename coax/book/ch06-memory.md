@@ -4,7 +4,7 @@
 > `coax0`. Heap memory, the context and temporary storage are design.
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.51.2**. Status inventory schema: **1**.
+Current compiler: **coax0 0.52.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Every value in a program lives somewhere in memory, and somebody decides
 when that memory is reused. In a garbage-collected language you rarely have
@@ -906,20 +906,22 @@ pointers unnecessary most of the time, with handles.
 
 ### Handles instead of long-lived pointers
 
-A `Handle(T)` is a 32-bit index into a pool plus a generation number. When
-a slot is recycled, its generation changes, and a stale handle fails its
-check instead of reading whatever moved in.
+`Handle(T)` and `Store(T)` are implemented in `coax/lib/handle.coax`.
+A handle has a 32-bit slot and a 32-bit generation in a nominal `u64` wrapper.
+Zero is absent. Recycling advances the generation; exhaustion retires the slot.
+`store_get` returns an optional view, so a stale reference gives `none`.
+`store_get_live` asserts liveness for code that established it first.
 
-```jai
-door: Handle(Entity);
-if e := world.get(door) { e.open = true; }
-```
+Aethyr's entities use `Handle(Entity)` and expose `entity_get` for optional
+lookup. Everglade's seats, casts, fire owners and shout speakers retain the
+same lifetime rule. A reconnect keeps a character's reference; a replacement
+cannot inherit it. Store backing and its views still need a caller-owned
+lifetime: handles do not yet supply region checking.
 
-The engine's entity system already works this way (`ecs::Entity`). Anything
-that outlives a frame, is saved, or has to survive a hot reload (Chapter 19)
-should hold a handle rather than an address. Today, the closest thing is an
-`int` index into an array plus a check of `count`, which catches an index
-past the end but not a slot that has been reused.
+Long-lived in-memory references use handles. Saved state and messages use stable
+IDs, which are resolved again on load; `#persisted` refuses process-local handles.
+[Checked state changes](../checked-state.md) specifies the library, effect bounds,
+rollback and persisted-value checks, including their remaining limits.
 
 ### Who owns what
 
@@ -1038,7 +1040,7 @@ changes that. Here is what's actually checked.
 | Integer overflow traps in development builds | Enforced (wraps in `--release`) |
 | Known local borrows returned directly, through supported helpers or inside aggregates | Rejected (`E0383`), including selected helper writes into local carriers; recursive and unsupported helper-write summaries remain manual |
 | Known callee-local descriptor backing retained in caller/static storage, directly or through checked calls | Rejected (`E0383`) in the bounded store profile; pending caller obligations and unsupported relations are separate |
-| Handles with generation checks for long-lived references | Planned |
+| Handles with generation checks for long-lived references | Implemented; regions and store provenance remain caller obligations |
 | Explicit owners and reset points; debug poisoning of freed memory | Planned |
 | Allocation as a checked effect | Planned |
 
@@ -1063,7 +1065,7 @@ diagnosed too, but a view still doesn't keep its array alive. General lifetime
 discipline remains the programmer's responsibility, usually by having the
 caller pass in a view to fill.
 
-Dynamic arrays, pointers, handles, allocators, the context and scratch
+Dynamic arrays, pointers, allocators, the context and scratch
 memory are planned, with ownership and allocation made visible rather than
 proven safe. In Chapter 7 we'll look at the other half of writing reliable
 code: errors, traps, and cleaning up with `defer`.

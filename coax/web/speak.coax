@@ -475,7 +475,7 @@ answers :: (url: string) -> bool {
   return r.status == 0 && c.count > 0 && c != "000";
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   st: [1] Run;
   a: [1] Args;
   ok := args_load(a[..]);

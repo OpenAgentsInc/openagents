@@ -55,15 +55,15 @@
     }
 }
 
-dh_width :: (width:int)->bool {return width>=1 && width<=8192;}
-dh_epsilon :: ()->f64 {return 0.000001;}
-dh_norm_epsilon :: ()->f64 {return 0.00000000000000000001;}
-dh_initial :: ()->DhCarry #export_c {return DhCarry.{pre=[4]f32.[1,0,0,0]};}
-dh_sigmoid :: (x:f32)->f64 {
+dh_width :: (width:int)->bool #effects(all) {return width>=1 && width<=8192;}
+dh_epsilon :: ()->f64 #effects(all) {return 0.000001;}
+dh_norm_epsilon :: ()->f64 #effects(all) {return 0.00000000000000000001;}
+dh_initial :: ()->DhCarry #export_c #effects(all) {return DhCarry.{pre=[4]f32.[1,0,0,0]};}
+dh_sigmoid :: (x:f32)->f64 #effects(all) {
     e:=exp(-abs(f64(x)));negative:=cast(int)(f32_bits(x)>>31);return (f64(negative)*e+f64(1-negative))/(1+e);
 }
-dh_maximum :: (row:[4]f32)->int {best:=0;for j:1..<4 {if row[j]>row[best] {best=j;}}return best;}
-dh_project :: (width:int,x:[]f32,w:[]f32)->DhProjection #export_c {
+dh_maximum :: (row:[4]f32)->int #effects(all) {best:=0;for j:1..<4 {if row[j]>row[best] {best=j;}}return best;}
+dh_project :: (width:int,x:[]f32,w:[]f32)->DhProjection #export_c #effects(all) {
     if !dh_width(width) {return DhProjection.{status=DsStatus.shape};}
     if x.count!=4*width || w.count!=96*width {return DhProjection.{status=DsStatus.capacity};}
     sum:PsionicAccumulator;for v:x {if !psionic_tensor_finite_bits(f32_bits(v)) {return DhProjection.{status=DsStatus.number};}sum=psionic_ops_accumulate(sum,f64(v)*f64(v));}
@@ -74,12 +74,12 @@ dh_project :: (width:int,x:[]f32,w:[]f32)->DhProjection #export_c {
         value:=f64(f32(raw))*f64(inverse);if !psionic_ops_fits_f32(value) {return DhProjection.{status=DsStatus.arithmetic};}r.values[i]=f32(value);
     }return r;
 }
-dh_normalize :: (input:[16]f32,columns:bool)->[16]f32 {
+dh_normalize :: (input:[16]f32,columns:bool)->[16]f32 #effects(all) {
     sums:[4]f64;for i:0..<4 {acc:PsionicAccumulator;for j:0..<4 {at:=ifx columns then 4*j+i else 4*i+j;acc=psionic_ops_accumulate(acc,f64(input[at]));}sums[i]=psionic_ops_total(acc);}
     out:[16]f32;for i:0..<4 {for j:0..<4 {out[4*i+j]=f32(f64(input[4*i+j])/(sums[ifx columns then j else i]+dh_epsilon()));}}return out;
 }
 // book:begin split
-dh_split :: (mixes:[24]f32,scale:[3]f32,base:[24]f32)->DhMixResult #export_c {
+dh_split :: (mixes:[24]f32,scale:[3]f32,base:[24]f32)->DhMixResult #export_c #effects(all) {
     for v:mixes {if !psionic_tensor_finite_bits(f32_bits(v)) {return DhMixResult.{status=DsStatus.number};}}
     for v:scale {if !psionic_tensor_finite_bits(f32_bits(v)) {return DhMixResult.{status=DsStatus.number};}}
     for v:base {if !psionic_tensor_finite_bits(f32_bits(v)) {return DhMixResult.{status=DsStatus.number};}}
@@ -96,7 +96,7 @@ dh_split :: (mixes:[24]f32,scale:[3]f32,base:[24]f32)->DhMixResult #export_c {
 }
 // book:end split
 // book:begin prepare
-dh_prepare :: (width:int,x:[]f32,previous:DhCarry,w:DhWeights,out:[]f32,stage:[]f32,overlap:bool)->DhMixResult #export_c {
+dh_prepare :: (width:int,x:[]f32,previous:DhCarry,w:DhWeights,out:[]f32,stage:[]f32,overlap:bool)->DhMixResult #export_c #effects(all) {
     if !dh_width(width) {return DhMixResult.{status=DsStatus.shape};}
     if out.count<width || stage.count<width {return DhMixResult.{status=DsStatus.capacity};}
     if overlap {return DhMixResult.{status=DsStatus.alias};}
@@ -106,13 +106,13 @@ dh_prepare :: (width:int,x:[]f32,previous:DhCarry,w:DhWeights,out:[]f32,stage:[]
 }
 // book:end prepare
 // Internal: exact extents and finite x have already been checked.
-dh_collapse_values :: (width:int,x:[]f32,previous:DhCarry,out:[]f32,stage:[]f32)->DsResult {
+dh_collapse_values :: (width:int,x:[]f32,previous:DhCarry,out:[]f32,stage:[]f32)->DsResult #effects(all) {
     for v:previous.pre {if !psionic_tensor_finite_bits(f32_bits(v)) {return DsResult.{status=DsStatus.number};}}
     for j:0..<width {acc:PsionicAccumulator;for i:0..<4 {acc=psionic_ops_accumulate(acc,f64(previous.pre[i])*f64(x[i*width+j]));}
         value:=psionic_ops_total(acc);if !psionic_ops_fits_f32(value) {return DsResult.{status=DsStatus.arithmetic};}stage[j]=f32(value);}
     for j:0..<width {out[j]=stage[j];}return DsResult.{written=width};
 }
-dh_collapse :: (width:int,x:[]f32,previous:DhCarry,out:[]f32,stage:[]f32,overlap:bool)->DsResult #export_c {
+dh_collapse :: (width:int,x:[]f32,previous:DhCarry,out:[]f32,stage:[]f32,overlap:bool)->DsResult #export_c #effects(all) {
     if !dh_width(width) {return DsResult.{status=DsStatus.shape};}
     if x.count!=4*width || out.count<width || stage.count<width {return DsResult.{status=DsStatus.capacity};}
     if overlap {return DsResult.{status=DsStatus.alias};}
@@ -120,7 +120,7 @@ dh_collapse :: (width:int,x:[]f32,previous:DhCarry,out:[]f32,stage:[]f32,overlap
     return dh_collapse_values(width,x,previous,out,stage);
 }
 // book:begin finish
-dh_finish :: (width:int,residual:[]f32,value:[]f32,mix:DhMix,out:[]f32,stage:[]f32,overlap:bool)->DhFinish #export_c {
+dh_finish :: (width:int,residual:[]f32,value:[]f32,mix:DhMix,out:[]f32,stage:[]f32,overlap:bool)->DhFinish #export_c #effects(all) {
     if !dh_width(width) {return DhFinish.{status=DsStatus.shape};}
     if residual.count!=4*width || value.count!=width || out.count<4*width || stage.count<4*width {return DhFinish.{status=DsStatus.capacity};}
     if overlap {return DhFinish.{status=DsStatus.alias};}

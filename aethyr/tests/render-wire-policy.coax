@@ -25,10 +25,10 @@
   #assert rw_replace("abc", "", "x", out[..]) == "";
   #assert rw_replace("aaa", "aa", "x", out[..]) == "";
 }
-rw_outcome :: (started: int, status: int, timed_out: bool, cut: bool, negative: bool) -> bool #export_c {
+rw_outcome :: (started: int, status: int, timed_out: bool, cut: bool, negative: bool) -> bool #export_c #effects(all) {
   return started == 0 && status >= 0 && !timed_out && !cut && (ifx negative then status != 0 else status == 0);
 }
-rw_replace :: (source: string, needle: string, replacement: string, out: [] u8) -> string #export_c {
+rw_replace :: (source: string, needle: string, replacement: string, out: [] u8) -> string #export_c #effects(all) {
   if needle.count == 0 { return ""; }
   found := -1;
   for i: 0..<source.count - needle.count + 1 {

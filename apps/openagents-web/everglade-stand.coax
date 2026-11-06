@@ -55,7 +55,7 @@ everglade_stand_lift :: (s: [] Everglade, x: f32, z: f32, feet: f32) -> f32 {
 }
 // The floors round (x, z) for the player's controller, over the ground you walk on there (the
 // controller's floor 0): into s.floors, how many.
-everglade_floors_near :: (s: [] Everglade, x: f32, z: f32) -> int #export_c {
+everglade_floors_near :: (s: [] Everglade, x: f32, z: f32) -> int #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   return eg_floors_round(s, x, z, f32(EG_STAND_REACH), walk_at(s, x, z), s[0].floors[..], 0);
 }

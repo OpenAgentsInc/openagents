@@ -93,3 +93,12 @@ forms and declared-versus-observed resource evidence. R14 additionally needs
 visible loop bounds, caller-owned scratch lifetimes, target-lowered stack bounds
 and error-path treatment before a bounded contract may be admitted. Units,
 frames, typed clocks and multirate schedules remain separate compiler work.
+
+## Enforced source contracts (0.52)
+
+`#effects` bounds the transitive source capabilities of each declared procedure;
+exports, foreign declarations and authority procedures require a bound. This is
+separate from the conservative resource inventory above, whose v1 schema remains
+unchanged. Unknown source operations require every capability; foreign summaries
+remain trusted. [checked-state.md](checked-state.md#effects) specifies admission,
+capabilities, witnesses, transaction restrictions and the initial migration.

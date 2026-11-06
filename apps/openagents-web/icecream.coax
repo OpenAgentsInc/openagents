@@ -158,7 +158,7 @@ h_queue_act :: (s: [] IceRealm, a: int, arg: int) {
   s[0].queue_n += 1;
 }
 // The next act for the run (A_* << 8 | its argument), 0 when there's none.
-ice_next_act :: (s: [] IceRealm) -> int #export_c {
+ice_next_act :: (s: [] IceRealm) -> int #export_c #effects(all) {
   if s[0].queue_n == 0 { return 0; }
   a := s[0].queue[0];
   for i: 1..<s[0].queue_n { s[0].queue[i - 1] = s[0].queue[i]; }
@@ -170,22 +170,22 @@ h_do_act :: (s: [] IceRealm, a: int) {
   if a / 256 == A_GALAXY { h_leave_to(s, "/worlds"); return; }
   h_queue_act(s, a / 256, a % 256);
 }
-ice_action :: (s: [] IceRealm) -> int #export_c {
+ice_action :: (s: [] IceRealm) -> int #export_c #effects(all) {
   if s[0].action == 0 { e := redit_take_action(s[0].ed[..], s[0].outbox[..]); if e.kind != 0 { s[0].out_n = e.n; return e.kind; } }
   a := s[0].action; s[0].action = 0; return a;
 }
 // The edit layer's, for the face: typing is on; a row of the board (the run's options for the next house)
-ice_wants_text :: (s: [] IceRealm) -> bool #export_c { return redit_typing(s[0].ed[..]); }
-ice_row_on :: (s: [] IceRealm, key: string) -> bool #export_c { return redit_row_on(s[0].ed[..], key); }
-ice_edit_message :: (s: [] IceRealm, kind: int, text: string) -> bool #export_c { return redit_message(s[0].ed[..], kind, text); }
-ice_action_done :: (s: [] IceRealm) #export_c { s[0].out_n = 0; }
+ice_wants_text :: (s: [] IceRealm) -> bool #export_c #effects(all) { return redit_typing(s[0].ed[..]); }
+ice_row_on :: (s: [] IceRealm, key: string) -> bool #export_c #effects(all) { return redit_row_on(s[0].ed[..], key); }
+ice_edit_message :: (s: [] IceRealm, kind: int, text: string) -> bool #export_c #effects(all) { return redit_message(s[0].ed[..], kind, text); }
+ice_action_done :: (s: [] IceRealm) #export_c #effects(all) { s[0].out_n = 0; }
 
 // ---- in from the host
 
 run_phase :: (s: [] IceRealm) -> int { return cast(int) s[0].facts[F_PHASE]; }
 h_card_on :: (s: [] IceRealm) -> bool { return s[0].facts[F_TOUR] >= 0 || run_phase(s) == PH_MENU || run_phase(s) == PH_OVER || run_phase(s) == PH_TITLE; }
 // The page's facts (message 600): a coarse pointer or touch shows the thumbs' controls.
-ice_page :: (s: [] IceRealm, text: string) #export_c {
+ice_page :: (s: [] IceRealm, text: string) #export_c #effects(all) {
   if !s[0].started { ice_reset(s); }
   at := 0;
   while at < text.count {
@@ -197,7 +197,7 @@ ice_page :: (s: [] IceRealm, text: string) #export_c {
   }
 }
 // Enter on a card is its main button; anything else is the run's.
-ice_key :: (s: [] IceRealm, key: int, down: bool) -> bool #export_c {
+ice_key :: (s: [] IceRealm, key: int, down: bool) -> bool #export_c #effects(all) {
   if !s[0].started { ice_reset(s); }
   used := redit_key(s[0].ed[..], key, down);
   if used > 0 { return used == 1; }
@@ -209,14 +209,14 @@ h_let_go :: (s: [] IceRealm) {
   s[0].press = -1;
   for i: 0..<HOLDS { if s[0].hold_id[i] >= 0 { h_queue_act(s, A_HELD, i * 2); s[0].hold_id[i] = -1; } }
 }
-ice_blur :: (s: [] IceRealm) #export_c { h_let_go(s); }
+ice_blur :: (s: [] IceRealm) #export_c #effects(all) { h_let_go(s); }
 h_button_at :: (s: [] IceRealm, x: f32, y: f32) -> int {
   i := s[0].button_n - 1;
   while i >= 0 { if inside(s[0].boxes[i], x, y) { return i; } i -= 1; }
   return -1;
 }
 // A pointer: >= 0 the HUD took it, -2 a thumb on the stick, -1 the run's (to look, aim or fire).
-ice_pointer :: (s: [] IceRealm, x: f32, y: f32, ph: int, kind: int, id: int) -> int #export_c {
+ice_pointer :: (s: [] IceRealm, x: f32, y: f32, ph: int, kind: int, id: int) -> int #export_c #effects(all) {
   if !s[0].started { ice_reset(s); }
   if redit_pointer(s[0].ed[..], x, y, ph, id) { return 0; }
   for h: 0..<HOLDS {
@@ -256,7 +256,7 @@ ice_pointer :: (s: [] IceRealm, x: f32, y: f32, ph: int, kind: int, id: int) -> 
   if h_card_on(s) && ph != POINTER_MOVE { return 0; }
   return -1;
 }
-ice_cursor :: (s: [] IceRealm) -> int #export_c { return ifx s[0].hover >= 0 then 1 else 0; }
+ice_cursor :: (s: [] IceRealm) -> int #export_c #effects(all) { return ifx s[0].hover >= 0 then 1 else 0; }
 
 // ---- drawing: plates (the shader's rounded panels) and strokes
 
@@ -654,7 +654,7 @@ h_draw_hud :: (s: [] IceRealm, out: [] f32) -> int {
 
 // ---- the frame: the HUD's strokes and uniforms (the face adds the scene's)
 
-ice_frame :: (s: [] IceRealm, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, step: f32, still: bool, facts: [] f32, seed: u64) -> int #export_c {
+ice_frame :: (s: [] IceRealm, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, step: f32, still: bool, facts: [] f32, seed: u64) -> int #export_c #effects(all) {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   if !s[0].started { ice_reset(s); }
   s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = still;
@@ -695,9 +695,9 @@ ice_frame :: (s: [] IceRealm, out: [] f32, uniforms: [] f32, width: f32, height:
   return n;
 }
 
-coaxial_ice_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_ice_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_ice_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_ice_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_ice_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_ice_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // ---- checks
 

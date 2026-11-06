@@ -2,15 +2,15 @@
 // remain Coax; unchanged native-gpu-effects.c performs typed Vulkan effects.
 #load "depth-precision-fixtures.coax";
 #load "../render/tests/qualification-files.coax";
-ngfx_open :: ()->int #foreign; ngfx_info :: (field:int)->int #foreign; ngfx_name :: (index:int)->int #foreign;
-ngfx_blob :: (bytes:int)->int #foreign; ngfx_blob_put :: (blob:int,offset:int,byte:int)->int #foreign; ngfx_blob_word :: (blob:int,index:int)->int #foreign;
-ngfx_buffer :: (bytes:int)->int #foreign; ngfx_buffer_word :: (buffer:int,index:int,word:int)->int #foreign;
-ngfx_image :: (w:int,h:int,layers:int,array:int,format:int,use:int)->int #foreign;
-ngfx_begin :: (words_handle:int)->int #foreign; ngfx_binding :: (slot:int,kind:int,resource:int,offset:int,range:int)->int #foreign;
-ngfx_target :: (slot:int,image:int)->int #foreign; ngfx_clear :: (lane:int,word:int)->int #foreign; ngfx_field :: (field:int,value:int)->int #foreign;
-ngfx_pipe_open :: ()->int #foreign; ngfx_submit :: ()->int #foreign; ngfx_pipe_close :: ()->int #foreign;
-ngfx_read :: (image:int,bytes:int)->int #foreign; ngfx_close :: ()->int #foreign;
-tool_main :: ()->int #export_c {
+ngfx_open :: ()->int #foreign #effects(all); ngfx_info :: (field:int)->int #foreign #effects(all); ngfx_name :: (index:int)->int #foreign #effects(all);
+ngfx_blob :: (bytes:int)->int #foreign #effects(all); ngfx_blob_put :: (blob:int,offset:int,byte:int)->int #foreign #effects(all); ngfx_blob_word :: (blob:int,index:int)->int #foreign #effects(all);
+ngfx_buffer :: (bytes:int)->int #foreign #effects(all); ngfx_buffer_word :: (buffer:int,index:int,word:int)->int #foreign #effects(all);
+ngfx_image :: (w:int,h:int,layers:int,array:int,format:int,use:int)->int #foreign #effects(all);
+ngfx_begin :: (words_handle:int)->int #foreign #effects(all); ngfx_binding :: (slot:int,kind:int,resource:int,offset:int,range:int)->int #foreign #effects(all);
+ngfx_target :: (slot:int,image:int)->int #foreign #effects(all); ngfx_clear :: (lane:int,word:int)->int #foreign #effects(all); ngfx_field :: (field:int,value:int)->int #foreign #effects(all);
+ngfx_pipe_open :: ()->int #foreign #effects(all); ngfx_submit :: ()->int #foreign #effects(all); ngfx_pipe_close :: ()->int #foreign #effects(all);
+ngfx_read :: (image:int,bytes:int)->int #foreign #effects(all); ngfx_close :: ()->int #foreign #effects(all);
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}spv:=args_at(a[..],0);output:=args_at(a[..],1);inputs:[1]RtqInputs;if !rtq_input_add(inputs[..],spv) {return 2;}
   bytes:[1048576]u8;n:=fs_read(spv,bytes[..]);if n<20 || n%4!=0 || bytes[0]!=3 || bytes[1]!=2 || bytes[2]!=35 || bytes[3]!=7 {return 2;}
   if ngfx_open()!=0 {return 2;}good:=ngfx_info(9)==1;blob:=ngfx_blob(n);if blob<0 {good=false;}if good {for k:0..<n {good=good && ngfx_blob_put(blob,k,cast(int)bytes[k])==0;}}

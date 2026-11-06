@@ -126,7 +126,7 @@ AjRead :: struct {ok:bool;after:AjState;kind:AjKind;group:int;at:int;count:int;c
   read:=aj_read(state,out[0..<p.count]);
   #assert read.ok && read.count==1 && out[read.at]=='X';
 }
-aj_test_seal :: (frame:[]u8,count:int) {
+aj_test_seal :: (frame:[]u8,count:int) #effects(all) {
   digest:=aj_hash(frame[0..<AJ_HEADER+count]);
   for byte,i:digest {frame[AJ_HEADER+count+i]=byte;}
 }
@@ -148,12 +148,12 @@ aj_test_seal :: (frame:[]u8,count:int) {
 // overlap is the truthful runtime fact for payload and out. The caller also
 // supplies live storage and truthful view extents; the pure codec observes
 // no addresses and writes nothing until all public metadata is admitted.
-aj_admit :: (state:AjState,group:int,count:int,capacity:int,overlap:bool)->bool {
+aj_admit :: (state:AjState,group:int,count:int,capacity:int,overlap:bool)->bool #effects(all) {
   return aj_valid(state) && group>=0 && group<=state.sequence && !overlap &&
     count>=0 && count<=AJ_PAYLOAD && capacity>=AJ_OVERHEAD+count;
 }
 
-aj_same :: (a:[32]u8,b:[32]u8)->bool {
+aj_same :: (a:[32]u8,b:[32]u8)->bool #effects(all) {
   for byte,i:a {if byte!=b[i] {return false;}}return true;
 }
 
@@ -163,15 +163,15 @@ aj_same :: (a:[32]u8,b:[32]u8)->bool {
   #assert aj_prefix("xbc","abc")==0 && aj_prefix("abc","axc")==1 && aj_prefix("abc","abx")==2;
   a:=[3]u8.[0,255,1];b:=[3]u8.[0,255,2];#assert aj_prefix(cast(string)a[..],cast(string)b[..])==2;
 }
-aj_prefix :: (previous:string,next:string)->int {
+aj_prefix :: (previous:string,next:string)->int #effects(all) {
   n:=0;
   while n<previous.count && n<next.count {if previous[n]!=next[n] {break;}n+=1;}
   return n;
 }
-aj_valid :: (state:AjState)->bool {
+aj_valid :: (state:AjState)->bool #effects(all) {
   return !state.failed && state.sequence>=0 && state.sequence<9223372036854775807;
 }
-aj_hash :: (bytes:[]u8)->[32]u8 {
+aj_hash :: (bytes:[]u8)->[32]u8 #effects(all) {
   state:[112]u8;out:[32]u8;
   defer {secure_zero(state[..]);#assert crypto_zeroed(state[..]);}
   #assert sha256_init(state[..])==SHA_OK;
@@ -179,7 +179,7 @@ aj_hash :: (bytes:[]u8)->[32]u8 {
   #assert sha256_final_checked(state[..],out[..],false)==SHA_OK;
   return out;
 }
-aj_prepare :: (state:AjState,kind:AjKind,group:int,payload:string,out:[]u8,overlap:bool)->AjPrepared {
+aj_prepare :: (state:AjState,kind:AjKind,group:int,payload:string,out:[]u8,overlap:bool)->AjPrepared #effects(all) {
   result:AjPrepared;
   if !aj_admit(state,group,payload.count,out.count,overlap) {return result;}
   out[0]='A';out[1]='J';out[2]='R';out[3]='1';
@@ -192,14 +192,14 @@ aj_prepare :: (state:AjState,kind:AjKind,group:int,payload:string,out:[]u8,overl
   result.ok=true;result.count=AJ_OVERHEAD+payload.count;
   return result;
 }
-aj_commit :: (state:AjState,frame:[]u8,durable:bool)->AjState {
+aj_commit :: (state:AjState,frame:[]u8,durable:bool)->AjState #effects(all) {
   read:=aj_read(state,frame);
   if !durable || !read.ok || read.consumed!=frame.count {
     failed:=state;failed.failed=true;return failed;
   }
   return read.after;
 }
-aj_read :: (state:AjState,bytes:[]u8)->AjRead {
+aj_read :: (state:AjState,bytes:[]u8)->AjRead #effects(all) {
   result:AjRead;
   if !aj_valid(state) || bytes.count<AJ_OVERHEAD {return result;}
   if bytes[0]!='A' || bytes[1]!='J' || bytes[2]!='R' || bytes[3]!='1' {return result;}

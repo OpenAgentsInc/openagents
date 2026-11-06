@@ -4,7 +4,7 @@
 RW_PROFILE :: 1;
 RW_BYTES :: 131072;
 RwWalk :: struct {backing:[1]WalkBacking;wire:[RW_BYTES]u8;count:int;steps:int;digest:int;remote:int;diverged:int;}
-rw_make :: (r:[]RwWalk,seed:int)->int #export_c {
+rw_make :: (r:[]RwWalk,seed:int)->int #export_c #effects(all) {
   s:=walk_session(r[0].backing[..]);w:[1]Walk;walk_init(w[..]);sent:[1]int;
   replay_record(s,walk_digest(w[..]),seed);
   accepted:=walk_live(s,w[..],sent[..],seed);
@@ -15,7 +15,7 @@ rw_make :: (r:[]RwWalk,seed:int)->int #export_c {
   r[0].steps=s.n[REPLAY_MARKS];r[0].digest=replay_digest(s);r[0].remote=sent[0];
   return r[0].count;
 }
-rw_play :: (r:[]RwWalk,count:int,fault:int)->int #export_c {
+rw_play :: (r:[]RwWalk,count:int,fault:int)->int #export_c #effects(all) {
   if count<0 || count>RW_BYTES {return -1;}
   s:=walk_session(r[0].backing[..]);
   if !arc_decode(r[0].wire[0..<count],RW_PROFILE,s,false) {return -2;}
@@ -26,6 +26,6 @@ rw_play :: (r:[]RwWalk,count:int,fault:int)->int #export_c {
   if !replay_matched(s) || sent[0]!=0 {return -4;}
   return r[0].steps;
 }
-rw_mark :: (r:[]RwWalk,tick:int)->int #export_c {
+rw_mark :: (r:[]RwWalk,tick:int)->int #export_c #effects(all) {
   if tick<0 || tick>=r[0].steps {return -1;}return r[0].backing[0].marks[tick];
 }

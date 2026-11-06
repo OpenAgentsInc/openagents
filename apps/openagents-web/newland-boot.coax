@@ -217,7 +217,7 @@ boot_frame :: (out: [] f32, n: int, uniforms: [] f32, b: [] LandBoot, t: f32, wi
   #assert boot_frame(out[..], 100, u[..], none[0].boot[..], 0, 1440, 900, 1) == 100;
 }
 
-coaxial_land_boot_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, n: int, width: f32, height: f32, dpr: f32) -> int #export_c {
+coaxial_land_boot_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, n: int, width: f32, height: f32, dpr: f32) -> int #export_c #effects(all) {
   if s.count < 1 || n < 0 { return n; }
   return boot_frame(out, n, uniforms, s[0].boot[..], s[0].time, width, height, dpr);
 }
@@ -267,7 +267,7 @@ boot_words :: (out: [] f32, n: int, uniforms: [] f32, b: [] LandBoot, t: f32, wi
   return put(out, v, "PRESS ENTER WHEN THEY ARE WRITTEN DOWN", x0 + 18 * d, y1 - 22 * d, 8 * d, dimmed(chrome(ink(p, INK_BLUE)), 0.75 + 0.25 * sin(t * 3)));
 }
 // The boot layer's keys, ahead of the page's: N asks for an identity, Enter puts the words away.
-coaxial_land_boot_key :: (s: [] LandState, key: int) -> bool #export_c {
+coaxial_land_boot_key :: (s: [] LandState, key: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   b := s[0].boot[..];
   if b[0].seed_n > 0 { if key == KEY_ENTER { boot_words_written(b); return true; } return true; }   // nothing else while the words show

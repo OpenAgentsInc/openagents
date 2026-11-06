@@ -91,7 +91,7 @@ ZrDictationGuard :: struct {
  }
 }
 
-zdi_begin :: (g:[]ZrDictationGuard,c:[]Composer,ticket:int)->bool {
+zdi_begin :: (g:[]ZrDictationGuard,c:[]Composer,ticket:int)->bool #effects(all) {
  g[0].active=false;
  if ticket<=0 || !c[0].focused || c[0].marked || c[0].n<0 || c[0].n>COMPOSER_TEXT {return false;}
  if c[0].anchor<0 || c[0].anchor>c[0].n || c[0].caret<0 || c[0].caret>c[0].n {return false;}
@@ -99,15 +99,15 @@ zdi_begin :: (g:[]ZrDictationGuard,c:[]Composer,ticket:int)->bool {
  for i:0..<c[0].n {g[0].snapshot[i]=c[0].text[i];}
  g[0].active=true;return true;
 }
-zdi_cancel :: (g:[]ZrDictationGuard) {g[0].active=false;}
-zdi_current :: (g:[]ZrDictationGuard,c:[]Composer,ticket:int)->bool {
+zdi_cancel :: (g:[]ZrDictationGuard) #effects(all) {g[0].active=false;}
+zdi_current :: (g:[]ZrDictationGuard,c:[]Composer,ticket:int)->bool #effects(all) {
  if !g[0].active || ticket!=g[0].ticket || !c[0].focused || c[0].marked || c[0].n!=g[0].n || c[0].sent!=g[0].sent || c[0].anchor!=g[0].anchor || c[0].caret!=g[0].caret {return false;}
  for i:0..<g[0].n {if c[0].text[i]!=g[0].snapshot[i] {return false;}}
  return true;
 }
 // The join rule is shared with Coder's terminal composer (apps/shared/dictation-join.coax).
-zdi_gap :: (left:u8,right:u8)->bool {return dj_gap(left,right);}
-zdi_apply :: (g:[]ZrDictationGuard,c:[]Composer,ticket:int,text:string)->bool {
+zdi_gap :: (left:u8,right:u8)->bool #effects(all) {return dj_gap(left,right);}
+zdi_apply :: (g:[]ZrDictationGuard,c:[]Composer,ticket:int,text:string)->bool #effects(all) {
  if ticket!=g[0].ticket {return false;}
  current:=zdi_current(g,c,ticket);g[0].active=false;
  if !current || text.count>COMPOSER_TEXT {return false;}

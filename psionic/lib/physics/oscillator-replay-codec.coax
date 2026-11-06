@@ -46,17 +46,17 @@
   s.tick=0;s.pending=128;s.forces[0]=-2;s.forces[127]=2;#assert or_encode(s,bytes[..],false)==OrStatus.ok && or_restore(bytes[..],s.ids,out[..],false)==OrStatus.ok && out[0].pending==128 && out[0].forces[0]== -2 && out[0].forces[127]==2;
 }
 
-or_write_le :: (out:[]u8,offset:int,value:u64,width:int)->int {for i:0..<width {out[offset+i]=cast(u8)((value>>cast(u64)(8*i))&255);}return offset+width;}
-or_read_le :: (bytes:[]u8,offset:int,width:int)->u64 {word:u64=0;for i:0..<width {word|=cast(u64)bytes[offset+i]<<cast(u64)(8*i);}return word;}
-or_store_id :: (out:[]u8,offset:int,id:[32]u8)->int {for byte,i:id {out[offset+i]=byte;}return offset+32;}
-or_load_id :: (bytes:[]u8,offset:int)->[32]u8 {id:[32]u8;for i:0..<32 {id[i]=bytes[offset+i];}return id;}
-or_snapshot_digest :: (body:[]u8)->[32]u8 {digest:[32]u8;status:=sha256_tagged_checked("psionic.oscillator.snapshot.v1",body,digest[..],false);#assert status==SHA_OK;return digest;}
-or_read32 :: (bytes:[]u8,offset:int)->u64 {return cast(u64)bytes[offset] | (cast(u64)bytes[offset+1]<<8) | (cast(u64)bytes[offset+2]<<16) | (cast(u64)bytes[offset+3]<<24);}
-or_wire_counts :: (tick:u64,pending:u64)->bool {return tick<=cast(u64)OR_TICK_MAX && pending<=128 && pending<=cast(u64)OR_TICK_MAX-tick;}
-or_header :: (out:[]u8) {out[0]=79;out[1]=83;out[2]=82;out[3]=80;cursor:=or_write_le(out,4,1,2);cursor=or_write_le(out,cursor,31,2);cursor=or_write_le(out,cursor,1312,4);cursor=or_write_le(out,cursor,0,4);cursor=or_write_le(out,248,1,4);cursor=or_write_le(out,cursor,0,4);}
-or_header_ok :: (bytes:[]u8)->bool {return bytes[0]==79 && bytes[1]==83 && bytes[2]==82 && bytes[3]==80 && or_read_le(bytes,4,2)==1 && or_read_le(bytes,6,2)==31 && or_read32(bytes,8)==1312 && or_read32(bytes,12)==0 && or_read32(bytes,248)==1 && or_read32(bytes,252)==0;}
+or_write_le :: (out:[]u8,offset:int,value:u64,width:int)->int #effects(all) {for i:0..<width {out[offset+i]=cast(u8)((value>>cast(u64)(8*i))&255);}return offset+width;}
+or_read_le :: (bytes:[]u8,offset:int,width:int)->u64 #effects(all) {word:u64=0;for i:0..<width {word|=cast(u64)bytes[offset+i]<<cast(u64)(8*i);}return word;}
+or_store_id :: (out:[]u8,offset:int,id:[32]u8)->int #effects(all) {for byte,i:id {out[offset+i]=byte;}return offset+32;}
+or_load_id :: (bytes:[]u8,offset:int)->[32]u8 #effects(all) {id:[32]u8;for i:0..<32 {id[i]=bytes[offset+i];}return id;}
+or_snapshot_digest :: (body:[]u8)->[32]u8 #effects(all) {digest:[32]u8;status:=sha256_tagged_checked("psionic.oscillator.snapshot.v1",body,digest[..],false);#assert status==SHA_OK;return digest;}
+or_read32 :: (bytes:[]u8,offset:int)->u64 #effects(all) {return cast(u64)bytes[offset] | (cast(u64)bytes[offset+1]<<8) | (cast(u64)bytes[offset+2]<<16) | (cast(u64)bytes[offset+3]<<24);}
+or_wire_counts :: (tick:u64,pending:u64)->bool #effects(all) {return tick<=cast(u64)OR_TICK_MAX && pending<=128 && pending<=cast(u64)OR_TICK_MAX-tick;}
+or_header :: (out:[]u8) #effects(all) {out[0]=79;out[1]=83;out[2]=82;out[3]=80;cursor:=or_write_le(out,4,1,2);cursor=or_write_le(out,cursor,31,2);cursor=or_write_le(out,cursor,1312,4);cursor=or_write_le(out,cursor,0,4);cursor=or_write_le(out,248,1,4);cursor=or_write_le(out,cursor,0,4);}
+or_header_ok :: (bytes:[]u8)->bool #effects(all) {return bytes[0]==79 && bytes[1]==83 && bytes[2]==82 && bytes[3]==80 && or_read_le(bytes,4,2)==1 && or_read_le(bytes,6,2)==31 && or_read32(bytes,8)==1312 && or_read32(bytes,12)==0 && or_read32(bytes,248)==1 && or_read32(bytes,252)==0;}
 // book:begin encode
-or_encode :: (s:OrSnapshot,out:[]u8,overlap:bool)->OrStatus #export_c {
+or_encode :: (s:OrSnapshot,out:[]u8,overlap:bool)->OrStatus #export_c #effects(all) {
   if out.count<1312 {return OrStatus.capacity;}if overlap {return OrStatus.overlap;}status:=or_snapshot_status(s);if status!=OrStatus.ok {return status;}
   stage:[1312]u8;or_header(stage[..]);cursor:=or_store_id(stage[..],16,s.ids.program);cursor=or_store_id(stage[..],cursor,s.ids.numeric);cursor=or_store_id(stage[..],cursor,s.ids.target);cursor=or_store_id(stage[..],cursor,s.ids.build);cursor=or_store_id(stage[..],cursor,s.ids.run);
   cursor=or_write_le(stage[..],176,cast(u64)s.tick,8);cursor=or_write_le(stage[..],cursor,f64_bits(s.dt),8);cursor=or_write_le(stage[..],cursor,f64_bits(s.params.mass),8);cursor=or_write_le(stage[..],cursor,f64_bits(s.params.spring),8);cursor=or_write_le(stage[..],cursor,f64_bits(s.params.damping),8);cursor=or_write_le(stage[..],cursor,f64_bits(s.state.position),8);cursor=or_write_le(stage[..],cursor,f64_bits(s.state.velocity),8);cursor=or_write_le(stage[..],cursor,cast(u64)s.pending,8);cursor=or_write_le(stage[..],cursor,cast(u64)(s.tick+s.pending),8);
@@ -65,7 +65,7 @@ or_encode :: (s:OrSnapshot,out:[]u8,overlap:bool)->OrStatus #export_c {
 }
 // book:end encode
 // book:begin restore
-or_restore :: (bytes:[]u8,expected:OrIds,out:[]OrSnapshot,overlap:bool)->OrStatus #export_c {
+or_restore :: (bytes:[]u8,expected:OrIds,out:[]OrSnapshot,overlap:bool)->OrStatus #export_c #effects(all) {
   if overlap {return OrStatus.overlap;}if bytes.count!=1312 || out.count!=1 {return OrStatus.shape;}if !or_ids_bound(expected) {return OrStatus.identity;}if !or_header_ok(bytes) {return OrStatus.canonical;}
   digest:=or_snapshot_digest(bytes[0..<1280]);if !or_id_equal(digest,or_load_id(bytes,1280)) {return OrStatus.digest;}
   tick:=or_read_le(bytes,176,8);pending:=or_read_le(bytes,232,8);if !or_wire_counts(tick,pending) {return OrStatus.range;}
@@ -77,4 +77,4 @@ or_restore :: (bytes:[]u8,expected:OrIds,out:[]OrSnapshot,overlap:bool)->OrStatu
   out[0]=s;return OrStatus.ok;
 }
 // book:end restore
-or_codec_fixture :: ()->OrSnapshot {s:=or_begin(OsParams.{spring=2,damping=0.5},OsState.{position=0.75,velocity=-0.25},0.05,or_fixture_ids()).snapshot;forces:=[3]f64.[0.5,-0.5,0.25];s=or_accept(s,forces[..]).snapshot;s.tick=42;return s;}
+or_codec_fixture :: ()->OrSnapshot #effects(all) {s:=or_begin(OsParams.{spring=2,damping=0.5},OsState.{position=0.75,velocity=-0.25},0.05,or_fixture_ids()).snapshot;forces:=[3]f64.[0.5,-0.5,0.25];s=or_accept(s,forces[..]).snapshot;s.tick=42;return s;}

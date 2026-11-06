@@ -49,14 +49,14 @@ KcWork :: struct {pre:[KC_REGION]u8;body:[KC_REGION]u8;cipher:[2*KC_REGION]u8;sc
 KcOpened :: struct {error:u32=KC_INPUT;signer:[32]u8;id:[32]u8;n:int;}
 // book:end carry
 
-kc_hex64 :: (s:string)->bool {
+kc_hex64 :: (s:string)->bool #effects(all) {
   if s.count!=64 {return false;}
   for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
   return true;
 }
 // The x-only public key of a secret: signs an empty kind 1 note and reads
 // its pubkey back (one signature; for a key agent's start, not a hot path).
-kc_xonly :: (secret:[]u8,out:[]u8)->bool {
+kc_xonly :: (secret:[]u8,out:[]u8)->bool #effects(all) {
   if secret.count!=32 || out.count!=32 {return false;}
   aux:[32]u8;sw:[1]NostrSignWork;scratch:[1024]u8;ev:[1024]u8;k:=EVENT_MORE;
   while k==EVENT_MORE {k=nostr_event_sign_step(secret,aux[..],0,1,"[]","",sw[..],scratch[..],ev[..],false);}
@@ -66,10 +66,10 @@ kc_xonly :: (secret:[]u8,out:[]u8)->bool {
   for i:0..<32 {out[i]=e.public_key[i];}
   return true;
 }
-kc_done :: (r:KcOpened,error:u32,w:[]KcWork)->KcOpened {kc_clear(w);out:=r;out.error=error;return out;}
+kc_done :: (r:KcOpened,error:u32,w:[]KcWork)->KcOpened #effects(all) {kc_clear(w);out:=r;out.error=error;return out;}
 
 // Exactly one ["p", recipient], one ["h", <64-hex>] and ["t", "oa:artifact:v1"].
-kc_tags :: (tags:string,recipient_hex:string)->bool {
+kc_tags :: (tags:string,recipient_hex:string)->bool #effects(all) {
   decoded:[256]u8;j:[1]Json;json_start(j[..],tags);
   if json_next(j[..])!=JSON_ARRAY {return false;}
   ps:=0;hs:=0;topic:=false;
@@ -98,12 +98,12 @@ kc_tags :: (tags:string,recipient_hex:string)->bool {
 // recipient_x under mailbox (64 hex). nonce and aux are 32 fresh random
 // bytes each from the host. The signed event JSON goes to out; returns its
 // length, or -1.
-kc_seal :: (inline_json:string,schema:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u8,aux:[]u8,created_at:int,w:[]KcWork,out:[]u8)->int {
+kc_seal :: (inline_json:string,schema:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u8,aux:[]u8,created_at:int,w:[]KcWork,out:[]u8)->int #effects(all) {
   if sender.count!=32 || recipient_x.count!=32 || nonce.count!=32 || aux.count!=32 || w.count!=1 || !kc_hex64(mailbox) {return -1;}
   n:=kc_seal_in(inline_json,schema,sender,recipient_x,mailbox,nonce,aux,created_at,w,out);
   kc_clear(w);return n;
 }
-kc_seal_in :: (inline_json:string,schema:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u8,aux:[]u8,created_at:int,w:[]KcWork,out:[]u8)->int {
+kc_seal_in :: (inline_json:string,schema:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u8,aux:[]u8,created_at:int,w:[]KcWork,out:[]u8)->int #effects(all) {
   b:=envelope_build_checked(inline_json,schema,created_at,created_at+30*86400,w[0].scratch[..],w[0].body[..],false);
   if b.error!=AE_OK {return -1;}
   ew:[1]EcdhScratch;
@@ -123,7 +123,7 @@ kc_seal_in :: (inline_json:string,schema:string,sender:[]u8,recipient_x:[]u8,mai
 // book:begin open
 // Opens a 3188 for the recipient (secret and x-only key) and expects a
 // record of `schema`; its inline JSON is copied to out.
-kc_open :: (text:string,recipient:[]u8,recipient_x:[]u8,schema:string,w:[]KcWork,out:[]u8)->KcOpened {
+kc_open :: (text:string,recipient:[]u8,recipient_x:[]u8,schema:string,w:[]KcWork,out:[]u8)->KcOpened #effects(all) {
   r:KcOpened;
   if recipient.count!=32 || recipient_x.count!=32 || w.count!=1 {return r;}
   e:=nostr_event_read(text,w[0].pre[..],false);

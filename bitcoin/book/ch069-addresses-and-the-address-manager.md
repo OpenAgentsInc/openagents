@@ -142,7 +142,7 @@ mapping; a Tor v2 address, no longer valid, becomes `::`:
 // SetLegacyIPv6: the 16-byte form of addr v1 and of old peers.dat files.
 // IPv4 travels mapped into IPv6; a Tor v2 address is no longer valid and
 // reads as "::", which is invalid; an internal name keeps its 10 bytes.
-am_legacy :: (b16: [] u8, port: int) -> AmAddr {
+am_legacy :: (b16: [] u8, port: int) -> AmAddr #effects(all) {
   x := am_bytes(AM_NET_IPV6, b16[0..<16], port);
   if am_has(x.ip, AM_V4_PREFIX, 12) { return am_bytes(AM_NET_IPV4, b16[12..<16], port); }
   if am_has(x.ip, AM_TORV2_PREFIX, 6) { x = am_none(); x.port = port; return x; }
@@ -151,7 +151,7 @@ am_legacy :: (b16: [] u8, port: int) -> AmAddr {
 }
 // UnserializeV2Stream: a BIP-155 network ID and its bytes. An unknown ID,
 // or IPv4 or Tor v2 inside an IPv6 entry, reads as "::".
-am_bip155 :: (id: int, raw: [] u8, port: int) -> AmAddr {
+am_bip155 :: (id: int, raw: [] u8, port: int) -> AmAddr #effects(all) {
   none := am_none(); none.port = port;
   if id == P2P_NET_IPV4 && raw.count == 4 { return am_bytes(AM_NET_IPV4, raw, port); }
   if id == P2P_NET_TORV3 && raw.count == 32 { return am_bytes(AM_NET_ONION, raw, port); }
@@ -181,14 +181,14 @@ only 4 bits: they all fall into 16 groups.
 <!-- source: coax/lib/bitcoin/addrman.coax group -->
 ```jai
 // GetAddrBytes: the 16-byte v1 form where one exists, else the raw bytes.
-am_addr_bytes :: (a: AmAddr, out: [] u8) -> [] u8 {
+am_addr_bytes :: (a: AmAddr, out: [] u8) -> [] u8 #effects(all) {
   if a.net == AM_NET_IPV4 { for i: 0..<12 { out[i] = AM_V4_PREFIX[i]; } for i: 0..<4 { out[12+i] = a.ip[i]; } return out[0..<16]; }
   if a.net == AM_NET_INTERNAL { for i: 0..<6 { out[i] = AM_INTERNAL_PREFIX[i]; } for i: 0..<10 { out[6+i] = a.ip[i]; } return out[0..<16]; }
   for i: 0..<a.n { out[i] = a.ip[i]; }
   return out[0..<a.n];
 }
 // CService::GetKey: the address bytes and the port, big-endian.
-am_key :: (a: AmAddr, out: [] u8) -> [] u8 {
+am_key :: (a: AmAddr, out: [] u8) -> [] u8 #effects(all) {
   b := am_addr_bytes(a, out);
   out[b.count] = cast,trunc(u8) (a.port >> 8); out[b.count+1] = cast,trunc(u8) a.port;
   return out[0..<b.count+2];
@@ -197,7 +197,7 @@ am_key :: (a: AmAddr, out: [] u8) -> [] u8 {
 // leading bits that one operator can't easily vary. IPv4 keeps its /16,
 // IPv6 its /32 (he.net's /36), Tor and I2P 4 bits, CJDNS 12; every local
 // or unroutable address shares one group.
-am_group :: (a: AmAddr, out: [] u8) -> [] u8 {
+am_group :: (a: AmAddr, out: [] u8) -> [] u8 #effects(all) {
   out[0] = cast(u8) am_net_class(a);
   start := 0; bits := 0;
   if am_local(a) {
@@ -265,19 +265,19 @@ takes the first 8 bytes of the digest:
 ```jai
 // GetCheapHash: the first 8 bytes of SHA-256d, little-endian. Core's
 // HashWriter writes a vector with its CompactSize length first.
-am_cheap :: (data: [] u8) -> u64 {
+am_cheap :: (data: [] u8) -> u64 #effects(all) {
   d: [32] u8; r := sha256d_checked(data, d[..], false);
   return cb_load_le64(d[..], 0).value;
 }
-am_put_vec :: (out: [] u8, at: int, b: [] u8) -> int {
+am_put_vec :: (out: [] u8, at: int, b: [] u8) -> int #effects(all) {
   at2 := tx_compact_write_vartime(out, at, b.count);
   for i: 0..<b.count { out[at2+i] = b[i]; }
   return at2 + b.count;
 }
-am_put_key :: (out: [] u8, key: [] u8) -> int { for i: 0..<32 { out[i] = key[i]; } return 32; }
+am_put_key :: (out: [] u8, key: [] u8) -> int #effects(all) { for i: 0..<32 { out[i] = key[i]; } return 32; }
 // The tried bucket: the address picks one of 8 slots for its group, and
 // the group and slot pick the bucket. One /16 reaches at most 8 buckets.
-am_tried_bucket :: (key: [] u8, a: AmAddr) -> int {
+am_tried_bucket :: (key: [] u8, a: AmAddr) -> int #effects(all) {
   buf: [128] u8; k: [40] u8; g: [24] u8;
   at := am_put_vec(buf[..], am_put_key(buf[..], key), am_key(a, k[..]));
   h1 := am_cheap(buf[0..<at]);
@@ -288,7 +288,7 @@ am_tried_bucket :: (key: [] u8, a: AmAddr) -> int {
 // The new bucket: the address's group and the source's group pick one of
 // 64 slots for the source group, and the source group and slot pick the
 // bucket. One source group reaches at most 64 of the 1,024 buckets.
-am_new_bucket :: (key: [] u8, a: AmAddr, src: AmAddr) -> int {
+am_new_bucket :: (key: [] u8, a: AmAddr, src: AmAddr) -> int #effects(all) {
   buf: [128] u8; g: [24] u8; s: [24] u8;
   sg := am_group(src, s[..]);
   at := am_put_vec(buf[..], am_put_vec(buf[..], am_put_key(buf[..], key), am_group(a, g[..])), sg);
@@ -299,7 +299,7 @@ am_new_bucket :: (key: [] u8, a: AmAddr, src: AmAddr) -> int {
 }
 // GetBucketPosition: the slot inside a bucket, from 'N' (new) or 'K'
 // (tried), the bucket and the address with its port.
-am_position :: (key: [] u8, fnew: bool, bucket: int, a: AmAddr) -> int {
+am_position :: (key: [] u8, fnew: bool, bucket: int, a: AmAddr) -> int #effects(all) {
   buf: [96] u8; k: [40] u8;
   at := am_put_key(buf[..], key);
   buf[at] = ifx fnew then cast(u8) 'N' else cast(u8) 'K';
@@ -349,12 +349,12 @@ so does this chapter, so a run is the same every time.
 // counter 0, read 8 bytes at a time; RandomMixin keeps leftover bits for
 // small requests. Seed 0 is Core's deterministic mode.
 AmRng :: struct { key: [32] u8; block: u32; buf: [64] u8; left: int; bits: u64; nbits: int; }
-am_rng :: (seed: [] u8) -> AmRng {
+am_rng :: (seed: [] u8) -> AmRng #effects(all) {
   r: AmRng;
   for i: 0..<32 { r.key[i] = seed[i]; }
   return r;
 }
-am_rand64 :: (r: [] AmRng) -> u64 {
+am_rand64 :: (r: [] AmRng) -> u64 #effects(all) {
   if r[0].left == 0 {
     nonce: [12] u8;
     c := chacha20_block_checked(r[0].key[..], nonce[..], r[0].block, r[0].buf[..], false);
@@ -364,7 +364,7 @@ am_rand64 :: (r: [] AmRng) -> u64 {
   r[0].left -= 8;
   return v;
 }
-am_randbits :: (r: [] AmRng, bits: int) -> u64 {
+am_randbits :: (r: [] AmRng, bits: int) -> u64 #effects(all) {
   if bits == 64 { return am_rand64(r); }
   ret: u64;
   if bits <= r[0].nbits {
@@ -378,7 +378,7 @@ am_randbits :: (r: [] AmRng, bits: int) -> u64 {
   return ret & ((cast(u64) 1 << cast(u64) bits) - 1);
 }
 // randrange: draw bit_width(range - 1) bits until the value is below range.
-am_randrange :: (r: [] AmRng, range: int) -> int {
+am_randrange :: (r: [] AmRng, range: int) -> int #effects(all) {
   maxval := cast(u64) (range - 1);
   bits := 0;
   while (maxval >> cast(u64) bits) != 0 { bits += 1; }
@@ -388,7 +388,7 @@ am_randrange :: (r: [] AmRng, range: int) -> int {
   }
   return 0;
 }
-am_randbool :: (r: [] AmRng) -> bool { return am_randbits(r, 1) == 1; }
+am_randbool :: (r: [] AmRng) -> bool #effects(all) { return am_randbits(r, 1) == 1; }
 ```
 
 ## What an entry knows
@@ -412,7 +412,7 @@ AmInfo :: struct {
   used: bool; next_free: int;
 }
 // IsTerrible: not worth keeping or sharing. Never within a minute of a try.
-am_terrible :: (x: AmInfo, now: int) -> bool {
+am_terrible :: (x: AmInfo, now: int) -> bool #effects(all) {
   if now - x.last_try <= 60 { return false; }
   if x.time > now + 600 { return true; }                 // "came in a flying DeLorean"
   if now - x.time > AM_HORIZON { return true; }           // not seen in 30 days
@@ -423,7 +423,7 @@ am_terrible :: (x: AmInfo, now: int) -> bool {
 // GetChance: how readily Select takes it. A try in the last 10 minutes
 // divides by 100; each failure since the last success multiplies by 0.66,
 // at most 8 times.
-am_chance :: (x: AmInfo, now: int) -> f64 {
+am_chance :: (x: AmInfo, now: int) -> f64 #effects(all) {
   chance := 1.0;
   if now - x.last_try < 600 { chance *= 0.01; }
   p := 1.0;
@@ -457,7 +457,7 @@ AddrMan :: struct {
 }
 // A fresh manager with bucket key key. Core's deterministic test mode uses
 // key 1 (one byte 1, then zeros) and an RNG of seed 0.
-am_init :: (m: [] AddrMan, key: [] u8, rng: [] AmRng, new_t: [] int, tried_t: [] int, info: [] AmInfo, random: [] int, index: [] int) -> bool {
+am_init :: (m: [] AddrMan, key: [] u8, rng: [] AmRng, new_t: [] int, tried_t: [] int, info: [] AmInfo, random: [] int, index: [] int) -> bool #effects(all) {
   if key.count != 32 || new_t.count != AM_NEW_BUCKETS * AM_BUCKET_SIZE || tried_t.count != AM_TRIED_BUCKETS * AM_BUCKET_SIZE { return false; }
   if random.count < info.count || index.count < 2 * info.count || (index.count & (index.count - 1)) != 0 { return false; }
   m[0] = AddrMan.{new_t=new_t, tried_t=tried_t, info=info, random=random, index=index, rng=rng};
@@ -487,7 +487,7 @@ AmRecord :: struct { addr: AmAddr; services: u64; time: int; }
 // A known address only gains services and a fresher time, and joins
 // another new bucket with probability 1 in 2^refs. A slot held by a
 // terrible entry, or by one that is in other buckets too, is taken over.
-am_add_one :: (m: [] AddrMan, r: AmRecord, src: AmAddr, penalty_in: int, now: int) -> bool {
+am_add_one :: (m: [] AddrMan, r: AmRecord, src: AmAddr, penalty_in: int, now: int) -> bool #effects(all) {
   a := r.addr;
   if !am_routable(a) { return false; }
   penalty := ifx am_same_ip(a, src) then 0 else penalty_in;
@@ -529,7 +529,7 @@ am_add_one :: (m: [] AddrMan, r: AmRecord, src: AmAddr, penalty_in: int, now: in
   return insert;
 }
 // Add: each record in turn; the number that went into a bucket.
-am_add :: (m: [] AddrMan, records: [] AmRecord, src: AmAddr, penalty: int, now: int) -> int {
+am_add :: (m: [] AddrMan, records: [] AmRecord, src: AmAddr, penalty: int, now: int) -> int #effects(all) {
   added := 0;
   for r: records { if am_add_one(m, r, src, penalty, now) { added += 1; } }
   return added;
@@ -579,7 +579,7 @@ holds that slot, the old one goes back to the new table.
 // MakeTried: take an entry out of every new bucket and put it in its tried
 // slot. An entry already there goes back to the new table, to the slot its
 // own source picks, deleting what was there.
-am_make_tried :: (m: [] AddrMan, e: int) {
+am_make_tried :: (m: [] AddrMan, e: int) #effects(all) {
   key := m[0].key;
   a := m[0].info[e].addr;
   start := am_new_bucket(key[..], a, m[0].info[e].source);
@@ -627,7 +627,7 @@ connections do this.
 // to its tried slot, unless that slot is taken and test_before_evict is
 // set: then the move waits in the collision set (at most 10) until
 // ResolveCollisions learns whether the entry already there still answers.
-am_good_ :: (m: [] AddrMan, a: AmAddr, test_before_evict: bool, time: int) -> bool {
+am_good_ :: (m: [] AddrMan, a: AmAddr, test_before_evict: bool, time: int) -> bool #effects(all) {
   m[0].last_good = time;
   e := am_find(m, a);
   if e < 0 { return false; }
@@ -643,10 +643,10 @@ am_good_ :: (m: [] AddrMan, a: AmAddr, test_before_evict: bool, time: int) -> bo
   am_make_tried(m, e);
   return true;
 }
-am_good :: (m: [] AddrMan, a: AmAddr, time: int) -> bool { return am_good_(m, a, true, time); }
+am_good :: (m: [] AddrMan, a: AmAddr, time: int) -> bool #effects(all) { return am_good_(m, a, true, time); }
 // m_tried_collisions is a std::set of ids: kept here in id order, as
 // entries, each checked against its id in case the entry was deleted.
-am_collision_add :: (m: [] AddrMan, e: int) {
+am_collision_add :: (m: [] AddrMan, e: int) #effects(all) {
   id := m[0].info[e].id;
   at := 0;
   while at < m[0].n_collisions {
@@ -659,17 +659,17 @@ am_collision_add :: (m: [] AddrMan, e: int) {
   m[0].collisions[at] = e; m[0].collision_ids[at] = id;
   m[0].n_collisions += 1;
 }
-am_collision_live :: (m: [] AddrMan, at: int) -> bool {
+am_collision_live :: (m: [] AddrMan, at: int) -> bool #effects(all) {
   e := m[0].collisions[at];
   return m[0].info[e].used && m[0].info[e].id == m[0].collision_ids[at];
 }
-am_collision_erase :: (m: [] AddrMan, at: int) {
+am_collision_erase :: (m: [] AddrMan, at: int) #effects(all) {
   for j: at..<m[0].n_collisions - 1 { m[0].collisions[j] = m[0].collisions[j+1]; m[0].collision_ids[j] = m[0].collision_ids[j+1]; }
   m[0].n_collisions -= 1;
 }
 // Attempt_: we tried to connect. A failure counts once per success of
 // any address (m_last_good), so an outage doesn't mark every address bad.
-am_attempt :: (m: [] AddrMan, a: AmAddr, count_failure: bool, time: int) {
+am_attempt :: (m: [] AddrMan, a: AmAddr, count_failure: bool, time: int) #effects(all) {
   e := am_find(m, a);
   if e < 0 { return; }
   m[0].info[e].last_try = time;
@@ -679,12 +679,12 @@ am_attempt :: (m: [] AddrMan, a: AmAddr, count_failure: bool, time: int) {
   }
 }
 // Connected_: we are connected now; nTime moves at most every 20 minutes.
-am_connected :: (m: [] AddrMan, a: AmAddr, time: int) {
+am_connected :: (m: [] AddrMan, a: AmAddr, time: int) #effects(all) {
   e := am_find(m, a);
   if e >= 0 && time - m[0].info[e].time > 1200 { m[0].info[e].time = time; }
 }
 // SetServices_: what the peer's version said it offers.
-am_set_services :: (m: [] AddrMan, a: AmAddr, services: u64) {
+am_set_services :: (m: [] AddrMan, a: AmAddr, services: u64) #effects(all) {
   e := am_find(m, a);
   if e >= 0 { m[0].info[e].services = services; }
 }
@@ -705,7 +705,7 @@ the times a node shares don't reveal its current connections.
 // if it succeeded in the last 4 hours; replace it if a try in the last 4
 // hours (but more than a minute ago) failed; replace it anyway once the
 // waiting entry's own success is 40 minutes old.
-am_resolve_collisions :: (m: [] AddrMan, now: int) {
+am_resolve_collisions :: (m: [] AddrMan, now: int) #effects(all) {
   at := 0;
   while at < m[0].n_collisions {
     erase := false;
@@ -732,7 +732,7 @@ am_resolve_collisions :: (m: [] AddrMan, now: int) {
 }
 // SelectTriedCollision_: a random waiting entry's rival in the tried
 // table, for a feeler to test (chapter 70); -1 if none.
-am_select_tried_collision :: (m: [] AddrMan) -> int {
+am_select_tried_collision :: (m: [] AddrMan) -> int #effects(all) {
   if m[0].n_collisions == 0 { return -1; }
   at := am_randrange(m[0].rng, m[0].n_collisions);
   if !am_collision_live(m, at) { am_collision_erase(m, at); return -1; }
@@ -783,8 +783,8 @@ replaces it. Then 19 collides with 36, nobody tests 36 for 4 hours, and
 // entry in it, accepted with probability GetChance times a factor that
 // grows 1.2 times with every refusal. nets is a mask of networks
 // (1 << AM_NET_*), 0 for any.
-am_in_nets :: (nets: int, net: int) -> bool { return nets == 0 || ((nets >> net) & 1) == 1; }
-am_select :: (m: [] AddrMan, new_only: bool, nets: int, now: int) -> int {
+am_in_nets :: (nets: int, net: int) -> bool #effects(all) { return nets == 0 || ((nets >> net) & 1) == 1; }
+am_select :: (m: [] AddrMan, new_only: bool, nets: int, now: int) -> int #effects(all) {
   if m[0].n_random == 0 { return -1; }
   new_count := m[0].n_new; tried_count := m[0].n_tried;
   if nets != 0 {
@@ -882,7 +882,7 @@ percentage of the table, in random order, leaving out terrible ones:
 // GetAddr_: up to max addresses (0: no limit), at most pct percent of the
 // table (0: no limit), in random order, of class net (-1: any), leaving
 // out terrible ones when filtered. Entries go to out; returns how many.
-am_get_addr :: (m: [] AddrMan, max: int, pct: int, net: int, filtered: bool, now: int, out: [] int) -> int {
+am_get_addr :: (m: [] AddrMan, max: int, pct: int, net: int, filtered: bool, now: int, out: [] int) -> int #effects(all) {
   want := m[0].n_random;
   if pct != 0 { want = (ifx pct < 100 then pct else 100) * want / 100; }
   if max != 0 && max < want { want = max; }
@@ -942,14 +942,14 @@ write them in the random order.
 // network, address and port), its source, its last success and attempts.
 // scratch holds info.count ints. Returns the size, or -1 if out is short.
 AM_DISK_V2 :: cast(u32) (220000 | (1 << 29));  // DISK_VERSION_INIT | DISK_VERSION_ADDRV2
-am_put_net :: (out: [] u8, at: int, a: AmAddr) -> int {
+am_put_net :: (out: [] u8, at: int, a: AmAddr) -> int #effects(all) {
   out[at] = cast(u8) am_bip155_id(a.net);
   raw: [32] u8;
   b := am_addr_bytes(a, raw[..]);
   if a.net == AM_NET_IPV4 { b = raw[12..<16]; }
   return am_put_vec(out, at + 1, b);
 }
-am_put_entry :: (out: [] u8, at_in: int, x: AmInfo) -> int {
+am_put_entry :: (out: [] u8, at_in: int, x: AmInfo) -> int #effects(all) {
   at := at_in;
   stored := cb_store_le32(out, at, AM_DISK_V2);
   stored = cb_store_le32(out, at + 4, cast,trunc(u32) x.time);
@@ -962,7 +962,7 @@ am_put_entry :: (out: [] u8, at_in: int, x: AmInfo) -> int {
   return at + 12;
 }
 AM_ENTRY_MAX :: 99;
-am_write_vartime :: (m: [] AddrMan, magic: [4] u8, scratch: [] int, out: [] u8) -> int {
+am_write_vartime :: (m: [] AddrMan, magic: [4] u8, scratch: [] int, out: [] u8) -> int #effects(all) {
   need := 4 + 2 + 32 + 12 + AM_ENTRY_MAX * m[0].n_random + 4 * AM_NEW_BUCKETS + 4 * AM_NEW_PER_ADDRESS * m[0].n_new + 32 + 32;
   if out.count < need { return -1; }
   for i: 0..<4 { out[i] = magic[i]; }
@@ -1014,19 +1014,19 @@ is lost, and a new entry left in no bucket is deleted. Finally
 // its own source; one left in no bucket is deleted. Finally CheckAddrman
 // must pass.
 AmReader :: struct { b: [] u8; at: int; ok: bool; }
-am_take :: (r: [] AmReader, n: int) -> int {
+am_take :: (r: [] AmReader, n: int) -> int #effects(all) {
   if !r[0].ok || n < 0 || r[0].b.count - r[0].at < n { r[0].ok = false; return 0; }
   at := r[0].at; r[0].at += n; return at;
 }
-am_le :: (r: [] AmReader, n: int) -> int { at := am_take(r, n); return ifx r[0].ok then tx_le_vartime(r[0].b, at, n) else 0; }
-am_i32 :: (r: [] AmReader) -> int { v := am_le(r, 4); return ifx v >= 0x80000000 then v - 0x100000000 else v; }
-am_compact :: (r: [] AmReader) -> u64 {
+am_le :: (r: [] AmReader, n: int) -> int #effects(all) { at := am_take(r, n); return ifx r[0].ok then tx_le_vartime(r[0].b, at, n) else 0; }
+am_i32 :: (r: [] AmReader) -> int #effects(all) { v := am_le(r, 4); return ifx v >= 0x80000000 then v - 0x100000000 else v; }
+am_compact :: (r: [] AmReader) -> u64 #effects(all) {
   if !r[0].ok { return 0; }
   c := p2p_compact64_read_vartime(r[0].b, r[0].at);
   if c.code != P2P_OK { r[0].ok = false; return 0; }
   r[0].at = c.next; return c.value;
 }
-am_read_net :: (r: [] AmReader, v2: bool) -> AmAddr {
+am_read_net :: (r: [] AmReader, v2: bool) -> AmAddr #effects(all) {
   if !v2 { at := am_take(r, 16); return ifx r[0].ok then am_legacy(r[0].b[at..<at+16], 0) else am_none(); }
   id := am_le(r, 1);
   n := cast(int) am_compact(r);
@@ -1037,7 +1037,7 @@ am_read_net :: (r: [] AmReader, v2: bool) -> AmAddr {
   if !r[0].ok { return am_none(); }
   return am_bip155(id, r[0].b[at..<at+n], 0);
 }
-am_read_entry :: (r: [] AmReader, format: int) -> AmInfo {
+am_read_entry :: (r: [] AmReader, format: int) -> AmInfo #effects(all) {
   x := AmInfo.{used=true, next_free=-1};
   stored := am_le(r, 4) & 0xfff80000;  // the low bits (DISK_VERSION_IGNORE_MASK) are ignored
   v2 := false;
@@ -1053,7 +1053,7 @@ am_read_entry :: (r: [] AmReader, format: int) -> AmInfo {
   x.attempts = am_i32(r);
   return x;
 }
-am_read_vartime :: (m: [] AddrMan, data: [] u8, magic: [4] u8, scratch: [] int) -> int {
+am_read_vartime :: (m: [] AddrMan, data: [] u8, magic: [4] u8, scratch: [] int) -> int #effects(all) {
   if data.count < 36 { return AM_CORRUPT; }
   for i: 0..<4 { if data[i] != magic[i] { return AM_BAD_MAGIC; } }
   d: [32] u8;
@@ -1159,13 +1159,13 @@ addresses the 16-byte form can carry:
 ```jai
 // IsAddrCompatible: a peer that didn't send sendaddrv2 only gets
 // addresses the 16-byte v1 form can carry.
-am_addr_compatible :: (wants_v2: bool, a: AmAddr) -> bool {
+am_addr_compatible :: (wants_v2: bool, a: AmAddr) -> bool #effects(all) {
   return wants_v2 || a.net == AM_NET_IPV4 || a.net == AM_NET_IPV6 || a.net == AM_NET_INTERNAL;
 }
 // An addr (v1) or addrv2 payload from records, as PushAddress queues them
 // and chapter 65's p2p_addr_read_vartime reads them. Returns the size, or
 // -1 for more than 1,000 records, a record v1 can't carry, or a short out.
-am_wire_write_vartime :: (records: [] AmRecord, v2: bool, out: [] u8) -> int {
+am_wire_write_vartime :: (records: [] AmRecord, v2: bool, out: [] u8) -> int #effects(all) {
   if records.count > AM_MAX_ADDR || out.count < 9 + records.count * 64 { return -1; }
   at := tx_compact_write_vartime(out, 0, records.count);
   raw: [32] u8;
@@ -1195,7 +1195,7 @@ am_wire_write_vartime :: (records: [] AmRecord, v2: bool, out: [] u8) -> int {
 AmPeer :: struct { tokens: f64 = 1.0; stamp: int; getaddr_recvd: bool; }
 AmProcessed :: struct { code: int; processed: int; limited: int; added: int; relay: int; }
 // MayHaveUsefulAddressDB, else HasAllDesirableServiceFlags (chapter 68).
-am_useful :: (services: u64, tip_depth: int) -> bool {
+am_useful :: (services: u64, tip_depth: int) -> bool #effects(all) {
   if (services & (HS_NODE_NETWORK | HS_NODE_NETWORK_LIMITED)) != 0 { return true; }
   return hs_has_desirable(services, tip_depth);
 }
@@ -1211,7 +1211,7 @@ am_useful :: (services: u64, tip_depth: int) -> bool {
 // relayed (into relay_out); reachable ones (a mask of networks) go to the
 // address manager, two hours older.
 am_process_addrs :: (m: [] AddrMan, peer: [] AmPeer, records: [] AmRecord, src: AmAddr, now: int, rng: [] AmRng,
-                     permission: bool, tip_depth: int, reachable: int, relay_out: [] AmAddr) -> AmProcessed {
+                     permission: bool, tip_depth: int, reachable: int, relay_out: [] AmAddr) -> AmProcessed #effects(all) {
   if records.count > AM_MAX_ADDR { return AmProcessed.{code=AM_MISBEHAVING}; }
   if peer[0].tokens < cast(f64) AM_MAX_ADDR {
     elapsed := ifx now > peer[0].stamp then now - peer[0].stamp else 0;
@@ -1243,7 +1243,7 @@ am_process_addrs :: (m: [] AddrMan, peer: [] AmPeer, records: [] AmRecord, src: 
 }
 // CServiceHash(0, 0): SipHash of the network (as a 64-bit word), the port
 // and the address bytes.
-am_service_hash :: (a: AmAddr) -> u64 {
+am_service_hash :: (a: AmAddr) -> u64 #effects(all) {
   buf: [48] u8;
   stored := cb_store_le64(buf[..], 0, cast(u64) a.net);
   stored = cb_store_le64(buf[..], 8, cast(u64) a.port);
@@ -1256,7 +1256,7 @@ am_service_hash :: (a: AmAddr) -> u64 {
 // eligible peer's id gets a score and the highest win. A reachable
 // address goes to two; an unreachable one to one or two, by a bit of the
 // hash. Returns how many ids it wrote into out.
-am_relay_targets :: (seed0: u64, seed1: u64, a: AmAddr, reachable: bool, now: int, ids: [] int, eligible: [] bool, out: [] int) -> int {
+am_relay_targets :: (seed0: u64, seed1: u64, a: AmAddr, reachable: bool, now: int, ids: [] int, eligible: [] bool, out: [] int) -> int #effects(all) {
   buf: [32] u8;
   h := am_service_hash(a);
   stored := cb_store_le64(buf[..], 0, AM_RANDOMIZER_RELAY);
@@ -1339,7 +1339,7 @@ which networks the node reaches.
 AM_R_OUTBOUND :: 1; AM_R_REPEATED :: 2;
 AmCache :: struct { expires: int; n: int; }
 AmReply :: struct { code: int; reason: int; n: int; }
-am_getaddr_reply :: (m: [] AddrMan, peer: [] AmPeer, inbound: bool, cache: [] AmCache, records: [] AmRecord, now_us: int, rng: [] AmRng) -> AmReply {
+am_getaddr_reply :: (m: [] AddrMan, peer: [] AmPeer, inbound: bool, cache: [] AmCache, records: [] AmRecord, now_us: int, rng: [] AmRng) -> AmReply #effects(all) {
   if !inbound { return AmReply.{code=AM_IGNORED, reason=AM_R_OUTBOUND}; }
   if peer[0].getaddr_recvd { return AmReply.{code=AM_IGNORED, reason=AM_R_REPEATED}; }
   peer[0].getaddr_recvd = true;
@@ -1384,13 +1384,13 @@ already has addresses, it waits to see whether they work first.
 // full outbound connections. The asking itself is a DNS lookup: chapter
 // 89's node program does it, through a proxy in chapter 75.
 AmSeedPlan :: struct { query: int; wait: int; }
-am_seed_plan :: (size: int, force: bool, seeds: int) -> AmSeedPlan {
+am_seed_plan :: (size: int, force: bool, seeds: int) -> AmSeedPlan #effects(all) {
   if force || size == 0 { return AmSeedPlan.{query=seeds, wait=0}; }
   return AmSeedPlan.{query=AM_SEEDS_AT_ONCE, wait=ifx size >= AM_SEEDS_MANY_PEERS then AM_SEEDS_MANY else AM_SEEDS_FEW};
 }
 // After the wait: ask the next seeds only if outbound connections are
 // still short.
-am_seed_needed :: (full_outbound: int) -> bool { return full_outbound < AM_SEED_OUTBOUND; }
+am_seed_needed :: (full_outbound: int) -> bool #effects(all) { return full_outbound < AM_SEED_OUTBOUND; }
 ```
 
 ```text

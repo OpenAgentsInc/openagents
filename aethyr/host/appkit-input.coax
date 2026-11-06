@@ -10,4 +10,4 @@
  #assert hmi_appkit_wheel(0.125,true)==(-0.125) && hmi_appkit_wheel(-0.125,false)==5;
  #assert f32_bits(hmi_appkit_wheel(0,true))==0x80000000;
 }
-hmi_appkit_wheel :: (delta:f32,precise:bool)->f32 #export_c {return -delta*(ifx precise then 1.0f32 else 40.0f32);}
+hmi_appkit_wheel :: (delta:f32,precise:bool)->f32 #export_c #effects(all) {return -delta*(ifx precise then 1.0f32 else 40.0f32);}

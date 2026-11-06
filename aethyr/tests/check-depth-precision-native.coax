@@ -19,7 +19,7 @@ dn_get :: (host:string,remote:string,local:string,deadline:int,work:string,label
   jo_start(o[..],tag[..]);jo_put(o[..],label);jo_put(o[..],"-hash-after");return rtq_hash_file(local,got[..]) && cast(string)got[..]==cast(string)want[..] && dn_hash(host,remote,cast(string)want[..],deadline,work,jo_text(o[..]));
 }
 dn_label :: (prefix:string,index:int,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],prefix);jo_int(o[..],index);return jo_text(o[..]);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}host:=args_value(a[..],"--host","");work:=args_value(a[..],"--work-dir","");emitted:=args_value(a[..],"--emitted","");bridge:=args_value(a[..],"--bridge","");compiler:=args_value(a[..],"--coax","");reuse_worker:=args_value(a[..],"--reuse-worker","");
   if !ng_host(host) || work=="" || emitted=="" || bridge=="" || compiler=="" || fs_exists(work) || !fs_mkdir(work) {return 2;}
   worker_source:=args_value(a[..],"--worker-source","aethyr/tests/depth-precision-native.coax");input_plan:=args_value(a[..],"--input-plan","");

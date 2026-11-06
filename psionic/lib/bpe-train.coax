@@ -27,12 +27,12 @@ BtSplits :: struct {status:PtStatus;written:int;ends:[4096]int;}
  docs[0]=cast(string)bytes[0..<256];r:=bt_train(table[..],docs[..],7);#assert r.status==PtStatus.budget && r.merges==0 && r.source_bytes==0;
  #assert bt_train(table[..],docs[..],65).status==PtStatus.size;
 }
-bt_docs :: (n:int)->bool {return n>=1 && n<=16;}
-bt_bytes :: (n:int)->bool {return n<=4096;}
-bt_merges :: (n:int)->bool {return n>=0 && n<=64;}
+bt_docs :: (n:int)->bool #effects(all) {return n>=1 && n<=16;}
+bt_bytes :: (n:int)->bool #effects(all) {return n<=4096;}
+bt_merges :: (n:int)->bool #effects(all) {return n>=0 && n<=64;}
 // Pinned nanochat pattern, Unicode-17 properties, no normalization or specials.
 // book:begin split
-bt_piece :: (table:[]u8,t:PtLayout,s:string,at:int)->int {
+bt_piece :: (table:[]u8,t:PtLayout,s:string,at:int)->int #effects(all) {
  end:=pt_contraction(s,at);if end>at {return end;}r:=pt_rune(s,at);
  if pt_has(table,t,r.cp,4) {end=r.next;if end==s.count {return end;}next:=pt_rune(s,end);if pt_has(table,t,next.cp,4) {end=next.next;}return end;}
  pos:=at;if r.cp!=13 && r.cp!=10 && !pt_has(table,t,r.cp,5) {pos=r.next;}end=pt_run(table,t,s,pos,1,true);if end>pos {return end;}
@@ -42,11 +42,11 @@ bt_piece :: (table:[]u8,t:PtLayout,s:string,at:int)->int {
  if last_newline>at {return last_newline;}if space==s.count {return space;}if last_space>at {return last_space;}return space;
 }
 // book:end split
-bt_split :: (table:[]u8,text:string)->BtSplits #export_c {
+bt_split :: (table:[]u8,text:string)->BtSplits #export_c #effects(all) {
  if !bt_bytes(text.count) {return BtSplits.{status=PtStatus.size};}t:=pt_layout(table);if t.status!=PtStatus.ok {return BtSplits.{status=t.status};}status:=pt_utf8_validate(text);if status!=PtStatus.ok {return BtSplits.{status=status};}r:=BtSplits.{};at:=0;while at<text.count {at=bt_piece(table,t,text,at);r.ends[r.written]=at;r.written+=1;}return r;
 }
 // book:begin train
-bt_train :: (table:[]u8,documents:[]string,requested:int)->BtModel #export_c {
+bt_train :: (table:[]u8,documents:[]string,requested:int)->BtModel #export_c #effects(all) {
  if !bt_docs(documents.count) || !bt_merges(requested) {return BtModel.{status=PtStatus.size};}t:=pt_layout(table);if t.status!=PtStatus.ok {return BtModel.{status=t.status};}total:=0;for text:documents {if !bt_bytes(text.count) || !bt_bytes(total+text.count) {return BtModel.{status=PtStatus.size};}total+=text.count;status:=pt_utf8_validate(text);if status!=PtStatus.ok {return BtModel.{status=status};}}
  symbols:[4096]int;groups:[4096]int;n:=0;pieces:=0;for text:documents {at:=0;while at<text.count {end:=bt_piece(table,t,text,at);for i:at..<end {symbols[n]=cast(int)text[i];groups[n]=pieces;n+=1;}pieces+=1;at=end;}}
  counts:[102400]int;touched:[4096]int;model:=BtModel.{source_bytes=total,pieces=pieces};
@@ -58,16 +58,16 @@ bt_train :: (table:[]u8,documents:[]string,requested:int)->BtModel #export_c {
  model.remaining=n;return model;
 }
 // book:end train
-bt_vocabulary :: (m:BtModel)->BtVocabulary {
+bt_vocabulary :: (m:BtModel)->BtVocabulary #effects(all) {
  if m.status!=PtStatus.ok || !bt_merges(m.merges) {return BtVocabulary.{status=PtStatus.artifact};}v:=BtVocabulary.{count=256+m.merges,pool=256};for i:0..<256 {v.lengths[i]=1;v.bytes[i][0]=cast(u8)i;}
  for rank:0..<m.merges {rule:=m.rules[rank];id:=256+rank;if rule.left<0 || rule.left>=id || rule.right<0 || rule.right>=id {return BtVocabulary.{status=PtStatus.artifact};}for j:0..<rank {if m.rules[j].left==rule.left && m.rules[j].right==rule.right {return BtVocabulary.{status=PtStatus.artifact};}}
   a:=v.lengths[rule.left];b:=v.lengths[rule.right];if a+b>64 {return BtVocabulary.{status=PtStatus.budget};}v.lengths[id]=a+b;v.pool+=a+b;for i:0..<a {v.bytes[id][i]=v.bytes[rule.left][i];}for i:0..<b {v.bytes[id][a+i]=v.bytes[rule.right][i];}
  }return v;
 }
-bt_put :: (bytes:[]u8,at:int,n:int) {for i:0..<4 {bytes[at+i]=cast(u8)((cast(u32)n>>(i*8))&255);}}
-bt_less :: (a:BtRule,b:BtRule)->bool {return a.left<b.left || (a.left==b.left && a.right<b.right);}
+bt_put :: (bytes:[]u8,at:int,n:int) #effects(all) {for i:0..<4 {bytes[at+i]=cast(u8)((cast(u32)n>>(i*8))&255);}}
+bt_less :: (a:BtRule,b:BtRule)->bool #effects(all) {return a.left<b.left || (a.left==b.left && a.right<b.right);}
 // PST5 stores raw bytes and chapter 9's rank/id records; the profile is separate.
-bt_pack :: (m:BtModel,classes:[]u8,out:[]u8,stage:[]u8,overlap:bool)->PtResult #export_c {
+bt_pack :: (m:BtModel,classes:[]u8,out:[]u8,stage:[]u8,overlap:bool)->PtResult #export_c #effects(all) {
  if overlap {return PtResult.{status=PtStatus.alias};}t:=pt_layout(classes);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}v:=bt_vocabulary(m);if v.status!=PtStatus.ok {return PtResult.{status=v.status};}
  needed:=1056+v.count*8+m.merges*16+t.counts[2]*16+v.pool;if out.count<needed || stage.count<needed {return PtResult.{status=PtStatus.capacity};}
 
@@ -79,12 +79,12 @@ bt_pack :: (m:BtModel,classes:[]u8,out:[]u8,stage:[]u8,overlap:bool)->PtResult #
  for i:0..<v.count {for j:0..<v.lengths[i] {stage[at]=v.bytes[i][j];at+=1;}}
  for i:0..<needed {out[i]=stage[i];}return PtResult.{written=needed};
 }
-bt_profile :: (t:PtLayout)->bool {return t.counts[0]==256+t.counts[1] && bt_merges(t.counts[1]) && t.counts[3]==0 && t.counts[4]==0 && t.counts[5]==0;}
-bt_encode :: (table:[]u8,text:string)->BtEncoding #export_c {
+bt_profile :: (t:PtLayout)->bool #effects(all) {return t.counts[0]==256+t.counts[1] && bt_merges(t.counts[1]) && t.counts[3]==0 && t.counts[4]==0 && t.counts[5]==0;}
+bt_encode :: (table:[]u8,text:string)->BtEncoding #export_c #effects(all) {
  if !bt_bytes(text.count) {return BtEncoding.{status=PtStatus.size};}t:=pt_layout(table);if t.status!=PtStatus.ok {return BtEncoding.{status=t.status};}if !bt_profile(t) {return BtEncoding.{status=PtStatus.artifact};}status:=pt_utf8_validate(text);if status!=PtStatus.ok {return BtEncoding.{status=status};}
  r:=BtEncoding.{};symbols:[4096]int;at:=0;while at<text.count {end:=bt_piece(table,t,text,at);bpe:=pt_bpe(table,t,text[at..<end],symbols[..]);if bpe.status!=PtStatus.ok {return BtEncoding.{status=bpe.status};}for i:0..<bpe.written {r.ids[r.written]=symbols[i];r.written+=1;}at=end;}return r;
 }
-bt_decode :: (table:[]u8,ids:[]int)->BtText #export_c {
+bt_decode :: (table:[]u8,ids:[]int)->BtText #export_c #effects(all) {
  if !bt_bytes(ids.count) {return BtText.{status=PtStatus.size};}t:=pt_layout(table);if t.status!=PtStatus.ok {return BtText.{status=t.status};}if !bt_profile(t) {return BtText.{status=PtStatus.artifact};}r:=BtText.{};
  for id:ids {s:=pt_span(table,t,id);if s.status!=PtStatus.ok {return BtText.{status=s.status};}n:=s.end-s.begin;if n>4096-r.written {return BtText.{status=PtStatus.budget};}for i:s.begin..<s.end {r.bytes[r.written]=table[i];r.written+=1;}}return r;
 }
@@ -116,7 +116,7 @@ bt_decode :: (table:[]u8,ids:[]int)->BtText #export_c {
 }
 
 BtBest :: struct {key:int=-1;frequency:int;slot:int=-1;}
-bt_best :: (counts:[]int,keys:[]int)->BtBest {r:=BtBest.{};for i:0..<keys.count {key:=keys[i];f:=counts[key];if f>r.frequency || (f==r.frequency && (r.key==-1 || key<r.key)) {r=BtBest.{key=key,frequency=f,slot=i};}}return r;}
+bt_best :: (counts:[]int,keys:[]int)->BtBest #effects(all) {r:=BtBest.{};for i:0..<keys.count {key:=keys[i];f:=counts[key];if f>r.frequency || (f==r.frequency && (r.key==-1 || key<r.key)) {r=BtBest.{key=key,frequency=f,slot=i};}}return r;}
 #forall "independent full recount training traces include controls boundaries and corpus permutations" c:0..<BT_REQUEST.count {
  table:=PT_TOY;docs:=BT_DOCS[c];m:=bt_train(table[..],docs[0..<BT_DOC_COUNT[c]],BT_REQUEST[c]);#assert m.status==PtStatus.ok && m.merges==BT_MERGES[c] && m.source_bytes==BT_SOURCE_BYTES[c] && m.pieces==BT_PIECES[c] && m.remaining==BT_REMAINING[c];
  for i:0..<m.merges {r:=m.rules[i];#assert r.left==BT_LEFT[c][i] && r.right==BT_RIGHT[c][i] && r.frequency==BT_FREQUENCY[c][i] && r.replaced==BT_REPLACED[c][i];}
@@ -141,7 +141,7 @@ bt_best :: (counts:[]int,keys:[]int)->BtBest {r:=BtBest.{};for i:0..<keys.count 
  ids:[4096]int;for i:0..<4096 {ids[i]=97;}text:=bt_decode(out[0..<p.written],ids[..]);#assert text.status==PtStatus.ok && text.written==4096 && text.bytes[4095]==97;ids[4095]=256;#assert bt_decode(out[0..<p.written],ids[..]).status==PtStatus.budget;
 }
 
-bt_histogram :: (symbols:[]int,groups:[]int,n:int,counts:[]int,touched:[]int)->int {used:int;for i:0..<n-1 {if groups[i]!=groups[i+1] {continue;}key:=symbols[i]*320+symbols[i+1];if counts[key]==0 {touched[used]=key;used+=1;}counts[key]+=1;}return used;}
+bt_histogram :: (symbols:[]int,groups:[]int,n:int,counts:[]int,touched:[]int)->int #effects(all) {used:int;for i:0..<n-1 {if groups[i]!=groups[i+1] {continue;}key:=symbols[i]*320+symbols[i+1];if counts[key]==0 {touched[used]=key;used+=1;}counts[key]+=1;}return used;}
 #test "histogram publishes exactly its distinct candidate keys and compound right tokens expand in order" {
  s:=[4]int.[0,0,0,1];g:[4]int;c:[102400]int;keys:[4]int;n:=bt_histogram(s[..],g[..],4,c[..],keys[..]);#assert n==2 && keys[0]==0 && keys[1]==1 && c[0]==2 && c[1]==1;
  m:=BtModel.{merges=2};m.rules[0]=BtRule.{left=98,right=99};m.rules[1]=BtRule.{left=97,right=256};v:=bt_vocabulary(m);#assert v.status==PtStatus.ok && v.lengths[257]==3 && v.bytes[257][0]==97 && v.bytes[257][1]==98 && v.bytes[257][2]==99;

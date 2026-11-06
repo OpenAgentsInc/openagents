@@ -8,8 +8,8 @@ ControlRequest :: struct { kind: int; session: int; handle: int; revision: int; 
 CW_NAMES :: [11] string.["info", "list", "acquire", "key", "button", "move", "relative", "wheel", "text", "stop", "shot"];
 CW_FIELDS :: [15] string.["generation", "type", "session", "handle", "revision", "ms", "code", "down", "x", "y", "dx", "dy", "clicks", "text", "path"];
 
-cw_int :: (d: Jv, name: string) -> int { return jv_int(d, jv_get(d, 0, name), -2049); }
-cw_parse :: (line: string, out: [] ControlRequest) -> bool {
+cw_int :: (d: Jv, name: string) -> int #effects(all) { return jv_int(d, jv_get(d, 0, name), -2049); }
+cw_parse :: (line: string, out: [] ControlRequest) -> bool #effects(all) {
   out[0] = ControlRequest.{};
   nodes: [64] JvNode; doc: [1] Jv;
   if !jv_parse(doc[..], line, nodes[..]) { return false; }
@@ -72,7 +72,7 @@ cw_parse :: (line: string, out: [] ControlRequest) -> bool {
   #assert !cw_parse("{\"generation\":2,\"type\":\"info\",\"ty\\u0070e\":\"list\"}", q[..]);
 }
 // Test requests are encoded through the independent JSON writer, including all range endpoints.
-cw_case :: (kind: string, extra: string, out: [] ControlRequest) -> bool {
+cw_case :: (kind: string, extra: string, out: [] ControlRequest) -> bool #effects(all) {
   b: [8192] u8; n := 0;
   for c: "{\"generation\":2,\"type\":\"" { b[n] = c; n += 1; }
   for c: kind { b[n] = c; n += 1; }

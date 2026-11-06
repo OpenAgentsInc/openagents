@@ -11,17 +11,17 @@
 // Work item i of a TM x TN tiling: token tile i % tiles(tokens), row tile
 // i / tiles(tokens), so neighbouring threadgroups share one weight tile.
 DT_THREADS :: 128;
-dt_tiles :: (n:int,tile:int)->int {return (n+tile-1)/tile;}
-dt_items :: (rows:int,tokens:int,tm:int,tn:int)->int {return dt_tiles(tokens,tm)*dt_tiles(rows,tn);}
-dt_project_16x32 :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c {
+dt_tiles :: (n:int,tile:int)->int #effects(all) {return (n+tile-1)/tile;}
+dt_items :: (rows:int,tokens:int,tm:int,tn:int)->int #effects(all) {return dt_tiles(tokens,tm)*dt_tiles(rows,tn);}
+dt_project_16x32 :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {
     t:=dt_tiles(tokens,16);
     am_matmul_bf16(128,16,32,rows,cols,tokens,item/t*32,item%t*16,w,x,out);
 }
-dt_project_32x32 :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c {
+dt_project_32x32 :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {
     t:=dt_tiles(tokens,32);
     am_matmul_bf16(128,32,32,rows,cols,tokens,item/t*32,item%t*32,w,x,out);
 }
-dt_project_16x64 :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c {
+dt_project_16x64 :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {
     t:=dt_tiles(tokens,16);
     am_matmul_bf16(128,16,64,rows,cols,tokens,item/t*64,item%t*16,w,x,out);
 }

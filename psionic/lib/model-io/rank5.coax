@@ -42,7 +42,7 @@ P5Parsed :: struct { status:PwStatus; tensor:P5Tensor; }
     r:=p5_inspect_checked(file[..],out[..],draft[..],false);#assert r.status==PwStatus.ok && r.written==3 && out[1].shape.dims[1]==3;
 }
 
-p5_shape_size :: (s:P5Shape,dtype:PwDtype)->PwSize #export_c {
+p5_shape_size :: (s:P5Shape,dtype:PwDtype)->PwSize #export_c #effects(all) {
     if !pw_dtype_known(cast(u8)dtype) {return PwSize.{status=PwStatus.unsupported};}
     if s.rank<0 || s.rank>5 {return PwSize.{status=PwStatus.shape};}
     for i:0..<5 {if i<s.rank {if s.dims[i]<=0 {return PwSize.{status=PwStatus.shape};}} else {if s.dims[i]!=0 {return PwSize.{status=PwStatus.shape};}}}
@@ -50,7 +50,7 @@ p5_shape_size :: (s:P5Shape,dtype:PwDtype)->PwSize #export_c {
     for i:0..<s.rank {if !pw_count_fits(elements,s.dims[i],width) {return PwSize.{status=PwStatus.size};}elements*=s.dims[i];}
     return PwSize.{elements=elements,bytes=elements*width};
 }
-p5_parse_tensor :: (j:[]Json,name:string)->P5Parsed {
+p5_parse_tensor :: (j:[]Json,name:string)->P5Parsed #effects(all) {
     if json_next(j)!=JSON_OBJECT {return P5Parsed.{status=PwStatus.schema};}
     t:=json_next(j);tensor:=P5Tensor.{name=name};d:=false;s:=false;o:=false;
     while t!=JSON_OBJECT_END {
@@ -90,7 +90,7 @@ p5_parse_tensor :: (j:[]Json,name:string)->P5Parsed {
 }
 
 // Private append-only workspace. Payload spans are relative until admitted.
-p5_scan :: (file:[]u8,draft:[]P5Tensor,base:int,shard:int)->PwResult {
+p5_scan :: (file:[]u8,draft:[]P5Tensor,base:int,shard:int)->PwResult #effects(all) {
     h:=pw_header(file);if h.status!=PwStatus.ok {return PwResult.{status=h.status};}
     header:=file[8..<h.data];j:[1]Json;json_start_bounded(j[..],cast(string)header,header.count,header.count);
     if json_next(j[..])!=JSON_OBJECT {return PwResult.{status=PwStatus.json};}
@@ -121,7 +121,7 @@ p5_scan :: (file:[]u8,draft:[]P5Tensor,base:int,shard:int)->PwResult {
     if count==base || covered!=file.count-h.data {return PwResult.{status=PwStatus.coverage};}
     return PwResult.{written=count-base,bytes=covered};
 }
-p5_inspect_checked :: (file:[]u8,output:[]P5Tensor,draft:[]P5Tensor,overlap:bool)->PwResult #export_c {
+p5_inspect_checked :: (file:[]u8,output:[]P5Tensor,draft:[]P5Tensor,overlap:bool)->PwResult #export_c #effects(all) {
     if !pw_file_size(file.count) {return PwResult.{status=PwStatus.size};}
     if output.count<1 || draft.count<1 {return PwResult.{status=PwStatus.capacity};}
     if overlap {return PwResult.{status=PwStatus.alias};}

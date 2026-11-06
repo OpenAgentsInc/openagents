@@ -8,7 +8,7 @@
 //   coax/web/tool.sh coax/web/room/owner-seat.coax ws://localhost:PORT/api/room/relay/everglade/CODE?t=TICKET SECONDS [TO]
 #load "room-socket.coax";
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("owner-seat URL [SECONDS]"); return 2; }
   url := args_at(a[..], 0);

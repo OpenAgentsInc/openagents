@@ -23,14 +23,14 @@ DvDecision :: struct {status:DsStatus;stop:DvStop;token:int=-1;}
     #assert dv_logits_count(1) && dv_logits_count(151936) && !dv_logits_count(0) && !dv_logits_count(151937);
     #assert dv_greedy(x[..]).next==2;
 }
-dv_original_bos :: ()->int #export_c {return 100000;}
-dv_original_eos :: ()->int #export_c {return 100001;}
-dv_logits_count :: (n:int)->bool {return n>=1 && n<=151936;}
-dv_greedy :: (logits:[]f32)->DsResult #export_c {
+dv_original_bos :: ()->int #export_c #effects(all) {return 100000;}
+dv_original_eos :: ()->int #export_c #effects(all) {return 100001;}
+dv_logits_count :: (n:int)->bool #effects(all) {return n>=1 && n<=151936;}
+dv_greedy :: (logits:[]f32)->DsResult #export_c #effects(all) {
     if !dv_logits_count(logits.count) {return DsResult.{status=DsStatus.shape};}for x:logits {if !ds_finite(x) {return DsResult.{status=DsStatus.number};}}
     return DsResult.{next=dr_maximum_id(logits)};
 }
-dv_decide :: (logits:[]f32,eos:int,generated:int,limit:int,position:int,capacity:int,cancelled:bool)->DvDecision #export_c {
+dv_decide :: (logits:[]f32,eos:int,generated:int,limit:int,position:int,capacity:int,cancelled:bool)->DvDecision #export_c #effects(all) {
     if !dv_logits_count(logits.count) {return DvDecision.{status=DsStatus.shape};}if eos<0 || eos>=logits.count {return DvDecision.{status=DsStatus.token};}
     if generated<0 || limit<1 || limit>4096 || generated>limit || capacity<1 || capacity>163840 || position<1 || position>capacity {return DvDecision.{status=DsStatus.state};}
     if cancelled {return DvDecision.{stop=DvStop.cancelled};}if generated==limit {return DvDecision.{stop=DvStop.token_limit};}if position==capacity {return DvDecision.{stop=DvStop.context};}

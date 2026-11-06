@@ -13,7 +13,7 @@ RCP_STEPS_MAX :: 65536;
     #assert !rcp_step(0,9223372036854775807);
 }
 
-rcp_step :: (used:int,max_steps:int)->bool #export_c {
+rcp_step :: (used:int,max_steps:int)->bool #export_c #effects(all) {
     return used>=0 && max_steps>=1 && max_steps<=RCP_STEPS_MAX && used<max_steps;
 }
 

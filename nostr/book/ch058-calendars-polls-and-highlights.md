@@ -388,7 +388,7 @@ N88Tally :: struct {
 <!-- source: coax/lib/nostr/nip88.coax poll -->
 ```jai
 // A poll: its options in order, its type and its end time.
-n88_poll :: (e:NostrEvent)->N88Poll {
+n88_poll :: (e:NostrEvent)->N88Poll #effects(all) {
   p:N88Poll;if e.error!=NE_OK {return p;}
   if e.kind!=N88_KIND_POLL {return n88_refuse(p,N88_KIND,-1);}
   typed:=false;i:=0;
@@ -418,7 +418,7 @@ n88_poll :: (e:NostrEvent)->N88Poll {
   p.status=N88_OK;return p;
 }
 // The index of the option with this id, or -1.
-n88_index :: (p:N88Poll,id:string)->int {
+n88_index :: (p:N88Poll,id:string)->int #effects(all) {
   for k:0..<p.n {if n32_is(p.options[k].id,id) {return k;}}
   return -1;
 }
@@ -431,7 +431,7 @@ in `response` tags, in order. It needs both. The reader keeps every
 <!-- source: coax/lib/nostr/nip88.coax response -->
 ```jai
 // A response: the poll its first e tag names and the option ids it chooses.
-n88_response :: (e:NostrEvent)->N88Response {
+n88_response :: (e:NostrEvent)->N88Response #effects(all) {
   r:N88Response;if e.error!=NE_OK {return r;}
   if e.kind!=N88_KIND_RESPONSE {r.status=N88_KIND;return r;}
   has_poll:=false;i:=0;
@@ -459,7 +459,7 @@ n88_response :: (e:NostrEvent)->N88Response {
 // The tags of a response to the poll with this id choosing these option
 // ids, in order. The bytes written, or -1 for no choices, more than
 // N88_MAX_CHOICES, or too little room.
-n88_response_tags :: (poll:[32]u8,choices:[]string,out:[]u8)->int {
+n88_response_tags :: (poll:[32]u8,choices:[]string,out:[]u8)->int #effects(all) {
   if choices.count==0 || choices.count>N88_MAX_CHOICES {return -1;}
   hex:[64]u8;id:=poll;h:=hex_encode_checked(cast(string)id[..],hex[..],false);
   n:=json_raw(out,0,"[[\"e\",\"");n=json_raw(out,n,cast(string)hex[..]);n=json_raw(out,n,"\"]");
@@ -499,13 +499,13 @@ over.
 ```jai
 // Whether a response counts toward the poll: it reads, names the poll, and
 // is not after endsAt.
-n88_counts :: (e:NostrEvent,poll_id:[32]u8,p:N88Poll)->bool {
+n88_counts :: (e:NostrEvent,poll_id:[32]u8,p:N88Poll)->bool #effects(all) {
   if e.kind!=N88_KIND_RESPONSE {return false;}
   r:=n88_response(e);
   return r.status==N88_OK && ns_equal32(r.poll,poll_id) && (!p.has_end || e.created_at<=p.ends_at);
 }
 // Whether b replaces a: later, or as late with a lower id.
-n88_newer :: (b:NostrEvent,a:NostrEvent)->bool {
+n88_newer :: (b:NostrEvent,a:NostrEvent)->bool #effects(all) {
   if b.created_at>a.created_at {return true;}
   if b.created_at<a.created_at {return false;}
   for i:0..<32 {
@@ -516,7 +516,7 @@ n88_newer :: (b:NostrEvent,a:NostrEvent)->bool {
 }
 // The poll's result over the responses in set: one counted response per
 // pubkey, the newest before the end.
-n88_tally :: (poll:NostrEvent,set:[]NostrEvent)->N88Tally {
+n88_tally :: (poll:NostrEvent,set:[]NostrEvent)->N88Tally #effects(all) {
   t:N88Tally;p:=n88_poll(poll);
   if p.status!=N88_OK {t.status=p.status;return t;}
   for i:0..<set.count {

@@ -4,46 +4,46 @@
 PcLayout :: struct {valid:bool;base:int;state:int;vertices:int;uniforms:int;need:int;pages:int;}
 PcStore :: struct {valid:bool;capacity:int;version_known:bool;version:string;last_update:int;last_positive:int;highwater:int;}
 PcPackEntry :: struct {valid:bool;kind:int;begin:int;bytes:int;}
-pc_max :: (a:int,b:int)->int {return (a+b+cast(int)abs(cast(f64)(a-b)))/2;}
-pc_span :: (at:int,n:int,capacity:int)->bool {return at>=0 && n>=0 && at<=capacity && n<=capacity-at;}
-pc_count :: (n:int,capacity:int)->bool {return n>=0 && n<=capacity;}
-pc_physical :: (n:int)->int {
+pc_max :: (a:int,b:int)->int #effects(all) {return (a+b+cast(int)abs(cast(f64)(a-b)))/2;}
+pc_span :: (at:int,n:int,capacity:int)->bool #effects(all) {return at>=0 && n>=0 && at<=capacity && n<=capacity-at;}
+pc_count :: (n:int,capacity:int)->bool #effects(all) {return n>=0 && n<=capacity;}
+pc_physical :: (n:int)->int #effects(all) {
   if n<0 || n>67108864 {return -1;}return (pc_max(n,16)+15)/16*16;
 }
-pc_scalars :: (heap:int,state:int,vertices:int,stride:int,uniforms:int,minimum:int,maximum:int)->bool {
+pc_scalars :: (heap:int,state:int,vertices:int,stride:int,uniforms:int,minimum:int,maximum:int)->bool #effects(all) {
   return pc_count(heap,67108864) && pc_count(state,67108864) && pc_count(vertices,16777216) && stride>=1 && stride<=16777216 && pc_count(uniforms,16777216) && minimum>=0 && minimum<=maximum && maximum==1024;
 }
-pc_layout :: (heap:int,state:int,vertices:int,stride:int,uniforms:int,minimum:int,maximum:int)->PcLayout {
+pc_layout :: (heap:int,state:int,vertices:int,stride:int,uniforms:int,minimum:int,maximum:int)->PcLayout #effects(all) {
   p:PcLayout;if !pc_scalars(heap,state,vertices,stride,uniforms,minimum,maximum) {return p;}
   p.base=(pc_max(heap,pc_max(minimum,128)*65536)+65535)/65536*65536;
   p.state=(pc_max(state,1024)+15)/16*16;p.vertices=p.base+p.state;
   p.uniforms=p.vertices+vertices*stride*4;p.need=p.uniforms+uniforms*4+64;
   p.pages=(p.need+65535)/65536;p.valid=p.pages<=maximum;return p;
 }
-pc_store_due :: (s:PcStore,known:bool,version:string)->bool {return !known || !s.version_known || s.version!=version;}
-pc_store_observe :: (prior:PcStore,bytes:int,known:bool,version:string)->PcStore {
+pc_store_due :: (s:PcStore,known:bool,version:string)->bool #effects(all) {return !known || !s.version_known || s.version!=version;}
+pc_store_observe :: (prior:PcStore,bytes:int,known:bool,version:string)->PcStore #effects(all) {
   s:=prior;s.valid=false;
   if !pc_count(bytes,s.capacity) {return s;}
   s.valid=true;s.last_update=bytes;
   if bytes>0 {s.last_positive=bytes;s.highwater=pc_max(s.highwater,bytes);s.version_known=known;s.version=version;}
   return s;
 }
-pc_u32 :: (bytes:[]u8,at:int)->int {
+pc_u32 :: (bytes:[]u8,at:int)->int #effects(all) {
   return cast(int)bytes[at]+(cast(int)bytes[at+1]<<8)+(cast(int)bytes[at+2]<<16)+(cast(int)bytes[at+3]<<24);
 }
-pc_pack_count :: (bytes:[]u8)->int {
+pc_pack_count :: (bytes:[]u8)->int #effects(all) {
   if bytes.count<32 {return -1;}count:=pc_u32(bytes,4);table:=pc_u32(bytes,16);
   if !pc_span(table,count*48,bytes.count) {return -1;}return count;
 }
-pc_pack_entry :: (bytes:[]u8,index:int)->PcPackEntry {
+pc_pack_entry :: (bytes:[]u8,index:int)->PcPackEntry #effects(all) {
   e:PcPackEntry;count:=pc_pack_count(bytes);if index<0 || index>=count {return e;}
   at:=pc_u32(bytes,16)+index*48;e.kind=cast(int)bytes[at];e.begin=pc_u32(bytes,at+4);e.bytes=pc_u32(bytes,at+8);
   e.valid=pc_span(e.begin,e.bytes,bytes.count);return e;
 }
-pc_controls :: (frames:int,every:int,width:int,height:int,scale:f64)->bool {
+pc_controls :: (frames:int,every:int,width:int,height:int,scale:f64)->bool #effects(all) {
   return frames>=1 && frames<=600 && every>=1 && width>=1 && width<=8192 && height>=1 && height<=8192 && scale>0.0 && scale<=4.0;
 }
-pc_import :: (module:string,name:string,kind:string)->int {
+pc_import :: (module:string,name:string,kind:string)->int #effects(all) {
   if kind=="memory" {return ifx module=="env" && name=="memory" then 0 else -1;}
   if kind!="function" {return -1;}
   if module=="env" {

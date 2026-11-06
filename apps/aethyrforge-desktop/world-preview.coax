@@ -20,13 +20,13 @@
  #assert fwp_label_byte(0,22)== -1;
  #assert fwp_label_byte(-1,0)== -1 && fwp_label_byte(2,0)== -1;
 }
-fwp_target :: (launch:int,current:int,ready:bool,busy:bool)->int #export_c {
+fwp_target :: (launch:int,current:int,ready:bool,busy:bool)->int #export_c #effects(all) {
  if launch!=1 || !ready || busy {return -1;}
  if current==1 {return 0;}
  if current==0 {return 1;}
  return -1;
 }
-fwp_label_byte :: (current:int,index:int)->int #export_c {
+fwp_label_byte :: (current:int,index:int)->int #export_c #effects(all) {
  label:=ifx current==1 then "Check as Players See It" else ifx current==0 then "Return to Native World" else "";
  return ifx index>=0 && index<label.count then cast(int)label[index] else -1;
 }

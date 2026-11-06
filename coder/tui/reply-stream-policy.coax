@@ -21,7 +21,7 @@
   #assert crs_visible(cast(string)raw[..],unusual[..],false)==0;
   raw[0]=0xa9;#assert crs_visible(cast(string)raw[0..<1],unusual[..],false)==0;
 }
-crs_visible :: (text:string,secrets:[]string,final:bool)->int {
+crs_visible :: (text:string,secrets:[]string,final:bool)->int #effects(all) {
   if final {return text.count;}
   end:=text.count;
   for secret:secrets {

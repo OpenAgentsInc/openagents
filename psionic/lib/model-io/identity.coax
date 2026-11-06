@@ -32,15 +32,15 @@
     data[2]=100;#assert !pw_digest(data[..],abc);
 }
 
-pw_hex_digest :: (s:string)->bool {
+pw_hex_digest :: (s:string)->bool #effects(all) {
     if s.count!=64 {return false;}
     for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
     return true;
 }
-pw_hash_limits :: (count:int,chunk:int)->bool {return count>=0 && count<=PW_FILE_MAX && chunk>=1 && chunk<=CB_MAX_BYTES;}
+pw_hash_limits :: (count:int,chunk:int)->bool #effects(all) {return count>=0 && count<=PW_FILE_MAX && chunk>=1 && chunk<=CB_MAX_BYTES;}
 // Private configurable chunks let checks exercise the same loop with tiny data.
 // book:begin digest
-pw_digest_chunks :: (data:[]u8,expected:string,chunk:int)->bool {
+pw_digest_chunks :: (data:[]u8,expected:string,chunk:int)->bool #effects(all) {
     if !pw_hash_limits(data.count,chunk) || !pw_hex_digest(expected) {return false;}
     state:[112]u8;digest:[32]u8;
     ok:=sha256_init(state[..])==SHA_OK;
@@ -58,5 +58,5 @@ pw_digest_chunks :: (data:[]u8,expected:string,chunk:int)->bool {
     }
     return ok;
 }
-pw_digest :: (data:[]u8,expected:string)->bool #export_c {return pw_digest_chunks(data,expected,CB_MAX_BYTES);}
+pw_digest :: (data:[]u8,expected:string)->bool #export_c #effects(all) {return pw_digest_chunks(data,expected,CB_MAX_BYTES);}
 // book:end digest

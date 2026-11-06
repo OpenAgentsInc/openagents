@@ -27,15 +27,15 @@ RRStored :: struct {status:RQStatus;written:bool;pixel:RRPixel;}
 #load "tests/reference-raster-subpixel-checks.coax";
 #load "tests/reference-raster-guard-checks.coax";
 
-rr_layout_status :: (l:RRLayout)->RQStatus {
+rr_layout_status :: (l:RRLayout)->RQStatus #effects(all) {
  if l.count<0 {return RQStatus.resource;}if l.count>RR_WORDS {return RQStatus.capacity;}return RQStatus.ok;
 }
-rr_clip_distance :: (v:RRVertex,plane:int)->f64 {
+rr_clip_distance :: (v:RRVertex,plane:int)->f64 #effects(all) {
  x:=cast(f64)v.clip[0];y:=cast(f64)v.clip[1];z:=cast(f64)v.clip[2];w:=cast(f64)v.clip[3];
  return [6]f64.[w+x,w-x,w+y,w-y,z,w-z][plane];
 }
-rr_clip :: (triangle:[3]RRVertex,l:RRLayout)->RRPolygon {return rr_clip_profile(triangle,l,RRRasterProfile.{});}
-rr_clip_profile :: (triangle:[3]RRVertex,l:RRLayout,profile:RRRasterProfile)->RRPolygon {
+rr_clip :: (triangle:[3]RRVertex,l:RRLayout)->RRPolygon #effects(all) {return rr_clip_profile(triangle,l,RRRasterProfile.{});}
+rr_clip_profile :: (triangle:[3]RRVertex,l:RRLayout,profile:RRRasterProfile)->RRPolygon #effects(all) {
  if !rr_raster_profile_ok(profile) {return RRPolygon.{status=RQStatus.unsupported};}
  status:=rr_layout_status(l);if status!=RQStatus.ok {return RRPolygon.{status=status};}
  for v:0..<3 {
@@ -67,10 +67,10 @@ rr_clip_profile :: (triangle:[3]RRVertex,l:RRLayout,profile:RRRasterProfile)->RR
  }
  return a;
 }
-rr_edge :: (a:RRScreenVertex,b:RRScreenVertex,x:f64,y:f64)->f64 {return (b.x-a.x)*(y-a.y)-(b.y-a.y)*(x-a.x);}
-rr_top_left :: (a:RRScreenVertex,b:RRScreenVertex)->bool {return b.y<a.y || (b.y==a.y && b.x>a.x);}
-rr_triangle :: (triangle:[3]RRVertex,width:int,height:int)->RRTriangle {return rr_triangle_profile(triangle,width,height,RRRasterProfile.{});}
-rr_triangle_profile :: (triangle:[3]RRVertex,width:int,height:int,profile:RRRasterProfile)->RRTriangle {
+rr_edge :: (a:RRScreenVertex,b:RRScreenVertex,x:f64,y:f64)->f64 #effects(all) {return (b.x-a.x)*(y-a.y)-(b.y-a.y)*(x-a.x);}
+rr_top_left :: (a:RRScreenVertex,b:RRScreenVertex)->bool #effects(all) {return b.y<a.y || (b.y==a.y && b.x>a.x);}
+rr_triangle :: (triangle:[3]RRVertex,width:int,height:int)->RRTriangle #effects(all) {return rr_triangle_profile(triangle,width,height,RRRasterProfile.{});}
+rr_triangle_profile :: (triangle:[3]RRVertex,width:int,height:int,profile:RRRasterProfile)->RRTriangle #effects(all) {
  if !rr_raster_profile_ok(profile) {return RRTriangle.{status=RQStatus.unsupported};}
  if width<1 || height<1 {return RRTriangle.{status=RQStatus.resource};}
  if width>16384 || height>16384 {return RRTriangle.{status=RQStatus.capacity};}
@@ -112,7 +112,7 @@ rr_triangle_profile :: (triangle:[3]RRVertex,width:int,height:int,profile:RRRast
  s.end_x=((cast(int)(-floor(-maxx))+1)/2)*2;s.end_y=((cast(int)(-floor(-maxy))+1)/2)*2;
  return s;
 }
-rr_quad :: (s:RRTriangle,l:RRLayout,x:int,y:int)->RRQuad {
+rr_quad :: (s:RRTriangle,l:RRLayout,x:int,y:int)->RRQuad #effects(all) {
  if s.status!=RQStatus.ok {return RRQuad.{status=s.status};}
  status:=rr_layout_status(l);if status!=RQStatus.ok {return RRQuad.{status=status};}
  if x<0 || y<0 || x>=s.width || y>=s.height || x%2!=0 || y%2!=0 {return RRQuad.{status=RQStatus.resource};}
@@ -149,15 +149,15 @@ rr_quad :: (s:RRTriangle,l:RRLayout,x:int,y:int)->RRQuad {
 
 // IEEE binary32 -> binary16, round-to-nearest, ties-to-even, including signed
 // underflow. An overflowing stored color is refused by rr_store below.
-rr_half_bits :: (value:f32)->u32 {return rh_half_bits(value);}
-rr_half_decode :: (bits:u32)->RRScalar {
+rr_half_bits :: (value:f32)->u32 #effects(all) {return rh_half_bits(value);}
+rr_half_decode :: (bits:u32)->RRScalar #effects(all) {
  decoded:=rh_half_decode(bits);return RRScalar.{status=ifx decoded.ok then RQStatus.ok else RQStatus.resource,value=decoded.value};
 }
-rr_unorm8 :: (value:f32)->f32 {
+rr_unorm8 :: (value:f32)->f32 #effects(all) {
  bounded:=rq_clamp(value,0,1)*255.0f32;low:=floor(bounded);fraction:=bounded-low;q:=cast(u32)low;
  if fraction>0.5f32 || (fraction==0.5f32 && (q&1)!=0) {q+=1;}return cast(f32)q/255.0f32;
 }
-rr_blend :: (mode:RenderBlend,source:f32,dest:f32,alpha:f32)->f32 {
+rr_blend :: (mode:RenderBlend,source:f32,dest:f32,alpha:f32)->f32 #effects(all) {
  if mode==RenderBlend.maximum {return ifx source>dest then source else dest;}
  if mode==RenderBlend.multiply {return source*dest;}
  if mode==RenderBlend.add {return source+dest;}
@@ -166,9 +166,9 @@ rr_blend :: (mode:RenderBlend,source:f32,dest:f32,alpha:f32)->f32 {
  if mode==RenderBlend.under {return dest*(1-alpha);}
  return source;
 }
-rr_colour_finite :: (c:RQColor)->bool {return rq_finite(c.r) && rq_finite(c.g) && rq_finite(c.b) && rq_finite(c.a);}
-rr_colour_clamp :: (c:RQColor)->RQColor {return RQColor.{r=rq_clamp(c.r,0,1),g=rq_clamp(c.g,0,1),b=rq_clamp(c.b,0,1),a=rq_clamp(c.a,0,1)};}
-rr_colour_format :: (c:RQColor,format:RRFormat)->RQSample {
+rr_colour_finite :: (c:RQColor)->bool #effects(all) {return rq_finite(c.r) && rq_finite(c.g) && rq_finite(c.b) && rq_finite(c.a);}
+rr_colour_clamp :: (c:RQColor)->RQColor #effects(all) {return RQColor.{r=rq_clamp(c.r,0,1),g=rq_clamp(c.g,0,1),b=rq_clamp(c.b,0,1),a=rq_clamp(c.a,0,1)};}
+rr_colour_format :: (c:RQColor,format:RRFormat)->RQSample #effects(all) {
  if format==RRFormat.half {
   r:=rr_half_decode(rr_half_bits(c.r));g:=rr_half_decode(rr_half_bits(c.g));b:=rr_half_decode(rr_half_bits(c.b));a:=rr_half_decode(rr_half_bits(c.a));
   if r.status!=RQStatus.ok || g.status!=RQStatus.ok || b.status!=RQStatus.ok || a.status!=RQStatus.ok {return RQSample.{status=RQStatus.resource};}
@@ -177,7 +177,7 @@ rr_colour_format :: (c:RQColor,format:RRFormat)->RQSample {
  if format==RRFormat.unorm8 {return RQSample.{color=RQColor.{r=rr_unorm8(c.r),g=rr_unorm8(c.g),b=rr_unorm8(c.b),a=rr_unorm8(c.a)}};}
  return RQSample.{color=c};
 }
-rr_store :: (old:RRPixel,state:RenderPassState,colour:RQColor,aux:RQColor,depth:f32,format:RRFormat)->RRStored {
+rr_store :: (old:RRPixel,state:RenderPassState,colour:RQColor,aux:RQColor,depth:f32,format:RRFormat)->RRStored #effects(all) {
  refused:=RRStored.{status=RQStatus.resource,pixel=old};
  if !state.valid || state.outputs<0 || state.outputs>2 || !rq_finite(depth) || !rq_finite(old.depth) {return refused;}
  bounded_depth:=rq_clamp(depth,0,1);

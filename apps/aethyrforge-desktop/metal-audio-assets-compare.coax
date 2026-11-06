@@ -5,7 +5,7 @@
 #load "../../coax/lib/json/json.coax";
 #load "../../aethyr/host/pcm-compare.coax";
 #load "../../aethyr/audio/everglade-pcm-assets.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4 {tool_errln("usage: metal-audio-assets-compare CANONICAL.json BROWSER_PICKED_DIR BROWSER_EXTRA_DIR OUTPUT.json");return 2;}
  raw:[262144]u8;nodes:[16384]JvNode;doc:[1]Jv;n:=fs_read(args_at(a[..],0),raw[..]);if n<1||!jv_parse(doc[..],cast(string)raw[0..<n],nodes[..]){return 1;}
  rows:=jv_get(doc[0],0,"rows");if jv_len(doc[0],rows)!=153{return 1;}

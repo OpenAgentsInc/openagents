@@ -66,8 +66,8 @@ local indexes and branch targets.
 
 <!-- source: psionic/lib/trace-machine.coax admit -->
 ```jai
-tm_fits :: (v:int)->bool {return v>=TM_I32_MIN && v<=TM_I32_MAX;}
-tm_admit :: (program:[]TmOp)->TmStatus #export_c {
+tm_fits :: (v:int)->bool #effects(all) {return v>=TM_I32_MIN && v<=TM_I32_MAX;}
+tm_admit :: (program:[]TmOp)->TmStatus #export_c #effects(all) {
     if program.count<1 || program.count>TM_PROGRAM_MAX {return TmStatus.shape;}
     for op:program {
         if cast(int)op.code>cast(int)TmCode.ret {return TmStatus.code;}
@@ -95,7 +95,7 @@ output list are each a typed refusal.
 // refusal) and writes its four trace tokens (ip, code, x, y) into `row`.
 // Memory is not part of the state: `load` reads the caller's `cells`, and a
 // `store` is only reported in its row, for the caller to apply.
-tm_step :: (program:[]TmOp,ip:int,s:TmState,cells:[]int,row:[]int)->TmStepResult {
+tm_step :: (program:[]TmOp,ip:int,s:TmState,cells:[]int,row:[]int)->TmStepResult #effects(all) {
     op:=program[ip];next:=ip+1;r:=TmStepResult.{state=s};
     need:=0;
     if op.code==TmCode.add || op.code==TmCode.sub || op.code==TmCode.mul || op.code==TmCode.store {need=2;}
@@ -148,7 +148,7 @@ refused run writes nothing.
 // Runs a program for at most `budget` steps. The first pass executes and
 // hashes without touching the caller's storage; only a run known to succeed
 // is replayed into the caller's trace, so a refused run writes nothing.
-tm_pass :: (program:[]TmOp,budget:int,trace:[]int,outputs:[]int,publish:bool)->TmResult {
+tm_pass :: (program:[]TmOp,budget:int,trace:[]int,outputs:[]int,publish:bool)->TmResult #effects(all) {
     s:TmState;cells:[64]int;ip:=0;steps:=0;stage_out:[64]int;row:[4]int;bytes:[16]u8;
     sha:[112]u8;ok:=sha256_init(sha[..])==SHA_OK;
     while true {
@@ -171,7 +171,7 @@ tm_pass :: (program:[]TmOp,budget:int,trace:[]int,outputs:[]int,publish:bool)->T
     for i:0..<s.outputs {outputs[i]=stage_out[i];}
     return result;
 }
-tm_run :: (program:[]TmOp,budget:int,trace:[]int,outputs:[]int,overlap:bool)->TmResult #export_c {
+tm_run :: (program:[]TmOp,budget:int,trace:[]int,outputs:[]int,overlap:bool)->TmResult #export_c #effects(all) {
     admitted:=tm_admit(program);if admitted!=TmStatus.ok {return TmResult.{status=admitted};}
     if budget<1 || budget>TM_STEPS_MAX {return TmResult.{status=TmStatus.budget};}
     if outputs.count<1 {return TmResult.{status=TmStatus.capacity};}

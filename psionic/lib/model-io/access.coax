@@ -31,10 +31,10 @@ PaView :: struct {status:PwStatus;dtype:PwDtype;data:[]u8;elements:int;}
     #assert pa_decode(view,out[0..<2],work[..],false).status==PwStatus.capacity;
     #assert pa_decode(view,out[..],work[..],true).status==PwStatus.alias;
 }
-pa_shape_equal :: (a:P5Shape,b:P5Shape)->bool {if a.rank!=b.rank {return false;}for i:0..<5 {if a.dims[i]!=b.dims[i] {return false;}}return true;}
-pa_counts_valid :: (inventory:int,files:int)->bool {return inventory>=1 && inventory<=PW_TENSORS_MAX && files>=1 && files<=PW_SHARDS_MAX;}
-pa_decode_valid :: (status:u8,dtype:u8,elements:int)->bool {return status==0 && pw_dtype_known(dtype) && elements>=1 && elements<=PW_WINDOW_MAX;}
-pa_view :: (name:string,shape:P5Shape,dtype:PwDtype,inventory:[]P5Tensor,files:[]PaFile)->PaView #export_c {
+pa_shape_equal :: (a:P5Shape,b:P5Shape)->bool #effects(all) {if a.rank!=b.rank {return false;}for i:0..<5 {if a.dims[i]!=b.dims[i] {return false;}}return true;}
+pa_counts_valid :: (inventory:int,files:int)->bool #effects(all) {return inventory>=1 && inventory<=PW_TENSORS_MAX && files>=1 && files<=PW_SHARDS_MAX;}
+pa_decode_valid :: (status:u8,dtype:u8,elements:int)->bool #effects(all) {return status==0 && pw_dtype_known(dtype) && elements>=1 && elements<=PW_WINDOW_MAX;}
+pa_view :: (name:string,shape:P5Shape,dtype:PwDtype,inventory:[]P5Tensor,files:[]PaFile)->PaView #export_c #effects(all) {
     if !pw_name(name) || !pa_counts_valid(inventory.count,files.count) {return PaView.{status=PwStatus.manifest};}
     expected:=p5_shape_size(shape,dtype);if expected.status!=PwStatus.ok {return PaView.{status=expected.status};}
     found:=-1;for i:0..<inventory.count {if inventory[i].name==name {if found>=0 {return PaView.{status=PwStatus.duplicate};}found=i;}}
@@ -44,7 +44,7 @@ pa_view :: (name:string,shape:P5Shape,dtype:PwDtype,inventory:[]P5Tensor,files:[
     if !pw_span(t.begin,t.end,expected.bytes,data.count) {return PaView.{status=PwStatus.offsets};}
     return PaView.{dtype=dtype,data=data[t.begin..<t.end],elements=expected.elements};
 }
-pa_decode :: (view:PaView,out:[]f32,work:[]f32,overlap:bool)->PwResult #export_c {
+pa_decode :: (view:PaView,out:[]f32,work:[]f32,overlap:bool)->PwResult #export_c #effects(all) {
     if !pa_decode_valid(cast(u8)view.status,cast(u8)view.dtype,view.elements) {return PwResult.{status=PwStatus.range};}
     width:=pw_width(view.dtype);if view.data.count!=view.elements*width || out.count<view.elements || work.count<view.elements {return PwResult.{status=PwStatus.capacity};}
     if overlap {return PwResult.{status=PwStatus.alias};}
@@ -82,7 +82,7 @@ PaStat :: struct {device:int;inode:int;size:int;mtime_ns:int;ctime_ns:int;}
 PV_RECORD_MAX :: 512;
 // Writers return the new end, or out.count+1 once something did not fit (or
 // a count was negative); every later writer then refuses too.
-pv_decimal :: (n:int,out:[]u8,at:int)->int {
+pv_decimal :: (n:int,out:[]u8,at:int)->int #effects(all) {
     if n<0 {return out.count+1;}
     digits:[20]u8;count:=0;v:=n;
     while true {digits[count]=cast(u8)(48+v%10);count+=1;v/=10;if v==0 {break;}}
@@ -90,7 +90,7 @@ pv_decimal :: (n:int,out:[]u8,at:int)->int {
     for i:0..<count {out[at+i]=digits[count-1-i];}
     return at+count;
 }
-pv_text :: (text:string,out:[]u8,at:int)->int {
+pv_text :: (text:string,out:[]u8,at:int)->int #effects(all) {
     if at+text.count>out.count {return out.count+1;}
     for i:0..<text.count {out[at+i]=text[i];}
     return at+text.count;
@@ -99,7 +99,7 @@ pv_text :: (text:string,out:[]u8,at:int)->int {
 // The record for file `name` with pinned digest `sha`, observed as st:
 // "psionic-verified 1 NAME SHA SIZE DEVICE INODE MTIME CTIME\n". Returns its
 // length, or 0 if it does not fit or a field is not a plain name or count.
-pv_record :: (name:string,sha:string,st:PaStat,out:[]u8)->int #export_c {
+pv_record :: (name:string,sha:string,st:PaStat,out:[]u8)->int #export_c #effects(all) {
     if name.count<1 || sha.count!=64 {return 0;}
     for i:0..<name.count {if name[i]<=32 || name[i]>=127 {return 0;}}
     at:=pv_text("psionic-verified 1 ",out,0);
@@ -112,7 +112,7 @@ pv_record :: (name:string,sha:string,st:PaStat,out:[]u8)->int #export_c {
 }
 // A stored record admits the file only if it is exactly the record this file
 // would get now, for this pin.
-pv_admits :: (record:[]u8,name:string,sha:string,st:PaStat)->bool #export_c {
+pv_admits :: (record:[]u8,name:string,sha:string,st:PaStat)->bool #export_c #effects(all) {
     expected:[PV_RECORD_MAX]u8;n:=pv_record(name,sha,st,expected[..]);
     if n==0 || record.count!=n {return false;}
     for i:0..<n {if record[i]!=expected[i] {return false;}}

@@ -247,19 +247,19 @@ What the run shows:
 
 <!-- source: psionic/lib/evolve.coax identity -->
 ```jai
-ev_line :: (buf:[]u8,at:int,s:string)->int {for i:0..<s.count {buf[at+i]=s[i];}buf[at+s.count]=10;return at+s.count+1;}
+ev_line :: (buf:[]u8,at:int,s:string)->int #effects(all) {for i:0..<s.count {buf[at+i]=s[i];}buf[at+s.count]=10;return at+s.count+1;}
 // The prompt's text: the header, the rules present in library order, and
 // the answer line. buf holds EV_TEXT_MAX bytes.
-ev_render :: (rules:u8,buf:[]u8)->int {
+ev_render :: (rules:u8,buf:[]u8)->int #effects(all) {
     at:=ev_line(buf,0,EV_HEADER);
     for k:0..<EV_RULES {if (rules>>cast(u8)k)&1==1 {at=ev_line(buf,at,EV_RULE[k]);}}
     return ev_line(buf,at,EV_ANSWER);
 }
-ev_ok :: (c:EvCandidate)->bool {return jg_component_ok(c.student) && c.rules<128 && tb_in(c.threshold,0,1);}
+ev_ok :: (c:EvCandidate)->bool #effects(all) {return jg_component_ok(c.student) && c.rules<128 && tb_in(c.threshold,0,1);}
 // Chapter 239's encoding under its own tag: the student's identity with the
 // rendered prompt as its rubric (chapter 246), the tool grants and the
 // threshold. Any changed byte of the prompt is a new prompt.
-ev_identity :: (c:EvCandidate)->[32]u8 #export_c {
+ev_identity :: (c:EvCandidate)->[32]u8 #export_c #effects(all) {
     if !ev_ok(c) {return su_zero();}
     text:[EV_TEXT_MAX]u8;s:=c.student;s.rubric=cast(string)text[0..<ev_render(c.rules,text[..])];
     buf:[80]u8;at:=su_text(buf[..],0,"psionic.prompt.v1");d:=jg_identity(s);
@@ -268,12 +268,12 @@ ev_identity :: (c:EvCandidate)->[32]u8 #export_c {
     return su_hash(buf[0..<at]);
 }
 // The canary: the identity's first four bytes in hex, sent as the last line.
-ev_canary :: (c:EvCandidate)->[8]u8 {
+ev_canary :: (c:EvCandidate)->[8]u8 #effects(all) {
     d:=ev_identity(c);digits:="0123456789abcdef";out:[8]u8;
     for i:0..<4 {out[2*i]=digits[cast(int)(d[i]>>4)];out[2*i+1]=digits[cast(int)(d[i]&15)];}
     return out;
 }
-ev_send :: (c:EvCandidate,buf:[]u8)->int {
+ev_send :: (c:EvCandidate,buf:[]u8)->int #effects(all) {
     at:=ev_render(c.rules,buf);w:=ev_canary(c);
     for i:0..<7 {buf[at+i]="canary "[i];}
     for i:0..<8 {buf[at+7+i]=w[i];}
@@ -300,7 +300,7 @@ of the text. It is part of what is sent, not part of what is named.
 // that doesn't start with the header line is not a prompt and is ignored;
 // a line equal to a library rule turns that rule on, and a canary line is
 // echoed.
-ev_read :: (text:string)->EvRead {
+ev_read :: (text:string)->EvRead #effects(all) {
     r:EvRead;start:=0;first:=true;
     for c,i:text {
         if c!=10 {continue;}
@@ -312,7 +312,7 @@ ev_read :: (text:string)->EvRead {
     }
     return r;
 }
-ev_low :: (mask:u8)->int {
+ev_low :: (mask:u8)->int #effects(all) {
     k:=0;m:=mask;
     while m!=0 {if m&1==1 {return k;}m>>=1;k+=1;}
     return -1;
@@ -320,7 +320,7 @@ ev_low :: (mask:u8)->int {
 // With every needed rule and no harmful one the student is right when the
 // draw u is below 0.9, otherwise below 0.25; a wrong answer is the next
 // option. With rule 6 an unclear item gets "unsure", outside the options.
-ev_answer :: (r:EvRead,item:EvItem,u:f64)->EvAnswer {
+ev_answer :: (r:EvRead,item:EvItem,u:f64)->EvAnswer #effects(all) {
     need:=EV_NEED[item.kind]&(255^r.rules);harm:=EV_CLASH[item.kind]&r.rules;
     a:=EvAnswer.{missing=ev_low(need),clash=ev_low(harm)};
     if item.kind==EV_UNCLEAR && (r.rules>>EV_UNSURE)&1==1 {a.answer=EV_OPTIONS;return a;}
@@ -331,10 +331,10 @@ ev_answer :: (r:EvRead,item:EvItem,u:f64)->EvAnswer {
 }
 // The draw for item i on run r, shared by every prompt so that two prompts
 // on one run face the same luck.
-ev_draw :: (world:u64,item:int,run:int)->f64 {return tb_uniform(world,cast(u64)(run*EV_ITEMS_MAX+item));}
+ev_draw :: (world:u64,item:int,run:int)->f64 #effects(all) {return tb_uniform(world,cast(u64)(run*EV_ITEMS_MAX+item));}
 // The grader compares each answer with the gold one. echoed: the student
 // saw a canary and it is the one expected.
-ev_measure :: (text:string,expect:[8]u8,items:[]EvItem,which:[]int,world:u64,run:int,out:[]EvAnswer)->EvMeasure {
+ev_measure :: (text:string,expect:[8]u8,items:[]EvItem,which:[]int,world:u64,run:int,out:[]EvAnswer)->EvMeasure #effects(all) {
     r:=ev_read(text);m:=EvMeasure.{echoed=r.seen};
     for j:0..<8 {if r.canary[j]!=expect[j] {m.echoed=false;}}
     for k:0..<which.count {
@@ -360,7 +360,7 @@ the header line is not read at all.
 // stand-in-reflector-v1. Each failure votes to add its missing rule and to
 // drop its harmful one; a draw u picks a vote, so an edit is chosen in
 // proportion to the failures that ask for it. No vote, no reply.
-ev_reflect :: (traces:[]EvAnswer,u:f64,reply:[]u8)->int {
+ev_reflect :: (traces:[]EvAnswer,u:f64,reply:[]u8)->int #effects(all) {
     votes:[14]int;total:=0;
     for a:traces {
         if a.right {continue;}
@@ -376,7 +376,7 @@ ev_reflect :: (traces:[]EvAnswer,u:f64,reply:[]u8)->int {
     return verb.count+1;
 }
 // The only replies accepted: "add k" or "drop k" with k a rule's number.
-ev_parse :: (reply:string)->EvParse {
+ev_parse :: (reply:string)->EvParse #effects(all) {
     n:=reply.count;
     if n<5 {return EvParse.{};}
     op:=ifx n==5 then EvOp.add else EvOp.drop;
@@ -384,7 +384,7 @@ ev_parse :: (reply:string)->EvParse {
     if reply[0..<n-1]!=EV_VERB[cast(int)op] || k<0 || k>=EV_RULES {return EvParse.{};}
     return EvParse.{ok=true,edit=EvEdit.{op=op,rule=k}};
 }
-ev_apply :: (rules:u8,e:EvEdit)->u8 {
+ev_apply :: (rules:u8,e:EvEdit)->u8 #effects(all) {
     bit:=cast(u8)(1<<e.rule);
     return ifx e.op==EvOp.add then rules|bit else rules&(255^bit);
 }
@@ -404,7 +404,7 @@ nothing, such as adding a rule already present, is refused as `no_change`.
 // A child keeps the seed's fields: student, price, tools and threshold;
 // only its rules differ. Its grader must not share weights with the student
 // or the reflector, and must have passed chapter 246's gate.
-ev_admit :: (seed:EvCandidate,child:EvCandidate,s:EvSetup)->EvReason #export_c {
+ev_admit :: (seed:EvCandidate,child:EvCandidate,s:EvSetup)->EvReason #export_c #effects(all) {
     a:=seed.student;b:=child.student;a.rubric=EV_HEADER;b.rubric=EV_HEADER;
     if !ev_ok(child) || !su_same(jg_identity(a),jg_identity(b)) || a.price!=b.price || child.tools!=seed.tools || child.threshold!=seed.threshold {
         return EvReason.field;
@@ -415,7 +415,7 @@ ev_admit :: (seed:EvCandidate,child:EvCandidate,s:EvSetup)->EvReason #export_c {
     return EvReason.none;
 }
 // After the batch: the student echoed the canary, and stayed in the answer space.
-ev_checked :: (m:EvMeasure)->EvReason {
+ev_checked :: (m:EvMeasure)->EvReason #effects(all) {
     if !m.echoed {return EvReason.canary;}
     if m.unsure>0 {return EvReason.drift;}
     return EvReason.none;
@@ -439,7 +439,7 @@ and every answer must be one of the four options.
 <!-- source: psionic/lib/evolve.coax front -->
 ```jai
 // a dominates b: at least as good on every item and better on one.
-ev_dominates :: (a:[]f64,b:[]f64)->bool {
+ev_dominates :: (a:[]f64,b:[]f64)->bool #effects(all) {
     better:=false;
     for i:0..<a.count {
         if a[i]<b[i] {return false;}
@@ -449,7 +449,7 @@ ev_dominates :: (a:[]f64,b:[]f64)->bool {
 }
 // Candidate i is on the front when no candidate dominates it and no earlier
 // one has the same scores. scores is candidate-major, m items each.
-ev_front :: (scores:[]f64,count:int,m:int,keep:[]bool)->int {
+ev_front :: (scores:[]f64,count:int,m:int,keep:[]bool)->int #effects(all) {
     kept:=0;
     for i:0..<count {
         a:=scores[i*m..<(i+1)*m];keep[i]=true;
@@ -461,10 +461,10 @@ ev_front :: (scores:[]f64,count:int,m:int,keep:[]bool)->int {
     }
     return kept;
 }
-ev_tie :: (a:[]f64,b:[]f64)->bool {for i:0..<a.count {if a[i]!=b[i] {return false;}}return true;}
+ev_tie :: (a:[]f64,b:[]f64)->bool #effects(all) {for i:0..<a.count {if a[i]!=b[i] {return false;}}return true;}
 // GEPA's per-item Pareto sampling: a front member's weight is the number of
 // items on which it is tied-best; u in [0, 1) picks in proportion.
-ev_wins :: (scores:[]f64,count:int,m:int,keep:[]bool,wins:[]int)->int {
+ev_wins :: (scores:[]f64,count:int,m:int,keep:[]bool,wins:[]int)->int #effects(all) {
     total:=0;
     for i:0..<count {
         wins[i]=0;
@@ -478,14 +478,14 @@ ev_wins :: (scores:[]f64,count:int,m:int,keep:[]bool,wins:[]int)->int {
     }
     return total;
 }
-ev_pick :: (wins:[]int,total:int,u:f64)->int {
+ev_pick :: (wins:[]int,total:int,u:f64)->int #effects(all) {
     target:=cast(int)(u*f64(total));i:=0;
     while target>=wins[i] {target-=wins[i];i+=1;}
     return i;
 }
 // The final prompt: the highest total on the Pareto items; the earlier wins a tie.
-ev_sum :: (v:[]f64)->f64 {t:=0.0;for x:v {t+=x;}return t;}
-ev_best :: (scores:[]f64,count:int,m:int)->int {
+ev_sum :: (v:[]f64)->f64 #effects(all) {t:=0.0;for x:v {t+=x;}return t;}
+ev_best :: (scores:[]f64,count:int,m:int)->int #effects(all) {
     best:=0;top:=ev_sum(scores[0..<m]);
     for i:1..<count {
         t:=ev_sum(scores[i*m..<i*m+m]);
@@ -504,8 +504,8 @@ written down before the held-out partition is read.
 
 <!-- source: psionic/lib/evolve.coax loop -->
 ```jai
-ev_index_ok :: (v:[]int,n:int)->bool {for x:v {if x<0 || x>=n {return false;}}return true;}
-ev_setup_ok :: (seed:EvCandidate,s:EvSetup,items:[]EvItem,dev:[]int,feedback:[]int,pool:[]EvCandidate,scores:[]f64,steps:[]EvStep)->EvStatus {
+ev_index_ok :: (v:[]int,n:int)->bool #effects(all) {for x:v {if x<0 || x>=n {return false;}}return true;}
+ev_setup_ok :: (seed:EvCandidate,s:EvSetup,items:[]EvItem,dev:[]int,feedback:[]int,pool:[]EvCandidate,scores:[]f64,steps:[]EvStep)->EvStatus #effects(all) {
     n:=items.count;
     if n<1 || n>EV_ITEMS_MAX || dev.count<1 || feedback.count<1 || !ev_index_ok(dev,n) || !ev_index_ok(feedback,n) {return EvStatus.shape;}
     for x:items {if x.kind<0 || x.kind>=EV_KINDS || x.gold<0 || x.gold>=EV_OPTIONS {return EvStatus.shape;}}
@@ -517,15 +517,15 @@ ev_setup_ok :: (seed:EvCandidate,s:EvSetup,items:[]EvItem,dev:[]int,feedback:[]i
 }
 // One answer costs a student call and a grade; a step's worst case is two
 // batches, one reflection and a full pass over the Pareto items.
-ev_unit :: (seed:EvCandidate,s:EvSetup)->f64 {return jg_cost(seed.student,false)+jg_cost(s.grader,false);}
+ev_unit :: (seed:EvCandidate,s:EvSetup)->f64 #effects(all) {return jg_cost(seed.student,false)+jg_cost(s.grader,false);}
 // A prompt sent with its canary and scored 1 or 0 per item on run r.
-ev_score :: (c:EvCandidate,items:[]EvItem,which:[]int,world:u64,run:int,out:[]f64)->int {
+ev_score :: (c:EvCandidate,items:[]EvItem,which:[]int,world:u64,run:int,out:[]f64)->int #effects(all) {
     text:[EV_TEXT_MAX]u8;answers:[EV_ITEMS_MAX]EvAnswer;
     m:=ev_measure(cast(string)text[0..<ev_send(c,text[..])],ev_canary(c),items,which,world,run,answers[..]);
     for k:0..<which.count {out[k]=ifx answers[k].right then 1.0 else 0.0;}
     return m.right;
 }
-ev_evolve :: (seed:EvCandidate,s:EvSetup,items:[]EvItem,dev:[]int,feedback:[]int,pool:[]EvCandidate,scores:[]f64,steps:[]EvStep)->EvRun #export_c {
+ev_evolve :: (seed:EvCandidate,s:EvSetup,items:[]EvItem,dev:[]int,feedback:[]int,pool:[]EvCandidate,scores:[]f64,steps:[]EvStep)->EvRun #export_c #effects(all) {
     st:=ev_setup_ok(seed,s,items,dev,feedback,pool,scores,steps);
     if st!=EvStatus.ok {return EvRun.{status=st};}
     first:=ev_admit(seed,seed,s);
@@ -585,7 +585,7 @@ full, or when the step log is.
 // 241's decision on the block means, and one receipt in chapter 239's chain.
 // A second read of a locked partition, or a full store, is refused before
 // any result is shown.
-ev_held :: (suite:SuSuite,part:int,store:[]SuReceipt,count:int,seed:EvCandidate,final:EvCandidate,items:[]EvItem,held:[]int,world:u64,runs:int,block:int)->EvHeld #export_c {
+ev_held :: (suite:SuSuite,part:int,store:[]SuReceipt,count:int,seed:EvCandidate,final:EvCandidate,items:[]EvItem,held:[]int,world:u64,runs:int,block:int)->EvHeld #export_c #effects(all) {
     n:=held.count;
     if n<1 || n>EV_ITEMS_MAX || !ev_index_ok(held,items.count) || runs<2 || runs>EV_RUNS_MAX || block<1 || runs%block!=0 || !ev_ok(seed) || !ev_ok(final) ||
         suite.status!=SuStatus.ok || part<0 || part>=SU_PARTITIONS || count<0 || count>store.count {

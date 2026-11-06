@@ -31,7 +31,7 @@ NC_PYTHON_START :: 5;NC_PYTHON_END :: 6;NC_OUTPUT_START :: 7;NC_OUTPUT_END :: 8;
 NC_SPECIAL_NAMES :: [9]string.["<|bos|>","<|user_start|>","<|user_end|>","<|assistant_start|>","<|assistant_end|>","<|python_start|>","<|python_end|>","<|output_start|>","<|output_end|>"];
 
 // Checks precede the implementation; the independent goldens are loaded at the end.
-nc_fixture_specials :: (out:[]int) {for i:0..<9 {out[i]=NC_BASE+i;}}
+nc_fixture_specials :: (out:[]int) #effects(all) {for i:0..<9 {out[i]=NC_BASE+i;}}
 #test "declared special IDs must follow the ordinary vocabulary in nanochat's order" {
     table:=NC_LEARNED;sp:[9]int;nc_fixture_specials(sp[..]);
     #assert NC_BASE==320 && pt_layout(table[..]).counts[0]==320 && nc_ok(pt_layout(table[..])) && !nc_ok(pt_layout(table[0..<2000])) && pt_layout(table[0..<2000]).status==PtStatus.artifact && pt_layout(table[0..<2000]).counts[0]==0 && nc_specials(table[..],sp[..],329)==NcChatStatus.ok && nc_specials(table[..],sp[..],32768)==NcChatStatus.ok;
@@ -120,34 +120,34 @@ nc_fixture_specials :: (out:[]int) {for i:0..<9 {out[i]=NC_BASE+i;}}
 // A chapter 123 table: a PST5 layout with the byte-BPE profile. A layout that
 // failed has zero counts, which the profile (256 + merges ordinary tokens)
 // already refuses. The ordinary vocabulary is t.counts[0]; specials follow it.
-nc_ok :: (t:PtLayout)->bool {return bt_profile(t);}
+nc_ok :: (t:PtLayout)->bool #effects(all) {return bt_profile(t);}
 // An artifact's declared special IDs: exactly base+0..base+8 in nanochat's
 // order, inside the model vocabulary. Anything else collides or reorders.
-nc_specials :: (table:[]u8,specials:[]int,vocab:int)->NcChatStatus #export_c {
+nc_specials :: (table:[]u8,specials:[]int,vocab:int)->NcChatStatus #export_c #effects(all) {
     t:=pt_layout(table);if !nc_ok(t) || specials.count!=NC_SPECIAL_COUNT {return NcChatStatus.artifact;}
     base:=t.counts[0];if base+NC_SPECIAL_COUNT>vocab {return NcChatStatus.artifact;}
     for i:0..<NC_SPECIAL_COUNT {if specials[i]!=base+i {return NcChatStatus.artifact;}}
     return NcChatStatus.ok;
 }
-nc_status :: (s:PtStatus)->NcChatStatus {
+nc_status :: (s:PtStatus)->NcChatStatus #effects(all) {
     if s==PtStatus.utf8 {return NcChatStatus.utf8;}
     if s==PtStatus.size {return NcChatStatus.size;}
     return NcChatStatus.artifact;
 }
 NcStage :: struct {n:int;total:int;limit:int;ids:[2048]int;mask:[2048]u8;}
-nc_add :: (s:[]NcStage,id:int,m:u8) {if s[0].n<s[0].limit {s[0].ids[s[0].n]=id;s[0].mask[s[0].n]=m;s[0].n+=1;}s[0].total+=1;}
-nc_text :: (s:[]NcStage,table:[]u8,text:string,m:u8)->NcChatStatus {
+nc_add :: (s:[]NcStage,id:int,m:u8) #effects(all) {if s[0].n<s[0].limit {s[0].ids[s[0].n]=id;s[0].mask[s[0].n]=m;s[0].n+=1;}s[0].total+=1;}
+nc_text :: (s:[]NcStage,table:[]u8,text:string,m:u8)->NcChatStatus #effects(all) {
     e:=bt_encode(table,text);if e.status!=PtStatus.ok {return nc_status(e.status);}
     for i:0..<e.written {nc_add(s,e.ids[i],m);}return NcChatStatus.ok;
 }
 // system + "\n\n" + user into out[0..<a.count+2+b.count]; false when it does not fit.
-nc_join :: (out:[]u8,a:string,b:string)->bool {
+nc_join :: (out:[]u8,a:string,b:string)->bool #effects(all) {
     if a.count+2+b.count>out.count {return false;}
     for i:0..<a.count {out[i]=a[i];}out[a.count]=10;out[a.count+1]=10;for i:0..<b.count {out[a.count+2+i]=b[i];}
     return true;
 }
 // book:begin render
-nc_render :: (table:[]u8,specials:[]int,vocab:int,messages:[]NcMessage,parts:[]NcPart,max_tokens:int,ids:[]int,mask:[]u8,overlap:bool)->NcChatResult #export_c {
+nc_render :: (table:[]u8,specials:[]int,vocab:int,messages:[]NcMessage,parts:[]NcPart,max_tokens:int,ids:[]int,mask:[]u8,overlap:bool)->NcChatResult #export_c #effects(all) {
     status:=nc_specials(table,specials,vocab);if status!=NcChatStatus.ok {return NcChatResult.{status=status};}
     if max_tokens<1 || max_tokens>NC_MAX_TOKENS || messages.count==0 {return NcChatResult.{status=NcChatStatus.shape};}
     if ids.count<max_tokens || mask.count<max_tokens {return NcChatResult.{status=NcChatStatus.capacity};}
@@ -189,7 +189,7 @@ nc_render :: (table:[]u8,specials:[]int,vocab:int,messages:[]NcMessage,parts:[]N
 }
 // book:end render
 // A pretraining document: <|bos|> then the text's ordinary tokens.
-nc_document :: (table:[]u8,text:string,ids:[]int,overlap:bool)->NcChatResult #export_c {
+nc_document :: (table:[]u8,text:string,ids:[]int,overlap:bool)->NcChatResult #export_c #effects(all) {
     t:=pt_layout(table);if !nc_ok(t) {return NcChatResult.{status=NcChatStatus.artifact};}
     e:=bt_encode(table,text);if e.status!=PtStatus.ok {return NcChatResult.{status=nc_status(e.status)};}
     if ids.count<e.written+1 {return NcChatResult.{status=NcChatStatus.capacity};}
@@ -198,14 +198,14 @@ nc_document :: (table:[]u8,text:string,ids:[]int,overlap:bool)->NcChatResult #ex
     return NcChatResult.{written=e.written+1,total=e.written+1};
 }
 // Bytes a token stands for: its ordinary bytes, 0 for a special token, -1 outside the vocabulary.
-nc_token_bytes :: (table:[]u8,id:int)->int #export_c {
+nc_token_bytes :: (table:[]u8,id:int)->int #export_c #effects(all) {
     t:=pt_layout(table);if !nc_ok(t) {return -1;}
     if id>=t.counts[0] && id<t.counts[0]+NC_SPECIAL_COUNT {return 0;}
     // Negative and past-the-end IDs are pt_span's range refusals.
     s:=pt_span(table,t,id);if s.status!=PtStatus.ok {return -1;}return s.end-s.begin;
 }
 // book:begin bpb
-nc_bpb :: (table:[]u8,targets:[]int,losses:[]f64)->NcBpb #export_c {
+nc_bpb :: (table:[]u8,targets:[]int,losses:[]f64)->NcBpb #export_c #effects(all) {
     if !nc_ok(pt_layout(table)) {return NcBpb.{status=NcChatStatus.artifact};}
     if targets.count!=losses.count {return NcBpb.{status=NcChatStatus.shape};}
     nats:PsionicAccumulator;bytes:=0;

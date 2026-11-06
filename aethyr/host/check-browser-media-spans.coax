@@ -3,7 +3,7 @@
 #load "../../coax/web/wasm-chrome.coax";
 #load "../render/tests/qualification-files.coax";
 #load "media-span-conformance.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {tool_errln("usage: check-browser-media-spans ORIGINAL_SERVICES.wasm NEW_SITE OUT.json");return 2;}
  paths:[4][4096]u8;site:=args_at(a[..],1);if !fs_mkdir(site)||!fs_mkdir(fs_join(site,"build",paths[0][..])) {return 1;}
  binary:[262144]u8;n:=fs_read(args_at(a[..],0),binary[..]);if n<1||!fs_write(fs_join(site,"build/host-services.wasm",paths[0][..]),cast(string)binary[0..<n])||!fs_write(fs_join(site,"index.html",paths[0][..]),"<!doctype html><title>Media span boundary</title>") {return 1;}

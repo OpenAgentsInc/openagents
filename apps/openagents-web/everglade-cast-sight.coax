@@ -31,7 +31,7 @@ cr_sight :: (s: [] Everglade, feet: Point, aim: Point) -> bool {
   return true;
 }
 // The same for the room server's world (room-world.c world_sight).
-everglade_room_sight :: (s: [] Everglade, fx: f32, fy: f32, fz: f32, ax: f32, ay: f32, az: f32) -> bool #export_c {
+everglade_room_sight :: (s: [] Everglade, fx: f32, fy: f32, fz: f32, ax: f32, ay: f32, az: f32) -> bool #export_c #effects(all) {
   return cr_sight(s, v3(fx, fy, fz), v3(ax, ay, az));
 }
 

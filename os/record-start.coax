@@ -9,8 +9,8 @@
 // ever), and a wf-recorder that cannot be started is said and nothing is left running or written
 // (the shell wrote the dead job's pid and said the recording had started).
 
-cxproc_self_path :: (out: [] u8) -> int #foreign;
-cxproc_local_stamp :: (out: [] u8) -> int #foreign;
+cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
+cxproc_local_stamp :: (out: [] u8) -> int #foreign #effects(all);
 
 SR_USAGE :: "Usage: screen-record <start|stop|status> [options]\n\nCommands:\n  start [output.mp4] [flags]   Start recording in background.\n                               Flags:\n                                 -d, --duration <seconds>   Record for N seconds then stop\n                                 -a, --audio                Record the microphone this host names, or the default source\n                                 -A, --system-audio         Record system audio (default sink monitor)\n                                 -g, --geometry \"X,Y WxH\"   Record region (or \"slurp\" to pick interactively)\n                                 -s, --sync <seconds>       Delay the audio to match a camera overlay\n                                 -r, --fps <n>              Hold the picture to n frames per second (default 30)\n                                 -p, --presentation         Enter presentation mode first, and leave it on stop\n  stop                         Stop the currently running recording cleanly.\n  status                       Check if a recording session is active.\n  microphone                   Print the microphone a recording reads, as JSON.\n  repair [output.mp4]          Put a capture a take left beside a recording back into it.\n\nExamples:\n  screen-record start ~/Videos/demo.mp4\n  screen-record start ~/Videos/clip.mp4 --duration 10\n  screen-record start ~/demo.mp4 --audio            # with your voice\n  screen-record start ~/demo.mp4 --presentation     # set the screen up to be watched\n  screen-record stop\n  screen-record status\n  screen-record repair                              # every recording in ~/Videos\n";
 

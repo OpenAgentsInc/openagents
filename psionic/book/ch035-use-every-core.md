@@ -36,7 +36,7 @@ items and add the workers' totals:
 ```jai
 // What not to do: give each worker an equal share of the items and add the
 // workers' totals. The grouping, and so the rounding, follows the worker count.
-pc_sum_split :: (x:[]f32,workers:int)->f32 #export_c {
+pc_sum_split :: (x:[]f32,workers:int)->f32 #export_c #effects(all) {
     if workers<1 {return 0;}
     total:f32=0;
     for w:0..<workers {
@@ -72,7 +72,7 @@ depend on the shape and the chunk size only:
 // Cut items into chunks of chunk items. The chunks depend on the shape and
 // the chunk size only; the worker count decides who computes them, never
 // what they are.
-pc_plan :: (items:int,chunk:int,workers:int)->PcPlan #export_c {
+pc_plan :: (items:int,chunk:int,workers:int)->PcPlan #export_c #effects(all) {
     if items<1 || items>PC_MAX_ITEMS {return PcPlan.{status=PcStatus.shape};}
     if workers<1 || workers>PC_MAX_WORKERS {return PcPlan.{status=PcStatus.workers};}
     if chunk<1 || chunk>items {return PcPlan.{status=PcStatus.chunk};}
@@ -81,9 +81,9 @@ pc_plan :: (items:int,chunk:int,workers:int)->PcPlan #export_c {
     return PcPlan.{status=PcStatus.ok,items=items,chunk=chunk,chunks=chunks,workers=workers};
 }
 // Worker w computes chunks pc_first(p, w) up to pc_first(p, w + 1).
-pc_first :: (p:PcPlan,w:int)->int #export_c {return w*p.chunks/p.workers;}
+pc_first :: (p:PcPlan,w:int)->int #export_c #effects(all) {return w*p.chunks/p.workers;}
 // The one worker whose run holds chunk c.
-pc_owner :: (p:PcPlan,c:int)->int #export_c {return ((c+1)*p.workers-1)/p.chunks;}
+pc_owner :: (p:PcPlan,c:int)->int #export_c #effects(all) {return ((c+1)*p.workers-1)/p.chunks;}
 pc_lo :: (p:PcPlan,c:int)->int {return c*p.chunk;}
 pc_hi :: (p:PcPlan,c:int)->int {if c==p.chunks-1 {return p.items;}return c*p.chunk+p.chunk;}
 ```
@@ -111,7 +111,7 @@ chunk was marked by its owner, then adds the chunk sums in a fixed tree:
 ```jai
 // Worker w sums each of its chunks in index order into that chunk's slot and
 // marks the chunk with its number plus one. It touches no other slot.
-pc_sum_worker :: (p:PcPlan,w:int,x:[]f32,part:[]f32,done:[]u8)->PcStatus #export_c {
+pc_sum_worker :: (p:PcPlan,w:int,x:[]f32,part:[]f32,done:[]u8)->PcStatus #export_c #effects(all) {
     s:=pc_admit(p,w);if s!=PcStatus.ok {return s;}
     if x.count!=p.items || part.count!=p.chunks || done.count!=p.chunks {return PcStatus.size;}
     for c:pc_first(p,w)..<pc_first(p,w+1) {
@@ -123,7 +123,7 @@ pc_sum_worker :: (p:PcPlan,w:int,x:[]f32,part:[]f32,done:[]u8)->PcStatus #export
 }
 // Every chunk must be marked by its owner; otherwise a worker failed or was
 // cancelled, and nothing is published.
-pc_publish :: (p:PcPlan,done:[]u8)->PcStatus #export_c {
+pc_publish :: (p:PcPlan,done:[]u8)->PcStatus #export_c #effects(all) {
     if p.status!=PcStatus.ok {return p.status;}
     if done.count!=p.chunks {return PcStatus.size;}
     for c:0..<p.chunks {if cast(int)done[c]!=pc_owner(p,c)+1 {return PcStatus.incomplete;}}
@@ -138,7 +138,7 @@ pc_tree :: (part:[]f32)->f32 {
     half:=1;while half*2<part.count {half*=2;}
     return pc_tree(part[0..<half])+pc_tree(part[half..<part.count]);
 }
-pc_sum_merge :: (p:PcPlan,part:[]f32,done:[]u8)->PcValue #export_c {
+pc_sum_merge :: (p:PcPlan,part:[]f32,done:[]u8)->PcValue #export_c #effects(all) {
     if p.status==PcStatus.ok && part.count!=p.chunks {return PcValue.{status=PcStatus.size};}
     s:=pc_publish(p,done);if s!=PcStatus.ok {return PcValue.{status=s};}
     return PcValue.{status=PcStatus.ok,value=pc_tree(part)};
@@ -173,7 +173,7 @@ publish check is the whole merge.
 ```jai
 // y = m x for a row-major m with x.count columns. Chunks are runs of rows;
 // each row's dot product runs in column order, so no merge is needed.
-pc_matvec_worker :: (p:PcPlan,w:int,m:[]f32,x:[]f32,y:[]f32,done:[]u8)->PcStatus #export_c {
+pc_matvec_worker :: (p:PcPlan,w:int,m:[]f32,x:[]f32,y:[]f32,done:[]u8)->PcStatus #export_c #effects(all) {
     s:=pc_admit(p,w);if s!=PcStatus.ok {return s;}
     cols:=x.count;
     if cols<1 || m.count!=p.items*cols || y.count!=p.items || done.count!=p.chunks {return PcStatus.size;}
@@ -199,7 +199,7 @@ token's weighted value in token order:
 // One query against tokens keys and values per head, laid out
 // [token][head][dim]. Chunks are runs of heads. Softmax subtracts the
 // largest score, then each token's weight multiplies its value in token order.
-pc_heads_worker :: (p:PcPlan,w:int,q:[]f32,k:[]f32,v:[]f32,out:[]f32,done:[]u8,tokens:int)->PcStatus #export_c {
+pc_heads_worker :: (p:PcPlan,w:int,q:[]f32,k:[]f32,v:[]f32,out:[]f32,done:[]u8,tokens:int)->PcStatus #export_c #effects(all) {
     s:=pc_admit(p,w);if s!=PcStatus.ok {return s;}
     heads:=p.items;dim:=q.count/heads;
     if tokens<1 || dim<1 || q.count!=heads*dim || k.count!=tokens*heads*dim || v.count!=k.count || out.count!=q.count || done.count!=p.chunks {return PcStatus.size;}

@@ -6,13 +6,13 @@ SLAY_SHOT_CAP :: 1048576;
 SLAY_SHOT_META :: 44;
 SlayShot :: struct {data:[SLAY_SHOT_CAP]u8;bytes:int;ready:bool;frame:f32=132;playing:bool;}
 ShotInfo :: struct {frames:int;bones:int;rate:f32;names:int;data:int;stride:int;source_first:int;face_clip:int;face_start:int;face_end:int;}
-shot_size_ok :: (n:int)->bool {return n>=64 && n<=SLAY_SHOT_CAP;}
-shot_counts_ok :: (frames:int,bones:int)->bool {return frames>=2 && frames<=2000 && bones>=1 && bones<=334;}
-shot_rig_ok :: (joints:int,bytes:int)->bool {return joints>=1 && joints<=334 && bytes==joints*64;}
-shot_source_range_ok :: (first:int,frames:int,start:int,end:int)->bool {return first>=0 && first<=1000000 && start>=first && end>start && end<=first+frames;}
-shot_info :: (b:[]u8)->ShotInfo {return ShotInfo.{frames=cast(int)face_word(b,12),bones=cast(int)face_word(b,16),rate=face_float(b,20),names=cast(int)face_word(b,24),data=cast(int)face_word(b,28),stride=cast(int)face_word(b,32),source_first=cast(int)face_word(b,36),face_clip=cast(int)face_word(b,40),face_start=cast(int)face_word(b,44),face_end=cast(int)face_word(b,48)};}
-shot_name_matches :: (a:[]u8,b:[]u8)->bool {if a.count!=64 || b.count!=64 {return false;}for k:0..<64 {if a[k]!=b[k] {return false;}}return true;}
-shot_valid :: (b:[]u8,rig_names:[]u8,joints:int,clips:int)->bool {
+shot_size_ok :: (n:int)->bool #effects(all) {return n>=64 && n<=SLAY_SHOT_CAP;}
+shot_counts_ok :: (frames:int,bones:int)->bool #effects(all) {return frames>=2 && frames<=2000 && bones>=1 && bones<=334;}
+shot_rig_ok :: (joints:int,bytes:int)->bool #effects(all) {return joints>=1 && joints<=334 && bytes==joints*64;}
+shot_source_range_ok :: (first:int,frames:int,start:int,end:int)->bool #effects(all) {return first>=0 && first<=1000000 && start>=first && end>start && end<=first+frames;}
+shot_info :: (b:[]u8)->ShotInfo #effects(all) {return ShotInfo.{frames=cast(int)face_word(b,12),bones=cast(int)face_word(b,16),rate=face_float(b,20),names=cast(int)face_word(b,24),data=cast(int)face_word(b,28),stride=cast(int)face_word(b,32),source_first=cast(int)face_word(b,36),face_clip=cast(int)face_word(b,40),face_start=cast(int)face_word(b,44),face_end=cast(int)face_word(b,48)};}
+shot_name_matches :: (a:[]u8,b:[]u8)->bool #effects(all) {if a.count!=64 || b.count!=64 {return false;}for k:0..<64 {if a[k]!=b[k] {return false;}}return true;}
+shot_valid :: (b:[]u8,rig_names:[]u8,joints:int,clips:int)->bool #effects(all) {
  if !shot_size_ok(b.count) || !face_finite(b,20) {return false;}
  if face_word(b,0)!=0x31534853 || face_word(b,4)!=2 || cast(int)face_word(b,8)!=b.count {return false;}
  f:=shot_info(b);if !shot_counts_ok(f.frames,f.bones) || !face_rate_ok(f.rate) || f.names!=64 || f.data!=64+f.bones*68 || f.stride!=f.bones*28+SLAY_SHOT_META*4 || !face_prefix_ok(b.count,f.data) {return false;}
@@ -24,7 +24,7 @@ shot_valid :: (b:[]u8,rig_names:[]u8,joints:int,clips:int)->bool {
   for k:0..<f.bones {p:=at+k*28;length:f32=0;for q:3..<7 {x:=face_float(b,p+q*4);length+=x*x;}if !face_rotation_ok(length) {return false;}}
  }return true;
 }
-shot_admit :: (s:[]SlayShot,b:[]u8,face:[]u8)->bool {
+shot_admit :: (s:[]SlayShot,b:[]u8,face:[]u8)->bool #effects(all) {
  f:=face_info(face);if !shot_valid(b,face[f.rig_names..<f.rig_names+f.joints*64],f.joints,f.clips) {s[0].ready=false;return false;}
  for k:0..<b.count {s[0].data[k]=b[k];}s[0].bytes=b.count;s[0].ready=true;return true;
 }

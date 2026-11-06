@@ -87,17 +87,17 @@ PtMerge :: struct {status:PtStatus;rank:int=-1;id:int;}
     symbols:[4]int;r:=pt_bpe(table[..],t,"abab",symbols[..]);
     #assert r.status==PtStatus.ok && r.written==2 && symbols[0]==257 && symbols[1]==98;
 }
-pt_pool_span :: (begin:int,n:int,total:int)->bool {return n>=1 && n<=total && begin<=total-n;}
+pt_pool_span :: (begin:int,n:int,total:int)->bool #effects(all) {return n>=1 && n<=total && begin<=total-n;}
 
-pt_span :: (data:[]u8,t:PtLayout,id:int)->PtSpan {
+pt_span :: (data:[]u8,t:PtLayout,id:int)->PtSpan #effects(all) {
     if id<0 || id>=t.counts[0] {return PtSpan.{status=PtStatus.range};}
     row:=pt_row(t,0,id);begin:=pt_u32(data,row);n:=pt_u32(data,row+4);
     if !pt_pool_span(begin,n,t.counts[6]) {return PtSpan.{status=PtStatus.artifact};}
     return PtSpan.{begin=t.starts[6]+begin,end=t.starts[6]+begin+n};
 }
-pt_has :: (table:[]u8,t:PtLayout,cp:int,bits:int)->bool {return (pt_prop(table,t,cp).flags&bits)!=0;}
-pt_fold :: (cp:int)->int {if cp>=65 && cp<=90 {return cp+32;}if cp==383 {return 115;}return cp;}
-pt_contraction :: (s:string,at:int)->int {
+pt_has :: (table:[]u8,t:PtLayout,cp:int,bits:int)->bool #effects(all) {return (pt_prop(table,t,cp).flags&bits)!=0;}
+pt_fold :: (cp:int)->int #effects(all) {if cp>=65 && cp<=90 {return cp+32;}if cp==383 {return 115;}return cp;}
+pt_contraction :: (s:string,at:int)->int #effects(all) {
     if s[at]!=39 {return at;}
     a:=pt_rune(s,at+1);if a.status!=PtStatus.ok {return at;}c:=pt_fold(a.cp);
     if c==115 || c==116 || c==109 || c==100 {return a.next;}
@@ -105,12 +105,12 @@ pt_contraction :: (s:string,at:int)->int {
         if (c==114 && d==101) || (c==118 && d==101) || (c==108 && d==108) {return b.next;}
     return at;
 }
-pt_run :: (table:[]u8,t:PtLayout,s:string,at:int,bits:int,want:bool)->int {
+pt_run :: (table:[]u8,t:PtLayout,s:string,at:int,bits:int,want:bool)->int #effects(all) {
     pos:=at;while pos<s.count {r:=pt_rune(s,pos);if pt_has(table,t,r.cp,bits)!=want {return pos;}pos=r.next;}return pos;
 }
 // book:begin pieces
 // The pinned split expression; numeric scalars are disjoint from word runs.
-pt_piece :: (table:[]u8,t:PtLayout,s:string,at:int)->int {
+pt_piece :: (table:[]u8,t:PtLayout,s:string,at:int)->int #effects(all) {
     end:=pt_contraction(s,at);if end>at {return end;}
     r:=pt_rune(s,at);if pt_has(table,t,r.cp,4) {return r.next;}
     pos:=at;if r.cp!=13 && r.cp!=10 {pos=r.next;}
@@ -132,7 +132,7 @@ pt_piece :: (table:[]u8,t:PtLayout,s:string,at:int)->int {
     if last_space>at {return last_space;}return space;
 }
 // book:end pieces
-pt_added :: (table:[]u8,t:PtLayout,s:string,at:int)->PtMerge {
+pt_added :: (table:[]u8,t:PtLayout,s:string,at:int)->PtMerge #effects(all) {
     if s[at]!='<' {return PtMerge.{};}
     // The admitted table orders added literals longest first.
     for i:0..<t.counts[5] {
@@ -145,14 +145,14 @@ pt_added :: (table:[]u8,t:PtLayout,s:string,at:int)->PtMerge {
     }return PtMerge.{};
 }
 
-pt_piece_budget :: (used:int,n:int)->bool {return n<=1024 && pt_budget(used,n*n);}
-pt_merge :: (table:[]u8,t:PtLayout,a:int,b:int)->PtMerge {
+pt_piece_budget :: (used:int,n:int)->bool #effects(all) {return n<=1024 && pt_budget(used,n*n);}
+pt_merge :: (table:[]u8,t:PtLayout,a:int,b:int)->PtMerge #effects(all) {
     at:=pt_pair(table,t,1,a,b);if at<0 {return PtMerge.{};}
     row:=pt_row(t,1,at);rank:=pt_u32(table,row+8);id:=pt_u32(table,row+12);
     if rank>=t.counts[1] || id>=t.counts[0] {return PtMerge.{status=PtStatus.artifact};}
     return PtMerge.{rank=rank,id=id};
 }
-pt_bpe :: (table:[]u8,t:PtLayout,s:string,symbols:[]int)->PtResult {
+pt_bpe :: (table:[]u8,t:PtLayout,s:string,symbols:[]int)->PtResult #effects(all) {
     if symbols.count<s.count {return PtResult.{status=PtStatus.capacity};}
     for i:0..<s.count {id:=pt_u32(table,32+cast(int)s[i]*4);if id>=t.counts[0] {return PtResult.{status=PtStatus.artifact};}symbols[i]=id;}
     n:=s.count;
@@ -168,7 +168,7 @@ pt_bpe :: (table:[]u8,t:PtLayout,s:string,symbols:[]int)->PtResult {
 }
 // book:begin encode
 // Only output is published. Stage/normal/scalars/symbols are disposable workspaces.
-pt_encode_checked :: (table:[]u8,input:string,output:[]int,stage:[]int,normal:[]u8,scalars:[]int,symbols:[]int,overlap:bool)->PtResult #export_c {
+pt_encode_checked :: (table:[]u8,input:string,output:[]int,stage:[]int,normal:[]u8,scalars:[]int,symbols:[]int,overlap:bool)->PtResult #export_c #effects(all) {
     if !pt_text_count(input.count) {return PtResult.{status=PtStatus.size};}
     if overlap {return PtResult.{status=PtStatus.alias};}
     t:=pt_layout(table);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}

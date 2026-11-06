@@ -1,0 +1,4 @@
+// expect: E0941
+#import "Basic";
+rule :: () #effects(computes) { defer { print("late\n"); } }
+main :: () {}

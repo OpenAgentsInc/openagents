@@ -28,7 +28,7 @@
 }
 PbkdfOwned :: struct {hmac:[1]HmacOwned;input:[1028]u8;staged:[1024]u8;digest:[32]u8;}
 // Stable disjoint views and truthful alias facts are the caller's obligation.
-pbkdf_owned :: (password:[]u8,salt:[]u8,length:int,work:[]PbkdfOwned,out:[]u8,overlap:bool)->bool #export_c {
+pbkdf_owned :: (password:[]u8,salt:[]u8,length:int,work:[]PbkdfOwned,out:[]u8,overlap:bool)->bool #export_c #effects(all) {
   if work.count!=1 || !pb1_admit(password.count,salt.count,length,out.count,overlap) {return false;}
   work[0]=PbkdfOwned.{};for i:0..<salt.count {work[0].input[i]=salt[i];}
   for block:0..<pb1_blocks(length) {

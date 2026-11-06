@@ -31,7 +31,7 @@ PC_PORT :: "18731";
 // What the spec says the comparison needs: the size, and the last pass's targets.
 PcSpec :: struct { ok: bool; w: int; h: int; nt: int; }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 3 {
     tool_errln("usage: pass-check HOST DIR SPEC [--allow N] [--keep DIR2] [--against FILE] [--golden FILE]");

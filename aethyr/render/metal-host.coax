@@ -72,7 +72,7 @@ MetalHostInterface :: struct {valid:bool;vertex:string;fragment:string;count:int
  #assert !metal_host_interface(1,13,"media_vs","media_fs",uses[..],attrs,0).valid;
  #assert !metal_host_interface(2,14,"media_vs","media_fs",uses[..],attrs,0).valid;
 }
-metal_host_use :: (profile:int,entry:int,name:string,kind:int,slot:int,shape:int,stride:int,stages:int)->MetalHostUse #export_c {
+metal_host_use :: (profile:int,entry:int,name:string,kind:int,slot:int,shape:int,stride:int,stages:int)->MetalHostUse #export_c #effects(all) {
  if slot<0 || !((kind==1 && slot<29)||(kind==2 && slot<128)||(kind==3 && slot<16)) {return MetalHostUse.{};}
  n:=render_host_use_count(profile,entry);
  for i:0..<n {u:=render_host_use(profile,entry,i);
@@ -82,7 +82,7 @@ metal_host_use :: (profile:int,entry:int,name:string,kind:int,slot:int,shape:int
  }
  return MetalHostUse.{};
 }
-metal_host_interface :: (profile:int,entry:int,vertex:string,fragment:string,uses:[]MetalHostUse,attributes:[]RenderVertexInput,stride:int)->MetalHostInterface #export_c {
+metal_host_interface :: (profile:int,entry:int,vertex:string,fragment:string,uses:[]MetalHostUse,attributes:[]RenderVertexInput,stride:int)->MetalHostInterface #export_c #effects(all) {
  e:RenderEntry;
  if entry>=0 && entry<13 {e=render_catalog_entry(profile,cast(RenderPassId)entry);}
  else if entry==13 {m:=render_media_entry();e=RenderEntry.{valid=true,vertex=m.vertex,fragment=m.fragment};}

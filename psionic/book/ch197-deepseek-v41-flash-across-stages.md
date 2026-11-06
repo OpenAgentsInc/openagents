@@ -68,7 +68,7 @@ table above, typed in by hand.
 // with compression reads its KV owner's rows; an indexer reads its KV
 // owner's keys; a layer reads its indexer's selection; the indexers after
 // layer 20 read its candidate mask.
-dst_needed :: (cut:int,kind:DstKind,s:int)->bool {
+dst_needed :: (cut:int,kind:DstKind,s:int)->bool #effects(all) {
     for l:cut..<dv_flash_config().layers {k:=da_flash_links(l);
         if kind==DstKind.comp && k.kv==s {return true;}
         if kind==DstKind.keys && k.produce_index && k.kv==s {return true;}
@@ -79,7 +79,7 @@ dst_needed :: (cut:int,kind:DstKind,s:int)->bool {
 }
 // The parts that cross the cut before layer `cut`, in order. An invalid
 // geometry or a cut outside 1..39 gives no parts.
-dst_layout :: (g:DstGeometry,cut:int)->DstLayout {
+dst_layout :: (g:DstGeometry,cut:int)->DstLayout #effects(all) {
     out:DstLayout;if !dst_valid(g) || cut<1 || cut>=DST_LAYERS {return out;}
     kinds:[8]DstKind;sources:[8]int;kinds[1]=DstKind.carry;sources[0]=cut;sources[1]=cut;n:=2;
     for e:DST_ENGRAM {if e>=cut {kinds[n]=DstKind.engram;sources[n]=e;n+=1;}}
@@ -139,18 +139,18 @@ DstVerdict :: struct {refusal:DstRefusal;part:int=-1;}
 // Write the header and the part directory with zeroed data; the sender
 // fills each part at its offset, then seals. -1: no such cut or step, or
 // the buffer is too small.
-dst_frame :: (g:DstGeometry,model:u64,cut:int,step:int,wire:[]u32)->int {
+dst_frame :: (g:DstGeometry,model:u64,cut:int,step:int,wire:[]u32)->int #effects(all) {
     l:=dst_layout(g,cut);if l.count==0 || !stg_in(step,0,DST_STEPS-1) || wire.count<l.words {return -1;}
     head:=[9]u32.[DST_VERSION,cast(u32)(model&4294967295),cast(u32)(model>>32),cast(u32)cut,cast(u32)step,cast(u32)l.count,cast(u32)g.width,STG_F32,0];
     for k:0..<DST_HEAD {wire[k]=head[k];}
     for i:0..<l.count {p:=l.parts[i];wire[p.offset-2]=dst_tag(p);wire[p.offset-1]=cast(u32)p.words;for k:0..<p.words {wire[p.offset+k]=0;}}
     return l.words;
 }
-dst_seal :: (wire:[]u32) {wire[8]=stg_sum(wire);}
+dst_seal :: (wire:[]u32) #effects(all) {wire[8]=stg_sum(wire);}
 // The receiver's checks, in order: a whole header, version, model, its own
 // first layer, the step it expects, the geometry, then every listed part
 // in place with its length, nothing more, and the checksum.
-dst_check :: (g:DstGeometry,want:DstExpect,wire:[]u32)->DstVerdict {
+dst_check :: (g:DstGeometry,want:DstExpect,wire:[]u32)->DstVerdict #effects(all) {
     v:DstVerdict;l:=dst_layout(g,want.cut);
     if wire.count<DST_HEAD {v.refusal=DstRefusal.partial;return v;}
     if wire[0]!=DST_VERSION {v.refusal=DstRefusal.version;return v;}
@@ -200,7 +200,7 @@ in) + 1,323,837,440 (the readout) = **8,714,669,908 bytes**.
 // are resident), a window ring per layer, the caches it owns over the
 // context, the borrowed rows it mirrors, its incoming and outgoing message
 // buffers, the embedding if first and the readout if last.
-dst_stage_inner :: (m:DstModel,a:int,b:int,context:int,resident:bool)->int {
+dst_stage_inner :: (m:DstModel,a:int,b:int,context:int,resident:bool)->int #effects(all) {
     n:=0;
     for l:a..<b {n+=m.weight[l]+DST_WINDOW*DST_WINDOW_ROW+m.cache[l]*context;if resident {n+=m.engram[l];}}
     for s:DST_KV {if s<a {r:=da_flash_links(s).ratio;comp:=false;keys:=false;
@@ -211,12 +211,12 @@ dst_stage_inner :: (m:DstModel,a:int,b:int,context:int,resident:bool)->int {
     if b==DST_LAYERS {n+=m.head;}
     return n;
 }
-dst_stage_bytes :: (m:DstModel,a:int,b:int,context:int,resident:bool)->int {
+dst_stage_bytes :: (m:DstModel,a:int,b:int,context:int,resident:bool)->int #effects(all) {
     g:=dst_real(context);return dst_stage_inner(m,a,b,context,resident)+dst_message_bytes(g,a)+dst_message_bytes(g,b);
 }
 // The weight bytes it reads for one token: its layers, one embedding row
 // if first, the whole readout if last.
-dst_stage_read :: (m:DstModel,a:int,b:int)->int {
+dst_stage_read :: (m:DstModel,a:int,b:int)->int #effects(all) {
     n:=0;for l:a..<b {n+=m.read[l];}
     if a==0 {n+=m.embed/129280;}
     if b==DST_LAYERS {n+=m.head;}
@@ -235,7 +235,7 @@ DstStatus :: enum u8 {ok;model;stages;context;total;split;}
 // reads per token, and the message it sends per token. cause: the bytes
 // the hosts lack in total.
 DstPlan :: struct {status:DstStatus;stages:int;cause:int;slowest:int;cut:[17]int;bytes:[16]int;read:[16]int;sent:[16]int;}
-dst_plan :: (m:DstModel,budget:[]int,context:int,resident:bool)->DstPlan {
+dst_plan :: (m:DstModel,budget:[]int,context:int,resident:bool)->DstPlan #effects(all) {
     n:=budget.count;p:=DstPlan.{stages=n};
     if !dst_model_valid(m) {p.status=DstStatus.model;return p;}
     if n<1 || n>DST_STAGES {p.status=DstStatus.stages;return p;}

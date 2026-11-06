@@ -244,7 +244,7 @@ ap_page :: (c: [] Cdp, f: [] Pane) {
   print("        page: %\n", ifx v >= 0 then jv_raw(cdp_doc(c), v) else "(no answer)");
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   loaded := args_load(a[..]);
   origin := args_at(a[..], 0); shots := args_at(a[..], 1);

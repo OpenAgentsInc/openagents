@@ -84,7 +84,7 @@ UF_Result :: struct {status:UF_Status;form:UF_Form;}
 }
 
 // Product implementation follows the independent contract checks.
-UF_valid :: (form:UF_Form)->bool #export_c {
+UF_valid :: (form:UF_Form)->bool #export_c #effects(all) {
   if form.count<0 || form.count>8 {return false;}previous:=0;
   for i:0..<8 {
     if i<form.count {
@@ -94,18 +94,18 @@ UF_valid :: (form:UF_Form)->bool #export_c {
   }
   return true;
 }
-UF_one :: ()->UF_Form #export_c {return UF_Form.{};}
-UF_atom :: (atom:int)->UF_Result #export_c {
+UF_one :: ()->UF_Form #export_c #effects(all) {return UF_Form.{};}
+UF_atom :: (atom:int)->UF_Result #export_c #effects(all) {
   form:=UF_Form.{count=1};form.atoms[0]=atom;form.powers[0]=1;
   if !UF_valid(form) {return UF_Result.{status=UF_Status.metadata};}
   return UF_Result.{form=form};
 }
-UF_equal :: (a:UF_Form,b:UF_Form)->bool #export_c {
+UF_equal :: (a:UF_Form,b:UF_Form)->bool #export_c #effects(all) {
   if !UF_valid(a) || !UF_valid(b) {return false;}if a.count!=b.count {return false;}
   for i:0..<a.count {if a.atoms[i]!=b.atoms[i] || a.powers[i]!=b.powers[i] {return false;}}
   return true;
 }
-UF_merge :: (a:UF_Form,b:UF_Form,division:bool)->UF_Result {
+UF_merge :: (a:UF_Form,b:UF_Form,division:bool)->UF_Result #effects(all) {
   if !UF_valid(a) || !UF_valid(b) {return UF_Result.{status=UF_Status.metadata};}
   i:=0;j:=0;count:=0;staged:UF_Form;
   while i<a.count || j<b.count {
@@ -119,5 +119,5 @@ UF_merge :: (a:UF_Form,b:UF_Form,division:bool)->UF_Result {
   if count>8 {return UF_Result.{status=UF_Status.capacity};}
   staged.count=count;return UF_Result.{form=staged};
 }
-UF_product :: (a:UF_Form,b:UF_Form)->UF_Result #export_c {return UF_merge(a,b,false);}
-UF_quotient :: (a:UF_Form,b:UF_Form)->UF_Result #export_c {return UF_merge(a,b,true);}
+UF_product :: (a:UF_Form,b:UF_Form)->UF_Result #export_c #effects(all) {return UF_merge(a,b,false);}
+UF_quotient :: (a:UF_Form,b:UF_Form)->UF_Result #export_c #effects(all) {return UF_merge(a,b,true);}

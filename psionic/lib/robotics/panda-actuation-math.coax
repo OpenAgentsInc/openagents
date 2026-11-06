@@ -18,17 +18,17 @@
  for i:0..<7 {#assert p.hinge[i].value== -(ifx i<5 then 0.1 else 0.01)*f64(i+1);}#assert p.slide[0].value== -3 && p.slide[1].value==2;
 }
 
-pa_clip :: (value:f64,lo:f64,hi:f64)->PaClip {
+pa_clip :: (value:f64,lo:f64,hi:f64)->PaClip #effects(all) {
  if value<lo {return PaClip.{value=lo,clipped=true};}if value>hi {return PaClip.{value=hi,clipped=true};}return PaClip.{value=value};
 }
-pa_torque_limit :: (axis:int)->f64 {return ifx axis<5 then 80.0 else 12.0;}
-pa_hinge_damping :: (axis:int)->pfku.Quantity(PaHingeDamping,f64) {r:pfku.Quantity(PaHingeDamping,f64);r.value=ifx axis<5 then 0.1 else 0.01;return r;}
-pa_finger :: (position:pfku.Quantity(pfku.Metre,f64),target:pfku.Quantity(pfku.Metre,f64))->pfku.Quantity(PmSlideGravity,f64) {
+pa_torque_limit :: (axis:int)->f64 #effects(all) {return ifx axis<5 then 80.0 else 12.0;}
+pa_hinge_damping :: (axis:int)->pfku.Quantity(PaHingeDamping,f64) #effects(all) {r:pfku.Quantity(PaHingeDamping,f64);r.value=ifx axis<5 then 0.1 else 0.01;return r;}
+pa_finger :: (position:pfku.Quantity(pfku.Metre,f64),target:pfku.Quantity(pfku.Metre,f64))->pfku.Quantity(PmSlideGravity,f64) #effects(all) {
  gain:pfku.Quantity(PaFingerGain,f64);gain.value=1000;negative:pfku.Quantity(PaFingerGain,f64);negative.value= -1000;zero:pfku.Quantity(PmSlideGravity,f64);
  // Source order is gain*control, then the affine bias. Do not factor to k*(u-q).
  bias:=zero+convert_unit(PmSlideGravity,negative*position);return convert_unit(PmSlideGravity,gain*target)+bias;
 }
-pa_damping :: (hinge:[7]pfku.Quantity(PidAngularRate,f64),slide:[2]pfku.Quantity(PidLinearRate,f64))->PidOutput {
+pa_damping :: (hinge:[7]pfku.Quantity(PidAngularRate,f64),slide:[2]pfku.Quantity(PidLinearRate,f64))->PidOutput #effects(all) {
  out:PidOutput;zero_h:pfku.Quantity(PmHingeGravity,f64);zero_s:pfku.Quantity(PmSlideGravity,f64);d:pfku.Quantity(PaSlideDamping,f64);d.value=100;
  for i:0..<7 {out.hinge[i]=zero_h-convert_unit(PmHingeGravity,pa_hinge_damping(i)*hinge[i]);}for i:0..<2 {out.slide[i]=zero_s-convert_unit(PmSlideGravity,d*slide[i]);}return out;
 }

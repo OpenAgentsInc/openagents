@@ -38,18 +38,18 @@ HostAudioRead :: struct {kind:int;offset:int;words:int;}
   #assert !had_observe(s[..],count)&&s[0].phase==0&&had_read(s[0]).kind==0;
  }
 }
-had_open :: (frames:int,channels:int)->HostAudioDecode #export_c {
+had_open :: (frames:int,channels:int)->HostAudioDecode #export_c #effects(all) {
  if ham_extent(frames,channels)==0 {return HostAudioDecode.{};}
  return HostAudioDecode.{frames=frames,channels=channels,phase=1};
 }
 // kind: 0 refused, 1 read admitted output plane, 2 read separate one-frame
 // probe plane, 3 complete. Offset and capacity are F32 words, not frames.
-had_read :: (s:HostAudioDecode)->HostAudioRead #export_c {
+had_read :: (s:HostAudioDecode)->HostAudioRead #export_c #effects(all) {
  if s.phase==1 {return HostAudioRead.{kind=1,offset=s.offset*s.channels,words=(s.frames-s.offset)*s.channels};}
  if s.phase==2 {return HostAudioRead.{kind=2,words=s.channels};}
  return HostAudioRead.{kind=ifx s.phase==3 then 3 else 0};
 }
-had_observe :: (s:[]HostAudioDecode,frames:int)->bool #export_c {
+had_observe :: (s:[]HostAudioDecode,frames:int)->bool #export_c #effects(all) {
  if s[0].phase==1 {
   if frames<1||frames>s[0].frames-s[0].offset {s[0].phase=0;return false;}
   s[0].offset+=frames;if s[0].offset==s[0].frames {s[0].phase=2;}return true;

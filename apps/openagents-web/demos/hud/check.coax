@@ -238,7 +238,7 @@ hq_browser_run :: (c:[]Cdp,url:string)->bool {
   return hq_eval(c,"__hqErrors.length===0","no browser exceptions or console errors");
 }
 
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])>2 {tool_errln("usage: hud-check [--native|--arwes|--browser] [BASE_URL]");return 2;}
   browser:=args_count(a[..])>0 && args_at(a[..],0)=="--browser";
   native:=args_count(a[..])>0 && args_at(a[..],0)=="--native";

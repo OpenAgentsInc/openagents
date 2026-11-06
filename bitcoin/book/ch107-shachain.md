@@ -82,7 +82,7 @@ with a shorter prefix.
 ```jai
 // derive(base, bits, I): for each bit B of I below `bits`, from the top,
 // flip bit B of P and hash. Bit B is bit B mod 8 of byte B div 8.
-shachain_derive :: (base: [] u8, bits: int, index: u64, out: [] u8) {
+shachain_derive :: (base: [] u8, bits: int, index: u64, out: [] u8) #effects(all) {
   p: [32] u8; next: [32] u8;
   for i: 0..<32 { p[i] = base[i]; }
   for k: 0..<bits {
@@ -97,7 +97,7 @@ shachain_derive :: (base: [] u8, bits: int, index: u64, out: [] u8) {
   shachain_wipe(p[..]); shachain_wipe(next[..]);
 }
 // generate_from_seed(seed, I): every one of the 48 bits.
-shachain_generate :: (seed: [] u8, index: u64, out: [] u8) -> int {
+shachain_generate :: (seed: [] u8, index: u64, out: [] u8) -> int #effects(all) {
   if index > SHACHAIN_MAX_INDEX { return SHACHAIN_RANGE; }
   shachain_derive(seed, SHACHAIN_BITS, index, out);
   return SHACHAIN_OK;
@@ -125,16 +125,16 @@ the secrets in the slots below. Index 0 ends in 48 zero bits and goes in slot
 // top 48 - b bits can be derived.
 ShachainSlot :: struct { index: u64; secret: [32] u8; }
 Shachain :: struct { slots: [49] ShachainSlot; next: u64; received: u64; }
-shachain_new :: () -> Shachain { return Shachain.{next = SHACHAIN_MAX_INDEX}; }
+shachain_new :: () -> Shachain #effects(all) { return Shachain.{next = SHACHAIN_MAX_INDEX}; }
 
 // The slot an index goes in: its count of trailing zero bits, 48 for 0.
-shachain_slot :: (index: u64) -> int {
+shachain_slot :: (index: u64) -> int #effects(all) {
   for b: 0..<SHACHAIN_BITS { if ((index >> cast(u64) b) & 1) == 1 { return b; } }
   return SHACHAIN_BITS;
 }
 // Whether slot b holds a secret. An empty slot's index is 0, which
 // belongs in slot 48, so only slot 48 needs the count.
-shachain_used :: (store: [] Shachain, b: int) -> bool {
+shachain_used :: (store: [] Shachain, b: int) -> bool #effects(all) {
   if b == SHACHAIN_BITS { return store[0].received == SHACHAIN_MAX_INDEX + 1; }
   return shachain_slot(store[0].slots[b].index) == b;
 }
@@ -159,7 +159,7 @@ down from 2^48 - 1, so any other index is refused.
 // insert_secret: the new secret must derive every secret in the slots
 // below its own. If one does not, the peer's secrets do not come from one
 // seed, and the peer is cheating or broken.
-shachain_insert :: (store: [] Shachain, index: u64, secret: [] u8) -> int {
+shachain_insert :: (store: [] Shachain, index: u64, secret: [] u8) -> int #effects(all) {
   if index > SHACHAIN_MAX_INDEX { return SHACHAIN_RANGE; }
   if store[0].received == SHACHAIN_MAX_INDEX + 1 || index != store[0].next { return SHACHAIN_ORDER; }
   slot := shachain_slot(index);
@@ -195,7 +195,7 @@ from that slot's secret.
 // derive_old_secret: the slot whose index is the top bits of I, then the
 // remaining low bits from there. Secrets from the next index up to the
 // first received have arrived; lower ones have not.
-shachain_lookup :: (store: [] Shachain, index: u64, out: [] u8) -> int {
+shachain_lookup :: (store: [] Shachain, index: u64, out: [] u8) -> int #effects(all) {
   if index > SHACHAIN_MAX_INDEX { return SHACHAIN_RANGE; }
   if store[0].received == 0 || index <= SHACHAIN_MAX_INDEX - store[0].received { return SHACHAIN_UNKNOWN; }
   for b: 0..<SHACHAIN_SLOTS {
@@ -208,7 +208,7 @@ shachain_lookup :: (store: [] Shachain, index: u64, out: [] u8) -> int {
   return SHACHAIN_UNKNOWN;
 }
 // The commitment number n uses index 2^48 - 1 - n.
-shachain_index :: (commitment: u64) -> u64 { return SHACHAIN_MAX_INDEX - commitment; }
+shachain_index :: (commitment: u64) -> u64 #effects(all) { return SHACHAIN_MAX_INDEX - commitment; }
 ```
 
 ## The example

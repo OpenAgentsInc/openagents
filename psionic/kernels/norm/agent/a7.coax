@@ -20,16 +20,16 @@ a7_narrow :: (y:f64)->f32 {
     return f32_from_bits(cast,trunc(u32)(((B>>63)<<31)|w));
 }
 
-a7_knobs :: (item:int,knobs:[]int) #export_c {
+a7_knobs :: (item:int,knobs:[]int) #export_c #effects(all) {
     knobs[0]=64128;knobs[1]=64096;knobs[2]=64160;knobs[3]=96128;knobs[4]=96096;
     knobs[5]=128128;knobs[6]=128096;knobs[7]=48128;knobs[8]=80128;knobs[9]=48192;knobs[10]=-1;
 }
-a7_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c {
+a7_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c #effects(all) {
     c:=a7_c(knob,width);m:=a7_m(knob,width);
     plan[0]=rows*c;plan[1]=rows*m;plan[2]=rows*c;
     if a7_pre(rows,width,c) {plan[2]=rows*c+width;}
 }
-a7_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+a7_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c #effects(all) {
     c:=a7_c(knob,width);r:=item/c;j:=item-r*c;
     n:=(width-j+c-1)/c;p:=r*width+j;
     s0:f64=0;s1:f64=0;
@@ -41,7 +41,7 @@ a7_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f3
         for t:0..<(width-item+G-1)/G {i:=item+t*G;work[G+i]=1+f64(scale[i]);}
     }
 }
-a7_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+a7_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c #effects(all) {
     c:=a7_c(knob,width);m:=a7_m(knob,width);r:=item/m;k:=item-r*m;
     s0:f64=0;s1:f64=0;w:=r*c;
     for j:0..<c/4 {a:=work[w];b:=work[w+1];d:=work[w+2];e:=work[w+3];s0+=a;s1+=b;s0+=d;s1+=e;w+=4;}

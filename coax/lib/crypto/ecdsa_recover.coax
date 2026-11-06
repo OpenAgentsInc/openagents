@@ -175,7 +175,7 @@ er_recover_vartime :: (hash: [] u8, signature: [] u8, id: int) -> ErResult {
 // bytes, or SE_UNCOMPRESSED, 65). Returns the bytes written, or one of the
 // ER_ refusals, which write nothing. Any recovered key verifies the
 // signature; whether it is the right key is the caller's question.
-ecdsa_recover_vartime :: (hash: [] u8, signature: [] u8, id: int, form: int, out: [] u8) -> int #export_c {
+ecdsa_recover_vartime :: (hash: [] u8, signature: [] u8, id: int, form: int, out: [] u8) -> int #export_c #effects(all) {
   if (form != SE_COMPRESSED && form != SE_UNCOMPRESSED) || out.count < form { return ER_BAD_FORM; }
   result := er_recover_vartime(hash, signature, id);
   if result.code != 0 { return result.code; }

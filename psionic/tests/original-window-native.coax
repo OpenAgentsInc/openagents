@@ -1,7 +1,7 @@
 // Nonfinite and complete BF16-codepoint checks stay in Coax.
 #load "../lib/original-window.coax";
 #load "../lib/original-proposal.coax";
-original_window_native_checks :: ()->int #export_c {
+original_window_native_checks :: ()->int #export_c #effects(all) {
     w:=OwWindow.{name="native",rows=1,cols=1,count=1};source:=[2]u8.[128,63];pin:=ow_identity(w,source[..]);
     for bits:[5]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001,0x7ff0000000000001,0xfff8000000000001] {
         p:=[1]f64.[f64_from_bits(bits)];r:=ow_apply(w,source[..],pin.digest,p[..]);#assert r.status==OwStatus.number && r.count==0 && r.changed==0;for b:r.bytes {#assert b==0;}

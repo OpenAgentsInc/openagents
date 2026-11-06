@@ -101,13 +101,13 @@ first byte is that parity. With s', it is 65 bytes.
 <!-- source: coax/lib/bitcoin/adaptor.coax challenge -->
 ```jai
 // BIP-340's challenge e = hash_BIP0340/challenge(x(R) || x(P) || m) mod n.
-ads_challenge :: (rx: [] u8, px: [] u8, msg: [] u8) -> ScScalar {
+ads_challenge :: (rx: [] u8, px: [] u8, msg: [] u8) -> ScScalar #effects(all) {
   w: [1] ShaOwned;
   ms_tag(w[..], "BIP0340/challenge"); ms_add(w[..], rx); ms_add(w[..], px); ms_add(w[..], msg);
   return ms_reduce(w[..]);
 }
 // The x-only key's point, with an even y (BIP-340's lift_x).
-ads_lift_vartime :: (px: [] u8) -> SgResult {
+ads_lift_vartime :: (px: [] u8) -> SgResult #effects(all) {
   if px.count != 32 { return SgResult.{}; }
   return sg_lift_x_public(px);
 }
@@ -125,10 +125,10 @@ probability of about 2^-256 and stops the program.
 ```jai
 // The secret workspace of a pre-signature. Each return clears it.
 AdsWork :: struct { sha: [1] ShaOwned; aux: [32] u8; rand: [32] u8; h: [32] u8; d: [1] SignScalar; point: [1] SignPoint; pk: [33] u8; r: [33] u8; }
-ads_clear :: (w: [] AdsWork, code: int) -> int { fresh: AdsWork; w[0] = fresh; return code; }
+ads_clear :: (w: [] AdsWork, code: int) -> int #effects(all) { fresh: AdsWork; w[0] = fresh; return code; }
 // The x-only public key of sk into px (32 bytes): the key a pre-signature
 // and its signature verify under.
-ads_pubkey :: (sk: [] u8, px: [] u8, w: [] AdsWork) -> int {
+ads_pubkey :: (sk: [] u8, px: [] u8, w: [] AdsWork) -> int #effects(all) {
   if w.count != 1 || sk.count != 32 || px.count != 32 { return ADS_CAPACITY; }
   #assert ss_key(sk, w[0].d[..], false);
   if !ec_declassify(w[0].d[0].valid) { return ads_clear(w, ADS_BAD_KEY); }
@@ -141,7 +141,7 @@ ads_pubkey :: (sk: [] u8, px: [] u8, w: [] AdsWork) -> int {
 // are masked with the key: rand = d XOR hash_BIP0340/aux(aux). The nonce
 // is k = hash_SchnorrAdaptor/nonce(rand || T || x(P) || m) mod n. T is in
 // the hash, so pre-signing one message for two points gives two nonces.
-ads_presign :: (sk: [] u8, msg: [] u8, adaptor: [] u8, aux: [] u8, presig: [] u8, w: [] AdsWork) -> int {
+ads_presign :: (sk: [] u8, msg: [] u8, adaptor: [] u8, aux: [] u8, presig: [] u8, w: [] AdsWork) -> int #effects(all) {
   if w.count != 1 || sk.count != 32 || adaptor.count != 33 || aux.count != 32 || presig.count != ADS_PRESIG { return ADS_CAPACITY; }
   if !ms_cpoint_vartime(adaptor).ok { return ADS_BAD_POINT; }
   #assert ss_key(sk, w[0].d[..], false);
@@ -161,7 +161,7 @@ ads_presign :: (sk: [] u8, msg: [] u8, adaptor: [] u8, aux: [] u8, presig: [] u8
 }
 // The rest of a pre-signature, once the key d (even-y) and the nonce k are
 // known: R = k G + T, then s' = (k, negated when R is odd) + e d.
-ads_finish :: (d: ScScalar, k: ScScalar, msg: [] u8, adaptor: [] u8, presig: [] u8, w: [] AdsWork) -> int {
+ads_finish :: (d: ScScalar, k: ScScalar, msg: [] u8, adaptor: [] u8, presig: [] u8, w: [] AdsWork) -> int #effects(all) {
   ms_nonce_point(k, w[0].point[..], w[0].r[..]);              // k G: R - T, so public
   r := sg_add(ms_cpoint_vartime(w[0].r[..]).value, ms_cpoint_vartime(adaptor).value).value;
   if !ms_finite_vartime(r) { return ADS_INFINITY; }
@@ -185,7 +185,7 @@ signature reveals the discrete logarithm.
 ```jai
 // Checks a pre-signature against the x-only key, the message and T:
 // s' G - e P must be R - T, or T - R when R has an odd y.
-ads_preverify_vartime :: (px: [] u8, msg: [] u8, adaptor: [] u8, presig: [] u8) -> int {
+ads_preverify_vartime :: (px: [] u8, msg: [] u8, adaptor: [] u8, presig: [] u8) -> int #effects(all) {
   if px.count != 32 || adaptor.count != 33 || presig.count != ADS_PRESIG { return ADS_CAPACITY; }
   p := ads_lift_vartime(px); t := ms_cpoint_vartime(adaptor); r := ms_cpoint_vartime(presig[0..<33]);
   if !p.ok || !t.ok || !r.ok { return ADS_BAD_POINT; }
@@ -211,7 +211,7 @@ pre-verifies first and verifies the signature afterwards.
 // signature x(R) || s' + t (s' - t when R is odd) into sig (64 bytes).
 // It does not check that t matches T or that the pre-signature is valid:
 // pre-verify first, and verify the signature after.
-ads_adapt :: (presig: [] u8, secret: [] u8, sig: [] u8) -> int {
+ads_adapt :: (presig: [] u8, secret: [] u8, sig: [] u8) -> int #effects(all) {
   if presig.count != ADS_PRESIG || secret.count != 32 || sig.count != 64 { return ADS_CAPACITY; }
   if !ms_cpoint_vartime(presig[0..<33]).ok { return ADS_BAD_POINT; }
   s := sc_load(presig[33..<65]);
@@ -236,7 +236,7 @@ pre-signature, is refused.
 ```jai
 // Recovers t from a pre-signature and the signature made from it: t = s -
 // s' (s' - s when R is odd), checked against T. Into secret (32 bytes).
-ads_extract_vartime :: (presig: [] u8, sig: [] u8, adaptor: [] u8, secret: [] u8) -> int {
+ads_extract_vartime :: (presig: [] u8, sig: [] u8, adaptor: [] u8, secret: [] u8) -> int #effects(all) {
   if presig.count != ADS_PRESIG || sig.count != 64 || adaptor.count != 33 || secret.count != 32 { return ADS_CAPACITY; }
   big_t := ms_cpoint_vartime(adaptor);
   if !big_t.ok || !ms_cpoint_vartime(presig[0..<33]).ok { return ADS_BAD_POINT; }
@@ -267,7 +267,7 @@ equation that recovers the key.
 // Only to show why a nonce must never be reused: a pre-signature with a
 // nonce the caller chooses (32 bytes). ads_presign never reuses one,
 // because its nonce hashes the key, T and the message.
-ads_presign_with_nonce :: (sk: [] u8, msg: [] u8, adaptor: [] u8, nonce: [] u8, presig: [] u8, w: [] AdsWork) -> int {
+ads_presign_with_nonce :: (sk: [] u8, msg: [] u8, adaptor: [] u8, nonce: [] u8, presig: [] u8, w: [] AdsWork) -> int #effects(all) {
   if w.count != 1 || sk.count != 32 || adaptor.count != 33 || nonce.count != 32 || presig.count != ADS_PRESIG { return ADS_CAPACITY; }
   if !ms_cpoint_vartime(adaptor).ok { return ADS_BAD_POINT; }
   k := sc_load(nonce);
@@ -280,7 +280,7 @@ ads_presign_with_nonce :: (sk: [] u8, msg: [] u8, adaptor: [] u8, nonce: [] u8, 
 }
 // Two pre-signatures with the same R and different challenges give away
 // the key: s1' - s2' = (e1 - e2) d. The even-y key into out (32 bytes).
-ads_recover_key_vartime :: (px: [] u8, msg1: [] u8, presig1: [] u8, msg2: [] u8, presig2: [] u8, out: [] u8) -> int {
+ads_recover_key_vartime :: (px: [] u8, msg1: [] u8, presig1: [] u8, msg2: [] u8, presig2: [] u8, out: [] u8) -> int #effects(all) {
   if px.count != 32 || presig1.count != ADS_PRESIG || presig2.count != ADS_PRESIG || out.count != 32 { return ADS_CAPACITY; }
   if !bt_same(presig1[0..<33], presig2[0..<33]) { return ADS_MISMATCH; }
   s1 := sc_load(presig1[33..<65]); s2 := sc_load(presig2[33..<65]);

@@ -56,32 +56,32 @@
     for mode:0..<2 {r:=ml_attention(s,cast(MlMode)mode,w[..],q[..],z[..],pe[..],history[0..<0],0,0.5,out[..],row[..],work[..],scores[..],false);#assert r.status==DsStatus.ok && out[0]==6;}
 }
 
-ml_shape :: (s:MlShape)->bool {
+ml_shape :: (s:MlShape)->bool #effects(all) {
     return s.heads>=1 && s.heads<=64 && s.nope>=1 && s.nope<=256 && s.rope>=2 && s.rope/2<=64 && s.rope%2==0 && s.value>=1 && s.value<=256 && s.latent>=1 && s.latent<=1024 && s.capacity>=1 && s.capacity<=163840;
 }
-ml_plan :: (s:MlShape,mode:MlMode)->MlPlan #export_c {
+ml_plan :: (s:MlShape,mode:MlMode)->MlPlan #export_c #effects(all) {
     if !ml_shape(s) {return MlPlan.{status=DsStatus.shape};}
     p:=MlPlan.{row=(ifx mode==MlMode.compressed then s.latent else s.heads*(s.nope+s.value))+s.rope,output=s.heads*s.value,scores=s.heads*s.capacity};
     p.begin[1]=p.row;p.begin[2]=p.begin[1]+s.heads*s.latent;p.begin[3]=p.begin[2]+s.heads*s.latent;p.begin[4]=p.begin[3]+p.output;p.floats=p.begin[4];return p;
 }
-ml_views :: (work:[]f32,p:MlPlan)->MlViews {return MlViews.{current=work[p.begin[0]..<p.begin[1]],absorbed=work[p.begin[1]..<p.begin[2]],context=work[p.begin[2]..<p.begin[3]],attended=work[p.begin[3]..<p.begin[4]]};}
-ml_weights :: (w:[]u8)->bool {for i:0..<w.count/2 {if !psionic_tensor_finite_bits(qm_bits(QmDtype.bf16,w,i)) {return false;}}return true;}
-ml_past :: (history:[]f32,current:[]f32,width:int,position:int,t:int,j:int)->f32 {
+ml_views :: (work:[]f32,p:MlPlan)->MlViews #effects(all) {return MlViews.{current=work[p.begin[0]..<p.begin[1]],absorbed=work[p.begin[1]..<p.begin[2]],context=work[p.begin[2]..<p.begin[3]],attended=work[p.begin[3]..<p.begin[4]]};}
+ml_weights :: (w:[]u8)->bool #effects(all) {for i:0..<w.count/2 {if !psionic_tensor_finite_bits(qm_bits(QmDtype.bf16,w,i)) {return false;}}return true;}
+ml_past :: (history:[]f32,current:[]f32,width:int,position:int,t:int,j:int)->f32 #effects(all) {
     if t==position {return current[j];}return history[t*width+j];
 }
-ml_current :: (s:MlShape,mode:MlMode,w:[]u8,z:[]f32,pe:[]f32,row:[]f32)->DsStatus {
+ml_current :: (s:MlShape,mode:MlMode,w:[]u8,z:[]f32,pe:[]f32,row:[]f32)->DsStatus #effects(all) {
     offset:=s.latent;
     if mode==MlMode.compressed {for i:0..<s.latent {row[i]=z[i];}}
     else {offset=s.heads*(s.nope+s.value);for i:0..<offset {acc:PsionicAccumulator;for j:0..<s.latent {acc=psionic_ops_accumulate(acc,f64(ds_bf(w,i*s.latent+j))*f64(z[j]));}v:=psionic_ops_total(acc);if !psionic_ops_fits_f32(v) {return DsStatus.arithmetic;}row[i]=f32(v);}}
     for i:0..<s.rope {row[offset+i]=pe[i];}return DsStatus.ok;
 }
-ml_absorb :: (s:MlShape,w:[]u8,q:[]f32,out:[]f32)->DsStatus {
+ml_absorb :: (s:MlShape,w:[]u8,q:[]f32,out:[]f32)->DsStatus #effects(all) {
     for head:0..<s.heads {for j:0..<s.latent {acc:PsionicAccumulator;
         for i:0..<s.nope {at:=(head*(s.nope+s.value)+i)*s.latent+j;acc=psionic_ops_accumulate(acc,f64(q[head*(s.nope+s.rope)+i])*f64(ds_bf(w,at)));}
         v:=psionic_ops_total(acc);if !psionic_ops_fits_f32(v) {return DsStatus.arithmetic;}out[head*s.latent+j]=f32(v);
     }}return DsStatus.ok;
 }
-ml_score :: (s:MlShape,mode:MlMode,q:[]f32,absorbed:[]f32,history:[]f32,current:[]f32,position:int,head:int,t:int)->f64 {
+ml_score :: (s:MlShape,mode:MlMode,q:[]f32,absorbed:[]f32,history:[]f32,current:[]f32,position:int,head:int,t:int)->f64 #effects(all) {
     width:=current.count;acc:PsionicAccumulator;
     if mode==MlMode.compressed {for j:0..<s.latent {v:=ml_past(history,current,width,position,t,j);acc=psionic_ops_accumulate(acc,f64(absorbed[head*s.latent+j])*f64(v));}}
     else {for j:0..<s.nope {v:=ml_past(history,current,width,position,t,head*(s.nope+s.value)+j);acc=psionic_ops_accumulate(acc,f64(q[head*(s.nope+s.rope)+j])*f64(v));}}
@@ -89,7 +89,7 @@ ml_score :: (s:MlShape,mode:MlMode,q:[]f32,absorbed:[]f32,history:[]f32,current:
     return psionic_ops_total(acc);
 }
 // book:begin attention
-ml_attention :: (s:MlShape,mode:MlMode,w:[]u8,q:[]f32,z:[]f32,key_rope:[]f32,history:[]f32,position:int,scale:f64,out:[]f32,row:[]f32,work:[]f32,scores:[]f64,overlap:bool)->MlResult #export_c {
+ml_attention :: (s:MlShape,mode:MlMode,w:[]u8,q:[]f32,z:[]f32,key_rope:[]f32,history:[]f32,position:int,scale:f64,out:[]f32,row:[]f32,work:[]f32,scores:[]f64,overlap:bool)->MlResult #export_c #effects(all) {
     p:=ml_plan(s,mode);if p.status!=DsStatus.ok {return MlResult.{status=p.status};}
     if position<0 || position>=s.capacity {return MlResult.{status=DsStatus.state};}
     if w.count!=2*s.heads*(s.nope+s.value)*s.latent {return MlResult.{status=DsStatus.weights};}
@@ -116,4 +116,4 @@ ml_attention :: (s:MlShape,mode:MlMode,w:[]u8,q:[]f32,z:[]f32,key_rope:[]f32,his
     for i:0..<p.output {out[i]=attended[i];}for i:0..<p.row {row[i]=current[i];}return MlResult.{written=p.output,row_written=p.row};
 }
 // book:end attention
-ml_scale :: (x:f64)->bool {return x>0 && x<=64;}
+ml_scale :: (x:f64)->bool #effects(all) {return x>0 && x<=64;}

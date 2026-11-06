@@ -3,7 +3,7 @@
 #load "depth-precision-effects.coax" as dn;
 #load "interpolation-basis-fixtures.coax";
 #load "../render/tests/qualification-files.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}spv:=args_at(a[..],0);output:=args_at(a[..],1);inputs:[1]RtqInputs;if !rtq_input_add(inputs[..],spv) {return 2;}bytes:[1048576]u8;n:=fs_read(spv,bytes[..]);if n<20 || n%4!=0 {return 2;}
   if dn.ngfx_open()!=0 {return 2;}good:=dn.ngfx_info(9)==1;blob:=dn.ngfx_blob(n);if blob<0 {good=false;}if good {for k:0..<n {good=good && dn.ngfx_blob_put(blob,k,cast(int)bytes[k])==0;}}
   uniform:=dn.ngfx_buffer(96);good=good && uniform>=0;record:[131072]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.interpolation-basis-native.v1");jo_key(o[..],"format");jo_str(o[..],"rgba32float");jo_key(o[..],"depth_format");jo_str(o[..],"depth32float");jo_key(o[..],"rows");jo_arr(o[..]);

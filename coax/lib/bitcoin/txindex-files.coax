@@ -47,7 +47,7 @@ TxiStorage :: struct { code: int; keep: int; cut: bool; }
   #assert !txi_frame_matches(BfFrame.{code=BF_TORN,n=81},81);
   #assert !txi_frame_matches(BfFrame.{n=82},81);
 }
-txi_frame_matches :: (frame: BfFrame, n: int) -> bool { return frame.code == BF_OK && frame.n == n; }
+txi_frame_matches :: (frame: BfFrame, n: int) -> bool #effects(all) { return frame.code == BF_OK && frame.n == n; }
 #test "tx index files: damaged receipts and cursor sequences refuse" {
   table: [4096] u8; batch: [4096] u8; c: [1] LcCursor; hash: [32] u8; file: [1] u8;
   c[0].n = kv_batch_new(batch[..]);
@@ -62,7 +62,7 @@ txi_frame_matches :: (frame: BfFrame, n: int) -> bool { return frame.code == BF_
   #assert txi_storage_vartime(table[..], c[0].used, 0, file[0..<0], 1, 0).code == TXI_CORRUPT;
 }
 
-txi_storage_vartime :: (table: [] u8, used: int, file_id: int, bytes: [] u8, magic: u32, xor_key: u64) -> TxiStorage #export_c {
+txi_storage_vartime :: (table: [] u8, used: int, file_id: int, bytes: [] u8, magic: u32, xor_key: u64) -> TxiStorage #export_c #effects(all) {
   meta := txi_context_vartime(table, used);
   if meta.code != LC_OK { return TxiStorage.{code=LC_CONTEXT}; }
   r := bf_recover_vartime(bytes, BF_BLOCK, magic, xor_key);

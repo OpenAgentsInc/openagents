@@ -65,7 +65,7 @@ CollisionDeclaration :: struct {
 
 // ---- implementation
 
-collision_profile_lookup :: (name: string) -> CollisionDeclaration {
+collision_profile_lookup :: (name: string) -> CollisionDeclaration #effects(all) {
   answer: CollisionDeclaration;
   // newland's WK_ROOM and its page's data-app.
   if name == "the-grid" || name == "newland" || name == "valley-lab" || name == "valleylab" || name == "valley-canyon" || name == "valleycanyon" { answer.renderer = CollisionRenderer.grid; }

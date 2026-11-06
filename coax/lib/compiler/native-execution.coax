@@ -262,8 +262,8 @@ EP_TEST_COMPILER :: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
  else if defect==14 {a[0].sha="invalid";}else if defect==15 {b[0].path="/other";b[0].observed_path="/other";}else {p.returncode=1;}
  #assert EP_emission(m,a[..],b[..],p,"test compiler",EP_TEST_SHA)==EV_INFRASTRUCTURE;
 }
-EP_native_profile :: (pointer_bytes:int,long_bytes:int,char_bits:int)->bool #export_c {return pointer_bytes==8 && long_bytes==8 && char_bits==8;}
-ep_sources_valid :: (sources:[]EP_Source)->bool {
+EP_native_profile :: (pointer_bytes:int,long_bytes:int,char_bits:int)->bool #export_c #effects(all) {return pointer_bytes==8 && long_bytes==8 && char_bits==8;}
+ep_sources_valid :: (sources:[]EP_Source)->bool #effects(all) {
  if !EP_table(sources.count,true) {return false;}
  for i:0..<sources.count {
   s:=sources[i];if !ep_text(s.path.count) || s.path!=s.observed_path || !ep_sha(s.sha) || s.sha!=s.observed_sha {return false;}
@@ -271,7 +271,7 @@ ep_sources_valid :: (sources:[]EP_Source)->bool {
  }
  return true;
 }
-EP_sources_match :: (baseline:[]EP_Source,emitted:[]EP_Source)->bool #export_c {
+EP_sources_match :: (baseline:[]EP_Source,emitted:[]EP_Source)->bool #export_c #effects(all) {
  if baseline.count!=emitted.count || !ep_sources_valid(baseline) || !ep_sources_valid(emitted) {return false;}
  for i:0..<baseline.count {
   found:bool=false;for j:0..<emitted.count {if baseline[i].path==emitted[j].path && baseline[i].sha==emitted[j].sha {found=true;}}
@@ -279,7 +279,7 @@ EP_sources_match :: (baseline:[]EP_Source,emitted:[]EP_Source)->bool #export_c {
  }
  return true;
 }
-EP_emission :: (meta:EP_Emission,baseline_sources:[]EP_Source,emitted_sources:[]EP_Source,process:EP_Process,expected_compiler_version:string,c_sha:string)->u32 #export_c {
+EP_emission :: (meta:EP_Emission,baseline_sources:[]EP_Source,emitted_sources:[]EP_Source,process:EP_Process,expected_compiler_version:string,c_sha:string)->u32 #export_c #effects(all) {
  p:=EP_phase(process);if p!=EV_PASSED {return p;}
  if meta.schema!=1 || meta.command!="checks-c" || meta.backend!="c11" || !ep_text(expected_compiler_version.count) || meta.compiler!=expected_compiler_version ||
   meta.runtime_arithmetic!="checked" || meta.interpreter_arithmetic!="checked" || meta.build_profile!="development" || meta.success!=1 || meta.exit_status!=0 ||
@@ -395,13 +395,13 @@ EP_emission :: (meta:EP_Emission,baseline_sources:[]EP_Source,emitted_sources:[]
  #assert EP_integrity("bad",EP_TEST_SHA)==EV_INFRASTRUCTURE;
  #assert EP_integrity(EP_TEST_SHA,"bad")==EV_INFRASTRUCTURE;
 }
-EP_integrity :: (expected_sha:string,observed_sha:string)->u32 #export_c {return ifx ep_sha(expected_sha) && expected_sha==observed_sha then EV_PASSED else EV_INFRASTRUCTURE;}
+EP_integrity :: (expected_sha:string,observed_sha:string)->u32 #export_c #effects(all) {return ifx ep_sha(expected_sha) && expected_sha==observed_sha then EV_PASSED else EV_INFRASTRUCTURE;}
 
 #test "requested evaluator steps refuse raised disabled and malformed caps before effects" {
  #assert EP_steps(1) && EP_steps(20000000);
  #assert !EP_steps(0) && !EP_steps(-1) && !EP_steps(20000001);
 }
-EP_steps :: (steps:int)->bool #export_c {return steps>0 && steps<=EP_STEPS;}
+EP_steps :: (steps:int)->bool #export_c #effects(all) {return steps>0 && steps<=EP_STEPS;}
 
 #test "original baseline profile binds source and descriptor observations" {
  m:=EP_Emission.{schema=1,command="test",backend="evaluator",compiler="test compiler",runtime_arithmetic="checked",interpreter_arithmetic="checked",build_profile="development",success=1};
@@ -438,7 +438,7 @@ EP_steps :: (steps:int)->bool #export_c {return steps>0 && steps<=EP_STEPS;}
  #assert EP_input_descriptors(a[0..<1],a[0..<1],false,true)==EV_INFRASTRUCTURE;
  #assert EP_input_descriptors(a[0..<1],a[0..<1],true,false)==EV_INFRASTRUCTURE;
 }
-EP_baseline_inputs :: (meta:EP_Emission,evidence_sources:[]EP_Source,profile_sources:[]EP_Source,descriptors:[]EP_Source,sources_observed:bool,descriptors_observed:bool,process:EP_Process,expected_compiler:string)->u32 #export_c {
+EP_baseline_inputs :: (meta:EP_Emission,evidence_sources:[]EP_Source,profile_sources:[]EP_Source,descriptors:[]EP_Source,sources_observed:bool,descriptors_observed:bool,process:EP_Process,expected_compiler:string)->u32 #export_c #effects(all) {
  p:=EP_phase(process);if p!=EV_PASSED {return p;}
  if meta.schema!=1 || meta.command!="test" || meta.backend!="evaluator" || !ep_text(expected_compiler.count) || meta.compiler!=expected_compiler ||
   meta.runtime_arithmetic!="checked" || meta.interpreter_arithmetic!="checked" || meta.build_profile!="development" || meta.success!=1 || meta.exit_status!=0 ||
@@ -446,47 +446,47 @@ EP_baseline_inputs :: (meta:EP_Emission,evidence_sources:[]EP_Source,profile_sou
  if descriptors.count>0 && !ep_sources_valid(descriptors) {return EV_INFRASTRUCTURE;}
  return EV_PASSED;
 }
-EP_input_descriptors :: (baseline:[]EP_Source,emitted:[]EP_Source,baseline_observed:bool,emitted_observed:bool)->u32 #export_c {
+EP_input_descriptors :: (baseline:[]EP_Source,emitted:[]EP_Source,baseline_observed:bool,emitted_observed:bool)->u32 #export_c #effects(all) {
  if !baseline_observed || !emitted_observed {return EV_INFRASTRUCTURE;}
  if baseline.count==0 && emitted.count==0 {return EV_PASSED;}
  if !EP_sources_match(baseline,emitted) {return EV_INFRASTRUCTURE;}return EV_PASSED;
 }
 
 // Checked policy over supplied observations; no filesystem, process, JSON or pointer effects.
-EP_frame_limit :: ()->int #export_c {return EP_FRAME_LIMIT;}
-EP_limits :: ()->EP_Limits #export_c {
+EP_frame_limit :: ()->int #export_c #effects(all) {return EP_FRAME_LIMIT;}
+EP_limits :: ()->EP_Limits #export_c #effects(all) {
  return EP_Limits.{checks=EP_CHECK_LIMIT,text_bytes=EP_TEXT_LIMIT,frame_bytes=EP_FRAME_LIMIT,
   metadata_bytes=EP_METADATA_LIMIT,process_output_bytes=EP_PROCESS_LIMIT,baseline_output_bytes=EP_METADATA_LIMIT,
   compile_ms=120000,case_ms=EP_CASE_MS,metadata_ms=5000,baseline_ms=120000,total_ms=EP_TOTAL_MS,steps=EP_STEPS};
 }
-EP_budget :: (case_ms:int,output_bytes:int,total_ms:int)->bool #export_c {
+EP_budget :: (case_ms:int,output_bytes:int,total_ms:int)->bool #export_c #effects(all) {
  return case_ms>0 && case_ms<=EP_CASE_MS && output_bytes>0 && output_bytes<=EP_PROCESS_LIMIT && total_ms>0 && total_ms<=EP_TOTAL_MS;
 }
-EP_mode :: (text:string)->u32 #export_c {if text=="metadata" {return 1;}if text=="one" {return 2;}return 0;}
-EP_ordinal :: (text:string)->int #export_c {
+EP_mode :: (text:string)->u32 #export_c #effects(all) {if text=="metadata" {return 1;}if text=="one" {return 2;}return 0;}
+EP_ordinal :: (text:string)->int #export_c #effects(all) {
  if text.count<1 {return -1;}
  if text[0]==48 && text.count!=1 {return -1;}
  value:int=0;for i:0..<text.count {if text[i]<48 || text[i]>57 {return -1;}value=value*10+cast(int)text[i]-48;if value>=EP_CHECK_LIMIT {return -1;}}
  return value;
 }
-EP_request :: (argc:int,mode:string,ordinal:string)->EP_Request #export_c {
+EP_request :: (argc:int,mode:string,ordinal:string)->EP_Request #export_c #effects(all) {
  m:=EP_mode(mode);
  if m==1 && argc==2 && ordinal.count==0 {return EP_Request.{mode=1};}
  if m==2 && argc==3 {n:=EP_ordinal(ordinal);if n<0 {return EP_Request.{reason=2};}return EP_Request.{mode=2,ordinal=n};}
  return EP_Request.{reason=1};
 }
-EP_table :: (count:int,present:bool)->bool #export_c {return present && count>=1 && count<=EP_CHECK_LIMIT;}
-EP_select :: (count:int,ordinal:int)->bool #export_c {return EP_table(count,true) && ordinal>=0 && ordinal<count;}
-EP_row_valid :: (count:int,ordinal:int,index:int,line:int,column:int,name_count:int,source_count:int,run_present:bool,name_present:bool,source_present:bool)->bool #export_c {
+EP_table :: (count:int,present:bool)->bool #export_c #effects(all) {return present && count>=1 && count<=EP_CHECK_LIMIT;}
+EP_select :: (count:int,ordinal:int)->bool #export_c #effects(all) {return EP_table(count,true) && ordinal>=0 && ordinal<count;}
+EP_row_valid :: (count:int,ordinal:int,index:int,line:int,column:int,name_count:int,source_count:int,run_present:bool,name_present:bool,source_present:bool)->bool #export_c #effects(all) {
  return EP_select(count,ordinal) && index>=0 && index<EP_CHECK_LIMIT && ep_location(line) && ep_location(column) &&
   ep_bytes(name_count) && ep_text(source_count) && run_present && (name_present || name_count==0) && source_present;
 }
-EP_encode_header :: (count:int,out:[]u8)->int #export_c {
+EP_encode_header :: (count:int,out:[]u8)->int #export_c #effects(all) {
  if !EP_table(count,true) || out.count<20 {return -1;}
  for i:0..<8 {out[i]=EP_MAGIC[i];}
  ep_put(out,8,1);ep_put(out,12,20);ep_put(out,16,count);return 20;
 }
-EP_encode_row :: (kind:u32,ordinal:int,index:int,name:string,source:string,line:int,column:int,out:[]u8)->int #export_c {
+EP_encode_row :: (kind:u32,ordinal:int,index:int,name:string,source:string,line:int,column:int,out:[]u8)->int #export_c #effects(all) {
  if kind<2 || kind>4 || !EP_row_valid(EP_CHECK_LIMIT,ordinal,index,line,column,name.count,source.count,true,true,true) {return -1;}
  total:=40+name.count+source.count;if out.count<total {return -1;}
  for i:0..<8 {out[i]=EP_MAGIC[i];}
@@ -496,9 +496,9 @@ EP_encode_row :: (kind:u32,ordinal:int,index:int,name:string,source:string,line:
  for i:0..<source.count {out[40+name.count+i]=source[i];}
  return total;
 }
-ep_put :: (out:[]u8,at:int,value:int) {n:=value;for i:0..<4 {out[at+i]=cast(u8)(n%256);n/=256;}}
-ep_get :: (data:[]u8,at:int)->int {value:int=0;factor:int=1;for i:0..<4 {value+=cast(int)data[at+i]*factor;factor*=256;}return value;}
-EP_decode :: (data:[]u8,offset:int)->EP_Frame #export_c {
+ep_put :: (out:[]u8,at:int,value:int) #effects(all) {n:=value;for i:0..<4 {out[at+i]=cast(u8)(n%256);n/=256;}}
+ep_get :: (data:[]u8,at:int)->int #effects(all) {value:int=0;factor:int=1;for i:0..<4 {value+=cast(int)data[at+i]*factor;factor*=256;}return value;}
+EP_decode :: (data:[]u8,offset:int)->EP_Frame #export_c #effects(all) {
  if offset<0 || data.count-offset<20 {return EP_Frame.{};}
  for i:0..<8 {if data[offset+i]!=EP_MAGIC[i] {return EP_Frame.{};}}
  kind:=ep_get(data,offset+8);total:=ep_get(data,offset+12);
@@ -515,22 +515,22 @@ EP_decode :: (data:[]u8,offset:int)->EP_Frame #export_c {
  return EP_Frame.{ok=true,kind=cast(u32)kind,next=offset+total,ordinal=ordinal,declaration_index=index,line=line,column=column,
   name_offset=offset+40,name_count=names,source_offset=offset+40+names,source_count=sources};
 }
-ep_transport :: (p:EP_Process)->u32 {
+ep_transport :: (p:EP_Process)->u32 #effects(all) {
  if p.timeout || p.output_limit {return EV_INCONCLUSIVE;}
  if !p.launched || !p.finished || p.read_errno!=0 || !p.stdout_eof || !p.stderr_eof {return EV_INFRASTRUCTURE;}
  return EV_PASSED;
 }
-EP_phase :: (process:EP_Process)->u32 #export_c {
+EP_phase :: (process:EP_Process)->u32 #export_c #effects(all) {
  t:=ep_transport(process);if t!=EV_PASSED {return t;}if process.returncode!=0 {return EV_INFRASTRUCTURE;}return EV_PASSED;
 }
-ep_span :: (data:[]u8,offset:int,count:int,expected:string)->bool {
+ep_span :: (data:[]u8,offset:int,count:int,expected:string)->bool #effects(all) {
  if count!=expected.count {return false;}for i:0..<count {if data[offset+i]!=expected[i] {return false;}}return true;
 }
-ep_identity :: (expected:EP_Identity,frame:EP_Frame,data:[]u8)->bool {
+ep_identity :: (expected:EP_Identity,frame:EP_Frame,data:[]u8)->bool #effects(all) {
  return frame.ordinal==expected.ordinal && frame.declaration_index==expected.declaration_index && frame.line==expected.line && frame.column==expected.column &&
   ep_span(data,frame.name_offset,frame.name_count,expected.name) && ep_span(data,frame.source_offset,frame.source_count,expected.source);
 }
-EP_metadata :: (expected:[]EP_Identity,data:[]u8,process:EP_Process)->u32 #export_c {
+EP_metadata :: (expected:[]EP_Identity,data:[]u8,process:EP_Process)->u32 #export_c #effects(all) {
  p:=EP_phase(process);if p!=EV_PASSED {return p;}
  if expected.count==0 {return EV_INFRASTRUCTURE;}
  h:=EP_decode(data,0);if h.count!=expected.count {return EV_INFRASTRUCTURE;}
@@ -541,7 +541,7 @@ EP_metadata :: (expected:[]EP_Identity,data:[]u8,process:EP_Process)->u32 #expor
  }
  if offset!=data.count {return EV_INFRASTRUCTURE;}return EV_PASSED;
 }
-EP_execution :: (expected:EP_Identity,data:[]u8,process:EP_Process)->u32 #export_c {
+EP_execution :: (expected:EP_Identity,data:[]u8,process:EP_Process)->u32 #export_c #effects(all) {
  p:=ep_transport(process);if p!=EV_PASSED {return p;}
  begin:=EP_decode(data,0);if begin.kind!=3 || !ep_identity(expected,begin,data) {return EV_INFRASTRUCTURE;}
  // A signal after one whole BEGIN is a raw counterexample, not a typed trap.
@@ -550,18 +550,18 @@ EP_execution :: (expected:EP_Identity,data:[]u8,process:EP_Process)->u32 #export
  if end.kind!=4 || !ep_identity(expected,end,data) || end.next!=data.count || process.returncode!=0 {return EV_INFRASTRUCTURE;}
  return EV_PASSED;
 }
-EP_outcome :: (text:string)->u32 #export_c {
+EP_outcome :: (text:string)->u32 #export_c #effects(all) {
  if text=="passed" {return EV_PASSED;}if text=="counterexample" {return EV_COUNTEREXAMPLE;}
  if text=="inconclusive" {return EV_INCONCLUSIVE;}if text=="infrastructure-error" {return EV_INFRASTRUCTURE;}
  if text=="not-checked" {return EV_NOT_CHECKED;}return 5;
 }
-ep_sha :: (text:string)->bool {
+ep_sha :: (text:string)->bool #effects(all) {
  if text.count!=64 {return false;}
  for i:0..<text.count {b:=text[i];if !((b>=48 && b<=57) || (b>=97 && b<=102)) {return false;}}
  return true;
 }
-ep_refuse :: (reason:u32)->EP_BaseResult {return EP_BaseResult.{outcome=EV_INFRASTRUCTURE,reason=reason};}
-EP_baseline :: (base:EP_Base,sources:[]EP_Source,claims:[]EP_Claim,process:EP_Process,expected_input:string,expected_input_sha:string,expected_compiler_sha:string,expected_compiler_version:string,requested_steps:int)->EP_BaseResult #export_c {
+ep_refuse :: (reason:u32)->EP_BaseResult #effects(all) {return EP_BaseResult.{outcome=EV_INFRASTRUCTURE,reason=reason};}
+EP_baseline :: (base:EP_Base,sources:[]EP_Source,claims:[]EP_Claim,process:EP_Process,expected_input:string,expected_input_sha:string,expected_compiler_sha:string,expected_compiler_version:string,requested_steps:int)->EP_BaseResult #export_c #effects(all) {
  t:=ep_transport(process);if t!=EV_PASSED {return EP_BaseResult.{outcome=t,reason=1};}
  if base.shape!=255 || base.schema!="coax.evidence.v1" || base.command!="test" {return ep_refuse(2);}
  if !ep_text(expected_input.count) || !ep_text(expected_compiler_version.count) ||
@@ -597,7 +597,7 @@ EP_baseline :: (base:EP_Base,sources:[]EP_Source,claims:[]EP_Claim,process:EP_Pr
  if verdict==EV_PASSED && !authored {return EP_BaseResult.{outcome=EV_NOT_CHECKED,reason=11};}
  return EP_BaseResult.{valid=true,outcome=verdict};
 }
-EP_plan :: (claims:[]EP_Claim,only:string,has_only:bool,mask:[]u8)->EP_Plan #export_c {
+EP_plan :: (claims:[]EP_Claim,only:string,has_only:bool,mask:[]u8)->EP_Plan #export_c #effects(all) {
  if !ep_claim_count(claims.count) || mask.count!=claims.count || !ep_bytes(only.count) || (!has_only && only.count!=0) {return EP_Plan.{outcome=EV_INFRASTRUCTURE};}
  for i:0..<mask.count {mask[i]=0;}
  count:int=0;quantified:bool=false;
@@ -612,7 +612,7 @@ EP_plan :: (claims:[]EP_Claim,only:string,has_only:bool,mask:[]u8)->EP_Plan #exp
  if count==0 || quantified {return EP_Plan.{outcome=EV_NOT_CHECKED,count=count};}
  return EP_Plan.{outcome=EV_PASSED,count=count};
 }
-ep_masks :: (claims:[]EP_Claim,mask:[]u8)->bool {
+ep_masks :: (claims:[]EP_Claim,mask:[]u8)->bool #effects(all) {
  if !ep_claim_count(claims.count) || claims.count!=mask.count {return false;}
  for i:0..<claims.count {
   c:=claims[i];if c.kind=="#authority" {if mask[i]!=0 {return false;}}
@@ -622,7 +622,7 @@ ep_masks :: (claims:[]EP_Claim,mask:[]u8)->bool {
  }
  return true;
 }
-EP_selected :: (claims:[]EP_Claim,mask:[]u8,ordinal:int)->EP_Identity #export_c {
+EP_selected :: (claims:[]EP_Claim,mask:[]u8,ordinal:int)->EP_Identity #export_c #effects(all) {
  if !ep_masks(claims,mask) || !EP_select(EP_CHECK_LIMIT,ordinal) {return EP_Identity.{ordinal= -1};}
  declaration:int=0;selected:int=0;
  for i:0..<claims.count {
@@ -635,13 +635,13 @@ EP_selected :: (claims:[]EP_Claim,mask:[]u8,ordinal:int)->EP_Identity #export_c 
  }
  return EP_Identity.{ordinal= -1};
 }
-ep_bytes :: (count:int)->bool {return count>=0 && count<=EP_TEXT_LIMIT;}
-ep_text :: (count:int)->bool {return count>0 && count<=EP_TEXT_LIMIT;}
-ep_location :: (value:int)->bool {return value>0 && value<=4294967295;}
-ep_claim_count :: (count:int)->bool {return count<=EP_CHECK_LIMIT+1;}
+ep_bytes :: (count:int)->bool #effects(all) {return count>=0 && count<=EP_TEXT_LIMIT;}
+ep_text :: (count:int)->bool #effects(all) {return count>0 && count<=EP_TEXT_LIMIT;}
+ep_location :: (value:int)->bool #effects(all) {return value>0 && value<=4294967295;}
+ep_claim_count :: (count:int)->bool #effects(all) {return count<=EP_CHECK_LIMIT+1;}
 
-ep_test_identity :: ()->EP_Identity {return EP_Identity.{ordinal=0,declaration_index=7,line=11,column=3,name="alpha\0omegaλ",source="/a.coax"};}
-ep_test_process :: ()->EP_Process {return EP_Process.{launched=true,finished=true,stdout_eof=true,stderr_eof=true};}
-ep_test_source :: ()->EP_Source {return EP_Source.{path="/a.coax",observed_path="/a.coax",sha=EP_TEST_SHA,observed_sha=EP_TEST_SHA};}
-ep_test_claim :: ()->EP_Claim {return EP_Claim.{kind="#test",name="alpha\0omegaλ",source="/a.coax",outcome="passed",name_string=true,line=11,column=3,cases=1,steps=8};}
-ep_test_base :: ()->EP_Base {return EP_Base.{shape=255,schema="coax.evidence.v1",command="test",input="/a.coax",compiler_sha=EP_TEST_COMPILER,compiler_version="test compiler",target="coax-evaluator",arithmetic="checked",runtime_arithmetic="checked",front_end="ok",verdict="passed",library=1,only_null=true,check_steps=20000000,slots=33554432,containers=2097152,run_steps=100000};}
+ep_test_identity :: ()->EP_Identity #effects(all) {return EP_Identity.{ordinal=0,declaration_index=7,line=11,column=3,name="alpha\0omegaλ",source="/a.coax"};}
+ep_test_process :: ()->EP_Process #effects(all) {return EP_Process.{launched=true,finished=true,stdout_eof=true,stderr_eof=true};}
+ep_test_source :: ()->EP_Source #effects(all) {return EP_Source.{path="/a.coax",observed_path="/a.coax",sha=EP_TEST_SHA,observed_sha=EP_TEST_SHA};}
+ep_test_claim :: ()->EP_Claim #effects(all) {return EP_Claim.{kind="#test",name="alpha\0omegaλ",source="/a.coax",outcome="passed",name_string=true,line=11,column=3,cases=1,steps=8};}
+ep_test_base :: ()->EP_Base #effects(all) {return EP_Base.{shape=255,schema="coax.evidence.v1",command="test",input="/a.coax",compiler_sha=EP_TEST_COMPILER,compiler_version="test compiler",target="coax-evaluator",arithmetic="checked",runtime_arithmetic="checked",front_end="ok",verdict="passed",library=1,only_null=true,check_steps=20000000,slots=33554432,containers=2097152,run_steps=100000};}

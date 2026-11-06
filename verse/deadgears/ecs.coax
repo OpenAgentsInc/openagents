@@ -3,8 +3,8 @@
 // aethyr-demo's src/ecs; the store is now entity.coax's EntityStore, and
 // this file keeps only what Dead Gears adds to it.
 //
-// Entities are entity.coax's: a handle is a 20-bit slot and a 12-bit
-// generation, and every entity has an EntityId. Spawns and despawns are
+// Entities use Handle(Entity), retaining the engine's 20-bit slot and
+// 12-bit generation limits; every entity also has a stable EntityId. Spawns and despawns are
 // commands that apply at the step's flush (ecs_flush, which ends in
 // entity_flush): a spawned entity's slot is the rules' to fill at once,
 // and it takes part from the next step; a despawned one stays visible
@@ -40,7 +40,7 @@ Entities :: struct {
   dropping: [] int;   // component bits to clear at the next flush
 }
 
-ecs_index :: (e: int) -> int { return entity_slot(e); }
+ecs_index :: (e: Handle(Entity)) -> int { return entity_slot(e); }
 ecs_capacity :: (w: Entities) -> int { return entity_capacity(w.s); }
 ecs_high :: (w: Entities) -> int { return entity_high(w.s); }
 ecs_count :: (w: Entities) -> int { return entity_count(w.s); }
@@ -50,17 +50,17 @@ ecs_clear :: (w: Entities) {
   for i: 0..<w.mask.count { w.mask[i] = 0; w.dropping[i] = 0; }
 }
 
-ecs_alive :: (w: Entities, e: int) -> bool { return entity_alive(w.s, e); }
+ecs_alive :: (w: Entities, e: Handle(Entity)) -> bool { return entity_alive(w.s, e); }
 
 // e is live, or a spawn waiting for the flush: its slot is the rules' to fill.
-ecs_owned :: (w: Entities, e: int) -> bool { return entity_alive(w.s, e) || entity_waiting(w.s, e); }
+ecs_owned :: (w: Entities, e: Handle(Entity)) -> bool { return entity_alive(w.s, e) || entity_waiting(w.s, e); }
 
 // The handle of the live entity in slot i, or ECS_NONE.
-ecs_at :: (w: Entities, i: int) -> int { return entity_at(w.s, i); }
+ecs_at :: (w: Entities, i: int) -> Handle(Entity) { return entity_at(w.s, i); }
 
 // A new entity with no components, live from the next flush, or ECS_NONE
 // when every slot is in use (live, waiting or retired).
-ecs_spawn :: (w: Entities) -> int {
+ecs_spawn :: (w: Entities) -> Handle(Entity) {
   made := entity_spawn(w.s);
   if made.handle == ENTITY_NONE { return ECS_NONE; }
   i := entity_slot(made.handle);
@@ -70,8 +70,8 @@ ecs_spawn :: (w: Entities) -> int {
 
 // Despawned at the next ecs_flush; until then it is alive and visible. A
 // waiting spawn despawned is cancelled: it never joins.
-ecs_despawn :: (w: Entities, e: int) { entity_despawn(w.s, e); }
-ecs_pending_destroy :: (w: Entities, e: int) -> bool { return entity_doomed(w.s, e); }
+ecs_despawn :: (w: Entities, e: Handle(Entity)) { entity_despawn(w.s, e); }
+ecs_pending_destroy :: (w: Entities, e: Handle(Entity)) -> bool { return entity_doomed(w.s, e); }
 
 // The step's end: clears the bits of what is despawning and what was
 // dropped, in slot order, then entity_flush applies the despawns and the
@@ -89,10 +89,10 @@ bits_not :: (x: int) -> int { return -x - 1; }
 
 // A live entity's bits. A waiting spawn's bits are set but it has none yet
 // as far as the rules see; ecs_waiting finds it.
-ecs_has :: (w: Entities, e: int, bits: int) -> bool { return ecs_alive(w, e) && (w.mask[ecs_index(e)] & bits) == bits; }
-ecs_add :: (w: Entities, e: int, bits: int) { if ecs_owned(w, e) { i := ecs_index(e); w.mask[i] = w.mask[i] | bits; w.dropping[i] = w.dropping[i] & bits_not(bits); } }
-ecs_remove :: (w: Entities, e: int, bits: int) { if ecs_owned(w, e) { i := ecs_index(e); w.mask[i] = w.mask[i] & bits_not(bits); } }
-ecs_remove_later :: (w: Entities, e: int, bits: int) { if ecs_alive(w, e) { i := ecs_index(e); w.dropping[i] = w.dropping[i] | bits; } }
+ecs_has :: (w: Entities, e: Handle(Entity), bits: int) -> bool { return ecs_alive(w, e) && (w.mask[ecs_index(e)] & bits) == bits; }
+ecs_add :: (w: Entities, e: Handle(Entity), bits: int) { if ecs_owned(w, e) { i := ecs_index(e); w.mask[i] = w.mask[i] | bits; w.dropping[i] = w.dropping[i] & bits_not(bits); } }
+ecs_remove :: (w: Entities, e: Handle(Entity), bits: int) { if ecs_owned(w, e) { i := ecs_index(e); w.mask[i] = w.mask[i] & bits_not(bits); } }
+ecs_remove_later :: (w: Entities, e: Handle(Entity), bits: int) { if ecs_alive(w, e) { i := ecs_index(e); w.dropping[i] = w.dropping[i] | bits; } }
 
 // Slot i is live, has every bit of all and none of none.
 ecs_match :: (w: Entities, i: int, all: int, none: int) -> bool {
@@ -110,7 +110,7 @@ ecs_count_of :: (w: Entities, all: int) -> int {
 }
 
 // The first (lowest slot) live entity with every bit of all, or ECS_NONE.
-ecs_first :: (w: Entities, all: int) -> int {
+ecs_first :: (w: Entities, all: int) -> Handle(Entity) {
   for i: 0..<entity_high(w.s) { if ecs_match(w, i, all, 0) { return entity_at(w.s, i); } }
   return ECS_NONE;
 }
@@ -249,13 +249,13 @@ T_POS :: 1; T_VEL :: 2; T_TAG :: 4; T_HP :: 8;
   #assert a != b && !ecs_alive(w, a) && ecs_owned(w, a) && ecs_count(w) == 0;
   ecs_flush(w);
   #assert ecs_alive(w, a) && ecs_alive(w, b) && ecs_count(w) == 2;
-  #assert ecs_index(a) == 0 && ecs_index(b) == 1 && entity_generation(a) == 0;
+  #assert ecs_index(a) == 0 && ecs_index(b) == 1 && entity_generation(a).value == 0;
   ecs_add(w, a, T_POS);
   // was ecs_destroy_now: a despawn takes effect at the flush
   ecs_despawn(w, a); ecs_flush(w);
   #assert !ecs_alive(w, a) && !ecs_owned(w, a) && ecs_count(w) == 1;
   c := ecs_spawn(w);
-  #assert ecs_index(c) == ecs_index(a) && entity_generation(c) == entity_generation(a) + 1;
+  #assert ecs_index(c) == ecs_index(a) && entity_generation(c).value == add_sat(entity_generation(a).value, 1);
   ecs_add(w, c, T_POS);
   ecs_flush(w);   // next-step rule: c has its bits once it is live
   #assert ecs_has(w, c, T_POS) && !ecs_has(w, a, T_POS);
@@ -272,8 +272,8 @@ T_POS :: 1; T_VEL :: 2; T_TAG :: 4; T_HP :: 8;
   // The old store wrapped slot 0's generation back to 0 here (index 0, generation 0, high 1), so
   // the first handle named the slot's 4097th owner. entity.coax retires the slot at its last
   // generation instead: the 4096th despawn retires slot 0 and the next owner takes slot 1.
-  #assert ecs_index(e) == 1 && entity_generation(e) == 0 && ecs_alive(w, e) && ecs_high(w) == 2;
-  #assert !ecs_alive(w, entity_handle(0, 0)) && !ecs_alive(w, entity_handle(0, ENTITY_GEN_MASK)) && w.s.n[ENTITY_RETIRED] == 1;
+  #assert ecs_index(e) == 1 && entity_generation(e).value == 0 && ecs_alive(w, e) && ecs_high(w) == 2;
+  #assert !ecs_alive(w, entity_handle(0, EntityGeneration.{value=0})) && !ecs_alive(w, entity_handle(0, EntityGeneration.{value=ENTITY_GEN_MASK})) && w.s.n[ENTITY_RETIRED] == 1;
 }
 
 #test "full: spawn says so instead of overwriting" {
@@ -287,7 +287,7 @@ T_POS :: 1; T_VEL :: 2; T_TAG :: 4; T_HP :: 8;
 
 #test "a destroy while walking waits for the flush" {
   st: [1] TestStore; w := test_world(st[..]);
-  es: [10] int;
+  es: [10] Handle(Entity);
   for k: 0..<10 { es[k] = ecs_spawn(w); ecs_add(w, es[k], T_HP); st[0].hp[ecs_index(es[k])] = f32(k); }
   ecs_flush(w);   // next-step rule: they join at the flush
   visited := 0;
@@ -321,7 +321,7 @@ T_POS :: 1; T_VEL :: 2; T_TAG :: 4; T_HP :: 8;
   }
   #assert seen == both && noVel == only && plain == untagged && ordered;
   #assert ecs_count_of(w, T_VEL) == both && ecs_count_of(w, T_POS) == 60;
-  #assert ecs_count_of(w, T_HP) == 0 && ecs_first(w, T_HP) == ECS_NONE && ecs_first(w, T_VEL) == entity_handle(0, 0);
+  #assert ecs_count_of(w, T_HP) == 0 && ecs_first(w, T_HP) == ECS_NONE && ecs_first(w, T_VEL) == entity_handle(0, EntityGeneration.{value=0});
 }
 
 #test "a removal later waits for the flush; adding again cancels it" {
@@ -370,7 +370,7 @@ T_POS :: 1; T_VEL :: 2; T_TAG :: 4; T_HP :: 8;
   #assert ecs_owned(w, e) && !ecs_alive(w, e) && !ecs_has(w, e, T_HP) && st[0].mask[0] == T_HP;
   #assert ecs_waiting(w, 0, T_HP) && !ecs_waiting(w, 0, T_POS) && !ecs_match(w, 0, T_HP, 0) && ecs_first(w, T_HP) == ECS_NONE;
   ecs_flush(w);
-  #assert ecs_has(w, e, T_HP) && ecs_first(w, T_HP) == e && !ecs_waiting(w, 0, T_HP) && entity_id(w.s, e) == 1;
+  #assert ecs_has(w, e, T_HP) && ecs_first(w, T_HP) == e && !ecs_waiting(w, 0, T_HP) && entity_id(w.s, e).value == 1;
   ecs_remove_later(w, e, T_TAG);
   ecs_despawn(w, e);
   #assert ecs_has(w, e, T_HP) && ecs_pending_destroy(w, e);   // visible until the flush
@@ -380,9 +380,9 @@ T_POS :: 1; T_VEL :: 2; T_TAG :: 4; T_HP :: 8;
   st[0].mask[0] = T_VEL; st[0].dropping[0] = T_VEL;           // what a slot's memory might hold
   f := ecs_spawn(w);
   #assert ecs_index(f) == 0 && st[0].mask[0] == 0 && st[0].dropping[0] == 0 && ecs_owned(w, f) && !ecs_owned(w, e);
-  #assert !ecs_owned(w, entity_handle(1, 0)) && ecs_capacity(w) == TEST_CAP;
+  #assert !ecs_owned(w, entity_handle(1, EntityGeneration.{value=0})) && ecs_capacity(w) == TEST_CAP;
   ecs_flush(w);
-  #assert entity_id(w.s, f) == 2 && !ecs_has(w, f, T_VEL);
+  #assert entity_id(w.s, f).value == 2 && !ecs_has(w, f, T_VEL);
   st[0].mask[0] = T_HP; st[0].dropping[0] = T_HP; st[0].mask[TEST_CAP - 1] = T_HP; st[0].dropping[TEST_CAP - 1] = T_TAG;
   ecs_clear(w);
   #assert ecs_count(w) == 0 && ecs_high(w) == 0 && st[0].mask[0] == 0 && st[0].dropping[0] == 0;
@@ -399,7 +399,7 @@ T_POS :: 1; T_VEL :: 2; T_TAG :: 4; T_HP :: 8;
   #assert ecs_alive(w, keep) && !ecs_alive(w, gone) && !ecs_owned(w, gone) && ecs_count(w) == 1 && ecs_count_of(w, T_HP) == 1;
   #assert st[0].mask[1] == 0 && st[0].dropping[1] == 0 && st[0].mask[0] == T_HP;
   next := ecs_spawn(w);
-  #assert ecs_index(next) == 1 && entity_generation(next) == 1 && st[0].mask[1] == 0;
+  #assert ecs_index(next) == 1 && entity_generation(next).value == 1 && st[0].mask[1] == 0;
 }
 
 #test "the clock: three fixed steps in 0.05 s, half-steps add up, a stall is capped" {

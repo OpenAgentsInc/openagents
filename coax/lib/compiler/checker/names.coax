@@ -2,8 +2,8 @@
 // modules, visibility and qualified binding. A part of the checker:
 // lib/compiler/checker.coax loads it (#12646).
 #authority;
-CK_intrinsic :: (name:string)->u32 #export_c {names:=[10] string.["sin","cos","tan","exp","log","sqrt","floor","abs","pow","fma"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
-CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[19] string.["bytes_overlap","f32_from_bits","f64_from_bits","f32_bits","f64_bits","value_barrier","add_wrap","sub_wrap","mul_wrap","rotl","rotr","mul_wide","secure_zero","add_checked","sub_checked","mul_checked","add_sat","sub_sat","mul_sat"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
+CK_intrinsic :: (name:string)->u32 #export_c #effects(all) {names:=[10] string.["sin","cos","tan","exp","log","sqrt","floor","abs","pow","fma"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
+CK_byte_intrinsic :: (name:string)->u32 #export_c #effects(all) {names:=[19] string.["bytes_overlap","f32_from_bits","f64_from_bits","f32_bits","f64_bits","value_barrier","add_wrap","sub_wrap","mul_wrap","rotl","rotr","mul_wide","secure_zero","add_checked","sub_checked","mul_checked","add_sat","sub_sat","mul_sat"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
 #forall "secure zero requires one numeric borrowed view and returns no value" variant:0..<10 {
  nodes:[8]CK_Node;types:[20]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=20}];
  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
@@ -258,25 +258,25 @@ CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[19] string.["bytes_ov
  if variant==1 || variant==2 || variant==3 || variant==8 || variant==11 {#assert errors[0].code=="E0378" && errors[0].message=="mul_wide takes two u64 operands";}
  if variant==10 {#assert errors[0].code=="E0378" && errors[0].message=="mul_wide result type is unavailable";}
 }
-CK_c_keyword :: (name:string)->bool #export_c {
+CK_c_keyword :: (name:string)->bool #export_c #effects(all) {
   names:=[76] string.["auto","break","case","char","const","continue","default","do","double","else","enum","extern","float","for","goto","if","inline","int","long","register","restrict","return","short","signed","sizeof","static","struct","switch","typedef","union","unsigned","void","volatile","while","bool","true","false","class","new","delete","this","template","namespace","public","private","protected","operator","virtual","friend","typename","using","nullptr","explicit","mutable","throw","try","catch","asm","export","module","requires","concept","alignas","alignof","noexcept","constexpr","decltype","static_assert","thread_local","errno","NULL","_Bool","_Alignof","_Atomic","_Complex","_Imaginary"];
   for x:names {if x==name {return true;}}return name.count>0 && name[0]==95;
 }
-CK_resource :: (c:CK_Context,loc:CK_Loc) {
+CK_resource :: (c:CK_Context,loc:CK_Loc) #effects(all) {
   if c.state[0].fatal {return;}c.state[0].fatal=true;
   if c.state[0].error_count<c.errors.count {c.errors[c.state[0].error_count]=CK_Error.{loc=loc,code="E0381",message="type checker storage or nesting budget exceeded"};c.state[0].error_count+=1;}
 }
-CK_text :: (c:CK_Context,parts:[] string)->string {
+CK_text :: (c:CK_Context,parts:[] string)->string #effects(all) {
   length:=0;for part:parts {length+=part.count;}start:=c.state[0].byte_count;
   if length>c.bytes.count-start {CK_resource(c,CK_Loc.{});return "";}
   for part:parts {for ch:part {c.bytes[c.state[0].byte_count]=ch;c.state[0].byte_count+=1;}}
   return cast(string)c.bytes[start..<start+length];
 }
-CK_join2 :: (c:CK_Context,a:string,b:string)->string {parts:=[2] string.[a,b];return CK_text(c,parts[..]);}
-CK_join3 :: (c:CK_Context,a:string,b:string,d:string)->string {parts:=[3] string.[a,b,d];return CK_text(c,parts[..]);}
-CK_number :: (c:CK_Context,v:CM_Int)->string {out:[48] u8;count:=CM_decimal(v,out[..]);parts:=[1] string.[cast(string)out[0..<count]];return CK_text(c,parts[..]);}
-CK_count :: (c:CK_Context,v:int)->string {return CK_number(c,CM_signed_bits(cast,trunc(u64)v,true));}
-CK_error :: (c:CK_Context,loc:CK_Loc,code:string,message:string,fix:string) {
+CK_join2 :: (c:CK_Context,a:string,b:string)->string #effects(all) {parts:=[2] string.[a,b];return CK_text(c,parts[..]);}
+CK_join3 :: (c:CK_Context,a:string,b:string,d:string)->string #effects(all) {parts:=[3] string.[a,b,d];return CK_text(c,parts[..]);}
+CK_number :: (c:CK_Context,v:CM_Int)->string #effects(all) {out:[48] u8;count:=CM_decimal(v,out[..]);parts:=[1] string.[cast(string)out[0..<count]];return CK_text(c,parts[..]);}
+CK_count :: (c:CK_Context,v:int)->string #effects(all) {return CK_number(c,CM_signed_bits(cast,trunc(u64)v,true));}
+CK_error :: (c:CK_Context,loc:CK_Loc,code:string,message:string,fix:string) #effects(all) {
   if c.state[0].fatal {return;}if c.state[0].error_count>=c.errors.count {CK_resource(c,loc);return;}
   c.errors[c.state[0].error_count]=CK_Error.{loc=loc,code=code,message=message,fix=fix};c.state[0].error_count+=1;
 }
@@ -284,8 +284,8 @@ CK_error :: (c:CK_Context,loc:CK_Loc,code:string,message:string,fix:string) {
 // recurses on the native stack). peak_depth is the deepest entry, so a build
 // near the limit is reported before it fails.
 CK_DEPTH_LIMIT :: 256;
-CK_depth_limit :: ()->int #export_c {return CK_DEPTH_LIMIT;}
-CK_enter :: (c:CK_Context,loc:CK_Loc)->bool {
+CK_depth_limit :: ()->int #export_c #effects(all) {return CK_DEPTH_LIMIT;}
+CK_enter :: (c:CK_Context,loc:CK_Loc)->bool #effects(all) {
   if c.state[0].fatal {return false;}if c.state[0].depth>=CK_DEPTH_LIMIT {CK_resource(c,loc);return false;}
   // peak_depth is never below depth, so entering past it is entering at it.
   if c.state[0].peak_depth==c.state[0].depth {c.state[0].peak_depth+=1;}c.state[0].depth+=1;return true;
@@ -300,29 +300,29 @@ CK_enter :: (c:CK_Context,loc:CK_Loc)->bool {
  else {#assert state[0].depth==depth && state[0].peak_depth==peak && state[0].fatal;
   #assert state[0].error_count==(ifx fatal then 0 else 1);if !fatal {#assert errors[0].code=="E0381" && errors[0].loc.line==7;}}
 }
-CK_leave :: (c:CK_Context) {c.state[0].depth-=1;}
-CK_new :: (c:CK_Context,kind:CK_Tag,loc:CK_Loc)->int {
+CK_leave :: (c:CK_Context) #effects(all) {c.state[0].depth-=1;}
+CK_new :: (c:CK_Context,kind:CK_Tag,loc:CK_Loc)->int #effects(all) {
   if c.state[0].fatal {return CK_NONE;}if c.state[0].used+1>=c.nodes.count {CK_resource(c,loc);return CK_NONE;}
   c.state[0].used+=1;id:=c.state[0].used;c.nodes[id]=CK_Node.{kind=kind,loc=loc};return id;
 }
-CK_new_type :: (c:CK_Context,t:CK_Type)->int {
+CK_new_type :: (c:CK_Context,t:CK_Type)->int #effects(all) {
   if c.state[0].type_count>=c.types.count {CK_resource(c,CK_Loc.{});return CK_NONE;}id:=c.state[0].type_count;c.types[id]=t;c.state[0].type_count+=1;return id;
 }
-CK_integer :: (c:CK_Context,t:int)->bool {return c.types[t].kind==CK_Kind.integer;}
-CK_float :: (c:CK_Context,t:int)->bool {return c.types[t].kind==CK_Kind.floating;}
-CK_numeric :: (c:CK_Context,t:int)->bool {return CK_integer(c,t) || CK_float(c,t) || c.types[t].need==4;}
+CK_integer :: (c:CK_Context,t:int)->bool #effects(all) {return c.types[t].kind==CK_Kind.integer;}
+CK_float :: (c:CK_Context,t:int)->bool #effects(all) {return c.types[t].kind==CK_Kind.floating;}
+CK_numeric :: (c:CK_Context,t:int)->bool #effects(all) {return CK_integer(c,t) || CK_float(c,t) || c.types[t].need==4;}
 // Ordered: numbers, and placeholders constrained ordered or numeric.
-CK_ordered :: (c:CK_Context,t:int)->bool {return CK_numeric(c,t) || c.types[t].need==3;}
-CK_untyped :: (c:CK_Context,t:int)->bool {return c.types[t].kind==CK_Kind.untyped_int || c.types[t].kind==CK_Kind.untyped_float;}
-CK_aggregate :: (c:CK_Context,t:int)->bool {return c.types[t].kind==CK_Kind.array || c.types[t].kind==CK_Kind.struct_ || CK_sum(c,t);}
+CK_ordered :: (c:CK_Context,t:int)->bool #effects(all) {return CK_numeric(c,t) || c.types[t].need==3;}
+CK_untyped :: (c:CK_Context,t:int)->bool #effects(all) {return c.types[t].kind==CK_Kind.untyped_int || c.types[t].kind==CK_Kind.untyped_float;}
+CK_aggregate :: (c:CK_Context,t:int)->bool #effects(all) {return c.types[t].kind==CK_Kind.array || c.types[t].kind==CK_Kind.struct_ || CK_sum(c,t);}
 // The name index. CK_run builds it once over the top-level list: with n
 // buckets, names[b] heads bucket b, names[n+b] is its tail while building, and
 // names[2n+id] is the next declaration after id in its bucket. A bucket's chain
 // is the list's subsequence of names hashing there, in list order, so a walk
 // that filters on the name meets the declarations a walk of the whole list
 // meets, in the same order. Without an index (state.names 0) a walk is the list.
-CK_name_hash :: (name:string)->int {hash:=2166136261;for byte:name {hash=((hash ^ cast(int)byte)*16777619) & 4294967295;}return hash;}
-CK_index_names :: (c:CK_Context,used:int)->bool {
+CK_name_hash :: (name:string)->int #effects(all) {hash:=2166136261;for byte:name {hash=((hash ^ cast(int)byte)*16777619) & 4294967295;}return hash;}
+CK_index_names :: (c:CK_Context,used:int)->bool #effects(all) {
   n:=used+1;c.state[0].names=0;if c.names.count<3*n {return false;}
   for b:0..<n {c.names[b]=CK_NONE;c.names[n+b]=CK_NONE;}
   id:=c.nodes[1].head;
@@ -332,41 +332,41 @@ CK_index_names :: (c:CK_Context,used:int)->bool {
   }
   c.state[0].names=n;return true;
 }
-CK_first :: (c:CK_Context,name:string)->int {n:=c.state[0].names;if n==0 {return c.nodes[1].head;}return c.names[CK_name_hash(name)%n];}
-CK_after :: (c:CK_Context,id:int)->int {n:=c.state[0].names;if n==0 {return c.nodes[id].next;}return c.names[2*n+id];}
-CK_find :: (c:CK_Context,kind:CK_Tag,name:string)->int {id:=CK_first(c,name);while id!=CK_NONE {if c.nodes[id].kind==kind && c.nodes[id].name==name {return id;}id=CK_after(c,id);}return CK_NONE;}
+CK_first :: (c:CK_Context,name:string)->int #effects(all) {n:=c.state[0].names;if n==0 {return c.nodes[1].head;}return c.names[CK_name_hash(name)%n];}
+CK_after :: (c:CK_Context,id:int)->int #effects(all) {n:=c.state[0].names;if n==0 {return c.nodes[id].next;}return c.names[2*n+id];}
+CK_find :: (c:CK_Context,kind:CK_Tag,name:string)->int #effects(all) {id:=CK_first(c,name);while id!=CK_NONE {if c.nodes[id].kind==kind && c.nodes[id].name==name {return id;}id=CK_after(c,id);}return CK_NONE;}
 // Scoped binding. A qualified use (name2 is its alias) sees only the alias's
 // module; an unqualified use sees its own module first, then a declaration
 // that exactly one other module (or the unowned program) makes. -1: ambiguous.
-CK_alias :: (c:CK_Context,scope:int,name:string)->int {for a:c.aliases {if a.scope==scope && a.name==name {return a.target;}}return -1;}
-CK_scan :: (c:CK_Context,kind:CK_Tag,name:string,scope:int,exact:bool)->int {
+CK_alias :: (c:CK_Context,scope:int,name:string)->int #effects(all) {for a:c.aliases {if a.scope==scope && a.name==name {return a.target;}}return -1;}
+CK_scan :: (c:CK_Context,kind:CK_Tag,name:string,scope:int,exact:bool)->int #effects(all) {
   found:=CK_NONE;many:=false;id:=CK_first(c,name);
   while id!=CK_NONE {n:=c.nodes[id];if n.kind==kind && n.name==name {if n.scope==scope {return id;}if found==CK_NONE {found=id;}else if n.scope!=c.nodes[found].scope {many=true;}}id=CK_after(c,id);}
   if exact {return CK_NONE;}if many {return -1;}return found;
 }
-CK_clashes :: (c:CK_Context,kind:CK_Tag,name:string)->bool {
+CK_clashes :: (c:CK_Context,kind:CK_Tag,name:string)->bool #effects(all) {
   id:=c.state[0].clashes;while id!=CK_NONE {n:=c.nodes[id];if n.kind==kind && n.name==name {return true;}id=n.clash;}return false;
 }
-CK_lookup :: (c:CK_Context,kind:CK_Tag,use:int)->int {
+CK_lookup :: (c:CK_Context,kind:CK_Tag,use:int)->int #effects(all) {
   u:=c.nodes[use];scope:=u.scope;exact:=u.name2.count!=0;
   if !exact && !CK_clashes(c,kind,u.name) {return CK_find(c,kind,u.name);}
   if exact {scope=CK_alias(c,u.scope,u.name2);if scope<0 {return CK_NONE;}}
   r:=CK_scan(c,kind,u.name,scope,exact);if r== -1 {return CK_NONE;}return r;
 }
-CK_module_name :: (c:CK_Context,scope:int)->string {if scope>0 && scope<c.modules.count {return c.modules[scope];}return "the unowned program";}
-CK_qualifier :: (c:CK_Context,use:int)->int {
+CK_module_name :: (c:CK_Context,scope:int)->string #effects(all) {if scope>0 && scope<c.modules.count {return c.modules[scope];}return "the unowned program";}
+CK_qualifier :: (c:CK_Context,use:int)->int #effects(all) {
   u:=c.nodes[use];if u.kind!=CK_Tag.expr_ident || u.name2.count!=0 || CK_local(c,u.name)>=0 {return -1;}return CK_alias(c,u.scope,u.name);
 }
-CK_sealed :: (c:CK_Context,scope:int)->bool {for e:c.exports {if e.scope==scope {return true;}}return false;}
-CK_exported :: (c:CK_Context,scope:int,name:string)->bool {for e:c.exports {if e.scope==scope && e.name==name {return true;}}return false;}
+CK_sealed :: (c:CK_Context,scope:int)->bool #effects(all) {for e:c.exports {if e.scope==scope {return true;}}return false;}
+CK_exported :: (c:CK_Context,scope:int,name:string)->bool #effects(all) {for e:c.exports {if e.scope==scope && e.name==name {return true;}}return false;}
 // A use outside a sealed module reaches only the names it exports.
-CK_visible :: (c:CK_Context,use:int,scope:int)->bool {
+CK_visible :: (c:CK_Context,use:int,scope:int)->bool #effects(all) {
   u:=c.nodes[use];if scope==u.scope || !CK_sealed(c,scope) || CK_exported(c,scope,u.name) {return true;}
   parts:=[5] string.["'",u.name,"' is private to module '",CK_module_name(c,scope),"'"];
   CK_error(c,u.loc,"E0389",CK_text(c,parts[..]),CK_join3(c,"add it to that module's list: #export ",u.name,";"));return false;
 }
 // Each exported name is declared by its own module, once per list.
-CK_exports_valid :: (c:CK_Context) {
+CK_exports_valid :: (c:CK_Context) #effects(all) {
   for e,i:c.exports {
     declared:=false;id:=CK_first(c,e.name);
     while id!=CK_NONE {n:=c.nodes[id];if n.scope==e.scope && n.name==e.name && (n.kind==CK_Tag.proc || n.kind==CK_Tag.constant || n.kind==CK_Tag.struct_ || n.kind==CK_Tag.enum_ || n.kind==CK_Tag.union_) {declared=true;}id=CK_after(c,id);}
@@ -374,7 +374,7 @@ CK_exports_valid :: (c:CK_Context) {
     for j:0..<i {if c.exports[j].scope==e.scope && c.exports[j].name==e.name {CK_error(c,e.loc,"E0391",CK_join3(c,"'",e.name,"' is already exported"),"list each name once");break;}}
   }
 }
-CK_bind_check :: (c:CK_Context,use:int,kinds:[] CK_Tag,what:string)->bool {
+CK_bind_check :: (c:CK_Context,use:int,kinds:[] CK_Tag,what:string)->bool #effects(all) {
   u:=c.nodes[use];
   if u.name2.count!=0 {
     target:=CK_alias(c,u.scope,u.name2);

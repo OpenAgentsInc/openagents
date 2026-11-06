@@ -57,18 +57,18 @@ integer inputs. Once the shape is admitted the small products cannot overflow.
 
 <!-- source: psionic/lib/attention.coax plan -->
 ```jai
-pa_valid :: (s: PaShape) -> bool {
+pa_valid :: (s: PaShape) -> bool #effects(all) {
     if s.width/2>8 || s.heads<1 || s.kv_heads<1 || s.head_width<2 || s.hidden<1 || s.hidden>32 || s.capacity<1 || s.capacity>16 {return false;}
     if s.head_width%2!=0 {return false;}
     if s.width/s.head_width!=s.heads || s.width%s.head_width!=0 || s.heads%s.kv_heads!=0 {return false;}
     return psionic_tensor_finite_bits(f32_bits(s.epsilon)) && s.epsilon>0;
 }
-pa_weight_count :: (s: PaShape) -> int {
+pa_weight_count :: (s: PaShape) -> int #effects(all) {
     d:=s.width;k:=s.kv_heads*s.head_width;f:=s.hidden;
     return 2*d+2*d*d+2*k*d+3*f*d;
 }
-pa_cache_count :: (s: PaShape) -> int {return 2*s.capacity*s.kv_heads*s.head_width;}
-pa_rope_count :: (s: PaShape) -> int {return s.capacity*s.head_width;}
+pa_cache_count :: (s: PaShape) -> int #effects(all) {return 2*s.capacity*s.kv_heads*s.head_width;}
+pa_rope_count :: (s: PaShape) -> int #effects(all) {return s.capacity*s.head_width;}
 ```
 
 The weights form one exact-length row-major span. Matrix rows are output
@@ -120,7 +120,7 @@ convention is interleaved, so `(x, y)` becomes `(x*cos - y*sin, x*sin + y*cos)`:
 
 <!-- source: psionic/lib/attention.coax rotate -->
 ```jai
-pa_rotate :: (v:[]f32,heads:int,dim:int,rope:[]f32,position:int)->bool {
+pa_rotate :: (v:[]f32,heads:int,dim:int,rope:[]f32,position:int)->bool #effects(all) {
     for h:0..<heads {
         for pair:0..<dim/2 {
             i:=h*dim+2*pair; r:=position*dim+2*pair;
@@ -161,7 +161,7 @@ after successful computation.
 
 <!-- source: psionic/lib/attention.coax step -->
 ```jai
-pa_step :: (s:PaShape,w:[]f32,rope:[]f32,x:[]f32,position:int,cache:[]f32,out:[]f32,overlap:bool)->PaResult #export_c {
+pa_step :: (s:PaShape,w:[]f32,rope:[]f32,x:[]f32,position:int,cache:[]f32,out:[]f32,overlap:bool)->PaResult #export_c #effects(all) {
     if !pa_valid(s) {return PaResult.{status=PaStatus.shape};}
     d:=s.width;k:=s.kv_heads*s.head_width;f:=s.hidden;
     if w.count!=pa_weight_count(s) || rope.count!=pa_rope_count(s) || x.count!=d || position<0 || position>=s.capacity || cache.count<pa_cache_count(s) || out.count<d {return PaResult.{status=PaStatus.capacity};}
@@ -229,7 +229,7 @@ succeed. This uses the same block step as incremental execution:
 
 <!-- source: psionic/lib/attention.coax full -->
 ```jai
-pa_forward :: (s:PaShape,w:[]f32,rope:[]f32,x:[]f32,steps:int,out:[]f32,overlap:bool)->PaResult #export_c {
+pa_forward :: (s:PaShape,w:[]f32,rope:[]f32,x:[]f32,steps:int,out:[]f32,overlap:bool)->PaResult #export_c #effects(all) {
     if !pa_valid(s) {return PaResult.{status=PaStatus.shape};}
     if steps<1 {return PaResult.{status=PaStatus.capacity};}
     if steps>s.capacity {return PaResult.{status=PaStatus.capacity};}

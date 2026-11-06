@@ -137,7 +137,7 @@ CAP_CANNOT_ENFORCE :: cast(u32)11; // a required bound has no mechanism at the p
 
 <!-- source: coax/lib/nostr/cap/dispatch.coax dispatch -->
 ```jai
-cap_dispatch :: (defs:[]CapDefinition,bindings:[]CapBinding,grants:[]CapGrant,policy:CapPolicy,q:CapRequest,now:int)->CapDispatch {
+cap_dispatch :: (defs:[]CapDefinition,bindings:[]CapBinding,grants:[]CapGrant,policy:CapPolicy,q:CapRequest,now:int)->CapDispatch #effects(all) {
   r:CapDispatch;
   // 1. The request names only known effects and bounds.
   if q.effects&CAP_EFFECTS!=q.effects || q.required&CAP_BOUNDS!=q.required {return cap_fail(r,CAP_MALFORMED);}
@@ -276,7 +276,7 @@ POL_NOT_ADMITTED :: cast(u32)5; // the host does not recognize the approver for 
 
 <!-- source: coax/lib/nostr/pol/approve.coax approve -->
 ```jai
-pol_admit :: (q:PolRequest,recognized:[]string,decisions:[]PolDecision,consumed:[]PolConsumed,now:int)->u32 {
+pol_admit :: (q:PolRequest,recognized:[]string,decisions:[]PolDecision,consumed:[]PolConsumed,now:int)->u32 #effects(all) {
   known:=false;for a:recognized {if a==q.approver {known=true;}}
   if !known {return POL_NOT_ADMITTED;}
   for c:consumed {if c.request==q.request && c.action==q.action {return POL_REPLAY;}}
@@ -340,10 +340,10 @@ cannot undo it.
 <!-- source: coax/lib/nostr/ext/install.coax revoked -->
 ```jai
 // A verified revocation of release by its root.
-ext_revokes :: (v:ExtRevocation,release:string,root:string,package:string)->bool {
+ext_revokes :: (v:ExtRevocation,release:string,root:string,package:string)->bool #effects(all) {
   return v.release==release && v.signer==root && v.package==package && v.effective_at<=v.created_at;
 }
-ext_revoked :: (revocations:[]ExtRevocation,r:ExtRelease)->bool {
+ext_revoked :: (revocations:[]ExtRevocation,r:ExtRelease)->bool #effects(all) {
   for v:revocations {if ext_revokes(v,r.event,r.signer,r.package) {return true;}}
   return false;
 }
@@ -369,7 +369,7 @@ EXT_STALE :: cast(u32)7;       // strict policy: no current checkpoint, or a rol
 
 <!-- source: coax/lib/nostr/ext/install.coax install -->
 ```jai
-ext_install :: (r:ExtRelease,releases:[]ExtRelease,revocations:[]ExtRevocation,c:ExtCheckpoint,have:bool,p:ExtPolicy,now:int)->u32 {
+ext_install :: (r:ExtRelease,releases:[]ExtRelease,revocations:[]ExtRevocation,c:ExtCheckpoint,have:bool,p:ExtPolicy,now:int)->u32 #effects(all) {
   // 1. A release, its namespace, and a manifest that agrees with it.
   root:=ext_root(r.package);
   if r.kind!=EXT_RELEASE_KIND || root=="" {return EXT_MALFORMED;}
@@ -442,7 +442,7 @@ earlier one had:
 // Whether to keep checkpoint c over the one held (have says whether there
 // is one) for the same package. Revisions never go back; one revision has
 // one content; a later list keeps every revocation an earlier one had.
-ext_checkpoint_accept :: (held:ExtCheckpoint,have:bool,c:ExtCheckpoint)->u32 {
+ext_checkpoint_accept :: (held:ExtCheckpoint,have:bool,c:ExtCheckpoint)->u32 #effects(all) {
   if !have {return EXT_OK;}
   if c.revision<held.revision {return EXT_STALE;}
   for id:held.revocations {if !ext_has(c.revocations,id) {return EXT_CONFLICT;}}

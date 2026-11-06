@@ -17,7 +17,7 @@ LY_WORK :: 4194304;     // the largest decode work (a 1024 by 1024 RGBA PNG's ro
 LY_SIDE :: 1024;        // the largest side
 LY_ALL :: 67108864;     // the largest layers file
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) != 3 { tool_errln("usage: layers LIST OUT SIDE"); return 2; }
   list_path := args_at(a[..], 0); out_path := args_at(a[..], 1); side := args_whole(args_at(a[..], 2));

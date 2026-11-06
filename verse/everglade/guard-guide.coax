@@ -114,12 +114,12 @@ GG_BODY_MAX :: 8192;
     for goal:1..<6 {o.goal=goal;for action:0..<5 {#assert gg_admit(o,GgAnswer.{ok=true,action=action},1).ok==((gg_legal(o)&(1<<action))!=0);}}
 }
 
-gg_target :: (goal:int)->int #export_c {if goal<1 || goal>5 {return 0;}return ifx goal==5 then 1 else goal;}
-gg_ready :: (o:GgObservation)->bool #export_c {return o.help_requested && o.eligible && o.destination_available && !o.at_destination && !o.hint_visible && gg_target(o.goal)!=0;}
-gg_baseline :: (o:GgObservation)->int #export_c {return ifx gg_ready(o) then gg_target(o.goal) else 0;}
-gg_legal :: (o:GgObservation)->int #export_c {return 1|(1<<gg_baseline(o));}
-gg_line :: (action:int)->string #export_c {if action<1 || action>4 {return "";}return GG_LINES[action];}
-gg_request :: (o:GgObservation,out:[]u8)->int #export_c {
+gg_target :: (goal:int)->int #export_c #effects(all) {if goal<1 || goal>5 {return 0;}return ifx goal==5 then 1 else goal;}
+gg_ready :: (o:GgObservation)->bool #export_c #effects(all) {return o.help_requested && o.eligible && o.destination_available && !o.at_destination && !o.hint_visible && gg_target(o.goal)!=0;}
+gg_baseline :: (o:GgObservation)->int #export_c #effects(all) {return ifx gg_ready(o) then gg_target(o.goal) else 0;}
+gg_legal :: (o:GgObservation)->int #export_c #effects(all) {return 1|(1<<gg_baseline(o));}
+gg_line :: (action:int)->string #export_c #effects(all) {if action<1 || action>4 {return "";}return GG_LINES[action];}
+gg_request :: (o:GgObservation,out:[]u8)->int #export_c #effects(all) {
     if !gg_ready(o) {return -1;}w:[1]Jo;jo_start(w[..],out);
     jo_obj(w[..]);jo_key(w[..],"model");jo_str(w[..],GG_MODEL);jo_key(w[..],"state");jo_obj(w[..]);
     jo_key(w[..],"policy");jo_str(w[..],GG_POLICY);jo_key(w[..],"help");jo_str(w[..],"requested_directions");
@@ -132,28 +132,28 @@ gg_request :: (o:GgObservation,out:[]u8)->int #export_c {
     for i:0..<5 {jo_key(w[..],GG_OPTIONS[i]);jo_str(w[..],labels[i]);}
     jo_end(w[..]);jo_end(w[..]);jo_end(w[..]);jo_end(w[..]);return ifx w[0].bad then -1 else w[0].n;
 }
-gg_probability :: (text:string)->GgNumber {
+gg_probability :: (text:string)->GgNumber #effects(all) {
     if text.count<1 || (text[0]!='0' && text[0]!='1') {return GgNumber.{};}
     units:=cast(int)(text[0]-'0')*GG_UNIT;if text.count==1 {return GgNumber.{ok=true,units=units};}
     if text.count<3 || text.count>11 || text[1]!='.' {return GgNumber.{};}scale:=100000000;
     for i:2..<text.count {if text[i]<'0' || text[i]>'9' {return GgNumber.{};}units+=cast(int)(text[i]-'0')*scale;scale/=10;}
     return GgNumber.{ok=units<=GG_UNIT,units=units};
 }
-gg_member :: (d:Jv,object:int,key:string)->int {
+gg_member :: (d:Jv,object:int,key:string)->int #effects(all) {
     if jv_kind(d,object)!=JV_OBJECT {return -1;}found:=-1;
     for i:0..<jv_len(d,object) {child:=jv_at(d,object,i);if jv_raw_eq(jv_key(d,child),key) {if found!= -1 {return -1;}found=child;}}
     return found;
 }
-gg_is :: (d:Jv,node:int,text:string)->bool {return jv_kind(d,node)==JV_STRING && jv_raw_eq(jv_raw(d,node),text);}
-gg_provider :: (text:string)->bool {
+gg_is :: (d:Jv,node:int,text:string)->bool #effects(all) {return jv_kind(d,node)==JV_STRING && jv_raw_eq(jv_raw(d,node),text);}
+gg_provider :: (text:string)->bool #effects(all) {
     if text.count!=64 {return false;}for c:text {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;
 }
-gg_door :: (text:string)->bool {
+gg_door :: (text:string)->bool #effects(all) {
     if text.count<7 || text.count>86 || text[0..<6]!="pylon:" {return false;}
     for i:6..<text.count {c:=text[i];if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-' || c=='_') {return false;}}return true;
 }
-gg_utf8 :: (text:string)->bool {i:=0;while i<text.count {n:=json_utf8(text,i);if n==0 {return false;}i+=n;}return true;}
-gg_decode :: (text:string)->GgAnswer #export_c {
+gg_utf8 :: (text:string)->bool #effects(all) {i:=0;while i<text.count {n:=json_utf8(text,i);if n==0 {return false;}i+=n;}return true;}
+gg_decode :: (text:string)->GgAnswer #export_c #effects(all) {
     bad:GgAnswer;if text.count>GG_BODY_MAX || !gg_utf8(text) {return bad;}
     nodes:[128]JvNode;parsed:[1]Jv;if !jv_parse(parsed[..],text,nodes[..]) {return bad;}d:=parsed[0];
     if !gg_is(d,gg_member(d,0,"model"),GG_MODEL) {return bad;}
@@ -173,7 +173,7 @@ gg_decode :: (text:string)->GgAnswer #export_c {
     if !gg_is(d,gg_member(d,answer,"choice"),GG_OPTIONS[best]) || c.units<units[best]-GG_TOL || c.units>units[best]+GG_TOL {return bad;}
     return GgAnswer.{ok=true,action=best};
 }
-gg_admit :: (o:GgObservation,a:GgAnswer,elapsed_ms:int)->GgAdmit #export_c {
+gg_admit :: (o:GgObservation,a:GgAnswer,elapsed_ms:int)->GgAdmit #export_c #effects(all) {
     if !gg_ready(o) || !a.ok || elapsed_ms<0 || elapsed_ms>=GG_TIMEOUT {return GgAdmit.{};}
     // Compare bounded authored identities directly; never shift by an untrusted
     // answer integer. Quiet is abstention, not a bypass of request eligibility.

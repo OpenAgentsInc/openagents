@@ -10,7 +10,7 @@ fp_us :: (v:Jv,node:int)->int {n:=args_number(jv_raw(v,node));return ifx n.ok &&
   j:[1]Jv;nodes:[8]JvNode;#assert jv_parse(j[..],"[16.6667,0.012,-1]",nodes[..]);
   #assert fp_us(j[0],jv_at(j[0],0,0))==16667 && fp_us(j[0],jv_at(j[0],0,1))==12 && fp_us(j[0],jv_at(j[0],0,2))==0;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;data:[1048576]u8;if !args_load(a[..]) {return 2;}n:=fs_read(args_at(a[..],0),data[..]);if n<0 {return 1;}
   nodes:[65536]JvNode;j:[1]Jv;if !jv_parse(j[..],cast(string)data[0..<n],nodes[..]) {tool_errln("Invalid frame profile.");return 1;}
   v:=j[0];windows:=jv_get(v,0,"windows");all:[FP_LIMIT*11]int;count:=0;submitted:=0;visible:=0;pending:=0;elapsed:=0;gap:=0;gaps:[FP_LIMIT]int;

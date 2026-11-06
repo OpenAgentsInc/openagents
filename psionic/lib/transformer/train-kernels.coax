@@ -106,7 +106,7 @@ gk_advance :: (sh:[]int,p:[]f64,w:[]f64,rope:[]f64,token:int,t:int) {
 // Kernel 0, one work item per training row: chapter 113's td_gradients on
 // row `item` (context tokens at rows[item*context..]). Each row has its own
 // slices of the work buffers and of grads, and writes its loss.
-gk_rows :: (item:int,sh:[]int,p:[]f64,rows:[]u8,rope:[]f64,work:[]f64,dwork:[]f64,grads:[]f64,losses:[]f64) #export_c {
+gk_rows :: (item:int,sh:[]int,p:[]f64,rows:[]u8,rope:[]f64,work:[]f64,dwork:[]f64,grads:[]f64,losses:[]f64) #export_c #effects(all) {
     d:=sh[1];heads:=sh[2];kv:=sh[3];e:=sh[4];hidden:=sh[5];layers:=sh[6];n:=sh[7];
     q:=heads*e;k:=kv*e;group:=heads/kv;scale:=1/sqrt(f64(e));np:=gk_parameters(sh);nw:=gk_work(sh);base:=item*n;
     w:=work[item*nw..<item*nw+nw];dw:=dwork[item*nw..<item*nw+nw];g:=grads[item*np..<item*np+np];
@@ -147,23 +147,23 @@ gk_rows :: (item:int,sh:[]int,p:[]f64,rows:[]u8,rope:[]f64,work:[]f64,dwork:[]f6
 // Kernel 1, one item per parameter: chapter 118's tr_add over the step's
 // micro-batches, in their order: the sum starts at zero and adds each row's
 // gradient divided by the micro-batch count.
-gk_mean :: (item:int,micro:int,n:int,grads:[]f64,total:[]f64) #export_c {
+gk_mean :: (item:int,micro:int,n:int,grads:[]f64,total:[]f64) #export_c #effects(all) {
     total[item]=0;for k:0..<micro {total[item]+=grads[k*n+item]/f64(micro);}
 }
 // Kernel 2, one item: the squared global norm, summed in parameter order as
 // tr_apply sums it.
-gk_squares :: (item:int,n:int,total:[]f64,out:[]f64) #export_c {
+gk_squares :: (item:int,n:int,total:[]f64,out:[]f64) #export_c #effects(all) {
     s:=0.0;for i:0..<n {s+=total[i]*total[i];}out[item]=s;
 }
 // Kernel 3, one item per parameter, launched only when the norm is over the
 // clip: tr_apply's scaling.
-gk_clip :: (item:int,clip:f64,norm:f64,total:[]f64) #export_c {
+gk_clip :: (item:int,clip:f64,norm:f64,total:[]f64) #export_c #effects(all) {
     total[item]=total[item]*clip/norm;
 }
 // Kernel 4, one item per parameter: chapter 124's aw_cell at step t, with
 // c1 = 1 - beta1^t and c2 = 1 - beta2^t from the host. The new parameter,
 // moments go to the stage (p, m, v as three spans of n); nothing live changes.
-gk_adamw :: (item:int,n:int,lr:f64,beta1:f64,beta2:f64,eps:f64,decay:f64,c1:f64,c2:f64,p:[]f64,total:[]f64,m:[]f64,v:[]f64,stage:[]f64) #export_c {
+gk_adamw :: (item:int,n:int,lr:f64,beta1:f64,beta2:f64,eps:f64,decay:f64,c1:f64,c2:f64,p:[]f64,total:[]f64,m:[]f64,v:[]f64,stage:[]f64) #export_c #effects(all) {
     grad:=total[item];
     decayed:=p[item]*(1-lr*decay);
     m2:=beta1*m[item]+(1-beta1)*grad;
@@ -175,13 +175,13 @@ gk_finite :: (x:f64)->bool {return x>=-GK_MAX && x<=GK_MAX;}
 // Kernel 5, one item: what the host needs to admit the staged step. out[0]
 // is 1 when a staged value is not finite (AdamW refuses the step), out[1]
 // is 1 when a staged parameter is outside the bound.
-gk_admit :: (item:int,n:int,bound:f64,stage:[]f64,out:[]f64) #export_c {
+gk_admit :: (item:int,n:int,bound:f64,stage:[]f64,out:[]f64) #export_c #effects(all) {
     bad:=0.0;far:=0.0;
     for i:0..<n {if !gk_finite(stage[i]) || !gk_finite(stage[n+i]) || !gk_finite(stage[2*n+i]) {bad=1;}if !(stage[i]<=bound && stage[i]>=-bound) {far=1;}}
     out[2*item]=bad;out[2*item+1]=far;
 }
 // Kernel 6, one item per parameter, launched only for an admitted step.
-gk_commit :: (item:int,n:int,stage:[]f64,p:[]f64,m:[]f64,v:[]f64) #export_c {
+gk_commit :: (item:int,n:int,stage:[]f64,p:[]f64,m:[]f64,v:[]f64) #export_c #effects(all) {
     p[item]=stage[item];m[item]=stage[n+item];v[item]=stage[2*n+item];
 }
 // book:end step

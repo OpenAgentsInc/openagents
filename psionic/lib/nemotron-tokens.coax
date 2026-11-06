@@ -41,7 +41,7 @@ NT_TEXT_MAX :: 4096;
 // (33..126, 161..172, 174..255) as themselves, the other 68 as U+0100 and
 // up, in byte order. This is the way back.
 nt_printable :: (b:int)->bool {return (b>=33 && b<=126) || (b>=161 && b<=172) || (b>=174 && b<=255);}
-nt_char_byte :: (cp:int)->int #export_c {
+nt_char_byte :: (cp:int)->int #export_c #effects(all) {
     if cp<256 {if nt_printable(cp) {return cp;}return -1;}
     k:=cp-256;
     if k<33 {return k;}

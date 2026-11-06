@@ -69,7 +69,7 @@ mb_repair_cases :: (directory:string,deadline:int)->bool {
     print("mesh reference repair control%: exit%\n",control,r.status);
   }return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}directory:=args_at(a[..],0);if !fs_mkdir(directory) {return 2;}
   deadline:=proc_now_ms()+120000;inputs:[1]RtqInputs;
   for path:[5]string.[MB_REFERENCE,"verse/icecream/check-mesh-band-tooling.coax","coax/web/tool.sh","coax/platform/read-file-native.c","coax/platform/read-file-native.h"] {if !rtq_input_add(inputs[..],path) {return 2;}}

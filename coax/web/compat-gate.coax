@@ -1,0 +1,43 @@
+// Compare the release's wire and checkpoint contracts with the commit serving
+// production. Every child is bounded; no old checkout's scripts are executed.
+// coax/web/tool.sh compat-gate COMPILER PRODUCTION_COMMIT OUTPUT_DIRECTORY
+// tool.sh: stack-gib 1
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/sys/fs.coax";
+
+#load "compat-process.coax";
+
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=3 {tool_errln("usage: compat-gate COMPILER PRODUCTION_COMMIT OUTPUT_DIRECTORY");return 2;}
+  compiler:=args_at(args[..],0);revision:=args_at(args[..],1);destination:=args_at(args[..],2);
+  if !cg_revision(revision) {tool_errln("compat gate: expected production's commit ID");return 2;}
+  if !fs_mkdir(destination) && !fs_exists(destination) {return 2;}
+  tmpbuf:[4096]u8;temporary:=fs_temp("coax-compat-gate-",tmpbuf[..]);if temporary=="" {return 2;}
+  oldbuf:[4096]u8;oldtree:=fs_join(temporary,"production",oldbuf[..]);output:[65536]u8;
+  create:=[6]string.["git","worktree","add","--detach",oldtree,revision];
+  if cg_run(create[..],output[..])<0 {gone:=fs_remove(temporary);return 2;}
+  defer {remove_tree:=[5]string.["git","worktree","remove","--force",oldtree];removed:=cg_run(remove_tree[..],output[..]);gone:=fs_remove(temporary);}
+  modules:=[2]string.["apps/openagents-web/everglade-wire.coax","aethyr/session/character-checkpoint.coax"];
+  names:=[2]string.["everglade-wire.surface","character-checkpoint.surface"];
+  for module,i:modules {
+    sourcebuf:[4096]u8;baselinebuf:[4096]u8;candidatebuf:[4096]u8;publishedbuf:[4096]u8;relativebuf:[4096]u8;
+    source:=fs_join(oldtree,module,sourcebuf[..]);baseline:=fs_join(temporary,names[i],baselinebuf[..]);candidate:=fs_join(destination,names[i],candidatebuf[..]);
+    relative:=fs_join("coax/web/compat",names[i],relativebuf[..]);published:=fs_join(oldtree,relative,publishedbuf[..]);
+    if !cg_emit(compiler,module,candidate,false) {return 1;}
+    retainedbuf:[4096]u8;retained:=fs_join("coax/web/compat",names[i],retainedbuf[..]);
+    actual:[4194304]u8;saved:[4194304]u8;an:=fs_read(candidate,actual[..]);sn:=fs_read(retained,saved[..]);
+    if an<0 || sn<0 || an!=sn || cast(string)actual[0..<an]!=cast(string)saved[0..<sn] {tool_errln("compat gate: regenerate the candidate's committed manifest");return 1;}
+
+    if !fs_exists(source) {tool_errln("compat gate: production contract source is missing");return 1;}
+    if !cg_emit(compiler,source,baseline,true) {return 1;}
+    // Releases before the manifest profile existed have source as their retained
+    // contract. Later builds retain the exact manifest checked before publishing.
+    contract:=ifx fs_exists(published) then published else baseline;
+    compare:=[6]string.[compiler,"compat",contract,candidate,"--baseline",baseline];
+    if cg_run(compare[..],output[..])<0 {return 1;}
+    gone:=fs_remove(baseline);print("compat gate: % against %: compatible, no new regression\n",module,revision);
+  }
+  return 0;
+}

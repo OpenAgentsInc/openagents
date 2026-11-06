@@ -2,7 +2,7 @@
 // instead of a credentialed provider. Commands and views are real effects.
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
-cxproc_sleep_ms :: (ms:int)->int #foreign;
+cxproc_sleep_ms :: (ms:int)->int #foreign #effects(all);
 #load "../../coax/lib/microcoder/run.coax";
 
 jl_response :: (path:string,action:string) {
@@ -77,7 +77,7 @@ jl_child :: (dir:string)->int {
   after:[32]u8;now:=fs_read(cursor,after[..]);#assert old==now && cast(string)before[0..<old]==cast(string)after[0..<now];
   print("live request bytes, approval ownership, durable shell/view results and failed-storage transport refusal passed\n");return 0;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;#assert args_load(args[..]);
   if args[0].n==1 {return jl_child(args_at(args[..],0));}
   b:[1024]u8;dir:=fs_temp("journal-live-",b[..]);#assert dir.count>0;defer {r:=fs_remove(dir);}

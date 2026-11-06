@@ -129,7 +129,7 @@ the record when the user removes the connection.
 ```jai
 // The value of one query parameter with its %XX escapes decoded into out:
 // its length, or -1 for a broken escape, -2 when it doesn't fit.
-n47_unescape :: (s:string,out:[]u8)->int {
+n47_unescape :: (s:string,out:[]u8)->int #effects(all) {
   n:=0;i:=0;
   while i<s.count {
     c:=s[i];
@@ -148,7 +148,7 @@ n47_unescape :: (s:string,out:[]u8)->int {
 // hex digits, then relay (one or more, ws:// or wss://), secret (once, 64
 // lowercase hex digits, a usable secret key) and an optional lud16. Other
 // parameters are skipped. The secret is kept, never written anywhere.
-n47_uri :: (text:string)->N47Uri {
+n47_uri :: (text:string)->N47Uri #effects(all) {
   u:N47Uri;p:=N47_PREFIX.count;
   if text.count<p+64 || text[0..<p]!=N47_PREFIX {return u;}
   u.error=N47_WALLET;
@@ -217,7 +217,7 @@ must be updated, and sends nothing.
 ```jai
 // The wallet's info event: the commands its content lists (space
 // separated; unknown ones counted) and the encryption tag's schemes.
-n47_info :: (e:NostrEvent)->N47Info {
+n47_info :: (e:NostrEvent)->N47Info #effects(all) {
   r:N47Info;
   if e.error!=NE_OK || e.kind!=N47_INFO {return r;}
   r.error=N47_LIMIT;
@@ -253,7 +253,7 @@ n47_info :: (e:NostrEvent)->N47Info {
 }
 // Whether the client may send new requests: only over NIP-44 v2. No
 // encryption tag means NIP-04 only, which this stack doesn't write.
-n47_encryption :: (r:N47Info)->int {
+n47_encryption :: (r:N47Info)->int #effects(all) {
   if r.error!=N47_OK {return r.error;}
   return ifx r.nip44 then N47_OK else N47_ENCRYPTION;
 }
@@ -351,7 +351,7 @@ N47_RESULTS_NEED :: [6] int.[F_PREIMAGE, N47_TX_NEEDS, N47_TX_NEEDS, F_BALANCE, 
 ```jai
 // One params or result object, its { already read: every field this file
 // knows, read by its kind; other keys skipped; null as absent.
-n47_fields :: (j:[]Json,f:[]N47Fields)->int {
+n47_fields :: (j:[]Json,f:[]N47Fields)->int #effects(all) {
   t:=json_next(j);
   while t==JSON_STRING {
     k:=n47_word(json_text(j),T_KEYS);
@@ -399,18 +399,18 @@ n47_fields :: (j:[]Json,f:[]N47Fields)->int {
   return ifx t==JSON_OBJECT_END then N47_OK else N47_JSON;
 }
 // The fields against what a command allows and needs.
-n47_allowed :: (have:int,allowed:int,needed:int)->int {
+n47_allowed :: (have:int,allowed:int,needed:int)->int #effects(all) {
   if (have&allowed)!=have {return N47_FIELD;}
   if (have&needed)!=needed {return N47_MISSING;}
   return N47_OK;
 }
-n47_params_ok :: (c:N47Call)->int {
+n47_params_ok :: (c:N47Call)->int #effects(all) {
   if c.method<0 {return N47_MISSING;}
   e:=n47_allowed(c.f.have,N47_PARAMS[c.method],N47_PARAMS_NEED[c.method]);
   if e==N47_OK && c.method==N47_LOOKUP && (c.f.have&(F_INVOICE|F_HASH))==0 {return N47_MISSING;}
   return e;
 }
-n47_reply_ok :: (r:N47Reply)->int {
+n47_reply_ok :: (r:N47Reply)->int #effects(all) {
   if r.method<0 {return N47_MISSING;}
   if r.code>=0 {return ifx r.f.have==0 then N47_OK else N47_FIELD;}
   return n47_allowed(r.f.have,N47_RESULTS[r.method],N47_RESULTS_NEED[r.method]);
@@ -425,7 +425,7 @@ refused, not resolved. An error code that NIP-47 doesn't list reads as
 <!-- source: coax/lib/nostr/nip47.coax read -->
 ```jai
 // A request's plaintext: {"method": ..., "params": {...}}.
-n47_request :: (text:string)->N47Call {
+n47_request :: (text:string)->N47Call #effects(all) {
   c:N47Call;j:[1]Json;f:[1]N47Fields;json_start(j[..],text);params:=false;
   if json_next(j[..])!=JSON_OBJECT {return c;}
   t:=json_next(j[..]);
@@ -455,7 +455,7 @@ n47_request :: (text:string)->N47Call {
 }
 // A response's plaintext: {"result_type": ..., "error": null or {"code",
 // "message"}, "result": {...} or null}. Exactly one of error and result.
-n47_response :: (text:string)->N47Reply {
+n47_response :: (text:string)->N47Reply #effects(all) {
   r:N47Reply;j:[1]Json;f:[1]N47Fields;json_start(j[..],text);result:=false;failed:=false;
   if json_next(j[..])!=JSON_OBJECT {return r;}
   t:=json_next(j[..]);
@@ -512,7 +512,7 @@ which is how the checks compare this code with an independent client.
 <!-- source: coax/lib/nostr/nip47.coax write -->
 ```jai
 // The present fields as a JSON object, in N47_KEYS order.
-n47_write_fields :: (f:N47Fields,out:[]u8,at:int)->int {
+n47_write_fields :: (f:N47Fields,out:[]u8,at:int)->int #effects(all) {
   n:=json_raw(out,at,"{");first:=true;rest:=f.have;k:=-1;
   while rest!=0 {
     k+=1;bit:=rest&1;rest=rest>>1;
@@ -546,14 +546,14 @@ n47_write_fields :: (f:N47Fields,out:[]u8,at:int)->int {
 }
 // A request's plaintext, or -1 when the call isn't one n47_request would
 // accept or out is too small.
-n47_request_json :: (c:N47Call,out:[]u8)->int {
+n47_request_json :: (c:N47Call,out:[]u8)->int #effects(all) {
   if n47_params_ok(c)!=N47_OK {return -1;}
   n:=json_raw(out,0,"{\"method\":");n=json_write_string(out,n,N47_METHODS[c.method]);
   n=json_raw(out,n,",\"params\":");n=n47_write_fields(c.f,out,n);
   return json_raw(out,n,"}");
 }
 // A response's plaintext, or -1 likewise.
-n47_response_json :: (r:N47Reply,out:[]u8)->int {
+n47_response_json :: (r:N47Reply,out:[]u8)->int #effects(all) {
   if n47_reply_ok(r)!=N47_OK {return -1;}
   n:=json_raw(out,0,"{\"result_type\":");n=json_write_string(out,n,N47_METHODS[r.method]);
   if r.code>=0 {
@@ -581,7 +581,7 @@ Without an `encryption` tag the request is NIP-04, and the service answers
 ```jai
 // A request's tags: the encryption it uses, the wallet, and an optional
 // expiration (0: none).
-n47_request_tags :: (wallet:[32]u8,expiration:int,out:[]u8)->int {
+n47_request_tags :: (wallet:[32]u8,expiration:int,out:[]u8)->int #effects(all) {
   hex:[64]u8;own:=wallet;h:=hex_encode_checked(cast(string)own[..],hex[..],false);
   n:=json_raw(out,0,"[[\"encryption\",\"nip44_v2\"],[\"p\",\"");n=json_raw(out,n,cast(string)hex[..]);
   n=json_raw(out,n,"\"]");
@@ -589,7 +589,7 @@ n47_request_tags :: (wallet:[32]u8,expiration:int,out:[]u8)->int {
   return json_raw(out,n,"]");
 }
 // A response's tags: the client that asked, and the request.
-n47_response_tags :: (request:NostrEvent,out:[]u8)->int {
+n47_response_tags :: (request:NostrEvent,out:[]u8)->int #effects(all) {
   p:[64]u8;e:[64]u8;
   a:=request.public_key;b:=request.id;
   x:=hex_encode_checked(cast(string)a[..],p[..],false);y:=hex_encode_checked(cast(string)b[..],e[..],false);
@@ -600,7 +600,7 @@ n47_response_tags :: (request:NostrEvent,out:[]u8)->int {
 // The wallet service's reading of a request event at time now: kind
 // 23194, encryption nip44_v2 (no tag means NIP-04: refused), a p tag naming
 // this wallet, and an expiration not passed.
-n47_request_event :: (e:NostrEvent,wallet:[32]u8,now:int)->int {
+n47_request_event :: (e:NostrEvent,wallet:[32]u8,now:int)->int #effects(all) {
   if e.error!=NE_OK || e.kind!=N47_REQUEST {return N47_KIND;}
   nip44:=false;mine:=false;
   for i:0..<e.tags {
@@ -630,13 +630,13 @@ it tries anything, and NIP-44 checks the MAC before it decrypts.
 // The conversation key of this side's secret and the other side's public
 // key: the client uses the URI's secret and wallet, the wallet its own
 // secret and the client's key.
-n47_key :: (secret:[]u8,peer:[32]u8,out:[]u8)->int {
+n47_key :: (secret:[]u8,peer:[32]u8,out:[]u8)->int #effects(all) {
   work:[1]EcdhScratch;pub:=peer;
   r:=nip44_conversation_key_from_keys_checked(secret,pub[..],work[..],out,false);
   return ifx r==NIP44_OK then N47_OK else N47_KEY;
 }
 // plain encrypted as NIP-44 v2 into out with the caller's fresh nonce.
-n47_seal :: (key:[]u8,nonce:[]u8,plain:string,out:[]u8)->N47Out {
+n47_seal :: (key:[]u8,nonce:[]u8,plain:string,out:[]u8)->N47Out #effects(all) {
   o:N47Out;o.error=N47_LIMIT;
   if plain.count>N47_MAX_PLAIN {return o;}
   work:[N47_WORK]u8;defer {secure_zero(work[..]);#assert crypto_zeroed(work[..]);}bytes:[N47_MAX_PLAIN]u8;defer {secure_zero(bytes[..]);#assert crypto_zeroed(bytes[..]);}
@@ -647,7 +647,7 @@ n47_seal :: (key:[]u8,nonce:[]u8,plain:string,out:[]u8)->N47Out {
 }
 // A response's or request's content opened into out. A NIP-04 payload
 // (its ?iv= suffix) is refused; NIP-44's MAC is checked before decryption.
-n47_open :: (key:[]u8,payload:string,out:[]u8)->N47Out {
+n47_open :: (key:[]u8,payload:string,out:[]u8)->N47Out #effects(all) {
   o:N47Out;o.error=N47_ENCRYPTION;
   for c:payload {if c=='?' {return o;}}
   work:[N47_WORK]u8;defer {secure_zero(work[..]);#assert crypto_zeroed(work[..]);}
@@ -676,7 +676,7 @@ wallet. `n47_match` checks five things:
 // Whether a response event and its opened plaintext answer a request the
 // client sent with method: kind 23195, written by the wallet, p naming the
 // request's author, e naming the request, result_type the request's method.
-n47_match :: (request:NostrEvent,response:NostrEvent,wallet:[32]u8,method:int,reply:N47Reply)->int {
+n47_match :: (request:NostrEvent,response:NostrEvent,wallet:[32]u8,method:int,reply:N47Reply)->int #effects(all) {
   if response.error!=NE_OK || response.kind!=N47_RESPONSE {return N47_KIND;}
   if !n47_same(response.public_key,wallet) {return N47_AUTHOR;}
   p:=false;e:=false;
@@ -731,7 +731,7 @@ not built.
 ```jai
 // The budget at time now: whole periods since start roll it over, so
 // spent starts again at 0 at each period's start.
-n47_roll :: (b:N47Budget,now:int)->N47Budget {
+n47_roll :: (b:N47Budget,now:int)->N47Budget #effects(all) {
   r:=b;
   if b.period>0 && now-b.start>=b.period {r.start=b.start+(now-b.start)/b.period*b.period;r.spent=0;}
   return r;
@@ -741,7 +741,7 @@ n47_roll :: (b:N47Budget,now:int)->N47Budget {
 // without one (both given must agree). A payment over what is left in this
 // period is refused (the wallet answers QUOTA_EXCEEDED); so is a time
 // before the budget's start. A refused call leaves spent as it was.
-n47_spend :: (b:N47Budget,now:int,c:N47Call)->N47Spend {
+n47_spend :: (b:N47Budget,now:int,c:N47Call)->N47Spend #effects(all) {
   s:N47Spend;s.budget=b;
   if c.error!=N47_OK || c.method!=N47_PAY {s.error=c.error;return s;}
   iv:=c.f.str[0];invoice:=x402_bolt11_msat(cast(string)iv.b[0..<iv.n]);
@@ -758,7 +758,7 @@ n47_spend :: (b:N47Budget,now:int,c:N47Call)->N47Spend {
   return s;
 }
 // The response code a refusal is answered with.
-n47_code :: (error:int)->int {
+n47_code :: (error:int)->int #effects(all) {
   if error==N47_QUOTA {return N47_C_QUOTA;}
   if error==N47_ENCRYPTION {return N47_C_UNSUPPORTED;}
   if error==N47_METHOD {return N47_C_NOT_IMPLEMENTED;}

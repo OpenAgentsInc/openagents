@@ -23,7 +23,7 @@ PK_FRONT_MAX :: 327520;
  p:=pk_front_plan(327520);#assert p.ok && p.frames==2047 && p.physical==2048 && p.encoded==256 && p.raw==262144 && p.features==262016;
  #assert !pk_front_plan(327521).ok && !pk_front_plan(9223372036854775807).ok;
 }
-pk_front_plan :: (samples:int)->PkFrontPlan {
+pk_front_plan :: (samples:int)->PkFrontPlan #effects(all) {
  if samples<320 || samples>PK_FRONT_MAX {return PkFrontPlan.{};}
  n:=samples/PK_FRONT_HOP;return PkFrontPlan.{ok=true,frames=n,physical=n+1,encoded=(n+7)/8,raw=PK_FRONT_MELS*(n+1),features=PK_FRONT_MELS*n};
 }

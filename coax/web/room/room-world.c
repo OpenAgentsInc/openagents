@@ -321,6 +321,7 @@ bool world_place_boat(int k, int s, int n) {
 }
 /* Seat s, gone from the room: out of any boat it rowed. */
 void world_gone(int k, int s) { if (world_of(k) && s >= 0 && s < WORLD_SEATS) seat_ashore(k, s); }
+void world_seat_owner(int k, int s, uint64_t owner) { if(world_of(k)) everglade_room_seat_owner(at(k),s,owner); }
 int world_doors(int k, int w) { return world_of(k) ? (int)everglade_room_doors(at(k), w) : 0; }
 void world_rebuild(int k) { if (world_of(k)) everglade_room_rebuild(at(k)); }
 int world_pieces(int k) { return world_of(k) ? (int)everglade_room_pieces(at(k)) : 0; }

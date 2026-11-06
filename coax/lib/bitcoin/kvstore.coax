@@ -71,23 +71,23 @@ KvOpen :: struct { code: int; used: int; seq: u64; frames: int; keep: int; cut: 
 // book:end types
 
 // ---- little-endian fields
-kv_get16 :: (b: [] u8, at: int) -> int { return (cast(int) b[at]) | ((cast(int) b[at+1]) << 8); }
-kv_get32 :: (b: [] u8, at: int) -> int {
+kv_get16 :: (b: [] u8, at: int) -> int #effects(all) { return (cast(int) b[at]) | ((cast(int) b[at+1]) << 8); }
+kv_get32 :: (b: [] u8, at: int) -> int #effects(all) {
   return (cast(int) b[at]) | ((cast(int) b[at+1]) << 8) | ((cast(int) b[at+2]) << 16) | ((cast(int) b[at+3]) << 24);
 }
-kv_get64 :: (b: [] u8, at: int) -> u64 {
+kv_get64 :: (b: [] u8, at: int) -> u64 #effects(all) {
   v := cast(u64) 0;
   for i: 0..<8 { v |= (cast(u64) b[at+i]) << (cast(u64) (8*i)); }
   return v;
 }
-kv_put16 :: (b: [] u8, at: int, v: int) { b[at] = cast(u8) (v & 255); b[at+1] = cast(u8) ((v >> 8) & 255); }
-kv_put32 :: (b: [] u8, at: int, v: int) { for i: 0..<4 { b[at+i] = cast(u8) ((v >> (8*i)) & 255); } }
-kv_put64 :: (b: [] u8, at: int, v: u64) { for i: 0..<8 { b[at+i] = cast(u8) ((v >> cast(u64) (8*i)) & 255); } }
+kv_put16 :: (b: [] u8, at: int, v: int) #effects(all) { b[at] = cast(u8) (v & 255); b[at+1] = cast(u8) ((v >> 8) & 255); }
+kv_put32 :: (b: [] u8, at: int, v: int) #effects(all) { for i: 0..<4 { b[at+i] = cast(u8) ((v >> (8*i)) & 255); } }
+kv_put64 :: (b: [] u8, at: int, v: u64) #effects(all) { for i: 0..<8 { b[at+i] = cast(u8) ((v >> cast(u64) (8*i)) & 255); } }
 
 // book:begin compare
 // Byte order, as LevelDB's default comparator: the first differing byte
 // decides, and a key that is a prefix of another sorts first.
-kv_compare :: (a: [] u8, b: [] u8) -> int {
+kv_compare :: (a: [] u8, b: [] u8) -> int #effects(all) {
   delta := ks_compare(a,b); return (delta >> 63)-((-delta) >> 63);
 }
 // book:end compare
@@ -95,12 +95,12 @@ kv_compare :: (a: [] u8, b: [] u8) -> int {
 // book:begin table
 // The table is entries in key order, packed from byte 0 to used: each is
 // a 2-byte key length, a 4-byte value length, the key, then the value.
-kv_entry_size :: (key_n: int, value_n: int) -> int { return KV_ENTRY_HEAD + key_n + value_n; }
-kv_key_ok :: (key: [] u8) -> bool { return key.count >= 1 && key.count <= KV_KEY_MAX; }
+kv_entry_size :: (key_n: int, value_n: int) -> int #effects(all) { return KV_ENTRY_HEAD + key_n + value_n; }
+kv_key_ok :: (key: [] u8) -> bool #effects(all) { return key.count >= 1 && key.count <= KV_KEY_MAX; }
 
 // The first entry whose key is at least key: its offset, and whether its
 // key is key itself.
-kv_find_vartime :: (table: [] u8, used: int, key: [] u8) -> KvFind {
+kv_find_vartime :: (table: [] u8, used: int, key: [] u8) -> KvFind #effects(all) {
   if ks_enabled(table,used) { f := ks_find(table,used,key); return KvFind.{at=f.at,found=f.found}; }
   at := 0;
   while at < used {
@@ -112,7 +112,7 @@ kv_find_vartime :: (table: [] u8, used: int, key: [] u8) -> KvFind {
   return KvFind.{at = used};
 }
 // Get: the value of key into out.
-kv_get_vartime :: (table: [] u8, used: int, key: [] u8, out: [] u8) -> KvGet {
+kv_get_vartime :: (table: [] u8, used: int, key: [] u8, out: [] u8) -> KvGet #effects(all) {
   f := kv_find_vartime(table, used, key);
   if !f.found { return KvGet.{code = KV_NOT_FOUND}; }
   kn := kv_get16(table, f.at); vn := kv_get32(table, f.at + 2);
@@ -122,14 +122,14 @@ kv_get_vartime :: (table: [] u8, used: int, key: [] u8, out: [] u8) -> KvGet {
   return KvGet.{n = vn};
 }
 // Move table[from..<used] to start at to, in either direction.
-kv_move :: (table: [] u8, from: int, to: int, used: int) {
+kv_move :: (table: [] u8, from: int, to: int, used: int) #effects(all) {
   n := used - from;
   direction := (to-from) >> 63; start := (n-1) & (direction ^ -1); step := (direction & 2)-1;
   for i: 0..<n { at := start+i*step; table[to+at] = table[from+at]; }
 }
 // Put: insert key or replace its value, keeping the order. Returns the
 // table's new length, or minus a code with the table unchanged.
-kv_set_vartime :: (table: [] u8, used: int, key: [] u8, value: [] u8) -> int {
+kv_set_vartime :: (table: [] u8, used: int, key: [] u8, value: [] u8) -> int #effects(all) {
   if ks_enabled(table,used) { return ks_put(table,used,key,value); }
   if !kv_key_ok(key) || value.count > KV_VALUE_MAX { return -KV_TOO_LONG; }
   f := kv_find_vartime(table, used, key);
@@ -144,7 +144,7 @@ kv_set_vartime :: (table: [] u8, used: int, key: [] u8, value: [] u8) -> int {
   return used - old + size;
 }
 // Delete: remove key if it is there. Returns the table's new length.
-kv_delete_vartime :: (table: [] u8, used: int, key: [] u8) -> int {
+kv_delete_vartime :: (table: [] u8, used: int, key: [] u8) -> int #effects(all) {
   if ks_enabled(table,used) { return ks_delete(table,used,key); }
   f := kv_find_vartime(table, used, key);
   if !f.found { return used; }
@@ -157,14 +157,14 @@ kv_delete_vartime :: (table: [] u8, used: int, key: [] u8) -> int {
 // book:begin iterate
 // The entry at offset at: KV_NOT_FOUND at the end. Start at 0 for the whole
 // table, or at kv_seek_vartime's offset for the keys from a given one.
-kv_entry_vartime :: (table: [] u8, used: int, at: int) -> KvEntry {
+kv_entry_vartime :: (table: [] u8, used: int, at: int) -> KvEntry #effects(all) {
   if ks_enabled(table,used) { e := ks_entry(table,used,at); return KvEntry.{code=e.code,next=e.next,key=e.key,value=e.value}; }
   if at >= used { return KvEntry.{code = KV_NOT_FOUND, next = used}; }
   kn := kv_get16(table, at); vn := kv_get32(table, at + 2);
   k := at + KV_ENTRY_HEAD;
   return KvEntry.{next = k + kn + vn, key = table[k..<k+kn], value = table[k+kn..<k+kn+vn]};
 }
-kv_seek_vartime :: (table: [] u8, used: int, key: [] u8) -> int {
+kv_seek_vartime :: (table: [] u8, used: int, key: [] u8) -> int #effects(all) {
   return kv_find_vartime(table, used, key).at;
 }
 // book:end iterate
@@ -175,12 +175,12 @@ kv_seek_vartime :: (table: [] u8, used: int, key: [] u8) -> int {
 // 2-byte key length, for a put a 4-byte value length, the key, the value.
 // Each builder returns where the next operation goes, or minus a code with
 // the batch unchanged.
-kv_batch_new :: (batch: [] u8) -> int #export_c {
+kv_batch_new :: (batch: [] u8) -> int #export_c #effects(all) {
   if batch.count < KV_BODY_HEAD { return -KV_FULL; }
   for i: 0..<KV_BODY_HEAD { batch[i] = 0; }
   return KV_BODY_HEAD;
 }
-kv_batch_put_vartime :: (batch: [] u8, at: int, key: [] u8, value: [] u8) -> int #export_c {
+kv_batch_put_vartime :: (batch: [] u8, at: int, key: [] u8, value: [] u8) -> int #export_c #effects(all) {
   if !kv_key_ok(key) || value.count > KV_VALUE_MAX { return -KV_TOO_LONG; }
   if at < KV_BODY_HEAD || 7 + key.count + value.count > batch.count - at { return -KV_FULL; }
   batch[at] = KV_PUT; kv_put16(batch, at + 1, key.count); kv_put32(batch, at + 3, value.count);
@@ -189,7 +189,7 @@ kv_batch_put_vartime :: (batch: [] u8, at: int, key: [] u8, value: [] u8) -> int
   kv_put32(batch, 8, kv_get32(batch, 8) + 1);
   return at + 7 + key.count + value.count;
 }
-kv_batch_delete_vartime :: (batch: [] u8, at: int, key: [] u8) -> int #export_c {
+kv_batch_delete_vartime :: (batch: [] u8, at: int, key: [] u8) -> int #export_c #effects(all) {
   if !kv_key_ok(key) { return -KV_TOO_LONG; }
   if at < KV_BODY_HEAD || 3 + key.count > batch.count - at { return -KV_FULL; }
   batch[at] = KV_DELETE; kv_put16(batch, at + 1, key.count);
@@ -198,7 +198,7 @@ kv_batch_delete_vartime :: (batch: [] u8, at: int, key: [] u8) -> int #export_c 
   return at + 3 + key.count;
 }
 // The operation at at, read back.
-kv_op_vartime :: (body: [] u8, at: int) -> KvOp {
+kv_op_vartime :: (body: [] u8, at: int) -> KvOp #effects(all) {
   bad := KvOp.{code = KV_BAD_BATCH};
   if body.count - at < 4 { return bad; }
   kind := cast(int) body[at]; kn := kv_get16(body, at + 1);
@@ -215,7 +215,7 @@ kv_op_vartime :: (body: [] u8, at: int) -> KvOp {
 }
 // The whole batch: its count must match its operations, which must end
 // exactly at its end. grow bounds what applying it adds to the table.
-kv_batch_check_vartime :: (body: [] u8) -> KvBatch {
+kv_batch_check_vartime :: (body: [] u8) -> KvBatch #effects(all) {
   if body.count < KV_BODY_HEAD { return KvBatch.{code = KV_BAD_BATCH}; }
   count := kv_get32(body, 8);
   at := KV_BODY_HEAD; grow := 0;
@@ -232,7 +232,7 @@ kv_batch_check_vartime :: (body: [] u8) -> KvBatch {
 // with mask (0 for a batch the caller built). Returns the new length, or
 // minus KV_FULL with the table unchanged: the check comes first, so a batch
 // lands whole or not at all.
-kv_apply_vartime :: (table: [] u8, used: int, body: [] u8, mask: u64) -> int {
+kv_apply_vartime :: (table: [] u8, used: int, body: [] u8, mask: u64) -> int #effects(all) {
   b := kv_batch_check_vartime(body);
   if b.code != KV_OK { return -b.code; }
   if kv_table_growth(table,used,body,b.grow) > table.count - used { return -KV_FULL; }
@@ -251,7 +251,7 @@ kv_apply_vartime :: (table: [] u8, used: int, body: [] u8, mask: u64) -> int {
 }
 // A put may allocate a tower as well as its canonical entry. Preflight the
 // whole batch before mutating anything; deletes allocate nothing.
-kv_table_growth :: (table: [] u8, used: int, body: [] u8, base: int) -> int {
+kv_table_growth :: (table: [] u8, used: int, body: [] u8, base: int) -> int #effects(all) {
   if !ks_enabled(table,used) { return base; }
   grow := base; at := KV_BODY_HEAD;
   for i: 0..<kv_get32(body,8) { op := kv_op_vartime(body,at); if op.kind == KV_PUT { grow += 8*ks_level(table,op.key)+1; } at = op.next; } return grow;
@@ -264,11 +264,11 @@ kv_table_growth :: (table: [] u8, used: int, body: [] u8, base: int) -> int {
 // Core stores the key, unmasked, under "\0obfuscate_key". Here it is in
 // the header, as a little-endian u64. A key of zero changes nothing, and
 // masking twice unmasks.
-kv_mask :: (value: [] u8, mask: u64) {
+kv_mask :: (value: [] u8, mask: u64) #effects(all) {
   for i: 0..<value.count { value[i] ^= cast(u8) ((mask >> cast(u64) (8 * (i % 8))) & 255); }
 }
 // Mask every value of a batch in place.
-kv_mask_batch :: (body: [] u8, mask: u64) {
+kv_mask_batch :: (body: [] u8, mask: u64) #effects(all) {
   count := kv_get32(body, 8); at := KV_BODY_HEAD;
   for i: 0..<count {
     op := kv_op_vartime(body, at);
@@ -283,14 +283,14 @@ kv_mask_batch :: (body: [] u8, mask: u64) {
 // masked), two zero bytes, the mask, then a checksum of those 16 bytes.
 // Every checksum here is the first 4 bytes of SHA-256d, as in a P2P
 // message header.
-kv_checksum_ok :: (data: [] u8, sum: [] u8) -> bool {
+kv_checksum_ok :: (data: [] u8, sum: [] u8) -> bool #effects(all) {
   if sum.count != 4 { return false; }
   c: [4] u8;
   kv_checksum(data, c[..]);
   for i: 0..<4 { if c[i] != sum[i] { return false; } }
   return true;
 }
-kv_header_vartime :: (mask: u64, out: [] u8) -> int #export_c {
+kv_header_vartime :: (mask: u64, out: [] u8) -> int #export_c #effects(all) {
   if out.count < KV_HEADER { return -KV_FULL; }
   out[0] = 'O'; out[1] = 'A'; out[2] = 'K'; out[3] = 'V';
   out[4] = KV_VERSION; out[5] = ifx mask != 0 then cast(u8) 1 else 0; out[6] = 0; out[7] = 0;
@@ -301,20 +301,20 @@ kv_header_vartime :: (mask: u64, out: [] u8) -> int #export_c {
 // A frame: a 4-byte body length, the body's checksum, then the body. Seal
 // the plain batch already in frame[8..<8+n]: set its sequence number, mask
 // its values, then fill in the length and checksum.
-kv_seal_vartime :: (frame: [] u8, n: int, seq: u64, mask: u64) {
+kv_seal_vartime :: (frame: [] u8, n: int, seq: u64, mask: u64) #effects(all) {
   body := frame[KV_FRAME_HEAD..<KV_FRAME_HEAD+n];
   kv_put64(body, 0, seq);
   kv_mask_batch(body, mask);
   kv_put32(frame, 0, n);
   sum: [4] u8; kv_checksum(body,sum[..]); for i: 0..<4 { frame[4+i] = sum[i]; }
 }
-kv_is_error :: (result: int) -> bool { return result < 0; }
-kv_frame_size_ok :: (n: int) -> bool { return n >= KV_BODY_HEAD && n <= KV_FRAME_MAX; }
-kv_frame_status :: (n: int) -> int { return ifx kv_frame_size_ok(n) then KV_OK else KV_TOO_LONG; }
+kv_is_error :: (result: int) -> bool #effects(all) { return result < 0; }
+kv_frame_size_ok :: (n: int) -> bool #effects(all) { return n >= KV_BODY_HEAD && n <= KV_FRAME_MAX; }
+kv_frame_status :: (n: int) -> int #effects(all) { return ifx kv_frame_size_ok(n) then KV_OK else KV_TOO_LONG; }
 // Commit a batch: apply it to the table and write the frame to append.
 // The batch is committed when the host has appended the frame and fsync
 // has returned, and not before. Nothing changes on a refusal.
-kv_commit_vartime :: (table: [] u8, used: int, seq: u64, batch: [] u8, mask: u64, frame: [] u8) -> KvCommit {
+kv_commit_vartime :: (table: [] u8, used: int, seq: u64, batch: [] u8, mask: u64, frame: [] u8) -> KvCommit #effects(all) {
   b := kv_batch_check_vartime(batch);
   if b.code != KV_OK { return KvCommit.{code = b.code}; }
   size_status := kv_frame_status(batch.count); if size_status != KV_OK { return KvCommit.{code=size_status}; }
@@ -329,7 +329,7 @@ kv_commit_vartime :: (table: [] u8, used: int, seq: u64, batch: [] u8, mask: u64
 // book:begin open
 // Are the bytes from at to the end all zero? A file that grew in a crash
 // but whose new bytes were never written reads as zeros.
-kv_zero_from :: (file: [] u8, at: int) -> bool {
+kv_zero_from :: (file: [] u8, at: int) -> bool #effects(all) {
   for i: at..<file.count { if file[i] != 0 { return false; } }
   return true;
 }
@@ -342,18 +342,18 @@ kv_zero_from :: (file: [] u8, at: int) -> bool {
 // whose checksum fails with only zeros after it. It stops there and asks
 // the host to cut the file at keep. Damage anywhere else is in committed
 // bytes, and replay refuses rather than guess.
-kv_open_vartime :: (file: [] u8, table: [] u8) -> KvOpen {
+kv_open_vartime :: (file: [] u8, table: [] u8) -> KvOpen #effects(all) {
   return kv_open_start_vartime(file,table,0);
 }
-kv_open_arena_vartime :: (file: [] u8, table: [] u8, initial: int) -> KvOpen #export_c {
+kv_open_arena_vartime :: (file: [] u8, table: [] u8, initial: int) -> KvOpen #export_c #effects(all) {
   if initial != KS_HEAD || !ks_enabled(table,initial) { return KvOpen.{code=KV_CORRUPT}; }
   for level: 0..<KS_LEVELS { if ks_link(table,0,level) != 0 { return KvOpen.{code=KV_CORRUPT}; } }
   return kv_open_start_vartime(file,table,initial);
 }
-kv_sequence_ok :: (previous: u64, seq: u64, seen: bool) -> bool {
+kv_sequence_ok :: (previous: u64, seq: u64, seen: bool) -> bool #effects(all) {
   return seq != 0 && (!seen || (previous != 0xffffffffffffffff && seq == previous+1));
 }
-kv_open_start_vartime :: (file: [] u8, table: [] u8, initial: int) -> KvOpen {
+kv_open_start_vartime :: (file: [] u8, table: [] u8, initial: int) -> KvOpen #effects(all) {
   if file.count < KV_HEADER || file[0] != 'O' || file[1] != 'A' || file[2] != 'K' || file[3] != 'V' { return KvOpen.{code = KV_BAD_HEADER}; }
   if file[4] != KV_VERSION || !kv_checksum_ok(file[0..<16], file[16..<20]) { return KvOpen.{code = KV_BAD_HEADER}; }
   r := KvOpen.{used=initial,mask = kv_get64(file, 8)};
@@ -389,7 +389,7 @@ kv_open_start_vartime :: (file: [] u8, table: [] u8, initial: int) -> KvOpen {
 // carrying the last sequence number, so that the next commit follows on.
 // The host writes it to a new file, fsyncs it, renames it over the old log
 // and fsyncs the directory. Returns its length, or minus a code.
-kv_snapshot_vartime :: (table: [] u8, used: int, seq: u64, mask: u64, out: [] u8) -> int #export_c {
+kv_snapshot_vartime :: (table: [] u8, used: int, seq: u64, mask: u64, out: [] u8) -> int #export_c #effects(all) {
   if kv_is_error(kv_header_vartime(mask, out)) { return -KV_FULL; }
   if seq == 0 { return ifx kv_entry_vartime(table,used,0).code == KV_NOT_FOUND then KV_HEADER else -KV_BAD_BATCH; }
   body := out[KV_HEADER+KV_FRAME_HEAD..<out.count];
@@ -408,30 +408,30 @@ kv_snapshot_vartime :: (table: [] u8, used: int, seq: u64, mask: u64, out: [] u8
 // book:end snapshot
 
 // ---- the C interface: results as u64 fields
-kv_open_c :: (file: [] u8, table: [] u8, fields: [] u64) -> int #export_c {
+kv_open_c :: (file: [] u8, table: [] u8, fields: [] u64) -> int #export_c #effects(all) {
   if fields.count < 6 { return -1; }
   r := kv_open_vartime(file, table);
   fields[0] = cast(u64) r.used; fields[1] = r.seq; fields[2] = cast(u64) r.frames;
   fields[3] = cast(u64) r.keep; fields[4] = ifx r.cut then cast(u64) 1 else 0; fields[5] = r.mask;
   return r.code;
 }
-kv_commit_c :: (table: [] u8, used: int, seq: u64, batch: [] u8, mask: u64, frame: [] u8, fields: [] u64) -> int #export_c {
+kv_commit_c :: (table: [] u8, used: int, seq: u64, batch: [] u8, mask: u64, frame: [] u8, fields: [] u64) -> int #export_c #effects(all) {
   if fields.count < 2 { return -1; }
   r := kv_commit_vartime(table, used, seq, batch, mask, frame);
   fields[0] = cast(u64) r.used; fields[1] = cast(u64) r.n;
   return r.code;
 }
-kv_get_c :: (table: [] u8, used: int, key: [] u8, out: [] u8) -> int #export_c {
+kv_get_c :: (table: [] u8, used: int, key: [] u8, out: [] u8) -> int #export_c #effects(all) {
   r := kv_get_vartime(table, used, key, out);
   if r.code != KV_OK { return -r.code; }
   return r.n;
 }
-kv_set_c :: (table: [] u8, used: int, key: [] u8, value: [] u8) -> int #export_c { return kv_set_vartime(table, used, key, value); }
-kv_delete_c :: (table: [] u8, used: int, key: [] u8) -> int #export_c { return kv_delete_vartime(table, used, key); }
-kv_seek_c :: (table: [] u8, used: int, key: [] u8) -> int #export_c { return kv_seek_vartime(table, used, key); }
+kv_set_c :: (table: [] u8, used: int, key: [] u8, value: [] u8) -> int #export_c #effects(all) { return kv_set_vartime(table, used, key, value); }
+kv_delete_c :: (table: [] u8, used: int, key: [] u8) -> int #export_c #effects(all) { return kv_delete_vartime(table, used, key); }
+kv_seek_c :: (table: [] u8, used: int, key: [] u8) -> int #export_c #effects(all) { return kv_seek_vartime(table, used, key); }
 // The entry at at as offsets into the table: next, key, key length, value,
 // value length.
-kv_entry_c :: (table: [] u8, used: int, at: int, fields: [] u64) -> int #export_c {
+kv_entry_c :: (table: [] u8, used: int, at: int, fields: [] u64) -> int #export_c #effects(all) {
   if fields.count < 5 { return -1; }
   e := kv_entry_vartime(table, used, at);
   if e.code != KV_OK { return e.code; }
@@ -444,30 +444,30 @@ kv_entry_c :: (table: [] u8, used: int, at: int, fields: [] u64) -> int #export_
 
 // ---- checks
 // The test helpers take keys and values as strings.
-kv_copy :: (s: string, out: [] u8) -> [] u8 {
+kv_copy :: (s: string, out: [] u8) -> [] u8 #effects(all) {
   for i: 0..<s.count { out[i] = s[i]; }
   return out[0..<s.count];
 }
-kv_sets :: (table: [] u8, used: int, key: string, value: string) -> int {
+kv_sets :: (table: [] u8, used: int, key: string, value: string) -> int #effects(all) {
   k: [64] u8; v: [64] u8;
   return kv_set_vartime(table, used, kv_copy(key, k[..]), kv_copy(value, v[..]));
 }
-kv_dels :: (table: [] u8, used: int, key: string) -> int { k: [64] u8; return kv_delete_vartime(table, used, kv_copy(key, k[..])); }
-kv_gets :: (table: [] u8, used: int, key: string, out: [] u8) -> KvGet { k: [64] u8; return kv_get_vartime(table, used, kv_copy(key, k[..]), out); }
-kv_seeks :: (table: [] u8, used: int, key: string) -> int { k: [64] u8; return kv_seek_vartime(table, used, kv_copy(key, k[..])); }
-kv_bputs :: (batch: [] u8, at: int, key: string, value: string) -> int {
+kv_dels :: (table: [] u8, used: int, key: string) -> int #effects(all) { k: [64] u8; return kv_delete_vartime(table, used, kv_copy(key, k[..])); }
+kv_gets :: (table: [] u8, used: int, key: string, out: [] u8) -> KvGet #effects(all) { k: [64] u8; return kv_get_vartime(table, used, kv_copy(key, k[..]), out); }
+kv_seeks :: (table: [] u8, used: int, key: string) -> int #effects(all) { k: [64] u8; return kv_seek_vartime(table, used, kv_copy(key, k[..])); }
+kv_bputs :: (batch: [] u8, at: int, key: string, value: string) -> int #effects(all) {
   k: [64] u8; v: [64] u8;
   return kv_batch_put_vartime(batch, at, kv_copy(key, k[..]), kv_copy(value, v[..]));
 }
-kv_bdels :: (batch: [] u8, at: int, key: string) -> int { k: [64] u8; return kv_batch_delete_vartime(batch, at, kv_copy(key, k[..])); }
-kv_compares :: (a: string, b: string) -> int { x: [64] u8; y: [64] u8; return kv_compare(kv_copy(a, x[..]), kv_copy(b, y[..])); }
-kv_is :: (a: [] u8, s: string) -> bool {
+kv_bdels :: (batch: [] u8, at: int, key: string) -> int #effects(all) { k: [64] u8; return kv_batch_delete_vartime(batch, at, kv_copy(key, k[..])); }
+kv_compares :: (a: string, b: string) -> int #effects(all) { x: [64] u8; y: [64] u8; return kv_compare(kv_copy(a, x[..]), kv_copy(b, y[..])); }
+kv_is :: (a: [] u8, s: string) -> bool #effects(all) {
   if a.count != s.count { return false; }
   for i: 0..<a.count { if a[i] != s[i] { return false; } }
   return true;
 }
 // The keys of the table in order, joined with commas.
-kv_keys_are :: (table: [] u8, used: int, want: string) -> bool {
+kv_keys_are :: (table: [] u8, used: int, want: string) -> bool #effects(all) {
   text: [256] u8; n := 0;
   e := kv_entry_vartime(table, used, 0);
   while e.code == KV_OK {
@@ -477,13 +477,13 @@ kv_keys_are :: (table: [] u8, used: int, want: string) -> bool {
   }
   return kv_is(text[0..<n], want);
 }
-kv_value_is :: (table: [] u8, used: int, key: string, want: string) -> bool {
+kv_value_is :: (table: [] u8, used: int, key: string, want: string) -> bool #effects(all) {
   out: [64] u8;
   g := kv_gets(table, used, key, out[..]);
   return g.code == KV_OK && kv_is(out[0..<g.n], want);
 }
 // A log with two batches: a=1, b=22, c=333; then delete b, put a=4444.
-kv_two_batches :: (file: [] u8, mask: u64) -> int {
+kv_two_batches :: (file: [] u8, mask: u64) -> int #effects(all) {
   table: [256] u8; batch: [128] u8;
   n := kv_header_vartime(mask, file);
   at := kv_batch_new(batch[..]);

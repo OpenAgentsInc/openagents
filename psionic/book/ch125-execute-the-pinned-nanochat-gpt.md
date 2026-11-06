@@ -86,7 +86,7 @@ nc_block :: (c:NcConfig,l:int)->NcBlock {
 nc_head :: (c:NcConfig)->int {at:=nc_wte(c)+nc_padded(c)*c.width;for i:0..<c.layers {at+=nc_block_size(c,i);}return at;}
 nc_smear_gate :: (c:NcConfig)->int {return nc_head(c)+nc_padded(c)*c.width;}
 nc_ve_layers :: (c:NcConfig)->int {n:=0;for l:0..<c.layers {if nc_has_ve(c,l) {n+=1;}}return n;}
-nc_parameter_count :: (c:NcConfig)->int #export_c {return nc_smear_gate(c)+NC_SMEAR+nc_ve_layers(c)*nc_padded(c)*nc_kv_width(c);}
+nc_parameter_count :: (c:NcConfig)->int #export_c #effects(all) {return nc_smear_gate(c)+NC_SMEAR+nc_ve_layers(c)*nc_padded(c)*nc_kv_width(c);}
 nc_tensor_count :: (c:NcConfig)->int {return 5+6*c.layers+2*nc_ve_layers(c)+2;}
 ```
 
@@ -162,7 +162,7 @@ nc_run :: (c:NcConfig,p:[]f64,cache:[]f64,filled:int,tokens:[]int,work:[]f64,log
 // The training path over a whole sequence (the reference asserts T > 1). It
 // also fills the cache, so it doubles as the prefill. blocks, when not empty,
 // receives each layer's residual output per position.
-nc_forward :: (c:NcConfig,p:[]f64,tokens:[]int,cache:[]f64,work:[]f64,logits:[]f64,blocks:[]f64,overlap:bool)->NcResult #export_c {
+nc_forward :: (c:NcConfig,p:[]f64,tokens:[]int,cache:[]f64,work:[]f64,logits:[]f64,blocks:[]f64,overlap:bool)->NcResult #export_c #effects(all) {
     status:=nc_admit(c,p,cache);if status!=NcStatus.ok {return NcResult.{status=status};}
     n:=tokens.count;if n<2 || n>c.context {return NcResult.{status=NcStatus.shape};}
     for x:tokens {if x<0 || x>=c.vocab {return NcResult.{status=NcStatus.token};}}
@@ -172,7 +172,7 @@ nc_forward :: (c:NcConfig,p:[]f64,tokens:[]int,cache:[]f64,work:[]f64,logits:[]f
     return NcResult.{written=n*c.vocab,loss=nc_loss(c,logits,tokens)};
 }
 // One token at position `filled` of a cache that holds positions 0..filled-1.
-nc_decode :: (c:NcConfig,p:[]f64,cache:[]f64,filled:int,token:int,work:[]f64,logits:[]f64,overlap:bool)->NcResult #export_c {
+nc_decode :: (c:NcConfig,p:[]f64,cache:[]f64,filled:int,token:int,work:[]f64,logits:[]f64,overlap:bool)->NcResult #export_c #effects(all) {
     status:=nc_admit(c,p,cache);if status!=NcStatus.ok {return NcResult.{status=status};}
     if filled<0 || filled>=c.context {return NcResult.{status=NcStatus.position};}if token<0 || token>=c.vocab {return NcResult.{status=NcStatus.token};}
     if work.count<nc_work_count(c,1) || logits.count<c.vocab {return NcResult.{status=NcStatus.capacity};}if overlap {return NcResult.{status=NcStatus.alias};}
@@ -255,7 +255,7 @@ and pins the source:
 ```jai
 // GPTConfig's seven keys. window_pattern is upper-cased as gpt.py does; a
 // missing one is checkpoint_manager's historical "L" patch and refuses.
-nc_model_config :: (j:[]Json)->NcRead {
+nc_model_config :: (j:[]Json)->NcRead #effects(all) {
     if json_next(j)!=JSON_OBJECT {return NcRead.{status=NcLoadStatus.schema};}seen:=0;keys:=NC_CONFIG_KEYS;c:NcConfig;t:=json_next(j);
     while t!=JSON_OBJECT_END {m:=nc_member(j,t,keys[..],seen);if m.status!=NcLoadStatus.ok {return NcRead.{status=m.status};}seen|=m.bit;
         if m.bit==64 {
@@ -282,7 +282,7 @@ them.
 
 <!-- source: psionic/lib/nanochat/checkpoint.coax identity -->
 ```jai
-nc_identity :: (text:string)->NcIdentity {
+nc_identity :: (text:string)->NcIdentity #effects(all) {
     if text.count>NC_IDENTITY_MAX {return NcIdentity.{status=NcLoadStatus.json};}
     j:[1]Json;json_start_bounded(j[..],text,text.count,text.count);
     if json_next(j[..])!=JSON_OBJECT {return NcIdentity.{status=NcLoadStatus.json};}
@@ -314,7 +314,7 @@ within `2^20` before it writes any. `nc_load` computes the SHA-256 itself:
 <!-- source: psionic/lib/nanochat/checkpoint.coax load -->
 ```jai
 // digest is the SHA-256 of file; nc_load computes it.
-nc_admit_export :: (identity:string,digest:[]u8,file:[]u8,params:[]f64,inventory:[]PwTensor,draft:[]PwTensor,overlap:bool)->NcLoad #export_c {
+nc_admit_export :: (identity:string,digest:[]u8,file:[]u8,params:[]f64,inventory:[]PwTensor,draft:[]PwTensor,overlap:bool)->NcLoad #export_c #effects(all) {
     if overlap {return NcLoad.{status=NcLoadStatus.alias};}
     id:=nc_identity(identity);if id.status!=NcLoadStatus.ok {return NcLoad.{status=id.status};}c:=id.config;
     if params.count!=nc_parameter_count(c) {return NcLoad.{status=NcLoadStatus.capacity};}
@@ -335,7 +335,7 @@ nc_admit_export :: (identity:string,digest:[]u8,file:[]u8,params:[]f64,inventory
         for e:0..<nc_elements(t) {params[t.offset+e]=cast(f64)f32_from_bits(pw_float_bits(file,tensor.begin+e*width,tensor.dtype));}}
     return NcLoad.{config=c,written=params.count,step=id.step};
 }
-nc_load :: (identity:string,file:[]u8,params:[]f64,inventory:[]PwTensor,draft:[]PwTensor,overlap:bool)->NcLoad #export_c {
+nc_load :: (identity:string,file:[]u8,params:[]f64,inventory:[]PwTensor,draft:[]PwTensor,overlap:bool)->NcLoad #export_c #effects(all) {
     digest:[32]u8;if sha256_hash_checked(file,digest[..],false)!=SHA_OK {return NcLoad.{status=NcLoadStatus.digest};}
     return nc_admit_export(identity,digest[..],file,params,inventory,draft,overlap);
 }

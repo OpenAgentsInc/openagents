@@ -53,7 +53,7 @@ OgHost :: struct {
   data: [OG_DATA] u8;
   inbox: [OG_INBOX] u8;
 }
-coaxial_og_bind :: (h: [] OgHost) #export_c {
+coaxial_og_bind :: (h: [] OgHost) #export_c #effects(all) {
   if h.count < 1 { return; }
   h[0].s[0].data = h[0].data[..];
   h[0].s[0].inbox = h[0].inbox[..];
@@ -137,7 +137,7 @@ og_ask :: (s: [] OgState) {
   s[0].ask_n = put_text(s[0].ask[..], 0, url);
   s[0].status = 0;
 }
-coaxial_og_asked :: (s: [] OgState) #export_c { s[0].ask_n = 0; }
+coaxial_og_asked :: (s: [] OgState) #export_c #effects(all) { s[0].ask_n = 0; }
 OG_MADE_URL :: "/api/playtest/realms/made";
 og_answer :: (s: [] OgState, bytes: string) {
   i := 0; code := 0;
@@ -400,7 +400,7 @@ og_card :: (out: [] f32, at: int, s: [] OgState, r: int, p: Pen, uniforms: [] f3
 
 // ---- the frame
 
-coaxial_og_frame :: (s: [] OgState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+coaxial_og_frame :: (s: [] OgState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   if !s[0].ready { s[0].ready = true; s[0].hot = HIT_NONE; s[0].press = HIT_NONE; s[0].status = -1; }
   if s[0].status == -1 { og_ask(s); }
@@ -485,7 +485,7 @@ og_act :: (s: [] OgState, target: int) {
     og_go(s, path);
   }
 }
-coaxial_og_pointer :: (s: [] OgState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
+coaxial_og_pointer :: (s: [] OgState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   d := hi(s[0].d, 1);
   if phase == P_DOWN {
@@ -512,7 +512,7 @@ coaxial_og_pointer :: (s: [] OgState, x: f32, y: f32, phase: int, kind: int) -> 
   s[0].press = HIT_NONE;
   return true;
 }
-coaxial_og_key :: (s: [] OgState, key: int) -> bool #export_c {
+coaxial_og_key :: (s: [] OgState, key: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   d := hi(s[0].d, 1);
   if key == K_DOWN { s[0].scroll += 40 * d; return true; }
@@ -523,23 +523,23 @@ coaxial_og_key :: (s: [] OgState, key: int) -> bool #export_c {
   if key == K_END { s[0].scroll = 1000000000; return true; }
   return false;
 }
-coaxial_og_wheel :: (s: [] OgState, dy: f32) #export_c { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
-coaxial_og_message :: (s: [] OgState, kind: int, length: int) #export_c {
+coaxial_og_wheel :: (s: [] OgState, dy: f32) #export_c #effects(all) { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
+coaxial_og_message :: (s: [] OgState, kind: int, length: int) #export_c #effects(all) {
   if s.count < 1 || kind < OG_HTTP || kind >= OG_HTTP + 8 || length < 0 || length > s[0].inbox.count { return; }
   og_answer(s, cast(string) s[0].inbox[0..<length]);
 }
 // The location's hash: "card=PATH" draws that page's card alone.
-coaxial_og_hash :: (s: [] OgState, length: int) #export_c {
+coaxial_og_hash :: (s: [] OgState, length: int) #export_c #effects(all) {
   if s.count < 1 || length < 0 || length > s[0].inbox.count { return; }
   h := cast(string) s[0].inbox[0..<length];
   s[0].card_n = 0;
   if h.count > 5 && same(h[0..<5], "card=") { s[0].card_n = put_text(s[0].card[..], 0, h[5..<h.count]); }
 }
-coaxial_og_cursor :: (s: [] OgState) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].hot != HIT_NONE then 1 else 0; }
-coaxial_og_action :: (s: [] OgState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
-coaxial_og_action_done :: (s: [] OgState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
-coaxial_og_inbox_cap :: () -> int #export_c { return OG_INBOX; }
-coaxial_og_max_vertices :: () -> int #export_c { return OG_MAX_VERTICES; }
+coaxial_og_cursor :: (s: [] OgState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return ifx s[0].hot != HIT_NONE then 1 else 0; }
+coaxial_og_action :: (s: [] OgState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_og_action_done :: (s: [] OgState) #export_c #effects(all) { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_og_inbox_cap :: () -> int #export_c #effects(all) { return OG_INBOX; }
+coaxial_og_max_vertices :: () -> int #export_c #effects(all) { return OG_MAX_VERTICES; }
 
 // ---- checks
 

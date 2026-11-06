@@ -151,18 +151,18 @@
   for i:0..<4 {gdk_scores(i,2,2,1,1,1,4,0,qq[..],kk[..],valid[0..<0],cc[..],ss[..],mm[..],ff[..]);#assert ff[i]==(ifx i==0 then cast(u8)0 else cast(u8)1);}
 }
 
-gdk_add :: (sum:f32,correction:f32,value:f32)->f32 {next:=sum+value;virtual_value:=next-sum;error:=(sum-(next-virtual_value))+(value-virtual_value);return correction+error;}
-gdk_numeric :: (bits:u32)->u8 {return ifx (bits&0x7f800000)==0x7f800000 then cast(u8)1 else cast(u8)0;}
-gdk_bad :: (x:f32)->u8 {return gdk_numeric(f32_bits(x));}
-gdk_flag :: (bad:u8,bits:u32)->u8 {return bad|gdk_numeric(bits);}
-gdk_count :: (checked:int,bits:u32)->int {return checked+1-cast(int)gdk_numeric(bits);}
-gdk_receipt :: (checked:int,wanted:int)->u8 {return ifx checked==wanted then cast(u8)0 else cast(u8)1;}
-gdk_norm_bounds :: (item:int,width:int,kind:int,n:int,scale:int,bias:int,out:int,flags:int)->bool {
+gdk_add :: (sum:f32,correction:f32,value:f32)->f32 #effects(all) {next:=sum+value;virtual_value:=next-sum;error:=(sum-(next-virtual_value))+(value-virtual_value);return correction+error;}
+gdk_numeric :: (bits:u32)->u8 #effects(all) {return ifx (bits&0x7f800000)==0x7f800000 then cast(u8)1 else cast(u8)0;}
+gdk_bad :: (x:f32)->u8 #effects(all) {return gdk_numeric(f32_bits(x));}
+gdk_flag :: (bad:u8,bits:u32)->u8 #effects(all) {return bad|gdk_numeric(bits);}
+gdk_count :: (checked:int,bits:u32)->int #effects(all) {return checked+1-cast(int)gdk_numeric(bits);}
+gdk_receipt :: (checked:int,wanted:int)->u8 #effects(all) {return ifx checked==wanted then cast(u8)0 else cast(u8)1;}
+gdk_norm_bounds :: (item:int,width:int,kind:int,n:int,scale:int,bias:int,out:int,flags:int)->bool #effects(all) {
   if width<1 || width>8192 || kind<0 || kind>2 || n<1 {return false;}
   if n%width!=0 || n/width>16384 || item<0 || item>=n/width || out<n || flags<n/width {return false;}
   if kind==0 {return scale==0 && bias==0;}if scale!=width {return false;}return bias==(ifx kind==1 then width else 0);
 }
-gdk_norm :: (item:int,width:int,kind:int,epsilon:f32,x:[]f32,scale:[]f32,bias:[]f32,out:[]f32,flags:[]u8) #export_c {
+gdk_norm :: (item:int,width:int,kind:int,epsilon:f32,x:[]f32,scale:[]f32,bias:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
   if !gdk_norm_bounds(item,width,kind,x.count,scale.count,bias.count,out.count,flags.count) || epsilon<=0 {return;}
   start:=item*width;sum:f32=0;correction:f32=0;checked:int=0;
   for j:0..<width {value:=x[start+j];checked=gdk_count(checked,f32_bits(value));correction=gdk_add(sum,correction,value);sum+=value;}
@@ -172,28 +172,28 @@ gdk_norm :: (item:int,width:int,kind:int,epsilon:f32,x:[]f32,scale:[]f32,bias:[]
   for j:0..<width {value:=(x[start+j]-mean)/denominator;if kind!=0 {value*=scale[j];checked=gdk_count(checked,f32_bits(scale[j]));}if kind==1 {value+=bias[j];checked=gdk_count(checked,f32_bits(bias[j]));}out[start+j]=value;checked=gdk_count(checked,f32_bits(value));}
   wanted:=2*width+1;if kind!=0 {wanted+=width;}if kind==1 {wanted+=width;}flags[item]=gdk_receipt(checked,wanted);
 }
-gdk_modulate_bounds :: (item:int,width:int,order:int,n:int,parameters:int,out:int,flags:int)->bool {return item>=0 && item<n && width>=1 && width<=8192 && n%width==0 && order>=0 && order<=1 && parameters==2*width && out>=n && flags>=n;}
-gdk_modulate :: (item:int,width:int,order:int,x:[]f32,parameters:[]f32,out:[]f32,flags:[]u8) #export_c {
+gdk_modulate_bounds :: (item:int,width:int,order:int,n:int,parameters:int,out:int,flags:int)->bool #effects(all) {return item>=0 && item<n && width>=1 && width<=8192 && n%width==0 && order>=0 && order<=1 && parameters==2*width && out>=n && flags>=n;}
+gdk_modulate :: (item:int,width:int,order:int,x:[]f32,parameters:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
   if !gdk_modulate_bounds(item,width,order,x.count,parameters.count,out.count,flags.count) {return;}
   axis:=item%width;scale:=parameters[axis];shift:=parameters[width+axis];if order==1 {scale=parameters[width+axis];shift=parameters[axis];}
   factor:=1.0f32+scale;product:=x[item]*factor;value:=product+shift;out[item]=value;checked:=gdk_count(0,f32_bits(x[item]));checked=gdk_count(checked,f32_bits(scale));checked=gdk_count(checked,f32_bits(shift));checked=gdk_count(checked,f32_bits(value));flags[item]=gdk_receipt(checked,4);
 }
-gdk_activate :: (item:int,kind:int,x:[]f32,out:[]f32,flags:[]u8) #export_c {
+gdk_activate :: (item:int,kind:int,x:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
   if item<0 || item>=x.count || kind<0 || kind>1 || out.count<x.count || flags.count<x.count {return;}
   value:=x[item];result:f32;
   if kind==0 {e:=exp(-abs(value));negative:=f32(f32_bits(value)>>31);sigmoid:=((1-negative)+negative*e)/(1+e);result=value*sigmoid;}
   else {argument:=0.7978845608028654f32*(value+0.044715f32*value*value*value);e:=exp(-2.0f32*abs(argument));sign:=1.0f32-2.0f32*f32(f32_bits(argument)>>31);tanh:=sign*(1-e)/(1+e);result=(0.5f32*value)*(1+tanh);}
   out[item]=result;checked:=gdk_count(0,f32_bits(value));checked=gdk_count(checked,f32_bits(result));flags[item]=gdk_receipt(checked,2);
 }
-gdk_attention_axes :: (queries:int,keys:int,heads:int,kv_heads:int,dim:int)->bool {return queries>=1 && queries<=1024 && keys>=1 && keys<=1024 && heads>=1 && heads<=32 && kv_heads>=1 && kv_heads<=heads && heads%kv_heads==0 && dim>=1 && dim<=128;}
-gdk_attention_shape :: (queries:int,keys:int,heads:int,kv_heads:int,dim:int,mode:int,offset:int)->bool {
+gdk_attention_axes :: (queries:int,keys:int,heads:int,kv_heads:int,dim:int)->bool #effects(all) {return queries>=1 && queries<=1024 && keys>=1 && keys<=1024 && heads>=1 && heads<=32 && kv_heads>=1 && kv_heads<=heads && heads%kv_heads==0 && dim>=1 && dim<=128;}
+gdk_attention_shape :: (queries:int,keys:int,heads:int,kv_heads:int,dim:int,mode:int,offset:int)->bool #effects(all) {
   if !gdk_attention_axes(queries,keys,heads,kv_heads,dim) || mode<0 || mode>7 || offset<0 || offset>1024 {return false;}
   if (mode&4)!=0 && queries!=keys {return false;}if (mode&2)!=0 && offset+queries>keys {return false;}return true;
 }
-gdk_visible :: (query:int,key:int,mode:int,offset:int,valid:u8,qcamera:int,kcamera:int)->bool {
+gdk_visible :: (query:int,key:int,mode:int,offset:int,valid:u8,qcamera:int,kcamera:int)->bool #effects(all) {
   if (mode&1)!=0 && valid==0 {return false;}if (mode&2)!=0 && key>offset+query {return false;}if (mode&4)!=0 && qcamera!=kcamera {return false;}return true;
 }
-gdk_scores :: (item:int,queries:int,keys:int,heads:int,kv_heads:int,dim:int,mode:int,offset:int,q:[]f32,k:[]f32,valid:[]u8,camera:[]int,scores:[]f32,keep:[]u8,flags:[]u8) #export_c {
+gdk_scores :: (item:int,queries:int,keys:int,heads:int,kv_heads:int,dim:int,mode:int,offset:int,q:[]f32,k:[]f32,valid:[]u8,camera:[]int,scores:[]f32,keep:[]u8,flags:[]u8) #export_c #effects(all) {
   if !gdk_attention_shape(queries,keys,heads,kv_heads,dim,mode,offset) {return;}n:=queries*heads*keys;
   if item<0 || item>=n || q.count!=queries*heads*dim || k.count!=keys*kv_heads*dim || scores.count<n || keep.count<n || flags.count<n {return;}
   if (mode&1)!=0 && valid.count!=keys {return;}if (mode&4)!=0 && camera.count!=keys {return;}
@@ -203,16 +203,16 @@ gdk_scores :: (item:int,queries:int,keys:int,heads:int,kv_heads:int,dim:int,mode
   if (mode&1)!=0 {bit=valid[key];if bit>1 {flags[item]=1;return;}}if (mode&4)!=0 {qc=camera[query];kc=camera[key];if qc<0 || kc<0 {flags[item]=1;return;}}
   visible:=gdk_visible(query,key,mode,offset,bit,qc,kc);scores[item]=ifx visible then value else 0.0f32;keep[item]=ifx visible then cast(u8)1 else cast(u8)0;flags[item]=gdk_receipt(checked,2*dim+1);
 }
-gdk_softmax_bounds :: (item:int,keys:int,n:int,keep:int,out:int,flags:int)->bool {return keys>=1 && keys<=1024 && n%keys==0 && item>=0 && item<n/keys && keep==n && out>=n && flags>=n/keys;}
-gdk_maximum :: (start:int,keys:int,scores:[]f32,keep:[]u8)->int {best:= -1;for j:0..<keys {if keep[start+j]!=0 {if best<0 {best=j;}else if scores[start+j]>scores[start+best] {best=j;}}}return best;}
-gdk_softmax :: (item:int,keys:int,scores:[]f32,keep:[]u8,out:[]f32,flags:[]u8) #export_c {
+gdk_softmax_bounds :: (item:int,keys:int,n:int,keep:int,out:int,flags:int)->bool #effects(all) {return keys>=1 && keys<=1024 && n%keys==0 && item>=0 && item<n/keys && keep==n && out>=n && flags>=n/keys;}
+gdk_maximum :: (start:int,keys:int,scores:[]f32,keep:[]u8)->int #effects(all) {best:= -1;for j:0..<keys {if keep[start+j]!=0 {if best<0 {best=j;}else if scores[start+j]>scores[start+best] {best=j;}}}return best;}
+gdk_softmax :: (item:int,keys:int,scores:[]f32,keep:[]u8,out:[]f32,flags:[]u8) #export_c #effects(all) {
   if !gdk_softmax_bounds(item,keys,scores.count,keep.count,out.count,flags.count) {return;}
   start:=item*keys;best:=gdk_maximum(start,keys,scores,keep);active:=best>=0;maximum:f32;if active {maximum=scores[start+best];}checked:int=0;
   for j:0..<keys {checked=gdk_count(checked,f32_bits(scores[start+j]));if keep[start+j]>1 {flags[item]=1;return;}}
   sum:f32=0;correction:f32=0;for j:0..<keys {value:f32;if keep[start+j]!=0 {value=exp(scores[start+j]-maximum);}out[start+j]=value;correction=gdk_add(sum,correction,value);sum+=value;}
   denominator:=sum+correction;for j:0..<keys {value:=out[start+j];if active {value/=denominator;}out[start+j]=value;checked=gdk_count(checked,f32_bits(value));}flags[item]=gdk_receipt(checked,2*keys);
 }
-gdk_context :: (item:int,queries:int,keys:int,heads:int,kv_heads:int,dim:int,probability:[]f32,v:[]f32,out:[]f32,flags:[]u8) #export_c {
+gdk_context :: (item:int,queries:int,keys:int,heads:int,kv_heads:int,dim:int,probability:[]f32,v:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
   if !gdk_attention_axes(queries,keys,heads,kv_heads,dim) {return;}n:=queries*heads*dim;
   if item<0 || item>=n || probability.count!=queries*heads*keys || v.count!=keys*kv_heads*dim || out.count<n || flags.count<n {return;}
   query:=item/(heads*dim);head:=item/dim%heads;d:=item%dim;kh:=head/(heads/kv_heads);sum:f32=0;correction:f32=0;checked:int=0;
@@ -220,8 +220,8 @@ gdk_context :: (item:int,queries:int,keys:int,heads:int,kv_heads:int,dim:int,pro
   value:=sum+correction;out[item]=value;checked=gdk_count(checked,f32_bits(value));flags[item]=gdk_receipt(checked,2*keys+1);
 }
 
-gdk_split_bounds :: (item:int,width:int,n:int,q:int,k:int,v:int,flags:int)->bool {return width>=1 && width<=8192 && n%(3*width)==0 && item>=0 && item<n/3 && q>=n/3 && k>=n/3 && v>=n/3 && flags>=n/3;}
-gdk_qkv_split :: (item:int,width:int,qkv:[]f32,q:[]f32,k:[]f32,v:[]f32,flags:[]u8) #export_c {
+gdk_split_bounds :: (item:int,width:int,n:int,q:int,k:int,v:int,flags:int)->bool #effects(all) {return width>=1 && width<=8192 && n%(3*width)==0 && item>=0 && item<n/3 && q>=n/3 && k>=n/3 && v>=n/3 && flags>=n/3;}
+gdk_qkv_split :: (item:int,width:int,qkv:[]f32,q:[]f32,k:[]f32,v:[]f32,flags:[]u8) #export_c #effects(all) {
   if !gdk_split_bounds(item,width,qkv.count,q.count,k.count,v.count,flags.count) {return;}
   token:=item/width;axis:=item%width;a:=qkv[token*3*width+axis];b:=qkv[token*3*width+width+axis];c:=qkv[token*3*width+2*width+axis];q[item]=a;k[item]=b;v[item]=c;checked:=gdk_count(0,f32_bits(a));checked=gdk_count(checked,f32_bits(b));checked=gdk_count(checked,f32_bits(c));flags[item]=gdk_receipt(checked,3);
 }

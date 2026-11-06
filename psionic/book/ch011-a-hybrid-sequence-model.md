@@ -84,7 +84,7 @@ Elephant it admits 32 value heads; for Mammoth, 48. Both use 16 key heads and
 
 <!-- source: psionic/lib/delta.coax step -->
 ```jai
-pd_step :: (s:PdShape,input:[]f32,history:[]f32,state:[]f32,out:[]f32,work:[]f32,overlap:bool)->PdResult #export_c {
+pd_step :: (s:PdShape,input:[]f32,history:[]f32,state:[]f32,out:[]f32,work:[]f32,overlap:bool)->PdResult #export_c #effects(all) {
     if !pd_valid(s) {return PdResult.{status=PdStatus.shape};}
     c:=pd_channels(s);n:=pd_states(s);v:=s.value_heads*s.value_dim;h:=s.value_heads;
     if input.count!=pd_input_count(s) || history.count!=3*c || state.count!=n || out.count<v || work.count<pd_work_count(s) {return PdResult.{status=PdStatus.capacity};}
@@ -149,7 +149,7 @@ feed-forward path and residuals.
 
 <!-- source: psionic/lib/qwen-linear-layer.coax layer -->
 ```jai
-ql_step :: (s:QlShape,w:QlWeights,x:[]f32,history:[]f32,state:[]f32,out:[]f32,work:[]f32,overlap:bool)->QlResult #export_c {
+ql_step :: (s:QlShape,w:QlWeights,x:[]f32,history:[]f32,state:[]f32,out:[]f32,work:[]f32,overlap:bool)->QlResult #export_c #effects(all) {
     if !ql_valid(s) {return QlResult.{status=QlStatus.shape};}
     d:=s.width;f:=s.hidden;c:=pd_channels(s.delta);n:=pd_states(s.delta);v:=s.delta.value_heads*s.delta.value_dim;h:=s.delta.value_heads;
     if !ql_weights_valid(s,w) || x.count!=d || history.count!=3*c || state.count!=n || out.count<d || work.count<ql_work_count(s) {return QlResult.{status=QlStatus.capacity};}
@@ -191,7 +191,7 @@ state from DeltaNet's fixed-size matrix and convolution history.
 
 <!-- source: psionic/lib/qwen-full-layer.coax layer -->
 ```jai
-qh_step :: (s:QhShape,w:QhWeights,x:[]f32,rope:[]f32,position:int,cache:[]f32,out:[]f32,work:[]f32,overlap:bool)->QhResult #export_c {
+qh_step :: (s:QhShape,w:QhWeights,x:[]f32,rope:[]f32,position:int,cache:[]f32,out:[]f32,work:[]f32,overlap:bool)->QhResult #export_c #effects(all) {
     if !qh_valid(s) {return QhResult.{status=QhStatus.shape};}
     if position<0 || position>=s.capacity {return QhResult.{status=QhStatus.capacity};}
     d:=s.width;f:=s.hidden;q:=s.attention.heads*s.attention.head_dim;k:=s.attention.kv_heads*s.attention.head_dim;dim:=s.attention.head_dim;tokens:=position+1;

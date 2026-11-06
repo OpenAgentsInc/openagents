@@ -67,7 +67,7 @@ CS_WITHHELD :: "[withheld]";
 // Add a node: its label is its own classes and every parent's label.
 // Returns its index, or -1 when the classes or a parent are not valid or
 // the graph is full.
-cs_node :: (g: [] CsGraph, text: string, own: int, parents: [] int) -> int {
+cs_node :: (g: [] CsGraph, text: string, own: int, parents: [] int) -> int #effects(all) {
   n := g[0].count;
   if own < 0 || own > CS_ALL || n == g[0].texts.count { return -1; }
   label := own;
@@ -79,7 +79,7 @@ cs_node :: (g: [] CsGraph, text: string, own: int, parents: [] int) -> int {
   return n;
 }
 // A message's label: every part's label.
-cs_label :: (g: CsGraph, parts: [] int) -> int {
+cs_label :: (g: CsGraph, parts: [] int) -> int #effects(all) {
   label := 0;
   for p: parts { label = label | g.labels[p]; }
   return label;
@@ -87,12 +87,12 @@ cs_label :: (g: CsGraph, parts: [] int) -> int {
 // book:end label
 
 // book:begin encode
-cs_u64 :: (b: [] u8, at: int, x: int) -> int {
+cs_u64 :: (b: [] u8, at: int, x: int) -> int #effects(all) {
   v := cast,trunc(u64) x;
   for i: 0..<8 { b[at + i] = cast(u8) (v & 255); v = v >> 8; }
   return at + 8;
 }
-cs_feed :: (state: [] u8, s: string) {
+cs_feed :: (state: [] u8, s: string) #effects(all) {
   buf: [64] u8; at := 0;
   while at < s.count {
     n := 0;
@@ -102,14 +102,14 @@ cs_feed :: (state: [] u8, s: string) {
   }
 }
 // SHA-256 of a message's bytes: its parts' texts in order.
-cs_content :: (g: CsGraph, parts: [] int) -> [32] u8 {
+cs_content :: (g: CsGraph, parts: [] int) -> [32] u8 #effects(all) {
   s: [112] u8; out: [32] u8;
   r := sha256_init(s[..]);
   for p: parts { cs_feed(s[..], g.texts[p]); }
   r = sha256_final_checked(s[..], out[..], false);
   return out;
 }
-cs_digest :: (e: CsEvent) -> [32] u8 {
+cs_digest :: (e: CsEvent) -> [32] u8 #effects(all) {
   b: [216] u8; s: [112] u8; out: [32] u8;
   for i: 0..<32 { b[i] = e.content[i]; b[32 + i] = e.previous[i]; }
   f := [19] int.[e.sequence, cast(int) e.op, e.tick, cast(int) e.dest.kind, e.dest.id, cast(int) e.dest.purpose, e.classes, e.start, e.until, e.person, e.grant, cast(int) e.why, e.cover[0], e.cover[1], e.cover[2], e.cover[3], e.cover[4], e.sends, e.bytes];
@@ -120,22 +120,22 @@ cs_digest :: (e: CsEvent) -> [32] u8 {
   r = sha256_final_checked(s[..], out[..], false);
   return out;
 }
-cs_same :: (a: [32] u8, b: [32] u8) -> bool {
+cs_same :: (a: [32] u8, b: [32] u8) -> bool #effects(all) {
   for i: 0..<32 { if a[i] != b[i] { return false; } }
   return true;
 }
 // book:end encode
 
 // book:begin decide
-cs_to :: (g: CsGrant, d: CsDest) -> bool { return g.dest.kind == d.kind && g.dest.id == d.id && g.dest.purpose == d.purpose; }
-cs_active :: (g: CsGrant, d: CsDest, now: int) -> bool { return cs_to(g, d) && !g.revoked && g.start <= now && now < g.until; }
+cs_to :: (g: CsGrant, d: CsDest) -> bool #effects(all) { return g.dest.kind == d.kind && g.dest.id == d.id && g.dest.purpose == d.purpose; }
+cs_active :: (g: CsGrant, d: CsDest, now: int) -> bool #effects(all) { return cs_to(g, d) && !g.revoked && g.start <= now && now < g.until; }
 // May a message with this label go to d at tick now? Each class of the
 // label needs an active grant for d that covers it, and even an empty
 // label needs one active grant for d. A refusal names the strongest reason
 // among d's grants that could have covered the missing classes: revoked,
 // then expired, then early; classes when d has grants but none of them
 // could; none when d has no grant at all.
-cs_decide :: (l: CsLedger, d: CsDest, labels: int, now: int) -> CsDecision {
+cs_decide :: (l: CsLedger, d: CsDest, labels: int, now: int) -> CsDecision #effects(all) {
   r := CsDecision.{why = CsWhy.none, labels = labels, first = -1};
   for c: 0..<CS_CLASSES { r.cover[c] = -1; }
   for g, i: l.grants[0..<l.granted] {
@@ -166,13 +166,13 @@ cs_decide :: (l: CsLedger, d: CsDest, labels: int, now: int) -> CsDecision {
 
 // book:begin ledger
 // May one more event be logged at tick now?
-cs_room :: (l: CsLedger, now: int) -> CsWhy {
+cs_room :: (l: CsLedger, now: int) -> CsWhy #effects(all) {
   if l.count == l.events.count { return CsWhy.capacity; }
   if l.count > 0 && now < l.events[l.count - 1].tick { return CsWhy.tick; }
   return CsWhy.ok;
 }
 // Chain and append an event.
-cs_append :: (l: [] CsLedger, x: CsEvent) {
+cs_append :: (l: [] CsLedger, x: CsEvent) #effects(all) {
   n := l[0].count; e := x;
   e.sequence = n;
   if n > 0 { e.previous = l[0].events[n - 1].digest; }
@@ -181,7 +181,7 @@ cs_append :: (l: [] CsLedger, x: CsEvent) {
 }
 // The only way consent is given: the person's explicit grant to one
 // destination and purpose, for some classes, at ticks start..<until.
-cs_grant :: (l: [] CsLedger, d: CsDest, classes: int, start: int, until: int, person: int, now: int) -> CsWhy {
+cs_grant :: (l: [] CsLedger, d: CsDest, classes: int, start: int, until: int, person: int, now: int) -> CsWhy #effects(all) {
   if classes < 0 || classes > CS_ALL || d.id < 0 || person < 0 || until <= start || until <= now { return CsWhy.shape; }
   w := cs_room(l[0], now);
   if w == CsWhy.ok && l[0].granted == l[0].grants.count { w = CsWhy.capacity; }
@@ -194,7 +194,7 @@ cs_grant :: (l: [] CsLedger, d: CsDest, classes: int, start: int, until: int, pe
 }
 // Withdraw a grant. Only the person who gave it may; later sends under it
 // stop. The event records what it already carried: that stays sent.
-cs_revoke :: (l: [] CsLedger, grant: int, person: int, now: int) -> CsWhy {
+cs_revoke :: (l: [] CsLedger, grant: int, person: int, now: int) -> CsWhy #effects(all) {
   if grant < 0 || grant >= l[0].granted { return CsWhy.unknown; }
   g := l[0].grants[grant];
   if person != g.person { return CsWhy.person; }
@@ -206,7 +206,7 @@ cs_revoke :: (l: [] CsLedger, grant: int, person: int, now: int) -> CsWhy {
   return CsWhy.ok;
 }
 // Log a decided message; a sent one counts once under every grant it used.
-cs_record :: (l: [] CsLedger, d: CsDest, r: CsDecision, bytes: int, content: [32] u8, now: int) {
+cs_record :: (l: [] CsLedger, d: CsDest, r: CsDecision, bytes: int, content: [32] u8, now: int) #effects(all) {
   e := CsEvent.{op = ifx r.why == CsWhy.ok then CsOp.send else CsOp.refuse, tick = now, dest = d, classes = r.labels, grant = r.first, why = r.why, cover = r.cover, bytes = bytes, content = content};
   cs_append(l, e);
   if r.why != CsWhy.ok { return; }
@@ -220,14 +220,14 @@ cs_record :: (l: [] CsLedger, d: CsDest, r: CsDecision, bytes: int, content: [32
 
 // book:begin send
 // A call refused before any decision: no grant, no cover.
-cs_fail :: (w: CsWhy) -> CsDecision {
+cs_fail :: (w: CsWhy) -> CsDecision #effects(all) {
   r := CsDecision.{why = w, first = -1};
   for c: 0..<CS_CLASSES { r.cover[c] = -1; }
   return r;
 }
 // The gate. Decide, log the decision, and only then copy the bytes to the
 // sink. Nothing is logged for a malformed message or one that does not fit.
-cs_send :: (l: [] CsLedger, g: CsGraph, s: [] CsSink, m: CsMessage, now: int) -> CsDecision {
+cs_send :: (l: [] CsLedger, g: CsGraph, s: [] CsSink, m: CsMessage, now: int) -> CsDecision #effects(all) {
   n := 0;
   for p: m.parts {
     if p < 0 || p >= g.count { return cs_fail(CsWhy.shape); }
@@ -253,7 +253,7 @@ cs_send :: (l: [] CsLedger, g: CsGraph, s: [] CsSink, m: CsMessage, now: int) ->
 // message's destination cover, in order, to out. None when no grant for
 // the destination is active. Returns their count, or -1 when out is too
 // small.
-cs_minimize :: (l: CsLedger, g: CsGraph, m: CsMessage, now: int, out: [] int) -> int {
+cs_minimize :: (l: CsLedger, g: CsGraph, m: CsMessage, now: int, out: [] int) -> int #effects(all) {
   r := cs_decide(l, m.dest, CS_ALL, now);
   if r.first < 0 { return 0; }
   k := 0;
@@ -267,7 +267,7 @@ cs_minimize :: (l: CsLedger, g: CsGraph, m: CsMessage, now: int, out: [] int) ->
 // The message's bytes with every part that is not covered replaced by
 // [withheld], to out. Returns the byte count, or -1 when out is too small.
 // Its node, made with the kept parts as parents, has their label only.
-cs_redact :: (l: CsLedger, g: CsGraph, m: CsMessage, now: int, out: [] u8) -> int {
+cs_redact :: (l: CsLedger, g: CsGraph, m: CsMessage, now: int, out: [] u8) -> int #effects(all) {
   keep: [64] int;
   k := cs_minimize(l, g, m, now, keep[..]);
   if k < 0 { return -1; }
@@ -285,7 +285,7 @@ cs_redact :: (l: CsLedger, g: CsGraph, m: CsMessage, now: int, out: [] u8) -> in
 
 // book:begin replay
 // Check the chain alone: sequence, link and digest of every event.
-cs_verify :: (l: CsLedger) -> CsCheck {
+cs_verify :: (l: CsLedger) -> CsCheck #effects(all) {
   previous: [32] u8;
   for e, i: l.events[0..<l.count] {
     if e.sequence != i { return CsCheck.{why = CsWhy.sequence, index = i}; }
@@ -299,7 +299,7 @@ cs_verify :: (l: CsLedger) -> CsCheck {
 // chain, then redo every event and require the same event back. A send the
 // grants of its moment do not cover is uncovered, even in a chain that
 // verifies.
-cs_replay :: (src: CsLedger, to: [] CsLedger) -> CsCheck {
+cs_replay :: (src: CsLedger, to: [] CsLedger) -> CsCheck #effects(all) {
   v := cs_verify(src);
   if v.why != CsWhy.ok { return v; }
   for e, i: src.events[0..<src.count] {

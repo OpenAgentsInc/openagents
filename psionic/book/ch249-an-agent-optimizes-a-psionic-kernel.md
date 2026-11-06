@@ -95,16 +95,16 @@ In short:
 KS_CASES :: 10;
 KS_EPSILON :: 1e-6;
 KsShape :: struct {rows:int;width:int;}
-ks_shape :: (c:int)->KsShape #export_c {
+ks_shape :: (c:int)->KsShape #export_c #effects(all) {
     s:=[20]int.[86,4096, 1,4096, 7,5120, 3,1000, 5,4097, 2,1, 1,17, 4,4096, 2,4096, 3,4096];
     if c<0 || c>=KS_CASES {return KsShape.{};}
     return KsShape.{rows=s[2*c],width=s[2*c+1]};
 }
 // A value from a 32-bit xorshift: about -4 to 4 with 20 fraction bits.
-ks_random :: (state:u32)->u32 {
+ks_random :: (state:u32)->u32 #effects(all) {
     s:=state;s^=s<<13;s^=s>>17;s^=s<<5;return s;
 }
-ks_fill :: (c:int,x:[]f32,scale:[]f32) #export_c {
+ks_fill :: (c:int,x:[]f32,scale:[]f32) #export_c #effects(all) {
     sh:=ks_shape(c);n:=sh.rows*sh.width;state:=mul_wrap(cast(u32)(c+1),cast(u32)2654435761);
     extremes:=[8]f32.[3.4028235e38,-3.4028235e38,f32_from_bits(1),0,1,-1e-20,65504,-f32_from_bits(0x7fffff)];
     for i:0..<n {
@@ -134,12 +134,12 @@ that is timed. The other nine catch what a fast kernel tends to break:
 // prefill, the largest f32, was never written: no norm comes near it.
 KsCheck :: struct {wrong:int;unwritten:int;first:int;}
 KS_UNWRITTEN :: 0x7f7fffff;
-ks_ulp :: (r:f32)->f64 {
+ks_ulp :: (r:f32)->f64 #effects(all) {
     a:=abs(r);return f64(f32_from_bits(f32_bits(a)+1))-f64(a);
 }
 // Written so that a NaN, which compares false, is not within.
-ks_within :: (got:f32,want:f64)->bool {return abs(f64(got)-want)<=ks_ulp(f32(want));}
-ks_check :: (c:int,x:[]f32,scale:[]f32,out:[]f32)->KsCheck #export_c {
+ks_within :: (got:f32,want:f64)->bool #effects(all) {return abs(f64(got)-want)<=ks_ulp(f32(want));}
+ks_check :: (c:int,x:[]f32,scale:[]f32,out:[]f32)->KsCheck #export_c #effects(all) {
     sh:=ks_shape(c);k:KsCheck;k.first=-1;
     for r:0..<sh.rows {
         at:=r*sh.width;sum:f64=0;
@@ -181,7 +181,7 @@ kernel that cannot launch at a listed block size fails as a whole.
 // one row's squares (0: one item does the whole row, both passes fused);
 // strided items read columns j, j+chunks, ... instead of one contiguous
 // run; vector is how many outputs one pass-1 item writes.
-nt_knobs :: (item:int,knobs:[]int) #export_c {
+nt_knobs :: (item:int,knobs:[]int) #export_c #effects(all) {
     if item!=0 {return;}
     knobs[0]=0;n:=1;
     // Chunks 1 to 128 and vectors 1 to 4, in powers of two. (Constant arrays
@@ -189,7 +189,7 @@ nt_knobs :: (item:int,knobs:[]int) #export_c {
     for c:0..<8 {for v:0..<3 {for s:0..<2 {knobs[n]=(1<<c)*100+(1<<v)*10+s;n+=1;}}}
     knobs[n]=-1;
 }
-nt_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c {
+nt_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c #effects(all) {
     if item!=0 {return;}
     c:=knob/100;v:=(knob/10)%10;
     if c==0 {plan[0]=rows;plan[1]=0;plan[2]=rows;return;}
@@ -199,13 +199,13 @@ nt_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c {
 
 <!-- source: psionic/lib/device/norm-search.coax passes -->
 ```jai
-nt_divisor :: (squares:f64,width:int,epsilon:f32)->f64 {return sqrt(squares/f64(width)+f64(epsilon));}
-nt_write :: (at:int,i:int,divisor:f64,x:[]f32,scale:[]f32,out:[]f32) {
+nt_divisor :: (squares:f64,width:int,epsilon:f32)->f64 #effects(all) {return sqrt(squares/f64(width)+f64(epsilon));}
+nt_write :: (at:int,i:int,divisor:f64,x:[]f32,scale:[]f32,out:[]f32) #effects(all) {
     out[at+i]=f32(f64(x[at+i])/divisor*(1+f64(scale[i])));
 }
 // Pass 0: item r*chunks+j adds the squares of its share of row r. Fused,
 // item r adds the whole row and writes it.
-nt_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+nt_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c #effects(all) {
     c:=knob/100;s:=knob%10;sum:f64=0;
     if c==0 {
         at:=item*width;
@@ -228,7 +228,7 @@ nt_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f3
 }
 // Pass 1: item r*ceil(width/vector)+k adds row r's partial sums in order and
 // writes outputs k*vector up to the row's end.
-nt_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+nt_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c #effects(all) {
     c:=knob/100;v:=(knob/10)%10;m:=(width+v-1)/v;r:=item/m;k:=item%m;sum:f64=0;
     for j:0..<c {sum+=work[r*c+j];}
     divisor:=nt_divisor(sum,width,epsilon);
@@ -249,15 +249,15 @@ Chapter 44's kernels go behind the same contract:
 // Chapter 44's kernels: 16 items per row, each adding a contiguous sixteenth
 // of width/16 columns, then one item per output. Its declared shapes have a
 // width that is a multiple of 16.
-n30_knobs :: (item:int,knobs:[]int) #export_c {if item==0 {knobs[0]=0;knobs[1]=-1;}}
-n30_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c {
+n30_knobs :: (item:int,knobs:[]int) #export_c #effects(all) {if item==0 {knobs[0]=0;knobs[1]=-1;}}
+n30_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c #effects(all) {
     if item!=0 {return;}
     plan[0]=rows*DL_CHUNKS;plan[1]=rows*width;plan[2]=rows*DL_CHUNKS;
 }
-n30_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+n30_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c #effects(all) {
     dl_squares(item,width,x,work);
 }
-n30_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+n30_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c #effects(all) {
     dl_scale(item,width,epsilon,x,scale,work,out);
 }
 ```
@@ -275,7 +275,7 @@ not a fault in Elephant, whose widths are 4,096 and 5,120.
 // faster than another only when its slowest trial beats the other's fastest.
 KS_TRIALS_MAX :: 64;
 KsTiming :: struct {median:f64;low:f64;high:f64;count:int;}
-ks_timing :: (trials:[]f64)->KsTiming {
+ks_timing :: (trials:[]f64)->KsTiming #effects(all) {
     t:KsTiming;n:=trials.count;
     if n<1 || n>KS_TRIALS_MAX {return t;}
     s:[KS_TRIALS_MAX]f64;
@@ -288,7 +288,7 @@ ks_timing :: (trials:[]f64)->KsTiming {
     t.low=s[0];t.high=s[n-1];t.count=n;
     return t;
 }
-ks_faster :: (a:KsTiming,b:KsTiming)->bool {return a.count>0 && b.count>0 && a.high<b.low;}
+ks_faster :: (a:KsTiming,b:KsTiming)->bool #effects(all) {return a.count>0 && b.count>0 && a.high<b.low;}
 ```
 
 <!-- source: psionic/lib/kernel-search.coax choose -->
@@ -296,7 +296,7 @@ ks_faster :: (a:KsTiming,b:KsTiming)->bool {return a.count>0 && b.count>0 && a.h
 // The tuner's choice among measured configurations: the lowest median among
 // those that passed every case. -1 when none passed.
 KsConfig :: struct {knob:int;block:int;passed:bool;timing:KsTiming;}
-ks_best :: (configs:[]KsConfig)->int {
+ks_best :: (configs:[]KsConfig)->int #effects(all) {
     best:=-1;
     for c,i:configs {
         if !c.passed || c.timing.count==0 {continue;}

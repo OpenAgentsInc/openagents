@@ -59,7 +59,7 @@ Two details decide whether the lookup is *exactly* the scan:
 // Records write number x.writes, key k, value v. Finding the key's place is
 // a binary search; a key already present keeps its place and takes the
 // later write, because a later write wins every tie the scan would see.
-hm_insert :: (x:HmIndex,k:int,v:int)->HmInsert {
+hm_insert :: (x:HmIndex,k:int,v:int)->HmInsert #effects(all) {
     r:=HmInsert.{index=x};
     if k< -EM_KEY_MAX || k>EM_KEY_MAX {r.status=EmStatus.range;return r;}
     lo:=0;hi:=x.count;
@@ -95,7 +95,7 @@ here are only the search's.
 // neighbour finds the peak. Two different keys tie only when q lies midway
 // between them, where neither is q and the read is refused anyway; so the
 // result, value and position, is the scan's.
-hm_read :: (x:HmIndex,q:int)->HmRead {
+hm_read :: (x:HmIndex,q:int)->HmRead #effects(all) {
     r:HmRead;
     if q< -EM_KEY_MAX || q>EM_KEY_MAX {r.read.status=EmStatus.range;return r;}
     if x.count==0 {r.read.status=EmStatus.missing;return r;}
@@ -122,7 +122,7 @@ the two methods' counts measure the same operation.
 // every step, each of the 64 cells is read through the hull. scan counts
 // the comparisons chapter 227's read makes over the same stores (one fewer
 // than the number of stores, per read); hull counts this chapter's.
-hm_run :: (program:[]TmOp,budget:int,trace:[]int,index:HmIndex)->HmRun {
+hm_run :: (program:[]TmOp,budget:int,trace:[]int,index:HmIndex)->HmRun #effects(all) {
     out:HmRun;x:=index;x.count=0;
     admitted:=tm_admit(program);if admitted!=TmStatus.ok {out.result.status=admitted;return out;}
     if budget<1 || budget>TM_STEPS_MAX {out.result.status=TmStatus.budget;return out;}

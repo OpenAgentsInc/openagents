@@ -26,7 +26,7 @@ OeData :: struct {status:OsStatus;rows:int;x:[6400]f64;y:[2560]f64;groups:[1280]
   #assert d.x[8*5+2]==0.5 && d.x[16*5+2]== -0.5 && d.x[24*5+2]==0;
 }
 
-oe_episode :: (id:int)->OeEpisode #export_c {
+oe_episode :: (id:int)->OeEpisode #export_c #effects(all) {
   index:=id;split:=0;steps:=32;
   if id>=100 && id<104 {index=id-100+8;split=1;steps=128;}
   else if id>=200 && id<204 {index=id-200+12;split=2;steps=128;}
@@ -38,12 +38,12 @@ oe_episode :: (id:int)->OeEpisode #export_c {
   return OeEpisode.{id=id,split=split,steps=steps,params=OsParams.{spring=spring[index],damping=damping[index]},initial=OsState.{position=position[index],velocity=velocity[index]}};
 }
 // Called only with an admitted episode and a bounded nonnegative tick.
-oe_force :: (id:int,tick:int)->f64 #export_c {
+oe_force :: (id:int,tick:int)->f64 #export_c #effects(all) {
   if id<100 {phase:=(tick/8+id)%3;return ifx phase==0 then 0.0 else ifx phase==1 then 0.5 else -0.5;}
   if id<200 {return 0.25*f64((tick/8+id)%5-2);}
   phase:=(tick+3*id)%20;return ifx phase<5 then 0.5 else ifx phase<10 then -0.25 else 0.0;
 }
-oe_data :: ()->OeData #export_c {
+oe_data :: ()->OeData #export_c #effects(all) {
   data:OeData;row:=0;
   for index:0..<16 {
     id:=ifx index<8 then index else ifx index<12 then 100+index-8 else 200+index-12;e:=oe_episode(id);if e.status!=OsStatus.ok {return OeData.{status=e.status};}s:=e.initial;

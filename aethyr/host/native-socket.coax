@@ -6,16 +6,16 @@
 #load "socket-queue.coax";
 #load "event-drain.coax";
 #load "../../coax/lib/net/relay_conn.coax";
-hni_lock :: () #foreign;
-hni_unlock :: () #foreign;
-hni_take :: (context:int)->int #foreign;
-hni_size :: (context:int)->int #foreign;
-hni_byte :: (context:int,at:int)->int #foreign;
-hni_done :: (context:int) #foreign;
-hni_emit :: (context:int,event:int,bytes:[]u8) #foreign;
-hni_pause :: (milliseconds:int) #foreign;
-hns_uri :: (uri:string)->bool #export_c {return relay_uri_dial(uri).ok;}
-hns_utf8 :: (bytes:string)->bool #export_c {return ws_utf8(bytes);}
+hni_lock :: () #foreign #effects(all);
+hni_unlock :: () #foreign #effects(all);
+hni_take :: (context:int)->int #foreign #effects(all);
+hni_size :: (context:int)->int #foreign #effects(all);
+hni_byte :: (context:int,at:int)->int #foreign #effects(all);
+hni_done :: (context:int) #foreign #effects(all);
+hni_emit :: (context:int,event:int,bytes:[]u8) #foreign #effects(all);
+hni_pause :: (milliseconds:int) #foreign #effects(all);
+hns_uri :: (uri:string)->bool #export_c #effects(all) {return relay_uri_dial(uri).ok;}
+hns_utf8 :: (bytes:string)->bool #export_c #effects(all) {return ws_utf8(bytes);}
 hns_send :: (context:int,c:[]RelayConn)->bool {
   total:=hni_size(context);at:=0;payload:[65536]u8;frame:[65550]u8;mask:[4]u8;
   while true {
@@ -44,10 +44,10 @@ hns_input :: (context:int,c:[]RelayConn,s:[]HostSocketStream,input:string,out:[]
   }
   return true;
 }
-hns_worker :: (context:int,uri:string,out:[]u8) #export_c {
+hns_worker :: (context:int,uri:string,out:[]u8) #export_c #effects(all) {
   hns_worker_context(context,uri,"","",out);
 }
-hns_worker_context :: (context:int,uri:string,origin:string,cookie:string,out:[]u8) #export_c {
+hns_worker_context :: (context:int,uri:string,origin:string,cookie:string,out:[]u8) #export_c #effects(all) {
   c:[1]RelayConn;hni_lock();ok:=relay_conn_open_context(c[..],uri,origin,cookie);hni_unlock();
   if !ok {hni_emit(context,3,out[0..<0]);hni_emit(context,2,out[0..<0]);return;}
   hni_emit(context,0,out[0..<0]);s:[1]HostSocketStream;

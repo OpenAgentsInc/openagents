@@ -208,8 +208,8 @@ trace_step :: (p: [] Play, g: [] Game, in: Input) {
 }
 // The trace so far, for the page (action 30): once at a round's end, or at
 // the step #trace=N names.
-ice_trace_ready :: (p: [] Play) -> bool #export_c { return p[0].trace_want && !p[0].trace_sent; }
-ice_trace_sent :: (p: [] Play) #export_c { p[0].trace_sent = true; }
+ice_trace_ready :: (p: [] Play) -> bool #export_c #effects(all) { return p[0].trace_want && !p[0].trace_sent; }
+ice_trace_sent :: (p: [] Play) #export_c #effects(all) { p[0].trace_sent = true; }
 
 // ---- the address's options (world.cpp Options): seed=N, bot, calm, arm,
 // freeroam, fp, cone, nofarts, trace[=STEPS], easy, hard
@@ -336,7 +336,7 @@ play_reset :: (p: [] Play, g: [] Game) {
   start_playing(p, g);
 }
 // The address's options; a changed seed (or anything else) starts a new run.
-ice_play_hash :: (p: [] Play, g: [] Game, text: string) #export_c {
+ice_play_hash :: (p: [] Play, g: [] Game, text: string) #export_c #effects(all) {
   o := options_of(text);
   p[0].options = o;
   p[0].seed = 0;
@@ -344,7 +344,7 @@ ice_play_hash :: (p: [] Play, g: [] Game, text: string) #export_c {
   play_reset(p, g);
   if o.bot || o.trace { p[0].tour = -1; }
 }
-ice_play_seed :: (p: [] Play, g: [] Game) -> u64 #export_c { if !p[0].started { play_reset(p, g); } return p[0].seed; }
+ice_play_seed :: (p: [] Play, g: [] Game) -> u64 #export_c #effects(all) { if !p[0].started { play_reset(p, g); } return p[0].seed; }
 
 cycle_tool :: (g: [] Game, current: Tool, back: bool) -> s8 {
   owned: [TOOLS] int;
@@ -366,7 +366,7 @@ toggle_view :: (p: [] Play) {
 set_shift_lock :: (p: [] Play, on: bool) { p[0].camera.shift_lock = on; say(p, ifx on then Toast.shift_on else Toast.shift_off, 0); }
 
 // The HUD's buttons and the page's acts (world.cpp act).
-ice_play_act :: (p: [] Play, g: [] Game, a: int, arg: int) #export_c {
+ice_play_act :: (p: [] Play, g: [] Game, a: int, arg: int) #export_c #effects(all) {
   if !p[0].started { play_reset(p, g); }
   if a == A_PLAY { start_playing(p, g); }
   else if a == A_RESUME { if p[0].phase == Phase.menu { p[0].phase = Phase.playing; } }
@@ -413,7 +413,7 @@ ice_play_act :: (p: [] Play, g: [] Game, a: int, arg: int) #export_c {
 
 // ---- keys (world.cpp keyDown, keyUp)
 
-ice_play_key :: (p: [] Play, g: [] Game, key: int, down: bool, mods: int) -> bool #export_c {
+ice_play_key :: (p: [] Play, g: [] Game, key: int, down: bool, mods: int) -> bool #export_c #effects(all) {
   if !p[0].started { play_reset(p, g); }
   k := lower_key(key);
   if !down {
@@ -442,9 +442,9 @@ ice_play_key :: (p: [] Play, g: [] Game, key: int, down: bool, mods: int) -> boo
   if b != 0 { p[0].held |= b; p[0].taps |= b; return true; }
   return false;
 }
-ice_play_blur :: (p: [] Play) #export_c { let_go(p); }
-ice_play_wheel :: (p: [] Play, dy: f32) #export_c { p[0].camera = cam_wheel(p[0].camera, dy); }
-ice_play_suspend :: (p: [] Play, on: bool) #export_c {
+ice_play_blur :: (p: [] Play) #export_c #effects(all) { let_go(p); }
+ice_play_wheel :: (p: [] Play, dy: f32) #export_c #effects(all) { p[0].camera = cam_wheel(p[0].camera, dy); }
+ice_play_suspend :: (p: [] Play, on: bool) #export_c #effects(all) {
   p[0].suspended = on;
   if on { if p[0].phase == Phase.playing { p[0].phase = Phase.menu; } let_go(p); }
 }
@@ -453,7 +453,7 @@ ice_play_suspend :: (p: [] Play, on: bool) #export_c {
 // orbits the camera (and lets the fire go). A finger: in the stick it walks
 // (the HUD says where its centre is), anywhere else it looks.
 ZONE_LOOK :: 0; ZONE_STICK :: 1;
-ice_play_pointer :: (p: [] Play, g: [] Game, x: f32, y: f32, phase: int, kind: int, id: int, zone: int, cx: f32, cy: f32) #export_c {
+ice_play_pointer :: (p: [] Play, g: [] Game, x: f32, y: f32, phase: int, kind: int, id: int, zone: int, cx: f32, cy: f32) #export_c #effects(all) {
   if !p[0].started { play_reset(p, g); }
   k := p[0].dpr;
   reach := STICK_REACH * k;
@@ -645,7 +645,7 @@ save_put :: (p: [] Play, at: int, s: string) -> int {
   for i: 0..<s.count { if n < SAVE_CAP { p[0].save[n] = cast(u8) byte_at(s, i); n += 1; } }
   return n;
 }
-ice_play_save :: (p: [] Play) -> int #export_c {
+ice_play_save :: (p: [] Play) -> int #export_c #effects(all) {
   n := save_put(p, 0, SAVE_TAG);
   n = save_put(p, n, ifx p[0].timer_on then "\ntimer=1" else "\ntimer=0");
   n = save_put(p, n, ifx p[0].jumpscares then ";jumpscares=1" else ";jumpscares=0");
@@ -663,12 +663,12 @@ ice_play_save :: (p: [] Play) -> int #export_c {
   p[0].save_want = false;
   return n;
 }
-ice_play_save_ready :: (p: [] Play) -> bool #export_c { return p[0].save_want && !p[0].options.bot && !p[0].options.trace; }
+ice_play_save_ready :: (p: [] Play) -> bool #export_c #effects(all) { return p[0].save_want && !p[0].options.bot && !p[0].options.trace; }
 value_after :: (line: string, key: string) -> string {
   if line.count <= key.count || line[0..<key.count] != key { return ""; }
   return line[key.count..<line.count];
 }
-ice_play_load :: (p: [] Play, g: [] Game, text: string) #export_c {
+ice_play_load :: (p: [] Play, g: [] Game, text: string) #export_c #effects(all) {
   if !p[0].started { play_reset(p, g); }
   first := 0;
   while first < text.count && byte_at(text, first) != '\n' { first += 1; }
@@ -847,7 +847,7 @@ ice_run :: (p: [] Play, g: [] Game, dt: f32) {
 }
 
 // One frame of play: the steps due, the ending's clock, the animation and the view.
-ice_play_frame :: (p: [] Play, g: [] Game, width: f32, height: f32, dpr: f32, frame_dt: f32) #export_c {
+ice_play_frame :: (p: [] Play, g: [] Game, width: f32, height: f32, dpr: f32, frame_dt: f32) #export_c #effects(all) {
   if !p[0].started { play_reset(p, g); }
   p[0].width = cmax(width, 1); p[0].height = cmax(height, 1); p[0].dpr = cmax(dpr, 0.5);
   step := ifx p[0].suspended then 0.0f32 else ice_counts(frame_dt);
@@ -899,7 +899,7 @@ F_DIFFICULTY :: 42; F_NEXT_DIFFICULTY :: 43; F_TIMER_ON :: 44; F_JUMPSCARES :: 4
 F_KEEP :: 47; F_FIRST_PERSON :: 48; F_STICK :: 49; F_WON :: 50; F_SHIFT_LOCK :: 51; F_TICK :: 52;
 FACTS :: 64;
 yes :: (b: bool) -> f32 { return ifx b then 1.0f32 else 0.0f32; }
-ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
+ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c #effects(all) {
   if out.count < FACTS { return; }
   if !p[0].started { play_reset(p, g); }
   for i: 0..<FACTS { out[i] = 0; }

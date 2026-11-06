@@ -115,7 +115,7 @@ SP_INTEGER_MAX :: 9007199254740992;
 // book:begin head
 // Content-Type and Accept, read from the head only, case-insensitively. A
 // media type with parameters is not this one.
-sp_flags :: (head:string)->SpFlags #export_c {
+sp_flags :: (head:string)->SpFlags #export_c #effects(all) {
     f:SpFlags;end:=sv_index(head,"\r\n\r\n");if end<0 {return f;}
     at:=sv_index(head,"\r\n")+2;
     while at<end {
@@ -176,7 +176,7 @@ sp_entry :: (e:So_EntryType,out:[]u8,at:int,depth:int)->SpOut {
 }
 // A protobuf SystemOneRequest as the NIP-DEC body chapter 20 decodes. Absent
 // fields are left out, so the JSON decoder refuses exactly what it would refuse.
-sp_request_json :: (wire:[]u8,out:[]u8)->SpOut #export_c {
+sp_request_json :: (wire:[]u8,out:[]u8)->SpOut #export_c #effects(all) {
     if wire.count>SV_BODY_MAX {return SpOut.{code=SvCode.limit_exceeded};}
     r:=So_SystemOneRequest_decode(wire);if r.error!=0 {return SpOut.{code=SvCode.malformed};}
     n:=json_raw(out,0,"{");
@@ -293,7 +293,7 @@ sp_json_entry :: (j:[]Json,a:[]SpArena,depth:int)->So_EntryType {
 // admission and the slot's next phase are chapter 20's. The decoded request
 // borrows from scratch, which must outlive the decision. raw is the same
 // bytes as text, as the host holds them.
-sp_bytes :: (slot:SvSlot,limits:SvLimits,engine:SvEngine,pools:SvPools,text:string,raw:[]u8,scratch:[]u8,now:int)->SpStep #export_c {
+sp_bytes :: (slot:SvSlot,limits:SvLimits,engine:SvEngine,pools:SvPools,text:string,raw:[]u8,scratch:[]u8,now:int)->SpStep #export_c #effects(all) {
     flags:=sp_flags(text);
     if raw.count!=text.count {return SpStep.{step=sv_refused(slot,SvCode.internal)};}
     h:=sv_head(text);
@@ -380,7 +380,7 @@ sp_one_answer :: (j:[]Json,a:[]SpArena)->So_Answer {
 }
 // The JSON 200 body as a SystemOneResponse, framed as a complete HTTP response
 // in out. The arena holds every intermediate message.
-sp_answer :: (body:string,out:[]u8,arena:[]u8)->SpBody #export_c {
+sp_answer :: (body:string,out:[]u8,arena:[]u8)->SpBody #export_c #effects(all) {
     bad:=SpBody.{code=SvCode.internal};a:=[1]SpArena.[SpArena.{bytes=arena}];
     j:[1]Json;json_start_bounded(j[..],body,body.count,body.count);
     if json_next(j[..])!=JSON_OBJECT {return bad;}

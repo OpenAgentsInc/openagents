@@ -64,7 +64,7 @@ vg_run :: (c:[]Cdp,url:string,phone:bool)->bool {
   n:=cdp_evaluate(c,"JSON.stringify({profile:coaxial.guardProbe(8),instances:coaxial.guardProbe(67),sourceTriangles:18432,drawnTriangles:coaxial.guardProbe(50),coarseGroups:coaxial.guardProbe(51),submittedVertices:coaxial.guardProbe(69),arenaBytes:coaxial.guardProbe(70),residentBytes:coaxial.guardProbe(52),pageIdentities:2,cropHashes:groupPixels})");if n>=0 {print("Field observation %: %\n",ifx phone then "phone" else "desktop",jv_raw(c[0].doc[0],n));}
   print("PASS deterministic field %: six exact native/Wasm transforms, one source asset, 18432/18384/18336 manual cuts, per-instance perspective cuts, 8/16 profile budgets, two shared HTTP pages, exact decoded pixels and state after GPU loss\n",ifx phone then "phone" else "desktop");return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=1 {return 2;}
   for phone:0..<2 {c:[1]Cdp;if !cdp_launch_background(c[..],ifx phone==0 then 1280 else 390,ifx phone==0 then 800 else 844,"valley-groups-") {return 1;}
     path:[4096]u8;url:=fs_join(args_at(args[..],0),"worlds/valley-lab",path[..]);ok:=vg_run(c[..],url,phone==1);cdp_close(c[..]);if !ok {return 1;}

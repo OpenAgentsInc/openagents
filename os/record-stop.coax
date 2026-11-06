@@ -10,7 +10,7 @@
 // shell let CODEROS_RECORD_DRIFT_LIMIT and CODEROS_RECORD_AUDIO_OUTAGE_MIN move them, and no
 // CoderOS host sets either.
 
-cxproc_pid_signal :: (pid: int, sig: int) -> int #foreign;
+cxproc_pid_signal :: (pid: int, sig: int) -> int #foreign #effects(all);
 
 St :: struct { files: Files; output: string; }
 

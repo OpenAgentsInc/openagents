@@ -60,13 +60,13 @@ GwPylonCall :: struct {
 
 // A configuration the buyer may use: distinct 64-hex keys, the pinned
 // GPT-OSS-20B identity and a one to sixty second wait.
-gw_pylon_ok :: (c: GwPylon) -> bool {
+gw_pylon_ok :: (c: GwPylon) -> bool #effects(all) {
   return pt_hex64(c.provider) && pt_hex64(c.buyer) && c.provider != c.buyer && c.identity == P90_PROBE_IDENT && c.timeout_ms >= 1000 && c.timeout_ms <= 60000;
 }
 
 // The output tokens asked for: the request's own, capped at the host's 128,
 // or 64 when it leaves them open; -1 for a negative request.
-gw_pylon_tokens :: (max_tokens: int) -> int {
+gw_pylon_tokens :: (max_tokens: int) -> int #effects(all) {
   if max_tokens < 0 { return -1; }
   if max_tokens == 0 { return GW_PYLON_TOKENS; }
   if max_tokens < GW_PYLON_TOKENS_MAX + 1 { return max_tokens; }
@@ -77,7 +77,7 @@ gw_pylon_tokens :: (max_tokens: int) -> int {
 // a plain transcript ("System: ...", "User: ...", "Assistant: ...", blank
 // lines between), ending with the user. The schema hint joins the system
 // prompt (the Pylon holds no strict schema). Bytes written, or -1.
-gw_pylon_prompt :: (req: GwRequest, out: [] u8) -> int {
+gw_pylon_prompt :: (req: GwRequest, out: [] u8) -> int #effects(all) {
   m := req.messages;
   if m.count < 1 || m[m.count - 1].role != "user" { return -1; }
   hint := ifx req.schema.count > 0 then req.schema_hint else "";
@@ -98,12 +98,12 @@ gw_pylon_prompt :: (req: GwRequest, out: [] u8) -> int {
   }
   return gw_pylon_bounded(n);
 }
-gw_pylon_bounded :: (n: int) -> int { if n < 1 || n > GW_PYLON_PROMPT_MAX { return -1; } return n; }
+gw_pylon_bounded :: (n: int) -> int #effects(all) { if n < 1 || n > GW_PYLON_PROMPT_MAX { return -1; } return n; }
 
 // The job's tags, as the host admits them: targeted at the provider, the
 // prompt as inline text, the pinned model, greedy, plain text out, bid 0,
 // expiring 60 s after now. Bytes written, or -1.
-gw_pylon_tags :: (c: GwPylon, prompt: string, tokens: int, now: int, out: [] u8) -> int {
+gw_pylon_tags :: (c: GwPylon, prompt: string, tokens: int, now: int, out: [] u8) -> int #effects(all) {
   if !pt_hex64(c.provider) || prompt.count < 1 || prompt.count > GW_PYLON_PROMPT_MAX || tokens < 1 || tokens > GW_PYLON_TOKENS_MAX || now < 0 || now > 9007199254740931 { return -1; }
   number: [24] u8;
   n := json_raw(out, 0, "[[\"p\",");
@@ -120,7 +120,7 @@ gw_pylon_tags :: (c: GwPylon, prompt: string, tokens: int, now: int, out: [] u8)
 }
 
 // The whole job for a request: prompt into prompt, tags into tags.
-gw_pylon_job :: (c: GwPylon, req: GwRequest, now: int, prompt: [] u8, tags: [] u8) -> GwPylonJob {
+gw_pylon_job :: (c: GwPylon, req: GwRequest, now: int, prompt: [] u8, tags: [] u8) -> GwPylonJob #effects(all) {
   if !gw_pylon_ok(c) { return GwPylonJob.{reason = "the Pylon gateway's configuration is not usable"}; }
   if req.model != GW_PYLON_MODEL { return GwPylonJob.{reason = "the text Pylon serves gpt-oss-20b only"}; }
   tokens := gw_pylon_tokens(req.max_tokens);
@@ -133,7 +133,7 @@ gw_pylon_job :: (c: GwPylon, req: GwRequest, now: int, prompt: [] u8, tags: [] u
 }
 
 // The runtime signed and published the job as id at now_ms: wait for it.
-gw_pylon_sent :: (call: [] GwPylonCall, c: GwPylon, id: string, now_ms: int) -> bool {
+gw_pylon_sent :: (call: [] GwPylonCall, c: GwPylon, id: string, now_ms: int) -> bool #effects(all) {
   if !pt_hex64(id) || now_ms < 0 { return false; }
   call[0] = GwPylonCall.{};
   for b, i: id { call[0].event[i] = b; }
@@ -147,7 +147,7 @@ gw_pylon_sent :: (call: [] GwPylonCall, c: GwPylon, id: string, now_ms: int) -> 
 // the events it means into events (room for two) and returns how many: none
 // for anything not this call's, a text delta and done for the final text,
 // refused for error feedback or for any reply that asks to be paid.
-gw_pylon_reply :: (call: [] GwPylonCall, c: GwPylon, kind: int, signer: string, created: int, now: int, tags: string, content: string, w: P90Work, events: [] GwEvent) -> int {
+gw_pylon_reply :: (call: [] GwPylonCall, c: GwPylon, kind: int, signer: string, created: int, now: int, tags: string, content: string, w: P90Work, events: [] GwEvent) -> int #effects(all) {
   if call[0].state != GW_PYLON_WAIT || call[0].event_n != 64 || events.count < 2 { return 0; }
   if signer != c.provider || (kind != 6050 && kind != 7000) || !p90_fresh(created, now) { return 0; }
   parsed := rs_json(tags, w.nodes, w.arena);
@@ -178,7 +178,7 @@ gw_pylon_reply :: (call: [] GwPylonCall, c: GwPylon, kind: int, signer: string, 
 }
 
 // The clock: a call still waiting at its deadline is refused.
-gw_pylon_tick :: (call: [] GwPylonCall, now_ms: int, events: [] GwEvent) -> int {
+gw_pylon_tick :: (call: [] GwPylonCall, now_ms: int, events: [] GwEvent) -> int #effects(all) {
   if call[0].state != GW_PYLON_WAIT || call[0].event_n != 64 || events.count < 1 || now_ms < call[0].deadline_ms { return 0; }
   call[0].state = GW_PYLON_FAILED;
   events[0] = GwEvent.{kind = GW_EV_REFUSED, reason = "no answer from the Pylon before the deadline"};

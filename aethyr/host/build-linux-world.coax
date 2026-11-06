@@ -10,7 +10,7 @@
 hlw_flags :: (text:string,out:[]string,n:int)->int {
  at:=n;from:=0;for i:0..<text.count+1 {if i==text.count||text[i]==' '||text[i]=='\n'||text[i]=='\t' {if i>from {if at==out.count {return -1;}out[at]=text[from..<i];at+=1;}from=i+1;}}return at;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<7||args_count(a[..])>8||(args_count(a[..])==8&&args_at(a[..],7)!="--sanitize")||cxtool_os()!=2 {tool_errln("usage: build-linux-world ROOT RENDER_FACADES SHELL_C NETWORK_C PRODUCER.so OPUSFILE.so NEW_OUT [--sanitize]");return 2;}sanitize:=args_has(a[..],"--sanitize");
  root:=args_at(a[..],0);render:=args_at(a[..],1);shell:=args_at(a[..],2);network:=args_at(a[..],3);producer:=args_at(a[..],4);opus:=args_at(a[..],5);out:=args_at(a[..],6);if !fs_mkdir(out) {return 1;}
  paths:[84][4096]u8;argv:[160]string;stdout:[1048576]u8;stderr:[1048576]u8;env:[]string;inputs:[1]RtqInputs;

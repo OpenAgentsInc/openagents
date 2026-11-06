@@ -50,8 +50,8 @@ PsGlobals :: struct {status:PwStatus;embedding:[]u8;head:[]u8;norm:[]f32;}
     q=ps_bind_core(badshape,config[..],tokenizer[..],config[..],index[0..<0],files[..],specs[..],more,tokenizer[..],false);
     #assert q.status==PsOpenStatus.binding && q.cause==cast(int)PwStatus.manifest;
 }
-ps_readout_size :: (count:int)->bool {return count>=1 && count<=PW_HEADER_MAX;}
-ps_bind_core :: (target:PsTarget,config:[]u8,tokenizer:[]u8,readout:[]u8,index:[]u8,files:[]PaFile,specs:[]P5Spec,memory:PsWorkspace,table:[]u8,overlap:bool)->PsSession {
+ps_readout_size :: (count:int)->bool #effects(all) {return count>=1 && count<=PW_HEADER_MAX;}
+ps_bind_core :: (target:PsTarget,config:[]u8,tokenizer:[]u8,readout:[]u8,index:[]u8,files:[]PaFile,specs:[]P5Spec,memory:PsWorkspace,table:[]u8,overlap:bool)->PsSession #effects(all) {
     s:=target.shape;
     if target.status!=PsStatus.ok || !qe_valid(s) || s.linear.dtype!=QmDtype.bf16 || !qr_vocab_valid(target.vocab) || target.shards<1 || target.shards>2 || files.count!=target.shards || target.tensors!=specs.count {return PsSession.{status=PsOpenStatus.shape};}
     linear:=pma_params(s,false);full:=pma_params(s,true);n:=s.state.linear_layers+s.state.full_layers;params:=s.state.linear_layers*linear+s.state.full_layers*full;
@@ -77,12 +77,12 @@ ps_bind_core :: (target:PsTarget,config:[]u8,tokenizer:[]u8,readout:[]u8,index:[
 }
 // The verified-file record for shard i of a pinned target, for the host to
 // keep after an open that hashed the file in full; 0 if there is no such shard.
-ps_shard_record :: (kind:u8,capacity:int,i:int,st:PaStat,out:[]u8)->int #export_c {
+ps_shard_record :: (kind:u8,capacity:int,i:int,st:PaStat,out:[]u8)->int #export_c #effects(all) {
     target:=ps_target(kind,capacity);
     if target.status!=PsStatus.ok || i<0 || i>=target.shards || st.size!=target.shard[i].bytes {return 0;}
     return pv_record(target.shard[i].name,target.shard[i].sha,st,out);
 }
-ps_open :: (kind:u8,capacity:int,config:[]u8,tokenizer:[]u8,readout:[]u8,index:[]u8,files:[]PaFile,specs:[]P5Spec,table:[]u8,memory:PsWorkspace,overlap:bool)->PsSession #export_c {
+ps_open :: (kind:u8,capacity:int,config:[]u8,tokenizer:[]u8,readout:[]u8,index:[]u8,files:[]PaFile,specs:[]P5Spec,table:[]u8,memory:PsWorkspace,overlap:bool)->PsSession #export_c #effects(all) {
     target:=ps_target(kind,capacity);if target.status!=PsStatus.ok {return PsSession.{status=PsOpenStatus.shape,cause=cast(int)target.status};}
     if files.count!=target.shards || specs.count!=target.tensors {return PsSession.{status=PsOpenStatus.shape};}
     if overlap {return PsSession.{status=PsOpenStatus.alias};}
@@ -155,7 +155,7 @@ ps_open :: (kind:u8,capacity:int,config:[]u8,tokenizer:[]u8,readout:[]u8,index:[
     boundary.shape.linear.width=8193;#assert ps_globals(boundary,inv[..],files[..],bigger[..],scratch[..]).status==PwStatus.capacity;
 }
 
-ps_globals :: (target:PsTarget,inventory:[]P5Tensor,files:[]PaFile,out:[]f32,work:[]f32)->PsGlobals {
+ps_globals :: (target:PsTarget,inventory:[]P5Tensor,files:[]PaFile,out:[]f32,work:[]f32)->PsGlobals #effects(all) {
     d:=target.shape.linear.width;if d<1 || d>8192 || out.count<d || work.count<d {return PsGlobals.{status=PwStatus.capacity};}
     matrix:=P5Shape.{rank=2,dims=[5]int.[target.vocab,d,0,0,0]};vector:=P5Shape.{rank=1,dims=[5]int.[d,0,0,0,0]};
     embedding:=pa_view("model.language_model.embed_tokens.weight",matrix,PwDtype.bf16,inventory,files);

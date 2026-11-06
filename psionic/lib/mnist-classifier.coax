@@ -118,7 +118,7 @@ mc_eval :: (m:MdlModel,t:AdTape,p:[]f64,w:[]McWork,images:[]u8,labels:[]u8,d:MnD
     return r;
 }
 
-mc_oracle :: (images:[]u8,labels:[]u8,params:[]f64,gradient:[]f64,scores:[]f32,features:[]f32)->McFirst #export_c {
+mc_oracle :: (images:[]u8,labels:[]u8,params:[]f64,gradient:[]f64,scores:[]f32,features:[]f32)->McFirst #export_c #effects(all) {
     d:=mn_admit(images,labels);if d.status!=MnStatus.ok {return McFirst.{status=McStatus.data};}
     m:=mc_model();q:=mtr_plan(m);w:[1]McWork;
     if !mc_capture(params.count,gradient.count,scores.count,features.count) || !mc_fit(q,w[..]) {return McFirst.{status=McStatus.capacity};}
@@ -133,7 +133,7 @@ mc_oracle :: (images:[]u8,labels:[]u8,params:[]f64,gradient:[]f64,scores:[]f32,f
     return McFirst.{loss=step.loss,parameters=q.parameters,inputs=q.inputs,values=q.values,adjoints=q.adjoints,flags=q.flags};
 }
 
-mc_synthetic :: ()->bool #export_c {
+mc_synthetic :: ()->bool #export_c #effects(all) {
     m:=mc_model();q:=mtr_plan(m);w:[1]McWork;p:[3322]f64;
     if !mc_fit(q,w[..]) {return false;}
     #assert mn_target(7,w[0].inputs[196..<206])==MnStatus.ok;

@@ -21,7 +21,7 @@ cs_add::(v:[]CsValue,key:string,line:string)->bool{
   else{if number.value<v[0].lo{v[0].lo=number.value;}if number.value>v[0].hi{v[0].hi=number.value;}}
   v[0].samples+=1;return true;
 }
-tool_main::()->int #export_c{
+tool_main::()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..])||args_count(a[..])!=1{tool_errln("usage: capacity-summary VITALS.log");return 2;}
   data:[4194304]u8;n:=fs_read(args_at(a[..],0),data[..]);if n<=0||n>=data.count{return 2;}
   text:=cast(string)data[0..<n];values:[24]CsValue;at:=0;valid:=true;

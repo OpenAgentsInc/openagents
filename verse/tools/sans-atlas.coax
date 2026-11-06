@@ -19,7 +19,7 @@
 #load "../../coax/lib/image/png.coax";
 #load "../../aethyr/render/sans-profile.coax";
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: sans-atlas OUT [--report]"); return 2; }
   return sa_run(args_at(a[..], 0), args_has(a[..], "--report"), args_has(a[..], "--script"));

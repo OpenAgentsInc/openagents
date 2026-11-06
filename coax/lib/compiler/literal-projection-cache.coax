@@ -4,20 +4,20 @@
 // cold, even when retain_fields is true. These witnesses select syntax only:
 // every selected source is re-read and analyzed normally, never cached as facts.
 CB_LiteralBlock :: struct {id:int;type:int;head:int;used:int;types:int;block:int;fields:[8]int;}
-CB_literal_same :: (p:CB_LiteralBlock,id:int,type:int,head:int,used:int,types:int,block:int)->bool {
+CB_literal_same :: (p:CB_LiteralBlock,id:int,type:int,head:int,used:int,types:int,block:int)->bool #effects(all) {
  return p.id==id && p.type==type && p.head==head && p.used==used && p.types==types && p.block==block;
 }
 // Staging when the cache is off is harmless: only an enabled lookup keeps a block.
-CB_literal_stageable :: (index:int,block:int)->bool {
+CB_literal_stageable :: (index:int,block:int)->bool #effects(all) {
  return index>=0 && index/8==block;
 }
-CB_literal_keep :: (b:CB_Context,p:CB_LiteralBlock) {
+CB_literal_keep :: (b:CB_Context,p:CB_LiteralBlock) #effects(all) {
  if CB_literal_same(b.state[0].literal_current,p.id,p.type,p.head,p.used,p.types,p.block) {b.state[0].literal_current=p;return;}
  if CB_literal_same(b.state[0].literal_previous,p.id,p.type,p.head,p.used,p.types,p.block) {b.state[0].literal_previous=p;return;}
  // Distinct keys retain FIFO insertion order; refreshing an existing key above does not promote it.
  b.state[0].literal_previous=b.state[0].literal_current;b.state[0].literal_current=p;
 }
-CB_literal_field :: (b:CB_Context,id:int,index:int)->int {
+CB_literal_field :: (b:CB_Context,id:int,index:int)->int #effects(all) {
  e:=b.c.nodes[id];enabled:=b.literal_cache && index>=0;block:int;if enabled {block=index/8;
   p:=b.state[0].literal_current;if !CB_literal_same(p,id,e.type,e.head,b.c.state[0].used,b.c.state[0].type_count,block) {p=b.state[0].literal_previous;}
   if CB_literal_same(p,id,e.type,e.head,b.c.state[0].used,b.c.state[0].type_count,block) {

@@ -76,8 +76,8 @@ SH_W_REPORT :: 0; SH_W_TYPE :: 256; SH_W_PROC :: 4352; SH_W_INST :: 4864; SH_W_B
 SH_W_CONST :: 21504; SH_W_FTYPE :: 37888; SH_W_LOCAL :: 56320; SH_W_LOOP :: 60416;
 SH_W_EDGE :: 60544; SH_W_ADJ :: 94336; SH_W_D :: 98432; SH_W_T :: 131200; SH_W_C :: 262272;
 SH_D_WORDS :: 32768; SH_T_WORDS :: 131072;
-SH_out_words :: ()->int #export_c {return 4194304;}
-SH_work_words :: ()->int #export_c {return 4194304;}
+SH_out_words :: ()->int #export_c #effects(all) {return 4194304;}
+SH_work_words :: ()->int #export_c #effects(all) {return 4194304;}
 
 ShState :: struct {
   at:int; next:u32; ok:bool; reason:u32; open:bool; mute:int;
@@ -92,7 +92,7 @@ ShVal :: struct {id:u32; ty:u32;}
 ShPlace :: struct {ptr:u32; ty:u32; storage:bool; bind:u32; priv:bool;}
 
 // Reasons. 0 lowers; each other value names what is refused.
-SH_reason_text :: (reason:u32)->string #export_c {
+SH_reason_text :: (reason:u32)->string #export_c #effects(all) {
   texts:=[12] string.["","a malformed tree","a module larger than its buffers",
     "more types, procedures, lowered procedures, bindings, constants, locals or loops than it holds",
     "an operation on these types","a view, texture or sampler other than as a parameter or argument",
@@ -124,14 +124,14 @@ SH_SC_UNIFORM_CONSTANT :: 0; SH_SC_INPUT :: 1; SH_SC_OUTPUT :: 3; SH_SC_PRIVATE 
 // Streams.
 SH_D :: 0; SH_T :: 1; SH_C :: 2;
 
-sh_fail :: (s:[]ShState,reason:u32) {if s[0].ok {s[0].ok=false;s[0].reason=reason;}}
+sh_fail :: (s:[]ShState,reason:u32) #effects(all) {if s[0].ok {s[0].ok=false;s[0].reason=reason;}}
 // What a refused step hands back: nothing reads it, since the first refusal is the result.
-sh_refused :: ()->ShVal {return ShVal.{id=0,ty=0};} // mutant: equivalent (no value is read after a refusal)
-sh_nothing :: ()->u32 {return 0;} // mutant: equivalent (no value is read after a refusal)
-sh_id :: (s:[]ShState)->u32 {id:=s[0].next;s[0].next+=1;return id;}
+sh_refused :: ()->ShVal #effects(all) {return ShVal.{id=0,ty=0};} // mutant: equivalent (no value is read after a refusal)
+sh_nothing :: ()->u32 #effects(all) {return 0;} // mutant: equivalent (no value is read after a refusal)
+sh_id :: (s:[]ShState)->u32 #effects(all) {id:=s[0].next;s[0].next+=1;return id;}
 
 // A word to a stream; code is dropped while muted (after a block ends).
-sh_word :: (s:[]ShState,w:[]u32,stream:int,word:u32) {
+sh_word :: (s:[]ShState,w:[]u32,stream:int,word:u32) #effects(all) {
   if stream==SH_C {
     if s[0].mute>0 {return;}
     at:=SH_W_C+s[0].nc;
@@ -145,24 +145,24 @@ sh_word :: (s:[]ShState,w:[]u32,stream:int,word:u32) {
   if s[0].nt>=SH_T_WORDS {sh_fail(s,2);return;}
   w[SH_W_T+s[0].nt]=word;s[0].nt+=1;
 }
-sh_op :: (s:[]ShState,w:[]u32,stream:int,op:u32,words:int) {sh_word(s,w,stream,(cast(u32)words<<16)|op);}
-sh1 :: (s:[]ShState,w:[]u32,st:int,op:u32,a:u32) {sh_op(s,w,st,op,2);sh_word(s,w,st,a);}
-sh2 :: (s:[]ShState,w:[]u32,st:int,op:u32,a:u32,b:u32) {sh_op(s,w,st,op,3);sh_word(s,w,st,a);sh_word(s,w,st,b);}
-sh3 :: (s:[]ShState,w:[]u32,st:int,op:u32,a:u32,b:u32,c:u32) {sh_op(s,w,st,op,4);sh_word(s,w,st,a);sh_word(s,w,st,b);sh_word(s,w,st,c);}
-sh4 :: (s:[]ShState,w:[]u32,st:int,op:u32,a:u32,b:u32,c:u32,d:u32) {
+sh_op :: (s:[]ShState,w:[]u32,stream:int,op:u32,words:int) #effects(all) {sh_word(s,w,stream,(cast(u32)words<<16)|op);}
+sh1 :: (s:[]ShState,w:[]u32,st:int,op:u32,a:u32) #effects(all) {sh_op(s,w,st,op,2);sh_word(s,w,st,a);}
+sh2 :: (s:[]ShState,w:[]u32,st:int,op:u32,a:u32,b:u32) #effects(all) {sh_op(s,w,st,op,3);sh_word(s,w,st,a);sh_word(s,w,st,b);}
+sh3 :: (s:[]ShState,w:[]u32,st:int,op:u32,a:u32,b:u32,c:u32) #effects(all) {sh_op(s,w,st,op,4);sh_word(s,w,st,a);sh_word(s,w,st,b);sh_word(s,w,st,c);}
+sh4 :: (s:[]ShState,w:[]u32,st:int,op:u32,a:u32,b:u32,c:u32,d:u32) #effects(all) {
   sh_op(s,w,st,op,5);sh_word(s,w,st,a);sh_word(s,w,st,b);sh_word(s,w,st,c);sh_word(s,w,st,d);
 }
-sh5 :: (s:[]ShState,w:[]u32,st:int,op:u32,a:u32,b:u32,c:u32,d:u32,e:u32) {
+sh5 :: (s:[]ShState,w:[]u32,st:int,op:u32,a:u32,b:u32,c:u32,d:u32,e:u32) #effects(all) {
   sh_op(s,w,st,op,6);sh_word(s,w,st,a);sh_word(s,w,st,b);sh_word(s,w,st,c);sh_word(s,w,st,d);sh_word(s,w,st,e);
 }
 // An instruction with a result, in the code: its id.
-sh_r1 :: (s:[]ShState,w:[]u32,op:u32,ty:u32,a:u32)->u32 {r:=sh_id(s);sh3(s,w,SH_C,op,ty,r,a);return r;}
-sh_r2 :: (s:[]ShState,w:[]u32,op:u32,ty:u32,a:u32,b:u32)->u32 {r:=sh_id(s);sh4(s,w,SH_C,op,ty,r,a,b);return r;}
-sh_r3 :: (s:[]ShState,w:[]u32,op:u32,ty:u32,a:u32,b:u32,c:u32)->u32 {r:=sh_id(s);sh5(s,w,SH_C,op,ty,r,a,b,c);return r;}
-sh_label :: (s:[]ShState,w:[]u32,id:u32) {sh1(s,w,SH_C,SH_OP_LABEL,id);s[0].open=true;}
-sh_end_block :: (s:[]ShState,w:[]u32,op:u32) {sh_op(s,w,SH_C,op,1);s[0].open=false;}
-sh_branch :: (s:[]ShState,w:[]u32,to:u32) {sh1(s,w,SH_C,SH_OP_BRANCH,to);s[0].open=false;}
-sh_next :: (s:[]ShState,tree:[]u32)->u32 {
+sh_r1 :: (s:[]ShState,w:[]u32,op:u32,ty:u32,a:u32)->u32 #effects(all) {r:=sh_id(s);sh3(s,w,SH_C,op,ty,r,a);return r;}
+sh_r2 :: (s:[]ShState,w:[]u32,op:u32,ty:u32,a:u32,b:u32)->u32 #effects(all) {r:=sh_id(s);sh4(s,w,SH_C,op,ty,r,a,b);return r;}
+sh_r3 :: (s:[]ShState,w:[]u32,op:u32,ty:u32,a:u32,b:u32,c:u32)->u32 #effects(all) {r:=sh_id(s);sh5(s,w,SH_C,op,ty,r,a,b,c);return r;}
+sh_label :: (s:[]ShState,w:[]u32,id:u32) #effects(all) {sh1(s,w,SH_C,SH_OP_LABEL,id);s[0].open=true;}
+sh_end_block :: (s:[]ShState,w:[]u32,op:u32) #effects(all) {sh_op(s,w,SH_C,op,1);s[0].open=false;}
+sh_branch :: (s:[]ShState,w:[]u32,to:u32) #effects(all) {sh1(s,w,SH_C,SH_OP_BRANCH,to);s[0].open=false;}
+sh_next :: (s:[]ShState,tree:[]u32)->u32 #effects(all) {
   if s[0].at>=tree.count {sh_fail(s,1);return sh_nothing();}
   v:=tree[s[0].at];s[0].at+=1;return v;
 }
@@ -172,15 +172,15 @@ sh_next :: (s:[]ShState,tree:[]u32)->u32 {
 // The type table: per type, 8 words: its code's place in the tree, its id,
 // and pointers to it (Function, StorageBuffer to its laid-out form, Input,
 // Output, UniformConstant), then its laid-out id.
-sh_tw :: (t:u32,k:int)->int {return SH_W_TYPE+8*cast(int)t+k;}
-sh_kind :: (tree:[]u32,w:[]u32,t:u32)->u32 {return tree[cast(int)w[sh_tw(t,0)]];}
-sh_part :: (tree:[]u32,w:[]u32,t:u32,k:int)->u32 {return tree[cast(int)w[sh_tw(t,0)]+k];}
-sh_type_ok :: (s:[]ShState,t:u32)->bool {
+sh_tw :: (t:u32,k:int)->int #effects(all) {return SH_W_TYPE+8*cast(int)t+k;}
+sh_kind :: (tree:[]u32,w:[]u32,t:u32)->u32 #effects(all) {return tree[cast(int)w[sh_tw(t,0)]];}
+sh_part :: (tree:[]u32,w:[]u32,t:u32,k:int)->u32 #effects(all) {return tree[cast(int)w[sh_tw(t,0)]+k];}
+sh_type_ok :: (s:[]ShState,t:u32)->bool #effects(all) {
   if cast(int)t>=s[0].types {sh_fail(s,1);return false;} // mutant: equivalent (the refusal stands whatever is lowered after it)
   return true;
 }
 // A struct of two to four f32 fields is a vector: its width, else 0.
-sh_vector :: (tree:[]u32,w:[]u32,t:u32)->int {
+sh_vector :: (tree:[]u32,w:[]u32,t:u32)->int #effects(all) {
   if sh_kind(tree,w,t)!=7 {return 0;}
   n:=cast(int)sh_part(tree,w,t,1);
   if n<2 || n>4 {return 0;}
@@ -188,19 +188,19 @@ sh_vector :: (tree:[]u32,w:[]u32,t:u32)->int {
   return n;
 }
 // Which resource a type is: 1 a view, 2 an image, 3 a sampler, else 0.
-sh_resource :: (tree:[]u32,w:[]u32,t:u32)->u32 {
+sh_resource :: (tree:[]u32,w:[]u32,t:u32)->u32 #effects(all) {
   k:=sh_kind(tree,w,t);
   if k==9 {return 1;}
   if k==10 {return 2;}
   if k==11 {return 3;}
   return 0;
 }
-sh_int :: (tree:[]u32,w:[]u32,t:u32)->bool {k:=sh_kind(tree,w,t);return k>=3 && k<=6;}
-sh_wide :: (tree:[]u32,w:[]u32,t:u32)->bool {k:=sh_kind(tree,w,t);return k==5 || k==6;}
+sh_int :: (tree:[]u32,w:[]u32,t:u32)->bool #effects(all) {k:=sh_kind(tree,w,t);return k>=3 && k<=6;}
+sh_wide :: (tree:[]u32,w:[]u32,t:u32)->bool #effects(all) {k:=sh_kind(tree,w,t);return k==5 || k==6;}
 
 // Types that are one SPIR-V type, which may be declared once: structs of
 // as many f32 (vectors), and the two samplers. The first such type stands for the rest.
-sh_canon :: (tree:[]u32,w:[]u32,t:u32)->u32 {
+sh_canon :: (tree:[]u32,w:[]u32,t:u32)->u32 #effects(all) {
   n:=sh_vector(tree,w,t);
   if n==0 && sh_kind(tree,w,t)!=11 {return t;}
   for u:0..<cast(int)t { // mutant: equivalent (type 0 is void)
@@ -209,7 +209,7 @@ sh_canon :: (tree:[]u32,w:[]u32,t:u32)->u32 {
   return t;
 }
 // The type's id, declared on first use, its parts first.
-sh_tid :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32)->u32 {
+sh_tid :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32)->u32 #effects(all) {
   if !sh_type_ok(s,t) {return sh_nothing();}
   if w[sh_tw(t,1)]!=0 {return w[sh_tw(t,1)];}
   c:=sh_canon(tree,w,t);
@@ -251,20 +251,20 @@ sh_tid :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32)->u32 {
 }
 // The unsigned 64-bit type, which a tree need not have: kept in void's
 // Output pointer word (void has no pointers), and the id of any u64 type.
-sh_u64 :: (s:[]ShState,w:[]u32)->u32 {
+sh_u64 :: (s:[]ShState,w:[]u32)->u32 #effects(all) {
   at:=sh_tw(SH_VOID,5); // mutant: equivalent (any slot no pointer of void uses)
   if w[at]==0 {s[0].int64=true;w[at]=sh_id(s);sh3(s,w,SH_T,SH_OP_TYPE_INT,w[at],64,0);}
   return w[at];
 }
 // Whether a value of type t loaded from a storage buffer needs rebuilding as
 // its Function form: a struct that is not a vector, or an array.
-sh_laid_apart :: (tree:[]u32,w:[]u32,t:u32)->bool {
+sh_laid_apart :: (tree:[]u32,w:[]u32,t:u32)->bool #effects(all) {
   k:=sh_kind(tree,w,t);
   return (k==7 && sh_vector(tree,w,t)==0) || k==8;
 }
 // Its storage-buffer form: offsets on struct members, strides on arrays (the C
 // layout, with scalar alignment). A bool has none.
-sh_laid :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32)->u32 {
+sh_laid :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32)->u32 #effects(all) {
   if !sh_type_ok(s,t) {return sh_nothing();}
   if !sh_laid_apart(tree,w,t) {
     k:=sh_kind(tree,w,t);
@@ -291,7 +291,7 @@ sh_laid :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32)->u32 {
 }
 // A pointer type to t: k 2 Function, 3 StorageBuffer (to its laid-out form),
 // 4 Input, 5 Output, 6 UniformConstant.
-sh_ptr :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,k:int)->u32 {
+sh_ptr :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,k:int)->u32 #effects(all) {
   if !sh_type_ok(s,t) {return sh_nothing();}
   if w[sh_tw(t,k)]!=0 {return w[sh_tw(t,k)];}
   c:=sh_canon(tree,w,t);
@@ -305,7 +305,7 @@ sh_ptr :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,k:int)->u32 {
 
 // One constant per (type, bits), kept in a table; bool as true or false; a
 // null constant of any type with `zeroed`.
-sh_const_entry :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,lo:u32,hi:u32,zeroed:bool)->u32 {
+sh_const_entry :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,lo:u32,hi:u32,zeroed:bool)->u32 #effects(all) {
   tag:=t|(ifx zeroed then cast(u32)0x80000000 else cast(u32)0);
   for k:0..<s[0].consts {at:=SH_W_CONST+4*k;if w[at]==tag && w[at+1]==lo && w[at+2]==hi {return w[at+3];}}
   if s[0].consts>=SH_CONSTS {sh_fail(s,3);return sh_nothing();}
@@ -317,13 +317,13 @@ sh_const_entry :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,lo:u32,hi:u32,zeroed:boo
   at:=SH_W_CONST+4*s[0].consts;w[at]=tag;w[at+1]=lo;w[at+2]=hi;w[at+3]=id;s[0].consts+=1;
   return id;
 }
-sh_const :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,lo:u32,hi:u32)->u32 {return sh_const_entry(s,tree,w,t,lo,hi,false);}
-sh_u32 :: (s:[]ShState,tree:[]u32,w:[]u32,v:u32)->u32 {return sh_const(s,tree,w,SH_U32,v,0);}
-sh_f32 :: (s:[]ShState,tree:[]u32,w:[]u32,bits:u32)->u32 {return sh_const(s,tree,w,SH_F32,bits,0);}
+sh_const :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,lo:u32,hi:u32)->u32 #effects(all) {return sh_const_entry(s,tree,w,t,lo,hi,false);}
+sh_u32 :: (s:[]ShState,tree:[]u32,w:[]u32,v:u32)->u32 #effects(all) {return sh_const(s,tree,w,SH_U32,v,0);}
+sh_f32 :: (s:[]ShState,tree:[]u32,w:[]u32,bits:u32)->u32 #effects(all) {return sh_const(s,tree,w,SH_F32,bits,0);}
 
 // A function type: the result and the parameters that are not resources,
 // kept by their ids (two types of one id are one function type).
-sh_ftype :: (s:[]ShState,tree:[]u32,w:[]u32,ret:u32,params:[]u32)->u32 {
+sh_ftype :: (s:[]ShState,tree:[]u32,w:[]u32,ret:u32,params:[]u32)->u32 #effects(all) {
   // At most 32 parameters, as every procedure has.
   ids:[32] u32;
   r:=sh_tid(s,tree,w,ret);
@@ -349,16 +349,16 @@ sh_ftype :: (s:[]ShState,tree:[]u32,w:[]u32,ret:u32,params:[]u32)->u32 {
 //
 // Per procedure, its signature's place in the tree. A procedure's words:
 // ret params type* locals type* length body.
-sh_sig :: (w:[]u32,p:int)->int {return cast(int)w[SH_W_PROC+p];}
-sh_params :: (tree:[]u32,w:[]u32,p:int)->int {return cast(int)tree[sh_sig(w,p)+1];}
-sh_param :: (tree:[]u32,w:[]u32,p:int,i:int)->u32 {return tree[sh_sig(w,p)+2+i];}
-sh_locals_at :: (tree:[]u32,w:[]u32,p:int)->int {return sh_sig(w,p)+2+sh_params(tree,w,p);}
-sh_body_at :: (tree:[]u32,w:[]u32,p:int)->int {at:=sh_locals_at(tree,w,p);return at+1+cast(int)tree[at]+1;}
+sh_sig :: (w:[]u32,p:int)->int #effects(all) {return cast(int)w[SH_W_PROC+p];}
+sh_params :: (tree:[]u32,w:[]u32,p:int)->int #effects(all) {return cast(int)tree[sh_sig(w,p)+1];}
+sh_param :: (tree:[]u32,w:[]u32,p:int,i:int)->u32 #effects(all) {return tree[sh_sig(w,p)+2+i];}
+sh_locals_at :: (tree:[]u32,w:[]u32,p:int)->int #effects(all) {return sh_sig(w,p)+2+sh_params(tree,w,p);}
+sh_body_at :: (tree:[]u32,w:[]u32,p:int)->int #effects(all) {at:=sh_locals_at(tree,w,p);return at+1+cast(int)tree[at]+1;}
 // A lowered copy: 16 words, its procedure, function id, done, then the
 // binding of each resource parameter, in order.
-sh_iw :: (k:int,j:int)->int {return SH_W_INST+16*k+j;}
+sh_iw :: (k:int,j:int)->int #effects(all) {return SH_W_INST+16*k+j;}
 // The copy of p with these bindings, made if it is new.
-sh_instance :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,binds:[]u32)->int {
+sh_instance :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,binds:[]u32)->int #effects(all) {
   for k:0..<s[0].insts {
     if cast(int)w[sh_iw(k,0)]!=p {continue;}
     same:=true;
@@ -372,12 +372,12 @@ sh_instance :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,binds:[]u32)->int {
   return k;
 }
 // The parameters that are values (not resources), as types.
-sh_value_params :: (tree:[]u32,w:[]u32,p:int,into:[]u32)->int {
+sh_value_params :: (tree:[]u32,w:[]u32,p:int,into:[]u32)->int #effects(all) {
   n:=0;
   for i:0..<sh_params(tree,w,p) {t:=sh_param(tree,w,p,i);if sh_resource(tree,w,t)==0 {into[n]=t;n+=1;}}
   return n;
 }
-sh_proc_ftype :: (s:[]ShState,tree:[]u32,w:[]u32,p:int)->u32 {
+sh_proc_ftype :: (s:[]ShState,tree:[]u32,w:[]u32,p:int)->u32 #effects(all) {
   vals:[32] u32;
   n:=sh_value_params(tree,w,p,vals[..]);
   return sh_ftype(s,tree,w,tree[sh_sig(w,p)],vals[0..<n]);
@@ -387,8 +387,8 @@ sh_proc_ftype :: (s:[]ShState,tree:[]u32,w:[]u32,p:int)->u32 {
 //
 // Per binding, 4 words: its name id, its kind (1 storage, 2 image, 3 sampler),
 // its variable and its type.
-sh_bw :: (b:int,k:int)->int {return SH_W_BIND+4*b+k;}
-sh_binding :: (s:[]ShState,tree:[]u32,w:[]u32,name:u32,t:u32)->u32 {
+sh_bw :: (b:int,k:int)->int #effects(all) {return SH_W_BIND+4*b+k;}
+sh_binding :: (s:[]ShState,tree:[]u32,w:[]u32,name:u32,t:u32)->u32 #effects(all) {
   for b:0..<s[0].binds {
     if w[sh_bw(b,0)]==name {
       if w[sh_bw(b,3)]!=t {sh_fail(s,7);return sh_nothing();}
@@ -425,7 +425,7 @@ sh_binding :: (s:[]ShState,tree:[]u32,w:[]u32,name:u32,t:u32)->u32 {
 // variable, kept as a binding of kind 4 from the top of the table down (so
 // the bindings reported and decorated stay 0, 1, 2...), its name word the
 // pointer type of an element there.
-sh_private :: (s:[]ShState,tree:[]u32,w:[]u32,a:u32,v:u32)->u32 {
+sh_private :: (s:[]ShState,tree:[]u32,w:[]u32,a:u32,v:u32)->u32 #effects(all) {
   if sh_kind(tree,w,a)!=8 || sh_resource(tree,w,v)!=1 || sh_part(tree,w,a,1)!=sh_part(tree,w,v,1) {sh_fail(s,4);return sh_nothing();}
   if s[0].privs>=SH_PRIVS {sh_fail(s,3);return sh_nothing();}
   s[0].privs+=1;
@@ -436,7 +436,7 @@ sh_private :: (s:[]ShState,tree:[]u32,w:[]u32,a:u32,v:u32)->u32 {
   return cast(u32)b;
 }
 // A pointer type to t in Private storage (SPIR-V allows a pointer type twice).
-sh_private_ptr :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32)->u32 {
+sh_private_ptr :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32)->u32 #effects(all) {
   id:=sh_id(s);sh3(s,w,SH_T,SH_OP_TYPE_POINTER,id,SH_SC_PRIVATE,sh_tid(s,tree,w,t));
   return id;
 }
@@ -445,20 +445,20 @@ sh_private_ptr :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32)->u32 {
 //
 // Locals of the copy being lowered: 2 words each, the variable (or, for a
 // resource, its binding) and the type.
-sh_lw :: (i:int,k:int)->int {return SH_W_LOCAL+2*i+k;}
-sh_local :: (s:[]ShState,tree:[]u32)->int {
+sh_lw :: (i:int,k:int)->int #effects(all) {return SH_W_LOCAL+2*i+k;}
+sh_local :: (s:[]ShState,tree:[]u32)->int #effects(all) {
   id:=cast(int)sh_next(s,tree);
   if id>=s[0].locals {sh_fail(s,1);return cast(int)sh_nothing();}
   return id;
 }
-sh_load :: (s:[]ShState,tree:[]u32,w:[]u32,p:ShPlace)->ShVal {
+sh_load :: (s:[]ShState,tree:[]u32,w:[]u32,p:ShPlace)->ShVal #effects(all) {
   if p.ptr==0 {sh_fail(s,5);return sh_refused();}
   if !p.storage {return ShVal.{id=sh_r1(s,w,SH_OP_LOAD,sh_tid(s,tree,w,p.ty),p.ptr),ty=p.ty};}
   v:=sh_r1(s,w,SH_OP_LOAD,sh_laid(s,tree,w,p.ty),p.ptr);
   return ShVal.{id=sh_unlay(s,tree,w,v,p.ty),ty=p.ty};
 }
 // A value read from a storage buffer, rebuilt in its Function form.
-sh_unlay :: (s:[]ShState,tree:[]u32,w:[]u32,v:u32,t:u32)->u32 {
+sh_unlay :: (s:[]ShState,tree:[]u32,w:[]u32,v:u32,t:u32)->u32 #effects(all) {
   if !sh_laid_apart(tree,w,t) {return v;}
   array:=sh_kind(tree,w,t)==8;
   n:=cast(int)sh_part(tree,w,t,ifx array then 2 else 1);
@@ -474,22 +474,22 @@ sh_unlay :: (s:[]ShState,tree:[]u32,w:[]u32,v:u32,t:u32)->u32 {
   return r;
 }
 // An index as an array index: a 32-bit integer.
-sh_index :: (s:[]ShState,tree:[]u32,w:[]u32,v:ShVal)->u32 {
+sh_index :: (s:[]ShState,tree:[]u32,w:[]u32,v:ShVal)->u32 #effects(all) {
   if !sh_int(tree,w,v.ty) {sh_fail(s,4);return sh_nothing();}
   if sh_wide(tree,w,v.ty) {return sh_r1(s,w,SH_OP_U_CONVERT,sh_tid(s,tree,w,SH_U32),v.id);}
   return v.id;
 }
 // A place behind a pointer, and a view not yet indexed (its binding).
-sh_at :: (ptr:u32,ty:u32,storage:bool)->ShPlace {p:ShPlace;p.ptr=ptr;p.ty=ty;p.storage=storage;return p;}
-sh_view :: (ty:u32,bind:u32)->ShPlace {p:ShPlace;p.ty=ty;p.bind=bind;return p;}
+sh_at :: (ptr:u32,ty:u32,storage:bool)->ShPlace #effects(all) {p:ShPlace;p.ptr=ptr;p.ty=ty;p.storage=storage;return p;}
+sh_view :: (ty:u32,bind:u32)->ShPlace #effects(all) {p:ShPlace;p.ty=ty;p.bind=bind;return p;}
 // The place, in Private storage when priv is set.
-sh_kept :: (p:ShPlace,priv:bool)->ShPlace {q:=p;q.priv=priv;return q;}
+sh_kept :: (p:ShPlace,priv:bool)->ShPlace #effects(all) {q:=p;q.priv=priv;return q;}
 // The pointer type of a part t of place p: in p's storage.
-sh_chain_ptr :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,p:ShPlace)->u32 {
+sh_chain_ptr :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,p:ShPlace)->u32 #effects(all) {
   if p.priv {return sh_private_ptr(s,tree,w,t);}
   return sh_ptr(s,tree,w,t,ifx p.storage then 3 else 2);
 }
-sh_place :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShPlace {
+sh_place :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShPlace #effects(all) {
   k:=sh_next(s,tree);
   // What a refused place hands back: nothing reads it, since the first refusal is the result.
   none:ShPlace;
@@ -535,7 +535,7 @@ sh_place :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShPlace {
 
 // Two values combined. Arithmetic and order on numbers, bits and shifts on
 // integers, logic on bool, equality on all three.
-sh_binary :: (s:[]ShState,tree:[]u32,w:[]u32,op:u32,a:ShVal,b:ShVal)->ShVal {
+sh_binary :: (s:[]ShState,tree:[]u32,w:[]u32,op:u32,a:ShVal,b:ShVal)->ShVal #effects(all) {
   // FAdd FSub FMul FDiv (Coax has no f32 %); FOrdLessThan ...LessThanEqual ...GreaterThan ...GreaterThanEqual FOrdEqual FUnordNotEqual
   float_ops:=[18] u32.[129,131,133,136,0,184,188,186,190,180,183,0,0,0,0,0,0,0];
   // IAdd ISub IMul SDiv SRem; SLessThan SLessThanEqual SGreaterThan SGreaterThanEqual IEqual INotEqual; and or xor shl sar
@@ -556,19 +556,19 @@ sh_binary :: (s:[]ShState,tree:[]u32,w:[]u32,op:u32,a:ShVal,b:ShVal)->ShVal {
   return ShVal.{id=sh_r2(s,w,code,sh_tid(s,tree,w,ty),a.id,b.id),ty=ty};
 }
 // A GLSL.std.450 instruction on f32.
-sh_ext :: (s:[]ShState,tree:[]u32,w:[]u32,inst:u32,args:[]u32)->u32 {
+sh_ext :: (s:[]ShState,tree:[]u32,w:[]u32,inst:u32,args:[]u32)->u32 #effects(all) {
   r:=sh_id(s);
   sh_op(s,w,SH_C,SH_OP_EXT_INST,5+args.count);sh_word(s,w,SH_C,sh_tid(s,tree,w,SH_F32));sh_word(s,w,SH_C,r);
   sh_word(s,w,SH_C,s[0].glsl);sh_word(s,w,SH_C,inst);
   for i:0..<args.count {sh_word(s,w,SH_C,args[i]);}
   return r;
 }
-sh_ext1 :: (s:[]ShState,tree:[]u32,w:[]u32,inst:u32,a:u32)->u32 {x:=[1] u32.[a];return sh_ext(s,tree,w,inst,x[..]);}
-sh_select :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,c:u32,a:u32,b:u32)->u32 {return sh_r3(s,w,SH_OP_SELECT,sh_tid(s,tree,w,t),c,a,b);}
+sh_ext1 :: (s:[]ShState,tree:[]u32,w:[]u32,inst:u32,a:u32)->u32 #effects(all) {x:=[1] u32.[a];return sh_ext(s,tree,w,inst,x[..]);}
+sh_select :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,c:u32,a:u32,b:u32)->u32 #effects(all) {return sh_r3(s,w,SH_OP_SELECT,sh_tid(s,tree,w,t),c,a,b);}
 // A vector or struct picked by a bool: before SPIR-V 1.4 OpSelect takes
 // only a scalar's or a vector's own width of bools, so a branch to two empty
 // blocks and an OpPhi of the two values (computed before it) at the merge.
-sh_phi_select :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,c:u32,a:u32,b:u32)->u32 {
+sh_phi_select :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,c:u32,a:u32,b:u32)->u32 #effects(all) {
   merge:=sh_id(s);ta:=sh_id(s);tb:=sh_id(s);
   sh2(s,w,SH_C,SH_OP_SELECTION_MERGE,merge,0);
   sh3(s,w,SH_C,SH_OP_BRANCH_CONDITIONAL,c,ta,tb);
@@ -580,11 +580,11 @@ sh_phi_select :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,c:u32,a:u32,b:u32)->u32 {
   sh_word(s,w,SH_C,a);sh_word(s,w,SH_C,ta);sh_word(s,w,SH_C,b);sh_word(s,w,SH_C,tb);
   return r;
 }
-sh_fcmp :: (s:[]ShState,tree:[]u32,w:[]u32,op:u32,a:u32,b:u32)->u32 {return sh_r2(s,w,op,sh_tid(s,tree,w,SH_BOOL),a,b);}
+sh_fcmp :: (s:[]ShState,tree:[]u32,w:[]u32,op:u32,a:u32,b:u32)->u32 #effects(all) {return sh_r2(s,w,op,sh_tid(s,tree,w,SH_BOOL),a,b);}
 // pow as C's powf, where GLSL's Pow leaves x<0 and x==0 undefined:
 // |x|^y, negated for x<0 and an odd whole y, NaN for x<0 and a fractional y;
 // 0 or infinity for x==0 as y is above or below 0; and 1 whenever y==0.
-sh_pow :: (s:[]ShState,tree:[]u32,w:[]u32,x:u32,y:u32)->u32 {
+sh_pow :: (s:[]ShState,tree:[]u32,w:[]u32,x:u32,y:u32)->u32 #effects(all) {
   zero:=sh_f32(s,tree,w,0);one:=sh_f32(s,tree,w,0x3F800000);half:=sh_f32(s,tree,w,0x3F000000);
   nan:=sh_f32(s,tree,w,0x7FC00000);inf:=sh_f32(s,tree,w,0x7F800000);f:=sh_tid(s,tree,w,SH_F32);
   xy:=[2] u32.[sh_ext1(s,tree,w,4,x),y];
@@ -598,7 +598,7 @@ sh_pow :: (s:[]ShState,tree:[]u32,w:[]u32,x:u32,y:u32)->u32 {
 }
 // A number as another number's type: conversions between floats and
 // integers, and integer widths and signs as C converts them.
-sh_convert :: (s:[]ShState,tree:[]u32,w:[]u32,to:u32,v:ShVal)->ShVal {
+sh_convert :: (s:[]ShState,tree:[]u32,w:[]u32,to:u32,v:ShVal)->ShVal #effects(all) {
   if !sh_type_ok(s,to) {return sh_refused();}
   ft:=sh_kind(tree,w,v.ty);tt:=sh_kind(tree,w,to);
   if ft<2 || ft>6 || tt<2 || tt>6 {sh_fail(s,4);return sh_refused();}
@@ -616,14 +616,14 @@ sh_convert :: (s:[]ShState,tree:[]u32,w:[]u32,to:u32,v:ShVal)->ShVal {
   return ShVal.{id=sh_widen(s,tree,w,to,v.id),ty=to};
 }
 // A u32 zero-extended to a 64-bit type.
-sh_widen :: (s:[]ShState,tree:[]u32,w:[]u32,to:u32,v:u32)->u32 {
+sh_widen :: (s:[]ShState,tree:[]u32,w:[]u32,to:u32,v:u32)->u32 #effects(all) {
   r:=sh_r1(s,w,SH_OP_U_CONVERT,sh_u64(s,w),v);
   if sh_kind(tree,w,to)==6 {return r;}
   return sh_r1(s,w,SH_OP_BITCAST,sh_tid(s,tree,w,to),r);
 }
 
 // A call: values for the value parameters, bindings for the resource ones.
-sh_call :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal {
+sh_call :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal #effects(all) {
   p:=cast(int)sh_next(s,tree);n:=cast(int)sh_next(s,tree);
   // At most 32, as every procedure's parameters are.
   if p>=s[0].procs || n!=sh_params(tree,w,p) {sh_fail(s,1);return sh_refused();}
@@ -657,7 +657,7 @@ sh_call :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal {
 }
 
 // A resource argument of a GPU procedure: the resource's binding variable, loaded.
-sh_resource_arg :: (s:[]ShState,tree:[]u32,w:[]u32,want:u32)->u32 {
+sh_resource_arg :: (s:[]ShState,tree:[]u32,w:[]u32,want:u32)->u32 #effects(all) {
   if sh_next(s,tree)!=18 {sh_fail(s,11);return sh_nothing();}
   id:=sh_local(s,tree);
   if !s[0].ok {return sh_nothing();}
@@ -668,7 +668,7 @@ sh_resource_arg :: (s:[]ShState,tree:[]u32,w:[]u32,want:u32)->u32 {
   b:=cast(int)w[sh_lw(id,0)];
   return sh_r1(s,w,SH_OP_LOAD,sh_tid(s,tree,w,t),w[sh_bw(b,2)]);
 }
-sh_value_arg :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32,want:u32)->u32 {
+sh_value_arg :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32,want:u32)->u32 #effects(all) {
   v:=sh_expr(s,tree,out,w);
   if !s[0].ok {return sh_nothing();}
   ok:=ifx want<16 then v.ty==want else sh_vector(tree,w,v.ty)==cast(int)(want-16); // mutant: equivalent (no argument wants a vector of no f32)
@@ -677,14 +677,14 @@ sh_value_arg :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32,want:u32)->u32 {
 }
 // A vector type of n f32 declared by the program. Texture UV arguments and
 // texel results carry V2/V4; an implicit array coordinate uses sh_vec3 below.
-sh_vec :: (s:[]ShState,tree:[]u32,w:[]u32,n:int)->u32 {
+sh_vec :: (s:[]ShState,tree:[]u32,w:[]u32,n:int)->u32 #effects(all) {
   r:u32;
   for t:0..<s[0].types {if sh_vector(tree,w,cast(u32)t)==n {r=sh_tid(s,tree,w,cast(u32)t);}} // mutant: equivalent (type 0 is void)
   return r;
 }
 // A sample's (u,v,layer) has no source V3 value. Reuse a declared V3 when
 // present, or declare one f32 vector shared by every array sample.
-sh_vec3 :: (s:[]ShState,tree:[]u32,w:[]u32)->u32 {
+sh_vec3 :: (s:[]ShState,tree:[]u32,w:[]u32)->u32 #effects(all) {
   declared:=sh_vec(s,tree,w,3);
   if declared!=0 {return declared;}
   if s[0].array_sample_type!=0 {return s[0].array_sample_type;}
@@ -692,20 +692,20 @@ sh_vec3 :: (s:[]ShState,tree:[]u32,w:[]u32)->u32 {
   s[0].array_sample_type=id;
   return id;
 }
-sh_ivec2 :: (s:[]ShState,tree:[]u32,w:[]u32)->u32 {
+sh_ivec2 :: (s:[]ShState,tree:[]u32,w:[]u32)->u32 #effects(all) {
   // An s32 vector of two, kept in s32's UniformConstant pointer word (s32 is never a resource).
   if w[sh_tw(SH_S32,6)]!=0 {return w[sh_tw(SH_S32,6)];}
   id:=sh_id(s);sh3(s,w,SH_T,SH_OP_TYPE_VECTOR,id,sh_tid(s,tree,w,SH_S32),2);
   w[sh_tw(SH_S32,6)]=id;
   return id;
 }
-sh_ivec3 :: (s:[]ShState,tree:[]u32,w:[]u32)->u32 {
+sh_ivec3 :: (s:[]ShState,tree:[]u32,w:[]u32)->u32 #effects(all) {
   if s[0].array_query_type!=0 {return s[0].array_query_type;}
   id:=sh_id(s);sh3(s,w,SH_T,SH_OP_TYPE_VECTOR,id,sh_tid(s,tree,w,SH_S32),3);
   s[0].array_query_type=id;
   return id;
 }
-sh_gpu :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal {
+sh_gpu :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal #effects(all) {
   g:=sh_next(s,tree);ty:=sh_next(s,tree);n:=sh_next(s,tree);
   // How many arguments each takes.
   counts:=[18] u32.[0,3,4,4,5,5,4,4,4,1,1,1,1,1,1,1,1,0];
@@ -811,7 +811,7 @@ sh_gpu :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal {
 }
 // The sampled-image type of an image kind (0 2D, 1 array, 2 depth), kept in
 // the pointer words of void, which has no pointers.
-sh_sampled_type :: (s:[]ShState,tree:[]u32,w:[]u32,dim:u32)->u32 {
+sh_sampled_type :: (s:[]ShState,tree:[]u32,w:[]u32,dim:u32)->u32 #effects(all) {
   at:=sh_tw(SH_VOID,2+cast(int)dim);
   if w[at]!=0 {return w[at];}
   // The image argument's own type is of this kind: the library declares one of each.
@@ -822,7 +822,7 @@ sh_sampled_type :: (s:[]ShState,tree:[]u32,w:[]u32,dim:u32)->u32 {
   return id;
 }
 
-sh_expr :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal {
+sh_expr :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal #effects(all) {
   k:=sh_next(s,tree);
   if !s[0].ok {return sh_refused();}
   if k==16 {
@@ -940,18 +940,18 @@ sh_expr :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal {
 //
 // A statement after a block ends (return, break, continue, discard) is
 // checked like any other and writes no code.
-sh_stmt :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32) {
+sh_stmt :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32) #effects(all) {
   dead:=!s[0].open;
   if dead {s[0].mute+=1;}
   sh_live_stmt(s,tree,out,w);
   if dead {s[0].mute-=1;s[0].open=false;}
 }
-sh_loop_push :: (s:[]ShState,w:[]u32,merge:u32,next:u32)->bool {
+sh_loop_push :: (s:[]ShState,w:[]u32,merge:u32,next:u32)->bool #effects(all) {
   if s[0].loops>=SH_LOOPS {sh_fail(s,3);return false;}
   w[SH_W_LOOP+2*s[0].loops]=merge;w[SH_W_LOOP+2*s[0].loops+1]=next;s[0].loops+=1;
   return true;
 }
-sh_live_stmt :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32) {
+sh_live_stmt :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32) #effects(all) {
   k:=sh_next(s,tree);
   if !s[0].ok {return;}
   if k==1 {n:=sh_next(s,tree);for i:0..<cast(int)n {if !s[0].ok {return;}sh_stmt(s,tree,out,w);}return;}
@@ -1054,7 +1054,7 @@ sh_live_stmt :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32) {
 }
 
 // One lowered copy: its function, parameters stored in their locals, its body.
-sh_lower_instance :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32,k:int) {
+sh_lower_instance :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32,k:int) #effects(all) {
   p:=cast(int)w[sh_iw(k,0)];
   s[0].inst=k;
   la:=sh_locals_at(tree,w,p);locals:=cast(int)tree[la];params:=sh_params(tree,w,p);
@@ -1102,21 +1102,21 @@ sh_lower_instance :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32,k:int) {
 //
 // What can cross between stages or out to a target: f32, an integer of 32
 // bits (flat) or a vector.
-sh_varying :: (tree:[]u32,w:[]u32,t:u32)->bool {
+sh_varying :: (tree:[]u32,w:[]u32,t:u32)->bool #effects(all) {
   k:=sh_kind(tree,w,t);
   return k==2 || k==3 || k==4 || sh_vector(tree,w,t)!=0;
 }
 // An entry's interface structs have at most SH_IO fields.
 SH_IO :: 32;
 // The types an interface value is made of: a V4 is itself, a struct its fields.
-sh_fields :: (tree:[]u32,w:[]u32,t:u32,into:[]u32)->int {
+sh_fields :: (tree:[]u32,w:[]u32,t:u32,into:[]u32)->int #effects(all) {
   if sh_vector(tree,w,t)==4 {into[0]=t;return 1;}
   n:=cast(int)sh_part(tree,w,t,1);
   for i:0..<n {into[i]=sh_part(tree,w,t,2+2*i);}
   return n;
 }
 // A struct (not a vector) of at most SH_IO fields: how many, else 0.
-sh_struct :: (tree:[]u32,w:[]u32,t:u32)->int {
+sh_struct :: (tree:[]u32,w:[]u32,t:u32)->int #effects(all) {
   if sh_kind(tree,w,t)!=7 || sh_vector(tree,w,t)!=0 {return 0;}
   n:=cast(int)sh_part(tree,w,t,1);
   if n>SH_IO {return 0;}
@@ -1124,7 +1124,7 @@ sh_struct :: (tree:[]u32,w:[]u32,t:u32)->int {
 }
 // A position and varyings: a V4, or a struct whose first field is a V4 and
 // whose others can vary. How many fields (1 for a V4), else 0.
-sh_staged :: (tree:[]u32,w:[]u32,t:u32)->int {
+sh_staged :: (tree:[]u32,w:[]u32,t:u32)->int #effects(all) {
   if sh_vector(tree,w,t)==4 {return 1;}
   n:=sh_struct(tree,w,t);
   if n==0 || sh_vector(tree,w,sh_part(tree,w,t,2))!=4 {return 0;}
@@ -1133,16 +1133,16 @@ sh_staged :: (tree:[]u32,w:[]u32,t:u32)->int {
   return n;
 }
 // Whether struct t's field i is written #depth (bit 30 of its offset word).
-sh_depth :: (tree:[]u32,w:[]u32,t:u32,i:int)->bool {return ((sh_part(tree,w,t,3+2*i)>>30)&1)!=0;}
+sh_depth :: (tree:[]u32,w:[]u32,t:u32,i:int)->bool #effects(all) {return ((sh_part(tree,w,t,3+2*i)>>30)&1)!=0;}
 // Vertex attributes: a struct of fields that can vary. How many, else 0.
-sh_attrs :: (tree:[]u32,w:[]u32,t:u32)->int {
+sh_attrs :: (tree:[]u32,w:[]u32,t:u32)->int #effects(all) {
   n:=sh_struct(tree,w,t);
   for i:0..<n {if !sh_varying(tree,w,sh_part(tree,w,t,2+2*i)) {return 0;}}
   return n;
 }
 // Color targets: a V4, or a struct of one to eight V4s and perhaps one f32 written #depth. How
 // many fields, else 0.
-sh_targets :: (tree:[]u32,w:[]u32,t:u32)->int {
+sh_targets :: (tree:[]u32,w:[]u32,t:u32)->int #effects(all) {
   if sh_vector(tree,w,t)==4 {return 1;}
   n:=sh_struct(tree,w,t);
   depths:=0;
@@ -1156,7 +1156,7 @@ sh_targets :: (tree:[]u32,w:[]u32,t:u32)->int {
   return n;
 }
 // A fragment's outputs: color targets at locations from 0, and a #depth field FragDepth.
-sh_ios_targets :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,types:[]u32,into:[]u32,vars:[]u32,nvars:[]int) {
+sh_ios_targets :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,types:[]u32,into:[]u32,vars:[]u32,nvars:[]int) #effects(all) {
   loc:=0;
   for i:0..<types.count {
     into[i]=sh_io(s,tree,w,types[i],5,vars,nvars);
@@ -1166,7 +1166,7 @@ sh_ios_targets :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,types:[]u32,into:[]u32,v
 }
 // An interface variable of type t in storage k (4 Input, 5 Output), listed
 // for the entry point (at most 2+SH_IO+SH_IO, a vertex's).
-sh_io :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,k:int,vars:[]u32,nvars:[]int)->u32 {
+sh_io :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,k:int,vars:[]u32,nvars:[]int)->u32 #effects(all) {
   v:=sh_id(s);
   sh3(s,w,SH_T,SH_OP_VARIABLE,sh_ptr(s,tree,w,t,k),v,ifx k==4 then SH_SC_INPUT else SH_SC_OUTPUT);
   vars[nvars[0]]=v;nvars[0]+=1;
@@ -1174,11 +1174,11 @@ sh_io :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,k:int,vars:[]u32,nvars:[]int)->u3
 }
 // Flat: an integer, or field i written #flat (bit 31 of its offset word in the struct st; a V4 st
 // is only the position, field 0, which is not a varying).
-sh_flat :: (s:[]ShState,tree:[]u32,w:[]u32,v:u32,t:u32,st:u32,i:int) {
+sh_flat :: (s:[]ShState,tree:[]u32,w:[]u32,v:u32,t:u32,st:u32,i:int) #effects(all) {
   if sh_int(tree,w,t) || (sh_part(tree,w,st,3+2*i)>>31)!=0 {sh2(s,w,SH_D,SH_OP_DECORATE,v,14);}
 }
 // A value from fields loaded from interface variables: the V4, or the struct.
-sh_gather :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,parts:[]u32)->u32 {
+sh_gather :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,parts:[]u32)->u32 #effects(all) {
   if sh_vector(tree,w,t)==4 {return parts[0];}
   r:=sh_id(s);
   sh_op(s,w,SH_C,SH_OP_COMPOSITE_CONSTRUCT,3+parts.count);sh_word(s,w,SH_C,sh_tid(s,tree,w,t));sh_word(s,w,SH_C,r);
@@ -1186,7 +1186,7 @@ sh_gather :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,parts:[]u32)->u32 {
   return r;
 }
 // The fields of an entry's result, each stored to its output, and the end of the entry's function.
-sh_entry_end :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,r:u32,outs:[]u32,types:[]u32) {
+sh_entry_end :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,r:u32,outs:[]u32,types:[]u32) #effects(all) {
   for i:0..<outs.count {
     v:=r;
     if sh_vector(tree,w,t)!=4 {v=sh_r2(s,w,SH_OP_COMPOSITE_EXTRACT,sh_tid(s,tree,w,types[i]),r,cast(u32)i);}
@@ -1195,7 +1195,7 @@ sh_entry_end :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,r:u32,outs:[]u32,types:[]u
   sh_end_block(s,w,SH_OP_RETURN);sh_op(s,w,SH_C,SH_OP_FUNCTION_END,1);
 }
 // The entry's resources: the copy of p bound to the bindings its parameter names have.
-sh_entry_instance :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,names:[]u32)->int {
+sh_entry_instance :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,names:[]u32)->int #effects(all) {
   // sh_instance refuses more than SH_RES.
   binds:[32] u32;nb:=0;
   for i:0..<sh_params(tree,w,p) { // mutant: equivalent (an entry's first parameter is a u32 or a V4)
@@ -1206,32 +1206,32 @@ sh_entry_instance :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,names:[]u32)->int {
   return sh_instance(s,tree,w,p,binds[0..<nb]);
 }
 // Whether parameters from `first` on are all resources.
-sh_resources_from :: (tree:[]u32,w:[]u32,p:int,first:int)->bool {
+sh_resources_from :: (tree:[]u32,w:[]u32,p:int,first:int)->bool #effects(all) {
   for i:first..<sh_params(tree,w,p) {if sh_resource(tree,w,sh_param(tree,w,p,i))==0 {return false;}}
   return true;
 }
 // The entry's function: it loads its inputs, calls the copy and stores its outputs.
-sh_entry_begin :: (s:[]ShState,tree:[]u32,w:[]u32,entry:u32) {
+sh_entry_begin :: (s:[]ShState,tree:[]u32,w:[]u32,entry:u32) #effects(all) {
   none:[1] u32;
   sh4(s,w,SH_C,SH_OP_FUNCTION,sh_tid(s,tree,w,SH_VOID),entry,0,sh_ftype(s,tree,w,SH_VOID,none[0..<0]));
   sh_label(s,w,sh_id(s));
 }
-sh_call_entry :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,k:int,args:[]u32)->u32 {
+sh_call_entry :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,k:int,args:[]u32)->u32 #effects(all) {
   r:=sh_id(s);
   sh_op(s,w,SH_C,SH_OP_FUNCTION_CALL,4+args.count);sh_word(s,w,SH_C,sh_tid(s,tree,w,tree[sh_sig(w,p)]));sh_word(s,w,SH_C,r);
   sh_word(s,w,SH_C,w[sh_iw(k,1)]);
   for i:0..<args.count {sh_word(s,w,SH_C,args[i]);}
   return r;
 }
-sh_builtin :: (s:[]ShState,w:[]u32,v:u32,b:u32) {sh3(s,w,SH_D,SH_OP_DECORATE,v,11,b);}
-sh_location :: (s:[]ShState,w:[]u32,v:u32,at:int) {sh3(s,w,SH_D,SH_OP_DECORATE,v,30,cast(u32)at);}
+sh_builtin :: (s:[]ShState,w:[]u32,v:u32,b:u32) #effects(all) {sh3(s,w,SH_D,SH_OP_DECORATE,v,11,b);}
+sh_location :: (s:[]ShState,w:[]u32,v:u32,at:int) #effects(all) {sh3(s,w,SH_D,SH_OP_DECORATE,v,30,cast(u32)at);}
 // Inputs or outputs at locations from 0.
-sh_ios_at :: (s:[]ShState,tree:[]u32,w:[]u32,types:[]u32,k:int,into:[]u32,vars:[]u32,nvars:[]int) {
+sh_ios_at :: (s:[]ShState,tree:[]u32,w:[]u32,types:[]u32,k:int,into:[]u32,vars:[]u32,nvars:[]int) #effects(all) {
   for i:0..<types.count {into[i]=sh_io(s,tree,w,types[i],k,vars,nvars);sh_location(s,w,into[i],i);}
 }
 // A position and varyings: the first the builtin `builtin`, the others at
 // locations from 0, flat when integers or written #flat; st their struct.
-sh_ios_staged :: (s:[]ShState,tree:[]u32,w:[]u32,st:u32,types:[]u32,k:int,builtin:u32,into:[]u32,vars:[]u32,nvars:[]int) {
+sh_ios_staged :: (s:[]ShState,tree:[]u32,w:[]u32,st:u32,types:[]u32,k:int,builtin:u32,into:[]u32,vars:[]u32,nvars:[]int) #effects(all) {
   for i:0..<types.count {
     into[i]=sh_io(s,tree,w,types[i],k,vars,nvars);
     if i==0 {sh_builtin(s,w,into[i],builtin);continue;}
@@ -1239,11 +1239,11 @@ sh_ios_staged :: (s:[]ShState,tree:[]u32,w:[]u32,st:u32,types:[]u32,k:int,builti
   }
 }
 // Loads of input variables.
-sh_loads :: (s:[]ShState,tree:[]u32,w:[]u32,types:[]u32,vars:[]u32,into:[]u32) {
+sh_loads :: (s:[]ShState,tree:[]u32,w:[]u32,types:[]u32,vars:[]u32,into:[]u32) #effects(all) {
   for i:0..<types.count {into[i]=sh_r1(s,w,SH_OP_LOAD,sh_tid(s,tree,w,types[i]),vars[i]);}
 }
 // The vertex entry `vs`: the indices and attributes in, the position and varyings out.
-sh_vertex :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,names:[]u32,entry:u32,vars:[]u32,nvars:[]int) {
+sh_vertex :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,names:[]u32,entry:u32,vars:[]u32,nvars:[]int) #effects(all) {
   n:=sh_params(tree,w,p);ret:=tree[sh_sig(w,p)];
   if n<2 || sh_param(tree,w,p,0)!=SH_U32 || sh_param(tree,w,p,1)!=SH_U32 || sh_staged(tree,w,ret)==0 {sh_fail(s,7);return;}
   // Attributes are a third parameter that is not a resource.
@@ -1274,7 +1274,7 @@ sh_vertex :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,names:[]u32,entry:u32,vars:[]
 }
 // The fragment entry `fs`: the position and varyings, and whether the
 // triangle faces the viewer, in; the color targets out.
-sh_fragment :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,names:[]u32,entry:u32,vars:[]u32,nvars:[]int) {
+sh_fragment :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,names:[]u32,entry:u32,vars:[]u32,nvars:[]int) #effects(all) {
   n:=sh_params(tree,w,p);ret:=tree[sh_sig(w,p)];
   if n<1 || sh_staged(tree,w,sh_param(tree,w,p,0))==0 || (ret!=SH_VOID && sh_targets(tree,w,ret)==0) {sh_fail(s,7);return;}
   first:=ifx n>1 && sh_param(tree,w,p,1)==SH_BOOL then 2 else 1;
@@ -1302,7 +1302,7 @@ sh_fragment :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,names:[]u32,entry:u32,vars:
 // raised past every caller's, round by round. Without a cycle the longest
 // chain of calls is shorter than the number of copies, so the levels stop
 // rising within that many rounds; with one they never stop.
-sh_recursive :: (s:[]ShState,w:[]u32)->bool {
+sh_recursive :: (s:[]ShState,w:[]u32)->bool #effects(all) {
   // Any start works: from any levels, a copy k calls deep settles within k rounds.
   for k:0..<s[0].insts {w[SH_W_ADJ+k]=0;} // mutant: equivalent (the levels may start anywhere)
   // Calls are found as copies are lowered, in the order they were made, so a
@@ -1325,7 +1325,7 @@ sh_recursive :: (s:[]ShState,w:[]u32)->bool {
 // The module's word count, or minus the reason it was refused. At the start
 // of the work view it leaves the bindings: a count, then name id, binding and
 // kind (1 storage, 2 image, 3 sampler) for each.
-SH_lower :: (tree:[]u32,out:[]u32,work:[]u32)->int #export_c {
+SH_lower :: (tree:[]u32,out:[]u32,work:[]u32)->int #export_c #effects(all) {
   st:[1] ShState;s:=st[..];w:=work;
   s[0].next=1;s[0].ok=true;
   if w.count<SH_W_C {return -2;} // mutant: equivalent (a view of about SH_W_C words holds no code, which sh_word refuses for the same reason)
@@ -1448,7 +1448,7 @@ SH_lower :: (tree:[]u32,out:[]u32,work:[]u32)->int #export_c {
 // ---- checks
 //
 // A tree as text: decimal words with one space between.
-sh_parse :: (text:string,into:[]u32)->int {
+sh_parse :: (text:string,into:[]u32)->int #effects(all) {
   n:=0;at:=0;
   while at<text.count {
     end:=at;
@@ -1465,13 +1465,13 @@ sh_parse :: (text:string,into:[]u32)->int {
 }
 SH_CHECK_WORK :: 270000;
 // A module's words digested, so a check can pin all of them.
-sh_digest :: (words:[]u32,n:int)->u64 {
+sh_digest :: (words:[]u32,n:int)->u64 #effects(all) {
   h:u64=17;
   for i:0..<n {h=(h*31+cast(u64)words[i])%4294967291;}
   return h;
 }
-sh_text :: (text:string,out:[]u32,work:[]u32)->int {t:[4096] u32;return SH_lower(t[0..<sh_parse(text,t[..])],out,work);}
-sh_try :: (text:string)->int {out:[8192] u32;work:[SH_CHECK_WORK] u32;return sh_text(text,out[..],work[..]);}
+sh_text :: (text:string,out:[]u32,work:[]u32)->int #effects(all) {t:[4096] u32;return SH_lower(t[0..<sh_parse(text,t[..])],out,work);}
+sh_try :: (text:string)->int #effects(all) {out:[8192] u32;work:[SH_CHECK_WORK] u32;return sh_text(text,out[..],work[..]);}
 
 // coax/tests/shader/sample.coax: a_vs and a_fs use every statement, operator,
 // conversion, GPU procedure and kind of binding; b_vs and b_fs are the
@@ -1510,12 +1510,12 @@ SH_SAMPLE_B :: "2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 3 6 2 4 4 2 4 4 20 1 1 4
 // A module of two entries, `vs` returning a zero V4 and `fs` taking a V4,
 // with more types after the first seven (0 void, 1 bool, 2 f32, 3 s32, 4 u32,
 // 5 int, 6 V4), fs's other locals and its body: the lowering's result.
-sh_frag :: (extra:int,types:string,ret:u32,locals:string,body:string)->int {return sh_calls(extra,types,ret,locals,body,0,"");}
+sh_frag :: (extra:int,types:string,ret:u32,locals:string,body:string)->int #effects(all) {return sh_calls(extra,types,ret,locals,body,0,"");}
 // The same with more procedures after fs (2, 3...), each in its tree words.
-sh_calls :: (extra:int,types:string,ret:u32,locals:string,body:string,procs:int,more:string)->int {
+sh_calls :: (extra:int,types:string,ret:u32,locals:string,body:string,procs:int,more:string)->int #effects(all) {
   out:[8192] u32;return sh_calls_out(extra,types,ret,locals,body,procs,more,out[..]);
 }
-sh_calls_out :: (extra:int,types:string,ret:u32,locals:string,body:string,procs:int,more:string,out:[]u32)->int {
+sh_calls_out :: (extra:int,types:string,ret:u32,locals:string,body:string,procs:int,more:string,out:[]u32)->int #effects(all) {
   t:[4096] u32;work:[SH_CHECK_WORK] u32;
   n:=sh_parse("2 0 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16",t[..]);
   t[1]=cast(u32)(7+extra);
@@ -1532,7 +1532,7 @@ sh_calls_out :: (extra:int,types:string,ret:u32,locals:string,body:string,procs:
   n+=sh_parse("2 0 0 0 1 1 1 2",t[n..<t.count]);
   return SH_lower(t[0..<n],out,work[..]);
 }
-sh_body :: (locals:string,body:string)->int {return sh_frag(0,"",0,locals,body);}
+sh_body :: (locals:string,body:string)->int #effects(all) {return sh_frag(0,"",0,locals,body);}
 #test "a local array's view lives in Private storage, and a callee writes it" {
   // locals 1 [1]f32, 2 []f32 = 1[..]; proc 2 stores v[0]=0; the entry stores v[0]=1 and reads it
   out:[8192] u32;
@@ -1611,18 +1611,18 @@ sh_body :: (locals:string,body:string)->int {return sh_frag(0,"",0,locals,body);
 // 20 b_vs (21 params, 24 locals, 27 length), 48 b_fs, 79 v4 (80 params,
 // 85 locals, 90 length), 105 entries: 106 stage 107 proc 108..109 names,
 // 110 stage 111 proc 112 name.
-sh_poke :: (at:int,v:u32)->int {
+sh_poke :: (at:int,v:u32)->int #effects(all) {
   t:[4096] u32;out:[8192] u32;work:[SH_CHECK_WORK] u32;
   n:=sh_parse(SH_SAMPLE_B,t[..]);
   t[at]=v;
   return SH_lower(t[0..<ifx at<n then n else at+1],out[..],work[..]); // mutant: equivalent (any padding is refused alike)
 }
 // SH_SAMPLE_B with words from `at` cut and replaced by `with`.
-sh_splice :: (at:int,cut:int,with:string)->int {return sh_spliced(at,cut,with,0,8192);}
+sh_splice :: (at:int,cut:int,with:string)->int #effects(all) {return sh_spliced(at,cut,with,0,8192);}
 // SH_SAMPLE_B with `more` types after its seven.
-sh_types :: (more:int,with:string)->int {return sh_spliced(19,0,with,more,8192);}
+sh_types :: (more:int,with:string)->int #effects(all) {return sh_spliced(19,0,with,more,8192);}
 // ... with `words` of output room.
-sh_spliced :: (at:int,cut:int,with:string,more:int,words:int)->int {
+sh_spliced :: (at:int,cut:int,with:string,more:int,words:int)->int #effects(all) {
   t:[4096] u32;u:[4096] u32;out:[8192] u32;work:[SH_CHECK_WORK] u32;
   n:=sh_parse(SH_SAMPLE_B,t[..]);
   for i:0..<at {u[i]=t[i];}
@@ -1674,7 +1674,7 @@ SH_MORE :: "9 2 10 0 10 1 10 2 11 0 11 1 6 7 2 2 0 4 4 8 9 14 8 2 2 4 9 1 7 2 6 
 // The vertex entry and fragment entry most checks need beside the one they make.
 SH_VS :: "6 2 4 4 2 4 4 | 1 1 4 17 6 ;";
 SH_FS :: "0 1 6 1 6 | 5 ;";
-sh_procs :: (text:string,into:[]u32,count:[]int)->int {
+sh_procs :: (text:string,into:[]u32,count:[]int)->int #effects(all) {
   n:=0;at:=0;mark:int;
   while at<text.count {
     c:=text[at];
@@ -1695,7 +1695,7 @@ sh_procs :: (text:string,into:[]u32,count:[]int)->int {
   #assert sh_procs("0 0 0 | 2 22 2 0 ; 0 1 6 | 5 ;",t[..],c[..])==13 && c[0]==2 && t[3]==4 && t[11]==1 && t[12]==5;
 }
 // The tree of procedures a, b and more and the entries, into t: its length.
-sh_tree :: (a:string,b:string,more:string,entries:string,t:[]u32)->int {
+sh_tree :: (a:string,b:string,more:string,entries:string,t:[]u32)->int #effects(all) {
   c:[1] int;
   n:=sh_parse("2 31 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16",t);
   n+=sh_parse(SH_MORE,t[n..<t.count]);
@@ -1705,20 +1705,20 @@ sh_tree :: (a:string,b:string,more:string,entries:string,t:[]u32)->int {
   return n+sh_parse(entries,t[n..<t.count]);
 }
 // Their lowering's result.
-sh_build :: (a:string,b:string,more:string,entries:string)->int {
+sh_build :: (a:string,b:string,more:string,entries:string)->int #effects(all) {
   t:[4096] u32;out:[8192] u32;work:[SH_CHECK_WORK] u32;
   return SH_lower(t[0..<sh_tree(a,b,more,entries,t[..])],out[..],work[..]);
 }
 // The digest of their module, or 0 when it is refused.
-sh_pin :: (a:string,b:string,more:string,entries:string)->u64 {
+sh_pin :: (a:string,b:string,more:string,entries:string)->u64 #effects(all) {
   t:[4096] u32;out:[8192] u32;work:[SH_CHECK_WORK] u32;
   // A refused tree's digest is the empty module's.
   return sh_digest(out[..],SH_lower(t[0..<sh_tree(a,b,more,entries,t[..])],out[..],work[..]));
 }
 // A fragment entry with SH_VS: its names are 2, 3... after vs's 0 and 1.
-sh_fs :: (fs:string,more:string,names:string)->int {return sh_build(SH_VS,fs,more,names);}
+sh_fs :: (fs:string,more:string,names:string)->int #effects(all) {return sh_build(SH_VS,fs,more,names);}
 // A vertex entry with SH_FS.
-sh_vs :: (vs:string,more:string,names:string)->int {return sh_build(vs,SH_FS,more,names);}
+sh_vs :: (vs:string,more:string,names:string)->int #effects(all) {return sh_build(vs,SH_FS,more,names);}
 #test "the builder lowers" {
   #assert sh_fs("0 1 6 1 6 | 5 ;","","2 0 0 0 1 1 1 2")>0 && sh_vs("6 2 4 4 2 4 4 | 4 17 6 ;","","2 0 0 0 1 1 1 2")>0;
 }
@@ -1726,7 +1726,7 @@ sh_vs :: (vs:string,more:string,names:string)->int {return sh_build(vs,SH_FS,mor
 // The opcode sh_binary picks for op on two values of type t, with its
 // result type in the high half; 0 when it refuses or its operands are not
 // the two values. The tree and work are a lowered module's.
-sh_opcode :: (tree:[]u32,w:[]u32,op:u32,t:u32)->u32 {
+sh_opcode :: (tree:[]u32,w:[]u32,op:u32,t:u32)->u32 #effects(all) {
   st:[1] ShState;s:=st[..];sh_state(s,tree);
   v:=sh_binary(s,tree,w,op,ShVal.{id=7,ty=t},ShVal.{id=9,ty=t});
   if !s[0].ok || w[SH_W_C+3]!=7 || w[SH_W_C+4]!=9 {return 0;}
@@ -1734,17 +1734,17 @@ sh_opcode :: (tree:[]u32,w:[]u32,op:u32,t:u32)->u32 {
 }
 // A fresh state over a tree whose types are in the work.
 // Ids start at 1, as the lowering's do (0 marks a type not declared yet).
-sh_state :: (s:[]ShState,tree:[]u32) {
+sh_state :: (s:[]ShState,tree:[]u32) #effects(all) {
   z:ShState;s[0]=z;s[0].ok=true;s[0].types=cast(int)tree[1];
   s[0].next=1; // mutant: equivalent (ids may start anywhere past 0)
 }
 // A lowered module of SH_VS and SH_FS, for checks of single steps: its tree's length.
-sh_module :: (tree:[]u32,out:[]u32,w:[]u32)->int {
+sh_module :: (tree:[]u32,out:[]u32,w:[]u32)->int #effects(all) {
   n:=sh_tree(SH_VS,SH_FS,"","2 0 0 0 1 1 1 2",tree);
   #assert SH_lower(tree[0..<n],out,w)>0; // mutant: equivalent (it lowers to hundreds of words)
   return n;
 }
-sh_expect :: (tree:[]u32,w:[]u32,op:int,t:u32,codes:[]u32)->bool {
+sh_expect :: (tree:[]u32,w:[]u32,op:int,t:u32,codes:[]u32)->bool #effects(all) {
   got:=sh_opcode(tree,w,cast(u32)op,t);
   if codes[op-1]==0 {return got==0;}
   ty:=ifx op>=6 && op<=13 then SH_BOOL else t; // mutant: equivalent (&& and || take bools, so give one either way)
@@ -1771,7 +1771,7 @@ sh_expect :: (tree:[]u32,w:[]u32,op:int,t:u32,codes:[]u32)->bool {
 }
 // Type t made, at `at` in a lowered module's tree, a struct of n fields:
 // `first` then `rest` (offsets and size left out: nothing here reads them).
-sh_patch :: (tree:[]u32,at:int,w:[]u32,t:u32,n:int,first:u32,rest:u32)->int {
+sh_patch :: (tree:[]u32,at:int,w:[]u32,t:u32,n:int,first:u32,rest:u32)->int #effects(all) {
   w[sh_tw(t,0)]=cast(u32)at;
   tree[at]=7;tree[at+1]=cast(u32)n;
   for i:0..<n {tree[at+2+2*i]=ifx i==0 then first else rest;}
@@ -1780,7 +1780,7 @@ sh_patch :: (tree:[]u32,at:int,w:[]u32,t:u32,n:int,first:u32,rest:u32)->int {
 // An interface helper (0 sh_staged, 1 sh_attrs, 2 sh_targets, 3 sh_vector)
 // on type t of a lowered module's tree and work, where types 31 to 34 become
 // structs of n fields: V4s, a V4 then f32, f32, and a bool then f32.
-sh_iface :: (tree:[]u32,end:int,w:[]u32,which:int,t:u32,n:int)->int {
+sh_iface :: (tree:[]u32,end:int,w:[]u32,which:int,t:u32,n:int)->int #effects(all) {
   at:=sh_patch(tree,end,w,31,n,6,6);
   at=sh_patch(tree,at,w,32,n,6,SH_F32); // mutant: equivalent (any scalar that varies serves)
   at=sh_patch(tree,at,w,33,n,SH_F32,SH_F32);
@@ -1875,20 +1875,20 @@ sh_iface :: (tree:[]u32,end:int,w:[]u32,which:int,t:u32,n:int)->int {
 }
 // A fragment entry of a 2D texture, an array, a depth texture, a sampler and a comparison sampler (locals 1..5).
 SH_GPU :: "0 6 6 8 9 10 11 12 6 6 8 9 10 11 12";
-sh_gpu_fs :: (body:string)->int {out:[8192] u32;return sh_gpu_fs_out(body,out[..]);}
+sh_gpu_fs :: (body:string)->int #effects(all) {out:[8192] u32;return sh_gpu_fs_out(body,out[..]);}
 // Whether the fragment of body lowers with an instruction whose first word is op's.
-sh_gpu_fs_op :: (body:string,op:u32)->bool {
+sh_gpu_fs_op :: (body:string,op:u32)->bool #effects(all) {
   return sh_gpu_profile_op(body,2,op);
 }
-sh_gpu_profile_op :: (body:string,version:u32,op:u32)->bool {
+sh_gpu_profile_op :: (body:string,version:u32,op:u32)->bool #effects(all) {
   out:[8192] u32;n:=sh_gpu_profile_out(body,out[..],version);
   for i:0..<n {if out[i]==op {return true;}} // mutant: equivalent (word 0 is the magic number, never an instruction)
   return false;
 }
-sh_gpu_fs_out :: (body:string,out:[]u32)->int {
+sh_gpu_fs_out :: (body:string,out:[]u32)->int #effects(all) {
   return sh_gpu_profile_out(body,out,2);
 }
-sh_gpu_profile_out :: (body:string,out:[]u32,version:u32)->int {
+sh_gpu_profile_out :: (body:string,out:[]u32,version:u32)->int #effects(all) {
   t:[4096] u32;work:[SH_CHECK_WORK] u32;c:[1] int;
   n:=sh_parse("2 31 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16",t[..]);
   t[0]=version;
@@ -1950,7 +1950,7 @@ sh_gpu_profile_out :: (body:string,out:[]u32,version:u32)->int {
 
 // A checked module with only V2/V4 and array resources. Most SH fixtures
 // preload V3 in SH_MORE, although ordinary reachable type tables need not.
-sh_sparse_array_tree :: (sa_version:u32,sa_declared:bool,sa_tree:[]u32)->int {
+sh_sparse_array_tree :: (sa_version:u32,sa_declared:bool,sa_tree:[]u32)->int #effects(all) {
   sa_count:[1]int;
   sa_n:=sh_parse("2 10 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 10 1 11 0",sa_tree);
   sa_tree[0]=sa_version;
@@ -1993,7 +1993,7 @@ sh_sparse_array_tree :: (sa_version:u32,sa_declared:bool,sa_tree:[]u32)->int {
 }
 // Modules too large for a limit: 0 an fs of n locals, 1 n loops in each
 // other, 2 n calls, 3 an array of n f32 made, 4 one read from a view.
-sh_big :: (mode:int,n:int)->int {
+sh_big :: (mode:int,n:int)->int #effects(all) {
   t:[70000] u32;out:[200000] u32;work:[SH_W_C+200000] u32;c:[1] int;
   m:=sh_parse("2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 8 2 0 4 9 7 3",t[..]);
   t[21]=cast(u32)n;
@@ -2026,13 +2026,13 @@ sh_big :: (mode:int,n:int)->int {
   #assert sh_big(3,4096)>0 && sh_big(3,4097)==-1 && sh_big(4,4096)>0 && sh_big(4,4097)==-3;
 }
 // How many OpDecorate ... Flat a module has.
-sh_flats :: (out:[]u32,n:int)->int {
+sh_flats :: (out:[]u32,n:int)->int #effects(all) {
   c:=0;
   for i:5..<n-2 {if out[i]==((3<<16)|71) && out[i+2]==14 {c+=1;}} // mutant: equivalent (the header and capabilities come first, decorations never end the module, and words past it are 0)
   return c;
 }
 // A tree of a and b with the offset word `at` words after the first `code` given bit 31 (#flat).
-sh_flagged :: (a:string,b:string,entries:string,code:string,at:int,out:[]u32,flag:bool)->int {
+sh_flagged :: (a:string,b:string,entries:string,code:string,at:int,out:[]u32,flag:bool)->int #effects(all) {
   t:[4096] u32;work:[SH_CHECK_WORK] u32;c:[16] u32;
   n:=sh_tree(a,b,"",entries,t[..]);m:=sh_parse(code,c[..]);
   for i:0..<n-m { // mutant: equivalent (the codes are types after the tree's header, and words past it are 0)
@@ -2046,7 +2046,7 @@ SH_T_DEPTH :: "2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 3 6 0 2 1073741840 6 20
 // In module out of n words: OpDecorate X BuiltIn FragDepth; whether OriginUpperLeft's entry has
 // DepthReplacing as the next instruction; OpDecorate X Location (their number, and the sum of
 // the locations); and whether its instructions, word count by word count, end where it ends.
-sh_depths :: (out:[]u32,n:int)->[5] int {
+sh_depths :: (out:[]u32,n:int)->[5] int #effects(all) {
   r:[5] int;
   i:=5;
   while i<n {
@@ -2060,7 +2060,7 @@ sh_depths :: (out:[]u32,n:int)->[5] int {
   r[4]=ifx i==n then 1 else 0;
   return r;
 }
-sh_tree_lower :: (text:string,out:[]u32)->int {
+sh_tree_lower :: (text:string,out:[]u32)->int #effects(all) {
   t:[4096] u32;work:[SH_CHECK_WORK] u32;
   n:=sh_parse(text,t[..]);
   return SH_lower(t[0..<n],out,work[..]);
@@ -2192,7 +2192,7 @@ SH_T_TWO :: "0 3 6 7 7 3 6 7 7 | 1 2 2 22 2 2 18 1 18 2 2 22 2 2 18 2 18 1 ;";
   #assert !s[0].ok && s[0].reason==1;
 }
 // A module whose type 7 is a struct of n f32: the lowering's result.
-sh_fields_lower :: (n:int)->int {
+sh_fields_lower :: (n:int)->int #effects(all) {
   t:[4096] u32;out:[8192] u32;work:[SH_CHECK_WORK] u32;c:[1] int;
   // Its fields are voids at offset 0 and its size 0: no check reads them.
   m:=sh_parse("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7",t[..]);

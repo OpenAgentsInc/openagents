@@ -15,7 +15,7 @@ mcp_word :: (a:u32,b:u32)->bool {
  #assert !mcp_word(0x7fc00001,0x7fc00002) && !mcp_word(0x7f800000,0x7f800001);
 }
 mcp_run :: (argv:[]string,dir:string,label:string)->bool {out:[1048576]u8;err:[65536]u8;r:=proc_run(argv,120000,out[..],err[..]);names:[2][256]u8;paths:[2][4096]u8;for i:0..<2 {o:[1]Jo;jo_start(o[..],names[i][..]);jo_put(o[..],label);jo_put(o[..],ifx i==0 then ".stdout" else ".stderr");if !fs_write(fs_join(dir,jo_text(o[..]),paths[i][..]),ifx i==0 then cast(string)out[0..<r.out_n] else cast(string)err[0..<r.err_n]) {return false;}}if r.started!=0 || r.status!=0 || r.cut || r.timed_out {tool_errln(cast(string)out[0..<r.out_n]);tool_errln(cast(string)err[0..<r.err_n]);return false;}print("%",cast(string)out[0..<r.out_n]);return true;}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<4 {tool_errln("usage: metal-cpu ROOT RESOURCES ENGINE.WASM OUTPUT [--producer LIBRARY] [--effects EXECUTABLE] [--existing-wasm] [--native-only] [--existing-native] [--presentation-v1]");return 2;}
  root:=args_at(a[..],0);res:=args_at(a[..],1);wasm:=args_at(a[..],2);dir:=args_at(a[..],3);paths:[12][4096]u8;native:=fs_join(dir,"native",paths[0][..]);web:=fs_join(dir,"wasm",paths[1][..]);if !fs_mkdir(native) || !fs_mkdir(web) {return 1;}
  facts:=fs_join(root,"verse/native/everglade.facts",paths[2][..]);pack:=fs_join(res,"web/realms/everglade/assets/everglade.pack",paths[3][..]);

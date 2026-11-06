@@ -9,7 +9,7 @@
   #assert dpqr_bytes(bytes[..],format) == -1 && dpqr_bytes(bytes[0..<262143],format) == -1;
  #assert dpqr_bytes(bytes[0..<262144],-1) == -1 && dpqr_bytes(bytes[0..<262144],2) == -1;
 }
-dpqr_bytes :: (bytes:[]u8,format:int)->int #export_c {
+dpqr_bytes :: (bytes:[]u8,format:int)->int #export_c #effects(all) {
  if bytes.count!=262144||format<0||format>1 {return -1;}different:=0;
  for pixel:0..<65536 {for channel:0..<4 {physical:=ifx format==1&&channel<3 then 2-channel else channel;if cast(int)bytes[pixel*4+physical]!=dpq_expected(pixel,channel) {different+=1;}}}return different;
 }

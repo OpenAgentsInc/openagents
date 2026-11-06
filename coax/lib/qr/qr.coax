@@ -152,7 +152,7 @@ qr_line_penalty :: (modules:[]u8,size:int,line:int,column:bool)->int {
  if color!=0 {qr_history(history[..],run,size);run=0;}
  qr_history(history[..],run+size,size);return score+qr_patterns(history[..])*40;
 }
-qr_penalty :: (modules:[]u8,size:int)->int #export_c {
+qr_penalty :: (modules:[]u8,size:int)->int #export_c #effects(all) {
  score:=0;dark:=0;
  for i:0..<size {score+=qr_line_penalty(modules,size,i,false)+qr_line_penalty(modules,size,i,true);}
  for y:0..<size {for x:0..<size {

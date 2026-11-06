@@ -57,7 +57,7 @@ GeometryHierarchy :: struct {node:[HIERARCHY_NODES]GeometryNode;count:int;leaves
   #assert !hierarchy_build(h[..],a[..],HIERARCHY_NODES) && h[0].count==1023;
 }
 
-hierarchy_build :: (out:[]GeometryHierarchy,leaves:[]ClusterLeaf,capacity:int)->bool {
+hierarchy_build :: (out:[]GeometryHierarchy,leaves:[]ClusterLeaf,capacity:int)->bool #effects(all) {
   if leaves.count<1 || capacity>HIERARCHY_NODES || capacity<leaves.count*2-1 {return false;}
   first:=0;
   for a:leaves {
@@ -83,7 +83,7 @@ hierarchy_build :: (out:[]GeometryHierarchy,leaves:[]ClusterLeaf,capacity:int)->
   }
   next[0].root=active[0];out[0]=next[0];return true;
 }
-hierarchy_owner :: (h:[]GeometryHierarchy,leaf:int,level:int)->int {
+hierarchy_owner :: (h:[]GeometryHierarchy,leaf:int,level:int)->int #effects(all) {
   if leaf<0 || leaf>=h[0].leaves || level<0 {return -1;}
   id:=leaf;parent:=h[0].node[id].parent;
   while parent!= -1 {

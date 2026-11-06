@@ -53,7 +53,7 @@ Policy flags such as `LOW_S`, `STRICTENC` and `CLEANSTACK` are absent. Chapter
 SCRIPTFLAGS_BASE :: SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_TAPROOT;
 // Returns a mask, or -1 for an invalid network, height or hash extent.
 // Hash bytes are SHA256d/wire order, the reverse of an explorer's text.
-scriptflags_vartime :: (p: ChainParams, height: int, hash: [] u8) -> int #export_c {
+scriptflags_vartime :: (p: ChainParams, height: int, hash: [] u8) -> int #export_c #effects(all) {
   if !scriptflags_context_vartime(p, height, hash) { return -1; }
   flags := SCRIPTFLAGS_BASE;
   exception := chain_script_exception_vartime(p, hash);
@@ -134,7 +134,7 @@ chain. Thus the last optimized height is 1,983,701. Networks whose pinned
 // block's ancestor at p.bip34_height, or empty when none is supplied. Missing
 // ancestry keeps checking. The caller proves that a supplied hash is really
 // that ancestor; a height alone is never proof of the known chain.
-scriptflags_bip30_vartime :: (p: ChainParams, height: int, hash: [] u8, ancestor: [] u8) -> int #export_c {
+scriptflags_bip30_vartime :: (p: ChainParams, height: int, hash: [] u8, ancestor: [] u8) -> int #export_c #effects(all) {
   if !scriptflags_context_vartime(p, height, hash) { return -1; }
   if ancestor.count != 0 && ancestor.count != 32 { return -1; }
   if height >= CHAIN_BIP34_IMPLIES_BIP30_LIMIT { return 1; }

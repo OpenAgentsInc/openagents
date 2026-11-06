@@ -159,7 +159,7 @@ PqSince :: struct {since:int;resumed:bool;}
 // What a received event gets. verified: its id and BIP-340 signature checked;
 // decrypted: NIP-44 opened its content; code, type and answerable are
 // pd_admit's; free is pq_free.
-pq_route :: (verified:bool,kind:int,decrypted:bool,code:int,type:int,answerable:bool,draining:bool,free:int)->PqRoute #export_c {
+pq_route :: (verified:bool,kind:int,decrypted:bool,code:int,type:int,answerable:bool,draining:bool,free:int)->PqRoute #export_c #effects(all) {
     if !verified || kind!=PQ_REQUEST || !decrypted {return PqRoute.ignore;}
     if code!=PQ_NONE {return ifx answerable then PqRoute.refuse else PqRoute.ignore;}
     if type==PQ_CANCEL {return PqRoute.cancel;}
@@ -170,7 +170,7 @@ pq_route :: (verified:bool,kind:int,decrypted:bool,code:int,type:int,answerable:
 // book:end route
 // True the first time an event id is offered; false for a repeat inside the
 // window (a relay's resend, or since's boundary after a reconnect).
-pq_seen :: (q:[]PqQueue,id:[]u8)->bool #export_c {
+pq_seen :: (q:[]PqQueue,id:[]u8)->bool #export_c #effects(all) {
     if id.count!=32 {return false;}
     for k:0..<q[0].seen_count {
         same:=true;for i:0..<32 {if q[0].seen[32*k+i]!=id[i] {same=false;}}
@@ -181,17 +181,17 @@ pq_seen :: (q:[]PqQueue,id:[]u8)->bool #export_c {
     if q[0].seen_count<PQ_SEEN {q[0].seen_count+=1;}
     return true;
 }
-pq_free :: (q:[]PqQueue)->int #export_c {n:=0;for s:q[0].slots {if s.state==PqState.free {n+=1;}}return n;}
-pq_held :: (q:[]PqQueue)->int #export_c {return PQ_SLOTS-pq_free(q);}
+pq_free :: (q:[]PqQueue)->int #export_c #effects(all) {n:=0;for s:q[0].slots {if s.state==PqState.free {n+=1;}}return n;}
+pq_held :: (q:[]PqQueue)->int #export_c #effects(all) {return PQ_SLOTS-pq_free(q);}
 // The lowest free slot, now waiting, or -1 when every slot is held.
-pq_put :: (q:[]PqQueue)->int #export_c {
+pq_put :: (q:[]PqQueue)->int #export_c #effects(all) {
     for i:0..<PQ_SLOTS {
         if q[0].slots[i].state==PqState.free {q[0].order+=1;q[0].slots[i]=PqSlot.{state=PqState.waiting,order=q[0].order};return i;}
     }
     return -1;
 }
 // The oldest waiting slot, now running, or -1.
-pq_next :: (q:[]PqQueue)->int #export_c {
+pq_next :: (q:[]PqQueue)->int #export_c #effects(all) {
     best:=-1;
     for i:0..<PQ_SLOTS {
         s:=q[0].slots[i];
@@ -200,13 +200,13 @@ pq_next :: (q:[]PqQueue)->int #export_c {
     if best>=0 {q[0].slots[best].state=PqState.running;}
     return best;
 }
-pq_done :: (q:[]PqQueue,slot:int)->bool #export_c {
+pq_done :: (q:[]PqQueue,slot:int)->bool #export_c #effects(all) {
     if slot<0 || slot>=PQ_SLOTS || q[0].slots[slot].state==PqState.free {return false;}
     q[0].slots[slot]=PqSlot.{};return true;
 }
 // A cancel matched (pd_cancel) to slot: 1 it was waiting and is gone, 2 it is
 // running and the host must stop it, 0 nothing held there.
-pq_cancel :: (q:[]PqQueue,slot:int)->int #export_c {
+pq_cancel :: (q:[]PqQueue,slot:int)->int #export_c #effects(all) {
     if slot<0 || slot>=PQ_SLOTS {return 0;}
     s:=q[0].slots[slot].state;
     if s==PqState.waiting {q[0].slots[slot]=PqSlot.{};return 1;}
@@ -216,7 +216,7 @@ pq_cancel :: (q:[]PqQueue,slot:int)->int #export_c {
 // The engine's decide budget in ms: the smaller of the job's time left
 // (pd_left_ms: -2 none, -1 passed) and the host's limit; -1 means answer
 // timeout without asking the engine.
-pq_budget :: (left_ms:int,limit_ms:int)->PqBudget #export_c {
+pq_budget :: (left_ms:int,limit_ms:int)->PqBudget #export_c #effects(all) {
     if limit_ms<1 {return PqBudget.{ms=-1};}
     if left_ms<1 && left_ms!=-2 {return PqBudget.{ms=-1,deadline=true};}
     if left_ms!=-2 && left_ms<limit_ms {return PqBudget.{ms=left_ms,deadline=true};}
@@ -227,7 +227,7 @@ pq_budget :: (left_ms:int,limit_ms:int)->PqBudget #export_c {
 // timed_out: the budget ran out first; status: its HTTP status; written: the
 // code pd_result gave for a 200 body (none when the 26910 was written);
 // refused: the PdCode the server's refusal body named (0 when none was read).
-pq_answer :: (reached:bool,timed_out:bool,status:int,written:int,refused:int)->PqAnswer #export_c {
+pq_answer :: (reached:bool,timed_out:bool,status:int,written:int,refused:int)->PqAnswer #export_c #effects(all) {
     if !reached {return PqAnswer.{code=ifx timed_out then PQ_TIMEOUT else PQ_INTERNAL};}
     if status==200 {
         if written==PQ_NONE {return PqAnswer.{result=true};}
@@ -239,7 +239,7 @@ pq_answer :: (reached:bool,timed_out:bool,status:int,written:int,refused:int)->P
 // book:end answer
 // The beacon's lifecycle step: run until asked to stop, then draining while
 // any job is held, then offline.
-pq_life :: (stopping:bool,held:int)->PqLife #export_c {
+pq_life :: (stopping:bool,held:int)->PqLife #export_c #effects(all) {
     if !stopping {return PqLife.run;}
     if held>0 {return PqLife.drain;}
     return PqLife.off;
@@ -248,7 +248,7 @@ pq_life :: (stopping:bool,held:int)->PqLife #export_c {
 // the 10 s spacing between changes); a status change made by shutdown
 // (draining, offline) goes out at once, so a buyer stops routing to a pylon
 // that is leaving rather than learning it up to 10 s later.
-pq_beacon_now :: (due:bool,changed:bool,stopping:bool)->bool #export_c {return due || (changed && stopping);}
+pq_beacon_now :: (due:bool,changed:bool,stopping:bool)->bool #export_c #effects(all) {return due || (changed && stopping);}
 // book:begin wire
 // The step on an open connection. challenged: the relay's NIP-42 challenge
 // for this connection is unanswered; authed: our AUTH for it was accepted;
@@ -257,7 +257,7 @@ pq_beacon_now :: (due:bool,changed:bool,stopping:bool)->bool #export_c {return d
 // AUTH is accepted, because the relay refuses unauthenticated writes and a
 // refused answer would be lost; a relay that never challenges or refuses the
 // AUTH is dropped at limit_ms and the reconnect backs off.
-pq_wire :: (challenged:bool,authed:bool,announced:bool,waited_ms:int,limit_ms:int)->PqWire #export_c {
+pq_wire :: (challenged:bool,authed:bool,announced:bool,waited_ms:int,limit_ms:int)->PqWire #export_c #effects(all) {
     if authed {return ifx announced then PqWire.flow else PqWire.announce;}
     if waited_ms>=limit_ms {return PqWire.drop;}
     if challenged {return PqWire.auth;}
@@ -268,7 +268,7 @@ pq_wire :: (challenged:bool,authed:bool,announced:bool,waited_ms:int,limit_ms:in
 // (relay.coax's has_newest/newest, inclusive, so the boundary comes again
 // and pq_seen drops it), but never before the first subscription's window.
 // resumed: the newest delivered set it.
-pq_since :: (has_newest:bool,newest:int,first:int)->PqSince #export_c {
+pq_since :: (has_newest:bool,newest:int,first:int)->PqSince #export_c #effects(all) {
     if has_newest && newest>=first {return PqSince.{since=newest,resumed=true};}
     return PqSince.{since=first};
 }
@@ -278,4 +278,4 @@ pq_since :: (has_newest:bool,newest:int,first:int)->PqSince #export_c {
 // is gone, and a buyer that resends its job is asking for it again. kept:
 // that job's answer is still kept; held: the job is still queued or
 // running, so its answer is on its way. Nothing is ever decided twice.
-pq_again :: (kept:bool,held:bool)->bool #export_c {return kept && !held;}
+pq_again :: (kept:bool,held:bool)->bool #export_c #effects(all) {return kept && !held;}

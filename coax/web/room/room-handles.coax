@@ -1,0 +1,55 @@
+// A reference is to a character's lifetime, independent of its current socket.
+#authority;
+eg_seat_ref :: (v:[]RmServer,k:int,s:SeatId)->Handle(EvergladeSeat) #effects(all) {
+  if k<0 || k>=EG_ROOMS || s.value<0 || s.value>=EG_SEATS {return Handle(EvergladeSeat).{};}
+  if !v[0].eg[k].seat[s.value].live {return Handle(EvergladeSeat).{};}
+  return ev_seat_reference(s.value,v[0].eg[k].seat_life[s.value]);
+}
+eg_seat_get :: (v:[]RmServer,k:int,h:Handle(EvergladeSeat))->([]EgSeat)? #effects(all) {
+  if k<0 || k>=EG_ROOMS || !handle_present(h) || handle_slot(h)>=EG_SEATS {return null;}
+  slot:=handle_slot(h);
+  if !ev_seat_reference_live(h,v[0].eg[k].seat[slot].live,v[0].eg[k].seat_life[slot]) {return null;}
+  return some(v[0].eg[k].seat[slot..<slot+1]);
+}
+eg_seat_ref_live :: (v:[]RmServer,k:int,h:Handle(EvergladeSeat))->bool #effects(all) {
+  switch eg_seat_get(v,k,h) {case none {return false;} case some(seat) {return true;}}
+}
+rm_eg_seat_owner :: (v:[]RmServer,k:int,seat:SeatId)->u64 #export_c #effects(all) {return eg_seat_ref(v,k,seat).value;}
+rm_eg_strike_current :: (v:[]RmServer,k:int,q:int)->bool #export_c #effects(all) {
+  if k<0 || k>=EG_ROOMS || q<0 || q>=v[0].eg[k].strike_n {return false;}
+  strike:=v[0].eg[k].strikes[q];
+  return strike.by<0 || (handle_slot(strike.owner)==strike.by && eg_seat_ref_live(v,k,strike.owner));
+}
+#test "handles: a socket rejoin keeps its character; a new character in the same seat cannot inherit an old cast" #steps 2000000000 {
+  v:[1]RmServer;k:=rc_test_room(v[..],"handles",2,false);r:=v[0].eg[k].relay;
+  old:=eg_seat_ref(v[..],k,SeatId.{value=0});
+  #assert handle_present(old) && eg_seat_ref_live(v[..],k,old);
+  eg_rejoin(v[..],r,0,SeatId.{value=0});
+  #assert eg_seat_ref(v[..],k,SeatId.{value=0})==old;
+  #assert rc_hear(v[..],k,SeatId.{value=0},7,0,1,0,1,-1,0);
+  saved:=v[0].eg[k].casts[0];#assert saved.owner==old;
+  eg_left(v[..],r,SeatId.{value=0});eg_join(v[..],r,0,SeatId.{value=0});
+  fresh:=eg_seat_ref(v[..],k,SeatId.{value=0});
+  #assert fresh!=old && handle_slot(fresh)==handle_slot(old);
+  switch eg_seat_get(v[..],k,old) {case none {} case some(wrong) {#assert false;}}
+  switch eg_seat_get(v[..],k,fresh) {case none {#assert false;} case some(current) {#assert current[0].live;}}
+  #assert !rc_owner_live(v[..],k,saved) && !rc_ready(v[..],k,saved);
+  v[0].eg[k].casts[0]=saved;v[0].eg[k].casts[0].phase=RC_FLIGHT;
+  strikes:=v[0].eg[k].strike_n;rc_strike(v[..],k,0);
+  #assert !v[0].eg[k].casts[0].on && v[0].eg[k].strike_n==strikes;
+  #assert rm_eg_seat_owner(v[..],k,SeatId.{value=0})==fresh.value;
+  #assert !handle_present(eg_seat_ref(v[..],-1,SeatId.{value=0})) && !handle_present(eg_seat_ref(v[..],EG_ROOMS,SeatId.{value=0}));
+  #assert !handle_present(eg_seat_ref(v[..],k,SeatId.{value= -1})) && !handle_present(eg_seat_ref(v[..],k,SeatId.{value=EG_SEATS}));
+  #assert !handle_present(eg_seat_ref(v[..],k,SeatId.{value=2}));
+  #assert !eg_seat_ref_live(v[..],-1,fresh) && !eg_seat_ref_live(v[..],EG_ROOMS,fresh);
+  #assert !eg_seat_ref_live(v[..],k,Handle(EvergladeSeat).{}) && !eg_seat_ref_live(v[..],k,Handle(EvergladeSeat).{value=4294967312});
+  v[0].eg[k].strike_n=1;v[0].eg[k].strikes[0]=EgStrike.{by=0,owner=fresh};
+  #assert rm_eg_strike_current(v[..],k,0);
+  v[0].eg[k].strikes[0].owner=old;#assert !rm_eg_strike_current(v[..],k,0);
+  v[0].eg[k].strikes[0].by= -1;#assert rm_eg_strike_current(v[..],k,0);
+  #assert !rm_eg_strike_current(v[..],-1,0) && !rm_eg_strike_current(v[..],EG_ROOMS,0);
+  #assert !rm_eg_strike_current(v[..],k,-1) && !rm_eg_strike_current(v[..],k,1);
+  v[0].ab[k].q_n=1;v[0].ab[k].q[0]=RaCast.{by=0,owner=old};#assert !rm_ra_cast_current(v[..],k,0);
+  v[0].ab[k].q[0].owner=fresh;#assert rm_ra_cast_current(v[..],k,0);
+  #assert !rm_ra_cast_current(v[..],k,-1) && !rm_ra_cast_current(v[..],k,1) && !rm_ra_cast_current(v[..],-1,0);
+}

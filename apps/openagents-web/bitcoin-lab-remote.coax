@@ -66,7 +66,7 @@ lr_queue :: (s:[]LabRemote,slot:int) {
   if kind>=3 {jo_put(o[..],"&key=");jo_put(o[..],cast(string)s[0].key[0..<s[0].kn]);}
   s[0].effects[slot].n=o[0].n;s[0].effects[slot].wanted=!o[0].bad;s[0].poll=0;
 }
-lr_dispatched :: (s:[]LabRemote,slot:int,id:int) #export_c {
+lr_dispatched :: (s:[]LabRemote,slot:int,id:int) #export_c #effects(all) {
   s[0].effects[slot].wanted=false;s[0].model[0].base[0].pending[slot].id=id;
   if id<0 {s[0].model[0].ready=false;s[0].model[0].error=503;s[0].model[0].retry_at=s[0].elapsed+500;}
 }

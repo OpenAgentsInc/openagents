@@ -141,7 +141,7 @@ walk_replay :: (s: ReplaySession, w: [] Walk, sent: [] int) {
 // if it didn't match or sent a request), mode 2 the first divergent step of a replay with a
 // fault planted at step 150, and mode 3 the events the gate refused as duplicate, stale or
 // unknown, packed as duplicates * 1000000 + stale * 1000 + unknown.
-replay_walk :: (mode: int) -> int #export_c {
+replay_walk :: (mode: int) -> int #export_c #effects(all) {
   b: [1] WalkBacking; s := walk_session(b[..]);
   w: [1] Walk; walk_init(w[..]);
   sent: [1] int;

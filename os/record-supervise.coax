@@ -1,7 +1,7 @@
 // CoderOS screen recording: the microphone's supervisor, as a library (os/record-audio.coax is
 // its command; os/screen-record.coax's start runs it as `screen-record supervise-audio`). See
 // os/record-audio.coax for what it does.
-cxproc_wall_us :: () -> int #foreign;
+cxproc_wall_us :: () -> int #foreign #effects(all);
 
 AUDIO_HEADER_BYTES :: 44;
 

@@ -31,7 +31,7 @@ rep_call :: (api: string, slug: string, tail: string, body: string, status: int,
   else { print("FAIL % %: status %, %\n",slug,tail,got.code,text); }
   return ok;
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   dbb: [1024] u8; pb: [1024] u8; ab: [256] u8; ob: [256] u8;
   db := proc_getenv("PGURL",dbb[..]); psql := proc_getenv("PSQL",pb[..]);
   api := proc_getenv("API",ab[..]); old := proc_getenv("OLD_API",ob[..]);

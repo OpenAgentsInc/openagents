@@ -7,7 +7,7 @@ SeqRecord :: struct { id: int; value: f64; }
   #assert seq_fixture_records();
 }
 
-seq_fixture_records :: () -> bool #export_c {
+seq_fixture_records :: () -> bool #export_c #effects(all) {
   items := [3] SeqRecord.[SeqRecord.{id = 1, value = 3.25},
     SeqRecord.{id = 2, value = f64_from_bits(0x8000000000000000)},
     SeqRecord.{id = 3, value = 9.5}];
@@ -18,15 +18,15 @@ seq_fixture_records :: () -> bool #export_c {
     && items[2].id == 1 && items[2].value == 3.25;
 }
 
-seq_fixture_reverse_bytes :: (items: [] u8) -> int #export_c {
+seq_fixture_reverse_bytes :: (items: [] u8) -> int #export_c #effects(all) {
   sequence.reverse(items);
   return items.count;
 }
 
-seq_fixture_swap_bytes :: (items: [] u8, a: int, b: int) #export_c {
+seq_fixture_swap_bytes :: (items: [] u8, a: int, b: int) #export_c #effects(all) {
   sequence.swap(items, a, b);
 }
 
-seq_fixture_reverse_floats :: (items: [] f64) #export_c {
+seq_fixture_reverse_floats :: (items: [] f64) #export_c #effects(all) {
   sequence.reverse(items);
 }

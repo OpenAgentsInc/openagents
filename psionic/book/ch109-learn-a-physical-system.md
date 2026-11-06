@@ -47,7 +47,7 @@ numerically valid step that would leave the state bounds is also refused.
 
 <!-- source: psionic/lib/physics/oscillator.coax field -->
 ```jai
-os_rhs :: (p:OsParams,s:OsState,force:f64)->OsState {
+os_rhs :: (p:OsParams,s:OsState,force:f64)->OsState #effects(all) {
   return OsState.{position=s.velocity,velocity=(force-p.damping*s.velocity)-p.spring*s.position};
 }
 ```
@@ -59,7 +59,7 @@ step. The weighted sum produces the new position and velocity.
 
 <!-- source: psionic/lib/physics/oscillator.coax step -->
 ```jai
-os_step :: (p:OsParams,s:OsState,force:f64,dt:f64)->OsStep #export_c {
+os_step :: (p:OsParams,s:OsState,force:f64,dt:f64)->OsStep #export_c #effects(all) {
   status:=os_admit(p,s,force,dt);if status!=OsStatus.ok {return OsStep.{status=status,state=s};}
   a:=os_rhs(p,s,force);b:=os_rhs(p,os_shift(s,a,dt/2),force);
   c:=os_rhs(p,os_shift(s,b,dt/2),force);d:=os_rhs(p,os_shift(s,c,dt),force);
@@ -154,7 +154,7 @@ the affine heads and method 3 uses the MLP heads:
 
 <!-- source: psionic/lib/physics/oscillator-learn.coax predict -->
 ```jai
-oe_predict :: (fit:OeFit,kind:int,p:OsParams,s:OsState,force:f64)->OsStep #export_c {
+oe_predict :: (fit:OeFit,kind:int,p:OsParams,s:OsState,force:f64)->OsStep #export_c #effects(all) {
   status:=os_admit(p,s,force,OS_DT);if status!=OsStatus.ok {return OsStep.{status=status,state=s};}
   if !oe_fit_ok(fit) || kind<0 || kind>3 {return OsStep.{status=OsStatus.parameters,state=s};}
   if kind==1 {return OsStep.{state=s};}
@@ -191,7 +191,7 @@ forcing sequence and parameter values, but no intermediate teacher state.
 
 <!-- source: psionic/lib/physics/oscillator-evaluate.coax evaluation -->
 ```jai
-oe_evaluate :: (fit:OeFit,kind:int,split:int)->OeMetric #export_c {
+oe_evaluate :: (fit:OeFit,kind:int,split:int)->OeMetric #export_c #effects(all) {
   if kind<0 || kind>3 || split<0 || split>2 {return OeMetric.{status=OsStatus.shape};}
   if !oe_fit_ok(fit) {return OeMetric.{status=OsStatus.parameters};}
   m:OeMetric;count:=ifx split==0 then 8 else 4;first:=ifx split==0 then 0 else (ifx split==1 then 100 else 200);

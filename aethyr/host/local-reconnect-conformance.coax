@@ -6,7 +6,7 @@
  #assert hlr_reconnect_rows(rows[..],0)&&!hlr_reconnect_rows(rows[..],1)&&!hlr_reconnect_rows(rows[0..<8],0);extra:[10][8]int;#assert !hlr_reconnect_rows(extra[..],0);
  for i:0..<9{for f:0..<8{rows[i][f]+=1;#assert !hlr_reconnect_rows(rows[..],0);rows[i][f]-=1;}}
 }
-hlr_reconnect_rows :: (rows:[][8]int,dropped:int)->bool #export_c {
+hlr_reconnect_rows :: (rows:[][8]int,dropped:int)->bool #export_c #effects(all) {
  if dropped!=0||rows.count!=9{return false;}
  expected:=[9][8]int.[htc_row(910,"local:/api/room/relay/everglade/local-1?re=1"),htc_result(1,0),htc_row(256,""),htc_row(911,"0 route"),htc_row(257,"/api/room/relay/everglade/local-1?re=1"),htc_row(911,"0 Aé🙂"),htc_row(257,"Aé🙂"),htc_row(912,"0"),htc_row(258,"")];
  for row,i:expected{for word,f:row{if rows[i][f]!=word{return false;}}}return true;

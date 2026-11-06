@@ -11,7 +11,7 @@
 vp_join :: (parts:[]string,b:[]u8)->string {at:=0;for p:parts {for c:p {if at>=b.count {return "";}b[at]=c;at+=1;}}return cast(string)b[0..<at];}
 vp_decimal :: (n:int,b:[]u8)->string {o:[1]Jo;jo_start(o[..],b);jo_int(o[..],n);return jo_text(o[..]);}
 #test "Fab pull concatenation is bounded and integer range endpoints are decimal" {b:[32]u8;parts:=[2]string.["ab","cd"];#assert vp_join(parts[..],b[..])=="abcd" && vp_join(parts[..],b[0..<3])=="";#assert vp_decimal(524287,b[..])=="524287";}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}id:=args_at(a[..],0);selected:=ifx id=="uk4cdch" then 0 else ifx id=="ubhvccfda" then 1 else -1;if selected<0 {return 2;}
   endpoints:=[2]string.["https://www.fab.com/i/listings/11700737-077c-416b-a005-53d0b5e1e285/asset-formats/gltf/files/849bcfb2-0f4a-4ec4-b277-2df435c0338e/download-info","https://www.fab.com/i/listings/c47f6376-20c4-4631-a6d6-82f626652691/asset-formats/gltf/files/61789c49-84d4-45a8-bd98-fbeebd988256/download-info"];
   hashes:=[2]string.["3279bfdc961fe825a0b159320a5ab92a814b6af2242517804b65f81783f2f0b1","33214eaebee405959ddec86462ba8927f3abbe4eb5c350a069a28e229e4c40df"];total:=[2]int.[2053796,1639935][selected];

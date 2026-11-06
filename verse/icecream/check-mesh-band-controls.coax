@@ -116,7 +116,7 @@ mbc_execute :: (c:MbcCase,doc:Jv,sources:int,root:string,dir:string,mutant:strin
   jo_key(o,"executable_sha256");if c.kind==2 {jo_null(o);}else {if !rtq_hash_file(exe,hash[..]) {return false;}jo_str(o,cast(string)hash[..]);}
   jo_key(o,"commands");jo_raw(o,jo_text(commands[0].o[..]));jo_end(o);return !o[0].bad;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}
   for i:0..<args_count(a[..])/2 {
     key:=args_at(a[..],i*2);if key!="--qualification-dir" && key!="--work-dir" && key!="--coax" && key!="--source-root" {return 2;}

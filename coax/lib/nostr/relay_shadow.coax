@@ -29,31 +29,31 @@ ShAnswer :: struct { n: int; ids: [RS_MAX_LIMIT] NegId; }
 // book:end classes
 
 // book:begin classify
-sh_same :: (a: NegId, b: NegId) -> bool {
+sh_same :: (a: NegId, b: NegId) -> bool #effects(all) {
   for k: 0..<32 { if a.b[k] != b.b[k] { return false; } }
   return true;
 }
-sh_in :: (ids: [] NegId, n: int, id: NegId) -> bool {
+sh_in :: (ids: [] NegId, n: int, id: NegId) -> bool #effects(all) {
   for i: 0..<n { if sh_same(ids[i], id) { return true; } }
   return false;
 }
 // Whether id is in the known set difference.
-sh_known :: (d: ReDiff, id: NegId) -> bool {
+sh_known :: (d: ReDiff, id: NegId) -> bool #effects(all) {
   return sh_in(d.only_a, d.only_a_n, id) || sh_in(d.only_b, d.only_b_n, id);
 }
 // The answer without the known difference's ids.
-sh_strip :: (x: ShAnswer, d: ReDiff) -> ShAnswer {
+sh_strip :: (x: ShAnswer, d: ReDiff) -> ShAnswer #effects(all) {
   y: ShAnswer;
   for i: 0..<x.n { if !sh_known(d, x.ids[i]) { y.ids[y.n] = x.ids[i]; y.n += 1; } }
   return y;
 }
 // Whether the first n ids of a and b are the same, in order.
-sh_prefix :: (a: ShAnswer, b: ShAnswer, n: int) -> bool {
+sh_prefix :: (a: ShAnswer, b: ShAnswer, n: int) -> bool #effects(all) {
   for i: 0..<n { if !sh_same(a.ids[i], b.ids[i]) { return false; } }
   return true;
 }
 // Whether the shorter of a and b is the start of the other.
-sh_starts :: (a: ShAnswer, b: ShAnswer) -> bool {
+sh_starts :: (a: ShAnswer, b: ShAnswer) -> bool #effects(all) {
   for i: 0..<a.n {
     if i == b.n { return true; }
     if !sh_same(a.ids[i], b.ids[i]) { return false; }
@@ -61,7 +61,7 @@ sh_starts :: (a: ShAnswer, b: ShAnswer) -> bool {
   return true;
 }
 // The class of answers a and b to one filter whose limit is limit.
-sh_classify :: (a: ShAnswer, b: ShAnswer, limit: int, d: ReDiff) -> int {
+sh_classify :: (a: ShAnswer, b: ShAnswer, limit: int, d: ReDiff) -> int #effects(all) {
   if a.n == b.n && sh_prefix(a, b, a.n) { return SH_MATCH; }
   if a.n == b.n {
     all := true;
@@ -80,14 +80,14 @@ sh_classify :: (a: ShAnswer, b: ShAnswer, limit: int, d: ReDiff) -> int {
 // The memory one REQ filter reads into (relay.coax's sizes).
 ShWork :: struct { strs: [600] string; ints: [65] int; tags: [52] NostrTagFilter; bytes: [RS_SUB_TEXT] u8; idx: [RS_MAX_LIMIT] int; }
 // A store's answer to f at now, normalized to ids.
-sh_answer :: (s: [] RsdStore, f: NostrFilter, now: int, w: [] ShWork) -> ShAnswer {
+sh_answer :: (s: [] RsdStore, f: NostrFilter, now: int, w: [] ShWork) -> ShAnswer #effects(all) {
   x: ShAnswer;
   x.n = rsd_query(s, f, now, w[0].idx[..]);
   for i: 0..<x.n { x.ids[i].b = s[0].recs[w[0].idx[i]].id; }
   return x;
 }
 // Asks both stores one filter (its JSON text) at now: the class.
-sh_req :: (a: [] RsdStore, b: [] RsdStore, filter: string, now: int, d: ReDiff, w: [] ShWork) -> int {
+sh_req :: (a: [] RsdStore, b: [] RsdStore, filter: string, now: int, d: ReDiff, w: [] ShWork) -> int #effects(all) {
   sp: [1] FrSpace; sp[0] = FrSpace.{strs = w[0].strs[..], ints = w[0].ints[..], tags = w[0].tags[..], bytes = w[0].bytes[..]};
   f: [1] NostrFilter;
   if filter_read(filter, f[..], sp[..]) != FR_OK { return SH_FILTER; }
@@ -95,7 +95,7 @@ sh_req :: (a: [] RsdStore, b: [] RsdStore, filter: string, now: int, d: ReDiff, 
 }
 // Replays every filter to both stores, counting classes in rep and writing
 // filter k's class to classes[k] while classes has room.
-sh_replay :: (a: [] RsdStore, b: [] RsdStore, filters: [] string, now: int, d: ReDiff, w: [] ShWork, rep: [] ShReport, classes: [] int) {
+sh_replay :: (a: [] RsdStore, b: [] RsdStore, filters: [] string, now: int, d: ReDiff, w: [] ShWork, rep: [] ShReport, classes: [] int) #effects(all) {
   rep[0] = ShReport.{};
   for k: 0..<filters.count {
     c := sh_req(a, b, filters[k], now, d, w);
@@ -105,18 +105,18 @@ sh_replay :: (a: [] RsdStore, b: [] RsdStore, filters: [] string, now: int, d: R
 }
 // Whether a replay allows a cutover: no unexplained answer and no filter
 // that failed to read (the replay asked what it meant to ask).
-sh_passes :: (rep: ShReport) -> bool { return rep.count[SH_UNEXPLAINED] == 0 && rep.count[SH_FILTER] == 0; }
+sh_passes :: (rep: ShReport) -> bool #effects(all) { return rep.count[SH_UNEXPLAINED] == 0 && rep.count[SH_FILTER] == 0; }
 // book:end replay
 
 // ---- checks ------------------------------------------------------------------
 // An answer of n ids whose first bytes are x, y, z.
-sh_t :: (n: int, x: int, y: int, z: int) -> ShAnswer {
+sh_t :: (n: int, x: int, y: int, z: int) -> ShAnswer #effects(all) {
   a: ShAnswer; a.n = n; a.ids[0].b[0] = cast(u8) x; a.ids[1].b[0] = cast(u8) y; a.ids[2].b[0] = cast(u8) z;
   return a;
 }
 ShT :: struct { oa: [4] NegId; ob: [4] NegId; d: [1] ReDiff; }
 // A known difference: na ids (id a) only in the first store, nb (id b) only in the second.
-sh_t_diff :: (t: [] ShT, na: int, a: int, nb: int, b: int) -> ReDiff {
+sh_t_diff :: (t: [] ShT, na: int, a: int, nb: int, b: int) -> ReDiff #effects(all) {
   d: ReDiff; d.only_a = t[0].oa[..]; d.only_b = t[0].ob[..];
   d.only_a[0].b[0] = cast(u8) a; d.only_b[0].b[0] = cast(u8) b; d.only_a_n = na; d.only_b_n = nb;
   return d;

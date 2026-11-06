@@ -200,7 +200,7 @@ PgCode :: enum u8 {ok;head;stale;offline;not_ready;busy;model;stage_stale;stage_
 PgRoute :: struct {code:PgCode;stages:int;bad:int=-1;}
 PG_STAGES :: 16;
 
-pg_fresh :: (b:PgBeacon,now:int)->bool {
+pg_fresh :: (b:PgBeacon,now:int)->bool #effects(all) {
     r:=PbRead.{observed_at=b.observed_at,valid_until=b.valid_until,generation=b.beacon_generation};
     return pb_fresh(r,now,PbHeld.{})==PbFresh.fresh;
 }
@@ -208,7 +208,7 @@ pg_fresh :: (b:PgBeacon,now:int)->bool {
 // order of its stages: order[i] is the index in stages of the stage that
 // holds layers from order's running end. The stages must tile 0..layers
 // exactly, each fresh, in this group, on the head's generation and owner.
-pg_route :: (head:PgBeacon,stages:[]PgBeacon,artifact:string,layers:int,now:int,order:[]int)->PgRoute #export_c {
+pg_route :: (head:PgBeacon,stages:[]PgBeacon,artifact:string,layers:int,now:int,order:[]int)->PgRoute #export_c #effects(all) {
     if head.role!=PgRole.head {return PgRoute.{code=PgCode.head};}
     if !pg_fresh(head,now) {return PgRoute.{code=PgCode.stale};}
     if head.status!=PbStatus.online {return PgRoute.{code=PgCode.offline};}
@@ -509,7 +509,7 @@ pp_check_join :: (private:bool,mesh:string,key:[]u8,peer:[]u8,text:[]u8,now:int)
 PpJoin :: enum u8 {ok;invitation;mesh;invitee;expired;forged;}
 PpInvite :: struct {present:bool;mesh:string;invitee:string;expires:int;mac_ok:bool;}
 
-pp_join :: (private:bool,mesh:string,peer:string,inv:PpInvite,now:int)->PpJoin #export_c {
+pp_join :: (private:bool,mesh:string,peer:string,inv:PpInvite,now:int)->PpJoin #export_c #effects(all) {
     if !private {return PpJoin.ok;}
     if !inv.present {return PpJoin.invitation;}
     if inv.mesh!=mesh {return PpJoin.mesh;}
@@ -547,13 +547,13 @@ PpKind :: enum u8 {ping;pong;join;welcome;drain;resume;activation;tokens;}
 PP_KINDS :: 8;
 PpVerdict :: enum u8 {ok;kind;lane;owner;member;}
 
-pp_lane_of :: (kind:int)->int {if kind>=6 {return 1;}return 0;}
+pp_lane_of :: (kind:int)->int #effects(all) {if kind>=6 {return 1;}return 0;}
 // Drain and resume change what a peer serves: only its owner sends them.
-pp_owner_only :: (kind:int)->bool {return kind==4 || kind==5;}
+pp_owner_only :: (kind:int)->bool #effects(all) {return kind==4 || kind==5;}
 // A message as the receiver sees it: the lane byte from the frame header,
 // the kind byte from the opened plaintext, whether the sender's key is the
 // mesh owner's and whether the sender has joined.
-pp_admit :: (lane:int,kind:int,from_owner:bool,joined:bool)->PpVerdict #export_c {
+pp_admit :: (lane:int,kind:int,from_owner:bool,joined:bool)->PpVerdict #export_c #effects(all) {
     if kind<0 || kind>=PP_KINDS {return PpVerdict.kind;}
     if pp_lane_of(kind)!=lane {return PpVerdict.lane;}
     if pp_owner_only(kind) && !from_owner {return PpVerdict.owner;}

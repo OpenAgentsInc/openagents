@@ -31,7 +31,7 @@ WM_SAME :: 0; WM_FAILED :: 1; WM_WRITTEN :: 2; WM_STALE :: 3;
 // What a --site run found.
 WmTally :: struct { bad: int; stale: int; seen: int; }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   n := args_load(a[..]);
   count := args_count(a[..]);

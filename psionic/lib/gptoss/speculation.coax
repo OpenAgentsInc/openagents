@@ -28,7 +28,7 @@ GSpeculation :: struct {status:GStatus;accepted:bool;token:int;acceptance:f64;ce
     p[0]=0;#assert gx_decide(p[..],q[..],1,0.5,0.5,false,r[..],s[..],false).status==GStatus.number;
 }
 // book:begin decide
-gx_decide :: (target:[]f64,draft:[]f64,proposal:int,accept_uniform:f64,correct_uniform:f64,greedy:bool,residual:[]f64,stage:[]f64,overlap:bool)->GSpeculation #export_c {
+gx_decide :: (target:[]f64,draft:[]f64,proposal:int,accept_uniform:f64,correct_uniform:f64,greedy:bool,residual:[]f64,stage:[]f64,overlap:bool)->GSpeculation #export_c #effects(all) {
     n:=target.count;if !gs_size(n) || proposal<0 || proposal>=n || !(accept_uniform>=0 && accept_uniform<1) || !(correct_uniform>=0 && correct_uniform<1) {return GSpeculation.{status=GStatus.shape};}
     if draft.count!=n || residual.count<n || stage.count<n {return GSpeculation.{status=GStatus.capacity};}if overlap {return GSpeculation.{status=GStatus.alias};}
     if gs_pick(target,0).status!=GStatus.ok || gs_pick(draft,0).status!=GStatus.ok {return GSpeculation.{status=GStatus.number};}
@@ -41,10 +41,10 @@ gx_decide :: (target:[]f64,draft:[]f64,proposal:int,accept_uniform:f64,correct_u
     for i:0..<n {residual[i]=stage[i];}return GSpeculation.{token=pick.token,acceptance=acceptance,certain=certain};
 }
 // book:end decide
-gx_argmax :: (p:[]f64)->int #export_c {best:=0;for i:1..<p.count {if p[i]>p[best] {best=i;}}return best;}
+gx_argmax :: (p:[]f64)->int #export_c #effects(all) {best:=0;for i:1..<p.count {if p[i]>p[best] {best=i;}}return best;}
 // Longest prompt suffix, most recent previous occurrence on ties. No prediction
 // outside the supplied, already observed token history. -1 means no draft.
-gx_ngram :: (history:[]int,maximum:int)->int #export_c {
+gx_ngram :: (history:[]int,maximum:int)->int #export_c #effects(all) {
     if !gx_history_size(history.count,maximum) {return -1;}
     width:=maximum;while width>0 {end:=history.count-width;candidate:=end-1;while candidate>=0 {
         equal:=true;for i:0..<width {if history[candidate+i]!=history[end+i] {equal=false;break;}}
@@ -56,7 +56,7 @@ gx_ngram :: (history:[]int,maximum:int)->int #export_c {
     #assert gx_ngram(x[0..<2],2)== -1 && gx_ngram(x[0..<1],2)== -1 && gx_ngram(x[..],0)== -1 && gx_ngram(x[..],65)== -1;
 }
 
-gx_history_size :: (n:int,k:int)->bool {return n>=2 && n<=16384 && k>=1 && k<=64;}
+gx_history_size :: (n:int,k:int)->bool #effects(all) {return n>=2 && n<=16384 && k>=1 && k<=64;}
 #test "uniform, tie, certain and history endpoints" {
     p:=[2]f64.[0.5,0.5];q:=[2]f64.[0.5,0.5];r:[2]f64;s:[2]f64;
     a:=gx_decide(p[..],q[..],0,0,0,false,r[..],s[..],false);#assert a.status==GStatus.ok && a.accepted && a.certain;
@@ -127,11 +127,11 @@ gx_history_size :: (n:int,k:int)->bool {return n>=2 && n<=16384 && k>=1 && k<=64
 #test "owned n-gram reference 58" {h:=[10]int.[2,0,0,1,1,3,3,1,1,2];#assert gx_ngram(h[..],3)==0;}
 #test "owned n-gram reference 59" {h:=[17]int.[1,3,2,1,3,2,1,0,1,1,3,2,2,2,2,1,1];#assert gx_ngram(h[..],1)==1;}
 
-gx_positive :: (v:f64)->f64 {return (v+abs(v))/2;}
+gx_positive :: (v:f64)->f64 #effects(all) {return (v+abs(v))/2;}
 #test "residual positive mass before normalization" {#assert gx_positive(-0.5)==0 && gx_positive(0)==0 && gx_positive(0.5)==0.5;}
 GSpecBlock :: struct {status:GStatus;written:int;accepted:int;bonus:bool;}
 // book:begin block
-gx_block :: (vocab:int,target:[]f64,draft:[]f64,proposals:[]int,uniforms:[]f64,greedy:bool,out:[]int,stage:[]int,residual:[]f64,scratch:[]f64,overlap:bool)->GSpecBlock #export_c {
+gx_block :: (vocab:int,target:[]f64,draft:[]f64,proposals:[]int,uniforms:[]f64,greedy:bool,out:[]int,stage:[]int,residual:[]f64,scratch:[]f64,overlap:bool)->GSpecBlock #export_c #effects(all) {
     k:=proposals.count;if !gs_size(vocab) || !gx_draft_count(k) {return GSpecBlock.{status=GStatus.shape};}
     if target.count!=(k+1)*vocab || draft.count!=k*vocab || uniforms.count!=2*k+1 || out.count<k+1 || stage.count<k+1 || residual.count<vocab || scratch.count<vocab {return GSpecBlock.{status=GStatus.capacity};}if overlap {return GSpecBlock.{status=GStatus.alias};}
     for row:1..<k+1 {if gs_pick(target[row*vocab..<(row+1)*vocab],0).status!=GStatus.ok {return GSpecBlock.{status=GStatus.number};}}
@@ -146,13 +146,13 @@ gx_block :: (vocab:int,target:[]f64,draft:[]f64,proposals:[]int,uniforms:[]f64,g
     for i:0..<written {out[i]=stage[i];}return GSpecBlock.{written=written,accepted=accepted,bonus=bonus};
 }
 // book:end block
-gx_draft_count :: (n:int)->bool {return n>=1 && n<=16;}
+gx_draft_count :: (n:int)->bool #effects(all) {return n>=1 && n<=16;}
 // Complete snapshots preserve overwritten sliding-ring slots on rollback.
-gx_snapshot :: (input:[]f32,out:[]f32,overlap:bool)->GResult #export_c {
+gx_snapshot :: (input:[]f32,out:[]f32,overlap:bool)->GResult #export_c #effects(all) {
     if !gx_snapshot_size(input.count) {return GResult.{status=GStatus.shape};}if out.count<input.count {return GResult.{status=GStatus.capacity};}if overlap {return GResult.{status=GStatus.alias};}
     for i:0..<input.count {out[i]=input[i];}return GResult.{written=input.count};
 }
-gx_snapshot_size :: (n:int)->bool {return n>=1 && n<=3221225472;}
+gx_snapshot_size :: (n:int)->bool #effects(all) {return n>=1 && n<=3221225472;}
 #test "a block emits its first correction or an all-match bonus atomically" {
     target:=[9]f64.[0.5,0.25,0.25,0.25,0.25,0.5,1,0,0];draft:=[6]f64.[0.5,0.25,0.25,0.25,0.5,0.25];proposal:=[2]int.[0,1];u:=[5]f64.[0,0,0.9,0,0];out:=[4]int.[-7,-7,-7,-7];stage:[3]int;r:[3]f64;s:[3]f64;
     b:=gx_block(3,target[..],draft[..],proposal[..],u[..],false,out[..],stage[..],r[..],s[..],false);#assert b.status==GStatus.ok && b.accepted==1 && b.written==2 && !b.bonus && out[0]==0 && out[1]==2 && out[2]== -7;

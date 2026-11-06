@@ -5,7 +5,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/agent/journal-file.coax";
 
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   temp:[1024]u8;dir:=fs_temp("journal-session-",temp[..]);
   if dir.count==0 {return 1;}
   defer {removed:=fs_remove(dir);}

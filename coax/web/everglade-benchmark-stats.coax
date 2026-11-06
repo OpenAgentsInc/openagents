@@ -27,7 +27,7 @@ bs_series :: (o:[]Jo,name:string,s:BsSeries) {
   if s.n>0 {bs_duration(o,"p50_us",bs_rank(s,50));bs_duration(o,"p95_us",bs_rank(s,95));bs_duration(o,"p99_us",bs_rank(s,99));}
   jo_end(o);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: everglade-benchmark-stats INPUT.json OUTPUT.json");return 2;}
   source:[8388608]u8;nodes:[131072]JvNode;j:[1]Jv;n:=fs_read(args_at(a[..],0),source[..]);
   if n<0||!jv_parse(j[..],cast(string)source[0..<n],nodes[..]){return 1;}v:=j[0];

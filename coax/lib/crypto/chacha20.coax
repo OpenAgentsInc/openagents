@@ -75,7 +75,7 @@ CcWords :: struct { words:[16]u32; }
 }
 
 // book:begin cc_quarter
-cc_quarter :: (a_in:u32,b_in:u32,c_in:u32,d_in:u32)->CcQuarter {
+cc_quarter :: (a_in:u32,b_in:u32,c_in:u32,d_in:u32)->CcQuarter #effects(all) {
   a:=a_in;b:=b_in;c:=c_in;d:=d_in;
   a=add_wrap(a,b);d=rotl(d^a,16);
   c=add_wrap(c,d);b=rotl(b^c,12);
@@ -85,7 +85,7 @@ cc_quarter :: (a_in:u32,b_in:u32,c_in:u32,d_in:u32)->CcQuarter {
 }
 // book:end cc_quarter
 // book:begin cc_initial
-cc_initial :: (key:[]u8,nonce:[]u8,counter:u32)->CcWords {
+cc_initial :: (key:[]u8,nonce:[]u8,counter:u32)->CcWords #effects(all) {
   state:CcWords;
   defer {secure_zero(state.words[..]);#assert crypto_zeroed(state.words[..]);}
   state.words[0]=0x61707865;state.words[1]=0x3320646e;
@@ -97,7 +97,7 @@ cc_initial :: (key:[]u8,nonce:[]u8,counter:u32)->CcWords {
 }
 // book:end cc_initial
 // book:begin cc_block_words
-cc_block_words :: (initial:CcWords)->CcWords {
+cc_block_words :: (initial:CcWords)->CcWords #effects(all) {
   x:=initial;
   defer {secure_zero(x.words[..]);#assert crypto_zeroed(x.words[..]);}
   for round:0..<10 {
@@ -123,9 +123,9 @@ cc_block_words :: (initial:CcWords)->CcWords {
 }
 // book:end cc_block_words
 // Internal caller has already established the bounded nonnegative length.
-cc_blocks :: (n:int)->int {return(n+63)/64;}
+cc_blocks :: (n:int)->int #effects(all) {return(n+63)/64;}
 // book:begin cc_admit
-cc_admit :: (key_count:int,nonce_count:int,counter:u32,n:int,capacity:int,overlap:bool)->u32 #export_c {
+cc_admit :: (key_count:int,nonce_count:int,counter:u32,n:int,capacity:int,overlap:bool)->u32 #export_c #effects(all) {
   if key_count!=32 {return CC_KEY;}
   if nonce_count!=12 {return CC_NONCE;}
   if n<0 || n>CB_MAX_BYTES {return CC_INPUT;}
@@ -136,7 +136,7 @@ cc_admit :: (key_count:int,nonce_count:int,counter:u32,n:int,capacity:int,overla
   return CC_OK;
 }
 // book:end cc_admit
-chacha20_block_checked :: (key:[]u8,nonce:[]u8,counter:u32,out:[]u8,overlap:bool)->ChaChaResult #export_c {
+chacha20_block_checked :: (key:[]u8,nonce:[]u8,counter:u32,out:[]u8,overlap:bool)->ChaChaResult #export_c #effects(all) {
   error:=cc_admit(key.count,nonce.count,counter,64,out.count,overlap);
   if error!=CC_OK {return ChaChaResult.{error=error};}
   block:=cc_block_words(cc_initial(key,nonce,counter));
@@ -145,7 +145,7 @@ chacha20_block_checked :: (key:[]u8,nonce:[]u8,counter:u32,out:[]u8,overlap:bool
   return ChaChaResult.{written=64};
 }
 // book:begin chacha20_xor_checked
-chacha20_xor_checked :: (key:[]u8,nonce:[]u8,counter:u32,input:[]u8,out:[]u8,overlap:bool)->ChaChaResult #export_c {
+chacha20_xor_checked :: (key:[]u8,nonce:[]u8,counter:u32,input:[]u8,out:[]u8,overlap:bool)->ChaChaResult #export_c #effects(all) {
   error:=cc_admit(key.count,nonce.count,counter,input.count,out.count,overlap);
   if error!=CC_OK {return ChaChaResult.{error=error};}
   initial:=cc_initial(key,nonce,counter);

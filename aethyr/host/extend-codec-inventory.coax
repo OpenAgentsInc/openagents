@@ -3,7 +3,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/json/json.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=5 {tool_errln("usage: extend-codec-inventory AUTHORED.json PICKED.json PRIOR_BROWSER_DIR EXTRA.json JOIN.json");return 2;}
  text:[2][131072]u8;nodes:[2][16384]JvNode;d:[2]Jv;
  for i:0..<2 {n:=fs_read(args_at(a[..],i),text[i][..]);if n<0||!jv_parse(d[i..<i+1],cast(string)text[i][0..<n],nodes[i][..]) {return 1;}}

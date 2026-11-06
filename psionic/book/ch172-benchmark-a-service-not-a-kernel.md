@@ -76,14 +76,14 @@ weights.
 
 <!-- source: psionic/lib/bench.coax schedule -->
 ```jai
-bn_valid :: (l:BnLengths)->bool {
+bn_valid :: (l:BnLengths)->bool #effects(all) {
     if l.count<1 || l.count>16 {return false;}
     total:=0;
     for i:0..<l.count {if l.len[i]<1 || l.weight[i]<0 {return false;}total+=l.weight[i];}
     return total>0;
 }
 // The length whose share of the total weight holds word bits.
-bn_draw :: (l:BnLengths,bits:u64)->int {
+bn_draw :: (l:BnLengths,bits:u64)->int #effects(all) {
     total:=0;for i:0..<l.count {total+=l.weight[i];}
     r:=cast(int)(bits%cast(u64)total);pick:=0;acc:=0;
     for i:0..<l.count {acc+=l.weight[i];if acc<=r {pick=i+1;}}
@@ -91,7 +91,7 @@ bn_draw :: (l:BnLengths,bits:u64)->int {
 }
 // Request i reads counters 8i to 8i+4: its gap, input length, output length,
 // content and sampling choice. The first request arrives at 0.
-bn_schedule :: (w:BnWorkload,out:[]BnRequest)->BnStatus #export_c {
+bn_schedule :: (w:BnWorkload,out:[]BnRequest)->BnStatus #export_c #effects(all) {
     if w.requests<1 || w.requests>BN_REQUESTS_MAX || w.gap_us<1 || w.jitter_pct<0 || w.jitter_pct>100 {return BnStatus.shape;}
     if w.contents<1 || w.samplings<1 || !bn_valid(w.input) || !bn_valid(w.output) {return BnStatus.shape;}
     if out.count<w.requests {return BnStatus.capacity;}
@@ -106,7 +106,7 @@ bn_schedule :: (w:BnWorkload,out:[]BnRequest)->BnStatus #export_c {
 }
 // A shadow: recorded requests at their recorded offsets, scale_pct times as
 // fast (100 is real time). Its answers are measured and then discarded.
-bn_replay :: (recorded:[]BnRequest,scale_pct:int,out:[]BnRequest)->BnStatus #export_c {
+bn_replay :: (recorded:[]BnRequest,scale_pct:int,out:[]BnRequest)->BnStatus #export_c #effects(all) {
     n:=recorded.count;
     if n<1 || n>BN_REQUESTS_MAX || scale_pct<1 {return BnStatus.shape;}
     if out.count<n {return BnStatus.capacity;}
@@ -157,8 +157,8 @@ fewer than P percent are below it.
 // ceil(P*n/100) in sorted order, counting from 1. It is always one of the
 // values measured. Value v holds rank r when fewer than r values are below
 // it and at least r are at or below it.
-bn_rank :: (p:int,n:int)->int {return (p*n+99)/100;}
-bn_stats :: (values:[]int)->BnStats #export_c {
+bn_rank :: (p:int,n:int)->int #effects(all) {return (p*n+99)/100;}
+bn_stats :: (values:[]int)->BnStats #export_c #effects(all) {
     n:=values.count;s:=BnStats.{n=n};
     for i:0..<n {
         below:=0;atmost:=0;
@@ -205,11 +205,11 @@ separately; anything else, including a failed connection, is a failure.
 
 <!-- source: psionic/lib/bench.coax summarize -->
 ```jai
-bn_refused :: (code:int)->bool {return code==429 || code==503;}
-bn_answered :: (code:int)->bool {return code==200;}
+bn_refused :: (code:int)->bool #effects(all) {return code==429 || code==503;}
+bn_answered :: (code:int)->bool #effects(all) {return code==200;}
 // obs in send order; end_us is when the run's last byte arrived; values holds
 // at least as many entries as there are requests and as there are token times.
-bn_summarize :: (obs:[]BnObs,times:[]int,end_us:int,values:[]int)->BnSummary #export_c {
+bn_summarize :: (obs:[]BnObs,times:[]int,end_us:int,values:[]int)->BnSummary #export_c #effects(all) {
     n:=obs.count;
     if n<1 || n>BN_REQUESTS_MAX || times.count>BN_TIMES_MAX {return BnSummary.{status=BnStatus.shape};}
     if values.count<n || values.count<times.count {return BnSummary.{status=BnStatus.capacity};}
@@ -255,7 +255,7 @@ describes, not only the visible text:
 ```jai
 // A token arrival is an SSE data line whose type ends in ".delta"; a response
 // ends at completed, incomplete or failed.
-bw_event :: (line:string)->BwEvent #export_c {
+bw_event :: (line:string)->BwEvent #export_c #effects(all) {
     head:="data: {\"type\":\"";
     if !bw_starts(line,head) {return BwEvent.other;}
     end:=head.count;
@@ -291,14 +291,14 @@ it moved.
 
 <!-- source: psionic/lib/bench.coax compare -->
 ```jai
-bn_changed :: (a:BnRun,b:BnRun)->int {
+bn_changed :: (a:BnRun,b:BnRun)->int #effects(all) {
     c:=0;for i:0..<BN_VARS {if a.v[i]!=b.v[i] {c+=1;}}
     return c;
 }
 // Percentile k of a candidate against the baseline b and its repeat r, a
 // second run of the baseline's own configuration. A change counts only when
 // it clears both runs by more than margin_pct percent.
-bn_compare :: (base:BnRun,repeat:BnRun,cand:BnRun,b:BnStats,r:BnStats,c:BnStats,k:int,lower:bool,margin_pct:int)->BnCall #export_c {
+bn_compare :: (base:BnRun,repeat:BnRun,cand:BnRun,b:BnStats,r:BnStats,c:BnStats,k:int,lower:bool,margin_pct:int)->BnCall #export_c #effects(all) {
     call:=BnCall.{changed=bn_changed(base,cand)};
     if bn_changed(base,repeat)!=0 || call.changed>1 {call.verdict=BnVerdict.refused;return call;}
     if call.changed==0 {call.verdict=BnVerdict.repeat;return call;}

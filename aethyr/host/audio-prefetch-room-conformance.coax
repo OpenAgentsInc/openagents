@@ -7,7 +7,7 @@
  for i:0..<16 {if i==12{continue;}q[i]+=1;#assert !hpfr_accept(q[..]);q[i]-=2;#assert !hpfr_accept(q[..]);q[i]+=1;}
  q[12]=0;#assert !hpfr_accept(q[..]);q[12]=8388609;#assert !hpfr_accept(q[..]);#assert !hpfr_accept(q[0..<15]);
 }
-hpfr_accept :: (q:[]int)->bool #export_c {
+hpfr_accept :: (q:[]int)->bool #export_c #effects(all) {
  if q.count!=16{return false;}
  expected:=[15]int.[48,0,0,123,120,0,1,0,1,0,0,122,0,0,16];
  for value,i:expected {if q[ifx i<12 then i else i+1]!=value{return false;}}

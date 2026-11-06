@@ -102,7 +102,7 @@ Signed zero retains its identity.
 
 <!-- source: psionic/lib/weight-edit.coax apply -->
 ```jai
-we_apply :: (profile:string,ts:[]WeTensor,p:[]f64,pin:[32]u8,edits:[]WeEdit)->WeResult {
+we_apply :: (profile:string,ts:[]WeTensor,p:[]f64,pin:[32]u8,edits:[]WeEdit)->WeResult #effects(all) {
     r:WeResult;id:=we_identity(profile,ts,p);
     if id.status!=WeStatus.ok {r.status=id.status;return r;}
     if !we_same(id.digest,pin) {r.status=WeStatus.identity;return r;}

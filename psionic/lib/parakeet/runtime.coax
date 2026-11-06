@@ -8,14 +8,14 @@
 #load "parallel.coax";
 #load "../whisper/wav.coax";
 #load "backend.coax";
-pkrt_layout :: (file:[]u8,nodes:[]JvNode,offsets:[]int)->PkRtStatus #export_c {
+pkrt_layout :: (file:[]u8,nodes:[]JvNode,offsets:[]int)->PkRtStatus #export_c #effects(all) {
  if !pkmp_model_size(file.count) {return PkRtStatus.file;}base:=pkrt_header(file);if base<0 {return PkRtStatus.header;}
  status:=pkmp_layout(cast(string)file[8..<base],file.count-base,tdt_parakeet(),nodes,offsets);if status!=PkRtStatus.ok {return status;}for i:0..<723 {offsets[i]+=base;}return PkRtStatus.ok;
 }
 // shares: the answers of pkch_verify(file, i, n) for every share i of n,
 // run in parallel by the host (model-chunks.coax); empty hashes the whole
 // file here on one thread instead.
-pkrt_open :: (file:[]u8,json:[]u8,nodes:[]JvNode,bytes:[]u8,pieces:[]string,offsets:[]int,shares:[]bool)->PkRtStatus #export_c {
+pkrt_open :: (file:[]u8,json:[]u8,nodes:[]JvNode,bytes:[]u8,pieces:[]string,offsets:[]int,shares:[]bool)->PkRtStatus #export_c #effects(all) {
  if !pkmp_model_size(file.count) {return PkRtStatus.file;}
  if shares.count==0 {if !pkrt_pinned(cast(string)file,TDT_PINNED_SHA256) {return PkRtStatus.digest;}}
  else if !pkch_complete(shares) {return PkRtStatus.digest;}
@@ -24,24 +24,24 @@ pkrt_open :: (file:[]u8,json:[]u8,nodes:[]JvNode,bytes:[]u8,pieces:[]string,offs
  if !pkrt_pinned(cast(string)json,"bd321b096832a3f270bd3b2a88823957920f1a5c5ada71114a26ea729d0cbe91") {return PkRtStatus.digest;}
  if pk_vocab(cast(string)json,8192,nodes,bytes,pieces).status!=PkStatus.ok {return PkRtStatus.vocabulary;}return PkRtStatus.ok;
 }
-pkrt_part :: (i:int)->int #export_c {return pk_slot(tdt_parakeet(),i).part;}
-pkrt_at :: (i:int)->int #export_c {return pk_slot(tdt_parakeet(),i).at;}
-pkrt_count :: (i:int)->int #export_c {return pk_slot(tdt_parakeet(),i).count;}
-pkrt_encoder_count :: ()->int #export_c {return cf_weight_count(pk_encoder(tdt_parakeet()));}
-pkrt_decoder_count :: ()->int #export_c {return tdt_plan(pk_decoder(tdt_parakeet()),1).weights;}
-pkrt_work64 :: (samples:int)->int #export_c {return pk_work(tdt_parakeet(),samples).f64;}
-pkrt_work32 :: (samples:int)->int #export_c {return pk_work(tdt_parakeet(),samples).f32;}
+pkrt_part :: (i:int)->int #export_c #effects(all) {return pk_slot(tdt_parakeet(),i).part;}
+pkrt_at :: (i:int)->int #export_c #effects(all) {return pk_slot(tdt_parakeet(),i).at;}
+pkrt_count :: (i:int)->int #export_c #effects(all) {return pk_slot(tdt_parakeet(),i).count;}
+pkrt_encoder_count :: ()->int #export_c #effects(all) {return cf_weight_count(pk_encoder(tdt_parakeet()));}
+pkrt_decoder_count :: ()->int #export_c #effects(all) {return tdt_plan(pk_decoder(tdt_parakeet()),1).weights;}
+pkrt_work64 :: (samples:int)->int #export_c #effects(all) {return pk_work(tdt_parakeet(),samples).f64;}
+pkrt_work32 :: (samples:int)->int #export_c #effects(all) {return pk_work(tdt_parakeet(),samples).f32;}
 
-cxpk_encode :: (ew:[]f32,x:[]f32,frames:int,work:[]f32,out:[]f32)->int #foreign;
+cxpk_encode :: (ew:[]f32,x:[]f32,frames:int,work:[]f32,out:[]f32)->int #foreign #effects(all);
 // The GPU decoder (device-tdt.coax's pkg_decode, run by the host with its
 // buffers bound): 1 when it ran, with result[0] 0 for TdtStatus.ok and
 // result[1] the tokens written; anything else is a GPU failure.
-cxpk_decode :: (dw:[]f32,enc:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int,result:[]int)->int #foreign;
+cxpk_decode :: (dw:[]f32,enc:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int,result:[]int)->int #foreign #effects(all);
 // Decode-only entry for independently recorded encoder tensors. Status is
 // typed; output text is published only after complete token rendering.
 // gpu runs the decoder on the device (CUDA builds only); otherwise the exact
 // compensated CPU decoder runs.
-pkrt_decode :: (dw:[]f32,pieces:[]string,encoded:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int,text:[]u8,stats:[]int,gpu:bool)->PkRtStatus #export_c {
+pkrt_decode :: (dw:[]f32,pieces:[]string,encoded:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int,text:[]u8,stats:[]int,gpu:bool)->PkRtStatus #export_c #effects(all) {
  written:=0;
  if gpu {res:[2]int;if cxpk_decode(dw,encoded,frames,work,tokens,at,res[..])!=1 {return PkRtStatus.gpu;}if res[0]!=0 || res[1]<0 || res[1]>tokens.count {return PkRtStatus.decoder;}written=res[1];}
  else {r:=pkp_decode(tdt_parakeet_shape(),dw,encoded,frames,work,tokens,at,true);if r.status!=TdtStatus.ok {return PkRtStatus.decoder;}written=r.written;}
@@ -50,7 +50,7 @@ pkrt_decode :: (dw:[]f32,pieces:[]string,encoded:[]f32,frames:int,work:[]f32,tok
 }
 // Samples are 16kHz mono f32. Features and final encoded frames are exposed
 // in caller buffers for NeMo parity, never a private temporary dump.
-pkrt_transcribe :: (ew:[]f32,dw:[]f32,pieces:[]string,samples:[]f32,gpu:bool,gpu_decoder:bool,wave:[]f64,w64:[]f64,w32:[]f32,features:[]f32,encoded:[]f32,tokens:[]int,at:[]int,text:[]u8,stats:[]int)->PkRtStatus #export_c {
+pkrt_transcribe :: (ew:[]f32,dw:[]f32,pieces:[]string,samples:[]f32,gpu:bool,gpu_decoder:bool,wave:[]f64,w64:[]f64,w32:[]f32,features:[]f32,encoded:[]f32,tokens:[]int,at:[]int,text:[]u8,stats:[]int)->PkRtStatus #export_c #effects(all) {
  c:=tdt_parakeet();if ew.count!=pkrt_encoder_count() || dw.count!=pkrt_decoder_count() || pieces.count!=8192 {return PkRtStatus.tensor;}k:=pk_front_plan(samples.count);if !k.ok || wave.count<samples.count {return PkRtStatus.audio;}
  if w64.count<k.raw+128*257 || w32.count<cf_plan(pk_encoder(c),1,k.frames).work+tdt_plan(pk_decoder(c),k.encoded).work || features.count<c.mels*k.frames || encoded.count<k.encoded*c.enc || stats.count<4 {return PkRtStatus.capacity;}
  status:=pkrt_features(samples,wave,w64,features);if status!=PkRtStatus.ok {return status;}nf:=k.features;
@@ -59,14 +59,14 @@ pkrt_transcribe :: (ew:[]f32,dw:[]f32,pieces:[]string,samples:[]f32,gpu:bool,gpu
  else {lengths:=[1]int.[k.frames];got:[1]int;if cf_encode(pk_encoder(c),ew,features[0..<nf],lengths[..],1,k.frames,w32[0..<work],encoded[0..<k.encoded*c.enc],got[..],false).status!=CfStatus.ok {return PkRtStatus.encoder;}}
  st:=pkrt_decode(dw,pieces,encoded[0..<k.encoded*c.enc],k.encoded,w32[work..<w32.count],tokens,at,text,stats,gpu_decoder);if st==PkRtStatus.ok {stats[2]=k.frames;stats[3]=k.encoded;}return st;
 }
-pkrt_wav_info :: (file:[]u8)->WvInfo #export_c {return wv_info(file);}
-pkrt_wav_length :: (frames:int,rate:int)->int #export_c {return wv_length(frames,rate);}
-pkrt_wav :: (file:[]u8,mono:[]f32,out:[]f32)->int #export_c {
+pkrt_wav_info :: (file:[]u8)->WvInfo #export_c #effects(all) {return wv_info(file);}
+pkrt_wav_length :: (frames:int,rate:int)->int #export_c #effects(all) {return wv_length(frames,rate);}
+pkrt_wav :: (file:[]u8,mono:[]f32,out:[]f32)->int #export_c #effects(all) {
  info:=wv_info(file);if info.status!=WvStatus.ok || mono.count<info.frames {return -1;}if wv_mono(file,info,mono)<0 {return -1;}table:[WV_TABLE]f64;wv_table(table[..]);return wv_resample(mono[0..<info.frames],info.rate,table[..],out);
 }
 // Format metadata and token/frame snapshots in Coax; the host only writes it.
 // device is PK_DEVICE_CPU, _METAL or _CUDA (backend.coax): the one that ran.
-pkrt_json :: (text:string,device:int,samples:int,stats:[]int,tokens:[]int,frames:[]int,out:[]u8)->int #export_c {
+pkrt_json :: (text:string,device:int,samples:int,stats:[]int,tokens:[]int,frames:[]int,out:[]u8)->int #export_c #effects(all) {
  if !pk_device_known(device) || stats.count<4 || stats[1]<0 || stats[1]>tokens.count || stats[1]>frames.count {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);
  jo_key(o[..],"text");jo_str(o[..],text);jo_key(o[..],"model");jo_str(o[..],"nvidia/parakeet-tdt-0.6b-v3");jo_key(o[..],"revision");jo_str(o[..],TDT_PINNED_REVISION);
  jo_key(o[..],"backend");jo_str(o[..],pk_backend_name(device));jo_key(o[..],"device");jo_str(o[..],pk_device_name(device));jo_key(o[..],"samples");jo_int(o[..],samples);
@@ -83,7 +83,7 @@ pkrt_json :: (text:string,device:int,samples:int,stats:[]int,tokens:[]int,frames
  #assert pkrt_json("x",3,1600,stats[..],tokens[..],frames[..],out[..])== -1 && pkrt_json("x",-1,1600,stats[..],tokens[..],frames[..],out[..])== -1;
 }
 
-pkrt_audio_count :: (samples:int)->bool #export_c {return pk_front_plan(samples).ok;}
+pkrt_audio_count :: (samples:int)->bool #export_c #effects(all) {return pk_front_plan(samples).ok;}
 
 #test "Parakeet resident frontend initializes its mel bank and survives changing clip lengths" #steps 200000000 {
  signal:[800]f64;sf_test_signal(signal[..]);samples:[800]f32;for i:0..<800 {samples[i]=f32(signal[i]);signal[i]=f64(samples[i]);}
@@ -96,7 +96,7 @@ pkrt_audio_count :: (samples:int)->bool #export_c {return pk_front_plan(samples)
   #assert biggest>0.1;
  }
 }
-pkrt_features :: (samples:[]f32,wave:[]f64,w64:[]f64,features:[]f32)->PkRtStatus #export_c {
+pkrt_features :: (samples:[]f32,wave:[]f64,w64:[]f64,features:[]f32)->PkRtStatus #export_c #effects(all) {
  k:=pk_front_plan(samples.count);if !k.ok || wave.count<samples.count {return PkRtStatus.audio;}
  if w64.count<k.raw+128*257 || features.count<k.features {return PkRtStatus.capacity;}
  for i:0..<samples.count {if !psionic_tensor_finite_bits(f32_bits(samples[i])) || abs(f64(samples[i]))>1 {return PkRtStatus.audio;}wave[i]=f64(samples[i]);}
@@ -109,9 +109,9 @@ pkrt_features :: (samples:[]f32,wave:[]f64,w64:[]f64,features:[]f32)->PkRtStatus
 // The rules are vocab.coax's (#authority) and the scores rescore.coax's;
 // the host only keeps the vocabulary's storage and binds the GPU buffers.
 #load "rescore.coax";
-pkrt_rescore_work :: (frames:int)->int #export_c {return pkr_work(tdt_parakeet_shape(),frames);}
+pkrt_rescore_work :: (frames:int)->int #export_c #effects(all) {return pkr_work(tdt_parakeet_shape(),frames);}
 // result: the refused line (0 when none), the terms admitted, the terms dropped.
-pkrt_vocab_load :: (tsv:[]u8,pieces:[]string,v:[]PkvList,result:[]int)->int #export_c {
+pkrt_vocab_load :: (tsv:[]u8,pieces:[]string,v:[]PkvList,result:[]int)->int #export_c #effects(all) {
  if v.count!=1 || result.count<3 || pieces.count!=8192 {return cast(int)PkvStatus.size;}
  r:=pkv_load(cast(string)tsv,pieces,v);result[0]=r.line;result[1]=v[0].count;result[2]=v[0].dropped;
  if r.status!=PkvStatus.ok {v[0].count=0;}
@@ -119,7 +119,7 @@ pkrt_vocab_load :: (tsv:[]u8,pieces:[]string,v:[]PkvList,result:[]int)->int #exp
 }
 // The recognized tokens with the vocabulary's chosen terms in place, and
 // their text; on any refusal the caller keeps the recognized text.
-pkrt_rescore :: (dw:[]f32,pieces:[]string,encoded:[]f32,frames:int,work:[]f32,gpu:bool,v:[]PkvList,tokens:[]int,at:[]int,out:[]int,out_at:[]int,text:[]u8,stats:[]int,info:[]int)->PkRtStatus #export_c {
+pkrt_rescore :: (dw:[]f32,pieces:[]string,encoded:[]f32,frames:int,work:[]f32,gpu:bool,v:[]PkvList,tokens:[]int,at:[]int,out:[]int,out_at:[]int,text:[]u8,stats:[]int,info:[]int)->PkRtStatus #export_c #effects(all) {
  if v.count!=1 || pieces.count!=8192 || stats.count<2 || dw.count!=pkrt_decoder_count() {return PkRtStatus.capacity;}
  k:=pkr_rescore(tdt_parakeet_shape(),dw,encoded,frames,work,gpu,!gpu,pieces,v,tokens,at,out,out_at,info);
  if k<0 {return ifx gpu then PkRtStatus.gpu else PkRtStatus.decoder;}

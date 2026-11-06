@@ -6,7 +6,7 @@ nb_headers :: (dir: string, name: string) -> bool {
   dst := fs_join(dir,"headers",dstbuf[..]); tmp := fs_join(dir,"headers.next",tmpbuf[..]);
   return n > 0 && fs_write(tmp,cast(string)bytes[0..<n]) && fs_rename(tmp,dst);
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) || (args_count(a[..]) != 5 && args_count(a[..]) != 8) { tool_errln("usage: node-check URL DIR ADDRESS TXID HASH [BALANCE_A BALANCE_B BALANCE_C]"); return 2; }
   ba := ifx args_count(a[..]) == 8 then args_at(a[..],5) else "1999998000";
   bb := ifx args_count(a[..]) == 8 then args_at(a[..],6) else "0";

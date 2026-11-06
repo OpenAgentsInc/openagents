@@ -3,7 +3,7 @@
 // https://github.com/containers/bubblewrap/blob/main/bwrap.xml
 #authority;
 
-np_root :: (root:string,home:string)->bool {
+np_root :: (root:string,home:string)->bool #effects(all) {
   if root.count<2 || root[0]!='/' || root[root.count-1]=='/' || home.count==0 {return false;}
   if home.count>=root.count && home[0..<root.count]==root {
     if home.count==root.count || home[root.count]=='/' {return false;}
@@ -12,9 +12,9 @@ np_root :: (root:string,home:string)->bool {
   return true;
 }
 NP_DENY :: [23]u32.[41,42,53,425,426,427,101,310,311,438,304,321,323,165,272,308,250,248,249,169,175,176,246];
-NP_FILTER_BYTES :: (7+23*2)*8;
+NP_FILTER_BYTES :: (7+23*2)*8 #effects(all);
 
-np_tool_admit :: (ceiling:int,command:bool)->bool {
+np_tool_admit :: (ceiling:int,command:bool)->bool #effects(all) {
   effect:=ifx command then 3 else 0;
   return ceiling>=0 && ceiling<=3 && effect<=ceiling;
 }
@@ -26,7 +26,7 @@ np_tool_admit :: (ceiling:int,command:bool)->bool {
 
 // Both profiles that confine a workspace and the explicit full-access
 // profile retain the owned loop's model/effect/time budgets.
-np_budget :: (model:bool,used:int,now:int,deadline:int)->bool {
+np_budget :: (model:bool,used:int,now:int,deadline:int)->bool #effects(all) {
   limit:=ifx model then 64 else 128;
   return used>=0 && used<limit && now>=0 && now<deadline;
 }
@@ -74,11 +74,11 @@ np_budget :: (model:bool,used:int,now:int,deadline:int)->bool {
   small:[NP_FILTER_BYTES-1]u8;#assert np_filter(small[..])==0;
   for c:small {#assert c==0;}
 }
-np_instruction :: (out:[]u8,at:int,code:u32,jt:u8,jf:u8,k:u32) {
+np_instruction :: (out:[]u8,at:int,code:u32,jt:u8,jf:u8,k:u32) #effects(all) {
   out[at]=cast,trunc(u8)code;out[at+1]=cast,trunc(u8)(code>>8);out[at+2]=jt;out[at+3]=jf;
   for i:0..<4 {out[at+4+i]=cast,trunc(u8)(k>>(i*8));}
 }
-np_filter :: (out:[]u8)->int {
+np_filter :: (out:[]u8)->int #effects(all) {
   if out.count<NP_FILTER_BYTES {return 0;}
   np_instruction(out,0,0x20,0,0,4);
   np_instruction(out,8,0x15,1,0,0xc000003e);

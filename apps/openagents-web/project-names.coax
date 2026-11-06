@@ -42,7 +42,7 @@ name_done :: (type: u32, buf: [] u8, n: int, out: [] u8) -> int {
   return r.written;
 }
 // npub: the 32 bytes of the key, no TLV.
-name_npub :: (pubkey: string, out: [] u8) -> int #export_c {
+name_npub :: (pubkey: string, out: [] u8) -> int #export_c #effects(all) {
   buf: [34] u8;
   n := name_hex(buf[..], 0, 0, pubkey);
   if n < 0 { return 0; }
@@ -50,7 +50,7 @@ name_npub :: (pubkey: string, out: [] u8) -> int #export_c {
 }
 // nevent: the id, then the relay hint, the author and the kind when given
 // ("" and -1 leave them out).
-name_nevent :: (id: string, relay: string, author: string, kind: int, out: [] u8) -> int #export_c {
+name_nevent :: (id: string, relay: string, author: string, kind: int, out: [] u8) -> int #export_c #effects(all) {
   buf: [NAME_ROOM] u8;
   n := name_hex(buf[..], 0, 0, id);
   if relay.count > 0 { n = name_tlv(buf[..], n, 1, relay); }
@@ -59,7 +59,7 @@ name_nevent :: (id: string, relay: string, author: string, kind: int, out: [] u8
   return name_done(N19_EVENT, buf[..], n, out);
 }
 // naddr: the d tag, the relay hint when given, the author, the kind.
-name_naddr :: (kind: int, author: string, d: string, relay: string, out: [] u8) -> int #export_c {
+name_naddr :: (kind: int, author: string, d: string, relay: string, out: [] u8) -> int #export_c #effects(all) {
   buf: [NAME_ROOM * 2] u8;
   n := name_tlv(buf[..], 0, 0, d);
   if relay.count > 0 { n = name_tlv(buf[..], n, 1, relay); }
@@ -68,7 +68,7 @@ name_naddr :: (kind: int, author: string, d: string, relay: string, out: [] u8) 
   return name_done(N19_ADDR, buf[..], n, out);
 }
 // An "a" tag's coordinate, kind:pubkey:d, as its naddr.
-name_coord :: (coord: string, relay: string, out: [] u8) -> int #export_c {
+name_coord :: (coord: string, relay: string, out: [] u8) -> int #export_c #effects(all) {
   kind := 0; i := 0;
   while i < coord.count && coord[i] >= '0' && coord[i] <= '9' && i < 10 { kind = kind * 10 + cast(int)(coord[i] - '0'); i += 1; }
   if i == 0 || i + 66 > coord.count || coord[i] != ':' || coord[i + 65] != ':' { return 0; }

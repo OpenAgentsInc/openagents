@@ -89,10 +89,10 @@ of that block, mixed with the epoch's salt:
 // The salt: a block's chained hash (chapter 176) mixed with the epoch's
 // salt, so an advertisement lists neither tokens nor the plain hashes an
 // outsider could compute from guessed tokens.
-sw_mix :: (m:SwMesh,h:int)->int {return (h*SW_MIX+m.salt)%PG_HASH;}
+sw_mix :: (m:SwMesh,h:int)->int #effects(all) {return (h*SW_MIX+m.salt)%PG_HASH;}
 // What a peer holds, newest first (the lower node on a tie), at most
 // SW_ADS entries.
-sw_advertise :: (st:PgStore,m:SwMesh,peer:int,seq:int,now:int)->SwAd {
+sw_advertise :: (st:PgStore,m:SwMesh,peer:int,seq:int,now:int)->SwAd #effects(all) {
     a:=SwAd.{peer=peer,epoch=m.epoch,seq=seq,issued=now,ttl=m.ttl};
     taken:[48]bool;
     while a.n<SW_ADS {
@@ -107,12 +107,12 @@ sw_advertise :: (st:PgStore,m:SwMesh,peer:int,seq:int,now:int)->SwAd {
     return a;
 }
 // Accept an advertisement into the view, or refuse it and keep the view.
-sw_accept :: (from:SwView,m:SwMesh,a:SwAd,now:int)->SwAccepted {
+sw_accept :: (from:SwView,m:SwMesh,a:SwAd,now:int)->SwAccepted #effects(all) {
     g:=SwAccepted.{refusal=sw_refuse(from,m,a,now),view=from};
     if g.refusal==SwAdRefusal.none {g.view.held[a.peer]=true;g.view.ad[a.peer]=a;}
     return g;
 }
-sw_refuse :: (v:SwView,m:SwMesh,a:SwAd,now:int)->SwAdRefusal {
+sw_refuse :: (v:SwView,m:SwMesh,a:SwAd,now:int)->SwAdRefusal #effects(all) {
     if a.peer<0 || a.peer>=m.peers {return SwAdRefusal.peer;}
     if a.epoch!=m.epoch {return SwAdRefusal.epoch;}
     if v.held[a.peer] && a.seq<=v.ad[a.peer].seq {return SwAdRefusal.seq;}
@@ -127,7 +127,7 @@ sw_refuse :: (v:SwView,m:SwMesh,a:SwAd,now:int)->SwAdRefusal {
 // The blocks peer k claims for a prompt: the longest run of its whole
 // blocks, never the one holding the last position, whose salted chained
 // hashes are all listed in k's live advertisement.
-sw_claim :: (v:SwView,m:SwMesh,k:int,tok:[]int,prompt:int,now:int)->int {
+sw_claim :: (v:SwView,m:SwMesh,k:int,tok:[]int,prompt:int,now:int)->int #effects(all) {
     a:=v.ad[k];
     if !v.held[k] || now>=a.issued+a.ttl {return 0;}
     p:=m.pages.page;h:=0;most:=(prompt-1)/p;
@@ -173,14 +173,14 @@ them. Each is priced in nanoseconds from now to the last output token:
 ```jai
 // Chapter 175's step model, as chapter 177's rr_cost in nanoseconds: the
 // prompt's rows after `cached` positions in one step, then one step a token.
-sw_cost :: (prompt:int,output:int,cached:int)->int {return cb_step_ns(prompt-cached)+(output-1)*cb_step_ns(1);}
+sw_cost :: (prompt:int,output:int,cached:int)->int #effects(all) {return cb_step_ns(prompt-cached)+(output-1)*cb_step_ns(1);}
 // Chapter 182's link model per block: bits at gbit bits a nanosecond,
 // rounded up.
-sw_block_ns :: (m:SwMesh,a:int,b:int)->int {return (m.block_bytes*8+m.gbit[a][b]-1)/m.gbit[a][b];}
+sw_block_ns :: (m:SwMesh,a:int,b:int)->int #effects(all) {return (m.block_bytes*8+m.gbit[a][b]-1)/m.gbit[a][b];}
 // Moving `blocks` blocks from peer a to peer b: nothing on one peer;
 // otherwise the latency, even for none (a refusal comes back), then each
 // block.
-sw_link :: (m:SwMesh,a:int,b:int,blocks:int)->int {
+sw_link :: (m:SwMesh,a:int,b:int,blocks:int)->int #effects(all) {
     if a==b {return 0;}
     return m.lat[a][b]+blocks*sw_block_ns(m,a,b);
 }
@@ -242,7 +242,7 @@ brute-force check below confirms that no smaller count is ever cheaper.
 // link. The smallest predicted finish wins; on a tie the lower peer, then
 // computing cold before reuse, then the lower source. Round robin takes the
 // next peer in turn and computes cold.
-sw_route :: (peer:[]SwPeer,m:SwMesh,v:SwView,pol:SwPolicy,r:SwRequest,tok:[]int,now:int,turn:int)->SwPick {
+sw_route :: (peer:[]SwPeer,m:SwMesh,v:SwView,pol:SwPolicy,r:SwRequest,tok:[]int,now:int,turn:int)->SwPick #effects(all) {
     pick:=SwPick.{refused=true,dst=-1,src=-1,turn=turn};
     if r.prompt<1 || r.prompt>PG_PROMPT || r.output<1 || r.output>SW_OUTPUT {return pick;}
     pick.refused=false;
@@ -264,7 +264,7 @@ sw_route :: (peer:[]SwPeer,m:SwMesh,v:SwView,pol:SwPolicy,r:SwRequest,tok:[]int,
     }
     return pick;
 }
-sw_wait :: (peer:[]SwPeer,k:int,now:int)->int {return cb_max(0,peer[k].busy-now);}
+sw_wait :: (peer:[]SwPeer,k:int,now:int)->int #effects(all) {return cb_max(0,peer[k].busy-now);}
 ```
 
 For every peer that could run the request, the router prices computing
@@ -355,7 +355,7 @@ and a correct fallback gives the cold output exactly.
 // stand-in model's output is the chained hash of the whole prompt, read
 // from the trie for the blocks used and computed for the rest, so a wrong
 // block changes it.
-sw_run :: (peer:[]SwPeer,m:SwMesh,p:SwPick,r:SwRequest,tok:[]int)->SwDone {
+sw_run :: (peer:[]SwPeer,m:SwMesh,p:SwPick,r:SwRequest,tok:[]int)->SwDone #effects(all) {
     d:SwDone;src:=ifx p.src<0 then p.dst else p.src;
     d.used=pg_match(peer[p.dst].st,0,tok,r.prompt).n;
     have:=pg_match(peer[src].st,0,tok,r.prompt).n;
@@ -370,7 +370,7 @@ sw_run :: (peer:[]SwPeer,m:SwMesh,p:SwPick,r:SwRequest,tok:[]int)->SwDone {
 }
 // The state after `used` blocks: the destination's block when it holds
 // that many, else the moved one.
-sw_output :: (dst:PgStore,src:PgStore,tok:[]int,used:int,prompt:int)->int {
+sw_output :: (dst:PgStore,src:PgStore,tok:[]int,used:int,prompt:int)->int #effects(all) {
     h:=0;a:=pg_match(dst,0,tok,prompt);b:=pg_match(src,0,tok,prompt);
     if used>0 {h=ifx a.n>=used then dst.node[a.node[used-1]].hash else src.node[b.node[used-1]].hash;}
     return pg_hash(h,tok[used*dst.cfg.page..<prompt]);
@@ -415,7 +415,7 @@ everything, the request pays the 2,000,000 ns latency and computes cold:
 // start, and the router accepts or refuses each at the request's arrival.
 // The request is routed, run against the real caches, and waits for its
 // peer; its prompt is cached on that peer at once.
-sw_sim :: (m:SwMesh,pol:SwPolicy,reqs:[]SwRequest,tok:[]int)->SwSim {
+sw_sim :: (m:SwMesh,pol:SwPolicy,reqs:[]SwRequest,tok:[]int)->SwSim #effects(all) {
     s:SwSim;s.status=sw_check(m,reqs,tok);
     if s.status!=SwStatus.ok {return s;}
     s.n=reqs.count;mem:[1728]f64;v:SwView;round:=-1;turn:=0;

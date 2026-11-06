@@ -20,7 +20,7 @@
 // one row's squares (0: one item does the whole row, both passes fused);
 // strided items read columns j, j+chunks, ... instead of one contiguous
 // run; vector is how many outputs one pass-1 item writes.
-nt_knobs :: (item:int,knobs:[]int) #export_c {
+nt_knobs :: (item:int,knobs:[]int) #export_c #effects(all) {
     if item!=0 {return;}
     knobs[0]=0;n:=1;
     // Chunks 1 to 128 and vectors 1 to 4, in powers of two. (Constant arrays
@@ -28,7 +28,7 @@ nt_knobs :: (item:int,knobs:[]int) #export_c {
     for c:0..<8 {for v:0..<3 {for s:0..<2 {knobs[n]=(1<<c)*100+(1<<v)*10+s;n+=1;}}}
     knobs[n]=-1;
 }
-nt_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c {
+nt_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c #effects(all) {
     if item!=0 {return;}
     c:=knob/100;v:=(knob/10)%10;
     if c==0 {plan[0]=rows;plan[1]=0;plan[2]=rows;return;}
@@ -37,13 +37,13 @@ nt_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c {
 // book:end knobs
 
 // book:begin passes
-nt_divisor :: (squares:f64,width:int,epsilon:f32)->f64 {return sqrt(squares/f64(width)+f64(epsilon));}
-nt_write :: (at:int,i:int,divisor:f64,x:[]f32,scale:[]f32,out:[]f32) {
+nt_divisor :: (squares:f64,width:int,epsilon:f32)->f64 #effects(all) {return sqrt(squares/f64(width)+f64(epsilon));}
+nt_write :: (at:int,i:int,divisor:f64,x:[]f32,scale:[]f32,out:[]f32) #effects(all) {
     out[at+i]=f32(f64(x[at+i])/divisor*(1+f64(scale[i])));
 }
 // Pass 0: item r*chunks+j adds the squares of its share of row r. Fused,
 // item r adds the whole row and writes it.
-nt_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+nt_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c #effects(all) {
     c:=knob/100;s:=knob%10;sum:f64=0;
     if c==0 {
         at:=item*width;
@@ -66,7 +66,7 @@ nt_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f3
 }
 // Pass 1: item r*ceil(width/vector)+k adds row r's partial sums in order and
 // writes outputs k*vector up to the row's end.
-nt_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+nt_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c #effects(all) {
     c:=knob/100;v:=(knob/10)%10;m:=(width+v-1)/v;r:=item/m;k:=item%m;sum:f64=0;
     for j:0..<c {sum+=work[r*c+j];}
     divisor:=nt_divisor(sum,width,epsilon);
@@ -78,22 +78,22 @@ nt_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f3
 // Chapter 44's kernels: 16 items per row, each adding a contiguous sixteenth
 // of width/16 columns, then one item per output. Its declared shapes have a
 // width that is a multiple of 16.
-n30_knobs :: (item:int,knobs:[]int) #export_c {if item==0 {knobs[0]=0;knobs[1]=-1;}}
-n30_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c {
+n30_knobs :: (item:int,knobs:[]int) #export_c #effects(all) {if item==0 {knobs[0]=0;knobs[1]=-1;}}
+n30_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c #effects(all) {
     if item!=0 {return;}
     plan[0]=rows*DL_CHUNKS;plan[1]=rows*width;plan[2]=rows*DL_CHUNKS;
 }
-n30_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+n30_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c #effects(all) {
     dl_squares(item,width,x,work);
 }
-n30_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+n30_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c #effects(all) {
     dl_scale(item,width,epsilon,x,scale,work,out);
 }
 // book:end baseline
 
 // Test helpers: run one implementation's plan over every item, in order.
 NtImpl :: enum u8 {tuned;ch30;}
-nt_t_run :: (impl:NtImpl,knob:int,rows:int,width:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) {
+nt_t_run :: (impl:NtImpl,knob:int,rows:int,width:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #effects(all) {
     plan:[3]int;
     if impl==NtImpl.tuned {nt_plan(0,rows,width,knob,plan[..]);} else {n30_plan(0,rows,width,knob,plan[..]);}
     for i:0..<plan[0] {
@@ -106,7 +106,7 @@ nt_t_run :: (impl:NtImpl,knob:int,rows:int,width:int,epsilon:f32,x:[]f32,scale:[
     }
 }
 // The norm written directly: squares in column order.
-nt_t_norm :: (rows:int,width:int,epsilon:f32,x:[]f32,scale:[]f32,out:[]f32) {
+nt_t_norm :: (rows:int,width:int,epsilon:f32,x:[]f32,scale:[]f32,out:[]f32) #effects(all) {
     for r:0..<rows {
         sum:f64=0;
         for i:0..<width {v:=f64(x[r*width+i]);sum+=v*v;}
@@ -115,7 +115,7 @@ nt_t_norm :: (rows:int,width:int,epsilon:f32,x:[]f32,scale:[]f32,out:[]f32) {
     }
 }
 // Distinct small integers, so a wrong column, row or scale shows.
-nt_t_fill :: (rows:int,width:int,x:[]f32,scale:[]f32) {
+nt_t_fill :: (rows:int,width:int,x:[]f32,scale:[]f32) #effects(all) {
     for i:0..<rows*width {x[i]=f32((i*7)%23-11);}
     for i:0..<width {scale[i]=f32(i%5)/4-0.5;}
 }

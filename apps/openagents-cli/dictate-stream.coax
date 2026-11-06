@@ -2,13 +2,13 @@
 // one controller-admitted final. The existing offline host is unchanged.
 #load "dictate.coax";
 #load "dictate-stream-rules.coax";
-cxdict_dct_live :: (ticket:int,offset:int,out:[]f32)->int #foreign;
-cxdict_stream_open :: (directory:[]u8,error:[]u8)->int #foreign;
-cxdict_stream_reset :: (ticket:int)->int #foreign;
-cxdict_stream_submit :: (ticket:int,sequence:int,audio:[]f32,final:int)->int #foreign;
-cxdict_stream_poll :: (out:[]u8)->int #foreign;
-cxdict_stream_close :: ()->int #foreign;
-cxdict_stream_write :: (fd:int,bytes:[]u8)->int #foreign;
+cxdict_dct_live :: (ticket:int,offset:int,out:[]f32)->int #foreign #effects(all);
+cxdict_stream_open :: (directory:[]u8,error:[]u8)->int #foreign #effects(all);
+cxdict_stream_reset :: (ticket:int)->int #foreign #effects(all);
+cxdict_stream_submit :: (ticket:int,sequence:int,audio:[]f32,final:int)->int #foreign #effects(all);
+cxdict_stream_poll :: (out:[]u8)->int #foreign #effects(all);
+cxdict_stream_close :: ()->int #foreign #effects(all);
+cxdict_stream_write :: (fd:int,bytes:[]u8)->int #foreign #effects(all);
 DsCli :: struct {flow:DsFlow;event:int;last:[8000]u8;last_n:int;cancelled:bool;output_bad:bool;pending:int;}
 
 ds_control :: (d:[]Dict,f:[]DictFixture,s:[]DsCli,wait:int) {

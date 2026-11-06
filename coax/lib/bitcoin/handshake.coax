@@ -93,8 +93,8 @@ HS_COMMANDS :: [9] string.["", "version", "verack", "wtxidrelay", "sendaddrv2", 
 // book:end codes
 
 // ---- checks
-hs_unhex :: (text: string, out: [] u8) -> [] u8 { return tx_unhex(text, out); }
-hs_core :: (name: string, out: [] u8) -> [] u8 {
+hs_unhex :: (text: string, out: [] u8) -> [] u8 #effects(all) { return tx_unhex(text, out); }
+hs_core :: (name: string, out: [] u8) -> [] u8 #effects(all) {
   for v: HS_CORE { if v.name == name { return hs_unhex(v.hex, out); } }
   return out[0..<0];
 }
@@ -102,23 +102,23 @@ HS_TEST_CONFIG :: HsConfig.{conn = HS_OUTBOUND, services = HS_NODE_NETWORK | HS_
   peer_services = HS_NODE_NETWORK | HS_NODE_WITNESS, nonce = 0x0102030405060708, agent = "/Coax:0.68/", height = 900000};
 // A version payload from Core's serializer, with its version and services
 // replaced.
-hs_their_version :: (version: int, services: u64, out: [] u8) -> [] u8 {
+hs_their_version :: (version: int, services: u64, out: [] u8) -> [] u8 #effects(all) {
   p := hs_core("their version", out);
   stored := cb_store_le32(p, 0, cast,trunc(u32) version);
   stored = cb_store_le64(p, 4, services);
   return p;
 }
-hs_opened :: (p: [] HsPeer, conn: int) {
+hs_opened :: (p: [] HsPeer, conn: int) #effects(all) {
   cfg := HS_TEST_CONFIG; cfg.conn = conn;
   s := hs_open(p, cfg, 1000);
 }
-hs_kinds_are :: (s: HsStep, kinds: [] int) -> bool {
+hs_kinds_are :: (s: HsStep, kinds: [] int) -> bool #effects(all) {
   if s.n != kinds.count { return false; }
   for i: 0..<kinds.count { if s.sends[i] != kinds[i] { return false; } }
   return true;
 }
 // A message with no pending outbound nonces.
-hs_recv :: (p: [] HsPeer, command: string, payload: [] u8, now: int) -> HsStep {
+hs_recv :: (p: [] HsPeer, command: string, payload: [] u8, now: int) -> HsStep #effects(all) {
   none: [1] u64;
   return hs_receive_vartime(p, command, payload, now, none[0..<0]);
 }
@@ -305,37 +305,37 @@ HsPeer :: struct {
 // The answer to one event: a verdict, its reason, and messages to send in
 // order (their payloads come from hs_payload_write_vartime).
 HsStep :: struct { verdict: int; reason: int; n: int; sends: [8] int; }
-hs_step :: (verdict: int, reason: int) -> HsStep { return HsStep.{verdict = verdict, reason = reason}; }
-hs_send :: (s: HsStep, kind: int) -> HsStep { t := s; t.sends[t.n] = kind; t.n += 1; return t; }
+hs_step :: (verdict: int, reason: int) -> HsStep #effects(all) { return HsStep.{verdict = verdict, reason = reason}; }
+hs_send :: (s: HsStep, kind: int) -> HsStep #effects(all) { t := s; t.sends[t.n] = kind; t.n += 1; return t; }
 // The connection opens. An outbound connection speaks first, with its version.
-hs_open :: (p: [] HsPeer, cfg: HsConfig, now: int) -> HsStep {
+hs_open :: (p: [] HsPeer, cfg: HsConfig, now: int) -> HsStep #effects(all) {
   p[0] = HsPeer.{cfg = cfg, opened = now, time = now};
   if cfg.conn == HS_INBOUND { return hs_step(HS_DONE, HS_R_NONE); }
   p[0].last_send = now;
   return hs_send(hs_step(HS_DONE, HS_R_NONE), HS_SEND_VERSION);
 }
 // The caller sent bytes at now, outside an event's answer.
-hs_sent :: (p: [] HsPeer, now: int) { p[0].last_send = now; }
+hs_sent :: (p: [] HsPeer, now: int) #effects(all) { p[0].last_send = now; }
 // book:end peer
 
 // book:begin services
 // GetDesirableServiceFlags: a full node with witnesses, or near the tip a
 // limited one. HasAllDesirableServiceFlags: every desirable bit is offered.
-hs_desirable :: (services: u64, tip_depth: int) -> u64 {
+hs_desirable :: (services: u64, tip_depth: int) -> u64 #effects(all) {
   if (services & HS_NODE_NETWORK_LIMITED) != 0 && tip_depth < HS_LIMITED_DEPTH { return HS_NODE_NETWORK_LIMITED | HS_NODE_WITNESS; }
   return HS_NODE_NETWORK | HS_NODE_WITNESS;
 }
-hs_has_desirable :: (services: u64, tip_depth: int) -> bool {
+hs_has_desirable :: (services: u64, tip_depth: int) -> bool #effects(all) {
   wanted := hs_desirable(services, tip_depth);
   return (wanted & services) == wanted;
 }
 // ExpectServicesFromConn: outbound connections we chose for what they serve.
-hs_expects_services :: (conn: int) -> bool { return conn == HS_OUTBOUND || conn == HS_BLOCK_RELAY || conn == HS_ADDR_FETCH; }
+hs_expects_services :: (conn: int) -> bool #effects(all) { return conn == HS_OUTBOUND || conn == HS_BLOCK_RELAY || conn == HS_ADDR_FETCH; }
 // book:end services
 
 // book:begin version
 // ProcessMessage for "version", check by check in Core's order.
-hs_version_vartime :: (p: [] HsPeer, payload: [] u8, now: int, pending: [] u64) -> HsStep {
+hs_version_vartime :: (p: [] HsPeer, payload: [] u8, now: int, pending: [] u64) -> HsStep #effects(all) {
   if p[0].their_version != 0 { return hs_step(HS_IGNORED, HS_R_REDUNDANT_VERSION); }
   // The required fields: version, services, time and the receiver's address.
   if payload.count < 46 { return hs_step(HS_IGNORED, HS_R_BAD_PAYLOAD); }
@@ -372,7 +372,7 @@ hs_version_vartime :: (p: [] HsPeer, payload: [] u8, now: int, pending: [] u64) 
 // book:begin receive
 // One message from the peer. pending holds the nonces of our outbound
 // connections whose handshake hasn't finished, for self-connection.
-hs_receive_vartime :: (p: [] HsPeer, command: string, payload: [] u8, now: int, pending: [] u64) -> HsStep {
+hs_receive_vartime :: (p: [] HsPeer, command: string, payload: [] u8, now: int, pending: [] u64) -> HsStep #effects(all) {
   p[0].last_recv = now;
   if command == "version" { return hs_version_vartime(p, payload, now, pending); }
   if p[0].their_version == 0 { return hs_step(HS_IGNORED, HS_R_NO_VERSION); }
@@ -430,7 +430,7 @@ hs_receive_vartime :: (p: [] HsPeer, command: string, payload: [] u8, now: int, 
 }
 // The feature message: an ID of 4 to 80 bytes, data of at most 512, and
 // nothing after. No feature is defined yet, so a good one is ignored.
-hs_feature_vartime :: (payload: [] u8) -> HsStep {
+hs_feature_vartime :: (payload: [] u8) -> HsStep #effects(all) {
   bad := hs_step(HS_DISCONNECT, HS_R_FEATURE_PAYLOAD);
   id := tx_span_vartime(payload, 0);
   if id.code != TX_OK || id.n > HS_MAX_FEATURE_ID || id.n < 4 { return bad; }
@@ -445,7 +445,7 @@ hs_feature_vartime :: (payload: [] u8) -> HsStep {
 // first 60 seconds. After them: a side that never spoke, 20 minutes of
 // silence either way, then a handshake still unfinished. detecting is true
 // while a v2 responder still can't tell v1 from v2.
-hs_tick :: (p: [] HsPeer, now: int, detecting: bool) -> HsStep {
+hs_tick :: (p: [] HsPeer, now: int, detecting: bool) -> HsStep #effects(all) {
   if now <= p[0].opened + HS_CONNECT_TIMEOUT { return hs_step(HS_DONE, HS_R_NONE); }
   if p[0].last_recv < 0 || p[0].last_send < 0 { return hs_step(HS_DISCONNECT, HS_R_NO_MESSAGE); }
   if now > p[0].last_send + HS_TIMEOUT_INTERVAL { return hs_step(HS_DISCONNECT, HS_R_SEND_TIMEOUT); }
@@ -460,7 +460,7 @@ hs_tick :: (p: [] HsPeer, now: int, detecting: bool) -> HsStep {
 // if out is too small. version is PushNodeVersion's: the peer's services
 // and an unroutable address, ours the same, our nonce, agent, height and
 // relay flag.
-hs_payload_write_vartime :: (p: [] HsPeer, kind: int, out: [] u8) -> int {
+hs_payload_write_vartime :: (p: [] HsPeer, kind: int, out: [] u8) -> int #effects(all) {
   c := p[0].cfg;
   if kind == HS_SEND_VERSION {
     need := 4 + 8 + 8 + 26 + 26 + 8 + tx_compact_size_vartime(c.agent.count) + c.agent.count + 4 + 1;
@@ -530,7 +530,7 @@ HsWire :: struct {
 HsRead :: struct { event: int; code: int; used: int; command: string; payload: int; n: int; }
 // A wire for one side. v2 needs a key, 32 random bytes for its encoding and
 // up to 64 bytes of garbage. Returns false if the key or garbage refuses.
-hs_wire_init :: (w: [] HsWire, initiating: bool, v2: bool, magic: [4] u8, key: [] u8, rnd: [] u8, garbage: [] u8) -> bool {
+hs_wire_init :: (w: [] HsWire, initiating: bool, v2: bool, magic: [4] u8, key: [] u8, rnd: [] u8, garbage: [] u8) -> bool #effects(all) {
   w[0] = HsWire.{initiating = initiating, magic = magic};
   if !v2 { w[0].state = HS_W_V1; return true; }
   if garbage.count > HS_MAX_GARBAGE || key.count != 32 { return false; }
@@ -546,7 +546,7 @@ hs_wire_init :: (w: [] HsWire, initiating: bool, v2: bool, magic: [4] u8, key: [
 }
 // Our key and garbage: an initiator sends them at once, a responder once
 // it knows the peer is v2. Returns the size, or -1.
-hs_wire_key_write_vartime :: (w: [] HsWire, out: [] u8) -> int {
+hs_wire_key_write_vartime :: (w: [] HsWire, out: [] u8) -> int #effects(all) {
   n := 64 + w[0].garbage_n;
   if out.count < n { return -1; }
   for i: 0..<64 { out[i] = w[0].ours[i]; }
@@ -556,7 +556,7 @@ hs_wire_key_write_vartime :: (w: [] HsWire, out: [] u8) -> int {
 }
 // Once their key is in: our terminator, then our version packet, whose
 // AAD is our garbage and whose contents are empty.
-hs_wire_ready_write_vartime :: (w: [] HsWire, out: [] u8) -> int {
+hs_wire_ready_write_vartime :: (w: [] HsWire, out: [] u8) -> int #effects(all) {
   n := V2_TERMINATOR + V2_EXPANSION;
   if out.count < n { return -1; }
   for i: 0..<16 { out[i] = w[0].cipher[0].send_terminator[i]; }
@@ -565,7 +565,7 @@ hs_wire_ready_write_vartime :: (w: [] HsWire, out: [] u8) -> int {
   return n;
 }
 // A message in the wire's format: a v1 frame or a v2 packet.
-hs_wire_write_vartime :: (w: [] HsWire, command: string, payload: [] u8, out: [] u8) -> int {
+hs_wire_write_vartime :: (w: [] HsWire, command: string, payload: [] u8, out: [] u8) -> int #effects(all) {
   n := -1;
   if w[0].state == HS_W_V1 { n = p2p_frame_write_vartime(w[0].magic, command, payload, out); }
   else if w[0].state >= HS_W_GARBAGE && out.count >= 4 {
@@ -578,7 +578,7 @@ hs_wire_write_vartime :: (w: [] HsWire, command: string, payload: [] u8, out: []
 }
 // ShouldReconnectV1: we started v2, sent at least a v1 header's worth, and
 // the connection closed before a byte came back. Try again in v1.
-hs_wire_reconnect_v1 :: (w: [] HsWire, received: int) -> bool {
+hs_wire_reconnect_v1 :: (w: [] HsWire, received: int) -> bool #effects(all) {
   return w[0].initiating && w[0].state == HS_W_KEY && received == 0 && w[0].sent >= P2P_HEADER;
 }
 // book:end wire
@@ -587,7 +587,7 @@ hs_wire_reconnect_v1 :: (w: [] HsWire, received: int) -> bool {
 // What the bytes received so far, b, hold. used is how many the caller
 // drops before the next call. v2 packets are decrypted in place; garbage
 // stays in b until the first packet, whose AAD it is.
-hs_wire_read_vartime :: (w: [] HsWire, b: [] u8) -> HsRead {
+hs_wire_read_vartime :: (w: [] HsWire, b: [] u8) -> HsRead #effects(all) {
   wait := HsRead.{event = HS_EV_WAIT};
   if w[0].state == HS_W_DETECT {
     prefix: [16] u8; v := [12] u8.['v', 'e', 'r', 's', 'i', 'o', 'n', 0, 0, 0, 0, 0];
@@ -621,7 +621,7 @@ hs_wire_read_vartime :: (w: [] HsWire, b: [] u8) -> HsRead {
 }
 // v1: a frame as chapter 65 reads it. A bad magic or an oversized length
 // disconnects; a bad checksum or command drops just that message.
-hs_wire_v1_vartime :: (w: [] HsWire, b: [] u8) -> HsRead {
+hs_wire_v1_vartime :: (w: [] HsWire, b: [] u8) -> HsRead #effects(all) {
   f := p2p_frame_read_vartime(b, w[0].magic);
   if f.code == P2P_TRUNCATED { return HsRead.{event = HS_EV_WAIT}; }
   if f.code == P2P_BAD_MAGIC || f.code == P2P_OVERSIZE { return HsRead.{event = HS_EV_REFUSE, code = f.code}; }
@@ -630,7 +630,7 @@ hs_wire_v1_vartime :: (w: [] HsWire, b: [] u8) -> HsRead {
 }
 // v2: one packet. The first one's AAD is their garbage, which comes first
 // in b with the terminator after it.
-hs_wire_packet_vartime :: (w: [] HsWire, b: [] u8) -> HsRead {
+hs_wire_packet_vartime :: (w: [] HsWire, b: [] u8) -> HsRead #effects(all) {
   wait := HsRead.{event = HS_EV_WAIT};
   first := w[0].their_garbage >= 0;
   skip := ifx first then w[0].their_garbage + V2_TERMINATOR else 0;

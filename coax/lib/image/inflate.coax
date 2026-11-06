@@ -14,7 +14,7 @@ INF_DEXT :: [30] int.[0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12
 INF_ORDER :: [19] int.[16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15];
 
 // The next bit, least significant first; past the end, 0 and the stream is bad.
-inf_bit :: (b: []InfBits) -> int {
+inf_bit :: (b: []InfBits) -> int #effects(all) {
   if b[0].n == 0 {
     if b[0].at >= b[0].src.count { b[0].bad = true; return 0; } // mutant: equivalent (a bad stream is refused whatever its last bits)
     b[0].bits = cast(u32) b[0].src[b[0].at]; b[0].at += 1; b[0].n = 8;
@@ -24,13 +24,13 @@ inf_bit :: (b: []InfBits) -> int {
   return v;
 }
 // k bits, the first the least significant.
-inf_bits :: (b: []InfBits, k: int) -> int {
+inf_bits :: (b: []InfBits, k: int) -> int #effects(all) {
   v := 0;
   for i: 0..<k { v = v | (inf_bit(b) << i); }
   return v;
 }
 // The code of these lengths (0: unused); false when it is over-subscribed.
-inf_build :: (h: []InfHuff, lens: []int) -> bool {
+inf_build :: (h: []InfHuff, lens: []int) -> bool #effects(all) {
   for i: 0..<16 { h[0].count[i] = 0; } // mutant: equivalent (count[0] is never read)
   for l: lens { h[0].count[l] += 1; }
   left := 1;
@@ -46,7 +46,7 @@ inf_build :: (h: []InfHuff, lens: []int) -> bool {
   return true;
 }
 // A symbol of the code, or -1 for a code it does not have.
-inf_decode :: (b: []InfBits, h: []InfHuff) -> int {
+inf_decode :: (b: []InfBits, h: []InfHuff) -> int #effects(all) {
   code := 0; first := 0; index := 0;
   for l: 1..<16 {
     code = code | inf_bit(b);
@@ -57,7 +57,7 @@ inf_decode :: (b: []InfBits, h: []InfHuff) -> int {
   return -1;
 }
 // A block's literals and matches up to its end code, written at o[0] on.
-inf_codes :: (b: []InfBits, out: []u8, o: []int, lh: []InfHuff, dh: []InfHuff) -> bool {
+inf_codes :: (b: []InfBits, out: []u8, o: []int, lh: []InfHuff, dh: []InfHuff) -> bool #effects(all) {
   // A stream that ends early reads zeros from there on, to an end code or a full buffer; inflate refuses it.
   while true {
     sym := inf_decode(b, lh);
@@ -79,7 +79,7 @@ inf_codes :: (b: []InfBits, out: []u8, o: []int, lh: []InfHuff, dh: []InfHuff) -
   return false; // mutant: equivalent (the loop above only returns)
 }
 // A stored block: the rest of this byte dropped, then LEN, its complement, and LEN bytes.
-inf_stored :: (b: []InfBits, out: []u8, o: []int) -> bool {
+inf_stored :: (b: []InfBits, out: []u8, o: []int) -> bool #effects(all) {
   b[0].n = 0;
   at := b[0].at;
   if at + 4 > b[0].src.count { return false; }
@@ -91,7 +91,7 @@ inf_stored :: (b: []InfBits, out: []u8, o: []int) -> bool {
   return true;
 }
 // The fixed codes (RFC 1951 3.2.6).
-inf_fixed :: (lh: []InfHuff, dh: []InfHuff) {
+inf_fixed :: (lh: []InfHuff, dh: []InfHuff) #effects(all) {
   lens: [288] int;
   for s: 0..<288 { lens[s] = ifx s < 144 then 8 else (ifx s < 256 then 9 else (ifx s < 280 then 7 else 8)); }
   _ := inf_build(lh, lens[..]);
@@ -101,7 +101,7 @@ inf_fixed :: (lh: []InfHuff, dh: []InfHuff) {
   _ = inf_build(dh, dl[..]);
 }
 // A dynamic block's codes, from its header.
-inf_dynamic :: (b: []InfBits, lh: []InfHuff, dh: []InfHuff) -> bool {
+inf_dynamic :: (b: []InfBits, lh: []InfHuff, dh: []InfHuff) -> bool #effects(all) {
   // 286 and 30 at most, but more are harmless: their symbols are refused if they are used
   nlen := inf_bits(b, 5) + 257; ndist := inf_bits(b, 5) + 1; ncode := inf_bits(b, 4) + 4;
   cl: [19] int;
@@ -128,7 +128,7 @@ inf_dynamic :: (b: []InfBits, lh: []InfHuff, dh: []InfHuff) -> bool {
   return inf_build(lh, lens[0..<nlen]) && inf_build(dh, lens[nlen..<nlen + ndist]);
 }
 // A raw DEFLATE stream into out: how many bytes, or -1.
-inflate :: (src: []u8, out: []u8) -> int {
+inflate :: (src: []u8, out: []u8) -> int #effects(all) {
   bs: [1] InfBits; bs[0] = InfBits.{src = src}; b := bs[..];
   o: [1] int;
   lh: [1] InfHuff; dh: [1] InfHuff;
@@ -145,7 +145,7 @@ inflate :: (src: []u8, out: []u8) -> int {
   return o[0];
 }
 // A zlib stream (its header checked, no preset dictionary; the Adler-32 after it is not read).
-zlib_inflate :: (src: []u8, out: []u8) -> int {
+zlib_inflate :: (src: []u8, out: []u8) -> int #effects(all) {
   if src.count < 2 { return -1; } // mutant: equivalent (two bytes are a header with no stream, which inflate refuses)
   cmf := cast(int) src[0]; flg := cast(int) src[1];
   if (cmf & 15) != 8 || (cmf >> 4) > 7 || (cmf * 256 + flg) % 31 != 0 || (flg & 32) != 0 { return -1; }
@@ -156,8 +156,8 @@ INF_STORED :: [51] u8.[120,1,1,40,0,215,255,32,97,97,98,99,100,102,104,106,97,10
 INF_FIXED :: [65] u8.[120,1,83,72,76,76,74,78,73,203,200,74,76,73,207,74,201,72,76,205,74,201,76,201,74,205,78,79,206,206,72,85,200,202,72,75,73,78,74,204,206,6,171,74,77,207,204,78,78,203,76,76,203,74,206,72,74,87,72,7,0,188,192,23,4];
 INF_DYNAMIC :: [275] u8.[120,218,61,146,201,149,5,49,8,3,83,33,53,192,236,249,223,71,184,61,223,103,189,210,130,137,89,244,120,54,159,232,147,108,125,234,180,77,232,164,81,167,31,21,158,185,42,139,26,245,98,111,77,9,10,201,51,113,184,252,200,84,134,187,71,100,53,171,5,137,149,198,128,6,150,75,217,226,148,251,202,104,85,35,7,168,3,77,45,77,82,27,186,56,255,158,252,179,20,203,57,41,14,26,141,51,76,211,117,42,236,201,160,186,249,169,197,145,30,180,212,50,232,184,227,121,6,210,126,150,137,6,173,193,160,129,21,48,5,138,80,224,147,69,246,108,254,134,41,91,45,141,10,45,181,99,75,94,207,125,122,45,213,9,34,113,208,192,66,75,108,1,195,244,79,70,24,246,229,199,22,103,105,216,118,215,144,142,231,185,239,155,236,142,129,11,128,198,244,155,22,5,158,236,151,159,234,246,188,119,186,107,24,72,215,19,143,48,6,44,113,76,249,122,242,155,22,5,152,42,158,12,170,216,252,48,253,191,57,205,183,198,206,191,158,251,118,12,20,21,187,61,65,123,211,110,1,219,143,113,101,52,12,195,205,223,223,205,203,230,15,125,198,233,48];
 // The text the vectors were made from (python's zlib, levels 0 and 9, fixed and default strategy).
-inf_text :: (i: int) -> u8 { return ifx i % 29 != 0 then cast(u8) (97 + ((i * i) / 7 + i / 13) % 11) else 32; }
-inf_same :: (out: []u8, n: int, want: int) -> bool {
+inf_text :: (i: int) -> u8 #effects(all) { return ifx i % 29 != 0 then cast(u8) (97 + ((i * i) / 7 + i / 13) % 11) else 32; }
+inf_same :: (out: []u8, n: int, want: int) -> bool #effects(all) {
   if n != want { return false; }
   for i: 0..<n { if out[i] != inf_text(i) { return false; } }
   return true;
@@ -208,7 +208,7 @@ INF_C_UNKNOWN_LITERAL :: [15] u8.[5,224,73,13,0,64,16,4,33,104,45,255,38,160,1];
 INF_C_UNKNOWN_DISTANCE :: [16] u8.[13,225,73,13,0,64,16,4,33,104,45,255,38,138,144,3];
 INF_C_OVERSUBSCRIBED_LITERALS :: [15] u8.[5,224,73,13,0,64,16,4,33,104,5,255,34,0,0];
 // A raw stream into a buffer of `size`: the bytes `want`, or refused when refused is set.
-inf_case :: (raw: []u8, size: int, want: []u8, refused: bool) -> bool {
+inf_case :: (raw: []u8, size: int, want: []u8, refused: bool) -> bool #effects(all) {
   out: [600] u8;
   n := inflate(raw, out[0..<size]);
   if refused { return n == -1; }
@@ -263,7 +263,7 @@ INF_Z_DICT :: [5] u8.[120,187,75,4,0];
 INF_Z_CHECK :: [5] u8.[120,157,75,4,0];
 INF_C_NUL :: [4] u8.[99,96,7,0];
 // A dynamic block's header read as inflate reads it, after its first three bits.
-inf_dyn :: (raw: []u8) -> bool {
+inf_dyn :: (raw: []u8) -> bool #effects(all) {
   bs: [1] InfBits; bs[0] = InfBits.{src = raw}; b := bs[..];
   _ := inf_bits(b, 3);
   lh: [1] InfHuff; dh: [1] InfHuff;

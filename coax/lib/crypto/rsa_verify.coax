@@ -97,7 +97,7 @@ RSA_MASK :: cast(u64)4294967295;
 }
 // Inputs to the internal operations are reduced and count is 1..128.
 // One u32 limb plus one u32 limb plus a carry fits in u64.
-rsa_add_mod :: (a:RsaWords,b:RsaWords,n:RsaWords,count:int)->RsaWords {
+rsa_add_mod :: (a:RsaWords,b:RsaWords,n:RsaWords,count:int)->RsaWords #effects(all) {
  sum:RsaWords;difference:RsaWords;carry:=cast(u64)0;
  for i:0..<count {
   wide:=cast(u64)a.words[i]+cast(u64)b.words[i]+carry;
@@ -113,15 +113,15 @@ rsa_add_mod :: (a:RsaWords,b:RsaWords,n:RsaWords,count:int)->RsaWords {
 }
 // CIOS Montgomery reduction over public operands; n is odd and inputs < n.
 // Each wide accumulation is at most (2^32-1)^2 + 2*(2^32-1).
-rsa_inverse_step :: (x:u64,low:u32)->u64 {
+rsa_inverse_step :: (x:u64,low:u32)->u64 #effects(all) {
  return (x*(RSA_BASE+2-((cast(u64)low*x)&RSA_MASK)))&RSA_MASK;
 }
-rsa_mont_inverse :: (low:u32)->u32 {
+rsa_mont_inverse :: (low:u32)->u32 #effects(all) {
  x:=cast(u64)1;
  x=rsa_inverse_step(x,low);x=rsa_inverse_step(x,low);x=rsa_inverse_step(x,low);x=rsa_inverse_step(x,low);x=rsa_inverse_step(x,low);
  return cast(u32)((RSA_BASE-x)&RSA_MASK);
 }
-rsa_mont_mul :: (a:RsaWords,b:RsaWords,n:RsaWords,count:int,inverse:u32)->RsaWords {
+rsa_mont_mul :: (a:RsaWords,b:RsaWords,n:RsaWords,count:int,inverse:u32)->RsaWords #effects(all) {
  t:[130]u32;
  for i:0..<count {
   carry:=cast(u64)0;
@@ -148,7 +148,7 @@ rsa_mont_mul :: (a:RsaWords,b:RsaWords,n:RsaWords,count:int,inverse:u32)->RsaWor
  if t[count]!=0 || borrow==0 {return difference;}
  return value;
 }
-rsa_load :: (bytes:[]u8)->RsaWords {
+rsa_load :: (bytes:[]u8)->RsaWords #effects(all) {
  result:RsaWords;
  for i:0..<bytes.count {
   index:=bytes.count-1-i;
@@ -156,7 +156,7 @@ rsa_load :: (bytes:[]u8)->RsaWords {
  }
  return result;
 }
-rsa_less :: (a:RsaWords,b:RsaWords,count:int)->bool {
+rsa_less :: (a:RsaWords,b:RsaWords,count:int)->bool #effects(all) {
  for offset:0..<count {
   i:=count-1-offset;
   if a.words[i]<b.words[i] {return true;}
@@ -164,7 +164,7 @@ rsa_less :: (a:RsaWords,b:RsaWords,count:int)->bool {
  }
  return false;
 }
-rsa_pkcs1_sha256 :: (em:[]u8,digest:[]u8)->bool {
+rsa_pkcs1_sha256 :: (em:[]u8,digest:[]u8)->bool #effects(all) {
  if em.count<62 || digest.count!=32 {return false;}
  if em[0]!=0 || em[1]!=1 {return false;}
  separator:=em.count-52;
@@ -175,14 +175,14 @@ rsa_pkcs1_sha256 :: (em:[]u8,digest:[]u8)->bool {
  for i:0..<32 {if em[separator+20+i]!=digest[i] {return false;}}
  return true;
 }
-rsa_modulus_ok :: (modulus:[]u8,signature_count:int)->bool {
+rsa_modulus_ok :: (modulus:[]u8,signature_count:int)->bool #effects(all) {
  if modulus.count<256 || modulus.count>512 || signature_count!=modulus.count {return false;}
  return modulus[0]!=0 && (modulus.count!=256 || modulus[0]>=128) && (modulus[modulus.count-1]&1)!=0;
 }
-rsa_word_count :: (byte_count:int)->int {return (byte_count+3)/4;}
-rsa_hash_ok :: (status:u32)->bool {return status==SHA_OK;}
+rsa_word_count :: (byte_count:int)->int #effects(all) {return (byte_count+3)/4;}
+rsa_hash_ok :: (status:u32)->bool #effects(all) {return status==SHA_OK;}
 // The selected public exponent is fixed to 65537; callers cannot choose an algorithm.
-rsa_verify_sha256 :: (modulus:[]u8,signature:[]u8,message:[]u8)->bool #export_c {
+rsa_verify_sha256 :: (modulus:[]u8,signature:[]u8,message:[]u8)->bool #export_c #effects(all) {
  if !rsa_modulus_ok(modulus,signature.count) {return false;}
  n:=rsa_load(modulus);s:=rsa_load(signature);count:=rsa_word_count(modulus.count);
  if !rsa_less(s,n,count) {return false;}

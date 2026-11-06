@@ -56,7 +56,7 @@ PYG_ONE :: "psionic.pylon-generation.v1\n0123456789abcdef0123456789abcdef0123456
     #assert pyg_ready(PygPlan.{code=PygCode.ok,generation=PYG_MAX},true)==PYG_MAX;
 }
 
-pyg_plan :: (text:string,provider:string,missing:bool)->PygPlan {
+pyg_plan :: (text:string,provider:string,missing:bool)->PygPlan #effects(all) {
     if !pyd_label_ok(provider) {return PygPlan.{code=PygCode.provider};}
     if missing {return ifx text=="" then PygPlan.{code=PygCode.ok,generation=2} else PygPlan.{};}
     h:=PYG_HEADER.count;
@@ -73,7 +73,7 @@ pyg_plan :: (text:string,provider:string,missing:bool)->PygPlan {
     if value==PYG_MAX {return PygPlan.{code=PygCode.exhausted};}
     return PygPlan.{code=PygCode.ok,generation=value+1};
 }
-pyg_encode :: (provider:string,generation:int,out:[]u8)->int {
+pyg_encode :: (provider:string,generation:int,out:[]u8)->int #effects(all) {
     if !pyd_label_ok(provider) || generation<2 || generation>PYG_MAX {return -1;}
     digits:=1;v:=generation;while v>=10 {digits+=1;v/=10;}
     count:=PYG_HEADER.count+66+digits;if out.count<count {return -1;}
@@ -81,7 +81,7 @@ pyg_encode :: (provider:string,generation:int,out:[]u8)->int {
     v=generation;for i:0..<digits {out[at+digits-1-i]=cast(u8)(48+v%10);v/=10;}
     at+=digits;out[at]='\n';return count;
 }
-pyg_ready :: (plan:PygPlan,persisted:bool)->int {
+pyg_ready :: (plan:PygPlan,persisted:bool)->int #effects(all) {
     if plan.code!=PygCode.ok || plan.generation<2 || plan.generation>PYG_MAX || !persisted {return 0;}
     return plan.generation;
 }

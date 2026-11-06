@@ -111,7 +111,7 @@ bytes and starts with those six bytes:
 // t) whose scriptPubKey has at least 38 bytes and starts with the six
 // bytes of WITNESS_HEADER; WITNESS_NONE when none does. Bytes after the
 // 38th have no meaning, and an earlier match is not the commitment.
-witness_commitment_index_vartime :: (b: [] u8, t: Tx, outs: [] TxOut) -> int #export_c {
+witness_commitment_index_vartime :: (b: [] u8, t: Tx, outs: [] TxOut) -> int #export_c #effects(all) {
   found := WITNESS_NONE;
   for o: 0..<t.nout {
     s := b[outs[o].script..<outs[o].script+outs[o].script_n];
@@ -140,7 +140,7 @@ The hash covers 64 bytes: the witness root, then the reserved value.
 ```jai
 // The commitment: SHA-256d of the witness root (32 bytes, hash order)
 // and then the witness reserved value (32 bytes), into out.
-witness_commitment_hash_vartime :: (root: [] u8, reserved: [] u8, out: [] u8) -> bool #export_c {
+witness_commitment_hash_vartime :: (root: [] u8, reserved: [] u8, out: [] u8) -> bool #export_c #effects(all) {
   if root.count != 32 || reserved.count != 32 || out.count != 32 { return false; }
   pair: [64] u8;
   for i: 0..<32 { pair[i] = root[i]; pair[32+i] = reserved[i]; }
@@ -149,7 +149,7 @@ witness_commitment_hash_vartime :: (root: [] u8, reserved: [] u8, out: [] u8) ->
 // The 38-byte scriptPubKey that carries it, as GenerateCoinbaseCommitment
 // and blocktools.py's get_witness_script write it: WITNESS_HEADER, then
 // the commitment. Returns 38, or -1 when a view is the wrong size.
-witness_commitment_script_vartime :: (root: [] u8, reserved: [] u8, out: [] u8) -> int #export_c {
+witness_commitment_script_vartime :: (root: [] u8, reserved: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if out.count < WITNESS_MINIMUM { return -1; }
   if !witness_commitment_hash_vartime(root, reserved, out[6..<38]) { return -1; }
   for i: 0..<6 { out[i] = WITNESS_HEADER[i]; }
@@ -222,7 +222,7 @@ WitnessCheck :: struct {
 // writing each txid (unless txids is empty) and each wtxid, and noting the
 // first transaction with a witness. A transaction read with the segwit
 // marker has a witness: the reader refuses one whose stacks are all empty.
-witness_walk_vartime :: (b: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, txids: [] u8, wtxids: [] u8) -> WitnessCheck {
+witness_walk_vartime :: (b: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, txids: [] u8, wtxids: [] u8) -> WitnessCheck #effects(all) {
   k := WitnessCheck.{first_witness=-1, commitment=WITNESS_NONE};
   if b.count < MERKLE_HEADER { k.code = WITNESS_BAD_BLOCK; k.tx_code = TX_TRUNCATED; return k; }
   c := tx_compact_read_vartime(b, MERKLE_HEADER);
@@ -261,7 +261,7 @@ The rules then run in Core's order:
 // reserved value, and the commitment must be SHA-256d(witness root ||
 // reserved value). Otherwise no transaction may have a witness. work holds
 // at least as many bytes as the wtxids.
-witness_check_vartime :: (b: [] u8, segwit: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, wtxids: [] u8, work: [] u8) -> WitnessCheck #export_c {
+witness_check_vartime :: (b: [] u8, segwit: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, wtxids: [] u8, work: [] u8) -> WitnessCheck #export_c #effects(all) {
   k := witness_walk_vartime(b, ins, outs, items, wtxids[0..<0], wtxids);
   if k.code != WITNESS_OK || k.count == 0 { return k; }
   if work.count < 32 * k.count { k.code = WITNESS_CAPACITY; return k; }
@@ -387,7 +387,7 @@ root, changed, so only the commitment can tell the two blocks apart.
 // is mutated only if some transaction has 64 stripped bytes; it is invalid
 // anyway, and the witness rules are not run. Otherwise the witness rules
 // decide, with segwit as check_witness_root.
-witness_mutated_vartime :: (b: [] u8, segwit: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, txids: [] u8, wtxids: [] u8, work: [] u8) -> WitnessCheck #export_c {
+witness_mutated_vartime :: (b: [] u8, segwit: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, txids: [] u8, wtxids: [] u8, work: [] u8) -> WitnessCheck #export_c #effects(all) {
   if txids.count == 0 { return WitnessCheck.{code=WITNESS_CAPACITY, first_witness=-1, commitment=WITNESS_NONE}; }
   k := witness_walk_vartime(b, ins, outs, items, txids, wtxids);
   if k.code != WITNESS_OK { return k; }

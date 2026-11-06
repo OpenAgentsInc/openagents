@@ -1,0 +1,124 @@
+HandlePlayer :: struct { hp: int; }
+HandleItem :: struct { count: int; }
+
+// Every specialization runs the same boundary cases; mutating one concrete
+// instance must not rely on another instance's checks.
+handles_contract :: (value: $T: copyable) {
+  values: [3] $T; generations: [3] u32; live: [3] bool; free: [3] int; state: [1] StoreState;
+  s: Store($T) = Store.{values = values[..], generations = generations[..], live = live[..], free = free[..], state = state[..]};
+  empty: Handle($T);
+  #assert !handle_present(empty) && handle_same(empty, empty);
+  #assert !store_has(s, empty) && !store_remove(s, empty);
+  for i: 0..<3 {
+    switch store_put(s, value) { case none { #assert false; } case some(h) {
+      #assert handle_present(h) && handle_slot(h) == i && handle_generation(h) == 1;
+      #assert h.value == 4294967296 + cast(u64) i && !handle_same(h, empty);
+      #assert store_has(s, h) && store_get_live(s, h).count == 1;
+    } }
+  }
+  switch store_put(s, value) { case none {} case some(h) { #assert false; } }
+  for i: -1..<4 {
+    switch store_at(s, i) { case none { #assert i < 0 || i == 3; } case some(h) { #assert i >= 0 && i < 3 && handle_slot(h) == i; } }
+  }
+  a: Handle($T) = Handle.{value = 4294967298};
+  #assert store_remove(s, a) && !live[2] && generations[2] == 2 && state[0].free_count == 1 && free[0] == 2;
+  #assert !store_has(s, a) && !store_remove(s, a);
+  switch store_get(s, a) { case none {} case some(p) { #assert false; } }
+  switch store_at(s, 2) { case none {} case some(h) { #assert false; } }
+  switch store_put(s, value) { case none { #assert false; } case some(h) {
+    #assert handle_slot(h) == 2 && handle_generation(h) == 2 && !handle_same(a, h);
+    #assert !store_has(s, a) && store_has(s, h);
+  } }
+  generations[2] = 4294967294;
+  before_last: Handle($T) = Handle.{value = 18446744065119617026};
+  #assert store_remove(s, before_last) && !live[2] && generations[2] == 4294967295 && state[0].retired == 0;
+  switch store_put(s, value) { case none { #assert false; } case some(last) {
+    #assert handle_generation(last) == 4294967295 && store_remove(s, last);
+    #assert !live[2] && state[0].retired == 1 && state[0].free_count == 0 && generations[2] == 4294967295;
+    #assert !store_has(s, last) && !store_remove(s, last);
+  } }
+  switch store_put(s, value) { case none {} case some(h) { #assert false; } }
+  beyond: Handle($T) = Handle.{value = 4294967299};
+  #assert !store_has(s, beyond) && !store_remove(s, beyond);
+  switch store_get(s, beyond) { case none {} case some(p) { #assert false; } }
+}
+
+#test "each handle/store specialization observes the whole lifetime contract" {
+  handles_contract(HandlePlayer.{hp = 20});
+  handles_contract(HandleItem.{count = 5});
+}
+
+#test "a player leaving mid-spell cannot reach the next player in that slot" {
+  values: [1] HandlePlayer;
+  generations: [1] u32;
+  live: [1] bool;
+  free: [1] int;
+  state: [1] StoreState;
+  players := Store(HandlePlayer).{values = values[..], generations = generations[..], live = live[..], free = free[..], state = state[..]};
+  first := store_put(players, HandlePlayer.{hp = 20});
+  switch first {
+    case none { #assert false; }
+    case some(caster) {
+      #assert store_get_live(players, caster)[0].hp == 20;
+      #assert store_remove(players, caster);
+      #assert !live[0] && generations[0] == 2 && state[0].free_count == 1;
+      second := store_put(players, HandlePlayer.{hp = 30});
+      switch second {
+        case none { #assert false; }
+        case some(next) {
+          #assert !handle_same(caster, next) && handle_slot(caster) == handle_slot(next);
+          #assert !store_remove(players, caster);
+          switch store_get(players, caster) { case none {} case some(wrong) { #assert false; } }
+          switch store_get(players, next) { case none { #assert false; } case some(p) { #assert p.count == 1 && p[0].hp == 30; p[0].hp = 29; } }
+          #assert store_get_live(players, next)[0].hp == 29;
+        }
+      }
+    }
+  }
+}
+
+#test "empty, full, malformed and retired slots fail without wrapping" {
+  values: [2] HandlePlayer; generations: [2] u32; live: [2] bool; free: [2] int; state: [1] StoreState;
+  players := Store(HandlePlayer).{values = values[..], generations = generations[..], live = live[..], free = free[..], state = state[..]};
+  empty: Handle(HandlePlayer);
+  #assert !handle_present(empty) && handle_same(empty, Handle(HandlePlayer).{});
+  switch store_get(players, empty) { case none {} case some(p) { #assert false; } }
+  #assert !store_remove(players, empty);
+  first := store_put(players, HandlePlayer.{hp = 10});
+  switch first { case none { #assert false; } case some(h) {
+    #assert handle_present(h) && handle_slot(h) == 0 && handle_generation(h) == 1;
+    generations[0] = 4294967295;
+    last := store_at(players, 0);
+    switch last { case none { #assert false; } case some(x) { #assert store_remove(players, x); } }
+    #assert state[0].retired == 1 && state[0].free_count == 0;
+    switch store_get(players, h) { case none {} case some(p) { #assert false; } }
+  } }
+  second := store_put(players, HandlePlayer.{hp = 11});
+  switch second { case none { #assert false; } case some(h) { #assert handle_slot(h) == 1; } }
+  switch store_put(players, HandlePlayer.{}) { case none {} case some(h) { #assert false; } }
+  switch store_at(players, -1) { case none {} case some(h) { #assert false; } }
+  switch store_at(players, 2) { case none {} case some(h) { #assert false; } }
+  forged := Handle(HandlePlayer).{value = 4294967301};
+  switch store_get(players, forged) { case none {} case some(p) { #assert false; } }
+  #assert !store_remove(players, forged);
+  exact := Handle(HandlePlayer).{value = 4294967298};
+  switch store_get(players, exact) { case none {} case some(p) { #assert false; } }
+}
+
+#test "free slots return in stack order and each reuse advances exactly one generation" {
+  values: [3] HandleItem; generations: [3] u32; live: [3] bool; free: [3] int; state: [1] StoreState;
+  items := Store(HandleItem).{values = values[..], generations = generations[..], live = live[..], free = free[..], state = state[..]};
+  a := store_put(items, HandleItem.{count = 5});
+  b := store_put(items, HandleItem.{count = 6});
+  c := store_put(items, HandleItem.{count = 7});
+  switch a { case none { #assert false; } case some(h) { #assert store_remove(items, h); } }
+  switch c { case none { #assert false; } case some(h) { #assert store_remove(items, h); } }
+  #assert !live[0] && live[1] && !live[2] && state[0].free_count == 2 && free[0] == 0 && free[1] == 2;
+  #assert generations[0] == 2 && generations[1] == 1 && generations[2] == 2;
+  d := store_put(items, HandleItem.{count = 8});
+  switch d { case none { #assert false; } case some(h) { #assert handle_slot(h) == 2 && handle_generation(h) == 2 && store_get_live(items, h)[0].count == 8; } }
+  e := store_put(items, HandleItem.{count = 9});
+  switch e { case none { #assert false; } case some(h) { #assert handle_slot(h) == 0 && handle_generation(h) == 2 && store_get_live(items, h)[0].count == 9; } }
+  switch b { case none { #assert false; } case some(h) { #assert store_get_live(items, h)[0].count == 6; } }
+  #assert state[0].high == 3 && state[0].free_count == 0 && state[0].retired == 0;
+}

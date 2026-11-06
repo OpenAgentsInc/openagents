@@ -119,14 +119,14 @@ know what it means.
 // Every gossip signature signs the double SHA-256 of the message after
 // its signatures: the type and the signatures themselves are left out,
 // and any field a later BOLT appends is in.
-gossip_hash :: (signed: [] u8, out: [] u8) {
+gossip_hash :: (signed: [] u8, out: [] u8) #effects(all) {
   sha: [1] ShaOwned; once: [32] u8;
   #assert so_init(sha[..]) && so_update(sha[..], signed, false) && so_finish(sha[..], once[..], false);
   #assert so_init(sha[..]) && so_update(sha[..], once[..], false) && so_finish(sha[..], out, false);
 }
 // BOLT 7 does not ask for a low s, and its rationale notes that anyone
 // can turn s into n - s: both verify.
-gossip_verify_vartime :: (digest: [] u8, key: [] u8, signature: [] u8) -> bool {
+gossip_verify_vartime :: (digest: [] u8, key: [] u8, signature: [] u8) -> bool #effects(all) {
   return ecdsa_verify_vartime(digest, key, signature, false);
 }
 ```
@@ -150,25 +150,25 @@ selects with the digits.
 // A short channel ID names the funding output: 3 bytes of block height,
 // 3 of the transaction's index in the block, 2 of the output's index.
 // Its text is the three numbers in decimal, joined by 'x'.
-gossip_scid :: (height: u64, tx: u64, output: u64) -> u64 { return (height << 40) | (tx << 16) | output; }
-gossip_scid_height :: (v: u64) -> u64 { return v >> 40; }
-gossip_scid_tx :: (v: u64) -> u64 { return (v >> 16) & 0xffffff; }
-gossip_scid_output :: (v: u64) -> u64 { return v & 0xffff; }
-gsp_decimal :: (v: u64, out: [] u8, at: int) -> int {
+gossip_scid :: (height: u64, tx: u64, output: u64) -> u64 #effects(all) { return (height << 40) | (tx << 16) | output; }
+gossip_scid_height :: (v: u64) -> u64 #effects(all) { return v >> 40; }
+gossip_scid_tx :: (v: u64) -> u64 #effects(all) { return (v >> 16) & 0xffffff; }
+gossip_scid_output :: (v: u64) -> u64 #effects(all) { return v & 0xffff; }
+gsp_decimal :: (v: u64, out: [] u8, at: int) -> int #effects(all) {
   digits: [20] u8; n := 0; x := v;
   while true { digits[n] = cast(u8) ('0' + cast(int) (x % 10)); n += 1; x /= 10; if x == 0 { break; } }
   for i: 0..<n { out[at + i] = digits[n - 1 - i]; }
   return at + n;
 }
 // Writes the text and returns its length; out needs 23 bytes.
-gossip_scid_text :: (v: u64, out: [] u8) -> int {
+gossip_scid_text :: (v: u64, out: [] u8) -> int #effects(all) {
   at := gsp_decimal(gossip_scid_height(v), out, 0); out[at] = 'x';
   at = gsp_decimal(gossip_scid_tx(v), out, at + 1); out[at] = 'x';
   return gsp_decimal(gossip_scid_output(v), out, at + 1);
 }
 GspScid :: struct { code: int; value: u64; }
 // Three decimal numbers without leading zeros, each in its field's range.
-gossip_scid_parse_vartime :: (t: string) -> GspScid {
+gossip_scid_parse_vartime :: (t: string) -> GspScid #effects(all) {
   parts: [3] u64; limits := [3] u64.[1 << 24, 1 << 24, 1 << 16];
   k := 0; at := 0;
   while k < 3 {
@@ -215,7 +215,7 @@ GspAnnouncement :: struct {
   routable: bool;        // no even feature bit the reader does not know
   hash: [32] u8;
 }
-gossip_announcement_read_vartime :: (m: [] u8) -> GspAnnouncement {
+gossip_announcement_read_vartime :: (m: [] u8) -> GspAnnouncement #effects(all) {
   if gsp_type(m) != GSP_CHANNEL_ANNOUNCEMENT { return GspAnnouncement.{code = ifx m.count < 2 then GSP_TRUNCATED else GSP_WRONG_TYPE}; }
   if m.count < 2 + 4 * GSP_SIGNATURE + 2 { return GspAnnouncement.{code = GSP_TRUNCATED}; }
   a: GspAnnouncement;
@@ -266,7 +266,7 @@ GSP_FORBIDDEN :: [52] u32.[
   0x110cd, 0x110cd, 0x13430, 0x1343f, 0x1bca0, 0x1bca3, 0x1d173, 0x1d17a, 0xe0001, 0xe0001,
   0xe0020, 0xe007f, 0xf0000, 0xffffd, 0x100000, 0x10fffd
 ];
-gossip_text_ok_vartime :: (b: [] u8) -> bool {
+gossip_text_ok_vartime :: (b: [] u8) -> bool #effects(all) {
   at := 0;
   while at < b.count {
     c := cast(int) b[at];
@@ -313,7 +313,7 @@ GspNode :: struct {
 }
 // The descriptors of known types, as BOLT 7 lists them: the length of
 // each type's data, -1 for a hostname (a length byte, then the name).
-gsp_address_length :: (type: int) -> int {
+gsp_address_length :: (type: int) -> int #effects(all) {
   if type == 1 { return 6; } if type == 2 { return 18; } if type == 3 { return 12; }
   if type == 4 { return 37; } if type == 5 { return -1; }
   return 0;
@@ -321,7 +321,7 @@ gsp_address_length :: (type: int) -> int {
 // A descriptor of an unknown type ends the list, since its length is
 // unknown. Tor v2 (type 3), port 0, a second hostname and a hostname that
 // is not ASCII are skipped.
-gsp_addresses_vartime :: (m: [] u8, from: int, end: int, n: [] GspNode) -> int {
+gsp_addresses_vartime :: (m: [] u8, from: int, end: int, n: [] GspNode) -> int #effects(all) {
   hostnames := 0; at := from;
   while at < end {
     type := cast(int) m[at]; length := gsp_address_length(type);
@@ -345,7 +345,7 @@ gsp_addresses_vartime :: (m: [] u8, from: int, end: int, n: [] GspNode) -> int {
   }
   return GSP_OK;
 }
-gossip_node_read_vartime :: (m: [] u8, n: [] GspNode) -> int {
+gossip_node_read_vartime :: (m: [] u8, n: [] GspNode) -> int #effects(all) {
   fresh: GspNode; n[0] = fresh;
   if gsp_type(m) != GSP_NODE_ANNOUNCEMENT { n[0].code = ifx m.count < 2 then GSP_TRUNCATED else GSP_WRONG_TYPE; return n[0].code; }
   at := 2 + GSP_SIGNATURE;
@@ -390,7 +390,7 @@ with the same policy have the same checksum, whenever they were signed.
 ```jai
 // CRC32C (RFC 3720, appendix B.4): the reflected polynomial 0x82F63B78,
 // started at all ones and finished by inverting.
-gsp_crc :: (c: u32, data: [] u8) -> u32 {
+gsp_crc :: (c: u32, data: [] u8) -> u32 #effects(all) {
   x := c;
   for b: data {
     x ^= cast(u32) b;
@@ -398,7 +398,7 @@ gsp_crc :: (c: u32, data: [] u8) -> u32 {
   }
   return x;
 }
-gossip_crc32c :: (data: [] u8) -> u32 { return gsp_crc(0xffffffff, data) ^ 0xffffffff; }
+gossip_crc32c :: (data: [] u8) -> u32 #effects(all) { return gsp_crc(0xffffffff, data) ^ 0xffffffff; }
 ```
 
 <!-- source: coax/lib/lightning/gossip.coax update -->
@@ -414,7 +414,7 @@ GspUpdate :: struct {
   checksum: u32;   // CRC32C of the update without signature and timestamp
   hash: [32] u8;
 }
-gossip_update_read_vartime :: (m: [] u8) -> GspUpdate {
+gossip_update_read_vartime :: (m: [] u8) -> GspUpdate #effects(all) {
   if gsp_type(m) != GSP_CHANNEL_UPDATE { return GspUpdate.{code = ifx m.count < 2 then GSP_TRUNCATED else GSP_WRONG_TYPE}; }
   if m.count < GSP_UPDATE_SIZE { return GspUpdate.{code = GSP_TRUNCATED}; }
   u: GspUpdate;
@@ -429,7 +429,7 @@ gossip_update_read_vartime :: (m: [] u8) -> GspUpdate {
 }
 // An update carries no key: the graph takes node_id_1 or node_id_2 from
 // the channel's announcement, by the direction bit.
-gossip_update_verify_vartime :: (m: [] u8, u: GspUpdate, key: [] u8) -> bool {
+gossip_update_verify_vartime :: (m: [] u8, u: GspUpdate, key: [] u8) -> bool #effects(all) {
   digest := u.hash;
   return gossip_verify_vartime(digest[..], key, m[2..<2 + GSP_SIGNATURE]);
 }
@@ -460,7 +460,7 @@ in ascending order, is the only one left, and a reader refuses 1.
 // encoded_short_ids: an encoding byte, then the IDs. Only 0, plain 8-byte
 // IDs in ascending order, is left: BOLT 7 now forbids 1, zlib.
 GspScids :: struct { code: int; start: int; count: int; }
-gsp_scids_vartime :: (m: [] u8, at: int, n: int) -> GspScids {
+gsp_scids_vartime :: (m: [] u8, at: int, n: int) -> GspScids #effects(all) {
   if n == 0 { return GspScids.{code = GSP_TRUNCATED}; }
   if m[at] != 0 { return GspScids.{code = GSP_BAD_ENCODING}; }
   if (n - 1) % 8 != 0 { return GspScids.{code = GSP_BAD_LENGTH}; }
@@ -468,11 +468,11 @@ gsp_scids_vartime :: (m: [] u8, at: int, n: int) -> GspScids {
   for i: 1..<s.count { if gsp_u64(m, s.start + 8 * i) <= gsp_u64(m, s.start + 8 * i - 8) { return GspScids.{code = GSP_ORDER}; } }
   return s;
 }
-gossip_scid_at :: (m: [] u8, s: GspScids, i: int) -> u64 { return gsp_u64(m, s.start + 8 * i); }
+gossip_scid_at :: (m: [] u8, s: GspScids, i: int) -> u64 #effects(all) { return gsp_u64(m, s.start + 8 * i); }
 // The TLV stream after the fixed fields: records of the known types are
 // returned by position, unknown odd ones skipped.
 GspTlvs :: struct { code: int; one: int; one_n: int; three: int; three_n: int; }
-gsp_tlvs_vartime :: (m: [] u8, at: int, three_known: bool) -> GspTlvs {
+gsp_tlvs_vartime :: (m: [] u8, at: int, three_known: bool) -> GspTlvs #effects(all) {
   r := GspTlvs.{one = -1, three = -1};
   previous: u64 = 0; first := true; b := m[at..<m.count];
   p := 0;
@@ -488,7 +488,7 @@ gsp_tlvs_vartime :: (m: [] u8, at: int, three_known: bool) -> GspTlvs {
 }
 // query_short_channel_ids, with optional query_flags: one BigSize per ID.
 GspQuery :: struct { code: int; chain: int; scids: GspScids; flags: int; flags_n: int; }
-gossip_query_scids_read_vartime :: (m: [] u8) -> GspQuery {
+gossip_query_scids_read_vartime :: (m: [] u8) -> GspQuery #effects(all) {
   if gsp_type(m) != GSP_QUERY_SCIDS { return GspQuery.{code = ifx m.count < 2 then GSP_TRUNCATED else GSP_WRONG_TYPE}; }
   if m.count < 2 + 32 + 2 { return GspQuery.{code = GSP_TRUNCATED}; }
   q := GspQuery.{chain = 2, flags = -1};
@@ -515,14 +515,14 @@ gossip_query_scids_read_vartime :: (m: [] u8) -> GspQuery {
 // The i-th query flag: bit 0 asks for the channel_announcement, bits 1
 // and 2 for each end's channel_update, bits 3 and 4 for each end's
 // node_announcement.
-gossip_query_flag :: (m: [] u8, q: GspQuery, i: int) -> u64 {
+gossip_query_flag :: (m: [] u8, q: GspQuery, i: int) -> u64 #effects(all) {
   p := q.flags; f: LnBigSize;
   for k: 0..<i + 1 { f = bigsize_read_vartime(m, p); p = f.next; }
   return f.value;
 }
 // reply_short_channel_ids_end: the chain and full_information.
 GspEnd :: struct { code: int; chain: int; full: int; }
-gossip_end_read_vartime :: (m: [] u8) -> GspEnd {
+gossip_end_read_vartime :: (m: [] u8) -> GspEnd #effects(all) {
   if gsp_type(m) != GSP_REPLY_SCIDS_END { return GspEnd.{code = ifx m.count < 2 then GSP_TRUNCATED else GSP_WRONG_TYPE}; }
   if m.count < 2 + 32 + 1 { return GspEnd.{code = GSP_TRUNCATED}; }
   return GspEnd.{chain = 2, full = cast(int) m[34]};
@@ -534,7 +534,7 @@ GspRange :: struct {
   code: int; chain: int; first: u64; number: u64; options: u64; complete: int;
   scids: GspScids; timestamps: int; checksums: int;   // -1 when absent
 }
-gossip_query_range_read_vartime :: (m: [] u8) -> GspRange {
+gossip_query_range_read_vartime :: (m: [] u8) -> GspRange #effects(all) {
   if gsp_type(m) != GSP_QUERY_RANGE { return GspRange.{code = ifx m.count < 2 then GSP_TRUNCATED else GSP_WRONG_TYPE}; }
   if m.count < 2 + 32 + 8 { return GspRange.{code = GSP_TRUNCATED}; }
   r := GspRange.{chain = 2, first = gsp_u32(m, 34), number = gsp_u32(m, 38), timestamps = -1, checksums = -1};
@@ -549,7 +549,7 @@ gossip_query_range_read_vartime :: (m: [] u8) -> GspRange {
   }
   return r;
 }
-gossip_reply_range_read_vartime :: (m: [] u8) -> GspRange {
+gossip_reply_range_read_vartime :: (m: [] u8) -> GspRange #effects(all) {
   if gsp_type(m) != GSP_REPLY_RANGE { return GspRange.{code = ifx m.count < 2 then GSP_TRUNCATED else GSP_WRONG_TYPE}; }
   if m.count < 2 + 32 + 9 + 2 { return GspRange.{code = GSP_TRUNCATED}; }
   r := GspRange.{chain = 2, first = gsp_u32(m, 34), number = gsp_u32(m, 38), complete = cast(int) m[42], timestamps = -1, checksums = -1};
@@ -574,12 +574,12 @@ gossip_reply_range_read_vartime :: (m: [] u8) -> GspRange {
 // gossip_timestamp_filter: send me gossip with first <= timestamp <
 // first + range. The sum is taken in 64 bits, so it cannot wrap.
 GspFilter :: struct { code: int; chain: int; first: u64; range: u64; }
-gossip_filter_read_vartime :: (m: [] u8) -> GspFilter {
+gossip_filter_read_vartime :: (m: [] u8) -> GspFilter #effects(all) {
   if gsp_type(m) != GSP_TIMESTAMP_FILTER { return GspFilter.{code = ifx m.count < 2 then GSP_TRUNCATED else GSP_WRONG_TYPE}; }
   if m.count < 2 + 32 + 8 { return GspFilter.{code = GSP_TRUNCATED}; }
   return GspFilter.{chain = 2, first = gsp_u32(m, 34), range = gsp_u32(m, 38)};
 }
-gossip_filter_passes :: (f: GspFilter, timestamp: u64) -> bool { return timestamp >= f.first && timestamp < f.first + f.range; }
+gossip_filter_passes :: (f: GspFilter, timestamp: u64) -> bool #effects(all) { return timestamp >= f.first && timestamp < f.first + f.range; }
 ```
 
 `gossip_read_vartime` reads any of the eight messages:
@@ -587,7 +587,7 @@ gossip_filter_passes :: (f: GspFilter, timestamp: u64) -> bool { return timestam
 <!-- source: coax/lib/lightning/gossip.coax read -->
 ```jai
 // Any of the eight messages, as a code.
-gossip_read_vartime :: (m: [] u8) -> int {
+gossip_read_vartime :: (m: [] u8) -> int #effects(all) {
   t := gsp_type(m);
   if t == GSP_CHANNEL_ANNOUNCEMENT { return gossip_announcement_read_vartime(m).code; }
   if t == GSP_NODE_ANNOUNCEMENT { n: [1] GspNode; return gossip_node_read_vartime(m, n[..]); }
@@ -610,16 +610,16 @@ orders the two nodes, and their funding keys with them, so that
 <!-- source: coax/lib/lightning/gossip.coax writer -->
 ```jai
 // The writers return the message's length, or -1 when out is too small.
-gsp_sign :: (key: [] u8, signed: [] u8, out: [] u8) {
+gsp_sign :: (key: [] u8, signed: [] u8, out: [] u8) #effects(all) {
   digest: [32] u8; work: [1] EcdsaWork;
   gossip_hash(signed, digest[..]);
   #assert ecdsa_sign(key, digest[..], work[..], out, false);
 }
-gsp_put :: (out: [] u8, at: int, v: [] u8) -> int { for i: 0..<v.count { out[at + i] = v[i]; } return at + v.count; }
+gsp_put :: (out: [] u8, at: int, v: [] u8) -> int #effects(all) { for i: 0..<v.count { out[at + i] = v[i]; } return at + v.count; }
 // Both ends sign: node_id_1 is the lesser node ID, so the writer orders
 // the two nodes and their funding keys before it signs.
 gossip_announcement_write_vartime :: (chain: [] u8, scid: u64, node_a: [] u8, node_b: [] u8,
-                                      bitcoin_a: [] u8, bitcoin_b: [] u8, features: [] u8, out: [] u8) -> int {
+                                      bitcoin_a: [] u8, bitcoin_b: [] u8, features: [] u8, out: [] u8) -> int #effects(all) {
   size := 2 + 4 * GSP_SIGNATURE + 2 + features.count + 32 + 8 + 4 * GSP_POINT;
   if out.count < size { return -1; }
   a := gsp_public(node_a); b := gsp_public(node_b);
@@ -639,7 +639,7 @@ gossip_announcement_write_vartime :: (chain: [] u8, scid: u64, node_a: [] u8, no
   return size;
 }
 gossip_node_write_vartime :: (key: [] u8, timestamp: u64, rgb: [] u8, alias: string, addresses: [] u8,
-                              features: [] u8, out: [] u8) -> int {
+                              features: [] u8, out: [] u8) -> int #effects(all) {
   size := 2 + GSP_SIGNATURE + 2 + features.count + 4 + 33 + 3 + 32 + 2 + addresses.count;
   if out.count < size || alias.count > 32 { return -1; }
   ln_put16(out, 0, GSP_NODE_ANNOUNCEMENT);
@@ -657,7 +657,7 @@ gossip_node_write_vartime :: (key: [] u8, timestamp: u64, rgb: [] u8, alias: str
 // One end's policy for a channel: must_be_one is set in message_flags,
 // direction and disable are channel_flags' bits 0 and 1.
 gossip_update_write_vartime :: (key: [] u8, chain: [] u8, scid: u64, timestamp: u64, channel_flags: int,
-                                cltv: int, htlc_min: u64, fee_base: u64, fee_ppm: u64, htlc_max: u64, out: [] u8) -> int {
+                                cltv: int, htlc_min: u64, fee_base: u64, fee_ppm: u64, htlc_max: u64, out: [] u8) -> int #effects(all) {
   if out.count < GSP_UPDATE_SIZE { return -1; }
   ln_put16(out, 0, GSP_CHANNEL_UPDATE);
   at := gsp_put(out, 66, chain);
@@ -668,14 +668,14 @@ gossip_update_write_vartime :: (key: [] u8, chain: [] u8, scid: u64, timestamp: 
   gsp_sign(key, out[66..<GSP_UPDATE_SIZE], out[2..<66]);
   return GSP_UPDATE_SIZE;
 }
-gsp_put_scids :: (out: [] u8, at: int, ids: [] u64) -> int {
+gsp_put_scids :: (out: [] u8, at: int, ids: [] u64) -> int #effects(all) {
   ln_put16(out, at, 1 + 8 * ids.count); out[at + 2] = 0;
   for i: 0..<ids.count { gsp_put64(out, at + 3 + 8 * i, ids[i]); }
   return at + 3 + 8 * ids.count;
 }
 // query_short_channel_ids, with one flag byte per ID when flags is not
 // empty (flags below 0xfd are their own BigSize).
-gossip_query_scids_write_vartime :: (chain: [] u8, ids: [] u64, flags: [] u8, out: [] u8) -> int {
+gossip_query_scids_write_vartime :: (chain: [] u8, ids: [] u64, flags: [] u8, out: [] u8) -> int #effects(all) {
   size := 2 + 32 + 3 + 8 * ids.count + ifx flags.count > 0 then 3 + flags.count else 0;
   if out.count < size { return -1; }
   ln_put16(out, 0, GSP_QUERY_SCIDS);
@@ -687,7 +687,7 @@ gossip_query_scids_write_vartime :: (chain: [] u8, ids: [] u64, flags: [] u8, ou
   }
   return at;
 }
-gossip_query_range_write_vartime :: (chain: [] u8, first: u64, number: u64, options: int, out: [] u8) -> int {
+gossip_query_range_write_vartime :: (chain: [] u8, first: u64, number: u64, options: int, out: [] u8) -> int #effects(all) {
   size := 2 + 32 + 8 + ifx options >= 0 then 3 else 0;
   if out.count < size { return -1; }
   ln_put16(out, 0, GSP_QUERY_RANGE);
@@ -696,7 +696,7 @@ gossip_query_range_write_vartime :: (chain: [] u8, first: u64, number: u64, opti
   if options >= 0 { out[at] = 1; out[at + 1] = 1; out[at + 2] = cast(u8) options; at += 3; }
   return at;
 }
-gossip_filter_write_vartime :: (chain: [] u8, first: u64, range: u64, out: [] u8) -> int {
+gossip_filter_write_vartime :: (chain: [] u8, first: u64, range: u64, out: [] u8) -> int #effects(all) {
   if out.count < 42 { return -1; }
   ln_put16(out, 0, GSP_TIMESTAMP_FILTER);
   at := gsp_put(out, 2, chain);
@@ -733,19 +733,19 @@ GspGraph :: struct {
   channels: [16] GspChannel; count: int;
   nodes: [32] GspNodeInfo; node_count: int;
 }
-gossip_graph_begin :: (g: [] GspGraph, chain: [] u8) {
+gossip_graph_begin :: (g: [] GspGraph, chain: [] u8) #effects(all) {
   fresh: GspGraph; g[0] = fresh;
   for i: 0..<32 { g[0].chain[i] = chain[i]; }
 }
-gossip_find_channel :: (g: [] GspGraph, scid: u64) -> int {
+gossip_find_channel :: (g: [] GspGraph, scid: u64) -> int #effects(all) {
   for i: 0..<g[0].count { if g[0].channels[i].scid == scid { return i; } }
   return -1;
 }
-gossip_find_node :: (g: [] GspGraph, id: [] u8) -> int {
+gossip_find_node :: (g: [] GspGraph, id: [] u8) -> int #effects(all) {
   for i: 0..<g[0].node_count { if cast(string) g[0].nodes[i].id[..] == cast(string) id { return i; } }
   return -1;
 }
-gsp_know_node :: (g: [] GspGraph, id: [] u8) -> bool {
+gsp_know_node :: (g: [] GspGraph, id: [] u8) -> bool #effects(all) {
   if gossip_find_node(g, id) >= 0 { return true; }
   if g[0].node_count == GSP_MAX_NODES { return false; }
   k := g[0].node_count;
@@ -758,7 +758,7 @@ gsp_know_node :: (g: [] GspGraph, id: [] u8) -> bool {
 // end its direction bit names, and be newer than that end's last; a node
 // announcement must come from a node with a channel and be newer than
 // its last.
-gossip_graph_add_vartime :: (g: [] GspGraph, m: [] u8) -> int {
+gossip_graph_add_vartime :: (g: [] GspGraph, m: [] u8) -> int #effects(all) {
   t := gsp_type(m);
   if t == GSP_CHANNEL_ANNOUNCEMENT {
     a := gossip_announcement_read_vartime(m);
@@ -809,7 +809,7 @@ gossip_graph_add_vartime :: (g: [] GspGraph, m: [] u8) -> int {
 // channel whose block is in [first, first + number), in ascending order,
 // with timestamps for option bit 0 and checksums for bit 1 (0 for an end
 // with no update).
-gossip_reply_range_vartime :: (g: [] GspGraph, first: u64, number: u64, options: u64, out: [] u8) -> int {
+gossip_reply_range_vartime :: (g: [] GspGraph, first: u64, number: u64, options: u64, out: [] u8) -> int #effects(all) {
   ids: [16] u64; n := 0;
   for i: 0..<g[0].count {
     s := g[0].channels[i].scid; h := gossip_scid_height(s);

@@ -105,7 +105,7 @@ can bound a block's work before it does that work.
 // count 1. OP_CHECKMULTISIG and OP_CHECKMULTISIGVERIFY count 20, or, when
 // accurate and the opcode before is OP_1 to OP_16, that number. Counting
 // stops at a push that runs past the end.
-sigop_count_vartime :: (s: [] u8, accurate: bool) -> int #export_c {
+sigop_count_vartime :: (s: [] u8, accurate: bool) -> int #export_c #effects(all) {
   n := 0; last := 0xff; pc := 0;
   while pc < s.count {
     op := script_op_vartime(s, pc);
@@ -154,7 +154,7 @@ push of the scriptSig. Core counts that script accurately, because by
 // scriptSig (0 when the scriptSig is not push-only or ends in OP_0 to
 // OP_16, which push no bytes here); for any other output its own accurate
 // count.
-sigop_p2sh_vartime :: (spk: [] u8, script_sig: [] u8) -> int #export_c {
+sigop_p2sh_vartime :: (spk: [] u8, script_sig: [] u8) -> int #export_c #effects(all) {
   if !script_p2sh_vartime(spk) { return sigop_count_vartime(spk, true); }
   pc := 0; at := 0; n := 0;
   while pc < script_sig.count {
@@ -180,7 +180,7 @@ its witness size instead, so tapscript never adds to this count.
 // WitnessSigOps: a v0 program of 20 bytes (P2WPKH) is 1; of 32 bytes
 // (P2WSH) the accurate count of the witness script, the last witness item.
 // Every other version counts 0: Taproot's are budgeted per input.
-sigop_program_vartime :: (version: int, program_n: int, script: [] u8, has_script: bool) -> int #export_c {
+sigop_program_vartime :: (version: int, program_n: int, script: [] u8, has_script: bool) -> int #export_c #effects(all) {
   if version != 0 { return 0; }
   if program_n == 20 { return 1; }
   if program_n == 32 && has_script { return sigop_count_vartime(script, true); }
@@ -189,7 +189,7 @@ sigop_program_vartime :: (version: int, program_n: int, script: [] u8, has_scrip
 // CountWitnessSigOps for input k of t, read from b: nothing without the
 // WITNESS flag; a witness program, or a P2SH output whose push-only
 // scriptSig's last push is one, counts by its program.
-sigop_witness_vartime :: (b: [] u8, ins: [] TxIn, items: [] TxItem, k: int, spk: [] u8, flags: int) -> int #export_c {
+sigop_witness_vartime :: (b: [] u8, ins: [] TxIn, items: [] TxItem, k: int, spk: [] u8, flags: int) -> int #export_c #effects(all) {
   if (flags & SCRIPT_VERIFY_WITNESS) == 0 { return 0; }
   in := ins[k];
   script := b[0..<0];
@@ -218,7 +218,7 @@ hold before segwit became 80,000 units of cost:
 ```jai
 // GetLegacySigOpCount: the inaccurate count of every scriptSig and every
 // scriptPubKey of t.
-sigop_legacy_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut) -> int #export_c {
+sigop_legacy_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut) -> int #export_c #effects(all) {
   n := 0;
   for k: 0..<t.nin { n += sigop_count_vartime(b[ins[k].script..<ins[k].script+ins[k].script_n], false); }
   for k: 0..<t.nout { n += sigop_count_vartime(b[outs[k].script..<outs[k].script+outs[k].script_n], false); }
@@ -231,7 +231,7 @@ SigopSpent :: struct { value: int; script: int; script_n: int; }
 // that is not a coinbase, plus the P2SH count times 4 under the P2SH flag
 // and the witness count under the WITNESS flag. spent holds one output per
 // input; -1 when it does not.
-sigop_cost_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, prev: [] u8, spent: [] SigopSpent, flags: int) -> int #export_c {
+sigop_cost_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, prev: [] u8, spent: [] SigopSpent, flags: int) -> int #export_c #effects(all) {
   cost := sigop_legacy_vartime(b, t, ins, outs) * TX_SCALE;
   if tx_coinbase_vartime(b, t, ins) { return cost; }
   if spent.count != t.nin { return -1; }
@@ -278,7 +278,7 @@ transaction that created the output paid 20 × 4 = 80 for it.
 BlockCheck :: struct { code: int; tx: int; tx_code: int; count: int; stripped: int; weight: int; legacy: int; }
 // CheckBlock after the header's own checks (chapters 47 and 50), in
 // Core's order. txids needs 32 bytes per transaction and work as many.
-block_check_vartime :: (blk: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, txids: [] u8, wtxids: [] u8, work: [] u8) -> BlockCheck #export_c {
+block_check_vartime :: (blk: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, txids: [] u8, wtxids: [] u8, work: [] u8) -> BlockCheck #export_c #effects(all) {
   r := BlockCheck.{tx=-1};
   ids := merkle_block_ids_vartime(blk, false, ins, outs, items, txids, wtxids);
   if ids.code != MERKLE_OK { r.code = ifx ids.code == MERKLE_CAPACITY then BLOCK_CAPACITY else BLOCK_BAD; return r; }
@@ -318,7 +318,7 @@ block_check_vartime :: (blk: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxIt
 }
 // ContextualCheckBlock's last rule, once the witness commitment is
 // checked (chapter 49): the weight is at most 4,000,000.
-block_weight_check_vartime :: (c: BlockCheck) -> int #export_c {
+block_weight_check_vartime :: (c: BlockCheck) -> int #export_c #effects(all) {
   if c.code != BLOCK_OK { return c.code; }
   return ifx c.weight > FEE_MAX_BLOCK_WEIGHT then BLOCK_WEIGHT else BLOCK_OK;
 }
@@ -363,7 +363,7 @@ cost is counted transaction by transaction:
 // refused as soon as the total passes 80,000. spent holds the outputs the
 // inputs spend, for every input but the coinbase's, in block order.
 BlockSigops :: struct { code: int; cost: int; tx: int; }
-block_sigops_vartime :: (blk: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, prev: [] u8, spent: [] SigopSpent, flags: int) -> BlockSigops #export_c {
+block_sigops_vartime :: (blk: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, prev: [] u8, spent: [] SigopSpent, flags: int) -> BlockSigops #export_c #effects(all) {
   r := BlockSigops.{tx=-1};
   if blk.count <= MERKLE_HEADER { r.code = BLOCK_BAD; return r; }
   c := tx_compact_read_vartime(blk, MERKLE_HEADER);

@@ -99,7 +99,7 @@ Each refusal names the tag it stopped at in `l.tag`:
 ```jai
 // The r tags of a parsed kind 10002 event. The signature is not checked
 // here: relay.coax refuses forged events before they reach a reader.
-nip65_read :: (e: NostrEvent) -> Nip65List {
+nip65_read :: (e: NostrEvent) -> Nip65List #effects(all) {
   l: Nip65List; j: [1] Json;
   if !nt_start(j[..], e) { return l; }
   if e.kind != N65_KIND_RELAYS { return n65_fail(l, N65_KIND, 0); }
@@ -215,7 +215,7 @@ and they agree.
 ```jai
 // The follows in `want` that still need a relay at this level, write to
 // relay r, and are not yet asked of r.
-ob_needing :: (o: [] Outbox, p: ObPlan, taken: [] u64, want: u64, r: int, level: int) -> u64 {
+ob_needing :: (o: [] Outbox, p: ObPlan, taken: [] u64, want: u64, r: int, level: int) -> u64 #effects(all) {
   m: u64 = 0; bit := cast(u64) 1 << r;
   for a: 0..<o[0].authors {
     if (want & (cast(u64) 1 << a)) != 0 && p.got[a] < level && (o[0].author[a].write & bit) != 0 && (taken[a] & bit) == 0 {
@@ -224,7 +224,7 @@ ob_needing :: (o: [] Outbox, p: ObPlan, taken: [] u64, want: u64, r: int, level:
   }
   return m;
 }
-ob_assign :: (p: ObPlan, taken: [] u64, k: int, m: u64) -> ObPlan {
+ob_assign :: (p: ObPlan, taken: [] u64, k: int, m: u64) -> ObPlan #effects(all) {
   q := p; r := q.relay[k];
   q.asks[k] |= m;
   for a: 0..<OB_AUTHORS {
@@ -240,7 +240,7 @@ ob_assign :: (p: ObPlan, taken: [] u64, k: int, m: u64) -> ObPlan {
 // picked later in a level serves only the follows still uncovered then; the
 // next level's first step lets it serve the others. A follow
 // with no write relays gets none (got 0); the caller decides the fallback.
-ob_cover :: (o: [] Outbox, follows: [] int, per_author: int, most: int) -> ObPlan {
+ob_cover :: (o: [] Outbox, follows: [] int, per_author: int, most: int) -> ObPlan #effects(all) {
   // taken[a]: the relays asked for author a. slot[r]: 1 + relay r's pick,
   // or 0 while r is not in the plan.
   p: ObPlan; want: u64; taken: [OB_AUTHORS] u64; slot: [OB_RELAYS] int;
@@ -301,7 +301,7 @@ closed relay may hold events the others don't.
 // the first time any relay delivers the id, OB_DUP after, OB_NOT_ASKED from
 // a relay the subscription was not sent to. relay.coax has already checked
 // the signature and dropped repeats from the same connection.
-ob_sub_event :: (s: [] ObSub, relay: int, id: [32] u8) -> int {
+ob_sub_event :: (s: [] ObSub, relay: int, id: [32] u8) -> int #effects(all) {
   if !ob_asked(s, relay) { return OB_NOT_ASKED; }
   s[0].events[relay] += 1;
   if ob_seen(s, id) { s[0].dups += 1; return OB_DUP; }
@@ -312,17 +312,17 @@ ob_sub_event :: (s: [] ObSub, relay: int, id: [32] u8) -> int {
   s[0].fresh += 1;
   return OB_NEW;
 }
-ob_sub_end :: (s: [] ObSub, relay: int, state: int) -> bool {
+ob_sub_end :: (s: [] ObSub, relay: int, state: int) -> bool #effects(all) {
   if !ob_asked(s, relay) || s[0].state[relay] != OB_WAIT { return false; }
   s[0].state[relay] = state;
   return true;
 }
 // The relay sent EOSE: true when it was still waiting.
-ob_sub_eose :: (s: [] ObSub, relay: int) -> bool { return ob_sub_end(s, relay, OB_EOSE); }
+ob_sub_eose :: (s: [] ObSub, relay: int) -> bool #effects(all) { return ob_sub_end(s, relay, OB_EOSE); }
 // The relay sent CLOSED or the connection failed: true when it was still waiting.
-ob_sub_closed :: (s: [] ObSub, relay: int) -> bool { return ob_sub_end(s, relay, OB_CLOSED); }
+ob_sub_closed :: (s: [] ObSub, relay: int) -> bool #effects(all) { return ob_sub_end(s, relay, OB_CLOSED); }
 // At or after the deadline, every relay still waiting times out. Returns how many did.
-ob_sub_tick :: (s: [] ObSub, now: int) -> int {
+ob_sub_tick :: (s: [] ObSub, now: int) -> int #effects(all) {
   if now < s[0].deadline { return 0; }
   n := 0; rest := s[0].relays; r := 0;
   while rest != 0 {
@@ -332,7 +332,7 @@ ob_sub_tick :: (s: [] ObSub, now: int) -> int {
   return n;
 }
 // Caught up: no relay of the subscription is still waiting.
-ob_caught_up :: (s: [] ObSub) -> bool {
+ob_caught_up :: (s: [] ObSub) -> bool #effects(all) {
   rest := s[0].relays; r := 0;
   while rest != 0 {
     if (rest & 1) != 0 && s[0].state[r] == OB_WAIT { return false; }

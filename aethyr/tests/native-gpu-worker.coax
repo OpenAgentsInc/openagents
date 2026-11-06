@@ -2,32 +2,32 @@
 // The foreign calls only move typed values through the Vulkan C SDK.
 #load "native-gpu-policy.coax";
 #load "../render/tests/qualification-files.coax";
-ngfx_open :: ()->int #foreign;
-ngfx_info :: (field:int)->int #foreign;
-ngfx_name :: (index:int)->int #foreign;
-ngfx_features :: (version:int,derivatives:int,control:int,int64_required:int,helper:int,int64_enabled:int)->int #foreign;
-ngfx_view :: (vec4s:int,physical:int,offset:int)->int #foreign;
-ngfx_view_field :: (field:int)->int #foreign;
-ngfx_blob :: (bytes:int)->int #foreign;
-ngfx_blob_put :: (blob:int,offset:int,byte:int)->int #foreign;
-ngfx_blob_word :: (blob:int,index:int)->int #foreign;
-ngfx_buffer :: (bytes:int)->int #foreign;
-ngfx_buffer_word :: (buffer:int,index:int,word:int)->int #foreign;
-ngfx_image :: (w:int,h:int,layers:int,array:int,format:int,use:int)->int #foreign;
-ngfx_upload :: (image:int,blob:int)->int #foreign;
-ngfx_sampler :: (filter:int,repeat:int,compare:int,op:int,mip:int)->int #foreign;
-ngfx_begin :: (words_handle:int)->int #foreign;
-ngfx_binding :: (slot:int,kind:int,resource:int,offset:int,range:int)->int #foreign;
-ngfx_target :: (slot:int,image:int)->int #foreign;
-ngfx_attribute :: (slot:int,location:int,binding:int,format:int,offset:int)->int #foreign;
-ngfx_clear :: (lane:int,word:int)->int #foreign;
-ngfx_draw :: (index:int,word:int)->int #foreign;
-ngfx_field :: (field:int,value:int)->int #foreign;
-ngfx_pipe_open :: ()->int #foreign;
-ngfx_submit :: ()->int #foreign;
-ngfx_pipe_close :: ()->int #foreign;
-ngfx_read :: (image:int,bytes:int)->int #foreign;
-ngfx_close :: ()->int #foreign;
+ngfx_open :: ()->int #foreign #effects(all);
+ngfx_info :: (field:int)->int #foreign #effects(all);
+ngfx_name :: (index:int)->int #foreign #effects(all);
+ngfx_features :: (version:int,derivatives:int,control:int,int64_required:int,helper:int,int64_enabled:int)->int #foreign #effects(all);
+ngfx_view :: (vec4s:int,physical:int,offset:int)->int #foreign #effects(all);
+ngfx_view_field :: (field:int)->int #foreign #effects(all);
+ngfx_blob :: (bytes:int)->int #foreign #effects(all);
+ngfx_blob_put :: (blob:int,offset:int,byte:int)->int #foreign #effects(all);
+ngfx_blob_word :: (blob:int,index:int)->int #foreign #effects(all);
+ngfx_buffer :: (bytes:int)->int #foreign #effects(all);
+ngfx_buffer_word :: (buffer:int,index:int,word:int)->int #foreign #effects(all);
+ngfx_image :: (w:int,h:int,layers:int,array:int,format:int,use:int)->int #foreign #effects(all);
+ngfx_upload :: (image:int,blob:int)->int #foreign #effects(all);
+ngfx_sampler :: (filter:int,repeat:int,compare:int,op:int,mip:int)->int #foreign #effects(all);
+ngfx_begin :: (words_handle:int)->int #foreign #effects(all);
+ngfx_binding :: (slot:int,kind:int,resource:int,offset:int,range:int)->int #foreign #effects(all);
+ngfx_target :: (slot:int,image:int)->int #foreign #effects(all);
+ngfx_attribute :: (slot:int,location:int,binding:int,format:int,offset:int)->int #foreign #effects(all);
+ngfx_clear :: (lane:int,word:int)->int #foreign #effects(all);
+ngfx_draw :: (index:int,word:int)->int #foreign #effects(all);
+ngfx_field :: (field:int,value:int)->int #foreign #effects(all);
+ngfx_pipe_open :: ()->int #foreign #effects(all);
+ngfx_submit :: ()->int #foreign #effects(all);
+ngfx_pipe_close :: ()->int #foreign #effects(all);
+ngfx_read :: (image:int,bytes:int)->int #foreign #effects(all);
+ngfx_close :: ()->int #foreign #effects(all);
 
 nw_shader :: (path:string)->int {
   bytes:[1048576]u8;n:=fs_size(path);if n<20 || n>bytes.count || n%4!=0 || fs_read_at(path,0,bytes[0..<n])!=n {return -1;}
@@ -79,7 +79,7 @@ nw_helper :: (shaders:[]int,o:[]NVObservations,views:[]int)->bool {
     if ngfx_pipe_open()!=0 || ngfx_submit()!=0 || !nw_read(o,view+3,target,16) || ngfx_pipe_close()!=0 {return false;}
   }return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}profile:=nv_profile(args_at(a[..],0));variant:=nv_variant(args_at(a[..],1));
   count:=ifx profile==0 then 4 else 2;output:=args_at(a[..],2);
   if profile<0 || variant<0 || (profile==1 && variant!=0) || args_count(a[..])!=count+3 || output=="" {tool_errln("usage: native-gpu-worker sampling|helper normal|fault|array-fault OUTPUT.json SPV...");return 2;}

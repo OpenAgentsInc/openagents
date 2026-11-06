@@ -48,7 +48,7 @@ TrResume :: struct {status:CkStatus;run:TrRun;}
 // What a caller's loop reports: why it stopped, the run, steps and evaluations made.
 TrDrive :: struct {status:TrStatus;run:TrRun;steps:int;evals:int;}
 // Same length and the same bits (so -0 differs from 0).
-tr_same :: (a:[]f64,b:[]f64)->bool {if a.count!=b.count {return false;}for i:0..<a.count {if f64_bits(a[i])!=f64_bits(b[i]) {return false;}}return true;}
+tr_same :: (a:[]f64,b:[]f64)->bool #effects(all) {if a.count!=b.count {return false;}for i:0..<a.count {if f64_bits(a[i])!=f64_bits(b[i]) {return false;}}return true;}
 TR_EXAMPLES :: 4096;
 TR_EPOCHS :: 512;
 TR_ACCUMULATE :: 64;
@@ -405,24 +405,24 @@ TR_ID_PIN :: [4]u8.[83,175,62,130];
 }
 
 // book:begin admit
-tr_finite :: (x:f64)->bool {return aw_finite(x);}
-tr_ceil :: (a:int,b:int)->int {return (a+b-1)/b;}
-tr_min :: (a:int,b:int)->int {return (a+b-cast(int)abs(f64(a-b)))/2;}
+tr_finite :: (x:f64)->bool #effects(all) {return aw_finite(x);}
+tr_ceil :: (a:int,b:int)->int #effects(all) {return (a+b-1)/b;}
+tr_min :: (a:int,b:int)->int #effects(all) {return (a+b-cast(int)abs(f64(a-b)))/2;}
 // Optimizer steps in the whole run.
-tr_steps :: (c:TrConfig)->int {
+tr_steps :: (c:TrConfig)->int #effects(all) {
     if c.source==TrSource.stream {return c.steps;}
     return c.epochs*tr_ceil(tr_ceil(c.examples,c.batch),c.accumulate);
 }
 // Decay spans are in order, disjoint, non-empty and inside the parameters.
-tr_spans :: (c:TrConfig,n:int)->bool {
+tr_spans :: (c:TrConfig,n:int)->bool #effects(all) {
     if c.span_count<0 || c.span_count>TR_SPANS {return false;}
     end:=0;
     for k:0..<c.span_count {s:=c.spans[k];if s.first<end || s.count<1 || s.count>n-s.first {return false;}end=s.first+s.count;}
     return true;
 }
-tr_decayed :: (c:TrConfig,i:int)->bool {for k:0..<c.span_count {s:=c.spans[k];if i>=s.first && i<s.first+s.count {return true;}}return false;}
+tr_decayed :: (c:TrConfig,i:int)->bool #effects(all) {for k:0..<c.span_count {s:=c.spans[k];if i>=s.first && i<s.first+s.count {return true;}}return false;}
 // Every refusal of a configuration, before any work.
-tr_admit :: (c:TrConfig,n:int,docs:[]PkDoc,tokens:[]u8)->TrStatus {
+tr_admit :: (c:TrConfig,n:int,docs:[]PkDoc,tokens:[]u8)->TrStatus #effects(all) {
     if n<1 || n>CK_VALUES || !tr_spans(c,n) {return TrStatus.shape;}
     if c.optimizer==TrOptimizer.sgd {
         if !(c.rate>0 && c.rate<=16) || !(c.decay>=0 && c.decay<=1) {return TrStatus.config;}
@@ -445,7 +445,7 @@ tr_admit :: (c:TrConfig,n:int,docs:[]PkDoc,tokens:[]u8)->TrStatus {
 // book:begin order
 // Fisher-Yates from the last position down, one counter per draw; returns
 // the next unused counter. Chapter 103's shuffle, the same draws.
-tr_shuffle :: (order:[]int,seed:u64,counter:u64)->u64 {
+tr_shuffle :: (order:[]int,seed:u64,counter:u64)->u64 #effects(all) {
     c:=counter;i:=order.count-1;
     while i>0 {
         j:=cast(int)(cr_bits(seed,c)%cast(u64)(i+1));c+=1;
@@ -454,17 +454,17 @@ tr_shuffle :: (order:[]int,seed:u64,counter:u64)->u64 {
     return c;
 }
 // Epoch e's order: the positions, shuffled once per epoch through e.
-tr_order :: (c:TrConfig,epoch:int,order:[]int) {
+tr_order :: (c:TrConfig,epoch:int,order:[]int) #effects(all) {
     for i:0..<c.examples {order[i]=i;}
     if !c.shuffle {return;}
     counter:=cast(u64)0;for e:0..<epoch+1 {counter=tr_shuffle(order[0..<c.examples],c.seed,counter);}
 }
 // In rows mode the cursor follows from the steps taken.
-tr_cursor :: (c:TrConfig,revision:int)->PkCursor {
+tr_cursor :: (c:TrConfig,revision:int)->PkCursor #effects(all) {
     per:=tr_ceil(tr_ceil(c.examples,c.batch),c.accumulate);
     return PkCursor.{seed=c.seed,epoch=revision/per,order=(revision%per)*c.accumulate*c.batch};
 }
-tr_begin :: (c:TrConfig,n:int,docs:[]PkDoc,tokens:[]u8,order:[]int)->TrState {
+tr_begin :: (c:TrConfig,n:int,docs:[]PkDoc,tokens:[]u8,order:[]int)->TrState #effects(all) {
     s:=tr_admit(c,n,docs,tokens);if s!=TrStatus.ok {return TrState.{status=s};}
     if c.source==TrSource.rows {if order.count<c.examples {return TrState.{status=TrStatus.shape};}tr_order(c,0,order);}
     return TrState.{run=TrRun.{cursor=PkCursor.{seed=c.seed}}};
@@ -472,11 +472,11 @@ tr_begin :: (c:TrConfig,n:int,docs:[]PkDoc,tokens:[]u8,order:[]int)->TrState {
 // book:end order
 
 // book:begin next
-tr_due :: (c:TrConfig,run:TrRun)->bool {return c.every>0 && run.revision%c.every==0 && run.last!=run.revision;}
+tr_due :: (c:TrConfig,run:TrRun)->bool #effects(all) {return c.every>0 && run.revision%c.every==0 && run.last!=run.revision;}
 // The next step's batch. Rows mode names positions in the epoch's order;
 // stream mode fills rows with the step's packed rows through chapter 121's
 // feed. A due evaluation comes first.
-tr_next :: (c:TrConfig,run:TrRun,docs:[]PkDoc,tokens:[]u8,rows:[]u8)->TrBatch {
+tr_next :: (c:TrConfig,run:TrRun,docs:[]PkDoc,tokens:[]u8,rows:[]u8)->TrBatch #effects(all) {
     if run.stopped {return TrBatch.{status=TrStatus.stopped};}
     if tr_due(c,run) {return TrBatch.{status=TrStatus.evaluate};}
     if run.revision>=tr_steps(c) {return TrBatch.{status=TrStatus.done};}
@@ -495,13 +495,13 @@ tr_next :: (c:TrConfig,run:TrRun,docs:[]PkDoc,tokens:[]u8,rows:[]u8)->TrBatch {
 }
 // Micro-batch k: positions order[first..<first+count] in rows mode, packed
 // rows first..<first+count of the batch in stream mode.
-tr_rows :: (c:TrConfig,b:TrBatch,k:int)->TrSpan {
+tr_rows :: (c:TrConfig,b:TrBatch,k:int)->TrSpan #effects(all) {
     first:=b.start+k*c.batch;count:=c.batch;if c.source==TrSource.rows {count=tr_min(count,c.examples-first);}
     return TrSpan.{first=first,count=count};
 }
 // Adds one micro-batch's loss and mean gradient, each divided by the step's
 // micro-batch count, in order. The first clears the sum.
-tr_add :: (b:TrBatch,s:TrSum,loss:f64,g:[]f64,total:[]f64)->TrSum {
+tr_add :: (b:TrBatch,s:TrSum,loss:f64,g:[]f64,total:[]f64)->TrSum #effects(all) {
     if s.status!=TrStatus.ok || s.micro>=b.micro {return TrSum.{status=TrStatus.order};}
     if g.count!=total.count {return TrSum.{status=TrStatus.shape};}
     if s.micro==0 {for i:0..<total.count {total[i]=0;}}
@@ -511,14 +511,14 @@ tr_add :: (b:TrBatch,s:TrSum,loss:f64,g:[]f64,total:[]f64)->TrSum {
 // book:end next
 
 // book:begin apply
-tr_rate :: (c:TrConfig,step:int)->f64 {
+tr_rate :: (c:TrConfig,step:int)->f64 #effects(all) {
     if c.schedule==TrSchedule.constant {return c.rate;}
     return c.rate*(1-c.drop*f64(step)/f64(tr_steps(c)));
 }
 // One step from a complete sum. total is the trainer's scratch: clipping
 // scales it in place. New values go to stage first; p, m and v change only
 // when every one is admitted.
-tr_apply :: (c:TrConfig,run:TrRun,b:TrBatch,s:TrSum,p:[]f64,m:[]f64,v:[]f64,total:[]f64,stage:[]f64,order:[]int)->TrStep {
+tr_apply :: (c:TrConfig,run:TrRun,b:TrBatch,s:TrSum,p:[]f64,m:[]f64,v:[]f64,total:[]f64,stage:[]f64,order:[]int)->TrStep #effects(all) {
     n:=p.count;fail:=TrStep.{run=run};
     if b.status!=TrStatus.ok || s.status!=TrStatus.ok || b.revision!=run.revision || b.micro<1 || s.micro!=b.micro {fail.status=TrStatus.order;return fail;}
     if total.count!=n || m.count!=n || v.count!=n || stage.count<3*n || (c.source==TrSource.rows && order.count<c.examples) {fail.status=TrStatus.shape;return fail;}
@@ -560,7 +560,7 @@ tr_apply :: (c:TrConfig,run:TrRun,b:TrBatch,s:TrSum,p:[]f64,m:[]f64,v:[]f64,tota
 // book:begin eval
 // Records a due evaluation's loss. patience evaluations in a row that do not
 // improve on the best stop the run.
-tr_eval :: (c:TrConfig,run:TrRun,loss:f64)->TrState {
+tr_eval :: (c:TrConfig,run:TrRun,loss:f64)->TrState #effects(all) {
     if !tr_due(c,run) {return TrState.{status=TrStatus.order,run=run};}
     if !tr_finite(loss) {return TrState.{status=TrStatus.number,run=run};}
     r:=run;r.last=run.revision;r.evals+=1;
@@ -572,7 +572,7 @@ tr_eval :: (c:TrConfig,run:TrRun,loss:f64)->TrState {
 
 // book:begin save
 // The optimizer identity a checkpoint must match: every configuration field.
-tr_identity :: (c:TrConfig)->[32]u8 {
+tr_identity :: (c:TrConfig)->[32]u8 #effects(all) {
     w:=[31]u64.[cast(u64)cast(int)c.optimizer,cast(u64)cast(int)c.schedule,cast(u64)cast(int)c.storage,cast(u64)cast(int)c.source,
         f64_bits(c.rate),f64_bits(c.drop),f64_bits(c.beta1),f64_bits(c.beta2),f64_bits(c.eps),f64_bits(c.decay),
         cast,trunc(u64)c.spans[0].first,cast,trunc(u64)c.spans[0].count,cast,trunc(u64)c.spans[1].first,cast,trunc(u64)c.spans[1].count,
@@ -582,20 +582,20 @@ tr_identity :: (c:TrConfig)->[32]u8 {
     b:[248]u8;at:=0;for x:w {at=ck_put64(b[..],at,x);}
     return ck_digest("psionic.trainer-config.v1",b[0..<at]);
 }
-tr_ids :: (c:TrConfig,model:[32]u8,tokenizer:[32]u8,dataset:[32]u8)->CkIds {return CkIds.{model=model,tokenizer=tokenizer,dataset=dataset,optimizer=tr_identity(c)};}
-tr_size :: (n:int)->int {return ck_size(n)+TR_TAIL;}
+tr_ids :: (c:TrConfig,model:[32]u8,tokenizer:[32]u8,dataset:[32]u8)->CkIds #effects(all) {return CkIds.{model=model,tokenizer=tokenizer,dataset=dataset,optimizer=tr_identity(c)};}
+tr_size :: (n:int)->int #effects(all) {return ck_size(n)+TR_TAIL;}
 // The evaluation record a run can hold: a finite best, at most one
 // evaluation per revision, no more stale evaluations than evaluations.
-tr_record :: (r:TrRun)->bool {return tr_finite(r.best) && r.evals>=0 && r.evals<=r.revision+1 && r.stale>=0 && r.stale<=r.evals && r.last>=-1 && r.last<=r.revision;}
+tr_record :: (r:TrRun)->bool #effects(all) {return tr_finite(r.best) && r.evals>=0 && r.evals<=r.revision+1 && r.stale>=0 && r.stale<=r.evals && r.last>=-1 && r.last<=r.revision;}
 // The 80-byte tail: "PSTR" u16 version=1 u16 0; evaluations, evaluations
 // since the best, last evaluated revision + 1, stopped (u64 each); the best
 // loss (binary64); SHA-256 (tag psionic.trainer.v1) of the record's digest
 // followed by the five fields (bytes 8 to 47).
-tr_tail_digest :: (d:[32]u8,t:[]u8)->[32]u8 {
+tr_tail_digest :: (d:[32]u8,t:[]u8)->[32]u8 #effects(all) {
     b:[72]u8;for i:0..<32 {b[i]=d[i];}for i:8..<48 {b[24+i]=t[i];}
     return ck_digest("psionic.trainer.v1",b[..]);
 }
-tr_tail_write :: (d:[32]u8,run:TrRun,t:[]u8) {
+tr_tail_write :: (d:[32]u8,run:TrRun,t:[]u8) #effects(all) {
     t[0]=80;t[1]=83;t[2]=84;t[3]=82;t[4]=1;t[5]=0;t[6]=0;t[7]=0;
     at:=ck_put64(t,8,cast,trunc(u64)run.evals);at=ck_put64(t,at,cast,trunc(u64)run.stale);
     at=ck_put64(t,at,cast,trunc(u64)(run.last+1));at=ck_put64(t,at,cast(u64)(ifx run.stopped then 1 else 0));at=ck_put64(t,at,f64_bits(run.best));
@@ -603,7 +603,7 @@ tr_tail_write :: (d:[32]u8,run:TrRun,t:[]u8) {
 }
 // Reads an 80-byte tail signed over digest d into the evaluation record of
 // a run at revision.
-tr_tail :: (t:[]u8,d:[32]u8,revision:int)->TrResume {
+tr_tail :: (t:[]u8,d:[32]u8,revision:int)->TrResume #effects(all) {
     if !ck_magic(t,84,82) {return TrResume.{status=CkStatus.magic};}
     if t[4]!=1 || t[5]!=0 || t[6]!=0 || t[7]!=0 {return TrResume.{status=CkStatus.version};}
     if !ck_equal(tr_tail_digest(d,t),ck_get(t,48)) {return TrResume.{status=CkStatus.corrupt};}
@@ -613,7 +613,7 @@ tr_tail :: (t:[]u8,d:[32]u8,revision:int)->TrResume {
 }
 // Writes the run as chapter 122's record, the tail, and the pointer naming
 // the record. Nothing is written for a run record that cannot be true.
-tr_save :: (ids:CkIds,run:TrRun,p:[]f64,m:[]f64,v:[]f64,bytes:[]u8,pointer:[]u8)->CkStatus {
+tr_save :: (ids:CkIds,run:TrRun,p:[]f64,m:[]f64,v:[]f64,bytes:[]u8,pointer:[]u8)->CkStatus #effects(all) {
     n:=p.count;if bytes.count!=tr_size(n) || pointer.count!=CK_POINTER {return CkStatus.shape;}
     if !tr_record(run) {return CkStatus.corrupt;}
     body:=ck_size(n);s:=ck_write(CkMeta.{ids=ids,revision=run.revision,cursor=run.cursor,state=run.state},p,m,v,bytes[0..<body],false);if s!=CkStatus.ok {return s;}
@@ -623,7 +623,7 @@ tr_save :: (ids:CkIds,run:TrRun,p:[]f64,m:[]f64,v:[]f64,bytes:[]u8,pointer:[]u8)
 // Restores p, m, v, the batch order and the run from a record whose pointer
 // is current, for the same configuration. Every check passes before
 // anything is written.
-tr_resume :: (c:TrConfig,ids:CkIds,pointer:[]u8,bytes:[]u8,docs:[]PkDoc,tokens:[]u8,p:[]f64,m:[]f64,v:[]f64,order:[]int)->TrResume {
+tr_resume :: (c:TrConfig,ids:CkIds,pointer:[]u8,bytes:[]u8,docs:[]PkDoc,tokens:[]u8,p:[]f64,m:[]f64,v:[]f64,order:[]int)->TrResume #effects(all) {
     n:=p.count;rows:=c.source==TrSource.rows;
     if tr_admit(c,n,docs,tokens)!=TrStatus.ok || m.count!=n || v.count!=n || (rows && order.count<c.examples) {return TrResume.{status=CkStatus.shape};}
     if bytes.count<tr_size(n) {return TrResume.{status=CkStatus.truncated};}

@@ -18,15 +18,15 @@
   #assert sg_equal_mask(smb_multiply_native(sc_small(1)),sg_generator()) == CB_MAX64;
 }
 // Private PUBLIC-generation helper: width1..8 and spacing1..64.
-smb_native_table :: (width: int,spacing: int) -> [256] SgPoint {
+smb_native_table :: (width: int,spacing: int) -> [256] SgPoint #effects(all) {
   table: [256] SgPoint;
   #assert smb_generate(table[0..<1 << width],width,spacing);
   return table;
 }
 SMB_NATIVE_TABLE :: #run smb_native_table(8,32);
-smb_native_width :: () -> int { return 8; }
-smb_native_spacing :: () -> int { return 32; }
-smb_multiply_native :: (scalar: ScScalar) -> SgPoint #export_c {
+smb_native_width :: () -> int #effects(all) { return 8; }
+smb_native_spacing :: () -> int #effects(all) { return 32; }
+smb_multiply_native :: (scalar: ScScalar) -> SgPoint #export_c #effects(all) {
   table := SMB_NATIVE_TABLE;
   return smb_comb(scalar,table[..],smb_native_width(),smb_native_spacing());
 }

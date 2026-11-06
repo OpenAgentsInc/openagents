@@ -74,7 +74,7 @@ before the step limit.
 ```jai
 // Refuse a configuration or arrival list outside the bounds; otherwise an
 // empty schedule at step 0.
-cb_start :: (cfg:CbConfig,reqs:[]CbRequest)->CbState #export_c {
+cb_start :: (cfg:CbConfig,reqs:[]CbRequest)->CbState #export_c #effects(all) {
     s:CbState;s.cfg=cfg;s.status=CbStatus.config;
     if cfg.slots<1 || cfg.slots>CB_SLOTS || cfg.tokens<cfg.slots || cfg.tokens>CB_TOKENS || cfg.kv>CB_KV {return s;}
     if cfg.state<0 || cfg.state>=cfg.kv || cfg.clients<1 || cfg.clients>CB_CLIENTS || cfg.steps<1 || cfg.steps>CB_STEPS {return s;}
@@ -105,7 +105,7 @@ request says. A valid request joins its client's queue.
 // client's virtual time becomes the current one if it was behind it, so a
 // client that idled earns no credit. (A client with requests queued is never
 // behind: the current virtual time is the smallest queued client's.)
-cb_arrive :: (from:CbState)->CbState {
+cb_arrive :: (from:CbState)->CbState #effects(all) {
     s:=from;
     for i:0..<s.n {
         r:=s.req[i];
@@ -141,7 +141,7 @@ finish and free their state.
 // Admit while a slot is free: the backlogged client with the smallest
 // virtual time (the lowest index on a tie) offers its oldest request; if that
 // request's state does not fit, admission stops for this step.
-cb_admit :: (from:CbState)->CbState {
+cb_admit :: (from:CbState)->CbState #effects(all) {
     s:=from;
     while s.nrun<s.cfg.slots {
         c:=-1;
@@ -171,7 +171,7 @@ never delays a running stream's next token.
 // Every decoding request gets one position; the rest of the step's budget
 // goes to prompt chunks in admission order. The chunk that ends a prompt
 // yields the first output token.
-cb_tokens :: (from:CbState)->CbState {
+cb_tokens :: (from:CbState)->CbState #effects(all) {
     s:=from;
     budget:=s.cfg.tokens;s.nrows=0;
     for k:0..<s.nrun {
@@ -199,7 +199,7 @@ cb_tokens :: (from:CbState)->CbState {
 ```jai
 // One iteration: arrivals, admission, tokens, then retire every request
 // whose last output token came out, freeing its slot and its state.
-cb_step :: (from:CbState)->CbState #export_c {
+cb_step :: (from:CbState)->CbState #export_c #effects(all) {
     s:=cb_tokens(cb_admit(cb_arrive(from)));
     s.clock+=cb_step_ns(s.used);
     m:=0;
@@ -212,7 +212,7 @@ cb_step :: (from:CbState)->CbState #export_c {
     s.nrun=m;s.step+=1;
     return s;
 }
-cb_run :: (cfg:CbConfig,reqs:[]CbRequest)->CbState {
+cb_run :: (cfg:CbConfig,reqs:[]CbRequest)->CbState #effects(all) {
     s:=cb_start(cfg,reqs);
     if s.status!=CbStatus.ok {return s;}
     while s.done<s.n && s.step<s.cfg.steps {s=cb_step(s);}
@@ -482,7 +482,7 @@ first token, measured from the start of its arrival step.
 ```jai
 // Aggregate output tokens per modeled second, and nearest-rank P50 and P95
 // of each finished request's latency and time to first token.
-cb_report :: (s:CbState)->CbReport {
+cb_report :: (s:CbState)->CbReport #effects(all) {
     p:=CbReport.{status=s.status,steps=s.step,ns=s.clock};
     if s.status!=CbStatus.ok {return p;}
     lat:[64]int;first:[64]int;n:=0;
@@ -532,22 +532,22 @@ the layout of the session's own cache, then its eight control words.
 ```jai
 // A region holds a request's whole cache (the layout of slot 16) and then its
 // eight control words, so it is 8-byte aligned.
-cbd_region_bytes :: (p:GDPlan)->int #export_c {return p.counts[16]*4+64;}
+cbd_region_bytes :: (p:GDPlan)->int #export_c #effects(all) {return p.counts[16]*4+64;}
 // Regions in upload slot 1. Refused when the plan already uses slot 1, when
 // the tensor-core prefill is on (its products are not checked here), or for
 // 0 or more than 8 regions.
-cbd_with_regions :: (p:GDPlan,s:GShape,regions:int)->GDPlan #export_c {
+cbd_with_regions :: (p:GDPlan,s:GShape,regions:int)->GDPlan #export_c #effects(all) {
     if p.status!=GStatus.ok {return GDPlan.{status=p.status};}
     if !g_shape(s) || p.mma!=0 || p.upload[1]!=0 || regions<1 || regions>CBD_REGIONS {return GDPlan.{status=GStatus.shape};}
     r:=p;r.upload[1]=regions*cbd_region_bytes(p);return r;
 }
-cbd_regions :: (p:GDPlan)->int #export_c {return p.upload[1]/cbd_region_bytes(p);}
-cbd_cache :: (p:GDPlan,s:GShape,region:int,layer:int)->GDRef {
+cbd_regions :: (p:GDPlan)->int #export_c #effects(all) {return p.upload[1]/cbd_region_bytes(p);}
+cbd_cache :: (p:GDPlan,s:GShape,region:int,layer:int)->GDRef #effects(all) {
     return GDRef.{buffer=1,offset=region*cbd_region_bytes(p)+g_cache_base(s,layer)*4,count=2*s.kv_heads*64*g_layer_capacity(s,layer),elem=4};
 }
-cbd_control :: (p:GDPlan,region:int)->GDRef {return GDRef.{buffer=1,offset=region*cbd_region_bytes(p)+p.counts[16]*4,count=8,elem=8};}
+cbd_control :: (p:GDPlan,region:int)->GDRef #effects(all) {return GDRef.{buffer=1,offset=region*cbd_region_bytes(p)+p.counts[16]*4,count=8,elem=8};}
 // Byte offset of a region's control words, for the host's read.
-cbd_control_offset :: (p:GDPlan,region:int)->int #export_c {return cbd_control(p,region).offset;}
+cbd_control_offset :: (p:GDPlan,region:int)->int #export_c #effects(all) {return cbd_control(p,region).offset;}
 ```
 
 For gpt-oss-20b at a context of 2,048, 12 sliding layers keep 128 positions
@@ -563,7 +563,7 @@ A step is admitted before any program is built:
 // A step is admitted when its segments fit the plan: 1 to 8 segments in
 // distinct regions, 1 to `batch` rows in all, every segment inside the
 // context, and every ID to upload inside the vocabulary.
-cbd_admit :: (s:GShape,p:GDPlan,segs:[]CbdSeg,ids:[]int)->CbdStep #export_c {
+cbd_admit :: (s:GShape,p:GDPlan,segs:[]CbdSeg,ids:[]int)->CbdStep #export_c #effects(all) {
     st:=CbdStep.{status=GStatus.shape};
     if p.status!=GStatus.ok || !g_shape(s) || p.mma!=0 || cbd_regions(p)<1 {return st;}
     st.status=GStatus.state;
@@ -598,7 +598,7 @@ assert exactly these segments, IDs and regions.
 // was given; a new one takes the lowest region that no live request holds.
 // A request is live from its region's assignment until the step it finished
 // in has run. Returns false when no region is free.
-cbd_bind :: (s:CbState,region:[]int,regions:int)->bool #export_c {
+cbd_bind :: (s:CbState,region:[]int,regions:int)->bool #export_c #effects(all) {
     if region.count<s.n || regions<1 || regions>CBD_REGIONS {return false;}
     for k:0..<s.nrows {
         i:=s.rows[k].req;
@@ -615,7 +615,7 @@ cbd_bind :: (s:CbState,region:[]int,regions:int)->bool #export_c {
 // The step's segments, in row order, and the IDs to upload: a prompt row
 // feeds its prompt ID, a decode row the request's last chosen ID. `first`
 // gives each request's first prompt ID in `prompts`; `last` its last ID.
-cbd_segments :: (s:CbState,region:[]int,prompts:[]int,first:[]int,last:[]int,segs:[]CbdSeg,ids:[]int)->int #export_c {
+cbd_segments :: (s:CbState,region:[]int,prompts:[]int,first:[]int,last:[]int,segs:[]CbdSeg,ids:[]int)->int #export_c #effects(all) {
     if region.count<s.n || first.count<s.n || last.count<s.n || segs.count<s.nrows {return -1;}
     n:=0;
     for k:0..<s.nrows {
@@ -636,7 +636,7 @@ cbd_segments :: (s:CbState,region:[]int,prompts:[]int,first:[]int,last:[]int,seg
 // Before the layers: a segment that starts a prompt clears its region's
 // control words; every segment checks that its position is the one its
 // control words expect; then all rows' IDs are embedded at once.
-cbd_head :: (s:GShape,p:GDPlan,params:[]GDParam,segs:[]CbdSeg,rows:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+cbd_head :: (s:GShape,p:GDPlan,params:[]GDParam,segs:[]CbdSeg,rows:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c #effects(all) {
     w:=GDWriter.{plan=p,ops=ops,args=args};d:=s.width;
     for g:segs {
         control:=cbd_control(p,g.region);
@@ -653,7 +653,7 @@ cbd_head :: (s:GShape,p:GDPlan,params:[]GDParam,segs:[]CbdSeg,rows:int,ops:[]GDO
 // One layer. Every product runs once over all rows; rotation, scores,
 // softmax, context and the cache commit run per segment, on that segment's
 // rows and its own cache, with chapter 67's scalars for its position.
-cbd_layer :: (s:GShape,p:GDPlan,params:[]GDParam,segs:[]CbdSeg,rows:int,layer:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+cbd_layer :: (s:GShape,p:GDPlan,params:[]GDParam,segs:[]CbdSeg,rows:int,layer:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c #effects(all) {
     w:=GDWriter.{plan=p,ops=ops,args=args};d:=s.width;q:=s.heads*64;k:=s.kv_heads*64;h:=s.hidden;z:=s.selected;n:=rows;
     x:=gd_slice(p,28,0,n*d);normal:=gd_slice(p,29,0,n*d);qkv:=gd_slice(p,30,0,n*(q+2*k));projected:=gd_slice(p,32,0,n*d);router:=gd_slice(p,33,0,n*s.experts);flags:=gd_all(p,37);
     base:=3+15*layer;ids:=gd_slice(p,14,layer*z,z);weights:=gd_slice(p,15,layer*z,z);trace:=gd_slice(p,13,layer*2*d,d);cap:=g_layer_capacity(s,layer);window:=0;if cap<s.capacity {window=s.window;}
@@ -697,7 +697,7 @@ cbd_layer :: (s:GShape,p:GDPlan,params:[]GDParam,segs:[]CbdSeg,rows:int,layer:in
 // on its own, exactly as chapter 67's prefill reads its last row; the flags
 // of the whole step reach the step's control words (slot 24); every segment
 // advances its position, and an emitting one chooses its next ID greedily.
-cbd_tail :: (s:GShape,p:GDPlan,params:[]GDParam,segs:[]CbdSeg,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+cbd_tail :: (s:GShape,p:GDPlan,params:[]GDParam,segs:[]CbdSeg,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c #effects(all) {
     w:=GDWriter.{plan=p,ops=ops,args=args};d:=s.width;row:=0;
     for g:segs {
         row+=g.count;

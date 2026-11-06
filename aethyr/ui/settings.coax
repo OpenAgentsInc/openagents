@@ -52,13 +52,13 @@ Settings :: struct {
 SettingsRead :: struct { s: Settings; status: int; }
 // book:end settings-profile
 
-settings_default :: () -> Settings {
+settings_default :: () -> Settings #effects(all) {
   s: Settings;
   for a: 0..<SA_N { s.keys[a] = SETTINGS_KEYS[a]; s.pad[a] = SETTINGS_PAD[a]; }
   return s;
 }
 // The action device d's code does, or -1.
-settings_action :: (s: Settings, d: int, code: int) -> int {
+settings_action :: (s: Settings, d: int, code: int) -> int #effects(all) {
   for a: 0..<SA_N {
     c := ifx d == SD_KEYS then s.keys[a] else s.pad[a];
     if c == code && (d == SD_KEYS || d == SD_PAD) { return a; }
@@ -66,7 +66,7 @@ settings_action :: (s: Settings, d: int, code: int) -> int {
   return -1;
 }
 // Binds device d's code to action a; a code another action held is swapped with a's old code.
-settings_bind :: (s: [] Settings, d: int, a: int, code: int) -> int {
+settings_bind :: (s: [] Settings, d: int, a: int, code: int) -> int #effects(all) {
   if d != SD_KEYS && d != SD_PAD { return ST_BAD_DEVICE; }
   if a < 0 || a >= SA_N { return ST_BAD_ACTION; }
   if code < 0 || code > SETTINGS_CODE_MAX { return ST_BAD_CODE; }
@@ -81,17 +81,17 @@ settings_bind :: (s: [] Settings, d: int, a: int, code: int) -> int {
   }
   return ifx other >= 0 then ST_SWAPPED else ST_OK;
 }
-settings_text_ok :: (pct: int) -> bool {
+settings_text_ok :: (pct: int) -> bool #effects(all) {
   k := (pct - SETTINGS_TEXT_MIN) / SETTINGS_TEXT_STEP;
   return pct >= SETTINGS_TEXT_MIN && k <= SETTINGS_TEXT_STEPS && SETTINGS_TEXT_MIN + k * SETTINGS_TEXT_STEP == pct;
 }
-settings_text :: (s: [] Settings, pct: int) -> int {
+settings_text :: (s: [] Settings, pct: int) -> int #effects(all) {
   if !settings_text_ok(pct) { return ST_BAD_TEXT; }
   s[0].text_pct = pct;
   return ST_OK;
 }
 // Whether a record keeps the rules: its version, every code in range, no code twice on a device, the text size.
-settings_check :: (s: Settings) -> int {
+settings_check :: (s: Settings) -> int #effects(all) {
   if s.version != SETTINGS_VERSION { return ST_VERSION; }
   for a: 0..<SA_N {
     if s.keys[a] < 0 || s.keys[a] > SETTINGS_CODE_MAX || s.pad[a] < 0 || s.pad[a] > SETTINGS_CODE_MAX { return ST_BAD_CODE; }
@@ -103,25 +103,25 @@ settings_check :: (s: Settings) -> int {
 
 // ---- the saved text
 
-settings_put :: (out: [] u8, at: int, t: string) -> int {
+settings_put :: (out: [] u8, at: int, t: string) -> int #effects(all) {
   n := at;
   for c: t { if n < out.count { out[n] = c; n += 1; } }
   return n;
 }
-settings_int :: (out: [] u8, at: int, v: int) -> int {
+settings_int :: (out: [] u8, at: int, v: int) -> int #effects(all) {
   d: [20] u8; dn := 0; x := v;
   while x > 0 || dn == 0 { d[dn] = cast(u8) ('0' + x % 10); dn += 1; x = x / 10; }
   n := at;
   for j: 0..<dn { if n < out.count { out[n] = d[dn - 1 - j]; n += 1; } }
   return n;
 }
-settings_list :: (out: [] u8, at: int, codes: [] int) -> int {
+settings_list :: (out: [] u8, at: int, codes: [] int) -> int #effects(all) {
   n := at;
   for a: 0..<codes.count { if a > 0 { n = settings_put(out, n, ","); } n = settings_int(out, n, codes[a]); }
   return n;
 }
 // "s1 k=K,K,... p=P,P,... t=PCT m=0|1 c=0|1": its length in out.
-settings_write :: (s_in: Settings, out: [] u8) -> int {
+settings_write :: (s_in: Settings, out: [] u8) -> int #effects(all) {
   s := s_in;
   n := settings_put(out, 0, "s"); n = settings_int(out, n, s.version);
   n = settings_put(out, n, " k="); n = settings_list(out, n, s.keys[..]);
@@ -132,16 +132,16 @@ settings_write :: (s_in: Settings, out: [] u8) -> int {
   return n;
 }
 // A whole number of 1 to 3 digits, the whole of x: -1 if not one.
-settings_whole :: (x: string) -> int {
+settings_whole :: (x: string) -> int #effects(all) {
   if x.count < 1 || x.count > 3 { return -1; }
   v := 0;
   for c: x { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
   return v;
 }
 // Whether field f starts "L=".
-settings_prefix :: (f: string, letter: u8) -> bool { return f.count >= 2 && f[0] == letter && f[1] == '='; }
+settings_prefix :: (f: string, letter: u8) -> bool #effects(all) { return f.count >= 2 && f[0] == letter && f[1] == '='; }
 // Field f is "L=" and SA_N codes a ',' apart, into out: whether it was.
-settings_codes :: (f: string, letter: u8, out: [] int) -> bool {
+settings_codes :: (f: string, letter: u8, out: [] int) -> bool #effects(all) {
   if !settings_prefix(f, letter) { return false; }
   a := 0; at := 2;
   for i: at..<f.count + 1 {
@@ -154,12 +154,12 @@ settings_codes :: (f: string, letter: u8, out: [] int) -> bool {
   return a == SA_N;
 }
 // Field f is "L=0" or "L=1": 0 or 1, else -1.
-settings_flag :: (f: string, letter: u8) -> int {
+settings_flag :: (f: string, letter: u8) -> int #effects(all) {
   if f.count != 3 || !settings_prefix(f, letter) || (f[2] != '0' && f[2] != '1') { return -1; }
   return cast(int) (f[2] - '0');
 }
 SETTINGS_FIELDS :: 6;
-settings_read :: (t: string) -> SettingsRead {
+settings_read :: (t: string) -> SettingsRead #effects(all) {
   d := settings_default();
   bad := SettingsRead.{s = d, status = ST_UNREADABLE};
   // the fields, one space apart

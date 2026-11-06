@@ -438,7 +438,7 @@ ege_level_words :: (s: [] Everglade, b: [] u8) -> int {
   return ege_put(b, n, " XP");
 }
 // The LEVEL plate's words as last drawn ("" none), for a headless check.
-ege_shown :: (s: [] Everglade) -> string #export_c { if !net_on(s) { return ""; } e := ege_of(s); return cast(string) e[0].shown[0..<e[0].shown_n]; }
+ege_shown :: (s: [] Everglade) -> string #export_c #effects(all) { if !net_on(s) { return ""; } e := ege_of(s); return cast(string) e[0].shown[0..<e[0].shown_n]; }
 // How far your XP is to the next level, 0 to 1 (1 at the cap: the bar full, the plate says CAP).
 ege_xp_share :: (s: [] Everglade) -> f32 {
   e := ege_of(s);

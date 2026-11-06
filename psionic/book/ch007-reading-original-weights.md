@@ -107,7 +107,7 @@ unsigned length into a negative signed offset or cause an unchecked addition.
 
 <!-- source: psionic/lib/model-io/format.coax header -->
 ```jai
-pw_header :: (file:[]u8)->PwHeader #export_c {
+pw_header :: (file:[]u8)->PwHeader #export_c #effects(all) {
     if !pw_file_size(file.count) {return PwHeader.{status=PwStatus.size};}
     length:u64=0;
     for i:0..<8 {length |= cast(u64)file[i] << (i*8);}
@@ -141,7 +141,7 @@ using an inventory. Mutable metadata drafts are caller-provided workspaces.
 
 <!-- source: psionic/lib/model-io/reader.coax inspect -->
 ```jai
-pw_inspect_checked :: (file:[]u8,output:[]PwTensor,draft:[]PwTensor,overlap:bool)->PwResult #export_c {
+pw_inspect_checked :: (file:[]u8,output:[]PwTensor,draft:[]PwTensor,overlap:bool)->PwResult #export_c #effects(all) {
     if !pw_file_size(file.count) {return PwResult.{status=PwStatus.size};}
     if output.count<1 || draft.count<1 {return PwResult.{status=PwStatus.capacity};}
     if overlap {return PwResult.{status=PwStatus.alias};}
@@ -229,8 +229,8 @@ F32 bits = u32(BF16 word) << 16
 
 <!-- source: psionic/lib/model-io/format.coax bf16 -->
 ```jai
-pw_bf16_bits :: (word:u16)->u32 #export_c {return cast(u32)word << 16;}
-pw_word :: (data:[]u8,at:int,width:int)->PwWord #export_c {
+pw_bf16_bits :: (word:u16)->u32 #export_c #effects(all) {return cast(u32)word << 16;}
+pw_word :: (data:[]u8,at:int,width:int)->PwWord #export_c #effects(all) {
     if width!=2 && width!=4 {return PwWord.{status=PwStatus.unsupported};}
     if at<0 || width>data.count || at>data.count-width {return PwWord.{status=PwStatus.offsets};}
     bits:u32=0;
@@ -255,7 +255,7 @@ with subtraction before computing the first byte address.
 <!-- source: psionic/lib/model-io/weights.coax decode -->
 ```jai
 // Metadata workspaces may change on refusal. Float output AND scratch do not.
-pw_decode_checked :: (file:[]u8,name:string,first:int,count:int,output:[]f32,scratch:[]f32,inventory:[]PwTensor,draft:[]PwTensor,overlap:bool)->PwResult #export_c {
+pw_decode_checked :: (file:[]u8,name:string,first:int,count:int,output:[]f32,scratch:[]f32,inventory:[]PwTensor,draft:[]PwTensor,overlap:bool)->PwResult #export_c #effects(all) {
     if overlap {return PwResult.{status=PwStatus.alias};}
     r:=pw_inspect_checked(file,inventory,draft,false);if r.status!=PwStatus.ok {return r;}
     at:=pw_find(inventory[0..<r.written],name);if at<0 {return PwResult.{status=PwStatus.manifest};}

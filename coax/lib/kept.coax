@@ -30,7 +30,7 @@ Kept :: struct($W) { n: int; w: [$W] u64; }
 // ---- checks
 
 // Bytes that differ from both neighbours, the high bit among them.
-kept_fixture :: (b: [] u8) {
+kept_fixture :: (b: [] u8) #effects(all) {
   for i: 0..<b.count { b[i] = cast(u8)((i * 37 + 200) & 255); }
 }
 
@@ -211,7 +211,7 @@ kept_fixture :: (b: [] u8) {
 // ---- the type
 
 // Copy s into t[0], or the refused text when s is longer than 8*W bytes.
-kept_fill :: (t: [] Kept($W), s: string) {
+kept_fill :: (t: [] Kept($W), s: string) #effects(all) {
   u: Kept($W);
   u.n = -1;
   if s.count <= u.w.count * 8 {
@@ -221,16 +221,16 @@ kept_fill :: (t: [] Kept($W), s: string) {
   t[0] = u;
 }
 
-kept_set :: (t: [] Kept($W), s: string) -> bool {
+kept_set :: (t: [] Kept($W), s: string) -> bool #effects(all) {
   kept_fill(t, s);
   return t[0].n >= 0;
 }
 
-kept64 :: (s: string) -> Kept(8) { t: [1] Kept(8); kept_fill(t[..], s); return t[0]; }
-kept72 :: (s: string) -> Kept(9) { t: [1] Kept(9); kept_fill(t[..], s); return t[0]; }
-kept128 :: (s: string) -> Kept(16) { t: [1] Kept(16); kept_fill(t[..], s); return t[0]; }
+kept64 :: (s: string) -> Kept(8) #effects(all) { t: [1] Kept(8); kept_fill(t[..], s); return t[0]; }
+kept72 :: (s: string) -> Kept(9) #effects(all) { t: [1] Kept(9); kept_fill(t[..], s); return t[0]; }
+kept128 :: (s: string) -> Kept(16) #effects(all) { t: [1] Kept(16); kept_fill(t[..], s); return t[0]; }
 
-kept_same :: (a: Kept($W), b: Kept($W)) -> bool {
+kept_same :: (a: Kept($W), b: Kept($W)) -> bool #effects(all) {
   if a.n != b.n { return false; }
   for j: 0..<a.w.count { if a.w[j] != b.w[j] { return false; } }
   return true;
@@ -238,7 +238,7 @@ kept_same :: (a: Kept($W), b: Kept($W)) -> bool {
 
 // A string of another count is never the same, a refused t included; one of
 // the same count is copied and compared word by word.
-kept_is :: (t: Kept($W), s: string) -> bool {
+kept_is :: (t: Kept($W), s: string) -> bool #effects(all) {
   if t.n != s.count { return false; }
   u: [1] Kept($W);
   kept_fill(u[..], s);
@@ -247,12 +247,12 @@ kept_is :: (t: Kept($W), s: string) -> bool {
 
 // A refused t has n = -1: out is never smaller than that, the loop is empty,
 // and -1 comes back.
-kept_bytes :: (t: Kept($W), out: [] u8) -> int {
+kept_bytes :: (t: Kept($W), out: [] u8) -> int #effects(all) {
   if out.count < t.n { return -1; }
   for i: 0..<t.n { out[i] = cast(u8)((t.w[i / 8] >> ((i % 8) * 8)) & 255); }
   return t.n;
 }
 
-kept_view :: (t: Kept($W), out: [] u8) -> string {
+kept_view :: (t: Kept($W), out: [] u8) -> string #effects(all) {
   return cast(string) out[0..<kept_bytes(t, out)];
 }

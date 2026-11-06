@@ -40,7 +40,7 @@ RenderHostStage :: struct {status:RenderFrameStatus;address:u64;next:u64;pages:u
   #assert r.status==RenderFrameStatus.bad_limits && r.address==0 && r.next==4 && r.pages==0;
   r=render_host_stage(0,0,18446744073709551615);#assert r.status==RenderFrameStatus.bad_limits && r.next==0;
 }
-render_host_stage :: (cursor:u64,bytes:u64,limit:u64)->RenderHostStage {
+render_host_stage :: (cursor:u64,bytes:u64,limit:u64)->RenderHostStage #effects(all) {
   r:=RenderHostStage.{next=cursor};
   if limit>RENDER_HOST_MEMORY_BYTES {r.status=RenderFrameStatus.bad_limits;return r;}
   if bytes%4!=0 {r.status=RenderFrameStatus.bad_upload;return r;}

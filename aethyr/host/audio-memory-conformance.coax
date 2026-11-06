@@ -8,7 +8,7 @@
  for i:0..<50 {bank[i]+=1;#assert !mamm_accept(memory[..],bank[..]);bank[i]-=1;}
  #assert !mamm_accept(memory[0..<19],bank[..])&&!mamm_accept(memory[..],bank[0..<49]);
 }
-mamm_accept :: (memory:[]int,bank:[]int)->bool #export_c {
+mamm_accept :: (memory:[]int,bank:[]int)->bool #export_c #effects(all) {
  if memory.count!=20||bank.count!=50 {return false;}
  expected:=[20]int.[1,1,1,1,1,1,0,8388608,8388608,1,0,128,128,1,129,0,6,6,1,0];
  for value,i:expected {if memory[i]!=value {return false;}}
@@ -22,7 +22,7 @@ mamm_accept :: (memory:[]int,bank:[]int)->bool #export_c {
  #assert mamm_bank(q[..]);q[0]=4096;#assert mamm_bank(q[..]);q[0]=4097;#assert !mamm_bank(q[..]);q[0]=0;#assert !mamm_bank(q[..]);q[0]=1;
  for i:1..<15 {q[i]+=1;#assert !mamm_bank(q[..]);q[i]-=1;}#assert !mamm_bank(q[0..<14]);
 }
-mamm_bank :: (q:[]int)->bool #export_c {
+mamm_bank :: (q:[]int)->bool #export_c #effects(all) {
  if q.count!=15 {return false;}if q[0]<1||q[0]>4096 {return false;}
  expected:=[14]int.[3145728,48,48,2042394,2042394,2042394,0,48,0,1,0,24960,24960,0];
  for value,i:expected {if q[i+1]!=value {return false;}}return true;

@@ -5065,3 +5065,11 @@
   ok:=CK_run(context,initial.count-1,CK_Options.{library=true,metal=false,authority=false});
   #assert ok==false && state[0].error_count==1 && errors[0].code=="E0302" && errors[0].loc.line==3 && errors[0].loc.column==43 && errors[0].message=="unknown type 'Nope'" && nodes[16].type==0 && nodes[10].type!=0 && types[nodes[10].type].kind==CK_Kind.struct_ && nodes[types[nodes[10].type].decl].origin==3 && types[nodes[10].type].size==8;
 }
+#forall "generic persisted instances enforce owned payloads after substitution" marked:bool, owned:bool {
+ nodes:[64]CK_Node;types:[48]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[4096]u8;state:[1]CK_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="Saved",flag=marked,d=3,head=4,next=6};nodes[3]=CK_Node.{kind=CK_Tag.type_param,name="T"};nodes[4]=CK_Node.{kind=CK_Tag.field,name="value",a=5};nodes[5]=CK_Node.{kind=CK_Tag.type_param,name="T"};
+ nodes[6]=CK_Node.{kind=CK_Tag.proc,name="use",head=7,b=8};nodes[7]=CK_Node.{kind=CK_Tag.param,name="v",a=9};nodes[8]=CK_Node.{kind=CK_Tag.stmt_block};nodes[9]=CK_Node.{kind=CK_Tag.type_named,name="Saved",head=10};nodes[10]=CK_Node.{kind=CK_Tag.type_named,name=ifx owned then "int" else "string"};
+ ok:=CK_run(c,10,CK_Options.{library=true});#assert ok==(!marked || owned);
+ if marked && !owned {#assert state[0].error_count==1 && errors[0].code=="E0970";}else {#assert state[0].error_count==0;}
+}

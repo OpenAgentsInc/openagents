@@ -50,7 +50,7 @@
   lc_demo_publish(d[..],txi_disconnect_vartime(d[0].live[..],used,d[0].stage[..],d[0].batch[..]));
   #assert axi_disconnect_vartime(d[0].live[..],d[0].used,d[0].stage[..],d[0].batch[..]).code == LC_CONTEXT;
 }
-axi_reorg_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int, blocks: [] LcBlock, locs: [] TxiLoc, stage: [] u8, batch: [] u8, w: LcWork) -> LcResult #export_c {
+axi_reorg_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int, blocks: [] LcBlock, locs: [] TxiLoc, stage: [] u8, batch: [] u8, w: LcWork) -> LcResult #export_c #effects(all) {
   if axi_context_vartime(table,used) != LC_OK { return LcResult.{code=LC_CONTEXT}; }
   r := txi_reorg_vartime(tree,table,used,target,blocks,locs,stage,batch,w); if r.code != LC_OK { return r; }
   c := [1] LcCursor.[LcCursor.{used=r.used,n=r.n}];
@@ -62,7 +62,7 @@ axi_reorg_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int, 
   if !axi_sync_vartime(stage,c[..],batch) || c[0].used > table.count { return LcResult.{code=LC_CAPACITY}; }
   r.used = c[0].used; r.n = c[0].n; return r;
 }
-axi_disconnect_vartime :: (table: [] u8, used: int, stage: [] u8, batch: [] u8) -> LcResult #export_c {
+axi_disconnect_vartime :: (table: [] u8, used: int, stage: [] u8, batch: [] u8) -> LcResult #export_c #effects(all) {
   if axi_context_vartime(table,used) != LC_OK { return LcResult.{code=LC_CONTEXT}; }
   r := txi_disconnect_vartime(table,used,stage,batch); if r.code != LC_OK { return r; }
   c := [1] LcCursor.[LcCursor.{used=r.used,n=r.n}];

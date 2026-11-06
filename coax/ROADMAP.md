@@ -1,7 +1,7 @@
 # Coax implementation roadmap
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.51.2**. Status inventory schema: **1**.
+Current compiler: **coax0 0.52.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated 2026-11-01. Baseline: the current compiler above, including bounded
 generics, logical modules, returned-borrow and retained-store diagnostics,

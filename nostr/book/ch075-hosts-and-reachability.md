@@ -177,7 +177,7 @@ its own refusal, so a test can tell where a bad record stops:
 // and x-only public key are given. On HG_OK, original is the exact signed
 // envelope (borrowed from access_wire) to retain beside the projection.
 // overlap is the host's truthful fact that any two views share memory.
-host_access_bind_checked :: (access_wire:[]u8,device_secret:[]u8,device_x:[]u8,work:[]u8,overlap:bool)->HostGrant #export_c {
+host_access_bind_checked :: (access_wire:[]u8,device_secret:[]u8,device_x:[]u8,work:[]u8,overlap:bool)->HostGrant #export_c #effects(all) {
   r:HostGrant;
   if device_secret.count!=32 || device_x.count!=32 || work.count<HG_WORK || overlap {return r;}
   access:=H_Access_decode(access_wire);
@@ -204,7 +204,7 @@ host_access_bind_checked :: (access_wire:[]u8,device_secret:[]u8,device_x:[]u8,w
 // recipient, decryption, envelope and grant. Split out so checks reach it
 // within a check budget (ECDH alone is about one); host_access_bind_checked
 // is the only caller outside checks.
-hg_open :: (text:string,e:NostrEvent,g:H_Grant,ck:[]u8,device_x:[]u8,work:[]u8)->HostGrant {
+hg_open :: (text:string,e:NostrEvent,g:H_Grant,ck:[]u8,device_x:[]u8,work:[]u8)->HostGrant #effects(all) {
   r:HostGrant;
   // 32 bytes always fit 64 without overlap: hex encoding cannot refuse here.
   dev:[64]u8;signer:[64]u8;mail:[64]u8;
@@ -282,7 +282,7 @@ bytes is a `conflict`.
 
 <!-- source: coax/lib/nostr/host/admit.coax admit -->
 ```jai
-host_admit :: (grants:[]HostGrantRecord,epochs:[]HostEpoch,retained:[]HostRetained,q:HostRequest,now:int)->u32 {
+host_admit :: (grants:[]HostGrantRecord,epochs:[]HostEpoch,retained:[]HostRetained,q:HostRequest,now:int)->u32 #effects(all) {
   // 1. The request: at most 60 s long, not yet expired, not from the future.
   if q.expires_at<=q.issued_at || q.expires_at-q.issued_at>HA_WINDOW {return HA_MALFORMED;}
   if now>q.expires_at {return HA_SILENT;}
@@ -324,7 +324,7 @@ before a revocation is refused even when its tombstone is gone.
 // Marks every grant of device revoked and advances its epoch, together.
 // Returns the new epoch, or -1 when the device has no epoch entry (its
 // grants are still revoked; the caller adds the entry at epoch 1).
-host_revoke :: (grants:[]HostGrantRecord,epochs:[]HostEpoch,device:string)->int {
+host_revoke :: (grants:[]HostGrantRecord,epochs:[]HostEpoch,device:string)->int #effects(all) {
   for i:0..<grants.count {if grants[i].device==device {grants[i].revoked=true;}}
   for i:0..<epochs.count {if epochs[i].device==device {epochs[i].epoch+=1;return epochs[i].epoch;}}
   return -1;
@@ -422,7 +422,7 @@ ReachSample :: struct {generation:int;observed_at:int;received_at:int;}
 ```jai
 // Whether to keep sample s, given the sample held for that host (have
 // says whether there is one).
-reach_presence_accept :: (held:ReachSample,have:bool,s:ReachSample)->u32 {
+reach_presence_accept :: (held:ReachSample,have:bool,s:ReachSample)->u32 #effects(all) {
   if s.observed_at>s.received_at+RF_SKEW {return RF_FUTURE;}
   if s.received_at-s.observed_at>RF_MAX_AGE {return RF_STALE;}
   if have && s.generation<held.generation {return RF_ROLLBACK;}
@@ -430,7 +430,7 @@ reach_presence_accept :: (held:ReachSample,have:bool,s:ReachSample)->u32 {
   return RF_OK;
 }
 // Whether a kept sample is still fresh at now, the reader's clock.
-reach_presence_fresh :: (s:ReachSample,now:int)->bool {
+reach_presence_fresh :: (s:ReachSample,now:int)->bool #effects(all) {
   return now-s.received_at<=RF_MAX_AGE && s.received_at-s.observed_at<=RF_MAX_AGE;
 }
 ```
@@ -447,7 +447,7 @@ presence cannot tell which generation is current, so it uses no hints.
 ```jai
 // Whether a hint set of this generation and expiry may be tried at now,
 // against the presence sample held for its host.
-reach_hints_usable :: (generation:int,expires_at:int,presence:ReachSample,have:bool,now:int)->u32 {
+reach_hints_usable :: (generation:int,expires_at:int,presence:ReachSample,have:bool,now:int)->u32 #effects(all) {
   if !have || !reach_presence_fresh(presence,now) || generation!=presence.generation {return RF_STALE;}
   if now>=expires_at {return RF_STALE;}
   return RF_OK;

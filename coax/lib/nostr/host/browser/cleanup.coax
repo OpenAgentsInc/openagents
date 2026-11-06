@@ -15,5 +15,5 @@
   #assert crypto_zeroed(w[0].ck[..]);
 }
 
-hb_zero :: (b:[]u8) {secure_zero(b);}
-hb_clear :: (w:[]HbWork) {hb_zero(w[0].pre[..]);hb_zero(w[0].body[..]);hb_zero(w[0].cipher[..]);hb_zero(w[0].scratch[..]);hb_zero(w[0].ck[..]);}
+hb_zero :: (b:[]u8) #effects(all) {secure_zero(b);}
+hb_clear :: (w:[]HbWork) #effects(all) {hb_zero(w[0].pre[..]);hb_zero(w[0].body[..]);hb_zero(w[0].cipher[..]);hb_zero(w[0].scratch[..]);hb_zero(w[0].ck[..]);}

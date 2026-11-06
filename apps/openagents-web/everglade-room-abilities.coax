@@ -297,19 +297,19 @@ eg_ra_fire_hurt :: (s: [] Everglade, i: int, amount: int, by: int) {
 // The server's world (everglade-watch.coax everglade_room_spells_start).
 eg_ra_server_start :: (s: [] Everglade) { s[0].sp.room_ab[0].server = true; }
 // Seat `by` stands at (x, y, z) facing yaw (world feet), each tick before everglade_room_abilities.
-everglade_room_ab_pose :: (s: [] Everglade, by: int, x: f32, y: f32, z: f32, yaw: f32) #export_c {
+everglade_room_ab_pose :: (s: [] Everglade, by: int, x: f32, y: f32, z: f32, yaw: f32) #export_c #effects(all) {
   if by < 0 || by >= EG_RA_SEATS || !finite(x) || !finite(y) || !finite(z) { return; }
   c := s[0].sp.room_ab[0].seat[by..<by + 1];
   c[0].at = v3(x, y, z); c[0].face = yaw; c[0].posed = true;
 }
 // Seat `by` casts ability k (AB_*) standing at (x, y, z) facing yaw at the aim (ax, ay, az), or (on
 // false) ends what it holds up.
-everglade_room_ability :: (s: [] Everglade, by: int, k: int, x: f32, y: f32, z: f32, yaw: f32, on: bool, ax: f32, ay: f32, az: f32) #export_c {
+everglade_room_ability :: (s: [] Everglade, by: int, k: int, x: f32, y: f32, z: f32, yaw: f32, on: bool, ax: f32, ay: f32, az: f32) #export_c #effects(all) {
   everglade_room_ability_mode(s, by, k, x, y, z, yaw, on, ax, ay, az, 0);
 }
 // The same with the spell's mode as its caster had it picked (eg_ra_mode: Elementalism's element,
 // Create or Destroy Water; 0 none).
-everglade_room_ability_mode :: (s: [] Everglade, by: int, k: int, x: f32, y: f32, z: f32, yaw: f32, on: bool, ax: f32, ay: f32, az: f32, mode: int) #export_c {
+everglade_room_ability_mode :: (s: [] Everglade, by: int, k: int, x: f32, y: f32, z: f32, yaw: f32, on: bool, ax: f32, ay: f32, az: f32, mode: int) #export_c #effects(all) {
   if !sp_on(s) || !eg_ra_runs(k) || by < 0 || by >= EG_RA_SEATS || !finite(x) || !finite(z) { return; }
   r := s[0].sp.room_ab[..];
   aim := v3(ax, ay, az);
@@ -340,7 +340,7 @@ everglade_room_ability_mode :: (s: [] Everglade, by: int, k: int, x: f32, y: f32
 // Seat q's rise and sink keys this step (input bits WB_RISE, WB_SINK: everglade-net.coax net_input),
 // the seat standing at (x, z), y over the ground there: its Levitate goes up while the rise key is held
 // and down while the sink key is, and holds where you let go, as yours does.
-everglade_room_rise :: (s: [] Everglade, q: int, up: bool, sink: bool, x: f32, z: f32, y: f32) #export_c {
+everglade_room_rise :: (s: [] Everglade, q: int, up: bool, sink: bool, x: f32, z: f32, y: f32) #export_c #effects(all) {
   if !sp_on(s) || q < 0 || q >= EG_RA_SEATS || !finite(x) || !finite(z) || !finite(y) { return; }
   c := s[0].sp.room_ab[0].seat[q..<q + 1];
   a := c[0].ab[..];
@@ -372,7 +372,7 @@ eg_ra_busy :: (c: [] EgRaSeat) -> bool {
   return c[0].quiet < f32(EG_RA_REST);
 }
 // The abilities for dt: every seat's copy at its seat's place, the falls' harm kept for the rules.
-everglade_room_abilities :: (s: [] Everglade, dt: f32) #export_c {
+everglade_room_abilities :: (s: [] Everglade, dt: f32) #export_c #effects(all) {
   if !sp_on(s) || !(dt > 0) { return; }
   r := s[0].sp.room_ab[..];
   r[0].hurts = 0;
@@ -405,7 +405,7 @@ everglade_room_abilities :: (s: [] Everglade, dt: f32) #export_c {
   for i: 0..<WATCH_ACTORS { s[0].wv.rules_save[i] = 0; }
 }
 // Seat q's ability k: ON X Y Z YAW EPOCH (where its last cast was: the caster, or the aim). Whether it is up.
-everglade_room_life :: (s: [] Everglade, q: int, k: int, out: [] f32) -> bool #export_c {
+everglade_room_life :: (s: [] Everglade, q: int, k: int, out: [] f32) -> bool #export_c #effects(all) {
   if !sp_on(s) || q < 0 || q >= EG_RA_SEATS || k < 0 || k >= AB_N || out.count < EG_RA_LIFE { return false; }
   c := s[0].sp.room_ab[0].seat[q..<q + 1];   // in place: a seat holds every ability's state, too big to copy per call
   on := c[0].used && c[0].live[k];
@@ -415,7 +415,7 @@ everglade_room_life :: (s: [] Everglade, q: int, k: int, out: [] f32) -> bool #e
   return on;
 }
 // How high over their feet person i is (m), the highest any copy has them, or 0.
-everglade_room_air :: (s: [] Everglade, i: int) -> f32 #export_c {
+everglade_room_air :: (s: [] Everglade, i: int) -> f32 #export_c #effects(all) {
   if !sp_on(s) || i < 0 || i >= WATCH_ACTORS { return 0; }
   top := 0.0f32;
   for q: 0..<EG_RA_SEATS {
@@ -425,8 +425,8 @@ everglade_room_air :: (s: [] Everglade, i: int) -> f32 #export_c {
   return top;
 }
 // The damage the falls dealt this step, q's PERSON AMOUNT SEAT, while q < the count.
-everglade_room_hurts :: (s: [] Everglade) -> int #export_c { return ifx sp_on(s) then s[0].sp.room_ab[0].hurts else 0; }
-everglade_room_hurt :: (s: [] Everglade, q: int, out: [] f32) -> bool #export_c {
+everglade_room_hurts :: (s: [] Everglade) -> int #export_c #effects(all) { return ifx sp_on(s) then s[0].sp.room_ab[0].hurts else 0; }
+everglade_room_hurt :: (s: [] Everglade, q: int, out: [] f32) -> bool #export_c #effects(all) {
   r := s[0].sp.room_ab[..];
   if q < 0 || q >= r[0].hurts || out.count < 3 { return false; }
   out[0] = f32(r[0].hurt_i[q]); out[1] = f32(r[0].hurt_n_[q]); out[2] = f32(r[0].hurt_by[q]);

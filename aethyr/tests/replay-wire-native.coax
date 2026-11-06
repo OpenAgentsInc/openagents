@@ -2,7 +2,7 @@
 #load "replay-wire-walk.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {return 2;}
   mode:=args_at(a[..],0);path:=args_at(a[..],1);seed:=args_number(args_at(a[..],2));if !seed.ok {return 2;}
   r:[1]RwWalk;

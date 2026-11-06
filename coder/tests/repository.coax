@@ -7,7 +7,7 @@
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/nostr/json.coax";
 #load "../../coax/lib/crypto/sha256-memory.coax";
-cxterm_write :: (s: [] u8) -> int #foreign;
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 
 PILOT :: "coder-repository-pilot-v1";
 SPECS :: [10] string.[
@@ -279,7 +279,7 @@ pe_live :: (e:PeEnv,root:string,k:int,engine:string,out:string)->int {
  return 0; // a measured task failure is data, not a harness invocation error
 }
 
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) {return 2;}mode:=args_at(a[..],0);
  if mode!="offline" && mode!="run" {tool_errln("usage: repository.coax offline | run --engine claude|codex|micro|psionic|auto --case 0..9 --out FILE");return 2;}
  rb:[4096]u8;repo:=fs_cwd(rb[..]);coaxb:[4096]u8;coax:=proc_getenv("COAX",coaxb[..]);if coax.count==0 {tool_errln("set COAX to the absolute qualified compiler path");return 2;}

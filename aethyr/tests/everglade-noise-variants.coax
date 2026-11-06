@@ -17,7 +17,7 @@ en_historical :: (work:string)->bool {
     scratch:[524288]u8;for site:0..<ifx which==0 then 5 else 1 {needle:=ifx which==0 then EN_EG_OLD[site] else EN_STYLE_OLD;if rto_replace(cast(string)out[0..<r.out_n],needle,needle,scratch[..])<0 {tool_errln("historical noise body does not match exact git bytes");return false;}}
   }return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || (args_count(a[..])!=2 && args_count(a[..])!=3) {tool_errln("usage: everglade-noise-variants NEW_EMPTY_OUT CURRENT_PACKAGE [RETAINED_INTEGER_WGSL]");return 2;}paths:[15][4096]u8;repository:=fs_cwd(paths[0][..]);if !fs_mkdir(args_at(a[..],0)) {return 2;}work:=fs_realpath(args_at(a[..],0),paths[1][..]);listing:[1]FsList;if work=="" || fs_list(work,listing[..])!=0 {return 2;}package:=fs_realpath(args_at(a[..],1),paths[2][..]);if package=="" {return 2;}
   compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);if compiler=="" {tool_errln("select the qualified compiler through COAX");return 2;}inputs:[1]RtqInputs;shader_inputs:[1]RtqInputs;integer:[1]RtqInputs;sine:[1]RtqInputs;self:[4096]u8;image:=cxproc_self_path(self[..]);if image<1 {return 1;}
   for file:[3]string.[compiler,cast(string)self[0..<image],"coax/web/tool.sh"] {if !rtq_input_add(inputs[..],file) {return 1;}}

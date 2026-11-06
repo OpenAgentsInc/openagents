@@ -11,8 +11,8 @@ MpDraw :: struct {ok:bool;indexed:bool;first:int;count:int;base:int;instances:in
   two:[32]u8;for k:0..<16{two[16+k]=a[k];}two[16]=2;two[20]=3;two[24]=5;two[28]=7;
   d=mp_draw(two[..],1,10);#assert d.ok&&d.first==2&&d.count==3&&d.base==5&&d.instances==7;
 }
-mp_u32 :: (b:[]u8,at:int)->int {n:=0;for k:0..<4{n|=cast(int)b[at+k]<<(8*k);}return n;}
-mp_draw :: (bytes:[]u8,row:int,indices:int)->MpDraw {
+mp_u32 :: (b:[]u8,at:int)->int #effects(all) {n:=0;for k:0..<4{n|=cast(int)b[at+k]<<(8*k);}return n;}
+mp_draw :: (bytes:[]u8,row:int,indices:int)->MpDraw #effects(all) {
   d:MpDraw;if row<0||row>=bytes.count/16{return d;}at:=row*16;
   d.first=mp_u32(bytes,at);d.count=mp_u32(bytes,at+4);base:=mp_u32(bytes,at+8);d.base=base&0x7FFFFFFF;d.instances=mp_u32(bytes,at+12);d.indexed=(base&0x80000000)==0;
   d.ok=d.count<=1048576&&d.instances<=262144&&(!d.indexed||d.first<=indices&&d.count<=indices-d.first);return d;
@@ -29,10 +29,10 @@ mp_draw :: (bytes:[]u8,row:int,indices:int)->MpDraw {
   #assert mp_buffer(1,1)&&!mp_buffer(67108865,1)&&!mp_buffer(67108868,4);
   #assert !mp_size(8193,1)&&!mp_size(1,0)&&!mp_copy(320,180,1,320,181,1);
 }
-mp_slot :: (kind:int,slot:int)->bool {return slot>=0&&((kind==1&&slot<29)||(kind==2&&slot<128)||(kind==3&&slot<16));}
-mp_buffer :: (bytes:int,stride:int)->bool {return bytes>=0&&bytes<=67108864&&stride>0&&bytes%stride==0;}
-mp_size :: (w:int,h:int)->bool {return w>0&&w<=8192&&h>0&&h<=8192;}
-mp_copy :: (aw:int,ah:int,af:int,bw:int,bh:int,bf:int)->bool {return aw==bw&&ah==bh&&af==bf;}
+mp_slot :: (kind:int,slot:int)->bool #effects(all) {return slot>=0&&((kind==1&&slot<29)||(kind==2&&slot<128)||(kind==3&&slot<16));}
+mp_buffer :: (bytes:int,stride:int)->bool #effects(all) {return bytes>=0&&bytes<=67108864&&stride>0&&bytes%stride==0;}
+mp_size :: (w:int,h:int)->bool #effects(all) {return w>0&&w<=8192&&h>0&&h<=8192;}
+mp_copy :: (aw:int,ah:int,af:int,bw:int,bh:int,bf:int)->bool #effects(all) {return aw==bw&&ah==bh&&af==bf;}
 #test "Metal verification mip levels use level-major array slices, never implicit SDK mip generation" {
   #assert mp_texels(4,2,3,3)==33 && mp_texels(1,1,1,1)==1;
   #assert mp_texels(0,2,1,1)==-1&&mp_texels(4,2,0,1)==-1&&mp_texels(4,2,1,0)==-1&&mp_texels(4,2,1,4)==-1;
@@ -45,7 +45,7 @@ mp_copy :: (aw:int,ah:int,af:int,bw:int,bh:int,bf:int)->bool {return aw==bw&&ah=
   a:=[16]u8.[0,0,0,0,0,0,16,0,0,0,0,128,0,0,4,0];#assert mp_draw(a[..],0,0).ok;
   a[4]=1;#assert !mp_draw(a[..],0,0).ok;a[4]=0;a[12]=1;#assert !mp_draw(a[..],0,0).ok;
 }
-mp_texels :: (w:int,h:int,layers:int,levels:int)->int {
+mp_texels :: (w:int,h:int,layers:int,levels:int)->int #effects(all) {
   if !mp_size(w,h)||layers<1||layers>256||levels<1{return -1;}total:=0;lw:=w;lh:=h;i:=1;
   while true{total+=lw*lh*layers;if i==levels{break;}if lw==1&&lh==1{return -1;}
     lw=lw/2+(ifx lw==1 then 1 else 0);lh=lh/2+(ifx lh==1 then 1 else 0);i+=1;}
@@ -59,9 +59,9 @@ mp_texels :: (w:int,h:int,layers:int,levels:int)->int {
   for m:0..<8{#assert mp_blend_factor(m,false)==src[m]&&mp_blend_factor(m,true)==dst[m];}
   #assert mp_blend_factor(-1,false)==-1&&mp_blend_factor(8,true)==-1;
 }
-mp_mode :: (name:string)->int {for s,i:[8]string.["none","add","alpha","mul","over","under","keep","max"]{if s==name{return i;}}return -1;}
+mp_mode :: (name:string)->int #effects(all) {for s,i:[8]string.["none","add","alpha","mul","over","under","keep","max"]{if s==name{return i;}}return -1;}
 // API-independent factor names: 0 zero,1 one,2 srcAlpha,3 oneMinusSrcAlpha,4 srcColor.
-mp_blend_factor :: (mode:int,destination:bool)->int {
+mp_blend_factor :: (mode:int,destination:bool)->int #effects(all) {
   src:=[8]int.[1,1,2,0,1,0,0,1];dst:=[8]int.[0,1,3,4,3,3,1,1];
   if mode<0||mode>=8{return -1;}return ifx destination then dst[mode] else src[mode];
 }

@@ -6,5 +6,5 @@
  v:Vector3(World,u.Metre,f64);v.x=1;v.y=2;v.z=3;
  r:=step(p,v);#assert r.x==11 && r.y==22 && r.z==33;
 }
-untouched :: ()->f64 {return 7;}
-step :: (p:Point3(World,u.Metre,f64),v:Vector3(World,u.Metre,f64))->Point3(World,u.Metre,f64) {return p+v;}
+untouched :: ()->f64 #effects(all) {return 7;}
+step :: (p:Point3(World,u.Metre,f64),v:Vector3(World,u.Metre,f64))->Point3(World,u.Metre,f64) #effects(all) {return p+v;}

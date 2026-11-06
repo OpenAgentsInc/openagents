@@ -54,10 +54,10 @@ FrameObserved::struct{out_b:[FO_KEYS]int;out_n:[FO_KEYS]int;in_b:[128]int;in_n:[
   #assert fo_letter('A')==cast(int)'A'&&fo_letter('Z')==cast(int)'Z'&&fo_letter('a')==cast(int)'a'&&fo_letter('z')==cast(int)'z';
   for c:[7]u8.[0,32,64,91,96,123,255]{#assert fo_letter(c)==cast(int)'?';}
 }
-fo_letter::(c:u8)->int{if (c>='A'&&c<='Z')||(c>='a'&&c<='z'){return cast(int)c;}return cast(int)'?';}
-fo_add::(a:int,b:int,over:[]bool)->int{if b>9223372036854775807-a{over[0]=true;return 9223372036854775807;}return a+b;}
-fo_bump::(o:[]FrameObserved,key:int,bytes:int,n:int){o[0].out_b[key]=fo_add(o[0].out_b[key],bytes,o[0].overflow[..]);o[0].out_n[key]=fo_add(o[0].out_n[key],n,o[0].overflow[..]);}
-fo_out::(o:[]FrameObserved,text:string,to:int,bytes:int)->int #export_c{
+fo_letter::(c:u8)->int #effects(all) {if (c>='A'&&c<='Z')||(c>='a'&&c<='z'){return cast(int)c;}return cast(int)'?';}
+fo_add::(a:int,b:int,over:[]bool)->int #effects(all) {if b>9223372036854775807-a{over[0]=true;return 9223372036854775807;}return a+b;}
+fo_bump::(o:[]FrameObserved,key:int,bytes:int,n:int) #effects(all) {o[0].out_b[key]=fo_add(o[0].out_b[key],bytes,o[0].overflow[..]);o[0].out_n[key]=fo_add(o[0].out_n[key],n,o[0].overflow[..]);}
+fo_out::(o:[]FrameObserved,text:string,to:int,bytes:int)->int #export_c #effects(all) {
   if text.count==0||to<=0||to>512||bytes<text.count||bytes>4300||bytes-text.count>14{return -1;}
   o[0].out_bytes=fo_add(o[0].out_bytes,bytes*to,o[0].overflow[..]);o[0].out_frames=fo_add(o[0].out_frames,to,o[0].overflow[..]);
   fo_bump(o,fo_letter(text[0]),bytes*to,to);
@@ -75,9 +75,9 @@ fo_out::(o:[]FrameObserved,text:string,to:int,bytes:int)->int #export_c{
   }
   return d.f;
 }
-fo_in::(o:[]FrameObserved,text:string,bytes:int) #export_c{
+fo_in::(o:[]FrameObserved,text:string,bytes:int) #export_c #effects(all) {
   if text.count==0||bytes<text.count||bytes>4300||bytes-text.count>14{return;}
   k:=fo_letter(text[0]);o[0].in_b[k]=fo_add(o[0].in_b[k],bytes,o[0].overflow[..]);o[0].in_n[k]=fo_add(o[0].in_n[k],1,o[0].overflow[..]);
   o[0].in_bytes=fo_add(o[0].in_bytes,bytes,o[0].overflow[..]);o[0].in_frames=fo_add(o[0].in_frames,1,o[0].overflow[..]);
 }
-fo_refused::(o:[]FrameObserved,bytes:int) #export_c{if bytes<=0{return;}o[0].refused_bytes=fo_add(o[0].refused_bytes,bytes,o[0].overflow[..]);o[0].refused_frames=fo_add(o[0].refused_frames,1,o[0].overflow[..]);}
+fo_refused::(o:[]FrameObserved,bytes:int) #export_c #effects(all) {if bytes<=0{return;}o[0].refused_bytes=fo_add(o[0].refused_bytes,bytes,o[0].overflow[..]);o[0].refused_frames=fo_add(o[0].refused_frames,1,o[0].overflow[..]);}

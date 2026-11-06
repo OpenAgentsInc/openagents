@@ -109,7 +109,7 @@ pg_walk :: (stage: string, rel: string, depth: int, b: [] PgBuf) -> int {
   return bad;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: private-guard STAGE_DIR"); return 2; }
   stage := args_at(a[..], 0);

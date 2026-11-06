@@ -15,7 +15,7 @@
 wck_material::(compiler:string,unit:string,hashes:string,out:[]u8)->int {
   o:[1]Jo;jo_start(o[..],out);for line:[3]string.["coax-room-worker-c-1",compiler,unit]{jo_put(o[..],line);jo_put(o[..],"\n");}jo_put(o[..],hashes);return ifx o[0].bad then -1 else o[0].n;
 }
-tool_main::()->int #export_c {
+tool_main::()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3||args_at(a[..],0).count!=64{tool_errln("usage: cache-source-key COMPILER_SHA UNIT HASH_MANIFEST");return 2;}
   sources:[65536]u8;err:[65536]u8;none:[1]string;argv:=[4]string.["coax/web/tool.sh","wasm-size","sources",args_at(a[..],1)];
   r:=proc_run_bytes(argv[..],none[0..<0],60000,sources[..],err[..]);if r.status!=0||r.timed_out||r.cut||r.out_n<1{return 1;}

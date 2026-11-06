@@ -49,19 +49,19 @@
 }
 
 PolyWorkspace :: struct {clamped:[16]u8;r:[5]u64;h:[5]u64;block:[17]u8;product:[5]u64;reduced:[5]u64;}
-pw_carry :: (work:[]PolyWorkspace) {
+pw_carry :: (work:[]PolyWorkspace) #effects(all) {
   for i:0..<5 {carry:=work[0].product[i]>>26;work[0].product[i]&=POLY_BASE_MASK;
     if i==4 {work[0].product[0]+=carry*5;}else {work[0].product[i+1]+=carry;}}
 }
-pw_normalize :: (work:[]PolyWorkspace) {pw_carry(work);pw_carry(work);pw_carry(work);}
-pw_reduce :: (work:[]PolyWorkspace) {
+pw_normalize :: (work:[]PolyWorkspace) #effects(all) {pw_carry(work);pw_carry(work);pw_carry(work);}
+pw_reduce :: (work:[]PolyWorkspace) #effects(all) {
   for i:0..<5 {work[0].reduced[i]=work[0].h[i];}work[0].reduced[0]+=5;
   for i:0..<4 {carry:=work[0].reduced[i]>>26;work[0].reduced[i]&=POLY_BASE_MASK;work[0].reduced[i+1]+=carry;}
   overflow:=work[0].reduced[4]>>26;work[0].reduced[4]&=POLY_BASE_MASK;mask:=sub_wrap(cast(u64)0,overflow);
   for i:0..<5 {work[0].h[i]=(work[0].reduced[i]&mask)|(work[0].h[i]^(work[0].h[i]&mask));}
 }
 // This entry assumes truthful alias facts and stable valid disjoint views.
-poly_workspace :: (key:[]u8,msg:[]u8,work:[]PolyWorkspace,out:[]u8,overlap:bool)->bool #export_c {
+poly_workspace :: (key:[]u8,msg:[]u8,work:[]PolyWorkspace,out:[]u8,overlap:bool)->bool #export_c #effects(all) {
   if work.count!=1 || !poly_admit(key.count,msg.count,out.count,overlap) {return false;}
   work[0]=PolyWorkspace.{};
   for i:0..<16 {work[0].clamped[i]=key[i];}

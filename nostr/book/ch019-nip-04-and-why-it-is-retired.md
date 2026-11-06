@@ -83,7 +83,7 @@ never contains `?`, so anything else is a format error:
 ```jai
 // "<cipher>?iv=<iv>": the first '?' must start "?iv=". An empty cipher
 // text splits; it is refused later as a bad length.
-nip04_split :: (content:string)->Nip04Split {
+nip04_split :: (content:string)->Nip04Split #effects(all) {
   q:=0;
   while q<content.count && content[q]!='?' {q+=1;}
   if content.count-q<4 {return Nip04Split.{};}
@@ -312,7 +312,7 @@ ciphertext, decrypts in place, then removes the padding:
 
 <!-- source: coax/lib/nostr/nip04.coax nip04_decrypt_checked -->
 ```jai
-nip04_decrypt_checked :: (shared_x:[]u8,content:string,out:[]u8,work:[]Nip04Work,overlap:bool)->Nip04Result {
+nip04_decrypt_checked :: (shared_x:[]u8,content:string,out:[]u8,work:[]Nip04Work,overlap:bool)->Nip04Result #effects(all) {
   if shared_x.count!=32 {return Nip04Result.{error=NIP04_KEY};}
   if work.count!=1 {return Nip04Result.{error=NIP04_WORK};}
   parts:=nip04_split(content);
@@ -344,7 +344,7 @@ before the refusal returns. PKCS#7 is checked like this:
 ```jai
 // PKCS#7: the last byte p is 1 to 16 and the last p bytes all equal p.
 // Returns the plaintext length, or -1.
-nip04_unpad :: (data:[]u8)->int {
+nip04_unpad :: (data:[]u8)->int #effects(all) {
   n:=data.count;p:=cast(int)data[n-1];
   if p<1 || p>16 {return -1;}
   for i:n-p..<n-1 {if cast(int)data[i]!=p {return -1;}}
@@ -360,7 +360,7 @@ message: `x(a·B) = x(b·A)`.
 ```jai
 // The shared x from your secret and the other side's x-only key (chapter
 // 14), used unhashed, as NIP-04 requires. It is cleared before return.
-nip04_decrypt_from_keys_checked :: (secret:[]u8,peer_x:[]u8,content:string,out:[]u8,work:[]Nip04Work,overlap:bool)->Nip04Result {
+nip04_decrypt_from_keys_checked :: (secret:[]u8,peer_x:[]u8,content:string,out:[]u8,work:[]Nip04Work,overlap:bool)->Nip04Result #effects(all) {
   if work.count!=1 {return Nip04Result.{error=NIP04_WORK};}
   code:=ecdh_stage(secret,peer_x,work[0].ecdh[..]);
   result:=Nip04Result.{error=NIP04_KEY};
@@ -485,7 +485,7 @@ procedure named for encryption refuses:
 ```jai
 // NIP-04 is retired. This takes the arguments an encrypter would and
 // refuses; new direct messages use NIP-17 (NIP-44 inside NIP-59).
-nip04_encrypt :: (shared_x:[]u8,plaintext:string,out:[]u8)->Nip04Result {
+nip04_encrypt :: (shared_x:[]u8,plaintext:string,out:[]u8)->Nip04Result #effects(all) {
   return Nip04Result.{error=NIP04_RETIRED};
 }
 ```

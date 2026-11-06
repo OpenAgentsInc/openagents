@@ -68,19 +68,19 @@ OwResult :: struct {status:OwStatus;count:int;changed:int;base:[32]u8;digest:[32
     #assert ow_width(OwType.bf16)==2 && ow_width(OwType.f32)==4;
 }
 
-ow_width :: (dtype:OwType)->int {return ifx dtype==OwType.bf16 then 2 else 4;}
-ow_layout :: (w:OwWindow,bytes:int)->bool {
+ow_width :: (dtype:OwType)->int #effects(all) {return ifx dtype==OwType.bf16 then 2 else 4;}
+ow_layout :: (w:OwWindow,bytes:int)->bool #effects(all) {
     if !we_name(w.name) || w.rows<1 || w.rows>1048576 || w.cols<1 || w.cols>1048576 || w.first<0 || w.count<1 || w.count>16384 || cast(u8)w.dtype>1 {return false;}
     return w.first<=w.rows*w.cols-w.count && bytes==ow_width(w.dtype)*w.count;
 }
-ow_bits :: (bytes:[]u8,i:int,dtype:OwType)->u32 {
+ow_bits :: (bytes:[]u8,i:int,dtype:OwType)->u32 #effects(all) {
     bits:u32;width:=ow_width(dtype);for j:0..<width {bits|=cast(u32)bytes[width*i+j]<<cast(u32)(8*j);}if dtype==OwType.bf16 {bits<<=16;}return bits;
 }
-ow_value :: (bytes:[]u8,i:int,dtype:OwType)->f64 {return f64(f32_from_bits(ow_bits(bytes,i,dtype)));}
-ow_encoded :: (v:f64,dtype:OwType)->u32 {
+ow_value :: (bytes:[]u8,i:int,dtype:OwType)->f64 #effects(all) {return f64(f32_from_bits(ow_bits(bytes,i,dtype)));}
+ow_encoded :: (v:f64,dtype:OwType)->u32 #effects(all) {
     bits:=f32_bits(cast(f32)v);if dtype==OwType.bf16 {return (bits+0x7fff+((bits>>16)&1))>>16;}return bits;
 }
-ow_identity :: (w:OwWindow,bytes:[]u8)->OwIdentity {
+ow_identity :: (w:OwWindow,bytes:[]u8)->OwIdentity #effects(all) {
     r:OwIdentity;if !ow_layout(w,bytes.count) {r.status=OwStatus.layout;return r;}
     for i:0..<w.count {if (ow_bits(bytes,i,w.dtype)&0x7f800000)==0x7f800000 {r.status=OwStatus.number;return r;}}
     b:[66000]u8;n:=we_text(b[..],0,"original-window-v1");for x:w.model {b[n]=x;n+=1;}for x:w.shard {b[n]=x;n+=1;}
@@ -88,7 +88,7 @@ ow_identity :: (w:OwWindow,bytes:[]u8)->OwIdentity {
     for x:bytes {b[n]=x;n+=1;}#assert sha256_hash_checked(b[0..<n],r.digest[..],false)==SHA_OK;return r;
 }
 // book:begin apply
-ow_apply :: (w:OwWindow,source:[]u8,pin:[32]u8,proposed:[]f64)->OwResult {
+ow_apply :: (w:OwWindow,source:[]u8,pin:[32]u8,proposed:[]f64)->OwResult #effects(all) {
     r:OwResult;id:=ow_identity(w,source);if id.status!=OwStatus.ok {r.status=id.status;return r;}
     if !we_same(pin,id.digest) {r.status=OwStatus.identity;return r;}
     if proposed.count!=w.count {r.status=OwStatus.layout;return r;}

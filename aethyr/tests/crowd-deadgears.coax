@@ -117,7 +117,7 @@ passage_run :: (g: Game, w: f32, frames: int) -> Passage {
 
 // Case k's digest: the passage one body wide (0), two (1) and three (2).
 // The caller owns the store (in wasm, crowd-deadgears-face.c keeps it off the stack).
-deadgears_npc_case :: (st: [] Store, k: int) -> int #export_c {
+deadgears_npc_case :: (st: [] Store, k: int) -> int #export_c #effects(all) {
   st[0] = Store.{};
   g := dg_bind(st);
   if k == 0 { return passage_run(g, 1.6, 300).digest; }

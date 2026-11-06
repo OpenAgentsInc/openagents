@@ -4,7 +4,7 @@
 #load "../render/geometry/pages.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) || args_count(args[..])<1 || args_count(args[..])>2 {return 2;}r:[1]Rock;
   for detail:[3]int.[8,16,32] {
     if !rock_build(r[..],detail,12609) {return 1;}

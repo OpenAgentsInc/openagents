@@ -3,7 +3,7 @@
 #import "Basic";
 #load "../render/tests/qualification-files.coax";
 #load "../../coax/lib/sys/args.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<5||args_count(a[..])>8 {tool_errln("usage: build-linux-audio ROOT EMISSION NEW_OUT PIPEWIRE_DEV PIPEWIRE_LIB [--sanitize] [--memory|--product] [--combined]");return 2;}
  for i:5..<args_count(a[..]) {if args_at(a[..],i)!="--sanitize"&&args_at(a[..],i)!="--memory"&&args_at(a[..],i)!="--product"&&args_at(a[..],i)!="--combined" {return 2;}}
  if cxtool_os()!=2 {tool_errln("Linux PipeWire SDK required");return 2;}

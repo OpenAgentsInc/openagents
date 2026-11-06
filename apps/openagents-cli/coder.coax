@@ -11,7 +11,7 @@
 // Sessions are in ~/.openagents/coder/sessions, one JSON-lines file each.
 #load "../../coax/lib/agent/local-agents-host.coax";
 
-cxproc_exec :: (h: int) -> int #foreign;
+cxproc_exec :: (h: int) -> int #foreign #effects(all);
 
 coder_usage :: () {
   print("%\n", "Coder (OpenAgents' coding agent, in this terminal):");

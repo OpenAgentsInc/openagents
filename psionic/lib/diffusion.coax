@@ -406,7 +406,7 @@ df_log_density :: (x:[2]f64,alpha:f64,sigma:f64,class:int)->f64 {
 // book:begin draw
 // A standard normal from two uniforms, counters 2k and 2k + 1 (Box-Muller,
 // cosine branch). 1 - u is never 0, so the log is finite.
-df_normal :: (seed:u64,k:u64)->f64 #export_c {
+df_normal :: (seed:u64,k:u64)->f64 #export_c #effects(all) {
     u1:=f64(cr_bits(seed,2*k)>>11)/9007199254740992.0;u2:=f64(cr_bits(seed,2*k+1)>>11)/9007199254740992.0;
     return sqrt(-2*log(1-u1))*cos(2*DF_PI*u2);
 }

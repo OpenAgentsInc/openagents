@@ -134,16 +134,16 @@ RrGrant :: struct {status:RrStatus;handle:RfHandle;}
   #assert rr_format_words(cast(int)rr_formats.RenderTextureFormat.invalid,2,2,1,1)==-1 && rr_format_words(-1,2,2,1,1)==-1;
 }
 
-rr_open :: (rs:[]RenderRegistry,l:RrLimits)->RrStatus {
+rr_open :: (rs:[]RenderRegistry,l:RrLimits)->RrStatus #effects(all) {
   if rs.count!=1 || l.slots<1 || l.slots>RR_SLOTS || l.words<0 {return RrStatus.bad_limits;}
   rs[0]=RenderRegistry.{epoch=1,limit=l};return RrStatus.ok;
 }
-rr_live :: (rs:[]RenderRegistry,h:RfHandle)->bool {
+rr_live :: (rs:[]RenderRegistry,h:RfHandle)->bool #effects(all) {
   if rs.count!=1 {return false;}
   return rf_live(rs[0].table[..],h,rs[0].epoch);
 }
 // rr_n is the grant's words; a local named `words` would shadow Belt's and Dead Gears' words().
-rr_acquire :: (rs:[]RenderRegistry,kind:int,rr_n:int)->RrGrant {
+rr_acquire :: (rs:[]RenderRegistry,kind:int,rr_n:int)->RrGrant #effects(all) {
   if rs.count!=1 || rs[0].limit.slots<1 {return RrGrant.{status=RrStatus.bad_limits};}
   if kind<RF_UNIFORM || kind>RR_TEXTURE {return RrGrant.{status=RrStatus.bad_kind};}
   if rr_n<1 {return RrGrant.{status=RrStatus.bad_words};}
@@ -160,31 +160,31 @@ rr_acquire :: (rs:[]RenderRegistry,kind:int,rr_n:int)->RrGrant {
   return RrGrant.{status=RrStatus.slots};
 }
 // After the object's last use: its slot is dead from this epoch on.
-rr_release :: (rs:[]RenderRegistry,h:RfHandle)->RrStatus {
+rr_release :: (rs:[]RenderRegistry,h:RfHandle)->RrStatus #effects(all) {
   if !rr_live(rs,h) || rs[0].table[h.slot].last!=RR_OPEN {return RrStatus.stale;}
   rs[0].table[h.slot].last=rs[0].epoch-1;rs[0].live-=1;rs[0].words-=rs[0].table[h.slot].words;
   return RrStatus.ok;
 }
-rr_advance :: (rs:[]RenderRegistry)->bool {
+rr_advance :: (rs:[]RenderRegistry)->bool #effects(all) {
   if rs.count!=1 || rs[0].epoch>=RR_OPEN-1 {return false;}
   rs[0].epoch+=1;return true;
 }
 // A lost device took every object with it. Generations are kept, so a handle
 // from before the loss never matches its slot's next owner.
-rr_lose :: (rs:[]RenderRegistry) {
+rr_lose :: (rs:[]RenderRegistry) #effects(all) {
   if rs.count!=1 {return;}
   for s:0..<RR_SLOTS {if rs[0].table[s].last==RR_OPEN {rs[0].table[s].last=rs[0].epoch-1;}}
   rs[0].live=0;rs[0].words=0;_:=rr_advance(rs);
 }
-rr_mip_count :: (width:int,height:int)->int {
+rr_mip_count :: (width:int,height:int)->int #effects(all) {
   n:=1;w:=width;h:=height;
   while w>1 || h>1 {w/=2;h/=2;n+=1;}
   return n;
 }
 // A mip level's size: half the one above, never below one texel.
-rr_half :: (n:int)->int {return ifx n==1 then 1 else n/2;}
+rr_half :: (n:int)->int #effects(all) {return ifx n==1 then 1 else n/2;}
 // The bytes of a texture's every level and layer, in words; -1 refuses.
-rr_texture_words :: (width:int,height:int,layers:int,mips:int,texel_bytes:int)->int {
+rr_texture_words :: (width:int,height:int,layers:int,mips:int,texel_bytes:int)->int #effects(all) {
   if width<1 || height<1 || width>16384 || height>16384 || layers<1 || layers>2048 {return -1;}
   if texel_bytes<1 || texel_bytes>16 || mips<1 || mips>rr_mip_count(width,height) {return -1;}
   bytes:=0;w:=width;h:=height;
@@ -192,12 +192,12 @@ rr_texture_words :: (width:int,height:int,layers:int,mips:int,texel_bytes:int)->
   return (bytes+3)/4;
 }
 // A buffer of at most 4 GiB, in words; -1 refuses.
-rr_buffer_words :: (bytes:int)->int {
+rr_buffer_words :: (bytes:int)->int #effects(all) {
   if bytes<1 || bytes>4294967296 {return -1;}
   return (bytes+3)/4;
 }
 // A format code as the host passes it; -1 refuses any other code.
-rr_format_words :: (format:int,width:int,height:int,layers:int,mips:int)->int {
+rr_format_words :: (format:int,width:int,height:int,layers:int,mips:int)->int #effects(all) {
   if format<0 || format>=cast(int)rr_formats.RenderTextureFormat.invalid {return -1;}
   texel:=4;
   if format==cast(int)rr_formats.RenderTextureFormat.rgba16f {texel=8;}

@@ -3,8 +3,8 @@
 #load "types.coax";
 #authority;
 GS_MAX :: 201088;
-GS_LAST :: (cast(u64)18446744073709551615);
-GS_GOLDEN :: (cast(u64)0x9e3779b97f4a7c15);
+GS_LAST :: (cast(u64)18446744073709551615) #effects(all);
+GS_GOLDEN :: (cast(u64)0x9e3779b97f4a7c15) #effects(all);
 GSeed :: struct {seed:u64;counter:u64;}
 GDraw :: struct {status:GStatus;value:f64;next:GSeed;}
 GPick :: struct {status:GStatus;token:int;}
@@ -45,16 +45,16 @@ GPick :: struct {status:GStatus;token:int;}
     #assert gs_pick(p[..],0).status==GStatus.number && gs_pick(p[..],-1).status==GStatus.shape && gs_pick(p[..],1).status==GStatus.shape;
     p=[3]f64.[0,0,0];#assert gs_pick(p[..],0).status==GStatus.number;
 }
-gs_bits :: (seed:u64,counter:u64)->u64 {
+gs_bits :: (seed:u64,counter:u64)->u64 #effects(all) {
     z:=add_wrap(seed,mul_wrap(GS_GOLDEN,add_wrap(counter,(cast(u64)1))));
     z=mul_wrap(z^(z>>30),(cast(u64)0xbf58476d1ce4e5b9));z=mul_wrap(z^(z>>27),(cast(u64)0x94d049bb133111eb));return z^(z>>31);
 }
-gs_draw :: (state:GSeed)->GDraw #export_c {
+gs_draw :: (state:GSeed)->GDraw #export_c #effects(all) {
     if state.counter==GS_LAST {return GDraw.{status=GStatus.state};}
     return GDraw.{value=f64(gs_bits(state.seed,state.counter)>>11)/9007199254740992.0,next=GSeed.{seed=state.seed,counter=state.counter+1}};
 }
 // book:begin distribution
-gs_distribution :: (logits:[]f32,mask:[]u8,temperature:f64,top_k:int,top_p:f64,out:[]f64,stage:[]f64,order:[]int,temporary:[]int,overlap:bool)->GResult #export_c {
+gs_distribution :: (logits:[]f32,mask:[]u8,temperature:f64,top_k:int,top_p:f64,out:[]f64,stage:[]f64,order:[]int,temporary:[]int,overlap:bool)->GResult #export_c #effects(all) {
     n:=logits.count;
     if !gs_size(n) || !(temperature>=0 && temperature<=100) || top_k<0 || top_k>n || !(top_p>0 && top_p<=1) {return GResult.{status=GStatus.shape};}
     if (mask.count!=0 && mask.count!=n) || out.count<n || stage.count<n || order.count<n || temporary.count<n {return GResult.{status=GStatus.capacity};}if overlap {return GResult.{status=GStatus.alias};}
@@ -81,7 +81,7 @@ gs_distribution :: (logits:[]f32,mask:[]u8,temperature:f64,top_k:int,top_p:f64,o
     for i:0..<n {out[i]=stage[i];}return GResult.{written=n,cause=passes};
 }
 // book:end distribution
-gs_pick :: (probabilities:[]f64,uniform:f64)->GPick #export_c {
+gs_pick :: (probabilities:[]f64,uniform:f64)->GPick #export_c #effects(all) {
     if !gs_size(probabilities.count) || !(uniform>=0 && uniform<1) {return GPick.{status=GStatus.shape};}
     total:PsionicAccumulator;last:int;
     for i:0..<probabilities.count {v:=probabilities[i];if !gs_probability(v) {return GPick.{status=GStatus.number};}total=psionic_ops_accumulate(total,v);if v>0 {last=i;}}
@@ -90,11 +90,11 @@ gs_pick :: (probabilities:[]f64,uniform:f64)->GPick #export_c {
     return GPick.{token=last};
 }
 
-gs_min :: (a:int,b:int)->int {return (a+b-cast(int)abs(f64(a-b)))/2;}
+gs_min :: (a:int,b:int)->int #effects(all) {return (a+b-cast(int)abs(f64(a-b)))/2;}
 #test "bounded minimum endpoints" {#assert gs_min(0,0)==0 && gs_min(3,7)==3 && gs_min(7,3)==3 && gs_min(201088,201088)==201088;}
 
-gs_size :: (n:int)->bool {return n>=1 && n<=GS_MAX;}
-gs_mass :: (n:f64)->bool {return abs(n-1)<0.000000000931322574615478515625;}
+gs_size :: (n:int)->bool #effects(all) {return n>=1 && n<=GS_MAX;}
+gs_mass :: (n:f64)->bool #effects(all) {return abs(n-1)<0.000000000931322574615478515625;}
 #test "sampling size and mass endpoints" {
     #assert gs_size(1) && gs_size(GS_MAX) && !gs_size(0) && !gs_size(GS_MAX+1);
     #assert gs_mass(1) && !gs_mass(1+0.000000000931322574615478515625) && !gs_mass(1-0.000000000931322574615478515625);
@@ -112,5 +112,5 @@ gs_mass :: (n:f64)->bool {return abs(n-1)<0.000000000931322574615478515625;}
     #assert gs_pick(p[0..<0],0).status==GStatus.shape;
 }
 
-gs_probability :: (v:f64)->bool {return v>=0 && v<=1;}
+gs_probability :: (v:f64)->bool #effects(all) {return v>=0 && v<=1;}
 #test "probability endpoints are closed" {#assert gs_probability(0) && gs_probability(1) && !gs_probability(-0.1) && !gs_probability(1.1);}

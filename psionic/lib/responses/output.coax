@@ -12,12 +12,12 @@ RsOutput :: struct {status:int=200;count:int;reasoning:int;code:string;}
     #assert rs_liveness(100,101,true,true)==0 && rs_liveness(100,120100,true,true)==504 && rs_liveness(100,101,false,true)==499 && rs_liveness(100,101,true,false)==503;
     #assert rs_connections(7) && !rs_connections(8) && !rs_connections(-1);
 }
-rs_context :: (prefix:int,limit:int)->bool #export_c {return prefix>0 && limit>=1 && limit<=512 && prefix<=RS_CONTEXT && prefix+limit-1<=RS_CONTEXT;}
-rs_liveness :: (start:int,now:int,connected:bool,healthy:bool)->int #export_c {if !connected {return 499;}if !healthy {return 503;}if now<start || now-start>=120000 {return 504;}return 0;}
-rs_connections :: (count:int)->bool #export_c {return count>=0 && count<8;}
+rs_context :: (prefix:int,limit:int)->bool #export_c #effects(all) {return prefix>0 && limit>=1 && limit<=512 && prefix<=RS_CONTEXT && prefix+limit-1<=RS_CONTEXT;}
+rs_liveness :: (start:int,now:int,connected:bool,healthy:bool)->int #export_c #effects(all) {if !connected {return 499;}if !healthy {return 503;}if now<start || now-start>=120000 {return 504;}return 0;}
+rs_connections :: (count:int)->bool #export_c #effects(all) {return count>=0 && count<8;}
 // Reparse only the bounded generated continuation. Synthetic closing controls
 // allow a provisional typed snapshot, never a claim of model completion.
-rs_snapshot :: (table:[]u8,generated:[]int,terminal:bool,tools:[]RsTool,nodes:[]RsNode,out:[]RsItem,bytes:[]u8)->RsOutput #export_c {
+rs_snapshot :: (table:[]u8,generated:[]int,terminal:bool,tools:[]RsTool,nodes:[]RsNode,out:[]RsItem,bytes:[]u8)->RsOutput #export_c #effects(all) {
     raw:[1024]int;tokens:[1024]int;formats:[64]bool;stage:[32]int;symbols:[1024]int;head:[32]int;
     h:=hs_encode_checked(table,"assistant",head[..],stage[..],symbols[..],false);if h.status!=PtStatus.ok || generated.count>512 {return RsOutput.{status=502,code="invalid_model_output"};}
     raw[0]=200006;for i:0..<h.written {raw[1+i]=head[i];}base:=1+h.written;raw_count:=base+generated.count;for i:0..<generated.count {raw[base+i]=generated[i];}
@@ -67,7 +67,7 @@ rs_snapshot :: (table:[]u8,generated:[]int,terminal:bool,tools:[]RsTool,nodes:[]
 // GPT-OSS may attach <|constrain|>json to a function header. This separate
 // Responses adapter accepts that one label, trims framing whitespace, and
 // feeds the unchanged strict Harmony text parser. It never drops body controls.
-rs_format_headers :: (table:[]u8,raw:[]int,out:[]int,formats:[]bool)->int {
+rs_format_headers :: (table:[]u8,raw:[]int,out:[]int,formats:[]bool)->int #effects(all) {
     if raw.count>1024 || out.count<1024 || formats.count<64 {return -1;}
     for k:0..<64 {formats[k]=false;}i:=0;n:=0;record:= -1;
     decoded:[512]u8;work:[512]u8;encoded:[512]int;stage:[512]int;symbols:[1024]int;

@@ -56,22 +56,22 @@ DB_LOCAL_VIEW :: DbView.{version=1,local=1,local_action=1,local_intent=1,last_in
     v.replies=-1;#assert !db_timeout(v);v.replies=2;#assert !db_timeout(v);v.replies=0;v.reason=9;#assert !db_timeout(v);
 }
 
-db_local :: (v:DbView,mode:int)->bool {
+db_local :: (v:DbView,mode:int)->bool #effects(all) {
     return v.version==1 && v.mode==mode && v.local==1 && v.local_action>=1 && v.local_action<=4 && v.rendered==v.local_action && v.starts==0 && v.replies==0 && v.admitted==0 && v.fallback==0 && v.phase==0 && v.terminals==0;
 }
-db_held :: (v:DbView,starts:int)->bool {return v.version==1 && v.mode==1 && v.starts==starts && v.phase==1 && v.sequence>0 && v.local>0 && v.local_action>0 && v.rendered==v.local_action;}
-db_success :: (v:DbView,action:int,starts:int)->bool {
+db_held :: (v:DbView,starts:int)->bool #effects(all) {return v.version==1 && v.mode==1 && v.starts==starts && v.phase==1 && v.sequence>0 && v.local>0 && v.local_action>0 && v.rendered==v.local_action;}
+db_success :: (v:DbView,action:int,starts:int)->bool #effects(all) {
     return v.version==1 && v.mode==1 && v.starts==starts && v.replies==1 && v.admitted==1 && v.fallback==starts-1 && v.terminals==starts && v.reason==1 && v.phase==0 && v.accepted==action && v.rendered==v.local_action && v.local_action>0;
 }
-db_failure :: (v:DbView,reason:int,disabled:int,replies:int)->bool {
+db_failure :: (v:DbView,reason:int,disabled:int,replies:int)->bool #effects(all) {
     return v.version==1 && v.mode==1 && v.starts==1 && v.replies==replies && v.admitted==0 && v.fallback==1 && v.terminals==1 && v.phase==0 && v.reason==reason && v.disabled==disabled && v.accepted==-1 && v.local_action>0;
 }
-db_cancelled :: (v:DbView)->bool {
+db_cancelled :: (v:DbView)->bool #effects(all) {
     return v.version==1 && v.mode==1 && v.starts==1 && v.replies==0 && v.admitted==0 && v.fallback==1 && v.terminals==1 && (v.reason==7 || v.reason==8) && v.phase==0 && v.sequence==0 && v.rendered==0 && v.local_action==0;
 }
-db_reintent :: (v:DbView)->bool {return db_failure(v,8,0,0) && v.local==2 && v.rendered==v.local_action;}
-db_offered :: (v:DbView,goal:int,kind:int)->bool {return v.version==1 && v.goal==goal && v.offer==kind && v.rendered==0 && v.starts==0;}
-db_staged :: (v:DbView,action:int)->bool {return v.version==1 && v.mode==1 && v.starts==1 && v.replies==1 && v.admitted==0 && v.phase==2 && v.sequence>0 && v.raw==action && v.accepted==-1 && v.terminals==0 && v.fallback==0;}
-db_goal_local :: (v:DbView,mode:int,goal:int,action:int)->bool {return db_local(v,mode) && v.goal==goal && v.local_action==action;}
-db_idle :: (v:DbView)->bool {return v.version==1 && v.mode==1 && v.local==0 && v.starts==0 && v.replies==0 && v.admitted==0 && v.fallback==0 && v.terminals==0 && v.phase==0 && v.sequence==0 && v.rendered==0 && v.local_action==0;}
-db_timeout :: (v:DbView)->bool {return v.replies>=0 && v.replies<=1 && db_failure(v,5,0,v.replies);}
+db_reintent :: (v:DbView)->bool #effects(all) {return db_failure(v,8,0,0) && v.local==2 && v.rendered==v.local_action;}
+db_offered :: (v:DbView,goal:int,kind:int)->bool #effects(all) {return v.version==1 && v.goal==goal && v.offer==kind && v.rendered==0 && v.starts==0;}
+db_staged :: (v:DbView,action:int)->bool #effects(all) {return v.version==1 && v.mode==1 && v.starts==1 && v.replies==1 && v.admitted==0 && v.phase==2 && v.sequence>0 && v.raw==action && v.accepted==-1 && v.terminals==0 && v.fallback==0;}
+db_goal_local :: (v:DbView,mode:int,goal:int,action:int)->bool #effects(all) {return db_local(v,mode) && v.goal==goal && v.local_action==action;}
+db_idle :: (v:DbView)->bool #effects(all) {return v.version==1 && v.mode==1 && v.local==0 && v.starts==0 && v.replies==0 && v.admitted==0 && v.fallback==0 && v.terminals==0 && v.phase==0 && v.sequence==0 && v.rendered==0 && v.local_action==0;}
+db_timeout :: (v:DbView)->bool #effects(all) {return v.replies>=0 && v.replies<=1 && db_failure(v,5,0,v.replies);}

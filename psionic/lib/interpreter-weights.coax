@@ -29,7 +29,7 @@ IW_VALUE_MAX :: 16777216;  // 2^24
 // book:begin machine
 // A program has 1 to 5 instructions and ends with halt; every jump lands
 // inside it, so the instruction pointer never leaves the program.
-iw_admit :: (p:[]IwIns)->IwStatus {
+iw_admit :: (p:[]IwIns)->IwStatus #effects(all) {
     if p.count<1 || p.count>IW_SLOTS {return IwStatus.shape;}
     for i:0..<p.count {
         if p[i].arg< -IW_VALUE_MAX || p[i].arg>IW_VALUE_MAX {return IwStatus.range;}
@@ -38,11 +38,11 @@ iw_admit :: (p:[]IwIns)->IwStatus {
     if p[p.count-1].op!=IwOp.halt {return IwStatus.halt;}
     return IwStatus.ok;
 }
-iw_in_range :: (s:IwState)->bool {
+iw_in_range :: (s:IwState)->bool #effects(all) {
     return s.acc>= -IW_VALUE_MAX && s.acc<=IW_VALUE_MAX && s.r>= -IW_VALUE_MAX && s.r<=IW_VALUE_MAX;
 }
 // The native interpreter: one step of an admitted program.
-iw_step :: (p:[]IwIns,s:IwState)->IwNext {
+iw_step :: (p:[]IwIns,s:IwState)->IwNext #effects(all) {
     x:=IwNext.{state=s};ins:=p[s.ip];x.state.ip=s.ip+1;
     if ins.op==IwOp.addi {x.state.acc=s.acc+ins.arg;}
     if ins.op==IwOp.addr {x.state.r=s.r+s.acc;}
@@ -52,7 +52,7 @@ iw_step :: (p:[]IwIns,s:IwState)->IwNext {
     if !iw_in_range(x.state) {x.status=IwStatus.range;}
     return x;
 }
-iw_run :: (p:[]IwIns,s:IwState,budget:int)->IwRun {
+iw_run :: (p:[]IwIns,s:IwState,budget:int)->IwRun #effects(all) {
     r:=IwRun.{state=s};
     a:=iw_admit(p);if a!=IwStatus.ok {r.status=a;return r;}
     if !iw_in_range(s) || s.ip<0 || s.ip>=p.count {r.status=IwStatus.shape;return r;}
@@ -67,14 +67,14 @@ iw_run :: (p:[]IwIns,s:IwState,budget:int)->IwRun {
 // book:end machine
 
 // book:begin universal
-iw_put :: (g:[]GgNode,n:int,e:GgNode)->int {g[n]=e;return n+1;}
+iw_put :: (g:[]GgNode,n:int,e:GgNode)->int #effects(all) {g[n]=e;return n+1;}
 // One step for any program of up to `slots` instructions (1 to 5). Inputs:
 // ip, acc, r, then each slot's op and arg. Each slot computes its own
 // instruction's effect, so a slot whose instruction is known folds to just
 // that effect; the slot the ip names is then chosen. Within a slot the ip is
 // known, so the next ip is a constant or the jump target. An op is 0 to 3,
 // so halt needs no comparison of its own. Outputs: ip, acc, r.
-iw_universal :: (g:[]GgNode,outs:[]int,slots:int)->int {
+iw_universal :: (g:[]GgNode,outs:[]int,slots:int)->int #effects(all) {
     n:=0;IN:=GgOp.input;SUB:=GgOp.sub;ADD:=GgOp.add;EQ:=GgOp.eq0;SEL:=GgOp.select;
     for k:0..<3+2*slots {n=iw_put(g,n,GgNode.{op=IN,k=k});}
     // Constants 0 to 5: the ops compared against and every slot's next ip.
@@ -106,7 +106,7 @@ iw_universal :: (g:[]GgNode,outs:[]int,slots:int)->int {
     return n;
 }
 // The universal block's inputs for a state and a program, padded with halts.
-iw_inputs :: (p:[]IwIns,s:IwState,inputs:[]int) {
+iw_inputs :: (p:[]IwIns,s:IwState,inputs:[]int) #effects(all) {
     inputs[0]=s.ip;inputs[1]=s.acc;inputs[2]=s.r;
     for i:0..<IW_SLOTS {
         inputs[3+2*i]=cast(int)IwOp.halt;inputs[4+2*i]=0;
@@ -123,15 +123,15 @@ iw_inputs :: (p:[]IwIns,s:IwState,inputs:[]int) {
 // reads are then removed, except inputs, so the block's interface is fixed
 // by which inputs were left unknown.
 IwFold :: struct {known:bool;value:int;node:int;}
-iw_const :: (t:[]GgNode,n:int,v:int)->int {
+iw_const :: (t:[]GgNode,n:int,v:int)->int #effects(all) {
     for i:0..<n {if t[i].op==GgOp.constant && t[i].k==v {return i;}}
     return -1;
 }
-iw_ref :: (t:[]GgNode,n:int,f:IwFold)->int {
+iw_ref :: (t:[]GgNode,n:int,f:IwFold)->int #effects(all) {
     if !f.known {return f.node;}
     return iw_const(t,n,f.value);
 }
-iw_specialize :: (g:[]GgNode,outs:[]int,known:[]bool,value:[]int,r:[]GgNode,routs:[]int)->IwSpec {
+iw_specialize :: (g:[]GgNode,outs:[]int,known:[]bool,value:[]int,r:[]GgNode,routs:[]int)->IwSpec #effects(all) {
     s:IwSpec;a:=gg_admit(g,outs);
     if a.status!=GgStatus.ok {s.status=a.status;s.node=a.node;return s;}
     t:[256]GgNode;n:=0;f:[128]IwFold;
@@ -225,7 +225,7 @@ iw_specialize :: (g:[]GgNode,outs:[]int,known:[]bool,value:[]int,r:[]GgNode,rout
 // book:begin weights
 // One step through compiled weights: the block's outputs are the next state.
 // The machine's range is checked here, as the native step checks it.
-iw_weights_step :: (plan:GgPlan,w:[]f64,inputs:[]int,s:IwState)->IwNext {
+iw_weights_step :: (plan:GgPlan,w:[]f64,inputs:[]int,s:IwState)->IwNext #effects(all) {
     x:=IwNext.{state=s};out:[3]f64;
     if gg_run(plan,w,inputs,out[..],false,false)!=GgStatus.ok {x.status=IwStatus.graph;return x;}
     x.state=IwState.{ip=cast(int)out[0],acc=cast(int)out[1],r=cast(int)out[2]};
@@ -235,7 +235,7 @@ iw_weights_step :: (plan:GgPlan,w:[]f64,inputs:[]int,s:IwState)->IwNext {
 }
 // Runs a program through the universal block (specialized false) or its own
 // block, until it halts or the budget runs out.
-iw_weights_run :: (plan:GgPlan,w:[]f64,p:[]IwIns,s:IwState,budget:int,specialized:bool)->IwRun {
+iw_weights_run :: (plan:GgPlan,w:[]f64,p:[]IwIns,s:IwState,budget:int,specialized:bool)->IwRun #effects(all) {
     r:=IwRun.{state=s};
     a:=iw_admit(p);if a!=IwStatus.ok {r.status=a;return r;}
     if !iw_in_range(s) || s.ip<0 || s.ip>=p.count {r.status=IwStatus.shape;return r;}
@@ -255,7 +255,7 @@ iw_weights_run :: (plan:GgPlan,w:[]f64,p:[]IwIns,s:IwState,budget:int,specialize
 // op and arg known. An admitted program's folds stay small, so only its
 // residual graph's compilation can refuse it.
 IwBlock :: struct {spec:IwSpec;plan:GgPlan;}
-iw_program_block :: (p:[]IwIns,nodes:[]GgNode,w:[]f64)->IwBlock {
+iw_program_block :: (p:[]IwIns,nodes:[]GgNode,w:[]f64)->IwBlock #effects(all) {
     b:IwBlock;g:[128]GgNode;outs:[3]int;n:=iw_universal(g[..],outs[..],p.count);m:=3+2*p.count;
     known:[IW_INPUTS]bool;value:[IW_INPUTS]int;s:IwState;iw_inputs(p,s,value[..]);
     for k:3..<m {known[k]=true;}
@@ -264,21 +264,21 @@ iw_program_block :: (p:[]IwIns,nodes:[]GgNode,w:[]f64)->IwBlock {
     return b;
 }
 // Sums 1..n into r: [addr, addi -1, jnz 0, halt] from acc = n.
-iw_triangle :: ()->[4]IwIns {
+iw_triangle :: ()->[4]IwIns #effects(all) {
     return [4]IwIns.[IwIns.{op=IwOp.addr},IwIns.{op=IwOp.addi,arg=-1},IwIns.{op=IwOp.jnz,arg=0},IwIns.{op=IwOp.halt}];
 }
 
 // Prefixes of [addr, addi -1, addr, jnz 0], each ending in halt: programs
 // of 1 to 5 instructions, for the size table.
-iw_family :: (n:int)->[5]IwIns {
+iw_family :: (n:int)->[5]IwIns #effects(all) {
     p:=[5]IwIns.[IwIns.{op=IwOp.addr},IwIns.{op=IwOp.addi,arg=-1},IwIns.{op=IwOp.addr},IwIns.{op=IwOp.jnz,arg=0},IwIns.{op=IwOp.halt}];
     p[n-1]=IwIns.{op=IwOp.halt};
     return p;
 }
 
 // Tests.
-iw_ins :: (op:IwOp,arg:int)->IwIns {return IwIns.{op=op,arg=arg};}
-iw_says :: (x:IwNext,status:IwStatus,ip:int,acc:int,r:int,halted:bool)->bool {
+iw_ins :: (op:IwOp,arg:int)->IwIns #effects(all) {return IwIns.{op=op,arg=arg};}
+iw_says :: (x:IwNext,status:IwStatus,ip:int,acc:int,r:int,halted:bool)->bool #effects(all) {
     return x.status==status && x.state.ip==ip && x.state.acc==acc && x.state.r==r && x.halted==halted;
 }
 #test "a program is admitted only if it fits, ends in halt and jumps inside itself" {
@@ -328,14 +328,14 @@ iw_says :: (x:IwNext,status:IwStatus,ip:int,acc:int,r:int,halted:bool)->bool {
     r=iw_run(p[..],IwState.{acc=IW_VALUE_MAX},100);#assert r.status==IwStatus.range && r.steps==3 && r.state.r==IW_VALUE_MAX;
 }
 // The universal graph's step, evaluated, against the native step.
-iw_eval_step :: (g:[]GgNode,outs:[]int,p:[]IwIns,s:IwState)->IwNext {
+iw_eval_step :: (g:[]GgNode,outs:[]int,p:[]IwIns,s:IwState)->IwNext #effects(all) {
     inputs:[IW_INPUTS]int;iw_inputs(p,s,inputs[..]);v:[3]int;x:=IwNext.{state=s};
     if gg_eval(g,inputs[..],outs,v[..]).status!=GgStatus.ok {x.status=IwStatus.graph;return x;}
     x.state=IwState.{ip=v[0],acc=v[1],r=v[2]};x.halted=x.state.ip==s.ip;
     if !iw_in_range(x.state) {x.status=IwStatus.range;}
     return x;
 }
-iw_agrees :: (a:IwNext,b:IwNext)->bool {
+iw_agrees :: (a:IwNext,b:IwNext)->bool #effects(all) {
     return a.status==b.status && a.state.ip==b.state.ip && a.state.acc==b.state.acc && a.state.r==b.state.r && a.halted==b.halted;
 }
 #test "the universal step equals the native step for every op in every slot" {
@@ -356,13 +356,13 @@ iw_agrees :: (a:IwNext,b:IwNext)->bool {
 }
 // A small specialization: g's input 0 known as kv when known is set.
 IwSmall :: struct {spec:IwSpec;nodes:[16]GgNode;outs:[2]int;}
-iw_small :: (g:[]GgNode,outs:[]int,known0:bool,v0:int)->IwSmall {
+iw_small :: (g:[]GgNode,outs:[]int,known0:bool,v0:int)->IwSmall #effects(all) {
     x:IwSmall;known:=[2]bool.[known0,false];value:[2]int;value[0]=v0;
     x.spec=iw_specialize(g,outs,known[..],value[..],x.nodes[..],x.outs[0..<outs.count]);
     return x;
 }
-iw_n :: (op:GgOp,a:int,b:int,c:int,k:int)->GgNode {return GgNode.{op=op,a=a,b=b,c=c,k=k};}
-iw_is :: (e:GgNode,op:GgOp,a:int,b:int,c:int,k:int)->bool {return e.op==op && e.a==a && e.b==b && e.c==c && e.k==k;}
+iw_n :: (op:GgOp,a:int,b:int,c:int,k:int)->GgNode #effects(all) {return GgNode.{op=op,a=a,b=b,c=c,k=k};}
+iw_is :: (e:GgNode,op:GgOp,a:int,b:int,c:int,k:int)->bool #effects(all) {return e.op==op && e.a==a && e.b==b && e.c==c && e.k==k;}
 I0 :: GgNode.{op=GgOp.input,k=0};
 I1 :: GgNode.{op=GgOp.input,k=1};
 #test "the partial evaluator folds each operation with known operands" {
@@ -470,8 +470,8 @@ I1 :: GgNode.{op=GgOp.input,k=1};
     #assert iw_is(x.nodes[3],GgOp.sub,1,2,0,0) && x.outs[0]==3 && x.outs[1]==1;
 }
 // A seeded program of n instructions ending in halt, and a seeded state.
-iw_next :: (x:int)->int {return (x*1103515245+12345)%2147483648;}
-iw_random :: (seed:int,n:int)->[5]IwIns {
+iw_next :: (x:int)->int #effects(all) {return (x*1103515245+12345)%2147483648;}
+iw_random :: (seed:int,n:int)->[5]IwIns #effects(all) {
     p:[5]IwIns;x:=seed;
     for i:0..<n-1 {
         x=iw_next(x);op:=cast(IwOp)((x>>8)%3);x=iw_next(x);arg:=(x>>8)%7-3;
@@ -508,7 +508,7 @@ iw_random :: (seed:int,n:int)->[5]IwIns {
     r=iw_weights_run(plan,w[..],f[0..<3],IwState.{acc=5,r=1},100,false);
     #assert r.status==IwStatus.ok && r.steps==2 && r.state.r==6 && r.state.acc==4 && r.state.ip==2;
 }
-iw_block_is :: (b:IwBlock,count:int,layers:int,width:int,weights:int)->bool {
+iw_block_is :: (b:IwBlock,count:int,layers:int,width:int,weights:int)->bool #effects(all) {
     return b.spec.status==GgStatus.ok && b.spec.inputs==3 && b.spec.count==count && b.plan.status==GgStatus.ok &&
         b.plan.layers==layers && b.plan.width==width && b.plan.weights==weights;
 }
@@ -560,7 +560,7 @@ iw_block_is :: (b:IwBlock,count:int,layers:int,width:int,weights:int)->bool {
     #assert iw_run(j[..],IwState.{acc=1},100).steps==0;
     r=iw_weights_run(c.plan,w[..],j[..],IwState.{acc=0},100,true);#assert r.status==IwStatus.ok && r.steps==1 && r.state.ip==1;
 }
-iw_program_is :: (p:[5]IwIns,ops:[5]int,args:[5]int)->bool {
+iw_program_is :: (p:[5]IwIns,ops:[5]int,args:[5]int)->bool #effects(all) {
     for i:0..<5 {if cast(int)p[i].op!=ops[i] || p[i].arg!=args[i] {return false;}}
     return true;
 }

@@ -12,7 +12,7 @@
 DpKernel :: enum u8 {project;matvec;reduce;squares;add_squares;scale;add;swiglu;conv;gates;qk;scan;gate_norm;prepare;scores;softmax;attend;split;mma_project;conv_state;scan_state;tile_narrow;tile_wide;}
 // The CUDA engine loads the first 21; Metal loads all of them.
 DP_KERNELS :: 23;
-dp_kernel_name :: (id:int)->string #export_c {
+dp_kernel_name :: (id:int)->string #export_c #effects(all) {
     names:=[23] string.["dv_project","dv_matvec","dv_reduce","dl_squares","dl_add_squares","dl_scale","dl_add","dl_swiglu","dl_conv","dl_gates","dl_qk","dl_scan","dl_gate_norm","dl_prepare","dl_scores","dl_softmax","dl_attend","dw_split","dw_project","dl_conv_state","dl_scan_state","dt_project_16x32","dt_project_16x64"];
     if id<0 || id>=DP_KERNELS {return "";}
     return names[id];
@@ -44,7 +44,7 @@ DpPlan :: struct {status:DpStatus;ops:int;workspace:int;resident:int;streamed:in
 // kind names Elephant here; the plans refuse it.
 // chunks: how many pieces of up to `hidden` rows the head streams in.
 DpModel :: struct {kind:int;layers:int;width:int;hidden:int;vocab:int;key_heads:int;value_heads:int;heads:int;kv_heads:int;chunks:int;}
-dp_model :: (kind:int)->DpModel #export_c {
+dp_model :: (kind:int)->DpModel #export_c #effects(all) {
     if kind==1 {return DpModel.{kind=1,layers=64,width=5120,hidden=17408,vocab=248320,key_heads=16,value_heads=48,heads=24,kv_heads=4,chunks=15};}
     return DpModel.{layers=32,width=4096,hidden=12288,vocab=248320,key_heads=16,value_heads=32,heads=16,kv_heads=4,chunks=21};
 }
@@ -52,11 +52,11 @@ dp_model :: (kind:int)->DpModel #export_c {
 // Rows of a linear layer's [q | k | v] projection, of its value heads and of
 // a full layer's [query | gate] projection; columns of its attention output;
 // rows of one key or value projection.
-dp_channels :: (m:DpModel)->int {return 256*m.key_heads+128*m.value_heads;}
-dp_values :: (m:DpModel)->int {return 128*m.value_heads;}
-dp_queries :: (m:DpModel)->int {return 512*m.heads;}
-dp_attended :: (m:DpModel)->int {return 256*m.heads;}
-dp_kv :: (m:DpModel)->int {return 256*m.kv_heads;}
+dp_channels :: (m:DpModel)->int #effects(all) {return 256*m.key_heads+128*m.value_heads;}
+dp_values :: (m:DpModel)->int #effects(all) {return 128*m.value_heads;}
+dp_queries :: (m:DpModel)->int #effects(all) {return 512*m.heads;}
+dp_attended :: (m:DpModel)->int #effects(all) {return 256*m.heads;}
+dp_kv :: (m:DpModel)->int #effects(all) {return 256*m.kv_heads;}
 
 // Weight ids per layer: linear 0 input_norm, 1 post_norm, 2 conv, 3 A_log,
 // 4 dt_bias, 5 delta norm, 6 qkv, 7 z, 8 a, 9 b, 10 out, 11 gate, 12 up,
@@ -71,15 +71,15 @@ DP_PER_LAYER :: 16;
 DP_HEAD :: 512;
 DP_FINAL :: 513;
 DP_WEIGHTS :: 514;
-dp_head :: (m:DpModel)->int {return m.layers*DP_PER_LAYER;}
-dp_final :: (m:DpModel)->int {return dp_head(m)+1;}
-dp_weights :: (m:DpModel)->int #export_c {return dp_head(m)+2;}
-dp_full :: (layer:int)->bool #export_c {return layer%4==3;}
-dp_weight :: (layer:int,j:int)->int #export_c {return layer*DP_PER_LAYER+j;}
+dp_head :: (m:DpModel)->int #effects(all) {return m.layers*DP_PER_LAYER;}
+dp_final :: (m:DpModel)->int #effects(all) {return dp_head(m)+1;}
+dp_weights :: (m:DpModel)->int #export_c #effects(all) {return dp_head(m)+2;}
+dp_full :: (layer:int)->bool #export_c #effects(all) {return layer%4==3;}
+dp_weight :: (layer:int,j:int)->int #export_c #effects(all) {return layer*DP_PER_LAYER+j;}
 // Elements of weight id w (f32 vectors count values; BF16 matrices count
 // values too); 0 for an unused id inside a layer and -1 outside every layer.
-dp_weight_elements :: (w:int)->int #export_c {return dp_elements(dp_model(0),w);}
-dp_elements :: (m:DpModel,w:int)->int #export_c {
+dp_weight_elements :: (w:int)->int #export_c #effects(all) {return dp_elements(dp_model(0),w);}
+dp_elements :: (m:DpModel,w:int)->int #export_c #effects(all) {
     if w<0 || w>dp_final(m) {return -1;}
     if w>=dp_head(m) {if w==dp_head(m) {return m.vocab*m.width;}return m.width;} // the head, then the final norm
     layer:=w/DP_PER_LAYER;j:=w%DP_PER_LAYER;d:=m.width;f:=m.hidden;
@@ -95,15 +95,15 @@ dp_elements :: (m:DpModel,w:int)->int #export_c {
 }
 // BF16 matrices stay in their original bytes; the small vectors are the
 // session's decoded f32 values.
-dp_weight_bf16 :: (w:int)->bool #export_c {return dp_bf16(dp_model(0),w);}
-dp_bf16 :: (m:DpModel,w:int)->bool #export_c {
+dp_weight_bf16 :: (w:int)->bool #export_c #effects(all) {return dp_bf16(dp_model(0),w);}
+dp_bf16 :: (m:DpModel,w:int)->bool #export_c #effects(all) {
     if w>=dp_head(m) {return w==dp_head(m);}
     j:=w%DP_PER_LAYER; // negative for a negative id: never a matrix
     if dp_full(w/DP_PER_LAYER) {return j>=4 && j<=10;}
     return j>=6 && j<=13;
 }
-dp_weight_bytes :: (w:int)->int #export_c {return dp_bytes(dp_model(0),w);}
-dp_bytes :: (m:DpModel,w:int)->int #export_c {
+dp_weight_bytes :: (w:int)->int #export_c #effects(all) {return dp_bytes(dp_model(0),w);}
+dp_bytes :: (m:DpModel,w:int)->int #export_c #effects(all) {
     n:=dp_elements(m,w);if dp_bf16(m,w) {return 2*n;}return 4*n;
 }
 
@@ -111,13 +111,13 @@ dp_bytes :: (m:DpModel,w:int)->int #export_c {
 // aligned to 256.
 DpLayout :: struct {x0:int;x1:int;norm:int;residual:int;qkv:int;z:int;a:int;b:int;k:int;v:int;conv:int;qn:int;kn:int;beta:int;decay:int;
     draft:int;mix:int;aq:int;ak:int;scores:int;stats:int;probs:int;squares:int;partial:int;partial_rows:int;hi:int;lo:int;out:int;gate:int;up:int;product:int;down:int;rope:int;final:int;logits:int;lanes:int;total:int;}
-dp_align :: (n:int)->int {return (n+255)/256*256;}
+dp_align :: (n:int)->int #effects(all) {return (n+255)/256*256;}
 // The larger of a and b.
-dp_wider :: (a:int,b:int)->int {return (a+b+cast(int)abs(f64(a-b)))/2;}
-dp_layout :: (tokens:int)->DpLayout {return dp_layout_of(dp_model(0),tokens,tokens);}
+dp_wider :: (a:int,b:int)->int #effects(all) {return (a+b+cast(int)abs(f64(a-b)))/2;}
+dp_layout :: (tokens:int)->DpLayout #effects(all) {return dp_layout_of(dp_model(0),tokens,tokens);}
 // A forked suffix's tokens attend over keys (the prefix's and its own).
-dp_layout_keys :: (tokens:int,keys:int)->DpLayout {return dp_layout_of(dp_model(0),tokens,keys);}
-dp_layout_of :: (m:DpModel,tokens:int,keys:int)->DpLayout {
+dp_layout_keys :: (tokens:int,keys:int)->DpLayout #effects(all) {return dp_layout_of(dp_model(0),tokens,keys);}
+dp_layout_of :: (m:DpModel,tokens:int,keys:int)->DpLayout #effects(all) {
     // The first 256 bytes stay unused, so offset 0 never names a region.
     p:DpLayout;at:=256;t:=tokens;d:=m.width;f:=m.hidden;c:=dp_channels(m);v:=dp_values(m);h:=m.value_heads;n:=m.heads;
     // The [q | k | v] channels and a full layer's [query | gate] share one region.
@@ -150,11 +150,11 @@ dp_layout_of :: (m:DpModel,tokens:int,keys:int)->DpLayout {
 // (0 gate, 1 up, 2 down); 3L+5*layer+k for mixer matrix k (linear: qkv, z,
 // a, b, out; full: q, k, v, out, and k = 4 is no matrix); 8L+c for head
 // chunk c.
-dp_mixer_base :: (m:DpModel)->int {return 3*m.layers;}
-dp_head_base :: (m:DpModel)->int {return 8*m.layers;}
-dp_head_chunks :: (m:DpModel)->int #export_c {return m.chunks;}
-dp_streamable :: (m:DpModel)->int #export_c {return dp_head_base(m)+dp_head_chunks(m);}
-dp_residency_of :: (m:DpModel,budget:int,workspace:int,stream:[]bool)->DpPlan {
+dp_mixer_base :: (m:DpModel)->int #effects(all) {return 3*m.layers;}
+dp_head_base :: (m:DpModel)->int #effects(all) {return 8*m.layers;}
+dp_head_chunks :: (m:DpModel)->int #export_c #effects(all) {return m.chunks;}
+dp_streamable :: (m:DpModel)->int #export_c #effects(all) {return dp_head_base(m)+dp_head_chunks(m);}
+dp_residency_of :: (m:DpModel,budget:int,workspace:int,stream:[]bool)->DpPlan #effects(all) {
     if stream.count!=dp_streamable(m) {return DpPlan.{status=DpStatus.capacity};}
     total:=0;
     for w:0..<dp_weights(m) {total+=dp_align(dp_bytes(m,w));}
@@ -185,21 +185,21 @@ DP_HEAD_CHUNKS :: 21;
 DP_STREAMABLE :: 277;
 // The most streaming indices of any model (Mammoth's).
 DP_MAX_STREAMABLE :: 527;
-dp_residency :: (budget:int,workspace:int,stream:[]bool)->DpPlan #export_c {return dp_residency_of(dp_model(0),budget,workspace,stream);}
+dp_residency :: (budget:int,workspace:int,stream:[]bool)->DpPlan #export_c #effects(all) {return dp_residency_of(dp_model(0),budget,workspace,stream);}
 // Position i of the bit-reversed order of `layers` layers, a power of two.
-dp_spread :: (i:int)->int {return dp_spread_of(32,i);}
-dp_spread_of :: (layers:int,i:int)->int {
+dp_spread :: (i:int)->int #effects(all) {return dp_spread_of(32,i);}
+dp_spread_of :: (layers:int,i:int)->int #effects(all) {
     r:=0;x:=i;n:=1;
     while n<layers {r=(r<<1)|(x&1);x=x>>1;n=n*2;}
     return r;
 }
 // Mixer matrices in a layer: qkv, z, a, b and out in a linear layer; q, k,
 // v and out in a full-attention layer.
-dp_mixers :: (layer:int)->int {if dp_full(layer) {return 4;}return 5;}
+dp_mixers :: (layer:int)->int #effects(all) {if dp_full(layer) {return 4;}return 5;}
 // The streaming index of weight w (the first chunk for the head), or -1 for
 // a weight that never streams. A negative w has a negative j.
-dp_stream_index :: (w:int)->int {return dp_stream_index_of(dp_model(0),w);}
-dp_stream_index_of :: (m:DpModel,w:int)->int {
+dp_stream_index :: (w:int)->int #effects(all) {return dp_stream_index_of(dp_model(0),w);}
+dp_stream_index_of :: (m:DpModel,w:int)->int #effects(all) {
     if w==dp_head(m) {return dp_head_base(m);}
     layer:=w/DP_PER_LAYER;j:=w%DP_PER_LAYER;
     if layer>=m.layers {return -1;}
@@ -210,8 +210,8 @@ dp_stream_index_of :: (m:DpModel,w:int)->int {
     return -1;
 }
 // The weight of streaming index i, or -1 for an index that names no matrix.
-dp_stream_weight :: (i:int)->int {return dp_stream_weight_of(dp_model(0),i);}
-dp_stream_weight_of :: (m:DpModel,i:int)->int {
+dp_stream_weight :: (i:int)->int #effects(all) {return dp_stream_weight_of(dp_model(0),i);}
+dp_stream_weight_of :: (m:DpModel,i:int)->int #effects(all) {
     if i<0 || i>=dp_streamable(m) {return -1;}
     if i>=dp_head_base(m) {return dp_head(m);}
     if i<dp_mixer_base(m) {
@@ -224,21 +224,21 @@ dp_stream_weight_of :: (m:DpModel,i:int)->int {
     if k==4 {return -1;}
     return dp_weight(layer,4+k);
 }
-dp_streamed :: (w:int,stream:[]bool)->bool #export_c {return dp_streamed_of(dp_model(0),w,stream);}
-dp_streamed_of :: (m:DpModel,w:int,stream:[]bool)->bool #export_c {
+dp_streamed :: (w:int,stream:[]bool)->bool #export_c #effects(all) {return dp_streamed_of(dp_model(0),w,stream);}
+dp_streamed_of :: (m:DpModel,w:int,stream:[]bool)->bool #export_c #effects(all) {
     i:=dp_stream_index_of(m,w);
     return i>=0 && i<stream.count && stream[i];
 }
 // Rows in head chunk c.
-dp_head_rows :: (c:int)->int {return dp_chunk_rows(dp_model(0),c);}
-dp_chunk_rows :: (m:DpModel,c:int)->int {
+dp_head_rows :: (c:int)->int #effects(all) {return dp_chunk_rows(dp_model(0),c);}
+dp_chunk_rows :: (m:DpModel,c:int)->int #effects(all) {
     if c<dp_head_chunks(m)-1 {return m.hidden;}
     return m.vocab-c*m.hidden;
 }
 // book:begin copy
 // The copy that fills a slot with streaming index x. Its one argument names
 // the host bytes: weight 3+w, a byte offset into it and a byte count.
-dp_copy :: (m:DpModel,x:int,slot:int)->DpOp {
+dp_copy :: (m:DpModel,x:int,slot:int)->DpOp #effects(all) {
     w:=dp_stream_weight_of(m,x);offset:=0;bytes:=dp_bytes(m,w);
     if x>=dp_head_base(m) {c:=x-dp_head_base(m);offset=2*c*m.hidden*m.width;bytes=2*dp_chunk_rows(m,c)*m.width;}
     op:=DpOp.{kind=DpOpKind.copy,tensor=w,slot=slot,count=1};
@@ -248,12 +248,12 @@ dp_copy :: (m:DpModel,x:int,slot:int)->DpOp {
 // book:end copy
 
 // Argument builders.
-dp_int :: (v:int)->DpArg {return DpArg.{kind=0,value=v};}
-dp_f32 :: (v:f32)->DpArg {return DpArg.{kind=2,real=f64(v)};}
-dp_ws :: (offset:int,count:int)->DpArg {return DpArg.{kind=4,buffer=0,offset=offset,count=count};}
-dp_w :: (w:int,count:int)->DpArg {return DpArg.{kind=4,buffer=3+w,count=count};}
+dp_int :: (v:int)->DpArg #effects(all) {return DpArg.{kind=0,value=v};}
+dp_f32 :: (v:f32)->DpArg #effects(all) {return DpArg.{kind=2,real=f64(v)};}
+dp_ws :: (offset:int,count:int)->DpArg #effects(all) {return DpArg.{kind=4,buffer=0,offset=offset,count=count};}
+dp_w :: (w:int,count:int)->DpArg #effects(all) {return DpArg.{kind=4,buffer=3+w,count=count};}
 // A BF16 matrix; the projection that reads it sets its count.
-dp_matrix :: (w:int)->DpArg {return DpArg.{kind=4,buffer=3+w};}
+dp_matrix :: (w:int)->DpArg #effects(all) {return DpArg.{kind=4,buffer=3+w};}
 
 // The builder also tracks streaming: the streaming indices in schedule order,
 // how many there are and how many have been used.
@@ -266,35 +266,35 @@ dp_matrix :: (w:int)->DpArg {return DpArg.{kind=4,buffer=3+w};}
 // buffer is view 3+weights; the byte counts are per linear layer (history,
 // state) and per full layer (keys, then as many bytes of values).
 DpFork :: struct {on:bool;start:int;save:bool;}
-dp_fork_buffer :: (m:DpModel)->int #export_c {return 3+dp_weights(m);}
-dp_fork_history_bytes :: (m:DpModel)->int {return 4*3*dp_channels(m);}
-dp_fork_state_bytes :: (m:DpModel)->int {return 4*m.value_heads*128*128;}
-dp_fork_cache_bytes :: (m:DpModel)->int {return 4*DP_MAX_TOKENS*dp_kv(m);}
-dp_fork_linear :: (m:DpModel)->int {return m.layers-m.layers/4;}
-dp_fork_history_of :: (m:DpModel,layer:int)->int {return (layer-layer/4)*dp_fork_history_bytes(m);}
-dp_fork_state_of :: (m:DpModel,layer:int)->int {return dp_fork_linear(m)*dp_fork_history_bytes(m)+(layer-layer/4)*dp_fork_state_bytes(m);}
-dp_fork_keys_of :: (m:DpModel,layer:int)->int {return dp_fork_linear(m)*(dp_fork_history_bytes(m)+dp_fork_state_bytes(m))+layer/4*2*dp_fork_cache_bytes(m);}
-dp_fork_bytes_of :: (m:DpModel)->int #export_c {return dp_fork_keys_of(m,m.layers);}
-dp_fork_arg :: (m:DpModel,offset:int,count:int)->DpArg {return DpArg.{kind=4,buffer=dp_fork_buffer(m),offset=offset,count=count};}
+dp_fork_buffer :: (m:DpModel)->int #export_c #effects(all) {return 3+dp_weights(m);}
+dp_fork_history_bytes :: (m:DpModel)->int #effects(all) {return 4*3*dp_channels(m);}
+dp_fork_state_bytes :: (m:DpModel)->int #effects(all) {return 4*m.value_heads*128*128;}
+dp_fork_cache_bytes :: (m:DpModel)->int #effects(all) {return 4*DP_MAX_TOKENS*dp_kv(m);}
+dp_fork_linear :: (m:DpModel)->int #effects(all) {return m.layers-m.layers/4;}
+dp_fork_history_of :: (m:DpModel,layer:int)->int #effects(all) {return (layer-layer/4)*dp_fork_history_bytes(m);}
+dp_fork_state_of :: (m:DpModel,layer:int)->int #effects(all) {return dp_fork_linear(m)*dp_fork_history_bytes(m)+(layer-layer/4)*dp_fork_state_bytes(m);}
+dp_fork_keys_of :: (m:DpModel,layer:int)->int #effects(all) {return dp_fork_linear(m)*(dp_fork_history_bytes(m)+dp_fork_state_bytes(m))+layer/4*2*dp_fork_cache_bytes(m);}
+dp_fork_bytes_of :: (m:DpModel)->int #export_c #effects(all) {return dp_fork_keys_of(m,m.layers);}
+dp_fork_arg :: (m:DpModel,offset:int,count:int)->DpArg #effects(all) {return DpArg.{kind=4,buffer=dp_fork_buffer(m),offset=offset,count=count};}
 // Bit 0: start from the kept values; bit 1: keep the final ones.
-dp_fork_mode :: (f:DpFork)->int {m:=0;if f.start>0 {m+=1;}if f.save {m+=2;}return m;}
+dp_fork_mode :: (f:DpFork)->int #effects(all) {m:=0;if f.start>0 {m+=1;}if f.save {m+=2;}return m;}
 // book:end forkstate
 // Elephant's fork buffer.
 DP_FORK_BUFFER :: 3+DP_WEIGHTS;
 DP_FORK_HISTORY :: 4*3*8192;          // bytes per linear layer
 DP_FORK_STATE :: 4*32*128*128;        // bytes per linear layer
 DP_FORK_CACHE :: 4*DP_MAX_TOKENS*1024; // bytes of keys, then of values, per full layer
-dp_fork_history :: (layer:int)->int {return dp_fork_history_of(dp_model(0),layer);}
-dp_fork_state :: (layer:int)->int {return dp_fork_state_of(dp_model(0),layer);}
-dp_fork_keys :: (layer:int)->int {return dp_fork_keys_of(dp_model(0),layer);}
-dp_fork_bytes :: ()->int #export_c {return dp_fork_bytes_of(dp_model(0));}
+dp_fork_history :: (layer:int)->int #effects(all) {return dp_fork_history_of(dp_model(0),layer);}
+dp_fork_state :: (layer:int)->int #effects(all) {return dp_fork_state_of(dp_model(0),layer);}
+dp_fork_keys :: (layer:int)->int #effects(all) {return dp_fork_keys_of(dp_model(0),layer);}
+dp_fork_bytes :: ()->int #export_c #effects(all) {return dp_fork_bytes_of(dp_model(0));}
 DpBuilder :: struct {ops:[]DpOp;n:int;ok:bool;stream:[]bool;order:[]int;count:int;at:int;metal:bool;fork:DpFork;m:DpModel;}
-dp_push :: (b:DpBuilder,op:DpOp)->DpBuilder {
+dp_push :: (b:DpBuilder,op:DpOp)->DpBuilder #effects(all) {
     r:=b;
     if b.n>=b.ops.count {r.ok=false;return r;}
     b.ops[b.n]=op;r.n=b.n+1;return r;
 }
-dp_launch :: (kernel:DpKernel,items:int,args:[12]DpArg,count:int)->DpOp {
+dp_launch :: (kernel:DpKernel,items:int,args:[12]DpArg,count:int)->DpOp #effects(all) {
     return DpOp.{kind=DpOpKind.launch,kernel=cast(u8)kernel,items=items,block=128,count=count,args=args};
 }
 // A BF16 projection: out (tokens x rows) = in (tokens x cols) times weight.
@@ -303,7 +303,7 @@ dp_launch :: (kernel:DpKernel,items:int,args:[12]DpArg,count:int)->DpOp {
 // columns divide evenly and the partial sums fit their workspace region. One
 // token uses the matvec kernel instead.
 DP_PARTIAL_ROWS :: 8*12288; // Elephant's partial region: this many f32 per token (8 x the feed-forward width)
-dp_slices :: (rows:int,cols:int,capacity:int)->int #export_c {
+dp_slices :: (rows:int,cols:int,capacity:int)->int #export_c #effects(all) {
     s:=16;
     while s>1 && ((cols/4)%s!=0 || s*rows>capacity) {s/=2;}
     return s;
@@ -311,18 +311,18 @@ dp_slices :: (rows:int,cols:int,capacity:int)->int #export_c {
 // book:end slices
 // book:begin tensor
 // Tokens padded to whole tensor-core warps (88 each).
-dp_padded :: (tokens:int)->int {return (tokens+DW_TOKENS-1)/DW_TOKENS*DW_TOKENS;}
+dp_padded :: (tokens:int)->int #effects(all) {return (tokens+DW_TOKENS-1)/DW_TOKENS*DW_TOKENS;}
 // Column slices for the tensor-core projection: doubled from 1 while the
 // launch has fewer than 4096 warps, every slice keeps at least 8 steps of 16
 // columns and the partial sums fit their region; at most 32.
-dp_mma_slices :: (rows:int,cols:int,capacity:int)->int #export_c {
+dp_mma_slices :: (rows:int,cols:int,capacity:int)->int #export_c #effects(all) {
     s:=1;steps:=cols/16;
     while s<32 && rows/16*s<4096 && steps%(2*s)==0 && steps/(2*s)>=8 && 2*s*rows<=capacity {s*=2;}
     return s;
 }
 // A whole-prompt projection on the tensor cores: split the activations into
 // BF16 halves, multiply per slice, add the slices.
-dp_mma :: (b:DpBuilder,p:DpLayout,weight:DpArg,rows:int,cols:int,tokens:int,input:int,out:DpArg)->DpBuilder {
+dp_mma :: (b:DpBuilder,p:DpLayout,weight:DpArg,rows:int,cols:int,tokens:int,input:int,out:DpArg)->DpBuilder #effects(all) {
     pad:=dp_padded(tokens);s:=dp_mma_slices(rows,cols,p.partial_rows);
     x:[12]DpArg;x[0]=dp_int(cols);x[1]=dp_int(tokens);x[2]=dp_ws(input,tokens*cols);x[3]=dp_ws(p.hi,pad*cols/2);x[4]=dp_ws(p.lo,pad*cols/2);
     r:=dp_push(b,dp_launch(DpKernel.split,pad*cols/2,x,5));
@@ -339,7 +339,7 @@ DP_MMA_TOKENS :: 16; // from this many tokens, projections use the tensor cores
 // On Metal every projection is one launch of matrix-unit tiles of 16 tokens
 // by 64 rows (32 for the 32-row a and b), written straight to the output:
 // no split, slices or reduce.
-dp_tile :: (b:DpBuilder,weight:DpArg,rows:int,cols:int,tokens:int,input:int,out:DpArg)->DpBuilder {
+dp_tile :: (b:DpBuilder,weight:DpArg,rows:int,cols:int,tokens:int,input:int,out:DpArg)->DpBuilder #effects(all) {
     a:[12]DpArg;w:=weight;w.count=rows*cols/2;
     a[0]=dp_int(rows);a[1]=dp_int(cols);a[2]=dp_int(tokens);a[3]=w;a[4]=dp_ws(input,tokens*cols);a[5]=out;
     // Up to 32 rows are one row tile of either width.
@@ -348,7 +348,7 @@ dp_tile :: (b:DpBuilder,weight:DpArg,rows:int,cols:int,tokens:int,input:int,out:
     return dp_push(b,op);
 }
 // book:end apple
-dp_project_to :: (b:DpBuilder,p:DpLayout,weight:DpArg,rows:int,cols:int,tokens:int,input:int,out:DpArg)->DpBuilder {
+dp_project_to :: (b:DpBuilder,p:DpLayout,weight:DpArg,rows:int,cols:int,tokens:int,input:int,out:DpArg)->DpBuilder #effects(all) {
     if b.metal {return dp_tile(b,weight,rows,cols,tokens,input,out);}
     if tokens>=DP_MMA_TOKENS {return dp_mma(b,p,weight,rows,cols,tokens,input,out);}
     a:[12]DpArg;w:=weight;w.count=rows*cols/4;s:=dp_slices(rows,cols,p.partial_rows);
@@ -360,18 +360,18 @@ dp_project_to :: (b:DpBuilder,p:DpLayout,weight:DpArg,rows:int,cols:int,tokens:i
 // book:begin take
 // A streamed matrix is read from slot at%2: wait for its copy, use it, then
 // release the slot and start the copy of the streamed matrix after next.
-dp_take :: (b:DpBuilder)->DpBuilder {return dp_push(b,DpOp.{kind=DpOpKind.wait,slot=b.at%2});}
-dp_give :: (b:DpBuilder)->DpBuilder {
+dp_take :: (b:DpBuilder)->DpBuilder #effects(all) {return dp_push(b,DpOp.{kind=DpOpKind.wait,slot=b.at%2});}
+dp_give :: (b:DpBuilder)->DpBuilder #effects(all) {
     slot:=b.at%2;
     r:=dp_push(b,DpOp.{kind=DpOpKind.release,slot=slot});
     if r.at+2<r.count {r=dp_push(r,dp_copy(r.m,r.order[r.at+2],slot));}
     r.at+=1;return r;
 }
 // A matrix projection whose weight may stream.
-dp_project_weight :: (b:DpBuilder,p:DpLayout,w:int,rows:int,cols:int,tokens:int,input:int,output:int)->DpBuilder {
+dp_project_weight :: (b:DpBuilder,p:DpLayout,w:int,rows:int,cols:int,tokens:int,input:int,output:int)->DpBuilder #effects(all) {
     return dp_project_weight_to(b,p,w,rows,cols,tokens,input,dp_ws(output,tokens*rows));
 }
-dp_project_weight_to :: (b:DpBuilder,p:DpLayout,w:int,rows:int,cols:int,tokens:int,input:int,out:DpArg)->DpBuilder {
+dp_project_weight_to :: (b:DpBuilder,p:DpLayout,w:int,rows:int,cols:int,tokens:int,input:int,out:DpArg)->DpBuilder #effects(all) {
     if !dp_streamed_of(b.m,w,b.stream) {return dp_project_to(b,p,dp_matrix(w),rows,cols,tokens,input,out);}
     r:=dp_take(b);
     r=dp_project_to(r,p,DpArg.{kind=4,buffer=1+b.at%2},rows,cols,tokens,input,out);
@@ -379,19 +379,19 @@ dp_project_weight_to :: (b:DpBuilder,p:DpLayout,w:int,rows:int,cols:int,tokens:i
 }
 // book:end take
 // The offset norm of `rows` rows of x: partial squares, then the scaled rows.
-dp_norm_rows :: (b:DpBuilder,p:DpLayout,rows:int,input:int,scale:DpArg,output:int)->DpBuilder {
+dp_norm_rows :: (b:DpBuilder,p:DpLayout,rows:int,input:int,scale:DpArg,output:int)->DpBuilder #effects(all) {
     d:=b.m.width;
     a:[12]DpArg;a[0]=dp_int(d);a[1]=dp_ws(input,rows*d);a[2]=DpArg.{kind=4,buffer=0,offset=p.squares,count=16*rows};
     r:=dp_push(b,dp_launch(DpKernel.squares,16*rows,a,3));
     return dp_scale(r,p,rows,input,scale,output);
 }
-dp_scale :: (b:DpBuilder,p:DpLayout,rows:int,input:int,scale:DpArg,output:int)->DpBuilder {
+dp_scale :: (b:DpBuilder,p:DpLayout,rows:int,input:int,scale:DpArg,output:int)->DpBuilder #effects(all) {
     d:=b.m.width;
     c:[12]DpArg;c[0]=dp_int(d);c[1]=dp_f32(0.000001);c[2]=dp_ws(input,rows*d);c[3]=scale;c[4]=DpArg.{kind=4,buffer=0,offset=p.squares,count=16*rows};c[5]=dp_ws(output,rows*d);
     return dp_push(b,dp_launch(DpKernel.scale,rows*d,c,6));
 }
 // Residual, post-attention norm and the SwiGLU feed-forward; writes output.
-dp_finish :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,input:int,output:int)->DpBuilder {
+dp_finish :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,input:int,output:int)->DpBuilder #effects(all) {
     t:=tokens;d:=b.m.width;f:=b.m.hidden;full:=dp_full(layer);
     post:=dp_weight(layer,1);gate:=dp_weight(layer,11);up:=dp_weight(layer,12);
     if full {gate=dp_weight(layer,8);up=dp_weight(layer,9);}
@@ -406,7 +406,7 @@ dp_finish :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,input:int,output:int)-
     e:[12]DpArg;e[0]=dp_ws(p.residual,t*d);e[1]=dp_ws(p.down,t*d);e[2]=dp_ws(output,t*d);
     return dp_push(r,dp_launch(DpKernel.add,t*d,e,3));
 }
-dp_linear :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,input:int,output:int)->DpBuilder {
+dp_linear :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,input:int,output:int)->DpBuilder #effects(all) {
     m:=b.m;t:=tokens;d:=m.width;w:=layer*DP_PER_LAYER;c:=dp_channels(m);v:=dp_values(m);h:=m.value_heads;kh:=m.key_heads;
     r:=dp_norm_rows(b,p,t,input,dp_w(w,d),p.norm);
     r=dp_project_weight(r,p,w+6,c,d,t,p.norm,p.qkv);
@@ -433,7 +433,7 @@ dp_linear :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,input:int,output:int)-
     r=dp_project_weight(r,p,w+10,d,v,t,p.mix,p.out);
     return dp_finish(r,p,layer,t,input,output);
 }
-dp_attention :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,prefix:int,input:int,output:int)->DpBuilder {
+dp_attention :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,prefix:int,input:int,output:int)->DpBuilder #effects(all) {
     m:=b.m;t:=tokens;d:=m.width;w:=layer*DP_PER_LAYER;nh:=m.heads;kv:=dp_kv(m);qr:=dp_queries(m);at:=dp_attended(m);
     // Keys and values: this decision's own, or (forked) the fork buffer's
     // rows from token 0, this block's written from `start`. A forked block
@@ -468,17 +468,17 @@ DP_MAX_TOKENS :: 512;
 // The whole decision: tokens 0..prefix form the first block. Inputs are the
 // gathered embedding rows at x0 and rotary coefficients at rope; the result
 // is the last token's vocabulary logits at logits. kind names the model.
-dp_plan :: (tokens:int,prefix:int,budget:int,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
+dp_plan :: (tokens:int,prefix:int,budget:int,stream:[]bool,ops:[]DpOp)->DpPlan #export_c #effects(all) {
     return dp_plan_model(0,false,tokens,prefix,budget,stream,ops);
 }
 // The same decision for an Apple GPU: projections on the matrix units.
-dp_plan_metal :: (tokens:int,prefix:int,budget:int,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
+dp_plan_metal :: (tokens:int,prefix:int,budget:int,stream:[]bool,ops:[]DpOp)->DpPlan #export_c #effects(all) {
     return dp_plan_model(0,true,tokens,prefix,budget,stream,ops);
 }
-dp_plan_on :: (metal:bool,tokens:int,prefix:int,budget:int,stream:[]bool,ops:[]DpOp)->DpPlan {
+dp_plan_on :: (metal:bool,tokens:int,prefix:int,budget:int,stream:[]bool,ops:[]DpOp)->DpPlan #effects(all) {
     return dp_plan_model(0,metal,tokens,prefix,budget,stream,ops);
 }
-dp_plan_model :: (kind:int,metal:bool,tokens:int,prefix:int,budget:int,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
+dp_plan_model :: (kind:int,metal:bool,tokens:int,prefix:int,budget:int,stream:[]bool,ops:[]DpOp)->DpPlan #export_c #effects(all) {
     if kind<0 || kind>1 || tokens<1 || tokens>DP_MAX_TOKENS || prefix<0 || prefix>=tokens {return DpPlan.{status=DpStatus.shape};}
     m:=dp_model(kind);
     plan:=dp_residency_of(m,budget,dp_layout_of(m,tokens,tokens).total,stream);
@@ -489,7 +489,7 @@ dp_plan_model :: (kind:int,metal:bool,tokens:int,prefix:int,budget:int,stream:[]
 // book:end plan
 // A later decision on weights already placed by an opened plan: the same
 // model, streamed set, backend and the opened workspace, which must hold this layout.
-dp_replan :: (tokens:int,prefix:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
+dp_replan :: (tokens:int,prefix:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #export_c #effects(all) {
     m:=dp_model(opened.kind);
     if opened.status!=DpStatus.ok || stream.count!=dp_streamable(m) {return DpPlan.{status=DpStatus.capacity};}
     if tokens<1 || tokens>DP_MAX_TOKENS || prefix<0 || prefix>=tokens {return DpPlan.{status=DpStatus.shape};}
@@ -502,14 +502,14 @@ dp_replan :: (tokens:int,prefix:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpP
 // A forked decision on an opened placement: the prefix pass over tokens
 // 0..prefix (one block, no readout), then one suffix pass per question over
 // tokens start..start+tokens, whose logits are the last token's.
-dp_plan_prefix :: (prefix:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
+dp_plan_prefix :: (prefix:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #export_c #effects(all) {
     return dp_plan_fork(DpFork.{on=true,save=true},prefix,opened,stream,ops);
 }
-dp_plan_suffix :: (start:int,tokens:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
+dp_plan_suffix :: (start:int,tokens:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #export_c #effects(all) {
     if start<1 {return DpPlan.{status=DpStatus.shape};}
     return dp_plan_fork(DpFork.{on=true,start=start},tokens,opened,stream,ops);
 }
-dp_plan_fork :: (fork:DpFork,tokens:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan {
+dp_plan_fork :: (fork:DpFork,tokens:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #effects(all) {
     m:=dp_model(opened.kind);
     if opened.status!=DpStatus.ok || stream.count!=dp_streamable(m) {return DpPlan.{status=DpStatus.capacity};}
     if tokens<1 || fork.start<0 || fork.start+tokens>DP_MAX_TOKENS {return DpPlan.{status=DpStatus.shape};}
@@ -521,11 +521,11 @@ dp_plan_fork :: (fork:DpFork,tokens:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)-
 // book:end forkplan
 // Where a decision may stop: before the first norm launch of each layer and
 // of the readout. A stopped decision has published nothing.
-dp_stop_point :: (op:DpOp)->bool #export_c {return op.kind==DpOpKind.launch && op.kernel==cast(u8)DpKernel.squares;}
-dp_schedule :: (tokens:int,prefix:int,placed:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan {
+dp_stop_point :: (op:DpOp)->bool #export_c #effects(all) {return op.kind==DpOpKind.launch && op.kernel==cast(u8)DpKernel.squares;}
+dp_schedule :: (tokens:int,prefix:int,placed:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #effects(all) {
     return dp_schedule_fork(tokens,prefix,DpFork.{},placed,stream,ops);
 }
-dp_schedule_fork :: (tokens:int,prefix:int,fork:DpFork,placed:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan {
+dp_schedule_fork :: (tokens:int,prefix:int,fork:DpFork,placed:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #effects(all) {
     m:=dp_model(placed.kind);
     p:=dp_layout_of(m,tokens,fork.start+tokens);plan:=placed;readout:=!fork.save;
     order:[DP_MAX_STREAMABLE]int;
@@ -563,7 +563,7 @@ dp_schedule_fork :: (tokens:int,prefix:int,fork:DpFork,placed:DpPlan,stream:[]bo
 // The head's rows first..first+rows: one-token products into 16 lane
 // partials, then their sums into those logits. A streamed chunk's slot is
 // released between the two.
-dp_readout :: (b:DpBuilder,p:DpLayout,weight:DpArg,first:int,rows:int,streamed:bool)->DpBuilder {
+dp_readout :: (b:DpBuilder,p:DpLayout,weight:DpArg,first:int,rows:int,streamed:bool)->DpBuilder #effects(all) {
     d:=b.m.width;a:[12]DpArg;w:=weight;w.count=rows*d/4;
     a[0]=dp_int(rows);a[1]=dp_int(d);a[2]=w;a[3]=dp_ws(p.final,d);a[4]=dp_ws(p.lanes,16*rows);
     r:=dp_push(b,dp_launch(DpKernel.matvec,16*rows,a,5));
@@ -572,8 +572,8 @@ dp_readout :: (b:DpBuilder,p:DpLayout,weight:DpArg,first:int,rows:int,streamed:b
     return dp_push(r,dp_launch(DpKernel.reduce,rows,e,4));
 }
 // book:end readout
-dp_down :: (layer:int)->int {if dp_full(layer) {return dp_weight(layer,10);}return dp_weight(layer,13);}
-dp_norm_last :: (b:DpBuilder,p:DpLayout,tokens:int,input:int)->DpBuilder {
+dp_down :: (layer:int)->int #effects(all) {if dp_full(layer) {return dp_weight(layer,10);}return dp_weight(layer,13);}
+dp_norm_last :: (b:DpBuilder,p:DpLayout,tokens:int,input:int)->DpBuilder #effects(all) {
     d:=b.m.width;
     return dp_norm_rows(b,p,1,input+4*(tokens-1)*d,dp_w(dp_final(b.m),d),p.final);
 }
@@ -591,9 +591,9 @@ dp_norm_last :: (b:DpBuilder,p:DpLayout,tokens:int,input:int)->DpBuilder {
 // Other batches, and Metal's tiles, are refused; the host runs those
 // questions one suffix at a time.
 DP_BATCH :: 8;
-dp_batch_tokens :: (lengths:[]int)->int #export_c {n:=0;for t:lengths {n+=t;}return n;}
-dp_batch_longest :: (lengths:[]int)->int {n:=0;for t:lengths {n=dp_wider(n,t);}return n;}
-dp_batch_admits :: (metal:bool,start:int,lengths:[]int)->bool #export_c {
+dp_batch_tokens :: (lengths:[]int)->int #export_c #effects(all) {n:=0;for t:lengths {n+=t;}return n;}
+dp_batch_longest :: (lengths:[]int)->int #effects(all) {n:=0;for t:lengths {n=dp_wider(n,t);}return n;}
+dp_batch_admits :: (metal:bool,start:int,lengths:[]int)->bool #export_c #effects(all) {
     if metal || start<1 || lengths.count<1 || lengths.count>DP_BATCH {return false;}
     total:=0;short:=false;
     for t:lengths {
@@ -609,20 +609,20 @@ dp_batch_admits :: (metal:bool,start:int,lengths:[]int)->bool #export_c {
 // attention regions hold the longest question's keys, then the final norm
 // rows and logits of questions 1.. (question 0 uses the layout's own).
 DpBatch :: struct {p:DpLayout;finals:int;logits:int;total:int;}
-dp_batch_layout :: (m:DpModel,start:int,lengths:[]int)->DpBatch {
+dp_batch_layout :: (m:DpModel,start:int,lengths:[]int)->DpBatch #effects(all) {
     r:DpBatch;r.p=dp_layout_of(m,dp_batch_tokens(lengths),start+dp_batch_longest(lengths));
     more:=lengths.count-1;
     r.finals=r.p.total;r.logits=r.finals+more*dp_align(4*m.width);r.total=r.logits+more*dp_align(4*m.vocab);
     return r;
 }
-dp_batch_final :: (r:DpBatch,m:DpModel,i:int)->int {if i==0 {return r.p.final;}return r.finals+(i-1)*dp_align(4*m.width);}
-dp_batch_logit :: (r:DpBatch,m:DpModel,i:int)->int {if i==0 {return r.p.logits;}return r.logits+(i-1)*dp_align(4*m.vocab);}
+dp_batch_final :: (r:DpBatch,m:DpModel,i:int)->int #effects(all) {if i==0 {return r.p.final;}return r.finals+(i-1)*dp_align(4*m.width);}
+dp_batch_logit :: (r:DpBatch,m:DpModel,i:int)->int #effects(all) {if i==0 {return r.p.logits;}return r.logits+(i-1)*dp_align(4*m.vocab);}
 // Where the host reads question i's logits, and the workspace a batch needs.
-dp_batch_logits :: (kind:int,start:int,lengths:[]int,i:int)->int #export_c {return dp_batch_logit(dp_batch_layout(dp_model(kind),start,lengths),dp_model(kind),i);}
-dp_batch_workspace :: (kind:int,start:int,lengths:[]int)->int #export_c {return dp_batch_layout(dp_model(kind),start,lengths).total;}
+dp_batch_logits :: (kind:int,start:int,lengths:[]int,i:int)->int #export_c #effects(all) {return dp_batch_logit(dp_batch_layout(dp_model(kind),start,lengths),dp_model(kind),i);}
+dp_batch_workspace :: (kind:int,start:int,lengths:[]int)->int #export_c #effects(all) {return dp_batch_layout(dp_model(kind),start,lengths).total;}
 // The first token of question i in the batch.
-dp_batch_first :: (lengths:[]int,i:int)->int {n:=0;for j:0..<i {n+=lengths[j];}return n;}
-dp_plan_batch :: (start:int,lengths:[]int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
+dp_batch_first :: (lengths:[]int,i:int)->int #effects(all) {n:=0;for j:0..<i {n+=lengths[j];}return n;}
+dp_plan_batch :: (start:int,lengths:[]int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #export_c #effects(all) {
     m:=dp_model(opened.kind);
     if opened.status!=DpStatus.ok || stream.count!=dp_streamable(m) {return DpPlan.{status=DpStatus.capacity};}
     if !dp_batch_admits(opened.metal,start,lengths) {return DpPlan.{status=DpStatus.shape};}
@@ -631,7 +631,7 @@ dp_plan_batch :: (start:int,lengths:[]int,opened:DpPlan,stream:[]bool,ops:[]DpOp
     if n!=opened.streamed_tensors {return DpPlan.{status=DpStatus.capacity};}
     return dp_schedule_batch(start,lengths,opened,stream,ops);
 }
-dp_schedule_batch :: (start:int,lengths:[]int,placed:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan {
+dp_schedule_batch :: (start:int,lengths:[]int,placed:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #effects(all) {
     m:=dp_model(placed.kind);
     r:=dp_batch_layout(m,start,lengths);p:=r.p;plan:=placed;tokens:=dp_batch_tokens(lengths);
     order:[DP_MAX_STREAMABLE]int;
@@ -664,7 +664,7 @@ dp_schedule_batch :: (start:int,lengths:[]int,placed:DpPlan,stream:[]bool,ops:[]
 }
 // The head's rows first..first+rows for each question in turn; a streamed
 // chunk's slot is released after the last question's products.
-dp_readout_batch :: (b:DpBuilder,r:DpBatch,questions:int,weight:DpArg,first:int,rows:int,streamed:bool)->DpBuilder {
+dp_readout_batch :: (b:DpBuilder,r:DpBatch,questions:int,weight:DpArg,first:int,rows:int,streamed:bool)->DpBuilder #effects(all) {
     m:=b.m;d:=m.width;p:=r.p;x:=b;
     for i:0..<questions {
         a:[12]DpArg;w:=weight;w.count=rows*d/4;
@@ -676,7 +676,7 @@ dp_readout_batch :: (b:DpBuilder,r:DpBatch,questions:int,weight:DpArg,first:int,
     }
     return x;
 }
-dp_linear_batch :: (b:DpBuilder,p:DpLayout,layer:int,lengths:[]int,input:int,output:int)->DpBuilder {
+dp_linear_batch :: (b:DpBuilder,p:DpLayout,layer:int,lengths:[]int,input:int,output:int)->DpBuilder #effects(all) {
     m:=b.m;t:=dp_batch_tokens(lengths);d:=m.width;w:=layer*DP_PER_LAYER;c:=dp_channels(m);v:=dp_values(m);h:=m.value_heads;kh:=m.key_heads;
     mode:=dp_fork_mode(b.fork);
     r:=dp_norm_rows(b,p,t,input,dp_w(w,d),p.norm);
@@ -711,7 +711,7 @@ dp_linear_batch :: (b:DpBuilder,p:DpLayout,layer:int,lengths:[]int,input:int,out
 // So each question projects its own values (the slot of a streamed value
 // matrix is held from the first question's to the last's) and attends
 // before the next one starts.
-dp_attention_batch :: (b:DpBuilder,p:DpLayout,layer:int,lengths:[]int,input:int,output:int)->DpBuilder {
+dp_attention_batch :: (b:DpBuilder,p:DpLayout,layer:int,lengths:[]int,input:int,output:int)->DpBuilder #effects(all) {
     m:=b.m;t:=dp_batch_tokens(lengths);d:=m.width;w:=layer*DP_PER_LAYER;nh:=m.heads;kv:=dp_kv(m);qr:=dp_queries(m);at:=dp_attended(m);
     start:=b.fork.start;kb:=dp_fork_keys_of(m,layer);vb:=kb+dp_fork_cache_bytes(m);
     r:=dp_norm_rows(b,p,t,input,dp_w(w,d),p.norm);
@@ -739,16 +739,16 @@ dp_attention_batch :: (b:DpBuilder,p:DpLayout,layer:int,lengths:[]int,input:int,
     return dp_finish(r,p,layer,t,input,output);
 }
 // Workspace byte offsets the host fills or reads.
-dp_input_offset :: (tokens:int)->int #export_c {return dp_layout(tokens).x0;}
-dp_rope_offset :: (tokens:int)->int #export_c {return dp_layout(tokens).rope;}
-dp_logits_offset :: (tokens:int)->int #export_c {return dp_layout(tokens).logits;}
-dp_workspace_bytes :: (tokens:int)->int #export_c {return dp_layout(tokens).total;}
-dp_model_workspace_bytes :: (kind:int,tokens:int)->int #export_c {return dp_layout_of(dp_model(kind),tokens,tokens).total;}
+dp_input_offset :: (tokens:int)->int #export_c #effects(all) {return dp_layout(tokens).x0;}
+dp_rope_offset :: (tokens:int)->int #export_c #effects(all) {return dp_layout(tokens).rope;}
+dp_logits_offset :: (tokens:int)->int #export_c #effects(all) {return dp_layout(tokens).logits;}
+dp_workspace_bytes :: (tokens:int)->int #export_c #effects(all) {return dp_layout(tokens).total;}
+dp_model_workspace_bytes :: (kind:int,tokens:int)->int #export_c #effects(all) {return dp_layout_of(dp_model(kind),tokens,tokens).total;}
 
 // book:begin embed
 // The host's input: the BF16 embedding rows of the request's tokens as f32.
 // The table holds vocab rows of width values; a non-finite value refuses.
-dp_embed :: (tokens:[]int,width:int,embedding:[]u8,out:[]f32)->bool #export_c {
+dp_embed :: (tokens:[]int,width:int,embedding:[]u8,out:[]f32)->bool #export_c #effects(all) {
     if width<1 || embedding.count%(2*width)!=0 || out.count!=tokens.count*width {return false;}
     vocab:=embedding.count/(2*width);
     for t:0..<tokens.count {
@@ -878,7 +878,7 @@ dp_embed :: (tokens:[]int,width:int,embedding:[]u8,out:[]f32)->bool #export_c {
     f:=dp_copy(dp_model(0),2,0);#assert f.tensor==dp_weight(0,13) && f.args[0].buffer==3+dp_weight(0,13) && f.args[0].offset==0 && f.args[0].count==2*4096*12288 && f.slot==0;
     h:=dp_copy(dp_model(0),256,0);#assert h.args[0].offset==0 && h.args[0].count==2*12288*4096;
 }
-dp_digest :: (ops:[]DpOp,n:int)->u64 {
+dp_digest :: (ops:[]DpOp,n:int)->u64 #effects(all) {
     h:u64=14695981039346656037;
     for i:0..<n {
         op:=ops[i];
@@ -935,7 +935,7 @@ dp_digest :: (ops:[]DpOp,n:int)->u64 {
 // wait follows its copy, every use falls between the wait and the release
 // and no slot is left full.
 // Writes the launches to out and returns how many, or -1.
-dp_resolve :: (ops:[]DpOp,n:int,out:[]DpOp)->int {
+dp_resolve :: (ops:[]DpOp,n:int,out:[]DpOp)->int #effects(all) {
     held:=[2]DpArg.[DpArg.{},DpArg.{}];filled:=[2]bool.[false,false];ready:=[2]bool.[false,false];m:=0;
     for i:0..<n {
         op:=ops[i];
@@ -1355,11 +1355,11 @@ dp_resolve :: (ops:[]DpOp,n:int,out:[]DpOp)->int {
 // must make exactly the launches its own suffix pass makes, in order, on the
 // same fork-buffer rows. Occurrence j of a stateful kernel in a batch of q
 // questions is question j%q's (they run question after question).
-dp_stateful :: (op:DpOp)->bool {
+dp_stateful :: (op:DpOp)->bool #effects(all) {
     k:=op.kernel;
     return op.kind==DpOpKind.launch && (k==cast(u8)DpKernel.conv_state || k==cast(u8)DpKernel.scan_state || k==cast(u8)DpKernel.prepare || k==cast(u8)DpKernel.scores || k==cast(u8)DpKernel.softmax || k==cast(u8)DpKernel.attend);
 }
-dp_state_digest :: (ops:[]DpOp,n:int,questions:int,which:int)->u64 {
+dp_state_digest :: (ops:[]DpOp,n:int,questions:int,which:int)->u64 #effects(all) {
     h:u64=14695981039346656037;seen:[DP_KERNELS]int;
     for i:0..<n {
         op:=ops[i];

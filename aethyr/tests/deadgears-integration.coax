@@ -4,7 +4,7 @@
 #load "../../apps/openagents-web/deadgears.coax";
 
 // ?hour= holds the hour; otherwise each wave is later in the day
-aethyr_native_deadgears_0 :: () #export_c {
+aethyr_native_deadgears_0 :: () #export_c #effects(all) {
   s: [1] DeadGears;
   started(s[..]);
   n := frame_at(s[..], 1280, 800, 1, 0.016);
@@ -24,13 +24,13 @@ aethyr_native_deadgears_0 :: () #export_c {
 }
 
 // a full game is won on a laptop
-aethyr_native_deadgears_1 :: () #export_c { #assert won_through_the_controls(false); }
+aethyr_native_deadgears_1 :: () #export_c #effects(all) { #assert won_through_the_controls(false); }
 
 // a full game is won on a phone
-aethyr_native_deadgears_2 :: () #export_c { #assert won_through_the_controls(true); }
+aethyr_native_deadgears_2 :: () #export_c #effects(all) { #assert won_through_the_controls(true); }
 
 // 200 mutants closing in while you fire: the same start plays the same
-aethyr_native_deadgears_3 :: () #export_c {
+aethyr_native_deadgears_3 :: () #export_c #effects(all) {
   sa: [1] Store; a := dg_bind(sa[..]); dg_setup(a);
   sb: [1] Store; b := dg_bind(sb[..]); dg_setup(b);
   spawn_crowd(a); spawn_crowd(b);
@@ -39,7 +39,7 @@ aethyr_native_deadgears_3 :: () #export_c {
 }
 
 // no creature walks through cover
-aethyr_native_deadgears_4 :: () #export_c {
+aethyr_native_deadgears_4 :: () #export_c #effects(all) {
   for k: 0..<10 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 1000000;
@@ -62,4 +62,4 @@ aethyr_native_deadgears_4 :: () #export_c {
 }
 
 // Negative control: an ordinary #assert must trap in every native build.
-aethyr_native_assert_probe :: () #export_c { #assert false; }
+aethyr_native_assert_probe :: () #export_c #effects(all) { #assert false; }

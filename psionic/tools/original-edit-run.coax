@@ -6,15 +6,15 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
-oe_open :: (root:[]u8,model:int,capacity:int,budget:int,source:[]u8)->int #foreign;
-oe_original :: (file:int,offset:int,out:[]u8)->int #foreign;
-oe_reset :: ()->int #foreign;
-oe_prefill :: (tokens:[]int,control:[]int)->int #foreign;
-oe_step :: (token:int,position:int,control:[]int)->int #foreign;
-oe_read :: (slot:int,values:[]f32)->int #foreign;
-oe_patch :: (offset:int,bytes:[]u8)->int #foreign;
-oe_close :: ()->int #foreign;
-oe_bytes :: (values:[]f32,out:[]u8)->int #foreign;
+oe_open :: (root:[]u8,model:int,capacity:int,budget:int,source:[]u8)->int #foreign #effects(all);
+oe_original :: (file:int,offset:int,out:[]u8)->int #foreign #effects(all);
+oe_reset :: ()->int #foreign #effects(all);
+oe_prefill :: (tokens:[]int,control:[]int)->int #foreign #effects(all);
+oe_step :: (token:int,position:int,control:[]int)->int #foreign #effects(all);
+oe_read :: (slot:int,values:[]f32)->int #foreign #effects(all);
+oe_patch :: (offset:int,bytes:[]u8)->int #foreign #effects(all);
+oe_close :: ()->int #foreign #effects(all);
+oe_bytes :: (values:[]f32,out:[]u8)->int #foreign #effects(all);
 oe_save_floats :: (path:string,values:[]f32) {bytes:[804352]u8;#assert oe_bytes(values,bytes[0..<values.count*4])==0 && fs_write(path,cast(string)bytes[0..<values.count*4]);}
 OE_ROOT :: "psionic/fixtures/original-edit/";
 oe_path :: (stem:string,id:int,suffix:string,out:[]u8)->string {
@@ -94,7 +94,7 @@ oe_capture :: (table:[]u8,which:int,channel:bool,final_id:int) {
     // Full fixed-prefix logits are retained once, not recomputed per edit.
     name=oe_path(ifx channel then "channel/" else "answer/",which,".logits.f32",path[..]);#assert !fs_exists(name);oe_save_floats(name,logits[..]);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {tool_errln("usage: original-edit-run ORIGINAL_DIR METAL_SOURCE probe");return 2;}
     mode:=args_at(a[..],2);screen:=mode=="probe" || mode=="stress";lo:=1;hi:=13;held:=false;
     if mode=="final-controls" {lo=15;hi=20;held=true;#assert fs_exists("psionic/fixtures/original-edit/selection.json");}

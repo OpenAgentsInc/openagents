@@ -20,11 +20,11 @@
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/sys/proc.coax";
 
-cxproc_pty :: (h: int, cols: int, rows: int) -> int #foreign;
-cxproc_pty_resize :: (h: int, cols: int, rows: int) -> int #foreign;
-cxproc_read_bytes :: (h: int, timeout_ms: int, out: [] u8) -> int #foreign;
-cxproc_self_path :: (out: [] u8) -> int #foreign;
-cxtool_out_flush :: () -> int #foreign;
+cxproc_pty :: (h: int, cols: int, rows: int) -> int #foreign #effects(all);
+cxproc_pty_resize :: (h: int, cols: int, rows: int) -> int #foreign #effects(all);
+cxproc_read_bytes :: (h: int, timeout_ms: int, out: [] u8) -> int #foreign #effects(all);
+cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
+cxtool_out_flush :: () -> int #foreign #effects(all);
 
 RC_COLS :: 128;          // cells a row holds at most (the widest terminal here is 120)
 RC_ROWS :: 4096;         // rows the buffer keeps (screen and scrollback)
@@ -420,7 +420,7 @@ session :: (repo: string, prefix: string, fill: bool, quiet: bool) -> int {
   return s[0].failures;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   quiet := args_has(a[..], "--quiet");

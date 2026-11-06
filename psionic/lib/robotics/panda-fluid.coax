@@ -32,7 +32,7 @@
  for i:0..<7 {#assert abs(out[0].fluid.hinge[i].value-want[i])<5e-10;#assert abs(out[0].joint_passive.hinge[i].value-want[i+9])<5e-10;#assert abs(out[0].passive.hinge[i].value-want[i+18])<5e-10;}for i:0..<2 {#assert abs(out[0].fluid.slide[i].value-want[i+7])<5e-10;#assert abs(out[0].joint_passive.slide[i].value-want[i+16])<5e-10;#assert abs(out[0].passive.slide[i].value-want[i+25])<5e-10;}
 }
 
-pfl_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),hinge_rates:[]pfku.Quantity(PidAngularRate,f64),slide_rates:[]pfku.Quantity(PidLinearRate,f64),output:[]PflOutput)->PfkStatus #export_c {
+pfl_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),hinge_rates:[]pfku.Quantity(PidAngularRate,f64),slide_rates:[]pfku.Quantity(PidLinearRate,f64),output:[]PflOutput)->PfkStatus #export_c #effects(all) {
  if hinge_rates.count!=7 || slide_rates.count!=2 || output.count!=1 {return PfkStatus.shape;}
  // Pff owns coordinate shapes/numbers/boxes; all work remains private on refusal.
  poses:[1]PffOutput;status:=pff_forward(angles,slides,poses[..]);if status!=PfkStatus.ok {return status;}
@@ -41,7 +41,7 @@ pfl_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(p
  for i:0..<7 {fresh.passive.hinge[i]=fresh.joint_passive.hinge[i]+fresh.fluid.hinge[i];}for i:0..<2 {fresh.passive.slide[i]=fresh.joint_passive.slide[i]+fresh.fluid.slide[i];}
  output[0]=fresh;return PfkStatus.ok;
 }
-pfl_forward_raw :: (coordinates:[]f64,rates:[]f64,output:[]PflOutput)->PfkStatus #export_c {
+pfl_forward_raw :: (coordinates:[]f64,rates:[]f64,output:[]PflOutput)->PfkStatus #export_c #effects(all) {
  if coordinates.count!=9 || rates.count!=9 {return PfkStatus.shape;}
  q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];}for i:0..<2 {s[i].value=coordinates[i+7];sv[i].value=rates[i+7];}return pfl_forward(q[..],s[..],v[..],sv[..],output);
 }

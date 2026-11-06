@@ -64,18 +64,18 @@ HMAC_STATE_BYTES :: 224;
   #assert hmac_sha256_commit(src[..],out[..])==SHA_BAD_STATE;
 }
 
-hmac_sha256_state_size :: ()->int #export_c {return HMAC_STATE_BYTES;}
-hmac_sha256_init_request :: (state:int,key:int,overlap:bool)->u32 {
+hmac_sha256_state_size :: ()->int #export_c #effects(all) {return HMAC_STATE_BYTES;}
+hmac_sha256_init_request :: (state:int,key:int,overlap:bool)->u32 #effects(all) {
   if state!=HMAC_STATE_BYTES {return SHA_BAD_STATE;}
   if !sha256_input_ok(key) {return SHA_BAD_INPUT;}
   if overlap {return SHA_ALIAS;}
   return SHA_OK;
 }
-hmac_sha256_request :: (key:int,input:int,out:int,overlap:bool)->u32 {
+hmac_sha256_request :: (key:int,input:int,out:int,overlap:bool)->u32 #effects(all) {
   if !sha256_input_ok(key) {return SHA_BAD_INPUT;}
   return sha256_request(input,out,overlap);
 }
-hmac_sha256_info :: (state:[]u8)->Sha256Info #export_c {
+hmac_sha256_info :: (state:[]u8)->Sha256Info #export_c #effects(all) {
   if state.count!=HMAC_STATE_BYTES {return Sha256Info.{error=SHA_BAD_STATE};}
   inner:=sha256_info(state[0..<112]);outer:=sha256_info(state[112..<224]);
   if inner.error!=0 {return Sha256Info.{error=inner.error};}
@@ -85,13 +85,13 @@ hmac_sha256_info :: (state:[]u8)->Sha256Info #export_c {
   if outer.total!=expected {return Sha256Info.{error=SHA_BAD_STATE};}
   return Sha256Info.{phase=inner.phase,total=inner.total-64,buffered=inner.buffered};
 }
-hmac_sha256_commit :: (source:[]u8,out:[]u8)->u32 {
+hmac_sha256_commit :: (source:[]u8,out:[]u8)->u32 #effects(all) {
   // The source is a distinct local working buffer in every product call.
   // Reuse the checked copy primitive rather than depending on SHA header bytes.
   if cb_copy_checked(source,out,false) {return SHA_OK;}
   return SHA_BAD_STATE;
 }
-hmac_sha256_init_checked :: (state:[]u8,key:[]u8,overlap:bool)->u32 {
+hmac_sha256_init_checked :: (state:[]u8,key:[]u8,overlap:bool)->u32 #effects(all) {
   status:=hmac_sha256_init_request(state.count,key.count,overlap);if status!=SHA_OK {return status;}
   hashed:[32]u8;defer {secure_zero(hashed[..]);#assert crypto_zeroed(hashed[..]);}effective:=key;
   if key.count>64 {status=sha256_hash_checked(key,hashed[..],false);if status!=SHA_OK {return status;}effective=hashed[..];}
@@ -105,14 +105,14 @@ hmac_sha256_init_checked :: (state:[]u8,key:[]u8,overlap:bool)->u32 {
   status=sha256_update_checked(work[112..<224],outer[..],false);if status!=SHA_OK {return status;}
   return hmac_sha256_commit(work[..],state);
 }
-hmac_sha256_update_checked :: (state:[]u8,input:[]u8,overlap:bool)->u32 {
+hmac_sha256_update_checked :: (state:[]u8,input:[]u8,overlap:bool)->u32 #effects(all) {
   info:=hmac_sha256_info(state);if info.error!=0 {return info.error;}
   if info.phase!=SHA_ACTIVE {return SHA_PHASE;}
   // SHA update is already transactional. The alias fact conservatively covers
   // the original whole HMAC context, including its untouched outer half.
   return sha256_update_checked(state[0..<112],input,overlap);
 }
-hmac_sha256_final_checked :: (state:[]u8,out:[]u8,overlap:bool)->u32 {
+hmac_sha256_final_checked :: (state:[]u8,out:[]u8,overlap:bool)->u32 #effects(all) {
   info:=hmac_sha256_info(state);if info.error!=0 {return info.error;}
   if !cb_span(out.count,0,32) {return SHA_BAD_OUTPUT;}
   if overlap {return SHA_ALIAS;}
@@ -124,7 +124,7 @@ hmac_sha256_final_checked :: (state:[]u8,out:[]u8,overlap:bool)->u32 {
   status=sha256_final_checked(work[112..<224],out,false);if status!=SHA_OK {return status;}
   return hmac_sha256_commit(work[..],state);
 }
-hmac_sha256_checked :: (key:[]u8,input:[]u8,out:[]u8,overlap:bool)->u32 {
+hmac_sha256_checked :: (key:[]u8,input:[]u8,out:[]u8,overlap:bool)->u32 #effects(all) {
   status:=hmac_sha256_request(key.count,input.count,out.count,overlap);if status!=SHA_OK {return status;}
   state:[224]u8;defer {secure_zero(state[..]);#assert crypto_zeroed(state[..]);}
   status=hmac_sha256_init_checked(state[..],key,false);if status!=SHA_OK {return status;}

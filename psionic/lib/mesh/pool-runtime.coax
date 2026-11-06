@@ -4,11 +4,11 @@
 #load "../fleet/runtime.coax";
 #load "pool-input-policy.coax";
 #load "pool-bundle.coax";
-mpub_stdin_read :: (ms:int)->int #foreign;
-mpub_stdin_byte :: (i:int)->int #foreign;
-mpub_stdin_clear :: ()->int #foreign;
-mpub_stdout_tty :: ()->int #foreign;
-mpub_stderr_byte :: (byte:int)->int #foreign;
+mpub_stdin_read :: (ms:int)->int #foreign #effects(all);
+mpub_stdin_byte :: (i:int)->int #foreign #effects(all);
+mpub_stdin_clear :: ()->int #foreign #effects(all);
+mpub_stdout_tty :: ()->int #foreign #effects(all);
+mpub_stderr_byte :: (byte:int)->int #foreign #effects(all);
 MprConfig :: struct {args:[32768]u8;used:int;pool:string;from:int=-1;to:int=-1;providers:[32]string;pn:int;buyers:[64]string;bn:int;checkers:[128]string;cn:int;relay:string="wss://relay.openagents.com";timeout:int=10000;verify:string;policy:bool;publish:bool;bundle:bool;inputs:bool;}
 MprEvent :: struct {raw:[16384]u8;n:int;content:[16384]u8;content_n:int;id:[64]u8;author:[64]u8;}
 MprState :: struct {cfg:[1]MprConfig;f:[1]Fm;events:[224]MprEvent;count:int;seen:[225][64]u8;sn:int;beacons:[32]MtBeacon;bn:int;receipts:[64]MtReceipt;rn:int;checks:[128]MtCheck;cn:int;aggregate:[16384]u8;an:int;aggregate_content:[16384]u8;acn:int;policy:[32768]u8;policy_n:int;input:[2097152]u8;bundle:[1048576]u8;work:[1048576]u8;}

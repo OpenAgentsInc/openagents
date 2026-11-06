@@ -15,32 +15,32 @@
     #assert gd_batch_program(GT_SHAPE,p,params[..],7,0,2,false,4,ops[..],args[..]).status==GStatus.state;
     #assert gd_batch_program(GT_SHAPE,p,params[..],0,0,4,false,0,ops[..],args[..]).status==GStatus.state;
 }
-gd_prompt :: (s:GShape,position:int,ids:[]int)->GResult #export_c {
+gd_prompt :: (s:GShape,position:int,ids:[]int)->GResult #export_c #effects(all) {
     if !g_shape(s) || s.capacity>4096 {return GResult.{status=GStatus.shape};}
     if position<0 || position>s.capacity || ids.count<1 || ids.count>s.capacity-position {return GResult.{status=GStatus.state};}
     for id:ids {if id<0 || id>=s.vocab {return GResult.{status=GStatus.token};}}return GResult.{written=ids.count};
 }
-gd_chunk :: (first:int,count:int,batch:int)->int #export_c {
+gd_chunk :: (first:int,count:int,batch:int)->int #export_c #effects(all) {
     if first<0 || first>=count || batch<1 {return 0;}return gs_window(count-first,batch);
 }
-gd_guard :: (w:GDWriter,count:int)->GDWriter {
+gd_guard :: (w:GDWriter,count:int)->GDWriter #effects(all) {
     p:=w.plan;n:=(count+255)/256;r:=gd_emit(w,18,n,0,2,GDScalars.{},GDViews.{a=gd_slice(p,37,0,count),b=gd_slice(p,23,0,n)});
     return gd_emit(r,19,1,0,2,GDScalars.{},GDViews.{a=gd_slice(p,23,0,n),b=gd_all(p,24)});
 }
-gd_batch_norm :: (w:GDWriter,d:int,n:int,scale:GDRef,x:GDRef,out:GDRef)->GDWriter {
+gd_batch_norm :: (w:GDWriter,d:int,n:int,scale:GDRef,x:GDRef,out:GDRef)->GDWriter #effects(all) {
     p:=w.plan;r:=gd_emit(w,25,n*64,2,2,GDScalars.{a=d,b=64},GDViews.{a=x,b=gd_all(p,44)});
     r=gd_emit(r,26,n*d,2,5,GDScalars.{a=d,b=64},GDViews.{a=gd_all(p,44),b=scale,c=x,d=out,e=gd_all(p,37)});return gd_guard(r,n*d);
 }
-gd_batch_bf :: (w:GDWriter,rows:int,cols:int,n:int,weight:GDRef,bias:GDRef,x:GDRef,out:GDRef)->GDWriter {
+gd_batch_bf :: (w:GDWriter,rows:int,cols:int,n:int,weight:GDRef,bias:GDRef,x:GDRef,out:GDRef)->GDWriter #effects(all) {
     p:=w.plan;r:=gd_emit(w,27,((n+7)/8)*(rows/4)*16,4,3,GDScalars.{a=rows,b=cols,c=n,d=16},GDViews.{a=weight,b=x,c=gd_all(p,40)});
     r=gd_emit(r,28,n*rows,3,4,GDScalars.{a=rows,b=n,c=16},GDViews.{a=gd_all(p,40),b=bias,c=out,d=gd_all(p,37)});return gd_guard(r,n*rows);
 }
-gd_batch_mx :: (w:GDWriter,rows:int,cols:int,n:int,e:int,z:int,slot_input:int,weight:GDRef,scale:GDRef,bias:GDRef,x:GDRef,out:GDRef)->GDWriter {
+gd_batch_mx :: (w:GDWriter,rows:int,cols:int,n:int,e:int,z:int,slot_input:int,weight:GDRef,scale:GDRef,bias:GDRef,x:GDRef,out:GDRef)->GDWriter #effects(all) {
     if w.plan.mma>0 {return gd_batch_mma(w,rows,cols,n,e,z,slot_input,weight,scale,bias,x,out);}
     p:=w.plan;tiles:=(n*z+7)/8+e;r:=gd_emit(w,32,tiles*(rows/4)*16,7,6,GDScalars.{a=rows,b=cols,c=n,d=e,e=z,f=16,g=slot_input},GDViews.{a=weight,b=scale,c=gd_all(p,38),d=gd_all(p,39),e=x,f=gd_all(p,40)});
     r=gd_emit(r,8,n*z*rows,2,5,GDScalars.{a=rows,b=16},GDViews.{a=gd_all(p,45),b=gd_all(p,40),c=bias,d=out,e=gd_all(p,37)});return gd_guard(r,n*z*rows);
 }
-gd_batch_program :: (s:GShape,p:GDPlan,params:[]GDParam,position:int,first:int,n:int,choose:bool,limit:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+gd_batch_program :: (s:GShape,p:GDPlan,params:[]GDParam,position:int,first:int,n:int,choose:bool,limit:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c #effects(all) {
     if p.status!=GStatus.ok || !g_shape(s) || s.capacity>4096 {return GDProgram.{status=GStatus.shape};}
     if position<0 || first<0 || n<1 || n>p.batch || position>s.capacity-n || first>s.capacity-n || limit<1 || limit>s.capacity {return GDProgram.{status=GStatus.state};}
     if params.count!=3+15*s.layers || ops.count<p.max_ops || args.count<p.max_args {return GDProgram.{status=GStatus.capacity};}
@@ -85,7 +85,7 @@ gd_batch_program :: (s:GShape,p:GDPlan,params:[]GDParam,position:int,first:int,n
 // 47), when the session turned MXFP4-BF16-MMA-v1 on. The packed weights are
 // read as bytes; grouped rows, limbs and partials live in plan buffers 47,
 // 48, 40 and 49.
-gd_batch_mma :: (w:GDWriter,rows:int,cols:int,n:int,e:int,z:int,slot_input:int,weight:GDRef,scale:GDRef,bias:GDRef,x:GDRef,out:GDRef)->GDWriter {
+gd_batch_mma :: (w:GDWriter,rows:int,cols:int,n:int,e:int,z:int,slot_input:int,weight:GDRef,scale:GDRef,bias:GDRef,x:GDRef,out:GDRef)->GDWriter #effects(all) {
     p:=w.plan;s:=GShape.{experts=e,selected=z};grouped:=gd_grouped(n,s);quads:=(n*z+31)/32+e;
     bytes:=GDRef.{buffer=weight.buffer,offset=weight.offset,count=weight.count*weight.elem,elem=1};
     r:=gd_emit(w,45,grouped*(cols/2),5,5,GDScalars.{a=cols,b=n,c=e,d=z,e=slot_input},GDViews.{a=gd_all(p,38),b=gd_all(p,39),c=x,d=gd_all(p,47),e=gd_all(p,48)});

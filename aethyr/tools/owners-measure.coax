@@ -5,7 +5,7 @@
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../world/owners.coax";
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   for link: 0..<6 {
     w: [1] OwWorld;
     inside := ow_fight(w[..], -6, -2, link, 600);

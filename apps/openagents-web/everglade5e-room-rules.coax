@@ -96,7 +96,7 @@ e5rr_of_tgt :: (t: int) -> int {
   return -1;
 }
 
-e5rr_start :: (r: [] E5rRoom, seed: int) #export_c {
+e5rr_start :: (r: [] E5rRoom, seed: int) #export_c #effects(reads,writes,traps) {
   b := r[0].b[..];
   b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = E5R_SIDE; b[0].h = E5R_SIDE;
   b[0].beat = f32(E5R_BEAT); b[0].recharge = f32(E5R_RECHARGE);
@@ -131,9 +131,9 @@ e5rr_start :: (r: [] E5rRoom, seed: int) #export_c {
 }
 
 // A player sits at seat s: a fresh caster, full Hit Points, at (x, z).
-e5rr_join :: (r: [] E5rRoom, s: int, x: f32, z: f32) #export_c { e5rr_join_as(r, s, x, z, 0); }
+e5rr_join :: (r: [] E5rRoom, s: int, x: f32, z: f32) #export_c #effects(reads,writes,traps) { e5rr_join_as(r, s, x, z, 0); }
 // The same, as class klass (the H frame's CLASS): 0 Everglade's druid, 1 the level 17 Warlock.
-e5rr_join_as :: (r: [] E5rRoom, s: int, x: f32, z: f32, klass: int) #export_c {
+e5rr_join_as :: (r: [] E5rRoom, s: int, x: f32, z: f32, klass: int) #export_c #effects(reads,writes,traps) {
   if !r[0].started || s < 0 || s >= E5RR_SEATS { return; }
   b := r[0].b[..];
   i := E5RR_SEAT + s;
@@ -153,7 +153,7 @@ e5rr_join_as :: (r: [] E5rRoom, s: int, x: f32, z: f32, klass: int) #export_c {
 }
 // The player at seat s left the battle. What it concentrates on (its zones, its summoned creatures)
 // stays until the spell would end (spec 6.3), or until someone else takes the seat.
-e5rr_leave :: (r: [] E5rRoom, s: int) #export_c {
+e5rr_leave :: (r: [] E5rRoom, s: int) #export_c #effects(reads,writes,traps) {
   if !r[0].started || s < 0 || s >= E5RR_SEATS || !r[0].live[s] { return; }
   b := r[0].b[..];
   i := E5RR_SEAT + s;
@@ -166,14 +166,14 @@ e5rr_leave :: (r: [] E5rRoom, s: int) #export_c {
 e5rr_entry :: (r: [] E5rRoom, k: int) -> FbAb { return ifx k >= FB_WL0 then r[0].wbar[k - FB_WL0] else r[0].bar[k]; }
 // Where the engine has seat s (Everglade's metres, a square's middle) into out[0], out[1]: after a
 // Dimension Door, where it teleported to. False when the seat is empty.
-e5rr_seat_at :: (r: [] E5rRoom, s: int, out: [] f32) -> bool #export_c {
+e5rr_seat_at :: (r: [] E5rRoom, s: int, out: [] f32) -> bool #export_c #effects(reads,writes,traps) {
   if !r[0].started || s < 0 || s >= E5RR_SEATS || !r[0].live[s] || out.count < 2 { return false; }
   c := r[0].b[0].c[E5RR_SEAT + s];
   out[0] = f32(E5R_X0) + (f32(c.x) + 0.5) * f32(E5R_SQ); out[1] = f32(E5R_X0) + (f32(c.y) + 0.5) * f32(E5R_SQ);
   return true;
 }
 // Where seat s stands now (Everglade's metres).
-e5rr_place :: (r: [] E5rRoom, s: int, x: f32, z: f32) #export_c {
+e5rr_place :: (r: [] E5rRoom, s: int, x: f32, z: f32) #export_c #effects(reads,writes,traps) {
   if !r[0].started || s < 0 || s >= E5RR_SEATS || !r[0].live[s] { return; }
   i := E5RR_SEAT + s;
   r[0].b[0].c[i].x = e5r_sq(x); r[0].b[0].c[i].y = e5r_sq(z);
@@ -181,7 +181,7 @@ e5rr_place :: (r: [] E5rRoom, s: int, x: f32, z: f32) #export_c {
 // Everglade's people, E5R_FOLK_FLOATS each (here, x, z, hp, temp, max, ac,
 // block): the town's step owns where they are; the engine keeps their Hit Points once they are in.
 // A person seen for the first time (or with a new block) takes the given Hit Points.
-e5rr_people :: (r: [] E5rRoom, folk: [] f32, folk_n: int) #export_c {
+e5rr_people :: (r: [] E5rRoom, folk: [] f32, folk_n: int) #export_c #effects(reads,writes,traps) {
   if !r[0].started { return; }
   b := r[0].b[..];
   for j: 0..<E5R_FOLK {
@@ -205,7 +205,7 @@ e5rr_people :: (r: [] E5rRoom, folk: [] f32, folk_n: int) #export_c {
   }
 }
 // The room's clock on to `clock` (seconds): turns, the saves people repeat and the zones' rounds.
-e5rr_step :: (r: [] E5rRoom, clock: f32) #export_c {
+e5rr_step :: (r: [] E5rRoom, clock: f32) #export_c #effects(reads,writes,traps) {
   if !r[0].started { return; }
   b := r[0].b[..];
   dt := clock - b[0].clock;
@@ -263,7 +263,18 @@ e5rr_apart :: (r: [] E5rRoom, s: int, o: int) -> bool {
 // Seat s uses bar slot k, landing at (x, z), at the target tgt (a TGT code, -1 none: the person
 // nearest the point within 10 feet). The engine rolls it. False (nothing spent) when it can't: no
 // such slot, the seat is dead or can't act.
-e5rr_use :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool #export_c {
+e5rr_use :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool #export_c #effects(reads,writes,traps) {
+  switch e5rr_use_atomic(r, s, k, x, z, tgt) { case none { return false; } case some(ok) { return ok; } }
+}
+// The shared battle, every affected creature and its lasting areas commit together.
+// The bool C boundary stays the same; refusal leaves the battle exactly as it was.
+e5rr_use_atomic :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool? {
+  #transaction {
+    if !e5rr_use_apply(r, s, k, x, z, tgt) { return null; }
+  }
+  return some(true);
+}
+e5rr_use_apply :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool {
   if !r[0].started || s < 0 || s >= E5RR_SEATS || !r[0].live[s] || !e5r_has(k) || (k >= FB_WL0) != (r[0].klass[s] == 1) { return false; }
   b := r[0].b[..];
   me := E5RR_SEAT + s;
@@ -328,7 +339,7 @@ e5rr_use :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool #e
   return ok;
 }
 // Seat s ends what bar slot k holds up: its concentration, when that is k's spell.
-e5rr_end :: (r: [] E5rRoom, s: int, k: int) -> bool #export_c {
+e5rr_end :: (r: [] E5rRoom, s: int, k: int) -> bool #export_c #effects(reads,writes,traps) {
   if !r[0].started || s < 0 || s >= E5RR_SEATS || !r[0].live[s] || !e5r_has(k) { return false; }
   b := r[0].b[..];
   i := E5RR_SEAT + s;
@@ -340,7 +351,7 @@ e5rr_end :: (r: [] E5rRoom, s: int, k: int) -> bool #export_c {
   return true;
 }
 // The rebuild (R) stands the town's fallen up: every person whole again (the world's watch_restore).
-e5rr_folk_restore :: (r: [] E5rRoom) #export_c {
+e5rr_folk_restore :: (r: [] E5rRoom) #export_c #effects(reads,writes,traps) {
   if !r[0].started { return; }
   for j: 0..<E5R_FOLK {
     i := e5rr_folk(j);
@@ -350,12 +361,37 @@ e5rr_folk_restore :: (r: [] E5rRoom) #export_c {
 }
 // Damage the world dealt (a guard's sword, a spear, a fall): to creature `who`, by `by` (TGT codes; a
 // `by` that names nobody: the creature itself), so the hit event names the townsperson or guard.
-e5rr_hurt :: (r: [] E5rRoom, who: int, amount: int, by: int) #export_c {
+e5rr_hurt :: (r: [] E5rRoom, who: int, amount: int, by: int) #export_c #effects(reads,writes,traps) {
   if !r[0].started || amount <= 0 { return; }
   i := ifx who > E5RR_TGT_BEAST then e5rr_beast_of_tgt(r, who) else e5rr_of_tgt(who);
   if i < 0 { return; }
   j := ifx by > E5RR_TGT_BEAST then e5rr_beast_of_tgt(r, by) else e5rr_of_tgt(by);
-  rs_damage(r[0].b[..], ifx j >= 0 then j else i, i, amount, RS_BLUDGEONING, false, -1);   // (b, by, to): the blow lands on `who`
+  hits:=[1]E5rrDamage.[E5rrDamage.{who=i,by=ifx j>=0 then j else i,amount=amount}];
+  switch e5rr_damage_many(r[0].b[..],hits[..]) {case none {} case some(applied) {}}
+}
+E5rrDamage :: struct {who:int;by:int;amount:int;}
+// World fire and falls enter the same in-memory battle undo scope. A batch
+// may refuse a later target without keeping earlier damage or random draws.
+e5rr_damage_many :: (b:[]RsBattle,hits:[]const E5rrDamage)->bool? #effects(reads,writes,traps) {
+  #transaction {
+    for hit:hits {
+      if hit.who<0 || hit.who>=b[0].n || hit.amount<=0 {return null;}
+      by:=ifx hit.by>=0 && hit.by<b[0].n then hit.by else hit.who;
+      rs_damage(b,by,hit.who,hit.amount,RS_BLUDGEONING,false,-1);
+    }
+  }
+  return some(true);
+}
+#test "fire damage transaction: refusal on the third target restores every creature, random draw and hit event" #steps 2000000000 {
+  r:[1]E5rRoom;e5rr_start(r[..],9);e5rr_test_people(r[..]);
+  first:=e5rr_folk(0);second:=e5rr_folk(1);hp0:=r[0].b[0].c[first].hp;hp1:=r[0].b[0].c[second].hp;
+  random:=r[0].b[0].dice[0].state;events:=r[0].b[0].book[0].seq;
+  hits:=[3]E5rrDamage.[E5rrDamage.{who=first,by=first,amount=3},E5rrDamage.{who=second,by=first,amount=4},E5rrDamage.{who= -1,amount=5}];
+  switch e5rr_damage_many(r[0].b[..],hits[..]) {case none {} case some(wrong) {#assert false;}}
+  #assert r[0].b[0].c[first].hp==hp0 && r[0].b[0].c[second].hp==hp1;
+  #assert r[0].b[0].dice[0].state==random && r[0].b[0].book[0].seq==events;
+  switch e5rr_damage_many(r[0].b[..],hits[0..<2]) {case none {#assert false;} case some(applied) {#assert applied;}}
+  #assert r[0].b[0].c[first].hp==hp0-3 && r[0].b[0].c[second].hp==hp1-4;
 }
 
 // ---- summoned creatures
@@ -388,7 +424,7 @@ e5rr_send :: (r: [] E5rRoom, s: int, foe: int, x: f32, z: f32) {
   e5b_send(r[0].beasts[..], s, foe, x, z);
 }
 // The rebuild (R): every Zombie falls (the town's people stand up whole, e5rr_folk_restore).
-e5rr_zombies_clear :: (r: [] E5rRoom) #export_c {
+e5rr_zombies_clear :: (r: [] E5rRoom) #export_c #effects(reads,writes,traps) {
   if !r[0].started { return; }
   for q: 0..<E5RR_BEASTS { if r[0].beasts[q].id != 0 && r[0].beasts[q].form == E5RR_FORM_ZOMBIE { r[0].b[0].c[E5RR_BEAST0 + q].dead = true; } }
   e5rr_beasts_check(r);
@@ -449,7 +485,7 @@ e5rr_folk_near :: (r: [] E5rRoom, x: f32, z: f32, reach: f32) -> int {
 // "hold", the drift check's held step, #12886): Paralyzed for E5RR_HOLD_S with no save, so every room
 // it is laid in holds them alike. The creature, or -1 for none near.
 E5RR_HOLD_S :: 6.0;
-e5rr_hold_folk :: (r: [] E5rRoom, x: f32, z: f32, reach: f32) -> int #export_c {
+e5rr_hold_folk :: (r: [] E5rRoom, x: f32, z: f32, reach: f32) -> int #export_c #effects(reads,writes,traps) {
   i := e5rr_folk_near(r, x, z, reach);
   if i < 0 { return -1; }
   b := r[0].b[..];
@@ -525,12 +561,12 @@ e5rr_hold_left :: (b: [] RsBattle, i: int, sp: [] int) -> f32 {
   }
   return best;
 }
-e5rr_seat_out :: (r: [] E5rRoom, s: int, out: [] f32) #export_c { if s >= 0 && s < E5RR_SEATS && out.count >= E5RR_OUT_FLOATS { e5rr_creature(r, E5RR_SEAT + s, out); } }
-e5rr_folk_out :: (r: [] E5rRoom, j: int, out: [] f32) #export_c { if j >= 0 && j < E5R_FOLK && out.count >= E5RR_OUT_FLOATS { e5rr_creature(r, e5rr_folk(j), out); } }
+e5rr_seat_out :: (r: [] E5rRoom, s: int, out: [] f32) #export_c #effects(reads,writes,traps) { if s >= 0 && s < E5RR_SEATS && out.count >= E5RR_OUT_FLOATS { e5rr_creature(r, E5RR_SEAT + s, out); } }
+e5rr_folk_out :: (r: [] E5rRoom, j: int, out: [] f32) #export_c #effects(reads,writes,traps) { if j >= 0 && j < E5R_FOLK && out.count >= E5RR_OUT_FLOATS { e5rr_creature(r, e5rr_folk(j), out); } }
 // Summoned creature q (0 to E5RR_BEASTS): its id (0 when off), then into out: x, y, z (metres), yaw,
 // hp, max, the seat that summoned it, its form, 1 while it runs, 1 once its y is the ground's.
 E5RR_BEAST_FLOATS :: 10;
-e5rr_beast :: (r: [] E5rRoom, q: int, out: [] f32) -> int #export_c {
+e5rr_beast :: (r: [] E5rRoom, q: int, out: [] f32) -> int #export_c #effects(reads,writes,traps) {
   if q < 0 || q >= E5RR_BEASTS || r[0].beasts[q].id == 0 || out.count < E5RR_BEAST_FLOATS { return 0; }
   bt := r[0].beasts[q];
   c := r[0].b[0].c[E5RR_BEAST0 + q];
@@ -539,14 +575,14 @@ e5rr_beast :: (r: [] E5rRoom, q: int, out: [] f32) -> int #export_c {
   return bt.id;
 }
 // The ground's height under summoned creature q (the host's world knows it).
-e5rr_beast_ground :: (r: [] E5rRoom, q: int, y: f32) #export_c {
+e5rr_beast_ground :: (r: [] E5rRoom, q: int, y: f32) #export_c #effects(reads,writes,traps) {
   if q < 0 || q >= E5RR_BEASTS || r[0].beasts[q].id == 0 { return; }
   r[0].beasts[q].y = y; r[0].beasts[q].grounded = true;
 }
 // Zone q (0 to E5RR_ZONES): its id (0 when off), then into out: spell, by (a TGT code), x, z
 // (metres, the square's middle), radius (metres) and the bar slot that made it.
 E5RR_ZONE_FLOATS :: 6;
-e5rr_zone :: (r: [] E5rRoom, q: int, out: [] f32) -> int #export_c {
+e5rr_zone :: (r: [] E5rRoom, q: int, out: [] f32) -> int #export_c #effects(reads,writes,traps) {
   if q < 0 || q >= E5RR_ZONES || !r[0].zones[q].on || out.count < E5RR_ZONE_FLOATS { return 0; }
   z := r[0].zones[q];
   out[0] = f32(z.spell); out[1] = f32(e5rr_tgt(z.by));
@@ -556,7 +592,7 @@ e5rr_zone :: (r: [] E5rRoom, q: int, out: [] f32) -> int #export_c {
 }
 // The engine's events since the last call, oldest first, E5RR_EV_FLOATS each (kind RS_EV_*, spell,
 // by and to as TGT codes, amount, damage type, the square's x and z in metres): how many.
-e5rr_events :: (r: [] E5rRoom, out: [] f32) -> int #export_c {
+e5rr_events :: (r: [] E5rRoom, out: [] f32) -> int #export_c #effects(reads,writes,traps) {
   if !r[0].started { return 0; }
   b := r[0].b[..];
   unread := rs_min(b[0].book[0].seq - r[0].seen, RS_EVENTS);
@@ -809,6 +845,16 @@ e5rr_test_ring :: (r: [] E5rRoom, px: int, py: int) {
     }
     #assert fails > 0 && succeeds > 0;   // the seeds give both
   }
+}
+#test "Everglade 5E room: a refused cast restores resources, turn state and the random stream" #steps 2000000000 {
+  r: [1] E5rRoom;
+  e5rr_start(r[..], 9); e5rr_test_people(r[..]); e5rr_join(r[..], 0, 0, 0);
+  me := E5RR_SEAT;
+  r[0].b[0].c[me].slots[1] = 0; r[0].b[0].c[me].reacted = true;
+  r[0].seat[0].turn.action = true; r[0].seat[0].open = false;
+  #assert !e5rr_use(r[..], 0, 1, 10000, 10000, -1);
+  #assert r[0].b[0].c[me].slots[1] == 0 && r[0].b[0].c[me].reacted;
+  #assert r[0].seat[0].turn.action && !r[0].seat[0].open;
 }
 #test "Everglade 5E room: a lasting area is the room's, with an id; it outlasts its caster's leaving until its time is up" #steps 2000000000 {
   r: [1] E5rRoom;

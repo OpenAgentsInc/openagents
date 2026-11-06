@@ -141,7 +141,7 @@ fc_group :: (site: string, bots: int, seconds: int, realm: string, group: int) -
 
 FcSat :: struct { room: [32] u8; room_n: int; shard: int; pid: [48] u8; pid_n: int; }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("fanout-check: bad arguments"); return 2; }
   if args_count(a[..]) >= 6 && args_at(a[..], 0) == "group" {

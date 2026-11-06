@@ -32,6 +32,8 @@ LocomotionProfile :: struct {
   ride_height: f32 = 0.4; step_smooth: f32 = 10;
   slide_grip: f32 = 0.1; sink_limit: f32 = 0.05;
   run_animation_margin: f32 = 0.25;
+  source_velocity: bool;
+  source_friction:f32=4; source_braking:f32=10; source_braking_factor:f32=2; source_air_control:f32;
 }
 ```
 
@@ -66,7 +68,7 @@ vertical speed to `JUMP`:
 <!-- source: aethyr/walk.coax take -->
 ```jai
 // One fixed step. It first takes a waiting jump press: from the ground, it jumps.
-step :: (w: World, given: Player, dt: f32) -> Player {
+step :: (w: World, given: Player, dt: f32) -> Player #effects(all) {
   if !locomotion_profile_ok(w.locomotion) || w.locomotion.run_speed * f32(STEP) > w.collision.max_travel {
     return collision_report(given, CollideResult.{state = collision_state(given), status = CollideStatus.bad_profile});
   }
@@ -106,6 +108,11 @@ The rest of the step runs in this order:
   dir := wish(p);
   speed := (ifx p.run then w.locomotion.run_speed else w.locomotion.walk_speed) * clamp(ifx finite(p.pace) then p.pace else 1.0f32, 0, 1);
 
+  if w.locomotion.source_velocity {
+    ax:=p.key_x;az:=p.key_y;pad:=sqrt(p.pad_x*p.pad_x+p.pad_y*p.pad_y);if pad>f32(DEAD_ZONE) {ax=p.pad_x;az=p.pad_y;}
+    amount:=lo(sqrt(ax*ax+az*az),1);control:=ifx p.on_ground then 1.0f32 else w.locomotion.source_air_control;
+    v:=source_motion.source_velocity(next.vel.x,next.vel.z,dir.x,dir.z,amount,speed,w.locomotion.acceleration*control,ifx p.on_ground then w.locomotion.source_friction else 0.0f32,ifx p.on_ground then w.locomotion.source_braking else 0.0f32,w.locomotion.source_braking_factor,dt);next.vel.x=v.x;next.vel.z=v.z;
+  }else {
   // Horizontal velocity steps toward the wish at a fixed rate.
   dx := dir.x * speed - next.vel.x;
   dz := dir.z * speed - next.vel.z;
@@ -116,6 +123,7 @@ The rest of the step runs in this order:
     applied := lo(diff, w.locomotion.acceleration * grip * dt);
     next.vel.x += dx / diff * applied;
     next.vel.z += dz / diff * applied;
+  }
   }
   contact := collide_move(colliders(w), w.collision, collision_state(next), next.vel.x * dt, next.vel.z * dt);
   // A refused step keeps the input Player, including its queued jump. The
@@ -172,7 +180,8 @@ The rest of the step runs in this order:
     next.diving = lift.diving;
     if lift.beat { next.beats += 1; }
   }
-  next.pos.y = hi(next.pos.y + next.vel.y * dt, ground - w.locomotion.sink_limit);
+  vertical:=ifx w.locomotion.source_velocity && falls then (p.vel.y+next.vel.y)*0.5 else next.vel.y;
+  next.pos.y = hi(next.pos.y + vertical * dt, ground - w.locomotion.sink_limit);
 
   // Turn toward where you are going.
   if dir.on {

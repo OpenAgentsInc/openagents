@@ -17,7 +17,7 @@
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
 #load "../../../coax/lib/net/socket_foreign.coax";
-cxtool_out_flush :: () -> int #foreign;
+cxtool_out_flush :: () -> int #foreign #effects(all);
 
 CAP :: 600000;                           // block index entries
 SLOTS :: 2097152;                        // a power of two, at least 2 * CAP
@@ -169,7 +169,7 @@ sync_headers_out :: (node: [] Node, path: string) -> bool {
   temporary := cast(string)buffer[0..<path.count+5];
   return sync_headers_write(node,temporary) && fs_rename(temporary,path);
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   chain_name := args_value(a[..], "--chain", "regtest");

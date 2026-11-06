@@ -26,7 +26,7 @@
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
 
-cxterm_write :: (s: [] u8) -> int #foreign;
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 
 SM_ENVS :: 11;
 Sm :: struct {
@@ -219,7 +219,7 @@ sm_env :: (s: [] Sm, i: int, name: string, value: string) {
   n := sm_cat(s[0].env[i][..], 0, name); n = sm_cat(s[0].env[i][..], n, "="); s[0].nenv[i] = sm_cat(s[0].env[i][..], n, value);
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   s_b: [1] Sm; s := s_b[..];
   rb: [1024] u8; repo := proc_getenv("CODER_REPO", rb[..]);
   cb: [1024] u8; if repo.count == 0 { repo = fs_cwd(cb[..]); }

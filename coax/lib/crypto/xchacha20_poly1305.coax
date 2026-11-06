@@ -80,7 +80,7 @@
 
 XCP_MAX_AAD :: 1024; XCP_MAX_TEXT :: 4096;
 
-xcp_admit :: (key:int,nonce:int,aad:int,text:int,capacity:int,overlap:bool,seal:bool)->bool {
+xcp_admit :: (key:int,nonce:int,aad:int,text:int,capacity:int,overlap:bool,seal:bool)->bool #effects(all) {
   if key!=32 || nonce!=24 || aad<0 || aad>XCP_MAX_AAD || overlap {return false;}
   if seal {
     if text<0 || text>XCP_MAX_TEXT {return false;}
@@ -92,7 +92,7 @@ xcp_admit :: (key:int,nonce:int,aad:int,text:int,capacity:int,overlap:bool,seal:
 
 // xcp_commit copies a staged ciphertext and tag once both steps succeeded;
 // aead_workspace.coax stages its results with it.
-xcp_commit :: (cipher:[]u8,tag:[]u8,out:[]u8,status:u32,tag_ok:bool)->bool {
+xcp_commit :: (cipher:[]u8,tag:[]u8,out:[]u8,status:u32,tag_ok:bool)->bool #effects(all) {
   if status!=CC_OK || !tag_ok {return false;}
   for i:0..<cipher.count {out[i]=cipher[i];}
   for i:0..<16 {out[cipher.count+i]=tag[i];}
@@ -102,14 +102,14 @@ xcp_commit :: (cipher:[]u8,tag:[]u8,out:[]u8,status:u32,tag_ok:bool)->bool {
 // XChaCha20-Poly1305 is ChaCha20-Poly1305 under the HChaCha20 subkey of the
 // key and the first 16 nonce bytes, with the 12-byte nonce 0, 0, 0, 0 and
 // the last 8 nonce bytes.
-xcp_subkey :: (key:[]u8,nonce:[]u8,subkey:[]u8,short:[]u8) {
+xcp_subkey :: (key:[]u8,nonce:[]u8,subkey:[]u8,short:[]u8) #effects(all) {
   derived:=hchacha20_checked(key,nonce[0..<16],subkey,false);
   for i:0..<12 {short[i]=ifx i<4 then cast(u8)0 else nonce[12+i];}
 }
 
 // Internal ABI: valid views and all input/output alias observations are the
 // caller's responsibility. Public APIs need a checked host memory adapter.
-xcp_seal :: (key:[]u8,nonce:[]u8,aad:[]u8,msg:[]u8,out:[]u8,overlap:bool)->bool #export_c {
+xcp_seal :: (key:[]u8,nonce:[]u8,aad:[]u8,msg:[]u8,out:[]u8,overlap:bool)->bool #export_c #effects(all) {
   if !xcp_admit(key.count,nonce.count,aad.count,msg.count,out.count,overlap,true) {return false;}
   subkey:[32]u8;short:[12]u8;
   xcp_subkey(key,nonce,subkey[..],short[..]);
@@ -118,7 +118,7 @@ xcp_seal :: (key:[]u8,nonce:[]u8,aad:[]u8,msg:[]u8,out:[]u8,overlap:bool)->bool 
   return status==CCP_OK;
 }
 
-xcp_open :: (key:[]u8,nonce:[]u8,aad:[]u8,box:[]u8,out:[]u8,overlap:bool)->bool #export_c {
+xcp_open :: (key:[]u8,nonce:[]u8,aad:[]u8,box:[]u8,out:[]u8,overlap:bool)->bool #export_c #effects(all) {
   if !xcp_admit(key.count,nonce.count,aad.count,box.count,out.count,overlap,false) {return false;}
   subkey:[32]u8;short:[12]u8;
   xcp_subkey(key,nonce,subkey[..],short[..]);

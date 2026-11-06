@@ -2,7 +2,7 @@
 // Metal admission, checks, coverage, effects and CK_run. A part of the
 // checker: lib/compiler/checker.coax loads it (#12646).
 #authority;
-CK_print :: (c:CK_Context,id:int)->int {
+CK_print :: (c:CK_Context,id:int)->int #effects(all) {
   e:=c.nodes[id];if e.head==0 {CK_error(c,e.loc,"E0318","print needs a format string","print(\"text\\n\");");return 1;}
   fmt:=c.nodes[e.head];if fmt.kind!=CK_Tag.expr_string {ignored:=CK_value(c,e.head,CK_Hint.{});CK_error(c,fmt.loc,"E0319","print's format must be a string literal, so it can be checked","print(\"%\\n\", value);");return 1;}
   c.nodes[e.head].type=3;slots:=0;i:=0;
@@ -56,7 +56,7 @@ CK_print :: (c:CK_Context,id:int)->int {
  CK_taint_borrow(c,"a",4);#assert locals[0].local_backing;
  state[0].depth=256;#assert !CK_local_backed(c,3) && state[0].depth==256 && state[0].fatal && errors[0].code=="E0381";
 }
-CK_local_backed :: (c:CK_Context,id:int)->bool {
+CK_local_backed :: (c:CK_Context,id:int)->bool #effects(all) {
  if id<2 {return false;}e:=c.nodes[id];if !CK_enter(c,e.loc) {return false;}defer CK_leave(c);
  if e.kind==CK_Tag.expr_ident {at:=CK_local(c,e.name);return at>=0 && c.locals[at].local_backing;}
  if e.kind==CK_Tag.expr_slice || e.kind==CK_Tag.expr_cast {return CK_local_backed(c,e.a);}
@@ -64,7 +64,7 @@ CK_local_backed :: (c:CK_Context,id:int)->bool {
  if (e.kind==CK_Tag.expr_field || e.kind==CK_Tag.expr_index) && CK_aggregate(c,e.type) {return CK_local_backed(c,e.a);}
  return false;
 }
-CK_taint_borrow :: (c:CK_Context,name:string,source:int) {
+CK_taint_borrow :: (c:CK_Context,name:string,source:int) #effects(all) {
  // Keep a may-borrow flag across assignments/branches. A later reassignment
  // does not erase it; proving that overwrite safe requires flow analysis.
  at:=CK_local(c,name);if at>=0 && CK_local_backed(c,source) {c.locals[at].local_backing=true;}
@@ -75,12 +75,12 @@ CK_taint_borrow :: (c:CK_Context,name:string,source:int) {
 // the local, and no unit's locals depend on another unit's top-level names
 // (#12675). source_unit is the bridge's 1-based unit; 0, a graph built
 // without units, is one unit.
-CK_unit_proc :: (c:CK_Context,name:string)->bool {
+CK_unit_proc :: (c:CK_Context,name:string)->bool #effects(all) {
   unit:=c.nodes[c.state[0].current].source_unit;id:=CK_first(c,name);
   while id!=CK_NONE {n:=c.nodes[id];if n.kind==CK_Tag.proc && n.name==name && n.source_unit==unit {return true;}id=CK_after(c,id);}
   return false;
 }
-CK_declare :: (c:CK_Context,name:string,ty:int,loc:CK_Loc,immutable:string) {
+CK_declare :: (c:CK_Context,name:string,ty:int,loc:CK_Loc,immutable:string) #effects(all) {
   prev:=CK_local(c,name);
   if prev>=0 {parts:=[5] string.["'",name,"' is already declared at line ",CK_count(c,c.locals[prev].loc.line),"; Coax does not allow shadowing"];CK_error(c,loc,"E0303",CK_text(c,parts[..]),"pick another name");return;}
   if CK_unit_proc(c,name) {CK_error(c,loc,"E0304",CK_join3(c,"'",name,"' is already the name of a procedure"),"pick another name");return;}
@@ -108,10 +108,17 @@ CK_declare :: (c:CK_Context,name:string,ty:int,loc:CK_Loc,immutable:string) {
   #assert state[0].error_count==1 && state[0].local_count==0 && errors[0].code==code && errors[0].loc.line==4;
  }
 }
-CK_compound :: (op:u32)->u32 {ops:=[10] u32.[34,35,36,37,38,39,40,41,42,43];if op<24 || op>33 {return CK_NONE;}return ops[cast(int)op-24];}
-CK_loop :: (c:CK_Context,id:int) {c.state[0].loop_depth+=1;CK_stmt(c,id);c.state[0].loop_depth-=1;}
-CK_stmt :: (c:CK_Context,id:int) {
+CK_compound :: (op:u32)->u32 #effects(all) {ops:=[10] u32.[34,35,36,37,38,39,40,41,42,43];if op<24 || op>33 {return CK_NONE;}return ops[cast(int)op-24];}
+CK_loop :: (c:CK_Context,id:int) #effects(all) {c.state[0].loop_depth+=1;CK_stmt(c,id);c.state[0].loop_depth-=1;}
+CK_stmt :: (c:CK_Context,id:int) #effects(all) {
   if id<2 {return;}s:=c.nodes[id];if !CK_enter(c,s.loc) {return;}defer CK_leave(c);
+  if s.kind==CK_Tag.stmt_transaction {
+    current:=c.nodes[c.state[0].current];ret:=c.types[current.type];
+    if !current.generic && ret.kind==CK_Kind.result && !CK_transaction_error_type(c,ret.sum_error) {
+      CK_error(c,s.loc,"E0974","a transaction error cannot publish IDs, handles or borrowed views from a rolled-back action","return an error code with owned ordinary values; publish references only on success");
+    }
+    CK_stmt(c,s.c);return;
+  }
   if s.kind==CK_Tag.stmt_switch {CK_switch(c,id);return;}
   if s.kind==CK_Tag.stmt_block {mark:=c.state[0].local_count;child:=s.head;while child!=CK_NONE && !c.state[0].fatal {CK_stmt(c,child);child=c.nodes[child].next;}c.state[0].local_count=mark;return;}
   if s.kind==CK_Tag.stmt_expr {
@@ -181,9 +188,10 @@ CK_stmt :: (c:CK_Context,id:int) {
   if s.kind==CK_Tag.stmt_assert {t:=CK_value(c,s.a,CK_Hint.{});if t!=CK_NONE && t!=2 {CK_error(c,c.nodes[s.a].loc,"E0346","#assert requires bool","");}return;}
   if s.kind==CK_Tag.stmt_defer {saved:=c.state[0].loop_depth;c.state[0].loop_depth=0;c.state[0].defer_depth+=1;CK_stmt(c,s.c);c.state[0].defer_depth-=1;c.state[0].loop_depth=saved;}
 }
-CK_always_returns :: (c:CK_Context,id:int)->bool {
+CK_always_returns :: (c:CK_Context,id:int)->bool #effects(all) {
   if id<2 {return false;}if !CK_enter(c,c.nodes[id].loc) {return false;}defer CK_leave(c);s:=c.nodes[id];
   if s.kind==CK_Tag.stmt_return {return true;}
+  if s.kind==CK_Tag.stmt_transaction {return CK_always_returns(c,s.c);}
   if s.kind==CK_Tag.stmt_block {child:=s.head;while child!=CK_NONE {if CK_always_returns(c,child) {return true;}child=c.nodes[child].next;}return false;}
   if s.kind==CK_Tag.stmt_if {return CK_always_returns(c,s.c) && CK_always_returns(c,s.d);}
   if s.kind==CK_Tag.stmt_switch {at:=s.head;if at==0 {return false;}while at!=0 {if !CK_always_returns(c,c.nodes[at].b) {return false;}at=c.nodes[at].next;}return true;}return false;
@@ -192,7 +200,7 @@ CK_always_returns :: (c:CK_Context,id:int)->bool {
 // namespace, so colliding declarations get a scope-qualified spelling, and a
 // collision C cannot spell (an #export_c/#foreign symbol, or a library
 // header's type) is refused rather than merged.
-CK_collisions :: (c:CK_Context,library:bool) {
+CK_collisions :: (c:CK_Context,library:bool) #effects(all) {
   id:=c.nodes[1].head;
   while id!=CK_NONE {d:=c.nodes[id];
     named:=d.kind==CK_Tag.struct_ || d.kind==CK_Tag.enum_ || d.kind==CK_Tag.union_;
@@ -214,7 +222,7 @@ CK_collisions :: (c:CK_Context,library:bool) {
   }
   CK_exports_valid(c);
 }
-CK_global_names :: (c:CK_Context) {
+CK_global_names :: (c:CK_Context) #effects(all) {
   pass:=0;while pass<3 {
     wanted:=CK_Tag.struct_;what:="struct";if pass==1 {wanted=CK_Tag.enum_;what="enum";}if pass==2 {wanted=CK_Tag.union_;what="union";}
     id:=c.nodes[1].head;while id!=CK_NONE {d:=c.nodes[id];if d.kind==wanted {
@@ -231,7 +239,7 @@ CK_global_names :: (c:CK_Context) {
     }id=d.next;}pass+=1;
   }
 }
-CK_enum :: (c:CK_Context,id:int) {
+CK_enum :: (c:CK_Context,id:int) #effects(all) {
   d:=c.nodes[id];base:=CK_resolve(c,d.a,CK_Access.value);
   if base!=0 && !CK_integer(c,base) {CK_error(c,c.nodes[d.a].loc,"E0373",CK_join2(c,"an enum's underlying type must be an integer, found ",c.types[base].name),"");base=0;}if base==0 {base=11;}
   t:=d.type;c.types[t].elem=base;c.types[t].size=c.types[base].size;c.types[t].alignment=c.types[base].alignment;c.types[t].bits=c.types[base].bits;c.types[t].is_signed=c.types[base].is_signed;
@@ -249,29 +257,29 @@ CK_enum :: (c:CK_Context,id:int) {
     next=CM_add(next,CM_from(1,false));member=m.next;
   }
 }
-CK_defaults :: (c:CK_Context,id:int) {
+CK_defaults :: (c:CK_Context,id:int) #effects(all) {
   field:=c.nodes[id].head;while field!=CK_NONE && !c.state[0].fatal {f:=c.nodes[field];if f.type!=0 {
     saved:=c.state[0].local_count;current:=c.state[0].current;c.state[0].current=0;c.state[0].local_count=0;t:=CK_value(c,f.b,CK_Hint.{type=f.type});c.state[0].local_count=saved;c.state[0].current=current;
     if t!=CK_NONE && t!=f.type {parts:=[5] string.["field '",f.name,"' is ",c.types[f.type].name,CK_join2(c,", its default is ",c.types[t].name)];CK_error(c,c.nodes[f.b].loc,"E0367",CK_text(c,parts[..]),"");}
   }field=f.next;}
 }
-CK_foreign_scalar :: (c:CK_Context,t:int)->bool {return t==CK_NONE || CK_numeric(c,t) || t==2 || c.types[t].carrier==6 || c.types[t].carrier==7;}
+CK_foreign_scalar :: (c:CK_Context,t:int)->bool #effects(all) {return t==CK_NONE || CK_numeric(c,t) || t==2 || c.types[t].carrier==6 || c.types[t].carrier==7;}
 // A #foreign parameter is a scalar or a borrowed view of integers, floats or
 // bool (spec 7.1): the host reads and writes its elements during the call only.
-CK_foreign_param :: (c:CK_Context,t:int)->bool {
+CK_foreign_param :: (c:CK_Context,t:int)->bool #effects(all) {
   if c.types[t].kind==CK_Kind.view {e:=c.types[t].elem;return CK_foreign_scalar(c,e);}
   return CK_foreign_scalar(c,t);
 }
-CK_foreign :: (c:CK_Context,id:int) {
+CK_foreign :: (c:CK_Context,id:int) #effects(all) {
   p:=c.nodes[id];if !CK_foreign_scalar(c,p.type) && p.type!=1 {parts:=[4] string.["'",p.name,"' returns ",CK_join2(c,c.types[p.type].name,"; #foreign procedures return integers, floats, bool or nothing")];CK_error(c,p.loc,"E0376",CK_text(c,parts[..]),"");}
   param:=p.head;while param!=CK_NONE {prm:=c.nodes[param];if !CK_foreign_param(c,prm.type) {parts:=[5] string.["parameter '",prm.name,"' is ",c.types[prm.type].name,"; #foreign procedures pass integers, floats, bool and views of them"];CK_error(c,prm.loc,"E0376",CK_text(c,parts[..]),"");}param=prm.next;}
   if CK_c_keyword(p.name) || p.name=="main" {CK_error(c,p.loc,"E0376",CK_join3(c,"'",p.name,"' cannot be a C symbol name"),"");}
   else if p.name.count>=5 && p.name[0..<5]=="coax_" {CK_error(c,p.loc,"E0376","foreign names cannot start with 'coax_', which the runtime uses","");}
 }
 
-CK_metal_type :: (t:int)->bool {return t==6 || t==2 || t==1 || t==CK_NONE;}
-CK_metal_error :: (c:CK_Context,loc:CK_Loc,what:string) {CK_error(c,loc,"E0377",CK_join2(c,what," is outside the Metal scalar profile"),"Metal libraries use f32 and bool, if/else and calls; no loops, strings, integers or host calls");}
-CK_metal_expr :: (c:CK_Context,id:int) {
+CK_metal_type :: (t:int)->bool #effects(all) {return t==6 || t==2 || t==1 || t==CK_NONE;}
+CK_metal_error :: (c:CK_Context,loc:CK_Loc,what:string) #effects(all) {CK_error(c,loc,"E0377",CK_join2(c,what," is outside the Metal scalar profile"),"Metal libraries use f32 and bool, if/else and calls; no loops, strings, integers or host calls");}
+CK_metal_expr :: (c:CK_Context,id:int) #effects(all) {
   if id==CK_NONE {return;}e:=c.nodes[id];if !CK_enter(c,e.loc) {return;}defer CK_leave(c);
   if !CK_metal_type(e.type) {CK_metal_error(c,e.loc,CK_join3(c,"a ",c.types[e.type].name," value"));return;}
   if e.builtin_print {CK_metal_error(c,e.loc,"print");return;}
@@ -282,7 +290,7 @@ CK_metal_expr :: (c:CK_Context,id:int) {
   }
   CK_metal_expr(c,e.a);CK_metal_expr(c,e.b);CK_metal_expr(c,e.c);a:=e.head;while a!=CK_NONE {CK_metal_expr(c,a);a=c.nodes[a].next;}
 }
-CK_metal_stmt :: (c:CK_Context,id:int) {
+CK_metal_stmt :: (c:CK_Context,id:int) #effects(all) {
   if id==CK_NONE {return;}s:=c.nodes[id];if !CK_enter(c,s.loc) {return;}defer CK_leave(c);
   if s.kind==CK_Tag.stmt_while || s.kind==CK_Tag.stmt_range || s.kind==CK_Tag.stmt_each {CK_metal_error(c,s.loc,"a loop");return;}
   if s.kind==CK_Tag.stmt_assert {CK_metal_error(c,s.loc,"#assert");return;}
@@ -291,16 +299,16 @@ CK_metal_stmt :: (c:CK_Context,id:int) {
   child:=s.head;while child!=CK_NONE {CK_metal_stmt(c,child);child=c.nodes[child].next;}
   if s.kind!=CK_Tag.stmt_assign {CK_metal_stmt(c,s.c);}if s.kind!=CK_Tag.stmt_var {CK_metal_stmt(c,s.d);}
 }
-CK_metal_proc :: (c:CK_Context,id:int) {
+CK_metal_proc :: (c:CK_Context,id:int) #effects(all) {
   if c.nodes[id].metal_done {return;}
   if c.state[0].metal_depth>=64 {CK_metal_error(c,c.nodes[id].loc,"a call chain deeper than 64");return;}
   c.state[0].metal_depth+=1;c.nodes[id].metal_active=true;CK_metal_stmt(c,c.nodes[id].b);c.nodes[id].metal_active=false;c.state[0].metal_depth-=1;c.nodes[id].metal_done=true;
 }
-CK_metal_head :: (c:CK_Context,p:int) {v:=c.nodes[p];
+CK_metal_head :: (c:CK_Context,p:int) #effects(all) {v:=c.nodes[p];
   if !CK_metal_type(v.type) {CK_metal_error(c,v.loc,CK_join2(c,"returning ",c.types[v.type].name));}
   prm:=v.head;while prm!=0 {param:=c.nodes[prm];if !CK_metal_type(param.type) {CK_metal_error(c,param.loc,CK_join3(c,"a ",c.types[param.type].name," parameter"));}prm=param.next;}
 }
-CK_metal :: (c:CK_Context) {
+CK_metal :: (c:CK_Context) #effects(all) {
   for i:16..<c.state[0].type_count {if CK_sum(c,i) {CK_metal_error(c,CK_Loc.{},"a tagged sum");return;}}
   p:=c.nodes[1].head;while p!=0 {v:=c.nodes[p];if v.kind==CK_Tag.proc && !v.generic {
     if v.flag2 {CK_metal_error(c,v.loc,"a #foreign procedure");}else {CK_metal_head(c,p);}
@@ -308,7 +316,7 @@ CK_metal :: (c:CK_Context) {
   p=c.nodes[1].head;while p!=0 {v:=c.nodes[p];if v.kind==CK_Tag.proc && !v.flag2 && !v.generic {CK_metal_proc(c,p);}p=v.next;}
   p=c.state[0].instances;while p!=0 {CK_metal_head(c,p);CK_metal_proc(c,p);p=c.nodes[p].chain;}
 }
-CK_check :: (c:CK_Context,id:int) {
+CK_check :: (c:CK_Context,id:int) #effects(all) {
   d:=c.nodes[id];c.nodes[d.a].type=1;c.state[0].local_count=0;p:=c.nodes[d.a];param:=p.head;
   while param!=CK_NONE && !c.state[0].fatal {
     prm:=c.nodes[param];if prm.a!=CK_NONE {
@@ -326,7 +334,7 @@ CK_check :: (c:CK_Context,id:int) {
 }
 // The typed graph's resolved callee is present only on a user call.
 // One walker handles syntax unions, including struct field initializers.
-CK_reach :: (c:CK_Context,id:int) {
+CK_reach :: (c:CK_Context,id:int) #effects(all) {
   if id==CK_NONE {return;}n:=c.nodes[id];if !CK_enter(c,n.loc) {return;}defer CK_leave(c);
   if n.proc!=CK_NONE && !c.nodes[n.proc].flag2 && !c.nodes[n.proc].reached {c.nodes[n.proc].reached=true;o:=c.nodes[n.proc].origin;if o!=CK_NONE {c.nodes[o].reached=true;}CK_reach(c,c.nodes[n.proc].b);}
   CK_reach(c,n.a);CK_reach(c,n.b);CK_reach(c,n.c);CK_reach(c,n.d);
@@ -338,10 +346,10 @@ CK_reach :: (c:CK_Context,id:int) {
  if main_name {p.name="main";}
  #assert CK_requires_coverage(p)==(kind==0 && !foreign && !main_name && !reached && !skip);
 }
-CK_requires_coverage :: (p:CK_Node)->bool {
+CK_requires_coverage :: (p:CK_Node)->bool #effects(all) {
  return p.kind==CK_Tag.proc && !p.flag2 && p.name!="main" && !p.reached && !p.skip_authority;
 }
-CK_coverage :: (c:CK_Context) {
+CK_coverage :: (c:CK_Context) #effects(all) {
   id:=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==CK_Tag.check {CK_reach(c,c.nodes[c.nodes[id].a].b);}id=c.nodes[id].next;}
   id=c.nodes[1].head;while id!=CK_NONE {p:=c.nodes[id];if CK_requires_coverage(p) {CK_error(c,p.loc,"E0380",CK_join3(c,"'",p.name,"' is not exercised by any #test or #forall"),"#authority files check every procedure: add a #test or #forall that calls it");}id=p.next;}
 }
@@ -353,7 +361,7 @@ CK_EFFECT_CALL :: cast(u8) 1;      // runs a procedure: may write state another 
 CK_EFFECT_TRAP :: cast(u8) 2;      // may stop with a trap under every arithmetic profile
 CK_EFFECT_OVERFLOW :: cast(u8) 4;  // may stop with an overflow trap under checked arithmetic
 CK_EFFECT_PROPAGATE :: cast(u8) 8; // checked recoverable return; not a fatal trap or effects.v1 capability
-CK_own_effects :: (c:CK_Context,n:CK_Node)->u8 {
+CK_own_effects :: (c:CK_Context,n:CK_Node)->u8 #effects(all) {
   if n.kind==CK_Tag.expr_try {return CK_EFFECT_PROPAGATE;}
   integer:=CK_integer(c,n.type);
   if n.kind==CK_Tag.expr_index || n.kind==CK_Tag.expr_slice {return CK_EFFECT_TRAP;}
@@ -367,7 +375,7 @@ CK_own_effects :: (c:CK_Context,n:CK_Node)->u8 {
   if n.kind==CK_Tag.expr_unary && n.op==35 {return CK_EFFECT_OVERFLOW;}
   return 0;
 }
-CK_effects :: (c:CK_Context,id:int)->u8 {
+CK_effects :: (c:CK_Context,id:int)->u8 #effects(all) {
   if id<0 || id>=c.nodes.count {return 0;}
   n:=c.nodes[id];if n.effects_known {return n.effects;}
   e:u8=0;tag:=cast(u32)n.kind;expression:=tag>=16 && tag<40;
@@ -383,8 +391,8 @@ CK_effects :: (c:CK_Context,id:int)->u8 {
   c.nodes[id].effects=e;c.nodes[id].effects_known=true;return e;
 }
 // Every node of a checked graph, once, after CK_run succeeds.
-CK_lower_effects :: (c:CK_Context) #export_c {for node:1..<c.state[0].used+1 {ignored:=CK_effects(c,node);}}
-CK_run :: (c:CK_Context,used:int,options:CK_Options)->bool #export_c {
+CK_lower_effects :: (c:CK_Context) #export_c #effects(all) {for node:1..<c.state[0].used+1 {ignored:=CK_effects(c,node);}}
+CK_run :: (c:CK_Context,used:int,options:CK_Options)->bool #export_c #effects(all) {
   if c.state.count!=1 {return false;}c.state[0]=CK_State.{used=used,type_count=16,quantity_device=options.quantity_device,instance_limit=CK_instance_limit(used)};
   defer {if c.state[0].fatal || c.state[0].error_count>0 {c.state[0].retain_report_count=0;}}
   if used<1 || used>=c.nodes.count || c.types.count<16 || c.errors.count<1 || c.locals.count<1 {CK_resource(c,CK_Loc.{});return false;}
@@ -407,7 +415,6 @@ CK_run :: (c:CK_Context,used:int,options:CK_Options)->bool #export_c {
   any_export:=false;id=c.nodes[1].head;
   while id!=CK_NONE && !c.state[0].fatal {
     p:=c.nodes[id];if p.kind==CK_Tag.proc {
-      if p.effect_present || p.pure_decl || p.effect_head!=0 {CK_error(c,p.effect_loc,"E0940","effect declarations require the subsequent R11 enforcement profile","");}
       prior:=CK_first(c,p.name);while prior!=id {old:=c.nodes[prior];if old.kind==CK_Tag.proc && old.name==p.name && old.scope==p.scope {parts:=[4] string.["procedure '",p.name,"' is already declared at line ",CK_count(c,old.loc.line)];CK_error(c,p.loc,"E0334",CK_text(c,parts[..]),"");}prior=CK_after(c,prior);}
       if CK_builtin_name(c,p.name) {CK_error(c,p.loc,"E0335",CK_join3(c,"'",p.name,"' is already a builtin"),"pick another name");}
       c.state[0].generic=id;c.state[0].site=CK_Site.param;
@@ -438,6 +445,7 @@ CK_run :: (c:CK_Context,used:int,options:CK_Options)->bool #export_c {
   CK_instantiate(c);
   if c.state[0].error_count==0 {if !c.state[0].fatal {CK_results(c);}}
   if c.state[0].error_count==0 && !c.state[0].fatal {CK_readonly_validate(c);}
+  if c.state[0].error_count==0 && !c.state[0].fatal {CK_persisted_validate(c);}
   if c.state[0].error_count==0 && !c.state[0].fatal {CK_borrow_returns(c);}
   if options.authority && c.state[0].error_count==0 {CK_coverage(c);}
   if options.metal && c.state[0].error_count==0 {CK_metal(c);}

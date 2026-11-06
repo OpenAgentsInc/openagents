@@ -23,7 +23,7 @@ vi_view :: (d:Jv,id:int,kind:string,component:int,available:int)->VIView {
   if n<=0 || n>SCAN_INDICES || offset<0 || base<0 || span<0 || base>available || span>available-base || n*components*bytes>span-offset {return VIView.{};}
   return VIView.{ok=true,offset=base+offset,count=n,components=components,bytes=bytes};
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) || (args_count(args[..])<4 || args_count(args[..])>5) {return 2;}
   text:[65536]u8;bin:[4194304]u8;jpeg:[4194304]u8;work:[4194304]u8;rgba:[4194304]u8;encoded:[SCAN_BYTES]u8;s:[1]Scan;
   nt:=fs_read(args_at(args[..],0),text[..]);nb:=fs_read(args_at(args[..],1),bin[..]);nj:=fs_read(args_at(args[..],2),jpeg[..]);if nt<0 || nb<0 || nj<0 {return 3;}

@@ -30,7 +30,7 @@
 // book:begin hash160
 // HASH160(x) = RIPEMD160(SHA256(x)). The checks run before either hash, so
 // a refusal writes nothing.
-hash160_checked :: (input: [] u8, out: [] u8, overlap: bool) -> u32 #export_c {
+hash160_checked :: (input: [] u8, out: [] u8, overlap: bool) -> u32 #export_c #effects(all) {
   status := ripemd160_request(input.count, out.count, overlap);
   if status != RMD_OK { return status; }
   inner: [32] u8;

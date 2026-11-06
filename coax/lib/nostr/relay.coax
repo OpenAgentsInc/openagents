@@ -57,9 +57,9 @@ Relay :: struct {
 }
 
 // ---- check helpers --------------------------------------------------------
-rl_id_of :: (b: int) -> [32] u8 { id: [32] u8; id[0] = cast(u8) b; return id; }
-rl_event :: (sub: string, b: int, at: int) -> RlIn { return RlIn.{kind = RL_IN_EVENT, sub = sub, id = rl_id_of(b), created_at = at, verified = true}; }
-rl_open_at :: (r: [] Relay, now: int) -> int { g := rl_start(r, now); ok := rl_opened(r, g, now); return g; }
+rl_id_of :: (b: int) -> [32] u8 #effects(all) { id: [32] u8; id[0] = cast(u8) b; return id; }
+rl_event :: (sub: string, b: int, at: int) -> RlIn #effects(all) { return RlIn.{kind = RL_IN_EVENT, sub = sub, id = rl_id_of(b), created_at = at, verified = true}; }
+rl_open_at :: (r: [] Relay, now: int) -> int #effects(all) { g := rl_start(r, now); ok := rl_opened(r, g, now); return g; }
 
 #test "connect, subscribe, catch up to EOSE, then live events" {
   r: [1] Relay;
@@ -353,7 +353,7 @@ rl_open_at :: (r: [] Relay, now: int) -> int { g := rl_start(r, now); ok := rl_o
 // ---- subscriptions and publishes --------------------------------------------
 
 // The slot's wire id into out: "s<slot>.<serial>", or "" when it doesn't fit.
-rl_sub_text :: (slot: int, serial: int, out: [] u8) -> string {
+rl_sub_text :: (slot: int, serial: int, out: [] u8) -> string #effects(all) {
   tmp: [20] u8; k := 0; x := serial;
   while true { tmp[k] = cast(u8) ('0' + x % 10); x /= 10; k += 1; if x == 0 { break; } }
   if out.count < k + 3 { return ""; }
@@ -362,7 +362,7 @@ rl_sub_text :: (slot: int, serial: int, out: [] u8) -> string {
   return cast(string) out[0..<k + 3];
 }
 // The slot a wire id names, or -1 when it names no current subscription.
-rl_sub_find :: (r: [] Relay, text: string) -> int {
+rl_sub_find :: (r: [] Relay, text: string) -> int #effects(all) {
   for slot: 0..<RL_SUBS {
     buf: [24] u8;
     if r[0].subs[slot].state != RS_FREE && rl_sub_text(slot, r[0].subs[slot].serial, buf[..]) == text { return slot; }
@@ -371,7 +371,7 @@ rl_sub_find :: (r: [] Relay, text: string) -> int {
 }
 // A new subscription's slot, or -1 when every slot is taken. Its REQ goes
 // out once the connection is open.
-rl_subscribe :: (r: [] Relay) -> int {
+rl_subscribe :: (r: [] Relay) -> int #effects(all) {
   for slot: 0..<RL_SUBS {
     if r[0].subs[slot].state == RS_FREE {
       serial := r[0].subs[slot].serial + 1;
@@ -382,20 +382,20 @@ rl_subscribe :: (r: [] Relay) -> int {
   return -1;
 }
 // Ends a subscription: a CLOSE goes out when the relay has its REQ.
-rl_unsubscribe :: (r: [] Relay, slot: int) -> bool {
+rl_unsubscribe :: (r: [] Relay, slot: int) -> bool #effects(all) {
   if slot < 0 || slot >= RL_SUBS || r[0].subs[slot].state == RS_FREE || r[0].subs[slot].state == RS_CLOSING { return false; }
   live := r[0].subs[slot].state == RS_LIVE || r[0].subs[slot].state == RS_CAUGHT;
   r[0].subs[slot].state = ifx live && r[0].state == RL_OPEN then RS_CLOSING else RS_FREE;
   return true;
 }
-rl_id_eq :: (a: [] u8, b: [] u8) -> bool {
+rl_id_eq :: (a: [] u8, b: [] u8) -> bool #effects(all) {
   for i: 0..<32 { if a[i] != b[i] { return false; } }
   return true;
 }
 // A publish slot for the event with this 32-byte id (the same slot when it
 // is already pending), or -1 when the id is malformed or every slot is
 // pending (queued, sent or waiting for AUTH). The host keeps the event's bytes for RL_OUT_EVENT.
-rl_publish :: (r: [] Relay, id: [] u8) -> int {
+rl_publish :: (r: [] Relay, id: [] u8) -> int #effects(all) {
   if id.count != 32 { return -1; }
   free := -1;
   for slot: 0..<RL_PUBS {
@@ -409,7 +409,7 @@ rl_publish :: (r: [] Relay, id: [] u8) -> int {
   for i: 0..<32 { r[0].pubs[free].id[i] = id[i]; }
   return free;
 }
-rl_cancel_publish :: (r: [] Relay, slot: int) -> bool {
+rl_cancel_publish :: (r: [] Relay, slot: int) -> bool #effects(all) {
   if slot < 0 || slot >= RL_PUBS || r[0].pubs[slot].state == RP_FREE { return false; }
   r[0].pubs[slot].state = RP_FREE;
   return true;
@@ -419,20 +419,20 @@ rl_cancel_publish :: (r: [] Relay, slot: int) -> bool {
 
 // Milliseconds to wait before reconnect attempt `attempt` (counted from 0):
 // base doubled per attempt up to the cap, plus jitter mod (half that + 1).
-rl_backoff :: (r: [] Relay, attempt: int, jitter: int) -> int {
+rl_backoff :: (r: [] Relay, attempt: int, jitter: int) -> int #effects(all) {
   d := r[0].cap_ms;
   if attempt >= 0 && attempt <= 16 && (r[0].base_ms << attempt) <= r[0].cap_ms - 1 { d = r[0].base_ms << attempt; }
   return d + (jitter & 0x7fffffff) % (d / 2 + 1);
 }
 // Starts a connection: the host opens a socket and does the handshake.
 // The new generation, or -1 when one is already under way or shut.
-rl_start :: (r: [] Relay, now: int) -> int {
+rl_start :: (r: [] Relay, now: int) -> int #effects(all) {
   if r[0].state != RL_IDLE && r[0].state != RL_BACKOFF { return -1; }
   r[0].state = RL_CONNECTING; r[0].gen += 1; r[0].deadline = now + r[0].connect_ms;
   return r[0].gen;
 }
 // The handshake finished for generation gen.
-rl_opened :: (r: [] Relay, gen: int, now: int) -> bool {
+rl_opened :: (r: [] Relay, gen: int, now: int) -> bool #effects(all) {
   if r[0].state != RL_CONNECTING || gen != r[0].gen { return false; }
   r[0].state = RL_OPEN; r[0].attempt = 0;
   for slot: 0..<RL_SUBS {
@@ -448,7 +448,7 @@ rl_opened :: (r: [] Relay, gen: int, now: int) -> bool {
   return true;
 }
 // Generation gen's socket closed or failed (or rl_tick timed it out).
-rl_dropped :: (r: [] Relay, gen: int, now: int, jitter: int) -> bool {
+rl_dropped :: (r: [] Relay, gen: int, now: int, jitter: int) -> bool #effects(all) {
   if (r[0].state != RL_CONNECTING && r[0].state != RL_OPEN) || gen != r[0].gen { return false; }
   r[0].state = RL_BACKOFF; r[0].auth = RA_NONE;
   r[0].deadline = now + rl_backoff(r, r[0].attempt, jitter);
@@ -457,11 +457,11 @@ rl_dropped :: (r: [] Relay, gen: int, now: int, jitter: int) -> bool {
   return true;
 }
 // No more reconnects; the host closes the socket.
-rl_shutdown :: (r: [] Relay) { r[0].state = RL_SHUT; }
+rl_shutdown :: (r: [] Relay) #effects(all) { r[0].state = RL_SHUT; }
 // Deadlines: a connect that took too long (RL_DO_TIMEOUT: close it and
 // report rl_dropped), a backoff that ended (RL_DO_CONNECT: call rl_start),
 // and publishes whose OK is overdue (RP_TIMEOUT: outcome unknown).
-rl_tick :: (r: [] Relay, now: int) -> int {
+rl_tick :: (r: [] Relay, now: int) -> int #effects(all) {
   if r[0].state == RL_CONNECTING && now >= r[0].deadline { return RL_DO_TIMEOUT; }
   if r[0].state == RL_BACKOFF && now >= r[0].deadline { return RL_DO_CONNECT; }
   if r[0].state == RL_OPEN {
@@ -475,7 +475,7 @@ rl_tick :: (r: [] Relay, now: int) -> int {
 }
 // The next frame to send on the open connection: CLOSEs first, then REQs,
 // then EVENTs, then the AUTH request while a challenge is unanswered.
-rl_next :: (r: [] Relay, now: int) -> RlOut {
+rl_next :: (r: [] Relay, now: int) -> RlOut #effects(all) {
   if r[0].state != RL_OPEN { return RlOut.{}; }
   for slot: 0..<RL_SUBS {
     if r[0].subs[slot].state == RS_CLOSING { r[0].subs[slot].state = RS_FREE; return RlOut.{kind = RL_OUT_CLOSE, slot = slot}; }
@@ -497,24 +497,24 @@ rl_next :: (r: [] Relay, now: int) -> RlOut {
 }
 // The NIP-42 hook: the host sent a signed AUTH event with this id in answer
 // to the current challenge. False when there is no unanswered challenge.
-rl_auth_sent :: (r: [] Relay, id: [] u8) -> bool {
+rl_auth_sent :: (r: [] Relay, id: [] u8) -> bool #effects(all) {
   if r[0].auth != RA_CHALLENGED || id.count != 32 { return false; }
   r[0].auth = RA_SENT;
   for i: 0..<32 { r[0].auth_id[i] = id[i]; }
   return true;
 }
-rl_seen :: (r: [] Relay, id: [] u8) -> bool {
+rl_seen :: (r: [] Relay, id: [] u8) -> bool #effects(all) {
   for k: 0..<r[0].seen_count { if rl_id_eq(r[0].seen[k * 32..<k * 32 + 32], id) { return true; } }
   return false;
 }
-rl_remember :: (r: [] Relay, id: [] u8) {
+rl_remember :: (r: [] Relay, id: [] u8) #effects(all) {
   at := r[0].seen_next * 32;
   for i: 0..<32 { r[0].seen[at + i] = id[i]; }
   r[0].seen_next = (r[0].seen_next + 1) % RL_SEEN;
   if r[0].seen_count < RL_SEEN { r[0].seen_count += 1; }
 }
 // Admits one decoded relay message from generation gen's connection.
-rl_input :: (r: [] Relay, gen: int, m: RlIn) -> int {
+rl_input :: (r: [] Relay, gen: int, m: RlIn) -> int #effects(all) {
   mid := m.id;
   if gen != r[0].gen { return RL_STALE; }
   if r[0].state != RL_OPEN { return RL_NOT_OPEN; }
@@ -565,5 +565,5 @@ rl_input :: (r: [] Relay, gen: int, m: RlIn) -> int {
   }
   return RL_DELIVER;
 }
-rl_state :: (r: [] Relay) -> int #export_c { return r[0].state; }
+rl_state :: (r: [] Relay) -> int #export_c #effects(all) { return r[0].state; }
 #test "the exported state reader" { r: [1] Relay; #assert rl_state(r[..]) == RL_IDLE; g := rl_start(r[..], 0); #assert rl_state(r[..]) == RL_CONNECTING; }

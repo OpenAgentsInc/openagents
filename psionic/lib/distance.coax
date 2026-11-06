@@ -213,7 +213,7 @@ DD_TEST_OTHER :: DdBackend.{seed=5,mix=1,noise=0.002,share=0.5,shift=0.4};
 // answer-sim-v1. Item i draws its kind, its options (2 to 8 for a choice, 2
 // for yes or no, 3 to 5 for a score) and a favourite option; the reference's
 // logit for each option is uniform in [-2, 2], plus 2 for the favourite.
-dd_items :: (seed:u64,out:[]DdItem)->DdStatus #export_c {
+dd_items :: (seed:u64,out:[]DdItem)->DdStatus #export_c #effects(all) {
     if out.count<1 || out.count>DD_ITEMS_MAX {return DdStatus.shape;}
     for i:0..<out.count {
         b:=cast(u64)(4*i);kind:=cast(int)(3*tb_uniform(seed,b));r:=tb_uniform(seed,b+1);
@@ -222,17 +222,17 @@ dd_items :: (seed:u64,out:[]DdItem)->DdStatus #export_c {
     }
     return DdStatus.ok;
 }
-dd_backend_ok :: (b:DdBackend)->bool {
+dd_backend_ok :: (b:DdBackend)->bool #effects(all) {
     return b.mix>=0 && b.mix<=1 && b.grid>=0 && b.grid<=DD_PARAM_MAX && b.noise>=0 && b.noise<=DD_PARAM_MAX && b.share>=0
         && b.share<=1 && b.shift>=0 && b.shift<=DD_PARAM_MAX;
 }
-dd_items_ok :: (items:[]DdItem)->bool {
+dd_items_ok :: (items:[]DdItem)->bool #effects(all) {
     for x:items {if x.options<2 || x.options>DD_OPTIONS || x.favourite<0 || x.favourite>=x.options {return false;}}
     return true;
 }
 // A backend's answers, DD_OPTIONS slots to an item; slots past an item's
 // options are left as they were.
-dd_answer :: (seed:u64,items:[]DdItem,b:DdBackend,out:[]f64)->DdStatus #export_c {
+dd_answer :: (seed:u64,items:[]DdItem,b:DdBackend,out:[]f64)->DdStatus #export_c #effects(all) {
     if items.count<1 || items.count>DD_ITEMS_MAX || !dd_items_ok(items) || !dd_backend_ok(b) {return DdStatus.shape;}
     if out.count<DD_OPTIONS*items.count {return DdStatus.capacity;}
     for item,i:items {
@@ -258,7 +258,7 @@ dd_answer :: (seed:u64,items:[]DdItem,b:DdBackend,out:[]f64)->DdStatus #export_c
 // The distance: subtract each answer's mean log probability, then take the
 // largest difference between the two, and the first option where it is.
 // Probabilities below 10^-6 count as 10^-6, and the result says how many did.
-dd_distance :: (p:[]f64,q:[]f64)->DdDistance {
+dd_distance :: (p:[]f64,q:[]f64)->DdDistance #effects(all) {
     r:=DdDistance.{};a:[DD_OPTIONS]f64;b:[DD_OPTIONS]f64;sa:=0.0;sb:=0.0;
     for j:0..<p.count {
         x:=p[j];y:=q[j];
@@ -272,8 +272,8 @@ dd_distance :: (p:[]f64,q:[]f64)->DdDistance {
 }
 // book:end distance
 
-dd_top :: (p:[]f64)->int {best:=0;for j:1..<p.count {if p[j]>p[best] {best=j;}}return best;}
-dd_answers_ok :: (items:[]DdItem,a:[]f64)->DdStatus {
+dd_top :: (p:[]f64)->int #effects(all) {best:=0;for j:1..<p.count {if p[j]>p[best] {best=j;}}return best;}
+dd_answers_ok :: (items:[]DdItem,a:[]f64)->DdStatus #effects(all) {
     for item,i:items {
         for x:a[i*DD_OPTIONS..<i*DD_OPTIONS+item.options] {if !(x>=0 && x<=1) {return DdStatus.number;}}
     }
@@ -283,7 +283,7 @@ dd_answers_ok :: (items:[]DdItem,a:[]f64)->DdStatus {
 // book:begin compare
 // Two backends' answers to the same items: the distance for each item, how
 // many top answers agree, and how many probabilities were floored.
-dd_compare :: (items:[]DdItem,a:[]f64,b:[]f64,out:[]f64)->DdCompare #export_c {
+dd_compare :: (items:[]DdItem,a:[]f64,b:[]f64,out:[]f64)->DdCompare #export_c #effects(all) {
     n:=items.count;
     if n<1 || n>DD_ITEMS_MAX || !dd_items_ok(items) {return DdCompare.{status=DdStatus.shape};}
     if a.count<DD_OPTIONS*n || b.count<DD_OPTIONS*n || out.count<n {return DdCompare.{status=DdStatus.capacity};}
@@ -300,17 +300,17 @@ dd_compare :: (items:[]DdItem,a:[]f64,b:[]f64,out:[]f64)->DdCompare #export_c {
 // The pct percentile by nearest rank, k = ceil(pct n / 100) in integers:
 // the value x with fewer than k distances below it and at least k at or
 // below it.
-dd_rank_is :: (d:[]f64,x:f64,k:int)->bool {
+dd_rank_is :: (d:[]f64,x:f64,k:int)->bool #effects(all) {
     below:=0;atmost:=0;
     for y:d {if y<x {below+=1;}if y<=x {atmost+=1;}}
     return below<k && atmost>=k;
 }
-dd_quantile :: (d:[]f64,pct:int)->f64 {
+dd_quantile :: (d:[]f64,pct:int)->f64 #effects(all) {
     k:=(pct*d.count+99)/100;i:=0;
     while !dd_rank_is(d,d[i],k) {i+=1;}
     return d[i];
 }
-dd_summary :: (d:[]f64)->DdSummary #export_c {
+dd_summary :: (d:[]f64)->DdSummary #export_c #effects(all) {
     if d.count<1 || d.count>DD_ITEMS_MAX {return DdSummary.{status=DdStatus.shape};}
     for x:d {if !(x>=0 && x<=DD_BIG) {return DdSummary.{status=DdStatus.number};}}
     return DdSummary.{median=dd_quantile(d,50),p90=dd_quantile(d,90),p99=dd_quantile(d,99),max=dd_quantile(d,100)};
@@ -321,7 +321,7 @@ dd_summary :: (d:[]f64)->DdSummary #export_c {
 // A round's verdict from its checked distances: a strike when the mean
 // passes the strike limit or any one item passes the item limit; lost when
 // the mean passes the lost limit; otherwise passed.
-dd_check :: (d:[]f64,limits:DdLimits)->DdCheck {
+dd_check :: (d:[]f64,limits:DdLimits)->DdCheck #effects(all) {
     r:=DdCheck.{worst=dd_quantile(d,100)};t:=0.0;
     for x:d {t+=x;}
     r.mean=t/f64(d.count);
@@ -330,16 +330,16 @@ dd_check :: (d:[]f64,limits:DdLimits)->DdCheck {
     return r;
 }
 // v distinct positions of n, by a partial shuffle on counters base, base+1, ...
-dd_pick :: (seed:u64,n:int,v:int,base:int,out:[]int) {
+dd_pick :: (seed:u64,n:int,v:int,base:int,out:[]int) #effects(all) {
     idx:[DD_ITEMS_MAX]int;for i:1..<n {idx[i]=i;}   // idx[0] is 0 already
     for k:0..<v {
         j:=k+cast(int)(f64(n-k)*tb_uniform(seed,cast(u64)(base+k)));
         x:=idx[k];idx[k]=idx[j];idx[j]=x;out[k]=idx[k];
     }
 }
-dd_rounds_ok :: (rounds:int)->bool {return rounds>=1 && rounds<=DD_ROUNDS_MAX;}
+dd_rounds_ok :: (rounds:int)->bool #effects(all) {return rounds>=1 && rounds<=DD_ROUNDS_MAX;}
 // Many rounds drawn from measured distances: each checks v items at random.
-dd_simulate :: (d:[]f64,limits:DdLimits,seed:u64,rounds:int,v:int)->DdRounds #export_c {
+dd_simulate :: (d:[]f64,limits:DdLimits,seed:u64,rounds:int,v:int)->DdRounds #export_c #effects(all) {
     if d.count<1 || d.count>DD_ITEMS_MAX || v<1 || v>d.count || v>DD_VERIFIED_MAX || !dd_rounds_ok(rounds) {
         return DdRounds.{status=DdStatus.shape};
     }
@@ -363,10 +363,10 @@ dd_simulate :: (d:[]f64,limits:DdLimits,seed:u64,rounds:int,v:int)->DdRounds #ex
 // worst honest round, struck above three times that, and struck when one
 // item is above twice the worst honest item. They stand only when every
 // honest pair passes every round and each substitute passes at most 5 in 100.
-dd_limits :: (honest_round:f64,honest_item:f64)->DdLimits {
+dd_limits :: (honest_round:f64,honest_item:f64)->DdLimits #effects(all) {
     return DdLimits.{lost=2*honest_round,strike=6*honest_round,item=2*honest_item};
 }
-dd_gap :: (honest:[]DdRounds,substitutes:[]DdRounds,rounds:int)->bool {
+dd_gap :: (honest:[]DdRounds,substitutes:[]DdRounds,rounds:int)->bool #effects(all) {
     for h:honest {if h.pass!=rounds {return false;}}
     for s:substitutes {if 100*s.pass>5*rounds {return false;}}
     return true;
@@ -377,7 +377,7 @@ dd_gap :: (honest:[]DdRounds,substitutes:[]DdRounds,rounds:int)->bool {
 // One checked round. The checker draws which items it checks from the digest
 // of the answers it received and its own secret, so the subset doesn't exist
 // until the answers do.
-dd_round :: (items:[]DdItem,reference:[]f64,answers:[]f64,secret:u64,checked:int,limits:DdLimits,out:[]int)->DdRound #export_c {
+dd_round :: (items:[]DdItem,reference:[]f64,answers:[]f64,secret:u64,checked:int,limits:DdLimits,out:[]int)->DdRound #export_c #effects(all) {
     n:=items.count;
     if n<1 || n>SU_ITEMS_MAX || checked<1 || checked>n || !dd_items_ok(items) {return DdRound.{status=DdStatus.shape};}
     if reference.count<DD_OPTIONS*n || answers.count<DD_OPTIONS*n || out.count<checked {return DdRound.{status=DdStatus.capacity};}

@@ -76,7 +76,7 @@ dc_live :: (thread:int,half:int)->bool {return thread<half;}
 // element, and threads t < half add the element half places on. Each phase
 // reads one array and writes the other, so no phase writes an element
 // another thread reads in that phase.
-dc_tile_sum :: (item:int,count:int,x:[]f32,sums:[]f32) #export_c {
+dc_tile_sum :: (item:int,count:int,x:[]f32,sums:[]f32) #export_c #effects(all) {
     a:[128]f32;b:[128]f32;
     for thread:0..<DC_THREADS {
         at:=item*DC_TILE+thread;lo:f32=0;hi:f32=0;
@@ -175,7 +175,7 @@ DC_WARP :: 32;
 // count). In the step with mask m it adds the value of thread t^m. After
 // masks 16, 8, 4, 2 and 1 every thread holds the same total, which it writes
 // to out[item*32+t] (inside count).
-dc_butterfly :: (item:int,count:int,x:[]f32,out:[]f32) #export_c {
+dc_butterfly :: (item:int,count:int,x:[]f32,out:[]f32) #export_c #effects(all) {
     a:[32]f32;b:[32]f32;
     for thread:0..<DC_WARP {
         at:=item*DC_WARP+thread;v:f32=0;
@@ -224,7 +224,7 @@ dc_bf16 :: (word:u32,high:bool)->f32 {
 // 256: every thread loads two of its values into the shared tile, then
 // every thread reads the whole tile. Each thread adds its row's products in
 // f32 in column order.
-dc_bf16_rows :: (item:int,rows:int,cols:int,w:[]u32,x:[]f32,out:[]f32) #export_c {
+dc_bf16_rows :: (item:int,rows:int,cols:int,w:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {
     tile:[256]f32;acc:[128]f32;
     words:=cols/2;
     for s:0..<dc_groups(cols,DC_TILE) {
@@ -283,7 +283,7 @@ DaNeeds :: struct {threads:int;shared:int;mma:bool;}
 // What the device reports (CUDA device attributes 75, 76, 1 and 8).
 DaDevice :: struct {major:int;minor:int;max_threads:int;max_shared:int;}
 
-da_admit :: (need:DaNeeds,dev:DaDevice)->DaStatus {
+da_admit :: (need:DaNeeds,dev:DaDevice)->DaStatus #effects(all) {
     if dev.major<1 || dev.minor<0 || dev.minor>9 || dev.max_threads<32 || dev.max_shared<0 {return DaStatus.report;}
     if need.threads<32 || need.threads/32>32 || need.threads%32!=0 || need.shared<0 {return DaStatus.kernel;}
     if need.threads>dev.max_threads {return DaStatus.threads;}
@@ -291,7 +291,7 @@ da_admit :: (need:DaNeeds,dev:DaDevice)->DaStatus {
     if need.mma && dev.major<8 {return DaStatus.mma;}
     return DaStatus.ok;
 }
-da_text :: (s:DaStatus)->string {
+da_text :: (s:DaStatus)->string #effects(all) {
     if s==DaStatus.ok {return "admitted";}
     if s==DaStatus.report {return "refused: the device report is malformed";}
     if s==DaStatus.kernel {return "refused: the kernel's needs are malformed";}
@@ -309,14 +309,14 @@ da_text :: (s:DaStatus)->string {
 // [256]f32 tile; its [128]f32 accumulator is per-thread registers),
 // 3 dw_mma_tile (one warp, registers only).
 DA_KERNELS :: 4;
-da_needs :: (kernel:int)->DaNeeds {
+da_needs :: (kernel:int)->DaNeeds #effects(all) {
     if kernel==0 {return DaNeeds.{threads=128,shared=1024,mma=false};}
     if kernel==1 {return DaNeeds.{threads=32,shared=256,mma=false};}
     if kernel==2 {return DaNeeds.{threads=128,shared=1024,mma=false};}
     if kernel==3 {return DaNeeds.{threads=32,shared=0,mma=true};}
     return DaNeeds.{threads=0,shared=0,mma=false};
 }
-da_name :: (kernel:int)->string {
+da_name :: (kernel:int)->string #effects(all) {
     if kernel==0 {return "dc_tile_sum";}
     if kernel==1 {return "dc_butterfly";}
     if kernel==2 {return "dc_bf16_rows";}

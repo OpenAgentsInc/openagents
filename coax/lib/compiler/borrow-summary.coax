@@ -210,7 +210,7 @@ BS_Result :: struct {status:BS_Status;count:int;}
 }
 
 // Logical inactive step fields are canonical zeros; C padding is unspecified.
-BS_path_valid :: (path:BS_Path)->bool #export_c {
+BS_path_valid :: (path:BS_Path)->bool #export_c #effects(all) {
  if path.count<0 || path.count>BS_MAX_PATH {return false;}
  for i:0..<BS_MAX_PATH {
   step:=path.steps[i];
@@ -221,7 +221,7 @@ BS_path_valid :: (path:BS_Path)->bool #export_c {
  }
  return true;
 }
-BS_origin_valid :: (origin:BS_Origin)->bool #export_c {
+BS_origin_valid :: (origin:BS_Origin)->bool #export_c #effects(all) {
  if origin.type<1 || origin.type>2147483647 || !BS_path_valid(origin.path) {return false;}
  if origin.kind==BS_STATIC || origin.kind==BS_LOCAL {if origin.root<1 || origin.root>2147483647 || origin.role!=0 {return false;}}
  else if origin.kind==BS_PARAMETER {if origin.root<0 || origin.root>=BS_MAX_BINDINGS || (origin.role!=BS_INLINE && origin.role!=BS_DESCRIPTOR) {return false;}}
@@ -229,18 +229,18 @@ BS_origin_valid :: (origin:BS_Origin)->bool #export_c {
  for i:0..<origin.path.count {if origin.path.steps[i].kind==BS_DEREFERENCE && (origin.kind!=BS_PARAMETER || origin.role!=BS_DESCRIPTOR) {return false;}}
  return true;
 }
-bs_list_valid :: (items:[]BS_Origin,limit:int)->bool {
+bs_list_valid :: (items:[]BS_Origin,limit:int)->bool #effects(all) {
  if items.count<0 || items.count>limit {return false;}
  for item:items {if !BS_origin_valid(item) {return false;}}
  return true;
 }
-bs_path_equal :: (a:BS_Path,b:BS_Path)->bool {
+bs_path_equal :: (a:BS_Path,b:BS_Path)->bool #effects(all) {
  if a.count!=b.count {return false;}
  for i:0..<a.count {if a.steps[i].kind!=b.steps[i].kind || a.steps[i].index!=b.steps[i].index {return false;}}
  return true;
 }
-bs_slot_equal :: (a:BS_Origin,b:BS_Origin)->bool {return a.root==b.root && a.role==b.role && bs_path_equal(a.path,b.path);}
-bs_compare :: (a:BS_Origin,b:BS_Origin)->int {
+bs_slot_equal :: (a:BS_Origin,b:BS_Origin)->bool #effects(all) {return a.root==b.root && a.role==b.role && bs_path_equal(a.path,b.path);}
+bs_compare :: (a:BS_Origin,b:BS_Origin)->int #effects(all) {
  if a.kind!=b.kind {return cast(int)a.kind-cast(int)b.kind;}
  if a.root!=b.root {return cast(int)a.root-cast(int)b.root;}
  if a.role!=b.role {return cast(int)a.role-cast(int)b.role;}
@@ -253,19 +253,19 @@ bs_compare :: (a:BS_Origin,b:BS_Origin)->int {
  return 0;
 }
 // This writes private staging only. No public output is touched until commit.
-bs_insert :: (staging:[]BS_Origin,used:int,value:BS_Origin)->BS_Result {
+bs_insert :: (staging:[]BS_Origin,used:int,value:BS_Origin)->BS_Result #effects(all) {
  at:=used;
  for i:0..<used {comparison:=bs_compare(staging[i],value);if comparison<0 {continue;}if comparison==0 {return BS_Result.{count=used};}at=i;break;}
  if used>=BS_MAX_SET {return BS_Result.{status=BS_Status.capacity};}
  i:=used;while i>at {staging[i]=staging[i-1];i-=1;}
  staging[at]=value;return BS_Result.{count=used+1};
 }
-bs_commit :: (staging:[]BS_Origin,used:int,out:[]BS_Origin)->BS_Result {
+bs_commit :: (staging:[]BS_Origin,used:int,out:[]BS_Origin)->BS_Result #effects(all) {
  if used>out.count {return BS_Result.{status=BS_Status.capacity};}
  for i:0..<used {out[i]=staging[i];}
  return BS_Result.{count=used};
 }
-BS_union :: (left:[]BS_Origin,left_complete:bool,right:[]BS_Origin,right_complete:bool,out:[]BS_Origin)->BS_Result #export_c {
+BS_union :: (left:[]BS_Origin,left_complete:bool,right:[]BS_Origin,right_complete:bool,out:[]BS_Origin)->BS_Result #export_c #effects(all) {
  if out.count<0 || out.count>BS_MAX_SET || !bs_list_valid(left,BS_MAX_SET) || !bs_list_valid(right,BS_MAX_SET) {return BS_Result.{status=BS_Status.invalid};}
  if !left_complete || !right_complete {return BS_Result.{status=BS_Status.unknown};}
  staging:[64]BS_Origin;used:=0;
@@ -273,7 +273,7 @@ BS_union :: (left:[]BS_Origin,left_complete:bool,right:[]BS_Origin,right_complet
  for item:right {r:=bs_insert(staging[..],used,item);if r.status!=BS_Status.ok {return r;}used=r.count;}
  return bs_commit(staging[..],used,out);
 }
-bs_binding_valid :: (binding:BS_Binding,pool:[]BS_Origin)->bool {
+bs_binding_valid :: (binding:BS_Binding,pool:[]BS_Origin)->bool #effects(all) {
  formal:=binding.formal;
  if !BS_origin_valid(formal) || formal.kind!=BS_PARAMETER || binding.actual_type!=formal.type {return false;}
  if formal.role==BS_INLINE {return binding.complete && binding.callee_root>=1 && binding.callee_root<=2147483647 && binding.start==0 && binding.count==0;}
@@ -283,11 +283,11 @@ bs_binding_valid :: (binding:BS_Binding,pool:[]BS_Origin)->bool {
  for i:0..<binding.count {if pool[binding.start+i].type!=formal.type {return false;}}
  return true;
 }
-bs_find :: (origin:BS_Origin,bindings:[]BS_Binding)->int {
+bs_find :: (origin:BS_Origin,bindings:[]BS_Binding)->int #effects(all) {
  for i:0..<bindings.count {if bs_slot_equal(origin,bindings[i].formal) {return i;}}
  return -1;
 }
-bs_substitution_valid :: (summary:[]BS_Origin,bindings:[]BS_Binding,pool:[]BS_Origin,out_count:int)->bool {
+bs_substitution_valid :: (summary:[]BS_Origin,bindings:[]BS_Binding,pool:[]BS_Origin,out_count:int)->bool #effects(all) {
  if out_count<0 || out_count>BS_MAX_SET || bindings.count<0 || bindings.count>BS_MAX_BINDINGS || !bs_list_valid(summary,BS_MAX_SET) || !bs_list_valid(pool,BS_MAX_POOL) {return false;}
  for i:0..<bindings.count {
   if !bs_binding_valid(bindings[i],pool) {return false;}
@@ -296,7 +296,7 @@ bs_substitution_valid :: (summary:[]BS_Origin,bindings:[]BS_Binding,pool:[]BS_Or
  for origin:summary {if origin.kind==BS_PARAMETER {index:=bs_find(origin,bindings);if index>=0 && origin.type!=bindings[index].formal.type {return false;}}}
  return true;
 }
-BS_substitute :: (summary:[]BS_Origin,summary_complete:bool,bindings:[]BS_Binding,pool:[]BS_Origin,out:[]BS_Origin)->BS_Result #export_c {
+BS_substitute :: (summary:[]BS_Origin,summary_complete:bool,bindings:[]BS_Binding,pool:[]BS_Origin,out:[]BS_Origin)->BS_Result #export_c #effects(all) {
  if !bs_substitution_valid(summary,bindings,pool,out.count) {return BS_Result.{status=BS_Status.invalid};}
  // Inspect every required key before work/capacity refusal. Unknown is not empty.
  missing:=!summary_complete;candidates:=0;

@@ -17,7 +17,7 @@
 #load "../../coax/lib/crypto/schnorr_fast.coax";
 #load "../../coax/lib/nostr/message.coax";
 
-project_frame_verified :: (bytes: [] u8) -> bool #export_c {
+project_frame_verified :: (bytes: [] u8) -> bool #export_c #effects(all) {
   // nostr_message_read bounds the frame (NM_MAX_FRAME) and sets an event span
   // only for an EVENT message; a frame with anything after the event fails.
   m := nostr_message_read(cast(string) bytes);
@@ -32,7 +32,7 @@ project_frame_verified :: (bytes: [] u8) -> bool #export_c {
 PV_REAL :: "[\"EVENT\",\"comments\",{\"id\":\"461229bfe34e2748f52ff262bfa21bd13e302b0af5829c7e8d4693ad4400a113\",\"pubkey\":\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\",\"created_at\":1793217839,\"kind\":1111,\"tags\":[[\"E\",\"47b1de82fd67af95ad4ce28f2164dc8812c48fd30ae27cec4b49f99aa824c2e0\",\"wss://relay.openagents.com\",\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"],[\"K\",\"1621\"],[\"P\",\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"],[\"e\",\"47b1de82fd67af95ad4ce28f2164dc8812c48fd30ae27cec4b49f99aa824c2e0\",\"wss://relay.openagents.com\",\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"],[\"k\",\"1621\"],[\"p\",\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"],[\"claim\",\"claude-live-1\"],[\"alt\",\"claude-live-1 claimed a task: Host import: a WebSocket byte pipe\"]],\"content\":\"claude-live-1 is working on this.\",\"sig\":\"433a4aceea4e683615c04a54894503451ece44deb8b39169d4173b79c004dce00ad92a5473dae50b73942d25516e642085eb9e2c21e3394ba52d07d696478977\"}]";
 
 // A frame as the page passes it: its bytes.
-pv_ok :: (s: string) -> bool {
+pv_ok :: (s: string) -> bool #effects(all) {
   b: [4096] u8;
   for i: 0..<s.count { b[i] = s[i]; }
   return project_frame_verified(b[0..<s.count]);
@@ -40,7 +40,7 @@ pv_ok :: (s: string) -> bool {
 // Where PV_REAL's content, signature and id begin.
 PV_CONTENT :: 836; PV_SIG :: 878; PV_ID :: 27;
 // PV_REAL with byte k changed to c.
-pv_changed :: (k: int, c: u8, out: [] u8) -> string {
+pv_changed :: (k: int, c: u8, out: [] u8) -> string #effects(all) {
   for i: 0..<PV_REAL.count { out[i] = PV_REAL[i]; }
   out[k] = c;
   return cast(string) out[0..<PV_REAL.count];

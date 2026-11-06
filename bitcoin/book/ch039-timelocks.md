@@ -108,7 +108,7 @@ every input's sequence is `0xffffffff`, the lock time doesn't count.
 // 500,000,000 it is a height and above a time, and the transaction is
 // final once the lock time is less than the block's. If it isn't, it is
 // still final when every input's sequence is 0xffffffff.
-locktime_final_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, height: int, time: int) -> bool {
+locktime_final_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, height: int, time: int) -> bool #effects(all) {
   locktime := tx_le_vartime(b, t.locktime, 4);
   if locktime == 0 { return true; }
   cutoff := ifx locktime < SCRIPT_LOCKTIME_THRESHOLD then height else time;
@@ -147,7 +147,7 @@ by one miner:
 // before it (times holds 1 to 11 of them, in any order). With an even
 // count it is the upper of the two middle times, as in Core.
 LOCKTIME_MEDIAN_SPAN :: 11;
-locktime_median_time_past_vartime :: (times: [] int) -> int {
+locktime_median_time_past_vartime :: (times: [] int) -> int #effects(all) {
   #assert times.count >= 1 && times.count <= LOCKTIME_MEDIAN_SPAN;
   sorted: [LOCKTIME_MEDIAN_SPAN] int;
   n := times.count;
@@ -184,13 +184,13 @@ Chapter 36's `si_lock_op` and `si_locktime` run it:
 ```jai
 // CheckLockTime and CheckSequence (BIP-65 and BIP-112; chapter 39): the
 // script's number against this input's transaction.
-si_locktime :: (sp: ScriptSpend, value: int) -> bool {
+si_locktime :: (sp: ScriptSpend, value: int) -> bool #effects(all) {
   locktime := tx_le_vartime(sp.b, sp.t.locktime, 4);
   if (locktime < SCRIPT_LOCKTIME_THRESHOLD) != (value < SCRIPT_LOCKTIME_THRESHOLD) { return false; }
   if value > locktime { return false; }
   return tx_le_vartime(sp.b, sp.ins[sp.index].sequence, 4) != SCRIPT_SEQUENCE_FINAL;
 }
-si_sequence :: (sp: ScriptSpend, value: int) -> bool {
+si_sequence :: (sp: ScriptSpend, value: int) -> bool #effects(all) {
   sequence := tx_le_vartime(sp.b, sp.ins[sp.index].sequence, 4);  // mutant: equivalent (a fifth byte lands above bit 31, outside every mask)
   if tx_le_vartime(sp.b, 0, 4) < 2 { return false; }
   if (sequence & SCRIPT_SEQUENCE_DISABLE) != 0 { return false; }
@@ -202,7 +202,7 @@ si_sequence :: (sp: ScriptSpend, value: int) -> bool {
 // OP_CHECKLOCKTIMEVERIFY and OP_CHECKSEQUENCEVERIFY, when their flags are
 // set: a 5-byte number at the top, left there, not negative, and
 // satisfied by the transaction. CSV with the disable bit set is a NOP.
-si_lock_op :: (sp: ScriptSpend, w: [] ScriptWork, op: int, minimal: bool) -> int {
+si_lock_op :: (sp: ScriptSpend, w: [] ScriptWork, op: int, minimal: bool) -> int #effects(all) {
   if si_size(w) < 1 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
   n := script_num_vartime(si_bytes(sp, w, si_top(w, 1)), minimal, 5);
   if !n.ok { return SCRIPT_ERR_SCRIPTNUM; }
@@ -253,7 +253,7 @@ meaning in transactions of version 2 or later:
 // seconds, and the low 16 bits count them; the other bits are ignored.
 LOCKTIME_GRANULARITY :: 9;   // SEQUENCE_LOCKTIME_GRANULARITY: units of 2^9 = 512 seconds
 LockRelative :: struct { enabled: bool; by_time: bool; blocks: int; seconds: int; }
-locktime_relative_vartime :: (sequence: int) -> LockRelative {
+locktime_relative_vartime :: (sequence: int) -> LockRelative #effects(all) {
   r: LockRelative;
   if (sequence & SCRIPT_SEQUENCE_DISABLE) != 0 { return r; }
   r.enabled = true;
@@ -263,13 +263,13 @@ locktime_relative_vartime :: (sequence: int) -> LockRelative {
   return r;
 }
 // A sequence that locks an input for this many blocks, or -1 past 65,535.
-locktime_sequence_blocks_vartime :: (blocks: int) -> int {
+locktime_sequence_blocks_vartime :: (blocks: int) -> int #effects(all) {
   if blocks < 0 || blocks > SCRIPT_SEQUENCE_MASK { return -1; }
   return blocks;
 }
 // A sequence that locks an input for at least this many seconds, rounded
 // up to whole units of 512, or -1 past 65,535 units (about 388 days).
-locktime_sequence_seconds_vartime :: (seconds: int) -> int {
+locktime_sequence_seconds_vartime :: (seconds: int) -> int #effects(all) {
   if seconds < 0 { return -1; }
   units := (seconds + (1 << LOCKTIME_GRANULARITY) - 1) >> LOCKTIME_GRANULARITY;
   if units > SCRIPT_SEQUENCE_MASK { return -1; }
@@ -309,7 +309,7 @@ the time:
 // heights[k] + blocks - 1 or, by time, times[k] + seconds - 1, where
 // times[k] is the median time past of the block before the coin's.
 LockPair :: struct { height: int; time: int; }
-locktime_sequence_locks_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, enforce: bool, heights: [] int, times: [] int) -> LockPair {
+locktime_sequence_locks_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, enforce: bool, heights: [] int, times: [] int) -> LockPair #effects(all) {
   lock := LockPair.{height=-1, time=-1};
   if !enforce || tx_le_vartime(b, 0, 4) < 2 { return lock; }
   for k: 0..<t.nin {
@@ -325,7 +325,7 @@ locktime_sequence_locks_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, enforce: bool
 }
 // EvaluateSequenceLocks: a block at height whose previous block's median
 // time past is prev_mtp may hold the transaction once both locks are past.
-locktime_sequence_ok_vartime :: (lock: LockPair, height: int, prev_mtp: int) -> bool {
+locktime_sequence_ok_vartime :: (lock: LockPair, height: int, prev_mtp: int) -> bool #effects(all) {
   return lock.height < height && lock.time < prev_mtp;
 }
 ```

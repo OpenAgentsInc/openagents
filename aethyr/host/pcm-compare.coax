@@ -32,16 +32,16 @@ HostPcmCompare :: struct {shape:bool;samples:int;over:int;nonfinite:int;max_abs:
   b[11]=0;q=hpcm_compare_words(a[..],b[..]);#assert q.shape && q.over==1 && q.max_abs==0.5;
   #assert !hpcm_compare_words(a[0..<4],b[..]).shape && !hpcm_compare_words(a[0..<0],b[0..<0]).shape;
 }
-hpcm_bits :: (bytes:[]u8,i:int)->u32 {
+hpcm_bits :: (bytes:[]u8,i:int)->u32 #effects(all) {
   return cast(u32)bytes[4*i] | (cast(u32)bytes[4*i+1]<<8) | (cast(u32)bytes[4*i+2]<<16) | (cast(u32)bytes[4*i+3]<<24);
 }
-hpcm_compare :: (a:[]u8,b:[]u8)->HostPcmCompare #export_c {
+hpcm_compare :: (a:[]u8,b:[]u8)->HostPcmCompare #export_c #effects(all) {
   if a.count%8!=0 {return HostPcmCompare.{};}
   q:=hpcm_compare_words(a,b);q.first_a=int(floor(f64(q.first_a)/2));q.first_b=int(floor(f64(q.first_b)/2));return q;
 }
 // Word receipt for the canonical bank, including odd mono sample counts.
 // first_a/first_b are sample positions here; the stereo wrapper returns frames.
-hpcm_compare_words :: (a:[]u8,b:[]u8)->HostPcmCompare #export_c {
+hpcm_compare_words :: (a:[]u8,b:[]u8)->HostPcmCompare #export_c #effects(all) {
   q:HostPcmCompare;if a.count==0 || a.count!=b.count || a.count%4!=0 {return q;}
   q.shape=true;q.samples=a.count/4;
   for i:0..<q.samples {

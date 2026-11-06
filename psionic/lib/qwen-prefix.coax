@@ -24,25 +24,25 @@ QpResult :: struct {status:QpStatus;written:int;claim:QpClaim;}
     #assert qp_fork(s,id,claim,src[..],dest[..],work[..],true).status==QpStatus.alias;
     for x:dest {#assert x==-7;}
 }
-qp_valid :: (s:QpShape)->bool {
+qp_valid :: (s:QpShape)->bool #effects(all) {
     return s.linear_layers>=0 && s.linear_layers<=48 && s.full_layers>=0 && s.full_layers<=16 && s.linear_layers+s.full_layers>0 && qf_token_count(s.capacity) && pd_valid(s.delta) && qf_valid(s.attention);
 }
-qp_same_shape :: (a:QpShape,b:QpShape)->bool {
+qp_same_shape :: (a:QpShape,b:QpShape)->bool #effects(all) {
     return a.linear_layers==b.linear_layers && a.full_layers==b.full_layers && a.capacity==b.capacity &&
         a.delta.key_heads==b.delta.key_heads && a.delta.value_heads==b.delta.value_heads && a.delta.key_dim==b.delta.key_dim && a.delta.value_dim==b.delta.value_dim && f32_bits(a.delta.epsilon)==f32_bits(b.delta.epsilon) &&
         a.attention.heads==b.attention.heads && a.attention.kv_heads==b.attention.kv_heads && a.attention.head_dim==b.attention.head_dim && a.attention.rotary_dim==b.attention.rotary_dim && f32_bits(a.attention.epsilon)==f32_bits(b.attention.epsilon);
 }
-qp_identity :: (a:[32]u8,b:[32]u8)->bool {
+qp_identity :: (a:[32]u8,b:[32]u8)->bool #effects(all) {
     any:=false;for i:0..<32 {if a[i]!=b[i] {return false;}if a[i]!=0 {any=true;}}return any;
 }
-qp_index :: (base:int,index:int)->int {return base+index;}
-qp_linear_count :: (s:QpShape)->int {return 3*pd_channels(s.delta)+pd_states(s.delta);}
-qp_full_count :: (s:QpShape)->int {return 2*s.capacity*s.attention.kv_heads*s.attention.head_dim;}
-qp_live_full :: (s:QpShape,prefix:int)->int {return 2*prefix*s.attention.kv_heads*s.attention.head_dim;}
-qp_total :: (s:QpShape)->int {return s.linear_layers*qp_linear_count(s)+s.full_layers*qp_full_count(s);}
-qp_live :: (s:QpShape,prefix:int)->int {return s.linear_layers*qp_linear_count(s)+s.full_layers*qp_live_full(s,prefix);}
+qp_index :: (base:int,index:int)->int #effects(all) {return base+index;}
+qp_linear_count :: (s:QpShape)->int #effects(all) {return 3*pd_channels(s.delta)+pd_states(s.delta);}
+qp_full_count :: (s:QpShape)->int #effects(all) {return 2*s.capacity*s.attention.kv_heads*s.attention.head_dim;}
+qp_live_full :: (s:QpShape,prefix:int)->int #effects(all) {return 2*prefix*s.attention.kv_heads*s.attention.head_dim;}
+qp_total :: (s:QpShape)->int #effects(all) {return s.linear_layers*qp_linear_count(s)+s.full_layers*qp_full_count(s);}
+qp_live :: (s:QpShape,prefix:int)->int #effects(all) {return s.linear_layers*qp_linear_count(s)+s.full_layers*qp_live_full(s,prefix);}
 // book:begin fork
-qp_fork :: (shape:QpShape,model:[32]u8,source:QpClaim,src:[]f32,dst:[]f32,scratch:[]f32,overlap:bool)->QpResult #export_c {
+qp_fork :: (shape:QpShape,model:[32]u8,source:QpClaim,src:[]f32,dst:[]f32,scratch:[]f32,overlap:bool)->QpResult #export_c #effects(all) {
     if !qp_valid(shape) {return QpResult.{status=QpStatus.shape};}
     if !qp_same_shape(shape,source.shape) || !qp_identity(model,source.model) {return QpResult.{status=QpStatus.identity};}
     if source.prefix<0 || source.prefix>shape.capacity {return QpResult.{status=QpStatus.capacity};}

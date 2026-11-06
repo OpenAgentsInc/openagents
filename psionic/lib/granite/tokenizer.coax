@@ -22,7 +22,7 @@ GR_PIECE_MAX :: 4096;
 
 // ---- GPT-2's byte alphabet. Printable bytes stand for themselves; the
 // other 68 (0-32, 127-160, 173) are 256 + their order.
-gr_unbyte :: (cp:int)->int {
+gr_unbyte :: (cp:int)->int #effects(all) {
     if (cp>=33 && cp<=126) || (cp>=161 && cp<=172) || (cp>=174 && cp<=255) {return cp;}
     n:=cp-256;if n<0 || n>=68 {return -1;}
     if n<33 {return n;}if n<67 {return 127+n-33;}return 173;
@@ -39,7 +39,7 @@ gr_unbyte :: (cp:int)->int {
 // ---- UTF-8 and the expression's classes.
 GrRune :: struct {cp:int;next:int;}
 // One scalar of a valid UTF-8 string; an invalid one returns next = at.
-gr_rune :: (s:string,at:int)->GrRune {
+gr_rune :: (s:string,at:int)->GrRune #effects(all) {
     b:=cast(int)s[at];if b<128 {return GrRune.{cp=b,next=at+1};}
     // Leads from 245 give a scalar past U+10FFFF, refused below.
     if b<194 {return GrRune.{next=at};}
@@ -49,8 +49,8 @@ gr_rune :: (s:string,at:int)->GrRune {
     if (n==2 && cp<2048) || (n==3 && cp<65536) || cp>1114111 || (cp>=0xd800 && cp<=0xdfff) {return GrRune.{next=at};}
     return GrRune.{cp=cp,next=at+n+1};
 }
-gr_utf8 :: (s:string)->bool {at:=0;while at<s.count {r:=gr_rune(s,at);if r.next==at {return false;}at=r.next;}return true;}
-gr_class :: (cp:int)->int {
+gr_utf8 :: (s:string)->bool #effects(all) {at:=0;while at<s.count {r:=gr_rune(s,at);if r.next==at {return false;}at=r.next;}return true;}
+gr_class :: (cp:int)->int #effects(all) {
     lo:=0;hi:=GR_UC_RUNS;
     while lo<hi {mid:=(lo+hi)/2;if GR_UC[3*mid+1]<cp {lo=mid+1;}else {hi=mid;}}
     if lo<GR_UC_RUNS && GR_UC[3*lo]<=cp {return GR_UC[3*lo+2];}return 0;
@@ -71,18 +71,18 @@ gr_class :: (cp:int)->int {
 }
 
 // ---- The split expression.
-gr_contraction :: (s:string,at:int)->int {
+gr_contraction :: (s:string,at:int)->int #effects(all) {
     if s[at]!='\'' || at+1>=s.count {return at;}c:=s[at+1];
     if c=='s' || c=='t' || c=='m' || c=='d' {return at+2;}
     if at+2<s.count {d:=s[at+2];if (c=='r' && d=='e') || (c=='v' && d=='e') || (c=='l' && d=='l') {return at+3;}}
     return at;
 }
 // The end of the run of scalars from at whose class is (want) or is not (!want) in bits.
-gr_run :: (s:string,at:int,bits:int,want:bool)->int {
+gr_run :: (s:string,at:int,bits:int,want:bool)->int #effects(all) {
     pos:=at;while pos<s.count {r:=gr_rune(s,pos);if ((gr_class(r.cp)&bits)!=0)!=want {return pos;}pos=r.next;}return pos;
 }
 // book:begin piece
-gr_piece :: (s:string,at:int)->int {
+gr_piece :: (s:string,at:int)->int #effects(all) {
     end:=gr_contraction(s,at);if end>at {return end;}
     first:=gr_rune(s,at);after:=at;if first.cp==32 {after=first.next;}
     // ' ?\p{L}+', ' ?\p{N}+', ' ?[^\s\p{L}\p{N}]+'
@@ -110,32 +110,32 @@ gr_piece :: (s:string,at:int)->int {
 }
 
 // ---- Admission: the vocabulary and merge tables.
-gr_hash :: (s:string)->u64 {h:u64=0xcbf29ce484222325;for c:s {h=mul_wrap(h^cast(u64)c,cast(u64)0x100000001b3);}return h;}
-gr_pair_hash :: (a:int,b:int)->u64 {return mul_wrap(cast(u64)a,cast(u64)0x9e3779b97f4a7c15)^add_wrap(mul_wrap(cast(u64)b,cast(u64)0xc2b2ae3d27d4eb4f),cast(u64)0x165667b19e3779f9);}
-gr_power :: (n:int)->bool {return n>=2 && (n&(-n))==n;}
-gr_token :: (t:GrTables,id:int)->string {at:=t.spans[2*id];return cast(string)t.pool[at..<at+t.spans[2*id+1]];}
+gr_hash :: (s:string)->u64 #effects(all) {h:u64=0xcbf29ce484222325;for c:s {h=mul_wrap(h^cast(u64)c,cast(u64)0x100000001b3);}return h;}
+gr_pair_hash :: (a:int,b:int)->u64 #effects(all) {return mul_wrap(cast(u64)a,cast(u64)0x9e3779b97f4a7c15)^add_wrap(mul_wrap(cast(u64)b,cast(u64)0xc2b2ae3d27d4eb4f),cast(u64)0x165667b19e3779f9);}
+gr_power :: (n:int)->bool #effects(all) {return n>=2 && (n&(-n))==n;}
+gr_token :: (t:GrTables,id:int)->string #effects(all) {at:=t.spans[2*id];return cast(string)t.pool[at..<at+t.spans[2*id+1]];}
 // The id of a token's bytes among ordinary tokens, or -1.
-gr_lookup :: (t:GrTables,s:string)->int {
+gr_lookup :: (t:GrTables,s:string)->int #effects(all) {
     mask:=t.vocab_slots.count-1;at:=cast(int)(gr_hash(s)&cast(u64)mask);
     v:=t.vocab_slots[at];while v!=0 {if gr_token(t,v-1)==s {return v-1;}at=(at+1)&mask;v=t.vocab_slots[at];}
     return -1;
 }
 // The rank of merging a then b, or -1.
-gr_merge_rank :: (t:GrTables,a:int,b:int)->int {
+gr_merge_rank :: (t:GrTables,a:int,b:int)->int #effects(all) {
     mask:=t.merge_slots.count-1;at:=cast(int)(gr_pair_hash(a,b)&cast(u64)mask);
     v:=t.merge_slots[at];while v!=0 {r:=v-1;if t.merges[3*r]==a && t.merges[3*r+1]==b {return r;}at=(at+1)&mask;v=t.merge_slots[at];}
     return -1;
 }
 // Decodes one GGUF token string into pool at `at`: GPT-2's alphabet for an
 // ordinary token, its own bytes for an added one. Returns the new end, or -1.
-gr_unpack :: (s:string,added:bool,pool:[]u8,at:int)->int {
+gr_unpack :: (s:string,added:bool,pool:[]u8,at:int)->int #effects(all) {
     if !gr_utf8(s) {return -1;}
     if added {if s.count>pool.count-at {return -1;}for i:0..<s.count {pool[at+i]=s[i];}return at+s.count;}
     pos:=0;n:=at;while pos<s.count {r:=gr_rune(s,pos);b:=gr_unbyte(r.cp);if b<0 || n>=pool.count {return -1;}pool[n]=cast(u8)b;n+=1;pos=r.next;}
     return n;
 }
 // Sorts added ids longest first, then by id (an insertion sort, so stable).
-gr_added_order :: (spans:[]int,added:[]int,count:int) {
+gr_added_order :: (spans:[]int,added:[]int,count:int) #effects(all) {
     for i:1..<count {j:=i;while j>0 {a:=added[j-1];b:=added[j];if spans[2*a+1]>=spans[2*b+1] {break;}added[j-1]=b;added[j]=a;j-=1;}}
 }
 #test "added tokens sort longest first, then by id" {
@@ -143,7 +143,7 @@ gr_added_order :: (spans:[]int,added:[]int,count:int) {
     #assert added[0]==1 && added[1]==3 && added[2]==2 && added[3]==0 && added[4]==0;
 }
 // book:begin build
-gr_vocab_build :: (header:[]u8,text:GrText,tables:GrTables)->GrTables #export_c {
+gr_vocab_build :: (header:[]u8,text:GrText,tables:GrTables)->GrTables #export_c #effects(all) {
     t:=tables;t.merge_count=0;t.added_count=0;t.pool_bytes=0;
     n:=text.vocab;m:=text.merge_count;
     if n<256 || m<0 || t.spans.count<2*n || !gr_power(t.vocab_slots.count) || t.vocab_slots.count<2*n || t.merges.count<3*m || !gr_power(t.merge_slots.count) || t.merge_slots.count<2*m || t.added.count<n {t.vocab= -1;return t;}
@@ -182,7 +182,7 @@ gr_vocab_build :: (header:[]u8,text:GrText,tables:GrTables)->GrTables #export_c 
 
 // ---- Checks on the owned tiny vocabulary: bytes are ids 0..255 in byte
 // order, then one token for each of its 18 merges, then added tokens.
-gr_tiny_tables :: (pool:[]u8,spans:[]int,slots:[]int,merges:[]int,merge_slots:[]int,added:[]int)->GrTables {
+gr_tiny_tables :: (pool:[]u8,spans:[]int,slots:[]int,merges:[]int,merge_slots:[]int,added:[]int)->GrTables #effects(all) {
     h:=GR_TINY_HEADER;m:[32]PgMeta;mw:[32]PgMeta;t:[32]PgTensor;tw:[32]PgTensor;out:[21]GrTensor;
     b:=gr_bind(h[..],GR_TINY_BYTES,m[..],mw[..],t[..],tw[..],out[..]);
     return gr_vocab_build(h[..],b.text,GrTables.{pool=pool,spans=spans,vocab_slots=slots,merges=merges,merge_slots=merge_slots,added=added});
@@ -208,19 +208,19 @@ gr_tiny_tables :: (pool:[]u8,spans:[]int,slots:[]int,merges:[]int,merge_slots:[]
     #assert gr_unpack("ab",true,pool[0..<2],0)==2 && gr_unpack("ab",true,pool[0..<3],2)== -1;
     bad:=[2]u8.[0xc4,0x41];#assert gr_unpack(cast(string)bad[..],true,pool[..],0)== -1;
 }
-gr_tiny_text :: ()->GrText {h:=GR_TINY_HEADER;m:[32]PgMeta;mw:[32]PgMeta;t:[32]PgTensor;tw:[32]PgTensor;out:[21]GrTensor;return gr_bind(h[..],GR_TINY_BYTES,m[..],mw[..],t[..],tw[..],out[..]).text;}
+gr_tiny_text :: ()->GrText #effects(all) {h:=GR_TINY_HEADER;m:[32]PgMeta;mw:[32]PgMeta;t:[32]PgTensor;tw:[32]PgTensor;out:[21]GrTensor;return gr_bind(h[..],GR_TINY_BYTES,m[..],mw[..],t[..],tw[..],out[..]).text;}
 // Where string k of a GGUF string array starts, its first string at `at`.
 // Every tiny string is shorter than 256 bytes.
-gr_nth :: (h:[]u8,at:int,k:int)->int {p:=at;for i:0..<k {p+=8+cast(int)h[p];}return p;}
+gr_nth :: (h:[]u8,at:int,k:int)->int #effects(all) {p:=at;for i:0..<k {p+=8+cast(int)h[p];}return p;}
 // The build's code for the tiny header with bytes a and b set (none when -1).
-gr_tiny_code :: (x:GrText,a:int,va:u8,b:int,vb:u8)->int {
+gr_tiny_code :: (x:GrText,a:int,va:u8,b:int,vb:u8)->int #effects(all) {
     h:=GR_TINY_HEADER;if a!= -1 {h[a]=va;}if b!= -1 {h[b]=vb;}
     pool:[4096]u8;spans:[624]int;slots:[1024]int;merges:[54]int;ms:[64]int;added:[312]int;
     return gr_vocab_build(h[..],x,GrTables.{pool=pool[..],spans=spans[..],vocab_slots=slots[..],merges=merges[..],merge_slots=ms[..],added=added[..]}).vocab;
 }
 // The build's code for table sizes alone: the text starts at the header's
 // first byte, so a build that passes the size checks refuses with -2.
-gr_size_code :: (n:int,m:int,spans:int,slots:int,merges:int,ms:int,added:int)->int {
+gr_size_code :: (n:int,m:int,spans:int,slots:int,merges:int,ms:int,added:int)->int #effects(all) {
     h:=GR_TINY_HEADER;p:[4096]u8;sp:[1100]int;sl:[1024]int;mg:[64]int;mm:[64]int;ad:[300]int;
     return gr_vocab_build(h[..],GrText.{vocab=n,merge_count=m},GrTables.{pool=p[..],spans=sp[0..<spans],vocab_slots=sl[0..<slots],merges=mg[0..<merges],merge_slots=mm[0..<ms],added=ad[0..<added]}).vocab;
 }
@@ -296,12 +296,12 @@ gr_size_code :: (n:int,m:int,spans:int,slots:int,merges:int,ms:int,added:int)->i
 
 // ---- Encoding.
 // The longest added token at `at`, or -1.
-gr_added_at :: (t:GrTables,s:string,at:int)->int {
+gr_added_at :: (t:GrTables,s:string,at:int)->int #effects(all) {
     for i:0..<t.added_count {id:=t.added[i];x:=gr_token(t,id);if x.count<=s.count-at && x[0]==s[at] {same:=true;for k:1..<x.count {if x[k]!=s[at+k] {same=false;break;}}if same {return id;}}}
     return -1;
 }
 // The bytes of one piece merged by rank into symbols; returns their count.
-gr_bpe :: (t:GrTables,piece:string,symbols:[]int)->int {
+gr_bpe :: (t:GrTables,piece:string,symbols:[]int)->int #effects(all) {
     n:=piece.count;for i:0..<n {symbols[i]=t.byte_ids[cast(int)piece[i]];}
     // best starts past every rank; at is set whenever best is.
     while true {
@@ -313,7 +313,7 @@ gr_bpe :: (t:GrTables,piece:string,symbols:[]int)->int {
     return n;
 }
 // book:begin encode
-gr_encode :: (t:GrTables,input:string,out:[]int,symbols:[]int)->GrTokResult #export_c {
+gr_encode :: (t:GrTables,input:string,out:[]int,symbols:[]int)->GrTokResult #export_c #effects(all) {
     if t.vocab<256 {return GrTokResult.{status=GrTokStatus.table};}
     if input.count>GR_TEXT_MAX {return GrTokResult.{status=GrTokStatus.budget};}
     if !gr_utf8(input) {return GrTokResult.{status=GrTokStatus.utf8};}
@@ -337,7 +337,7 @@ gr_encode :: (t:GrTables,input:string,out:[]int,symbols:[]int)->GrTokResult #exp
 }
 // book:end encode
 // The bytes of ids, in order: ordinary tokens' decoded bytes, added tokens' text.
-gr_decode :: (t:GrTables,ids:[]int,out:[]u8)->GrTokResult #export_c {
+gr_decode :: (t:GrTables,ids:[]int,out:[]u8)->GrTokResult #export_c #effects(all) {
     n:=0;for id:ids {if id<0 || id>=t.vocab {return GrTokResult.{status=GrTokStatus.range,written=n};}x:=gr_token(t,id);if x.count>out.count-n {return GrTokResult.{status=GrTokStatus.capacity,written=n};}for i:0..<x.count {out[n+i]=x[i];}n+=x.count;}
     return GrTokResult.{written=n};
 }

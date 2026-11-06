@@ -37,7 +37,7 @@
     #assert jv_parse(d[..],text,nodes[..]) && !hcr_core(d[0]);
   }
 }
-hcr_rows :: (d:Jv,at:int,out:[][8]int)->int {
+hcr_rows :: (d:Jv,at:int,out:[][8]int)->int #effects(all) {
   if jv_kind(d,at)!=JV_ARRAY || jv_len(d,at)>out.count {return -1;}
   n:=jv_len(d,at);
   for i:0..<n {
@@ -46,7 +46,7 @@ hcr_rows :: (d:Jv,at:int,out:[][8]int)->int {
   }
   return n;
 }
-hcr_core :: (d:Jv)->bool {
+hcr_core :: (d:Jv)->bool #effects(all) {
   if jv_kind(d,0)!=JV_OBJECT || jv_raw(d,jv_get(d,0,"schema"))!="aethyr.host.observations.v1" || jv_raw(d,jv_get(d,0,"scope"))!="core" {return false;}
   host:=jv_raw(d,jv_get(d,0,"host"));if host!="web" && host!="vulkan" && host!="metal" {return false;}
   assets:[4][8]int;frames:[2][8]int;events:[13][8]int;

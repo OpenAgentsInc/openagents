@@ -38,7 +38,7 @@ PolConsumed :: struct {request:string;action:string;}
 // book:end record
 
 // book:begin approve
-pol_admit :: (q:PolRequest,recognized:[]string,decisions:[]PolDecision,consumed:[]PolConsumed,now:int)->u32 {
+pol_admit :: (q:PolRequest,recognized:[]string,decisions:[]PolDecision,consumed:[]PolConsumed,now:int)->u32 #effects(all) {
   known:=false;for a:recognized {if a==q.approver {known=true;}}
   if !known {return POL_NOT_ADMITTED;}
   for c:consumed {if c.request==q.request && c.action==q.action {return POL_REPLAY;}}
@@ -57,14 +57,14 @@ pol_admit :: (q:PolRequest,recognized:[]string,decisions:[]PolDecision,consumed:
 
 PT_ALICE :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
 PT_MALLORY :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
-pt_request :: ()->PolRequest {
+pt_request :: ()->PolRequest #effects(all) {
   q:PolRequest;q.request="q1";q.action="sha256:a1";q.approver=PT_ALICE;q.expires_at=600;return q;
 }
-pt_decision :: (approve:bool)->PolDecision {
+pt_decision :: (approve:bool)->PolDecision #effects(all) {
   d:PolDecision;d.request="q1";d.action="sha256:a1";d.approver=PT_ALICE;d.approve=approve;d.expires_at=500;return d;
 }
 // spent is 1 when the request was already consumed.
-pt_one :: (d:PolDecision,now:int,spent:int)->u32 {
+pt_one :: (d:PolDecision,now:int,spent:int)->u32 #effects(all) {
   who:=[1]string.[PT_ALICE];ds:[1]PolDecision;ds[0]=d;none:[1]PolConsumed;none[0].request="q1";none[0].action="sha256:a1";
   return pol_admit(pt_request(),who[..],ds[..],none[0..<spent],now);
 }

@@ -74,7 +74,7 @@ Jv :: struct { text: string; nodes: [] JvNode; count: int; ok: bool; err: int; }
 }
 // Parses text into nodes. True when it is one JSON value; otherwise d[0] has
 // ok false, count 0 and err set.
-jv_parse :: (d: [] Jv, text: string, nodes: [] JvNode) -> bool {
+jv_parse :: (d: [] Jv, text: string, nodes: [] JvNode) -> bool #effects(all) {
   d[0] = Jv.{text = text, nodes = nodes, err = 0};
   stack: [JV_DEPTH] int; last: [JV_DEPTH] int; depth := 0;
   n := 0; i := jv_ws(text, 0);
@@ -138,7 +138,7 @@ jv_parse :: (d: [] Jv, text: string, nodes: [] JvNode) -> bool {
   // reachable exit above has already published the parser's status.
   return jv_fail(d,i);
 }
-jv_fail :: (d: [] Jv, at: int) -> bool { d[0].count = 0; d[0].ok = false; d[0].err = at; return false; }
+jv_fail :: (d: [] Jv, at: int) -> bool #effects(all) { d[0].count = 0; d[0].ok = false; d[0].err = at; return false; }
 #test "whitespace and token ends" {
   #assert jv_ws(" \t\r\nx", 0) == 4 && jv_ws("", 0) == 0 && jv_ws("  ", 1) == 2;
   #assert jv_string_end("ab\"", 0) == 2 && jv_string_end("a\\\"b\"", 0) == 4 && jv_string_end("ab", 0) == -1 && jv_string_end("\\", 0) == -1;
@@ -149,12 +149,12 @@ jv_fail :: (d: [] Jv, at: int) -> bool { d[0].count = 0; d[0].ok = false; d[0].e
   #assert jv_scalar_end("00", 0) == -1 && jv_scalar_end("1.e1", 0) == -1 && jv_scalar_end("x", 0) == -1 && jv_scalar_end("-x", 0) == -1;
   #assert jv_scalar_end("truex", 0) == -1 && jv_scalar_end("1e5x", 0) == -1 && jv_scalar_end("false", 0) == 5;
 }
-jv_ws :: (t: string, i: int) -> int {
+jv_ws :: (t: string, i: int) -> int #effects(all) {
   k := i;
   while k < t.count && (t[k] == ' ' || t[k] == '\t' || t[k] == '\n' || t[k] == '\r') { k += 1; }
   return k;
 }
-jv_hex :: (c: u8) -> int {
+jv_hex :: (c: u8) -> int #effects(all) {
   if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
   if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
   if c >= 'A' && c <= 'F' { return cast(int) (c - 'A') + 10; }
@@ -162,7 +162,7 @@ jv_hex :: (c: u8) -> int {
 }
 // The index of the closing quote of a string whose bytes start at i, or -1
 // (an unknown escape, a short \u, a control byte, or no end).
-jv_string_end :: (t: string, i: int) -> int {
+jv_string_end :: (t: string, i: int) -> int #effects(all) {
   k := i;
   while k < t.count {
     c := t[k];
@@ -183,13 +183,13 @@ jv_string_end :: (t: string, i: int) -> int {
   }
   return -1;
 }
-jv_digits :: (t: string, i: int) -> int {
+jv_digits :: (t: string, i: int) -> int #effects(all) {
   k := i;
   while k < t.count && t[k] >= '0' && t[k] <= '9' { k += 1; }
   return k;
 }
 // The end of the number or literal at i, or -1. What follows must end a token.
-jv_scalar_end :: (t: string, i: int) -> int {
+jv_scalar_end :: (t: string, i: int) -> int #effects(all) {
   e := -1;
   jv_local_words := [3] string.["true", "false", "null"];
   for w: jv_local_words {
@@ -224,28 +224,28 @@ jv_scalar_end :: (t: string, i: int) -> int {
 
 // ---- reading ---------------------------------------------------------------
 
-jv_ok :: (d: Jv, at: int) -> bool { return at >= 0 && at < d.count; }
+jv_ok :: (d: Jv, at: int) -> bool #effects(all) { return at >= 0 && at < d.count; }
 // The node's kind, or 0 when at is not a node.
-jv_kind :: (d: Jv, at: int) -> int { return ifx jv_ok(d, at) then d.nodes[at].kind else 0; }
+jv_kind :: (d: Jv, at: int) -> int #effects(all) { return ifx jv_ok(d, at) then d.nodes[at].kind else 0; }
 // Children of an array or object.
-jv_len :: (d: Jv, at: int) -> int { return ifx jv_ok(d, at) then d.nodes[at].count else 0; }
+jv_len :: (d: Jv, at: int) -> int #effects(all) { return ifx jv_ok(d, at) then d.nodes[at].count else 0; }
 // The value's source (a string's raw bytes between its quotes), or "".
-jv_raw :: (d: Jv, at: int) -> string { return ifx jv_ok(d, at) then d.text[d.nodes[at].from..<d.nodes[at].to] else ""; }
+jv_raw :: (d: Jv, at: int) -> string #effects(all) { return ifx jv_ok(d, at) then d.text[d.nodes[at].from..<d.nodes[at].to] else ""; }
 // An object member's raw key, or "".
-jv_key :: (d: Jv, at: int) -> string {
+jv_key :: (d: Jv, at: int) -> string #effects(all) {
   if !jv_ok(d, at) || d.nodes[at].key_from == -1 { return ""; }
   return d.text[d.nodes[at].key_from..<d.nodes[at].key_to];
 }
-jv_bool :: (d: Jv, at: int) -> bool { return jv_kind(d, at) == JV_TRUE; }
+jv_bool :: (d: Jv, at: int) -> bool #effects(all) { return jv_kind(d, at) == JV_TRUE; }
 // Child i of an array or object, or -1.
-jv_at :: (d: Jv, at: int, i: int) -> int {
+jv_at :: (d: Jv, at: int, i: int) -> int #effects(all) {
   if !jv_ok(d, at) || i < 0 { return -1; }
   k := d.nodes[at].first;
   for j: 0..<i { if k == -1 { return -1; } k = d.nodes[k].next; }
   return k;
 }
 // The first member of object at called key (compared unescaped), or -1.
-jv_get :: (d: Jv, at: int, key: string) -> int {
+jv_get :: (d: Jv, at: int, key: string) -> int #effects(all) {
   if jv_kind(d, at) != JV_OBJECT { return -1; }
   k := d.nodes[at].first;
   while k != -1 {
@@ -255,7 +255,7 @@ jv_get :: (d: Jv, at: int, key: string) -> int {
   return -1;
 }
 // Whether raw string bytes unescape to s.
-jv_raw_eq :: (raw: string, s: string) -> bool {
+jv_raw_eq :: (raw: string, s: string) -> bool #effects(all) {
   plain := true;
   for c: raw { if c == '\\' { plain = false; } }
   if plain { return raw == s; }
@@ -275,7 +275,7 @@ jv_raw_eq :: (raw: string, s: string) -> bool {
 }
 // A path from at: keys joined by dots, indexes in brackets ("a.b[2].c").
 // -1 when any step is missing (a key cannot hold a dot or a bracket here).
-jv_path :: (d: Jv, at: int, path: string) -> int {
+jv_path :: (d: Jv, at: int, path: string) -> int #effects(all) {
   k := at; i := 0;
   if !jv_ok(d, k) { return -1; }
   while i < path.count {
@@ -296,12 +296,12 @@ jv_path :: (d: Jv, at: int, path: string) -> int {
   return k;
 }
 // A string node unescaped into out: its length, or -1 (not a string, or out too small).
-jv_str :: (d: Jv, at: int, out: [] u8) -> int {
+jv_str :: (d: Jv, at: int, out: [] u8) -> int #effects(all) {
   if jv_kind(d, at) != JV_STRING { return -1; }
   return jv_unescape(jv_raw(d, at), out);
 }
 // A number node that is an integer within 2^53 (no fraction or exponent), or fallback.
-jv_int :: (d: Jv, at: int, fallback: int) -> int {
+jv_int :: (d: Jv, at: int, fallback: int) -> int #effects(all) {
   if jv_kind(d, at) != JV_NUMBER { return fallback; }
   s := jv_raw(d, at); i := 0; neg := false;
   if s[0] == '-' { neg = true; i = 1; }
@@ -334,7 +334,7 @@ jv_int :: (d: Jv, at: int, fallback: int) -> int {
 // Raw string bytes (between the quotes) unescaped into out: the length, or
 // -1 when out is too small or an escape is malformed. A lone surrogate
 // becomes U+FFFD.
-jv_unescape :: (raw: string, out: [] u8) -> int {
+jv_unescape :: (raw: string, out: [] u8) -> int #effects(all) {
   n := 0; i := 0;
   while i < raw.count {
     c := raw[i];
@@ -366,12 +366,12 @@ jv_unescape :: (raw: string, out: [] u8) -> int {
   return n;
 }
 // Simple JSON escapes; unicode escapes have their own four-digit path.
-jv_escape_byte :: (e:u8)->int {
+jv_escape_byte :: (e:u8)->int #effects(all) {
   if e=='"' || e=='\\' || e=='/' {return cast(int)e;}
   if e=='b' {return 8;}if e=='f' {return 12;}if e=='n' {return 10;}if e=='r' {return 13;}if e=='t' {return 9;}
   return -1;
 }
-jv_u4 :: (s: string, i: int) -> int {
+jv_u4 :: (s: string, i: int) -> int #effects(all) {
   if i + 4 > s.count { return -1; }
   v := 0;
   for j: 0..<4 {
@@ -382,7 +382,7 @@ jv_u4 :: (s: string, i: int) -> int {
   return v;
 }
 // Code point cp as UTF-8 at out[at..]: the new end, or -1 when it does not fit.
-jv_utf8 :: (cp: int, out: [] u8, at: int) -> int {
+jv_utf8 :: (cp: int, out: [] u8, at: int) -> int #effects(all) {
   k := ifx cp < 0x80 then 1 else ifx cp < 0x800 then 2 else ifx cp < 0x10000 then 3 else 4;
   if at + k > out.count { return -1; }
   if k == 1 { out[at] = cast(u8) cp; return at + 1; }
@@ -415,47 +415,47 @@ Jo :: struct { buf: [] u8; n: int; bad: bool; depth: int; more: [JV_DEPTH] bool;
   jo_start(o[..], store[..]); bfr := [3] u8.[8, 12, 13]; jo_str(o[..], cast(string) bfr[..]); #assert jo_text(o[..]) == "\"\\b\\f\\r\"";
   jo_start(o[..], store[..]); jo_str(o[..], cast(string) del[0..<1]); #assert o[0].n == 3 && store[1] == 127;
 }
-jo_start :: (o: [] Jo, buf: [] u8) { o[0] = Jo.{buf = buf}; }
-jo_text :: (o: [] Jo) -> string { return cast(string) o[0].buf[0..<o[0].n]; }
-jo_put :: (o: [] Jo, s: string) {
+jo_start :: (o: [] Jo, buf: [] u8) #effects(all) { o[0] = Jo.{buf = buf}; }
+jo_text :: (o: [] Jo) -> string #effects(all) { return cast(string) o[0].buf[0..<o[0].n]; }
+jo_put :: (o: [] Jo, s: string) #effects(all) {
   if o[0].n + s.count > o[0].buf.count { o[0].bad = true; return; }
   for i: 0..<s.count { o[0].buf[o[0].n + i] = s[i]; }
   o[0].n += s.count;
 }
-jo_byte :: (o: [] Jo, c: u8) {
+jo_byte :: (o: [] Jo, c: u8) #effects(all) {
   if o[0].n >= o[0].buf.count { o[0].bad = true; return; }
   o[0].buf[o[0].n] = c; o[0].n += 1;
 }
 // Before any value: the comma that separates it from the one before.
-jo_value :: (o: [] Jo) {
+jo_value :: (o: [] Jo) #effects(all) {
   if o[0].keyed { o[0].keyed = false; return; }
   if o[0].depth > 0 {
     if o[0].more[o[0].depth - 1] { jo_byte(o, ','); }
     o[0].more[o[0].depth - 1] = true;
   }
 }
-jo_open :: (o: [] Jo, c: u8) {
+jo_open :: (o: [] Jo, c: u8) #effects(all) {
   jo_value(o);
   if o[0].depth >= JV_DEPTH { o[0].bad = true; return; }
   jo_byte(o, c); o[0].more[o[0].depth] = false;
   o[0].close[o[0].depth] = ifx c == '{' then cast(u8) '}' else cast(u8) ']';
   o[0].depth += 1;
 }
-jo_obj :: (o: [] Jo) { jo_open(o, '{'); }
-jo_arr :: (o: [] Jo) { jo_open(o, '['); }
+jo_obj :: (o: [] Jo) #effects(all) { jo_open(o, '{'); }
+jo_arr :: (o: [] Jo) #effects(all) { jo_open(o, '['); }
 // Closes the innermost object or array.
-jo_end :: (o: [] Jo) {
+jo_end :: (o: [] Jo) #effects(all) {
   if o[0].depth < 1 { o[0].bad = true; return; }
   o[0].depth -= 1;
   jo_byte(o, o[0].close[o[0].depth]);
 }
-jo_key :: (o: [] Jo, k: string) { jo_value(o); jo_quoted(o, k); jo_byte(o, ':'); o[0].keyed = true; }
-jo_str :: (o: [] Jo, s: string) { jo_value(o); jo_quoted(o, s); }
+jo_key :: (o: [] Jo, k: string) #effects(all) { jo_value(o); jo_quoted(o, k); jo_byte(o, ':'); o[0].keyed = true; }
+jo_str :: (o: [] Jo, s: string) #effects(all) { jo_value(o); jo_quoted(o, s); }
 // Already-encoded JSON, as given.
-jo_raw :: (o: [] Jo, json: string) { jo_value(o); jo_put(o, json); }
-jo_bool :: (o: [] Jo, b: bool) { jo_raw(o, ifx b then "true" else "false"); }
-jo_null :: (o: [] Jo) { jo_raw(o, "null"); }
-jo_int :: (o: [] Jo, v: int) {
+jo_raw :: (o: [] Jo, json: string) #effects(all) { jo_value(o); jo_put(o, json); }
+jo_bool :: (o: [] Jo, b: bool) #effects(all) { jo_raw(o, ifx b then "true" else "false"); }
+jo_null :: (o: [] Jo) #effects(all) { jo_raw(o, "null"); }
+jo_int :: (o: [] Jo, v: int) #effects(all) {
   jo_value(o);
   tmp: [20] u8; k := 0;
   neg := v < 0;
@@ -470,12 +470,12 @@ jo_int :: (o: [] Jo, v: int) {
 }
 // s as a JSON string, escaped the way JSON.stringify does: quote, backslash
 // and control bytes; everything else (UTF-8 included) as it is.
-jo_quoted :: (o: [] Jo, s: string) {
+jo_quoted :: (o: [] Jo, s: string) #effects(all) {
   jo_byte(o, '"');
   jo_escape_bytes(o, s);
   jo_byte(o, '"');
 }
-jo_escape_bytes :: (o: [] Jo, s: string) {
+jo_escape_bytes :: (o: [] Jo, s: string) #effects(all) {
   hex := "0123456789abcdef";
   for c: s {
     if c == '"' { jo_put(o, "\\\""); }
@@ -506,7 +506,7 @@ jo_escape_bytes :: (o: [] Jo, s: string) {
 // Node at written into o as compact JSON: no whitespace, strings and keys
 // unescaped and escaped again (jo_str's rules), numbers as written. An
 // index that is not a node marks o bad.
-jv_write :: (d: Jv, at: int, o: [] Jo) {
+jv_write :: (d: Jv, at: int, o: [] Jo) #effects(all) {
   k := jv_kind(d, at);
   if k == 0 { o[0].bad = true; return; }
   if k == JV_STRING { jo_value(o); jo_requote(o, jv_raw(d, at)); return; }
@@ -521,7 +521,7 @@ jv_write :: (d: Jv, at: int, o: [] Jo) {
   jo_end(o);
 }
 // Raw string bytes (escaped as they came) written as a quoted string with jo_quoted's escapes.
-jo_requote :: (o: [] Jo, raw: string) {
+jo_requote :: (o: [] Jo, raw: string) #effects(all) {
   jo_byte(o, '"');
   i := 0;
   while i != raw.count {

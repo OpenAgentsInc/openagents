@@ -45,7 +45,7 @@ CS_DECISION_MAX :: 60000000;
 CS_NAME_MAX :: 64;
 
 // Checks precede the implementation. Expected values are worked by hand in chapter 178.
-cs_host :: ()->CsHost {return CsHost.{hash=500,read=2000,fault=8000,zero=4000,page=4096,decision_us=20000};}
+cs_host :: ()->CsHost #effects(all) {return CsHost.{hash=500,read=2000,fault=8000,zero=4000,page=4096,decision_us=20000};}
 CS_SHA_A :: "0000000000000000000000000000000000000000000000000000000000000001";
 CS_SHA_B :: "0000000000000000000000000000000000000000000000000000000000000002";
 CS_STAT_A :: PaStat.{device=66306,inode=11,size=409600000,mtime_ns=1793000000000000000,ctime_ns=1793000000000000000};
@@ -71,7 +71,7 @@ CS_STAT_B :: PaStat.{device=66306,inode=12,size=204800000,mtime_ns=1793000000000
 }
 // Two files: A, 100,000 pages, none cached, no record; B, 50,000 pages, half
 // cached, with the record that admits it.
-cs_two :: (files:[]CsFile,record:[]u8)->int {
+cs_two :: (files:[]CsFile,record:[]u8)->int #effects(all) {
     files[0]=CsFile.{name="a.safetensors",sha=CS_SHA_A,stat=CS_STAT_A};
     n:=pv_record("b.safetensors",CS_SHA_B,CS_STAT_B,record);
     files[1]=CsFile.{name="b.safetensors",sha=CS_SHA_B,stat=CS_STAT_B,record=record[0..<n],cached_pages=25000};
@@ -155,7 +155,7 @@ cs_two :: (files:[]CsFile,record:[]u8)->int {
 // path is verified, mapped, allocated, then warmed golden times; after that
 // only passing golden re-checks keep a replica ready. Symbols 0-3 are those
 // events passing, 4 is a failed warm-up, 5 is a broken report.
-cs_symbol :: (s:int)->CsEvent {if s==4 {return CsEvent.warmed;}if s==5 {return CsEvent.broken;}return cast(CsEvent)cast(u8)s;}
+cs_symbol :: (s:int)->CsEvent #effects(all) {if s==4 {return CsEvent.warmed;}if s==5 {return CsEvent.broken;}return cast(CsEvent)cast(u8)s;}
 #forall "ready exactly after verify, map, allocate and every golden warm-up, in order" g:1..<3,a:0..<6,b:0..<6,c:0..<6,d:0..<6,e:0..<6 {
     seq:=[5]int.[a,b,c,d,e];l:=cs_start(g);
     #assert l.state==CsState.verify && !cs_ready(l);
@@ -211,21 +211,21 @@ CS_ABC :: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
     #assert cs_state_name(CsState.verify)=="verify" && cs_state_name(CsState.failed)=="failed" && cs_status_name(CsStatus.ok)=="ok" && cs_status_name(CsStatus.check)=="check";
 }
 
-cs_up :: (a:int,b:int)->int {return (a+b-1)/b;}
-cs_pages :: (bytes:int,page:int)->int {return cs_up(bytes,page);}
-cs_rate_ok :: (r:int)->bool {return r>=1 && r<=CS_RATE_MAX;}
-cs_host_ok :: (h:CsHost)->bool {
+cs_up :: (a:int,b:int)->int #effects(all) {return (a+b-1)/b;}
+cs_pages :: (bytes:int,page:int)->int #effects(all) {return cs_up(bytes,page);}
+cs_rate_ok :: (r:int)->bool #effects(all) {return r>=1 && r<=CS_RATE_MAX;}
+cs_host_ok :: (h:CsHost)->bool #effects(all) {
     if !cs_rate_ok(h.hash) || !cs_rate_ok(h.read) || !cs_rate_ok(h.fault) || !cs_rate_ok(h.zero) {return false;}
     if h.page!=4096 && h.page!=16384 && h.page!=65536 {return false;}
     return h.decision_us>=1 && h.decision_us<=CS_DECISION_MAX;
 }
-cs_file_ok :: (f:CsFile,page:int)->bool {
+cs_file_ok :: (f:CsFile,page:int)->bool #effects(all) {
     if f.stat.size<1 || f.stat.size>PW_FILE_MAX {return false;}
     return f.cached_pages>=0 && f.cached_pages<=cs_pages(f.stat.size,page);
 }
 // Bytes that must come from disk: the uncached pages, counting the short last
 // page among them while any page is uncached.
-cs_cold :: (f:CsFile,page:int)->int {
+cs_cold :: (f:CsFile,page:int)->int #effects(all) {
     if f.cached_pages==cs_pages(f.stat.size,page) {return 0;}
     return f.stat.size-f.cached_pages*page;
 }
@@ -236,7 +236,7 @@ cs_cold :: (f:CsFile,page:int)->int {
 // reads its cold pages, so mapping finds it cached. Hashing splits across
 // workers by chapter 35's partition; the disk is one queue, so reads add up.
 // A lazy map defers the mapping into the warm-up, which touches every weight.
-cs_plan :: (files:[]CsFile,h:CsHost,arena:int,golden:int,workers:int,eager:bool)->CsPlan #export_c {
+cs_plan :: (files:[]CsFile,h:CsHost,arena:int,golden:int,workers:int,eager:bool)->CsPlan #export_c #effects(all) {
     if !cs_host_ok(h) {return CsPlan.{status=CsStatus.rate};}
     if files.count>CS_FILES_MAX || arena<0 || arena>CS_ARENA_MAX || golden<1 || golden>CS_GOLDEN_MAX {return CsPlan.{status=CsStatus.shape};}
     lanes:=pc_plan(files.count,1,workers);
@@ -262,7 +262,7 @@ cs_plan :: (files:[]CsFile,h:CsHost,arena:int,golden:int,workers:int,eager:bool)
 
 // Phases measured by the host: clock readings at start and at the end of
 // each of the four phases, in microseconds, never decreasing.
-cs_measured :: (t:[]int)->CsPlan #export_c {
+cs_measured :: (t:[]int)->CsPlan #export_c #effects(all) {
     if t.count!=5 || t[0]<0 {return CsPlan.{status=CsStatus.clock};}
     for i:1..<5 {if t[i]<t[i-1] {return CsPlan.{status=CsStatus.clock};}}
     return CsPlan.{status=CsStatus.ok,verify_us=t[1]-t[0],map_us=t[2]-t[1],arena_us=t[3]-t[2],warm_us=t[4]-t[3],total_us=t[4]-t[0]};
@@ -270,16 +270,16 @@ cs_measured :: (t:[]int)->CsPlan #export_c {
 
 // book:begin life
 CS_NEXT :: [4]CsEvent.[CsEvent.verified,CsEvent.mapped,CsEvent.allocated,CsEvent.warmed];
-cs_start :: (golden:int)->CsLife #export_c {
+cs_start :: (golden:int)->CsLife #export_c #effects(all) {
     if golden<1 || golden>CS_GOLDEN_MAX {return CsLife.{state=CsState.failed,why=CsStatus.shape};}
     return CsLife.{state=CsState.verify,golden=golden};
 }
-cs_fail :: (l:CsLife,why:CsStatus)->CsLife {n:=l;n.state=CsState.failed;n.why=why;n.at=l.state;return n;}
+cs_fail :: (l:CsLife,why:CsStatus)->CsLife #effects(all) {n:=l;n.state=CsState.failed;n.why=why;n.at=l.state;return n;}
 // One event: the phase in progress finished, passing (ok) or not. Only the
 // current phase's own event moves a replica forward; a failed check, a
 // broken report or an event out of order fails it for good. Ready needs
 // golden passing warm-ups; a ready replica stays ready through passing re-checks.
-cs_step :: (l:CsLife,e:CsEvent,ok:bool)->CsLife #export_c {
+cs_step :: (l:CsLife,e:CsEvent,ok:bool)->CsLife #export_c #effects(all) {
     if l.state==CsState.failed {return l;}
     if e==CsEvent.broken || (!ok && e==CS_NEXT[cast(int)cs_last(l.state)]) {return cs_fail(l,CsStatus.check);}
     if l.state==CsState.ready {if e==CsEvent.warmed {return l;}return cs_fail(l,CsStatus.order);}
@@ -290,22 +290,22 @@ cs_step :: (l:CsLife,e:CsEvent,ok:bool)->CsLife #export_c {
     return n;
 }
 // The only answer to "may this replica take requests?".
-cs_ready :: (l:CsLife)->bool #export_c {return l.state==CsState.ready;}
+cs_ready :: (l:CsLife)->bool #export_c #effects(all) {return l.state==CsState.ready;}
 // book:end life
 // A ready replica's phase for the next event is the warm-up's.
-cs_last :: (s:CsState)->CsState {if s==CsState.ready {return CsState.warmup;}return s;}
+cs_last :: (s:CsState)->CsState #effects(all) {if s==CsState.ready {return CsState.warmup;}return s;}
 
 // book:begin kernel
-cs_device :: (s:string)->bool {
+cs_device :: (s:string)->bool #effects(all) {
     if s.count<1 || s.count>CS_NAME_MAX {return false;}
     for c:s {if c<=32 || c>=127 {return false;}}
     return true;
 }
-cs_key_ok :: (k:CsKernelKey)->bool {return cs_device(k.device) && pw_hex_digest(k.compiler) && pw_hex_digest(k.source);}
+cs_key_ok :: (k:CsKernelKey)->bool #effects(all) {return cs_device(k.device) && pw_hex_digest(k.compiler) && pw_hex_digest(k.source);}
 // A cached kernel filed under `entry` may serve a compile asking for `want`
 // only if every part of the key is the same and its bytes still hash to the
 // digest recorded when it was compiled.
-cs_kernel :: (entry:CsKernelKey,want:CsKernelKey,binary:[]u8,binary_sha:string)->CsStatus #export_c {
+cs_kernel :: (entry:CsKernelKey,want:CsKernelKey,binary:[]u8,binary_sha:string)->CsStatus #export_c #effects(all) {
     if !cs_key_ok(entry) || !cs_key_ok(want) || !pw_hex_digest(binary_sha) {return CsStatus.shape;}
     if entry.device!=want.device || entry.compiler!=want.compiler || entry.source!=want.source {return CsStatus.stale;}
     if !pw_digest(binary,binary_sha) {return CsStatus.check;}
@@ -319,6 +319,6 @@ cs_kernel :: (entry:CsKernelKey,want:CsKernelKey,binary:[]u8,binary_sha:string)-
 }
 // The native harness's stand-in for a golden decision: it reads every weight
 // byte once and must reproduce the answer pinned for these bytes.
-cs_golden :: (data:[]u8)->int #export_c {s:=0;for i:0..<data.count {s+=cast(int)data[i]*((i&255)+1);}return s;}
-cs_state_name :: (s:CsState)->string {names:=[6]string.["verify","map","arenas","warmup","ready","failed"];return names[cast(int)s];}
-cs_status_name :: (s:CsStatus)->string {names:=[7]string.["ok","shape","rate","clock","order","stale","check"];return names[cast(int)s];}
+cs_golden :: (data:[]u8)->int #export_c #effects(all) {s:=0;for i:0..<data.count {s+=cast(int)data[i]*((i&255)+1);}return s;}
+cs_state_name :: (s:CsState)->string #effects(all) {names:=[6]string.["verify","map","arenas","warmup","ready","failed"];return names[cast(int)s];}
+cs_status_name :: (s:CsStatus)->string #effects(all) {names:=[7]string.["ok","shape","rate","clock","order","stale","check"];return names[cast(int)s];}

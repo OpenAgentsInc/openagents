@@ -31,25 +31,25 @@ QlResult :: struct {status:QlStatus;written:int;}
     #assert r.status==QlStatus.number && r.written==0 && out[0]==-7 && out[1]==-7 && state[0]==4;
     for i:0..<9 {#assert history[i]==f32(i+1);}
 }
-ql_valid :: (s:QlShape)->bool {return qb_valid(cast(u8)s.dtype,s.width,s.hidden,s.delta.epsilon) && pd_valid(s.delta);}
-ql_projection_work :: (s:QlShape)->int {return pd_channels(s.delta)+s.width;}
-ql_layout :: (s:QlShape)->QlLayout {
+ql_valid :: (s:QlShape)->bool #effects(all) {return qb_valid(cast(u8)s.dtype,s.width,s.hidden,s.delta.epsilon) && pd_valid(s.delta);}
+ql_projection_work :: (s:QlShape)->int #effects(all) {return pd_channels(s.delta)+s.width;}
+ql_layout :: (s:QlShape)->QlLayout #effects(all) {
     c:=pd_channels(s.delta);n:=pd_states(s.delta);v:=s.delta.value_heads*s.delta.value_dim;
     p:QlLayout;p.temp=s.width;p.packed=p.temp+ql_projection_work(s);p.history=p.packed+pd_input_count(s.delta);
     p.state=p.history+3*c;p.delta_out=p.state+n;p.delta_work=p.delta_out+v;
     p.mixed=p.delta_work+pd_work_count(s.delta);p.draft=p.mixed+s.width;p.block_work=p.draft+s.width;
     p.total=p.block_work+qb_work_count(s.width,s.hidden);return p;
 }
-ql_work_count :: (s:QlShape)->int {return ql_layout(s).total;}
-ql_weights_valid :: (s:QlShape,w:QlWeights)->bool {
+ql_work_count :: (s:QlShape)->int #effects(all) {return ql_layout(s).total;}
+ql_weights_valid :: (s:QlShape,w:QlWeights)->bool #effects(all) {
     d:=s.width;f:=s.hidden;c:=pd_channels(s.delta);v:=s.delta.value_heads*s.delta.value_dim;h:=s.delta.value_heads;
     if w.input_norm.count!=d || w.post_norm.count!=d || w.conv.count!=4*c || w.a_log.count!=h || w.dt.count!=h || w.delta_norm.count!=s.delta.value_dim {return false;}
     return w.qkv.count==qm_bytes(s.dtype,c,d) && w.z.count==qm_bytes(s.dtype,v,d) && w.a.count==qm_bytes(s.dtype,h,d) && w.b.count==qm_bytes(s.dtype,h,d) && w.mixer_out.count==qm_bytes(s.dtype,d,v) && w.gate.count==qm_bytes(s.dtype,f,d) && w.up.count==qm_bytes(s.dtype,f,d) && w.down.count==qm_bytes(s.dtype,d,f);
 }
-ql_mstatus :: (s:QmStatus)->QlStatus {return cast(QlStatus)cast(u8)s;}
-ql_dstatus :: (s:PdStatus)->QlStatus {return cast(QlStatus)cast(u8)s;}
+ql_mstatus :: (s:QmStatus)->QlStatus #effects(all) {return cast(QlStatus)cast(u8)s;}
+ql_dstatus :: (s:PdStatus)->QlStatus #effects(all) {return cast(QlStatus)cast(u8)s;}
 // book:begin layer
-ql_step :: (s:QlShape,w:QlWeights,x:[]f32,history:[]f32,state:[]f32,out:[]f32,work:[]f32,overlap:bool)->QlResult #export_c {
+ql_step :: (s:QlShape,w:QlWeights,x:[]f32,history:[]f32,state:[]f32,out:[]f32,work:[]f32,overlap:bool)->QlResult #export_c #effects(all) {
     if !ql_valid(s) {return QlResult.{status=QlStatus.shape};}
     d:=s.width;f:=s.hidden;c:=pd_channels(s.delta);n:=pd_states(s.delta);v:=s.delta.value_heads*s.delta.value_dim;h:=s.delta.value_heads;
     if !ql_weights_valid(s,w) || x.count!=d || history.count!=3*c || state.count!=n || out.count<d || work.count<ql_work_count(s) {return QlResult.{status=QlStatus.capacity};}

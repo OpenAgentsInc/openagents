@@ -78,7 +78,7 @@ TR_BAD_ANNEX :: -8;         // an annex that doesn't start with 0x50
 // (BT_NO_CODESEP for none). amounts and spent are every input's spent
 // output. False when the transaction doesn't read or the message refuses.
 taproot_script_sighash_vartime :: (b: [] u8, index: int, amounts: [] int, spent: [] BtScript, hashtype: int,
-                                   script: [] u8, annex: [] u8, codesep: int, out: [] u8) -> bool {
+                                   script: [] u8, annex: [] u8, codesep: int, out: [] u8) -> bool #effects(all) {
   tp := bt_tx_read(b);
   if !tp.ok { return false; }
   leaf: [32] u8;
@@ -88,7 +88,7 @@ taproot_script_sighash_vartime :: (b: [] u8, index: int, amounts: [] int, spent:
 // A tapscript signature: BIP-340 by key itself, not tweaked, since the
 // script names the key it checks, then the hash type as a 65th byte
 // unless it is SIGHASH_DEFAULT. Returns the length, 64 or 65, or 0.
-taproot_script_sign :: (key: [] u8, sighash: [] u8, aux: [] u8, hashtype: int, w: [] SignWork, out: [] u8) -> int {
+taproot_script_sign :: (key: [] u8, sighash: [] u8, aux: [] u8, hashtype: int, w: [] SignWork, out: [] u8) -> int #effects(all) {
   n := ifx hashtype == BT_DEFAULT then 64 else 65;
   if out.count < n || hashtype < 0 || hashtype > 255 { return 0; }
   status := SIGN_REFUSED;
@@ -103,7 +103,7 @@ taproot_script_sign :: (key: [] u8, sighash: [] u8, aux: [] u8, hashtype: int, w
 // bottom first, then the leaf script, the control block, and the annex
 // when there is one. Returns the length, TR_BAD_CONTROL_SIZE,
 // TR_BAD_ANNEX or TR_CAPACITY.
-taproot_script_witness_vartime :: (stack: [] [] u8, script: [] u8, control: [] u8, annex: [] u8, out: [] u8) -> int {
+taproot_script_witness_vartime :: (stack: [] [] u8, script: [] u8, control: [] u8, annex: [] u8, out: [] u8) -> int #effects(all) {
   if control.count < 33 || control.count > TR_CONTROL_MAX || (control.count - 33) % 32 != 0 { return TR_BAD_CONTROL_SIZE; }
   if annex.count > 0 && annex[0] != BT_ANNEX_TAG { return TR_BAD_ANNEX; }
   count := stack.count + 2 + (ifx annex.count > 0 then 1 else 0);
@@ -116,8 +116,8 @@ taproot_script_witness_vartime :: (stack: [] [] u8, script: [] u8, control: [] u
   if annex.count > 0 { at = tr_put(out, at, annex); }
   return at;
 }
-tr_sized :: (item: [] u8) -> int { return tx_compact_size_vartime(item.count) + item.count; }
-tr_put :: (out: [] u8, at: int, item: [] u8) -> int {
+tr_sized :: (item: [] u8) -> int #effects(all) { return tx_compact_size_vartime(item.count) + item.count; }
+tr_put :: (out: [] u8, at: int, item: [] u8) -> int #effects(all) {
   p := tx_compact_write_vartime(out, at, item.count);
   for i: 0..<item.count { out[p + i] = item[i]; }
   return p + item.count;

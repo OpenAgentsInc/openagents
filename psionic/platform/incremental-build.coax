@@ -12,7 +12,7 @@ iab_run :: (args:[]string,out:[]u8,deadline:int)->int {
  err:[65536]u8;r:=proc_run(args,ifx left<180000 then left else 180000,out,err[..]);
  if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);return -1;}return r.out_n;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  args:[1]Args;if !args_load(args[..]) || args_count(args[..])>2 {return 2;}
  if tool_os()!=TOOL_LINUX {tool_errln("incremental ASR is qualified for Linux CUDA only");return 2;}
  dir:=ifx args_count(args[..])>0 then args_at(args[..],0) else "psionic/build/incremental";

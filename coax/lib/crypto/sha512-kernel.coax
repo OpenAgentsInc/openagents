@@ -40,20 +40,20 @@ S512_IV :: [8] u64.[
 // Word arithmetic on u64. A checked build refuses an addition that
 // overflows, so every sum that FIPS 180-4 takes modulo 2^64 says so with
 // add_wrap.
-S512_rotr :: (x: u64, n: int) -> u64 {
+S512_rotr :: (x: u64, n: int) -> u64 #effects(all) {
   if n == 0 { return x; }
   return (x >> n) | (x << (64 - n));
 }
-S512_sum2 :: (a: u64, b: u64) -> u64 { return add_wrap(a, b); }
-S512_sum4 :: (a: u64, b: u64, c: u64, d: u64) -> u64 { return add_wrap(add_wrap(a, b), add_wrap(c, d)); }
-S512_sum5 :: (a: u64, b: u64, c: u64, d: u64, e: u64) -> u64 { return add_wrap(S512_sum4(a, b, c, d), e); }
+S512_sum2 :: (a: u64, b: u64) -> u64 #effects(all) { return add_wrap(a, b); }
+S512_sum4 :: (a: u64, b: u64, c: u64, d: u64) -> u64 #effects(all) { return add_wrap(add_wrap(a, b), add_wrap(c, d)); }
+S512_sum5 :: (a: u64, b: u64, c: u64, d: u64, e: u64) -> u64 #effects(all) { return add_wrap(S512_sum4(a, b, c, d), e); }
 // book:end words
 
 // book:begin compress
 // The 128-byte block at data[at..<at + 128] into the eight hash words h. The
 // caller owns the 80-word message schedule w, and it is erased before
 // return, because HMAC and PBKDF2 pass key bytes through it.
-S512_compress :: (h: [] u64, data: [] u8, at: int, w: [] u64) {
+S512_compress :: (h: [] u64, data: [] u8, at: int, w: [] u64) #effects(all) {
   // The message schedule: 16 big-endian words from the block, then 64 more.
   for i: 0..<16 {
     x: u64 = 0;
@@ -90,21 +90,21 @@ S512_compress :: (h: [] u64, data: [] u8, at: int, w: [] u64) {
 // bit length as a big-endian 128-bit number in the last 16 bytes. It needs
 // one block per 128 input bytes plus one, and one more when the last block
 // has fewer than 17 bytes free (the remainder is 112 to 127).
-S512_blocks :: (n: u64) -> u64 {
+S512_blocks :: (n: u64) -> u64 #effects(all) {
   blocks := n / 128 + 1;
   if n % 128 >= 112 { blocks += 1; }
   return blocks;
 }
 // Write the 0x80 byte and zeros after the `used` input bytes of the last
 // block. Return whether the 16-byte length still fits in this block.
-S512_pad :: (block: [] u8, used: int) -> bool {
+S512_pad :: (block: [] u8, used: int) -> bool #effects(all) {
   block[used] = 0x80;
   for i: used + 1..<128 { block[i] = 0; }
   return used < 112;
 }
 // The bit length of n bytes is 8n, which needs up to 67 bits. The high word
 // is the top 3 bits of n, at most 7; the low word is n shifted left by 3.
-S512_length :: (block: [] u8, n: u64) {
+S512_length :: (block: [] u8, n: u64) #effects(all) {
   block[119] = cast(u8) (n >> 61);
   for i: 112..<119 { block[i] = 0; }
   low := n << 3;
@@ -113,7 +113,7 @@ S512_length :: (block: [] u8, n: u64) {
 // The last one or two blocks. block holds the `used` bytes (0 to 127) that
 // didn't fill a block, and n is the whole input's byte count. The block is
 // erased afterwards.
-S512_finish :: (h: [] u64, block: [] u8, used: int, n: u64, w: [] u64) {
+S512_finish :: (h: [] u64, block: [] u8, used: int, n: u64, w: [] u64) #effects(all) {
   if !S512_pad(block, used) {
     S512_compress(h, block, 0, w);
     for i: 0..<128 { block[i] = 0; }
@@ -127,7 +127,7 @@ S512_finish :: (h: [] u64, block: [] u8, used: int, n: u64, w: [] u64) {
 // book:begin hash
 // The digest of a whole byte view. Full blocks are compressed where they are;
 // the rest is copied into one local block, which S512_finish pads and erases.
-S512_hash :: (input: [] u8) -> S512_Digest #export_c {
+S512_hash :: (input: [] u8) -> S512_Digest #export_c #effects(all) {
   if input.count < 0 { return S512_Digest.{error = 1}; } // mutant: equivalent (every reader tests error != 0)
   h := S512_IV; w: [80] u64;
   full := input.count / 128;
@@ -141,13 +141,13 @@ S512_hash :: (input: [] u8) -> S512_Digest #export_c {
 // book:end hash
 
 // The digest as 128 lowercase hex digits, into out[0..<128].
-S512_hex :: (digest: S512_Digest, out: [] u8) -> bool {
+S512_hex :: (digest: S512_Digest, out: [] u8) -> bool #effects(all) {
   if digest.error != 0 || out.count < 128 { return false; }
   digits := "0123456789abcdef";
   for i: 0..<8 { for j: 0..<16 { out[i * 16 + j] = digits[cast(int) ((digest.words[i] >> ((15 - j) * 4)) & 15)]; } }
   return true;
 }
-S512_hex_of :: (input: [] u8, want: string) -> bool {
+S512_hex_of :: (input: [] u8, want: string) -> bool #effects(all) {
   text: [128] u8;
   return S512_hex(S512_hash(input), text[..]) && cast(string) text[..] == want;
 }

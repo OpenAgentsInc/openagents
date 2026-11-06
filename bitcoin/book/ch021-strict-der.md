@@ -166,7 +166,7 @@ dr_integer_vartime :: (sig: [] u8, at: int, first: int) -> int {
 // one sighash type byte. Returns DER_OK or the code of the first rule that
 // refuses, testing the rules in Core's order. It does not read r or s as
 // numbers: a value of 0 or at least n is well encoded.
-der_check_vartime :: (sig: [] u8) -> int #export_c {
+der_check_vartime :: (sig: [] u8) -> int #export_c #effects(all) {
   size := sig.count;
   if size < 9 { return DER_TOO_SHORT; }
   if size > 73 { return DER_TOO_LONG; }
@@ -238,7 +238,7 @@ first remaining byte has the top bit set, which is the only encoding rules
 ```jai
 // The DER encoding of a compact r || s, into out (72 bytes are always
 // enough); its length, or -1 when r or s is not in [1, n-1] or out is short.
-ecdsa_der :: (sig:[]u8,out:[]u8)->int #export_c {
+ecdsa_der :: (sig:[]u8,out:[]u8)->int #export_c #effects(all) {
   if sig.count!=64 || out.count<72 {return -1;}
   r:=sc_load(sig[0..<32]);s:=sc_load(sig[32..<64]);
   if sc_is_zero(r.value) || sc_is_zero(s.value) {return -1;}    // sc_load zeroes a value at least n
@@ -277,14 +277,14 @@ Two policy checks follow BIP-66 in `CheckSignatureEncoding`:
 // without the sighash byte, is at most (n-1)/2. A value of s at least n
 // reads as zero (the whole signature does), so it counts as low; the
 // verifier refuses it.
-der_low_s_vartime :: (sig: [] u8) -> bool #export_c {
+der_low_s_vartime :: (sig: [] u8) -> bool #export_c #effects(all) {
   compact: [64] u8;
   if sig.count == 0 || !der_read_lax_vartime(sig[0..<sig.count-1], compact[..]) { return false; }
   return !ev_high_s_vartime(sc_load(compact[32..<64]).value);
 }
 // IsDefinedHashtypeSignature: the last byte, without ANYONECANPAY (0x80),
 // is SIGHASH_ALL (1), SIGHASH_NONE (2) or SIGHASH_SINGLE (3).
-der_hashtype_defined_vartime :: (sig: [] u8) -> bool #export_c {
+der_hashtype_defined_vartime :: (sig: [] u8) -> bool #export_c #effects(all) {
   if sig.count == 0 { return false; }
   base := cast(int) sig[sig.count-1] & 0x7f;
   return base >= 1 && base <= 3;
@@ -322,7 +322,7 @@ they verify it:
 // verify a signature, under the script flags. An empty signature passes:
 // script uses it to fail a check on purpose. Any of the three flags applies
 // BIP-66; LOW_S adds the low-S rule and STRICTENC the sighash type.
-der_signature_check_vartime :: (sig: [] u8, flags: int) -> int #export_c {
+der_signature_check_vartime :: (sig: [] u8, flags: int) -> int #export_c #effects(all) {
   if sig.count == 0 { return SIG_OK; }
   if (flags & (SCRIPT_DERSIG | SCRIPT_LOW_S | SCRIPT_STRICTENC)) != 0 && der_check_vartime(sig) != DER_OK { return SIG_DER; }
   if (flags & SCRIPT_LOW_S) != 0 && !der_low_s_vartime(sig) { return SIG_HIGH_S; }
@@ -334,7 +334,7 @@ der_signature_check_vartime :: (sig: [] u8, flags: int) -> int #export_c {
 // the rest with the lax parser, and verify with either half of s, as Core
 // does after secp256k1_ecdsa_signature_normalize. The key is SEC 1
 // (chapter 17); hybrid keys (0x06, 0x07) refuse here and are chapter 36's.
-der_checksig_vartime :: (hash: [] u8, public_key: [] u8, sig: [] u8) -> bool #export_c {
+der_checksig_vartime :: (hash: [] u8, public_key: [] u8, sig: [] u8) -> bool #export_c #effects(all) {
   compact: [64] u8;
   if sig.count == 0 || !der_read_lax_vartime(sig[0..<sig.count-1], compact[..]) { return false; }
   return ecdsa_verify_vartime(hash, public_key, compact[..], false);
@@ -396,7 +396,7 @@ dl_copy_vartime :: (der: [] u8, start: int, length: int, out: [] u8) -> bool {
 // refuses only a structure it cannot follow. A value of more than 32 bytes
 // after its zeros, or at least n, makes the whole r || s zero, which no
 // verifier accepts. out (64 bytes) is written only when the result is true.
-der_read_lax_vartime :: (der: [] u8, out: [] u8) -> bool #export_c {
+der_read_lax_vartime :: (der: [] u8, out: [] u8) -> bool #export_c #effects(all) {
   if out.count != 64 || der.count == 0 || der[0] != 0x30 || der.count == 1 { return false; }
   pos := 2;
   if (der[1] & 0x80) != 0 { pos += cast(int) der[1] - 0x80; }          // long form: skip its bytes

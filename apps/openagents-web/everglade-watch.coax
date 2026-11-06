@@ -38,7 +38,9 @@ POP_WORDS :: [11] string.["DOWN", "HELD", "ROOTED", "RESTRAINED", "STUNNED", "PR
 // What each one had last frame (hit points and temporary ones), so any blow shows its number.
 WatchSeen :: struct { life: int; on: bool; }
 // What the page keeps of the watch for drawing it.
+#load "everglade-handles.coax";
 WatchView :: struct {
+  seat_owner: [16] Handle(EvergladeSeat);
   // the new guards: where they stand, the way they face, walking, their head (for a shout)
   // (one struct each: a [6] f32 here would be the same C array type as the river library's, in one translation unit)
   at: [WATCH_NEW] NewGuard;
@@ -79,6 +81,16 @@ WatchView :: struct {
   // each person's save the room's rules rolled against a seat's ability this step (the room server's:
   // everglade_room_folk_save), 0 none: that ability's copy takes it (ab_rules_save, #12874)
   rules_save: [WATCH_ACTORS] int;
+}
+// The room transports process-local lifetime words; world policy resolves them.
+everglade_room_seat_owner :: (s:[]Everglade,seat:int,word:u64) #export_c #effects(all) {
+  if seat<0 || seat>=16 {return;}
+  h:=Handle(EvergladeSeat).{value=word};
+  next:=ifx handle_present(h) && handle_generation(h)>0 && handle_slot(h)==seat then h else Handle(EvergladeSeat).{};
+  if handle_present(s[0].wv.seat_owner[seat]) && s[0].wv.seat_owner[seat]!=next {
+    for ability:0..<AB_N {everglade_room_ability_mode(s,seat,ability,0,0,0,0,false,0,0,0,0);}
+  }
+  s[0].wv.seat_owner[seat]=next;
 }
 
 watch_cap :: (group: int) -> int {
@@ -203,17 +215,17 @@ watch_end_effects :: (s: [] Everglade) {
 // Ray of Frost's slow on your pace, and Hold Person's hold (you can't move), for the face.
 // In a room the server's (your COND bits: net_cond); on the room server, the seat being stepped's
 // (everglade_room_seat: the watch's own and the rules' conditions on them).
-everglade_slow :: (s: [] Everglade) -> f32 #export_c {
+everglade_slow :: (s: [] Everglade) -> f32 #export_c #effects(all) {
   pace := ifx s[0].wv.server then (ifx s[0].wv.started then watch_pace(watch_w(s)) else 1.0f32)
           else (ifx (st_cond(s, ST_YOU) & WC_SLOWED) != 0 then f32(FROST_PACE) else 1.0f32);   // the status state (everglade-status.coax)
   return pace * ci_pace(s);   // and a beast's Speed (everglade-circle.coax)
 }
-everglade_held :: (s: [] Everglade) -> bool #export_c {
+everglade_held :: (s: [] Everglade) -> bool #export_c #effects(all) {
   if s[0].wv.server { return (watch_held(watch_w(s)) || (s[0].wv.room_cond[clamp_w(s[0].wt[0].me, 0, WATCH_YOUS - 1)] & WC_STOPPED) != 0); }
   return (st_cond(s, ST_YOU) & WC_STOPPED) != 0;   // the status state (everglade-status.coax): the room's, or the watch's offline
 }
 // A blast's throw for your living body, taken once by the face (everglade-face.c adds it to your velocity).
-everglade_knock :: (s: [] Everglade) -> Point #export_c {
+everglade_knock :: (s: [] Everglade) -> Point #export_c #effects(all) {
   if s[0].wv.server && s[0].wv.started {
     // the room server's seat being stepped: the watch's throw of them, once
     y := watch_you(s[0].wt[..]);
@@ -728,7 +740,7 @@ watch_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int
   for q: 0..<clamp_w(s[0].wv.name_n, 0, LABELS_MAX) { placed[placed_n] = s[0].wv.names[q]; placed_n += 1; }
   for i: 0..<WATCH_ACTORS {
     a := w[0].actors[i];
-    if a.shout < 0 || !s[0].wv.head_on[i] { continue; }
+    if a.shout < 0 || !handle_present(a.shout_owner) || a.shout_owner!=a.reference || !s[0].wv.head_on[i] { continue; }
     line := ifx a.shout == 100 then BRAVE_SHOUT else ifx a.shout == UP_SHOUT then WATCH_UP_SHOUT else ifx watch_is_guard(i) then WATCH_SHOUT[a.shout % WATCH_SHOUTS] else FOLK_SHOUT[a.shout % FOLK_SHOUTS];
     sc := on_screen(u, add(s[0].wv.heads[i], v3(0, 0.55, 0)), s[0].width, s[0].height);
     if !sc.ok { continue; }
@@ -848,7 +860,7 @@ EG_ROOM_HEAR :: 60.0;          // m a crime carries (the bolt's: everglade-spell
 // One tick of the town, dt s, the shared clock at `world` s. seats: EG_ROOM_SEAT_FLOATS for each of n.
 // took[p]: the Hit Points the watch's blows took from seat p this tick (for the room's rules), and
 // took[WATCH_YOUS + p] who dealt them: the nearest of the town hunting p (a watch actor, -1 none).
-everglade_room_town :: (s: [] Everglade, dt: f32, world: f64, seats: [] f32, n: int, took: [] f32) #export_c {
+everglade_room_town :: (s: [] Everglade, dt: f32, world: f64, seats: [] f32, n: int, took: [] f32) #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   if !s[0].wv.started { watch_page_start(s); for p: 0..<WATCH_YOUS { s[0].wv.room_talk[p] = -1; } }   // nobody talks yet
   w := watch_w(s);
@@ -926,7 +938,7 @@ everglade_room_town :: (s: [] Everglade, dt: f32, world: f64, seats: [] f32, n: 
 }
 // The town's gates for the room's doors row (its FORM): bit 0 shut, then each leaf burnt through and
 // alight (everglade-fire.coax fi_gates_bits).
-everglade_room_gates :: (s: [] Everglade) -> int #export_c { return fi_gates_bits(s); }
+everglade_room_gates :: (s: [] Everglade) -> int #export_c #effects(all) { return fi_gates_bits(s); }
 // The live seat nearest (x, z), or -1.
 eg_room_nearest :: (s: [] Everglade, x: f32, z: f32, n: int) -> int {
   best := -1; bd := 1000000000.0f32;
@@ -939,7 +951,7 @@ eg_room_nearest :: (s: [] Everglade, x: f32, z: f32, n: int) -> int {
 }
 // The people for the room's rules: E5R_FOLK_FLOATS each (here, x, z, Hit Points, Temporary, most, AC,
 // stat block). How many.
-everglade_room_people :: (s: [] Everglade, out: [] f32) -> int #export_c {
+everglade_room_people :: (s: [] Everglade, out: [] f32) -> int #export_c #effects(all) {
   if !s[0].started || !s[0].wv.started { return 0; }
   w := watch_w(s);
   n := 0;
@@ -969,7 +981,7 @@ watch_block_of :: (name: string) -> int {
 }
 // Person i's Hit Points as the room's rules have them now: harm lands as the town's own does (knocked
 // down, or dead), healing raises them. `by`: the seat that harmed them (-1 none), whom they turn on.
-everglade_room_folk_hp :: (s: [] Everglade, i: int, hp: int, temp: int, by: int) #export_c {
+everglade_room_folk_hp :: (s: [] Everglade, i: int, hp: int, temp: int, by: int) #export_c #effects(all) {
   if !s[0].wv.started || i < 0 || i >= WATCH_ACTORS { return; }
   w := watch_w(s);
   if !watch_here(w, i) { return; }
@@ -985,18 +997,18 @@ everglade_room_folk_hp :: (s: [] Everglade, i: int, hp: int, temp: int, by: int)
   w[0].me = me;
 }
 // Person i's conditions as the room's rules have them now (WC_*, the rules' RS_* numbers).
-everglade_room_folk_cond :: (s: [] Everglade, i: int, cond: int) #export_c {
+everglade_room_folk_cond :: (s: [] Everglade, i: int, cond: int) #export_c #effects(all) {
   if i < 0 || i >= WATCH_ACTORS { return; }
   s[0].wv.rules_on = true; s[0].wv.rules_cond[i] = cond;
 }
 // Person i's save as the room's rules rolled it against seat `seat`'s ability `ab` (AB_*), this step:
 // the push of that seat's copy of it follows the save rather than rolling one of its own (#12874).
-everglade_room_folk_save :: (s: [] Everglade, i: int, ab: int, seat: int, saved: bool) #export_c {
+everglade_room_folk_save :: (s: [] Everglade, i: int, ab: int, seat: int, saved: bool) #export_c #effects(all) {
   if i < 0 || i >= WATCH_ACTORS || ab < 0 || seat < 0 || seat >= WATCH_YOUS { return; }
   s[0].wv.rules_save[i] = 1 + (ab * WATCH_YOUS + seat) * 2 + (ifx saved then 1 else 0);
 }
 // Seat `by` harmed someone of the town at (x, z): a crime, heard EG_ROOM_HEAR m. How many guards turned.
-everglade_room_crime :: (s: [] Everglade, by: int, x: f32, z: f32) -> int #export_c {
+everglade_room_crime :: (s: [] Everglade, by: int, x: f32, z: f32) -> int #export_c #effects(all) {
   if !s[0].wv.started || by < 0 || by >= WATCH_YOUS || !s[0].wv.room_live[by] { return 0; }
   w := watch_w(s);
   me := w[0].me;
@@ -1009,7 +1021,7 @@ everglade_room_crime :: (s: [] Everglade, by: int, x: f32, z: f32) -> int #expor
 // spell as it winds up: CASTING its seconds into it (-1 none), KIND (MS_*), FOE the seat it is for; then RANK (a responder's RANK_* + 1,
 // the stars' roster: verse/everglade/watch.coax LADDER; 0 the town's own) and MAX, their most Hit Points. On
 // their day CLIP is 1 walking, 0 standing; off it, the watch's clip. SHOWN 0: indoors, taken away or not called in.
-everglade_room_view :: (s: [] Everglade, i: int, out: [] f32) -> bool #export_c {
+everglade_room_view :: (s: [] Everglade, i: int, out: [] f32) -> bool #export_c #effects(all) {
   if !s[0].wv.started || i < 0 || i >= WATCH_ACTORS || out.count < EG_ROOM_VIEW_FLOATS { return false; }
   w := watch_w(s);
   a := w[0].actors[i];
@@ -1028,7 +1040,7 @@ everglade_room_view :: (s: [] Everglade, i: int, out: [] f32) -> bool #export_c 
 }
 // Seat p comes back WANTED at `level` (1 to 5): the level the room saved for its player (coax/web/room/
 // room-vitals.coax rv_join, #12794), laid on once the town has met the seat.
-everglade_room_seed_wanted :: (s: [] Everglade, p: int, level: int) #export_c {
+everglade_room_seed_wanted :: (s: [] Everglade, p: int, level: int) #export_c #effects(all) {
   if !s[0].wv.started || p < 0 || p >= WATCH_YOUS || !s[0].wv.room_live[p] || level <= 0 { return; }
   w := watch_w(s);
   me := w[0].me;
@@ -1041,7 +1053,7 @@ everglade_room_seed_wanted :: (s: [] Everglade, p: int, level: int) #export_c {
 }
 // The next spell of the watch's that left its caster's hands since the last asked (EG_ROOM_MISSILE_FLOATS
 // into out), marked told; false when there is none. The room tells the pages (e wm), which draw its flight.
-everglade_room_missile :: (s: [] Everglade, out: [] f32) -> bool #export_c {
+everglade_room_missile :: (s: [] Everglade, out: [] f32) -> bool #export_c #effects(all) {
   if !s[0].wv.started || out.count < EG_ROOM_MISSILE_FLOATS { return false; }
   w := watch_w(s);
   for k: 0..<MISSILES {
@@ -1056,7 +1068,7 @@ everglade_room_missile :: (s: [] Everglade, out: [] f32) -> bool #export_c {
   return false;
 }
 // Seat p's WANTED level (0 not wanted).
-everglade_room_wanted :: (s: [] Everglade, p: int) -> int #export_c {
+everglade_room_wanted :: (s: [] Everglade, p: int) -> int #export_c #effects(all) {
   if !s[0].wv.started || p < 0 || p >= WATCH_YOUS { return 0; }
   y := s[0].wt[0].yous[p];
   // a level its heat has reached before the town's next step raises it (a seat just seeded) is its level
@@ -1116,6 +1128,8 @@ watch_net_frame :: (s: [] Everglade) {
     // a responder of the stars' roster as the server says: its rank (its look and stat block) and its most HP
     if watch_is_rein(i) && f.rank > 0 && a[0].rank != f.rank - 1 { a[0].rank = clamp_w(f.rank - 1, 0, RANKS - 1); a[0].ready = false; }
     if !a[0].ready { watch_revive(w, i); }
+    if a[0].reference!=f.reference {a[0].shout= -1;a[0].shout_t=0;}
+    a[0].reference=f.reference;
     if f.max > 0 { a[0].max = f.max; }
     a[0].homed = true;
     a[0].x = f.x; a[0].z = f.z; a[0].yaw = f.yaw; a[0].hp = f.hp;
@@ -1146,7 +1160,8 @@ watch_net_shouts :: (s: [] Everglade, dt: f32) {
     a := w[0].actors[i..<i + 1];
     if a[0].shout < 0 { continue; }
     a[0].shout_t += t;
-    gone := !watch_hurtable(i) || !net_folk(s, i).ok;
+    speaker:=net_folk(s,i);
+    gone := !watch_hurtable(i) || !speaker.ok || !handle_present(a[0].shout_owner) || a[0].shout_owner!=speaker.reference;
     quiet := a[0].mode == WM_CALM || a[0].mode == WM_DEAD || a[0].mode == WM_DOWN;
     if gone || quiet || a[0].shout_t > f32(SHOUT_FOR) { a[0].shout = -1; a[0].shout_t = 0; }
   }
@@ -1167,6 +1182,19 @@ watch_net_shouts :: (s: [] Everglade, dt: f32) {
   name := [1] Box.[Box.{x0 = 90, y0 = 190, x1 = 170, y1 = 212}];
   b := shout_box(name[..], 100, 200, 80, 8);
   #assert b.y1 <= name[0].y0;
+}
+#test "shout handles: a replacement in the same replicated slot cannot inherit the old speaker's line" {
+  s:[1]Everglade;n:[1]EgNet;s[0].net=n[..];n[0].state=NET_OPEN;n[0].seat=0;
+  g:=EG_SPOTS;k:=net_ent(n[..],NET_FOLK_ID+g,true);
+  n[0].ents[k].hp=10;n[0].ents[k].shown.f=WM_CHASE;
+  original:=net_folk(s[..],g).reference;
+  w:=watch_w(s[..]);w[0].actors[g].mode=WM_CHASE;w[0].actors[g].shout=0;
+  w[0].actors[g].reference=original;w[0].actors[g].shout_owner=original;
+  watch_net_shouts(s[..],0.1);#assert w[0].actors[g].shout==0;
+  n[0].ents[k].live=false;next:=net_ent(n[..],NET_FOLK_ID+g,true);
+  n[0].ents[next].hp=10;n[0].ents[next].shown.f=WM_CHASE;
+  #assert next==k && net_folk(s[..],g).reference!=original;
+  watch_net_shouts(s[..],0.1);#assert w[0].actors[g].shout== -1;
 }
 
 // ---- the room server's town breaking (GitHub #12713): the strikes of Everglade's own four spells
@@ -1197,7 +1225,7 @@ EG_ROOM_EV_FLOATS :: 5;   // KIND PIECE A B C: KIND 1 a break (A B C its throw, 
 }
 
 // The server's town gets its pieces: the storage for them, and the pack's catalog (their bounds).
-everglade_room_spells_start :: (s: [] Everglade, dm: [] DemoWorld, catalog: string) #export_c {
+everglade_room_spells_start :: (s: [] Everglade, dm: [] DemoWorld, catalog: string) #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   s[0].sp.on = true; s[0].wv.net = true;
   eg_ra_server_start(s);
@@ -1217,7 +1245,7 @@ eg_room_known :: (s: [] Everglade) {
 // A cast of bar slot `slot` (one of the four) from `from` at `at`, from the seed every page plays it from.
 // The room hands it over when the caster's cast bar is done (coax/web/room/room-casts.coax rc_release:
 // a bar stopped before then never strikes, #12790), so it falls at the next step (eg_ra_later).
-everglade_room_strike :: (s: [] Everglade, by: int, slot: int, fx: f32, fy: f32, fz: f32, ax: f32, ay: f32, az: f32, seed: int) #export_c {
+everglade_room_strike :: (s: [] Everglade, by: int, slot: int, fx: f32, fy: f32, fz: f32, ax: f32, ay: f32, az: f32, seed: int) #export_c #effects(all) {
   source:=ifx by>=0&&by<EFFECT_SEATS then by else EFFECT_HOUSE;
   ignored_effect:=everglade_room_strike_try(s,source,by,slot,fx,fy,fz,ax,ay,az,seed);
 }
@@ -1236,7 +1264,7 @@ eg_room_repair :: (s: [] Everglade, from: Point, at: Point) {
 // Sparse forest record q for the host's ordinary entity table. Zero is the planted default.
 // Identity, base x, extra lift, base z, mode, tilt x/z, break, rest, soot, bare, frost, burning,
 // starter, age and lifetime. The host only copies this record to rm_eg_tree.
-everglade_room_tree :: (s: [] Everglade, q: int, out: [] f32) -> bool #export_c {
+everglade_room_tree :: (s: [] Everglade, q: int, out: [] f32) -> bool #export_c #effects(all) {
   if !sp_on(s) || q < 1 || q >= TF_POOL || out.count < FOREST_FLOATS { return false; }
   v := tf_of(s); t := v[0].owner[q] - 1;
   if t < 0 || t >= s[0].tree_n { return false; }
@@ -1267,8 +1295,8 @@ everglade_room_tree :: (s: [] Everglade, q: int, out: [] f32) -> bool #export_c 
   tf_restore(g[..]); #assert !everglade_room_tree(g[..], k, out[..]);
 }
 // The town's pieces, and whether piece i stands whole and not alight (a Repair's, for the host).
-everglade_room_pieces :: (s: [] Everglade) -> int #export_c { return ifx sp_on(s) then sp_dm(s)[0].n else 0; }
-everglade_room_piece_up :: (s: [] Everglade, i: int) -> bool #export_c {
+everglade_room_pieces :: (s: [] Everglade) -> int #export_c #effects(all) { return ifx sp_on(s) then sp_dm(s)[0].n else 0; }
+everglade_room_piece_up :: (s: [] Everglade, i: int) -> bool #export_c #effects(all) {
   if !sp_on(s) || i < 0 || i >= sp_dm(s)[0].n { return false; }
   return sp_dm(s)[0].pieces[i].state == DP_STANDING && !fi_burning(s, i);
 }
@@ -1283,7 +1311,7 @@ eg_room_release :: (s: [] Everglade, by: int, slot: int, fx: f32, fy: f32, fz: f
 }
 // The server's town for dt: the strikes land, fire burns and spreads, the walls open where pieces broke;
 // then what changed for the pages (everglade_room_event). How many events.
-everglade_room_spells :: (s: [] Everglade, dt: f32) -> int #export_c {
+everglade_room_spells :: (s: [] Everglade, dt: f32) -> int #export_c #effects(all) {
   s[0].wv.room_ev_n = 0;
   if !sp_on(s) { return 0; }
   if !s[0].wv.room_known { eg_room_known(s); }
@@ -1359,7 +1387,7 @@ eg_room_put :: (s: [] Everglade, kind: int, i: int, a: f32, b: f32, c: f32) {
   s[0].wv.room_ev_n = q + 1;
 }
 // Event q (EG_ROOM_EV_FLOATS), and where its piece stands (x, z) after them.
-everglade_room_event :: (s: [] Everglade, q: int, out: [] f32) -> bool #export_c {
+everglade_room_event :: (s: [] Everglade, q: int, out: [] f32) -> bool #export_c #effects(all) {
   if q < 0 || q >= s[0].wv.room_ev_n || out.count < EG_ROOM_EV_FLOATS + 2 { return false; }
   for k: 0..<EG_ROOM_EV_FLOATS { out[k] = s[0].wv.room_ev[q * EG_ROOM_EV_FLOATS + k]; }
   // a Repair's (3: at A B C), a placed thing's (4, 5: at B C), else a piece's
@@ -1370,7 +1398,7 @@ everglade_room_event :: (s: [] Everglade, q: int, out: [] f32) -> bool #export_c
   return true;
 }
 // R: every piece stands again and the fires go out, and the fallen of the town stand up (watch_restore).
-everglade_room_rebuild :: (s: [] Everglade) #export_c {
+everglade_room_rebuild :: (s: [] Everglade) #export_c #effects(all) {
   if sp_on(s) { _ := sp_restore(s, -1); eg_room_known(s); }
   if s[0].wv.started { _ := watch_restore(watch_w(s)); }
 }
@@ -1378,7 +1406,7 @@ everglade_room_rebuild :: (s: [] Everglade) #export_c {
 EG_TALK_LET_GO :: 8.0;    // m: a seat this far from who it talks to has let them go
 // Seat p talks to townsperson i (-1: stops talking), standing at (x, z): false when they are not there
 // or too far (TALK_NEAR and a metre and a half the page's view of you may be off).
-everglade_room_talk :: (s: [] Everglade, p: int, i: int, x: f32, z: f32) -> bool #export_c {
+everglade_room_talk :: (s: [] Everglade, p: int, i: int, x: f32, z: f32) -> bool #export_c #effects(all) {
   if p < 0 || p >= WATCH_YOUS { return false; }
   if i < 0 { s[0].wv.room_talk[p] = -1; return true; }
   if i >= EG_SPOTS || eg_gone(s[0].ev.edits, i) || EG_SPOT_CAT[i] { return false; }
@@ -1388,7 +1416,7 @@ everglade_room_talk :: (s: [] Everglade, p: int, i: int, x: f32, z: f32) -> bool
   s[0].wv.room_talk[p] = i;
   return true;
 }
-everglade_room_fresh :: (s: [] Everglade) #export_c {
+everglade_room_fresh :: (s: [] Everglade) #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   if s[0].wv.started { watch_start(watch_w(s), s[0].heights[..]); }
   for p: 0..<WATCH_YOUS { s[0].wv.room_live[p] = false; s[0].wv.room_dead[p] = false; s[0].wv.room_talk[p] = -1; }
@@ -1402,29 +1430,29 @@ everglade_room_fresh :: (s: [] Everglade) #export_c {
 }
 // The room server steps seat p's movement next (room-world.c world_step): the conditions, the slow and
 // the throw everglade_move_world reads are theirs.
-everglade_room_seat :: (s: [] Everglade, p: int) #export_c { s[0].wt[0].me = clamp_w(p, 0, WATCH_YOUS - 1); }
+everglade_room_seat :: (s: [] Everglade, p: int) #export_c #effects(all) { s[0].wt[0].me = clamp_w(p, 0, WATCH_YOUS - 1); }
 // Seat p held by the watch's Hold Person (a scripted hold: oa-room room-control.coax "hold", #12886):
 // HOLD_FOR seconds and its saves already made, so it ends then in every room it is laid in.
-everglade_room_hold :: (s: [] Everglade, p: int) #export_c {
+everglade_room_hold :: (s: [] Everglade, p: int) #export_c #effects(all) {
   if !s[0].wv.started || p < 0 || p >= WATCH_YOUS || s[0].wt[0].yous[p].dead { return; }
   s[0].wt[0].yous[p].held_t = f32(HOLD_FOR); s[0].wt[0].yous[p].held_saves = HOLD_SAVES;
 }
 // The world's dice, its spells' (the saves its copies of the seats' abilities roll) and its watch's:
 // fixed (each die on half its faces, verse/rules/srd5.coax SrdDice.fixed) while the room's are, a
 // local room told "dice fixed" (oa-room room-control.coax), or not.
-everglade_room_dice :: (s: [] Everglade, fixed: bool) #export_c {
+everglade_room_dice :: (s: [] Everglade, fixed: bool) #export_c #effects(all) {
   s[0].sp.dice[0].fixed = fixed; s[0].wt[0].dice[0].fixed = fixed;
 }
 // Seat p's conditions from the watch (WC_*): Hold Person's hold, Ray of Frost's slow.
 // Seat p's watch effect's seconds left, by its cause (everglade-wire.coax WE_*: Hold Person, Earthbind,
 // Ray of Frost); 0 when it holds none (the room's WK_EFFECT rows, room-everglade.coax).
-everglade_room_cond_left :: (s: [] Everglade, p: int, cause: int) -> f32 #export_c {
+everglade_room_cond_left :: (s: [] Everglade, p: int, cause: int) -> f32 #export_c #effects(all) {
   if !s[0].wv.started || p < 0 || p >= WATCH_YOUS { return 0; }
   y := s[0].wt[0].yous[p];
   if y.dead { return 0; }
   return ifx cause == WE_HOLD_PERSON then y.held_t else ifx cause == WE_EARTHBIND then y.bound_t else ifx cause == WE_RAY_OF_FROST then y.slow_t else 0;
 }
-everglade_room_cond :: (s: [] Everglade, p: int) -> int #export_c {
+everglade_room_cond :: (s: [] Everglade, p: int) -> int #export_c #effects(all) {
   if !s[0].wv.started || p < 0 || p >= WATCH_YOUS { return 0; }
   y := s[0].wt[0].yous[p];
   if y.dead { return 0; }

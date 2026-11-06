@@ -4,14 +4,14 @@
 #load "native-gpu-reference.coax";
 #authority;
 #load "native-gpu-parity-checks.coax";
-np_text :: (d:Jv,node:int,want:string)->bool {b:[256]u8;n:=jv_str(d,node,b[..]);return n==want.count && cast(string)b[0..<n]==want;}
+np_text :: (d:Jv,node:int,want:string)->bool #effects(all) {b:[256]u8;n:=jv_str(d,node,b[..]);return n==want.count && cast(string)b[0..<n]==want;}
 NP_MISSING :: -9223372036854775807;
-np_int :: (d:Jv,node:int)->int {return jv_int(d,node,NP_MISSING);}
-np_shader :: (profile:int,variant:int,index:int)->string {
+np_int :: (d:Jv,node:int)->int #effects(all) {return jv_int(d,node,NP_MISSING);}
+np_shader :: (profile:int,variant:int,index:int)->string #effects(all) {
   if profile==1 {return ifx index==0 then "helper.spv" else "range.spv";}
   names:=[4]string.["filtered.spv",ifx variant==1 then "fault.spv" else "invalid.spv","array.spv",ifx variant==2 then "fault-array.spv" else "invalid-array.spv"];return names[index];
 }
-np_admit :: (profile:int,variant:int,status:int,d:Jv,raw:[]u8,legacy:string,legacy_err:string,hashes:[]string)->bool {
+np_admit :: (profile:int,variant:int,status:int,d:Jv,raw:[]u8,legacy:string,legacy_err:string,hashes:[]string)->bool #effects(all) {
   variant_name:=ifx variant==0 then "normal" else ifx variant==1 then "fault" else ifx variant==2 then "array-fault" else "";
   if !np_text(d,rtq_member(d,0,"schema"),"aethyr.native-gpu-worker.v1") || !np_text(d,rtq_member(d,0,"profile"),ifx profile==0 then "sampling" else "helper") || !np_text(d,rtq_member(d,0,"variant"),variant_name) {return false;}
   rows:=rtq_member(d,0,"rows");observations:[1]NVObservations;

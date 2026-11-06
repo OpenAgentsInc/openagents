@@ -1,0 +1,5 @@
+// expect: E0941
+wall :: () -> int #effects(foreign, clock) #foreign;
+hidden :: () -> int { return wall(); }
+rule :: () -> int #effects(computes) { return hidden(); }
+main :: () { value := rule(); }

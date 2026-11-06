@@ -7,10 +7,10 @@ APW_PI :: 3.14159265358979323846;
 APW_WORDS :: 20480; // 320 rational phases,64 taps (22050/48000 =147/320)
 AudioWavPlan :: struct {valid:bool;channels:int;rate:int;frames:int;output_frames:int;samples:int;}
 AudioWavFilter :: struct {ready:bool;}
-apw_u16 :: (b:[]u8,at:int)->int {return int(b[at])+(int(b[at+1])<<8);}
-apw_u32 :: (b:[]u8,at:int)->int {return apw_u16(b,at)+(apw_u16(b,at+2)<<16);}
-apw_test_word :: (b:[]u8,at:int,n:int) {for i:0..<4 {b[at+i]=cast,trunc(u8)((n>>(i*8))&255);}}
-apw_test_wav :: (channels:int,rate:int,pcm:[]int,b:[]u8)->[]u8 {
+apw_u16 :: (b:[]u8,at:int)->int #effects(all) {return int(b[at])+(int(b[at+1])<<8);}
+apw_u32 :: (b:[]u8,at:int)->int #effects(all) {return apw_u16(b,at)+(apw_u16(b,at+2)<<16);}
+apw_test_word :: (b:[]u8,at:int,n:int) #effects(all) {for i:0..<4 {b[at+i]=cast,trunc(u8)((n>>(i*8))&255);}}
+apw_test_wav :: (channels:int,rate:int,pcm:[]int,b:[]u8)->[]u8 #effects(all) {
  for c,i:"RIFF" {b[i]=c;}for c,i:"WAVEfmt " {b[8+i]=c;}for c,i:"data" {b[36+i]=c;}
  apw_test_word(b,4,36+pcm.count*2);apw_test_word(b,16,16);b[20]=1;b[21]=0;b[22]=u8(channels);b[23]=0;apw_test_word(b,24,rate);apw_test_word(b,28,rate*channels*2);b[32]=u8(channels*2);b[33]=0;b[34]=16;b[35]=0;apw_test_word(b,40,pcm.count*2);
  for x,i:pcm {b[44+2*i]=cast,trunc(u8)(x&255);b[45+2*i]=cast,trunc(u8)((x>>8)&255);}return b[0..<44+pcm.count*2];
@@ -54,24 +54,24 @@ apw_test_wav :: (channels:int,rate:int,pcm:[]int,b:[]u8)->[]u8 {
  stereo:=[4]int.[32767,-16384,-32768,8192];wav=apw_test_wav(2,22050,stereo[..],bytes[..]);#assert apw_decode(s[..],wav,w[..],out[0..<10]);
  for frame:0..<5 {position:=f64(frame*147)/320;center:=int(position);total:=0.0;for tap:0..<64 {total+=apw_kernel(f64(center+tap-31)-position);}for channel:0..<2 {want:=(f64(stereo[channel])*apw_kernel(-position)+f64(stereo[2+channel])*apw_kernel(1-position))/32768/total;#assert abs(f64(out[2*frame+channel])-want)<0.0000001;}}
 }
-apw_plan :: (b:[]u8)->AudioWavPlan #export_c {
+apw_plan :: (b:[]u8)->AudioWavPlan #export_c #effects(all) {
  if b.count<46 {return AudioWavPlan.{};}
  if cast(string)b[0..<4]!="RIFF" || cast(string)b[8..<16]!="WAVEfmt " || cast(string)b[36..<40]!="data" || apw_u32(b,4)!=b.count-8 || apw_u32(b,16)!=16 || apw_u16(b,20)!=1 || apw_u16(b,34)!=16 || apw_u32(b,40)!=b.count-44 {return AudioWavPlan.{};}
  channels:=apw_u16(b,22);rate:=apw_u32(b,24);if (channels!=1 && channels!=2) || (rate!=22050 && rate!=48000) {return AudioWavPlan.{};}
  stride:=2*channels;data:=b.count-44;if data%stride!=0 || apw_u16(b,32)!=stride || apw_u32(b,28)!=rate*stride {return AudioWavPlan.{};}
  frames:=data/stride;if frames>1000000 {return AudioWavPlan.{};}output:=ifx rate==48000 then frames else (frames*320+146)/147;return AudioWavPlan.{valid=true,channels=channels,rate=rate,frames=frames,output_frames=output,samples=output*channels};
 }
-apw_kernel :: (x:f64)->f64 {
+apw_kernel :: (x:f64)->f64 #effects(all) {
  if abs(x)>=32 {return 0;}if x==0 {return 0.95;}
  return sin(0.95*APW_PI*x)/(APW_PI*x)*(0.42+0.5*cos(APW_PI*x/32)+0.08*cos(2*APW_PI*x/32));
 }
-apw_coefficients :: (s:[]AudioWavFilter,w:[]f64)->bool #export_c {
+apw_coefficients :: (s:[]AudioWavFilter,w:[]f64)->bool #export_c #effects(all) {
  if s.count!=1 || w.count<APW_WORDS {return false;}
  for phase:0..<320 {total:=0.0;for tap:0..<64 {x:=f64(tap-31)-f64(phase)/320;v:=apw_kernel(x);w[phase*64+tap]=v;total+=v;}for tap:0..<64 {w[phase*64+tap]/=total;}}
  s[0].ready=true;return true;
 }
-apw_sample :: (b:[]u8,index:int)->f64 {bits:=apw_u16(b,44+2*index);value:=ifx bits>=32768 then bits-65536 else bits;return f64(value)/32768;}
-apw_decode :: (s:[]AudioWavFilter,b:[]u8,w:[]f64,out:[]f32)->bool #export_c {
+apw_sample :: (b:[]u8,index:int)->f64 #effects(all) {bits:=apw_u16(b,44+2*index);value:=ifx bits>=32768 then bits-65536 else bits;return f64(value)/32768;}
+apw_decode :: (s:[]AudioWavFilter,b:[]u8,w:[]f64,out:[]f32)->bool #export_c #effects(all) {
  p:=apw_plan(b);if !p.valid || out.count<p.samples {return false;}
  if p.rate==48000 {for i:0..<p.samples {out[i]=f32(apw_sample(b,i));}return true;}
  if s.count!=1 || !s[0].ready || w.count<APW_WORDS {return false;}

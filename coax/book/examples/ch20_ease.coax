@@ -7,7 +7,7 @@ clamp01 :: (x: f32) -> f32 {
 }
 
 // Smootherstep: 0 at 0, 1 at 1, and flat at both ends.
-ease :: (x: f32) -> f32 #export_c {
+ease :: (x: f32) -> f32 #export_c #effects(all) {
   t := clamp01(x);
   return t * t * t * (t * (t * 6 - 15) + 10);
 }

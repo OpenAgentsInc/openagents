@@ -208,7 +208,7 @@ SW_CAPACITY :: -12;      // the output buffer is too small
 // A scanned string: its variant (SW_BECH32 or SW_BECH32M) or a refusal,
 // and the HRP length and data word count that b32_scan found.
 Segwit_Scan :: struct { variant: int; hrp: int; words: int; }
-sw_scan :: (text: string) -> Segwit_Scan {
+sw_scan :: (text: string) -> Segwit_Scan #effects(all) {
   h := b32_scan(text, false);
   if h.error != NC_OK {
     // b32_scan refuses an overlong or mixed-case string too; give those
@@ -228,7 +228,7 @@ sw_scan :: (text: string) -> Segwit_Scan {
   return Segwit_Scan.{variant = variant, hrp = h.hrp, words = h.words};
 }
 // Bech32 or Bech32m, or the reason the string is neither.
-segwit_variant_vartime :: (text: string) -> int #export_c { return sw_scan(text).variant; }
+segwit_variant_vartime :: (text: string) -> int #export_c #effects(all) { return sw_scan(text).variant; }
 ```
 
 `b32_scan` runs once. It refuses an overlong or mixed-case string as
@@ -242,7 +242,7 @@ returns.
 <!-- source: coax/lib/bitcoin/segwit.coax rules -->
 ```jai
 // The network for an HRP, compared without case, or SW_UNKNOWN_HRP.
-sw_network :: (hrp: string) -> int {
+sw_network :: (hrp: string) -> int #effects(all) {
   for network: SW_MAINNET..<SW_REGTEST + 1 {
     name := SW_HRPS[network];
     if name.count == hrp.count {
@@ -254,7 +254,7 @@ sw_network :: (hrp: string) -> int {
   return SW_UNKNOWN_HRP;
 }
 // 0 when a witness version and program length make an address, or the refusal.
-sw_program_rule :: (version: int, length: int) -> int {
+sw_program_rule :: (version: int, length: int) -> int #effects(all) {
   if version < 0 || version > 16 { return SW_BAD_VERSION; }
   if length < 2 || length > 40 { return SW_BAD_LENGTH; }
   if version == 0 && length != 20 && length != 32 { return SW_BAD_V0_LENGTH; }
@@ -266,7 +266,7 @@ sw_program_rule :: (version: int, length: int) -> int {
 
 <!-- source: coax/lib/bitcoin/segwit.coax decode -->
 ```jai
-segwit_decode_vartime :: (text: string, program_out: [] u8) -> Segwit_Address #export_c {
+segwit_decode_vartime :: (text: string, program_out: [] u8) -> Segwit_Address #export_c #effects(all) {
   h := sw_scan(text);
   if h.variant < SW_BECH32 { return Segwit_Address.{length = h.variant}; }
   network := sw_network(text[0..<h.hrp]);
@@ -311,7 +311,7 @@ characters after the HRP, past the separator and the version word.
 
 <!-- source: coax/lib/bitcoin/segwit.coax encode -->
 ```jai
-segwit_encode_vartime :: (network: int, version: int, program: [] u8, out: [] u8) -> int #export_c {
+segwit_encode_vartime :: (network: int, version: int, program: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if network < SW_MAINNET || network > SW_REGTEST { return SW_UNKNOWN_HRP; }
   rule := sw_program_rule(version, program.count);
   if rule < 0 { return rule; }

@@ -211,7 +211,7 @@ line_strokes :: (out: [] f32, at: int, l: int, width: f32, height: f32, dpr: f32
 // (the host clamps a stalled tab). still: the visitor prefers reduced motion.
 // u is the page's ui, which lives in the state (s[0].ui) for the host.
 coaxial_splash_frame :: (s: [] SplashState, u: [] Ui, out: [] f32, uniforms: [] f32,
-                         width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+                         width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || u.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   step := clamp(dt, 0, 0.1);
   s[0].time += step;
@@ -264,26 +264,26 @@ frame :: (s: [] SplashState, out: [] f32, uniforms: [] f32, width: f32, height: 
   return n;
 }
 
-coaxial_splash_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_splash_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
 
 // Input in and actions out, for the host (ui.coax).
-coaxial_splash_key :: (u: [] Ui, key: int, mods: int) -> bool #export_c { return u.count == 1 && ui_key(u, key, mods); }
-coaxial_splash_pointer :: (u: [] Ui, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
+coaxial_splash_key :: (u: [] Ui, key: int, mods: int) -> bool #export_c #effects(all) { return u.count == 1 && ui_key(u, key, mods); }
+coaxial_splash_pointer :: (u: [] Ui, x: f32, y: f32, phase: int, kind: int) -> bool #export_c #effects(all) {
   return u.count == 1 && ui_pointer(u, x, y, phase, kind);
 }
-coaxial_splash_message :: (u: [] Ui, kind: int, length: int) #export_c { if u.count == 1 { ui_message(u, kind, length); } }
-coaxial_splash_wants_text :: (u: [] Ui) -> bool #export_c { return u.count == 1 && ui_wants_text(u); }
-coaxial_splash_cursor :: (u: [] Ui) -> int #export_c { if u.count != 1 { return 0; } return ui_cursor(u); }
-coaxial_splash_inbox_cap :: () -> int #export_c { return INBOX_CAP; }
+coaxial_splash_message :: (u: [] Ui, kind: int, length: int) #export_c #effects(all) { if u.count == 1 { ui_message(u, kind, length); } }
+coaxial_splash_wants_text :: (u: [] Ui) -> bool #export_c #effects(all) { return u.count == 1 && ui_wants_text(u); }
+coaxial_splash_cursor :: (u: [] Ui) -> int #export_c #effects(all) { if u.count != 1 { return 0; } return ui_cursor(u); }
+coaxial_splash_inbox_cap :: () -> int #export_c #effects(all) { return INBOX_CAP; }
 // The pending action (0 for none); taking it empties the outbox.
-coaxial_splash_action :: (u: [] Ui) -> int #export_c { if u.count != 1 { return 0; } a := u[0].action; u[0].action = 0; return a; }
-coaxial_splash_action_done :: (u: [] Ui) #export_c {
+coaxial_splash_action :: (u: [] Ui) -> int #export_c #effects(all) { if u.count != 1 { return 0; } a := u[0].action; u[0].action = 0; return a; }
+coaxial_splash_action_done :: (u: [] Ui) #export_c #effects(all) {
   if u.count != 1 { return; }
   for i: 0..<OUTBOX_CAP { u[0].outbox[i] = 0; }
   u[0].out_n = 0;
 }
-coaxial_splash_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_splash_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_splash_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_splash_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 #test "the words are centred and fit a narrow phone" {
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;

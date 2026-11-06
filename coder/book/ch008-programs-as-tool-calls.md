@@ -82,13 +82,13 @@ cannot be written.
 ```jai
 // A value of type t after s, or a variable for an integer or a boolean:
 // x and one digit.
-pg_value :: (b:[]HtBuild,w:HtWork,s:int,t:HtType,ends:[]int)->int {
+pg_value :: (b:[]HtBuild,w:HtWork,s:int,t:HtType,ends:[]int)->int #effects(all) {
     n:=ht_value(b,w,s,t,ends);
     if t.kind!=HtKind.choice {d:=ht_state(b,w);ht_edge(b,w,ht_bytes(b,w,s,"x"),'0','7',d);ends[n]=d;n+=1;}
     return n;
 }
 // After s, a call of any offered tool, then ";" into the state to.
-pg_calls :: (b:[]HtBuild,w:HtWork,s:int,tools:[]HtTool,offered:[]int,to:int) {
+pg_calls :: (b:[]HtBuild,w:HtWork,s:int,tools:[]HtTool,offered:[]int,to:int) #effects(all) {
     for t:offered {
         ends:[HT_DIGITS_MAX+2]int;ends[0]=ht_bytes(b,w,s,tools[t].name);ne:=1;intro:="{\"";
         for f:tools[t].fields {
@@ -104,7 +104,7 @@ pg_calls :: (b:[]HtBuild,w:HtWork,s:int,tools:[]HtTool,offered:[]int,to:int) {
 // after a block opens (open) and after a statement inside it (inner).
 // "x0=" call ";" from top or done returns to done; from open or inner, to
 // inner. "if x0{" and "for 3{" open a block; "}" closes it from inner.
-pg_grammar :: (tools:[]HtTool,offered:[]int,w:HtWork)->HtGrammar {
+pg_grammar :: (tools:[]HtTool,offered:[]int,w:HtWork)->HtGrammar #effects(all) {
     b:[1]HtBuild;top:=ht_state(b[..],w);done:=ht_state(b[..],w);open:=ht_state(b[..],w);inner:=ht_state(b[..],w);
     out:=[2]int.[top,done];inside:=[2]int.[open,inner];
     d:=ht_state(b[..],w);ht_edge(b[..],w,ht_join(b[..],w,out[..],'x'),'0','7',d);pg_calls(b[..],w,ht_bytes(b[..],w,d,"="),tools,offered,done);
@@ -145,7 +145,7 @@ and the loop stay the same.
 // written a piece the script did not have, after which no other piece
 // scores. The grammar of the offered tools masks every draw, and the draw
 // is greedy, so the lowest allowed piece wins a tie.
-pg_decode :: (tools:[]HtTool,offered:[]int,script:string,pieces:[]string,end:int,limit:int,w:HtWork,sm:HtSampler)->PgDecode {
+pg_decode :: (tools:[]HtTool,offered:[]int,script:string,pieces:[]string,end:int,limit:int,w:HtWork,sm:HtSampler)->PgDecode #effects(all) {
     c:=pg_grammar(tools,offered,w);if c.why!=HtWhy.none {return PgDecode.{status=NxStatus.grammar};}
     run:=NxRun.{limit=limit};state:=c.grammar.start;n:=0;on:=true;
     while run.stop==NxStop.running {
@@ -188,7 +188,7 @@ grammar put it.
 // A bind's statement from the byte after its "x": the variable, the tool by
 // name, then each field's literal or variable. The grammar has already
 // accepted the text, so each piece is where the grammar put it.
-pg_bind :: (tools:[]HtTool,text:string,at:int)->PgStmt {
+pg_bind :: (tools:[]HtTool,text:string,at:int)->PgStmt #effects(all) {
     st:=PgStmt.{var=cast(int)(text[at]-'0')};p:=at+2;e:=p;while text[e]!='{' {e+=1;}
     for x,i:tools {if x.name==text[p..<e] {st.tool=i;}}
     p=e+1;
@@ -206,7 +206,7 @@ pg_bind :: (tools:[]HtTool,text:string,at:int)->PgStmt {
 // program grammar over the registry's tools, accepts the text or names the
 // byte where it stops being a program; then statements are read off in order,
 // at most PG_STMTS of them. A block head records how many binds follow it.
-pg_parse :: (tools:[]HtTool,g:NxGrammar,text:string)->PgParse {
+pg_parse :: (tools:[]HtTool,g:NxGrammar,text:string)->PgParse #effects(all) {
     r:=PgParse.{};
     if text.count>PG_TEXT_MAX || ht_check(tools).why!=HtWhy.none {r.why=PgWhy.shape;return r;}
     s:=g.start;
@@ -264,8 +264,8 @@ loop runs at least once.
 ```jai
 // A variable of type got may fill a field of type want: the same kind, and
 // an integer no wider. (The grammar has no variables in choice fields.)
-pg_fits :: (want:HtType,got:HtType)->bool {return want.kind==got.kind && got.digits<=want.digits;}
-pg_no :: (why:PgWhy,at:int,b:PgBound)->PgCheck {return PgCheck.{why=why,at=at,bound=b};}
+pg_fits :: (want:HtType,got:HtType)->bool #effects(all) {return want.kind==got.kind && got.digits<=want.digits;}
+pg_no :: (why:PgWhy,at:int,b:PgBound)->PgCheck #effects(all) {return PgCheck.{why=why,at=at,bound=b};}
 // Check a parsed program of n bytes against the session before it runs.
 // Each bind, in order: its tool granted, its effect and ticks inside the
 // policy, its room in reach, each variable it reads surely bound and of the
@@ -273,7 +273,7 @@ pg_no :: (why:PgWhy,at:int,b:PgBound)->PgCheck {return PgCheck.{why=why,at=at,bo
 // far, with every block taken and every loop run in full, must fit what the
 // session, the grant and the log have left. A variable bound inside an if
 // block is surely bound only inside it; one bound in a loop, after it too.
-pg_check :: (env:SbTools,s:SbSession,p:PgProgram,n:int,g:LgLog)->PgCheck {
+pg_check :: (env:SbTools,s:SbSession,p:PgProgram,n:int,g:LgLog)->PgCheck #effects(all) {
     q:=s.policy;tools:=env.tools;gr:=env.grant;b:=PgBound.{events=2,tokens=PG_HEAD+n+PG_RESULT_SIZE};
     if !sb_valid(q) {return pg_no(PgWhy.policy,-1,b);}
     if s.pending {return pg_no(PgWhy.paused,-1,b);}
@@ -347,7 +347,7 @@ refuses stops it with the world unchanged.
 <!-- source: psionic/lib/harness/program.coax render -->
 ```jai
 // A call's text, as chapter 203 reads it, with each variable's value.
-pg_render :: (t:HtTool,st:PgStmt,vals:[PG_VARS]int,out:[]u8)->int {
+pg_render :: (t:HtTool,st:PgStmt,vals:[PG_VARS]int,out:[]u8)->int #effects(all) {
     n:=ht_put(out,ht_put(out,0,t.name),"{");
     for f,i:t.fields {
         if i>0 {n=ht_put(out,n,",");}
@@ -367,7 +367,7 @@ pg_render :: (t:HtTool,st:PgStmt,vals:[PG_VARS]int,out:[]u8)->int {
 // is a step and nothing else; a bind renders its call with the variables'
 // values and sends it to the sandbox. A call that runs binds its variable;
 // one that asks, fails in its body or is refused stops the program there.
-pg_step :: (env:SbTools,s:[]SbSession,st:PgStmt,k:int,world:[]int,l:[]LgLog,fuel:int,r:PgRun)->PgRun {
+pg_step :: (env:SbTools,s:[]SbSession,st:PgStmt,k:int,world:[]int,l:[]LgLog,fuel:int,r:PgRun)->PgRun #effects(all) {
     x:=r;
     if x.steps==fuel {x.stop=PgStop.fuel;x.at=k;return x;}
     x.steps+=1;if st.kind!=PgKind.bind {return x;}
@@ -381,7 +381,7 @@ pg_step :: (env:SbTools,s:[]SbSession,st:PgStmt,k:int,world:[]int,l:[]LgLog,fuel
 }
 // Run a program statement by statement. A when block's body runs once if
 // its variable is true; a repeat block's body runs count times.
-pg_exec :: (env:SbTools,s:[]SbSession,p:PgProgram,world:[]int,l:[]LgLog,fuel:int)->PgRun {
+pg_exec :: (env:SbTools,s:[]SbSession,p:PgProgram,world:[]int,l:[]LgLog,fuel:int)->PgRun #effects(all) {
     r:=PgRun.{stop=PgStop.done};k:=0;
     while k<p.count && r.stop==PgStop.done {
         st:=p.stmts[k];r=pg_step(env,s,st,k,world,l,fuel,r);
@@ -399,7 +399,7 @@ pg_exec :: (env:SbTools,s:[]SbSession,p:PgProgram,world:[]int,l:[]LgLog,fuel:int
 // its outcome is logged after its calls: the stop, the sandbox's reason,
 // the statement, the steps, the calls, which variables are bound and their
 // values.
-pg_program :: (env:SbTools,g:NxGrammar,s:[]SbSession,text:string,fuel:int,world:[]int,l:[]LgLog)->PgRun {
+pg_program :: (env:SbTools,g:NxGrammar,s:[]SbSession,text:string,fuel:int,world:[]int,l:[]LgLog)->PgRun #effects(all) {
     r:=PgRun.{};
     if text.count>PG_TEXT_MAX || fuel<0 || world.count<HT_CHOICES_MAX {r.why=PgWhy.shape;return r;}
     if !sb_fits(l,PG_HEAD+text.count) {r.why=PgWhy.log;return r;}
@@ -490,7 +490,7 @@ as the program.
 // logs must have the original's digest, so a program's calls and outcome
 // are compared too. The world the replay leaves is the world the session
 // left.
-pg_replay :: (env:SbTools,gm:NxGrammar,g:LgLog,s:[]SbSession,world:[]int,l:[]LgLog)->SbCheck {
+pg_replay :: (env:SbTools,gm:NxGrammar,g:LgLog,s:[]SbSession,world:[]int,l:[]LgLog)->SbCheck #effects(all) {
     if lg_verify(g).status!=LgStatus.ok || l[0].count!=0 {return SbCheck.{status=SbReplay.log};}
     i:=0;
     while i<g.count {

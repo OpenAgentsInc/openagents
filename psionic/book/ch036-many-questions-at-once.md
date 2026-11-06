@@ -51,9 +51,9 @@ when one path serves every question:
 // Other batches, and Metal's tiles, are refused; the host runs those
 // questions one suffix at a time.
 DP_BATCH :: 8;
-dp_batch_tokens :: (lengths:[]int)->int #export_c {n:=0;for t:lengths {n+=t;}return n;}
-dp_batch_longest :: (lengths:[]int)->int {n:=0;for t:lengths {n=dp_wider(n,t);}return n;}
-dp_batch_admits :: (metal:bool,start:int,lengths:[]int)->bool #export_c {
+dp_batch_tokens :: (lengths:[]int)->int #export_c #effects(all) {n:=0;for t:lengths {n+=t;}return n;}
+dp_batch_longest :: (lengths:[]int)->int #effects(all) {n:=0;for t:lengths {n=dp_wider(n,t);}return n;}
+dp_batch_admits :: (metal:bool,start:int,lengths:[]int)->bool #export_c #effects(all) {
     if metal || start<1 || lengths.count<1 || lengths.count>DP_BATCH {return false;}
     total:=0;short:=false;
     for t:lengths {
@@ -88,11 +88,11 @@ fork-buffer rows, and leaves out only the workspace offsets:
 // must make exactly the launches its own suffix pass makes, in order, on the
 // same fork-buffer rows. Occurrence j of a stateful kernel in a batch of q
 // questions is question j%q's (they run question after question).
-dp_stateful :: (op:DpOp)->bool {
+dp_stateful :: (op:DpOp)->bool #effects(all) {
     k:=op.kernel;
     return op.kind==DpOpKind.launch && (k==cast(u8)DpKernel.conv_state || k==cast(u8)DpKernel.scan_state || k==cast(u8)DpKernel.prepare || k==cast(u8)DpKernel.scores || k==cast(u8)DpKernel.softmax || k==cast(u8)DpKernel.attend);
 }
-dp_state_digest :: (ops:[]DpOp,n:int,questions:int,which:int)->u64 {
+dp_state_digest :: (ops:[]DpOp,n:int,questions:int,which:int)->u64 #effects(all) {
     h:u64=14695981039346656037;seen:[DP_KERNELS]int;
     for i:0..<n {
         op:=ops[i];

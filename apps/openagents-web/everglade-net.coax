@@ -89,6 +89,7 @@ net_who :: (who: int) -> int { return ifx who >= 2000 then NET_MADE_ID + who - 2
 
 NetState :: struct { t: int; x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; f: int; a: int; ax: f32; az: f32; age: f32; }
 NetEnt :: struct {
+  generation:u32 #counter;
   live: bool; eid: int; kind: int; owner: int = -1;   // eid: a seat, NET_FOLK_ID + its index, NET_MADE_ID + the server's EID
   ring: [NET_RING] NetState; ring_n: int;   // oldest first, server times
   hp: int; max: int; temp: int; p1: int; p2: int; form: int;
@@ -205,20 +206,20 @@ EgNet :: struct {
   evp: [1] EgEvents;                          // the room's event, your level and kit (everglade-events.coax)
 }
 
-everglade_attach_net :: (s: [] Everglade, n: [] EgNet) #export_c { s[0].net = n; }
+everglade_attach_net :: (s: [] Everglade, n: [] EgNet) #export_c #effects(all) { s[0].net = n; }
 net_of :: (s: [] Everglade) -> [] EgNet { return s[0].net; }
 net_on :: (s: [] Everglade) -> bool { return s[0].net.count > 0; }
 // You play in a room: you sat in one this load and the page still wants it. The room's kit, level,
 // rules and status stay while its socket is down and the page rejoins (net_rejoining); only a page
 // that never sat in a room plays offline. What goes to the room needs it open (net_open).
-net_live :: (s: [] Everglade) -> bool #export_c { return net_open(s) || net_rejoining(s); }
+net_live :: (s: [] Everglade) -> bool #export_c #effects(all) { return net_open(s) || net_rejoining(s); }
 // The socket is open and you sit in the room: what you do goes to it.
 net_open :: (s: [] Everglade) -> bool { return net_on(s) && net_of(s)[0].state == NET_OPEN && net_of(s)[0].seat >= 0; }
 // The room's socket dropped under you and the page is getting you back in (its backoff, net_down).
-net_rejoining :: (s: [] Everglade) -> bool #export_c { return net_on(s) && net_of(s)[0].sat && net_of(s)[0].want && !net_open(s); }
+net_rejoining :: (s: [] Everglade) -> bool #export_c #effects(all) { return net_on(s) && net_of(s)[0].sat && net_of(s)[0].want && !net_open(s); }
 net_now :: (n: [] EgNet) -> int { return n[0].mono + n[0].offset; }
 // The server clock in ms, -1 while none is known.
-net_clock :: (s: [] Everglade) -> int #export_c { if !net_on(s) || net_of(s)[0].mono == 0 { return -1; } return net_now(net_of(s)); }
+net_clock :: (s: [] Everglade) -> int #export_c #effects(all) { if !net_on(s) || net_of(s)[0].mono == 0 { return -1; } return net_now(net_of(s)); }
 
 net_copy :: (out: [] u8, t: string) -> int {
   n := 0;
@@ -259,7 +260,7 @@ net_code_ok :: (t: string) -> bool {
 net_number :: (t: string) -> int { r: [1] WireRd; v := wire_num(t, r[..]); return ifx r[0].ok then v else -1; }
 // The page facts (message 600): the socket's address, your player id, the wall clock. `room` is the
 // room's name when the URL names none; a golden page opens no socket.
-net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #export_c {
+net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #export_c #effects(all) {
   if !net_on(s) { return; }
   n := net_of(s);
   url := fact(facts, "url");
@@ -378,7 +379,7 @@ net_room_seated :: (n: [] EgNet) {
   n[0].fix_due = false; n[0].off_x = 0; n[0].off_y = 0; n[0].off_z = 0; n[0].rg_open = 0; n[0].rg_close = 0;
 }
 // A minted player (POST /api/playtest/player answered {"key":...,"id":"...",...}): its id for the hello.
-net_player :: (s: [] Everglade, record: string) #export_c {
+net_player :: (s: [] Everglade, record: string) #export_c #effects(all) {
   if !net_on(s) { return; }
   n := net_of(s);
   key := "\"id\":\"";
@@ -393,7 +394,7 @@ net_player :: (s: [] Everglade, record: string) #export_c {
 }
 // The API's answer to the seat-ticket ask ("200\n{"ticket":"...",...}", anything else a refusal): the
 // next open uses it; a refusal waits as a closed socket does, then asks again.
-net_ticket :: (s: [] Everglade, answer: string) #export_c {
+net_ticket :: (s: [] Everglade, answer: string) #export_c #effects(all) {
   if !net_on(s) { return; }
   n := net_of(s);
   n[0].ticket_asked = false;
@@ -527,18 +528,18 @@ net_save_state :: (s: [] Everglade, n: [] EgNet) {
   }
 }
 // Whether the server said the world changed since the face last asked (the face asks for it again).
-net_edit_take :: (s: [] Everglade) -> bool #export_c {
+net_edit_take :: (s: [] Everglade) -> bool #export_c #effects(all) {
   if !net_on(s) || !net_of(s)[0].edit_due { return false; }
   net_of(s)[0].edit_due = false;
   return true;
 }
 // The room's name (the chat's too).
-net_room :: (s: [] Everglade, room: string) -> string #export_c {
+net_room :: (s: [] Everglade, room: string) -> string #export_c #effects(all) {
   if !net_on(s) || net_of(s)[0].code_n == 0 { return room; }
   return cast(string) net_of(s)[0].code[0..<net_of(s)[0].code_n];
 }
 // The look you show ("ranger.SKIN.DYE.TRIM", spec 5.2).
-net_set_look :: (s: [] Everglade, look: string) #export_c {
+net_set_look :: (s: [] Everglade, look: string) #export_c #effects(all) {
   if !net_on(s) { return; }
   n := net_of(s);
   n[0].look_n = net_copy(n[0].look[..], look);
@@ -548,7 +549,7 @@ net_set_look :: (s: [] Everglade, look: string) #export_c {
 // ---- the socket's events
 
 // The face opened the socket: its id, or -1 (refused).
-net_opened :: (s: [] Everglade, id: int) #export_c {
+net_opened :: (s: [] Everglade, id: int) #export_c #effects(all) {
   if !net_on(s) { return; }
   n := net_of(s);
   if n[0].room_wait {   // the room's, beside the local host's (net_room_open)
@@ -617,7 +618,7 @@ net_life :: (s: [] Everglade, kind: int) -> LifeActions {
   return a;
 }
 // A socket event (message kind 256 + 4 * id + event, its text in the inbox): true when it was ours.
-net_event :: (s: [] Everglade, kind: int, text: string) -> bool #export_c {
+net_event :: (s: [] Everglade, kind: int, text: string) -> bool #export_c #effects(all) {
   if !net_on(s) { return false; }
   n := net_of(s);
   ev := socket_event(kind);
@@ -653,11 +654,25 @@ net_ent :: (n: [] EgNet, eid: int, make: bool) -> int {
   free := -1;
   for e: 0..<NET_ENTS {
     if n[0].ents[e].live && n[0].ents[e].eid == eid { return e; }
-    if !n[0].ents[e].live && free < 0 { free = e; }
+    if !n[0].ents[e].live && n[0].ents[e].generation<4294967295 && free < 0 { free = e; }
   }
   if !make || free < 0 { return -1; }
-  n[0].ents[free] = NetEnt.{live = true, eid = eid, born = n[0].tick_t};
+  generation:=add_sat(n[0].ents[free].generation,1);
+  n[0].ents[free] = NetEnt.{live = true, generation=generation, eid = eid, born = n[0].tick_t};
   return free;
+}
+#test "handle generations: a replicated slot advances on reuse and retires at its last generation" {
+  n:[1]EgNet;
+  first:=net_ent(n[..],100,true);#assert first==0 && n[0].ents[0].generation==1;
+  #assert net_ent(n[..],100,false)==0 && net_ent(n[..],101,false)== -1;
+  n[0].ents[0].live=false;second:=net_ent(n[..],101,true);
+  #assert second==0 && n[0].ents[0].generation==2;
+  n[0].ents[0].live=false;n[0].ents[0].generation=4294967294;
+  #assert net_ent(n[..],102,true)==0 && n[0].ents[0].generation==4294967295;
+  #assert net_ent(n[..],102,false)==0;
+  n[0].ents[0].live=false;#assert net_ent(n[..],103,true)==1 && n[0].ents[0].generation==4294967295;
+  for i:0..<NET_ENTS {n[0].ents[i].live=false;n[0].ents[i].generation=4294967295;}
+  #assert net_ent(n[..],104,true)== -1;
 }
 // A tick's server time (W's clock), or the last state's when no W has come.
 // W carries the server's wall-clock phase as its day. Recover its nearest day around our synced
@@ -1107,7 +1122,7 @@ net_push_row :: (en: [] NetEnt, p: NetState, hz: int) {
 // none is heard (indoors, out of view, or no room).
 // since: seconds in their mode (from the row's T0: -1 not said); casting: seconds into a spell (-1
 // none), kind its MS_*, foe the seat it is for (-1 none)
-NetFolk :: struct { ok: bool; x: f32; z: f32; yaw: f32; mode: int; clip: int; hp: int; since: f32 = -1; casting: f32 = -1; kind: int; foe: int = -1; cond: int; rank: int; max: int; }   // rank: a responder's RANK_* + 1, 0 the town's
+NetFolk :: struct { reference:Handle(EvergladeSpeaker); ok: bool; x: f32; z: f32; yaw: f32; mode: int; clip: int; hp: int; since: f32 = -1; casting: f32 = -1; kind: int; foe: int = -1; cond: int; rank: int; max: int; }   // rank: a responder's RANK_* + 1, 0 the town's
 net_folk :: (s: [] Everglade, i: int) -> NetFolk {
   if !net_live(s) { return NetFolk.{}; }
   n := net_of(s);
@@ -1116,7 +1131,7 @@ net_folk :: (s: [] Everglade, i: int) -> NetFolk {
   p := n[0].ents[k].shown;
   en := n[0].ents[k];
   hz := f32(hi_int(n[0].hz, 1)); now := n[0].mir[0].tick;
-  return NetFolk.{ok = true, x = p.x, z = p.z, yaw = p.yaw, mode = p.f, clip = p.a, hp = en.hp, cond = en.cond, rank = en.form, max = en.max,
+  return NetFolk.{reference=Handle(EvergladeSpeaker).{value=(cast(u64)en.generation<<32)|cast(u64)k}, ok = true, x = p.x, z = p.z, yaw = p.yaw, mode = p.f, clip = p.a, hp = en.hp, cond = en.cond, rank = en.form, max = en.max,
                   since = ifx en.t0 > 0 then f32(hi_int(now - en.t0, 0)) / hz else -1.0f32,
                   casting = ifx en.p2 > 0 && en.dur > 0 then f32(hi_int(now - en.dur, 0)) / hz else -1.0f32, kind = en.p2 - 1,
                   foe = ifx en.owner >= WIRE_TGT_SEAT && en.owner < WIRE_TGT_SEAT + 1000 then en.owner - WIRE_TGT_SEAT else -1};
@@ -1230,7 +1245,7 @@ net_forest_sample :: (en: [] NetEnt, pose: NetState) -> NetState {
 // ---- your movement: the inputs out, the server's word back (the face runs the step)
 
 // One step's input: kept and sent (I). Its sequence number, 0 when there is no room to send it to.
-net_input :: (s: [] Everglade, input: EgMoveIn, dive: bool) -> int #export_c {
+net_input :: (s: [] Everglade, input: EgMoveIn, dive: bool) -> int #export_c #effects(all) {
   if !net_open(s) { return 0; }
   n := net_of(s);
   n[0].seq += 1;
@@ -1246,19 +1261,19 @@ net_input :: (s: [] Everglade, input: EgMoveIn, dive: bool) -> int #export_c {
 }
 // The server's word on you is new: where it has you after input fix.ack (the face sets you there and
 // re-runs the later inputs, net_replay_*, then says how far that moved you, net_fixed).
-net_fix_due :: (s: [] Everglade) -> bool #export_c { return net_open(s) && net_of(s)[0].fix_due && net_of(s)[0].fix.ok; }
-net_fix :: (s: [] Everglade) -> NetFix #export_c { return net_of(s)[0].fix; }
+net_fix_due :: (s: [] Everglade) -> bool #export_c #effects(all) { return net_open(s) && net_of(s)[0].fix_due && net_of(s)[0].fix.ok; }
+net_fix :: (s: [] Everglade) -> NetFix #export_c #effects(all) { return net_of(s)[0].fix; }
 // The inputs after the server's, oldest first: how many, and the k-th (as the wire carried it, so the
 // re-run steps what the server steps). Only steps (I) count: a cast, an end or a rebuild takes a
 // sequence number too, and the server steps nothing for it (a re-run of it as a still step moved you
 // back of the server, and its next word pulled you on: #12731).
-net_replay_n :: (s: [] Everglade) -> int #export_c {
+net_replay_n :: (s: [] Everglade) -> int #export_c #effects(all) {
   n := net_of(s);
   c := 0; first := n[0].fix.ack + 1; last := n[0].seq;
   for q: first..<last + 1 { if q > last - NET_HIST && n[0].inputs[q % NET_HIST].seq == q { c += 1; } }
   return c;
 }
-net_replay_input :: (s: [] Everglade, k: int) -> EgMoveIn #export_c {
+net_replay_input :: (s: [] Everglade, k: int) -> EgMoveIn #export_c #effects(all) {
   n := net_of(s);
   c := 0; first := n[0].fix.ack + 1; last := n[0].seq;
   for q: first..<last + 1 {
@@ -1270,7 +1285,7 @@ net_replay_input :: (s: [] Everglade, k: int) -> EgMoveIn #export_c {
 }
 // An input as the wire carries it (sticks in whole hundredths, the heading in WIRE_FINE units), so the
 // page steps what the server steps; offline too, so a room walks where offline walks.
-net_as_sent :: (s: [] Everglade, m: EgMoveIn) -> EgMoveIn #export_c {
+net_as_sent :: (s: [] Everglade, m: EgMoveIn) -> EgMoveIn #export_c #effects(all) {
   theta := f32(wire_fine(m.theta)) / f32(WIRE_FINE);
   return EgMoveIn.{key_x = f32(wire_axis(m.key_x)) / 100, key_y = f32(wire_axis(m.key_y)) / 100, pad_x = f32(wire_axis(m.pad_x)) / 100,
                    pad_y = f32(wire_axis(m.pad_y)) / 100, run = m.run, jump = m.jump, theta = theta};
@@ -1278,7 +1293,7 @@ net_as_sent :: (s: [] Everglade, m: EgMoveIn) -> EgMoveIn #export_c {
 // book:begin ease-correction
 // The re-run is done: (dx, dy, dz) is where it puts you less where you were drawn. Small, it is eased
 // out (you are drawn where you were, coming to where you are); past NET_SNAP m, taken at once.
-net_fixed :: (s: [] Everglade, dx: f32, dy: f32, dz: f32) #export_c {
+net_fixed :: (s: [] Everglade, dx: f32, dy: f32, dz: f32) #export_c #effects(all) {
   n := net_of(s);
   n[0].fix_due = false; n[0].replays += 1;
   ox := n[0].off_x - dx; oy := n[0].off_y - dy; oz := n[0].off_z - dz;
@@ -1286,7 +1301,7 @@ net_fixed :: (s: [] Everglade, dx: f32, dy: f32, dz: f32) #export_c {
   n[0].off_x = ox; n[0].off_y = oy; n[0].off_z = oz;
 }
 // Where you are drawn less where you are, this frame (dt s): eased to nothing over NET_SMOOTH s.
-net_offset :: (s: [] Everglade, dt: f32) -> Point #export_c {
+net_offset :: (s: [] Everglade, dt: f32) -> Point #export_c #effects(all) {
   if !net_on(s) { return v3(0, 0, 0); }
   n := net_of(s);
   k := clamp01(1 - dt / f32(NET_SMOOTH));
@@ -1334,7 +1349,7 @@ net_ask_room :: (s: [] Everglade, n: [] EgNet) {
 // The frame, from the face: the clock, the socket, a ping, the hello, the world where it is drawn,
 // the casts at their time. (x, fy, z) your feet (fy over the floor you walk on, as the page's feet);
 // the rest of your pose is the server's to say.
-net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: f32, vz: f32, air: bool, medium: int, boat: bool, act: int) #export_c {
+net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: f32, vz: f32, air: bool, medium: int, boat: bool, act: int) #export_c #effects(all) {
   if !net_on(s) { return; }
   n := net_of(s);
   n[0].mono = mono;
@@ -1425,12 +1440,13 @@ net_hello :: (s: [] Everglade, n: [] EgNet) {
   n[0].hello_due = false;
   look := ifx n[0].look_n > 0 then cast(string) n[0].look[0..<n[0].look_n] else "ranger.0.0.0";
   net_send(n, wire_put_pins(n[0].out[..], 0, WirePins.{}));   // this page's build, which the room admits the hello against (#12839)
-  net_send(n, wire_put_hello(n[0].out[..], 0, WireHello.{look = look, kind = ifx wl_on(s) then "warlock" else "druid", flags = (ifx s[0].touch then 1 else 0) | (ifx n[0].account then 2 else 0) | (ifx ege_demo(s) then EGE_DEMO_FLAG else 0), name = ""}));
+  hello:=wire_hello_value(WireHello.{look = look, kind = ifx wl_on(s) then "warlock" else "druid", flags = (ifx s[0].touch then 1 else 0) | (ifx n[0].account then 2 else 0) | (ifx ege_demo(s) then EGE_DEMO_FLAG else 0), name = ""});
+  net_send(n, wire_put_hello_value(n[0].out[..], 0, hello));
   md_send_blocks(n);   // who you block: the room sends you nothing of them (#12789)
 }
 // Your intents: a cast from bar slot b at the aim (target an entity, -1 none), the end of what slot b
 // holds up, the town rebuilt. False when there is no room to send them to.
-net_cast :: (s: [] Everglade, b: int, at: Point, target: int) -> bool #export_c {
+net_cast :: (s: [] Everglade, b: int, at: Point, target: int) -> bool #export_c #effects(all) {
   if !net_open(s) { return false; }
   n := net_of(s);
   n[0].seq += 1;
@@ -1546,7 +1562,7 @@ net_gates :: (s: [] Everglade) -> int {
 // none heard. out: the float, who rows it (a seat + 1, 0 moored; you: -1, your own page rows it),
 // x y z yaw, the oars' share (-1 shipped). Where it is drawn now (the jitter buffer's), so another's
 // rower, drawn at the same time (net_boat_by), sits in it.
-net_boat_row :: (s: [] Everglade, b: int, out: [] f32) -> bool #export_c {
+net_boat_row :: (s: [] Everglade, b: int, out: [] f32) -> bool #export_c #effects(all) {
   if !net_live(s) || out.count < 7 { return false; }
   n := net_of(s);
   for e: 0..<NET_ENTS {
@@ -1565,7 +1581,7 @@ net_boat_row :: (s: [] Everglade, b: int, out: [] f32) -> bool #export_c {
 // the room's row of that boat must name you its rower within NET_BOARD_WAIT s of it (WAITED s since);
 // else another seat took it the same tick, or it was out of the room's reach, and you step ashore.
 NET_BOARD_WAIT :: 2.0;
-net_boat_refused :: (s: [] Everglade, f: int, waited: f32) -> bool #export_c {
+net_boat_refused :: (s: [] Everglade, f: int, waited: f32) -> bool #export_c #effects(all) {
   if !net_live(s) || f < 0 || !(waited > NET_BOARD_WAIT) { return false; }
   br: [7] f32;
   for b: 0..<NET_BOATS { if net_boat_row(s, b, br[..]) && cast(int) br[0] == f { return br[1] >= 0; } }
@@ -1607,7 +1623,7 @@ net_put_build :: (out: [] u8, at: int) -> int {
 }
 // Travel to the instance `code` of this realm, asked of the room (#12850, coax/web/room/room-travel.coax):
 // the room sets you aside a seat there and answers "g CODE" (net_go), or refuses with r. False offline.
-net_travel :: (s: [] Everglade, code: string) -> bool #export_c {
+net_travel :: (s: [] Everglade, code: string) -> bool #export_c #effects(all) {
   if !net_open(s) || !net_code_ok(code) { return false; }
   n := net_of(s);
   if code == cast(string) n[0].code[0..<n[0].code_n] { return false; }
@@ -2189,7 +2205,7 @@ net_forest_probe :: (s: [] Everglade, field: int) -> int {
 // 200 + SLOT casts bar slot SLOT (net_cast, as a click does) at the nearest
 // summoned creature, else 3 m ahead of you (an ability you don't point with: 2 m ahead, as its press
 // does): 1 when it went out.
-net_probe :: (s: [] Everglade, field: int) -> int #export_c {
+net_probe :: (s: [] Everglade, field: int) -> int #export_c #effects(all) {
   if !net_on(s) { return -1; }
   n := net_of(s);
   if field >= 9000 && field <= 9004 { return net_forest_probe(s, field); }
@@ -2422,11 +2438,11 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   return -1;
 }
 // The pipe's commands, for the face to carry out.
-net_pipe_n :: (s: [] Everglade) -> int #export_c { if !net_on(s) { return 0; } return net_of(s)[0].pipe[0].n; }
-net_pipe_op :: (s: [] Everglade, k: int) -> int #export_c { return net_of(s)[0].pipe[0].op[k]; }
-net_pipe_id :: (s: [] Everglade, k: int) -> int #export_c { return net_of(s)[0].pipe[0].id[k]; }
-net_pipe_bytes :: (s: [] Everglade, k: int) -> string #export_c { return pipe_bytes(net_of(s)[0].pipe[..], k); }
-net_pipe_done :: (s: [] Everglade) #export_c { if net_on(s) { pipe_drained(net_of(s)[0].pipe[..]); } }
+net_pipe_n :: (s: [] Everglade) -> int #export_c #effects(all) { if !net_on(s) { return 0; } return net_of(s)[0].pipe[0].n; }
+net_pipe_op :: (s: [] Everglade, k: int) -> int #export_c #effects(all) { return net_of(s)[0].pipe[0].op[k]; }
+net_pipe_id :: (s: [] Everglade, k: int) -> int #export_c #effects(all) { return net_of(s)[0].pipe[0].id[k]; }
+net_pipe_bytes :: (s: [] Everglade, k: int) -> string #export_c #effects(all) { return pipe_bytes(net_of(s)[0].pipe[..], k); }
+net_pipe_done :: (s: [] Everglade) #export_c #effects(all) { if net_on(s) { pipe_drained(net_of(s)[0].pipe[..]); } }
 
 // ---- the sky (#12709): the room server owns the time of day and the weather (room-sky.coax). W
 // says the server's day (ms into it at its tick) and the weather it runs; the page draws both on the

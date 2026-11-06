@@ -11,6 +11,6 @@
   #assert verse_panel_close_to(-1,true)==0;
   #assert verse_panel_close_to(4,true)==0;
 }
-verse_panel_close_to :: (mode: int,has_desk: bool) -> int #export_c {
+verse_panel_close_to :: (mode: int,has_desk: bool) -> int #export_c #effects(all) {
   return ifx has_desk && (mode==1 || mode==2 || mode==3) then 1 else 0;
 }

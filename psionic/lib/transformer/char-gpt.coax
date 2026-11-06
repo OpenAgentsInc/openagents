@@ -20,19 +20,19 @@
 // activation that is only a product operand (cgp_mma).
 CgShape :: struct {vocab:int;d:int;layers:int;heads:int;context:int;hidden:int;rows:int;accumulate:int;profile:int;}
 // The frozen workload's model, a step of 64 rows as 2 micro-batches of 32.
-cg_full :: ()->CgShape #export_c {return CgShape.{vocab=65,d=384,layers=6,heads=6,context=256,hidden=1536,rows=32,accumulate=2};}
+cg_full :: ()->CgShape #export_c #effects(all) {return CgShape.{vocab=65,d=384,layers=6,heads=6,context=256,hidden=1536,rows=32,accumulate=2};}
 // The oracle's tiny shape: the same code paths, small enough for the CPU.
-cg_tiny :: ()->CgShape #export_c {return CgShape.{vocab=65,d=128,layers=2,heads=2,context=64,hidden=512,rows=2,accumulate=2};}
+cg_tiny :: ()->CgShape #export_c #effects(all) {return CgShape.{vocab=65,d=128,layers=2,heads=2,context=64,hidden=512,rows=2,accumulate=2};}
 // The same shapes in another profile.
-cg_with_profile :: (s:CgShape,profile:int)->CgShape #export_c {t:=s;t.profile=profile;return t;}
+cg_with_profile :: (s:CgShape,profile:int)->CgShape #export_c #effects(all) {t:=s;t.profile=profile;return t;}
 CG_STEPS :: 750;   // char-gpt-shakespeare-v2; v1 was 2000
 CG_WARMUP :: 100;
-cg_admit :: (s:CgShape)->CgStatus #export_c {return cgp_shape(s.vocab,s.d,s.layers,s.heads,s.context,s.hidden,s.rows,s.accumulate);}
-cg_shape_ints :: (s:CgShape,out:[]int) #export_c {x:=[8]int.[s.vocab,s.d,s.layers,s.heads,s.context,s.hidden,s.rows,s.accumulate];for i:0..<8 {out[i]=x[i];}}
+cg_admit :: (s:CgShape)->CgStatus #export_c #effects(all) {return cgp_shape(s.vocab,s.d,s.layers,s.heads,s.context,s.hidden,s.rows,s.accumulate);}
+cg_shape_ints :: (s:CgShape,out:[]int) #export_c #effects(all) {x:=[8]int.[s.vocab,s.d,s.layers,s.heads,s.context,s.hidden,s.rows,s.accumulate];for i:0..<8 {out[i]=x[i];}}
 
 // ---- parameters ----
 // Tensors in order: tok, pos, then per layer qkv, o, up, down, then head.
-cg_tensors :: (s:CgShape)->int #export_c {return 3+4*s.layers;}
+cg_tensors :: (s:CgShape)->int #export_c #effects(all) {return 3+4*s.layers;}
 cg_tensor_rows :: (s:CgShape,k:int)->int {
     if k==0 {return s.vocab;}
     if k==1 {return s.context;}
@@ -45,7 +45,7 @@ cg_tensor_cols :: (s:CgShape,k:int)->int {
 }
 cg_tensor_size :: (s:CgShape,k:int)->int {return cg_tensor_rows(s,k)*cg_tensor_cols(s,k);}
 cg_tensor_at :: (s:CgShape,k:int)->int {at:=0;for j:0..<k {at+=cg_tensor_size(s,j);}return at;}
-cg_params :: (s:CgShape)->int #export_c {return cg_tensor_at(s,cg_tensors(s));}
+cg_params :: (s:CgShape)->int #export_c #effects(all) {return cg_tensor_at(s,cg_tensors(s));}
 cg_layer_tensor :: (l:int,w:int)->int {return 2+4*l+w;}
 CG_QKV :: 0; CG_O :: 1; CG_UP :: 2; CG_DOWN :: 3;
 
@@ -58,7 +58,7 @@ cg_init_value :: (k:int,i:int,std:f64)->f32 {
     u2:=f64(cr_bits(cast(u64)(1000+k),cast(u64)(2*i+1))>>11)/9007199254740992.0;
     return f32(std*(sqrt(-2.0*log(u1))*cos(2.0*3.141592653589793*u2)));
 }
-cg_init :: (s:CgShape,p:[]f32)->CgStatus #export_c {
+cg_init :: (s:CgShape,p:[]f32)->CgStatus #export_c #effects(all) {
     if p.count!=cg_params(s) {return CgStatus.shape;}
     for k:0..<cg_tensors(s) {
         std:=0.02;w:=(k-2)%4;
@@ -71,22 +71,22 @@ cg_init :: (s:CgShape,p:[]f32)->CgStatus #export_c {
 // ---- data ----
 // ids: the corpus's distinct bytes in ascending order are ids 0, 1, ...
 // table[b] is b's id or -1. Returns the vocabulary size.
-cg_vocabulary :: (x:[]u8,table:[]int)->int #export_c {
+cg_vocabulary :: (x:[]u8,table:[]int)->int #export_c #effects(all) {
     for b:0..<256 {table[b]= -1;}
     for v:x {table[cast(int)v]=0;}
     n:=0;for b:0..<256 {if table[b]==0 {table[b]=n;n+=1;}}
     return n;
 }
-cg_tokenize :: (x:[]u8,table:[]int,out:[]u8) #export_c {for i:0..<x.count {out[i]=cast(u8)table[cast(int)x[i]];}}
+cg_tokenize :: (x:[]u8,table:[]int,out:[]u8) #export_c #effects(all) {for i:0..<x.count {out[i]=cast(u8)table[cast(int)x[i]];}}
 // Step s's row starts, absolute in the data arena (training is its first
 // bytes): cr_bits(7, B s + r) mod (train - context), B = rows*accumulate.
-cg_rows :: (s:CgShape,step:int,train:int,offs:[]int) #export_c {
+cg_rows :: (s:CgShape,step:int,train:int,offs:[]int) #export_c #effects(all) {
     b:=s.rows*s.accumulate;span:=cast(u64)(train-s.context);
     for r:0..<b {offs[r]=cast(int)(cr_bits(7,cast(u64)(b*step+r))%span);}
 }
 // Held-out windows: (heldout-1)/context windows of context inputs at
 // held-out offsets 0, context, ...; window w starts at train + w*context.
-cg_windows :: (s:CgShape,heldout:int)->int #export_c {return (heldout-1)/s.context;}
+cg_windows :: (s:CgShape,heldout:int)->int #export_c #effects(all) {return (heldout-1)/s.context;}
 
 // ---- the arenas ----
 // Buffers: arena 0 holds FP32 values, 1 bytes, 2 offsets (int), 3 BF16
@@ -135,7 +135,7 @@ cg_kpart :: (s:CgShape,nt:int)->int {
 }
 // The plan for shape s over a corpus of `data` bytes. Every buffer has its
 // exact extent; the eval windows reuse the micro-batch buffers.
-cg_plan :: (s:CgShape,data:int,budget:int)->CgPlan #export_c {
+cg_plan :: (s:CgShape,data:int,budget:int)->CgPlan #export_c #effects(all) {
     p:=CgPlan.{status=cg_admit(s)};if p.status!=CgStatus.ok {return p;}
     n:=cg_params(s);t:=s.context;d:=s.d;nt:=s.rows*t;b:=s.rows*s.accumulate;
     p.n=n;p.tokens=nt;p.data=data;p.offsets=b;
@@ -175,7 +175,7 @@ CG_BLOCK :: [20]int.[256,256,256,32,32,32,32,0,0,0,0,0,0,0,256,0,32,0,0,0];
 K_NN :: 0; K_NT :: 1; K_TN :: 2; K_SOFTMAX :: 3; K_SOFTMAX_BACK :: 4; K_RMS :: 5; K_RMS_BACK :: 6; K_IDS :: 7; K_EMBED :: 8;
 K_EMBED_BACK :: 9; K_POS_BACK :: 10; K_RELU2 :: 11; K_RELU2_BACK :: 12; K_CE :: 13; K_SUM :: 14; K_ADAMW :: 15;
 K_MMA :: 16; K_HALF :: 17; K_RELU2_HALF :: 18; K_KSUM :: 19;
-cg_block :: (k:int)->int #export_c {return CG_BLOCK[k];}
+cg_block :: (k:int)->int #export_c #effects(all) {return CG_BLOCK[k];}
 cg_name :: (k:int)->string {return CG_NAMES[k];}
 
 cg_int :: (v:int)->CgArg {return CgArg.{kind=0,i=v};}
@@ -407,7 +407,7 @@ cg_reduce :: (s:CgShape,p:CgPlan,out:[]CgLaunch,at0:int)->int {
     return at;
 }
 // One training step's launches before the decision.
-cg_step :: (s:CgShape,p:CgPlan,out:[]CgLaunch)->int #export_c {
+cg_step :: (s:CgShape,p:CgPlan,out:[]CgLaunch)->int #export_c #effects(all) {
     at:=0;scale:=1/f32(s.rows*s.accumulate*s.context);
     if cgp_mma(s.profile) {
         at=cg_weights16(p,out,at);
@@ -424,18 +424,18 @@ cg_step :: (s:CgShape,p:CgPlan,out:[]CgLaunch)->int #export_c {
     return cg_reduce(s,p,out,at);
 }
 // The update a decision admitted.
-cg_update :: (p:CgPlan,d:CgDecision,out:[]CgLaunch)->int #export_c {
+cg_update :: (p:CgPlan,d:CgDecision,out:[]CgLaunch)->int #export_c #effects(all) {
     x:=[12]CgArg.[cg_real(d.keep),cg_real(d.b2),cg_real(d.wb1),cg_real(d.wb2),cg_real(d.step),cg_real(d.root2),cg_real(d.eps),cg_real(d.scale),
         cg_buf(p,CG_P),cg_buf(p,CG_G),cg_buf(p,CG_M),cg_buf(p,CG_V)];
     return cg_add(out,0,K_ADAMW,p.n,x[..]);
 }
 // Forward only, for held-out windows: `rows` windows whose starts the host
 // put in OFFS[0 ..< rows]; token losses go to LOSS[0 ..< rows*context].
-cg_eval :: (s:CgShape,p:CgPlan,out:[]CgLaunch,rows:int)->int #export_c {
+cg_eval :: (s:CgShape,p:CgPlan,out:[]CgLaunch,rows:int)->int #export_c #effects(all) {
     if cgp_mma(s.profile) {return cg_forward16(s,p,out,cg_weights16(p,out,0),rows,0,0,1);}
     return cg_forward(s,p,out,0,rows,0,0,1);
 }
-cg_eval_offsets :: (s:CgShape,train:int,first:int,rows:int,offs:[]int) #export_c {for r:0..<rows {offs[r]=train+(first+r)*s.context;}}
+cg_eval_offsets :: (s:CgShape,train:int,first:int,rows:int,offs:[]int) #export_c #effects(all) {for r:0..<rows {offs[r]=train+(first+r)*s.context;}}
 
 // ---- the CPU run of the same launches ----
 cg_fv :: (f:[]f32,a:CgArg)->[]f32 {return f[a.at..<a.at+a.count];}
@@ -443,7 +443,7 @@ cg_uv :: (u:[]u8,a:CgArg)->[]u8 {return u[a.at..<a.at+a.count];}
 cg_iv :: (w:[]int,a:CgArg)->[]int {return w[a.at..<a.at+a.count];}
 // A BF16 buffer's words.
 cg_hv :: (h:[]u64,a:CgArg)->[]u64 {return h[a.at/4..<(a.at+a.count)/4];}
-cg_exec :: (l:CgLaunch,f:[]f32,u:[]u8,w:[]int,hh:[]u64) #export_c {
+cg_exec :: (l:CgLaunch,f:[]f32,u:[]u8,w:[]int,hh:[]u64) #export_c #effects(all) {
     a:=l.args;k:=l.kernel;
     if k==K_MMA {
         x:=cg_hv(hh,a[8]);y:=cg_hv(hh,a[14]);z:=cg_fv(f,a[20]);z16:=cg_hv(hh,a[21]);
@@ -480,20 +480,20 @@ cg_exec :: (l:CgLaunch,f:[]f32,u:[]u8,w:[]int,hh:[]u64) #export_c {
 }
 cg_exec_all :: (ls:[]CgLaunch,f:[]f32,u:[]u8,w:[]int,hh:[]u64) {for l:ls {cg_exec(l,f,u,w,hh);}}
 // The launch-count of one step before its decision, for the ledger.
-cg_step_launches :: (s:CgShape,p:CgPlan)->int #export_c {none:[1]CgLaunch;return cg_step(s,p,none[0..<0]);}
+cg_step_launches :: (s:CgShape,p:CgPlan)->int #export_c #effects(all) {none:[1]CgLaunch;return cg_step(s,p,none[0..<0]);}
 cg_arg_kind :: (a:CgArg)->int {return a.kind;}
 
 // The held-out loss: token losses added in binary64, in order.
-cg_loss_sum :: (x:[]f32)->f64 #export_c {s:=0.0;for v:x {s+=f64(v);}return s;}
+cg_loss_sum :: (x:[]f32)->f64 #export_c #effects(all) {s:=0.0;for v:x {s+=f64(v);}return s;}
 // FNV-1a 64 continued over FP32 values (little-endian bytes): the checkpoint payload.
-cg_fnv_f32 :: (h0:u64,x:[]f32)->u64 #export_c {
+cg_fnv_f32 :: (h0:u64,x:[]f32)->u64 #export_c #effects(all) {
     h:=h0;
     for v:x {b:=f32_bits(v);for k:0..<4 {h=mul_wrap(h^cast(u64)((b>>(8*cast(u32)k))&255),(cast(u64)0x100000001b3));}}
     return h;
 }
 // The frozen schedule's length and warmup, for the host.
-cg_steps :: ()->int #export_c {return CG_STEPS;}
-cg_warmup :: ()->int #export_c {return CG_WARMUP;}
+cg_steps :: ()->int #export_c #effects(all) {return CG_STEPS;}
+cg_warmup :: ()->int #export_c #effects(all) {return CG_WARMUP;}
 // Buffer ids the host copies: parameters, gradient, both moments, token
 // losses, the two step numbers, data and row offsets, in that order.
-cg_buffer :: (k:int)->int #export_c {x:=[8]int.[CG_P,CG_G,CG_M,CG_V,CG_LOSS,CG_SCAL,CG_DATA,CG_OFFS];return x[k];}
+cg_buffer :: (k:int)->int #export_c #effects(all) {x:=[8]int.[CG_P,CG_G,CG_M,CG_V,CG_LOSS,CG_SCAL,CG_DATA,CG_OFFS];return x[k];}

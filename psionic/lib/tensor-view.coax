@@ -224,14 +224,14 @@ TvAlias :: struct {status:TvStatus;may_alias:bool;}
 }
 
 // Exact for every admitted stride and extent product (at most 2^42 < 2^53).
-tv_magnitude :: (x:int)->int {return int(abs(f64(x)));}
-tv_storage_valid :: (s:TvStorage)->bool {return s.live && s.identity>0 && s.epoch>0 && s.elements>=0 && s.elements<=TV_LIMIT && s.version>=0;}
-tv_owner :: (identity:int,epoch:int,elements:int)->TvOwner #export_c {
+tv_magnitude :: (x:int)->int #effects(all) {return int(abs(f64(x)));}
+tv_storage_valid :: (s:TvStorage)->bool #effects(all) {return s.live && s.identity>0 && s.epoch>0 && s.elements>=0 && s.elements<=TV_LIMIT && s.version>=0;}
+tv_owner :: (identity:int,epoch:int,elements:int)->TvOwner #export_c #effects(all) {
     if identity<=0 || epoch<=0 {return TvOwner.{status=TvStatus.state};}
     if elements<0 || elements>TV_LIMIT {return TvOwner.{status=TvStatus.limit};}
     return TvOwner.{storage=TvStorage.{identity=identity,epoch=epoch,elements=elements,live=true}};
 }
-tv_elements :: (shape:TvShape)->TvCount #export_c {
+tv_elements :: (shape:TvShape)->TvCount #export_c #effects(all) {
     if shape.rank<0 || shape.rank>4 {return TvCount.{status=TvStatus.rank};}
     empty:=false;
     for i:0..<4 {d:=shape.dims[i];if i<shape.rank {if d<0 {return TvCount.{status=TvStatus.dimension};}if d>TV_LIMIT {return TvCount.{status=TvStatus.limit};}if d==0 {empty=true;}}
@@ -241,7 +241,7 @@ tv_elements :: (shape:TvShape)->TvCount #export_c {
     return TvCount.{elements=n};
 }
 // book:begin layout
-tv_layout :: (s:TvStorage,v:TvView)->TvLayout #export_c {
+tv_layout :: (s:TvStorage,v:TvView)->TvLayout #export_c #effects(all) {
     if !tv_storage_valid(s) || v.identity!=s.identity || v.epoch!=s.epoch {return TvLayout.{status=TvStatus.state};}
     count:=tv_elements(v.shape);if count.status!=TvStatus.ok {return TvLayout.{status=count.status};}
     for i:0..<4 {if i>=v.shape.rank {if v.strides[i]!=0 {return TvLayout.{status=TvStatus.dimension};}}
@@ -269,25 +269,25 @@ tv_layout :: (s:TvStorage,v:TvView)->TvLayout #export_c {
 // book:end layout
 // Interval overlap is conservative: interleaved even/odd addresses may still
 // report may_alias. An empty view touches no element.
-tv_alias :: (s:TvStorage,a:TvView,b:TvView)->TvAlias #export_c {
+tv_alias :: (s:TvStorage,a:TvView,b:TvView)->TvAlias #export_c #effects(all) {
     x:=tv_layout(s,a);if x.status!=TvStatus.ok {return TvAlias.{status=x.status};}
     y:=tv_layout(s,b);if y.status!=TvStatus.ok {return TvAlias.{status=y.status};}
     return TvAlias.{may_alias=x.elements>0 && y.elements>0 && x.low<=y.high && y.low<=x.high};
 }
 
-tv_checked_view :: (s:TvStorage,v:TvView)->TvViewResult {r:=tv_layout(s,v);if r.status!=TvStatus.ok {return TvViewResult.{status=r.status};}return TvViewResult.{view=v};}
-tv_contiguous :: (s:TvStorage,shape:TvShape,writable:bool)->TvViewResult #export_c {
+tv_checked_view :: (s:TvStorage,v:TvView)->TvViewResult #effects(all) {r:=tv_layout(s,v);if r.status!=TvStatus.ok {return TvViewResult.{status=r.status};}return TvViewResult.{view=v};}
+tv_contiguous :: (s:TvStorage,shape:TvShape,writable:bool)->TvViewResult #export_c #effects(all) {
     c:=tv_elements(shape);if c.status!=TvStatus.ok {return TvViewResult.{status=c.status};}
     v:=TvView.{identity=s.identity,epoch=s.epoch,shape=shape,writable=writable};
     if c.elements>0 {stride:=1;i:=shape.rank;while i>0 {i-=1;v.strides[i]=stride;stride*=shape.dims[i];}}
     return tv_checked_view(s,v);
 }
-tv_transpose :: (s:TvStorage,v:TvView,a:int,b:int)->TvViewResult #export_c {
+tv_transpose :: (s:TvStorage,v:TvView,a:int,b:int)->TvViewResult #export_c #effects(all) {
     r:=tv_layout(s,v);if r.status!=TvStatus.ok {return TvViewResult.{status=r.status};}
     if a<0 || a>=v.shape.rank || b<0 || b>=v.shape.rank {return TvViewResult.{status=TvStatus.rank};}
     next:=v;next.shape.dims[a]=v.shape.dims[b];next.shape.dims[b]=v.shape.dims[a];next.strides[a]=v.strides[b];next.strides[b]=v.strides[a];return tv_checked_view(s,next);
 }
-tv_slice :: (s:TvStorage,v:TvView,axis:int,start:int,count:int,step:int)->TvViewResult #export_c {
+tv_slice :: (s:TvStorage,v:TvView,axis:int,start:int,count:int,step:int)->TvViewResult #export_c #effects(all) {
     r:=tv_layout(s,v);if r.status!=TvStatus.ok {return TvViewResult.{status=r.status};}
     if axis<0 || axis>=v.shape.rank {return TvViewResult.{status=TvStatus.rank};}
     if count<0 || step==0 {return TvViewResult.{status=TvStatus.dimension};}
@@ -298,7 +298,7 @@ tv_slice :: (s:TvStorage,v:TvView,axis:int,start:int,count:int,step:int)->TvView
     last:=start+(count-1)*step;if start>=extent || last<0 || last>=extent {return TvViewResult.{status=TvStatus.bounds};}
     next.offset+=start*v.strides[axis];next.strides[axis]*=step;return tv_checked_view(s,next);
 }
-tv_broadcast :: (s:TvStorage,v:TvView,target:TvShape)->TvViewResult #export_c {
+tv_broadcast :: (s:TvStorage,v:TvView,target:TvShape)->TvViewResult #export_c #effects(all) {
     r:=tv_layout(s,v);if r.status!=TvStatus.ok {return TvViewResult.{status=r.status};}
     c:=tv_elements(target);if c.status!=TvStatus.ok {return TvViewResult.{status=c.status};}
     if target.rank<v.shape.rank {return TvViewResult.{status=TvStatus.rank};}
@@ -308,30 +308,30 @@ tv_broadcast :: (s:TvStorage,v:TvView,target:TvShape)->TvViewResult #export_c {
     return tv_checked_view(s,next);
 }
 // Internal: callers first admit layout and 0 <= linear < elements.
-tv_offset :: (v:TvView,linear:int)->int {n:=linear;offset:=v.offset;i:=v.shape.rank;while i>0 {i-=1;offset+=(n%v.shape.dims[i])*v.strides[i];n/=v.shape.dims[i];}return offset;}
-tv_index :: (s:TvStorage,v:TvView,coordinates:[4]int)->TvIndex #export_c {
+tv_offset :: (v:TvView,linear:int)->int #effects(all) {n:=linear;offset:=v.offset;i:=v.shape.rank;while i>0 {i-=1;offset+=(n%v.shape.dims[i])*v.strides[i];n/=v.shape.dims[i];}return offset;}
+tv_index :: (s:TvStorage,v:TvView,coordinates:[4]int)->TvIndex #export_c #effects(all) {
     r:=tv_layout(s,v);if r.status!=TvStatus.ok {return TvIndex.{status=r.status};}offset:=v.offset;
     for i:0..<4 {if i<v.shape.rank {if coordinates[i]<0 || coordinates[i]>=v.shape.dims[i] {return TvIndex.{status=TvStatus.bounds};}offset+=coordinates[i]*v.strides[i];}
         else if coordinates[i]!=0 {return TvIndex.{status=TvStatus.bounds};}}
     return TvIndex.{offset=offset};
 }
 // book:begin versions
-tv_save :: (s:TvStorage,v:TvView)->TvSaved #export_c {
+tv_save :: (s:TvStorage,v:TvView)->TvSaved #export_c #effects(all) {
     r:=tv_layout(s,v);if r.status!=TvStatus.ok {return TvSaved.{status=r.status};}
     return TvSaved.{identity=s.identity,epoch=s.epoch,version=s.version};
 }
-tv_saved_status :: (s:TvStorage,saved:TvSaved)->TvStatus #export_c {
+tv_saved_status :: (s:TvStorage,saved:TvSaved)->TvStatus #export_c #effects(all) {
     if saved.status!=TvStatus.ok || !tv_storage_valid(s) || saved.identity!=s.identity || saved.epoch!=s.epoch {return TvStatus.state;}
     if saved.version!=s.version {return TvStatus.modified;}return TvStatus.ok;
 }
 // book:end versions
-tv_retire :: (owner:[]TvStorage)->TvResult #export_c {
+tv_retire :: (owner:[]TvStorage)->TvResult #export_c #effects(all) {
     if owner.count!=1 {return TvResult.{status=TvStatus.capacity};}
     if !tv_storage_valid(owner[0]) {return TvResult.{status=TvStatus.state};}owner[0].live=false;return TvResult.{};
 }
-tv_finite_bits :: (bits:u32)->bool {return (bits&0x7fffffff)<0x7f800000;}
-tv_finite :: (x:f32)->bool {return tv_finite_bits(f32_bits(x));}
-tv_gather_checked :: (owner:[]TvStorage,v:TvView,data:[]f32,out:[]f32,scratch:[]f32,overlap:bool)->TvResult #export_c {
+tv_finite_bits :: (bits:u32)->bool #effects(all) {return (bits&0x7fffffff)<0x7f800000;}
+tv_finite :: (x:f32)->bool #effects(all) {return tv_finite_bits(f32_bits(x));}
+tv_gather_checked :: (owner:[]TvStorage,v:TvView,data:[]f32,out:[]f32,scratch:[]f32,overlap:bool)->TvResult #export_c #effects(all) {
     if owner.count!=1 {return TvResult.{status=TvStatus.capacity};}s:=owner[0];r:=tv_layout(s,v);if r.status!=TvStatus.ok {return TvResult.{status=r.status};}
     if data.count!=s.elements || out.count<r.elements || scratch.count<r.elements {return TvResult.{status=TvStatus.capacity};}
     if overlap {return TvResult.{status=TvStatus.alias};}
@@ -340,7 +340,7 @@ tv_gather_checked :: (owner:[]TvStorage,v:TvView,data:[]f32,out:[]f32,scratch:[]
     for i:0..<r.elements {out[i]=scratch[i];}return TvResult.{written=r.elements};
 }
 // book:begin scatter
-tv_scatter_checked :: (owner:[]TvStorage,v:TvView,source:[]f32,data:[]f32,scratch:[]f32,overlap:bool)->TvResult #export_c {
+tv_scatter_checked :: (owner:[]TvStorage,v:TvView,source:[]f32,data:[]f32,scratch:[]f32,overlap:bool)->TvResult #export_c #effects(all) {
     if owner.count!=1 {return TvResult.{status=TvStatus.capacity};}s:=owner[0];r:=tv_layout(s,v);
     if r.status!=TvStatus.ok {return TvResult.{status=r.status};}
     if !v.writable {return TvResult.{status=TvStatus.readonly};}

@@ -213,7 +213,7 @@ RenderPlan :: struct { status:RenderPlanStatus=RenderPlanStatus.invalid; readine
   if mode==3 {#assert q.ops[0].depth==RenderTarget.scene_depth && q.ops[2].first==0 && q.ops[2].count==1 && q.ops[2].instances==1;}
 }
 
-render_features :: (f:RenderFeatures)->bool {
+render_features :: (f:RenderFeatures)->bool #effects(all) {
   if !f.scene && (f.shadow || f.casters || f.grass || f.water || f.post || f.particles) {return false;}
   if f.scene && f.surface {return false;}
   if f.water_copy && (!f.water || !f.post) {return false;}
@@ -224,7 +224,7 @@ render_features :: (f:RenderFeatures)->bool {
   return true;
 }
 
-render_pass_state :: (f:RenderFeatures,p:RenderPassId)->RenderPassState {
+render_pass_state :: (f:RenderFeatures,p:RenderPassId)->RenderPassState #effects(all) {
   r:=RenderPassState.{};
   if !render_features(f) {return r;}
   if p==RenderPassId.background {
@@ -252,18 +252,18 @@ render_pass_state :: (f:RenderFeatures,p:RenderPassId)->RenderPassState {
   return r;
 }
 
-rp_emit :: (q:[]RenderPlan,o:RenderOp) {
+rp_emit :: (q:[]RenderPlan,o:RenderOp) #effects(all) {
   // The fixed graph below emits at most 42 ops. Counts become symbolic draw
   // ranges, never more program instructions; the 256-entry array cannot fill.
   q[0].ops[q[0].count]=o;q[0].count+=1;
 }
-rp_begin :: (q:[]RenderPlan,a:RenderTarget,b:RenderTarget,d:RenderTarget,keep:bool,store:bool) {
+rp_begin :: (q:[]RenderPlan,a:RenderTarget,b:RenderTarget,d:RenderTarget,keep:bool,store:bool) #effects(all) {
   rp_emit(q,RenderOp.{kind=RenderOpKind.begin,colour0=a,colour1=b,depth=d,keep=keep,store_depth=store});
 }
-rp_draw :: (q:[]RenderPlan,f:RenderFeatures,p:RenderPassId,from:RenderDrawSource,first:int,n:int,instances:int) {
+rp_draw :: (q:[]RenderPlan,f:RenderFeatures,p:RenderPassId,from:RenderDrawSource,first:int,n:int,instances:int) #effects(all) {
   rp_emit(q,RenderOp.{kind=RenderOpKind.draw,pass=p,state=render_pass_state(f,p),draw_source=from,first=first,count=n,instances=instances});
 }
-render_plan :: (f:RenderFeatures,c:FrameCounts,ready:RenderReadiness,particles_ready:bool)->RenderPlan {
+render_plan :: (f:RenderFeatures,c:FrameCounts,ready:RenderReadiness,particles_ready:bool)->RenderPlan #effects(all) {
   out:[1]RenderPlan;q:=out[..];q[0].readiness=ready;
   if !render_features(f) || ready==RenderReadiness.invalid || c.width<1 || c.height<1 || c.vertex_stride<1 {return q[0];}
   counts:=[8]int.[c.hud_vertices,c.draw_count,c.water_draws,c.grass_instances,c.particle_instances,c.surface_vertices,c.caster_vertices,c.caster_instances];

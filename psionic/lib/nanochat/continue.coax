@@ -33,7 +33,7 @@ CtJudge :: struct {verdict:CtVerdict;reason:CtReason;gain:f64;forget:f64;}
 CT_GAIN :: 0.2;
 CT_FORGET :: 0.05;
 CT_TARGETS :: 500;
-ct_judge :: (base_general:NpEval,base_domain:NpEval,general:NpEval,domain:NpEval)->CtJudge {
+ct_judge :: (base_general:NpEval,base_domain:NpEval,general:NpEval,domain:NpEval)->CtJudge #effects(all) {
     r:=CtJudge.{};all:=[4]NpEval.[base_general,base_domain,general,domain];
     for e:all {if e.status!=NpStatus.ok || !aw_finite(e.bpb) {r.reason=CtReason.number;return r;}}
     if general.targets!=base_general.targets || general.bytes!=base_general.bytes || domain.targets!=base_domain.targets || domain.bytes!=base_domain.bytes {r.reason=CtReason.mismatch;return r;}
@@ -206,7 +206,7 @@ ct_judge :: (base_general:NpEval,base_domain:NpEval,general:NpEval,domain:NpEval
 // The continued run's refusals, before any work: the same model as the base,
 // no initialization of its own, at least one domain window a step, both
 // plans admitted by chapter 128's rules, and enough windows in each stream.
-ct_admit :: (p:CtPlan,domain:int,general:int)->CtStatus {
+ct_admit :: (p:CtPlan,domain:int,general:int)->CtStatus #effects(all) {
     same:=p.base;same.model=p.run.model;
     if !ck_equal(np_plan_id(same),np_plan_id(p.base)) || p.run.init!=0 || p.domain<1 || p.domain>p.run.batch {return CtStatus.config;}
     if np_admit(p.base,p.base.batch)!=NpStatus.ok {return CtStatus.config;}
@@ -216,7 +216,7 @@ ct_admit :: (p:CtPlan,domain:int,general:int)->CtStatus {
 }
 // The continued plan's identity: the base plan, the base checkpoint, the
 // run's plan, the domain count and the domain data, digested together.
-ct_plan_id :: (p:CtPlan,domain:[32]u8)->[32]u8 {
+ct_plan_id :: (p:CtPlan,domain:[32]u8)->[32]u8 #effects(all) {
     b:[136]u8;at:=ck_put(b[..],0,np_plan_id(p.base));at=ck_put(b[..],at,p.digest);at=ck_put(b[..],at,np_plan_id(p.run));
     at=ck_put64(b[..],at,cast,trunc(u64)p.domain);at=ck_put(b[..],at,domain);
     return ck_digest("psionic.continue-plan.v1",b[0..<at]);
@@ -227,7 +227,7 @@ ct_plan_id :: (p:CtPlan,domain:[32]u8)->[32]u8 {
 // chapter 128's resume must admit the whole record under the base plan and
 // data, and the base run must have finished. The weights are kept; the
 // optimizer starts fresh, its moments zero. A refusal writes nothing.
-ct_base :: (p:CtPlan,data:[32]u8,bytes:[]u8,w:[]f64,m:[]f64,v:[]f64)->CtBase {
+ct_base :: (p:CtPlan,data:[32]u8,bytes:[]u8,w:[]f64,m:[]f64,v:[]f64)->CtBase #effects(all) {
     if bytes.count<32 || !ck_equal(ck_get(bytes,bytes.count-32),p.digest) {return CtBase.{status=CtStatus.digest};}
     if bytes.count>=NP_HEAD && ck_get64(bytes,72)!=cast,trunc(u64)p.base.steps {return CtBase.{status=CtStatus.unfinished};}
     r:=np_resume(p.base,np_plan_id(p.base),data,bytes,w,m,v);if r.status!=NpCheck.ok {return CtBase.{status=CtStatus.base,check=r.status};}
@@ -240,7 +240,7 @@ ct_base :: (p:CtPlan,data:[32]u8,bytes:[]u8,w:[]f64,m:[]f64,v:[]f64)->CtBase {
 // paragraph, general or domain, against every held-out paragraph. Held-out
 // text may repeat held-out text. The domain must hold out at least one
 // document and no more than it trains on.
-ct_audit :: (general:[]string,gs:[]int,domain:[]string,ds:[]int,docs:[]string,sources:[]int,hashes:[]u64)->NpData {
+ct_audit :: (general:[]string,gs:[]int,domain:[]string,ds:[]int,docs:[]string,sources:[]int,hashes:[]u64)->NpData #effects(all) {
     n:=general.count+domain.count;
     if gs.count!=general.count || ds.count!=domain.count || docs.count<n || sources.count<n {return NpData.{status=NpStatus.data};}
     held:=0;for s:ds {if np_holdout(s) {held+=1;}}
@@ -255,7 +255,7 @@ ct_audit :: (general:[]string,gs:[]int,domain:[]string,ds:[]int,docs:[]string,so
 // order, then rehearsal windows from the general stream in the order under
 // seed + 1, each stream's position advancing by its own count per step. The
 // rest is chapter 128's step: mean, norm, clipping, schedule and AdamW.
-ct_step :: (p:CtPlan,run:NpRun,domain:[]int,general:[]int,dorder:[]int,gorder:[]int,w:[]f64,m:[]f64,v:[]f64,g:[]f64,total:[]f64,tape:[]f64,logits:[]f64)->NpStep {
+ct_step :: (p:CtPlan,run:NpRun,domain:[]int,general:[]int,dorder:[]int,gorder:[]int,w:[]f64,m:[]f64,v:[]f64,g:[]f64,total:[]f64,tape:[]f64,logits:[]f64)->NpStep #effects(all) {
     q:=p.run;c:=q.model;L:=c.sequence_len;dw:=domain.count/L;gw:=general.count/L;rehearse:=q.batch-p.domain;n:=w.count;fail:=NpStep.{run=run};
     if run.step>=q.steps {fail.status=NpStatus.config;return fail;}
     if dw<p.domain || gw<rehearse {fail.status=NpStatus.data;return fail;}

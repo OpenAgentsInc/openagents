@@ -211,7 +211,7 @@ WR_OWNED :: 2;
 WR_TIERS :: 3;
 // The evidence recorded about a peer. Nothing else raises its tier.
 WrEvidence :: struct {owner:bool;member:bool;audits:int;failed:int;}
-wr_tier :: (e:WrEvidence,vet:int)->int {
+wr_tier :: (e:WrEvidence,vet:int)->int #effects(all) {
     if e.owner {return WR_OWNED;}
     if e.member && e.failed==0 && e.audits>=vet {return WR_VETTED;}
     return WR_ANY;
@@ -228,7 +228,7 @@ WR_KINDS :: 3;
 // The peer of stage s of n, under chapter 186's contract: it computes
 // hidden rows. Stage 0 also gets the prompt's tokens and every sampled
 // token fed back in; the last stage samples the output.
-wr_sees :: (n:int,s:int)->int {
+wr_sees :: (n:int,s:int)->int #effects(all) {
     x:=WR_ACTS;
     if s==0 {x|=WR_TOKENS|WR_OUTPUT;}
     if s==n-1 {x|=WR_OUTPUT;}
@@ -236,7 +236,7 @@ wr_sees :: (n:int,s:int)->int {
 }
 // Every peer's exposure under an assignment. Peer 0, this machine, holds
 // the prompt and gets the output back.
-wr_exposed :: (n:int,peer:[]int)->[8]int {
+wr_exposed :: (n:int,peer:[]int)->[8]int #effects(all) {
     e:[8]int;e[0]=WR_TOKENS|WR_OUTPUT;
     for s:0..<n {e[peer[s]]|=wr_sees(n,s);}
     return e;
@@ -251,7 +251,7 @@ wr_exposed :: (n:int,peer:[]int)->[8]int {
 WrPolicy :: struct {need:[5][3]int;vet:int;}
 // The tier a peer needs to see `sees` of a request labelled `label`: the
 // highest the policy names for any class and kind it sees.
-wr_need :: (p:WrPolicy,label:int,sees:int)->int {
+wr_need :: (p:WrPolicy,label:int,sees:int)->int #effects(all) {
     t:=WR_ANY;
     for c:0..<CS_CLASSES {for k:0..<WR_KINDS {
         x:=p.need[c][k];
@@ -280,7 +280,7 @@ WrPlacement :: struct {
     status:WrStatus;placed:PlcPlacement;label:int;tier:[8]int;need:[8]int;exposed:[8]int;
     from:int;to:int;stage:int;peer:int;cls:int;kind:int;have:int;want:int;fix:int;tried:int;
 }
-wr_valid :: (f:PlcFleet,t:WrTrust,p:WrPolicy,label:int)->bool {
+wr_valid :: (f:PlcFleet,t:WrTrust,p:WrPolicy,label:int)->bool #effects(all) {
     if label<0 || label>CS_ALL || p.vet<0 || p.vet>WR_COUNT_MAX {return false;}
     for c:0..<CS_CLASSES {for k:0..<WR_KINDS {if p.need[c][k]<0 || p.need[c][k]>=WR_TIERS {return false;}}}
     for a:0..<f.peers {
@@ -291,12 +291,12 @@ wr_valid :: (f:PlcFleet,t:WrTrust,p:WrPolicy,label:int)->bool {
 }
 // Place with stage s denied every peer whose tier is below need[s], on top
 // of the job's own denials. Peer 0 is owned.
-wr_try :: (j:PlcJob,f:PlcFleet,tier:[8]int,need:[8]int,goal:PlcGoal,old:[]int)->PlcPlacement {
+wr_try :: (j:PlcJob,f:PlcFleet,tier:[8]int,need:[8]int,goal:PlcGoal,old:[]int)->PlcPlacement #effects(all) {
     d:=j;
     for s:0..<j.stages {for a:1..<f.peers {if tier[a]<need[s] {d.deny[s]|=1<<a;}}}
     return plc_place(d,f,goal,old);
 }
-wr_place :: (j:PlcJob,f:PlcFleet,t:WrTrust,p:WrPolicy,label:int,goal:PlcGoal,old:[]int)->WrPlacement {
+wr_place :: (j:PlcJob,f:PlcFleet,t:WrTrust,p:WrPolicy,label:int,goal:PlcGoal,old:[]int)->WrPlacement #effects(all) {
     r:=WrPlacement.{status=WrStatus.input,label=label,from=-1,to=-1,stage=-1,peer=-1,cls=-1,kind=-1,have=-1,want=-1};
     if !plc_valid(j,f,old) || !wr_valid(f,t,p,label) {return r;}
     P:=f.peers;n:=j.stages;
@@ -348,7 +348,7 @@ WrSent :: struct {gate:WrGate;peer:int;decision:CsDecision;}
 // Before any byte leaves: every remote peer of the placement gets bytes
 // derived from the request, so each needs an active grant to compute on
 // every class of the label.
-wr_consent :: (l:CsLedger,p:WrPlacement,now:int)->WrSent {
+wr_consent :: (l:CsLedger,p:WrPlacement,now:int)->WrSent #effects(all) {
     for s:0..<p.placed.stages {
         a:=p.placed.peer[s];
         if a==0 {continue;}
@@ -360,7 +360,7 @@ wr_consent :: (l:CsLedger,p:WrPlacement,now:int)->WrSent {
 // This machine's message into the pipeline: the prompt's tokens to stage
 // 0's peer, or, when this machine runs stage 0, its hidden rows to stage
 // 1's peer. It goes through cs_send, which logs it before the bytes move.
-wr_send :: (l:[]CsLedger,g:CsGraph,sink:[]CsSink,parts:[]int,p:WrPlacement,now:int)->WrSent {
+wr_send :: (l:[]CsLedger,g:CsGraph,sink:[]CsSink,parts:[]int,p:WrPlacement,now:int)->WrSent #effects(all) {
     r:=WrSent.{gate=WrGate.placement,peer=-1,decision=cs_fail(CsWhy.shape)};
     if p.status!=WrStatus.ok {return r;}
     for q:parts {if q<0 || q>=g.count {r.gate=WrGate.send;return r;}}
@@ -378,8 +378,8 @@ wr_send :: (l:[]CsLedger,g:CsGraph,sink:[]CsSink,parts:[]int,p:WrPlacement,now:i
 }
 // book:end consent
 
-wr_tier_name :: (t:int)->string {names:=[3]string.["any","vetted","owned"];return names[t];}
-wr_kind_name :: (k:int)->string {names:=[3]string.["prompt tokens","activations","output tokens"];return names[k];}
-wr_class_name :: (c:int)->string {names:=[5]string.["session","user","project","tool","identity"];return names[c];}
-wr_status_name :: (s:WrStatus)->string {names:=[5]string.["ok","input","plaintext link","exposure","does not place"];return names[cast(int)s];}
-wr_gate_name :: (g:WrGate)->string {names:=[5]string.["ok","placement refused","label not placed","no consent","send refused"];return names[cast(int)g];}
+wr_tier_name :: (t:int)->string #effects(all) {names:=[3]string.["any","vetted","owned"];return names[t];}
+wr_kind_name :: (k:int)->string #effects(all) {names:=[3]string.["prompt tokens","activations","output tokens"];return names[k];}
+wr_class_name :: (c:int)->string #effects(all) {names:=[5]string.["session","user","project","tool","identity"];return names[c];}
+wr_status_name :: (s:WrStatus)->string #effects(all) {names:=[5]string.["ok","input","plaintext link","exposure","does not place"];return names[cast(int)s];}
+wr_gate_name :: (g:WrGate)->string #effects(all) {names:=[5]string.["ok","placement refused","label not placed","no consent","send refused"];return names[cast(int)g];}

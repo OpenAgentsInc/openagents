@@ -97,7 +97,7 @@ a user's list controls where that user's mail goes.
 // Who gets a wrap and which relays it goes to. recipients is N 32-byte keys;
 // lists holds N+1 kind 10050 events: the recipients' in order, then the
 // sender's. Any participant without a usable list refuses the whole plan.
-nip17_plan :: (sender_x:[]u8,recipients:[]u8,lists:[]NostrEvent)->N17Plan {
+nip17_plan :: (sender_x:[]u8,recipients:[]u8,lists:[]NostrEvent)->N17Plan #effects(all) {
   p:N17Plan;n:=recipients.count/32;
   if sender_x.count!=32 || recipients.count%32!=0 || lists.count!=n+1 {return p;}
   p.error=N17_MEMBERS;
@@ -125,7 +125,7 @@ once, and at most eight are kept (NIP-17 asks for one to three).
 ```jai
 // A participant's kind 10050 relays. e is the newest list found for owner,
 // or an unparsed NostrEvent when none was found.
-n17_relays :: (e:NostrEvent,owner:[]u8)->N17Relays {
+n17_relays :: (e:NostrEvent,owner:[]u8)->N17Relays #effects(all) {
   r:N17Relays;j:[1]Json;
   if !nt_start(j[..],e) {return r;}
   if e.kind!=N17_RELAY_LIST {return n17_list_fail(r,N17_LIST,0);}
@@ -180,7 +180,7 @@ same rumor, so every wrap carries the same rumor id.
 // it, and a refusal after the first wrap also zeroes out. tags are the
 // caller's own (subject, e for a reply, kind 15's file tags); the p tags
 // come from the plan.
-nip17_send :: (sender:[]u8,given:N17Plan,now:int,kind:int,tags:string,content:string,fresh:[]Nip59Fresh,work:[]u8,out:[]u8,overlap:bool)->N17Sent {
+nip17_send :: (sender:[]u8,given:N17Plan,now:int,kind:int,tags:string,content:string,fresh:[]Nip59Fresh,work:[]u8,out:[]u8,overlap:bool)->N17Sent #effects(all) {
   s:N17Sent;plan:=given;
   if sender.count!=32 || fresh.count!=plan.recipients+1 {return s;}
   if plan.error!=N17_OK {return n17_sent(s,plan.error,plan.who,fresh);}
@@ -221,7 +221,7 @@ reads the rumor:
 ```jai
 // An opened rumor read as a NIP-17 message for the reader me. rumor is the
 // JSON that nip59_unwrap_checked wrote, and o its result.
-n17_read :: (o:Nip59Opened,rumor:string,me:[]u8)->N17Message {
+n17_read :: (o:Nip59Opened,rumor:string,me:[]u8)->N17Message #effects(all) {
   m:N17Message;
   if me.count!=32 {return m;}
   if o.kind!=N17_CHAT && o.kind!=N17_FILE_KIND {m.error=N17_KIND;return m;}
@@ -268,7 +268,7 @@ same order.
 ```jai
 // The indexes of the opened messages in room, oldest first; equal times by
 // rumor id. Returns their count, or -1 when order is too small.
-nip17_order :: (m:[]N17Message,room:[]u8,order:[]int)->int {
+nip17_order :: (m:[]N17Message,room:[]u8,order:[]int)->int #effects(all) {
   n:=0;
   for i:0..<m.count {
     if m[i].error!=N17_OK || !n17_same(m[i].room[..],room) {continue;}

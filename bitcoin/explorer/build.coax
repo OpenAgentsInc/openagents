@@ -5,7 +5,7 @@ eb_run :: (args: [] string) -> bool {
   out: [65536] u8; err: [65536] u8; r := proc_run(args,840000,out[..],err[..]);
   if r.status != 0 || r.timed_out || r.cut { tool_err(cast(string)err[0..<r.err_n]); return false; } return true;
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   gpu_args := [5] string.["coax/web/tool.sh","wgsl-module","bitcoin/explorer/gpu.coax","bitcoin/explorer/explorer.wgsl","bitcoin/explorer/gpu.module"];
   if !eb_run(gpu_args[..]) { return 1; }
   wasm := [4] string.["coax/web/wasm.sh","bitcoin/explorer/explorer.coax","bitcoin/explorer/face.c","bitcoin/explorer/build/explorer.wasm"];

@@ -65,7 +65,7 @@ rc_c :: (cat: [] u8, out: [] u8) -> int {
 
 RcBuf :: struct { cat: [RC_CATALOG_MAX] u8; out: [RC_OUT_MAX] u8; table: [48 * RC_TABLE_MAX] u8; }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) != 2 { tool_errln("usage: room-catalog PACK OUT.c"); return 2; }
   pack := args_at(a[..], 0); out_path := args_at(a[..], 1);

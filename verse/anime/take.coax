@@ -33,32 +33,32 @@ AT_COUNTS :: [3]string.["1","2","3"];
 AtHeld :: struct {ok:bool;answer:AnimeTakeAnswer;n:int;}
 AtFlat :: struct {ok:bool;writer:Jo;}
 
-at_in :: (raw:string,allowed:string)->bool {start:=0;for i:0..<allowed.count+1 {if i==allowed.count || allowed[i]=='|' {if jv_raw_eq(raw,allowed[start..<i]) {return true;}start=i+1;}}return false;}
-at_keys :: (d:Jv,at:int,allowed:string)->bool {if jv_kind(d,at)!=JV_OBJECT {return false;}c:=d.nodes[at].first;while c!=-1 {if !at_in(jv_key(d,c),allowed) {return false;}c=d.nodes[c].next;}return true;}
-at_utf8 :: (text:string,space:bool)->bool {i:=0;while i<text.count {c:=text[i];if c<32 && !(space && (c==9 || c==10 || c==13)) {return false;}n:=json_utf8(text,i);if n<1 {return false;}i+=n;}return true;}
-at_unique :: (d:Jv)->bool {
+at_in :: (raw:string,allowed:string)->bool #effects(all) {start:=0;for i:0..<allowed.count+1 {if i==allowed.count || allowed[i]=='|' {if jv_raw_eq(raw,allowed[start..<i]) {return true;}start=i+1;}}return false;}
+at_keys :: (d:Jv,at:int,allowed:string)->bool #effects(all) {if jv_kind(d,at)!=JV_OBJECT {return false;}c:=d.nodes[at].first;while c!=-1 {if !at_in(jv_key(d,c),allowed) {return false;}c=d.nodes[c].next;}return true;}
+at_utf8 :: (text:string,space:bool)->bool #effects(all) {i:=0;while i<text.count {c:=text[i];if c<32 && !(space && (c==9 || c==10 || c==13)) {return false;}n:=json_utf8(text,i);if n<1 {return false;}i+=n;}return true;}
+at_unique :: (d:Jv)->bool #effects(all) {
   key:[64]u8;for i:0..<d.count {if d.nodes[i].kind!=JV_OBJECT {continue;}a:=d.nodes[i].first;while a!=-1 {
     n:=jv_unescape(jv_key(d,a),key[..]);if n<1 || !at_utf8(cast(string)key[0..<n],false) {return false;}
     b:=d.nodes[a].next;while b!=-1 {if jv_raw_eq(jv_key(d,b),cast(string)key[0..<n]) {return false;}b=d.nodes[b].next;}a=d.nodes[a].next;
   }}return true;
 }
-at_choices :: (field:string)->int {
+at_choices :: (field:string)->int #effects(all) {
   if field=="kind" {return AD_KINDS;}if field=="who" || field=="to" || field=="archetype" || field=="like" {return AS_ARCHETYPES;}
   if field=="action" {return ACTIONS;}if field=="emotion" {return EMOTIONS;}if field=="spell" {return SPELLS;}if field=="effect" {return EFFECTS;}
   if field=="framing" {return FRAMINGS;}if field=="move" {return MOVES;}if field=="transition" {return TRANSITIONS;}if field=="beat" {return BEATS;}
   if field=="how" {return HOWS;}if field=="place" {return PLACES;}if field=="size" {return SIZES;}if field=="count" {return 3;}if field=="timing" {return 3;}return 0;
 }
-at_choice :: (field:string,index:int)->string {
+at_choice :: (field:string,index:int)->string #effects(all) {
   if index<0 || index>=at_choices(field) {return "";}
   if field=="kind" {return AD_KIND_WORDS[index];}if field=="who" || field=="to" || field=="archetype" || field=="like" {return AS_ARCHETYPE_WORDS[index];}
   if field=="action" {return ACTION_WORDS[index];}if field=="emotion" {return EMOTION_WORDS[index];}if field=="spell" {return SPELL_WORDS[index];}if field=="effect" {return EFFECT_WORDS[index];}
   if field=="framing" {return FRAMING_WORDS[index];}if field=="move" {return MOVE_WORDS[index];}if field=="transition" {return TRANSITION_WORDS[index];}if field=="beat" {return BEAT_WORDS[index];}
   if field=="how" {return HOW_WORDS[index];}if field=="place" {return PLACE_WORDS[index];}if field=="size" {return SIZE_WORDS[index];}if field=="count" {return AT_COUNTS[index];}return AT_TIMING[index];
 }
-at_enum :: (d:Jv,node:int,field:string)->int {if jv_kind(d,node)!=JV_STRING {return -1;}for i:0..<at_choices(field) {if jv_raw_eq(jv_raw(d,node),at_choice(field,i)) {return i;}}return -1;}
+at_enum :: (d:Jv,node:int,field:string)->int #effects(all) {if jv_kind(d,node)!=JV_STRING {return -1;}for i:0..<at_choices(field) {if jv_raw_eq(jv_raw(d,node),at_choice(field,i)) {return i;}}return -1;}
 
 // Exact recorded confidence, on the same thousandth grid as the selector API.
-at_milli :: (text:string)->int {
+at_milli :: (text:string)->int #effects(all) {
   if text.count<1 {return -1;}if jv_scalar_end(text,0)!=text.count || text=="true" || text=="false" || text=="null" {return -1;}
   negative:=text[0]=='-';from:=ifx negative then 1 else 0;exponent_at:=text.count;at_decimal_places:=0;digits:=0;at_dotted:=false;nonzero:=false;
   for i:from..<text.count {c:=text[i];if c=='e' || c=='E' {exponent_at=i;break;}if c=='.' {at_dotted=true;continue;}digits+=1;if !at_dotted {at_decimal_places+=1;}if c!='0' {nonzero=true;}}
@@ -68,11 +68,11 @@ at_milli :: (text:string)->int {
   for i:from..<exponent_at {c:=text[i];if c=='.' {continue;}if position<boundary {value=value*10+cast(int)(c-'0');if value>1000 {return -1;}}else if c!='0' {return -1;}position+=1;}
   for i:digits..<boundary {if value>100 {return -1;}value*=10;}return value;
 }
-at_prob :: (o:[]Jo,p:int) {if p==1000 {jo_raw(o,"1.0");return;}b:=[5]u8.['0','.',cast(u8)('0'+p/100),cast(u8)('0'+p/10%10),cast(u8)('0'+p%10)];jo_raw(o,cast(string)b[..]);}
+at_prob :: (o:[]Jo,p:int) #effects(all) {if p==1000 {jo_raw(o,"1.0");return;}b:=[5]u8.['0','.',cast(u8)('0'+p/100),cast(u8)('0'+p/10%10),cast(u8)('0'+p%10)];jo_raw(o,cast(string)b[..]);}
 
 // JSON numeric times become finite F64 before interval comparisons, then the existing
 // timeline's F32. A normalized mantissa stays finite even for long decimal spellings.
-at_time :: (d:Jv,node:int)->f64 {
+at_time :: (d:Jv,node:int)->f64 #effects(all) {
   if jv_kind(d,node)!=JV_NUMBER {return -1;}s:=jv_raw(d,node);negative:=s[0]=='-';from:=ifx negative then 1 else 0;
   at_decimal_places:=0;position:=0;first:=-1;coefficient:f64=0;at_scale:f64=1;at_dotted:=false;exponent_at:=s.count;
   for i:from..<s.count {c:=s[i];if c=='e' || c=='E' {exponent_at=i;break;}if c=='.' {at_dotted=true;continue;}
@@ -85,13 +85,13 @@ at_time :: (d:Jv,node:int)->f64 {
   return ifx coefficient<=600 then coefficient else -1.0;
 }
 
-at_fields :: (d:AnimeDirection)->AnimeTakeFields {return AnimeTakeFields.{kind=d.kind,who=d.who,option=d.option,move=d.move,place=d.place,to=d.to,count=d.count,size=d.size,like=d.like,stock=d.stock,engine_framed=d.engine_framed};}
-at_direction :: (f:AnimeTakeFields,p:f32)->AnimeDirection {return AnimeDirection.{kind=f.kind,who=f.who,option=f.option,move=f.move,place=f.place,to=f.to,count=f.count,size=f.size,like=f.like,stock=f.stock,engine_framed=f.engine_framed,p=p};}
-at_copy :: (text:string,out:[]u8)->int {if text.count>out.count {return ANIME_TAKE_CAPACITY;}for i:0..<text.count {out[i]=text[i];}return text.count;}
+at_fields :: (d:AnimeDirection)->AnimeTakeFields #effects(all) {return AnimeTakeFields.{kind=d.kind,who=d.who,option=d.option,move=d.move,place=d.place,to=d.to,count=d.count,size=d.size,like=d.like,stock=d.stock,engine_framed=d.engine_framed};}
+at_direction :: (f:AnimeTakeFields,p:f32)->AnimeDirection #effects(all) {return AnimeDirection.{kind=f.kind,who=f.who,option=f.option,move=f.move,place=f.place,to=f.to,count=f.count,size=f.size,like=f.like,stock=f.stock,engine_framed=f.engine_framed,p=p};}
+at_copy :: (text:string,out:[]u8)->int #effects(all) {if text.count>out.count {return ANIME_TAKE_CAPACITY;}for i:0..<text.count {out[i]=text[i];}return text.count;}
 
 // Only root catalogue fields enter the legacy flat reader; confidence metadata can
 // contain the same key names without shadowing a selection or its recorded p.
-at_flat :: (d:Jv,node:int,milli:int,out:[]u8)->AtFlat {
+at_flat :: (d:Jv,node:int,milli:int,out:[]u8)->AtFlat #effects(all) {
   o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);
   for field:AT_FIELDS {v:=jv_get(d,node,field);if v==-1 {continue;}selected:=ifx field=="count" then jv_int(d,v,0)-1 else at_enum(d,v,field);
     if selected<0 || selected>=at_choices(field) {return AtFlat.{};}
@@ -100,7 +100,7 @@ at_flat :: (d:Jv,node:int,milli:int,out:[]u8)->AtFlat {
   what:=jv_get(d,node,"what");if what!=-1 {text:[40]u8;n:=jv_str(d,what,text[..]);if n==-1 {return AtFlat.{};}jo_key(o[..],"what");jo_str(o[..],cast(string)text[0..<n]);}
   jo_key(o[..],"p");at_prob(o[..],milli);jo_end(o[..]);return AtFlat.{ok=!o[0].bad,writer=o[0]};
 }
-at_answer :: (d:Jv,node:int,out:[]u8)->AtHeld {
+at_answer :: (d:Jv,node:int,out:[]u8)->AtHeld #effects(all) {
   result:AtHeld;kind:=at_enum(d,jv_get(d,node,"kind"),"kind");if kind<0 {return result;}
   f:=d.nodes[node].first;while f!=-1 {key:=jv_key(d,f);if !at_in(key,"p|stock|render_supported|decision|timing|confidence") && !at_in(key,AT_KIND_FIELDS[kind]) {return result;}f=d.nodes[f].next;}
   pnode:=jv_get(d,node,"p");if jv_kind(d,pnode)!=JV_NUMBER {return result;}milli:=at_milli(jv_raw(d,pnode));if milli==-1 {return result;}
@@ -123,9 +123,9 @@ at_answer :: (d:Jv,node:int,out:[]u8)->AtHeld {
 
 // F32 endpoints are promoted for the maximum identity, then narrowed back to
 // the selected endpoint. This introduces no new rounding into timeline times.
-at_latest :: (a:f32,b:f32)->f32 {aa:=cast(f64)a;bb:=cast(f64)b;return cast(f32)((aa+bb+abs(aa-bb))/2);}
+at_latest :: (a:f32,b:f32)->f32 #effects(all) {aa:=cast(f64)a;bb:=cast(f64)b;return cast(f32)((aa+bb+abs(aa-bb))/2);}
 
-anime_take_load :: (input:[]u8,take:[]AnimeTake)->int {
+anime_take_load :: (input:[]u8,take:[]AnimeTake)->int #effects(all) {
   if take.count<1 {return ANIME_TAKE_CAPACITY;}if input.count>ANIME_TAKE_BYTES {return ANIME_TAKE_LIMIT;}
   nodes:[4096]JvNode;d:[1]Jv;if !at_utf8(cast(string)input,true) || !jv_parse(d[..],cast(string)input,nodes[..]) || !at_unique(d[0]) {return ANIME_TAKE_INVALID;}
   if !at_keys(d[0],0,"schema|lines|auto|length|stage") || jv_kind(d[0],jv_get(d[0],0,"schema"))!=JV_STRING || !jv_raw_eq(jv_raw(d[0],jv_get(d[0],0,"schema")),"anime.v1") {return ANIME_TAKE_INVALID;}
@@ -152,7 +152,7 @@ anime_take_load :: (input:[]u8,take:[]AnimeTake)->int {
   else {seconds:=at_time(d[0],at_length_node);if seconds<=0 || seconds<previous || cast(f32)seconds<latest {return ANIME_TAKE_LENGTH;}value.length=cast(f32)seconds;}
   for i:0..<input.count {value.source[i]=input[i];}value.source_n=input.count;value.ready=true;take[0]=value;return 0;
 }
-anime_take_line :: (take:[]AnimeTake,index:int,out:[]u8)->int {if take.count<1 {return ANIME_TAKE_INVALID;}if index<0 || index>=take[0].line_n {return ANIME_TAKE_INVALID;}l:=take[0].lines[index];return at_copy(cast(string)take[0].words[l.word_at..<l.word_at+l.word_n],out);}
-anime_take_answer_json :: (take:[]AnimeTake,index:int,out:[]u8)->int {if take.count<1 {return ANIME_TAKE_INVALID;}if index<0 || index>=take[0].answer_n {return ANIME_TAKE_INVALID;}a:=take[0].answers[index];return at_copy(cast(string)take[0].source[a.raw_at..<a.raw_at+a.raw_n],out);}
-anime_take_answer :: (take:[]AnimeTake,index:int)->AnimeDirection {if take.count<1 {return AnimeDirection.{};}if index<0 || index>=take[0].answer_n {return AnimeDirection.{};}a:=take[0].answers[index];return at_direction(a.value,a.p);}
-anime_take_events :: (take:[]AnimeTake,out:[]AnimeEvent)->int {if take.count<1 {return ANIME_TAKE_INVALID;}if out.count<take[0].event_n {return ANIME_TAKE_CAPACITY;}for i:0..<take[0].event_n {e:=take[0].events[i];out[i]=AnimeEvent.{at=e.at,shown=e.shown,line=e.line,d=at_direction(e.value,e.p)};}return take[0].event_n;}
+anime_take_line :: (take:[]AnimeTake,index:int,out:[]u8)->int #effects(all) {if take.count<1 {return ANIME_TAKE_INVALID;}if index<0 || index>=take[0].line_n {return ANIME_TAKE_INVALID;}l:=take[0].lines[index];return at_copy(cast(string)take[0].words[l.word_at..<l.word_at+l.word_n],out);}
+anime_take_answer_json :: (take:[]AnimeTake,index:int,out:[]u8)->int #effects(all) {if take.count<1 {return ANIME_TAKE_INVALID;}if index<0 || index>=take[0].answer_n {return ANIME_TAKE_INVALID;}a:=take[0].answers[index];return at_copy(cast(string)take[0].source[a.raw_at..<a.raw_at+a.raw_n],out);}
+anime_take_answer :: (take:[]AnimeTake,index:int)->AnimeDirection #effects(all) {if take.count<1 {return AnimeDirection.{};}if index<0 || index>=take[0].answer_n {return AnimeDirection.{};}a:=take[0].answers[index];return at_direction(a.value,a.p);}
+anime_take_events :: (take:[]AnimeTake,out:[]AnimeEvent)->int #effects(all) {if take.count<1 {return ANIME_TAKE_INVALID;}if out.count<take[0].event_n {return ANIME_TAKE_CAPACITY;}for i:0..<take[0].event_n {e:=take[0].events[i];out[i]=AnimeEvent.{at=e.at,shown=e.shown,line=e.line,d=at_direction(e.value,e.p)};}return take[0].event_n;}

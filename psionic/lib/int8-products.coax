@@ -305,10 +305,10 @@ Int8Activations :: struct {codes:[]s8;scales:[]f32;sums:[]s32;}
 }
 
 // book:begin plan
-int8_block_fits :: (block:int)->bool {return block<=INT8_S32_MAX/(INT8_CODE_MAX*INT8_CODE_MAX);}
+int8_block_fits :: (block:int)->bool #effects(all) {return block<=INT8_S32_MAX/(INT8_CODE_MAX*INT8_CODE_MAX);}
 // Work in binary64: exact below 2^53, and far above the limit beyond it.
-int8_work_fits :: (rows:int,width:int,tokens:int)->bool {return f64(rows)*f64(width)*f64(tokens)<=f64(INT8_MAC_LIMIT);}
-int8_plan :: (r:Int8Request)->Int8Plan #export_c {
+int8_work_fits :: (rows:int,width:int,tokens:int)->bool #effects(all) {return f64(rows)*f64(width)*f64(tokens)<=f64(INT8_MAC_LIMIT);}
+int8_plan :: (r:Int8Request)->Int8Plan #export_c #effects(all) {
     if r.rows<1 || r.tokens<1 || r.block<4 || r.block%4!=0 {return Int8Plan.{status=Int8Status.shape};}
     if !int8_block_fits(r.block) {return Int8Plan.{status=Int8Status.overflow};}
     if r.width<r.block || r.width%r.block!=0 {return Int8Plan.{status=Int8Status.shape};}
@@ -320,16 +320,16 @@ int8_plan :: (r:Int8Request)->Int8Plan #export_c {
 // book:end plan
 
 // book:begin quantize
-int8_finite :: (v:f32)->bool {return (f32_bits(v)&0x7fffffff)<0x7f800000;}
+int8_finite :: (v:f32)->bool #effects(all) {return (f32_bits(v)&0x7fffffff)<0x7f800000;}
 // The smallest f32 at or above amax/127, so amax/scale never exceeds 127.
-int8_scale :: (amax:f32)->f32 {
+int8_scale :: (amax:f32)->f32 #effects(all) {
     want:=f64(amax)/127;d:=f32(want);
     if f64(d)<want {d=f32_from_bits(f32_bits(d)+1);}
     return d;
 }
 // Nearest integer, ties upward.
-int8_nearest :: (t:f64)->int {return int(floor(t+0.5));}
-int8_quantize :: (r:Int8Request,x:[]f32,out:Int8Activations)->Int8Result #export_c {
+int8_nearest :: (t:f64)->int #effects(all) {return int(floor(t+0.5));}
+int8_quantize :: (r:Int8Request,x:[]f32,out:Int8Activations)->Int8Result #export_c #effects(all) {
     p:=int8_plan(r);
     if p.status!=Int8Status.ok {return Int8Result.{status=p.status};}
     if x.count!=p.activation_codes {return Int8Result.{status=Int8Status.storage};}
@@ -353,25 +353,25 @@ int8_quantize :: (r:Int8Request,x:[]f32,out:Int8Activations)->Int8Result #export
 
 // book:begin dot
 // Groups of four products, as one dp4a instruction would add them.
-int8_dot4 :: (a:[]s8,at:int,b:[]s8,bt:int)->s32 {
+int8_dot4 :: (a:[]s8,at:int,b:[]s8,bt:int)->s32 #effects(all) {
     return cast(s32)a[at]*cast(s32)b[bt]+cast(s32)a[at+1]*cast(s32)b[bt+1]
         +cast(s32)a[at+2]*cast(s32)b[bt+2]+cast(s32)a[at+3]*cast(s32)b[bt+3];
 }
-int8_dot :: (a:[]s8,ai:int,b:[]s8,bi:int,n:int)->s32 {
+int8_dot :: (a:[]s8,ai:int,b:[]s8,bi:int,n:int)->s32 #effects(all) {
     acc:s32=0;
     for g:0..<n/4 {acc+=int8_dot4(a,ai+4*g,b,bi+4*g);}
     return acc;
 }
 // One block's contribution: d_w d_x S + m d_x sum(x codes), in binary64.
-int8_term :: (w:Int8Weights,wb:int,x:Int8Activations,xb:int,dot:s32)->f64 {
+int8_term :: (w:Int8Weights,wb:int,x:Int8Activations,xb:int,dot:s32)->f64 #effects(all) {
     dx:=f64(x.scales[xb]);
     return f64(w.scales[wb])*dx*f64(dot)+f64(w.offsets[wb])*dx*f64(x.sums[xb]);
 }
 // book:end dot
 
 // book:begin admit
-int8_scale_ok :: (v:f32)->bool {return int8_finite(v) && (f32_bits(v)&0x80000000)==0;}
-int8_admit :: (r:Int8Request,w:Int8Weights,x:Int8Activations,dots:[]s32,y:[]f64,tiled:bool)->Int8Plan {
+int8_scale_ok :: (v:f32)->bool #effects(all) {return int8_finite(v) && (f32_bits(v)&0x80000000)==0;}
+int8_admit :: (r:Int8Request,w:Int8Weights,x:Int8Activations,dots:[]s32,y:[]f64,tiled:bool)->Int8Plan #effects(all) {
     p:=int8_plan(r);
     if p.status!=Int8Status.ok {return p;}
     if tiled && (r.rows%INT8_TILE!=0 || r.tokens%INT8_TILE!=0) {return Int8Plan.{status=Int8Status.tile};}
@@ -393,7 +393,7 @@ int8_admit :: (r:Int8Request,w:Int8Weights,x:Int8Activations,dots:[]s32,y:[]f64,
 
 // book:begin row
 // Decode shape: for each token and each output row, walk the row's blocks.
-int8_row :: (r:Int8Request,w:Int8Weights,x:Int8Activations,dots:[]s32,y:[]f64)->Int8Result #export_c {
+int8_row :: (r:Int8Request,w:Int8Weights,x:Int8Activations,dots:[]s32,y:[]f64)->Int8Result #export_c #effects(all) {
     p:=int8_admit(r,w,x,dots,y,false);
     if p.status!=Int8Status.ok {return Int8Result.{status=p.status};}
     nb:=p.blocks;
@@ -414,11 +414,11 @@ int8_row :: (r:Int8Request,w:Int8Weights,x:Int8Activations,dots:[]s32,y:[]f64)->
 // Interleaved weights: for each tile of four rows and each block, group g of
 // row i sits at ((tile*nb + b)*(block/4) + g)*16 + 4*i, so one 16-byte read
 // gives four rows the same four activation codes.
-int8_at :: (r:Int8Request,row:int,k:int)->int {
+int8_at :: (r:Int8Request,row:int,k:int)->int #effects(all) {
     nb:=r.width/r.block;b:=k/r.block;g:=(k%r.block)/4;
     return (((row/INT8_TILE)*nb+b)*(r.block/4)+g)*16+4*(row%INT8_TILE)+k%4;
 }
-int8_interleave :: (r:Int8Request,codes:[]s8,out:[]s8)->Int8Result #export_c {
+int8_interleave :: (r:Int8Request,codes:[]s8,out:[]s8)->Int8Result #export_c #effects(all) {
     p:=int8_plan(r);
     if p.status!=Int8Status.ok {return Int8Result.{status=p.status};}
     if r.rows%INT8_TILE!=0 {return Int8Result.{status=Int8Status.tile};}
@@ -429,7 +429,7 @@ int8_interleave :: (r:Int8Request,codes:[]s8,out:[]s8)->Int8Result #export_c {
 }
 // Prompt shape: a 4 x 4 tile of s32 accumulators per block; the same
 // blocks are added to each output in the same order as the row kernel.
-int8_tiled :: (r:Int8Request,w:Int8Weights,x:Int8Activations,dots:[]s32,y:[]f64)->Int8Result #export_c {
+int8_tiled :: (r:Int8Request,w:Int8Weights,x:Int8Activations,dots:[]s32,y:[]f64)->Int8Result #export_c #effects(all) {
     p:=int8_admit(r,w,x,dots,y,true);
     if p.status!=Int8Status.ok {return Int8Result.{status=p.status};}
     nb:=p.blocks;
@@ -455,7 +455,7 @@ int8_tiled :: (r:Int8Request,w:Int8Weights,x:Int8Activations,dots:[]s32,y:[]f64)
 
 // book:begin reference
 // Weights as f32 for chapter 4's float product. Refuses values f32 cannot hold.
-int8_dequantize :: (r:Int8Request,w:Int8Weights,out:[]f32)->Int8Result #export_c {
+int8_dequantize :: (r:Int8Request,w:Int8Weights,out:[]f32)->Int8Result #export_c #effects(all) {
     p:=int8_plan(r);
     if p.status!=Int8Status.ok {return Int8Result.{status=p.status};}
     if w.codes.count!=p.weight_codes || w.scales.count!=p.weight_scales || w.offsets.count!=p.weight_scales {return Int8Result.{status=Int8Status.storage};}
@@ -473,7 +473,7 @@ int8_dequantize :: (r:Int8Request,w:Int8Weights,out:[]f32)->Int8Result #export_c
 // half a step per activation times |w| (quantization), times (1 + 2^-40) for
 // the binary64 division, plus 2^-22 sum |w x| for f32 weights, binary64
 // combining and chapter 4's one narrowing to f32.
-int8_bound :: (r:Int8Request,wf:[]f32,x:[]f32,a:Int8Activations,out:[]f64)->Int8Result #export_c {
+int8_bound :: (r:Int8Request,wf:[]f32,x:[]f32,a:Int8Activations,out:[]f64)->Int8Result #export_c #effects(all) {
     p:=int8_plan(r);
     if p.status!=Int8Status.ok {return Int8Result.{status=p.status};}
     if wf.count!=p.weight_codes || x.count!=p.activation_codes || a.scales.count!=p.activation_scales {return Int8Result.{status=Int8Status.storage};}

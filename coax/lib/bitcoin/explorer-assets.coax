@@ -10,7 +10,7 @@ ExAsset :: struct { path: string; mime: string; host: bool; }
   for file: EX_HOST_FILES { buf: [128] u8; prefix := "/coaxial/"; for i: 0..<prefix.count { buf[i] = prefix[i]; } for i: 0..<file.count { buf[prefix.count+i] = file[i]; } a = ex_asset(cast(string)buf[0..<prefix.count+file.count]); #assert a.host && a.path == file && a.mime == "text/javascript; charset=utf-8"; }
   for bad: [12] string.["","/index.html","//","/../index.html","/%2e%2e/secret","/coaxial/../secret","/coaxial/host.js/x","/coaxial/host.js?x","/coaxial/Host.js","/build/other.wasm","/api/v1/tip","/coaxial/"] { #assert ex_asset(bad).path.count == 0; }
 }
-ex_asset :: (path: string) -> ExAsset #export_c {
+ex_asset :: (path: string) -> ExAsset #export_c #effects(all) {
   if path == "/" { return ExAsset.{path="index.html",mime="text/html; charset=utf-8"}; }
   if path == "/build/explorer.wasm" { return ExAsset.{path="build/explorer.wasm",mime="application/wasm"}; }
   if path == "/explorer.wgsl" { return ExAsset.{path="explorer.wgsl",mime="text/plain; charset=utf-8"}; }

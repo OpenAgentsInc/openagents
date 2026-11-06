@@ -18,13 +18,13 @@ FMT_ERR_SPACE :: 4;     // the output buffer is too small
 
 FmtResult :: struct { error: int; count: int; line: int; changed: bool; }
 
-fmt_code :: (error: int) -> string {
+fmt_code :: (error: int) -> string #effects(all) {
   if error == FMT_ERR_COMMENT { return "E0101"; }
   if error == FMT_ERR_STRING { return "E0106"; }
   return "";
 }
 
-fmt_message :: (error: int) -> string {
+fmt_message :: (error: int) -> string #effects(all) {
   if error == FMT_ERR_COMMENT { return "block comment is never closed"; }
   if error == FMT_ERR_STRING { return "string is never closed"; }
   if error == FMT_ERR_BYTE { return "a lone carriage return or a NUL byte"; }
@@ -34,25 +34,25 @@ fmt_message :: (error: int) -> string {
 
 FMT_Out :: struct { n: int; full: bool; }
 
-fmt_put :: (out: [] u8, o: [] FMT_Out, b: u8) {
+fmt_put :: (out: [] u8, o: [] FMT_Out, b: u8) #effects(all) {
   if o[0].n >= out.count { o[0].full = true; return; }
   out[o[0].n] = b;
   o[0].n += 1;
 }
 
 // The line's text without its trailing spaces and tabs.
-fmt_trim :: (src: string, start: int, end: int) -> int {
+fmt_trim :: (src: string, start: int, end: int) -> int #effects(all) {
   e := end;
   while e > start && (src[e - 1] == 32 || src[e - 1] == 9) { e -= 1; }
   return e;
 }
 
 // The byte at i, or 0 past the end (a NUL in the source is refused first).
-fmt_at :: (src: string, i: int) -> u8 { return ifx i < src.count then src[i] else 0; } // mutant: equivalent (past the end is compared only with 10, 13, 42 and 47)
+fmt_at :: (src: string, i: int) -> u8 #effects(all) { return ifx i < src.count then src[i] else 0; } // mutant: equivalent (past the end is compared only with 10, 13, 42 and 47)
 
 // One pass: classify bytes as code, comment or literal and copy them, laying
 // out only the whitespace at line ends and between lines.
-fmt_source :: (src: string, out: [] u8) -> FmtResult {
+fmt_source :: (src: string, out: [] u8) -> FmtResult #effects(all) {
   r := FmtResult.{line = 1};
   o: [1] FMT_Out;
   depth := 0;           // block comment nesting
@@ -110,13 +110,13 @@ fmt_source :: (src: string, out: [] u8) -> FmtResult {
   return r;
 }
 
-fmt_check :: (src: string, want: string) -> bool {
+fmt_check :: (src: string, want: string) -> bool #effects(all) {
   buf: [512] u8;
   r := fmt_source(src, buf[..]);
   return r.error == FMT_OK && cast(string) buf[0..<r.count] == want;
 }
 
-fmt_fails :: (src: string, error: int, line: int) -> bool {
+fmt_fails :: (src: string, error: int, line: int) -> bool #effects(all) {
   buf: [512] u8;
   r := fmt_source(src, buf[..]);
   return r.error == error && r.line == line;

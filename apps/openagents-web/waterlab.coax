@@ -201,7 +201,7 @@ lab_build :: (s: [] Waterlab, phone: bool) {
 }
 
 // Steps the camera and writes the sea's tiles for this tick.
-waterlab_frame :: (s: [] Waterlab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+waterlab_frame :: (s: [] Waterlab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   if !s[0].started { waterlab_reset(s); }
   phone := s[0].phone_forced || width / hi_f32(dpr, 0.5) < 600;
@@ -336,15 +336,15 @@ key_bit :: (key: int) -> int {
   if key == 'e' || key == 'E' { return 32; }
   return 0;
 }
-waterlab_key :: (s: [] Waterlab, key: int, down: bool) -> bool #export_c {
+waterlab_key :: (s: [] Waterlab, key: int, down: bool) -> bool #export_c #effects(all) {
   if !s[0].started { waterlab_reset(s); }
   b := key_bit(key);
   if b == 0 { return false; }
   if down { s[0].held |= b; } else { s[0].held = s[0].held & (63 - b); }
   return true;
 }
-waterlab_blur :: (s: [] Waterlab) #export_c { s[0].held = 0; s[0].dragging = false; }
-waterlab_pointer :: (s: [] Waterlab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+waterlab_blur :: (s: [] Waterlab) #export_c #effects(all) { s[0].held = 0; s[0].dragging = false; }
+waterlab_pointer :: (s: [] Waterlab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if !s[0].started { waterlab_reset(s); }
   if phase == 0 { s[0].dragging = true; s[0].last_x = x; s[0].last_y = y; return true; }
   if phase == 1 && s[0].dragging {
@@ -356,8 +356,8 @@ waterlab_pointer :: (s: [] Waterlab, x: f32, y: f32, phase: int, kind: int, id: 
   if phase >= 2 { s[0].dragging = false; }
   return false;
 }
-waterlab_wheel :: (s: [] Waterlab, dy: f32) #export_c { s[0].dist = wsp_clamp(s[0].dist * (1 + dy * 0.001), 3, 120); }
-waterlab_golden :: (s: [] Waterlab, on: bool) #export_c { if !s[0].started { waterlab_reset(s); } s[0].golden = on; }
+waterlab_wheel :: (s: [] Waterlab, dy: f32) #export_c #effects(all) { s[0].dist = wsp_clamp(s[0].dist * (1 + dy * 0.001), 3, 120); }
+waterlab_golden :: (s: [] Waterlab, on: bool) #export_c #effects(all) { if !s[0].started { waterlab_reset(s); } s[0].golden = on; }
 
 // The page facts (message 600): the URL's query.
 fact :: (facts: string, key: string) -> string {
@@ -403,7 +403,7 @@ query_word :: (url: string, pair: string) -> bool {
   }
   return false;
 }
-waterlab_message :: (s: [] Waterlab, kind: int, text: string) #export_c {
+waterlab_message :: (s: [] Waterlab, kind: int, text: string) #export_c #effects(all) {
   if !s[0].started { waterlab_reset(s); }
   if kind != HOST_FACTS || s[0].counted { return; }
   s[0].counted = true;
@@ -419,11 +419,11 @@ waterlab_message :: (s: [] Waterlab, kind: int, text: string) #export_c {
   s[0].built = false;
 }
 
-coaxial_waterlab_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_waterlab_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
 // The clipmap's vertices this frame, drawn by waterlab.wgsl's surface_vs (0 under the water or with ?sea=traced).
-waterlab_surface_vertices :: (s: [] Waterlab) -> int #export_c { return ifx s[0].started then s[0].mesh else 0; }
-coaxial_waterlab_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_waterlab_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+waterlab_surface_vertices :: (s: [] Waterlab) -> int #export_c #effects(all) { return ifx s[0].started then s[0].mesh else 0; }
+coaxial_waterlab_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_waterlab_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // ---------------------------------------------------------------------------------------------
 // The frame budget (aethyr/budget.coax, book chapter 16): what one frame of the water lab may use.

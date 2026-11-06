@@ -91,7 +91,7 @@ QyReport :: struct {
     negative:=values;negative[2]=-0.0;#assert !qy_same(qy_values_digest(negative[..]),qy_values_digest(values[..]));
 }
 
-qy_test_policy :: ()->QyPolicy {
+qy_test_policy :: ()->QyPolicy #effects(all) {
     return QyPolicy.{mode=QyMode.replay,unit=QyUnit.probability,values=2,value_abs=0.0005,distribution=true,tv_max=0.0005,top=1,near_tie=0.001,regret_max=0.0005,profile=qy_name("cpu-f32-wide-v1"),reference_profile=qy_name("torch-2.10.0-cpu-f32-eager"),dataset=qy_text_digest("tokens")};
 }
 #test "a policy's digest is its identity" {
@@ -192,7 +192,7 @@ qy_test_policy :: ()->QyPolicy {
     p.top=0;p.near_tie=0;p.regret_max=0;x=qy_compare(p,c[..],r[..]);#assert x.top==0 && !x.same && x.margin==0 && x.regret==0 && x.verdict==QyVerdict.agrees;
 }
 
-qy_test_record :: (p:QyPolicy,c:[]f64,r:[]f64)->QyRecord {
+qy_test_record :: (p:QyPolicy,c:[]f64,r:[]f64)->QyRecord #effects(all) {
     return QyRecord.{policy=qy_policy_digest(p),dataset=p.dataset,model=qy_text_digest("model"),compiler=qy_name("coax0 0.22.0"),sources=qy_text_digest("sources"),profile=p.profile,mode=p.mode,reference_profile=p.reference_profile,reference_mode=p.mode,candidate=qy_values_digest(c),reference=qy_values_digest(r),role=QyRole.development};
 }
 // book:begin failing
@@ -308,16 +308,16 @@ qy_test_record :: (p:QyPolicy,c:[]f64,r:[]f64)->QyRecord {
     zero:=honest;zero.difference=-0.0;honest.difference=0;#assert !qy_report_same(zero,honest);
 }
 
-qy_known :: (id:[32]u8)->bool {for i:0..<32 {if id[i]!=0 {return true;}}return false;}
-qy_same :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+qy_known :: (id:[32]u8)->bool #effects(all) {for i:0..<32 {if id[i]!=0 {return true;}}return false;}
+qy_same :: (a:[32]u8,b:[32]u8)->bool #effects(all) {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
 // A name is 1-32 printable ASCII bytes; anything else is unknown (all zero).
-qy_name :: (text:string)->[32]u8 {
+qy_name :: (text:string)->[32]u8 #effects(all) {
     id:[32]u8;none:[32]u8;
     if text.count<1 || text.count>32 {return none;}
     for i:0..<text.count {if text[i]<0x20 || text[i]>0x7e {return none;}id[i]=text[i];}
     return id;
 }
-qy_name_ok :: (id:[32]u8)->bool {
+qy_name_ok :: (id:[32]u8)->bool #effects(all) {
     if id[0]==0 {return false;}
     ended:=false;
     for i:0..<32 {
@@ -325,12 +325,12 @@ qy_name_ok :: (id:[32]u8)->bool {
     }
     return true;
 }
-qy_nibble :: (c:u8)->int {
+qy_nibble :: (c:u8)->int #effects(all) {
     if c>='0' && c<='9' {return cast(int)(c-'0');}
     if c>='a' && c<='f' {return cast(int)(c-'a')+10;}
     return -1;
 }
-qy_hex :: (text:string)->[32]u8 {
+qy_hex :: (text:string)->[32]u8 #effects(all) {
     id:[32]u8;none:[32]u8;
     if text.count!=64 {return none;}
     for i:0..<32 {
@@ -340,20 +340,20 @@ qy_hex :: (text:string)->[32]u8 {
     }
     return id;
 }
-qy_text_digest :: (text:string)->[32]u8 {
+qy_text_digest :: (text:string)->[32]u8 #effects(all) {
     state:[112]u8;out:[32]u8;byte:[1]u8;
     status:=sha256_init(state[..]);#assert status==SHA_OK;
     for i:0..<text.count {byte[0]=text[i];status=sha256_update_checked(state[..],byte[..],false);#assert status==SHA_OK;}
     status=sha256_final_checked(state[..],out[..],false);#assert status==SHA_OK;
     return out;
 }
-qy_put :: (buf:[]u8,at:int,x:u64) {for i:0..<8 {buf[at+i]=cast(u8)((x>>(i*8))&255);}}
-qy_finite_bits :: (bits:u64)->bool {return (bits&0x7fffffffffffffff)<0x7ff0000000000000;}
+qy_put :: (buf:[]u8,at:int,x:u64) #effects(all) {for i:0..<8 {buf[at+i]=cast(u8)((x>>(i*8))&255);}}
+qy_finite_bits :: (bits:u64)->bool #effects(all) {return (bits&0x7fffffffffffffff)<0x7ff0000000000000;}
 // Finite, not negative, and not negative zero: one bit pattern per threshold.
-qy_threshold_bits :: (bits:u64)->bool {return bits<0x7ff0000000000000;}
-qy_threshold :: (x:f64)->bool {return qy_threshold_bits(f64_bits(x));}
+qy_threshold_bits :: (bits:u64)->bool #effects(all) {return bits<0x7ff0000000000000;}
+qy_threshold :: (x:f64)->bool #effects(all) {return qy_threshold_bits(f64_bits(x));}
 // book:begin digest
-qy_policy_valid :: (p:QyPolicy)->bool {
+qy_policy_valid :: (p:QyPolicy)->bool #effects(all) {
     if p.mode==QyMode.unknown || p.unit==QyUnit.unknown {return false;}
     if p.values<1 || p.values>QY_MAX_VALUES || !qy_threshold(p.value_abs) {return false;}
     if p.distribution {if !qy_threshold(p.tv_max) {return false;}} else if f64_bits(p.tv_max)!=0 {return false;}
@@ -363,7 +363,7 @@ qy_policy_valid :: (p:QyPolicy)->bool {
     return qy_name_ok(p.profile) && qy_name_ok(p.reference_profile) && qy_known(p.dataset);
 }
 // Every field, in a fixed order: change any threshold and the identity changes.
-qy_policy_digest :: (p:QyPolicy)->[32]u8 {
+qy_policy_digest :: (p:QyPolicy)->[32]u8 #effects(all) {
     out:[32]u8;if !qy_policy_valid(p) {return out;}
     buf:[172]u8;for i:0..<25 {buf[i]=QY_POLICY_TAG[i];}
     buf[25]=cast(u8)p.mode;buf[26]=cast(u8)p.unit;buf[27]=ifx p.distribution then 1 else 0;
@@ -375,7 +375,7 @@ qy_policy_digest :: (p:QyPolicy)->[32]u8 {
     return out;
 }
 // book:end digest
-qy_values_digest :: (values:[]f64)->[32]u8 {
+qy_values_digest :: (values:[]f64)->[32]u8 #effects(all) {
     state:[112]u8;out:[32]u8;head:[33]u8;bytes:[64]u8;
     for i:0..<25 {head[i]=QY_VALUES_TAG[i];}
     qy_put(head[..],25,cast(u64)values.count);
@@ -390,7 +390,7 @@ qy_values_digest :: (values:[]f64)->[32]u8 {
     return out;
 }
 // The largest value not already chosen; equal values keep the lower index.
-qy_next :: (values:[]f64,chosen:[]int)->int {
+qy_next :: (values:[]f64,chosen:[]int)->int #effects(all) {
     best:=-1;
     for i:0..<values.count {
         taken:=false;for t:chosen {if t==i {taken=true;}}
@@ -399,12 +399,12 @@ qy_next :: (values:[]f64,chosen:[]int)->int {
     return best;
 }
 // Bits, so that checks can present infinities and NaNs.
-qy_value_cause :: (unit:QyUnit,c:u64,r:u64)->QyCause {
+qy_value_cause :: (unit:QyUnit,c:u64,r:u64)->QyCause #effects(all) {
     if !qy_finite_bits(c) || !qy_finite_bits(r) {return QyCause.nonfinite;}
     if unit==QyUnit.probability && (f64_from_bits(c)<0 || f64_from_bits(c)>1 || f64_from_bits(r)<0 || f64_from_bits(r)>1) {return QyCause.range;}
     return QyCause.none;
 }
-qy_compare :: (p:QyPolicy,c:[]f64,r:[]f64)->QyReport {
+qy_compare :: (p:QyPolicy,c:[]f64,r:[]f64)->QyReport #effects(all) {
     x:=QyReport.{verdict=QyVerdict.failed,count=c.count,reference_count=r.count,worst=-1,first_over=-1,top=p.top};
     if c.count!=p.values || r.count!=p.values {x.cause=QyCause.count;return x;}
     total:=0.0;
@@ -435,15 +435,15 @@ qy_compare :: (p:QyPolicy,c:[]f64,r:[]f64)->QyReport {
     else {x.verdict=QyVerdict.agrees;}
     return x;
 }
-qy_unknown :: (r:QyRecord)->u32 {
+qy_unknown :: (r:QyRecord)->u32 #effects(all) {
     known:=[12]bool.[qy_known(r.policy),qy_known(r.dataset),qy_known(r.model),qy_known(r.compiler),qy_known(r.sources),qy_known(r.profile),r.mode!=QyMode.unknown,qy_known(r.reference_profile),r.reference_mode!=QyMode.unknown,qy_known(r.candidate),qy_known(r.reference),r.role!=QyRole.unknown];
     mask:u32=0;
     for i:0..<12 {if !known[i] {mask=mask|(cast(u32)1<<cast(u32)(i+2));}}
     return mask;
 }
-qy_mismatch :: (id:[32]u8,want:[32]u8)->bool {return qy_known(id) && !qy_same(id,want);}
+qy_mismatch :: (id:[32]u8,want:[32]u8)->bool #effects(all) {return qy_known(id) && !qy_same(id,want);}
 // book:begin qualify
-qy_qualify :: (p:QyPolicy,r:QyRecord,candidate:[]f64,reference:[]f64)->QyReport {
+qy_qualify :: (p:QyPolicy,r:QyRecord,candidate:[]f64,reference:[]f64)->QyReport #effects(all) {
     if !qy_policy_valid(p) {return QyReport.{verdict=QyVerdict.failed,cause=QyCause.policy,worst=-1,first_over=-1};}
     x:=qy_compare(p,candidate,reference);x.policy=qy_policy_digest(p);x.unknown=qy_unknown(r);
     wrong:=QyCause.none;
@@ -468,7 +468,7 @@ qy_qualify :: (p:QyPolicy,r:QyRecord,candidate:[]f64,reference:[]f64)->QyReport 
     return x;
 }
 // The process exit status: 0 only when the verdict meets the claim.
-qy_exit :: (x:QyReport,claim:QyVerdict)->int #export_c {
+qy_exit :: (x:QyReport,claim:QyVerdict)->int #export_c #effects(all) {
     if claim!=QyVerdict.agrees && claim!=QyVerdict.qualified {return 2;}
     if x.verdict==QyVerdict.failed {return 1;}
     if x.verdict==QyVerdict.qualified {return 0;}
@@ -476,7 +476,7 @@ qy_exit :: (x:QyReport,claim:QyVerdict)->int #export_c {
     return 2;
 }
 // book:end qualify
-qy_report_same :: (a:QyReport,b:QyReport)->bool {
+qy_report_same :: (a:QyReport,b:QyReport)->bool #effects(all) {
     if a.verdict!=b.verdict || a.cause!=b.cause || a.unknown!=b.unknown || !qy_same(a.policy,b.policy) {return false;}
     if a.count!=b.count || a.reference_count!=b.reference_count || a.worst!=b.worst || a.over!=b.over || a.first_over!=b.first_over || a.top!=b.top || a.same!=b.same {return false;}
     if f64_bits(a.candidate)!=f64_bits(b.candidate) || f64_bits(a.reference)!=f64_bits(b.reference) || f64_bits(a.difference)!=f64_bits(b.difference) {return false;}
@@ -485,7 +485,7 @@ qy_report_same :: (a:QyReport,b:QyReport)->bool {
     return true;
 }
 // A summary is accepted only if it equals the report recomputed from the evidence.
-qy_check_summary :: (claimed:QyReport,p:QyPolicy,r:QyRecord,candidate:[]f64,reference:[]f64)->QyReport {
+qy_check_summary :: (claimed:QyReport,p:QyPolicy,r:QyRecord,candidate:[]f64,reference:[]f64)->QyReport #effects(all) {
     x:=qy_qualify(p,r,candidate,reference);
     if !qy_report_same(claimed,x) {x.verdict=QyVerdict.failed;x.cause=QyCause.summary;}
     return x;

@@ -10,7 +10,7 @@ hlwc_tree :: (inputs:[]RtqInputs,dir:string,depth:int)->bool {
  for i:0..<n {path:[4096]u8;file:=fs_join(dir,fs_entry(listing[..],i),path[..]);kind:=fs_kind(file);if kind==FS_DIR {if !hlwc_tree(inputs,file,depth+1) {return false;}}else if kind!=FS_FILE||!hlwc_add(inputs,file) {tool_errln(file);return false;}}
  return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<4||args_count(a[..])>5||(args_count(a[..])==5&&args_at(a[..],4)!="--software") {tool_errln("usage: check-linux-world WORLD_BUILD FACTS NEW_OUT INPUT_MANIFEST [--software]");return 2;}software:=args_has(a[..],"--software");
  build:=args_at(a[..],0);facts:=args_at(a[..],1);out:=args_at(a[..],2);manifest:=args_at(a[..],3);if !fs_mkdir(out) {return 1;}paths:[8][4096]u8;listing:[1]FsList;if fs_list(out,listing[..])!=0 {return 2;}
  inputs:[3]RtqInputs;json:[262144]u8;nodes:[8192]JvNode;doc:[1]Jv;if !rtq_json_file(manifest,json[..],nodes[..],doc[..]) {return 1;}

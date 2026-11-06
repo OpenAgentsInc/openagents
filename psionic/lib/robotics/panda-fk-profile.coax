@@ -11,7 +11,7 @@
  for i:0..<12 {#assert p[i].parent==parents[i] && p[i].joint==joints[i];for j:0..<3 {#assert f64_bits(p[i].offset[j])==f64_bits(offsets[i*3+j]);}for j:0..<4 {#assert f64_bits(p[i].fixed[j])==f64_bits(fixed[i*4+j]);}}
 }
 
-pfk_profile :: ()->[12]PfkNode #export_c {
+pfk_profile :: ()->[12]PfkNode #export_c #effects(all) {
  nodes:[12]PfkNode;for i:0..<12 {nodes[i].parent=i-1;nodes[i].joint= -1;nodes[i].fixed[0]=1;}for i:2..<9 {nodes[i].joint=i-2;}
  nodes[0].offset=[3]f64.[-0.75,0,0.912];nodes[2].offset=[3]f64.[0,0,0.333];nodes[4].offset=[3]f64.[0,-0.316,0];nodes[5].offset=[3]f64.[0.0825,0,0];nodes[6].offset=[3]f64.[-0.0825,0.384,0];nodes[8].offset=[3]f64.[0.088,0,0];nodes[9].offset=[3]f64.[0,0,0.1065];nodes[11].offset=[3]f64.[0,0,0.097];
  nodes[3].fixed=[4]f64.[0.707107,-0.707107,0,0];nodes[4].fixed=[4]f64.[0.707107,0.707107,0,0];nodes[5].fixed=[4]f64.[0.707107,0.707107,0,0];nodes[6].fixed=[4]f64.[0.707107,-0.707107,0,0];nodes[7].fixed=[4]f64.[0.707107,0.707107,0,0];nodes[8].fixed=[4]f64.[0.707107,0.707107,0,0];nodes[9].fixed=[4]f64.[0.923785,0,0,-0.382911];nodes[10].fixed=[4]f64.[0.707107,0,0,-0.707107];return nodes;

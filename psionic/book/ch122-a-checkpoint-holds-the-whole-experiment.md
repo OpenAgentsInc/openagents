@@ -30,7 +30,7 @@ the document. Rows can be cut at any length; the stream is the same.
 ```jai
 // Fills row with the next tokens of the packed stream and returns the cursor
 // after them. Nothing is written unless the dataset and cursor are admitted.
-pk_next :: (docs:[]PkDoc,tokens:[]u8,cursor:PkCursor,row:[]u8,overlap:bool)->PkNext #export_c {
+pk_next :: (docs:[]PkDoc,tokens:[]u8,cursor:PkCursor,row:[]u8,overlap:bool)->PkNext #export_c #effects(all) {
     if overlap {return PkNext.{status=PkStatus.alias,cursor=cursor};}
     status:=pk_dataset(docs,tokens);if status!=PkStatus.ok {return PkNext.{status=status,cursor=cursor};}
     if row.count<2 || row.count>PK_ROW {return PkNext.{status=PkStatus.shape,cursor=cursor};}
@@ -68,7 +68,7 @@ and finite values with non-negative second moments.
 ```jai
 // Admits a whole record against the identities the run expects, then writes
 // the values. Refusals write nothing.
-ck_read :: (bytes:[]u8,expect:CkIds,params:[]f64,m:[]f64,v:[]f64,overlap:bool)->CkRead #export_c {
+ck_read :: (bytes:[]u8,expect:CkIds,params:[]f64,m:[]f64,v:[]f64,overlap:bool)->CkRead #export_c #effects(all) {
     if overlap {return CkRead.{status=CkStatus.alias};}
     if bytes.count<ck_size(0) {return CkRead.{status=CkStatus.truncated};}
     if !ck_magic(bytes,67,75) {return CkRead.{status=CkStatus.magic};}
@@ -118,7 +118,7 @@ logits of 800 stay finite.
 ```jai
 // One step: the next packed row, mean cross-entropy over the transitions
 // whose target is not a BOS, its exact gradient, one AdamW update.
-rs_step :: (docs:[]PkDoc,tokens:[]u8,groups:[]AwGroup,policy:AwPolicy,run:RsRun,w:[]f64,m:[]f64,v:[]f64)->RsStep #export_c {
+rs_step :: (docs:[]PkDoc,tokens:[]u8,groups:[]AwGroup,policy:AwPolicy,run:RsRun,w:[]f64,m:[]f64,v:[]f64)->RsStep #export_c #effects(all) {
     row:[8]u8;next:=pk_next(docs,tokens,run.cursor,row[..],false);if next.status!=PkStatus.ok {return RsStep.{status=RsStatus.data,run=run};}
     g:[256]f64;loss:=0.0;pairs:=0;
     for i:1..<RS_ROW {if row[i]!=PK_BOS {pairs+=1;}}

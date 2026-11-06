@@ -32,7 +32,7 @@ NsLogLayout :: struct {ok:bool;events:int;bytes:int;index_words:int;snapshot_byt
  #assert !ns_log_layout(0,0,9223372036854775807,16,false).ok;
  #assert !ns_log_layout(0,0,0,9223372036854775807,false).ok;
 }
-ns_log_layout :: (events:int,bytes:int,index_words:int,snapshot_capacity:int,overlap:bool)->NsLogLayout #export_c {
+ns_log_layout :: (events:int,bytes:int,index_words:int,snapshot_capacity:int,overlap:bool)->NsLogLayout #export_c #effects(all) {
  if overlap || events<0 || events>NS_LOG_MAX_EVENTS || bytes<0 || bytes>NS_LOG_MAX_BYTES || snapshot_capacity>NS_LOG_MAX_SNAPSHOT {return NsLogLayout.{};}
  index:=events*2;required:=NS_LOG_HEADER+events*4+bytes;
  if index_words!=index || snapshot_capacity<required {return NsLogLayout.{};}

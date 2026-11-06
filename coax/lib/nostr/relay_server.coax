@@ -45,7 +45,7 @@ RS_REASONS :: 27;
   #assert rs_prefix(-1) == "error" && rs_prefix(RS_REASONS) == "error" && rs_text(RS_REASONS) == "unknown";
 }
 
-rs_prefix :: (r: int) -> string {
+rs_prefix :: (r: int) -> string #effects(all) {
   p := [27] string.["", "duplicate", "duplicate", "invalid", "invalid", "invalid",
     "invalid", "invalid", "invalid", "invalid", "auth-required", "error",
     "invalid", "restricted", "restricted", "invalid", "invalid", "invalid",
@@ -54,7 +54,7 @@ rs_prefix :: (r: int) -> string {
   if r < 0 || r >= RS_REASONS { return "error"; }
   return p[r];
 }
-rs_text :: (r: int) -> string {
+rs_text :: (r: int) -> string #effects(all) {
   t := [27] string.["", "already have this event", "newer replaceable event already stored",
     "malformed event", "event id does not match its content", "bad signature",
     "authentication events cannot be published", "event has too many tags",
@@ -73,7 +73,7 @@ rs_text :: (r: int) -> string {
   return t[r];
 }
 // OK true: stored, or already covered (NIP-01 lets duplicates say true).
-rs_accepted :: (r: int) -> bool { return r == RS_ACCEPT || r == RS_DUP || r == RS_SUPERSEDED; }
+rs_accepted :: (r: int) -> bool #effects(all) { return r == RS_ACCEPT || r == RS_DUP || r == RS_SUPERSEDED; }
 
 // ---- kinds, ordering and tags ---------------------------------------------
 
@@ -91,13 +91,13 @@ rs_accepted :: (r: int) -> bool { return r == RS_ACCEPT || r == RS_DUP || r == R
   x: [32] u8; y: [32] u8; x[0] = 5; y[0] = 5; x[1] = 1; y[1] = 2;
   #assert rs_id_less(x[..], y[..]) && !rs_id_less(y[..], x[..]) && !rs_id_less(x[..], x[..]);
 }
-rs_class :: (kind: int) -> int {
+rs_class :: (kind: int) -> int #effects(all) {
   if kind == 0 || kind == 3 || (kind >= 10000 && kind < 20000) { return RS_REPLACEABLE; }
   if kind >= 20000 && kind < 30000 { return RS_EPHEMERAL; }
   if kind >= 30000 && kind < 40000 { return RS_ADDRESSABLE; }
   return RS_REGULAR;
 }
-rs_id_less :: (a: [] u8, b: [] u8) -> bool {
+rs_id_less :: (a: [] u8, b: [] u8) -> bool #effects(all) {
   for i: 0..<32 {
     if a[i] < b[i] { return true; }
     if a[i] > b[i] { return false; }
@@ -106,7 +106,7 @@ rs_id_less :: (a: [] u8, b: [] u8) -> bool {
 }
 // Whether the new version (created, id) replaces the old one: newer wins;
 // on the same second the lowest id wins (NIP-01).
-rs_newer :: (created: int, id: [] u8, old_created: int, old_id: [] u8) -> bool {
+rs_newer :: (created: int, id: [] u8, old_created: int, old_id: [] u8) -> bool #effects(all) {
   if created > old_created { return true; }
   if created < old_created { return false; }
   return rs_id_less(id, old_id);
@@ -138,7 +138,7 @@ rs_newer :: (created: int, id: [] u8, old_created: int, old_id: [] u8) -> bool {
 // Decodes into out the first value of the first tag named name (one
 // letter, or the whole name when long is given): its length, -1 when there
 // is none, -2 when out is too small.
-rs_tag_named :: (e: NostrEvent, name: string, out: [] u8) -> int {
+rs_tag_named :: (e: NostrEvent, name: string, out: [] u8) -> int #effects(all) {
   j: [1] Json; json_start(j[..], e.original[e.tags_from..<e.tags_to]);
   if json_next(j[..]) != JSON_ARRAY { return -1; }
   t := json_next(j[..]);
@@ -158,18 +158,18 @@ rs_tag_named :: (e: NostrEvent, name: string, out: [] u8) -> int {
 }
 // The d tag's value for an addressable event: "" when there is none, -2
 // when it does not fit out.
-rs_d :: (e: NostrEvent, out: [] u8) -> int {
+rs_d :: (e: NostrEvent, out: [] u8) -> int #effects(all) {
   n := rs_tag(e, 'd', out);
   if n == -1 { return 0; }
   return n;
 }
-rs_tag :: (e: NostrEvent, name: u8, out: [] u8) -> int {
+rs_tag :: (e: NostrEvent, name: u8, out: [] u8) -> int #effects(all) {
   n: [1] u8; n[0] = name;
   return rs_tag_named(e, cast(string) n[..], out);
 }
 // NIP-40: the expiration time, or -1 when there is none or it isn't a
 // plain decimal of at most 16 digits (then the event never expires).
-rs_expiration :: (e: NostrEvent) -> int {
+rs_expiration :: (e: NostrEvent) -> int #effects(all) {
   b: [16] u8;
   n := rs_tag_named(e, "expiration", b[..]);
   if n < 1 { return -1; }
@@ -181,7 +181,7 @@ rs_expiration :: (e: NostrEvent) -> int {
   return v;
 }
 // Served only while not expired (NIP-40: at or after the time it is gone).
-rs_live :: (expiration: int, now: int) -> bool { return expiration < 0 || expiration > now; }
+rs_live :: (expiration: int, now: int) -> bool #effects(all) { return expiration < 0 || expiration > now; }
 
 // ---- EVENT admission ------------------------------------------------------
 
@@ -241,7 +241,7 @@ RsAdmit :: struct {
   d: [256] u8; d_n: int;       // addressable events: the d tag ("" when none)
 }
 // The policy on an event whose id already matched (no signature yet).
-rs_admit_policy :: (e: NostrEvent, expiration: int, now: int, auth_required: bool, authed: bool) -> int {
+rs_admit_policy :: (e: NostrEvent, expiration: int, now: int, auth_required: bool, authed: bool) -> int #effects(all) {
   if e.kind == 22242 { return RS_AUTH_KIND; }
   if e.tags > RS_MAX_TAGS { return RS_TAGS; }
   if e.created_at > now + RS_FUTURE { return RS_TIME; }
@@ -253,7 +253,7 @@ rs_admit_policy :: (e: NostrEvent, expiration: int, now: int, auth_required: boo
 // Reads and checks an EVENT's object text (id, then policy), cheapest
 // first; scratch holds the id preimage. RS_ACCEPT here means "verify the
 // signature next": only rs_admit_verified admits.
-rs_admit_read :: (text: string, now: int, auth_required: bool, authed: bool, scratch: [] u8) -> RsAdmit {
+rs_admit_read :: (text: string, now: int, auth_required: bool, authed: bool, scratch: [] u8) -> RsAdmit #effects(all) {
   r: RsAdmit; r.reason = RS_BAD_EVENT;
   e := nostr_event_read(text, scratch, false);
   if e.error == NE_ID { r.reason = RS_BAD_ID; r.e = e; return r; }
@@ -270,7 +270,7 @@ rs_admit_read :: (text: string, now: int, auth_required: bool, authed: bool, scr
 // Completes admission with the signature check's result v (event.coax's
 // nostr_event_verify_vartime over the same text): RS_ACCEPT only when v is
 // verified and is the event that was read.
-rs_admit_verified :: (read: RsAdmit, v: NostrEvent) -> RsAdmit {
+rs_admit_verified :: (read: RsAdmit, v: NostrEvent) -> RsAdmit #effects(all) {
   r := read;
   if r.reason != RS_ACCEPT { return r; }
   rid := r.e.id; vid := v.id;
@@ -281,7 +281,7 @@ rs_admit_verified :: (read: RsAdmit, v: NostrEvent) -> RsAdmit {
 // What a store does with an admitted event, given the current version at
 // its replacement address (found false when none, or a regular event):
 // RS_ACCEPT stores it (and retires the old one), RS_SUPERSEDED keeps the old.
-rs_replace :: (r: RsAdmit, found: bool, old_created: int, old_id: [] u8) -> int {
+rs_replace :: (r: RsAdmit, found: bool, old_created: int, old_id: [] u8) -> int #effects(all) {
   if !found || r.kclass == RS_REGULAR || r.kclass == RS_EPHEMERAL { return RS_ACCEPT; }
   id := r.e.id;
   return ifx rs_newer(r.e.created_at, id[..], old_created, old_id) then RS_ACCEPT else RS_SUPERSEDED;
@@ -368,13 +368,13 @@ rs_replace :: (r: RsAdmit, found: bool, old_created: int, old_id: [] u8) -> int 
   #assert rs_filter_search(t, m, 0, f[..], sp[..], q[..], true) == FR_OK && q[0].has && q[0].text == "Ab";
   #assert rs_filter_search(t, m, 0, f[..], sp[..], q[..], false) == FR_FIELD;
 }
-rs_limit :: (f: NostrFilter) -> int {
+rs_limit :: (f: NostrFilter) -> int #effects(all) {
   // stated as "below 128" so that every boundary mutant is observable
   if f.has_limit && f.limit < RS_MAX_LIMIT + 1 { return f.limit; }
   return RS_MAX_LIMIT;
 }
 // The Rust relay's query cost for one filter (its search factor aside).
-rs_cost :: (f: NostrFilter) -> int {
+rs_cost :: (f: NostrFilter) -> int #effects(all) {
   selectors := f.ids.count + f.authors.count + f.kinds.count;
   for t: f.tags { selectors += t.values.count; }
   factor := 100;
@@ -385,34 +385,34 @@ rs_cost :: (f: NostrFilter) -> int {
   else if f.has_since || f.has_until { factor = 50; }
   return (rs_limit(f) + selectors) * factor;
 }
-rs_empty :: (f: NostrFilter) -> bool {
+rs_empty :: (f: NostrFilter) -> bool #effects(all) {
   if (f.has_ids && f.ids.count == 0) || (f.has_authors && f.authors.count == 0) || (f.has_kinds && f.kinds.count == 0) { return true; }
   for t: f.tags { if t.values.count == 0 { return true; } }
   return false;
 }
 // A tag list named name holds a value that is not 64 lowercase hex.
-rs_bad_hex :: (f: NostrFilter, name: u8) -> bool {
+rs_bad_hex :: (f: NostrFilter, name: u8) -> bool #effects(all) {
   for t: f.tags { if t.name == name { for v: t.values { if !nf_hex(v) { return true; } } } }
   return false;
 }
 // One filter of the frame text read into f with sp's storage.
-rs_filter :: (text: string, m: MsMsg, k: int, f: [] NostrFilter, sp: [] FrSpace) -> int {
+rs_filter :: (text: string, m: MsMsg, k: int, f: [] NostrFilter, sp: [] FrSpace) -> int #effects(all) {
   return filter_read(text[m.filter_from[k]..<m.filter_to[k]], f, sp);
 }
 // The same, with NIP-50's "search" read into q[0] when search is true
 // (filter_read_search), refused as filter_read refuses it when false.
-rs_filter_search :: (text: string, m: MsMsg, k: int, f: [] NostrFilter, sp: [] FrSpace, q: [] FrSearch, search: bool) -> int {
+rs_filter_search :: (text: string, m: MsMsg, k: int, f: [] NostrFilter, sp: [] FrSpace, q: [] FrSearch, search: bool) -> int #effects(all) {
   if search { return filter_read_search(text[m.filter_from[k]..<m.filter_to[k]], f, sp, q); }
   return rs_filter(text, m, k, f, sp);
 }
 // The REQ's filters against the relay's rules; RS_ACCEPT or a CLOSED reason.
 // The frame reader already refused bad sub ids and more than 16 filters.
 // A filter with "search" is refused (RS_FILTER); rs_req_search takes it.
-rs_req :: (m: MsMsg, text: string) -> int { return rs_req_mode(m, text, false); }
+rs_req :: (m: MsMsg, text: string) -> int #effects(all) { return rs_req_mode(m, text, false); }
 // The same rules with NIP-50's "search" key read (a string); its cost is
 // the filter's cost without it.
-rs_req_search :: (m: MsMsg, text: string) -> int { return rs_req_mode(m, text, true); }
-rs_req_mode :: (m: MsMsg, text: string, search: bool) -> int {
+rs_req_search :: (m: MsMsg, text: string) -> int #effects(all) { return rs_req_mode(m, text, true); }
+rs_req_mode :: (m: MsMsg, text: string, search: bool) -> int #effects(all) {
   total := 0;
   for k: 0..<m.filters {
     strs: [600] string; ints: [65] int; tags: [52] NostrTagFilter; bytes: [RS_SUB_TEXT] u8;
@@ -487,19 +487,19 @@ RsSub :: struct {
   t = "[\"REQ\",\"a\",{\"kinds\":[2]},{}";
   #assert rs_sub_open(subs[..], ms_read(t), t, 2) == -RS_FRAME && subs[0].live && subs[0].filters == 1;
 }
-rs_subs_live :: (subs: [] RsSub) -> int {
+rs_subs_live :: (subs: [] RsSub) -> int #effects(all) {
   n := 0;
   for i: 0..<subs.count { if subs[i].live { n += 1; } }
   return n;
 }
-rs_sub_find :: (subs: [] RsSub, id: string) -> int {
+rs_sub_find :: (subs: [] RsSub, id: string) -> int #effects(all) {
   for i: 0..<subs.count { if subs[i].live && cast(string) subs[i].id[0..<subs[i].id_n] == id { return i; } }
   return -1;
 }
 // Opens (or replaces, by id) a subscription from an admitted REQ: its slot,
 // or minus a reason. max caps the live subscriptions. A message ms_read
 // refused (an unterminated array, bytes after it) is -RS_FRAME.
-rs_sub_open :: (subs: [] RsSub, m: MsMsg, text: string, max: int) -> int {
+rs_sub_open :: (subs: [] RsSub, m: MsMsg, text: string, max: int) -> int #effects(all) {
   if m.error != MS_OK { return -RS_FRAME; }
   mm := m; id := cast(string) mm.sub[0..<mm.sub_n];
   at := rs_sub_find(subs, id);
@@ -520,14 +520,14 @@ rs_sub_open :: (subs: [] RsSub, m: MsMsg, text: string, max: int) -> int {
   }
   return at;
 }
-rs_sub_close :: (subs: [] RsSub, id: string) -> bool {
+rs_sub_close :: (subs: [] RsSub, id: string) -> bool #effects(all) {
   at := rs_sub_find(subs, id);
   if at < 0 { return false; }
   subs[at].live = false;
   return true;
 }
 // Whether filter k of subscription i matches e.
-rs_sub_filter :: (subs: [] RsSub, i: int, k: int, e: NostrEvent) -> bool {
+rs_sub_filter :: (subs: [] RsSub, i: int, k: int, e: NostrEvent) -> bool #effects(all) {
   strs: [600] string; ints: [65] int; tags: [52] NostrTagFilter; bytes: [RS_SUB_TEXT] u8;
   sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
   f: [1] NostrFilter;
@@ -535,7 +535,7 @@ rs_sub_filter :: (subs: [] RsSub, i: int, k: int, e: NostrEvent) -> bool {
   return nf_match(f[0], e);
 }
 // A live event goes to subscription i when any of its filters matches.
-rs_sub_matches :: (subs: [] RsSub, i: int, e: NostrEvent) -> bool {
+rs_sub_matches :: (subs: [] RsSub, i: int, e: NostrEvent) -> bool #effects(all) {
   if !subs[i].live { return false; }
   for k: 0..<subs[i].filters { if rs_sub_filter(subs, i, k, e) { return true; } }
   return false;
@@ -554,4 +554,4 @@ RS_NIP11 :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr 
   #assert n > 0 && cast(string) out[n - RS_NIP11.count..<n] == RS_NIP11 && cast(string) out[0..<15] == "HTTP/1.1 200 OK";
   #assert rs_nip11(out[0..<100]) == -1;
 }
-rs_nip11 :: (out: [] u8) -> int { return wss_http_write("200 OK", "application/nostr+json", RS_NIP11, out); }
+rs_nip11 :: (out: [] u8) -> int #effects(all) { return wss_http_write("200 OK", "application/nostr+json", RS_NIP11, out); }

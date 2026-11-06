@@ -138,12 +138,12 @@ TiLifeResult :: struct {status:TiStatus;state:TiLife;}
     edge:=[4]f32.[big,1e30,1,1];top:=[1]f32.[big];#assert !tihc_refuse(q,edge[..],1,TiStatus.arithmetic) && !tihc_both(q,edge[..],top[..]);
     #assert !tihc_refuse(l,pm[..],2,TiStatus.arithmetic) && tihc_refuse(tihc_one(tic_shape(1,2,0,0,0),TiNode.{op=TiOp.relu,a=0}),pm[0..<1],2,TiStatus.capacity);
 }
-ti_digest :: (data:[]u8)->[32]u8 #export_c {state:[112]u8;out:[32]u8;#assert sha256_init(state[..])==SHA_OK;#assert sha256_update_checked(state[..],data,false)==SHA_OK;#assert sha256_final_checked(state[..],out[..],false)==SHA_OK;return out;}
-ti_identity_words :: (data:[]u8)->[4]u64 #export_c {digest:=ti_digest(data);out:[4]u64;for i:0..<4 {for j:0..<8 {out[i]=(out[i]<<8)|u64(digest[8*i+j]);}}return out;}
-ti_inputs :: (p:TiPlan,input:[]f32,capacity:int,overlap:bool)->TiStatus #export_c {if p.status!=TiStatus.ok {return p.status;}if input.count!=p.input_elements || capacity<p.output_elements {return TiStatus.capacity;}if overlap {return TiStatus.alias;}for value:input {if !tv_finite(value) {return TiStatus.number;}}return TiStatus.ok;}
-ti_publish :: (flags:[]u8,stage:[]f32,out:[]f32)->TiStatus #export_c {for flag:flags {if flag!=0 {return TiStatus.arithmetic;}}if out.count<stage.count {return TiStatus.capacity;}for i:0..<stage.count {out[i]=stage[i];}return TiStatus.ok;}
-ti_read_view :: (v:TiValue)->TvView {out:=v.view;out.offset+=v.base;return out;}
-ti_ref_item :: (p:TiPlan,id:int,item:int,input:[]f32,work:[]f32)->ToValue {
+ti_digest :: (data:[]u8)->[32]u8 #export_c #effects(all) {state:[112]u8;out:[32]u8;#assert sha256_init(state[..])==SHA_OK;#assert sha256_update_checked(state[..],data,false)==SHA_OK;#assert sha256_final_checked(state[..],out[..],false)==SHA_OK;return out;}
+ti_identity_words :: (data:[]u8)->[4]u64 #export_c #effects(all) {digest:=ti_digest(data);out:[4]u64;for i:0..<4 {for j:0..<8 {out[i]=(out[i]<<8)|u64(digest[8*i+j]);}}return out;}
+ti_inputs :: (p:TiPlan,input:[]f32,capacity:int,overlap:bool)->TiStatus #export_c #effects(all) {if p.status!=TiStatus.ok {return p.status;}if input.count!=p.input_elements || capacity<p.output_elements {return TiStatus.capacity;}if overlap {return TiStatus.alias;}for value:input {if !tv_finite(value) {return TiStatus.number;}}return TiStatus.ok;}
+ti_publish :: (flags:[]u8,stage:[]f32,out:[]f32)->TiStatus #export_c #effects(all) {for flag:flags {if flag!=0 {return TiStatus.arithmetic;}}if out.count<stage.count {return TiStatus.capacity;}for i:0..<stage.count {out[i]=stage[i];}return TiStatus.ok;}
+ti_read_view :: (v:TiValue)->TvView #effects(all) {out:=v.view;out.offset+=v.base;return out;}
+ti_ref_item :: (p:TiPlan,id:int,item:int,input:[]f32,work:[]f32)->ToValue #effects(all) {
     n:=p.program.nodes[id];a:=p.values[n.a];av:=ti_read_view(a);aa:=work;if a.external {aa=input;}
     // A unary request never reads its second operand.
     b:TiValue;bb:=work;if ti_binary(n.op) {b=p.values[n.b];if b.external {bb=input;}}
@@ -155,7 +155,7 @@ ti_ref_item :: (p:TiPlan,id:int,item:int,input:[]f32,work:[]f32)->ToValue {
     return ToValue.{value=(to_read(av,aa,c)-center)/sqrt(to_total(squares)/f64(width)+f64(n.epsilon))};
 }
 // book:begin cpu
-ti_cpu_checked :: (program:TiProgram,reuse:bool,input:[]f32,work:[]f32,stage:[]f32,out:[]f32,flags:[]u8,overlap:bool)->TiResult #export_c {
+ti_cpu_checked :: (program:TiProgram,reuse:bool,input:[]f32,work:[]f32,stage:[]f32,out:[]f32,flags:[]u8,overlap:bool)->TiResult #export_c #effects(all) {
     p:=ti_compile(program,TiTarget.{},reuse);status:=ti_inputs(p,input,out.count,overlap);if status!=TiStatus.ok {return TiResult.{status=status};}
     if work.count<p.workspace || stage.count<p.output_elements || flags.count<p.flag_elements {return TiResult.{status=TiStatus.capacity};}
     if ti_extension_admit(p,false)!=TiStatus.ok {return TiResult.{status=TiStatus.operation};}
@@ -164,27 +164,27 @@ ti_cpu_checked :: (program:TiProgram,reuse:bool,input:[]f32,work:[]f32,stage:[]f
 }
 // book:end cpu
 
-ti_buffers :: (p:TiPlan)->TiBuffers #export_c {return TiBuffers.{input=4*ti_nonzero(p.input_elements),workspace=4*ti_nonzero(p.workspace),stage=4*ti_nonzero(p.output_elements),flags=ti_nonzero(p.flag_elements),metadata=p.launches*64*8,total=p.bytes};}
-ti_open_admit :: (p:TiProgram,t:TiTarget,reference:bool,source_bytes:int,present:bool,empty:bool)->TiStatus #export_c {
+ti_buffers :: (p:TiPlan)->TiBuffers #export_c #effects(all) {return TiBuffers.{input=4*ti_nonzero(p.input_elements),workspace=4*ti_nonzero(p.workspace),stage=4*ti_nonzero(p.output_elements),flags=ti_nonzero(p.flag_elements),metadata=p.launches*64*8,total=p.bytes};}
+ti_open_admit :: (p:TiProgram,t:TiTarget,reference:bool,source_bytes:int,present:bool,empty:bool)->TiStatus #export_c #effects(all) {
     if !empty {return TiStatus.state;}if reference && t.device!=TdDevice.cpu {return TiStatus.device;}
     if source_bytes<0 || source_bytes>4194304 || (source_bytes>0 && !present) || (t.device!=TdDevice.cpu && source_bytes==0) {return TiStatus.capacity;}
     any:=false;for i:0..<4 {if t.compiler[i]!=0 {any=true;}}if !any {return TiStatus.identity;}return ti_compile(p,t,!reference).status;
 }
-ti_begin :: (s:TiLife)->TiLifeResult #export_c {if !s.live || s.running {return TiLifeResult.{status=TiStatus.state};}if s.poisoned {return TiLifeResult.{status=TiStatus.driver};}next:=s;next.running=true;return TiLifeResult.{state=next};}
-ti_end :: (s:TiLife,status:TiStatus)->TiLife #export_c {next:=s;next.running=false;if status==TiStatus.driver {next.poisoned=true;}return next;}
+ti_begin :: (s:TiLife)->TiLifeResult #export_c #effects(all) {if !s.live || s.running {return TiLifeResult.{status=TiStatus.state};}if s.poisoned {return TiLifeResult.{status=TiStatus.driver};}next:=s;next.running=true;return TiLifeResult.{state=next};}
+ti_end :: (s:TiLife,status:TiStatus)->TiLife #export_c #effects(all) {next:=s;next.running=false;if status==TiStatus.driver {next.poisoned=true;}return next;}
 
-ti_initial_life :: ()->TiLife #export_c {return TiLife.{};}
-ti_cache_ready :: (s:TiLife)->bool #export_c {return s.live && !s.running && !s.poisoned;}
-ti_close_admit :: (s:TiLife)->TiStatus #export_c {if !s.live || s.running || s.modules!=0 {return TiStatus.state;}return TiStatus.ok;}
+ti_initial_life :: ()->TiLife #export_c #effects(all) {return TiLife.{};}
+ti_cache_ready :: (s:TiLife)->bool #export_c #effects(all) {return s.live && !s.running && !s.poisoned;}
+ti_close_admit :: (s:TiLife)->TiStatus #export_c #effects(all) {if !s.live || s.running || s.modules!=0 {return TiStatus.state;}return TiStatus.ok;}
 
-ti_module_borrow :: (s:TiLife)->TiLifeResult #export_c {if !ti_cache_ready(s) || s.modules<0 || s.modules>=32 {return TiLifeResult.{status=TiStatus.state};}next:=s;next.modules+=1;return TiLifeResult.{state=next};}
-ti_module_return :: (s:TiLife)->TiLifeResult #export_c {if !s.live || s.running || s.modules<1 {return TiLifeResult.{status=TiStatus.state};}next:=s;next.modules-=1;return TiLifeResult.{state=next};}
+ti_module_borrow :: (s:TiLife)->TiLifeResult #export_c #effects(all) {if !ti_cache_ready(s) || s.modules<0 || s.modules>=32 {return TiLifeResult.{status=TiStatus.state};}next:=s;next.modules+=1;return TiLifeResult.{state=next};}
+ti_module_return :: (s:TiLife)->TiLifeResult #export_c #effects(all) {if !s.live || s.running || s.modules<1 {return TiLifeResult.{status=TiStatus.state};}next:=s;next.modules-=1;return TiLifeResult.{state=next};}
 
-ti_reference_command :: (p:TiPlan,command:int,planned:bool,input:[]f32,work:[]f32,stage:[]f32,flags:[]u8)->TiStatus #export_c {
+ti_reference_command :: (p:TiPlan,command:int,planned:bool,input:[]f32,work:[]f32,stage:[]f32,flags:[]u8)->TiStatus #export_c #effects(all) {
     launch:=ti_lower(p,command);if launch.status!=TiStatus.ok {return launch.status;}
     if planned || command==p.launches-1 {for i:0..<launch.items {tik_run(i,launch.meta[..],launch.epsilon,input,work,stage,flags);}}
     else {id:=p.commands[command];if p.program.nodes[id].op==TiOp.registered {return TiStatus.operation;}for i:0..<launch.items {value:=ti_ref_item(p,id,i,input,work);if value.status!=ToStatus.ok || !to_fits(value.value) {return TiStatus.arithmetic;}work[p.values[id].base+i]=f32(value.value);flags[launch.meta[2]+i]=0;}}
     return TiStatus.ok;
 }
-ti_extension_admit :: (p:TiPlan,present:bool)->TiStatus #export_c {if p.status!=TiStatus.ok {return p.status;}for i:0..<p.program.count {if p.program.nodes[i].op==TiOp.registered && !present {return TiStatus.operation;}}return TiStatus.ok;}
-ti_attach_admit :: (s:TiLife,attached:bool,present:bool)->TiStatus #export_c {if !ti_cache_ready(s) || s.modules!=0 || attached || !present {return TiStatus.state;}return TiStatus.ok;}
+ti_extension_admit :: (p:TiPlan,present:bool)->TiStatus #export_c #effects(all) {if p.status!=TiStatus.ok {return p.status;}for i:0..<p.program.count {if p.program.nodes[i].op==TiOp.registered && !present {return TiStatus.operation;}}return TiStatus.ok;}
+ti_attach_admit :: (s:TiLife,attached:bool,present:bool)->TiStatus #export_c #effects(all) {if !ti_cache_ready(s) || s.modules!=0 || attached || !present {return TiStatus.state;}return TiStatus.ok;}

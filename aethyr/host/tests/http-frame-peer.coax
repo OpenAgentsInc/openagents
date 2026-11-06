@@ -32,7 +32,7 @@ hfp_tree :: (inputs:[]RtqInputs,dir:string,depth:int)->bool {
  return true;
 }
 
-tool_main::()->int #export_c {
+tool_main::()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) {return 2;}
  if args_count(a[..])==3 {return hfp_peer(a[..]);}
  if args_count(a[..])!=4||args_at(a[..],0)!="--check" {tool_errln("usage: http-frame-peer --check WORLD_BUILD FACTS NEW_OUT");return 2;}

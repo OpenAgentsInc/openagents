@@ -38,9 +38,9 @@ RmControl :: struct {
 }
 
 // The browser's local host (room-worker.c rw_start): offline play, one player's own game.
-rm_control_local :: (v: [] RmServer) #export_c { v[0].ctl.local = true; }
+rm_control_local :: (v: [] RmServer) #export_c #effects(all) { v[0].ctl.local = true; }
 // The native CLI supplies its actual bind address, after environment overrides.
-rm_native_local :: (v:[]RmServer,address:string)->bool #export_c {
+rm_native_local :: (v:[]RmServer,address:string)->bool #export_c #effects(all) {
   if !native_local_enable(v[0].dev.on,address) {return false;}
   rm_control_local(v);return true;
 }
@@ -54,7 +54,7 @@ rc_kicked :: (v: [] RmServer, pid: string) -> bool {
   return false;
 }
 // Whether it is time to ask: the ask's "t MS" in ctl.ask and its MAC in ctl.mac (none without a key).
-rm_control_due :: (v: [] RmServer) -> bool #export_c {
+rm_control_due :: (v: [] RmServer) -> bool #export_c #effects(all) {
   if v[0].tkey_n == 0 || v[0].wall_ms - v[0].ctl.asked < CONTROL_EVERY_MS { return false; }
   v[0].ctl.asked = v[0].wall_ms;
   n := tk_add(v[0].ctl.ask[..], 0, "t "); n = rv_int(v[0].ctl.ask[..], n, v[0].wall_ms);
@@ -126,7 +126,7 @@ rc_room :: (v: [] RmServer, code: string) -> int {
   }
   return -1;
 }
-rm_control :: (v: [] RmServer, text: string) #export_c {
+rm_control :: (v: [] RmServer, text: string) #export_c #effects(all) {
   kicks := 0; pvp := v[0].ctl.pvp; edit := -1;
   at := 0;
   while at < text.count {

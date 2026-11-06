@@ -111,11 +111,11 @@ PkFileOptions :: struct {ok:bool;gpu:bool;format:int;dump:int= -1;}
  }
 }
 
-pkfile_chunks :: (samples:int)->int #export_c {
+pkfile_chunks :: (samples:int)->int #export_c #effects(all) {
  if samples<PKFILE_MIN || samples>PKFILE_MAX*PKFILE_WINDOWS {return -1;}
  return (samples+PKFILE_MAX-1)/PKFILE_MAX;
 }
-pkfile_window :: (samples:int,index:int)->PkFileWindow #export_c {
+pkfile_window :: (samples:int,index:int)->PkFileWindow #export_c #effects(all) {
  parts:=pkfile_chunks(samples);if parts<1 || index<0 || index>=parts {return PkFileWindow.{};}
  tail:=samples-(parts-1)*PKFILE_MAX;borrow:=ifx parts>1 && tail<PKFILE_MIN then PKFILE_MIN-tail else 0;
  offset:=index*PKFILE_MAX;count:=PKFILE_MAX;
@@ -123,7 +123,7 @@ pkfile_window :: (samples:int,index:int)->PkFileWindow #export_c {
  if index==parts-1 {offset-=borrow;count=tail+borrow;}
  return PkFileWindow.{ok=true,offset=offset,count=count};
 }
-pkfile_options :: (args:[]string)->PkFileOptions #export_c {
+pkfile_options :: (args:[]string)->PkFileOptions #export_c #effects(all) {
  o:=PkFileOptions.{};if args.count<4 || args[1]!="transcribe" || args[2]=="" || args[3]=="" {return o;}
  seen_format:=false;seen_device:=false;i:=4;
  while i<args.count {
@@ -138,7 +138,7 @@ pkfile_options :: (args:[]string)->PkFileOptions #export_c {
 }
 // Stricter file orchestration than the legacy recorder-recovery WAV reader:
 // a missing physical tail cannot become a successfully completed transcript.
-pkfile_wav_info :: (file:[]u8)->WvInfo #export_c {
+pkfile_wav_info :: (file:[]u8)->WvInfo #export_c #effects(all) {
  bad:=WvInfo.{status=WvStatus.data};if file.count<12 || wg_u32(file,4)!=file.count-8 {return bad;}
  r:=wv_info(file);if r.status!=WvStatus.ok {return r;}
  at:=12;while at+8<=file.count {
@@ -148,15 +148,15 @@ pkfile_wav_info :: (file:[]u8)->WvInfo #export_c {
  }
  return bad;
 }
-pkfile_length :: (info:WvInfo)->int #export_c {if info.status!=WvStatus.ok || info.frames<0 || info.frames>4294967295 || info.rate<1000 || info.rate>384000 {return -1;}return wv_length(info.frames,info.rate);}
-pkfile_table :: (out:[]f64)->bool #export_c {if out.count<WV_TABLE {return false;}wv_table(out);return true;}
-pkfile_mono :: (file:[]u8,info:WvInfo,index:int)->f32 {
+pkfile_length :: (info:WvInfo)->int #export_c #effects(all) {if info.status!=WvStatus.ok || info.frames<0 || info.frames>4294967295 || info.rate<1000 || info.rate>384000 {return -1;}return wv_length(info.frames,info.rate);}
+pkfile_table :: (out:[]f64)->bool #export_c #effects(all) {if out.count<WV_TABLE {return false;}wv_table(out);return true;}
+pkfile_mono :: (file:[]u8,info:WvInfo,index:int)->f32 #effects(all) {
  bytes:=info.bits/8;at:=info.at+index*bytes*info.channels;sum:=0.0;
  for c:0..<info.channels {sum+=wv_sample(file,at+c*bytes,info.format,info.bits);}
  v:=sum/cast(f64)info.channels;
  return cast(f32)(ifx v>1 then 1.0 else ifx v>= -1 then v else -1.0);
 }
-pkfile_audio :: (file:[]u8,offset:int,table:[]f64,out:[]f32)->int #export_c {
+pkfile_audio :: (file:[]u8,offset:int,table:[]f64,out:[]f32)->int #export_c #effects(all) {
  info:=pkfile_wav_info(file);total:=pkfile_length(info);
  if info.status!=WvStatus.ok || offset<0 || out.count>total || offset>total-out.count || table.count<WV_TABLE {return -1;}
  if info.rate==16000 {for i:0..<out.count {out[i]=pkfile_mono(file,info,offset+i);}return out.count;}
@@ -169,8 +169,8 @@ pkfile_audio :: (file:[]u8,offset:int,table:[]f64,out:[]f32)->int #export_c {
  }
  return out.count;
 }
-pkfile_ms :: (sample:int)->int #export_c {return sample/16;}
-pkfile_span :: (total:int,offset:int,count:int,encoded:int,frames:[]int)->PkFileSpan #export_c {
+pkfile_ms :: (sample:int)->int #export_c #effects(all) {return sample/16;}
+pkfile_span :: (total:int,offset:int,count:int,encoded:int,frames:[]int)->PkFileSpan #export_c #effects(all) {
  r:=PkFileSpan.{};if pkfile_chunks(total)<1 || offset<0 || count<320 || count>327520 || count>total || offset>total-count || encoded!=(count/160+7)/8 {return r;}
  previous:= -1;
  for frame:frames {if frame<previous || frame<0 || frame>=encoded || frame*1280>=count {return r;}previous=frame;}
@@ -178,12 +178,12 @@ pkfile_span :: (total:int,offset:int,count:int,encoded:int,frames:[]int)->PkFile
  r.start=offset+frames[0]*1280;r.end=offset+(frames[frames.count-1]+1)*1280;
  if r.end>offset+count {r.end=offset+count;}return r;
 }
-pkfile_publish :: (completed:int,expected:int,cancelled:bool)->bool #export_c {return expected>0 && completed==expected && !cancelled;}
-pkfile_cues :: (prior:int,text:string)->int #export_c {return prior+ifx text=="" then 0 else 1;}
-pkfile_dumps :: (parts:int,dump:int)->bool #export_c {return dump<0 || parts==1;}
+pkfile_publish :: (completed:int,expected:int,cancelled:bool)->bool #export_c #effects(all) {return expected>0 && completed==expected && !cancelled;}
+pkfile_cues :: (prior:int,text:string)->int #export_c #effects(all) {return prior+ifx text=="" then 0 else 1;}
+pkfile_dumps :: (parts:int,dump:int)->bool #export_c #effects(all) {return dump<0 || parts==1;}
 
 // device is PK_DEVICE_CPU, _METAL or _CUDA: the one the engine actually ran on.
-pkfile_begin :: (format:int,total:int,device:int,out:[]u8)->int #export_c {
+pkfile_begin :: (format:int,total:int,device:int,out:[]u8)->int #export_c #effects(all) {
  if format<0 || format>3 || pkfile_chunks(total)<1 || !pk_device_known(device) {return -1;}
  w:[1]WsOut;w[0].buf=out;
  if format==2 {wsg_put(w[..],"WEBVTT\n\n");}
@@ -193,7 +193,7 @@ pkfile_begin :: (format:int,total:int,device:int,out:[]u8)->int #export_c {
  }
  return ifx w[0].full then -1 else w[0].n;
 }
-pkfile_render :: (format:int,index:int,cue:int,total:int,offset:int,count:int,encoded:int,tokens:[]int,frames:[]int,text:string,out:[]u8)->int #export_c {
+pkfile_render :: (format:int,index:int,cue:int,total:int,offset:int,count:int,encoded:int,tokens:[]int,frames:[]int,text:string,out:[]u8)->int #export_c #effects(all) {
  span:=pkfile_span(total,offset,count,encoded,frames);if !span.ok || tokens.count!=frames.count || (text.count>0 && frames.count==0) {return -1;}
  for token:tokens {if token<0 || token>=8192 {return -1;}}
  w:[1]WsOut;w[0].buf=out;
@@ -211,12 +211,12 @@ pkfile_render :: (format:int,index:int,cue:int,total:int,offset:int,count:int,en
  }else {return -1;}
  return ifx w[0].full then -1 else w[0].n;
 }
-pkfile_json_text :: (text:string,prior:bool,out:[]u8)->int #export_c {
+pkfile_json_text :: (text:string,prior:bool,out:[]u8)->int #export_c #effects(all) {
  if text=="" {return 0;}w:[1]WsOut;w[0].buf=out;if prior {wsg_byte(w[..],' ');}at:=w[0].n;wsg_quoted(w[..],text);
  if w[0].full {return -1;}for i:at..<w[0].n-2 {out[i]=out[i+1];}w[0].n-=2;return w[0].n;
 }
-pkfile_json_middle :: (out:[]u8)->int #export_c {s:="],\"text\":\"";if out.count<s.count {return -1;}for i:0..<s.count {out[i]=s[i];}return s.count;}
-pkfile_json_tail :: (total:int,features:int,encoded:int,tokens:[]int,frames:[]int,out:[]u8)->int #export_c {
+pkfile_json_middle :: (out:[]u8)->int #export_c #effects(all) {s:="],\"text\":\"";if out.count<s.count {return -1;}for i:0..<s.count {out[i]=s[i];}return s.count;}
+pkfile_json_tail :: (total:int,features:int,encoded:int,tokens:[]int,frames:[]int,out:[]u8)->int #export_c #effects(all) {
  w:[1]WsOut;w[0].buf=out;wsg_put(w[..],"\"");
  if pkfile_chunks(total)==1 {
   wsg_put(w[..],",\"feature_frames\":");wsg_digits(w[..],features,1);wsg_put(w[..],",\"encoded_frames\":");wsg_digits(w[..],encoded,1);wsg_put(w[..],",\"token_count\":");wsg_digits(w[..],tokens.count,1);

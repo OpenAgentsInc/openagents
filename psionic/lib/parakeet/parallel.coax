@@ -16,9 +16,9 @@ PkpJob :: struct {rows:int;cols:int;w:[]f32;x:[]f32;bias:[]f32;second:bool;w2:[]
  #assert ra.status==TdtStatus.ok && rb.status==TdtStatus.ok && ra.written==rb.written;
  for i:0..<ra.written {#assert ta[i]==tb[i] && fa[i]==fb[i];}for i:0..<p.work {#assert f32_bits(a[i])==f32_bits(b[i]);}
 }
-cxpk_dot :: (rows:int,cols:int,w:[]f32,x:[]f32,bias:[]f32,second:bool,w2:[]f32,x2:[]f32,bias2:[]f32,out:[]f32)->bool #foreign;
+cxpk_dot :: (rows:int,cols:int,w:[]f32,x:[]f32,bias:[]f32,second:bool,w2:[]f32,x2:[]f32,bias2:[]f32,out:[]f32)->bool #foreign #effects(all);
 pkp_valid :: (j:PkpJob)->bool {return pkp_counts(j.rows,j.cols,j.w.count,j.x.count,j.bias.count,j.w2.count,j.x2.count,j.bias2.count,j.out.count,j.second);}
-pkp_dot_part :: (j:PkpJob,lo:int,hi:int)->bool #export_c {
+pkp_dot_part :: (j:PkpJob,lo:int,hi:int)->bool #export_c #effects(all) {
  if !pkp_valid(j) || !pkp_rows(j.rows,lo,hi) {return false;}
  for r:lo..<hi {a:PsionicAccumulator;a=psionic_ops_accumulate(a,f64(j.bias[r]));if j.second {a=psionic_ops_accumulate(a,f64(j.bias2[r]));}
   for k:0..<j.cols {a=psionic_ops_accumulate(a,f64(j.w[r*j.cols+k])*f64(j.x[k]));}
@@ -45,7 +45,7 @@ pkp_joint :: (s:TdtShape,p:TdtPlan,w:[]f32,t:int,work:[]f32,enabled:bool)->bool 
  z:=work[p.at_z..<p.at_z+s.joint];for j:0..<s.joint {z[j]=f32(tdt_relu(f64(work[t*s.joint+j])+f64(work[p.at_dec+j])));}
  return pkp_linear(w,p.head,z,work[p.at_logits..<p.at_logits+p.outputs],enabled);
 }
-pkp_decode :: (s:TdtShape,w:[]f32,enc:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int,enabled:bool)->TdtResult #export_c {
+pkp_decode :: (s:TdtShape,w:[]f32,enc:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int,enabled:bool)->TdtResult #export_c #effects(all) {
  p:=tdt_plan(s,frames);if p.status!=TdtStatus.ok {return TdtResult.{status=p.status};}
  if w.count!=p.weights || enc.count!=frames*s.enc {return TdtResult.{status=TdtStatus.shape};}
  if work.count<p.work || at.count<tokens.count {return TdtResult.{status=TdtStatus.capacity};}

@@ -4,9 +4,9 @@
 #load "native-gpu-emission-policy.coax";
 #authority;
 #load "native-gpu-reuse-checks.coax";
-nr_mode :: (historical:bool,fresh:bool,reuse:bool)->bool {return (ifx historical then 1 else 0)+(ifx fresh then 1 else 0)+(ifx reuse then 1 else 0)==1;}
-nr_text :: (d:Jv,node:int,want:string)->bool {b:[4096]u8;n:=jv_str(d,node,b[..]);return n==want.count && cast(string)b[0..<n]==want;}
-nr_reuse :: (profile:int,d:Jv,compiler:string,keys:[]string,hashes:[]string)->bool {
+nr_mode :: (historical:bool,fresh:bool,reuse:bool)->bool #effects(all) {return (ifx historical then 1 else 0)+(ifx fresh then 1 else 0)+(ifx reuse then 1 else 0)==1;}
+nr_text :: (d:Jv,node:int,want:string)->bool #effects(all) {b:[4096]u8;n:=jv_str(d,node,b[..]);return n==want.count && cast(string)b[0..<n]==want;}
+nr_reuse :: (profile:int,d:Jv,compiler:string,keys:[]string,hashes:[]string)->bool #effects(all) {
   count:=ne_count(profile);if count==0 || keys.count==0 || hashes.count!=keys.count || !nr_text(d,rtq_member(d,0,"compiler_sha256"),compiler) {return false;}
   source_inputs:=rtq_member(d,0,"source_inputs");if jv_kind(d,source_inputs)!=JV_OBJECT {return false;}
   for i:0..<keys.count {if !nr_text(d,rtq_member(d,source_inputs,keys[i]),hashes[i]) {return false;}}

@@ -19,8 +19,8 @@
   #assert bh_hex_equal(out[..], "40fd8840");
 }
 
-kv_checksum_stride :: () -> int { return CB_MAX_BYTES; }
-kv_checksum :: (data: [] u8, out: [] u8) {
+kv_checksum_stride :: () -> int #effects(all) { return CB_MAX_BYTES; }
+kv_checksum :: (data: [] u8, out: [] u8) #effects(all) {
   state: [SHA_STATE_BYTES] u8; first: [32] u8; digest: [32] u8;
   #assert sha256_init(state[..]) == SHA_OK;
   stride := kv_checksum_stride(); chunks := data.count / stride;

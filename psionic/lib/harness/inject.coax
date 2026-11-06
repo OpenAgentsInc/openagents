@@ -65,19 +65,19 @@ IjParse :: struct { why: IjWhy; count: int; at: int; }
 // book:end types
 
 // book:begin values
-ij_bit :: (s: IjSource) -> int { return 1 << cast(int) s; }
+ij_bit :: (s: IjSource) -> int #effects(all) { return 1 << cast(int) s; }
 // The label of a list of sections: every source in it.
-ij_view :: (sections: [] IjSection) -> int {
+ij_view :: (sections: [] IjSection) -> int #effects(all) {
   label := 0;
   for s: sections { label = label | ij_bit(s.source); }
   return label;
 }
-ij_start :: (v: IjValues, i: int) -> int { if i == 0 { return 0; } return v.ends[i - 1]; }
-ij_text :: (v: IjValues, i: int) -> string { return cast(string) v.bytes[ij_start(v, i)..<v.ends[i]]; }
+ij_start :: (v: IjValues, i: int) -> int #effects(all) { if i == 0 { return 0; } return v.ends[i - 1]; }
+ij_text :: (v: IjValues, i: int) -> string #effects(all) { return cast(string) v.bytes[ij_start(v, i)..<v.ends[i]]; }
 // Add a value: its bytes, and a label that is its own sources and every
 // parent's label. Returns its index, or -1 when own is not a label, a
 // parent does not exist or the pool is full.
-ij_value :: (v: [] IjValues, text: string, own: int, parents: [] int) -> int {
+ij_value :: (v: [] IjValues, text: string, own: int, parents: [] int) -> int #effects(all) {
   n := v[0].count;
   at := ij_start(v[0], n);
   if own < 0 || own > IJ_ALL || n == v[0].ends.count || text.count > v[0].bytes.count - at { return -1; }
@@ -93,17 +93,17 @@ ij_value :: (v: [] IjValues, text: string, own: int, parents: [] int) -> int {
 // book:end values
 
 // book:begin frame
-ij_put :: (out: [] u8, at: int, s: string) -> int {
+ij_put :: (out: [] u8, at: int, s: string) -> int #effects(all) {
   if at < 0 || s.count > out.count - at { return -1; }
   for c, i: s { out[at + i] = c; }
   return at + s.count;
 }
 IJ_HEADS :: [6] string.["@@system ", "@@user ", "@@policy ", "@@document ", "@@tool ", "@@remote "];
 // Does s hold p at byte at?
-ij_has :: (s: string, at: int, p: string) -> bool { return s.count - at >= p.count && s[at..<at + p.count] == p; }
+ij_has :: (s: string, at: int, p: string) -> bool #effects(all) { return s.count - at >= p.count && s[at..<at + p.count] == p; }
 // Each section as @@<source> <length>\n<text>\n. Returns the byte count,
 // or -1 when out is too small.
-ij_frame :: (sections: [] IjSection, out: [] u8) -> int {
+ij_frame :: (sections: [] IjSection, out: [] u8) -> int #effects(all) {
   at := 0; names := IJ_NAMES;
   for s: sections {
     d: [20] u8; k := 0; x := s.text.count;
@@ -124,7 +124,7 @@ ij_frame :: (sections: [] IjSection, out: [] u8) -> int {
 // a leading zero followed by a newline), source (@@ and then not a known
 // name and a space), length (the text and its newline run past the end), capacity
 // (more sections than out holds). at: where the refused frame starts.
-ij_unframe :: (bytes: string, out: [] IjSection) -> IjParse {
+ij_unframe :: (bytes: string, out: [] IjSection) -> IjParse #effects(all) {
   r := IjParse.{why = IjWhy.ok}; heads := IJ_HEADS;
   while r.at < bytes.count {
     at := r.at;
@@ -149,12 +149,12 @@ ij_unframe :: (bytes: string, out: [] IjSection) -> IjParse {
 
 // book:begin decide
 // A call's label: what was in view, and what its argument was made from.
-ij_label :: (v: IjValues, c: IjCall) -> int {
+ij_label :: (v: IjValues, c: IjCall) -> int #effects(all) {
   if c.arg < 0 || c.arg >= v.count { return c.view; }
   return c.view | v.labels[c.arg];
 }
 // The gate's decision on one call, before anything runs.
-ij_decide :: (grants: [] IjGrant, v: IjValues, c: IjCall) -> IjEvent {
+ij_decide :: (grants: [] IjGrant, v: IjValues, c: IjCall) -> IjEvent #effects(all) {
   e := IjEvent.{call = c, label = ij_label(v, c), verdict = IjVerdict.refuse, why = IjWhy.shape};
   limit := IJ_FILES; widen := c.tool == IjTool.widen;
   if c.tool == IjTool.send { limit = IJ_DESTS; }
@@ -183,8 +183,8 @@ ij_decide :: (grants: [] IjGrant, v: IjValues, c: IjCall) -> IjEvent {
 // book:end decide
 
 // book:begin act
-ij_file :: (w: IjWorld, k: int) -> string { return cast(string) w.files[k * IJ_FILE_MAX..<k * IJ_FILE_MAX + w.sizes[k]]; }
-ij_message :: (w: IjWorld, i: int) -> string {
+ij_file :: (w: IjWorld, k: int) -> string #effects(all) { return cast(string) w.files[k * IJ_FILE_MAX..<k * IJ_FILE_MAX + w.sizes[k]]; }
+ij_message :: (w: IjWorld, i: int) -> string #effects(all) {
   from := 0;
   if i > 0 { from = w.ends[i - 1]; }
   return cast(string) w.out[from..<w.ends[i]];
@@ -192,7 +192,7 @@ ij_message :: (w: IjWorld, i: int) -> string {
 // Decide a call, log the decision, and only then let the effect happen: a
 // run, or an ask the person approved. A malformed call, or one that does
 // not fit the log, the file or the sink, is refused and logs nothing.
-ij_act :: (w: [] IjWorld, grants: [] IjGrant, v: IjValues, c: IjCall, approved: bool) -> IjEvent {
+ij_act :: (w: [] IjWorld, grants: [] IjGrant, v: IjValues, c: IjCall, approved: bool) -> IjEvent #effects(all) {
   e := ij_decide(grants, v, c);
   if e.why == IjWhy.shape { return e; }
   e.ran = e.verdict == IjVerdict.run || (e.verdict == IjVerdict.ask && approved);

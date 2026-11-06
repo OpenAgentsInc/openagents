@@ -104,7 +104,7 @@ without committing to what the earlier ones pay.
 // NONE, SINGLE and ANYONECANPAY leave out, then the 4-byte hash type,
 // SHA-256d into out. SIGHASH_SINGLE with no output at this input's index
 // signs the number 1, Core's historical bug.
-script_sighash_legacy_vartime :: (sp: ScriptSpend, code: [] u8, hashtype: int, out: [] u8) {
+script_sighash_legacy_vartime :: (sp: ScriptSpend, code: [] u8, hashtype: int, out: [] u8) #effects(all) {
   b := sp.b; t := sp.t; index := sp.index;
   anyone := (hashtype & 0x80) != 0;
   single := (hashtype & 0x1f) == 3; none := (hashtype & 0x1f) == 2;
@@ -216,7 +216,7 @@ and writes the length minus their number:
 // number. Like Core, it copies only up to where GetOp stopped, so a
 // script that ends inside a push contributes fewer bytes than its prefix
 // says.
-si_absorb_code :: (state: [] u8, code: [] u8) {
+si_absorb_code :: (state: [] u8, code: [] u8) #effects(all) {
   separators := 0; pc := 0;
   while true {
     op := script_op_vartime(code, pc);

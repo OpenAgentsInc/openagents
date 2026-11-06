@@ -100,7 +100,7 @@ stream_bed :: (r: [] Stream, heights: [] f32, x: f32, z: f32) -> f32 {
 // Builds the stream from the page's course (x, z and full width a control),
 // at `level`, over the page's carved ground; pond is where the lily pads float.
 fairy_stream_start :: (r: [] Stream, heights: [] f32, course: [] f32, level: f32, pond_x: f32, pond_z: f32,
-                       n: int, rows: int, cell: f32, west: f32, south: f32) #export_c {
+                       n: int, rows: int, cell: f32, west: f32, south: f32) #export_c #effects(all) {
   r[0].n = n; r[0].grid_rows = rows; r[0].cell = cell; r[0].west = west; r[0].south = south;
   r[0].level = f64(level);
   count := course.count / 3;
@@ -147,14 +147,14 @@ stream_body :: (r: [] Stream, heights: [] f32) {
   stream_bake(r, heights);
 }
 // The pond to stand drop m under the stream (0: full): the body and the nodes again.
-fairy_stream_drop :: (r: [] Stream, heights: [] f32, drop: f32) #export_c {
+fairy_stream_drop :: (r: [] Stream, heights: [] f32, drop: f32) #export_c #effects(all) {
   if !r[0].ready || r[0].count < 2 || !(drop == drop) { return; }
   d := clamp_s(drop, 0, 2);
   if abs(d - r[0].drop) < 0.001 { return; }
   r[0].drop = d;
   stream_body(r, heights);
 }
-fairy_stream_dropped :: (r: [] Stream) -> f32 #export_c { return r[0].drop; }
+fairy_stream_dropped :: (r: [] Stream) -> f32 #export_c #effects(all) { return r[0].drop; }
 
 // The nodes: a row every metre along the course, STREAM_COLS across it,
 // each with its rest position at the level, the depth to the bed under it,
@@ -186,10 +186,10 @@ stream_bake :: (r: [] Stream, heights: [] f32) {
   for k: 0..<STREAM_COLS * rows { r[0].nodes[k * WATER_NODE + 4] = shore[k]; }
 }
 
-fairy_stream_node_bytes :: () -> int #export_c { return STREAM_NODES * 4; }
+fairy_stream_node_bytes :: () -> int #export_c #effects(all) { return STREAM_NODES * 4; }
 
 // The water's uniform block (fairy.wgsl WaterU) for this frame at `time` s.
-fairy_stream_frame :: (r: [] Stream, u: [] f32, time: f64, phone: bool, ex: f32, ey: f32, ez: f32, pixel_angle: f32) #export_c {
+fairy_stream_frame :: (r: [] Stream, u: [] f32, time: f64, phone: bool, ex: f32, ey: f32, ez: f32, pixel_angle: f32) #export_c #effects(all) {
   if !r[0].ready || u.count < WATER_FLOATS { return; }
   b := r[0].bodies[0];
   inside := false;
@@ -211,11 +211,11 @@ fairy_stream_frame :: (r: [] Stream, u: [] f32, time: f64, phone: bool, ex: f32,
 stream_tick :: (time: f64) -> u64 { return cast(u64) floor(fmax(time, 0.0) * 120.0); }
 
 // The draw: vertices a patch (quads across times along, 6 each), and patches.
-fairy_stream_vertices :: (phone: bool) -> int #export_c { return ifx phone then 10 * 2 * 6 else 20 * 4 * 6; }
-fairy_stream_patches :: (r: [] Stream) -> int #export_c { return ifx r[0].rows > 1 then (r[0].rows - 1) / STREAM_PATCH_ROWS else 0; }
+fairy_stream_vertices :: (phone: bool) -> int #export_c #effects(all) { return ifx phone then 10 * 2 * 6 else 20 * 4 * 6; }
+fairy_stream_patches :: (r: [] Stream) -> int #export_c #effects(all) { return ifx r[0].rows > 1 then (r[0].rows - 1) / STREAM_PATCH_ROWS else 0; }
 
 // The surface over (x, z) at `time`, or -1000 where there is none.
-fairy_stream_surface :: (r: [] Stream, x: f32, z: f32, time: f64) -> f32 #export_c {
+fairy_stream_surface :: (r: [] Stream, x: f32, z: f32, time: f64) -> f32 #export_c #effects(all) {
   if !r[0].ready { return -1000; }
   s := water_sample(r[0].set, f64(x), f64(z), stream_tick(time));
   if !s.found { return -1000; }
@@ -249,7 +249,7 @@ pace_of :: (medium: int) -> f32 { return ifx medium == MEDIUM_GROUND then 1.0f32
 
 // One frame of you at (x, z) over the carved ground; `air` is how high your
 // feet are over the ground (a fairy in flight is never in the water).
-fairy_stream_swim :: (r: [] Stream, heights: [] f32, x: f32, z: f32, air: f32, dive: bool, dt: f32, time: f64) -> Swim #export_c {
+fairy_stream_swim :: (r: [] Stream, heights: [] f32, x: f32, z: f32, air: f32, dive: bool, dt: f32, time: f64) -> Swim #export_c #effects(all) {
   out: Swim;
   out.surface = -1000; out.pace = 1; out.medium = MEDIUM_GROUND;
   bed := stream_bed(r, heights, x, z);
@@ -299,7 +299,7 @@ stream_wake :: (r: [] Stream, x: f32, z: f32, medium: int, surface: f32, time: f
 }
 
 // A ring on the water at (x, z), from the page (a bloom by the bank, a frog's leap).
-fairy_stream_ripple :: (r: [] Stream, x: f32, z: f32, time: f64, strength: f32) #export_c {
+fairy_stream_ripple :: (r: [] Stream, x: f32, z: f32, time: f64, strength: f32) #export_c #effects(all) {
   t := cast(f32) (time - 3600.0 * floor(time / 3600.0));
   water_add_ripple(r[0].ripples[..], x, z, t, strength);
 }
@@ -320,7 +320,7 @@ pads_start :: (r: [] Stream) {
 
 // Steps the pads by dt; writes each one's x, y, z, its yaw, its tip and the
 // way it tips, 0 and 1 (a pad) into `out`, 8 numbers each.
-fairy_stream_floats :: (r: [] Stream, dt: f32, out: [] f32) -> int #export_c {
+fairy_stream_floats :: (r: [] Stream, dt: f32, out: [] f32) -> int #export_c #effects(all) {
   if !r[0].ready { return 0; }
   c := loop_accept(r[0].float_clock, f64(dt));   // a time that is none steps nothing
   every: [1] bool;

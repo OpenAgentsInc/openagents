@@ -3,21 +3,21 @@
 #load "render-test-origin-policy.coax";
 #authority;
 #load "render-test-sink-checks.coax";
-rps_count :: (n:int)->bool {return n>=0 && n<=32;}
-rps_route :: (url:string,target:string)->bool {
+rps_count :: (n:int)->bool #effects(all) {return n>=0 && n<=32;}
+rps_route :: (url:string,target:string)->bool #effects(all) {
   literal:=rto_path(url);return literal!="" && literal!="/" && literal==url && rtq_find(url,"/__rto",0)!=0 && url==target;
 }
-rps_budget :: (length:int,cap:int)->bool {return length>=0 && cap>=0 && cap<=67108864 && length<=cap;}
-rps_within :: (path:string,root:string)->bool {
+rps_budget :: (length:int,cap:int)->bool #effects(all) {return length>=0 && cap>=0 && cap<=67108864 && length<=cap;}
+rps_within :: (path:string,root:string)->bool #effects(all) {
   if path.count<1 || root.count<1 || path[0]!='/' || root[0]!='/' || path.count<root.count || path[0..<root.count]!=root {return false;}
   return path==root || root=="/" || path[root.count]=='/';
 }
-rps_target :: (root:string,parent:string,file:string,canonical:string,kind:int,overlap:bool)->bool {
+rps_target :: (root:string,parent:string,file:string,canonical:string,kind:int,overlap:bool)->bool #effects(all) {
   if root=="/" || !rps_within(parent,root) || file.count<=parent.count || file[0..<parent.count]!=parent || file[parent.count]!='/' || !rto_component(file[parent.count+1..<file.count]) || overlap {return false;}
   return (kind==0 && canonical=="") || (kind==1 && canonical==file);
 }
-rps_publish :: (received:int,declared:int,stored:int,framed:bool,written:bool,hashed:bool,safe:bool)->bool {
+rps_publish :: (received:int,declared:int,stored:int,framed:bool,written:bool,hashed:bool,safe:bool)->bool #effects(all) {
   return received>=0 && received==declared && stored==declared && framed && written && hashed && safe;
 }
-rps_complete :: (sources:bool,outputs:bool,clean:bool,ledger:bool,requested:bool)->bool {return sources && outputs && clean && ledger && requested;}
-rps_time :: (now:int,deadline:int)->bool {return now<deadline;}
+rps_complete :: (sources:bool,outputs:bool,clean:bool,ledger:bool,requested:bool)->bool #effects(all) {return sources && outputs && clean && ledger && requested;}
+rps_time :: (now:int,deadline:int)->bool #effects(all) {return now<deadline;}

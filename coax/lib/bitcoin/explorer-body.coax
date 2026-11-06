@@ -66,7 +66,7 @@ ExSpan :: struct { code: int; order: int; tx: Tx; }
   bytes[80] = 3; bytes[85] = 253; #assert ex_tx_span(hit,id[..],raw,ins[..],outs[..],items[..]).code == LC_BLOCK;
 }
 
-ex_body_check :: (b: ExBlock, raw: [] u8, segwit: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, ids: [] u8, wids: [] u8, work: [] u8) -> ExBody #export_c {
+ex_body_check :: (b: ExBlock, raw: [] u8, segwit: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, ids: [] u8, wids: [] u8, work: [] u8) -> ExBody #export_c #effects(all) {
   if !lc_body_extent(raw.count) || b.code != LC_OK || raw.count != b.record.n { return ExBody.{code=LC_CONTEXT}; }
   hash: [32] u8; #assert sha256d_checked(raw[0..<80],hash[..],false) == SHA_OK; expected := b.hash;
   if !lc_same(hash[..],expected[..]) { return ExBody.{code=TXI_MISMATCH}; }
@@ -75,7 +75,7 @@ ex_body_check :: (b: ExBlock, raw: [] u8, segwit: bool, ins: [] TxIn, outs: [] T
   if checked.code != WITNESS_OK || checked.count < 1 { return ExBody.{code=LC_BLOCK}; }
   return ExBody.{count=checked.count};
 }
-ex_tx_span :: (hit: TxiHit, id: [] u8, raw: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> ExSpan #export_c {
+ex_tx_span :: (hit: TxiHit, id: [] u8, raw: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> ExSpan #export_c #effects(all) {
   if raw.count < 81 { return ExSpan.{code=LC_CONTEXT}; }
   count := tx_compact_read_vartime(raw,80); if count.code != TX_OK { return ExSpan.{code=LC_BLOCK}; } at := count.next;
   for i: 0..<count.value {

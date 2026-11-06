@@ -4,16 +4,16 @@
 #load "pcm-compare.coax";
 #load "../render/tests/qualification-files.coax";
 #load "../../coax/lib/sys/args.coax";
-hao_open :: ()->int #foreign;
-hao_decode :: (name:[]u8,source:[]u8,companion:[]u8)->int #foreign;
-hao_info :: (field:int)->int #foreign;
-hao_copy :: (out:[]u8)->int #foreign;
-hao_release :: () #foreign;
-hao_close :: () #foreign;
-hao_budget :: (fill:bool) #foreign;
-hao_asset :: (id:int,field:int)->int #foreign;
-hao_text :: (id:int,field:int,out:[]u8)->int #foreign;
-tool_main :: ()->int #export_c {
+hao_open :: ()->int #foreign #effects(all);
+hao_decode :: (name:[]u8,source:[]u8,companion:[]u8)->int #foreign #effects(all);
+hao_info :: (field:int)->int #foreign #effects(all);
+hao_copy :: (out:[]u8)->int #foreign #effects(all);
+hao_release :: () #foreign #effects(all);
+hao_close :: () #foreign #effects(all);
+hao_budget :: (fill:bool) #foreign #effects(all);
+hao_asset :: (id:int,field:int)->int #foreign #effects(all);
+hao_text :: (id:int,field:int,out:[]u8)->int #foreign #effects(all);
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4 {tool_errln("usage: check-linux-audio-opus REPO PICKED_BROWSER EXTRA_BROWSER NEW_OUT");return 2;}
  root:=args_at(a[..],0);out:=args_at(a[..],3);if !fs_mkdir(out)||hao_open()!=1 {return 1;}defer {hao_close();}
  paths:[3][4096]u8;filename:[512]u8;f:[1]Jo;source:[8388608]u8;companion:[1048576]u8;expected:[8388608]u8;actual:[8388608]u8;

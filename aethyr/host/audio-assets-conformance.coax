@@ -5,7 +5,7 @@
  for i:0..<9 {q[i]+=1;#assert !hac_bank(q[..]);q[i]-=2;#assert !hac_bank(q[..]);q[i]+=1;}
  #assert !hac_bank(q[0..<8]);
 }
-hac_bank :: (q:[]int)->bool #export_c {
+hac_bank :: (q:[]int)->bool #export_c #effects(all) {
  if q.count!=9{return false;}expected:=[9]int.[153,0,0,121,32,0,0,0,0];
  for value,i:expected {if q[i]!=value{return false;}}return true;
 }
@@ -14,7 +14,7 @@ hac_bank :: (q:[]int)->bool #export_c {
  #assert hac_refusal(q[..]);for i:0..<28 {q[i]+=1;#assert !hac_refusal(q[..]);q[i]-=2;#assert !hac_refusal(q[..]);q[i]+=1;}
  #assert !hac_refusal(q[0..<27]);
 }
-hac_refusal :: (q:[]int)->bool #export_c {
+hac_refusal :: (q:[]int)->bool #export_c #effects(all) {
  if q.count!=28{return false;}
  expected:=[28]int.[0,0,0,0, 0,0,0,0, 0,0,0,0, 42240,0,1,0, 32652,1,0,0, 32652,1,0,0, 0,0,0,0];
  for value,i:expected {if q[i]!=value{return false;}}return true;

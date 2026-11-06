@@ -36,7 +36,7 @@ NS_SIGNS :: 128;
 NS_ENDS :: 64;
 NS_ASCII :: 127;
 
-ns_work :: (nodes:[]RsNode,arena:[]u8,edges:[]NxEdge,ends:[]int,accepting:[]int,next:[]int,accept:[]u8,live:[]u8)->NsWork {
+ns_work :: (nodes:[]RsNode,arena:[]u8,edges:[]NxEdge,ends:[]int,accepting:[]int,next:[]int,accept:[]u8,live:[]u8)->NsWork #effects(all) {
     return NsWork.{nodes=nodes,arena=arena,edges=edges,ends=ends,accepting=accepting,next=next,accept=accept,live=live};
 }
 #test "a hand schema compiles to the table worked in the chapter" {
@@ -220,25 +220,25 @@ ns_work :: (nodes:[]RsNode,arena:[]u8,edges:[]NxEdge,ends:[]int,accepting:[]int,
 // book:begin build
 // States are numbered as they are made. Edges past the caller's buffer are
 // counted, not kept; nx_schema then refuses the schema for capacity.
-ns_state :: (b:[]NsBuild)->int {s:=b[0].states;b[0].states+=1;return s;}
-ns_edge :: (b:[]NsBuild,w:NsWork,from:int,low:u8,high:u8,to:int) {
+ns_state :: (b:[]NsBuild)->int #effects(all) {s:=b[0].states;b[0].states+=1;return s;}
+ns_edge :: (b:[]NsBuild,w:NsWork,from:int,low:u8,high:u8,to:int) #effects(all) {
     if b[0].edges<w.edges.count {w.edges[b[0].edges]=NxEdge.{from=from,low=low,high=high,to=to};}
     b[0].edges+=1;
 }
 // One byte from every state in ends to one new state.
-ns_join :: (b:[]NsBuild,w:NsWork,ends:[]int,c:u8)->int {s:=ns_state(b);for e:ends {ns_edge(b,w,e,c,c,s);}return s;}
+ns_join :: (b:[]NsBuild,w:NsWork,ends:[]int,c:u8)->int #effects(all) {s:=ns_state(b);for e:ends {ns_edge(b,w,e,c,c,s);}return s;}
 // A fresh chain of states spelling text after s.
-ns_bytes :: (b:[]NsBuild,w:NsWork,s:int,text:string)->int {x:=s;for c:text {one:=[1]int.[x];x=ns_join(b,w,one[..],c);}return x;}
-ns_fail :: (b:[]NsBuild,why:NsWhy,keyword:string,node:int)->int {b[0].why=why;b[0].keyword=keyword;b[0].node=node;return -1;}
+ns_bytes :: (b:[]NsBuild,w:NsWork,s:int,text:string)->int #effects(all) {x:=s;for c:text {one:=[1]int.[x];x=ns_join(b,w,one[..],c);}return x;}
+ns_fail :: (b:[]NsBuild,why:NsWhy,keyword:string,node:int)->int #effects(all) {b[0].why=why;b[0].keyword=keyword;b[0].node=node;return -1;}
 // book:end build
 
 // book:begin read
-ns_plain :: (c:u8)->bool {return c>=32 && c<=126 && c!='"' && c!='\\';}
+ns_plain :: (c:u8)->bool #effects(all) {return c>=32 && c<=126 && c!='"' && c!='\\';}
 // A key or a word: 0 to 32 printable bytes without " or \.
-ns_word :: (s:string)->bool {if s.count>NS_WORD_MAX {return false;}for c:s {if !ns_plain(c) {return false;}}return true;}
+ns_word :: (s:string)->bool #effects(all) {if s.count>NS_WORD_MAX {return false;}for c:s {if !ns_plain(c) {return false;}}return true;}
 // An integer keyword: a JSON number with no fraction or exponent and at most
 // nine digits (more is range).
-ns_number :: (w:NsWork,i:int)->NsNumber {
+ns_number :: (w:NsWork,i:int)->NsNumber #effects(all) {
     if !rs_kind(w.nodes,i,JSON_NUMBER) {return NsNumber.{why=NsWhy.value};}
     t:=w.nodes[i].text;neg:=t[0]=='-';digits:=t[ifx neg then 1 else 0..<t.count];
     for c:digits {if c=='.' || c=='e' || c=='E' {return NsNumber.{why=NsWhy.value};}}
@@ -248,7 +248,7 @@ ns_number :: (w:NsWork,i:int)->NsNumber {
 }
 // Every key of schema i is in allowed or an annotation; annotations are
 // strings. Returns whether it refused.
-ns_keys :: (b:[]NsBuild,w:NsWork,i:int,allowed:[]string)->bool {
+ns_keys :: (b:[]NsBuild,w:NsWork,i:int,allowed:[]string)->bool #effects(all) {
     k:=i+1;notes:=[4]string.["type","title","description","$schema"];
     while k<w.nodes[i].next {
         key:=w.nodes[k].key;known:=false;
@@ -261,7 +261,7 @@ ns_keys :: (b:[]NsBuild,w:NsWork,i:int,allowed:[]string)->bool {
 }
 // A count keyword: -1 when absent and missing allows it, else 0 to most;
 // -2 refused.
-ns_count :: (b:[]NsBuild,w:NsWork,i:int,key:string,missing:bool,most:int)->int {
+ns_count :: (b:[]NsBuild,w:NsWork,i:int,key:string,missing:bool,most:int)->int #effects(all) {
     x:=rs_get(w.nodes,i,key);
     if x== -1 {return ifx missing then -1 else ns_fail(b,NsWhy.value,key,i)-1;}
     n:=ns_number(w,x);if n.why!=NsWhy.none {return ns_fail(b,n.why,key,i)-1;}
@@ -276,7 +276,7 @@ ns_count :: (b:[]NsBuild,w:NsWork,i:int,key:string,missing:bool,most:int)->int {
 // from a to z, empty when a > z. Returns whether any is not empty. A live
 // prefix is complete when a is 0 for j = 0: it is not below lo, and being
 // live it is not above hi.
-ns_sign :: (x:int,lo:int,hi:int,d:int,out:[]int)->bool {
+ns_sign :: (x:int,lo:int,hi:int,d:int,out:[]int)->bool #effects(all) {
     p:=1;any:=false;
     for j:0..<d {
         a:=-nx_min(x*p-lo,0);z:=nx_min(hi-x*p,p-1);
@@ -286,7 +286,7 @@ ns_sign :: (x:int,lo:int,hi:int,d:int,out:[]int)->bool {
 }
 // Two prefixes with the same completions are the same state: every interval
 // equal, or empty in both.
-ns_same :: (a:[]int,b:[]int,d:int)->bool {
+ns_same :: (a:[]int,b:[]int,d:int)->bool #effects(all) {
     for j:0..<d {
         empty:=a[2*j]>a[2*j+1];
         if empty!=(b[2*j]>b[2*j+1]) || (!empty && (a[2*j]!=b[2*j] || a[2*j+1]!=b[2*j+1])) {return false;}
@@ -297,7 +297,7 @@ ns_same :: (a:[]int,b:[]int,d:int)->bool {
 // first; end states are added to ends from at. "0" is its own end state and
 // takes no more digits; every other prefix starts with 1 to 9. Returns the
 // new end count.
-ns_digits :: (b:[]NsBuild,w:NsWork,s:int,lo:int,hi:int,ends:[]int,at:int)->int {
+ns_digits :: (b:[]NsBuild,w:NsWork,s:int,lo:int,hi:int,ends:[]int,at:int)->int #effects(all) {
     d:=1;p:=10;while p<=hi {d+=1;p*=10;}
     signs:[NS_SIGNS][18]int;values:[NS_SIGNS]int;ids:[NS_SIGNS]int;sign:[18]int;n:=at;
     if lo==0 {z:=ns_state(b);ns_edge(b,w,s,'0','0',z);ends[n]=z;n+=1;}
@@ -321,7 +321,7 @@ ns_digits :: (b:[]NsBuild,w:NsWork,s:int,lo:int,hi:int,ends:[]int,at:int)->int {
     return n;
 }
 // minimum..maximum: the non-negative part after s, the negative part after '-'.
-ns_integer :: (b:[]NsBuild,w:NsWork,i:int,s:int,ends:[]int)->int {
+ns_integer :: (b:[]NsBuild,w:NsWork,i:int,s:int,ends:[]int)->int #effects(all) {
     x:=rs_get(w.nodes,i,"minimum");y:=rs_get(w.nodes,i,"maximum");
     lo:=ns_number(w,x);hi:=ns_number(w,y);
     if lo.why!=NsWhy.none {return ns_fail(b,lo.why,"minimum",i);}
@@ -336,11 +336,11 @@ ns_integer :: (b:[]NsBuild,w:NsWork,i:int,s:int,ends:[]int)->int {
 
 // book:begin string
 // A byte a class may name: printable, not " or \, and not ] ^ or -.
-ns_class :: (c:u8)->bool {return ns_plain(c) && c!=']' && c!='^' && c!='-';}
+ns_class :: (c:u8)->bool #effects(all) {return ns_plain(c) && c!=']' && c!='^' && c!='-';}
 // enum: the quoted words, sharing states along common prefixes. Otherwise
 // minLength to maxLength bytes of the class, looping at minLength when there
 // is no maxLength.
-ns_string :: (b:[]NsBuild,w:NsWork,i:int,s:int,ends:[]int)->int {
+ns_string :: (b:[]NsBuild,w:NsWork,i:int,s:int,ends:[]int)->int #effects(all) {
     e:=rs_get(w.nodes,i,"enum");q:=ns_bytes(b,w,s,"\"");
     if e!= -1 {
         others:=[3]string.["minLength","maxLength","pattern"];for o:others {if rs_get(w.nodes,i,o)!= -1 {return ns_fail(b,NsWhy.keyword,o,i);}}
@@ -394,7 +394,7 @@ ns_string :: (b:[]NsBuild,w:NsWork,i:int,s:int,ends:[]int)->int {
 // book:begin value
 // Schema node i as a value starting in state s. Its end states go to ends:
 // after them the next byte is the parent's , ] or }. Returns how many, or -1.
-ns_value :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int {
+ns_value :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int #effects(all) {
     if depth>NS_DEPTH {return ns_fail(b,NsWhy.depth,w.nodes[i].key,i);}
     if !rs_kind(w.nodes,i,JSON_OBJECT) {return ns_fail(b,NsWhy.value,w.nodes[i].key,i);}
     kind:=rs_string(w.nodes,rs_get(w.nodes,i,"type"));none:=[1]string.["type"];
@@ -409,7 +409,7 @@ ns_value :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int {
     return ns_fail(b,NsWhy.type,"type",i);
 }
 // [ item , item ... ]: maxItems copies of the item, ] after each from minItems on.
-ns_array :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int {
+ns_array :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int #effects(all) {
     items:=rs_get(w.nodes,i,"items");if items== -1 {return ns_fail(b,NsWhy.value,"items",i);}
     most:=ns_count(b,w,i,"maxItems",false,NS_ITEMS_MAX);if most== -2 {return -1;}
     least:=ns_count(b,w,i,"minItems",true,most);if least== -2 {return -1;}
@@ -425,7 +425,7 @@ ns_array :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int {
     ends[0]=close;return 1;
 }
 // { "key":value , ... }: the properties in the order they are written, each required once.
-ns_object :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int {
+ns_object :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int #effects(all) {
     p:=rs_get(w.nodes,i,"properties");q:=rs_get(w.nodes,i,"required");more:=rs_get(w.nodes,i,"additionalProperties");
     if !rs_kind(w.nodes,p,JSON_OBJECT) {return ns_fail(b,NsWhy.value,"properties",i);}
     if more!= -1 && !rs_kind(w.nodes,more,JSON_FALSE) {return ns_fail(b,NsWhy.value,"additionalProperties",i);}
@@ -451,7 +451,7 @@ ns_object :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int {
 
 // book:begin schema
 // A schema's JSON text to a compiled grammar in the caller's buffers.
-nx_schema :: (text:string,w:NsWork)->NsSchema #export_c {
+nx_schema :: (text:string,w:NsWork)->NsSchema #export_c #effects(all) {
     if !rs_json(text,w.nodes,w.arena).ok {return NsSchema.{why=NsWhy.json};}
     if w.ends.count<NS_ENDS {return NsSchema.{why=NsWhy.capacity};}
     b:[1]NsBuild;start:=ns_state(b[..]);

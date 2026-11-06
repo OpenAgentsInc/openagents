@@ -15,7 +15,7 @@ KvsFrame :: struct { code: int; used: int; seq: u64; cut: bool; }
     #assert !kvs_header_prefix(header[0..<20],mask) && !kvs_header_prefix(header[..],mask);
   }
 }
-kvs_header_prefix :: (prefix: [] u8, mask: u64) -> bool {
+kvs_header_prefix :: (prefix: [] u8, mask: u64) -> bool #effects(all) {
   if prefix.count >= KV_HEADER { return false; }
   expected: [20] u8; n := kv_header_vartime(mask,expected[..]);
   for i: 0..<prefix.count { if prefix[i] != expected[i] { return false; } }
@@ -61,7 +61,7 @@ kvs_header_prefix :: (prefix: [] u8, mask: u64) -> bool {
   #assert kvs_frame(frame[0..<8+n],0,0,false,table[..],0,true).code == KV_CORRUPT;
   kv_put32(frame[..],0,11); #assert kvs_frame(frame[0..<19],0,0,false,table[..],0,true).code == KV_CORRUPT;
 }
-kvs_extent :: (head: [] u8, remaining: int) -> KvsExtent #export_c {
+kvs_extent :: (head: [] u8, remaining: int) -> KvsExtent #export_c #effects(all) {
   if remaining < KV_FRAME_HEAD { return KvsExtent.{cut=true}; }
   if head.count != KV_FRAME_HEAD { return KvsExtent.{code=KV_CORRUPT}; }
   n := kv_get32(head,0);
@@ -71,7 +71,7 @@ kvs_extent :: (head: [] u8, remaining: int) -> KvsExtent #export_c {
   }
   return KvsExtent.{zero_from=4};
 }
-kvs_frame :: (frame: [] u8, mask: u64, previous: u64, seen: bool, table: [] u8, used: int, tail_zero: bool) -> KvsFrame #export_c {
+kvs_frame :: (frame: [] u8, mask: u64, previous: u64, seen: bool, table: [] u8, used: int, tail_zero: bool) -> KvsFrame #export_c #effects(all) {
   if !kv_frame_size_ok(frame.count-KV_FRAME_HEAD) { return KvsFrame.{code=KV_CORRUPT}; }
   n := kv_get32(frame,0);
   if n != frame.count-KV_FRAME_HEAD { return KvsFrame.{code=KV_CORRUPT}; }

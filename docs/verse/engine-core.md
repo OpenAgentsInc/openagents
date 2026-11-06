@@ -155,7 +155,8 @@ realms' own `ground_at` copies move with ec-migrate; the camera's
 
 ## Entities (`aethyr/entity.coax`)
 
-An entity has a handle, a 20-bit slot and a 12-bit generation, for use
+An entity has a `Handle(Entity)` with a 20-bit slot and 12-bit generation
+limit in its 64-bit word, for use
 inside a step, and an `EntityId` from the store's counter, for saves, the
 network and edits. A despawn raises the slot's generation, so a stale handle
 never reaches the slot's next owner, and a slot whose generation would wrap

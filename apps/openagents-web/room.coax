@@ -44,7 +44,7 @@ RoomState :: struct {
 // The room the page posts to now (Everglade's instance once the directory places you, the realm's
 // name before): another room's lines are numbered on their own, so a new room starts the roster and
 // the panel over, its lines read from its first. True when the room changed.
-room_enter :: (s: [] RoomState, room: string) -> bool #export_c {
+room_enter :: (s: [] RoomState, room: string) -> bool #export_c #effects(all) {
   if room.count > 64 || room_in(s, room) { return false; }
   s[0].joined = false; s[0].full = false; s[0].others = 0;
   s[0].lines = 0; s[0].head = 0; s[0].last = 0; s[0].unread = 0; s[0].heard = 0;
@@ -53,7 +53,7 @@ room_enter :: (s: [] RoomState, room: string) -> bool #export_c {
   return true;
 }
 // Whether an answer asked of `room` is still for the room the page is in.
-room_in :: (s: [] RoomState, room: string) -> bool #export_c { return cast(string) s[0].room[0..<s[0].room_n] == room; }
+room_in :: (s: [] RoomState, room: string) -> bool #export_c #effects(all) { return cast(string) s[0].room[0..<s[0].room_n] == room; }
 
 room_put :: (out: [] u8, at: int, s: string) -> int {
   if at < 0 || at + s.count > out.count { return -1; }
@@ -62,7 +62,7 @@ room_put :: (out: [] u8, at: int, s: string) -> int {
 }
 
 // /api/playtest/presence/<room> (chat false) or /api/playtest/chat/<room>.
-room_url :: (room: string, chat: bool, out: [] u8) -> int #export_c {
+room_url :: (room: string, chat: bool, out: [] u8) -> int #export_c #effects(all) {
   if !world_id_ok(room) { return -1; }
   o := room_put(out, 0, ifx chat then "/api/playtest/chat/" else "/api/playtest/presence/");
   return room_put(out, o, room);
@@ -91,7 +91,7 @@ room_put_int :: (out: [] u8, at: int, v: int) -> int {
 }
 
 // Where you are, and the last line read: {"x","y","z","yaw","after"}.
-room_presence_body :: (x: f32, y: f32, z: f32, yaw: f32, after: int, out: [] u8) -> int #export_c {
+room_presence_body :: (x: f32, y: f32, z: f32, yaw: f32, after: int, out: [] u8) -> int #export_c #effects(all) {
   o := room_put(out, 0, "{\"x\":"); o = room_put_num(out, o, x);
   o = room_put(out, o, ",\"y\":"); o = room_put_num(out, o, y);
   o = room_put(out, o, ",\"z\":"); o = room_put_num(out, o, z);
@@ -101,7 +101,7 @@ room_presence_body :: (x: f32, y: f32, z: f32, yaw: f32, after: int, out: [] u8)
 }
 
 // A line to say: {"text", "sid"}, the text cut to ROOM_TEXT bytes.
-room_chat_body :: (text: string, sid: string, out: [] u8) -> int #export_c {
+room_chat_body :: (text: string, sid: string, out: [] u8) -> int #export_c #effects(all) {
   o := room_put(out, 0, "{\"text\":\"");
   for i: 0..<text.count {
     if i >= ROOM_TEXT || o < 0 { break; }
@@ -166,7 +166,7 @@ room_array :: (t: string, obj: int, key: string) -> int {
 
 // The server's answer to a post ("STATUS\n" and the body): who is here and
 // the lines since. Returns the status (0: no answer).
-room_take :: (s: [] RoomState, answer: string) -> int #export_c {
+room_take :: (s: [] RoomState, answer: string) -> int #export_c #effects(all) {
   nl := 0;
   while nl < answer.count && answer[nl] != 10 { nl += 1; }
   status := room_int(answer[0..<nl]);
@@ -254,7 +254,7 @@ room_take :: (s: [] RoomState, answer: string) -> int #export_c {
 }
 
 // Eases everyone towards where they are: most of the way in a quarter second.
-room_ease :: (s: [] RoomState, dt: f32) #export_c {
+room_ease :: (s: [] RoomState, dt: f32) #export_c #effects(all) {
   k := dt * 8;
   if k > 1 { k = 1; }
   if k < 0 { k = 0; }
@@ -268,7 +268,7 @@ room_ease :: (s: [] RoomState, dt: f32) #export_c {
 }
 
 // Takes lines out of the panel: line number num (0: any), said by from ("": anyone).
-room_drop :: (s: [] RoomState, num: int, from: string) #export_c {
+room_drop :: (s: [] RoomState, num: int, from: string) #export_c #effects(all) {
   if num <= 0 && from.count == 0 { return; }
   kept := 0;
   for k: 0..<s[0].lines {
@@ -289,23 +289,23 @@ room_drop :: (s: [] RoomState, num: int, from: string) #export_c {
   }
   s[0].lines = kept;
 }
-room_other_id :: (s: [] RoomState, i: int) -> string #export_c { return cast(string) s[0].id[i * ROOM_ID..<i * ROOM_ID + s[0].id_n[i]]; }
-room_line_from :: (s: [] RoomState, k: int) -> string #export_c {
+room_other_id :: (s: [] RoomState, i: int) -> string #export_c #effects(all) { return cast(string) s[0].id[i * ROOM_ID..<i * ROOM_ID + s[0].id_n[i]]; }
+room_line_from :: (s: [] RoomState, k: int) -> string #export_c #effects(all) {
   slot := (s[0].head + k) % ROOM_LINES;
   return cast(string) s[0].line_from[slot * ROOM_ID..<slot * ROOM_ID + s[0].line_from_n[slot]];
 }
-room_other_name :: (s: [] RoomState, i: int) -> string #export_c { return cast(string) s[0].name[i * ROOM_NAME..<i * ROOM_NAME + s[0].name_n[i]]; }
+room_other_name :: (s: [] RoomState, i: int) -> string #export_c #effects(all) { return cast(string) s[0].name[i * ROOM_NAME..<i * ROOM_NAME + s[0].name_n[i]]; }
 room_other_agent :: (s: [] RoomState, i: int) -> bool { return i >= 0 && i < s[0].others && s[0].agent[i]; }
 room_agents :: (s: [] RoomState) -> int { n := 0; for i: 0..<s[0].others { if s[0].agent[i] { n += 1; } } return n; }
 room_other_look :: (s: [] RoomState, i: int) -> string { return cast(string) s[0].look[i * ROOM_LOOK..<i * ROOM_LOOK + s[0].look_n[i]]; }
 // The k-th line kept, oldest first.
-room_line_name :: (s: [] RoomState, k: int) -> string #export_c {
+room_line_name :: (s: [] RoomState, k: int) -> string #export_c #effects(all) {
   slot := (s[0].head + k) % ROOM_LINES;
   return cast(string) s[0].line_name[slot * ROOM_NAME..<slot * ROOM_NAME + s[0].line_name_n[slot]];
 }
-room_line_mine :: (s: [] RoomState, k: int) -> bool #export_c { return s[0].line_mine[(s[0].head + k) % ROOM_LINES]; }
-room_line_num :: (s: [] RoomState, k: int) -> int #export_c { return s[0].line_num[(s[0].head + k) % ROOM_LINES]; }
-room_line_text :: (s: [] RoomState, k: int) -> string #export_c {
+room_line_mine :: (s: [] RoomState, k: int) -> bool #export_c #effects(all) { return s[0].line_mine[(s[0].head + k) % ROOM_LINES]; }
+room_line_num :: (s: [] RoomState, k: int) -> int #export_c #effects(all) { return s[0].line_num[(s[0].head + k) % ROOM_LINES]; }
+room_line_text :: (s: [] RoomState, k: int) -> string #export_c #effects(all) {
   slot := (s[0].head + k) % ROOM_LINES;
   return cast(string) s[0].line_text[slot * ROOM_TEXT..<slot * ROOM_TEXT + s[0].line_text_n[slot]];
 }

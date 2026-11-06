@@ -4,7 +4,7 @@
 PCS_DRIVER :: "aethyr/tests/check-producer-capture-session.coax";
 PCS_EFFECTS :: "aethyr/tests/producer-capture-effects.js";
 pcs_input :: (inputs:[]RtqInputs,path:string)->bool {p:[4096]u8;absolute:=fs_realpath(path,p[..]);return absolute!="" && rtq_input_add(inputs,absolute);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}child:=rto_child(a[..]);if child>=0 {return child;}
   if args_count(a[..])!=2 {tool_errln("usage: check-producer-capture-session WASM NEW_OUTPUT_DIRECTORY");return 2;}
   file_buf:[4096]u8;work_buf:[4096]u8;wasm:=fs_realpath(args_at(a[..],0),file_buf[..]);if wasm=="" || fs_exists(args_at(a[..],1)) || !fs_mkdir(args_at(a[..],1)) {return 2;}work:=fs_realpath(args_at(a[..],1),work_buf[..]);paths:[8][4096]u8;receipt:=fs_join(work,"qualification.json",paths[0][..]);config:=fs_join(work,"origin-config.json",paths[1][..]);port_file:=fs_join(work,"origin-port",paths[2][..]);ledger:=fs_join(work,"origin",paths[3][..]);if fs_exists(receipt) || fs_exists(config) {return 2;}

@@ -55,14 +55,14 @@ ranges before any work starts.
 
 <!-- source: psionic/lib/gate-graph.coax admit -->
 ```jai
-gg_arity :: (op:GgOp)->int {
+gg_arity :: (op:GgOp)->int #effects(all) {
     if op==GgOp.input || op==GgOp.constant {return 0;}
     if op==GgOp.add || op==GgOp.sub || op==GgOp.mul {return 2;}
     if op==GgOp.select {return 3;}
     return 1;
 }
-gg_bit :: (op:GgOp)->bool {return op==GgOp.step || op==GgOp.eq0;}
-gg_admit :: (nodes:[]GgNode,outputs:[]int)->GgResult #export_c {
+gg_bit :: (op:GgOp)->bool #effects(all) {return op==GgOp.step || op==GgOp.eq0;}
+gg_admit :: (nodes:[]GgNode,outputs:[]int)->GgResult #export_c #effects(all) {
     if nodes.count<1 || nodes.count>GG_NODES_MAX || outputs.count<1 || outputs.count>GG_OUTPUTS_MAX {return GgResult.{status=GgStatus.shape};}
     inputs:=0;
     for i:0..<nodes.count {
@@ -96,7 +96,7 @@ run exactly.
 ```jai
 // The reference: integers, every value within RA_VALUE_MAX, refused at the
 // first node that leaves it.
-gg_eval :: (nodes:[]GgNode,inputs:[]int,outputs:[]int,values:[]int)->GgResult #export_c {
+gg_eval :: (nodes:[]GgNode,inputs:[]int,outputs:[]int,values:[]int)->GgResult #export_c #effects(all) {
     admitted:=gg_admit(nodes,outputs);if admitted.status!=GgStatus.ok {return admitted;}
     v:[128]int;count:=0;
     for n:nodes {if n.op==GgOp.input {count+=1;}}
@@ -144,11 +144,11 @@ are never cleared. A chain of eight ReLUs runs in a residual of width 2.
 // cleared in the layer of its last reader and may be handed to a gate written
 // in that same layer, because every unit reads the residual before any unit
 // writes it.
-gg_linear :: (op:GgOp)->bool {return op==GgOp.add || op==GgOp.sub || op==GgOp.scale || op==GgOp.constant;}
-gg_gate :: (op:GgOp)->bool {return op!=GgOp.input && !gg_linear(op);}
+gg_linear :: (op:GgOp)->bool #effects(all) {return op==GgOp.add || op==GgOp.sub || op==GgOp.scale || op==GgOp.constant;}
+gg_gate :: (op:GgOp)->bool #effects(all) {return op!=GgOp.input && !gg_linear(op);}
 // The larger of two layers, without a comparison whose tie case is invisible.
-gg_max :: (a:int,b:int)->int {return (a+b+cast(int)abs(f64(a-b)))/2;}
-gg_form_of :: (nodes:[]GgNode,forms:[]RaForm,i:int)->RaForm {
+gg_max :: (a:int,b:int)->int #effects(all) {return (a+b+cast(int)abs(f64(a-b)))/2;}
+gg_form_of :: (nodes:[]GgNode,forms:[]RaForm,i:int)->RaForm #effects(all) {
     n:=nodes[i];
     if n.op==GgOp.add {return ra_plus(forms[n.a],forms[n.b]);}
     if n.op==GgOp.sub {return ra_plus(forms[n.a],ra_neg(forms[n.b]));}
@@ -158,7 +158,7 @@ gg_form_of :: (nodes:[]GgNode,forms:[]RaForm,i:int)->RaForm {
     if n.op==GgOp.constant {return ra_term(i,n.k);}
     return ra_term(i,1);
 }
-gg_coef_sum :: (f:RaForm)->f64 {
+gg_coef_sum :: (f:RaForm)->f64 #effects(all) {
     s:f64=0;
     for t:0..<f.count {s+=abs(f64(f.coefs[t]));}
     return s;
@@ -169,20 +169,20 @@ gg_coef_sum :: (f:RaForm)->f64 {
 ```jai
 // Node 0 is always an input (it has no earlier node to read), so loops over
 // gates start at node 1.
-gg_layer_of :: (f:RaForm,layer:[]int)->int {
+gg_layer_of :: (f:RaForm,layer:[]int)->int #effects(all) {
     deepest:=0;
     for t:0..<f.count {deepest=gg_max(deepest,layer[f.slots[t]]);}
     return deepest;
 }
-gg_operand :: (n:GgNode,which:int)->int {
+gg_operand :: (n:GgNode,which:int)->int #effects(all) {
     if which==1 {return n.b;}
     if which==2 {return n.c;}
     return n.a;
 }
-gg_compile :: (nodes:[]GgNode,outputs:[]int,weights:[]f64)->GgPlan #export_c {
+gg_compile :: (nodes:[]GgNode,outputs:[]int,weights:[]f64)->GgPlan #export_c #effects(all) {
     return gg_compile_planted(nodes,outputs,weights,GgFault.none);
 }
-gg_compile_planted :: (nodes:[]GgNode,outputs:[]int,weights:[]f64,fault:GgFault)->GgPlan #export_c {
+gg_compile_planted :: (nodes:[]GgNode,outputs:[]int,weights:[]f64,fault:GgFault)->GgPlan #export_c #effects(all) {
     admitted:=gg_admit(nodes,outputs);
     if admitted.status!=GgStatus.ok {return GgPlan.{status=admitted.status,node=admitted.node};}
     forms:[128]RaForm;layer:[128]int;last:[128]int;slot:[128]int;kept:[128]bool;
@@ -291,12 +291,12 @@ gg_compile_planted :: (nodes:[]GgNode,outputs:[]int,weights:[]f64,fault:GgFault)
     for i:0..<nodes.count {plan.layer[i]=layer[i];plan.slot[i]=slot[i];}
     return plan;
 }
-gg_units :: (op:GgOp)->int {
+gg_units :: (op:GgOp)->int #effects(all) {
     if op==GgOp.relu {return 1;}
     if op==GgOp.eq0 {return 5;}
     return 2;
 }
-gg_slots :: (f:RaForm,slot:[]int)->RaForm {r:=f;for t:0..<f.count {r.slots[t]=slot[f.slots[t]];}return r;}
+gg_slots :: (f:RaForm,slot:[]int)->RaForm #effects(all) {r:=f;for t:0..<f.count {r.slots[t]=slot[f.slots[t]];}return r;}
 ```
 
 Each limit the compiler meets is a typed refusal:
@@ -317,7 +317,7 @@ Each limit the compiler meets is a typed refusal:
 // The compiled block: slot 0 is one, inputs fill slots 1 onward, every other
 // slot starts at zero; each layer is chapter 228's gated layer; outputs are
 // read as linear forms over the final residual.
-gg_run :: (plan:GgPlan,weights:[]f64,inputs:[]int,outputs:[]f64,single:bool,overlap:bool)->GgStatus #export_c {
+gg_run :: (plan:GgPlan,weights:[]f64,inputs:[]int,outputs:[]f64,single:bool,overlap:bool)->GgStatus #export_c #effects(all) {
     if plan.status!=GgStatus.ok {return plan.status;}
     if weights.count<plan.weights || inputs.count!=plan.inputs || outputs.count<plan.outputs {return GgStatus.capacity;}
     if overlap {return GgStatus.alias;}

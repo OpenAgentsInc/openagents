@@ -1,0 +1,10 @@
+// expect: E0974
+#load "../../lib/handle.coax";
+Item :: struct {n:int;}
+bad :: (s:Store(Item))->Result(void,Handle(Item)) #effects(reads,writes,traps) {
+  #transaction {
+    switch store_put(s,Item.{n=1}) {case none {} case some(h) {return Result(void,Handle(Item)).{err=h};}}
+  }
+  return Result(void,Handle(Item)).{ok};
+}
+main :: () {}

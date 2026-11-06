@@ -75,7 +75,7 @@ wgt_reference_result :: (reference:Jv,result:Jv)->bool {
     if !rtq_equal(reference,jv_get(reference,0,key),result,jv_get(result,0,key)) {tool_err("WGSL reference differs: ");tool_errln(key);return false;}
   }return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}if args_has(a[..],"--serve") {return gp_serve(args_value(a[..],"--serve",""));}
   work_arg:=args_value(a[..],"--work-dir","");packages_arg:=args_value(a[..],"--packages","");receipt:=args_value(a[..],"--receipt","");
   if work_arg.count==0 || packages_arg.count==0 || receipt.count==0 || !fs_mkdir(work_arg) || fs_exists(receipt) {tool_errln("usage: check-wgsl-modules --packages DIR --work-dir NEW_DIR --receipt NEW_FILE [--reference OLD_FILE] [--explore-stale-compiler]");return 2;}

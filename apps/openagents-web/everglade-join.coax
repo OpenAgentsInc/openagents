@@ -148,7 +148,7 @@ jn_step :: (s: [] Everglade, n: [] EgNet) {
 }
 // The list's answer ("200\n{...,"join":"SLUG-N",...}"; anything else: the lowest). False when it
 // wasn't asked for.
-net_rooms :: (s: [] Everglade, answer: string) #export_c {
+net_rooms :: (s: [] Everglade, answer: string) #export_c #effects(all) {
   if !net_on(s) { return; }
   n := net_of(s);
   j := n[0].join[..];

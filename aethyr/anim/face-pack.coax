@@ -3,26 +3,26 @@
 #authority;
 FACE_PACK_CAP :: 41943040;
 FacePack :: struct {targets:int;vertices:int;deltas:int;clips:int;bones:int;curves:int;joints:int;target_table:int;rig_names:int;bone_table:int;curve_table:int;clip_table:int;delta_table:int;data:int;}
-face_word :: (b:[]u8,at:int)->u32 {return cast(u32)b[at] | (cast(u32)b[at+1]<<8) | (cast(u32)b[at+2]<<16) | (cast(u32)b[at+3]<<24);}
-face_put :: (b:[]u8,at:int,value:u32) {for k:0..<4 {b[at+k]=cast,trunc(u8)(value>>(k*8));}}
-face_float :: (b:[]u8,at:int)->f32 {return f32_from_bits(face_word(b,at));}
-face_finite :: (b:[]u8,at:int)->bool {return (face_word(b,at)&0x7f800000)!=0x7f800000;}
-face_name_ok :: (name:[]u8)->bool {
+face_word :: (b:[]u8,at:int)->u32 #effects(all) {return cast(u32)b[at] | (cast(u32)b[at+1]<<8) | (cast(u32)b[at+2]<<16) | (cast(u32)b[at+3]<<24);}
+face_put :: (b:[]u8,at:int,value:u32) #effects(all) {for k:0..<4 {b[at+k]=cast,trunc(u8)(value>>(k*8));}}
+face_float :: (b:[]u8,at:int)->f32 #effects(all) {return f32_from_bits(face_word(b,at));}
+face_finite :: (b:[]u8,at:int)->bool #effects(all) {return (face_word(b,at)&0x7f800000)!=0x7f800000;}
+face_name_ok :: (name:[]u8)->bool #effects(all) {
  if name.count!=64 || name[0]==0 {return false;}ended:=false;
  for c:name {if c==0 {ended=true;}else if ended || !((c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='_' || c=='-' || c=='.') {return false;}}
  return ended;
 }
-face_name_equal :: (b:[]u8,a:int,c:int)->bool {for k:0..<64 {if b[a+k]!=b[c+k] {return false;}}return true;}
-face_info :: (b:[]u8)->FacePack {return FacePack.{targets=cast(int)face_word(b,12),vertices=cast(int)face_word(b,16),deltas=cast(int)face_word(b,20),clips=cast(int)face_word(b,24),bones=cast(int)face_word(b,28),curves=cast(int)face_word(b,32),joints=cast(int)face_word(b,36),target_table=cast(int)face_word(b,40),rig_names=cast(int)face_word(b,44),bone_table=cast(int)face_word(b,48),curve_table=cast(int)face_word(b,52),clip_table=cast(int)face_word(b,56),delta_table=cast(int)face_word(b,60),data=cast(int)face_word(b,64)};}
-face_size_ok :: (n:int)->bool {return n>=80 && n<=FACE_PACK_CAP;}
-face_counts_ok :: (f:FacePack)->bool {return f.targets>=1 && f.targets<=256 && f.vertices>=1 && f.vertices<=1000000 && f.deltas>=1 && f.deltas<=2000000 && f.clips>=1 && f.clips<=64 && f.bones>=1 && f.bones<=64 && f.curves>=1 && f.curves<=256 && f.joints>=1 && f.joints<=512;}
-face_frames_ok :: (n:int)->bool {return n>=2 && n<=2000;}
-face_rate_ok :: (rate:f32)->bool {return rate>0 && rate<=240;}
-face_rotation_ok :: (length:f32)->bool {return length>0.99 && length<1.01;}
-face_span :: (total:int,first:int,count:int)->bool {return total>=0 && first>=0 && first<=total && count>=0 && count<=total-first;}
-face_prefix_ok :: (total:int,end:int)->bool {return end<=total;}
-face_floats_ok :: (b:[]u8)->bool {if b.count%4!=0 {return false;}for k:0..<b.count/4 {if !face_finite(b,k*4) {return false;}}return true;}
-face_valid :: (b:[]u8)->bool {
+face_name_equal :: (b:[]u8,a:int,c:int)->bool #effects(all) {for k:0..<64 {if b[a+k]!=b[c+k] {return false;}}return true;}
+face_info :: (b:[]u8)->FacePack #effects(all) {return FacePack.{targets=cast(int)face_word(b,12),vertices=cast(int)face_word(b,16),deltas=cast(int)face_word(b,20),clips=cast(int)face_word(b,24),bones=cast(int)face_word(b,28),curves=cast(int)face_word(b,32),joints=cast(int)face_word(b,36),target_table=cast(int)face_word(b,40),rig_names=cast(int)face_word(b,44),bone_table=cast(int)face_word(b,48),curve_table=cast(int)face_word(b,52),clip_table=cast(int)face_word(b,56),delta_table=cast(int)face_word(b,60),data=cast(int)face_word(b,64)};}
+face_size_ok :: (n:int)->bool #effects(all) {return n>=80 && n<=FACE_PACK_CAP;}
+face_counts_ok :: (f:FacePack)->bool #effects(all) {return f.targets>=1 && f.targets<=256 && f.vertices>=1 && f.vertices<=1000000 && f.deltas>=1 && f.deltas<=2000000 && f.clips>=1 && f.clips<=64 && f.bones>=1 && f.bones<=64 && f.curves>=1 && f.curves<=256 && f.joints>=1 && f.joints<=512;}
+face_frames_ok :: (n:int)->bool #effects(all) {return n>=2 && n<=2000;}
+face_rate_ok :: (rate:f32)->bool #effects(all) {return rate>0 && rate<=240;}
+face_rotation_ok :: (length:f32)->bool #effects(all) {return length>0.99 && length<1.01;}
+face_span :: (total:int,first:int,count:int)->bool #effects(all) {return total>=0 && first>=0 && first<=total && count>=0 && count<=total-first;}
+face_prefix_ok :: (total:int,end:int)->bool #effects(all) {return end<=total;}
+face_floats_ok :: (b:[]u8)->bool #effects(all) {if b.count%4!=0 {return false;}for k:0..<b.count/4 {if !face_finite(b,k*4) {return false;}}return true;}
+face_valid :: (b:[]u8)->bool #effects(all) {
  if !face_size_ok(b.count) {return false;}
  if face_word(b,0)!=0x31434645 || face_word(b,4)!=1 || cast(int)face_word(b,8)!=b.count {return false;}
  f:=face_info(b);

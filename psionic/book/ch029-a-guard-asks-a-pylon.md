@@ -25,7 +25,7 @@ categories. It contains no conversation, private history or hidden information.
 
 <!-- source: verse/everglade/guard-decision.coax request -->
 ```jai
-ga_request :: (out:[]u8,o:GaObservation)->int {
+ga_request :: (out:[]u8,o:GaObservation)->int #effects(all) {
   days:=[4]string.["night","morning","afternoon","evening"];weather:=[4]string.["clear","cloudy","rain","storm"];
   n:=json_raw(out,0,"{\"model\":\"elephant-1\",\"state\":\"A calm healthy town guard and a nearby peaceful living player. Time: ");
   n=json_raw(out,n,days[o.day]);n=json_raw(out,n,". Weather: ");n=json_raw(out,n,weather[o.weather]);
@@ -65,7 +65,7 @@ cannot count an application in that callback.
 
 <!-- source: verse/everglade/guard-decision.coax frame -->
 ```jai
-ga_frame :: (s:[]GaSession,o:GaObservation,generation:int,revision:int,now_ms:int) {
+ga_frame :: (s:[]GaSession,o:GaObservation,generation:int,revision:int,now_ms:int) #effects(all) {
   c:=GdContext.{epoch=s[0].epoch,actor=0,generation=generation,revision=revision*16+o.day*4+o.weather,policy=1,options=1};
   revoked:=s[0].mode!=1 || s[0].disabled || !ga_eligible(o) || s[0].suspended;
   expired:=now_ms>=s[0].ticket[0].ticket.expires_ms;

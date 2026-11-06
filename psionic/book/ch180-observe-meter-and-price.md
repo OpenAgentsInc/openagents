@@ -120,18 +120,18 @@ The code follows them. No float appears anywhere in the money path:
 
 <!-- source: psionic/lib/serve-price.coax price -->
 ```jai
-bl_in :: (v:int,most:int)->bool {return v>=0 && v<=most;}
-bl_schedule_valid :: (s:BlSchedule)->bool {
+bl_in :: (v:int,most:int)->bool #effects(all) {return v>=0 && v<=most;}
+bl_schedule_valid :: (s:BlSchedule)->bool #effects(all) {
     return bl_in(s.base,BL_RATE_MOST) && bl_in(s.per_k_in,BL_RATE_MOST) && bl_in(s.per_k_out,BL_RATE_MOST) && bl_in(s.per_second,BL_RATE_MOST);
 }
-bl_use_valid :: (u:BlUse)->bool {
+bl_use_valid :: (u:BlUse)->bool #effects(all) {
     if u.status==BlStatus.none {return false;}
     return bl_in(u.tokens_in,BL_TOKENS_MOST) && bl_in(u.tokens_out,BL_TOKENS_MOST) && bl_in(u.device_us,BL_DEVICE_US_MOST);
 }
 // Round up to the next whole unit; num is never negative.
-bl_ceil :: (num:int,den:int)->int {return (num+den-1)/den;}
+bl_ceil :: (num:int,den:int)->int #effects(all) {return (num+den-1)/den;}
 // Millionths of a msat: 1000 tokens at r msat is r*1000000/1000 per token.
-bl_price :: (s:BlSchedule,u:BlUse)->BlPrice #export_c {
+bl_price :: (s:BlSchedule,u:BlUse)->BlPrice #export_c #effects(all) {
     if !bl_schedule_valid(s) {return BlPrice.{cause=BlCause.schedule};}
     if !bl_use_valid(u) {return BlPrice.{cause=BlCause.use};}
     if u.status==BlStatus.refused || u.status==BlStatus.busy {return BlPrice.{};}
@@ -141,7 +141,7 @@ bl_price :: (s:BlSchedule,u:BlUse)->BlPrice #export_c {
     return BlPrice.{msat=s.base+bl_ceil(tokens+device,BL_US_PER_SECOND)};
 }
 // The worst case a request may reach: its input, its output limit, its deadline.
-bl_quote :: (s:BlSchedule,tokens_in:int,max_out:int,deadline_us:int)->BlPrice #export_c {
+bl_quote :: (s:BlSchedule,tokens_in:int,max_out:int,deadline_us:int)->BlPrice #export_c #effects(all) {
     return bl_price(s,BlUse.{status=BlStatus.answered,tokens_in=tokens_in,tokens_out=max_out,device_us=deadline_us});
 }
 ```
@@ -205,18 +205,18 @@ millionths, 1202 msat, plus the base: 2202 msat. On a 4000 msat budget:
 
 <!-- source: psionic/lib/serve-price.coax admit -->
 ```jai
-bl_account_valid :: (a:BlAccount)->bool {
+bl_account_valid :: (a:BlAccount)->bool #effects(all) {
     return bl_in(a.budget,BL_MSAT_MOST) && bl_in(a.held,a.budget) && bl_in(a.spent,a.budget-a.held);
 }
 // Hold a quote against what is left; refuse before any work if it does not fit.
-bl_admit :: (a:BlAccount,q:BlPrice)->BlSettle #export_c {
+bl_admit :: (a:BlAccount,q:BlPrice)->BlSettle #export_c #effects(all) {
     if !bl_account_valid(a) {return BlSettle.{cause=BlCause.account,account=a};}
     if q.cause!=BlCause.none || !bl_in(q.msat,BL_MSAT_MOST) {return BlSettle.{cause=BlCause.quote,account=a};}
     if q.msat>a.budget-a.held-a.spent {return BlSettle.{cause=BlCause.budget,account=a};}
     b:=a;b.held+=q.msat;return BlSettle.{account=b};
 }
 // Release the hold and charge the smaller of the actual price and the quote.
-bl_settle :: (s:BlSchedule,a:BlAccount,q:BlPrice,u:BlUse)->BlSettle #export_c {
+bl_settle :: (s:BlSchedule,a:BlAccount,q:BlPrice,u:BlUse)->BlSettle #export_c #effects(all) {
     if !bl_account_valid(a) {return BlSettle.{cause=BlCause.account,account=a};}
     if q.cause!=BlCause.none || !bl_in(q.msat,a.held) {return BlSettle.{cause=BlCause.quote,account=a};}
     p:=bl_price(s,u);if p.cause!=BlCause.none {return BlSettle.{cause=p.cause,account=a};}
@@ -254,7 +254,7 @@ each request what it was quoted against, and the invoice adds them up.
 <!-- source: psionic/lib/serve-price.coax total -->
 ```jai
 // The invoice: the sum of the charges, refused past 21 million bitcoin.
-bl_total :: (charges:[]int)->BlPrice #export_c {
+bl_total :: (charges:[]int)->BlPrice #export_c #effects(all) {
     t:=0;
     for i:0..<charges.count {
         if !bl_in(charges[i],BL_MSAT_MOST-t) {return BlPrice.{cause=BlCause.total,msat=t};}

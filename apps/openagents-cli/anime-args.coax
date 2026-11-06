@@ -13,7 +13,7 @@ AnimeArgs :: struct {
 }
 
 // Returns a strict UTF-8 scalar width at an existing byte, or zero.
-aa_scalar :: (s:string,i:int)->int {
+aa_scalar :: (s:string,i:int)->int #effects(all) {
   c:=s[i];if c<128 {return 1;}
   if c<194 {return 0;}
   n:=2;
@@ -28,36 +28,36 @@ aa_scalar :: (s:string,i:int)->int {
   if c==244 && b>143 {return 0;}
   return n;
 }
-aa_text_ok :: (s:string,lines:bool)->bool {
+aa_text_ok :: (s:string,lines:bool)->bool #effects(all) {
   i:=0;while i<s.count {
     c:=s[i];if c<32 {if !lines || (c!=9 && c!=10 && c!=13) {return false;}}
     n:=aa_scalar(s,i);if n==0 {return false;}i+=n;
   }return true;
 }
-aa_file_ok :: (path:string)->bool {return path.count>=1 && path.count<=4000 && aa_text_ok(path,false);}
-aa_words_ok :: (s:string)->bool {
+aa_file_ok :: (path:string)->bool #effects(all) {return path.count>=1 && path.count<=4000 && aa_text_ok(path,false);}
+aa_words_ok :: (s:string)->bool #effects(all) {
   if s.count>600 || !aa_text_ok(s,true) {return false;}
   for c:s {if c!=' ' && c!=9 && c!=10 && c!=13 {return true;}}return false;
 }
 // Plain unsigned seconds. The argument is bounded before conversion to ms.
-aa_time_ms :: (raw:string,maximum_seconds:int)->int {
+aa_time_ms :: (raw:string,maximum_seconds:int)->int #effects(all) {
   if maximum_seconds<0 || maximum_seconds>3600 || raw.count<1 || raw.count>16 {return -1;}
   for c:raw {if c=='+' || c=='-' || c=='e' || c=='E' || c==' ' {return -1;}}
   v:=args_number(raw);if !v.ok || v.value>cast(f64)maximum_seconds {return -1;}
   return cast(int)(v.value*1000.0+0.5);
 }
-aa_media_interval :: (at_ms:int,skip_ms:int,seconds_ms:int,length_ms:int,png:bool)->bool {
+aa_media_interval :: (at_ms:int,skip_ms:int,seconds_ms:int,length_ms:int,png:bool)->bool #effects(all) {
   if length_ms<0 || length_ms>600000 {return false;}
   if png {return at_ms>=0 && at_ms<=length_ms;}
   return skip_ms>=0 && seconds_ms>0 && seconds_ms<=length_ms-skip_ms;
 }
 AA_FLAGS :: [17]string.["--json","--help","--profile","--origin","--take","--size","--at","--seconds","--fps","--skip","--wait","--frames","--card","--phone","--square","--vertical","--fresh"];
-aa_flag :: (name:string)->int {
+aa_flag :: (name:string)->int #effects(all) {
   if name=="-h" {return 1;}
   for text,i:AA_FLAGS {if name==text {return i;}}return -1;
 }
 // Reporting survives a later syntax refusal, without reinterpreting values.
-aa_report_json :: (a:[]Args)->bool {
+aa_report_json :: (a:[]Args)->bool #effects(all) {
   if a.count==0 {return false;}
   i:=0;while i<a[0].n {
     token:=a[0].v[i];i+=1;if token=="--" {return false;}
@@ -65,7 +65,7 @@ aa_report_json :: (a:[]Args)->bool {
     if flag>=2 && flag<=11 {i+=1;}
   }return false;
 }
-aa_parse :: (a:[]Args)->AnimeArgs {
+aa_parse :: (a:[]Args)->AnimeArgs #effects(all) {
   r:AnimeArgs;r.json=aa_report_json(a);if a.count==0 {r.err="missing arguments";return r;}
   if a[0].full {r.err="argument capacity";return r;}
   seen:[17]bool;pos:=0;literal:=false;i:=0;

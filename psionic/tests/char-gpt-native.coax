@@ -29,7 +29,7 @@ ckc_step16 :: (s:CgShape,p:CgPlan,f:[]f32,u:[]u8,w:[]int,hh:[]u64)->f32 {
 // A whole step's launches on the CPU: every tensor's first, middle and last
 // gradient value against central differences of the step's own loss, and
 // the same launches twice give the same bits.
-cgn_gradients :: ()->int #export_c {
+cgn_gradients :: ()->int #export_c #effects(all) {
     bad:=0;s:=ckc_shape();f:[16384]f32;u:[256]u8;w:[16]int;p:=ckc_setup(s,f[..],u[..],w[..]);
     if p.status!=CgStatus.ok || p.floats>CKC_F || p.bytes>256 || p.offsets>16 {return 1;}
     sum:=ckc_step(s,p,f[..],u[..],w[..]);
@@ -46,7 +46,7 @@ cgn_gradients :: ()->int #export_c {
     return bad;
 }
 // Accumulating two micro-batches equals one batch of four rows, within rounding.
-cgn_accumulate :: ()->int #export_c {
+cgn_accumulate :: ()->int #export_c #effects(all) {
     bad:=0;s:=ckc_shape();f:[16384]f32;u:[256]u8;w:[16]int;p:=ckc_setup(s,f[..],u[..],w[..]);
     a:=ckc_step(s,p,f[..],u[..],w[..]);g:[2048]f32;for i:0..<p.n {g[i]=f[p.at[CG_G]+i];}
     one:=s;one.rows=4;one.accumulate=1;f2:[16384]f32;u2:[256]u8;w2:[16]int;q:=ckc_setup(one,f2[..],u2[..],w2[..]);
@@ -58,7 +58,7 @@ cgn_accumulate :: ()->int #export_c {
 }
 // An admitted update moves the parameters by AdamW; the held-out pass
 // writes only its windows' token losses.
-cgn_update :: ()->int #export_c {
+cgn_update :: ()->int #export_c #effects(all) {
     bad:=0;s:=ckc_shape();f:[16384]f32;u:[256]u8;w:[16]int;p:=ckc_setup(s,f[..],u[..],w[..]);
     sum:=ckc_step(s,p,f[..],u[..],w[..]);
     d:=cgp_decide(0,10,2,32,f32_bits(sum),f32_bits(f[p.at[CG_SCAL]+1]));if !d.apply {return 1;}
@@ -82,7 +82,7 @@ cgn_update :: ()->int #export_c {
 // the same step's gradient, with every product's operands rounded to BF16,
 // stays within BF16's precision of the FP32 one (cosine above 0.9999,
 // norm within 1%), and differs from it.
-cgn_overflow :: ()->int #export_c {
+cgn_overflow :: ()->int #export_c #effects(all) {
     bad:=0;s:=ckc_shape();f:[16384]f32;u:[256]u8;w:[16]int;p:=ckc_setup(s,f[..],u[..],w[..]);
     sum:=ckc_step(s,p,f[..],u[..],w[..]);g:[2048]f32;for i:0..<p.n {g[i]=f[p.at[CG_G]+i];}
     b:=cg_with_profile(s,1);f2:[16384]f32;u2:[256]u8;w2:[16]int;q:=ckc_setup(b,f2[..],u2[..],w2[..]);
@@ -103,7 +103,7 @@ cgn_overflow :: ()->int #export_c {
 // gradient cosine above 0.999 and norm within 2%), the same launches twice
 // give the same bits (resume is exact), its held-out pass writes only its
 // windows, and an infinite parameter still makes the step skip.
-cgn_mma :: ()->int #export_c {
+cgn_mma :: ()->int #export_c #effects(all) {
     bad:=0;
     // BF16 storage keeps infinities and makes every NaN the quiet NaN, even
     // those whose rounding would carry into the sign or the exponent; the

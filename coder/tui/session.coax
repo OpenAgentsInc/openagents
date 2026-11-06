@@ -19,7 +19,7 @@
 // sorts by time. Nothing here leaves the machine (chapter 18's rule).
 #load "reply-stream-policy.coax";
 
-cxproc_wall_us :: () -> int #foreign;
+cxproc_wall_us :: () -> int #foreign #effects(all);
 
 CS_DIR :: "/.openagents/coder/sessions";      // under $HOME
 CS_LINE :: 262144;

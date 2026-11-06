@@ -112,7 +112,7 @@
   #assert gdt_attention(s,q[..],k[..],v[..],mask[..],out[..],work[..],false).status==GdtStatus.ok && abs(out[0]-1.4768117f32)<1e-6f32;
 }
 
-gdt_norm_admit :: (kind:u8,rows:int,width:int,x:int,parameters:int,out:int,work:int,overlap:bool)->GdtStatus #export_c {
+gdt_norm_admit :: (kind:u8,rows:int,width:int,x:int,parameters:int,out:int,work:int,overlap:bool)->GdtStatus #export_c #effects(all) {
   if kind>3 {return GdtStatus.kind;}
   p:=psionic_ops_plan(PsionicRequest.{op=PsionicOp.layernorm,rows=rows,width=width,epsilon=0.00001f32});
   if p.status!=PsionicOpStatus.ok {return GdtStatus.shape;}
@@ -120,14 +120,14 @@ gdt_norm_admit :: (kind:u8,rows:int,width:int,x:int,parameters:int,out:int,work:
   if x!=p.a || parameters!=wanted || out<p.output || work<2*p.output {return GdtStatus.capacity;}
   if overlap {return GdtStatus.alias;}return GdtStatus.ok;
 }
-gdt_muladd :: (x:f32,scale:f32,shift:f32)->GdtNumber {
+gdt_muladd :: (x:f32,scale:f32,shift:f32)->GdtNumber #effects(all) {
   product:=f64(x)*f64(scale);if !psionic_ops_fits_f32(product) {return GdtNumber.{status=GdtStatus.arithmetic};}
   narrowed:=f32(product);sum:=f64(narrowed)+f64(shift);
   if !psionic_ops_fits_f32(sum) {return GdtNumber.{status=GdtStatus.arithmetic};}
   return GdtNumber.{value=f32(sum)};
 }
 // Parameter order is part of this API; each vector broadcasts across rows.
-gdt_norm :: (kind:GdtNorm,rows:int,width:int,x:[]f32,parameters:[]f32,out:[]f32,work:[]f32,overlap:bool)->GdtResult #export_c {
+gdt_norm :: (kind:GdtNorm,rows:int,width:int,x:[]f32,parameters:[]f32,out:[]f32,work:[]f32,overlap:bool)->GdtResult #export_c #effects(all) {
   admitted:=gdt_norm_admit(cast(u8)kind,rows,width,x.count,parameters.count,out.count,work.count,overlap);
   if admitted!=GdtStatus.ok {return GdtResult.{status=admitted};}
   for value:parameters {if !psionic_tensor_finite_bits(f32_bits(value)) {return GdtResult.{status=GdtStatus.number};}}
@@ -143,12 +143,12 @@ gdt_norm :: (kind:GdtNorm,rows:int,width:int,x:[]f32,parameters:[]f32,out:[]f32,
   }
   for i:0..<n {out[i]=work[i];}return GdtResult.{written=n};
 }
-gdt_activation_admit :: (kind:u8,n:int,out:int,work:int,overlap:bool)->GdtStatus #export_c {
+gdt_activation_admit :: (kind:u8,n:int,out:int,work:int,overlap:bool)->GdtStatus #export_c #effects(all) {
   if kind>1 {return GdtStatus.kind;}p:=psionic_ops_plan(PsionicRequest.{rows=1,width=n});
   if p.status!=PsionicOpStatus.ok {return GdtStatus.shape;}
   if out<n || work<n {return GdtStatus.capacity;}if overlap {return GdtStatus.alias;}return GdtStatus.ok;
 }
-gdt_activate :: (kind:GdtActivation,x:[]f32,out:[]f32,work:[]f32,overlap:bool)->GdtResult #export_c {
+gdt_activate :: (kind:GdtActivation,x:[]f32,out:[]f32,work:[]f32,overlap:bool)->GdtResult #export_c #effects(all) {
   admitted:=gdt_activation_admit(cast(u8)kind,x.count,out.count,work.count,overlap);if admitted!=GdtStatus.ok {return GdtResult.{status=admitted};}
   for value:x {if !psionic_tensor_finite_bits(f32_bits(value)) {return GdtResult.{status=GdtStatus.number};}}
   for i:0..<x.count {
@@ -159,29 +159,29 @@ gdt_activate :: (kind:GdtActivation,x:[]f32,out:[]f32,work:[]f32,overlap:bool)->
   }
   for i:0..<x.count {out[i]=work[i];}return GdtResult.{written=x.count};
 }
-gdt_block_route :: (block:int)->GdtRoute #export_c {
+gdt_block_route :: (block:int)->GdtRoute #export_c #effects(all) {
   if block<0 || block>=32 {return GdtRoute.{status=GdtStatus.shape};}
   if block%2==1 {return GdtRoute.{mask=GdtMask.self};}
   return GdtRoute.{mask=ifx block%4==0 then GdtMask.text else GdtMask.image};
 }
-gdt_cross_mask :: (images:bool,image:[]u8,valid:[]u8,out:[]u8,overlap:bool)->GdtResult #export_c {
+gdt_cross_mask :: (images:bool,image:[]u8,valid:[]u8,out:[]u8,overlap:bool)->GdtResult #export_c #effects(all) {
   if image.count<1 || image.count>1024 || valid.count!=image.count {return GdtResult.{status=GdtStatus.shape};}
   if out.count<image.count {return GdtResult.{status=GdtStatus.capacity};}if overlap {return GdtResult.{status=GdtStatus.alias};}
   for b:image {if b>1 {return GdtResult.{status=GdtStatus.mask};}}for b:valid {if b>1 {return GdtResult.{status=GdtStatus.mask};}}
   for i:0..<image.count {out[i]=ifx valid[i]==1 && ((image[i]==1)==images) then 1 else 0;}return GdtResult.{written=image.count};
 }
-gdt_attention_plan :: (s:GdtAttention)->GdtAttentionPlan #export_c {
+gdt_attention_plan :: (s:GdtAttention)->GdtAttentionPlan #export_c #effects(all) {
   if s.queries<1 || s.queries>1024 || s.keys<1 || s.keys>1024 || s.heads<1 || s.heads>32 || s.dim<1 || s.dim>256 {return GdtAttentionPlan.{status=GdtStatus.shape};}
   n:=s.queries*s.heads*s.dim;return GdtAttentionPlan.{query=n,key=s.keys*s.heads*s.dim,probability=s.keys,temporary=2*s.keys,stage=3*s.keys,work=3*s.keys+n};
 }
-gdt_attention_admit :: (s:GdtAttention,q:int,k:int,v:int,mask:int,out:int,work:int,overlap:bool)->GdtStatus #export_c {
+gdt_attention_admit :: (s:GdtAttention,q:int,k:int,v:int,mask:int,out:int,work:int,overlap:bool)->GdtStatus #export_c #effects(all) {
   p:=gdt_attention_plan(s);if p.status!=GdtStatus.ok {return p.status;}
   if q!=p.query || k!=p.key || v!=p.key || mask!=s.keys || out<p.query || work<p.work {return GdtStatus.capacity;}
   if overlap {return GdtStatus.alias;}return GdtStatus.ok;
 }
 // Projected tensors are [token,head,dimension]; all queries share a key mask.
 // The all-masked SDPA result is zero BEFORE the later learned output bias.
-gdt_attention :: (s:GdtAttention,q:[]f32,k:[]f32,v:[]f32,mask:[]u8,out:[]f32,work:[]f32,overlap:bool)->GdtResult #export_c {
+gdt_attention :: (s:GdtAttention,q:[]f32,k:[]f32,v:[]f32,mask:[]u8,out:[]f32,work:[]f32,overlap:bool)->GdtResult #export_c #effects(all) {
   admitted:=gdt_attention_admit(s,q.count,k.count,v.count,mask.count,out.count,work.count,overlap);if admitted!=GdtStatus.ok {return GdtResult.{status=admitted};}
   for value:q {if !psionic_tensor_finite_bits(f32_bits(value)) {return GdtResult.{status=GdtStatus.number};}}
   for value:k {if !psionic_tensor_finite_bits(f32_bits(value)) {return GdtResult.{status=GdtStatus.number};}}

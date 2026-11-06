@@ -156,21 +156,21 @@ TxiHit :: struct {
   }
 }
 
-txi_location_ok :: (file: int, pos: int, n: int) -> bool {
+txi_location_ok :: (file: int, pos: int, n: int) -> bool #effects(all) {
   return file >= 0 && file <= 2147483647 && pos >= 8 && n >= 81 && n <= 4000000 && pos <= 4294967295 - n;
 }
-txi_tx_extent :: (offset: int, n: int, block_n: int) -> bool { return offset >= 81 && n >= 10 && n <= block_n - offset; }
-txi_height_ok :: (height: int) -> bool { return height >= 1 && height <= 2147483647; }
-txi_prefer :: (active: bool, seq: int, old_active: bool, old_seq: int) -> bool {
+txi_tx_extent :: (offset: int, n: int, block_n: int) -> bool #effects(all) { return offset >= 81 && n >= 10 && n <= block_n - offset; }
+txi_height_ok :: (height: int) -> bool #effects(all) { return height >= 1 && height <= 2147483647; }
+txi_prefer :: (active: bool, seq: int, old_active: bool, old_seq: int) -> bool #effects(all) {
   return ifx active != old_active then active else seq > old_seq;
 }
-txi_blockkey :: (prefix: u8, hash: [] u8, out: [] u8) {
+txi_blockkey :: (prefix: u8, hash: [] u8, out: [] u8) #effects(all) {
   out[0] = prefix; for k: 0..<32 { out[1+k] = hash[k]; }
 }
-txi_txkey :: (id: [] u8, hash: [] u8, out: [] u8) {
+txi_txkey :: (id: [] u8, hash: [] u8, out: [] u8) #effects(all) {
   txi_blockkey('T', id, out); for k: 0..<32 { out[33+k] = hash[k]; }
 }
-txi_context_vartime :: (table: [] u8, used: int) -> TxiMeta #export_c {
+txi_context_vartime :: (table: [] u8, used: int) -> TxiMeta #export_c #effects(all) {
   tip := lc_tip_vartime(table, used);
   if tip.code != LC_OK { return TxiMeta.{code=LC_CONTEXT}; }
   key := TXI_META; v := lc_value_vartime(table, used, key[..]);
@@ -178,13 +178,13 @@ txi_context_vartime :: (table: [] u8, used: int) -> TxiMeta #export_c {
   if kv_get32(v, 0) != 1 || kv_get32(v, 4) != tip.chain || kv_get32(v, 8) != tip.height || !lc_same(v[16..<48], tip.hash[..]) { return TxiMeta.{code=LC_CONTEXT}; }
   return TxiMeta.{next=kv_get32(v, 12)};
 }
-txi_sync_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, next: int) -> bool {
+txi_sync_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, next: int) -> bool #effects(all) {
   tip := lc_tip_vartime(table, c[0].used); #assert tip.code == LC_OK;
   v: [48] u8; kv_put32(v[..], 0, 1); kv_put32(v[..], 4, tip.chain); kv_put32(v[..], 8, tip.height); kv_put32(v[..], 12, next);
   for k: 0..<32 { v[16+k] = tip.hash[k]; }
   key := TXI_META; return lc_put_vartime(table, c, batch, key[..], v[..]);
 }
-txi_block_vartime :: (table: [] u8, used: int, hash: [] u8) -> TxiBlock #export_c {
+txi_block_vartime :: (table: [] u8, used: int, hash: [] u8) -> TxiBlock #export_c #effects(all) {
   if hash.count != 32 || !lc_extent(table, used) { return TxiBlock.{code=LC_CONTEXT}; }
   key: [33] u8; txi_blockkey('J', hash, key[..]); v := lc_value_vartime(table, used, key[..]);
   if v.count == 0 { return TxiBlock.{code=TXI_MISS}; }
@@ -193,7 +193,7 @@ txi_block_vartime :: (table: [] u8, used: int, hash: [] u8) -> TxiBlock #export_
   if !txi_height_ok(b.height) || b.count < 1 || b.count > b.n || !txi_location_ok(b.file, b.pos, b.n) { b.code = TXI_CORRUPT; }
   return b;
 }
-txi_put_block_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, hash: [] u8, b: TxiBlock) -> bool {
+txi_put_block_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, hash: [] u8, b: TxiBlock) -> bool #effects(all) {
   key: [33] u8; txi_blockkey('J', hash, key[..]); v: [24] u8;
   kv_put32(v[..],0,b.height); kv_put32(v[..],4,b.count); kv_put32(v[..],8,b.seq); kv_put32(v[..],12,b.file); kv_put32(v[..],16,b.pos); kv_put32(v[..],20,b.n);
   return lc_put_vartime(table, c, batch, key[..], v[..]);
@@ -202,7 +202,7 @@ txi_put_block_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, hash: [] u
 // Full txid keys avoid Core's short-hash bucket false positives. Active
 // matches win, then the block first indexed later. Only active=true is
 // confirmed in this snapshot. J/T entries survive disconnects unchanged.
-txi_find_vartime :: (table: [] u8, used: int, id: [] u8, only_active: bool) -> TxiHit #export_c {
+txi_find_vartime :: (table: [] u8, used: int, id: [] u8, only_active: bool) -> TxiHit #export_c #effects(all) {
   meta := txi_context_vartime(table, used);
   if meta.code != LC_OK || id.count != 32 { return TxiHit.{code=LC_CONTEXT}; }
   prefix: [33] u8; txi_blockkey('T', id, prefix[..]);
@@ -230,7 +230,7 @@ txi_find_vartime :: (table: [] u8, used: int, id: [] u8, only_active: bool) -> T
 }
 // The host reads this candidate's header and exact transaction span from
 // immutable block storage. Verify both identities before publishing raw.
-txi_check_tx_vartime :: (hit: TxiHit, id: [] u8, header: [] u8, raw: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> int #export_c {
+txi_check_tx_vartime :: (hit: TxiHit, id: [] u8, header: [] u8, raw: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> int #export_c #effects(all) {
   if hit.code != LC_OK || id.count != 32 || header.count != 80 || raw.count != hit.n { return LC_CONTEXT; }
   hash: [32] u8; #assert sha256d_checked(header, hash[..], false) == SHA_OK;
   expected := hit.block;

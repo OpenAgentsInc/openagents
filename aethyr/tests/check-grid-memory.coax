@@ -64,7 +64,7 @@ gm_run_browser :: (c: [] Cdp, file: string, output: string, url: string, d: GmDe
   if o[0].bad || !fs_write(output,jo_text(o[..])) { return 1; }
   print("%\n",jo_text(o[..])); return ifx passed then 0 else 1;
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) { return 2; }
   if args_has(a[..],"--serve") { return wp_serve(args_value(a[..],"--serve",""),args_value(a[..],"--resources","")); }
   if args_count(a[..]) != 2 { tool_errln("usage: check-grid-memory FILE.wasm RECEIPT.json"); return 2; }

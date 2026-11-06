@@ -92,7 +92,7 @@ WIRE_MIN :: 5;
 // from before P is WIRE_PINS_FIRST's build. A room refuses a hello whose build differs ("r 0 version":
 // the page reloads into the new one).
 WIRE_ENGINE :: 1; WIRE_RULES :: 1; WIRE_CONTENT :: 1;
-WirePins :: struct { engine: int = WIRE_ENGINE; rules: int = WIRE_RULES; content: int = WIRE_CONTENT; }
+WirePins :: struct #persisted { engine: int = WIRE_ENGINE; rules: int = WIRE_RULES; content: int = WIRE_CONTENT; }
 WIRE_PINS_FIRST :: WirePins.{engine = 1, rules = 1, content = 1};
 // a page from before wire 3 says hello "H 1"; the room seats it on the old wire until WIRE_OLD_UNTIL_MS
 // (coax/web/room/room-oldwire.coax), since nothing in such a page reloads it
@@ -144,10 +144,47 @@ WB_RUN :: 1; WB_JUMP :: 2; WB_DIVE :: 4; WB_RISE :: 8; WB_SINK :: 16;   // (rise
 // an interaction's KIND
 WE_TALK :: 1; WE_DOOR :: 2; WE_BOAT :: 3; WE_BOARD :: 4; WE_END :: 5;
 
-WireIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: f32; b: int; heard: int; }   // theta goes in WIRE_FINE units (0.1 mrad)
-WireCast :: struct { seq: int; slot: int; ax: f32; ay: f32; az: f32; tgt: int = -1; mode: int; }   // mode: the spell's (wire_mode), 0 sent as nothing
-WireUse :: struct { seq: int; kind: int; id: int; }
+WireIn :: struct #persisted { seq: int; kx: int; ky: int; px: int; py: int; theta: f32; b: int; heard: int; }   // theta goes in WIRE_FINE units (0.1 mrad)
+WireCast :: struct #persisted { seq: int; slot: int; ax: f32; ay: f32; az: f32; tgt: int = -1; mode: int; }   // mode: the spell's (wire_mode), 0 sent as nothing
+WireUse :: struct #persisted { seq: int; kind: int; id: int; }
+// The borrowed codec boundary remains available to existing callers. Active
+// page/room hellos use WireHelloValue, which owns every byte of its fields.
 WireHello :: struct { version: int = WIRE_VERSION; look: string; kind: string; flags: int; name: string; }
+WireHelloValue :: struct #persisted {
+  version: int = WIRE_VERSION; flags: int; ok: bool;
+  look: [WIRE_FRAME] u8; look_n: int;
+  kind: [WIRE_FRAME] u8; kind_n: int;
+  name: [WIRE_FRAME] u8; name_n: int;
+}
+#test "owned hello fields survive reuse of the packet and keep the published wire bytes" {
+  packet:[WIRE_FRAME]u8;
+  n:=wire_put_hello(packet[..],0,WireHello.{look="ranger.2.1.0",kind="druid",flags=2,name="Ash Wood"});
+  rd:=[1]WireRd.[wire_rd(cast(string)packet[0..<n],1)];
+  value:=wire_read_hello_value(cast(string)packet[0..<n],rd[..]);
+  for i:0..<n {packet[i]=0;}
+  #assert value.ok && rd[0].ok && value.look_n==12 && value.kind_n==5 && value.name_n==8;
+  out:[WIRE_FRAME]u8;m:=wire_put_hello_value(out[..],0,value);
+  #assert cast(string)out[0..<m]=="H 4 ranger.2.1.0 druid 2 Ash Wood";
+  huge:[WIRE_FRAME+1]u8;rd[0]=wire_rd(cast(string)huge[..],1);
+  #assert !wire_read_hello_value(cast(string)huge[..],rd[..]).ok && !rd[0].ok;
+}
+wire_hello_value :: (h: WireHello) -> WireHelloValue {
+  v:WireHelloValue;v.version=h.version;v.flags=h.flags;
+  if h.look.count>WIRE_FRAME || h.kind.count>WIRE_FRAME || h.name.count>WIRE_FRAME {return v;}
+  v.ok=true;v.look_n=h.look.count;v.kind_n=h.kind.count;v.name_n=h.name.count;
+  for ch,i:h.look {v.look[i]=ch;}for ch,i:h.kind {v.kind[i]=ch;}for ch,i:h.name {v.name[i]=ch;}
+  return v;
+}
+wire_read_hello_value :: (t:string,r:[]WireRd)->WireHelloValue {
+  if t.count>WIRE_FRAME {r[0].ok=false;return WireHelloValue.{};}
+  value:=wire_hello_value(wire_read_hello(t,r));value.ok=value.ok && r[0].ok;
+  return value;
+}
+wire_put_hello_value :: (out:[]u8,at:int,value:WireHelloValue)->int {
+  v:=value;
+  if !v.ok {return at;}
+  return wire_put_hello(out,at,WireHello.{version=v.version,look=cast(string)v.look[0..<v.look_n],kind=cast(string)v.kind[0..<v.kind_n],flags=v.flags,name=cast(string)v.name[0..<v.name_n]});
+}
 WireWorld :: struct { tick: int; hz: int = WIRE_HZ; seed: int; day: int; weather: int; budget: int = WIRE_BUDGET; }
 WireD :: struct { tick: int; ack: int; f: int; part: int; }
 WireN :: struct { ss: int; id: string; look: string; kind: string; flags: int; name: string; }

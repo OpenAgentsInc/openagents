@@ -76,12 +76,12 @@ Nip42Frame :: struct { error: int; written: int; }
 Nip42Admit :: struct { error: int; public_key: [32] u8; }
 
 // ---- check helpers --------------------------------------------------------
-n42_url_error :: (url: string) -> int { out: [N42_MAX_URL] u8; return nip42_url(url, out[..]).error; }
+n42_url_error :: (url: string) -> int #effects(all) { out: [N42_MAX_URL] u8; return nip42_url(url, out[..]).error; }
 // Fills buf with c. Take cast(string) views after the last write: a string
 // cast copies.
-n42_fill :: (buf: [] u8, c: u8) -> string { for i: 0..<buf.count { buf[i] = c; } return cast(string) buf; }
+n42_fill :: (buf: [] u8, c: u8) -> string #effects(all) { for i: 0..<buf.count { buf[i] = c; } return cast(string) buf; }
 // A connection on generation gen with the spec example's relay and challenge.
-n42_spec :: (n: [] Nip42, gen: int) {
+n42_spec :: (n: [] Nip42, gen: int) #effects(all) {
   ok := nip42_init(n, "wss://relay.example.com/") == N42_OK && nip42_challenge(n, gen, "[\"AUTH\",\"challengestringhere\"]") == N42_OK;
   #assert ok;
 }
@@ -327,19 +327,19 @@ N42_URL_ERRORS :: [24]int.[
 // ---- relay URLs -------------------------------------------------------------
 
 // Whether s starts with p, each byte as in lower or upper (same length).
-nip42_starts :: (s: string, lower: string, upper: string) -> bool {
+nip42_starts :: (s: string, lower: string, upper: string) -> bool #effects(all) {
   if s.count < lower.count { return false; }
   for i: 0..<lower.count { if s[i] != lower[i] && s[i] != upper[i] { return false; } }
   return true;
 }
 // A host byte lowercased, or -1 when it can't be in a host.
-nip42_host_byte :: (c: u8) -> int {
+nip42_host_byte :: (c: u8) -> int #effects(all) {
   if c >= 'A' && c <= 'Z' { return cast(int) c + 32; }
   if (c >= 'a' && c <= 'z') || json_digit(c) || c == '.' || c == '-' { return cast(int) c; }
   return -1;
 }
 // The canonical form of a relay URL into out (the rule is at the top).
-nip42_url :: (url: string, out: [] u8) -> Nip42Url {
+nip42_url :: (url: string, out: [] u8) -> Nip42Url #effects(all) {
   if url.count > N42_MAX_URL { return Nip42Url.{error = N42U_LIMIT}; }
   secure := nip42_starts(url, "wss://", "WSS://");
   if !secure && !nip42_starts(url, "ws://", "WS://") { return Nip42Url.{error = N42U_SCHEME}; }
@@ -377,10 +377,10 @@ nip42_url :: (url: string, out: [] u8) -> Nip42Url {
 
 // ---- the record -------------------------------------------------------------
 
-nip42_url_text :: (n: [] Nip42) -> string { return cast(string) n[0].url[0..<n[0].url_count]; }
-nip42_challenge_text :: (n: [] Nip42) -> string { return cast(string) n[0].challenge[0..<n[0].challenge_count]; }
+nip42_url_text :: (n: [] Nip42) -> string #effects(all) { return cast(string) n[0].url[0..<n[0].url_count]; }
+nip42_challenge_text :: (n: [] Nip42) -> string #effects(all) { return cast(string) n[0].challenge[0..<n[0].challenge_count]; }
 // Sets the relay's URL (the one the client connected to, or the relay's own).
-nip42_init :: (n: [] Nip42, url: string) -> int {
+nip42_init :: (n: [] Nip42, url: string) -> int #effects(all) {
   tmp: [N42_MAX_URL] u8; u := nip42_url(url, tmp[..]);
   if u.error != N42U_OK { return N42_URL; }
   n[0].url = tmp; n[0].url_count = u.count;
@@ -388,7 +388,7 @@ nip42_init :: (n: [] Nip42, url: string) -> int {
 }
 // Reads the relay's ["AUTH", "<challenge>"] and makes it the current
 // challenge of generation gen. Anything else is N42_FRAME, and changes nothing.
-nip42_challenge :: (n: [] Nip42, gen: int, frame: string) -> int {
+nip42_challenge :: (n: [] Nip42, gen: int, frame: string) -> int #effects(all) {
   if frame.count > N42_MAX_FRAME { return N42_FRAME; }
   j: [1] Json; json_start(j[..], frame);
   if json_next(j[..]) != JSON_ARRAY { return N42_FRAME; }
@@ -404,7 +404,7 @@ nip42_challenge :: (n: [] Nip42, gen: int, frame: string) -> int {
 // The relay side: writes ["AUTH", challenge] into out and makes challenge
 // the current one for generation gen. The challenge comes from host entropy
 // (32 random bytes as hex, say), 1 to 256 bytes of UTF-8.
-nip42_issue :: (n: [] Nip42, gen: int, challenge: string, out: [] u8) -> Nip42Frame {
+nip42_issue :: (n: [] Nip42, gen: int, challenge: string, out: [] u8) -> Nip42Frame #effects(all) {
   k := json_raw(out, 0, "[\"AUTH\",");
   k = json_write_string(out, k, challenge);
   k = json_raw(out, k, "]");
@@ -413,7 +413,7 @@ nip42_issue :: (n: [] Nip42, gen: int, challenge: string, out: [] u8) -> Nip42Fr
   if e != N42_OK { return Nip42Frame.{error = e}; }
   return Nip42Frame.{error = N42_OK, written = k};
 }
-nip42_ready :: (n: [] Nip42, gen: int) -> int {
+nip42_ready :: (n: [] Nip42, gen: int) -> int #effects(all) {
   if gen != n[0].gen { return N42_STALE; }
   if n[0].challenge_count == 0 { return N42_NO_CHALLENGE; }
   if n[0].url_count == 0 { return N42_URL; }
@@ -425,7 +425,7 @@ nip42_ready :: (n: [] Nip42, gen: int) -> int {
 // The unsigned kind 22242 event for generation gen's challenge, created now
 // (seconds): event_sign's created_at, kind, tags and content. The tags are
 // written into out as [["relay",<canonical url>],["challenge",<challenge>]].
-nip42_template :: (n: [] Nip42, gen: int, now: int, out: [] u8) -> Nip42Template {
+nip42_template :: (n: [] Nip42, gen: int, now: int, out: [] u8) -> Nip42Template #effects(all) {
   t: Nip42Template; t.error = nip42_ready(n, gen);
   if t.error != N42_OK { return t; }
   t.error = N42_TIME;
@@ -442,13 +442,13 @@ nip42_template :: (n: [] Nip42, gen: int, now: int, out: [] u8) -> Nip42Template
 
 // ---- the relay's check ------------------------------------------------------
 
-nip42_relay_is :: (n: [] Nip42, raw: string) -> bool {
+nip42_relay_is :: (n: [] Nip42, raw: string) -> bool #effects(all) {
   dec: [N42_MAX_URL] u8; k := json_unescape(raw, dec[..]);
   if k == -1 { return false; }
   canon: [N42_MAX_URL] u8; u := nip42_url(cast(string) dec[0..<k], canon[..]);
   return u.error == N42U_OK && cast(string) canon[0..<u.count] == nip42_url_text(n);
 }
-nip42_challenge_is :: (n: [] Nip42, raw: string) -> bool {
+nip42_challenge_is :: (n: [] Nip42, raw: string) -> bool #effects(all) {
   dec: [N42_MAX_CHALLENGE] u8; k := json_unescape(raw, dec[..]);
   return k != -1 && cast(string) dec[0..<k] == nip42_challenge_text(n);
 }
@@ -456,7 +456,7 @@ nip42_challenge_is :: (n: [] Nip42, raw: string) -> bool {
 // for this relay at time now (seconds). tags is the event's raw tags array.
 // N42_OK is not admission by itself: the id and signature come first
 // (nip42_admit_fields, nip42_admit).
-nip42_judge :: (n: [] Nip42, gen: int, now: int, kind: int, created_at: int, tags: string) -> int {
+nip42_judge :: (n: [] Nip42, gen: int, now: int, kind: int, created_at: int, tags: string) -> int #effects(all) {
   ready := nip42_ready(n, gen);
   if ready != N42_OK { return ready; }
   if kind != N42_AUTH_KIND { return N42_KIND; }
@@ -490,7 +490,7 @@ nip42_judge :: (n: [] Nip42, gen: int, now: int, kind: int, created_at: int, tag
 // The relay side's decision on an event whose id and signature were checked
 // (verified is nostr_event_verify_vartime's verdict; nip42_admit passes it).
 // The public key is returned only when admitted.
-nip42_admit_fields :: (n: [] Nip42, gen: int, now: int, verified: bool, kind: int, created_at: int, tags: string, public_key: [] u8) -> Nip42Admit {
+nip42_admit_fields :: (n: [] Nip42, gen: int, now: int, verified: bool, kind: int, created_at: int, tags: string, public_key: [] u8) -> Nip42Admit #effects(all) {
   a: Nip42Admit; a.error = N42_EVENT;
   if !verified || public_key.count != 32 { return a; }
   a.error = nip42_judge(n, gen, now, kind, created_at, tags);
@@ -504,7 +504,7 @@ nip42_admit_fields :: (n: [] Nip42, gen: int, now: int, verified: bool, kind: in
 // generation gen and reports it to relay.coax. relay.coax's decision
 // (RL_AUTH when it now asks for an answer), or -1 when the frame isn't a
 // challenge. Nothing changes unless relay.coax took it.
-nip42_input :: (r: [] Relay, n: [] Nip42, gen: int, frame: string) -> int {
+nip42_input :: (r: [] Relay, n: [] Nip42, gen: int, frame: string) -> int #effects(all) {
   t: [1] Nip42; t[0] = n[0];
   if nip42_challenge(t[..], gen, frame) != N42_OK { return -1; }
   d := rl_input(r, gen, RlIn.{kind = RL_IN_AUTH});
@@ -516,7 +516,7 @@ nip42_input :: (r: [] Relay, n: [] Nip42, gen: int, frame: string) -> int {
 // answers the current challenge for this relay and generation, writes
 // ["AUTH",<signed>] into out and tells relay.coax (rl_auth_sent) to wait for
 // the OK with that id.
-nip42_send_fields :: (r: [] Relay, n: [] Nip42, gen: int, now: int, read: bool, kind: int, created_at: int, tags: string, id: [] u8, signed: string, out: [] u8) -> Nip42Frame {
+nip42_send_fields :: (r: [] Relay, n: [] Nip42, gen: int, now: int, read: bool, kind: int, created_at: int, tags: string, id: [] u8, signed: string, out: [] u8) -> Nip42Frame #effects(all) {
   f: Nip42Frame; f.error = N42_EVENT;
   if !read { return f; }
   f.error = N42_STALE;

@@ -128,7 +128,7 @@ gr_q8_value :: (b:[]u16,k:u32)->f32 {return gr_half(cast(u32)b[0])*gr_signed(gr_
 // Thread j adds 64-value units j, j+64, ... of a row in order; the group's
 // 64 partial sums then add in thread order.
 // book:begin product
-gr_mv_q4k :: (item:int,rows:int,cols:int,tokens:int,add:int,w:[]u64,x:[]f32,out:[]f32) #export_c {
+gr_mv_q4k :: (item:int,rows:int,cols:int,tokens:int,add:int,w:[]u64,x:[]f32,out:[]f32) #export_c #effects(all) {
     part:[2048]f32;acc:[2048]f32;xr:[4096]f32;
     nr:=cast(u32)rows;nc:=cast(u32)cols;nt:=cast(u32)tokens;units:=nc/64;words:=nc/256*18;row0:=mul_wrap(cast(u32)item,4);
     for thread:0..<GR_T {
@@ -172,7 +172,7 @@ gr_mv_q4k :: (item:int,rows:int,cols:int,tokens:int,add:int,w:[]u64,x:[]f32,out:
     }
 }
 // book:end product
-gr_mv_q6k :: (item:int,rows:int,cols:int,tokens:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c {
+gr_mv_q6k :: (item:int,rows:int,cols:int,tokens:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
     part:[2048]f32;acc:[2048]f32;
     nr:=cast(u32)rows;nc:=cast(u32)cols;nt:=cast(u32)tokens;units:=nc/64;words:=nc/256*105;row0:=mul_wrap(cast(u32)item,4);
     for thread:0..<GR_T {
@@ -202,7 +202,7 @@ gr_mv_q6k :: (item:int,rows:int,cols:int,tokens:int,add:int,w:[]u16,x:[]f32,out:
         }
     }
 }
-gr_mv_q8 :: (item:int,rows:int,cols:int,tokens:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c {
+gr_mv_q8 :: (item:int,rows:int,cols:int,tokens:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
     part:[2048]f32;acc:[2048]f32;
     nr:=cast(u32)rows;nc:=cast(u32)cols;nt:=cast(u32)tokens;units:=nc/64;words:=nc/32*17;row0:=mul_wrap(cast(u32)item,4);
     for thread:0..<GR_T {
@@ -246,7 +246,7 @@ GR_D :: 2*GR_DR;     // rows a decode group writes
 // of its four 32-value parts. gr_dv3 runs three projections of one input
 // (q, k, v) in one launch; gr_dvglu runs gate and up rows on the two
 // simdgroups of a group and writes silu(gate) * up.
-gr_dv_q4k :: (item:int,rows:int,cols:int,add:int,w:[]u64,x:[]f32,out:[]f32) #export_c {
+gr_dv_q4k :: (item:int,rows:int,cols:int,add:int,w:[]u64,x:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;acc:[256]f32;xr:[2048]f32;
     nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/256;words:=blocks*18;row0:=mul_wrap(cast(u32)item,cast(u32)GR_D);
     for thread:0..<64 {
@@ -281,7 +281,7 @@ gr_dv_q4k :: (item:int,rows:int,cols:int,add:int,w:[]u64,x:[]f32,out:[]f32) #exp
         }
     }
 }
-gr_dv3_q4k :: (item:int,rows_a:int,rows_b:int,rows_c:int,cols:int,wa:[]u64,wb:[]u64,wc:[]u64,x:[]f32,oa:[]f32,ob:[]f32,oc:[]f32) #export_c {
+gr_dv3_q4k :: (item:int,rows_a:int,rows_b:int,rows_c:int,cols:int,wa:[]u64,wb:[]u64,wc:[]u64,x:[]f32,oa:[]f32,ob:[]f32,oc:[]f32) #export_c #effects(all) {
     part:[256]f32;acc:[256]f32;xr:[2048]f32;
     ga:=(rows_a+GR_D-1)/GR_D;gb:=(rows_b+GR_D-1)/GR_D;sel:=ifx item<ga then 0 else ifx item<ga+gb then 1 else 2;
     local:=item-(ifx sel==0 then 0 else ifx sel==1 then ga else ga+gb);rows:=ifx sel==0 then rows_a else ifx sel==1 then rows_b else rows_c;
@@ -319,7 +319,7 @@ gr_dv3_q4k :: (item:int,rows_a:int,rows_b:int,rows_c:int,cols:int,wa:[]u64,wb:[]
         }
     }
 }
-gr_dvglu_q4k :: (item:int,rows:int,cols:int,wg:[]u64,wu:[]u64,x:[]f32,out:[]f32) #export_c {
+gr_dvglu_q4k :: (item:int,rows:int,cols:int,wg:[]u64,wu:[]u64,x:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;acc:[256]f32;xr:[2048]f32;
     nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/256;words:=blocks*18;row0:=mul_wrap(cast(u32)item,cast(u32)GR_DR);
     for thread:0..<64 {
@@ -357,7 +357,7 @@ gr_dvglu_q4k :: (item:int,rows:int,cols:int,wg:[]u64,wu:[]u64,x:[]f32,out:[]f32)
         }
     }
 }
-gr_dv_q6k :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c {
+gr_dv_q6k :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;acc:[256]f32;xr:[2048]f32;
     nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/256;words:=blocks*105;row0:=mul_wrap(cast(u32)item,cast(u32)GR_D);
     for thread:0..<64 {
@@ -401,7 +401,7 @@ gr_dv_q6k :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #exp
         }
     }
 }
-gr_dv3_q6k :: (item:int,rows_a:int,rows_b:int,rows_c:int,cols:int,wa:[]u16,wb:[]u16,wc:[]u16,x:[]f32,oa:[]f32,ob:[]f32,oc:[]f32) #export_c {
+gr_dv3_q6k :: (item:int,rows_a:int,rows_b:int,rows_c:int,cols:int,wa:[]u16,wb:[]u16,wc:[]u16,x:[]f32,oa:[]f32,ob:[]f32,oc:[]f32) #export_c #effects(all) {
     part:[256]f32;acc:[256]f32;xr:[2048]f32;
     ga:=(rows_a+GR_D-1)/GR_D;gb:=(rows_b+GR_D-1)/GR_D;sel:=ifx item<ga then 0 else ifx item<ga+gb then 1 else 2;
     local:=item-(ifx sel==0 then 0 else ifx sel==1 then ga else ga+gb);rows:=ifx sel==0 then rows_a else ifx sel==1 then rows_b else rows_c;
@@ -448,7 +448,7 @@ gr_dv3_q6k :: (item:int,rows_a:int,rows_b:int,rows_c:int,cols:int,wa:[]u16,wb:[]
         }
     }
 }
-gr_dvglu_q6k :: (item:int,rows:int,cols:int,wg:[]u16,wu:[]u16,x:[]f32,out:[]f32) #export_c {
+gr_dvglu_q6k :: (item:int,rows:int,cols:int,wg:[]u16,wu:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;acc:[256]f32;xr:[2048]f32;
     nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/256;words:=blocks*105;row0:=mul_wrap(cast(u32)item,cast(u32)GR_DR);
     for thread:0..<64 {
@@ -495,7 +495,7 @@ gr_dvglu_q6k :: (item:int,rows:int,cols:int,wg:[]u16,wu:[]u16,x:[]f32,out:[]f32)
         }
     }
 }
-gr_dv_q8 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c {
+gr_dv_q8 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;acc:[256]f32;xr:[2048]f32;
     nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/32;words:=blocks*17;row0:=mul_wrap(cast(u32)item,cast(u32)GR_D);
     for thread:0..<64 {
@@ -525,7 +525,7 @@ gr_dv_q8 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #expo
         }
     }
 }
-gr_dv3_q8 :: (item:int,rows_a:int,rows_b:int,rows_c:int,cols:int,wa:[]u16,wb:[]u16,wc:[]u16,x:[]f32,oa:[]f32,ob:[]f32,oc:[]f32) #export_c {
+gr_dv3_q8 :: (item:int,rows_a:int,rows_b:int,rows_c:int,cols:int,wa:[]u16,wb:[]u16,wc:[]u16,x:[]f32,oa:[]f32,ob:[]f32,oc:[]f32) #export_c #effects(all) {
     part:[256]f32;acc:[256]f32;xr:[2048]f32;
     ga:=(rows_a+GR_D-1)/GR_D;gb:=(rows_b+GR_D-1)/GR_D;sel:=ifx item<ga then 0 else ifx item<ga+gb then 1 else 2;
     local:=item-(ifx sel==0 then 0 else ifx sel==1 then ga else ga+gb);rows:=ifx sel==0 then rows_a else ifx sel==1 then rows_b else rows_c;
@@ -558,7 +558,7 @@ gr_dv3_q8 :: (item:int,rows_a:int,rows_b:int,rows_c:int,cols:int,wa:[]u16,wb:[]u
         }
     }
 }
-gr_dvglu_q8 :: (item:int,rows:int,cols:int,wg:[]u16,wu:[]u16,x:[]f32,out:[]f32) #export_c {
+gr_dvglu_q8 :: (item:int,rows:int,cols:int,wg:[]u16,wu:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;acc:[256]f32;xr:[2048]f32;
     nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/32;words:=blocks*17;row0:=mul_wrap(cast(u32)item,cast(u32)GR_DR);
     for thread:0..<64 {
@@ -602,7 +602,7 @@ gr_bf16 :: (v:f32)->u32 {b:=f32_bits(v);return add_wrap(b,add_wrap(0x7fff,(b>>16
 gr_split :: (v:f32)->u32 {hi:=gr_bf16(v);return hi|(gr_bf16(v-f32_from_bits(hi<<16))<<16);}
 // gr_widen_q4k: item (row, super-block, group g, code word c) writes the
 // 16 values of code word 2+4g+c: 8 of sub-block 2g, 8 of sub-block 2g+1.
-gr_widen_q4k :: (item:int,cols:int,w:[]u64,out:[]u32) #export_c {
+gr_widen_q4k :: (item:int,cols:int,w:[]u64,out:[]u32) #export_c #effects(all) {
     ui:=cast,trunc(u32)item;nc:=cast(u32)cols;per:=nc/16;row:=ui/per;rest:=ui%per;blk:=rest/16;g:=rest%16/4;c:=rest%4;
     at:=add_wrap(mul_wrap(row,nc/256*18),mul_wrap(blk,18));w0:=w[cast(int)at];w1:=w[cast(int)add_wrap(at,1)];
     d:=gr_half(cast,trunc(u32)w0&0xffff);dmin:=gr_half(cast,trunc(u32)(w0>>16)&0xffff);
@@ -615,7 +615,7 @@ gr_widen_q4k :: (item:int,cols:int,w:[]u64,out:[]u32) #export_c {
 }
 // gr_widen_q6k: item (row, super-block, half n, pair m) writes values
 // 128n+l+32p for l = 2m, 2m+1 and the four parts p.
-gr_widen_q6k :: (item:int,cols:int,w:[]u16,out:[]u32) #export_c {
+gr_widen_q6k :: (item:int,cols:int,w:[]u16,out:[]u32) #export_c #effects(all) {
     ui:=cast,trunc(u32)item;nc:=cast(u32)cols;per:=nc/8;row:=ui/per;rest:=ui%per;blk:=rest/32;n:=rest%32/16;m:=rest%16;
     at:=add_wrap(mul_wrap(row,nc/256*105),mul_wrap(blk,105));d:=gr_half(cast(u32)w[cast(int)add_wrap(at,104)]);
     la:=cast(u32)w[cast(int)add_wrap(at,32*n+m)];lb:=cast(u32)w[cast(int)add_wrap(at,32*n+16+m)];hb:=cast(u32)w[cast(int)add_wrap(at,64+16*n+m)];
@@ -630,7 +630,7 @@ gr_widen_q6k :: (item:int,cols:int,w:[]u16,out:[]u32) #export_c {
     }
 }
 // gr_widen_q8: item (row, block, quarter c) writes codes 8c..8c+7.
-gr_widen_q8 :: (item:int,cols:int,w:[]u16,out:[]u32) #export_c {
+gr_widen_q8 :: (item:int,cols:int,w:[]u16,out:[]u32) #export_c #effects(all) {
     ui:=cast,trunc(u32)item;nc:=cast(u32)cols;per:=nc/8;row:=ui/per;rest:=ui%per;blk:=rest/4;c:=rest%4;
     at:=add_wrap(mul_wrap(row,nc/32*17),mul_wrap(blk,17));d:=gr_half(cast(u32)w[cast(int)at]);base:=add_wrap(add_wrap(mul_wrap(row,nc),mul_wrap(blk,32)),8*c);
     for e:cast(u32)0..<cast(u32)8 {
@@ -638,32 +638,32 @@ gr_widen_q8 :: (item:int,cols:int,w:[]u16,out:[]u32) #export_c {
         out[cast(int)add_wrap(base,e)]=gr_split(d*gr_signed(v));
     }
 }
-gr_pair :: (item:int,x:[]f32,x2:[]f32) #export_c {ui:=cast,trunc(u32)item;x2[item]=x[cast(int)(ui/2)];}
-gr_add :: (item:int,x:[]f32,y:[]f32) #export_c {x[item]=x[item]+y[item];}
+gr_pair :: (item:int,x:[]f32,x2:[]f32) #export_c #effects(all) {ui:=cast,trunc(u32)item;x2[item]=x[cast(int)(ui/2)];}
+gr_add :: (item:int,x:[]f32,y:[]f32) #export_c #effects(all) {x[item]=x[item]+y[item];}
 // out = x2 w2^T: tiles of 64 tokens by 128 rows (item%tt token tile, tt =
 // ceil(tokens/64)), 256 threads.
-gr_tile :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c {
+gr_tile :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {
     tt:=(tokens+63)/64;
     am_matmul_bf16(256,64,128,rows,cols,tokens,item/tt*128,item%tt*64,w,x,out);
 }
 
 // ---- Embedding rows: item t*cols+i is value i of token ids[t]'s row.
-gr_embed_q4k :: (item:int,cols:int,ids:[]int,w:[]u64,out:[]f32) #export_c {
+gr_embed_q4k :: (item:int,cols:int,ids:[]int,w:[]u64,out:[]f32) #export_c #effects(all) {
     t:=item/cols;i:=item%cols;row:=ids[t];words:=cols/256*18;b:=w[row*words+i/256*18..<row*words+i/256*18+18];
     out[item]=gr_q4k_value(b,cast(u32)(i%256));
 }
-gr_embed_q6k :: (item:int,cols:int,ids:[]int,w:[]u16,out:[]f32) #export_c {
+gr_embed_q6k :: (item:int,cols:int,ids:[]int,w:[]u16,out:[]f32) #export_c #effects(all) {
     t:=item/cols;i:=item%cols;row:=ids[t];words:=cols/256*105;b:=w[row*words+i/256*105..<row*words+i/256*105+105];
     out[item]=gr_q6k_value(b,cast(u32)(i%256));
 }
-gr_embed_q8 :: (item:int,cols:int,ids:[]int,w:[]u16,out:[]f32) #export_c {
+gr_embed_q8 :: (item:int,cols:int,ids:[]int,w:[]u16,out:[]f32) #export_c #effects(all) {
     t:=item/cols;i:=item%cols;row:=ids[t];words:=cols/32*17;b:=w[row*words+i/32*17..<row*words+i/32*17+17];
     out[item]=gr_q8_value(b,cast(u32)(i%32));
 }
 
 // ---- RMS norm: group t scales token t's row of x. The sum of squares
 // adds in thread-strided order, then the 256 partial sums in thread order.
-gr_norm :: (item:int,cols:int,eps_bits:int,x:[]f32,scale:[]f32,out:[]f32) #export_c {
+gr_norm :: (item:int,cols:int,eps_bits:int,x:[]f32,scale:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;
     row:=x[item*cols..<item*cols+cols];
     for thread:0..<GR_NT {
@@ -680,7 +680,7 @@ gr_norm :: (item:int,cols:int,eps_bits:int,x:[]f32,scale:[]f32,out:[]f32) #expor
 // ---- Rotary embedding on adjacent pairs (GGUF's order for this model):
 // item (t, head, pair) over query heads then key heads. rope holds cos,
 // sin for each position and pair.
-gr_rope :: (item:int,heads:int,kv_heads:int,position:int,rope:[]f32,q:[]f32,k:[]f32) #export_c {
+gr_rope :: (item:int,heads:int,kv_heads:int,position:int,rope:[]f32,q:[]f32,k:[]f32) #export_c #effects(all) {
     per:=(heads+kv_heads)*64;t:=item/per;rest:=item%per;head:=rest/64;pair:=rest%64;
     at:=(position+t)*128+2*pair;c:=rope[at];s:=rope[at+1];
     if head<heads {
@@ -696,13 +696,13 @@ gr_cache_at :: (pages:[]int,layer_pages:int,kv_heads:int,position:int,head:int,v
     return ((page*2+value)*kv_heads+head)*GR_PAGE*GR_HEAD+position%GR_PAGE*GR_HEAD;
 }
 // item (t, kv head, i): store token t's key and value at position + t.
-gr_store :: (item:int,kv_heads:int,position:int,layer_pages:int,pages:[]int,k:[]f32,v:[]f32,cache:[]u16) #export_c {
+gr_store :: (item:int,kv_heads:int,position:int,layer_pages:int,pages:[]int,k:[]f32,v:[]f32,cache:[]u16) #export_c #effects(all) {
     per:=kv_heads*GR_HEAD;t:=item/per;head:=item%per/GR_HEAD;i:=item%GR_HEAD;
     kat:=gr_cache_at(pages,layer_pages,kv_heads,position+t,head,0)+i;vat:=gr_cache_at(pages,layer_pages,kv_heads,position+t,head,1)+i;
     cache[kat]=cast,trunc(u16)gr_f16(k[item]);cache[vat]=cast,trunc(u16)gr_f16(v[item]);
 }
 // item (t, head, key): token t at position + t sees keys 0..position+t.
-gr_scores :: (item:int,heads:int,kv_heads:int,position:int,span:int,capacity:int,scale_bits:int,layer_pages:int,pages:[]int,q:[]f32,cache:[]u16,scores:[]f32) #export_c {
+gr_scores :: (item:int,heads:int,kv_heads:int,position:int,span:int,capacity:int,scale_bits:int,layer_pages:int,pages:[]int,q:[]f32,cache:[]u16,scores:[]f32) #export_c #effects(all) {
     key:=item%span;th:=item/span;t:=th/heads;head:=th%heads;
     s:f32=GR_HIDDEN;
     if key<=position+t {
@@ -713,7 +713,7 @@ gr_scores :: (item:int,heads:int,kv_heads:int,position:int,span:int,capacity:int
     scores[th*capacity+key]=s;
 }
 // Group (t, head): scores become probabilities over the span.
-gr_softmax :: (item:int,span:int,capacity:int,scores:[]f32) #export_c {
+gr_softmax :: (item:int,span:int,capacity:int,scores:[]f32) #export_c #effects(all) {
     part:[256]f32;sums:[256]f32;
     row:=scores[item*capacity..<item*capacity+span];
     for thread:0..<GR_NT {m:f32=GR_HIDDEN;for k:0..<(span+GR_NT-1)/GR_NT {i:=k*GR_NT+thread;if i<span {if row[i]>m {m=row[i];}}}part[thread]=m;}
@@ -723,13 +723,13 @@ gr_softmax :: (item:int,span:int,capacity:int,scores:[]f32) #export_c {
     for thread:0..<GR_NT {for k:0..<(span+GR_NT-1)/GR_NT {i:=k*GR_NT+thread;if i<span {row[i]=exp(row[i]-top)/total;}}}
 }
 // item ((t, head, chunk), d): probabilities of 128 keys times their values.
-gr_context_part :: (item:int,heads:int,kv_heads:int,span:int,capacity:int,chunks:int,layer_pages:int,pages:[]int,scores:[]f32,cache:[]u16,partial:[]f32) #export_c {
+gr_context_part :: (item:int,heads:int,kv_heads:int,span:int,capacity:int,chunks:int,layer_pages:int,pages:[]int,scores:[]f32,cache:[]u16,partial:[]f32) #export_c #effects(all) {
     d:=item%GR_HEAD;rest:=item/GR_HEAD;chunk:=rest%chunks;th:=rest/chunks;head:=th%heads;kh:=head/(heads/kv_heads);
     sum:f32=0;first:=chunk*GR_CHUNK;
     for j:0..<GR_CHUNK {key:=first+j;if key<span {sum+=scores[th*capacity+key]*gr_half(cast(u32)cache[gr_cache_at(pages,layer_pages,kv_heads,key,kh,1)+d]);}}
     partial[item]=sum;
 }
-gr_context :: (item:int,chunks:int,partial:[]f32,out:[]f32) #export_c {
+gr_context :: (item:int,chunks:int,partial:[]f32,out:[]f32) #export_c #effects(all) {
     d:=item%GR_HEAD;th:=item/GR_HEAD;sum:f32=0;for c:0..<chunks {sum+=partial[(th*chunks+c)*GR_HEAD+d];}out[item]=sum;
 }
 // ---- Prefill attention on simdgroup matrices, for the `tokens` tokens at
@@ -740,7 +740,7 @@ gr_context :: (item:int,chunks:int,partial:[]f32,out:[]f32) #export_c {
 // of four 32-dimension steps stages the queries in a and the keys in b
 // (thread j takes dimension j%32 of tokens or keys j/32, j/32+4, ..), and
 // the scores the tokens see are written scaled.
-gr_att_scores :: (item:int,heads:int,kv_heads:int,position:int,tokens:int,span:int,capacity:int,scale_bits:int,layer_pages:int,pages:[]int,q:[]f32,cache:[]u16,scores:[]f32) #export_c {
+gr_att_scores :: (item:int,heads:int,kv_heads:int,position:int,tokens:int,span:int,capacity:int,scale_bits:int,layer_pages:int,pages:[]int,q:[]f32,cache:[]u16,scores:[]f32) #export_c #effects(all) {
     a:[2048]f32;b:[1024]f32;acc:[2048]f32;
     kt:=(span+31)/32;per:=(tokens+63)/64*kt;head:=item/per;tile:=item%per;t0:=tile/kt*64;j0:=tile%kt*32;kh:=head/(heads/kv_heads);
     last:=ifx t0+63<tokens then t0+63 else tokens-1;
@@ -764,7 +764,7 @@ gr_att_scores :: (item:int,heads:int,kv_heads:int,position:int,tokens:int,span:i
 }
 // Group (t, head): the scores token t sees become probabilities; the rest
 // of the span becomes 0.
-gr_att_softmax :: (item:int,heads:int,position:int,span:int,capacity:int,scores:[]f32) #export_c {
+gr_att_softmax :: (item:int,heads:int,position:int,span:int,capacity:int,scores:[]f32) #export_c #effects(all) {
     part:[256]f32;sums:[256]f32;
     seen:=position+item/heads+1;row:=scores[item*capacity..<item*capacity+span];
     for thread:0..<GR_NT {m:f32=GR_HIDDEN;for k:0..<(seen+GR_NT-1)/GR_NT {i:=k*GR_NT+thread;if i<seen {if row[i]>m {m=row[i];}}}part[thread]=m;}
@@ -776,7 +776,7 @@ gr_att_softmax :: (item:int,heads:int,position:int,span:int,capacity:int,scores:
 // out = p v: group `item` is head item/(qt 4) and the tile of 64 tokens by
 // 32 dimensions item%(qt 4); the keys, up to the last its tokens see, are
 // the inner dimension, 32 a step.
-gr_att_values :: (item:int,heads:int,kv_heads:int,position:int,tokens:int,span:int,capacity:int,layer_pages:int,pages:[]int,scores:[]f32,cache:[]u16,out:[]f32) #export_c {
+gr_att_values :: (item:int,heads:int,kv_heads:int,position:int,tokens:int,span:int,capacity:int,layer_pages:int,pages:[]int,scores:[]f32,cache:[]u16,out:[]f32) #export_c #effects(all) {
     a:[2048]f32;b:[1024]f32;acc:[2048]f32;
     per:=(tokens+63)/64*4;head:=item/per;tile:=item%per;t0:=tile/4*64;c0:=tile%4*32;kh:=head/(heads/kv_heads);
     last:=ifx t0+63<tokens then t0+63 else tokens-1;keys:=position+last+1;
@@ -794,14 +794,14 @@ gr_att_values :: (item:int,heads:int,kv_heads:int,position:int,tokens:int,span:i
     }
 }
 
-gr_swiglu :: (item:int,gate:[]f32,up:[]f32,out:[]f32) #export_c {out[item]=gr_silu(gate[item])*up[item];}
+gr_swiglu :: (item:int,gate:[]f32,up:[]f32,out:[]f32) #export_c #effects(all) {out[item]=gr_silu(gate[item])*up[item];}
 // ---- Greedy choice: the first largest logit; a non-finite logit refuses.
-gr_argmax_part :: (item:int,logits:[]f32,best:[]f32,index:[]int) #export_c {
+gr_argmax_part :: (item:int,logits:[]f32,best:[]f32,index:[]int) #export_c #effects(all) {
     m:f32=GR_HIDDEN;at:=-1;bad:=0;
     for j:0..<256 {i:=item*256+j;if i<logits.count {v:=logits[i];if (f32_bits(v)&0x7f800000)==0x7f800000 {bad=1;}if v>m {m=v;at=i;}}}
     best[item]=m;index[item]=ifx bad!=0 then -2 else at;
 }
-gr_argmax :: (item:int,parts:int,best:[]f32,index:[]int,control:[]int) #export_c {
+gr_argmax :: (item:int,parts:int,best:[]f32,index:[]int,control:[]int) #export_c #effects(all) {
     m:f32=GR_HIDDEN;at:=-1;bad:=0;
     for j:0..<parts {if index[j]== -2 {bad=1;}if index[j]>=0 && best[j]>m {m=best[j];at=index[j];}}
     control[0]=ifx bad!=0 then -2 else at;

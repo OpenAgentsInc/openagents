@@ -2,7 +2,7 @@
 // tool.sh: run-steps 250000000
 #run_steps 250000000;
 #load "../../platform/explorer-http.coax";
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) || args_count(a[..]) < 4 || args_count(a[..]) > 6 { tool_errln("usage: explorer-api CHAIN STATE BLOCKFILE_OR_DIRECTORY PORT [REQUEST_LIMIT [WEB_ROOT]]"); return 2; }
   chain := 0; for i: 1..<6 { if args_at(a[..],0) == CHAIN_NAMES[i] { chain = i; } }
   port := ex_decimal(args_at(a[..],3)); limit := ifx args_count(a[..]) >= 5 then ex_decimal(args_at(a[..],4)) else 0;

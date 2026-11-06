@@ -82,7 +82,7 @@
 
 // A nonempty table has one row, plus every LF before its final byte.
 // Refuse as soon as a row exceeds the finite caller-selected maximum.
-project_rows_fit :: (text:string,maximum:int)->bool #export_c {
+project_rows_fit :: (text:string,maximum:int)->bool #export_c #effects(all) {
   if text.count==0 {return project_row_count_fits(0,maximum);}
   rows:=1;
   if !project_row_count_fits(rows,maximum) {return false;}
@@ -95,6 +95,6 @@ project_rows_fit :: (text:string,maximum:int)->bool #export_c {
   return true;
 }
 
-project_row_count_fits :: (count:int,maximum:int)->bool #export_c {
+project_row_count_fits :: (count:int,maximum:int)->bool #export_c #effects(all) {
   return count>=0 && count<=maximum;
 }

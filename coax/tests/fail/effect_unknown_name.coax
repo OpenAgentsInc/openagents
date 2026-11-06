@@ -1,0 +1,3 @@
+// expect: E0940
+rule :: () #effects(read) {}
+main :: () {}

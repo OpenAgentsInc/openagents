@@ -2,7 +2,7 @@
 // walking figure consumes. The table-derived origin is reported separately.
 #load "../../apps/openagents-web/newland.coax";
 
-drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c {
+drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c #effects(all) {
   s: [1] LandState;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;

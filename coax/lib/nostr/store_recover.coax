@@ -135,14 +135,14 @@ NsrFrame :: struct { status: int; at: int; from: int; to: int; total: int; zero:
 // (past the end, scanning nothing, when the header itself is torn), a bad
 // header's own bytes, a whole last frame's body; nothing (total) for a
 // whole frame in the middle, the end, or an unknown status.
-nsr_region :: (status: int, at: int, from: int, to: int, total: int) -> int {
+nsr_region :: (status: int, at: int, from: int, to: int, total: int) -> int #effects(all) {
   if status == NSR_F_TORN { return at + 4; }
   if status == NSR_F_BAD { return at; }
   if status == NSR_F_OK && to == total { return from; }
   return total;
 }
 // What replay does at the frame f.
-nsr_frame :: (f: NsrFrame) -> int {
+nsr_frame :: (f: NsrFrame) -> int #effects(all) {
   if f.status == NSR_F_END { return ifx f.at == f.total then NSR_DONE else NSR_REFUSE; }
   if f.at < 0 || f.at >= f.total { return NSR_REFUSE; }
   // the file ends inside a header: nothing after it to damage
@@ -160,7 +160,7 @@ nsr_frame :: (f: NsrFrame) -> int {
 // After a whole frame was read, verified and re-admitted with reason: read
 // on when the store took it (stored, a duplicate, or an older version),
 // otherwise refuse.
-nsr_replayed :: (reason: int) -> int {
+nsr_replayed :: (reason: int) -> int #effects(all) {
   if reason == NSR_RS_ACCEPT || reason == NSR_RS_DUP || reason == NSR_RS_SUPERSEDED { return NSR_NEXT; }
   return NSR_REFUSE;
 }

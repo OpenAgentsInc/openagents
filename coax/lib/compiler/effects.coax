@@ -78,19 +78,19 @@ EF_Result :: struct {status:u32;effects:u32;reached:int;recursive:bool;acyclic_r
   #assert r.status==0 && r.effects==13 && w[0]==1 && w[2]==1 && w[3]==1;
 }
 
-EF_bit :: (bit:int)->u32 #export_c {if bit<0 || bit>=9 {return 0;}return cast(u32)1<<cast(u32)bit;}
+EF_bit :: (bit:int)->u32 #export_c #effects(all) {if bit<0 || bit>=9 {return 0;}return cast(u32)1<<cast(u32)bit;}
 // site kinds: print,foreign,unknown,trap,borrow-read,borrow-write,
 // intrinsic-resource-obligation,uninitialized-storage,address-observation.
-EF_bits :: (kind:int)->u32 #export_c {
+EF_bits :: (kind:int)->u32 #export_c #effects(all) {
   if kind==1 {return 5;}if kind==2 {return 6;}if kind==3 {return 4;}if kind==4 {return 13;}
   if kind==5 {return 20;}if kind==6 {return 36;}if kind==7 {return 68;}if kind==8 {return 132;}if kind==9 {return 260;}if kind==10 {return 13;}if kind==11 || kind==12 {return 4;}return 0;
 }
-EF_site_bits :: (kind:int,wrapping:bool)->u32 #export_c {return ifx kind==10 && wrapping then 0 else EF_bits(kind);}
-EF_in_range :: (v:int,n:int)->bool {return v>=0 && v<n;}
-EF_capacity :: (n:int,e:int,s:int)->bool #export_c {
+EF_site_bits :: (kind:int,wrapping:bool)->u32 #export_c #effects(all) {return ifx kind==10 && wrapping then 0 else EF_bits(kind);}
+EF_in_range :: (v:int,n:int)->bool #effects(all) {return v>=0 && v<n;}
+EF_capacity :: (n:int,e:int,s:int)->bool #export_c #effects(all) {
   return n>=1 && n<=4096 && e>=0 && e<=65536 && s>=0 && s<=65536 && n*(e+s)<=16777216;
 }
-EF_trace :: (n:int,edges:[]EF_Edge,sites:[]EF_Site,root:int,parent:[]int,via:[]int,queue:[]int,degree:[]int,witness:[]int,wrapping:bool,overlap:bool)->EF_Result #export_c {
+EF_trace :: (n:int,edges:[]EF_Edge,sites:[]EF_Site,root:int,parent:[]int,via:[]int,queue:[]int,degree:[]int,witness:[]int,wrapping:bool,overlap:bool)->EF_Result #export_c #effects(all) {
   if !EF_capacity(n,edges.count,sites.count) || !EF_in_range(root,n) {return EF_Result.{status=1};}
   if parent.count<n || via.count<n || queue.count<n || degree.count<n || witness.count<9 {return EF_Result.{status=2};}
   if overlap {return EF_Result.{status=3};}

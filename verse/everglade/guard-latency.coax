@@ -25,7 +25,7 @@ GlLatency :: struct {ok:bool;count:int;minimum_ms:int;median_twice_ms:int;p95_ms
     for bad:[4]int.[-9223372036854775807-1,-1,GL_MAX_MS+1,9223372036854775807] {a[0]=bad;#assert !gl_latency(a[..]).ok;}
 }
 
-gl_latency :: (values:[]int)->GlLatency #export_c {
+gl_latency :: (values:[]int)->GlLatency #export_c #effects(all) {
     if values.count<1 || values.count>16 {return GlLatency.{};}
     sorted:[16]int;positions:[16]int;
     for i:0..<values.count {if values[i]<0 || values[i]>GL_MAX_MS {return GlLatency.{};}sorted[i]=values[i];positions[i]=i;}

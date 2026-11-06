@@ -25,7 +25,7 @@ MG_GOOD :: "{\"model\":\"elephant-1\",\"answers\":{},\"service\":{\"identity\":\
     #assert mg_http("POST","application/json",MG_BODY_MAX+1)==413;
     #assert mg_http("POST","application/json",-1)==413;
 }
-mg_http :: (method:string,content_type:string,bytes:int)->int #export_c {
+mg_http :: (method:string,content_type:string,bytes:int)->int #export_c #effects(all) {
     if method!="POST" {return 405;}
     if bytes<1 || bytes>MG_BODY_MAX {return 413;}
     if content_type!="application/json" && content_type!="application/json; charset=utf-8" {return 415;}
@@ -45,7 +45,7 @@ mg_http :: (method:string,content_type:string,bytes:int)->int #export_c {
     #assert mg_auth(true,false,true,true,true,false)==403;
     #assert mg_auth(true,true,true,true,true,false)==403;
 }
-mg_auth :: (authenticated:bool,signed_request:bool,payload_bound:bool,first_use:bool,has_origin:bool,same_origin:bool)->int #export_c {
+mg_auth :: (authenticated:bool,signed_request:bool,payload_bound:bool,first_use:bool,has_origin:bool,same_origin:bool)->int #export_c #effects(all) {
     if !authenticated {return 401;}
     if has_origin && !same_origin {return 403;}
     if signed_request {if !payload_bound || !first_use {return 401;}}
@@ -67,7 +67,7 @@ mg_auth :: (authenticated:bool,signed_request:bool,payload_bound:bool,first_use:
     #assert mg_budget(0,0,0,-1,0)==503;
     #assert mg_budget(0,0,0,0,-1)==503;
 }
-mg_budget :: (minute:int,day:int,global_day:int,active:int,global_active:int)->int #export_c {
+mg_budget :: (minute:int,day:int,global_day:int,active:int,global_active:int)->int #export_c #effects(all) {
     if minute<0 || day<0 || global_day<0 || active<0 || global_active<0 {return 503;}
     if minute>=12 || day>=120 || global_day>=1200 || active>=1 || global_active>=4 {return 429;}
     return 200;
@@ -83,7 +83,7 @@ mg_budget :: (minute:int,day:int,global_day:int,active:int,global_active:int)->i
     #assert mg_field("{\"x\":{\"n\":2}}","x").value=="{\"n\":2}";
     #assert mg_field("{\"other\":[{}],\"\\u0078\":true}","x").kind==JSON_TRUE;
 }
-mg_field :: (text:string,name:string)->MgField {
+mg_field :: (text:string,name:string)->MgField #effects(all) {
     if !json_valid(text) {return MgField.{};}
     j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return MgField.{};}
     f:MgField;
@@ -108,7 +108,7 @@ mg_field :: (text:string,name:string)->MgField {
     #assert !mg_hex("`123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     #assert !mg_hex("A123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
 }
-mg_hex :: (text:string)->bool {
+mg_hex :: (text:string)->bool #effects(all) {
     if text.count!=64 {return false;}
     for c:text {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
     return true;
@@ -128,7 +128,7 @@ mg_hex :: (text:string)->bool {
     #assert mg_route(MG_BODY,"{\"elephant-1\":{\"url\":\"x\",\"identity\":1,\"provider\":\"x\"}}").status==503;
     #assert mg_route(MG_BODY,"{\"elephant-1\":{\"url\":\"x\",\"identity\":\"x\",\"provider\":1}}").status==503;
 }
-mg_route :: (body:string,routes:string)->MgRoute #export_c {
+mg_route :: (body:string,routes:string)->MgRoute #export_c #effects(all) {
     model:=mg_field(body,"model");
     if model.kind!=JSON_STRING || model.value.count<1 || model.value.count>128 {return MgRoute.{status=400};}
     row:=mg_field(routes,model.value);if !row.ok {return MgRoute.{status=400};}
@@ -149,7 +149,7 @@ mg_route :: (body:string,routes:string)->MgRoute #export_c {
     #assert !mg_response(MG_BODY,"{\"model\":\"elephant-1\",\"service\":{\"identity\":\"x\",\"provider\":1}}",r);
     #assert !mg_response(MG_BODY,MG_GOOD,MgRoute.{status=503});
 }
-mg_response :: (body:string,response:string,route:MgRoute)->bool #export_c {
+mg_response :: (body:string,response:string,route:MgRoute)->bool #export_c #effects(all) {
     if route.status!=200 {return false;}
     wanted:=mg_field(body,"model");model:=mg_field(response,"model");service:=mg_field(response,"service");
     if wanted.kind!=JSON_STRING || model.kind!=JSON_STRING || model.value!=wanted.value {return false;}
@@ -169,7 +169,7 @@ mg_response :: (body:string,response:string,route:MgRoute)->bool #export_c {
     #assert !mg_identity("m",good,"bad");
     #assert mg_route("{\"model\":\"elephant-1\"}","{\"elephant-1\":{\"url\":\"http://x/v1/systemone\",\"identity\":\"bad\",\"provider\":\"bad\"}}").status==503;
 }
-mg_identity :: (model:string,identity:string,provider:string)->bool {
+mg_identity :: (model:string,identity:string,provider:string)->bool #effects(all) {
     prefix:=model.count;
     if identity.count!=prefix+72 {return false;}
     return identity[0..<prefix]==model && identity[prefix..<prefix+8]=="@sha256:" && mg_hex(identity[prefix+8..<identity.count]) && mg_hex(provider);
@@ -190,7 +190,7 @@ mg_identity :: (model:string,identity:string,provider:string)->bool {
     raw:[22]u8;source:="http://x/v1/systemone";for i:0..<source.count {raw[i]=source[i];}raw[7]=c;
     #assert mg_url(cast(string)raw[0..<source.count])==expected;
 }
-mg_url :: (url:string)->bool {
+mg_url :: (url:string)->bool #effects(all) {
     if url.count>1024 {return false;}
     http:=mg_starts(url,"http://");https:=mg_starts(url,"https://");
     if !http && !https {return false;}
@@ -238,11 +238,11 @@ mg_url :: (url:string)->bool {
     #assert !mg_url("http:///v1/systemone") && !mg_url("https:///v1/systemone");
     #assert !mg_url("http:/") && !mg_url("");
 }
-mg_starts :: (value:string,prefix:string)->bool {
+mg_starts :: (value:string,prefix:string)->bool #effects(all) {
     for i:0..<prefix.count {if i>=value.count || value[i]!=prefix[i] {return false;}}
     return true;
 }
-mg_ends :: (value:string,suffix:string)->bool {
+mg_ends :: (value:string,suffix:string)->bool #effects(all) {
     if value.count<suffix.count {return false;}
     return value[value.count-suffix.count..<value.count]==suffix;
 }

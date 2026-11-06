@@ -38,7 +38,7 @@
     nan:=top*2;nan=nan-nan;v[0]=nan;registered_squared(0,one[..],1,v[..],w[..],w[..],f[..]);#assert w[0]==0 && f[0]==2;
 }
 // book:begin custom
-registered_squared :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c {
+registered_squared :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
     c:[4]int;for axis:0..<m[3] {c[axis]=tik_coord(m,item,axis);}
     x:=tik_read(m,8,c[0],c[1],c[2],c[3],input,work);positive:f32=0;if x>0 {positive=x;}
     value:=gain*(positive*positive);
@@ -46,11 +46,11 @@ registered_squared :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f3
     flag:=0;if !tik_finite(x) || !tik_finite(value) {flag=2;value=0;}work[m[1]+item]=value;flags[m[2]+item]=cast(u8)flag;
 }
 // book:end custom
-registered_squared_reference :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c {
+registered_squared_reference :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
     c:[4]int;for axis:0..<m[3] {c[axis]=tik_coord(m,item,axis);}x:=tik_read(m,8,c[0],c[1],c[2],c[3],input,work);p:f64=0;if x>0 {p=f64(x);}value:=f64(gain)*p*p;
     if m[48]==1 {value=2*f64(gain)*p*f64(tik_read(m,19,c[0],c[1],c[2],c[3],input,work));}flag:=0;if value>f64(f32_from_bits(0x7f7fffff)) || value< -f64(f32_from_bits(0x7f7fffff)) {flag=2;value=0;}work[m[1]+item]=f32(value);flags[m[2]+item]=cast(u8)flag;
 }
-registered_linear :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c {
+registered_linear :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
     c:[4]int;for axis:0..<m[3] {c[axis]=tik_coord(m,item,axis);}at:=8;if m[48]==1 {at=19;}value:=gain*tik_read(m,at,c[0],c[1],c[2],c[3],input,work);flag:=0;if !tik_finite(value) {flag=2;value=0;}work[m[1]+item]=value;flags[m[2]+item]=cast(u8)flag;
 }
-registered_linear_reference :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c {registered_linear(item,m,gain,input,work,out,flags);}
+registered_linear_reference :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {registered_linear(item,m,gain,input,work,out,flags);}

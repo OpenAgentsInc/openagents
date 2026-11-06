@@ -24,13 +24,13 @@ GP_PROVIDER :: "59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7
     #assert !gp_pin(ga_swap(b[..],GA_RESPONSE,"elephant-1@sha256:","other@sha256:"));
     #assert !gp_pin("{}");
 }
-gp_range :: (start:int,count:int)->bool {return start>=0 && count>=1 && count<=16-start;}
-gp_status :: (exit:int,error:string)->int {
+gp_range :: (start:int,count:int)->bool #effects(all) {return start>=0 && count>=1 && count<=16-start;}
+gp_status :: (exit:int,error:string)->int #effects(all) {
     if exit==0 {return 200;}marker:="\nmesh: HTTP";at:=error.count-marker.count-4;
     if at<0 || error[at..<at+marker.count]!=marker || error[error.count-1]!='\n' {return 0;}
     n:=json_int(error[at+marker.count..<error.count-1]);return ifx n.ok && n.value>=100 && n.value<=599 then n.value else 0;
 }
-gp_pin :: (body:string)->bool {return ga_decode(body).ok && ga_is(ga_get(ga_get(body,"service").raw,"provider"),GP_PROVIDER);}
+gp_pin :: (body:string)->bool #effects(all) {return ga_decode(body).ok && ga_is(ga_get(ga_get(body,"service").raw,"provider"),GP_PROVIDER);}
 #test "HTTP endpoint codes and empty diagnostic bodies have exact boundaries" {
     #assert gp_status(1,"\nmesh: HTTP503\n")==503;
     #assert gp_status(1,"{}\nmesh: HTTP600\n")==0;
@@ -46,4 +46,4 @@ gp_pin :: (body:string)->bool {return ga_decode(body).ok && ga_is(ga_get(ga_get(
     #assert ga_get(ga_get(question.raw,"criteria").raw,"yes").token==JSON_NULL && ga_get(ga_get(question.raw,"criteria").raw,"no").token==JSON_NULL;
     #assert gp_control(b[0..<0])==-1;
 }
-gp_control :: (out:[]u8)->int {return json_raw(out,0,"{\"model\":\"elephant-1\",\"state\":\"Water is wet.\",\"questions\":{\"wet\":{\"type\":\"choice\",\"instructions\":\"Is the water wet?\",\"criteria\":{\"yes\":null,\"no\":null}}}}");}
+gp_control :: (out:[]u8)->int #effects(all) {return json_raw(out,0,"{\"model\":\"elephant-1\",\"state\":\"Water is wet.\",\"questions\":{\"wet\":{\"type\":\"choice\",\"instructions\":\"Is the water wet?\",\"criteria\":{\"yes\":null,\"no\":null}}}}");}

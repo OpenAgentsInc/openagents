@@ -80,22 +80,22 @@ CellWorld :: struct {
 }
 // book:end cells-profile
 
-cell_key :: (x: f64) -> int { return cast(int) floor(x / CELL_SIZE); }
+cell_key :: (x: f64) -> int #effects(all) { return cast(int) floor(x / CELL_SIZE); }
 // The part of d above 0 (0 when d is negative).
-cell_above :: (d: f64) -> f64 { return (d + abs(d)) / 2; }
+cell_above :: (d: f64) -> f64 #effects(all) { return (d + abs(d)) / 2; }
 // Metres from p to the span [lo, lo + CELL_SIZE] along one axis.
-cell_gap :: (p: f64, lo: f64) -> f64 { return cell_above(abs(p - lo - CELL_SIZE / 2) - CELL_SIZE / 2); }
+cell_gap :: (p: f64, lo: f64) -> f64 #effects(all) { return cell_above(abs(p - lo - CELL_SIZE / 2) - CELL_SIZE / 2); }
 // Metres from (x, z) to cell i's nearest point, flat.
-cell_distance :: (w: [] CellWorld, i: int, x: f64, z: f64) -> f64 {
+cell_distance :: (w: [] CellWorld, i: int, x: f64, z: f64) -> f64 #effects(all) {
   dx := cell_gap(x, f64(w[0].manifest[i].cx) * CELL_SIZE); dz := cell_gap(z, f64(w[0].manifest[i].cz) * CELL_SIZE);
   return sqrt(dx * dx + dz * dz);
 }
-cell_find :: (w: [] CellWorld, cx: int, cz: int) -> int {
+cell_find :: (w: [] CellWorld, cx: int, cz: int) -> int #effects(all) {
   for i: 0..<w[0].n { if w[0].manifest[i].cx == cx && w[0].manifest[i].cz == cz { return i; } }
   return -1;
 }
 // A manifest is usable when every key is listed once and no digest is 0.
-cell_manifest_ok :: (w: [] CellWorld) -> bool {
+cell_manifest_ok :: (w: [] CellWorld) -> bool #effects(all) {
   if w[0].n < 0 || w[0].n > CELL_MAX { return false; }
   for i: 0..<w[0].n {
     if w[0].manifest[i].digest == 0 { return false; }
@@ -104,7 +104,7 @@ cell_manifest_ok :: (w: [] CellWorld) -> bool {
   return true;
 }
 // The cells next to cell i (sharing an edge or a corner) that the manifest lists.
-cell_neighbours :: (w: [] CellWorld, i: int, out: [] int) -> int {
+cell_neighbours :: (w: [] CellWorld, i: int, out: [] int) -> int #effects(all) {
   n := 0;
   for dz: -1..<2 { for dx: -1..<2 {
     if dx == 0 && dz == 0 { continue; }
@@ -117,7 +117,7 @@ cell_neighbours :: (w: [] CellWorld, i: int, out: [] int) -> int {
 // book:begin cells-target
 // The level a ring gives cell i at distance d, from level `now`: up at the ring, down only past
 // it by CELL_HYSTERESIS. LOADING counts as resident for the rings.
-cell_target :: (now: int, d: f64) -> int {
+cell_target :: (now: int, d: f64) -> int #effects(all) {
   have := ifx now == CELL_LOADING then CELL_RESIDENT_LEVEL else now;
   t := CELL_ABSENT;
   if d <= CELL_LOAD || (have >= CELL_RESIDENT_LEVEL && d <= CELL_LOAD + CELL_HYSTERESIS) { t = CELL_RESIDENT_LEVEL; }
@@ -127,8 +127,8 @@ cell_target :: (now: int, d: f64) -> int {
 }
 // book:end cells-target
 
-cell_resident_count :: (w: [] CellWorld) -> int { n := 0; for i: 0..<w[0].n { if w[0].cells[i].level >= CELL_LOADING { n += 1; } } return n; }
-cell_loading_count :: (w: [] CellWorld) -> int { n := 0; for i: 0..<w[0].n { if w[0].cells[i].level == CELL_LOADING { n += 1; } } return n; }
+cell_resident_count :: (w: [] CellWorld) -> int #effects(all) { n := 0; for i: 0..<w[0].n { if w[0].cells[i].level >= CELL_LOADING { n += 1; } } return n; }
+cell_loading_count :: (w: [] CellWorld) -> int #effects(all) { n := 0; for i: 0..<w[0].n { if w[0].cells[i].level == CELL_LOADING { n += 1; } } return n; }
 
 // A cell asleep keeps its bodies; one dropped to absent forgets nothing either: its store is the
 // world's, not the pack's.
@@ -137,13 +137,13 @@ CellStep :: struct { asked: [CELL_LOADS] int; asked_n: int; woke: int; slept: in
 // book:begin cells-step
 // 1 when a level moves from below simulate (a) to simulate or above (b): a cell wakes; with the
 // levels the other way round, it sleeps.
-cell_crossed :: (a: int, b: int) -> int { return ifx a < CELL_SIMULATE_LEVEL && b >= CELL_SIMULATE_LEVEL then 1 else 0; }
+cell_crossed :: (a: int, b: int) -> int #effects(all) { return ifx a < CELL_SIMULATE_LEVEL && b >= CELL_SIMULATE_LEVEL then 1 else 0; }
 
 // One step of the controller at the player's (x, z): every cell's level moves to its ring's (a
 // loading cell stays loading, or is dropped), loads are asked nearest first within the budgets,
 // and the cells that wake or sleep this step are counted (the realm calls cell_wake and cell_sleep
 // for them). Returns the loads asked.
-cell_step :: (w: [] CellWorld, x: f64, z: f64) -> CellStep {
+cell_step :: (w: [] CellWorld, x: f64, z: f64) -> CellStep #effects(all) {
   out: CellStep;
   // levels first, so a budget freed this step is free for the asks below
   for i: 0..<w[0].n {
@@ -181,14 +181,14 @@ cell_step :: (w: [] CellWorld, x: f64, z: f64) -> CellStep {
 // book:begin cells-complete
 // The loader's answer as an event: which cell, which request, the digest it loaded, and whether it
 // failed. The realm offers it to its replay gate and takes it at a step boundary.
-cell_answer :: (request: int, sender: int, cell: int, digest: int, failed: bool) -> ReplayEvent {
+cell_answer :: (request: int, sender: int, cell: int, digest: int, failed: bool) -> ReplayEvent #effects(all) {
   e := ReplayEvent.{source = REPLAY_NETWORK, request = sender};
   e.words[0] = cell; e.words[1] = request; e.words[2] = digest; e.words[3] = replay_flag(failed);
   return e;
 }
 // Admits a load's answer at the step boundary. A resident cell rises to its ring's level on the
 // next cell_step.
-cell_complete :: (w: [] CellWorld, e: ReplayEvent) -> int {
+cell_complete :: (w: [] CellWorld, e: ReplayEvent) -> int #effects(all) {
   i := e.words[0];
   v := CELL_OK;
   if i < 0 || i >= w[0].n { v = CELL_UNKNOWN; }
@@ -206,18 +206,18 @@ cell_complete :: (w: [] CellWorld, e: ReplayEvent) -> int {
 
 // book:begin cells-store
 // Whether cell i's entities step this step.
-cell_simulates :: (w: [] CellWorld, i: int) -> bool { return i >= 0 && i < w[0].n && w[0].cells[i].level >= CELL_SIMULATE_LEVEL; }
-cell_draws :: (w: [] CellWorld, i: int) -> bool { return i >= 0 && i < w[0].n && w[0].cells[i].level == CELL_DRAW_LEVEL; }
+cell_simulates :: (w: [] CellWorld, i: int) -> bool #effects(all) { return i >= 0 && i < w[0].n && w[0].cells[i].level >= CELL_SIMULATE_LEVEL; }
+cell_draws :: (w: [] CellWorld, i: int) -> bool #effects(all) { return i >= 0 && i < w[0].n && w[0].cells[i].level == CELL_DRAW_LEVEL; }
 // The cell an f64 position belongs to, or -1 outside the manifest.
-cell_of :: (w: [] CellWorld, x: f64, z: f64) -> int { return cell_find(w, cell_key(x), cell_key(z)); }
+cell_of :: (w: [] CellWorld, x: f64, z: f64) -> int #effects(all) { return cell_find(w, cell_key(x), cell_key(z)); }
 // Puts one entity to sleep in cell i's store; false when the store is full (the realm keeps it awake).
-cell_sleep :: (w: [] CellWorld, i: int, b: CellBody) -> bool {
+cell_sleep :: (w: [] CellWorld, i: int, b: CellBody) -> bool #effects(all) {
   if i < 0 || i >= w[0].n || w[0].cells[i].body_n >= CELL_ENTITIES { return false; }
   w[0].cells[i].bodies[w[0].cells[i].body_n] = b; w[0].cells[i].body_n += 1;
   return true;
 }
 // Takes cell i's sleeping entities back, in the order they slept; the store is empty after.
-cell_wake :: (w: [] CellWorld, i: int, out: [] CellBody) -> int {
+cell_wake :: (w: [] CellWorld, i: int, out: [] CellBody) -> int #effects(all) {
   if i < 0 || i >= w[0].n { return 0; }
   n := w[0].cells[i].body_n - cast(int) cell_above(f64(w[0].cells[i].body_n - out.count));
   for k: 0..<n { out[k] = w[0].cells[i].bodies[k]; }
@@ -230,7 +230,7 @@ cell_wake :: (w: [] CellWorld, i: int, out: [] CellBody) -> int {
 
 // book:begin cells-edges
 // Whether a walker may step to (x, z): the point is in a listed cell whose entities step.
-cell_may_enter :: (w: [] CellWorld, x: f64, z: f64) -> bool { return cell_simulates(w, cell_of(w, x, z)); }
+cell_may_enter :: (w: [] CellWorld, x: f64, z: f64) -> bool #effects(all) { return cell_simulates(w, cell_of(w, x, z)); }
 
 CELL_STAYS :: 0;     // still in its cell
 CELL_MOVED :: 1;     // in a neighbour that simulates: awake there
@@ -239,7 +239,7 @@ CELL_HELD :: 3;      // off the manifest, or that cell's store is full: the real
 CellCarry :: struct { outcome: int; cell: int = -1; }
 // An awake entity b, which belonged to cell `from`, after its step: the cell it belongs to now,
 // and whether it is still awake.
-cell_carry :: (w: [] CellWorld, from: int, b: CellBody) -> CellCarry {
+cell_carry :: (w: [] CellWorld, from: int, b: CellBody) -> CellCarry #effects(all) {
   to := cell_of(w, b.x, b.z);
   if to < 0 { return CellCarry.{outcome = CELL_HELD, cell = from}; }
   if to == from { return CellCarry.{outcome = CELL_STAYS, cell = to}; }
@@ -255,10 +255,10 @@ cell_carry :: (w: [] CellWorld, from: int, b: CellBody) -> CellCarry {
 // too small.
 CELL_SAVE_VERSION :: 1;
 CELL_BODY_WORDS :: 11;   // 7 + CELL_WORDS
-cell_high :: (x: f64) -> int { return cast(int) (f64_bits(x) >> 32); }
-cell_low :: (x: f64) -> int { return cast(int) (f64_bits(x) & 4294967295); }
-cell_join :: (high: int, low: int) -> f64 { return f64_from_bits((cast(u64) high << 32) | cast(u64) low); }
-cell_save :: (w: [] CellWorld, out: [] int) -> int {
+cell_high :: (x: f64) -> int #effects(all) { return cast(int) (f64_bits(x) >> 32); }
+cell_low :: (x: f64) -> int #effects(all) { return cast(int) (f64_bits(x) & 4294967295); }
+cell_join :: (high: int, low: int) -> f64 #effects(all) { return f64_from_bits((cast(u64) high << 32) | cast(u64) low); }
+cell_save :: (w: [] CellWorld, out: [] int) -> int #effects(all) {
   n := 2;
   for i: 0..<w[0].n { n += 4 + w[0].cells[i].body_n * CELL_BODY_WORDS; }
   if n > out.count { return -1; }
@@ -281,7 +281,7 @@ cell_save :: (w: [] CellWorld, out: [] int) -> int {
 // Restores saved stores into w, whose manifest must be the saved one, key for key and digest for
 // digest. Every level starts absent. False, with w unchanged, for another version, another
 // manifest, a store over CELL_ENTITIES or words that run short or long.
-cell_restore :: (w: [] CellWorld, words: [] int) -> bool {
+cell_restore :: (w: [] CellWorld, words: [] int) -> bool #effects(all) {
   if words.count < 2 || words[0] != CELL_SAVE_VERSION || words[1] != w[0].n { return false; }
   k := 2;
   for i: 0..<w[0].n {
@@ -312,11 +312,11 @@ cell_restore :: (w: [] CellWorld, words: [] int) -> bool {
 // The one floating origin: a cell corner in f64. Rendering, physics and queries all convert with
 // cell_local, so a point is the same f32 in each.
 CellOrigin :: struct { x: f64; z: f64; }
-cell_local :: (o: CellOrigin, x: f64, y: f64, z: f64) -> [3] f32 { return [3] f32.[cast(f32) (x - o.x), cast(f32) y, cast(f32) (z - o.z)]; }
+cell_local :: (o: CellOrigin, x: f64, y: f64, z: f64) -> [3] f32 #effects(all) { return [3] f32.[cast(f32) (x - o.x), cast(f32) y, cast(f32) (z - o.z)]; }
 // The origin for a player at (x, z): moved to the corner of the player's cell once that cell is
 // more than one cell from the origin's, else unchanged, so crossing one edge back and forth does
 // not move it.
-cell_rebase :: (o: CellOrigin, x: f64, z: f64) -> CellOrigin {
+cell_rebase :: (o: CellOrigin, x: f64, z: f64) -> CellOrigin #effects(all) {
   kx := cell_key(x); kz := cell_key(z);
   ox := cell_key(o.x + CELL_SIZE / 2); oz := cell_key(o.z + CELL_SIZE / 2);
   if kx - ox <= 1 && ox - kx <= 1 && kz - oz <= 1 && oz - kz <= 1 { return o; }
@@ -324,7 +324,7 @@ cell_rebase :: (o: CellOrigin, x: f64, z: f64) -> CellOrigin {
 }
 // book:end cells-origin
 
-cell_digest :: (w: [] CellWorld) -> int {
+cell_digest :: (w: [] CellWorld) -> int #effects(all) {
   h := replay_mix(2166136261, w[0].requests);
   for i: 0..<w[0].n {
     h = replay_mix(replay_mix(replay_mix(h, w[0].cells[i].level), w[0].cells[i].request), w[0].cells[i].body_n);

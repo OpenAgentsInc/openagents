@@ -148,14 +148,14 @@ broadcast on chain and find which one it was.
 ```jai
 // 2 <pubkey1> <pubkey2> 2 OP_CHECKMULTISIG with the lesser key first:
 // chapter 100's sorted 2-of-2. Its P2WSH is the funding output.
-lnc_funding_script_vartime :: (a: [] u8, b: [] u8, out: [] u8) -> int {
+lnc_funding_script_vartime :: (a: [] u8, b: [] u8, out: [] u8) -> int #effects(all) {
   if !lnc_key_ok(a) || !lnc_key_ok(b) { return -LNC_BAD_KEY; }
   keys: [66] u8; for i: 0..<33 { keys[i] = a[i]; keys[33 + i] = b[i]; }
   return multisig_script_vartime(2, keys[..], 2, true, out);
 }
 // The commitment number XOR the lower 48 bits of SHA256(the opener's
 // payment_basepoint || the accepter's).
-lnc_obscured_vartime :: (number: int, opener: [] u8, accepter: [] u8) -> int {
+lnc_obscured_vartime :: (number: int, opener: [] u8, accepter: [] u8) -> int #effects(all) {
   joined: [66] u8; h: [32] u8;
   for i: 0..<33 { joined[i] = opener[i]; joined[33 + i] = accepter[i]; }
   #assert sha256_hash_checked(joined[..], h[..], false) == SHA_OK;
@@ -195,7 +195,7 @@ with `1 OP_CHECKSEQUENCEVERIFY OP_DROP` on the peer's branches.
 // to_local and the output of an HTLC transaction:
 //   OP_IF <revocationpubkey> OP_ELSE <to_self_delay> OP_CHECKSEQUENCEVERIFY
 //   OP_DROP <local_delayedpubkey> OP_ENDIF OP_CHECKSIG
-lnc_to_local_script_vartime :: (revocation: [] u8, delay: int, delayed: [] u8, out: [] u8) -> int {
+lnc_to_local_script_vartime :: (revocation: [] u8, delay: int, delayed: [] u8, out: [] u8) -> int #effects(all) {
   at := lnc_ops(out, 0, "63");                  // OP_IF
   at = lnc_push(out, at, revocation);
   at = lnc_ops(out, at, "67");                  // OP_ELSE
@@ -205,18 +205,18 @@ lnc_to_local_script_vartime :: (revocation: [] u8, delay: int, delayed: [] u8, o
   return lnc_ops(out, at, "68ac");              // OP_ENDIF OP_CHECKSIG
 }
 // to_remote with option_anchors: <remotepubkey> OP_CHECKSIGVERIFY 1 OP_CHECKSEQUENCEVERIFY.
-lnc_to_remote_script_vartime :: (remote: [] u8, out: [] u8) -> int {
+lnc_to_remote_script_vartime :: (remote: [] u8, out: [] u8) -> int #effects(all) {
   return lnc_ops(out, lnc_push(out, 0, remote), "ad51b2");
 }
 // An anchor: <funding_pubkey> OP_CHECKSIG OP_IFDUP OP_NOTIF OP_16
 // OP_CHECKSEQUENCEVERIFY OP_ENDIF. Its owner spends it at once; anyone may
 // after 16 blocks.
-lnc_anchor_script_vartime :: (funding: [] u8, out: [] u8) -> int {
+lnc_anchor_script_vartime :: (funding: [] u8, out: [] u8) -> int #effects(all) {
   return lnc_ops(out, lnc_push(out, 0, funding), "ac736460b268");
 }
 // The start both HTLC scripts share: the revocation branch, then the
 // remote HTLC key and a test of the top item's size.
-lnc_htlc_head :: (ch: LncChannel, out: [] u8) -> int {
+lnc_htlc_head :: (ch: LncChannel, out: [] u8) -> int #effects(all) {
   c := ch; h: [20] u8;
   #assert hash160_checked(c.revocation[..], h[..], false) == RMD_OK;
   at := lnc_ops(out, 0, "76a9");                // OP_DUP OP_HASH160
@@ -225,13 +225,13 @@ lnc_htlc_head :: (ch: LncChannel, out: [] u8) -> int {
   at = lnc_push(out, at, c.remote_htlc[..]);
   return lnc_ops(out, at, "7c82012087");        // OP_SWAP OP_SIZE 32 OP_EQUAL
 }
-lnc_htlc_tail :: (ch: LncChannel, out: [] u8, at: int) -> int {
+lnc_htlc_tail :: (ch: LncChannel, out: [] u8, at: int) -> int #effects(all) {
   n := ifx ch.anchors then lnc_ops(out, at, "51b275") else at;   // 1 OP_CHECKSEQUENCEVERIFY OP_DROP
   return lnc_ops(out, n, "68");                 // OP_ENDIF
 }
 // An offered HTLC: the remote node takes it with the preimage; the owner
 // takes it back through an HTLC-timeout transaction both signed.
-lnc_offered_script_vartime :: (ch: LncChannel, payment_hash: [] u8, out: [] u8) -> int {
+lnc_offered_script_vartime :: (ch: LncChannel, payment_hash: [] u8, out: [] u8) -> int #effects(all) {
   c := ch; h: [20] u8;
   at := lnc_htlc_head(c, out);
   at = lnc_ops(out, at, "6475527c");            // OP_NOTIF OP_DROP 2 OP_SWAP
@@ -245,7 +245,7 @@ lnc_offered_script_vartime :: (ch: LncChannel, payment_hash: [] u8, out: [] u8) 
 // A received HTLC: the owner takes it with the preimage through an
 // HTLC-success transaction; the remote node takes it back after
 // cltv_expiry.
-lnc_received_script_vartime :: (ch: LncChannel, payment_hash: [] u8, expiry: int, out: [] u8) -> int {
+lnc_received_script_vartime :: (ch: LncChannel, payment_hash: [] u8, expiry: int, out: [] u8) -> int #effects(all) {
   c := ch; h: [20] u8;
   at := lnc_htlc_head(c, out);
   at = lnc_ops(out, at, "63a9");                // OP_IF OP_HASH160
@@ -259,7 +259,7 @@ lnc_received_script_vartime :: (ch: LncChannel, payment_hash: [] u8, expiry: int
   return lnc_htlc_tail(c, out, at);
 }
 // The witness script of an output; 0 for a P2WPKH to_remote, which has none.
-lnc_witness_script_vartime :: (ch: LncChannel, htlcs: [] LncHtlc, o: LncOutput, out: [] u8) -> int {
+lnc_witness_script_vartime :: (ch: LncChannel, htlcs: [] LncHtlc, o: LncOutput, out: [] u8) -> int #effects(all) {
   c := ch;
   if o.kind == LNC_TO_LOCAL { return lnc_to_local_script_vartime(c.revocation[..], c.to_self_delay, c.local_delayed[..], out); }
   if o.kind == LNC_TO_REMOTE { return ifx c.anchors then lnc_to_remote_script_vartime(c.remote[..], out) else 0; }
@@ -292,16 +292,16 @@ transactions pay no fee of their own, so only the dust limit decides.
 // plus 172 per untrimmed HTLC; 663 for HTLC-timeout and 703 for
 // HTLC-success. With anchors the HTLC transactions pay no fee: they are
 // signed SIGHASH_SINGLE|SIGHASH_ANYONECANPAY and the owner adds inputs.
-lnc_htlc_fee :: (feerate: int, offered: bool, anchors: bool) -> int {
+lnc_htlc_fee :: (feerate: int, offered: bool, anchors: bool) -> int #effects(all) {
   if anchors { return 0; }
   return feerate * (ifx offered then 663 else 703) / 1000;
 }
 // An HTLC is trimmed when what its HTLC transaction would pay out is below
 // the owner's dust limit; its amount goes to the fee.
-lnc_trimmed :: (h: LncHtlc, feerate: int, dust_limit: int, anchors: bool) -> bool {
+lnc_trimmed :: (h: LncHtlc, feerate: int, dust_limit: int, anchors: bool) -> bool #effects(all) {
   return h.amount_msat / 1000 < dust_limit + lnc_htlc_fee(feerate, h.offered, anchors);
 }
-lnc_commit_fee :: (feerate: int, untrimmed: int, anchors: bool) -> int {
+lnc_commit_fee :: (feerate: int, untrimmed: int, anchors: bool) -> int #effects(all) {
   return feerate * ((ifx anchors then 1124 else 724) + 172 * untrimmed) / 1000;
 }
 ```
@@ -319,14 +319,14 @@ signatures in output order, so BOLT 3 breaks that tie by expiry.
 // BIP-69 with BOLT 3's tiebreak: by amount, then scriptPubKey as bytes (a
 // prefix first), then cltv_expiry. Two offered HTLCs of one amount and
 // payment hash have the same script, and only the expiry orders them.
-lnc_before :: (a: LncOutput, b: LncOutput) -> bool {
+lnc_before :: (a: LncOutput, b: LncOutput) -> bool #effects(all) {
   if a.sat != b.sat { return a.sat < b.sat; }
   n := ifx a.spk_n < b.spk_n then a.spk_n else b.spk_n;
   for k: 0..<n { if a.spk[k] != b.spk[k] { return a.spk[k] < b.spk[k]; } }
   if a.spk_n != b.spk_n { return a.spk_n < b.spk_n; }
   return a.expiry < b.expiry;
 }
-lnc_sort :: (c: [] LncCommit) {
+lnc_sort :: (c: [] LncCommit) #effects(all) {
   for i: 1..<c[0].n {
     j := i;
     while j > 0 && lnc_before(c[0].out[j], c[0].out[j-1]) {
@@ -352,7 +352,7 @@ funding output.
 // from the funder, add each output that is not dust, add the anchors,
 // sort. to_local_msat and to_remote_msat are the balances after the
 // HTLCs are taken out.
-lnc_commitment_vartime :: (ch: LncChannel, to_local_msat: int, to_remote_msat: int, feerate: int, htlcs: [] LncHtlc) -> LncCommit {
+lnc_commitment_vartime :: (ch: LncChannel, to_local_msat: int, to_remote_msat: int, feerate: int, htlcs: [] LncHtlc) -> LncCommit #effects(all) {
   c := ch; r: [1] LncCommit;
   if !lnc_channel_ok(c) { r[0].code = LNC_BAD_KEY; return r[0]; }
   if htlcs.count > LNC_MAX_HTLCS { r[0].code = LNC_TOO_MANY; return r[0]; }
@@ -391,7 +391,7 @@ outputs:
 // The commitment without its witness: version 2, the funding outpoint
 // with sequence 0x80 and the obscured number's upper 24 bits, the
 // outputs, and locktime 0x20 and its lower 24 bits. Its length, or -1.
-lnc_unsigned_vartime :: (ch: LncChannel, cm: LncCommit, out: [] u8) -> int {
+lnc_unsigned_vartime :: (ch: LncChannel, cm: LncCommit, out: [] u8) -> int #effects(all) {
   c := ch; m := cm;
   if m.code != LNC_OK || out.count < LNC_TX { return -1; }
   at := bt_le(out, 0, 2, 4);
@@ -420,10 +420,10 @@ script's key order, not local then remote.
 <!-- source: coax/lib/lightning/commitment.coax sign -->
 ```jai
 // A transaction's txid in hash order: SHA-256d of the unsigned form.
-lnc_txid_vartime :: (unsigned: [] u8, out: [] u8) { bt_sha2(unsigned, out); }
+lnc_txid_vartime :: (unsigned: [] u8, out: [] u8) #effects(all) { bt_sha2(unsigned, out); }
 // The BIP-143 hash both peers sign: input 0, the funding script, the
 // funding amount, SIGHASH_ALL.
-lnc_sighash_vartime :: (ch: LncChannel, cm: LncCommit, out: [] u8) -> bool {
+lnc_sighash_vartime :: (ch: LncChannel, cm: LncCommit, out: [] u8) -> bool #effects(all) {
   c := ch; u: [LNC_TX] u8; ws: [73] u8;
   n := lnc_unsigned_vartime(c, cm, u[..]);
   if n < 0 { return false; }
@@ -433,14 +433,14 @@ lnc_sighash_vartime :: (ch: LncChannel, cm: LncCommit, out: [] u8) -> bool {
 // A low-S RFC 6979 signature of a 32-byte hash, DER-encoded into out
 // (LNC_DER bytes); its length, or -LNC_SIGN. The key is secret and goes
 // only to chapter 20's constant-time signer.
-lnc_sign :: (key: [] u8, digest: [] u8, out: [] u8) -> int {
+lnc_sign :: (key: [] u8, digest: [] u8, out: [] u8) -> int #effects(all) {
   w: [1] EcdsaWork; sig: [64] u8;
   if out.count < LNC_DER || !ecdsa_sign(key, digest, w[..], sig[..], false) { return -LNC_SIGN; }
   return ecdsa_der(sig[..], out);
 }
 // One witness item: its length, then its bytes, with a hash type after a
 // signature (hashtype -1 for none).
-lnc_item :: (out: [] u8, at: int, b: [] u8, hashtype: int) -> int {
+lnc_item :: (out: [] u8, at: int, b: [] u8, hashtype: int) -> int #effects(all) {
   n := bt_put(out, bt_var_put(out, at, b.count + ifx hashtype >= 0 then 1 else 0), b);
   if hashtype >= 0 { out[n] = cast(u8) hashtype; n += 1; }
   return n;
@@ -448,7 +448,7 @@ lnc_item :: (out: [] u8, at: int, b: [] u8, hashtype: int) -> int {
 // An unsigned transaction with one input and its witness (count items,
 // already written): the segwit marker and flag after the version, the
 // witness before the locktime.
-lnc_wrap :: (u: [] u8, count: int, witness: [] u8, out: [] u8) -> int {
+lnc_wrap :: (u: [] u8, count: int, witness: [] u8, out: [] u8) -> int #effects(all) {
   at := bt_put(out, 0, u[0..<4]);
   out[at] = 0; out[at+1] = 1;
   at = bt_put(out, at + 2, u[4..<u.count-4]);
@@ -458,7 +458,7 @@ lnc_wrap :: (u: [] u8, count: int, witness: [] u8, out: [] u8) -> int {
 // The signed commitment: witness 0 <sig for pubkey1> <sig for pubkey2>
 // <funding script>, the signatures in the script's key order. local_sig
 // and remote_sig are DER, without the hash type. Its length, or -1.
-lnc_signed_vartime :: (ch: LncChannel, cm: LncCommit, local_sig: [] u8, remote_sig: [] u8, out: [] u8) -> int {
+lnc_signed_vartime :: (ch: LncChannel, cm: LncCommit, local_sig: [] u8, remote_sig: [] u8, out: [] u8) -> int #effects(all) {
   c := ch; u: [LNC_TX] u8; w: [256] u8; ws: [73] u8;
   n := lnc_unsigned_vartime(c, cm, u[..]);
   if n < 0 || out.count < LNC_TX { return -1; }
@@ -494,13 +494,13 @@ transaction is broadcast. The input's sequence is then 1, for the
 // The hash type of the remote node's HTLC signature: SIGHASH_ALL, or with
 // anchors SIGHASH_SINGLE|SIGHASH_ANYONECANPAY, so the owner can add inputs
 // and outputs for the fee.
-lnc_remote_hashtype :: (ch: LncChannel) -> int { return ifx ch.anchors then BT_SINGLE | BT_ANYONE else BT_ALL; }
+lnc_remote_hashtype :: (ch: LncChannel) -> int #effects(all) { return ifx ch.anchors then BT_SINGLE | BT_ANYONE else BT_ALL; }
 // The HTLC-timeout (offered) or HTLC-success (received) transaction for
 // output index: version 2, that output with sequence 0 (1 with anchors),
 // one output of the HTLC's amount less its fee to the owner's delayed key
 // or the revocation key, and locktime cltv_expiry (timeout) or 0. Its
 // length, or -LNC_NOT_HTLC.
-lnc_htlc_unsigned_vartime :: (ch: LncChannel, cm: LncCommit, index: int, feerate: int, out: [] u8) -> int {
+lnc_htlc_unsigned_vartime :: (ch: LncChannel, cm: LncCommit, index: int, feerate: int, out: [] u8) -> int #effects(all) {
   c := ch; m := cm; u: [LNC_TX] u8; txid: [32] u8; ws: [LNC_SCRIPT] u8; spk: [34] u8;
   if index < 0 || index >= m.n || (m.out[index].kind != LNC_OFFERED && m.out[index].kind != LNC_RECEIVED) { return -LNC_NOT_HTLC; }
   if out.count < LNC_HTLC_TX { return -LNC_CAPACITY; }
@@ -520,7 +520,7 @@ lnc_htlc_unsigned_vartime :: (ch: LncChannel, cm: LncCommit, index: int, feerate
 }
 // The BIP-143 hash of an HTLC transaction under hashtype: the HTLC's
 // witness script and amount.
-lnc_htlc_sighash_vartime :: (ch: LncChannel, cm: LncCommit, htlcs: [] LncHtlc, index: int, feerate: int, hashtype: int, out: [] u8) -> bool {
+lnc_htlc_sighash_vartime :: (ch: LncChannel, cm: LncCommit, htlcs: [] LncHtlc, index: int, feerate: int, hashtype: int, out: [] u8) -> bool #effects(all) {
   c := ch; m := cm; u: [LNC_HTLC_TX] u8; ws: [LNC_SCRIPT] u8;
   n := lnc_htlc_unsigned_vartime(c, m, index, feerate, u[..]);
   if n < 0 { return false; }
@@ -530,7 +530,7 @@ lnc_htlc_sighash_vartime :: (ch: LncChannel, cm: LncCommit, htlcs: [] LncHtlc, i
 // The signed HTLC transaction: witness 0 <remotehtlcsig> <localhtlcsig>
 // <payment_preimage> (success) or <> (timeout), then the HTLC's script.
 lnc_htlc_signed_vartime :: (ch: LncChannel, cm: LncCommit, htlcs: [] LncHtlc, index: int, feerate: int,
-                            remote_sig: [] u8, local_sig: [] u8, preimage: [] u8, out: [] u8) -> int {
+                            remote_sig: [] u8, local_sig: [] u8, preimage: [] u8, out: [] u8) -> int #effects(all) {
   c := ch; m := cm; u: [LNC_HTLC_TX] u8; w: [LNC_HTLC_TX] u8; ws: [LNC_SCRIPT] u8;
   n := lnc_htlc_unsigned_vartime(c, m, index, feerate, u[..]);
   if n < 0 { return n; }

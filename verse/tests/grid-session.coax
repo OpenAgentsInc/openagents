@@ -70,7 +70,7 @@ gs_frame :: (g: [] GridWalk, f: int) {
 }
 
 // The whole session, from the Grid's spawn.
-grid_session_play :: (g: [] GridWalk) #export_c {
+grid_session_play :: (g: [] GridWalk) #export_c #effects(all) {
   g[0] = GridWalk.{};
   gridwalk_place(g, 28, 28, -2.35619449, 1.35, 9);
   for f: 0..<GS_FRAMES { gs_frame(g, f); }

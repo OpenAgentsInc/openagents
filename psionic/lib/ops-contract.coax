@@ -87,15 +87,15 @@ PsionicResult :: struct { status: PsionicOpStatus; written: int; }
     #assert psionic_ops_admit(PsionicRequest.{}, 0, 0, 0, 0, 0, 0, true).status == PsionicOpStatus.shape;
 }
 
-psionic_ops_work_fits :: (outputs: int, inner: int) -> bool {
+psionic_ops_work_fits :: (outputs: int, inner: int) -> bool #effects(all) {
     if outputs < 1 || inner < 1 { return false; }
     return outputs <= PsionicMacLimit / inner;
 }
 
-psionic_ops_known_tag :: (tag: u8) -> bool { return tag <= 7; }
+psionic_ops_known_tag :: (tag: u8) -> bool #effects(all) { return tag <= 7; }
 
 // book:begin plan
-psionic_ops_plan :: (r: PsionicRequest) -> PsionicPlan #export_c {
+psionic_ops_plan :: (r: PsionicRequest) -> PsionicPlan #export_c #effects(all) {
     if !psionic_ops_known_tag(cast(u8) r.op) { return PsionicPlan.{status = PsionicOpStatus.operation}; }
     a := psionic_tensor_layout(PsionicShape.{rank = 2, dims = [4] int.[r.rows, r.width, 0, 0]});
     if a.status == PsionicTensorStatus.limit { return PsionicPlan.{status = PsionicOpStatus.limit}; }
@@ -127,7 +127,7 @@ psionic_ops_plan :: (r: PsionicRequest) -> PsionicPlan #export_c {
 // book:end plan
 
 psionic_ops_admit :: (r: PsionicRequest, a: int, b: int, indices: int, mask: int,
-        output: int, scratch: int, overlap: bool) -> PsionicPlan #export_c {
+        output: int, scratch: int, overlap: bool) -> PsionicPlan #export_c #effects(all) {
     p := psionic_ops_plan(r);
     if p.status != PsionicOpStatus.ok { return p; }
     if a != p.a || b != p.b || indices != p.indices || mask != p.mask || output < p.output || scratch < p.output {

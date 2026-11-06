@@ -8,7 +8,7 @@
 #forall "each byte of the development site identity is required" at:0..<16 {
   bytes:[16]u8;for c,i:"http://127.0.0.1" {bytes[i]=c;}bytes[at]+=1;#assert !hhl_plain(cast(string)bytes[..]);
 }
-hhl_plain :: (site:string)->bool #export_c {
+hhl_plain :: (site:string)->bool #export_c #effects(all) {
   if site.count!=16 {return false;}
   for i:0..<16 {if site[i]!="http://127.0.0.1"[i] {return false;}}return true;
 }

@@ -119,29 +119,29 @@ PwParsed :: struct { status:PwStatus; tensor:PwTensor; }
         }
     }
 }
-pw_slot :: (count:int,capacity:int)->PwStatus {
+pw_slot :: (count:int,capacity:int)->PwStatus #effects(all) {
     if count<0 || count>=PW_TENSORS_MAX {return PwStatus.size;}
     if count>=capacity {return PwStatus.capacity;}return PwStatus.ok;
 }
-pw_span :: (begin:int,end:int,size:int,payload:int)->bool {
+pw_span :: (begin:int,end:int,size:int,payload:int)->bool #effects(all) {
     if size<1 || size>payload || begin<0 {return false;}
     return begin<=payload-size && end==begin+size;
 }
 
-pw_plain :: (s:string)->bool {
+pw_plain :: (s:string)->bool #effects(all) {
     if s.count>PW_NAME_MAX {return false;}
     for c:s {if c<32 || c>126 || c=='\\' {return false;}}
     return true;
 }
-pw_name :: (s:string)->bool {return s.count>0 && pw_plain(s);}
-pw_integer :: (s:string)->PwInteger {
+pw_name :: (s:string)->bool #effects(all) {return s.count>0 && pw_plain(s);}
+pw_integer :: (s:string)->PwInteger #effects(all) {
     if s.count==0 {return PwInteger.{status=PwStatus.schema};}
     if s[0]=='-' {return PwInteger.{status=PwStatus.schema};}
     n:=json_int(s);if !n.ok {return PwInteger.{status=PwStatus.schema};}
     if n.value>PW_BUNDLE_MAX {return PwInteger.{status=PwStatus.size};}
     return PwInteger.{value=n.value};
 }
-pw_metadata :: (j:[]Json)->PwStatus {
+pw_metadata :: (j:[]Json)->PwStatus #effects(all) {
     if json_next(j)!=JSON_OBJECT {return PwStatus.schema;}
     keys:[64]string;n:=0;t:=json_next(j);
     while t!=JSON_OBJECT_END {
@@ -156,7 +156,7 @@ pw_metadata :: (j:[]Json)->PwStatus {
     }
     return PwStatus.ok;
 }
-pw_parse_tensor :: (j:[]Json,name:string)->PwParsed {
+pw_parse_tensor :: (j:[]Json,name:string)->PwParsed #effects(all) {
     if json_next(j)!=JSON_OBJECT {return PwParsed.{status=PwStatus.schema};}
     t:=json_next(j);tensor:=PwTensor.{name=name};d:=false;s:=false;o:=false;
     while t!=JSON_OBJECT_END {
@@ -196,7 +196,7 @@ pw_parse_tensor :: (j:[]Json,name:string)->PwParsed {
 }
 
 // Private append-only workspace. Payload spans are relative until admitted.
-pw_scan :: (file:[]u8,draft:[]PwTensor,base:int,shard:int)->PwResult {
+pw_scan :: (file:[]u8,draft:[]PwTensor,base:int,shard:int)->PwResult #effects(all) {
     h:=pw_header(file);if h.status!=PwStatus.ok {return PwResult.{status=h.status};}
     header:=file[8..<h.data];j:[1]Json;json_start_bounded(j[..],cast(string)header,header.count,header.count);
     if json_next(j[..])!=JSON_OBJECT {return PwResult.{status=PwStatus.json};}
@@ -228,7 +228,7 @@ pw_scan :: (file:[]u8,draft:[]PwTensor,base:int,shard:int)->PwResult {
     return PwResult.{written=count-base,bytes=covered};
 }
 // book:begin inspect
-pw_inspect_checked :: (file:[]u8,output:[]PwTensor,draft:[]PwTensor,overlap:bool)->PwResult #export_c {
+pw_inspect_checked :: (file:[]u8,output:[]PwTensor,draft:[]PwTensor,overlap:bool)->PwResult #export_c #effects(all) {
     if !pw_file_size(file.count) {return PwResult.{status=PwStatus.size};}
     if output.count<1 || draft.count<1 {return PwResult.{status=PwStatus.capacity};}
     if overlap {return PwResult.{status=PwStatus.alias};}

@@ -97,29 +97,29 @@ ArcRead :: struct {ok:bool;profile:int;initial:int;seed:int;events:int;marks:int
   }
 }
 
-arc_word :: (out:[]u8,at:int,value:int) {
+arc_word :: (out:[]u8,at:int,value:int) #effects(all) {
   bits:=cast,trunc(u64)value;
   for i:0..<8 {out[at+i]=cast,trunc(u8)(bits>>(i*8));}
 }
-arc_value :: (bytes:[]u8,at:int)->int {
+arc_value :: (bytes:[]u8,at:int)->int #effects(all) {
   bits:u64;for i:0..<8 {bits|=cast(u64)bytes[at+i]<<(i*8);}return cast,trunc(int)bits;
 }
-arc_size :: (events:int,marks:int)->int {
+arc_size :: (events:int,marks:int)->int #effects(all) {
   if events<0 || events>ARC_EVENTS || marks<0 || marks>ARC_MARKS {return 0;}
   return ARC_HEADER+events*ARC_EVENT+marks*8+32;
 }
-arc_event_ok :: (e:ReplayEvent,previous:int,marks:int)->bool {
+arc_event_ok :: (e:ReplayEvent,previous:int,marks:int)->bool #effects(all) {
   return e.tick>=previous && e.tick<marks && e.source>=0 && e.source<REPLAY_SOURCES && e.request>=1 && e.epoch>=0;
 }
-arc_event :: (bytes:[]u8,at:int)->ReplayEvent {
+arc_event :: (bytes:[]u8,at:int)->ReplayEvent #effects(all) {
   e:=ReplayEvent.{tick=arc_value(bytes,at),source=arc_value(bytes,at+8),request=arc_value(bytes,at+16),epoch=arc_value(bytes,at+24)};
   for i:0..<10 {e.words[i]=arc_value(bytes,at+32+i*8);}return e;
 }
-arc_seal :: (out:[]u8,count:int) {
+arc_seal :: (out:[]u8,count:int) #effects(all) {
   digest:[32]u8;#assert sha256_hash_checked(out[0..<count-32],digest[..],false)==SHA_OK;
   for byte,i:digest {out[count-32+i]=byte;}
 }
-arc_encode :: (s:ReplaySession,profile:int,out:[]u8,overlap:bool)->int {
+arc_encode :: (s:ReplaySession,profile:int,out:[]u8,overlap:bool)->int #effects(all) {
   if overlap || profile<0 || s.n.count<REPLAY_COUNTERS || s.channels.count<REPLAY_SOURCES {return 0;}
   ne:=s.n[REPLAY_EVENTS];nm:=s.n[REPLAY_MARKS];count:=arc_size(ne,nm);
   if count==0 || out.count<count || s.events.count<ne || s.marks.count<nm {return 0;}
@@ -135,7 +135,7 @@ arc_encode :: (s:ReplaySession,profile:int,out:[]u8,overlap:bool)->int {
   for i:0..<nm {arc_word(out,ARC_HEADER+ne*ARC_EVENT+i*8,s.marks[i]);}
   arc_seal(out,count);return count;
 }
-arc_read :: (bytes:[]u8,profile:int)->ArcRead {
+arc_read :: (bytes:[]u8,profile:int)->ArcRead #effects(all) {
   r:ArcRead;
   if profile<0 || bytes.count<80 || cast(string)bytes[0..<8]!="AETHYR01" || arc_value(bytes,8)!=profile {return r;}
   ne:=arc_value(bytes,32);nm:=arc_value(bytes,40);count:=arc_size(ne,nm);
@@ -148,7 +148,7 @@ arc_read :: (bytes:[]u8,profile:int)->ArcRead {
 }
 // overlap covers the input and every destination region, and pairwise
 // overlap of destination regions. Failure leaves all destination bytes alone.
-arc_decode :: (bytes:[]u8,profile:int,s:ReplaySession,overlap:bool)->bool {
+arc_decode :: (bytes:[]u8,profile:int,s:ReplaySession,overlap:bool)->bool #effects(all) {
   if overlap || s.n.count<REPLAY_COUNTERS || s.channels.count<REPLAY_SOURCES {return false;}
   r:=arc_read(bytes,profile);
   if !r.ok || s.events.count<r.events || s.marks.count<r.marks {return false;}

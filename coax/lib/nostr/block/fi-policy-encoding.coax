@@ -180,32 +180,32 @@ FiPolicyEncoding :: struct {ok:bool;count:int;bytes:[65536]u8;}
  w[0].ok=true;fi_policy_set(w[0..<0],values[..]);#assert w[0].ok;
 }
 // Byte writers operate only on owned local storage. They grant no authority.
-fi_policy_byte :: (out:[]FiPolicyEncoding,value:u8) {
+fi_policy_byte :: (out:[]FiPolicyEncoding,value:u8) #effects(all) {
  if out.count!=1 {return;}if !out[0].ok || out[0].count<0 || out[0].count>=65536 {out[0].ok=false;return;}
  out[0].bytes[out[0].count]=value;out[0].count+=1;
 }
-fi_policy_u16 :: (out:[]FiPolicyEncoding,value:int) {
+fi_policy_u16 :: (out:[]FiPolicyEncoding,value:int) #effects(all) {
  if value<0 || value>65535 {if out.count==1 {out[0].ok=false;}return;}
  fi_policy_byte(out,cast(u8)((value>>8)&255));fi_policy_byte(out,cast(u8)(value&255));
 }
-fi_policy_u64 :: (out:[]FiPolicyEncoding,value:int) {
+fi_policy_u64 :: (out:[]FiPolicyEncoding,value:int) #effects(all) {
  if value<0 {if out.count==1 {out[0].ok=false;}return;}
  for i:0..<8 {fi_policy_byte(out,cast(u8)((value>>((7-i)*8))&255));}
 }
-fi_policy_string :: (out:[]FiPolicyEncoding,value:string) {
+fi_policy_string :: (out:[]FiPolicyEncoding,value:string) #effects(all) {
  fi_policy_u16(out,value.count);for b:value {fi_policy_byte(out,b);}
 }
-fi_policy_before :: (a:string,b:string)->bool {
+fi_policy_before :: (a:string,b:string)->bool #effects(all) {
  for i:0..<a.count {if i>=b.count {return false;}if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}}
  return a.count<b.count;
 }
-fi_policy_set :: (out:[]FiPolicyEncoding,values:[]string) {
+fi_policy_set :: (out:[]FiPolicyEncoding,values:[]string) #effects(all) {
  if values.count>16 {if out.count==1 {out[0].ok=false;}return;}
  fi_policy_byte(out,cast(u8)values.count);order:[16]int;for i:0..<values.count {order[i]=i+1;}
  for i:0..<values.count {for j:i+1..<values.count {if fi_policy_before(values[order[j]-1],values[order[i]-1]) {tmp:=order[i];order[i]=order[j];order[j]=tmp;}}}
  for i:0..<values.count {fi_policy_string(out,values[order[i]-1]);}
 }
-fi_policy_encoding :: (community:FiCommunity,issuer:FiIssuer)->FiPolicyEncoding #export_c {
+fi_policy_encoding :: (community:FiCommunity,issuer:FiIssuer)->FiPolicyEncoding #export_c #effects(all) {
  bad:FiPolicyEncoding;cs:=[1]FiCommunity.[community];ps:=[1]FiIssuer.[issuer];
  selected:=fi_select(cs[..],ps[..],community.host,issuer.issuer);if selected.status!=FI_CANDIDATE {return bad;}
  out:[1]FiPolicyEncoding;out[0].ok=true;

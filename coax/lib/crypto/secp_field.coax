@@ -215,7 +215,7 @@ SF_SQRT_EXPONENT :: #run sf_exponent_sqrt();
 }
 
 // Internal fixed-length carry pass. Each caller supplies its own ten limbs.
-sf_carry :: (digits: [] u64) -> u64 {
+sf_carry :: (digits: [] u64) -> u64 #effects(all) {
   #assert digits.count == 10;
   for i: 0..<9 {
     carry := digits[i] >> 26;
@@ -226,7 +226,7 @@ sf_carry :: (digits: [] u64) -> u64 {
   digits[9] &= SF_MASK22;
   return carry;
 }
-sf_normalize :: (value: SecpField) -> SecpField #export_c {
+sf_normalize :: (value: SecpField) -> SecpField #export_c #effects(all) {
   r := value;
   // Initial carry <=7. Low folding additions <=7*977 and 7*64; all
   // accumulators are <2^30. The next top carry <=1. If it is1, the masked
@@ -245,7 +245,7 @@ sf_normalize :: (value: SecpField) -> SecpField #export_c {
   for i: 0..<10 { r.limb[i] = cb_ct_select64(choose, candidate.limb[i], r.limb[i]); }
   return r;
 }
-sf_load :: (bytes: [] u8) -> SecpFieldResult #export_c {
+sf_load :: (bytes: [] u8) -> SecpFieldResult #export_c #effects(all) {
   r: SecpFieldResult;
   if bytes.count != 32 { return r; }
   for i: 0..<32 {
@@ -258,7 +258,7 @@ sf_load :: (bytes: [] u8) -> SecpFieldResult #export_c {
   }
   r.value = sf_normalize(r.value); r.ok = true; return r;
 }
-sf_store :: (value: SecpField, bytes: [] u8) -> bool #export_c {
+sf_store :: (value: SecpField, bytes: [] u8) -> bool #export_c #effects(all) {
   if bytes.count != 32 { return false; }
   r := sf_normalize(value);
   for i: 0..<32 {
@@ -270,7 +270,7 @@ sf_store :: (value: SecpField, bytes: [] u8) -> bool #export_c {
   }
   return true;
 }
-sf_load_strict :: (bytes: [] u8) -> SecpFieldResult #export_c {
+sf_load_strict :: (bytes: [] u8) -> SecpFieldResult #export_c #effects(all) {
   r := sf_load(bytes);
   if !r.ok { return r; }
   canonical: [32] u8;
@@ -280,26 +280,26 @@ sf_load_strict :: (bytes: [] u8) -> SecpFieldResult #export_c {
   for i: 0..<10 { r.value.limb[i] &= same; }
   return r;
 }
-sf_add :: (a: SecpField, b: SecpField) -> SecpField #export_c {
+sf_add :: (a: SecpField, b: SecpField) -> SecpField #export_c #effects(all) {
   x := sf_normalize(a); y := sf_normalize(b);
   for i: 0..<10 { x.limb[i] += y.limb[i]; }
   return sf_normalize(x);
 }
-sf_negate :: (a: SecpField) -> SecpField #export_c {
+sf_negate :: (a: SecpField) -> SecpField #export_c #effects(all) {
   x := sf_normalize(a);
   // Each 2*p digit >= every canonical input digit. No unsigned borrow
   // or wrapping arithmetic is needed; this represents2p-x before reduction.
   for i: 0..<10 { x.limb[i] = SF_P[i] + SF_P[i] - x.limb[i]; }
   return sf_normalize(x);
 }
-sf_subtract :: (a: SecpField, b: SecpField) -> SecpField #export_c { return sf_add(a, sf_negate(b)); }
-sf_equal_mask :: (a: SecpField, b: SecpField) -> u64 #export_c {
+sf_subtract :: (a: SecpField, b: SecpField) -> SecpField #export_c #effects(all) { return sf_add(a, sf_negate(b)); }
+sf_equal_mask :: (a: SecpField, b: SecpField) -> u64 #export_c #effects(all) {
   x := sf_normalize(a); y := sf_normalize(b); diff: u64;
   for i: 0..<10 { diff |= x.limb[i] ^ y.limb[i]; }
   // diff<=2^26-1, hence diff+mask<2^27 and bit26 means nonzero.
   return cb_mask(((diff + SF_MASK26) >> 26) ^ 1);
 }
-sf_debug_valid :: (d: SecpFieldDebug) -> bool #export_c {
+sf_debug_valid :: (d: SecpFieldDebug) -> bool #export_c #effects(all) {
   if d.magnitude < 1 || d.magnitude > SF_MAGNITUDE { return false; }
   for i: 0..<10 {
     mask := ifx i == 9 then SF_MASK22 else SF_MASK26;
@@ -313,30 +313,30 @@ sf_debug_valid :: (d: SecpFieldDebug) -> bool #export_c {
   }
   return true;
 }
-sf_debug_normalize :: (d: SecpFieldDebug) -> SecpFieldDebug #export_c {
+sf_debug_normalize :: (d: SecpFieldDebug) -> SecpFieldDebug #export_c #effects(all) {
   #assert sf_debug_valid(d);
   r := d; r.value = sf_normalize(d.value); r.magnitude = 1; r.normalized = true; return r;
 }
-sf_debug_add :: (a: SecpFieldDebug, b: SecpFieldDebug) -> SecpFieldDebug #export_c {
+sf_debug_add :: (a: SecpFieldDebug, b: SecpFieldDebug) -> SecpFieldDebug #export_c #effects(all) {
   x := sf_debug_normalize(a); y := sf_debug_normalize(b);
   x.value = sf_add(x.value, y.value); return x;
 }
-sf_debug_negate :: (a: SecpFieldDebug) -> SecpFieldDebug #export_c {
+sf_debug_negate :: (a: SecpFieldDebug) -> SecpFieldDebug #export_c #effects(all) {
   x := sf_debug_normalize(a); x.value = sf_negate(x.value); return x;
 }
 
 // Bound helpers execute on public compile-time metadata, never on secrets.
-sf_bound_product_ok :: (a: u64, b: u64) -> bool { return b == 0 || a <= CB_MAX64 / b; }
-sf_bound_sum_ok :: (a: u64, b: u64) -> bool { return a <= CB_MAX64 - b; }
-sf_bound_product :: (a: u64, b: u64) -> u64 { #assert sf_bound_product_ok(a, b); return a * b; }
-sf_bound_sum :: (a: u64, b: u64) -> u64 { #assert sf_bound_sum_ok(a, b); return a + b; }
-sf_mul_budget :: (bounds: SfMulBounds) -> bool {
+sf_bound_product_ok :: (a: u64, b: u64) -> bool #effects(all) { return b == 0 || a <= CB_MAX64 / b; }
+sf_bound_sum_ok :: (a: u64, b: u64) -> bool #effects(all) { return a <= CB_MAX64 - b; }
+sf_bound_product :: (a: u64, b: u64) -> u64 #effects(all) { #assert sf_bound_product_ok(a, b); return a * b; }
+sf_bound_sum :: (a: u64, b: u64) -> u64 #effects(all) { #assert sf_bound_sum_ok(a, b); return a + b; }
+sf_mul_budget :: (bounds: SfMulBounds) -> bool #effects(all) {
   for i: 0..<27 { if bounds.facts[i] > SF_MUL_LIMITS[i] { return false; } }
   if bounds.facts[24] > bounds.facts[6] { return false; }
   if bounds.facts[25] > bounds.facts[11] { return false; }
   return true;
 }
-sf_mul_bounds :: (magnitude: int) -> SfMulBounds {
+sf_mul_bounds :: (magnitude: int) -> SfMulBounds #effects(all) {
   r: SfMulBounds;
   if magnitude < 1 || magnitude > 8 { return r; }
   m := cast(u64) magnitude;
@@ -378,7 +378,7 @@ sf_mul_bounds :: (magnitude: int) -> SfMulBounds {
 // Carry every lower digit into its successor. The caller's proven bounds
 // admit every addition; the final digit retains its full carry. Counts/public
 // indices are the only choices, with no validation branch on secret digits.
-sf_radix_carry :: (digits: [] u64) -> bool {
+sf_radix_carry :: (digits: [] u64) -> bool #effects(all) {
   if digits.count < 1 || digits.count > 32 { return false; }
   for i: 0..<digits.count - 1 {
     digits[i + 1] += digits[i] >> 26;
@@ -386,7 +386,7 @@ sf_radix_carry :: (digits: [] u64) -> bool {
   }
   return true;
 }
-sf_multiply :: (a: SecpField, b: SecpField) -> SecpField #export_c {
+sf_multiply :: (a: SecpField, b: SecpField) -> SecpField #export_c #effects(all) {
   x := sf_normalize(a); y := sf_normalize(b); product: [20] u64;
   for i: 0..<10 { for j: 0..<10 { product[i + j] += x.limb[i] * y.limb[j]; } }
   #assert sf_radix_carry(product[..]);
@@ -410,7 +410,7 @@ sf_multiply :: (a: SecpField, b: SecpField) -> SecpField #export_c {
   r.limb[0] += carry * 977; r.limb[1] += carry * 64;
   return sf_normalize(r);
 }
-sf_square :: (a: SecpField) -> SecpField #export_c { return sf_multiply(a, a); }
+sf_square :: (a: SecpField) -> SecpField #export_c #effects(all) { return sf_multiply(a, a); }
 
 #test "the public chain proves both full256-bit exponents" {
   prefix := sf_exponent_prefix();
@@ -477,15 +477,15 @@ sf_square :: (a: SecpField) -> SecpField #export_c { return sf_multiply(a, a); }
   #assert sf_equal_mask(c.value, sf_negate(one)) == CB_MAX64;
 }
 
-sf_square_count_valid :: (count: int) -> bool { return count >= 0 && count <= 256; }
-sf_chain_step_valid :: (step: SfChainStep, index: int) -> bool {
+sf_square_count_valid :: (count: int) -> bool #effects(all) { return count >= 0 && count <= 256; }
+sf_chain_step_valid :: (step: SfChainStep, index: int) -> bool #effects(all) {
   return index >= 0 && index < 12 && step.left >= 0 && step.left <= index && step.right >= 0 && step.right <= index && sf_square_count_valid(step.squares);
 }
-sf_square_n :: (a: SecpField, count: int) -> SecpField {
+sf_square_n :: (a: SecpField, count: int) -> SecpField #effects(all) {
   #assert sf_square_count_valid(count);
   r := a; for i: 0..<count { r = sf_square(r); } return r;
 }
-sf_chain_prefix :: (a: SecpField) -> SfChainState {
+sf_chain_prefix :: (a: SecpField) -> SfChainState #effects(all) {
   cache: SfChainState; cache.value[0] = sf_normalize(a);
   for i: 0..<12 {
     step := SF_FIELD_CHAIN[i];
@@ -494,7 +494,7 @@ sf_chain_prefix :: (a: SecpField) -> SfChainState {
   }
   return cache;
 }
-sf_inverse :: (a: SecpField) -> SecpFieldResult #export_c {
+sf_inverse :: (a: SecpField) -> SecpFieldResult #export_c #effects(all) {
   cache := sf_chain_prefix(a);
   power9 := sf_multiply(sf_square(cache.value[1]), cache.value[1]);
   power45 := sf_multiply(sf_square_n(power9, 2), power9);
@@ -508,8 +508,8 @@ sf_inverse :: (a: SecpField) -> SecpFieldResult #export_c {
 }
 // Explicitly public-input entry point. It currently shares the fixed chain;
 // no variable-time optimization or secret-taint enforcement is claimed.
-sf_inverse_vartime :: (a: SecpField) -> SecpFieldResult #export_c { return sf_inverse(a); }
-sf_sqrt :: (a: SecpField) -> SecpFieldResult #export_c {
+sf_inverse_vartime :: (a: SecpField) -> SecpFieldResult #export_c #effects(all) { return sf_inverse(a); }
+sf_sqrt :: (a: SecpField) -> SecpFieldResult #export_c #effects(all) {
   cache := sf_chain_prefix(a);
   root := sf_square_n(sf_multiply(sf_square_n(cache.value[12], 6), cache.value[1]), 2);
   valid := sf_equal_mask(sf_square(root), cache.value[0]);
@@ -521,7 +521,7 @@ sf_sqrt :: (a: SecpField) -> SecpFieldResult #export_c {
 
 // Compile-time exponent arithmetic, not field or secret arithmetic. Shifts
 // and addition are exact over all256 bits and refuse overflow explicitly.
-sf_exponent_step :: (a: SfExponent, squares: int, b: SfExponent) -> SfExponent {
+sf_exponent_step :: (a: SfExponent, squares: int, b: SfExponent) -> SfExponent #effects(all) {
   #assert sf_square_count_valid(squares);
   r := a;
   for i: 0..<squares {
@@ -539,7 +539,7 @@ sf_exponent_step :: (a: SfExponent, squares: int, b: SfExponent) -> SfExponent {
   }
   #assert carry == 0; return r;
 }
-sf_exponent_prefix :: () -> SfExponentState {
+sf_exponent_prefix :: () -> SfExponentState #effects(all) {
   cache: SfExponentState; cache.value[0].word[0] = 1;
   for i: 0..<12 {
     step := SF_FIELD_CHAIN[i];
@@ -548,17 +548,17 @@ sf_exponent_prefix :: () -> SfExponentState {
   }
   return cache;
 }
-sf_exponent_inverse :: () -> SfExponent {
+sf_exponent_inverse :: () -> SfExponent #effects(all) {
   cache := SF_FIELD_EXPONENT_PREFIX;
   power9 := sf_exponent_step(cache.value[1], 1, cache.value[1]);
   power45 := sf_exponent_step(power9, 2, power9);
   return sf_exponent_step(cache.value[12], 10, power45);
 }
-sf_exponent_sqrt :: () -> SfExponent {
+sf_exponent_sqrt :: () -> SfExponent #effects(all) {
   cache := SF_FIELD_EXPONENT_PREFIX; zero: SfExponent;
   return sf_exponent_step(sf_exponent_step(cache.value[12], 6, cache.value[1]), 2, zero);
 }
-sf_exponent_matches :: (exponent: SfExponent, root_mode: bool) -> bool {
+sf_exponent_matches :: (exponent: SfExponent, root_mode: bool) -> bool #effects(all) {
   expected: [8] u32; for i: 1..<8 { expected[i] = 4294967295; }
   if root_mode { expected[0] = 0xBFFFFF0C; expected[7] = 0x3FFFFFFF; }
   else { expected[0] = 0xFFFFFC2D; expected[1] = 0xFFFFFFFE; }

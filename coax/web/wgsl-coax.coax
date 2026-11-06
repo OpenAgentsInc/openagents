@@ -1627,7 +1627,7 @@ uniform_table :: (w: []W, sid: int) {
   w[0].an = b;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 3 {
     tool_errln("usage: coax/web/tool.sh wgsl-coax OUT.coax PREFIX IN.wgsl... [--stop MARKER] [--loads A,B]");

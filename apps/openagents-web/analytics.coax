@@ -127,7 +127,7 @@ text_has :: (text: string, needle: string) -> bool {
   return false;
 }
 // The path of the page facts' url ("/worlds/sandbox"): which page this is, for a face that serves two.
-track_facts_path :: (facts: string) -> string #export_c { return track_url_path(fact_of(facts, "url")); }
+track_facts_path :: (facts: string) -> string #export_c #effects(all) { return track_url_path(fact_of(facts, "url")); }
 // The value of key in key=value lines, or "".
 fact_of :: (facts: string, key: string) -> string {
   i := 0;
@@ -223,7 +223,7 @@ track_active :: (t: [] Track) -> f64 {
 
 // Starts an event: false when the page facts haven't come (nothing is
 // recorded before then) or the session text_has ended.
-track_begin :: (t: [] Track, ev: string) -> bool #export_c {
+track_begin :: (t: [] Track, ev: string) -> bool #export_c #effects(all) {
   if !t[0].ready || t[0].ended || t[0].open { return false; }
   if t[0].buf_n + 512 > TRACK_BUF { track_flush(t, 0); }
   t[0].cur = t[0].buf_n; t[0].props = 0; t[0].open = true; t[0].spill = false;
@@ -235,16 +235,16 @@ track_begin :: (t: [] Track, ev: string) -> bool #export_c {
   return true;
 }
 tw_key :: (t: [] Track, k: string) { if t[0].props > 0 { tw_byte(t, 44); } tw_quote(t, k, 24); tw_byte(t, 58); t[0].props += 1; }
-track_str :: (t: [] Track, k: string, v: string) #export_c { if t[0].open { tw_key(t, k); tw_quote(t, v, 80); } }
-track_int :: (t: [] Track, k: string, v: int) #export_c { if t[0].open { tw_key(t, k); tw_int(t, v); } }
-track_num :: (t: [] Track, k: string, v: f64) #export_c { if t[0].open { tw_key(t, k); tw_num(t, v); } }
-track_bool :: (t: [] Track, k: string, v: bool) #export_c { if t[0].open { tw_key(t, k); tw_put(t, ifx v then "true" else "false"); } }
+track_str :: (t: [] Track, k: string, v: string) #export_c #effects(all) { if t[0].open { tw_key(t, k); tw_quote(t, v, 80); } }
+track_int :: (t: [] Track, k: string, v: int) #export_c #effects(all) { if t[0].open { tw_key(t, k); tw_int(t, v); } }
+track_num :: (t: [] Track, k: string, v: f64) #export_c #effects(all) { if t[0].open { tw_key(t, k); tw_num(t, v); } }
+track_bool :: (t: [] Track, k: string, v: bool) #export_c #effects(all) { if t[0].open { tw_key(t, k); tw_put(t, ifx v then "true" else "false"); } }
 // Words someone typed or said: kept by the server because consent is true
 // (the page tells people their words are saved).
-track_words :: (t: [] Track, text: string) #export_c {
+track_words :: (t: [] Track, text: string) #export_c #effects(all) {
   if t[0].open { tw_key(t, "text"); tw_quote(t, text, 500); tw_key(t, "consent"); tw_put(t, "true"); }
 }
-track_end :: (t: [] Track) #export_c {
+track_end :: (t: [] Track) #export_c #effects(all) {
   if !t[0].open { return; }
   tw_put(t, "}}");
   t[0].open = false;
@@ -254,10 +254,10 @@ track_end :: (t: [] Track) #export_c {
   if t[0].count >= TRACK_BATCH { track_flush(t, 0); }
 }
 // An event with no properties.
-track :: (t: [] Track, ev: string) #export_c { if track_begin(t, ev) { track_end(t); } }
+track :: (t: [] Track, ev: string) #export_c #effects(all) { if track_begin(t, ev) { track_end(t); } }
 
 // The waiting events as one batch for the face: {"sid", "events", "auto"}.
-track_flush :: (t: [] Track, flags: int) #export_c {
+track_flush :: (t: [] Track, flags: int) #export_c #effects(all) {
   if t[0].count == 0 || t[0].out_n > 0 || t[0].open { return; }
   n := 0;
   head := "{\"sid\":\"";
@@ -272,26 +272,26 @@ track_flush :: (t: [] Track, flags: int) #export_c {
   t[0].buf_n = 0; t[0].count = 0;
 }
 // The face sent the batch.
-track_sent :: (t: [] Track) #export_c { t[0].out_n = 0; t[0].flags = 0; }
-track_url :: () -> string #export_c { return TRACK_URL; }
+track_sent :: (t: [] Track) #export_c #effects(all) { t[0].out_n = 0; t[0].flags = 0; }
+track_url :: () -> string #export_c #effects(all) { return TRACK_URL; }
 
 // ---- the page
 
 // Before anything: the page's name ("home", "project", "haunt", "admin").
-track_init :: (t: [] Track, page: string) #export_c {
+track_init :: (t: [] Track, page: string) #export_c #effects(all) {
   t[0].page_n = 0;
   for c: page { if t[0].page_n < 32 { t[0].page[t[0].page_n] = c; t[0].page_n += 1; } }
 }
 
 // A world the page shows: world-enter now, world-leave when it's left.
-track_world :: (t: [] Track, world: string) #export_c {
+track_world :: (t: [] Track, world: string) #export_c #effects(all) {
   t[0].world_n = 0;
   for c: world { if t[0].world_n < 32 { t[0].world[t[0].world_n] = c; t[0].world_n += 1; } }
   if track_begin(t, "world-enter") { track_str(t, "world", world); track_end(t); }
 }
 
 // The page ready to use: load-landing or load-engine, once.
-track_loaded :: (t: [] Track, ev: string) #export_c {
+track_loaded :: (t: [] Track, ev: string) #export_c #effects(all) {
   if t[0].loaded || !t[0].ready { return; }
   t[0].loaded = true;
   if track_begin(t, ev) {
@@ -354,7 +354,7 @@ tw_copy :: (buf: [] u8, at: int, text: string) -> int {
 }
 
 // A message from the host. True when it was one of this file's.
-track_message :: (t: [] Track, kind: int, bytes: string) -> bool #export_c {
+track_message :: (t: [] Track, kind: int, bytes: string) -> bool #export_c #effects(all) {
   if kind == HOST_PAGE { track_facts(t, bytes); return true; }
   if kind == HOST_HIDDEN {
     if !t[0].hidden { t[0].hidden = true; t[0].hidden_at = t[0].t; t[0].bg = true; }
@@ -387,13 +387,13 @@ track_message :: (t: [] Track, kind: int, bytes: string) -> bool #export_c {
   }
   return false;
 }
-track_error :: (t: [] Track, msg: string, src: string, line: int) #export_c {
+track_error :: (t: [] Track, msg: string, src: string, line: int) #export_c #effects(all) {
   if track_begin(t, "error") { track_str(t, "msg", msg); track_str(t, "src", src); track_int(t, "line", line); track_end(t); }
 }
 
 // Every frame: the clock, alive every 30 s while shown, a resize once it
 // settles, the waiting batch after two seconds.
-track_frame :: (t: [] Track, dt: f32, w: f32, h: f32, dpr: f32) #export_c {
+track_frame :: (t: [] Track, dt: f32, w: f32, h: f32, dpr: f32) #export_c #effects(all) {
   t[0].t += cast(f64) dt;
   if !t[0].ready { return; }
   if (w != t[0].w || h != t[0].h) {
@@ -437,7 +437,7 @@ track_key_name :: (buf: [] u8, key: int) -> int {
   return tw_copy(buf, 0, "other");
 }
 // A key went down. typing: it went into a text field (never recorded).
-track_key :: (t: [] Track, key: int, typing: bool) #export_c {
+track_key :: (t: [] Track, key: int, typing: bool) #export_c #effects(all) {
   for k: 0..<TRACK_HELD { if t[0].held[k] == key { return; } }    // still held: the browser's repeat
   for k: 0..<TRACK_HELD { if t[0].held[k] == 0 { t[0].held[k] = key; break; } }
   if typing { return; }
@@ -449,14 +449,14 @@ track_key :: (t: [] Track, key: int, typing: bool) #export_c {
     track_end(t);
   }
 }
-track_key_up :: (t: [] Track, key: int) #export_c { for k: 0..<TRACK_HELD { if t[0].held[k] == key { t[0].held[k] = 0; } } }
-track_blur :: (t: [] Track) #export_c { for k: 0..<TRACK_HELD { t[0].held[k] = 0; } t[0].down = false; }
+track_key_up :: (t: [] Track, key: int) #export_c #effects(all) { for k: 0..<TRACK_HELD { if t[0].held[k] == key { t[0].held[k] = 0; } } }
+track_blur :: (t: [] Track) #export_c #effects(all) { for k: 0..<TRACK_HELD { t[0].held[k] = 0; } t[0].down = false; }
 
 // The pointer, in device pixels (phase 0 down, 1 move, 2 up, 3 cancel; kind
 // 0 a mouse). A press that doesn't drag is a click: el "button" with its
 // label when it was on one of the page's buttons, else "canvas". A touch on
 // the world counts as walking, as the playtest counts it.
-track_pointer :: (t: [] Track, x: f32, y: f32, phase: int, kind: int, label: string) #export_c {
+track_pointer :: (t: [] Track, x: f32, y: f32, phase: int, kind: int, label: string) #export_c #effects(all) {
   if phase == 0 {
     t[0].down = true; t[0].dragged = false; t[0].down_x = x; t[0].down_y = y;
     if kind != 0 && label.count == 0 { t[0].walked += 1; }
@@ -485,23 +485,23 @@ track_pointer :: (t: [] Track, x: f32, y: f32, phase: int, kind: int, label: str
 tw_world :: (t: [] Track) { if t[0].world_n > 0 { track_str(t, "world", cast(string) t[0].world[0..<t[0].world_n]); } }
 
 // Something done, now: ev with the game's id for it ("talk", "keeper").
-track_act :: (t: [] Track, ev: string, id: string) #export_c {
+track_act :: (t: [] Track, ev: string, id: string) #export_c #effects(all) {
   if track_begin(t, ev) { if id.count > 0 { track_str(t, "id", id); } tw_world(t); track_end(t); }
 }
 // The same with a number (a WANTED level, a count, a score).
-track_act_n :: (t: [] Track, ev: string, id: string, n: int) #export_c {
+track_act_n :: (t: [] Track, ev: string, id: string, n: int) #export_c #effects(all) {
   if track_begin(t, ev) { if id.count > 0 { track_str(t, "id", id); } track_int(t, "n", n); tw_world(t); track_end(t); }
 }
 // A setting changed: which, and on or off.
-track_setting :: (t: [] Track, id: string, on: bool) #export_c {
+track_setting :: (t: [] Track, id: string, on: bool) #export_c #effects(all) {
   if track_begin(t, "setting") { track_str(t, "id", id); track_bool(t, "on", on); tw_world(t); track_end(t); }
 }
 // A chat line sent: only how long it was.
-track_chat :: (t: [] Track, via: string, chars: int) #export_c {
+track_chat :: (t: [] Track, via: string, chars: int) #export_c #effects(all) {
   if track_begin(t, "chat-sent") { track_str(t, "via", via); track_int(t, "len", chars); tw_world(t); track_end(t); }
 }
 // Something that should have worked and didn't (a load, a request).
-track_fail :: (t: [] Track, what: string, status: int) #export_c {
+track_fail :: (t: [] Track, what: string, status: int) #export_c #effects(all) {
   if track_begin(t, "fail") { track_str(t, "id", what); track_int(t, "n", status); tw_world(t); track_end(t); }
 }
 
@@ -514,7 +514,7 @@ tw_hash :: (a: string, b: string) -> int {
 }
 // ev with id, only the first time this page load (a place entered, a thing
 // found): true when it was recorded now.
-track_once :: (t: [] Track, ev: string, id: string) -> bool #export_c {
+track_once :: (t: [] Track, ev: string, id: string) -> bool #export_c #effects(all) {
   if !t[0].ready { return false; }
   h := tw_hash(ev, id);
   for i: 0..<t[0].once_n { if t[0].once[i] == h { return false; } }
@@ -524,11 +524,11 @@ track_once :: (t: [] Track, ev: string, id: string) -> bool #export_c {
   return true;
 }
 // A place in the world entered for the first time this visit.
-track_area :: (t: [] Track, id: string) #export_c { if !track_once(t, "visit", id) { return; } }
+track_area :: (t: [] Track, id: string) #export_c #effects(all) { if !track_once(t, "visit", id) { return; } }
 
 // Distance walked in the world, in metres: "walk" at 10, 50, 100, 250, 500, 1000 and 2500 m.
 TRACK_MARKS :: [7] int.[10, 50, 100, 250, 500, 1000, 2500];
-track_walk :: (t: [] Track, metres: f64) #export_c {
+track_walk :: (t: [] Track, metres: f64) #export_c #effects(all) {
   if !(metres > 0) || metres > 50 { return; }    // a teleport isn't walking
   t[0].meters += metres;
   marks := TRACK_MARKS;
@@ -542,8 +542,8 @@ track_walk :: (t: [] Track, metres: f64) #export_c {
 
 // Counted, sent later: what happens many times a minute (a spell cast, a
 // kill, a fire lit). The key is ev_id as a property name (letters, digits, _).
-track_tally :: (t: [] Track, ev: string, id: string) #export_c { track_tally_n(t, ev, id, 1); }
-track_tally_n :: (t: [] Track, ev: string, id: string, n: int) #export_c {
+track_tally :: (t: [] Track, ev: string, id: string) #export_c #effects(all) { track_tally_n(t, ev, id, 1); }
+track_tally_n :: (t: [] Track, ev: string, id: string, n: int) #export_c #effects(all) {
   if !t[0].ready { return; }
   key: [24] u8; kn := 0;
   for c: ev { if kn < 24 { key[kn] = tw_keychar(c); kn += 1; } }
@@ -566,7 +566,7 @@ tw_keychar :: (c: u8) -> u8 {
   return 95;
 }
 // The counts so far as one "tally" event, then from zero.
-track_tally_send :: (t: [] Track) #export_c {
+track_tally_send :: (t: [] Track) #export_c #effects(all) {
   if t[0].tallies == 0 { return; }
   if track_begin(t, "tally") {
     for i: 0..<t[0].tallies {

@@ -10,7 +10,7 @@ maf_op :: (o:[]Jo,name:string) {jo_obj(o);maf_str(o,"op",name);}
 maf_command :: (o:[]Jo,line:string) {maf_op(o,"command");maf_str(o,"line",line);jo_end(o);}
 maf_path :: (dir:string,name:string,out:[]u8)->string {b:[256]u8;n:=0;for part:[2]string.[name,".f32"] {for c:part {b[n]=c;n+=1;}}return fs_join(dir,cast(string)b[0..<n],out);}
 maf_render :: (o:[]Jo,path:string,blocks:int) {maf_op(o,"render");maf_str(o,"file",path);jo_key(o,"blocks");jo_int(o,blocks);jo_end(o);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<3 {tool_errln("usage: metal-audio-fixtures ROOT RESOURCES NEW_OUTPUT [--bank-only] (build MetalAudioEffects first)");return 2;}
  root:=args_at(a[..],0);res:=args_at(a[..],1);dir:=args_at(a[..],2);if !fs_mkdir(dir) {return 1;}paths:[8][4096]u8;
  impulse:=[4]u8.[0,0,128,63];ip:=fs_join(dir,"impulse.f32",paths[0][..]);if !fs_write(ip,cast(string)impulse[..]) {return 1;}

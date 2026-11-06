@@ -37,7 +37,7 @@ RenderFilteredColor :: struct {valid:bool;colour:V4;}
   #assert render_filter_layer8_grad(Tex2DArray.{},rs_sampler,V2.{},0,V2.{},V2.{},0).valid==false;
 }
 
-render_filter8_grad :: (texture:Tex2D,sheet:Sampler,uv:V2,dx:V2,dy:V2,bias:f32)->RenderFilteredColor {
+render_filter8_grad :: (texture:Tex2D,sheet:Sampler,uv:V2,dx:V2,dy:V2,bias:f32)->RenderFilteredColor #effects(all) {
   rs_f:=footprint.render_footprint(cast(int)gpu_width(texture),cast(int)gpu_height(texture),dx.x,dx.y,dy.x,dy.y,bias);
   if !rs_f.valid {return RenderFilteredColor.{};}
   rs_sum:V4;
@@ -48,7 +48,7 @@ render_filter8_grad :: (texture:Tex2D,sheet:Sampler,uv:V2,dx:V2,dy:V2,bias:f32)-
   }
   return RenderFilteredColor.{valid=true,colour=scale4(rs_sum,1.0f32/cast(f32)rs_f.taps)};
 }
-render_filter_layer8_grad :: (texture:Tex2DArray,sheet:Sampler,uv:V2,layer:s32,dx:V2,dy:V2,bias:f32)->RenderFilteredColor {
+render_filter_layer8_grad :: (texture:Tex2DArray,sheet:Sampler,uv:V2,layer:s32,dx:V2,dy:V2,bias:f32)->RenderFilteredColor #effects(all) {
   rs_f:=footprint.render_footprint(cast(int)gpu_layer_width(texture),cast(int)gpu_layer_height(texture),dx.x,dx.y,dy.x,dy.y,bias);
   if !rs_f.valid {return RenderFilteredColor.{};}
   rs_sum:V4;

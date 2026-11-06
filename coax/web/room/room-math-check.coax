@@ -13,7 +13,7 @@
 #load "../../lib/sys/fs.coax";
 #load "../../lib/sys/proc.coax";
 
-atan :: (x: f64) -> f64 #foreign;
+atan :: (x: f64) -> f64 #foreign #effects(all);
 
 // node's WASI host for the wasm driver
 RM_RUN :: "import { WASI } from \"node:wasi\"; import fs from \"node:fs\";\nconst w = new WASI({ version: \"preview1\" });\nw.start(await WebAssembly.instantiate(await WebAssembly.compile(fs.readFileSync(process.argv[2])), w.getImportObject()));\n";
@@ -205,7 +205,7 @@ rm_check :: (dir: string) -> int {
   return 1;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   tb: [FS_PATH_MAX] u8;
   dir := fs_temp("room-math-check.", tb[..]);
   if dir.count == 0 { tool_errln("room-math-check: no temporary directory"); return 1; }

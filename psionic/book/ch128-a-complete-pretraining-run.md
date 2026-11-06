@@ -59,13 +59,13 @@ corpus the audit finds 1,243 paragraphs and none shared.
 
 <!-- source: psionic/lib/nanochat/pretrain.coax split -->
 ```jai
-np_holdout :: (source:int)->bool {return source%NP_HOLDOUT==0;}
+np_holdout :: (source:int)->bool #effects(all) {return source%NP_HOLDOUT==0;}
 // FNV-1a over one paragraph.
-np_fnv :: (s:string)->u64 {h:=cast(u64)0xcbf29ce484222325;for i:0..<s.count {h=mul_wrap(h^cast(u64)s[i],cast(u64)0x100000001b3);}return h;}
+np_fnv :: (s:string)->u64 #effects(all) {h:=cast(u64)0xcbf29ce484222325;for i:0..<s.count {h=mul_wrap(h^cast(u64)s[i],cast(u64)0x100000001b3);}return h;}
 // Paragraphs are the non-empty runs between blank lines ("\n\n"). Training
 // paragraphs' hashes are kept; a held-out paragraph with the same hash is a
 // shared paragraph, and any shared paragraph refuses the split.
-np_audit :: (docs:[]string,sources:[]int,hashes:[]u64)->NpData {
+np_audit :: (docs:[]string,sources:[]int,hashes:[]u64)->NpData #effects(all) {
     r:=NpData.{};if docs.count!=sources.count {r.status=NpStatus.data;return r;}
     kept:=0;
     for pass:0..<2 {
@@ -98,14 +98,14 @@ tokens, about 1.45 bytes a token.
 ```jai
 // Chapter 123's byte BPE, trained on samples of training documents only: up
 // to 16 evenly spaced training documents, the first 256 bytes of each.
-np_samples :: (docs:[]string,sources:[]int,out:[]string)->int {
+np_samples :: (docs:[]string,sources:[]int,out:[]string)->int #effects(all) {
     train:=0;for s:sources {if !np_holdout(s) {train+=1;}}
     k:=np_min(train,NP_SAMPLES);
     for j:0..<k {want:=j*train/k;seen:=0;
         for d:0..<docs.count {if !np_holdout(sources[d]) {if seen==want {s:=docs[d];out[j]=s[0..<np_min(s.count,NP_SAMPLE_BYTES)];}seen+=1;}}}
     return k;
 }
-np_tokenizer :: (classes:[]u8,docs:[]string,sources:[]int,merges:int,packed:[]u8,scratch:[]u8)->NpTok {
+np_tokenizer :: (classes:[]u8,docs:[]string,sources:[]int,merges:int,packed:[]u8,scratch:[]u8)->NpTok #effects(all) {
     if docs.count!=sources.count {return NpTok.{status=NpStatus.data};}
     picks:[16]string;k:=np_samples(docs,sources,picks[..]);
     m:=bt_train(classes,picks[0..<k],merges);if m.status!=PtStatus.ok || m.merges!=merges {return NpTok.{status=NpStatus.tokenizer};}
@@ -113,7 +113,7 @@ np_tokenizer :: (classes:[]u8,docs:[]string,sources:[]int,merges:int,packed:[]u8
     return NpTok.{written=w.written,merges=m.merges,vocab=257+m.merges};
 }
 // Bytes per token ID; BOS (and anything past it) has none.
-np_lengths :: (packed:[]u8,bos:int,out:[]int)->NpStatus {
+np_lengths :: (packed:[]u8,bos:int,out:[]int)->NpStatus #effects(all) {
     if out.count<=bos {return NpStatus.data;}
     for i:bos..<out.count {out[i]=0;}
     one:[1]int;for i:0..<bos {one[0]=i;r:=bt_decode(packed,one[..]);if r.status!=PtStatus.ok {return NpStatus.tokenizer;}out[i]=r.written;}
@@ -121,7 +121,7 @@ np_lengths :: (packed:[]u8,bos:int,out:[]int)->NpStatus {
 }
 // The two streams: each document is BOS then its tokens, training sources
 // into train and held-out sources into val, after the audit admits the split.
-np_data :: (packed:[]u8,docs:[]string,sources:[]int,bos:int,hashes:[]u64,train:[]int,val:[]int)->NpData {
+np_data :: (packed:[]u8,docs:[]string,sources:[]int,bos:int,hashes:[]u64,train:[]int,val:[]int)->NpData #effects(all) {
     r:=np_audit(docs,sources,hashes);if r.status!=NpStatus.ok {return r;}
     for d:0..<docs.count {e:=bt_encode(packed,docs[d]);if e.status!=PtStatus.ok {r.status=NpStatus.tokenizer;return r;}
         if np_holdout(sources[d]) {
@@ -166,7 +166,7 @@ times chapter 125's mean loss for that window.
 // Held-out bits per byte over the first `windows` windows of val: the
 // negative log probability of every target that has bytes (BOS has none),
 // in nats, over ln 2 times those targets' bytes.
-np_eval :: (c:NcConfig,w:[]f64,val:[]int,lengths:[]int,windows:int,cache:[]f64,work:[]f64,logits:[]f64)->NpEval {
+np_eval :: (c:NcConfig,w:[]f64,val:[]int,lengths:[]int,windows:int,cache:[]f64,work:[]f64,logits:[]f64)->NpEval #effects(all) {
     L:=c.sequence_len;V:=c.vocab;r:=NpEval.{};if windows<1 || windows*L>val.count {r.status=NpStatus.data;return r;}
     none:[1]f64;
     for k:0..<windows {t:=val[k*L..<k*L+L];
@@ -181,7 +181,7 @@ np_eval :: (c:NcConfig,w:[]f64,val:[]int,lengths:[]int,windows:int,cache:[]f64,w
 // The same targets under counts from the training stream: unigram with
 // add-one smoothing, and bigram with add-k for each k of NP_K, the best kept.
 // counts holds V*V pair counts, V token counts and V row totals.
-np_baselines :: (c:NcConfig,train:[]int,val:[]int,lengths:[]int,windows:int,counts:[]f64)->NpBase {
+np_baselines :: (c:NcConfig,train:[]int,val:[]int,lengths:[]int,windows:int,counts:[]f64)->NpBase #effects(all) {
     V:=c.vocab;L:=c.sequence_len;r:=NpBase.{};
     if counts.count<V*V+2*V || windows*L>val.count {r.status=NpStatus.data;return r;}
     U:=V*V;R:=U+V;for i:0..<V*V+2*V {counts[i]=0;}
@@ -231,11 +231,11 @@ NpPlan :: struct {model:NcConfig;batch:int;steps:int;warmup:int;warmdown:int;fin
 
 <!-- source: psionic/lib/nanochat/pretrain.coax admit -->
 ```jai
-np_flops :: (p:NpPlan)->f64 {return 6.0*f64(nc_parameter_count(p.model))*f64(p.steps)*f64(p.batch)*f64(p.model.sequence_len-1);}
-np_unit :: (x:f64)->bool {return x>0 && x<=1;}
+np_flops :: (p:NpPlan)->f64 #effects(all) {return 6.0*f64(nc_parameter_count(p.model))*f64(p.steps)*f64(p.batch)*f64(p.model.sequence_len-1);}
+np_unit :: (x:f64)->bool #effects(all) {return x>0 && x<=1;}
 // Every refusal of a plan, before any work: the model, the window, the batch,
 // the schedule, the rates, the optimizer, clipping, the data and the budget.
-np_admit :: (p:NpPlan,windows:int)->NpStatus {
+np_admit :: (p:NpPlan,windows:int)->NpStatus #effects(all) {
     c:=p.model;if !nc_valid(c) || c.context!=c.sequence_len {return NpStatus.config;}
     if p.batch<1 || p.batch>NP_BATCH || p.steps<1 || p.steps>NP_STEPS || p.warmup<0 || p.warmdown<0 || p.warmup+p.warmdown>p.steps {return NpStatus.config;}
     if !(p.final>=0 && p.final<=1) || !np_unit(p.embed) || !np_unit(p.matrix) || !np_unit(p.head) || !np_unit(p.scalar) {return NpStatus.config;}
@@ -267,16 +267,16 @@ that is not done here.
 ```jai
 // nanochat base_train's multiplier: (s+1)/warmup during warmup, 1, then
 // over the last warmdown steps f + (1 - f) final with f = (steps - s)/warmdown.
-np_scale :: (p:NpPlan,s:int)->f64 {
+np_scale :: (p:NpPlan,s:int)->f64 #effects(all) {
     if s<p.warmup {return f64(s+1)/f64(p.warmup);}
     if s+p.warmdown<=p.steps {return 1;}
     f:=f64(p.steps-s)/f64(p.warmdown);return f+(1-f)*p.final;
 }
 // The smaller of two integers, without a branch.
-np_min :: (a:int,b:int)->int {return (a+b-cast(int)abs(f64(a-b)))/2;}
+np_min :: (a:int,b:int)->int #effects(all) {return (a+b-cast(int)abs(f64(a-b)))/2;}
 // Five AdamW groups in parameter order: the scalars, wte, every block's
 // matrices and gates, lm_head, then smear_gate and the value embeddings.
-np_groups :: (p:NpPlan,scale:f64,out:[]AwGroup) {
+np_groups :: (p:NpPlan,scale:f64,out:[]AwGroup) #effects(all) {
     c:=p.model;at:=[6]int.[0,nc_wte(c),nc_block(c,0).q,nc_head(c),nc_smear_gate(c),nc_parameter_count(c)];
     lr:=[5]f64.[p.scalar,p.embed,p.matrix,p.head,p.embed];
     for k:0..<5 {out[k]=AwGroup.{first=at[k],count=at[k+1]-at[k],lr=lr[k]*scale,beta1=p.beta1,beta2=p.beta2,eps=p.eps};}
@@ -300,7 +300,7 @@ rule is this chapter's own. It is not claimed to match nanochat's
 // (deviation 1), lm_head 0.001 sqrt(3). Output projections and gates start
 // at a tenth of the input scale, not at zero, so the first gradient reaches
 // every matrix. resid 1, x0 0.1, smear 0.1, backout 0.2.
-np_init :: (c:NcConfig,seed:u64,p:[]f64) {
+np_init :: (c:NcConfig,seed:u64,p:[]f64) #effects(all) {
     inv:[NC_TENSORS_MAX]NcTensor;n:=nc_inventory(c,inv[..]);s:=sqrt(3.0/f64(c.width));
     for k:0..<n {t:=inv[k];scale:=s;offset:=0.0;
         if t.kind==NcKind.resid {scale=0;offset=1;}if t.kind==NcKind.x0 || t.kind==NcKind.smear_lambda {scale=0;offset=0.1;}
@@ -325,7 +325,7 @@ the rates and takes one AdamW step.
 ```jai
 // Epoch e's order of the training windows: Fisher-Yates from the last
 // position down, counters e*windows onwards. order[windows] remembers the epoch.
-np_window :: (p:NpPlan,windows:int,g:int,order:[]int)->int {
+np_window :: (p:NpPlan,windows:int,g:int,order:[]int)->int #effects(all) {
     epoch:=g/windows;
     if order[windows]!=epoch {
         for i:0..<windows {order[i]=i;}
@@ -336,7 +336,7 @@ np_window :: (p:NpPlan,windows:int,g:int,order:[]int)->int {
 }
 // One optimizer step: the mean loss and gradient over batch windows, the
 // global norm, clipping, the scheduled rates and AdamW.
-np_step :: (p:NpPlan,run:NpRun,train:[]int,order:[]int,w:[]f64,m:[]f64,v:[]f64,g:[]f64,total:[]f64,tape:[]f64,logits:[]f64)->NpStep {
+np_step :: (p:NpPlan,run:NpRun,train:[]int,order:[]int,w:[]f64,m:[]f64,v:[]f64,g:[]f64,total:[]f64,tape:[]f64,logits:[]f64)->NpStep #effects(all) {
     c:=p.model;L:=c.sequence_len;windows:=train.count/L;n:=w.count;fail:=NpStep.{run=run};
     if run.step>=p.steps {fail.status=NpStatus.config;return fail;}
     if windows<p.batch {fail.status=NpStatus.data;return fail;}
@@ -373,7 +373,7 @@ value that is not finite (or a negative second moment).
 // identity (32 bytes each); the step, AdamW's step and skip counters (u64);
 // n (u32); n parameters, n first moments, n second moments (binary64 bits);
 // then a digest of everything before it, folded over 32 KiB blocks.
-np_plan_id :: (p:NpPlan)->[32]u8 {
+np_plan_id :: (p:NpPlan)->[32]u8 #effects(all) {
     c:=p.model;w:=[22]u64.[cast,trunc(u64)c.sequence_len,cast,trunc(u64)c.vocab,cast,trunc(u64)c.layers,cast,trunc(u64)c.heads,cast,trunc(u64)c.kv_heads,cast,trunc(u64)c.width,
         cast(u64)c.pattern,cast,trunc(u64)c.pattern_len,cast,trunc(u64)c.context,cast,trunc(u64)p.batch,cast,trunc(u64)p.steps,cast,trunc(u64)p.warmup,cast,trunc(u64)p.warmdown,
         f64_bits(p.final),f64_bits(p.embed),f64_bits(p.matrix),f64_bits(p.head),f64_bits(p.scalar),f64_bits(p.beta1),f64_bits(p.beta2),f64_bits(p.eps),f64_bits(p.clip)];
@@ -381,22 +381,22 @@ np_plan_id :: (p:NpPlan)->[32]u8 {
     return ck_digest("psionic.pretrain-plan.v1",b[0..<at]);
 }
 // Folds bytes into a running digest, 32 KiB at a time.
-np_fold :: (d:[32]u8,bytes:[]u8)->[32]u8 {
+np_fold :: (d:[32]u8,bytes:[]u8)->[32]u8 #effects(all) {
     out:=d;at:=0;buf:[32800]u8;
     while at<bytes.count {k:=np_min(bytes.count-at,32768);for i:0..<32 {buf[i]=out[i];}for i:0..<k {buf[32+i]=bytes[at+i];}
         out=ck_digest("psionic.pretrain-fold.v1",buf[0..<32+k]);at+=k;}
     return out;
 }
 // The data identity: both streams, as u32 values, with their lengths.
-np_data_id :: (train:[]int,val:[]int)->[32]u8 {
+np_data_id :: (train:[]int,val:[]int)->[32]u8 #effects(all) {
     d:[32]u8;head:[16]u8;h:=ck_put64(head[..],0,cast,trunc(u64)train.count);h=ck_put64(head[..],h,cast,trunc(u64)val.count);d=np_fold(d,head[0..<h]);
     buf:[32768]u8;
     for part:0..<2 {s:=train;if part==1 {s=val;}at:=0;
         while at<s.count {k:=np_min(s.count-at,8192);q:=0;for i:0..<k {q=ck_put32(buf[..],q,s[at+i]);}d=np_fold(d,buf[0..<q]);at+=k;}}
     return d;
 }
-np_sign :: (b:[]u8) {d:[32]u8;d=np_fold(d,b[0..<b.count-32]);for i:0..<32 {b[b.count-32+i]=d[i];}}
-np_save :: (plan:[32]u8,data:[32]u8,run:NpRun,w:[]f64,m:[]f64,v:[]f64,out:[]u8)->NpCheck {
+np_sign :: (b:[]u8) #effects(all) {d:[32]u8;d=np_fold(d,b[0..<b.count-32]);for i:0..<32 {b[b.count-32+i]=d[i];}}
+np_save :: (plan:[32]u8,data:[32]u8,run:NpRun,w:[]f64,m:[]f64,v:[]f64,out:[]u8)->NpCheck #effects(all) {
     n:=w.count;if m.count!=n || v.count!=n || out.count!=np_size(n) {return NpCheck.shape;}
     if run.state.step!=run.step || run.state.skipped!=0 {return NpCheck.step;}
     for i:0..<n {if !aw_finite(w[i]) || !aw_finite(m[i]) || !aw_finite(v[i]) || v[i]<0 {return NpCheck.number;}}
@@ -408,12 +408,12 @@ np_save :: (plan:[32]u8,data:[32]u8,run:NpRun,w:[]f64,m:[]f64,v:[]f64,out:[]u8)-
 }
 // Admits the whole record against the plan and data it must belong to, then
 // writes the values. A refusal writes nothing.
-np_resume :: (p:NpPlan,plan:[32]u8,data:[32]u8,bytes:[]u8,w:[]f64,m:[]f64,v:[]f64)->NpRead {
+np_resume :: (p:NpPlan,plan:[32]u8,data:[32]u8,bytes:[]u8,w:[]f64,m:[]f64,v:[]f64)->NpRead #effects(all) {
     if w.count!=nc_parameter_count(p.model) {return NpRead.{status=NpCheck.shape};}
     return np_read(plan,data,p.steps,bytes,w,m,v);
 }
 // The record itself, for n = w.count values and a run of at most steps.
-np_read :: (plan:[32]u8,data:[32]u8,steps:int,bytes:[]u8,w:[]f64,m:[]f64,v:[]f64)->NpRead {
+np_read :: (plan:[32]u8,data:[32]u8,steps:int,bytes:[]u8,w:[]f64,m:[]f64,v:[]f64)->NpRead #effects(all) {
     n:=w.count;if m.count!=n || v.count!=n || bytes.count!=np_size(n) {return NpRead.{status=NpCheck.shape};}
     if !ck_magic(bytes,80,84) {return NpRead.{status=NpCheck.magic};}
     if bytes[4]!=1 || bytes[5]!=0 || bytes[6]!=0 || bytes[7]!=0 {return NpRead.{status=NpCheck.version};}
@@ -437,7 +437,7 @@ The acceptance rule was written into the source before the first run:
 // bits per byte must be at least NP_MARGIN below the best smoothed bigram's,
 // on the same targets.
 NP_MARGIN :: 0.1;
-np_accept :: (model:f64,base:NpBase)->bool {return base.status==NpStatus.ok && model+NP_MARGIN<=base.bigram;}
+np_accept :: (model:f64,base:NpBase)->bool #effects(all) {return base.status==NpStatus.ok && model+NP_MARGIN<=base.bigram;}
 ```
 
 ## Run it

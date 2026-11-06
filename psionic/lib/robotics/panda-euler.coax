@@ -47,12 +47,12 @@
  #assert peu_step_raw(q[..],v[..],c[..],e[..],out[..])==PmsStatus.ok;peu_cached_golden(out[0],variant);#assert out[0].control_clipped==0 && out[0].force_clipped==(ifx variant==2 then 2 else 0);
 }
 
-peu_response :: (metric:PmOutput,applied:PidOutput,bias:PidOutput)->PmsRaw {
+peu_response :: (metric:PmOutput,applied:PidOutput,bias:PidOutput)->PmsRaw #effects(all) {
  status:=pms_forces_admit(pfd_words(applied));if status!=PmsStatus.ok {return PmsRaw.{status=status};}net:=pfd_subtract(applied,bias);status=pms_forces_admit(pfd_words(net));if status!=PmsStatus.ok {return PmsRaw.{status=status};}
  problem:=pms_basis(peu_metric(metric),net.hinge,net.slide);return pms_solve_force_admitted(problem.mass,problem.force);
 }
 
-peu_step :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),hinge_rates:[]pfku.Quantity(PidAngularRate,f64),slide_rates:[]pfku.Quantity(PidLinearRate,f64),arm_control:[]pfku.Quantity(PmHingeGravity,f64),finger_target:[]pfku.Quantity(pfku.Metre,f64),external_hinge:[]pfku.Quantity(PmHingeGravity,f64),external_slide:[]pfku.Quantity(PmSlideGravity,f64),output:[]PeuOutput)->PmsStatus #export_c {
+peu_step :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),hinge_rates:[]pfku.Quantity(PidAngularRate,f64),slide_rates:[]pfku.Quantity(PidLinearRate,f64),arm_control:[]pfku.Quantity(PmHingeGravity,f64),finger_target:[]pfku.Quantity(pfku.Metre,f64),external_hinge:[]pfku.Quantity(PmHingeGravity,f64),external_slide:[]pfku.Quantity(PmSlideGravity,f64),output:[]PeuOutput)->PmsStatus #export_c #effects(all) {
  if angles.count!=7 || slides.count!=2 || hinge_rates.count!=7 || slide_rates.count!=2 || arm_control.count!=7 || finger_target.count!=2 || external_hinge.count!=7 || external_slide.count!=2 || output.count!=1 {return PmsStatus.shape;}
  external:PidOutput;for i:0..<7 {external.hinge[i]=external_hinge[i];}for i:0..<2 {external.slide[i]=external_slide[i];}status:=pms_forces_admit(pfd_words(external));if status!=PmsStatus.ok {return status;}
  poses:[1]PffOutput;model:=pff_forward(angles,slides,poses[..]);if model!=PfkStatus.ok {return pms_model_status(model);}
@@ -65,7 +65,7 @@ peu_step :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku
  applied:=psf_applied(actuator[0].actuator,external,passive);metric:=pm_sum_owned(poses[0],profile);zero_acceleration:[9]f64;bias:=pid_sum_owned(poses[0],profile,velocities,zero_acceleration);
  return peu_complete(q,s,v,sv,peu_response(metric,applied,bias),actuator[0].control_clipped,actuator[0].force_clipped,output);
 }
-peu_step_raw :: (coordinates:[]f64,rates:[]f64,controls:[]f64,external:[]f64,output:[]PeuOutput)->PmsStatus #export_c {
+peu_step_raw :: (coordinates:[]f64,rates:[]f64,controls:[]f64,external:[]f64,output:[]PeuOutput)->PmsStatus #export_c #effects(all) {
  if coordinates.count!=9 || rates.count!=9 || controls.count!=9 || external.count!=9 || output.count!=1 {return PmsStatus.shape;}
  q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);u:[7]pfku.Quantity(PmHingeGravity,f64);t:[2]pfku.Quantity(pfku.Metre,f64);eh:[7]pfku.Quantity(PmHingeGravity,f64);es:[2]pfku.Quantity(PmSlideGravity,f64);
  for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];u[i].value=controls[i];eh[i].value=external[i];}for i:0..<2 {s[i].value=coordinates[7+i];sv[i].value=rates[7+i];t[i].value=controls[7+i];es[i].value=external[7+i];}return peu_step(q[..],s[..],v[..],sv[..],u[..],t[..],eh[..],es[..],output);

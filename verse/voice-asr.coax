@@ -26,17 +26,17 @@ ASR_WHISPER :: 2;    // Psionic's Whisper ("--provider psionic")
 ASR_PARAKEET :: 3;   // Psionic's resident Parakeet TDT 0.6B v3 (nvidia/parakeet-tdt-0.6b-v3 @ 541d1f99)
 ASR_KINDS :: 4;
 
-verse_voice_asr_known :: (r: int) -> bool #export_c { return r >= ASR_LOCAL && r < ASR_KINDS; }
+verse_voice_asr_known :: (r: int) -> bool #export_c #effects(all) { return r >= ASR_LOCAL && r < ASR_KINDS; }
 
 // May this recognizer also synthesize replies? Parakeet is recognition only.
-verse_voice_asr_synthesizes :: (r: int) -> bool #export_c {
+verse_voice_asr_synthesizes :: (r: int) -> bool #export_c #effects(all) {
   return verse_voice_asr_known(r) && r != ASR_PARAKEET;
 }
 
 // Re-recognizing the open turn every second for PARTIALs and early finals
 // suits a fast or hosted recognizer. A resident local model whose calls
 // serialize recognizes each turn once, when it ends.
-verse_voice_asr_partials :: (r: int) -> bool #export_c {
+verse_voice_asr_partials :: (r: int) -> bool #export_c #effects(all) {
   return verse_voice_asr_known(r) && r != ASR_PARAKEET;
 }
 
@@ -60,7 +60,7 @@ ASR_SEARCH :: 50;          // frames either side of an even split a cut may move
 
 // The turn's 16-bit samples as the model's f32 samples in [-1, 1). False,
 // and nothing written, when out is not exactly as long as pcm.
-verse_voice_asr_convert :: (pcm: [] s16, out: [] f32) -> bool #export_c {
+verse_voice_asr_convert :: (pcm: [] s16, out: [] f32) -> bool #export_c #effects(all) {
   if out.count != pcm.count { return false; }
   for i: 0..<pcm.count { out[i] = f32(pcm[i]) / 32768.0; }
   return true;
@@ -88,7 +88,7 @@ verse_voice_asr_convert :: (pcm: [] s16, out: [] f32) -> bool #export_c {
 // than ASR_MIN_VOICED voiced frames: the model is not asked), -1 refused (it
 // would take more than ASR_WINDOWS calls), else 1..ASR_WINDOWS.
 ASR_REFUSED :: -1;
-verse_voice_asr_plan :: (samples: int, voiced_frames: int) -> int #export_c {
+verse_voice_asr_plan :: (samples: int, voiced_frames: int) -> int #export_c #effects(all) {
   if samples < ASR_MIN || voiced_frames < ASR_MIN_VOICED { return 0; }
   k := (samples + ASR_MAX - 1) / ASR_MAX;
   if k > ASR_WINDOWS { return ASR_REFUSED; }
@@ -114,7 +114,7 @@ verse_voice_asr_plan :: (samples: int, voiced_frames: int) -> int #export_c {
 // quietest (the two frames either side added), then the nearest the split,
 // then the earlier. With none, the even split itself. -1 when no plan exists:
 // left < 1, start..<n cannot be covered, or speech has too few frames.
-verse_voice_asr_cut :: (start: int, n: int, left: int, speech: [] u8) -> int #export_c {
+verse_voice_asr_cut :: (start: int, n: int, left: int, speech: [] u8) -> int #export_c #effects(all) {
   rest := n - start;
   if left < 1 || rest < left * ASR_MIN || rest > left * ASR_MAX || speech.count * ASR_FRAME < n { return -1; }
   if left == 1 { return n; }
@@ -253,7 +253,7 @@ verse_voice_asr_cut :: (start: int, n: int, left: int, speech: [] u8) -> int #ex
 // ---- Between calls ----
 // After each call: go on to the next window only while nothing cancelled
 // the turn and every call so far succeeded.
-verse_voice_asr_continue :: (cancelled: bool, ok: bool, done: int, windows: int) -> bool #export_c {
+verse_voice_asr_continue :: (cancelled: bool, ok: bool, done: int, windows: int) -> bool #export_c #effects(all) {
   return !cancelled && ok && done < windows;
 }
 
@@ -266,8 +266,8 @@ verse_voice_asr_continue :: (cancelled: bool, ok: bool, done: int, windows: int)
 // pieces. Returns the new length, or -1 (out unchanged past `used`) when the
 // result would not fit out or ASR_TEXT bytes.
 ASR_TEXT :: 600;   // TurnEvent.text max_bytes
-asr_space :: (c: u8) -> bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
-verse_voice_asr_append :: (out: [] u8, used: int, piece: string) -> int #export_c {
+asr_space :: (c: u8) -> bool #effects(all) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
+verse_voice_asr_append :: (out: [] u8, used: int, piece: string) -> int #export_c #effects(all) {
   if used < 0 || used > out.count { return -1; }
   a := 0;
   b := piece.count;
@@ -327,7 +327,7 @@ ASR_CANCELLED :: 3;    // drop silently: the client cancelled it
 ASR_FAILED :: 4;       // the provider failed: an ERROR_CODE_PROVIDER, then ENDED
 ASR_TOO_LONG :: 5;     // refused: more than ASR_TEXT bytes, or more than ASR_WINDOWS calls
 verse_voice_asr_admit :: (turn_no: int, dropped_upto: int, epoch: u64, epoch_now: u64, cancelled: bool,
-                          windows: int, ok: bool, text_bytes: int) -> int #export_c {
+                          windows: int, ok: bool, text_bytes: int) -> int #export_c #effects(all) {
   if cancelled { return ASR_CANCELLED; }
   if turn_no <= dropped_upto || epoch != epoch_now { return ASR_STALE; }
   if windows == ASR_REFUSED || text_bytes < 0 || text_bytes > ASR_TEXT { return ASR_TOO_LONG; }

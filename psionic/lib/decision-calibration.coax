@@ -37,7 +37,7 @@ PC_PINNED_READOUT :: "{\n  \"readout\": \"slot_lm\",\n  \"head_dim\": 256,\n  \"
     bad.status=PcStatus.unpinned;#assert pc_temperature(bad,QrKind.noul,2)==0;
 }
 // book:begin calibration
-pc_load :: (kind:u8,readout:[]u8,calibration:[]u8)->PcCalibration #export_c {
+pc_load :: (kind:u8,readout:[]u8,calibration:[]u8)->PcCalibration #export_c #effects(all) {
     if kind>1 {return PcCalibration.{status=PcStatus.kind};}
     if cast(string)readout!=PC_PINNED_READOUT {return PcCalibration.{status=PcStatus.readout};}
     // Neither pinned revision contains calibration.json; one is a different bundle.
@@ -45,7 +45,7 @@ pc_load :: (kind:u8,readout:[]u8,calibration:[]u8)->PcCalibration #export_c {
     return PcCalibration.{source=PcSource.none,slots=256,head_dim=256};
 }
 // With no table, the pinned runtime uses 1.0 for every kind and option count.
-pc_temperature :: (c:PcCalibration,kind:QrKind,count:int)->f32 #export_c {
+pc_temperature :: (c:PcCalibration,kind:QrKind,count:int)->f32 #export_c #effects(all) {
     if c.status!=PcStatus.ok || !qr_valid(cast(u8)kind,count,1) {return 0;}
     return 1;
 }

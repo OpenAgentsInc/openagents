@@ -35,17 +35,17 @@ PkpRange :: struct {ok:bool;lo:int;hi:int;}
  #assert pkp_threads(1,9223372036854775807)==1;
  #assert pkp_threads(-9223372036854775807-1,-9223372036854775807-1)==1;
 }
-pkp_range :: (rows:int,parts:int,index:int)->PkpRange #export_c {
+pkp_range :: (rows:int,parts:int,index:int)->PkpRange #export_c #effects(all) {
  if rows<0 || rows>8201 || parts<1 || parts>8 || index<0 || index>=parts {return PkpRange.{};}
  return PkpRange.{ok=true,lo=rows*index/parts,hi=rows*(index+1)/parts};
 }
-pkp_rows :: (rows:int,lo:int,hi:int)->bool {return lo>=0 && hi>=lo && hi<=rows;}
-pkp_counts :: (rows:int,cols:int,nw:int,nx:int,nb:int,rw:int,rx:int,rb:int,ny:int,second:bool)->bool {
+pkp_rows :: (rows:int,lo:int,hi:int)->bool #effects(all) {return lo>=0 && hi>=lo && hi<=rows;}
+pkp_counts :: (rows:int,cols:int,nw:int,nx:int,nb:int,rw:int,rx:int,rb:int,ny:int,second:bool)->bool #effects(all) {
  if rows<1 || rows>8201 || cols<1 || cols>1024 {return false;}
  if nw!=rows*cols || nx!=cols || nb!=rows || ny<rows {return false;}
  return !second || (rw==rows*cols && rx==cols && rb==rows);
 }
-pkp_threads :: (requested:int,available:int)->int #export_c {
+pkp_threads :: (requested:int,available:int)->int #export_c #effects(all) {
  // C supplies only the observed CPU count. A failed observation becomes zero;
  // cap it before enforcing the conservative one-thread minimum. All signed
  // differences below fit, including INT64_MIN/MAX observations and requests.

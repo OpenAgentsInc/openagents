@@ -99,19 +99,19 @@ with a typed refusal.
 
 <!-- source: psionic/lib/serve-rollout.coax step -->
 ```jai
-ro_init :: (stable:RoDoc)->RoState {return RoState.{phase=RoPhase.idle,stable=stable,doc=stable};}
-ro_plan_ok :: (p:RoPlan)->bool {
+ro_init :: (stable:RoDoc)->RoState #effects(all) {return RoState.{phase=RoPhase.idle,stable=stable,doc=stable};}
+ro_plan_ok :: (p:RoPlan)->bool #effects(all) {
     if p.nsteps<1 || p.nsteps>p.steps.count || p.replicas<1 || p.replicas>RR_REPLICAS || p.samples<1 || p.p95_us<1 {return false;}
     if p.error_pct<0 || p.error_pct>100 || p.window_us<1 {return false;}
     last:=0;
     for k:0..<p.nsteps {if p.steps[k]<=last || p.steps[k]>99 {return false;}last=p.steps[k];}
     return true;
 }
-ro_obs_ok :: (o:RoObs)->bool {return o.served>=0 && o.errors>=0 && o.errors<=o.served && o.p95_us>=0 && o.golden_bad>=0;}
+ro_obs_ok :: (o:RoObs)->bool #effects(all) {return o.served>=0 && o.errors>=0 && o.errors<=o.served && o.p95_us>=0 && o.golden_bad>=0;}
 // A golden mismatch fails at once. Otherwise a window needs `samples`
 // finished canary requests; then the canary's errors so far must stay
 // within the budget and the window's P95 within the objective.
-ro_verdict :: (p:RoPlan,o:RoObs,served:int,errors:int)->RoVerdict {
+ro_verdict :: (p:RoPlan,o:RoObs,served:int,errors:int)->RoVerdict #effects(all) {
     if o.golden_bad>0 {return RoVerdict.golden;}
     if o.served<p.samples {return RoVerdict.wait;}
     if errors*100>p.error_pct*served {return RoVerdict.errors;}
@@ -119,9 +119,9 @@ ro_verdict :: (p:RoPlan,o:RoObs,served:int,errors:int)->RoVerdict {
     return RoVerdict.pass;
 }
 // Give up the canary: no new request goes to it; it drains.
-ro_revert :: (s:RoState,v:RoVerdict)->RoState {n:=s;n.phase=RoPhase.revert;n.share=0;n.seen=0;n.sent=0;n.verdict=v;return n;}
+ro_revert :: (s:RoState,v:RoVerdict)->RoState #effects(all) {n:=s;n.phase=RoPhase.revert;n.share=0;n.seen=0;n.sent=0;n.verdict=v;return n;}
 // One input. A refused input returns the state unchanged with its reason.
-ro_step :: (p:RoPlan,s:RoState,inp:RoInput)->RoStep {
+ro_step :: (p:RoPlan,s:RoState,inp:RoInput)->RoStep #effects(all) {
     r:=RoStep.{state=s,refusal=RoRefusal.phase};n:=s;
     if inp.event==RoEvent.begin {
         if s.phase!=RoPhase.idle {return r;}
@@ -177,7 +177,7 @@ ro_step :: (p:RoPlan,s:RoState,inp:RoInput)->RoStep {
 // The traffic split: with a share above 0, a new request goes to the other
 // build when that keeps its count at or below the step's share of the
 // requests seen this step.
-ro_pick :: (s:RoState)->RoPick {
+ro_pick :: (s:RoState)->RoPick #effects(all) {
     if s.share==0 {return RoPick.{state=s};}
     n:=s;n.seen+=1;
     if (n.sent+1)*100<=n.share*n.seen {n.sent+=1;return RoPick.{state=n,other=true};}
@@ -270,7 +270,7 @@ request it serves answer with an error.
 // by share and routed among their build's replicas; idle ready replicas
 // take their queue's head; the losing build's replicas with nothing left
 // stop, and when it has none left the controller hears drained.
-ro_sim :: (ro:RoRun,reqs:[]RrRequest,tok:[]int)->RoSim {
+ro_sim :: (ro:RoRun,reqs:[]RrRequest,tok:[]int)->RoSim #effects(all) {
     s:RoSim;off:RrScaler;cfg:=ro.cfg;mem:[1728]f64;
     s.status=rr_check(cfg,off,reqs,tok);
     if s.status!=RrStatus.ok {return s;}

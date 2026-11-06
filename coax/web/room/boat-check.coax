@@ -96,7 +96,7 @@ bc_placed :: (a: [] BcSeat, b: [] BcSeat, wa: bool, wb: bool, ms: int) -> bool {
   return false;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 2 { tool_errln("usage: coax/web/tool.sh coax/web/room/boat-check.coax ws://127.0.0.1:PORT DIR/room-control.txt"); return 2; }
   b: [512] u8;

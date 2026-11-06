@@ -4,7 +4,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<3 {tool_errln("usage: metal-check ROOT RESOURCES OUTPUT [--live] [--facts FILE]");return 2;}
  root:=args_at(a[..],0);resources:=args_at(a[..],1);out:=args_at(a[..],2);if !fs_mkdir(out) {return 1;}
  path:[4096]u8;facts:[16384]u8;n:=fs_read(args_value(a[..],"--facts",fs_join(root,"verse/native/everglade.facts",path[..])),facts[..]);if n<1 {return 1;}

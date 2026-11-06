@@ -257,19 +257,19 @@ GCTriangle :: struct { a: GCVec; b: GCVec; c: GCVec; }
   #assert gc_result.status == GroundRayStatus.terrain && !gc_result.hit;
 }
 
-gc_positive :: (v: f64) -> bool { return v > 0; }
-gc_nonnegative :: (v: f64) -> bool { return v >= 0; }
-gc_nonpositive :: (v: f64) -> bool { return v <= 0; }
+gc_positive :: (v: f64) -> bool #effects(all) { return v > 0; }
+gc_nonnegative :: (v: f64) -> bool #effects(all) { return v >= 0; }
+gc_nonpositive :: (v: f64) -> bool #effects(all) { return v <= 0; }
 
-gc_vec :: (p: WorldPoint) -> GCVec { return GCVec.{x = f64(p.x), y = f64(p.y), z = f64(p.z)}; }
-gc_add :: (a: GCVec, b: GCVec) -> GCVec { return GCVec.{x = a.x + b.x, y = a.y + b.y, z = a.z + b.z}; }
-gc_sub :: (a: GCVec, b: GCVec) -> GCVec { return GCVec.{x = a.x - b.x, y = a.y - b.y, z = a.z - b.z}; }
-gc_scale :: (a: GCVec, s: f64) -> GCVec { return GCVec.{x = a.x * s, y = a.y * s, z = a.z * s}; }
-gc_dot :: (a: GCVec, b: GCVec) -> f64 { return a.x * b.x + a.y * b.y + a.z * b.z; }
-gc_cross :: (a: GCVec, b: GCVec) -> GCVec {
+gc_vec :: (p: WorldPoint) -> GCVec #effects(all) { return GCVec.{x = f64(p.x), y = f64(p.y), z = f64(p.z)}; }
+gc_add :: (a: GCVec, b: GCVec) -> GCVec #effects(all) { return GCVec.{x = a.x + b.x, y = a.y + b.y, z = a.z + b.z}; }
+gc_sub :: (a: GCVec, b: GCVec) -> GCVec #effects(all) { return GCVec.{x = a.x - b.x, y = a.y - b.y, z = a.z - b.z}; }
+gc_scale :: (a: GCVec, s: f64) -> GCVec #effects(all) { return GCVec.{x = a.x * s, y = a.y * s, z = a.z * s}; }
+gc_dot :: (a: GCVec, b: GCVec) -> f64 #effects(all) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+gc_cross :: (a: GCVec, b: GCVec) -> GCVec #effects(all) {
   return GCVec.{x = a.y * b.z - a.z * b.y, y = a.z * b.x - a.x * b.z, z = a.x * b.y - a.y * b.x};
 }
-gc_unit :: (a: GCVec) -> GCVec {
+gc_unit :: (a: GCVec) -> GCVec #effects(all) {
   gc_size := sqrt(gc_dot(a, a));
   if gc_size == 0 { return GCVec.{y = 1}; }
   return gc_scale(a, 1 / gc_size);
@@ -277,7 +277,7 @@ gc_unit :: (a: GCVec) -> GCVec {
 
 // Ericson's Voronoi-region solve. Feature order is face0, edges AB/BC/CA1..3,
 // vertices A/B/C4..6; vertices own their boundaries before edges, then the face.
-gc_closest_triangle :: (a: GCVec, b: GCVec, c: GCVec, p: GCVec) -> GCClosest {
+gc_closest_triangle :: (a: GCVec, b: GCVec, c: GCVec, p: GCVec) -> GCClosest #effects(all) {
   ab := gc_sub(b, a); ac := gc_sub(c, a); ap := gc_sub(p, a);
   d1 := gc_dot(ab, ap); d2 := gc_dot(ac, ap);
   if d1 <= 0 && d2 <= 0 { return GCClosest.{point = a, feature = 4}; }
@@ -298,14 +298,14 @@ gc_closest_triangle :: (a: GCVec, b: GCVec, c: GCVec, p: GCVec) -> GCClosest {
   return GCClosest.{point = gc_add(a, gc_add(gc_scale(ab, vb * gc_inverse), gc_scale(ac, vc * gc_inverse))), feature = 0};
 }
 
-gc_keep :: (a: GCFeature, b: GCFeature) -> GCFeature {
+gc_keep :: (a: GCFeature, b: GCFeature) -> GCFeature #effects(all) {
   if b.hit && (!a.hit || b.t < a.t) { return b; }
   return a;
 }
 
 // The closest point on the complete infinite ray supplies a stable quadratic root.
 // Testing the closest distance avoids subtracting two large nearly equal discriminants.
-gc_sphere_sweep :: (gc_centre_pos: GCVec, o: GCVec, by: GCVec, r: f64, feature: int) -> GCFeature {
+gc_sphere_sweep :: (gc_centre_pos: GCVec, o: GCVec, by: GCVec, r: f64, feature: int) -> GCFeature #effects(all) {
   dd := gc_dot(by, by);
   if dd == 0 { return GCFeature.{}; }
   m := gc_sub(o, gc_centre_pos); middle := -gc_dot(m, by) / dd;
@@ -316,7 +316,7 @@ gc_sphere_sweep :: (gc_centre_pos: GCVec, o: GCVec, by: GCVec, r: f64, feature: 
   return GCFeature.{hit = true, t = t, normal = gc_unit(gc_add(m, gc_scale(by, t))), feature = feature};
 }
 
-gc_edge_sweep :: (a: GCVec, b: GCVec, o: GCVec, by: GCVec, r: f64) -> GCFeature {
+gc_edge_sweep :: (a: GCVec, b: GCVec, o: GCVec, by: GCVec, r: f64) -> GCFeature #effects(all) {
   ab := gc_sub(b, a); m := gc_sub(o, a); size := gc_dot(ab, ab);
   dc := gc_cross(by, ab); mc := gc_cross(m, ab); qa := gc_dot(dc, dc);
   gc_best: GCFeature;
@@ -336,7 +336,7 @@ gc_edge_sweep :: (a: GCVec, b: GCVec, o: GCVec, by: GCVec, r: f64) -> GCFeature 
   return gc_keep(gc_best, gc_sphere_sweep(b, o, by, r, 2));
 }
 
-gc_face_sweep :: (tri: GCTriangle, o: GCVec, by: GCVec, r: f64) -> GCFeature {
+gc_face_sweep :: (tri: GCTriangle, o: GCVec, by: GCVec, r: f64) -> GCFeature #effects(all) {
   ab := gc_sub(tri.b, tri.a); ac := gc_sub(tri.c, tri.a); n := gc_unit(gc_cross(ab, ac));
   change := gc_dot(n, by);
   if change == 0 { return GCFeature.{}; }
@@ -349,7 +349,7 @@ gc_face_sweep :: (tri: GCTriangle, o: GCVec, by: GCVec, r: f64) -> GCFeature {
   return GCFeature.{hit = true, t = t, normal = n, feature = 0};
 }
 
-gc_region :: (origin: f32, gc_cell_size: f32, n: int, p: f64) -> int {
+gc_region :: (origin: f32, gc_cell_size: f32, n: int, p: f64) -> int #effects(all) {
   if p < f64(origin) { return -1; }
   if p > f64(origin + f32(n) * gc_cell_size) { return n; }
   gc_low := 0; gc_high := n;
@@ -360,7 +360,7 @@ gc_region :: (origin: f32, gc_cell_size: f32, n: int, p: f64) -> int {
   return gc_low;
 }
 
-gc_bounds :: (g: Ground, p: WorldPoint, by: WorldPoint, r: f32) -> GCBounds {
+gc_bounds :: (g: Ground, p: WorldPoint, by: WorldPoint, r: f32) -> GCBounds #effects(all) {
   mx := f64(p.x) + f64(by.x) / 2; mz := f64(p.z) + f64(by.z) / 2;
   ex := abs(f64(by.x)) / 2 + f64(r); ez := abs(f64(by.z)) / 2 + f64(r);
   gc_box := GCBounds.{lx = mx - ex, hx = mx + ex, lz = mz - ez, hz = mz + ez};
@@ -372,7 +372,7 @@ gc_bounds :: (g: Ground, p: WorldPoint, by: WorldPoint, r: f32) -> GCBounds {
 
 // Caller has admitted the descriptor and view. A virtual edge cell repeats its edge's
 // heights, so its triangles have zero gradient along the extended gc_axis_point.
-gc_triangle :: (g: Ground, tile: GroundRayTile, gc_bounds_arg: GCBounds, x: int, z: int, triangle: int) -> GCTriangle {
+gc_triangle :: (g: Ground, tile: GroundRayTile, gc_bounds_arg: GCBounds, x: int, z: int, triangle: int) -> GCTriangle #effects(all) {
   x0 := f64(g.west + f32(x) * g.cell); x1 := f64(g.west + f32(x + 1) * g.cell);
   z0 := f64(g.south + f32(z) * g.cell); z1 := f64(g.south + f32(z + 1) * g.cell);
   ha := tile.a; hb := tile.b; hc := tile.c; hd := tile.d;
@@ -385,14 +385,14 @@ gc_triangle :: (g: Ground, tile: GroundRayTile, gc_bounds_arg: GCBounds, x: int,
   return GCTriangle.{a = a, b = GCVec.{x = x0, y = hc, z = z1}, c = ne};
 }
 
-gc_tile_profile :: (g: Ground, tile: GroundRayTile, x: int, z: int) -> bool {
+gc_tile_profile :: (g: Ground, tile: GroundRayTile, x: int, z: int) -> bool #effects(all) {
   dx := f64(g.west + f32(x + 1) * g.cell) - f64(g.west + f32(x) * g.cell);
   dz := f64(g.south + f32(z + 1) * g.cell) - f64(g.south + f32(z) * g.cell);
   return ground_finite(f32((tile.b - tile.a) / dx)) && ground_finite(f32((tile.d - tile.b) / dz))
     && ground_finite(f32((tile.d - tile.c) / dx)) && ground_finite(f32((tile.c - tile.a) / dz));
 }
 
-ground_contact :: (g: Ground, heights: [] f32, p: WorldPoint, r: f32, by: WorldPoint, cells: int) -> GroundContact {
+ground_contact :: (g: Ground, heights: [] f32, p: WorldPoint, r: f32, by: WorldPoint, cells: int) -> GroundContact #effects(all) {
   if cells < 1 || cells > GROUND_CONTACT_CELLS || !ground_finite(r) || !(r > 0)
     || !ground_finite(p.x) || !ground_finite(p.y) || !ground_finite(p.z)
     || !ground_finite(by.x) || !ground_finite(by.y) || !ground_finite(by.z) { return GroundContact.{}; }
@@ -453,9 +453,9 @@ ground_contact :: (g: Ground, heights: [] f32, p: WorldPoint, r: f32, by: WorldP
   return gc_result;
 }
 
-ground_overlap :: (g: Ground, heights: [] f32, p: WorldPoint, r: f32, cells: int) -> GroundContact {
+ground_overlap :: (g: Ground, heights: [] f32, p: WorldPoint, r: f32, cells: int) -> GroundContact #effects(all) {
   return ground_contact(g, heights, p, r, world_point(0, 0, 0), cells);
 }
-ground_sweep :: (g: Ground, heights: [] f32, p: WorldPoint, r: f32, by: WorldPoint, cells: int) -> GroundContact {
+ground_sweep :: (g: Ground, heights: [] f32, p: WorldPoint, r: f32, by: WorldPoint, cells: int) -> GroundContact #effects(all) {
   return ground_contact(g, heights, p, r, by, cells);
 }

@@ -36,15 +36,15 @@
  n:f64=1e-15;for delta:0..<2 {v:=f64_from_bits(f64_bits(n)-u64(delta));b:=pfl_box(6,[3]f64.[v,v,v]);for i:0..<3 {#assert b.floored[i]==(delta==1);#assert b.side[i].value==sqrt(n);}}
 }
 
-pfl_box :: (mass:f64,inertia:[3]f64)->PflBox {
+pfl_box :: (mass:f64,inertia:[3]f64)->PflBox #effects(all) {
  // Trusted mass >=1e-15; source principal moments are finite and nonnegative.
  sides:=[6]int.[1,2,0,2,0,1];box:PflBox;
  for i:0..<3 {triangle:=inertia[sides[2*i]]+inertia[sides[2*i+1]]-inertia[i];box.floored[i]=triangle<1e-15;box.side[i].value=sqrt((ifx box.floored[i] then 1e-15 else triangle)/mass*6.0);}return box;
 }
-pfl_principal :: (pose:PfkPose,inertial:[4]f64)->[9]f64 {
+pfl_principal :: (pose:PfkPose,inertial:[4]f64)->[9]f64 #effects(all) {
  local:=pfk_matrix(pfk_normalize(inertial).value);world:[9]f64;for i:0..<3 {for j:0..<3 {world[i*3+j]=pose.rotation[i*3]*local[j]+pose.rotation[i*3+1]*local[3+j]+pose.rotation[i*3+2]*local[6+j];}}return world;
 }
-pfl_local :: (columns:PmColumns,world:[9]f64,hinge:[7]pfku.Quantity(PidAngularRate,f64),slide:[2]pfku.Quantity(PidLinearRate,f64))->PflTwist {
+pfl_local :: (columns:PmColumns,world:[9]f64,hinge:[7]pfku.Quantity(PidAngularRate,f64),slide:[2]pfku.Quantity(PidLinearRate,f64))->PflTwist #effects(all) {
  linear:[3]pfku.Quantity(PidLinearRate,f64);angular:[3]pfku.Quantity(PidAngularRate,f64);one:pfku.Quantity(pfku.Radian,f64);one.value=1;
  for row:0..<3 {
   for i:0..<7 {v:pfku.Quantity(UnitQuotient(pfku.Metre,pfku.Radian),f64);v.value=columns.linear[row*9+i];w:pfku.Quantity(UnitOne,f64);w.value=columns.angular[row*9+i];linear[row]=linear[row]+convert_unit(PidLinearRate,v*hinge[i]);angular[row]=angular[row]+convert_unit(PidAngularRate,w*hinge[i]);}
@@ -52,17 +52,17 @@ pfl_local :: (columns:PmColumns,world:[9]f64,hinge:[7]pfku.Quantity(PidAngularRa
  }
  t:PflTwist;for i:0..<3 {for j:0..<3 {t.linear[i]=t.linear[i]+world[j*3+i]*linear[j];t.angular[i]=t.angular[i]+world[j*3+i]*convert_unit(PflFrequency,angular[j]/one);}}return t;
 }
-pfl_drag :: (box:[3]pfku.Quantity(pfku.Metre,f64),t:PflTwist,density:pfku.Quantity(PflDensity,f64),viscosity:pfku.Quantity(PflViscosity,f64))->PflWrench {
+pfl_drag :: (box:[3]pfku.Quantity(pfku.Metre,f64),t:PflTwist,density:pfku.Quantity(PflDensity,f64),viscosity:pfku.Quantity(PflViscosity,f64))->PflWrench #effects(all) {
  sides:=[6]int.[1,2,0,2,0,1];diam:=(box[0]+box[1]+box[2])/3.0;w:PflWrench;
  for i:0..<3 {a:=box[sides[2*i]];b:=box[sides[2*i+1]];speed:=t.linear[i];speed.value=abs(speed.value);spin:=t.angular[i];spin.value=abs(spin.value);
   w.force[i]=convert_unit(PmSlideGravity,(-3.0*3.141592653589793*diam*viscosity)*t.linear[i]);w.moment[i]=convert_unit(PflMoment,(-3.141592653589793*diam*diam*diam*viscosity)*t.angular[i]);
   w.force[i]=w.force[i]-convert_unit(PmSlideGravity,0.5*density*a*b*speed*t.linear[i]);w.moment[i]=w.moment[i]-convert_unit(PflMoment,density*box[i]*(a*a*a*a+b*b*b*b)*spin*t.angular[i]/64.0);
  }return w;
 }
-pfl_world :: (rotation:[9]f64,local:PflWrench)->PflWrench {
+pfl_world :: (rotation:[9]f64,local:PflWrench)->PflWrench #effects(all) {
  world:PflWrench;for i:0..<3 {for j:0..<3 {world.force[i]=world.force[i]+rotation[i*3+j]*local.force[j];world.moment[i]=world.moment[i]+rotation[i*3+j]*local.moment[j];}}return world;
 }
-pfl_project :: (columns:PmColumns,w:PflWrench)->PidOutput {
+pfl_project :: (columns:PmColumns,w:PflWrench)->PidOutput #effects(all) {
  out:PidOutput;one:pfku.Quantity(pfku.Radian,f64);one.value=1;
  for row:0..<3 {moment:=convert_unit(PmHingeGravity,w.moment[row]/one);
   for i:0..<7 {v:pfku.Quantity(UnitQuotient(pfku.Metre,pfku.Radian),f64);v.value=columns.linear[row*9+i];out.hinge[i]=out.hinge[i]+convert_unit(PmHingeGravity,v*w.force[row])+columns.angular[row*9+i]*moment;}

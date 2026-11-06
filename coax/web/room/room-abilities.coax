@@ -23,8 +23,8 @@ RA_AB_N :: 43;                  // its AB_N: bar slots 4 to 46 (47 and 48 are Re
 RA_REVERSE :: 0;                // everglade-abilities.coax AB_REVERSE (bar slot EG_SP_SLOTS + it, fivebar.coax)
 RA_RG_R_CM :: 1524;             // its 50-foot radius (AB_RG_R)
 
-RaCast :: struct { by: int; ab: int; x: f32; y: f32; z: f32; yaw: f32; on: bool; ax: f32; ay: f32; az: f32; mode: int; }
-RaLive :: struct { on: bool; id: int; epoch: int; x: f32; y: f32; z: f32; yaw: f32; mode: int; }   // mode: its last cast's (RaCast)
+RaCast :: struct { owner:Handle(EvergladeSeat); by: int; ab: int; x: f32; y: f32; z: f32; yaw: f32; on: bool; ax: f32; ay: f32; az: f32; mode: int; }
+RaLive :: struct { owner:Handle(EvergladeSeat); on: bool; id: int; epoch: int; x: f32; y: f32; z: f32; yaw: f32; mode: int; }   // mode: its last cast's (RaCast)
 RaRoom :: struct {
   q: [RA_CASTS] RaCast; q_n: int;
   live: [EG_SEATS * RA_ABS] RaLive;            // each seat's abilities up
@@ -63,7 +63,9 @@ ra_fresh :: (v: [] RmServer, k: int) {
 ra_queue :: (v: [] RmServer, k: int, c: RaCast) -> bool {
   r := v[0].ab[k..<k + 1];
   if !ra_may_queue(v,k, SeatId.{value = c.by},c.on) { return false; }
-  r[0].q[r[0].q_n] = c; r[0].q_n += 1;
+  owner:=eg_seat_ref(v,k,SeatId.{value=c.by});if !handle_present(owner) {return false;}
+  queued:=c;queued.owner=owner;
+  r[0].q[r[0].q_n] = queued; r[0].q_n += 1;
   return true;
 }
 ra_may_queue :: (v:[]RmServer,k:int, seat_id: SeatId,start:bool)->bool { seat := seat_id.value;
@@ -92,37 +94,43 @@ ra_end :: (v: [] RmServer, k: int, seat_id: SeatId, slot: int) -> bool { seat :=
 
 // ---- the host
 
-rm_ra_casts :: (v: [] RmServer, k: int) -> int #export_c { return ifx rm_eg_live(v, k) then v[0].ab[k].q_n else 0; }
-rm_ra_cast :: (v: [] RmServer, k: int, q: int, out: [] f32) #export_c {
+rm_ra_casts :: (v: [] RmServer, k: int) -> int #export_c #effects(all) { return ifx rm_eg_live(v, k) then v[0].ab[k].q_n else 0; }
+rm_ra_cast_current :: (v:[]RmServer,k:int,q:int)->bool #export_c #effects(all) {
+  if !rm_eg_live(v,k) || q<0 || q>=v[0].ab[k].q_n {return false;}
+  c:=v[0].ab[k].q[q];return handle_slot(c.owner)==c.by && eg_seat_ref_live(v,k,c.owner);
+}
+rm_ra_cast :: (v: [] RmServer, k: int, q: int, out: [] f32) #export_c #effects(all) {
   if !rm_eg_live(v, k) || q < 0 || q >= v[0].ab[k].q_n || out.count < RA_CAST_FLOATS { return; }
   c := v[0].ab[k].q[q];
   out[0] = f32(c.by); out[1] = f32(c.ab); out[2] = c.x; out[3] = c.y; out[4] = c.z; out[5] = c.yaw; out[6] = ifx c.on then 1.0f32 else 0.0f32;
   out[7] = c.ax; out[8] = c.ay; out[9] = c.az; out[10] = f32(c.mode);
 }
-rm_ra_heard :: (v: [] RmServer, k: int) #export_c { if rm_eg_live(v, k) { v[0].ab[k].q_n = 0; } }
+rm_ra_heard :: (v: [] RmServer, k: int) #export_c #effects(all) { if rm_eg_live(v, k) { v[0].ab[k].q_n = 0; } }
 // Seat s's ability ab now: up or not, where its last cast was, its facing, and its casts (`epoch`: a
 // new one is a new entity, every page casts it again).
-rm_ra_live :: (v: [] RmServer, k: int, s_id: SeatId, ab: int, on: bool, x: f32, y: f32, z: f32, yaw: f32, epoch: int) #export_c { s := s_id.value;
+rm_ra_live :: (v: [] RmServer, k: int, s_id: SeatId, ab: int, on: bool, x: f32, y: f32, z: f32, yaw: f32, epoch: int) #export_c #effects(all) { s := s_id.value;
   if !rm_eg_live(v, k) || s < 0 || s >= EG_SEATS || ab < 0 || ab >= RA_ABS { return; }
   r := v[0].ab[k..<k + 1];
   l := r[0].live[s * RA_ABS + ab..<s * RA_ABS + ab + 1];
   if !on { l[0] = RaLive.{}; return; }
   if !l[0].on || l[0].epoch != epoch { l[0].id = RA_ID0 + r[0].next_id; r[0].next_id += 1; }
+  l[0].owner=eg_seat_ref(v,k,SeatId.{value=s});
+  if !handle_present(l[0].owner) {l[0]=RaLive.{};return;}
   l[0].on = true; l[0].epoch = epoch; l[0].x = x; l[0].y = y; l[0].z = z; l[0].yaw = yaw;
 }
 // The world's cylinder for seat `by` (rm_ra_live of its Reverse Gravity).
-rm_ra_rg :: (v: [] RmServer, k: int, on: bool, by: int, x: f32, y: f32, z: f32) #export_c {
+rm_ra_rg :: (v: [] RmServer, k: int, on: bool, by: int, x: f32, y: f32, z: f32) #export_c #effects(all) {
   if !rm_eg_live(v, k) || by < 0 || by >= EG_SEATS { return; }
   l := v[0].ab[k].live[by * RA_ABS + RA_REVERSE];
   rm_ra_live(v, k, SeatId.{value = by}, RA_REVERSE, on, x, y, z, 0, ifx on && !l.on then l.epoch + 1 else l.epoch);
 }
 // Person j is `m` metres over their feet.
-rm_ra_air :: (v: [] RmServer, k: int, j: int, m: f32) #export_c {
+rm_ra_air :: (v: [] RmServer, k: int, j: int, m: f32) #export_c #effects(all) {
   if !rm_eg_live(v, k) || j < 0 || j >= E5R_FOLK { return; }
   v[0].ab[k].air[j] = ifx m > 0.005 then least(eg_round(m * 100), 100000) else 0;
 }
 // A fall the world's ability dealt person j (`amount`), seat `by`'s doing: the rules deal it.
-rm_ra_hurt :: (v: [] RmServer, k: int, j: int, amount: int, by: int) #export_c {
+rm_ra_hurt :: (v: [] RmServer, k: int, j: int, amount: int, by: int) #export_c #effects(all) {
   if !rm_eg_live(v, k) || j < 0 || j >= E5R_FOLK || amount <= 0 { return; }
   e5rr_hurt(v[0].eg[k].rules[..], j, amount, ifx by >= 0 && by < EG_SEATS then EG_TGT_SEAT + by else -1);
 }
@@ -143,6 +151,7 @@ ra_table :: (v: [] RmServer, k: int) {
   for q: 0..<EG_SEATS * RA_ABS {
     l := r[0].live[q];
     if !l.on { continue; }
+    if !eg_seat_ref_live(v,k,l.owner) {r[0].live[q]=RaLive.{};rm[0].ab_slot[q]=0;continue;}
     if rm[0].ab_slot[q] == 0 {
       for j: 0..<EG_SLOT_ABS { if !used[j] { used[j] = true; rm[0].ab_slot[q] = j + 1; break; } }
       if rm[0].ab_slot[q] == 0 { continue; }   // more up than the table holds: the rest wait

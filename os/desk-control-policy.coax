@@ -1,10 +1,10 @@
 // Connection and lifetime ownership of a bounded local input lease.
 #authority;
-ctrl_range :: (v: int, low: int, high: int) -> bool { return v >= low && v <= high; }
-ctrl_live :: (on: bool, owner: int, caller: int, revision: int, current: int, focused: bool, now: int, deadline: int) -> bool {
+ctrl_range :: (v: int, low: int, high: int) -> bool #effects(all) { return v >= low && v <= high; }
+ctrl_live :: (on: bool, owner: int, caller: int, revision: int, current: int, focused: bool, now: int, deadline: int) -> bool #effects(all) {
   return on && owner == caller && revision == current && focused && now < deadline;
 }
-ctrl_window_slot :: (occupied: [] bool) -> int {
+ctrl_window_slot :: (occupied: [] bool) -> int #effects(all) {
   if occupied.count != 256 { return 0; }
   for i: 1..<occupied.count { if !occupied[i] { return i; } }
   return 0;

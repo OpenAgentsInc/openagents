@@ -13,6 +13,24 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.52.0 — Checked State Changes — 2026-11-06
+
+Commit: pending
+
+- Add nominal `Handle(T)` and caller-backed `Store(T)` with optional stale
+  lookups and generation retirement. Adopt typed lifetimes in Aethyr and in
+  Everglade's seats, casts, fire attribution and shouts.
+- Enforce declared procedure effects through calls and deferred cleanup. Require
+  declarations on authority procedures, C exports and foreign declarations;
+  Everglade's shared rules exclude clock, I/O and foreign effects.
+- Add `#transaction` rollback for escaping errors and optional absence, with
+  transitive effect restrictions and owned refusal payloads. Use it for room
+  actions, repairs, fire batches and the in-memory ledger.
+- Add owned `#persisted` records and `coax compat` for concrete published
+  signatures, native LP64 C ABI, effects and saved defaults. Page and room
+  release gates compare production and block new incompatibilities. See
+  [checked-state.md](checked-state.md) for bounds and remaining lifetime work.
+
 ## 0.51.2 — Phase Storage Accounting — 2026-11-05
 
 Commit: [`eae6049b87d31768a341397296a9a085c9db14ab`](https://github.com/OpenAgentsInc/openagents/commit/eae6049b87d31768a341397296a9a085c9db14ab)

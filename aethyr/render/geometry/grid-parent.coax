@@ -39,12 +39,12 @@
   q:=p;for v,k:p {q[k].y= -v.y;}#assert !grid_parent_reduce(m[..],q[..],2,0);
   q=p;q[0].x=q[1].x;q[0].y=q[1].y;#assert !grid_parent_reduce(m[..],q[..],2,0);
 }
-grid_interior :: (id:int)->bool {return id==6 || id==8 || id==16 || id==18;}
-grid_corner :: (index:int)->int {q:=index/6;return q/4*5+q%4+[6]int.[0,1,5,1,6,5][index%6];}
-grid_parent_source :: (p:[]Point)->ParentMesh {
+grid_interior :: (id:int)->bool #effects(all) {return id==6 || id==8 || id==16 || id==18;}
+grid_corner :: (index:int)->int #effects(all) {q:=index/6;return q/4*5+q%4+[6]int.[0,1,5,1,6,5][index%6];}
+grid_parent_source :: (p:[]Point)->ParentMesh #effects(all) {
   m:=ParentMesh.{vertices=25,indices=96};for k:0..<25 {m.p[k]=p[k];}for k:1..<m.indices {m.i[k]=cast(u32)grid_corner(k);}return m;
 }
-grid_parent_reduce :: (out:[]ParentMesh,p:[]Point,axis:int,child:f32)->bool {
+grid_parent_reduce :: (out:[]ParentMesh,p:[]Point,axis:int,child:f32)->bool #effects(all) {
   if p.count!=25 {return false;}
   // Each original triangle belongs to at most one collapsing star, so their
   // maximum error encloses the union; errors are not summed across siblings.

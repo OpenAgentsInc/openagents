@@ -134,16 +134,16 @@ NF4_T_B :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
 }
 
 // A copy of e by the author with this hex key, at this time.
-nf4_t_by :: (e:NostrEvent,author:string,at:int)->NostrEvent {
+nf4_t_by :: (e:NostrEvent,author:string,at:int)->NostrEvent #effects(all) {
   r:=e;k:=hex_decode_checked(author,r.public_key[..],false);r.created_at=at;return r;
 }
 
-nf4_refuse_s :: (r:NF4Show,status:int,at:int)->NF4Show {o:=r;o.status=status;o.at=at;return o;}
-nf4_refuse_e :: (r:NF4Episode,status:int,at:int)->NF4Episode {o:=r;o.status=status;o.at=at;return o;}
-nf4_refuse_a :: (r:NF4Authored,status:int,at:int)->NF4Authored {o:=r;o.status=status;o.at=at;return o;}
+nf4_refuse_s :: (r:NF4Show,status:int,at:int)->NF4Show #effects(all) {o:=r;o.status=status;o.at=at;return o;}
+nf4_refuse_e :: (r:NF4Episode,status:int,at:int)->NF4Episode #effects(all) {o:=r;o.status=status;o.at=at;return o;}
+nf4_refuse_a :: (r:NF4Authored,status:int,at:int)->NF4Authored #effects(all) {o:=r;o.status=status;o.at=at;return o;}
 
 // book:begin show
-nf4_show :: (e:NostrEvent)->NF4Show {
+nf4_show :: (e:NostrEvent)->NF4Show #effects(all) {
   r:NF4Show;if e.error!=NE_OK {return r;}
   if e.kind!=NF4_KIND_SHOW {return nf4_refuse_s(r,NF4_KIND,-1);}
   has_title:=false;i:=0;
@@ -174,7 +174,7 @@ nf4_show :: (e:NostrEvent)->NF4Show {
 // book:end show
 
 // book:begin episode
-nf4_episode :: (e:NostrEvent)->NF4Episode {
+nf4_episode :: (e:NostrEvent)->NF4Episode #effects(all) {
   r:NF4Episode;if e.error!=NE_OK {return r;}
   if e.kind!=NF4_KIND_EPISODE {return nf4_refuse_e(r,NF4_KIND,-1);}
   has_title:=false;i:=0;
@@ -203,7 +203,7 @@ nf4_episode :: (e:NostrEvent)->NF4Episode {
 }
 // book:end episode
 
-nf4_authored :: (e:NostrEvent)->NF4Authored {
+nf4_authored :: (e:NostrEvent)->NF4Authored #effects(all) {
   r:NF4Authored;if e.error!=NE_OK {return r;}
   if e.kind!=NF4_KIND_AUTHORED {return nf4_refuse_a(r,NF4_KIND,-1);}
   i:=0;
@@ -221,7 +221,7 @@ nf4_authored :: (e:NostrEvent)->NF4Authored {
 }
 
 // The id order: does a come before b?
-nf4_before :: (a:[32]u8,b:[32]u8)->bool {
+nf4_before :: (a:[32]u8,b:[32]u8)->bool #effects(all) {
   for i:0..<32 {
     if a[i]<b[i] {return true;}
     if a[i]>b[i] {return false;}
@@ -233,7 +233,7 @@ nf4_before :: (a:[32]u8,b:[32]u8)->bool {
 // Which of a show's claimed authors confirm it: each claimed author's
 // newest kind 10164 list in lists (the lower id first at the same time)
 // must name the show's podcast key.
-nf4_credits :: (show:NostrEvent,lists:[]NostrEvent)->NF4Credits {
+nf4_credits :: (show:NostrEvent,lists:[]NostrEvent)->NF4Credits #effects(all) {
   c:NF4Credits;
   s:=nf4_show(show);if s.status!=NF4_OK {c.status=NF4_KIND;return c;}
   for a:0..<s.author_n {

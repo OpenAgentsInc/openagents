@@ -41,7 +41,7 @@ Ball :: struct {
   spin: f32;             // radians it has rolled, for drawing
 }
 
-verse_ball_place :: (g: Ground, heights: [] f32, x: f32, z: f32, radius: f32) -> Ball #export_c {
+verse_ball_place :: (g: Ground, heights: [] f32, x: f32, z: f32, radius: f32) -> Ball #export_c #effects(all) {
   b: Ball;
   if radius > 0 && finite(radius) { b.radius = radius; }
   b.pos = v3(x, verse_terrain_height(g, heights, x, z) + b.radius, z);
@@ -139,7 +139,7 @@ ball_substep :: (b: Ball, g: Ground, heights: [] f32, spheres: [] f32, boxes: []
 }
 
 // A frame for a ball nobody holds.
-verse_ball_step :: (b: Ball, g: Ground, heights: [] f32, spheres: [] f32, boxes: [] f32, dt: f32) -> Ball #export_c {
+verse_ball_step :: (b: Ball, g: Ground, heights: [] f32, spheres: [] f32, boxes: [] f32, dt: f32) -> Ball #export_c #effects(all) {
   if b.held >= 0 || b.resting || !finite3(b.pos) || !finite3(b.vel) { return b; }
   t := ifx finite(dt) then clamp(dt, 0, f32(SUBSTEP) * f32(MAX_SUBSTEPS)) else 0.0f32;
   next := b;
@@ -154,18 +154,18 @@ verse_ball_step :: (b: Ball, g: Ground, heights: [] f32, spheres: [] f32, boxes:
 
 // A character's hand (or a dog's mouth): ahead of its feet, at height,
 // a little to its right.
-verse_hand :: (feet: Point, face: f32, ahead: f32, up: f32, right: f32) -> Point #export_c {
+verse_hand :: (feet: Point, face: f32, ahead: f32, up: f32, right: f32) -> Point #export_c #effects(all) {
   return add(feet, v3(sin(face) * ahead - cos(face) * right, up, cos(face) * ahead + sin(face) * right));
 }
 
 // Whether `who`, its hand at hand and feet at feet, can pick the ball up.
-verse_ball_can_pick :: (b: Ball, feet: Point) -> bool #export_c {
+verse_ball_can_pick :: (b: Ball, feet: Point) -> bool #export_c #effects(all) {
   if b.held >= 0 { return false; }
   gap := sub(b.pos, feet);
   return flat_length(gap) <= f32(REACH) && abs(gap.y) < 1.5 && length(b.vel) < 4;
 }
 
-verse_ball_pick :: (b: Ball, who: int, feet: Point, hand: Point) -> Ball #export_c {
+verse_ball_pick :: (b: Ball, who: int, feet: Point, hand: Point) -> Ball #export_c #effects(all) {
   if who < 0 || !verse_ball_can_pick(b, feet) { return b; }
   next := b;
   next.held = who; next.resting = false; next.vel = v3(0, 0, 0); next.pos = hand;
@@ -174,7 +174,7 @@ verse_ball_pick :: (b: Ball, who: int, feet: Point, hand: Point) -> Ball #export
 }
 
 // Held: it goes where the hand does.
-verse_ball_carry :: (b: Ball, hand: Point) -> Ball #export_c {
+verse_ball_carry :: (b: Ball, hand: Point) -> Ball #export_c #effects(all) {
   if b.held < 0 || !finite3(hand) { return b; }
   next := b;
   next.pos = hand; next.vel = v3(0, 0, 0);
@@ -182,7 +182,7 @@ verse_ball_carry :: (b: Ball, hand: Point) -> Ball #export_c {
 }
 
 // Let go of with a velocity (zero: dropped).
-verse_ball_release :: (b: Ball, hand: Point, vel: Point) -> Ball #export_c {
+verse_ball_release :: (b: Ball, hand: Point, vel: Point) -> Ball #export_c #effects(all) {
   next := b;
   next.held = -1; next.resting = false;
   if finite3(hand) { next.pos = hand; }
@@ -192,14 +192,14 @@ verse_ball_release :: (b: Ball, hand: Point, vel: Point) -> Ball #export_c {
 
 // The velocity of a throw along yaw, raised by lift radians, plus how the
 // thrower was moving.
-verse_throw_velocity :: (yaw: f32, lift: f32, speed: f32, carrier: Point) -> Point #export_c {
+verse_throw_velocity :: (yaw: f32, lift: f32, speed: f32, carrier: Point) -> Point #export_c #effects(all) {
   dir := v3(sin(yaw) * cos(lift), sin(lift), cos(yaw) * cos(lift));
   v := times(dir, speed);
   if finite3(carrier) { v = add(v, v3(carrier.x, 0, carrier.z)); }
   return v;
 }
 
-verse_ball_throw :: (b: Ball, hand: Point, yaw: f32, lift: f32, carrier: Point) -> Ball #export_c {
+verse_ball_throw :: (b: Ball, hand: Point, yaw: f32, lift: f32, carrier: Point) -> Ball #export_c #effects(all) {
   if b.held < 0 { return b; }
   next := verse_ball_release(b, hand, verse_throw_velocity(yaw, lift, f32(THROW_SPEED), carrier));
   next.thrown = true;
@@ -208,7 +208,7 @@ verse_ball_throw :: (b: Ball, hand: Point, yaw: f32, lift: f32, carrier: Point) 
 
 // Where a throw would go: points ARC_STEP seconds apart from hand, up to
 // out.count / 3 of them, until it meets the ground; returns how many.
-verse_throw_arc :: (g: Ground, heights: [] f32, hand: Point, vel: Point, out: [] f32) -> int #export_c {
+verse_throw_arc :: (g: Ground, heights: [] f32, hand: Point, vel: Point, out: [] f32) -> int #export_c #effects(all) {
   p := hand; v := vel;
   n := 0;
   while (n + 1) * 3 <= out.count {
@@ -243,14 +243,14 @@ dog_mouth :: (d: Follower) -> Point { return verse_hand(d.pos, d.face, f32(MOUTH
 // A frame of the game: the dog (a Follower) and the ball, with you at
 // `you`. Following, it uses the paths; chasing, it runs straight.
 verse_fetch_step :: (f: Fetch, g: Ground, heights: [] f32, nodes: [] f32, links: [] int, half: f32,
-                     you: Point, dt: f32) -> Fetch #export_c {
+                     you: Point, dt: f32) -> Fetch #export_c #effects(all) {
   none: [6] f32;
   return verse_fetch_step_among(f, g, heights, nodes, links, half, you, dt, none[0..<0]);
 }
 
 // The same among scenery the dog goes round (terrain.coax blocks).
 verse_fetch_step_among :: (f: Fetch, g: Ground, heights: [] f32, nodes: [] f32, links: [] int, half: f32,
-                           you: Point, dt: f32, blocks: [] f32) -> Fetch #export_c {
+                           you: Point, dt: f32, blocks: [] f32) -> Fetch #export_c #effects(all) {
   next := f;
   none: [2] int;
   b := f.ball;

@@ -138,7 +138,7 @@ sp_place :: (s: [] Everglade, b: int) -> int {
   return ar_stored_place(s,b);
 }
 // Read-only observation of the actual bar for local browser/native input checks.
-everglade_bar_probe :: (s:[]Everglade,b:int,field:int)->int #export_c {
+everglade_bar_probe :: (s:[]Everglade,b:int,field:int)->int #export_c #effects(all) {
   if field==5 {return s[0].sp.armed;}
   if field==6 {return ifx s[0].ev.editing then 1 else 0;}
   if b<0 || b>SP_REBUILD {return -1;}
@@ -220,16 +220,16 @@ ar_facts :: (s: [] Everglade, facts: string) {
 // ---- the face's half (everglade-face.c): this browser's copy and the server's
 
 // The text to keep in this browser (action 12) since the last change; 0 none.
-everglade_bar_keep :: (s: [] Everglade, out: [] u8) -> int #export_c {
+everglade_bar_keep :: (s: [] Everglade, out: [] u8) -> int #export_c #effects(all) {
   if !s[0].sp.ar.keep { return 0; }
   s[0].sp.ar.keep = false;
   return ar_text(s, out);
 }
-everglade_bar_kept :: (s: [] Everglade, text: string) #export_c { _ := ar_take(s, text); }
+everglade_bar_kept :: (s: [] Everglade, text: string) #export_c #effects(all) { _ := ar_take(s, text); }
 // The face's room for the bar's pictures (every slot moved draws two).
-everglade_attach_media :: (s: [] Everglade, room: [] u8) #export_c { s[0].sp.media_big = room; }
+everglade_attach_media :: (s: [] Everglade, room: [] u8) #export_c #effects(all) { s[0].sp.media_big = room; }
 // /api/playtest/progress/<slot>/hotbar
-everglade_bar_url :: (s: [] Everglade, out: [] u8) -> int #export_c {
+everglade_bar_url :: (s: [] Everglade, out: [] u8) -> int #export_c #effects(all) {
   if s[0].sp.ar.slot_n == 0 { return 0; }
   n := sp_put(out, 0, "/api/playtest/progress/");
   n = sp_put(out, n, cast(string) s[0].sp.ar.slot[0..<s[0].sp.ar.slot_n]);
@@ -237,7 +237,7 @@ everglade_bar_url :: (s: [] Everglade, out: [] u8) -> int #export_c {
   return ifx n < out.count then n else 0;
 }
 // Whether to ask the server for its copy now (once, with an account).
-everglade_bar_ask :: (s: [] Everglade) -> bool #export_c {
+everglade_bar_ask :: (s: [] Everglade) -> bool #export_c #effects(all) {
   if s[0].sp.ar.asked || !s[0].sp.ar.account || s[0].sp.ar.slot_n == 0 { return false; }
   s[0].sp.ar.asked = true;
   return true;
@@ -245,7 +245,7 @@ everglade_bar_ask :: (s: [] Everglade) -> bool #export_c {
 // The body that keeps the arrangement on the server since the last change ({"bytes", "at"}); 0 none.
 // It names the revision this page has, one at a time: while one is in flight it waits, and
 // everglade_bar_heard sends it then.
-everglade_bar_send :: (s: [] Everglade, out: [] u8) -> int #export_c {
+everglade_bar_send :: (s: [] Everglade, out: [] u8) -> int #export_c #effects(all) {
   if !s[0].sp.ar.send { return 0; }
   base := save_sync_send(s[0].sp.ar.sync[..], false);
   if base == SAVE_WAIT { return 0; }
@@ -259,13 +259,13 @@ everglade_bar_send :: (s: [] Everglade, out: [] u8) -> int #export_c {
   return ifx b > 0 then b else 0;
 }
 // The answer to a send: a 409, or a change made while it was in flight, sends the bar again.
-everglade_bar_heard :: (s: [] Everglade, answer: string) #export_c {
+everglade_bar_heard :: (s: [] Everglade, answer: string) #export_c #effects(all) {
   if save_sync_heard(s[0].sp.ar.sync[..], answer, SAVE_MINE) == SAVE_MINE { s[0].sp.ar.send = true; }
 }
 // A send the host never made: it goes again.
-everglade_bar_unsent :: (s: [] Everglade) #export_c { save_sync_unsent(s[0].sp.ar.sync[..]); s[0].sp.ar.send = true; }
+everglade_bar_unsent :: (s: [] Everglade) #export_c #effects(all) { save_sync_unsent(s[0].sp.ar.sync[..]); s[0].sp.ar.send = true; }
 // The server's answer ("STATUS\n" then {rev, current, previous}).
-everglade_bar_server :: (s: [] Everglade, answer: string) #export_c {
+everglade_bar_server :: (s: [] Everglade, answer: string) #export_c #effects(all) {
   if save_sync_read(s[0].sp.ar.sync[..], answer) == SAVE_MINE { s[0].sp.ar.send = true; }
   bytes: [2048] u8;
   got := save_from_server(answer, bytes[..]);

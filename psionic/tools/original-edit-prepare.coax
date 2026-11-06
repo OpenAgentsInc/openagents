@@ -20,7 +20,7 @@ od_fit :: (d:OdData)->f64 {
         g:=[1]f64.[grad];r:=aw_step(groups[..],AwPolicy.{},state,p[..],g[..],m[..],v[..],none[0..<0],false);#assert r.status==AwStatus.ok;state=r.state;if p[0]>4 {p[0]=4;}if p[0]< -4 {p[0]=-4;}
     }return p[0];
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}mode:=args_at(a[..],0);d:=od_load();
     if mode=="prepare" {#assert !fs_exists("psionic/fixtures/original-edit/fit-alpha.f64");start:=proc_now_ms();alpha:=od_fit(d);b:[8]u8;n:=we_word(b[..],0,f64_bits(alpha));#assert fs_write("psionic/fixtures/original-edit/fit-alpha.f64",cast(string)b[..]);print("fit: 200 AdamW steps, alpha %, milliseconds %\n",alpha,proc_now_ms()-start);
         for id:0..<13 {c:=od_candidate(id,d);od_save(id,d,c);print("candidate %: valid %, changed %, norm2 %\n",id,c.valid,c.changed,c.norm2);}return 0;

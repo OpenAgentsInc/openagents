@@ -47,13 +47,13 @@
   for i:0..<8 {#assert out[i]==saved[i];}
 }
 
-gt_axis :: (pair:int)->int #export_c {if pair<0 || pair>=64 {return -1;}if pair==61 || pair==62 {return 0;}return pair%3;}
-gt_rope_admit :: (tokens:int,out:int,work:int,overlap:bool)->GtStatus #export_c {
+gt_axis :: (pair:int)->int #export_c #effects(all) {if pair<0 || pair>=64 {return -1;}if pair==61 || pair==62 {return 0;}return pair%3;}
+gt_rope_admit :: (tokens:int,out:int,work:int,overlap:bool)->GtStatus #export_c #effects(all) {
   if tokens<1 || tokens>512 {return GtStatus.shape;}
   if out<tokens*128 || work<tokens*128 {return GtStatus.capacity;}
   if overlap {return GtStatus.alias;}return GtStatus.ok;
 }
-gt_rope :: (positions:[]int,out:[]f32,work:[]f32,overlap:bool)->GtRead #export_c {
+gt_rope :: (positions:[]int,out:[]f32,work:[]f32,overlap:bool)->GtRead #export_c #effects(all) {
   if positions.count%3!=0 {return GtRead.{status=GtStatus.shape};}
   tokens:=positions.count/3;status:=gt_rope_admit(tokens,out.count,work.count,overlap);if status!=GtStatus.ok {return GtRead.{status=status};}size:=tokens*128;
   for p:positions {if p<0 || p>511 {return GtRead.{status=GtStatus.value};}}
@@ -63,7 +63,7 @@ gt_rope :: (positions:[]int,out:[]f32,work:[]f32,overlap:bool)->GtRead #export_c
   }
   for i:0..<size {out[i]=work[i];}return GtRead.{written=size};
 }
-gt_images :: (ids:[]int,out:[]int,work:[]int,overlap:bool)->GtRead #export_c {
+gt_images :: (ids:[]int,out:[]int,work:[]int,overlap:bool)->GtRead #export_c #effects(all) {
   if ids.count<1 || ids.count>512 {return GtRead.{status=GtStatus.shape};}
   if out.count<ids.count || work.count<ids.count {return GtRead.{status=GtStatus.capacity};}
   if overlap {return GtRead.{status=GtStatus.alias};}

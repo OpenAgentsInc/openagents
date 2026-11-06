@@ -41,21 +41,21 @@ first is zero, and the second.
 ```jai
 // The digest's bytes are staged 512 at a time: put writes eight bytes at
 // buf[n] and returns the new length, hashing a full buffer first.
-wm_put :: (sha:[]u8,buf:[]u8,n:int,w:u64)->int {
+wm_put :: (sha:[]u8,buf:[]u8,n:int,w:u64)->int #effects(all) {
     at:=n;
     if at+8>buf.count {#assert sha256_update_checked(sha,buf[0..<at],false)==SHA_OK;at=0;}
     for i:0..<8 {buf[at+i]=cast(u8)((w>>cast(u64)(i*8))&0xff);}
     return at+8;
 }
 // A signed value as its two's complement.
-wm_u64 :: (v:int)->u64 {
+wm_u64 :: (v:int)->u64 #effects(all) {
     w:=cast(u64)(v&0x7fffffffffffffff);
     if v<0 {w|=0x8000000000000000;}
     return w;
 }
 // SHA-256 over the block's shape, its seams, its output forms and the bits
 // of every weight, each as eight little-endian bytes.
-wm_digest :: (m:WmModule,weights:[]f64)->[32]u8 {
+wm_digest :: (m:WmModule,weights:[]f64)->[32]u8 #effects(all) {
     sha:[112]u8;d:[32]u8;buf:[512]u8;n:=0;p:=m.plan;#assert sha256_init(sha[..])==SHA_OK;
     head:[8]int;head[0]=p.layers;head[1]=p.width;head[2]=p.inputs;head[3]=p.outputs;head[4]=m.nseams;head[5]=p.weights;
     for i:0..<6 {n=wm_put(sha[..],buf[..],n,wm_u64(head[i]));}
@@ -92,7 +92,7 @@ is admitted.
 ```jai
 // A module's slot s in the linked block: slot 0 is the shared constant one,
 // and its other slots start at `base`.
-wm_slot :: (s:int,base:int)->int {
+wm_slot :: (s:int,base:int)->int #effects(all) {
     if s==0 {return 0;}
     return base+s-1;
 }
@@ -101,7 +101,7 @@ wm_slot :: (s:int,base:int)->int {
 // wide), then the output matrix (w rows of units). Row 0 of the output
 // matrix would write the shared constant slot: a module whose row 0 isn't
 // zero changes the one the other module reads, so the copy refuses it.
-wm_copy :: (from:[]f64,fb:int,w:int,units:int,base:int,to:[]f64,tb:int,W:int)->bool {
+wm_copy :: (from:[]f64,fb:int,w:int,units:int,base:int,to:[]f64,tb:int,W:int)->bool #effects(all) {
     for row:0..<2*units {for s:0..<w {to[tb+row*W+wm_slot(s,base)]=from[fb+row*w+s];}}
     for i:0..<w {for u:0..<units {
         v:=from[fb+2*units*w+i*units+u];
@@ -110,7 +110,7 @@ wm_copy :: (from:[]f64,fb:int,w:int,units:int,base:int,to:[]f64,tb:int,W:int)->b
     }}
     return true;
 }
-wm_link :: (a:WmModule,wa:[]f64,b:WmModule,wb:[]f64,wire:[]int,out:[]f64)->WmModule {
+wm_link :: (a:WmModule,wa:[]f64,b:WmModule,wb:[]f64,wire:[]int,out:[]f64)->WmModule #effects(all) {
     r:WmModule;pa:=a.plan;pb:=b.plan;
     r.plan.status=GgStatus.shape;
     if pa.status!=GgStatus.ok || pb.status!=GgStatus.ok || wire.count!=pb.inputs {return r;}
@@ -201,7 +201,7 @@ Two refusals protect this:
 <!-- source: psionic/lib/weight-module.coax run -->
 ```jai
 // Chapter 229's run, with each seam checked after its layer.
-wm_run :: (m:WmModule,weights:[]f64,inputs:[]int,outputs:[]f64)->WmRun {
+wm_run :: (m:WmModule,weights:[]f64,inputs:[]int,outputs:[]f64)->WmRun #effects(all) {
     r:WmRun;p:=m.plan;
     if p.status!=GgStatus.ok {r.status=p.status;return r;}
     if weights.count<p.weights || inputs.count!=p.inputs || outputs.count<p.outputs {r.status=GgStatus.capacity;return r;}
@@ -248,7 +248,7 @@ and slots. The tests link four modules this way, with three seams.
 // The reference for a link: run the first module, wire its results into the
 // second, and run that. A result outside the second module's input range is
 // refused by the second run, as the linked block refuses it at the seam.
-wm_chain :: (a:WmModule,wa:[]f64,b:WmModule,wb:[]f64,wire:[]int,inputs:[]int,outputs:[]f64)->WmRun {
+wm_chain :: (a:WmModule,wa:[]f64,b:WmModule,wb:[]f64,wire:[]int,inputs:[]int,outputs:[]f64)->WmRun #effects(all) {
     mid:[16]f64;r:=wm_run(a,wa,inputs,mid[0..<a.plan.outputs]);
     if r.status!=GgStatus.ok {return r;}
     next:[16]int;
@@ -259,7 +259,7 @@ wm_chain :: (a:WmModule,wa:[]f64,b:WmModule,wb:[]f64,wire:[]int,inputs:[]int,out
 }
 // The composed gate graph: the first graph, then the second with each input
 // node replaced by its wired output, scaled by one.
-wm_compose :: (na:[]GgNode,oa:[]int,nb:[]GgNode,ob:[]int,wire:[]int,nc:[]GgNode,oc:[]int)->int {
+wm_compose :: (na:[]GgNode,oa:[]int,nb:[]GgNode,ob:[]int,wire:[]int,nc:[]GgNode,oc:[]int)->int #effects(all) {
     if na.count+nb.count>nc.count || ob.count>oc.count {return -1;}
     for i:0..<na.count {nc[i]=na[i];}
     shift:=na.count;
@@ -288,7 +288,7 @@ block, the chain and the composed graph give the same outputs.
 // the label must have its evidence: an exact module's source graph compiles
 // to the pinned digest, a tests one has cases, a statistical one has
 // samples.
-wm_admit :: (m:WmModule,weights:[]f64,pin:[32]u8,cases:[]WmCase,nodes:[]GgNode,outs:[]int,scratch:[]f64)->WmAdmit {
+wm_admit :: (m:WmModule,weights:[]f64,pin:[32]u8,cases:[]WmCase,nodes:[]GgNode,outs:[]int,scratch:[]f64)->WmAdmit #effects(all) {
     r:WmAdmit;p:=m.plan;
     r.status=WmStatus.digest;
     if p.status!=GgStatus.ok || weights.count<p.weights || !wm_same(wm_digest(m,weights),pin) {return r;}

@@ -48,7 +48,7 @@ pp_regenerate :: ()->int {
   status:=proc_wait(h,1000);if status==PROC_RUNNING {k:=proc_kill(h,9);status=proc_wait(h,1000);}err:[65536]u8;message:=proc_stderr(h,err[..]);if message.count>0 {tool_err(message);}
   done:=proc_release(h);return status;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}
   mb:[524288]u8;manifest:=pp_read(args_value(a[..],"--manifest","coax/tests/vectors/manifest.json"),mb[..]);pb:[65536]u8;pins:=pp_read(args_value(a[..],"--pins","coax/tests/vectors/pins.json"),pb[..]);sb:[524288]u8;sources_path:=args_value(a[..],"--sources","coax/tests/vectors/SOURCES.md");sources:=pp_read(sources_path,sb[..]);
   if !json_valid(manifest) || !json_valid(pins) || sources.count==0 {tool_errln("pin checker input missing, invalid or too large");return 2;}

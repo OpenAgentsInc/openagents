@@ -26,7 +26,7 @@ var32 :: (buffer:ProtoBuffer,at:int,end:int)->int {
   }
   return value;
 }
-nostr_projection_kind :: (buffer:ProtoBuffer)->int #export_c {
+nostr_projection_kind :: (buffer:ProtoBuffer)->int #export_c #effects(all) {
   size:=buffer.bytes.count;if size<0 || size>1048576 {return -1;}
   cursor:=0;kind:=-1;
   while cursor<size {

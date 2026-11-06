@@ -160,7 +160,7 @@ the list with `b39_make_table` and compares the two:
 // The list packed for lookup: word k as a u64 whose
 // byte c is its letter c, with zeros after the last letter. Every English
 // word has 3 to 8 lowercase letters, so each fits and none packs to 0.
-b39_make_table :: () -> [2048] u64 {
+b39_make_table :: () -> [2048] u64 #effects(all) {
   table: [2048] u64;
   list := BIP39_ENGLISH;
   k := 0; c := 0;
@@ -192,17 +192,17 @@ match with a mask:
 B39_ALL :: CB_MAX64;                               // all ones (bytes.coax)
 // All ones when a == b, else 0, without a branch: x | -x has its top bit
 // set exactly when x is not 0.
-b39_eq_mask :: (a: u64, b: u64) -> u64 {
+b39_eq_mask :: (a: u64, b: u64) -> u64 #effects(all) {
   x := a ^ b;
   return value_barrier(sub_wrap((x | sub_wrap(cast(u64) 0, x)) >> 63, 1));
 }
 // All ones when a < b, for a and b below 2^63.
-b39_less_mask :: (a: u64, b: u64) -> u64 {
+b39_less_mask :: (a: u64, b: u64) -> u64 #effects(all) {
   return value_barrier(sub_wrap(cast(u64) 0, sub_wrap(a, b) >> 63));
 }
 // The index of a packed word in the low 11 bits, with bit 11 set when the
 // list doesn't hold it. It reads all 2,048 entries whatever the word is.
-b39_index_ct :: (word: u64) -> u64 {
+b39_index_ct :: (word: u64) -> u64 #effects(all) {
   index: u64 = 0; found: u64 = 0;
   for k: 0..<2048 {
     m := b39_eq_mask(word, BIP39_TABLE[k]);
@@ -211,24 +211,24 @@ b39_index_ct :: (word: u64) -> u64 {
   return index | (((found & 1) ^ 1) << 11);
 }
 // The packed word at an index below 2048, reading all 2,048 entries.
-b39_word_ct :: (index: u64) -> u64 {
+b39_word_ct :: (index: u64) -> u64 #effects(all) {
   word: u64 = 0;
   for k: 0..<2048 { word |= b39_eq_mask(index, cast(u64) k) & BIP39_TABLE[k]; }
   return word;
 }
 // The number of letters in a packed word: its nonzero bytes.
-b39_letters_ct :: (word: u64) -> u64 {
+b39_letters_ct :: (word: u64) -> u64 #effects(all) {
   n: u64 = 0;
   for c: 0..<8 { n = add_wrap(n, (add_wrap((word >> cast(u64) (8 * c)) & 255, 255)) >> 8); }
   return n;
 }
 // Slot s of work as a packed word, and back.
-b39_slot :: (work: [] u8, s: int) -> u64 {
+b39_slot :: (work: [] u8, s: int) -> u64 #effects(all) {
   word: u64 = 0;
   for c: 0..<8 { word |= cast(u64) work[B39_SLOTS + 8 * s + c] << cast(u64) (8 * c); }
   return word;
 }
-b39_put :: (work: [] u8, s: int, word: u64) {
+b39_put :: (work: [] u8, s: int, word: u64) #effects(all) {
   for c: 0..<8 { work[B39_SLOTS + 8 * s + c] = cast(u8) ((word >> cast(u64) (8 * c)) & 255); }
 }
 ```
@@ -254,7 +254,7 @@ values computed with masks, never branches:
 // marks a word longer than 8 characters or with a character outside
 // '!'..'~'; neither can be in the list. Returns the number of words, with
 // bit 32 set when some byte is above 0x7f. Both are public from here on.
-b39_split :: (phrase: string, work: [] u8) -> u64 {
+b39_split :: (phrase: string, work: [] u8) -> u64 #effects(all) {
   words: u64 = 0; high: u64 = 0;
   column: u64;                                    // set at each word's first character
   after_space: u64 = B39_ALL;                       // the text starts after a space
@@ -297,7 +297,7 @@ where the mask is all ones takes it:
 // them and returns its length. Where a word goes depends on the lengths of
 // the words before it, so each letter is offered to every position of the
 // text and a mask lets one take it.
-b39_join :: (work: [] u8, count: int) -> int {
+b39_join :: (work: [] u8, count: int) -> int #effects(all) {
   limit := 9 * count - 1;                           // 8 letters a word and the spaces
   for t: 0..<limit { work[B39_TEXT + t] = 0; }    // mutant: equivalent (the first word's letter always lands at 0)
   at: u64 = 0;
@@ -309,7 +309,7 @@ b39_join :: (work: [] u8, count: int) -> int {
   }
   return cast(int) at;
 }
-b39_place :: (work: [] u8, limit: int, at: u64, value: u64) {
+b39_place :: (work: [] u8, limit: int, at: u64, value: u64) #effects(all) {
   for t: 0..<limit { work[B39_TEXT + t] |= cast(u8) (value & b39_eq_mask(at, cast(u64) t)); }
 }
 ```
@@ -358,7 +358,7 @@ appends the hash's first byte (only its top `n / 4` bits are read), reads
 // with single spaces. Returns the number of characters written, or
 // BIP39_BAD_SIZE or BIP39_CAPACITY. work holds the secrets on the way and
 // comes back as zeros.
-bip39_encode_ct :: (entropy: [] u8, work: [] u8, out: [] u8) -> int #export_c {
+bip39_encode_ct :: (entropy: [] u8, work: [] u8, out: [] u8) -> int #export_c #effects(all) {
   n := entropy.count;
   if n % 4 != 0 || n / 4 < 4 || n / 4 > 8 { return BIP39_BAD_SIZE; }
   if work.count < BIP39_WORK_BYTES { return BIP39_CAPACITY; }
@@ -401,7 +401,7 @@ copies the entropy out:
 // Reads a phrase into work: its words in the slots, and their 11-bit
 // indexes packed into the bits, entropy first and checksum after. Returns
 // the entropy's byte count or a refusal, and leaves work to the caller.
-b39_read :: (phrase: string, work: [] u8, room: int) -> int {
+b39_read :: (phrase: string, work: [] u8, room: int) -> int #effects(all) {
   for i: 0..<BIP39_WORK_BYTES { work[i] = 0; }
   if phrase.count > BIP39_MAX_PHRASE { return BIP39_TOO_LONG; }
   split := b39_split(phrase, work);
@@ -431,7 +431,7 @@ b39_read :: (phrase: string, work: [] u8, room: int) -> int {
 // 12, 15, 18, 21 or 24 words, separated by one or more spaces, back into
 // their entropy. Returns its byte count (16 to 32) or a refusal, and
 // writes out only on success. work comes back as zeros.
-bip39_decode_ct :: (phrase: string, work: [] u8, out: [] u8) -> int #export_c {
+bip39_decode_ct :: (phrase: string, work: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if work.count < BIP39_WORK_BYTES { return BIP39_CAPACITY; }
   result := b39_read(phrase, work, out.count);
   if result > 0 { for i: 0..<result { out[i] = work[B39_BITS + i]; } }  // mutant: equivalent (a result is 16 to 32 or negative, never 0 or 1)
@@ -500,11 +500,11 @@ the cost.
 // PBKDF2-HMAC-SHA512 of the words joined by single spaces, with the salt
 // "mnemonic" + passphrase and 2,048 rounds. Returns 64 or a refusal, and
 // writes out only on success. work comes back as zeros.
-bip39_seed_ct :: (phrase: string, passphrase: string, work: [] u8, out: [] u8) -> int #export_c {
+bip39_seed_ct :: (phrase: string, passphrase: string, work: [] u8, out: [] u8) -> int #export_c #effects(all) {
   return b39_seed(phrase, passphrase, BIP39_ROUNDS, work, out);
 }
 // The same with any number of rounds, so the checks can run one.
-b39_seed :: (phrase: string, passphrase: string, rounds: int, work: [] u8, out: [] u8) -> int {
+b39_seed :: (phrase: string, passphrase: string, rounds: int, work: [] u8, out: [] u8) -> int #effects(all) {
   if out.count < BIP39_SEED_BYTES || work.count < BIP39_WORK_BYTES { return BIP39_CAPACITY; }
   if passphrase.count > BIP39_MAX_PASSPHRASE { return BIP39_TOO_LONG; }
   high: u64 = 0;

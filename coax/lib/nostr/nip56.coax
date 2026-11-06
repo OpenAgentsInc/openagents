@@ -131,17 +131,17 @@ N56Tally :: struct {
   pair[0]=set[2];pair[1]=set[0];t=n56_tally(pair[..],trusted[..],target);#assert t.counts[N56_SPAM]==1 && t.duplicates==0 && t.ignored==1;
 }
 
-n56_refuse :: (r:N56Report,status:int,at:int)->N56Report {o:=r;o.status=status;o.at=at;return o;}
+n56_refuse :: (r:N56Report,status:int,at:int)->N56Report #effects(all) {o:=r;o.status=status;o.at=at;return o;}
 
 // book:begin read
 N56_TYPES :: [7] string.["nudity", "malware", "profanity", "illegal", "spam", "impersonation", "other"];
 // The report type a string names, or -1: the set is closed.
-n56_type :: (s:string)->int {
+n56_type :: (s:string)->int #effects(all) {
   for k:0..<N56_TYPES.count {if s==N56_TYPES[k] {return k;}}
   return -1;
 }
 // A report's subject, its type and whom and what it names.
-n56_report :: (e:NostrEvent)->N56Report {
+n56_report :: (e:NostrEvent)->N56Report #effects(all) {
   r:N56Report;if e.error!=NE_OK {return r;}
   if e.kind!=N56_KIND_REPORT {return n56_refuse(r,N56_KIND,-1);}
   types:[3]int;   // each is set with its tag
@@ -177,13 +177,13 @@ n56_report :: (e:NostrEvent)->N56Report {
 
 // book:begin tally
 // Whether the report names target as its user, note or blob.
-n56_about :: (r:N56Report,target:[32]u8)->bool {
+n56_about :: (r:N56Report,target:[32]u8)->bool #effects(all) {
   return (r.has_pubkey && ns_equal32(r.pubkey,target)) || (r.has_event && ns_equal32(r.event,target)) || (r.has_blob && ns_equal32(r.blob,target));
 }
 // The reports about target from the trusted reporters in set, by type: one
 // per reporter and type, so a reporter who reports twice counts once.
 // Reports by anyone else are ignored. Other kinds are passed over.
-n56_tally :: (set:[]NostrEvent,trusted:[][32]u8,target:[32]u8)->N56Tally {
+n56_tally :: (set:[]NostrEvent,trusted:[][32]u8,target:[32]u8)->N56Tally #effects(all) {
   t:N56Tally;
   for i:0..<set.count {
     if set[i].kind!=N56_KIND_REPORT {continue;}

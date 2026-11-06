@@ -40,7 +40,7 @@
  #assert fi_claims_semantic_candidate(cs[..],ps[..],"relay.test",h,"{\"iss\":\"https://issuer.test\",\"sub\":\"x\",\"aud\":\"wss://relay.test\",\"nostr_pubkey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"iat\":100,\"exp\":200,\"nostr_owner_pubkey\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"nbf\":100}",101)==FI_CANDIDATE;
  #assert fi_claims_semantic_candidate(cs[..],ps[..],"relay.test",h,"{\"iss\":\"https://issuer.test\",\"sub\":\"x\",\"aud\":\"wss://relay.test\",\"nostr_pubkey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"iat\":100,\"exp\":200,\"nostr_owner_pubkey\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"nbf\":102}",101)==FI_REJECTED;
 }
-fi_claims_semantic_candidate :: (communities:[]FiCommunity,issuers:[]FiIssuer,host:string,header:FiHeader,text:string,now:int)->int #export_c {
+fi_claims_semantic_candidate :: (communities:[]FiCommunity,issuers:[]FiIssuer,host:string,header:FiHeader,text:string,now:int)->int #export_c #effects(all) {
  selected:=fi_claims_select(communities,issuers,host,text);if selected.status!=FI_CANDIDATE {return selected.status;}
  p:=selected.projection;audiences:[16]string;
  for i:0..<p.audience_count {audiences[i]=cast(string)p.audiences[i].bytes[0..<p.audiences[i].count];}

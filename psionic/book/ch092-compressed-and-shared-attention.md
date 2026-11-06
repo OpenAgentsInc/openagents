@@ -41,7 +41,7 @@ These compressor buffers are separate from chapter 98's codec work inventory.
 
 <!-- source: psionic/lib/deepseek/sparse-chunk.coax pool-chunk -->
 ```jai
-da_pool_chunk :: (ratio:int,position:int,chunk:int,width:int,kv:[]f32,gate:[]f32,old_kv:[]f32,old_gate:[]f32,norm:[]u16,latent:[]u16,next_kv:[]f32,next_gate:[]f32,work:DaPoolWork,overlap:bool)->DaResult #export_c {
+da_pool_chunk :: (ratio:int,position:int,chunk:int,width:int,kv:[]f32,gate:[]f32,old_kv:[]f32,old_gate:[]f32,norm:[]u16,latent:[]u16,next_kv:[]f32,next_gate:[]f32,work:DaPoolWork,overlap:bool)->DaResult #export_c #effects(all) {
     p:=da_chunk_plan(ratio,position,chunk,width);if p.status!=DkStatus.ok {return DaResult.{status=p.status};}
     if kv.count!=chunk*width || gate.count!=chunk*width || old_kv.count!=width || old_gate.count!=width || norm.count!=width || latent.count<p.values || next_kv.count<width || next_gate.count<width || work.floats.count<p.floats || work.bits.count<p.bits {return DaResult.{status=DkStatus.capacity};}if overlap {return DaResult.{status=DkStatus.alias};}
     v:=da_chunk_views(work,p,width);for j:0..<width {v.a[j]=old_kv[j];v.ag[j]=old_gate[j];}count:=0;

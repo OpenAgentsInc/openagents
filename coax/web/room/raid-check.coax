@@ -219,7 +219,7 @@ rc_drain :: (c: [] RelayConn, h: [] RcHeard, n: int,capture:string,started:int,w
   } }
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("raid-check: bad arguments"); return 2; }
   if args_has(a[..], "--help") { print("usage: coax/web/tool.sh coax/web/room/raid-check.coax RELAY N SECONDS ROOM CLASS [fight]\n"); return 0; }

@@ -24,7 +24,7 @@ ss_int :: (out: [] u8, at: int, v: int) -> int {
 
 ss_made :: (e: EvRoom) -> int { return e.mix[RS_NPC_CULTIST] + e.mix[RS_NPC_FANATIC] + e.mix[RS_NPC_WARLOCK]; }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   _ := args_load(a[..]);
   minutes := ifx args_count(a[..]) > 0 then rs_max(ss_num(args_at(a[..], 0)), 1) else 30;

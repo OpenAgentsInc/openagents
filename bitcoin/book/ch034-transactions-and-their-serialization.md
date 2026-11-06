@@ -183,7 +183,7 @@ the same order Core checks in.
 // ReadCompactSize at b[at]: one byte below 0xfd; 0xfd, 0xfe or 0xff and
 // then 2, 4 or 8 bytes, little-endian. Each value has one encoding, the
 // shortest, and none is above MAX_SIZE. A refusal leaves next at at.
-tx_compact_read_vartime :: (b: [] u8, at: int) -> TxCompact #export_c {
+tx_compact_read_vartime :: (b: [] u8, at: int) -> TxCompact #export_c #effects(all) {
   if at >= b.count { return TxCompact.{next=at, code=TX_TRUNCATED}; }
   first := cast(int) b[at];
   if first < 0xfd { return TxCompact.{value=first, next=at+1}; }
@@ -203,14 +203,14 @@ tx_compact_read_vartime :: (b: [] u8, at: int) -> TxCompact #export_c {
   return TxCompact.{value=value, next=at+1+width};
 }
 // The bytes WriteCompactSize uses for value (at least 0).
-tx_compact_size_vartime :: (value: int) -> int #export_c {
+tx_compact_size_vartime :: (value: int) -> int #export_c #effects(all) {
   if value < 0xfd { return 1; }
   if value <= 0xffff { return 3; }
   if value <= 0xffffffff { return 5; }
   return 9;
 }
 // WriteCompactSize into out at at, which has room; where writing goes on.
-tx_compact_write_vartime :: (out: [] u8, at: int, value: int) -> int #export_c {
+tx_compact_write_vartime :: (out: [] u8, at: int, value: int) -> int #export_c #effects(all) {
   size := tx_compact_size_vartime(value);
   if size == 1 { out[at] = cast(u8) value; return at + 1; }
   out[at] = cast(u8) (ifx size == 3 then 0xfd else ifx size == 5 then 0xfe else 0xff);
@@ -240,7 +240,7 @@ not Core's.
 // the scriptSig with its length, 4 bytes of sequence. Like Core, it reads
 // until the count is done or the bytes refuse, so a count larger than the
 // bytes can hold ends as TX_TRUNCATED, after at most one step per 41 bytes.
-tx_inputs_vartime :: (b: [] u8, start: int, ins: [] TxIn) -> TxStep {
+tx_inputs_vartime :: (b: [] u8, start: int, ins: [] TxIn) -> TxStep #effects(all) {
   n := tx_compact_read_vartime(b, start);
   if n.code != TX_OK { return TxStep.{at=start, code=n.code}; }
   at := n.next;
@@ -257,7 +257,7 @@ tx_inputs_vartime :: (b: [] u8, start: int, ins: [] TxIn) -> TxStep {
 }
 // A count of outputs, then each output: 8 bytes of value, the
 // scriptPubKey with its length.
-tx_outputs_vartime :: (b: [] u8, start: int, outs: [] TxOut) -> TxStep {
+tx_outputs_vartime :: (b: [] u8, start: int, outs: [] TxOut) -> TxStep #effects(all) {
   n := tx_compact_read_vartime(b, start);
   if n.code != TX_OK { return TxStep.{at=start, code=n.code}; }
   at := n.next;
@@ -273,7 +273,7 @@ tx_outputs_vartime :: (b: [] u8, start: int, outs: [] TxOut) -> TxStep {
 }
 // One witness stack per input: a count of items, then each item with its
 // length. count is the number of items in all the stacks.
-tx_witness_vartime :: (b: [] u8, start: int, ins: [] TxIn, items: [] TxItem) -> TxStep {
+tx_witness_vartime :: (b: [] u8, start: int, ins: [] TxIn, items: [] TxItem) -> TxStep #effects(all) {
   at := start; total := 0;
   for k: 0..<ins.count {
     n := tx_compact_read_vartime(b, at);
@@ -320,7 +320,7 @@ sits where the flag would be: it reads the same either way.
 // witness stack per input. A flag of zero is also what a legacy
 // transaction with no inputs and no outputs has there, its output count,
 // and reads the same. Bytes after the locktime are left for the caller.
-tx_parse_vartime :: (b: [] u8, witness: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> Tx #export_c {
+tx_parse_vartime :: (b: [] u8, witness: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> Tx #export_c #effects(all) {
   if b.count < 4 { return tx_refused(TX_TRUNCATED, 0); }
   vin := tx_inputs_vartime(b, 4, ins);
   if vin.code != TX_OK { return tx_refused(vin.code, vin.at); }
@@ -357,7 +357,7 @@ tx_parse_vartime :: (b: [] u8, witness: bool, ins: [] TxIn, outs: [] TxOut, item
 // One whole transaction: the bytes after the locktime refuse, as in
 // Core's DecodeTx. Inside a block, tx_parse_vartime reads one and the next
 // starts at its total.
-tx_read_vartime :: (b: [] u8, witness: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> Tx #export_c {
+tx_read_vartime :: (b: [] u8, witness: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> Tx #export_c #effects(all) {
   t := tx_parse_vartime(b, witness, ins, outs, items);
   if t.code == TX_OK && t.total != b.count { return tx_refused(TX_TRAILING, t.total); }
   return t;
@@ -431,7 +431,7 @@ probably the wrong reading. Chapter 36 parses scripts fully.
 // CScript::HasValidOps: every op parses, a push's length fits in the
 // script, no push is longer than 520 bytes, and no opcode is above
 // OP_NOP10 (0xb9).
-tx_ops_valid_vartime :: (s: [] u8) -> bool #export_c {
+tx_ops_valid_vartime :: (s: [] u8) -> bool #export_c #effects(all) {
   pc := 0;
   while pc < s.count {
     op := cast(int) s[pc]; pc += 1;
@@ -449,7 +449,7 @@ tx_ops_valid_vartime :: (s: [] u8) -> bool #export_c {
 }
 // A coinbase has one input, whose outpoint is null: 32 zero bytes and
 // index 0xffffffff.
-tx_coinbase_vartime :: (b: [] u8, t: Tx, ins: [] TxIn) -> bool #export_c {
+tx_coinbase_vartime :: (b: [] u8, t: Tx, ins: [] TxIn) -> bool #export_c #effects(all) {
   if t.nin != 1 { return false; }
   at := ins[0].outpoint;
   for i: 0..<32 { if b[at+i] != 0 { return false; } }
@@ -457,7 +457,7 @@ tx_coinbase_vartime :: (b: [] u8, t: Tx, ins: [] TxIn) -> bool #export_c {
 }
 // CheckTxScriptsSanity: every scriptSig (not a coinbase's) and every
 // scriptPubKey has valid ops and at most 10,000 bytes.
-tx_scripts_sane_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut) -> bool #export_c {
+tx_scripts_sane_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut) -> bool #export_c #effects(all) {
   if !tx_coinbase_vartime(b, t, ins) {
     for k: 0..<t.nin {
       if ins[k].script_n > TX_MAX_SCRIPT || !tx_ops_valid_vartime(b[ins[k].script..<ins[k].script+ins[k].script_n]) { return false; }
@@ -477,7 +477,7 @@ tx_scripts_sane_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut) -> bo
 // prefer the one whose scripts parse, then the extended one. When neither
 // reads, the extended reading's refusal is returned (Core gives no reason).
 // The arrays hold the reading returned.
-tx_decode_vartime :: (b: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> Tx #export_c {
+tx_decode_vartime :: (b: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> Tx #export_c #effects(all) {
   extended := tx_read_vartime(b, true, ins, outs, items);
   if extended.code == TX_OK && tx_scripts_sane_vartime(b, extended, ins, outs) { return extended; }
   legacy := tx_read_vartime(b, false, ins, outs, items);
@@ -523,13 +523,13 @@ SHA-256 update (chapter 4's `CB_MAX_BYTES`, 1 MiB).
 // without the stacks (witness to locktime). The wtxid is SHA-256d of all
 // the bytes; without witnesses the two are equal. Both are written in hash
 // order; bitcoin_reverse32 gives the order explorers and RPCs show.
-tx_txid_vartime :: (b: [] u8, t: Tx, out: [] u8) -> bool #export_c {
+tx_txid_vartime :: (b: [] u8, t: Tx, out: [] u8) -> bool #export_c #effects(all) {
   if t.code != TX_OK || out.count != 32 { return false; }
   if t.segwit { tx_hash(b, [6] int.[0, 4, 6, t.witness, t.locktime, t.total], out); }
   else { tx_hash(b, [6] int.[0, t.total, 0, 0, 0, 0], out); }
   return true;
 }
-tx_wtxid_vartime :: (b: [] u8, t: Tx, out: [] u8) -> bool #export_c {
+tx_wtxid_vartime :: (b: [] u8, t: Tx, out: [] u8) -> bool #export_c #effects(all) {
   if t.code != TX_OK || out.count != 32 { return false; }
   tx_hash(b, [6] int.[0, t.total, 0, 0, 0, 0], out);
   return true;
@@ -573,8 +573,8 @@ publishes the same weight and vsize, and mempool.space the same weight.
 // BIP-141: weight = stripped size × 3 + total size, so a byte outside the
 // witness weighs 4 and a witness byte 1. The virtual size is weight / 4,
 // rounded up.
-tx_weight_vartime :: (t: Tx) -> int #export_c { return t.stripped * (TX_SCALE - 1) + t.total; }
-tx_vsize_vartime :: (t: Tx) -> int #export_c { return (tx_weight_vartime(t) + TX_SCALE - 1) / TX_SCALE; }
+tx_weight_vartime :: (t: Tx) -> int #export_c #effects(all) { return t.stripped * (TX_SCALE - 1) + t.total; }
+tx_vsize_vartime :: (t: Tx) -> int #export_c #effects(all) { return (tx_weight_vartime(t) + TX_SCALE - 1) / TX_SCALE; }
 ```
 
 ## Writing a transaction back
@@ -593,7 +593,7 @@ txid.
 // when witness is true and some input has a witness, else the legacy form.
 // Counts and lengths are written in their shortest form. Returns the bytes
 // written, or -1 when t is a refusal or out is too short (nothing written).
-tx_write_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, witness: bool, out: [] u8) -> int #export_c {
+tx_write_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, witness: bool, out: [] u8) -> int #export_c #effects(all) {
   extended := witness && t.segwit;
   if t.code != TX_OK || out.count < (ifx extended then t.total else t.stripped) { return -1; }
   at := tx_put(out, 0, b[0..<4]);

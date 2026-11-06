@@ -280,7 +280,7 @@ request :: (s: [] Builder, what: int, url: string, body_n: int) {
   s[0].req_body_n = body_n; s[0].req_flags = HTTP_POST | HTTP_ANSWER | TRACK_KEY;
   s[0].req_what = what; s[0].req_ready = true; s[0].req_at = s[0].time;
 }
-builder_requested :: (s: [] Builder, id: int) #export_c {
+builder_requested :: (s: [] Builder, id: int) #export_c #effects(all) {
   s[0].req_ready = false;
   s[0].req_id = id;
   if id < 0 { fail(s, "That didn't reach the server. Try again."); }
@@ -612,7 +612,7 @@ take_answer :: (s: [] Builder, t: [] Track, text: string) {
   }
 }
 
-builder_message :: (s: [] Builder, t: [] Track, kind: int, text: string) #export_c {
+builder_message :: (s: [] Builder, t: [] Track, kind: int, text: string) #export_c #effects(all) {
   begin(s);
   if kind == HOST_FACTS {
     s[0].has_player = fact_of(text, "player").count > 0;
@@ -659,8 +659,8 @@ builder_message :: (s: [] Builder, t: [] Track, kind: int, text: string) #export
   if kind >= HTTP_ANSWER_KIND && kind < HTTP_ANSWER_KIND + 8 && kind - HTTP_ANSWER_KIND == s[0].req_id { take_answer(s, t, text); }
 }
 // The face asks GET /api/playtest/access once (access.coax) and says the id its answer comes under.
-builder_access_wants :: (s: [] Builder) -> bool #export_c { return access_wants(s[0].acc[..]); }
-builder_access_sent :: (s: [] Builder, id: int) #export_c { access_sent(s[0].acc[..], id); }
+builder_access_wants :: (s: [] Builder) -> bool #export_c #effects(all) { return access_wants(s[0].acc[..]); }
+builder_access_sent :: (s: [] Builder, id: int) #export_c #effects(all) { access_sent(s[0].acc[..], id); }
 
 // ---- input
 
@@ -735,7 +735,7 @@ toggle :: (s: [] Builder, t: [] Track, i: int) {
 }
 go_back :: (s: [] Builder) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/worlds"); s[0].action = ACT_NAVIGATE; } }
 
-builder_key :: (s: [] Builder, t: [] Track, key: int, mods: int, down: bool) -> bool #export_c {
+builder_key :: (s: [] Builder, t: [] Track, key: int, mods: int, down: bool) -> bool #export_c #effects(all) {
   begin(s);
   if s[0].typing {
     if !down { return false; }
@@ -765,7 +765,7 @@ builder_key :: (s: [] Builder, t: [] Track, key: int, mods: int, down: bool) -> 
   if key == KEY_ESCAPE { go_back(s); return true; }
   return false;
 }
-builder_blur :: (s: [] Builder) #export_c { begin(s); s[0].key_held = false; talk_off(s); s[0].press = -1; s[0].row_press = -1; s[0].drag_id = -1; }
+builder_blur :: (s: [] Builder) #export_c #effects(all) { begin(s); s[0].key_held = false; talk_off(s); s[0].press = -1; s[0].row_press = -1; s[0].drag_id = -1; }
 
 button_at :: (s: [] Builder, x: f32, y: f32) -> int {
   for i: 0..<BUTTONS { if s[0].shown[i] && inside(s[0].boxes[i], x, y) { return i; } }
@@ -776,7 +776,7 @@ row_at :: (s: [] Builder, x: f32, y: f32) -> int {
   for i: 0..<s[0].feat_n { if s[0].row_shown[i] && inside(s[0].rows[i], x, y) { return i; } }
   return -1;
 }
-builder_label :: (s: [] Builder, x: f32, y: f32) -> string #export_c {
+builder_label :: (s: [] Builder, x: f32, y: f32) -> string #export_c #effects(all) {
   b := button_at(s, x, y);
   if b == BTN_TALK { return "talk"; } if b == BTN_TYPE { return "type"; } if b == BTN_MAKE { return "make"; }
   if b == BTN_BACK { return "realms"; } if b == BTN_SEND { return "send"; }
@@ -789,7 +789,7 @@ builder_label :: (s: [] Builder, x: f32, y: f32) -> string #export_c {
   if row_at(s, x, y) >= 0 { return "feature"; }
   return "";
 }
-builder_pointer :: (s: [] Builder, t: [] Track, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+builder_pointer :: (s: [] Builder, t: [] Track, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   begin(s);
   b := button_at(s, x, y);
   s[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then b else -1;
@@ -839,12 +839,12 @@ scroll_by :: (s: [] Builder, dy: f32) {
   room := s[0].list.y1 - s[0].list.y0;
   s[0].scroll = clamp(s[0].scroll + dy, 0, hi(s[0].content - room, 0));
 }
-builder_wheel :: (s: [] Builder, dy: f32) #export_c { begin(s); scroll_by(s, dy * s[0].dpr); }
+builder_wheel :: (s: [] Builder, dy: f32) #export_c #effects(all) { begin(s); scroll_by(s, dy * s[0].dpr); }
 // What a check reads of the page (coax/web/forge-journey.coax, through host.js's guardProbe):
 //   0 the phase (PH_*), 1 rows on the board, 2 the trees row (-1 none), 3 it is on, 4 a request
 //   in flight, 5 typing, 6 the plan, 7 MAKE IT is waiting on words; 100 + 4b..103 + 4b: button
 //   b's box in CSS pixels (-1 when it isn't shown).
-builder_probe :: (s: [] Builder, f: int) -> int #export_c {
+builder_probe :: (s: [] Builder, f: int) -> int #export_c #effects(all) {
   if f == 0 { return s[0].phase; }
   if f == 1 { return s[0].feat_n; }
   if f == 2 || f == 3 {
@@ -864,16 +864,16 @@ builder_probe :: (s: [] Builder, f: int) -> int #export_c {
   }
   return -99999;
 }
-builder_cursor :: (s: [] Builder) -> int #export_c { return ifx s[0].hover >= 0 then 1 else 0; }
-builder_wants_text :: (s: [] Builder) -> bool #export_c { return s[0].typing; }
-builder_action :: (s: [] Builder) -> int #export_c {
+builder_cursor :: (s: [] Builder) -> int #export_c #effects(all) { return ifx s[0].hover >= 0 then 1 else 0; }
+builder_wants_text :: (s: [] Builder) -> bool #export_c #effects(all) { return s[0].typing; }
+builder_action :: (s: [] Builder) -> int #export_c #effects(all) {
   if s[0].action == 0 && s[0].want_voice != 0 {
     s[0].out_n = put(s[0].outbox[..], 0, ifx s[0].want_voice == 1 then "on" else "end");
     s[0].action = ACT_VOICE; s[0].want_voice = 0;
   }
   a := s[0].action; s[0].action = 0; return a;
 }
-builder_action_done :: (s: [] Builder) #export_c { s[0].out_n = 0; }
+builder_action_done :: (s: [] Builder) #export_c #effects(all) { s[0].out_n = 0; }
 
 // ---- the look (verse.coax's)
 
@@ -1314,7 +1314,7 @@ hint_line :: (voice: bool, typing: bool, small: bool) -> string {
 
 // ---- the frame
 
-builder_frame :: (s: [] Builder, t: [] Track, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+builder_frame :: (s: [] Builder, t: [] Track, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   begin(s);
   s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = still;
@@ -1349,9 +1349,9 @@ builder_frame :: (s: [] Builder, t: [] Track, out: [] f32, uniforms: [] f32, wid
   return n;
 }
 
-coaxial_builder_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_builder_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_builder_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_builder_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_builder_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_builder_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // ---- checks
 

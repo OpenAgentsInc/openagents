@@ -5,87 +5,87 @@
 #load "walk.coax" as walk;
 #load "walk-control.coax" as control;
 
-verse_player_advance_in_realm_traced :: (p: walk.Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32, realm: string) -> walk.AdvanceTrace #export_c {
+verse_player_advance_in_realm_traced :: (p: walk.Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32, realm: string) -> walk.AdvanceTrace #export_c #effects(all) {
   return walk.walk_advance_in_realm_traced(p, frame, bodies, walls, floors, realm);
 }
 
-verse_player_place :: (x: f32, y: f32, z: f32, yaw: f32) -> walk.Player #export_c { return walk.walk_place(x, y, z, yaw); }
+verse_player_place :: (x: f32, y: f32, z: f32, yaw: f32) -> walk.Player #export_c #effects(all) { return walk.walk_place(x, y, z, yaw); }
 
 verse_player_input :: (p: walk.Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
-                          run: bool, jump: bool, dyaw: f32, dpitch: f32) -> walk.Player #export_c { return walk.walk_input(p, key_x, key_y, pad_x, pad_y, run, jump, dyaw, dpitch); }
+                          run: bool, jump: bool, dyaw: f32, dpitch: f32) -> walk.Player #export_c #effects(all) { return walk.walk_input(p, key_x, key_y, pad_x, pad_y, run, jump, dyaw, dpitch); }
 
 // A flying realm's controls (aethyr/flight.coax, through walk_fly_input): taps, wings and the dive.
 verse_player_input_flying :: (p: walk.Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32, run: bool, jump: bool,
-                              taps: int, wings: bool, dive: bool) -> walk.Player #export_c {
+                              taps: int, wings: bool, dive: bool) -> walk.Player #export_c #effects(all) {
   return walk.walk_fly_input(p, key_x, key_y, pad_x, pad_y, run, jump, taps, wings, dive);
 }
 
-verse_runs :: (shift: bool, stick_run: bool, pad_x: f32, pad_y: f32) -> bool #export_c { return walk.walk_runs(shift, stick_run, pad_x, pad_y); }
+verse_runs :: (shift: bool, stick_run: bool, pad_x: f32, pad_y: f32) -> bool #export_c #effects(all) { return walk.walk_runs(shift, stick_run, pad_x, pad_y); }
 
 verse_player_intent :: (p: walk.Player, i: Intent) -> walk.Player { return walk.walk_intent(p, i); }
 
-verse_player_advance :: (p: walk.Player, frame: f32) -> walk.Player #export_c { return walk.walk_advance(p, frame); }
+verse_player_advance :: (p: walk.Player, frame: f32) -> walk.Player #export_c #effects(all) { return walk.walk_advance(p, frame); }
 
-verse_player_advance_among :: (p: walk.Player, frame: f32, bodies: [] f32, walls: [] f32) -> walk.Player #export_c { return walk.walk_advance_among(p, frame, bodies, walls); }
+verse_player_advance_among :: (p: walk.Player, frame: f32, bodies: [] f32, walls: [] f32) -> walk.Player #export_c #effects(all) { return walk.walk_advance_among(p, frame, bodies, walls); }
 
-verse_player_advance_on :: (p: walk.Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32) -> walk.Player #export_c { return walk.walk_advance_on(p, frame, bodies, walls, floors); }
+verse_player_advance_on :: (p: walk.Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32) -> walk.Player #export_c #effects(all) { return walk.walk_advance_on(p, frame, bodies, walls, floors); }
 
-verse_player_advance_in_realm :: (p: walk.Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32, realm: string) -> walk.Player #export_c { return walk.walk_advance_in_realm(p, frame, bodies, walls, floors, realm); }
+verse_player_advance_in_realm :: (p: walk.Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32, realm: string) -> walk.Player #export_c #effects(all) { return walk.walk_advance_in_realm(p, frame, bodies, walls, floors, realm); }
 
-verse_player_collision_status :: (p: walk.Player) -> int #export_c { return walk.walk_collision_status(p); }
+verse_player_collision_status :: (p: walk.Player) -> int #export_c #effects(all) { return walk.walk_collision_status(p); }
 
-verse_player_collision_refusals :: (p: walk.Player) -> u64 #export_c { return walk.walk_collision_refusals(p); }
+verse_player_collision_refusals :: (p: walk.Player) -> u64 #export_c #effects(all) { return walk.walk_collision_refusals(p); }
 
-verse_player_collision_residual :: (p: walk.Player) -> f32 #export_c { return walk.walk_collision_residual(p); }
+verse_player_collision_residual :: (p: walk.Player) -> f32 #export_c #effects(all) { return walk.walk_collision_residual(p); }
 
-verse_player_collision_passes :: (p: walk.Player) -> int #export_c { return walk.walk_collision_passes(p); }
+verse_player_collision_passes :: (p: walk.Player) -> int #export_c #effects(all) { return walk.walk_collision_passes(p); }
 
-verse_player_collision_floor_cut :: (p: walk.Player) -> bool #export_c { return walk.walk_collision_floor_cut(p); }
+verse_player_collision_floor_cut :: (p: walk.Player) -> bool #export_c #effects(all) { return walk.walk_collision_floor_cut(p); }
 
-verse_player_query_status :: (p: walk.Player) -> int #export_c { return walk.walk_query_status(p); }
+verse_player_query_status :: (p: walk.Player) -> int #export_c #effects(all) { return walk.walk_query_status(p); }
 
-verse_player_camera_query_status :: (p: walk.Player) -> int #export_c { return walk.walk_camera_query_status(p); }
+verse_player_camera_query_status :: (p: walk.Player) -> int #export_c #effects(all) { return walk.walk_camera_query_status(p); }
 
-verse_player_counts :: (p: walk.Player, frame: f32) -> f32 #export_c { return walk.walk_counts(p, frame); }
+verse_player_counts :: (p: walk.Player, frame: f32) -> f32 #export_c #effects(all) { return walk.walk_counts(p, frame); }
 
-verse_player_ran :: (p: walk.Player) -> int #export_c { return walk.walk_ran(p); }
+verse_player_ran :: (p: walk.Player) -> int #export_c #effects(all) { return walk.walk_ran(p); }
 
-verse_player_feet :: (p: walk.Player) -> walk.Vec3 #export_c { return walk.walk_feet(p); }
+verse_player_feet :: (p: walk.Player) -> walk.Vec3 #export_c #effects(all) { return walk.walk_feet(p); }
 
-verse_player_face :: (p: walk.Player) -> f32 #export_c { return walk.walk_face(p); }
+verse_player_face :: (p: walk.Player) -> f32 #export_c #effects(all) { return walk.walk_face(p); }
 
 verse_player_shot :: (p: walk.Player) -> CameraShot { return walk.walk_shot(p); }
 
-verse_player_at :: (p: walk.Player) -> walk.Vec3 #export_c { return walk.walk_at(p); }
+verse_player_at :: (p: walk.Player) -> walk.Vec3 #export_c #effects(all) { return walk.walk_at(p); }
 
-verse_player_eye :: (p: walk.Player) -> walk.Vec3 #export_c { return walk.walk_eye(p); }
+verse_player_eye :: (p: walk.Player) -> walk.Vec3 #export_c #effects(all) { return walk.walk_eye(p); }
 
-verse_player_act :: (p: walk.Player) -> int #export_c { return walk.walk_act(p); }
+verse_player_act :: (p: walk.Player) -> int #export_c #effects(all) { return walk.walk_act(p); }
 // The motion the controls ask for (walk_asked): what a follow camera turns toward.
-verse_player_asked :: (p: walk.Player) -> walk.Vec3 #export_c { return walk.walk_asked(p); }
+verse_player_asked :: (p: walk.Player) -> walk.Vec3 #export_c #effects(all) { return walk.walk_asked(p); }
 
 verse_player_view :: (p: walk.Player, mode: int) -> CameraShot { return walk.walk_view(p, mode); }
 
-verse_player_view_eye :: (p: walk.Player, mode: int) -> walk.Vec3 #export_c { return walk.walk_view_eye(p, mode); }
+verse_player_view_eye :: (p: walk.Player, mode: int) -> walk.Vec3 #export_c #effects(all) { return walk.walk_view_eye(p, mode); }
 
-verse_player_view_at :: (p: walk.Player, mode: int) -> walk.Vec3 #export_c { return walk.walk_view_at(p, mode); }
+verse_player_view_at :: (p: walk.Player, mode: int) -> walk.Vec3 #export_c #effects(all) { return walk.walk_view_at(p, mode); }
 
-verse_player_zoom :: (p:walk.Player,delta:f32) ->walk.Player #export_c { return walk.walk_zoom(p, delta); }
+verse_player_zoom :: (p:walk.Player,delta:f32) ->walk.Player #export_c #effects(all) { return walk.walk_zoom(p, delta); }
 
-verse_player_zoom_view :: (p:walk.Player,mode:int,delta:f32) ->walk.PlayerZoom #export_c { return walk.walk_zoom_view(p, mode, delta); }
+verse_player_zoom_view :: (p:walk.Player,mode:int,delta:f32) ->walk.PlayerZoom #export_c #effects(all) { return walk.walk_zoom_view(p, mode, delta); }
 
-verse_player_constrain :: (p:walk.Player,x:f32,z:f32) ->walk.Player #export_c { return walk.walk_constrain(p, x, z); }
+verse_player_constrain :: (p:walk.Player,x:f32,z:f32) ->walk.Player #export_c #effects(all) { return walk.walk_constrain(p, x, z); }
 
 // Version 2 keeps pending input outside the published Player layout.
-verse_player_v2_input :: (c:[]control.WalkControlV2,key_x:f32,key_y:f32,pad_x:f32,pad_y:f32,run:bool,jump:bool,look_x:f32,look_y:f32) #export_c {
+verse_player_v2_input :: (c:[]control.WalkControlV2,key_x:f32,key_y:f32,pad_x:f32,pad_y:f32,run:bool,jump:bool,look_x:f32,look_y:f32) #export_c #effects(all) {
   control.walk_control_feed(c,key_x,key_y,pad_x,pad_y,run,jump,look_x,look_y);
 }
-verse_player_v2_heading :: (c:[]control.WalkControlV2,p:walk.Player,heading:f32) #export_c {control.walk_control_heading(c,p,heading);}
-verse_player_v2_flying :: (c:[]control.WalkControlV2,p:walk.Player,key_x:f32,key_y:f32,pad_x:f32,pad_y:f32,run:bool,jump:bool,taps:int,wings:bool,dive:bool)->walk.Player #export_c {
+verse_player_v2_heading :: (c:[]control.WalkControlV2,p:walk.Player,heading:f32) #export_c #effects(all) {control.walk_control_heading(c,p,heading);}
+verse_player_v2_flying :: (c:[]control.WalkControlV2,p:walk.Player,key_x:f32,key_y:f32,pad_x:f32,pad_y:f32,run:bool,jump:bool,taps:int,wings:bool,dive:bool)->walk.Player #export_c #effects(all) {
   return control.walk_control_flying(c,p,key_x,key_y,pad_x,pad_y,run,jump,taps,wings,dive);
 }
-verse_player_v2_advance :: (c:[]control.WalkControlV2,p:walk.Player,frame:f32,bodies:[]f32,walls:[]f32,floors:[]f32,realm:string)->walk.AdvanceTrace #export_c {
+verse_player_v2_advance :: (c:[]control.WalkControlV2,p:walk.Player,frame:f32,bodies:[]f32,walls:[]f32,floors:[]f32,realm:string)->walk.AdvanceTrace #export_c #effects(all) {
   return control.walk_control_realm(c,p,frame,bodies,walls,floors,realm);
 }
 
-verse_player_v2_reset :: ()->control.WalkControlV2 #export_c {fresh:control.WalkControlV2;return fresh;}
+verse_player_v2_reset :: ()->control.WalkControlV2 #export_c #effects(all) {fresh:control.WalkControlV2;return fresh;}

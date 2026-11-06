@@ -29,7 +29,7 @@ nb_run :: (argv:[]string,dir:string,out:[]u8)->int {
     if n+k+1>out.count {killed:=proc_kill(p,PROC_SIGKILL);r:=proc_release(p);return -1;}for c:line[0..<k] {out[n]=c;n+=1;}out[n]='\n';n+=1;}
   status:=proc_wait(p,2000);err:[16384]u8;text:=proc_stderr(p,err[..]);if text.count>0 {tool_errln(text);}r:=proc_release(p);return ifx status==0 then n else -1;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2{return 2;}dir:=args_at(a[..],0);math_script:=args_at(a[..],1);
   out:[1048576]u8;args:[128]string;
   pkg:=[3]string.["pkg-config","--variable=pkgdatadir","wayland-protocols"];

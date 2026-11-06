@@ -40,7 +40,7 @@ to logits before `gs_distribution` chooses anything.
 
 <!-- source: psionic/lib/gptoss/tool-schema.coax allowed -->
 ```jai
-gt_allowed :: (prefix:string,fragment:string,ending:bool,alternatives:[]string)->bool #export_c {
+gt_allowed :: (prefix:string,fragment:string,ending:bool,alternatives:[]string)->bool #export_c #effects(all) {
     if ending && fragment.count!=0 {return false;}
     if !ending && fragment.count==0 {return false;}
     for text:alternatives {
@@ -73,7 +73,7 @@ open a socket, invoke a shell or infer permission from model text.
 
 <!-- source: psionic/lib/gptoss/tools.coax authorize -->
 ```jai
-gt_authorize :: (tool:GTool,record:HmRecord,bytes:string,granted:bool)->GCall #export_c {
+gt_authorize :: (tool:GTool,record:HmRecord,bytes:string,granted:bool)->GCall #export_c #effects(all) {
     if !granted || record.role!=HmRole.assistant || record.channel!=HmChannel.commentary || record.ending!=HmEnd.call {return GCall.{status=GStatus.state};}
     if !gt_interval(record.recipient_begin,record.recipient_end,bytes.count) || !gt_interval(record.body_begin,record.body_end,bytes.count) {return GCall.{status=GStatus.capacity};}
     if !hm_ident(tool.name) || tool.name=="all" || bytes[record.recipient_begin..<record.recipient_end]!=tool.name {return GCall.{status=GStatus.token};}
@@ -99,7 +99,7 @@ completion buffer directly to a user.
 
 <!-- source: psionic/lib/gptoss/tools.coax display -->
 ```jai
-gt_display :: (record:HmRecord,bytes:string,out:[]u8,overlap:bool)->GResult #export_c {
+gt_display :: (record:HmRecord,bytes:string,out:[]u8,overlap:bool)->GResult #export_c #effects(all) {
     if record.role!=HmRole.assistant || record.channel!=HmChannel.final || record.ending!=HmEnd.turn || record.recipient_begin!=record.recipient_end {return GResult.{status=GStatus.state};}
     if !gt_interval(record.body_begin,record.body_end,bytes.count) {return GResult.{status=GStatus.capacity};}n:=record.body_end-record.body_begin;
     if out.count<n {return GResult.{status=GStatus.capacity};}if overlap {return GResult.{status=GStatus.alias};}

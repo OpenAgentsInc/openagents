@@ -11,7 +11,7 @@ AfMove :: struct {ok:bool;state:AfState;}
 
 // Physical acknowledgement is supplied by the caller, independently of the
 // prepared frame. The tests use both outcomes with exactly the same bytes.
-af_test :: (s:AfState,kind:AjKind,group:int,payload:string,durable:bool)->AfMove {
+af_test :: (s:AfState,kind:AjKind,group:int,payload:string,durable:bool)->AfMove #effects(all) {
   frame:[1024]u8;p:=aj_prepare(s.chain,kind,group,payload,frame[..],false);
   #assert p.ok;return af_commit(s,frame[0..<p.count],durable);
 }
@@ -139,7 +139,7 @@ af_test :: (s:AfState,kind:AjKind,group:int,payload:string,durable:bool)->AfMove
   #assert !af_test(request,AjKind.decision,2,"busy",true).ok;
 }
 // Reads without effects, for both preflight and reconstruction.
-af_read :: (s:AfState,frame:[]u8)->AfMove {
+af_read :: (s:AfState,frame:[]u8)->AfMove #effects(all) {
   result:=AfMove.{state=s};r:=aj_read(s.chain,frame);
   if !r.ok {return result;}
   if r.consumed!=frame.count {return result;}
@@ -182,23 +182,23 @@ af_read :: (s:AfState,frame:[]u8)->AfMove {
   }
   if accepted {result.ok=true;next.chain=r.after;result.state=next;}return result;
 }
-af_prepare :: (s:AfState,frame:[]u8)->AfMove {
+af_prepare :: (s:AfState,frame:[]u8)->AfMove #effects(all) {
   if s.replaying {return AfMove.{state=s};}
   return af_read(s,frame);
 }
-af_commit :: (s:AfState,frame:[]u8,durable:bool)->AfMove {
+af_commit :: (s:AfState,frame:[]u8,durable:bool)->AfMove #effects(all) {
   candidate:=af_prepare(s,frame);
   if candidate.ok && durable {return candidate;}
   failed:=s;failed.chain.failed=true;return AfMove.{state=failed};
 }
-af_start :: (s:AfState,kind:AjKind,group:int)->AfMove {
+af_start :: (s:AfState,kind:AjKind,group:int)->AfMove #effects(all) {
   result:=AfMove.{state=s};
   if s.replaying || s.chain.failed || s.started || group!=s.group {return result;}
   allowed:=(kind==AjKind.model_intent && s.phase==AfPhase.model) ||
     (kind==AjKind.command_intent && s.phase==AfPhase.command) || (kind==AjKind.view_intent && s.phase==AfPhase.view);
   if allowed {result.ok=true;result.state.started=true;}return result;
 }
-af_recover :: (s:AfState,frame:[]u8)->AfMove {
+af_recover :: (s:AfState,frame:[]u8)->AfMove #effects(all) {
   reading:=s;reading.replaying=true;move:=af_read(reading,frame);
   if move.ok && move.state.phase!=AfPhase.closed {
     move.state.unknown=move.state.phase==AfPhase.model || move.state.phase==AfPhase.command || move.state.phase==AfPhase.view;

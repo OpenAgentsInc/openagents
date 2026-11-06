@@ -20,7 +20,7 @@
  #assert r.angular[0].value==11.0/15.0 && r.angular[7].value==10.0/15.0 && r.angular[14].value==2.0/15.0;
 }
 
-pj_project_owned :: (fk:PfkOutput)->PjOutput {
+pj_project_owned :: (fk:PfkOutput)->PjOutput #effects(all) {
  fresh:PjOutput;
  for joint:0..<7 {
   pose:=fk.links[joint+2];ax:=pose.rotation[2];ay:=pose.rotation[5];az:=pose.rotation[8];

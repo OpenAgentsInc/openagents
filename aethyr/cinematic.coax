@@ -53,12 +53,12 @@ fl_finite :: (s: Shot) -> bool {
   return finite(s.eye.x) && finite(s.eye.y) && finite(s.eye.z) && finite(s.at.x) && finite(s.at.y) && finite(s.at.z);
 }
 
-verse_flight_new :: () -> Flight #export_c { f: Flight; return f; }
+verse_flight_new :: () -> Flight #export_c #effects(all) { f: Flight; return f; }
 
 // A key `at` seconds into the flight (after the last key; others are
 // refused), the camera at eye looking at `at`. A cut jumps to it; otherwise
 // the flight comes to it from the key before, eased as `ease` says.
-verse_flight_key :: (f: Flight, at: f32, eye: Point, look: Point, cut: bool, easing: int) -> Flight #export_c {
+verse_flight_key :: (f: Flight, at: f32, eye: Point, look: Point, cut: bool, easing: int) -> Flight #export_c #effects(all) {
   if f.count >= FLIGHT_KEYS || !finite(at) || at < 0 { return f; }
   if f.count > 0 && at <= f.keys[f.count - 1].at { return f; }
   s := Shot.{eye = eye, at = look};
@@ -70,7 +70,7 @@ verse_flight_key :: (f: Flight, at: f32, eye: Point, look: Point, cut: bool, eas
 }
 
 // It starts flying at `now`. With reduced motion, or with no keys, it is over at once.
-verse_flight_start :: (f: Flight, now: f64, reduced: bool) -> Flight #export_c {
+verse_flight_start :: (f: Flight, now: f64, reduced: bool) -> Flight #export_c #effects(all) {
   next := f;
   next.start = now; next.backing = false;
   next.running = f.count > 0 && !reduced;
@@ -78,7 +78,7 @@ verse_flight_start :: (f: Flight, now: f64, reduced: bool) -> Flight #export_c {
 }
 
 // How long the authored part lasts, seconds.
-verse_flight_length :: (f: Flight) -> f32 #export_c {
+verse_flight_length :: (f: Flight) -> f32 #export_c #effects(all) {
   if f.count == 0 { return 0; }
   return f.keys[f.count - 1].at;
 }
@@ -86,7 +86,7 @@ verse_flight_length :: (f: Flight) -> f32 #export_c {
 // The take on screen at `now`: the index of the last cut at or before it
 // (0 the first), or -1 once the flight is handing back or over. A host
 // changes its scene when this changes, behind the cut.
-verse_flight_take :: (f: Flight, now: f64) -> int #export_c {
+verse_flight_take :: (f: Flight, now: f64) -> int #export_c #effects(all) {
   if !f.running || f.backing { return -1; }
   t := f32(now - f.start);
   if t >= verse_flight_length(f) { return -1; }
@@ -112,19 +112,19 @@ fl_flown :: (f: Flight, t: f32) -> Shot {
 }
 
 // Whether the flight still owns the camera (flying or handing back).
-verse_flight_active :: (f: Flight, now: f64) -> bool #export_c {
+verse_flight_active :: (f: Flight, now: f64) -> bool #export_c #effects(all) {
   if !f.running { return false; }
   if f.backing { return f32(now - f.back_at) < f32(HANDBACK); }
   return f32(now - f.start) < verse_flight_length(f) + f32(HANDBACK);
 }
 
 // Whether input is still the flight's: a key or a touch skips it.
-verse_flight_flying :: (f: Flight, now: f64) -> bool #export_c {
+verse_flight_flying :: (f: Flight, now: f64) -> bool #export_c #effects(all) {
   return f.running && !f.backing && f32(now - f.start) < verse_flight_length(f);
 }
 
 // A key or a touch: the hand-back starts now, from where the camera is.
-verse_flight_skip :: (f: Flight, now: f64) -> Flight #export_c {
+verse_flight_skip :: (f: Flight, now: f64) -> Flight #export_c #effects(all) {
   if !verse_flight_flying(f, now) { return f; }
   next := f;
   next.back_from = fl_flown(f, f32(now - f.start));
@@ -134,7 +134,7 @@ verse_flight_skip :: (f: Flight, now: f64) -> Flight #export_c {
 
 // The shot at `now`; `live` is the camera the player has, which the
 // flight hands back to. Past the end it is `live`.
-verse_flight_shot :: (f: Flight, now: f64, live: Shot) -> Shot #export_c {
+verse_flight_shot :: (f: Flight, now: f64, live: Shot) -> Shot #export_c #effects(all) {
   if !f.running { return live; }
   from := f.back_from; at := f.back_at;
   if !f.backing {

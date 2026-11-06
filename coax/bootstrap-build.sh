@@ -220,6 +220,13 @@ cmp bootstrap/strict-math.c "$work/strict-math.c"
 cmp bootstrap/strict-math.h "$work/strict-math.h"
 { printf 'R"COAXSM('; cat "$work/strict-math.c"; printf ')COAXSM"\n'; } > "$work/strict-math.inc"
 cmp bootstrap/strict-math.inc "$work/strict-math.inc"
+gate "$work/stage0" test lib/compiler/transaction-runtime.coax --library
+gate "$work/stage0" mutate lib/compiler/transaction-runtime.coax --library --root-only
+"$work/stage0" c lib/compiler/transaction-runtime.coax --library --header "$work/transaction-runtime.h" > "$work/transaction-runtime.c"
+cmp bootstrap/transaction-runtime.c "$work/transaction-runtime.c"
+cmp bootstrap/transaction-runtime.h "$work/transaction-runtime.h"
+{ printf 'R"COAXTX('; cat "$work/transaction-runtime.c"; printf ')COAXTX"\n'; } > "$work/transaction-runtime.inc"
+cmp bootstrap/transaction-runtime.inc "$work/transaction-runtime.inc"
 gate "$work/stage0" mutate lib/compiler/budget.coax
 "$work/stage0" c lib/compiler/budget.coax --library --header "$work/budget.h" > "$work/budget.c"
 cmp bootstrap/budget.c "$work/budget.c"

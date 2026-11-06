@@ -69,11 +69,11 @@ DecideAsk :: struct { status: int; request: int; epoch: int; live: bool; }
 DecideAdmit :: struct { status: int; intent: DecideIntent; }
 // book:end decide-profile
 
-decide_table :: (t: [] DecideTable) { t[0] = DecideTable.{}; for a: 0..<DECIDE_ACTORS { t[0].catalogue[a] = DECIDE_ALL; } }
-decide_count :: (t: [] DecideTable, status: int) -> int { return t[0].counts[status]; }
-decide_actor_ok :: (actor: int) -> bool { return actor >= 0 && actor < DECIDE_ACTORS; }
-decide_open :: (t: [] DecideTable) -> int { n := 0; for k: 0..<DECIDE_FLEET { if t[0].tickets[k].live { n += 1; } } return n; }
-decide_waiting :: (t: [] DecideTable, actor: int) -> bool {
+decide_table :: (t: [] DecideTable) #effects(all) { t[0] = DecideTable.{}; for a: 0..<DECIDE_ACTORS { t[0].catalogue[a] = DECIDE_ALL; } }
+decide_count :: (t: [] DecideTable, status: int) -> int #effects(all) { return t[0].counts[status]; }
+decide_actor_ok :: (actor: int) -> bool #effects(all) { return actor >= 0 && actor < DECIDE_ACTORS; }
+decide_open :: (t: [] DecideTable) -> int #effects(all) { n := 0; for k: 0..<DECIDE_FLEET { if t[0].tickets[k].live { n += 1; } } return n; }
+decide_waiting :: (t: [] DecideTable, actor: int) -> bool #effects(all) {
   for k: 0..<DECIDE_FLEET { if t[0].tickets[k].live && t[0].tickets[k].actor == actor { return true; } }
   return false;
 }
@@ -81,7 +81,7 @@ decide_waiting :: (t: [] DecideTable, actor: int) -> bool {
 // book:begin decide-context
 // What an actor senses, as one number: each remembered stimulus's kind, source, place and tick.
 // The ticket keeps it, and the answer must name it: an answer is to the question asked.
-decide_context :: (m: Memory) -> int {
+decide_context :: (m: Memory) -> int #effects(all) {
   h := replay_mix(2166136261, m.count);
   for i: 0..<m.count {
     st := m.items[i];
@@ -96,7 +96,7 @@ decide_context :: (m: Memory) -> int {
 // A question for the model about `actor` on tick `now`, to be answered within `wait` ticks. It
 // takes a request number from the session (in a replay too, so the numbers match; a replay sends
 // nothing: `live` is false). A refusal takes no number.
-decide_ask :: (t: [] DecideTable, s: ReplaySession, actor: int, now: int, wait: int, context: int) -> DecideAsk {
+decide_ask :: (t: [] DecideTable, s: ReplaySession, actor: int, now: int, wait: int, context: int) -> DecideAsk #effects(all) {
   out: DecideAsk;
   if !decide_actor_ok(actor) || wait < 1 || wait > DECIDE_WAIT_MAX || now < 0 { out.status = DECIDE_BAD; }
   else if decide_waiting(t, actor) { out.status = DECIDE_ACTOR_BUSY; }
@@ -112,7 +112,7 @@ decide_ask :: (t: [] DecideTable, s: ReplaySession, actor: int, now: int, wait: 
 // book:end decide-ask
 
 // The model adapter's side: its answer to ticket `ask` as the event the gate takes. x and z in cm.
-decide_answer :: (ask: DecideAsk, actor: int, owner: int, context: int, kind: int, target: int, x: int, z: int) -> ReplayEvent {
+decide_answer :: (ask: DecideAsk, actor: int, owner: int, context: int, kind: int, target: int, x: int, z: int) -> ReplayEvent #effects(all) {
   e := ReplayEvent.{source = REPLAY_MODEL, request = ask.request, epoch = ask.epoch};
   e.words[DECIDE_W_ACTOR] = actor; e.words[DECIDE_W_OWNER] = owner; e.words[DECIDE_W_CONTEXT] = context;
   e.words[DECIDE_W_KIND] = kind; e.words[DECIDE_W_TARGET] = target; e.words[DECIDE_W_X] = x; e.words[DECIDE_W_Z] = z;
@@ -120,7 +120,7 @@ decide_answer :: (ask: DecideAsk, actor: int, owner: int, context: int, kind: in
 }
 
 // Whether an intent's kind is in the catalogue and its arguments in bounds.
-decide_allowed :: (catalogue: int, kind: int, target: int, x: int, z: int) -> bool {
+decide_allowed :: (catalogue: int, kind: int, target: int, x: int, z: int) -> bool #effects(all) {
   if kind <= DECIDE_NONE || kind >= DECIDE_KINDS || ((catalogue >> kind) & 1) == 0 { return false; }
   if kind == DECIDE_GO { return x >= -DECIDE_REACH && x <= DECIDE_REACH && z >= -DECIDE_REACH && z <= DECIDE_REACH && target == -1; }
   if kind == DECIDE_CHASE || kind == DECIDE_FLEE { return target >= 0 && x == 0 && z == 0; }
@@ -133,7 +133,7 @@ decide_allowed :: (catalogue: int, kind: int, target: int, x: int, z: int) -> bo
 // and what the actor senses now (m, s). An admitted answer closes its ticket and becomes an intent;
 // a refused one changes nothing in the world, and a refusal past its ticket's checks (forbidden,
 // unsensed) closes the ticket too, so the actor falls back rather than wait for a second answer.
-decide_admit :: (t: [] DecideTable, e: ReplayEvent, now: int, m: Memory, s: Senses) -> DecideAdmit {
+decide_admit :: (t: [] DecideTable, e: ReplayEvent, now: int, m: Memory, s: Senses) -> DecideAdmit #effects(all) {
   out: DecideAdmit;
   slot := -1;
   if e.source == REPLAY_MODEL {
@@ -159,7 +159,7 @@ decide_admit :: (t: [] DecideTable, e: ReplayEvent, now: int, m: Memory, s: Sens
 // book:begin decide-expire
 // After the step's answers: every ticket whose deadline has passed closes. The result has bit `a`
 // set for each actor whose ticket closed, so the realm gives each its fallback this step.
-decide_expire :: (t: [] DecideTable, now: int) -> int {
+decide_expire :: (t: [] DecideTable, now: int) -> int #effects(all) {
   out := 0;
   for k: 0..<DECIDE_FLEET {
     tk := t[0].tickets[k];
@@ -170,21 +170,21 @@ decide_expire :: (t: [] DecideTable, now: int) -> int {
   return out;
 }
 // The realm withdraws an actor's question (it died, the encounter ended): its answer will be unasked.
-decide_cancel :: (t: [] DecideTable, actor: int) {
+decide_cancel :: (t: [] DecideTable, actor: int) #effects(all) {
   for k: 0..<DECIDE_FLEET {
     if t[0].tickets[k].live && t[0].tickets[k].actor == actor { t[0].tickets[k].live = false; t[0].counts[DECIDE_CANCELLED] += 1; }
   }
 }
 // The actor changes owner (another simulation owner, another controller): its question is
 // withdrawn and anything decided for the old owner is stale.
-decide_transfer :: (t: [] DecideTable, actor: int) {
+decide_transfer :: (t: [] DecideTable, actor: int) #effects(all) {
   if !decide_actor_ok(actor) { return; }
   decide_cancel(t, actor);
   t[0].owner[actor] += 1;
 }
 // What an actor does without a model: go after the newest thing it remembers sensing, at the place
 // it sensed it (not where it is now), else hold. The same memory gives the same choice.
-decide_fallback :: (actor: int, m: Memory) -> DecideIntent {
+decide_fallback :: (actor: int, m: Memory) -> DecideIntent #effects(all) {
   best := -1;
   for i: 0..<m.count { if best < 0 || m.items[i].tick > m.items[best].tick { best = i; } }
   if best < 0 { return DecideIntent.{kind = DECIDE_HOLD, actor = actor}; }
@@ -194,7 +194,7 @@ decide_fallback :: (actor: int, m: Memory) -> DecideIntent {
 // book:end decide-expire
 
 // The table as one number, for the realm's step digest.
-decide_digest :: (h: int, t: [] DecideTable) -> int {
+decide_digest :: (h: int, t: [] DecideTable) -> int #effects(all) {
   out := h;
   for k: 0..<DECIDE_FLEET {
     tk := t[0].tickets[k];
@@ -208,8 +208,8 @@ decide_digest :: (h: int, t: [] DecideTable) -> int {
 // ---- checks
 #load "../tests/decide-oracle.coax";
 
-dc_session :: (b: [] ReplayBacking) -> ReplaySession { return replay_backing(b); }   // a new record: all zeros
-dc_seen :: (source: int, x: f32, tick: int) -> Memory {
+dc_session :: (b: [] ReplayBacking) -> ReplaySession #effects(all) { return replay_backing(b); }   // a new record: all zeros
+dc_seen :: (source: int, x: f32, tick: int) -> Memory #effects(all) {
   s: Senses;
   return memory_note(Memory.{}, s, Stimulus.{kind = StimulusKind.sight, source = source, at = world_point(x, 0, 2), tick = tick}).memory;
 }

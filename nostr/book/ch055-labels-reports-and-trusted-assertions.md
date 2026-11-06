@@ -71,7 +71,7 @@ N32Labels :: struct {
 ```jai
 // The index'th tag of any name: its name and first two values decoded, and
 // how many values it has. Later values are counted, not read.
-n32_tag :: (e:NostrEvent,index:int)->N32Tag {
+n32_tag :: (e:NostrEvent,index:int)->N32Tag #effects(all) {
   t:N32Tag;j:[1]Json;if !nt_start(j[..],e) {return t;}
   k:=0;tok:=json_next(j[..]);
   while tok==JSON_ARRAY && k<index {skipped:=json_skip(j[..]);k+=1;tok=json_next(j[..]);}
@@ -147,7 +147,7 @@ The refusing tag's index is in `at`, or `-1` when the refusal names no tag.
 ```jai
 // The labels an event carries. Kind 1985 labels the targets its e, p, a, r
 // and t tags name; any other kind labels itself.
-n32_labels :: (e:NostrEvent)->N32Labels {
+n32_labels :: (e:NostrEvent)->N32Labels #effects(all) {
   r:N32Labels;if e.error!=NE_OK {return r;}
   r.self=e.kind!=N32_KIND;
   marks:[N32_MAX_LABELS]N32Text;marked:[N32_MAX_LABELS]bool;
@@ -278,12 +278,12 @@ N56Tally :: struct {
 ```jai
 N56_TYPES :: [7] string.["nudity", "malware", "profanity", "illegal", "spam", "impersonation", "other"];
 // The report type a string names, or -1: the set is closed.
-n56_type :: (s:string)->int {
+n56_type :: (s:string)->int #effects(all) {
   for k:0..<N56_TYPES.count {if s==N56_TYPES[k] {return k;}}
   return -1;
 }
 // A report's subject, its type and whom and what it names.
-n56_report :: (e:NostrEvent)->N56Report {
+n56_report :: (e:NostrEvent)->N56Report #effects(all) {
   r:N56Report;if e.error!=NE_OK {return r;}
   if e.kind!=N56_KIND_REPORT {return n56_refuse(r,N56_KIND,-1);}
   types:[3]int;   // each is set with its tag
@@ -343,13 +343,13 @@ same person is a duplicate.
 <!-- source: coax/lib/nostr/nip56.coax tally -->
 ```jai
 // Whether the report names target as its user, note or blob.
-n56_about :: (r:N56Report,target:[32]u8)->bool {
+n56_about :: (r:N56Report,target:[32]u8)->bool #effects(all) {
   return (r.has_pubkey && ns_equal32(r.pubkey,target)) || (r.has_event && ns_equal32(r.event,target)) || (r.has_blob && ns_equal32(r.blob,target));
 }
 // The reports about target from the trusted reporters in set, by type: one
 // per reporter and type, so a reporter who reports twice counts once.
 // Reports by anyone else are ignored. Other kinds are passed over.
-n56_tally :: (set:[]NostrEvent,trusted:[][32]u8,target:[32]u8)->N56Tally {
+n56_tally :: (set:[]NostrEvent,trusted:[][32]u8,target:[32]u8)->N56Tally #effects(all) {
   t:N56Tally;
   for i:0..<set.count {
     if set[i].kind!=N56_KIND_REPORT {continue;}
@@ -416,13 +416,13 @@ N32Tally :: struct {
 <!-- source: coax/lib/nostr/nip32.coax group -->
 ```jai
 // Whether key is one of the signers the caller trusts.
-n32_trusted :: (trusted:[][32]u8,key:[32]u8)->bool {
+n32_trusted :: (trusted:[][32]u8,key:[32]u8)->bool #effects(all) {
   for k:0..<trusted.count {if ns_equal32(trusted[k],key) {return true;}}
   return false;
 }
 // Whether the labels l, read from e, are about target: kind 1985 names it
 // in an e or p tag; a self-label is about the event itself.
-n32_about :: (e:NostrEvent,l:N32Labels,target:[32]u8)->bool {
+n32_about :: (e:NostrEvent,l:N32Labels,target:[32]u8)->bool #effects(all) {
   if l.self {return ns_equal32(e.id,target);}
   for k:0..<l.targets_n {if ns_equal32(l.targets[k].key,target) {return true;}}
   return false;
@@ -430,7 +430,7 @@ n32_about :: (e:NostrEvent,l:N32Labels,target:[32]u8)->bool {
 // The labels about target from the trusted signers in set, one entry per
 // namespace, signer and value, sorted in that order so each namespace's
 // labels sit together, signer by signer. Labels by anyone else are ignored.
-n32_group :: (set:[]NostrEvent,trusted:[][32]u8,target:[32]u8,out:[]N32Entry)->N32Tally {
+n32_group :: (set:[]NostrEvent,trusted:[][32]u8,target:[32]u8,out:[]N32Entry)->N32Tally #effects(all) {
   t:N32Tally;
   for i:0..<set.count {
     l:=n32_labels(set[i]);
@@ -451,7 +451,7 @@ n32_group :: (set:[]NostrEvent,trusted:[][32]u8,target:[32]u8,out:[]N32Entry)->N
   return t;
 }
 // How many trusted signers gave this label: entries are one per signer.
-n32_signers :: (entries:[]N32Entry,ns:string,value:string)->int {
+n32_signers :: (entries:[]N32Entry,ns:string,value:string)->int #effects(all) {
   c:=0;
   for k:0..<entries.count {if n32_is(entries[k].ns,ns) && n32_is(entries[k].value,value) {c+=1;}}
   return c;
@@ -532,7 +532,7 @@ N85Result :: struct {
 // An assertion's kind, subject and provider. The subject is the first d
 // tag's value, read by the kind: a pubkey, an event id, an address, or any
 // NIP-73 identifier.
-n85_assertion :: (e:NostrEvent)->N85Assertion {
+n85_assertion :: (e:NostrEvent)->N85Assertion #effects(all) {
   a:N85Assertion;if e.error!=NE_OK {return a;}
   if e.kind<N85_USER || e.kind>N85_EXTERNAL {return n85_refuse(a,N85_KIND,-1);}
   a.kind=e.kind;a.provider=e.public_key;
@@ -574,7 +574,7 @@ result name after the colon, a 64-digit key and, when present, a `ws://` or
 ```jai
 // The providers a user names in kind 10040: each "kind:result" tag gives
 // the provider's key and a relay hint. Tags of other names are passed over.
-n85_providers :: (e:NostrEvent)->N85Providers {
+n85_providers :: (e:NostrEvent)->N85Providers #effects(all) {
   p:N85Providers;if e.error!=NE_OK {return p;}
   if e.kind!=N85_KIND_PROVIDERS {p.status=N85_KIND;return p;}
   i:=0;
@@ -616,7 +616,7 @@ trusts no one.
 // The result named name in an assertion, and whether the user's providers
 // name its signer for this kind and result. A provider list that doesn't
 // read trusts nobody.
-n85_result :: (e:NostrEvent,providers:N85Providers,name:string)->N85Result {
+n85_result :: (e:NostrEvent,providers:N85Providers,name:string)->N85Result #effects(all) {
   r:N85Result;a:=n85_assertion(e);r.status=a.status;
   if a.status!=N85_OK || name=="d" {return r;}
   i:=0;

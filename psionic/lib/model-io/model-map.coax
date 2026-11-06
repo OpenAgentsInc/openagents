@@ -57,12 +57,12 @@ PmaResult :: struct {status:PwStatus;written:int;parameters:int;}
     bad:=pma_bind(shape,inventory[..],files[..],layers[..],params[..],stage[..],work[..],false);
     #assert bad.status==PwStatus.manifest && bad.written==0 && layers[0].kind==9 && params[0]==-7;
 }
-pma_params :: (s:QeShape,full:bool)->int {
+pma_params :: (s:QeShape,full:bool)->int #effects(all) {
     d:=s.linear.width;
     if full {return 2*d+2*s.full.attention.head_dim;}
     return 2*d+4*pd_channels(s.linear.delta)+2*s.linear.delta.value_heads+s.linear.delta.value_dim;
 }
-pma_bind :: (shape:QeShape,inventory:[]P5Tensor,files:[]PaFile,layers:[]QeLayer,params:[]f32,stage:[]f32,work:[]f32,overlap:bool)->PmaResult #export_c {
+pma_bind :: (shape:QeShape,inventory:[]P5Tensor,files:[]PaFile,layers:[]QeLayer,params:[]f32,stage:[]f32,work:[]f32,overlap:bool)->PmaResult #export_c #effects(all) {
     if !qe_valid(shape) || shape.linear.dtype!=QmDtype.bf16 || shape.state.linear_layers!=3*shape.state.full_layers {return PmaResult.{status=PwStatus.shape};}
     linear:=pma_params(shape,false);full:=pma_params(shape,true);n:=shape.state.linear_layers+shape.state.full_layers;
     total:=shape.state.linear_layers*linear+shape.state.full_layers*full;

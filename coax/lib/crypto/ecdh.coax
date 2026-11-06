@@ -67,12 +67,12 @@ ECDH_TEST_PEER :: [32]u8.[0x79,0xbe,0x66,0x7e,0xf9,0xdc,0xbb,0xac,0x55,0xa0,0x62
 }
 // Pointer presence, alignment, representability and overlap are truthful host
 // observations; no pointer effects occur in this policy.
-ecdh_admit :: (secret_len:int,peer_len:int,capacity:int,present:bool,aligned:bool,overlap:bool)->u32 #export_c {
+ecdh_admit :: (secret_len:int,peer_len:int,capacity:int,present:bool,aligned:bool,overlap:bool)->u32 #export_c #effects(all) {
   if secret_len!=32 || peer_len!=32 || capacity<32 || !present || !aligned || overlap {return EC_METADATA;}
   return EC_OK;
 }
 // Private: canonical finite point; zero is the canonical infinity encoding.
-ecdh_table :: (point:Sg32)->[9]Sg32 {
+ecdh_table :: (point:Sg32)->[9]Sg32 #effects(all) {
   table:[9]Sg32;table[0]=sg32_infinity();table[1]=point;
   for i:2..<9 {table[i]=ef_add(table[i-1],point);}
   return table;
@@ -92,7 +92,7 @@ ecdh_table :: (point:Sg32)->[9]Sg32 {
   #assert sc_equal(work[0].scalar,sc_small(1));for i:0..<32 {#assert work[0].staged[i]==0;}
 }
 // Private: peer is a canonical valid finite public lift; scalar is in 1..n-1.
-ecdh_multiply_admitted :: (input:ScScalar,peer:SgPoint)->Sg32 {
+ecdh_multiply_admitted :: (input:ScScalar,peer:SgPoint)->Sg32 #effects(all) {
   point:=sg32_from_point(peer);table:=ecdh_table(point);
   digits:=smc_recode(input);defer {secure_zero(digits.magnitude[..]);#assert crypto_zeroed(digits.magnitude[..]);}defer {secure_zero(digits.negative[..]);#assert crypto_zeroed(digits.negative[..]);}result:=smc_signed(smc_pick(table[..],digits.magnitude[64]),digits.negative[64]);defer {secure_zero(result.x.limb[..]);#assert crypto_zeroed(result.x.limb[..]);}defer {secure_zero(result.y.limb[..]);#assert crypto_zeroed(result.y.limb[..]);}defer {secure_zero(result.z.limb[..]);#assert crypto_zeroed(result.z.limb[..]);}
   for round:0..<64 {
@@ -103,12 +103,12 @@ ecdh_multiply_admitted :: (input:ScScalar,peer:SgPoint)->Sg32 {
   return sg32_canonical_infinity(result);
 }
 // Private: a canonical finite public peer and a scalar in 1..n-1.
-ecdh_secret_math :: (input:ScScalar,peer:SgPoint)->EcdhMath {
+ecdh_secret_math :: (input:ScScalar,peer:SgPoint)->EcdhMath #effects(all) {
   result:EcdhMath;defer {secure_zero(result.shared.x.limb[..]);#assert crypto_zeroed(result.shared.x.limb[..]);}defer {secure_zero(result.shared.y.limb[..]);#assert crypto_zeroed(result.shared.y.limb[..]);}defer {secure_zero(result.shared.z.limb[..]);#assert crypto_zeroed(result.shared.z.limb[..]);}defer {secure_zero(result.affine_x.limb[..]);#assert crypto_zeroed(result.affine_x.limb[..]);}result.shared=ecdh_multiply_admitted(input,peer);
   inverse:=ef_inverse(result.shared.z);defer {secure_zero(inverse.limb[..]);#assert crypto_zeroed(inverse.limb[..]);}
   result.affine_x=ef_field_mul(result.shared.x,ef_field_mul(inverse,inverse));return result;
 }
-ecdh_stage :: (secret:[]u8,peer:[]u8,work:[]EcdhScratch)->u32 {
+ecdh_stage :: (secret:[]u8,peer:[]u8,work:[]EcdhScratch)->u32 #effects(all) {
   if secret.count!=32 || peer.count!=32 || work.count!=1 {return EC_LENGTH;}
   point:=sg_lift_x_public(peer);if !point.ok {return EC_PEER;}
   raw:ScScalar;defer {secure_zero(raw.limbs[..]);#assert crypto_zeroed(raw.limbs[..]);}bits:u32;borrow:u64;

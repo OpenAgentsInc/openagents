@@ -43,10 +43,10 @@ OeFit :: struct {status:OsStatus;training_rows:int;epochs:int;steps:int;mean:[5]
   fit=oe_fit_fixture();p.mass=2;r:=oe_predict(fit,1,p,s,0);#assert r.status==OsStatus.parameters && r.state.position==0 && r.state.velocity==0;
 }
 
-oe_model :: (kind:int)->TbModel {return TbModel.{features=5,hidden=ifx kind==2 then 0 else 8};}
-oe_config :: (axis:int,kind:int,epochs:int)->TbConfig {seed:=10900+axis;if kind==3 {seed+=10;}return TbConfig.{epochs=epochs,batch=32,rate=0.03,decay=0.0001,init_seed=cast(u64)seed,shuffle_seed=cast(u64)(10920+axis)};}
-oe_shape :: (status:OsStatus,rows:int,n:int,epochs:int)->bool {return status==OsStatus.ok && rows==1280 && n>=1 && n<=256 && epochs>=1 && epochs<=256;}
-oe_fit :: (data:OeData,training_rows:int,epochs:int)->OeFit #export_c {
+oe_model :: (kind:int)->TbModel #effects(all) {return TbModel.{features=5,hidden=ifx kind==2 then 0 else 8};}
+oe_config :: (axis:int,kind:int,epochs:int)->TbConfig #effects(all) {seed:=10900+axis;if kind==3 {seed+=10;}return TbConfig.{epochs=epochs,batch=32,rate=0.03,decay=0.0001,init_seed=cast(u64)seed,shuffle_seed=cast(u64)(10920+axis)};}
+oe_shape :: (status:OsStatus,rows:int,n:int,epochs:int)->bool #effects(all) {return status==OsStatus.ok && rows==1280 && n>=1 && n<=256 && epochs>=1 && epochs<=256;}
+oe_fit :: (data:OeData,training_rows:int,epochs:int)->OeFit #export_c #effects(all) {
   if !oe_shape(data.status,data.rows,training_rows,epochs) {return OeFit.{status=OsStatus.shape};}
   d:=data;fit:=OeFit.{epochs=epochs};rows:[1280]int;for i:0..<training_rows {rows[i]=i;fit.training_rows+=1;}
   xs:[6400]f64;
@@ -63,14 +63,14 @@ oe_fit :: (data:OeData,training_rows:int,epochs:int)->OeFit #export_c {
   }
   return fit;
 }
-oe_fit_ok :: (fit:OeFit)->bool {
+oe_fit_ok :: (fit:OeFit)->bool #effects(all) {
   if !oe_shape(fit.status,1280,fit.training_rows,fit.epochs) {return false;}
   for i:0..<5 {if !tb_in(fit.mean[i],-1000000,1000000) || !tb_in(fit.sd[i],0.000000001,1000000) {return false;}}
   for i:0..<2 {if !tb_in(fit.target_mean[i],-1000000,1000000) || !tb_in(fit.target_sd[i],0.000000001,1000000) {return false;}}
   for p:fit.affine {if !tb_in(p,-1000000,1000000) {return false;}}for p:fit.mlp {if !tb_in(p,-1000000,1000000) {return false;}}return true;
 }
 // book:begin predict
-oe_predict :: (fit:OeFit,kind:int,p:OsParams,s:OsState,force:f64)->OsStep #export_c {
+oe_predict :: (fit:OeFit,kind:int,p:OsParams,s:OsState,force:f64)->OsStep #export_c #effects(all) {
   status:=os_admit(p,s,force,OS_DT);if status!=OsStatus.ok {return OsStep.{status=status,state=s};}
   if !oe_fit_ok(fit) || kind<0 || kind>3 {return OsStep.{status=OsStatus.parameters,state=s};}
   if kind==1 {return OsStep.{state=s};}
@@ -84,4 +84,4 @@ oe_predict :: (fit:OeFit,kind:int,p:OsParams,s:OsState,force:f64)->OsStep #expor
   if !os_state_ok(next) {return OsStep.{status=OsStatus.state,state=s};}return OsStep.{state=next};
 }
 // book:end predict
-oe_fit_fixture :: ()->OeFit {f:=OeFit.{training_rows=16,epochs=1,target_mean=[2]f64.[0.25,-0.5],target_sd=[2]f64.[2,3]};for i:2..<5 {f.sd[i]=1;}f.mean[0]=0.25;f.sd[0]=2;f.mean[1]=-0.5;f.sd[1]=0.5;f.affine[0]=1;f.affine[7]=1;f.mlp[0]=1;f.mlp[48]=1;f.mlp[58]=1;f.mlp[105]=1;return f;}
+oe_fit_fixture :: ()->OeFit #effects(all) {f:=OeFit.{training_rows=16,epochs=1,target_mean=[2]f64.[0.25,-0.5],target_sd=[2]f64.[2,3]};for i:2..<5 {f.sd[i]=1;}f.mean[0]=0.25;f.sd[0]=2;f.mean[1]=-0.5;f.sd[1]=0.5;f.affine[0]=1;f.affine[7]=1;f.mlp[0]=1;f.mlp[48]=1;f.mlp[58]=1;f.mlp[105]=1;return f;}

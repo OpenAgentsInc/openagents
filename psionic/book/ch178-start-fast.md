@@ -90,7 +90,7 @@ asks for them.
 // reads its cold pages, so mapping finds it cached. Hashing splits across
 // workers by chapter 35's partition; the disk is one queue, so reads add up.
 // A lazy map defers the mapping into the warm-up, which touches every weight.
-cs_plan :: (files:[]CsFile,h:CsHost,arena:int,golden:int,workers:int,eager:bool)->CsPlan #export_c {
+cs_plan :: (files:[]CsFile,h:CsHost,arena:int,golden:int,workers:int,eager:bool)->CsPlan #export_c #effects(all) {
     if !cs_host_ok(h) {return CsPlan.{status=CsStatus.rate};}
     if files.count>CS_FILES_MAX || arena<0 || arena>CS_ARENA_MAX || golden<1 || golden>CS_GOLDEN_MAX {return CsPlan.{status=CsStatus.shape};}
     lanes:=pc_plan(files.count,1,workers);
@@ -166,16 +166,16 @@ replica forward:
 <!-- source: psionic/lib/startup.coax life -->
 ```jai
 CS_NEXT :: [4]CsEvent.[CsEvent.verified,CsEvent.mapped,CsEvent.allocated,CsEvent.warmed];
-cs_start :: (golden:int)->CsLife #export_c {
+cs_start :: (golden:int)->CsLife #export_c #effects(all) {
     if golden<1 || golden>CS_GOLDEN_MAX {return CsLife.{state=CsState.failed,why=CsStatus.shape};}
     return CsLife.{state=CsState.verify,golden=golden};
 }
-cs_fail :: (l:CsLife,why:CsStatus)->CsLife {n:=l;n.state=CsState.failed;n.why=why;n.at=l.state;return n;}
+cs_fail :: (l:CsLife,why:CsStatus)->CsLife #effects(all) {n:=l;n.state=CsState.failed;n.why=why;n.at=l.state;return n;}
 // One event: the phase in progress finished, passing (ok) or not. Only the
 // current phase's own event moves a replica forward; a failed check, a
 // broken report or an event out of order fails it for good. Ready needs
 // golden passing warm-ups; a ready replica stays ready through passing re-checks.
-cs_step :: (l:CsLife,e:CsEvent,ok:bool)->CsLife #export_c {
+cs_step :: (l:CsLife,e:CsEvent,ok:bool)->CsLife #export_c #effects(all) {
     if l.state==CsState.failed {return l;}
     if e==CsEvent.broken || (!ok && e==CS_NEXT[cast(int)cs_last(l.state)]) {return cs_fail(l,CsStatus.check);}
     if l.state==CsState.ready {if e==CsEvent.warmed {return l;}return cs_fail(l,CsStatus.order);}
@@ -186,7 +186,7 @@ cs_step :: (l:CsLife,e:CsEvent,ok:bool)->CsLife #export_c {
     return n;
 }
 // The only answer to "may this replica take requests?".
-cs_ready :: (l:CsLife)->bool #export_c {return l.state==CsState.ready;}
+cs_ready :: (l:CsLife)->bool #export_c #effects(all) {return l.state==CsState.ready;}
 ```
 
 A failed check (a hash that doesn't match, a golden answer that doesn't
@@ -211,16 +211,16 @@ refused as a failed check:
 
 <!-- source: psionic/lib/startup.coax kernel -->
 ```jai
-cs_device :: (s:string)->bool {
+cs_device :: (s:string)->bool #effects(all) {
     if s.count<1 || s.count>CS_NAME_MAX {return false;}
     for c:s {if c<=32 || c>=127 {return false;}}
     return true;
 }
-cs_key_ok :: (k:CsKernelKey)->bool {return cs_device(k.device) && pw_hex_digest(k.compiler) && pw_hex_digest(k.source);}
+cs_key_ok :: (k:CsKernelKey)->bool #effects(all) {return cs_device(k.device) && pw_hex_digest(k.compiler) && pw_hex_digest(k.source);}
 // A cached kernel filed under `entry` may serve a compile asking for `want`
 // only if every part of the key is the same and its bytes still hash to the
 // digest recorded when it was compiled.
-cs_kernel :: (entry:CsKernelKey,want:CsKernelKey,binary:[]u8,binary_sha:string)->CsStatus #export_c {
+cs_kernel :: (entry:CsKernelKey,want:CsKernelKey,binary:[]u8,binary_sha:string)->CsStatus #export_c #effects(all) {
     if !cs_key_ok(entry) || !cs_key_ok(want) || !pw_hex_digest(binary_sha) {return CsStatus.shape;}
     if entry.device!=want.device || entry.compiler!=want.compiler || entry.source!=want.source {return CsStatus.stale;}
     if !pw_digest(binary,binary_sha) {return CsStatus.check;}

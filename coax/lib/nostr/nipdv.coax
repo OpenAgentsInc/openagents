@@ -34,7 +34,7 @@ DvMember :: struct {viewer:[32]u8; channel:G29Name; dm:bool; active:bool; hidden
 // book:begin command
 // Apply a verified hide (41012) or open (41010) by viewer for channel.
 // DV_OK: the hidden set changed, so publish the snapshot again.
-dv_command :: (ms:[]DvMember,viewer:[32]u8,kind:int,channel:G29Name)->int {
+dv_command :: (ms:[]DvMember,viewer:[32]u8,kind:int,channel:G29Name)->int #effects(all) {
   if kind!=DV_HIDE && kind!=DV_OPEN {return DV_KIND;}
   for i:0..<ms.count {
     if !ns_equal32(ms[i].viewer,viewer) || !g29_same(ms[i].channel,channel) {continue;}
@@ -49,7 +49,7 @@ dv_command :: (ms:[]DvMember,viewer:[32]u8,kind:int,channel:G29Name)->int {
 
 // book:begin snapshot
 // The 30622 tags for viewer: d, p, then each hidden active DM.
-dv_snapshot :: (ms:[]DvMember,viewer:[32]u8,out:[]u8)->int {
+dv_snapshot :: (ms:[]DvMember,viewer:[32]u8,out:[]u8)->int #effects(all) {
   n:=json_raw(out,0,"[[\"d\",");n=g29_put_key(out,n,viewer);
   n=json_raw(out,n,"],[\"p\",");n=g29_put_key(out,n,viewer);n=json_raw(out,n,"]");
   for m:ms {
@@ -65,23 +65,23 @@ dv_snapshot :: (ms:[]DvMember,viewer:[32]u8,out:[]u8)->int {
 // (its kinds include 30622, or it has no kinds), and its #p values.
 DvQuery :: struct {may_return:bool; p:[4][32]u8; p_n:int;}
 // The filter gate: #p must be the reader's key and nothing else.
-dv_query :: (q:DvQuery,reader:[32]u8)->bool {
+dv_query :: (q:DvQuery,reader:[32]u8)->bool #effects(all) {
   if !q.may_return {return true;}
   return q.p_n==1 && ns_equal32(q.p[0],reader);
 }
 // The result gate, on every delivery path: a 30622 goes only to its owner.
-dv_deliver :: (e:NostrEvent,reader:[32]u8)->bool {
+dv_deliver :: (e:NostrEvent,reader:[32]u8)->bool #effects(all) {
   if e.kind!=DV_SNAPSHOT {return true;}
   r:=g29_read(e);
   return r.status==G29_OK && r.has_p && ns_equal32(r.p,reader);
 }
 // May a client submit an event of this kind? Never a snapshot.
-dv_client_kind :: (kind:int)->bool {return kind!=DV_SNAPSHOT;}
+dv_client_kind :: (kind:int)->bool #effects(all) {return kind!=DV_SNAPSHOT;}
 // book:end gates
 
 // book:begin client
 // A d or p tag of the snapshot: it must name the viewer.
-dv_viewer_tag :: (t:G29Tag,viewer:[32]u8)->int {
+dv_viewer_tag :: (t:G29Tag,viewer:[32]u8)->int #effects(all) {
   key:[32]u8;
   if t.values<2 || !g29_key(t.v[1],key[..]) {return DV_SHAPE;}
   return ifx ns_equal32(key,viewer) then DV_OK else DV_VIEWER;
@@ -89,7 +89,7 @@ dv_viewer_tag :: (t:G29Tag,viewer:[32]u8)->int {
 // The hidden channel ids of viewer's snapshot e, into out: their count, or
 // a negative status. e must be a verified 30622 signed by the relay, with
 // exactly one d and one p, both the viewer. h tags are a set.
-dv_hidden :: (e:NostrEvent,relay:[32]u8,viewer:[32]u8,out:[]G29Name)->int {
+dv_hidden :: (e:NostrEvent,relay:[32]u8,viewer:[32]u8,out:[]G29Name)->int #effects(all) {
   if e.error!=NE_OK || !e.verified {return -DV_EVENT;}
   if e.kind!=DV_SNAPSHOT {return -DV_KIND;}
   if !ns_equal32(e.public_key,relay) {return -DV_SIGNER;}
@@ -114,7 +114,7 @@ dv_hidden :: (e:NostrEvent,relay:[32]u8,viewer:[32]u8,out:[]G29Name)->int {
 // One entry of the client's channel list.
 DvItem :: struct {channel:G29Name; dm:bool;}
 // The indexes of the items still shown: every non-DM, and every DM not hidden.
-dv_visible :: (items:[]DvItem,hidden:[]G29Name,out:[]int)->int {
+dv_visible :: (items:[]DvItem,hidden:[]G29Name,out:[]int)->int #effects(all) {
   m:=0;
   for i:0..<items.count {
     drop:=false;

@@ -117,7 +117,7 @@ for the details of views.
 
 <!-- source: psionic/lib/learn.coax moments -->
 ```jai
-psionic_moments :: (xs: [] f32, ys: [] f32, weight: f32) -> PsionicStats {
+psionic_moments :: (xs: [] f32, ys: [] f32, weight: f32) -> PsionicStats #effects(all) {
     loss: f32 = 0; gradient: f32 = 0;
     for i: 0..<xs.count {
         error := weight * xs[i] - ys[i];
@@ -193,7 +193,7 @@ The shared trainer is:
 <!-- source: psionic/lib/learn.coax trainer -->
 ```jai
 psionic_train_checked :: (xs: [] f32, ys: [] f32, initial_weight: f32, steps: int,
-        trace: [] f32, scratch: [] f32, overlap: bool) -> PsionicTraining #export_c {
+        trace: [] f32, scratch: [] f32, overlap: bool) -> PsionicTraining #export_c #effects(all) {
     status := psionic_admit(xs.count, ys.count, steps, trace.count, scratch.count, overlap);
     if status != PsionicStatus.ok { return PsionicTraining.{status = status}; }
     if !psionic_number(initial_weight) { return PsionicTraining.{status = PsionicStatus.number}; }

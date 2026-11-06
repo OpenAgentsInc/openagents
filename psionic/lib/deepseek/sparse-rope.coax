@@ -37,10 +37,10 @@ DaPair :: struct {status:DkStatus;a:u16;b:u16;}
     x[0]=0x7f80;#assert da_rotate(true,1,1,66,64,false,x[..],out[..],stage[..],false).status==DkStatus.number;for v:out {#assert v==77;}
 }
 
-da_rope_width :: (rope:int)->bool {return rope>=2 && rope/2<=32 && rope%2==0;}
-da_rope_shape :: (heads:int,width:int,rope:int)->bool {return heads>=1 && heads<=64 && da_rope_width(rope) && width>=rope && width<=8192;}
-da_unit :: (x:f32)->f32 {return f32((abs(f64(x))-abs(f64(x)-1)+1)/2);}
-da_coeff :: (compressed:bool,rope:int,position:int,out:[]f32,stage:[]f32,overlap:bool)->DkResult #export_c {
+da_rope_width :: (rope:int)->bool #effects(all) {return rope>=2 && rope/2<=32 && rope%2==0;}
+da_rope_shape :: (heads:int,width:int,rope:int)->bool #effects(all) {return heads>=1 && heads<=64 && da_rope_width(rope) && width>=rope && width<=8192;}
+da_unit :: (x:f32)->f32 #effects(all) {return f32((abs(f64(x))-abs(f64(x)-1)+1)/2);}
+da_coeff :: (compressed:bool,rope:int,position:int,out:[]f32,stage:[]f32,overlap:bool)->DkResult #export_c #effects(all) {
     if !da_rope_width(rope) {return DkResult.{status=DkStatus.shape};}if position<0 || position>=1048576 {return DkResult.{status=DkStatus.format};}
     if out.count<rope || stage.count<rope {return DkResult.{status=DkStatus.capacity};}if overlap {return DkResult.{status=DkStatus.alias};}
     base:=ifx compressed then 160000.0 else 10000.0;
@@ -51,7 +51,7 @@ da_coeff :: (compressed:bool,rope:int,position:int,out:[]f32,stage:[]f32,overlap
         angle:=f32(position)*frequency;stage[2*j]=f32(cos(f64(angle)));stage[2*j+1]=f32(sin(f64(angle)));}
     for j:0..<rope {out[j]=stage[j];}return DkResult.{written=rope};
 }
-da_rotate_pair :: (a:u16,b:u16,c:f32,s:f32,inverse:bool)->DaPair #export_c {
+da_rotate_pair :: (a:u16,b:u16,c:f32,s:f32,inverse:bool)->DaPair #export_c #effects(all) {
     if (a&0x7fff)>=0x7f80 || (b&0x7fff)>=0x7f80 || !da_pair_finite(f32_bits(c),f32_bits(s)) {return DaPair.{status=DkStatus.number};}
     av:=f64(f32_from_bits(u32(a)<<16));bv:=f64(f32_from_bits(u32(b)<<16));sv:=ifx inverse then -f64(s) else f64(s);
     first:=av*f64(c)-bv*sv;second:=bv*f64(c)+av*sv;
@@ -59,7 +59,7 @@ da_rotate_pair :: (a:u16,b:u16,c:f32,s:f32,inverse:bool)->DaPair #export_c {
     ar:=dk_bf16(f32(first));if ar.status!=DkStatus.ok {return DaPair.{status=ar.status};}br:=dk_bf16(f32(second));if br.status!=DkStatus.ok {return DaPair.{status=br.status};}
     return DaPair.{a=ar.bits,b=br.bits};
 }
-da_rotate :: (compressed:bool,position:int,heads:int,width:int,rope:int,inverse:bool,x:[]u16,out:[]u16,stage:[]u16,overlap:bool)->DkResult #export_c {
+da_rotate :: (compressed:bool,position:int,heads:int,width:int,rope:int,inverse:bool,x:[]u16,out:[]u16,stage:[]u16,overlap:bool)->DkResult #export_c #effects(all) {
     if !da_rope_shape(heads,width,rope) {return DkResult.{status=DkStatus.shape};}
     n:=heads*width;if x.count!=n || out.count<n || stage.count<n {return DkResult.{status=DkStatus.capacity};}if overlap {return DkResult.{status=DkStatus.alias};}
     coeff:[64]f32;temp:[64]f32;r:=da_coeff(compressed,rope,position,coeff[..],temp[..],false);if r.status!=DkStatus.ok {return r;}

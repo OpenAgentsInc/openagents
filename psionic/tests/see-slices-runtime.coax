@@ -11,13 +11,13 @@ ss_part :: (w:[]f32,at:[]int,i:int)->[]f32 {return w[at[i]..<at[i+1]];}
 ss_small :: ()->PxImage {return PxImage.{width=64,height=32};}
 ss_full :: ()->PxImage {return PxImage.{width=320,height=256};}
 
-ss_inventory :: (model:int,inventory:[]P5Tensor)->SvResult #export_c {return sv_inventory(ss_config(model),inventory);}
+ss_inventory :: (model:int,inventory:[]P5Tensor)->SvResult #export_c #effects(all) {return sv_inventory(ss_config(model),inventory);}
 // The tensors the slice reads: the nine shared ones, then block 0's twelve.
-ss_count :: ()->int #export_c {return SV_SHARED+SV_PER_BLOCK;}
-ss_elements :: (model:int,i:int)->int #export_c {
+ss_count :: ()->int #export_c #effects(all) {return SV_SHARED+SV_PER_BLOCK;}
+ss_elements :: (model:int,i:int)->int #export_c #effects(all) {
     name:[128]u8;need:=sv_need(ss_config(model),i,name[..]);return p5_shape_size(need.shape,PwDtype.bf16).elements;
 }
-ss_decode :: (model:int,i:int,inventory:[]P5Tensor,files:[]PaFile,out:[]f32)->SvResult #export_c {
+ss_decode :: (model:int,i:int,inventory:[]P5Tensor,files:[]PaFile,out:[]f32)->SvResult #export_c #effects(all) {
     name:[128]u8;need:=sv_need(ss_config(model),i,name[..]);
     v:=pa_view(cast(string)name[0..<need.count],need.shape,PwDtype.bf16,inventory,files);
     if v.status!=PwStatus.ok {return SvResult.{status=SvStatus.missing,cause=cast(int)v.status};}
@@ -29,17 +29,17 @@ ss_decode :: (model:int,i:int,inventory:[]P5Tensor,files:[]PaFile,out:[]f32)->Sv
     }
     return SvResult.{written=v.elements};
 }
-ss_output :: (model:int)->int #export_c {
+ss_output :: (model:int)->int #export_c #effects(all) {
     c:=ss_slice_config(model);g:=sv_admit(c,ss_small());full:=sv_admit(c,ss_full());
     return g.patches*g.features+2*g.patches*c.width+g.tokens*c.out+full.patches*full.features;
 }
-ss_work :: (model:int)->int #export_c {
+ss_work :: (model:int)->int #export_c #effects(all) {
     c:=ss_slice_config(model);g:=sv_admit(c,ss_small());
     return 6*320*256+sv_block_work(c,g.patches)+sv_merge_work(c,g);
 }
 // weights: the decoded tensors in ss_decode's order, end to end. out:
 // slice patches, embedding, block 0, merger, then the full image's patches.
-ss_slice :: (model:int,weights:[]f32,out:[]f32,work:[]f32)->SvResult #export_c {
+ss_slice :: (model:int,weights:[]f32,out:[]f32,work:[]f32)->SvResult #export_c #effects(all) {
     c:=ss_slice_config(model);g:=sv_admit(c,ss_small());
     at:[22]int;for i:0..<ss_count() {at[i+1]=at[i]+ss_elements(model,i);}
     if weights.count!=at[ss_count()] || out.count!=ss_output(model) || work.count<ss_work(model) {return SvResult.{status=SvStatus.capacity};}

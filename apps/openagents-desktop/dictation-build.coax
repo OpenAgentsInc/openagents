@@ -34,7 +34,7 @@ dib_run :: (argv:[]string,out:[]u8,deadline:int)->int {
  err:[65536]u8;r:=proc_run(argv,ifx left<180000 then left else 180000,out,err[..]);
  if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);tool_errln(cast(string)out[0..<r.out_n]);return -1;}return r.out_n;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {tool_errln("usage: dictation-build SOURCE_ROOT OUTPUT_DIRECTORY");return 2;}
  root:=args_at(args[..],0);dir:=args_at(args[..],1);if root.count<1 || root.count>512 || dir.count<1 || dir.count>512 {return 2;}
  deadline:=proc_now_ms()+840000;p:[1]DibPaths;env:[4096]u8;ccenv:[4096]u8;coax:=proc_getenv("COAX",env[..]);if coax=="" {coax=dib_path(p[..],root,"coax/bin/coax");}cc:=proc_getenv("COAX_CC",ccenv[..]);if cc=="" {cc="cc";}

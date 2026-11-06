@@ -42,12 +42,12 @@
   #assert !hc_rows(a[..],b[0..<0]) && !hc_rows(a[0..<0],b[..]);
   for k:0..<8 {c:=b;c[0][k]+=1;#assert !hc_rows(a[..],c[..]);}
 }
-hc_rows :: (actual:[][8]int,want:[][8]int)->bool {
+hc_rows :: (actual:[][8]int,want:[][8]int)->bool #effects(all) {
   if actual.count!=want.count {return false;}
   for i:0..<want.count {for k:0..<8 {if actual[i][k]!=want[i][k] {return false;}}}
   return true;
 }
-hc_core :: (version:int,constructed:int,dropped:int,held:int,assets:[][8]int,frames:[][8]int,events:[][8]int)->bool #export_c {
+hc_core :: (version:int,constructed:int,dropped:int,held:int,assets:[][8]int,frames:[][8]int,events:[][8]int)->bool #export_c #effects(all) {
   if version!=1 || constructed!=73 || dropped!=0 || held!=0 {return false;}
   expected_assets:=[2][8]int.[[8]int.[7,0,4,0,0,0,4,3541452541],[8]int.[7,1,0,0,0,0,0,2166136261]];
   if assets.count>4 {return false;}

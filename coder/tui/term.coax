@@ -9,7 +9,7 @@
 // <Enter> <Tab> <Esc> <Backspace> <Up> <Down> <Left> <Right> <Space>, and
 // <C-x> for Ctrl and a letter. Anything else is typed as written.
 
-cxproc_read_bytes :: (h: int, timeout_ms: int, out: [] u8) -> int #foreign;
+cxproc_read_bytes :: (h: int, timeout_ms: int, out: [] u8) -> int #foreign #effects(all);
 
 CD_TERM_COLS :: 100;
 CD_TERM_ROWS :: 30;

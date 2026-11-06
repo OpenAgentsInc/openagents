@@ -803,7 +803,7 @@ open_drop :: (s: [] ProjectsState, open: bool) {
 ask_host :: (s: [] ProjectsState, action: int) { s[0].out_n = 0; s[0].action = action; }
 
 coaxial_projects_frame :: (s: [] ProjectsState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32,
-                           dt: f32, still: bool) -> int #export_c {
+                           dt: f32, still: bool) -> int #export_c #effects(all) {
   return projects_frame(s, table_of(s), out, uniforms, width, height, dpr, dt, still);
 }
 // The list to draw: the build's, with what was published since in front of it.
@@ -1029,13 +1029,13 @@ projects_message :: (s: [] ProjectsState, kind: int, length: int) {
   s[0].viewer_n = 64;
 }
 
-coaxial_projects_pointer :: (s: [] ProjectsState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
+coaxial_projects_pointer :: (s: [] ProjectsState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c #effects(all) {
   return projects_pointer(s, table_of(s), x, y, phase, kind);
 }
-coaxial_projects_key :: (s: [] ProjectsState, key: int, mods: int) -> bool #export_c { return projects_key_mods(s, table_of(s), key, mods); }
-coaxial_projects_wheel :: (s: [] ProjectsState, dy: f32) #export_c { if s.count > 0 { scroll_by(s, s[0].point_x, dy * hi(s[0].d, 1)); } }
-coaxial_projects_wants_text :: (s: [] ProjectsState) -> bool #export_c { return s.count > 0 && s[0].drop_open && s[0].review_open && s[0].edit_row > 0; }
-coaxial_projects_message :: (s: [] ProjectsState, kind: int, length: int) #export_c { projects_message(s, kind, length); }
+coaxial_projects_key :: (s: [] ProjectsState, key: int, mods: int) -> bool #export_c #effects(all) { return projects_key_mods(s, table_of(s), key, mods); }
+coaxial_projects_wheel :: (s: [] ProjectsState, dy: f32) #export_c #effects(all) { if s.count > 0 { scroll_by(s, s[0].point_x, dy * hi(s[0].d, 1)); } }
+coaxial_projects_wants_text :: (s: [] ProjectsState) -> bool #export_c #effects(all) { return s.count > 0 && s[0].drop_open && s[0].review_open && s[0].edit_row > 0; }
+coaxial_projects_message :: (s: [] ProjectsState, kind: int, length: int) #export_c #effects(all) { projects_message(s, kind, length); }
 // The location's hash, in the inbox: "new" opens the drop area, anything else closes it.
 projects_hash :: (s: [] ProjectsState, length: int) {
   if s.count < 1 || length < 0 || length > INBOX { return; }
@@ -1043,17 +1043,17 @@ projects_hash :: (s: [] ProjectsState, length: int) {
   if !want { s[0].review_open = false; s[0].edit_row = 0; }
   if s[0].drop_open != want { s[0].drop_open = want; s[0].hot = HIT_NONE; }
 }
-coaxial_projects_hash :: (s: [] ProjectsState, length: int) #export_c { projects_hash(s, length); }
-coaxial_projects_cursor :: (s: [] ProjectsState) -> int #export_c {
+coaxial_projects_hash :: (s: [] ProjectsState, length: int) #export_c #effects(all) { projects_hash(s, length); }
+coaxial_projects_cursor :: (s: [] ProjectsState) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   return ifx s[0].hot != HIT_NONE then 1 else 0;
 }
-coaxial_projects_action :: (s: [] ProjectsState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
-coaxial_projects_action_done :: (s: [] ProjectsState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
-coaxial_projects_inbox_cap :: () -> int #export_c { return INBOX; }
-coaxial_projects_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_projects_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_projects_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_projects_action :: (s: [] ProjectsState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_projects_action_done :: (s: [] ProjectsState) #export_c #effects(all) { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_projects_inbox_cap :: () -> int #export_c #effects(all) { return INBOX; }
+coaxial_projects_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_projects_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_projects_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // ---------------------------------------------------------------- REVIEW: the owner corrects the draft (rc-review)
 

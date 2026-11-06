@@ -55,7 +55,7 @@ shard, so it still takes part.
 // step (chapter 134's split). A rank may own no micro-batch; it still owns
 // its shard. Every shard is the same size: an uneven split is refused.
 FsPlan :: struct {status:FsStatus;ranks:int;n:int;micro:int;}
-fs_plan :: (ranks:int,n:int,micro:int)->FsPlan {
+fs_plan :: (ranks:int,n:int,micro:int)->FsPlan #effects(all) {
     p:=FsPlan.{ranks=ranks,n=n,micro=micro};
     if ranks<1 || ranks>FS_RANKS {p.status=FsStatus.ranks;return p;}
     if n<1 || n>CK_VALUES {p.status=FsStatus.shape;return p;}
@@ -63,11 +63,11 @@ fs_plan :: (ranks:int,n:int,micro:int)->FsPlan {
     if micro<1 || micro>TR_ACCUMULATE {p.status=FsStatus.micro;}
     return p;
 }
-fs_size :: (p:FsPlan)->int {return p.n/p.ranks;}
-fs_first :: (p:FsPlan,r:int)->int {return r*p.micro/p.ranks;}
+fs_size :: (p:FsPlan)->int #effects(all) {return p.n/p.ranks;}
+fs_first :: (p:FsPlan,r:int)->int #effects(all) {return r*p.micro/p.ranks;}
 // The configuration this file trains: the plan is admitted, it names
 // AdamW, and chapter 118 admits it.
-fs_admit :: (c:TrConfig,p:FsPlan,docs:[]PkDoc,tokens:[]u8)->FsStatus {
+fs_admit :: (c:TrConfig,p:FsPlan,docs:[]PkDoc,tokens:[]u8)->FsStatus #effects(all) {
     if p.status!=FsStatus.ok {return p.status;}
     if c.optimizer!=TrOptimizer.adamw {return FsStatus.optimizer;}
     if tr_admit(c,p.n,docs,tokens)!=TrStatus.ok {return FsStatus.config;}
@@ -126,7 +126,7 @@ bits; a reduce-scatter that sums at the owner would add in another order.
 // All-gather: rank r's working copy of the whole vector. Its own shard is
 // copied in place; every other shard comes from its owner. Returns the
 // values rank r received.
-fs_gather :: (p:FsPlan,r:int,w:[]f64,work:[]f64)->int {
+fs_gather :: (p:FsPlan,r:int,w:[]f64,work:[]f64)->int #effects(all) {
     c:=fs_size(p);moved:=0;
     for s:0..<p.ranks {for i:s*c..<(s+1)*c {work[i]=w[i];}if s!=r {moved+=c;}}
     return moved;
@@ -137,7 +137,7 @@ fs_gather :: (p:FsPlan,r:int,w:[]f64,work:[]f64)->int {
 // rank 1 continues from rank 0's sum in msg, and so on: chapter 118's
 // tr_add order. The last rank then sends the sum to the shard's owner, rank
 // s, unless it is rank s. out receives the shard. Returns the values sent.
-fs_scatter :: (p:FsPlan,s:int,grads:[]f64,msg:[]f64,out:[]f64)->int {
+fs_scatter :: (p:FsPlan,s:int,grads:[]f64,msg:[]f64,out:[]f64)->int #effects(all) {
     c:=fs_size(p);count:=f64(p.micro);moved:=0;
     for r:0..<p.ranks {
         for i:0..<c {acc:=0.0;if r>0 {acc=msg[i];}
@@ -151,7 +151,7 @@ fs_scatter :: (p:FsPlan,s:int,grads:[]f64,msg:[]f64,out:[]f64)->int {
 }
 // The step's loss: each rank adds its micro-batches' losses to the running
 // sum, in micro-batch order.
-fs_loss :: (p:FsPlan,losses:[]f64)->f64 {
+fs_loss :: (p:FsPlan,losses:[]f64)->f64 #effects(all) {
     count:=f64(p.micro);loss:=0.0;
     for r:0..<p.ranks {for m:fs_first(p,r)..<fs_first(p,r+1) {loss+=losses[m]/count;}}
     return loss;
@@ -184,7 +184,7 @@ the order chapter 118 reports them in.
 // a new group wherever weight decay starts or stops (chapter 118 decays
 // the values in its spans only). AdamW treats each value on its own, so
 // these groups give chapter 118's values. Returns how many there are.
-fs_groups :: (c:TrConfig,rate:f64,first:int,count:int,out:[]AwGroup)->int {
+fs_groups :: (c:TrConfig,rate:f64,first:int,count:int,out:[]AwGroup)->int #effects(all) {
     k:=0;prev:bool;
     for i:0..<count {d:=tr_decayed(c,first+i);
         if i==0 || d!=prev {out[k]=AwGroup.{first=i,lr=rate,beta1=c.beta1,beta2=c.beta2,eps=c.eps,decay=ifx d then c.decay else 0};k+=1;prev=d;}
@@ -197,7 +197,7 @@ fs_groups :: (c:TrConfig,rate:f64,first:int,count:int,out:[]AwGroup)->int {
 // which is chapter 118's order. Each rank clips its own shard by the global
 // norm and stages its AdamW update. Nothing is written until every rank's
 // update is admitted and every new value is within the bound.
-fs_apply :: (c:TrConfig,p:FsPlan,run:TrRun,b:TrBatch,s:TrSum,w:[]f64,m:[]f64,v:[]f64,g:[]f64,stage:[]f64,order:[]int)->TrStep {
+fs_apply :: (c:TrConfig,p:FsPlan,run:TrRun,b:TrBatch,s:TrSum,w:[]f64,m:[]f64,v:[]f64,g:[]f64,stage:[]f64,order:[]int)->TrStep #effects(all) {
     n:=p.n;fail:=TrStep.{run=run};
     if p.status!=FsStatus.ok || c.optimizer!=TrOptimizer.adamw {fail.status=TrStatus.config;return fail;}
     if b.status!=TrStatus.ok || s.status!=TrStatus.ok || b.revision!=run.revision || b.micro!=p.micro || s.micro!=b.micro {fail.status=TrStatus.order;return fail;}
@@ -280,7 +280,7 @@ value, in the same terms as [chapter 116](ch116-train-within-a-memory-budget.md)
 // apart). One row's saved values and scratch at a time, as chapter 116
 // counts them.
 FsBytes :: struct {status:FsStatus;parameters:int;moments:int;gradients:int;gathered:int;held:int;activations:int;workspace:int;total:int;}
-fs_memory :: (s:TdShape,ranks:int,micro:int,recompute:bool)->FsBytes {
+fs_memory :: (s:TdShape,ranks:int,micro:int,recompute:bool)->FsBytes #effects(all) {
     np:=td_parameter_count(s);p:=fs_plan(ranks,np,micro);b:=FsBytes.{status=p.status};
     if p.status!=FsStatus.ok {return b;}
     c:=fs_size(p);b.parameters=8*c;b.moments=16*c;b.gradients=8*c;b.gathered=8*np;b.held=8*np*tr_ceil(micro,ranks);
@@ -291,7 +291,7 @@ fs_memory :: (s:TdShape,ranks:int,micro:int,recompute:bool)->FsBytes {
 // The fewest ranks whose every rank fits the budget, or a refusal that
 // names the bytes at the most ranks that divide the parameters.
 FsFit :: struct {status:FsStatus;ranks:int;bytes:FsBytes;need:int;}
-fs_fit :: (s:TdShape,micro:int,recompute:bool,budget:int)->FsFit {
+fs_fit :: (s:TdShape,micro:int,recompute:bool,budget:int)->FsFit #effects(all) {
     out:=FsFit.{status=FsStatus.ranks};np:=td_parameter_count(s);ranks:=1;
     while fs_plan(ranks,np,micro).status!=FsStatus.ranks {b:=fs_memory(s,ranks,micro,recompute);
         if b.status==FsStatus.micro {out.status=b.status;return out;}
@@ -332,7 +332,7 @@ gradient for each micro-batch beyond the first.
 // come back (2 values, 2 (R - 1) hops), and the vote on admission does too
 // (1 value).
 FsComm :: struct {gather:int;scatter:int;scalars:int;total:int;}
-fs_comm :: (p:FsPlan)->FsComm {
+fs_comm :: (p:FsPlan)->FsComm #effects(all) {
     c:=fs_size(p);x:FsComm;r:=p.ranks-1;
     x.gather=8*r*p.n;x.scatter=8*(r*p.n+r*c);x.scalars=8*3*2*r;x.total=x.gather+x.scatter+x.scalars;
     return x;
@@ -368,9 +368,9 @@ or nothing.
 //   "PSFS" u8 version=1, 3 zero bytes; ranks, n, revision (u64 each);
 //   each shard record's digest in rank order; SHA-256 (tag
 //   psionic.fully-sharded.v1) of every byte before it.
-fs_manifest_size :: (ranks:int)->int {return 64+32*ranks;}
+fs_manifest_size :: (ranks:int)->int #effects(all) {return 64+32*ranks;}
 // Writes every record and the manifest, or nothing.
-fs_save :: (ids:CkIds,p:FsPlan,run:TrRun,w:[]f64,m:[]f64,v:[]f64,bytes:[]u8,manifest:[]u8)->CkStatus {
+fs_save :: (ids:CkIds,p:FsPlan,run:TrRun,w:[]f64,m:[]f64,v:[]f64,bytes:[]u8,manifest:[]u8)->CkStatus #effects(all) {
     c:=fs_size(p);size:=tr_size(c);
     if p.status!=FsStatus.ok || w.count!=p.n || m.count!=p.n || v.count!=p.n || bytes.count!=p.ranks*size || manifest.count!=fs_manifest_size(p.ranks) {return CkStatus.shape;}
     stage:[103744]u8;h:[576]u8;pointer:[80]u8;h[0]=80;h[1]=83;h[2]=70;h[3]=83;h[4]=1;
@@ -401,7 +401,7 @@ on a resumed run holds here too.
 FsLoad :: struct {status:FsStatus;record:CkStatus;shard:int=-1;reads:int;run:TrRun;}
 // Two shard records of one save agree on everything but their values: the
 // parent, revision, cursor and optimizer state in the head, and the tail.
-fs_agree :: (a:[]u8,b:[]u8,body:int)->bool {
+fs_agree :: (a:[]u8,b:[]u8,body:int)->bool #effects(all) {
     for i:136..<CK_HEAD {if a[i]!=b[i] {return false;}}
     for i:body+8..<body+48 {if a[i]!=b[i] {return false;}}
     return true;
@@ -412,7 +412,7 @@ fs_agree :: (a:[]u8,b:[]u8,body:int)->bool {
 // are then written as one chapter 118 record and read back by tr_resume,
 // so every check chapter 118 makes on a run holds here too. Refusals write
 // nothing.
-fs_load :: (c:TrConfig,ids:CkIds,p:FsPlan,manifest:[]u8,bytes:[]u8,docs:[]PkDoc,tokens:[]u8,w:[]f64,m:[]f64,v:[]f64,order:[]int)->FsLoad {
+fs_load :: (c:TrConfig,ids:CkIds,p:FsPlan,manifest:[]u8,bytes:[]u8,docs:[]PkDoc,tokens:[]u8,w:[]f64,m:[]f64,v:[]f64,order:[]int)->FsLoad #effects(all) {
     a:=fs_admit(c,p,docs,tokens);if a!=FsStatus.ok {return FsLoad.{status=a};}
     n:=p.n;if w.count!=n || m.count!=n || v.count!=n {return FsLoad.{status=FsStatus.shape};}
     k:=(manifest.count-64)/32;head:=[8]u8.[80,83,70,83,1,0,0,0];

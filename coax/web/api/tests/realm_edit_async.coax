@@ -12,7 +12,7 @@ rea_sql :: (db: string, psql: string, sql: string, out: [] u8) -> int {
   return got.out_n;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   dbb: [1024] u8; pb: [1024] u8; out: [8192] u8;
   db := proc_getenv("PGURL",dbb[..]); psql := proc_getenv("PSQL",pb[..]);
   if db == "" || psql == "" { tool_errln("set PGURL and PSQL for an isolated database"); return 2; }

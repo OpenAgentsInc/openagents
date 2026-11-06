@@ -208,7 +208,7 @@ recorded :: (c: Ctx, name: string, answer: string) -> int {
   return check(k >= 0 && cast(string) saved[0..<k] == answer, path);
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: query.coax COMPILER [--write]"); return 2; }
   tmp: [1024] u8;

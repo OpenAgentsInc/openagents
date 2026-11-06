@@ -64,24 +64,24 @@
 #assert PQ_CODES==cast(int)PdCode.internal+1 && PQ_CALL==cast(int)PdType.call && PQ_CANCEL==cast(int)PdType.cancel && PQ_REQUEST==PD_REQUEST;
 
 // relay_conn.coax declares the cxsock_*, cxtls_* and cxrand_* effects.
-pyh_argc :: () -> int #foreign;
-pyh_arg_len :: (i: int) -> int #foreign;
-pyh_arg_byte :: (i: int, k: int) -> int #foreign;
-pyh_now_s :: () -> int #foreign;
-pyh_stop_path_push :: (byte: int) -> int #foreign;
-pyh_stop :: () -> int #foreign;
-pyh_sleep_ms :: (ms: int) -> int #foreign;
-pyh_status :: (code: int) -> int #foreign;
-pyh_file_path_clear :: () -> int #foreign;
-pyh_file_path_push :: (byte: int) -> int #foreign;
-pyh_file_read :: () -> int #foreign;
-pyh_file_byte :: (i: int) -> int #foreign;
-pyh_file_write_push :: (byte: int) -> int #foreign;
-pyh_file_write_commit :: () -> int #foreign;
-pyh_file_lock :: () -> int #foreign;
-pyh_label_read :: () -> int #foreign;
-pyh_label_byte :: (i:int) -> int #foreign;
-pyh_label_clear :: () -> int #foreign;
+pyh_argc :: () -> int #foreign #effects(all);
+pyh_arg_len :: (i: int) -> int #foreign #effects(all);
+pyh_arg_byte :: (i: int, k: int) -> int #foreign #effects(all);
+pyh_now_s :: () -> int #foreign #effects(all);
+pyh_stop_path_push :: (byte: int) -> int #foreign #effects(all);
+pyh_stop :: () -> int #foreign #effects(all);
+pyh_sleep_ms :: (ms: int) -> int #foreign #effects(all);
+pyh_status :: (code: int) -> int #foreign #effects(all);
+pyh_file_path_clear :: () -> int #foreign #effects(all);
+pyh_file_path_push :: (byte: int) -> int #foreign #effects(all);
+pyh_file_read :: () -> int #foreign #effects(all);
+pyh_file_byte :: (i: int) -> int #foreign #effects(all);
+pyh_file_write_push :: (byte: int) -> int #foreign #effects(all);
+pyh_file_write_commit :: () -> int #foreign #effects(all);
+pyh_file_lock :: () -> int #foreign #effects(all);
+pyh_label_read :: () -> int #foreign #effects(all);
+pyh_label_byte :: (i:int) -> int #foreign #effects(all);
+pyh_label_clear :: () -> int #foreign #effects(all);
 
 PY_IN :: 262144; PY_MSG :: 262144; PY_OUT :: 131072;
 PY_IO_MS :: 5000;

@@ -18,7 +18,7 @@ recipe_status :: (r: ProcRun) -> int {
   if r.started != 0 || r.cut || r.status < 0 || r.status > 255 { return 1; }
   return r.status;
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args; if !args_load(args[..]) { return 2; }
   compiler_buf: [4096] u8; compiler := proc_getenv("COAX", compiler_buf[..]); if compiler == "" { compiler = "coax/bin/coax"; }
   jobs_buf: [256] u8; jobs := proc_getenv("COAX_MUTATE_JOBS", jobs_buf[..]); if jobs == "" { jobs = "8"; }

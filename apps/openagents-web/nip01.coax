@@ -148,17 +148,17 @@ nip_why :: (error: int) -> string {
   return "refused before hashing";
 }
 
-nip_select :: (p: [] Nip, mode: int) -> bool #export_c {
+nip_select :: (p: [] Nip, mode: int) -> bool #export_c #effects(all) {
   if p.count != 1 || !nip_mode(mode) { return false; }
   p[0].mode = mode; p[0].scroll=0; p[0].pending = true; p[0].view = VIEW_PIPELINE; return true;
 }
-nip_requested :: (p: [] Nip) -> int #export_c {
+nip_requested :: (p: [] Nip) -> int #export_c #effects(all) {
   if p.count != 1 || !nip_mode(p[0].mode) { return -1; }
   if !p[0].initialized || p[0].pending { return p[0].mode; }
   return -1;
 }
 // What the verifier observed, carried by the face; it grants nothing.
-nip_observed :: (p: [] Nip, observation: [] int) #export_c {
+nip_observed :: (p: [] Nip, observation: [] int) #export_c #effects(all) {
   if p.count != 1 || observation.count != OBSERVED { return; }
   p[0].error = observation[0]; p[0].admission = observation[1];
   p[0].written = observation[2]; p[0].verified = observation[3] == 1;
@@ -175,7 +175,7 @@ nip_pick :: (p: [] Nip, slot: int) -> bool {
   if slot == CASES { p[0].view = VIEW_PARTS; p[0].scroll=0; return true; }
   return nip_select(p, slot);
 }
-nip_pointer :: (p: [] Nip, x: f32, y: f32, phase: int) -> bool #export_c {
+nip_pointer :: (p: [] Nip, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
   if p.count != 1 || p[0].width < 1 || p[0].height < 1 || p[0].dpr < 0.5 { return false; }
   hit := -1; for i: 0..<CASES + 1 { if inside(nip_slot(p[0].width, p[0].height, p[0].dpr, i), x, y) { hit = i; } }
   if inside(nip_index_box(p),x,y) {hit=CASES+1;}
@@ -189,7 +189,7 @@ nip_pointer :: (p: [] Nip, x: f32, y: f32, phase: int) -> bool #export_c {
   if phase == POINTER_UP { down := p[0].down; p[0].down = -1; if hit >= 0 && hit == down { return nip_pick(p, hit); } }
   return hit >= 0;
 }
-nip_key :: (p: [] Nip, key: int) -> bool #export_c {
+nip_key :: (p: [] Nip, key: int) -> bool #export_c #effects(all) {
   if p.count==1 && (key== -6 || key== -7 || key== -10 || key== -11 || key== -8 || key== -9) {
     if key== -8 {p[0].scroll=0;}else if key== -9 {p[0].scroll=p[0].scroll_max;}
     else {nip_wheel(p,ifx key== -6 || key== -10 then -120.0f32 else 120.0f32);}return true;
@@ -226,7 +226,7 @@ nip_text :: (out:[]f32,at:int,text:string,x:f32,y:f32,room:f32,d:f32,k:Ink)->int
   while from<text.count {end:=wrap_ink(text,from,room,8*d,0.2,0.6,k,next[..]);v=write(d,out,v,text[from..<end],x,y+cast(f32)n*18*d,8*d,0.2,0.6,k,false,false);if next[0]<=from {break;}from=next[0];n+=1;}return v;
 }
 nip_body_top :: (p:[]Nip)->f32 {d:=p[0].dpr;return (166+18*cast(f32)nip_lines(NIP_CAVEAT,p[0].width-48*d,d))*d;}
-nip_wheel :: (p:[]Nip,dy:f32) #export_c {if p.count==1 {p[0].scroll=clamp(p[0].scroll+dy,0,p[0].scroll_max);}}
+nip_wheel :: (p:[]Nip,dy:f32) #export_c #effects(all) {if p.count==1 {p[0].scroll=clamp(p[0].scroll+dy,0,p[0].scroll_max);}}
 // Hide complete glyph/stroke quads crossing the fixed header or hotbar.
 nip_clip :: (out:[]f32,from:int,to:int,top:f32,bottom:f32) {
   q:=from;while q+6<=to {
@@ -301,7 +301,7 @@ nip_parts :: (p:[]Nip,out:[]f32,at:int,top:f32)->int {
 }
 
 // The fixed title/controls remain reachable while long explanations scroll.
-nip_frame :: (p:[]Nip,out:[]f32,u:[]f32,width:f32,height:f32,dpr:f32,dt:f32,still:bool)->int #export_c {
+nip_frame :: (p:[]Nip,out:[]f32,u:[]f32,width:f32,height:f32,dpr:f32,dt:f32,still:bool)->int #export_c #effects(all) {
   if p.count!=1 || u.count<16 || width<1 || height<1 || dpr<0.5 || dpr>4 {return 0;}
   p[0].width=width;p[0].height=height;p[0].dpr=dpr;p[0].frames+=1;p[0].time+=clamp(dt,0,0.1);
   if still {p[0].ran_at=p[0].time-10;}

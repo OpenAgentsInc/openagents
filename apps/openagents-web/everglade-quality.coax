@@ -33,7 +33,7 @@ eg_quality_facts :: (s: [] Everglade, text: string) {
 
 // One frame of dt seconds (the page's, before any clamp). Golden frames hold the device's tier,
 // from its screen alone, so a picture is the same on every machine.
-everglade_quality_frame :: (s: [] Everglade, dt: f32, golden: bool) #export_c {
+everglade_quality_frame :: (s: [] Everglade, dt: f32, golden: bool) #export_c #effects(all) {
   if !s[0].q_ready || golden {
     d := s[0].q_dev;
     if !s[0].q_ready { d.touch = phone(s); }
@@ -50,7 +50,7 @@ everglade_quality_frame :: (s: [] Everglade, dt: f32, golden: bool) #export_c {
 
 // The pixels a frame draws at most (host.js coaxial_pixel_budget), for a canvas of w by h device
 // pixels drawn at dpr of them a CSS pixel.
-everglade_pixel_budget :: (s: [] Everglade, w: f32, h: f32, dpr: f32) -> int #export_c {
+everglade_pixel_budget :: (s: [] Everglade, w: f32, h: f32, dpr: f32) -> int #export_c #effects(all) {
   k := hi(dpr, 0.01);
   return quality_pixels(s[0].q[..], w / k, h / k);
 }
@@ -99,7 +99,7 @@ eg_quality_pick :: (s: [] Everglade, mode: int) {
 // What a frame costs, for a headless check (globalThis.coaxial.quality() in the face's page,
 // coax/web/destroy-fps.coax): 0 the rung, 1 the mode, 2 the puffs drawn, 3 the debris chunks,
 // 4 the bodies awake, 5 the splinters, 6 the dust, 7 the chunk budget, 8 the 30 FPS budget (1).
-everglade_quality_probe :: (s: [] Everglade, field: int) -> int #export_c {
+everglade_quality_probe :: (s: [] Everglade, field: int) -> int #export_c #effects(all) {
   if field == 0 { return s[0].q[0].rung; }
   if field == 1 { return s[0].q[0].mode; }
   if field == 2 { return s[0].sp.sprite_n; }

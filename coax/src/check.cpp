@@ -95,7 +95,7 @@ static bool checked_expr_tag(uint32_t kind) { switch(kind) {
   default:return false;
 }}
 static bool checked_stmt_tag(uint32_t kind) { switch(kind) {
-  case COAX_CK_Tag_stmt_block:case COAX_CK_Tag_stmt_expr:case COAX_CK_Tag_stmt_var:case COAX_CK_Tag_stmt_assign:case COAX_CK_Tag_stmt_return:case COAX_CK_Tag_stmt_if:case COAX_CK_Tag_stmt_while:case COAX_CK_Tag_stmt_range:case COAX_CK_Tag_stmt_each:case COAX_CK_Tag_stmt_break:case COAX_CK_Tag_stmt_continue:case COAX_CK_Tag_stmt_defer:case COAX_CK_Tag_stmt_assert:case COAX_CK_Tag_stmt_switch:return true;
+  case COAX_CK_Tag_stmt_block:case COAX_CK_Tag_stmt_expr:case COAX_CK_Tag_stmt_var:case COAX_CK_Tag_stmt_assign:case COAX_CK_Tag_stmt_return:case COAX_CK_Tag_stmt_if:case COAX_CK_Tag_stmt_while:case COAX_CK_Tag_stmt_range:case COAX_CK_Tag_stmt_each:case COAX_CK_Tag_stmt_break:case COAX_CK_Tag_stmt_continue:case COAX_CK_Tag_stmt_defer:case COAX_CK_Tag_stmt_assert:case COAX_CK_Tag_stmt_switch:case COAX_CK_Tag_stmt_transaction:return true;
   default:return false;
 }}
 static std::string checked_text(coax_string s) {return std::string(s.data?s.data:"",(size_t)s.count);}
@@ -297,10 +297,15 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
     else switch(v.kind){
       case COAX_CK_Tag_proc:{auto *p=checked_ref<ProcDecl>(objects,id);p->loc=loc;p->name=name;p->ret_expr=checked_ref<TypeExpr>(objects,v.a);p->body=checked_ref<Stmt>(objects,v.b);p->ret=ty;p->export_c=v.flag;p->foreign=v.flag2;p->generic=v.generic;p->scope=v.collides?(int32_t)v.scope:0;p->key=checked_string(arena,v.key);p->origin=checked_ref<ProcDecl>(objects,v.origin);p->effect_present=v.effect_present;p->pure_decl=v.pure_decl;p->effect_loc=checked_loc(v.effect_loc);break;}
       case COAX_CK_Tag_constant:{auto *p=checked_ref<ConstDecl>(objects,id);p->loc=loc;p->name=name;p->expr=checked_ref<Expr>(objects,v.a);p->type=ty;p->checked=(uint8_t)v.mark;break;}
-      case COAX_CK_Tag_struct_:{auto *p=checked_ref<StructDecl>(objects,id);p->identity=v.quantity==3?1:v.quantity==4?2:0;p->loc=loc;p->name=name;p->type=types[(size_t)v.type];p->state=(uint8_t)v.mark;p->generic=v.generic;p->key=checked_string(arena,v.key);p->origin=checked_ref<StructDecl>(objects,v.origin);break;}
-      case COAX_CK_Tag_enum_:{auto *p=checked_ref<EnumDecl>(objects,id);p->loc=loc;p->name=name;p->type=types[(size_t)v.type];p->base_expr=checked_ref<TypeExpr>(objects,v.a);break;}
+      case COAX_CK_Tag_struct_:{auto *p=checked_ref<StructDecl>(objects,id);p->identity=v.quantity==3?1:v.quantity==4?2:0;p->loc=loc;p->persisted=v.flag;
+        std::string facts=";quantity="+std::to_string(v.quantity);
+        for(auto x:{v.unit.mass,v.unit.length,v.unit.time,v.unit.angle,v.unit.numerator,v.unit.denominator})facts+=","+std::to_string(x);
+        facts+=";frame="+std::to_string(v.frame_decl);
+        for(auto x:{v.frame.handedness,(int64_t)v.frame.convention,(int64_t)v.frame.continuity,v.frame.min_rep})facts+=","+std::to_string(x);
+        p->compatibility_metadata=checked_string(arena,{facts.data(),(int64_t)facts.size()});p->name=name;p->type=types[(size_t)v.type];p->state=(uint8_t)v.mark;p->generic=v.generic;p->key=checked_string(arena,v.key);p->origin=checked_ref<StructDecl>(objects,v.origin);break;}
+      case COAX_CK_Tag_enum_:{auto *p=checked_ref<EnumDecl>(objects,id);p->flags=v.flag;p->loc=loc;p->name=name;p->type=types[(size_t)v.type];p->base_expr=checked_ref<TypeExpr>(objects,v.a);break;}
       case COAX_CK_Tag_param:{auto *p=checked_ref<Param>(objects,id);p->loc=loc;p->name=name;p->type_expr=checked_ref<TypeExpr>(objects,v.a);p->type=ty;break;}
-      case COAX_CK_Tag_field:{auto *p=checked_ref<Field>(objects,id);p->loc=loc;p->name=name;p->type_expr=checked_ref<TypeExpr>(objects,v.a);p->init=checked_ref<Expr>(objects,v.b);p->type=ty;p->offset=(int32_t)v.field_index;break;}
+      case COAX_CK_Tag_field:{auto *p=checked_ref<Field>(objects,id);p->counter=v.op==1;p->loc=loc;p->name=name;p->type_expr=checked_ref<TypeExpr>(objects,v.a);p->init=checked_ref<Expr>(objects,v.b);p->type=ty;p->offset=(int32_t)v.field_index;break;}
       case COAX_CK_Tag_member:{auto *p=checked_ref<EnumMember>(objects,id);p->loc=loc;p->name=name;p->value=checked_ref<Expr>(objects,v.a);p->bits=v.value;break;}
       case COAX_CK_Tag_field_init:{auto *p=checked_ref<FieldInit>(objects,id);p->loc=loc;p->name=name;p->value=checked_ref<Expr>(objects,v.a);p->field=(int32_t)v.field_index;break;}
       case COAX_CK_Tag_union_:{auto *p=checked_ref<UnionDecl>(objects,id);p->loc=loc;p->name=name;p->type=types[(size_t)v.type];break;}

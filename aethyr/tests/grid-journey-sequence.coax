@@ -16,7 +16,7 @@ GridJourneyKey :: struct { frame: int; key: int; down: bool; }
   #assert jumps == 2 && held == 0;
   #assert grid_journey_key(-1).frame == -1 && grid_journey_key(GJ_KEYS).frame == -1;
 }
-grid_journey_key :: (k: int) -> GridJourneyKey #export_c {
+grid_journey_key :: (k: int) -> GridJourneyKey #export_c #effects(all) {
   events := [GJ_KEYS] GridJourneyKey.[
     GridJourneyKey.{frame=1,key=119,down=true},
     GridJourneyKey.{frame=20,key=32,down=true},GridJourneyKey.{frame=21,key=32},

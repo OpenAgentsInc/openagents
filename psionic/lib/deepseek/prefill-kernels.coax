@@ -39,16 +39,16 @@
     dpkg_project(0,0,1,32,1,packed[..],scale[..],x[0..<32],one[..],f[..]);#assert one[0]==1720 && f[0]==0;
 }
 
-dpkg_power :: (scale:u8)->f64 {return f64_from_bits((u64(scale)+896)<<52);}
-dpkg_fp4 :: (code:u8,scale:u8)->f64 {values:=[8]f64.[0,0.5,1,1.5,2,3,4,6];value:=values[cast(int)(code&7)]*dpkg_power(scale);return f64_from_bits(f64_bits(value)|((u64(code)&8)<<60));}
-dpkg_fp8 :: (code:u8,scale:u8)->f64 {e:=(code>>3)&15;f:=code&7;value:=f64(f)/512;if e!=0 {value=(1+f64(f)/8)*f64_from_bits((u64(e)+1016)<<52);}value*=dpkg_power(scale);return f64_from_bits(f64_bits(value)|((u64(code)&128)<<56));}
-dpkg_finite_bits :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
-dpkg_finite :: (x:f64)->bool {return dpkg_finite_bits(f64_bits(x));}
-dpkg_fit :: (x:f64)->bool {return dpkg_finite(x) && x<=3.4028234663852886e38 && x>=-3.4028234663852886e38;}
+dpkg_power :: (scale:u8)->f64 #effects(all) {return f64_from_bits((u64(scale)+896)<<52);}
+dpkg_fp4 :: (code:u8,scale:u8)->f64 #effects(all) {values:=[8]f64.[0,0.5,1,1.5,2,3,4,6];value:=values[cast(int)(code&7)]*dpkg_power(scale);return f64_from_bits(f64_bits(value)|((u64(code)&8)<<60));}
+dpkg_fp8 :: (code:u8,scale:u8)->f64 #effects(all) {e:=(code>>3)&15;f:=code&7;value:=f64(f)/512;if e!=0 {value=(1+f64(f)/8)*f64_from_bits((u64(e)+1016)<<52);}value*=dpkg_power(scale);return f64_from_bits(f64_bits(value)|((u64(code)&128)<<56));}
+dpkg_finite_bits :: (bits:u64)->bool #effects(all) {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+dpkg_finite :: (x:f64)->bool #effects(all) {return dpkg_finite_bits(f64_bits(x));}
+dpkg_fit :: (x:f64)->bool #effects(all) {return dpkg_finite(x) && x<=3.4028234663852886e38 && x>=-3.4028234663852886e38;}
 // Host admission owns kind/shapes/spans and the quantized-input identity.
 // The output and flags are private until the separate publication pass.
 // book:begin product
-dpkg_project :: (item:int,kind:int,rows:int,columns:int,batch:int,data:[]u8,scales:[]u8,input:[]f64,out:[]f32,flags:[]u8) #export_c {
+dpkg_project :: (item:int,kind:int,rows:int,columns:int,batch:int,data:[]u8,scales:[]u8,input:[]f64,out:[]f32,flags:[]u8) #export_c #effects(all) {
     row:=item%rows;first:=(item/rows)*8;sums:[8]f64;errors:[8]f64;bad:u8=0;
     for col:0..<columns {at:=row*columns+col;
         code:=data[ifx kind==0 then at/2 else at];scale:=scales[ifx kind==0 then at/32 else (row/32)*(columns/32)+col/32];
@@ -60,5 +60,5 @@ dpkg_project :: (item:int,kind:int,rows:int,columns:int,batch:int,data:[]u8,scal
     for t:0..<8 {token:=first+t;if token<batch {at:=token*rows+row;total:=sums[t]+errors[t];flag:=bad;if !dpkg_fit(total) && flag==0 {flag=2;}flags[at]=flag;if flag==0 {out[at]=f32(total);}}}
 }
 // book:end product
-dpkg_flags :: (item:int,flags:[]u8,summary:[]u8) #export_c {value:u8=0;for flag:flags {value|=flag;}summary[item]=value;}
-dpkg_publish :: (item:int,summary:[]u8,stage:[]f32,out:[]f32) #export_c {if summary[0]==0 {out[item]=stage[item];}}
+dpkg_flags :: (item:int,flags:[]u8,summary:[]u8) #export_c #effects(all) {value:u8=0;for flag:flags {value|=flag;}summary[item]=value;}
+dpkg_publish :: (item:int,summary:[]u8,stage:[]f32,out:[]f32) #export_c #effects(all) {if summary[0]==0 {out[item]=stage[item];}}

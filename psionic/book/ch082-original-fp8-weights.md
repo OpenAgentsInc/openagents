@@ -80,8 +80,8 @@ Binary64's bias is 1023, so `2^(e − 10)` has the exponent field `e + 1013`, an
 
 <!-- source: psionic/lib/fp8.coax unit -->
 ```jai
-fp8_nan :: (code:u8)->bool {return (code&127)==127;}
-fp8_unit :: (code:u8)->f64 {
+fp8_nan :: (code:u8)->bool #effects(all) {return (code&127)==127;}
+fp8_unit :: (code:u8)->f64 #effects(all) {
     exponent:=cast(u64)(code>>3)&15;fraction:=f64(code&7);
     magnitude:=fraction*f64_from_bits(1014<<52);
     if exponent!=0 {magnitude=(8+fraction)*f64_from_bits((exponent+1013)<<52);}
@@ -100,18 +100,18 @@ are still exact.
 
 <!-- source: psionic/lib/fp8.coax scale -->
 ```jai
-fp8_power :: (scale:u8)->f64 {return f64_from_bits((cast(u64)scale+896)<<52);}
-fp8_word :: (scales:[]u8,block:int)->u32 {
+fp8_power :: (scale:u8)->f64 #effects(all) {return f64_from_bits((cast(u64)scale+896)<<52);}
+fp8_word :: (scales:[]u8,block:int)->u32 #effects(all) {
     bits:u32=0;
     for i:0..<4 {bits|=cast(u32)scales[4*block+i]<<(8*i);}
     return bits;
 }
-fp8_f32_scale_ok :: (bits:u32)->bool {return bits!=0 && bits<0x7f800000;}
-fp8_scale_ok :: (kind:u8,scales:[]u8,block:int)->bool {
+fp8_f32_scale_ok :: (bits:u32)->bool #effects(all) {return bits!=0 && bits<0x7f800000;}
+fp8_scale_ok :: (kind:u8,scales:[]u8,block:int)->bool #effects(all) {
     if kind==FP8_SCALE_UE8M0 {return scales[block]!=255;}
     return fp8_f32_scale_ok(fp8_word(scales,block));
 }
-fp8_scale :: (kind:u8,scales:[]u8,block:int)->f64 {
+fp8_scale :: (kind:u8,scales:[]u8,block:int)->f64 #effects(all) {
     if kind==FP8_SCALE_UE8M0 {return fp8_power(scales[block]);}
     return f64(f32_from_bits(fp8_word(scales,block)));
 }
@@ -132,7 +132,7 @@ division before any multiplication:
 
 <!-- source: psionic/lib/fp8.coax plan -->
 ```jai
-fp8_plan :: (rows:int,columns:int,kind:u8)->Fp8Plan #export_c {
+fp8_plan :: (rows:int,columns:int,kind:u8)->Fp8Plan #export_c #effects(all) {
     if kind>FP8_SCALE_UE8M0 {return Fp8Plan.{status=Fp8Status.shape};}
     if rows<FP8_BLOCK || columns<FP8_BLOCK || rows%FP8_BLOCK!=0 || columns%FP8_BLOCK!=0 {return Fp8Plan.{status=Fp8Status.shape};}
     if rows/FP8_BLOCK>FP8_BLOCKS_MAX/(columns/FP8_BLOCK) {return Fp8Plan.{status=Fp8Status.limit};}
@@ -162,7 +162,7 @@ leaves the whole destination unchanged:
 
 <!-- source: psionic/lib/fp8.coax decode -->
 ```jai
-fp8_decode :: (rows:int,columns:int,kind:u8,data:[]u8,scales:[]u8,out:[]f64,overlap:bool)->Fp8Result #export_c {
+fp8_decode :: (rows:int,columns:int,kind:u8,data:[]u8,scales:[]u8,out:[]f64,overlap:bool)->Fp8Result #export_c #effects(all) {
     p:=fp8_plan(rows,columns,kind);if p.status!=Fp8Status.ok {return Fp8Result.{status=p.status};}
     if data.count!=p.values || scales.count!=p.scale_bytes {return Fp8Result.{status=Fp8Status.storage};}
     if out.count<p.values {return Fp8Result.{status=Fp8Status.capacity};}
@@ -199,7 +199,7 @@ F8_E4M3 weight and its named scale tensor. It refuses, with a typed status:
 
 <!-- source: psionic/lib/fp8-file.coax pair -->
 ```jai
-fp8_pair :: (file:[]u8,weight:string,scale:string)->Fp8Pair #export_c {
+fp8_pair :: (file:[]u8,weight:string,scale:string)->Fp8Pair #export_c #effects(all) {
     if file.count<8 {return Fp8Pair.{status=Fp8Status.offsets};}
     for i:2..<8 {if file[i]!=0 {return Fp8Pair.{status=Fp8Status.header};}}
     length:=cast(int)file[0]|cast(int)file[1]<<8;
@@ -282,18 +282,18 @@ code by at most 2⁻¹⁰ × scale. For step 4 the bound is 0.1309 + 0.0039.
 ```jai
 // Nearest finite non-negative code to 0 <= magnitude < 464, ties to the even
 // code. The walk stops at 126 (448): code 127's pattern would be 480.
-fp8_closer :: (magnitude:f64,code:int)->bool {
+fp8_closer :: (magnitude:f64,code:int)->bool #effects(all) {
     below:=magnitude-fp8_unit(cast(u8)code);above:=fp8_unit(cast(u8)(code+1))-magnitude;
     return above<below || (above==below && code%2==1);
 }
-fp8_round :: (magnitude:f64)->u8 {
+fp8_round :: (magnitude:f64)->u8 #effects(all) {
     code:=0;
     while fp8_closer(magnitude,code) {code+=1;}
     return cast(u8)code;
 }
-fp8_quantize_limit :: (n:int)->bool {return n>=FP8_BLOCK && n/FP8_BLOCK<=FP8_GROUPS_MAX && n%FP8_BLOCK==0;}
-fp8_bf16 :: (word:u16)->f64 {return f64(f32_from_bits(cast(u32)word<<16));}
-fp8_quantize :: (x:[]u16,codes:[]u8,scales:[]f64,overlap:bool)->Fp8Result #export_c {
+fp8_quantize_limit :: (n:int)->bool #effects(all) {return n>=FP8_BLOCK && n/FP8_BLOCK<=FP8_GROUPS_MAX && n%FP8_BLOCK==0;}
+fp8_bf16 :: (word:u16)->f64 #effects(all) {return f64(f32_from_bits(cast(u32)word<<16));}
+fp8_quantize :: (x:[]u16,codes:[]u8,scales:[]f64,overlap:bool)->Fp8Result #export_c #effects(all) {
     if !fp8_quantize_limit(x.count) {return Fp8Result.{status=Fp8Status.shape};}
     groups:=x.count/FP8_BLOCK;
     if codes.count<x.count || scales.count<groups {return Fp8Result.{status=Fp8Status.capacity};}

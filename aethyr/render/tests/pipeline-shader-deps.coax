@@ -2,4 +2,4 @@
 // requires a program or exported library root; GPU entry selection has neither.
 // Shader emission continues to use pipeline-shader.coax itself.
 #load "pipeline-shader.coax";
-rr_shader_dependency_root :: () #export_c {}
+rr_shader_dependency_root :: () #export_c #effects(all) {}

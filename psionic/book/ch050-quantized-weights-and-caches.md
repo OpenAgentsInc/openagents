@@ -79,19 +79,19 @@ refuses such blocks first.
 
 <!-- source: psionic/lib/quantized.coax half -->
 ```jai
-qz_larger :: (a:f64,b:f64)->f64 {return ifx b>a then b else a;}
+qz_larger :: (a:f64,b:f64)->f64 #effects(all) {return ifx b>a then b else a;}
 // 2^e for e >= -25, by exact doublings.
-qz_pow2 :: (e:int)->f64 {v:=1.0/33554432;for i:0..<e+25 {v*=2;}return v;}
+qz_pow2 :: (e:int)->f64 #effects(all) {v:=1.0/33554432;for i:0..<e+25 {v*=2;}return v;}
 // IEEE half precision: 1 sign bit, 5 exponent bits, 10 fraction bits.
-qz_half_ok :: (bits:int)->bool {return (bits&0x7c00)!=0x7c00;}
-qz_half :: (bits:int)->f64 {
+qz_half_ok :: (bits:int)->bool #effects(all) {return (bits&0x7c00)!=0x7c00;}
+qz_half :: (bits:int)->f64 #effects(all) {
     e:=(bits>>10)&31;m:=bits&1023;
     v:=ifx e==0 then f64(m)*qz_pow2(-24) else f64(1024+m)*qz_pow2(e-25);
     return ifx (bits&0x8000)!=0 then -v else v;
 }
 // The smallest non-negative half at or above want, or 0x7c00 (infinity)
 // above 65504. Non-negative halves order like their bits: a binary search.
-qz_half_up :: (want:f64)->int {
+qz_half_up :: (want:f64)->int #effects(all) {
     lo:=0;hi:=0x7c00;
     while lo<hi {mid:=(lo+hi)/2;if qz_half(mid)>=want {hi=mid;} else {lo=mid+1;}}
     return lo;
@@ -108,7 +108,7 @@ blocks (1,048,576 values) per call with `limit`.
 
 <!-- source: psionic/lib/quantized.coax plan -->
 ```jai
-qz_plan :: (kind:int,rows:int,width:int)->QzPlan #export_c {
+qz_plan :: (kind:int,rows:int,width:int)->QzPlan #export_c #effects(all) {
     if kind!=QZ_Q8_0 && kind!=QZ_Q4_0 {return QzPlan.{status=QzStatus.kind};}
     if rows<1 || width<1 {return QzPlan.{status=QzStatus.shape};}
     if width%QZ_BLOCK!=0 {return QzPlan.{status=QzStatus.partial};}
@@ -143,17 +143,17 @@ tensor of any other type is refused with `kind`.
 
 <!-- source: psionic/lib/quantized.coax decode -->
 ```jai
-qz_signed :: (b:u8)->int {v:=cast(int)b;return ifx v>127 then v-256 else v;}
-qz_scale_bits :: (bytes:[]u8,block:int,size:int)->int {return cast(int)bytes[block*size]|cast(int)bytes[block*size+1]<<8;}
+qz_signed :: (b:u8)->int #effects(all) {v:=cast(int)b;return ifx v>127 then v-256 else v;}
+qz_scale_bits :: (bytes:[]u8,block:int,size:int)->int #effects(all) {return cast(int)bytes[block*size]|cast(int)bytes[block*size+1]<<8;}
 // Q8_0 element k: d * code; Q4_0 element k: d * (nibble - 8), elements
 // 0..15 in the low nibbles and 16..31 in the high nibbles.
-qz_value :: (kind:int,bytes:[]u8,block:int,k:int)->f64 {
+qz_value :: (kind:int,bytes:[]u8,block:int,k:int)->f64 #effects(all) {
     d:=qz_half(qz_scale_bits(bytes,block,ifx kind==QZ_Q8_0 then 34 else 18));
     if kind==QZ_Q8_0 {return d*f64(qz_signed(bytes[block*34+2+k]));}
     packed:=cast(int)bytes[block*18+2+k%16];
     return d*f64(((packed>>(4*(k/16)))&15)-8);
 }
-qz_decode :: (kind:int,rows:int,width:int,bytes:[]u8,out:[]f32)->QzResult #export_c {
+qz_decode :: (kind:int,rows:int,width:int,bytes:[]u8,out:[]f32)->QzResult #export_c #effects(all) {
     p:=qz_plan(kind,rows,width);
     if p.status!=QzStatus.ok {return QzResult.{status=p.status};}
     if bytes.count!=p.bytes {return QzResult.{status=QzStatus.storage};}
@@ -164,7 +164,7 @@ qz_decode :: (kind:int,rows:int,width:int,bytes:[]u8,out:[]f32)->QzResult #expor
     return QzResult.{written=p.values};
 }
 // One tensor described by chapter 49's reader, decoded from the file bytes.
-qz_tensor :: (t:PgTensor,file:[]u8,out:[]f32)->QzResult #export_c {
+qz_tensor :: (t:PgTensor,file:[]u8,out:[]f32)->QzResult #export_c #effects(all) {
     if t.dims[0]<1 {return QzResult.{status=QzStatus.shape};}
     if t.begin<0 || t.end>file.count {return QzResult.{status=QzStatus.storage};}
     return qz_decode(t.kind,t.elements/t.dims[0],t.dims[0],file[t.begin..<t.end],out);
@@ -218,10 +218,10 @@ and with all importances zero the result is plain Q4_0 exactly.
 
 <!-- source: psionic/lib/quantized.coax quantize -->
 ```jai
-qz_bad :: (v:f32)->bool {return !int8_finite(v);}
+qz_bad :: (v:f32)->bool #effects(all) {return !int8_finite(v);}
 // Q4_0 for one block at scale d (d != 0): the weighted squared error, and the
 // codes nearest x/d + 8, clamped to 0..15 (max and min by |t| identities).
-qz_q4_try :: (x:[]f32,at:int,imp:[]f32,d:f64,codes:[]int)->f64 {
+qz_q4_try :: (x:[]f32,at:int,imp:[]f32,d:f64,codes:[]int)->f64 #effects(all) {
     err:=0.0;
     for k:0..<QZ_BLOCK {
         t:=f64(int8_nearest(f64(x[at+k])/d));
@@ -232,9 +232,9 @@ qz_q4_try :: (x:[]f32,at:int,imp:[]f32,d:f64,codes:[]int)->f64 {
     return err;
 }
 // The signed half scale: |top| / divisor rounded up, its sign opposite to top's.
-qz_q4_scale :: (top:f32,divisor:f64)->int {return qz_half_up(abs(f64(top))/divisor)|(cast(int)(f32_bits(top)>>16)&0x8000^0x8000);}
-qz_put :: (out:[]u8,at:int,bits:int) {out[at]=cast(u8)(bits&255);out[at+1]=cast(u8)(bits>>8);}
-qz_block :: (kind:int,x:[]f32,at:int,imp:[]f32,out:[]u8,base:int) {
+qz_q4_scale :: (top:f32,divisor:f64)->int #effects(all) {return qz_half_up(abs(f64(top))/divisor)|(cast(int)(f32_bits(top)>>16)&0x8000^0x8000);}
+qz_put :: (out:[]u8,at:int,bits:int) #effects(all) {out[at]=cast(u8)(bits&255);out[at+1]=cast(u8)(bits>>8);}
+qz_block :: (kind:int,x:[]f32,at:int,imp:[]f32,out:[]u8,base:int) #effects(all) {
     // top: the value of largest magnitude, the first one on a tie.
     top:f32=0;
     for k:0..<QZ_BLOCK {if abs(x[at+k])>abs(top) {top=x[at+k];}}
@@ -260,7 +260,7 @@ qz_block :: (kind:int,x:[]f32,at:int,imp:[]f32,out:[]u8,base:int) {
     for j:0..<16 {out[base+2+j]=cast(u8)(best[j]|best[j+16]<<4);}
 }
 // importance: empty, or one non-negative weight per column (an imatrix row).
-qz_quantize :: (kind:int,rows:int,width:int,x:[]f32,importance:[]f32,out:[]u8)->QzResult #export_c {
+qz_quantize :: (kind:int,rows:int,width:int,x:[]f32,importance:[]f32,out:[]u8)->QzResult #export_c #effects(all) {
     p:=qz_plan(kind,rows,width);
     if p.status!=QzStatus.ok {return QzResult.{status=p.status};}
     if x.count!=p.values || (importance.count!=0 && importance.count!=width) {return QzResult.{status=QzStatus.storage};}
@@ -289,7 +289,7 @@ chapter 48 does not admit, before it writes anything.
 <!-- source: psionic/lib/quantized.coax int8 -->
 ```jai
 // Q8_0 as chapter 48's weights: the same codes, the f16 scale as f32, offset 0.
-qz_int8 :: (rows:int,width:int,bytes:[]u8,w:Int8Weights)->QzResult #export_c {
+qz_int8 :: (rows:int,width:int,bytes:[]u8,w:Int8Weights)->QzResult #export_c #effects(all) {
     p:=qz_plan(QZ_Q8_0,rows,width);
     if p.status!=QzStatus.ok {return QzResult.{status=p.status};}
     if bytes.count!=p.bytes {return QzResult.{status=QzStatus.storage};}
@@ -348,8 +348,8 @@ stored scales before either attention runs.
 ```jai
 // int8-kv-v1: each cached key and value row (head width d) is one chapter 48
 // block: codes in [-127, 127] and an f32 scale rounded up from amax/127.
-qz_kv_request :: (d:int,t:int)->Int8Request {return Int8Request.{rows=1,width=d,tokens=t,block=d};}
-qz_kv_store :: (d:int,t:int,k:[]f32,v:[]f32,keys:Int8Activations,values:Int8Activations)->QzResult #export_c {
+qz_kv_request :: (d:int,t:int)->Int8Request #effects(all) {return Int8Request.{rows=1,width=d,tokens=t,block=d};}
+qz_kv_store :: (d:int,t:int,k:[]f32,v:[]f32,keys:Int8Activations,values:Int8Activations)->QzResult #export_c #effects(all) {
     r:=qz_kv_request(d,t);
     p:=int8_plan(r);
     if p.status!=Int8Status.ok {return QzResult.{status=QzStatus.shape};}
@@ -362,7 +362,7 @@ qz_kv_store :: (d:int,t:int,k:[]f32,v:[]f32,keys:Int8Activations,values:Int8Acti
     a:=int8_quantize(r,k,keys);b:=int8_quantize(r,v,values);
     return QzResult.{written=a.written+b.written};
 }
-qz_kv_admit :: (d:int,t:int,q:[]f32,keys:Int8Activations,values:Int8Activations,scores:[]f64,out:[]f32)->QzStatus {
+qz_kv_admit :: (d:int,t:int,q:[]f32,keys:Int8Activations,values:Int8Activations,scores:[]f64,out:[]f32)->QzStatus #effects(all) {
     if int8_plan(qz_kv_request(d,t)).status!=Int8Status.ok {return QzStatus.shape;}
     if q.count!=d || keys.codes.count!=t*d || values.codes.count!=t*d || keys.scales.count!=t || values.scales.count!=t {return QzStatus.storage;}
     if scores.count<t || out.count<d {return QzStatus.capacity;}
@@ -372,10 +372,10 @@ qz_kv_admit :: (d:int,t:int,q:[]f32,keys:Int8Activations,values:Int8Activations,
     for i:0..<t {if !int8_scale_ok(keys.scales[i]) || !int8_scale_ok(values.scales[i]) {return QzStatus.scale;}}
     return QzStatus.ok;
 }
-qz_kv_at :: (a:Int8Activations,d:int,i:int)->f64 {return f64(a.scales[i/d])*f64(a.codes[i]);}
+qz_kv_at :: (a:Int8Activations,d:int,i:int)->f64 #effects(all) {return f64(a.scales[i/d])*f64(a.codes[i]);}
 // One decode query against every cached position, scores scaled by 1/sqrt(d)
 // as in chapter 41, in binary64, each cached code decoded as it is read.
-qz_kv_attend :: (d:int,t:int,q:[]f32,keys:Int8Activations,values:Int8Activations,scores:[]f64,out:[]f32)->QzResult #export_c {
+qz_kv_attend :: (d:int,t:int,q:[]f32,keys:Int8Activations,values:Int8Activations,scores:[]f64,out:[]f32)->QzResult #export_c #effects(all) {
     status:=qz_kv_admit(d,t,q,keys,values,scores,out);
     if status!=QzStatus.ok {return QzResult.{status=status};}
     for j:0..<t {
@@ -399,7 +399,7 @@ qz_kv_attend :: (d:int,t:int,q:[]f32,keys:Int8Activations,values:Int8Activations
 // factor within exp(+-2e); each value moves by at most dv_j / 2. Then
 // |o' - o| <= (exp(2e) - 1) max|v'| + max_j dv_j / 2, plus 2^-20 max|v'|
 // for two f32 narrowings and the binary64 sums.
-qz_kv_bound :: (d:int,t:int,q:[]f32,v:[]f32,keys:Int8Activations,values:Int8Activations)->f64 #export_c {
+qz_kv_bound :: (d:int,t:int,q:[]f32,v:[]f32,keys:Int8Activations,values:Int8Activations)->f64 #export_c #effects(all) {
     norm:=0.0;for x:q {norm+=abs(f64(x));}
     e:=0.0;step:=0.0;top:=0.0;
     for j:0..<t {
@@ -471,7 +471,7 @@ The checks compare all of these.
 // KL(original || derived) and top-1 agreement, each with two standard errors,
 // perplexity on the items' gold answers, and chapter 16's metrics for both.
 // Promotes only when the pessimistic ends are within the declared bound.
-qz_card :: (bound:QzBound,items:[]PqItem,original:[]f64,derived:[]f64,bytes:int)->QzCard #export_c {
+qz_card :: (bound:QzBound,items:[]PqItem,original:[]f64,derived:[]f64,bytes:int)->QzCard #export_c #effects(all) {
     if !(bound.kl>=0 && bound.kl<1e300) || !(bound.agreement>=0 && bound.agreement<=1) {return QzCard.{status=QzStatus.number};}
     if items.count<2 || bytes<1 {return QzCard.{status=QzStatus.measure};}
     if original.count!=derived.count {return QzCard.{status=QzStatus.storage};}

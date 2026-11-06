@@ -1,5 +1,5 @@
 // Verification-only ABI; shared authored data lives beside the checks.
 #load "../reference-pipeline.coax";
-rr_native_fixture :: (tree:[]u32,scenario:int,target:[]RRPixel)->RRPassResult #export_c {
+rr_native_fixture :: (tree:[]u32,scenario:int,target:[]RRPixel)->RRPassResult #export_c #effects(all) {
  return rr_test_fixture(tree,scenario,target);
 }

@@ -14,7 +14,7 @@
 WB_PAGE :: 4194304;
 WB_END :: "// ---- end generated\n";
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   n := args_load(a[..]);
   count := args_count(a[..]);

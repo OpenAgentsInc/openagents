@@ -23,15 +23,15 @@
   #assert mpp_role(p,30201,MT_A)==0 && mpp_role(p,3201,MT_B)==0;
   p.providers=k[0..<0];#assert mpp_role(p,30200,MT_A)==0;p.buyers=k[0..<0];#assert mpp_role(p,3201,MT_A)==0;p.checkers=k[0..<0];#assert mpp_role(p,1985,MT_A)==0;
 }
-mpp_window :: (from:int,to:int,now:int)->bool {return mt_window(from,to) && to<=now;}
-mpp_budget :: (ms:int)->bool {return ms>=1 && ms<=60000;}
-mpp_mode :: (verify:bool,policy:bool,publish:bool,inputs:bool,bundle:bool)->bool {
+mpp_window :: (from:int,to:int,now:int)->bool #effects(all) {return mt_window(from,to) && to<=now;}
+mpp_budget :: (ms:int)->bool #effects(all) {return ms>=1 && ms<=60000;}
+mpp_mode :: (verify:bool,policy:bool,publish:bool,inputs:bool,bundle:bool)->bool #effects(all) {
   if verify {return !policy && !publish && !bundle;}
   if policy {return !publish && !inputs && !bundle;}
   return !inputs;
 }
-mpp_capacity :: (seen:int,beacons:int,receipts:int,checks:int)->bool {return seen<=224 && beacons<=32 && receipts<=64 && checks<=128;}
-mpp_role :: (p:MtPolicy,kind:int,author:string)->int {
+mpp_capacity :: (seen:int,beacons:int,receipts:int,checks:int)->bool #effects(all) {return seen<=224 && beacons<=32 && receipts<=64 && checks<=128;}
+mpp_role :: (p:MtPolicy,kind:int,author:string)->int #effects(all) {
   if kind==30200 && mt_has(p.providers,author) {return 1;}
   if kind==3201 && mt_has(p.buyers,author) {return 2;}
   if kind==1985 && mt_has(p.checkers,author) {return 3;}return 0;

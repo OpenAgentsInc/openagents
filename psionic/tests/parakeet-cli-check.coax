@@ -4,7 +4,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}
  cli:=args_at(a[..],0);fixture:=args_at(a[..],1);tmpbuf:[1024]u8;tmp:=fs_temp("parakeet-cli",tmpbuf[..]);if tmp=="" {return 3;}
  modelbuf:[1200]u8;wavebuf:[1200]u8;model:=fs_join(tmp,"model with spaces",modelbuf[..]);wav:=fs_join(tmp,"sample with spaces.wav",wavebuf[..]);

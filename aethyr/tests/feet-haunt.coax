@@ -3,7 +3,7 @@
 // ready-to-bind avatar matrix. Test both published guest mesh choices.
 #load "../../verse/haunt.coax";
 
-drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c {
+drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c #effects(all) {
   f := HauntPoint.{x = fx, y = fy, z = fz};
   meshes := [2] HauntMesh.[HauntMesh.{name = "Custom_Fig_Guest0", count = 3},
     HauntMesh.{name = "Custom_Fig_Guest4", first = 3, count = 3}];

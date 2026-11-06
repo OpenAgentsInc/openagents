@@ -48,22 +48,22 @@ ForgeVoiceCoder :: struct {ticket:int=0;armed:bool=false;text:[16384]u8;n:int;}
   s[0].ticket=9007199254740990;#assert fv_arm(s[..])==9007199254740991;
   #assert fv_arm(s[..])==0 && !s[0].armed;
 }
-fv_arm :: (s:[]ForgeVoiceCoder)->int #export_c {
+fv_arm :: (s:[]ForgeVoiceCoder)->int #export_c #effects(all) {
   s[0].armed=false;
   if s[0].ticket>=9007199254740991 {return 0;}
   s[0].ticket+=1;s[0].armed=true;return s[0].ticket;
 }
-fv_cancel :: (s:[]ForgeVoiceCoder,ticket:int) #export_c {
+fv_cancel :: (s:[]ForgeVoiceCoder,ticket:int) #export_c #effects(all) {
   if ticket==0 || ticket==s[0].ticket {s[0].armed=false;}
 }
-fv_take :: (s:[]ForgeVoiceCoder,ticket:int,final:bool,available:bool,busy:bool,text:string)->int {
+fv_take :: (s:[]ForgeVoiceCoder,ticket:int,final:bool,available:bool,busy:bool,text:string)->int #effects(all) {
   if !s[0].armed || ticket!=s[0].ticket || !final {return 0;}
   s[0].armed=false;s[0].n=0;
   if !available || !fc_can_send(false,text) {return 0;}
   if busy {return 2;}
   for i:0..<text.count {s[0].text[i]=text[i];}s[0].n=text.count;return 1;
 }
-fv_message :: (s:[]ForgeVoiceCoder,line:string,available:bool,busy:bool)->int #export_c {
+fv_message :: (s:[]ForgeVoiceCoder,line:string,available:bool,busy:bool)->int #export_c #effects(all) {
   nodes:[32]JvNode;d:[1]Jv;
   if !jv_parse(d[..],line,nodes[..]) {return 0;}
   v:=d[0];if jv_raw(v,jv_get(v,0,"schema"))!="aethyrforge.voice-coder.v1" {return 0;}

@@ -73,7 +73,7 @@ says not to paste words that guard a key used elsewhere.
 <!-- source: coax/lib/nostr/weblogin.coax sign -->
 ```jai
 // "Nostr <base64 kind-27235 event>" for POST url with body, signed by the entropy's key; its length or -1.
-weblogin_sign :: (hex: string, url: string, created_at: int, body: string, aux: [] u8, out: [] u8) -> int #export_c {
+weblogin_sign :: (hex: string, url: string, created_at: int, body: string, aux: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if url.count < 10 || url.count > 200 || aux.count != 32 || created_at < 0 { return -1; }
   for c: url { if c == '"' || c == '\\' || c < 32 { return -1; } }
   words: [160] u8; key: [32] u8;

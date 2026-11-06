@@ -115,7 +115,7 @@ cc_send_input :: (c: [] RelayConn, b: [] CcBot, walk: bool, yaw: f32) {
   #assert b[0].stop_gone == 1 && b[0].wolf == 9 && b[0].wolf_x == 1 && b[0].wolf_z == 2;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh coax/web/room/cast-check.coax ws://127.0.0.1:PORT [ROOM] [ROUNDS]"); return 2; }
   bb: [512] u8;

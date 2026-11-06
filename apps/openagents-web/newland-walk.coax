@@ -63,19 +63,19 @@ Walk :: struct {
 }
 
 // The face: which page this is (host.js data-page; 1 the Grid, 2 Penultimate Frontier: the Grid flown).
-coaxial_land_page :: (s: [] LandState, page: int) #export_c { if s.count > 0 { s[0].walking = page == 1 || page == 2; s[0].flying = page == 2; } }
-coaxial_land_flying :: (s: [] LandState) -> bool #export_c { return s.count > 0 && s[0].flying; }
-coaxial_land_walking :: (s: [] LandState) -> bool #export_c { return s.count > 0 && s[0].walking; }
-coaxial_walk_spawn_x :: () -> f32 #export_c { return WK_SPAWN_X; }
-coaxial_walk_spawn_z :: () -> f32 #export_c { return WK_SPAWN_Z; }
-coaxial_walk_spawn_face :: () -> f32 #export_c { return WK_SPAWN_FACE; }
-coaxial_walk_dist :: () -> f32 #export_c { return WK_DIST; }
-coaxial_walk_phi :: () -> f32 #export_c { return WK_PHI; }
-coaxial_walk_room :: () -> string #export_c { return WK_ROOM; }
-coaxial_walk_post_every :: () -> f32 #export_c { return WK_POST_EVERY; }
+coaxial_land_page :: (s: [] LandState, page: int) #export_c #effects(all) { if s.count > 0 { s[0].walking = page == 1 || page == 2; s[0].flying = page == 2; } }
+coaxial_land_flying :: (s: [] LandState) -> bool #export_c #effects(all) { return s.count > 0 && s[0].flying; }
+coaxial_land_walking :: (s: [] LandState) -> bool #export_c #effects(all) { return s.count > 0 && s[0].walking; }
+coaxial_walk_spawn_x :: () -> f32 #export_c #effects(all) { return WK_SPAWN_X; }
+coaxial_walk_spawn_z :: () -> f32 #export_c #effects(all) { return WK_SPAWN_Z; }
+coaxial_walk_spawn_face :: () -> f32 #export_c #effects(all) { return WK_SPAWN_FACE; }
+coaxial_walk_dist :: () -> f32 #export_c #effects(all) { return WK_DIST; }
+coaxial_walk_phi :: () -> f32 #export_c #effects(all) { return WK_PHI; }
+coaxial_walk_room :: () -> string #export_c #effects(all) { return WK_ROOM; }
+coaxial_walk_post_every :: () -> f32 #export_c #effects(all) { return WK_POST_EVERY; }
 
 // The page facts (host.js message 600): the address asks for the dive when its query has from=home.
-coaxial_walk_facts :: (s: [] LandState, facts: string) #export_c {
+coaxial_walk_facts :: (s: [] LandState, facts: string) #export_c #effects(all) {
   i := 0;
   while i < facts.count {
     e := i; while e < facts.count && facts[e] != '\n' { e += 1; }
@@ -118,7 +118,7 @@ wk_axis :: (held: int, plus: int, minus: int) -> f32 {
   return a;
 }
 
-coaxial_walk_key :: (s: [] LandState, key: int, mods: int) -> bool #export_c {
+coaxial_walk_key :: (s: [] LandState, key: int, mods: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   used := redit_key(s[0].ed[..], key, true);   // typing into the feature list takes every key
   if used > 0 { return used == 1; }
@@ -130,7 +130,7 @@ coaxial_walk_key :: (s: [] LandState, key: int, mods: int) -> bool #export_c {
   s[0].wk[0].held = s[0].wk[0].held | b;
   return true;
 }
-coaxial_walk_key_up :: (s: [] LandState, key: int, mods: int) -> bool #export_c {
+coaxial_walk_key_up :: (s: [] LandState, key: int, mods: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   used := redit_key(s[0].ed[..], key, false);
   if used > 0 { return used == 1; }
@@ -139,18 +139,18 @@ coaxial_walk_key_up :: (s: [] LandState, key: int, mods: int) -> bool #export_c 
   if s[0].wk[0].held & b != 0 { s[0].wk[0].held = s[0].wk[0].held - b; }
   return true;
 }
-coaxial_walk_blur :: (s: [] LandState) #export_c {
+coaxial_walk_blur :: (s: [] LandState) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].wk[0].held = 0; s[0].wk[0].drag_on = false; s[0].wk[0].press = 0;
 }
-coaxial_walk_wheel :: (s: [] LandState, dy: f32) #export_c {
+coaxial_walk_wheel :: (s: [] LandState, dy: f32) #export_c #effects(all) {
   if s.count < 1 || !finite(dy) { return; }
   if s[0].card == CARD_NETWORK { s[0].network_scroll = clamp(s[0].network_scroll + dy, 0, s[0].network_scroll_max); return; }
   s[0].wk[0].zoom += clamp(dy, -400, 400) * WK_WHEEL;
 }
 
 // This frame's controls from the keys held: the axes, run and jump, and the arrows' turn.
-coaxial_walk_controls :: (s: [] LandState, dt: f32) #export_c {
+coaxial_walk_controls :: (s: [] LandState, dt: f32) #export_c #effects(all) {
   if s.count < 1 { return; }
   w := s[0].wk[..];
   h := w[0].held;
@@ -163,14 +163,14 @@ coaxial_walk_controls :: (s: [] LandState, dt: f32) #export_c {
   w[0].look_pitch += wk_axis(h, WK_HOLD_TILT_UP, WK_HOLD_TILT_DOWN) * WK_TURN * 0.6 * t;
 }
 // The face handed the turn and the zoom to the player.
-coaxial_walk_used :: (s: [] LandState) #export_c {
+coaxial_walk_used :: (s: [] LandState) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].wk[0].look_yaw = 0; s[0].wk[0].look_pitch = 0; s[0].wk[0].zoom = 0;
 }
 
 // A mouse drag turns the camera; a press let go where it began is a click: HOME, REALMS, the card's
 // buttons, or a project, person, agent or Pylon (its card). A finger off them is the face's thumbs.
-coaxial_walk_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+coaxial_walk_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   w := s[0].wk[..];
   d := hi(s[0].dpr, 1);
@@ -215,9 +215,9 @@ coaxial_walk_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int,
 }
 wk_plates :: (e: [] RealmEdit) -> int { return ifx e[0].plate_n < EDIT_PANELS then e[0].plate_n else EDIT_PANELS; }
 // The Grid's edit layer, for the face: typing is on; a message is the layer's (it takes it).
-coaxial_walk_wants_text :: (s: [] LandState) -> bool #export_c { return s.count > 0 && redit_typing(s[0].ed[..]); }
-coaxial_walk_edit_message :: (s: [] LandState, kind: int, text: string) -> bool #export_c { return s.count > 0 && redit_message(s[0].ed[..], kind, text); }
-coaxial_walk_cursor :: (s: [] LandState) -> int #export_c {
+coaxial_walk_wants_text :: (s: [] LandState) -> bool #export_c #effects(all) { return s.count > 0 && redit_typing(s[0].ed[..]); }
+coaxial_walk_edit_message :: (s: [] LandState, kind: int, text: string) -> bool #export_c #effects(all) { return s.count > 0 && redit_message(s[0].ed[..], kind, text); }
+coaxial_walk_cursor :: (s: [] LandState) -> int #export_c #effects(all) {
   if s.count < 1 || s[0].touch || !s[0].pointed || s[0].wk[0].drag_on { return 0; }
   x := s[0].px; y := s[0].py;
   if inside(s[0].wk[0].home_box, x, y) || inside(s[0].wk[0].galaxy_box, x, y) { return 1; }
@@ -549,7 +549,7 @@ wk_hud :: (out: [] f32, at: int, s: [] LandState, u: [] f32, f: LandFrame, width
 // at in the Grid's metres, from the face's player), you in it, and the HUD.
 coaxial_walk_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
                        fx: f32, fy: f32, fz: f32, face: f32, act: int, ex: f32, ey: f32, ez: f32, ax: f32, ay: f32, az: f32,
-                       move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c {
+                       move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c #effects(all) {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   if !finite(fx) || !finite(fy) || !finite(fz) || !finite(ex) || !finite(ey) || !finite(ez) || !finite(ax) || !finite(ay) || !finite(az) { return 0; }
   f := land_begin(s, uniforms, width, height, dpr, dt, still);

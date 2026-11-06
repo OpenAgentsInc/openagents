@@ -1,17 +1,17 @@
 // Coax owns command selection, corpus identities, request bytes and evaluation.
 // The companion C file provides only argv/stdin/stdout effects and main entry.
 #load "../../../verse/everglade/guard-evaluation-wire.coax";
-gt_argc :: ()->int #foreign;
-gt_arg_len :: (index:int)->int #foreign;
-gt_arg_byte :: (index:int,offset:int)->int #foreign;
-gt_read_byte :: ()->int #foreign;
-gt_write_byte :: (byte:int)->bool #foreign;
+gt_argc :: ()->int #foreign #effects(all);
+gt_arg_len :: (index:int)->int #foreign #effects(all);
+gt_arg_byte :: (index:int,offset:int)->int #foreign #effects(all);
+gt_read_byte :: ()->int #foreign #effects(all);
+gt_write_byte :: (byte:int)->bool #foreign #effects(all);
 gt_read :: (out:[]u8)->int {n:=0;while true {b:=gt_read_byte();if b== -1 {return n;}if b<0 || n>=out.count {return -1;}out[n]=cast(u8)b;n+=1;}return -1;}
 gt_write :: (text:string)->bool {for b:text {if !gt_write_byte(cast(int)b) {return false;}}return true;}
 gt_arg :: (index:int,out:[]u8)->string {
     n:=gt_arg_len(index);if n<0 || n>out.count {return "";}for i:0..<n {out[i]=cast(u8)gt_arg_byte(index,i);}return cast(string)out[0..<n];
 }
-gev_tool :: ()->int #export_c {
+gev_tool :: ()->int #export_c #effects(all) {
     args:[256]u8;command:=gt_arg(1,args[..]);out:[16384]u8;input:[262144]u8;
     if command=="manifest" {
         for i:0..<GEV_CASES {n:=gev_manifest(i,out[..]);if n<0 || !gt_write(cast(string)out[0..<n]) || !gt_write("\n") {return 2;}}return 0;

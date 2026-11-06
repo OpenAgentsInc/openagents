@@ -8,15 +8,15 @@
 #import "Basic";
 #load "confine-host.coax";
 
-cft_tmpdir :: (out: [] u8) -> int #foreign;
-cft_mkdir :: (path: [] u8) -> int #foreign;
-cft_write :: (path: [] u8, text: [] u8) -> int #foreign;
-cft_symlink :: (target: [] u8, path: [] u8) -> int #foreign;
-cft_link :: (old: [] u8, path: [] u8) -> int #foreign;
-cft_mkfifo :: (path: [] u8) -> int #foreign;
-cft_rename :: (from: [] u8, to: [] u8) -> int #foreign;
-cft_rmtree :: (path: [] u8) -> int #foreign;
-cft_exit :: (code: int) #foreign;
+cft_tmpdir :: (out: [] u8) -> int #foreign #effects(all);
+cft_mkdir :: (path: [] u8) -> int #foreign #effects(all);
+cft_write :: (path: [] u8, text: [] u8) -> int #foreign #effects(all);
+cft_symlink :: (target: [] u8, path: [] u8) -> int #foreign #effects(all);
+cft_link :: (old: [] u8, path: [] u8) -> int #foreign #effects(all);
+cft_mkfifo :: (path: [] u8) -> int #foreign #effects(all);
+cft_rename :: (from: [] u8, to: [] u8) -> int #foreign #effects(all);
+cft_rmtree :: (path: [] u8) -> int #foreign #effects(all);
+cft_exit :: (code: int) #foreign #effects(all);
 
 Ctx :: struct { base: [512] u8; base_n: int; failed: int; checks: int; }
 

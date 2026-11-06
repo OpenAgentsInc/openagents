@@ -7,7 +7,7 @@ bfp_run :: (argv:[]string,env:[]string,work:string,label:string,out:[]u8,err:[]u
   r:=rtq_run_raw(argv,env,120000,out,err);if !rtq_record_run(work,label,argv,r,cast(string)out[0..<r.out_n],cast(string)err[0..<r.err_n]) {r.cut=true;}return r;
 }
 bfp_equal_json :: (a:string,b:string)->bool {an:[8192]JvNode;bn:[8192]JvNode;ad:[1]Jv;bd:[1]Jv;return jv_parse(ad[..],a,an[..]) && jv_parse(bd[..],b,bn[..]) && rtq_equal(ad[0],0,bd[0],0);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {return 2;}out:=args_at(a[..],0);ref:=args_at(a[..],1);fixture:=args_at(a[..],2);compiler:=args_at(a[..],3);if !fs_mkdir(out) {return 1;}compiler_hash:[64]u8;fixture_hash:[64]u8;if !rtq_hash_file(compiler,compiler_hash[..]) || !rtq_hash_file(fixture,fixture_hash[..]) {return 1;}start:=proc_now_ms();stdout:[1048576]u8;stderr:[1048576]u8;empty:[]string;paths:[7][4096]u8;
   for fault:BFP_FAULTS {
     if proc_now_ms()-start>=RTQ_DEADLINE_MS {return 1;}work:=fs_join(out,fault,paths[0][..]);if !fs_mkdir(work) {return 1;}old:=fs_join(work,"compiler-reference",paths[1][..]);current:=fs_join(work,"compiler-coax",paths[2][..]);dependency:=fs_join(work,"input.txt",paths[3][..]);product:=fs_join(work,"product.spv",paths[4][..]);

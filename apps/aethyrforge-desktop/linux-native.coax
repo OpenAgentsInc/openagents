@@ -44,7 +44,7 @@ ForgeNative :: struct {
   s:[1]ForgeNative;lab_start(s[0].lab[..]);lab_layout(s[0].lab[..],1440,900,1);lab_access(s[0].lab[..],221,false);
   #assert s[0].lab[0].focus>=0 && fgn_key(s[..],-2,true,0) && s[0].lab[0].remote[0].active && !s[0].hud[0].opened;
 }
-fgn_boot :: (s:[]ForgeNative) #export_c {
+fgn_boot :: (s:[]ForgeNative) #export_c #effects(all) {
   env:[4096]u8;home:=proc_getenv("HOME",env[..]);p:[4096]u8;
   workspace:=proc_getenv("AETHYRFORGE_WORKSPACE",p[..]);if workspace=="" {workspace=fs_join(home,".openagents/aethyrforge/workspace",p[..]);}
   s[0].wn=workspace.count;for i:0..<workspace.count {s[0].workspace[i]=workspace[i];}
@@ -63,7 +63,7 @@ fgn_event :: (s:[]ForgeNative,line:string) {
   if e.kind==1 {s[0].sn=e.sn;for i:0..<e.sn {s[0].session[i]=e.session[i];}}
   if e.kind==7 {s[0].ended=true;}
 }
-fgn_stop :: (s:[]ForgeNative) #export_c {
+fgn_stop :: (s:[]ForgeNative) #export_c #effects(all) {
   if s[0].coder>=0 {r:=proc_release(s[0].coder);s[0].coder=-1;}
   s[0].hud[0].busy=false;
 }
@@ -103,7 +103,7 @@ fgn_tick :: (s:[]ForgeNative) {
   }
   if s[0].coder>=0 {s[0].hud[0].busy=true;}
 }
-fgn_key :: (s:[]ForgeNative,key:int,down:bool,mods:int)->bool #export_c {
+fgn_key :: (s:[]ForgeNative,key:int,down:bool,mods:int)->bool #export_c #effects(all) {
   if key== -13 {s[0].shift=down;return true;}if key== -14 {s[0].control=down;return true;}
   bits:=mods | (ifx s[0].shift then 1 else 0) | (ifx s[0].control then 2 else 0);
   if !s[0].hud[0].opened && (s[0].lab[0].remote[0].search || s[0].lab[0].explorer[0].search) {return lab_key(s[0].lab[..],key,down,bits);}
@@ -118,13 +118,13 @@ fgn_key :: (s:[]ForgeNative,key:int,down:bool,mods:int)->bool #export_c {
   }
   return lab_key(s[0].lab[..],key,down,bits);
 }
-fgn_blur :: (s:[]ForgeNative) #export_c {s[0].hud[0].held=false;s[0].shift=false;s[0].control=false;lab_blur(s[0].lab[..]);}
-fgn_pointer :: (s:[]ForgeNative,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c {
+fgn_blur :: (s:[]ForgeNative) #export_c #effects(all) {s[0].hud[0].held=false;s[0].shift=false;s[0].control=false;lab_blur(s[0].lab[..]);}
+fgn_pointer :: (s:[]ForgeNative,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c #effects(all) {
   s[0].px=x;s[0].py=y;if s[0].hud[0].opened {return fgl_pointer(s[0].hud[..],x,y,phase);}
   return lab_pointer(s[0].lab[..],x,y,phase,kind,id);
 }
-fgn_hover :: (s:[]ForgeNative,x:f32,y:f32) #export_c {s[0].px=x;s[0].py=y;}
-fgn_message :: (s:[]ForgeNative,kind:int,n:int) #export_c {
+fgn_hover :: (s:[]ForgeNative,x:f32,y:f32) #export_c #effects(all) {s[0].px=x;s[0].py=y;}
+fgn_message :: (s:[]ForgeNative,kind:int,n:int) #export_c #effects(all) {
   if n<0 || n>s[0].inbox.count {return;}
   if kind==1 && s[0].hud[0].opened {fgl_text(s[0].hud[..],cast(string)s[0].inbox[0..<n]);return;}
   for i:0..<n {s[0].lab[0].inbox[i]=s[0].inbox[i];}lab_message(s[0].lab[..],kind,n);
@@ -138,7 +138,7 @@ fgn_crop :: (out:[]f32,count:int,h:f32,d:f32)->int {
     for i:0..<72 {out[kept*12+i]=out[q*72+i];}kept+=6;
   }return kept;
 }
-fgn_frame :: (s:[]ForgeNative,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32)->int #export_c {
+fgn_frame :: (s:[]ForgeNative,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32)->int #export_c #effects(all) {
   if !s[0].initialized {fgn_boot(s);}fgn_tick(s);fgn_lab_tick(s);fgn_selection_save(s);
   n:=lab_frame(s[0].lab[..],out,u,w,h,d,dt,false);s[0].hud[0].ready=lab_scene_ready(s[0].lab[..]);
   if s[0].hud[0].opened {n=fgn_crop(out,n,h,d);}
@@ -149,7 +149,7 @@ fgn_frame :: (s:[]ForgeNative,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32)->int #
 fgn_lab_end :: (s:[]ForgeNative,slot:int) {
   if s[0].lab_fetch[slot]>=0 {r:=proc_release(s[0].lab_fetch[slot]);s[0].lab_fetch[slot]= -1;}s[0].lab_status[slot]=0;
 }
-fgn_close :: (s:[]ForgeNative) #export_c {
+fgn_close :: (s:[]ForgeNative) #export_c #effects(all) {
   if s[0].lab_clip>=0 {r:=proc_release(s[0].lab_clip);s[0].lab_clip= -1;}
   fgn_stop(s);for i:0..<2 {fgn_lab_end(s,i);}if s[0].lab_service>=0 {r:=proc_release(s[0].lab_service);s[0].lab_service= -1;}
 }
@@ -195,7 +195,7 @@ fgn_selection_file :: (out:[]u8)->string {
   env:[4096]u8;configured:=proc_getenv("AETHYRFORGE_LAB_SELECTION_FILE",env[..]);if configured!="" {if configured.count>out.count {return "";}for i:0..<configured.count {out[i]=configured[i];}return cast(string)out[0..<configured.count];}
   home:[4096]u8;root:=proc_getenv("HOME",home[..]);return fs_join(root,".openagents/aethyrforge/selection.txt",out);
 }
-fgn_selection_save :: (s:[]ForgeNative) #export_c {
+fgn_selection_save :: (s:[]ForgeNative) #export_c #effects(all) {
   lab:=s[0].lab[..];if lab[0].action!=3 {return;}token:=cast(string)lab[0].outbox[0..<lab[0].out_n];if !lsp_read(token).ok {lab[0].action=0;return;}
   path:[4096]u8;temp:[4096]u8;o:[1]Jo;name:=fgn_selection_file(path[..]);jo_start(o[..],temp[..]);jo_put(o[..],name);jo_put(o[..],".new");
   if name!="" && fs_write(jo_text(o[..]),token) && fs_rename(jo_text(o[..]),name) {

@@ -464,38 +464,38 @@ RENDER_PASS_DATA :: [67]RenderCatalogPass.[
   RenderCatalogPass.{entry=RenderEntry.{valid=true,source="apps/openagents-web/gpu/verse.coax",vertex="verse_bg_vs",fragment="verse_bg_fs",wgsl_vertex="bg_vs",wgsl_fragment="bg_fs",binding_set=0},pass=RenderPassId.background,use_first=177,use_count=1},
   RenderCatalogPass.{entry=RenderEntry.{valid=true,source="apps/openagents-web/gpu/verse.coax",vertex="verse_fx_vs",fragment="verse_fx_fs",wgsl_vertex="fx_vs",wgsl_fragment="fx_fs",binding_set=0},pass=RenderPassId.hud,use_first=178,use_count=3}];
 
-render_catalog :: (index:int)->RenderCatalog {
+render_catalog :: (index:int)->RenderCatalog #effects(all) {
   if index<0 || index>=RENDER_CATALOG_COUNT {return RenderCatalog.{};}
   return RENDER_CATALOG_DATA[index];
 }
-render_catalog_find :: (slug:string)->int {
+render_catalog_find :: (slug:string)->int #effects(all) {
   for i:0..<RENDER_CATALOG_COUNT {if RENDER_CATALOG_DATA[i].slug==slug {return i;}}
   return -1;
 }
-render_catalog_binding_count :: (index:int,set:int)->int {
+render_catalog_binding_count :: (index:int,set:int)->int #effects(all) {
   a:=render_catalog(index);
   if !a.valid {return -1;}
   if set==0 {return a.binding_count;}
   if set==1 && a.features.particles {return a.particle_binding_count;}
   return -1;
 }
-render_catalog_binding :: (index:int,set:int,resource:int)->RenderBinding {
+render_catalog_binding :: (index:int,set:int,resource:int)->RenderBinding #effects(all) {
   n:=render_catalog_binding_count(index,set);
   if resource<0 || resource>=n {return RenderBinding.{kind=RenderResourceKind.invalid};}
   a:=render_catalog(index);first:=ifx set==0 then a.binding_first else a.particle_binding_first;
   return RENDER_BINDING_DATA[first+resource];
 }
-render_catalog_pass :: (index:int,p:RenderPassId)->RenderCatalogPass {
+render_catalog_pass :: (index:int,p:RenderPassId)->RenderCatalogPass #effects(all) {
   a:=render_catalog(index);first:=a.pass_first;n:=a.pass_count;
   if p==RenderPassId.particle_over || p==RenderPassId.particle {first=a.particle_pass_first;n=a.particle_pass_count;}
   for i:0..<n {r:=RENDER_PASS_DATA[first+i];if r.pass==p {return r;}}
   return RenderCatalogPass.{};
 }
-render_catalog_entry :: (index:int,p:RenderPassId)->RenderEntry {return render_catalog_pass(index,p).entry;}
-render_catalog_use_count :: (index:int,p:RenderPassId)->int {
+render_catalog_entry :: (index:int,p:RenderPassId)->RenderEntry #effects(all) {return render_catalog_pass(index,p).entry;}
+render_catalog_use_count :: (index:int,p:RenderPassId)->int #effects(all) {
   a:=render_catalog_pass(index,p);return ifx a.entry.valid then a.use_count else -1;
 }
-render_catalog_use :: (index:int,p:RenderPassId,slot:int)->RenderUse {
+render_catalog_use :: (index:int,p:RenderPassId,slot:int)->RenderUse #effects(all) {
   a:=render_catalog_pass(index,p);
   if slot<0 || slot>=render_catalog_use_count(index,p) {return RenderUse.{slot=-1};}
   return RENDER_USE_DATA[a.use_first+slot];

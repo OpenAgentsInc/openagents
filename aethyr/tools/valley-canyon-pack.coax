@@ -11,7 +11,7 @@ cp_path :: (root:string,name:string,b:[]u8)->string {return fs_join(root,name,b)
 cp_equal :: (b:[]u8,at:int,v:[]u32)->bool {for w:0..<9 {if scan_u32(b,at+w*4)!=v[w] {return false;}}return true;}
 cp_hash :: (v:[]u32)->u32 {h:u32=2166136261;for w:v {h=mul_wrap(h^w,16777619);}return h;}
 #test "source dedup checks all position normal uv color words and hash is ordered" {a:=[9]u32.[1,2,3,4,5,6,7,8,9];b:[48]u8;for w:0..<9 {scan_put(b[..],w*4,a[w]);}#assert cp_equal(b[..],0,a[..]);for w:0..<9 {c:=a;c[w]+=1;#assert !cp_equal(b[..],0,c[..]) && cp_hash(a[..])!=cp_hash(c[..]);}}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}path:[4096]u8;src:=args_at(a[..],0);dest:=args_at(a[..],1);
   text:[65536]u8;tn:=fs_read(cp_path(src,"canyon.gltf",path[..]),text[..]);if tn<0 {return 3;}d:[1]Jv;nodes:[2048]JvNode;if !jv_parse(d[..],cast(string)text[0..<tn],nodes[..]) {return 4;}
   doc:=d[0];access:=jv_get(doc,0,"accessors");views:=jv_get(doc,0,"bufferViews");offsets:[5]int;counts:[5]int;

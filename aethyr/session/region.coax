@@ -57,19 +57,19 @@ RegionArbiter :: struct { epoch: int; primary: int = -1; until: int; now: int; c
 RegionGrant :: struct { status: int; epoch: int; }
 // book:end region-profile
 
-region_count :: (counts: [] int, status: int) -> int { counts[status] += 1; return status; }
-region_known :: (r: int) -> bool { return r >= 0 && r < REGION_STORES; }
+region_count :: (counts: [] int, status: int) -> int #effects(all) { counts[status] += 1; return status; }
+region_known :: (r: int) -> bool #effects(all) { return r >= 0 && r < REGION_STORES; }
 
 // book:begin region-arbiter
 // Region r starts as the first primary (epoch 1).
-region_first :: (a: [] RegionArbiter, s: [] RegionStore, r: int) -> RegionGrant {
+region_first :: (a: [] RegionArbiter, s: [] RegionStore, r: int) -> RegionGrant #effects(all) {
   if !region_known(r) || a[0].epoch != 0 { return RegionGrant.{status = region_count(a[0].counts[..], REGION_STALE), epoch = a[0].epoch}; }
   a[0].epoch = 1; a[0].primary = r; a[0].until = a[0].now + REGION_LEASE;
   s[r].role = REGION_PRIMARY; s[r].epoch = 1;
   return RegionGrant.{status = region_count(a[0].counts[..], REGION_OK), epoch = 1};
 }
 // The primary of epoch `epoch` renews its lease; any other is refused.
-region_renew :: (a: [] RegionArbiter, r: int, epoch: int) -> int {
+region_renew :: (a: [] RegionArbiter, r: int, epoch: int) -> int #effects(all) {
   if epoch < a[0].epoch { return region_count(a[0].counts[..], REGION_STALE); }
   if r != a[0].primary || a[0].now >= a[0].until { return region_count(a[0].counts[..], REGION_NOT_PRIMARY); }
   a[0].until = a[0].now + REGION_LEASE;
@@ -77,7 +77,7 @@ region_renew :: (a: [] RegionArbiter, r: int, epoch: int) -> int {
 }
 // Promote region r's replica: refused while the primary's lease is live (unless forced), or when its
 // build can't read the store. The new primary fences its store at the new epoch.
-region_promote :: (a: [] RegionArbiter, s: [] RegionStore, r: int, forced: bool) -> RegionGrant {
+region_promote :: (a: [] RegionArbiter, s: [] RegionStore, r: int, forced: bool) -> RegionGrant #effects(all) {
   if !region_known(r) || r == a[0].primary { return RegionGrant.{status = region_count(a[0].counts[..], REGION_NOT_PRIMARY), epoch = a[0].epoch}; }
   if !forced && a[0].now < a[0].until { return RegionGrant.{status = region_count(a[0].counts[..], REGION_LEASED), epoch = a[0].epoch}; }
   if s[r].schema != REGION_SCHEMA && s[r].schema != REGION_SCHEMA - 1 { return RegionGrant.{status = region_count(a[0].counts[..], REGION_VERSION), epoch = a[0].epoch}; }
@@ -85,15 +85,15 @@ region_promote :: (a: [] RegionArbiter, s: [] RegionStore, r: int, forced: bool)
   s[r].role = REGION_PRIMARY; s[r].epoch = a[0].epoch;
   return RegionGrant.{status = region_count(a[0].counts[..], REGION_OK), epoch = a[0].epoch};
 }
-region_tick :: (a: [] RegionArbiter, ticks: int) { a[0].now += ticks; }
+region_tick :: (a: [] RegionArbiter, ticks: int) #effects(all) { a[0].now += ticks; }
 // The first owner generation a directory in epoch e issues.
-region_gen_base :: (epoch: int) -> int { return epoch << REGION_GEN_SHIFT; }
+region_gen_base :: (epoch: int) -> int #effects(all) { return epoch << REGION_GEN_SHIFT; }
 // book:end region-arbiter
 
 // book:begin region-store
 // A write to store s by a region at epoch `epoch`: character c's value v under owner generation gen.
 // Refused when the store isn't a primary, the epoch is old, or the log is full. Its LSN, or 0.
-region_write :: (s: [] RegionStore, epoch: int, c: int, gen: int, v: int) -> int {
+region_write :: (s: [] RegionStore, epoch: int, c: int, gen: int, v: int) -> int #effects(all) {
   if epoch < s[0].epoch { _ := region_count(s[0].counts[..], REGION_STALE); return 0; }
   if s[0].role != REGION_PRIMARY || epoch != s[0].epoch { _ := region_count(s[0].counts[..], REGION_NOT_PRIMARY); return 0; }
   if s[0].n >= REGION_LOG { _ := region_count(s[0].counts[..], REGION_FULL); return 0; }
@@ -105,7 +105,7 @@ region_write :: (s: [] RegionStore, epoch: int, c: int, gen: int, v: int) -> int
 // Replication: the replica `to` applies `from`'s entries in order up to LSN `upto` (the lag decides
 // how far). An entry of an epoch below the replica's own is refused, so a replica the arbiter promoted
 // never takes the old primary's late entries. Entries applied.
-region_replicate :: (from: [] RegionStore, to: [] RegionStore, upto: int) -> int {
+region_replicate :: (from: [] RegionStore, to: [] RegionStore, upto: int) -> int #effects(all) {
   if to[0].role != REGION_REPLICA { _ := region_count(to[0].counts[..], REGION_NOT_PRIMARY); return 0; }
   got := 0;
   while to[0].n < from[0].n && to[0].n < upto {
@@ -118,13 +118,13 @@ region_replicate :: (from: [] RegionStore, to: [] RegionStore, upto: int) -> int
   return got;
 }
 // The value store s holds for character c (the last write's), or -1.
-region_value :: (s: [] RegionStore, c: int) -> int {
+region_value :: (s: [] RegionStore, c: int) -> int #effects(all) {
   v := -1;
   for i: 0..<s[0].n { if s[0].log[i].c == c { v = s[0].log[i].v; } }
   return v;
 }
 // The loss window: entries the old primary `old` took that the new primary `now` doesn't hold.
-region_window :: (old: [] RegionStore, now: [] RegionStore) -> int {
+region_window :: (old: [] RegionStore, now: [] RegionStore) -> int #effects(all) {
   k := 0;
   // (an entry's LSN is its place, so entries in one place are the same write when epoch and value agree)
   while k < old[0].n && k < now[0].n && old[0].log[k].epoch == now[0].log[k].epoch && old[0].log[k].v == now[0].log[k].v { k += 1; }
@@ -133,7 +133,7 @@ region_window :: (old: [] RegionStore, now: [] RegionStore) -> int {
 // A former primary comes back: the arbiter's epoch is newer, so it becomes a replica at that epoch,
 // its log cut back to what the new primary `now` holds in common (the rest counted lost, never merged),
 // then caught up.
-region_rejoin :: (a: [] RegionArbiter, s: [] RegionStore, now: [] RegionStore) -> int {
+region_rejoin :: (a: [] RegionArbiter, s: [] RegionStore, now: [] RegionStore) -> int #effects(all) {
   if s[0].epoch >= a[0].epoch { return region_count(s[0].counts[..], REGION_OK); }
   lost := region_window(s, now);
   s[0].n -= lost; s[0].lost += lost;
@@ -145,7 +145,7 @@ region_rejoin :: (a: [] RegionArbiter, s: [] RegionStore, now: [] RegionStore) -
 
 // ---- checks
 
-region_world :: (a: [] RegionArbiter, s: [] RegionStore) { g := region_first(a, s, 0); }
+region_world :: (a: [] RegionArbiter, s: [] RegionStore) #effects(all) { g := region_first(a, s, 0); }
 
 #test "region: one primary; a replica behind it by the lag; a promotion while the lease is live is refused" {
   a: [1] RegionArbiter; s: [REGION_STORES] RegionStore;

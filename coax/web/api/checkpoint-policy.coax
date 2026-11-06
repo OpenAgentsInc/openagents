@@ -7,13 +7,13 @@
 CP_KEYS :: [17]string.["v","owner","process","rev","at","sent","engine","rules","content","hp","max","xp","wanted","x_mm","y_mm","z_mm","yaw_mrad"];
 CP_LOW :: [17]int.[1,1,1,1,1,1,1,1,1,0,1,0,0,-10000000,-10000000,-10000000,-1000000];
 CP_HIGH :: [17]int.[1,2147483647,9007199254740991,9007199254740991,9007199254740991,9007199254740991,2147483647,2147483647,2147483647,99999,99999,9999999,5,10000000,10000000,10000000,1000000];
-cp_number_ok :: (field:int,n:int)->bool {return field>=0&&field<17&&n>=CP_LOW[field]&&n<=CP_HIGH[field];}
-cp_alphabet :: (s:string)->bool {
+cp_number_ok :: (field:int,n:int)->bool #effects(all) {return field>=0&&field<17&&n>=CP_LOW[field]&&n<=CP_HIGH[field];}
+cp_alphabet :: (s:string)->bool #effects(all) {
   for c:s{if !((c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='-'){return false;}}return true;
 }
 // A decoder's explicit invalid-integer result; zero is a valid HP/coordinate.
-cp_integer :: (d:Jv,node:int)->int {return jv_int(d,node,-9007199254740991);}
-room_checkpoint_input :: (text:string,now:int)->bool #export_c {
+cp_integer :: (d:Jv,node:int)->int #effects(all) {return jv_int(d,node,-9007199254740991);}
+room_checkpoint_input :: (text:string,now:int)->bool #export_c #effects(all) {
   if text.count>4096||now<1||now>9007199254740991{return false;}
   nodes:[64]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]){return false;}if jv_len(d[0],0)!=20{return false;}
   values:[17]int;for i:0..<17{values[i]=cp_integer(d[0],jv_get(d[0],0,CP_KEYS[i]));if !cp_number_ok(i,values[i]){return false;}}
@@ -28,7 +28,7 @@ room_checkpoint_input :: (text:string,now:int)->bool #export_c {
 
 // Decisions consumed as SDK transaction effects: 0 writes, all others leave the
 // checkpoint unchanged. Directory and current-checkpoint facts stay locked.
-room_checkpoint_decide :: (durable:bool,known:bool,owner:OwnerGeneration,directory:OwnerGeneration,process:int,rev:int,xp:int,old_owner:OwnerGeneration,old_process:int,old_rev:int,old_xp:int,same:bool)->int #export_c {
+room_checkpoint_decide :: (durable:bool,known:bool,owner:OwnerGeneration,directory:OwnerGeneration,process:int,rev:int,xp:int,old_owner:OwnerGeneration,old_process:int,old_rev:int,old_xp:int,same:bool)->int #export_c #effects(all) {
   if !durable{return 7;}if !known{return 6;}if owner!=directory{return 3;}
   if old_owner==owner {
     if old_process!=process{return 5;}
@@ -36,7 +36,7 @@ room_checkpoint_decide :: (durable:bool,known:bool,owner:OwnerGeneration,directo
   }
   if xp<old_xp{return 8;}return 0;
 }
-room_checkpoint_status :: (code:int)->string #export_c {
+room_checkpoint_status :: (code:int)->string #export_c #effects(all) {
   names:=[9]string.["applied","duplicate","stale","fenced","conflict","process","unknown","unavailable","regression"];
   return ifx code>=0&&code<9 then names[code] else "unavailable";
 }

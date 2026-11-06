@@ -51,7 +51,7 @@ CL_PENDING :: "# Changelog\n\n## 0.38.0 — Generic Constraints — 2026-11-01\n
     #assert !CL_plan(text,"0.37.0","",false).ok && !CL_plan(text,"0.37.0","",true).ok;
   }
 }
-CL_title :: (text:string)->bool {
+CL_title :: (text:string)->bool #effects(all) {
   start:=0;gaps:=0;
   for c,i:text {
     if c==' ' {
@@ -61,15 +61,15 @@ CL_title :: (text:string)->bool {
   }
   return CL_title_word(text[start..<text.count]) && gaps>=1 && gaps<=3;
 }
-CL_first_space :: (text:string)->int {
+CL_first_space :: (text:string)->int #effects(all) {
   for c,i:text {if c==' ' {return i;}}
   return -1;
 }
-CL_title_char :: (c:u8)->bool {
+CL_title_char :: (c:u8)->bool #effects(all) {
   // The shipped reader's title font is ASCII; spelling case remains authored.
   return (c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9');
 }
-CL_title_word :: (text:string)->bool {
+CL_title_word :: (text:string)->bool #effects(all) {
   if text.count==0 {return false;}
   if !CL_title_char(text[0]) || !CL_title_char(text[text.count-1]) {return false;}
   for c:text {if !CL_title_char(c) && c!='-' && c!='\'' {return false;}}
@@ -207,17 +207,17 @@ CL_title_word :: (text:string)->bool {
     bytes[i]=old;
   }
 }
-CL_decimal :: (text:string)->int {
+CL_decimal :: (text:string)->int #effects(all) {
   if text.count<1 || text.count>4 {return -1;}
   out:=0;
   for c:text {if c<'0' || c>'9' {return -1;}out=out*10+int(c)-int('0');}
   return out;
 }
-CL_lower :: (c:u8)->u8 {
+CL_lower :: (c:u8)->u8 #effects(all) {
   if c>='A' && c<='Z' {return c+32;}
   return c;
 }
-CL_plan :: (text:string,version:string,commit:string,write:bool)->ChangelogPlan #export_c {
+CL_plan :: (text:string,version:string,commit:string,write:bool)->ChangelogPlan #export_c #effects(all) {
   p:ChangelogPlan;
   if text.count>CL_MAX_BYTES {return p;}
   if commit!="" && commit!="pending" && !CL_hash(commit) {return p;}
@@ -272,17 +272,17 @@ CL_plan :: (text:string,version:string,commit:string,write:bool)->ChangelogPlan 
   if !p.replace {p.from=0;p.to=0;}
   p.ok=true;return p;
 }
-CL_at :: (text:string,at:int,part:string)->bool {
+CL_at :: (text:string,at:int,part:string)->bool #effects(all) {
   if at<0 || part.count>text.count || at>text.count-part.count {return false;}
   for i:0..<part.count {if text[at+i]!=part[i] {return false;}}
   return true;
 }
-CL_hash :: (text:string)->bool {
+CL_hash :: (text:string)->bool #effects(all) {
   if text.count!=40 {return false;}
   for c:text {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
   return true;
 }
-CL_date :: (text:string)->bool {
+CL_date :: (text:string)->bool #effects(all) {
   if text.count!=10 {return false;}
   if text[4]!='-' || text[7]!='-' {return false;}
   year:=CL_decimal(text[0..<4]);month:=CL_decimal(text[5..<7]);day:=CL_decimal(text[8..<10]);
@@ -294,7 +294,7 @@ CL_date :: (text:string)->bool {
   }
   return day<=days;
 }
-CL_summary :: (line:string)->bool {
+CL_summary :: (line:string)->bool #effects(all) {
   if !CL_at(line,0,"- ") {return false;}
   start:=2;
   while start<line.count && (line[start]==' ' || line[start]=='\t') {start+=1;}

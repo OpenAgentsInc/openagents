@@ -19,18 +19,18 @@ PkfPlan :: struct {ok:bool;input:int;conv:int;output:int;h:int;a:int;b:int;q:int
  #assert !pkf_plan(s,frames).ok;
 }
 
-pkf_plan :: (s:CfShape,frames:int)->PkfPlan #export_c {
+pkf_plan :: (s:CfShape,frames:int)->PkfPlan #export_c #effects(all) {
  if cf_shape_check(s)!=CfStatus.ok || frames<1 || frames>CF_FRAMES_MAX || s.dim/s.heads>128 {return PkfPlan.{};}
  t1:=cf_stage(frames);f1:=cf_stage(s.mels);n:=cf_length(frames);nd:=n*s.dim;np:=(2*n-1)*s.dim;
  a:=PkfPlan.{ok=true,input=frames*s.mels,conv=s.channels*t1*f1,output=nd,n=n};a.h=a.input+2*a.conv;a.a=a.h+nd;a.b=a.a+nd;a.q=a.b+n*s.hidden;
  a.k=a.q+nd;a.v=a.k+nd;a.ctx=a.v+nd;a.p=a.ctx+nd;a.rp=a.p+np;a.two=a.rp+np;a.g=a.two+2*nd;a.c=a.g+nd;a.end=a.c+nd;return a;
 }
-pkf_admit :: (s:CfShape,frames:int,weights:int,input:int,work:int,output:int)->bool #export_c {
+pkf_admit :: (s:CfShape,frames:int,weights:int,input:int,work:int,output:int)->bool #export_c #effects(all) {
  p:=pkf_plan(s,frames);return p.ok && weights==cf_weight_count(s) && input==p.input && work>=p.end && output>=p.n*s.dim;
 }
-pkf_shape :: ()->CfShape #export_c {return cf_parakeet();}
-pkf_weights :: ()->int #export_c {return cf_weight_count(cf_parakeet());}
-pkf_work :: (frames:int)->int #export_c {return pkf_plan(cf_parakeet(),frames).end;}
+pkf_shape :: ()->CfShape #export_c #effects(all) {return cf_parakeet();}
+pkf_weights :: ()->int #export_c #effects(all) {return cf_weight_count(cf_parakeet());}
+pkf_work :: (frames:int)->int #export_c #effects(all) {return pkf_plan(cf_parakeet(),frames).end;}
 
 
 #forall "Parakeet GPU finite input and output bounds preserve the declared numeric profile" mode:0..<8 {
@@ -43,9 +43,9 @@ pkf_work :: (frames:int)->int #export_c {return pkf_plan(cf_parakeet(),frames).e
  #assert pkf_input_valid(s,frames,x[..])==(mode!=1 && mode!=2 && mode!=3);
  #assert pkf_output_valid(s,frames,y[..])==(mode!=4 && mode!=5);
 }
-pkf_input_valid :: (s:CfShape,frames:int,x:[]f32)->bool #export_c {
+pkf_input_valid :: (s:CfShape,frames:int,x:[]f32)->bool #export_c #effects(all) {
  p:=pkf_plan(s,frames);if !p.ok || x.count!=p.input {return false;}lengths:=[1]int.[frames];return cf_features_ok(x,lengths[..],s.mels,frames);
 }
-pkf_output_valid :: (s:CfShape,frames:int,x:[]f32)->bool #export_c {
+pkf_output_valid :: (s:CfShape,frames:int,x:[]f32)->bool #export_c #effects(all) {
  p:=pkf_plan(s,frames);if !p.ok || x.count!=p.output {return false;}lengths:=[1]int.[p.n];return cf_frames_ok(x,lengths[..],p.n,s.dim);
 }

@@ -69,19 +69,19 @@ CT_FA :: "sha256:aa";
 CT_FB :: "sha256:bb";
 CT_T0 :: 1790000000;
 
-ct_scope :: ()->CtrlScope {return CtrlScope.{task=CT_TASK,controller=CT_HOST,generation=3};}
-ct_invitation :: ()->CtrlInvitation {
+ct_scope :: ()->CtrlScope #effects(all) {return CtrlScope.{task=CT_TASK,controller=CT_HOST,generation=3};}
+ct_invitation :: ()->CtrlInvitation #effects(all) {
   i:CtrlInvitation;i.invitation=CT_I1;i.challenge=CT_K1;i.client=CT_C3;i.scope=ct_scope();
   i.rights=(1<<CT_OBSERVE)|(1<<CT_CANCEL);i.expires_at=CT_T0+600;return i;
 }
-ct_pairing :: ()->CtrlPairing {
+ct_pairing :: ()->CtrlPairing #effects(all) {
   p:CtrlPairing;p.invitation=CT_I1;p.signer=CT_C3;p.client=CT_C3;p.challenge=CT_K1;
   p.rights=1<<CT_CANCEL;p.accepted=true;p.fingerprint=CT_FA;return p;
 }
-ct_grant :: ()->CtrlGrant {
+ct_grant :: ()->CtrlGrant #effects(all) {
   g:CtrlGrant;g.grant=CT_G1;g.client=CT_C3;g.scope=ct_scope();g.rights=1<<CT_CANCEL;g.issued_at=CT_T0;g.expires_at=CT_T0+86400;return g;
 }
-ct_command :: (at:int)->CtrlCommand {
+ct_command :: (at:int)->CtrlCommand #effects(all) {
   c:CtrlCommand;c.command=CT_CMD;c.fingerprint=CT_FA;c.signer=CT_C3;c.grant=CT_G1;c.scope=ct_scope();
   c.expected_revision=4;c.issued_at=at;c.expires_at=at+300;c.action=CT_CANCEL;return c;
 }
@@ -205,7 +205,7 @@ ct_command :: (at:int)->CtrlCommand {
 // book:begin pair
 // Consumes the invitation a pairing response answers. On acceptance the new
 // grant goes to grants[count] and count grows by one.
-ctrl_pair :: (invitations:[]CtrlInvitation,grants:[]CtrlGrant,count:[]int,p:CtrlPairing,current:CtrlScope,owner_admitted:bool,grant:string,until:int,now:int)->u32 {
+ctrl_pair :: (invitations:[]CtrlInvitation,grants:[]CtrlGrant,count:[]int,p:CtrlPairing,current:CtrlScope,owner_admitted:bool,grant:string,until:int,now:int)->u32 #effects(all) {
   k:=-1;
   for i:0..<invitations.count {if invitations[i].invitation==p.invitation {k=i;}}
   if k<0 {return CT_NOT_ADMITTED;}
@@ -225,12 +225,12 @@ ctrl_pair :: (invitations:[]CtrlInvitation,grants:[]CtrlGrant,count:[]int,p:Ctrl
   return CT_ACCEPTED;
 }
 // book:end pair
-ctrl_same :: (a:CtrlScope,b:CtrlScope)->bool {
+ctrl_same :: (a:CtrlScope,b:CtrlScope)->bool #effects(all) {
   return a.task==b.task && a.controller==b.controller && a.generation==b.generation;
 }
 
 // book:begin revoke
-ctrl_revoke :: (grants:[]CtrlGrant,grant:string,actor:string,owner:string)->u32 {
+ctrl_revoke :: (grants:[]CtrlGrant,grant:string,actor:string,owner:string)->u32 #effects(all) {
   if actor!=owner {return CT_NOT_ADMITTED;}
   for i:0..<grants.count {
     if grants[i].grant==grant {
@@ -243,7 +243,7 @@ ctrl_revoke :: (grants:[]CtrlGrant,grant:string,actor:string,owner:string)->u32 
 // book:end revoke
 
 // book:begin admit
-ctrl_command_admit :: (grants:[]CtrlGrant,retained:[]CtrlRetained,c:CtrlCommand,current:CtrlScope,revision:int,now:int)->u32 {
+ctrl_command_admit :: (grants:[]CtrlGrant,retained:[]CtrlRetained,c:CtrlCommand,current:CtrlScope,revision:int,now:int)->u32 #effects(all) {
   // 1. The grant, and the key it was paired with.
   k:=-1;
   for i:0..<grants.count {if grants[i].grant==c.grant {k=i;}}

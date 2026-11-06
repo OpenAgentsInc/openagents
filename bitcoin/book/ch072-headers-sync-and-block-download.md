@@ -113,7 +113,7 @@ SY_RECENT :: 24 * 60 * 60;       // headers from every peer once the best header
 // HeadersSyncParams: a commitment every period headers, and how many
 // redownloaded headers wait before release.
 SyHeadersParams :: struct { period: int; buffer: int; }
-sy_headers_params :: (chain: int) -> SyHeadersParams {
+sy_headers_params :: (chain: int) -> SyHeadersParams #effects(all) {
   if chain == CHAIN_MAIN { return SyHeadersParams.{period=649, buffer=15400}; }
   if chain == CHAIN_TESTNET3 { return SyHeadersParams.{period=682, buffer=14613}; }
   if chain == CHAIN_TESTNET4 { return SyHeadersParams.{period=616, buffer=16199}; }
@@ -127,7 +127,7 @@ sy_headers_params :: (chain: int) -> SyHeadersParams {
 // A getheaders payload for the locator of entry i (chapter 59's
 // LocatorEntries), optionally led by one more hash, and a zero stop hash:
 // "send what follows the first of these you have". Returns its size.
-sy_getheaders_write_vartime :: (t: [] BlockTree, first: [] u8, i: int, out: [] u8) -> int {
+sy_getheaders_write_vartime :: (t: [] BlockTree, first: [] u8, i: int, out: [] u8) -> int #effects(all) {
   idx: [64] int;
   n := bi_locator(t[0].l, i, idx[..]);
   hashes: [32 * 65] u8; k := 0;
@@ -139,7 +139,7 @@ sy_getheaders_write_vartime :: (t: [] BlockTree, first: [] u8, i: int, out: [] u
 // The other side: FindForkInGlobalIndex. The first locator hash on the
 // peer's active chain (heights[] of its chain, by position in hashes),
 // else genesis; the answer starts one block after it.
-sy_find_fork_vartime :: (chain: [] u8, height: int, locator: [] u8, count: int) -> int {
+sy_find_fork_vartime :: (chain: [] u8, height: int, locator: [] u8, count: int) -> int #effects(all) {
   for m: 0..<count {
     for h: 0..<height + 1 {
       same := true;
@@ -223,7 +223,7 @@ SY_HSS_OK :: 0; SY_HSS_CLOCK :: 1; SY_HSS_MEMORY :: 2;
 // same way as one past the bound. buf holds buffer_size plus one message
 // of headers.
 sy_hss_init :: (s: [] SyHss, t: [] BlockTree, start: int, hp: SyHeadersParams, min_work: U256, now: int,
-                offset: int, k0: u64, k1: u64, bits: [] u8, buf: [] SyCompressed) -> int {
+                offset: int, k0: u64, k1: u64, bits: [] u8, buf: [] SyCompressed) -> int #effects(all) {
   e := t[0].e[start];
   since := now - bi_median_time_past(t[0].l, t[0].e, start) + DS_MAX_FUTURE;
   if since < 0 { return SY_HSS_CLOCK; }
@@ -237,16 +237,16 @@ sy_hss_init :: (s: [] SyHss, t: [] BlockTree, start: int, hp: SyHeadersParams, m
   return SY_HSS_OK;
 }
 // m_hasher(hash) & 1: SipHash-2-4 of the 32 hash bytes under the salt.
-sy_commitment :: (s: [] SyHss, hash: [] u8) -> u8 { return cast,trunc(u8) (siphash24(s[0].k0, s[0].k1, hash) & 1); }
+sy_commitment :: (s: [] SyHss, hash: [] u8) -> u8 #effects(all) { return cast,trunc(u8) (siphash24(s[0].k0, s[0].k1, hash) & 1); }
 // Finalize: drop everything; the state can't be used again.
-sy_hss_finalize :: (s: [] SyHss) {
+sy_hss_finalize :: (s: [] SyHss) #effects(all) {
   s[0].bits_n = 0; s[0].buf_n = 0; s[0].process_all = false; s[0].height = 0;
   s[0].state = SY_FINAL;
 }
 // ValidateAndProcessSingleHeader: PRESYNC checks only that the difficulty
 // could have changed this way (chapter 48's PermittedDifficultyTransition)
 // and keeps a commitment at heights offset mod period.
-sy_presync_one :: (s: [] SyHss, raw: [] u8) -> bool {
+sy_presync_one :: (s: [] SyHss, raw: [] u8) -> bool #effects(all) {
   h := pow_header_read_vartime(raw);
   next := s[0].height + 1;
   if retarget_permitted_vartime(s[0].r, next, s[0].last_bits, h.bits) != RETARGET_OK { return false; }
@@ -265,7 +265,7 @@ sy_presync_one :: (s: [] SyHss, raw: [] u8) -> bool {
 // ValidateAndStoreHeadersCommitments: the batch must continue the last
 // header; once the work reaches the minimum, REDOWNLOAD starts again from
 // the chain start.
-sy_presync :: (s: [] SyHss, headers: [] u8, n: int) -> bool {
+sy_presync :: (s: [] SyHss, headers: [] u8, n: int) -> bool #effects(all) {
   for j: 0..<32 { if headers[4 + j] != s[0].last_hash[j] { return false; } }
   for k: 0..<n { if !sy_presync_one(s, headers[80 * k..<80 * k + 80]) { return false; } }
   if u256_compare_vartime(s[0].work, s[0].min_work) >= 0 {
@@ -280,7 +280,7 @@ sy_presync :: (s: [] SyHss, headers: [] u8, n: int) -> bool {
 // buffer, change difficulty as permitted, and match its commitment, until
 // the redownloaded work reaches the minimum; from then on (the target is
 // reached) commitments are no longer checked.
-sy_redownload_one :: (s: [] SyHss, raw: [] u8) -> bool {
+sy_redownload_one :: (s: [] SyHss, raw: [] u8) -> bool #effects(all) {
   h := pow_header_read_vartime(raw);
   next := s[0].buf_last_height + 1;
   for j: 0..<32 { if h.prev[j] != s[0].buf_last_hash[j] { return false; } }
@@ -306,7 +306,7 @@ sy_redownload_one :: (s: [] SyHss, raw: [] u8) -> bool {
 }
 // PopHeadersReadyForAcceptance: whatever is beyond the buffer, or all of
 // it once the target is reached, rebuilt as full headers into out.
-sy_pop_ready :: (s: [] SyHss, out: [] u8) -> int {
+sy_pop_ready :: (s: [] SyHss, out: [] u8) -> int #effects(all) {
   n := 0;
   while s[0].buf_n > s[0].buffer_size || (s[0].buf_n > 0 && s[0].process_all) {
     c := s[0].buf[s[0].buf_head];
@@ -322,7 +322,7 @@ sy_pop_ready :: (s: [] SyHss, out: [] u8) -> int {
 // ProcessNextHeaders: n headers, 80 bytes each; full says the message held
 // 2,000. Headers released for storage go to out. Anything but success
 // with more to request finalizes the state.
-sy_hss_process :: (s: [] SyHss, headers: [] u8, n: int, full: bool, out: [] u8) -> SyHssResult {
+sy_hss_process :: (s: [] SyHss, headers: [] u8, n: int, full: bool, out: [] u8) -> SyHssResult #effects(all) {
   r: SyHssResult;
   if n == 0 || s[0].state == SY_FINAL { return r; }
   if s[0].state == SY_PRESYNC {
@@ -343,7 +343,7 @@ sy_hss_process :: (s: [] SyHss, headers: [] u8, n: int, full: bool, out: [] u8) 
 }
 // NextHeadersRequestLocator: the last header PRESYNC received, or the last
 // one REDOWNLOAD stored, then the chain start's locator.
-sy_hss_locator_vartime :: (s: [] SyHss, t: [] BlockTree, start: int, out: [] u8) -> int {
+sy_hss_locator_vartime :: (s: [] SyHss, t: [] BlockTree, start: int, out: [] u8) -> int #effects(all) {
   if s[0].state == SY_FINAL { return -1; }
   first := ifx s[0].state == SY_PRESYNC then s[0].last_hash else s[0].buf_last_hash;
   return sy_getheaders_write_vartime(t, first[..], start, out);
@@ -393,12 +393,12 @@ SY_H_INVALID :: 5;       // Misbehaving: a header failed (reason)
 SY_H_NAMES :: [6] string.["stored", "presync", "low work", "unconnected", "empty", "invalid"];
 SyHeaders :: struct { code: int; reason: int; accepted: int; last: int; presync_failed: bool; locator_n: int; }
 // GetAntiDoSWorkThreshold of chapter 71, at the active chain's tip.
-sy_threshold :: (t: [] BlockTree, min_work: U256) -> U256 {
+sy_threshold :: (t: [] BlockTree, min_work: U256) -> U256 #effects(all) {
   tip := bi_tip(t);
   return ds_threshold(t[0].e[tip].work, t[0].e[tip].bits, min_work);
 }
 // MaybeSendGetHeaders: at most one request out per 2 minutes.
-sy_maybe_getheaders :: (p: [] SyHeadersPeer, t: [] BlockTree, first: [] u8, from: int, now: int, out: [] u8) -> int {
+sy_maybe_getheaders :: (p: [] SyHeadersPeer, t: [] BlockTree, first: [] u8, from: int, now: int, out: [] u8) -> int #effects(all) {
   if p[0].last_getheaders != 0 && !ds_getheaders_due(p[0].last_getheaders, now) { return 0; }
   p[0].last_getheaders = now;
   return sy_getheaders_write_vartime(t, first, from, out);
@@ -406,7 +406,7 @@ sy_maybe_getheaders :: (p: [] SyHeadersPeer, t: [] BlockTree, first: [] u8, from
 // ProcessHeadersMessage for n headers (80 bytes each, in raw). hss_bits,
 // hss_buf and scratch (room for buffer + 2,000 headers) back a presync.
 sy_on_headers_vartime :: (p: [] SyHeadersPeer, t: [] BlockTree, raw: [] u8, n: int, now: int, min_work: U256,
-                          salt: [3] u64, hss_bits: [] u8, hss_buf: [] SyCompressed, scratch: [] u8, out: [] u8) -> SyHeaders {
+                          salt: [3] u64, hss_bits: [] u8, hss_buf: [] SyCompressed, scratch: [] u8, out: [] u8) -> SyHeaders #effects(all) {
   r := SyHeaders.{last=-1};
   none: [1] u8;
   if n == 0 {
@@ -518,7 +518,7 @@ SyDownload :: struct {
   min_work: U256;
   peers: [] SyPeer; downloading_from: int;     // m_peers_downloading_from
 }
-sy_dl_init :: (d: [] SyDownload, t: [] BlockTree, have: [] u8, linked: [] u8, owner: [] int, peers: [] SyPeer, min_work: U256) {
+sy_dl_init :: (d: [] SyDownload, t: [] BlockTree, have: [] u8, linked: [] u8, owner: [] int, peers: [] SyPeer, min_work: U256) #effects(all) {
   for i: 0..<have.count { have[i] = 0; linked[i] = 0; owner[i] = 0; }
   d[0] = SyDownload.{t=t, have=have, linked=linked, owner=owner, tip=0, timeout=SY_STALL_DEFAULT, min_work=min_work, peers=peers};
   have[0] = 1; linked[0] = 1;   // genesis
@@ -534,7 +534,7 @@ sy_dl_init :: (d: [] SyDownload, t: [] BlockTree, have: [] u8, linked: [] u8, ow
 // linked they move the last common block forward; blocks in flight from
 // another peer are skipped, the first of them naming who we wait for.
 SyFind :: struct { n: int; staller: int; }
-sy_find_next_vartime :: (d: [] SyDownload, p: int, count: int, out: [] int) -> SyFind {
+sy_find_next_vartime :: (d: [] SyDownload, p: int, count: int, out: [] int) -> SyFind #effects(all) {
   f := SyFind.{staller=-1};
   t := d[0].t; l := t[0].l; e := t[0].e;
   peers := d[0].peers;
@@ -603,13 +603,13 @@ things:
 // the peer; requests go to out.
 SY_OK :: 0; SY_STALLED :: 1; SY_TIMED_OUT :: 2; SY_PAUSED :: 3;
 SyStep :: struct { verdict: int; n: int; staller: int; stall_started: bool; }
-sy_request :: (d: [] SyDownload, p: int, i: int, now: int) {
+sy_request :: (d: [] SyDownload, p: int, i: int, now: int) #effects(all) {
   peers := d[0].peers;
   peers[p].flight[peers[p].n] = i; peers[p].n += 1;
   d[0].owner[i] = p + 1;
   if peers[p].n == 1 { peers[p].downloading_since = now; d[0].downloading_from += 1; }
 }
-sy_dl_step :: (d: [] SyDownload, p: int, now: int, out: [] int) -> SyStep {
+sy_dl_step :: (d: [] SyDownload, p: int, now: int, out: [] int) -> SyStep #effects(all) {
   s := SyStep.{staller=-1};
   peers := d[0].peers;
   if !peers[p].live { return s; }
@@ -660,7 +660,7 @@ seconds, as each connected block does in Core.
 // RemoveBlockRequest: entry i is no longer in flight from peer p. The
 // next block in its queue starts its download clock, and the peer is no
 // longer stalling.
-sy_unrequest :: (d: [] SyDownload, p: int, i: int, now: int) {
+sy_unrequest :: (d: [] SyDownload, p: int, i: int, now: int) #effects(all) {
   peers := d[0].peers;
   k := 0;
   while k < peers[p].n && peers[p].flight[k] != i { k += 1; }
@@ -673,7 +673,7 @@ sy_unrequest :: (d: [] SyDownload, p: int, i: int, now: int) {
   d[0].owner[i] = 0;
 }
 // A peer disconnects: its requests go back to the pool.
-sy_dl_drop :: (d: [] SyDownload, p: int) {
+sy_dl_drop :: (d: [] SyDownload, p: int) #effects(all) {
   peers := d[0].peers;
   for k: 0..<peers[p].n { d[0].owner[peers[p].flight[k]] = 0; }
   if peers[p].n > 0 { d[0].downloading_from -= 1; }
@@ -683,7 +683,7 @@ sy_dl_drop :: (d: [] SyDownload, p: int) {
 // has data. Every block linked here is one Core would connect; each
 // lowers the stalling timeout by 15% (BlockConnected), to no less than
 // the default. Returns how many were linked.
-sy_link :: (d: [] SyDownload, i: int) -> int {
+sy_link :: (d: [] SyDownload, i: int) -> int #effects(all) {
   t := d[0].t; l := t[0].l; e := t[0].e;
   n := 0; j := i;
   while true {
@@ -702,7 +702,7 @@ sy_link :: (d: [] SyDownload, i: int) -> int {
 // A block arrived from peer p for entry i, already checked against its
 // header. An unrequested block is ignored, as Core ignores one during
 // initial block download. Returns how many blocks were linked.
-sy_dl_received :: (d: [] SyDownload, p: int, i: int, now: int) -> int {
+sy_dl_received :: (d: [] SyDownload, p: int, i: int, now: int) -> int #effects(all) {
   if d[0].owner[i] != p + 1 { return -1; }
   sy_unrequest(d, p, i, now);
   d[0].have[i] = 1;
@@ -713,7 +713,7 @@ sy_dl_received :: (d: [] SyDownload, p: int, i: int, now: int) -> int {
 // The blocks below entry i are taken as stored: a run that starts its
 // window there, as Core's AssumeUTXO chainstate starts from its snapshot
 // (chapter 79). Nothing below is downloaded or checked.
-sy_dl_assume :: (d: [] SyDownload, i: int) {
+sy_dl_assume :: (d: [] SyDownload, i: int) #effects(all) {
   l := d[0].t[0].l;
   j := i;
   while j >= 0 { d[0].have[j] = 1; d[0].linked[j] = 1; j = l[j].prev; }
@@ -736,7 +736,7 @@ of chapter 46. A block that fails either is the peer's fault
 // for, and its transactions hash to the header's Merkle root without a
 // duplicated subtree (chapter 46). Returns 0, or chapter 71's
 // BlockValidationResult for the failure.
-sy_check_block_vartime :: (b: [] u8, want: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, txids: [] u8, wtxids: [] u8, work: [] u8) -> int {
+sy_check_block_vartime :: (b: [] u8, want: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, txids: [] u8, wtxids: [] u8, work: [] u8) -> int #effects(all) {
   if b.count < 80 { return DS_BLOCK_CONSENSUS; }
   hash: [32] u8;
   #assert pow_block_hash_vartime(b[0..<80], hash[..]) == POW_OK;

@@ -21,12 +21,12 @@
 #forall "every actual transport row word participates in admission" row:0..<79 {
   original:=htc_test_rows();for field:0..<8 {rows:=original;rows[row][field]+=1;#assert !htc_transport(rows[..],0);}
 }
-htc_row :: (kind:int,text:string)->[8]int {
+htc_row :: (kind:int,text:string)->[8]int #effects(all) {
   h:u32=2166136261;for b:text {h=mul_wrap(h^u32(b),u32(16777619));}
   return [8]int.[4,kind,0,0,0,0,text.count,int(h)];
 }
-htc_result :: (op:int,id:int)->[8]int {return [8]int.[9,op,id,0,0,0,0,0];}
-htc_commands :: ()->[32][8]int {
+htc_result :: (op:int,id:int)->[8]int #effects(all) {return [8]int.[9,op,id,0,0,0,0,0];}
+htc_commands :: ()->[32][8]int #effects(all) {
   out:[32][8]int;
   out[5]=htc_row(911,"0 Aé🙂");out[6]=htc_row(911,"1 ");out[7]=htc_row(911,"2 first");out[8]=htc_row(911,"2 second");
   out[9]=htc_row(911,"0 large");out[10]=htc_row(911,"0 binary");out[11]=htc_row(912,"1");out[12]=htc_row(910,"ws://127.0.0.1:9170/echo");
@@ -35,19 +35,19 @@ htc_commands :: ()->[32][8]int {
   out[28]=htc_row(912,"0");out[29]=htc_row(912,"1");out[30]=htc_row(912,"2");out[31]=htc_row(912,"3");
   for i:0..<5 {out[i]=htc_row(910,"ws://127.0.0.1:9170/echo");}for i:19..<28 {out[i]=htc_row(920,"/api/host-contract/batch");}return out;
 }
-htc_results :: ()->[21][8]int {
+htc_results :: ()->[21][8]int #effects(all) {
   out:[21][8]int;out[4]=htc_result(1,-1);out[5]=htc_result(1,1);out[10]=htc_result(5,1);out[11]=htc_result(4,0);out[20]=htc_result(4,-1);
   for i:0..<4 {out[i]=htc_result(1,i);}for i:6..<10 {out[i]=htc_result(4,0);}for i:0..<8 {out[12+i]=htc_result(4,i);}return out;
 }
-htc_callbacks :: ()->[26][8]int {
+htc_callbacks :: ()->[26][8]int #effects(all) {
   out:[26][8]int;out[4]=htc_row(260,"");
   out[5]=htc_row(257,"Aé🙂");out[6]=htc_row(261,"");out[7]=htc_row(265,"first");out[8]=htc_row(265,"second");out[9]=htc_row(259,"");
   out[10]=htc_row(512,"200\nAé🙂");out[11]=htc_row(512,"0\n");out[12]=htc_row(512,"0\n");out[13]=htc_row(512,"200\nAé🙂");
   for i:0..<4 {out[22+i]=htc_row(258+4*i,"");}for i:0..<8 {out[14+i]=htc_row(512+i,"200\nbatch");}for i:0..<4 {out[i]=htc_row(256+4*i,"");}return out;
 }
-htc_equal :: (a:[8]int,b:[8]int)->bool {for k:0..<8 {if a[k]!=b[k] {return false;}}return true;}
-htc_next :: (callbacks:[][8]int,used:[]bool,kind:int)->int {for j:0..<callbacks.count {if !used[j] && callbacks[j][1]==kind {return j;}}return -1;}
-htc_transport :: (events:[][8]int,dropped:int)->bool #export_c {
+htc_equal :: (a:[8]int,b:[8]int)->bool #effects(all) {for k:0..<8 {if a[k]!=b[k] {return false;}}return true;}
+htc_next :: (callbacks:[][8]int,used:[]bool,kind:int)->int #effects(all) {for j:0..<callbacks.count {if !used[j] && callbacks[j][1]==kind {return j;}}return -1;}
+htc_transport :: (events:[][8]int,dropped:int)->bool #export_c #effects(all) {
   if dropped!=0 || events.count!=79 {return false;}
   commands:=htc_commands();results:=htc_results();callbacks:=htc_callbacks();
   c:=0;r:=0;used:[26]bool;reserved:[4]int;opened:[4]int;

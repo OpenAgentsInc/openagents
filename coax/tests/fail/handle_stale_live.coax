@@ -1,0 +1,8 @@
+// expect: trap assertion failed
+#load "../../lib/handle.coax";
+main :: () {
+  values: [1] HandlePlayer; generations: [1] u32; live: [1] bool; free: [1] int; state: [1] StoreState;
+  players := Store(HandlePlayer).{values = values[..], generations = generations[..], live = live[..], free = free[..], state = state[..]};
+  missing: Handle(HandlePlayer);
+  value := store_get_live(players, missing);
+}

@@ -44,7 +44,7 @@ NetReply :: struct { state: int; status: int; at: int; n: int; }
   #assert net_request(out[..],"contract.invalid","/a b",0,"","","")== -1;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || (args_count(a[..]) != 9 && args_count(a[..]) != 10) {
     tool_errln("usage: net OUT HOST PORT FLAGS PATH BODY PLAYER CAP TIMEOUT_MS [--host-v1]");

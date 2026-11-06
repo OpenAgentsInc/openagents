@@ -129,7 +129,7 @@ le_record :: (api: string, out_path: string, rows: [] LeRow, n: int, set: string
   return 0;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   tsv: [65536] u8; tn := fs_read("coax/web/api/eval_layout.tsv", tsv[..]);

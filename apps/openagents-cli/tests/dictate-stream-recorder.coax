@@ -4,8 +4,8 @@
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
 #load "../../../coax/lib/sys/proc.coax";
-cxterm_write :: (bytes:[]u8)->int #foreign;
-tool_main :: ()->int #export_c {
+cxterm_write :: (bytes:[]u8)->int #foreign #effects(all);
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) {return 2;}if !args_has(a[..],"--raw") {return 0;}
  raw:[102240]u8;n:=fs_read("psionic/fixtures/parakeet/6930-75918-0011.pcm",raw[..]);if n!=102240 {return 2;}
  bytes:[3840]u8;frame:=0;

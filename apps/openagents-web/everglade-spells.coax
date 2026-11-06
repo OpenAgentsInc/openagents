@@ -196,6 +196,7 @@ Spells :: struct {
   flames: [SP_FLAMES] SpFlame;
   burn: [DEMO_BODIES] f32;   // s each piece of debris has left to burn (fire breaks some alight)
   burn_by: [DEMO_BODIES] int;   // the seat that set each alight (everglade-fire.coax fi_owner)
+  burn_owner: [DEMO_BODIES] Handle(EvergladeSeat);
   sprites: [SP_FX * SP_FX_FLOATS] f32; sprite_n: int;   // this frame's puffs, for everglade-fx.wgsl (everglade-face.c coaxial_particles)
   stage: [SP_FX_STAGE * SP_FX_FLOATS] f32; stage_n: int;   // while drawing; sp_fx_close sorts them into `sprites`
   fx_far: [SP_FX_STAGE] f32; bucket: [SP_FX_BUCKETS + 1] int;
@@ -315,7 +316,7 @@ sp_deck_out_at :: (s: [] Everglade, x: f32, z: f32) -> int {
 // The page's face hands the city its pieces' storage (it is large, so a
 // city without spells, as most checks, holds none): from then on its town
 // can break.
-everglade_attach_demolish :: (s: [] Everglade, w: [] DemoWorld) #export_c {
+everglade_attach_demolish :: (s: [] Everglade, w: [] DemoWorld) #export_c #effects(all) {
   if w.count < 1 { return; }
   s[0].sp.dm = w;
   if s[0].started { spells_start(s); }
@@ -931,7 +932,7 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
     w[0].meta[b].cr *= burn; w[0].meta[b].cg *= burn * 0.94; w[0].meta[b].cb *= burn * 0.88;
     // a meteor sets some of what it broke alight, a bolt a few: it burns as it flies and where it lands
     s[0].sp.burn[b] = ifx kind == 0 && sp_rand(s) < 0.45 then 2.5 + 3.5 * sp_rand(s) else ifx kind == 1 && sp_rand(s) < 0.5 then 2.0 + 3.0 * sp_rand(s) else 0.0f32;   // a bolt, some
-    s[0].sp.burn_by[b] = fi_owner(s);
+    s[0].sp.burn_by[b] = fi_owner(s); s[0].sp.burn_owner[b]=fi_owner_reference(s,fi_owner(s));
   }
   // (a splash bursts on what is under the point: the ground or a roof, not in the air against a wall)
   floor_y := sp_surface(s, at.x, at.z, at.y + 0.5);
@@ -1918,8 +1919,8 @@ spells_plant :: (s: [] Everglade, x: f32, z: f32) -> Point {
 // The Water Orb's blow, for what floats (everglade-face.c hands it to river.coax everglade_river_shove):
 // its impulse, ρ·⁴⁄₃πr³·v (N s), and the speed its water runs out at over the surface (m/s), half its
 // throw's as it spreads.
-everglade_orb_impulse :: () -> f32 #export_c { r := f32(SP_ORB_R); return f32(SP_WATER) * 4.0 / 3.0 * f32(PI) * r * r * r * f32(SP_ORB_SPEED); }
-everglade_orb_sheet :: () -> f32 #export_c { return f32(SP_ORB_SPEED) * 0.5; }
+everglade_orb_impulse :: () -> f32 #export_c #effects(all) { r := f32(SP_ORB_R); return f32(SP_WATER) * 4.0 / 3.0 * f32(PI) * r * r * r * f32(SP_ORB_SPEED); }
+everglade_orb_sheet :: () -> f32 #export_c #effects(all) { return f32(SP_ORB_SPEED) * 0.5; }
 
 // ---- the HUD: the ring, the bolt's glow, the flash, the bar
 

@@ -23,7 +23,7 @@
   #assert txi_put_block_vartime(table[..],c[..],batch[..],b[..],TxiBlock.{height=2,count=1,seq=2,pos=8,n=100});#assert txi_occurrence_vartime(table[..],c[0].used,id[..],b[..]).code==TXI_CORRUPT;
   blockkey:[33]u8;txi_blockkey('J',b[..],blockkey[..]);c[0].used=kv_delete_vartime(table[..],c[0].used,blockkey[..]);#assert txi_occurrence_vartime(table[..],c[0].used,id[..],b[..]).code==TXI_CORRUPT;
 }
-txi_occurrence_vartime :: (table:[]u8,used:int,id:[]u8,hash:[]u8)->TxiHit #export_c {
+txi_occurrence_vartime :: (table:[]u8,used:int,id:[]u8,hash:[]u8)->TxiHit #export_c #effects(all) {
   meta:=txi_context_vartime(table,used);if meta.code!=LC_OK || id.count!=32 || hash.count!=32 {return TxiHit.{code=LC_CONTEXT};}
   key:[65]u8;txi_txkey(id,hash,key[..]);value:=lc_value_vartime(table,used,key[..]);if value.count==0 {return TxiHit.{code=TXI_MISS};}
   if value.count!=8 {return TxiHit.{code=TXI_CORRUPT};}b:=txi_block_vartime(table,used,hash);offset:=kv_get32(value,0);n:=kv_get32(value,4);

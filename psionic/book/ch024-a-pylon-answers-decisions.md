@@ -139,7 +139,7 @@ The first decision is whether an event gets an answer at all:
 // What a received event gets. verified: its id and BIP-340 signature checked;
 // decrypted: NIP-44 opened its content; code, type and answerable are
 // pd_admit's; free is pq_free.
-pq_route :: (verified:bool,kind:int,decrypted:bool,code:int,type:int,answerable:bool,draining:bool,free:int)->PqRoute #export_c {
+pq_route :: (verified:bool,kind:int,decrypted:bool,code:int,type:int,answerable:bool,draining:bool,free:int)->PqRoute #export_c #effects(all) {
     if !verified || kind!=PQ_REQUEST || !decrypted {return PqRoute.ignore;}
     if code!=PQ_NONE {return ifx answerable then PqRoute.refuse else PqRoute.ignore;}
     if type==PQ_CANCEL {return PqRoute.cancel;}
@@ -165,7 +165,7 @@ The second is what goes back after the engine replied:
 // timed_out: the budget ran out first; status: its HTTP status; written: the
 // code pd_result gave for a 200 body (none when the 26910 was written);
 // refused: the PdCode the server's refusal body named (0 when none was read).
-pq_answer :: (reached:bool,timed_out:bool,status:int,written:int,refused:int)->PqAnswer #export_c {
+pq_answer :: (reached:bool,timed_out:bool,status:int,written:int,refused:int)->PqAnswer #export_c #effects(all) {
     if !reached {return PqAnswer.{code=ifx timed_out then PQ_TIMEOUT else PQ_INTERNAL};}
     if status==200 {
         if written==PQ_NONE {return PqAnswer.{result=true};}
@@ -227,7 +227,7 @@ new connection is a new NIP-42 challenge, so what the Pylon may do on it is
 // AUTH is accepted, because the relay refuses unauthenticated writes and a
 // refused answer would be lost; a relay that never challenges or refuses the
 // AUTH is dropped at limit_ms and the reconnect backs off.
-pq_wire :: (challenged:bool,authed:bool,announced:bool,waited_ms:int,limit_ms:int)->PqWire #export_c {
+pq_wire :: (challenged:bool,authed:bool,announced:bool,waited_ms:int,limit_ms:int)->PqWire #export_c #effects(all) {
     if authed {return ifx announced then PqWire.flow else PqWire.announce;}
     if waited_ms>=limit_ms {return PqWire.drop;}
     if challenged {return PqWire.auth;}

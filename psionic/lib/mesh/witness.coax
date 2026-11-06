@@ -17,11 +17,11 @@ MwData :: struct {ok:bool;receipt:[]u8;request_event:[]u8;result_event:[]u8;requ
     d:=r;d.distance=-1;#assert !mw_shape(d);
 }
 
-mw_shape :: (d:MwData)->bool {
+mw_shape :: (d:MwData)->bool #effects(all) {
     return d.receipt.count>0 && d.request_event.count>0 && d.result_event.count>0 && d.request_plain.count>0 && d.result.count>0 && pb_identity(d.identity) && d.profile==MW_PROFILE && ms_selected(d.draw,d.threshold) && d.distance>=0 && d.distance<=1000000000;
 }
 
-mw_decode :: (wire:[]u8)->MwData #export_c {
+mw_decode :: (wire:[]u8)->MwData #export_c #effects(all) {
     bad:MwData;w:=Mw_PrivateReplayWitness_decode_minimal(wire);if w.error!=0 {return bad;}
     if !Mw_PrivateReplayWitness_unknown(w,0).done || Mw_PrivateReplayWitness_get_version(w).value!=MW_VERSION {return bad;}
     r:=MwData.{receipt=Mw_PrivateReplayWitness_get_receipt_event_json(w).value,request_event=Mw_PrivateReplayWitness_get_request_event_json(w).value,result_event=Mw_PrivateReplayWitness_get_result_event_json(w).value,

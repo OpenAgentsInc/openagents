@@ -9,7 +9,7 @@ lb_snapshot::(c:[]Cdp,out:[]u8)->int {
   v:=cdp_evaluate(c,"JSON.stringify({scope:'actual-browser-room-observation',sceneReady:globalThis.coaxial?.sceneReady||false,net:[0,12,51,84].map(x=>globalThis.coaxial?.netProbe?.(x)??-1),trace:globalThis.coaxial?.roomTrace?.()??null,adapter:globalThis.coaxial?.gpuAdapterInfo??null,title:document.title,errors:globalThis.__latencyErrors||[]})");
   return ifx v<0 then -1 else jv_str(cdp_doc(c),v,out);
 }
-tool_main::()->int #export_c {
+tool_main::()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..])||args_count(a[..])<2||args_count(a[..])>3 {tool_errln("usage: latency-browser-check LOCAL_URL OUTPUT.json [trace]");return 2;}
   trace:=args_count(a[..])==3;if trace&&args_at(a[..],2)!="trace"{return 2;}
   if !lb_local(args_at(a[..],0)){tool_errln("A permitted loopback page port is required.");return 2;}

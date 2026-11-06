@@ -70,25 +70,25 @@ appear in neither the base model's equations nor the tuning conversations.
 <!-- source: psionic/lib/nanochat/sft.coax problems -->
 ```jai
 // Problem j is one draw of chapter 103's counter generator.
-sf_problem :: (seed:u64,j:int)->SfProblem {
+sf_problem :: (seed:u64,j:int)->SfProblem #effects(all) {
     x:=cr_bits(seed,cast(u64)j);return SfProblem.{a=cast(int)(x%100),b=cast(int)((x/100)%100),op=cast(int)((x/10000)%3)};
 }
-sf_value :: (p:SfProblem)->int {if p.op==0 {return p.a+p.b;}if p.op==1 {return p.a-p.b;}return p.a*p.b;}
+sf_value :: (p:SfProblem)->int #effects(all) {if p.op==0 {return p.a+p.b;}if p.op==1 {return p.a-p.b;}return p.a*p.b;}
 // A problem's identity: the same operation on the same operands, in either
 // order for + and *.
-sf_key :: (p:SfProblem)->int {
+sf_key :: (p:SfProblem)->int #effects(all) {
     lo:=p.a;hi:=p.b;if p.op!=1 {lo=np_min(p.a,p.b);hi=p.a+p.b-lo;}
     return p.op*10000+lo*100+hi;
 }
 // The split is by problem: one in eight keys, chosen by a draw, is held out.
-sf_held :: (key:int)->bool {return cr_bits(SF_SPLIT,cast(u64)key)%8==0;}
+sf_held :: (key:int)->bool #effects(all) {return cr_bits(SF_SPLIT,cast(u64)key)%8==0;}
 // The first out.count problems on one side of the split, in draw order.
-sf_problems :: (seed:u64,held:bool,out:[]SfProblem)->int {
+sf_problems :: (seed:u64,held:bool,out:[]SfProblem)->int #effects(all) {
     k:=0;j:=0;while k<out.count {p:=sf_problem(seed,j);if sf_held(sf_key(p))==held {out[k]=p;k+=1;}j+=1;}
     return k;
 }
 // Every held-out problem against every training problem.
-sf_audit :: (train:[]SfProblem,held:[]SfProblem,seen:[]u8)->SfSplit {
+sf_audit :: (train:[]SfProblem,held:[]SfProblem,seen:[]u8)->SfSplit #effects(all) {
     r:=SfSplit.{train=train.count,held=held.count};
     if seen.count<SF_KEYS || train.count==0 || held.count==0 {r.status=SfStatus.data;return r;}
     for i:0..<SF_KEYS {seen[i]=0;}for p:train {seen[sf_key(p)]=1;}
@@ -105,9 +105,9 @@ digits, an operator, one to four decimal digits, and refuses anything else:
 ```jai
 // The tool: "a op b" with a and b of one to four decimal digits and op one
 // of + - *. Anything else is not a call it can run.
-sf_digits :: (s:string,at:int)->int {e:=at;while e<s.count && s[e]>='0' && s[e]<='9' {e+=1;}return e-at;}
-sf_number :: (s:string,at:int,n:int)->int {x:=0;for i:at..<at+n {x=x*10+cast(int)(s[i]-'0');}return x;}
-sf_calc :: (s:string)->SfCalc {
+sf_digits :: (s:string,at:int)->int #effects(all) {e:=at;while e<s.count && s[e]>='0' && s[e]<='9' {e+=1;}return e-at;}
+sf_number :: (s:string,at:int,n:int)->int #effects(all) {x:=0;for i:at..<at+n {x=x*10+cast(int)(s[i]-'0');}return x;}
+sf_calc :: (s:string)->SfCalc #effects(all) {
     da:=sf_digits(s,0);if da<1 || da>4 {return SfCalc.{};}
     db:=sf_digits(s,da+1);if db<1 || db>4 || da+1+db!=s.count {return SfCalc.{};}
     a:=sf_number(s,0,da);b:=sf_number(s,da+1,db);op:=s[da];
@@ -117,7 +117,7 @@ sf_calc :: (s:string)->SfCalc {
     return SfCalc.{};
 }
 // Decimal text of x, with a sign when negative.
-sf_itoa :: (x:int,out:[]u8)->int {
+sf_itoa :: (x:int,out:[]u8)->int #effects(all) {
     n:=0;v:=x;if x<0 {out[0]='-';n=1;v=-x;}
     digits:[20]u8;k:=0;while true {digits[k]='0'+cast(u8)(v%10);k+=1;v/=10;if v==0 {break;}}
     for i:0..<k {out[n+i]=digits[k-1-i];}return n+k;
@@ -173,7 +173,7 @@ what the calculator returns:
 // One conversation into tokens and targets, or a refusal that writes nothing.
 // Position i's target is token i+1 when the render supervises it, else -1;
 // the last position has none.
-sf_admit :: (table:[]u8,specials:[]int,vocab:int,context:int,messages:[]NcMessage,parts:[]NcPart,ids:[]int,targets:[]int)->SfAdmit {
+sf_admit :: (table:[]u8,specials:[]int,vocab:int,context:int,messages:[]NcMessage,parts:[]NcPart,ids:[]int,targets:[]int)->SfAdmit #effects(all) {
     if context<2 || context>NC_MAX_TOKENS || ids.count<context || targets.count<context {return SfAdmit.{status=SfStatus.shape};}
     staged:[NC_MAX_TOKENS]int;mask:[NC_MAX_TOKENS]u8;
     r:=nc_render(table,specials,vocab,messages,parts,NC_MAX_TOKENS,staged[..],mask[..],false);
@@ -211,7 +211,7 @@ the last token, a target for `<|assistant_start|>`.
 // is supervised except a tool output (<|output_start|> to <|output_end|>);
 // <|assistant_start|> itself and everything outside are not. targets must
 // name exactly the supervised next tokens.
-sf_check :: (ids:[]int,targets:[]int,base:int)->bool {
+sf_check :: (ids:[]int,targets:[]int,base:int)->bool #effects(all) {
     if targets.count!=ids.count {return false;}
     assistant:=false;output:=false;
     for i:0..<ids.count {x:=ids[i]-base;supervised:=false;
@@ -255,7 +255,7 @@ rest is chapter 128's step: clipping, the schedule and AdamW.
 // chapter 127's masked gradient for each, weighted by its supervised targets
 // over the batch's (the mean over every supervised token), then clipping,
 // the schedule and AdamW, as in chapter 128.
-sf_step :: (p:NpPlan,run:NpRun,tok:[]int,tgt:[]int,start:[]int,order:[]int,w:[]f64,m:[]f64,v:[]f64,g:[]f64,total:[]f64,tape:[]f64,logits:[]f64)->NpStep {
+sf_step :: (p:NpPlan,run:NpRun,tok:[]int,tgt:[]int,start:[]int,order:[]int,w:[]f64,m:[]f64,v:[]f64,g:[]f64,total:[]f64,tape:[]f64,logits:[]f64)->NpStep #effects(all) {
     c:=p.model;count:=start.count-1;n:=w.count;fail:=NpStep.{run=run};
     if run.step>=p.steps {fail.status=NpStatus.config;return fail;}
     if count<p.batch {fail.status=NpStatus.data;return fail;}
@@ -283,13 +283,13 @@ refuses, and so does the base record offered as a tuning checkpoint.
 <!-- source: psionic/lib/nanochat/sft.coax start -->
 ```jai
 // The tuning plan's identity covers the base record it starts from.
-sf_plan_id :: (p:NpPlan,base:[32]u8)->[32]u8 {
+sf_plan_id :: (p:NpPlan,base:[32]u8)->[32]u8 #effects(all) {
     id:=np_plan_id(p);b:[64]u8;for i:0..<32 {b[i]=id[i];b[32+i]=base[i];}
     return ck_digest("psionic.sft-plan.v1",b[..]);
 }
 // Tuning starts from the base record's weights with fresh moments at step 0,
 // as nanochat's chat_sft builds a new optimizer.
-sf_start :: (plan:[32]u8,data:[32]u8,steps:int,bytes:[]u8,w:[]f64,m:[]f64,v:[]f64)->NpRead {
+sf_start :: (plan:[32]u8,data:[32]u8,steps:int,bytes:[]u8,w:[]f64,m:[]f64,v:[]f64)->NpRead #effects(all) {
     r:=np_read(plan,data,steps,bytes,w,m,v);if r.status!=NpCheck.ok {return r;}
     for i:0..<m.count {m[i]=0;v[i]=0;}
     return NpRead.{};
@@ -317,7 +317,7 @@ model read, the cost of the answer.
 // replies again. called: the call was exactly the question's expression.
 // answered: the final reply ended with <|assistant_end|> and was exactly the
 // right number. positions: the positions the model read, for the cost.
-sf_ask :: (c:NcConfig,w:[]f64,table:[]u8,specials:[]int,p:SfProblem,work:NeWork,ids:[]int)->SfAsk {
+sf_ask :: (c:NcConfig,w:[]f64,table:[]u8,specials:[]int,p:SfProblem,work:NeWork,ids:[]int)->SfAsk #effects(all) {
     if ids.count<c.context {return SfAsk.{status=SfStatus.shape};}
     q:[24]u8;e:[12]u8;v:[12]u8;nq:=sf_question(p,q[..]);expr:=sf_text(e[..],sf_expr(p,e[..]));want:=sf_text(v[..],sf_itoa(sf_value(p),v[..]));
     m:=[2]NcMessage.[NcMessage.{role=NcRole.user,text=sf_text(q[..],nq)},NcMessage.{role=NcRole.assistant}];none:[1]NcPart;
@@ -370,7 +370,7 @@ SF_ANSWER_TENTHS :: 6;
 SF_GAIN_TENTHS :: 5;
 SF_CALL_TENTHS :: 6;
 SF_DRIFT_MAX :: 0.5;
-sf_accept :: (base:SfRates,tuned:SfRates,before:f64,after:f64)->bool {
+sf_accept :: (base:SfRates,tuned:SfRates,before:f64,after:f64)->bool #effects(all) {
     if base.status!=SfStatus.ok || tuned.status!=SfStatus.ok || tuned.asked!=base.asked {return false;}
     n:=tuned.asked;
     return 10*tuned.answered>=SF_ANSWER_TENTHS*n && 10*(tuned.answered-base.answered)>=SF_GAIN_TENTHS*n && 10*tuned.called>=SF_CALL_TENTHS*n && after-before<=SF_DRIFT_MAX;

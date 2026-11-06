@@ -76,18 +76,18 @@ FeGate :: struct {verdict:FeVerdict;reason:FeReason;n:int;p50:int;p99:int;mean:f
 // book:end types
 
 // Checks precede the implementation.
-fe_model :: (w:[]f64,emb:[]u8,low:[]f64,step:[]f64,codes:[]s8,scales:[]f32,offsets:[]f32)->FeQ8 {
+fe_model :: (w:[]f64,emb:[]u8,low:[]f64,step:[]f64,codes:[]s8,scales:[]f32,offsets:[]f32)->FeQ8 #effects(all) {
     #assert fe_weights(w)==FeStatus.ok;
     m:=FeQ8.{emb=emb,low=low,step=step,codes=codes,scales=scales,offsets=offsets};
     #assert fe_quantize(w,m)==FeStatus.ok;
     return m;
 }
-fe_ids :: (seed:int,t:int,ids:[]int) {for i:0..<t {ids[i]=cast(int)(cr_bits(cast(u64)(2220+seed),cast(u64)i)%64);}}
+fe_ids :: (seed:int,t:int,ids:[]int) #effects(all) {for i:0..<t {ids[i]=cast(int)(cr_bits(cast(u64)(2220+seed),cast(u64)i)%64);}}
 // The q8 engine's logits for fe_ids(3, 130), recorded from its first run: a
 // regression pin, not an independent check (the bound above is that).
 FE_RECORDED_Q8 :: [9]f64.[-0.5146587923496225,-0.421115295511843,0.16032407498715567,0.5009857039704882,
     -0.09391330051071226,-0.7155833836309408,1.4735106453347406,0.1547328209949981,-0.7851884240405986];
-fe_work :: (f:[]f64,a:[]f32,c:[]s8,s:[]f32,m:[]s32,d:[]s32)->FeWork {return FeWork.{f=f,a=a,codes=c,scales=s,sums=m,dots=d};}
+fe_work :: (f:[]f64,a:[]f32,c:[]s8,s:[]f32,m:[]s32,d:[]s32)->FeWork #effects(all) {return FeWork.{f=f,a=a,codes=c,scales=s,sums=m,dots=d};}
 
 #test "the weights: scales by part, and SplitMix64's first words" {
     #assert fe_scale(0)==1 && fe_scale(1023)==1 && fe_scale(1024)==0.5 && fe_scale(1791)==0.5 && fe_scale(1792)==0.25;
@@ -371,20 +371,20 @@ fe_work :: (f:[]f64,a:[]f32,c:[]s8,s:[]f32,m:[]s32,d:[]s32)->FeWork {return FeWo
 
 // book:begin weights
 // Word i of SplitMix64 seed 222, as a binary64 in [-1, 1), times its part's scale.
-fe_unit :: (i:int)->f64 {return f64(cr_bits(FE_SEED,cast(u64)i)>>11)/4503599627370496.0-1;}
-fe_scale :: (i:int)->f64 {
+fe_unit :: (i:int)->f64 #effects(all) {return f64(cr_bits(FE_SEED,cast(u64)i)>>11)/4503599627370496.0-1;}
+fe_scale :: (i:int)->f64 #effects(all) {
     if i<FE_EMB || i>=FE_HEAD_AT {return 1;}
     k:=(i-FE_EMB)%FE_LAYER_W;
     if k>=2048 || (k>=768 && k<1024) {return 0.25;}
     return 0.5;
 }
-fe_weights :: (w:[]f64)->FeStatus #export_c {
+fe_weights :: (w:[]f64)->FeStatus #export_c #effects(all) {
     if w.count!=FE_WEIGHTS {return FeStatus.storage;}
     for i:0..<FE_WEIGHTS {w[i]=fe_scale(i)*fe_unit(i);}
     return FeStatus.ok;
 }
 // The model's identity: FNV-1a over every weight's 64 bits.
-fe_model_id :: (w:[]f64)->u64 #export_c {
+fe_model_id :: (w:[]f64)->u64 #export_c #effects(all) {
     h:=cast(u64)0xcbf29ce484222325;
     for v:w {h=mul_wrap(h^f64_bits(v),cast(u64)0x100000001b3);}
     return h;
@@ -392,11 +392,11 @@ fe_model_id :: (w:[]f64)->u64 #export_c {
 // book:end weights
 
 // book:begin quantize
-fe_q8_bytes :: ()->int {return FE_EMB+2*8*FE_VOCAB+FE_CODES+2*4*FE_CODES/FE_BLOCK+8*(FE_WEIGHTS-FE_HEAD_AT);}
+fe_q8_bytes :: ()->int #effects(all) {return FE_EMB+2*8*FE_VOCAB+FE_CODES+2*4*FE_CODES/FE_BLOCK+8*(FE_WEIGHTS-FE_HEAD_AT);}
 // Embedding rows: low = the row's least value, step = (most - least)/255,
 // code = the nearest whole number of steps. Layers: chapter 48's quantizer,
 // each 16 weights one block with its own scale.
-fe_quantize :: (w:[]f64,q:FeQ8)->FeStatus #export_c {
+fe_quantize :: (w:[]f64,q:FeQ8)->FeStatus #export_c #effects(all) {
     if w.count!=FE_WEIGHTS || !fe_q8_ok(q) {return FeStatus.storage;}
     for v:w {if !(abs(v)<=1000000) {return FeStatus.number;}}
     for r:0..<FE_VOCAB {
@@ -419,21 +419,21 @@ fe_quantize :: (w:[]f64,q:FeQ8)->FeStatus #export_c {
 // book:end quantize
 
 // book:begin parts
-fe_imin :: (a:int,b:int)->int {return cast(int)((f64(a+b)-abs(f64(a-b)))/2);}
-fe_norm :: (x:[]f64,at:int,out:[]f64,to:int) {
+fe_imin :: (a:int,b:int)->int #effects(all) {return cast(int)((f64(a+b)-abs(f64(a-b)))/2);}
+fe_norm :: (x:[]f64,at:int,out:[]f64,to:int) #effects(all) {
     mean:=0.0;for k:0..<FE_D {mean+=x[at+k];}
     mean/=FE_D;
     var:=0.0;for k:0..<FE_D {d:=x[at+k]-mean;var+=d*d;}
     r:=1/sqrt(var/FE_D+FE_EPS);
     for k:0..<FE_D {out[to+k]=(x[at+k]-mean)*r;}
 }
-fe_tanh :: (a:f64)->f64 {t:=exp(-2*abs(a));v:=(1-t)/(1+t);return ifx a<0 then -v else v;}
-fe_gelu :: (z:f64)->f64 {return 0.5*z*(1+fe_tanh(FE_GELU_C*(z+FE_GELU_A*z*z*z)));}
+fe_tanh :: (a:f64)->f64 #effects(all) {t:=exp(-2*abs(a));v:=(1-t)/(1+t);return ifx a<0 then -v else v;}
+fe_gelu :: (z:f64)->f64 #effects(all) {return 0.5*z*(1+fe_tanh(FE_GELU_C*(z+FE_GELU_A*z*z*z)));}
 // Keys query i reads in layer l: all of them, or those at most 64 away.
-fe_lo :: (l:int,i:int)->int {return ifx l%FE_GLOBAL==0 then 0 else i-fe_imin(i,FE_WINDOW);}
-fe_hi :: (l:int,i:int,t:int)->int {return ifx l%FE_GLOBAL==0 then t else fe_imin(t,i+FE_WINDOW+1);}
+fe_lo :: (l:int,i:int)->int #effects(all) {return ifx l%FE_GLOBAL==0 then 0 else i-fe_imin(i,FE_WINDOW);}
+fe_hi :: (l:int,i:int,t:int)->int #effects(all) {return ifx l%FE_GLOBAL==0 then t else fe_imin(t,i+FE_WINDOW+1);}
 // Each head: softmax over its classes of logit / temperature, largest first subtracted.
-fe_probs :: (z:[]f64,p:[]f64) #export_c {
+fe_probs :: (z:[]f64,p:[]f64) #export_c #effects(all) {
     for h:0..<3 {
         at:=FE_CLASS_AT[h];n:=FE_CLASSES[h];top:=z[at];
         for c:1..<n {top=qz_larger(top,z[at+c]);}
@@ -444,7 +444,7 @@ fe_probs :: (z:[]f64,p:[]f64) #export_c {
 }
 // Multiply-adds of one decision: four products per layer, attention scores
 // and values (32 per query-key pair), and the heads.
-fe_macs :: (t:int)->int #export_c {
+fe_macs :: (t:int)->int #export_c #effects(all) {
     n:=FE_LAYERS*t*FE_LAYER_W+FE_LOGITS*FE_D;
     for l:0..<FE_LAYERS {for i:0..<t {n+=(fe_hi(l,i,t)-fe_lo(l,i))*2*FE_D;}}
     return n;
@@ -452,10 +452,10 @@ fe_macs :: (t:int)->int #export_c {
 // book:end parts
 
 // book:begin select
-fe_engine_name :: (e:FeEngine)->string {names:=[3]string.["none","fe-f64-reference-v1","fe-q8-cpu-v1"];return names[cast(int)e];}
+fe_engine_name :: (e:FeEngine)->string #effects(all) {names:=[3]string.["none","fe-f64-reference-v1","fe-q8-cpu-v1"];return names[cast(int)e];}
 // An engine is named, never inferred. A known engine that is not built here
 // is refused; nothing else runs in its place.
-fe_select :: (name:string)->FeChoice {
+fe_select :: (name:string)->FeChoice #effects(all) {
     for e:1..<3 {if name==fe_engine_name(cast(FeEngine)e) {return FeChoice.{engine=cast(FeEngine)e};}}
     if name=="fe-q8-cuda-v1" {return FeChoice.{status=FeStatus.unavailable};}
     return FeChoice.{status=FeStatus.engine};
@@ -465,7 +465,7 @@ fe_select :: (name:string)->FeChoice {
 // book:begin linear
 // rows x width weights at w[at] times t inputs at x[xa], into y[ya]: binary64,
 // or chapter 48's int8 row kernel in chunks of 128 tokens.
-fe_linear :: (e:FeEngine,w:[]f64,q:FeQ8,k:FeWork,at:int,rows:int,width:int,t:int,x:[]f64,xa:int,y:[]f64,ya:int)->FeStatus {
+fe_linear :: (e:FeEngine,w:[]f64,q:FeQ8,k:FeWork,at:int,rows:int,width:int,t:int,x:[]f64,xa:int,y:[]f64,ya:int)->FeStatus #effects(all) {
     if e==FeEngine.reference {
         for i:0..<t {for r:0..<rows {
             acc:=0.0;
@@ -490,7 +490,7 @@ fe_linear :: (e:FeEngine,w:[]f64,q:FeQ8,k:FeWork,at:int,rows:int,width:int,t:int
 
 // book:begin attend
 // Two heads of 8 over the keys each query may read; scores, then values.
-fe_attend :: (l:int,t:int,f:[]f64,qkv:int,out:int,s:int) {
+fe_attend :: (l:int,t:int,f:[]f64,qkv:int,out:int,s:int) #effects(all) {
     for i:0..<t {for h:0..<FE_D/FE_HD {
         lo:=fe_lo(l,i);hi:=fe_hi(l,i,t);top:=0.0;
         for j:lo..<hi {
@@ -511,12 +511,12 @@ fe_attend :: (l:int,t:int,f:[]f64,qkv:int,out:int,s:int) {
 // book:end attend
 
 // book:begin forward
-fe_plan_f64 :: (t:int)->int {return t*FE_ROW;}
-fe_q8_ok :: (q:FeQ8)->bool {
+fe_plan_f64 :: (t:int)->int #effects(all) {return t*FE_ROW;}
+fe_q8_ok :: (q:FeQ8)->bool #effects(all) {
     return q.emb.count==FE_EMB && q.low.count==FE_VOCAB && q.step.count==FE_VOCAB && q.codes.count==FE_CODES
         && q.scales.count==FE_CODES/FE_BLOCK && q.offsets.count==FE_CODES/FE_BLOCK;
 }
-fe_forward :: (e:FeEngine,w:[]f64,q:FeQ8,k:FeWork,ids:[]int,z:[]f64)->FeStatus #export_c {
+fe_forward :: (e:FeEngine,w:[]f64,q:FeQ8,k:FeWork,ids:[]int,z:[]f64)->FeStatus #export_c #effects(all) {
     t:=ids.count;
     if e==FeEngine.none {return FeStatus.engine;}
     if t<1 || t>FE_TOKENS {return FeStatus.tokens;}
@@ -563,10 +563,10 @@ fe_forward :: (e:FeEngine,w:[]f64,q:FeQ8,k:FeWork,ids:[]int,z:[]f64)->FeStatus #
 // book:end forward
 
 // book:begin parity
-fe_argmax :: (z:[]f64,at:int,n:int)->int {b:=at;for c:at+1..<at+n {if z[c]>z[b] {b=c;}}return b;}
+fe_argmax :: (z:[]f64,at:int,n:int)->int #effects(all) {b:=at;for c:at+1..<at+n {if z[c]>z[b] {b=c;}}return b;}
 // n requests of 9 logits each: every head's argmax must match, and the
 // largest difference must be within the frozen bound.
-fe_parity :: (reference:[]f64,derived:[]f64,n:int)->FeParity #export_c {
+fe_parity :: (reference:[]f64,derived:[]f64,n:int)->FeParity #export_c #effects(all) {
     if n<1 || reference.count!=n*FE_LOGITS || derived.count!=reference.count {return FeParity.{};}
     p:=FeParity.{decisions=3*n};
     for r:0..<n {for h:0..<3 {
@@ -580,7 +580,7 @@ fe_parity :: (reference:[]f64,derived:[]f64,n:int)->FeParity #export_c {
 // Chapter 50's card over every (request, head): gold is the reference
 // decision, since the stand-in has no labels; the card measures how far
 // quantization moves the decisions.
-fe_card :: (reference:[]f64,derived:[]f64,n:int,items:[]PqItem)->QzCard #export_c {
+fe_card :: (reference:[]f64,derived:[]f64,n:int,items:[]PqItem)->QzCard #export_c #effects(all) {
     if items.count<3*n {return QzCard.{status=QzStatus.capacity};}
     for r:0..<n {for h:0..<3 {
         at:=r*FE_LOGITS+FE_CLASS_AT[h];
@@ -594,7 +594,7 @@ fe_card :: (reference:[]f64,derived:[]f64,n:int,items:[]PqItem)->QzCard #export_
 // Chapter 18's nearest rank: the value at rank ceil(p n / 100) in sorted order,
 // counting from 1; it holds that rank when fewer values are below it and at
 // least that many are at or below it.
-fe_rank :: (x:[]int,p:int)->int #export_c {
+fe_rank :: (x:[]int,p:int)->int #export_c #effects(all) {
     r:=(p*x.count+99)/100;
     for v:x {
         below:=0;atmost:=0;
@@ -605,7 +605,7 @@ fe_rank :: (x:[]int,p:int)->int #export_c {
 }
 // Refused unless the q8 engine ran the frozen workload with parity and a
 // promoted card, on 100 to 1,024 positive warm times, against the frozen limit.
-fe_gate :: (e:FeEngine,tokens:int,p:FeParity,c:QzCard,ns:[]int,limit:int)->FeGate #export_c {
+fe_gate :: (e:FeEngine,tokens:int,p:FeParity,c:QzCard,ns:[]int,limit:int)->FeGate #export_c #effects(all) {
     g:=FeGate.{limit=limit};
     if e!=FeEngine.q8 {g.reason=FeReason.engine;return g;}
     if tokens!=FE_TOKENS || limit!=FE_P99_LIMIT {g.reason=FeReason.workload;return g;}
@@ -619,13 +619,13 @@ fe_gate :: (e:FeEngine,tokens:int,p:FeParity,c:QzCard,ns:[]int,limit:int)->FeGat
 }
 // book:end gate
 
-fe_verdict_name :: (v:FeVerdict)->string {names:=[3]string.["refused","met","missed"];return names[cast(int)v];}
-fe_reason_name :: (r:FeReason)->string {
+fe_verdict_name :: (v:FeVerdict)->string #effects(all) {names:=[3]string.["refused","met","missed"];return names[cast(int)v];}
+fe_reason_name :: (r:FeReason)->string #effects(all) {
     names:=[6]string.["none","the engine is not fe-q8-cpu-v1","not the frozen 512-token workload","q8 decisions differ from the reference",
         "the quality card did not promote","fewer than 100 or more than 1,024 warm runs, or a time that is not positive"];
     return names[cast(int)r];
 }
-fe_status_name :: (s:FeStatus)->string {
+fe_status_name :: (s:FeStatus)->string #effects(all) {
     names:=[9]string.["ok","not 1 to 512 token IDs","a token ID outside 0 to 63","a slice of the wrong length","work storage too small",
         "a row with no spread","refused by the int8 product","no such engine","engine not built here"];
     return names[cast(int)s];

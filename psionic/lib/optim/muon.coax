@@ -34,31 +34,31 @@ MC_POLAR_STEPS :: 5;
 MC_POLAR :: [15]f64.[8.156554524902461,-22.48329292557795,15.878769915207462,4.042929935166739,-2.808917465908714,0.5000178451051316,3.8916678022926607,-2.772484153217685,0.5060648178503393,3.285753657755655,-2.3681294933425376,0.46449024233003106,2.3465413258596377,-1.7097828382687081,0.42323551169305323];
 
 // Integer minimum and maximum, exact for the shapes admitted (below 2^53).
-mc_gapi :: (a:int,b:int)->int {return cast(int) abs(f64(a-b));}
-mc_min :: (a:int,b:int)->int {return (a+b-mc_gapi(a,b))/2;}
-mc_max :: (a:int,b:int)->int {return (a+b+mc_gapi(a,b))/2;}
+mc_gapi :: (a:int,b:int)->int #effects(all) {return cast(int) abs(f64(a-b));}
+mc_min :: (a:int,b:int)->int #effects(all) {return (a+b-mc_gapi(a,b))/2;}
+mc_max :: (a:int,b:int)->int #effects(all) {return (a+b+mc_gapi(a,b))/2;}
 // torch's clamp_min: a value strictly below lo is raised to lo.
-mc_raised :: (x:f64,lo:f64)->bool {return x<lo;}
-mc_floor :: (x:f64,lo:f64)->f64 {if mc_raised(x,lo) {return lo;}return x;}
-mc_norm :: (x:[]f64)->f64 {s:=0.0;for e:x {s+=e*e;}return sqrt(s);}
-mc_rate :: (x:f64)->bool {return x>0 && x<=MC_LR;}
-mc_unit :: (x:f64)->bool {return x>=0 && x<=1;}
+mc_raised :: (x:f64,lo:f64)->bool #effects(all) {return x<lo;}
+mc_floor :: (x:f64,lo:f64)->f64 #effects(all) {if mc_raised(x,lo) {return lo;}return x;}
+mc_norm :: (x:[]f64)->f64 #effects(all) {s:=0.0;for e:x {s+=e*e;}return sqrt(s);}
+mc_rate :: (x:f64)->bool #effects(all) {return x>0 && x<=MC_LR;}
+mc_unit :: (x:f64)->bool #effects(all) {return x>=0 && x<=1;}
 // Muon's learning rate grows by sqrt(rows/cols) for tall matrices.
-mc_lr :: (g:McGroup)->f64 {return g.lr*pow(f64(mc_max(g.rows,g.cols))/f64(g.cols),0.5);}
-mc_hyper :: (g:McGroup)->bool {
+mc_lr :: (g:McGroup)->f64 #effects(all) {return g.lr*pow(f64(mc_max(g.rows,g.cols))/f64(g.cols),0.5);}
+mc_hyper :: (g:McGroup)->bool #effects(all) {
     if g.kind==McKind.adamw {return mc_rate(g.lr) && aw_beta(g.beta1) && aw_beta(g.beta2) && aw_eps(g.eps) && mc_unit(g.decay) && g.lr*g.decay<1 && g.momentum==0 && g.ns==0;}
     return mc_rate(g.lr) && aw_beta(g.momentum) && aw_beta(g.beta2) && mc_unit(g.decay) && mc_lr(g)*g.decay<1 && g.ns>=0 && g.ns<=MC_POLAR_STEPS && g.beta1==0 && g.eps==0;
 }
 // Second-moment entries a group keeps: one per element for AdamW, one per
 // row (rows >= cols) or column (wide) of each matrix for Muon.
-mc_second :: (g:McGroup)->int {if g.kind==McKind.adamw {return g.count;}return g.count/(g.rows*g.cols)*mc_max(g.rows,g.cols);}
+mc_second :: (g:McGroup)->int #effects(all) {if g.kind==McKind.adamw {return g.count;}return g.count/(g.rows*g.cols)*mc_max(g.rows,g.cols);}
 // Scratch one Muon matrix needs: momentum, X and the next X; A and B; the
 // new second moment and the reduced means.
-mc_work :: (g:McGroup)->int {if g.kind==McKind.adamw {return 0;}k:=mc_min(g.rows,g.cols);return 3*g.rows*g.cols+2*k*k+2*mc_max(g.rows,g.cols);}
-mc_seconds :: (groups:[]McGroup)->int {s:=0;for g:groups {s+=mc_second(g);}return s;}
-mc_scratch :: (groups:[]McGroup)->int {s:=0;for g:groups {s=mc_max(s,mc_work(g));}return s;}
+mc_work :: (g:McGroup)->int #effects(all) {if g.kind==McKind.adamw {return 0;}k:=mc_min(g.rows,g.cols);return 3*g.rows*g.cols+2*k*k+2*mc_max(g.rows,g.cols);}
+mc_seconds :: (groups:[]McGroup)->int #effects(all) {s:=0;for g:groups {s+=mc_second(g);}return s;}
+mc_scratch :: (groups:[]McGroup)->int #effects(all) {s:=0;for g:groups {s=mc_max(s,mc_work(g));}return s;}
 // Groups cover 0..<n exactly once, in order; a Muon group holds whole matrices.
-mc_cover :: (groups:[]McGroup,n:int)->bool {
+mc_cover :: (groups:[]McGroup,n:int)->bool #effects(all) {
     next:=0;
     for g:groups {
         if g.first!=next || g.count<1 || g.count>n {return false;}
@@ -73,7 +73,7 @@ mc_cover :: (groups:[]McGroup,n:int)->bool {
 // X <- a X + (b A + c A A) X with A = X X^T, or X (b A + c A A) with
 // A = X^T X when X is tall, so A is always the smaller square. y is scratch
 // for the next X; a and b hold k x k.
-mc_polar :: (x:[]f64,r:int,c:int,ns:int,y:[]f64,a:[]f64,b:[]f64) {
+mc_polar :: (x:[]f64,r:int,c:int,ns:int,y:[]f64,a:[]f64,b:[]f64) #effects(all) {
     tall:=r>c;k:=mc_min(r,c);
     for step:0..<ns {
         ca:=MC_POLAR[3*step];cb:=MC_POLAR[3*step+1];cc:=MC_POLAR[3*step+2];
@@ -97,7 +97,7 @@ mc_polar :: (x:[]f64,r:int,c:int,ns:int,y:[]f64,a:[]f64,b:[]f64) {
 // One matrix of a Muon group: momentum m and second moment s in, the new
 // values computed in w. Returns false when the step would overflow; writes p,
 // m and s only when write is set.
-mc_matrix :: (g:McGroup,p:[]f64,grad:[]f64,m:[]f64,s:[]f64,w:[]f64,write:bool)->bool {
+mc_matrix :: (g:McGroup,p:[]f64,grad:[]f64,m:[]f64,s:[]f64,w:[]f64,write:bool)->bool #effects(all) {
     r:=g.rows;c:=g.cols;rc:=r*c;k:=mc_min(r,c);red:=mc_max(r,c);
     oa:=3*rc;ob:=oa+k*k;os:=ob+k*k;ov:=os+red;
     m2:=w[0..<rc];x:=w[rc..<2*rc];y:=w[2*rc..<oa];a:=w[oa..<ob];b:=w[ob..<os];s2:=w[os..<ov];vm:=w[ov..<ov+red];
@@ -140,7 +140,7 @@ mc_matrix :: (g:McGroup,p:[]f64,grad:[]f64,m:[]f64,s:[]f64,w:[]f64,write:bool)->
 
 // Runs (write false) or applies (write true) every group of a step that is
 // already admitted. Returns whether every new value is representable.
-mc_apply :: (groups:[]McGroup,t:int,params:[]f64,grads:[]f64,m:[]f64,second:[]f64,work:[]f64,write:bool)->bool {
+mc_apply :: (groups:[]McGroup,t:int,params:[]f64,grads:[]f64,m:[]f64,second:[]f64,work:[]f64,write:bool)->bool #effects(all) {
     ok:=true;so:=0;
     for g:groups {
         if g.kind==McKind.adamw {
@@ -163,7 +163,7 @@ mc_apply :: (groups:[]McGroup,t:int,params:[]f64,grads:[]f64,m:[]f64,second:[]f6
 }
 
 // book:begin step
-mc_step :: (groups:[]McGroup,policy:McPolicy,state:McState,params:[]f64,grads:[]f64,m:[]f64,second:[]f64,work:[]f64,overlap:bool)->McResult #export_c {
+mc_step :: (groups:[]McGroup,policy:McPolicy,state:McState,params:[]f64,grads:[]f64,m:[]f64,second:[]f64,work:[]f64,overlap:bool)->McResult #export_c #effects(all) {
     if overlap {return McResult.{status=McStatus.alias,state=state};}
     n:=params.count;
     if !aw_parameters(n) || grads.count!=n {return McResult.{status=McStatus.shape,state=state};}
@@ -186,27 +186,27 @@ mc_step :: (groups:[]McGroup,policy:McPolicy,state:McState,params:[]f64,grads:[]
 }
 // book:end step
 
-mc_numel :: (t:McTensor)->int {return t.rows*t.cols;}
-mc_tensor :: (t:McTensor)->bool {
+mc_numel :: (t:McTensor)->int #effects(all) {return t.rows*t.cols;}
+mc_tensor :: (t:McTensor)->bool #effects(all) {
     if t.rows<1 || t.cols<1 || t.rows>AW_PARAMETERS/t.cols {return false;}
     if t.rank==1 {return t.rows==1 && t.role!=McRole.matrix;}
     return t.rank==2;
 }
-mc_before :: (r:int,c:int,r2:int,c2:int)->bool {return r<r2 || (r==r2 && c<c2);}
+mc_before :: (r:int,c:int,r2:int,c2:int)->bool #effects(all) {return r<r2 || (r==r2 && c<c2);}
 // Matrix shapes in lexicographic order, as Python sorts torch shapes: the
 // first, and the next after a shape; rows 0 when there is none.
 McShape :: struct {rows:int;cols:int;}
-mc_first_shape :: (tensors:[]McTensor)->McShape {
+mc_first_shape :: (tensors:[]McTensor)->McShape #effects(all) {
     best:=McShape.{};
     for t:tensors {if t.role==McRole.matrix && (best.rows==0 || mc_before(t.rows,t.cols,best.rows,best.cols)) {best=McShape.{rows=t.rows,cols=t.cols};}}
     return best;
 }
-mc_next_shape :: (tensors:[]McTensor,after:McShape)->McShape {
+mc_next_shape :: (tensors:[]McTensor,after:McShape)->McShape #effects(all) {
     best:=McShape.{};
     for t:tensors {if t.role==McRole.matrix && mc_before(after.rows,after.cols,t.rows,t.cols) && (best.rows==0 || mc_before(t.rows,t.cols,best.rows,best.cols)) {best=McShape.{rows=t.rows,cols=t.cols};}}
     return best;
 }
-mc_adamw_group :: (gi:int,h:McHyper,first:int,count:int)->McGroup {
+mc_adamw_group :: (gi:int,h:McHyper,first:int,count:int)->McGroup #effects(all) {
     s:=pow(f64(h.model_dim)/768,-0.5);
     g:=McGroup.{first=first,count=count,beta1=0.8,beta2=0.95,eps=0.0000000001};
     if gi==0 {g.lr=h.unembedding_lr*s;g.beta2=0.96;g.decay=0.01;}
@@ -225,7 +225,7 @@ mc_adamw_group :: (gi:int,h:McHyper,first:int,count:int)->McGroup {
 // group lists its tensors in model order and occupies a contiguous range;
 // places[i] is where tensor i starts. Empty groups (no value embeddings) are
 // left out: nanochat's update nothing.
-mc_plan :: (tensors:[]McTensor,h:McHyper,groups:[]McGroup,places:[]int)->McPlan #export_c {
+mc_plan :: (tensors:[]McTensor,h:McHyper,groups:[]McGroup,places:[]int)->McPlan #export_c #effects(all) {
     T:=tensors.count;
     if T<1 || T>MC_TENSORS || places.count!=T {return McPlan.{status=McStatus.shape};}
     counts:[9]int;total:=0;
@@ -257,10 +257,10 @@ mc_plan :: (tensors:[]McTensor,h:McHyper,groups:[]McGroup,places:[]int)->McPlan 
 
 // Check helpers. Every comparison they make is itself checked below.
 MC_TOL :: 0.000000000001;
-mc_close :: (a:f64,b:f64)->bool {return abs(a-b)<=MC_TOL*(1+abs(b));}
-mc_same :: (p:[]f64,q:[]f64)->bool {if p.count!=q.count {return false;}for i:0..<p.count {if p[i]!=q[i] {return false;}}return true;}
+mc_close :: (a:f64,b:f64)->bool #effects(all) {return abs(a-b)<=MC_TOL*(1+abs(b));}
+mc_same :: (p:[]f64,q:[]f64)->bool #effects(all) {if p.count!=q.count {return false;}for i:0..<p.count {if p[i]!=q[i] {return false;}}return true;}
 // The committed group table: six integers and six settings per group.
-mc_fixture_groups :: (ints:[]int,settings:[]f64,out:[]McGroup)->int {
+mc_fixture_groups :: (ints:[]int,settings:[]f64,out:[]McGroup)->int #effects(all) {
     count:=ints.count/6;
     for i:0..<count {
         g:=McGroup.{first=ints[6*i+1],count=ints[6*i+2],rows=ints[6*i+3],cols=ints[6*i+4],ns=ints[6*i+5]};
@@ -270,7 +270,7 @@ mc_fixture_groups :: (ints:[]int,settings:[]f64,out:[]McGroup)->int {
     }
     return count;
 }
-mc_fixture_tensors :: (roles:[]int,shapes:[]int,out:[]McTensor)->int {
+mc_fixture_tensors :: (roles:[]int,shapes:[]int,out:[]McTensor)->int #effects(all) {
     for i:0..<roles.count {out[i]=McTensor.{role=cast(McRole) roles[i],rank=shapes[3*i],rows=shapes[3*i+1],cols=shapes[3*i+2]};}
     return roles.count;
 }
@@ -281,7 +281,7 @@ mc_fixture_tensors :: (roles:[]int,shapes:[]int,out:[]McTensor)->int {
 // resumed; kept counts the first buffers that still hold the state of the
 // last step run on them.
 McReplay :: struct {resumed:int;kept:int;}
-mc_replay :: (groups:[]McGroup,start:[]f64,grads:[]f64,ps:[]f64,ms:[]f64,ss:[]f64,cut:int)->McReplay {
+mc_replay :: (groups:[]McGroup,start:[]f64,grads:[]f64,ps:[]f64,ms:[]f64,ss:[]f64,cut:int)->McReplay #effects(all) {
     n:=start.count;steps:=ps.count/n;sn:=ss.count/steps;
     if grads.count!=n*steps || ms.count!=n*steps || ss.count!=sn*steps {return McReplay.{resumed=-1};}
     pa:[320]f64;ma:[320]f64;sa:[160]f64;pb:[320]f64;mb:[320]f64;sb:[160]f64;w:[256]f64;state:=McState.{};resumed:=0;ran:=steps;
@@ -300,12 +300,12 @@ mc_replay :: (groups:[]McGroup,start:[]f64,grads:[]f64,ps:[]f64,ms:[]f64,ss:[]f6
     if mc_close_all(sa[0..<sn],ss,ran-1) {kept+=1;}
     return McReplay.{resumed=resumed,kept=kept};
 }
-mc_close_all :: (x:[]f64,ref:[]f64,step:int)->bool {n:=x.count;for i:0..<n {if !mc_close(x[i],ref[step*n+i]) {return false;}}return true;}
-mc_nanochat :: (cut:int,groups:[]McGroup)->McReplay {
+mc_close_all :: (x:[]f64,ref:[]f64,step:int)->bool #effects(all) {n:=x.count;for i:0..<n {if !mc_close(x[i],ref[step*n+i]) {return false;}}return true;}
+mc_nanochat :: (cut:int,groups:[]McGroup)->McReplay #effects(all) {
     a:=MC_NANOCHAT_START;g:=MC_NANOCHAT_GRADS;p:=MC_NANOCHAT_PARAMS;m:=MC_NANOCHAT_M;s:=MC_NANOCHAT_S;
     return mc_replay(groups,a[..],g[..],p[..],m[..],s[..],cut);
 }
-mc_muon :: (cut:int,groups:[]McGroup)->McReplay {
+mc_muon :: (cut:int,groups:[]McGroup)->McReplay #effects(all) {
     a:=MC_MUON_START;g:=MC_MUON_GRADS;p:=MC_MUON_PARAMS;m:=MC_MUON_M;s:=MC_MUON_S;
     return mc_replay(groups,a[..],g[..],p[..],m[..],s[..],cut);
 }
@@ -393,7 +393,7 @@ mc_muon :: (cut:int,groups:[]McGroup)->McReplay {
         if kind==0 {#assert mc_lr(h)==0.125*sqrt(5.0/3);for i:1..<5 {#assert abs(mc_norm(diff[3*i..<3*i+3])-mc_norm(diff[0..<3]))<0.000000000001;}} else {#assert mc_lr(h)==0.125;for j:1..<5 {cj:=[3]f64.[diff[j],diff[5+j],diff[10+j]];c0:=[3]f64.[diff[0],diff[5],diff[10]];#assert abs(mc_norm(cj[..])-mc_norm(c0[..]))<0.000000000001;}}
     }
 }
-mc_case_groups :: (muon:bool,out:[]McGroup)->int {
+mc_case_groups :: (muon:bool,out:[]McGroup)->int #effects(all) {
     if muon {gi:=MC_MUON_GROUPS;gs:=MC_MUON_SETTINGS;return mc_fixture_groups(gi[..],gs[..],out);}
     gi:=MC_NANOCHAT_GROUPS;gs:=MC_NANOCHAT_SETTINGS;return mc_fixture_groups(gi[..],gs[..],out);
 }
@@ -478,7 +478,7 @@ mc_case_groups :: (muon:bool,out:[]McGroup)->int {
     a=keep;m=mk;for i:0..<32 {s[i]=0;}r=mc_step(h[0..<j],McPolicy.{},McState.{step=1},a[..],x[68..<136],m[..],s[..],w[..],false);#assert r.status==McStatus.ok && !mc_close(a[60],want[128]);
     a=keep;m=mk;s=sk;r=mc_step(h[0..<j],McPolicy.{},McState.{},a[..],x[68..<136],m[..],s[..],w[..],false);#assert r.status==McStatus.ok && r.state.step==1 && !mc_close(a[0],want[68]) && mc_close(a[60],want[128]);
 }
-mc_refused :: (r:McResult,want:McStatus,s:McState)->bool {return r.status==want && r.state.step==s.step && r.state.skipped==s.skipped && r.written==0;}
+mc_refused :: (r:McResult,want:McStatus,s:McState)->bool #effects(all) {return r.status==want && r.state.step==s.step && r.state.skipped==s.skipped && r.written==0;}
 #test "refusals write nothing and skips advance only the skip counter" {
     g:=[2]McGroup.[McGroup.{count=2,lr=0.5,beta1=0.5,beta2=0.5,eps=0.5,decay=0.5},McGroup.{kind=McKind.muon,first=2,count=4,rows=2,cols=2,lr=0.5,beta2=0.5,decay=0.5,momentum=0.5,ns=5}];
     p:=[7]f64.[1,2,1,-1,2,0.5,-7];m:=[7]f64.[0,0,0,0,0,0,-8];s:=[5]f64.[0,0,0,0,-9];x:=[7]f64.[1,-1,0.5,1,-2,3,5];w:[25]f64;st:=McState.{step=4,skipped=2};

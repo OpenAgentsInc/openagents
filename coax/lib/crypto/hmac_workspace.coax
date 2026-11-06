@@ -28,7 +28,7 @@
 }
 HmacOwned :: struct {sha:[1]ShaOwned;key:[64]u8;pad:[64]u8;digest:[32]u8;}
 // All views must be live, stable and disjoint; overlap is a truthful host fact.
-hmac_owned :: (key:[]u8,input:[]u8,work:[]HmacOwned,out:[]u8,overlap:bool)->bool #export_c {
+hmac_owned :: (key:[]u8,input:[]u8,work:[]HmacOwned,out:[]u8,overlap:bool)->bool #export_c #effects(all) {
   if work.count!=1 || hmac_sha256_request(key.count,input.count,out.count,overlap)!=SHA_OK {return false;}
   work[0]=HmacOwned.{};
   if key.count>64 {

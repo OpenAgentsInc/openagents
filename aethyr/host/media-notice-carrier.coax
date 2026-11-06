@@ -51,13 +51,13 @@ HostMediaNoticeOutput :: struct {bytes:[65536]u8;}
  #assert hm_notice_render(bank[..],112,0,out[..])==0&&out[0]==197;
  #assert hm_notice_row(bank[..],0,urls[0][..],0,0,0,1,7,8)&&bank[0].rows[0].url=="";
 }
-hm_notice_row :: (bank:[]HostMediaNoticeRows,row:int,source:[]u8,at:int,n:int,ready:int,failed:int,width:int,height:int)->bool #export_c {
+hm_notice_row :: (bank:[]HostMediaNoticeRows,row:int,source:[]u8,at:int,n:int,ready:int,failed:int,width:int,height:int)->bool #export_c #effects(all) {
  if row<0||row>=HostMediaNoticeRows.{}.rows.count||at<0||n<0||at>source.count||n>source.count-at||(ready!=0&&ready!=1)||(failed!=0&&failed!=1) {return false;}
  bank[0].rows[row]=HostMediaNotice.{url=cast(string)source[at..<at+n],ready=ready==1,failed=failed==1,width=width,height=height};return true;
 }
-hm_notice_render :: (bank:[]HostMediaNoticeRows,count:int,capacity:int,out:[]u8)->int #export_c {
+hm_notice_render :: (bank:[]HostMediaNoticeRows,count:int,capacity:int,out:[]u8)->int #export_c #effects(all) {
  if count<0||count>HostMediaNoticeRows.{}.rows.count||capacity<0||capacity>out.count {return -1;}
  return htn_format(bank[0].rows[0..<count],out[0..<capacity]);
 }
-hm_notice_output :: (out:[]HostMediaNoticeOutput)->[]u8 #export_c {return out[0].bytes[..];}
-hm_notice_reset :: (bank:[]HostMediaNoticeRows) #export_c {bank[0]=HostMediaNoticeRows.{};}
+hm_notice_output :: (out:[]HostMediaNoticeOutput)->[]u8 #export_c #effects(all) {return out[0].bytes[..];}
+hm_notice_reset :: (bank:[]HostMediaNoticeRows) #export_c #effects(all) {bank[0]=HostMediaNoticeRows.{};}

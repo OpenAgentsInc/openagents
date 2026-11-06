@@ -42,12 +42,12 @@
 
 // Internal ABI: a checked host adapter must supply valid, nonoverlapping views.
 // Temporaries have not yet been proven erased; production secret use is barred.
-blockmix_admit :: (input:int,capacity:int,r:int,overlap:bool)->bool {
+blockmix_admit :: (input:int,capacity:int,r:int,overlap:bool)->bool #effects(all) {
   if r<1 || r>8 {return false;}
   n:=128*r;
   return input==n && capacity>=n && capacity<=CB_MAX_BYTES && !overlap;
 }
-scrypt_blockmix :: (input:[]u8,out:[]u8,r:int,overlap:bool)->bool #export_c {
+scrypt_blockmix :: (input:[]u8,out:[]u8,r:int,overlap:bool)->bool #export_c #effects(all) {
   if !blockmix_admit(input.count,out.count,r,overlap) {return false;}
   n:=128*r;
   x:[16]u32;

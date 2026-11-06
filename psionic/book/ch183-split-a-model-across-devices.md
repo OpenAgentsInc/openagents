@@ -86,7 +86,7 @@ columns, and a device whose weights and cache exceed the budget.
 // the device's scratch beyond its cache. reduce is the bytes one all-reduce
 // of one position moves; token is the bytes per token for the whole model.
 TlPlan :: struct {status:TlStatus;shape:TdShape;devices:int;heads:int;kv_heads:int;shared:bool;hidden:int;shard:int;cache:int;bytes:int;work:int;reduce:int;token:int;}
-tl_plan :: (s:TdShape,devices:int,budget:int)->TlPlan #export_c {
+tl_plan :: (s:TdShape,devices:int,budget:int)->TlPlan #export_c #effects(all) {
     p:=TlPlan.{shape=s,devices=devices};
     if !td_valid(s) {p.status=TlStatus.shape;return p;}
     if devices<1 || devices>TL_MAX_DEVICES {p.status=TlStatus.devices;return p;}
@@ -106,7 +106,7 @@ tl_plan :: (s:TdShape,devices:int,budget:int)->TlPlan #export_c {
 }
 // The fewest devices, up to `most`, whose split is allowed and fits the
 // budget. When none fits, the memory refusal at the most devices that divide.
-tl_choose :: (s:TdShape,most:int,budget:int)->TlPlan #export_c {
+tl_choose :: (s:TdShape,most:int,budget:int)->TlPlan #export_c #effects(all) {
     best:=tl_plan(s,1,budget);
     if most<1 {best.status=TlStatus.devices;}
     for n:2..<most+1 {
@@ -178,21 +178,21 @@ smaller sizes.
 ```jai
 // Where each piece sits in one device's shard: the embedding, every block's
 // norms and its slices of the projections, the final norm and the head.
-tl_block :: (p:TlPlan,layer:int)->TdBlock {
+tl_block :: (p:TlPlan,layer:int)->TdBlock #effects(all) {
     s:=p.shape;d:=s.width;q:=p.heads*s.head_width;k:=p.kv_heads*s.head_width;b:TdBlock;
     b.norm1=s.vocab*d+layer*(2*d+q*d+2*k*d+d*q+2*p.hidden*d);
     b.wq=b.norm1+d;b.wk=b.wq+q*d;b.wv=b.wk+k*d;b.wo=b.wv+k*d;b.norm2=b.wo+d*q;b.w1=b.norm2+d;b.w2=b.w1+p.hidden*d;return b;
 }
-tl_final_norm :: (p:TlPlan)->int {return tl_block(p,p.shape.layers).norm1;}
-tl_unembed :: (p:TlPlan)->int {return tl_final_norm(p)+p.shape.width;}
+tl_final_norm :: (p:TlPlan)->int #effects(all) {return tl_block(p,p.shape.layers).norm1;}
+tl_unembed :: (p:TlPlan)->int #effects(all) {return tl_final_norm(p)+p.shape.width;}
 // Device d's first query head and first key-value head.
-tl_head0 :: (p:TlPlan,d:int)->int {return d*p.heads;}
-tl_kv0 :: (p:TlPlan,d:int)->int {return tl_head0(p,d)/(p.shape.heads/p.shape.kv_heads);}
-tl_rows :: (from:[]f64,at:int,to:[]f64,dest:int,n:int) {for i:0..<n {to[dest+i]=from[at+i];}}
+tl_head0 :: (p:TlPlan,d:int)->int #effects(all) {return d*p.heads;}
+tl_kv0 :: (p:TlPlan,d:int)->int #effects(all) {return tl_head0(p,d)/(p.shape.heads/p.shape.kv_heads);}
+tl_rows :: (from:[]f64,at:int,to:[]f64,dest:int,n:int) #effects(all) {for i:0..<n {to[dest+i]=from[at+i];}}
 // Copies device d's slice of the full parameters into its shard. Wq, Wk, Wv
 // and W1 are row-major with one row per output, so a device's rows are one
 // run; Wo and W2 take a run of columns from every row.
-tl_scatter :: (p:TlPlan,d:int,params:[]f64,shard:[]f64) #export_c {
+tl_scatter :: (p:TlPlan,d:int,params:[]f64,shard:[]f64) #export_c #effects(all) {
     s:=p.shape;w:=s.width;e:=s.head_width;q:=p.heads*e;k:=p.kv_heads*e;base:=d*p.shard;
     tl_rows(params,0,shard,base,s.vocab*w);
     for l:0..<s.layers {g:=td_block(s,l);b:=tl_block(p,l);
@@ -221,7 +221,7 @@ all positions) or decodes one token (`n = 1`).
 // holds, and its run of Wo's columns. The result is device d's addend of the
 // output, written to its partials. Same arithmetic, in the same order, as
 // chapter 113's td_advance.
-tl_attend :: (p:TlPlan,d:int,l:int,shards:[]f64,works:[]f64,first:int,n:int,partials:[]f64) #export_c {
+tl_attend :: (p:TlPlan,d:int,l:int,shards:[]f64,works:[]f64,first:int,n:int,partials:[]f64) #export_c #effects(all) {
     s:=p.shape;w:=s.width;e:=s.head_width;q:=p.heads*e;k:=p.kv_heads*e;group:=s.heads/s.kv_heads;scale:=1/sqrt(f64(e));
     sh:=shards[d*p.shard..<(d+1)*p.shard];x:=works[d*tl_work_count(p)..<(d+1)*tl_work_count(p)];b:=tl_block(p,l);
     row:=tl_scratch(p);nm:=row+s.context;qs:=nm+w;cs:=nm;keys:=tl_keys(p,l);values:=tl_values(p,l);
@@ -240,7 +240,7 @@ tl_attend :: (p:TlPlan,d:int,l:int,shards:[]f64,works:[]f64,first:int,n:int,part
 // columns, again as an addend. The ReLU is (z + |z|) / 2, exact, so a column
 // at or below zero adds W2 * 0 * 0, a zero that leaves the sum's bits as
 // chapter 113's skipped term does.
-tl_ffn :: (p:TlPlan,d:int,l:int,shards:[]f64,works:[]f64,first:int,n:int,partials:[]f64) #export_c {
+tl_ffn :: (p:TlPlan,d:int,l:int,shards:[]f64,works:[]f64,first:int,n:int,partials:[]f64) #export_c #effects(all) {
     s:=p.shape;w:=s.width;
     sh:=shards[d*p.shard..<(d+1)*p.shard];x:=works[d*tl_work_count(p)..<(d+1)*tl_work_count(p)];b:=tl_block(p,l);
     nm:=tl_scratch(p);u:=tl_work_count(p)-p.hidden;
@@ -266,12 +266,12 @@ Then every device copies the whole row into its own residual.
 // and writes the sums to the shared row. Then every device copies the whole
 // row into its residual. Every column is summed once, in one order, so the
 // bits do not depend on which device finishes first.
-tl_reduce :: (p:TlPlan,d:int,works:[]f64,first:int,n:int,partials:[]f64,reduced:[]f64) #export_c {
+tl_reduce :: (p:TlPlan,d:int,works:[]f64,first:int,n:int,partials:[]f64,reduced:[]f64) #export_c #effects(all) {
     s:=p.shape;w:=s.width;x:=d*tl_work_count(p);
     for t:first..<first+n {for i:sd_first(w,p.devices,d)..<sd_first(w,p.devices,d+1) {v:=partials[t*w+i];
         for e:1..<p.devices {v+=partials[(e*s.context+t)*w+i];}reduced[t*w+i]=v+works[x+t*w+i];}}
 }
-tl_gather :: (p:TlPlan,d:int,works:[]f64,first:int,n:int,reduced:[]f64) #export_c {
+tl_gather :: (p:TlPlan,d:int,works:[]f64,first:int,n:int,reduced:[]f64) #export_c #effects(all) {
     w:=p.shape.width;for t:first..<first+n {tl_rows(reduced,t*w,works,d*tl_work_count(p)+t*w,w);}
 }
 ```
@@ -330,7 +330,7 @@ and computes the logits on device 0.
 // device, an all-reduce, the FFN half, an all-reduce. Here the devices run
 // one after another; the threads harness runs the same calls in parallel
 // with a barrier between steps.
-tl_run :: (p:TlPlan,shards:[]f64,works:[]f64,partials:[]f64,reduced:[]f64,tokens:[]int,first:int,logits:[]f64)->TlResult #export_c {
+tl_run :: (p:TlPlan,shards:[]f64,works:[]f64,partials:[]f64,reduced:[]f64,tokens:[]int,first:int,logits:[]f64)->TlResult #export_c #effects(all) {
     status:=tl_admit(p,shards.count,works.count,partials.count,reduced.count,tokens,first,logits.count);if status!=TlStatus.ok {return TlResult.{status=status};}
     n:=tokens.count;
     for d:0..<p.devices {tl_embed(p,d,shards,works,tokens,first);}

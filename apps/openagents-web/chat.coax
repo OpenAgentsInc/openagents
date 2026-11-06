@@ -126,7 +126,7 @@ WcHost :: struct {
   inbox: [WC_INBOX] u8;
   pool: [WC_POOL] u8;
 }
-coaxial_chat_bind :: (h: [] WcHost) #export_c {
+coaxial_chat_bind :: (h: [] WcHost) #export_c #effects(all) {
   if h.count < 1 { return; }
   h[0].s[0].data = h[0].data[..];
   h[0].s[0].inbox = h[0].inbox[..];
@@ -297,8 +297,8 @@ wc_post :: (s: [] WcState, op: string, kind: int, k1: string, v1: string, k2: st
   s[0].post_kind = kind; s[0].post_id = -1;
 }
 // The face sent them. A post's body is wiped once sent: a credential stays in the page no longer than that.
-coaxial_chat_asked :: (s: [] WcState, id: int) #export_c { if s.count > 0 { s[0].ask_n = 0; s[0].ask_id = id; } }
-coaxial_chat_posted :: (s: [] WcState, id: int) #export_c {
+coaxial_chat_asked :: (s: [] WcState, id: int) #export_c #effects(all) { if s.count > 0 { s[0].ask_n = 0; s[0].ask_id = id; } }
+coaxial_chat_posted :: (s: [] WcState, id: int) #export_c #effects(all) {
   if s.count < 1 { return; }
   for i: 0..<s[0].body_n { s[0].body[i] = 0; }
   s[0].post_n = 0; s[0].body_n = 0; s[0].post_id = id;
@@ -1082,13 +1082,13 @@ wc_typed :: (s: [] WcState, text: string) {
   if text.count > 1 { composer_paste(c, text); } else { composer_insert(c, text); }
 }
 
-coaxial_chat_frame :: (s: [] WcState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c {
+coaxial_chat_frame :: (s: [] WcState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
   if s.count < 1 || width < 1 || height < 1 { return 0; }
   return wc_frame(s, out, uniforms, width, height, dpr, dt);
 }
 // phase 0 down, 1 move, 2 up, 3 cancel; device pixels. The click count is
 // counted here (presses close in time and place), as AppKit counts it.
-coaxial_chat_pointer :: (s: [] WcState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
+coaxial_chat_pointer :: (s: [] WcState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   d := ifx s[0].d < 1 then 1.0f32 else s[0].d;
   c := s[0].composer[..]; t := s[0].transcript[..]; p := s[0].picker[..]; a := s[0].atlas[..];
@@ -1152,7 +1152,7 @@ coaxial_chat_pointer :: (s: [] WcState, x: f32, y: f32, phase: int, kind: int) -
   return false;
 }
 // The wheel, CSS pixels down: the open menu's list, the sidebar, the composer's text, else the transcript.
-coaxial_chat_wheel :: (s: [] WcState, dy: f32) #export_c {
+coaxial_chat_wheel :: (s: [] WcState, dy: f32) #export_c #effects(all) {
   if s.count < 1 { return; }
   if pk_is_open(s[0].picker[..]) { b := pk_wheel(s[0].picker[..], s[0].cat[..], -dy); return; }
   d := ifx s[0].d < 1 then 1.0f32 else s[0].d;
@@ -1162,7 +1162,7 @@ coaxial_chat_wheel :: (s: [] WcState, dy: f32) #export_c {
   moved := t_wheel(s[0].transcript[..], -dy);
   t_hover(s[0].transcript[..], s[0].lx, s[0].ly);
 }
-coaxial_chat_key :: (s: [] WcState, key: int, mods: int) -> bool #export_c {
+coaxial_chat_key :: (s: [] WcState, key: int, mods: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   if key == WK_SHIFT { s[0].shift = true; return false; }
   if key == WK_CONTROL { return false; }
@@ -1213,12 +1213,12 @@ coaxial_chat_key :: (s: [] WcState, key: int, mods: int) -> bool #export_c {
   if !c[0].focused && key > 0 && !cmd { c[0].focused = true; }
   return composer_key(c, s[0].atlas[..], key, mods);
 }
-coaxial_chat_key_up :: (s: [] WcState, key: int, mods: int) -> bool #export_c {
+coaxial_chat_key_up :: (s: [] WcState, key: int, mods: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   if key == WK_SHIFT { s[0].shift = false; }
   return false;
 }
-coaxial_chat_message :: (s: [] WcState, kind: int, length: int) #export_c {
+coaxial_chat_message :: (s: [] WcState, kind: int, length: int) #export_c #effects(all) {
   if s.count < 1 || length < 0 || length > s[0].inbox.count { return; }
   text := cast(string) s[0].inbox[0..<length];
   if kind >= WC_HTTP && kind < WC_HTTP + 8 { wc_answer(s, kind - WC_HTTP, text); return; }
@@ -1226,39 +1226,39 @@ coaxial_chat_message :: (s: [] WcState, kind: int, length: int) #export_c {
   if kind == WC_SHOWN && s[0].status == 200 { s[0].asked_at = -1000; }   // shown again: read the state now
 }
 // The location's hash: #demo shows Zeron's demo conversation.
-coaxial_chat_hash :: (s: [] WcState, length: int) #export_c {
+coaxial_chat_hash :: (s: [] WcState, length: int) #export_c #effects(all) {
   if s.count < 1 || length < 0 || length > s[0].inbox.count { return; }
   if !s[0].ready { wc_init(s); }
   if cast(string) s[0].inbox[0..<length] == "demo" { wc_demo(s); }
 }
-coaxial_chat_golden :: (s: [] WcState, on: bool) #export_c { if s.count > 0 { s[0].golden = on; } }
-coaxial_chat_wants_text :: (s: [] WcState) -> bool #export_c {
+coaxial_chat_golden :: (s: [] WcState, on: bool) #export_c #effects(all) { if s.count > 0 { s[0].golden = on; } }
+coaxial_chat_wants_text :: (s: [] WcState) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   if s[0].keying { return s[0].key_focus; }
   return s[0].composer[0].focused || pk_is_open(s[0].picker[..]);
 }
-coaxial_chat_cursor :: (s: [] WcState) -> int #export_c { if s.count < 1 { return 0; } return s[0].cursor; }
-coaxial_chat_action :: (s: [] WcState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
-coaxial_chat_action_done :: (s: [] WcState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
-coaxial_chat_inbox_cap :: () -> int #export_c { return WC_INBOX; }
-coaxial_chat_max_vertices :: () -> int #export_c { return WC_MAX_VERTICES; }
-coaxial_chat_vertex_floats :: () -> int #export_c { return GP_VERTEX_FLOATS; }
+coaxial_chat_cursor :: (s: [] WcState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].cursor; }
+coaxial_chat_action :: (s: [] WcState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_chat_action_done :: (s: [] WcState) #export_c #effects(all) { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_chat_inbox_cap :: () -> int #export_c #effects(all) { return WC_INBOX; }
+coaxial_chat_max_vertices :: () -> int #export_c #effects(all) { return WC_MAX_VERTICES; }
+coaxial_chat_vertex_floats :: () -> int #export_c #effects(all) { return GP_VERTEX_FLOATS; }
 
 // ---------------------------------------------------------------- the atlas, for coax/web/gpui.js
 
-coaxial_chat_glyph_count :: () -> int #export_c { return GP_GLYPHS; }
-coaxial_chat_glyph_code :: (g: int) -> int #export_c {
+coaxial_chat_glyph_count :: () -> int #export_c #effects(all) { return GP_GLYPHS; }
+coaxial_chat_glyph_code :: (g: int) -> int #export_c #effects(all) {
   if g < 95 { return g + 32; }
   extra := GP_EXTRA;
   return ifx g - 95 < 3 then cast(int) extra[g - 95] else 63;
 }
-coaxial_chat_font_count :: () -> int #export_c { return GP_FONTS; }
-coaxial_chat_font_size :: (k: int) -> f32 #export_c { sizes := FONT_SIZES; return ifx k >= 0 && k < GP_FONTS then sizes[k] else 14.0f32; }
-coaxial_chat_font_weight :: (k: int) -> int #export_c { weights := FONT_WEIGHTS; return ifx k >= 0 && k < GP_FONTS then weights[k] else 0; }
-coaxial_chat_icon_count :: () -> int #export_c { return ICON_COUNT; }
-coaxial_chat_icon_size :: (i: int) -> f32 #export_c { sizes := ICON_SIZES; return ifx i >= 0 && i < ICON_COUNT then sizes[i] else 16.0f32; }
+coaxial_chat_font_count :: () -> int #export_c #effects(all) { return GP_FONTS; }
+coaxial_chat_font_size :: (k: int) -> f32 #export_c #effects(all) { sizes := FONT_SIZES; return ifx k >= 0 && k < GP_FONTS then sizes[k] else 14.0f32; }
+coaxial_chat_font_weight :: (k: int) -> int #export_c #effects(all) { weights := FONT_WEIGHTS; return ifx k >= 0 && k < GP_FONTS then weights[k] else 0; }
+coaxial_chat_icon_count :: () -> int #export_c #effects(all) { return ICON_COUNT; }
+coaxial_chat_icon_size :: (i: int) -> f32 #export_c #effects(all) { sizes := ICON_SIZES; return ifx i >= 0 && i < ICON_COUNT then sizes[i] else 16.0f32; }
 // An icon's file name, into the scratch bytes; its length.
-coaxial_chat_icon_name :: (s: [] WcState, i: int) -> int #export_c {
+coaxial_chat_icon_name :: (s: [] WcState, i: int) -> int #export_c #effects(all) {
   if s.count < 1 || i < 0 || i >= ICON_COUNT { return 0; }
   names := ICON_NAMES;
   n := ifx names[i].count < 64 then names[i].count else 64;
@@ -1266,25 +1266,25 @@ coaxial_chat_icon_name :: (s: [] WcState, i: int) -> int #export_c {
   return n;
 }
 // A font from the scratch: its header (7), then each glyph's advance, then the kerning.
-coaxial_chat_set_font :: (s: [] WcState, slot: int) #export_c {
+coaxial_chat_set_font :: (s: [] WcState, slot: int) #export_c #effects(all) {
   if s.count < 1 { return; }
   sizes := FONT_SIZES;
   if slot < 0 || slot >= GP_FONTS { return; }
   gp_set_font(s[0].atlas[..], slot, sizes[slot], s[0].scratch[0..<7], s[0].scratch[7..<7 + GP_GLYPHS], s[0].scratch[7 + GP_GLYPHS..<7 + GP_GLYPHS + GP_GLYPHS * GP_GLYPHS]);
 }
-coaxial_chat_set_icon :: (s: [] WcState, i: int, x: f32, y: f32, w: f32, h: f32) #export_c { if s.count > 0 { gp_set_icon(s[0].atlas[..], i, x, y, w, h); } }
-coaxial_chat_set_atlas :: (s: [] WcState, width: f32, height: f32, levels: int) #export_c { if s.count > 0 { gp_set_atlas(s[0].atlas[..], width, height, levels); } }
-coaxial_chat_set_dynamic :: (s: [] WcState, size: f32, pen_x: f32, pen_y: f32, y0: f32, cols: int, color_cols: int, color_width: f32, color_height: f32) #export_c {
+coaxial_chat_set_icon :: (s: [] WcState, i: int, x: f32, y: f32, w: f32, h: f32) #export_c #effects(all) { if s.count > 0 { gp_set_icon(s[0].atlas[..], i, x, y, w, h); } }
+coaxial_chat_set_atlas :: (s: [] WcState, width: f32, height: f32, levels: int) #export_c #effects(all) { if s.count > 0 { gp_set_atlas(s[0].atlas[..], width, height, levels); } }
+coaxial_chat_set_dynamic :: (s: [] WcState, size: f32, pen_x: f32, pen_y: f32, y0: f32, cols: int, color_cols: int, color_width: f32, color_height: f32) #export_c #effects(all) {
   if s.count > 0 { gp_set_dynamic(s[0].atlas[..], size, pen_x, pen_y, y0, cols, color_cols, color_width, color_height); }
 }
-coaxial_chat_next_cluster :: (s: [] WcState) -> int #export_c { if s.count < 1 { return -1; } return gp_next_cluster(s[0].atlas[..]); }
+coaxial_chat_next_cluster :: (s: [] WcState) -> int #export_c #effects(all) { if s.count < 1 { return -1; } return gp_next_cluster(s[0].atlas[..]); }
 // A cluster's bytes into the scratch bytes; font * 256 + their count.
-coaxial_chat_cluster :: (s: [] WcState, slot: int) -> int #export_c { if s.count < 1 { return 0; } return gp_cluster(s[0].atlas[..], slot, s[0].sbytes[..]); }
-coaxial_chat_measured :: (s: [] WcState, slot: int, advance: f32, color: bool) #export_c { if s.count > 0 { gp_measured(s[0].atlas[..], slot, advance, color); } }
-coaxial_chat_next_cell :: (s: [] WcState) -> int #export_c { if s.count < 1 { return -1; } return gp_next_cell(s[0].atlas[..]); }
+coaxial_chat_cluster :: (s: [] WcState, slot: int) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return gp_cluster(s[0].atlas[..], slot, s[0].sbytes[..]); }
+coaxial_chat_measured :: (s: [] WcState, slot: int, advance: f32, color: bool) #export_c #effects(all) { if s.count > 0 { gp_measured(s[0].atlas[..], slot, advance, color); } }
+coaxial_chat_next_cell :: (s: [] WcState) -> int #export_c #effects(all) { if s.count < 1 { return -1; } return gp_next_cell(s[0].atlas[..]); }
 // A wanted cell's six numbers into the scratch: slot, level, subpixel, color, texel x, y.
-coaxial_chat_cell :: (s: [] WcState, cell: int) -> bool #export_c { if s.count < 1 { return false; } return gp_cell(s[0].atlas[..], cell, s[0].scratch[0..<6]); }
-coaxial_chat_cell_ready :: (s: [] WcState, cell: int) #export_c { if s.count > 0 { gp_cell_ready(s[0].atlas[..], cell); } }
+coaxial_chat_cell :: (s: [] WcState, cell: int) -> bool #export_c #effects(all) { if s.count < 1 { return false; } return gp_cell(s[0].atlas[..], cell, s[0].scratch[0..<6]); }
+coaxial_chat_cell_ready :: (s: [] WcState, cell: int) #export_c #effects(all) { if s.count > 0 { gp_cell_ready(s[0].atlas[..], cell); } }
 
 // ---------------------------------------------------------------- checks
 

@@ -81,7 +81,7 @@ reason. A release is admitted at the reader's time `now` when it is listed,
 // NIP-ATT: admitted at now when listed, effective_at <= now, retire_at
 // null or later than now, and effective_at at least the notice delay after
 // the release's published_at (one day for the head's emergency release).
-at_admitted :: (h:AtHead,release:string,published_at:int,now:int)->AtCode {
+at_admitted :: (h:AtHead,release:string,published_at:int,now:int)->AtCode #effects(all) {
   for i:0..<h.count {
     a:=h.admitted[i];
     if a.release==release {
@@ -95,7 +95,7 @@ at_admitted :: (h:AtHead,release:string,published_at:int,now:int)->AtCode {
   return AtCode.listed;
 }
 // held is the highest generation this reader has seen for the workload.
-at_generation :: (h:AtHead,held:int)->AtCode {return ifx h.generation<held then AtCode.generation else AtCode.ok;}
+at_generation :: (h:AtHead,held:int)->AtCode #effects(all) {return ifx h.generation<held then AtCode.generation else AtCode.ok;}
 ```
 
 ### Worked example: admission, by hand
@@ -128,7 +128,7 @@ to `valid_until`. The binding ties the key to the release:
 // SHA-256("openagents.att.v1" || 0 || endpoint (32 bytes) || release id
 // (32 bytes)), as 64 lowercase hex digits. hpke is null here, so it adds no
 // bytes.
-at_binding :: (endpoint:string,release:string,out:[]u8)->bool {
+at_binding :: (endpoint:string,release:string,out:[]u8)->bool #effects(all) {
   if !at_hex64(endpoint) || !at_hex64(release) {return false;}
   msg:[82]u8;for i:0..<AT_DOMAIN.count {msg[i]=AT_DOMAIN[i];}   // msg[17] stays 0
   for i:0..<32 {msg[18+i]=cast(u8)(at_nibble(endpoint[2*i])*16+at_nibble(endpoint[2*i+1]));msg[50+i]=cast(u8)(at_nibble(release[2*i])*16+at_nibble(release[2*i+1]));}
@@ -166,7 +166,7 @@ first refusal:
 // highest generation held), endpoint (its reading; its signer is checked by
 // at_endpoint_read), at the reader's clock now. Step 3, the token's
 // signature to Google's root, is not built, so the level is open.
-at_verify :: (release_id:string,r:AtRelease,head_signer:string,h:AtHead,held:int,e:AtEndpoint,now:int)->AtVerdict {
+at_verify :: (release_id:string,r:AtRelease,head_signer:string,h:AtHead,held:int,e:AtEndpoint,now:int)->AtVerdict #effects(all) {
   if e.code!=AtCode.ok {return AtVerdict.{code=e.code};}
   if r.code!=AtCode.ok {return AtVerdict.{code=r.code};}
   if h.code!=AtCode.ok {return AtVerdict.{code=h.code};}
@@ -195,7 +195,7 @@ at_verify :: (release_id:string,r:AtRelease,head_signer:string,h:AtHead,held:int
 }
 // Whether data whose policy requires level required may go to this
 // endpoint. Never falls back to a lower level.
-at_may_send :: (v:AtVerdict,required:AtLevel)->bool {
+at_may_send :: (v:AtVerdict,required:AtLevel)->bool #effects(all) {
   return v.code==AtCode.ok && cast(int)v.level>=cast(int)required;
 }
 ```
@@ -226,10 +226,10 @@ tag failing:
 // the 32 bytes of the slot id, info = "openagents.vault.v1/slot" 0 method);
 // vmk is AES-256-GCM of the VMK under it with the slot's associated data.
 // A wrong secret, or any changed byte of the slot, fails the tag.
-vt_slot_open :: (text:string,secret:[]u8,vmk:[]u8)->VtCode {
+vt_slot_open :: (text:string,secret:[]u8,vmk:[]u8)->VtCode #effects(all) {
   kdf:[1]VtKdf;return vt_slot_open_work(text,secret,vmk,kdf[..]);
 }
-vt_slot_open_work :: (text:string,secret:[]u8,vmk:[]u8,kdf:[]VtKdf)->VtCode {
+vt_slot_open_work :: (text:string,secret:[]u8,vmk:[]u8,kdf:[]VtKdf)->VtCode #effects(all) {
   aad:[VT_AAD_MAX]u8;s:=vt_slot_read(text,aad[..]);
   if s.code!=VtCode.ok {return s.code;}
   if secret.count<32 || secret.count>VT_SECRET_MAX {return VtCode.secret;}
@@ -257,10 +257,10 @@ From the VMK come `K_user_wrap` and the public `user_key_id`:
 // K_user_wrap = HKDF-SHA256(ikm = VMK, salt = empty, info =
 // "openagents.vault.v1/user-wrap"); user_key_id = the first 16 bytes of
 // SHA-256("openagents.vault.v1/key-id" 0 K_user_wrap), as 32 hex digits.
-vt_user_keys :: (vmk:[]u8,kwrap:[]u8,key_id:[]u8)->bool {
+vt_user_keys :: (vmk:[]u8,kwrap:[]u8,key_id:[]u8)->bool #effects(all) {
   kdf:[1]VtKdf;return vt_user_keys_work(vmk,kwrap,key_id,kdf[..]);
 }
-vt_user_keys_work :: (vmk:[]u8,kwrap:[]u8,key_id:[]u8,kdf:[]VtKdf)->bool {
+vt_user_keys_work :: (vmk:[]u8,kwrap:[]u8,key_id:[]u8,kdf:[]VtKdf)->bool #effects(all) {
   info:[29]u8;i0:=json_raw(info[..],0,"openagents.vault.v1/user-wrap");
   ok:=hkdf_extract_checked(vmk[0..<0],vmk,kdf[0].prk[..],false)==SHA_OK && hkdf_expand_checked(kdf[0].prk[..],info[0..<i0],kwrap,32,false)==SHA_OK;
   msg:[59]u8;n:=json_raw(msg[..],0,"openagents.vault.v1/key-id");   // msg[26] stays 0
@@ -288,7 +288,7 @@ last (1)` and associated data `openagents.vault.v1/chunk`, a zero byte and
 ```jai
 // Every chunk but the last is chunk_bytes + 16 bytes; the last is 16 to
 // chunk_bytes + 16, and more than 16 unless it is the only chunk.
-vt_spans_ok :: (n:int,chunk_bytes:int,chunks:int)->bool {
+vt_spans_ok :: (n:int,chunk_bytes:int,chunks:int)->bool #effects(all) {
   last:=n-(chunks-1)*(chunk_bytes+16);
   return last>=16 && last<=chunk_bytes+16 && (chunks==1 || last>16);
 }
@@ -301,10 +301,10 @@ leaving nothing in the output:
 ```jai
 // Slot -> VMK -> K_user_wrap -> the user wrap whose key is user_key_id ->
 // DEK -> every chunk. Nothing is left in out unless every link holds.
-vt_open :: (blob:[]u8,slot:string,secret:[]u8,out:[]u8)->VtResult {
+vt_open :: (blob:[]u8,slot:string,secret:[]u8,out:[]u8)->VtResult #effects(all) {
   work:[1]VtWork;return vt_open_work(blob,slot,secret,out,work[..]);
 }
-vt_open_work :: (blob:[]u8,slot:string,secret:[]u8,out:[]u8,work:[]VtWork)->VtResult {
+vt_open_work :: (blob:[]u8,slot:string,secret:[]u8,out:[]u8,work:[]VtWork)->VtResult #effects(all) {
   o:=vt_object_read(blob);if o.code!=VtCode.ok {return VtResult.{code=o.code};}
   aad:[VT_AAD_MAX]u8;s:=vt_slot_read(slot,aad[..]);if s.code!=VtCode.ok {return VtResult.{code=s.code};}
   if s.vault!=o.vault {return VtResult.{code=VtCode.vault};}
@@ -324,7 +324,7 @@ vt_open_work :: (blob:[]u8,slot:string,secret:[]u8,out:[]u8,work:[]VtWork)->VtRe
   return VtResult.{code=VtCode.ok,written=written};
 }
 // VMK -> K_user_wrap and user_key_id -> the DEK from the wrap with that key.
-vt_unwrap :: (o:VtObject,work:[]VtWork)->VtCode {
+vt_unwrap :: (o:VtObject,work:[]VtWork)->VtCode #effects(all) {
   id:[32]u8;
   if !vt_user_keys_work(work[0].vmk[..],work[0].kwrap[..],id[..],work[0].kdf[..]) {return VtCode.wrap;}
   wad:[62]u8;n:=json_raw(wad[..],0,"openagents.vault.v1/wrap-user");for i:0..<32 {wad[n+1+i]=o.digest[i];}
@@ -337,7 +337,7 @@ vt_unwrap :: (o:VtObject,work:[]VtWork)->VtCode {
   return VtCode.wrap;
 }
 // Chunk i's nonce: nonce_prefix (7 bytes) || be32(i) || 1 for the last chunk, else 0.
-vt_chunk_nonce :: (prefix:[7]u8,i:int,last:bool,nonce:[]u8) {
+vt_chunk_nonce :: (prefix:[7]u8,i:int,last:bool,nonce:[]u8) #effects(all) {
   for k:0..<7 {nonce[k]=prefix[k];}
   for k:0..<4 {nonce[7+k]=cast(u8)((i>>(8*(3-k)))&255);}
   nonce[11]=ifx last then cast(u8)1 else cast(u8)0;

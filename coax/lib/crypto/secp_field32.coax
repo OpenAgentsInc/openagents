@@ -43,10 +43,10 @@ SF32_P :: Sf32.{limb=[8]u32.[4294966319,4294967294,4294967295,4294967295,4294967
   #assert sf32_equal(sf32_add(sf32_sub(x,y),y),x);
 }
 
-sf32_equal :: (a:Sf32,b:Sf32)->bool {
+sf32_equal :: (a:Sf32,b:Sf32)->bool #effects(all) {
   difference:u64; for i:0..<8 {difference |= cast(u64)(a.limb[i] ^ b.limb[i]);} return difference == 0;
 }
-sf32_fold_top :: (input:Sf32,top:u64)->Sf32Fold {
+sf32_fold_top :: (input:Sf32,top:u64)->Sf32Fold #effects(all) {
   r:Sf32Fold;defer {secure_zero(r.value.limb[..]);#assert crypto_zeroed(r.value.limb[..]);} carry:=mul_wrap(top,977);
   for i:0..<8 {
     // i is public; only limb1 receives the 2^32 part of top.
@@ -56,12 +56,12 @@ sf32_fold_top :: (input:Sf32,top:u64)->Sf32Fold {
   }
   r.carry=carry;return r;
 }
-sf32_canonical :: (input:Sf32)->Sf32 {
+sf32_canonical :: (input:Sf32)->Sf32 #effects(all) {
   folded:=sf32_fold_top(input,1);defer {secure_zero(folded.value.limb[..]);#assert crypto_zeroed(folded.value.limb[..]);}mask:=cast,trunc(u32)(cb_mask(folded.carry));r:Sf32;defer {secure_zero(r.limb[..]);#assert crypto_zeroed(r.limb[..]);}
   for i:0..<8 {r.limb[i]=cb_ct_select32(mask,folded.value.limb[i],input.limb[i]);}
   return r;
 }
-sf32_add :: (a:Sf32,b:Sf32)->Sf32 {
+sf32_add :: (a:Sf32,b:Sf32)->Sf32 #effects(all) {
   r:Sf32;defer {secure_zero(r.limb[..]);#assert crypto_zeroed(r.limb[..]);}carry:u64;
   for i:0..<8 {wide:=cast(u64)a.limb[i]+cast(u64)b.limb[i]+carry;r.limb[i]=cast,trunc(u32)(wide);carry=wide>>32;}
   // Canonical a,b < p imply a+b < 2p. If the sum carries bit256,
@@ -69,14 +69,14 @@ sf32_add :: (a:Sf32,b:Sf32)->Sf32 {
   folded:=sf32_fold_top(r,carry);defer {secure_zero(folded.value.limb[..]);#assert crypto_zeroed(folded.value.limb[..]);}
   #assert folded.carry==0; return sf32_canonical(folded.value);
 }
-sf32_sub :: (a:Sf32,b:Sf32)->Sf32 {
+sf32_sub :: (a:Sf32,b:Sf32)->Sf32 #effects(all) {
   r:Sf32;defer {secure_zero(r.limb[..]);#assert crypto_zeroed(r.limb[..]);}borrow:u64;
   for i:0..<8 {wide:=(cast(u64)1<<32)+cast(u64)a.limb[i]-cast(u64)b.limb[i]-borrow;r.limb[i]=cast,trunc(u32)(wide);borrow=1-(wide>>32);}
   mask:=cast,trunc(u32)(cb_mask(borrow));carry:u64;
   for i:0..<8 {wide:=cast(u64)r.limb[i]+cast(u64)(SF32_P.limb[i]&mask)+carry;r.limb[i]=cast,trunc(u32)(wide);carry=wide>>32;}
   return r;
 }
-sf32_mul :: (a:Sf32,b:Sf32)->Sf32 {
+sf32_mul :: (a:Sf32,b:Sf32)->Sf32 #effects(all) {
   product:[16]u32;defer {secure_zero(product[..]);#assert crypto_zeroed(product[..]);}
   for i:0..<8 {
     carry:u64;

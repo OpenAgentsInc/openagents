@@ -127,7 +127,7 @@ cn_eval :: (m:MdlModel,t:AdTape,p:[]f64,w:[]CnWork,images:[]u8,labels:[]u8,d:MnD
     return r;
 }
 
-cn_oracle :: (images:[]u8,labels:[]u8,params:[]f64,gradient:[]f64,scores:[]f32,features:[]f32)->CnFirst #export_c {
+cn_oracle :: (images:[]u8,labels:[]u8,params:[]f64,gradient:[]f64,scores:[]f32,features:[]f32)->CnFirst #export_c #effects(all) {
     d:=mn_admit(images,labels);if d.status!=MnStatus.ok {return CnFirst.{status=CnStatus.data};}
     m:=cn_model();q:=mtr_plan(m);w:[1]CnWork;
     if !cn_capture(params.count,gradient.count,scores.count,features.count) || !cn_fit(q,w[..]) {return CnFirst.{status=CnStatus.capacity};}
@@ -142,7 +142,7 @@ cn_oracle :: (images:[]u8,labels:[]u8,params:[]f64,gradient:[]f64,scores:[]f32,f
     return CnFirst.{loss=step.loss,parameters=q.parameters,inputs=q.inputs,values=q.values,adjoints=q.adjoints,flags=q.flags};
 }
 
-cn_synthetic :: ()->bool #export_c {
+cn_synthetic :: ()->bool #export_c #effects(all) {
     m:=cn_model();q:=mtr_plan(m);w:[1]CnWork;p:[2910]f64;
     if !cn_fit(q,w[..]) {return false;}
     #assert mn_target(7,w[0].inputs[196..<206])==MnStatus.ok;

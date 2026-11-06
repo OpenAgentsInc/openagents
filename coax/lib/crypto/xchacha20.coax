@@ -26,7 +26,7 @@
 
 // Internal ABI: host adapters must validate views and supply the alias fact.
 // The subkey and intermediate blocks do not yet have proven erasure.
-xchacha20_xor_checked :: (key:[]u8,nonce:[]u8,counter:u32,input:[]u8,out:[]u8,overlap:bool)->ChaChaResult #export_c {
+xchacha20_xor_checked :: (key:[]u8,nonce:[]u8,counter:u32,input:[]u8,out:[]u8,overlap:bool)->ChaChaResult #export_c #effects(all) {
   if key.count!=32 {return ChaChaResult.{error=CC_KEY};}
   if nonce.count!=24 {return ChaChaResult.{error=CC_NONCE};}
   error:=cc_admit(32,12,counter,input.count,out.count,overlap);

@@ -1317,7 +1317,7 @@ watch_run :: (s: [] Watch, dt: f32) {
   s[0].pace = loop_ran(c);
 }
 
-watch_frame :: (s: [] Watch, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+watch_frame :: (s: [] Watch, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   watch_start(s);
   if u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   s[0].width = width; s[0].height = height; s[0].dpr = dpr;
@@ -1393,7 +1393,7 @@ cycle :: (s: [] Watch, by: int) {
   if i >= HOSTS { i = 1; }
   s[0].sel = i;
 }
-watch_key :: (s: [] Watch, key: int, mods: int) -> bool #export_c {
+watch_key :: (s: [] Watch, key: int, mods: int) -> bool #export_c #effects(all) {
   watch_start(s);
   track_key(s[0].track[..], key, redit_typing(s[0].ed[..]));
   used := redit_key(s[0].ed[..], key, true);
@@ -1412,12 +1412,12 @@ watch_key :: (s: [] Watch, key: int, mods: int) -> bool #export_c {
   if key == 'p' || key == 'P' { press(s, B_AUTO); return true; }
   return false;
 }
-watch_key_up :: (s: [] Watch, key: int, mods: int) -> bool #export_c {
+watch_key_up :: (s: [] Watch, key: int, mods: int) -> bool #export_c #effects(all) {
   track_key_up(s[0].track[..], key);
   return redit_key(s[0].ed[..], key, false) == 1;
 }
-watch_blur :: (s: [] Watch) #export_c { s[0].pressing = 0; track_blur(s[0].track[..]); }
-watch_pointer :: (s: [] Watch, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+watch_blur :: (s: [] Watch) #export_c #effects(all) { s[0].pressing = 0; track_blur(s[0].track[..]); }
+watch_pointer :: (s: [] Watch, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   watch_start(s);
   if redit_pointer(s[0].ed[..], x, y, phase, id) { return true; }
   if phase == 0 {
@@ -1446,8 +1446,8 @@ watch_pointer :: (s: [] Watch, x: f32, y: f32, phase: int, kind: int, id: int) -
   }
   return false;
 }
-watch_cursor :: (s: [] Watch) -> int #export_c { return 0; }
-watch_message :: (s: [] Watch, kind: int, t: string) #export_c {
+watch_cursor :: (s: [] Watch) -> int #export_c #effects(all) { return 0; }
+watch_message :: (s: [] Watch, kind: int, t: string) #export_c #effects(all) {
   watch_start(s);
   if redit_message(s[0].ed[..], kind, t) { return; }
   tr := track_message(s[0].track[..], kind, t);
@@ -1468,17 +1468,17 @@ watch_message :: (s: [] Watch, kind: int, t: string) #export_c {
     if s[0].demo > 0 { demo_shift(s); }
   }
 }
-watch_golden :: (s: [] Watch, on: bool) #export_c { watch_start(s); s[0].golden = on; }
-watch_action :: (s: [] Watch) -> int #export_c {
+watch_golden :: (s: [] Watch, on: bool) #export_c #effects(all) { watch_start(s); s[0].golden = on; }
+watch_action :: (s: [] Watch) -> int #export_c #effects(all) {
   if s[0].action == 0 { e := redit_take_action(s[0].ed[..], s[0].outbox[..]); if e.kind != 0 { s[0].out_n = e.n; return e.kind; } }
   a := s[0].action; s[0].action = 0; return a;
 }
-watch_wants_text :: (s: [] Watch) -> bool #export_c { return redit_typing(s[0].ed[..]); }
-watch_action_done :: (s: [] Watch) #export_c { s[0].out_n = 0; }
+watch_wants_text :: (s: [] Watch) -> bool #export_c #effects(all) { return redit_typing(s[0].ed[..]); }
+watch_action_done :: (s: [] Watch) #export_c #effects(all) { s[0].out_n = 0; }
 
-coaxial_watch_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_watch_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_watch_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_watch_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_watch_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_watch_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // ---- checks
 

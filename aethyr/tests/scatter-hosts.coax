@@ -39,7 +39,7 @@ sh_heights :: (h: [] f32) -> bool {
 
 sh_digest :: (out: [] Placed, n: int) -> int { return ifx n < 0 then -1 else scatter_digest(out, n); }
 // The digest of case k, or -1 when the case can't be drawn.
-scatter_case :: (k: int) -> int #export_c {
+scatter_case :: (k: int) -> int #export_c #effects(all) {
   out: [SH_MOST] Placed;
   keeps := sh_keeps();
   if k == 0 { return sh_digest(out[..], scatter_fill(SH_SEED, sh_forest(), SH_WINDOW, keeps[0..<0], out[..])); }

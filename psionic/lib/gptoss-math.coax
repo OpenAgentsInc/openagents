@@ -60,10 +60,10 @@ GoResult :: struct {status:GoStatus;cause:int;written:int;clamped:int;}
     #assert go_project(2,2,a[..],x[..],b[..],out[..],work[..],false).status==GoStatus.arithmetic && out[0]==-7;
 }
 
-go_range :: (start:int,count:int)->bool {return start>=0 && count>=1 && count<=128 && count<=131072-start;}
-go_data :: (a:[]f32)->GoStatus {for v:a {if !psionic_tensor_finite_bits(f32_bits(v)) {return GoStatus.number;}}return GoStatus.ok;}
+go_range :: (start:int,count:int)->bool #effects(all) {return start>=0 && count>=1 && count<=128 && count<=131072-start;}
+go_data :: (a:[]f32)->GoStatus #effects(all) {for v:a {if !psionic_tensor_finite_bits(f32_bits(v)) {return GoStatus.number;}}return GoStatus.ok;}
 // book:begin yarn
-go_yarn :: (start:int,count:int,out:[]f32)->GoResult #export_c {
+go_yarn :: (start:int,count:int,out:[]f32)->GoResult #export_c #effects(all) {
     if !go_range(start,count) {return GoResult.{status=GoStatus.range};}
     if out.count<64*count {return GoResult.{status=GoStatus.capacity};}
     low:=32*log(4096.0/(32*2*3.141592653589793))/log(150000.0);
@@ -82,7 +82,7 @@ go_yarn :: (start:int,count:int,out:[]f32)->GoResult #export_c {
 }
 // book:end yarn
 // book:begin rotate
-go_rotate :: (heads:int,x:[]f32,c:[]f32,out:[]f32,work:[]f32,overlap:bool)->GoResult #export_c {
+go_rotate :: (heads:int,x:[]f32,c:[]f32,out:[]f32,work:[]f32,overlap:bool)->GoResult #export_c #effects(all) {
     if heads<1 || heads>64 {return GoResult.{status=GoStatus.shape};}
     n:=heads*64;
     if x.count!=n || c.count!=64 || out.count<n || work.count<n {return GoResult.{status=GoStatus.capacity};}
@@ -98,9 +98,9 @@ go_rotate :: (heads:int,x:[]f32,c:[]f32,out:[]f32,work:[]f32,overlap:bool)->GoRe
     for i:0..<n {out[i]=work[i];}return GoResult.{written=n};
 }
 // book:end rotate
-go_pairs :: (n:int)->bool {return n>=1 && n<=16384;}
+go_pairs :: (n:int)->bool #effects(all) {return n>=1 && n<=16384;}
 // book:begin swiglu
-go_swiglu :: (pairs:[]f32,out:[]f32,overlap:bool)->GoResult #export_c {
+go_swiglu :: (pairs:[]f32,out:[]f32,overlap:bool)->GoResult #export_c #effects(all) {
     n:=pairs.count/2;
     if !go_pairs(n) || pairs.count%2!=0 {return GoResult.{status=GoStatus.shape};}
     if out.count<n {return GoResult.{status=GoStatus.capacity};}
@@ -117,7 +117,7 @@ go_swiglu :: (pairs:[]f32,out:[]f32,overlap:bool)->GoResult #export_c {
 }
 // book:end swiglu
 // book:begin project
-go_project :: (rows:int,columns:int,a:[]f32,x:[]f32,bias:[]f32,out:[]f32,work:[]f32,overlap:bool)->GoResult #export_c {
+go_project :: (rows:int,columns:int,a:[]f32,x:[]f32,bias:[]f32,out:[]f32,work:[]f32,overlap:bool)->GoResult #export_c #effects(all) {
     request:=PsionicRequest.{op=PsionicOp.matmul,rows=rows,width=columns,columns=1};plan:=psionic_ops_plan(request);
     if plan.status!=PsionicOpStatus.ok {return GoResult.{status=GoStatus.shape};}
     if a.count!=plan.a || x.count!=columns || bias.count!=rows || out.count<rows || work.count<3*rows {return GoResult.{status=GoStatus.capacity};}

@@ -17,7 +17,7 @@ hwi_receipt::(path:string)->bool {
  for i:0..<53{row:=jv_at(d[0],list,i);if jv_len(d[0],row)!=4{return false;}for k:0..<4{rows[4*i+k]=jv_int(d[0],jv_at(d[0],row,k),-999);}}
  return hwic_accept(rows[..]);
 }
-tool_main::()->int #export_c {
+tool_main::()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<2||args_count(a[..])>3||(args_count(a[..])==3&&args_at(a[..],2)!="--sanitize")||cxtool_os()!=2{tool_errln("usage: check-wayland-input ROOT NEW_OUT [--sanitize] (Linux, in its declared SDK environment)");return 2;}
  root:=args_at(a[..],0);out:=args_at(a[..],1);sanitize:=args_has(a[..],"--sanitize");if !fs_mkdir(out){return 1;}
  inputs:[1]RtqInputs;paths:[48][4096]u8;stdout:[1048576]u8;stderr:[1048576]u8;env:[]string;compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);

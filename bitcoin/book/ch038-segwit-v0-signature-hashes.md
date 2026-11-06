@@ -82,7 +82,7 @@ computes them once:
 // every output. They depend on neither the input nor the hash type, so a
 // transaction needs them once, however many inputs it signs.
 ScriptV0Hashes :: struct { prevouts: [32] u8; sequences: [32] u8; outputs: [32] u8; }
-script_v0_hashes_vartime :: (sp: ScriptSpend) -> ScriptV0Hashes {
+script_v0_hashes_vartime :: (sp: ScriptSpend) -> ScriptV0Hashes #effects(all) {
   b := sp.b; t := sp.t;
   h: ScriptV0Hashes; part: [SHA_STATE_BYTES] u8;
   si_start(part[..]);
@@ -100,7 +100,7 @@ script_v0_hashes_vartime :: (sp: ScriptSpend) -> ScriptV0Hashes {
 // zeroes hashPrevouts; ANYONECANPAY, NONE and SINGLE zero hashSequence;
 // NONE zeroes hashOutputs, and SINGLE replaces it with the hash of the
 // output at this input's index, or zeros when there is none.
-script_v0_select_vartime :: (sp: ScriptSpend, pre: ScriptV0Hashes, hashtype: int) -> ScriptV0Hashes {
+script_v0_select_vartime :: (sp: ScriptSpend, pre: ScriptV0Hashes, hashtype: int) -> ScriptV0Hashes #effects(all) {
   b := sp.b; index := sp.index;
   anyone := (hashtype & 0x80) != 0;
   single := (hashtype & 0x1f) == 3; none := (hashtype & 0x1f) == 2;
@@ -119,7 +119,7 @@ script_v0_select_vartime :: (sp: ScriptSpend, pre: ScriptV0Hashes, hashtype: int
 // The BIP-143 signature hash (SigVersion::WITNESS_V0) from the three
 // hashes: the version, the selected hashes around this input's outpoint,
 // scriptCode, amount and sequence, the lock time and the hash type.
-script_sighash_v0_from_vartime :: (sp: ScriptSpend, pre: ScriptV0Hashes, code: [] u8, hashtype: int, out: [] u8) {
+script_sighash_v0_from_vartime :: (sp: ScriptSpend, pre: ScriptV0Hashes, code: [] u8, hashtype: int, out: [] u8) #effects(all) {
   b := sp.b; t := sp.t; index := sp.index;
   h := script_v0_select_vartime(sp, pre, hashtype);
   state: [SHA_STATE_BYTES] u8; si_start(state[..]);
@@ -139,7 +139,7 @@ script_sighash_v0_from_vartime :: (sp: ScriptSpend, pre: ScriptV0Hashes, code: [
 // The same for one signature: the three hashes, then the hash. The
 // interpreter calls this, so it computes a transaction's three hashes
 // again for each signature it checks.
-script_sighash_v0_vartime :: (sp: ScriptSpend, code: [] u8, hashtype: int, out: [] u8) {
+script_sighash_v0_vartime :: (sp: ScriptSpend, code: [] u8, hashtype: int, out: [] u8) #effects(all) {
   script_sighash_v0_from_vartime(sp, script_v0_hashes_vartime(sp), code, hashtype, out);
 }
 ```
@@ -169,7 +169,7 @@ procedure:
 // The script a P2WPKH program runs, and the scriptCode its signature
 // hashes (BIP-143): DUP HASH160 <program> EQUALVERIFY CHECKSIG, the P2PKH
 // script of the same 20-byte key hash. Writes its 25 bytes to out.
-script_p2wpkh_code_vartime :: (program: [] u8, out: [] u8) {
+script_p2wpkh_code_vartime :: (program: [] u8, out: [] u8) #effects(all) {
   out[0] = OP_DUP; out[1] = OP_HASH160; out[2] = 20;
   for i: 0..<20 { out[3+i] = program[i]; }
   out[23] = OP_EQUALVERIFY; out[24] = OP_CHECKSIG;

@@ -62,12 +62,12 @@ XpCredit :: struct {pubkey:Kept(8);xp:int;}
 // counted awards, credits written (-1 when out is too short), conflicts.
 XpLedger :: struct {counted:int;credits:int;conflicts:int;revoked:int;}
 
-xp_quest_with :: (from:string,to:string,out:[]u8)->XpQuest {return xp_quest_read(XP_QUEST,QUEST_ID,QUEST_PK,QUEST_TAGS,ts_swap(QUEST_BODY,from,to,out));}
-xp_quest_tags :: (from:string,to:string,out:[]u8)->XpQuest {return xp_quest_read(XP_QUEST,QUEST_ID,QUEST_PK,ts_swap(QUEST_TAGS,from,to,out),QUEST_BODY);}
-xp_award_with :: (from:string,to:string,out:[]u8)->XpAward {return xp_award_read(XP_AWARD,AWARD1_ID,AWARD1_PK,AWARD1_TAGS,ts_swap(AWARD1_BODY,from,to,out));}
-xp_award_tags :: (from:string,to:string,out:[]u8)->XpAward {return xp_award_read(XP_AWARD,AWARD1_ID,AWARD1_PK,ts_swap(AWARD1_TAGS,from,to,out),AWARD1_BODY);}
-xp_rev_with :: (from:string,to:string,out:[]u8)->XpRevocation {return xp_revocation_read(XP_REVOCATION,REVOKE1_ID,REVOKE1_PK,REVOKE1_TAGS,ts_swap(REVOKE1_BODY,from,to,out));}
-xp_rev_tags :: (from:string,to:string,out:[]u8)->XpRevocation {return xp_revocation_read(XP_REVOCATION,REVOKE1_ID,REVOKE1_PK,ts_swap(REVOKE1_TAGS,from,to,out),REVOKE1_BODY);}
+xp_quest_with :: (from:string,to:string,out:[]u8)->XpQuest #effects(all) {return xp_quest_read(XP_QUEST,QUEST_ID,QUEST_PK,QUEST_TAGS,ts_swap(QUEST_BODY,from,to,out));}
+xp_quest_tags :: (from:string,to:string,out:[]u8)->XpQuest #effects(all) {return xp_quest_read(XP_QUEST,QUEST_ID,QUEST_PK,ts_swap(QUEST_TAGS,from,to,out),QUEST_BODY);}
+xp_award_with :: (from:string,to:string,out:[]u8)->XpAward #effects(all) {return xp_award_read(XP_AWARD,AWARD1_ID,AWARD1_PK,AWARD1_TAGS,ts_swap(AWARD1_BODY,from,to,out));}
+xp_award_tags :: (from:string,to:string,out:[]u8)->XpAward #effects(all) {return xp_award_read(XP_AWARD,AWARD1_ID,AWARD1_PK,ts_swap(AWARD1_TAGS,from,to,out),AWARD1_BODY);}
+xp_rev_with :: (from:string,to:string,out:[]u8)->XpRevocation #effects(all) {return xp_revocation_read(XP_REVOCATION,REVOKE1_ID,REVOKE1_PK,REVOKE1_TAGS,ts_swap(REVOKE1_BODY,from,to,out));}
+xp_rev_tags :: (from:string,to:string,out:[]u8)->XpRevocation #effects(all) {return xp_revocation_read(XP_REVOCATION,REVOKE1_ID,REVOKE1_PK,ts_swap(REVOKE1_TAGS,from,to,out),REVOKE1_BODY);}
 
 #test "the quest reads: address, season, roles in the rule's order" {
   q:=xp_quest_read(XP_QUEST,QUEST_ID,QUEST_PK,QUEST_TAGS,QUEST_BODY);
@@ -313,7 +313,7 @@ xp_rev_tags :: (from:string,to:string,out:[]u8)->XpRevocation {return xp_revocat
 
 // The chapter's five events, read.
 XpSet :: struct {q:XpQuest;a1:XpAward;a2:XpAward;r1:XpRevocation;forged:XpRevocation;}
-xp_set :: ()->XpSet {
+xp_set :: ()->XpSet #effects(all) {
   s:XpSet;
   s.q=xp_quest_read(XP_QUEST,QUEST_ID,QUEST_PK,QUEST_TAGS,QUEST_BODY);
   s.a1=xp_award_read(XP_AWARD,AWARD1_ID,AWARD1_PK,AWARD1_TAGS,AWARD1_BODY);
@@ -431,7 +431,7 @@ XP_K7 :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
 // ---- reading helpers
 
 // Characters in a raw JSON string: an escape is one, a UTF-8 sequence is one.
-xp_chars :: (raw:string)->int {
+xp_chars :: (raw:string)->int #effects(all) {
   n:=0;i:=0;
   while i<raw.count {
     c:=raw[i];
@@ -442,28 +442,28 @@ xp_chars :: (raw:string)->int {
   return n;
 }
 // The NIP-KB id grammar: ^[a-z][a-z0-9.-]{0,127}$.
-xp_id_ok :: (s:string)->bool {
+xp_id_ok :: (s:string)->bool #effects(all) {
   if s.count<1 || s.count>128 || s[0]<'a' {return false;}   // the loop holds s[0] to [a-z0-9.-]
   for c:s {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='.' || c=='-') {return false;}}
   return true;
 }
 // A season slug: 1 to 64 bytes of [a-z0-9-].
-xp_slug_ok :: (s:string)->bool {
+xp_slug_ok :: (s:string)->bool #effects(all) {
   if s.count<1 || s.count>64 {return false;}
   for c:s {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}
   return true;
 }
 // The tags as an event for nt_tag.
-xp_event :: (tags:string)->NtEvent {e:NtEvent;e.ok=true;e.original=tags;e.tags_to=tags.count;return e;}
+xp_event :: (tags:string)->NtEvent #effects(all) {e:NtEvent;e.ok=true;e.original=tags;e.tags_to=tags.count;return e;}
 // The one tag named name, its first value; "" with ok false unless exactly one.
 XpOne :: struct {ok:bool;value:string;}
-xp_one :: (tags:string,name:string)->XpOne {
+xp_one :: (tags:string,name:string)->XpOne #effects(all) {
   e:=xp_event(tags);t:=nt_tag(e,name,0);
   if t.n!=1 || t.values<1 {return XpOne.{};}
   return XpOne.{ok=true,value=nt_raw(e,t.v[0])};
 }
 // How many t tags start with prefix, and the rest of the last one.
-xp_prefixed :: (tags:string,prefix:string)->XpOne {
+xp_prefixed :: (tags:string,prefix:string)->XpOne #effects(all) {
   e:=xp_event(tags);n:=nt_tags(e,"t");count:=0;r:XpOne;
   for k:0..<n {
     v:=nt_raw(e,nt_tag(e,"t",k).v[0]);   // xk_tags has refused a t tag without a value
@@ -472,13 +472,13 @@ xp_prefixed :: (tags:string,prefix:string)->XpOne {
   r.ok=count==1;
   return r;
 }
-xp_int :: (j:[]Json,tok:int)->int {
+xp_int :: (j:[]Json,tok:int)->int #effects(all) {
   if tok!=JSON_NUMBER {return -1;}
   v:=json_int(json_text(j));
   return ifx v.ok && v.value>=0 then v.value else -1;
 }
 // v, requires and type: XpCode.ok, or the refusal. bit is the key's bit (1, 2, 4) or 0.
-xp_envelope :: (key:string,j:[]Json,v:int,type:string)->XpCode {
+xp_envelope :: (key:string,j:[]Json,v:int,type:string)->XpCode #effects(all) {
   if key=="v" && (v!=JSON_NUMBER || json_text(j)!="1") {return XpCode.version;}
   if key=="requires" && (v!=JSON_ARRAY || json_next(j)!=JSON_ARRAY_END) {return XpCode.requires;}
   if key=="type" && (v!=JSON_STRING || json_text(j)!=type) {return XpCode.type;}
@@ -486,7 +486,7 @@ xp_envelope :: (key:string,j:[]Json,v:int,type:string)->XpCode {
 }
 // An event reference {id, pubkey, kind[, coordinate]}: its id and pubkey, or ok false.
 XpRef :: struct {ok:bool;id:string;pubkey:string;coordinate:string;}
-xp_ref :: (j:[]Json,tok:int,kind:string,coordinate:bool)->XpRef {
+xp_ref :: (j:[]Json,tok:int,kind:string,coordinate:bool)->XpRef #effects(all) {
   r:XpRef;seen:=0;
   if tok!=JSON_OBJECT {return r;}
   t:=json_next(j);
@@ -507,7 +507,7 @@ xp_ref :: (j:[]Json,tok:int,kind:string,coordinate:bool)->XpRef {
 }
 
 // ---- 30193: a quest.
-xp_quest_read :: (kind:int,event:string,signer:string,tags:string,content:string)->XpQuest {
+xp_quest_read :: (kind:int,event:string,signer:string,tags:string,content:string)->XpQuest #effects(all) {
   r:XpQuest;r.event=event;r.referee=signer;
   if kind!=XP_QUEST {return XpQuest.{code=XpCode.kind};}
   ps:[1]string;tc:=xk_tags(tags,"oa:xp:quest:v1",ps[..]);
@@ -596,7 +596,7 @@ xp_quest_read :: (kind:int,event:string,signer:string,tags:string,content:string
 }
 
 // ---- 3193: an award.
-xp_award_read :: (kind:int,event:string,signer:string,tags:string,content:string)->XpAward {
+xp_award_read :: (kind:int,event:string,signer:string,tags:string,content:string)->XpAward #effects(all) {
   r:XpAward;r.event=event;r.referee=signer;
   if kind!=XP_AWARD {return XpAward.{code=XpCode.kind};}
   ps:[2]string;tc:=xk_tags(tags,"oa:xp:award:v1",ps[..]);
@@ -657,7 +657,7 @@ xp_award_read :: (kind:int,event:string,signer:string,tags:string,content:string
 }
 
 // ---- 3194: a revocation.
-xp_revocation_read :: (kind:int,event:string,signer:string,tags:string,content:string)->XpRevocation {
+xp_revocation_read :: (kind:int,event:string,signer:string,tags:string,content:string)->XpRevocation #effects(all) {
   r:XpRevocation;r.event=event;r.referee=signer;
   if kind!=XP_REVOCATION {return XpRevocation.{code=XpCode.kind};}
   ps:[1]string;tc:=xk_tags(tags,"oa:xp:revocation:v1",ps[..]);
@@ -694,13 +694,13 @@ xp_revocation_read :: (kind:int,event:string,signer:string,tags:string,content:s
 
 // ---- the ledger
 // book:begin ledger
-xp_trusted :: (trusted:[]string,key:string)->bool {for k:trusted {if k==key {return true;}}return false;}
+xp_trusted :: (trusted:[]string,key:string)->bool #effects(all) {for k:trusted {if k==key {return true;}}return false;}
 // Whether key is 30193:<referee>:<address>.
-xp_coordinate :: (key:string,referee:string,address:string)->bool {
+xp_coordinate :: (key:string,referee:string,address:string)->bool #effects(all) {
   if key.count!=71+address.count {return false;}
   return key[0..<6]=="30193:" && key[6..<70]==referee && key[70]==':' && key[71..<key.count]==address;
 }
-xp_ledger :: (trusted:[]string,quests:[]XpQuest,awards:[]XpAward,revs:[]XpRevocation,ruled:[]bool,why:[]XpWhy,out:[]XpCredit)->XpLedger {
+xp_ledger :: (trusted:[]string,quests:[]XpQuest,awards:[]XpAward,revs:[]XpRevocation,ruled:[]bool,why:[]XpWhy,out:[]XpCredit)->XpLedger #effects(all) {
   l:XpLedger;
   for i:0..<awards.count {
     a:=awards[i];why[i]=XpWhy.counted;

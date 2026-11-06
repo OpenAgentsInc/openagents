@@ -29,17 +29,17 @@ SO_OWN_LAST :: 9223372036854775807;
   #assert so_owned_fits(need, have) == (need >= 0 && have >= need);
 }
 
-so_owned_can_start :: (phase:int,generation:int)->bool {
+so_owned_can_start :: (phase:int,generation:int)->bool #effects(all) {
   return phase == SO_OWN_IDLE && generation >= 0 && generation < SO_OWN_LAST;
 }
-so_owned_next :: (generation:int)->int {
+so_owned_next :: (generation:int)->int #effects(all) {
   if generation < 0 || generation == SO_OWN_LAST { return 0; }
   return generation + 1;
 }
-so_owned_matches :: (phase:int,generation:int,ticket:int)->bool {
+so_owned_matches :: (phase:int,generation:int,ticket:int)->bool #effects(all) {
   return (phase == SO_OWN_PENDING || phase == SO_OWN_READY) && ticket > 0 && ticket == generation;
 }
-so_owned_is_ready :: (phase:int,generation:int,ticket:int)->bool {
+so_owned_is_ready :: (phase:int,generation:int,ticket:int)->bool #effects(all) {
   return phase == SO_OWN_READY && so_owned_matches(phase,generation,ticket);
 }
-so_owned_fits :: (need:int,have:int)->bool { return need >= 0 && have >= need; }
+so_owned_fits :: (need:int,have:int)->bool #effects(all) { return need >= 0 && have >= need; }

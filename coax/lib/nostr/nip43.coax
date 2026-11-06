@@ -29,7 +29,7 @@ N43Request :: struct {status:int=N43_EVENT; join:bool; claim:N32Text;}
 // book:begin self
 // The self field of a NIP-11 document: the relay's key, 64 lowercase hex
 // digits. False when the document has none or it does not read.
-n43_self :: (nip11:string,out:[]u8)->bool {
+n43_self :: (nip11:string,out:[]u8)->bool #effects(all) {
   j:[1]Json;json_start(j[..],nip11);found:=false;
   if json_next(j[..])!=JSON_OBJECT {return false;}
   t:=json_next(j[..]);
@@ -47,9 +47,9 @@ n43_self :: (nip11:string,out:[]u8)->bool {
 }
 // book:end self
 
-n43_status :: (t:N32Tag)->int {return ifx t.error==NT_LIMIT then N43_LIMIT else N43_SHAPE;}
+n43_status :: (t:N32Tag)->int #effects(all) {return ifx t.error==NT_LIMIT then N43_LIMIT else N43_SHAPE;}
 // Whether e carries the "-" tag; N43_OK, N43_UNPROTECTED, or a tag error.
-n43_protected :: (e:NostrEvent)->int {
+n43_protected :: (e:NostrEvent)->int #effects(all) {
   k:=0;t:=n32_tag(e,0);
   while t.error==NT_OK && !(t.values==1 && n32_is(t.v[0],"-")) {k+=1;t=n32_tag(e,k);}
   if t.error==NT_OK {return N43_OK;}
@@ -57,7 +57,7 @@ n43_protected :: (e:NostrEvent)->int {
 }
 // The checks every relay-signed event shares: verified, this kind, signed
 // by self, and protected.
-n43_relay_event :: (self:[32]u8,e:NostrEvent,kind:int,alt:int)->int {
+n43_relay_event :: (self:[32]u8,e:NostrEvent,kind:int,alt:int)->int #effects(all) {
   if e.error!=NE_OK || !e.verified {return N43_EVENT;}
   if e.kind!=kind && e.kind!=alt {return N43_KIND;}
   if !ns_equal32(e.public_key,self) {return N43_NOT_SELF;}
@@ -67,7 +67,7 @@ n43_relay_event :: (self:[32]u8,e:NostrEvent,kind:int,alt:int)->int {
 // book:begin members
 // The relay's member list, when self signed it: each member tag's key and
 // its first role (empty when none).
-n43_members :: (self:[32]u8,e:NostrEvent)->N43Members {
+n43_members :: (self:[32]u8,e:NostrEvent)->N43Members #effects(all) {
   m:N43Members;m.status=n43_relay_event(self,e,N43_MEMBERS_KIND,N43_MEMBERS_KIND);
   if m.status!=N43_OK {return m;}
   k:=0;
@@ -86,14 +86,14 @@ n43_members :: (self:[32]u8,e:NostrEvent)->N43Members {
   return m;
 }
 // book:end members
-n43_is_member :: (m:N43Members,key:[32]u8)->bool {
+n43_is_member :: (m:N43Members,key:[32]u8)->bool #effects(all) {
   c:=m;for i:0..<c.n {if ns_equal32(c.keys[i],key) {return true;}}
   return false;
 }
 
 // A kind 8000 (add) or 8001 (remove) event, when self signed it: the
 // member in its first p tag.
-n43_change :: (self:[32]u8,e:NostrEvent)->N43Change {
+n43_change :: (self:[32]u8,e:NostrEvent)->N43Change #effects(all) {
   r:N43Change;r.status=n43_relay_event(self,e,N43_ADD,N43_REMOVE);
   if r.status!=N43_OK {return r;}
   r.add=e.kind==N43_ADD;k:=0;
@@ -112,7 +112,7 @@ n43_change :: (self:[32]u8,e:NostrEvent)->N43Change {
 
 // book:begin request
 // A user's join (28934, with a claim) or leave (28936) request.
-n43_request :: (e:NostrEvent,now:int)->N43Request {
+n43_request :: (e:NostrEvent,now:int)->N43Request #effects(all) {
   r:N43Request;
   if e.error!=NE_OK || !e.verified {return r;}
   r.status=N43_KIND;

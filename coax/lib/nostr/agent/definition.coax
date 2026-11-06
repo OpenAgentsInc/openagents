@@ -57,24 +57,24 @@ AgentDefinition :: struct {
 AgentPin :: struct {signer:string;id:string;revision:int;digest:string;}
 // book:end record
 
-ag_hex64 :: (s:string)->bool {
+ag_hex64 :: (s:string)->bool #effects(all) {
   if s.count!=64 {return false;}
   for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
   return true;
 }
 // No byte below 0x20 and no DEL; nul_only checks NUL alone.
-ag_clean :: (s:string,nul_only:bool)->bool {
+ag_clean :: (s:string,nul_only:bool)->bool #effects(all) {
   for c:s {
     if c==0 {return false;}
     if !nul_only && (c<0x20 || c==0x7f) {return false;}
   }
   return true;
 }
-ag_nonblank :: (s:string)->bool {
+ag_nonblank :: (s:string)->bool #effects(all) {
   for c:s {if c!=' ' && c!='\t' && c!='\n' && c!='\r' {return true;}}
   return false;
 }
-ag_runtime_ok :: (s:string)->bool {
+ag_runtime_ok :: (s:string)->bool #effects(all) {
   if s.count<1 || s.count>128 {return false;}
   for c:s {
     // '0'..':' is the digits and the colon.
@@ -83,8 +83,8 @@ ag_runtime_ok :: (s:string)->bool {
   }
   return true;
 }
-ag_model_ok :: (s:string)->bool {return s.count>=1 && s.count<=256 && ag_clean(s,false);}
-ag_access :: (s:string)->int {
+ag_model_ok :: (s:string)->bool #effects(all) {return s.count>=1 && s.count<=256 && ag_clean(s,false);}
+ag_access :: (s:string)->int #effects(all) {
   if s=="host_default" {return AG_HOST_DEFAULT;}
   if s=="read_only" {return AG_READ_ONLY;}
   if s=="workspace_write" {return AG_WORKSPACE_WRITE;}
@@ -92,14 +92,14 @@ ag_access :: (s:string)->int {
 }
 // A string token unescaped into the arena; ok false when it doesn't fit.
 AgString :: struct {ok:bool;s:string;}
-ag_string :: (j:[]Json,a:[]AgText)->AgString {
+ag_string :: (j:[]Json,a:[]AgText)->AgString #effects(all) {
   r:AgString;
   n:=json_unescape(json_text(j),a[0].buf[a[0].at..<a[0].buf.count]);
   if n<0 {return r;}
   r.s=cast(string)a[0].buf[a[0].at..<a[0].at+n];a[0].at+=n;r.ok=true;return r;
 }
 // An integer token in [low, high], or -1.
-ag_int :: (j:[]Json,low:int,high:int)->int {
+ag_int :: (j:[]Json,low:int,high:int)->int #effects(all) {
   v:=json_int(json_text(j));
   if !v.ok || v.value<low || v.value>high {return -1;}
   return v.value;
@@ -107,7 +107,7 @@ ag_int :: (j:[]Json,low:int,high:int)->int {
 
 // book:begin autonomy
 // The autonomy object: known fields in range, unknown fields and wakes ignored.
-ag_autonomy :: (j:[]Json)->u32 {
+ag_autonomy :: (j:[]Json)->u32 #effects(all) {
   t:=json_next(j);
   while t==JSON_STRING {
     k:=json_text(j);v:=json_next(j);
@@ -134,7 +134,7 @@ ag_autonomy :: (j:[]Json)->u32 {
 // book:begin fallbacks
 // At most 4 {runtime, model?}: each runtime valid, distinct, not the
 // primary, not sdk or any.
-ag_fallbacks :: (j:[]Json,d:[]AgentDefinition,seen:[]string,a:[]AgText)->u32 {
+ag_fallbacks :: (j:[]Json,d:[]AgentDefinition,seen:[]string,a:[]AgText)->u32 #effects(all) {
   n:=0;t:=json_next(j);
   while t==JSON_OBJECT {
     has_runtime:=false;rt:string;u:=json_next(j);
@@ -161,7 +161,7 @@ ag_fallbacks :: (j:[]Json,d:[]AgentDefinition,seen:[]string,a:[]AgText)->u32 {
 
 // book:begin spec
 AG_SPEC :: [8]string.["name","description","instructions","runtime","model","access","fallbacks","autonomy"];
-ag_spec :: (j:[]Json,d:[]AgentDefinition,a:[]AgText)->u32 {
+ag_spec :: (j:[]Json,d:[]AgentDefinition,a:[]AgText)->u32 #effects(all) {
   seen:=0;fb:[4]string;
   t:=json_next(j);
   while t==JSON_STRING {
@@ -193,13 +193,13 @@ ag_spec :: (j:[]Json,d:[]AgentDefinition,a:[]AgText)->u32 {
 
 // book:begin read
 // The payload JSON (the artifact's inline JCS bytes) into a definition.
-agent_read :: (payload:string,a:[]AgText)->AgentDefinition {
+agent_read :: (payload:string,a:[]AgText)->AgentDefinition #effects(all) {
   d:=[1]AgentDefinition.[AgentDefinition.{}];
   e:=ag_payload(payload,d[..],a);
   if e!=AG_OK {r:AgentDefinition;r.error=e;return r;}
   d[0].error=AG_OK;return d[0];
 }
-ag_payload :: (payload:string,d:[]AgentDefinition,a:[]AgText)->u32 {
+ag_payload :: (payload:string,d:[]AgentDefinition,a:[]AgText)->u32 #effects(all) {
   j:[1]Json;json_start(j[..],payload);
   if json_next(j[..])!=JSON_OBJECT {return AG_SHAPE;}
   seen:=0;t:=json_next(j[..]);
@@ -223,7 +223,7 @@ ag_payload :: (payload:string,d:[]AgentDefinition,a:[]AgText)->u32 {
   if json_next(j[..])!=JSON_END {return AG_SHAPE;}
   return AG_OK;
 }
-ag_definition :: (j:[]Json,d:[]AgentDefinition,a:[]AgText)->u32 {
+ag_definition :: (j:[]Json,d:[]AgentDefinition,a:[]AgText)->u32 #effects(all) {
   seen:=0;t:=json_next(j);
   while t==JSON_STRING {
     k:=json_text(j);f:=ifx k=="id" then 0 else ifx k=="revision" then 1 else ifx k=="spec" then 2 else ifx k=="deleted" then 3 else -1;
@@ -248,7 +248,7 @@ ag_definition :: (j:[]Json,d:[]AgentDefinition,a:[]AgText)->u32 {
   return AG_OK;
 }
 // forked_from: the published agent id and the positive revision copied.
-ag_fork :: (j:[]Json,d:[]AgentDefinition,a:[]AgText)->u32 {
+ag_fork :: (j:[]Json,d:[]AgentDefinition,a:[]AgText)->u32 #effects(all) {
   seen:=0;t:=json_next(j);
   while t==JSON_STRING {
     k:=json_text(j);f:=ifx k=="published" then 0 else ifx k=="revision" then 1 else -1;
@@ -271,7 +271,7 @@ ag_fork :: (j:[]Json,d:[]AgentDefinition,a:[]AgText)->u32 {
 // book:begin select
 // The consumer's pinned selection. signer is the verified 3188 signer and
 // digest the artifact digest the envelope checked.
-agent_select :: (pin:AgentPin,signer:string,digest:string,d:AgentDefinition)->u32 {
+agent_select :: (pin:AgentPin,signer:string,digest:string,d:AgentDefinition)->u32 #effects(all) {
   if d.error!=AG_OK {return d.error;}
   if signer!=pin.signer {return AG_SIGNER;}
   if d.id!=pin.id {return AG_ID;}

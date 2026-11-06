@@ -5,9 +5,9 @@
 RBT_PASSES :: [13]string.["background","shadow","caster","grass","surface","scene","water_transmit","water_emit","particle_over","particle","bloom","post","hud"];
 RBT_MEDIA_USES :: "[{\"name\":\"u\",\"slot\":0,\"native_kind\":1,\"shape\":0,\"stride\":4,\"stages\":3},{\"name\":\"media_image\",\"slot\":1,\"native_kind\":2,\"shape\":0,\"stride\":0,\"stages\":2},{\"name\":\"media_sampler\",\"slot\":2,\"native_kind\":3,\"shape\":0,\"stride\":0,\"stages\":2}]";
 #load "build-tool-checks.coax";
-rbt_literal :: (d:Jv,node:int,value:string)->bool {bytes:[4096]u8;n:=jv_str(d,node,bytes[..]);return n>=0 && cast(string)bytes[0..<n]==value;}
-rbt_number :: (d:Jv,node:int)->int {return jv_int(d,node,-1);}
-rbt_plan :: (s:Jv,p:int,index:int)->int {
+rbt_literal :: (d:Jv,node:int,value:string)->bool #effects(all) {bytes:[4096]u8;n:=jv_str(d,node,bytes[..]);return n>=0 && cast(string)bytes[0..<n]==value;}
+rbt_number :: (d:Jv,node:int)->int #effects(all) {return jv_int(d,node,-1);}
+rbt_plan :: (s:Jv,p:int,index:int)->int #effects(all) {
   if index<0 || index>13 {return -3;}if index==13 {return ifx jv_kind(s,jv_get(s,jv_get(s,p,"features"),"media"))==JV_TRUE then -2 else -1;}
   found:=-1;passes:=jv_get(s,0,"passes");
   for set:0..<2 {
@@ -16,7 +16,7 @@ rbt_plan :: (s:Jv,p:int,index:int)->int {
     for i:first..<first+count {row:=jv_at(s,passes,i);if rbt_literal(s,jv_get(s,row,"pass_id"),RBT_PASSES[index]) {if found!=-1 {return -3;}found=row;}}
   }return found;
 }
-rbt_uses :: (s:Jv,p:int,plan:int,set:int,out:[]u8)->string {
+rbt_uses :: (s:Jv,p:int,plan:int,set:int,out:[]u8)->string #effects(all) {
   o:[1]Jo;jo_start(o[..],out);if plan== -2 {jo_put(o[..],RBT_MEDIA_USES);}else {
     uses:=jv_get(s,plan,"uses");if jv_kind(s,uses)!=JV_ARRAY {return "";}bindings:=jv_get(s,0,"bindings");first:=jv_int(s,jv_get(s,p,ifx set==0 then "binding_first" else "particle_binding_first"),-1);jo_arr(o[..]);
     for i:0..<jv_len(s,uses) {
@@ -25,8 +25,8 @@ rbt_uses :: (s:Jv,p:int,plan:int,set:int,out:[]u8)->string {
     }jo_end(o[..]);
   }return ifx o[0].bad then "" else jo_text(o[..]);
 }
-rbt_use_index :: (first:int,resource:int,limit:int)->int {if first<0 || resource<0 || resource>=limit-first {return -1;}return first+resource;}
-rbt_metadata :: (s:Jv,d:Jv)->bool {
+rbt_use_index :: (first:int,resource:int,limit:int)->int #effects(all) {if first<0 || resource<0 || resource>=limit-first {return -1;}return first+resource;}
+rbt_metadata :: (s:Jv,d:Jv)->bool #effects(all) {
   if !rbt_literal(d,jv_get(d,0,"schema"),"aethyr.render.package.v1") {return false;}profiles:=jv_get(s,0,"profiles");index:=rbt_number(d,jv_get(d,0,"profile_index"));p:=jv_at(s,profiles,index);
   if !rtq_equal(s,jv_get(s,p,"slug"),d,jv_get(d,0,"slug")) || !rtq_equal(s,jv_get(s,p,"module"),d,jv_get(d,0,"app")) {return false;}
   entries:=jv_get(d,0,"entries");modules:=jv_get(d,0,"modules");if jv_kind(d,entries)!=JV_ARRAY || jv_kind(d,modules)!=JV_ARRAY {return false;}
@@ -43,29 +43,29 @@ rbt_metadata :: (s:Jv,d:Jv)->bool {
   }
   module_sets:[3]bool;for i:0..<jv_len(d,modules) {set:=jv_int(d,jv_get(d,jv_at(d,modules,i),"binding_set"),-1);if set<0 || set>=3 {return false;}if module_sets[set] {return false;}module_sets[set]=true;}for i:0..<3 {if sets[i]!=module_sets[i] {return false;}}return true;
 }
-rbt_layout :: (d:Jv,row:int)->bool {
+rbt_layout :: (d:Jv,row:int)->bool #effects(all) {
   attributes:=jv_get(d,row,"attributes");if jv_kind(d,attributes)!=JV_ARRAY || jv_len(d,attributes)>32 {return false;}offset:=0;
   for i:0..<jv_len(d,attributes) {a:=jv_at(d,attributes,i);if rbt_number(d,jv_get(d,a,"offset"))!=offset {return false;}width:=rbt_number(d,jv_get(d,a,"width"));if width<0 {return false;}offset+=width*4;}
   return offset==jv_int(d,jv_get(d,row,"vertex_stride"),-1);
 }
-rbt_space :: (c:u8)->bool {return c==' ' || (c>=9 && c<=13);}
-rbt_tree :: (text:string,version:int)->int {
+rbt_space :: (c:u8)->bool #effects(all) {return c==' ' || (c>=9 && c<=13);}
+rbt_tree :: (text:string,version:int)->int #effects(all) {
   at:=0;count:=0;while at<text.count {
     if rbt_space(text[at]) {at+=1;continue;}value:=0;
     while at<text.count && !rbt_space(text[at]) {c:=cast(int)text[at];if c<'0' || c>'9' {return -1;}digit:=c-'0';if value>(4294967295-digit)/10 {return -1;}value=value*10+digit;at+=1;}
     if count==0 && value!=version {return -1;}count+=1;
   }return ifx count==0 then -1 else count;
 }
-rbt_wgsl :: (text:string,stage:string,alias:string)->bool {
+rbt_wgsl :: (text:string,stage:string,alias:string)->bool #effects(all) {
   if alias.count==0 {return false;}
   for c,i:text {
     if c!='@' || !rbt_prefix(text,i+1,stage) {continue;}k:=i+1+stage.count;next:=rbt_skip_space(text,k);if next==k {continue;}k=next;if !rbt_prefix(text,k,"fn") {continue;}k+=2;next=rbt_skip_space(text,k);if next==k {continue;}k=next;if !rbt_prefix(text,k,alias) {continue;}k+=alias.count;k=rbt_skip_space(text,k);if rbt_prefix(text,k,"(") {return true;}
   }
   return false;
 }
-rbt_prefix :: (text:string,at:int,word:string)->bool {if at<0 || at>text.count || word.count>text.count-at {return false;}return text[at..<at+word.count]==word;}
-rbt_skip_space :: (text:string,at:int)->int {for c,i:text[at..<text.count] {if !rbt_space(c) {return at+i;}}return text.count;}
-rbt_facts :: (d:Jv,row:int,f:Jv)->bool {
+rbt_prefix :: (text:string,at:int,word:string)->bool #effects(all) {if at<0 || at>text.count || word.count>text.count-at {return false;}return text[at..<at+word.count]==word;}
+rbt_skip_space :: (text:string,at:int)->int #effects(all) {for c,i:text[at..<text.count] {if !rbt_space(c) {return at+i;}}return text.count;}
+rbt_facts :: (d:Jv,row:int,f:Jv)->bool #effects(all) {
   for key:[4]string.["fragment_targets","derivatives","control","native_int64"] {if !rtq_equal(d,jv_get(d,row,key),f,jv_get(f,0,key)) {return false;}}
   if !rtq_equal(d,jv_get(d,row,"fragment_depth"),f,jv_get(f,0,"fragment_depth")) {return false;}fragment:[4096]u8;n:=jv_str(d,jv_get(d,row,"fragment"),fragment[..]);if n<0 || jv_kind(f,jv_get(f,0,"has_fragment"))!=(ifx n>0 then JV_TRUE else JV_FALSE) {return false;}if rbt_number(f,jv_get(f,0,"words"))<5 {return false;}
   attributes:=jv_get(d,row,"attributes");facts:=jv_get(f,0,"attributes");if jv_kind(f,facts)!=JV_ARRAY || jv_len(d,attributes)!=jv_len(f,facts) {return false;}

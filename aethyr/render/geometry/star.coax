@@ -50,9 +50,9 @@
   #assert star_reduce(m[..],q[..],v3(0,0,1.5),2,0) && m[0].error==2.5;
 }
 
-star_flat :: (p:Point,axis:int)->Point {if axis==0 {return v3(p.y,p.z,0);}if axis==1 {return v3(p.z,p.x,0);}return v3(p.x,p.y,0);}
-star_turn :: (a:Point,b:Point,c:Point)->f32 {return cross(sub(b,a),sub(c,a)).z;}
-star_reduce :: (out:[]ParentMesh,p:[]Point,apex:Point,axis:int,child:f32)->bool {
+star_flat :: (p:Point,axis:int)->Point #effects(all) {if axis==0 {return v3(p.y,p.z,0);}if axis==1 {return v3(p.z,p.x,0);}return v3(p.x,p.y,0);}
+star_turn :: (a:Point,b:Point,c:Point)->f32 #effects(all) {return cross(sub(b,a),sub(c,a)).z;}
+star_reduce :: (out:[]ParentMesh,p:[]Point,apex:Point,axis:int,child:f32)->bool #effects(all) {
   if p.count==0 || p.count>PARENT_VERTICES || axis<0 || axis>2 || !(child>=0 && child<1000000) {return false;}
   if !finite3(apex) {return false;}for v:p {if !finite3(v) {return false;}}
   flat:[PARENT_VERTICES]Point;for v,k:p {flat[k]=star_flat(v,axis);}

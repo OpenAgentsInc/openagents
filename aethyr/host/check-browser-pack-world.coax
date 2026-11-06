@@ -3,7 +3,7 @@
 #load "pack-world-conformance.coax";
 #load "pack-host-refusal.coax";
 #load "../render/tests/qualification-files.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<3||args_count(a[..])>4{return 2;}pending:=args_has(a[..],"--pending");cut:=args_has(a[..],"--cut");fault:=pending||cut;root:=args_at(a[..],0);site:=args_at(a[..],1);dir:=args_at(a[..],2);if fs_exists(dir)||!fs_mkdir(dir){return 2;}paths:[5][4096]u8;held:[1]RtqInputs;
  for file:[5]string.["coax/web/host.js","coax/web/pack-host.js","coax/web/tests/pack-world-fixture.js","aethyr/host/pack-world-conformance.coax","aethyr/host/check-browser-pack-world.coax"]{if !rtq_input_add(held[..],fs_join(root,file,paths[0][..])){return 1;}}
  for file:[10]string.["index.html","test.wasm","build/host-packs.wasm","build/host-sockets.wasm","build/host-services.wasm","build/host-layers.wasm","build/host-media.wasm","build/host-audio.wasm","package/render.json","realms/everglade/assets/everglade.pack"]{if !rtq_input_add(held[..],fs_join(site,file,paths[0][..])){return 1;}}

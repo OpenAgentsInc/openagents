@@ -65,7 +65,7 @@ uses of each coefficient.
 <!-- source: psionic/lib/physics/inverse-physics.coax step -->
 ```jai
 // Node order exactly follows os_step, including its left-associated sums.
-oi_rk4 :: (p:[]OiProgram,s:OiPair,u:int,two:int,half:int,full:int,sixth:int)->OiPair {
+oi_rk4 :: (p:[]OiProgram,s:OiPair,u:int,two:int,half:int,full:int,sixth:int)->OiPair #effects(all) {
   a:=oi_rhs(p,s,u);b:=oi_rhs(p,oi_shift(p,s,a,half),u);c:=oi_rhs(p,oi_shift(p,s,b,half),u);
   d:=oi_rhs(p,oi_shift(p,s,c,full),u);
   bq:=oi_binary(p,TpOp.mul,two,b.q);cq:=oi_binary(p,TpOp.mul,two,c.q);
@@ -113,7 +113,7 @@ node averages over exactly those observations.
 
 <!-- source: psionic/lib/physics/inverse-physics.coax objective -->
 ```jai
-oi_value :: (program:OiProgram,spring:f64,damping:f64,gradient:bool)->OiValue #export_c {
+oi_value :: (program:OiProgram,spring:f64,damping:f64,gradient:bool)->OiValue #export_c #effects(all) {
   if !oi_program_ok(program) {return OiValue.{status=OsStatus.shape};}
   params:=[2]f64.[spring,damping];for x:params {if !os_finite(x) {return OiValue.{status=OsStatus.number};}}
   if spring<0.5 || spring>4 || damping<0.1 || damping>1 {return OiValue.{status=OsStatus.parameters};}
@@ -179,7 +179,7 @@ heldout model selection or early stopping:
 
 <!-- source: psionic/lib/physics/inverse-fit.coax fit -->
 ```jai
-oi_fit :: (program:OiProgram,initial:OsParams,updates:int)->OiFit #export_c {
+oi_fit :: (program:OiProgram,initial:OsParams,updates:int)->OiFit #export_c #effects(all) {
   if !oi_fit_count_ok(updates) || !oi_program_ok(program) {return OiFit.{status=OsStatus.shape,params=initial};}
   if initial.mass!=1 {return OiFit.{status=OsStatus.parameters,params=initial};}
   fit:=OiFit.{params=initial};
@@ -207,7 +207,7 @@ using only the same training objective. It keeps the first minimum on ties:
 
 <!-- source: psionic/lib/physics/inverse-fit.coax grid -->
 ```jai
-oi_grid :: (program:OiProgram,side:int)->OiFit #export_c {
+oi_grid :: (program:OiProgram,side:int)->OiFit #export_c #effects(all) {
   if !oi_grid_side_ok(side) || !oi_program_ok(program) {return OiFit.{status=OsStatus.shape};}
   fit:OiFit;best:f64;
   for row:0..<side {for column:0..<side {
@@ -247,7 +247,7 @@ the same initial state; there are no teacher resets inside a forecast.
 
 <!-- source: psionic/lib/physics/inverse-evaluate.coax forecast -->
 ```jai
-oi_forecast :: (params:OsParams)->OiEval #export_c {
+oi_forecast :: (params:OsParams)->OiEval #export_c #effects(all) {
   result:OiEval;qs:=[3]f64.[0.7,-0.5,0];vs:=[3]f64.[-0.15,0.35,-0.7];
   for episode:0..<3 {
     truth:=OsState.{position=qs[episode],velocity=vs[episode]};own:=truth;

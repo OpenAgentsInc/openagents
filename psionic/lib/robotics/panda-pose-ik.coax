@@ -38,10 +38,10 @@
  for i:0..<7 {#assert out[0].angles[i].value<=hi[i];}
 }
 
-ppo_finish :: (angles:[7]pfku.Quantity(pfku.Radian,f64),pose:PfkPose,target:PpoTarget,projected:int)->PpoOutput {
+ppo_finish :: (angles:[7]pfku.Quantity(pfku.Radian,f64),pose:PfkPose,target:PpoTarget,projected:int)->PpoOutput #effects(all) {
  out:PpoOutput;out.angles=angles;out.position=pose.position;out.world_from_grip_wxyz=ppo_canonical(pose.quaternion);position_delta:=[3]f64.[target.position.x-pose.position.x,target.position.y-pose.position.y,target.position.z-pose.position.z];out.position_error_metres=ppo_norm3(position_delta);rotation:=ppo_error_owned(pose.quaternion,target.world_from_grip_wxyz);out.orientation_error=rotation.angle;weighted:=convert_unit(pfku.Metre,ppo_weight()*rotation.angle);out.weighted_error_metres=sqrt(out.position_error_metres*out.position_error_metres+weighted.value*weighted.value);out.updates=1;out.projected_coordinates=projected;return out;
 }
-ppo_step :: (seed:[]pfku.Quantity(pfku.Radian,f64),target:[]PpoTarget,output:[]PpoOutput)->PpoStatus #export_c {
+ppo_step :: (seed:[]pfku.Quantity(pfku.Radian,f64),target:[]PpoTarget,output:[]PpoOutput)->PpoStatus #export_c #effects(all) {
  if seed.count!=7 || target.count!=1 || output.count!=1 {return PpoStatus.shape;}
  words:[10]u64;for i:0..<7 {words[i]=f64_bits(seed[i].value);}words[7]=f64_bits(target[0].position.x);words[8]=f64_bits(target[0].position.y);words[9]=f64_bits(target[0].position.z);status:=ppo_admit_position(words);if status!=PpoStatus.ok {return status;}
  qw:[4]u64;for i:0..<4 {qw[i]=f64_bits(target[0].world_from_grip_wxyz[i]);}status=ppo_unit_bits(qw);if status!=PpoStatus.ok {return status;}
@@ -52,7 +52,7 @@ ppo_step :: (seed:[]pfku.Quantity(pfku.Radian,f64),target:[]PpoTarget,output:[]P
  for i:0..<7 {coefficient:pfku.Quantity(UnitOne,f64);coefficient.value=delta.radians[i];increment:=convert_unit(pfku.Radian,one_radian*coefficient);candidate:=seed[i]+increment;angles[i].value=pik_clip(candidate.value,lo[i],hi[i]);if pik_less(candidate.value,lo[i]) || pik_greater(candidate.value,hi[i]) {projected+=1;}}
  next:[1]PfkOutput;if pfk_forward(angles[..],next[..])!=PfkStatus.ok {return PpoStatus.solve;}fresh:=ppo_finish(angles,next[0].grip,target[0],projected);output[0]=fresh;return PpoStatus.ok;
 }
-ppo_step_raw :: (seed:[]f64,target_xyz:[]f64,target_wxyz:[]f64,output:[]PpoOutput)->PpoStatus #export_c {
+ppo_step_raw :: (seed:[]f64,target_xyz:[]f64,target_wxyz:[]f64,output:[]PpoOutput)->PpoStatus #export_c #effects(all) {
  if seed.count!=7 || target_xyz.count!=3 || target_wxyz.count!=4 || output.count!=1 {return PpoStatus.shape;}
  q:[7]pfku.Quantity(pfku.Radian,f64);for i:0..<7 {q[i].value=seed[i];}target:[1]PpoTarget;target[0].position.x=target_xyz[0];target[0].position.y=target_xyz[1];target[0].position.z=target_xyz[2];for i:0..<4 {target[0].world_from_grip_wxyz[i]=target_wxyz[i];}return ppo_step(q[..],target[..],output);
 }

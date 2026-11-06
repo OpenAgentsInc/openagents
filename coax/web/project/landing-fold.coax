@@ -15,7 +15,7 @@ LF_TEST_KEY :: "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575
 }
 LfState :: struct {store:[1]Store; folded:[1]Fold;key:[64]u8;slug:[64]u8;slug_n:int;active:bool;failed:bool;expected:[FOLD_ISSUES*64]u8;expected_n:int;}
 lf_identity :: (key:string,slug:string)->bool {return key.count==64 && hex_lower(key) && slug.count>=1 && slug.count<=64;}
-lf_begin :: (s:[]LfState,key:string,slug:string,known:string)->bool #export_c {
+lf_begin :: (s:[]LfState,key:string,slug:string,known:string)->bool #export_c #effects(all) {
   if s.count!=1 || !lf_identity(key,slug) || !json_valid(known) {return false;}
   s[0].expected_n=0;j:[1]Json;json_start(j[..],known);if json_next(j[..])!=JSON_ARRAY {return false;}
   while true {
@@ -29,7 +29,7 @@ lf_begin :: (s:[]LfState,key:string,slug:string,known:string)->bool #export_c {
 // The private C bridge calls lr_verify_public on this same immutable span
 // immediately before this function; no public export accepts a verified bit.
 // book:begin feed
-lf_feed :: (s:[]LfState,text:string,verified:bool)->bool #export_c {
+lf_feed :: (s:[]LfState,text:string,verified:bool)->bool #export_c #effects(all) {
   if !s[0].active || s[0].failed {return false;}
   if !json_valid(text) {s[0].failed=true;return false;}
   if !verified {s[0].failed=true;return false;}
@@ -49,7 +49,7 @@ lf_field :: (out:[]u8,at:int,name:string,value:string)->int {
 lf_int :: (out:[]u8,at:int,name:string,value:int)->int {
   n:=json_raw(out,at,",");n=json_write_string(out,n,name);n=json_raw(out,n,":");return json_write_int(out,n,value);
 }
-lf_result :: (s:[]LfState,out:[]u8)->int #export_c {
+lf_result :: (s:[]LfState,out:[]u8)->int #export_c #effects(all) {
   if !s[0].active || s[0].failed || s[0].store[0].overflow {return -1;}
   scoped:=0;
   for e:0..<s[0].store[0].n {if s[0].store[0].kind[e]==KIND_ISSUE {scoped+=1;}}
@@ -81,7 +81,7 @@ lf_rows :: (s:[]Store,f:[]Fold,out:[]u8)->int {
 }
 // Exact issue ids for bounded follow-up queries and the next refresh's held
 // roots. This projection remains private to the verified reader bridge.
-lf_home_ids :: (s:[]LfState,offset:int,out:[]u8)->int #export_c {
+lf_home_ids :: (s:[]LfState,offset:int,out:[]u8)->int #export_c #effects(all) {
   if !s[0].active || s[0].failed || offset<0 {return -1;}
   n:=json_raw(out,0,"[");count:=0;seen:=0;
   for e:0..<s[0].store[0].n {
@@ -91,7 +91,7 @@ lf_home_ids :: (s:[]LfState,offset:int,out:[]u8)->int #export_c {
   }
   return ifx count==0 then 0 else json_raw(out,n,"]");
 }
-lf_home_known :: (s:[]LfState,out:[]u8)->int #export_c {
+lf_home_known :: (s:[]LfState,out:[]u8)->int #export_c #effects(all) {
   n:=0;
   for r:0..<s[0].folded[0].n {n=json_raw(out,n,stored_id(s[0].store[..],s[0].folded[0].root[r]));n=json_raw(out,n,"\n");}
   return n;

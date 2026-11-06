@@ -2,7 +2,7 @@
 #import "Basic";
 #load "../render/tests/qualification-files.coax";
 #load "../../coax/lib/sys/args.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<3||args_count(a[..])>4||(args_count(a[..])==4&&args_at(a[..],3)!="--sanitize") {tool_errln("usage: build-linux-live-media ROOT EMISSION NEW_OUT [--sanitize]");return 2;}
  if cxtool_os()!=2 {return 2;}root:=args_at(a[..],0);emission:=args_at(a[..],1);out:=args_at(a[..],2);sanitize:=args_has(a[..],"--sanitize");if !fs_mkdir(out) {return 1;}argv:[64]string;n:=0;paths:[24][4096]u8;inputs:[1]RtqInputs;
  for flag:[11]string.["nice","-n10","gcc","-std=gnu11",ifx sanitize then "-O1" else "-O2","-ffp-contract=off","-fno-fast-math","-ffunction-sections","-fdata-sections","-Wl,--gc-sections","-DCOAX_TOOL_STACK=((size_t)1<<30)"] {argv[n]=flag;n+=1;}

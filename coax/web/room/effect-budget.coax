@@ -7,7 +7,7 @@ EF_STARTS::2;EF_ENDS::4;
   #assert !ef_use_admit(false,-1,0)&&!ef_use_admit(false,0,-1)&&!ef_use_admit(false,2,0)&&!ef_use_admit(false,0,2);
   #assert !ef_use_admit(true,-1,0)&&!ef_use_admit(true,0,-1)&&!ef_use_admit(true,2,0)&&!ef_use_admit(true,0,2);
 }
-ef_use_admit::(release:bool,uses:int,releases:int)->bool #export_c {
+ef_use_admit::(release:bool,uses:int,releases:int)->bool #export_c #effects(all) {
   if uses<0||uses>1||releases<0||releases>1{return false;}
   return ifx release then releases<1 else uses<1;
 }
@@ -17,7 +17,7 @@ ef_use_admit::(release:bool,uses:int,releases:int)->bool #export_c {
   #assert !ef_admit(true,-1,0)&&!ef_admit(true,0,-1)&&!ef_admit(true,3,0)&&!ef_admit(true,0,5);
   #assert !ef_admit(false,-1,0)&&!ef_admit(false,0,-1)&&!ef_admit(false,3,0)&&!ef_admit(false,0,5);
 }
-ef_admit::(start:bool,starts:int,ends:int)->bool #export_c {
+ef_admit::(start:bool,starts:int,ends:int)->bool #export_c #effects(all) {
   if starts<0||starts>EF_STARTS||ends<0||ends>EF_ENDS{return false;}
   return ifx start then starts<EF_STARTS else ends<EF_ENDS;
 }

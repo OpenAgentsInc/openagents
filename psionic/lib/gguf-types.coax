@@ -30,23 +30,23 @@ PG_ELEMENTS_MAX :: 17592186044416;
     d=[4]int.[PG_FILE_MAX/4,1,1,1];#assert pg_size(4,d,0).bytes==PG_FILE_MAX;d[0]+=1;#assert pg_size(4,d,0).status==PgStatus.size;
     #assert pg_size(1,d,4).status==PgStatus.unsupported;
 }
-pg_file :: (n:int)->bool {return n>=24 && n<=PG_FILE_MAX;}
-pg_prefix :: (n:int,file:int)->bool {return n>=24 && n<=PG_HEADER_MAX && n<=file;}
-pg_alignment :: (n:int)->bool {return n>=8 && n<2097152 && pg_power(cast(u64)n);}
-pg_align :: (n:int,a:int)->int {return n+(a-n%a)%a;}
-pg_product :: (a:int,b:int,limit:int)->bool {return a>=1 && b>=1 && b<=limit/a;}
-pg_work :: (used:int,more:int)->bool {return more<=1048576-used;}
-pg_type :: (kind:int)->bool {if kind<0 || kind>=44 {return false;}return PG_BLOCKS[kind]!=0;}
-pg_size :: (rank:int,dims:[4]int,kind:int)->PgSize {
+pg_file :: (n:int)->bool #effects(all) {return n>=24 && n<=PG_FILE_MAX;}
+pg_prefix :: (n:int,file:int)->bool #effects(all) {return n>=24 && n<=PG_HEADER_MAX && n<=file;}
+pg_alignment :: (n:int)->bool #effects(all) {return n>=8 && n<2097152 && pg_power(cast(u64)n);}
+pg_align :: (n:int,a:int)->int #effects(all) {return n+(a-n%a)%a;}
+pg_product :: (a:int,b:int,limit:int)->bool #effects(all) {return a>=1 && b>=1 && b<=limit/a;}
+pg_work :: (used:int,more:int)->bool #effects(all) {return more<=1048576-used;}
+pg_type :: (kind:int)->bool #effects(all) {if kind<0 || kind>=44 {return false;}return PG_BLOCKS[kind]!=0;}
+pg_size :: (rank:int,dims:[4]int,kind:int)->PgSize #effects(all) {
     if rank<1 || rank>4 {return PgSize.{status=PgStatus.shape};}if !pg_type(kind) {return PgSize.{status=PgStatus.unsupported};}n:=1;
     for i:0..<rank {if dims[i]<1 {return PgSize.{status=PgStatus.shape};}if !pg_product(n,dims[i],PG_ELEMENTS_MAX) {return PgSize.{status=PgStatus.budget};}n*=dims[i];}
     if dims[0]%PG_BLOCKS[kind]!=0 {return PgSize.{status=PgStatus.shape};}blocks:=n/PG_BLOCKS[kind];if !pg_product(blocks,PG_WIDTHS[kind],PG_FILE_MAX) {return PgSize.{status=PgStatus.size};}
     return PgSize.{elements=n,bytes=blocks*PG_WIDTHS[kind]};
 }
 
-pg_power :: (n:u64)->bool {return n!=0 && (n&(n-1))==0;}
-pg_range :: (file:int,data:int,offset:int,n:int)->bool {return data>=0 && data<=file && offset>=0 && n>=0 && n<=file-data-offset;}
-pg_intersects :: (begin:int,end:int,other_begin:int,other_end:int)->bool {return begin<other_end && other_begin<end;}
+pg_power :: (n:u64)->bool #effects(all) {return n!=0 && (n&(n-1))==0;}
+pg_range :: (file:int,data:int,offset:int,n:int)->bool #effects(all) {return data>=0 && data<=file && offset>=0 && n>=0 && n<=file-data-offset;}
+pg_intersects :: (begin:int,end:int,other_begin:int,other_end:int)->bool #effects(all) {return begin<other_end && other_begin<end;}
 #test "power and interval contracts distinguish empty adjacent and one-byte endpoints" {
     #assert !pg_power(0) && pg_power(1) && pg_power(2) && !pg_power(3) && pg_power(9223372036854775808) && !pg_power(9223372036854775809);
     #assert pg_range(32,32,0,0) && pg_range(32,0,32,0) && pg_range(32,1,30,1);

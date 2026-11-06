@@ -48,7 +48,7 @@
   #assert !render_interface_admit(1,0,r) && !render_interface_admit(2,13,r);
 }
 
-render_interface_admit :: (profile:int,index:int,r:RenderBuildReflection)->bool {
+render_interface_admit :: (profile:int,index:int,r:RenderBuildReflection)->bool #effects(all) {
   a:=render_catalog(profile);if !a.valid || !r.ok || index<0 || index>13 {return false;}
   if index==13 {
     return a.features.media && r.fragment_targets==1 && !r.fragment_depth && r.vertex_stride==0 && r.attribute_count==0;

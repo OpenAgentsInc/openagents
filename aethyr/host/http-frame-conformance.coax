@@ -1,12 +1,12 @@
 // Independent physical HTTP frame observations, including concrete JPEG shape.
 #authority;
-hfp_bit::(value:bool)->int{return ifx value then 1 else 0;}
+hfp_bit::(value:bool)->int #effects(all) {return ifx value then 1 else 0;}
 #test "frame peer requires every independently observed request and JPEG fact" {
  q:=[13]int.[1,1,1,1,1,1,1,320,180,8,1,1,1];#assert hfp_accept(q[..]);#assert hfp_bit(true)==1&&hfp_bit(false)==0;
  #assert !hfp_accept(q[0..<12]);long:[14]int;#assert !hfp_accept(long[..]);
  for i:0..<q.count {bad:=q;bad[i]+=1;#assert !hfp_accept(bad[..]);}
 }
-hfp_accept::(q:[]int)->bool {
+hfp_accept::(q:[]int)->bool #effects(all) {
  want:=[13]int.[1,1,1,1,1,1,1,320,180,8,1,1,1];if q.count!=want.count {return false;}
  for value,i:want {if q[i]!=value {return false;}}return true;
 }
@@ -17,4 +17,4 @@ hfp_accept::(q:[]int)->bool {
  for i:0..<4 {bad:=q;bad[i]=ifx i==1 then 800 else bad[i]+1;#assert !hfp_capture(bad[..]);}
  q[1]=1398105;#assert !hfp_capture(q[..]);
 }
-hfp_capture::(q:[]int)->bool {return q.count==4&&q[0]==1&&q[1]>800&&q[1]<=1398104&&q[2]==0&&q[3]==1;}
+hfp_capture::(q:[]int)->bool #effects(all) {return q.count==4&&q[0]==1&&q[1]>800&&q[1]<=1398104&&q[2]==0&&q[3]==1;}

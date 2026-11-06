@@ -1,7 +1,7 @@
 // Verification-only carrier for the actual production box vertex path.
 #load "../../apps/openagents-web/gpu/deadgears.coax";
 
-box36_sample :: (id:u32,model:u32)->DeadgearsS #export_c {
+box36_sample :: (id:u32,model:u32)->DeadgearsS #export_c #effects(all) {
  box36_u:[24]f32;box36_u[8]=1;box36_u[13]=1;box36_u[18]=1;box36_u[23]=1;
  box36_objects:[97]DeadgearsObj;
  box36_object:=DeadgearsObj.{r0=v4(1,0,0,0),r1=v4(0,1,0,0),r2=v4(0,0,1,0),colour=v4(1,1,1,0)};

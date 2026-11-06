@@ -38,7 +38,7 @@ NetProfile :: struct {
 // book:begin net-rules
 // Whether a profile can run: a rate the beat divides, at least one physics step, a known trust,
 // durability only with authority, and earned steps only where the room steps the world.
-net_profile_ok :: (p: NetProfile) -> bool {
+net_profile_ok :: (p: NetProfile) -> bool #effects(all) {
   if p.hz <= 0 || NET_BEAT_HZ % p.hz != 0 { return false; }
   if p.substeps < 1 { return false; }
   if p.trust < NET_TRUST_AUTHORITY || p.trust > NET_TRUST_LOCKSTEP { return false; }
@@ -47,12 +47,12 @@ net_profile_ok :: (p: NetProfile) -> bool {
   return true;
 }
 // Whether a realm's world steps on beat number `beat` (from 0). A profile that can't run never does.
-net_due :: (p: NetProfile, beat: int) -> bool {
+net_due :: (p: NetProfile, beat: int) -> bool #effects(all) {
   if !net_profile_ok(p) || beat < 0 { return false; }
   return beat % (NET_BEAT_HZ / p.hz) == 0;
 }
 // Whether a realm's play qualifies as authoritative (the room decides): presence and lockstep don't.
-net_authoritative :: (p: NetProfile) -> bool { return net_profile_ok(p) && p.trust == NET_TRUST_AUTHORITY; }
+net_authoritative :: (p: NetProfile) -> bool #effects(all) { return net_profile_ok(p) && p.trust == NET_TRUST_AUTHORITY; }
 // book:end net-rules
 
 // ---- checks

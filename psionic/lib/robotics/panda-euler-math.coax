@@ -32,18 +32,18 @@
  #assert peu_complete(q,s,v,sv,solved,12,34,out[0..<1])==PmsStatus.ok;#assert out[0].control_clipped==12 && out[0].force_clipped==34;for i:0..<7 {#assert out[0].effective.hinge[i].value==f64(i)-4;}for i:0..<2 {#assert out[0].effective.slide[i].value==f64(i+7)-4;}peu_same(out[1],old);
 }
 
-peu_h :: ()->pfku.Quantity(pfku.Second,f64) {h:pfku.Quantity(pfku.Second,f64);h.value=0.002;return h;}
-peu_metric :: (metric:PmOutput)->PmOutput {
+peu_h :: ()->pfku.Quantity(pfku.Second,f64) #effects(all) {h:pfku.Quantity(pfku.Second,f64);h.value=0.002;return h;}
+peu_metric :: (metric:PmOutput)->PmOutput #effects(all) {
  out:=metric;h:=peu_h();for i:0..<7 {out.hinge_hinge[i*7+i]=out.hinge_hinge[i*7+i]+convert_unit(PmHingeInertia,h*pa_hinge_damping(i));}
  damping:pfku.Quantity(PaSlideDamping,f64);damping.value=100;for i:0..<2 {out.slide_slide[i*2+i]=out.slide_slide[i*2+i]+convert_unit(pfku.Kilogram,h*damping);}return out;
 }
-peu_advance :: (q:[7]pfku.Quantity(pfku.Radian,f64),s:[2]pfku.Quantity(pfku.Metre,f64),v:[7]pfku.Quantity(PidAngularRate,f64),sv:[2]pfku.Quantity(PidLinearRate,f64),effective:PmsOutput)->PeuResult {
+peu_advance :: (q:[7]pfku.Quantity(pfku.Radian,f64),s:[2]pfku.Quantity(pfku.Metre,f64),v:[7]pfku.Quantity(PidAngularRate,f64),sv:[2]pfku.Quantity(PidLinearRate,f64),effective:PmsOutput)->PeuResult #effects(all) {
  h:=peu_h();fresh:PeuOutput;fresh.effective=effective;qb:[9]u64;vb:[9]u64;
  for i:0..<7 {fresh.hinge_rates[i]=v[i]+convert_unit(PidAngularRate,h*effective.hinge[i]);fresh.angles[i]=q[i]+convert_unit(pfku.Radian,h*fresh.hinge_rates[i]);qb[i]=f64_bits(fresh.angles[i].value);vb[i]=f64_bits(fresh.hinge_rates[i].value);}
  for i:0..<2 {fresh.slide_rates[i]=sv[i]+convert_unit(PidLinearRate,h*effective.slide[i]);fresh.slides[i]=s[i]+convert_unit(pfku.Metre,h*fresh.slide_rates[i]);qb[7+i]=f64_bits(fresh.slides[i].value);vb[7+i]=f64_bits(fresh.slide_rates[i].value);}
  status:=pid_admit(qb,100,1);if status!=PfkStatus.ok {return PeuResult.{status=pms_model_status(status)};}status=pid_admit(vb,20,2);if status!=PfkStatus.ok {return PeuResult.{status=pms_model_status(status)};}return PeuResult.{output=fresh};
 }
-peu_complete :: (q:[7]pfku.Quantity(pfku.Radian,f64),s:[2]pfku.Quantity(pfku.Metre,f64),v:[7]pfku.Quantity(PidAngularRate,f64),sv:[2]pfku.Quantity(PidLinearRate,f64),solved:PmsRaw,control_clipped:int,force_clipped:int,output:[]PeuOutput)->PmsStatus {
+peu_complete :: (q:[7]pfku.Quantity(pfku.Radian,f64),s:[2]pfku.Quantity(pfku.Metre,f64),v:[7]pfku.Quantity(PidAngularRate,f64),sv:[2]pfku.Quantity(PidLinearRate,f64),solved:PmsRaw,control_clipped:int,force_clipped:int,output:[]PeuOutput)->PmsStatus #effects(all) {
  if output.count!=1 {return PmsStatus.shape;}if solved.status!=PmsStatus.ok {return solved.status;}next:=peu_advance(q,s,v,sv,pms_restore(solved.acceleration));if next.status!=PmsStatus.ok {return next.status;}next.output.control_clipped=control_clipped;next.output.force_clipped=force_clipped;output[0]=next.output;return PmsStatus.ok;
 }
 

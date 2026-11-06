@@ -175,24 +175,24 @@ PgFields :: struct {values:[4]PgRange;seen:u32;error:u32;}
 }
 
 #forall "context record scalar quotas include one and the maximum" n:-1..<4100 {#assert pg_record_admit(n)==(ifx n>=1 && n<=4096 then PG_OK else PG_CONTEXT);}
-pg_record_admit :: (n:int)->u32 {return ifx n<1 || n>4096 then PG_CONTEXT else PG_OK;}
-pg_raw_admit :: (n:int)->u32 {return ifx n<0 || n>128 then PG_LIMIT else PG_OK;}
-pg_ascii :: (text:string)->bool {for b:text {if b>127 {return false;}}return true;}
-pg_equal :: (a:string,b:string)->bool {
+pg_record_admit :: (n:int)->u32 #effects(all) {return ifx n<1 || n>4096 then PG_CONTEXT else PG_OK;}
+pg_raw_admit :: (n:int)->u32 #effects(all) {return ifx n<0 || n>128 then PG_LIMIT else PG_OK;}
+pg_ascii :: (text:string)->bool #effects(all) {for b:text {if b>127 {return false;}}return true;}
+pg_equal :: (a:string,b:string)->bool #effects(all) {
   if a.count!=b.count {return false;}for i:0..<a.count {if a[i]!=b[i] {return false;}}return true;
 }
-pg_attempts :: (legacy:int,v2:int)->u32 #export_c {
+pg_attempts :: (legacy:int,v2:int)->u32 #export_c #effects(all) {
   if legacy<0 || v2<0 || v2>8-legacy {return PG_LIMIT;}return PG_OK;
 }
-pg_plain_admit :: (n:int)->u32 #export_c {return ifx n<1 || n>4096 then PG_LIMIT else PG_OK;}
-pg_wire_admit :: (n:int)->u32 #export_c {return ifx n<107 || n>4202 then PG_LIMIT else PG_OK;}
-pg_output_admit :: (required:int,capacity:int)->u32 {
+pg_plain_admit :: (n:int)->u32 #export_c #effects(all) {return ifx n<1 || n>4096 then PG_LIMIT else PG_OK;}
+pg_wire_admit :: (n:int)->u32 #export_c #effects(all) {return ifx n<107 || n>4202 then PG_LIMIT else PG_OK;}
+pg_output_admit :: (required:int,capacity:int)->u32 #effects(all) {
   return ifx required<0 || capacity<required || capacity>4096 then PG_CAPACITY else PG_OK;
 }
-pg_lower :: (b:u8)->u8 {return ifx b>=65 && b<=90 then b+32 else b;}
-pg_digit :: (b:u8)->bool {return b>=48 && b<=57;}
-pg_phrase_byte :: (b:u8)->bool {return (b>=97 && b<=122)||pg_digit(b);}
-pg_normalize_checked :: (raw:string,out:[]u8,overlap:bool)->PgText #export_c {
+pg_lower :: (b:u8)->u8 #effects(all) {return ifx b>=65 && b<=90 then b+32 else b;}
+pg_digit :: (b:u8)->bool #effects(all) {return b>=48 && b<=57;}
+pg_phrase_byte :: (b:u8)->bool #effects(all) {return (b>=97 && b<=122)||pg_digit(b);}
+pg_normalize_checked :: (raw:string,out:[]u8,overlap:bool)->PgText #export_c #effects(all) {
   if pg_raw_admit(raw.count)!=0 {return PgText.{error=PG_LIMIT};}
   if overlap {return PgText.{error=PG_ALIAS};}
   n:=0;
@@ -202,7 +202,7 @@ pg_normalize_checked :: (raw:string,out:[]u8,overlap:bool)->PgText #export_c {
   at:=0;for byte:raw {b:=pg_lower(byte);if pg_phrase_byte(b) {out[at]=b;at+=1;}}
   return PgText.{written=at};
 }
-pg_frame_checked :: (wire:[]u8,context:[]u8,overlap:bool)->PgFrame #export_c {
+pg_frame_checked :: (wire:[]u8,context:[]u8,overlap:bool)->PgFrame #export_c #effects(all) {
   if pg_wire_admit(wire.count)!=0 {return PgFrame.{error=PG_LIMIT};}
   if context.count!=32 {return PgFrame.{error=PG_CONTEXT};}
   if overlap {return PgFrame.{error=PG_ALIAS};}
@@ -213,21 +213,21 @@ pg_frame_checked :: (wire:[]u8,context:[]u8,overlap:bool)->PgFrame #export_c {
   if cb_ct_equal(wire[14..<46],context)!=CB_MAX64 {return PgFrame.{error=PG_CONTEXT};}
   return PgFrame.{size=n};
 }
-pg_lower_hex :: (text:string)->bool {
+pg_lower_hex :: (text:string)->bool #effects(all) {
   if text.count!=64 {return false;}
   for b:text {if !(pg_digit(b)||(b>=97 && b<=102)) {return false;}}return true;
 }
-pg_relay_url :: (text:string)->bool #export_c {
+pg_relay_url :: (text:string)->bool #export_c #effects(all) {
   parsed:=uri_parse(text);return parsed.ok && parsed.scheme==URI_WSS;
 }
-pg_name :: (raw:string,names:[]string,keywork:[]u8)->int {
+pg_name :: (raw:string,names:[]string,keywork:[]u8)->int #effects(all) {
   if keywork.count!=256 {return -1;}
   n:=json_unescape(raw,keywork);if n<0 {return -1;}
   for i:0..<names.count {if pg_equal(cast(string)keywork[0..<n],names[i]) {return i;}}return -1;
 }
 // Byte payloads remain exclusively in caller-owned registered workspace.
 // Returned metadata contains ranges/counts only, never copied plaintext.
-pg_fields :: (text:string,names:[]string,maxima:[]int,work:[]u8)->PgFields {
+pg_fields :: (text:string,names:[]string,maxima:[]int,work:[]u8)->PgFields #effects(all) {
   r:PgFields;
   if work.count!=8448 || names.count<1 || names.count>4 || maxima.count!=names.count {return PgFields.{error=PG_CAPACITY};}
   for maximum:maxima {if maximum<0 || maximum>2048 {return PgFields.{error=PG_CAPACITY};}}
@@ -246,14 +246,14 @@ pg_fields :: (text:string,names:[]string,maxima:[]int,work:[]u8)->PgFields {
   if token!=JSON_OBJECT_END || json_next(j[..])!=JSON_END || r.seen!=(cast(u32)1<<names.count)-1 {return PgFields.{error=PG_POINTER};}
   return r;
 }
-pg_field :: (fields:PgFields,work:[]u8,index:int)->string {
+pg_field :: (fields:PgFields,work:[]u8,index:int)->string #effects(all) {
   r:=fields.values[index];return cast(string)work[r.from..<r.from+r.count];
 }
-pg_ascii_size :: (text:string)->int {
+pg_ascii_size :: (text:string)->int #effects(all) {
   size:=2;for b:text {size+=ifx b==34 || b==92 || b==8 || b==9 || b==10 || b==12 || b==13 then 2 else ifx b<32 then 6 else 1;}return size;
 }
-pg_raw :: (out:[]u8,at:int,text:string,measure:bool)->int {return ifx measure then at+text.count else json_raw(out,at,text);}
-pg_emit_fields :: (names:[]string,fields:PgFields,work:[]u8,out:[]u8,offset:int,measure:bool)->int {
+pg_raw :: (out:[]u8,at:int,text:string,measure:bool)->int #effects(all) {return ifx measure then at+text.count else json_raw(out,at,text);}
+pg_emit_fields :: (names:[]string,fields:PgFields,work:[]u8,out:[]u8,offset:int,measure:bool)->int #effects(all) {
   at:=pg_raw(out,offset,"{",measure);
   for i:0..<names.count {
     if i>0 {at=pg_raw(out,at,",",measure);}
@@ -264,7 +264,7 @@ pg_emit_fields :: (names:[]string,fields:PgFields,work:[]u8,out:[]u8,offset:int,
   }
   return pg_raw(out,at,"}",measure);
 }
-pg_context_checked :: (record:string,work:[]u8,canonical:[]u8,out:[]u8,overlap:bool)->u32 #export_c {
+pg_context_checked :: (record:string,work:[]u8,canonical:[]u8,out:[]u8,overlap:bool)->u32 #export_c #effects(all) {
   if overlap {return PG_ALIAS;}
   if out.count!=32 || work.count!=8448 {return PG_CAPACITY;}
   if pg_record_admit(record.count)!=0 {return PG_CONTEXT;}
@@ -276,7 +276,7 @@ pg_context_checked :: (record:string,work:[]u8,canonical:[]u8,out:[]u8,overlap:b
   at:=json_raw(canonical,0,PG_CONTEXT_LABEL);at=pg_emit_fields(names[..],fields,work,canonical,at,false);
   return ifx sha256_hash_checked(canonical[0..<at],out,false)==0 then PG_OK else PG_CRYPTO;
 }
-pg_pointer_checked :: (plain:string,relay:string,recipient:string,work:[]u8,canonical:[]u8,out:[]u8,overlap:bool)->PgText #export_c {
+pg_pointer_checked :: (plain:string,relay:string,recipient:string,work:[]u8,canonical:[]u8,out:[]u8,overlap:bool)->PgText #export_c #effects(all) {
   if overlap {return PgText.{error=PG_ALIAS};}
   if pg_plain_admit(plain.count)!=0 {return PgText.{error=PG_LIMIT};}
   if work.count!=8448 {return PgText.{error=PG_CAPACITY};}

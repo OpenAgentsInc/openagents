@@ -22,7 +22,7 @@ I8_MMA_STEPS_MAX :: 65;       // 65 steps of 16 codes: 1040 * 127 * 127 = 16,774
 // special instruction; i8_mma is one warp on the BF16 tensor cores.
 I8_ROW_NEEDS :: DaNeeds.{threads=256,shared=0,mma=false};
 I8_MMA_NEEDS :: DaNeeds.{threads=32,shared=0,mma=true};
-i8_plan :: (kernel:I8Kernel,rows:int,width:int,tokens:int,block:int,dev:DaDevice)->I8Plan {
+i8_plan :: (kernel:I8Kernel,rows:int,width:int,tokens:int,block:int,dev:DaDevice)->I8Plan #effects(all) {
     if rows<1 || tokens<1 || block<4 || block%4!=0 {return I8Plan.{status=I8Status.shape};}
     if !int8_block_fits(block) {return I8Plan.{status=I8Status.overflow};}
     if width<block || width%block!=0 {return I8Plan.{status=I8Status.shape};}
@@ -38,7 +38,7 @@ i8_plan :: (kernel:I8Kernel,rows:int,width:int,tokens:int,block:int,dev:DaDevice
     if kernel==I8Kernel.mma {p.dot_items=0;p.mma_items=(tokens+I8_TOKENS-1)/I8_TOKENS*(rows/16);p.finish_items=0;p.x_words=(tokens+7)/8*8*width/4;}
     return p;
 }
-i8_text :: (p:I8Plan)->string {
+i8_text :: (p:I8Plan)->string #effects(all) {
     if p.status==I8Status.ok {return "admitted";}
     if p.status==I8Status.shape {return "refused: the block must be a positive multiple of 4 that divides the width";}
     if p.status==I8Status.overflow {return "refused: a block that long could overflow s32";}
@@ -52,7 +52,7 @@ i8_text :: (p:I8Plan)->string {
 // What int8_admit checks of the codes, scales and sums, for buffers too large
 // for the CPU plan's work limit: no code -128, every scale finite and not
 // negative, every offset finite, every stored sum equal to its codes' sum.
-i8_inputs :: (rows:int,width:int,tokens:int,block:int,w:Int8Weights,x:Int8Activations)->Int8Status {
+i8_inputs :: (rows:int,width:int,tokens:int,block:int,w:Int8Weights,x:Int8Activations)->Int8Status #effects(all) {
     nb:=width/block;
     if w.codes.count!=rows*width || w.scales.count!=rows*nb || w.offsets.count!=rows*nb {return Int8Status.storage;}
     if x.codes.count!=tokens*width || x.scales.count!=tokens*nb || x.sums.count!=tokens*nb {return Int8Status.storage;}
@@ -75,7 +75,7 @@ i8_inputs :: (rows:int,width:int,tokens:int,block:int,w:Int8Weights,x:Int8Activa
 // spread over a tenth of either mean ranks nothing. cm_compare also demands
 // the same number formats; here the formats differ on purpose (int8 against
 // f32 or BF16), so the rule is applied to the times alone.
-i8_rank :: (a:CmStats,b:CmStats)->CmCall {
+i8_rank :: (a:CmStats,b:CmStats)->CmCall #effects(all) {
     call:=CmCall.{verdict=CmVerdict.refused};
     if a.status!=CmStatus.ok || b.status!=CmStatus.ok {call.reason=CmReason.stats;return call;}
     call.ratio=b.mean/a.mean;
@@ -92,23 +92,23 @@ i8_rank :: (a:CmStats,b:CmStats)->CmCall {
 // The plan as numbers: out gets quantize, dot, mma and finish items, the
 // dot count and the activation words (the tile combines its own outputs, so
 // its finish items are 0); the result is the I8Status number plus 16 times the DaStatus.
-i8_plan_c :: (kernel:int,rows:int,width:int,tokens:int,block:int,major:int,minor:int,max_threads:int,max_shared:int,out:[]int)->int #export_c {
+i8_plan_c :: (kernel:int,rows:int,width:int,tokens:int,block:int,major:int,minor:int,max_threads:int,max_shared:int,out:[]int)->int #export_c #effects(all) {
     k:=I8Kernel.row;if kernel==1 {k=I8Kernel.mma;}
     p:=i8_plan(k,rows,width,tokens,block,DaDevice.{major=major,minor=minor,max_threads=max_threads,max_shared=max_shared});
     if out.count<6 {return -1;}
     out[0]=p.quantize_items;out[1]=p.dot_items;out[2]=p.mma_items;out[3]=p.finish_items;out[4]=p.dots;out[5]=p.x_words;
     return cast(int)p.status+16*cast(int)p.admission;
 }
-i8_inputs_c :: (rows:int,width:int,tokens:int,block:int,wc:[]s8,ws:[]f32,wo:[]f32,xc:[]s8,xs:[]f32,xm:[]s32)->int #export_c {
+i8_inputs_c :: (rows:int,width:int,tokens:int,block:int,wc:[]s8,ws:[]f32,wo:[]f32,xc:[]s8,xs:[]f32,xm:[]s32)->int #export_c #effects(all) {
     return cast(int)i8_inputs(rows,width,tokens,block,Int8Weights.{codes=wc,scales=ws,offsets=wo},Int8Activations.{codes=xc,scales=xs,sums=xm});
 }
 // Chapter 48's CPU quantizer and kernels, for comparisons within their work
 // limit: tiled 1 interleaves the weights into scratch and runs int8_tiled.
-i8_cpu_quantize_c :: (rows:int,width:int,tokens:int,block:int,x:[]f32,codes:[]s8,scales:[]f32,sums:[]s32)->int #export_c {
+i8_cpu_quantize_c :: (rows:int,width:int,tokens:int,block:int,x:[]f32,codes:[]s8,scales:[]f32,sums:[]s32)->int #export_c #effects(all) {
     r:=Int8Request.{rows=rows,width=width,tokens=tokens,block=block};
     return cast(int)int8_quantize(r,x,Int8Activations.{codes=codes,scales=scales,sums=sums}).status;
 }
-i8_cpu_c :: (tiled:int,rows:int,width:int,tokens:int,block:int,wc:[]s8,ws:[]f32,wo:[]f32,xc:[]s8,xs:[]f32,xm:[]s32,scratch:[]s8,dots:[]s32,y:[]f64)->int #export_c {
+i8_cpu_c :: (tiled:int,rows:int,width:int,tokens:int,block:int,wc:[]s8,ws:[]f32,wo:[]f32,xc:[]s8,xs:[]f32,xm:[]s32,scratch:[]s8,dots:[]s32,y:[]f64)->int #export_c #effects(all) {
     r:=Int8Request.{rows=rows,width=width,tokens=tokens,block=block};x:=Int8Activations.{codes=xc,scales=xs,sums=xm};
     if tiled==1 {
         s:=int8_interleave(r,wc,scratch).status;
@@ -117,17 +117,17 @@ i8_cpu_c :: (tiled:int,rows:int,width:int,tokens:int,block:int,wc:[]s8,ws:[]f32,
     }
     return cast(int)int8_row(r,Int8Weights.{codes=wc,scales=ws,offsets=wo},x,dots,y).status;
 }
-i8_naive_c :: (w:[]s8,x:[]s8,width:int,block:int,row:int,t:int,b:int)->int #export_c {return i8_naive(w,x,width,block,row,t,b);}
+i8_naive_c :: (w:[]s8,x:[]s8,width:int,block:int,row:int,t:int,b:int)->int #export_c #effects(all) {return i8_naive(w,x,width,block,row,t,b);}
 // Warm run times in nanoseconds: out gets the two-pass mean and standard
 // deviation, then Welford's; the result is the CmStatus number.
-i8_stats_c :: (times:[]int,out:[]f64)->int #export_c {
+i8_stats_c :: (times:[]int,out:[]f64)->int #export_c #effects(all) {
     a:=cm_two_pass(times);b:=cm_welford(times);
     if out.count>=4 {out[0]=a.mean;out[1]=a.sd;out[2]=b.mean;out[3]=b.sd;}
     return cast(int)a.status;
 }
 // i8_rank on two sides' times: the CmVerdict number; out gets the ratio
 // (b's mean over a's) and the standard error.
-i8_rank_c :: (a:[]int,b:[]int,out:[]f64)->int #export_c {
+i8_rank_c :: (a:[]int,b:[]int,out:[]f64)->int #export_c #effects(all) {
     call:=i8_rank(cm_two_pass(a),cm_two_pass(b));
     if out.count>=2 {out[0]=call.ratio;out[1]=call.se;}
     return cast(int)call.verdict;

@@ -26,18 +26,18 @@
 #test "reservation observation storage gets a fixed 50 millisecond server budget, outside the placement transaction" {
   #assert !rsv_observe_late(1000,1049)&&rsv_observe_late(1000,1050)&&rsv_observe_late(1000,1051);
 }
-rsv_observe_store_ms::()->int #export_c{return 50;}
-rsv_observe_late::(began:int,now:int)->bool{return now-began>=rsv_observe_store_ms();}
-rsv_observe_pick::(database_ok:bool,rows:int,has_code:bool,code_n:int,cap:int,redirected:bool)->int #export_c{
+rsv_observe_store_ms::()->int #export_c #effects(all) {return 50;}
+rsv_observe_late::(began:int,now:int)->bool #effects(all) {return now-began>=rsv_observe_store_ms();}
+rsv_observe_pick::(database_ok:bool,rows:int,has_code:bool,code_n:int,cap:int,redirected:bool)->int #export_c #effects(all) {
   if !database_ok||rows!=1||cap<1||code_n<0{return 4;}
   if !has_code{return 3;}
   if code_n==0||code_n>=cap{return 4;}
   return ifx redirected then 2 else 1;
 }
-rsv_observe_invite::(result:int)->int #export_c{
+rsv_observe_invite::(result:int)->int #export_c #effects(all) {
   if result==0{return 5;}if result==2{return 6;}if result==1{return 7;}return 4;
 }
-rsv_observe_name::(event:int)->string #export_c{
+rsv_observe_name::(event:int)->string #export_c #effects(all) {
   if event==1{return "reservation requests accepted";}
   if event==2{return "reservation requests redirected";}
   if event==3{return "reservation requests full";}

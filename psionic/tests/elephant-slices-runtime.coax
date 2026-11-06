@@ -23,7 +23,7 @@ EsResult :: struct {status:EsStatus;cause:int;written:int;}
     #assert es_embed(nan[..],2,one[..],out[..],work[..]).status==EsStatus.number;
 }
 
-es_embed :: (table:[]u8,width:int,tokens:[]int,out:[]f32,work:[]f32)->EsResult #export_c {
+es_embed :: (table:[]u8,width:int,tokens:[]int,out:[]f32,work:[]f32)->EsResult #export_c #effects(all) {
     if width<1 || table.count%(2*width)!=0 {return EsResult.{status=EsStatus.shape};}
     vocab:=table.count/(2*width);
     for token:tokens {if token<0 || token>=vocab {return EsResult.{status=EsStatus.shape};}}
@@ -43,7 +43,7 @@ es_layer_shape :: (s:QeShape,kind:u8,count:int)->QeShape {
     if kind==cast(u8)QeKind.linear {r.state.linear_layers=1;} else {r.state.full_layers=1;}
     return r;
 }
-es_layer_work :: (s:QeShape,kind:u8,count:int)->int #export_c {
+es_layer_work :: (s:QeShape,kind:u8,count:int)->int #export_c #effects(all) {
     one:=es_layer_shape(s,kind,count);
     return qp_total(one.state)+128*count+qe_layout(one,0,count).total;
 }
@@ -80,7 +80,7 @@ es_layer_work :: (s:QeShape,kind:u8,count:int)->int #export_c {
     #assert es_layer(small,QeLayer.{kind=0,linear=lw,full=fw},input[..],3,out[..],work[..]).status==EsStatus.shape;
 }
 
-es_layer :: (s:QeShape,layer:QeLayer,input:[]f32,count:int,out:[]f32,work:[]f32)->EsResult #export_c {
+es_layer :: (s:QeShape,layer:QeLayer,input:[]f32,count:int,out:[]f32,work:[]f32)->EsResult #export_c #effects(all) {
     if count<1 || count>64 || s.full.attention.rotary_dim!=64 {return EsResult.{status=EsStatus.shape};}
     one:=es_layer_shape(s,layer.kind,count);d:=one.linear.width;
     states:=qp_total(one.state);rope_at:=states;engine_at:=rope_at+128*count;total:=es_layer_work(s,layer.kind,count);
@@ -115,7 +115,7 @@ es_layer :: (s:QeShape,layer:QeLayer,input:[]f32,count:int,out:[]f32,work:[]f32)
     #assert es_readout(0,0.000001,hidden[0..<0],scale[0..<0],head[0..<0],2,logits[..],work[..]).status==EsStatus.shape;
 }
 
-es_readout :: (width:int,epsilon:f32,hidden:[]f32,final_norm:[]f32,head:[]u8,rows:int,logits:[]f32,work:[]f32)->EsResult #export_c {
+es_readout :: (width:int,epsilon:f32,hidden:[]f32,final_norm:[]f32,head:[]u8,rows:int,logits:[]f32,work:[]f32)->EsResult #export_c #effects(all) {
     if width<1 || rows<1 || rows>32768 || hidden.count!=width || final_norm.count!=width || head.count!=rows*width*2 {return EsResult.{status=EsStatus.shape};}
     if logits.count<rows || work.count<2*width+rows {return EsResult.{status=EsStatus.capacity};}
     norm:=work[0..<width];

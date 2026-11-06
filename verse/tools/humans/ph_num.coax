@@ -221,8 +221,8 @@ pn_round_n :: (x: f64, n: int) -> f64 { t: [512] u8; return pn_f(pn_fixed_text(x
 
 // math.floor and int() of a float, and Python's float % and //.
 pn_floor :: (x: f64) -> int { return cast(int) floor(x); }
-fmod :: (x: f64, y: f64) -> f64 #foreign;
-copysign :: (x: f64, y: f64) -> f64 #foreign;
+fmod :: (x: f64, y: f64) -> f64 #foreign #effects(all);
+copysign :: (x: f64, y: f64) -> f64 #foreign #effects(all);
 pn_mod :: (x: f64, w: f64) -> f64 {
   m := fmod(x, w);
   if m != 0.0 { if (w < 0.0) != (m < 0.0) { m += w; } }

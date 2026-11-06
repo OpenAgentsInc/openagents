@@ -203,18 +203,18 @@ XK_C :: "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13";
 }
 
 // Seventeen distinct hex keys for the bound checks.
-xk_fill :: (keys:[]string,hex:[]u8) {
+xk_fill :: (keys:[]string,hex:[]u8) #effects(all) {
   digits:="0123456789abcdef";
   for i:0..<keys.count {for k:0..<64 {hex[64*i+k]=ifx k<62 then 'a' else digits[ifx k==62 then i/16 else i%16];}keys[i]=cast(string)hex[64*i..<64*i+64];}
 }
 
-xk_hex64 :: (s:string)->bool {
+xk_hex64 :: (s:string)->bool #effects(all) {
   if s.count!=64 {return false;}
   for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
   return true;
 }
 // The profile's keys: at most 16, each hex64, never the signer, distinct.
-xk_keys_ok :: (signer:string,keys:[]string)->bool {
+xk_keys_ok :: (signer:string,keys:[]string)->bool #effects(all) {
   if keys.count>XK_KEYS {return false;}
   for i:0..<keys.count {
     if !xk_hex64(keys[i]) || keys[i]==signer {return false;}
@@ -223,7 +223,7 @@ xk_keys_ok :: (signer:string,keys:[]string)->bool {
   return true;
 }
 // A key link's content; trainer "" withdraws (null). -1 refused.
-xk_link_body :: (out:[]u8,signer:string,trainer:string)->int #export_c {
+xk_link_body :: (out:[]u8,signer:string,trainer:string)->int #export_c #effects(all) {
   if !xk_hex64(signer) {return -1;}
   n:=json_raw(out,0,"{\"v\":1,\"requires\":[],\"type\":\"link\",\"trainer\":");
   if trainer.count==0 {n=json_raw(out,n,"null");}
@@ -233,7 +233,7 @@ xk_link_body :: (out:[]u8,signer:string,trainer:string)->int #export_c {
   }
   return json_raw(out,n,"}");
 }
-xk_link_tags :: (out:[]u8,trainer:string)->int #export_c {
+xk_link_tags :: (out:[]u8,trainer:string)->int #export_c #effects(all) {
   n:=json_raw(out,0,"[[\"t\",\"oa:xp:link:v1\"]");
   if trainer.count>0 {
     if !xk_hex64(trainer) {return -1;}
@@ -241,14 +241,14 @@ xk_link_tags :: (out:[]u8,trainer:string)->int #export_c {
   }
   return json_raw(out,n,"]");
 }
-xk_profile_body :: (out:[]u8,signer:string,shown:bool,keys:[]string)->int {
+xk_profile_body :: (out:[]u8,signer:string,shown:bool,keys:[]string)->int #effects(all) {
   if !xk_keys_ok(signer,keys) {return -1;}
   n:=json_raw(out,0,"{\"v\":1,\"requires\":[],\"type\":\"profile\",\"shown\":");
   n=json_raw(out,n,ifx shown then "true" else "false");n=json_raw(out,n,",\"keys\":[");
   for i:0..<keys.count {if i>0 {n=json_raw(out,n,",");}n=json_raw(out,n,"\"");n=json_raw(out,n,keys[i]);n=json_raw(out,n,"\"");}
   return json_raw(out,n,"]}");
 }
-xk_profile_tags :: (out:[]u8,signer:string,keys:[]string)->int {
+xk_profile_tags :: (out:[]u8,signer:string,keys:[]string)->int #effects(all) {
   if !xk_keys_ok(signer,keys) {return -1;}
   n:=json_raw(out,0,"[[\"t\",\"oa:xp:profile:v1\"]");
   for k:keys {n=json_raw(out,n,",[\"p\",\"");n=json_raw(out,n,k);n=json_raw(out,n,"\"]");}
@@ -259,7 +259,7 @@ xk_profile_tags :: (out:[]u8,signer:string,keys:[]string)->int {
 // an escaped or uppercase t), marker (not exactly one oa:xp:<record>:v1), or
 // mismatch (more p tags than ps holds). count is set to the p tags read.
 XkTags :: struct {code:XkCode;count:int;}
-xk_tags :: (tags:string,marker:string,ps:[]string)->XkTags {
+xk_tags :: (tags:string,marker:string,ps:[]string)->XkTags #effects(all) {
   r:XkTags;markers:=0;mine:=0;j:[1]Json;json_start(j[..],tags);
   if json_next(j[..])!=JSON_ARRAY {return XkTags.{code=XkCode.tags};}
   t:=json_next(j[..]);
@@ -294,7 +294,7 @@ xk_tags :: (tags:string,marker:string,ps:[]string)->XkTags {
 // keys, into keys). XkCode.ok or its refusal.
 XkBody :: struct {code:XkCode;trainer:string;shown:bool;count:int;}
 XK_V :: 1; XK_REQUIRES :: 2; XK_TYPE :: 4; XK_TRAINER :: 8; XK_SHOWN :: 16; XK_KEYS_FIELD :: 32;
-xk_body :: (content:string,type:string,keys:[]string)->XkBody {
+xk_body :: (content:string,type:string,keys:[]string)->XkBody #effects(all) {
   r:XkBody;link:=type=="link";seen:=0;j:[1]Json;json_start(j[..],content);
   if json_next(j[..])!=JSON_OBJECT {return XkBody.{code=XkCode.body};}
   while true {
@@ -335,7 +335,7 @@ xk_body :: (content:string,type:string,keys:[]string)->XkBody {
 }
 
 // A 13195 from signer (hex): the trainer it names, "" when withdrawn.
-xk_link_read :: (kind:int,signer:string,tags:string,content:string)->XkLink {
+xk_link_read :: (kind:int,signer:string,tags:string,content:string)->XkLink #effects(all) {
   if kind!=XK_LINK {return XkLink.{code=XkCode.kind};}
   ps:[1]string;t:=xk_tags(tags,XK_LINK_MARKER,ps[..]);
   if t.code!=XkCode.ok {return XkLink.{code=t.code};}
@@ -347,7 +347,7 @@ xk_link_read :: (kind:int,signer:string,tags:string,content:string)->XkLink {
   return XkLink.{trainer=b.trainer};
 }
 // A 13193 from signer (hex): shown, and its keys into keys (count of them).
-xk_profile_read :: (kind:int,signer:string,tags:string,content:string,keys:[]string)->XkProfile {
+xk_profile_read :: (kind:int,signer:string,tags:string,content:string,keys:[]string)->XkProfile #effects(all) {
   if kind!=XK_PROFILE {return XkProfile.{code=XkCode.kind};}
   ps:[17]string;t:=xk_tags(tags,XK_PROFILE_MARKER,ps[..]);
   if t.code!=XkCode.ok {return XkProfile.{code=t.code};}
@@ -361,7 +361,7 @@ xk_profile_read :: (kind:int,signer:string,tags:string,content:string,keys:[]str
 
 // Whether a replaceable event (created_at, id hex) replaces the held one:
 // later, or as old with a lower id (NIP-01). held_at -1 holds nothing.
-xk_newer :: (at:int,id:string,held_at:int,held_id:string)->bool {
+xk_newer :: (at:int,id:string,held_at:int,held_id:string)->bool #effects(all) {
   if at>held_at {return true;}
   if at<held_at {return false;}
   for i:0..<id.count {if id[i]<held_id[i] {return true;}if id[i]>held_id[i] {return false;}}
@@ -369,13 +369,13 @@ xk_newer :: (at:int,id:string,held_at:int,held_id:string)->bool {
 }
 // keys[0..<n] with key added at the end (unchanged when already listed),
 // for signer's profile: the new count, or -1 when key can't be listed.
-xk_add :: (keys:[]string,n:int,signer:string,key:string)->int {
+xk_add :: (keys:[]string,n:int,signer:string,key:string)->int #effects(all) {
   for i:0..<n {if keys[i]==key {return n;}}
   if n>=XK_KEYS || n>=keys.count || !xk_hex64(key) || key==signer {return -1;}
   keys[n]=key;return n+1;
 }
 // keys[0..<n] without key, the rest in order: the new count.
-xk_drop :: (keys:[]string,n:int,key:string)->int {
+xk_drop :: (keys:[]string,n:int,key:string)->int #effects(all) {
   m:=0;
   for i:0..<n {if keys[i]!=key {keys[m]=keys[i];m+=1;}}
   return m;

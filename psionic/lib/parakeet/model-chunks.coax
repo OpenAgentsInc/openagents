@@ -92,20 +92,20 @@ PKCH_DIGESTS :: [38] string.[
 }
 
 PkchPlan :: struct {size:int;bytes:int;pieces:int;}
-pkch_plan :: ()->PkchPlan {return PkchPlan.{size=PKCH_SIZE,bytes=PKCH_BYTES,pieces=PKCH_PIECES};}
-pkch_count :: (bytes:int,size:int)->int {if bytes<1 || size<1 {return 0;}return (bytes-1)/size+1;}
+pkch_plan :: ()->PkchPlan #effects(all) {return PkchPlan.{size=PKCH_SIZE,bytes=PKCH_BYTES,pieces=PKCH_PIECES};}
+pkch_count :: (bytes:int,size:int)->int #effects(all) {if bytes<1 || size<1 {return 0;}return (bytes-1)/size+1;}
 // The end of piece i: the file's end for the last piece, else the next piece's start.
-pkch_end :: (i:int,bytes:int,size:int)->int {return ifx i==pkch_count(bytes,size)-1 then bytes else (i+1)*size;}
-pkch_match :: (file:[]u8,i:int,size:int,digests:[]string)->bool {
+pkch_end :: (i:int,bytes:int,size:int)->int #effects(all) {return ifx i==pkch_count(bytes,size)-1 then bytes else (i+1)*size;}
+pkch_match :: (file:[]u8,i:int,size:int,digests:[]string)->bool #effects(all) {
  n:=pkch_count(file.count,size);if n!=digests.count || i<0 || i>=n {return false;}
  hex:[64]u8;return S_hex(S_hash(cast(string)file[i*size..<pkch_end(i,file.count,size)]),hex[..]) && cast(string)hex[..]==digests[i];
 }
 // Share first of step checks pieces first, first+step, ... The engine runs
 // shares 0..step-1, one per thread, so together they check every piece.
-pkch_run :: (file:[]u8,first:int,step:int,size:int,bytes:int,digests:[]string)->bool {
+pkch_run :: (file:[]u8,first:int,step:int,size:int,bytes:int,digests:[]string)->bool #effects(all) {
  if file.count!=bytes || step<1 || step>digests.count || first<0 || first>=step {return false;}
  i:=first;while i<digests.count {if !pkch_match(file,i,size,digests) {return false;}i+=step;}return true;
 }
-pkch_verify :: (file:[]u8,first:int,step:int)->bool #export_c {p:=pkch_plan();digests:=PKCH_DIGESTS;return pkch_run(file,first,step,p.size,p.bytes,digests[..]);}
+pkch_verify :: (file:[]u8,first:int,step:int)->bool #export_c #effects(all) {p:=pkch_plan();digests:=PKCH_DIGESTS;return pkch_run(file,first,step,p.size,p.bytes,digests[..]);}
 // The answers of shares 0..n-1 of n: the file is admitted only when all ran and passed.
-pkch_complete :: (shares:[]bool)->bool {if shares.count<1 || shares.count>PKCH_PIECES {return false;}for ok:shares {if !ok {return false;}}return true;}
+pkch_complete :: (shares:[]bool)->bool #effects(all) {if shares.count<1 || shares.count>PKCH_PIECES {return false;}for ok:shares {if !ok {return false;}}return true;}

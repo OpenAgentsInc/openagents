@@ -4,7 +4,7 @@
 #authority;
 #load "producer-facts-text-checks.coax";
 PftPart :: struct {bytes:int;valid:bool;}
-pft_part :: (source:string,start:int)->PftPart {
+pft_part :: (source:string,start:int)->PftPart #effects(all) {
   r:PftPart;if start<0 || start>=source.count {return r;}
   lead:=source[start];r.bytes=1;
   if lead<128 {r.valid=true;return r;}
@@ -20,10 +20,10 @@ pft_part :: (source:string,start:int)->PftPart {
   }
   r.valid=true;return r;
 }
-pft_measure :: (source:string)->int {
+pft_measure :: (source:string)->int #effects(all) {
   count:=0;at:=0;while at<source.count {part:=pft_part(source,at);count+=ifx part.valid then part.bytes else 3;at+=part.bytes;}return count;
 }
-pft_write :: (source:string,out:[]u8)->int {
+pft_write :: (source:string,out:[]u8)->int #effects(all) {
   count:=pft_measure(source);if count>out.count {return -1;}
   at:=0;used:=0;while at<source.count {part:=pft_part(source,at);
     if part.valid {for k:0..<part.bytes {out[used+k]=source[at+k];}used+=part.bytes;}

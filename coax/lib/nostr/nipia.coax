@@ -45,8 +45,8 @@ IaRequest :: struct {
   consent:int; by:[32]u8;                       // the path and the key it names
   proof:bool; proof_id:[32]u8;                  // the target's kind 0, on the profile path
 }
-ia_fail :: (r:IaRequest,status:int)->IaRequest {o:=r;o.status=status;return o;}
-ia_read :: (e:NostrEvent)->IaRequest {
+ia_fail :: (r:IaRequest,status:int)->IaRequest #effects(all) {o:=r;o.status=status;return o;}
+ia_read :: (e:NostrEvent)->IaRequest #effects(all) {
   r:IaRequest;
   if e.error!=NE_OK || !e.verified {return r;}
   if e.kind!=IA_ARCHIVE && e.kind!=IA_UNARCHIVE {return ia_fail(r,IA_KIND);}
@@ -72,7 +72,7 @@ ia_read :: (e:NostrEvent)->IaRequest {
 // The request's own auth tag: exactly one, four elements, the owner is the
 // actor, the owner signed the target's NIP-OA preimage, and the request's
 // created_at meets the time clauses. kind= clauses are not evaluated.
-ia_auth :: (e:NostrEvent,target:[32]u8)->bool {
+ia_auth :: (e:NostrEvent,target:[32]u8)->bool #effects(all) {
   k:=0;n:=0;t:G29Tag;
   while true {
     s:=g29_tag(e,k);k+=1;
@@ -91,7 +91,7 @@ ia_auth :: (e:NostrEvent,target:[32]u8)->bool {
 // The target's latest kind 0 as standing proof: authored by the target, one
 // auth tag naming the actor as owner, the owner's signature valid. No
 // clause is evaluated on this path.
-ia_profile :: (p:NostrEvent,target:[32]u8,actor:[32]u8)->bool {
+ia_profile :: (p:NostrEvent,target:[32]u8,actor:[32]u8)->bool #effects(all) {
   if p.kind!=0 || !ns_equal32(p.public_key,target) {return false;}
   c:=noa_read(p);
   return c.status==NOA_UNCHECKED && ns_equal32(c.owner,actor) && noa_signed(c);
@@ -102,7 +102,7 @@ ia_profile :: (p:NostrEvent,target:[32]u8,actor:[32]u8)->bool {
 // A request at the relay's clock now: its form, freshness, and the consent
 // path. admins is the relay's admin policy; banned says the target is barred
 // by access control; profile holds the target's latest kind 0, if any.
-ia_decide :: (e:NostrEvent,now:int,admins:[][32]u8,banned:bool,profile:[]NostrEvent)->IaRequest {
+ia_decide :: (e:NostrEvent,now:int,admins:[][32]u8,banned:bool,profile:[]NostrEvent)->IaRequest #effects(all) {
   r:=ia_read(e);
   if r.status!=IA_OK {return r;}
   if e.created_at<now-IA_FRESH || e.created_at>now+IA_FRESH {return ia_fail(r,IA_STALE);}
@@ -121,10 +121,10 @@ ia_decide :: (e:NostrEvent,now:int,admins:[][32]u8,banned:bool,profile:[]NostrEv
 // book:begin state
 // The relay's archive set.
 IaState :: struct {keys:[IA_MAX][32]u8; n:int;}
-ia_find :: (s:IaState,key:[32]u8)->int {for i:0..<s.n {if ns_equal32(s.keys[i],key) {return i;}}return -1;}
+ia_find :: (s:IaState,key:[32]u8)->int #effects(all) {for i:0..<s.n {if ns_equal32(s.keys[i],key) {return i;}}return -1;}
 // Apply an accepted request: IA_OK when the set changed (publish the delta
 // and a snapshot), IA_SAME when it already held.
-ia_apply :: (s:[]IaState,r:IaRequest)->int {
+ia_apply :: (s:[]IaState,r:IaRequest)->int #effects(all) {
   if r.status!=IA_OK || r.consent==IA_NONE {return IA_DENIED;}
   i:=ia_find(s[0],r.target);
   if r.archive {
@@ -140,7 +140,7 @@ ia_apply :: (s:[]IaState,r:IaRequest)->int {
 
 // book:begin publish
 // The tags of the 8002 or 8003 for an accepted request.
-ia_delta :: (r:IaRequest,out:[]u8)->int {
+ia_delta :: (r:IaRequest,out:[]u8)->int #effects(all) {
   n:=json_raw(out,0,"[[\"-\"],[\"p\",");n=g29_put_key(out,n,r.target);
   n=json_raw(out,n,"],[\"consent\",\"");n=json_raw(out,n,IA_PATHS[r.consent]);n=json_raw(out,n,"\",");n=g29_put_key(out,n,r.by);
   n=json_raw(out,n,"],[\"e\",");n=g29_put_key(out,n,r.id);n=json_raw(out,n,"]");
@@ -150,7 +150,7 @@ ia_delta :: (r:IaRequest,out:[]u8)->int {
   return json_raw(out,n,"]");
 }
 // The tags of the 13535: the marker, then one bare p per archived key.
-ia_snapshot :: (s:IaState,out:[]u8)->int {
+ia_snapshot :: (s:IaState,out:[]u8)->int #effects(all) {
   n:=json_raw(out,0,"[[\"-\"]");
   for i:0..<s.n {n=json_raw(out,n,",[\"p\",");n=g29_put_key(out,n,s.keys[i]);n=json_raw(out,n,"]");}
   return json_raw(out,n,"]");
@@ -160,7 +160,7 @@ ia_snapshot :: (s:IaState,out:[]u8)->int {
 // book:begin client
 // The archived keys of a 13535 from the relay's self key, into out: their
 // count, or a negative status. Invalid p entries are skipped.
-ia_list :: (e:NostrEvent,relay:[32]u8,out:[][32]u8)->int {
+ia_list :: (e:NostrEvent,relay:[32]u8,out:[][32]u8)->int #effects(all) {
   if e.error!=NE_OK || !e.verified {return -IA_EVENT;}
   if e.kind!=IA_LIST {return -IA_KIND;}
   if !ns_equal32(e.public_key,relay) {return -IA_SIGNER;}

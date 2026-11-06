@@ -29,7 +29,7 @@ DvTotals :: struct {tensors:int;bytes:int;dtype:[5]int;}
 DvBytes :: struct {routed:int;shared:int;engram:int;dense:int;embed:int;draft:int;vision:int;total:int;}
 
 // book:begin config
-dv_flash_config :: ()->DvConfig #export_c {
+dv_flash_config :: ()->DvConfig #export_c #effects(all) {
     c:=DvConfig.{layers=40,drafts=3,width=5120,vocab=129280,heads=64,kv_heads=1,head=512,rope=64,
         q_lora=1280,o_lora=1024,o_groups=8,experts=384,shared=1,k=6,moe=2304,window=128,
         candidate_source=20,candidate_blocks=2048,candidate_block=8,index_heads=32,index_dim=128,index_topk=512,hc=4,sinkhorn=20,
@@ -40,20 +40,20 @@ dv_flash_config :: ()->DvConfig #export_c {
     c.engram_layers=[2]int.[1,14];c.engram_rows=[2]int.[384006168,384016682];return c;
 }
 // book:end config
-dv_bit :: (l:int)->u64 {return u64(1)<<u64(l);}
-dv_span :: (n:int)->u64 {return dv_bit(n)-1;}
-dv_popcount :: (m:u64)->int {n:=0;for i:0..<64 {if ((m>>u64(i))&1)==1 {n+=1;}}return n;}
-dv_size :: (dtype:int)->int {sizes:=[5]int.[4,2,1,1,1];return sizes[dtype];}
-dv_row :: (name:string,dtype:int,a:int,b:int,layers:u64,count:int)->DvRow {
+dv_bit :: (l:int)->u64 #effects(all) {return u64(1)<<u64(l);}
+dv_span :: (n:int)->u64 #effects(all) {return dv_bit(n)-1;}
+dv_popcount :: (m:u64)->int #effects(all) {n:=0;for i:0..<64 {if ((m>>u64(i))&1)==1 {n+=1;}}return n;}
+dv_size :: (dtype:int)->int #effects(all) {sizes:=[5]int.[4,2,1,1,1];return sizes[dtype];}
+dv_row :: (name:string,dtype:int,a:int,b:int,layers:u64,count:int)->DvRow #effects(all) {
     r:=DvRow.{name=name,dtype=dtype,rank=ifx b==0 then 1 else 2,layers=layers,count=count};r.shape[0]=a;r.shape[1]=b;
     tensors:=dv_popcount(layers);if tensors==0 {tensors=1;}
     r.bytes=a*(ifx b==0 then 1 else b)*dv_size(dtype)*count*tensors;return r;
 }
 // An FP8 weight and its UE8M0 scales, one per block x block tile.
-dv_fp8 :: (out:[]DvRow,n:int,weight:string,scale:string,rows:int,cols:int,layers:u64,block:int)->int {
+dv_fp8 :: (out:[]DvRow,n:int,weight:string,scale:string,rows:int,cols:int,layers:u64,block:int)->int #effects(all) {
     out[n]=dv_row(weight,DV_F8,rows,cols,layers,1);out[n+1]=dv_row(scale,DV_E8M0,rows/block,cols/block,layers,1);return n+2;
 }
-dv_attention :: (c:DvConfig,out:[]DvRow,n:int,mtp:bool,m:u64)->int {
+dv_attention :: (c:DvConfig,out:[]DvRow,n:int,mtp:bool,m:u64)->int #effects(all) {
     q:=c.heads*c.head;o:=c.o_groups*c.o_lora;names:[17]string;
     if mtp {names=[17]string.["mtp.#.attn.attn_sink","mtp.#.attn.kv_norm.weight","mtp.#.attn.q_norm.weight","mtp.#.attn_norm.weight","mtp.#.ffn_norm.weight",
         "mtp.#.attn.wkv.weight","mtp.#.attn.wkv.scale","mtp.#.attn.wo_a.weight","mtp.#.attn.wo_a.scale","mtp.#.attn.wo_b.weight","mtp.#.attn.wo_b.scale",
@@ -71,7 +71,7 @@ dv_attention :: (c:DvConfig,out:[]DvRow,n:int,mtp:bool,m:u64)->int {
     at=dv_fp8(out,at,names[13],names[14],q,c.q_lora,m,c.block);
     out[at]=dv_row(names[15],DV_F32,experts,0,m,1);out[at+1]=dv_row(names[16],DV_F32,experts,0,m,1);return at+2;
 }
-dv_ffn :: (c:DvConfig,out:[]DvRow,n:int,mtp:bool,m:u64)->int {
+dv_ffn :: (c:DvConfig,out:[]DvRow,n:int,mtp:bool,m:u64)->int #effects(all) {
     names:[19]string;
     if !mtp {names=[19]string.["layers.#.ffn.gate.weight","layers.#.ffn.experts.*.w1.weight","layers.#.ffn.experts.*.w1.scale","layers.#.ffn.experts.*.w2.weight","layers.#.ffn.experts.*.w2.scale",
         "layers.#.ffn.experts.*.w3.weight","layers.#.ffn.experts.*.w3.scale","layers.#.ffn.shared_experts.w1.weight","layers.#.ffn.shared_experts.w1.scale",
@@ -94,7 +94,7 @@ dv_ffn :: (c:DvConfig,out:[]DvRow,n:int,mtp:bool,m:u64)->int {
     out[at+3]=dv_row(names[16],DV_F32,mix,0,m,1);out[at+4]=dv_row(names[17],DV_F32,mix,c.hc*c.width,m,1);out[at+5]=dv_row(names[18],DV_F32,3,0,m,1);return at+6;
 }
 // book:begin expected
-dv_expected :: (c:DvConfig,out:[]DvRow)->int #export_c {
+dv_expected :: (c:DvConfig,out:[]DvRow)->int #export_c #effects(all) {
     if out.count<DV_EXPECTED {return -1;}
     all:=dv_span(c.layers);kv:u64;gated:u64;index:u64;engram:u64;
     for l:c.kv_sources {kv|=dv_bit(l);if c.ratios[l]==2 {gated|=dv_bit(l);}}
@@ -136,16 +136,16 @@ dv_expected :: (c:DvConfig,out:[]DvRow)->int #export_c {
     return n+15;
 }
 // book:end expected
-dv_shape_equal :: (a:DvRow,b:DvRow)->bool {
+dv_shape_equal :: (a:DvRow,b:DvRow)->bool #effects(all) {
     if a.rank!=b.rank {return false;}for i:0..<4 {if a.shape[i]!=b.shape[i] {return false;}}return true;
 }
 // The first field in which a manifest row differs from the expected row.
-dv_differ :: (a:DvRow,b:DvRow)->DvStatus {
+dv_differ :: (a:DvRow,b:DvRow)->DvStatus #effects(all) {
     if a.name!=b.name {return DvStatus.name;}if a.dtype!=b.dtype {return DvStatus.dtype;}if !dv_shape_equal(a,b) {return DvStatus.shape;}
     if a.layers!=b.layers {return DvStatus.layers;}if a.count!=b.count {return DvStatus.count;}if a.bytes!=b.bytes {return DvStatus.bytes;}return DvStatus.ok;
 }
 // book:begin check
-dv_check_manifest :: (c:DvConfig,rows:[]DvRow)->DvCheck #export_c {
+dv_check_manifest :: (c:DvConfig,rows:[]DvRow)->DvCheck #export_c #effects(all) {
     expected:[DV_EXPECTED]DvRow;used:[DV_EXPECTED]bool;n:=dv_expected(c,expected[..]);
     r:=DvCheck.{rows=rows.count,expected=n};
     for i:0..<rows.count {match:=-1;near:=-1;
@@ -158,14 +158,14 @@ dv_check_manifest :: (c:DvConfig,rows:[]DvRow)->DvCheck #export_c {
     return r;
 }
 // book:end check
-dv_totals :: (rows:[]DvRow)->DvTotals #export_c {
+dv_totals :: (rows:[]DvRow)->DvTotals #export_c #effects(all) {
     t:DvTotals;for r:rows {tensors:=r.count*dv_popcount(r.layers);if r.layers==0 {tensors=r.count;}
         t.tensors+=tensors;t.bytes+=r.bytes;t.dtype[r.dtype]+=r.bytes;}return t;
 }
-dv_starts :: (s:string,p:string)->bool {return s.count>=p.count && s[0..<p.count]==p;}
-dv_has :: (s:string,p:string)->bool {for i:0..<s.count-p.count+1 {if s[i..<i+p.count]==p {return true;}}return false;}
+dv_starts :: (s:string,p:string)->bool #effects(all) {return s.count>=p.count && s[0..<p.count]==p;}
+dv_has :: (s:string,p:string)->bool #effects(all) {for i:0..<s.count-p.count+1 {if s[i..<i+p.count]==p {return true;}}return false;}
 // book:begin bytes
-dv_bytes :: (rows:[]DvRow)->DvBytes #export_c {
+dv_bytes :: (rows:[]DvRow)->DvBytes #export_c #effects(all) {
     b:DvBytes;
     for r:rows {
         if dv_starts(r.name,"mtp.") {b.draft+=r.bytes;}
@@ -201,7 +201,7 @@ dv_bytes :: (rows:[]DvRow)->DvBytes #export_c {
     #assert dv_starts("mtp.","mtp.") && !dv_starts("mt","mtp.") && !dv_starts("xmtp.","mtp.");
     #assert dv_popcount(0)==0 && dv_popcount(0xffffffffffffffff)==64 && dv_popcount(dv_span(40))==40 && dv_bit(63)==0x8000000000000000;
 }
-dv_find :: (rows:[]DvRow,name:string,layers:u64)->int {for i:0..<rows.count {if rows[i].name==name && rows[i].layers==layers {return i;}}return -1;}
+dv_find :: (rows:[]DvRow,name:string,layers:u64)->int #effects(all) {for i:0..<rows.count {if rows[i].name==name && rows[i].layers==layers {return i;}}return -1;}
 #test "a corrupted row refuses with its index and the first field that differs" {
     c:=dv_flash_config();rows:=DV_MANIFEST;n:=DV_MANIFEST_ROWS;
     for field:0..<8 {rows=DV_MANIFEST;i:=dv_find(rows[..],"layers.#.attn.wkv.weight",dv_span(40));expected:=DvStatus.shape;

@@ -25,7 +25,7 @@ A token in the prefix sees the prefix; a later token sees everything:
 ```jai
 // Decision blocks: a token before `prefix` sees the prefix; a later token
 // sees every token. Within a block attention is bidirectional.
-dl_visible :: (t:int,s:int,prefix:int)->bool {return t>=prefix || s<prefix;}
+dl_visible :: (t:int,s:int,prefix:int)->bool #effects(all) {return t>=prefix || s<prefix;}
 ```
 
 Only the last token's readout matters, so the vocabulary product runs once,
@@ -50,7 +50,7 @@ state, keeps it in registers and walks all 86 tokens:
 ```jai
 // Value head h, column c (item h*128+c) of the gated delta rule over every
 // token, from a zero state. The state column lives in registers.
-dl_scan :: (item:int,tokens:int,heads:int,key_heads:int,channels:int,conv:[]f32,q:[]f32,k:[]f32,beta:[]f32,decay:[]f32,out:[]f32) #export_c {
+dl_scan :: (item:int,tokens:int,heads:int,key_heads:int,channels:int,conv:[]f32,q:[]f32,k:[]f32,beta:[]f32,decay:[]f32,out:[]f32) #export_c #effects(all) {
     h:=item/128;c:=item%128;kh:=h/(heads/key_heads);vbase:=key_heads*256+h*128+c;
     state:[128]f32;
     for t:0..<tokens {
@@ -90,11 +90,11 @@ is free for us; Elephant's text weights are 15.9 GB. So some must stream:
 // (0 gate, 1 up, 2 down); 3L+5*layer+k for mixer matrix k (linear: qkv, z,
 // a, b, out; full: q, k, v, out, and k = 4 is no matrix); 8L+c for head
 // chunk c.
-dp_mixer_base :: (m:DpModel)->int {return 3*m.layers;}
-dp_head_base :: (m:DpModel)->int {return 8*m.layers;}
-dp_head_chunks :: (m:DpModel)->int #export_c {return m.chunks;}
-dp_streamable :: (m:DpModel)->int #export_c {return dp_head_base(m)+dp_head_chunks(m);}
-dp_residency_of :: (m:DpModel,budget:int,workspace:int,stream:[]bool)->DpPlan {
+dp_mixer_base :: (m:DpModel)->int #effects(all) {return 3*m.layers;}
+dp_head_base :: (m:DpModel)->int #effects(all) {return 8*m.layers;}
+dp_head_chunks :: (m:DpModel)->int #export_c #effects(all) {return m.chunks;}
+dp_streamable :: (m:DpModel)->int #export_c #effects(all) {return dp_head_base(m)+dp_head_chunks(m);}
+dp_residency_of :: (m:DpModel,budget:int,workspace:int,stream:[]bool)->DpPlan #effects(all) {
     if stream.count!=dp_streamable(m) {return DpPlan.{status=DpStatus.capacity};}
     total:=0;
     for w:0..<dp_weights(m) {total+=dp_align(dp_bytes(m,w));}

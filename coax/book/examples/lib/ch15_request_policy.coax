@@ -80,21 +80,21 @@ Request :: struct { epoch: u32; phase: RequestPhase; deadline: u64; value: int; 
     #assert late.epoch == 1 && late.deadline == 10;
 }
 
-request_begin :: (s: Request, now: u64, deadline: u64) -> Request #export_c {
+request_begin :: (s: Request, now: u64, deadline: u64) -> Request #export_c #effects(all) {
     if s.phase == RequestPhase.running || deadline <= now || s.epoch == 4294967295 { return s; }
     return Request.{epoch = s.epoch + 1, phase = RequestPhase.running, deadline = deadline};
 }
-request_cancel :: (s: Request) -> Request #export_c {
+request_cancel :: (s: Request) -> Request #export_c #effects(all) {
     r := s;
     if r.phase == RequestPhase.running { r.phase = RequestPhase.cancelled; }
     return r;
 }
-request_tick :: (s: Request, now: u64) -> Request #export_c {
+request_tick :: (s: Request, now: u64) -> Request #export_c #effects(all) {
     r := s;
     if r.phase == RequestPhase.running && now >= r.deadline { r.phase = RequestPhase.expired; }
     return r;
 }
-request_complete :: (s: Request, epoch: u32, now: u64, ok: bool, value: int) -> Request #export_c {
+request_complete :: (s: Request, epoch: u32, now: u64, ok: bool, value: int) -> Request #export_c #effects(all) {
     if s.phase != RequestPhase.running || epoch != s.epoch { return s; }
     r := request_tick(s, now);
     if r.phase != RequestPhase.running { return r; }

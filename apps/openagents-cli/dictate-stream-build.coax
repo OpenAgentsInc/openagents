@@ -11,7 +11,7 @@ dsb_run :: (args:[]string,out:[]u8,deadline:int)->int {
  err:[65536]u8;r:=proc_run(args,ifx left<180000 then left else 180000,out,err[..]);
  if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);tool_errln(cast(string)out[0..<r.out_n]);return -1;}return r.out_n;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])>2 {return 2;}
  if tool_os()!=TOOL_LINUX {tool_errln("streaming dictation is Linux CUDA only");return 2;}
  dir:=ifx args_count(a[..])>0 then args_at(a[..],0) else "apps/openagents-cli/build";

@@ -76,14 +76,14 @@ full slot 9).
 // still be in the sliding ring afterwards, so k + 1 may not exceed the window:
 // otherwise an accepted row's keys would already be overwritten by a later,
 // rejected row of the same chunk.
-gv_admit :: (s:GShape,p:GDPlan,k:int)->GStatus #export_c {
+gv_admit :: (s:GShape,p:GDPlan,k:int)->GStatus #export_c #effects(all) {
     if p.status!=GStatus.ok || !g_shape(s) {return GStatus.shape;}
     if k<1 || k>GV_DRAFTS || k+1>s.window || k+1>p.batch {return GStatus.shape;}
     return GStatus.ok;
 }
 // The undo store: one slot of keys and values per layer per row, in upload
 // slot 1. A refusal keeps the caller's plan unusable rather than half set.
-gv_with_undo :: (p:GDPlan,s:GShape,k:int)->GDPlan #export_c {
+gv_with_undo :: (p:GDPlan,s:GShape,k:int)->GDPlan #export_c #effects(all) {
     if p.status!=GStatus.ok {return GDPlan.{status=p.status};}
     st:=gv_admit(s,p,k);if st!=GStatus.ok {return GDPlan.{status=st};}
     r:=p;r.upload[1]=s.layers*(k+1)*2*s.kv_heads*64*4;return r;
@@ -104,14 +104,14 @@ history that grows by each guess:
 // Chapter 75's prompt n-gram draft, extended to a block: guess one ID, append
 // it to a scratch copy of the history, guess again. It stops at k IDs or when
 // no suffix matches. Returns the number drafted, or -1 when refused.
-gv_draft :: (history:[]int,width:int,k:int,scratch:[]int,out:[]int)->int #export_c {
+gv_draft :: (history:[]int,width:int,k:int,scratch:[]int,out:[]int)->int #export_c #effects(all) {
     if !gx_history_size(history.count,width) || k<1 || k>GV_DRAFTS || out.count<k || scratch.count<history.count+k {return -1;}
     for i:0..<history.count {scratch[i]=history[i];}
     n:=0;while n<k {next:=gx_ngram(scratch[0..<history.count+n],width);if next<0 {break;}scratch[history.count+n]=next;out[n]=next;n+=1;}
     return n;
 }
 // Drafts that fit: the block's k + 1 rows must end inside the context.
-gv_room :: (s:GShape,position:int,k:int)->int #export_c {
+gv_room :: (s:GShape,position:int,k:int)->int #export_c #effects(all) {
     r:=0;while r<k && position+r+1<s.capacity {r+=1;}return r;
 }
 ```
@@ -130,7 +130,7 @@ commits no more than the target alone would have:
 // are those drafts and then pick a (a correction, or the bonus when all k
 // matched). Commitment stops at the first stop ID or the limit, exactly as
 // gk_choose decides one ID at a time. `count` IDs were committed before.
-gv_commit :: (vocab:int,draft:[]int,picks:[]int,rows:int,count:int,limit:int,out:[]int)->GVBlock #export_c {
+gv_commit :: (vocab:int,draft:[]int,picks:[]int,rows:int,count:int,limit:int,out:[]int)->GVBlock #export_c #effects(all) {
     k:=draft.count;if k<1 || k>GV_DRAFTS || vocab<1 || count<1 || count>=limit {return GVBlock.{status=GStatus.shape};}
     if picks.count<rows || out.count<k+1 {return GVBlock.{status=GStatus.capacity};}
     for d:draft {if d<0 || d>=vocab {return GVBlock.{status=GStatus.token};}}
@@ -147,7 +147,7 @@ gv_commit :: (vocab:int,draft:[]int,picks:[]int,rows:int,count:int,limit:int,out
     b.kept=b.written;return b;
 }
 // More rows to read: row `row` matched its draft and a later row exists.
-gv_more :: (draft:[]int,picks:[]int,row:int)->bool #export_c {return row>=0 && row<draft.count && draft[row]==picks[row];}
+gv_more :: (draft:[]int,picks:[]int,row:int)->bool #export_c #effects(all) {return row>=0 && row<draft.count && draft[row]==picks[row];}
 ```
 
 The kept rows are the pending token plus every committed ID except the last,
@@ -164,7 +164,7 @@ executed by the host:
 // at cache slot (position + i) mod capacity of each layer; the rows wrap at
 // most once, so each layer needs at most two copies. `back` copies undo to
 // cache for rows first..<last; otherwise cache to undo.
-gv_copies :: (s:GShape,p:GDPlan,position:int,first:int,last:int,back:bool,ops:[]GDOp,args:[]GDArg)->GDProgram {
+gv_copies :: (s:GShape,p:GDPlan,position:int,first:int,last:int,back:bool,ops:[]GDOp,args:[]GDArg)->GDProgram #effects(all) {
     u:=gv_rows(p,s);
     if p.status!=GStatus.ok || u<2 {return GDProgram.{status=GStatus.shape};}
     if position<0 || first<0 || first>last || last>u || position+last>s.capacity {return GDProgram.{status=GStatus.state};}
@@ -181,11 +181,11 @@ gv_copies :: (s:GShape,p:GDPlan,position:int,first:int,last:int,back:bool,ops:[]
     return w.result;
 }
 // Before the block: save the slots its rows will overwrite.
-gv_save :: (s:GShape,p:GDPlan,position:int,rows:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+gv_save :: (s:GShape,p:GDPlan,position:int,rows:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c #effects(all) {
     if rows<1 {return GDProgram.{status=GStatus.state};}return gv_copies(s,p,position,0,rows,false,ops,args);
 }
 // After it: put back only the rows past the kept ones. Committed rows stay.
-gv_restore :: (s:GShape,p:GDPlan,position:int,rows:int,kept:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+gv_restore :: (s:GShape,p:GDPlan,position:int,rows:int,kept:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c #effects(all) {
     if kept<1 || kept>rows {return GDProgram.{status=GStatus.state};}return gv_copies(s,p,position,kept,rows,true,ops,args);
 }
 ```
@@ -204,7 +204,7 @@ buffer 28, so one short program per row reads it out:
 // Row `row` of the last prefill chunk: final norm, unembedding, the guarded
 // flags and the greedy choice into control[1], the same launches as the tail
 // of gd_batch_program for its last row, without publishing or advancing.
-gv_readout :: (s:GShape,p:GDPlan,params:[]GDParam,row:int,rows:int,limit:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+gv_readout :: (s:GShape,p:GDPlan,params:[]GDParam,row:int,rows:int,limit:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c #effects(all) {
     if p.status!=GStatus.ok || !g_shape(s) {return GDProgram.{status=GStatus.shape};}
     if rows<1 || rows>p.batch || row<0 || row>=rows || limit<1 || limit>s.capacity {return GDProgram.{status=GStatus.state};}
     if params.count!=3+15*s.layers || ops.count<p.max_ops || args.count<p.max_args {return GDProgram.{status=GStatus.capacity};}
@@ -233,7 +233,7 @@ hold after committing the same IDs; the host uploads them:
 // After a block: the device's control words say what a target-only run
 // would say after committing the same IDs. Refused while control reports a
 // failure, which then stays visible.
-gv_control :: (control:[]int,position:int,b:GVBlock,count:int)->GStatus #export_c {
+gv_control :: (control:[]int,position:int,b:GVBlock,count:int)->GStatus #export_c #effects(all) {
     if control.count<8 || b.status!=GStatus.ok || b.written<1 || position<0 || count<1 {return GStatus.shape;}
     if control[0]!=0 {return GStatus.state;}
     control[1]=b.token;control[2]=position+b.kept;control[3]=count+b.written;control[4]=b.stop;return GStatus.ok;
@@ -262,7 +262,7 @@ SG_GAIN_PERCENT :: 5;
 // over a tenth of either mean decides nothing (chapter 34's rule). Then on
 // when saving - 2 se >= 5% of the base mean, off when saving + 2 se < 5% of
 // it, and too close to call between the two.
-sg_decide :: (same_outputs:bool,base:[]int,spec:[]int)->SgDecision #export_c {
+sg_decide :: (same_outputs:bool,base:[]int,spec:[]int)->SgDecision #export_c #effects(all) {
     d:=SgDecision.{verdict=SgVerdict.refused,reason=SgReason.outputs};
     if !same_outputs {return d;}
     d.reason=SgReason.pairs;if base.count!=spec.count {return d;}
@@ -278,7 +278,7 @@ sg_decide :: (same_outputs:bool,base:[]int,spec:[]int)->SgDecision #export_c {
     d.reason=SgReason.close;return d;
 }
 // Only an "on" verdict turns speculation on.
-sg_enabled :: (d:SgDecision)->bool #export_c {return d.verdict==SgVerdict.on;}
+sg_enabled :: (d:SgDecision)->bool #export_c #effects(all) {return d.verdict==SgVerdict.on;}
 ```
 
 By hand: target-only runs of 100, 102, 98, 101 and 99 ns have mean 100 and

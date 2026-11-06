@@ -170,7 +170,7 @@ RB_REPORT :: "reflection 2\ntree-version 2\nfragment-targets 1\nfragment-depth 0
   text[0]=99;b[0].stride=0;#assert render_build_bindings(b[..],text[..])== -1 && text[0]==99;
 }
 
-render_build_module :: (entries:[]bc.RenderEntry)->RenderBuildModule {
+render_build_module :: (entries:[]bc.RenderEntry)->RenderBuildModule #effects(all) {
   r:RenderBuildModule;if entries.count<1 || entries.count>14 {return r;}
   r.source=entries[0].source;if r.source.count==0 {return r;}
   for i:0..<entries.count {
@@ -198,7 +198,7 @@ render_build_module :: (entries:[]bc.RenderEntry)->RenderBuildModule {
   }
   r.ok=true;return r;
 }
-render_build_bindings :: (bindings:[]rb.RenderBinding,out:[]u8)->int {
+render_build_bindings :: (bindings:[]rb.RenderBinding,out:[]u8)->int #effects(all) {
   if rb.render_bindings(bindings)!=rb.RenderBindingStatus.ok {return -1;}
   o:[1]Jo;jo_start(o[..],out);
   for b:bindings {
@@ -209,7 +209,7 @@ render_build_bindings :: (bindings:[]rb.RenderBinding,out:[]u8)->int {
   if o[0].bad {return -1;}return o[0].n;
 }
 
-render_report_int :: (s:string)->int {
+render_report_int :: (s:string)->int #effects(all) {
   if s.count==0 {return -1;}
   n:=0;
   for c:s {
@@ -220,7 +220,7 @@ render_report_int :: (s:string)->int {
   }
   return n;
 }
-render_report_words :: (s:string)->RenderReportWords {
+render_report_words :: (s:string)->RenderReportWords #effects(all) {
   r:RenderReportWords;i:=0;
   while i<s.count {
     if s[i]==' ' || s[i]=='\t' || s[i]=='\r' {i+=1;continue;}
@@ -231,7 +231,7 @@ render_report_words :: (s:string)->RenderReportWords {
   }
   r.ok=r.count>0;return r;
 }
-render_build_reflection :: (s:string)->RenderBuildReflection {
+render_build_reflection :: (s:string)->RenderBuildReflection #effects(all) {
   r:RenderBuildReflection;rbp_seen:=0;at:=0;
   while at<s.count {
     end:=at;while end<s.count && s[end]!='\n' {end+=1;}
@@ -280,7 +280,7 @@ render_build_reflection :: (s:string)->RenderBuildReflection {
   device:=RenderDeviceCapabilities.{backend=RenderBackend.webgpu,helper_enabled=true};
   r.ok=render_capabilities_admit(requirements,device,false)==RenderCapabilityStatus.ok;return r;
 }
-render_spirv_info :: (rbp_spirv_words:[]u32)->RenderSpirvInfo {
+render_spirv_info :: (rbp_spirv_words:[]u32)->RenderSpirvInfo #effects(all) {
   r:RenderSpirvInfo;
   if rbp_spirv_words.count<5 || rbp_spirv_words[0]!=0x07230203 {return r;}
   at:=5;

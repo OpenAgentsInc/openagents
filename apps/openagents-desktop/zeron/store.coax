@@ -102,16 +102,16 @@ st_take :: (k: [] Desk, i: int, force: bool, out: [] u8) -> int {
   return n;
 }
 
-coaxial_desk_set_store :: (k: [] Desk, i: int, id: string) #export_c {
+coaxial_desk_set_store :: (k: [] Desk, i: int, id: string) #export_c #effects(all) {
   if k.count < 1 || i < 0 || i >= k[0].n { return; }
   k[0].chats[i].store_n = e_copy(k[0].chats[i].store[..], 0, id);
 }
-coaxial_desk_store_id :: (k: [] Desk, i: int, out: [] u8) -> int #export_c {
+coaxial_desk_store_id :: (k: [] Desk, i: int, out: [] u8) -> int #export_c #effects(all) {
   if k.count < 1 || i < 0 || i >= k[0].n { return 0; }
   return e_copy(out, 0, cast(string) k[0].chats[i].store[0..<k[0].chats[i].store_n]);
 }
-coaxial_desk_store_take :: (k: [] Desk, i: int, force: bool, out: [] u8) -> int #export_c { if k.count < 1 { return 0; } return st_take(k, i, force, out); }
-coaxial_desk_store_load :: (k: [] Desk, i: int, text: string) #export_c {
+coaxial_desk_store_take :: (k: [] Desk, i: int, force: bool, out: [] u8) -> int #export_c #effects(all) { if k.count < 1 { return 0; } return st_take(k, i, force, out); }
+coaxial_desk_store_load :: (k: [] Desk, i: int, text: string) #export_c #effects(all) {
   if k.count < 1 || i < 0 || i >= k[0].n { return; }
   s := k[0].chats[i].s[0].session[..];
   st_load(s, text);

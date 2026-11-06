@@ -1,0 +1,68 @@
+// Compiler refusal checks, including edits to the actual shared rule sources.
+// Run at the repository root:
+//   coax/web/tool.sh coax/tests/effect-contracts.coax COMPILER
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/sys/fs.coax";
+
+ec_find :: (text: string, part: string) -> int {
+  for at: 0..<text.count - part.count + 1 {
+    same := true;
+    for j: 0..<part.count { if text[at + j] != part[j] { same = false; break; } }
+    if same { return at; }
+  }
+  return -1;
+}
+#test "effect probe markers match exact bytes and refuse a missing marker" {
+  #assert ec_find("abc", "bc") == 1 && ec_find("abc", "abcd") == -1 && ec_find("abc", "cb") == -1;
+}
+ec_append :: (out: [] u8, at: int, text: string) -> int {
+  #assert text.count <= out.count - at;
+  for c, i: text { out[at + i] = c; }
+  return at + text.count;
+}
+ec_probe :: (compiler: string, source: string, entry: string, effect: string) -> bool {
+  original: [262144] u8;
+  n := fs_read(source, original[..]);
+  if n < 0 { return false; }
+  text := cast(string) original[0..<n];
+  start := ec_find(text, entry);
+  if start < 0 { return false; }
+  body := ec_find(text[start..<text.count], "{");
+  if body < 0 { return false; }
+  insert := start + body + 1;
+  changed: [263168] u8;
+  end := ec_append(changed[..], 0, text[0..<insert]);
+  end = ec_append(changed[..], end, "\n  probe_effect_value := ec_test_effect();\n");
+  end = ec_append(changed[..], end, text[insert..<text.count]);
+  end = ec_append(changed[..], end, "\nec_test_effect :: () -> int #effects(foreign, ");
+  end = ec_append(changed[..], end, effect);
+  end = ec_append(changed[..], end, ") #foreign;\n");
+  temp: [4096] u8; dir := fs_temp("coax-effects-", temp[..]);
+  if dir == "" { return false; }
+  defer { removed := fs_remove(dir); }
+  name: [4096] u8; name_n := ec_append(name[..], 0, fs_base(dir)); name_n = ec_append(name[..], name_n, ".coax");
+  pathbuf: [4096] u8; path := fs_join(fs_dir(source), cast(string) name[0..<name_n], pathbuf[..]);
+  if !fs_write(path, cast(string) changed[0..<end]) { return false; }
+  defer { removed_probe := fs_remove(path); }
+  argv := [4] string.[compiler, "check", path, "--library"];
+  out: [4096] u8; err: [32768] u8;
+  r := proc_run(argv[..], 120000, out[..], err[..]);
+  diagnostics := cast(string) err[0..<r.err_n];
+  ok := r.started == 0 && r.status == 1 && !r.cut && !r.timed_out && ec_find(diagnostics, "E0941") >= 0 && ec_find(diagnostics, entry) >= 0 && ec_find(diagnostics, effect) >= 0 && ec_find(diagnostics, "ec_test_effect") >= 0;
+  print("%: % rejects %\n", ifx ok then "ok" else "FAIL", entry, effect);
+  if !ok { tool_errln(diagnostics); }
+  return ok;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args_count(args[..]) != 1 { tool_errln("usage: effect-contracts.coax COMPILER"); return 2; }
+  compiler := args_at(args[..], 0);
+  bad := 0;
+  sources := [2] string.["apps/openagents-web/everglade-step.coax", "apps/openagents-web/everglade5e-rules.coax"];
+  entries := [2] string.["eg_step_body", "e5r_start"];
+  effects := [2] string.["clock", "io"];
+  for i: 0..<2 { for effect: effects { if !ec_probe(compiler, sources[i], entries[i], effect) { bad += 1; } } }
+  return ifx bad == 0 then 0 else 1;
+}

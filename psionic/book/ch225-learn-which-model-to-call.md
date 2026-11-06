@@ -72,7 +72,7 @@ independent and the same in every run:
 // mod 5), then model k's outcome at
 // 8i+4+k. `truth` holds each model's bias and four weights; only the
 // simulator reads it, and `prob` is kept for measuring, never for learning.
-rt_simulate :: (seed:u64,truth:[]f64,x:[]f64,success:[]f64,prob:[]f64,overlap:bool)->RtStatus #export_c {
+rt_simulate :: (seed:u64,truth:[]f64,x:[]f64,success:[]f64,prob:[]f64,overlap:bool)->RtStatus #export_c #effects(all) {
     n:=rt_tasks(x);
     if truth.count!=5*RT_MODELS || n==-1 {return RtStatus.shape;}
     if success.count<RT_MODELS*n || prob.count<RT_MODELS*n {return RtStatus.capacity;}
@@ -99,18 +99,18 @@ times the coder's:
 <!-- source: psionic/lib/route.coax price -->
 ```jai
 // Dollars per call, and seconds of latency at length 0 and per unit of length.
-rt_dollars :: (k:int)->f64 {
+rt_dollars :: (k:int)->f64 #effects(all) {
     if k==0 {return 0.001;}
     if k==1 {return 0.01;}
     return 0.1;
 }
-rt_seconds :: (k:int,length:f64)->f64 {
+rt_seconds :: (k:int,length:f64)->f64 #effects(all) {
     if k==0 {return 0.3+0.5*length;}
     if k==1 {return 0.8+1.5*length;}
     return 2.0+4.0*length;
 }
 // Every model's price on every task: dollars plus 0.02 per second.
-rt_price :: (x:[]f64,out:[]f64,overlap:bool)->RtStatus #export_c {
+rt_price :: (x:[]f64,out:[]f64,overlap:bool)->RtStatus #export_c #effects(all) {
     n:=rt_tasks(x);
     if n==-1 {return RtStatus.shape;}
     if out.count<RT_MODELS*n {return RtStatus.capacity;}
@@ -136,7 +136,7 @@ probability minus price:
 ```jai
 // Success probabilities from three logistic models, five parameters each,
 // laid out as chapter 103's: four weights, then the bias.
-rt_scores :: (params:[]f64,x:[]f64,out:[]f64,overlap:bool)->RtStatus #export_c {
+rt_scores :: (params:[]f64,x:[]f64,out:[]f64,overlap:bool)->RtStatus #export_c #effects(all) {
     n:=rt_tasks(x);
     if params.count!=5*RT_MODELS || n==-1 {return RtStatus.shape;}
     if out.count<RT_MODELS*n {return RtStatus.capacity;}
@@ -149,7 +149,7 @@ rt_scores :: (params:[]f64,x:[]f64,out:[]f64,overlap:bool)->RtStatus #export_c {
 }
 // Each task goes to the model with the largest probability minus price.
 // A tie keeps the lower index, which is the cheaper model.
-rt_choose :: (prob:[]f64,price:[]f64,out:[]int,overlap:bool)->RtStatus #export_c {
+rt_choose :: (prob:[]f64,price:[]f64,out:[]int,overlap:bool)->RtStatus #export_c #effects(all) {
     n:=rt_triples(prob);
     if n==-1 || price.count!=prob.count {return RtStatus.shape;}
     if out.count<n {return RtStatus.capacity;}
@@ -165,7 +165,7 @@ rt_choose :: (prob:[]f64,price:[]f64,out:[]int,overlap:bool)->RtStatus #export_c
     return RtStatus.ok;
 }
 // The expected reward of the choices: mean of probability minus price.
-rt_value :: (actions:[]int,prob:[]f64,price:[]f64)->RtValue #export_c {
+rt_value :: (actions:[]int,prob:[]f64,price:[]f64)->RtValue #export_c #effects(all) {
     n:=rt_triples(prob);
     // A bad table makes n -1, which no count of actions matches.
     if price.count!=prob.count || actions.count!=n {return RtValue.{status=RtStatus.shape};}
@@ -209,7 +209,7 @@ records keep exactly this field:
 ```jai
 // The old router: code to the coder, everything else to the small model,
 // with probability `explore` shared among the other models it allows.
-rt_old :: (x:[]f64,explore:f64,large:bool,out:[]f64,overlap:bool)->RtStatus #export_c {
+rt_old :: (x:[]f64,explore:f64,large:bool,out:[]f64,overlap:bool)->RtStatus #export_c #effects(all) {
     n:=rt_tasks(x);
     if n==-1 || !tb_in(explore,0,1) {return RtStatus.shape;}
     if out.count<RT_MODELS*n {return RtStatus.capacity;}
@@ -225,13 +225,13 @@ rt_old :: (x:[]f64,explore:f64,large:bool,out:[]f64,overlap:bool)->RtStatus #exp
     return RtStatus.ok;
 }
 // Each task's propensities lie in [0, 1] and sum to exactly 1, added in order.
-rt_props_ok :: (props:[]f64)->bool {
+rt_props_ok :: (props:[]f64)->bool #effects(all) {
     if !rt_unit(props) {return false;}
     for i:0..<props.count/RT_MODELS {if props[3*i]+props[3*i+1]+props[3*i+2]!=1 {return false;}}
     return true;
 }
 // Draw one action per task at counter i, and keep only its outcome and reward.
-rt_log :: (seed:u64,props:[]f64,success:[]f64,price:[]f64,actions:[]int,outcome:[]f64,reward:[]f64,overlap:bool)->RtStatus #export_c {
+rt_log :: (seed:u64,props:[]f64,success:[]f64,price:[]f64,actions:[]int,outcome:[]f64,reward:[]f64,overlap:bool)->RtStatus #export_c #effects(all) {
     n:=rt_triples(props);
     if n==-1 || success.count!=props.count || price.count!=props.count {return RtStatus.shape;}
     if actions.count<n || outcome.count<n || reward.count<n {return RtStatus.capacity;}
@@ -264,7 +264,7 @@ ran on. On this log its true value is 0.7770. The old policy earned 0.6550.
 // ips: matching rewards weighted by 1 / propensity, over all tasks.
 // dr: direct, corrected by the weighted residual of matching rows.
 // The new policy must choose only actions the old one could have taken.
-rt_estimate :: (target:[]int,actions:[]int,reward:[]f64,props:[]f64,model:[]f64,price:[]f64)->RtEstimate #export_c {
+rt_estimate :: (target:[]int,actions:[]int,reward:[]f64,props:[]f64,model:[]f64,price:[]f64)->RtEstimate #export_c #effects(all) {
     n:=rt_triples(props);
     if target.count!=n || actions.count!=n || reward.count!=n || model.count!=props.count || price.count!=props.count {return RtEstimate.{status=RtStatus.shape};}
     for i:0..<n {if !rt_in3(target[i]) || !rt_in3(actions[i]) {return RtEstimate.{status=RtStatus.shape};}}

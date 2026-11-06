@@ -65,16 +65,16 @@ an existing name.
 // SplitMix64 draws. Request i has its true answer (one of three), a
 // difficulty, and whether its outcome ever arrives; a model's own draws come
 // from its seed.
-sh_bits :: (seed:u64,counter:u64)->u64 {
+sh_bits :: (seed:u64,counter:u64)->u64 #effects(all) {
     z:=add_wrap(seed,mul_wrap(SH_GOLDEN,add_wrap(counter,1)));
     z=mul_wrap(z^(z>>30),0xbf58476d1ce4e5b9);z=mul_wrap(z^(z>>27),0x94d049bb133111eb);
     return z^(z>>31);
 }
-sh_uniform :: (seed:u64,counter:u64)->f64 {return f64(sh_bits(seed,counter)>>11)/9007199254740992.0;}
-sh_truth :: (world:u64,i:int)->u8 {return cast(u8)cast(int)(3*sh_uniform(world,cast(u64)(3*i)));}
+sh_uniform :: (seed:u64,counter:u64)->f64 #effects(all) {return f64(sh_bits(seed,counter)>>11)/9007199254740992.0;}
+sh_truth :: (world:u64,i:int)->u8 #effects(all) {return cast(u8)cast(int)(3*sh_uniform(world,cast(u64)(3*i)));}
 // A draw u reaches a probability p when u + p >= 1.
-sh_joined :: (world:u64,i:int)->bool {return cast(int)(sh_uniform(world,cast(u64)(3*i+2))+SH_JOIN)>0;}
-sh_answer :: (m:ShModel,world:u64,i:int)->u8 {
+sh_joined :: (world:u64,i:int)->bool #effects(all) {return cast(int)(sh_uniform(world,cast(u64)(3*i+2))+SH_JOIN)>0;}
+sh_answer :: (m:ShModel,world:u64,i:int)->u8 #effects(all) {
     truth:=sh_truth(world,i);
     score:=(1-m.weight)*sh_uniform(world,cast(u64)(3*i+1))+m.weight*sh_uniform(m.seed,cast(u64)i);
     if cast(int)(1+m.skill-score)>0 {return truth;}
@@ -97,18 +97,18 @@ can.
 ```jai
 // A model's bytes: its name, then skill, weight and seed as little-endian
 // words. The digest of those bytes is the model's identity.
-sh_blob :: (m:ShModel,out:[]u8)->int {
+sh_blob :: (m:ShModel,out:[]u8)->int #effects(all) {
     if m.name.count==0 || m.name.count>SH_NAME_MAX || out.count<SH_BLOB {return 0;}
     words:=[3]u64.[f64_bits(m.skill),f64_bits(m.weight),m.seed];
     for w,k:words {for b:0..<8 {out[SH_NAME_MAX+8*k+b]=cast,trunc(u8)(w>>cast(u64)(8*b));}}
     for i:0..<SH_NAME_MAX {out[i]=ifx i<m.name.count then m.name[i] else 0;}
     return SH_BLOB;
 }
-sh_digest :: (bytes:[]u8)->[32]u8 {out:[32]u8;#assert sha256_hash_checked(bytes,out[..],false)==SHA_OK;return out;}
-sh_same :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}} return true;}
+sh_digest :: (bytes:[]u8)->[32]u8 #effects(all) {out:[32]u8;#assert sha256_hash_checked(bytes,out[..],false)==SHA_OK;return out;}
+sh_same :: (a:[32]u8,b:[32]u8)->bool #effects(all) {for i:0..<32 {if a[i]!=b[i] {return false;}} return true;}
 // Registering a name again with the same bytes changes nothing; with other
 // bytes it is refused. A model is never edited in place.
-sh_register :: (r:ShRegistry,blob:[]u8)->ShRegistry {
+sh_register :: (r:ShRegistry,blob:[]u8)->ShRegistry #effects(all) {
     out:=r;out.status=ShStatus.ok;
     if blob.count!=SH_BLOB {out.status=ShStatus.shape;return out;}
     digest:=sh_digest(blob);length:=0;
@@ -125,7 +125,7 @@ sh_register :: (r:ShRegistry,blob:[]u8)->ShRegistry {
     if !bounded_push(out.models[..],e) {out.status=ShStatus.capacity;}
     return out;
 }
-sh_name :: (e:ShEntry,blob:[]u8)->bool {for i:0..<e.length {if e.name[i]!=blob[i] {return false;}} return true;}
+sh_name :: (e:ShEntry,blob:[]u8)->bool #effects(all) {for i:0..<e.length {if e.name[i]!=blob[i] {return false;}} return true;}
 ```
 
 A model's bytes are its name, then its parameters as little-endian words.
@@ -142,7 +142,7 @@ and its own shadow run.
 // Both models answer every request; only the active answer is acted on. A
 // record holds the two answers and, once it arrives, the outcome (-1 while
 // it is pending). No request content is logged.
-sh_log :: (world:u64,active:ShModel,candidate:ShModel,records:[]ShRecord)->ShStatus {
+sh_log :: (world:u64,active:ShModel,candidate:ShModel,records:[]ShRecord)->ShStatus #effects(all) {
     if records.count==0 {return ShStatus.shape;}
     for i:0..<records.count {
         r:=ShRecord.{request=i,active=sh_answer(active,world,i),candidate=sh_answer(candidate,world,i),outcome=-1};
@@ -162,7 +162,7 @@ sh_log :: (world:u64,active:ShModel,candidate:ShModel,records:[]ShRecord)->ShSta
 // have joined, the disagreement rate plus two standard errors is within the
 // limit, and the mean extra error (candidate minus active) plus two standard
 // errors is within the margin.
-sh_report :: (active:[32]u8,candidate:[32]u8,records:[]ShRecord,limits:ShLimits)->ShReport {
+sh_report :: (active:[32]u8,candidate:[32]u8,records:[]ShRecord,limits:ShLimits)->ShReport #effects(all) {
     r:=ShReport.{active=active,candidate=candidate,requests=records.count};
     if records.count==0 || limits.joined<2 {r.status=ShStatus.shape;return r;}
     for x:records {
@@ -189,7 +189,7 @@ sh_report :: (active:[32]u8,candidate:[32]u8,records:[]ShRecord,limits:ShLimits)
     return r;
 }
 // The report's digest: both identities, the counts and the verdict.
-sh_report_digest :: (r:ShReport)->[32]u8 {
+sh_report_digest :: (r:ShReport)->[32]u8 #effects(all) {
     bytes:[105]u8;
     for i:0..<32 {bytes[i]=r.active[i];bytes[32+i]=r.candidate[i];}
     counts:=[5]int.[r.requests,r.joined,r.disagree,r.active_wrong,r.candidate_wrong];
@@ -221,7 +221,7 @@ approval names that digest, so it can't be moved to a different run.
 // digest, be registered, and have a promoting report, shadowed against the
 // model active now, whose digest the approval names. On any refusal the
 // active record is returned unchanged.
-sh_activate :: (now:ShActive,r:ShRegistry,expected:int,blob:[]u8,report:ShReport,approval:ShApproval)->ShActive {
+sh_activate :: (now:ShActive,r:ShRegistry,expected:int,blob:[]u8,report:ShReport,approval:ShApproval)->ShActive #effects(all) {
     out:=now;
     if expected!=now.version {out.status=ShStatus.version;return out;}
     digest:=sh_digest(blob);entry:=-1;

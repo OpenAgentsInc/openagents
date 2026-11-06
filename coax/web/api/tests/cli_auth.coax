@@ -26,8 +26,8 @@
 #load "../../../lib/nostr/nip98_sign.coax";
 #load "../../../lib/nostr/nip06.coax";
 
-cxrand_draw :: (out: [] u8, n: int) -> int #foreign;
-cxproc_wall_us :: () -> int #foreign;
+cxrand_draw :: (out: [] u8, n: int) -> int #foreign #effects(all);
+cxproc_wall_us :: () -> int #foreign #effects(all);
 
 CaT :: struct {
   api: [256] u8; api_n: int;
@@ -435,7 +435,7 @@ ca_device_checks :: (t: [] CaT, a: [] CaKey, b: [] CaKey, slug: string) {
   t[0].cookie_on = false;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   t: [1] CaT;
   e: [256] u8;
   base := proc_getenv("API", e[..]);

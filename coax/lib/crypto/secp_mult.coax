@@ -106,7 +106,7 @@ SM_G_WINDOW :: 2;
 // Width is public metadata2..5; signed odd digits have magnitude<2^(w-1).
 // Recode the EXACT unsigned256-bit input. Group multiplication reduces by
 // the group order mathematically, so no separate scalar normalization is needed.
-sm_wnaf_vartime :: (input: ScScalar,width: int) -> SmWnaf #export_c {
+sm_wnaf_vartime :: (input: ScScalar,width: int) -> SmWnaf #export_c #effects(all) {
   result: SmWnaf; if width < 2 || width > 5 { return result; }
   words: [9] u32;
   for i: 0..<8 { words[i] = input.limbs[i]; }
@@ -136,25 +136,25 @@ sm_wnaf_vartime :: (input: ScScalar,width: int) -> SmWnaf #export_c {
 // A deliberately small signed G table is actually generated during #run,
 // under the existing aggregate100k budget. Window2 costs more online adds
 // than a larger G table; there is no performance/secret-safety claim.
-sm_generator_table_vartime :: () -> [2] SgPoint {
+sm_generator_table_vartime :: () -> [2] SgPoint #effects(all) {
   table: [2] SgPoint; table[0] = sg_generator(); table[1] = table[0];
   table[1].y = sf_negate(table[1].y); return table;
 }
 SM_G_TABLE :: #run sm_generator_table_vartime();
 // Input is already curve-valid; group kernels normalize bounded coordinates.
-sm_odd_table_vartime :: (point: SgPoint) -> [8] SgPoint {
+sm_odd_table_vartime :: (point: SgPoint) -> [8] SgPoint #effects(all) {
   table: [8] SgPoint; table[0] = point; twice := sg_double_valid(point);
   for i: 1..<8 { table[i] = sg_add_valid(table[i-1],twice); } return table;
 }
 // Highest occupied public digit, including the possible bit256 carry.
-sm_joint_length_vartime :: (g_digits: SmWnaf,p_digits: SmWnaf) -> int {
+sm_joint_length_vartime :: (g_digits: SmWnaf,p_digits: SmWnaf) -> int #effects(all) {
   length := 0;
   for bit: 0..<SM_BITS {
     if (g_digits.digits[bit] | p_digits.digits[bit]) != 0 { length = bit+1; }
   }
   return length;
 }
-ecmult_vartime :: (a: ScScalar,point: SgPoint,b: ScScalar) -> SgResult #export_c {
+ecmult_vartime :: (a: ScScalar,point: SgPoint,b: ScScalar) -> SgResult #export_c #effects(all) {
   if sg_valid_mask(point) != CB_MAX64 { return SgResult.{value=sg_infinity()}; }
   table := sm_odd_table_vartime(point);
   g_digits := sm_wnaf_vartime(a,SM_G_WINDOW); p_digits := sm_wnaf_vartime(b,SM_P_WINDOW);

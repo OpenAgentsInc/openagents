@@ -3,12 +3,12 @@
 #load "receipt-lifecycle.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
-hvn_open :: ()->int #foreign;hvn_close :: () #foreign;
-hvn_reset :: () #foreign;hvn_observe :: (event:int,field:int)->int #foreign;
-hvn_frame_at :: (us:int,pending:int)->int #foreign;
-hvn_life_event :: (kind:int,us:int)->int #foreign;hvn_life_info :: (field:int)->int #foreign;
-hvn_key :: (key:int,mods:int,down:int) #foreign;
-tool_main :: ()->int #export_c {
+hvn_open :: ()->int #foreign #effects(all);hvn_close :: () #foreign #effects(all);
+hvn_reset :: () #foreign #effects(all);hvn_observe :: (event:int,field:int)->int #foreign #effects(all);
+hvn_frame_at :: (us:int,pending:int)->int #foreign #effects(all);
+hvn_life_event :: (kind:int,us:int)->int #foreign #effects(all);hvn_life_info :: (field:int)->int #foreign #effects(all);
+hvn_key :: (key:int,mods:int,down:int) #foreign #effects(all);
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..])||args_count(a[..])!=1 {tool_errln("usage: check-vulkan-lifecycle OUT.json");return 2;}if hvn_open()!=1 {return 1;}defer {hvn_close();}hvn_reset();
   offers:[10]int;offers[0]=hvn_frame_at(-1,0);offers[1]=hvn_frame_at(0,0);offers[2]=hvn_frame_at(15625,0);offers[3]=hvn_frame_at(10000,0);
   hvn_key(119,0,1);ignored:=hvn_life_event(4,15626);offers[4]=hvn_frame_at(1000000,0);ignored=hvn_life_event(3,1000001);ignored=hvn_life_event(2,1000002);offers[5]=hvn_frame_at(1100000,0);

@@ -13,23 +13,23 @@
 
 // book:begin bytes
 // Code k (0..3) of a word, sign-extended.
-i8_code :: (word:u32,k:int)->s32 {return cast(s32)cast,trunc(s8)(word>>cast(u32)(8*k));}
+i8_code :: (word:u32,k:int)->s32 #effects(all) {return cast(s32)cast,trunc(s8)(word>>cast(u32)(8*k));}
 // What one dp4a instruction computes: acc plus four products of codes.
-i8_dp4a :: (a:u32,b:u32,acc:s32)->s32 {
+i8_dp4a :: (a:u32,b:u32,acc:s32)->s32 #effects(all) {
     return acc+i8_code(a,0)*i8_code(b,0)+i8_code(a,1)*i8_code(b,1)+i8_code(a,2)*i8_code(b,2)+i8_code(a,3)*i8_code(b,3);
 }
 // book:end bytes
 
 // book:begin quantize
 // int8_scale and int8_nearest of int8-products.coax, for the device.
-i8_scale :: (amax:f32)->f32 {
+i8_scale :: (amax:f32)->f32 #effects(all) {
     want:=f64(amax)/127;d:=f32(want);
     if f64(d)<want {d=f32_from_bits(f32_bits(d)+1);}
     return d;
 }
 // Item i: activation block i (token i/nb, block i%nb), quantized as
 // int8_quantize does, four codes to a word.
-i8_quantize :: (item:int,block:int,x:[]f32,codes:[]u32,scales:[]f32,sums:[]s32) #export_c {
+i8_quantize :: (item:int,block:int,x:[]f32,codes:[]u32,scales:[]f32,sums:[]s32) #export_c #effects(all) {
     at:=item*block;top:=0;
     for k:0..<block {v:=cast(int)(f32_bits(x[at+k])&0x7fffffff);top=cast(int)((f64(top+v)+abs(f64(top-v)))/2);}
     d:=i8_scale(f32_from_bits(cast(u32)top));sum:s32=0;
@@ -50,7 +50,7 @@ i8_quantize :: (item:int,block:int,x:[]f32,codes:[]u32,scales:[]f32,sums:[]s32) 
 // Decode shape. Item (t*rows+row)*nb+b: block b of weight row `row` times
 // block b of token t, one word (four codes) at a time. Neighbouring items
 // read neighbouring blocks of one row.
-i8_dots :: (item:int,rows:int,width:int,block:int,w:[]u32,x:[]u32,dots:[]s32) #export_c {
+i8_dots :: (item:int,rows:int,width:int,block:int,w:[]u32,x:[]u32,dots:[]s32) #export_c #effects(all) {
     nb:=width/block;b:=item%nb;row:=item/nb%rows;t:=item/nb/rows;
     wa:=(row*width+b*block)/4;xa:=(t*width+b*block)/4;acc:s32=0;
     for g:0..<block/4 {acc=i8_dp4a(w[wa+g],x[xa+g],acc);}
@@ -61,7 +61,7 @@ i8_dots :: (item:int,rows:int,width:int,block:int,w:[]u32,x:[]u32,dots:[]s32) #e
 // book:begin finish
 // Item t*rows+row: the block terms of int8_term added in binary64 in block
 // order, exactly as int8_row adds them.
-i8_finish :: (item:int,rows:int,nb:int,ws:[]f32,wo:[]f32,xs:[]f32,xm:[]s32,dots:[]s32,y:[]f64) #export_c {
+i8_finish :: (item:int,rows:int,nb:int,ws:[]f32,wo:[]f32,xs:[]f32,xm:[]s32,dots:[]s32,y:[]f64) #export_c #effects(all) {
     row:=item%rows;t:=item/rows;acc:f64=0;
     for b:0..<nb {
         dx:=f64(xs[t*nb+b]);
@@ -76,8 +76,8 @@ I8_TILES :: 4;   // token tiles of 8 per warp
 I8_TOKENS :: 32; // tokens per warp
 // Two codes of a word (half h: bytes 2h and 2h+1) as a BF16 pair. Every code
 // in [-127, 127] is exact in BF16.
-i8_bf16 :: (code:s32)->u32 {return f32_bits(f32(code))>>16;}
-i8_pair :: (word:u32,h:int)->u32 {return i8_bf16(i8_code(word,2*h))|(i8_bf16(i8_code(word,2*h+1))<<16);}
+i8_bf16 :: (code:s32)->u32 #effects(all) {return f32_bits(f32(code))>>16;}
+i8_pair :: (word:u32,h:int)->u32 #effects(all) {return i8_bf16(i8_code(word,2*h))|(i8_bf16(i8_code(word,2*h+1))<<16);}
 // One warp: rows r0..r0+15 times tokens t0..t0+31, every block in order.
 // Work item group*(rows/16)+rowblock. x holds the tokens rounded up to a
 // multiple of 8: a ragged tile reads the padding, whatever it holds, and
@@ -88,7 +88,7 @@ i8_pair :: (word:u32,h:int)->u32 {return i8_bf16(i8_code(word,2*h))|(i8_bf16(i8_
 // sum converts to s32 without loss. After each block the warp adds its terms
 // to binary64 totals, in block order, as i8_finish and int8_row do, and
 // writes y at the end. With record 1 it also writes every block sum to dots.
-i8_mma :: (item:int,rows:int,width:int,tokens:int,block:int,w:[]u32,x:[]u32,ws:[]f32,wo:[]f32,xs:[]f32,xm:[]s32,record:int,dots:[]s32,y:[]f64) #export_c {
+i8_mma :: (item:int,rows:int,width:int,tokens:int,block:int,w:[]u32,x:[]u32,ws:[]f32,wo:[]f32,xs:[]f32,xm:[]s32,record:int,dots:[]s32,y:[]f64) #export_c #effects(all) {
     blocks:=rows/16;r0:=item%blocks*16;t0:=item/blocks*I8_TOKENS;
     nb:=width/block;q:=width/4;used:=(tokens-t0+7)/8;
     fa:[128]u32;fb:[64]u32;fc:[128]f32;acc:[512]f32;total:[512]f64;

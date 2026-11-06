@@ -71,10 +71,10 @@ CapRequest :: struct {principal:string;definition:string;effects:int;required:in
 CapDispatch :: struct {error:u32;definition:int=-1;binding:int=-1;grant:int=-1;wall_ms:int;limit:int;}
 // book:end record
 
-cap_fail :: (r:CapDispatch,error:u32)->CapDispatch {o:=r;o.error=error;return o;}
+cap_fail :: (r:CapDispatch,error:u32)->CapDispatch #effects(all) {o:=r;o.error=error;return o;}
 
 // book:begin dispatch
-cap_dispatch :: (defs:[]CapDefinition,bindings:[]CapBinding,grants:[]CapGrant,policy:CapPolicy,q:CapRequest,now:int)->CapDispatch {
+cap_dispatch :: (defs:[]CapDefinition,bindings:[]CapBinding,grants:[]CapGrant,policy:CapPolicy,q:CapRequest,now:int)->CapDispatch #effects(all) {
   r:CapDispatch;
   // 1. The request names only known effects and bounds.
   if q.effects&CAP_EFFECTS!=q.effects || q.required&CAP_BOUNDS!=q.required {return cap_fail(r,CAP_MALFORMED);}
@@ -120,23 +120,23 @@ cap_dispatch :: (defs:[]CapDefinition,bindings:[]CapBinding,grants:[]CapGrant,po
 CT_OPERATOR :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
 CT_AGENT :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
 CT_OTHER :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
-ct_def :: ()->CapDefinition {
+ct_def :: ()->CapDefinition #effects(all) {
   d:CapDefinition;d.id="op:docs.search";d.digest="sha256:aa";d.profile=CAP_EXECUTOR;
   d.effects=CAP_READS|CAP_WRITES|CAP_NETWORK;d.minimum_wall_ms=1000;return d;
 }
-ct_binding :: ()->CapBinding {
+ct_binding :: ()->CapBinding #effects(all) {
   b:CapBinding;b.binding="sha256:b1";b.definition="sha256:aa";b.profile=CAP_EXECUTOR;b.invoke=true;b.invoke_writing=true;
   b.presence=CAP_PRESENT;b.enforced=CAP_MEMORY_BYTES;b.host=CAP_WALL_MS;return b;
 }
-ct_grant :: ()->CapGrant {
+ct_grant :: ()->CapGrant #effects(all) {
   g:CapGrant;g.issuer=CT_OPERATOR;g.principal=CT_AGENT;g.binding="sha256:b1";
   g.effects=CAP_READS|CAP_NETWORK|CAP_SPEND;g.wall_ms=60000;g.expires_at=2000;return g;
 }
-ct_request :: ()->CapRequest {
+ct_request :: ()->CapRequest #effects(all) {
   q:CapRequest;q.principal=CT_AGENT;q.definition="op:docs.search";q.effects=CAP_READS;q.required=CAP_WALL_MS;q.wall_ms=30000;return q;
 }
-ct_policy :: (deny:[]string)->CapPolicy {p:CapPolicy;p.owner=CT_OPERATOR;p.deny=deny;p.wall_ms=120000;return p;}
-ct_run :: (d:CapDefinition,b:CapBinding,g:CapGrant,p:CapPolicy,q:CapRequest,now:int)->u32 {
+ct_policy :: (deny:[]string)->CapPolicy #effects(all) {p:CapPolicy;p.owner=CT_OPERATOR;p.deny=deny;p.wall_ms=120000;return p;}
+ct_run :: (d:CapDefinition,b:CapBinding,g:CapGrant,p:CapPolicy,q:CapRequest,now:int)->u32 #effects(all) {
   ds:[1]CapDefinition;ds[0]=d;bs:[1]CapBinding;bs[0]=b;gs:[1]CapGrant;gs[0]=g;
   return cap_dispatch(ds[..],bs[..],gs[..],p,q,now).error;
 }

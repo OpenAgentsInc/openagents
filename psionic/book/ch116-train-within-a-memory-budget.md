@@ -71,21 +71,21 @@ Count them by hand for chapter 115's shape: width 16, two layers, context 32,
 ```jai
 // The floats of one layer's saved values plus the final head's: the region a
 // recomputed layer is rebuilt in, laid out as a one-layer decoder's.
-mb_region :: (s:TdShape)->int {one:=s;one.layers=1;return td_work_count(one);}
+mb_region :: (s:TdShape)->int #effects(all) {one:=s;one.layers=1;return td_work_count(one);}
 // Floats one row saves for the backward pass. Recomputation keeps the input
 // of every layer but the last (context x width each) and one region.
-mb_saved :: (s:TdShape,recompute:bool)->int {
+mb_saved :: (s:TdShape,recompute:bool)->int #effects(all) {
     if recompute {return (s.layers-1)*s.context*s.width+mb_region(s);}
     return td_work_count(s);
 }
 // Floats of the backward pass's own scratch (the gradients of the saved
 // values) for one row.
-mb_scratch :: (s:TdShape,recompute:bool)->int {if recompute {return mb_region(s);}return td_work_count(s);}
+mb_scratch :: (s:TdShape,recompute:bool)->int #effects(all) {if recompute {return mb_region(s);}return td_work_count(s);}
 // Bytes of one step that holds `micro` rows at once. Parameters and both
 // AdamW moments live for the whole run; the step's gradient sum lives for
 // one step; each held row has its own gradient, saved values and scratch,
 // which live for one micro-batch. Every value is binary64: 8 bytes.
-mb_bytes :: (s:TdShape,micro:int,recompute:bool)->MbBytes {
+mb_bytes :: (s:TdShape,micro:int,recompute:bool)->MbBytes #effects(all) {
     p:=td_parameter_count(s);b:MbBytes;
     b.parameters=8*p;b.moments=16*p;b.gradients=8*p*(1+micro);
     b.activations=8*micro*mb_saved(s,recompute);b.workspace=8*micro*mb_scratch(s,recompute);
@@ -94,7 +94,7 @@ mb_bytes :: (s:TdShape,micro:int,recompute:bool)->MbBytes {
 }
 // Layer evaluations per step: every row runs every layer at every position
 // once, and recomputation runs every layer but the last a second time.
-mb_evaluations :: (s:TdShape,batch:int,recompute:bool)->int {
+mb_evaluations :: (s:TdShape,batch:int,recompute:bool)->int #effects(all) {
     e:=s.layers;if recompute {e+=s.layers-1;}return batch*s.context*e;
 }
 ```
@@ -230,7 +230,7 @@ that number with every candidate.
 // arithmetic on this path, recomputation does. A refusal names the smallest
 // budget any plan needs: one row with recomputation, since bytes grow with
 // the micro-batch and recomputation never saves more than it keeps.
-mb_plan :: (s:TdShape,batch:int,budget:int)->MbPlan {
+mb_plan :: (s:TdShape,batch:int,budget:int)->MbPlan #effects(all) {
     if !td_valid(s) {return MbPlan.{status=MbStatus.shape};}
     if batch<1 || batch>MB_BATCH {return MbPlan.{status=MbStatus.batch};}
     for recompute:[2]bool.[false,true] {

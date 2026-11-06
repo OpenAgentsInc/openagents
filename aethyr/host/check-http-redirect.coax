@@ -12,7 +12,7 @@ hdr_path :: (status:int,target:int,post:int,out:[]u8)->string {o:[1]Jo;jo_start(
 hdr_header :: (head:string,key:string)->string {
  at:=0;while at<head.count {end:=rtq_find(head,"\r\n",at);if end<0 {return "";}line:=head[at..<end];colon:=rtq_find(line,":",0);same:=colon==key.count;for i:0..<key.count {if i>=colon||rto_lower(line[i])!=rto_lower(key[i]) {same=false;}}if same {return rto_trim(line[colon+1..<line.count]);}at=end+2;}return "";
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) {return 2;}
  if args_at(a[..],0)=="--redirect-peer" {if args_count(a[..])!=5 {return 2;}return hdr_peer(args_at(a[..],1),args_at(a[..],2),args_at(a[..],3),args_at(a[..],4));}
  if args_count(a[..])!=4 {tool_errln("usage: check-http-redirect PINNED_ROOT FIXTURE_DIR SERVICES.wasm NEW_OUT");return 2;}

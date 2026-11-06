@@ -23,12 +23,12 @@ NostrEvent :: struct {
   content_from:int; content_to:int; written:int; verified:bool;
 }
 
-ne_field :: (raw:string)->int {
+ne_field :: (raw:string)->int #effects(all) {
   names:=[7]string.["id","pubkey","created_at","kind","tags","content","sig"];
   for i:0..<7 {if json_is(raw,names[i]) {return i+1;}}
   return 0;
 }
-ne_lower_hex :: (decoded:string,bytes:[]u8)->bool {
+ne_lower_hex :: (decoded:string,bytes:[]u8)->bool #effects(all) {
   if decoded.count!=bytes.count*2 {return false;}
   // Every accepted lowercase hex digit has ASCII bit5 set; uppercase hex
   // does not. The generic decoder rejects every other byte independently.
@@ -37,7 +37,7 @@ ne_lower_hex :: (decoded:string,bytes:[]u8)->bool {
 }
 // Empty inner arrays retain their exact position in the ID preimage. Tag
 // meaning/required values belong to consumers; no deduplication or sorting.
-ne_tags :: (j:[]Json)->NeTagSpan {
+ne_tags :: (j:[]Json)->NeTagSpan #effects(all) {
   result:NeTagSpan;
   if j[0].tok!=JSON_ARRAY {return result;}
   result.from=j[0].from;
@@ -55,7 +55,7 @@ ne_tags :: (j:[]Json)->NeTagSpan {
   }
   result.to=j[0].to;result.ok=true;return result;
 }
-ne_parse :: (text:string)->NostrEvent {
+ne_parse :: (text:string)->NostrEvent #effects(all) {
   e:NostrEvent;
   admission:=ja_admit(text,ja_policy(0),text.count,0);
   if admission!=JA_OK {e.error=NE_JSON;e.admission=admission;return e;}
@@ -96,7 +96,7 @@ ne_parse :: (text:string)->NostrEvent {
 // Internal serializers consume only ne_parse's successful records. They are
 // not exported record-admission interfaces. Callers use the complete raw-JSON
 // entries below; a forged NostrEvent must never grant authority.
-ne_write_tags :: (text:string,out:[]u8,at:int,decoded:[]u8)->int {
+ne_write_tags :: (text:string,out:[]u8,at:int,decoded:[]u8)->int #effects(all) {
   j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_ARRAY {return -1;}
   n:=json_raw(out,at,"[");first_tag:=true;
   t:=json_next(j[..]);
@@ -116,7 +116,7 @@ ne_write_tags :: (text:string,out:[]u8,at:int,decoded:[]u8)->int {
   }
   return json_raw(out,n,"]");
 }
-ne_serialize :: (e:NostrEvent,out:[]u8)->int {
+ne_serialize :: (e:NostrEvent,out:[]u8)->int #effects(all) {
   decoded:[65536]u8;pub:[64]u8;key:=e.public_key;
   h:=hex_encode_checked(cast(string)key[..],pub[..],false);
   n:=json_raw(out,ne_writer_start(h.error),"[0,");n=json_write_string(out,n,cast(string)pub[..]);
@@ -127,17 +127,17 @@ ne_serialize :: (e:NostrEvent,out:[]u8)->int {
   if count<0 {return -1;}
   n=json_write_string(out,n,cast(string)decoded[0..<count]);return json_raw(out,n,"]");
 }
-ne_same_id :: (e:NostrEvent)->bool {for i:0..<32 {if e.id[i]!=e.computed_id[i] {return false;}}return true;}
+ne_same_id :: (e:NostrEvent)->bool #effects(all) {for i:0..<32 {if e.id[i]!=e.computed_id[i] {return false;}}return true;}
 // Seed the shared writer's sticky error chain from an actual codec result.
-ne_writer_start :: (status:u32)->int {
+ne_writer_start :: (status:u32)->int #effects(all) {
   if status!=NC_OK {return NE_WRITE_FAILED;}return 0;
 }
 // A real hash result is an observation, not verified authority. Hash failures
 // always refuse; only the complete entry produces and compares the ID bytes.
-ne_hashed :: (event:NostrEvent,status:u32)->NostrEvent {
+ne_hashed :: (event:NostrEvent,status:u32)->NostrEvent #effects(all) {
   e:=event;if status!=SHA_OK {e.error=NE_OUTPUT;}return e;
 }
-ne_io :: (input:int,output:int,overlap:bool)->int {
+ne_io :: (input:int,output:int,overlap:bool)->int #effects(all) {
   if overlap {return NE_ALIAS;}
   if input<0 || input>NE_MAX_INPUT {return NE_LIMIT;}
   if output<0 || output>NE_MAX_OUTPUT {return NE_OUTPUT;}
@@ -146,7 +146,7 @@ ne_io :: (input:int,output:int,overlap:bool)->int {
 // overlap is the host's truthful pointer-range observation. Input/output must
 // not alias. On refusal written=0; output scratch may contain a partial
 // preimage and is never a successfully published result.
-nostr_event_read :: (text:string,out:[]u8,overlap:bool)->NostrEvent #export_c {
+nostr_event_read :: (text:string,out:[]u8,overlap:bool)->NostrEvent #export_c #effects(all) {
   e:NostrEvent;
   e.error=ne_io(text.count,out.count,overlap);if e.error!=NE_OK {return e;}
   e=ne_parse(text);if e.error!=NE_OK {return e;}
@@ -156,11 +156,11 @@ nostr_event_read :: (text:string,out:[]u8,overlap:bool)->NostrEvent #export_c {
   if !ne_same_id(e) {e.error=NE_ID;return e;}
   e.written=n;return e;
 }
-ne_verified :: (event:NostrEvent,signature_valid:bool)->NostrEvent {
+ne_verified :: (event:NostrEvent,signature_valid:bool)->NostrEvent #effects(all) {
   e:=event;if !signature_valid {e.error=NE_SIGNATURE;e.written=0;return e;}
   e.verified=true;return e;
 }
-nostr_event_verify_vartime :: (text:string,out:[]u8,overlap:bool)->NostrEvent #export_c {
+nostr_event_verify_vartime :: (text:string,out:[]u8,overlap:bool)->NostrEvent #export_c #effects(all) {
   e:=nostr_event_read(text,out,overlap);if e.error!=NE_OK {return e;}
   return ne_verified(e,nostr_verify_vartime(e.id[..],e.public_key[..],e.signature[..]));
 }

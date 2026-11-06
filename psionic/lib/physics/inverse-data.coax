@@ -26,10 +26,10 @@
   d.episodes=1;d.steps=1;d.stride=1;d.initial[0]=OsState.{position=2,velocity=-4};d.forces[0]=2;d.observed[0]=OsState.{position=-2,velocity=4};#assert oi_data_ok(d)==OsStatus.ok;
 }
 
-oi_truth :: ()->OsParams #export_c {return OsParams.{spring=2.4,damping=0.55};}
-oi_noise :: (mode:int)->f64 {return ifx mode<2 then 0 else (ifx mode<4 then 0.002 else 0.01);}
-oi_force :: (episode:int,tick:int)->f64 {phase:=(tick/6+episode)%3;return ifx phase==0 then 0 else (ifx phase==1 then 0.5 else -0.5);}
-oi_dataset :: (mode:int)->OiData #export_c {
+oi_truth :: ()->OsParams #export_c #effects(all) {return OsParams.{spring=2.4,damping=0.55};}
+oi_noise :: (mode:int)->f64 #effects(all) {return ifx mode<2 then 0 else (ifx mode<4 then 0.002 else 0.01);}
+oi_force :: (episode:int,tick:int)->f64 #effects(all) {phase:=(tick/6+episode)%3;return ifx phase==0 then 0 else (ifx phase==1 then 0.5 else -0.5);}
+oi_dataset :: (mode:int)->OiData #export_c #effects(all) {
   if mode<0 || mode>6 {return OiData.{status=OsStatus.shape};}
   d:=OiData.{episodes=3,steps=24,stride=ifx mode%2==1 then 4 else 1};noise:=oi_noise(mode);
   q:=[3]f64.[0.8,0,-0.6];v:=[3]f64.[0,0.8,-0.4];
@@ -41,7 +41,7 @@ oi_dataset :: (mode:int)->OiData #export_c {
   }
   return d;
 }
-oi_data_ok :: (d:OiData)->OsStatus #export_c {
+oi_data_ok :: (d:OiData)->OsStatus #export_c #effects(all) {
   if d.status!=OsStatus.ok || d.episodes<1 || d.episodes>3 || d.steps<1 || d.steps>24 || d.stride<1 || d.stride>d.steps {return OsStatus.shape;}
   if d.steps%d.stride!=0 {return OsStatus.shape;}
   for episode:0..<d.episodes {

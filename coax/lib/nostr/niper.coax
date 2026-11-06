@@ -39,7 +39,7 @@ ER_MAX_HELD :: 8; ER_MAX_FIRED :: 16; ER_MAX_MEMBERS :: 16; ER_MAX_NAME :: 32;
 
 // book:begin number
 // A decimal Unix time: its value, or -1.
-er_number :: (s:N32Text)->int {
+er_number :: (s:N32Text)->int #effects(all) {
   c:=s;if c.n==0 || (c.b[0]=='0' && c.n>1) {return -1;}
   v:=0;
   for i:0..<c.n {
@@ -57,8 +57,8 @@ ErReminder :: struct {
   status:int=ER_EVENT; id:[32]u8; author:[32]u8; created_at:int; d:N32Text;
   has_nb:bool; nb:int; has_exp:bool; exp:int;
 }
-er_fail :: (r:ErReminder,status:int)->ErReminder {o:=r;o.status=status;return o;}
-er_read :: (e:NostrEvent)->ErReminder {
+er_fail :: (r:ErReminder,status:int)->ErReminder #effects(all) {o:=r;o.status=status;return o;}
+er_read :: (e:NostrEvent)->ErReminder #effects(all) {
   r:ErReminder;
   if e.error!=NE_OK || !e.verified {return r;}
   if e.kind!=ER_KIND_REMINDER {return er_fail(r,ER_KIND);}
@@ -86,20 +86,20 @@ er_read :: (e:NostrEvent)->ErReminder {
 // book:end read
 
 // book:begin store
-er_same :: (a:ErReminder,b:ErReminder)->bool {x:=b;return ns_equal32(a.author,b.author) && n32_is(a.d,cast(string)x.d.b[0..<x.d.n]);}
-er_lower :: (a:[32]u8,b:[32]u8)->bool {
+er_same :: (a:ErReminder,b:ErReminder)->bool #effects(all) {x:=b;return ns_equal32(a.author,b.author) && n32_is(a.d,cast(string)x.d.b[0..<x.d.n]);}
+er_lower :: (a:[32]u8,b:[32]u8)->bool #effects(all) {
   for i:0..<32 {if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}}
   return false;
 }
 // Does a replace b at the same address? Later created_at, then lower id.
-er_wins :: (a:ErReminder,b:ErReminder)->bool {
+er_wins :: (a:ErReminder,b:ErReminder)->bool #effects(all) {
   if a.created_at>b.created_at {return true;}
   if a.created_at<b.created_at {return false;}
   return er_lower(a.id,b.id);
 }
 // The relay keeps one head per address: ER_OK when r is stored (new, or it
 // replaced the head), ER_OLDER when the head stays.
-er_store :: (heads:[]ErReminder,n:[]int,r:ErReminder)->int {
+er_store :: (heads:[]ErReminder,n:[]int,r:ErReminder)->int #effects(all) {
   if r.status!=ER_OK {return r.status;}
   for i:0..<n[0] {
     if !er_same(heads[i],r) {continue;}
@@ -113,11 +113,11 @@ er_store :: (heads:[]ErReminder,n:[]int,r:ErReminder)->int {
 
 // book:begin gate
 // Only the authenticated author sees a reminder, on every path.
-er_visible :: (r:ErReminder,authed:bool,reader:[32]u8)->bool {return authed && ns_equal32(r.author,reader);}
+er_visible :: (r:ErReminder,authed:bool,reader:[32]u8)->bool #effects(all) {return authed && ns_equal32(r.author,reader);}
 // A filter that can return 30300: allowed only for the authenticated
 // author's own reminders. A filter for 30300 alone is closed (auth-required
 // or restricted); a mixed-kind filter goes on with the 30300 matches omitted.
-er_gate :: (authed:bool,reader:[32]u8,authors:[][32]u8,only:bool)->int {
+er_gate :: (authed:bool,reader:[32]u8,authors:[][32]u8,only:bool)->int #effects(all) {
   mine:=authed && authors.count>0;
   for a:authors {if !ns_equal32(a,reader) {mine=false;}}
   if mine {return ER_ALLOW;}
@@ -125,14 +125,14 @@ er_gate :: (authed:bool,reader:[32]u8,authors:[][32]u8,only:bool)->int {
   return ifx authed then ER_RESTRICTED else ER_AUTH_REQUIRED;
 }
 // Is a stored head due for the relay's push? It reads only not_before.
-er_relay_due :: (r:ErReminder,now:int)->bool {return r.status==ER_OK && r.has_nb && r.nb<=now;}
+er_relay_due :: (r:ErReminder,now:int)->bool #effects(all) {return r.status==ER_OK && r.has_nb && r.nb<=now;}
 // book:end gate
 
 // book:begin content
 ErContent :: struct {status:int=ER_CONTENT; state:int; has_id:bool; id:[32]u8; has_a:bool; note_n:int;}
 // Each member name of one object, unescaped, must be new.
 ErNames :: struct {b:[ER_MAX_MEMBERS][ER_MAX_NAME]u8; n:[ER_MAX_MEMBERS]int; count:int;}
-er_name :: (names:[]ErNames,raw:string)->bool {
+er_name :: (names:[]ErNames,raw:string)->bool #effects(all) {
   if names[0].count==ER_MAX_MEMBERS {return false;}
   i:=names[0].count;m:=json_unescape(raw,names[0].b[i][..]);
   if m<0 {return false;}
@@ -141,10 +141,10 @@ er_name :: (names:[]ErNames,raw:string)->bool {
 }
 // A target.id or target.a as written: escapes are refused, so the text
 // is compared byte for byte.
-er_plain :: (raw:string)->bool {for c:raw {if c=='\\' {return false;}}return true;}
+er_plain :: (raw:string)->bool #effects(all) {for c:raw {if c=='\\' {return false;}}return true;}
 // The target object, its opening brace just read. Every member is read to
 // the end; ok says whether all of them were valid.
-er_target :: (j:[]Json,c:[]ErContent)->bool {
+er_target :: (j:[]Json,c:[]ErContent)->bool #effects(all) {
   names:[1]ErNames;ok:=true;tok:=json_next(j);
   while tok==JSON_STRING {
     key:=json_text(j);if !er_name(names[..],key) {ok=false;}
@@ -165,7 +165,7 @@ er_target :: (j:[]Json,c:[]ErContent)->bool {
   }
   return ok && tok==JSON_OBJECT_END;
 }
-er_content :: (plain:string)->ErContent {
+er_content :: (plain:string)->ErContent #effects(all) {
   c:[1]ErContent;bad:ErContent;names:[1]ErNames;
   j:[1]Json;json_start(j[..],plain);
   if json_next(j[..])!=JSON_OBJECT {return bad;}
@@ -197,7 +197,7 @@ er_content :: (plain:string)->ErContent {
 // book:begin open
 // The plaintext of the author's own reminder, into plain: its length, or a
 // negative status. me holds the author's keys (nl_self).
-er_open :: (e:NostrEvent,me:NlSelf,work:[]NlWork,plain:[]u8)->int {
+er_open :: (e:NostrEvent,me:NlSelf,work:[]NlWork,plain:[]u8)->int #effects(all) {
   if e.error!=NE_OK || !e.verified {return -ER_EVENT;}
   if !me.ok || work.count!=1 || !ns_equal32(me.pub,e.public_key) {return -ER_NOT_OWNER;}
   // A NIP-44 payload is base64, so the JSON string is read as written.
@@ -210,7 +210,7 @@ er_open :: (e:NostrEvent,me:NlSelf,work:[]NlWork,plain:[]u8)->int {
 
 // book:begin fire
 // The client's local check for the head r with plaintext c at its clock.
-er_fire :: (r:ErReminder,c:ErContent,now:int)->int {
+er_fire :: (r:ErReminder,c:ErContent,now:int)->int #effects(all) {
   if r.status!=ER_OK || c.status!=ER_OK {return ER_SHAPE;}
   if c.state!=ER_PENDING {return ER_TERMINAL;}
   if !r.has_nb {return ER_BOOKMARK;}
@@ -218,7 +218,7 @@ er_fire :: (r:ErReminder,c:ErContent,now:int)->int {
 }
 // The notification path: what is held per address, and the ids notified.
 ErNotifier :: struct {held:[ER_MAX_HELD]ErReminder; held_n:int; fired:[ER_MAX_FIRED][32]u8; fired_n:int;}
-er_deliver :: (nt:[]ErNotifier,r:ErReminder,c:ErContent,now:int)->int {
+er_deliver :: (nt:[]ErNotifier,r:ErReminder,c:ErContent,now:int)->int #effects(all) {
   if r.status!=ER_OK {return r.status;}
   k:=0;
   for i:0..<nt[0].held_n {if !er_same(nt[0].held[i],r) {nt[0].held[k]=nt[0].held[i];k+=1;}}
@@ -231,7 +231,7 @@ er_deliver :: (nt:[]ErNotifier,r:ErReminder,c:ErContent,now:int)->int {
 }
 // At now, the held reminders that are due: their ids into out, each id once
 // ever; they leave the held set.
-er_tick :: (nt:[]ErNotifier,now:int,out:[][32]u8)->int {
+er_tick :: (nt:[]ErNotifier,now:int,out:[][32]u8)->int #effects(all) {
   m:=0;k:=0;
   for i:0..<nt[0].held_n {
     h:=nt[0].held[i];

@@ -1,0 +1,41 @@
+// Process-local actor ownership shared by the room and its world simulation.
+#module "verse.everglade.handles";
+#authority;
+#load "../../coax/lib/handle.coax";
+EvergladeSeat :: struct {}
+EvergladeSpeaker :: struct {}
+EV_SEAT_GENERATION_MAX :: 4294967295;
+
+#forall "seat references require a live matching lifetime, never just the same slot" slot: -1..<17, generation:0..<3, live:bool, current:0..<3 {
+  h:=ev_seat_reference(slot,cast(u32)generation);
+  valid:=slot>=0 && slot<16 && generation>0;
+  #assert handle_present(h)==valid;
+  #assert ev_seat_reference_live(h,live,cast(u32)current)==(valid && live && generation==current);
+  if valid {#assert handle_slot(h)==slot && handle_generation(h)==cast(u32)generation;}
+}
+ev_seat_reference :: (slot:int,generation:u32)->Handle(EvergladeSeat) #effects(all) {
+  if slot<0 || slot>=16 || generation==0 {return Handle(EvergladeSeat).{};}
+  return Handle(EvergladeSeat).{value=(cast(u64)generation<<32)|cast(u64)slot};
+}
+ev_seat_reference_live :: (h:Handle(EvergladeSeat),live:bool,generation:u32)->bool #effects(all) {
+  return handle_present(h) && handle_slot(h)<16 && live && handle_generation(h)>0 && handle_generation(h)==generation;
+}
+#forall "an autonomous fire keeps its owner only while that exact seat lifetime exists" network:bool, by: -2..<17, previous:0..<3, current:0..<3 {
+  owner:=ev_seat_reference(by,cast(u32)previous);now:=ev_seat_reference(by,cast(u32)current);
+  valid:=by>=0 && by<16 && previous>0 && previous==current;
+  #assert ev_seat_owner(by,owner,now,network)==(ifx !network || by<0 || valid then by else -1);
+}
+ev_seat_owner :: (by:int,owner:Handle(EvergladeSeat),current:Handle(EvergladeSeat),network:bool)->int #effects(all) {
+  if !network || by<0 {return by;}
+  if by>=16 || !handle_present(owner) || handle_generation(owner)==0 || handle_slot(owner)!=by || owner!=current {return -1;}
+  return by;
+}
+#test "malformed and mismatched owner words never become a live seat" {
+  zero_generation:=Handle(EvergladeSeat).{value=1};
+  beyond:=Handle(EvergladeSeat).{value=4294967312};
+  other:=ev_seat_reference(1,1);
+  #assert !ev_seat_reference_live(zero_generation,true,0) && !ev_seat_reference_live(beyond,true,1);
+  #assert ev_seat_owner(1,zero_generation,zero_generation,true)== -1;
+  #assert ev_seat_owner(16,beyond,beyond,true)== -1;
+  #assert ev_seat_owner(0,other,other,true)== -1;
+}

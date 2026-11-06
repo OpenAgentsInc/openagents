@@ -209,7 +209,7 @@ PrivateHost :: struct {
   inbox: [PV_INBOX] u8;
 }
 // Before every call: the state sees the host's buffers (they move with it).
-coaxial_private_bind :: (h: [] PrivateHost) #export_c {
+coaxial_private_bind :: (h: [] PrivateHost) #export_c #effects(all) {
   if h.count < 1 { return; }
   h[0].s[0].data = h[0].data[..];
   h[0].s[0].inbox = h[0].inbox[..];
@@ -386,8 +386,8 @@ pv_body :: (s: [] PrivateState, kind: int, key: string, value: string) {
   s[0].post_kind = kind; s[0].post_id = -1;
 }
 // The face sent them, and which answer each waits for.
-coaxial_private_asked :: (s: [] PrivateState, id: int) #export_c { if s.count > 0 { s[0].ask_n = 0; s[0].ask_id = id; } }
-coaxial_private_posted :: (s: [] PrivateState, id: int) #export_c {
+coaxial_private_asked :: (s: [] PrivateState, id: int) #export_c #effects(all) { if s.count > 0 { s[0].ask_n = 0; s[0].ask_id = id; } }
+coaxial_private_posted :: (s: [] PrivateState, id: int) #export_c #effects(all) {
   if s.count < 1 { return; }
   for i: 0..<s[0].body_n { s[0].body[i] = 0; }   // a credential stays in the page no longer than this
   s[0].post_n = 0; s[0].post_id = id;
@@ -620,7 +620,7 @@ pv_keep_player :: (s: [] PrivateState, bytes: string, from: int) {
 }
 // The face's HTTP flags for the waiting POST: 4 answer wanted, 1 POST; a poll also
 // sends the browser's playtest player key (8), which a signed-in poll moves to the phone's key.
-coaxial_private_post_flags :: (s: [] PrivateState) -> int #export_c {
+coaxial_private_post_flags :: (s: [] PrivateState) -> int #export_c #effects(all) {
   if s.count < 1 { return 5; }
   // the words' login: 16, the body's first line is its Authorization (NIP-98), and the player key moves too
   return ifx s[0].post_kind == POST_POLL then 13 else ifx s[0].post_kind == POST_WORDS then 29 else 5;
@@ -639,7 +639,7 @@ pv_got_code :: (s: [] PrivateState, code: int, bytes: string, i: int) {
   s[0].qr_want = true; s[0].qr_size = 0;
 }
 // The face encoded code_url into qr: status 0 and the grid's side, else a refusal.
-coaxial_private_qr :: (s: [] PrivateState, status: int, size: int) #export_c {
+coaxial_private_qr :: (s: [] PrivateState, status: int, size: int) #export_c #effects(all) {
   if s.count < 1 || !s[0].qr_want { return; }
   s[0].qr_want = false;
   if status != 0 || size < 21 || size * size > PV_QR { s[0].code_state = CODE_FAILED; s[0].qr_size = 0; return; }
@@ -789,7 +789,7 @@ pv_facts :: (s: [] PrivateState, text: string) {
   }
 }
 // What the face did with acct_want: ok, or not.
-coaxial_private_acct_done :: (s: [] PrivateState, ok: bool) #export_c {
+coaxial_private_acct_done :: (s: [] PrivateState, ok: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
   want := s[0].acct_want; s[0].acct_want = 0;
   pv_wipe(s[0].acct_key[..]);    // the key lives only while the face signs
@@ -2028,7 +2028,7 @@ pv_locked :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
 
 pv_shows_project :: (s: [] PrivateState) -> bool { return s[0].page == 0 && s[0].line_n > 0 && (s[0].status == 200 || s[0].status >= 500); }
 
-coaxial_private_frame :: (s: [] PrivateState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+coaxial_private_frame :: (s: [] PrivateState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   if !s[0].ready { s[0].ready = true; s[0].hot = -1; s[0].press = -1; s[0].day = -1; s[0].status = -1; s[0].ask_id = -1; s[0].post_id = -1; s[0].tstatus = -1; s[0].me_status = -1; }
   s[0].time += clamp(dt, 0, 0.1);
@@ -2246,7 +2246,7 @@ pv_act :: (s: [] PrivateState, target: int) {
   else if target == H_LINK && s[0].link_n > 0 { pv_go(s, cast(string) s[0].link[0..<s[0].link_n]); }
 }
 
-coaxial_private_pointer :: (s: [] PrivateState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
+coaxial_private_pointer :: (s: [] PrivateState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   d := hi(s[0].d, 1);
   if phase == P_DOWN {
@@ -2316,7 +2316,7 @@ pv_set_n :: (s: [] PrivateState, n: int) {
   else if s[0].focus == 1 { s[0].atext_n = n; } else { s[0].text_n = n; }
   s[0].all = 0;
 }
-coaxial_private_key :: (s: [] PrivateState, key: int, mods: int) -> bool #export_c {
+coaxial_private_key :: (s: [] PrivateState, key: int, mods: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   d := hi(s[0].d, 1);
   cmd := tk_command(key, mods);
@@ -2356,8 +2356,8 @@ coaxial_private_key :: (s: [] PrivateState, key: int, mods: int) -> bool #export
   if key == K_RIGHT { pv_act(s, H_NEXT); return true; }
   return false;
 }
-coaxial_private_wheel :: (s: [] PrivateState, dy: f32) #export_c { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
-coaxial_private_message :: (s: [] PrivateState, kind: int, length: int) #export_c {
+coaxial_private_wheel :: (s: [] PrivateState, dy: f32) #export_c #effects(all) { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
+coaxial_private_message :: (s: [] PrivateState, kind: int, length: int) #export_c #effects(all) {
   if s.count < 1 || length < 0 || length > s[0].inbox.count { return; }
   text := cast(string) s[0].inbox[0..<length];
   if kind >= PV_HTTP && kind < PV_HTTP + 8 { pv_answer(s, kind - PV_HTTP, text); return; }
@@ -2379,7 +2379,7 @@ coaxial_private_message :: (s: [] PrivateState, kind: int, length: int) #export_
   }
 }
 // The location's hash: a sign-in link's "invite=<token>". It's cleared at once.
-coaxial_private_hash :: (s: [] PrivateState, length: int) #export_c {
+coaxial_private_hash :: (s: [] PrivateState, length: int) #export_c #effects(all) {
   if s.count < 1 || length < 7 || length > 200 || length > s[0].inbox.count { return; }
   text := cast(string) s[0].inbox[0..<length];
   if s[0].page == 4 || s[0].page == 6 || s[0].page == 7 {
@@ -2398,13 +2398,13 @@ coaxial_private_hash :: (s: [] PrivateState, length: int) #export_c {
   s[0].token_n = pv_put(s[0].token[..], 0, t);
   s[0].out_n = 0; s[0].action = PV_SET_HASH;
 }
-coaxial_private_page :: (s: [] PrivateState, page: int) #export_c { if s.count > 0 { s[0].page = ifx page == 0 || page == 2 || page == 3 || page == 4 || page == 5 || page == 6 || page == 7 then page else 1; } }
-coaxial_private_wants_text :: (s: [] PrivateState) -> bool #export_c { return s.count > 0 && s[0].typing && (pv_shows_project(s) || s[0].page == 2 || s[0].page == 4); }
-coaxial_private_cursor :: (s: [] PrivateState) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].hot != -1 then 1 else 0; }
-coaxial_private_action :: (s: [] PrivateState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
-coaxial_private_action_done :: (s: [] PrivateState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
-coaxial_private_inbox_cap :: () -> int #export_c { return PV_INBOX; }
-coaxial_private_max_vertices :: () -> int #export_c { return PV_MAX_VERTICES; }
+coaxial_private_page :: (s: [] PrivateState, page: int) #export_c #effects(all) { if s.count > 0 { s[0].page = ifx page == 0 || page == 2 || page == 3 || page == 4 || page == 5 || page == 6 || page == 7 then page else 1; } }
+coaxial_private_wants_text :: (s: [] PrivateState) -> bool #export_c #effects(all) { return s.count > 0 && s[0].typing && (pv_shows_project(s) || s[0].page == 2 || s[0].page == 4); }
+coaxial_private_cursor :: (s: [] PrivateState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return ifx s[0].hot != -1 then 1 else 0; }
+coaxial_private_action :: (s: [] PrivateState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_private_action_done :: (s: [] PrivateState) #export_c #effects(all) { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_private_inbox_cap :: () -> int #export_c #effects(all) { return PV_INBOX; }
+coaxial_private_max_vertices :: () -> int #export_c #effects(all) { return PV_MAX_VERTICES; }
 
 // ---------------------------------------------------------------- checks
 

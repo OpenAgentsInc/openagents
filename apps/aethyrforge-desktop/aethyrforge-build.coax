@@ -123,7 +123,7 @@ af_native :: (root:string,here:string,work:string,coax:string,out:[]u8,deadline:
  if fs_mtime_ns(fs_join(metal,"assets/textures.config",paths[2][..]))<asset_stamp {cmd:=[5]string.[fs_join(root,"coax/web/tool.sh",paths[3][..]),fs_join(here,"metal-assets.coax",paths[4][..]),root,pack,fs_join(metal,"assets",paths[5][..])];if af_run(cmd[..],out,deadline)<0 {return false;}}
  return true;
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if tool_os()==TOOL_LINUX {if !args_load(a[..]) {return 2;}return fgl_build(a[..]);}
   if !args_load(a[..]) || args_count(a[..]) < 1 || args_count(a[..]) > 2 || (args_count(a[..]) == 2 && args_at(a[..], 1) != "--open") {

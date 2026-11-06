@@ -19,17 +19,17 @@ Fp8Pair :: struct {status:Fp8Status;rows:int;columns:int;kind:u8;data_begin:int;
 Fp8Parsed :: struct {status:Fp8Status;entry:Fp8Entry;}
 
 // A safetensors file: 8-byte little-endian header length, JSON, payload.
-fp8_build :: (buffer:[]u8,header:string,payload:int)->[]u8 {
+fp8_build :: (buffer:[]u8,header:string,payload:int)->[]u8 #effects(all) {
     for i:0..<8 {buffer[i]=cast(u8)((header.count>>(8*i))&255);}
     for i:0..<header.count {buffer[8+i]=header[i];}
     return buffer[0..<8+header.count+payload];
 }
 FP8_TEST_HEADER :: "{\"__metadata__\":{\"format\":\"pt\"},\"w.weight_scale_inv\":{\"dtype\":\"F32\",\"shape\":[1,2],\"data_offsets\":[32768,32776]},\"w.weight\":{\"dtype\":\"F8_E4M3\",\"shape\":[128,256],\"data_offsets\":[0,32768]},\"norm\":{\"dtype\":\"BF16\",\"shape\":[4],\"data_offsets\":[32776,32784]}}";
-fp8_admit_text :: (header:string,payload:int,weight:string,scale:string)->Fp8Pair {
+fp8_admit_text :: (header:string,payload:int,weight:string,scale:string)->Fp8Pair #effects(all) {
     buffer:[40000]u8;file:=fp8_build(buffer[..],header,payload);
     return fp8_pair(file,weight,scale);
 }
-fp8_swap :: (text:string,from:string,to:string,buffer:[]u8)->string {
+fp8_swap :: (text:string,from:string,to:string,buffer:[]u8)->string #effects(all) {
     n:=0;i:=0;
     while i<text.count {
         if i+from.count<=text.count && text[i..<i+from.count]==from {for c:to {buffer[n]=c;n+=1;}i+=from.count;}
@@ -37,7 +37,7 @@ fp8_swap :: (text:string,from:string,to:string,buffer:[]u8)->string {
     }
     return cast(string)buffer[0..<n];
 }
-fp8_case :: (from:string,to:string,payload:int)->Fp8Status {
+fp8_case :: (from:string,to:string,payload:int)->Fp8Status #effects(all) {
     edit:[1024]u8;header:=fp8_swap(FP8_TEST_HEADER,from,to,edit[..]);
     return fp8_admit_text(header,payload,"w.weight","w.weight_scale_inv").status;
 }
@@ -159,26 +159,26 @@ fp8_case :: (from:string,to:string,payload:int)->Fp8Status {
         else {#assert r.status==Fp8Status.limit;}
     }
 }
-fp8_put :: (buffer:[]u8,start:int,text:string)->int {at:=start;for c:text {buffer[at]=c;at+=1;}return at;}
-fp8_digits :: (buffer:[]u8,start:int,value:int)->int {at:=start;
+fp8_put :: (buffer:[]u8,start:int,text:string)->int #effects(all) {at:=start;for c:text {buffer[at]=c;at+=1;}return at;}
+fp8_digits :: (buffer:[]u8,start:int,value:int)->int #effects(all) {at:=start;
     if value>=10 {buffer[at]=cast(u8)('0'+value/10);at+=1;}
     buffer[at]=cast(u8)('0'+value%10);return at+1;
 }
 
-fp8_dtype :: (s:string)->int {
+fp8_dtype :: (s:string)->int #effects(all) {
     if s=="F8_E4M3" {return FP8_DTYPE_E4M3;}
     if s=="F8_E8M0" {return FP8_DTYPE_E8M0;}
     if s=="F32" {return FP8_DTYPE_F32;}
     if s=="BF16" {return FP8_DTYPE_BF16;}
     return -1;
 }
-fp8_width :: (dtype:u8)->int {if dtype==FP8_DTYPE_F32 {return 4;}if dtype==FP8_DTYPE_BF16 {return 2;}return 1;}
-fp8_integer :: (j:[]Json)->int {
+fp8_width :: (dtype:u8)->int #effects(all) {if dtype==FP8_DTYPE_F32 {return 4;}if dtype==FP8_DTYPE_BF16 {return 2;}return 1;}
+fp8_integer :: (j:[]Json)->int #effects(all) {
     if json_next(j)!=JSON_NUMBER {return -1;}
     n:=json_int(json_text(j));if !n.ok {return -1;}
     return n.value;
 }
-fp8_parse :: (j:[]Json,name:string)->Fp8Parsed {
+fp8_parse :: (j:[]Json,name:string)->Fp8Parsed #effects(all) {
     if json_next(j)!=JSON_OBJECT {return Fp8Parsed.{status=Fp8Status.header};}
     e:=Fp8Entry.{name=name};d:=false;s:=false;o:=false;t:=json_next(j);
     while t!=JSON_OBJECT_END {
@@ -212,7 +212,7 @@ fp8_parse :: (j:[]Json,name:string)->Fp8Parsed {
     return Fp8Parsed.{entry=e};
 }
 // Bytes of a tensor, or 0 when the product passes the payload.
-fp8_bytes :: (e:Fp8Entry,payload:int)->int {
+fp8_bytes :: (e:Fp8Entry,payload:int)->int #effects(all) {
     bytes:=fp8_width(e.dtype);
     for i:0..<e.rank {
         if e.dims[i]>payload/bytes {return 0;}
@@ -220,7 +220,7 @@ fp8_bytes :: (e:Fp8Entry,payload:int)->int {
     }
     return bytes;
 }
-fp8_metadata :: (j:[]Json)->Fp8Status {
+fp8_metadata :: (j:[]Json)->Fp8Status #effects(all) {
     if json_next(j)!=JSON_OBJECT {return Fp8Status.header;}
     t:=json_next(j);
     while t!=JSON_OBJECT_END {
@@ -229,13 +229,13 @@ fp8_metadata :: (j:[]Json)->Fp8Status {
     }
     return Fp8Status.ok;
 }
-fp8_find :: (entries:[]Fp8Entry,name:string)->int {
+fp8_find :: (entries:[]Fp8Entry,name:string)->int #effects(all) {
     for i:0..<entries.count {if entries[i].name==name {return i;}}
     return -1;
 }
 
 // book:begin pair
-fp8_pair :: (file:[]u8,weight:string,scale:string)->Fp8Pair #export_c {
+fp8_pair :: (file:[]u8,weight:string,scale:string)->Fp8Pair #export_c #effects(all) {
     if file.count<8 {return Fp8Pair.{status=Fp8Status.offsets};}
     for i:2..<8 {if file[i]!=0 {return Fp8Pair.{status=Fp8Status.header};}}
     length:=cast(int)file[0]|cast(int)file[1]<<8;

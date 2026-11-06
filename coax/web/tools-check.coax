@@ -148,7 +148,7 @@ tc_vendored :: (m: Jv, path: string, body: [] u8) -> int {
   return TC_TOOL;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   list: [1048576] u8;
   ln := fs_read(LIST, list[..]);
   if ln < 0 { tool_errln("tools-check: run from the repo root (no coax/tools-port.txt here)"); return 2; }

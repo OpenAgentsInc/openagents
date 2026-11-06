@@ -31,12 +31,12 @@ OptPlan :: struct {search:[]string;selection:[]string;confirmation:[]string;excl
 // book:end codes
 
 // book:begin plan
-op_in :: (s:string,set:[]string)->bool {for x:set {if x==s {return true;}}return false;}
+op_in :: (s:string,set:[]string)->bool #effects(all) {for x:set {if x==s {return true;}}return false;}
 // Whether every ID of a is in b.
-op_subset :: (a:[]string,b:[]string)->bool {for x:a {if !op_in(x,b) {return false;}}return true;}
+op_subset :: (a:[]string,b:[]string)->bool #effects(all) {for x:a {if !op_in(x,b) {return false;}}return true;}
 // OP_DUPLICATE when an ID of a repeats in a or in any earlier array, else
 // OP_UNKNOWN when one is not a case, else OP_OK.
-op_fresh :: (a:[]string,earlier:[][]string,cases:[]string)->u32 {
+op_fresh :: (a:[]string,earlier:[][]string,cases:[]string)->u32 #effects(all) {
   for i:0..<a.count {
     if op_in(a[i],a[0..<i]) {return OP_DUPLICATE;}
     for e:earlier {if op_in(a[i],e) {return OP_DUPLICATE;}}
@@ -45,7 +45,7 @@ op_fresh :: (a:[]string,earlier:[][]string,cases:[]string)->u32 {
   return OP_OK;
 }
 
-opt_partition :: (p:OptPartition,cases:[]string)->u32 {
+opt_partition :: (p:OptPartition,cases:[]string)->u32 #effects(all) {
   arrays:=[3][]string.[p.development,p.held_out,p.excluded];
   for k:0..<3 {
     code:=op_fresh(arrays[k],arrays[0..<k],cases);
@@ -54,7 +54,7 @@ opt_partition :: (p:OptPartition,cases:[]string)->u32 {
   return OP_OK;
 }
 
-opt_plan :: (plan:OptPlan,p:OptPartition,cases:[]string)->u32 {
+opt_plan :: (plan:OptPlan,p:OptPartition,cases:[]string)->u32 #effects(all) {
   code:=opt_partition(p,cases);
   if code!=OP_OK {return code;}
   arrays:=[4][]string.[plan.search,plan.selection,plan.confirmation,plan.excluded];
@@ -72,7 +72,7 @@ opt_plan :: (plan:OptPlan,p:OptPartition,cases:[]string)->u32 {
   return OP_OK;
 }
 
-opt_trial :: (plan:OptPlan,phase:string,case_id:string)->u32 {
+opt_trial :: (plan:OptPlan,phase:string,case_id:string)->u32 #effects(all) {
   if phase=="search" && op_in(case_id,plan.search) {return OP_OK;}
   if phase=="selection" && op_in(case_id,plan.selection) {return OP_OK;}
   if phase=="confirmation" && op_in(case_id,plan.confirmation) {return OP_OK;}

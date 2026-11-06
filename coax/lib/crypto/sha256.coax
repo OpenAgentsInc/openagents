@@ -154,22 +154,22 @@ Sha256Work :: struct { h: [8] u32; block: [64] u8; total: u64; used: int; phase:
   #assert sha256_tagged_checked(cast(string)long_tag[..],input[..],out[..],false) == SHA_BAD_TAG;
 }
 
-sha256_state_size :: () -> int #export_c { return SHA_STATE_BYTES; }
-sha256_input_ok :: (n: int) -> bool { return n >= 0 && n <= CB_MAX_BYTES; }
-sha256_tag_ok :: (n: int) -> bool { return n >= 0 && n <= SHA_MAX_TAG; }
-sha256_request :: (input: int, output: int, overlap: bool) -> u32 {
+sha256_state_size :: () -> int #export_c #effects(all) { return SHA_STATE_BYTES; }
+sha256_input_ok :: (n: int) -> bool #effects(all) { return n >= 0 && n <= CB_MAX_BYTES; }
+sha256_tag_ok :: (n: int) -> bool #effects(all) { return n >= 0 && n <= SHA_MAX_TAG; }
+sha256_request :: (input: int, output: int, overlap: bool) -> u32 #effects(all) {
   if !sha256_input_ok(input) { return SHA_BAD_INPUT; }
   if !cb_span(output,0,32) { return SHA_BAD_OUTPUT; }
   if overlap { return SHA_ALIAS; }
   return SHA_OK;
 }
-sha256_update_limit :: (total: u64, count: int) -> u32 #export_c {
+sha256_update_limit :: (total: u64, count: int) -> u32 #export_c #effects(all) {
   if total > SHA_MAX_TOTAL { return SHA_BAD_STATE; }
   if !sha256_input_ok(count) { return SHA_BAD_INPUT; }
   if cast(u64)count > SHA_MAX_TOTAL - total { return SHA_LENGTH; }
   return SHA_OK;
 }
-sha256_unpack :: (state: [] u8) -> Sha256Work {
+sha256_unpack :: (state: [] u8) -> Sha256Work #effects(all) {
   w: Sha256Work;
   defer {secure_zero(w.h[..]);#assert crypto_zeroed(w.h[..]);}defer {secure_zero(w.block[..]);#assert crypto_zeroed(w.block[..]);}
   if state.count != SHA_STATE_BYTES { return w; }
@@ -183,7 +183,7 @@ sha256_unpack :: (state: [] u8) -> Sha256Work {
   for i: 0..<64 { w.block[i] = state[48 + i]; }
   w.ok = true; return w;
 }
-sha256_pack :: (w: Sha256Work, state: [] u8) -> u32 {
+sha256_pack :: (w: Sha256Work, state: [] u8) -> u32 #effects(all) {
   if state.count != SHA_STATE_BYTES { return SHA_BAD_STATE; }
   state[0]='S';state[1]='2';state[2]='5';state[3]='6';state[4]=1;state[5]=cast(u8)w.phase;state[6]=0;state[7]=cast(u8)w.used;
   for i: 0..<8 { state[8+i] = cast(u8)((w.total >> ((7-i)*8)) & 255); }
@@ -191,22 +191,22 @@ sha256_pack :: (w: Sha256Work, state: [] u8) -> u32 {
   for i: 0..<64 { state[48+i] = w.block[i]; }
   return SHA_OK;
 }
-sha256_emit :: (h: [] u32, out: [] u8) -> u32 {
+sha256_emit :: (h: [] u32, out: [] u8) -> u32 #effects(all) {
   if h.count != 8 || !cb_span(out.count,0,32) { return SHA_BAD_OUTPUT; }
   for i: 0..<8 { for j: 0..<4 { out[i*4+j] = cast(u8)((h[i] >> ((3-j)*8)) & 255); } }
   return SHA_OK;
 }
-sha256_init :: (state: [] u8) -> u32 #export_c {
+sha256_init :: (state: [] u8) -> u32 #export_c #effects(all) {
   w: Sha256Work;w.h=SHA_IV.words;w.phase=SHA_ACTIVE;
   defer {secure_zero(w.h[..]);#assert crypto_zeroed(w.h[..]);}
   return sha256_pack(w,state);
 }
-sha256_info :: (state: [] u8) -> Sha256Info #export_c {
+sha256_info :: (state: [] u8) -> Sha256Info #export_c #effects(all) {
   w:=sha256_unpack(state);if !w.ok { return Sha256Info.{error=SHA_BAD_STATE}; }
   defer {secure_zero(w.h[..]);#assert crypto_zeroed(w.h[..]);}defer {secure_zero(w.block[..]);#assert crypto_zeroed(w.block[..]);}
   return Sha256Info.{phase=w.phase,total=w.total,buffered=cast(u32)w.used};
 }
-sha256_update_checked :: (state: [] u8, input: [] u8, overlap: bool) -> u32 {
+sha256_update_checked :: (state: [] u8, input: [] u8, overlap: bool) -> u32 #effects(all) {
   w:=sha256_unpack(state);if !w.ok { return SHA_BAD_STATE; }
   defer {secure_zero(w.h[..]);#assert crypto_zeroed(w.h[..]);}defer {secure_zero(w.block[..]);#assert crypto_zeroed(w.block[..]);}
   if w.phase != SHA_ACTIVE { return SHA_PHASE; }
@@ -219,7 +219,7 @@ sha256_update_checked :: (state: [] u8, input: [] u8, overlap: bool) -> u32 {
   w.total+=cast(u64)input.count;
   return sha256_pack(w,state);
 }
-sha256_final_checked :: (state: [] u8, out: [] u8, overlap: bool) -> u32 {
+sha256_final_checked :: (state: [] u8, out: [] u8, overlap: bool) -> u32 #effects(all) {
   w:=sha256_unpack(state);if !w.ok { return SHA_BAD_STATE; }
   defer {secure_zero(w.h[..]);#assert crypto_zeroed(w.h[..]);}defer {secure_zero(w.block[..]);#assert crypto_zeroed(w.block[..]);}
   if !cb_span(out.count,0,32) { return SHA_BAD_OUTPUT; }
@@ -234,7 +234,7 @@ sha256_final_checked :: (state: [] u8, out: [] u8, overlap: bool) -> u32 {
   status:=sha256_emit(w.h[..],out);if status != SHA_OK {return status;}
   return sha256_pack(w,state);
 }
-sha256_hash_checked :: (input: [] u8, out: [] u8, overlap: bool) -> u32 {
+sha256_hash_checked :: (input: [] u8, out: [] u8, overlap: bool) -> u32 #effects(all) {
   status:=sha256_request(input.count,out.count,overlap);if status != SHA_OK {return status;}
   state:[112]u8;
   defer {secure_zero(state[..]);#assert crypto_zeroed(state[..]);}
@@ -245,7 +245,7 @@ sha256_hash_checked :: (input: [] u8, out: [] u8, overlap: bool) -> u32 {
 // book:begin tagged-init
 // A fresh state that has absorbed SHA256(tag) || SHA256(tag): one full block,
 // so the state holds the tag's midstate and nothing buffered.
-sha256_tagged_init :: (state: [] u8, tag: string) -> u32 {
+sha256_tagged_init :: (state: [] u8, tag: string) -> u32 #effects(all) {
   if !sha256_tag_ok(tag.count) {return SHA_BAD_TAG;}
   if state.count != SHA_STATE_BYTES {return SHA_BAD_STATE;}
   digest:=S_hash(tag);if digest.error != 0 {return digest.error;}
@@ -255,17 +255,17 @@ sha256_tagged_init :: (state: [] u8, tag: string) -> u32 {
   return sha256_update_checked(state,tag_hash[..],false);
 }
 // book:end tagged-init
-sha256_tagged_checked :: (tag: string, input: [] u8, out: [] u8, overlap: bool) -> u32 {
+sha256_tagged_checked :: (tag: string, input: [] u8, out: [] u8, overlap: bool) -> u32 #effects(all) {
   if !sha256_tag_ok(tag.count) {return SHA_BAD_TAG;}
   status:=sha256_request(input.count,out.count,overlap);if status != SHA_OK {return status;}
   state:[112]u8;defer {secure_zero(state[..]);#assert crypto_zeroed(state[..]);}status=sha256_tagged_init(state[..],tag);if status != SHA_OK {return status;}
   status=sha256_update_checked(state[..],input,false);if status != SHA_OK {return status;}
   return sha256_final_checked(state[..],out,false);
 }
-sha256_bip340_name :: (tag: int) -> string {
+sha256_bip340_name :: (tag: int) -> string #effects(all) {
   if tag == 0 {return "BIP0340/aux";}if tag == 1 {return "BIP0340/nonce";}if tag == 2 {return "BIP0340/challenge";}return "";
 }
-sha256_bip340_checked :: (tag: int, input: [] u8, out: [] u8, overlap: bool) -> u32 {
+sha256_bip340_checked :: (tag: int, input: [] u8, out: [] u8, overlap: bool) -> u32 #effects(all) {
   if tag < 0 || tag > 2 {return SHA_BAD_TAG;}
   return sha256_tagged_checked(sha256_bip340_name(tag),input,out,overlap);
 }

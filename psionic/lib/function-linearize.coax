@@ -70,17 +70,17 @@
   p.count=1;p.output=0;p.nodes[0].input_base=1;f.program=p;l=fx_layout(f);point:=[2]f32.[0,2];direction:=[2]f64.[1,1];w.direction=direction[..];big:f32=1e30f32;point[0]=big*big;#assert fx_forward(l,point[..],w)==FxStatus.number;point[0]=0;#assert fx_forward(l,point[..],w)==FxStatus.ok;direction[0]=infinity;#assert fx_tangent(l,point[..],w)==FxStatus.number;direction[0]=1;#assert fx_tangent(l,point[..],w)==FxStatus.ok;
   seed[0]=infinity;#assert fx_reverse(l,point[..],w)==FxStatus.number && fx_pullback(l,point[..],w)==FxStatus.number;
 }
-fx_dot_read :: (l:FxLayout,node:int,item:int,dots:[]f64)->f64 {return dots[l.tape.grad_at[l.tape.root[node]]+tv_offset(l.tape.plan.values[node].view,item)];}
-fx_gradient :: (l:FxLayout,index:int,grad:[]f64)->f64 {
+fx_dot_read :: (l:FxLayout,node:int,item:int,dots:[]f64)->f64 #effects(all) {return dots[l.tape.grad_at[l.tape.root[node]]+tv_offset(l.tape.plan.values[node].view,item)];}
+fx_gradient :: (l:FxLayout,index:int,grad:[]f64)->f64 #effects(all) {
   sum:f64=0;for i:0..<l.tape.program.count {n:=l.tape.program.nodes[i];if n.op==TiOp.input && index>=n.input_base && index<n.input_base+n.storage {sum+=grad[l.tape.grad_at[i]+index-n.input_base];}}return sum;
 }
-fx_forward :: (l:FxLayout,x:[]f32,w:FxWork)->FxStatus {
+fx_forward :: (l:FxLayout,x:[]f32,w:FxWork)->FxStatus #effects(all) {
   for i:0..<l.domain {if !tik_finite(x[i]) {return FxStatus.number;}}
   for i:0..<l.tape.plan.flag_elements {w.flags[i]=0;}
   for command:0..<l.tape.plan.launches-1 {call:=ti_lower(l.tape.plan,command);for j:0..<call.items {tik_run(j,call.meta[..],call.epsilon,x,w.values,w.values,w.flags);}}
   for i:0..<l.tape.plan.flag_elements {if w.flags[i]!=0 {return FxStatus.number;}}return FxStatus.ok;
 }
-fx_tangent :: (l:FxLayout,x:[]f32,w:FxWork)->FxStatus {
+fx_tangent :: (l:FxLayout,x:[]f32,w:FxWork)->FxStatus #effects(all) {
   for j:0..<l.domain {if !fx_finite(w.direction[j]) {return FxStatus.number;}}
   for i:0..<l.tape.program.count {
     n:=l.tape.program.nodes[i];if n.op==TiOp.input {for j:0..<n.storage {w.dots[l.tape.grad_at[i]+j]=w.direction[n.input_base+j];}}
@@ -88,7 +88,7 @@ fx_tangent :: (l:FxLayout,x:[]f32,w:FxWork)->FxStatus {
     if l.tape.root[i]==i {for j:0..<l.tape.plan.values[i].storage {if !fx_finite(w.dots[l.tape.grad_at[i]+j]) {return FxStatus.number;}}}
   }return FxStatus.ok;
 }
-fx_dot_rule :: (l:FxLayout,i:int,x:[]f32,w:FxWork) {
+fx_dot_rule :: (l:FxLayout,i:int,x:[]f32,w:FxWork) #effects(all) {
   t:=l.tape;n:=t.program.nodes[i];s:=t.plan.values[i].view.shape;a:=t.plan.values[n.a].view.shape;
   if n.op==TiOp.layernorm {fx_dot_norm(l,i,x,w);return;}
   for j:0..<ad_count(s) {
@@ -101,19 +101,19 @@ fx_dot_rule :: (l:FxLayout,i:int,x:[]f32,w:FxWork) {
     w.dots[t.grad_at[i]+j]=value;
   }
 }
-fx_dot_norm :: (l:FxLayout,i:int,x:[]f32,w:FxWork) {
+fx_dot_norm :: (l:FxLayout,i:int,x:[]f32,w:FxWork) #effects(all) {
   t:=l.tape;n:=t.program.nodes[i];a:=t.plan.values[n.a].view.shape;width:=a.dims[a.rank-1];
   for row:0..<ad_count(a)/width {base:=row*width;mean:f64=0;dm:f64=0;for k:0..<width {mean+=ad_read(t,n.a,base+k,x,w.values);dm+=fx_dot_read(l,n.a,base+k,w.dots);}mean/=f64(width);dm/=f64(width);variance:f64=0;covariance:f64=0;
     for k:0..<width {center:=ad_read(t,n.a,base+k,x,w.values)-mean;variance+=center*center;covariance+=center*(fx_dot_read(l,n.a,base+k,w.dots)-dm);}sigma:=sqrt(variance/f64(width)+f64(n.epsilon));ds:=covariance/f64(width)/sigma;
     for k:0..<width {w.dots[t.grad_at[i]+base+k]=(fx_dot_read(l,n.a,base+k,w.dots)-dm-(ad_read(t,n.a,base+k,x,w.values)-mean)*ds/sigma)/sigma;}
   }
 }
-fx_pullback :: (l:FxLayout,x:[]f32,w:FxWork)->FxStatus {
+fx_pullback :: (l:FxLayout,x:[]f32,w:FxWork)->FxStatus #effects(all) {
   for j:0..<l.codomain {if !fx_finite(w.seed[j]) {return FxStatus.number;}}for j:0..<l.cells {w.grads[j]=0;}
   for j:0..<l.codomain {ad_add(l.tape,l.tape.program.output,j,w.seed[j],w.grads);}
   for pass:0..<l.tape.program.count {i:=l.tape.program.count-1-pass;if !ad_material(l.tape.program.nodes[i].op) {continue;}ad_rule(l.tape,i,x,w.values,w.grads);for j:0..<l.cells {if !fx_finite(w.grads[j]) {return FxStatus.number;}}}return FxStatus.ok;
 }
-fx_reverse :: (l:FxLayout,x:[]f32,w:FxWork)->FxStatus {
+fx_reverse :: (l:FxLayout,x:[]f32,w:FxWork)->FxStatus #effects(all) {
   for j:0..<l.codomain {if !fx_finite(w.seed[j]) {return FxStatus.number;}}for j:0..<l.cells {w.grads[j]=0;w.grad_dots[j]=0;}
   for j:0..<l.codomain {ad_add(l.tape,l.tape.program.output,j,w.seed[j],w.grads);}
   for pass:0..<l.tape.program.count {i:=l.tape.program.count-1-pass;if !ad_material(l.tape.program.nodes[i].op) {continue;}
@@ -121,7 +121,7 @@ fx_reverse :: (l:FxLayout,x:[]f32,w:FxWork)->FxStatus {
     for j:0..<l.cells {if !fx_finite(w.grads[j]) || !fx_finite(w.grad_dots[j]) {return FxStatus.number;}}
   }return FxStatus.ok;
 }
-fx_cross_rule :: (l:FxLayout,i:int,x:[]f32,w:FxWork) {
+fx_cross_rule :: (l:FxLayout,i:int,x:[]f32,w:FxWork) #effects(all) {
   t:=l.tape;n:=t.program.nodes[i];s:=t.plan.values[i].view.shape;a:=t.plan.values[n.a].view.shape;
   if n.op==TiOp.layernorm {fx_cross_norm(l,i,x,w);return;}
   if n.op!=TiOp.multiply && n.op!=TiOp.matmul {return;}
@@ -131,7 +131,7 @@ fx_cross_rule :: (l:FxLayout,i:int,x:[]f32,w:FxWork) {
     else {for k:0..<a.dims[1] {ja:=c[0]*a.dims[1]+k;jb:=k*b.dims[1]+c[1];ad_add(t,n.a,ja,g*fx_dot_read(l,n.b,jb,w.dots),w.grad_dots);ad_add(t,n.b,jb,g*fx_dot_read(l,n.a,ja,w.dots),w.grad_dots);}}
   }
 }
-fx_cross_norm :: (l:FxLayout,i:int,x:[]f32,w:FxWork) {
+fx_cross_norm :: (l:FxLayout,i:int,x:[]f32,w:FxWork) #effects(all) {
   t:=l.tape;n:=t.program.nodes[i];a:=t.plan.values[n.a].view.shape;width:=a.dims[a.rank-1];
   for row:0..<ad_count(a)/width {base:=row*width;mean:f64=0;dm:f64=0;for k:0..<width {mean+=ad_read(t,n.a,base+k,x,w.values);dm+=fx_dot_read(l,n.a,base+k,w.dots);}mean/=f64(width);dm/=f64(width);variance:f64=0;covariance:f64=0;
     for k:0..<width {center:=ad_read(t,n.a,base+k,x,w.values)-mean;variance+=center*center;covariance+=center*(fx_dot_read(l,n.a,base+k,w.dots)-dm);}sigma:=sqrt(variance/f64(width)+f64(n.epsilon));r:=1/sigma;dr:= -covariance/f64(width)*r*r*r;m1:f64=0;m2:f64=0;dm2:f64=0;

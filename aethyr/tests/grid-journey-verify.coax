@@ -52,7 +52,7 @@ gv_verify :: (s:[]GridJourneyArtifacts,dir:string)->bool {
   }
   return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}
   dir:=args_at(a[..],0);s:[1]GridJourneyArtifacts;
   ok:=gv_verify(s[..],dir);changed:=false;

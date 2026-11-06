@@ -542,9 +542,9 @@ put6 :: (out: [] f32, i: int, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) {
 
 // ---- the page's state
 
-coaxial_everglade_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_everglade_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_everglade_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_everglade_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_everglade_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_everglade_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 ground_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return verse_terrain_height(everglade_ground(), s[0].heights[..], x, z); }
 // Where you stand: the ground, the bridge's deck over the river, or ice on the water (everglade-frost.coax).
@@ -554,7 +554,7 @@ walk_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return hi(everglade_walk_h
 // everglade_frame: your medium, your feet's height in the water, your
 // breath's share and Exhaustion from going without it; its draw (vertices
 // a patch and patches, none until it is built) and its floats.
-everglade_water :: (s: [] Everglade, medium: int, feet: f32, breath: f32, gasps: int, vertices: int, patches: int, floats: [] f32, float_n: int) #export_c {
+everglade_water :: (s: [] Everglade, medium: int, feet: f32, breath: f32, gasps: int, vertices: int, patches: int, floats: [] f32, float_n: int) #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   s[0].water = ifx medium >= WATER_GROUND && medium <= WATER_BOAT then medium else WATER_GROUND;
   s[0].swim_feet = ifx finite(feet) then feet else 0.0f32;
@@ -569,19 +569,19 @@ everglade_water :: (s: [] Everglade, medium: int, feet: f32, breath: f32, gasps:
 clamp_i :: (a: int, low: int, high: int) -> int { if a < low { return low; } if a > high { return high; } return a; }
 // The ground's height under each row's river (the face builds the river from them).
 // Then the ponds' rows, x, z, rim radius and level each, after the river's EG_CELLS + 1 levels.
-everglade_levels :: (s: [] Everglade, out: [] f32) #export_c {
+everglade_levels :: (s: [] Everglade, out: [] f32) #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   everglade_river_levels(s[0].heights[..], out);
   if out.count >= EG_CELLS + 1 + EG_PONDS * 4 { everglade_pond_rows(s[0].heights[..], out[EG_CELLS + 1..<out.count]); }
 }
 // On the bridge's deck you walk over the river, not in it.
 // Where its plank is down there is no deck: you are in the river (everglade-spells.coax sp_deck_out).
-everglade_on_bridge :: (s: [] Everglade, x: f32, z: f32) -> bool #export_c {
+everglade_on_bridge :: (s: [] Everglade, x: f32, z: f32) -> bool #export_c #effects(all) {
   return everglade_deck_holds(sp_deck_out_at(s, x, z), x, z);
 }
 // Where the river's uniform block and the eye are in the uniforms.
-everglade_water_at :: () -> int #export_c { return U_WATER; }
-everglade_fx_at :: () -> int #export_c { return U_FX; }
+everglade_water_at :: () -> int #export_c #effects(all) { return U_WATER; }
+everglade_fx_at :: () -> int #export_c #effects(all) { return U_FX; }
 // The water on the ground's grid (W6, W8): the river's level along its channel (and its current
 // south at its mean speed), each pond's still level out to 2 m past its rim; the rest dry.
 water_grid_build :: (s: [] Everglade) {
@@ -629,18 +629,18 @@ water_hit :: (s: [] Everglade, x: f32, z: f32, kind: int, size: f32) {
   s[0].hit_n += 1;
 }
 // The splashes since the face last asked (x, z, kind, size each), and none after.
-everglade_water_hits :: (s: [] Everglade, out: [] f32) -> int #export_c {
+everglade_water_hits :: (s: [] Everglade, out: [] f32) -> int #export_c #effects(all) {
   n := lo_int(s[0].hit_n, out.count / 4);
   for k: 0..<n * 4 { out[k] = s[0].water_hits[k]; }
   s[0].hit_n = 0;
   return n;
 }
 // The rowboat you may board this frame (-1 none), from the face.
-everglade_boat_near :: (s: [] Everglade, i: int) #export_c { s[0].near_boat = i; }
+everglade_boat_near :: (s: [] Everglade, i: int) #export_c #effects(all) { s[0].near_boat = i; }
 // True once when a #rowboat hash asked to start you in a boat.
-everglade_boat_start :: (s: [] Everglade) -> bool #export_c { a := s[0].boat_start; s[0].boat_start = false; return a; }
+everglade_boat_start :: (s: [] Everglade) -> bool #export_c #effects(all) { a := s[0].boat_start; s[0].boat_start = false; return a; }
 // True once when E (or the prompt) asked to board the boat near you or step ashore from yours.
-everglade_boat_take :: (s: [] Everglade) -> bool #export_c { a := s[0].boat_ask; s[0].boat_ask = false; return a; }
+everglade_boat_take :: (s: [] Everglade) -> bool #export_c #effects(all) { a := s[0].boat_ask; s[0].boat_ask = false; return a; }
 // E at a rowboat: the face boards it (or steps you ashore) on your page; in a room the room is asked
 // too (WE_BOAT, #12861), so its world rows the boat with your inputs as your page does and every page
 // sees it move (the boat's row).
@@ -652,11 +652,11 @@ boat_use :: (s: [] Everglade) {
 boat_prompt_on :: (s: [] Everglade) -> bool {
   return !s[0].above && s[0].talk < 0 && !s[0].board && s[0].near < 0 && !s[0].near_board && s[0].doors.near < 0 && (s[0].near_boat >= 0 || s[0].water == WATER_BOAT);
 }
-everglade_eye_at :: () -> int #export_c { return U_EYE; }
+everglade_eye_at :: () -> int #export_c #effects(all) { return U_EYE; }
 // Whether this frame draws for a phone: the river's mesh is coarser there.
-everglade_phone :: (s: [] Everglade) -> bool #export_c { return phone(s); }
+everglade_phone :: (s: [] Everglade) -> bool #export_c #effects(all) { return phone(s); }
 // Afloat, you may not jump (river.coax: a swimmer has nothing to push from).
-everglade_afloat :: (s: [] Everglade) -> bool #export_c { return s[0].water >= WATER_SWIMMING; }
+everglade_afloat :: (s: [] Everglade) -> bool #export_c #effects(all) { return s[0].water >= WATER_SWIMMING; }
 
 everglade_start :: (s: [] Everglade) {
   s[0].started = true;
@@ -898,7 +898,7 @@ plant_thicket :: (s: [] Everglade) {
 
 // Keeps you inside the world's edge (plan.coax EG_BOUND), where the thicket stands: a step past
 // it slides along it. The woods are open; their trunks and rocks stand in your way as bodies.
-everglade_hold :: (s: [] Everglade, ox: f32, oz: f32, nx: f32, nz: f32) -> Point #export_c {
+everglade_hold :: (s: [] Everglade, ox: f32, oz: f32, nx: f32, nz: f32) -> Point #export_c #effects(all) {
   b := f32(EG_BOUND);
   return v3(clamp(nx, -b, b), 0, clamp(nz, -b, b));
 }
@@ -1020,7 +1020,7 @@ whole_at :: (line: string, from: int) -> int {
   while i < line.count && line[i] >= '0' && line[i] <= '9' { v = v * 10 + cast(int) (line[i] - '0'); i += 1; any = true; }
   return ifx any then v else -1;
 }
-everglade_catalog :: (s: [] Everglade, text: string) #export_c {
+everglade_catalog :: (s: [] Everglade, text: string) #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   for m: 0..<KIT_MESHES { s[0].kit_first[m] = 0; s[0].kit_count[m] = 0; }
   for k: 0..<KIT_TREES * 3 { s[0].canopy_rgb[k] = 0; }
@@ -1083,8 +1083,8 @@ everglade_catalog :: (s: [] Everglade, text: string) #export_c {
   s[0].pack_ready = s[0].identity_first >= 0;
   spells_catalog(s, text);
 }
-everglade_pack_failed :: (s: [] Everglade) #export_c { if !s[0].pack_ready { s[0].pack_failed = true; } }
-everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
+everglade_pack_failed :: (s: [] Everglade) #export_c #effects(all) { if !s[0].pack_ready { s[0].pack_failed = true; } }
+everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c #effects(all) {
   everglade_guard_message(s, kind, text);
   if kind == 601 || kind == 603 { s[0].guide.asked=false; s[0].guide.help_requested=false; s[0].guide.key_down=false; s[0].guide.finger= -1; }
   // hidden and shown, through the shared lifecycle profile (everglade-net.coax net_life, #12856); a blur
@@ -1129,11 +1129,11 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
   if loaded >= 0 && total > 0 { s[0].pack_loaded = loaded; s[0].pack_total = total; }
 }
 
-everglade_grass_instances :: (s: [] Everglade) -> int #export_c { return s[0].grass_n; }
-everglade_walls :: (s: [] Everglade) -> int #export_c { if !s[0].started { everglade_start(s); } return s[0].wall_n; }
+everglade_grass_instances :: (s: [] Everglade) -> int #export_c #effects(all) { return s[0].grass_n; }
+everglade_walls :: (s: [] Everglade) -> int #export_c #effects(all) { if !s[0].started { everglade_start(s); } return s[0].wall_n; }
 // The walls and bodies in your way: on the bridge's deck its rails too, off it the piles too.
-everglade_walls_on :: (s: [] Everglade, deck: bool) -> int #export_c { return everglade_walls(s) + (ifx deck then 2 else 0); }
-everglade_bodies_on :: (s: [] Everglade, deck: bool) -> int #export_c {
+everglade_walls_on :: (s: [] Everglade, deck: bool) -> int #export_c #effects(all) { return everglade_walls(s) + (ifx deck then 2 else 0); }
+everglade_bodies_on :: (s: [] Everglade, deck: bool) -> int #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   return ifx deck then 1 else BODIES + ab_stone_bodies(s, s[0].bodies[..], BODIES);
 }
@@ -1248,23 +1248,23 @@ walk_toward :: (s: [] Everglade, from: Point, to: Point, steps: int) -> Point {
 }
 
 // The same with the trunks and rocks round (x, z), where you stand (forest_bodies).
-everglade_bodies_near :: (s: [] Everglade, deck: bool, x: f32, z: f32) -> int #export_c {
+everglade_bodies_near :: (s: [] Everglade, deck: bool, x: f32, z: f32) -> int #export_c #effects(all) {
   n := everglade_bodies_on(s, deck);
   if deck { return n; }
   n += door_bodies(s, s[0].bodies[..], n, x, z);   // the doors' leaves near you (everglade-doors.coax)
   n += gate_bodies(s, s[0].bodies[..], n, x, z);   // the gates near you, while they are shut
   return n + forest_bodies(s, s[0].bodies[..], n, x, z);
 }
-everglade_spawn :: (s: [] Everglade) -> Point #export_c { if !s[0].started { everglade_start(s); } return s[0].spawn; }
-everglade_spawn_face :: (s: [] Everglade) -> f32 #export_c { return s[0].spawn_face; }
+everglade_spawn :: (s: [] Everglade) -> Point #export_c #effects(all) { if !s[0].started { everglade_start(s); } return s[0].spawn; }
+everglade_spawn_face :: (s: [] Everglade) -> f32 #export_c #effects(all) { return s[0].spawn_face; }
 // The ground's height at (x, z): the room server stands what it runs on it (coax/web/room/room-world.c).
-everglade_height :: (s: [] Everglade, x: f32, z: f32) -> f32 #export_c { if !s[0].started { everglade_start(s); } return ground_at(s, x, z); }
+everglade_height :: (s: [] Everglade, x: f32, z: f32) -> f32 #export_c #effects(all) { if !s[0].started { everglade_start(s); } return ground_at(s, x, z); }
 // True once when the face should put you at the spawn again.
-everglade_warp :: (s: [] Everglade) -> bool #export_c { w := s[0].warp; s[0].warp = false; return w; }
+everglade_warp :: (s: [] Everglade) -> bool #export_c #effects(all) { w := s[0].warp; s[0].warp = false; return w; }
 
 // The location's hash: "above" opens on the map; a place's id starts you on
 // the street nearest it, facing it.
-everglade_hash :: (s: [] Everglade, hash: string) #export_c {
+everglade_hash :: (s: [] Everglade, hash: string) #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   everglade_guard_invalidate(s);
   // "road+paint": the view, drawn without the world's names (art-styles.md 15: the style check measures
@@ -1402,7 +1402,7 @@ hold_bit :: (key: int) -> int {
   return 0;
 }
 
-everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
+everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   if ega_key(s, key) { return true; }   // a SETTINGS row waiting for its key, or Esc shutting the pane (everglade-access.coax)
   if join_key(s, key) { return true; }   // the CHARACTER picker takes the keys while it is up
@@ -1435,7 +1435,7 @@ eg_play_key :: (s: [] Everglade, key: int, mods: int) -> bool {
   return true;
 }
 
-everglade_key_up :: (s: [] Everglade, raw: int, mods: int) -> bool #export_c {
+everglade_key_up :: (s: [] Everglade, raw: int, mods: int) -> bool #export_c #effects(all) {
   key := eg_key_play(s, raw);
   if key == 0 { return false; }
   if key == 'g' || key == 'G' { s[0].guide.key_down=false; }
@@ -1447,13 +1447,13 @@ everglade_key_up :: (s: [] Everglade, raw: int, mods: int) -> bool #export_c {
   return true;
 }
 
-everglade_blur :: (s: [] Everglade) #export_c { everglade_guard_focus(s, false); s[0].guide.key_down=false; s[0].guide.finger= -1; s[0].guide.asked=false; s[0].guide.help_requested=false; s[0].held = 0; s[0].drag_on = false; s[0].map_finger = -1; s[0].talk_finger = -1; s[0].board_finger = -1; }
+everglade_blur :: (s: [] Everglade) #export_c #effects(all) { everglade_guard_focus(s, false); s[0].guide.key_down=false; s[0].guide.finger= -1; s[0].guide.asked=false; s[0].guide.help_requested=false; s[0].held = 0; s[0].drag_on = false; s[0].map_finger = -1; s[0].talk_finger = -1; s[0].board_finger = -1; }
 
 in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 
 // A mouse drag turns the camera; a finger on MAP presses it; any other
 // finger is the face's (the sticks), so this says it isn't used.
-everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   // a slot's card shows only while a finger holds the slot (a long press): any finger lifted, or a
   // new one down, closes it first, whichever handler then takes the touch; the slot finger's own
@@ -1502,7 +1502,7 @@ everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id
   return true;
 }
 
-everglade_wheel :: (s: [] Everglade, dy: f32) #export_c {
+everglade_wheel :: (s: [] Everglade, dy: f32) #export_c #effects(all) {
   if finite(dy) { s[0].orbit = verse_orbit_zoom(s[0].orbit, clamp(dy, -400, 400) * f32(WHEEL_ZOOM)); }
 }
 
@@ -1513,7 +1513,7 @@ axis :: (held: int, plus: int, minus: int) -> f32 {
   return a;
 }
 
-everglade_controls :: (s: [] Everglade, dt: f32, dyaw: f32, dpitch: f32) #export_c {
+everglade_controls :: (s: [] Everglade, dt: f32, dyaw: f32, dpitch: f32) #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   h := s[0].held;
   s[0].key_x = axis(h, HOLD_RIGHT, HOLD_LEFT);
@@ -1538,7 +1538,7 @@ you_inside :: (s: [] Everglade) -> bool {
   return (verse_orbit_inside(o) || pulled) && s[0].lift < 0.5;
 }
 
-everglade_player_theta :: (s: [] Everglade) -> f32 #export_c { return wrap_angle(s[0].orbit.yaw + f32(PI)); }
+everglade_player_theta :: (s: [] Everglade) -> f32 #export_c #effects(all) { return wrap_angle(s[0].orbit.yaw + f32(PI)); }
 
 // ---- talking (eg-people)
 
@@ -1823,8 +1823,8 @@ talk_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
 
 // The face's side: the question to send (its bytes in ask), that it went,
 // and the answer ("STATUS\n" then the server's JSON).
-everglade_ask :: (s: [] Everglade) -> int #export_c { return s[0].ask_n; }
-everglade_ask_sent :: (s: [] Everglade) #export_c { s[0].ask_n = 0; }
+everglade_ask :: (s: [] Everglade) -> int #export_c #effects(all) { return s[0].ask_n; }
+everglade_ask_sent :: (s: [] Everglade) #export_c #effects(all) { s[0].ask_n = 0; }
 
 // The "text" of the server's answer, unescaped, into out; its length.
 answer_text :: (body: string, out: [] u8) -> int {
@@ -1856,7 +1856,7 @@ answer_text :: (body: string, out: [] u8) -> int {
   }
   return n;
 }
-everglade_answer :: (s: [] Everglade, reply: string) #export_c {
+everglade_answer :: (s: [] Everglade, reply: string) #export_c #effects(all) {
   if s[0].talk < 0 || !s[0].waiting { return; }
   s[0].waiting = false;
   ok := reply.count > 4 && reply[0..<4] == "200\n";
@@ -1867,17 +1867,17 @@ everglade_answer :: (s: [] Everglade, reply: string) #export_c {
 }
 
 // The face mints a player key when the browser has none; the page keeps it.
-everglade_keep_player :: (s: [] Everglade, record: string) #export_c {
+everglade_keep_player :: (s: [] Everglade, record: string) #export_c #effects(all) {
   if s[0].action == ACT_KEEP { s[0].action = 0; s[0].dirty = true; }   // the save goes next frame
   if s[0].action != 0 || record.count > OUTBOX { return; }
   for i: 0..<record.count { s[0].outbox[i] = record[i]; }
   s[0].out_n = record.count; s[0].action = ACT_PLAYER;
 }
-everglade_action :: (s: [] Everglade) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
-everglade_action_done :: (s: [] Everglade) #export_c { s[0].out_n = 0; }
+everglade_action :: (s: [] Everglade) -> int #export_c #effects(all) { a := s[0].action; s[0].action = 0; return a; }
+everglade_action_done :: (s: [] Everglade) #export_c #effects(all) { s[0].out_n = 0; }
 
 // While you talk, the phone's keyboard comes up over the typed line.
-everglade_wants_text :: (s: [] Everglade) -> bool #export_c { return s[0].talk >= 0 || s[0].chat.typing || redit_typing(s[0].ev.ed[..]); }
+everglade_wants_text :: (s: [] Everglade) -> bool #export_c #effects(all) { return s[0].talk >= 0 || s[0].chat.typing || redit_typing(s[0].ev.ed[..]); }
 
 // ---- the scene
 
@@ -3435,12 +3435,12 @@ weather_frame :: (s: [] Everglade, u: [] f32, still: bool) {
   }
   u[U_EYE + 3] *= 1 + 4.0 * cast(f32) w.fog + 1.5 * cast(f32) w.rain;
 }
-everglade_rise :: (s: [] Everglade) -> f32 #export_c { return s[0].rise; }
-everglade_flow_gain :: (s: [] Everglade) -> f32 #export_c { return ifx s[0].flow_gain > 0 then s[0].flow_gain else 1.0f32; }
+everglade_rise :: (s: [] Everglade) -> f32 #export_c #effects(all) { return s[0].rise; }
+everglade_flow_gain :: (s: [] Everglade) -> f32 #export_c #effects(all) { return ifx s[0].flow_gain > 0 then s[0].flow_gain else 1.0f32; }
 
 // The motion your controls ask for this frame (verse_player_asked), from the face before the frame:
 // the follow camera turns toward it, never toward a velocity a collider or a room's correction set (#12777).
-everglade_intent :: (s: [] Everglade, x: f32, z: f32) #export_c { s[0].intent_x = x; s[0].intent_z = z; }
+everglade_intent :: (s: [] Everglade, x: f32, z: f32) #export_c #effects(all) { s[0].intent_x = x; s[0].intent_z = z; }
 
 camera_frame :: (s: [] Everglade, feet: Point, vx: f32, vz: f32, dt: f32) -> Shot {
   speed := sqrt(vx * vx + vz * vz);
@@ -4095,7 +4095,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
 
 everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
                     fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32,
-                    move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c {
+                    move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   if u.count < UNIFORM_FLOATS { return 0; }
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
@@ -4312,17 +4312,17 @@ board_middle :: () -> Point {
 }
 
 // While the map shows, while you talk or read the board, you stand still.
-everglade_busy :: (s: [] Everglade) -> bool #export_c { return s[0].above || s[0].talk >= 0 || s[0].board || watch_down(s) || join_picking(s); }
+everglade_busy :: (s: [] Everglade) -> bool #export_c #effects(all) { return s[0].above || s[0].talk >= 0 || s[0].board || watch_down(s) || join_picking(s); }
 
 // Nothing draws until the pack is in: its index buffer holds the shapes' indices too.
-everglade_draws :: (s: [] Everglade) -> int #export_c { return ifx s[0].pack_ready then DRAWS else 0; }
-everglade_store_cap :: (k: int) -> int #export_c {
+everglade_draws :: (s: [] Everglade) -> int #export_c #effects(all) { return ifx s[0].pack_ready then DRAWS else 0; }
+everglade_store_cap :: (k: int) -> int #export_c #effects(all) {
   if k == 0 { return EG_GROUND_POINTS * 2 * 4; }
   if k == 2 { return PALETTE_FLOATS * 4; }
   return ALL_OBJECTS * OBJECT_FLOATS * 4;
 }
 // What of store k the host uploads this frame: the raid's people's part only while a raid is drawn.
-everglade_store_used :: (s: [] Everglade, k: int) -> int #export_c {
+everglade_store_used :: (s: [] Everglade, k: int) -> int #export_c #effects(all) {
   if k == 2 { return ifx rp_drawn(s) then PALETTE_FLOATS * 4 else RAID_PAL_AT * 4; }
   if k == 1 { return ifx rp_drawn(s) then ALL_OBJECTS * OBJECT_FLOATS * 4 else RAID_AT * OBJECT_FLOATS * 4; }
   return everglade_store_cap(k);

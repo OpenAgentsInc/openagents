@@ -5,7 +5,7 @@ qm_verify :: (e:PeEnv,gate:string,root:string,name:string,exit:string,before:str
   argv:=[24]string.[gate,"verify","--repo",root,"--coax",e.coax,"--accept",accept,"--unit",unit,"--seal",seal,"--checkpoint-before",before,"--checkpoint-after",after,"--engine-exit",exit,"--elapsed-ms","10","--budget-ms","1000","--out",out];
   pe_cmd(e,argv[..],r);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}gate:=args_value(a[..],"--gate","");cb:[4096]u8;coax:=proc_getenv("COAX",cb[..]);tb:[4096]u8;root:=fs_temp("coder-qualification-smoke-",tb[..]);
   if gate.count==0 || coax.count==0 || root.count==0 {return 2;}
   e:=PeEnv.{repo=root,cwd=root,home=root,coax=coax};ok:=qm_put(root,"AGENTS.md","protected rules\n") && qm_put(root,"unit.coax","f :: (x:int)->int {return x+1;}\n#test \"unit\" {#assert f(0)==1 && f(-2)==-1 && f(3)==4;}\n");

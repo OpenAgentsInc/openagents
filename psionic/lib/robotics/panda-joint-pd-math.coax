@@ -29,9 +29,9 @@
  for i:0..<7 {g[i].value=pa_torque_limit(i);}out=pjp_assemble(x,g);#assert out.clipped==0;for i:0..<7 {#assert out.command[i].value==g[i].value;}
 }
 
-pjp_default_kp :: ()->[7]pfku.Quantity(PjpStiffness,f64) #export_c {values:=[7]f64.[60,60,60,60,40,20,10];out:[7]pfku.Quantity(PjpStiffness,f64);for i:0..<7 {out[i].value=values[i];}return out;}
-pjp_default_kd :: ()->[7]pfku.Quantity(PjpDamping,f64) #export_c {values:=[7]f64.[8,8,8,8,5,3,2];out:[7]pfku.Quantity(PjpDamping,f64);for i:0..<7 {out[i].value=values[i];}return out;}
-pjp_admit :: (words:[44]u64)->PjpStatus {
+pjp_default_kp :: ()->[7]pfku.Quantity(PjpStiffness,f64) #export_c #effects(all) {values:=[7]f64.[60,60,60,60,40,20,10];out:[7]pfku.Quantity(PjpStiffness,f64);for i:0..<7 {out[i].value=values[i];}return out;}
+pjp_default_kd :: ()->[7]pfku.Quantity(PjpDamping,f64) #export_c #effects(all) {values:=[7]f64.[8,8,8,8,5,3,2];out:[7]pfku.Quantity(PjpDamping,f64);for i:0..<7 {out[i].value=values[i];}return out;}
+pjp_admit :: (words:[44]u64)->PjpStatus #effects(all) {
  lower:=pik_lower();upper:=pik_upper();
  for i:0..<44 {if !pfk_finite(words[i]) {return PjpStatus.number;}value:=f64_from_bits(words[i]);
   if i<7 {if value<lower[i] || value>upper[i] {return PjpStatus.limits;}}
@@ -40,7 +40,7 @@ pjp_admit :: (words:[44]u64)->PjpStatus {
   else {bound:=ifx i<9 then 1.0 else 20.0;if abs(value)>bound {return PjpStatus.range;}}
  }return PjpStatus.ok;
 }
-pjp_assemble :: (input:PjpInput,gravity:[7]pfku.Quantity(PmHingeGravity,f64))->PjpOutput {
+pjp_assemble :: (input:PjpInput,gravity:[7]pfku.Quantity(PmHingeGravity,f64))->PjpOutput #effects(all) {
  out:PjpOutput;for i:0..<7 {
   out.proportional[i]=convert_unit(PmHingeGravity,input.kp[i]*(input.target[i]-input.q[i]));
   out.derivative[i]=convert_unit(PmHingeGravity,input.kd[i]*(input.target_rate[i]-input.rate[i]));

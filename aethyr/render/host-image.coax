@@ -43,12 +43,12 @@ HostMediaPlan :: struct {status:int=IMG_BAD;width:int;height:int;bytes:int;work:
  work:[32]u8;out:[4]u8;#assert htm_decode(src[..],work[..],out[..])==IMG_OK&&out[0]==100&&out[1]==199&&out[2]==50&&out[3]==128;
 }
 
-htm_layout :: (info:ImgInfo,source:int)->HostMediaPlan {
+htm_layout :: (info:ImgInfo,source:int)->HostMediaPlan #effects(all) {
  if info.status!=IMG_OK||info.w<1||info.h<1||info.w>HOST_MEDIA_SIDE||info.h>HOST_MEDIA_SIDE||info.work<1||info.work>HOST_MEDIA_WORK_BYTES||source<1||source>HOST_MEDIA_SOURCE_BYTES {return HostMediaPlan.{};}
  return HostMediaPlan.{status=IMG_OK,width=info.w,height=info.h,bytes=info.w*info.h*4,work=info.work,source_bytes=source};
 }
-htm_plan :: (src:[]u8)->HostMediaPlan #export_c {return htm_layout(img_info(src),src.count);}
-htm_decode :: (src:[]u8,work:[]u8,out:[]u8)->int #export_c {
+htm_plan :: (src:[]u8)->HostMediaPlan #export_c #effects(all) {return htm_layout(img_info(src),src.count);}
+htm_decode :: (src:[]u8,work:[]u8,out:[]u8)->int #export_c #effects(all) {
  p:=htm_plan(src);if p.status!=IMG_OK {return p.status;}if work.count<p.work||out.count<p.bytes {return IMG_SMALL;}
  status:=img_decode(src,work[0..<p.work],out[0..<p.bytes]);if status!=IMG_OK {return status;}
  img_premul_trip(out[0..<p.bytes]);return IMG_OK;

@@ -17,16 +17,16 @@ Floor :: struct {
   epoch: u64 = 1;
 }
 
-slot_ok :: (slot: u32) -> bool { return slot < SLOTS; }
+slot_ok :: (slot: u32) -> bool #effects(all) { return slot < SLOTS; }
 
-verse_voice_floor_init :: (f: [] Floor) #export_c {
+verse_voice_floor_init :: (f: [] Floor) #export_c #effects(all) {
   fresh: Floor;
   f[0] = fresh;
 }
 
 // Consent, recorded or withdrawn. Withdrawing also unbinds the slot and takes
 // back its floor: nothing of a participant who said no is heard or routed.
-verse_voice_floor_consent :: (f: [] Floor, slot: u32, consent: bool) -> bool #export_c {
+verse_voice_floor_consent :: (f: [] Floor, slot: u32, consent: bool) -> bool #export_c #effects(all) {
   if !slot_ok(slot) { return false; }
   i := cast(int) slot;
   f[0].consent[i] = consent;
@@ -38,7 +38,7 @@ verse_voice_floor_consent :: (f: [] Floor, slot: u32, consent: bool) -> bool #ex
 }
 
 // A route only by explicit binding, and only for a consenting participant.
-verse_voice_floor_bind :: (f: [] Floor, slot: u32, target: u32) -> bool #export_c {
+verse_voice_floor_bind :: (f: [] Floor, slot: u32, target: u32) -> bool #export_c #effects(all) {
   if !slot_ok(slot) { return false; }
   i := cast(int) slot;
   if target == 0 { f[0].target[i] = 0; return true; }
@@ -48,7 +48,7 @@ verse_voice_floor_bind :: (f: [] Floor, slot: u32, target: u32) -> bool #export_
 }
 
 // One holder at a time; -1 releases. Granting needs consent.
-verse_voice_floor_grant :: (f: [] Floor, slot: s32) -> bool #export_c {
+verse_voice_floor_grant :: (f: [] Floor, slot: s32) -> bool #export_c #effects(all) {
   if slot == -1 { f[0].holder = -1; return true; }
   if slot < 0 || slot >= SLOTS { return false; }
   if !f[0].consent[cast(int) slot] { return false; }
@@ -56,27 +56,27 @@ verse_voice_floor_grant :: (f: [] Floor, slot: s32) -> bool #export_c {
   return true;
 }
 
-verse_voice_floor_may_hear :: (f: [] Floor, slot: u32) -> bool #export_c {
+verse_voice_floor_may_hear :: (f: [] Floor, slot: u32) -> bool #export_c #effects(all) {
   if !slot_ok(slot) { return false; }
   return f[0].consent[cast(int) slot] && f[0].holder == cast(s32) slot;
 }
 
-verse_voice_floor_route :: (f: [] Floor, slot: u32) -> u32 #export_c {
+verse_voice_floor_route :: (f: [] Floor, slot: u32) -> u32 #export_c #effects(all) {
   if !slot_ok(slot) { return 0; }
   i := cast(int) slot;
   if !f[0].consent[i] { return 0; }
   return f[0].target[i];
 }
 
-verse_voice_floor_epoch :: (f: [] Floor) -> u64 #export_c { return f[0].epoch; }
+verse_voice_floor_epoch :: (f: [] Floor) -> u64 #export_c #effects(all) { return f[0].epoch; }
 
 // Epochs only move forward; at the top they stay there.
-verse_voice_floor_bump :: (f: [] Floor) -> u64 #export_c {
+verse_voice_floor_bump :: (f: [] Floor) -> u64 #export_c #effects(all) {
   if f[0].epoch < MAX_EPOCH { f[0].epoch += 1; }
   return f[0].epoch;
 }
 
-verse_voice_floor_epoch_ok :: (f: [] Floor, epoch: u64) -> bool #export_c { return epoch == f[0].epoch; }
+verse_voice_floor_epoch_ok :: (f: [] Floor, epoch: u64) -> bool #export_c #effects(all) { return epoch == f[0].epoch; }
 
 // ---------------------------------------------------------------- checks
 

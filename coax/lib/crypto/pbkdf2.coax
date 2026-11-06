@@ -110,30 +110,30 @@ PbProgress :: struct {error:u32;phase:u32;completed:int;total:int;}
   stored=cb_store_be32(s[..],28,2);#assert pbkdf2_info(s[..]).error==PB_BAD_STATE;
 }
 
-pbkdf2_state_size :: ()->int #export_c {return PB_STATE_BYTES;}
-pbkdf2_worker_budget :: ()->int #export_c {return 256;}
-pbkdf2_worker_request :: (password:int,salt:int,rounds:int,length:int,budget:int,gate:bool)->u32 #export_c {
+pbkdf2_state_size :: ()->int #export_c #effects(all) {return PB_STATE_BYTES;}
+pbkdf2_worker_budget :: ()->int #export_c #effects(all) {return 256;}
+pbkdf2_worker_request :: (password:int,salt:int,rounds:int,length:int,budget:int,gate:bool)->u32 #export_c #effects(all) {
   if gate && (password<4 || password>40 || salt!=16 || rounds!=210000 || length!=32) {return PB_BAD_INPUT;}
   status:=pb_request(password,salt,rounds,length);if status!=0 {return status;}return pb_budget(budget);
 }
-pb_blocks :: (length:int)->int {return (length+31)/32;}
-pb_request :: (password:int,salt:int,rounds:int,length:int)->u32 {
+pb_blocks :: (length:int)->int #effects(all) {return (length+31)/32;}
+pb_request :: (password:int,salt:int,rounds:int,length:int)->u32 #effects(all) {
   if password<0 || password>PB_MAX_INPUT {return PB_BAD_INPUT;}return pb_params(salt,rounds,length);
 }
-pb_params :: (salt:int,rounds:int,length:int)->u32 {
+pb_params :: (salt:int,rounds:int,length:int)->u32 #effects(all) {
   if salt<0 || salt>PB_MAX_INPUT {return PB_BAD_INPUT;}
   if length<1 || length>PB_MAX_OUTPUT {return PB_BAD_OUTPUT;}
   // Divide before multiplying: even hostile int64 metadata cannot overflow.
   if rounds<1 || rounds>PB_MAX_WORK/pb_blocks(length) {return PB_WORK;}return PB_OK;
 }
-pb_budget :: (budget:int)->u32 {return ifx budget<1 || budget>PB_MAX_STEP then PB_BUDGET else PB_OK;}
-pb_gate_admit :: (password:[]u8,salt:int)->u32 {
+pb_budget :: (budget:int)->u32 #effects(all) {return ifx budget<1 || budget>PB_MAX_STEP then PB_BUDGET else PB_OK;}
+pb_gate_admit :: (password:[]u8,salt:int)->u32 #effects(all) {
   if password.count<4 || password.count>40 || salt!=16 {return PB_BAD_INPUT;}
   for b:password {if !((b>=97 && b<=122)||(b>=48 && b<=57)) {return PB_BAD_INPUT;}}return PB_OK;
 }
-pb_word :: (state:[]u8,at:int)->int {return cast(int)cb_load_be32(state,at).value;}
-pb_commit :: (source:[]u8,out:[]u8)->u32 {return ifx cb_copy_checked(source,out,false) then PB_OK else PB_BAD_STATE;}
-pb_init_checked :: (state:[]u8,password:[]u8,salt:[]u8,rounds:int,length:int,overlap:bool)->u32 {
+pb_word :: (state:[]u8,at:int)->int #effects(all) {return cast(int)cb_load_be32(state,at).value;}
+pb_commit :: (source:[]u8,out:[]u8)->u32 #effects(all) {return ifx cb_copy_checked(source,out,false) then PB_OK else PB_BAD_STATE;}
+pb_init_checked :: (state:[]u8,password:[]u8,salt:[]u8,rounds:int,length:int,overlap:bool)->u32 #effects(all) {
   if state.count!=PB_STATE_BYTES {return PB_BAD_STATE;}
   status:=pb_request(password.count,salt.count,rounds,length);if status!=0 {return status;}
   if overlap {return PB_ALIAS;}
@@ -145,11 +145,11 @@ pb_init_checked :: (state:[]u8,password:[]u8,salt:[]u8,rounds:int,length:int,ove
   status=hmac_sha256_update_checked(work[288..<512],salt,false);if status!=0 {return status;}
   return pb_commit(work[..],state);
 }
-pb_gate_init_checked :: (state:[]u8,password:[]u8,salt:[]u8,overlap:bool)->u32 {
+pb_gate_init_checked :: (state:[]u8,password:[]u8,salt:[]u8,overlap:bool)->u32 #effects(all) {
   status:=pb_gate_admit(password,salt.count);if status!=0 {return status;}
   return pb_init_checked(state,password,salt,210000,32,overlap);
 }
-pbkdf2_info :: (state:[]u8)->PbProgress #export_c {
+pbkdf2_info :: (state:[]u8)->PbProgress #export_c #effects(all) {
   if state.count!=PB_STATE_BYTES {return PbProgress.{error=PB_BAD_STATE};}
   if state[0]!=80 || state[1]!=66 || state[2]!=50 || state[3]!=54 || state[4]!=1 {return PbProgress.{error=PB_BAD_STATE};}
   rounds:=pb_word(state,8);length:=pb_word(state,12);blocks:=pb_word(state,16);block:=pb_word(state,20);round:=pb_word(state,24);salt:=pb_word(state,28);
@@ -165,7 +165,7 @@ pbkdf2_info :: (state:[]u8)->PbProgress #export_c {
   if base.phase!=SHA_ACTIVE || salted.phase!=SHA_ACTIVE || base.total!=0 || salted.total!=cast(u64)salt {return PbProgress.{error=PB_BAD_STATE};}
   return PbProgress.{phase=phase,completed=block*rounds+round,total=blocks*rounds};
 }
-pb_step_checked :: (state:[]u8,budget:int)->PbProgress {
+pb_step_checked :: (state:[]u8,budget:int)->PbProgress #effects(all) {
   if pb_budget(budget)!=0 {return PbProgress.{error=PB_BUDGET};}
   info:=pbkdf2_info(state);if info.error!=0 {return info;}
   if info.phase==PB_STOPPED {info.error=PB_CANCELLED;return info;}
@@ -187,13 +187,13 @@ pb_step_checked :: (state:[]u8,budget:int)->PbProgress {
   if block==pb_word(work[..],16) {work[5]=PB_DONE;}
   status:=pb_commit(work[..],state);if status!=0 {return PbProgress.{error=status};}return pbkdf2_info(state);
 }
-pb_result_checked :: (state:[]u8,out:[]u8,overlap:bool)->u32 {
+pb_result_checked :: (state:[]u8,out:[]u8,overlap:bool)->u32 #effects(all) {
   info:=pbkdf2_info(state);if info.error!=0 {return info.error;}
   if info.phase==PB_STOPPED {return PB_CANCELLED;}
   if info.phase!=PB_DONE {return PB_PHASE;}
   length:=pb_word(state,12);if !cb_span(out.count,0,length) {return PB_BAD_OUTPUT;}
   if overlap {return PB_ALIAS;}for i:0..<length {out[i]=state[576+i];}return PB_OK;
 }
-pb_cancel_checked :: (state:[]u8)->u32 {
+pb_cancel_checked :: (state:[]u8)->u32 #effects(all) {
   info:=pbkdf2_info(state);if info.error!=0 {return info.error;}state[5]=PB_STOPPED;return PB_OK;
 }

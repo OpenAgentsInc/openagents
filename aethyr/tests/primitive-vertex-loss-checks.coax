@@ -23,7 +23,7 @@ vl_run :: (argv:[]string,expected:int,output:string)->bool {
   a:[4096]u8;b:[4096]u8;okay:=fs_write(vl_cat(output,".stdout",a[..]),cast(string)stdout[0..<r.out_n]) && fs_write(vl_cat(output,".stderr",b[..]),cast(string)stderr[0..<r.err_n]);
   return okay && r.started==0 && !r.cut && !r.timed_out && r.status==expected;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}
   data:=args_value(a[..],"--data","");binary:=args_value(a[..],"--binary","");parity:=args_value(a[..],"--parity","");root:=args_value(a[..],"--source-root","");dir:=args_value(a[..],"--out","");
   vs_wgsl:=args_value(a[..],"--vs-wgsl","");vs_cases:=args_value(a[..],"--vs-cases","");clip_wgsl:=args_value(a[..],"--clip-wgsl","");clip_cases:=args_value(a[..],"--clip-cases","");

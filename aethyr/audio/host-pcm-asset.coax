@@ -86,21 +86,21 @@ HostPcmAssetPlan :: struct {valid:bool;channels:int;frames:int;samples:int;offse
  a.pcm_sha=hash;#assert !hpc_plan(a,source[0..<sn],out[..]).valid;
 }
 
-hpc_extent :: (frames:int,channels:int)->int #export_c {
+hpc_extent :: (frames:int,channels:int)->int #export_c #effects(all) {
  words:=ham_extent(frames,channels);if words==0||words>262116 {return 0;}return 112+words*4;
 }
-hpc_hash :: (src:[]u8)->[32]u8 {
+hpc_hash :: (src:[]u8)->[32]u8 #effects(all) {
  d:=S_hash(cast(string)src);out:[32]u8;for i:0..<32 {out[i]=cast,trunc(u8)(d.words[i/4]>>((3-i%4)*8));}return out;
 }
-hpc_equal :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
-hpc_u64 :: (src:[]u8,at:int)->u64 {v:u64=0;for i:0..<8 {v|=u64(src[at+i])<<(i*8);}return v;}
-hpc_put64 :: (out:[]u8,at:int,value:u64) {for i:0..<8 {out[at+i]=cast,trunc(u8)(value>>(i*8));}}
-hpc_finite :: (pcm:[]u8)->bool {for i:0..<pcm.count/4 {if (hpo_u32(pcm,i*4)&2139095040)==2139095040 {return false;}}return true;}
-hpc_source_plan :: (a:HostAudioAsset,src:[]u8)->HostOpusPlan #export_c {
+hpc_equal :: (a:[32]u8,b:[32]u8)->bool #effects(all) {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+hpc_u64 :: (src:[]u8,at:int)->u64 #effects(all) {v:u64=0;for i:0..<8 {v|=u64(src[at+i])<<(i*8);}return v;}
+hpc_put64 :: (out:[]u8,at:int,value:u64) #effects(all) {for i:0..<8 {out[at+i]=cast,trunc(u8)(value>>(i*8));}}
+hpc_finite :: (pcm:[]u8)->bool #effects(all) {for i:0..<pcm.count/4 {if (hpo_u32(pcm,i*4)&2139095040)==2139095040 {return false;}}return true;}
+hpc_source_plan :: (a:HostAudioAsset,src:[]u8)->HostOpusPlan #export_c #effects(all) {
  if !a.valid||src.count!=a.source_bytes {return HostOpusPlan.{};}p:=hpo_plan(src);
  if !hpo_output(p,a.frames,a.channels,48000)||!hpc_equal(hpc_hash(src),a.source_sha) {return HostOpusPlan.{};}return p;
 }
-hpc_plan :: (a:HostAudioAsset,src:[]u8,blob:[]u8)->HostPcmAssetPlan #export_c {
+hpc_plan :: (a:HostAudioAsset,src:[]u8,blob:[]u8)->HostPcmAssetPlan #export_c #effects(all) {
  if !a.canonical||!hpc_source_plan(a,src).valid {return HostPcmAssetPlan.{};}n:=hpc_extent(a.frames,a.channels);
  if n==0||blob.count!=n||a.companion_bytes!=n {return HostPcmAssetPlan.{};}
  if cast(string)blob[0..<4]!="APC1"||hpo_u32(blob,4)!=112||hpo_u32(blob,8)!=48000||u64(hpo_u32(blob,12))!=u64(a.channels)||hpc_u64(blob,16)!=u64(a.frames)||hpc_u64(blob,24)!=u64(src.count) {return HostPcmAssetPlan.{};}
@@ -109,17 +109,17 @@ hpc_plan :: (a:HostAudioAsset,src:[]u8,blob:[]u8)->HostPcmAssetPlan #export_c {
  if !hpc_equal(ph,a.pcm_sha)||!hpc_finite(blob[112..<blob.count]) {return HostPcmAssetPlan.{};}
  return HostPcmAssetPlan.{valid=true,channels=a.channels,frames=a.frames,samples=(n-112)/4,offset=112};
 }
-hpc_decode :: (a:HostAudioAsset,src:[]u8,blob:[]u8,out:[]f32)->bool #export_c {
+hpc_decode :: (a:HostAudioAsset,src:[]u8,blob:[]u8,out:[]f32)->bool #export_c #effects(all) {
  p:=hpc_plan(a,src,blob);if !p.valid||out.count<p.samples {return false;}for i:0..<p.samples {out[i]=f32_from_bits(u32(hpo_u32(blob,112+i*4)));}return true;
 }
-hpc_pack :: (src:[]u8,pcm:[]u8,out:[]u8)->int #export_c {
+hpc_pack :: (src:[]u8,pcm:[]u8,out:[]u8)->int #export_c #effects(all) {
  p:=hpo_plan(src);if !p.valid {return -1;}n:=hpc_extent(p.frames,p.channels);
  if n==0||pcm.count!=p.samples*4||out.count<n||!hpc_finite(pcm) {return -1;}
  zero:[16]u8;for byte,i:zero {out[96+i]=byte;}for byte,i:"APC1" {out[i]=byte;}hpo_word(out,4,112);hpo_word(out,8,48000);hpo_word(out,12,p.channels);hpc_put64(out,16,u64(p.frames));hpc_put64(out,24,u64(src.count));
  sh:=hpc_hash(src);ph:=hpc_hash(pcm);for i:0..<32 {out[32+i]=sh[i];out[64+i]=ph[i];}for byte,i:pcm {out[112+i]=byte;}return n;
 }
 // Small independently checked format fixture; products use pinned catalogue data.
-hpc_fixture_asset :: (src:[]u8,pcm:[]u8)->HostAudioAsset {
+hpc_fixture_asset :: (src:[]u8,pcm:[]u8)->HostAudioAsset #effects(all) {
  a:HostAudioAsset;a.valid=true;a.canonical=true;a.source_bytes=src.count;a.frames=1;a.channels=1;a.companion_bytes=116;
  a.source_sha=hpc_hash(src);a.pcm_sha=hpc_hash(pcm);return a;
 }

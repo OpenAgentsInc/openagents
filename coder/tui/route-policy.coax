@@ -31,7 +31,7 @@
   #assert cr_auto("run","") && cr_auto("run","auto") && cr_auto("fork","auto");
   #assert !cr_auto("fork","") && !cr_auto("resume","auto") && !cr_auto("run","codex") && !cr_auto("fork","claude");
 }
-cr_auto :: (verb:string,engine:string)->bool {
+cr_auto :: (verb:string,engine:string)->bool #effects(all) {
   return (verb=="run" && engine.count==0) || ((verb=="run" || verb=="fork") && engine=="auto");
 }
 #test "URL components preserve exact string and port boundaries" {
@@ -48,24 +48,24 @@ cr_auto :: (verb:string,engine:string)->bool {
   expected:=value>32 && value<127 && value!=64 && value!=63 && value!=35 && value!=92;
   #assert cr_url_bytes(cast(string)b[..])==expected;
 }
-cr_prefix :: (s:string,p:string)->bool {return s.count>=p.count && cast(string)s[0..<p.count]==p;}
-cr_ends :: (s:string,p:string)->bool {return s.count>=p.count && cast(string)s[s.count-p.count..<s.count]==p;}
-cr_url_bytes :: (url:string)->bool {
+cr_prefix :: (s:string,p:string)->bool #effects(all) {return s.count>=p.count && cast(string)s[0..<p.count]==p;}
+cr_ends :: (s:string,p:string)->bool #effects(all) {return s.count>=p.count && cast(string)s[s.count-p.count..<s.count]==p;}
+cr_url_bytes :: (url:string)->bool #effects(all) {
   for c:url {if c<=32 || c>=127 || c=='@' || c=='?' || c=='#' || c=='\\' {return false;}}
   return true;
 }
-cr_host :: (host:string)->bool {
+cr_host :: (host:string)->bool #effects(all) {
   if host.count==0 {return false;}
   for c:host {if c=='/' {return false;}}
   return true;
 }
-cr_port :: (text:string)->bool {
+cr_port :: (text:string)->bool #effects(all) {
   if text.count==0 || text.count>5 {return false;}
   port:=0;
   for c:text {if c<'0' || c>'9' {return false;} port=port*10+cast(int)(c-'0');}
   return port>0 && port<=65535;
 }
-cr_endpoint :: (url:string,remote:bool)->bool {
+cr_endpoint :: (url:string,remote:bool)->bool #effects(all) {
   suffix:="/v1/systemone";
   if !cr_url_bytes(url) || !cr_ends(url,suffix) {return false;}
   base:=cast(string)url[0..<url.count-suffix.count];
@@ -75,7 +75,7 @@ cr_endpoint :: (url:string,remote:bool)->bool {
   if !remote || !cr_prefix(base,secure) {return false;}
   return cr_host(cast(string)base[secure.count..<base.count]);
 }
-cr_model :: (engine:string,difficulty:int)->string {
+cr_model :: (engine:string,difficulty:int)->string #effects(all) {
   if engine!="claude" || difficulty<0 || difficulty>4 {return "";}
   return ifx difficulty==0 then "haiku" else ifx difficulty<3 then "sonnet" else "opus";
 }

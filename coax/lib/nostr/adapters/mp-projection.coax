@@ -19,7 +19,7 @@ MpaProject :: struct {original:[]u8;consistent:bool;}
 
 // Compare the DTO's supported fields with the already source-checked event.
 // Tags not represented by MP remain in the original; they are not discarded.
-mpa_tags :: (p:MP_Project,e:N_Event)->bool {
+mpa_tags :: (p:MP_Project,e:N_Event)->bool #effects(all) {
  identifier:=MP_Project_get_identifier(p);name:=MP_Project_get_name(p);
  description:=MP_Project_get_description(p);channel:=MP_Project_get_channel(p);
  visibility:=MP_Project_get_visibility(p);
@@ -57,7 +57,7 @@ mpa_tags :: (p:MP_Project,e:N_Event)->bool {
  return (seen & 1)!=0 && ((seen & 2)!=0)==name.present && ((seen & 4)!=0)==description.present && ((seen & 8)!=0)==channel.present && ((seen & 16)!=0)==visibility.present;
 }
 
-mpa_read :: (wire:[]u8)->MpaProject #export_c {
+mpa_read :: (wire:[]u8)->MpaProject #export_c #effects(all) {
  p:=MP_Project_decode(wire);if p.error!=0 {return MpaProject.{};}
  source:=MP_Project_get_original(p);if !source.present {return MpaProject.{};}
  checked:=npa_read(source.value.wire);if !checked.consistent {return MpaProject.{};}

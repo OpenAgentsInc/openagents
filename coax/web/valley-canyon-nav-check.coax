@@ -3,7 +3,7 @@
 #load "../lib/net/cdp.coax";
 cn_eval :: (c:[]Cdp,js:string)->bool {n:=cdp_evaluate(c,js);return n>=0 && jv_raw(c[0].doc[0],n)=="true";}
 cn_wait :: (c:[]Cdp,source:bool)->bool {until:=proc_now_ms()+45000;while proc_now_ms()<until {if cn_eval(c,ifx source then "(async()=>{if(!globalThis.coaxial?.ready)return false;await coaxialClipStep(1,60);return location.pathname==='/worlds/valley-canyon'&&coaxial.sceneReady&&coaxial.guardProbe(0)===1})()" else "(async()=>{if(!globalThis.coaxial?.ready)return false;await coaxialClipStep(1,60);return location.pathname==='/worlds/valley-lab'&&coaxial.sceneReady})()") {return true;}proc_sleep(100);}return false;}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}
  for phone:0..<2 {c:[1]Cdp;if !cdp_launch_background(c[..],ifx phone==0 then 1280 else 390,ifx phone==0 then 800 else 844,"valley-canyon-nav-") {return 1;}
   _:=cdp_call(c[..],"Page.enable","",30000);_=cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument","{\"source\":\"globalThis.coaxialClip=true\"}",30000);

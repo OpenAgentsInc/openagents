@@ -16,8 +16,8 @@
  nodes:[32]JvNode;d:[1]Jv;#assert jv_parse(d[..],"[0,48,607,255,-1,\"0\",false,1.5]",nodes[..]);
  expected:=[8]int.[0,48,607,255,-1,-1,-1,-1];for i:0..<8 {#assert hmnj_int(d[0],jv_at(d[0],0,i))==expected[i];}#assert hmnj_int(d[0],-1)== -1;
 }
-hmnj_int :: (d:Jv,at:int)->int {return jv_int(d,at,-1);}
-hmnj_capture :: (d:Jv,bad_first:bool)->bool {
+hmnj_int :: (d:Jv,at:int)->int #effects(all) {return jv_int(d,at,-1);}
+hmnj_capture :: (d:Jv,bad_first:bool)->bool #effects(all) {
  images:=jv_get(d,0,"rows");trace:=jv_get(d,0,"trace");notices:=jv_get(d,trace,"notices");error:=jv_get(d,0,"error");
  if jv_kind(d,images)!=JV_ARRAY {return false;}if jv_len(d,images)!=7 {return false;}
  if jv_kind(d,notices)!=JV_ARRAY {return false;}if jv_len(d,notices)<1 {return false;}

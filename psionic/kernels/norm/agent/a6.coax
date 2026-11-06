@@ -20,17 +20,17 @@ a6_narrow :: (y:f64)->f32 {
     return f32_from_bits(cast,trunc(u32)(((B>>63)<<31)|w));
 }
 
-a6_knobs :: (item:int,knobs:[]int) #export_c {
+a6_knobs :: (item:int,knobs:[]int) #export_c #effects(all) {
     knobs[0]=32128;knobs[1]=32256;knobs[2]=32512;
     knobs[3]=64128;knobs[4]=64256;knobs[5]=64512;
     knobs[6]=128128;knobs[7]=128256;knobs[8]=-1;
 }
-a6_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c {
+a6_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c #effects(all) {
     c:=a6_c(knob,width);m:=a6_m(knob,width);
     plan[0]=rows*c;plan[1]=rows*m;plan[2]=rows*c;
     if a6_pre(rows,width,c) {plan[2]=rows*c+width;}
 }
-a6_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+a6_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c #effects(all) {
     c:=a6_c(knob,width);r:=item/c;j:=item-r*c;
     n:=(width-j+c-1)/c;p:=r*width+j;
     s0:f64=0;s1:f64=0;
@@ -46,7 +46,7 @@ a6_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f3
         for t:0..<(width-item+G-1)/G {i:=item+t*G;work[G+i]=1+f64(scale[i]);}
     }
 }
-a6_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+a6_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c #effects(all) {
     c:=a6_c(knob,width);m:=a6_m(knob,width);r:=item/m;k:=item-r*m;
     s0:f64=0;s1:f64=0;w:=r*c;
     for j:0..<c/4 {a:=work[w];b:=work[w+1];d:=work[w+2];e:=work[w+3];s0+=a;s1+=b;s0+=d;s1+=e;w+=4;}

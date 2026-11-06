@@ -11,7 +11,7 @@
 #test "Slay bindings resolve case independently of the SDK FName pool" {a:=[2]SfName.[sf_name("FACIAL_C_Jaw"),sf_name("jawOpen")];#assert sf_find(a[..],"facial_c_jaw")==0 && sf_find(a[..],"JAWOPEN")==1 && sf_find(a[..],"unknown")== -1;}
 #test "source left-handed centimetres become the existing glTF local coordinates" {p:=sf_local([10]f32.[1,2,3,0.1,0.2,0.3,0.9,1,1,1]);#assert p[0]==0.01 && p[1]==0.03 && p[2]==0.02 && p[3]== -0.1 && p[4]== -0.3 && p[5]== -0.2 && p[6]==0.9;}
 #load "slay-source.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=3 {return 2;}
  source:=args_at(args[..],0);slay:=args_at(args[..],1);dest:=args_at(args[..],2);g:[1]EpJson;j:[1]EpJson;path:[4096]u8;
  targets:[256]SfName;rig:[334]SfName;bones:[64]SfName;bone_ids:[64]int;curves:[256]SfName;curve_ids:[256]int;

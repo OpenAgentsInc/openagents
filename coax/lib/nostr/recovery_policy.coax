@@ -98,28 +98,28 @@ RC_STAGED_PRIVATE :: cast(u32) 5;
 RC_DURABLE :: cast(u32) 1;
 RC_SEND_CAS :: cast(u32) 2;
 RC_STAGE_PRIVATE :: cast(u32) 3;
-rc_valid :: (c:RcCheckpoint)->bool {return c.schema!=0 && c.generation!=0;}
-rc_equal_bytes :: (a:[32]u8,b:[32]u8)->bool {
+rc_valid :: (c:RcCheckpoint)->bool #effects(all) {return c.schema!=0 && c.generation!=0;}
+rc_equal_bytes :: (a:[32]u8,b:[32]u8)->bool #effects(all) {
  for i:0..<32 {if a[i]!=b[i] {return false;}}return true;
 }
 // Both arguments must be independently observed by the trusted host: the
 // authoritative checkpoint and a digest computed over the exact stored bytes.
 // Equality alone is not event authentication, safe storage or publication.
-rc_recovery_match :: (checkpoint:RcCheckpoint,snapshot:RcCheckpoint)->bool {
+rc_recovery_match :: (checkpoint:RcCheckpoint,snapshot:RcCheckpoint)->bool #effects(all) {
  return rc_valid(checkpoint) && checkpoint.schema==snapshot.schema && checkpoint.generation==snapshot.generation && rc_equal_bytes(checkpoint.store,snapshot.store) && rc_equal_bytes(checkpoint.digest,snapshot.digest);
 }
-rc_next_checkpoint :: (base:RcCheckpoint,next:RcCheckpoint)->bool {
+rc_next_checkpoint :: (base:RcCheckpoint,next:RcCheckpoint)->bool #effects(all) {
  if !rc_valid(base) || base.generation==RC_MAX_GENERATION {return false;}
  return base.schema==next.schema && rc_equal_bytes(base.store,next.store) && next.generation==base.generation+1;
 }
-rc_begin :: (base:RcCheckpoint,candidate:RcCheckpoint)->RcAttempt {
+rc_begin :: (base:RcCheckpoint,candidate:RcCheckpoint)->RcAttempt #effects(all) {
  if !rc_next_checkpoint(base,candidate) {return RcAttempt.{};}
  return RcAttempt.{base=base,candidate=candidate,phase=RC_PREPARED};
 }
 // This models observations, not effects. In particular RC_DURABLE must mean
 // immutable candidate bytes are durably committed before the trusted CAS.
 // RC_STAGE_PRIVATE must not make the staged frame externally observable.
-rc_event :: (a:RcAttempt,event:u32)->RcAttempt {
+rc_event :: (a:RcAttempt,event:u32)->RcAttempt #effects(all) {
  result:=a;
  if a.phase==RC_PREPARED && cast(u32)event==RC_DURABLE {result.phase=RC_DURABLE_SNAPSHOT;return result;}
  if a.phase==RC_DURABLE_SNAPSHOT && cast(u32)event==RC_SEND_CAS {result.phase=RC_WAIT_CHECKPOINT;return result;}
@@ -128,7 +128,7 @@ rc_event :: (a:RcAttempt,event:u32)->RcAttempt {
 }
 // A read of the old checkpoint is inconclusive: an outstanding CAS can still
 // win. The host must not ACK or overwrite either frame on that observation.
-rc_observe :: (a:RcAttempt,observed:RcCheckpoint)->RcAttempt {
+rc_observe :: (a:RcAttempt,observed:RcCheckpoint)->RcAttempt #effects(all) {
  if a.phase!=RC_WAIT_CHECKPOINT {return RcAttempt.{};}
  if rc_recovery_match(a.candidate,observed) {result:=a;result.phase=RC_CHECKPOINTED;return result;}
  if rc_recovery_match(a.base,observed) {return a;}
@@ -138,6 +138,6 @@ rc_observe :: (a:RcAttempt,observed:RcCheckpoint)->RcAttempt {
 // the authoritative read, external publication and acknowledgement without a gap.
 // The supplied checkpoint cannot establish that the fence exists or that the
 // read is authentic and linearizable. This is never publication authority.
-rc_ack_under_fence :: (a:RcAttempt,current:RcCheckpoint)->bool {
+rc_ack_under_fence :: (a:RcAttempt,current:RcCheckpoint)->bool #effects(all) {
  return a.phase==RC_STAGED_PRIVATE && rc_recovery_match(a.candidate,current);
 }

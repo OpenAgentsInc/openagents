@@ -25,8 +25,8 @@ AR_MACHINE_MAX :: 64;
   #assert !ar_origin_ok("https://a,") && !ar_origin_ok("https://a/b") && !ar_origin_ok("https://-:") && ar_origin_ok("http://127.0.0.1:9");
   #assert !ar_origin_ok("http://localhost:1:") && !ar_origin_ok("http://localhost:") && ar_origin_ok("https://z") && !ar_origin_ok("https://a:b");
 }
-ar_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
-ar_starts :: (s: string, p: string) -> bool {
+ar_digit :: (c: u8) -> bool #effects(all) { return c >= '0' && c <= '9'; }
+ar_starts :: (s: string, p: string) -> bool #effects(all) {
   if s.count < p.count { return false; }
   return s[0..<p.count] == p;
 }
@@ -36,16 +36,16 @@ ar_starts :: (s: string, p: string) -> bool {
   #assert ar_starts("ab", "ab") && ar_starts("abc", "ab") && !ar_starts("a", "ab") && !ar_starts("ac", "ab") && ar_starts("", "");
 }
 // The first index of c in s, or s.count.
-ar_index :: (s: string, c: u8) -> int {
+ar_index :: (s: string, c: u8) -> int #effects(all) {
   for i: 0..<s.count { if s[i] == c { return i; } }
   return s.count;
 }
-ar_port_ok :: (p: string) -> bool {
+ar_port_ok :: (p: string) -> bool #effects(all) {
   if p.count < 1 || p.count > 5 { return false; }
   for c: p { if !ar_digit(c) { return false; } }
   return true;
 }
-ar_origin_ok :: (o: string) -> bool {
+ar_origin_ok :: (o: string) -> bool #effects(all) {
   if ar_starts(o, "https://") {
     h := o[8..<o.count];
     colon := ar_index(h, ':');   // where the host ends
@@ -75,7 +75,7 @@ ar_origin_ok :: (o: string) -> bool {
   #assert !ar_keep_origin("realm", "", false, "file", 0) && !ar_keep_origin("realm", "https://a/", false, "file", 0);
   for d: [7] string.["labs", "http", "login", "nostr", "project", "pylon", ""] { #assert !ar_keep_origin(d, s, false, "file", 0); }
 }
-ar_keep_origin :: (domain: string, origin: string, saved: bool, key_from: string, code: int) -> bool {
+ar_keep_origin :: (domain: string, origin: string, saved: bool, key_from: string, code: int) -> bool #effects(all) {
   if code != 0 || saved || !ar_origin_ok(origin) { return false; }   // 0: EXIT_OK
   if key_from != "file" && key_from != "keychain" { return false; }
   return domain == "whoami" || domain == "account" || domain == "access" || domain == "realm" || domain == "admin";
@@ -91,7 +91,7 @@ ar_keep_origin :: (domain: string, origin: string, saved: bool, key_from: string
   #assert ar_said("https://a", "", out[0..<9]) == "https://a" && ar_said("https://a", "", out[0..<8]) == "";
   #assert ar_said("https://openagents.com", "invite only", out[0..<35]) == "https://openagents.com: invite only" && ar_said("https://openagents.com", "invite only", out[0..<34]) == "";
 }
-ar_said :: (origin: string, why: string, out: [] u8) -> string {
+ar_said :: (origin: string, why: string, out: [] u8) -> string #effects(all) {
   if origin.count == 0 { return why; }
   n := origin.count + (ifx why.count > 0 then 2 + why.count else 0);
   if n > out.count { return ""; }
@@ -119,7 +119,7 @@ ar_said :: (origin: string, why: string, out: [] u8) -> string {
   us: [2] u8; us[0] = 31; us[1] = 'b';
   #assert ar_machine(cast(string) us[..], out[..]) == "-b";
 }
-ar_machine :: (name: string, out: [] u8) -> string {
+ar_machine :: (name: string, out: [] u8) -> string #effects(all) {
   a := 0; b := name.count;
   while a < b && name[a] == ' ' { a += 1; }
   while b > a && name[b - 1] == ' ' { b -= 1; }
@@ -141,7 +141,7 @@ ar_machine :: (name: string, out: [] u8) -> string {
   #assert ar_line("xcode 1\ncode 2\n", "code") == "2" && ar_line("code \n", "code") == "" && ar_line("code \ncode 2\n", "code") == "2";
   #assert ar_line("a 1\nb 2", "b") == "2" && ar_line("\nk v", "k") == "v";
 }
-ar_line :: (body: string, key: string) -> string {
+ar_line :: (body: string, key: string) -> string #effects(all) {
   start := 0;
   for i: 0..<body.count + 1 {
     if i == body.count || body[i] == '\n' {
@@ -165,7 +165,7 @@ AR_WAIT :: 0; AR_APPROVED :: 1; AR_EXPIRED :: 2; AR_TIMEOUT :: 3; AR_REFUSED :: 
   #assert ar_poll(0, "", 0, 2000) == AR_WAIT && ar_poll(429, "", 0, 2000) == AR_WAIT && ar_poll(503, "", 0, 2000) == AR_WAIT && ar_poll(500, "", 0, 2000) == AR_WAIT;
   #assert ar_poll(1, "", 0, 2000) == AR_REFUSED && ar_poll(0, "", 2000, 2000) == AR_TIMEOUT && ar_poll(499, "", 0, 2000) == AR_REFUSED && ar_poll(-3, "", 0, 2000) == AR_WAIT;
 }
-ar_poll :: (status: int, state: string, now_ms: int, deadline_ms: int) -> int {
+ar_poll :: (status: int, state: string, now_ms: int, deadline_ms: int) -> int #effects(all) {
   if status == 200 && state == "approved" { return AR_APPROVED; }
   if status == 200 && state == "expired" { return AR_EXPIRED; }
   retry := status <= 0 || status == 429 || status >= 500;
@@ -182,7 +182,7 @@ AR_FORGET :: 0; AR_KEEP_OWN :: 1; AR_KEEP_ERROR :: 2;
   #assert ar_logout(409, false) == AR_KEEP_OWN && ar_logout(404, false) == AR_KEEP_OWN && ar_logout(409, true) == AR_FORGET && ar_logout(404, true) == AR_FORGET;
   #assert ar_logout(401, false) == AR_KEEP_ERROR && ar_logout(0, false) == AR_KEEP_ERROR && ar_logout(500, true) == AR_KEEP_ERROR && ar_logout(429, true) == AR_KEEP_ERROR;
 }
-ar_logout :: (status: int, yes: bool) -> int {
+ar_logout :: (status: int, yes: bool) -> int #effects(all) {
   if status == 200 { return AR_FORGET; }
   if status == 409 || status == 404 { return ifx yes then AR_FORGET else AR_KEEP_OWN; }
   return AR_KEEP_ERROR;
@@ -200,12 +200,12 @@ ar_logout :: (status: int, yes: bool) -> int {
   #assert ar_link("https://a", "00112233445566778899aabbccddeeff", out[0..<60]) != "" && ar_link("https://a", "00112233445566778899aabbccddeeff", out[0..<59]) == "";
 }
 // 32 lowercase hex: a device code, an invite code.
-ar_hex32 :: (code: string) -> bool {
+ar_hex32 :: (code: string) -> bool #effects(all) {
   if code.count != 32 { return false; }
   for c: code { if !(ar_digit(c) || (c >= 'a' && c <= 'f')) { return false; } }
   return true;
 }
-ar_link :: (origin: string, code: string, out: [] u8) -> string {
+ar_link :: (origin: string, code: string, out: [] u8) -> string #effects(all) {
   if !ar_hex32(code) { return ""; }
   mid := "/login/device#code=";
   n := origin.count + mid.count + 32;
@@ -242,10 +242,10 @@ AR_UPPER :: "▀";
   n = ar_qr_text(g9[..], 3, out[..]);
   #assert cast(string) out[0..<n] == "███████\n███▀███\n███████\n▀▀▀▀▀▀▀\n";
 }
-ar_dark :: (grid: [] u8, size: int, x: int, y: int) -> bool {
+ar_dark :: (grid: [] u8, size: int, x: int, y: int) -> bool #effects(all) {
   return x >= 2 && y >= 2 && x < size + 2 && y < size + 2 && grid[(y - 2) * size + (x - 2)] == 1;
 }
-ar_qr_text :: (grid: [] u8, size: int, out: [] u8) -> int {
+ar_qr_text :: (grid: [] u8, size: int, out: [] u8) -> int #effects(all) {
   if size < 1 || grid.count != size * size { return -1; }
   w := size + 4; n := 0;
   y := 0;
@@ -279,7 +279,7 @@ ar_qr_text :: (grid: [] u8, size: int, out: [] u8) -> int {
   #assert ar_json_str("\n", out[0..<8]) == 8 && ar_json_str("\n", out[0..<7]) == -1 && ar_json_str("\"", out[0..<4]) == 4 && ar_json_str("\"", out[0..<3]) == -1;
   #assert ar_json_str("é", out[..]) == 4;
 }
-ar_json_str :: (s: string, out: [] u8) -> int {
+ar_json_str :: (s: string, out: [] u8) -> int #effects(all) {
   digits := "0123456789abcdef";
   n := 0;
   for at: 0..<s.count + 2 {
@@ -300,7 +300,7 @@ ar_json_str :: (s: string, out: [] u8) -> int {
   #assert ar_ms("999999999999999") == 999999999999999 && ar_ms("1000000000000000") == -1;
   #assert ar_ms("") == -1 && ar_ms("12a") == -1 && ar_ms("-1") == -1 && ar_ms("/") == -1 && ar_ms(":") == -1;
 }
-ar_ms :: (s: string) -> int {
+ar_ms :: (s: string) -> int #effects(all) {
   if s.count < 1 || s.count > 15 { return -1; }
   v := 0;
   for c: s { if !ar_digit(c) { return -1; } v = v * 10 + cast(int) (c - '0'); }

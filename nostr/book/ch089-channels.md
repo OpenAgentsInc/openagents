@@ -104,7 +104,7 @@ look like another type:
 <!-- source: coax/lib/nostr/nipcl.coax one-label -->
 ```jai
 // One label value: 1 to 64 bytes from a-z, 0-9, '.', ':' and '-', and no type name.
-cl_label :: (t:G29Name)->int {
+cl_label :: (t:G29Name)->int #effects(all) {
   c:=t;if c.n<1 || c.n>CL_MAX_LABEL {return CL_LABEL;}
   for i:0..<c.n {
     b:=c.b[i];
@@ -126,7 +126,7 @@ fault refuses the whole event:
 // The t tags of a create or edit command: keep (no t tag), clear (only
 // ["t", ""]) or set (the distinct labels in order). Any fault refuses the
 // whole event.
-cl_labels :: (e:NostrEvent)->ClLabels {
+cl_labels :: (e:NostrEvent)->ClLabels #effects(all) {
   l:ClLabels;k:=0;cleared:=false;
   while true {
     t:=g29_tag(e,k);k+=1;
@@ -168,7 +168,7 @@ flag.
 // A verified 9007 or 9002 for the channel c[0] and group g[0]: labels and
 // type checked first, then NIP-29's decision. CL_GROUP: g29_admit refused,
 // with its code in g29[0]. Other kinds go to g29_admit unchanged.
-cl_admit :: (g:[]G29Group,c:[]ClChannel,e:NostrEvent,relay:[32]u8,now:int,g29:[]int)->int {
+cl_admit :: (g:[]G29Group,c:[]ClChannel,e:NostrEvent,relay:[32]u8,now:int,g29:[]int)->int #effects(all) {
   g29[0]=G29_OK;
   if e.kind!=G29_CREATE_GROUP && e.kind!=G29_EDIT_METADATA {
     g29[0]=g29_admit(g,e,relay);return ifx g29[0]==G29_OK then CL_OK else CL_GROUP;
@@ -200,7 +200,7 @@ The relay writes NIP-29's metadata tags and then the identity tags:
 <!-- source: coax/lib/nostr/nipcl.coax write -->
 ```jai
 // The 39000 tags the relay signs: NIP-29's metadata, then the identity tags.
-cl_write_metadata :: (g:G29Group,c:ClChannel,out:[]u8)->int {
+cl_write_metadata :: (g:G29Group,c:ClChannel,out:[]u8)->int #effects(all) {
   n:=g29_write_metadata(g,out)-1;   // drop its closing ]; -1 stays a failure
   n=json_raw(out,n,",[\"t\",");n=g29_put_name(out,n,c.type);n=json_raw(out,n,"]");
   for i:0..<c.labels_n {n=json_raw(out,n,",[\"t\",");n=g29_put_name(out,n,c.labels[i]);n=json_raw(out,n,"]");}
@@ -226,7 +226,7 @@ refuses.
 // A channel-state event read back by a client. It must be a 39000 to 39002
 // signed by the relay's key. A missing tag stays unknown; a malformed one
 // refuses.
-cl_read :: (e:NostrEvent,relay:[32]u8)->ClChannel {
+cl_read :: (e:NostrEvent,relay:[32]u8)->ClChannel #effects(all) {
   c:ClChannel;
   if e.error!=NE_OK || !e.verified {c.status=CL_SHAPE;return c;}
   if e.kind<G29_METADATA || e.kind>G29_MEMBERS {c.status=CL_KIND;return c;}
@@ -268,13 +268,13 @@ lowest channel id compared as a string; and a channel without a
 ```jai
 // Does a rank before b? Lower created_at first; a known time before an
 // unknown one; then the lower channel id.
-cl_before :: (a:ClChannel,b:ClChannel)->bool {
+cl_before :: (a:ClChannel,b:ClChannel)->bool #effects(all) {
   if a.has_created!=b.has_created {return a.has_created;}
   if a.has_created {if a.created<b.created {return true;}if a.created>b.created {return false;}}
   return cl_id_before(a.id,b.id);
 }
 // The index of the oldest channel, or -1 for none.
-cl_oldest :: (cs:[]ClChannel)->int {
+cl_oldest :: (cs:[]ClChannel)->int #effects(all) {
   best:= -1;
   for i:0..<cs.count {if best<0 || cl_before(cs[i],cs[best]) {best=i;}}
   return best;
@@ -307,10 +307,10 @@ ClFilter :: struct {
   t:[CL_MAX_LABELS]G29Name; t_n:int;
   has_P:bool;
 }
-cl_has_t :: (f:ClFilter,s:string)->bool {for i:0..<f.t_n {if g29_is(f.t[i],s) {return true;}}return false;}
+cl_has_t :: (f:ClFilter,s:string)->bool #effects(all) {for i:0..<f.t_n {if g29_is(f.t[i],s) {return true;}}return false;}
 // Does this filter return the channel to a reader? member: the reader is
 // in the channel's member list. Matching the filter's own tags is NIP-01's.
-cl_listed :: (g:G29Group,c:ClChannel,f:ClFilter,member:bool)->bool {
+cl_listed :: (g:G29Group,c:ClChannel,f:ClFilter,member:bool)->bool #effects(all) {
   readable:=member || !g.is_private;
   if f.names {return readable;}
   i:=cl_type_index(c.type);
@@ -320,7 +320,7 @@ cl_listed :: (g:G29Group,c:ClChannel,f:ClFilter,member:bool)->bool {
 }
 // Does a 44100 or 44101 notice reach a filter? has_type false: a notice
 // stored before the rule, which is about a legacy type.
-cl_notice :: (has_type:bool,type:G29Name,f:ClFilter)->bool {
+cl_notice :: (has_type:bool,type:G29Name,f:ClFilter)->bool #effects(all) {
   if !has_type {
     if f.t_n==0 {return true;}
     for i:0..<CL_LEGACY {if cl_has_t(f,CL_TYPES[i]) {return true;}}
@@ -357,7 +357,7 @@ the channel timeline as well as in its thread.
 ```jai
 // An event's thread tags: the reply-marked e tag (at most one), the
 // root-marked one, and ["broadcast", "1"] exactly.
-cw_tags :: (e:NostrEvent)->CwTags {
+cw_tags :: (e:NostrEvent)->CwTags #effects(all) {
   r:CwTags;k:=0;
   while true {
     t:=nostr_tag(e,k);g:=g29_tag(e,k);k+=1;
@@ -377,7 +377,7 @@ cw_tags :: (e:NostrEvent)->CwTags {
 <!-- source: coax/lib/nostr/nipcw.coax ingest -->
 ```jai
 // Store one verified event of the channel in rows[0..<n[0]].
-cw_ingest :: (rows:[]CwRow,n:[]int,e:NostrEvent)->int {
+cw_ingest :: (rows:[]CwRow,n:[]int,e:NostrEvent)->int #effects(all) {
   if e.error!=NE_OK || !e.verified {return CW_EVENT;}
   if e.kind>=39005 && e.kind<=39007 {return CW_RELAY_ONLY;}
   t:=cw_tags(e);if t.status!=CW_OK {return t.status;}
@@ -442,7 +442,7 @@ CwPage :: struct {
 
 <!-- source: coax/lib/nostr/nipcw.coax check -->
 ```jai
-cw_check :: (r:CwRequest)->CwPage {
+cw_check :: (r:CwRequest)->CwPage #effects(all) {
   p:CwPage;p.head=true;
   if r.channels!=1 {return cw_refuse(p,CW_CHANNELS);}
   if r.has_until!=r.has_before {return cw_refuse(p,CW_CURSOR);}
@@ -486,24 +486,24 @@ backwards drops or repeats the rows of one second.
 <!-- source: coax/lib/nostr/nipcw.coax order -->
 ```jai
 // Is id a before id b, bytewise?
-cw_id_less :: (a:[32]u8,b:[32]u8)->bool {
+cw_id_less :: (a:[32]u8,b:[32]u8)->bool #effects(all) {
   for i:0..<32 {if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}}
   return false;
 }
 // Does row r come after the position (at, id) in created_at DESC, id ASC?
-cw_after :: (r:CwRow,at:int,id:[32]u8)->bool {
+cw_after :: (r:CwRow,at:int,id:[32]u8)->bool #effects(all) {
   if r.created_at<at {return true;}
   if r.created_at>at {return false;}
   return cw_id_less(id,r.id);
 }
 // Does a come before b in the window's order?
-cw_first :: (a:CwRow,b:CwRow)->bool {return cw_after(b,a.created_at,a.id);}
+cw_first :: (a:CwRow,b:CwRow)->bool #effects(all) {return cw_after(b,a.created_at,a.id);}
 ```
 
 <!-- source: coax/lib/nostr/nipcw.coax eligible -->
 ```jai
 // Is the row one this window may return?
-cw_eligible :: (r:CwRow,q:CwRequest,p:CwPage)->bool {
+cw_eligible :: (r:CwRow,q:CwRequest,p:CwPage)->bool #effects(all) {
   if r.deleted {return false;}
   if p.kinds_n>0 && !cw_kind_in(p.kinds,p.kinds_n,r.kind) {return false;}
   if q.thread {return r.depth>=1 && r.depth<=p.depth_limit && ns_equal32(r.root,q.root);}
@@ -527,7 +527,7 @@ either.
 ```jai
 // The page for request q against the channel's rows[0..<n]: row indexes in
 // out. readable: the reader may read the channel (a member, or it is open).
-cw_window :: (rows:[]CwRow,n:int,q:CwRequest,readable:bool,out:[]int)->CwPage {
+cw_window :: (rows:[]CwRow,n:int,q:CwRequest,readable:bool,out:[]int)->CwPage #effects(all) {
   p:=cw_check(q);if p.status!=CW_OK || !readable {return p;}
   if q.thread {
     root:=cw_find(rows,n,q.root);
@@ -564,12 +564,12 @@ leaves every window (`cw_delete`).
 // Auxiliary events: one per stored reaction, deletion or edit, with the id
 // its e tag names.
 CwAux :: struct {id:[32]u8; kind:int; target:[32]u8;}
-cw_aux_kind :: (k:int)->bool {return k==7 || k==5 || k==9005 || k==40003;}
-cw_is_delete :: (k:int)->bool {return k==5 || k==9005;}
+cw_aux_kind :: (k:int)->bool #effects(all) {return k==7 || k==5 || k==9005 || k==40003;}
+cw_is_delete :: (k:int)->bool #effects(all) {return k==5 || k==9005;}
 // Hop 1: aux events naming a returned row; hop 2: deletions naming a hop-1
 // event. Indexes into aux in out; the count. An event names one target, a
 // row or a hop-1 event, so it appears at most once.
-cw_aux :: (rows:[]CwRow,page:[]int,aux:[]CwAux,out:[]int)->int {
+cw_aux :: (rows:[]CwRow,page:[]int,aux:[]CwAux,out:[]int)->int #effects(all) {
   m:=0;
   for i:0..<aux.count {
     if !cw_aux_kind(aux[i].kind) {continue;}
@@ -594,23 +594,23 @@ next cursor, `null` exactly when `has_more` is false:
 <!-- source: coax/lib/nostr/nipcw.coax bounds -->
 ```jai
 // The 39006 d tag: "<channel>:head" or "<channel>:<created_at>:<id hex>".
-cw_put_int :: (out:[]u8,at:int,v:int)->int {
+cw_put_int :: (out:[]u8,at:int,v:int)->int #effects(all) {
   digits:[20]u8;d:=0;x:=v;
   while true {digits[19-d]=cast(u8)('0'+x%10);d+=1;x/=10;if x==0 {break;}}
   return json_raw(out,at,cast(string)digits[20-d..<20]);
 }
-cw_put_hex :: (out:[]u8,at:int,id:[32]u8)->int {
+cw_put_hex :: (out:[]u8,at:int,id:[32]u8)->int #effects(all) {
   hex:[64]u8;d:="0123456789abcdef";
   for i:0..<32 {hex[2*i]=d[id[i]>>4];hex[2*i+1]=d[id[i]&15];}
   return json_raw(out,at,cast(string)hex[..]);
 }
-cw_bounds_d :: (channel:string,p:CwPage,out:[]u8)->int {
+cw_bounds_d :: (channel:string,p:CwPage,out:[]u8)->int #effects(all) {
   n:=json_raw(out,0,channel);n=json_raw(out,n,":");
   if p.head {return json_raw(out,n,"head");}
   n=cw_put_int(out,n,p.at);n=json_raw(out,n,":");return cw_put_hex(out,n,p.after);
 }
 // The 39006 content: has_more and next_cursor, null exactly when has_more is false.
-cw_bounds_content :: (p:CwPage,out:[]u8)->int {
+cw_bounds_content :: (p:CwPage,out:[]u8)->int #effects(all) {
   if !p.has_more {return json_raw(out,0,"{\"has_more\":false,\"next_cursor\":null}");}
   n:=json_raw(out,0,"{\"has_more\":true,\"next_cursor\":{\"created_at\":");n=cw_put_int(out,n,p.next_at);
   n=json_raw(out,n,",\"id\":\"");n=cw_put_hex(out,n,p.next_id);return json_raw(out,n,"\"}}");
@@ -634,7 +634,7 @@ CwBounds :: struct {ok:bool; d:string; has_more:bool; next:bool; next_at:int; ne
 // Read a 39006's content strictly: an object with has_more (a boolean) and
 // next_cursor (null, or an object with an integer created_at and a 64-hex
 // id); unknown fields are skipped.
-cw_read_bounds :: (d:string,content:string)->CwBounds {
+cw_read_bounds :: (d:string,content:string)->CwBounds #effects(all) {
   b:CwBounds;b.d=d;j:[1]Json;json_start(j[..],content);
   if json_next(j[..])!=JSON_OBJECT {return b;}
   seen:=0;tok:=json_next(j[..]);
@@ -669,7 +669,7 @@ cw_read_bounds :: (d:string,content:string)->CwBounds {
 }
 // What a client shows: bounds holds the 39006 overlays the response carried,
 // sent is the d tag the request's cursor binds, rows the rows it carried.
-cw_view :: (bounds:[]CwBounds,sent:string,head:bool,rows:int)->int {
+cw_view :: (bounds:[]CwBounds,sent:string,head:bool,rows:int)->int #effects(all) {
   if bounds.count==0 {return CW_VIEW_NONE;}
   if bounds.count>1 || !bounds[0].ok || bounds[0].d!=sent {return CW_VIEW_DISCARD;}
   if head && rows==0 && !bounds[0].has_more {return CW_VIEW_EMPTY;}
@@ -698,7 +698,7 @@ relay then recomputes the snapshot from the whole state:
 ```jai
 // Apply a verified hide (41012) or open (41010) by viewer for channel.
 // DV_OK: the hidden set changed, so publish the snapshot again.
-dv_command :: (ms:[]DvMember,viewer:[32]u8,kind:int,channel:G29Name)->int {
+dv_command :: (ms:[]DvMember,viewer:[32]u8,kind:int,channel:G29Name)->int #effects(all) {
   if kind!=DV_HIDE && kind!=DV_OPEN {return DV_KIND;}
   for i:0..<ms.count {
     if !ns_equal32(ms[i].viewer,viewer) || !g29_same(ms[i].channel,channel) {continue;}
@@ -714,7 +714,7 @@ dv_command :: (ms:[]DvMember,viewer:[32]u8,kind:int,channel:G29Name)->int {
 <!-- source: coax/lib/nostr/nipdv.coax snapshot -->
 ```jai
 // The 30622 tags for viewer: d, p, then each hidden active DM.
-dv_snapshot :: (ms:[]DvMember,viewer:[32]u8,out:[]u8)->int {
+dv_snapshot :: (ms:[]DvMember,viewer:[32]u8,out:[]u8)->int #effects(all) {
   n:=json_raw(out,0,"[[\"d\",");n=g29_put_key(out,n,viewer);
   n=json_raw(out,n,"],[\"p\",");n=g29_put_key(out,n,viewer);n=json_raw(out,n,"]");
   for m:ms {
@@ -737,18 +737,18 @@ reader alone, and every delivery path hands a 30622 only to the key in its
 // (its kinds include 30622, or it has no kinds), and its #p values.
 DvQuery :: struct {may_return:bool; p:[4][32]u8; p_n:int;}
 // The filter gate: #p must be the reader's key and nothing else.
-dv_query :: (q:DvQuery,reader:[32]u8)->bool {
+dv_query :: (q:DvQuery,reader:[32]u8)->bool #effects(all) {
   if !q.may_return {return true;}
   return q.p_n==1 && ns_equal32(q.p[0],reader);
 }
 // The result gate, on every delivery path: a 30622 goes only to its owner.
-dv_deliver :: (e:NostrEvent,reader:[32]u8)->bool {
+dv_deliver :: (e:NostrEvent,reader:[32]u8)->bool #effects(all) {
   if e.kind!=DV_SNAPSHOT {return true;}
   r:=g29_read(e);
   return r.status==G29_OK && r.has_p && ns_equal32(r.p,reader);
 }
 // May a client submit an event of this kind? Never a snapshot.
-dv_client_kind :: (kind:int)->bool {return kind!=DV_SNAPSHOT;}
+dv_client_kind :: (kind:int)->bool #effects(all) {return kind!=DV_SNAPSHOT;}
 ```
 
 The client reads its own snapshot, checks the relay's key and that `d` and
@@ -758,7 +758,7 @@ channel is never dropped, and no snapshot means nothing is hidden.
 <!-- source: coax/lib/nostr/nipdv.coax client -->
 ```jai
 // A d or p tag of the snapshot: it must name the viewer.
-dv_viewer_tag :: (t:G29Tag,viewer:[32]u8)->int {
+dv_viewer_tag :: (t:G29Tag,viewer:[32]u8)->int #effects(all) {
   key:[32]u8;
   if t.values<2 || !g29_key(t.v[1],key[..]) {return DV_SHAPE;}
   return ifx ns_equal32(key,viewer) then DV_OK else DV_VIEWER;
@@ -766,7 +766,7 @@ dv_viewer_tag :: (t:G29Tag,viewer:[32]u8)->int {
 // The hidden channel ids of viewer's snapshot e, into out: their count, or
 // a negative status. e must be a verified 30622 signed by the relay, with
 // exactly one d and one p, both the viewer. h tags are a set.
-dv_hidden :: (e:NostrEvent,relay:[32]u8,viewer:[32]u8,out:[]G29Name)->int {
+dv_hidden :: (e:NostrEvent,relay:[32]u8,viewer:[32]u8,out:[]G29Name)->int #effects(all) {
   if e.error!=NE_OK || !e.verified {return -DV_EVENT;}
   if e.kind!=DV_SNAPSHOT {return -DV_KIND;}
   if !ns_equal32(e.public_key,relay) {return -DV_SIGNER;}
@@ -791,7 +791,7 @@ dv_hidden :: (e:NostrEvent,relay:[32]u8,viewer:[32]u8,out:[]G29Name)->int {
 // One entry of the client's channel list.
 DvItem :: struct {channel:G29Name; dm:bool;}
 // The indexes of the items still shown: every non-DM, and every DM not hidden.
-dv_visible :: (items:[]DvItem,hidden:[]G29Name,out:[]int)->int {
+dv_visible :: (items:[]DvItem,hidden:[]G29Name,out:[]int)->int #effects(all) {
   m:=0;
   for i:0..<items.count {
     drop:=false;
@@ -814,9 +814,9 @@ the relay checks it on the way in: `https` or `http` up to 2048 bytes, or
 <!-- source: coax/lib/nostr/nipwp.coax icon -->
 ```jai
 WpIcon :: struct {status:int=WP_OK; clear:bool; n:int;}   // the value is out[0..<n]
-wp_starts :: (s:string,p:string)->bool {return s.count>=p.count && s[0..<p.count]==p;}
+wp_starts :: (s:string,p:string)->bool #effects(all) {return s.count>=p.count && s[0..<p.count]==p;}
 // An icon value: scheme, bytes, size.
-wp_value :: (s:string)->int {
+wp_value :: (s:string)->int #effects(all) {
   for c:s {if c<=32 || c==127 {return WP_BYTES;}}
   if wp_starts(s,"https://") || wp_starts(s,"http://") {return ifx s.count<=WP_MAX_URL then WP_OK else WP_SIZE;}
   if wp_starts(s,"data:image/") {return ifx s.count<=WP_MAX_DATA then WP_OK else WP_SIZE;}
@@ -828,7 +828,7 @@ wp_value :: (s:string)->int {
 ```jai
 // Decide a verified 9033 from a signer holding role; the icon is decoded
 // into out (at least WP_MAX_DATA bytes for the largest accepted value).
-wp_admit :: (e:NostrEvent,role:int,out:[]u8)->WpIcon {
+wp_admit :: (e:NostrEvent,role:int,out:[]u8)->WpIcon #effects(all) {
   r:WpIcon;
   if e.error!=NE_OK || !e.verified {r.status=WP_EVENT;return r;}
   if e.kind!=WP_SET {r.status=WP_KIND;return r;}

@@ -335,7 +335,7 @@ SfCount :: struct {na:int;firsts:int;extras:int;denied:int;ejects:int;readmits:i
 }
 
 // book:begin machines
-sf_health :: (p:SfPolicy,h:SfHealth,ok:bool,probe:bool,ups:int)->SfHealth {
+sf_health :: (p:SfPolicy,h:SfHealth,ok:bool,probe:bool,ups:int)->SfHealth #effects(all) {
     n:=h;
     // Up: client results count; probes are not sent.
     if h.up && !probe {
@@ -353,11 +353,11 @@ sf_health :: (p:SfPolicy,h:SfHealth,ok:bool,probe:bool,ups:int)->SfHealth {
     return n;
 }
 // Retries and hedges together stay within budget_pct percent of first attempts, plus reserve.
-sf_extra_ok :: (p:SfPolicy,firsts:int,extras:int)->bool {return (extras+1)*100<=p.budget_pct*firsts+p.reserve*100;}
+sf_extra_ok :: (p:SfPolicy,firsts:int,extras:int)->bool #effects(all) {return (extras+1)*100<=p.budget_pct*firsts+p.reserve*100;}
 // Whether a request may send another attempt now: its attempt limit, then
 // its deadline (an attempt that cannot finish in time is not sent), then,
 // for any attempt after the first, the budget.
-sf_again :: (p:SfPolicy,tries:int,firsts:int,extras:int,now:int,deadline:int,cost:int)->SfWhy {
+sf_again :: (p:SfPolicy,tries:int,firsts:int,extras:int,now:int,deadline:int,cost:int)->SfWhy #effects(all) {
     if tries>=p.tries {return SfWhy.tries;}
     if now+cost>deadline {return SfWhy.time;}
     if tries>0 && !sf_extra_ok(p,firsts,extras) {return SfWhy.budget;}
@@ -367,7 +367,7 @@ sf_again :: (p:SfPolicy,tries:int,firsts:int,extras:int,now:int,deadline:int,cos
 // the fewest attempts open, then the one sent a request longest ago (last
 // holds when, as a count of attempts; 0 is never), then the lowest number;
 // -1 when there is none.
-sf_pick :: (h:[]SfHealth,load:[]int,last:[]int,tried:int)->int {
+sf_pick :: (h:[]SfHealth,load:[]int,last:[]int,tried:int)->int #effects(all) {
     best:=-1;
     for k:0..<h.count {
         if h[k].up && (tried>>k)%2==0 && (best<0 || load[k]<load[best] || (load[k]==load[best] && last[k]<last[best])) {best=k;}
@@ -379,7 +379,7 @@ sf_pick :: (h:[]SfHealth,load:[]int,last:[]int,tried:int)->int {
 // Settle one key: chapter 180 charges the smaller of the price and the
 // quote and releases the hold, and the usage record is folded into the
 // metrics. A key already settled is refused and changes nothing.
-sf_settle :: (l:SfLedger,ev:UmEvidence,s:BlSchedule,key:int,q:BlPrice,u:BlUse,latency:int)->SfSettle {
+sf_settle :: (l:SfLedger,ev:UmEvidence,s:BlSchedule,key:int,q:BlPrice,u:BlUse,latency:int)->SfSettle #effects(all) {
     r:=SfSettle.{cause=SfCharge.twice,ledger=l};
     for i:0..<l.n {if l.keys[i]==key {return r;}}
     r.cause=SfCharge.full;
@@ -395,21 +395,21 @@ sf_settle :: (l:SfLedger,ev:UmEvidence,s:BlSchedule,key:int,q:BlPrice,u:BlUse,la
 }
 // book:end ledger
 
-sf_in :: (r:SfRun,k:int,kind:SfFault,t:int)->bool {
+sf_in :: (r:SfRun,k:int,kind:SfFault,t:int)->bool #effects(all) {
     for j:0..<r.nfaults {f:=r.faults[j];if f.replica==k && f.kind==kind && f.from<=t && t<f.until {return true;}}
     return false;
 }
 // The last slow span over t on replica k sets its speed.
-sf_pct :: (r:SfRun,k:int,t:int)->int {
+sf_pct :: (r:SfRun,k:int,t:int)->int #effects(all) {
     p:=100;
     for j:0..<r.nfaults {f:=r.faults[j];if f.replica==k && f.kind==SfFault.slow && f.from<=t && t<f.until {p=f.pct;}}
     return p;
 }
-sf_policy_ok :: (p:SfPolicy,replicas:int)->bool {
+sf_policy_ok :: (p:SfPolicy,replicas:int)->bool #effects(all) {
     if p.attempt_us<1 || p.tries<1 || p.tries>SF_TRIES || p.hedge_us<0 || p.budget_pct<0 || p.budget_pct>100 || p.reserve<0 {return false;}
     return p.fails>=1 && p.min_up>=1 && p.min_up<=replicas && p.probe_us>=1 && p.oks>=1;
 }
-sf_span_ok :: (r:SfRun,j:int)->bool {
+sf_span_ok :: (r:SfRun,j:int)->bool #effects(all) {
     f:=r.faults[j];
     if f.replica<0 || f.replica>=r.replicas || f.kind==SfFault.none || f.from<0 || f.until<=f.from {return false;}
     if f.kind==SfFault.slow && (f.pct<100 || f.pct>1000) {return false;}
@@ -417,7 +417,7 @@ sf_span_ok :: (r:SfRun,j:int)->bool {
     for i:0..<j {g:=r.faults[i];if f.kind==SfFault.crash && g.kind==SfFault.crash && g.replica==f.replica && g.from<f.until && f.from<g.until {return false;}}
     return true;
 }
-sf_check :: (r:SfRun,reqs:[]SfRequest)->SfStatus {
+sf_check :: (r:SfRun,reqs:[]SfRequest)->SfStatus #effects(all) {
     if r.replicas<1 || r.replicas>SF_REPLICAS || !sf_policy_ok(r.policy,r.replicas) || r.events<1 || r.events>SF_EVENTS {return SfStatus.config;}
     if !bl_schedule_valid(r.price) || !bl_account_valid(BlAccount.{budget=r.budget}) || r.nfaults<0 || r.nfaults>SF_FAULTS || reqs.count>SF_REQUESTS {return SfStatus.config;}
     for j:0..<r.nfaults {if !sf_span_ok(r,j) {return SfStatus.config;}}
@@ -431,12 +431,12 @@ sf_check :: (r:SfRun,reqs:[]SfRequest)->SfStatus {
 
 // book:begin sim
 // Close one attempt as the client sees it.
-sf_close :: (att:[]SfAttempt,out:[]SfOutcome,load:[]int,probing:[]bool,a:int,res:SfResult,now:int) {
+sf_close :: (att:[]SfAttempt,out:[]SfOutcome,load:[]int,probing:[]bool,a:int,res:SfResult,now:int) #effects(all) {
     x:=att[a];x.result=res;x.ended=now;att[a]=x;load[x.replica]-=1;
     if x.req>=0 {out[x.req].open-=1;} else {probing[x.replica]=false;}
 }
 // A result reaches the health checker.
-sf_heard :: (p:SfPolicy,h:[]SfHealth,k:int,ok:bool,probe:bool,c:SfCount)->SfCount {
+sf_heard :: (p:SfPolicy,h:[]SfHealth,k:int,ok:bool,probe:bool,c:SfCount)->SfCount #effects(all) {
     ups:=0;for j:0..<h.count {if h[j].up {ups+=1;}}
     n:=c;was:=h[k].up;h[k]=sf_health(p,h[k],ok,probe,ups);
     if was && !h[k].up {n.ejects+=1;}
@@ -445,7 +445,7 @@ sf_heard :: (p:SfPolicy,h:[]SfHealth,k:int,ok:bool,probe:bool,c:SfCount)->SfCoun
 }
 // Send an attempt, unless the record is full. A crashed replica refuses it
 // at once; a partitioned one never hears of it.
-sf_send :: (r:SfRun,att:[]SfAttempt,out:[]SfOutcome,load:[]int,probing:[]bool,last:[]int,h:[]SfHealth,req:int,k:int,kind:SfKind,now:int,c:SfCount)->SfCount {
+sf_send :: (r:SfRun,att:[]SfAttempt,out:[]SfOutcome,load:[]int,probing:[]bool,last:[]int,h:[]SfHealth,req:int,k:int,kind:SfKind,now:int,c:SfCount)->SfCount #effects(all) {
     n:=c;a:=n.na;
     if a==att.count {n.full=true;return n;}
     n.na+=1;
@@ -456,14 +456,14 @@ sf_send :: (r:SfRun,att:[]SfAttempt,out:[]SfOutcome,load:[]int,probing:[]bool,la
     return n;
 }
 // The deadline an attempt carries, and when the client gives up on it.
-sf_due :: (r:SfRun,reqs:[]SfRequest,x:SfAttempt)->int {
+sf_due :: (r:SfRun,reqs:[]SfRequest,x:SfAttempt)->int #effects(all) {
     if x.req<0 {return x.sent+r.policy.attempt_us;}
     q:=reqs[x.req];return cb_min(x.sent+r.policy.attempt_us,q.arrive+q.deadline);
 }
 // Chapter 177's attempt time on chapter 175's step model: one prefill step
 // over the prompt, then one decode step per further output token.
-sf_time :: (prompt:int,output:int)->int {return (cb_step_ns(prompt)+(output-1)*cb_step_ns(1))/1000;}
-sf_cost :: (reqs:[]SfRequest,req:int)->int {
+sf_time :: (prompt:int,output:int)->int #effects(all) {return (cb_step_ns(prompt)+(output-1)*cb_step_ns(1))/1000;}
+sf_cost :: (reqs:[]SfRequest,req:int)->int #effects(all) {
     if req<0 {return SF_PROBE_US;}
     return sf_time(reqs[req].prompt,reqs[req].output);
 }
@@ -474,7 +474,7 @@ sf_cost :: (reqs:[]SfRequest,req:int)->int {
 // then, until nothing changes, requests with no attempt open are retried or
 // settled, due hedges are sent, and idle replicas start their next attempt
 // or refuse it for its deadline.
-sf_sim :: (r:SfRun,reqs:[]SfRequest)->SfSim {
+sf_sim :: (r:SfRun,reqs:[]SfRequest)->SfSim #effects(all) {
     s:SfSim;s.status=sf_check(r,reqs);
     if s.status!=SfStatus.ok {return s;}
     p:=r.policy;s.n=reqs.count;s.ledger.account.budget=r.budget;
@@ -630,7 +630,7 @@ sf_sim :: (r:SfRun,reqs:[]SfRequest)->SfSim {
 // Settle a request that just ended: the winner's tokens and device time if
 // it was answered, nothing otherwise (refused before any attempt, or busy:
 // no attempt answered).
-sf_bill :: (r:SfRun,reqs:[]SfRequest,out:[]SfOutcome,att:[]SfAttempt,l:SfLedger,i:int,now:int)->SfLedger {
+sf_bill :: (r:SfRun,reqs:[]SfRequest,out:[]SfOutcome,att:[]SfAttempt,l:SfLedger,i:int,now:int)->SfLedger #effects(all) {
     o:=out[i];q:=reqs[i];u:=BlUse.{status=ifx o.end==SfEnd.refused then BlStatus.refused else BlStatus.busy};
     if o.end==SfEnd.answered {w:=att[o.winner];u=BlUse.{status=BlStatus.answered,tokens_in=q.prompt,tokens_out=q.output,device_us=w.finish-w.start};}
     t:=sf_settle(l,r.evidence,r.price,q.key,BlPrice.{msat=o.quote},u,now-q.arrive);
@@ -638,7 +638,7 @@ sf_bill :: (r:SfRun,reqs:[]SfRequest,out:[]SfOutcome,att:[]SfAttempt,l:SfLedger,
     return t.ledger;
 }
 // book:end sim
-sf_done :: (from:SfSim,c:SfCount)->SfSim {
+sf_done :: (from:SfSim,c:SfCount)->SfSim #effects(all) {
     s:=from;s.na=c.na;s.firsts=c.firsts;s.extras=c.extras;s.denied=c.denied;s.ejects=c.ejects;s.readmits=c.readmits;s.fenced=c.fenced;
     return s;
 }
@@ -648,7 +648,7 @@ sf_done :: (from:SfSim,c:SfCount)->SfSim {
 // expired and refused requests, the nearest-rank P95 of the answered ones'
 // latency from arrival, and the millisatoshis charged.
 SfReport :: struct {keys:int;answered:int;failed:int;expired:int;refused:int;p95_us:int;charged:int;attempts:int;}
-sf_report :: (s:SfSim,reqs:[]SfRequest)->SfReport {
+sf_report :: (s:SfSim,reqs:[]SfRequest)->SfReport #effects(all) {
     p:SfReport;lat:[64]int;
     for i:0..<s.n {
         o:=s.out[i];
@@ -664,9 +664,9 @@ sf_report :: (s:SfSim,reqs:[]SfRequest)->SfReport {
 }
 // book:end report
 
-sf_fault_name :: (f:SfFault)->string {names:=[6]string.["none","crash","hang","slow","partition","corrupt"];return names[cast(int)f];}
-sf_result_name :: (r:SfResult)->string {names:=[8]string.["pending","ok","crashed","down","deadline","timeout","corrupt","cancelled"];return names[cast(int)r];}
-sf_end_name :: (e:SfEnd)->string {names:=[6]string.["pending","answered","failed","expired","refused","duplicate"];return names[cast(int)e];}
-sf_status_name :: (s:SfStatus)->string {names:=[5]string.["ok","config","order","attempts","events"];return names[cast(int)s];}
-sf_charge_name :: (c:SfCharge)->string {names:=[5]string.["none","twice","full","bill","meter"];return names[cast(int)c];}
-sf_kind_name :: (k:SfKind)->string {names:=[4]string.["first","retry","hedge","probe"];return names[cast(int)k];}
+sf_fault_name :: (f:SfFault)->string #effects(all) {names:=[6]string.["none","crash","hang","slow","partition","corrupt"];return names[cast(int)f];}
+sf_result_name :: (r:SfResult)->string #effects(all) {names:=[8]string.["pending","ok","crashed","down","deadline","timeout","corrupt","cancelled"];return names[cast(int)r];}
+sf_end_name :: (e:SfEnd)->string #effects(all) {names:=[6]string.["pending","answered","failed","expired","refused","duplicate"];return names[cast(int)e];}
+sf_status_name :: (s:SfStatus)->string #effects(all) {names:=[5]string.["ok","config","order","attempts","events"];return names[cast(int)s];}
+sf_charge_name :: (c:SfCharge)->string #effects(all) {names:=[5]string.["none","twice","full","bill","meter"];return names[cast(int)c];}
+sf_kind_name :: (k:SfKind)->string #effects(all) {names:=[4]string.["first","retry","hedge","probe"];return names[cast(int)k];}

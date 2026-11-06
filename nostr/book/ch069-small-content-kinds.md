@@ -430,7 +430,7 @@ NccWinner :: struct {
 
 <!-- source: coax/lib/nostr/nipcc.coax listing -->
 ```jai
-ncc_listing :: (e:NostrEvent)->NccListing {
+ncc_listing :: (e:NostrEvent)->NccListing #effects(all) {
   r:NccListing;if e.error!=NE_OK {return r;}
   if e.kind!=NCC_KIND_LISTING {return n_cc_refuse_l(r,NCC_KIND,-1);}
   seen:[6]bool;   // d, name, D, T, S, a cache type
@@ -486,7 +486,7 @@ value through for that reason.
 // The k'th string of the index'th tag (0 is its name), decoded into out
 // whatever its length: its length, or -1 when the tag or value is missing
 // or malformed, or the raw value is longer than out.
-ncc_value :: (e:NostrEvent,index:int,k:int,out:[]u8)->int {
+ncc_value :: (e:NostrEvent,index:int,k:int,out:[]u8)->int #effects(all) {
   j:[1]Json;if !nt_start(j[..],e) {return -1;}
   at:=0;tok:=json_next(j[..]);
   while tok==JSON_ARRAY && at<index {skipped:=json_skip(j[..]);at+=1;tok=json_next(j[..]);}
@@ -498,7 +498,7 @@ ncc_value :: (e:NostrEvent,index:int,k:int,out:[]u8)->int {
   return json_unescape(raw,out);
 }
 // Is the index'th tag's name this one?
-ncc_named :: (e:NostrEvent,index:int,name:string)->bool {
+ncc_named :: (e:NostrEvent,index:int,name:string)->bool #effects(all) {
   b:[16]u8;n:=ncc_value(e,index,0,b[..]);
   return n==name.count && cast(string)b[0..<n]==name;
 }
@@ -506,7 +506,7 @@ ncc_named :: (e:NostrEvent,index:int,name:string)->bool {
 
 <!-- source: coax/lib/nostr/nipcc.coax found -->
 ```jai
-ncc_found :: (e:NostrEvent)->NccFound {
+ncc_found :: (e:NostrEvent)->NccFound #effects(all) {
   r:NccFound;if e.error!=NE_OK {return r;}
   if e.kind!=NCC_KIND_FOUND {return n_cc_refuse_f(r,NCC_KIND,-1);}
   has_cache:=false;i:=0;
@@ -545,7 +545,7 @@ own verdict.
 // The found log's embedded verification event, read into text with its id
 // and signature checked (scratch holds its serialization): error NE_OK and
 // verified, or a refused event. text must outlive it.
-ncc_proof :: (found:NostrEvent,text:[]u8,scratch:[]u8)->NostrEvent {
+ncc_proof :: (found:NostrEvent,text:[]u8,scratch:[]u8)->NostrEvent #effects(all) {
   none:NostrEvent;
   f:=ncc_found(found);if f.status!=NCC_OK {return none;}
   n:=ncc_value(found,f.proof_at,1,text);
@@ -559,7 +559,7 @@ ncc_proof :: (found:NostrEvent,text:[]u8,scratch:[]u8)->NostrEvent {
 // Does this found log, with the proof ncc_proof read from it, prove its
 // author found this cache? NCC_OK, or the first check that fails, in
 // NIP-CC's order.
-ncc_verify :: (listing:NostrEvent,found:NostrEvent,p:NostrEvent)->int {
+ncc_verify :: (listing:NostrEvent,found:NostrEvent,p:NostrEvent)->int #effects(all) {
   l:=ncc_listing(listing);if l.status!=NCC_OK {return NCC_KIND;}
   f:=ncc_found(found);if f.status!=NCC_OK {return NCC_KIND;}
   d:=nostr_tag_d(listing);
@@ -613,7 +613,7 @@ that key, whatever the timestamps.
 // listing locks one in, else the earliest verified log, the lower id first
 // when two are as early. proofs[k] is ncc_proof of logs[k]. Logs that
 // don't verify are counted, never chosen.
-ncc_winner :: (listing:NostrEvent,logs:[]NostrEvent,proofs:[]NostrEvent)->NccWinner {
+ncc_winner :: (listing:NostrEvent,logs:[]NostrEvent,proofs:[]NostrEvent)->NccWinner #effects(all) {
   w:NccWinner;if proofs.count!=logs.count {return w;}
   l:=ncc_listing(listing);if l.status!=NCC_OK {w.status=NCC_KIND;return w;}
   if !l.first_to_find {w.status=NCC_UNVERIFIABLE;return w;}
@@ -694,7 +694,7 @@ NF4Credits :: struct {
 
 <!-- source: coax/lib/nostr/nipf4.coax show -->
 ```jai
-nf4_show :: (e:NostrEvent)->NF4Show {
+nf4_show :: (e:NostrEvent)->NF4Show #effects(all) {
   r:NF4Show;if e.error!=NE_OK {return r;}
   if e.kind!=NF4_KIND_SHOW {return nf4_refuse_s(r,NF4_KIND,-1);}
   has_title:=false;i:=0;
@@ -726,7 +726,7 @@ nf4_show :: (e:NostrEvent)->NF4Show {
 
 <!-- source: coax/lib/nostr/nipf4.coax episode -->
 ```jai
-nf4_episode :: (e:NostrEvent)->NF4Episode {
+nf4_episode :: (e:NostrEvent)->NF4Episode #effects(all) {
   r:NF4Episode;if e.error!=NE_OK {return r;}
   if e.kind!=NF4_KIND_EPISODE {return nf4_refuse_e(r,NF4_KIND,-1);}
   has_title:=false;i:=0;
@@ -766,7 +766,7 @@ key.
 // Which of a show's claimed authors confirm it: each claimed author's
 // newest kind 10164 list in lists (the lower id first at the same time)
 // must name the show's podcast key.
-nf4_credits :: (show:NostrEvent,lists:[]NostrEvent)->NF4Credits {
+nf4_credits :: (show:NostrEvent,lists:[]NostrEvent)->NF4Credits #effects(all) {
   c:NF4Credits;
   s:=nf4_show(show);if s.status!=NF4_OK {c.status=NF4_KIND;return c;}
   for a:0..<s.author_n {

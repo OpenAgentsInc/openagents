@@ -26,11 +26,11 @@
  expect:=[2]f64.[1,2];indices:=[2]int.[0,1];values:=[2]f64.[1,2];#assert rlp_replay_match(expect[..],indices[..],values[..]);values[0]=2;#assert !rlp_replay_match(expect[..],indices[..],values[..]);values[0]=1;values[1]=3;#assert !rlp_replay_match(expect[..],indices[..],values[..]);
 }
 // Trusted tape construction uses only admitted rows, finite bounded constants and one parameter.
-rlp_saved_match :: (expected:u64,observed:u64)->bool {return expected==observed;}
-rlp_gain :: (K:f64)->bool {return K>=0.25 && K<=1;}
-rlp_row_finite :: (r:RlpRow)->bool {return rlr_finite4(f64_bits(r.x),f64_bits(r.action),f64_bits(r.old_logp),f64_bits(r.advantage));}
-rlp_row_domain :: (r:RlpRow)->bool {return abs(r.x)<=16 && abs(r.action)<=18.25 && abs(r.old_logp)<=1000000 && abs(r.advantage)<=1000000000;}
-rlp_block :: (K:f64,rows:[]RlpRow,output:[]RlpBlock)->RlpStatus #export_c {
+rlp_saved_match :: (expected:u64,observed:u64)->bool #effects(all) {return expected==observed;}
+rlp_gain :: (K:f64)->bool #effects(all) {return K>=0.25 && K<=1;}
+rlp_row_finite :: (r:RlpRow)->bool #effects(all) {return rlr_finite4(f64_bits(r.x),f64_bits(r.action),f64_bits(r.old_logp),f64_bits(r.advantage));}
+rlp_row_domain :: (r:RlpRow)->bool #effects(all) {return abs(r.x)<=16 && abs(r.action)<=18.25 && abs(r.old_logp)<=1000000 && abs(r.advantage)<=1000000000;}
+rlp_block :: (K:f64,rows:[]RlpRow,output:[]RlpBlock)->RlpStatus #export_c #effects(all) {
  if rows.count<1 || rows.count>64 || output.count!=1 {return RlpStatus.shape;}
  if !rgp_finite(f64_bits(K)) {return RlpStatus.number;}for r:rows {if !rlp_row_finite(r) {return RlpStatus.number;}}
  if !rlp_gain(K) {return RlpStatus.range;}for r:rows {if !rlp_row_domain(r) {return RlpStatus.range;}}
@@ -51,4 +51,4 @@ rlp_block :: (K:f64,rows:[]RlpRow,output:[]RlpBlock)->RlpStatus #export_c {
  fresh.gradient_sum=grads[0];fresh.vjp_proxy=values[n-1];fresh.rows=rows.count;fresh.nodes=n;output[0]=fresh;return RlpStatus.ok;
 }
 
-rlp_replay_match :: (expected:[]f64,indices:[]int,values:[]f64)->bool {for x,i:expected {if !rlp_saved_match(f64_bits(x),f64_bits(values[indices[i]])) {return false;}}return true;}
+rlp_replay_match :: (expected:[]f64,indices:[]int,values:[]f64)->bool #effects(all) {for x,i:expected {if !rlp_saved_match(f64_bits(x),f64_bits(values[indices[i]])) {return false;}}return true;}

@@ -58,7 +58,7 @@ items.
 ```jai
 // The tag names each kind holds: NIP-51's tables of standard lists and sets,
 // and NIP-B0. 0 is not a list kind.
-nl_allowed :: (kind: int) -> int {
+nl_allowed :: (kind: int) -> int #effects(all) {
   if kind == 10000 { return NL_P | NL_T | NL_WORD | NL_E; }      // mutes
   if kind == 10001 || kind == 10005 { return NL_E; }             // pins, public chats
   if kind == 10003 { return NL_E | NL_A; }                       // bookmarks
@@ -103,7 +103,7 @@ items, because a set's address must stay readable by everyone.
 ```jai
 // Every tag of a tags array (e's) against the kind's names. Private items
 // may not hold a d tag: the address must stay readable by everyone.
-nl_check :: (e: NostrEvent, allowed: int, is_private: bool) -> NlCheck {
+nl_check :: (e: NostrEvent, allowed: int, is_private: bool) -> NlCheck #effects(all) {
   c: NlCheck; name: [NL_MAX_NAME] u8; value: [NT_MAX_VALUE] u8;
   k := 0;
   while true {
@@ -134,7 +134,7 @@ records how the content is encrypted:
 ```jai
 // A list event's public items, checked against its kind, and how its
 // private items are encrypted. nl_open (nip51-private.coax) reads those.
-nl_read :: (e: NostrEvent) -> NlList {
+nl_read :: (e: NostrEvent) -> NlList #effects(all) {
   l: NlList;
   if e.error != NE_OK || e.content_from < 0 || e.content_to > e.original.count || e.content_from > e.content_to { return l; }
   l.kind = e.kind; l.allowed = nl_allowed(e.kind); l.set = e.kind >= 30000;
@@ -177,7 +177,7 @@ conversation key.
 // The owner's public key and the two keys to self from their secret: the
 // unhashed shared x (NIP-04's AES key) and the NIP-44 conversation key.
 // One ECDH of the secret with its own public key gives both.
-nl_self :: (secret: [] u8, work: [] EcdhScratch, out: [] NlSelf) -> int {
+nl_self :: (secret: [] u8, work: [] EcdhScratch, out: [] NlSelf) -> int #effects(all) {
   if secret.count != 32 || work.count != 1 || out.count != 1 { return NL_KEY; }
   out[0] = NlSelf.{}; pub33: [33] u8;
   if bip32_public(secret, pub33[..]) {
@@ -241,7 +241,7 @@ after them.
 ```jai
 // The private items of a list nl_read returned, decrypted into plain with
 // the owner's keys. NIP-04 content is refused unless allow_legacy.
-nl_open :: (l: NlList, e: NostrEvent, me: NlSelf, allow_legacy: bool, work: [] NlWork, plain: [] u8) -> NlList {
+nl_open :: (l: NlList, e: NostrEvent, me: NlSelf, allow_legacy: bool, work: [] NlWork, plain: [] u8) -> NlList #effects(all) {
   if l.error != NL_OK || l.opened { return l; }
   if l.cipher == NL_C_NIP04 && !allow_legacy { return nl_fail(l, NL_LEGACY); }
   if !me.ok || work.count != 1 { return nl_fail(l, NL_KEY); }
@@ -250,7 +250,7 @@ nl_open :: (l: NlList, e: NostrEvent, me: NlSelf, allow_legacy: bool, work: [] N
   work[0] = NlWork.{};
   return r;
 }
-nl_decrypt :: (l: NlList, e: NostrEvent, me: NlSelf, work: [] NlWork, plain: [] u8) -> NlList {
+nl_decrypt :: (l: NlList, e: NostrEvent, me: NlSelf, work: [] NlWork, plain: [] u8) -> NlList #effects(all) {
   n := json_unescape(e.original[e.content_from..<e.content_to], work[0].text[..]);
   if n == -1 { return nl_fail(l, NL_LIMIT); }
   text := cast(string) work[0].text[0..<n];
@@ -287,7 +287,7 @@ because it held the plaintext.
 // checked against kind and encrypted with NIP-44 to the owner. public_tags
 // are checked too, so a list that would not read back is never written.
 // nonce is 32 fresh random bytes (entropy.coax); never reuse one.
-nl_seal :: (kind: int, me: NlSelf, public_tags: string, private_tags: string, nonce: [] u8, work: [] NlWork, out: [] u8) -> NlSealed {
+nl_seal :: (kind: int, me: NlSelf, public_tags: string, private_tags: string, nonce: [] u8, work: [] NlWork, out: [] u8) -> NlSealed #effects(all) {
   allowed := nl_allowed(kind);
   if allowed == 0 { return nl_sealed(NL_KIND); }
   if !me.ok || nonce.count != 32 || work.count != 1 { return nl_sealed(NL_KEY); }
@@ -330,7 +330,7 @@ the private items" for "nothing is muted".
 // event id is its lowercase hex and must match exactly; a hashtag (without
 // '#') matches a t item with ASCII case folded; a note's text is muted when
 // it contains a word item, folded the same way.
-nl_muted :: (l: NlList, e: NostrEvent, what: int, value: string) -> int {
+nl_muted :: (l: NlList, e: NostrEvent, what: int, value: string) -> int #effects(all) {
   if l.error != NL_OK || l.kind != NL_KIND_MUTE || !l.opened { return NL_NOT_MUTE_LIST; }
   name := ifx what == NL_MUTE_PUBKEY then "p" else ifx what == NL_MUTE_EVENT then "e" else ifx what == NL_MUTE_HASHTAG then "t" else "word";
   for i: 0..<l.public_n + l.private_n {

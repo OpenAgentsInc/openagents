@@ -34,8 +34,8 @@ PmdAsset :: struct {ok:bool;name:string;sha256:string;bytes:int;}
     #assert pmd_manifest("elephant-1",out[0..<n])==n;
     #assert pmd_manifest("elephant-1",out[0..<n-1])==-1 && pmd_manifest("elephant-1",out[0..<0])==-1;
 }
-pmd_target :: ()->PsTarget {return ps_target(0,512);}
-pmd_asset :: (model:string,index:int)->PmdAsset {
+pmd_target :: ()->PsTarget #effects(all) {return ps_target(0,512);}
+pmd_asset :: (model:string,index:int)->PmdAsset #effects(all) {
     if model!="elephant-1" || index<0 || index>=4 {return PmdAsset.{};}
     t:=pmd_target();
     if index==0 {return PmdAsset.{ok=true,name="config.json",sha256=t.config_sha};}
@@ -43,16 +43,16 @@ pmd_asset :: (model:string,index:int)->PmdAsset {
     if index==2 {return PmdAsset.{ok=true,name="readout.json",sha256=t.readout_sha};}
     return PmdAsset.{ok=true,name=t.shard[0].name,sha256=t.shard[0].sha,bytes=t.shard[0].bytes};
 }
-pmd_identity :: (model:string,out:[]u8)->int {
+pmd_identity :: (model:string,out:[]u8)->int #effects(all) {
     if model!="elephant-1" {return -1;}
     t:=pmd_target();n:=json_raw(out,0,model);n=json_raw(out,n,"@sha256:");return json_raw(out,n,t.shard[0].sha);
 }
-pmd_url :: (model:string,index:int,out:[]u8)->int {
+pmd_url :: (model:string,index:int,out:[]u8)->int #effects(all) {
     a:=pmd_asset(model,index);if !a.ok {return -1;}
     t:=pmd_target();n:=json_raw(out,0,"https://huggingface.co/");n=json_raw(out,n,t.origin);n=json_raw(out,n,"/resolve/");
     n=json_raw(out,n,t.revision);n=json_raw(out,n,"/");return json_raw(out,n,a.name);
 }
-pmd_manifest :: (model:string,out:[]u8)->int #export_c {
+pmd_manifest :: (model:string,out:[]u8)->int #export_c #effects(all) {
     if model!="elephant-1" {return -1;}
     t:=pmd_target();buf:[512]u8;
     n:=json_raw(out,0,"{\"model\":");n=json_write_string(out,n,model);n=json_raw(out,n,",\"origin\":");n=json_write_string(out,n,t.origin);

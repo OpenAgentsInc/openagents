@@ -14,7 +14,7 @@
 #load "../../../lib/sys/proc.coax";
 #load "../../../lib/json/json.coax";
 
-cxrand_draw :: (out: [] u8, n: int) -> int #foreign;
+cxrand_draw :: (out: [] u8, n: int) -> int #foreign #effects(all);
 CA_OUT :: 65536;
 Ca :: struct {
   cli: string; api: string; db: string; psql: string;
@@ -195,7 +195,7 @@ ca_run :: (c: [] Ca) -> bool {
   return true;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   c: [1] Ca;
   b1: [1024] u8; b2: [256] u8; b3: [1024] u8; b4: [1024] u8;
   c[0].cli = proc_getenv("CLI", b1[..]); c[0].api = proc_getenv("API", b2[..]);

@@ -13,9 +13,9 @@
 #load "../../lib/net/relay_conn.coax";
 #load "../../lib/crypto/entropy.coax";
 
-cxproc_getenv_push :: (byte: int) -> int #foreign;
-cxproc_getenv :: () -> int #foreign;
-cxproc_getenv_byte :: (i: int) -> int #foreign;
+cxproc_getenv_push :: (byte: int) -> int #foreign #effects(all);
+cxproc_getenv :: () -> int #foreign #effects(all);
+cxproc_getenv_byte :: (i: int) -> int #foreign #effects(all);
 
 rt_env_int :: (name: string) -> int {
   for c: name { r := cxproc_getenv_push(cast(int) c); }

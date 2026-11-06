@@ -196,7 +196,7 @@ with no data. `GetScriptOp` reads one:
 // A push whose length bytes or data run past the end refuses, and next is
 // where Core's iterator stopped: after the opcode, and after the length
 // bytes when they were all there.
-script_op_vartime :: (s: [] u8, pc: int) -> ScriptOp #export_c {
+script_op_vartime :: (s: [] u8, pc: int) -> ScriptOp #export_c #effects(all) {
   if pc >= s.count { return ScriptOp.{next=pc, op=0xff}; }
   op := cast(int) s[pc]; at := pc + 1;
   if op > OP_PUSHDATA4 { return ScriptOp.{ok=true, op=op, at=at, next=at}; }
@@ -221,7 +221,7 @@ a push used the shortest form, which `MINIMALDATA` requires:
 ```jai
 // IsPushOnly: every op parses and none is above OP_16. OP_RESERVED (0x50)
 // counts as a push here; running it fails.
-script_push_only_vartime :: (s: [] u8) -> bool #export_c {
+script_push_only_vartime :: (s: [] u8) -> bool #export_c #effects(all) {
   pc := 0;
   while pc < s.count {
     op := script_op_vartime(s, pc);
@@ -233,7 +233,7 @@ script_push_only_vartime :: (s: [] u8) -> bool #export_c {
 // CheckMinimalPush: the data was pushed by the shortest form: OP_0 for
 // nothing, OP_1NEGATE and OP_1 to OP_16 for those single bytes, a direct
 // push to 75 bytes, then PUSHDATA1, then PUSHDATA2.
-script_minimal_push_vartime :: (data: [] u8, op: int) -> bool #export_c {
+script_minimal_push_vartime :: (data: [] u8, op: int) -> bool #export_c #effects(all) {
   n := data.count;
   if n == 0 { return op == OP_0; }
   if n == 1 && data[0] >= 1 && data[0] <= 16 { return false; }
@@ -261,7 +261,7 @@ has at most 4 bytes; `CHECKLOCKTIMEVERIFY` and `CHECKSEQUENCEVERIFY` take
 // With minimal, the last byte must carry a bit other than the sign,
 // unless the byte before it needs the sign bit to itself: so 0x80
 // (negative zero) and 0x0100 refuse, and 0xff00 (255) does not.
-script_num_vartime :: (b: [] u8, minimal: bool, max: int) -> ScriptNum #export_c {
+script_num_vartime :: (b: [] u8, minimal: bool, max: int) -> ScriptNum #export_c #effects(all) {
   n := b.count;
   if n > max { return ScriptNum.{}; }
   if n == 0 { return ScriptNum.{ok=true}; }
@@ -275,7 +275,7 @@ script_num_vartime :: (b: [] u8, minimal: bool, max: int) -> ScriptNum #export_c
 // CScriptNum::serialize into out (9 bytes of room): the magnitude,
 // little-endian, and the sign in the top bit, with one more byte when the
 // top bit is taken. Zero is no bytes. Returns the length.
-script_num_write_vartime :: (value: int, out: [] u8) -> int #export_c {
+script_num_write_vartime :: (value: int, out: [] u8) -> int #export_c #effects(all) {
   magnitude := ifx value < 0 then -value else value;  // mutant: equivalent (the negation of zero is zero)
   n := 0;
   while magnitude > 0 { out[n] = cast(u8) (magnitude & 255); magnitude >>= 8; n += 1; }
@@ -286,7 +286,7 @@ script_num_write_vartime :: (value: int, out: [] u8) -> int #export_c {
 }
 // CastToBool: any nonzero byte is true, except a last byte of 0x80 with
 // zeros before it: negative zero is false.
-script_bool_vartime :: (b: [] u8) -> bool #export_c {
+script_bool_vartime :: (b: [] u8) -> bool #export_c #effects(all) {
   for i: 0..<b.count {
     if b[i] != 0 { return i != b.count - 1 || b[i] != 0x80; }
   }
@@ -327,19 +327,19 @@ first false value, since nothing else changes what runs:
 // Core's ConditionStack: IF pushes a value, ELSE flips the top one, ENDIF
 // pops it, and an opcode runs when every value is true. Only the first
 // false value is observable, so the stack is its size and that position.
-si_cond_push :: (c: ScriptCond, value: bool) -> ScriptCond {
+si_cond_push :: (c: ScriptCond, value: bool) -> ScriptCond #effects(all) {
   r := c;
   if r.first_false < 0 && !value { r.first_false = r.size; }
   r.size += 1;
   return r;
 }
-si_cond_pop :: (c: ScriptCond) -> ScriptCond {
+si_cond_pop :: (c: ScriptCond) -> ScriptCond #effects(all) {
   r := c;
   r.size -= 1;
   if r.first_false == r.size { r.first_false = -1; }
   return r;
 }
-si_cond_toggle :: (c: ScriptCond) -> ScriptCond {
+si_cond_toggle :: (c: ScriptCond) -> ScriptCond #effects(all) {
   r := c;
   if r.first_false < 0 { r.first_false = r.size - 1; }
   else if r.first_false == r.size - 1 { r.first_false = -1; }
@@ -426,7 +426,7 @@ runs the opcode if its branch is running:
 // IF, NOTIF, ELSE and ENDIF always run, and so do VERIF and VERNOTIF,
 // which sit between them and fail. After each opcode the two stacks
 // together may hold 1,000 elements.
-si_eval :: (sp: ScriptSpend, w: [] ScriptWork, script: ScriptItem, flags: int, version: int) -> int {
+si_eval :: (sp: ScriptSpend, w: [] ScriptWork, script: ScriptItem, flags: int, version: int) -> int #effects(all) {
   s := si_bytes(sp, w, script);
   tapscript := version == SCRIPT_TAPSCRIPT;
   if !tapscript && s.count > SCRIPT_MAX_SIZE { return SCRIPT_ERR_SCRIPT_SIZE; }
@@ -492,7 +492,7 @@ The opcodes that are not pushes, conditionals or `CHECKMULTISIG`:
 ```jai
 // One opcode in a running branch, other than a push, a conditional and
 // CHECKMULTISIG.
-si_run :: (sp: ScriptSpend, w: [] ScriptWork, s: [] u8, begin: int, op: int, flags: int, version: int) -> int {
+si_run :: (sp: ScriptSpend, w: [] ScriptWork, s: [] u8, begin: int, op: int, flags: int, version: int) -> int #effects(all) {
   minimal := (flags & SCRIPT_VERIFY_MINIMALDATA) != 0;
   if op == OP_1NEGATE || (op >= OP_1 && op <= OP_16) { si_push(w, si_constant(op - 0x50)); return SCRIPT_ERR_OK; }
   if op == OP_NOP || op == OP_CODESEPARATOR { return SCRIPT_ERR_OK; }
@@ -543,7 +543,7 @@ The stack opcodes check the depth they need before they touch the stack:
 ```jai
 // The stack opcodes. Each checks the depth it needs first; OP_PICK and
 // OP_ROLL read their index as a 4-byte number.
-si_stack_op :: (sp: ScriptSpend, w: [] ScriptWork, op: int, minimal: bool) -> int {
+si_stack_op :: (sp: ScriptSpend, w: [] ScriptWork, op: int, minimal: bool) -> int #effects(all) {
   size := si_size(w);
   if op == OP_TOALTSTACK {
     if size < 1 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
@@ -590,7 +590,7 @@ si_stack_op :: (sp: ScriptSpend, w: [] ScriptWork, op: int, minimal: bool) -> in
   }
   return SCRIPT_ERR_OK;
 }
-si_swap :: (w: [] ScriptWork, i: int, j: int) {
+si_swap :: (w: [] ScriptWork, i: int, j: int) #effects(all) {
   a := si_top(w, i);
   w[0].stack[w[0].depth-i] = si_top(w, j);
   w[0].stack[w[0].depth-j] = a;
@@ -599,7 +599,7 @@ si_swap :: (w: [] ScriptWork, i: int, j: int) {
 // in the first opcode of a witness script whose stack is larger than
 // SCRIPT_ROOM; there the size check after the opcode fails whatever the
 // element was, so the result is STACK_SIZE at once.
-si_pick :: (sp: ScriptSpend, w: [] ScriptWork, op: int, minimal: bool) -> int {
+si_pick :: (sp: ScriptSpend, w: [] ScriptWork, op: int, minimal: bool) -> int #effects(all) {
   if si_size(w) < 2 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
   n := script_num_vartime(si_bytes(sp, w, si_top(w, 1)), minimal, 4);
   if !n.ok { return SCRIPT_ERR_SCRIPTNUM; }
@@ -621,7 +621,7 @@ length:
 // The numeric opcodes: operands are 4-byte CScriptNums, results are
 // written back however long they are (OP_ADD can make 5 bytes, which no
 // later numeric opcode accepts).
-si_numeric :: (sp: ScriptSpend, w: [] ScriptWork, op: int, minimal: bool) -> int {
+si_numeric :: (sp: ScriptSpend, w: [] ScriptWork, op: int, minimal: bool) -> int #effects(all) {
   arity := ifx op <= OP_0NOTEQUAL then 1 else ifx op == OP_WITHIN then 3 else 2;
   if si_size(w) < arity { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
   v: [3] int;
@@ -665,7 +665,7 @@ HASH160, and SHA-1:
 ```jai
 // The hash opcodes: RIPEMD-160, SHA-1 and HASH160 give 20 bytes, SHA-256
 // and HASH256 32.
-si_hash :: (sp: ScriptSpend, w: [] ScriptWork, op: int) -> int {
+si_hash :: (sp: ScriptSpend, w: [] ScriptWork, op: int) -> int #effects(all) {
   if si_size(w) < 1 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
   el := si_new(w, ifx op <= OP_SHA1 || op == OP_HASH160 then 20 else 32);
   input := si_bytes(sp, w, si_top(w, 1));
@@ -690,13 +690,13 @@ them. [Chapter 39](ch039-timelocks.md) explains both locks:
 ```jai
 // CheckLockTime and CheckSequence (BIP-65 and BIP-112; chapter 39): the
 // script's number against this input's transaction.
-si_locktime :: (sp: ScriptSpend, value: int) -> bool {
+si_locktime :: (sp: ScriptSpend, value: int) -> bool #effects(all) {
   locktime := tx_le_vartime(sp.b, sp.t.locktime, 4);
   if (locktime < SCRIPT_LOCKTIME_THRESHOLD) != (value < SCRIPT_LOCKTIME_THRESHOLD) { return false; }
   if value > locktime { return false; }
   return tx_le_vartime(sp.b, sp.ins[sp.index].sequence, 4) != SCRIPT_SEQUENCE_FINAL;
 }
-si_sequence :: (sp: ScriptSpend, value: int) -> bool {
+si_sequence :: (sp: ScriptSpend, value: int) -> bool #effects(all) {
   sequence := tx_le_vartime(sp.b, sp.ins[sp.index].sequence, 4);  // mutant: equivalent (a fifth byte lands above bit 31, outside every mask)
   if tx_le_vartime(sp.b, 0, 4) < 2 { return false; }
   if (sequence & SCRIPT_SEQUENCE_DISABLE) != 0 { return false; }
@@ -708,7 +708,7 @@ si_sequence :: (sp: ScriptSpend, value: int) -> bool {
 // OP_CHECKLOCKTIMEVERIFY and OP_CHECKSEQUENCEVERIFY, when their flags are
 // set: a 5-byte number at the top, left there, not negative, and
 // satisfied by the transaction. CSV with the disable bit set is a NOP.
-si_lock_op :: (sp: ScriptSpend, w: [] ScriptWork, op: int, minimal: bool) -> int {
+si_lock_op :: (sp: ScriptSpend, w: [] ScriptWork, op: int, minimal: bool) -> int #effects(all) {
   if si_size(w) < 1 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
   n := script_num_vartime(si_bytes(sp, w, si_top(w, 1)), minimal, 5);
   if !n.ok { return SCRIPT_ERR_SCRIPTNUM; }
@@ -767,7 +767,7 @@ signature's encoding and the key's, and verifies:
 // scriptCode from the last OP_CODESEPARATOR, with the signature's push
 // removed in legacy script; the encoding checks; the verification; and
 // NULLFAIL, which turns a failed non-empty signature into an error.
-si_checksig :: (sp: ScriptSpend, w: [] ScriptWork, script: [] u8, begin: int, op: int, flags: int, version: int) -> int {
+si_checksig :: (sp: ScriptSpend, w: [] ScriptWork, script: [] u8, begin: int, op: int, flags: int, version: int) -> int #effects(all) {
   if si_size(w) < 2 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
   sig := si_bytes(sp, w, si_top(w, 2)); key := si_bytes(sp, w, si_top(w, 1));
   si_code(w, script, begin);
@@ -795,7 +795,7 @@ earlier removal:
 // starts, in place, and returns how many it removed. The push of an empty
 // signature is the single byte 0x00, so an empty signature removes every
 // OP_0.
-si_find_delete :: (w: [] ScriptWork, sig: [] u8) -> int {
+si_find_delete :: (w: [] ScriptWork, sig: [] u8) -> int #effects(all) {
   pattern: [SCRIPT_MAX_ELEMENT + 3] u8;
   head := ifx sig.count < OP_PUSHDATA1 then 1 else ifx sig.count <= 255 then 2 else 3;
   if head == 1 { pattern[0] = cast(u8) sig.count; }
@@ -819,7 +819,7 @@ si_find_delete :: (w: [] ScriptWork, sig: [] u8) -> int {
   }
   return found;
 }
-si_same :: (a: [] u8, b: [] u8) -> bool {
+si_same :: (a: [] u8, b: [] u8) -> bool #effects(all) {
   if a.count != b.count { return false; }
   for i: 0..<a.count { if a[i] != b[i] { return false; } }
   return true;
@@ -841,20 +841,20 @@ must be compressed.
 ```jai
 // IsCompressedOrUncompressedPubKey (STRICTENC) and IsCompressedPubKey
 // (WITNESS_PUBKEYTYPE): shapes only, not points.
-si_key_shape :: (key: [] u8) -> bool {
+si_key_shape :: (key: [] u8) -> bool #effects(all) {
   if key.count == 33 { return key[0] == 2 || key[0] == 3; }
   return key.count == 65 && key[0] == 4;
 }
-si_key_compressed :: (key: [] u8) -> bool { return key.count == 33 && (key[0] == 2 || key[0] == 3); }
+si_key_compressed :: (key: [] u8) -> bool #effects(all) { return key.count == 33 && (key[0] == 2 || key[0] == 3); }
 // CheckPubKeyEncoding.
-si_key_check :: (key: [] u8, flags: int, version: int) -> int {
+si_key_check :: (key: [] u8, flags: int, version: int) -> int #effects(all) {
   if (flags & SCRIPT_VERIFY_STRICTENC) != 0 && !si_key_shape(key) { return SCRIPT_ERR_PUBKEYTYPE; }
   if (flags & SCRIPT_VERIFY_WITNESS_PUBKEYTYPE) != 0 && version == SCRIPT_V0 && !si_key_compressed(key) { return SCRIPT_ERR_WITNESS_PUBKEYTYPE; }
   return SCRIPT_ERR_OK;
 }
 // CheckSignatureEncoding, through chapter 21's check, whose flags are
 // DERSIG 1, LOW_S 2 and STRICTENC 4.
-si_sig_check :: (sig: [] u8, flags: int) -> int {
+si_sig_check :: (sig: [] u8, flags: int) -> int #effects(all) {
   der := (ifx (flags & SCRIPT_VERIFY_DERSIG) != 0 then SCRIPT_DERSIG else 0)
     | (ifx (flags & SCRIPT_VERIFY_LOW_S) != 0 then SCRIPT_LOW_S else 0)
     | (ifx (flags & SCRIPT_VERIFY_STRICTENC) != 0 then SCRIPT_STRICTENC else 0);
@@ -882,7 +882,7 @@ the amount spent, so the same signature fails for any other amount.
 // parity), a signature with its sighash byte, the hash for its
 // SigVersion, then chapter 21's lax parser and chapter 19's verifier,
 // which accepts either half of s as Core does after normalizing.
-si_ecdsa_vartime :: (sp: ScriptSpend, sig: [] u8, key: [] u8, code: [] u8, version: int) -> bool {
+si_ecdsa_vartime :: (sp: ScriptSpend, sig: [] u8, key: [] u8, code: [] u8, version: int) -> bool #effects(all) {
   if sig.count == 0 || key.count == 0 { return false; }
   prefix := cast(int) key[0];
   wanted := ifx prefix == 2 || prefix == 3 then 33 else ifx prefix == 4 || prefix == 6 || prefix == 7 then 65 else 0;  // mutant: equivalent (else 1 lets a 1-byte key on to a verification that fails)
@@ -927,7 +927,7 @@ The scriptCode a legacy signature hashes leaves out the
 // number. Like Core, it copies only up to where GetOp stopped, so a
 // script that ends inside a push contributes fewer bytes than its prefix
 // says.
-si_absorb_code :: (state: [] u8, code: [] u8) {
+si_absorb_code :: (state: [] u8, code: [] u8) #effects(all) {
   separators := 0; pc := 0;
   while true {
     op := script_op_vartime(code, pc);
@@ -975,7 +975,7 @@ empty so that nobody can change it.
 // NULLFAIL each signature must be empty if the check failed, and one more
 // element, the dummy, is popped: an off-by-one in the first release that
 // NULLDUMMY (BIP-147) now requires to be empty.
-si_checkmultisig :: (sp: ScriptSpend, w: [] ScriptWork, script: [] u8, begin: int, op: int, flags: int, version: int, ops: int) -> ScriptStep {
+si_checkmultisig :: (sp: ScriptSpend, w: [] ScriptWork, script: [] u8, begin: int, op: int, flags: int, version: int, ops: int) -> ScriptStep #effects(all) {
   minimal := (flags & SCRIPT_VERIFY_MINIMALDATA) != 0;
   i := 1;
   if si_size(w) < i { return ScriptStep.{error=SCRIPT_ERR_INVALID_STACK_OPERATION}; }
@@ -1053,7 +1053,7 @@ in order:
 // if it is a witness program the scriptSig must be exactly its push.
 // CLEANSTACK wants one element left, and WITNESS refuses witness data no
 // program used. Returns SCRIPT_ERR_OK or the error, Core's number.
-script_verify_vartime :: (sp: ScriptSpend, flags: int, w: [] ScriptWork) -> int {
+script_verify_vartime :: (sp: ScriptSpend, flags: int, w: [] ScriptWork) -> int #effects(all) {
   if (flags & SCRIPT_VERIFY_WITNESS) != 0 && (flags & SCRIPT_VERIFY_P2SH) == 0 { return SCRIPT_BAD_FLAGS; }  // mutant: equivalent (with P2SH clear, flags & 2049 is flags & 2048)
   if (flags & SCRIPT_VERIFY_CLEANSTACK) != 0 && (flags & SCRIPT_VERIFY_WITNESS) == 0 { return SCRIPT_BAD_FLAGS; }
   si_reset(w);
@@ -1125,14 +1125,14 @@ program `4e73` of version 1 is pay-to-anchor (P2A), which policy keeps.
 // CScript::IsWitnessProgram: a version opcode (OP_0, or OP_1 to OP_16)
 // and one direct push of 2 to 40 bytes, nothing else. Returns the
 // version, or -1.
-script_witness_version_vartime :: (s: [] u8) -> int #export_c {
+script_witness_version_vartime :: (s: [] u8) -> int #export_c #effects(all) {
   if s.count < 4 || s.count > 42 { return -1; }
   if s[0] != OP_0 && (s[0] < OP_1 || s[0] > OP_16) { return -1; }
   if cast(int) s[1] + 2 != s.count { return -1; }
   return ifx s[0] == OP_0 then 0 else cast(int) s[0] - 0x50;
 }
 // CScript::IsPayToScriptHash: OP_HASH160, a 20-byte push, OP_EQUAL.
-script_p2sh_vartime :: (s: [] u8) -> bool #export_c {
+script_p2sh_vartime :: (s: [] u8) -> bool #export_c #effects(all) {
   return s.count == 23 && s[0] == OP_HASH160 && s[1] == 0x14 && s[22] == OP_EQUAL;
 }
 ```
@@ -1146,7 +1146,7 @@ script_p2sh_vartime :: (s: [] u8) -> bool #export_c {
 // (chapter 44), and a push that runs past the end fails. Its stack may
 // start with at most 1,000 elements. A witness v0 stack larger than
 // SCRIPT_ROOM keeps its top SCRIPT_ROOM elements and counts the rest.
-si_execute_witness :: (sp: ScriptSpend, w: [] ScriptWork, count: int, script: ScriptItem, flags: int, version: int) -> int {
+si_execute_witness :: (sp: ScriptSpend, w: [] ScriptWork, count: int, script: ScriptItem, flags: int, version: int) -> int #effects(all) {
   if version == SCRIPT_TAPSCRIPT {
     s := si_bytes(sp, w, script); pc := 0;
     while pc < s.count {
@@ -1176,7 +1176,7 @@ si_execute_witness :: (sp: ScriptSpend, w: [] ScriptWork, count: int, script: Sc
 // refuses. Version 1 with 32 bytes outside P2SH is Taproot (chapter 44,
 // si_taproot) when its flag is set; the 2-byte anchor 4e73 (P2A) and
 // every other version and length succeed, unless policy discourages them.
-si_witness_program :: (sp: ScriptSpend, w: [] ScriptWork, version: int, program: ScriptItem, flags: int, p2sh: bool) -> int {
+si_witness_program :: (sp: ScriptSpend, w: [] ScriptWork, version: int, program: ScriptItem, flags: int, p2sh: bool) -> int #effects(all) {
   prog := si_bytes(sp, w, program);
   count := sp.ins[sp.index].count;
   if version == 0 && prog.count == 32 {

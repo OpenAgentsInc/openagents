@@ -35,7 +35,7 @@
 SignSpan :: struct {address:u64;length:int;}
 // Order: host/session, workspace, key, auxiliary randomness, message, output.
 // Empty spans have no access; all nonempty spans are pairwise disjoint.
-sig_admit :: (spans:[]SignSpan,narrow:bool)->bool #export_c {
+sig_admit :: (spans:[]SignSpan,narrow:bool)->bool #export_c #effects(all) {
   if spans.count!=6 {return false;}
   for i:0..<6 {
     s:=spans[i];if !sa_span(s.address,s.length,1048576) {return false;}

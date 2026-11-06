@@ -191,7 +191,7 @@ negative code, and a refusal writes nothing:
 // bytes, or SE_UNCOMPRESSED, 65). Returns the bytes written, or one of the
 // ER_ refusals, which write nothing. Any recovered key verifies the
 // signature; whether it is the right key is the caller's question.
-ecdsa_recover_vartime :: (hash: [] u8, signature: [] u8, id: int, form: int, out: [] u8) -> int #export_c {
+ecdsa_recover_vartime :: (hash: [] u8, signature: [] u8, id: int, form: int, out: [] u8) -> int #export_c #effects(all) {
   if (form != SE_COMPRESSED && form != SE_UNCOMPRESSED) || out.count < form { return ER_BAD_FORM; }
   result := er_recover_vartime(hash, signature, id);
   if result.code != 0 { return result.code; }
@@ -253,14 +253,14 @@ workspace as a bit, `high`:
 ```jai
 // 1 when s > (n-1)/2, else 0. For s < n, that holds exactly when 2s >= n,
 // so compute 2s in nine limbs, subtract n, and read the borrow.
-ec_high :: (s: ScScalar) -> u64 {
+ec_high :: (s: ScScalar) -> u64 #effects(all) {
   wide: [9] u32; carry: u32;
   for i: 0..<8 { wide[i] = (s.limbs[i] << 1) | carry; carry = s.limbs[i] >> 31; }
   wide[8] = carry;
   return sc_subtract_n(wide).borrow ^ 1;
 }
 // n - s when s is in the high half, selected on that bit.
-ec_low :: (s: ScScalar) -> ScScalar {
+ec_low :: (s: ScScalar) -> ScScalar #effects(all) {
   return sc_select(ec_high(s), sc_negate(s), s);
 }
 ```
@@ -271,7 +271,7 @@ ec_low :: (s: ScScalar) -> ScScalar {
 // 6979's nonce (with data as extra data when it isn't empty), into out:
 // r || s (32 bytes each, s in the low half), then the recovery ID when out
 // has 65 bytes. The caller checks the views.
-ec_sign :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork, out: [] u8) -> bool {
+ec_sign :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork, out: [] u8) -> bool #effects(all) {
   #assert ss_key(key, w[0].key[..], false);              // d, or 1 with valid = 0
   ec_seed(key, hash, data, w);
   ec_pick(w);                                            // k
@@ -293,7 +293,7 @@ ec_sign :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork, out: [] u8) -
 // The low-S ECDSA signature r || s (32 bytes each). Views are stable and
 // disjoint (overlap is the host's truthful observation). out is written
 // only when the result is true; the workspace is cleared either way.
-ecdsa_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c {
+ecdsa_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c #effects(all) {
   if !ec_views(key, hash, w, out, overlap, 64) { return false; }
   return ec_sign(key, hash, hash[0..<0], w, out);
 }
@@ -314,19 +314,19 @@ the nonce. Chapter 3's rules apply until the call returns, so each is a
 <!-- source: coax/lib/crypto/ecdsa_sign.coax recoverable -->
 ```jai
 // 1 when the 32 bytes of x(R) are at least n, else 0: the borrow of x - n.
-ec_over :: (x: [] u8) -> u64 {
+ec_over :: (x: [] u8) -> u64 #effects(all) {
   wide: [9] u32;
   for i: 0..<8 { wide[7-i] = cb_load_be32(x, 4*i).value; }   // big-endian words; wide[8] stays 0
   return sc_subtract_n(wide).borrow ^ 1;
 }
 // The recovery ID: bit 0 is the parity of y(R), flipped when low-S
 // replaced s with n - s (that signs with -R), and bit 1 says x(R) >= n.
-ec_recid :: (w: [] EcdsaWork) -> u8 {
+ec_recid :: (w: [] EcdsaWork) -> u8 #effects(all) {
   return cast,trunc(u8) (((w[0].point[0].odd ^ w[0].high) & 1) | (ec_over(w[0].x[..]) << 1));   // no range check on a secret
 }
 // ecdsa_sign with the recovery ID in out[64]: out holds 65 bytes,
 // r || s || id. Everything else is ecdsa_sign's.
-ecdsa_sign_recoverable :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c {
+ecdsa_sign_recoverable :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c #effects(all) {
   if !ec_views(key, hash, w, out, overlap, 65) { return false; }
   return ec_sign(key, hash, hash[0..<0], w, out);
 }
@@ -361,7 +361,7 @@ signature hash: no transaction serializes to bytes that start this way.
 ```jai
 // Bitcoin's compact size: n in one byte below 0xfd, else the byte fd, fe
 // or ff and n in 2, 4 or 8 little-endian bytes. Returns the bytes written.
-sm_compact_size :: (n: int, out: [] u8) -> int {
+sm_compact_size :: (n: int, out: [] u8) -> int #effects(all) {
   size := 9; first := 0xff;
   if n < 0xfd { out[0] = cast(u8) n; return 1; }
   if n <= 0xffff { size = 3; first = 0xfd; }
@@ -372,7 +372,7 @@ sm_compact_size :: (n: int, out: [] u8) -> int {
 }
 // Absorb the bytes of text, one at a time (SHA-256 buffers them). True
 // when every update succeeds.
-sm_absorb :: (state: [] u8, text: string) -> bool {
+sm_absorb :: (state: [] u8, text: string) -> bool #effects(all) {
   one: [1] u8; ok := true;
   for i: 0..<text.count {
     one[0] = text[i];
@@ -382,7 +382,7 @@ sm_absorb :: (state: [] u8, text: string) -> bool {
 }
 // The hash a signed message signs: SHA-256d of compact_size(24), the magic,
 // compact_size(len(message)) and the message, into out (32 bytes).
-signed_message_hash :: (message: string, out: [] u8) -> bool #export_c {
+signed_message_hash :: (message: string, out: [] u8) -> bool #export_c #effects(all) {
   if out.count != 32 { return false; }
   state: [SHA_STATE_BYTES] u8; magic: [9] u8; length: [9] u8; first: [32] u8;
   m := sm_compact_size(SM_MAGIC.count, magic[..]);
@@ -416,7 +416,7 @@ two different addresses. The signer must say which one it signs for.
 // signmessage: the base64 signature (88 characters) of message under a
 // 32-byte key, into out. compressed says which form of the key the
 // address hashes; it sets bit 2 of the header. Returns 88 or a refusal.
-signed_message_sign :: (key: [] u8, compressed: bool, message: string, w: [] EcdsaWork, out: [] u8) -> int #export_c {
+signed_message_sign :: (key: [] u8, compressed: bool, message: string, w: [] EcdsaWork, out: [] u8) -> int #export_c #effects(all) {
   if out.count < SM_SIGNATURE_TEXT { return SM_CAPACITY; }
   hash: [32] u8; signed: [65] u8; compact: [65] u8;
   ok := signed_message_hash(message, hash[..]) && ecdsa_sign_recoverable(key, hash[..], w, signed[..], false);
@@ -448,7 +448,7 @@ step, and returns the first refusal in Core's order:
 // The key a base64 signature recovers for message, in the form its header
 // names (33 bytes compressed, 65 uncompressed), into out. Returns the
 // bytes written or a refusal.
-signed_message_recover_vartime :: (signature: string, message: string, out: [] u8) -> int #export_c {
+signed_message_recover_vartime :: (signature: string, message: string, out: [] u8) -> int #export_c #effects(all) {
   bytes: [65] u8;
   decoded := base64_decode_checked(signature, bytes[..], false);   // canonical padded base64 (chapter 1)
   if decoded.error == NC_INVALID { return SM_MALFORMED_SIGNATURE; }
@@ -470,7 +470,7 @@ signed_message_recover_vartime :: (signature: string, message: string, out: [] u
 // verifymessage: does signature sign message under the key of address, a
 // P2PKH address of mainnet, or of the test networks when testnet is set?
 // Returns SM_OK or the first refusal, in Bitcoin Core's order.
-verify_message_vartime :: (address: string, signature: string, message: string, testnet: bool) -> int #export_c {
+verify_message_vartime :: (address: string, signature: string, message: string, testnet: bool) -> int #export_c #effects(all) {
   want: [20] u8;
   kind := base58_address_decode_vartime(address, want[..]);   // chapter 26
   p2pkh := ifx testnet then B58_TEST_P2PKH else B58_MAIN_P2PKH;

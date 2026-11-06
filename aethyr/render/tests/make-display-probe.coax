@@ -4,7 +4,7 @@
 #load "../presentation.coax";
 #load "qualification-files.coax";
 #load "../../../coax/lib/sys/args.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=1 {tool_errln("usage: make-display-probe NEW_OUT");return 2;}out:=args_at(a[..],0);if !fs_mkdir(out) {return 1;}listing:[1]FsList;if fs_list(out,listing[..])!=0 {return 2;}
  source:[524288]u8;expected:[262144]u8;for i:0..<source.count {source[i]=dpq_source(i);}for pixel:0..<DISPLAY_PROBE_PIXELS {for channel:0..<4 {expected[pixel*4+channel]=cast(u8)dpq_expected(pixel,channel);}}
  p:=render_presentation_quantized_v1(2,DISPLAY_PROBE_SIDE,DISPLAY_PROBE_SIDE,1,16384);paths:[4][4096]u8;input:=fs_join(out,"source.rgba16f",paths[0][..]);oracle:=fs_join(out,"expected.rgba8",paths[1][..]);if !fs_write(input,cast(string)source[..])||!fs_write(oracle,cast(string)expected[..]) {return 1;}

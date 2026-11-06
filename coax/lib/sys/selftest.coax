@@ -13,7 +13,7 @@ check :: (ok: bool, what: string) -> int {
   return 1;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   bad := 0;
   a: [1] Args;
   bad += check(args_load(a[..]) && args_count(a[..]) == 2 && args_at(a[..], 0) == "one" && args_at(a[..], 1) == "two words", "argv arrives whole");

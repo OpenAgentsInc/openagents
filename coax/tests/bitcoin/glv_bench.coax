@@ -7,14 +7,14 @@
 #load "../../lib/crypto/schnorr.coax";
 
 // r1 and r2 of k, each as 32 big-endian bytes of the value mod n.
-glv_bench_split :: (k: [] u8, out: [] u8) -> bool #export_c {
+glv_bench_split :: (k: [] u8, out: [] u8) -> bool #export_c #effects(all) {
   if k.count != 32 || out.count != 64 { return false; }
   s := glv_split_vartime(sc_reduce_bytes(k).value);
   return sc_store(s.r1, out[0..<32]) && sc_store(s.r2, out[32..<64]);
 }
 // a·G + b·P for a compressed P, on the endomorphism path or chapter 16's,
 // written compressed (33 bytes) or as the single byte 0 for infinity.
-glv_bench_ecmult :: (a: [] u8, point: [] u8, b: [] u8, glv: bool, out: [] u8) -> int #export_c {
+glv_bench_ecmult :: (a: [] u8, point: [] u8, b: [] u8, glv: bool, out: [] u8) -> int #export_c #effects(all) {
   if a.count != 32 || b.count != 32 || out.count != 33 { return -1; }
   p := sg_decode_public(point);
   if !p.ok { return -1; }
@@ -27,7 +27,7 @@ glv_bench_ecmult :: (a: [] u8, point: [] u8, b: [] u8, glv: bool, out: [] u8) ->
   return e.length;
 }
 // Chapter 19's verifier with chapter 16's multiplication.
-glv_bench_ecdsa_strauss :: (hash: [] u8, public_key: [] u8, signature: [] u8) -> bool #export_c {
+glv_bench_ecdsa_strauss :: (hash: [] u8, public_key: [] u8, signature: [] u8) -> bool #export_c #effects(all) {
   key := se_decode(public_key);
   if !key.ok { return false; }
   prepared := ev_prepare_vartime(hash, key.value, signature, true);
@@ -40,7 +40,7 @@ glv_bench_ecdsa_strauss :: (hash: [] u8, public_key: [] u8, signature: [] u8) ->
   return sc_equal(sc_reduce_bytes(x[..]).value, prepared.r);
 }
 // Chapter 23's verifier with chapter 16's multiplication.
-glv_bench_schnorr_strauss :: (message: [] u8, public_key: [] u8, signature: [] u8) -> bool #export_c {
+glv_bench_schnorr_strauss :: (message: [] u8, public_key: [] u8, signature: [] u8) -> bool #export_c #effects(all) {
   prepared := sv_prepare_vartime(message, public_key, signature);
   if !prepared.ready { return false; }
   result := ecmult_vartime(prepared.s, prepared.point, prepared.negative_e);

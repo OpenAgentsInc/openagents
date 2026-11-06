@@ -36,17 +36,17 @@
   #assert fc_enter_route(true,false,0,true,false,false,false)==0;
   #assert fc_enter_route(true,false,53,true,false,false,true)==0;
 }
-fc_chat_hold_ms :: ()->int #export_c {return 5000;}
-fc_chat_mode :: (opened:bool,busy:bool,feed:[]HudFeed,now_ms:int)->int #export_c {
+fc_chat_hold_ms :: ()->int #export_c #effects(all) {return 5000;}
+fc_chat_mode :: (opened:bool,busy:bool,feed:[]HudFeed,now_ms:int)->int #export_c #effects(all) {
   return ifx opened then 2 else ifx hf_visible(feed,busy,now_ms) then 1 else 0;
 }
-fc_feed_event :: (feed:[]HudFeed,kind:int,text:string,now_ms:int) #export_c {
+fc_feed_event :: (feed:[]HudFeed,kind:int,text:string,now_ms:int) #export_c #effects(all) {
   if kind==0 {hf_clear(feed);}
   if kind==1 {hf_append(feed,text);}
   if kind==2 {hf_finish(feed,now_ms,fc_chat_hold_ms());}
 }
-fc_feed_text :: (feed:[]HudFeed)->string #export_c {return hf_text(feed);}
-fc_enter_route :: (ready:bool,opened:bool,key:int,down:bool,repeated:bool,modified:bool,held:bool)->int #export_c {
+fc_feed_text :: (feed:[]HudFeed)->string #export_c #effects(all) {return hf_text(feed);}
+fc_enter_route :: (ready:bool,opened:bool,key:int,down:bool,repeated:bool,modified:bool,held:bool)->int #export_c #effects(all) {
   if key!=36 && key!=76 {return 0;}
   if held {return 1;}
   if !down || !ready || modified {return 0;}

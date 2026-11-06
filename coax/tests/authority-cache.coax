@@ -52,7 +52,7 @@ run :: (compiler: string, dir: string, body: string, out: [] u8) -> ProcRun {
 // authority_checks counts, as in "cold status=0 cached=0 checked=1".
 FUNCTIONS :: "chk() { n=$1; k=$2; shift 2; COAX_CHECK_CACHE=\"$D/$k\" \"${COMPILER:-$C}\" \"$@\" --timings \"$D/$n.json\" > \"$D/$n.c\" 2> \"$D/$n.err\"; s=$?; echo \"$n status=$s $(grep -o '\"authority_checks\":{[^}]*}' \"$D/$n.json\" | sed 's/[^0-9,]//g; s/^/cached=/; s/,/ checked=/')\"; }";
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: authority-cache.coax COMPILER"); return 2; }
   compiler := args_at(a[..], 0);

@@ -50,19 +50,19 @@ MbpCapacity :: struct {count:int;clamped:bool;}
   #assert mbp_capacity(0).count==0 && !mbp_capacity(0).clamped;one:[1]u8;#assert mbp_pack("x",one[..]).count==1 && one[0]=='x' && mbp_pack("xx",one[..]).count==0;
 }
 
-mbp_text :: (value:[]u8)->bool {return value.count>0 && Mbp__pb_utf8(value);}
+mbp_text :: (value:[]u8)->bool #effects(all) {return value.count>0 && Mbp__pb_utf8(value);}
 // Strings cannot be cast to mutable byte views. Generated setters copy this
 // bounded temporary before reuse; this function knows no protobuf wire format.
-mbp_pack :: (value:string,out:[]u8)->[]u8 {if value.count>out.count {return out[0..<0];}for i:0..<value.count {out[i]=value[i];}return out[0..<value.count];}
+mbp_pack :: (value:string,out:[]u8)->[]u8 #effects(all) {if value.count>out.count {return out[0..<0];}for i:0..<value.count {out[i]=value[i];}return out[0..<value.count];}
 // count is a nonnegative caller span size. clamped is inspectable diagnostics,
 // so callers can report why their 2 MiB workspace still has a 1 MiB usable limit.
-mbp_capacity :: (count:int)->MbpCapacity {if count>MBP_MAX {return MbpCapacity.{count=MBP_MAX,clamped=true};}return MbpCapacity.{count=count};}
-mbp_inputs :: (policy:string,aggregate:string,events:[]string,overlap:bool)->bool {
+mbp_capacity :: (count:int)->MbpCapacity #effects(all) {if count>MBP_MAX {return MbpCapacity.{count=MBP_MAX,clamped=true};}return MbpCapacity.{count=count};}
+mbp_inputs :: (policy:string,aggregate:string,events:[]string,overlap:bool)->bool #effects(all) {
   if overlap || events.count>224 {return false;}scratch:[32768]u8;
   if !mbp_text(mbp_pack(policy,scratch[..])) || !mbp_text(mbp_pack(aggregate,scratch[0..<16384])) {return false;}
   for event:events {if !mbp_text(mbp_pack(event,scratch[0..<16384])) {return false;}}return true;
 }
-mbp_read :: (input:[]u8,events:[]string)->MbpView #export_c {
+mbp_read :: (input:[]u8,events:[]string)->MbpView #export_c #effects(all) {
   w:=Mbp_PublicPoolInputs_decode_minimal(input);if w.error==Mbp__pb_LIMIT {return MbpView.{code=MBP_LIMIT};}if w.error!=0 {return MbpView.{};}
   if !Mbp_PublicPoolInputs_unknown(w,0).done || Mbp_PublicPoolInputs_get_version(w).value!=MBP_VERSION {return MbpView.{};}
   policy:=Mbp_PublicPoolInputs_get_policy_json(w).value;aggregate:=Mbp_PublicPoolInputs_get_aggregate_event_json(w).value;

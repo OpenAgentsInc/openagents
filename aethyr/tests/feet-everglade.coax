@@ -1,7 +1,7 @@
 // The Ranger's actual GPU object matrix contains its world-space root.
 #load "../../apps/openagents-web/everglade.coax";
 
-drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c {
+drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c #effects(all) {
   s: [1] Everglade;
   everglade_start(s[..]);
   for i: 0..<s[0].heights.count { s[0].heights[i] = 2.5; }

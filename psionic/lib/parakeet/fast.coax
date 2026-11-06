@@ -3,7 +3,7 @@
 // Weights are authenticated/validated once by the resident model loader.
 #load "plan.coax";
 
-pkq_launch :: (kind:int,items:int,n0:int,n1:int,n2:int,n3:int,n4:int,n5:int,n6:int,n7:int,scale:f32,a:[]f32,b:[]f32,c:[]f32,d:[]f32,e:[]f32,f:[]f32)->bool #foreign;
+pkq_launch :: (kind:int,items:int,n0:int,n1:int,n2:int,n3:int,n4:int,n5:int,n6:int,n7:int,scale:f32,a:[]f32,b:[]f32,c:[]f32,d:[]f32,e:[]f32,f:[]f32)->bool #foreign #effects(all);
 // Fixed kernel IDs are a private versioned ABI with parakeet-metal.c.
 pkf_linear :: (rows:int,ni:int,no:int,bias:bool,x:[]f32,w:[]f32,at:int,y:[]f32)->bool {
  return pkq_launch(1,((rows+63)/64)*((no+31)/32),rows,ni,no,ifx bias then 1 else 0,0,0,0,0,0,x,w[at..<at+ni*no],w[at+ni*no..<at+ni*no+ifx bias then no else 0],y,y,y);
@@ -21,7 +21,7 @@ pkf_ff :: (s:CfShape,n:int,w:[]f32,a:CfFf,h:[]f32,norm:[]f32,wide:[]f32,tmp:[]f3
 }
 // Generic shape and layer-count entry allows real slices and tiny independent
 // references to use exactly the production schedule. layers=0 is subsampling.
-pkf_encode :: (s:CfShape,w:[]f32,x:[]f32,frames:int,work:[]f32,out:[]f32,layers:int)->bool #export_c {
+pkf_encode :: (s:CfShape,w:[]f32,x:[]f32,frames:int,work:[]f32,out:[]f32,layers:int)->bool #export_c #effects(all) {
  if !pkf_admit(s,frames,w.count,x.count,work.count,out.count) || !pkf_input_valid(s,frames,x) || layers<0 || layers>s.layers {return false;}
  p:=pkf_plan(s,frames);c:=cf_plan(s,1,frames);d:=s.dim;n:=p.n;nd:=n*d;np:=(2*n-1)*d;sub:=cf_sub_at(s);
  input:=work[0..<p.input];ca:=work[p.input..<p.input+p.conv];cb:=work[p.input+p.conv..<p.h];h:=work[p.h..<p.a];a:=work[p.a..<p.b];b:=work[p.b..<p.q];q:=work[p.q..<p.k];k:=work[p.k..<p.v];v:=work[p.v..<p.ctx];ctx:=work[p.ctx..<p.p];pos:=work[p.p..<p.rp];rp:=work[p.rp..<p.two];two:=work[p.two..<p.g];g:=work[p.g..<p.c];cv:=work[p.c..<p.end];

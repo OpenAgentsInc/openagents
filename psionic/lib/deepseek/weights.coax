@@ -20,22 +20,22 @@ DS_SLOT_NAMES :: [12]string.["input_layernorm.weight","post_attention_layernorm.
     #assert !ds_spec_valid(DsSpec.{rows=1,cols=1,rank=1,begin=0,end=2},2);
     specs:=DS_SPECS;#assert ds_spec_find(specs[..],"model.norm.weight")>=0 && ds_spec_find(specs[..],"unknown")== -1;
 }
-ds_original_shape :: (capacity:int)->DsShape #export_c {if capacity<1 || capacity>16384 {return DsShape.{};}s:=DS_ORIGINAL_SHAPE;s.capacity=capacity;return s;}
-ds_original_files :: ()->int #export_c {return 5;}
-ds_original_filename :: (i:int)->string #export_c {if i<0 || i>=5 {return "";}return DS_PINS[i].name;}
-ds_tensor_name :: (layer:int,slot:int,out:[]u8)->int {
+ds_original_shape :: (capacity:int)->DsShape #export_c #effects(all) {if capacity<1 || capacity>16384 {return DsShape.{};}s:=DS_ORIGINAL_SHAPE;s.capacity=capacity;return s;}
+ds_original_files :: ()->int #export_c #effects(all) {return 5;}
+ds_original_filename :: (i:int)->string #export_c #effects(all) {if i<0 || i>=5 {return "";}return DS_PINS[i].name;}
+ds_tensor_name :: (layer:int,slot:int,out:[]u8)->int #effects(all) {
     prefix:="model.layers.";for i:0..<prefix.count {out[i]=prefix[i];}n:=prefix.count;if layer>=10 {out[n]='0'+cast(u8)(layer/10);n+=1;}out[n]='0'+cast(u8)(layer%10);n+=1;out[n]='.';n+=1;
     for c:DS_SLOT_NAMES[slot] {out[n]=c;n+=1;}return n;
 }
-ds_spec_valid :: (x:DsSpec,bytes:int)->bool {return x.rank>=1 && x.rank<=2 && x.rows>=1 && x.rows<=151936 && x.cols>=1 && x.cols<=8960 && (x.rank!=1 || x.cols==1) && x.begin>=8 && x.end<=bytes && x.end-x.begin==2*x.rows*x.cols;}
-ds_spec_find :: (specs:[]DsSpec,name:string)->int {for i:0..<specs.count {if specs[i].name==name {return i;}}return -1;}
-ds_expected :: (s:DsShape,slot:int)->DsSpec {
+ds_spec_valid :: (x:DsSpec,bytes:int)->bool #effects(all) {return x.rank>=1 && x.rank<=2 && x.rows>=1 && x.rows<=151936 && x.cols>=1 && x.cols<=8960 && (x.rank!=1 || x.cols==1) && x.begin>=8 && x.end<=bytes && x.end-x.begin==2*x.rows*x.cols;}
+ds_spec_find :: (specs:[]DsSpec,name:string)->int #effects(all) {for i:0..<specs.count {if specs[i].name==name {return i;}}return -1;}
+ds_expected :: (s:DsShape,slot:int)->DsSpec #effects(all) {
     d:=s.width;h:=s.hidden;k:=s.kv_heads*s.head;
     rows:=[12]int.[d,d,d,d,k,k,k,k,d,h,h,d];cols:=[12]int.[1,1,d,1,d,1,d,1,d,d,d,h];rank:=2;if slot==0 || slot==1 || slot==3 || slot==5 || slot==7 {rank=1;}return DsSpec.{rank=rank,rows=rows[slot],cols=cols[slot]};
 }
-ds_spec_matches :: (x:DsSpec,y:DsSpec)->bool {return x.rank==y.rank && x.rows==y.rows && x.cols==y.cols;}
+ds_spec_matches :: (x:DsSpec,y:DsSpec)->bool #effects(all) {return x.rank==y.rank && x.rows==y.rows && x.cols==y.cols;}
 // book:begin bind
-ds_bind_profile :: (profile:DsProfile,files:[]DsFile,blocks:[]DsBlock,draft:[]DsBlock,out:[]DsModel,overlap:bool)->DsResult #export_c {
+ds_bind_profile :: (profile:DsProfile,files:[]DsFile,blocks:[]DsBlock,draft:[]DsBlock,out:[]DsModel,overlap:bool)->DsResult #export_c #effects(all) {
     s:=profile.shape;pins:=profile.pins;specs:=profile.specs;if !ds_shape(s) {return DsResult.{status=DsStatus.shape};}
     if overlap {return DsResult.{status=DsStatus.alias};}
     if files.count<1 || files.count>5 || pins.count!=files.count || profile.weights<0 || profile.weights>=files.count || specs.count!=12*s.layers+3 {return DsResult.{status=DsStatus.weights};}
@@ -51,7 +51,7 @@ ds_bind_profile :: (profile:DsProfile,files:[]DsFile,blocks:[]DsBlock,draft:[]Ds
     for l:0..<s.layers {blocks[l]=draft[l];}m.blocks=blocks[0..<s.layers];out[0]=m;return DsResult.{written=s.layers};
 }
 // book:end bind
-ds_bind_original :: (capacity:int,files:[]DsFile,blocks:[]DsBlock,draft:[]DsBlock,out:[]DsModel,overlap:bool)->DsResult #export_c {
+ds_bind_original :: (capacity:int,files:[]DsFile,blocks:[]DsBlock,draft:[]DsBlock,out:[]DsModel,overlap:bool)->DsResult #export_c #effects(all) {
     pins:[5]DsArtifact;specs:[339]DsSpec;return ds_bind_profile(ds_original_profile(capacity,pins[..],specs[..]),files,blocks,draft,out,overlap);
 }
 #test "owned profile authenticates and binds every tensor atomically" {
@@ -61,7 +61,7 @@ ds_bind_original :: (capacity:int,files:[]DsFile,blocks:[]DsBlock,draft:[]DsBloc
     data[data.count-1]-=1;specs[1].name="missing";#assert ds_bind_profile(profile,files[..],blocks[..],draft[..],out[..],false).status==DsStatus.weights;
 }
 
-ds_original_profile :: (capacity:int,pins:[]DsArtifact,specs:[]DsSpec)->DsProfile #export_c {
+ds_original_profile :: (capacity:int,pins:[]DsArtifact,specs:[]DsSpec)->DsProfile #export_c #effects(all) {
     if pins.count<5 || specs.count<339 {return DsProfile.{};}
     for i:0..<5 {pins[i]=DS_PINS[i];}for i:0..<339 {specs[i]=DS_SPECS[i];}
     return DsProfile.{shape=ds_original_shape(capacity),pins=pins[0..<5],specs=specs[0..<339],weights=3,payload=DS_ORIGINAL_PAYLOAD};

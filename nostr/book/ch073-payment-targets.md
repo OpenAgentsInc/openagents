@@ -107,7 +107,7 @@ unknown until a type is defined and a reader is built for it.
 ```jai
 // One payto target: its type sorted, and a bitcoin or lightning address
 // checked. Only status A3_OK may be offered as a way to pay.
-a3_target :: (type:N32Text,address:N32Text)->A3Target {
+a3_target :: (type:N32Text,address:N32Text)->A3Target #effects(all) {
   t:A3Target;t.type=type;t.address=address;
   ty:=cast(string)t.type.b[0..<t.type.n];ad:=cast(string)t.address.b[0..<t.address.n];
   if !a3_type_ok(ty) || ad.count==0 {return t;}
@@ -132,7 +132,7 @@ than 10133 or more than 16 targets does.
 // The payto tags of a kind 10133 event, in tag order. A bad target is kept
 // with its status; only an unreadable event, the wrong kind or more than
 // A3_MAX targets refuses the list.
-a3_list :: (e:NostrEvent)->A3List {
+a3_list :: (e:NostrEvent)->A3List #effects(all) {
   r:A3List;if e.error!=NE_OK {return r;}
   if e.kind!=A3_LIST_KIND {r.status=A3_KIND;return r;}
   i:=0;
@@ -216,7 +216,7 @@ the x coordinate of the generator `G` (Bitcoin chapter 15). That one is offered.
 // Bech32 and A3_BECH32M for Bech32m; version 0 needs the first, versions 1
 // to 16 the second. Program, version and form are filled in before the
 // network is checked, so a testnet address reports what it holds.
-a3_segwit :: (s:string)->A3Target {
+a3_segwit :: (s:string)->A3Target #effects(all) {
   t:A3Target;t.status=A3_ADDRESS;
   if s.count>90 {return t;}
   sep:=s.count;upper:=false;lower:=false;   // no 1: the whole string is the hrp
@@ -279,7 +279,7 @@ P2PKH and `0x05` is P2SH on mainnet; `0x6f` and `0xc4` are testnet.
 // A base58check address: 25 bytes, version, 20-byte hash and checksum,
 // with one leading "1" per leading zero byte.
 A3_BASE58 :: "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-a3_base58 :: (s:string)->A3Target {
+a3_base58 :: (s:string)->A3Target #effects(all) {
   t:A3Target;t.status=A3_ADDRESS;
   b:[25]u8;
   for c:s {
@@ -332,7 +332,7 @@ other types; a client may show that text, but not as a way to pay.
 // The URI a client may offer as a payment link: bitcoin:<address> (bech32
 // in lower case) or lightning:<address>. -1 when the target must not be
 // offered or out is too small; nothing is written then.
-a3_pay_uri :: (t:A3Target,out:[]u8)->int {
+a3_pay_uri :: (t:A3Target,out:[]u8)->int #effects(all) {
   if t.status!=A3_OK {return -1;}
   scheme:=ifx t.form==A3_LN_ADDRESS then "lightning:" else "bitcoin:";
   c:=t;ad:=cast(string)c.address.b[0..<c.address.n];
@@ -359,7 +359,7 @@ nothing. Chapter 71 reads `zap` tags. This chapter does the arithmetic:
 // no weight). No weights at all: equal shares. Some weights: a tag without
 // one gets 0. A weight is a whole number 0 to A3_MAX_WEIGHT written without
 // a sign or leading zeros.
-a3_weights :: (texts:[]string,out:[]int)->int {
+a3_weights :: (texts:[]string,out:[]int)->int #effects(all) {
   if texts.count<1 || texts.count>A3_MAX || out.count<texts.count {return A3_LIMIT;}
   any:=false;for s:texts {if s.count>0 {any=true;}}
   positive:=false;
@@ -402,7 +402,7 @@ exceeds 64 bits for any total up to 21 million bitcoin.
 // recipients) go one each to the largest remainders total·w mod W, the
 // earlier tag first on a tie. Computed as q·w + r·w/W with q, r = total
 // divided by W, so nothing overflows 64 bits.
-a3_split :: (total:int,weights:[]int,out:[]int)->int {
+a3_split :: (total:int,weights:[]int,out:[]int)->int #effects(all) {
   n:=weights.count;
   if n<1 || n>A3_MAX || out.count<n {return A3_LIMIT;}
   if total<1 || total>A3_MAX_MSAT {return A3_AMOUNT;}

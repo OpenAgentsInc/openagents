@@ -47,7 +47,7 @@ CP_BAD_SIG :: 10; CP_UNBOUND :: 11; CP_REPLAY :: 12;
   #assert CP_PLAYER == 0 && CP_SIGNER == 1 && CP_BAD_SIG == 10 && CP_UNBOUND == 11 && CP_REPLAY == 12;
 }
 
-cp_caller :: (signed: bool, verified: bool, safe_method: bool, payload: bool, unseen: bool) -> int #export_c {
+cp_caller :: (signed: bool, verified: bool, safe_method: bool, payload: bool, unseen: bool) -> int #export_c #effects(all) {
   if !signed { return CP_PLAYER; }
   if !verified { return CP_BAD_SIG; }
   if !safe_method && !payload { return CP_UNBOUND; }
@@ -55,10 +55,10 @@ cp_caller :: (signed: bool, verified: bool, safe_method: bool, payload: bool, un
   return CP_SIGNER;
 }
 // Whether the host should record the event's id now (it would pass with a new one).
-cp_wants_seen :: (signed: bool, verified: bool, safe_method: bool, payload: bool) -> bool #export_c {
+cp_wants_seen :: (signed: bool, verified: bool, safe_method: bool, payload: bool) -> bool #export_c #effects(all) {
   return cp_caller(signed, verified, safe_method, payload, true) == CP_SIGNER;
 }
-cp_refusal_text :: (code: int) -> string #export_c {
+cp_refusal_text :: (code: int) -> string #export_c #effects(all) {
   if code == CP_BAD_SIG { return "nip98: not a good signature for this request"; }
   if code == CP_UNBOUND { return "nip98: sign the body (a payload tag)"; }
   if code == CP_REPLAY { return "nip98: that signature was used already"; }

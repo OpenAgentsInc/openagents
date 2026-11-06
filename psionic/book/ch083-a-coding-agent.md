@@ -72,7 +72,7 @@ DV_FIXED_PARAMS :: "tied_embeddings false\nrope_theta 100000000.0\nnorm_eps 1e-0
 DV_PARAM_NAMES :: [7]string.["dim","n_layers","head_dim","hidden_dim","n_heads","n_kv_heads","vocab_size"];
 // The shape as params.json lines; cause is the first byte that differs
 // from params, or -1 when they match.
-dv_params :: (s:MsShape,params:string)->DvResult {
+dv_params :: (s:MsShape,params:string)->DvResult #effects(all) {
     if !ms_shape_valid(s) {return DvResult.{status=DvStatus.shape};}
     buf:[512]u8;n:=0;v:=[7]int.[s.width,s.layers,s.head_dim,s.hidden,s.heads,s.kv_heads,s.vocab];
     for x,i:DV_PARAM_NAMES {n=ms_put(buf[..],n,x);n=ms_put(buf[..],n," ");n=ms_put_int(buf[..],n,v[i]);n=ms_put(buf[..],n,"\n");}
@@ -109,7 +109,7 @@ same.
 DvTensor :: struct {name:string;layer:int;kind:int;dtype:string;rank:int;rows:int;cols:int;}
 DV_PARTS :: 23;
 DV_KIND_NAMES :: [4]string.[".qscale_act",".qscale_weight",".weight",".weight"];
-dv_part :: (j:int)->[2]int {
+dv_part :: (j:int)->[2]int #effects(all) {
     at:=0;
     for k:0..<9 {
         n:=ifx k==4 || k==8 then 1 else 3;
@@ -118,8 +118,8 @@ dv_part :: (j:int)->[2]int {
     }
     return [2]int.[-1,-1];
 }
-dv_expected_count :: (s:MsShape)->int {return 3+DV_PARTS*s.layers;}
-dv_expected :: (s:MsShape,e:int)->DvTensor {
+dv_expected_count :: (s:MsShape)->int #effects(all) {return 3+DV_PARTS*s.layers;}
+dv_expected :: (s:MsShape,e:int)->DvTensor #effects(all) {
     if e==0 {return DvTensor.{name="norm.weight",layer=-1,dtype="BF16",rank=1,rows=s.width};}
     if e==1 {return DvTensor.{name="output.weight",layer=-1,dtype="BF16",rank=2,rows=s.vocab,cols=s.width};}
     if e==2 {return DvTensor.{name="tok_embeddings.weight",layer=-1,dtype="BF16",rank=2,rows=s.vocab,cols=s.width};}
@@ -131,7 +131,7 @@ dv_expected :: (s:MsShape,e:int)->DvTensor {
     return t;
 }
 // "layers.L.name DTYPE rows[,cols]", or "scalar" for a 0-dimensional tensor.
-dv_line :: (t:DvTensor,out:[]u8)->int {
+dv_line :: (t:DvTensor,out:[]u8)->int #effects(all) {
     n:=0;if t.layer>=0 {n=ms_put(out,n,"layers.");n=ms_put_int(out,n,t.layer);}
     n=ms_put(out,n,t.name);if t.layer>=0 {n=ms_put(out,n,DV_KIND_NAMES[t.kind]);}
     n=ms_put(out,n," ");n=ms_put(out,n,t.dtype);n=ms_put(out,n," ");
@@ -140,7 +140,7 @@ dv_line :: (t:DvTensor,out:[]u8)->int {
     if t.rank==2 {n=ms_put(out,n,",");n=ms_put_int(out,n,t.cols);}
     return n;
 }
-dv_bytes :: (t:DvTensor)->int {
+dv_bytes :: (t:DvTensor)->int #effects(all) {
     if t.rank==0 {return 2;}
     size:=t.rows;if t.rank==2 {size*=t.cols;}
     return ifx t.kind==2 then size else 2*size;
@@ -148,10 +148,10 @@ dv_bytes :: (t:DvTensor)->int {
 // Which expected tensor a line names, by the text before its first space,
 // or -1. The whole line must then equal that tensor's line.
 DV_LAYERS_MAX :: 44;
-dv_starts :: (s:string,prefix:string)->bool {return s.count>=prefix.count && s[0..<prefix.count]==prefix;}
-dv_name :: (line:string)->int {k:=0;while k<line.count && line[k]!=' ' {k+=1;}return k;}
+dv_starts :: (s:string,prefix:string)->bool #effects(all) {return s.count>=prefix.count && s[0..<prefix.count]==prefix;}
+dv_name :: (line:string)->int #effects(all) {k:=0;while k<line.count && line[k]!=' ' {k+=1;}return k;}
 DV_GLOBAL_NAMES :: [3]string.["norm.weight","output.weight","tok_embeddings.weight"];
-dv_index :: (s:MsShape,line:string)->int {
+dv_index :: (s:MsShape,line:string)->int #effects(all) {
     k:=dv_name(line);name:=line[0..<k];
     for g,e:DV_GLOBAL_NAMES {if name==g {return e;}}
     if !dv_starts(name,"layers.") {return -1;}
@@ -168,7 +168,7 @@ dv_index :: (s:MsShape,line:string)->int {
 // is. cause names the first expected tensor missing or repeated, or is
 // -1 - k for line k that is no expected tensor. written counts parameters,
 // bytes the stored bytes.
-dv_inventory :: (s:MsShape,manifest:string)->DvResult {
+dv_inventory :: (s:MsShape,manifest:string)->DvResult #effects(all) {
     if !ms_shape_valid(s) || s.layers>DV_LAYERS_MAX {return DvResult.{status=DvStatus.shape};}
     seen:[3+DV_PARTS*DV_LAYERS_MAX]u8;buf:[96]u8;from:=0;line:=0;
     for i:0..<manifest.count {if manifest[i]=='\n' {
@@ -215,17 +215,17 @@ weights stay resident and 11,848,690,784 bytes stream for every token.
 // row a head, and the logits. The readout is the largest unit that streams.
 DV_HOST_GPU :: 17171480576;
 DV_HOST_RAM :: 134828441600;
-dv_weights :: (s:MsShape)->RpWeights {
+dv_weights :: (s:MsShape)->RpWeights #effects(all) {
     total:=0;vectors:=0;
     for e:0..<dv_expected_count(s) {t:=dv_expected(s,e);total+=dv_bytes(t);if t.rank<2 {vectors+=dv_bytes(t);}}
     return RpWeights.{total=total,vectors=vectors,slot=2*s.vocab*s.width,embedding=2*s.vocab*s.width};
 }
-dv_state :: (s:MsShape,capacity:int)->int {return 4*s.layers*capacity*2*s.kv_heads*s.head_dim;}
-dv_scratch :: (s:MsShape,chunk:int,capacity:int)->int {
+dv_state :: (s:MsShape,capacity:int)->int #effects(all) {return 4*s.layers*capacity*2*s.kv_heads*s.head_dim;}
+dv_scratch :: (s:MsShape,chunk:int,capacity:int)->int #effects(all) {
     widest:=rp_max(2*s.hidden,(s.heads+2*s.kv_heads)*s.head_dim);
     return 4*(chunk*(2*s.width+widest)+s.heads*capacity+s.vocab);
 }
-dv_plan :: (s:MsShape,r:RpRequest,budget:int)->RpPlan {
+dv_plan :: (s:MsShape,r:RpRequest,budget:int)->RpPlan #effects(all) {
     if !ms_shape_valid(s) {return RpPlan.{status=RpStatus.model};}
     if r.capacity<1 || r.capacity>393216 || r.chunk<1 || r.chunk>r.capacity {return RpPlan.{status=RpStatus.request};}
     return rp_admit(dv_weights(s),dv_state(s,r.capacity),dv_scratch(s,r.chunk,r.capacity),r.stream,budget);
@@ -272,7 +272,7 @@ DV_CODE_SCHEMA :: "{\"type\": \"string\", \"pattern\": \"^[x0-9*+-]{1,11}$\"}";
 DV_TEXT_MAX :: 4096;
 // The tools as the chat template's tojson prints them: json.dumps with
 // ", " and ": " between items, keys in the order written.
-dv_tools_json :: (tools:[]DvTool,out:[]u8)->int {
+dv_tools_json :: (tools:[]DvTool,out:[]u8)->int #effects(all) {
     n:=ms_put(out,0,"[");
     for t,i:tools {
         if i>0 {n=ms_put(out,n,", ");}
@@ -285,21 +285,21 @@ dv_tools_json :: (tools:[]DvTool,out:[]u8)->int {
     return ms_put(out,n,"]");
 }
 // One call as the model writes it: [TOOL_CALLS]name[ARGS]{"code": "...", "x": N}.
-dv_call :: (tools:[]DvTool,c:DvCall,out:[]u8,at:int)->int {
+dv_call :: (tools:[]DvTool,c:DvCall,out:[]u8,at:int)->int #effects(all) {
     n:=ms_put(out,at,"[TOOL_CALLS]");n=ms_put(out,n,tools[c.tool].name);n=ms_put(out,n,"[ARGS]{\"code\": \"");n=ms_put(out,n,c.code);
     if tools[c.tool].x {n=ms_put(out,n,"\", \"x\": ");n=ms_put_int(out,n,c.x);return ms_put(out,n,"}");}
     return ms_put(out,n,"\"}");
 }
-dv_control_at :: (text:string,at:int)->int {
+dv_control_at :: (text:string,at:int)->int #effects(all) {
     for c,k:DV_CONTROLS {if at+c.count<=text.count && cast(string)text[at..<at+c.count]==c {return k;}}
     return -1;
 }
-dv_plain :: (text:string)->bool {for i:0..<text.count {if dv_control_at(text,i)>=0 {return false;}}return true;}
+dv_plain :: (text:string)->bool #effects(all) {for i:0..<text.count {if dv_control_at(text,i)>=0 {return false;}}return true;}
 // The conversation: <s>, the system prompt, the tools, the user's turn,
 // then each call, closed by </s>, and its result. Text that spells a
 // control token is refused (status control, cause the turn, -1 the system
 // prompt, -2 the user's turn); the renderer never lets text become one.
-dv_render :: (tools:[]DvTool,system:string,user:string,turns:[]DvTurn,out:[]u8)->DvResult {
+dv_render :: (tools:[]DvTool,system:string,user:string,turns:[]DvTurn,out:[]u8)->DvResult #effects(all) {
     if !dv_plain(system) {return DvResult.{status=DvStatus.control,cause=-1};}
     if !dv_plain(user) {return DvResult.{status=DvStatus.control,cause=-2};}
     for t,i:turns {if !dv_plain(t.call.code) || !dv_plain(t.result) {return DvResult.{status=DvStatus.control,cause=i};}}
@@ -314,7 +314,7 @@ dv_render :: (tools:[]DvTool,system:string,user:string,turns:[]DvTurn,out:[]u8)-
 }
 // Rendered text to ids: each control token is its id, and the text between
 // them is chapter 81's Tekken encoding. cause is the failing byte.
-dv_ids :: (t:MsTable,text:string,out:[]int)->DvResult {
+dv_ids :: (t:MsTable,text:string,out:[]int)->DvResult #effects(all) {
     at:=0;n:=0;
     while at<text.count {
         k:=dv_control_at(text,at);
@@ -359,7 +359,7 @@ odd length, so the limit is 11 bytes: at most six values and five operators.
 // values, a fifth value, or an end with other than one value.
 DvStop :: enum u8 {ok;byte;underflow;overflow;left;}
 DvValue :: struct {stop:DvStop;value:int;at:int=-1;}
-dv_eval :: (code:string,x:int)->DvValue {
+dv_eval :: (code:string,x:int)->DvValue #effects(all) {
     st:[DV_DEPTH]int;d:=0;
     for c,i:code {
         if c=='x' || (c>='0' && c<='9') {
@@ -387,13 +387,13 @@ DV_TASKS :: [8]DvTask.[
     DvTask.{spec="3x - 5",shown=3,inputs=[4]int.[0,5,40,999],outputs=[4]int.[-5,10,115,2992],reference="x3*5-"},
     DvTask.{spec="(x + 1)(x - 1)",shown=3,inputs=[4]int.[0,5,40,999],outputs=[4]int.[-1,24,1599,998000],reference="x1+x1-*"}];
 // The user's turn for a task, with f at the shown input.
-dv_task_text :: (t:DvTask,out:[]u8)->int {
+dv_task_text :: (t:DvTask,out:[]u8)->int #effects(all) {
     n:=ms_put(out,0,"Write f(x) = ");n=ms_put(out,n,t.spec);
     n=ms_put(out,n," in Stack. x pushes the input, a digit pushes itself, and + - * pop two values and push the result. Example: f(");
     n=ms_put_int(out,n,t.shown);n=ms_put(out,n,") = ");n=ms_put_int(out,n,dv_eval(t.reference,t.shown).value);return ms_put(out,n,".");
 }
 // The hidden tests: the program passes when it runs and matches every output.
-dv_passes :: (t:DvTask,code:string)->bool {
+dv_passes :: (t:DvTask,code:string)->bool #effects(all) {
     for x,i:t.inputs {v:=dv_eval(code,x);if v.stop!=DvStop.ok || v.value!=t.outputs[i] {return false;}}
     return true;
 }
@@ -429,7 +429,7 @@ DV_CODE_MAX :: 11;
 DV_DEPTH :: 4;
 DV_STATES :: 512;
 DV_EDGES :: 1024;
-dv_code :: (b:[]HtBuild,w:HtWork,s:int,ends:[]int)->int {
+dv_code :: (b:[]HtBuild,w:HtWork,s:int,ends:[]int)->int #effects(all) {
     cur:[DV_DEPTH+1]int;cur[0]=s;have:=[DV_DEPTH+1]bool.[true,false,false,false,false];n:=0;
     for p:0..<DV_CODE_MAX {
         next:[DV_DEPTH+1]int;made:[DV_DEPTH+1]bool;
@@ -450,7 +450,7 @@ dv_code :: (b:[]HtBuild,w:HtWork,s:int,ends:[]int)->int {
 }
 // The offered tools' calls. State owners name the field: -1 the frame, 0
 // the program, 1 x.
-dv_grammar :: (tools:[]DvTool,offered:[]int,w:HtWork)->HtGrammar {
+dv_grammar :: (tools:[]DvTool,offered:[]int,w:HtWork)->HtGrammar #effects(all) {
     b:[1]HtBuild;start:=ht_state(b[..],w);head:=ht_bytes(b[..],w,start,"[TOOL_CALLS]");
     closing:[8]int;nc:=0;
     for t:offered {
@@ -488,12 +488,12 @@ is decoded into its tool, program and input.
 // call is decoded into its tool, program and x.
 DvWhy :: enum u8 {none;syntax;incomplete;capacity;}
 DvAdmit :: struct {why:DvWhy;at:int=-1;field:int=-1;call:DvCall;}
-dv_admit :: (tools:[]DvTool,offered:[]int,text:string,w:HtWork)->DvAdmit {
+dv_admit :: (tools:[]DvTool,offered:[]int,text:string,w:HtWork)->DvAdmit #effects(all) {
     g:=dv_grammar(tools,offered,w);if g.why!=HtWhy.none {return DvAdmit.{why=DvWhy.capacity};}
     return dv_read(tools,g.grammar,text,w);
 }
 // The same, through a grammar already compiled into w.
-dv_read :: (tools:[]DvTool,g:NxGrammar,text:string,w:HtWork)->DvAdmit {
+dv_read :: (tools:[]DvTool,g:NxGrammar,text:string,w:HtWork)->DvAdmit #effects(all) {
     s:=g.start;
     for x,i:text {n:=w.next[s*256+cast(int)x];if n<0 {return DvAdmit.{why=DvWhy.syntax,at=i,field=w.owner[g.start-s]};}s=n;}
     if w.accept[s]!=1 {return DvAdmit.{why=DvWhy.incomplete,at=text.count,field=w.owner[g.start-s]};}
@@ -545,11 +545,11 @@ DvPolicy :: struct {seed:u64;skill:f64;constrained:bool;}
 // One attempt: up to three calls. It passes when a submitted program
 // passes the hidden tests. parsed counts calls the grammar admits.
 DvAttempt :: struct {passed:bool;submitted:bool;calls:int;parsed:int;pieces:int;}
-dv_script :: (t:DvTask,k:int,out:[]u8)->int {
+dv_script :: (t:DvTask,k:int,out:[]u8)->int #effects(all) {
     c:=DvCall.{tool=ifx k==0 then 0 else 1,code=t.reference,x=t.shown};tools:=DV_TOOLS;
     return dv_call(tools[..],c,out,0);
 }
-dv_logits :: (p:DvPolicy,script:string,made:string,k:int,i:int,logits:[]f32) {
+dv_logits :: (p:DvPolicy,script:string,made:string,k:int,i:int,logits:[]f32) #effects(all) {
     ht_noise(p.seed,k,i,logits);
     pieces:=DV_PIECES;
     for x,j:pieces {
@@ -557,7 +557,7 @@ dv_logits :: (p:DvPolicy,script:string,made:string,k:int,i:int,logits:[]f32) {
         if follows {logits[j]+=f32(p.skill);}
     }
 }
-dv_attempt :: (p:DvPolicy,t:DvTask,w:HtWork,sm:HtSampler)->DvAttempt {
+dv_attempt :: (p:DvPolicy,t:DvTask,w:HtWork,sm:HtSampler)->DvAttempt #effects(all) {
     tools:=DV_TOOLS;pieces:=DV_PIECES;offered:=[2]int.[0,1];a:=DvAttempt.{};
     g:=dv_grammar(tools[..],offered[..],w);all:[28]u8;for j:0..<28 {all[j]=1;}
     sbuf:[160]u8;
@@ -597,7 +597,7 @@ pass@4 = 1 - C(6, 4) / C(8, 4) = 1 - 15/70 = 0.786.
 // task r's passes; pass@k is the Coder book's chapter 22 estimator averaged over
 // the tasks, and the Wilson interval is over every attempt.
 DvTally :: struct {status:DvStatus;attempts:int;passed:int;submitted:int;calls:int;parsed:int;pieces:int;right:[8]int;}
-dv_tally :: (p:DvPolicy,n:int,w:HtWork,sm:HtSampler)->DvTally {
+dv_tally :: (p:DvPolicy,n:int,w:HtWork,sm:HtSampler)->DvTally #effects(all) {
     if n<1 {return DvTally.{status=DvStatus.shape};}
     tasks:=DV_TASKS;y:=DvTally.{};
     for t,r:tasks {for q:0..<n {
@@ -608,7 +608,7 @@ dv_tally :: (p:DvPolicy,n:int,w:HtWork,sm:HtSampler)->DvTally {
     }}
     return y;
 }
-dv_pass_at :: (y:DvTally,n:int,k:int)->CdValue {
+dv_pass_at :: (y:DvTally,n:int,k:int)->CdValue #effects(all) {
     s:=0.0;for c:y.right {v:=cd_pass_at(n,c,k);if v.status!=CdStatus.ok {return v;}s+=v.value;}
     return CdValue.{value=s/8};
 }

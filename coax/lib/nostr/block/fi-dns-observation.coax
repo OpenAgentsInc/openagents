@@ -43,15 +43,15 @@ FiDnsObservation :: struct {status:int;count:int;}
  s.count=17;#assert fi_dns_observation_cancel(s).status==FI_DNS_FAILED;
  s.status=FI_DNS_FAILED;s.count=7;#assert fi_dns_observation_cancel(s).status==FI_DNS_FAILED && fi_dns_observation_cancel(s).count==7;
 }
-fi_dns_observation_start :: ()->FiDnsObservation #export_c {return FiDnsObservation.{};}
-fi_dns_observation_fail :: (s:FiDnsObservation)->FiDnsObservation #export_c {
+fi_dns_observation_start :: ()->FiDnsObservation #export_c #effects(all) {return FiDnsObservation.{};}
+fi_dns_observation_fail :: (s:FiDnsObservation)->FiDnsObservation #export_c #effects(all) {
  if s.status==FI_DNS_CANCELLED {return s;}return FiDnsObservation.{status=FI_DNS_FAILED};
 }
-fi_dns_observation_cancel :: (s:FiDnsObservation)->FiDnsObservation #export_c {
+fi_dns_observation_cancel :: (s:FiDnsObservation)->FiDnsObservation #export_c #effects(all) {
  if s.status==FI_DNS_FAILED || s.status==FI_DNS_CANCELLED {return s;}if s.status!=FI_DNS_OBSERVING || s.count<0 || s.count>16 {return FiDnsObservation.{status=FI_DNS_FAILED};}
  return FiDnsObservation.{status=FI_DNS_CANCELLED};
 }
-fi_dns_observation_add :: (s:FiDnsObservation,address:[]u8)->FiDnsObservation #export_c {
+fi_dns_observation_add :: (s:FiDnsObservation,address:[]u8)->FiDnsObservation #export_c #effects(all) {
  if s.status!=FI_DNS_OBSERVING {return fi_dns_observation_fail(s);}
  if s.count<0 || s.count>=16 || !fi_address_allowed(address,FI_PUBLIC_HTTPS) {return FiDnsObservation.{status=FI_DNS_FAILED};}
  return FiDnsObservation.{status=FI_DNS_OBSERVING,count=s.count+1};

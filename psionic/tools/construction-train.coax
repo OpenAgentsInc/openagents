@@ -25,7 +25,7 @@ ct_train :: (task:int,seed:u64)->[56]f64 {
     }
     return cl_export(s,p[0..<n],task);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     print("// construction-train.coax: 1000 AdamW steps; task-major, seeds 254..256.\nCT_WEIGHTS :: [12][56]u64.[\n");
     for task:0..<4 {for seed:254..<257 {tool_errln("preparing one construction baseline");p:=ct_train(task,cast(u64)seed);
         print("[56]u64.[");for i:0..<56 {if i>0 {print(",");}print("%",f64_bits(p[i]));}print("]");if task!=3 || seed!=256 {print(",");}print("\n");

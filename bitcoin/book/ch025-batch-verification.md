@@ -122,7 +122,7 @@ randomizers, and any unpredictable choice gives the same answer.
 SbRandom :: struct { a: [SB_MAX] ScScalar; drawn: int; ok: bool; }
 // seed = SHA-256(pk_1 .. pk_u || m_1 .. m_u || sig_1 .. sig_u), BIP-340's
 // suggested seed_hash. The three slices are exactly those concatenations.
-sb_seed :: (keys: [] u8, messages: [] u8, signatures: [] u8, out: [] u8) -> bool {
+sb_seed :: (keys: [] u8, messages: [] u8, signatures: [] u8, out: [] u8) -> bool #effects(all) {
   state: [112] u8;
   if out.count != 32 || sha256_init(state[..]) != SHA_OK { return false; }
   if sha256_update_checked(state[..], keys, false) != SHA_OK { return false; }
@@ -133,7 +133,7 @@ sb_seed :: (keys: [] u8, messages: [] u8, signatures: [] u8, out: [] u8) -> bool
 // a_1 = 1. a_2 .. a_u are ChaCha20's keystream under the key seed (nonce
 // zero, block counter from 0), read 32 bytes at a time as big-endian
 // integers, skipping any that are 0 or not below n.
-sb_randomizers :: (seed: [] u8, count: int) -> SbRandom {
+sb_randomizers :: (seed: [] u8, count: int) -> SbRandom #effects(all) {
   r: SbRandom;
   if seed.count != 32 || count < 0 || count > SB_MAX { return r; }
   if count > 0 { r.a[0] = sc_small(1); }
@@ -184,7 +184,7 @@ once, at compile time.
 // bits, each as a width-5 wNAF (chapter 77).
 SbTerm :: struct { table: [8] SgPoint; lambda: [8] SgPoint; h1: GlvHalf; h2: GlvHalf; w1: SmWnaf; w2: SmWnaf; }
 SbCount :: struct { value: SgPoint; doubles: int; additions: int; }
-sb_term :: (terms: [] SbTerm, j: int, point: SgPoint, k: ScScalar, c: [] SbCount) {
+sb_term :: (terms: [] SbTerm, j: int, point: SgPoint, k: ScScalar, c: [] SbCount) #effects(all) {
   terms[j].table = glv_odd_table_vartime(point);
   terms[j].lambda = glv_lambda_table(terms[j].table);
   // The table costs one doubling and seven additions.
@@ -195,16 +195,16 @@ sb_term :: (terms: [] SbTerm, j: int, point: SgPoint, k: ScScalar, c: [] SbCount
   terms[j].w2 = sm_wnaf_vartime(terms[j].h2.value, SM_P_WINDOW);
 }
 // ±|d|·T for a nonzero digit d of a half whose sign is given.
-sb_pick :: (entry: SgPoint, digit: int, negative: bool) -> SgPoint {
+sb_pick :: (entry: SgPoint, digit: int, negative: bool) -> SgPoint #effects(all) {
   d := ifx negative then -digit else digit;
   r := entry;
   if d < 0 { r.y = sf_negate(r.y); }
   return r;
 }
-sb_index :: (digit: int) -> int { return ((ifx digit < 0 then -digit else digit) - 1) / 2; }
+sb_index :: (digit: int) -> int #effects(all) { return ((ifx digit < 0 then -digit else digit) - 1) / 2; }
 // g·G + Σ k_j·Q_j by Strauss's method: every term's digits are added into
 // one accumulator, which is doubled once per bit for all of them.
-sb_multiply :: (g: ScScalar, terms: [] SbTerm, count: int, c: [] SbCount) {
+sb_multiply :: (g: ScScalar, terms: [] SbTerm, count: int, c: [] SbCount) #effects(all) {
   sg := glv_split_vartime(g);
   g1 := glv_half_vartime(sg.r1); g2 := glv_half_vartime(sg.r2);
   wg1 := sm_wnaf_vartime(g1.value, SM_P_WINDOW); wg2 := sm_wnaf_vartime(g2.value, SM_P_WINDOW);
@@ -256,7 +256,7 @@ multiplication decides the rest, and a failure there names nobody.
 SbResult :: struct { ok: bool; error: int; index: int; doubles: int; additions: int; roots: int; }
 // The inputs describe u signatures: u keys of 32 bytes, u signatures of 64
 // bytes, and u messages whose lengths add up to the messages' bytes.
-sb_shape :: (keys: [] u8, messages: [] u8, lengths: [] int, signatures: [] u8) -> bool {
+sb_shape :: (keys: [] u8, messages: [] u8, lengths: [] int, signatures: [] u8) -> bool #effects(all) {
   u := lengths.count;
   if u > SB_MAX || keys.count != 32 * u || signatures.count != 64 * u { return false; }
   total := 0;
@@ -268,7 +268,7 @@ sb_shape :: (keys: [] u8, messages: [] u8, lengths: [] int, signatures: [] u8) -
 }
 // BIP-340's BatchVerify with the randomizers given: a[0] must be 1 for the
 // algorithm as specified, but the example also passes other values.
-sb_verify_with_vartime :: (keys: [] u8, messages: [] u8, lengths: [] int, signatures: [] u8, a: [] ScScalar) -> SbResult {
+sb_verify_with_vartime :: (keys: [] u8, messages: [] u8, lengths: [] int, signatures: [] u8, a: [] ScScalar) -> SbResult #effects(all) {
   result := SbResult.{error=SB_E_SHAPE,index=-1};
   if !sb_shape(keys, messages, lengths, signatures) || a.count < lengths.count { return result; }
   u := lengths.count;
@@ -301,7 +301,7 @@ sb_verify_with_vartime :: (keys: [] u8, messages: [] u8, lengths: [] int, signat
   return result;
 }
 // The whole algorithm: the seed, the randomizers, then the check above.
-schnorr_batch_check_vartime :: (keys: [] u8, messages: [] u8, lengths: [] int, signatures: [] u8) -> SbResult {
+schnorr_batch_check_vartime :: (keys: [] u8, messages: [] u8, lengths: [] int, signatures: [] u8) -> SbResult #effects(all) {
   if !sb_shape(keys, messages, lengths, signatures) { return SbResult.{error=SB_E_SHAPE,index=-1}; }
   seed: [32] u8;
   if !sb_seed(keys, messages, signatures, seed[..]) { return SbResult.{error=SB_E_SHAPE,index=-1}; }
@@ -309,7 +309,7 @@ schnorr_batch_check_vartime :: (keys: [] u8, messages: [] u8, lengths: [] int, s
   if !a.ok { return SbResult.{error=SB_E_SHAPE,index=-1}; }
   return sb_verify_with_vartime(keys, messages, lengths, signatures, a.a[0..<lengths.count]);
 }
-schnorr_batch_verify_vartime :: (keys: [] u8, messages: [] u8, lengths: [] int, signatures: [] u8) -> bool {
+schnorr_batch_verify_vartime :: (keys: [] u8, messages: [] u8, lengths: [] int, signatures: [] u8) -> bool #effects(all) {
   return schnorr_batch_check_vartime(keys, messages, lengths, signatures).ok;
 }
 ```

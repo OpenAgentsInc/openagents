@@ -278,7 +278,7 @@ CbReport :: struct {status:CbStatus;steps:int;tokens:int;ns:int;tok_s:f64;latenc
 // book:begin start
 // Refuse a configuration or arrival list outside the bounds; otherwise an
 // empty schedule at step 0.
-cb_start :: (cfg:CbConfig,reqs:[]CbRequest)->CbState #export_c {
+cb_start :: (cfg:CbConfig,reqs:[]CbRequest)->CbState #export_c #effects(all) {
     s:CbState;s.cfg=cfg;s.status=CbStatus.config;
     if cfg.slots<1 || cfg.slots>CB_SLOTS || cfg.tokens<cfg.slots || cfg.tokens>CB_TOKENS || cfg.kv>CB_KV {return s;}
     if cfg.state<0 || cfg.state>=cfg.kv || cfg.clients<1 || cfg.clients>CB_CLIENTS || cfg.steps<1 || cfg.steps>CB_STEPS {return s;}
@@ -295,17 +295,17 @@ cb_start :: (cfg:CbConfig,reqs:[]CbRequest)->CbState #export_c {
 }
 // book:end start
 
-cb_need :: (s:CbState,i:int)->int {return s.req[i].prompt+s.req[i].output+s.cfg.state;}
+cb_need :: (s:CbState,i:int)->int #effects(all) {return s.req[i].prompt+s.req[i].output+s.cfg.state;}
 // Branch-free, as chapter 33's rp_min: exact for every value here, far below 2^53.
-cb_min :: (a:int,b:int)->int {return (a+b-cast(int)abs(f64(a-b)))/2;}
-cb_max :: (a:int,b:int)->int {return (a+b+cast(int)abs(f64(a-b)))/2;}
+cb_min :: (a:int,b:int)->int #effects(all) {return (a+b-cast(int)abs(f64(a-b)))/2;}
+cb_max :: (a:int,b:int)->int #effects(all) {return (a+b+cast(int)abs(f64(a-b)))/2;}
 
 // book:begin arrive
 // Arrivals at this step: refuse what can never run; queue the rest. The
 // client's virtual time becomes the current one if it was behind it, so a
 // client that idled earns no credit. (A client with requests queued is never
 // behind: the current virtual time is the smallest queued client's.)
-cb_arrive :: (from:CbState)->CbState {
+cb_arrive :: (from:CbState)->CbState #effects(all) {
     s:=from;
     for i:0..<s.n {
         r:=s.req[i];
@@ -331,7 +331,7 @@ cb_arrive :: (from:CbState)->CbState {
 // Admit while a slot is free: the backlogged client with the smallest
 // virtual time (the lowest index on a tie) offers its oldest request; if that
 // request's state does not fit, admission stops for this step.
-cb_admit :: (from:CbState)->CbState {
+cb_admit :: (from:CbState)->CbState #effects(all) {
     s:=from;
     while s.nrun<s.cfg.slots {
         c:=-1;
@@ -353,7 +353,7 @@ cb_admit :: (from:CbState)->CbState {
 // Every decoding request gets one position; the rest of the step's budget
 // goes to prompt chunks in admission order. The chunk that ends a prompt
 // yields the first output token.
-cb_tokens :: (from:CbState)->CbState {
+cb_tokens :: (from:CbState)->CbState #effects(all) {
     s:=from;
     budget:=s.cfg.tokens;s.nrows=0;
     for k:0..<s.nrun {
@@ -380,7 +380,7 @@ cb_tokens :: (from:CbState)->CbState {
 // book:begin step
 // One iteration: arrivals, admission, tokens, then retire every request
 // whose last output token came out, freeing its slot and its state.
-cb_step :: (from:CbState)->CbState #export_c {
+cb_step :: (from:CbState)->CbState #export_c #effects(all) {
     s:=cb_tokens(cb_admit(cb_arrive(from)));
     s.clock+=cb_step_ns(s.used);
     m:=0;
@@ -393,7 +393,7 @@ cb_step :: (from:CbState)->CbState #export_c {
     s.nrun=m;s.step+=1;
     return s;
 }
-cb_run :: (cfg:CbConfig,reqs:[]CbRequest)->CbState {
+cb_run :: (cfg:CbConfig,reqs:[]CbRequest)->CbState #effects(all) {
     s:=cb_start(cfg,reqs);
     if s.status!=CbStatus.ok {return s;}
     while s.done<s.n && s.step<s.cfg.steps {s=cb_step(s);}
@@ -402,14 +402,14 @@ cb_run :: (cfg:CbConfig,reqs:[]CbRequest)->CbState {
 }
 // book:end step
 
-cb_step_ns :: (rows:int)->int #export_c {
+cb_step_ns :: (rows:int)->int #export_c #effects(all) {
     if rows<1 {return 0;}
     return CB_STEP_NS+(rows-1)*CB_ROW_NS;
 }
 // Nearest rank: the value at rank k = ceil(p * n / 100) in sorted order, the
 // one with fewer than k values below it and at least k at or below it; 0
 // when there are no values.
-cb_rank :: (x:[]int,p:int)->int {
+cb_rank :: (x:[]int,p:int)->int #effects(all) {
     k:=(p*x.count+99)/100;
     for v:x {
         below:=0;atmost:=0;
@@ -421,7 +421,7 @@ cb_rank :: (x:[]int,p:int)->int {
 // book:begin report
 // Aggregate output tokens per modeled second, and nearest-rank P50 and P95
 // of each finished request's latency and time to first token.
-cb_report :: (s:CbState)->CbReport {
+cb_report :: (s:CbState)->CbReport #effects(all) {
     p:=CbReport.{status=s.status,steps=s.step,ns=s.clock};
     if s.status!=CbStatus.ok {return p;}
     lat:[64]int;first:[64]int;n:=0;
@@ -436,7 +436,7 @@ cb_report :: (s:CbState)->CbReport {
 }
 // book:end report
 
-cb_status_name :: (s:CbStatus)->string {
+cb_status_name :: (s:CbStatus)->string #effects(all) {
     names:=[7]string.["ok","configuration out of bounds","arrival list out of bounds or out of order","empty prompt or output",
         "unknown client","state never fits the budget","step limit reached"];
     return names[cast(int)s];

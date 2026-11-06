@@ -225,7 +225,7 @@ PxMeasure :: struct {status:PxStatus;requests:int;blocks:int;hit:int;tokens:int;
 
 // book:begin assemble
 // A section after the others; refused when either bound would be passed.
-px_add :: (from:PxRequest,kind:PxKind,key:int,tok:[]int)->PxRequest {
+px_add :: (from:PxRequest,kind:PxKind,key:int,tok:[]int)->PxRequest #effects(all) {
     r:=from;
     if r.status!=PxStatus.ok {return r;}
     if r.sections==PX_SECTIONS || tok.count>PX_TOKENS-r.n {r.status=PxStatus.shape;return r;}
@@ -236,7 +236,7 @@ px_add :: (from:PxRequest,kind:PxKind,key:int,tok:[]int)->PxRequest {
 // The session's frozen prefix, laid out once: the system text, every tool
 // schema in increasing id order whatever order they were registered in, and
 // the header's values. Two tools may not share an id.
-px_open :: (system:[]int,tools:[]PxTool,header:[]int)->PxRequest {
+px_open :: (system:[]int,tools:[]PxTool,header:[]int)->PxRequest #effects(all) {
     r:PxRequest;r.status=PxStatus.shape;
     if tools.count>PX_TOOLS {return r;}
     for t,i:tools {
@@ -253,7 +253,7 @@ px_open :: (system:[]int,tools:[]PxTool,header:[]int)->PxRequest {
 // The history a request holds: what request event index saw, or with index
 // at the log's end, every token logged. The log must verify, and no event
 // in the history may be redacted.
-px_history :: (s:PxRequest,g:LgLog,index:int)->PxRequest {
+px_history :: (s:PxRequest,g:LgLog,index:int)->PxRequest #effects(all) {
     r:=s;
     if r.status!=PxStatus.ok {return r;}
     if lg_verify(g).status!=LgStatus.ok {r.status=PxStatus.log;return r;}
@@ -267,12 +267,12 @@ px_history :: (s:PxRequest,g:LgLog,index:int)->PxRequest {
 }
 // The request: the frozen prefix, the history, then the tail of values that
 // change every request, after the cache boundary.
-px_assemble :: (s:PxRequest,g:LgLog,index:int,tail:[]int)->PxRequest {
+px_assemble :: (s:PxRequest,g:LgLog,index:int,tail:[]int)->PxRequest #effects(all) {
     return px_add(px_history(s,g,index),PxKind.tail,0,tail);
 }
 // The assembler this chapter replaces: tools in the order they were
 // registered, and the tail at the top when top is set.
-px_naive :: (system:[]int,tools:[]PxTool,header:[]int,g:LgLog,tail:[]int,top:bool)->PxRequest {
+px_naive :: (system:[]int,tools:[]PxTool,header:[]int,g:LgLog,tail:[]int,top:bool)->PxRequest #effects(all) {
     r:PxRequest;
     if top {r=px_add(r,PxKind.tail,0,tail);}
     r=px_add(r,PxKind.system,0,system);
@@ -285,14 +285,14 @@ px_naive :: (system:[]int,tools:[]PxTool,header:[]int,g:LgLog,tail:[]int,top:boo
 
 // book:begin verdict
 // The cache boundary: where the first tail section starts, or the end.
-px_boundary :: (r:PxRequest)->int {
+px_boundary :: (r:PxRequest)->int #effects(all) {
     for i:0..<r.sections {if r.section[i].kind==PxKind.tail {return r.section[i].at;}}
     return r.n;
 }
-px_at :: (r:PxRequest,i:int,status:PxStatus)->PxVerdict {return PxVerdict.{status=status,section=i,kind=r.section[i].kind,at=r.section[i].at};}
+px_at :: (r:PxRequest,i:int,status:PxStatus)->PxVerdict #effects(all) {return PxVerdict.{status=status,section=i,kind=r.section[i].kind,at=r.section[i].at};}
 // A layout is refused at the first section whose kind comes before the
 // previous section's, or at a tool whose id is not above the tool before it.
-px_check :: (r:PxRequest)->PxVerdict {
+px_check :: (r:PxRequest)->PxVerdict #effects(all) {
     if r.status!=PxStatus.ok {return PxVerdict.{status=r.status};}
     for i:1..<r.sections {
         a:=r.section[i-1];x:=r.section[i];
@@ -304,7 +304,7 @@ px_check :: (r:PxRequest)->PxVerdict {
 // The next request after prev: its layout must pass, and it must start with
 // every token of prev before prev's boundary. shared is the longest common
 // prefix; a refusal names prev's section that holds the first difference.
-px_admit :: (prev:PxRequest,next:PxRequest)->PxVerdict {
+px_admit :: (prev:PxRequest,next:PxRequest)->PxVerdict #effects(all) {
     v:=px_check(next);
     if v.status!=PxStatus.ok {return v;}
     s:=0;
@@ -318,7 +318,7 @@ px_admit :: (prev:PxRequest,next:PxRequest)->PxVerdict {
 }
 // A logged session's requests in order: the first refusal, with the
 // request's index, or the last request's verdict.
-px_session :: (reqs:[]PxRequest)->PxVerdict {
+px_session :: (reqs:[]PxRequest)->PxVerdict #effects(all) {
     if reqs.count<1 {return PxVerdict.{status=PxStatus.shape};}
     v:=px_check(reqs[0]);
     for i:1..<reqs.count {
@@ -333,13 +333,13 @@ px_session :: (reqs:[]PxRequest)->PxVerdict {
 // Chapter 177's cost model (rr_prefill and rr_cost in serve-route.coax), in
 // modeled microseconds: the uncached prompt positions run as one step's
 // rows, and each further output token is a step of one row.
-px_prefill :: (prompt:int,cached:int)->int {return cb_step_ns(prompt-cached)/1000;}
-px_cost :: (prompt:int,output:int,cached:int)->int {return (cb_step_ns(prompt-cached)+(output-1)*cb_step_ns(1))/1000;}
+px_prefill :: (prompt:int,cached:int)->int #effects(all) {return cb_step_ns(prompt-cached)/1000;}
+px_cost :: (prompt:int,output:int,cached:int)->int #effects(all) {return (cb_step_ns(prompt-cached)+(output-1)*cb_step_ns(1))/1000;}
 // The requests run one at a time, in order, on one model through chapter
 // 176's paged cache with every tier at 16 frames of page positions. The
 // scheduler's other settings take their largest values; with one request
 // at a time, none of them changes what is reused. mem holds 1728 values.
-px_measure :: (reqs:[]PxRequest,output:int,page:int,mem:[]f64)->PxMeasure {
+px_measure :: (reqs:[]PxRequest,output:int,page:int,mem:[]f64)->PxMeasure #effects(all) {
     m:PxMeasure;m.status=PxStatus.shape;
     if reqs.count>PG_REQUESTS {return m;}
     q:[16]CbRequest;model:[16]int;tok:[512]int;
@@ -365,7 +365,7 @@ px_measure :: (reqs:[]PxRequest,output:int,page:int,mem:[]f64)->PxMeasure {
 }
 // book:end measure
 
-px_status_name :: (s:PxStatus)->string {
+px_status_name :: (s:PxStatus)->string #effects(all) {
     names:=[6]string.["ok","outside the request's bounds","the log does not verify, or the history holds a redacted event","a section out of the fixed order","tool schemas not sorted by id","changes bytes before the previous request's boundary"];
     return names[cast(int)s];
 }

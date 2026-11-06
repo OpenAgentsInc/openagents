@@ -20,7 +20,7 @@
 
 WorkflowRead :: struct { revision: u64; error: u32; }
 
-workflow_packet :: (epoch: u32, out: [] u8) -> int #export_c {
+workflow_packet :: (epoch: u32, out: [] u8) -> int #export_c #effects(all) {
     a: [128] u8; b: [128] u8;
     p := Book_HudInvocation_new();
     p = Book_HudInvocation_set_schema(p, 1, a[..]);
@@ -33,7 +33,7 @@ workflow_packet :: (epoch: u32, out: [] u8) -> int #export_c {
     return encoded.wire.count;
 }
 
-workflow_read :: (wire: [] u8) -> WorkflowRead #export_c {
+workflow_read :: (wire: [] u8) -> WorkflowRead #export_c #effects(all) {
     p := Book_HudInvocation_decode(wire);
     r := Book_HudInvocation_get_revision(p);
     return WorkflowRead.{revision = r.value, error = r.error};

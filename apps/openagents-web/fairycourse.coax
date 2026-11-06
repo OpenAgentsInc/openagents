@@ -154,7 +154,7 @@ ffc_step :: (s: [] Fairy) {
 }
 
 // The location's hash: course=<id> opens that course.
-fairy_hash :: (s: [] Fairy, hash: string) #export_c {
+fairy_hash :: (s: [] Fairy, hash: string) #export_c #effects(all) {
   if !s[0].started { fairy_start(s); }
   if hash == "map" { s[0].map[0].on = true; s[0].map[0].lift = 1; return; }   // #map opens on the map (fairymap.coax), as Everglade's
   r := s[0].race[..];
@@ -185,7 +185,7 @@ ffc_facts :: (s: [] Fairy, facts: string) {
 
 // ---- what the face sends: one at a time
 
-ffc_next :: (s: [] Fairy) -> int #export_c {
+ffc_next :: (s: [] Fairy) -> int #export_c #effects(all) {
   r := s[0].race[..];
   if r[0].id_n == 0 { r[0].ask_get = false; r[0].ask_put = false; r[0].ask_time = 0; return 0; }
   if r[0].ask_get { r[0].ask_get = false; return FFC_GET; }
@@ -194,11 +194,11 @@ ffc_next :: (s: [] Fairy) -> int #export_c {
   return 0;
 }
 // It couldn't go yet (no player key): asked again later.
-ffc_later :: (s: [] Fairy, kind: int) #export_c {
+ffc_later :: (s: [] Fairy, kind: int) #export_c #effects(all) {
   if kind == FFC_GET { s[0].race[0].ask_get = true; }
   if kind == FFC_PUT { s[0].race[0].ask_put = true; }
 }
-ffc_url :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c {
+ffc_url :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c #effects(all) {
   o := ffs_put(out, 0, "/api/playtest/course/");
   o = ffs_put(out, o, ffc_id(s[0].race[..]));
   if kind == FFC_TIME { o = ffs_put(out, o, "/time"); }
@@ -214,7 +214,7 @@ ffc_put_num :: (out: [] u8, at: int, v: f32) -> int {
   o = room_put_int(out, o, (c % 100) / 10);
   return room_put_int(out, o, c % 10);
 }
-ffc_body :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c {
+ffc_body :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c #effects(all) {
   r := s[0].race[..];
   o := 0;
   if kind == FFC_PUT {
@@ -239,7 +239,7 @@ ffc_body :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c {
 }
 
 // What came back ("STATUS\n" and the course): its hoops, who made it, the times.
-ffc_answer :: (s: [] Fairy, kind: int, answer: string) #export_c {
+ffc_answer :: (s: [] Fairy, kind: int, answer: string) #export_c #effects(all) {
   r := s[0].race[..];
   nl := 0;
   while nl < answer.count && answer[nl] != 10 { nl += 1; }
@@ -310,13 +310,13 @@ ffc_answer :: (s: [] Fairy, kind: int, answer: string) #export_c {
 }
 
 // The host's actions: the link to copy (2), then the address's hash (3). 0 none.
-ffc_action :: (s: [] Fairy) -> int #export_c {
+ffc_action :: (s: [] Fairy) -> int #export_c #effects(all) {
   r := s[0].race[..];
   if r[0].copy { return 2; }
   if r[0].hash { return 3; }
   return 0;
 }
-ffc_outbox :: (s: [] Fairy, kind: int) -> int #export_c {
+ffc_outbox :: (s: [] Fairy, kind: int) -> int #export_c #effects(all) {
   r := s[0].race[..];
   if kind == 3 {
     // the hash: course=<id> while one is shown, else nothing
@@ -327,7 +327,7 @@ ffc_outbox :: (s: [] Fairy, kind: int) -> int #export_c {
   }
   return r[0].out_n;
 }
-ffc_action_done :: (s: [] Fairy, kind: int) #export_c {
+ffc_action_done :: (s: [] Fairy, kind: int) #export_c #effects(all) {
   if kind == 2 { s[0].race[0].copy = false; }
   if kind == 3 { s[0].race[0].hash = false; }
 }

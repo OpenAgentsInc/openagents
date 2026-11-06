@@ -115,17 +115,17 @@ RP_Result :: struct {
 // Each call classifies one descriptor leaf in one supplied frame namespace.
 // A complete empty source is a checked default-empty descriptor, not a zero
 // length view whose backing lifetime has disappeared. No strong update occurs.
-RP_bounds :: (source_count:int,destination_count:int,output_count:int)->RP_Status #export_c {
+RP_bounds :: (source_count:int,destination_count:int,output_count:int)->RP_Status #export_c #effects(all) {
  if source_count<0 || source_count>RP_MAX_TERMS || destination_count<0 || destination_count>RP_MAX_TERMS || output_count<0 || output_count>RP_MAX_TERMS {return RP_Status.invalid;}
  if source_count*destination_count>RP_MAX_WORK {return RP_Status.work;}
  return RP_Status.ok;
 }
 
-rp_term_valid :: (term:RP_Term,frame:int)->bool {
+rp_term_valid :: (term:RP_Term,frame:int)->bool #effects(all) {
  if !BS_origin_valid(term.origin) {return false;}
  return ifx term.origin.kind==BS_STATIC then term.frame==0 else term.frame==frame;
 }
-rp_address_valid :: (address:RP_Address,frame:int,value_type:int)->bool {
+rp_address_valid :: (address:RP_Address,frame:int,value_type:int)->bool #effects(all) {
  if !rp_term_valid(address.storage,frame) || address.value_type!=value_type {return false;}
  if address.storage.origin.kind==BS_PARAMETER && address.storage.origin.role==BS_DESCRIPTOR {
   for i:0..<address.storage.origin.path.count {if address.storage.origin.path.steps[i].kind==BS_DEREFERENCE {return true;}}
@@ -134,18 +134,18 @@ rp_address_valid :: (address:RP_Address,frame:int,value_type:int)->bool {
  return true;
 }
 // Preconditions: term/address shape, role and current-frame facts are admitted.
-rp_local_source :: (source:RP_Term)->bool {return source.origin.kind==BS_LOCAL || source.origin.role==BS_INLINE;}
-rp_external :: (address:RP_Address)->bool {return address.storage.origin.kind==BS_STATIC || address.storage.origin.role==BS_DESCRIPTOR;}
+rp_local_source :: (source:RP_Term)->bool #effects(all) {return source.origin.kind==BS_LOCAL || source.origin.role==BS_INLINE;}
+rp_external :: (address:RP_Address)->bool #effects(all) {return address.storage.origin.kind==BS_STATIC || address.storage.origin.role==BS_DESCRIPTOR;}
 
 // The per-call frame and value key are already canonical. BS compares the
 // potentially differing destination/source projections without C padding.
-rp_compare :: (a:RP_Obligation,b:RP_Obligation)->int {
+rp_compare :: (a:RP_Obligation,b:RP_Obligation)->int #effects(all) {
  comparison:=bs_compare(a.destination.storage.origin,b.destination.storage.origin);
  if comparison!=0 {return comparison;}
  return bs_compare(a.source.origin,b.source.origin);
 }
 // Only private staging is written; exactly -1 means capacity refusal.
-rp_insert :: (staging:[]RP_Obligation,used:int,value:RP_Obligation)->int {
+rp_insert :: (staging:[]RP_Obligation,used:int,value:RP_Obligation)->int #effects(all) {
  at:=used;
  for i:0..<used {
   comparison:=rp_compare(staging[i],value);
@@ -162,7 +162,7 @@ rp_insert :: (staging:[]RP_Obligation,used:int,value:RP_Obligation)->int {
 // Invalid facts are hard refusal, never complete empty facts. Known pairs are
 // classified even with unknown alternatives. Pending outlives obligations and
 // unsupported same-frame local ordering both keep relation_complete false.
-RP_check :: (frame:int,value_type:int,sources:[]RP_Term,source_complete:bool,destinations:[]RP_Address,destination_complete:bool,out:[]RP_Obligation)->RP_Result #export_c {
+RP_check :: (frame:int,value_type:int,sources:[]RP_Term,source_complete:bool,destinations:[]RP_Address,destination_complete:bool,out:[]RP_Obligation)->RP_Result #export_c #effects(all) {
  bounds:=RP_bounds(sources.count,destinations.count,out.count);
  if bounds==RP_Status.invalid || frame<1 || frame>2147483647 || value_type<1 || value_type>2147483647 || (destination_complete && destinations.count==0) {return RP_Result.{status=RP_Status.invalid};}
  for source:sources {if !rp_term_valid(source,frame) || source.origin.type!=value_type {return RP_Result.{status=RP_Status.invalid};}}

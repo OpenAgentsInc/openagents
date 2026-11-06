@@ -227,7 +227,7 @@ clip_hair :: (w: []World, outfit: int, vf: int, vn: int, tf: int, tn: int) -> [2
 
 USAGE :: "usage: coax/web/tool.sh verse/tools/humans/pack_human.coax standin [OUT.pack] [--outfit NAME] [--phone] [--size N]\n       coax/web/tool.sh verse/tools/humans/pack_human.coax metahuman EXPORT_DIR [OUT.pack] [--outfit NAME] [--phone] [--size N]";
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { ph_die("pack_human: arguments past the port's buffer"); }
   w: [1] World;

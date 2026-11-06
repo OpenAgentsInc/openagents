@@ -103,8 +103,8 @@ N19_Result :: struct {
   for b: out { #assert b == 77; }
 }
 
-n19_count :: (count: int) -> bool #export_c { return count >= 0 && count <= N19_MAX_BYTES; }
-n19_prefix :: (type: u32) -> string {
+n19_count :: (count: int) -> bool #export_c #effects(all) { return count >= 0 && count <= N19_MAX_BYTES; }
+n19_prefix :: (type: u32) -> string #effects(all) {
   if type == N19_NPUB { return "npub"; }
   if type == N19_NSEC { return "nsec"; }
   if type == N19_NOTE { return "note"; }
@@ -113,18 +113,18 @@ n19_prefix :: (type: u32) -> string {
   if type == N19_ADDR { return "naddr"; }
   return "";
 }
-n19_same :: (a: string, b: string) -> bool {
+n19_same :: (a: string, b: string) -> bool #effects(all) {
   if a.count != b.count { return false; }
   for i: 0..<a.count { if b32_lower(a[i]) != b[i] { return false; } }
   return true;
 }
-n19_type :: (hrp: string) -> u32 {
+n19_type :: (hrp: string) -> u32 #effects(all) {
   for k: 1..<7 { if n19_same(hrp, n19_prefix(cast(u32) k)) { return cast(u32) k; } }
   return 0;
 }
-n19_word_count :: (count: int) -> bool #export_c { return count >= 0 && count <= 4992; }
+n19_word_count :: (count: int) -> bool #export_c #effects(all) { return count >= 0 && count <= 4992; }
 // book:begin padding
-n19_byte_count :: (words: int, last: int) -> int {
+n19_byte_count :: (words: int, last: int) -> int #effects(all) {
   if !n19_word_count(words) || last < 0 || last > 31 { return -1; }
   bits := words * 5;
   unused := bits % 8;
@@ -135,7 +135,7 @@ n19_byte_count :: (words: int, last: int) -> int {
 // book:end padding
 // Reads decoded bytes directly from the validated source. In particular, nsec
 // does not pass through an intermediate raw-key array before caller output.
-n19_byte :: (source: N19_Source, at: int) -> u8 {
+n19_byte :: (source: N19_Source, at: int) -> u8 #effects(all) {
   if !source.encoded { return source.input[at]; }
   bit := at * 8; group := bit / 5; offset := bit % 5;
   a := b32_digit(b32_lower(source.input[source.start + group]));
@@ -146,7 +146,7 @@ n19_byte :: (source: N19_Source, at: int) -> u8 {
   return cast(u8)((((value << 5) | c) >> (7 - offset)) & 255);
 }
 // book:begin validate
-n19_field :: (source: N19_Source, at: int) -> N19_Field {
+n19_field :: (source: N19_Source, at: int) -> N19_Field #effects(all) {
   if at < 0 || at > source.count { return N19_Field.{error = NC_INVALID}; }
   if at == source.count { return N19_Field.{done = true}; }
   if source.count - at < 2 { return N19_Field.{error = NC_INVALID}; }
@@ -154,7 +154,7 @@ n19_field :: (source: N19_Source, at: int) -> N19_Field {
   if length > source.count - at - 2 { return N19_Field.{error = NC_INVALID}; }
   return N19_Field.{tag = tag, value = at + 2, length = length, next = at + 2 + length};
 }
-n19_validate :: (source: N19_Source, type: u32) -> N19_Result {
+n19_validate :: (source: N19_Source, type: u32) -> N19_Result #effects(all) {
   if !n19_count(source.count) || type < 1 || type > 6 { return N19_Result.{error = NC_INVALID}; }
   r := N19_Result.{written = source.count, type = type};
   if type <= N19_NOTE {
@@ -189,7 +189,7 @@ n19_validate :: (source: N19_Source, type: u32) -> N19_Result {
   return r;
 }
 // book:end validate
-nip19_encode_checked :: (type: u32, payload: string, out: [] u8, overlap: bool) -> NC_Result {
+nip19_encode_checked :: (type: u32, payload: string, out: [] u8, overlap: bool) -> NC_Result #effects(all) {
   r := n19_validate(N19_Source.{input = payload, count = payload.count}, type);
   if r.error != NC_OK { return NC_Result.{error = r.error}; }
   return bech32_encode_checked(n19_prefix(type), payload, true, out, true, overlap);
@@ -197,7 +197,7 @@ nip19_encode_checked :: (type: u32, payload: string, out: [] u8, overlap: bool) 
 // book:begin decode
 // Decodes one NIP-19 string. `secret` false refuses nsec from its HRP alone,
 // before any byte is decoded or written.
-n19_decode :: (input: string, out: [] u8, overlap: bool, secret: bool) -> N19_Result {
+n19_decode :: (input: string, out: [] u8, overlap: bool, secret: bool) -> N19_Result #effects(all) {
   h := b32_inspect(input, true);
   if h.error != NC_OK { return N19_Result.{error = h.error}; }
   type := n19_type(input[0..<h.hrp]);
@@ -212,14 +212,14 @@ n19_decode :: (input: string, out: [] u8, overlap: bool, secret: bool) -> N19_Re
   for i: 0..<r.written { out[i] = n19_byte(source, i); }
   return r;
 }
-nip19_decode_checked :: (input: string, out: [] u8, overlap: bool) -> N19_Result {
+nip19_decode_checked :: (input: string, out: [] u8, overlap: bool) -> N19_Result #effects(all) {
   return n19_decode(input, out, overlap, true);
 }
 // book:end decode
 // book:begin uri
 // NIP-21: the scheme "nostr:" (in any case) and one NIP-19 string other than
 // nsec, which a URI must never carry.
-nip21_decode_checked :: (input: string, out: [] u8, overlap: bool) -> N19_Result {
+nip21_decode_checked :: (input: string, out: [] u8, overlap: bool) -> N19_Result #effects(all) {
   scheme := "nostr:";
   for i: 0..<scheme.count {
     if i >= input.count || b32_lower(input[i]) != scheme[i] { return N19_Result.{error = NC_INVALID}; }

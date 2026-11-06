@@ -74,7 +74,7 @@ st_check_actual :: (source:string,stage_binary:string,identity_binary:string,ref
   record:[4096]u8;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"source_manifest");jo_str(o[..],source);jo_key(o[..],"manifest_sha256");jo_str(o[..],cast(string)files[0].hash[..]);jo_key(o[..],"products");jo_int(o[..],files[0].plan.count);jo_key(o[..],"status");jo_str(o[..],"all product and header bytes match");jo_end(o[..]);
   return fs_write(fs_join(out,"actual-package.json",paths[6][..]),jo_text(o[..]));
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) || args_count(args[..])<3 {tool_errln("usage: check-staging-tools OUT STAGE_BINARY IDENTITY_BINARY [REFERENCE_ROOT]");return 2;}
   out:=args_at(args[..],0);stage_binary:=args_at(args[..],1);identity_binary:=args_at(args[..],2);reference:=args_at(args[..],3);if reference.count==0 {reference=".";}
   if !fs_mkdir(out) {return 1;}

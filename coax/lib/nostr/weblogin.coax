@@ -33,7 +33,7 @@ wl_unhex :: (hex: string, out: [] u8) -> bool {
   return true;
 }
 // 16 bytes into 32 lowercase hex characters.
-weblogin_hex :: (entropy: [] u8, out: [] u8) -> bool #export_c {
+weblogin_hex :: (entropy: [] u8, out: [] u8) -> bool #export_c #effects(all) {
   if entropy.count != 16 || out.count < 32 { return false; }
   digits := "0123456789abcdef";
   for i: 0..<16 { out[2 * i] = digits[cast(int) (entropy[i] >> 4)]; out[2 * i + 1] = digits[cast(int) (entropy[i] & 15)]; }
@@ -49,7 +49,7 @@ wl_key :: (hex: string, words: [] u8, key: [] u8) -> int {
   return n;
 }
 // The words and npub of the entropy (hex): the words' length * 256 + the npub's, or -1.
-weblogin_derive :: (hex: string, words: [] u8, npub: [] u8) -> int #export_c {
+weblogin_derive :: (hex: string, words: [] u8, npub: [] u8) -> int #export_c #effects(all) {
   key: [32] u8;
   n := wl_key(hex, words, key[..]);
   m := ifx n > 0 then nip06_npub(key[..], npub) else -1;
@@ -58,7 +58,7 @@ weblogin_derive :: (hex: string, words: [] u8, npub: [] u8) -> int #export_c {
   return n * 256 + m;
 }
 // Typed words: their checksum, and their entropy as hex.
-weblogin_check :: (typed: string, hex: [] u8) -> bool #export_c {
+weblogin_check :: (typed: string, hex: [] u8) -> bool #export_c #effects(all) {
   e: [16] u8;
   ok := hex.count >= 32 && bip39_entropy(typed, e[..]) && weblogin_hex(e[..], hex);
   for i: 0..<16 { e[i] = 0; }
@@ -66,7 +66,7 @@ weblogin_check :: (typed: string, hex: [] u8) -> bool #export_c {
 }
 // book:begin sign
 // "Nostr <base64 kind-27235 event>" for POST url with body, signed by the entropy's key; its length or -1.
-weblogin_sign :: (hex: string, url: string, created_at: int, body: string, aux: [] u8, out: [] u8) -> int #export_c {
+weblogin_sign :: (hex: string, url: string, created_at: int, body: string, aux: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if url.count < 10 || url.count > 200 || aux.count != 32 || created_at < 0 { return -1; }
   for c: url { if c == '"' || c == '\\' || c < 32 { return -1; } }
   words: [160] u8; key: [32] u8;

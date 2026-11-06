@@ -13,24 +13,24 @@ RenderTextureResult :: struct {status:RenderTextureStatus;bad_level:int=-1;bad_t
 RTProduct :: struct {valid:bool;bytes:u64;}
 #load "tests/texture-codec-checks.coax";
 
-render_texture_srgb :: (byte:u8)->f32 {
+render_texture_srgb :: (byte:u8)->f32 #effects(all) {
  c:=f64(byte)/255.0;
  if byte<=10 {return f32(c/12.92);}
  return f32(pow((c+0.055)/1.055,2.4));
 }
-rt_pixel_bytes :: (format:RenderTexelFormat)->int {
+rt_pixel_bytes :: (format:RenderTexelFormat)->int #effects(all) {
  if format==RenderTexelFormat.rgba8 || format==RenderTexelFormat.rgba8_srgb || format==RenderTexelFormat.bgra8 || format==RenderTexelFormat.bgra8_srgb || format==RenderTexelFormat.depth32f {return 4;}
  if format==RenderTexelFormat.rgba16f {return 8;}
  if format==RenderTexelFormat.rgba32f {return 16;}return 0;
 }
-rt_u16 :: (bytes:[]u8,at:int)->u32 {return u32(bytes[at])|(u32(bytes[at+1])<<8);}
-rt_u32 :: (bytes:[]u8,at:int)->u32 {return rt_u16(bytes,at)|(rt_u16(bytes,at+2)<<16);}
-rt_float :: (format:RenderTexelFormat,bytes:[]u8,at:int)->RRScalar {
+rt_u16 :: (bytes:[]u8,at:int)->u32 #effects(all) {return u32(bytes[at])|(u32(bytes[at+1])<<8);}
+rt_u32 :: (bytes:[]u8,at:int)->u32 #effects(all) {return rt_u16(bytes,at)|(rt_u16(bytes,at+2)<<16);}
+rt_float :: (format:RenderTexelFormat,bytes:[]u8,at:int)->RRScalar #effects(all) {
  if format==RenderTexelFormat.rgba16f {return rr_half_decode(rt_u16(bytes,at));}
  bits:=rt_u32(bytes,at);if (bits&0x7f800000)==0x7f800000 {return RRScalar.{status=RQStatus.resource};}
  return RRScalar.{value=f32_from_bits(bits)};
 }
-render_texel_decode :: (format:RenderTexelFormat,bytes:[]u8,at:int)->RenderTexelResult {
+render_texel_decode :: (format:RenderTexelFormat,bytes:[]u8,at:int)->RenderTexelResult #effects(all) {
  r:=RenderTexelResult.{};n:=rt_pixel_bytes(format);
  if n==0 {r.status=RenderTextureStatus.bad_format;return r;}
  if at<0 || at>bytes.count-n {r.status=RenderTextureStatus.bad_span;return r;}
@@ -50,11 +50,11 @@ render_texel_decode :: (format:RenderTexelFormat,bytes:[]u8,at:int)->RenderTexel
  if format==RenderTexelFormat.rgba8_srgb || format==RenderTexelFormat.bgra8_srgb {r.colour.r=render_texture_srgb(red);r.colour.g=render_texture_srgb(bytes[at+1]);r.colour.b=render_texture_srgb(blue);}
  return r;
 }
-rt_product :: (a:u64,b:u64,limit:u64)->RTProduct {
+rt_product :: (a:u64,b:u64,limit:u64)->RTProduct #effects(all) {
  if b==0 {return RTProduct.{valid=true};}
  if a>limit/b {return RTProduct.{};}return RTProduct.{valid=true,bytes=a*b};
 }
-render_texture_decode :: (format:RenderTexelFormat,layers:int,levels:[]RenderTextureLevel,bytes:[]u8,out:[]RQColor,out_levels:[]RQMip,pixel_budget:int)->RenderTextureResult {
+render_texture_decode :: (format:RenderTexelFormat,layers:int,levels:[]RenderTextureLevel,bytes:[]u8,out:[]RQColor,out_levels:[]RQMip,pixel_budget:int)->RenderTextureResult #effects(all) {
  r:=RenderTextureResult.{};bpp:=rt_pixel_bytes(format);
  if bpp==0 {r.status=RenderTextureStatus.bad_format;return r;}
  if pixel_budget<1 || pixel_budget>RENDER_TEXTURE_PIXELS {r.status=RenderTextureStatus.work_budget;return r;}

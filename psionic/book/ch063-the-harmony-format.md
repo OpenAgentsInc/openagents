@@ -99,7 +99,7 @@ index.
 
 <!-- source: psionic/lib/harmony/tokenizer.coax encode -->
 ```jai
-hs_encode_checked :: (table:[]u8,input:string,out:[]int,stage:[]int,symbols:[]int,overlap:bool)->PtResult #export_c {
+hs_encode_checked :: (table:[]u8,input:string,out:[]int,stage:[]int,symbols:[]int,overlap:bool)->PtResult #export_c #effects(all) {
     if overlap {return PtResult.{status=PtStatus.alias};}t:=hs_layout(table);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}
     r:=hs_append(table,t,input,stage,symbols,0);if r.status!=PtStatus.ok {return r;}
     if out.count<r.written {return PtResult.{status=PtStatus.capacity};}
@@ -119,7 +119,7 @@ once and keep the bytes immutable and alive:
 
 <!-- source: psionic/lib/harmony/admission.coax admit -->
 ```jai
-hs_admit :: (table:[]u8)->bool #export_c {return pw_digest(table,HS_TABLE_SHA);}
+hs_admit :: (table:[]u8)->bool #export_c #effects(all) {return pw_digest(table,HS_TABLE_SHA);}
 ```
 
 Layout parsing on later calls is not a new identity admission. The toy table
@@ -161,7 +161,7 @@ user nicknames, arbitrary channels, content-type extensions or multimodal data.
 
 <!-- source: psionic/lib/harmony/messages.coax metadata -->
 ```jai
-hm_metadata :: (role:u8,channel:u8,ending:u8,name:string,recipient:string)->bool {
+hm_metadata :: (role:u8,channel:u8,ending:u8,name:string,recipient:string)->bool #effects(all) {
     if role>4 || channel>3 || ending>2 {return false;}
     if role==4 {if !hm_ident(name) || hm_role(name)!=4 {return false;}}else if name.count!=0 {return false;}
     if recipient.count!=0 {if !hm_ident(recipient) || recipient=="all" {return false;}}
@@ -193,7 +193,7 @@ channel declaration. The cutoff is part of this frozen source template.
 
 <!-- source: psionic/lib/harmony/messages.coax system -->
 ```jai
-hm_system_checked :: (effort:int,out:[]u8,work:[]u8,overlap:bool)->PtResult #export_c {
+hm_system_checked :: (effort:int,out:[]u8,work:[]u8,overlap:bool)->PtResult #export_c #effects(all) {
     if effort<0 || effort>2 {return PtResult.{status=PtStatus.range};}if overlap {return PtResult.{status=PtStatus.alias};}
     efforts:=[3]string.["low","medium","high"];parts:=[3]string.[HM_SYSTEM_HEAD,efforts[effort],HM_SYSTEM_TAIL];n:=HM_SYSTEM_HEAD.count+efforts[effort].count+HM_SYSTEM_TAIL.count;
     if out.count<n || work.count<n {return PtResult.{status=PtStatus.capacity};}p:=0;

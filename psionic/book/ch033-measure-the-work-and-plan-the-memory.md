@@ -106,7 +106,7 @@ vision tensors and the file header; a text-only plan keeps neither resident.
 
 <!-- source: psionic/lib/residency.coax weights -->
 ```jai
-rp_weights :: (m:RpModel)->RpWeights #export_c {
+rp_weights :: (m:RpModel)->RpWeights #export_c #effects(all) {
     if !rp_valid(m) {return RpWeights.{};}
     w:=m.width;table:=2*m.vocab*w;x:=RpWeights.{embedding=table,expert=rp_expert(m)};
     qkv:=(m.heads+2*m.kv_heads)*m.head_dim;out:=m.heads*m.head_dim;
@@ -169,15 +169,15 @@ row per head over 86 positions and 248,320 logits:
 // (conv - 1 inputs) and delta state (value_heads matrices of delta_dim
 // squared), each full layer's keys and values for every position, each
 // sliding layer's for at most window positions.
-rp_state :: (m:RpModel,capacity:int)->int #export_c {
+rp_state :: (m:RpModel,capacity:int)->int #export_c #effects(all) {
     kv:=2*m.kv_heads*m.head_dim;
     return rp_recurrent(m)+4*(m.full*capacity*kv+m.sliding*rp_min(capacity,m.window)*kv);
 }
-rp_recurrent :: (m:RpModel)->int {return 4*m.linear*((m.conv-1)*rp_channels(m)+rp_values(m)*m.delta_dim);}
+rp_recurrent :: (m:RpModel)->int #effects(all) {return 4*m.linear*((m.conv-1)*rp_channels(m)+rp_values(m)*m.delta_dim);}
 // f32 scratch for chunk tokens at once: the residual and its normed copy,
 // the widest intermediate, one attention score row per head over the
 // capacity, and the last token's logits.
-rp_scratch :: (m:RpModel,chunk:int,capacity:int)->int #export_c {
+rp_scratch :: (m:RpModel,chunk:int,capacity:int)->int #export_c #effects(all) {
     widest:=rp_max((m.heads+2*m.kv_heads)*m.head_dim,m.experts+2*m.ffn);
     if m.arch==RpArch.hybrid {widest=rp_max(rp_max(2*m.ffn,2*(m.heads+m.kv_heads)*m.head_dim),rp_channels(m)+rp_values(m)+2*m.value_heads);}
     return 4*(chunk*(2*m.width+widest)+m.heads*capacity+m.vocab);
@@ -221,26 +221,26 @@ value, so a decode step at 86 does 1.95 FLOPs per byte.
 ```jai
 // Multiply-adds per token outside attention over positions: every layer's
 // dense matrices, the selected experts, the convolution and the delta rule.
-rp_token_macs :: (m:RpModel)->int {
+rp_token_macs :: (m:RpModel)->int #effects(all) {
     if m.arch==RpArch.moe {return rp_layers(m)*(rp_moe_dense(m)+m.selected*3*m.ffn*m.width);}
     delta:=rp_channels(m)*m.conv+3*rp_values(m)*m.delta_dim;
     return m.linear*(rp_dense(m,true)+delta)+m.full*rp_dense(m,false);
 }
 // Attention multiply-adds for one query over n positions (scores, values).
-rp_attention_macs :: (m:RpModel,n:int)->int {
+rp_attention_macs :: (m:RpModel,n:int)->int #effects(all) {
     return 2*m.heads*m.head_dim*(m.full*n+m.sliding*rp_min(n,m.window));
 }
-rp_milli :: (flops:int,bytes:int)->int {
+rp_milli :: (flops:int,bytes:int)->int #effects(all) {
     if bytes<=0 {return 0;}
     return flops/bytes*1000+flops%bytes*1000/bytes;
 }
-rp_check :: (m:RpModel,n:int)->RpStatus {
+rp_check :: (m:RpModel,n:int)->RpStatus #effects(all) {
     if !rp_valid(m) {return RpStatus.model;}
     if n<1 || n>m.max_tokens {return RpStatus.request;}
     return RpStatus.ok;
 }
 // One decode step at position n (n positions including its own).
-rp_decode :: (m:RpModel,n:int)->RpWork #export_c {
+rp_decode :: (m:RpModel,n:int)->RpWork #export_c #effects(all) {
     s:=rp_check(m,n);if s!=RpStatus.ok {return RpWork.{status=s};}
     w:=rp_weights(m);head:=m.vocab*m.width;
     flops:=2*(rp_token_macs(m)+head+rp_attention_macs(m,n));
@@ -251,7 +251,7 @@ rp_decode :: (m:RpModel,n:int)->RpWork #export_c {
     return RpWork.{flops=flops,bytes=bytes,milli=rp_milli(flops,bytes)};
 }
 // Prefill of t tokens from an empty state, logits for the last token only.
-rp_prefill :: (m:RpModel,t:int)->RpWork #export_c {
+rp_prefill :: (m:RpModel,t:int)->RpWork #export_c #effects(all) {
     s:=rp_check(m,t);if s!=RpStatus.ok {return RpWork.{status=s};}
     w:=rp_weights(m);head:=m.vocab*m.width;
     k:=rp_min(t,m.window);sliding:=k*(k+1)/2+(t-k)*m.window;   // 1 + 2 + ... + k, then the window
@@ -275,16 +275,16 @@ checks compile Psionic:
 <!-- source: psionic/lib/roofline.coax kernels -->
 ```jai
 // a = b + s * c: reads 8 bytes and writes 4 per element, two FLOPs.
-rf_triad :: (a:[]f32,b:[]f32,c:[]f32,s:f32)->int #export_c {
+rf_triad :: (a:[]f32,b:[]f32,c:[]f32,s:f32)->int #export_c #effects(all) {
     if b.count!=a.count || c.count!=a.count {return -1;}
     for i:0..<a.count {a[i]=b[i]+s*c[i];}
     return a.count;
 }
-rf_triad_bytes :: (n:int)->int #export_c {return 12*n;}
+rf_triad_bytes :: (n:int)->int #export_c #effects(all) {return 12*n;}
 // x = x * m + k, rounds times over a buffer small enough to stay in cache:
 // two FLOPs per value per round, and the values are independent, so the
 // compiler may keep several in flight at once.
-rf_madd :: (x:[]f32,rounds:int,m:f32,k:f32)->int #export_c {
+rf_madd :: (x:[]f32,rounds:int,m:f32,k:f32)->int #export_c #effects(all) {
     if rounds<0 {return -1;}
     for r:0..<rounds {for i:0..<x.count {x[i]=x[i]*m+k;}}
     return 2*rounds*x.count;
@@ -302,13 +302,13 @@ each phase:
 <!-- source: psionic/lib/roofline.coax place -->
 ```jai
 // Millions of units per second from units (at least 0) done in ns nanoseconds.
-rf_rate :: (units:int,ns:int)->int #export_c {
+rf_rate :: (units:int,ns:int)->int #export_c #effects(all) {
     if ns<=0 {return 0;}
     return units/ns*1000+units%ns*1000/ns;
 }
 // Place a phase with intensity milli (chapter 33's rp_* accounting) and
 // flops FLOPs against the host's two roofs.
-rf_place :: (h:RfHost,milli:int,flops:int)->RfPlace #export_c {
+rf_place :: (h:RfHost,milli:int,flops:int)->RfPlace #export_c #effects(all) {
     if h.mflops<=0 || h.mbytes<=0 || milli<0 || flops<0 {return RfPlace.{};}
     p:=RfPlace.{ridge=h.mflops*1000/h.mbytes};
     memory:=h.mbytes*milli/1000;
@@ -372,14 +372,14 @@ tier) and a budget in bytes:
 // Admit a request as resident, as resident with streamed weights, or refuse
 // it with the first reason that applies. Nothing is allocated here: the
 // caller allocates the plan's bytes only after status ok.
-rp_plan :: (m:RpModel,r:RpRequest,budget:int)->RpPlan #export_c {
+rp_plan :: (m:RpModel,r:RpRequest,budget:int)->RpPlan #export_c #effects(all) {
     if !rp_valid(m) {return RpPlan.{status=RpStatus.model};}
     if r.capacity<1 || r.capacity>m.max_tokens || r.chunk<1 || r.chunk>r.capacity {return RpPlan.{status=RpStatus.request};}
     return rp_admit(rp_weights(m),rp_state(m,r.capacity),rp_scratch(m,r.chunk,r.capacity),r.stream,budget);
 }
 // The same decision for weight, state and scratch bytes counted elsewhere:
 // chapter 164 counts a Mamba-2 and mixture-of-experts hybrid this way.
-rp_admit :: (w:RpWeights,state:int,scratch:int,stream:bool,budget:int)->RpPlan {
+rp_admit :: (w:RpWeights,state:int,scratch:int,stream:bool,budget:int)->RpPlan #effects(all) {
     if budget<0 {return RpPlan.{status=RpStatus.budget};}
     p:=RpPlan.{weights=w.total,state=state,scratch=scratch,slot=w.slot};
     live:=p.state+p.scratch;all:=w.total+live;least:=w.vectors+live+2*w.slot;

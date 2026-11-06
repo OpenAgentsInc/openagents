@@ -54,7 +54,7 @@ every valid question. It does not fit or invent a temperature.
 
 <!-- source: psionic/lib/decision-calibration.coax calibration -->
 ```jai
-pc_load :: (kind:u8,readout:[]u8,calibration:[]u8)->PcCalibration #export_c {
+pc_load :: (kind:u8,readout:[]u8,calibration:[]u8)->PcCalibration #export_c #effects(all) {
     if kind>1 {return PcCalibration.{status=PcStatus.kind};}
     if cast(string)readout!=PC_PINNED_READOUT {return PcCalibration.{status=PcStatus.readout};}
     // Neither pinned revision contains calibration.json; one is a different bundle.
@@ -62,7 +62,7 @@ pc_load :: (kind:u8,readout:[]u8,calibration:[]u8)->PcCalibration #export_c {
     return PcCalibration.{source=PcSource.none,slots=256,head_dim=256};
 }
 // With no table, the pinned runtime uses 1.0 for every kind and option count.
-pc_temperature :: (c:PcCalibration,kind:QrKind,count:int)->f32 #export_c {
+pc_temperature :: (c:PcCalibration,kind:QrKind,count:int)->f32 #export_c #effects(all) {
     if c.status!=PcStatus.ok || !qr_valid(cast(u8)kind,count,1) {return 0;}
     return 1;
 }
@@ -98,7 +98,7 @@ The bundle's `engine.py`, used for the Decision Index, keeps fewer fields:
 
 <!-- source: psionic/lib/decision-json.coax answer-json -->
 ```jai
-pj_emit :: (w:[]PjWriter,kind:QrKind,fields:u8,probabilities:[]f64,options:[]PtOption) {
+pj_emit :: (w:[]PjWriter,kind:QrKind,fields:u8,probabilities:[]f64,options:[]PtOption) #effects(all) {
     n:=probabilities.count;p:[255]f64;pj_normalize(probabilities,p[0..<n]);
     if kind==QrKind.noul {
         v:=probabilities[0];if v<=0 {v=0;}
@@ -167,7 +167,7 @@ don't know". The metrics are:
 
 <!-- source: psionic/lib/decision-quality.coax quality -->
 ```jai
-pq_measure :: (items:[]PqItem,probabilities:[]f64)->PqReport #export_c {
+pq_measure :: (items:[]PqItem,probabilities:[]f64)->PqReport #export_c #effects(all) {
     if !pq_item_count(items.count) {return PqReport.{status=PqStatus.shape};}
     for item,index:items {
         if !pq_item_valid(item,probabilities.count) {return PqReport.{status=PqStatus.shape,cause=index};}

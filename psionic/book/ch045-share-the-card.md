@@ -40,11 +40,11 @@ time and spread across the model:
 // (0 gate, 1 up, 2 down); 3L+5*layer+k for mixer matrix k (linear: qkv, z,
 // a, b, out; full: q, k, v, out, and k = 4 is no matrix); 8L+c for head
 // chunk c.
-dp_mixer_base :: (m:DpModel)->int {return 3*m.layers;}
-dp_head_base :: (m:DpModel)->int {return 8*m.layers;}
-dp_head_chunks :: (m:DpModel)->int #export_c {return m.chunks;}
-dp_streamable :: (m:DpModel)->int #export_c {return dp_head_base(m)+dp_head_chunks(m);}
-dp_residency_of :: (m:DpModel,budget:int,workspace:int,stream:[]bool)->DpPlan {
+dp_mixer_base :: (m:DpModel)->int #effects(all) {return 3*m.layers;}
+dp_head_base :: (m:DpModel)->int #effects(all) {return 8*m.layers;}
+dp_head_chunks :: (m:DpModel)->int #export_c #effects(all) {return m.chunks;}
+dp_streamable :: (m:DpModel)->int #export_c #effects(all) {return dp_head_base(m)+dp_head_chunks(m);}
+dp_residency_of :: (m:DpModel,budget:int,workspace:int,stream:[]bool)->DpPlan #effects(all) {
     if stream.count!=dp_streamable(m) {return DpPlan.{status=DpStatus.capacity};}
     total:=0;
     for w:0..<dp_weights(m) {total+=dp_align(dp_bytes(m,w));}
@@ -76,7 +76,7 @@ carries one argument naming the host bytes:
 ```jai
 // The copy that fills a slot with streaming index x. Its one argument names
 // the host bytes: weight 3+w, a byte offset into it and a byte count.
-dp_copy :: (m:DpModel,x:int,slot:int)->DpOp {
+dp_copy :: (m:DpModel,x:int,slot:int)->DpOp #effects(all) {
     w:=dp_stream_weight_of(m,x);offset:=0;bytes:=dp_bytes(m,w);
     if x>=dp_head_base(m) {c:=x-dp_head_base(m);offset=2*c*m.hidden*m.width;bytes=2*dp_chunk_rows(m,c)*m.width;}
     op:=DpOp.{kind=DpOpKind.copy,tensor=w,slot=slot,count=1};
@@ -94,18 +94,18 @@ one copy in flight while the other is being read:
 ```jai
 // A streamed matrix is read from slot at%2: wait for its copy, use it, then
 // release the slot and start the copy of the streamed matrix after next.
-dp_take :: (b:DpBuilder)->DpBuilder {return dp_push(b,DpOp.{kind=DpOpKind.wait,slot=b.at%2});}
-dp_give :: (b:DpBuilder)->DpBuilder {
+dp_take :: (b:DpBuilder)->DpBuilder #effects(all) {return dp_push(b,DpOp.{kind=DpOpKind.wait,slot=b.at%2});}
+dp_give :: (b:DpBuilder)->DpBuilder #effects(all) {
     slot:=b.at%2;
     r:=dp_push(b,DpOp.{kind=DpOpKind.release,slot=slot});
     if r.at+2<r.count {r=dp_push(r,dp_copy(r.m,r.order[r.at+2],slot));}
     r.at+=1;return r;
 }
 // A matrix projection whose weight may stream.
-dp_project_weight :: (b:DpBuilder,p:DpLayout,w:int,rows:int,cols:int,tokens:int,input:int,output:int)->DpBuilder {
+dp_project_weight :: (b:DpBuilder,p:DpLayout,w:int,rows:int,cols:int,tokens:int,input:int,output:int)->DpBuilder #effects(all) {
     return dp_project_weight_to(b,p,w,rows,cols,tokens,input,dp_ws(output,tokens*rows));
 }
-dp_project_weight_to :: (b:DpBuilder,p:DpLayout,w:int,rows:int,cols:int,tokens:int,input:int,out:DpArg)->DpBuilder {
+dp_project_weight_to :: (b:DpBuilder,p:DpLayout,w:int,rows:int,cols:int,tokens:int,input:int,out:DpArg)->DpBuilder #effects(all) {
     if !dp_streamed_of(b.m,w,b.stream) {return dp_project_to(b,p,dp_matrix(w),rows,cols,tokens,input,out);}
     r:=dp_take(b);
     r=dp_project_to(r,p,DpArg.{kind=4,buffer=1+b.at%2},rows,cols,tokens,input,out);
@@ -123,7 +123,7 @@ lanes, chunks and f64 sum, only fewer rows per launch:
 // The head's rows first..first+rows: one-token products into 16 lane
 // partials, then their sums into those logits. A streamed chunk's slot is
 // released between the two.
-dp_readout :: (b:DpBuilder,p:DpLayout,weight:DpArg,first:int,rows:int,streamed:bool)->DpBuilder {
+dp_readout :: (b:DpBuilder,p:DpLayout,weight:DpArg,first:int,rows:int,streamed:bool)->DpBuilder #effects(all) {
     d:=b.m.width;a:[12]DpArg;w:=weight;w.count=rows*d/4;
     a[0]=dp_int(rows);a[1]=dp_int(d);a[2]=w;a[3]=dp_ws(p.final,d);a[4]=dp_ws(p.lanes,16*rows);
     r:=dp_push(b,dp_launch(DpKernel.matvec,16*rows,a,5));

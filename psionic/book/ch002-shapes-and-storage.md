@@ -121,7 +121,7 @@ elements to advance when a coordinate increases by one; it is not a byte count.
 
 <!-- source: psionic/lib/tensor.coax layout -->
 ```jai
-psionic_tensor_layout :: (shape: PsionicShape) -> PsionicLayout #export_c {
+psionic_tensor_layout :: (shape: PsionicShape) -> PsionicLayout #export_c #effects(all) {
     if shape.rank < 0 || shape.rank > 4 { return PsionicLayout.{status = PsionicTensorStatus.rank}; }
     for axis: 0..<4 {
         if axis < shape.rank {
@@ -163,7 +163,7 @@ offset, so a caller cannot forge a layout result and use it as admission.
 
 <!-- source: psionic/lib/tensor.coax index -->
 ```jai
-psionic_tensor_index :: (shape: PsionicShape, coordinates: [4] int) -> PsionicIndex #export_c {
+psionic_tensor_index :: (shape: PsionicShape, coordinates: [4] int) -> PsionicIndex #export_c #effects(all) {
     layout := psionic_tensor_layout(shape);
     if layout.status != PsionicTensorStatus.ok { return PsionicIndex.{status = layout.status}; }
     for axis: 0..<4 {
@@ -237,7 +237,7 @@ for unknown native pointers.
 <!-- source: psionic/lib/tensor.coax copy -->
 ```jai
 psionic_tensor_copy_checked :: (shape: PsionicShape, source: [] f32, destination: [] f32,
-        scratch: [] f32, overlap: bool) -> PsionicCopy #export_c {
+        scratch: [] f32, overlap: bool) -> PsionicCopy #export_c #effects(all) {
     layout := psionic_tensor_layout(shape);
     if layout.status != PsionicTensorStatus.ok { return PsionicCopy.{status = layout.status}; }
     if source.count != layout.elements || destination.count < layout.elements || scratch.count < layout.elements {

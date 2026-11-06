@@ -88,7 +88,7 @@ digits (a SHA-1 commit id).
 // ---- 30617: a NIP-34 repository announcement. d is required; euc is the
 // first r tag marked "euc", whose commit is 40 hex digits.
 N34Repo :: struct {status:int;d:NtTag;name:NtTag;description:NtTag;web:NtTag;clone:NtTag;relays:NtTag;euc:NtTag;}
-n34_repo :: (e:NtEvent)->N34Repo #export_c {
+n34_repo :: (e:NtEvent)->N34Repo #export_c #effects(all) {
  r:N34Repo;r.status=n34_start(e,N34_KIND_REPO);if r.status!=N34_OK {return r;}
  r.d=nt_tag(e,"d",0);r.name=nt_tag(e,"name",0);r.description=nt_tag(e,"description",0);
  r.web=nt_tag(e,"web",0);r.clone=nt_tag(e,"clone",0);r.relays=nt_tag(e,"relays",0);r.euc=nt_select(e,"r",1,"euc",0);
@@ -111,7 +111,7 @@ key wherever it is:
 // Whether key is a value of a maintainers tag of the repository (any tag,
 // any position), as 64 lowercase hex digits. The announcement's author is a
 // maintainer too; n34_resolve checks that separately.
-n34_maintainer :: (repo:NtEvent,key:[32]u8)->bool {
+n34_maintainer :: (repo:NtEvent,key:[32]u8)->bool #effects(all) {
  hex:=n34_hex32(key);
  for k:0..<nt_tags(repo,"maintainers") {
   for i:0..<nt_tag(repo,"maintainers",k).values {if nt_count(repo,"maintainers",i,cast(string)hex[..])>0 {return true;}}
@@ -176,7 +176,7 @@ reads the fields OpenAgents writes on issues (`subject`, `t` labels,
 // a coordinate; repo and project are the first of kinds 30617 and 30621
 // (to>from when present). slug is OpenAgents' item slug.
 N34Issue :: struct {status:int;fields:N34Fields;slug:NtTag;a:int;repo:NtSpan;project:NtSpan;}
-n34_issue :: (e:NtEvent)->N34Issue #export_c {
+n34_issue :: (e:NtEvent)->N34Issue #export_c #effects(all) {
  r:N34Issue;r.status=n34_start(e,N34_KIND_ISSUE);if r.status!=N34_OK {return r;}
  r.fields=n34_fields(e);r.slug=nt_tag(e,"slug",0);r.a=nt_tags(e,"a");
  s:=ifx r.a==0 then N34_MISSING else nt_and(nt_shape(r.slug,1,false),r.fields.status);
@@ -207,7 +207,7 @@ the first patch of a revised series.
 // "root" (the first patch of a series), revision that one is
 // "root-revision".
 N34Patch :: struct {status:int;repo:NtSpan;root:bool;revision:bool;commit:NtTag;parent:NtTag;}
-n34_patch :: (e:NtEvent)->N34Patch {
+n34_patch :: (e:NtEvent)->N34Patch #effects(all) {
  r:N34Patch;r.status=n34_start(e,N34_KIND_PATCH);if r.status!=N34_OK {return r;}
  a:=nt_tags(e,"a");s:=ifx a==0 then N34_MISSING else N34_OK;
  for k:0..<a {
@@ -260,7 +260,7 @@ the kind less 1630.
 // ---- 1630-1633: a NIP-34 status. root is the first e tag marked "root",
 // else the first e tag; it is required and is an event id.
 N34Status :: struct {status:int;state:int;root:NtTag;}
-n34_status :: (e:NtEvent)->N34Status #export_c {
+n34_status :: (e:NtEvent)->N34Status #export_c #effects(all) {
  r:N34Status;r.status=n34_valid(e);
  if r.status==N34_OK && (e.kind<N34_KIND_OPEN || e.kind>N34_KIND_DRAFT) {r.status=N34_KIND;}if r.status!=N34_OK {return r;}
  r.state=e.kind-N34_KIND_OPEN;r.root=nt_select(e,"e",2,"root",0);
@@ -316,15 +316,15 @@ N34State :: struct {
 ```jai
 // The repository's address, "30617:<its author>:<its d>", is the root's
 // first 30617 coordinate, byte for byte.
-n34_names :: (repo:N34Signed,d:string,a:string)->bool {
+n34_names :: (repo:N34Signed,d:string,a:string)->bool #effects(all) {
  c:=nt_coord(a);
  if c.kind!=N34_KIND_REPO || a[c.d..<a.count]!=d {return false;}
  hex:=n34_hex32(repo.public_key);
  return a[c.d-65..<c.d-1]==cast(string)hex[..];
 }
-n34_same :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+n34_same :: (a:[32]u8,b:[32]u8)->bool #effects(all) {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
 // a is newer than b: a later created_at, or the same and a lower id.
-n34_newer :: (a:N34Signed,b:N34Signed)->bool {
+n34_newer :: (a:N34Signed,b:N34Signed)->bool #effects(all) {
  if a.created_at>b.created_at {return true;}
  if a.created_at<b.created_at {return false;}
  for i:0..<32 {
@@ -333,7 +333,7 @@ n34_newer :: (a:N34Signed,b:N34Signed)->bool {
  }
  return false;
 }
-n34_resolve :: (repo:N34Signed,root:N34Signed,set:[]N34Signed)->N34State {
+n34_resolve :: (repo:N34Signed,root:N34Signed,set:[]N34Signed)->N34State #effects(all) {
  out:N34State;
  re:=repo.e;rr:=n34_repo(re);
  if rr.status!=N34_OK {out.status=rr.status;return out;}

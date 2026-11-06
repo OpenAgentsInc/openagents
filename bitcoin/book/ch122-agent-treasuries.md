@@ -102,13 +102,13 @@ OP_ENDIF
 <!-- source: coax/lib/bitcoin/treasury.coax wsh -->
 ```jai
 // A push of d as a script number: OP_1 to OP_16, or its minimal bytes.
-ty_number :: (d: int, out: [] u8, at: int) -> int {
+ty_number :: (d: int, out: [] u8, at: int) -> int #effects(all) {
   if d >= 1 && d <= 16 { out[at] = cast(u8) (0x50 + d); return at + 1; }
   n := script_num_write_vartime(d, out[at + 1..<at + 10]);
   out[at] = cast(u8) n;
   return at + 1 + n;
 }
-ty_key :: (k: [] u8, out: [] u8, at: int) -> int {
+ty_key :: (k: [] u8, out: [] u8, at: int) -> int #effects(all) {
   out[at] = 33;
   for j: 0..<33 { out[at + 1 + j] = k[j]; }
   return at + 34;
@@ -121,7 +121,7 @@ ty_key :: (k: [] u8, out: [] u8, at: int) -> int {
 // as the script's. When the multisig fails, NOTIF runs the recovery path:
 // R's signature, and an input sequence of at least delay blocks (BIP-112).
 // Returns the script's length or a refusal.
-treasury_wsh_script_vartime :: (agent: [] u8, owner: [] u8, recovery: [] u8, delay: int, out: [] u8) -> int {
+treasury_wsh_script_vartime :: (agent: [] u8, owner: [] u8, recovery: [] u8, delay: int, out: [] u8) -> int #effects(all) {
   if !pr_compressed(agent) || !pr_compressed(owner) || !pr_compressed(recovery) { return TY_KEY; }
   if delay < 1 || delay > 0xffff { return TY_DELAY; }
   if out.count < TY_WSH_MAX { return TY_CAPACITY; }
@@ -135,7 +135,7 @@ treasury_wsh_script_vartime :: (agent: [] u8, owner: [] u8, recovery: [] u8, del
   return at + 2;
 }
 // The P2WSH scriptPubKey of a witness script: OP_0 and its SHA-256.
-treasury_wsh_spk_vartime :: (script: [] u8, out: [] u8) -> int {
+treasury_wsh_spk_vartime :: (script: [] u8, out: [] u8) -> int #effects(all) {
   n := p2wsh_script_vartime(script, out);
   return ifx n < 0 then TY_CAPACITY else n;
 }
@@ -177,7 +177,7 @@ TreasuryTr :: struct {
 // multi_a(2,A,O,R): <A> CHECKSIG <O> CHECKSIGADD <R> CHECKSIGADD 2 NUMEQUAL,
 // BIP-387's leaf (chapter 100) with the keys' x coordinates in this order.
 // and_v(v:pk(R),older(delay)): <R> CHECKSIGVERIFY <delay> CHECKSEQUENCEVERIFY.
-treasury_tr_vartime :: (agent: [] u8, owner: [] u8, recovery: [] u8, delay: int, t: [] TreasuryTr) -> int {
+treasury_tr_vartime :: (agent: [] u8, owner: [] u8, recovery: [] u8, delay: int, t: [] TreasuryTr) -> int #effects(all) {
   if t.count != 1 { return TY_CAPACITY; }
   if !pr_compressed(agent) || !pr_compressed(owner) || !pr_compressed(recovery) { return TY_KEY; }
   if delay < 1 || delay > 0xffff { return TY_DELAY; }
@@ -288,7 +288,7 @@ TreasuryCheck :: struct { code: int; total: int; refill: int; change: int; fee: 
 // must spend the treasury, and every output must pay the hot wallet or
 // the treasury. A spend that pays anyone else is a payment, which the
 // agent alone never approves.
-treasury_check_vartime :: (m: [] PsbtMaps, treasury: [] u8, hot: [] u8, p: TreasuryPolicy, w: [] PsbtSign) -> TreasuryCheck {
+treasury_check_vartime :: (m: [] PsbtMaps, treasury: [] u8, hot: [] u8, p: TreasuryPolicy, w: [] PsbtSign) -> TreasuryCheck #effects(all) {
   c: TreasuryCheck;
   size := psbt_unsigned_vartime(m, w[0].tx[..]);
   if size < 0 { c.code = TY_CAPACITY; return c; }
@@ -317,7 +317,7 @@ treasury_check_vartime :: (m: [] PsbtMaps, treasury: [] u8, hot: [] u8, p: Treas
 // The agent's signer: the check, then chapter 94's signer on every input
 // with the agent's key. Returns TY_OK or the rule that refused; a refusal
 // adds no signature.
-treasury_agent_sign_vartime :: (m: [] PsbtMaps, key: [] u8, treasury: [] u8, hot: [] u8, p: TreasuryPolicy, w: [] PsbtSign) -> int {
+treasury_agent_sign_vartime :: (m: [] PsbtMaps, key: [] u8, treasury: [] u8, hot: [] u8, p: TreasuryPolicy, w: [] PsbtSign) -> int #effects(all) {
   c := treasury_check_vartime(m, treasury, hot, p, w);
   if c.code != TY_OK { return c.code; }
   aux: [32] u8;
@@ -366,7 +366,7 @@ A refill moves through chapter 94's roles:
 // CHECKMULTISIG fail with NULLFAIL's empty signatures, the script). The
 // recovery path's delay is the script's to check, against the input's
 // sequence. True when every input is final.
-treasury_finalize_vartime :: (m: [] PsbtMaps, script: [] u8, w: [] PsbtSign) -> bool {
+treasury_finalize_vartime :: (m: [] PsbtMaps, script: [] u8, w: [] PsbtSign) -> bool #effects(all) {
   for n: 0..<m[0].nin {
     if psbt_final_vartime(m, n) { continue; }
     ws := psbt_find1_vartime(m, PSBT_INPUT, n, 0x05);

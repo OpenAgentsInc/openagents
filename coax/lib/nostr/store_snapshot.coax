@@ -72,13 +72,13 @@ NsLength :: struct {ok:bool;value:int;}
  index[2]=0;index[3]=2;#assert !ns_snapshot_write(bytes[..],index[..],out[..],false).ok && out[0]==77;
  index[2]=1;index[3]=3;#assert !ns_snapshot_write(bytes[..],index[..],out[..],false).ok && out[0]==77;
 }
-ns_u32 :: (input:[]u8,at:int)->int {return (cast(int)input[at]<<24)|(cast(int)input[at+1]<<16)|(cast(int)input[at+2]<<8)|cast(int)input[at+3];}
-ns_span :: (total:int,at:int,n:int)->bool {return at>=0 && n>=0 && at<=total && n<=total-at;}
-ns_input_size :: (size:int)->bool {return size>=16 && size<=NS_LOG_MAX_SNAPSHOT;}
-ns_length :: (input:[]u8,at:int)->NsLength {if !ns_span(input.count,at,4) {return NsLength.{};}return NsLength.{ok=true,value=ns_u32(input,at)};}
-ns_payload_valid :: (total:int,at:int,length:int)->bool {return length>0 && length<=NS_FRAME_MAX_ORIGINAL && ns_span(total,at,length);}
-ns_put_u32 :: (out:[]u8,at:int,value:int) {for i:0..<4 {out[at+i]=cast(u8)((value>>((3-i)*8))&255);}}
-ns_snapshot_scan :: (input:[]u8,index:[]int,overlap:bool)->NsScan #export_c {
+ns_u32 :: (input:[]u8,at:int)->int #effects(all) {return (cast(int)input[at]<<24)|(cast(int)input[at+1]<<16)|(cast(int)input[at+2]<<8)|cast(int)input[at+3];}
+ns_span :: (total:int,at:int,n:int)->bool #effects(all) {return at>=0 && n>=0 && at<=total && n<=total-at;}
+ns_input_size :: (size:int)->bool #effects(all) {return size>=16 && size<=NS_LOG_MAX_SNAPSHOT;}
+ns_length :: (input:[]u8,at:int)->NsLength #effects(all) {if !ns_span(input.count,at,4) {return NsLength.{};}return NsLength.{ok=true,value=ns_u32(input,at)};}
+ns_payload_valid :: (total:int,at:int,length:int)->bool #effects(all) {return length>0 && length<=NS_FRAME_MAX_ORIGINAL && ns_span(total,at,length);}
+ns_put_u32 :: (out:[]u8,at:int,value:int) #effects(all) {for i:0..<4 {out[at+i]=cast(u8)((value>>((3-i)*8))&255);}}
+ns_snapshot_scan :: (input:[]u8,index:[]int,overlap:bool)->NsScan #export_c #effects(all) {
  if overlap || !ns_input_size(input.count) {return NsScan.{};}
  if input[0]!=78 || input[1]!=83 || input[2]!=76 || input[3]!=71 || ns_u32(input,4)!=1 {return NsScan.{};}
  count:=ns_u32(input,8);bytes:=ns_u32(input,12);
@@ -97,7 +97,7 @@ ns_snapshot_scan :: (input:[]u8,index:[]int,overlap:bool)->NsScan #export_c {
 }
 // Writes framing only; caller must independently verify originals before any
 // store admission. All input spans are checked before the first output write.
-ns_snapshot_write :: (bytes:[]u8,index:[]int,out:[]u8,overlap:bool)->NsScan #export_c {
+ns_snapshot_write :: (bytes:[]u8,index:[]int,out:[]u8,overlap:bool)->NsScan #export_c #effects(all) {
  if index.count%2!=0 {return NsScan.{};}count:=index.count/2;
  layout:=ns_log_layout(count,bytes.count,index.count,out.count,overlap);if !layout.ok {return NsScan.{};}
  at:=0;

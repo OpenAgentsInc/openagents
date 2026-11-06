@@ -58,7 +58,7 @@ The data are synthetic, so the true probabilities are known:
 // [-3, 3] at counter 2i, its label yes with that probability at 2i+1 (yes when
 // u + p reaches 1). The model reports sigmoid(scale * logit + shift), with a
 // scale and shift per question: model = [scale0, shift0, scale1, shift1].
-cf_simulate :: (seed:u64,model:[]f64,q:[]int,p:[]f64,y:[]f64,overlap:bool)->CfStatus #export_c {
+cf_simulate :: (seed:u64,model:[]f64,q:[]int,p:[]f64,y:[]f64,overlap:bool)->CfStatus #export_c #effects(all) {
     n:=p.count;
     if n<1 || n>CF_ROWS_MAX || model.count!=4 {return CfStatus.shape;}
     if q.count<n || y.count<n {return CfStatus.capacity;}
@@ -90,7 +90,7 @@ the gate split 157 and the test split 158.
 // The loss is convex in a, so its derivative sum (sigmoid(a z) - y) z rises
 // with a; halving finds where it crosses zero, within [0.05, 20]. A
 // derivative of exactly zero counts as still falling.
-cf_slope :: (p:[]f64,y:[]f64,rows:[]int)->f64 {
+cf_slope :: (p:[]f64,y:[]f64,rows:[]int)->f64 #effects(all) {
     lo:=CF_SLOPE_MIN;hi:=CF_SLOPE_MAX;
     while true {
         mid:=(lo+hi)/2;
@@ -104,7 +104,7 @@ cf_slope :: (p:[]f64,y:[]f64,rows:[]int)->f64 {
 // Binned: ten groups of equal count by probability, each mapped to its rate of yes.
 // Isotonic: pool adjacent groups while a rate fails to rise (pool-adjacent-violators).
 // Both knots are a group's smallest probability; rates are compared as integers.
-cf_steps :: (map:CfMap,isotonic:bool,p:[]f64,y:[]f64,rows:[]int)->CfMap {
+cf_steps :: (map:CfMap,isotonic:bool,p:[]f64,y:[]f64,rows:[]int)->CfMap #effects(all) {
     m:=map;
     // One more group than a map holds, for the row that may yet pool.
     n:=rows.count;yes:[257]int;count:[257]int;knot:[257]f64;k:=0;
@@ -123,7 +123,7 @@ cf_steps :: (map:CfMap,isotonic:bool,p:[]f64,y:[]f64,rows:[]int)->CfMap {
     m.knots=k;
     return m;
 }
-cf_fit :: (kind:CfKind,model:u64,questions:u64,question:int,q:[]int,p:[]f64,y:[]f64,rows:[]int)->CfMap #export_c {
+cf_fit :: (kind:CfKind,model:u64,questions:u64,question:int,q:[]int,p:[]f64,y:[]f64,rows:[]int)->CfMap #export_c #effects(all) {
     n:=p.count;
     // A question outside [0, 8) has no rows, and is refused with the rest below 200.
     if n>CF_ROWS_MAX || q.count!=n || y.count!=n || cast(int)kind>cast(int)CfKind.isotonic {return CfMap.{status=CfStatus.shape};}
@@ -161,14 +161,14 @@ finite.
 <!-- source: psionic/lib/calibrate.coax apply -->
 ```jai
 // A map applies only to the model and question set it was fitted for.
-cf_map :: (m:CfMap,p:f64)->f64 {
+cf_map :: (m:CfMap,p:f64)->f64 #effects(all) {
     if m.kind==CfKind.none {return p;}
     if m.kind==CfKind.temperature {return cf_clamp(tb_sigmoid(m.slope*cf_logit(p)));}
     k:=0;
     for j:1..<m.knots {if m.knot[j]<=p {k=j;}}
     return m.value[k];
 }
-cf_apply :: (maps:[]CfMap,model:u64,questions:u64,q:[]int,p:[]f64,out:[]f64,overlap:bool)->CfStatus #export_c {
+cf_apply :: (maps:[]CfMap,model:u64,questions:u64,q:[]int,p:[]f64,out:[]f64,overlap:bool)->CfStatus #export_c #effects(all) {
     n:=p.count;
     if n<1 || n>CF_ROWS_MAX || q.count!=n || maps.count<1 || maps.count>CF_QUESTIONS_MAX {return CfStatus.shape;}
     if out.count<n {return CfStatus.capacity;}
@@ -199,7 +199,7 @@ fitted maps all failed the gate is served raw.
 // Expected calibration error as chapter 16 measures it (top label, 15 equal
 // bins (b/15, (b+1)/15]), Brier summed over both answers, log loss, and
 // confident errors: a top label of at least 0.9 that is wrong.
-cf_measure :: (p:[]f64,y:[]f64,rows:[]int)->CfReport #export_c {
+cf_measure :: (p:[]f64,y:[]f64,rows:[]int)->CfReport #export_c #effects(all) {
     if p.count!=y.count || !tb_row_ok(rows,p.count) {return CfReport.{status=CfStatus.shape};}
     for r:rows {if !tb_in(p[r],0,1) || (y[r]!=0 && y[r]!=1) {return CfReport.{status=CfStatus.number};}}
     conf:[15]PsionicAccumulator;hit:[15]int;brier:PsionicAccumulator;loss:PsionicAccumulator;
@@ -223,7 +223,7 @@ cf_measure :: (p:[]f64,y:[]f64,rows:[]int)->CfReport #export_c {
 }
 // Reliability: ten equal-width bins of p, each with its count, mean
 // probability and rate of yes. A bin under 20 rows reports a rate of -1.
-cf_reliability :: (p:[]f64,y:[]f64,rows:[]int,count:[]int,mean:[]f64,rate:[]f64,overlap:bool)->CfStatus #export_c {
+cf_reliability :: (p:[]f64,y:[]f64,rows:[]int,count:[]int,mean:[]f64,rate:[]f64,overlap:bool)->CfStatus #export_c #effects(all) {
     if p.count!=y.count || !tb_row_ok(rows,p.count) {return CfStatus.shape;}
     if count.count<CF_BINS || mean.count<CF_BINS || rate.count<CF_BINS {return CfStatus.capacity;}
     if overlap {return CfStatus.alias;}
@@ -242,7 +242,7 @@ cf_reliability :: (p:[]f64,y:[]f64,rows:[]int,count:[]int,mean:[]f64,rate:[]f64,
 }
 // The frozen gate: a map is served only if it lowers both calibration error
 // and log loss from the raw probabilities on the gate split.
-cf_gate :: (raw:CfReport,mapped:CfReport)->bool #export_c {
+cf_gate :: (raw:CfReport,mapped:CfReport)->bool #export_c #effects(all) {
     return raw.status==CfStatus.ok && mapped.status==CfStatus.ok && mapped.ece<raw.ece && mapped.log_loss<raw.log_loss;
 }
 ```

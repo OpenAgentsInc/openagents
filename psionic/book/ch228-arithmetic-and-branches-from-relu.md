@@ -44,19 +44,19 @@ inputs at all.
 // of shape units × width and O of shape width × units, stored V, G, O in a
 // row-major run. Every product and sum is rounded to binary32 when `single`
 // is set, in unit order, so the same weights can be measured in both formats.
-ra_weight_count :: (width:int,units:int)->int #export_c {return 3*width*units;}
+ra_weight_count :: (width:int,units:int)->int #export_c #effects(all) {return 3*width*units;}
 // False for NaN, infinities and magnitudes past 2^53.
-ra_exact_range :: (v:f64)->bool {return abs(v)<=f64(RA_EXACT_MAX);}
-ra_round :: (x:f64,single:bool)->f64 {
+ra_exact_range :: (v:f64)->bool #effects(all) {return abs(v)<=f64(RA_EXACT_MAX);}
+ra_round :: (x:f64,single:bool)->f64 #effects(all) {
     if single {return f64(f32(x));}
     return x;
 }
-ra_dot :: (w:[]f64,base:int,width:int,x:[]f64,single:bool)->f64 {
+ra_dot :: (w:[]f64,base:int,width:int,x:[]f64,single:bool)->f64 #effects(all) {
     sum:f64=0;
     for i:0..<width {sum=ra_round(sum+ra_round(w[base+i]*x[i],single),single);}
     return sum;
 }
-ra_forward :: (width:int,units:int,w:[]f64,x:[]f64,out:[]f64,single:bool,overlap:bool)->RaStatus #export_c {
+ra_forward :: (width:int,units:int,w:[]f64,x:[]f64,out:[]f64,single:bool,overlap:bool)->RaStatus #export_c #effects(all) {
     if width<1 || width>RA_WIDTH_MAX || units<0 || units>RA_UNITS_MAX {return RaStatus.shape;}
     if w.count!=ra_weight_count(width,units) || x.count!=width || out.count<width {return RaStatus.capacity;}
     if overlap {return RaStatus.alias;}
@@ -91,12 +91,12 @@ and drops terms that cancel, so `x − x` is the empty form. A unit adds
 
 <!-- source: psionic/lib/relu-arith.coax forms -->
 ```jai
-ra_term :: (slot:int,coef:int)->RaForm {f:RaForm;f.count=1;f.slots[0]=slot;f.coefs[0]=coef;return f;}
-ra_one :: ()->RaForm {return ra_term(0,1);}
+ra_term :: (slot:int,coef:int)->RaForm #effects(all) {f:RaForm;f.count=1;f.slots[0]=slot;f.coefs[0]=coef;return f;}
+ra_one :: ()->RaForm #effects(all) {return ra_term(0,1);}
 // Terms on the same slot merge and terms that cancel are dropped, so x - x is
 // the empty form. A sum that needs more than eight distinct slots at any point
 // is refused (count -1).
-ra_plus :: (a:RaForm,b:RaForm)->RaForm {
+ra_plus :: (a:RaForm,b:RaForm)->RaForm #effects(all) {
     r:=a;
     if a.count<0 || b.count<0 {r.count=-1;return r;}
     for i:0..<b.count {
@@ -112,14 +112,14 @@ ra_plus :: (a:RaForm,b:RaForm)->RaForm {
     for j:0..<r.count {if r.coefs[j]!=0 {r.slots[kept]=r.slots[j];r.coefs[kept]=r.coefs[j];kept+=1;}}
     r.count=kept;return r;
 }
-ra_neg :: (a:RaForm)->RaForm {r:=a;for i:0..<a.count {r.coefs[i]=-a.coefs[i];}return r;}
+ra_neg :: (a:RaForm)->RaForm #effects(all) {r:=a;for i:0..<a.count {r.coefs[i]=-a.coefs[i];}return r;}
 ```
 
 <!-- source: psionic/lib/relu-arith.coax unit -->
 ```jai
 // Unit u reads the value form and the gate form, and adds scale * value *
 // ReLU(gate) to residual slot `target`. Weights start at zero; units add.
-ra_unit :: (w:[]f64,width:int,units:int,u:int,value:RaForm,gate:RaForm,target:int,scale:int)->bool {
+ra_unit :: (w:[]f64,width:int,units:int,u:int,value:RaForm,gate:RaForm,target:int,scale:int)->bool #effects(all) {
     if u<0 || u>=units || target<0 || target>=width || w.count<ra_weight_count(width,units) {return false;}
     if value.count<0 || gate.count<0 {return false;}
     for i:0..<value.count {if value.slots[i]<0 || value.slots[i]>=width {return false;}}
@@ -149,22 +149,22 @@ ra_unit :: (w:[]f64,width:int,units:int,u:int,value:RaForm,gate:RaForm,target:in
 // integer inputs within RA_VALUE_MAX; `select` needs a condition that is
 // exactly 0 or 1. Breaking a contract gives a wrong number, not a refusal.
 // a * b = a * ReLU(b) - a * ReLU(-b)
-ra_mul :: (w:[]f64,width:int,units:int,u:int,a:RaForm,b:RaForm,target:int)->int #export_c {
+ra_mul :: (w:[]f64,width:int,units:int,u:int,a:RaForm,b:RaForm,target:int)->int #export_c #effects(all) {
     if !ra_unit(w,width,units,u,a,b,target,1) || !ra_unit(w,width,units,u+1,a,ra_neg(b),target,-1) {return -1;}
     return u+2;
 }
 // ReLU(a) = 1 * ReLU(a)
-ra_relu :: (w:[]f64,width:int,units:int,u:int,a:RaForm,target:int)->int #export_c {
+ra_relu :: (w:[]f64,width:int,units:int,u:int,a:RaForm,target:int)->int #export_c #effects(all) {
     if !ra_unit(w,width,units,u,ra_one(),a,target,1) {return -1;}
     return u+1;
 }
 // step(a) = ReLU(a) - ReLU(a - 1): 1 for a >= 1, 0 for a <= 0 on integers
-ra_step :: (w:[]f64,width:int,units:int,u:int,a:RaForm,target:int)->int #export_c {
+ra_step :: (w:[]f64,width:int,units:int,u:int,a:RaForm,target:int)->int #export_c #effects(all) {
     if !ra_unit(w,width,units,u,ra_one(),a,target,1) || !ra_unit(w,width,units,u+1,ra_one(),ra_plus(a,ra_term(0,-1)),target,-1) {return -1;}
     return u+2;
 }
 // eq0(a) = 1 - (ReLU(a) - ReLU(a - 1)) - (ReLU(-a) - ReLU(-a - 1))
-ra_eq0 :: (w:[]f64,width:int,units:int,u:int,a:RaForm,target:int)->int #export_c {
+ra_eq0 :: (w:[]f64,width:int,units:int,u:int,a:RaForm,target:int)->int #export_c #effects(all) {
     one:=ra_one();n:=ra_neg(a);
     if !ra_unit(w,width,units,u,one,one,target,1) || !ra_unit(w,width,units,u+1,one,a,target,-1) ||
         !ra_unit(w,width,units,u+2,one,ra_plus(a,ra_term(0,-1)),target,1) || !ra_unit(w,width,units,u+3,one,n,target,-1) ||
@@ -172,12 +172,12 @@ ra_eq0 :: (w:[]f64,width:int,units:int,u:int,a:RaForm,target:int)->int #export_c
     return u+5;
 }
 // select(c, a, b) = b + (a - b) * ReLU(c), for c in {0, 1}
-ra_select :: (w:[]f64,width:int,units:int,u:int,c:RaForm,a:RaForm,b:RaForm,target:int)->int #export_c {
+ra_select :: (w:[]f64,width:int,units:int,u:int,c:RaForm,a:RaForm,b:RaForm,target:int)->int #export_c #effects(all) {
     if !ra_unit(w,width,units,u,b,ra_one(),target,1) || !ra_unit(w,width,units,u+1,ra_plus(a,ra_neg(b)),c,target,1) {return -1;}
     return u+2;
 }
 // copy(a) = a * ReLU(1)
-ra_copy :: (w:[]f64,width:int,units:int,u:int,a:RaForm,target:int)->int #export_c {
+ra_copy :: (w:[]f64,width:int,units:int,u:int,a:RaForm,target:int)->int #export_c #effects(all) {
     if !ra_unit(w,width,units,u,a,ra_one(),target,1) {return -1;}
     return u+1;
 }

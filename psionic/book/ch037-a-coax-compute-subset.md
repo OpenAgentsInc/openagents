@@ -25,7 +25,7 @@ Here is the one-token product that chapter 30 uses for the vocabulary readout:
 // One token: item row*16+lane sums the groups lane, lane+16, ... of its row,
 // so the 16 lanes of a row read 128 contiguous bytes at a time. It writes
 // partial[lane*rows+row] for dv_reduce with 16 slices.
-dv_matvec :: (item:int,rows:int,cols:int,w:[]u64,x:[]f32,partial:[]f32) #export_c {
+dv_matvec :: (item:int,rows:int,cols:int,w:[]u64,x:[]f32,partial:[]f32) #export_c #effects(all) {
     groups:=cols/4;row:=item/DV_LANES;lane:=item%DV_LANES;per:=groups/DV_LANES;
     sum:f32=0;total:f32=0;
     for k:0..<per {
@@ -46,7 +46,7 @@ A second kernel adds the sixteen partial sums of each row in f64, in order:
 <!-- source: psionic/lib/device/project.coax reduce -->
 ```jai
 // out[i] for i = t*rows+r: the slice partials added in f64, in slice order.
-dv_reduce :: (item:int,count:int,slices:int,partial:[]f32,out:[]f32) #export_c {
+dv_reduce :: (item:int,count:int,slices:int,partial:[]f32,out:[]f32) #export_c #effects(all) {
     sum:f64=0;
     for s:0..<slices {sum+=f64(partial[s*count+item]);}
     out[item]=f32(sum);
@@ -197,7 +197,7 @@ whole fragments and calls it:
 ```jai
 // Conformance kernel: tile `item` of each array holds whole fragments as
 // stored by lanes (a: 128 u32, b: 64 u32, c and d: 128 f32); d = c + a b.
-dw_mma_tile :: (item:int,a:[]u32,b:[]u32,c:[]f32,d:[]f32) #export_c {
+dw_mma_tile :: (item:int,a:[]u32,b:[]u32,c:[]f32,d:[]f32) #export_c #effects(all) {
     fa:[128]u32;fb:[64]u32;fc:[128]f32;
     for lane:0..<32 {
         for j:0..<4 {fa[lane*4+j]=a[item*128+lane*4+j];fc[lane*4+j]=c[item*128+lane*4+j];}

@@ -1,7 +1,7 @@
 #module "aethyr.audio.host.level";
 #authority;
-audio_min :: (a:f64,b:f64)->f64 {if a<b {return a;}return b;}
-audio_max :: (a:f64,b:f64)->f64 {if a>b {return a;}return b;}
+audio_min :: (a:f64,b:f64)->f64 #effects(all) {if a<b {return a;}return b;}
+audio_max :: (a:f64,b:f64)->f64 #effects(all) {if a>b {return a;}return b;}
 #test "audio level selection keeps the selected value including equal signed zero" {
  #assert audio_min(1,2)==1 && audio_min(2,1)==1 && audio_max(1,2)==2 && audio_max(2,1)==2;
  #assert f64_bits(audio_min(-0.0,0.0))==0 && f64_bits(audio_max(-0.0,0.0))==0;

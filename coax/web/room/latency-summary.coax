@@ -24,7 +24,7 @@ ls_q::(values:[]int,n:int,q:int)->int {
   sorted:[64]int;for i:0..<n{sorted[i]=values[i];for back:0..<i{j:=i-back;if sorted[j]<sorted[j-1]{x:=sorted[j];sorted[j]=sorted[j-1];sorted[j-1]=x;}}}
   return sorted[(n*q+99)/100-1];
 }
-tool_main::()->int #export_c {
+tool_main::()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..])||args_count(a[..])!=1{tool_errln("usage: latency-summary OBSERVATION.json");return 2;}
   raw:[131072]u8;n:=fs_read(args_at(a[..],0),raw[..]);nodes:[8192]JvNode;d:[1]Jv;if n<1||!jv_parse(d[..],cast(string)raw[0..<n],nodes[..]){return 1;}
   if jv_len(d[0],jv_path(d[0],0,"errors"))!=0||jv_kind(d[0],jv_path(d[0],0,"trace.error"))!=JV_NULL{return 1;}

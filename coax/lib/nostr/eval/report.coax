@@ -61,26 +61,26 @@ EvalView :: struct {code:u32;verdict:int;subject:string;}
 
 // book:begin helpers
 // "sha256:" and 64 lowercase hex digits.
-ev_digest :: (s:string)->bool {
+ev_digest :: (s:string)->bool #effects(all) {
   if s.count!=71 || s[0..<7]!="sha256:" {return false;}
   for c:s[7..<71] {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
   return true;
 }
-ev_in :: (s:string,set:[]string)->bool {for x:set {if x==s {return true;}}return false;}
+ev_in :: (s:string,set:[]string)->bool #effects(all) {for x:set {if x==s {return true;}}return false;}
 // An ArtifactRef: an object with a Digest and a nonnegative integer size.
-ev_ref :: (text:string,v:ClSlice)->bool {
+ev_ref :: (text:string,v:ClSlice)->bool #effects(all) {
   if v.tok!=JSON_OBJECT {return false;}
   d:=cl_member(text,v,"digest");size:=cl_int_of(text,cl_member(text,v,"size"));
   return d.tok==JSON_STRING && ev_digest(text[d.from..<d.to]) && size.ok && size.value>=0;
 }
-ev_str :: (text:string,v:ClSlice)->string {if !v.ok || v.tok!=JSON_STRING {return "";}return text[v.from..<v.to];}
-ev_count :: (text:string,arm:ClSlice,name:string)->int {
+ev_str :: (text:string,v:ClSlice)->string #effects(all) {if !v.ok || v.tok!=JSON_STRING {return "";}return text[v.from..<v.to];}
+ev_count :: (text:string,arm:ClSlice,name:string)->int #effects(all) {
   n:=cl_int_of(text,cl_member(text,arm,name));
   if !n.ok || n.value<0 {return -1;}
   return n.value;
 }
 // An arm's counts: each a nonnegative integer, the five outcomes summing to attempted.
-ev_arm :: (text:string,arm:ClSlice)->bool {
+ev_arm :: (text:string,arm:ClSlice)->bool #effects(all) {
   if arm.tok!=JSON_OBJECT {return false;}
   sum:=0;
   for name:[5]string.["completed","refused","failed","cancelled","unknown"] {
@@ -95,7 +95,7 @@ ev_arm :: (text:string,arm:ClSlice)->bool {
 // book:begin report
 // What this reader may show of the report: held are the digests of the
 // artifacts it holds, trusted the evaluators it has chosen.
-eval_report :: (text:string,held:[]string,trusted:[]string)->EvalView {
+eval_report :: (text:string,held:[]string,trusted:[]string)->EvalView #effects(all) {
   r:EvalView;r.code=EV_MALFORMED;
   root:=cl_root(text);
   if !root.ok || root.tok!=JSON_OBJECT {return r;}
@@ -144,7 +144,7 @@ EvalSeen :: struct {digest:string;view:EvalView;}
 
 // Whether the admission stands at now, given the reports this reader has
 // read and the operators it trusts to admit.
-eval_admit :: (text:string,seen:[]EvalSeen,operators:[]string,now:int)->u32 {
+eval_admit :: (text:string,seen:[]EvalSeen,operators:[]string,now:int)->u32 #effects(all) {
   root:=cl_root(text);
   if root.tok!=JSON_OBJECT || !cl_eq(text,cl_member(text,root,"v"),"openagents.eval-admission.v1") {return EA_MALFORMED;}
   subject:=ev_str(text,cl_member(text,cl_member(text,root,"subject"),"id"));
@@ -183,11 +183,11 @@ EV_T_REPORT :: "{\"v\":\"openagents.eval-report.v1\",\"requires\":[],\"suite\":{
 EV_T_ADMIT :: "{\"v\":\"openagents.eval-admission.v1\",\"requires\":[],\"subject\":{\"id\":\"x:pkg/agent\"},\"reports\":[{\"digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"size\":1,\"media_type\":\"application/json\"}],\"policy\":{\"id\":\"x:pkg/policy\"},\"scope\":{\"digest\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"size\":1,\"media_type\":\"application/json\"},\"decision\":\"admit\",\"issuer\":\"op\",\"expires_at\":1790090000,\"validation\":[{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"size\":1,\"media_type\":\"application/json\"}]}";
 EV_T_R1 :: "sha256:1111111111111111111111111111111111111111111111111111111111111111";
 
-ev_t :: (from:string,to:string)->u32 {
+ev_t :: (from:string,to:string)->u32 #effects(all) {
   o:[4096]u8;held:=[2]string.[EV_T_SUITE,EV_T_PART];trusted:=[1]string.[EV_T_E1];
   return eval_report(ts_swap(EV_T_REPORT,from,to,o[..]),held[..],trusted[..]).code;
 }
-ev_ta :: (from:string,to:string,view:EvalView,now:int)->u32 {
+ev_ta :: (from:string,to:string,view:EvalView,now:int)->u32 #effects(all) {
   o:[4096]u8;seen:=[1]EvalSeen.[EvalSeen.{digest=EV_T_R1,view=view}];ops:=[1]string.["op"];
   return eval_admit(ts_swap(EV_T_ADMIT,from,to,o[..]),seen[..],ops[..],now);
 }

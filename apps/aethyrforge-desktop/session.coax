@@ -54,7 +54,7 @@ forge_page_url :: (page: int, room: int, out: [] u8) -> string {
   return cast(string) out[0..<n];
 }
 // Scalar bridge: no borrowed Coax storage crosses the Swift ABI.
-forge_url_byte :: (page: int, room: int, index: int) -> int #export_c {
+forge_url_byte :: (page: int, room: int, index: int) -> int #export_c #effects(all) {
   b: [256] u8; url := forge_page_url(page, room, b[..]);
   return ifx index >= 0 && index < url.count then cast(int) url[index] else -1;
 }
@@ -66,12 +66,12 @@ forge_offline_url :: (page:int,out:[]u8)->string {
   for c:"/worlds/everglade?forge=play&offline=worker#gate" {out[n]=c;n+=1;}
   return cast(string)out[0..<n];
 }
-forge_offline_url_byte :: (page:int,index:int)->int #export_c {b:[256]u8;url:=forge_offline_url(page,b[..]);return ifx index>=0 && index<url.count then cast(int)url[index] else -1;}
+forge_offline_url_byte :: (page:int,index:int)->int #export_c #effects(all) {b:[256]u8;url:=forge_offline_url(page,b[..]);return ifx index>=0 && index<url.count then cast(int)url[index] else -1;}
 forge_benchmark_url :: (page:int,out:[]u8)->string {
   if out.count<192 {return "";}
   base:=forge_offline_url(page,out);if base.count==0 {return "";}n:=base.count-5;
   for c:"&stage=benchmark-south-gate&quality=high&clock=0.4&style=painterly#gate" {out[n]=c;n+=1;}return cast(string)out[0..<n];
 }
-forge_benchmark_url_byte :: (page:int,index:int)->int #export_c {b:[256]u8;url:=forge_benchmark_url(page,b[..]);return ifx index>=0 && index<url.count then cast(int)url[index] else -1;}
+forge_benchmark_url_byte :: (page:int,index:int)->int #export_c #effects(all) {b:[256]u8;url:=forge_benchmark_url(page,b[..]);return ifx index>=0 && index<url.count then cast(int)url[index] else -1;}
 #load "frame-pacing.coax";
 #load "voice-ready.coax";

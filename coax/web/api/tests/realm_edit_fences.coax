@@ -15,7 +15,7 @@ ref_sql :: (db: string, psql: string, name: string, body: string) -> bool {
   return false;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   dbb: [1024] u8; pb: [1024] u8;
   db := proc_getenv("PGURL", dbb[..]); psql := proc_getenv("PSQL", pb[..]);
   if db == "" || psql == "" { tool_errln("set PGURL and PSQL for an isolated migrated database"); return 2; }

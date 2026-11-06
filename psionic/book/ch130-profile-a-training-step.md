@@ -46,18 +46,18 @@ the format chapter 129 trains in:
 ```jai
 // The forward half of gk_rows: chapter 113's td_advance at every position of
 // row `item`, into that row's slice of work. Nothing else is written.
-tp_forward :: (item:int,sh:[]int,p:[]f64,rows:[]u8,rope:[]f64,work:[]f64) #export_c {
+tp_forward :: (item:int,sh:[]int,p:[]f64,rows:[]u8,rope:[]f64,work:[]f64) #export_c #effects(all) {
     n:=sh[7];nw:=gk_work(sh);w:=work[item*nw..<item*nw+nw];
     for t:0..<n {gk_advance(sh,p,w,rope,cast(int)rows[item*n+t],t);}
 }
 // a = b + s * c, one element per item: 2 FLOPs, 16 bytes read, 8 written.
-tp_triad :: (item:int,s:f64,a:[]f64,b:[]f64,c:[]f64) #export_c {
+tp_triad :: (item:int,s:f64,a:[]f64,b:[]f64,c:[]f64) #export_c #effects(all) {
     a[item]=b[item]+s*c[item];
 }
 // Eight independent chains of v = v * m + k, rounds times, in registers:
 // 16 FLOPs a round, 16 more to start and fold the chains, 8 bytes read and
 // 8 written per item.
-tp_madd :: (item:int,rounds:int,m:f64,k:f64,x:[]f64) #export_c {
+tp_madd :: (item:int,rounds:int,m:f64,k:f64,x:[]f64) #export_c #effects(all) {
     v:[8]f64;for c:0..<8 {v[c]=x[item]+f64(c);}
     for r:0..<rounds {for c:0..<8 {v[c]=v[c]*m+k;}}
     s:=0.0;for c:0..<8 {s+=v[c];}x[item]=s;
@@ -221,7 +221,7 @@ reported.
 ```jai
 // ns holds the ten series one after another, runs values each; step holds
 // each measured step's wall time. clips of the runs launched gk_clip.
-tp_report :: (sh:[]int,micro:int,clips:int,h:RfHost,ns:[]int,step:[]int)->TpReport #export_c {
+tp_report :: (sh:[]int,micro:int,clips:int,h:RfHost,ns:[]int,step:[]int)->TpReport #export_c #effects(all) {
     runs:=step.count;r:=TpReport.{status=TpStatus.shape,at=-1,runs=runs};
     if sh.count!=8 || micro<1 || ns.count!=TP_PHASES*runs || clips<0 || clips>runs {return r;}
     for x:sh {if x<1 {return r;}}

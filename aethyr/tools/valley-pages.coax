@@ -5,7 +5,7 @@
 #load "../render/geometry/pages.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=1 {return 2;}
   for k:0..<2 {
     source:=parent_source(ifx k==0 then 0.0f32 else 0.75f32);m:[1]ParentMesh;

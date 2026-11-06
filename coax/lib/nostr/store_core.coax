@@ -54,7 +54,7 @@ NS_W_NONE :: 0; NS_W_APPEND :: 1; NS_W_INPLACE :: 2;
 NsPlan :: struct { result: int; write: int; at: int = -1; }
 
 // ---- test helpers ------------------------------------------------------------
-nss_t_rec :: (id: u8, kind: int, created: int) -> RsdRec {
+nss_t_rec :: (id: u8, kind: int, created: int) -> RsdRec #effects(all) {
   c: RsdRec; c.id[0] = id; c.kind = kind; c.created = created; c.expiry = -1; return c;
 }
 
@@ -323,7 +323,7 @@ nss_t_rec :: (id: u8, kind: int, created: int) -> RsdRec {
 }
 // A store over arena and recs with lookups of the given lengths.
 NssT :: struct { arena: [64] u8; recs: [6] RsdRec; ids: [7] int; addrs: [7] int; s: [1] RsdStore; }
-nss_t_store :: (t: [] NssT, ids: int, addrs: int) -> [] RsdStore {
+nss_t_store :: (t: [] NssT, ids: int, addrs: int) -> [] RsdStore #effects(all) {
   t[0].s[0] = RsdStore.{arena = t[0].arena[..], recs = t[0].recs[..], ids = t[0].ids[0..<ids], addrs = t[0].addrs[0..<addrs]};
   return t[0].s[..];
 }
@@ -390,13 +390,13 @@ nss_t_store :: (t: [] NssT, ids: int, addrs: int) -> [] RsdStore {
 }
 // A larger store for the random check: arena and record table both fill.
 NssR :: struct { arena: [36] u8; recs: [16] RsdRec; ids: [17] int; addrs: [17] int; s: [1] RsdStore; }
-nss_t_big :: (t: [] NssR, indexed: bool) -> [] RsdStore {
+nss_t_big :: (t: [] NssR, indexed: bool) -> [] RsdStore #effects(all) {
   n := ifx indexed then 17 else 0;
   t[0].s[0] = RsdStore.{arena = t[0].arena[..], recs = t[0].recs[..], ids = t[0].ids[0..<n], addrs = t[0].addrs[0..<n]};
   return t[0].s[..];
 }
 // The fields an id carries (the same id always carries the same event).
-nss_t_of :: (v: int) -> RsdRec {
+nss_t_of :: (v: int) -> RsdRec #effects(all) {
   kinds := [4] int.[1, 0, 30023, 3];
   c := nss_t_rec(cast(u8) v, kinds[v % 4], 10 + v % 5 + v / 16);
   c.id[6] = cast(u8) (v % 3); c.author[0] = cast(u8) ((v / 4) % 2);
@@ -431,8 +431,8 @@ nss_t_of :: (v: int) -> RsdRec {
   #assert seen > 150 && a[0].probes > 3000 && b[0].probes == 0 && b[0].ids.count == 0 && b[0].addrs.count == 0;
 }
 
-rsd_text :: (s: [] RsdStore, i: int) -> string { return cast(string) s[0].arena[s[0].recs[i].from..<s[0].recs[i].to]; }
-ns_store_same_address :: (a: RsdRec, b: RsdRec) -> bool {
+rsd_text :: (s: [] RsdStore, i: int) -> string #effects(all) { return cast(string) s[0].arena[s[0].recs[i].from..<s[0].recs[i].to]; }
+ns_store_same_address :: (a: RsdRec, b: RsdRec) -> bool #effects(all) {
   if a.kind != b.kind || !ns_equal32(a.author, b.author) { return false; }
   if ns_class(a.kind) != NS_ADDRESSABLE { return true; }
   if a.d_n != b.d_n { return false; }
@@ -440,15 +440,15 @@ ns_store_same_address :: (a: RsdRec, b: RsdRec) -> bool {
   return true;
 }
 // Newest first, then lowest id (NIP-01).
-ns_store_newer :: (a: RsdRec, b: RsdRec) -> bool { return a.created > b.created || (a.created == b.created && ns_before(a.id, b.id)); }
+ns_store_newer :: (a: RsdRec, b: RsdRec) -> bool #effects(all) { return a.created > b.created || (a.created == b.created && ns_before(a.id, b.id)); }
 // Records the latest query time; expired regular events go at compaction.
-ns_store_seen :: (s: [] RsdStore, now: int) -> bool { if now > s[0].now { s[0].now = now; return true; } return false; }
-ns_store_visible :: (s: [] RsdStore, i: int, now: int) -> bool { return s[0].recs[i].live && !ns_expired(s[0].recs[i].expiry, now); }
+ns_store_seen :: (s: [] RsdStore, now: int) -> bool #effects(all) { if now > s[0].now { s[0].now = now; return true; } return false; }
+ns_store_visible :: (s: [] RsdStore, i: int, now: int) -> bool #effects(all) { return s[0].recs[i].live && !ns_expired(s[0].recs[i].expiry, now); }
 // Moves every kept record's original down to close the gaps, in index order
 // (which is arena order: a record's bytes never move up). Replaced records
 // and expired regular events are dropped. keep is a record index; the
 // result is its new index, or -1 when it was dropped.
-ns_store_compact :: (s: [] RsdStore, keep: int) -> int {
+ns_store_compact :: (s: [] RsdStore, keep: int) -> int #effects(all) {
   j := 0; at := 0; moved := -1;
   for i: 0..<s[0].n {
     r := s[0].recs[i];
@@ -469,13 +469,13 @@ ns_store_compact :: (s: [] RsdStore, keep: int) -> int {
 }
 // Room for one more record of need bytes, compacting when the table or the
 // arena is full; keep is tracked through the compaction.
-ns_store_room :: (s: [] RsdStore, need: int, keep: int) -> NsRoom {
+ns_store_room :: (s: [] RsdStore, need: int, keep: int) -> NsRoom #effects(all) {
   if s[0].n < s[0].recs.count && need <= s[0].arena.count - s[0].used { return NsRoom.{ok = true, keep = keep}; }
   k := ns_store_compact(s, keep);
   return NsRoom.{ok = s[0].n < s[0].recs.count && need <= s[0].arena.count - s[0].used, keep = k};
 }
 // Appends c with original text as a live record at index n.
-ns_store_append :: (s: [] RsdStore, c: RsdRec, text: string) {
+ns_store_append :: (s: [] RsdStore, c: RsdRec, text: string) #effects(all) {
   from := s[0].used;
   for i: 0..<text.count { s[0].arena[from + i] = text[i]; }
   r := c; r.live = true; r.from = from; r.to = from + text.count;
@@ -484,7 +484,7 @@ ns_store_append :: (s: [] RsdStore, c: RsdRec, text: string) {
   if ns_indexed(s) { ns_note(s, s[0].n - 1); }
 }
 // Retires live record i.
-ns_store_retire :: (s: [] RsdStore, i: int) {
+ns_store_retire :: (s: [] RsdStore, i: int) #effects(all) {
   s[0].recs[i].live = false; s[0].live -= 1; s[0].bytes -= s[0].recs[i].to - s[0].recs[i].from;
 }
 // The same verified id again: keep the lowest exact original (#f539). A
@@ -492,7 +492,7 @@ ns_store_retire :: (s: [] RsdStore, i: int) {
 // is appended (from c: the same id carries the same fields) and the old
 // record retired, or refused (the old one kept) when it does not fit.
 // Neither charges another record. Record i is live. Always NSS_DUP.
-ns_store_duplicate :: (s: [] RsdStore, i: int, text: string) -> NsPlan {
+ns_store_duplicate :: (s: [] RsdStore, i: int, text: string) -> NsPlan #effects(all) {
   if !ns_original_before(text, rsd_text(s, i)) { return NsPlan.{result = NSS_DUP}; }
   if text.count <= s[0].recs[i].to - s[0].recs[i].from { return NsPlan.{result = NSS_DUP, write = NS_W_INPLACE, at = i}; }
   room := ns_store_room(s, text.count, i);
@@ -503,16 +503,16 @@ ns_store_duplicate :: (s: [] RsdStore, i: int, text: string) -> NsPlan {
 NS_HASH_P :: 2147483647;   // 2^31 - 1, a prime: h * 257 + 256 stays below 2^40
 // Whether s has both lookups, as long as each other and longer than recs
 // (so a free slot always remains).
-ns_indexed :: (s: [] RsdStore) -> bool { return s[0].ids.count > s[0].recs.count && s[0].addrs.count == s[0].ids.count; }
+ns_indexed :: (s: [] RsdStore) -> bool #effects(all) { return s[0].ids.count > s[0].recs.count && s[0].addrs.count == s[0].ids.count; }
 // An id's hash: its first seven bytes (an id is a SHA-256 digest).
-ns_id_hash :: (id: [32] u8) -> int {
+ns_id_hash :: (id: [32] u8) -> int #effects(all) {
   h := 0;
   for k: 0..<7 { h = h * 256 + cast(int) id[k]; }
   return h;
 }
 // An address's hash over what ns_store_same_address compares: kind and
 // author, and d when the kind is addressable. kind is 0 to 65535.
-ns_address_hash :: (kind: int, author: [32] u8, d: [256] u8, d_n: int) -> int {
+ns_address_hash :: (kind: int, author: [32] u8, d: [256] u8, d_n: int) -> int #effects(all) {
   h := kind;
   for k: 0..<32 { h = (h * 257 + cast(int) author[k]) % NS_HASH_P; }
   if ns_class(kind) == NS_ADDRESSABLE { for k: 0..<d_n { h = (h * 257 + cast(int) d[k] + 1) % NS_HASH_P; } }
@@ -520,7 +520,7 @@ ns_address_hash :: (kind: int, author: [32] u8, d: [256] u8, d_n: int) -> int {
 }
 // The ids slot holding the latest record with id, or the empty slot where
 // it would go (linear probing; nothing is ever removed but by a rebuild).
-ns_id_slot :: (s: [] RsdStore, id: [32] u8) -> int {
+ns_id_slot :: (s: [] RsdStore, id: [32] u8) -> int #effects(all) {
   at := ns_id_hash(id) % s[0].ids.count;
   s[0].probes += 1;
   while s[0].ids[at] != 0 && !ns_equal32(s[0].recs[s[0].ids[at] - 1].id, id) {
@@ -529,7 +529,7 @@ ns_id_slot :: (s: [] RsdStore, id: [32] u8) -> int {
   return at;
 }
 // The addrs slot holding the latest record at c's address, or the empty one.
-ns_address_slot :: (s: [] RsdStore, c: RsdRec) -> int {
+ns_address_slot :: (s: [] RsdStore, c: RsdRec) -> int #effects(all) {
   at := ns_address_hash(c.kind, c.author, c.d, c.d_n) % s[0].addrs.count;
   s[0].probes += 1;
   while s[0].addrs[at] != 0 && !ns_store_same_address(s[0].recs[s[0].addrs[at] - 1], c) {
@@ -538,18 +538,18 @@ ns_address_slot :: (s: [] RsdStore, c: RsdRec) -> int {
   return at;
 }
 // The latest record with id, or at c's address: its index, or -1.
-ns_find_id :: (s: [] RsdStore, id: [32] u8) -> int { return s[0].ids[ns_id_slot(s, id)] - 1; }
-ns_find_address :: (s: [] RsdStore, c: RsdRec) -> int { return s[0].addrs[ns_address_slot(s, c)] - 1; }
+ns_find_id :: (s: [] RsdStore, id: [32] u8) -> int #effects(all) { return s[0].ids[ns_id_slot(s, id)] - 1; }
+ns_find_address :: (s: [] RsdStore, c: RsdRec) -> int #effects(all) { return s[0].addrs[ns_address_slot(s, c)] - 1; }
 // Notes record i as the latest with its id, and at its address when its
 // kind has one.
-ns_note :: (s: [] RsdStore, i: int) {
+ns_note :: (s: [] RsdStore, i: int) #effects(all) {
   r := s[0].recs[i];
   s[0].ids[ns_id_slot(s, r.id)] = i + 1;
   if ns_class(r.kind) != NS_ORDINARY { s[0].addrs[ns_address_slot(s, r)] = i + 1; }
 }
 // Rebuilds both lookups over the records, in index order (after a
 // compaction renumbered them).
-ns_store_reindex :: (s: [] RsdStore) {
+ns_store_reindex :: (s: [] RsdStore) #effects(all) {
   if !ns_indexed(s) { return; }
   for k: 0..<s[0].ids.count { s[0].ids[k] = 0; s[0].addrs[k] = 0; }
   for i: 0..<s[0].n { ns_note(s, i); }
@@ -562,7 +562,7 @@ ns_store_reindex :: (s: [] RsdStore) {
 // stored. Deciding may compact s, which changes indexes but not what the
 // store holds. A plan that writes (write != NS_W_NONE) puts text in the
 // store when applied: that is what a durable log records, before applying.
-ns_store_plan :: (s: [] RsdStore, c: RsdRec, text: string, verified: bool) -> NsPlan {
+ns_store_plan :: (s: [] RsdStore, c: RsdRec, text: string, verified: bool) -> NsPlan #effects(all) {
   if !verified { return NsPlan.{result = NSS_UNVERIFIED}; }
   if text.count < 1 || c.d_n < 0 || c.d_n > 256 || c.tags_from < 0 || c.tags_from > c.tags_to || c.tags_to > text.count { return NsPlan.{result = NSS_BAD}; }
   class := ns_class(c.kind);
@@ -593,7 +593,7 @@ ns_store_plan :: (s: [] RsdStore, c: RsdRec, text: string, verified: bool) -> Ns
 }
 // Carries out p, the plan ns_store_plan just made for c and text on this
 // store (nothing may change the store in between): the result.
-ns_store_apply :: (s: [] RsdStore, p: NsPlan, c: RsdRec, text: string) -> int {
+ns_store_apply :: (s: [] RsdStore, p: NsPlan, c: RsdRec, text: string) -> int #effects(all) {
   if p.write == NS_W_INPLACE {
     r := s[0].recs[p.at];
     for k: 0..<text.count { s[0].arena[r.from + k] = text[k]; }
@@ -608,12 +608,12 @@ ns_store_apply :: (s: [] RsdStore, p: NsPlan, c: RsdRec, text: string) -> int {
   return p.result;
 }
 // Decides and applies one admission (an in-memory store with no log).
-ns_store_admit :: (s: [] RsdStore, c: RsdRec, text: string, verified: bool) -> int {
+ns_store_admit :: (s: [] RsdStore, c: RsdRec, text: string, verified: bool) -> int #effects(all) {
   return ns_store_apply(s, ns_store_plan(s, c, text, verified), c, text);
 }
 // Puts record i into out[0..<n], kept newest first, then lowest id, and at
 // most limit long (and at most out.count): the new length.
-ns_store_insert :: (s: [] RsdStore, i: int, n: int, limit: int, out: [] int) -> int {
+ns_store_insert :: (s: [] RsdStore, i: int, n: int, limit: int, out: [] int) -> int #effects(all) {
   at := n;
   while at > 0 && ns_store_newer(s[0].recs[i], s[0].recs[out[at - 1]]) { at -= 1; }
   if at >= limit || at >= out.count { return n; }

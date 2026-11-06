@@ -19,7 +19,7 @@
 // ~a, whether a / c is defined and the quotient, the comparison of a and c,
 // bits(a), a << index and a >> index.
 // op 4, the check: index is nBits, b the limit, then a hash. Writes the code.
-pow_report_vartime :: (op: int, b: [] u8, index: int, out: [] u8) -> int #export_c {
+pow_report_vartime :: (op: int, b: [] u8, index: int, out: [] u8) -> int #export_c #effects(all) {
   if out.count < 600 || index < 0 || index > 0xffffffff { return -1; }
   if op == 0 {
     if b.count != 32 { return -1; }

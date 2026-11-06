@@ -2,7 +2,7 @@
 #load "../../coax/web/wasm-chrome.coax";
 #load "audio-worklet-memory-conformance.coax";
 hwm_wait :: (c:[]Cdp,text:string)->bool {until:=proc_now_ms()+15000;while proc_now_ms()<until {if wc_eval(c,text)=="true" {return true;}proc_sleep(50);}tool_errln(text);tool_errln(wc_eval(c,"(async()=>JSON.stringify(await coaxial.audio.contract()))()"));return false;}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: check-browser-worklet-memory LOCAL_URL OUT.json");return 2;}url:=args_at(a[..],0);if url.count<17||url[0..<17]!="http://127.0.0.1:" {return 2;}
  c:[1]Cdp;if !cdp_launch(c[..],160,90,"coax-worklet-memory-product-") {return 1;}defer {cdp_close(c[..]);}tool_errln("Launched worklet memory fixture.");
  bytes:[16384]u8;params:[8192]u8;o:[1]Jo;jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);nav:=cdp_call(c[..],"Page.navigate",jo_text(o[..]),CDP_CALL_MS);

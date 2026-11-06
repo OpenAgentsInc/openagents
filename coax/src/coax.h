@@ -268,6 +268,7 @@ struct TypeInfo {
   const TypeInfo *sum_error = nullptr;
   int32_t sum_payload_offset = 0;
   int32_t sum_default = -1;  // checked default tag; -1 means no implicit construction
+  mutable uint8_t transaction_presence = 0; // physical mutable-view graph: unknown/no/yes
 };
 using Type = const TypeInfo *;
 
@@ -460,7 +461,7 @@ struct Expr {
 };
 
 struct SwitchCase;
-enum class StmtKind : uint8_t { block, expr, var, assign, ret, if_, while_, for_range, for_each, break_, continue_, defer, assert_, switch_ };
+enum class StmtKind : uint8_t { block, expr, var, assign, ret, if_, while_, for_range, for_each, break_, continue_, defer, assert_, switch_, transaction_ };
 
 struct Stmt {
   StmtKind kind;
@@ -528,6 +529,7 @@ struct ProcDecl {
 };
 
 struct Field {
+  bool counter = false;
   Str name;
   Loc loc;
   TypeExpr *type_expr = nullptr;
@@ -539,7 +541,9 @@ struct Field {
 };
 
 struct StructDecl {
+  Str compatibility_metadata;
   uint8_t identity = 0;  // checked @id: 1 equality, 2 explicit ordering
+  bool persisted = false;
   Str name;
   Loc loc;
   int32_t end = 0;  // offset just past the item's last authored token (0: unknown)
@@ -560,6 +564,7 @@ struct EnumMember {
 };
 
 struct EnumDecl {
+  bool flags = false;
   Str name;
   Loc loc;
   int32_t end = 0;  // offset just past the item's last authored token (0: unknown)
@@ -617,6 +622,7 @@ struct CheckDecl {
 
 struct CheckInput;
 struct File {
+  bool has_transactions = false;
   ~File();
   std::shared_ptr<CtMemory> ct_memory = std::make_shared<CtMemory>();
   std::vector<std::unique_ptr<Value>> frozen_values;

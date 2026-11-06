@@ -39,7 +39,7 @@ CpGraph :: struct {status:CpStatus;count:int;outputs:int;nodes:[100]GgNode;out:[
 // Each output has 1..24 postfix tokens. 0..inputs-1 push an input;
 // 10 add, 11 subtract, 12 ReLU, 13 negate, 14 multiply, 15 integer step,
 // 16 select. Select consumes condition,a,b and requires a step-produced bit.
-cp_parse :: (inputs:int,outputs:int,text:string)->CpGraph {
+cp_parse :: (inputs:int,outputs:int,text:string)->CpGraph #effects(all) {
     r:CpGraph;if inputs<1 || inputs>4 || outputs<1 || outputs>4 {r.status=CpStatus.shape;return r;}
     d:[1]Jv;json:[128]JvNode;
     if !jv_parse(d[..],text,json[..]) || jv_kind(d[0],0)!=JV_ARRAY || jv_len(d[0],0)!=outputs {r.status=CpStatus.json;return r;}

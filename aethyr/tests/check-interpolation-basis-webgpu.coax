@@ -7,7 +7,7 @@ ib_request :: (o:[]Jo,code:string) {
   jo_key(o,"uniform");jo_raw(o,"{\"size\":96,\"usage\":72}");jo_key(o,"readback");jo_raw(o,"{\"size\":256,\"usage\":9}");jo_key(o,"readback_row_bytes");jo_int(o,256);jo_key(o,"target_usage");jo_int(o,17);jo_key(o,"clear");jo_raw(o,"{\"r\":-1,\"g\":-1,\"b\":-1,\"a\":-1}");jo_key(o,"depth_clear");jo_int(o,1);jo_key(o,"layout");jo_raw(o,"[{\"binding\":0,\"visibility\":1,\"buffer\":{\"type\":\"uniform\",\"minBindingSize\":96}}]");
   jo_key(o,"cases");jo_arr(o);for index:0..<17 {c:=ib_case(index);jo_obj(o);jo_key(o,"size");jo_raw(o,"[64,64]");jo_key(o,"extent");jo_raw(o,"[64,64,1]");jo_key(o,"depth_readback");jo_raw(o,"{\"size\":16384,\"usage\":9}");jo_key(o,"vertices");jo_int(o,c.vertices);jo_key(o,"clip_words");jo_arr(o);for v:0..<6 {for lane:0..<4 {jo_int(o,cast(int)f32_bits(c.clips[v][lane]));}}jo_end(o);jo_key(o,"samples");jo_arr(o);for sample:0..<(ifx index<13 then 3 else 1) {x:=ifx sample==1 then 32 else 18;y:=ifx sample==2 then 32 else 18;jo_obj(o);jo_key(o,"origin");jo_arr(o);jo_int(o,x);jo_int(o,y);jo_int(o,0);jo_end(o);jo_key(o,"depth_byte_offset");jo_int(o,y*256+x*4);jo_end(o);}jo_end(o);jo_end(o);}jo_end(o);jo_end(o);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}if args_has(a[..],"--serve") {return gp_serve(args_value(a[..],"--serve",""));}
   plan:=args_value(a[..],"--plan","");output:=args_value(a[..],"--output","");wgsl:=args_value(a[..],"--shader","");hash:[64]u8;
   if output=="" || wgsl=="" || fs_exists(output) || !rtq_hash_file(plan,hash[..]) || cast(string)hash[..]!="e662959a1ca8f6c3cc082195d71de6d6ecb61e08a93c3639c50d73515e0715cb" {return 2;}

@@ -13,10 +13,10 @@
   #assert oi_peak(2,3)==3 && oi_peak(3,2)==3 && f64_bits(oi_peak(f64_from_bits(cast(u64)0x8000000000000000),0))==0;
 }
 
-oi_holdout_force :: (episode:int,tick:int)->f64 {phase:=(tick+5*episode)%20;return ifx phase<5 then 0.4 else (ifx phase<12 then -0.2 else 0);}
-oi_peak :: (a:f64,b:f64)->f64 {return ifx a>b then a else b;}
+oi_holdout_force :: (episode:int,tick:int)->f64 #effects(all) {phase:=(tick+5*episode)%20;return ifx phase<5 then 0.4 else (ifx phase<12 then -0.2 else 0);}
+oi_peak :: (a:f64,b:f64)->f64 #effects(all) {return ifx a>b then a else b;}
 // book:begin forecast
-oi_forecast :: (params:OsParams)->OiEval #export_c {
+oi_forecast :: (params:OsParams)->OiEval #export_c #effects(all) {
   result:OiEval;qs:=[3]f64.[0.7,-0.5,0];vs:=[3]f64.[-0.15,0.35,-0.7];
   for episode:0..<3 {
     truth:=OsState.{position=qs[episode],velocity=vs[episode]};own:=truth;

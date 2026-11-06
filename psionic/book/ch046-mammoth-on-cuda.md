@@ -26,7 +26,7 @@ differ, so the plan now takes them as a value:
 // kind names Elephant here; the plans refuse it.
 // chunks: how many pieces of up to `hidden` rows the head streams in.
 DpModel :: struct {kind:int;layers:int;width:int;hidden:int;vocab:int;key_heads:int;value_heads:int;heads:int;kv_heads:int;chunks:int;}
-dp_model :: (kind:int)->DpModel #export_c {
+dp_model :: (kind:int)->DpModel #export_c #effects(all) {
     if kind==1 {return DpModel.{kind=1,layers=64,width=5120,hidden=17408,vocab=248320,key_heads=16,value_heads=48,heads=24,kv_heads=4,chunks=15};}
     return DpModel.{layers=32,width=4096,hidden=12288,vocab=248320,key_heads=16,value_heads=32,heads=16,kv_heads=4,chunks=21};
 }

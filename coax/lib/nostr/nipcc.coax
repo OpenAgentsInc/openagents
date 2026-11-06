@@ -284,13 +284,13 @@ NccWinner :: struct {
   a[0]=1;#assert !ncc_before(a,b) && ncc_before(b,a);
 }
 
-n_cc_refuse_l :: (r:NccListing,status:int,at:int)->NccListing {o:=r;o.status=status;o.at=at;return o;}
-n_cc_refuse_f :: (r:NccFound,status:int,at:int)->NccFound {o:=r;o.status=status;o.at=at;return o;}
-n_cc_refuse_c :: (r:NccList,status:int,at:int)->NccList {o:=r;o.status=status;o.at=at;return o;}
+n_cc_refuse_l :: (r:NccListing,status:int,at:int)->NccListing #effects(all) {o:=r;o.status=status;o.at=at;return o;}
+n_cc_refuse_f :: (r:NccFound,status:int,at:int)->NccFound #effects(all) {o:=r;o.status=status;o.at=at;return o;}
+n_cc_refuse_c :: (r:NccList,status:int,at:int)->NccList #effects(all) {o:=r;o.status=status;o.at=at;return o;}
 // A score: one digit from 1 to 5, or 0.
-ncc_score :: (t:N32Text)->int {c:=t;if c.n!=1 || c.b[0]<'1' || c.b[0]>'5' {return 0;}return cast(int)(c.b[0]-'0');}
+ncc_score :: (t:N32Text)->int #effects(all) {c:=t;if c.n!=1 || c.b[0]<'1' || c.b[0]>'5' {return 0;}return cast(int)(c.b[0]-'0');}
 // A geohash: 1 to 12 of its 32 digits.
-ncc_geohash :: (t:N32Text)->bool {
+ncc_geohash :: (t:N32Text)->bool #effects(all) {
   c:=t;s:=cast(string)c.b[0..<c.n];
   if s.count<1 || s.count>12 {return false;}
   for i:0..<s.count {
@@ -299,10 +299,10 @@ ncc_geohash :: (t:N32Text)->bool {
   }
   return true;
 }
-ncc_key :: (t:N32Text,key:[]u8)->bool {c:=t;return ne_lower_hex(cast(string)c.b[0..<c.n],key);}
+ncc_key :: (t:N32Text,key:[]u8)->bool #effects(all) {c:=t;return ne_lower_hex(cast(string)c.b[0..<c.n],key);}
 
 // book:begin listing
-ncc_listing :: (e:NostrEvent)->NccListing {
+ncc_listing :: (e:NostrEvent)->NccListing #effects(all) {
   r:NccListing;if e.error!=NE_OK {return r;}
   if e.kind!=NCC_KIND_LISTING {return n_cc_refuse_l(r,NCC_KIND,-1);}
   seen:[6]bool;   // d, name, D, T, S, a cache type
@@ -352,7 +352,7 @@ ncc_listing :: (e:NostrEvent)->NccListing {
 // The k'th string of the index'th tag (0 is its name), decoded into out
 // whatever its length: its length, or -1 when the tag or value is missing
 // or malformed, or the raw value is longer than out.
-ncc_value :: (e:NostrEvent,index:int,k:int,out:[]u8)->int {
+ncc_value :: (e:NostrEvent,index:int,k:int,out:[]u8)->int #effects(all) {
   j:[1]Json;if !nt_start(j[..],e) {return -1;}
   at:=0;tok:=json_next(j[..]);
   while tok==JSON_ARRAY && at<index {skipped:=json_skip(j[..]);at+=1;tok=json_next(j[..]);}
@@ -364,14 +364,14 @@ ncc_value :: (e:NostrEvent,index:int,k:int,out:[]u8)->int {
   return json_unescape(raw,out);
 }
 // Is the index'th tag's name this one?
-ncc_named :: (e:NostrEvent,index:int,name:string)->bool {
+ncc_named :: (e:NostrEvent,index:int,name:string)->bool #effects(all) {
   b:[16]u8;n:=ncc_value(e,index,0,b[..]);
   return n==name.count && cast(string)b[0..<n]==name;
 }
 // book:end value
 
 // book:begin found
-ncc_found :: (e:NostrEvent)->NccFound {
+ncc_found :: (e:NostrEvent)->NccFound #effects(all) {
   r:NccFound;if e.error!=NE_OK {return r;}
   if e.kind!=NCC_KIND_FOUND {return n_cc_refuse_f(r,NCC_KIND,-1);}
   has_cache:=false;i:=0;
@@ -395,7 +395,7 @@ ncc_found :: (e:NostrEvent)->NccFound {
 }
 // book:end found
 
-ncc_list :: (e:NostrEvent)->NccList {
+ncc_list :: (e:NostrEvent)->NccList #effects(all) {
   r:NccList;if e.error!=NE_OK {return r;}
   if e.kind!=NCC_KIND_LIST {return n_cc_refuse_c(r,NCC_KIND,-1);}
   has_d:=false;has_title:=false;i:=0;
@@ -420,7 +420,7 @@ ncc_list :: (e:NostrEvent)->NccList {
 // The found log's embedded verification event, read into text with its id
 // and signature checked (scratch holds its serialization): error NE_OK and
 // verified, or a refused event. text must outlive it.
-ncc_proof :: (found:NostrEvent,text:[]u8,scratch:[]u8)->NostrEvent {
+ncc_proof :: (found:NostrEvent,text:[]u8,scratch:[]u8)->NostrEvent #effects(all) {
   none:NostrEvent;
   f:=ncc_found(found);if f.status!=NCC_OK {return none;}
   n:=ncc_value(found,f.proof_at,1,text);
@@ -430,7 +430,7 @@ ncc_proof :: (found:NostrEvent,text:[]u8,scratch:[]u8)->NostrEvent {
 // book:end proof
 
 // The first value of the first tag with this name, or empty.
-ncc_first :: (e:NostrEvent,name:string)->N32Text {
+ncc_first :: (e:NostrEvent,name:string)->N32Text #effects(all) {
   i:=0;none:N32Text;
   while true {
     t:=n32_tag(e,i);if t.error!=NT_OK {return none;}
@@ -444,7 +444,7 @@ ncc_first :: (e:NostrEvent,name:string)->N32Text {
 // Does this found log, with the proof ncc_proof read from it, prove its
 // author found this cache? NCC_OK, or the first check that fails, in
 // NIP-CC's order.
-ncc_verify :: (listing:NostrEvent,found:NostrEvent,p:NostrEvent)->int {
+ncc_verify :: (listing:NostrEvent,found:NostrEvent,p:NostrEvent)->int #effects(all) {
   l:=ncc_listing(listing);if l.status!=NCC_OK {return NCC_KIND;}
   f:=ncc_found(found);if f.status!=NCC_OK {return NCC_KIND;}
   d:=nostr_tag_d(listing);
@@ -480,7 +480,7 @@ ncc_verify :: (listing:NostrEvent,found:NostrEvent,p:NostrEvent)->int {
 // book:end verify
 
 // The id order: does a come before b?
-ncc_before :: (a:[32]u8,b:[32]u8)->bool {
+ncc_before :: (a:[32]u8,b:[32]u8)->bool #effects(all) {
   for i:0..<32 {
     if a[i]<b[i] {return true;}
     if a[i]>b[i] {return false;}
@@ -493,7 +493,7 @@ ncc_before :: (a:[32]u8,b:[32]u8)->bool {
 // listing locks one in, else the earliest verified log, the lower id first
 // when two are as early. proofs[k] is ncc_proof of logs[k]. Logs that
 // don't verify are counted, never chosen.
-ncc_winner :: (listing:NostrEvent,logs:[]NostrEvent,proofs:[]NostrEvent)->NccWinner {
+ncc_winner :: (listing:NostrEvent,logs:[]NostrEvent,proofs:[]NostrEvent)->NccWinner #effects(all) {
   w:NccWinner;if proofs.count!=logs.count {return w;}
   l:=ncc_listing(listing);if l.status!=NCC_OK {w.status=NCC_KIND;return w;}
   if !l.first_to_find {w.status=NCC_UNVERIFIABLE;return w;}

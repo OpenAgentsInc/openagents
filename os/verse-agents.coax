@@ -7,7 +7,7 @@
 // (--agents; apps/openagents-web/newland-local.coax draws them). Only names and times: nothing of
 // what a transcript says leaves its file. Loaded by os/verse-session.coax.
 
-cxproc_wall_us :: () -> int #foreign;
+cxproc_wall_us :: () -> int #foreign #effects(all);
 
 VA_MAX :: 8;
 VA_WORKING_S :: 120;    // written this recently: at work

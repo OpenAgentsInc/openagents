@@ -96,13 +96,13 @@ FR_TWEAKS :: 8;              // tweaks of one threshold key
 // A code and the index it names, -1 for none.
 FrResult :: struct { code: int; signer: int; }
 // book:end codes
-fr_ok :: () -> FrResult { return FrResult.{code=FR_OK, signer=-1}; }
-fr_fail :: (code: int, signer: int) -> FrResult { return FrResult.{code=code, signer=signer}; }
+fr_ok :: () -> FrResult #effects(all) { return FrResult.{code=FR_OK, signer=-1}; }
+fr_fail :: (code: int, signer: int) -> FrResult #effects(all) { return FrResult.{code=code, signer=signer}; }
 
 // ---- identifiers and interpolation
 // book:begin lagrange
 // An identifier, or a difference of two, as a scalar: x may be negative.
-fr_scalar :: (x: int) -> ScScalar {
+fr_scalar :: (x: int) -> ScScalar #effects(all) {
   if x >= 0 { return sc_small(cast(u32) x); }
   return sc_negate(sc_small(cast(u32) (0 - x)));
 }
@@ -110,7 +110,7 @@ fr_scalar :: (x: int) -> ScScalar {
 // is the value at x = 0, which is id -1. The interpolating value of id
 // in the set ids, for x = 0:
 // lambda = prod (id_k + 1) / prod (id_k - id) over the other ids.
-fr_lambda_vartime :: (ids: [] int, id: int) -> ScScalar {
+fr_lambda_vartime :: (ids: [] int, id: int) -> ScScalar #effects(all) {
   num := sc_small(1); den := sc_small(1);
   for k: 0..<ids.count {
     if ids[k] == id { continue; }
@@ -124,7 +124,7 @@ fr_lambda_vartime :: (ids: [] int, id: int) -> ScScalar {
 // The public share at identifier x, interpolated from the points of
 // ids: sum of L_i(x) X_i with L_i(x) = prod (x - id_k) / (id_i - id_k).
 // It may be infinity.
-fr_share_at_vartime :: (ids: [] int, points: [] SgPoint, x: int) -> SgPoint {
+fr_share_at_vartime :: (ids: [] int, points: [] SgPoint, x: int) -> SgPoint #effects(all) {
   q := sg_infinity();
   for i: 0..<ids.count {
     num := sc_small(1); den := sc_small(1);
@@ -140,7 +140,7 @@ fr_share_at_vartime :: (ids: [] int, points: [] SgPoint, x: int) -> SgPoint {
   return q;
 }
 // The threshold public key: the share at id -1, into out (33 bytes).
-fr_thresh_pk_vartime :: (ids: [] int, points: [] SgPoint, out: [] u8) -> int {
+fr_thresh_pk_vartime :: (ids: [] int, points: [] SgPoint, out: [] u8) -> int #effects(all) {
   q := fr_share_at_vartime(ids, points, -1);
   if !ms_finite_vartime(q) { return FR_THRESH_INFINITY; }
   ms_cbytes_vartime(q, out);
@@ -154,7 +154,7 @@ fr_thresh_pk_vartime :: (ids: [] int, points: [] SgPoint, out: [] u8) -> int {
 // in its place). Every present share must lie on the polynomial the
 // first t present shares fix, and that polynomial's secret must be the
 // threshold key.
-fr_validate_info_vartime :: (t: int, thresh_pk: [] u8, pubshares: [] u8, present: [] bool) -> FrResult {
+fr_validate_info_vartime :: (t: int, thresh_pk: [] u8, pubshares: [] u8, present: [] bool) -> FrResult #effects(all) {
   n := present.count;
   if pubshares.count != 33 * n { return fr_fail(FR_CAPACITY, -1); }
   if t < 1 || t > n { return fr_fail(FR_THRESHOLD, -1); }
@@ -187,7 +187,7 @@ fr_validate_info_vartime :: (t: int, thresh_pk: [] u8, pubshares: [] u8, present
 // in chapter 101. Each tweak gives Q' = g Q + t G, with g = n - 1 for an
 // x-only tweak of a Q with an odd y and 1 otherwise.
 FrTweak :: struct { code: int; q: SgPoint; gacc: ScScalar; tacc: ScScalar; }
-fr_tweaks_vartime :: (thresh_pk: [] u8, tweaks: [] u8, xonly: [] bool) -> FrTweak {
+fr_tweaks_vartime :: (thresh_pk: [] u8, tweaks: [] u8, xonly: [] bool) -> FrTweak #effects(all) {
   if tweaks.count % 32 != 0 || xonly.count > FR_TWEAKS { return FrTweak.{code=FR_CAPACITY}; }
   if tweaks.count != 32 * xonly.count { return FrTweak.{code=FR_TWEAK_LISTS}; }
   p := ms_cpoint_vartime(thresh_pk);
@@ -205,7 +205,7 @@ fr_tweaks_vartime :: (thresh_pk: [] u8, tweaks: [] u8, xonly: [] bool) -> FrTwea
 }
 // The x-only tweak that makes the threshold key a Taproot output key
 // (chapter 41): TapTweak(xbytes(Q) || merkle), merkle empty or 32 bytes.
-fr_taproot_tweak_vartime :: (thresh_pk: [] u8, merkle: [] u8, out: [] u8) -> int {
+fr_taproot_tweak_vartime :: (thresh_pk: [] u8, merkle: [] u8, out: [] u8) -> int #effects(all) {
   if (merkle.count != 0 && merkle.count != 32) || out.count != 32 { return FR_CAPACITY; }
   p := ms_cpoint_vartime(thresh_pk);
   if !p.ok { return FR_THRESH_PK; }
@@ -224,7 +224,7 @@ fr_taproot_tweak_vartime :: (thresh_pk: [] u8, merkle: [] u8, out: [] u8) -> int
 FrSigners :: struct { n: int; t: int; ids: [] int; pubshares: [] u8; has_pubshares: bool; thresh_pk: [] u8; }
 // ValidateSignersCtx: t <= u <= n <= 128, ids in range and distinct, and
 // the public shares, when given, interpolate to the threshold key.
-fr_validate_signers_vartime :: (s: FrSigners) -> FrResult {
+fr_validate_signers_vartime :: (s: FrSigners) -> FrResult #effects(all) {
   u := s.ids.count;
   if s.t < 1 || s.t > s.n { return fr_fail(FR_THRESHOLD, -1); }
   if s.n > FR_MAX { return fr_fail(FR_TOO_MANY, -1); }
@@ -250,13 +250,13 @@ fr_validate_signers_vartime :: (s: FrSigners) -> FrResult {
   return fr_ok();
 }
 // The position of id in ids, or -1.
-fr_position :: (ids: [] int, id: int) -> int {
+fr_position :: (ids: [] int, id: int) -> int #effects(all) {
   for i: 0..<ids.count { if ids[i] == id { return i; } }
   return -1;
 }
 // The ids, sorted, 4 bytes each, added to a hash: the signers are a set,
 // so their order does not change b or a deterministic nonce.
-fr_add_ids :: (w: [] ShaOwned, ids: [] int) {
+fr_add_ids :: (w: [] ShaOwned, ids: [] int) #effects(all) {
   sorted: [FR_MAX] int;
   for i: 0..<ids.count {
     j := i;
@@ -274,7 +274,7 @@ fr_add_ids :: (w: [] ShaOwned, ids: [] int) {
 // len(extra_in) || extra_in || i) mod n: chapter 101's NonceGen with the
 // signer's id and public share in place of its key. Lengths are public;
 // rand is secret.
-fr_nonce_hash :: (w: [] MsNonceWork, signer_id: int, pubshare: [] u8, xonly: [] u8, msg: [] u8, has_msg: bool, extra: [] u8, i: int) -> ScScalar {
+fr_nonce_hash :: (w: [] MsNonceWork, signer_id: int, pubshare: [] u8, xonly: [] u8, msg: [] u8, has_msg: bool, extra: [] u8, i: int) -> ScScalar #effects(all) {
   s := w[0].sha[..];
   ms_tag(s, "BIP0445/nonce"); ms_add(s, w[0].rand[..]);
   if signer_id < 0 { ms_add_length(s, 0, 1); }
@@ -294,7 +294,7 @@ fr_nonce_hash :: (w: [] MsNonceWork, signer_id: int, pubshare: [] u8, xonly: [] 
 // optional inputs that make a repeated rand_ less harmful. Writes
 // secnonce (k_1 and k_2, 64 bytes), which stays secret and signs once,
 // and pubnonce (k_1 G and k_2 G, 66 bytes), which goes to the others.
-fr_nonce_gen :: (rand_: [] u8, secshare: [] u8, signer_id: int, pubshare: [] u8, xonly: [] u8, msg: [] u8, has_msg: bool, extra: [] u8, secnonce: [] u8, pubnonce: [] u8, w: [] MsNonceWork) -> int {
+fr_nonce_gen :: (rand_: [] u8, secshare: [] u8, signer_id: int, pubshare: [] u8, xonly: [] u8, msg: [] u8, has_msg: bool, extra: [] u8, secnonce: [] u8, pubnonce: [] u8, w: [] MsNonceWork) -> int #effects(all) {
   if w.count != 1 || rand_.count != 32 || (secshare.count != 0 && secshare.count != 32) || signer_id < -1 || signer_id >= FR_MAX { return FR_CAPACITY; }
   if (pubshare.count != 0 && pubshare.count != 33) || (xonly.count != 0 && xonly.count != 32) { return FR_CAPACITY; }
   if secnonce.count != 64 || pubnonce.count != 66 || extra.count > 0xffffffff { return FR_CAPACITY; }
@@ -324,7 +324,7 @@ fr_nonce_gen :: (rand_: [] u8, secshare: [] u8, signer_id: int, pubshare: [] u8,
 // NonceAgg: R_j is the sum of every signer's j-th nonce point, written
 // with cbytes_ext, so the sum may be infinity. Into out (66 bytes). A
 // nonce that does not decode refuses, naming its signer's position.
-fr_nonce_agg_vartime :: (pubnonces: [] u8, out: [] u8) -> FrResult {
+fr_nonce_agg_vartime :: (pubnonces: [] u8, out: [] u8) -> FrResult #effects(all) {
   u := pubnonces.count / 66;
   if pubnonces.count % 66 != 0 || u < 1 || u > FR_MAX || out.count != 66 { return fr_fail(FR_CAPACITY, -1); }
   for j: 0..<2 {
@@ -348,7 +348,7 @@ fr_nonce_agg_vartime :: (pubnonces: [] u8, out: [] u8) -> FrResult {
 // BIP-340's challenge e. Unlike MuSig2's b, FROST's binds the signer set:
 // the same nonces in a different set give a different R.
 FrSession :: struct { code: int; signer: int; q: SgPoint; gacc: ScScalar; tacc: ScScalar; b: ScScalar; r: SgPoint; e: ScScalar; }
-fr_session_vartime :: (s: FrSigners, aggnonce: [] u8, tweaks: [] u8, xonly: [] bool, msg: [] u8) -> FrSession {
+fr_session_vartime :: (s: FrSigners, aggnonce: [] u8, tweaks: [] u8, xonly: [] bool, msg: [] u8) -> FrSession #effects(all) {
   x: FrSession; x.signer = -1;
   v := fr_validate_signers_vartime(s);
   if v.code != FR_OK { x.code = v.code; x.signer = v.signer; return x; }
@@ -382,7 +382,7 @@ fr_session_vartime :: (s: FrSigners, aggnonce: [] u8, tweaks: [] u8, xonly: [] b
 // signer set, and d is the secret share times g (n - 1 when Q has an odd
 // y) and gacc. Into psig (32 bytes). It zeroes secnonce once its halves
 // are read, so a secnonce signs at most once.
-fr_sign :: (secnonce: [] u8, secshare: [] u8, signer_id: int, s: FrSigners, aggnonce: [] u8, tweaks: [] u8, xonly: [] bool, msg: [] u8, psig: [] u8, w: [] MsSignWork) -> FrResult {
+fr_sign :: (secnonce: [] u8, secshare: [] u8, signer_id: int, s: FrSigners, aggnonce: [] u8, tweaks: [] u8, xonly: [] bool, msg: [] u8, psig: [] u8, w: [] MsSignWork) -> FrResult #effects(all) {
   if w.count != 1 || secnonce.count != 64 || secshare.count != 32 || psig.count != 32 { return fr_fail(FR_CAPACITY, -1); }
   x := fr_session_vartime(s, aggnonce, tweaks, xonly, msg);
   if x.code != FR_OK { return fr_fail(x.code, x.signer); }
@@ -406,14 +406,14 @@ fr_sign :: (secnonce: [] u8, secshare: [] u8, signer_id: int, s: FrSigners, aggn
   #assert ss_write(w[0].s, psig);
   return fr_sign_clear(w, FR_OK);
 }
-fr_sign_clear :: (w: [] MsSignWork, code: int) -> FrResult { fresh: MsSignWork; w[0] = fresh; return fr_fail(code, -1); }
+fr_sign_clear :: (w: [] MsSignWork, code: int) -> FrResult #effects(all) { fresh: MsSignWork; w[0] = fresh; return fr_fail(code, -1); }
 // book:end signshare
 
 // book:begin verify
 // PartialSigVerifyInternal: s G = Re + e lambda g gacc X, where Re = R_1 +
 // b R_2 from this signer's nonce, negated when R has an odd y, and X is
 // its public share. Anything that does not decode is FR_INVALID.
-fr_partial_verify_session_vartime :: (psig: [] u8, signer_id: int, pubnonce: [] u8, pubshare: [] u8, x: FrSession, ids: [] int) -> FrResult {
+fr_partial_verify_session_vartime :: (psig: [] u8, signer_id: int, pubnonce: [] u8, pubshare: [] u8, x: FrSession, ids: [] int) -> FrResult #effects(all) {
   s := sc_load(psig);
   if psig.count != 32 || !s.ok || pubnonce.count != 66 { return fr_fail(FR_INVALID, -1); }
   r1 := ms_cpoint_vartime(pubnonce[0..<33]);
@@ -430,7 +430,7 @@ fr_partial_verify_session_vartime :: (psig: [] u8, signer_id: int, pubnonce: [] 
 }
 // PartialSigVerify: the partial signature of the signer at position i,
 // from everyone's public nonces and the session's public shares.
-fr_partial_verify_vartime :: (psig: [] u8, pubnonces: [] u8, s: FrSigners, tweaks: [] u8, xonly: [] bool, msg: [] u8, i: int) -> FrResult {
+fr_partial_verify_vartime :: (psig: [] u8, pubnonces: [] u8, s: FrSigners, tweaks: [] u8, xonly: [] bool, msg: [] u8, i: int) -> FrResult #effects(all) {
   u := s.ids.count;
   if !s.has_pubshares || pubnonces.count != 66 * u || s.pubshares.count != 33 * u || i < 0 || i >= u { return fr_fail(FR_CAPACITY, -1); }
   if tweaks.count != 32 * xonly.count { return fr_fail(FR_TWEAK_LISTS, -1); }
@@ -448,7 +448,7 @@ fr_partial_verify_vartime :: (psig: [] u8, pubnonces: [] u8, s: FrSigners, tweak
 // book:begin aggregate
 // PartialSigAgg: s = s_1 + ... + s_u + e g tacc mod n, and the BIP-340
 // signature xbytes(R) || s into out (64 bytes).
-fr_partial_agg_vartime :: (psigs: [] u8, x: FrSession, u: int, out: [] u8) -> FrResult {
+fr_partial_agg_vartime :: (psigs: [] u8, x: FrSession, u: int, out: [] u8) -> FrResult #effects(all) {
   if x.code != FR_OK { return fr_fail(x.code, x.signer); }
   if psigs.count % 32 != 0 || out.count != 64 { return fr_fail(FR_CAPACITY, -1); }
   if psigs.count / 32 != u { return fr_fail(FR_PSIG_LISTS, -1); }
@@ -468,14 +468,14 @@ fr_partial_agg_vartime :: (psigs: [] u8, x: FrSession, u: int, out: [] u8) -> Fr
 // book:begin detsign
 // The workspace of DeterministicSign. Each return clears it.
 FrDetWork :: struct { nonce: [1] MsNonceWork; d: [1] SignScalar; masked: [32] u8; secnonce: [64] u8; sign: [1] MsSignWork; }
-fr_det_clear :: (w: [] FrDetWork, r: FrResult) -> FrResult { fresh: FrDetWork; w[0] = fresh; return r; }
+fr_det_clear :: (w: [] FrDetWork, r: FrResult) -> FrResult #effects(all) { fresh: FrDetWork; w[0] = fresh; return r; }
 // DeterministicSign, for the last signer, who has seen every other nonce
 // (aggother, their NonceAgg; absent when it signs alone) and has no
 // randomness: k_i = hash_BIP0445/deterministic/nonce(d' || id || u ||
 // sorted ids || len(aggother) || aggother || xbytes(Q) || len(msg) || msg
 // || i) mod n, with d' = g gacc d, XORed with hash_BIP0445/aux(aux) when
 // aux (0 or 32 bytes) is given. Writes pubnonce (66 bytes) and psig (32).
-fr_det_sign :: (secshare: [] u8, signer_id: int, aggother: [] u8, has_aggother: bool, s: FrSigners, tweaks: [] u8, xonly: [] bool, msg: [] u8, aux: [] u8, has_aux: bool, pubnonce: [] u8, psig: [] u8, w: [] FrDetWork) -> FrResult {
+fr_det_sign :: (secshare: [] u8, signer_id: int, aggother: [] u8, has_aggother: bool, s: FrSigners, tweaks: [] u8, xonly: [] bool, msg: [] u8, aux: [] u8, has_aux: bool, pubnonce: [] u8, psig: [] u8, w: [] FrDetWork) -> FrResult #effects(all) {
   if w.count != 1 || pubnonce.count != 66 || psig.count != 32 { return fr_fail(FR_CAPACITY, -1); }
   v := fr_validate_signers_vartime(s);
   if v.code != FR_OK { return v; }
@@ -533,8 +533,8 @@ fr_det_sign :: (secshare: [] u8, signer_id: int, aggother: [] u8, has_aggother: 
 // BIP's trusted_dealer.py does. The workspace holds them; each caller
 // clears it before it returns.
 FrDealWork :: struct { sha: [1] ShaOwned; key: [1] SignScalar; c: [FR_MAX] ScScalar; h: [32] u8; y: ScScalar; point: [1] SignPoint; valid: u64; }
-fr_deal_clear :: (w: [] FrDealWork, code: int) -> int { fresh: FrDealWork; w[0] = fresh; return code; }
-fr_poly :: (secret: [] u8, t: int, w: [] FrDealWork) -> bool {
+fr_deal_clear :: (w: [] FrDealWork, code: int) -> int #effects(all) { fresh: FrDealWork; w[0] = fresh; return code; }
+fr_poly :: (secret: [] u8, t: int, w: [] FrDealWork) -> bool #effects(all) {
   #assert ss_key(secret, w[0].key[..], false);
   w[0].c[0] = w[0].key[0].safe;
   w[0].valid = w[0].key[0].valid;
@@ -548,7 +548,7 @@ fr_poly :: (secret: [] u8, t: int, w: [] FrDealWork) -> bool {
   return ec_declassify(w[0].valid);
 }
 // f(x) by Horner's rule, from the highest coefficient down.
-fr_poly_at :: (w: [] FrDealWork, t: int, x: int) -> ScScalar {
+fr_poly_at :: (w: [] FrDealWork, t: int, x: int) -> ScScalar #effects(all) {
   y: ScScalar;
   for k: 0..<t { y = sc_add(sc_mul(y, fr_scalar(x)), w[0].c[t - 1 - k]); }
   return y;
@@ -557,7 +557,7 @@ fr_poly_at :: (w: [] FrDealWork, t: int, x: int) -> ScScalar {
 // threshold key (33 bytes), each participant's secret share f(id + 1)
 // (32 bytes each) and public share (33 bytes each). Whoever runs it
 // knows the secret: every share comes from one machine.
-fr_dealer :: (secret: [] u8, n: int, t: int, thresh_pk: [] u8, secshares: [] u8, pubshares: [] u8, w: [] FrDealWork) -> int {
+fr_dealer :: (secret: [] u8, n: int, t: int, thresh_pk: [] u8, secshares: [] u8, pubshares: [] u8, w: [] FrDealWork) -> int #effects(all) {
   if w.count != 1 || secret.count != 32 || t < 1 || t > n || n > FR_MAX || thresh_pk.count != 33 || secshares.count != 32 * n || pubshares.count != 33 * n { return FR_CAPACITY; }
   if !fr_poly(secret, t, w) { return fr_deal_clear(w, FR_SECSHARE); }
   ms_nonce_point(w[0].c[0], w[0].point[..], thresh_pk);
@@ -571,7 +571,7 @@ fr_dealer :: (secret: [] u8, n: int, t: int, thresh_pk: [] u8, secshares: [] u8,
 }
 // Any t shares give the secret back: sum of lambda_i s_i. This is what
 // FROST never does; the chapter uses it to show the shares are Shamir's.
-fr_combine :: (secshares: [] u8, ids: [] int, out: [] u8) -> bool {
+fr_combine :: (secshares: [] u8, ids: [] int, out: [] u8) -> bool #effects(all) {
   if secshares.count != 32 * ids.count || out.count != 32 { return false; }
   k: [1] SignScalar; s: ScScalar;
   for i: 0..<ids.count {
@@ -591,12 +591,12 @@ fr_combine :: (secshares: [] u8, ids: [] int, out: [] u8) -> bool {
 // hash_FROST/dkg/pop(context || i || C_0 || ... || C_{t-1}). It sends
 // participant j the share f_i(j + 1) privately (32 bytes each, n).
 FrDkgWork :: struct { deal: [1] FrDealWork; sign: [1] SignWork; msg: [32] u8; key: [32] u8; }
-fr_dkg_message_vartime :: (context: [] u8, index: int, commit: [] u8, out: [] u8) {
+fr_dkg_message_vartime :: (context: [] u8, index: int, commit: [] u8, out: [] u8) #effects(all) {
   w: [1] ShaOwned;
   ms_tag(w[..], "FROST/dkg/pop"); ms_add(w[..], context); ms_add_length(w[..], index, 4); ms_add(w[..], commit);
   ms_end(w[..], out);
 }
-fr_dkg_round1 :: (seed: [] u8, index: int, n: int, t: int, context: [] u8, commit: [] u8, pop: [] u8, shares: [] u8, w: [] FrDkgWork) -> int {
+fr_dkg_round1 :: (seed: [] u8, index: int, n: int, t: int, context: [] u8, commit: [] u8, pop: [] u8, shares: [] u8, w: [] FrDkgWork) -> int #effects(all) {
   if w.count != 1 || seed.count != 32 || t < 1 || t > n || n > FR_MAX || index < 0 || index >= n { return FR_CAPACITY; }
   if commit.count != 33 * t || pop.count != 64 || shares.count != 32 * n { return FR_CAPACITY; }
   d := w[0].deal[..];
@@ -616,7 +616,7 @@ fr_dkg_round1 :: (seed: [] u8, index: int, n: int, t: int, context: [] u8, commi
 }
 // Receiver j checks sender i: the proof of possession verifies under
 // xbytes(C_0), and its share s satisfies s G = sum (j + 1)^k C_k.
-fr_dkg_check_vartime :: (commit: [] u8, pop: [] u8, context: [] u8, index: int, share: [] u8, j: int) -> int {
+fr_dkg_check_vartime :: (commit: [] u8, pop: [] u8, context: [] u8, index: int, share: [] u8, j: int) -> int #effects(all) {
   t := commit.count / 33;
   if commit.count % 33 != 0 || t < 1 || t > FR_MAX || pop.count != 64 || share.count != 32 || j < 0 { return FR_CAPACITY; }
   m: [32] u8; c0: [32] u8;
@@ -633,7 +633,7 @@ fr_dkg_check_vartime :: (commit: [] u8, pop: [] u8, context: [] u8, index: int, 
   return ifx ok && bt_same(got[..], expect[..]) then FR_OK else FR_DKG_SHARE;
 }
 // sum (j + 1)^k C_k: participant j's public share of one dealer.
-fr_dkg_point_vartime :: (commit: [] u8, j: int) -> SgPoint {
+fr_dkg_point_vartime :: (commit: [] u8, j: int) -> SgPoint #effects(all) {
   q := sg_infinity(); x := sc_small(1);
   for k: 0..<commit.count/33 {
     c := ms_cpoint_vartime(commit[33*k..<33*k+33]);
@@ -648,7 +648,7 @@ fr_dkg_point_vartime :: (commit: [] u8, j: int) -> SgPoint {
 // sender), the threshold key is the sum of the C_0, and every public
 // share is the sum of the dealers' public shares. commits holds the n
 // senders' commitments, 33 t bytes each.
-fr_dkg_finish :: (received: [] u8, commits: [] u8, n: int, t: int, secshare: [] u8, thresh_pk: [] u8, pubshares: [] u8) -> int {
+fr_dkg_finish :: (received: [] u8, commits: [] u8, n: int, t: int, secshare: [] u8, thresh_pk: [] u8, pubshares: [] u8) -> int #effects(all) {
   if received.count != 32 * n || commits.count != 33 * t * n || secshare.count != 32 || thresh_pk.count != 33 || pubshares.count != 33 * n || n > FR_MAX { return FR_CAPACITY; }
   k: [1] SignScalar; s: ScScalar;
   for i: 0..<n {
@@ -676,18 +676,18 @@ fr_dkg_finish :: (received: [] u8, commits: [] u8, n: int, t: int, secshare: [] 
 
 // ---- checks
 // ids from hex, one byte each.
-fr_ids :: (h: string, out: [] int) -> [] int {
+fr_ids :: (h: string, out: [] int) -> [] int #effects(all) {
   b: [256] u8;
   x := bt_unhex(h, b[..]);
   for i: 0..<x.count { out[i] = cast(int) x[i]; }
   return out[0..<x.count];
 }
 // x-only flags or presence flags from 't' and 'f'.
-fr_flags :: (s: string, out: [] bool) -> [] bool { return ms_flags(s, out); }
+fr_flags :: (s: string, out: [] bool) -> [] bool #effects(all) { return ms_flags(s, out); }
 // book:begin vectors
 // Each vector file of the BIP: the number of its cases that give their
 // stated result, a value or the refusal with the index it names.
-frv_nonce_gen :: () -> int {
+frv_nonce_gen :: () -> int #effects(all) {
   passed := 0; w: [1] MsNonceWork;
   for i: 0..<FR_NONCE_GEN.count {
     c := FR_NONCE_GEN[i];
@@ -698,7 +698,7 @@ frv_nonce_gen :: () -> int {
   }
   return passed;
 }
-frv_nonce_agg :: () -> int {
+frv_nonce_agg :: () -> int #effects(all) {
   passed := 0;
   for i: 0..<FR_NONCE_AGG.count {
     c := FR_NONCE_AGG[i];
@@ -710,7 +710,7 @@ frv_nonce_agg :: () -> int {
 }
 // Sign, from sign_verify_vectors and tweak_vectors, cases lo to hi - 1.
 // A case that signs also refuses a second time with the same secnonce.
-frv_sign :: (lo: int, hi: int) -> int {
+frv_sign :: (lo: int, hi: int) -> int #effects(all) {
   passed := 0; w: [1] MsSignWork;
   for i: lo..<hi {
     c := FR_SIGN[i];
@@ -728,7 +728,7 @@ frv_sign :: (lo: int, hi: int) -> int {
   return passed;
 }
 // PartialSigVerify, cases lo to hi - 1.
-frv_verify :: (lo: int, hi: int) -> int {
+frv_verify :: (lo: int, hi: int) -> int #effects(all) {
   passed := 0;
   for i: lo..<hi {
     c := FR_VERIFY[i];
@@ -741,7 +741,7 @@ frv_verify :: (lo: int, hi: int) -> int {
 }
 // DeterministicSign, cases lo to hi - 1. A partial signature it makes
 // also verifies.
-frv_det_sign :: (lo: int, hi: int) -> int {
+frv_det_sign :: (lo: int, hi: int) -> int #effects(all) {
   passed := 0; w: [1] FrDetWork;
   for i: lo..<hi {
     c := FR_DET_SIGN[i];
@@ -774,7 +774,7 @@ frv_det_sign :: (lo: int, hi: int) -> int {
 }
 // PartialSigAgg, cases lo to hi - 1. Each signature it makes is a valid
 // BIP-340 signature under the tweaked threshold key.
-frv_sig_agg :: (lo: int, hi: int) -> int {
+frv_sig_agg :: (lo: int, hi: int) -> int #effects(all) {
   passed := 0;
   for i: lo..<hi {
     c := FR_SIG_AGG[i];
@@ -793,7 +793,7 @@ frv_sig_agg :: (lo: int, hi: int) -> int {
   return passed;
 }
 // ValidateThresholdInfo, cases lo to hi - 1.
-frv_info :: (lo: int, hi: int) -> int {
+frv_info :: (lo: int, hi: int) -> int #effects(all) {
   passed := 0;
   for i: lo..<hi {
     c := FR_INFO[i];
@@ -1112,7 +1112,7 @@ frv_info :: (lo: int, hi: int) -> int {
 }
 // A 2-of-3 from the trusted dealer: any two signers make a signature
 // under the Taproot output key of the threshold key; one alone refuses.
-fr_test_session :: (secshares: [] u8, pubshares: [] u8, thresh_pk: [] u8, ids: [] int, tweaks: [] u8, xonly: [] bool, msg: [] u8, sig: [] u8) -> int {
+fr_test_session :: (secshares: [] u8, pubshares: [] u8, thresh_pk: [] u8, ids: [] int, tweaks: [] u8, xonly: [] bool, msg: [] u8, sig: [] u8) -> int #effects(all) {
   u := ids.count;
   ps: [99] u8; pub: [198] u8; sec: [192] u8; psigs: [96] u8; agg: [66] u8; rand: [32] u8; q: [32] u8;
   for i: 0..<u { for j: 0..<33 { ps[33*i+j] = pubshares[33*ids[i]+j]; } }
@@ -1161,7 +1161,7 @@ fr_test_session :: (secshares: [] u8, pubshares: [] u8, thresh_pk: [] u8, ids: [
 }
 // Round 1 of a 2-of-3 DKG for the checks: three participants with seeds
 // 5, 8, 11, ... deal under the context "chapter 102 DKG".
-fr_test_dkg :: (ctx: [] u8, commits: [] u8, pops: [] u8, shares: [] u8) {
+fr_test_dkg :: (ctx: [] u8, commits: [] u8, pops: [] u8, shares: [] u8) #effects(all) {
   seeds: [96] u8; w: [1] FrDkgWork;
   for i: 0..<96 { seeds[i] = cast(u8) ((3 * i + 5) & 255); }
   for i: 0..<3 {

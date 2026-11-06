@@ -74,10 +74,10 @@ GE_STATE_HI :: [8]f64.[0.15302616357803345,0.32915401458740234,1.254692316055297
 GE_ACTION_LO :: [7]f64.[-0.6348214149475098,-0.7741071581840515,-0.7633928656578064,-0.09749999642372131,-0.14820000529289246,-0.2742857038974762,0];
 GE_ACTION_HI :: [7]f64.[0.7714285850524902,0.8464285731315613,0.9375,0.13928571343421936,0.15964286029338837,0.3246428668498993,1];
 
-ge_bits_finite :: (bits:u32)->bool {return (bits&0x7f800000)!=0x7f800000;}
-ge_finite :: (v:f32)->bool {return ge_bits_finite(f32_bits(v));}
-ge_clip :: (v:f32)->GeClipped {if v< -1 {return GeClipped.{value=-1,clipped=true};}if v>1 {return GeClipped.{value=1,clipped=true};}return GeClipped.{value=v};}
-ge_state_clip :: (axis:int,v:f32)->GeClipped {
+ge_bits_finite :: (bits:u32)->bool #effects(all) {return (bits&0x7f800000)!=0x7f800000;}
+ge_finite :: (v:f32)->bool #effects(all) {return ge_bits_finite(f32_bits(v));}
+ge_clip :: (v:f32)->GeClipped #effects(all) {if v< -1 {return GeClipped.{value=-1,clipped=true};}if v>1 {return GeClipped.{value=1,clipped=true};}return GeClipped.{value=v};}
+ge_state_clip :: (axis:int,v:f32)->GeClipped #effects(all) {
   // Early clipping is equivalent on finite values and avoids overflow of the
   // source F32 intermediate for extremely distant observations.
   if f64(v)<GE_STATE_LO[axis] {return GeClipped.{value=-1,clipped=true};}
@@ -86,7 +86,7 @@ ge_state_clip :: (axis:int,v:f32)->GeClipped {
   twice:f32=2.0f32*ratio;return ge_clip(twice-1.0f32);
 }
 // book:begin normalize
-ge_normalize :: (state:[]f32,out:[]f32,overlap:bool)->GeRead #export_c {
+ge_normalize :: (state:[]f32,out:[]f32,overlap:bool)->GeRead #export_c #effects(all) {
   if state.count!=8 || out.count<132 {return GeRead.{status=GeStatus.shape};}
   if overlap {return GeRead.{status=GeStatus.overlap};}
   for v:state {if !ge_finite(v) {return GeRead.{status=GeStatus.number};}}
@@ -95,19 +95,19 @@ ge_normalize :: (state:[]f32,out:[]f32,overlap:bool)->GeRead #export_c {
   for i:0..<132 {out[i]=staged[i];}return GeRead.{written=132,clipped=clipped};
 }
 // book:end normalize
-ge_gripper :: (v:f32)->f32 {
+ge_gripper :: (v:f32)->f32 #effects(all) {
   twice:f32=2.0f32*v;center:f32=twice-1.0f32;
   if center>0 {return -1;}if center<0 {return 1;}
   return f32_from_bits(0x80000000);
 }
-ge_action_clip :: (axis:int,v:f32)->GeClipped {
+ge_action_clip :: (axis:int,v:f32)->GeClipped #effects(all) {
   clipped:=ge_clip(v);shifted:f32=clipped.value+1.0f32;unit:f32=shifted/2.0f32;
   scaled:f64=f64(unit)*(GE_ACTION_HI[axis]-GE_ACTION_LO[axis]);
   decoded:f32=f32(scaled+GE_ACTION_LO[axis]);
   if axis==6 {decoded=ge_gripper(decoded);}return GeClipped.{value=decoded,clipped=clipped.clipped};
 }
 // book:begin decode
-ge_decode :: (model:[]f32,out:[]f32,overlap:bool)->GeRead #export_c {
+ge_decode :: (model:[]f32,out:[]f32,overlap:bool)->GeRead #export_c #effects(all) {
   if model.count!=5280 || out.count<112 {return GeRead.{status=GeStatus.shape};}
   if overlap {return GeRead.{status=GeStatus.overlap};}
   staged:[112]f32;clipped:=0;

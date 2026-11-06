@@ -35,7 +35,7 @@ input_axis :: (a: f32) -> InputAxis {
 // Whether you run: a stick past the dead zone decides by its push; the keys go by
 // INPUT_RUN_BY_DEFAULT, Shift turning it the other way.
 input_keys_run :: (shift: bool) -> bool { return shift != INPUT_RUN_BY_DEFAULT; }
-input_runs :: (shift: bool, stick_run: bool, pad_x: f32, pad_y: f32) -> bool #export_c {
+input_runs :: (shift: bool, stick_run: bool, pad_x: f32, pad_y: f32) -> bool #export_c #effects(all) {
   if input_finite(pad_x) && input_finite(pad_y) && sqrt(pad_x * pad_x + pad_y * pad_y) > INPUT_DEAD_ZONE { return stick_run; }
   return input_keys_run(shift);
 }

@@ -42,35 +42,35 @@
   #assert render_noise_coordinate_ok(3.4028234663852886e38f32) && render_noise_coordinate_ok(-3.4028234663852886e38f32);
 }
 
-render_noise_coordinate_ok :: (x:f32)->bool {
+render_noise_coordinate_ok :: (x:f32)->bool #effects(all) {
   return x>=-3.4028234663852886e38f32 && x<=3.4028234663852886e38f32;
 }
 // Caller has checked finiteness. The powers-of-two scaling is exact for the
 // admitted ordinary finite-coordinate profile. Explicit saturation keeps the
 // conversion inside signed32; the positive endpoint is the last f32 below2^25.
-render_noise_cell :: (x:f32)->u32 {
+render_noise_cell :: (x:f32)->u32 #effects(all) {
   bounded:=fmin(fmax(x,-33554432.0f32),33554430.0f32);
   return cast,trunc(u32)(cast(s32)floor(bounded*64.0f32));
 }
-render_noise_permute :: (word:u32)->u32 {
+render_noise_permute :: (word:u32)->u32 #effects(all) {
   h:=mul_wrap(word,747796405);
   h=mul_wrap(h^(h>>16),2246822519);
   return h^(h>>13);
 }
-render_noise_mix2 :: (x:u32,y:u32)->u32 {
+render_noise_mix2 :: (x:u32,y:u32)->u32 #effects(all) {
   return render_noise_permute(mul_wrap(x,1597334677)^mul_wrap(y,3812015801));
 }
-render_noise_mix3 :: (x:u32,y:u32,z:u32)->u32 {
+render_noise_mix3 :: (x:u32,y:u32,z:u32)->u32 #effects(all) {
   return render_noise_permute(mul_wrap(x,1597334677)^mul_wrap(y,3812015801)^mul_wrap(z,2654435761));
 }
-render_noise_unit :: (word:u32)->f32 {
+render_noise_unit :: (word:u32)->f32 #effects(all) {
   return cast(f32)(word>>8)*0.000000059604644775390625f32;
 }
-render_noise2 :: (x:f32,y:f32)->f32 {
+render_noise2 :: (x:f32,y:f32)->f32 #effects(all) {
   if !render_noise_coordinate_ok(x) || !render_noise_coordinate_ok(y) {return 0;}
   return render_noise_unit(render_noise_mix2(render_noise_cell(x),render_noise_cell(y)));
 }
-render_noise3 :: (x:f32,y:f32,z:f32)->f32 {
+render_noise3 :: (x:f32,y:f32,z:f32)->f32 #effects(all) {
   if !render_noise_coordinate_ok(x) || !render_noise_coordinate_ok(y) || !render_noise_coordinate_ok(z) {return 0;}
   return render_noise_unit(render_noise_mix3(render_noise_cell(x),render_noise_cell(y),render_noise_cell(z)));
 }

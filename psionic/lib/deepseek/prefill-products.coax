@@ -44,10 +44,10 @@
     for t:0..<9 {#assert out[3*t]==f32(32*(t+1)) && out[3*t+1]==f32(64*(t+1)) && out[3*t+2]==f32(128*(t+1));}
 }
 
-dp_tiles :: (n:int)->int {return (n+7)/8;}
-dp_views :: (work:[]f32,p:DpPlan)->DpViews {b:=p.begin;return DpViews.{gate=work[b[0]..<b[1]],up=work[b[1]..<b[2]],activation=work[b[2]..<b[3]],pending=work[b[3]..<b[4]],stage=work[b[4]..<b[5]]};}
-dp_batch :: (n:int)->bool {return n>=1 && n<=512;}
-dp_project :: (m:DeMatrix,batch:int,x:[]f32,out:[]f32,quant:[]f64,stage:[]f32,flags:[]u8,overlap:bool)->DpResult #export_c {
+dp_tiles :: (n:int)->int #effects(all) {return (n+7)/8;}
+dp_views :: (work:[]f32,p:DpPlan)->DpViews #effects(all) {b:=p.begin;return DpViews.{gate=work[b[0]..<b[1]],up=work[b[1]..<b[2]],activation=work[b[2]..<b[3]],pending=work[b[3]..<b[4]],stage=work[b[4]..<b[5]]};}
+dp_batch :: (n:int)->bool #effects(all) {return n>=1 && n<=512;}
+dp_project :: (m:DeMatrix,batch:int,x:[]f32,out:[]f32,quant:[]f64,stage:[]f32,flags:[]u8,overlap:bool)->DpResult #export_c #effects(all) {
     status:=de_storage(m);if status!=DsStatus.ok {return DpResult.{status=status};}if !dp_batch(batch) {return DpResult.{status=DsStatus.shape};}n:=batch*m.rows;
     if x.count!=batch*m.columns || out.count<n || quant.count<batch*m.columns || stage.count<n || flags.count<n {return DpResult.{status=DsStatus.capacity};}if overlap {return DpResult.{status=DsStatus.alias};}
     status=de_quant_values(x,quant);if status!=DsStatus.ok {return DpResult.{status=status};}tiles:=dp_tiles(batch);
@@ -55,12 +55,12 @@ dp_project :: (m:DeMatrix,batch:int,x:[]f32,out:[]f32,quant:[]f64,stage:[]f32,fl
     for i:0..<n {if flags[i]!=0 {return DpResult.{status=ifx flags[i]==1 then DsStatus.number else DsStatus.arithmetic};}}
     for i:0..<n {out[i]=stage[i];}return DpResult.{written=n,coefficients=m.rows*m.columns*tiles,products=batch*m.rows*m.columns};
 }
-dp_plan :: (e:DeExpert,batch:int)->DpPlan #export_c {
+dp_plan :: (e:DeExpert,batch:int)->DpPlan #export_c #effects(all) {
     p:=de_plan(e);if p.status!=DsStatus.ok {return DpPlan.{status=p.status};}if !dp_batch(batch) {return DpPlan.{status=DsStatus.shape};}
     h:=batch*p.hidden;d:=batch*p.width;m:=batch*p.wide;return DpPlan.{width=p.width,hidden=p.hidden,batch=batch,floats=3*h+d+m,wide=m,flags=m,begin=[6]int.[0,h,2*h,3*h,3*h+d,3*h+d+m]};
 }
 // book:begin expert
-dp_expert :: (e:DeExpert,batch:int,x:[]f32,routes:[]f32,limit:f32,out:[]f32,work:DpWork,overlap:bool)->DpResult #export_c {
+dp_expert :: (e:DeExpert,batch:int,x:[]f32,routes:[]f32,limit:f32,out:[]f32,work:DpWork,overlap:bool)->DpResult #export_c #effects(all) {
     p:=dp_plan(e,batch);if p.status!=DsStatus.ok {return DpResult.{status=p.status};}n:=batch*p.width;
     if x.count!=n || routes.count!=batch || out.count<n || work.floats.count<p.floats || work.wide.count<p.wide || work.flags.count<p.flags {return DpResult.{status=DsStatus.capacity};}if overlap {return DpResult.{status=DsStatus.alias};}
     if !de_control(limit) {return DpResult.{status=DsStatus.number};}for route:routes {if !de_control(route) {return DpResult.{status=DsStatus.number};}}

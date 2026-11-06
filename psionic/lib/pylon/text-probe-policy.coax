@@ -35,16 +35,16 @@ P90_PROBE_IDENT :: "gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bb
     n=json_raw(bounded[..],0,"[");for i:0..<125 {if i>0 {n=json_raw(bounded[..],n,",");}n=json_raw(bounded[..],n,"[]");}n=json_raw(bounded[..],n,",[\"status\"]]");
     #assert !p90_feedback_error(cast(string)bounded[0..<n]);
 }
-p90_probe_config :: (provider:string,identity:string,admitted:string,prompt:string,expected:string,timeout:int)->bool {
+p90_probe_config :: (provider:string,identity:string,admitted:string,prompt:string,expected:string,timeout:int)->bool #effects(all) {
     return pt_hex64(provider) && pb_identity(admitted) && identity==admitted && prompt.count>=1 && prompt.count<=1024 && expected.count>=1 && expected.count<=64 && timeout>=1000 && timeout<=60000;
 }
-p90_probe_tags :: (provider:string,prompt:string,now:int,out:[]u8)->int {
+p90_probe_tags :: (provider:string,prompt:string,now:int,out:[]u8)->int #effects(all) {
     if !pt_hex64(provider) || prompt.count<1 || prompt.count>1024 || now<0 || now>9007199254740931 {return -1;}
     n:=json_raw(out,0,"[[\"p\",");n=json_write_string(out,n,provider);n=json_raw(out,n,"],[\"i\",");n=json_write_string(out,n,prompt);
     n=json_raw(out,n,",\"text\"],[\"param\",\"model\",\"gpt-oss-20b\"],[\"param\",\"max_tokens\",\"64\"],[\"param\",\"temperature\",\"0\"],[\"output\",\"text/plain\"],[\"bid\",\"0\"],[\"expiration\",");
     time:[32]u8;size:=json_write_int(time[..],0,now+60);n=json_write_string(out,n,cast(string)time[0..<size]);return json_raw(out,n,"]]");
 }
-p90_feedback_error :: (tags:string)->bool {
+p90_feedback_error :: (tags:string)->bool #effects(all) {
     nodes:[128]RsNode;arena:[4096]u8;tree:=rs_json(tags,nodes[..],arena[..]);if !tree.ok {return false;}
     if nodes[0].kind!=JSON_ARRAY {return false;}
     i:=1;found:bool;error:bool;

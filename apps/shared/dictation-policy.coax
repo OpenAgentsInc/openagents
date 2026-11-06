@@ -190,30 +190,30 @@ DctGate :: struct {enabled:bool;active:bool;ready:bool;phase:int;outcome:int;fau
  g:=DctGate.{enabled=true,active=true,ready=true,phase=5,ticket=3};a:=dgp_result(g,3,true,0);#assert a.phase==1 && a.outcome==2 && a.fault==0 && !dgp_delivery(a);
  a=dgp_result(g,3,true,1);#assert a.outcome==5 && dgp_delivery(a);a=dgp_result(g,3,false,0);#assert a.outcome==4 && a.fault==4;
 }
-dgp_capture :: (g:DctGate)->bool {return g.enabled && g.active && g.ready;}
-dgp_idle :: (g:DctGate)->int {return ifx g.enabled && g.active then DCT_IDLE else DCT_OFF;}
-dgp_cancel :: (g0:DctGate)->DctGate {g:=g0;g.phase=dgp_idle(g);g.outcome=DCT_CANCEL;g.fault=0;return g;}
-dgp_enable :: (g0:DctGate,on:bool)->DctGate {g:=g0;if g.enabled==on {return g;}g.enabled=on;g=dgp_cancel(g);if on {g.outcome=0;}return g;}
-dgp_active :: (g0:DctGate,on:bool)->DctGate {g:=g0;if g.active==on {return g;}g.active=on;g=dgp_cancel(g);if on {g.outcome=0;}return g;}
-dgp_ready :: (g0:DctGate,on:bool)->DctGate {g:=g0;if g.ready==on {return g;}g.ready=on;if on {g.pending=0;g.fault=0;g.outcome=0;}else {g=dgp_cancel(g);}return g;}
-dgp_begin :: (g0:DctGate,now:int)->DctGate {g:=g0;if !dgp_capture(g) || g.phase!=DCT_IDLE || now<0 || now>1000000000000 || g.ticket>=9223372036854775807 {return g;}g.ticket+=1;g.phase=DCT_HELD;g.pressed=now;g.until=now+59550;g.outcome=0;g.fault=0;return g;}
-dgp_fault :: (g0:DctGate,reason:int)->DctGate {g:=dgp_cancel(g0);g.outcome=DCT_ERROR;g.fault=ifx reason>=1 && reason<=5 then reason else 3;g.pending=0;if g.fault!=4 {g.ready=false;}return g;}
-dgp_preparing :: (g0:DctGate,reason:int)->DctGate {g:=dgp_cancel(g0);g.ready=false;g.outcome=0;g.pending=ifx reason>=1 && reason<=3 then reason else 0;return g;}
-dgp_release :: (g0:DctGate,now:int)->DctGate {g:=g0;if g.phase!=DCT_HELD {return g;}if now<g.pressed || now>1000000000000 {return dgp_fault(g,3);}if now-g.pressed<300 {g=dgp_cancel(g);g.outcome=DCT_TAP;return g;}g.phase=DCT_TAIL;d:=now+200-g.until;g.until+=d&(d>>63);return g;}
-dgp_due :: (g:DctGate,now:int,audio_end:int)->bool {return (g.phase==DCT_HELD || g.phase==DCT_TAIL) && now>=g.until && audio_end>=g.until*16;}
-dgp_stalled :: (g:DctGate,now:int)->bool {return (g.phase==DCT_HELD || g.phase==DCT_TAIL) && now>g.until+1000;}
-dgp_speech :: (samples:int,speech:int,power:f64)->bool {return samples>=320 && samples<=DCT_MAX && speech>=2560 && power>10737.41824;}
-dgp_finish :: (g0:DctGate,samples:int,speech:int,power:f64)->DctGate {g:=g0;if g.phase!=DCT_HELD && g.phase!=DCT_TAIL {return g;}if !dgp_speech(samples,speech,power) {g.phase=dgp_idle(g);g.outcome=DCT_SILENCE;return g;}g.outcome=ifx g.phase==DCT_HELD then DCT_LIMIT else DCT_NONE;g.phase=DCT_CLIP;return g;}
-dgp_decode :: (g0:DctGate,ticket:u64)->DctGate {g:=g0;if g.phase==DCT_CLIP && g.ticket==ticket && dgp_capture(g) {g.phase=DCT_WORK;}return g;}
-dgp_result_ok :: (g:DctGate,ticket:u64,ok:bool)->bool {return g.phase==DCT_WORK && g.ticket==ticket && dgp_capture(g) && ok;}
-dgp_result :: (g0:DctGate,ticket:u64,ok:bool,bytes:int)->DctGate {g:=g0;if g.phase!=DCT_WORK || g.ticket!=ticket {return g;}g.phase=dgp_idle(g);g.outcome=ifx !ok then DCT_ERROR else ifx bytes>0 then DCT_SUCCESS else DCT_SILENCE;g.fault=ifx ok then 0 else 4;return g;}
+dgp_capture :: (g:DctGate)->bool #effects(all) {return g.enabled && g.active && g.ready;}
+dgp_idle :: (g:DctGate)->int #effects(all) {return ifx g.enabled && g.active then DCT_IDLE else DCT_OFF;}
+dgp_cancel :: (g0:DctGate)->DctGate #effects(all) {g:=g0;g.phase=dgp_idle(g);g.outcome=DCT_CANCEL;g.fault=0;return g;}
+dgp_enable :: (g0:DctGate,on:bool)->DctGate #effects(all) {g:=g0;if g.enabled==on {return g;}g.enabled=on;g=dgp_cancel(g);if on {g.outcome=0;}return g;}
+dgp_active :: (g0:DctGate,on:bool)->DctGate #effects(all) {g:=g0;if g.active==on {return g;}g.active=on;g=dgp_cancel(g);if on {g.outcome=0;}return g;}
+dgp_ready :: (g0:DctGate,on:bool)->DctGate #effects(all) {g:=g0;if g.ready==on {return g;}g.ready=on;if on {g.pending=0;g.fault=0;g.outcome=0;}else {g=dgp_cancel(g);}return g;}
+dgp_begin :: (g0:DctGate,now:int)->DctGate #effects(all) {g:=g0;if !dgp_capture(g) || g.phase!=DCT_IDLE || now<0 || now>1000000000000 || g.ticket>=9223372036854775807 {return g;}g.ticket+=1;g.phase=DCT_HELD;g.pressed=now;g.until=now+59550;g.outcome=0;g.fault=0;return g;}
+dgp_fault :: (g0:DctGate,reason:int)->DctGate #effects(all) {g:=dgp_cancel(g0);g.outcome=DCT_ERROR;g.fault=ifx reason>=1 && reason<=5 then reason else 3;g.pending=0;if g.fault!=4 {g.ready=false;}return g;}
+dgp_preparing :: (g0:DctGate,reason:int)->DctGate #effects(all) {g:=dgp_cancel(g0);g.ready=false;g.outcome=0;g.pending=ifx reason>=1 && reason<=3 then reason else 0;return g;}
+dgp_release :: (g0:DctGate,now:int)->DctGate #effects(all) {g:=g0;if g.phase!=DCT_HELD {return g;}if now<g.pressed || now>1000000000000 {return dgp_fault(g,3);}if now-g.pressed<300 {g=dgp_cancel(g);g.outcome=DCT_TAP;return g;}g.phase=DCT_TAIL;d:=now+200-g.until;g.until+=d&(d>>63);return g;}
+dgp_due :: (g:DctGate,now:int,audio_end:int)->bool #effects(all) {return (g.phase==DCT_HELD || g.phase==DCT_TAIL) && now>=g.until && audio_end>=g.until*16;}
+dgp_stalled :: (g:DctGate,now:int)->bool #effects(all) {return (g.phase==DCT_HELD || g.phase==DCT_TAIL) && now>g.until+1000;}
+dgp_speech :: (samples:int,speech:int,power:f64)->bool #effects(all) {return samples>=320 && samples<=DCT_MAX && speech>=2560 && power>10737.41824;}
+dgp_finish :: (g0:DctGate,samples:int,speech:int,power:f64)->DctGate #effects(all) {g:=g0;if g.phase!=DCT_HELD && g.phase!=DCT_TAIL {return g;}if !dgp_speech(samples,speech,power) {g.phase=dgp_idle(g);g.outcome=DCT_SILENCE;return g;}g.outcome=ifx g.phase==DCT_HELD then DCT_LIMIT else DCT_NONE;g.phase=DCT_CLIP;return g;}
+dgp_decode :: (g0:DctGate,ticket:u64)->DctGate #effects(all) {g:=g0;if g.phase==DCT_CLIP && g.ticket==ticket && dgp_capture(g) {g.phase=DCT_WORK;}return g;}
+dgp_result_ok :: (g:DctGate,ticket:u64,ok:bool)->bool #effects(all) {return g.phase==DCT_WORK && g.ticket==ticket && dgp_capture(g) && ok;}
+dgp_result :: (g0:DctGate,ticket:u64,ok:bool,bytes:int)->DctGate #effects(all) {g:=g0;if g.phase!=DCT_WORK || g.ticket!=ticket {return g;}g.phase=dgp_idle(g);g.outcome=ifx !ok then DCT_ERROR else ifx bytes>0 then DCT_SUCCESS else DCT_SILENCE;g.fault=ifx ok then 0 else 4;return g;}
 // A level from a sum of squared 16-bit samples: four steps for each doubling
 // (about 1.5 dB), 0 for digital silence.
-dgp_level :: (energy:int)->u8 {b:=0;v:=energy;while v>0 {b+=1;v=v>>1;}return cast(u8)(4*b+(((energy<<3)>>b)&3));}
+dgp_level :: (energy:int)->u8 #effects(all) {b:=0;v:=energy;while v>0 {b+=1;v=v>>1;}return cast(u8)(4*b+(((energy<<3)>>b)&3));}
 // Each 20 ms frame's level for the clip's first n samples (the last frame may
 // be partial): the energy of the frame and the DCT_SPREAD frames either side.
 // The number of frames, or -1 when out cannot hold them.
-dgp_levels :: (clip:[]f32,n:int,out:[]u8)->int {
+dgp_levels :: (clip:[]f32,n:int,out:[]u8)->int #effects(all) {
  if n<0 || n>clip.count || n>DCT_MAX {return -1;}frames:=(n+319)/320;if frames>out.count {return -1;}
  e:[DCT_FRAMES+2*DCT_SPREAD]int;for i:0..<n {v:=cast(int)(clip[i]*32768);e[i/320+DCT_SPREAD]+=v*v;}
  for f:0..<frames {sum:=0;for j:f..<f+2*DCT_SPREAD+1 {sum+=e[j];}out[f]=dgp_level(sum);}
@@ -222,7 +222,7 @@ dgp_levels :: (clip:[]f32,n:int,out:[]u8)->int {
 // Where call `index` (0-based), starting at sample `start`, ends: the clip's
 // end when the rest fits, else the quietest boundary before this call's limit
 // that leaves the later calls enough room.
-dgp_cut :: (total:int,start:int,index:int,levels:[]u8)->int {
+dgp_cut :: (total:int,start:int,index:int,levels:[]u8)->int #effects(all) {
  lead:=ifx index>0 then DCT_PAD else 0;if total-start<=DCT_SEGMENT-lead {return total;}
  hi:=start+DCT_SEGMENT-lead-DCT_PAD;lo:=(hi/320-DCT_WINDOW)*320;
  // No earlier than the later calls can cover from: lo becomes the larger of the two.
@@ -231,13 +231,13 @@ dgp_cut :: (total:int,start:int,index:int,levels:[]u8)->int {
 }
 // The clip's samples in the call that starts at `offset`: 0 when no call starts
 // there. A clip longer than one call needs a level for every started frame.
-dgp_segment :: (total:int,offset:int,levels:[]u8)->int {
+dgp_segment :: (total:int,offset:int,levels:[]u8)->int #effects(all) {
  if total<320 || total>DCT_MAX || (total>DCT_SEGMENT && levels.count*320<total) {return 0;}
  start:=0;index:=0;while start<total {end:=dgp_cut(total,start,index,levels);if start==offset {return end-start;}start=end;index+=1;}
  return 0;
 }
 // The silent samples before and after the call that starts at `offset`.
-dgp_lead :: (total:int,offset:int,levels:[]u8)->int {return ifx offset!=0 && dgp_segment(total,offset,levels)!=0 then DCT_PAD else 0;}
-dgp_trail :: (total:int,offset:int,levels:[]u8)->int {n:=dgp_segment(total,offset,levels);return ifx n!=0 && offset+n<total then DCT_PAD else 0;}
-dgp_text :: (phase:int,current:u64,ticket:u64,have:int,add:int)->int {if phase!=DCT_WORK || current!=ticket || have<0 || add<0 {return -1;}gap:u64=ifx have>0 && add>0 then 1 else 0;total:=cast(u64)have+cast(u64)add+gap;if total>8000 {return -1;}return cast(int)total;}
-dgp_delivery :: (g:DctGate)->bool {return dgp_capture(g) && g.phase==DCT_IDLE && g.outcome==DCT_SUCCESS;}
+dgp_lead :: (total:int,offset:int,levels:[]u8)->int #effects(all) {return ifx offset!=0 && dgp_segment(total,offset,levels)!=0 then DCT_PAD else 0;}
+dgp_trail :: (total:int,offset:int,levels:[]u8)->int #effects(all) {n:=dgp_segment(total,offset,levels);return ifx n!=0 && offset+n<total then DCT_PAD else 0;}
+dgp_text :: (phase:int,current:u64,ticket:u64,have:int,add:int)->int #effects(all) {if phase!=DCT_WORK || current!=ticket || have<0 || add<0 {return -1;}gap:u64=ifx have>0 && add>0 then 1 else 0;total:=cast(u64)have+cast(u64)add+gap;if total>8000 {return -1;}return cast(int)total;}
+dgp_delivery :: (g:DctGate)->bool #effects(all) {return dgp_capture(g) && g.phase==DCT_IDLE && g.outcome==DCT_SUCCESS;}

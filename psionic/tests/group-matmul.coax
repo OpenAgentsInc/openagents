@@ -9,7 +9,7 @@ GM_THREADS :: 128;
 // Tile `item` of c (m by n, row-major) = a (m by k) times b (k by n): 32 rows
 // by 32 columns, k in steps of 32. Thread t owns row t/4, columns
 // 8*(t%4) .. +7 of the tile, accumulated in its own registers.
-gm_matmul :: (item:int,m:int,n:int,k:int,a:[]f32,b:[]f32,c:[]f32) #export_c {
+gm_matmul :: (item:int,m:int,n:int,k:int,a:[]f32,b:[]f32,c:[]f32) #export_c #effects(all) {
     tiles:=(n+31)/32;r0:=item/tiles*32;c0:=item%tiles*32;
     ta:[1024]f32;tb:[1024]f32;acc:[1024]f32;
     for s:0..<(k+31)/32 {
@@ -38,7 +38,7 @@ gm_matmul :: (item:int,m:int,n:int,k:int,a:[]f32,b:[]f32,c:[]f32) #export_c {
 }
 // Shared code reads threadgroup memory after a phase: each item's 256 sums of
 // x (in a thread's own strided slots), then the group's total, broadcast.
-gm_total :: (item:int,count:int,x:[]f32,out:[]f32) #export_c {
+gm_total :: (item:int,count:int,x:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;
     for thread:0..<GM_THREADS {
         for i:0..<2 {

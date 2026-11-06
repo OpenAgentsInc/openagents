@@ -39,7 +39,7 @@ beta1 0.5, beta2 0.75, eps 0.5 and g = 2, one step from 1 gives 0.75 - 0.4 =
 // One element at step t (1-based): decoupled decay of the incoming value,
 // then the moments, then the bias-corrected step with eps outside the root.
 // ok is false when a moment is not representable; the step is then refused.
-aw_cell :: (g:AwGroup,t:int,p:f64,grad:f64,m:f64,v:f64)->AwCell {
+aw_cell :: (g:AwGroup,t:int,p:f64,grad:f64,m:f64,v:f64)->AwCell #effects(all) {
     decayed:=p*(1-g.lr*g.decay);
     m2:=g.beta1*m+(1-g.beta1)*grad;
     v2:=g.beta2*v+(1-g.beta2)*grad*grad;
@@ -79,7 +79,7 @@ step counter are unchanged.
 
 <!-- source: psionic/lib/optim/adamw.coax step -->
 ```jai
-aw_step :: (groups:[]AwGroup,policy:AwPolicy,state:AwState,params:[]f64,grads:[]f64,m:[]f64,v:[]f64,compute:[]f32,overlap:bool)->AwResult #export_c {
+aw_step :: (groups:[]AwGroup,policy:AwPolicy,state:AwState,params:[]f64,grads:[]f64,m:[]f64,v:[]f64,compute:[]f32,overlap:bool)->AwResult #export_c #effects(all) {
     if overlap {return AwResult.{status=AwStatus.alias,state=state};}
     n:=params.count;wide:=policy.compute==AwCompute.binary64;
     if !aw_parameters(n) || grads.count!=n || (wide && compute.count!=0) || (!wide && compute.count!=n) {return AwResult.{status=AwStatus.shape,state=state};}
@@ -210,7 +210,7 @@ left out, since it would update nothing.
 // group lists its tensors in model order and occupies a contiguous range;
 // places[i] is where tensor i starts. Empty groups (no value embeddings) are
 // left out: nanochat's update nothing.
-mc_plan :: (tensors:[]McTensor,h:McHyper,groups:[]McGroup,places:[]int)->McPlan #export_c {
+mc_plan :: (tensors:[]McTensor,h:McHyper,groups:[]McGroup,places:[]int)->McPlan #export_c #effects(all) {
     T:=tensors.count;
     if T<1 || T>MC_TENSORS || places.count!=T {return McPlan.{status=McStatus.shape};}
     counts:[9]int;total:=0;
@@ -271,7 +271,7 @@ row or a zero gradient stays finite.
 // X <- a X + (b A + c A A) X with A = X X^T, or X (b A + c A A) with
 // A = X^T X when X is tall, so A is always the smaller square. y is scratch
 // for the next X; a and b hold k x k.
-mc_polar :: (x:[]f64,r:int,c:int,ns:int,y:[]f64,a:[]f64,b:[]f64) {
+mc_polar :: (x:[]f64,r:int,c:int,ns:int,y:[]f64,a:[]f64,b:[]f64) #effects(all) {
     tall:=r>c;k:=mc_min(r,c);
     for step:0..<ns {
         ca:=MC_POLAR[3*step];cb:=MC_POLAR[3*step+1];cc:=MC_POLAR[3*step+2];
@@ -296,7 +296,7 @@ mc_polar :: (x:[]f64,r:int,c:int,ns:int,y:[]f64,a:[]f64,b:[]f64) {
 // One matrix of a Muon group: momentum m and second moment s in, the new
 // values computed in w. Returns false when the step would overflow; writes p,
 // m and s only when write is set.
-mc_matrix :: (g:McGroup,p:[]f64,grad:[]f64,m:[]f64,s:[]f64,w:[]f64,write:bool)->bool {
+mc_matrix :: (g:McGroup,p:[]f64,grad:[]f64,m:[]f64,s:[]f64,w:[]f64,write:bool)->bool #effects(all) {
     r:=g.rows;c:=g.cols;rc:=r*c;k:=mc_min(r,c);red:=mc_max(r,c);
     oa:=3*rc;ob:=oa+k*k;os:=ob+k*k;ov:=os+red;
     m2:=w[0..<rc];x:=w[rc..<2*rc];y:=w[2*rc..<oa];a:=w[oa..<ob];b:=w[ob..<os];s2:=w[os..<ov];vm:=w[ov..<ov+red];
@@ -360,7 +360,7 @@ is admitted.
 
 <!-- source: psionic/lib/optim/muon.coax step -->
 ```jai
-mc_step :: (groups:[]McGroup,policy:McPolicy,state:McState,params:[]f64,grads:[]f64,m:[]f64,second:[]f64,work:[]f64,overlap:bool)->McResult #export_c {
+mc_step :: (groups:[]McGroup,policy:McPolicy,state:McState,params:[]f64,grads:[]f64,m:[]f64,second:[]f64,work:[]f64,overlap:bool)->McResult #export_c #effects(all) {
     if overlap {return McResult.{status=McStatus.alias,state=state};}
     n:=params.count;
     if !aw_parameters(n) || grads.count!=n {return McResult.{status=McStatus.shape,state=state};}

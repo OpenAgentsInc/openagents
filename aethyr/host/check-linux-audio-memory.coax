@@ -4,20 +4,20 @@
 #load "audio-retention-conformance.coax";
 #load "../render/tests/qualification-files.coax";
 #load "../../coax/lib/sys/args.coax";
-hma_open :: (source:[]u8)->int #foreign;
-hma_allocate :: (frames:int,channels:int)->int #foreign;
-hma_count :: (id:int)->int #foreign;
-hma_total :: ()->int #foreign;
-hma_release :: (id:int) #foreign;
-hma_copy :: (source:[]u8)->int #foreign;
-hma_last :: (id:int)->int #foreign;
-hma_address :: ()->int #foreign;
-hma_insert :: (line:[]u8)->int #foreign;
-hma_bank :: (field:int)->int #foreign;
-hma_owner_drop :: () #foreign;
-hma_keep :: (id:int) #foreign;
-hma_close :: () #foreign;
-tool_main :: ()->int #export_c {
+hma_open :: (source:[]u8)->int #foreign #effects(all);
+hma_allocate :: (frames:int,channels:int)->int #foreign #effects(all);
+hma_count :: (id:int)->int #foreign #effects(all);
+hma_total :: ()->int #foreign #effects(all);
+hma_release :: (id:int) #foreign #effects(all);
+hma_copy :: (source:[]u8)->int #foreign #effects(all);
+hma_last :: (id:int)->int #foreign #effects(all);
+hma_address :: ()->int #foreign #effects(all);
+hma_insert :: (line:[]u8)->int #foreign #effects(all);
+hma_bank :: (field:int)->int #foreign #effects(all);
+hma_owner_drop :: () #foreign #effects(all);
+hma_keep :: (id:int) #foreign #effects(all);
+hma_close :: () #foreign #effects(all);
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: check-linux-audio-memory NEW_OUT REPO");return 2;}
  dir:=args_at(a[..],0);root:=args_at(a[..],1);if !fs_mkdir(dir) {return 1;}
  paths:[2][4096]u8;inputs:[1]RtqInputs;for name:[3]string.["verse/native/audio-host.c","verse/native/audio-host.h","aethyr/host/tests/linux-audio-memory-effects.c"] {if !rtq_input_add(inputs[..],fs_join(root,name,paths[0][..])) {return 1;}}

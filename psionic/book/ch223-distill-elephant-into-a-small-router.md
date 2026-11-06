@@ -80,14 +80,14 @@ value o exactly, so two passes give all 16.
 // pass: with head row o set to unit vector o, logit o is pooled value o
 // exactly. Two passes give all 16. The caller's weights are not changed.
 // Pooled values first to first + 8 (those below 16), through the 9 head rows.
-ds_read :: (v:[]f64,k:FeWork,ids:[]int,first:int,out:[]f64)->FeStatus {
+ds_read :: (v:[]f64,k:FeWork,ids:[]int,first:int,out:[]f64)->FeStatus #effects(all) {
     for o:0..<FE_LOGITS {for c:0..<DS_FEATURES {v[FE_HEAD_AT+o*DS_FEATURES+c]=ifx c==first+o then 1 else 0;}}
     z:[9]f64;st:=fe_forward(FeEngine.reference,v,FeQ8.{},k,ids,z[..]);
     if st!=FeStatus.ok {return st;}
     for o:0..<FE_LOGITS {if first+o<DS_FEATURES {out[first+o]=z[o];}}
     return FeStatus.ok;
 }
-ds_features :: (w:[]f64,k:FeWork,ids:[]int,out:[]f64)->FeStatus #export_c {
+ds_features :: (w:[]f64,k:FeWork,ids:[]int,out:[]f64)->FeStatus #export_c #effects(all) {
     if w.count!=FE_WEIGHTS || out.count!=DS_FEATURES {return FeStatus.storage;}
     v:[8848]f64;for i:0..<FE_WEIGHTS {v[i]=w[i];}
     st:=ds_read(v[..],k,ids,0,out);if st!=FeStatus.ok {return st;}
@@ -95,7 +95,7 @@ ds_features :: (w:[]f64,k:FeWork,ids:[]int,out:[]f64)->FeStatus #export_c {
 }
 // Writes a trained head into chapter 222's weights: the student is the same
 // model shape with a new identity.
-ds_install :: (w:[]f64,head:[]f64)->DsStatus #export_c {
+ds_install :: (w:[]f64,head:[]f64)->DsStatus #export_c #effects(all) {
     if w.count!=FE_WEIGHTS || head.count!=DS_PARAMS {return DsStatus.shape;}
     for i:0..<DS_PARAMS {w[DS_HEAD_AT+i]=head[i];}
     return DsStatus.ok;
@@ -116,13 +116,13 @@ gradient's size comparable across temperatures.
 ```jai
 // The student's logits: head row c times the features, in chapter 222's order.
 // Not a number when the slices are not 48 weights and 16 features.
-ds_logits :: (w:[]f64,x:[]f64)->[3]f64 {
+ds_logits :: (w:[]f64,x:[]f64)->[3]f64 #effects(all) {
     s:[3]f64;
     if w.count!=DS_PARAMS || x.count!=DS_FEATURES {for c:0..<DS_CLASSES {s[c]=0.0/0.0;}return s;}
     for c:0..<DS_CLASSES {acc:=0.0;for k:0..<DS_FEATURES {acc+=w[c*DS_FEATURES+k]*x[k];}s[c]=acc;}
     return s;
 }
-ds_log_soft :: (a:[3]f64)->[3]f64 {
+ds_log_soft :: (a:[3]f64)->[3]f64 #effects(all) {
     top:=qz_larger(qz_larger(a[0],a[1]),a[2]);sum:=0.0;
     for c:0..<3 {sum+=exp(a[c]-top);}
     l:[3]f64;for c:0..<3 {l[c]=a[c]-top-log(sum);}
@@ -132,7 +132,7 @@ ds_log_soft :: (a:[3]f64)->[3]f64 {
 // (log p / T, renormalized) and q_T the student at T (logits over 1/2 x T).
 // Adds the gradient, (T / (1/2)) (q_T - p_T)_c times feature k, into g. A
 // slice of the wrong length gives not a number and adds nothing.
-ds_loss :: (w:[]f64,x:[]f64,p:[]f64,t:f64,g:[]f64)->f64 {
+ds_loss :: (w:[]f64,x:[]f64,p:[]f64,t:f64,g:[]f64)->f64 #effects(all) {
     if w.count!=DS_PARAMS || x.count!=DS_FEATURES || p.count!=DS_CLASSES || g.count!=DS_PARAMS {return 0.0/0.0;}
     a:[3]f64;b:[3]f64;s:=ds_logits(w,x);
     for c:0..<DS_CLASSES {a[c]=s[c]/(DS_HEAD_TEMP*t);b[c]=log(p[c])/t;}
@@ -145,7 +145,7 @@ ds_loss :: (w:[]f64,x:[]f64,p:[]f64,t:f64,g:[]f64)->f64 {
     return t*t*kl;
 }
 // The mean loss and gradient over requests rows.
-ds_batch :: (w:[]f64,d:DsData,rows:[]int,t:f64,g:[]f64)->f64 {
+ds_batch :: (w:[]f64,d:DsData,rows:[]int,t:f64,g:[]f64)->f64 #effects(all) {
     for i:0..<DS_PARAMS {g[i]=0;}
     loss:=0.0;
     for r:rows {loss+=ds_loss(w,d.feats[r*DS_FEATURES..<(r+1)*DS_FEATURES],d.teacher[r*DS_CLASSES..<(r+1)*DS_CLASSES],t,g);}
@@ -194,7 +194,7 @@ the cut is 69/96 − 0.1 = 0.61875.
 // Request r of family f = r / 8: the family's 8 token IDs (SplitMix64 seed
 // 2233, below 15, so chapter 120's split can read them), then 8 of its own
 // (seed 2234, below 64).
-ds_request :: (r:int,ids:[]int) {
+ds_request :: (r:int,ids:[]int) #effects(all) {
     f:=r/DS_PER;
     for i:0..<DS_TOKENS {
         ids[i]=ifx i<DS_TEMPLATE then cast(int)(cr_bits(2233,cast(u64)(f*DS_TEMPLATE+i))%15)
@@ -203,7 +203,7 @@ ds_request :: (r:int,ids:[]int) {
 }
 // One split row per family: families 2k and 2k+1 share task k, family f has
 // its own session and time f, and its tokens are its 8 shared IDs.
-ds_families :: (rows:[]SpRow,tokens:[]u8) {
+ds_families :: (rows:[]SpRow,tokens:[]u8) #effects(all) {
     ids:[16]int;
     for f:0..<DS_FAMILIES {
         ds_request(f*DS_PER,ids[..]);
@@ -212,13 +212,13 @@ ds_families :: (rows:[]SpRow,tokens:[]u8) {
     }
 }
 // An audit that ran and counted nothing across splits.
-ds_clean :: (a:SpAudit)->bool {
+ds_clean :: (a:SpAudit)->bool #effects(all) {
     return a.status==SpStatus.ok && a.exact==0 && a.task==0 && a.session==0 && a.derived==0 && a.near==0 && a.post==0;
 }
 // Chapter 120 assigns each group of families one split; the audit must find
 // no shared content, task, session, link or near duplicate across splits.
 // Every request takes its family's split.
-ds_split :: (split:[]PkSplit)->DsStatus #export_c {
+ds_split :: (split:[]PkSplit)->DsStatus #export_c #effects(all) {
     if split.count!=DS_REQUESTS {return DsStatus.shape;}
     rows:[64]SpRow;tokens:[512]u8;fam:[64]PkSplit;cells:[1]SpCell;
     ds_families(rows[..],tokens[..]);
@@ -239,7 +239,7 @@ training.
 ```jai
 // Admits the teacher and the split from provenance, then computes the
 // features of requests first..<end (all 512 in the example, a few in checks).
-ds_data :: (w:[]f64,k:FeWork,d:DsData,first:int,end:int)->DsStatus #export_c {
+ds_data :: (w:[]f64,k:FeWork,d:DsData,first:int,end:int)->DsStatus #export_c #effects(all) {
     if d.feats.count!=DS_REQUESTS*DS_FEATURES || d.split.count!=DS_REQUESTS || first<0 || end<=first || end>DS_REQUESTS {return DsStatus.shape;}
     s:=ds_teacher(d.teacher,d.labels,DS_TEACHER_ID);if s!=DsStatus.ok {return s;}
     s=ds_split(d.split);if s!=DsStatus.ok {return s;}
@@ -252,7 +252,7 @@ ds_data :: (w:[]f64,k:FeWork,d:DsData,first:int,end:int)->DsStatus #export_c {
 }
 // What training, fitting and the card read: shapes, the teacher, and a split
 // equal to the one provenance gives, so a moved request is a leak.
-ds_admit :: (d:DsData)->DsStatus {
+ds_admit :: (d:DsData)->DsStatus #effects(all) {
     if d.feats.count!=DS_REQUESTS*DS_FEATURES || d.split.count!=DS_REQUESTS {return DsStatus.shape;}
     s:=ds_teacher(d.teacher,d.labels,fe_model_id(d.teacher));if s!=DsStatus.ok {return s;}
     want:[512]PkSplit;s=ds_split(want[..]);if s!=DsStatus.ok {return s;}
@@ -277,13 +277,13 @@ evaluations without improvement.
 // 3 evaluations without improvement.
 // ds_train sets the examples to the training split's size and evaluates
 // once an epoch.
-ds_config :: ()->TrConfig #export_c {
+ds_config :: ()->TrConfig #export_c #effects(all) {
     return TrConfig.{optimizer=TrOptimizer.adamw,rate=0.05,beta1=0.9,beta2=0.999,eps=0.00000001,bound=100,
         batch=32,epochs=40,shuffle=true,seed=223,patience=3};
 }
-ds_rows :: (d:DsData,want:PkSplit,out:[]int)->int {n:=0;for r:0..<DS_REQUESTS {if d.split[r]==want {out[n]=r;n+=1;}}return n;}
+ds_rows :: (d:DsData,want:PkSplit,out:[]int)->int #effects(all) {n:=0;for r:0..<DS_REQUESTS {if d.split[r]==want {out[n]=r;n+=1;}}return n;}
 // Trains head w (48 values, zero to start) on the training split.
-ds_train :: (d:DsData,t:f64,base:TrConfig,w:[]f64)->DsRun #export_c {
+ds_train :: (d:DsData,t:f64,base:TrConfig,w:[]f64)->DsRun #export_c #effects(all) {
     if !(t>0 && t<=16) {return DsRun.{status=DsStatus.temperature};}
     if w.count!=DS_PARAMS {return DsRun.{status=DsStatus.shape};}
     s:=ds_admit(d);if s!=DsStatus.ok {return DsRun.{status=s};}
@@ -328,13 +328,13 @@ the development split against the outcome labels: the first of 1/4, 3/8, ...,
 ```jai
 // The calibrated student: softmax of the logits over 1/2 x tau, into three
 // slots (anything else is left as it was).
-ds_probs :: (w:[]f64,x:[]f64,tau:f64,out:[]f64) {
+ds_probs :: (w:[]f64,x:[]f64,tau:f64,out:[]f64) #effects(all) {
     s:=ds_logits(w,x);a:[3]f64;for c:0..<DS_CLASSES {a[c]=s[c]/(DS_HEAD_TEMP*tau);}
     if out.count!=DS_CLASSES {return;}
     l:=ds_log_soft(a);for c:0..<DS_CLASSES {out[c]=exp(l[c]);}
 }
 // Mean log loss against the outcome labels on the development split.
-ds_nll :: (d:DsData,w:[]f64,tau:f64)->f64 {
+ds_nll :: (d:DsData,w:[]f64,tau:f64)->f64 #effects(all) {
     dev:[512]int;n:=ds_rows(d,PkSplit.validation,dev[..]);loss:=0.0;
     for r:dev[0..<n] {
         s:=ds_logits(w,d.feats[r*DS_FEATURES..<(r+1)*DS_FEATURES]);a:[3]f64;
@@ -345,7 +345,7 @@ ds_nll :: (d:DsData,w:[]f64,tau:f64)->f64 {
 }
 // The temperature: the first of 1/4, 3/8, ..., 4 with the least development
 // log loss. 0 when the data are refused.
-ds_fit :: (d:DsData,w:[]f64)->f64 #export_c {
+ds_fit :: (d:DsData,w:[]f64)->f64 #export_c #effects(all) {
     if w.count!=DS_PARAMS || ds_admit(d)!=DsStatus.ok {return 0;}
     best:=0.25;least:=ds_nll(d,w,best);
     for k:3..<33 {tau:=f64(k)/8;l:=ds_nll(d,w,tau);if l<least {least=l;best=tau;}}
@@ -364,11 +364,11 @@ error (15 bins, top label) and the Brier score with chapter 16's
 ```jai
 // The router answers when its calibrated confidence is at least the
 // teacher's development accuracy less one call's cost over one error's.
-ds_cut :: (right:int,n:int)->f64 {return f64(right)/f64(n)-DS_CALL/DS_WRONG;}
-ds_answers :: (confidence:f64,cut:f64)->bool {return confidence>=cut;}
+ds_cut :: (right:int,n:int)->f64 #effects(all) {return f64(right)/f64(n)-DS_CALL/DS_WRONG;}
+ds_answers :: (confidence:f64,cut:f64)->bool #effects(all) {return confidence>=cut;}
 // The test split's card. probs and items are scratch for chapter 16's
 // measure: the student's calibrated probabilities, then the teacher's.
-ds_card :: (d:DsData,w:[]f64,tau:f64,probs:[]f64,items:[]PqItem)->DsCard #export_c {
+ds_card :: (d:DsData,w:[]f64,tau:f64,probs:[]f64,items:[]PqItem)->DsCard #export_c #effects(all) {
     if !(tau>0 && tau<=16) {return DsCard.{status=DsStatus.temperature};}
     if w.count!=DS_PARAMS || probs.count!=DS_REQUESTS*DS_CLASSES || items.count!=DS_REQUESTS {return DsCard.{status=DsStatus.shape};}
     s:=ds_admit(d);if s!=DsStatus.ok {return DsCard.{status=s};}
@@ -420,7 +420,7 @@ DS_PRECISION_DROP :: 0.05; // right on its answers within 5 points of the teache
 // The frozen rule, in order: a card, enough answers, agreement with the
 // teacher on them, calibration on every test request, and right answers
 // within 5 points of what the teacher would have been on the same requests.
-ds_gate :: (c:DsCard)->DsVerdict #export_c {
+ds_gate :: (c:DsCard)->DsVerdict #export_c #effects(all) {
     if c.status!=DsStatus.ok || c.n<1 {return DsVerdict.{reason=DsReason.card};}
     if f64(c.answered)<DS_ANSWERED_MIN*f64(c.n) {return DsVerdict.{reason=DsReason.answered};}
     if f64(c.answered_agree)<DS_AGREE_MIN*f64(c.answered) {return DsVerdict.{reason=DsReason.agreement};}
@@ -429,7 +429,7 @@ ds_gate :: (c:DsCard)->DsVerdict #export_c {
     return DsVerdict.{promoted=true};
 }
 // Escalated requests cost a call and are right when the teacher is.
-ds_cost :: (c:DsCard)->DsCost {
+ds_cost :: (c:DsCard)->DsCost #effects(all) {
     k:=DsCost.{calls=c.n-c.answered,teacher_calls=c.n,teacher_wrong=c.n-c.teacher_right};
     k.wrong=(c.answered-c.answered_right)+(k.calls-(c.teacher_right-c.teacher_answered_right));
     k.cost=DS_CALL*f64(k.calls)+DS_WRONG*f64(k.wrong);

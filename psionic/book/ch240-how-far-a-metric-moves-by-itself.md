@@ -59,16 +59,16 @@ The suite is synthetic, so we know what is true:
 ```jai
 // SplitMix64 at a counter, as in chapter 215. Item i belongs to task i/10;
 // tasks from 32 on are 5 logits easier, so the baseline saturates there.
-ns_task :: (item:int)->int {return item/NS_PER_TASK;}
-ns_part :: (item:int)->int {return ifx ns_task(item)>=NS_SATURATED then 1 else 0;}
-ns_difficulty :: (seed:u64,item:int)->f64 {
+ns_task :: (item:int)->int #effects(all) {return item/NS_PER_TASK;}
+ns_part :: (item:int)->int #effects(all) {return ifx ns_task(item)>=NS_SATURATED then 1 else 0;}
+ns_difficulty :: (seed:u64,item:int)->f64 #effects(all) {
     t:=ns_task(item);d:=3*tb_uniform(seed,cast(u64)t)-1.5+tb_uniform(seed,cast(u64)(1000+item))-0.5;
     if t>=NS_SATURATED {d-=5;}
     return d;
 }
 // Run r: a shift shared by every task, an effect for each task, and a draw
 // for each item. Item i is right with probability σ(skill − difficulty + effects).
-ns_run :: (seed:u64,run:int,skill:f64,out:[]f64)->NsStatus #export_c {
+ns_run :: (seed:u64,run:int,skill:f64,out:[]f64)->NsStatus #export_c #effects(all) {
     if out.count!=NS_ITEMS || run<0 || run>=NS_RUNS {return NsStatus.shape;}
     if !tb_in(skill,-8,8) {return NsStatus.number;}
     base:=cast(u64)(100000*(run+1));shift:=NS_SHIFT*(2*tb_uniform(seed,base+999)-1);
@@ -97,7 +97,7 @@ using 4 seeds too, so a block is the unit that varies.
 // Runs of one configuration in blocks of equal size: each block's mean over
 // the partition, their standard deviation, and the floor, the difference
 // two blocks stay under 95 times in 100 if block means are normal.
-ns_floor :: (scores:[]f64,part:[]int,which:int,runs:int,block:int)->NsFloor #export_c {
+ns_floor :: (scores:[]f64,part:[]int,which:int,runs:int,block:int)->NsFloor #export_c #effects(all) {
     n:=part.count;picked:=ns_parts_ok(part,which);
     if picked==0 || block<1 || runs%block!=0 || scores.count!=runs*n {return NsFloor.{status=NsStatus.shape};}
     r:=NsFloor.{blocks=runs/block};
@@ -141,7 +141,7 @@ scores together.
 ```jai
 // The paired gain of b over a on a partition, and its spread when whole tasks
 // are drawn again with replacement; below counts replicates at or under floor.
-ns_boot :: (a:[]f64,b:[]f64,task:[]int,part:[]int,which:int,noise:f64,seed:u64,replicates:int)->NsBoot #export_c {
+ns_boot :: (a:[]f64,b:[]f64,task:[]int,part:[]int,which:int,noise:f64,seed:u64,replicates:int)->NsBoot #export_c #effects(all) {
     n:=part.count;
     if ns_parts_ok(part,which)==0 || a.count!=n || b.count!=n || task.count!=n {return NsBoot.{status=NsStatus.shape};}
     if replicates<2 || replicates>NS_REPLICATES_MAX {return NsBoot.{status=NsStatus.shape};}
@@ -220,7 +220,7 @@ task replicates fall back to it. Turning these numbers into a verdict is
 // A partition is refused when its baseline is within the floor of the
 // ceiling: no gain larger than the floor could fit. With every item at the
 // ceiling the room is exactly 0.
-ns_headroom :: (score:[]f64,part:[]int,which:int,ceiling:f64,noise:f64)->NsRoom #export_c {
+ns_headroom :: (score:[]f64,part:[]int,which:int,ceiling:f64,noise:f64)->NsRoom #export_c #effects(all) {
     r:=NsRoom.{items=ns_parts_ok(part,which)};
     if r.items==0 || score.count!=part.count {return NsRoom.{status=NsStatus.shape};}
     if !tb_in(ceiling,-NS_BIG,NS_BIG) || !tb_in(noise,0,NS_BIG) || !ns_finite(score) {return NsRoom.{status=NsStatus.number};}

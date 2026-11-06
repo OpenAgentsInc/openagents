@@ -35,22 +35,22 @@ HostSocketRetained :: struct {accepted:bool;lease:HostInboxLease;error:int;close
  for i:0..<64 {#assert hsr_offer(s[..],false,0).accepted;}r:=hsr_offer(s[..],false,0);#assert !r.accepted&&r.close==2;
  s[0].input[0].serial=9223372036854775807;r=hsr_offer(s[..],false,0);#assert !r.accepted&&r.error==3&&r.close==2;
 }
-hsr_open :: (capacity:int)->HostSocketRetention #export_c {
+hsr_open :: (capacity:int)->HostSocketRetention #export_c #effects(all) {
  p:=hsq_plan(capacity);if !p.valid {return HostSocketRetention.{};}
  return HostSocketRetention.{valid=true,input=[1]HostInboxQueue.[hiq_open(p.input_bytes)],output=[1]HostInboxQueue.[hiq_open(p.output_bytes)]};
 }
-hsr_offer :: (s:[]HostSocketRetention,output:bool,bytes:int)->HostSocketRetained #export_c {
+hsr_offer :: (s:[]HostSocketRetention,output:bool,bytes:int)->HostSocketRetained #export_c #effects(all) {
  if output {r:=hsq_send(s[0].output[..],bytes);return HostSocketRetained.{accepted=r.accepted,lease=r.lease,error=r.error,close=r.close};}
  r:=hiq_reserve(s[0].input[..],bytes);if r.status==HostInboxStatus.ok {return HostSocketRetained.{accepted=true,lease=r.lease};}
  return HostSocketRetained.{error=3,close=ifx r.status==HostInboxStatus.full||r.status==HostInboxStatus.retired then 2 else 0};
 }
-hsr_release :: (s:[]HostSocketRetention,output:bool,lease:HostInboxLease)->bool #export_c {
+hsr_release :: (s:[]HostSocketRetention,output:bool,lease:HostInboxLease)->bool #export_c #effects(all) {
  return ifx output then hiq_release(s[0].output[..],lease) else hiq_release(s[0].input[..],lease);
 }
-hsr_reset :: (s:[]HostSocketRetention)->bool #export_c {
+hsr_reset :: (s:[]HostSocketRetention)->bool #export_c #effects(all) {
  a:=hiq_reset(s[0].input[..]);b:=hiq_reset(s[0].output[..]);return a&&b;
 }
-hsr_info :: (s:[]HostSocketRetention,output:bool,field:int)->int #export_c {
+hsr_info :: (s:[]HostSocketRetention,output:bool,field:int)->int #export_c #effects(all) {
  q:=ifx output then s[0].output[0] else s[0].input[0];
  if field==0 {return q.count;}if field==1 {return q.bytes;}if field==2 {return q.capacity;}
  if field==3 {return q.limit;}if field==4 {return q.epoch;}return -1;

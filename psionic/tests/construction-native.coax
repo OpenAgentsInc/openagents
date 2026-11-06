@@ -1,6 +1,6 @@
 // Native-only nonfinite values. All assertions remain in Coax.
 #load "../lib/construction-study.coax";
-construction_native_checks :: ()->int #export_c {
+construction_native_checks :: ()->int #export_c #effects(all) {
     s:=CnShape.{inputs=4,outputs=4};p:[56]f64;x:=[4]f64.[64,-64,0,1];
     #assert cn_forward(s,p[..],x[..]).status==CnStatus.ok;
     bad:=[5]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001,0x7ff0000000000001,0xfff8000000000001];

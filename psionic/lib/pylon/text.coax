@@ -15,7 +15,7 @@ P90_CALLER :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc"
 P90_ID :: "b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f";
 P90_TAGS :: "[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"i\",\"Say \\\"PONG\\\".\",\"text\"],[\"param\",\"model\",\"gpt-oss-20b\"],[\"param\",\"max_tokens\",\"32\"],[\"param\",\"temperature\",\"0\"],[\"output\",\"text/plain\"],[\"bid\",\"0\"]]";
 P90_RESPONSE :: "{\"model\":\"gpt-oss-20b\",\"status\":\"completed\",\"output\":[{\"type\":\"reasoning\",\"content\":[{\"type\":\"reasoning_text\",\"text\":\"PRIVATE ANALYSIS\"}]},{\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"PONG\"}]}]}";
-p90_fixture :: ()->P90Envelope {return P90Envelope.{kind=5050,id=P90_ID,caller=P90_CALLER,created=1000,tags=P90_TAGS};}
+p90_fixture :: ()->P90Envelope #effects(all) {return P90Envelope.{kind=5050,id=P90_ID,caller=P90_CALLER,created=1000,tags=P90_TAGS};}
 #test "targeted public text becomes a bounded real Responses request, atomically" {
     ns:[256]RsNode;arena:[8192]u8;stage:[8192]u8;out:[8192]u8;w:=P90Work.{nodes=ns[..],arena=arena[..],stage=stage[..]};
     j:=p90_admit(p90_fixture(),P90_KEY,1000,w,out[..],false);
@@ -172,15 +172,15 @@ p90_fixture :: ()->P90Envelope {return P90Envelope.{kind=5050,id=P90_ID,caller=P
         n=json_raw(raw[..],n,"]");#assert !p90_reply_tags(cast(string)raw[0..<n],"identity","request","caller",w);
     }}
 }
-p90_identity :: (out:[]u8)->string {
+p90_identity :: (out:[]u8)->string #effects(all) {
     n:=json_raw(out,0,"gpt-oss-20b@sha256:");n=json_raw(out,n,G20_ARTIFACTS[2].sha);
     if n==-1 {return "";}return cast(string)out[0..<n];
 }
-p90_fresh :: (created:int,now:int)->bool {
+p90_fresh :: (created:int,now:int)->bool #effects(all) {
     if created<0 || now<0 || created>9007199254740991 || now>9007199254740991 {return false;}
     delta:=created-now;return delta>= -120 && delta<=30;
 }
-p90_structure :: (nodes:[]RsNode)->bool {
+p90_structure :: (nodes:[]RsNode)->bool #effects(all) {
     if nodes.count<1 || nodes[0].kind!=JSON_ARRAY {return false;}
     i:=1;count:=0;
     while i<nodes[0].next {
@@ -190,7 +190,7 @@ p90_structure :: (nodes:[]RsNode)->bool {
     }
     return true;
 }
-p90_tag :: (nodes:[]RsNode,name:string)->P90Tag {
+p90_tag :: (nodes:[]RsNode,name:string)->P90Tag #effects(all) {
     result:P90Tag;i:=1;
     while i<nodes[0].next {
         if nodes[i].next>i+1 && nodes[i+1].text==name {
@@ -204,7 +204,7 @@ p90_tag :: (nodes:[]RsNode,name:string)->P90Tag {
     }
     return result;
 }
-p90_admit :: (e:P90Envelope,worker:string,now:int,w:P90Work,out:[]u8,overlap:bool)->P90Job {
+p90_admit :: (e:P90Envelope,worker:string,now:int,w:P90Work,out:[]u8,overlap:bool)->P90Job #effects(all) {
     bad:=P90Job.{code=P90Code.malformed};
     if e.kind!=5050 || !pt_hex64(e.id) || !pt_hex64(e.caller) || !pt_hex64(worker) {return bad;}
     if overlap {bad.code=P90Code.capacity;return bad;}
@@ -242,7 +242,7 @@ p90_admit :: (e:P90Envelope,worker:string,now:int,w:P90Work,out:[]u8,overlap:boo
     if n==-1 || n>out.count {bad.code=P90Code.capacity;return bad;}
     for k:0..<n {out[k]=w.stage[k];}bad.written=n;bad.code=P90Code.ok;return bad;
 }
-p90_final :: (body:string,w:P90Work,out:[]u8)->int {
+p90_final :: (body:string,w:P90Work,out:[]u8)->int #effects(all) {
     parsed:=rs_json(body,w.nodes,w.arena);if !parsed.ok {return -1;}nodes:=w.nodes[0..<parsed.count];
     // rs_get's named fields exist only on an admitted object; no second
     // object-kind gate is necessary once both required strings are present.
@@ -266,11 +266,11 @@ p90_final :: (body:string,w:P90Work,out:[]u8)->int {
     if n<1 || n>out.count {return -1;}
     for k:0..<n {out[k]=w.stage[k];}return n;
 }
-p90_trim :: (s:string)->string {a:=0;b:=s.count;while a<b {c:=s[a];if c!=' ' && c!='\n' && c!='\r' && c!='\t' {break;}a+=1;}while b>a {c:=s[b-1];if c!=' ' && c!='\n' && c!='\r' && c!='\t' {break;}b-=1;}return s[a..<b];}
-p90_pong :: (text:string)->bool {return p90_trim(text)=="PONG";}
-p90_config :: (model:string,host:string,port:int,key:string,deadline:int)->bool {return model=="gpt-oss-20b" && host=="127.0.0.1" && rs_settings(key,port) && deadline>=1 && deadline<=60000;}
-p90_code :: (c:P90Code)->string {names:=[8]string.["ok","malformed","not_addressed","stale","unsupported","capacity","busy","engine_refused"];return names[cast(int)c];}
-p90_advertises :: (content:string,identity:string,w:P90Work)->bool {
+p90_trim :: (s:string)->string #effects(all) {a:=0;b:=s.count;while a<b {c:=s[a];if c!=' ' && c!='\n' && c!='\r' && c!='\t' {break;}a+=1;}while b>a {c:=s[b-1];if c!=' ' && c!='\n' && c!='\r' && c!='\t' {break;}b-=1;}return s[a..<b];}
+p90_pong :: (text:string)->bool #effects(all) {return p90_trim(text)=="PONG";}
+p90_config :: (model:string,host:string,port:int,key:string,deadline:int)->bool #effects(all) {return model=="gpt-oss-20b" && host=="127.0.0.1" && rs_settings(key,port) && deadline>=1 && deadline<=60000;}
+p90_code :: (c:P90Code)->string #effects(all) {names:=[8]string.["ok","malformed","not_addressed","stale","unsupported","capacity","busy","engine_refused"];return names[cast(int)c];}
+p90_advertises :: (content:string,identity:string,w:P90Work)->bool #effects(all) {
     p:=rs_json(content,w.nodes,w.arena);if !p.ok {return false;}ns:=w.nodes[0..<p.count];services:=rs_get(ns,0,"services");if !rs_kind(ns,services,JSON_ARRAY) {return false;}
     i:=services+1;
     while i<ns[services].next {
@@ -281,7 +281,7 @@ p90_advertises :: (content:string,identity:string,w:P90Work)->bool {
     }
     return false;
 }
-p90_reply_tags :: (tags:string,identity:string,request:string,caller:string,w:P90Work)->bool {
+p90_reply_tags :: (tags:string,identity:string,request:string,caller:string,w:P90Work)->bool #effects(all) {
     parsed:=rs_json(tags,w.nodes,w.arena);if !parsed.ok {return false;}ns:=w.nodes[0..<parsed.count];if !p90_structure(ns) {return false;}
     e:=p90_tag(ns,"e");p:=p90_tag(ns,"p");m:=p90_tag(ns,"model");amount:=p90_tag(ns,"amount");
     return e.count==1 && e.size==2 && e.values[1]==request && p.count==1 && p.size==2 && p.values[1]==caller && m.count==1 && m.size==2 && m.values[1]==identity && amount.count==1 && amount.size==2 && amount.values[1]=="0";

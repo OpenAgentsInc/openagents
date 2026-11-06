@@ -32,10 +32,10 @@ SourceVelocity :: struct {x:f32;z:f32;}
  e:=source_velocity(0,0,0,0,0,4.27,0,0,0,0,1.0/64.0);#assert e.x==0 && e.z==0;
  f:=source_velocity(0,1.5,0,1,1,1.47,5,4,10,2,1.0/64.0);#assert f.z==1.47;
 }
-source_gt :: (a:f32,b:f32)->bool {return a>b;}
-source_lt :: (a:f32,b:f32)->bool {return a<b;}
-source_le :: (a:f32,b:f32)->bool {return a<=b;}
-source_velocity :: (x:f32,z:f32,dx:f32,dz:f32,amount:f32,speed:f32,accel:f32,friction:f32,brake:f32,factor:f32,dt:f32)->SourceVelocity {
+source_gt :: (a:f32,b:f32)->bool #effects(all) {return a>b;}
+source_lt :: (a:f32,b:f32)->bool #effects(all) {return a<b;}
+source_le :: (a:f32,b:f32)->bool #effects(all) {return a<=b;}
+source_velocity :: (x:f32,z:f32,dx:f32,dz:f32,amount:f32,speed:f32,accel:f32,friction:f32,brake:f32,factor:f32,dt:f32)->SourceVelocity #effects(all) {
  v:=SourceVelocity.{x=x,z=z};old:=v;old_size:=sqrt(x*x+z*z);maximum:=speed*amount;ax:=dx*accel*amount;az:=dz*accel*amount;zero:=ax==0 && az==0;over:=source_gt(old_size*old_size,maximum*maximum*1.01);
  if zero || over {if source_gt(old_size,0) {v.x+=(0-friction*factor*v.x-brake*x/old_size)*dt;v.z+=(0-friction*factor*v.z-brake*z/old_size)*dt;
   threshold:=ifx source_gt(brake,0) then 0.01f32 else 0.00000001f32;

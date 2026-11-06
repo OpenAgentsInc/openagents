@@ -128,8 +128,8 @@ FS_FIELDS :: [10]string.["op","item","count","arrangement","size_percent","x_cm"
     b:[512]u8;n:=raw_put(b[..],0,"{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"");n=raw_put(b[..],n,api);n=raw_put(b[..],n,"\",\"observed_ms\":0,\"x_cm\":0,\"z_cm\":0}");#assert !fs_session(cast(string)b[0..<n],0,s[..]);
   }
 }
-fs_field :: (key:string)->int {for k:0..<FS_FIELDS.count {if key==FS_FIELDS[k] {return k;}}return FS_FIELDS.count;}
-fs_command :: (text:string,out:[]ForgeSceneCommand)->bool {
+fs_field :: (key:string)->int #effects(all) {for k:0..<FS_FIELDS.count {if key==FS_FIELDS[k] {return k;}}return FS_FIELDS.count;}
+fs_command :: (text:string,out:[]ForgeSceneCommand)->bool #effects(all) {
   nodes:[32]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {return false;}
   v:=d[0];seen:u32=0;
   for i:1..<v.count {
@@ -156,7 +156,7 @@ fs_command :: (text:string,out:[]ForgeSceneCommand)->bool {
   if c.count<1 || c.count>16 || c.size<25 || c.size>400 || c.x < -16000 || c.x>16000 || c.z < -16000 || c.z>16000 {return false;}
   out[0]=c;return true;
 }
-fs_plan :: (before:EgEdits,c:ForgeSceneCommand,px:int,pz:int)->ForgeScenePlan {
+fs_plan :: (before:EgEdits,c:ForgeSceneCommand,px:int,pz:int)->ForgeScenePlan #effects(all) {
   p:ForgeScenePlan;p.edits=before;
   if c.op!=FS_PLACE {
     p.group=c.group;after:EgEdits;after.gone=before.gone;after.hidden=before.hidden;
@@ -195,7 +195,7 @@ fs_plan :: (before:EgEdits,c:ForgeSceneCommand,px:int,pz:int)->ForgeScenePlan {
   }
   return p;
 }
-fs_session :: (text:string,now:int,out:[]ForgeSceneSession)->bool {
+fs_session :: (text:string,now:int,out:[]ForgeSceneSession)->bool #effects(all) {
   nodes:[24]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {return false;}
   v:=d[0];if jv_raw(v,jv_get(v,0,"schema"))!="aethyrforge.scene-session.v1" {return false;}
   api:=jv_raw(v,jv_get(v,0,"api"));prefix:="http://127.0.0.1:";

@@ -151,7 +151,7 @@ wk_save :: (w: [] Wk, slug: string, key: string, d: [] ForgeDoc, out: [] u8) -> 
   return wk_sql(w, wb_text(q[..]), out);
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   dbb: [1024] u8; pb: [1024] u8; wb: [1024] u8;
   wk: [1] Wk; w := wk[..];
   w[0].db = proc_getenv("PGURL", dbb[..]); w[0].psql = proc_getenv("PSQL", pb[..]); w[0].work = proc_getenv("WORK", wb[..]);

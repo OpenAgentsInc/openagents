@@ -130,14 +130,14 @@ the subtraction, `80 00` is 128.
 // serialize.h's VARINT: big-endian groups of 7 bits, every byte but the
 // last with its top bit set. Each continuation also subtracts one, so every
 // number has exactly one encoding: 127 is 7f, 128 is 80 00 (not 81 00).
-coin_varint_size :: (v: u64) -> int {
+coin_varint_size :: (v: u64) -> int #effects(all) {
   n := 1; x := v;
   while x > 0x7f { x = (x >> 7) - 1; n += 1; }
   return n;
 }
 // Writes VARINT(v) into out at at; where writing goes on, or -1 when it
 // does not fit.
-coin_varint_write_vartime :: (out: [] u8, at: int, v: u64) -> int {
+coin_varint_write_vartime :: (out: [] u8, at: int, v: u64) -> int #effects(all) {
   size := coin_varint_size(v);
   if at < 0 || size > out.count - at { return -1; }
   x := v;
@@ -151,7 +151,7 @@ coin_varint_write_vartime :: (out: [] u8, at: int, v: u64) -> int {
 // ReadVarInt for a type whose largest value is max (0xffffffff for
 // uint32_t, all ones for uint64_t). Core refuses before a shift would lose
 // a bit, and before the plus one would pass max.
-coin_varint_read_vartime :: (b: [] u8, at: int, max: u64) -> CoinNum {
+coin_varint_read_vartime :: (b: [] u8, at: int, max: u64) -> CoinNum #effects(all) {
   n := cast(u64) 0; i := at;
   while true {
     if i >= b.count { return CoinNum.{next = at, code = COIN_TRUNCATED}; }
@@ -185,7 +185,7 @@ its VARINT is one byte, `32`.
 // nine, the last digit d (1-9) is kept apart: 1 + 10 * (9 * n + d - 1) + e.
 // With nine zeros: 1 + 10 * (n - 1) + 9. Zero is 0. Round amounts, the
 // usual case, become small numbers: 50 BTC is 0x32.
-coin_compress_amount :: (amount: u64) -> u64 {
+coin_compress_amount :: (amount: u64) -> u64 #effects(all) {
   if amount == 0 { return 0; }
   n := amount; e := cast(u64) 0;
   while n % 10 == 0 && e < 9 { n /= 10; e += 1; }
@@ -199,7 +199,7 @@ coin_compress_amount :: (amount: u64) -> u64 {
 // DecompressAmount, the inverse. It reads any uint64_t, as Core does, and
 // a number no compressed amount gives can wrap past 2^64 the way Core's
 // uint64_t does.
-coin_decompress_amount :: (compressed: u64) -> u64 {
+coin_decompress_amount :: (compressed: u64) -> u64 #effects(all) {
   if compressed == 0 { return 0; }
   x := compressed - 1;
   e := x % 10;
@@ -246,7 +246,7 @@ its length plus six, so that lengths and kinds never collide.
 // uncompressed key on the curve (4 plus y's low bit, then x). Writes 21 or
 // 33 bytes into out and returns that, 0 for any other script, or -1 when
 // out is under 33 bytes.
-coin_compress_script_vartime :: (s: [] u8, out: [] u8) -> int {
+coin_compress_script_vartime :: (s: [] u8, out: [] u8) -> int #effects(all) {
   if out.count < 33 { return -1; }
   if s.count == 25 && s[0] == 0x76 && s[1] == 0xa9 && s[2] == 20 && s[23] == 0x88 && s[24] == 0xac {
     out[0] = 0; for i: 0..<20 { out[1+i] = s[3+i]; }
@@ -272,7 +272,7 @@ coin_compress_script_vartime :: (s: [] u8, out: [] u8) -> int {
 // Returns the script's length; 0 for kinds 4 and 5 when x is on no point
 // (Core leaves the script empty); -1 for a kind above 5, data of the wrong
 // size or an out under 67 bytes.
-coin_decompress_script_vartime :: (kind: int, data: [] u8, out: [] u8) -> int {
+coin_decompress_script_vartime :: (kind: int, data: [] u8, out: [] u8) -> int #effects(all) {
   if kind < 0 || kind >= COIN_SPECIAL || data.count != coin_special_size(kind) || out.count < 67 { return -1; }
   if kind == 0 {
     out[0] = 0x76; out[1] = 0xa9; out[2] = 20;
@@ -303,7 +303,7 @@ coin_decompress_script_vartime :: (kind: int, data: [] u8, out: [] u8) -> int {
   return 67;
 }
 // GetSpecialScriptSize: 20 bytes for kinds 0 and 1, 32 for 2 to 5.
-coin_special_size :: (kind: int) -> int { return ifx kind < 2 then 20 else 32; }
+coin_special_size :: (kind: int) -> int #effects(all) { return ifx kind < 2 then 20 else 32; }
 ```
 
 Kinds 4 and 5 store an uncompressed key as if it were compressed, which
@@ -335,7 +335,7 @@ of the compressed amount, then the compressed script.
 // compressed amount, then the script: its short form, or VARINT(length + 6)
 // and the bytes. Returns the length, or minus a refusal code; a refusal
 // may leave out partly written.
-coin_write_vartime :: (c: Coin, script: [] u8, out: [] u8) -> int {
+coin_write_vartime :: (c: Coin, script: [] u8, out: [] u8) -> int #effects(all) {
   if c.value > COIN_MAX_MONEY { return -COIN_BAD_AMOUNT; }
   if c.height < 0 || c.height > 0x7fffffff { return -COIN_BAD_HEIGHT; }
   code := cast(u64) c.height * 2 + (ifx c.coinbase then cast(u64) 1 else 0);
@@ -358,7 +358,7 @@ coin_write_vartime :: (c: Coin, script: [] u8, out: [] u8) -> int {
 // Coin::Unserialize from b at at, the script into script_out (10,000 bytes
 // hold any). A script longer than MAX_SCRIPT_SIZE reads as one OP_RETURN
 // with its bytes skipped, as Core's ScriptCompression::Unser does.
-coin_read_vartime :: (b: [] u8, at: int, script_out: [] u8) -> CoinRead {
+coin_read_vartime :: (b: [] u8, at: int, script_out: [] u8) -> CoinRead #effects(all) {
   r: CoinRead;
   code := coin_varint_read_vartime(b, at, 0xffffffff);
   if code.code != COIN_OK { r.code = code.code; return r; }
@@ -419,14 +419,14 @@ order: a VARINT keeps numeric order.
 ```jai
 // The chainstate key of an outpoint: 'C', the txid in hash order, VARINT(n).
 // Returns the length, or -1 when out is too small or txid is not 32 bytes.
-coin_key_write_vartime :: (txid: [] u8, n: int, out: [] u8) -> int {
+coin_key_write_vartime :: (txid: [] u8, n: int, out: [] u8) -> int #effects(all) {
   if txid.count != 32 || n < 0 || n > 0xffffffff || out.count < 33 { return -1; }
   out[0] = COIN_KEY_PREFIX;
   for i: 0..<32 { out[1+i] = txid[i]; }
   return coin_varint_write_vartime(out, 33, cast(u64) n);
 }
 // A whole key back: the prefix, 32 bytes and a VARINT that ends the key.
-coin_key_read_vartime :: (b: [] u8) -> CoinKey {
+coin_key_read_vartime :: (b: [] u8) -> CoinKey #effects(all) {
   if b.count < 34 || b[0] != COIN_KEY_PREFIX { return CoinKey.{code = COIN_BAD_KEY}; }
   v := coin_varint_read_vartime(b, 33, 0xffffffff);
   if v.code != COIN_OK || v.next != b.count { return CoinKey.{code = COIN_BAD_KEY}; }
@@ -435,7 +435,7 @@ coin_key_read_vartime :: (b: [] u8) -> CoinKey {
 // The order of the chainstate, and of both hashes: txid bytes as stored
 // (hash order), then the output index as a number. Negative, zero or
 // positive as a sorts before, with or after b.
-utxo_order_vartime :: (a_txid: [] u8, a_n: int, b_txid: [] u8, b_n: int) -> int {
+utxo_order_vartime :: (a_txid: [] u8, a_n: int, b_txid: [] u8, b_n: int) -> int #effects(all) {
   for i: 0..<32 {
     if a_txid[i] != b_txid[i] { return ifx a_txid[i] < b_txid[i] then -1 else 1; }
   }
@@ -456,7 +456,7 @@ does not depend on how a node stores its coins.
 // outpoint (txid, 4-byte n), a 4-byte height * 2 + coinbase, the 8-byte
 // value, then the script with its CompactSize length. All little-endian.
 // Returns the length, or -1 when out is too small.
-coin_txout_ser_vartime :: (txid: [] u8, n: int, c: Coin, script: [] u8, out: [] u8) -> int {
+coin_txout_ser_vartime :: (txid: [] u8, n: int, c: Coin, script: [] u8, out: [] u8) -> int #effects(all) {
   size := 32 + 4 + 4 + 8 + tx_compact_size_vartime(script.count) + script.count;
   if txid.count != 32 || out.count < size { return -1; }
   for i: 0..<32 { out[i] = txid[i]; }
@@ -484,22 +484,22 @@ removed, and order does not matter.
 // hash_serialized_3: one SHA-256 stream over every coin's TxOutSer in
 // chainstate order, then SHA-256 of that (HashWriter's GetHash). state is a
 // SHA-256 state of SHA_STATE_BYTES.
-utxo_hash_init :: (state: [] u8) -> bool {
+utxo_hash_init :: (state: [] u8) -> bool #effects(all) {
   return sha256_init(state) == SHA_OK;
 }
-utxo_hash_add_vartime :: (state: [] u8, txid: [] u8, n: int, c: Coin, script: [] u8) -> bool {
+utxo_hash_add_vartime :: (state: [] u8, txid: [] u8, n: int, c: Coin, script: [] u8) -> bool #effects(all) {
   rec: [10100] u8;
   k := coin_txout_ser_vartime(txid, n, c, script, rec[..]);
   return k > 0 && sha256_update_checked(state, rec[0..<k], false) == SHA_OK;
 }
-utxo_hash_final :: (state: [] u8, out: [] u8) -> bool {
+utxo_hash_final :: (state: [] u8, out: [] u8) -> bool #effects(all) {
   once: [32] u8;
   if out.count != 32 || sha256_final_checked(state, once[..], false) != SHA_OK { return false; }
   return sha256_hash_checked(once[..], out, false) == SHA_OK;
 }
 // muhash: each coin's TxOutSer is one element. Adding a block's new coins
 // and removing its spent ones keeps the hash current without the set.
-utxo_muhash_apply_vartime :: (m: MuHash3072, txid: [] u8, n: int, c: Coin, script: [] u8, spend: bool) -> MuHash3072 {
+utxo_muhash_apply_vartime :: (m: MuHash3072, txid: [] u8, n: int, c: Coin, script: [] u8, spend: bool) -> MuHash3072 #effects(all) {
   rec: [10100] u8;
   k := coin_txout_ser_vartime(txid, n, c, script, rec[..]);
   #assert k > 0;
@@ -541,7 +541,7 @@ uniform below `2^3072`, which is close to uniform modulo `p`.
 // One element's number (Core's ToNum3072): SHA-256 of the bytes is a
 // ChaCha20 key; its keystream from counter 0 with a zero nonce, six 64-byte
 // blocks, read little-endian, is the number.
-mh_element_vartime :: (data: [] u8) -> Num3072 {
+mh_element_vartime :: (data: [] u8) -> Num3072 #effects(all) {
   key: [32] u8; nonce: [12] u8; stream: [384] u8;
   #assert sha256_hash_checked(data, key[..], false) == SHA_OK;
   for k: 0..<6 {
@@ -570,7 +570,7 @@ second fold with the carry finishes. The column helpers follow Core's
 // significant, held in a view so each step updates it in place.
 // c += a * b. mul_wide gives the 128-bit product as two limbs; each carry
 // is "did the addition wrap", a sum smaller than what was added.
-mh_muladd3 :: (c: [] u64, a: u64, b: u64) {
+mh_muladd3 :: (c: [] u64, a: u64, b: u64) #effects(all) {
   t := mul_wide(a, b);
   c[0] = add_wrap(c[0], t.lo);
   th := t.hi + (ifx c[0] < t.lo then cast(u64) 1 else 0);   // t.hi <= 2^64 - 2: no overflow
@@ -578,7 +578,7 @@ mh_muladd3 :: (c: [] u64, a: u64, b: u64) {
   c[2] += ifx c[1] < th then cast(u64) 1 else 0;
 }
 // c += n * d, with c[2] zero on entry (Core's mulnadd3).
-mh_mulnadd3 :: (c: [] u64, d: [] u64, n: u64) {
+mh_mulnadd3 :: (c: [] u64, d: [] u64, n: u64) #effects(all) {
   t := mul_wide(d[0], n);
   c[0] = add_wrap(t.lo, c[0]);
   hi := t.hi + (ifx c[0] < t.lo then cast(u64) 1 else 0);
@@ -590,21 +590,21 @@ mh_mulnadd3 :: (c: [] u64, d: [] u64, n: u64) {
   c[2] = top + d[2] * n;
 }
 // [c0, c1] *= n, keeping two limbs (Core's muln2).
-mh_muln2 :: (c: [] u64, n: u64) {
+mh_muln2 :: (c: [] u64, n: u64) #effects(all) {
   t := mul_wide(c[0], n);
   c[0] = t.lo;
   c[1] = add_wrap(mul_wrap(c[1], n), t.hi);
 }
 // Shift the sum down one limb and return the limb that falls out (Core's
 // extract3).
-mh_extract3 :: (c: [] u64) -> u64 {
+mh_extract3 :: (c: [] u64) -> u64 #effects(all) {
   n := c[0];
   c[0] = c[1]; c[1] = c[2]; c[2] = 0;
   return n;
 }
 // [c0, c1] += a, then the low limb falls out and the rest shifts down one
 // limb (Core's addnextract2).
-mh_addnextract2 :: (c: [] u64, a: u64) -> u64 {
+mh_addnextract2 :: (c: [] u64, a: u64) -> u64 #effects(all) {
   c0 := add_wrap(c[0], a); c1 := c[1]; c2 := cast(u64) 0;
   if c0 < a {
     c1 = add_wrap(c1, 1);
@@ -622,7 +622,7 @@ mh_addnextract2 :: (c: [] u64, a: u64) -> u64 {
 // and 2^3072 is 1103717 mod p. So column j adds 1103717 times column 48 + j
 // as it goes (the first reduction). What carries past limb 47 is reduced
 // once more, and a result still at least p is reduced a last time.
-mh_mul_into :: (a: [] u64, b: [] u64, out: [] u64) {
+mh_mul_into :: (a: [] u64, b: [] u64, out: [] u64) #effects(all) {
   tmp: [48] u64; c: [3] u64; d: [3] u64;
   // Columns 0..46, each with its high partner folded in.
   for j: 0..<MH_LIMBS-1 {
@@ -644,13 +644,13 @@ mh_mul_into :: (a: [] u64, b: [] u64, out: [] u64) {
   if c[0] != 0 { mh_reduce(out); }
 }
 // The same on values.
-mh_multiply :: (a: Num3072, b: Num3072) -> Num3072 {
+mh_multiply :: (a: Num3072, b: Num3072) -> Num3072 #effects(all) {
   x := a; y := b; r: Num3072;
   mh_mul_into(x.limb[..], y.limb[..], r.limb[..]);
   return r;
 }
-mh_is_overflow :: (a: Num3072) -> bool { x := a; return mh_overflows(x.limb[..]); }
-mh_full_reduce :: (a: Num3072) -> Num3072 { r := a; mh_reduce(r.limb[..]); return r; }
+mh_is_overflow :: (a: Num3072) -> bool #effects(all) { x := a; return mh_overflows(x.limb[..]); }
+mh_full_reduce :: (a: Num3072) -> Num3072 #effects(all) { r := a; mh_reduce(r.limb[..]); return r; }
 ```
 
 The result is below `2^3072` but can still be at least `p`. Core leaves it
@@ -663,14 +663,14 @@ dropping the carry out of the top.
 ```jai
 // Is a at least the modulus? Only 1103717 numbers below 2^3072 are: every
 // limb all ones except limb 0, which is at least 2^64 - 1103717.
-mh_overflows :: (a: [] u64) -> bool {
+mh_overflows :: (a: [] u64) -> bool #effects(all) {
   if a[0] <= 0xffffffffffffffff - MH_DIFF { return false; }
   for i: 1..<MH_LIMBS { if a[i] != 0xffffffffffffffff { return false; } }
   return true;
 }
 // a - p in place, for an a at least p: add 1103717 and drop the carry out
 // of the top limb, which is 2^3072.
-mh_reduce :: (a: [] u64) {
+mh_reduce :: (a: [] u64) #effects(all) {
   c := [3] u64.[MH_DIFF, 0, 0];
   for i: 0..<MH_LIMBS { a[i] = mh_addnextract2(c[..], a[i]); }
 }
@@ -690,7 +690,7 @@ write and to check, and a node inverts once per hash it reads.
 <!-- source: coax/lib/bitcoin/muhash.coax inverse -->
 ```jai
 // a = a^(2^n) * m in place: n squarings, then one multiplication.
-mh_square_n_mul :: (a: [] u64, n: int, m: [] u64) {
+mh_square_n_mul :: (a: [] u64, n: int, m: [] u64) #effects(all) {
   for k: 0..<n { mh_mul_into(a, a, a); }
   mh_mul_into(a, m, a);
 }
@@ -701,7 +701,7 @@ mh_square_n_mul :: (a: [] u64, n: int, m: [] u64) {
 // = r(2048 + 512 + 256 + 128 + 64 + 32 + 8 + 2 + 1), and each tail run
 // shifts in its zeros and multiplies in its ones. 3071 squarings and 25
 // multiplications in all. a = 0 gives 0, which has no inverse.
-mh_inverse :: (a: Num3072) -> Num3072 {
+mh_inverse :: (a: Num3072) -> Num3072 #effects(all) {
   p: [12 * 48] u64;
   for i: 0..<MH_LIMBS { p[i] = a.limb[i]; }
   for i: 0..<11 {
@@ -734,30 +734,30 @@ mh_inverse :: (a: Num3072) -> Num3072 {
 <!-- source: coax/lib/bitcoin/muhash.coax set -->
 ```jai
 // The empty set: 1 / 1.
-muhash_new :: () -> MuHash3072 {
+muhash_new :: () -> MuHash3072 #effects(all) {
   r: MuHash3072;
   r.numerator.limb[0] = 1; r.denominator.limb[0] = 1;
   return r;
 }
 // Insert multiplies the element into the numerator; Remove multiplies it
 // into the denominator. Neither divides, so both cost one multiplication.
-muhash_insert_vartime :: (m: MuHash3072, data: [] u8) -> MuHash3072 {
+muhash_insert_vartime :: (m: MuHash3072, data: [] u8) -> MuHash3072 #effects(all) {
   r := m;
   r.numerator = mh_multiply(r.numerator, mh_element_vartime(data));
   return r;
 }
-muhash_remove_vartime :: (m: MuHash3072, data: [] u8) -> MuHash3072 {
+muhash_remove_vartime :: (m: MuHash3072, data: [] u8) -> MuHash3072 #effects(all) {
   r := m;
   r.denominator = mh_multiply(r.denominator, mh_element_vartime(data));
   return r;
 }
 // Core's operator*= (the union of two disjoint sets) and operator/= (one
 // set taken out of another): fractions multiplied and divided.
-muhash_combine :: (m: MuHash3072, other: MuHash3072) -> MuHash3072 {
+muhash_combine :: (m: MuHash3072, other: MuHash3072) -> MuHash3072 #effects(all) {
   return MuHash3072.{numerator = mh_multiply(m.numerator, other.numerator),
     denominator = mh_multiply(m.denominator, other.denominator)};
 }
-muhash_divide :: (m: MuHash3072, other: MuHash3072) -> MuHash3072 {
+muhash_divide :: (m: MuHash3072, other: MuHash3072) -> MuHash3072 #effects(all) {
   return MuHash3072.{numerator = mh_multiply(m.numerator, other.denominator),
     denominator = mh_multiply(m.denominator, other.numerator)};
 }
@@ -773,7 +773,7 @@ prints every hash.
 // denominator, reduced below p, as 384 little-endian bytes, then SHA-256.
 // The one inversion happens here. A denominator of 1 needs none, and its
 // inverse is 1, so skipping it changes nothing.
-muhash_finalize_vartime :: (m: MuHash3072, out: [] u8) -> int {
+muhash_finalize_vartime :: (m: MuHash3072, out: [] u8) -> int #effects(all) {
   if out.count != 32 { return MUHASH_CAPACITY; }
   n := m.numerator; d := m.denominator;
   if mh_is_overflow(n) { n = mh_full_reduce(n); }

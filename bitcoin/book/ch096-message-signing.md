@@ -86,7 +86,7 @@ every other use of SHA-256 in Bitcoin.
 ```jai
 // message_hash: the BIP-340 tagged hash of the message as it is, with
 // the tag BIP0322-signed-message.
-bip322_message_hash :: (message: string, out: [] u8) -> bool #export_c {
+bip322_message_hash :: (message: string, out: [] u8) -> bool #export_c #effects(all) {
   if out.count != 32 { return false; }
   state: [SHA_STATE_BYTES] u8;
   ok := sha256_tagged_init(state[..], "BIP0322-signed-message") == SHA_OK && sm_absorb(state[..], message);
@@ -106,7 +106,7 @@ message challenge. `to_sign` spends that output and pays 0 to
 // to_spend: version 0, one input from 000...000:FFFFFFFF with sequence 0
 // and the scriptSig OP_0 PUSH32[message_hash], one output of 0 to the
 // challenge (the address's scriptPubKey), lock time 0. Its length in out.
-bip322_to_spend :: (challenge: [] u8, message: string, out: [] u8) -> int #export_c {
+bip322_to_spend :: (challenge: [] u8, message: string, out: [] u8) -> int #export_c #effects(all) {
   if challenge.count > AD_SCRIPT_MAX || out.count < B322_SPEND { return -1; }
   for k: 0..<B322_SPEND { out[k] = 0; }
   out[4] = 1;                                              // one input
@@ -121,7 +121,7 @@ bip322_to_spend :: (challenge: [] u8, message: string, out: [] u8) -> int #expor
 // to_sign before it is signed: the version, one input spending to_spend's
 // output 0 with an empty scriptSig and the sequence, one output of 0 to
 // OP_RETURN, the lock time. Its length in out (61 bytes).
-bip322_to_sign :: (txid: [] u8, version: int, locktime: int, sequence: int, out: [] u8) -> int #export_c {
+bip322_to_sign :: (txid: [] u8, version: int, locktime: int, sequence: int, out: [] u8) -> int #export_c #effects(all) {
   if txid.count != 32 || out.count < 61 { return -1; }
   at := bt_le(out, 0, version, 4);
   out[at] = 1; at = tx_put(out, at + 1, txid);
@@ -149,7 +149,7 @@ transaction is `to_sign`.
 // becomes to_sign with that witness; a full one is to_sign; a proof of
 // funds is a PSBT whose finalized transaction is to_sign. Returns
 // B322_OK or the reason it is invalid.
-b322_decode :: (format: int, text: string, x: [] B322Work) -> int {
+b322_decode :: (format: int, text: string, x: [] B322Work) -> int #effects(all) {
   n := base64_decode_size(text);
   if n < 0 || n > B322_RAW { return B322_BASE64; }
   if n == 0 { return B322_SHORT; }
@@ -221,7 +221,7 @@ legacy script, as Core does. BIP-322 forbids it everywhere, so
 // A P2WSH witnessScript, bare or under P2SH, with OP_CODESEPARATOR:
 // BIP-322 forbids it, and CONST_SCRIPTCODE refuses it only in legacy
 // script.
-b322_codesep :: (sp: ScriptSpend) -> bool {
+b322_codesep :: (sp: ScriptSpend) -> bool #effects(all) {
   input := sp.ins[sp.index];
   sig := sp.b[input.script..<input.script+input.script_n];
   nested := script_p2sh_vartime(sp.spk) && sig.count == 35 && sig[0] == 34 && sig[1] == 0 && sig[2] == 32;
@@ -241,7 +241,7 @@ b322_codesep :: (sp: ScriptSpend) -> bool {
 // other script through chapter 36's VerifyScript, once with the required
 // rules (a failure is invalid), once with the upgradeable ones too (a
 // failure is inconclusive).
-b322_input :: (x: [] B322Work, n: int) -> int {
+b322_input :: (x: [] B322Work, n: int) -> int #effects(all) {
   spk := x[0].spks[n].b[0..<x[0].spks[n].n];
   sp := ScriptSpend.{b=x[0].tx[0..<x[0].tx_n], t=x[0].t, ins=x[0].ins[..], outs=x[0].outs[..], items=x[0].items[..],
     index=n, amount=x[0].amounts[n], spk=spk};
@@ -275,7 +275,7 @@ upgrade, so inconclusive.
 // output key. More items are a script path: the control block must
 // commit the script to the output key (chapter 42), a leaf version other
 // than tapscript's 0xc0 is inconclusive, and the script runs on the rest.
-b322_taproot :: (sp: ScriptSpend, x: [] B322Work, program: [] u8) -> int {
+b322_taproot :: (sp: ScriptSpend, x: [] B322Work, program: [] u8) -> int #effects(all) {
   input := sp.ins[sp.index];
   count := input.count;
   if input.script_n != 0 || count == 0 { return B322_INVALID; }
@@ -326,7 +326,7 @@ opcodes. Everything except the signature opcodes runs in chapter 36's
 // limit. OP_CODESEPARATOR is forbidden by BIP-322. An opcode outside
 // B322_TAP_KNOWN is inconclusive; the others run in chapter 36's si_run.
 // The script must leave one true element.
-b322_tapscript :: (sp: ScriptSpend, x: [] B322Work, script: ScriptItem) -> int {
+b322_tapscript :: (sp: ScriptSpend, x: [] B322Work, script: ScriptItem) -> int #effects(all) {
   w := x[0].script[..];
   s := si_bytes(sp, w, script);
   pc := 0;
@@ -389,7 +389,7 @@ good signature, and the script compares the counter with the threshold.
 <!-- source: coax/lib/bitcoin/bip322.coax tapsig -->
 ```jai
 // OP_SUCCESSx (BIP-342): opcodes a future soft fork may give any meaning.
-b322_success :: (op: int) -> bool {
+b322_success :: (op: int) -> bool #effects(all) {
   return op == 80 || op == 98 || (op >= 126 && op <= 129) || (op >= 131 && op <= 134) || op == 137 || op == 138
     || op == 141 || op == 142 || (op >= 149 && op <= 153) || (op >= 187 && op <= 254);
 }
@@ -400,7 +400,7 @@ b322_success :: (op: int) -> bool {
 // CHECKSEQUENCEVERIFY and CHECKSIGADD.
 B322_CHECKSIGADD :: 0xba;
 B322_TAP_KNOWN :: [19] int.[0x4f, 0x61, 0x69, 0x6a, 0x75, 0x76, 0x7c, 0x82, 0x87, 0x88, 0x9c, 0x9d, 0xa8, 0xa9, 0xac, 0xad, 0xb1, 0xb2, 0xba];
-b322_known :: (op: int) -> bool {
+b322_known :: (op: int) -> bool #effects(all) {
   if op >= OP_1 && op <= OP_16 { return true; }
   for k: B322_TAP_KNOWN { if op == k { return true; } }
   return false;
@@ -411,7 +411,7 @@ b322_known :: (op: int) -> bool {
 // upgradeable rule. An empty signature is false; a non-empty one must be
 // a valid BIP-340 signature with SIGHASH_DEFAULT or SIGHASH_ALL, or the
 // script fails.
-b322_tap_sig :: (sp: ScriptSpend, x: [] B322Work, op: int) -> int {
+b322_tap_sig :: (sp: ScriptSpend, x: [] B322Work, op: int) -> int #effects(all) {
   w := x[0].script[..];
   need := ifx op == B322_CHECKSIGADD then 3 else 2;
   if si_size(w) < need { return B322_INVALID; }
@@ -462,7 +462,7 @@ give. Last, a version other than 0 or 2 is an upgradeable rule.
 // shape: its first input spends to_spend's output, only a proof of funds
 // has more inputs, and its one output pays 0 to OP_RETURN. Then every
 // input's script, and the upgradeable version rule: 0 or 2.
-bip322_verify_vartime :: (address: string, signature: string, message: string, x: [] B322Work) -> B322Result #export_c {
+bip322_verify_vartime :: (address: string, signature: string, message: string, x: [] B322Work) -> B322Result #export_c #effects(all) {
   r := B322Result.{state=B322_INVALID};
   if !b322_spend(address, message, x) { r.reason = B322_ADDRESS; return r; }
   prefix := ifx signature.count >= 3 then signature[0..<3] else "";
@@ -535,7 +535,7 @@ witness script go in their fields.
 // PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE (0x09) set to the message and
 // to_spend as the input's UTXO, signed without low-R grinding, finalized
 // and extracted. Returns the text's length, or -1.
-bip322_sign_vartime :: (address: string, message: string, keys: [] u8, script: [] u8, format: int, version: int, locktime: int, sequence: int, aux: [] u8, x: [] B322Work, out: [] u8) -> int #export_c {
+bip322_sign_vartime :: (address: string, message: string, keys: [] u8, script: [] u8, format: int, version: int, locktime: int, sequence: int, aux: [] u8, x: [] B322Work, out: [] u8) -> int #export_c #effects(all) {
   if !b322_spend(address, message, x) || keys.count == 0 || keys.count % 32 != 0 || message.count > B322_MESSAGE { return -1; }
   spk := x[0].spk[0..<x[0].spk_n];
   if format == B322_LEGACY {
@@ -608,7 +608,7 @@ branch, `<signature> <empty> <script>`, needs one more case.
 // A script the Input Finalizer has no template for: the time lock's ELSE
 // branch, <signature> <empty> <witnessScript>, from input 0's one partial
 // signature.
-b322_else_branch :: (m: [] PsbtMaps) -> bool {
+b322_else_branch :: (m: [] PsbtMaps) -> bool #effects(all) {
   ws := psbt_find1_vartime(m, PSBT_INPUT, 0, 0x05);
   sig := -1;
   for j: 0..<m[0].n { if m[0].pairs[j].map == PSBT_INPUT && m[0].pairs[j].index == 0 && pm_type(m, j) == 0x02 { sig = j; } }
@@ -634,7 +634,7 @@ leaf and checks that the result is the address's output key.
 // signature by the untweaked key, and the control block of a tree with
 // the one leaf. The witness <signature> <empty> <script> <control> goes
 // into input 0 as its final witness.
-b322_sign_leaf :: (x: [] B322Work, unsigned: [] u8, key: [] u8, script: [] u8, aux: [] u8) -> bool {
+b322_sign_leaf :: (x: [] B322Work, unsigned: [] u8, key: [] u8, script: [] u8, aux: [] u8) -> bool #effects(all) {
   amounts: [1] int; spks: [1] BtScript;
   spks[0].n = x[0].spk_n;
   for k: 0..<x[0].spk_n { spks[0].b[k] = x[0].spk[k]; }

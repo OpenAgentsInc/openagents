@@ -346,15 +346,15 @@ N89_NSEC :: "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 
 // ---- the implementation
 
-n89_h_fail :: (h:N89Handler,error:int,at:int)->N89Handler {r:=h;r.error=error;r.at=at;return r;}
-n89_r_fail :: (r:N89Recommend,error:int,at:int)->N89Recommend {o:=r;o.error=error;o.at=at;return o;}
-n89_c_fail :: (c:N89Client,error:int,at:int)->N89Client {o:=c;o.error=error;o.at=at;return o;}
-n89_u_fail :: (u:N89Url,error:int,at:int)->N89Url {o:=u;o.error=error;o.at=at;return o;}
+n89_h_fail :: (h:N89Handler,error:int,at:int)->N89Handler #effects(all) {r:=h;r.error=error;r.at=at;return r;}
+n89_r_fail :: (r:N89Recommend,error:int,at:int)->N89Recommend #effects(all) {o:=r;o.error=error;o.at=at;return o;}
+n89_c_fail :: (c:N89Client,error:int,at:int)->N89Client #effects(all) {o:=c;o.error=error;o.at=at;return o;}
+n89_u_fail :: (u:N89Url,error:int,at:int)->N89Url #effects(all) {o:=u;o.error=error;o.at=at;return o;}
 
 // book:begin kind
 // A kind written in decimal, as a d or k tag holds it: 0..65535 with no
 // sign and no leading zero, or -1.
-n89_kind_of :: (s:string)->int {
+n89_kind_of :: (s:string)->int #effects(all) {
   if s.count==0 || (s[0]=='0' && s.count>1) {return -1;}
   v:=0;
   for c:s {
@@ -368,7 +368,7 @@ n89_kind_of :: (s:string)->int {
 
 // book:begin read
 // A kind 31990 handler: its d and the kinds its k tags list.
-n89_handler :: (e:NostrEvent)->N89Handler {
+n89_handler :: (e:NostrEvent)->N89Handler #effects(all) {
   h:N89Handler;if e.error!=NE_OK {return h;}
   if e.kind!=N89_HANDLER {return n89_h_fail(h,N89_KIND,-1);}
   i:=0;has_d:=false;
@@ -390,13 +390,13 @@ n89_handler :: (e:NostrEvent)->N89Handler {
   if h.nk==0 {return n89_h_fail(h,N89_K,-1);}
   return n89_h_fail(h,N89_OK,-1);
 }
-n89_handles :: (h:N89Handler,kind:int)->bool {
+n89_handles :: (h:N89Handler,kind:int)->bool #effects(all) {
   for i:0..<h.nk {if h.k[i]==kind {return true;}}
   return false;
 }
 // A kind 31989 recommendation: the kind its d names and the 31990
 // handlers its a tags name, each with a relay hint and a platform.
-n89_recommend :: (e:NostrEvent)->N89Recommend {
+n89_recommend :: (e:NostrEvent)->N89Recommend #effects(all) {
   r:N89Recommend;if e.error!=NE_OK {return r;}
   if e.kind!=N89_RECOMMEND {return n89_r_fail(r,N89_KIND,-1);}
   i:=0;d:N32Text;has_d:=false;
@@ -424,7 +424,7 @@ n89_recommend :: (e:NostrEvent)->N89Recommend {
 }
 // The first client tag: a name, then optionally a 31990 address and a
 // relay hint. No client tag reads as not present.
-n89_client :: (e:NostrEvent)->N89Client {
+n89_client :: (e:NostrEvent)->N89Client #effects(all) {
   c:N89Client;if e.error!=NE_OK {return c;}
   i:=0;
   while true {
@@ -452,21 +452,21 @@ n89_client :: (e:NostrEvent)->N89Client {
 // book:end read
 
 // book:begin resolve
-n89_follows :: (follows:[][32]u8,key:[32]u8)->bool {
+n89_follows :: (follows:[][32]u8,key:[32]u8)->bool #effects(all) {
   for f:follows {if ns_equal32(f,key) {return true;}}
   return false;
 }
 // Whether handler event e reads and lists kind in a k tag.
-n89_lists :: (e:NostrEvent,kind:int)->bool {h:=n89_handler(e);return h.error==N89_OK && n89_handles(h,kind);}
+n89_lists :: (e:NostrEvent,kind:int)->bool #effects(all) {h:=n89_handler(e);return h.error==N89_OK && n89_handles(h,kind);}
 // Whether e is the current version of its own address among set.
-n89_current :: (set:[]NostrEvent,i:int)->bool {
+n89_current :: (set:[]NostrEvent,i:int)->bool #effects(all) {
   e:=set[i];t:=nostr_tag_d(e);
   if t.error!=NT_OK {return false;}
   return nip23_current(set,e.kind,e.public_key,cast(string)t.d[0..<t.d_n])==i;
 }
 // The choice for handler index h in out[0..<n], adding it at out[n] when
 // new: its position, or -1 when out is full.
-n89_choice :: (out:[]N89Choice,n:int,h:int,rank:int)->int {
+n89_choice :: (out:[]N89Choice,n:int,h:int,rank:int)->int #effects(all) {
   for c:0..<n {if out[c].handler==h {return c;}}
   if n==out.count {return -1;}
   out[n]=N89Choice.{handler=h,rank=rank,last=-1};return n;
@@ -475,7 +475,7 @@ n89_choice :: (out:[]N89Choice,n:int,h:int,rank:int)->int {
 // caller fetched and verified, best first, into out. A follow's
 // recommendation that doesn't read is skipped and counted in broken, so
 // one bad event can't hide every handler.
-n89_resolve :: (kind:int,follows:[][32]u8,recs:[]NostrEvent,handlers:[]NostrEvent,out:[]N89Choice)->N89Found {
+n89_resolve :: (kind:int,follows:[][32]u8,recs:[]NostrEvent,handlers:[]NostrEvent,out:[]N89Choice)->N89Found #effects(all) {
   f:N89Found;
   if kind<0 || kind>65535 {f.error=N89_K;return f;}
   // 1. Each follow's current recommendation for kind votes once for each
@@ -524,7 +524,7 @@ N89_SCHEME_CHARS :: "abcdefghijklmnopqrstuvwxyz0123456789+-.";
 // The scheme is a lowercase letter, then letters, digits, + - or ., up to
 // the first ':'; after it, printable ASCII without " < > \ ` except in the
 // placeholder.
-n89_template :: (url:string,platform:string)->int {
+n89_template :: (url:string,platform:string)->int #effects(all) {
   scheme_part:=true;scheme:="";found:=false;i:=0;
   while i<url.count {
     c:=url[i];
@@ -552,7 +552,7 @@ n89_template :: (url:string,platform:string)->int {
   return N89_OK;
 }
 // The template with every <bech32> replaced by entity, into out.
-n89_fill :: (url:string,platform:string,entity:string,out:[]u8)->N89Url {
+n89_fill :: (url:string,platform:string,entity:string,out:[]u8)->N89Url #effects(all) {
   u:N89Url;u.error=n89_template(url,platform);
   if u.error!=N89_OK {return u;}
   n:=0;i:=0;
@@ -564,7 +564,7 @@ n89_fill :: (url:string,platform:string,entity:string,out:[]u8)->N89Url {
   u.n=n;return u;
 }
 // The URL a handler event gives for platform and a NIP-19 entity, into out.
-n89_url :: (h:NostrEvent,platform:string,entity:string,out:[]u8)->N89Url {
+n89_url :: (h:NostrEvent,platform:string,entity:string,out:[]u8)->N89Url #effects(all) {
   u:N89Url;if h.error!=NE_OK {return u;}
   dec:[N19_MAX_BYTES]u8;r:=n19_decode(entity,dec[..],false,false);
   if r.error!=NC_OK {return n89_u_fail(u,N89_ENTITY,-1);}
@@ -595,7 +595,7 @@ n89_url :: (h:NostrEvent,platform:string,entity:string,out:[]u8)->N89Url {
 // kind) for an addressable kind, else nevent (id, relay, author, kind).
 // An empty relay is left out; the kind is 4 bytes big-endian, and NIP-01
 // kinds fit in the low two. Its length in out, or -1.
-n89_entity :: (e:NostrEvent,relay:string,out:[]u8)->int {
+n89_entity :: (e:NostrEvent,relay:string,out:[]u8)->int #effects(all) {
   if e.error!=NE_OK || relay.count>255 || e.kind<0 || e.kind>65535 {return -1;}
   tlv:[2+NT_MAX_VALUE+2+255+2+32+2+4]u8;n:=34;
   addressable:=ns_class(e.kind)==NS_ADDRESSABLE;
@@ -622,7 +622,7 @@ n89_entity :: (e:NostrEvent,relay:string,out:[]u8)->int {
 // A kind 31990's tags into out: d, a k tag per kind, a template tag per
 // template (each checked as n89_url checks it). Its length, or minus the
 // refusal.
-n89_handler_tags :: (d:string,kinds:[]int,templates:[]N89Template,out:[]u8)->int {
+n89_handler_tags :: (d:string,kinds:[]int,templates:[]N89Template,out:[]u8)->int #effects(all) {
   if d.count==0 {return -N89_NO_D;}
   if kinds.count==0 {return -N89_K;}
   for k:kinds {if k<0 || k>65535 {return -N89_K;}}
@@ -644,7 +644,7 @@ n89_handler_tags :: (d:string,kinds:[]int,templates:[]N89Template,out:[]u8)->int
 }
 // A kind 31989's tags into out: d (the kind), then an a tag per handler
 // with its relay hint and platform. Its length, or minus the refusal.
-n89_recommend_tags :: (kind:int,picks:[]N89Pick,out:[]u8)->int {
+n89_recommend_tags :: (kind:int,picks:[]N89Pick,out:[]u8)->int #effects(all) {
   if kind<0 || kind>65535 {return -N89_K;}
   for p:picks {if p.d.count==0 {return -N89_NO_D;}}
   num:[8]u8;m:=json_write_int(num[..],0,kind);
@@ -661,7 +661,7 @@ n89_recommend_tags :: (kind:int,picks:[]N89Pick,out:[]u8)->int {
 }
 // One client tag, ["client", name, "31990:author:d", relay], into out: its
 // length, or -1 for an empty name or d or a short out.
-n89_client_tag :: (name:string,author:[32]u8,d:string,relay:string,out:[]u8)->int {
+n89_client_tag :: (name:string,author:[32]u8,d:string,relay:string,out:[]u8)->int #effects(all) {
   if name.count==0 || d.count==0 {return -1;}
   addr:[NT_MAX_VALUE+80]u8;an:=nip23_address(N89_HANDLER,author,d,addr[..]);
   if an== -1 {return -1;}

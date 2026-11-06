@@ -26,8 +26,8 @@ QgEvidence :: struct {
   g=good;g.elapsed_ms=0;g.budget_ms=1;#assert qg_qualified(g);
   g=good;g.mutants=1;g.killed=1;g.elapsed_ms=0;#assert qg_qualified(g);
 }
-qg_preflight :: (g:QgEvidence)->bool {return g.engine_exit==0 && g.elapsed_ms>=0 && g.budget_ms>0 && g.elapsed_ms<=g.budget_ms && g.protected_ok && g.checkpoints;}
-qg_qualified :: (g:QgEvidence)->bool {
+qg_preflight :: (g:QgEvidence)->bool #effects(all) {return g.engine_exit==0 && g.elapsed_ms>=0 && g.budget_ms>0 && g.elapsed_ms<=g.budget_ms && g.protected_ok && g.checkpoints;}
+qg_qualified :: (g:QgEvidence)->bool #effects(all) {
   return qg_preflight(g) && g.acceptance && g.mutation_exit==0
     && g.mutants>0 && g.killed==g.mutants && g.survivors==0 && g.artifacts && g.no_exemptions;
 }

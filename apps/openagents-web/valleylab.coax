@@ -248,12 +248,12 @@ valley_start :: (s:[]ValleyLab) {
   s[0].you.max_dist=7;s[0].you.dist=7;s[0].you.prev_dist=7;
   if !s[0].rock_ready {#assert valley_load_rock(s,16);}
 }
-valley_blur :: (s:[]ValleyLab) #export_c {
+valley_blur :: (s:[]ValleyLab) #export_c #effects(all) {
   s[0].drag=false;s[0].keys=0;s[0].look_x=0;s[0].look_y=0;s[0].zoom=0;s[0].thumbs=Sticks.{};
   for i:0..<4 {s[0].active[i]=false;}
   s[0].you=pc.walk_input(s[0].you,0,0,0,0,false,false,0,0);
 }
-valley_key :: (s:[]ValleyLab,key:int,down:bool)->bool #export_c {
+valley_key :: (s:[]ValleyLab,key:int,down:bool)->bool #export_c #effects(all) {
   valley_start(s);bit:=0;
   if down && (key==78 || key==110) {url:="/worlds/valley-world?pack=valley-world";for c,k:url {s[0].outbox[k]=c;}s[0].out_n=url.count;s[0].action=1;return true;}
   if down && (key==80 || key==112) {valley_canyon_open(s);return true;}
@@ -289,7 +289,7 @@ valley_key :: (s:[]ValleyLab,key:int,down:bool)->bool #export_c {
   if key== -6 {s[0].look_y-=0.08;return true;}if key== -7 {s[0].look_y+=0.08;return true;}
   if key== -1 {valley_blur(s);return true;}return false;
 }
-valley_pointer :: (s:[]ValleyLab,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c {
+valley_pointer :: (s:[]ValleyLab,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c #effects(all) {
   valley_start(s);slot:=-1;
   for i:0..<4 {if s[0].active[i] && s[0].ids[i]==id {slot=i;}}
   if phase==0 {
@@ -332,7 +332,7 @@ valley_pointer :: (s:[]ValleyLab,x:f32,y:f32,phase:int,kind:int,id:int)->bool #e
   s[0].thumbs=sticks_touch(s[0].thumbs,slot,phase,x,y,s[0].width,s[0].height,s[0].d,s[0].now,false);
   if phase==2 || phase==3 {s[0].active[slot]=false;}return true;
 }
-valley_wheel :: (s:[]ValleyLab,delta:f32) #export_c {if s[0].stage==0 {s[0].zoom+=delta*0.01;}else {s[0].distance=clamp(s[0].distance+delta*0.01,ifx s[0].field_lab then 8.0f32 else 4.0f32,ifx s[0].field_lab || s[0].scan_lab then 50.0f32 else 18.0f32);}}
+valley_wheel :: (s:[]ValleyLab,delta:f32) #export_c #effects(all) {if s[0].stage==0 {s[0].zoom+=delta*0.01;}else {s[0].distance=clamp(s[0].distance+delta*0.01,ifx s[0].field_lab then 8.0f32 else 4.0f32,ifx s[0].field_lab || s[0].scan_lab then 50.0f32 else 18.0f32);}}
 valley_step :: (s:[]ValleyLab,dt:f32,still:bool) {
   valley_start(s);if still || s[0].stage!=0 {return;}
   k:=s[0].keys;t:=s[0].thumbs;
@@ -361,7 +361,7 @@ valley_box :: (s:[]ValleyLab,x:f32,y:f32,z:f32,rx:f32,ry:f32,rz:f32,c:Point) {
   faces:=[36]int.[0,1,3,0,3,2,4,6,7,4,7,5,0,4,5,0,5,1,2,3,7,2,7,6,0,2,6,0,6,4,1,5,7,1,7,3];
   for i:0..<36 {valley_vertex(s,corners[faces[i]],times(c,[6]f32.[0.72,0.60,0.48,1,0.65,0.85][i/6]));}
 }
-valley_frame :: (s:[]ValleyLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bool)->int #export_c {
+valley_frame :: (s:[]ValleyLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bool)->int #export_c #effects(all) {
   valley_start(s);if !(w>0) || !(h>0) || !(d>0) || u.count<88 || out.count<VALLEY_VERTICES*12 {return 0;}
   s[0].width=w;s[0].height=h;s[0].d=d;valley_step(s,dt,still);
   eye:=pc.walk_eye(s[0].you);at:=pc.walk_at(s[0].you);s[0].eye=v3(eye.x,eye.y,eye.z);
@@ -414,7 +414,7 @@ valley_frame :: (s:[]ValleyLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:
   s[0].meter[0]=budget_meter(VALLEY_BUDGET);budget_measure(s[0].meter[..],n+s[0].index_n,3,budget_arena_bytes(size_of(ValleyLab),VALLEY_VERTICES,12,88));
   _:=budget_take(s[0].meter[..],BUDGET_STEPS,ifx s[0].stage==0 then s[0].you.clock.ran else 0);#assert budget_ok(s[0].meter[0]);return n;
 }
-valley_probe :: (s:[]ValleyLab,field:int)->int #export_c {
+valley_probe :: (s:[]ValleyLab,field:int)->int #export_c #effects(all) {
   if field==110 {return s[0].scan_state;}if field==111 {return s[0].scan_loaded;}if field==112 {return s[0].scan[0].vertices;}if field==113 {return s[0].scan[0].indices/3;}if field==114 {return ifx s[0].scan_lab then 1 else 0;}
   if field==0 {return cast(int)(s[0].you.pos.x*1000);}if field==1 {return cast(int)(s[0].you.pos.y*1000);}
   if field==2 {return cast(int)(s[0].you.pos.z*1000);}if field==3 {return s[0].you.clock.ticks;}
@@ -460,7 +460,7 @@ valley_station :: (s:[]ValleyLab,stage:int) {
   name:=[3]string.["walk","assets","geometry"][stage];
   for c,k:name {s[0].outbox[k]=c;}s[0].out_n=name.count;s[0].action=3;
 }
-valley_hash :: (s:[]ValleyLab,n:int) #export_c {
+valley_hash :: (s:[]ValleyLab,n:int) #export_c #effects(all) {
   if n<0 || n>s[0].inbox.count {return;}h:=cast(string)s[0].inbox[0..<n];
   if h=="section" {valley_canyon_open(s);}
   if h=="scans" {valley_scan_lab(s,0);}
@@ -632,11 +632,11 @@ valley_parent_mesh :: (s:[]ValleyLab) {
     }
   }
 }
-valley_http_started :: (s:[]ValleyLab,id:int) #export_c {
+valley_http_started :: (s:[]ValleyLab,id:int) #export_c #effects(all) {
   if s[0].need_page<0 {return;}ticket:=s[0].tickets[s[0].need_page];if id>=0 && id<8 {s[0].http[id]=ticket;}
   else {for k:0..<2 {if s[0].pages[0].pending[k].serial==ticket.serial {s[0].pages[0].pending[k]=PageTicket.{};}}}s[0].need_page= -1;
 }
-valley_message :: (s:[]ValleyLab,kind:int,n:int) #export_c {
+valley_message :: (s:[]ValleyLab,kind:int,n:int) #export_c #effects(all) {
   if kind<512 || kind>=520 || n<0 || n>s[0].inbox.count {return;}if s[0].scan_http[kind-512]>0 {valley_scan_message(s,kind-512,n);return;}ticket:=s[0].http[kind-512];s[0].http[kind-512]=PageTicket.{};
   data:[GEOMETRY_PAGE_BYTES]u8;ok:=n==4+ticket.bytes*2 && ticket.bytes>0 && ticket.bytes<=GEOMETRY_PAGE_BYTES;
   if ok {ok=s[0].inbox[0]=='2' && s[0].inbox[1]=='0' && s[0].inbox[2]=='0' && s[0].inbox[3]==10;}
@@ -770,7 +770,7 @@ valley_scan_lab :: (s:[]ValleyLab,selected:int) {
   url:=[2]string.["/assets/valley/scans/uk4cdch.vsm.hex","/assets/valley/scans/ubhvccfda.vsm.hex"][selected];for c,k:url {s[0].page_url[k]=c;}s[0].page_url_n=url.count;
   for c,k:"scans" {s[0].outbox[k]=c;}s[0].out_n=5;s[0].action=3;
 }
-valley_scan_started :: (s:[]ValleyLab,id:int) #export_c {
+valley_scan_started :: (s:[]ValleyLab,id:int) #export_c #effects(all) {
   s[0].scan_need=false;if id>=0 && id<8 {s[0].scan_http[id]=s[0].scan_selected+1;}else {s[0].scan_state=3;}
 }
 valley_scan_admit :: (s:[]ValleyLab,selected:int,bytes:int)->bool {

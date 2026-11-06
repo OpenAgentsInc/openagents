@@ -144,14 +144,17 @@ class ResultProfiles(unittest.TestCase):
         self.assertEqual(result.stdout, '')
         self.assertIn('E0413', result.stderr)
 
-    def test_r2_does_not_trust_unimplemented_effect_annotations(self):
+    def test_effect_annotations_are_checked_instead_of_trusted(self):
         for declaration in ('#pure', '#effects()', '#effects(clock)'):
             with self.subTest(declaration=declaration):
                 source = self.source('root :: ()->int ' + declaration + ' { return 7; }')
                 result = self.run_coax('check', source, '--diagnostics', 'json')
-                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout, '')
-                self.assertEqual(json.loads(result.stderr.splitlines()[0])['code'], 'E0940')
+                source = self.source('#import "Basic";\nroot :: ()->int ' + declaration + ' { print("effect\\n"); return 7; }')
+                result = self.run_coax('check', source, '--diagnostics', 'json')
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(json.loads(result.stderr.splitlines()[0])['code'], 'E0941')
 
     def test_compute_profiles_refuse_sums_and_exhaustive_switch(self):
         # These are valid native programs. Device profiles must refuse before

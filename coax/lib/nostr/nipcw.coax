@@ -59,7 +59,7 @@ CwTags :: struct {status:int=CW_OK; reply:bool; parent:[32]u8; has_root:bool; ro
 // book:begin classify
 // An event's thread tags: the reply-marked e tag (at most one), the
 // root-marked one, and ["broadcast", "1"] exactly.
-cw_tags :: (e:NostrEvent)->CwTags {
+cw_tags :: (e:NostrEvent)->CwTags #effects(all) {
   r:CwTags;k:=0;
   while true {
     t:=nostr_tag(e,k);g:=g29_tag(e,k);k+=1;
@@ -76,13 +76,13 @@ cw_tags :: (e:NostrEvent)->CwTags {
 }
 // book:end classify
 
-cw_find :: (rows:[]CwRow,n:int,id:[32]u8)->int {
+cw_find :: (rows:[]CwRow,n:int,id:[32]u8)->int #effects(all) {
   for i:0..<n {if ns_equal32(rows[i].id,id) {return i;}}
   return -1;
 }
 // book:begin ingest
 // Store one verified event of the channel in rows[0..<n[0]].
-cw_ingest :: (rows:[]CwRow,n:[]int,e:NostrEvent)->int {
+cw_ingest :: (rows:[]CwRow,n:[]int,e:NostrEvent)->int #effects(all) {
   if e.error!=NE_OK || !e.verified {return CW_EVENT;}
   if e.kind>=39005 && e.kind<=39007 {return CW_RELAY_ONLY;}
   t:=cw_tags(e);if t.status!=CW_OK {return t.status;}
@@ -99,7 +99,7 @@ cw_ingest :: (rows:[]CwRow,n:[]int,e:NostrEvent)->int {
 }
 // book:end ingest
 // A deletion the channel admitted: the row leaves every window.
-cw_delete :: (rows:[]CwRow,n:int,id:[32]u8)->bool {
+cw_delete :: (rows:[]CwRow,n:int,id:[32]u8)->bool #effects(all) {
   i:=cw_find(rows,n,id);if i<0 {return false;}
   rows[i].deleted=true;return true;
 }
@@ -123,15 +123,15 @@ CwPage :: struct {
   n:int; has_more:bool; next_at:int; next_id:[32]u8;
 }
 // book:end request
-cw_refuse :: (p:CwPage,status:int)->CwPage {r:=p;r.status=status;return r;}
-cw_nibble :: (c:u8)->int {
+cw_refuse :: (p:CwPage,status:int)->CwPage #effects(all) {r:=p;r.status=status;return r;}
+cw_nibble :: (c:u8)->int #effects(all) {
   if c>='0' && c<='9' {return cast(int)(c-'0');}
   if c>='a' && c<='f' {return cast(int)(c-'a')+10;}
   if c>='A' && c<='F' {return cast(int)(c-'A')+10;}
   return -1;
 }
 // book:begin check
-cw_check :: (r:CwRequest)->CwPage {
+cw_check :: (r:CwRequest)->CwPage #effects(all) {
   p:CwPage;p.head=true;
   if r.channels!=1 {return cw_refuse(p,CW_CHANNELS);}
   if r.has_until!=r.has_before {return cw_refuse(p,CW_CURSOR);}
@@ -164,27 +164,27 @@ cw_check :: (r:CwRequest)->CwPage {
   return p;
 }
 // book:end check
-cw_kind_in :: (ks:[4]int,n:int,k:int)->bool {for i:0..<n {if ks[i]==k {return true;}}return false;}
+cw_kind_in :: (ks:[4]int,n:int,k:int)->bool #effects(all) {for i:0..<n {if ks[i]==k {return true;}}return false;}
 
 // book:begin order
 // Is id a before id b, bytewise?
-cw_id_less :: (a:[32]u8,b:[32]u8)->bool {
+cw_id_less :: (a:[32]u8,b:[32]u8)->bool #effects(all) {
   for i:0..<32 {if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}}
   return false;
 }
 // Does row r come after the position (at, id) in created_at DESC, id ASC?
-cw_after :: (r:CwRow,at:int,id:[32]u8)->bool {
+cw_after :: (r:CwRow,at:int,id:[32]u8)->bool #effects(all) {
   if r.created_at<at {return true;}
   if r.created_at>at {return false;}
   return cw_id_less(id,r.id);
 }
 // Does a come before b in the window's order?
-cw_first :: (a:CwRow,b:CwRow)->bool {return cw_after(b,a.created_at,a.id);}
+cw_first :: (a:CwRow,b:CwRow)->bool #effects(all) {return cw_after(b,a.created_at,a.id);}
 // book:end order
 
 // book:begin eligible
 // Is the row one this window may return?
-cw_eligible :: (r:CwRow,q:CwRequest,p:CwPage)->bool {
+cw_eligible :: (r:CwRow,q:CwRequest,p:CwPage)->bool #effects(all) {
   if r.deleted {return false;}
   if p.kinds_n>0 && !cw_kind_in(p.kinds,p.kinds_n,r.kind) {return false;}
   if q.thread {return r.depth>=1 && r.depth<=p.depth_limit && ns_equal32(r.root,q.root);}
@@ -195,7 +195,7 @@ cw_eligible :: (r:CwRow,q:CwRequest,p:CwPage)->bool {
 // book:begin window
 // The page for request q against the channel's rows[0..<n]: row indexes in
 // out. readable: the reader may read the channel (a member, or it is open).
-cw_window :: (rows:[]CwRow,n:int,q:CwRequest,readable:bool,out:[]int)->CwPage {
+cw_window :: (rows:[]CwRow,n:int,q:CwRequest,readable:bool,out:[]int)->CwPage #effects(all) {
   p:=cw_check(q);if p.status!=CW_OK || !readable {return p;}
   if q.thread {
     root:=cw_find(rows,n,q.root);
@@ -223,12 +223,12 @@ cw_window :: (rows:[]CwRow,n:int,q:CwRequest,readable:bool,out:[]int)->CwPage {
 // Auxiliary events: one per stored reaction, deletion or edit, with the id
 // its e tag names.
 CwAux :: struct {id:[32]u8; kind:int; target:[32]u8;}
-cw_aux_kind :: (k:int)->bool {return k==7 || k==5 || k==9005 || k==40003;}
-cw_is_delete :: (k:int)->bool {return k==5 || k==9005;}
+cw_aux_kind :: (k:int)->bool #effects(all) {return k==7 || k==5 || k==9005 || k==40003;}
+cw_is_delete :: (k:int)->bool #effects(all) {return k==5 || k==9005;}
 // Hop 1: aux events naming a returned row; hop 2: deletions naming a hop-1
 // event. Indexes into aux in out; the count. An event names one target, a
 // row or a hop-1 event, so it appears at most once.
-cw_aux :: (rows:[]CwRow,page:[]int,aux:[]CwAux,out:[]int)->int {
+cw_aux :: (rows:[]CwRow,page:[]int,aux:[]CwAux,out:[]int)->int #effects(all) {
   m:=0;
   for i:0..<aux.count {
     if !cw_aux_kind(aux[i].kind) {continue;}
@@ -245,23 +245,23 @@ cw_aux :: (rows:[]CwRow,page:[]int,aux:[]CwAux,out:[]int)->int {
 
 // book:begin bounds
 // The 39006 d tag: "<channel>:head" or "<channel>:<created_at>:<id hex>".
-cw_put_int :: (out:[]u8,at:int,v:int)->int {
+cw_put_int :: (out:[]u8,at:int,v:int)->int #effects(all) {
   digits:[20]u8;d:=0;x:=v;
   while true {digits[19-d]=cast(u8)('0'+x%10);d+=1;x/=10;if x==0 {break;}}
   return json_raw(out,at,cast(string)digits[20-d..<20]);
 }
-cw_put_hex :: (out:[]u8,at:int,id:[32]u8)->int {
+cw_put_hex :: (out:[]u8,at:int,id:[32]u8)->int #effects(all) {
   hex:[64]u8;d:="0123456789abcdef";
   for i:0..<32 {hex[2*i]=d[id[i]>>4];hex[2*i+1]=d[id[i]&15];}
   return json_raw(out,at,cast(string)hex[..]);
 }
-cw_bounds_d :: (channel:string,p:CwPage,out:[]u8)->int {
+cw_bounds_d :: (channel:string,p:CwPage,out:[]u8)->int #effects(all) {
   n:=json_raw(out,0,channel);n=json_raw(out,n,":");
   if p.head {return json_raw(out,n,"head");}
   n=cw_put_int(out,n,p.at);n=json_raw(out,n,":");return cw_put_hex(out,n,p.after);
 }
 // The 39006 content: has_more and next_cursor, null exactly when has_more is false.
-cw_bounds_content :: (p:CwPage,out:[]u8)->int {
+cw_bounds_content :: (p:CwPage,out:[]u8)->int #effects(all) {
   if !p.has_more {return json_raw(out,0,"{\"has_more\":false,\"next_cursor\":null}");}
   n:=json_raw(out,0,"{\"has_more\":true,\"next_cursor\":{\"created_at\":");n=cw_put_int(out,n,p.next_at);
   n=json_raw(out,n,",\"id\":\"");n=cw_put_hex(out,n,p.next_id);return json_raw(out,n,"\"}}");
@@ -274,7 +274,7 @@ CwBounds :: struct {ok:bool; d:string; has_more:bool; next:bool; next_at:int; ne
 // Read a 39006's content strictly: an object with has_more (a boolean) and
 // next_cursor (null, or an object with an integer created_at and a 64-hex
 // id); unknown fields are skipped.
-cw_read_bounds :: (d:string,content:string)->CwBounds {
+cw_read_bounds :: (d:string,content:string)->CwBounds #effects(all) {
   b:CwBounds;b.d=d;j:[1]Json;json_start(j[..],content);
   if json_next(j[..])!=JSON_OBJECT {return b;}
   seen:=0;tok:=json_next(j[..]);
@@ -309,7 +309,7 @@ cw_read_bounds :: (d:string,content:string)->CwBounds {
 }
 // What a client shows: bounds holds the 39006 overlays the response carried,
 // sent is the d tag the request's cursor binds, rows the rows it carried.
-cw_view :: (bounds:[]CwBounds,sent:string,head:bool,rows:int)->int {
+cw_view :: (bounds:[]CwBounds,sent:string,head:bool,rows:int)->int #effects(all) {
   if bounds.count==0 {return CW_VIEW_NONE;}
   if bounds.count>1 || !bounds[0].ok || bounds[0].d!=sent {return CW_VIEW_DISCARD;}
   if head && rows==0 && !bounds[0].has_more {return CW_VIEW_EMPTY;}

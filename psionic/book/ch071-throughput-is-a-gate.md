@@ -32,25 +32,25 @@ owns the IDs, so the harness cannot feed different ones:
 ```jai
 // Input ID i is 1000 + (i * 7919) mod 190000; the 128 forced output IDs
 // repeat inputs 0 to 127. Any other index has no ID.
-tg_id :: (i:int)->int #export_c {
+tg_id :: (i:int)->int #export_c #effects(all) {
     if i<0 || i>=TG_INPUT+TG_OUTPUT {return -1;}
     j:=i;if j>=TG_INPUT {j-=TG_INPUT;}
     return 1000+(j*7919)%190000;
 }
 TG_FNV_BASIS :: cast(u64)0xcbf29ce484222325;
 // FNV-1a over bytes, and over the IDs first..<last as 8 little-endian bytes each.
-tg_word :: (s:string)->u64 #export_c {
+tg_word :: (s:string)->u64 #export_c #effects(all) {
     h:=TG_FNV_BASIS;
     for i:0..<s.count {h=mul_wrap(h^cast(u64)s[i],cast(u64)0x100000001b3);}
     return h;
 }
-tg_ids_word :: (first:int,last:int)->u64 {
+tg_ids_word :: (first:int,last:int)->u64 #effects(all) {
     h:=TG_FNV_BASIS;
     for i:first..<last {v:=cast(u64)tg_id(i);for b:0..<8 {h=mul_wrap(h^((v>>cast(u64)(8*b))&255),cast(u64)0x100000001b3);}}
     return h;
 }
-tg_corpus_word :: ()->u64 #export_c {return tg_ids_word(0,TG_INPUT+TG_OUTPUT);}
-tg_work :: ()->TgWork #export_c {
+tg_corpus_word :: ()->u64 #export_c #effects(all) {return tg_ids_word(0,TG_INPUT+TG_OUTPUT);}
+tg_work :: ()->TgWork #export_c #effects(all) {
     return TgWork.{model=tg_word(TG_MODEL),corpus=tg_corpus_word(),input=TG_INPUT,output=TG_OUTPUT,context=TG_CONTEXT,concurrency=1};
 }
 ```
@@ -108,7 +108,7 @@ A goal reuses chapter 34's Welford statistics, with its admission rule: 5 to
 // Pass when the mean plus two standard errors is within the limit; fail when
 // the mean minus two standard errors is beyond it; otherwise too close to
 // call. A spread over a tenth of the mean decides nothing (chapter 34's rule).
-tg_goal :: (runs:[]int,limit:int)->TgGoal #export_c {
+tg_goal :: (runs:[]int,limit:int)->TgGoal #export_c #effects(all) {
     g:=TgGoal.{verdict=TgVerdict.refused,reason=TgReason.stats,stats=cm_welford(runs),limit=limit};
     if g.stats.status!=CmStatus.ok {return g;}
     g.se=g.stats.sd/sqrt(cast(f64)g.stats.n);
@@ -132,7 +132,7 @@ the two summaries differ by far less than either margin below.
 ```jai
 // The whole gate. Refusals come first, in this order; then both goals.
 // A goal that fails decides the gate even when the other is too noisy.
-tg_decide :: (work:TgWork,bind:TgBind,same_outputs:bool,prefill:[]int,decode:[]int)->TgGate #export_c {
+tg_decide :: (work:TgWork,bind:TgBind,same_outputs:bool,prefill:[]int,decode:[]int)->TgGate #export_c #effects(all) {
     gate:=TgGate.{verdict=TgVerdict.refused};f:=tg_work();
     if work.model!=f.model || work.corpus!=f.corpus || work.input!=f.input || work.output!=f.output || work.context!=f.context {gate.reason=TgReason.workload;return gate;}
     c:=tg_concurrency(work,bind);if c!=TgReason.none {gate.reason=c;return gate;}
@@ -176,7 +176,7 @@ TgBatch :: struct {concurrency:int;requests:int;runs:int;same:bool;build:u64;mac
 // only with chapter 175's evidence at that concurrency: at least that many
 // requests, at least 5 timed runs, every request's IDs equal to its IDs
 // alone, on the build and machine this gate is bound to.
-tg_concurrency :: (work:TgWork,bind:TgBind)->TgReason #export_c {
+tg_concurrency :: (work:TgWork,bind:TgBind)->TgReason #export_c #effects(all) {
     if work.concurrency<1 || work.concurrency>8 {return TgReason.workload;}
     if work.concurrency==1 {return TgReason.none;}
     b:=bind.batch;
@@ -298,7 +298,7 @@ row `i` for the second:
 // the last tile (gk_expert_tile gives `experts`, which owns no pairs), are
 // left as they are: they reach only accumulator columns that gk_mma_part
 // never stores.
-gk_mma_split :: (item:int,cols:int,tokens:int,experts:int,selected:int,slot_input:int,map:[]int,counts:[]int,x:[]f32,hi:[]u32,lo:[]u32) #export_c {
+gk_mma_split :: (item:int,cols:int,tokens:int,experts:int,selected:int,slot_input:int,map:[]int,counts:[]int,x:[]f32,hi:[]u32,lo:[]u32) #export_c #effects(all) {
     half:=cols/2;p:=item%half;g:=item/half;
     e:=gk_expert_tile(g/8,experts,counts);o:=g-8*counts[experts+e];
     if o>=counts[e] {return;}
@@ -320,7 +320,7 @@ decode, the two-limb products and the scale marks are chapter 69's:
 // The expert and group of one warp's 32 grouped rows, as
 // expert*65536+group, or -1 past the last group: expert e owns
 // ceil(counts[e] / 32) groups, in expert order.
-gk_mma_group :: (quad:int,experts:int,counts:[]int)->int {
+gk_mma_group :: (quad:int,experts:int,counts:[]int)->int #effects(all) {
     r:=-1;seen:=0;
     for e:0..<experts {q:=(counts[e]+31)/32;if r<0 && quad<seen+q {r=e*65536+quad-seen;}seen+=q;}
     return r;
@@ -330,7 +330,7 @@ gk_mma_group :: (quad:int,experts:int,counts:[]int)->int {
 // Writes partial[(slice*grouped+g)*rows+row] for each valid grouped row g,
 // and marks there 1 when the lane read a scale above 252 (gk_mma_finish then
 // flags the output, as gk_batch_mx_part's non-finite partials do).
-gk_mma_part :: (item:int,rows:int,cols:int,experts:int,slices:int,grouped:int,packed:[]u8,scales:[]u8,counts:[]int,hi:[]u32,lo:[]u32,partial:[]f32,marks:[]u8) #export_c {
+gk_mma_part :: (item:int,rows:int,cols:int,experts:int,slices:int,grouped:int,packed:[]u8,scales:[]u8,counts:[]int,hi:[]u32,lo:[]u32,partial:[]f32,marks:[]u8) #export_c #effects(all) {
     slice:=item%slices;rest:=item/slices;blocks:=rows/16;block:=rest%blocks;quad:=rest/blocks;
     q:=gk_mma_group(quad,experts,counts);
     if q<0 {return;}
@@ -383,7 +383,7 @@ the second projection and the mixture read the same buffers as before:
 // Item g*rows+row: the slices added in f64 in slice order, rounded to f32,
 // plus the expert's BF16 bias, stored at pair map[...]'s output row, as
 // gk_mx_finish stores it. A marked slice flags the output.
-gk_mma_finish :: (item:int,rows:int,tokens:int,experts:int,slices:int,grouped:int,map:[]int,counts:[]int,partial:[]f32,marks:[]u8,bias:[]u16,out:[]f32,flags:[]u8) #export_c {
+gk_mma_finish :: (item:int,rows:int,tokens:int,experts:int,slices:int,grouped:int,map:[]int,counts:[]int,partial:[]f32,marks:[]u8,bias:[]u16,out:[]f32,flags:[]u8) #export_c #effects(all) {
     row:=item%rows;g:=item/rows;
     e:=gk_expert_tile(g/8,experts,counts);o:=g-8*counts[experts+e];
     if o>=counts[e] {return;}
@@ -407,7 +407,7 @@ slice. The limbs and marks have their own plan buffers, 65 MB in all
 // 47), when the session turned MXFP4-BF16-MMA-v1 on. The packed weights are
 // read as bytes; grouped rows, limbs and partials live in plan buffers 47,
 // 48, 40 and 49.
-gd_batch_mma :: (w:GDWriter,rows:int,cols:int,n:int,e:int,z:int,slot_input:int,weight:GDRef,scale:GDRef,bias:GDRef,x:GDRef,out:GDRef)->GDWriter {
+gd_batch_mma :: (w:GDWriter,rows:int,cols:int,n:int,e:int,z:int,slot_input:int,weight:GDRef,scale:GDRef,bias:GDRef,x:GDRef,out:GDRef)->GDWriter #effects(all) {
     p:=w.plan;s:=GShape.{experts=e,selected=z};grouped:=gd_grouped(n,s);quads:=(n*z+31)/32+e;
     bytes:=GDRef.{buffer=weight.buffer,offset=weight.offset,count=weight.count*weight.elem,elem=1};
     r:=gd_emit(w,45,grouped*(cols/2),5,5,GDScalars.{a=cols,b=n,c=e,d=z,e=slot_input},GDViews.{a=gd_all(p,38),b=gd_all(p,39),c=x,d=gd_all(p,47),e=gd_all(p,48)});

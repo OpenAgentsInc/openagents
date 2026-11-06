@@ -69,15 +69,15 @@ CnOutput :: struct {status:CnStatus;count:int;values:[4]f64;}
     #assert cn_parse(s,"[1E0,0,0,0,0,0,0,0,0,0,0,0,0,0]").status==CnStatus.number;
 }
 
-cn_valid :: (s:CnShape)->bool {return s.inputs>=1 && s.inputs<=4 && s.outputs>=1 && s.outputs<=4;}
-cn_count :: (s:CnShape)->int {return 4*s.inputs+4+4*s.outputs+s.outputs*s.inputs+s.outputs;}
-cn_tensors :: (s:CnShape)->[5]WeTensor {
+cn_valid :: (s:CnShape)->bool #effects(all) {return s.inputs>=1 && s.inputs<=4 && s.outputs>=1 && s.outputs<=4;}
+cn_count :: (s:CnShape)->int #effects(all) {return 4*s.inputs+4+4*s.outputs+s.outputs*s.inputs+s.outputs;}
+cn_tensors :: (s:CnShape)->[5]WeTensor #effects(all) {
     a:=4*s.inputs;b:=a+4;c:=b+4*s.outputs;d:=c+s.outputs*s.inputs;
     return [5]WeTensor.[WeTensor.{name="hidden.weight",rank=2,dims=[4]int.[4,s.inputs,0,0]},WeTensor.{name="hidden.bias",first=a,rank=1,dims=[4]int.[4,0,0,0]},WeTensor.{name="output.weight",first=b,rank=2,dims=[4]int.[s.outputs,4,0,0]},WeTensor.{name="skip.weight",first=c,rank=2,dims=[4]int.[s.outputs,s.inputs,0,0]},WeTensor.{name="output.bias",first=d,rank=1,dims=[4]int.[s.outputs,0,0,0]}];
 }
 // book:begin compute
 // Arithmetic core: caller has admitted shape, complete weights and inputs.
-cn_compute :: (s:CnShape,p:[]f64,x:[]f64)->[4]f64 {
+cn_compute :: (s:CnShape,p:[]f64,x:[]f64)->[4]f64 #effects(all) {
     h:[4]f64;a:=4*s.inputs;b:=a+4;c:=b+4*s.outputs;d:=c+s.outputs*s.inputs;
     for k:0..<4 {z:=p[a+k];for j:0..<s.inputs {z+=p[k*s.inputs+j]*x[j];}h[k]=(z+abs(z))/2;}
     out:[4]f64;
@@ -85,13 +85,13 @@ cn_compute :: (s:CnShape,p:[]f64,x:[]f64)->[4]f64 {
     return out;
 }
 // book:end compute
-cn_forward :: (s:CnShape,p:[]f64,x:[]f64)->CnOutput {
+cn_forward :: (s:CnShape,p:[]f64,x:[]f64)->CnOutput #effects(all) {
     r:CnOutput;if !cn_valid(s) || p.count!=cn_count(s) || x.count!=s.inputs {r.status=CnStatus.shape;return r;}
     for v:p {if !we_number(v) {r.status=CnStatus.number;return r;}}
     for v:x {if !(v>=-64 && v<=64) {r.status=CnStatus.number;return r;}}
     r.values=cn_compute(s,p,x);r.count=s.outputs;return r;
 }
-cn_parse :: (s:CnShape,text:string)->CnWeights {
+cn_parse :: (s:CnShape,text:string)->CnWeights #effects(all) {
     r:CnWeights;if !cn_valid(s) {r.status=CnStatus.shape;return r;}
     d:[1]Jv;nodes:[128]JvNode;
     if !jv_parse(d[..],text,nodes[..]) || jv_kind(d[0],0)!=JV_ARRAY || jv_len(d[0],0)!=cn_count(s) {r.status=CnStatus.json;return r;}

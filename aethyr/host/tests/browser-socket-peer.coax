@@ -34,7 +34,7 @@ bsp_step :: (c:[]BspConnection){
  if c[0].mode==3{for i:0..<33{for b,k:"🙂"{payload[4*i+k]=b;}}count=wss_frame_write(WS_OP_TEXT,cast(string)payload[..],wire[..]);if count<0||!bsp_write(c[0].h,cast(string)wire[0..<count]){bsp_close(c);return;}count=wss_frame_write(WS_OP_BINARY,"ignored",wire[..]);if count<0||!bsp_write(c[0].h,cast(string)wire[0..<count]){bsp_close(c);return;}count=wss_frame_write(WS_OP_TEXT,"after",wire[..]);if count<0||!bsp_write(c[0].h,cast(string)wire[0..<count]){bsp_close(c);return;}}
  c[0].phase=2;c[0].due=cxsock_now_ms()+3000;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2{return 2;}port:=args_whole(args_at(a[..],0));if port<1024||port>65535{return 2;}listener:=cxsock_listen(port);if listener<0{return 1;}defer{done:=cxsock_close(listener);}if !fs_write(args_at(a[..],1),"ready"){return 1;}
  conns:[12]BspConnection;deadline:=cxsock_now_ms()+60000;
  while cxsock_now_ms()<deadline{h:=cxsock_accept(listener,0);if h>=0{taken:=false;for i:0..<conns.count{if conns[i].h<0{conns[i]=BspConnection.{h=h};taken=true;break;}}if !taken{done:=cxsock_close(h);}}for i:0..<conns.count{bsp_step(conns[i..<i+1]);}proc_sleep(1);}

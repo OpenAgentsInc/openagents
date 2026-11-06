@@ -72,15 +72,15 @@ bytes of state, and a deadline of 1 ms to one day.
 
 <!-- source: psionic/lib/serve-capability.coax valid -->
 ```jai
-cp_limits_valid :: (l:CpLimits)->bool {
+cp_limits_valid :: (l:CpLimits)->bool #effects(all) {
     return l.questions>=1 && l.questions<=SV_QUESTIONS_MAX && l.options>=1 && l.options<=SV_OPTIONS_MAX
         && l.state>=1 && l.state<=sv_nip().state && l.deadline_ms>=1 && l.deadline_ms<=CP_DEADLINE_MOST;
 }
-cp_claim_valid :: (c:CpClaim)->bool {
+cp_claim_valid :: (c:CpClaim)->bool #effects(all) {
     return cp_text(c.model,CP_NAME_MAX) && (c.alias.count==0 || cp_text(c.alias,CP_NAME_MAX)) && cp_hex64(c.digest)
         && c.backend!=CpBackend.none && cp_text(c.profile,64) && cp_limits_valid(c.limits) && c.memory>=0;
 }
-cp_evidence_valid :: (e:CpEvidence)->bool {
+cp_evidence_valid :: (e:CpEvidence)->bool #effects(all) {
     return cp_hex64(e.digest) && e.backend!=CpBackend.none && cp_text(e.profile,64) && cp_text(e.record,CP_NAME_MAX) && cp_limits_valid(e.covered);
 }
 ```
@@ -96,13 +96,13 @@ long as the qualified run needed.
 
 <!-- source: psionic/lib/serve-capability.coax narrow -->
 ```jai
-cp_matches :: (c:CpClaim,e:CpEvidence)->bool {return cp_evidence_valid(e) && e.digest==c.digest && e.backend==c.backend && e.profile==c.profile;}
+cp_matches :: (c:CpClaim,e:CpEvidence)->bool #effects(all) {return cp_evidence_valid(e) && e.digest==c.digest && e.backend==c.backend && e.profile==c.profile;}
 // Sizes shrink to what the record covered; the deadline grows to what it needed.
-cp_narrow :: (claim:CpLimits,covered:CpLimits)->CpLimits {
+cp_narrow :: (claim:CpLimits,covered:CpLimits)->CpLimits #effects(all) {
     return CpLimits.{questions=cp_min(claim.questions,covered.questions),options=cp_min(claim.options,covered.options),
         state=cp_min(claim.state,covered.state),deadline_ms=cp_max(claim.deadline_ms,covered.deadline_ms)};
 }
-cp_covers :: (published:CpLimits,covered:CpLimits)->bool {
+cp_covers :: (published:CpLimits,covered:CpLimits)->bool #effects(all) {
     return cp_limits_valid(published) && published.questions<=covered.questions && published.options<=covered.options
         && published.state<=covered.state && published.deadline_ms>=covered.deadline_ms;
 }
@@ -120,7 +120,7 @@ cause and zero limits:
 
 <!-- source: psionic/lib/serve-capability.coax entry -->
 ```jai
-cp_entry :: (c:CpClaim,evidence:[]CpEvidence,budget:int)->CpEntry {
+cp_entry :: (c:CpClaim,evidence:[]CpEvidence,budget:int)->CpEntry #effects(all) {
     e:=CpEntry.{claim=c,cause=CpCause.no_record};
     if !cp_claim_valid(c) {e.cause=CpCause.claim;return e;}
     if budget<c.memory {e.cause=CpCause.memory;return e;}
@@ -187,7 +187,7 @@ the same model can list a qualified CPU entry and an unknown CUDA entry.
 
 <!-- source: psionic/lib/serve-capability.coax derive -->
 ```jai
-cp_derive :: (claims:[]CpClaim,evidence:[]CpEvidence,budget:int,out:[]CpEntry)->int {
+cp_derive :: (claims:[]CpClaim,evidence:[]CpEvidence,budget:int,out:[]CpEntry)->int #effects(all) {
     if claims.count>CP_ENTRIES_MAX || out.count<claims.count {return -1;}
     for i:0..<claims.count {
         e:=cp_entry(claims[i],evidence,budget);
@@ -207,7 +207,7 @@ text. The identity string is the one chapter 20's answers carry in
 
 <!-- source: psionic/lib/serve-capability.coax render -->
 ```jai
-cp_render :: (entries:[]CpEntry,out:[]u8)->int {
+cp_render :: (entries:[]CpEntry,out:[]u8)->int #effects(all) {
     at:=json_raw(out,0,"{\"schema\":\"");at=json_raw(out,at,CP_SCHEMA);at=json_raw(out,at,"\",\"door\":\"");at=json_raw(out,at,SV_DOOR);
     at=json_raw(out,at,"\",\"version\":\"");at=json_raw(out,at,SV_VERSION);at=json_raw(out,at,"\",\"entries\":[");
     for i:0..<entries.count {
@@ -249,7 +249,7 @@ name.
 
 <!-- source: psionic/lib/serve-capability.coax honest -->
 ```jai
-cp_honest :: (entries:[]CpEntry,evidence:[]CpEvidence,budget:int)->CpFault {
+cp_honest :: (entries:[]CpEntry,evidence:[]CpEvidence,budget:int)->CpFault #effects(all) {
     if entries.count>CP_ENTRIES_MAX {return CpFault.{cause=CpCause.claim,entry=-1};}
     for i:0..<entries.count {
         e:=entries[i];
@@ -289,13 +289,13 @@ entry by name or alias and compares the request with that entry's limits:
 
 <!-- source: psionic/lib/serve-capability.coax admit -->
 ```jai
-cp_find :: (entries:[]CpEntry,model:string)->int {
+cp_find :: (entries:[]CpEntry,model:string)->int #effects(all) {
     for i:0..<entries.count {
         e:=entries[i];if e.qualified && (e.claim.model==model || (e.claim.alias.count>0 && e.claim.alias==model)) {return i;}
     }
     return -1;
 }
-cp_admit :: (entries:[]CpEntry,request:SvRequest,pools:SvPools)->CpAdmit {
+cp_admit :: (entries:[]CpEntry,request:SvRequest,pools:SvPools)->CpAdmit #effects(all) {
     if request.code!=SvCode.none {return CpAdmit.{code=request.code,entry=-1};}
     i:=cp_find(entries,request.model);if i<0 {return CpAdmit.{code=SvCode.not_admitted,entry=-1};}
     l:=entries[i].limits;
@@ -326,11 +326,11 @@ written from that engine, so it is the identity the document advertises.
 ```jai
 // The engine that answers must be the checkpoint the entry advertises, and
 // able to answer as many options as the entry publishes.
-cp_serves :: (e:CpEntry,engine:SvEngine)->bool {
+cp_serves :: (e:CpEntry,engine:SvEngine)->bool #effects(all) {
     return e.qualified && engine.ok && engine.sealed && engine.name==e.claim.model && engine.alias==e.claim.alias
         && engine.digest==e.claim.digest && e.limits.options<=engine.options;
 }
-cp_bytes :: (slot:SvSlot,limits:SvLimits,engine:SvEngine,entries:[]CpEntry,pools:SvPools,text:string,now:int)->SvStep {
+cp_bytes :: (slot:SvSlot,limits:SvLimits,engine:SvEngine,entries:[]CpEntry,pools:SvPools,text:string,now:int)->SvStep #effects(all) {
     step:=sv_bytes(slot,limits,engine,pools,text,now);
     if step.action!=SvAction.decide {return step;}
     a:=cp_admit(entries,step.request,pools);

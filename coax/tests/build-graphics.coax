@@ -10,7 +10,7 @@ bg_run :: (args:[]string,out:[]u8)->int {
   if r.started!=0||r.status!=0||r.cut||r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);tool_errln("graphics iteration build failed or exceeded its ten-minute step bound");return -1;}
   return r.out_n;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: build-graphics.coax TRUSTED_COMPILER ABS_OUT");return 2;}
   compiler:=args_at(a[..],0);dir:=args_at(a[..],1);if !fs_mkdir(dir){return 1;}p:[4][4096]u8;
   header:=fs_join(dir,"proto_importer.h",p[0][..]);code:=fs_join(dir,"proto_importer.c",p[1][..]);object:=fs_join(dir,"proto_importer.o",p[2][..]);out:[8388608]u8;

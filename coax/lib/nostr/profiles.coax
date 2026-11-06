@@ -50,53 +50,53 @@ NP_LIMITS :: [NP_CONSUMER_COUNT * NP_MEASURES] u64.[
 NP_CONSUMER_NAMES :: [NP_CONSUMER_COUNT] string.["proto-reference", "json-reader", "project-web"];
 NP_CONSUMER_STATE :: [NP_CONSUMER_COUNT] string.["wire-codec", "json-shape", "planned-event-pipeline"];
 
-np_name :: (profile: int) -> string #export_c {
+np_name :: (profile: int) -> string #export_c #effects(all) {
   if profile < 0 || profile >= NP_PROFILES { return ""; }
   return NP_NAMES[profile];
 }
-np_nips :: (profile: int) -> string #export_c {
+np_nips :: (profile: int) -> string #export_c #effects(all) {
   if profile < 0 || profile >= NP_PROFILES { return ""; }
   return NP_NIPS[profile];
 }
-np_optional :: (profile: int) -> string #export_c {
+np_optional :: (profile: int) -> string #export_c #effects(all) {
   if profile < 0 || profile >= NP_PROFILES { return ""; }
   return NP_OPTIONAL[profile];
 }
-np_consumers :: (profile: int) -> string #export_c {
+np_consumers :: (profile: int) -> string #export_c #effects(all) {
   if profile < 0 || profile >= NP_PROFILES { return ""; }
   return NP_CONSUMERS[profile];
 }
-np_sources :: (profile: int) -> u32 #export_c {
+np_sources :: (profile: int) -> u32 #export_c #effects(all) {
   if profile < 0 || profile >= NP_PROFILES { return 0; }
   return NP_SOURCE_MASK[profile];
 }
-np_required :: (profile: int) -> u32 #export_c {
+np_required :: (profile: int) -> u32 #export_c #effects(all) {
   if profile < 0 || profile >= NP_PROFILES { return 0; }
   return NP_REQUIRED[profile];
 }
-np_capabilities :: (profile: int, target: int) -> u32 #export_c {
+np_capabilities :: (profile: int, target: int) -> u32 #export_c #effects(all) {
   if profile < 0 || profile >= NP_PROFILES { return 0; }
   if target == 0 { return NP_NATIVE[profile]; }
   if target == 2 { return NP_WASM[profile]; }
   return 0; // No Nostr-specific iOS evidence at this revision.
 }
-np_can_advertise :: (profile: int, target: int, claim: u32) -> bool #export_c {
+np_can_advertise :: (profile: int, target: int, claim: u32) -> bool #export_c #effects(all) {
   available := np_capabilities(profile, target);
   return claim != 0 && (claim & available) == claim;
 }
-np_consumer_name :: (consumer: int) -> string #export_c {
+np_consumer_name :: (consumer: int) -> string #export_c #effects(all) {
   if consumer < 0 || consumer >= NP_CONSUMER_COUNT { return ""; }
   return NP_CONSUMER_NAMES[consumer];
 }
-np_consumer_state :: (consumer: int) -> string #export_c {
+np_consumer_state :: (consumer: int) -> string #export_c #effects(all) {
   if consumer < 0 || consumer >= NP_CONSUMER_COUNT { return ""; }
   return NP_CONSUMER_STATE[consumer];
 }
-np_limit :: (consumer: int, field: int) -> u64 #export_c {
+np_limit :: (consumer: int, field: int) -> u64 #export_c #effects(all) {
   if consumer < 0 || consumer >= NP_CONSUMER_COUNT || field < 0 || field >= NP_MEASURES { return 0; }
   return NP_LIMITS[consumer * NP_MEASURES + field];
 }
-np_bounds :: (consumer: int, measured: [] u64) -> bool #export_c {
+np_bounds :: (consumer: int, measured: [] u64) -> bool #export_c #effects(all) {
   if consumer < 0 || consumer >= NP_CONSUMER_COUNT || measured.count != NP_MEASURES { return false; }
   for field: 0..<NP_MEASURES { if measured[field] > np_limit(consumer, field) { return false; } }
   return true;
@@ -104,7 +104,7 @@ np_bounds :: (consumer: int, measured: [] u64) -> bool #export_c {
 // A configurable consumer may narrow a budget, never silently enlarge it or
 // enable an unavailable axis. Required axes remain nonzero. Frame/original,
 // original/content and original/raw-string maxima must describe a valid pipe.
-np_configuration :: (consumer: int, limits: [] u64) -> bool #export_c {
+np_configuration :: (consumer: int, limits: [] u64) -> bool #export_c #effects(all) {
   if !np_bounds(consumer, limits) { return false; }
   for field: 0..<NP_MEASURES {
     if limits[field] == 0 && np_limit(consumer, field) != 0 { return false; }
@@ -113,7 +113,7 @@ np_configuration :: (consumer: int, limits: [] u64) -> bool #export_c {
   if limits[0] > 0 && limits[1] > limits[0] { return false; }
   return true;
 }
-np_safe_integer :: (value: int) -> bool #export_c {
+np_safe_integer :: (value: int) -> bool #export_c #effects(all) {
   return value >= -NP_SAFE_INTEGER && value <= NP_SAFE_INTEGER;
 }
 

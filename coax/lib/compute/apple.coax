@@ -20,14 +20,14 @@
 // Checks: coax test coax/lib/compute/apple.coax --library (no main of its own).
 #authority;
 
-am_bf16 :: (word:u32,high:bool)->f32 {
+am_bf16 :: (word:u32,high:bool)->f32 #effects(all) {
     if high {return f32_from_bits((word>>16)<<16);}
     return f32_from_bits(word<<16);
 }
 
 // acc[r][c] += sum over k of a[r][k] b[c][k]: the 32 products add in f64 and
 // round once into acc.
-am_sg_mma_64x32x32 :: (acc:[]f32,a:[]f32,b:[]f32) {
+am_sg_mma_64x32x32 :: (acc:[]f32,a:[]f32,b:[]f32) #effects(all) {
     for ar:0..<64 {
         for ac:0..<32 {
             sum:f64=0;
@@ -37,7 +37,7 @@ am_sg_mma_64x32x32 :: (acc:[]f32,a:[]f32,b:[]f32) {
     }
 }
 // dst = acc, elementwise (the device stores each simdgroup's tiles).
-am_sg_spill_64x32 :: (acc:[]f32,dst:[]f32) {
+am_sg_spill_64x32 :: (acc:[]f32,dst:[]f32) #effects(all) {
     for ai:0..<2048 {dst[ai]=acc[ai];}
 }
 
@@ -45,17 +45,17 @@ am_sg_spill_64x32 :: (acc:[]f32,dst:[]f32) {
 // tokens) and r0 <= r < min(r0+tn, rows). Products of a BF16 weight and an
 // f32 activation add in f64 and round once. threads (64, 128 or 256) is the
 // group the device spreads the tile over.
-am_matmul_valid :: (rows:int,cols:int,tokens:int,r0:int,t0:int,w:int,x:int,out:int)->bool {
+am_matmul_valid :: (rows:int,cols:int,tokens:int,r0:int,t0:int,w:int,x:int,out:int)->bool #effects(all) {
     if rows<1 || cols<2 || cols%2!=0 || tokens<1 || r0<0 || r0>=rows || t0<0 || t0>=tokens {return false;}
     if rows>2147483647/cols || tokens>2147483647/cols || tokens>2147483647/rows {return false;}
     return w>=rows*(cols/2) && x>=tokens*cols && out>=tokens*rows;
 }
 // The tile shapes the device compiles: 64, 128 or 256 threads, 16, 32 or 64
 // tokens by 32, 64 or 128 rows (CU_apple_tile admits the same).
-am_tile_valid :: (threads:int,tm:int,tn:int)->bool {
+am_tile_valid :: (threads:int,tm:int,tn:int)->bool #effects(all) {
     return (threads==64 || threads==128 || threads==256) && (tm==16 || tm==32 || tm==64) && (tn==32 || tn==64 || tn==128);
 }
-am_matmul_bf16 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0:int,t0:int,w:[]u32,x:[]f32,out:[]f32) {
+am_matmul_bf16 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0:int,t0:int,w:[]u32,x:[]f32,out:[]f32) #effects(all) {
     #assert am_matmul_valid(rows,cols,tokens,r0,t0,w.count,x.count,out.count);
     #assert am_tile_valid(threads,tm,tn);
     half:=cols/2;

@@ -108,22 +108,22 @@ ck_restore :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
 ck_can_play :: (v:[]RmServer,k:int, s_id: SeatId)->bool {
   tk:=eg_ticket(v,k, s_id);if tk.schema!=2{return net_session_saved(NET_DURABLE_NONE,false,0);}i:=ck_slot_seat(v,k, s_id);return i>=0&&net_session_saved(NET_DURABLE_RECEIPTS,v[0].ck.slot[i].accepted,v[0].mono_ms-v[0].ck.slot[i].accepted_mono);
 }
-rm_checkpoint_paused :: (v:[]RmServer,k:int)->bool #export_c {
+rm_checkpoint_paused :: (v:[]RmServer,k:int)->bool #export_c #effects(all) {
   if k<0||k>=EG_ROOMS||!v[0].eg[k].live{return false;}
   for s:0..<EG_SEATS{if v[0].eg[k].seat[s].live&&v[0].eg[k].seat[s].checkpoint_hello&&(v[0].ck.finalizing||!ck_can_play(v,k, SeatId.{value = s})){return true;}}return false;
 }
 ck_pause :: (v:[]RmServer,k:int) {
   for s:0..<EG_SEATS{st:=v[0].eg[k].seat[s..<s+1];if !st[0].live{continue;}st[0].q_n=0;st[0].bank=0;st[0].sat_ms=v[0].mono_ms;st[0].earned=0;}
 }
-rm_checkpoint_flush :: (v:[]RmServer) #export_c {
+rm_checkpoint_flush :: (v:[]RmServer) #export_c #effects(all) {
   for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}for s:0..<EG_SEATS{if v[0].eg[k].seat[s].live{ck_capture(v,k, SeatId.{value = s});}}}v[0].ck.force=true;
 }
-rm_checkpoint_finish :: (v:[]RmServer) #export_c {rm_checkpoint_flush(v);v[0].ck.finalizing=true;}
-rm_checkpoint_clean :: (v:[]RmServer)->bool #export_c {return rm_checkpoint_pending(v)==0&&!v[0].ck.fly;}
-rm_checkpoint_pending :: (v:[]RmServer)->int #export_c {
+rm_checkpoint_finish :: (v:[]RmServer) #export_c #effects(all) {rm_checkpoint_flush(v);v[0].ck.finalizing=true;}
+rm_checkpoint_clean :: (v:[]RmServer)->bool #export_c #effects(all) {return rm_checkpoint_pending(v)==0&&!v[0].ck.fly;}
+rm_checkpoint_pending :: (v:[]RmServer)->int #export_c #effects(all) {
   n:=0;for i:0..<CF_CAP{e:=v[0].ck.slot[i..<i+1];if e[0].live&&e[0].latest.ok&&e[0].latest.n[3]>e[0].acked{n+=1;}}return n;
 }
-rm_checkpoint_due :: (v:[]RmServer)->int #export_c {
+rm_checkpoint_due :: (v:[]RmServer)->int #export_c #effects(all) {
   v[0].ck.out_n=0;if v[0].tkey_n==0{return 0;}
   if v[0].ck.force||v[0].mono_ms-v[0].ck.last>=CF_EVERY{rm_checkpoint_flush(v);v[0].ck.force=false;v[0].ck.last=v[0].mono_ms;}
   if v[0].ck.waiting{if v[0].mono_ms-v[0].ck.sent_mono<CF_RESPONSE{return 0;}ck_failed(v);}
@@ -137,7 +137,7 @@ rm_checkpoint_due :: (v:[]RmServer)->int #export_c {
   v[0].ck.request+=1;v[0].ck.waiting=true;v[0].ck.sent_mono=v[0].mono_ms;v[0].ck.out_n=body.count;v[0].ck.posts+=1;if v[0].ck.tries>0{v[0].ck.retries+=1;}return body.count;
 }
 ck_failed :: (v:[]RmServer) {v[0].ck.waiting=false;v[0].ck.tries+=1;v[0].ck.failures+=1;v[0].ck.retry_at=v[0].mono_ms+cf_wait(v[0].ck.tries,(v[0].vit.gen+v[0].ck.request)%2147483647);}
-rm_checkpoint_answer :: (v:[]RmServer,request:int,status:int,body:string) #export_c {
+rm_checkpoint_answer :: (v:[]RmServer,request:int,status:int,body:string) #export_c #effects(all) {
   if !v[0].ck.waiting||request!=v[0].ck.request{v[0].ck.late+=1;return;}
   nodes:[32]JvNode;d:[1]Jv;valid:=status==200&&jv_parse(d[..],body,nodes[..]);f:=v[0].ck.fly_capture;
   word:[24]u8;wn:=ifx valid then jv_str(d[0],jv_get(d[0],0,"status"),word[..]) else -1;name:=ifx wn>=0 then cast(string)word[0..<wn] else "";

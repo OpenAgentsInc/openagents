@@ -5,7 +5,7 @@
  #assert haqc_accept(rows[..]);#assert !haqc_accept(rows[0..<37]);extra:[39]int;#assert !haqc_accept(extra[..]);
  for i:0..<38 {rows[i]+=1;#assert !haqc_accept(rows[..]);rows[i]-=1;}
 }
-haqc_accept :: (rows:[]int)->bool #export_c {
+haqc_accept :: (rows:[]int)->bool #export_c #effects(all) {
  if rows.count!=38 {return false;}
  expected:=[38]int.[1024,195,169,169,1,1024,4,4096,1,4,4096,0,0,64,64,0,1,63,0,1,64,1,0,64,1,0,0,1,0,0,1,0,0,64,64,0,64,0];
  for value,i:expected {if rows[i]!=value {return false;}}return true;

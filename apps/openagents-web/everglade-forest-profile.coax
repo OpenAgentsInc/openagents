@@ -39,8 +39,8 @@ FOREST_PLANTED :: 3400; FOREST_FLOATS :: 16; FOREST_SLOTS :: 512;
   #assert forest_valid(b[0..<n]) == (n == 16);
 }
 
-forest_public :: (kind: int) -> bool { return kind == FOREST_KIND; }
-forest_valid :: (b: [] f32) -> bool {
+forest_public :: (kind: int) -> bool #effects(all) { return kind == FOREST_KIND; }
+forest_valid :: (b: [] f32) -> bool #effects(all) {
   if b.count != FOREST_FLOATS { return false; }
   for i: 0..<FOREST_FLOATS { if b[i] != b[i] || b[i] < -1000000 || b[i] > 1000000 { return false; } }
   if b[0] < 0 || b[0] >= f32(FOREST_PLANTED) || b[0] != f32(cast(int) b[0]) { return false; }

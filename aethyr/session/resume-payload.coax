@@ -33,14 +33,14 @@ RT_TEXT :: 4096;
   for i:start..<s.count{if b[i]=='-'{b[i]='+';}else if b[i]=='_'{b[i]='/';}}
   back:[2048]u8;n:=b64_decode(cast(string)b[start..<s.count],back[..]);#assert n==saved.count&&cast(string)back[0..<n]==saved;
 }
-rt_size :: (n:int)->bool {return n<=RT_TEXT;}
-rt_fit :: (prefix:int,capacity:int)->bool {return prefix+65<=capacity&&rt_size(prefix+65);}
-rt_core :: (s:string)->bool{return s.count>3&&s.count<=256&&(s[0..<3]=="v2."||s[0..<3]=="v3.");}
-rt_url :: (s:string,out:[]u8)->int {
+rt_size :: (n:int)->bool #effects(all) {return n<=RT_TEXT;}
+rt_fit :: (prefix:int,capacity:int)->bool #effects(all) {return prefix+65<=capacity&&rt_size(prefix+65);}
+rt_core :: (s:string)->bool #effects(all) {return s.count>3&&s.count<=256&&(s[0..<3]=="v2."||s[0..<3]=="v3.");}
+rt_url :: (s:string,out:[]u8)->int #effects(all) {
   n:=b64_encode(s,out);if n<0{return -1;}n=(s.count*8+5)/6;
   for i:0..<n{if out[i]=='+'{out[i]='-';}else if out[i]=='/'{out[i]='_';}}return n;
 }
-resume_ticket_prefix :: (legacy:string,saved:string,out:[]u8)->string #export_c {
+resume_ticket_prefix :: (legacy:string,saved:string,out:[]u8)->string #export_c #effects(all) {
   if !rt_core(legacy)||(saved!="-"&&!cc_read(saved,false).ok){return "";}
   b:[RT_TEXT]u8;b[0]='v';b[1]='4';b[2]='.';n:=rt_url(legacy,b[3..<b.count])+3;b[n]='.';n+=1;
   if saved=="-"{b[n]='-';n+=1;}else{n+=rt_url(saved,b[n..<b.count]);}

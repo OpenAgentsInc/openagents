@@ -9,11 +9,11 @@ RRXYClipping :: enum u8 {viewport;guard_band;invalid;}
 RRRasterProfile :: struct {rounding:RRRasterRounding;subpixel_bits:int;xy:RRXYClipping;guard_pixels:int;}
 RRCoordinate :: struct {status:RQStatus;value:f64;}
 #load "tests/raster-profile-checks.coax";
-rr_raster_profile :: (name:string,bits:int)->RRRasterProfile {
+rr_raster_profile :: (name:string,bits:int)->RRRasterProfile #effects(all) {
  p:=RRRasterProfile.{rounding=RRRasterRounding.invalid,subpixel_bits=bits};
  if name=="analytic" {p.rounding=RRRasterRounding.analytic;}if name=="nearest-even" {p.rounding=RRRasterRounding.nearest_even;}if name=="nearest-positive" {p.rounding=RRRasterRounding.nearest_positive;}return p;
 }
-rr_raster_profile_ok :: (p:RRRasterProfile)->bool {
+rr_raster_profile_ok :: (p:RRRasterProfile)->bool #effects(all) {
  if p.rounding==RRRasterRounding.analytic {if p.subpixel_bits!=0 {return false;}}
  else {if (p.rounding!=RRRasterRounding.nearest_even && p.rounding!=RRRasterRounding.nearest_positive) || p.subpixel_bits<0 || p.subpixel_bits>16 {return false;}}
  if p.xy==RRXYClipping.viewport {return p.guard_pixels==0;}
@@ -21,8 +21,8 @@ rr_raster_profile_ok :: (p:RRRasterProfile)->bool {
 }
 // Self-subtraction is exactlyzero for every finitevalue, including signedzero
 // and largest normals. Infinities and every NaN payload instead yieldNaN.
-rr_coordinate_finite :: (v:f64)->bool {return (v-v)==0;}
-rr_subpixel :: (value:f64,p:RRRasterProfile)->RRCoordinate {
+rr_coordinate_finite :: (v:f64)->bool #effects(all) {return (v-v)==0;}
+rr_subpixel :: (value:f64,p:RRRasterProfile)->RRCoordinate #effects(all) {
  if !rr_raster_profile_ok(p) {return RRCoordinate.{status=RQStatus.unsupported};}
  if !rr_coordinate_finite(value) {return RRCoordinate.{status=RQStatus.resource};}
  if p.rounding==RRRasterRounding.analytic {return RRCoordinate.{value=value};}
@@ -35,7 +35,7 @@ rr_subpixel :: (value:f64,p:RRRasterProfile)->RRCoordinate {
  return RRCoordinate.{value=low/scale};
 }
 
-rr_raster_xy_profile :: (name:string,bits:int,xy:string,guard:int)->RRRasterProfile {
+rr_raster_xy_profile :: (name:string,bits:int,xy:string,guard:int)->RRRasterProfile #effects(all) {
  p:=rr_raster_profile(name,bits);p.guard_pixels=guard;p.xy=RRXYClipping.invalid;
  if xy=="viewport" {p.xy=RRXYClipping.viewport;}if xy=="guard-band" {p.xy=RRXYClipping.guard_band;}return p;
 }

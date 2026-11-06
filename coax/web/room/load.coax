@@ -78,7 +78,7 @@ ld_poll :: (c: [] RelayConn, p: [] LdPlayer, n: int) -> bool {
   return got;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("load: bad arguments"); return 2; }
   if args_count(a[..]) > 0 && args_at(a[..], 0) == "everglade" { return eg_load(a[..]); }

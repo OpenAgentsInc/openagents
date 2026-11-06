@@ -170,7 +170,7 @@ and admits reserved execution storage from a memory plan. Its session enters her
 
 <!-- source: psionic/lib/serve-engine.coax seam -->
 ```jai
-sv_engine :: (session:PsSession,name:string,alias:string,digest:string,temperature:f32,capacity:int)->SvEngine #export_c {
+sv_engine :: (session:PsSession,name:string,alias:string,digest:string,temperature:f32,capacity:int)->SvEngine #export_c #effects(all) {
     if session.status!=PsOpenStatus.ok || name.count<1 || !sv_hex64(digest) || !(temperature>0) {return SvEngine.{};}
     if capacity<1 || capacity>session.model.shape.state.capacity {return SvEngine.{};}
     return SvEngine.{ok=true,session=session,name=name,alias=alias,digest=digest,temperature=temperature,capacity=capacity,options=sv_max_options(session.model.vocab)};
@@ -193,7 +193,7 @@ CPU arenas on device hosts:
 
 <!-- source: psionic/lib/serve-run.coax answers -->
 ```jai
-sv_answers :: (engine:SvEngine,request:SvRequest,pools:SvPools,work:SvWork,p:[]f64)->SvCode #export_c {
+sv_answers :: (engine:SvEngine,request:SvRequest,pools:SvPools,work:SvWork,p:[]f64)->SvCode #export_c #effects(all) {
     admitted:=sv_admit(engine,request,pools);if admitted!=SvCode.none {return admitted;}
     if !engine.sealed || p.count<SV_ANSWER_POOL {return SvCode.internal;}
     for i:0..<request.questions {
@@ -236,7 +236,7 @@ then starts a decision with its own deadline and a new epoch:
 
 <!-- source: psionic/lib/serve-engine.coax bytes -->
 ```jai
-sv_bytes :: (slot:SvSlot,limits:SvLimits,engine:SvEngine,pools:SvPools,text:string,now:int)->SvStep #export_c {
+sv_bytes :: (slot:SvSlot,limits:SvLimits,engine:SvEngine,pools:SvPools,text:string,now:int)->SvStep #export_c #effects(all) {
     if slot.phase!=SvPhase.reading {return SvStep.{slot=slot};}
     if now>=slot.deadline {return sv_refused(slot,SvCode.request_timeout);}
     h:=sv_head(text);

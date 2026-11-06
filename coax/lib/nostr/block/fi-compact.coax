@@ -34,15 +34,15 @@ FiCompact :: struct {ok:bool;protected_end:int;payload_start:int;signing_end:int
  #assert !fi_compact_encoded("","ew") && !fi_compact_encoded("ew","");
  dots=fi_compact_dots(".A.B");#assert dots.ok && dots.first==0 && dots.second==2;
 }
-fi_compact_size_ok :: (n:int)->bool {return n>=1 && n<=FI_B64URL_MAX;}
-fi_compact_positions :: (first:int,second:int,n:int)->bool {
+fi_compact_size_ok :: (n:int)->bool #effects(all) {return n>=1 && n<=FI_B64URL_MAX;}
+fi_compact_positions :: (first:int,second:int,n:int)->bool #effects(all) {
  return first>0 && second>first+1 && second<n-1;
 }
-fi_compact_signature_size :: (size:int)->bool {return size>=256 && size<=512;}
-fi_compact_encoded :: (header:string,payload:string)->bool {
+fi_compact_signature_size :: (size:int)->bool #effects(all) {return size>=256 && size<=512;}
+fi_compact_encoded :: (header:string,payload:string)->bool #effects(all) {
  return fi_b64url_decode_size_checked(header,true)>0 && fi_b64url_decode_size_checked(payload,true)>0;
 }
-fi_compact_dots :: (token:string)->FiDots {
+fi_compact_dots :: (token:string)->FiDots #effects(all) {
  first:=-1;second:=-1;
  for i:0..<token.count {
   if token[i]=='.' {
@@ -51,7 +51,7 @@ fi_compact_dots :: (token:string)->FiDots {
  }
  return FiDots.{ok=second!=-1,first=first,second=second};
 }
-fi_compact_parse :: (token:string)->FiCompact {
+fi_compact_parse :: (token:string)->FiCompact #effects(all) {
  result:FiCompact;
  if !fi_compact_size_ok(token.count) {return result;}
  dots:=fi_compact_dots(token);if !dots.ok {return result;}

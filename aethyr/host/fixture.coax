@@ -99,20 +99,20 @@ hf_record :: (s:[]HostFixture,q:HostFixtureEvent) {
   if s[0].count>=HOST_FIXTURE_EVENTS {s[0].dropped+=1;return;}
   s[0].events[s[0].count]=q;s[0].count+=1;
 }
-hf_frame :: (s:[]HostFixture,v:[]f32,u:[]f32,w:f32,h:f32,dpr:f32,dt:f32,still:bool)->int #export_c {
+hf_frame :: (s:[]HostFixture,v:[]f32,u:[]f32,w:f32,h:f32,dpr:f32,dt:f32,still:bool)->int #export_c #effects(all) {
   if v.count<36 || u.count<16 {return 0;}
   hf_record(s,HostFixtureEvent.{kind=1,a=cast(int)f32_bits(w),b=cast(int)f32_bits(h),c=cast(int)f32_bits(dpr),d=cast(int)f32_bits(dt),e=ifx still then 1 else 0});
   for i:0..<36 {v[i]=cast(f32)i;}for i:0..<16 {u[i]=cast(f32)(100+i);}
   s[0].frames+=1;return 3;
 }
-hf_key :: (s:[]HostFixture,key:int,mods:int,down:bool)->bool #export_c {
+hf_key :: (s:[]HostFixture,key:int,mods:int,down:bool)->bool #export_c #effects(all) {
   hf_record(s,HostFixtureEvent.{kind=2,a=key,b=mods,c=ifx down then 1 else 0});
   s[0].held=ifx down then 1 else 0;return true;
 }
-hf_pointer :: (s:[]HostFixture,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c {
+hf_pointer :: (s:[]HostFixture,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c #effects(all) {
   hf_record(s,HostFixtureEvent.{kind=3,a=cast(int)f32_bits(x),b=cast(int)f32_bits(y),c=phase,d=kind,e=id});return true;
 }
-hf_message :: (s:[]HostFixture,kind:int,text:string) #export_c {
+hf_message :: (s:[]HostFixture,kind:int,text:string) #export_c #effects(all) {
   hf_record(s,HostFixtureEvent.{kind=4,a=kind,bytes=text.count,hash=hf_hash(text)});
   if kind==900 {s[0].action=3;s[0].out_n=16;for c,i:"host-contract-v1" {s[0].outbox[i]=c;}}
   op:=0;from:=0;target:=0;
@@ -125,16 +125,16 @@ hf_message :: (s:[]HostFixture,kind:int,text:string) #export_c {
     for i:from..<text.count {s[0].effect_data[i-from]=text[i];}
   }
 }
-hf_blur :: (s:[]HostFixture) #export_c {hf_record(s,HostFixtureEvent.{kind=5,a=s[0].held});s[0].held=0;}
-hf_wheel :: (s:[]HostFixture,dy:f32) #export_c {hf_record(s,HostFixtureEvent.{kind=6,a=cast(int)f32_bits(dy)});}
-hf_asset_ready :: (s:[]HostFixture,index:int,bytes:int) #export_c {
+hf_blur :: (s:[]HostFixture) #export_c #effects(all) {hf_record(s,HostFixtureEvent.{kind=5,a=s[0].held});s[0].held=0;}
+hf_wheel :: (s:[]HostFixture,dy:f32) #export_c #effects(all) {hf_record(s,HostFixtureEvent.{kind=6,a=cast(int)f32_bits(dy)});}
+hf_asset_ready :: (s:[]HostFixture,index:int,bytes:int) #export_c #effects(all) {
   n:=ifx bytes>=0&&bytes<=64 then bytes else 0;
   hf_record(s,HostFixtureEvent.{kind=7,a=index,b=bytes,bytes=n,hash=hf_hash(cast(string)s[0].asset[0..<n])});
 }
-hf_action_done :: (s:[]HostFixture) #export_c {
+hf_action_done :: (s:[]HostFixture) #export_c #effects(all) {
   hf_record(s,HostFixtureEvent.{kind=8,a=s[0].action});s[0].action=0;s[0].out_n=0;
 }
-hf_probe :: (s:[]HostFixture,index:int,field:int)->int #export_c {
+hf_probe :: (s:[]HostFixture,index:int,field:int)->int #export_c #effects(all) {
   if index== -1 {
     if field==0 {return HOST_FIXTURE_VERSION;}if field==1 {return s[0].constructed;}if field==2 {return s[0].count;}
     if field==3 {return s[0].dropped;}if field==4 {return s[0].frames;}if field==5 {return s[0].held;}return -1;
@@ -144,8 +144,8 @@ hf_probe :: (s:[]HostFixture,index:int,field:int)->int #export_c {
   if field==0 {return q.kind;}if field==1 {return q.a;}if field==2 {return q.b;}if field==3 {return q.c;}
   if field==4 {return q.d;}if field==5 {return q.e;}if field==6 {return q.bytes;}if field==7 {return cast(int)q.hash;}return -1;
 }
-hf_reset :: (s:[]HostFixture) #export_c {s[0].count=0;s[0].dropped=0;}
-hf_take_effect :: (s:[]HostFixture)->HostFixtureEffect #export_c {
+hf_reset :: (s:[]HostFixture) #export_c #effects(all) {s[0].count=0;s[0].dropped=0;}
+hf_take_effect :: (s:[]HostFixture)->HostFixtureEffect #export_c #effects(all) {
   op:=s[0].effect;s[0].effect=0;return HostFixtureEffect.{op=op,target=s[0].target,data=cast(string)s[0].effect_data[0..<s[0].effect_n]};
 }
-hf_result :: (s:[]HostFixture,op:int,result:int) #export_c {hf_record(s,HostFixtureEvent.{kind=9,a=op,b=result});}
+hf_result :: (s:[]HostFixture,op:int,result:int) #export_c #effects(all) {hf_record(s,HostFixtureEvent.{kind=9,a=op,b=result});}

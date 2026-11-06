@@ -107,7 +107,7 @@ fk_inv :: (sum:f32,cols:int,eps:f32)->f32 {return 1/sqrt(sum/f32(cols)+eps);}
 fk_relu1 :: (v:f32)->f32 {if v>0 {return v;}return 0;}
 
 // 0: item = row. out[row] = the inverse RMS of row `row` of a.
-fk_rms :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+fk_rms :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c #effects(all) {
     p:[128]f32;q:[128]f32;
     for thread:0..<FK_THREADS {
         s:f32=0;
@@ -126,19 +126,19 @@ fk_rms :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_
 }
 // 1: item = element. out = a * b[row] * c[col]: the row's inverse RMS, then
 // the column's gain.
-fk_scale :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+fk_scale :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c #effects(all) {
     out[item]=a[item]*b[item/cols]*c[item%cols];
 }
 // 2: out = a + b[col], the bias of the element's column.
-fk_bias :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+fk_bias :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c #effects(all) {
     out[item]=a[item]+b[item%cols];
 }
 // 3: out = max(a, 0).
-fk_relu :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+fk_relu :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c #effects(all) {
     out[item]=fk_relu1(a[item]);
 }
 // 4: out = a + b, the residual add.
-fk_add :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+fk_add :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c #effects(all) {
     out[item]=a[item]+b[item];
 }
 ```
@@ -155,7 +155,7 @@ outputs must be equal bit for bit.
 // 5 = 0 then 1: item = row. The same reduction as fk_rms; then every thread
 // reads the row's total and scales its own columns. The inverse RMS stays
 // in registers instead of a buffer. a is x, b is the gain.
-fk_norm_scale :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+fk_norm_scale :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c #effects(all) {
     p:[128]f32;q:[128]f32;
     for thread:0..<FK_THREADS {
         s:f32=0;
@@ -179,7 +179,7 @@ fk_norm_scale :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #
     }
 }
 // 6 = 2, 3 then 4: item = element. a is x, b the bias, c the residual.
-fk_bias_relu_add :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+fk_bias_relu_add :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c #effects(all) {
     out[item]=fk_relu1(a[item]+b[item%cols])+c[item];
 }
 ```
@@ -223,44 +223,44 @@ this is refused whole; nothing is planned.
 
 <!-- source: psionic/lib/device/fuse.coax admit -->
 ```jai
-fu_inputs :: (kind:int)->int {
+fu_inputs :: (kind:int)->int #effects(all) {
     if kind==FU_RMS || kind==FU_RELU {return 1;}
     if kind==FU_SCALE || kind==FU_BIAS_RELU_ADD {return 3;}
     return 2;
 }
-fu_input :: (op:FuOp,j:int)->FuSpan {if j==0 {return op.a;}if j==1 {return op.b;}return op.c;}
+fu_input :: (op:FuOp,j:int)->FuSpan #effects(all) {if j==0 {return op.a;}if j==1 {return op.b;}return op.c;}
 // The values span j of a kernel holds; j = 3 is the output.
-fu_want :: (kind:int,j:int,rows:int,cols:int)->int {
+fu_want :: (kind:int,j:int,rows:int,cols:int)->int #effects(all) {
     if j==3 {if kind==FU_RMS {return rows;}return rows*cols;}
     if j==0 || kind==FU_ADD {return rows*cols;}
     if kind==FU_SCALE && j==1 {return rows;}
     return cols;
 }
 // Work items: one per row for the norms, one per element otherwise.
-fu_items :: (kind:int,rows:int,cols:int)->int #export_c {
+fu_items :: (kind:int,rows:int,cols:int)->int #export_c #effects(all) {
     if kind==FU_RMS || kind==FU_NORM_SCALE {return rows;}
     return rows*cols;
 }
 // On the device: threads per block, and threads in all. A norm runs one
 // group of FK_THREADS threads per row; the others one thread per element.
-fu_block :: (kind:int)->int #export_c {
+fu_block :: (kind:int)->int #export_c #effects(all) {
     if kind==FU_RMS || kind==FU_NORM_SCALE {return FK_THREADS;}
     return 256;
 }
-fu_threads :: (kind:int,rows:int,cols:int)->int #export_c {
+fu_threads :: (kind:int,rows:int,cols:int)->int #export_c #effects(all) {
     if kind==FU_RMS || kind==FU_NORM_SCALE {return rows*FK_THREADS;}
     return rows*cols;
 }
-fu_inside :: (s:FuSpan,want:int,buffers:[]int)->bool {
+fu_inside :: (s:FuSpan,want:int,buffers:[]int)->bool #effects(all) {
     return s.buffer>=0 && s.buffer<buffers.count && s.offset>=0 && s.count==want && s.offset<=buffers[s.buffer]-s.count;
 }
-fu_overlap :: (p:FuSpan,q:FuSpan)->bool {
+fu_overlap :: (p:FuSpan,q:FuSpan)->bool #effects(all) {
     return p.buffer==q.buffer && p.offset<q.offset+q.count && q.offset<p.offset+p.count;
 }
-fu_same :: (p:FuSpan,q:FuSpan)->bool {return p.buffer==q.buffer && p.offset==q.offset && p.count==q.count;}
+fu_same :: (p:FuSpan,q:FuSpan)->bool #effects(all) {return p.buffer==q.buffer && p.offset==q.offset && p.count==q.count;}
 // An unfused launch is admitted when its spans lie inside their buffers with
 // the right sizes and it writes none of its own inputs.
-fu_check :: (op:FuOp,rows:int,cols:int,buffers:[]int)->FuStatus {
+fu_check :: (op:FuOp,rows:int,cols:int,buffers:[]int)->FuStatus #effects(all) {
     if op.kind<FU_RMS || op.kind>FU_ADD {return FuStatus.kind;}
     if !fu_inside(op.out,fu_want(op.kind,3,rows,cols),buffers) {return FuStatus.span;}
     for j:0..<fu_inputs(op.kind) {if !fu_inside(fu_input(op,j),fu_want(op.kind,j,rows,cols),buffers) {return FuStatus.span;}}
@@ -273,25 +273,25 @@ fu_check :: (op:FuOp,rows:int,cols:int,buffers:[]int)->FuStatus {
 ```jai
 // The chain that starts at op i, by kernel: 2 for norm then scale, 3 for
 // bias, ReLU and add, 0 for none.
-fu_pattern :: (ops:[]FuOp,i:int)->int {
+fu_pattern :: (ops:[]FuOp,i:int)->int #effects(all) {
     if i+1<ops.count && ops[i].kind==FU_RMS && ops[i+1].kind==FU_SCALE {return 2;}
     if i+2<ops.count && ops[i].kind==FU_BIAS && ops[i+1].kind==FU_RELU && ops[i+2].kind==FU_ADD {return 3;}
     return 0;
 }
 // The one launch that replaces the chain.
-fu_fuse :: (ops:[]FuOp,i:int,n:int)->FuOp {
+fu_fuse :: (ops:[]FuOp,i:int,n:int)->FuOp #effects(all) {
     if n==2 {return FuOp.{kind=FU_NORM_SCALE,a=ops[i].a,b=ops[i+1].c,out=ops[i+1].out,keep=ops[i+1].keep};}
     return FuOp.{kind=FU_BIAS_RELU_ADD,a=ops[i].a,b=ops[i].b,c=ops[i+2].b,out=ops[i+2].out,keep=ops[i+2].keep};
 }
-fu_refuse :: (i:int,n:int,f:FuOp,why:FuWhy,p:FuSpan,q:FuSpan)->FuDecision {
+fu_refuse :: (i:int,n:int,f:FuOp,why:FuWhy,p:FuSpan,q:FuSpan)->FuDecision #effects(all) {
     return FuDecision.{first=i,ops=n,fused=f.kind,why=why,p=p,q=q};
 }
 // The spans the chain writes: its output, then its intermediates.
-fu_written :: (ops:[]FuOp,i:int,n:int,k:int)->FuSpan {
+fu_written :: (ops:[]FuOp,i:int,n:int,k:int)->FuSpan #effects(all) {
     if k==0 {return ops[i+n-1].out;}
     return ops[i+k-1].out;
 }
-fu_decide :: (ops:[]FuOp,i:int,n:int)->FuDecision {
+fu_decide :: (ops:[]FuOp,i:int,n:int)->FuDecision #effects(all) {
     f:=fu_fuse(ops,i,n);
     // Each op must read what the one before it wrote: the scale reads the
     // norm's x and its inverse RMS; the ReLU reads the bias's output and the
@@ -336,7 +336,7 @@ otherwise its ops are copied unchanged.
 // Admit every op, then copy the ops to `out`, replacing each chain the
 // decision admits by its fused launch. Every chain considered gets a
 // decision. Nothing is planned unless every op is admitted.
-fu_plan :: (ops:[]FuOp,rows:int,cols:int,buffers:[]int,out:[]FuOp,decisions:[]FuDecision)->FuPlan #export_c {
+fu_plan :: (ops:[]FuOp,rows:int,cols:int,buffers:[]int,out:[]FuOp,decisions:[]FuDecision)->FuPlan #export_c #effects(all) {
     if rows<1 || rows>FU_LIMIT || cols<1 || cols>FU_LIMIT {return FuPlan.{status=FuStatus.shape,op=-1};}
     for i:0..<ops.count {s:=fu_check(ops[i],rows,cols,buffers);if s!=FuStatus.ok {return FuPlan.{status=s,op=i};}}
     i:=0;n:=0;d:=0;
@@ -354,7 +354,7 @@ fu_plan :: (ops:[]FuOp,rows:int,cols:int,buffers:[]int,out:[]FuOp,decisions:[]Fu
 }
 // A recorded step can be replayed with new arguments when the new plan has
 // the same kernels in the same order; otherwise it is recorded again.
-fu_same_kernels :: (a:[]FuOp,b:[]FuOp)->bool #export_c {
+fu_same_kernels :: (a:[]FuOp,b:[]FuOp)->bool #export_c #effects(all) {
     if a.count!=b.count {return false;}
     for i:0..<a.count {if a[i].kind!=b[i].kind {return false;}}
     return true;

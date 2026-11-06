@@ -43,18 +43,18 @@
   nodes[0].kind=1;#assert !LA_shape(nodes[..],roots[..],types[..]);
 }
 
-LA_node_limit :: ()->int #export_c {return 65536;}
-LA_units :: (count:int)->bool #export_c {return count>=1 && count<=32;}
-LA_inputs :: (lengths:[]int,descriptors:int)->bool #export_c {
+LA_node_limit :: ()->int #export_c #effects(all) {return 65536;}
+LA_units :: (count:int)->bool #export_c #effects(all) {return count>=1 && count<=32;}
+LA_inputs :: (lengths:[]int,descriptors:int)->bool #export_c #effects(all) {
   if !LA_units(lengths.count) || descriptors!=0 {return false;}
   total:=0;for n:lengths {if n<0 || n>65536 || n>524288-total {return false;}total+=n;}return true;
 }
-LA_counts :: (nodes:int,units:int,types:int)->bool #export_c {return nodes>=2 && nodes<=LA_node_limit() && LA_units(units) && types>=0 && types<=8192;}
-LA_closure :: (expected:[]ScPath,actual:[]ScPath)->bool #export_c {
+LA_counts :: (nodes:int,units:int,types:int)->bool #export_c #effects(all) {return nodes>=2 && nodes<=LA_node_limit() && LA_units(units) && types>=0 && types<=8192;}
+LA_closure :: (expected:[]ScPath,actual:[]ScPath)->bool #export_c #effects(all) {
   if !LA_units(expected.count) || actual.count!=expected.count {return false;}
   for i:0..<expected.count {if expected[i].value.count==0 || expected[i].value!=actual[i].value {return false;}for j:0..<i {if actual[j].value==actual[i].value {return false;}}}return true;
 }
-LA_shape :: (nodes:[]ScNode,roots:[]int,types:[]ScType)->bool {
+LA_shape :: (nodes:[]ScNode,roots:[]int,types:[]ScType)->bool #effects(all) {
   if !LA_counts(nodes.count,roots.count,types.count) || nodes[0].kind!=0 {return false;}
   for i:1..<nodes.count {
     n:=nodes[i];if n.unit<0 || n.unit>=roots.count {return false;}

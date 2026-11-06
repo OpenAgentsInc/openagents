@@ -121,19 +121,19 @@ PJ_HEX :: "0123456789abcdef";
     #assert r.status==PjStatus.ok && r.written==64;
     #assert pj_answer(QrKind.choice,PJ_DECISION_INDEX,p[..],two[..],exact[0..<63],false).status==PjStatus.capacity;
 }
-pj_byte :: (w:[]PjWriter,b:u8) {if w[0].store {w[0].data[w[0].at]=b;}w[0].at+=1;}
-pj_text :: (w:[]PjWriter,s:string) {for i:0..<s.count {pj_byte(w,s[i]);}}
+pj_byte :: (w:[]PjWriter,b:u8) #effects(all) {if w[0].store {w[0].data[w[0].at]=b;}w[0].at+=1;}
+pj_text :: (w:[]PjWriter,s:string) #effects(all) {for i:0..<s.count {pj_byte(w,s[i]);}}
 // The exact error of p=x*10^6 (Dekker): x*10^6 is exactly p+pj_error(x,p).
-pj_error :: (x:f64,p:f64)->f64 {c:=134217729*x;high:=c-(c-x);low:=x-high;return (high*1000000-p)+low*1000000;}
+pj_error :: (x:f64,p:f64)->f64 #effects(all) {c:=134217729*x;high:=c-(c-x);low:=x-high;return (high*1000000-p)+low*1000000;}
 // Round x*10^6 to an integer, half to even, from the exact binary value.
-pj_round6 :: (x:f64)->int {
+pj_round6 :: (x:f64)->int #effects(all) {
     p:=x*1000000;e:=pj_error(x,p);n:=int(floor(p));d:=p-(f64(n)+0.5);
     if d>0 || (d==0 && e>0) || (d==0 && e==0 && n%2==1) {n+=1;}
     return n;
 }
-pj_digit :: (w:[]PjWriter,v:int) {pj_byte(w,cast(u8)(48+v));}
+pj_digit :: (w:[]PjWriter,v:int) #effects(all) {pj_byte(w,cast(u8)(48+v));}
 // Python repr of round(x, 6): fixed notation from 1e-4, otherwise exponent form.
-pj_number :: (w:[]PjWriter,x:f64) {
+pj_number :: (w:[]PjWriter,x:f64) #effects(all) {
     if (f64_bits(x)>>63)==1 {pj_byte(w,45);}
     n:=pj_round6(abs(x));
     if n==0 {pj_text(w,"0.0");return;}
@@ -145,8 +145,8 @@ pj_number :: (w:[]PjWriter,x:f64) {
     scale:=100000;while frac%10==0 {frac/=10;scale/=10;}
     while scale>0 {pj_byte(w,cast(u8)(48+(frac/scale)%10));scale/=10;}
 }
-pj_number_text :: (x:f64,out:[]u8)->string {w:=[1]PjWriter.[PjWriter.{data=out,store=true}];pj_number(w[..],x);return cast(string)out[0..<w[0].at];}
-pj_string :: (w:[]PjWriter,s:string) {
+pj_number_text :: (x:f64,out:[]u8)->string #effects(all) {w:=[1]PjWriter.[PjWriter.{data=out,store=true}];pj_number(w[..],x);return cast(string)out[0..<w[0].at];}
+pj_string :: (w:[]PjWriter,s:string) #effects(all) {
     pj_byte(w,34);
     for i:0..<s.count {
         c:=s[i];
@@ -162,20 +162,20 @@ pj_string :: (w:[]PjWriter,s:string) {
     }
     pj_byte(w,34);
 }
-pj_key :: (w:[]PjWriter,i:int) {pj_byte(w,34);pj_digit(w,i);pj_byte(w,34);pj_byte(w,58);}
+pj_key :: (w:[]PjWriter,i:int) #effects(all) {pj_byte(w,34);pj_digit(w,i);pj_byte(w,34);pj_byte(w,58);}
 // answers._normalize: a left-to-right sum; a zero total becomes uniform.
-pj_normalize :: (p:[]f64,out:[]f64) {
+pj_normalize :: (p:[]f64,out:[]f64) #effects(all) {
     total:=0.0;for v:p {total+=v;}
     for i:0..<p.count {if total>0 {out[i]=p[i]/total;} else {out[i]=1/f64(p.count);}}
 }
-pj_first_max :: (p:[]f64)->int {best:=0;for i:1..<p.count {if p[i]>p[best] {best=i;}}return best;}
-pj_choice_confidence :: (p:[]f64)->f64 {
+pj_first_max :: (p:[]f64)->int #effects(all) {best:=0;for i:1..<p.count {if p[i]>p[best] {best=i;}}return best;}
+pj_choice_confidence :: (p:[]f64)->f64 #effects(all) {
     n:=p.count;if n==1 {return 1;}
     q:[255]f64;pj_normalize(p,q[0..<n]);uniform:=1/f64(n);
     return (q[pj_first_max(q[0..<n])]-uniform)/(1-uniform);
 }
-pj_expected :: (p:[]f64)->f64 {q:[10]f64;pj_normalize(p,q[0..<p.count]);s:=0.0;for i:1..<p.count {s+=f64(i)*q[i];}return s;}
-pj_score_confidence :: (p:[]f64)->f64 {
+pj_expected :: (p:[]f64)->f64 #effects(all) {q:[10]f64;pj_normalize(p,q[0..<p.count]);s:=0.0;for i:1..<p.count {s+=f64(i)*q[i];}return s;}
+pj_score_confidence :: (p:[]f64)->f64 #effects(all) {
     n:=p.count;if n==1 {return 1;}
     q:[10]f64;pj_normalize(p,q[0..<n]);mode:=pj_first_max(q[0..<n]);
     distance:=0.0;for i:0..<n {distance+=q[i]*abs(f64(i-mode));}
@@ -183,7 +183,7 @@ pj_score_confidence :: (p:[]f64)->f64 {
     r:=1-distance/(spread/f64(n));return (r+abs(r))/2;
 }
 // book:begin answer-json
-pj_emit :: (w:[]PjWriter,kind:QrKind,fields:u8,probabilities:[]f64,options:[]PtOption) {
+pj_emit :: (w:[]PjWriter,kind:QrKind,fields:u8,probabilities:[]f64,options:[]PtOption) #effects(all) {
     n:=probabilities.count;p:[255]f64;pj_normalize(probabilities,p[0..<n]);
     if kind==QrKind.noul {
         v:=probabilities[0];if v<=0 {v=0;}
@@ -213,7 +213,7 @@ pj_emit :: (w:[]PjWriter,kind:QrKind,fields:u8,probabilities:[]f64,options:[]PtO
     pj_byte(w,125);
 }
 // book:end answer-json
-pj_answer :: (kind:QrKind,fields:u8,probabilities:[]f64,options:[]PtOption,out:[]u8,overlap:bool)->PjResult #export_c {
+pj_answer :: (kind:QrKind,fields:u8,probabilities:[]f64,options:[]PtOption,out:[]u8,overlap:bool)->PjResult #export_c #effects(all) {
     n:=probabilities.count;tag:=cast(u8)kind;
     if !qr_valid(tag,n,1) || !pt_question_count(tag,options.count) || fields>1 {return PjResult.{status=PjStatus.shape};}
     if kind!=QrKind.noul && options.count!=n {return PjResult.{status=PjStatus.shape};}

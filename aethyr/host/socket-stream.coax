@@ -40,7 +40,7 @@ HostSocketStep :: struct {taken:int;event:int= -1;bytes:int;code:int;}
   s[0]=HostSocketStream.{};a=hss_feed(s[..],wx("%88%00",xp[..]),out[..]);#assert a.event==2 && a.code==1005;
   s[0]=HostSocketStream.{};a=hss_feed(s[..],wx("%81%7f%01%00%00%00%00%00%00%00",xp[..]),out[..]);#assert a.event==6;
 }
-hss_finish :: (s:[]HostSocketStream,out:[]u8)->HostSocketStep {
+hss_finish :: (s:[]HostSocketStream,out:[]u8)->HostSocketStep #effects(all) {
   r:=HostSocketStep.{};s[0].reading=false;s[0].header_n=0;
   if s[0].frame_op>=8 {
     r.bytes=s[0].control_n;
@@ -56,7 +56,7 @@ hss_finish :: (s:[]HostSocketStream,out:[]u8)->HostSocketStep {
   }
   return r;
 }
-hss_feed :: (s:[]HostSocketStream,input:string,out:[]u8)->HostSocketStep #export_c {
+hss_feed :: (s:[]HostSocketStream,input:string,out:[]u8)->HostSocketStep #export_c #effects(all) {
   r:=HostSocketStep.{};if s[0].dead {r.event=6;return r;}
   while r.taken<input.count {
     byte:=input[r.taken];r.taken+=1;

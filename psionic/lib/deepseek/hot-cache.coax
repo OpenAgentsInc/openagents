@@ -83,51 +83,51 @@
     #assert dc_layer_count(0) && dc_layer_count(8) && !dc_layer_count(9);
 }
 
-dc_layer_count :: (n:int)->bool {return n<=8;}
-dc_used_count :: (layers:int,n:int)->bool {return n<=layers*8;}
-dc_layers :: (n:int)->bool {return n>=1 && n<=43;}
-dc_experts :: (n:int)->bool {return n>=1 && n<=384;}
-dc_stride :: (n:int)->bool {return n>=1 && n<=1073741824;}
-dc_heat :: (n:int)->bool {return n>=0 && n<=1125899906842624;}
-dc_count :: (n:int)->bool {return n>=0 && n<=1000000000;}
-dc_clock :: (n:int)->bool {return n>=0 && n<=1048576;}
-dc_addable :: (n:int)->bool {return n<=1125899906841600;}
-dc_replace :: (incoming:int,cold:int)->bool {return incoming*4>cold*5+4096;}
-dc_config :: (c:DcConfig)->DsStatus #export_c {
+dc_layer_count :: (n:int)->bool #effects(all) {return n<=8;}
+dc_used_count :: (layers:int,n:int)->bool #effects(all) {return n<=layers*8;}
+dc_layers :: (n:int)->bool #effects(all) {return n>=1 && n<=43;}
+dc_experts :: (n:int)->bool #effects(all) {return n>=1 && n<=384;}
+dc_stride :: (n:int)->bool #effects(all) {return n>=1 && n<=1073741824;}
+dc_heat :: (n:int)->bool #effects(all) {return n>=0 && n<=1125899906842624;}
+dc_count :: (n:int)->bool #effects(all) {return n>=0 && n<=1000000000;}
+dc_clock :: (n:int)->bool #effects(all) {return n>=0 && n<=1048576;}
+dc_addable :: (n:int)->bool #effects(all) {return n<=1125899906841600;}
+dc_replace :: (incoming:int,cold:int)->bool #effects(all) {return incoming*4>cold*5+4096;}
+dc_config :: (c:DcConfig)->DsStatus #export_c #effects(all) {
     if !dc_layers(c.layers) || !dc_experts(c.experts) || c.slots<0 || c.slots>c.experts || !dc_stride(c.stride) || c.identity=="" {return DsStatus.shape;}
     if c.budget<c.layers*c.slots*c.stride {return DsStatus.budget;}return DsStatus.ok;
 }
-dc_slot :: (c:DcConfig,slots:[]int,layer:int,id:int)->int {for s:0..<c.slots {at:=layer*c.slots+s;if slots[at]==id {return at;}}return -1;}
-dc_state :: (c:DcConfig,s:DcState)->DsStatus #export_c {
+dc_slot :: (c:DcConfig,slots:[]int,layer:int,id:int)->int #effects(all) {for s:0..<c.slots {at:=layer*c.slots+s;if slots[at]==id {return at;}}return -1;}
+dc_state :: (c:DcConfig,s:DcState)->DsStatus #export_c #effects(all) {
     status:=dc_config(c);if status!=DsStatus.ok {return status;}if s.head.identity!=c.identity {return DsStatus.weights;}
     if !dc_clock(s.head.step) || !dc_clock(s.head.revision) {return DsStatus.state;}if s.heat.count!=c.layers*c.experts || s.slots.count!=c.layers*c.slots {return DsStatus.capacity;}
     for h:s.heat {if !dc_heat(h) {return DsStatus.number;}}
     for layer:0..<c.layers {for j:0..<c.slots {id:=s.slots[layer*c.slots+j];if id<-1 || id>=c.experts {return DsStatus.token;}
         if id>=0 {for k:0..<j {if s.slots[layer*c.slots+k]==id {return DsStatus.token;}}}}}return DsStatus.ok;
 }
-dc_seed :: (c:DcConfig,profile:[]int,heat:[]int,slots:[]int,heat_work:[]int,slot_work:[]int,overlap:bool)->DcResult #export_c {
+dc_seed :: (c:DcConfig,profile:[]int,heat:[]int,slots:[]int,heat_work:[]int,slot_work:[]int,overlap:bool)->DcResult #export_c #effects(all) {
     status:=dc_config(c);if status!=DsStatus.ok {return DcResult.{status=status};}n:=c.layers*c.experts;k:=c.layers*c.slots;
     if profile.count!=n || heat.count<n || slots.count<k || heat_work.count<n || slot_work.count<k {return DcResult.{status=DsStatus.capacity};}if overlap {return DcResult.{status=DsStatus.alias};}
     for i:0..<n {if !dc_count(profile[i]) {return DcResult.{status=DsStatus.number};}heat_work[i]=profile[i]*1024;}
     for i:0..<k {slot_work[i]=-1;}
     for i:0..<n {heat[i]=heat_work[i];}for i:0..<k {slots[i]=slot_work[i];}return DcResult.{written=k,head=DcHeader.{identity=c.identity}};
 }
-dc_begin :: (c:DcConfig,state:DcState)->DcResult #export_c {
+dc_begin :: (c:DcConfig,state:DcState)->DcResult #export_c #effects(all) {
     status:=dc_state(c,state);if status!=DsStatus.ok {return DcResult.{status=status};}if state.head.busy || state.head.step==1048576 {return DcResult.{status=DsStatus.state};}
     h:=state.head;h.busy=true;return DcResult.{head=h};
 }
-dc_ids :: (c:DcConfig,ids:[]int,limit:int)->DsStatus {
+dc_ids :: (c:DcConfig,ids:[]int,limit:int)->DsStatus #effects(all) {
     if ids.count<1 || ids.count>limit {return DsStatus.shape;}for i:0..<ids.count {if ids[i]<0 || ids[i]>=c.experts {return DsStatus.token;}for j:0..<i {if ids[i]==ids[j] {return DsStatus.token;}}}return DsStatus.ok;
 }
 // book:begin dispatch
-dc_dispatch :: (c:DcConfig,state:DcState,layer:int,ids:[]int,out:[]DcLane,stage:[]DcLane,overlap:bool)->DcResult #export_c {
+dc_dispatch :: (c:DcConfig,state:DcState,layer:int,ids:[]int,out:[]DcLane,stage:[]DcLane,overlap:bool)->DcResult #export_c #effects(all) {
     status:=dc_state(c,state);if status!=DsStatus.ok {return DcResult.{status=status};}if !state.head.busy {return DcResult.{status=DsStatus.state};}
     if layer<0 || layer>=c.layers {return DcResult.{status=DsStatus.shape};}status=dc_ids(c,ids,8);if status!=DsStatus.ok {return DcResult.{status=status};}
     if out.count<ids.count || stage.count<ids.count {return DcResult.{status=DsStatus.capacity};}if overlap {return DcResult.{status=DsStatus.alias};}
     for i:0..<ids.count {stage[i]=DcLane.{key=layer*c.experts+ids[i],slot=dc_slot(c,state.slots,layer,ids[i])};}for i:0..<ids.count {out[i]=stage[i];}return DcResult.{written=ids.count,head=state.head};
 }
 // book:end dispatch
-dc_finish :: (c:DcConfig,state:DcState,used:[]int,out:[]int,stage:[]int,overlap:bool)->DcResult #export_c {
+dc_finish :: (c:DcConfig,state:DcState,used:[]int,out:[]int,stage:[]int,overlap:bool)->DcResult #export_c #effects(all) {
     status:=dc_state(c,state);if status!=DsStatus.ok {return DcResult.{status=status};}if !state.head.busy || state.head.step==1048576 {return DcResult.{status=DsStatus.state};}
     n:=c.layers*c.experts;if !dc_used_count(c.layers,used.count) {return DcResult.{status=DsStatus.shape};}if out.count<n || stage.count<n {return DcResult.{status=DsStatus.capacity};}if overlap {return DcResult.{status=DsStatus.alias};}
     for i:0..<n {stage[i]=state.heat[i];}

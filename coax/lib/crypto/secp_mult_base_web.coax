@@ -21,15 +21,15 @@
 // Private PUBLIC-generation helper: width1..7 and spacing1..64. Small
 // configurations exercise its storage/Coax generator adapter in checks;
 // the actual fixed7/37 table is independently compared entry by entry.
-smb_web_table :: (width: int,spacing: int) -> [128] SgPoint {
+smb_web_table :: (width: int,spacing: int) -> [128] SgPoint #effects(all) {
   table: [128] SgPoint;
   #assert smb_generate(table[0..<1 << width],width,spacing);
   return table;
 }
 SMB_WEB_TABLE :: #run smb_web_table(7,37);
-smb_web_width :: () -> int { return 7; }
-smb_web_spacing :: () -> int { return 37; }
-smb_multiply_web :: (scalar: ScScalar) -> SgPoint #export_c {
+smb_web_width :: () -> int #effects(all) { return 7; }
+smb_web_spacing :: () -> int #effects(all) { return 37; }
+smb_multiply_web :: (scalar: ScScalar) -> SgPoint #export_c #effects(all) {
   // Current mutable-view ABI requires a local copy of the immutable table.
   // This scratch copy contains public points and is part of the stack budget.
   table := SMB_WEB_TABLE;

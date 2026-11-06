@@ -98,7 +98,7 @@ time clauses.
 <!-- source: coax/lib/nostr/nipoa.coax conditions -->
 ```jai
 // s as a canonical decimal number from 0 to max, or -1.
-noa_number :: (s:string,max:int)->int {
+noa_number :: (s:string,max:int)->int #effects(all) {
   if s.count==0 || (s[0]=='0' && s.count>1) {return -1;}
   v:=0;
   for c:s {
@@ -111,7 +111,7 @@ noa_number :: (s:string,max:int)->int {
 // Whether the conditions read, and whether an event of facts' kind and
 // created_at meets every kind= clause and every created_at clause. Every
 // clause is read; the caller decides which kinds of clause count.
-noa_conditions :: (text:string,facts:NoaFacts)->NoaHeld {
+noa_conditions :: (text:string,facts:NoaFacts)->NoaHeld #effects(all) {
   h:=NoaHeld.{read=true,kinds=true,times=true};bad:NoaHeld;
   if text.count==0 {return h;}
   from:=0;
@@ -142,7 +142,7 @@ string of digits can never overflow into a small value.
 <!-- source: coax/lib/nostr/nipoa.coax preimage -->
 ```jai
 // "nostr:agent-auth:<agent hex>:<conditions>" into out: its length, or -1.
-noa_preimage :: (agent:[32]u8,conditions:string,out:[]u8)->int {
+noa_preimage :: (agent:[32]u8,conditions:string,out:[]u8)->int #effects(all) {
   if out.count<NOA_PREFIX.count+65+conditions.count {return -1;}
   key:=agent;hex:[64]u8;h:=hex_encode_checked(cast(string)key[..],hex[..],false);
   for i:0..<NOA_PREFIX.count {out[i]=NOA_PREFIX[i];}
@@ -154,7 +154,7 @@ noa_preimage :: (agent:[32]u8,conditions:string,out:[]u8)->int {
 }
 // The message the owner signs: sha256 of the preimage, into out (32
 // bytes). False when the conditions are longer than NOA_MAX_CONDITIONS.
-noa_hash :: (agent:[32]u8,conditions:string,out:[]u8)->bool {
+noa_hash :: (agent:[32]u8,conditions:string,out:[]u8)->bool #effects(all) {
   if conditions.count>NOA_MAX_CONDITIONS {return false;}
   text:[NOA_TEXT_MAX]u8;
   n:=noa_preimage(agent,conditions,text[..]);
@@ -183,15 +183,15 @@ another hash, so the owner's signature no longer verifies.
 <!-- source: coax/lib/nostr/nipoa.coax read -->
 ```jai
 // A tag value unescaped and read as lowercase hex of out.count bytes.
-noa_hex :: (raw:string,out:[]u8)->bool {
+noa_hex :: (raw:string,out:[]u8)->bool #effects(all) {
   buf:[128]u8;n:=json_unescape(raw,buf[..]);
   return n!=-1 && ne_lower_hex(cast(string)buf[0..<n],out);
 }
-noa_status :: (c:NoaClaim,status:int)->NoaClaim {r:=c;r.status=status;return r;}
+noa_status :: (c:NoaClaim,status:int)->NoaClaim #effects(all) {r:=c;r.status=status;return r;}
 // The event's auth tag read and checked up to the signature: NOA_UNCHECKED
 // with the owner, the signature, the conditions and the hash, or the first
 // refusal.
-noa_read :: (e:NostrEvent)->NoaClaim {
+noa_read :: (e:NostrEvent)->NoaClaim #effects(all) {
   c:NoaClaim;
   if e.error!=NE_OK || !e.verified {return c;}
   ev:=nt_event_of(e);
@@ -220,7 +220,7 @@ decision stays cheap to check:
 ```jai
 // A read claim decided with the signature's verdict (signed) against an
 // event of this kind and time; kinds and times say which clauses count.
-noa_decide :: (c:NoaClaim,signed:bool,kind:int,created_at:int,kinds:bool,times:bool)->int {
+noa_decide :: (c:NoaClaim,signed:bool,kind:int,created_at:int,kinds:bool,times:bool)->int #effects(all) {
   if c.status!=NOA_UNCHECKED {return c.status;}
   if !signed {return NOA_SIGNATURE;}
   d:=c;h:=noa_conditions(cast(string)d.conditions[0..<d.n],NoaFacts.{kind=kind,created_at=created_at});
@@ -228,17 +228,17 @@ noa_decide :: (c:NoaClaim,signed:bool,kind:int,created_at:int,kinds:bool,times:b
   return NOA_OK;
 }
 // Whether the owner signed the claim's hash. Only a claim that read.
-noa_signed :: (c:NoaClaim)->bool {
+noa_signed :: (c:NoaClaim)->bool #effects(all) {
   d:=c;return d.status==NOA_UNCHECKED && nostr_verify_vartime(d.hash[..],d.owner[..],d.sig[..]);
 }
 // The whole NIP-OA check on one verified event: every clause evaluated.
-noa_check :: (e:NostrEvent)->NoaClaim {
+noa_check :: (e:NostrEvent)->NoaClaim #effects(all) {
   c:=noa_read(e);
   return noa_status(c,noa_decide(c,noa_signed(c),e.kind,e.created_at,true,true));
 }
 // The event's author is its signer. The owner is reported only as the key
 // that authorized it, and only when the tag verifies.
-noa_attribute :: (e:NostrEvent)->NoaAttribution {
+noa_attribute :: (e:NostrEvent)->NoaAttribution #effects(all) {
   c:=noa_check(e);a:=NoaAttribution.{author=e.public_key,status=c.status};
   if c.status==NOA_OK {a.authorized=true;a.owner=c.owner;}
   return a;
@@ -262,7 +262,7 @@ verifier must reject:
 // ["auth",owner,conditions,sig] into out at n, for an owner who signed
 // noa_hash's message: the new length, or -1 when the conditions don't read
 // or out is small.
-noa_write_tag :: (owner:[32]u8,conditions:string,sig:[64]u8,out:[]u8,at:int)->int {
+noa_write_tag :: (owner:[32]u8,conditions:string,sig:[64]u8,out:[]u8,at:int)->int #effects(all) {
   if !noa_conditions(conditions,NoaFacts.{}).read {return -1;}
   o:=owner;s:=sig;ohex:[64]u8;shex:[128]u8;
   h:=hex_encode_checked(cast(string)o[..],ohex[..],false);
@@ -303,19 +303,19 @@ NaaAuth :: struct {code:int; detail:int; agent:[32]u8; owner:[32]u8;}
 
 <!-- source: coax/lib/nostr/nipaa.coax members -->
 ```jai
-naa_find_member :: (m:NaaMembers,key:[32]u8)->int {
+naa_find_member :: (m:NaaMembers,key:[32]u8)->int #effects(all) {
   c:=m;for i:0..<c.n {if ns_equal32(c.keys[i],key) {return i;}}
   return -1;
 }
-naa_member :: (m:NaaMembers,key:[32]u8)->bool {return naa_find_member(m,key)>=0;}
+naa_member :: (m:NaaMembers,key:[32]u8)->bool #effects(all) {return naa_find_member(m,key)>=0;}
 // Adds key once; false when the list is full.
-naa_add :: (m:[]NaaMembers,key:[32]u8)->bool {
+naa_add :: (m:[]NaaMembers,key:[32]u8)->bool #effects(all) {
   if naa_member(m[0],key) {return true;}
   if m[0].n==NAA_MAX_MEMBERS {return false;}
   m[0].keys[m[0].n]=key;m[0].n+=1;return true;
 }
 // Revokes key's membership; false when it wasn't a member.
-naa_remove :: (m:[]NaaMembers,key:[32]u8)->bool {
+naa_remove :: (m:[]NaaMembers,key:[32]u8)->bool #effects(all) {
   i:=naa_find_member(m[0],key);
   if i<0 {return false;}
   m[0].n-=1;m[0].keys[i]=m[0].keys[m[0].n];return true;
@@ -346,12 +346,12 @@ and a failed AUTH changes nothing on the connection.
 
 <!-- source: coax/lib/nostr/nipaa.coax auth -->
 ```jai
-naa_find :: (c:NaaConnection,key:[32]u8)->int {
+naa_find :: (c:NaaConnection,key:[32]u8)->int #effects(all) {
   d:=c;for i:0..<d.n {if ns_equal32(d.k[i].key,key) {return i;}}
   return -1;
 }
 // Step 6 (and step 2's record): the key's entry replaced, or added.
-naa_grant :: (conn:[]NaaConnection,a:NaaAuth,entry:NaaKey,code:int)->NaaAuth {
+naa_grant :: (conn:[]NaaConnection,a:NaaAuth,entry:NaaKey,code:int)->NaaAuth #effects(all) {
   r:=a;i:=naa_find(conn[0],entry.key);
   if i<0 {
     if conn[0].n==NAA_MAX_KEYS {r.code=NAA_FULL;return r;}
@@ -361,7 +361,7 @@ naa_grant :: (conn:[]NaaConnection,a:NaaAuth,entry:NaaKey,code:int)->NaaAuth {
 }
 // One AUTH event on a connection: e is the event (verified by event.coax),
 // c is noa_read(e), and signed is noa_signed(c). naa_auth passes them.
-naa_auth_fields :: (conn:[]NaaConnection,m:NaaMembers,n:[]Nip42,gen:int,now:int,e:NostrEvent,c:NoaClaim,signed:bool)->NaaAuth {
+naa_auth_fields :: (conn:[]NaaConnection,m:NaaMembers,n:[]Nip42,gen:int,now:int,e:NostrEvent,c:NoaClaim,signed:bool)->NaaAuth #effects(all) {
   a:NaaAuth;a.code=NAA_NIP42;key:=e.public_key;
   x:=nip42_admit_fields(n,gen,now,e.error==NE_OK && e.verified,e.kind,e.created_at,e.original[e.tags_from..<e.tags_to],key[..]);
   a.detail=x.error;
@@ -384,13 +384,13 @@ naa_auth_fields :: (conn:[]NaaConnection,m:NaaMembers,n:[]Nip42,gen:int,now:int,
 // The relay side for an AUTH event's JSON: event.coax checks its id and
 // signature, nipoa.coax reads its auth tag and checks the owner's
 // signature, then naa_auth_fields decides. scratch holds the id preimage.
-naa_auth :: (conn:[]NaaConnection,m:NaaMembers,n:[]Nip42,gen:int,now:int,text:string,scratch:[]u8)->NaaAuth {
+naa_auth :: (conn:[]NaaConnection,m:NaaMembers,n:[]Nip42,gen:int,now:int,text:string,scratch:[]u8)->NaaAuth #effects(all) {
   e:=nostr_event_verify_vartime(text,scratch,false);c:=noa_read(e);
   return naa_auth_fields(conn,m,n,gen,now,e,c,noa_signed(c));
 }
 // ["OK",<id>,true,""] or ["OK",<id>,false,<reason>] into out: its length,
 // or -1 when out is small.
-naa_reply :: (a:NaaAuth,id_hex:string,out:[]u8)->int {
+naa_reply :: (a:NaaAuth,id_hex:string,out:[]u8)->int #effects(all) {
   k:=json_raw(out,0,"[\"OK\",");k=json_write_string(out,k,id_hex);
   k=json_raw(out,k,ifx a.code<=NAA_VIRTUAL then ",true," else ",false,");
   k=json_write_string(out,k,NAA_REASONS[a.code]);return json_raw(out,k,"]");
@@ -410,7 +410,7 @@ only while the relay's clock is before `T + 120`.
 // on the connection (as a member or a virtual member). With enforce, a
 // virtual member's event must meet every kind= clause of its credential;
 // created_at clauses were evaluated at admission and are not again.
-naa_event :: (c:NaaConnection,key:[32]u8,kind:int,enforce:bool)->int {
+naa_event :: (c:NaaConnection,key:[32]u8,kind:int,enforce:bool)->int #effects(all) {
   i:=naa_find(c,key);
   if i<0 {return NAA_E_UNAUTHENTICATED;}
   d:=c;k:=d.k[i];
@@ -419,11 +419,11 @@ naa_event :: (c:NaaConnection,key:[32]u8,kind:int,enforce:bool)->int {
 }
 // REQ, COUNT and other reads: at least one key on the connection holds
 // active or virtual membership.
-naa_read :: (c:NaaConnection)->bool {return c.n>0;}
+naa_read :: (c:NaaConnection)->bool #effects(all) {return c.n>0;}
 // Relay administration and membership changes: never by a virtual member.
 // NAA_E_OK only for an authenticated member key; whether that member is an
 // admin is the relay's own list.
-naa_admin :: (c:NaaConnection,key:[32]u8)->int {
+naa_admin :: (c:NaaConnection,key:[32]u8)->int #effects(all) {
   i:=naa_find(c,key);
   if i<0 {return NAA_E_UNAUTHENTICATED;}
   d:=c;return ifx d.k[i].derived then NAA_E_VIRTUAL else NAA_E_OK;
@@ -431,7 +431,7 @@ naa_admin :: (c:NaaConnection,key:[32]u8)->int {
 // Ends every entry on the connection that owner's membership admitted: its
 // own, and its agents'. The count removed. The relay calls it on each open
 // connection when it revokes owner and wants sessions to end now.
-naa_end :: (conn:[]NaaConnection,owner:[32]u8)->int {
+naa_end :: (conn:[]NaaConnection,owner:[32]u8)->int #effects(all) {
   removed:=0;i:=0;
   while i<conn[0].n {
     k:=conn[0].k[i];

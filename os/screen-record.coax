@@ -25,7 +25,7 @@
 #load "record-supervise.coax";
 #load "record-start.coax";
 
-cxproc_pid_alive :: (pid: int) -> int #foreign;
+cxproc_pid_alive :: (pid: int) -> int #foreign #effects(all);
 
 // ---- pure pieces
 
@@ -204,7 +204,7 @@ sr_repair :: (target: string) -> int {
   return 0;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { print("%", SR_USAGE); return 1; }
   e: [2] [4096] u8;

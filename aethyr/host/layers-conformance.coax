@@ -24,12 +24,12 @@
  #assert hlc_complete(count,0,512,10)==(count==38);
  #assert !hlc_complete(count,1,512,10) && !hlc_complete(count,0,511,10) && !hlc_complete(count,0,512,9);
 }
-hlc_plan :: (values:[]int,p:HostLayerPlan)->bool {
+hlc_plan :: (values:[]int,p:HostLayerPlan)->bool #effects(all) {
  if values.count!=9 || p.status!=0 {return false;}
  expected:=[9]int.[p.side,p.width,p.height,p.levels,p.bytes,p.work,p.base_offset,p.source_bytes,0];
  for i:0..<9 {if values[i]!=expected[i] {return false;}}return true;
 }
-hlc_bytes :: (a:[]u8,b:[]u8)->int {
+hlc_bytes :: (a:[]u8,b:[]u8)->int #effects(all) {
  if a.count<1 || a.count!=b.count {return -1;}different:=0;for i:0..<a.count {if a[i]!=b[i] {different+=1;}}return different;
 }
-hlc_complete :: (count:int,different:int,side:int,levels:int)->bool {return count==38 && different==0 && side==512 && levels==10;}
+hlc_complete :: (count:int,different:int,side:int,levels:int)->bool #effects(all) {return count==38 && different==0 && side==512 && levels==10;}

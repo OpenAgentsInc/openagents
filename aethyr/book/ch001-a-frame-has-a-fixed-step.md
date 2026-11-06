@@ -197,7 +197,7 @@ No other code in the controller reads the frame's time.
 // Advances by a frame's time in fixed steps, on the player's clock (aethyr/loop.coax):
 // the frame's time is clamped, at most LOOP_MAX_STEPS run, and a longer backlog is
 // dropped, so a stall never makes a frame slower.
-advance_in :: (w: World, p: Player, frame: f32) -> Player {
+advance_in :: (w: World, p: Player, frame: f32) -> Player #effects(all) {
   return advance_traced(w, p, frame).player;
 }
 
@@ -205,7 +205,7 @@ AdvanceTrace :: struct { player: Player; count: int; targets: [LOOP_MAX_STEPS] S
 WalkSchedule :: struct { ok: bool; clock: FrameClock; count: int; }
 // A new walking frame starts from a paid fixed clock. Zeroed clock defaults
 // normalize through loop_accept, but a different positive period is refused.
-walk_schedule :: (clock: FrameClock, frame: f32) -> WalkSchedule {
+walk_schedule :: (clock: FrameClock, frame: f32) -> WalkSchedule #effects(all) {
   if (clock.step_ns > 0 && clock.step_ns != LOOP_STEP_NS) || clock.max_steps > LOOP_MAX_STEPS || clock.carry_ns < 0 || clock.carry_ns >= LOOP_STEP_NS || clock.due != 0 {
     return WalkSchedule.{};
   }
@@ -215,11 +215,11 @@ walk_schedule :: (clock: FrameClock, frame: f32) -> WalkSchedule {
   // make loop_accept's count lie in0..8, including normalized clock defaults.
   return WalkSchedule.{ok = true, clock = accepted, count = count};
 }
-walk_target :: (p: Player) -> StepTarget {
+walk_target :: (p: Player) -> StepTarget #effects(all) {
   return StepTarget.{feet = wp(p.pos), velocity = StepVelocity.{x = p.vel.x, y = p.vel.y, z = p.vel.z},
     face = p.face, act = cast(u8) p.act, collision_status = cast(u8) p.collision_status};
 }
-advance_traced :: (w: World, p: Player, frame: f32) -> AdvanceTrace {
+advance_traced :: (w: World, p: Player, frame: f32) -> AdvanceTrace #effects(all) {
   out := AdvanceTrace.{player = p};
   schedule := walk_schedule(p.clock, frame);
   if !schedule.ok {
@@ -234,14 +234,14 @@ advance_traced :: (w: World, p: Player, frame: f32) -> AdvanceTrace {
   next.clock = loop_ran(next.clock); out.player = next;
   return out;
 }
-history_step :: (w: World, p: Player) -> Player {
+history_step :: (w: World, p: Player) -> Player #effects(all) {
   next := p; next.prev_pos = p.pos; next.prev_target = p.target;
   next.prev_face = p.face; next.prev_dist = p.dist;
   return step_once(w, next, STEP);
 }
 // Runs n fixed steps (what a clock says are due), keeping where the last began, so the
 // frame interpolates between the last two.
-steps_in :: (w: World, p: Player, n: int) -> Player {
+steps_in :: (w: World, p: Player, n: int) -> Player #effects(all) {
   next := p;
   for i: 0..<n {
     next = history_step(w, next);
@@ -257,15 +257,15 @@ facing, and the camera, whose mix is `aethyr/follow.coax`'s `follow_shot`
 <!-- source: aethyr/walk.coax drawn -->
 ```jai
 // The feet and facing to draw this frame.
-walk_feet :: (p: Player) -> Vec3 { return mix3(p.prev_pos, p.pos, alpha(p)); }
-walk_face :: (p: Player) -> f32 {
+walk_feet :: (p: Player) -> Vec3 #effects(all) { return mix3(p.prev_pos, p.pos, alpha(p)); }
+walk_face :: (p: Player) -> f32 #effects(all) {
   return wrap_angle(p.prev_face + wrap_angle(p.face - p.prev_face) * alpha(p));
 }
 // The camera this frame, Aethyr's third-person shot: what it looks at, and where it is. A wall
 // pulls the camera in at once, so it is never shown further out than the last step.
-walk_shot :: (p: Player) -> CameraShot { return follow_shot(follow_of(p), wp(p.prev_target), p.prev_dist, alpha(p)); }
-walk_at :: (p: Player) -> Vec3 { return vp(walk_shot(p).at); }
-walk_eye :: (p: Player) -> Vec3 { return vp(walk_shot(p).eye); }
+walk_shot :: (p: Player) -> CameraShot #effects(all) { return follow_shot(follow_of(p), wp(p.prev_target), p.prev_dist, alpha(p)); }
+walk_at :: (p: Player) -> Vec3 #effects(all) { return vp(walk_shot(p).at); }
+walk_eye :: (p: Player) -> Vec3 #effects(all) { return vp(walk_shot(p).eye); }
 ```
 
 ## Steps are the same at any frame rate

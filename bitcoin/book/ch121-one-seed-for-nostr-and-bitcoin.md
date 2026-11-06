@@ -94,7 +94,7 @@ decodes the words first and refuses them:
 // leaves the checksum to the caller; a phrase with a wrong checksum still
 // has a seed, so this procedure decodes the words first and refuses them.
 // Returns 64 or a refusal. work (OS_WORK_BYTES) comes back as zeros.
-oneseed_seed_ct :: (phrase: string, passphrase: string, work: [] u8, seed: [] u8) -> int {
+oneseed_seed_ct :: (phrase: string, passphrase: string, work: [] u8, seed: [] u8) -> int #effects(all) {
   if work.count < OS_WORK_BYTES || seed.count < 64 { return OS_CAPACITY; }
   entropy: [32] u8;
   n := bip39_decode_ct(phrase, work, entropy[..]);
@@ -123,7 +123,7 @@ test network, so the Nostr path is the same in both cases.
 // The NIP-06 private key of account at m/44'/1237'/account'/0/0 into
 // key[0..<32]. Returns 32 or a refusal. Nostr has no network: the path is
 // the same for mainnet and testnet wallets.
-oneseed_nostr_ct :: (seed: [] u8, account: int, work: [] u8, key: [] u8) -> int {
+oneseed_nostr_ct :: (seed: [] u8, account: int, work: [] u8, key: [] u8) -> int #effects(all) {
   if account < 0 || account >= BIP32_HARDENED { return OS_FIELD; }
   if key.count < 32 || work.count < BIP32_WORK_BYTES { return OS_CAPACITY; }
   path: [5] int;
@@ -153,7 +153,7 @@ signer can find its key (chapter 30):
 // an xpub, or a tpub for the test networks), and the master key's
 // fingerprint into fingerprint[0..<4]. purpose is 84 (P2WPKH) or 86
 // (key-path P2TR); coin is 0 on mainnet and 1 on the test networks.
-oneseed_account_ct :: (seed: [] u8, network: int, purpose: int, account: int, work: [] u8, xpub: [] u8, fingerprint: [] u8) -> int {
+oneseed_account_ct :: (seed: [] u8, network: int, purpose: int, account: int, work: [] u8, xpub: [] u8, fingerprint: [] u8) -> int #effects(all) {
   if purpose != 84 && purpose != 86 { return OS_FIELD; }
   indexes: [5] int;
   if path_standard_vartime(purpose, network, account, 0, 0, indexes[..]) != 5 { return OS_FIELD; }
@@ -183,7 +183,7 @@ any index. The checksum is chapter 30's:
 <!-- source: coax/lib/bitcoin/oneseed.coax descriptor -->
 ```jai
 // Text into out at at; the new end, or -1 when it doesn't fit.
-os_put :: (out: [] u8, at: int, text: string) -> int {
+os_put :: (out: [] u8, at: int, text: string) -> int #effects(all) {
   if at < 0 || at + text.count > out.count { return -1; }
   for k: 0..<text.count { out[at + k] = text[k]; }
   return at + text.count;
@@ -192,7 +192,7 @@ os_put :: (out: [] u8, at: int, text: string) -> int {
 // key's origin [fingerprint/purpose'/coin'/account'] with h for hardened,
 // the account xpub, <0;1>/* for the receive and change chains (BIP-389),
 // then # and the checksum. Returns its length or a refusal.
-oneseed_descriptor_ct :: (purpose: int, network: int, account: int, fingerprint: [] u8, xpub: [] u8, work: [] u8, out: [] u8) -> int {
+oneseed_descriptor_ct :: (purpose: int, network: int, account: int, fingerprint: [] u8, xpub: [] u8, work: [] u8, out: [] u8) -> int #effects(all) {
   if purpose != 84 && purpose != 86 { return OS_FIELD; }
   indexes: [5] int;
   if path_standard_vartime(purpose, network, account, 0, 0, indexes[..]) != 5 { return OS_FIELD; }
@@ -228,7 +228,7 @@ oneseed_descriptor_ct :: (purpose: int, network: int, account: int, fingerprint:
 // Everything on it is public: the npub is the agent's name, and the
 // descriptors let a watch-only wallet see its coins. Returns its length or
 // a refusal. work (OS_WORK_BYTES) comes back as zeros.
-oneseed_card_ct :: (phrase: string, passphrase: string, network: int, account: int, work: [] u8, out: [] u8) -> int {
+oneseed_card_ct :: (phrase: string, passphrase: string, network: int, account: int, work: [] u8, out: [] u8) -> int #effects(all) {
   if network < SW_MAINNET || network > SW_REGTEST || account < 0 || account >= BIP32_HARDENED { return OS_FIELD; }
   if work.count < OS_WORK_BYTES { return OS_CAPACITY; }
   seed: [64] u8; key: [32] u8; card: [OS_CARD_MAX] u8; n := 0;
@@ -263,7 +263,7 @@ oneseed_card_ct :: (phrase: string, passphrase: string, network: int, account: i
 }
 // Line k of a card (0, 1 or 2) without its newline; empty when there is
 // no such line.
-oneseed_line_vartime :: (card: string, k: int) -> string {
+oneseed_line_vartime :: (card: string, k: int) -> string #effects(all) {
   start := 0; line := 0;
   for i: 0..<card.count {
     if card[i] == '\n' {
@@ -325,7 +325,7 @@ given:
 // no checksum to catch it; it makes another seed and so another card,
 // which is how a restore finds it.
 OS_OK :: 0;
-oneseed_restore_ct :: (phrase: string, passphrase: string, network: int, account: int, card: string, work: [] u8) -> int {
+oneseed_restore_ct :: (phrase: string, passphrase: string, network: int, account: int, card: string, work: [] u8) -> int #effects(all) {
   mine: [OS_CARD_MAX] u8;
   n := oneseed_card_ct(phrase, passphrase, network, account, work, mine[..]);
   if n < 0 { return n; }

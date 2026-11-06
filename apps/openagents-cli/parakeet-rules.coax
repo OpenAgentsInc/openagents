@@ -11,7 +11,7 @@
 }
 
 // 0 Parakeet default, 1 explicit legacy Psionic Whisper, 2 explicit oracle.
-tr_speech_backend :: (requested:string)->int {
+tr_speech_backend :: (requested:string)->int #effects(all) {
   if requested=="" || requested=="parakeet" { return 0; }
   if requested=="psionic" { return 1; }
   if requested=="whispercpp" { return 2; }
@@ -38,7 +38,7 @@ tr_speech_backend :: (requested:string)->int {
 }
 
 // 0 supported; 1 format; 2 forced language; 3 bias; 4 device.
-tr_pk_options :: (format:int,language:string,prompt:string,words:string,device:string)->int {
+tr_pk_options :: (format:int,language:string,prompt:string,words:string,device:string)->int #effects(all) {
   if format<0 || format>3 { return 1; }
   if language!="" && language!="auto" { return 2; }
   if prompt!="" || words!="" { return 3; }

@@ -133,10 +133,10 @@ FeSpan :: struct { ok: bool; begin: int; body: int; end: int; }
   #assert !fe_door_body(cast(string)b[0..<n]);
 }
 
-fe_span :: (text: string, name: string) -> FeSpan {
+fe_span :: (text: string, name: string) -> FeSpan #effects(all) {
   return fe_scalar_span(text,name,"m","int");
 }
-fe_scalar_span :: (text: string, name: string, parameter: string, result: string) -> FeSpan {
+fe_scalar_span :: (text: string, name: string, parameter: string, result: string) -> FeSpan #effects(all) {
   state := [1]LX_State.[LX_begin(text.count)]; decoded: [4096]u8; message: [256]u8;
   depth := 0; item := true; progress := -1; collecting := false; found: FeSpan;
   expected := [9]string.["::", "(", parameter, ":", "f32", ")", "->", result, "{"];
@@ -164,16 +164,16 @@ fe_scalar_span :: (text: string, name: string, parameter: string, result: string
   if depth != 0 { return FeSpan.{}; }
   return found;
 }
-fe_same_context :: (baseline: string, candidate: string, name: string) -> bool {
+fe_same_context :: (baseline: string, candidate: string, name: string) -> bool #effects(all) {
   a := fe_span(baseline, name); b := fe_span(candidate, name);
   // A valid baseline has a nonempty prefix; it cannot match an absent body.
   return a.ok && baseline[0..<a.body] == candidate[0..<b.body] && baseline[a.end..<baseline.count] == candidate[b.end..<candidate.count];
 }
-fe_door_context :: (baseline: string, candidate: string) -> bool {
+fe_door_context :: (baseline: string, candidate: string) -> bool #effects(all) {
   a:=fe_scalar_span(baseline,"door_ease","t","f32");b:=fe_scalar_span(candidate,"door_ease","t","f32");
   return a.ok && baseline[0..<a.body]==candidate[0..<b.body] && baseline[a.end..<baseline.count]==candidate[b.end..<candidate.count];
 }
-fe_door_body :: (body: string) -> bool {
+fe_door_body :: (body: string) -> bool #effects(all) {
   state:=[1]LX_State.[LX_begin(body.count)];decoded:[64]u8;message:[256]u8;
   for word:[12]string.["{","k",":=","clamp","(","t",",","0",",","1",")",";"] {
     r:=LX_next(body,state[..],decoded[..],message[..]);if r.diagnostic.code!="" || body[r.token.loc.offset..<state[0].pos]!=word {return false;}
@@ -184,7 +184,7 @@ fe_door_body :: (body: string) -> bool {
   for c:body[state[0].pos..<body.count] {rest[n]=c;n+=1;}
   constants:=[2]string.["k","t"];return fe_expression(cast(string)rest[0..<n],constants[..]);
 }
-fe_named :: (text: string, name: string) -> FeSpan {
+fe_named :: (text: string, name: string) -> FeSpan #effects(all) {
   state:=[1]LX_State.[LX_begin(text.count)];decoded:[4096]u8;message:[256]u8;
   item:=true;depth:=0;collecting:=false;colon:=false;found:FeSpan;
   while true {
@@ -199,12 +199,12 @@ fe_named :: (text: string, name: string) -> FeSpan {
   }
   if depth!=0 {return FeSpan.{};}return found;
 }
-fe_known :: (name: string, constants: [] const string) -> bool {
+fe_known :: (name: string, constants: [] const string) -> bool #effects(all) {
   for s: [9]string.["m", "cast", "int", "f32", "floor", "ifx", "then", "else", "return"] { if name == s { return true; } }
   for s: constants { if name == s { return true; } }
   return false;
 }
-fe_expression :: (body: string, constants: [] const string) -> bool {
+fe_expression :: (body: string, constants: [] const string) -> bool #effects(all) {
   state := [1]LX_State.[LX_begin(body.count)]; decoded: [64]u8; message: [256]u8;
   phase := 0; any := false;
   while true {
@@ -226,10 +226,10 @@ fe_expression :: (body: string, constants: [] const string) -> bool {
   }
   return phase == 4 && any;
 }
-fe_operator :: (word: string) -> bool {
+fe_operator :: (word: string) -> bool #effects(all) {
   for op:[19]string.["+","-","*","/","%","&","|","^","<<",">>","==","!=","<","<=",">",">=","&&","||","!"] {if word==op {return true;}}return false;
 }
-fe_constant :: (text: string, name: string) -> FeSpan {
+fe_constant :: (text: string, name: string) -> FeSpan #effects(all) {
   state := [1]LX_State.[LX_begin(text.count)]; decoded: [4096]u8; message: [256]u8;
   depth := 0; item := true; phase := 0; found: FeSpan;
   while true {
@@ -250,9 +250,9 @@ fe_constant :: (text: string, name: string) -> FeSpan {
   if depth != 0 { return FeSpan.{}; }
   return found;
 }
-fe_commit_ok :: (current: string, checked: string, room: bool, page: bool) -> bool {
+fe_commit_ok :: (current: string, checked: string, room: bool, page: bool) -> bool #effects(all) {
   return current.count > 0 && current == checked && room && page;
 }
-fe_publish_ok :: (expected: string, candidate: string, revision: int, active: int, safe: bool) -> bool {
+fe_publish_ok :: (expected: string, candidate: string, revision: int, active: int, safe: bool) -> bool #effects(all) {
   return fe_publish_offer(expected.count,expected==candidate,revision,active,safe);
 }

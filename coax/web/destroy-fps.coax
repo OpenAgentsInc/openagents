@@ -28,7 +28,7 @@ fps_throttle :: (c: [] Cdp, rate: int) -> bool {
   return cdp_call(c, "Emulation.setCPUThrottlingRate", jo_text(o[..]), CDP_CALL_MS) >= 0;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   url := args_at(a[..], 0);

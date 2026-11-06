@@ -22,29 +22,29 @@ CcResult :: struct { code: int; used: int; n: int; generation: u64; }
 
 #load "../../tests/bitcoin/coinscache_checks.coax";
 
-cc_memory_ok :: (limit: int, delta: int, scratch: int, record: int) -> bool {
+cc_memory_ok :: (limit: int, delta: int, scratch: int, record: int) -> bool #effects(all) {
   if limit < size_of(CoinsCache) || delta < 0 || scratch < 0 || record < 0 { return false; }
   left := limit-size_of(CoinsCache);
   if delta > left { return false; } left -= delta;
   if scratch > left { return false; } left -= scratch;
   return record <= left;
 }
-cc_tip_equal :: (a: LcTip, b: LcTip) -> bool {
+cc_tip_equal :: (a: LcTip, b: LcTip) -> bool #effects(all) {
   x := a; y := b;
   return a.code == CS_OK && b.code == CS_OK && a.chain == b.chain && a.height == b.height && lc_same(x.hash[..], y.hash[..]);
 }
-cc_context :: (state: [] CoinsCache, base: [] u8, used: int) -> bool {
+cc_context :: (state: [] CoinsCache, base: [] u8, used: int) -> bool #effects(all) {
   if state.count != 1 || !state[0].ready { return false; }
   return cc_tip_equal(state[0].base, cs_tip_vartime(base, used));
 }
-cc_init_vartime :: (state: [] CoinsCache, base: [] u8, used: int, limit: int, delta: [] u8, scratch: [] u8, record: [] u8) -> int #export_c {
+cc_init_vartime :: (state: [] CoinsCache, base: [] u8, used: int, limit: int, delta: [] u8, scratch: [] u8, record: [] u8) -> int #export_c #effects(all) {
   if state.count != 1 || state[0].ready { return CS_CONTEXT; }
   tip := cs_tip_vartime(base, used); if tip.code != CS_OK { return CS_CONTEXT; }
   if !cc_memory_ok(limit, delta.count, scratch.count, record.count) { return CS_CAPACITY; }
   state[0] = CoinsCache.{ready=true,limit=limit,base=tip,tip=tip}; return CS_OK;
 }
-cc_storage_code :: (code: int) -> int { return ifx code == KV_FULL then CS_CAPACITY else CS_CONTEXT; }
-cc_accept_vartime :: (state: [] CoinsCache, base: [] u8, base_used: int, delta: [] u8, accepted: [] u8, scratch: [] u8, record: [] u8, stage: [] u8, body: [] u8) -> int #export_c {
+cc_storage_code :: (code: int) -> int #effects(all) { return ifx code == KV_FULL then CS_CAPACITY else CS_CONTEXT; }
+cc_accept_vartime :: (state: [] CoinsCache, base: [] u8, base_used: int, delta: [] u8, accepted: [] u8, scratch: [] u8, record: [] u8, stage: [] u8, body: [] u8) -> int #export_c #effects(all) {
   if !cc_context(state, base, base_used) || state[0].pending { return CS_CONTEXT; }
   if !cc_memory_ok(state[0].limit, delta.count, scratch.count, record.count) { return CS_CAPACITY; }
   next := wc_apply_vartime(base, base_used, delta, state[0].used, accepted, scratch, record);
@@ -57,14 +57,14 @@ cc_accept_vartime :: (state: [] CoinsCache, base: [] u8, base_used: int, delta: 
   for k: 0..<next { delta[k] = scratch[k]; }
   state[0].used = next; state[0].tip = tip; return CS_OK;
 }
-cc_view_vartime :: (state: [] CoinsCache, base: [] u8, base_used: int, delta: [] u8, stage: [] u8, body: [] u8) -> CcResult #export_c {
+cc_view_vartime :: (state: [] CoinsCache, base: [] u8, base_used: int, delta: [] u8, stage: [] u8, body: [] u8) -> CcResult #export_c #effects(all) {
   if !cc_context(state, base, base_used) { return CcResult.{code=CS_CONTEXT}; }
   r := wc_materialize_vartime(base, base_used, delta, state[0].used, stage, body);
   if r.code != KV_OK { return CcResult.{code=cc_storage_code(r.code)}; }
   if !cc_tip_equal(state[0].tip, cs_tip_vartime(stage, r.used)) { return CcResult.{code=CS_CONTEXT}; }
   return CcResult.{used=r.used,n=r.n,generation=state[0].generation};
 }
-cc_flush_vartime :: (state: [] CoinsCache, base: [] u8, base_used: int, delta: [] u8, stage: [] u8, body: [] u8) -> CcResult #export_c {
+cc_flush_vartime :: (state: [] CoinsCache, base: [] u8, base_used: int, delta: [] u8, stage: [] u8, body: [] u8) -> CcResult #export_c #effects(all) {
   if !cc_context(state, base, base_used) || state[0].pending { return CcResult.{code=CS_CONTEXT}; }
   r := cc_view_vartime(state, base, base_used, delta, stage, body);
   if r.code != CS_OK { return r; }
@@ -73,7 +73,7 @@ cc_flush_vartime :: (state: [] CoinsCache, base: [] u8, base_used: int, delta: [
 }
 // Call only after the exact prepared frame is appended and synced. The new
 // base is its checked durable result, never a caller-constructed V snapshot.
-cc_ack_vartime :: (state: [] CoinsCache, generation: u64, durable: [] u8, used: int) -> bool #export_c {
+cc_ack_vartime :: (state: [] CoinsCache, generation: u64, durable: [] u8, used: int) -> bool #export_c #effects(all) {
   if state.count != 1 || !state[0].ready || !state[0].pending { return false; }
   if state[0].generation != generation || generation == 0xffffffffffffffff { return false; }
   if !cc_tip_equal(state[0].tip, cs_tip_vartime(durable, used)) { return false; }
@@ -82,7 +82,7 @@ cc_ack_vartime :: (state: [] CoinsCache, generation: u64, durable: [] u8, used: 
 }
 // A known pre-append abort only. After any ambiguous write/sync error, close
 // and recover the store instead: do not clear the pending phase and retry.
-cc_abort_before_append :: (state: [] CoinsCache, generation: u64) -> bool #export_c {
+cc_abort_before_append :: (state: [] CoinsCache, generation: u64) -> bool #export_c #effects(all) {
   if state.count != 1 || !state[0].ready || !state[0].pending { return false; }
   if state[0].generation != generation || generation == 0xffffffffffffffff { return false; }
   state[0].pending = false; state[0].generation += 1; return true;

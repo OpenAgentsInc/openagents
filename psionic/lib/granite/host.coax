@@ -9,7 +9,7 @@
 // book:begin rope
 // cos and sin of position p times base^(-2i/128) for each pair i, in
 // binary64 and rounded once: out[p*128+2i] and out[p*128+2i+1].
-gr_rope_table :: (base:f32,positions:int,out:[]f32)->bool #export_c {
+gr_rope_table :: (base:f32,positions:int,out:[]f32)->bool #export_c #effects(all) {
     if positions<1 || out.count<positions*GR_HEAD || !(base>1) {return false;}
     for i:0..<64 {
         rate:=pow(f64(base),-f64(2*i)/f64(GR_HEAD));

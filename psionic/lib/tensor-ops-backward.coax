@@ -258,7 +258,7 @@ ToGradient :: struct {status:ToStatus;written_a:int;written_b:int;}
 }
 
 // The plan's inner width is the pooling window and update's search (at least one).
-to_vjp_work :: (r:ToRequest,p:ToPlan,a:TvShape)->bool {
+to_vjp_work :: (r:ToRequest,p:ToPlan,a:TvShape)->bool #effects(all) {
     n:=p.na+p.nb;if !to_work_fits(n,p.n) {return false;}pairs:=n*p.n;factor:=1;
     if r.op==ToOp.maximum || r.op==ToOp.sort || r.op==ToOp.topk {factor=a.dims[r.axis];}
     else if r.op==ToOp.softmax {factor=2*a.dims[r.axis];}
@@ -268,7 +268,7 @@ to_vjp_work :: (r:ToRequest,p:ToPlan,a:TvShape)->bool {
 }
 // One analytical Jacobian entry. The VJP contracts it with dy in output
 // order, using an independent work admission before any derivative is run.
-to_jacobian :: (r:ToRequest,p:ToPlan,av:TvView,bv:TvView,a:[]f32,b:[]f32,indices:[]int,operand:int,input:int,output:int)->f64 {
+to_jacobian :: (r:ToRequest,p:ToPlan,av:TvView,bv:TvView,a:[]f32,b:[]f32,indices:[]int,operand:int,input:int,output:int)->f64 #effects(all) {
     op:=r.op;
     if cast(u8)op<=3 {ai:=to_broadcast_index(av.shape,p.shape,output);bi:=to_broadcast_index(bv.shape,p.shape,output);selected:=ai;if operand==1 {selected=bi;}if input!=selected {return 0;}x:=to_at(av,a,ai);y:=to_at(bv,b,bi);
         if op==ToOp.add {return 1;}if op==ToOp.subtract {if operand==0 {return 1;}return -1;}if op==ToOp.multiply {if operand==0 {return y;}return x;}if operand==0 {return 1/y;}return -x/(y*y);
@@ -304,7 +304,7 @@ to_jacobian :: (r:ToRequest,p:ToPlan,av:TvView,bv:TvView,a:[]f32,b:[]f32,indices
     return 0;
 }
 // book:begin vjp
-to_vjp_checked :: (r:ToRequest,owners:[]TvStorage,views:[]TvView,a:[]f32,b:[]f32,indices:[]int,dy:[]f32,ga:[]f32,gb:[]f32,sa:[]f32,sb:[]f32,overlap:bool)->ToGradient #export_c {
+to_vjp_checked :: (r:ToRequest,owners:[]TvStorage,views:[]TvView,a:[]f32,b:[]f32,indices:[]int,dy:[]f32,ga:[]f32,gb:[]f32,sa:[]f32,sb:[]f32,overlap:bool)->ToGradient #export_c #effects(all) {
     p:=to_admit(r,owners,views,a,b,indices);if p.status!=ToStatus.ok {return ToGradient.{status=p.status};}
     if !to_differentiable(r.op) {return ToGradient.{status=ToStatus.nondiff};}
     if !to_vjp_work(r,p,views[0].shape) {return ToGradient.{status=ToStatus.limit};}

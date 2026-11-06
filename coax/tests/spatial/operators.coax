@@ -19,16 +19,16 @@
  r8:=left_scale32(s,v);#assert r8.x==16;#assert r8.y==32;#assert r8.z==64;
  r9:=negate32(v);#assert r9.x==-8;#assert r9.y==-16;#assert r9.z==-32;
 }
-pv_add32 :: (p:Point3(World,u.Metre,f32),v:Vector3(World,u.Metre,f32))->Point3(World,u.Metre,f32) {return p+v;}
-pv_sub32 :: (p:Point3(World,u.Metre,f32),v:Vector3(World,u.Metre,f32))->Point3(World,u.Metre,f32) {return p-v;}
-vv_add32 :: (v:Vector3(World,u.Metre,f32),w:Vector3(World,u.Metre,f32))->Vector3(World,u.Metre,f32) {return v+w;}
-vv_sub32 :: (v:Vector3(World,u.Metre,f32),w:Vector3(World,u.Metre,f32))->Vector3(World,u.Metre,f32) {return v-w;}
-scale32 :: (v:Vector3(World,u.Metre,f32),s:f32)->Vector3(World,u.Metre,f32) {return v*s;}
-unscale32 :: (v:Vector3(World,u.Metre,f32),s:f32)->Vector3(World,u.Metre,f32) {return v/s;}
-difference32 :: (p:Point3(World,u.Metre,f32),q:Point3(World,u.Metre,f32))->Vector3(World,u.Metre,f32) {return p-q;}
-vp_add32 :: (v:Vector3(World,u.Metre,f32),p:Point3(World,u.Metre,f32))->Point3(World,u.Metre,f32) {return v+p;}
-left_scale32 :: (s:f32,v:Vector3(World,u.Metre,f32))->Vector3(World,u.Metre,f32) {return s*v;}
-negate32 :: (v:Vector3(World,u.Metre,f32))->Vector3(World,u.Metre,f32) {return -v;}
+pv_add32 :: (p:Point3(World,u.Metre,f32),v:Vector3(World,u.Metre,f32))->Point3(World,u.Metre,f32) #effects(all) {return p+v;}
+pv_sub32 :: (p:Point3(World,u.Metre,f32),v:Vector3(World,u.Metre,f32))->Point3(World,u.Metre,f32) #effects(all) {return p-v;}
+vv_add32 :: (v:Vector3(World,u.Metre,f32),w:Vector3(World,u.Metre,f32))->Vector3(World,u.Metre,f32) #effects(all) {return v+w;}
+vv_sub32 :: (v:Vector3(World,u.Metre,f32),w:Vector3(World,u.Metre,f32))->Vector3(World,u.Metre,f32) #effects(all) {return v-w;}
+scale32 :: (v:Vector3(World,u.Metre,f32),s:f32)->Vector3(World,u.Metre,f32) #effects(all) {return v*s;}
+unscale32 :: (v:Vector3(World,u.Metre,f32),s:f32)->Vector3(World,u.Metre,f32) #effects(all) {return v/s;}
+difference32 :: (p:Point3(World,u.Metre,f32),q:Point3(World,u.Metre,f32))->Vector3(World,u.Metre,f32) #effects(all) {return p-q;}
+vp_add32 :: (v:Vector3(World,u.Metre,f32),p:Point3(World,u.Metre,f32))->Point3(World,u.Metre,f32) #effects(all) {return v+p;}
+left_scale32 :: (s:f32,v:Vector3(World,u.Metre,f32))->Vector3(World,u.Metre,f32) #effects(all) {return s*v;}
+negate32 :: (v:Vector3(World,u.Metre,f32))->Vector3(World,u.Metre,f32) #effects(all) {return -v;}
 
 #test "spatial token baseline 64 checks every coordinate and ineligible role" {
  p:Point3(World,u.Metre,f64);p.x=10;p.y=20;p.z=30;
@@ -47,13 +47,13 @@ negate32 :: (v:Vector3(World,u.Metre,f32))->Vector3(World,u.Metre,f32) {return -
  r8:=left_scale64(s,v);#assert r8.x==16;#assert r8.y==32;#assert r8.z==64;
  r9:=negate64(v);#assert r9.x==-8;#assert r9.y==-16;#assert r9.z==-32;
 }
-pv_add64 :: (p:Point3(World,u.Metre,f64),v:Vector3(World,u.Metre,f64))->Point3(World,u.Metre,f64) {return p+v;}
-pv_sub64 :: (p:Point3(World,u.Metre,f64),v:Vector3(World,u.Metre,f64))->Point3(World,u.Metre,f64) {return p-v;}
-vv_add64 :: (v:Vector3(World,u.Metre,f64),w:Vector3(World,u.Metre,f64))->Vector3(World,u.Metre,f64) {return v+w;}
-vv_sub64 :: (v:Vector3(World,u.Metre,f64),w:Vector3(World,u.Metre,f64))->Vector3(World,u.Metre,f64) {return v-w;}
-scale64 :: (v:Vector3(World,u.Metre,f64),s:f64)->Vector3(World,u.Metre,f64) {return v*s;}
-unscale64 :: (v:Vector3(World,u.Metre,f64),s:f64)->Vector3(World,u.Metre,f64) {return v/s;}
-difference64 :: (p:Point3(World,u.Metre,f64),q:Point3(World,u.Metre,f64))->Vector3(World,u.Metre,f64) {return p-q;}
-vp_add64 :: (v:Vector3(World,u.Metre,f64),p:Point3(World,u.Metre,f64))->Point3(World,u.Metre,f64) {return v+p;}
-left_scale64 :: (s:f64,v:Vector3(World,u.Metre,f64))->Vector3(World,u.Metre,f64) {return s*v;}
-negate64 :: (v:Vector3(World,u.Metre,f64))->Vector3(World,u.Metre,f64) {return -v;}
+pv_add64 :: (p:Point3(World,u.Metre,f64),v:Vector3(World,u.Metre,f64))->Point3(World,u.Metre,f64) #effects(all) {return p+v;}
+pv_sub64 :: (p:Point3(World,u.Metre,f64),v:Vector3(World,u.Metre,f64))->Point3(World,u.Metre,f64) #effects(all) {return p-v;}
+vv_add64 :: (v:Vector3(World,u.Metre,f64),w:Vector3(World,u.Metre,f64))->Vector3(World,u.Metre,f64) #effects(all) {return v+w;}
+vv_sub64 :: (v:Vector3(World,u.Metre,f64),w:Vector3(World,u.Metre,f64))->Vector3(World,u.Metre,f64) #effects(all) {return v-w;}
+scale64 :: (v:Vector3(World,u.Metre,f64),s:f64)->Vector3(World,u.Metre,f64) #effects(all) {return v*s;}
+unscale64 :: (v:Vector3(World,u.Metre,f64),s:f64)->Vector3(World,u.Metre,f64) #effects(all) {return v/s;}
+difference64 :: (p:Point3(World,u.Metre,f64),q:Point3(World,u.Metre,f64))->Vector3(World,u.Metre,f64) #effects(all) {return p-q;}
+vp_add64 :: (v:Vector3(World,u.Metre,f64),p:Point3(World,u.Metre,f64))->Point3(World,u.Metre,f64) #effects(all) {return v+p;}
+left_scale64 :: (s:f64,v:Vector3(World,u.Metre,f64))->Vector3(World,u.Metre,f64) #effects(all) {return s*v;}
+negate64 :: (v:Vector3(World,u.Metre,f64))->Vector3(World,u.Metre,f64) #effects(all) {return -v;}

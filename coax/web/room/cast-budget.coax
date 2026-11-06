@@ -4,4 +4,4 @@
 #test "cast reservations admit zero and one outstanding, refuse two or invalid counts" {
   #assert cb_admit(0)&&cb_admit(1)&&!cb_admit(2)&&!cb_admit(3)&&!cb_admit(-1)&&!cb_admit(2147483647);
 }
-cb_admit :: (outstanding:int)->bool {return outstanding>=0&&outstanding<2;}
+cb_admit :: (outstanding:int)->bool #effects(all) {return outstanding>=0&&outstanding<2;}

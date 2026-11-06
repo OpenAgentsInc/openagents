@@ -517,7 +517,7 @@ key-value heads: query head j reads head j / 4.
 // query scale is exactly 1 and is not applied. Scores are exponentiated in
 // binary64 without a shift.
 //   x += wo a; x += w2 (silu(w1 norm(x)) * w3 norm(x))
-ms_layer :: (s:MsShape,w:MsLayer,x:[]f32,count:int,out:[]f32,work:[]f32)->MsResult #export_c {
+ms_layer :: (s:MsShape,w:MsLayer,x:[]f32,count:int,out:[]f32,work:[]f32)->MsResult #export_c #effects(all) {
     if !ms_shape_valid(s) || !ms_layer_sizes(s,w) || count<1 || count>MS_TOKENS_MAX {return MsResult.{status=MsStatus.shape};}
     d:=s.width;hd:=s.head_dim;q:=s.heads*hd;kv:=s.kv_heads*hd;group:=s.heads/s.kv_heads;
     if x.count!=count*d || out.count<count*d || work.count<ms_layer_work(s,count) {return MsResult.{status=MsStatus.capacity};}
@@ -566,7 +566,7 @@ the final norm and multiplies by rows of the tied embedding:
 ```jai
 // Embedding rows for tokens, and a readout chunk: the final norm of one
 // hidden row against `rows` rows of the tied embedding.
-ms_embed :: (s:MsShape,table:[]u8,tokens:[]int,out:[]f32)->MsResult #export_c {
+ms_embed :: (s:MsShape,table:[]u8,tokens:[]int,out:[]f32)->MsResult #export_c #effects(all) {
     if !ms_shape_valid(s) || table.count!=2*s.vocab*s.width {return MsResult.{status=MsStatus.shape};}
     if out.count<tokens.count*s.width {return MsResult.{status=MsStatus.capacity};}
     for k:0..<tokens.count {if tokens[k]<0 || tokens[k]>=s.vocab {return MsResult.{status=MsStatus.range,cause=k};}}
@@ -576,7 +576,7 @@ ms_embed :: (s:MsShape,table:[]u8,tokens:[]int,out:[]f32)->MsResult #export_c {
     }}
     return MsResult.{written=tokens.count*s.width};
 }
-ms_readout :: (s:MsShape,head:[]u8,rows:int,norm:[]u8,hidden:[]f32,logits:[]f32,work:[]f32)->MsResult #export_c {
+ms_readout :: (s:MsShape,head:[]u8,rows:int,norm:[]u8,hidden:[]f32,logits:[]f32,work:[]f32)->MsResult #export_c #effects(all) {
     if !ms_shape_valid(s) || rows<1 || rows>s.vocab || head.count!=2*rows*s.width || norm.count!=2*s.width || hidden.count!=s.width {return MsResult.{status=MsStatus.shape};}
     if logits.count<rows || work.count<s.width+rows {return MsResult.{status=MsStatus.capacity};}
     if ms_norm(hidden,norm,work[0..<s.width])!=MsStatus.ok {return MsResult.{status=MsStatus.number};}
@@ -634,7 +634,7 @@ rotation over adjacent pairs and the embedding as its head.
 // layer rotates with YaRN over adjacent pairs. The cache holds at most
 // LM_POSITIONS_MAX = 64 positions, far inside the original 16,384, so the
 // Llama 4 query scale is exactly 1 and is not applied.
-md_model :: (embed:[]u8,norm:[]u8,layers:[]MsLayer)->LmModel #export_c {
+md_model :: (embed:[]u8,norm:[]u8,layers:[]MsLayer)->LmModel #export_c #effects(all) {
     return LmModel.{embed=embed,norm=norm,head=embed,layers=layers,rope=LmRope.yarn};
 }
 ```

@@ -17,7 +17,7 @@ PgJob :: struct {
 PgProgress :: struct {error:u32;phase:u32;completed:int;total:int;}
 // Internal borrowed partition; callers validate exact work size before use.
 PgScratch :: struct {pb:[]u8;phrase:[]u8;master:[]u8;prk:[]u8;keys:[]u8;tag:[]u8;salt:[]u8;info:[]u8;mac:[]u8;plain:[]u8;decoded:[]u8;canonical:[]u8;}
-pg_scratch :: (work:[]u8)->PgScratch {
+pg_scratch :: (work:[]u8)->PgScratch #effects(all) {
  return PgScratch.{pb=work[0..<832],phrase=work[832..<872],master=work[872..<904],prk=work[904..<936],keys=work[936..<1000],tag=work[1000..<1032],salt=work[1032..<1096],info=work[1096..<1192],mac=work[1192..<5488],plain=work[5488..<9584],decoded=work[9584..<18032],canonical=work[18032..<22128]};
 }
 PG_TEST_RELAY :: "wss://relay.example";
@@ -228,28 +228,28 @@ PG_TEST_RECIPIENT :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16
   }
 }
 
-pg_work_size :: ()->int #export_c {return PG_WORK_BYTES;}
-pg_worker_budget :: ()->int #export_c {return 256;}
-pg_config_request :: (password:int,record:int,entropy:int,operation:u32)->u32 {
+pg_work_size :: ()->int #export_c #effects(all) {return PG_WORK_BYTES;}
+pg_worker_budget :: ()->int #export_c #effects(all) {return 256;}
+pg_config_request :: (password:int,record:int,entropy:int,operation:u32)->u32 #effects(all) {
   if operation>PG_SEAL {return PG_STATE;}
   if password<0 || password>128 {return PG_LIMIT;}
   if pg_record_admit(record)!=0 {return PG_CONTEXT;}
   if operation==PG_SEAL && entropy!=28 {return PG_FORMAT;}
   return PG_OK;
 }
-pg_request :: (password:int,record:int,input:int,entropy:int,operation:u32)->u32 #export_c {
+pg_request :: (password:int,record:int,input:int,entropy:int,operation:u32)->u32 #export_c #effects(all) {
   error:=pg_config_request(password,record,entropy,operation);if error!=0 {return error;}
   return ifx operation==PG_OPEN then pg_wire_admit(input) else pg_plain_admit(input);
 }
-pg_message_request :: (password:int,record:int,input:int,relay:int,recipient:int,entropy:int,operation:u32)->u32 #export_c {
+pg_message_request :: (password:int,record:int,input:int,relay:int,recipient:int,entropy:int,operation:u32)->u32 #export_c #effects(all) {
   error:=pg_config_request(password,record,entropy,operation);if error!=0 {return error;}
   if relay<7 || relay>2048 || recipient!=64 {return PG_POINTER;}
   if input<1 || input>(ifx operation==PG_OPEN then 6144 else 4096) {return PG_LIMIT;}return PG_OK;
 }
-pg_fail :: (state:[]PgJob,error:u32)->u32 {
+pg_fail :: (state:[]PgJob,error:u32)->u32 #effects(all) {
   state[0].phase=PG_CLOSING;state[0].error=error;state[0].written=0;return error;
 }
-pg_begin_checked :: (state:[]PgJob,work:[]u8,input:[]u8,input_count:int,raw:string,record:string,relay:string,recipient:string,entropy:[]u8,operation:u32,overlap:bool)->u32 #export_c {
+pg_begin_checked :: (state:[]PgJob,work:[]u8,input:[]u8,input_count:int,raw:string,record:string,relay:string,recipient:string,entropy:[]u8,operation:u32,overlap:bool)->u32 #export_c #effects(all) {
   if state.count!=1 || work.count!=22128 || input.count!=4202 {return PG_STATE;}
   if state[0].phase!=PG_IDLE {return PG_STATE;}
   slots:=pg_scratch(work);state[0]=PgJob.{};
@@ -275,7 +275,7 @@ pg_begin_checked :: (state:[]PgJob,work:[]u8,input:[]u8,input_count:int,raw:stri
   if status!=0 {return pg_fail(state,PG_KDF);}
   state[0].started=true;state[0].phase=PG_ACTIVE;return PG_OK;
 }
-pg_active :: (state:[]PgJob,work:[]u8)->u32 {
+pg_active :: (state:[]PgJob,work:[]u8)->u32 #effects(all) {
   if state.count!=1 || work.count!=22128 {return PG_STATE;}
   slots:=pg_scratch(work);s:=state[0];
   if s.phase!=PG_ACTIVE || s.operation>PG_SEAL || s.error!=0 || !s.context_ready || !s.started || s.written!=0 {return PG_STATE;}
@@ -284,7 +284,7 @@ pg_active :: (state:[]PgJob,work:[]u8)->u32 {
   if progress.error!=0 || progress.total!=210000 || pb_word(work,12)!=32 || progress.completed<s.completed {return PG_KDF;}
   if progress.phase!=PB_ACTIVE && progress.phase!=PB_DONE {return PG_KDF;}return PG_OK;
 }
-pg_complete_derived :: (state:[]PgJob,work:[]u8,input:[]u8,relay:string,recipient:string,out:[]u8)->u32 {
+pg_complete_derived :: (state:[]PgJob,work:[]u8,input:[]u8,relay:string,recipient:string,out:[]u8)->u32 #effects(all) {
   slots:=pg_scratch(work);status:=pb_result_checked(slots.pb,slots.master,false);if status!=0 {return pg_fail(state,PG_KDF);}
   status=pg_keys_checked(slots.master,state[0].salt[..],state[0].context[..],slots.prk,slots.info,slots.keys,false);
   if status!=0 {return pg_fail(state,status);}
@@ -301,34 +301,34 @@ pg_complete_derived :: (state:[]PgJob,work:[]u8,input:[]u8,relay:string,recipien
   if result.error!=0 {return pg_fail(state,result.error);}
   state[0].written=result.written;state[0].phase=PG_CLOSING;return PG_OK;
 }
-pg_step_checked :: (state:[]PgJob,work:[]u8,input:[]u8,relay:string,recipient:string,out:[]u8,budget:int)->u32 #export_c {
+pg_step_checked :: (state:[]PgJob,work:[]u8,input:[]u8,relay:string,recipient:string,out:[]u8,budget:int)->u32 #export_c #effects(all) {
   status:=pg_active(state,work);if status!=0 {return status;}
   if input.count!=4202 || out.count!=4202 {return pg_fail(state,PG_CAPACITY);}
   slots:=pg_scratch(work);progress:=pb_step_checked(slots.pb,budget);if progress.error!=0 {return pg_fail(state,PG_KDF);}
   state[0].completed=progress.completed;
   if progress.phase==PB_DONE {return pg_complete_derived(state,work,input,relay,recipient,out);}return PG_OK;
 }
-pg_cancel_checked :: (state:[]PgJob,work:[]u8)->u32 #export_c {
+pg_cancel_checked :: (state:[]PgJob,work:[]u8)->u32 #export_c #effects(all) {
   status:=pg_active(state,work);if status!=0 {return status;}
   slots:=pg_scratch(work);cancelled:=pb_cancel_checked(slots.pb);if cancelled!=0 {return pg_fail(state,PG_KDF);}
   state[0].phase=PG_CLOSING;state[0].error=PG_CANCELLED;return PG_OK;
 }
-pg_ack_cleanup :: (state:[]PgJob,status:u32)->u32 #export_c {
+pg_ack_cleanup :: (state:[]PgJob,status:u32)->u32 #export_c #effects(all) {
   if state.count!=1 || state[0].phase!=PG_CLOSING {return PG_STATE;}
   if status!=0 {state[0].phase=PG_REFUSED;state[0].error=PG_CLEANUP;state[0].written=0;return PG_CLEANUP;}
   state[0].phase=ifx state[0].error==0 then PG_DONE else PG_REFUSED;
   return state[0].error;
 }
-pg_reset_after_wipe :: (state:[]PgJob,status:u32)->u32 #export_c {
+pg_reset_after_wipe :: (state:[]PgJob,status:u32)->u32 #export_c #effects(all) {
   if state.count!=1 {return PG_STATE;}
   if status!=0 {state[0].phase=PG_REFUSED;state[0].error=PG_CLEANUP;state[0].written=0;return PG_CLEANUP;}
   state[0]=PgJob.{};return PG_OK;
 }
-pg_progress :: (state:[]PgJob)->PgProgress #export_c {
+pg_progress :: (state:[]PgJob)->PgProgress #export_c #effects(all) {
   if state.count!=1 {return PgProgress.{error=PG_STATE};}
   s:=state[0];return PgProgress.{error=s.error,phase=s.phase,completed=s.completed,total=ifx s.started then 210000 else 0};
 }
-pg_result :: (state:[]PgJob)->PgText #export_c {
+pg_result :: (state:[]PgJob)->PgText #export_c #effects(all) {
   if state.count!=1 {return PgText.{error=PG_STATE};}
   s:=state[0];
   if s.phase==PG_DONE && s.error==0 {
@@ -336,7 +336,7 @@ pg_result :: (state:[]PgJob)->PgText #export_c {
   }
   if s.phase==PG_REFUSED {return PgText.{error=ifx s.error==0 then PG_STATE else s.error};}return PgText.{error=PG_NOT_READY};
 }
-pg_begin_message_checked :: (state:[]PgJob,work:[]u8,input:[]u8,message:string,raw:string,record:string,relay:string,recipient:string,entropy:[]u8,operation:u32,overlap:bool)->u32 #export_c {
+pg_begin_message_checked :: (state:[]PgJob,work:[]u8,input:[]u8,message:string,raw:string,record:string,relay:string,recipient:string,entropy:[]u8,operation:u32,overlap:bool)->u32 #export_c #effects(all) {
   if state.count!=1 || work.count!=22128 || input.count!=4202 {return PG_STATE;}
   if state[0].phase!=PG_IDLE {return PG_STATE;}
   status:=pg_message_request(raw.count,record.count,message.count,relay.count,recipient.count,entropy.count,operation);
@@ -348,7 +348,7 @@ pg_begin_message_checked :: (state:[]PgJob,work:[]u8,input:[]u8,message:string,r
   }else {for i:0..<count {input[i]=message[i];}}
   return pg_begin_checked(state,work,input,count,raw,record,relay,recipient,entropy,operation,false);
 }
-pg_step_message_checked :: (state:[]PgJob,work:[]u8,input:[]u8,relay:string,recipient:string,out:[]u8,budget:int)->u32 #export_c {
+pg_step_message_checked :: (state:[]PgJob,work:[]u8,input:[]u8,relay:string,recipient:string,out:[]u8,budget:int)->u32 #export_c #effects(all) {
   status:=pg_active(state,work);if status!=0 {return status;}
   if out.count!=6144 {return pg_fail(state,PG_CAPACITY);}
   status=pg_step_checked(state,work,input,relay,recipient,out[0..<4202],budget);if status!=0 {return status;}
@@ -358,14 +358,14 @@ pg_step_message_checked :: (state:[]PgJob,work:[]u8,input:[]u8,relay:string,reci
   }
   return PG_OK;
 }
-pg_abort :: (state:[]PgJob,error:u32)->u32 #export_c {
+pg_abort :: (state:[]PgJob,error:u32)->u32 #export_c #effects(all) {
   if state.count!=1 {return PG_STATE;}
   return pg_fail(state,ifx error==0 then PG_STATE else error);
 }
-pg_transport_ready :: (state:[]PgJob)->u32 #export_c {return ifx state.count==1 && state[0].phase==PG_IDLE then PG_OK else PG_STATE;}
-pg_cleanup_pending :: (state:[]PgJob)->bool #export_c {return state.count==1 && state[0].phase==PG_CLOSING;}
-pg_random_bytes :: (operation:u32)->int #export_c {return ifx operation==PG_SEAL then 28 else 0;}
-pg_abort_after_effect :: (state:[]PgJob,status:u32)->u32 #export_c {return pg_abort(state,ifx status==0 then PG_CRYPTO else PG_CLEANUP);}
-pg_is_running :: (state:[]PgJob)->bool #export_c {return state.count==1 && state[0].phase==PG_ACTIVE;}
-pg_may_emit :: (state:[]PgJob)->bool #export_c {return pg_result(state).error==PG_OK;}
-pg_was_cancelled :: (state:[]PgJob)->bool #export_c {return state.count==1 && state[0].phase==PG_REFUSED && state[0].error==PG_CANCELLED;}
+pg_transport_ready :: (state:[]PgJob)->u32 #export_c #effects(all) {return ifx state.count==1 && state[0].phase==PG_IDLE then PG_OK else PG_STATE;}
+pg_cleanup_pending :: (state:[]PgJob)->bool #export_c #effects(all) {return state.count==1 && state[0].phase==PG_CLOSING;}
+pg_random_bytes :: (operation:u32)->int #export_c #effects(all) {return ifx operation==PG_SEAL then 28 else 0;}
+pg_abort_after_effect :: (state:[]PgJob,status:u32)->u32 #export_c #effects(all) {return pg_abort(state,ifx status==0 then PG_CRYPTO else PG_CLEANUP);}
+pg_is_running :: (state:[]PgJob)->bool #export_c #effects(all) {return state.count==1 && state[0].phase==PG_ACTIVE;}
+pg_may_emit :: (state:[]PgJob)->bool #export_c #effects(all) {return pg_result(state).error==PG_OK;}
+pg_was_cancelled :: (state:[]PgJob)->bool #export_c #effects(all) {return state.count==1 && state[0].phase==PG_REFUSED && state[0].error==PG_CANCELLED;}

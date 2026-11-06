@@ -122,7 +122,7 @@ number.
 ```jai
 // One entry, its opening brace just read.
 MvEntry :: struct {code:MvCode;pose:MvPose;}
-mv_entry :: (j:[]Json,w:MvWorld)->MvEntry {
+mv_entry :: (j:[]Json,w:MvWorld)->MvEntry #effects(all) {
   r:MvEntry;seen:=0;spare:[3]f64;
   t:=json_next(j);
   while t!=JSON_OBJECT_END {
@@ -180,7 +180,7 @@ answer.
 
 <!-- source: coax/lib/nostr/nipmv.coax order -->
 ```jai
-mv_order :: (seen:[]MvSeen,count:int,pubkey:string,s:string,n:int,ms:int)->MvOrder {
+mv_order :: (seen:[]MvSeen,count:int,pubkey:string,s:string,n:int,ms:int)->MvOrder #effects(all) {
   for i:0..<count {
     if seen[i].pubkey==pubkey && seen[i].s==s {
       if n<=seen[i].n {return MvOrder.{code=MvCode.old,count=count};}
@@ -192,7 +192,7 @@ mv_order :: (seen:[]MvSeen,count:int,pubkey:string,s:string,n:int,ms:int)->MvOrd
   seen[count]=MvSeen.{pubkey=pubkey,s=s,n=n,ms=ms};
   return MvOrder.{count=count+1};
 }
-mv_online :: (last_ms:int,now_ms:int)->bool {return now_ms-last_ms<MV_OFFLINE_MS;}
+mv_online :: (last_ms:int,now_ms:int)->bool #effects(all) {return now_ms-last_ms<MV_OFFLINE_MS;}
 ```
 
 ### Entity state and object ids
@@ -274,13 +274,13 @@ not counted.
 
 <!-- source: coax/lib/nostr/xp_ledger.coax ledger -->
 ```jai
-xp_trusted :: (trusted:[]string,key:string)->bool {for k:trusted {if k==key {return true;}}return false;}
+xp_trusted :: (trusted:[]string,key:string)->bool #effects(all) {for k:trusted {if k==key {return true;}}return false;}
 // Whether key is 30193:<referee>:<address>.
-xp_coordinate :: (key:string,referee:string,address:string)->bool {
+xp_coordinate :: (key:string,referee:string,address:string)->bool #effects(all) {
   if key.count!=71+address.count {return false;}
   return key[0..<6]=="30193:" && key[6..<70]==referee && key[70]==':' && key[71..<key.count]==address;
 }
-xp_ledger :: (trusted:[]string,quests:[]XpQuest,awards:[]XpAward,revs:[]XpRevocation,ruled:[]bool,why:[]XpWhy,out:[]XpCredit)->XpLedger {
+xp_ledger :: (trusted:[]string,quests:[]XpQuest,awards:[]XpAward,revs:[]XpRevocation,ruled:[]bool,why:[]XpWhy,out:[]XpCredit)->XpLedger #effects(all) {
   l:XpLedger;
   for i:0..<awards.count {
     a:=awards[i];why[i]=XpWhy.counted;

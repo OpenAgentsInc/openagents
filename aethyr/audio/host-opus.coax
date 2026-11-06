@@ -12,7 +12,7 @@ HostOpusPage :: struct {valid:bool;flags:int;segments:int;bytes:int;payload:int;
  #assert !hpo_output(p,119,2,47999)&&!hpo_output(p,119,2,48001)&&!hpo_output(p,119,2,48000.5);
  p.valid=false;#assert !hpo_output(p,119,2,48000);empty:HostOpusPlan;#assert !hpo_output(empty,0,0,48000);
 }
-hpo_output :: (p:HostOpusPlan,frames:int,channels:int,rate:f64)->bool #export_c {return p.valid&&frames==p.frames&&channels==p.channels&&rate==48000;}
+hpo_output :: (p:HostOpusPlan,frames:int,channels:int,rate:f64)->bool #export_c #effects(all) {return p.valid&&frames==p.frames&&channels==p.channels&&rate==48000;}
 #test "Ogg CRC uses the unreflected polynomial and zero checksum bytes on an independently recorded page" {
  b:=[47]u8.[79,103,103,83,0,2,0,0,0,0,0,0,0,0,168,16,133,170,0,0,0,0,164,102,150,3,1,19,79,112,117,115,72,101,97,100,1,1,56,1,128,187,0,0,0,0,0];
  #assert hpo_crc(b[..])==0x039666a4;
@@ -81,33 +81,33 @@ hpo_output :: (p:HostOpusPlan,frames:int,channels:int,rate:f64)->bool #export_c 
  for at:[7]int.[47,51,52,61,65,73,75] {n=hpo_fixture(b[..],1,1,120);b[at]=255;hpo_seal(b[47..<91]);#assert !hpo_plan(b[0..<n]).valid;}
  for at:[6]int.[91,95,96,105,109,117] {n=hpo_fixture(b[..],1,1,120);b[at]=255;hpo_seal(b[91..<n]);#assert !hpo_plan(b[0..<n]).valid;}
 }
-hpo_u32 :: (b:[]u8,at:int)->int {return int(b[at])+(int(b[at+1])<<8)+(int(b[at+2])<<16)+(int(b[at+3])<<24);}
-hpo_crc :: (b:[]u8)->u32 {
+hpo_u32 :: (b:[]u8,at:int)->int #effects(all) {return int(b[at])+(int(b[at+1])<<8)+(int(b[at+2])<<16)+(int(b[at+3])<<24);}
+hpo_crc :: (b:[]u8)->u32 #effects(all) {
  crc:u32=0;for byte,i:b {value:=ifx i>=22&&i<26 then u8(0) else byte;crc^=u32(value)<<24;for bit:0..<8 {high:=(crc&0x80000000)!=0;crc=cast,trunc(u32)(u64(crc)<<1);if high {crc^=0x04c11db7;}}}return crc;
 }
-hpo_word :: (b:[]u8,at:int,n:int) {for i:0..<4 {b[at+i]=cast,trunc(u8)((n>>(8*i))&255);}}
-hpo_seal :: (b:[]u8) {hpo_word(b,22,int(hpo_crc(b)));}
-hpo_fixture :: (b:[]u8,channels:int,skip:int,last:int)->int {
+hpo_word :: (b:[]u8,at:int,n:int) #effects(all) {for i:0..<4 {b[at+i]=cast,trunc(u8)((n>>(8*i))&255);}}
+hpo_seal :: (b:[]u8) #effects(all) {hpo_word(b,22,int(hpo_crc(b)));}
+hpo_fixture :: (b:[]u8,channels:int,skip:int,last:int)->int #effects(all) {
  for i:4..<121 {b[i]=0;}
  for at:[3]int.[0,47,91] {for byte,i:"OggS" {b[at+i]=byte;}hpo_word(b,at+14,17);b[at+26]=1;}
  b[5]=2;b[27]=19;for byte,i:"OpusHead" {b[28+i]=byte;}b[36]=1;b[37]=u8(channels);b[38]=cast,trunc(u8)(skip&255);b[39]=cast,trunc(u8)(skip>>8);hpo_word(b,40,48000);hpo_seal(b[0..<47]);
  hpo_word(b,65,1);b[74]=16;for byte,i:"OpusTags" {b[75+i]=byte;}hpo_seal(b[47..<91]);
  b[96]=4;hpo_word(b,97,last);hpo_word(b,109,2);b[118]=2;b[119]=128;hpo_seal(b[91..<121]);return 121;
 }
-hpo_packet :: (b:[]u8)->int {
+hpo_packet :: (b:[]u8)->int #effects(all) {
  if b.count==0 {return 0;}units:=[32]int.[4,8,16,24,4,8,16,24,4,8,16,24,4,8,4,8,1,2,4,8,1,2,4,8,1,2,4,8,1,2,4,8];
  code:=int(b[0]&3);count:=ifx code==0 then 1 else 2;if code==3 {if b.count<2 {return 0;}count=int(b[1]&63);}
  duration:=units[int(b[0]>>3)]*count;return ifx duration<=48 then duration*120 else 0;
 }
-hpo_source :: (bytes:int)->bool {return bytes>=0&&bytes<=HOST_OPUS_SOURCE_BYTES;}
-hpo_page :: (b:[]u8,at:int)->HostOpusPage {
+hpo_source :: (bytes:int)->bool #effects(all) {return bytes>=0&&bytes<=HOST_OPUS_SOURCE_BYTES;}
+hpo_page :: (b:[]u8,at:int)->HostOpusPage #effects(all) {
  if at<0 {return HostOpusPage.{};}remaining:=b.count-at;if remaining<27 {return HostOpusPage.{};}
  if cast(string)b[at..<at+4]!="OggS"||b[at+4]!=0 {return HostOpusPage.{};}segments:=int(b[at+26]);if segments>remaining-27 {return HostOpusPage.{};}
  payload:=at+27+segments;bytes:=0;for i:0..<segments {bytes+=int(b[at+27+i]);}if bytes>b.count-payload {return HostOpusPage.{};}end:=payload+bytes;
  if int(hpo_crc(b[at..<end]))!=hpo_u32(b,at+22)||hpo_u32(b,at+10)!=0 {return HostOpusPage.{};}
  return HostOpusPage.{valid=true,flags=int(b[at+5]),segments=segments,bytes=bytes,payload=payload,end=end,granule=hpo_u32(b,at+6),serial=hpo_u32(b,at+14),sequence=hpo_u32(b,at+18)};
 }
-hpo_plan :: (b:[]u8)->HostOpusPlan #export_c {
+hpo_plan :: (b:[]u8)->HostOpusPlan #export_c #effects(all) {
  if !hpo_source(b.count) {return HostOpusPlan.{};}head:=hpo_page(b,0);
  if !head.valid||head.flags!=2||head.granule!=0||head.sequence!=0||head.segments!=1||head.bytes!=19 {return HostOpusPlan.{};}payload:=head.payload;
  if cast(string)b[payload..<payload+8]!="OpusHead"||b[payload+8]!=1||b[payload+16]!=0||b[payload+17]!=0||b[payload+18]!=0 {return HostOpusPlan.{};}

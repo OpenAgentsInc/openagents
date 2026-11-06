@@ -98,18 +98,18 @@ are near random.
 ```jai
 // Plane 0 is the exponent, plane 1 the sign and the top 7 mantissa bits,
 // planes 2 and 3 the other two mantissa bytes. bc_place puts a symbol back.
-bc_symbol :: (w:int,p:int)->int {
+bc_symbol :: (w:int,p:int)->int #effects(all) {
     if p==0 {return (w>>23)&255;}
     if p==1 {return ((w>>24)&128)|((w>>16)&127);}
     return (w>>(24-8*p))&255;
 }
-bc_place :: (s:int,p:int)->int {
+bc_place :: (s:int,p:int)->int #effects(all) {
     if p==0 {return s<<23;}
     if p==1 {return ((s&128)<<24)|((s&127)<<16);}
     return s<<(24-8*p);
 }
 // Value i of the payload, XOR-ed with the one a row above for delta.
-bc_value :: (pay:[]u32,i:int,width:int,delta:bool)->int {
+bc_value :: (pay:[]u32,i:int,width:int,delta:bool)->int #effects(all) {
     w:=cast(int)pay[i];
     if delta && i>=width {w=w^cast(int)pay[i-width];}
     return w;
@@ -197,7 +197,7 @@ values. A Ministral row holds 3,072.
 // its share of the other 4,096 - k (k symbols present), rounded down; the
 // slots left over go to the most frequent symbol, the first on a tie.
 BcTable :: struct {k:int;freq:[256]int;}
-bc_table :: (pay:[]u32,width:int,delta:bool,p:int)->BcTable {
+bc_table :: (pay:[]u32,width:int,delta:bool,p:int)->BcTable #effects(all) {
     n:=pay.count;count:[256]int;t:BcTable;
     for i:0..<n {count[bc_symbol(bc_value(pay,i,width,delta),p)]+=1;}
     for c:count {if c>0 {t.k+=1;}}
@@ -214,7 +214,7 @@ bc_table :: (pay:[]u32,width:int,delta:bool,p:int)->BcTable {
 // becomes (x / f) * 4096 + x % f + start. The bytes go to the end of work,
 // backwards, and the final state goes in front of them, so the decoder
 // reads forwards. Returns where the stream starts in work.
-bc_stream :: (pay:[]u32,width:int,delta:bool,p:int,freq:[]int,work:[]u8)->int {
+bc_stream :: (pay:[]u32,width:int,delta:bool,p:int,freq:[]int,work:[]u8)->int #effects(all) {
     n:=pay.count;start:[256]int;
     for s:1..<256 {start[s]=start[s-1]+freq[s-1];}
     x:=BC_LOW;w:=work.count;
@@ -230,7 +230,7 @@ bc_stream :: (pay:[]u32,width:int,delta:bool,p:int,freq:[]int,work:[]u8)->int {
 // Coded: mode 1, a 32-byte map of the symbols present, each one's
 // frequency in 2 bytes, the stream's length in 4, then the stream. Plain:
 // mode 0 and one byte a value. Coded only when that is smaller.
-bc_plane :: (pay:[]u32,width:int,delta:bool,p:int,out:[]u8,at:int,work:[]u8)->int {
+bc_plane :: (pay:[]u32,width:int,delta:bool,p:int,out:[]u8,at:int,work:[]u8)->int #effects(all) {
     n:=pay.count;t:=bc_table(pay,width,delta,p);w:=bc_stream(pay,width,delta,p,t.freq[..],work);
     stream:=work.count-w;coded:=1+32+2*t.k+4+stream;
     if coded>=1+n {
@@ -253,7 +253,7 @@ bc_plane :: (pay:[]u32,width:int,delta:bool,p:int,out:[]u8,at:int,work:[]u8)->in
 // Frame chapter 186's message msg (9 header words, then rows x width
 // values) with `codec`. A coded frame whose planes all went plain is sent
 // raw instead.
-bc_encode :: (codec:BcCodec,msg:[]u32,out:[]u8,work:[]u8)->BcFrame #export_c {
+bc_encode :: (codec:BcCodec,msg:[]u32,out:[]u8,work:[]u8)->BcFrame #export_c #effects(all) {
     f:BcFrame;n:=msg.count-BC_WORDS;
     if n<1 || out.count<bc_bound(n) || work.count<bc_work(n) {return f;}
     rows:=cast(int)msg[5];width:=cast(int)msg[6];
@@ -275,7 +275,7 @@ bc_encode :: (codec:BcCodec,msg:[]u32,out:[]u8,work:[]u8)->BcFrame #export_c {
 }
 // The sender's choice: the codec it wants if the receiver accepts it (bit
 // c of accept), raw otherwise. Every receiver accepts raw.
-bc_choose :: (accept:int,want:BcCodec)->BcCodec #export_c {
+bc_choose :: (accept:int,want:BcCodec)->BcCodec #export_c #effects(all) {
     if (accept>>cast(int)want)&1==1 {return want;}
     return BcCodec.raw;
 }
@@ -310,7 +310,7 @@ bytes.
 ```jai
 BcAt :: struct {refusal:BcRefusal;at:int;}
 // Read plane p from pl[at0..] into out (OR-ed in); return where it ended.
-bc_unplane :: (pl:[]u8,at0:int,p:int,out:[]u32)->BcAt {
+bc_unplane :: (pl:[]u8,at0:int,p:int,out:[]u32)->BcAt #effects(all) {
     n:=out.count;at:=at0+1;mode:=bc_byte(pl,at0);
     if mode==0 {
         for i:0..<n {out[i]|=cast(u32)bc_place(bc_byte(pl,at+i),p);}
@@ -346,7 +346,7 @@ bc_unplane :: (pl:[]u8,at0:int,p:int,out:[]u32)->BcAt {
 // payload the frame announces, the checksum, room, then the payload
 // itself. out receives chapter 186's message; on a refusal its contents
 // are not defined.
-bc_decode :: (accept:int,frame:[]u8,out:[]u32)->BcDecoded #export_c {
+bc_decode :: (accept:int,frame:[]u8,out:[]u32)->BcDecoded #export_c #effects(all) {
     d:BcDecoded;
     if frame.count<BC_HEAD+BC_TAIL {d.refusal=BcRefusal.partial;return d;}
     if frame[0]!=BC_VERSION {d.refusal=BcRefusal.version;return d;}

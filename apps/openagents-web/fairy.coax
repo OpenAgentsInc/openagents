@@ -229,11 +229,11 @@ ink :: (k: f32, light: f32, red: f32, green: f32, blue: f32) -> Ink {
 text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
 hash1 :: (a: f32, b: f32) -> f32 { v := sin(a * 127.1 + b * 311.7) * 43758.5453; return v - floor(v); }
 
-coaxial_fairy_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_fairy_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_fairy_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
-fairy_water_at :: () -> int #export_c { return U_WATER; }
-fairy_eye_at :: () -> int #export_c { return U_EYE; }
+coaxial_fairy_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_fairy_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_fairy_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
+fairy_water_at :: () -> int #export_c #effects(all) { return U_WATER; }
+fairy_eye_at :: () -> int #export_c #effects(all) { return U_EYE; }
 
 ground :: () -> Ground {
   g: Ground; g.n = CELLS; g.rows = FF_ROWS; g.cell = f32(FF_CELL); g.west = f32(FF_WEST); g.south = f32(FF_SOUTH);
@@ -241,9 +241,9 @@ ground :: () -> Ground {
   return g;
 }
 ground_at :: (s: [] Fairy, x: f32, z: f32) -> f32 { return verse_terrain_height(ground(), s[0].heights[..], x, z); }
-fairy_ground :: (s: [] Fairy, x: f32, z: f32) -> f32 #export_c { return walk_at(s, x, z); }
+fairy_ground :: (s: [] Fairy, x: f32, z: f32) -> f32 #export_c #effects(all) { return walk_at(s, x, z); }
 // How far a bridge's deck stands over the ground at (x, z) (0 off one): the stream's say on the water adds it to your height.
-fairy_deck_lift :: (s: [] Fairy, x: f32, z: f32) -> f32 #export_c { return walk_at(s, x, z) - ground_at(s, x, z); }
+fairy_deck_lift :: (s: [] Fairy, x: f32, z: f32) -> f32 #export_c #effects(all) { return walk_at(s, x, z) - ground_at(s, x, z); }
 
 fairy_start :: (s: [] Fairy) {
   s[0].build[0].carry = -1; s[0].build[0].picked = -1;
@@ -367,20 +367,20 @@ carve :: (s: [] Fairy) {
 }
 
 // The course for the stream library: x, z and width a control.
-fairy_course :: (out: [] f32) -> int #export_c {
+fairy_course :: (out: [] f32) -> int #export_c #effects(all) {
   n := FF_COURSE_N * 3;
   if out.count < n { return 0; }
   for i: 0..<n { out[i] = FF_COURSE[i]; }
   return n;
 }
-fairy_level :: () -> f32 #export_c { return f32(FF_LEVEL); }
-fairy_ground_cells :: () -> int #export_c { return CELLS; }
-fairy_ground_rows :: () -> int #export_c { return FF_ROWS; }
-fairy_ground_cell :: () -> f32 #export_c { return f32(FF_CELL); }
-fairy_ground_west :: () -> f32 #export_c { return f32(FF_WEST); }
-fairy_ground_south :: () -> f32 #export_c { return f32(FF_SOUTH); }
-fairy_pond_x :: () -> f32 #export_c { return f32(FF_POND_X); }
-fairy_pond_z :: () -> f32 #export_c { return f32(FF_POND_Z); }
+fairy_level :: () -> f32 #export_c #effects(all) { return f32(FF_LEVEL); }
+fairy_ground_cells :: () -> int #export_c #effects(all) { return CELLS; }
+fairy_ground_rows :: () -> int #export_c #effects(all) { return FF_ROWS; }
+fairy_ground_cell :: () -> f32 #export_c #effects(all) { return f32(FF_CELL); }
+fairy_ground_west :: () -> f32 #export_c #effects(all) { return f32(FF_WEST); }
+fairy_ground_south :: () -> f32 #export_c #effects(all) { return f32(FF_SOUTH); }
+fairy_pond_x :: () -> f32 #export_c #effects(all) { return f32(FF_POND_X); }
+fairy_pond_z :: () -> f32 #export_c #effects(all) { return f32(FF_POND_Z); }
 
 // Clear of the trails, the stream (line: s[0].stream), the glades, the heart tree and the creatures?
 open_ground :: (line: [] f32, x: f32, z: f32, room: f32) -> bool {
@@ -520,19 +520,19 @@ camera_spheres :: (s: [] Fairy, feet: Point) {
   s[0].sphere_n = sp;
 }
 
-fairy_walls :: (s: [] Fairy) -> int #export_c { if !s[0].started { fairy_start(s); } return s[0].wall_n; }
-fairy_spawn :: (s: [] Fairy) -> Point #export_c { if !s[0].started { fairy_start(s); } return v3(f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z)); }
-fairy_spawn_face :: () -> f32 #export_c { return f32(FF_SPAWN_FACE); }
-fairy_heights :: (s: [] Fairy) -> int #export_c { if !s[0].started { fairy_start(s); } return FF_GROUND_POINTS; }
+fairy_walls :: (s: [] Fairy) -> int #export_c #effects(all) { if !s[0].started { fairy_start(s); } return s[0].wall_n; }
+fairy_spawn :: (s: [] Fairy) -> Point #export_c #effects(all) { if !s[0].started { fairy_start(s); } return v3(f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z)); }
+fairy_spawn_face :: () -> f32 #export_c #effects(all) { return f32(FF_SPAWN_FACE); }
+fairy_heights :: (s: [] Fairy) -> int #export_c #effects(all) { if !s[0].started { fairy_start(s); } return FF_GROUND_POINTS; }
 
 // ---- what you restored, kept so a reload brings it back (the face saves it, save.coax)
 // What you restored, then what you made your own (verse/fairy-forest/life.coax's tail).
-fairy_progress :: (s: [] Fairy, out: [] u8) -> int #export_c {
+fairy_progress :: (s: [] Fairy, out: [] u8) -> int #export_c #effects(all) {
   n := ff_progress(s[0].forest[..], out);
   if n <= 0 { return n; }
   return n + ffl_save(s[0].life[..], out[n..<out.count]);
 }
-fairy_progress_open :: (s: [] Fairy, b: [] u8) -> bool #export_c {
+fairy_progress_open :: (s: [] Fairy, b: [] u8) -> bool #export_c #effects(all) {
   if !s[0].started { fairy_start(s); }
   if b.count < 2 { return false; }
   base := cast(int) b[0] + FF_ROOTS + 2;
@@ -542,22 +542,22 @@ fairy_progress_open :: (s: [] Fairy, b: [] u8) -> bool #export_c {
   ffm_loaded(s);
   return true;
 }
-fairy_progress_count :: (s: [] Fairy) -> int #export_c { return ff_progress_count(s[0].forest[..]) + s[0].life[0].changes; }
-fairy_progress_bytes :: () -> int #export_c { return FF_PROGRESS_BYTES + FFL_BYTES; }
+fairy_progress_count :: (s: [] Fairy) -> int #export_c #effects(all) { return ff_progress_count(s[0].forest[..]) + s[0].life[0].changes; }
+fairy_progress_bytes :: () -> int #export_c #effects(all) { return FF_PROGRESS_BYTES + FFL_BYTES; }
 // The face: the save has had its chance to come; a first visit opens the maker.
-fairy_life_ready :: (s: [] Fairy) #export_c { if !s[0].started { fairy_start(s); } ffm_ready(s); }
+fairy_life_ready :: (s: [] Fairy) #export_c #effects(all) { if !s[0].started { fairy_start(s); } ffm_ready(s); }
 
 // ---- where you are, kept so a reload puts you back (place.coax, the face's place-face.h)
 
 // Open ground: inside the valley's bound, out of the stream's water and clear of the trunks.
-fairy_place_open :: (s: [] Fairy, x: f32, z: f32) -> bool #export_c {
+fairy_place_open :: (s: [] Fairy, x: f32, z: f32) -> bool #export_c #effects(all) {
   if !s[0].started { fairy_start(s); }
   if !finite(x) || !finite(z) || x < f32(FF_PARK_W) + 1 || x > f32(FF_PARK_E) - 1 || z < f32(FF_PARK_S) + 1 || z > f32(FF_PARK_N) - 1 { return false; }
   if walk_at(s, x, z) < f32(FF_LEVEL) + 0.1 { return false; }
   return verse_place_clear(s[0].walls[..], s[0].wall_n, x, 0, z, 0.35);
 }
 // A kept place made good: itself when open, else the nearest open spot, else the spawn.
-fairy_place_fix :: (s: [] Fairy, p: Place) -> Place #export_c {
+fairy_place_fix :: (s: [] Fairy, p: Place) -> Place #export_c #effects(all) {
   q := p; q.y = 0; q.room = FF_LAYOUT;
   for i: 0..<PLACE_TRIES {
     if p.room != FF_LAYOUT { break; }   // kept in the old valley: its places aren't the park's
@@ -568,12 +568,12 @@ fairy_place_fix :: (s: [] Fairy, p: Place) -> Place #export_c {
   return q;
 }
 // The camera behind you at a kept place, as it was kept.
-fairy_place_camera :: (s: [] Fairy, p: Place) #export_c {
+fairy_place_camera :: (s: [] Fairy, p: Place) #export_c #effects(all) {
   if !s[0].started { fairy_start(s); }
   s[0].feet = v3(p.x, walk_at(s, p.x, p.z), p.z); s[0].face = p.face;
   s[0].orbit = verse_place_orbit(p, s[0].feet);
 }
-fairy_place_of :: (s: [] Fairy, x: f32, y: f32, z: f32, face: f32) -> Place #export_c { return verse_place_of(x, y, z, face, s[0].orbit, FF_LAYOUT); }
+fairy_place_of :: (s: [] Fairy, x: f32, y: f32, z: f32, face: f32) -> Place #export_c #effects(all) { return verse_place_of(x, y, z, face, s[0].orbit, FF_LAYOUT); }
 
 // ---- the controls
 
@@ -591,7 +591,7 @@ hold_bit :: (key: int) -> int {
   return 0;
 }
 
-fairy_key :: (s: [] Fairy, key: int, mods: int) -> bool #export_c {
+fairy_key :: (s: [] Fairy, key: int, mods: int) -> bool #export_c #effects(all) {
   if !s[0].started { fairy_start(s); }
   if ffm_key(s, key) { return true; }
   if ffb_key(s, key) { return true; }
@@ -614,7 +614,7 @@ fairy_key :: (s: [] Fairy, key: int, mods: int) -> bool #export_c {
   return true;
 }
 
-fairy_key_up :: (s: [] Fairy, key: int, mods: int) -> bool #export_c {
+fairy_key_up :: (s: [] Fairy, key: int, mods: int) -> bool #export_c #effects(all) {
   if redit_key(s[0].ed[..], key, false) == 1 { return true; }
   if redit_typing(s[0].ed[..]) { return false; }
   b := hold_bit(key);
@@ -623,13 +623,13 @@ fairy_key_up :: (s: [] Fairy, key: int, mods: int) -> bool #export_c {
   return true;
 }
 
-fairy_blur :: (s: [] Fairy) #export_c { s[0].held = 0; s[0].drag_on = false; s[0].button_finger = -1; s[0].button_on = false; s[0].flap_on = false; s[0].flap_finger = -1; }
+fairy_blur :: (s: [] Fairy) #export_c #effects(all) { s[0].held = 0; s[0].drag_on = false; s[0].button_finger = -1; s[0].button_on = false; s[0].flap_on = false; s[0].flap_finger = -1; }
 
 in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 
 // A mouse drag turns the camera and a click blooms; a finger on BLOOM presses
 // it; any other finger is the face's (the sticks).
-fairy_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+fairy_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if !s[0].started { fairy_start(s); }
   // FLAP's finger is FLAP's until it lifts, wherever it goes and whatever opens meanwhile
   if s[0].flap_on && id == s[0].flap_finger {
@@ -702,7 +702,7 @@ look_drag :: (s: [] Fairy, x: f32, y: f32, phase: int, id: int) -> bool {
   return true;
 }
 
-fairy_wheel :: (s: [] Fairy, dy: f32) #export_c {
+fairy_wheel :: (s: [] Fairy, dy: f32) #export_c #effects(all) {
   if finite(dy) { s[0].orbit = verse_orbit_zoom(s[0].orbit, clamp(dy, -400, 400) * f32(WHEEL_ZOOM)); }
 }
 
@@ -713,7 +713,7 @@ axis :: (held: int, plus: int, minus: int) -> f32 {
   return a;
 }
 
-fairy_controls :: (s: [] Fairy, dt: f32, dyaw: f32, dpitch: f32) #export_c {
+fairy_controls :: (s: [] Fairy, dt: f32, dyaw: f32, dpitch: f32) #export_c #effects(all) {
   if !s[0].started { fairy_start(s); }
   h := s[0].held;
   s[0].key_x = axis(h, HOLD_RIGHT, HOLD_LEFT);
@@ -726,16 +726,16 @@ fairy_controls :: (s: [] Fairy, dt: f32, dyaw: f32, dpitch: f32) #export_c {
   s[0].look_yaw = 0; s[0].look_pitch = 0;
 }
 
-fairy_player_theta :: (s: [] Fairy) -> f32 #export_c { return wrap_angle(s[0].orbit.yaw + f32(PI)); }
-fairy_jump :: (s: [] Fairy) -> bool #export_c { return s[0].jump; }
+fairy_player_theta :: (s: [] Fairy) -> f32 #export_c #effects(all) { return wrap_angle(s[0].orbit.yaw + f32(PI)); }
+fairy_jump :: (s: [] Fairy) -> bool #export_c #effects(all) { return s[0].jump; }
 // The Space presses since the face last asked, each one wing beat (kept, so a
 // quick tap between two frames still beats), and none left after.
-fairy_taps :: (s: [] Fairy) -> int #export_c { n := s[0].taps; s[0].taps = 0; return n; }
-fairy_phone :: (s: [] Fairy) -> bool #export_c { return phone(s); }
+fairy_taps :: (s: [] Fairy) -> int #export_c #effects(all) { n := s[0].taps; s[0].taps = 0; return n; }
+fairy_phone :: (s: [] Fairy) -> bool #export_c #effects(all) { return phone(s); }
 // The edit layer's: may visitors fly (its SETTINGS),
 // and its push to talk for the host (the kind, its outbox in ed_out).
-fairy_may_fly :: (s: [] Fairy) -> bool #export_c { return redit_tool(s[0].ed[..], "fly"); }
-fairy_edit_action :: (s: [] Fairy) -> int #export_c { a := redit_take_action(s[0].ed[..], s[0].ed_out[..]); s[0].ed_out_n = a.n; return a.kind; }
+fairy_may_fly :: (s: [] Fairy) -> bool #export_c #effects(all) { return redit_tool(s[0].ed[..], "fly"); }
+fairy_edit_action :: (s: [] Fairy) -> int #export_c #effects(all) { a := redit_take_action(s[0].ed[..], s[0].ed_out[..]); s[0].ed_out_n = a.n; return a.kind; }
 
 // ---- talking (ff-talk, verse/fairy-forest/talk.coax)
 
@@ -834,9 +834,9 @@ talk_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, id: int) -> bool {
 
 // The face's side: the question to send (its bytes in ask), that it went,
 // the answer ("STATUS\n" then the server's JSON), and the page facts.
-fairy_ask :: (s: [] Fairy) -> int #export_c { return s[0].ask_n; }
-fairy_ask_sent :: (s: [] Fairy) #export_c { s[0].ask_n = 0; }
-fairy_answer :: (s: [] Fairy, reply: string) #export_c {
+fairy_ask :: (s: [] Fairy) -> int #export_c #effects(all) { return s[0].ask_n; }
+fairy_ask_sent :: (s: [] Fairy) #export_c #effects(all) { s[0].ask_n = 0; }
+fairy_answer :: (s: [] Fairy, reply: string) #export_c #effects(all) {
   if s[0].talk <= 0 || !s[0].waiting { return; }
   s[0].waiting = false;
   ffk_note(s, FFK_SPEAK);   // answered for the first time
@@ -848,7 +848,7 @@ fairy_answer :: (s: [] Fairy, reply: string) #export_c {
   add_line(s, true, ff_talker_says(s[0].forest[..], s[0].talk - 1, s[0].life[0].skills.axe));
 }
 // Text typed into the host's field or pasted (message 1): added to what you type while you talk.
-fairy_typed :: (s: [] Fairy, text: string) #export_c {
+fairy_typed :: (s: [] Fairy, text: string) #export_c #effects(all) {
   if ffs_typed(s, text) { return; }
   if s[0].talk <= 0 { return; }
   for i: 0..<text.count {
@@ -860,7 +860,7 @@ fairy_typed :: (s: [] Fairy, text: string) #export_c {
 }
 // The page facts (key=value lines): now= is this visit's stamp, so the
 // server tells this visit's words from an earlier visit's.
-fairy_facts :: (s: [] Fairy, facts: string) #export_c {
+fairy_facts :: (s: [] Fairy, facts: string) #export_c #effects(all) {
   ffc_facts(s, facts);
   ffn_facts(s[0].clock[..], facts, s[0].time);
   i := 0;
@@ -875,10 +875,10 @@ fairy_facts :: (s: [] Fairy, facts: string) #export_c {
   }
 }
 // While you talk, the phone's keyboard comes up over the typed line, and you stand still.
-fairy_wants_text :: (s: [] Fairy) -> bool #export_c { return s[0].talk > 0 || redit_typing(s[0].ed[..]) || ffs_typing(s); }
-fairy_talking :: (s: [] Fairy) -> bool #export_c { return s[0].talk > 0; }
+fairy_wants_text :: (s: [] Fairy) -> bool #export_c #effects(all) { return s[0].talk > 0 || redit_typing(s[0].ed[..]) || ffs_typing(s); }
+fairy_talking :: (s: [] Fairy) -> bool #export_c #effects(all) { return s[0].talk > 0; }
 // Talking to a creature, typing a line or a message, or the map open: you stand still, and no key is tracked.
-fairy_still :: (s: [] Fairy) -> bool #export_c { return s[0].talk > 0 || ffs_typing(s) || s[0].maker[0].open || s[0].map[0].on; }
+fairy_still :: (s: [] Fairy) -> bool #export_c #effects(all) { return s[0].talk > 0 || ffs_typing(s) || s[0].maker[0].open || s[0].map[0].on; }
 
 // ---- the scene
 
@@ -2196,7 +2196,7 @@ conversation :: (s: [] Fairy, out: [] f32, u: [] f32, at: int) -> int {
 
 // What the face tells the page about the stream before the frame: your
 // medium, the stream's draw and the lily pads.
-fairy_water :: (s: [] Fairy, medium: int, vertices: int, patch_n: int, pads: [] f32, count: int) #export_c {
+fairy_water :: (s: [] Fairy, medium: int, vertices: int, patch_n: int, pads: [] f32, count: int) #export_c #effects(all) {
   s[0].water = medium;
   s[0].water_vertices = vertices; s[0].water_patches = patch_n;
   n := count;
@@ -2206,7 +2206,7 @@ fairy_water :: (s: [] Fairy, medium: int, vertices: int, patch_n: int, pads: [] 
   s[0].pad_n = n;
 }
 
-fairy_golden :: (s: [] Fairy, on: bool) #export_c { s[0].golden = on; }
+fairy_golden :: (s: [] Fairy, on: bool) #export_c #effects(all) { s[0].golden = on; }
 
 // After the player moved: your feet at (fx, fy, fz) on the flat floor, facing
 // face, doing act (player.coax Act); air is how high you fly over the
@@ -2214,7 +2214,7 @@ fairy_golden :: (s: [] Fairy, on: bool) #export_c { s[0].golden = on; }
 // the HUD, and returns the vertex count.
 fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
                 fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32, air: f32, flap: f32,
-                move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c {
+                move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c #effects(all) {
   if !s[0].started { fairy_start(s); }
   if u.count < UNIFORM_FLOATS { return 0; }
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
@@ -2309,8 +2309,8 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   return n;
 }
 
-fairy_draws :: (s: [] Fairy) -> int #export_c { return DRAWS; }
-fairy_store_cap :: (k: int) -> int #export_c {
+fairy_draws :: (s: [] Fairy) -> int #export_c #effects(all) { return DRAWS; }
+fairy_store_cap :: (k: int) -> int #export_c #effects(all) {
   if k == 0 { return FF_GROUND_POINTS * 3 * 4; }
   return OBJECTS * OBJECT_FLOATS * 4;
 }

@@ -13,7 +13,7 @@
 #load "../../../aethyr/audio/wav.coax";
 
 DstRun :: struct {out:[524288]u8;n:int;err:[16384]u8;en:int;status:int;ms:int;partials:int;finals:int;no_speech:int;cancelled:int;errors:int;valid:bool=true;before_stop:bool;stopping:bool;event:int;samples:int;sequence:int;ticket:int;final:[8000]u8;fn:int;acted:bool;action_at:int;cancel_ms:int;group_alive:bool;deadline:int;}
-cxproc_group_alive :: (pgid:int)->int #foreign;
+cxproc_group_alive :: (pgid:int)->int #foreign #effects(all);
 DstScore :: struct {pass:int;fail:int;}
 dst_join :: (a:string,b:string,out:[]u8)->string {if a.count+b.count>out.count {return "";}for i:0..<a.count {out[i]=a[i];}for i:0..<b.count {out[a.count+i]=b[i];}return cast(string)out[0..<a.count+b.count];}
 dst_has :: (a:string,b:string)->bool {for i:0..<a.count-b.count+1 {if a[i..<i+b.count]==b {return true;}}return false;}
@@ -77,7 +77,7 @@ dst_check :: (score:[]DstScore,name:string,ok:bool,r:[]DstRun,out:string) {
  path:[2048]u8;path2:[2048]u8;suffix:[128]u8;
  wrote:=fs_write(fs_join(out,dst_join(name,".stdout",suffix[..]),path[..]),cast(string)r[0].out[0..<r[0].n]);wrote=fs_write(fs_join(out,dst_join(name,".stderr",suffix[..]),path2[..]),cast(string)r[0].err[0..<r[0].en]);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 || args_count(a[..])>2 {return 2;}
  model:=args_at(a[..],0);only:=ifx args_count(a[..])==2 then args_at(a[..],1) else "";
  cb:[2048]u8;cli:=proc_getenv("OPENAGENTS_DICTATE_TEST_CLI",cb[..]);if cli=="" {cli="apps/openagents-cli/build/openagents";}

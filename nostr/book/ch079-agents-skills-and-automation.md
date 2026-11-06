@@ -135,7 +135,7 @@ is checked against its row of the table above:
 <!-- source: coax/lib/nostr/agent/definition.coax spec -->
 ```jai
 AG_SPEC :: [8]string.["name","description","instructions","runtime","model","access","fallbacks","autonomy"];
-ag_spec :: (j:[]Json,d:[]AgentDefinition,a:[]AgText)->u32 {
+ag_spec :: (j:[]Json,d:[]AgentDefinition,a:[]AgText)->u32 #effects(all) {
   seen:=0;fb:[4]string;
   t:=json_next(j);
   while t==JSON_STRING {
@@ -184,7 +184,7 @@ prevents new assignments:
 ```jai
 // The consumer's pinned selection. signer is the verified 3188 signer and
 // digest the artifact digest the envelope checked.
-agent_select :: (pin:AgentPin,signer:string,digest:string,d:AgentDefinition)->u32 {
+agent_select :: (pin:AgentPin,signer:string,digest:string,d:AgentDefinition)->u32 #effects(all) {
   if d.error!=AG_OK {return d.error;}
   if signer!=pin.signer {return AG_SIGNER;}
   if d.id!=pin.id {return AG_ID;}
@@ -261,12 +261,12 @@ function returns:
 // Seals payload from sender to recipient_x under mailbox (64 hex). nonce
 // and aux are 32 fresh random bytes each from the host. The signed event
 // JSON goes to out; returns its length, or -1.
-agent_seal :: (payload:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u8,aux:[]u8,created_at:int,issued_at:int,retain_until:int,w:[]AgentWork,out:[]u8)->int {
+agent_seal :: (payload:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u8,aux:[]u8,created_at:int,issued_at:int,retain_until:int,w:[]AgentWork,out:[]u8)->int #effects(all) {
   if sender.count!=32 || recipient_x.count!=32 || nonce.count!=32 || aux.count!=32 || w.count!=1 || !ag_hex64(mailbox) {return -1;}
   n:=ac_seal(payload,sender,recipient_x,mailbox,nonce,aux,created_at,issued_at,retain_until,w,out);
   ac_clear(w);return n;
 }
-ac_seal :: (payload:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u8,aux:[]u8,created_at:int,issued_at:int,retain_until:int,w:[]AgentWork,out:[]u8)->int {
+ac_seal :: (payload:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u8,aux:[]u8,created_at:int,issued_at:int,retain_until:int,w:[]AgentWork,out:[]u8)->int #effects(all) {
   b:=envelope_build_checked(payload,AG_SCHEMA_ID,issued_at,retain_until,w[0].scratch[..],w[0].body[..],false);
   if b.error!=AE_OK {return -1;}
   ew:[1]EcdhScratch;
@@ -292,7 +292,7 @@ returns its own code, and nothing later runs:
 ```jai
 // Opens a 3188 for the recipient whose secret and x-only key are given,
 // then applies the pin. Strings of the result live in the arena.
-agent_open :: (text:string,recipient:[]u8,recipient_x:[]u8,pin:AgentPin,w:[]AgentWork,a:[]AgText)->AgentOpened {
+agent_open :: (text:string,recipient:[]u8,recipient_x:[]u8,pin:AgentPin,w:[]AgentWork,a:[]AgText)->AgentOpened #effects(all) {
   r:AgentOpened;
   if recipient.count!=32 || recipient_x.count!=32 || w.count!=1 {return r;}
   e:=nostr_event_read(text,w[0].pre[..],false);
@@ -305,7 +305,7 @@ agent_open :: (text:string,recipient:[]u8,recipient_x:[]u8,pin:AgentPin,w:[]Agen
 }
 // After the signature and the conversation key: recipient, decryption,
 // envelope, payload and pin.
-ac_open :: (text:string,e:NostrEvent,recipient_x:[]u8,pin:AgentPin,w:[]AgentWork,a:[]AgText)->AgentOpened {
+ac_open :: (text:string,e:NostrEvent,recipient_x:[]u8,pin:AgentPin,w:[]AgentWork,a:[]AgText)->AgentOpened #effects(all) {
   r:AgentOpened;
   rhex:[64]u8;mail:[64]u8;peer:=e.public_key;eid:=e.id;
   hr:=hex_encode_checked(cast(string)recipient_x,rhex[..],false);
@@ -328,7 +328,7 @@ ac_open :: (text:string,e:NostrEvent,recipient_x:[]u8,pin:AgentPin,w:[]AgentWork
 // down, inside "artifact". The envelope check has already compared it with
 // the inline payload's JCS bytes, and no other string at that depth can be
 // "digest" in an admitted agent envelope. It is ASCII: the raw token is it.
-ac_digest :: (envelope:string)->string {
+ac_digest :: (envelope:string)->string #effects(all) {
   j:[1]Json;json_start(j[..],envelope);t:=json_next(j[..]);
   while t!=JSON_END && t!=JSON_ERROR {
     if t==JSON_STRING && j[0].depth==2 && json_text(j[..])=="digest" {t=json_next(j[..]);return json_text(j[..]);}
@@ -346,7 +346,7 @@ named `px` or a `p` in a value position is not a `p` tag.
 ```jai
 // Exactly one ["p", recipient], one ["h", <64-hex>] (copied to mailbox) and
 // a ["t", "oa:artifact:v1"].
-ac_tags :: (tags:string,recipient_hex:string,mailbox:[]u8)->bool {
+ac_tags :: (tags:string,recipient_hex:string,mailbox:[]u8)->bool #effects(all) {
   decoded:[256]u8;j:[1]Json;json_start(j[..],tags);
   if json_next(j[..])!=JSON_ARRAY {return false;}
   ps:=0;hs:=0;topic:=false;
@@ -441,7 +441,7 @@ admitted only with sane bounds:
 <!-- source: coax/lib/nostr/auto/schedule.coax due -->
 ```jai
 // Slot n's due time, or -1 when there is no such slot or it overflows.
-auto_due :: (p:AutoPlan,slot:int)->int {
+auto_due :: (p:AutoPlan,slot:int)->int #effects(all) {
   if slot<0 {return -1;}
   if p.trigger==AU_ONCE {return ifx slot==0 then p.at else -1;}
   if p.every<=0 || p.first_at<0 {return -1;}
@@ -450,11 +450,11 @@ auto_due :: (p:AutoPlan,slot:int)->int {
 }
 // The latest slot due at t (t at or after the first slot), and the last
 // slot before expiry.
-auto_slot_at :: (p:AutoPlan,t:int)->int {
+auto_slot_at :: (p:AutoPlan,t:int)->int #effects(all) {
   if p.trigger==AU_ONCE {return 0;}
   return (t-p.first_at)/p.every;
 }
-auto_plan_ok :: (p:AutoPlan)->bool {
+auto_plan_ok :: (p:AutoPlan)->bool #effects(all) {
   if p.starts_at<0 || p.starts_at>=p.expires_at || p.expires_at>AU_MAX_SAFE || p.max_occurrences<=0 {return false;}
   if p.trigger==AU_ONCE {return p.at>=p.starts_at && p.at<p.expires_at;}
   if p.trigger==AU_INTERVAL {return p.every>0 && p.first_at>=p.starts_at && p.first_at<p.expires_at && (p.missed==AU_SKIP || p.missed==AU_LATEST);}
@@ -490,7 +490,7 @@ accepted change moves the state's revision once.
 <!-- source: coax/lib/nostr/auto/schedule.coax tick -->
 ```jai
 // A timer tick at now for a once or interval plan.
-auto_tick :: (p:AutoPlan,s:[]AutoState,skips:[]AutoSkip,occ:[]AutoOccurrence,now:int,authority:u32)->AutoResult {
+auto_tick :: (p:AutoPlan,s:[]AutoState,skips:[]AutoSkip,occ:[]AutoOccurrence,now:int,authority:u32)->AutoResult #effects(all) {
   if !auto_plan_ok(p) || p.trigger==AU_SOURCE {return au_code(AU_MALFORMED);}
   status:=s[0].status;
   if au_terminal(status) || status==AUS_BLOCKED {return au_code(AU_CLOSED);}
@@ -536,7 +536,7 @@ occurrence it already created. Revisions are opaque and never ordered.
 <!-- source: coax/lib/nostr/auto/schedule.coax observe -->
 ```jai
 // An observation event for a source plan.
-auto_observe :: (p:AutoPlan,s:[]AutoState,occ:[]AutoOccurrence,obs:AutoObservation,now:int,authority:u32)->AutoResult {
+auto_observe :: (p:AutoPlan,s:[]AutoState,occ:[]AutoOccurrence,obs:AutoObservation,now:int,authority:u32)->AutoResult #effects(all) {
   if !auto_plan_ok(p) || p.trigger!=AU_SOURCE {return au_code(AU_MALFORMED);}
   if s[0].status!=AUS_ACTIVE {return au_code(AU_CLOSED);}
   if obs.source!=p.source || obs.resource!=p.resource {return au_code(AU_MALFORMED);}
@@ -560,14 +560,14 @@ auto_observe :: (p:AutoPlan,s:[]AutoState,occ:[]AutoOccurrence,obs:AutoObservati
 ```jai
 // The active occurrence settled (its RUN terminal record is the caller's).
 // A once plan, or an interval plan with no slot left, is then complete.
-auto_settle :: (p:AutoPlan,s:[]AutoState,occ:[]AutoOccurrence,ordinal:int)->u32 {
+auto_settle :: (p:AutoPlan,s:[]AutoState,occ:[]AutoOccurrence,ordinal:int)->u32 #effects(all) {
   if ordinal<=0 || s[0].active!=ordinal {return AU_MALFORMED;}
   occ[ordinal-1].settled=true;s[0].active=0;s[0].revision+=1;
   if s[0].status==AUS_ACTIVE && p.trigger!=AU_SOURCE && s[0].next_slot>auto_slot_at(p,p.expires_at-1) {s[0].status=AUS_COMPLETE;}
   return AU_OK;
 }
 // Pause, resume or cancel, compared against the current revision.
-auto_control :: (s:[]AutoState,action:int,expected_revision:int,authority:u32)->u32 {
+auto_control :: (s:[]AutoState,action:int,expected_revision:int,authority:u32)->u32 #effects(all) {
   if expected_revision!=s[0].revision {return AU_CONFLICT;}
   status:=s[0].status;
   if action==AU_PAUSE {

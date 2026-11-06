@@ -184,7 +184,7 @@ VerseState :: struct {
 }
 
 // Which page (the host's data-page), before anything else.
-verse_page :: (s: [] VerseState, page: int) #export_c {
+verse_page :: (s: [] VerseState, page: int) #export_c #effects(all) {
   if !s[0].started { verse_reset(s); }
   s[0].page = ifx page == PAGE_GALAXY then PAGE_GALAXY else PAGE_LANDING;
 }
@@ -257,9 +257,9 @@ request :: (s: [] VerseState, url: string, flags: int) {
   s[0].req_url_n = put(s[0].req_url[..], 0, url); s[0].req_flags = flags; s[0].req_ready = true;
 }
 // The galaxy asks GET /api/playtest/access once (access.coax); the face sends it and says its id.
-verse_access_wants :: (s: [] VerseState) -> bool #export_c { return s[0].page == PAGE_GALAXY && access_wants(s[0].acc[..]); }
-verse_access_sent :: (s: [] VerseState, id: int) #export_c { access_sent(s[0].acc[..], id); }
-verse_requested :: (s: [] VerseState, id: int) #export_c {
+verse_access_wants :: (s: [] VerseState) -> bool #export_c #effects(all) { return s[0].page == PAGE_GALAXY && access_wants(s[0].acc[..]); }
+verse_access_sent :: (s: [] VerseState, id: int) #export_c #effects(all) { access_sent(s[0].acc[..], id); }
+verse_requested :: (s: [] VerseState, id: int) #export_c #effects(all) {
   s[0].req_ready = false;
   if s[0].want_id == -2 { s[0].want_id = id; if id < 0 { realm_answered(s, "0\n"); } }
   if s[0].going && s[0].join_id == -2 { s[0].join_id = id; if id < 0 { s[0].answered = true; } }
@@ -321,7 +321,7 @@ press_button :: (s: [] VerseState, t: [] Track, b: int) {
 // ---- input
 
 // A key: a code point, or a named key below zero (ui.coax KEY_*).
-verse_key :: (s: [] VerseState, t: [] Track, key: int, mods: int) -> bool #export_c {
+verse_key :: (s: [] VerseState, t: [] Track, key: int, mods: int) -> bool #export_c #effects(all) {
   if s[0].page == PAGE_GALAXY { return world_key(s, t, key); }
   if s[0].page != PAGE_LANDING || s[0].going { return false; }
   if key == KEY_ENTER { enter(s, t); return true; }
@@ -329,7 +329,7 @@ verse_key :: (s: [] VerseState, t: [] Track, key: int, mods: int) -> bool #expor
 }
 
 // Typed or pasted text (kind 1), what this browser kept (4), and the join's answer.
-verse_message :: (s: [] VerseState, t: [] Track, kind: int, bytes: string) #export_c {
+verse_message :: (s: [] VerseState, t: [] Track, kind: int, bytes: string) #export_c #effects(all) {
   if kind == MSG_TEXT && s[0].page == PAGE_GALAXY { return; }
   if access_take(s[0].acc[..], kind, bytes) { return; }
   if kind >= HTTP_KIND && kind < HTTP_KIND + HTTPS && kind - HTTP_KIND == s[0].want_id && s[0].want_out != 0 {
@@ -377,7 +377,7 @@ button_at :: (s: [] VerseState, x: f32, y: f32) -> int {
 }
 
 // The pointer in device pixels: phase 0 down, 1 move, 2 up, 3 cancel; kind 0 a mouse, 1 a finger or pen.
-verse_pointer :: (s: [] VerseState, t: [] Track, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+verse_pointer :: (s: [] VerseState, t: [] Track, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if phase == POINTER_DOWN { s[0].touch = kind != 0; }
   b := button_at(s, x, y);
   galaxy := s[0].page == PAGE_GALAXY;
@@ -438,18 +438,18 @@ verse_pointer :: (s: [] VerseState, t: [] Track, x: f32, y: f32, phase: int, kin
   return kind == 0;
 }
 
-verse_wants_text :: (s: [] VerseState) -> bool #export_c {
+verse_wants_text :: (s: [] VerseState) -> bool #export_c #effects(all) {
   if s[0].page == PAGE_GALAXY { return false; }
   return s[0].page == PAGE_LANDING && s[0].focused && !s[0].going;
 }
-verse_cursor :: (s: [] VerseState) -> int #export_c {
+verse_cursor :: (s: [] VerseState) -> int #export_c #effects(all) {
   if s[0].hover >= 0 || s[0].press >= 0 || s[0].guide_held { return 1; }
   if s[0].page == PAGE_LANDING { return 2; }   // the playtest's crosshair over the orbs
   if s[0].page == PAGE_GALAXY && s[0].over >= 0 && realm_kind_at(s, s[0].over) == KIND_OPEN { return 1; }
   return 0;
 }
 // What the pointer is over, for the click event.
-verse_label :: (s: [] VerseState, x: f32, y: f32) -> string #export_c {
+verse_label :: (s: [] VerseState, x: f32, y: f32) -> string #export_c #effects(all) {
   b := button_at(s, x, y);
   if b == BTN_FIELD { return "email"; }
   if b == BTN_GO { return "go"; }
@@ -462,8 +462,8 @@ verse_label :: (s: [] VerseState, x: f32, y: f32) -> string #export_c {
   if s[0].page == PAGE_GALAXY { p := planet_at(s, x, y); if p >= 0 { return realm_id_at(s, p); } }
   return "";
 }
-verse_action :: (s: [] VerseState) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
-verse_action_done :: (s: [] VerseState) #export_c { for i: 0..<OUTBOX { s[0].outbox[i] = 0; } s[0].out_n = 0; }
+verse_action :: (s: [] VerseState) -> int #export_c #effects(all) { a := s[0].action; s[0].action = 0; return a; }
+verse_action_done :: (s: [] VerseState) #export_c #effects(all) { for i: 0..<OUTBOX { s[0].outbox[i] = 0; } s[0].out_n = 0; }
 
 // ---- the Agent orb: hold to talk to the playtest's guide
 
@@ -559,7 +559,7 @@ realm_name_into :: (raw: string, out: [] u8) -> int {
 }
 
 // The page facts' player (its public id; the key stays in the browser).
-verse_facts :: (s: [] VerseState, facts: string) #export_c {
+verse_facts :: (s: [] VerseState, facts: string) #export_c #effects(all) {
   if !s[0].started { verse_reset(s); }
   s[0].all = text_has(fact_of(facts, "url"), "realms=all");
   id := fact_of(facts, "player");
@@ -1211,7 +1211,7 @@ enter_hint :: (small: bool) -> string { return ifx small then "TAP A LIT PLANET 
 
 // The host calls this once a frame. dt is seconds since the last frame;
 // still: the visitor prefers reduced motion. Returns the vertex count.
-verse_frame :: (s: [] VerseState, t: [] Track, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+verse_frame :: (s: [] VerseState, t: [] Track, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   if !s[0].started { verse_reset(s); }
   // back to a page left by going on (the browser kept it): it answers again
@@ -1259,9 +1259,9 @@ verse_frame :: (s: [] VerseState, t: [] Track, out: [] f32, uniforms: [] f32, wi
   return n;
 }
 
-coaxial_verse_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_verse_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_verse_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_verse_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_verse_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_verse_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // ---- checks
 

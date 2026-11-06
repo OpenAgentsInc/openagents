@@ -14,7 +14,7 @@
 PACK_CHECK_FILE :: 16777216;   // a pack's bytes at most here (16 MB)
 PACK_KINDS :: [6] string.["", "catalog", "vertices", "indices", "layer", "sound"];
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: pack-check PACK..."); return 2; }
   bad := 0;

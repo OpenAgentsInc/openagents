@@ -37,7 +37,7 @@ CDD_TEXT_MAX :: 8000;     // the shared controller's transcript limit
 // ---- the gesture ----
 // A key name for --dictation-key or CODER_DICTATION_KEY, as its control
 // byte; -1 for a name that is not one of these. "" is Ctrl+Space.
-cdd_gesture :: (name: string) -> int {
+cdd_gesture :: (name: string) -> int #effects(all) {
   if name == "" || name == "ctrl-space" { return 0; }
   if name == "ctrl-g" { return 7; }
   if name == "ctrl-o" { return 15; }
@@ -45,7 +45,7 @@ cdd_gesture :: (name: string) -> int {
   if name == "ctrl-x" { return 24; }
   return -1;
 }
-cdd_gesture_label :: (code: int) -> string {
+cdd_gesture_label :: (code: int) -> string #effects(all) {
   if code == 0 { return "Ctrl+Space"; }
   if code == 7 { return "Ctrl+G"; }
   if code == 15 { return "Ctrl+O"; }
@@ -69,7 +69,7 @@ cdd_gesture_label :: (code: int) -> string {
 // usual), CDD_START, CDD_STOP, CDD_CANCEL (ends the request and does nothing
 // else), CDD_DROP (nothing), CDD_EDIT (ends the request, then goes on as
 // usual) or CDD_REFUSE (the gesture without consent).
-cdd_key :: (phase: int, consent: bool, gesture: int, k: TuiKey) -> int {
+cdd_key :: (phase: int, consent: bool, gesture: int, k: TuiKey) -> int #effects(all) {
   kd := k.kind;
   mine := kd == TUI_K_CTRL_KEY && k.cp == gesture;
   if phase == CDD_IDLE {
@@ -106,7 +106,7 @@ cdd_key :: (phase: int, consent: bool, gesture: int, k: TuiKey) -> int {
 
 // ---- the helper ----
 // The phase after a status line's state.
-cdd_status :: (phase: int, state: string) -> int {
+cdd_status :: (phase: int, state: string) -> int #effects(all) {
   if phase == CDD_STARTING && state == "listening" { return CDD_LISTENING; }
   if (phase == CDD_LISTENING || phase == CDD_FINISHING) && state == "finishing" { return CDD_FINISHING; }
   if (phase == CDD_LISTENING || phase == CDD_FINISHING) && state == "recognizing" { return CDD_RECOGNIZING; }
@@ -114,7 +114,7 @@ cdd_status :: (phase: int, state: string) -> int {
 }
 
 // What a result line means at phase: words go in only after recognizing.
-cdd_result :: (phase: int, kind: string, exit: int) -> int {
+cdd_result :: (phase: int, kind: string, exit: int) -> int #effects(all) {
   if phase == CDD_IDLE { return CDD_R_NONE; }
   if kind == "final" && exit == 0 && phase == CDD_RECOGNIZING { return CDD_R_INSERT; }
   if kind == "no_speech" && exit == 9 { return CDD_R_NO_SPEECH; }
@@ -124,7 +124,7 @@ cdd_result :: (phase: int, kind: string, exit: int) -> int {
 
 // A request with no news for this long is ended as failed: the model may
 // load for minutes the first time; the helper itself stops listening at 60 s.
-cdd_overdue :: (phase: int, now: int, since: int) -> bool {
+cdd_overdue :: (phase: int, now: int, since: int) -> bool #effects(all) {
   if phase == CDD_LISTENING { return now - since > 65000; }
   if phase == CDD_IDLE { return false; }
   return now - since > 180000;
@@ -132,7 +132,7 @@ cdd_overdue :: (phase: int, now: int, since: int) -> bool {
 
 // The text shown for the helper's error name: fixed words, never the
 // helper's own bytes, so nothing it prints reaches the terminal.
-cdd_error_text :: (name: string) -> string {
+cdd_error_text :: (name: string) -> string #effects(all) {
   if name == "permission" { return "microphone access is denied for this terminal"; }
   if name == "model_missing" { return "the pinned Parakeet model is not installed (psionic/docs/parakeet.md)"; }
   if name == "model" { return "the Parakeet model could not be opened"; }
@@ -149,8 +149,8 @@ cdd_error_text :: (name: string) -> string {
 // of a flag openagents dictate takes and a value, separated by single
 // spaces. Output, control and timing flags are Coder's own and refused.
 CDD_FLAGS :: [6] string.["--device", "--capture", "--input", "--model-dir", "--format", "--terms"];
-cdd_flag :: (s: string) -> bool { for f: CDD_FLAGS { if s == f { return true; } } return false; }
-cdd_args_ok :: (args: string) -> bool {
+cdd_flag :: (s: string) -> bool #effects(all) { for f: CDD_FLAGS { if s == f { return true; } } return false; }
+cdd_args_ok :: (args: string) -> bool #effects(all) {
   if args.count == 0 { return true; }
   at := 0; pieces := 0;
   while at <= args.count {
@@ -222,7 +222,7 @@ CddGuard :: struct {
 }
 
 // Opens a request's guard on the composer as it is now.
-cdd_begin :: (g: [] CddGuard, e: [] TuiEditor, ticket: int, sent: int, nav: int, focused: bool, consent: bool) -> bool {
+cdd_begin :: (g: [] CddGuard, e: [] TuiEditor, ticket: int, sent: int, nav: int, focused: bool, consent: bool) -> bool #effects(all) {
   g[0].active = false;
   if ticket <= 0 || !focused || !consent || e[0].n < 0 || e[0].n > TUI_EDIT_BYTES || e[0].cur < 0 || e[0].cur > e[0].n { return false; }
   g[0].ticket = ticket; g[0].sent = sent; g[0].nav = nav; g[0].gen = e[0].gen; g[0].n = e[0].n; g[0].cur = e[0].cur;
@@ -230,11 +230,11 @@ cdd_begin :: (g: [] CddGuard, e: [] TuiEditor, ticket: int, sent: int, nav: int,
   g[0].active = true;
   return true;
 }
-cdd_cancel :: (g: [] CddGuard) { g[0].active = false; }
+cdd_cancel :: (g: [] CddGuard) #effects(all) { g[0].active = false; }
 
 // True while the composer, the send count, navigation, focus and consent are
 // exactly as they were when ticket began.
-cdd_current :: (g: [] CddGuard, e: [] TuiEditor, ticket: int, sent: int, nav: int, focused: bool, consent: bool) -> bool {
+cdd_current :: (g: [] CddGuard, e: [] TuiEditor, ticket: int, sent: int, nav: int, focused: bool, consent: bool) -> bool #effects(all) {
   if !g[0].active || ticket != g[0].ticket || !focused || !consent || sent != g[0].sent || nav != g[0].nav { return false; }
   if e[0].gen != g[0].gen || e[0].n != g[0].n || e[0].cur != g[0].cur { return false; }
   for i: 0..<g[0].n { if e[0].buf[i] != g[0].snapshot[i] { return false; } }
@@ -244,7 +244,7 @@ cdd_current :: (g: [] CddGuard, e: [] TuiEditor, ticket: int, sent: int, nav: in
 // Whether text may become draft bytes: 1 to CDD_TEXT_MAX bytes of valid
 // UTF-8 (shortest forms, no surrogates, at most U+10FFFF) with no control
 // character but the line feed: no NUL, CR, tab, Esc, DEL or C1 control.
-cdd_text_ok :: (text: string) -> bool {
+cdd_text_ok :: (text: string) -> bool #effects(all) {
   if text.count < 1 || text.count > CDD_TEXT_MAX { return false; }
   i := 0;
   while i < text.count {
@@ -271,7 +271,7 @@ cdd_text_ok :: (text: string) -> bool {
 // Puts ticket's transcript at the cursor as one undoable insertion, joined
 // to the words around it, and ends the request: CDD_A_OK, or CDD_A_STALE,
 // CDD_A_TEXT or CDD_A_FULL with the composer untouched.
-cdd_apply :: (g: [] CddGuard, e: [] TuiEditor, ticket: int, sent: int, nav: int, focused: bool, consent: bool, text: string) -> int {
+cdd_apply :: (g: [] CddGuard, e: [] TuiEditor, ticket: int, sent: int, nav: int, focused: bool, consent: bool, text: string) -> int #effects(all) {
   if ticket != g[0].ticket { return CDD_A_STALE; }
   current := cdd_current(g, e, ticket, sent, nav, focused, consent);
   g[0].active = false;
@@ -288,7 +288,7 @@ cdd_apply :: (g: [] CddGuard, e: [] TuiEditor, ticket: int, sent: int, nav: int,
   return CDD_A_OK;
 }
 
-cdd_ed :: (e: [] TuiEditor, s: string, cur: int) { tui_ed_set(e, s); e[0].cur = cur; }
+cdd_ed :: (e: [] TuiEditor, s: string, cur: int) #effects(all) { tui_ed_set(e, s); e[0].cur = cur; }
 
 #test "the guard: words go in at the cursor as one undoable edit and nothing is sent" {
   e: [1] TuiEditor; g: [1] CddGuard;

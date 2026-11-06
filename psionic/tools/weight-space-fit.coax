@@ -7,7 +7,7 @@
 #load "../fixtures/weight-space/fresh.coax";
 #load "../../coax/lib/sys/tool.coax";
 
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     print("// Prepared once by weight-space-fit.coax: ten AdamW steps on development conflicts.\nWS_FIT :: [5][664]u64.[\n");
     for model:0..<5 {
         tool_errln("fitting one development-only artifact");p:[664]f64;bits:=WS_FRESH[model];ax_from_bits(bits[..],p[..]);

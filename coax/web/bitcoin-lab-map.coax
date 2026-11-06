@@ -83,7 +83,7 @@ map_station :: (n:int)->int {
   #assert map_station(64)==3 && map_station(82)==4 && map_station(99)==5;
   #assert map_station(110)==6 && map_station(117)==3 && map_station(125)==1;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) || args_count(args[..])>1 {return 2;}
   check:=args_count(args[..])==1 && args_at(args[..],0)=="--check";
   if args_count(args[..])==1 && !check {return 2;}

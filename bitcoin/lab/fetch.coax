@@ -2,7 +2,7 @@
 #import "Basic";
 #load "client.coax";
 #load "../../coax/lib/sys/tool.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}
   port:=lr_number(args_at(a[..],0),65535);path:=args_at(a[..],1);if port<1 || lr_route("GET",path).code!=200 {return 2;}
   out:[LAB_REPLY_MAX]u8;n:=lf_get(port,path,out[..]);if n<0 {print("503\n{}\n");return 0;}

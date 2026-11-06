@@ -108,7 +108,7 @@ db_reply :: (c:[]Cdp,s:[]DbRun,index:int,status:int,body:string,stale:bool)->boo
     if stale && s[0].last_error && !s[0].bad {s[0].stale_errors+=1;return true;}return r>=0;
 }
 
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     a:[1]Args;if !args_load(a[..]) || args_count(a[..])<2 || args_count(a[..])>3 || !db_origin(args_at(a[..],0)) {tool_errln("usage: browser LOOPBACK_ORIGIN NEW_RESULT.json [all|local|responses|cancellations|reuse|combat|queued|edited]");return 2;}
     group:=ifx args_count(a[..])==3 then args_at(a[..],2) else "all";
     if group!="all" && group!="local" && group!="responses" && group!="cancellations" && group!="reuse" && group!="combat" && group!="queued" && group!="edited" {return 2;}

@@ -5,7 +5,7 @@ hpa_host_wait :: (c:[]Cdp,expression:string)->bool {
  until:=proc_now_ms()+15000;while proc_now_ms()<until {if wc_eval(c,jo_text(o[..]))=="true" {return true;}proc_sleep(50);}tool_errln(expression);tool_errln(cdp_error(c));return false;
 }
 hpa_host_copy :: (source:string,target:string)->bool {bytes:[8388608]u8;n:=fs_read(source,bytes[..]);return n>=0&&fs_write(target,cast(string)bytes[0..<n]);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || (args_count(a[..])!=4&&args_count(a[..])!=6) {tool_errln("usage: check-browser-audio-host SITE_ROOT LOCAL_URL FIXTURE_DIR OUT.json [FIRE_HIT_E2.ogg FIRE_CAST_E1.ogg]");return 2;}
   site:=args_at(a[..],0);url:=args_at(a[..],1);fixture:=args_at(a[..],2);paths:[3][4096]u8;if url.count<17||url[0..<17]!="http://127.0.0.1:" {return 2;}
   for file:[2]string.["fixture.wasm","fixture.wgsl"] {if !hpa_host_copy(fs_join(fixture,file,paths[0][..]),fs_join(site,file,paths[1][..])) {return 1;}}

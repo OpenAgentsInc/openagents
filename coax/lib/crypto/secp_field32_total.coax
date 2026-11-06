@@ -43,7 +43,7 @@
   a:=SF32_P;a.limb[0]+=1;one:Sf32;one.limb[0]=1;
   #assert sf32_equal(sf32_canonical_total(a),one);
 }
-sf32_fold_total :: (input:Sf32,top:u64)->Sf32Fold {
+sf32_fold_total :: (input:Sf32,top:u64)->Sf32Fold #effects(all) {
   r:Sf32Fold;defer {secure_zero(r.value.limb[..]);#assert crypto_zeroed(r.value.limb[..]);}wide:=cast(u64)input.limb[0]+mul_wrap(top,977);
   r.value.limb[0]=cast,trunc(u32)(wide);carry:=wide>>32;
   wide=cast(u64)input.limb[1]+carry+top;r.value.limb[1]=cast,trunc(u32)(wide);carry=wide>>32;
@@ -55,12 +55,12 @@ sf32_fold_total :: (input:Sf32,top:u64)->Sf32Fold {
   wide=cast(u64)input.limb[7]+carry;r.value.limb[7]=cast,trunc(u32)(wide);carry=wide>>32;
   r.carry=carry;return r;
 }
-sf32_canonical_total :: (input:Sf32)->Sf32 {
+sf32_canonical_total :: (input:Sf32)->Sf32 #effects(all) {
   folded:=sf32_fold_total(input,1);defer {secure_zero(folded.value.limb[..]);#assert crypto_zeroed(folded.value.limb[..]);}mask:=cast,trunc(u32)(cb_mask(folded.carry));r:Sf32;defer {secure_zero(r.limb[..]);#assert crypto_zeroed(r.limb[..]);}
   for i:0..<8 {r.limb[i]=input.limb[i]^((input.limb[i]^folded.value.limb[i])&value_barrier(mask));}
   return r;
 }
-sf32_add_total :: (a:Sf32,b:Sf32)->Sf32 {
+sf32_add_total :: (a:Sf32,b:Sf32)->Sf32 #effects(all) {
   r:Sf32;defer {secure_zero(r.limb[..]);#assert crypto_zeroed(r.limb[..]);}carry:u64;
   for i:0..<8 {wide:=cast(u64)a.limb[i]+cast(u64)b.limb[i]+carry;r.limb[i]=cast,trunc(u32)(wide);carry=wide>>32;}
   // Two folds reduce any 257-bit sum; the second cannot overflow.
@@ -68,7 +68,7 @@ sf32_add_total :: (a:Sf32,b:Sf32)->Sf32 {
   folded:=sf32_fold_total(r,carry);defer {secure_zero(folded.value.limb[..]);#assert crypto_zeroed(folded.value.limb[..]);}folded=sf32_fold_total(folded.value,folded.carry&1);
   return sf32_canonical_total(folded.value);
 }
-sf32_mul_total :: (a:Sf32,b:Sf32)->Sf32 {
+sf32_mul_total :: (a:Sf32,b:Sf32)->Sf32 #effects(all) {
   product:[16]u32;defer {secure_zero(product[..]);#assert crypto_zeroed(product[..]);}
   for i:0..<8 {
     carry:u64;

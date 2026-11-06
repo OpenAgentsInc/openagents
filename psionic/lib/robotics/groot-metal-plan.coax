@@ -52,14 +52,14 @@
   }
 }
 
-gms_layout :: ()->GmsLayout #export_c {return GmsLayout.{bytes=[8]int.[270336,3145728,4096,6144,528,4096,6144,2560],nodes=4};}
-gms_admit :: (capacities:[]int,overlap:bool)->GmsStatus #export_c {
+gms_layout :: ()->GmsLayout #export_c #effects(all) {return GmsLayout.{bytes=[8]int.[270336,3145728,4096,6144,528,4096,6144,2560],nodes=4};}
+gms_admit :: (capacities:[]int,overlap:bool)->GmsStatus #export_c #effects(all) {
   if capacities.count!=8 {return GmsStatus.shape;}p:=gms_layout();for i:0..<8 {if capacities[i]<p.bytes[i] {return GmsStatus.capacity;}}
   if overlap {return GmsStatus.alias;}return GmsStatus.ok;
 }
-gms_i :: (value:int)->GmsArg {return GmsArg.{integer=value};}
-gms_v :: (buffer:int,count:int)->GmsArg {return GmsArg.{kind=4,buffer=buffer,count=count};}
-gms_node :: (index:int)->GmsNode #export_c {
+gms_i :: (value:int)->GmsArg #effects(all) {return GmsArg.{integer=value};}
+gms_v :: (buffer:int,count:int)->GmsArg #effects(all) {return GmsArg.{kind=4,buffer=buffer,count=count};}
+gms_node :: (index:int)->GmsNode #export_c #effects(all) {
   n:GmsNode;n.block=128;
   if index==0 || index==2 {
     first:=index==0;rows:=ifx first then 1024 else 1536;cols:=ifx first then 132 else 1024;
@@ -73,19 +73,19 @@ gms_node :: (index:int)->GmsNode #export_c {
   }
   return GmsNode.{status=GmsStatus.shape};
 }
-gms_begin :: (capacities:[]int,overlap:bool)->GmsCursor #export_c {return GmsCursor.{status=gms_admit(capacities,overlap)};}
-gms_sent :: (s:[]GmsCursor,index:int,effect_status:int)->GmsStatus #export_c {
+gms_begin :: (capacities:[]int,overlap:bool)->GmsCursor #export_c #effects(all) {return GmsCursor.{status=gms_admit(capacities,overlap)};}
+gms_sent :: (s:[]GmsCursor,index:int,effect_status:int)->GmsStatus #export_c #effects(all) {
   if s.count!=1 {return GmsStatus.shape;}if s[0].status!=GmsStatus.ok {return s[0].status;}
   if s[0].waited || s[0].published || index!=s[0].next || s[0].next<0 || s[0].next>=4 {s[0].status=GmsStatus.order;return s[0].status;}
   if effect_status!=0 {s[0].status=ifx effect_status==7 then GmsStatus.check else GmsStatus.device;return s[0].status;}
   s[0].next+=1;return GmsStatus.ok;
 }
-gms_waited :: (s:[]GmsCursor,effect_status:int)->GmsStatus #export_c {
+gms_waited :: (s:[]GmsCursor,effect_status:int)->GmsStatus #export_c #effects(all) {
   if s.count!=1 {return GmsStatus.shape;}if s[0].status!=GmsStatus.ok {return s[0].status;}
   if s[0].waited || s[0].published || s[0].next!=4 {s[0].status=GmsStatus.order;return s[0].status;}
   s[0].waited=true;if effect_status!=0 {s[0].status=ifx effect_status==7 then GmsStatus.check else GmsStatus.device;}return s[0].status;
 }
-gms_publish :: (s:[]GmsCursor,flags:[]u8,hidden:[]u32,final:[]u32,out:[]f32,overlap:bool)->GmsRead #export_c {
+gms_publish :: (s:[]GmsCursor,flags:[]u8,hidden:[]u32,final:[]u32,out:[]f32,overlap:bool)->GmsRead #export_c #effects(all) {
   if s.count!=1 {return GmsRead.{status=GmsStatus.shape};}if s[0].status!=GmsStatus.ok {return GmsRead.{status=s[0].status};}
   if !s[0].waited || s[0].next!=4 || s[0].published {return GmsRead.{status=GmsStatus.order};}
   if flags.count!=2560 || hidden.count!=1024 || final.count!=1536 || out.count<2560 {return GmsRead.{status=GmsStatus.capacity};}

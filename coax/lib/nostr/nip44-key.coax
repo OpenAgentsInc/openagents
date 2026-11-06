@@ -77,7 +77,7 @@ NIP44_KEY_GENERATOR_X :: [32]u8.[0x79,0xbe,0x66,0x7e,0xf9,0xdc,0xbb,0xac,0x55,0x
 // and out share memory. Refusal order: NIP44_KEY (secret or public key not 32
 // bytes), NIP44_OUTPUT (work not exactly one scratch, out below 32 bytes),
 // NIP44_ALIAS, then NIP44_PEER before NIP44_SECRET, as ecdh_stage checks them.
-nip44_conversation_key_from_keys_checked :: (secret:[]u8,public_key_x:[]u8,work:[]EcdhScratch,out:[]u8,overlap:bool)->u32 {
+nip44_conversation_key_from_keys_checked :: (secret:[]u8,public_key_x:[]u8,work:[]EcdhScratch,out:[]u8,overlap:bool)->u32 #effects(all) {
   if secret.count!=32 || public_key_x.count!=32 {return NIP44_KEY;}
   if work.count!=1 || out.count<32 {return NIP44_OUTPUT;}
   if overlap {return NIP44_ALIAS;}

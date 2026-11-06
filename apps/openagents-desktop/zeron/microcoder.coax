@@ -46,15 +46,15 @@
 #load "../../../coax/lib/gateway/ours.coax";
 #load "../../../coax/lib/x402/x402.coax";
 
-zr_random_u64 :: () -> int #foreign;
-zr_lab_unix_s :: () -> int #foreign;   // the time, for signatures (codex.coax has its own; lab.coax is checked without it)
+zr_random_u64 :: () -> int #foreign #effects(all);
+zr_lab_unix_s :: () -> int #foreign #effects(all);   // the time, for signatures (codex.coax has its own; lab.coax is checked without it)
 // The signer (lab-sign.coax) through zeron-face.c, a byte at a time (#foreign passes integers):
 // the key and tags in, the signature out; the host forgets the key after each one.
-zr_sign_reset :: () #foreign;
-zr_sign_key :: (i: int, b: int) #foreign;
-zr_sign_tag :: (b: int) -> bool #foreign;
-zr_sign_run :: (now_s: int, aux0: int, aux1: int, aux2: int, aux3: int) -> int #foreign;
-zr_sign_byte :: (i: int) -> int #foreign;
+zr_sign_reset :: () #foreign #effects(all);
+zr_sign_key :: (i: int, b: int) #foreign #effects(all);
+zr_sign_tag :: (b: int) -> bool #foreign #effects(all);
+zr_sign_run :: (now_s: int, aux0: int, aux1: int, aux2: int, aux3: int) -> int #foreign #effects(all);
+zr_sign_byte :: (i: int) -> int #foreign #effects(all);
 LMC_OURS_KEYFILE :: "/Library/Application Support/OpenAgents/lab-nostr.key";   // under $HOME
 
 LMC_SECRETS :: "/work/.secrets/";                       // under $HOME

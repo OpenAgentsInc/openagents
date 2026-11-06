@@ -26,7 +26,7 @@ ffp_full :: (s: [] Fairy) -> f32 {
   return clamp(f32((s[0].time - s[0].pond_at) / f64(FFP_FILL)), 0, 1);
 }
 // How far under the stream the pond stands now (stepped), for the face.
-fairy_pond_drop :: (s: [] Fairy) -> f32 #export_c {
+fairy_pond_drop :: (s: [] Fairy) -> f32 #export_c #effects(all) {
   f := ffp_full(s);
   f = f * f * (3 - 2 * f);
   d := f32(FFP_DROP) * (1 - f);

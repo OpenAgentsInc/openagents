@@ -8,7 +8,7 @@
   #assert bn_admit(true, true, true, false, false) == 4;
   #assert bn_admit(true, true, true, true, true) == 5;
 }
-bn_admit :: (desk: bool, display: bool, installed: bool, runner: bool, running: bool) -> int {
+bn_admit :: (desk: bool, display: bool, installed: bool, runner: bool, running: bool) -> int #effects(all) {
   if !desk { return 1; }
   if !display { return 2; }
   if !installed { return 3; }
@@ -21,7 +21,7 @@ bn_admit :: (desk: bool, display: bool, installed: bool, runner: bool, running: 
   #assert !bn_display("") && !bn_display(":") && !bn_display("host:50") && !bn_display(":5x") && !bn_display(":12345");
   #assert !bn_display(":x5") && !bn_display(":5:");
 }
-bn_display :: (s: string) -> bool {
+bn_display :: (s: string) -> bool #effects(all) {
   if s.count < 2 || s.count > 5 || s[0] != ':' { return false; }
   for c: s[1..<s.count] { if c < '0' || c > '9' { return false; } }
   return true;

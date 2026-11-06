@@ -35,20 +35,20 @@
  p:Point3(PfkWorld,pfku.Metre,f64);p.x=1;p.y=2;p.z=3;v:=pfk_shift(p,q.value,[3]f64.[4,-5,6]);#assert abs(v.x-31.0/15)<1e-14 && abs(v.y-31.0/3)<1e-14 && abs(v.z-7.0/15)<1e-14;
 }
 
-pfk_finite :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
-pfk_normalize_bits :: (bits:[4]u64)->PfkQuaternion #export_c {
+pfk_finite :: (bits:u64)->bool #effects(all) {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+pfk_normalize_bits :: (bits:[4]u64)->PfkQuaternion #export_c #effects(all) {
  q:[4]f64;for i:0..<4 {if !pfk_finite(bits[i]) {return PfkQuaternion.{status=PfkStatus.number};}q[i]=f64_from_bits(bits[i]);if abs(q[i])>2 {return PfkQuaternion.{status=PfkStatus.range};}}
  norm:f64=0;for x:q {norm+=x*x;}if norm==0 {return PfkQuaternion.{status=PfkStatus.rotation};}length:=sqrt(norm);out:PfkQuaternion;for i:0..<4 {out.value[i]=q[i]/length;}return out;
 }
-pfk_normalize :: (input:[4]f64)->PfkQuaternion {bits:[4]u64;for i:0..<4 {bits[i]=f64_bits(input[i]);}return pfk_normalize_bits(bits);}
-pfk_multiply :: (a:[4]f64,b:[4]f64)->[4]f64 {
+pfk_normalize :: (input:[4]f64)->PfkQuaternion #effects(all) {bits:[4]u64;for i:0..<4 {bits[i]=f64_bits(input[i]);}return pfk_normalize_bits(bits);}
+pfk_multiply :: (a:[4]f64,b:[4]f64)->[4]f64 #effects(all) {
  return [4]f64.[a[0]*b[0]-a[1]*b[1]-a[2]*b[2]-a[3]*b[3],a[0]*b[1]+a[1]*b[0]+a[2]*b[3]-a[3]*b[2],a[0]*b[2]-a[1]*b[3]+a[2]*b[0]+a[3]*b[1],a[0]*b[3]+a[1]*b[2]-a[2]*b[1]+a[3]*b[0]];
 }
-pfk_matrix :: (q:[4]f64)->[9]f64 {
+pfk_matrix :: (q:[4]f64)->[9]f64 #effects(all) {
  return [9]f64.[1-2*(q[2]*q[2]+q[3]*q[3]),2*(q[1]*q[2]-q[0]*q[3]),2*(q[1]*q[3]+q[0]*q[2]),2*(q[1]*q[2]+q[0]*q[3]),1-2*(q[1]*q[1]+q[3]*q[3]),2*(q[2]*q[3]-q[0]*q[1]),2*(q[1]*q[3]-q[0]*q[2]),2*(q[2]*q[3]+q[0]*q[1]),1-2*(q[1]*q[1]+q[2]*q[2])];
 }
-pfk_shift :: (origin:Point3(PfkWorld,pfku.Metre,f64),q:[4]f64,offset:[3]f64)->Point3(PfkWorld,pfku.Metre,f64) {
+pfk_shift :: (origin:Point3(PfkWorld,pfku.Metre,f64),q:[4]f64,offset:[3]f64)->Point3(PfkWorld,pfku.Metre,f64) #effects(all) {
  r:=pfk_matrix(q);world:Vector3(PfkWorld,pfku.Metre,f64);world.x=r[0]*offset[0]+r[1]*offset[1]+r[2]*offset[2];world.y=r[3]*offset[0]+r[4]*offset[1]+r[5]*offset[2];world.z=r[6]*offset[0]+r[7]*offset[1]+r[8]*offset[2];return origin+world;
 }
-pfk_hinge :: (angle:pfku.Quantity(pfku.Radian,f64))->[4]f64 {return [4]f64.[cos(angle.value*0.5),0,0,sin(angle.value*0.5)];}
-pfk_pose :: (rigid:PfkRigid)->PfkPose {return PfkPose.{position=rigid.position,quaternion=rigid.quaternion,rotation=pfk_matrix(rigid.quaternion)};}
+pfk_hinge :: (angle:pfku.Quantity(pfku.Radian,f64))->[4]f64 #effects(all) {return [4]f64.[cos(angle.value*0.5),0,0,sin(angle.value*0.5)];}
+pfk_pose :: (rigid:PfkRigid)->PfkPose #effects(all) {return PfkPose.{position=rigid.position,quaternion=rigid.quaternion,rotation=pfk_matrix(rigid.quaternion)};}

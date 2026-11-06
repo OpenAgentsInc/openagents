@@ -16,7 +16,7 @@ PxLowered :: struct {status:PxStatus;program:TiProgram;plan:PxConvPlan;reuse:boo
     x:int;w:int;input:int;workspace:int;stage:int;flags:int;}
 // book:end ir-types
 
-px_ir_shape :: (a:int,b:int,c:int,d:int)->TvShape {return TvShape.{rank=4,dims=[4]int.[a,b,c,d]};}
+px_ir_shape :: (a:int,b:int,c:int,d:int)->TvShape #effects(all) {return TvShape.{rank=4,dims=[4]int.[a,b,c,d]};}
 #test "a padded, strided, dilated convolution lowers to five nodes" {
     c:=PxConv.{channels=1,height=3,width=3,filters=1,kernel_h=3,kernel_w=3,stride_h=2,stride_w=2,pad_h=1,pad_w=1};
     l:=px_lower_conv(c,true,false);
@@ -111,7 +111,7 @@ px_ir_shape :: (a:int,b:int,c:int,d:int)->TvShape {return TvShape.{rank=4,dims=[
 
 // Every program the lowering builds is well formed, so chapter 38 refuses
 // one only for its size bounds, and a run only for its values.
-px_ir_status :: (s:TiStatus)->PxStatus {
+px_ir_status :: (s:TiStatus)->PxStatus #effects(all) {
     if s==TiStatus.ok {return PxStatus.ok;}
     if s==TiStatus.arithmetic || s==TiStatus.number {return PxStatus.number;}
     return PxStatus.limit;
@@ -122,7 +122,7 @@ px_ir_status :: (s:TiStatus)->PxStatus {
 // the plane of every stride-th padded row starting at r. Each phase becomes
 // one input channel, and tap i becomes weight q of that channel: a valid,
 // stride-one convolution with taps_h = (kernel_h - 1) * d / stride + 1 rows.
-px_lower_conv :: (c:PxConv,bias:bool,reuse:bool)->PxLowered {
+px_lower_conv :: (c:PxConv,bias:bool,reuse:bool)->PxLowered #effects(all) {
     p:=px_conv_plan(c);if p.status!=PxStatus.ok {return PxLowered.{status=p.status};}
     l:=PxLowered.{plan=p,reuse=reuse,taps_h=(c.kernel_h-1)*c.dilation_h/c.stride_h+1,taps_w=(c.kernel_w-1)*c.dilation_w/c.stride_w+1};
     l.channels=c.channels*c.stride_h*c.stride_w;l.height=p.out_h+l.taps_h-1;l.width=p.out_w+l.taps_w-1;
@@ -143,7 +143,7 @@ px_lower_conv :: (c:PxConv,bias:bool,reuse:bool)->PxLowered {
     return l;
 }
 // Pack the program's inputs: the padded phases, the spread weights, the bias.
-px_lower_inputs :: (c:PxConv,l:PxLowered,x:[]f32,w:[]f32,bias:[]f32,input:[]f32)->PxResult {
+px_lower_inputs :: (c:PxConv,l:PxLowered,x:[]f32,w:[]f32,bias:[]f32,input:[]f32)->PxResult #effects(all) {
     if input.count<l.input {return PxResult.{status=PxStatus.capacity};}
     for i:0..<l.x {
         v:=i%l.width;u:=(i/l.width)%l.height;phase:=(i/(l.width*l.height))%l.channels;n:=i/(l.width*l.height*l.channels);
@@ -173,11 +173,11 @@ px_lower_inputs :: (c:PxConv,l:PxLowered,x:[]f32,w:[]f32,bias:[]f32,input:[]f32)
 // Lower, pack and run on chapter 38's CPU path: reuse selects its planned
 // kernels, otherwise chapter 5's reference arithmetic. Scratch holds the
 // program's inputs, its workspace and its staged output.
-px_conv_ir :: (c:PxConv,x:[]f32,w:[]f32,bias:[]f32,reuse:bool,scratch:[]f32,flags:[]u8,y:[]f32)->PxResult {
+px_conv_ir :: (c:PxConv,x:[]f32,w:[]f32,bias:[]f32,reuse:bool,scratch:[]f32,flags:[]u8,y:[]f32)->PxResult #effects(all) {
     l:=px_lower_conv(c,bias.count>0,reuse);if l.status!=PxStatus.ok {return PxResult.{status=l.status};}
     return px_ir_run(c,l,x,w,bias,scratch,flags,y);
 }
-px_ir_run :: (c:PxConv,l:PxLowered,x:[]f32,w:[]f32,bias:[]f32,scratch:[]f32,flags:[]u8,y:[]f32)->PxResult {
+px_ir_run :: (c:PxConv,l:PxLowered,x:[]f32,w:[]f32,bias:[]f32,scratch:[]f32,flags:[]u8,y:[]f32)->PxResult #effects(all) {
     if x.count!=l.plan.x || w.count!=l.plan.w || (bias.count!=0 && bias.count!=c.filters) {return PxResult.{status=PxStatus.shape};}
     if scratch.count<l.input+l.workspace+l.stage || flags.count<l.flags || y.count<l.stage {return PxResult.{status=PxStatus.capacity};}
     #assert px_lower_inputs(c,l,x,w,bias,scratch[0..<l.input]).written==l.input;
@@ -189,7 +189,7 @@ px_ir_run :: (c:PxConv,l:PxLowered,x:[]f32,w:[]f32,bias:[]f32,scratch:[]f32,flag
 // A patch projection is the convolution with kernel and stride both the
 // patch size; one more node views its (batch, dim, grid) result as (batch,
 // token, dim), and chapter 38's publication copies it out in that order.
-px_patch_ir :: (q:PxPatch,x:[]f32,w:[]f32,bias:[]f32,reuse:bool,scratch:[]f32,flags:[]u8,out:[]f32)->PxResult {
+px_patch_ir :: (q:PxPatch,x:[]f32,w:[]f32,bias:[]f32,reuse:bool,scratch:[]f32,flags:[]u8,out:[]f32)->PxResult #effects(all) {
     p:=px_patch_plan(q);if p.status!=PxStatus.ok {return PxResult.{status=p.status};}
     if bias.count!=q.dim {return PxResult.{status=PxStatus.shape};}
     c:=PxConv.{batch=q.batch,channels=q.channels,height=q.height,width=q.width,filters=q.dim,kernel_h=q.patch,kernel_w=q.patch,stride_h=q.patch,stride_w=q.patch};

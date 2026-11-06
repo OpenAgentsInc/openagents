@@ -7,7 +7,7 @@
  #assert hmsp_accept(rows[..]);#assert !hmsp_accept(rows[0..<39]);extra:[41]int;#assert !hmsp_accept(extra[..]);
  for i:0..<rows.count {changed:=rows;changed[i]+=1;#assert !hmsp_accept(changed[..]);}
 }
-hmsp_accept :: (rows:[]int)->bool #export_c {
+hmsp_accept :: (rows:[]int)->bool #export_c #effects(all) {
  want:=[40]int.[1,4,261,1,0, 0,0,0,0,1, 0,0,0,0,1, 0,0,0,0,1,
   0,0,0,0,1, 0,0,0,0,1, 1,0,0,1,0, 1,4,261,1,0];
  if rows.count!=want.count {return false;}

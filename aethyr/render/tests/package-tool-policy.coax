@@ -4,11 +4,11 @@
 #authority;
 RPT_NEGATIVES :: [14]string.["duplicate-root-key","truncated-json","unknown-schema","fractional-profile","unsafe-product-path","uppercase-hash","null-fragment","negative-stride","wrong-slug","wrong-entry-name","wrong-resource-slot","wrong-target-count","generic-derivative","generic-discard"];
 #load "package-tool-checks.coax";
-rpt_slot :: (d:Jv,array:int,key:string,index:int)->int {
+rpt_slot :: (d:Jv,array:int,key:string,index:int)->int #effects(all) {
   found:=-1;for i:0..<jv_len(d,array) {row:=jv_at(d,array,i);if jv_int(d,jv_get(d,row,key),-1)==index {found=row;}}return found;
 }
-rpt_copy_fields :: (d:Jv,row:int,o:[]Jo) {child:=d.nodes[row].first;while child!=-1 {jo_key(o,jv_key(d,child));jv_write(d,child,o);child=d.nodes[child].next;}}
-rpt_expected :: (d:Jv,parse:int,admit:int,payload:bool,bad_product:int,out:[]u8)->string {
+rpt_copy_fields :: (d:Jv,row:int,o:[]Jo) #effects(all) {child:=d.nodes[row].first;while child!=-1 {jo_key(o,jv_key(d,child));jv_write(d,child,o);child=d.nodes[child].next;}}
+rpt_expected :: (d:Jv,parse:int,admit:int,payload:bool,bad_product:int,out:[]u8)->string #effects(all) {
   o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"parse");jo_int(o[..],parse);jo_key(o[..],"admit");jo_int(o[..],admit);jo_key(o[..],"entry_view_count");jo_int(o[..],ifx parse==0 then 14 else 0);jo_key(o[..],"guards");jo_bool(o[..],true);jo_key(o[..],"borrowed_strings");jo_bool(o[..],true);
   if parse==0 {
     for key:[3]string.["profile_index","slug","app"] {jo_key(o[..],key);jv_write(d,jv_get(d,0,key),o[..]);}
@@ -26,7 +26,7 @@ rpt_expected :: (d:Jv,parse:int,admit:int,payload:bool,bad_product:int,out:[]u8)
 }
 // Python's retained concrete ASCII package fixtures use its default separators.
 // The mutation target is a checked JSON node, never a source-text substring.
-rpt_dump :: (d:Jv,node:int,target:int,value:string,o:[]Jo) {
+rpt_dump :: (d:Jv,node:int,target:int,value:string,o:[]Jo) #effects(all) {
   if node==target {jo_put(o,value);return;}
   kind:=jv_kind(d,node);
   if kind==JV_STRING {jo_requote(o,jv_raw(d,node));return;}
@@ -37,7 +37,7 @@ rpt_dump :: (d:Jv,node:int,target:int,value:string,o:[]Jo) {
     rpt_dump(d,child,target,value,o);child=d.nodes[child].next;
   }jo_put(o,ifx kind==JV_OBJECT then "}" else "]");
 }
-rpt_negative :: (d:Jv,which:int,out:[]u8)->string {
+rpt_negative :: (d:Jv,which:int,out:[]u8)->string #effects(all) {
   if !rpt_control_index(which) {return "";}
   o:[1]Jo;jo_start(o[..],out);
   if which<2 {
@@ -59,18 +59,18 @@ rpt_negative :: (d:Jv,which:int,out:[]u8)->string {
   }
   return ifx o[0].bad then "" else jo_text(o[..]);
 }
-rpt_control_index :: (which:int)->bool {return which>=0 && which<14;}
-rpt_target :: (d:Jv,which:int)->int {
+rpt_control_index :: (which:int)->bool #effects(all) {return which>=0 && which<14;}
+rpt_target :: (d:Jv,which:int)->int #effects(all) {
   module:=jv_at(d,jv_get(d,0,"modules"),0);entry:=jv_at(d,jv_get(d,0,"entries"),0);use:=jv_at(d,jv_get(d,entry,"uses"),0);
   if which==2 {return jv_get(d,0,"schema");}if which==3 {return jv_get(d,0,"profile_index");}if which==4 {return jv_get(d,module,"wgsl_file");}
   if which==5 {return jv_get(d,entry,"tree_sha256");}if which==6 {return jv_get(d,entry,"fragment");}if which==7 {return jv_get(d,entry,"vertex_stride");}
   if which==8 {return jv_get(d,0,"slug");}if which==9 {return jv_get(d,entry,"vertex");}if which==10 {return jv_get(d,use,"slot");}
   if which==11 {return jv_get(d,entry,"fragment_targets");}if which==12 {return jv_get(d,entry,"derivatives");}if which==13 {return jv_get(d,entry,"control");}return -1;
 }
-rpt_increment :: (d:Jv,node:int,out:[]u8)->string {
+rpt_increment :: (d:Jv,node:int,out:[]u8)->string #effects(all) {
   value:=jv_int(d,node,-1);if value<0 || value==9007199254740992 {return "";}
   o:[1]Jo;jo_start(o[..],out);jo_int(o[..],value+1);return ifx o[0].bad then "" else jo_text(o[..]);
 }
-rpt_negative_parse :: (which:int)->int {if which<0 || which>=14 {return -1;}return ifx which<8 then 1 else 0;}
-rpt_negative_admit :: (which:int)->int {if which<0 || which>=14 {return -1;}return ifx which<8 then 1 else ifx which<12 then 3 else 4;}
-rpt_compiler_gate :: (matching:bool,explore:bool)->bool {return matching || explore;}
+rpt_negative_parse :: (which:int)->int #effects(all) {if which<0 || which>=14 {return -1;}return ifx which<8 then 1 else 0;}
+rpt_negative_admit :: (which:int)->int #effects(all) {if which<0 || which>=14 {return -1;}return ifx which<8 then 1 else ifx which<12 then 3 else 4;}
+rpt_compiler_gate :: (matching:bool,explore:bool)->bool #effects(all) {return matching || explore;}

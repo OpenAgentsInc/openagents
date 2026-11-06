@@ -204,7 +204,7 @@ keep_inside :: (s: [] Fixture) {
 
 // ---- in from the host
 
-fixture_message :: (s: [] Fixture, kind: int, text: string) #export_c {
+fixture_message :: (s: [] Fixture, kind: int, text: string) #export_c #effects(all) {
   if !s[0].started { fixture_reset(s); }
   if kind == MSG_KEPT { _ := fixture_restore(s, text); return; }
   if kind == MSG_PACK {
@@ -286,20 +286,20 @@ hold_of :: (key: int) -> int {
   if key == KEY_RIGHT || key == 'd' || key == 'D' { return HOLD_RIGHT; }
   return 0;
 }
-fixture_key :: (s: [] Fixture, key: int, down: bool) -> bool #export_c {
+fixture_key :: (s: [] Fixture, key: int, down: bool) -> bool #export_c #effects(all) {
   if !s[0].started { fixture_reset(s); }
   h := hold_of(key);
   if h != 0 { s[0].held = ifx down then s[0].held | h else s[0].held & (15 - h); return true; }
   if down && key == KEY_ESCAPE { leave_to(s, "/worlds"); return true; }
   return false;
 }
-fixture_blur :: (s: [] Fixture) #export_c { s[0].held = 0; s[0].dragging = false; s[0].press = -1; }
+fixture_blur :: (s: [] Fixture) #export_c #effects(all) { s[0].held = 0; s[0].dragging = false; s[0].press = -1; }
 
 leave_to :: (s: [] Fixture, url: string) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, url); s[0].action = ACT_NAVIGATE; } }
 
 // ---- the pack's catalog (pack_realm.py): a line each
 
-fixture_catalog :: (s: [] Fixture, text: string) #export_c {
+fixture_catalog :: (s: [] Fixture, text: string) #export_c #effects(all) {
   if !s[0].started { fixture_reset(s); }
   s[0].mesh_n = 0; s[0].licence_n = 0; s[0].textures = 0; s[0].sounds = 0; s[0].unlicensed = 0;
   for k: 0..<LICENCES { s[0].uses[k] = 0; }
@@ -387,18 +387,18 @@ place :: (s: [] Fixture) {
     s[0].draw_n += 1;
   }
 }
-fixture_pack_failed :: (s: [] Fixture) #export_c { if !s[0].pack_ready { s[0].pack_failed = true; } }
-fixture_draw_count :: (s: [] Fixture) -> int #export_c { return ifx s[0].pack_ready && s[0].paint < 0 then s[0].draw_n else 0; }
+fixture_pack_failed :: (s: [] Fixture) #export_c #effects(all) { if !s[0].pack_ready { s[0].pack_failed = true; } }
+fixture_draw_count :: (s: [] Fixture) -> int #export_c #effects(all) { return ifx s[0].pack_ready && s[0].paint < 0 then s[0].draw_n else 0; }
 // The style fixture's shadow casters (fixture.wgsl caster_vs, host.js): the sphere, the cube, the
 // tree's three canopies and trunk, the figure's body and head, each a 24 by 13 latitude-longitude
 // mesh of two triangles a quad (the cube its first 36), drawn into the key light's shadow map. A
 // painterly preset only: lowpoly has no shadow map (blob shadows under movers).
 CASTERS :: 8; CASTER_SEGMENTS :: 24; CASTER_RINGS :: 13;
 CASTER_VERTICES :: CASTER_SEGMENTS * CASTER_RINGS * 6;
-fixture_caster_instances :: (s: [] Fixture) -> int #export_c { return ifx s[0].paint == STYLE_PAINTERLY then CASTERS else 0; }
-fixture_caster_vertices :: (s: [] Fixture) -> int #export_c { return ifx s[0].paint == STYLE_PAINTERLY then CASTER_VERTICES else 0; }
+fixture_caster_instances :: (s: [] Fixture) -> int #export_c #effects(all) { return ifx s[0].paint == STYLE_PAINTERLY then CASTERS else 0; }
+fixture_caster_vertices :: (s: [] Fixture) -> int #export_c #effects(all) { return ifx s[0].paint == STYLE_PAINTERLY then CASTER_VERTICES else 0; }
 // The grass (art-styles.md 8): one triangle a blade, placed by grass_vs from its cell's hash.
-fixture_grass_instances :: (s: [] Fixture) -> int #export_c { return s[0].blades; }
+fixture_grass_instances :: (s: [] Fixture) -> int #export_c #effects(all) { return s[0].blades; }
 
 // ---- the view: an eye above the floor's near edge, looking at its middle
 
@@ -465,7 +465,7 @@ place_at :: (s: [] Fixture, x: f32, y: f32) {
   keep_inside(s);
   s[0].dirty = true; s[0].moved_at = s[0].time;
 }
-fixture_pointer :: (s: [] Fixture, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+fixture_pointer :: (s: [] Fixture, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if !s[0].started { fixture_reset(s); }
   b := button_at(s, x, y);
   s[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then b else -1;
@@ -485,9 +485,9 @@ fixture_pointer :: (s: [] Fixture, x: f32, y: f32, phase: int, kind: int, id: in
   }
   return false;
 }
-fixture_cursor :: (s: [] Fixture) -> int #export_c { return ifx s[0].hover >= 0 then 1 else 0; }
-fixture_action :: (s: [] Fixture) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
-fixture_action_done :: (s: [] Fixture) #export_c { s[0].out_n = 0; }
+fixture_cursor :: (s: [] Fixture) -> int #export_c #effects(all) { return ifx s[0].hover >= 0 then 1 else 0; }
+fixture_action :: (s: [] Fixture) -> int #export_c #effects(all) { a := s[0].action; s[0].action = 0; return a; }
+fixture_action_done :: (s: [] Fixture) #export_c #effects(all) { s[0].out_n = 0; }
 
 // ---- the look (verse.coax's)
 
@@ -685,7 +685,7 @@ fixture_step :: (s: [] Fixture, dt: f32) {
   }
 }
 
-fixture_frame :: (s: [] Fixture, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+fixture_frame :: (s: [] Fixture, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   if !s[0].started { fixture_reset(s); }
   s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = still;
@@ -729,9 +729,9 @@ fixture_frame :: (s: [] Fixture, out: [] f32, uniforms: [] f32, width: f32, heig
   return n;
 }
 
-coaxial_fixture_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_fixture_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_fixture_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_fixture_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_fixture_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_fixture_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // ---- checks
 

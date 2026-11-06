@@ -38,7 +38,7 @@
 
 // Matrix form of the same smooth field: z=[position,velocity,held_force], z'=A*z.
 // This is a separately qualified F32 realization, not bitwise F64 os_step identity.
-of_program :: (cost:bool)->TiProgram {
+of_program :: (cost:bool)->TiProgram #effects(all) {
   p:TiProgram;p.count=ifx cost then 29 else 23;p.output=ifx cost then 28 else 22;
   column:TvShape;column.rank=2;column.dims[0]=3;column.dims[1]=1;matrix:TvShape;matrix.rank=2;matrix.dims[0]=3;matrix.dims[1]=3;scalar:TvShape;scalar.rank=1;scalar.dims[0]=1;
   p.nodes[0]=ti_input(column,0);p.nodes[1]=ti_input(matrix,3);p.nodes[2]=ti_input(scalar,12);p.nodes[3]=ti_input(scalar,13);p.nodes[4]=ti_input(scalar,14);p.nodes[5]=ti_input(scalar,15);
@@ -48,12 +48,12 @@ of_program :: (cost:bool)->TiProgram {
   p.nodes[16]=TiNode.{op=TiOp.multiply,a=9,b=5};p.nodes[17]=TiNode.{op=TiOp.add,a=6,b=16};p.nodes[18]=TiNode.{op=TiOp.multiply,a=12,b=5};p.nodes[19]=TiNode.{op=TiOp.add,a=17,b=18};p.nodes[20]=TiNode.{op=TiOp.add,a=19,b=15};p.nodes[21]=TiNode.{op=TiOp.multiply,a=20,b=4};p.nodes[22]=TiNode.{op=TiOp.add,a=0,b=21};
   p.nodes[23]=ti_input(column,16);p.nodes[24]=TiNode.{op=TiOp.add,a=22,b=23};p.nodes[25]=TiNode.{op=TiOp.multiply,a=24,b=24};p.nodes[26]=ti_input(column,19);p.nodes[27]=TiNode.{op=TiOp.multiply,a=25,b=26};p.nodes[28]=TiNode.{op=TiOp.sum,a=27,axis=0};return p;
 }
-of_function :: (mode:u8)->FxBuild #export_c {
+of_function :: (mode:u8)->FxBuild #export_c #effects(all) {
   if cast(u8)mode>4 {return FxBuild.{status=FxStatus.operation};}cost:=mode!=OF_STEP && mode!=OF_JACOBIAN;f:=fx_function(of_program(cost));if f.status!=FxStatus.ok {return f;}
   if mode==OF_STEP || mode==OF_COST {return f;}f.function.count=ifx mode==OF_GRADIENT then 3 else 9;
   for i:0..<f.function.count {if mode==OF_JACOBIAN {f.function.leaves[i]=FxLeaf.{output=i/3,order=1,first=i%3};}else if mode==OF_GRADIENT {f.function.leaves[i]=FxLeaf.{order=1,first=i};}else {f.function.leaves[i]=FxLeaf.{order=2,first=i/3,second=i%3};}}return f;
 }
-of_pack :: (p:OsParams,s:OsState,force:f64,dt:f64,target:OsState,weights:[]f32)->OfInput #export_c {
+of_pack :: (p:OsParams,s:OsState,force:f64,dt:f64,target:OsState,weights:[]f32)->OfInput #export_c #effects(all) {
   status:=os_admit(p,s,force,dt);if status!=OsStatus.ok {return OfInput.{status=status};}if !os_finite(target.position) || !os_finite(target.velocity) {return OfInput.{status=OsStatus.number};}if !os_state_ok(target) {return OfInput.{status=OsStatus.state};}if weights.count!=3 {return OfInput.{status=OsStatus.shape};}
   positive:=false;for v:weights {if !os_finite(f64(v)) {return OfInput.{status=OsStatus.number};}if v<0 || v>4 {return OfInput.{status=OsStatus.parameters};}if v>0 {positive=true;}}if !positive {return OfInput.{status=OsStatus.parameters};}
   out:OfInput;out.values=[22]f32.[f32(s.position),f32(s.velocity),f32(force),0,1,0,-f32(p.spring),-f32(p.damping),1,0,0,0,f32(dt)/2.0f32,f32(dt),f32(dt)/6.0f32,2,-f32(target.position),-f32(target.velocity),0,weights[0],weights[1],weights[2]];return out;

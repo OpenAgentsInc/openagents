@@ -15,7 +15,7 @@
 #import "Basic";
 #load "../lib/media/media.coax";
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   url := args_at(a[..], 0); out := args_at(a[..], 1);

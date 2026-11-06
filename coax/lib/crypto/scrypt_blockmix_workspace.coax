@@ -23,7 +23,7 @@
   #assert work[0].x[0]==42;for v:out {#assert v==165;}
 }
 BlockmixWorkspace :: struct {x:[16]u32;initial:[16]u32;}
-bmw_salsa :: (work:[]BlockmixWorkspace) {
+bmw_salsa :: (work:[]BlockmixWorkspace) #effects(all) {
   for i:0..<16 {work[0].initial[i]=work[0].x[i];}
   for round:0..<4 {
     work[0].x[4]^=rotl(add_wrap(work[0].x[0],work[0].x[12]),7); work[0].x[8]^=rotl(add_wrap(work[0].x[4],work[0].x[0]),9);
@@ -46,7 +46,7 @@ bmw_salsa :: (work:[]BlockmixWorkspace) {
   for i:0..<16 {work[0].x[i]=add_wrap(work[0].x[i],work[0].initial[i]);}
 }
 // Valid, stable, mutually disjoint views and truthful alias facts are required.
-blockmix_owned :: (input:[]u8,work:[]BlockmixWorkspace,out:[]u8,r:int,overlap:bool)->bool #export_c {
+blockmix_owned :: (input:[]u8,work:[]BlockmixWorkspace,out:[]u8,r:int,overlap:bool)->bool #export_c #effects(all) {
   if work.count!=1 || !blockmix_admit(input.count,out.count,r,overlap) {return false;}
   n:=128*r;
   for j:0..<16 {work[0].x[j]=cb_load_le32(input,n-64+j*4).value;}

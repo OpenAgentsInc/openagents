@@ -129,7 +129,7 @@ tp_refused :: (s:CmStatus)->TpStatus {
 // book:begin report
 // ns holds the ten series one after another, runs values each; step holds
 // each measured step's wall time. clips of the runs launched gk_clip.
-tp_report :: (sh:[]int,micro:int,clips:int,h:RfHost,ns:[]int,step:[]int)->TpReport #export_c {
+tp_report :: (sh:[]int,micro:int,clips:int,h:RfHost,ns:[]int,step:[]int)->TpReport #export_c #effects(all) {
     runs:=step.count;r:=TpReport.{status=TpStatus.shape,at=-1,runs=runs};
     if sh.count!=8 || micro<1 || ns.count!=TP_PHASES*runs || clips<0 || clips>runs {return r;}
     for x:sh {if x<1 {return r;}}

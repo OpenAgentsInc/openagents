@@ -56,23 +56,23 @@
     segments[0].text="a";#assert df_encode_r1(table[..],segments[..],out[..],stage[..],temp[..],raw[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.unsupported;
     segments[0]=DfSegment.{text="a"};#assert df_encode_r1(table[..],segments[..],out[..],stage[..],temp[..],raw[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.ok;
 }
-df_r1_control :: (control:DfSpecial)->int {
+df_r1_control :: (control:DfSpecial)->int #effects(all) {
     if control==DfSpecial.bos {return DS_BOS;}if control==DfSpecial.eos {return DS_EOS;}
     if control==DfSpecial.user {return DS_USER;}if control==DfSpecial.assistant {return DS_ASSISTANT;}
     if control==DfSpecial.think {return DS_THINK;}if control==DfSpecial.end_think {return DS_END_THINK;}return -1;
 }
-df_front_segments :: (segments:[]DfSegment)->PtStatus {
+df_front_segments :: (segments:[]DfSegment)->PtStatus #effects(all) {
     if segments.count>512 {return PtStatus.size;}total:=0;
     for s:segments {if s.special {if s.text.count!=0 || df_r1_control(s.control)==-1 {return PtStatus.unsupported;}}
         else {if s.text.count>65536-total {return PtStatus.size;}total+=s.text.count;}}
     return PtStatus.ok;
 }
-df_front_work :: (used:int,more:int)->bool {return more<=16777216-used;}
-df_front_counts :: (tokens:int,capacity:int)->PtStatus {if !pt_token_count(tokens) {return PtStatus.size;}if tokens>capacity {return PtStatus.capacity;}return PtStatus.ok;}
-df_r1_ordinary :: (id:int)->bool {return id<151643;}
-df_units_count :: (n:int)->bool {return n<=4096;}
+df_front_work :: (used:int,more:int)->bool #effects(all) {return more<=16777216-used;}
+df_front_counts :: (tokens:int,capacity:int)->PtStatus #effects(all) {if !pt_token_count(tokens) {return PtStatus.size;}if tokens>capacity {return PtStatus.capacity;}return PtStatus.ok;}
+df_r1_ordinary :: (id:int)->bool #effects(all) {return id<151643;}
+df_units_count :: (n:int)->bool #effects(all) {return n<=4096;}
 // book:begin encode
-df_encode_r1 :: (table:[]u8,segments:[]DfSegment,output:[]int,stage:[]int,temp:[]int,raw:[]u8,normal:[]u8,scalars:[]int,symbols:[]int,overlap:bool)->PtResult #export_c {
+df_encode_r1 :: (table:[]u8,segments:[]DfSegment,output:[]int,stage:[]int,temp:[]int,raw:[]u8,normal:[]u8,scalars:[]int,symbols:[]int,overlap:bool)->PtResult #export_c #effects(all) {
     if overlap {return PtResult.{status=PtStatus.alias};}valid:=df_front_segments(segments);if valid!=PtStatus.ok {return PtResult.{status=valid};}
     n:=0;bytes:=0;work:=0;
     // A sentinel iteration flushes the final plain run. Only a real special
@@ -90,7 +90,7 @@ df_encode_r1 :: (table:[]u8,segments:[]DfSegment,output:[]int,stage:[]int,temp:[
 // book:end encode
 // Convert actual token IDs to parser units, retaining control identity. An
 // ordinary token is never searched for a marker spelling, even across tokens.
-df_r1_units :: (table:[]u8,ids:[]int,output:[]int,stage:[]int,overlap:bool)->PtResult #export_c {
+df_r1_units :: (table:[]u8,ids:[]int,output:[]int,stage:[]int,overlap:bool)->PtResult #export_c #effects(all) {
     if overlap {return PtResult.{status=PtStatus.alias};}if !df_units_count(ids.count) {return PtResult.{status=PtStatus.size};}
     t:=pt_layout(table);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}n:=0;
     for id:ids {control:=-1;for k:0..<8 {mapped:=df_r1_control(cast(DfSpecial)k);if mapped!=-1 && id==mapped {control=256+k;}}

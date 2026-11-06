@@ -81,7 +81,7 @@ hud_build_serve :: (root:string)->bool {
   tool_errln("HUD laboratory: http://127.0.0.1:8815/");return true;
 }
 
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;
   if !args_load(args[..]) || args_count(args[..])>1 {tool_errln("usage: hud-build [--serve] (from the repository root)");return 2;}
   serve:=args_count(args[..])==1;

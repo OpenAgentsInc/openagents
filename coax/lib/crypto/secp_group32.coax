@@ -32,7 +32,7 @@ Sg32 :: struct {x:Sf32;y:Sf32;z:Sf32;}
 // caller's table and field values are. Each limb is masked to 26 bits, so the
 // 32-bit pieces fit by construction rather than through a checked cast whose
 // trap would test secret limb bits.
-sg32_from_field :: (a:SecpField)->Sf32 {
+sg32_from_field :: (a:SecpField)->Sf32 #effects(all) {
   r:Sf32;
   for i:0..<10 {
     at:=i*26;word:=at/32;shift:=at%32;v:=a.limb[i]&SF_MASK26;
@@ -41,7 +41,7 @@ sg32_from_field :: (a:SecpField)->Sf32 {
   }
   return r;
 }
-sg32_to_field :: (a:Sf32)->SecpField {
+sg32_to_field :: (a:Sf32)->SecpField #effects(all) {
   r:SecpField;defer {secure_zero(r.limb[..]);#assert crypto_zeroed(r.limb[..]);}
   for i:0..<10 {
     at:=i*26;word:=at/32;shift:=at%32;
@@ -50,18 +50,18 @@ sg32_to_field :: (a:Sf32)->SecpField {
   }
   return r;
 }
-sg32_from_point :: (p:SgPoint)->Sg32 {return Sg32.{x=sg32_from_field(p.x),y=sg32_from_field(p.y),z=sg32_from_field(p.z)};}
-sg32_to_point :: (p:Sg32)->SgPoint {return SgPoint.{x=sg32_to_field(p.x),y=sg32_to_field(p.y),z=sg32_to_field(p.z)};}
-sg32_mask_equal :: (a:Sf32,b:Sf32)->u64 {
+sg32_from_point :: (p:SgPoint)->Sg32 #effects(all) {return Sg32.{x=sg32_from_field(p.x),y=sg32_from_field(p.y),z=sg32_from_field(p.z)};}
+sg32_to_point :: (p:Sg32)->SgPoint #effects(all) {return SgPoint.{x=sg32_to_field(p.x),y=sg32_to_field(p.y),z=sg32_to_field(p.z)};}
+sg32_mask_equal :: (a:Sf32,b:Sf32)->u64 #effects(all) {
   difference:u64;for i:0..<8 {difference|=cast(u64)(a.limb[i]^b.limb[i]);}return sg_word_equal(difference,0);
 }
-sg32_choose_field :: (mask:u64,a:Sf32,b:Sf32)->Sf32 {
+sg32_choose_field :: (mask:u64,a:Sf32,b:Sf32)->Sf32 #effects(all) {
   r:Sf32;defer {secure_zero(r.limb[..]);#assert crypto_zeroed(r.limb[..]);}m:=cast,trunc(u32)(mask);for i:0..<8 {r.limb[i]=cb_ct_select32(m,a.limb[i],b.limb[i]);}return r;
 }
-sg32_choose :: (mask:u64,a:Sg32,b:Sg32)->Sg32 {return Sg32.{x=sg32_choose_field(mask,a.x,b.x),y=sg32_choose_field(mask,a.y,b.y),z=sg32_choose_field(mask,a.z,b.z)};}
-sg32_infinity :: ()->Sg32 {r:Sg32;r.x.limb[0]=1;r.y.limb[0]=1;return r;}
-sg32_canonical_infinity :: (p:Sg32)->Sg32 {zero:Sf32;return sg32_choose(sg32_mask_equal(p.z,zero),sg32_infinity(),p);}
-sg32_double :: (p:Sg32)->Sg32 {
+sg32_choose :: (mask:u64,a:Sg32,b:Sg32)->Sg32 #effects(all) {return Sg32.{x=sg32_choose_field(mask,a.x,b.x),y=sg32_choose_field(mask,a.y,b.y),z=sg32_choose_field(mask,a.z,b.z)};}
+sg32_infinity :: ()->Sg32 #effects(all) {r:Sg32;r.x.limb[0]=1;r.y.limb[0]=1;return r;}
+sg32_canonical_infinity :: (p:Sg32)->Sg32 #effects(all) {zero:Sf32;return sg32_choose(sg32_mask_equal(p.z,zero),sg32_infinity(),p);}
+sg32_double :: (p:Sg32)->Sg32 #effects(all) {
   aa:=sf32_mul_total(p.x,p.x);bb:=sf32_mul_total(p.y,p.y);cc:=sf32_mul_total(bb,bb);
   q:=sf32_add_total(p.x,bb);dd:=sf32_sub(sf32_sub(sf32_mul_total(q,q),aa),cc);dd=sf32_add_total(dd,dd);
   ee:=sf32_add_total(sf32_add_total(aa,aa),aa);ff:=sf32_mul_total(ee,ee);
@@ -70,7 +70,7 @@ sg32_double :: (p:Sg32)->Sg32 {
   r.y=sf32_sub(sf32_mul_total(ee,sf32_sub(dd,r.x)),eightcc);
   yz:=sf32_mul_total(p.y,p.z);r.z=sf32_add_total(yz,yz);return sg32_canonical_infinity(r);
 }
-sg32_add :: (a:Sg32,b:Sg32)->Sg32 {
+sg32_add :: (a:Sg32,b:Sg32)->Sg32 #effects(all) {
   z1z1:=sf32_mul_total(a.z,a.z);z2z2:=sf32_mul_total(b.z,b.z);
   u1:=sf32_mul_total(a.x,z2z2);u2:=sf32_mul_total(b.x,z1z1);
   s1:=sf32_mul_total(a.y,sf32_mul_total(b.z,z2z2));s2:=sf32_mul_total(b.y,sf32_mul_total(a.z,z1z1));

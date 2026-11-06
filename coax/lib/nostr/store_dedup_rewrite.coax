@@ -53,13 +53,13 @@ NsDedupFrame :: struct {ok:bool;count:int;bytes:int;written:int;duplicates:int;}
  #assert r.ok && r.count==1 && r.bytes==1 && r.written==21 && r.duplicates==512 && out[20]=='a';
 }
 
-ns_dedup_index_words :: (count:int)->int {if count<0 || count>NS_LOG_MAX_EVENTS {return -1;}return count*2;}
+ns_dedup_index_words :: (count:int)->int #effects(all) {if count<0 || count>NS_LOG_MAX_EVENTS {return -1;}return count*2;}
 
 // All views are live and physically disjoint; overlap truthfully covers them.
 // The caller supplies match flags for this exact old frame. The candidate and
 // old bytes must stay immutable throughout the call. No output is written
 // until the entire frame, workspace, lengths and quotas have been checked.
-ns_dedup_rewrite :: (old:[]u8,text:string,matches:[]bool,out:[]u8,overlap:bool)->NsDedupFrame {
+ns_dedup_rewrite :: (old:[]u8,text:string,matches:[]bool,out:[]u8,overlap:bool)->NsDedupFrame #effects(all) {
  if overlap || !ns_input_size(old.count) {return NsDedupFrame.{};}
  raw_count:=ns_u32(old,8);words:=ns_dedup_index_words(raw_count);if words<0 {return NsDedupFrame.{};}
  spans:[1024]int;scan:=ns_snapshot_scan(old,spans[0..<words],false);if !scan.ok {return NsDedupFrame.{};}

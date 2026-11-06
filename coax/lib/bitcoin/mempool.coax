@@ -13,15 +13,15 @@ MpDemo :: struct {
   ins: [8] TxIn; outs: [8] TxOut; items: [16] TxItem; coins: [8] int; batch: [8192] u8;
   used: int; n: int;
 }
-mp_demo_work :: (d: [] MpDemo) -> MpWork { return MpWork.{ins=d[0].ins[..],outs=d[0].outs[..],items=d[0].items[..],coins=d[0].coins[..],batch=d[0].batch[..]}; }
-mp_demo_setup :: (d: [] MpDemo) {
+mp_demo_work :: (d: [] MpDemo) -> MpWork #effects(all) { return MpWork.{ins=d[0].ins[..],outs=d[0].outs[..],items=d[0].items[..],coins=d[0].coins[..],batch=d[0].batch[..]}; }
+mp_demo_setup :: (d: [] MpDemo) #effects(all) {
   b := tx_unhex(TX_MAINNET[3].tx,d[0].raw[..]); d[0].n = b.count;
   t := tx_read_vartime(b,true,d[0].ins[..],d[0].outs[..],d[0].items[..]);
   key: [37] u8; key[0] = 'C'; for k: 0..<36 { key[1+k] = b[d[0].ins[0].outpoint+k]; }
   coin: [14] u8; kv_put64(coin[..],0,511884); kv_put32(coin[..],8,500); coin[13] = 0x51;
   d[0].used = kv_set_vartime(d[0].chain[..],0,key[..],coin[..]); #assert t.code == TX_OK;
 }
-mp_demo_child :: (parent: [] u8, amount: int, raw: [] u8) -> int {
+mp_demo_child :: (parent: [] u8, amount: int, raw: [] u8) -> int #effects(all) {
   b := tx_unhex("020000000100000000000000000000000000000000000000000000000000000000000000000000000000ffffffff010000000000000000015100000000",raw);
   for i: 0..<32 { b[5+i] = parent[i]; } kv_put64(b,47,cast(u64)amount); return b.count;
 }
@@ -130,8 +130,8 @@ mp_demo_child :: (parent: [] u8, amount: int, raw: [] u8) -> int {
 // The caller owns both tables and excludes already-confirmed transaction
 // IDs. A failed addition leaves the pool unchanged. Pool keys are private
 // observations: T+txid, C+outpoint and S+spent-outpoint. None is durable state.
-mp_weight_ok :: (weight: int) -> bool { return weight > 0 && weight <= 400000; }
-mp_shape :: (raw: [] u8, t: Tx, ins: [] TxIn) -> bool {
+mp_weight_ok :: (weight: int) -> bool #effects(all) { return weight > 0 && weight <= 400000; }
+mp_shape :: (raw: [] u8, t: Tx, ins: [] TxIn) -> bool #effects(all) {
   if t.code != TX_OK { return false; }
   if t.nin < 1 || t.nout < 1 || !mp_weight_ok(tx_weight_vartime(t)) { return false; }
   for i: 0..<t.nin {
@@ -141,7 +141,7 @@ mp_shape :: (raw: [] u8, t: Tx, ins: [] TxIn) -> bool {
   }
   return true;
 }
-mp_add_vartime :: (chain: [] u8, used: int, pool: [] u8, pused: int, raw: [] u8, height: int, w: MpWork) -> MpResult #export_c {
+mp_add_vartime :: (chain: [] u8, used: int, pool: [] u8, pused: int, raw: [] u8, height: int, w: MpWork) -> MpResult #export_c #effects(all) {
   if height < 0 || height > 2147483647 || used < 0 || used > chain.count || pused < 0 || pused > pool.count { return MpResult.{code=MP_CONTEXT}; }
   t := tx_read_vartime(raw,true,w.ins,w.outs,w.items);
   if t.code == TX_CAPACITY || t.nin > w.coins.count { return MpResult.{code=MP_CAPACITY}; }

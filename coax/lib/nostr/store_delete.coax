@@ -42,10 +42,10 @@ NsdTombs :: struct { n: int; t: [] NsdTomb; last: int; slots: [] int; probes: in
 
 // ---- test helpers ------------------------------------------------------------
 
-nsd_t_rec :: (id: u8, author: u8, kind: int, created: int) -> RsdRec {
+nsd_t_rec :: (id: u8, author: u8, kind: int, created: int) -> RsdRec #effects(all) {
   c: RsdRec; c.id[0] = id; c.author[0] = author; c.kind = kind; c.created = created; c.expiry = -1; return c;
 }
-nsd_t_tomb :: (what: int, signer: u8) -> NsdTomb { t: NsdTomb; t.what = what; t.signer[0] = signer; return t; }
+nsd_t_tomb :: (what: int, signer: u8) -> NsdTomb #effects(all) { t: NsdTomb; t.what = what; t.signer[0] = signer; return t; }
 NSD_T_ALICE :: "1111111111111111111111111111111111111111111111111111111111111111";
 NSD_T_BOB :: "2222222222222222222222222222222222222222222222222222222222222222";
 
@@ -102,7 +102,7 @@ NSD_T_BOB :: "2222222222222222222222222222222222222222222222222222222222222222";
 }
 
 // book:begin covers
-nsd_covers :: (tb: [] NsdTombs, k: int, c: RsdRec) -> bool {
+nsd_covers :: (tb: [] NsdTombs, k: int, c: RsdRec) -> bool #effects(all) {
   t := tb[0].t[k]; r := c;
   if t.what == NSD_VANISH { return r.kind != 62 && ns_equal32(r.author, t.signer) && r.created <= t.until; }
   m := NsMeta.{id = r.id, author = r.author, kind = r.kind, created = r.created, identifier = cast(string) r.d[0..<r.d_n]};
@@ -113,7 +113,7 @@ nsd_covers :: (tb: [] NsdTombs, k: int, c: RsdRec) -> bool {
 // Whether any tombstone covers c. A tombstone that covers c has c's id (e),
 // c's address (a) or c's author (vanish) as its key, so with the lookup
 // only those three chains are read.
-nsd_blocked :: (tb: [] NsdTombs, c: RsdRec) -> bool {
+nsd_blocked :: (tb: [] NsdTombs, c: RsdRec) -> bool #effects(all) {
   if nsd_indexed(tb) {
     return nsd_chain(tb, ns_id_hash(c.id), c) || nsd_chain(tb, ns_address_hash(c.kind, c.author, c.d, c.d_n), c) || nsd_chain(tb, ns_id_hash(c.author), c);
   }
@@ -121,15 +121,15 @@ nsd_blocked :: (tb: [] NsdTombs, c: RsdRec) -> bool {
   return false;
 }
 // Whether tb has the lookup (longer than t, so a free slot remains).
-nsd_indexed :: (tb: [] NsdTombs) -> bool { return tb[0].slots.count > tb[0].t.count; }
+nsd_indexed :: (tb: [] NsdTombs) -> bool #effects(all) { return tb[0].slots.count > tb[0].t.count; }
 // A tombstone's key: what any event it covers shares with it.
-nsd_key :: (t: NsdTomb) -> int {
+nsd_key :: (t: NsdTomb) -> int #effects(all) {
   if t.what == NSD_E { return ns_id_hash(t.id); }
   if t.what == NSD_A { return ns_address_hash(t.kind, t.author, t.d, t.d_n); }
   return ns_id_hash(t.signer);
 }
 // Whether a tombstone in the chain from h's slot to the next empty one covers c.
-nsd_chain :: (tb: [] NsdTombs, h: int, c: RsdRec) -> bool {
+nsd_chain :: (tb: [] NsdTombs, h: int, c: RsdRec) -> bool #effects(all) {
   at := h % tb[0].slots.count; tb[0].probes += 1;
   while tb[0].slots[at] != 0 {
     if nsd_covers(tb, tb[0].slots[at] - 1, c) { return true; }
@@ -163,7 +163,7 @@ nsd_chain :: (tb: [] NsdTombs, h: int, c: RsdRec) -> bool {
 // changed) when the table is full. With the store's lookups an e or a tag
 // reads the one record that can be live with its id or at its address; a
 // vanish reads every record.
-nsd_apply :: (s: [] RsdStore, tb: [] NsdTombs, t: NsdTomb) -> int {
+nsd_apply :: (s: [] RsdStore, tb: [] NsdTombs, t: NsdTomb) -> int #effects(all) {
   if tb[0].n >= tb[0].t.count { return -1; }
   k := tb[0].n; tb[0].t[k] = t; tb[0].n += 1;
   if nsd_indexed(tb) {
@@ -199,12 +199,12 @@ nsd_apply :: (s: [] RsdStore, tb: [] NsdTombs, t: NsdTomb) -> int {
   bad[5] = '9'; #assert nsd_hex32(cast(string) bad[..], out[..]); bad[5] = 'a'; #assert nsd_hex32(cast(string) bad[..], out[..]);
   bad[5] = '0'; #assert nsd_hex32(cast(string) bad[..], out[..]); bad[5] = 'f'; #assert nsd_hex32(cast(string) bad[..], out[..]);
 }
-nsd_nibble :: (c: u8) -> int {
+nsd_nibble :: (c: u8) -> int #effects(all) {
   if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
   if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
   return -1;
 }
-nsd_hex32 :: (v: string, out: [] u8) -> bool {
+nsd_hex32 :: (v: string, out: [] u8) -> bool #effects(all) {
   if v.count != 64 { return false; }
   for i: 0..<32 {
     hi := nsd_nibble(v[2 * i]); lo := nsd_nibble(v[2 * i + 1]);
@@ -238,7 +238,7 @@ nsd_hex32 :: (v: string, out: [] u8) -> bool {
   #assert !nsd_address(cast(string) long[0..<p.count + 257], t[..]);
 }
 // Reads an `a` tag's value into t's kind, author and d.
-nsd_address :: (v: string, t: [] NsdTomb) -> bool {
+nsd_address :: (v: string, t: [] NsdTomb) -> bool #effects(all) {
   i := 0; kind := 0;
   while i < v.count && v[i] >= '0' && v[i] <= '9' {
     if i >= 9 { return false; }
@@ -299,7 +299,7 @@ nsd_address :: (v: string, t: [] NsdTomb) -> bool {
 // The tombstones a stored request c (text its exact original) asks for,
 // into out: the count, or -1 when out is too small. relay is this relay's
 // service URL. Only kinds 5 and 62 have any.
-nsd_read :: (text: string, c: RsdRec, relay: string, out: [] NsdTomb) -> int {
+nsd_read :: (text: string, c: RsdRec, relay: string, out: [] NsdTomb) -> int #effects(all) {
   if c.kind != 5 && c.kind != 62 { return 0; }
   j: [1] Json; json_start(j[..], text[c.tags_from..<c.tags_to]);
   n := 0; buf: [400] u8;
@@ -388,7 +388,7 @@ nsd_read :: (text: string, c: RsdRec, relay: string, out: [] NsdTomb) -> int {
 // a tombstone covers, refuse (NSD_NO_ROOM) a request whose tombstones don't
 // fit (out is the caller's room to read them into), else store it as
 // ns_store_admit does and, when it was stored, apply its tombstones.
-nsd_admit :: (s: [] RsdStore, tb: [] NsdTombs, c: RsdRec, text: string, verified: bool, relay: string, out: [] NsdTomb) -> int {
+nsd_admit :: (s: [] RsdStore, tb: [] NsdTombs, c: RsdRec, text: string, verified: bool, relay: string, out: [] NsdTomb) -> int #effects(all) {
   p := nsd_plan(s, tb, c, text, verified, relay, out);
   return nsd_apply_plan(s, tb, p, c, text, out);
 }
@@ -396,14 +396,14 @@ nsd_admit :: (s: [] RsdStore, tb: [] NsdTombs, c: RsdRec, text: string, verified
 // can record the event between them. targets is how many of out the plan
 // read (the request's tombstones).
 NsdPlan :: struct { store: NsPlan; targets: int; }
-nsd_plan :: (s: [] RsdStore, tb: [] NsdTombs, c: RsdRec, text: string, verified: bool, relay: string, out: [] NsdTomb) -> NsdPlan {
+nsd_plan :: (s: [] RsdStore, tb: [] NsdTombs, c: RsdRec, text: string, verified: bool, relay: string, out: [] NsdTomb) -> NsdPlan #effects(all) {
   if !verified { return NsdPlan.{store = NsPlan.{result = NSS_UNVERIFIED}}; }
   if nsd_blocked(tb, c) { return NsdPlan.{store = NsPlan.{result = NSD_DELETED}}; }
   n := nsd_read(text, c, relay, out);
   if n < 0 || tb[0].n + n > tb[0].t.count { return NsdPlan.{store = NsPlan.{result = NSD_NO_ROOM}}; }
   return NsdPlan.{store = ns_store_plan(s, c, text, true), targets = n};
 }
-nsd_apply_plan :: (s: [] RsdStore, tb: [] NsdTombs, p: NsdPlan, c: RsdRec, text: string, out: [] NsdTomb) -> int {
+nsd_apply_plan :: (s: [] RsdStore, tb: [] NsdTombs, p: NsdPlan, c: RsdRec, text: string, out: [] NsdTomb) -> int #effects(all) {
   r := ns_store_apply(s, p.store, c, text);
   if r == NSS_ACCEPT { tb[0].last = 0; for k: 0..<p.targets { tb[0].last += nsd_apply(s, tb, out[k]); } }
   return r;
@@ -449,8 +449,8 @@ nsd_apply_plan :: (s: [] RsdStore, tb: [] NsdTombs, p: NsdPlan, c: RsdRec, text:
   tb[0].slots = slots[0..<4]; #assert !nsd_indexed(tb[..]);
 }
 // out[at..] = s: the new end.
-nsd_t_put :: (out: [] u8, at: int, s: string) -> int { for i: 0..<s.count { out[at + i] = s[i]; } return at + s.count; }
-nsd_t_hex :: (out: [] u8, at: int, b: [32] u8) -> int {
+nsd_t_put :: (out: [] u8, at: int, s: string) -> int #effects(all) { for i: 0..<s.count { out[at + i] = s[i]; } return at + s.count; }
+nsd_t_hex :: (out: [] u8, at: int, b: [32] u8) -> int #effects(all) {
   h := "0123456789abcdef";
   for i: 0..<32 { out[at + 2 * i] = h[cast(int) (b[i] >> 4)]; out[at + 2 * i + 1] = h[cast(int) (b[i] & 15)]; }
   return at + 64;
@@ -458,7 +458,7 @@ nsd_t_hex :: (out: [] u8, at: int, b: [32] u8) -> int {
 // Request r (0 to 39): kind 5 with an e or an a tag naming event r / 3 % 12
 // (store_core.coax's nss_t_of), or kind 62 naming the relay; its author and
 // time follow from r, so a request id always carries the same request.
-nsd_t_request :: (r: int, out: [] u8, c: [] RsdRec) -> string {
+nsd_t_request :: (r: int, out: [] u8, c: [] RsdRec) -> string #effects(all) {
   what := r % 3; target := nss_t_of(r / 3 % 12);
   c[0] = nsd_t_rec(cast(u8) (100 + r), cast(u8) (r % 2), ifx what == 2 then 62 else 5, 10 + r / 2 % 8);
   n := nsd_t_put(out, 0, "[[\"");
@@ -478,7 +478,7 @@ NsdR :: struct {
   arena: [8192] u8; recs: [64] RsdRec; ids: [65] int; addrs: [65] int; s: [1] RsdStore;
   t: [24] NsdTomb; slots: [25] int; tb: [1] NsdTombs; work: [4] NsdTomb;
 }
-nsd_t_init :: (x: [] NsdR, indexed: bool) {
+nsd_t_init :: (x: [] NsdR, indexed: bool) #effects(all) {
   n := ifx indexed then 65 else 0; m := ifx indexed then 25 else 0;
   x[0].s[0] = RsdStore.{arena = x[0].arena[..], recs = x[0].recs[..], ids = x[0].ids[0..<n], addrs = x[0].addrs[0..<n]};
   x[0].tb[0] = NsdTombs.{t = x[0].t[..], slots = x[0].slots[0..<m]};

@@ -8,7 +8,7 @@
 #load "../../aethyr/host/socket-context-conformance.coax";
 msc_text :: (d:Jv,node:int,key:string,out:[]u8)->string {n:=jv_str(d,jv_get(d,node,key),out);return ifx n>=0 then cast(string)out[0..<n] else "";}
 msc_op :: (o:[]Jo,name:string,kind:int,text:string) {jo_obj(o);jo_key(o,"op");jo_str(o,name);if kind>=0{jo_key(o,"kind");jo_int(o,kind);}jo_key(o,"text");jo_str(o,text);jo_end(o);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<3{tool_errln("usage: metal-socket-context ROOT SDK NEW_OUTPUT [--existing]");return 2;}
  root:=args_at(a[..],0);sdk:=args_at(a[..],1);dir:=args_at(a[..],2);if !fs_mkdir(dir){return 1;}paths:[8][4096]u8;
  plan:=fs_join(dir,"plan.json",paths[0][..]);result:=fs_join(dir,"client.json",paths[1][..]);peer:=fs_join(dir,"peer.json",paths[2][..]);bytes:[16384]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.effects.v1");jo_key(o[..],"scope");jo_str(o[..],"socket-context");jo_key(o[..],"origin");jo_str(o[..],"http://127.0.0.1:9172");jo_key(o[..],"operations");jo_arr(o[..]);

@@ -267,7 +267,7 @@ ct_write :: (apps: [] string, times: [] CtTimes, edits: [] bool, count: int, com
   return fs_write(CT_BASELINE, jo_text(o[..])) && fs_append(CT_BASELINE, "\n");
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("compile-times: arguments too long"); return 2; }
   coax := args_value(a[..], "--coax", "coax/bin/coax");

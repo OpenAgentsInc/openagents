@@ -34,7 +34,7 @@ NlSelf :: struct { ok: bool; pub: [32] u8; shared_x: [32] u8; ck: [32] u8; }
 NlWork :: struct { text: [NL_MAX_CONTENT] u8; cipher: [2 * NL_MAX_CONTENT] u8; nip04: [1] Nip04Work; }
 NlSealed :: struct { error: int = NL_KEY; written: int; private_n: int; bad: int = -1; }
 
-nl_same32 :: (a: [32] u8, b: [32] u8) -> bool {
+nl_same32 :: (a: [32] u8, b: [32] u8) -> bool #effects(all) {
   for i: 0..<32 { if a[i] != b[i] { return false; } }
   return true;
 }
@@ -42,7 +42,7 @@ nl_same32 :: (a: [32] u8, b: [32] u8) -> bool {
 // The owner's public key and the two keys to self from their secret: the
 // unhashed shared x (NIP-04's AES key) and the NIP-44 conversation key.
 // One ECDH of the secret with its own public key gives both.
-nl_self :: (secret: [] u8, work: [] EcdhScratch, out: [] NlSelf) -> int {
+nl_self :: (secret: [] u8, work: [] EcdhScratch, out: [] NlSelf) -> int #effects(all) {
   if secret.count != 32 || work.count != 1 || out.count != 1 { return NL_KEY; }
   out[0] = NlSelf.{}; pub33: [33] u8;
   if bip32_public(secret, pub33[..]) {
@@ -56,10 +56,10 @@ nl_self :: (secret: [] u8, work: [] EcdhScratch, out: [] NlSelf) -> int {
   return ifx out[0].ok then NL_OK else NL_KEY;
 }
 // book:end self
-nl_self_forget :: (me: [] NlSelf) { for i: 0..<me.count { me[i] = NlSelf.{}; } }
+nl_self_forget :: (me: [] NlSelf) #effects(all) { for i: 0..<me.count { me[i] = NlSelf.{}; } }
 
 // The private items in plain[0..<n] checked against the list's kind.
-nl_opened :: (l: NlList, plain: [] u8, n: int) -> NlList {
+nl_opened :: (l: NlList, plain: [] u8, n: int) -> NlList #effects(all) {
   items := cast(string) plain[0..<n];
   if !json_valid(items) { return nl_fail(l, NL_PRIVATE); }
   c := nl_check(nt_event(items), l.allowed, true);
@@ -71,7 +71,7 @@ nl_opened :: (l: NlList, plain: [] u8, n: int) -> NlList {
 // book:begin open
 // The private items of a list nl_read returned, decrypted into plain with
 // the owner's keys. NIP-04 content is refused unless allow_legacy.
-nl_open :: (l: NlList, e: NostrEvent, me: NlSelf, allow_legacy: bool, work: [] NlWork, plain: [] u8) -> NlList {
+nl_open :: (l: NlList, e: NostrEvent, me: NlSelf, allow_legacy: bool, work: [] NlWork, plain: [] u8) -> NlList #effects(all) {
   if l.error != NL_OK || l.opened { return l; }
   if l.cipher == NL_C_NIP04 && !allow_legacy { return nl_fail(l, NL_LEGACY); }
   if !me.ok || work.count != 1 { return nl_fail(l, NL_KEY); }
@@ -80,7 +80,7 @@ nl_open :: (l: NlList, e: NostrEvent, me: NlSelf, allow_legacy: bool, work: [] N
   work[0] = NlWork.{};
   return r;
 }
-nl_decrypt :: (l: NlList, e: NostrEvent, me: NlSelf, work: [] NlWork, plain: [] u8) -> NlList {
+nl_decrypt :: (l: NlList, e: NostrEvent, me: NlSelf, work: [] NlWork, plain: [] u8) -> NlList #effects(all) {
   n := json_unescape(e.original[e.content_from..<e.content_to], work[0].text[..]);
   if n == -1 { return nl_fail(l, NL_LIMIT); }
   text := cast(string) work[0].text[0..<n];
@@ -102,14 +102,14 @@ nl_decrypt :: (l: NlList, e: NostrEvent, me: NlSelf, work: [] NlWork, plain: [] 
 }
 // book:end open
 
-nl_sealed :: (error: int) -> NlSealed { return NlSealed.{error = error}; }
-nl_sealed_at :: (error: int, bad: int) -> NlSealed { return NlSealed.{error = error, bad = bad}; }
+nl_sealed :: (error: int) -> NlSealed #effects(all) { return NlSealed.{error = error}; }
+nl_sealed_at :: (error: int, bad: int) -> NlSealed #effects(all) { return NlSealed.{error = error, bad = bad}; }
 // book:begin seal
 // A list's content: private_tags (a JSON tags array, "[]" for none)
 // checked against kind and encrypted with NIP-44 to the owner. public_tags
 // are checked too, so a list that would not read back is never written.
 // nonce is 32 fresh random bytes (entropy.coax); never reuse one.
-nl_seal :: (kind: int, me: NlSelf, public_tags: string, private_tags: string, nonce: [] u8, work: [] NlWork, out: [] u8) -> NlSealed {
+nl_seal :: (kind: int, me: NlSelf, public_tags: string, private_tags: string, nonce: [] u8, work: [] NlWork, out: [] u8) -> NlSealed #effects(all) {
   allowed := nl_allowed(kind);
   if allowed == 0 { return nl_sealed(NL_KIND); }
   if !me.ok || nonce.count != 32 || work.count != 1 { return nl_sealed(NL_KEY); }
@@ -143,12 +143,12 @@ nl_seal :: (kind: int, me: NlSelf, public_tags: string, private_tags: string, no
 NL_T_PUB3 :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
 NL_T_SHARED3 :: "acd484e2f0c7f65309ad178a9f559abde09796974c57e714c35f110dfc27ccbe";
 NL_T_CK3 :: "fc5e31fe0006369674bb81fb7aab0a54241d5ac42f631399d51a8ed0f888c300";
-nl_t32 :: (hex: string) -> [32] u8 { b: [32] u8; #assert hex_decode_checked(hex, b[..], false).error == NC_OK; return b; }
+nl_t32 :: (hex: string) -> [32] u8 #effects(all) { b: [32] u8; #assert hex_decode_checked(hex, b[..], false).error == NC_OK; return b; }
 // Key 3's NlSelf, from the Python values, so most checks skip the ECDH.
-nl_t_me3 :: () -> NlSelf { return NlSelf.{ok = true, pub = nl_t32(NL_T_PUB3), shared_x = nl_t32(NL_T_SHARED3), ck = nl_t32(NL_T_CK3)}; }
-nl_t_nonce :: () -> [32] u8 { return nl_t32("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"); }
+nl_t_me3 :: () -> NlSelf #effects(all) { return NlSelf.{ok = true, pub = nl_t32(NL_T_PUB3), shared_x = nl_t32(NL_T_SHARED3), ck = nl_t32(NL_T_CK3)}; }
+nl_t_nonce :: () -> [32] u8 #effects(all) { return nl_t32("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"); }
 // A parsed event by key 3 with these fields.
-nl_t_event :: (kind: int, tags: string, content: string, buf: [] u8) -> NostrEvent {
+nl_t_event :: (kind: int, tags: string, content: string, buf: [] u8) -> NostrEvent #effects(all) {
   n := json_raw(buf, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"");
   n = json_raw(buf, n, NL_T_PUB3); n = json_raw(buf, n, "\",\"created_at\":1,\"kind\":");
   n = json_write_int(buf, n, kind); n = json_raw(buf, n, ",\"tags\":"); n = json_raw(buf, n, tags);
@@ -166,7 +166,7 @@ NL_T_C44_OTHER :: "AgABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fOWEMucJ/QEvOWiaIu
 NL_T_C04 :: "Oqf7zWp1+jpQG1snq/n0kjns/f89zrtWAUGEYeb1PWS45KViy+0qxvwRmNEKMOSwaLVLxD2Z6dWuBBCnyW39D3uc6Ib3t5MOMDMPJcOwyaM=?iv=EBESExQVFhcYGRobHB0eHw==";
 NL_T_C44_MIGRATED :: "AgABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fRdwpntbD1pcOhnnCoRCM7a893urz14sY1QreY0KXHF12ttNAlstqJ6Vk9mIa1tC3cGn4YYgPSW16CQjFfQKCA8UGTlXxdUZRuYOiZHM69CAry6PHjEcW4TJRlhxO8O/X7pgf+QT8fHONLg6NS4l6CtzmLRqriNUam+7vbCKGUxhLWA==";
 // A NIP-44 payload of any bytes to key 3, for contents nl_seal refuses to write.
-nl_t_c44 :: (text: string, out: [] u8) -> string {
+nl_t_c44 :: (text: string, out: [] u8) -> string #effects(all) {
   me := nl_t_me3(); nonce := nl_t_nonce(); work: [4096] u8; t: [512] u8;
   for i: 0..<text.count { t[i] = text[i]; }
   r := nip44_encrypt_checked(NIP44_COMPAT, me.ck[..], nonce[..], t[0..<text.count], work[..], out, false);

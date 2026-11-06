@@ -183,7 +183,7 @@ pp_capture :: (c:[]Cdp,url:string,mode:int,fixture:Jv,shaders:[]PPShaders,fence:
   if !r.ok || changed {tool_errln("primitive probe: shader/readback/source qualification failed");return 1;}
   print("primitive WebGPU: % complete observations retained with exact raw words\n",pp_count(mode));return 0;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}
   if args_has(a[..],"--serve") {return wp_serve(args_value(a[..],"--serve",""),args_value(a[..],"--resources",""));}
   mode:=pp_mode(args_at(a[..],0));source:=args_at(a[..],1);output:=args_at(a[..],2);cases_path:=args_at(a[..],3);

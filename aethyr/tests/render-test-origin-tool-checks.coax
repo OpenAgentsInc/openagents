@@ -9,7 +9,7 @@ rto_tool_ledger :: (directory:string)->bool {
     row+=1;at=end+1;
   }return row==8;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}child:=rto_child(a[..]);if child>=0 {return child;}if args_count(a[..])!=1 {tool_errln("usage: render-test-origin-tool-checks NEW_OUTDIR");return 2;}
   directory:=args_at(a[..],0);if !fs_mkdir(directory) {return 2;}absolute:[4096]u8;dir:=fs_realpath(directory,absolute[..]);paths:[4][4096]u8;source:=fs_join(dir,"source.js",paths[0][..]);config:=fs_join(dir,"config.json",paths[1][..]);port_file:=fs_join(dir,"port",paths[2][..]);ledger:=fs_join(dir,"ledger",paths[3][..]);
   if !fs_write(source,"needle") {return 1;}bytes:[16384]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.render-test-origin.v1");jo_key(o[..],"lifetime_ms");jo_int(o[..],30000);jo_key(o[..],"routes");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],"/test.wasm");jo_key(o[..],"sequence");jo_arr(o[..]);

@@ -74,13 +74,13 @@ RenderPresentation :: struct {
  #assert render_presentation_quantized_v1(2,0,180,1,16384).uniforms[5]==0;
  #assert render_presentation_quantized_v1(1,320,180,1,16384).entry == -1;
 }
-render_presentation_quantized_v1 :: (profile:int,width:int,height:int,format:int,maximum:int)->RenderPresentation #export_c {
+render_presentation_quantized_v1 :: (profile:int,width:int,height:int,format:int,maximum:int)->RenderPresentation #export_c #effects(all) {
  p:=render_presentation(profile,width,height,format,maximum);
  if p.status==presentation_resources.RenderResourceStatus.ok {p.uniforms[5]=1;}
  return p;
 }
 
-render_presentation :: (profile:int,width:int,height:int,format:int,maximum:int)->RenderPresentation #export_c {
+render_presentation :: (profile:int,width:int,height:int,format:int,maximum:int)->RenderPresentation #export_c #effects(all) {
   if !render_catalog(profile).features.media || (format!=cast(int)presentation_resources.RenderTextureFormat.rgba8 && format!=cast(int)presentation_resources.RenderTextureFormat.bgra8) {return RenderPresentation.{};}
   draw:=presentation_resources.render_viewport_desc(width,height,presentation_resources.render_device_limit(maximum));
   if draw.status!=presentation_resources.RenderResourceStatus.ok {return RenderPresentation.{status=draw.status};}

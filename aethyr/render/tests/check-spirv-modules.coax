@@ -137,7 +137,7 @@ spv_reference_result :: (reference:Jv,result:Jv,s:[]SpvPrograms)->bool {
   expected:=jv_get(reference,0,"result");for key:[5]string.["status","validator","validator_sha256","version","observations"] {if !rtq_equal(reference,jv_get(reference,expected,key),result,jv_get(result,0,key)) {return false;}}
   return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}
   work_arg:=args_value(a[..],"--work-dir","");packages_arg:=args_value(a[..],"--packages","");receipt:=args_value(a[..],"--receipt","");host:=args_value(a[..],"--host","coderos-4080");
   validator:=args_value(a[..],"--validator",SPV_VALIDATOR);validator_hash:=args_value(a[..],"--validator-sha256",SPV_VALIDATOR_SHA);

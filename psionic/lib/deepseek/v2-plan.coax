@@ -27,21 +27,21 @@
     }
     s.dense_layers=1;#assert dv_shape(s);#assert dv_original_shape(1).attention.capacity==1 && dv_original_shape(163840).attention.capacity==163840;
 }
-dv_shape :: (s:DvShape)->bool {
+dv_shape :: (s:DvShape)->bool #effects(all) {
     return s.layers>=1 && s.layers<=64 && s.width>=1 && s.width<=8192 && s.vocab>=1 && s.vocab<=151936 && s.dense_layers>=0 && s.dense_layers<=s.layers && s.dense_hidden>=1 && s.dense_hidden<=32768 && s.experts>=1 && s.experts<=384 && s.selected>=1 && s.selected<=8 && s.selected<=s.experts && s.expert_hidden>=1 && s.expert_hidden<=8192 && s.shared>=1 && s.shared<=4 && ml_shape(s.attention);
 }
-dv_original_shape :: (capacity:int)->DvShape #export_c {
+dv_original_shape :: (capacity:int)->DvShape #export_c #effects(all) {
     if capacity<1 || capacity>163840 {return DvShape.{};}
     return DvShape.{layers=27,width=2048,vocab=102400,dense_layers=1,dense_hidden=10944,experts=64,selected=6,expert_hidden=1408,shared=2,attention=MlShape.{heads=16,nope=128,rope=64,value=128,latent=512,capacity=capacity}};
 }
 // book:begin plan
-dv_plan :: (s:DvShape,mode:MlMode)->DvPlan #export_c {
+dv_plan :: (s:DvShape,mode:MlMode)->DvPlan #export_c #effects(all) {
     if !dv_shape(s) {return DvPlan.{status=DsStatus.shape};}
     a:=s.attention;m:=ml_plan(a,mode);d:=s.width;q:=a.heads*(a.nope+a.rope);hidden:=s.dense_hidden+s.expert_hidden*(s.shared+1)+s.experts;projection:=s.vocab+d+q+a.latent+a.rope+hidden+s.experts;
     sizes:=[21]int.[d,d,q,a.latent+a.rope,a.latent,q,a.rope,m.output,d,hidden,hidden,hidden,d,d,projection,projection,q+a.rope,m.floats,s.layers*m.row,2*s.layers*d,s.vocab];p:=DvPlan.{cache=s.layers*a.capacity*m.row,scores=m.scores+2*s.experts,accumulators=d,row=m.row};
     for i:0..<21 {p.begin[i+1]=p.begin[i]+sizes[i];}p.floats=p.begin[21];return p;
 }
 // book:end plan
-dv_views :: (work:[]f32,p:DvPlan)->DvViews {b:=p.begin;return DvViews.{x=work[b[0]..<b[1]],normal=work[b[1]..<b[2]],query=work[b[2]..<b[3]],kv=work[b[3]..<b[4]],latent=work[b[4]..<b[5]],rotated=work[b[5]..<b[6]],key=work[b[6]..<b[7]],attended=work[b[7]..<b[8]],projected=work[b[8]..<b[9]],gate=work[b[9]..<b[10]],up=work[b[10]..<b[11]],activation=work[b[11]..<b[12]],down=work[b[12]..<b[13]],combined=work[b[13]..<b[14]],stage=work[b[14]..<b[15]],scratch=work[b[15]..<b[16]],rotary=work[b[16]..<b[17]],attention=work[b[17]..<b[18]],pending=work[b[18]..<b[19]],trace=work[b[19]..<b[20]],logits=work[b[20]..<b[21]]};}
-dv_score_views :: (work:[]f64,s:DvShape,mode:MlMode)->DvScoreViews {m:=ml_plan(s.attention,mode);return DvScoreViews.{attention=work[0..<m.scores],raw=work[m.scores..<m.scores+s.experts],ranked=work[m.scores+s.experts..<m.scores+2*s.experts]};}
-dv_model_position :: (position:int,capacity:int)->bool {return position>=0 && position<capacity;}
+dv_views :: (work:[]f32,p:DvPlan)->DvViews #effects(all) {b:=p.begin;return DvViews.{x=work[b[0]..<b[1]],normal=work[b[1]..<b[2]],query=work[b[2]..<b[3]],kv=work[b[3]..<b[4]],latent=work[b[4]..<b[5]],rotated=work[b[5]..<b[6]],key=work[b[6]..<b[7]],attended=work[b[7]..<b[8]],projected=work[b[8]..<b[9]],gate=work[b[9]..<b[10]],up=work[b[10]..<b[11]],activation=work[b[11]..<b[12]],down=work[b[12]..<b[13]],combined=work[b[13]..<b[14]],stage=work[b[14]..<b[15]],scratch=work[b[15]..<b[16]],rotary=work[b[16]..<b[17]],attention=work[b[17]..<b[18]],pending=work[b[18]..<b[19]],trace=work[b[19]..<b[20]],logits=work[b[20]..<b[21]]};}
+dv_score_views :: (work:[]f64,s:DvShape,mode:MlMode)->DvScoreViews #effects(all) {m:=ml_plan(s.attention,mode);return DvScoreViews.{attention=work[0..<m.scores],raw=work[m.scores..<m.scores+s.experts],ranked=work[m.scores+s.experts..<m.scores+2*s.experts]};}
+dv_model_position :: (position:int,capacity:int)->bool #effects(all) {return position>=0 && position<capacity;}

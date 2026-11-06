@@ -13,7 +13,7 @@ gm_compare :: (old_file: string,new_file: string) -> bool {
   }
   return true;
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}
   if args_at(a[..],0)=="--compare" && args_count(a[..])==3 {
     okay:=gm_compare(args_at(a[..],1),args_at(a[..],2));print("memory observer fields match: %\n",okay);return ifx okay then 0 else 1;

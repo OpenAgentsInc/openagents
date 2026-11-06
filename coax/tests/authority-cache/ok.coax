@@ -3,6 +3,6 @@
 #load "rule.coax";
 #authority;
 #run_steps 200000;
-fee_for :: (amount: int) -> int { return amount / 100 + base_fee(); }
+fee_for :: (amount: int) -> int #effects(all) { return amount / 100 + base_fee(); }
 #test "a fee is one percent and the base" { #assert fee_for(1000) == 13 && fee_for(0) == 3; }
 main :: () { }

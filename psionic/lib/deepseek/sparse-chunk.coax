@@ -40,18 +40,18 @@
     #assert da_pool_chunk(0,0,9,32,x[..],g[..],old[..],og[..],n[..],out[..],next[..],ng[..],DaPoolWork.{floats=floats[..],bits=bits[..]},false).status==DkStatus.shape;
 }
 
-da_chunk_position :: (position:int)->bool {return position>=0 && position<1048576;}
-da_chunk_plan :: (ratio:int,position:int,chunk:int,width:int)->DaChunkPlan #export_c {
+da_chunk_position :: (position:int)->bool #effects(all) {return position>=0 && position<1048576;}
+da_chunk_plan :: (ratio:int,position:int,chunk:int,width:int)->DaChunkPlan #export_c #effects(all) {
     p:=da_pool_plan(ratio,width);if p.status!=DkStatus.ok || chunk<1 || chunk>1048576 {return DaChunkPlan.{status=DkStatus.shape};}
     if !da_chunk_position(position) || position+chunk>1048576 {return DaChunkPlan.{status=DkStatus.format};}
     rows:=(position+chunk)/ratio-position/ratio;
     return DaChunkPlan.{rows=rows,values=rows*width,floats=6*width,bits=(rows+4)*width};
 }
-da_chunk_views :: (work:DaPoolWork,p:DaChunkPlan,width:int)->DaChunkViews {
+da_chunk_views :: (work:DaPoolWork,p:DaChunkPlan,width:int)->DaChunkViews #effects(all) {
     return DaChunkViews.{a=work.floats[0..<width],ag=work.floats[width..<2*width],b=work.floats[2*width..<3*width],bg=work.floats[3*width..<4*width],pool=work.floats[4*width..<6*width],batch=work.bits[0..<p.values],one=work.bits[p.values..<p.values+width],temp=work.bits[p.values+width..<p.bits]};
 }
 // book:begin pool-chunk
-da_pool_chunk :: (ratio:int,position:int,chunk:int,width:int,kv:[]f32,gate:[]f32,old_kv:[]f32,old_gate:[]f32,norm:[]u16,latent:[]u16,next_kv:[]f32,next_gate:[]f32,work:DaPoolWork,overlap:bool)->DaResult #export_c {
+da_pool_chunk :: (ratio:int,position:int,chunk:int,width:int,kv:[]f32,gate:[]f32,old_kv:[]f32,old_gate:[]f32,norm:[]u16,latent:[]u16,next_kv:[]f32,next_gate:[]f32,work:DaPoolWork,overlap:bool)->DaResult #export_c #effects(all) {
     p:=da_chunk_plan(ratio,position,chunk,width);if p.status!=DkStatus.ok {return DaResult.{status=p.status};}
     if kv.count!=chunk*width || gate.count!=chunk*width || old_kv.count!=width || old_gate.count!=width || norm.count!=width || latent.count<p.values || next_kv.count<width || next_gate.count<width || work.floats.count<p.floats || work.bits.count<p.bits {return DaResult.{status=DkStatus.capacity};}if overlap {return DaResult.{status=DkStatus.alias};}
     v:=da_chunk_views(work,p,width);for j:0..<width {v.a[j]=old_kv[j];v.ag[j]=old_gate[j];}count:=0;

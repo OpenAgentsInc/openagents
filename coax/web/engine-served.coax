@@ -139,7 +139,7 @@ served_check :: (manifest_path: string, site: string) -> int {
   return 0;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;
   if !args_load(args[..]) { return 2; }
   verb := ifx args_count(args[..]) > 0 then args_at(args[..], 0) else "";

@@ -435,7 +435,7 @@ forces already accepted. Acceptance has a bounded FIFO and commits atomically:
 
 <!-- source: psionic/lib/physics/oscillator-replay.coax accept -->
 ```jai
-or_accept :: (s:OrSnapshot,forces:[]f64)->OrResult #export_c {
+or_accept :: (s:OrSnapshot,forces:[]f64)->OrResult #export_c #effects(all) {
   status:=or_snapshot_status(s);if status!=OrStatus.ok {return OrResult.{status=status,snapshot=s};}
   if forces.count<0 || forces.count>128-s.pending {return OrResult.{status=OrStatus.capacity,snapshot=s};}
   if forces.count>OR_TICK_MAX-s.tick-s.pending {return OrResult.{status=OrStatus.range,snapshot=s};}

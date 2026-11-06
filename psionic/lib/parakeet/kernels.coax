@@ -30,25 +30,25 @@
  #assert out[2]<f32(hi) && abs(f64(out[0])-lo)<0.00001;
 }
 
-pkd_feature :: (item:int,frames:int,mels:int,x:[]f32,y:[]f32) #export_c {t:=item/mels;m:=item%mels;y[item]=x[m*frames+t];}
-pkd_conv :: (item:int,ih:int,iw:int,ic:int,oc:int,groups:int,k:int,stride:int,pad:int,x:[]f32,w:[]f32,b:[]f32,y:[]f32) #export_c {
+pkd_feature :: (item:int,frames:int,mels:int,x:[]f32,y:[]f32) #export_c #effects(all) {t:=item/mels;m:=item%mels;y[item]=x[m*frames+t];}
+pkd_conv :: (item:int,ih:int,iw:int,ic:int,oc:int,groups:int,k:int,stride:int,pad:int,x:[]f32,w:[]f32,b:[]f32,y:[]f32) #export_c #effects(all) {
  oh:=(ih+2*pad-k)/stride+1;ow:=(iw+2*pad-k)/stride+1;o:=item/(oh*ow);r:=item/ow%oh;c:=item%ow;per:=ic/groups;group:=o/(oc/groups);sum:=b[o];
  for ch:0..<per {for kr:0..<k {for kc:0..<k {
   yr:=r*stride+kr-pad;yc:=c*stride+kc-pad;if yr>=0 && yr<ih && yc>=0 && yc<iw {sum+=x[((group*per+ch)*ih+yr)*iw+yc]*w[((o*per+ch)*k+kr)*k+kc];}
  }}}y[item]=sum;
 }
-pkd_relu :: (item:int,x:[]f32) #export_c {v:=x[item];x[item]=ifx v>0 then v else 0;}
-pkd_gather :: (item:int,tokens:int,freq:int,channels:int,x:[]f32,y:[]f32) #export_c {wide:=channels*freq;t:=item/wide;c:=item/freq%channels;f:=item%freq;y[item]=x[(c*tokens+t)*freq+f];}
-pkd_silu :: (item:int,x:[]f32) #export_c {v:=x[item];x[item]=v/(1+wd_expf(-v));}
-pkd_add :: (item:int,scale:f32,x:[]f32,y:[]f32) #export_c {y[item]+=scale*x[item];}
-pkd_glu :: (item:int,d:int,x:[]f32,y:[]f32) #export_c {row:=item/d;c:=item%d;at:=row*2*d;y[item]=x[at+c]/(1+wd_expf(-x[at+d+c]));}
-pkd_dwbn :: (item:int,tokens:int,d:int,k:int,x:[]f32,w:[]f32,b:[]f32,bn:[]f32,y:[]f32) #export_c {
+pkd_relu :: (item:int,x:[]f32) #export_c #effects(all) {v:=x[item];x[item]=ifx v>0 then v else 0;}
+pkd_gather :: (item:int,tokens:int,freq:int,channels:int,x:[]f32,y:[]f32) #export_c #effects(all) {wide:=channels*freq;t:=item/wide;c:=item/freq%channels;f:=item%freq;y[item]=x[(c*tokens+t)*freq+f];}
+pkd_silu :: (item:int,x:[]f32) #export_c #effects(all) {v:=x[item];x[item]=v/(1+wd_expf(-v));}
+pkd_add :: (item:int,scale:f32,x:[]f32,y:[]f32) #export_c #effects(all) {y[item]+=scale*x[item];}
+pkd_glu :: (item:int,d:int,x:[]f32,y:[]f32) #export_c #effects(all) {row:=item/d;c:=item%d;at:=row*2*d;y[item]=x[at+c]/(1+wd_expf(-x[at+d+c]));}
+pkd_dwbn :: (item:int,tokens:int,d:int,k:int,x:[]f32,w:[]f32,b:[]f32,bn:[]f32,y:[]f32) #export_c #effects(all) {
  t:=item/d;c:=item%d;v:=b[c];for j:0..<k {at:=t+j-(k-1)/2;if at>=0 && at<tokens {v+=x[at*d+c]*w[c*k+j];}}
  v=(v-bn[c])/sqrt(bn[d+c]+0.00001)*bn[2*d+c]+bn[3*d+c];y[item]=v/(1+wd_expf(-v));
 }
 // Online stable softmax, one item per(head,query). Relative positions are
 // exactly NeMo's shifted table: row n-1-i+j represents position i-j.
-pkd_attend :: (item:int,n:int,d:int,heads:int,u:int,vbias:int,q:[]f32,k:[]f32,v:[]f32,p:[]f32,w:[]f32,out:[]f32) #export_c {
+pkd_attend :: (item:int,n:int,d:int,heads:int,u:int,vbias:int,q:[]f32,k:[]f32,v:[]f32,p:[]f32,w:[]f32,out:[]f32) #export_c #effects(all) {
  hd:=d/heads;h:=item/n;i:=item%n;at:=h*hd;acc:[128]f32;best:f32= -3.0e38;sum:f32=0;scale:=1/sqrt(f32(hd));
  for j:0..<n {
   score:f32=0;rel:=n-1-i+j;for m:0..<hd {c:=at+m;score+=(q[i*d+c]+w[u+c])*k[j*d+c]+(q[i*d+c]+w[vbias+c])*p[rel*d+c];}score*=scale;
@@ -57,5 +57,5 @@ pkd_attend :: (item:int,n:int,d:int,heads:int,u:int,vbias:int,q:[]f32,k:[]f32,v:
  }
  for m:0..<hd {out[i*d+at+m]=acc[m]/sum;}
 }
-pkd_scale :: (item:int,scale:f32,x:[]f32) #export_c {x[item]*=scale;}
-pkd_copy :: (item:int,x:[]f32,y:[]f32) #export_c {y[item]=x[item];}
+pkd_scale :: (item:int,scale:f32,x:[]f32) #export_c #effects(all) {x[item]*=scale;}
+pkd_copy :: (item:int,x:[]f32,y:[]f32) #export_c #effects(all) {y[item]=x[item];}

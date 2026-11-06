@@ -66,11 +66,11 @@
   seed[0]=7;seed[1]=8;f.leaves[0].order=2;f.leaves[0].second=1;#assert fx_eval(f,x[..],out[..],w,false).status==FxStatus.ok && out[0]==1;
 }
 
-fx_function :: (p:TiProgram)->FxBuild #export_c {
+fx_function :: (p:TiProgram)->FxBuild #export_c #effects(all) {
   l:=fx_program(p);if l.status!=FxStatus.ok {return FxBuild.{status=l.status};}
   f:=FxFunction.{program=p,count=l.codomain};for i:1..<f.count {f.leaves[i]=FxLeaf.{output=i};}return FxBuild.{function=f};
 }
-fx_derive :: (f:FxFunction,keep:bool,scalar:bool)->FxBuild {
+fx_derive :: (f:FxFunction,keep:bool,scalar:bool)->FxBuild #effects(all) {
   l:=fx_layout(f);if l.status!=FxStatus.ok {return FxBuild.{status=l.status};}if scalar && f.count!=1 {return FxBuild.{status=FxStatus.shape};}
   for i:0..<f.count {if f.leaves[i].order==2 {return FxBuild.{status=FxStatus.order};}}
   extra:=ifx keep then 1 else 0;count:=extra+f.count*l.domain;if count>FX_LEAVES {return FxBuild.{status=FxStatus.limit};}
@@ -78,13 +78,13 @@ fx_derive :: (f:FxFunction,keep:bool,scalar:bool)->FxBuild {
   for i:0..<f.count {for j:0..<l.domain {leaf:=f.leaves[i];if leaf.order==0 {leaf.first=j;}else {leaf.second=j;}leaf.order+=1;out.leaves[extra+i*l.domain+j]=leaf;}}
   return FxBuild.{function=out};
 }
-fx_grad :: (f:FxFunction)->FxBuild #export_c {return fx_derive(f,false,true);}
-fx_value_and_grad :: (f:FxFunction)->FxBuild #export_c {return fx_derive(f,true,true);}
-fx_jacobian :: (f:FxFunction)->FxBuild #export_c {return fx_derive(f,false,false);}
-fx_work_fits :: (l:FxLayout,w:FxWork,stage:int)->bool {
+fx_grad :: (f:FxFunction)->FxBuild #export_c #effects(all) {return fx_derive(f,false,true);}
+fx_value_and_grad :: (f:FxFunction)->FxBuild #export_c #effects(all) {return fx_derive(f,true,true);}
+fx_jacobian :: (f:FxFunction)->FxBuild #export_c #effects(all) {return fx_derive(f,false,false);}
+fx_work_fits :: (l:FxLayout,w:FxWork,stage:int)->bool #effects(all) {
   return w.values.count>=l.tape.plan.workspace && w.flags.count>=l.tape.plan.flag_elements && w.dots.count>=l.cells && w.grads.count>=l.cells && w.grad_dots.count>=l.cells && w.seed.count>=l.codomain && w.direction.count>=l.domain && w.stage.count>=stage && w.point.count>=l.domain;
 }
-fx_stage :: (f:FxFunction,l:FxLayout,x:[]f32,w:FxWork)->FxStatus {
+fx_stage :: (f:FxFunction,l:FxLayout,x:[]f32,w:FxWork)->FxStatus #effects(all) {
   status:=fx_forward(l,x,w);if status!=FxStatus.ok {return status;}
   for i:0..<f.count {leaf:=f.leaves[i];value:f64=0;
     if leaf.order==0 {value=ad_read(l.tape,l.tape.program.output,leaf.output,x,w.values);}
@@ -95,7 +95,7 @@ fx_stage :: (f:FxFunction,l:FxLayout,x:[]f32,w:FxWork)->FxStatus {
     }if !fx_finite(value) {return FxStatus.number;}w.stage[i]=value;
   }return FxStatus.ok;
 }
-fx_eval :: (f:FxFunction,x:[]f32,out:[]f64,w:FxWork,overlap:bool)->FxRun #export_c {
+fx_eval :: (f:FxFunction,x:[]f32,out:[]f64,w:FxWork,overlap:bool)->FxRun #export_c #effects(all) {
   l:=fx_layout(f);if l.status!=FxStatus.ok {return FxRun.{status=l.status};}if x.count!=l.domain {return FxRun.{status=FxStatus.shape};}
   if out.count<f.count || !fx_work_fits(l,w,f.count) {return FxRun.{status=FxStatus.capacity};}if overlap {return FxRun.{status=FxStatus.alias};}
   if !fx_work_allowed(l,fx_requests(f)) {return FxRun.{status=FxStatus.limit};}

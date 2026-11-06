@@ -36,31 +36,31 @@ NAV_GRID_DX :: [8] int.[1, -1, 0, 0, 1, 1, -1, -1];
 NAV_GRID_DZ :: [8] int.[0, 0, 1, -1, 1, -1, 1, -1];
 // book:end grid
 
-nav_grid_real :: (a: f32) -> bool { return a == a && a < 1000000.0 && a > -1000000.0; }
+nav_grid_real :: (a: f32) -> bool #effects(all) { return a == a && a < 1000000.0 && a > -1000000.0; }
 
 // Whether the grid's shape can be used: at least one cell, at most NAV_GRID_MOST, a cell size
 // above zero, and an origin that is a number.
-nav_grid_ok :: (g: NavGrid) -> bool {
+nav_grid_ok :: (g: NavGrid) -> bool #effects(all) {
   if g.nx < 1 || g.nz < 1 || g.nx > NAV_GRID_MOST / g.nz { return false; }   // nx * nz <= MOST, without overflow
   return nav_grid_real(g.cell) && g.cell > 0 && nav_grid_real(g.x0) && nav_grid_real(g.z0);
 }
-nav_grid_cells :: (g: NavGrid) -> int { return g.nx * g.nz; }
+nav_grid_cells :: (g: NavGrid) -> int #effects(all) { return g.nx * g.nz; }
 
 // The cell holding (x, z), or -1 off the grid (or not a number).
-nav_grid_cell_at :: (g: NavGrid, x: f32, z: f32) -> int {
+nav_grid_cell_at :: (g: NavGrid, x: f32, z: f32) -> int #effects(all) {
   if !nav_grid_ok(g) || !nav_grid_real(x) || !nav_grid_real(z) { return -1; }
   cx := int(floor((x - g.x0) / g.cell));
   cz := int(floor((z - g.z0) / g.cell));
   if cx < 0 || cz < 0 || cx >= g.nx || cz >= g.nz { return -1; }
   return cz * g.nx + cx;
 }
-nav_grid_centre_x :: (g: NavGrid, c: int) -> f32 { return g.x0 + (f32(c % g.nx) + 0.5) * g.cell; }
-nav_grid_centre_z :: (g: NavGrid, c: int) -> f32 { return g.z0 + (f32(c / g.nx) + 0.5) * g.cell; }
+nav_grid_centre_x :: (g: NavGrid, c: int) -> f32 #effects(all) { return g.x0 + (f32(c % g.nx) + 0.5) * g.cell; }
+nav_grid_centre_z :: (g: NavGrid, c: int) -> f32 #effects(all) { return g.z0 + (f32(c / g.nx) + 0.5) * g.cell; }
 
 // book:begin step
 // The cell one step from c in direction k (0 to 7), or -1 when that leaves the grid, isn't
 // walkable, or is a diagonal past a blocked corner.
-nav_grid_step :: (g: NavGrid, walk: [] bool, c: int, k: int) -> int {
+nav_grid_step :: (g: NavGrid, walk: [] bool, c: int, k: int) -> int #effects(all) {
   x := c % g.nx + NAV_GRID_DX[k]; z := c / g.nx + NAV_GRID_DZ[k];
   if x < 0 || z < 0 || x >= g.nx || z >= g.nz { return -1; }
   to := z * g.nx + x;
@@ -74,13 +74,13 @@ nav_grid_step :: (g: NavGrid, walk: [] bool, c: int, k: int) -> int {
 
 // ---- the heap: cells ordered by cost, then by cell number
 
-nav_grid_less :: (cost: [] f32, a: int, b: int) -> bool { return cost[a] < cost[b] || (cost[a] == cost[b] && a < b); }
-nav_grid_swap :: (heap: [] s32, slot: [] s32, i: int, j: int) {
+nav_grid_less :: (cost: [] f32, a: int, b: int) -> bool #effects(all) { return cost[a] < cost[b] || (cost[a] == cost[b] && a < b); }
+nav_grid_swap :: (heap: [] s32, slot: [] s32, i: int, j: int) #effects(all) {
   a := heap[i]; b := heap[j];
   heap[i] = b; heap[j] = a;
   slot[int(b)] = s32(i); slot[int(a)] = s32(j);
 }
-nav_grid_up :: (cost: [] f32, heap: [] s32, slot: [] s32, at: int) {
+nav_grid_up :: (cost: [] f32, heap: [] s32, slot: [] s32, at: int) #effects(all) {
   i := at;
   while i > 0 {
     parent := (i - 1) >> 1;
@@ -89,7 +89,7 @@ nav_grid_up :: (cost: [] f32, heap: [] s32, slot: [] s32, at: int) {
     i = parent;
   }
 }
-nav_grid_down :: (cost: [] f32, heap: [] s32, slot: [] s32, size: int) {
+nav_grid_down :: (cost: [] f32, heap: [] s32, slot: [] s32, size: int) #effects(all) {
   i := 0;
   while true {
     l := i * 2 + 1; r := l + 1; m := i;
@@ -108,7 +108,7 @@ nav_grid_down :: (cost: [] f32, heap: [] s32, slot: [] s32, size: int) {
 // refused before anything is written. heap and slot are the search's own scratch; order,
 // when it isn't empty, gets the cells in the order they settled.
 nav_grid_flow :: (g: NavGrid, walk: [] bool, cost: [] f32, heap: [] s32, slot: [] s32, order: [] s32,
-                  goal: int, max_cost: f32, steps: int) -> NavFlow {
+                  goal: int, max_cost: f32, steps: int) -> NavFlow #effects(all) {
   out: NavFlow;
   if !nav_grid_ok(g) { out.status = NavFlowStatus.bad_grid; return out; }
   cells := nav_grid_cells(g);
@@ -150,7 +150,7 @@ nav_grid_flow :: (g: NavGrid, walk: [] bool, cost: [] f32, heap: [] s32, slot: [
 // book:begin downhill
 // The neighbour of c lowest on the field (the first of equals in direction order), or -1 when
 // none is lower than c.
-nav_grid_downhill :: (g: NavGrid, walk: [] bool, cost: [] f32, c: int) -> int {
+nav_grid_downhill :: (g: NavGrid, walk: [] bool, cost: [] f32, c: int) -> int #effects(all) {
   best := -1; low := cost[c];
   for k: 0..<8 {
     to := nav_grid_step(g, walk, c, k);
@@ -168,7 +168,7 @@ NavWayStatus :: enum u8 { there; step; no_way; refused; }
 // reached nothing). `cost` is the walking distance from the cell, or from `nearest`.
 NavWay :: struct { status: NavWayStatus; next: int = -1; nearest: int = -1; cost: f32; }
 
-nav_grid_way :: (g: NavGrid, walk: [] bool, cost: [] f32, flow: NavFlow, from: int) -> NavWay {
+nav_grid_way :: (g: NavGrid, walk: [] bool, cost: [] f32, flow: NavFlow, from: int) -> NavWay #effects(all) {
   way: NavWay;
   way.status = NavWayStatus.refused;
   if flow.status != NavFlowStatus.ok || !nav_grid_ok(g) { return way; }
@@ -204,8 +204,8 @@ nav_grid_way :: (g: NavGrid, walk: [] bool, cost: [] f32, flow: NavFlow, from: i
 //   row 2  . . # . . .
 //   row 1  . . # . . .
 //   row 0  . . # . . .
-ng_t_grid :: () -> NavGrid { return NavGrid.{nx = 6, nz = 5, cell = 1, x0 = 0, z0 = 0}; }
-ng_t_walk :: (walk: [] bool) {
+ng_t_grid :: () -> NavGrid #effects(all) { return NavGrid.{nx = 6, nz = 5, cell = 1, x0 = 0, z0 = 0}; }
+ng_t_walk :: (walk: [] bool) #effects(all) {
   for c: 0..<30 { walk[c] = c % 6 != 2 || c / 6 == 4; }
 }
 

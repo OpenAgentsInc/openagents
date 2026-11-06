@@ -79,7 +79,7 @@ revision) into slots:
 // block-relay-only outbound connections as far as max allows, 1 feeler
 // on top, and the rest inbound.
 CnLimits :: struct { max: int; full: int; block: int; feelers: int; inbound: int; }
-cn_limits :: (max: int) -> CnLimits {
+cn_limits :: (max: int) -> CnLimits #effects(all) {
   full := ifx max < CN_FULL_RELAY then max else CN_FULL_RELAY;
   block := ifx max - full < CN_BLOCK_RELAY then max - full else CN_BLOCK_RELAY;
   inbound := max - (full + block + CN_FEELERS);
@@ -114,7 +114,7 @@ logarithm in its library, so this chapter writes one:
 // are exact, and the series' terms fall by 34 times or more each, so 24
 // of them leave only rounding.
 CN_LN2 :: 0.6931471805599453;
-cn_ln :: (y_in: f64) -> f64 {
+cn_ln :: (y_in: f64) -> f64 #effects(all) {
   y := y_in; e := 0;
   while y > 1.4142135623730951 { y *= 0.5; e += 1; }
   while y < 0.7071067811865476 { y *= 2.0; e -= 1; }
@@ -128,7 +128,7 @@ cn_ln :: (y_in: f64) -> f64 {
 // in microseconds. MakeExponentiallyDistributed turns the top 53 bits of
 // a 64-bit draw into x in [0, 1) and returns -ln(1 - x); the delay is
 // that times the mean, plus half a microsecond, truncated.
-cn_exp_delay :: (rng: [] AmRng, mean_us: int) -> int {
+cn_exp_delay :: (rng: [] AmRng, mean_us: int) -> int #effects(all) {
   u := am_rand64(rng);
   x := cast(f64) (u >> cast(u64) 11) * (1.0 / 9007199254740992.0);
   return cast(int) (-cn_ln(1.0 - x) * cast(f64) mean_us + 0.5);
@@ -162,7 +162,7 @@ CN_BAD_PORTS :: [85] int.[1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 4
   512, 513, 514, 515, 526, 530, 531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995, 1719,
   1720, 1723, 2049, 3306, 3389, 3659, 4045, 5060, 5061, 5432, 5900, 6000, 6566, 6665, 6666, 6667, 6668, 6669,
   6697, 10080, 27017];
-cn_bad_port :: (port: int) -> bool {
+cn_bad_port :: (port: int) -> bool #effects(all) {
   for p: CN_BAD_PORTS { if p == port { return true; } }
   return false;
 }
@@ -201,24 +201,24 @@ CnNode :: struct {
 }
 // ThreadOpenConnections' start: the three timers are drawn first, in this
 // order, from the thread's own random context.
-cn_start :: (node: [] CnNode, m: [] AddrMan, rng: [] AmRng, peers: [] CnPeer, lim: CnLimits, start_us: int) {
+cn_start :: (node: [] CnNode, m: [] AddrMan, rng: [] AmRng, peers: [] CnPeer, lim: CnLimits, start_us: int) #effects(all) {
   node[0] = CnNode.{m=m, rng=rng, lim=lim, peers=peers};
   node[0].next_feeler = start_us + cn_exp_delay(rng, CN_FEELER_INTERVAL * 1000000);
   node[0].next_extra_block = start_us + cn_exp_delay(rng, CN_EXTRA_BLOCK_INTERVAL * 1000000);
   node[0].next_extra_network = start_us + cn_exp_delay(rng, CN_EXTRA_NETWORK_INTERVAL * 1000000);
 }
-cn_add_anchor :: (node: [] CnNode, r: AmRecord) -> bool {
+cn_add_anchor :: (node: [] CnNode, r: AmRecord) -> bool #effects(all) {
   if node[0].n_anchors >= CN_ANCHORS { return false; }
   node[0].anchors[node[0].n_anchors] = r; node[0].n_anchors += 1;
   return true;
 }
-cn_count :: (node: [] CnNode, conn: int) -> int {
+cn_count :: (node: [] CnNode, conn: int) -> int #effects(all) {
   n := 0;
   for i: 0..<node[0].n_peers { if node[0].peers[i].conn == conn { n += 1; } }
   return n;
 }
 // GetGroup equality (chapter 69's network groups).
-cn_same_group :: (a: AmAddr, b: AmAddr) -> bool {
+cn_same_group :: (a: AmAddr, b: AmAddr) -> bool #effects(all) {
   ga: [40] u8; gb: [40] u8;
   x := am_group(a, ga[..]); y := am_group(b, gb[..]);
   if x.count != y.count { return false; }
@@ -226,11 +226,11 @@ cn_same_group :: (a: AmAddr, b: AmAddr) -> bool {
   return true;
 }
 // Is a's group among the outbound peers' (outbound_ipv46_peer_netgroups)?
-cn_group_taken :: (node: [] CnNode, a: AmAddr) -> bool {
+cn_group_taken :: (node: [] CnNode, a: AmAddr) -> bool #effects(all) {
   for i: 0..<node[0].n_peers { if cn_same_group(node[0].peers[i].addr, a) { return true; } }
   return false;
 }
-cn_groups :: (node: [] CnNode) -> int {
+cn_groups :: (node: [] CnNode) -> int #effects(all) {
   n := 0;
   for i: 0..<node[0].n_peers {
     first := true;
@@ -240,7 +240,7 @@ cn_groups :: (node: [] CnNode) -> int {
   return n;
 }
 // AlreadyConnectedToAddress: the same IP, whatever the port.
-cn_connected_to :: (node: [] CnNode, a: AmAddr) -> bool {
+cn_connected_to :: (node: [] CnNode, a: AmAddr) -> bool #effects(all) {
   for i: 0..<node[0].n_peers { if am_same_ip(node[0].peers[i].addr, a) { return true; } }
   return false;
 }
@@ -259,7 +259,7 @@ Every half second, `ThreadOpenConnections` decides what to open next:
 // dropped below), else a feeler about every 2 minutes. A fired timer
 // draws its next delay at once. -1: nothing to open.
 CnChoice :: struct { conn: int; anchor: bool; }
-cn_choose :: (node: [] CnNode, now_us: int) -> CnChoice {
+cn_choose :: (node: [] CnNode, now_us: int) -> CnChoice #effects(all) {
   full := cn_count(node, HS_OUTBOUND); block := cn_count(node, HS_BLOCK_RELAY);
   lim := node[0].lim;
   if node[0].n_anchors > 0 && block < lim.block { return CnChoice.{conn=HS_BLOCK_RELAY, anchor=true}; }
@@ -300,7 +300,7 @@ Then the address loop:
 // connection needs, and on a bad port (first 50 draws). No address, or an
 // invalid or local one, ends the loop.
 CnPick :: struct { found: bool; addr: AmAddr; services: u64; tries: int; anchor: bool; }
-cn_pick :: (node: [] CnNode, choice: CnChoice, now: int) -> CnPick {
+cn_pick :: (node: [] CnNode, choice: CnChoice, now: int) -> CnPick #effects(all) {
   m := node[0].m; feeler := choice.conn == HS_FEELER;
   tries := 0;
   while true {
@@ -356,7 +356,7 @@ for the full-relay slots.
 // outbound peers in two groups, so that a node that is offline doesn't
 // mark its whole table bad.
 CnAttempt :: struct { conn: int; pick: CnPick; }
-cn_step :: (node: [] CnNode, now_us: int) -> CnAttempt {
+cn_step :: (node: [] CnNode, now_us: int) -> CnAttempt #effects(all) {
   choice := cn_choose(node, now_us);
   if choice.conn < 0 { return CnAttempt.{conn=-1}; }
   now := now_us / 1000000;
@@ -371,7 +371,7 @@ cn_step :: (node: [] CnNode, now_us: int) -> CnAttempt {
 // The attempt's outcome. A connection that finished its handshake is
 // marked good in the address manager; a feeler then disconnects, any
 // other becomes an outbound peer. Returns its id, or -1.
-cn_result :: (node: [] CnNode, a: CnAttempt, ok: bool, now: int, last_block: int) -> int {
+cn_result :: (node: [] CnNode, a: CnAttempt, ok: bool, now: int, last_block: int) -> int #effects(all) {
   if !a.pick.found || !ok { return -1; }
   good := am_good(node[0].m, a.pick.addr, now);
   id := node[0].next_id; node[0].next_id += 1;
@@ -381,7 +381,7 @@ cn_result :: (node: [] CnNode, a: CnAttempt, ok: bool, now: int, last_block: int
   }
   return id;
 }
-cn_disconnect :: (node: [] CnNode, id: int) -> bool {
+cn_disconnect :: (node: [] CnNode, id: int) -> bool #effects(all) {
   for i: 0..<node[0].n_peers {
     if node[0].peers[i].id == id {
       for j: i..<node[0].n_peers - 1 { node[0].peers[j] = node[0].peers[j + 1]; }
@@ -444,7 +444,7 @@ Every 45 seconds, `CheckForStaleTipAndEvictPeers` calls
 // younger goes, unless it gave us a block more recently than the other,
 // which then goes instead. A peer connected less than 30 s is kept. Core
 // also keeps one with blocks in flight; these peers have none.
-cn_evict_extra_block :: (peers: [] CnPeer, now: int) -> int {
+cn_evict_extra_block :: (peers: [] CnPeer, now: int) -> int #effects(all) {
   young := CnPeer.{id=-1}; next := CnPeer.{id=-1};
   for p: peers {
     if p.conn != HS_BLOCK_RELAY { continue; }
@@ -457,7 +457,7 @@ cn_evict_extra_block :: (peers: [] CnPeer, now: int) -> int {
 // With a full-relay peer too many: the one whose last block announcement
 // is oldest, the youngest on a tie, never a protected one or the only
 // one on its network. Connected more than 30 s, it goes.
-cn_evict_extra_full :: (peers: [] CnPeer, now: int) -> int {
+cn_evict_extra_full :: (peers: [] CnPeer, now: int) -> int #effects(all) {
   worst := -1;
   for p, i: peers {
     if p.conn != HS_OUTBOUND || p.protect { continue; }
@@ -471,7 +471,7 @@ cn_evict_extra_full :: (peers: [] CnPeer, now: int) -> int {
   return -1;
 }
 // The check on a node: the peer to disconnect, or -1.
-cn_check_extra :: (node: [] CnNode, now: int) -> int {
+cn_check_extra :: (node: [] CnNode, now: int) -> int #effects(all) {
   peers := node[0].peers[0..<node[0].n_peers];
   if cn_count(node, HS_BLOCK_RELAY) > node[0].lim.block {
     id := cn_evict_extra_block(peers, now);
@@ -516,7 +516,7 @@ CnCand :: struct {
 // CalculateKeyedNetGroup: SipHash, under the node's secret seeds, of the
 // randomizer and the address's group, so an attacker can't choose groups
 // that sort first.
-cn_keyed_group :: (seed0: u64, seed1: u64, a: AmAddr) -> u64 {
+cn_keyed_group :: (seed0: u64, seed1: u64, a: AmAddr) -> u64 #effects(all) {
   buf: [48] u8;
   stored := cb_store_le64(buf[..], 0, CN_RANDOMIZER_NETGROUP);
   g := am_group(a, buf[8..<48]);
@@ -541,7 +541,7 @@ CN_BY_BLOCK :: 4;     // CompareNodeBlockTime: the latest block last
 CN_BY_TIME :: 5;      // ReverseCompareNodeTimeConnected: the longest connected last
 CN_BY_NET :: 6;       // CompareNodeNetworkTime: the network's peers last, oldest last
 // a and b are positions in c, so no peer is copied to compare.
-cn_less :: (code: int, c: [] CnCand, a: int, b: int, local: bool, net: int) -> bool {
+cn_less :: (code: int, c: [] CnCand, a: int, b: int, local: bool, net: int) -> bool #effects(all) {
   if code == CN_BY_GROUP { return c[a].group < c[b].group; }
   if code == CN_BY_PING { return c[a].ping > c[b].ping; }
   if code == CN_BY_TIME { return c[a].connected > c[b].connected; }
@@ -566,7 +566,7 @@ cn_less :: (code: int, c: [] CnCand, a: int, b: int, local: bool, net: int) -> b
 // either way; ties here keep their order, as in the Python cross-check.
 // At most CN_MAX_CANDIDATES peers.
 CN_MAX_CANDIDATES :: 1024;
-cn_sort :: (c: [] CnCand, code: int, local: bool, net: int) {
+cn_sort :: (c: [] CnCand, code: int, local: bool, net: int) #effects(all) {
   order: [CN_MAX_CANDIDATES] int;
   n := c.count;
   for i: 0..<n {
@@ -595,12 +595,12 @@ cn_sort :: (c: [] CnCand, code: int, local: bool, net: int) {
 // services we want (CN_NONRELAY), or the peers of one network (CN_ON_NET:
 // localhost when local, else net). Returns the new count.
 CN_ALL :: 0; CN_NONRELAY :: 1; CN_ON_NET :: 2;
-cn_matches :: (pred: int, c: CnCand, local: bool, net: int) -> bool {
+cn_matches :: (pred: int, c: CnCand, local: bool, net: int) -> bool #effects(all) {
   if pred == CN_NONRELAY { return !c.relay && c.relevant; }
   if pred == CN_ON_NET { return ifx local then c.local else c.net == net; }
   return true;
 }
-cn_erase_last :: (c: [] CnCand, n: int, code: int, k_in: int, pred: int, local: bool, net: int) -> int {
+cn_erase_last :: (c: [] CnCand, n: int, code: int, k_in: int, pred: int, local: bool, net: int) -> int #effects(all) {
   if n > CN_MAX_CANDIDATES { return n; }
   cn_sort(c[0..<n], code, local, net);
   k := ifx k_in < n then k_in else n;
@@ -622,7 +622,7 @@ every comparison on uptime, and the rest by uptime:
 // with the fewest candidates first, a share each round until the quarter
 // is used or nobody qualifies. The rest of the half goes by uptime.
 CnNet :: struct { local: bool; net: int; count: int; }
-cn_protect_by_ratio :: (c: [] CnCand, n_in: int) -> int {
+cn_protect_by_ratio :: (c: [] CnCand, n_in: int) -> int #effects(all) {
   n := n_in;
   total := n / 2;
   nets := [4] CnNet.[CnNet.{net=AM_NET_CJDNS}, CnNet.{net=AM_NET_I2P}, CnNet.{local=true, net=CN_NET_LOCAL}, CnNet.{net=AM_NET_ONION}];
@@ -684,7 +684,7 @@ Then the choice:
 // half of the rest by network and uptime. Of who is left (only those
 // marked prefer-evict, if any are), the youngest peer of the netgroup
 // with the most connections goes. trace gets the count after each step.
-cn_select_to_evict :: (c: [] CnCand, trace: [] int) -> int {
+cn_select_to_evict :: (c: [] CnCand, trace: [] int) -> int #effects(all) {
   if c.count > CN_MAX_CANDIDATES { return -1; }   // beyond this port's bound: evict nobody
   n := 0;
   for i: 0..<c.count { if !c[i].noban && c[i].inbound { c[n] = c[i]; n += 1; } }
@@ -752,7 +752,7 @@ Before eviction, Core checks bans and discouragement (chapter 71):
 // one is dropped. scratch holds a copy of the candidates.
 CN_ACCEPT :: 0; CN_ACCEPT_EVICTING :: 1; CN_DROP_BANNED :: 2; CN_DROP_DISCOURAGED :: 3; CN_DROP_FULL :: 4;
 CnAccept :: struct { code: int; victim: int; }
-cn_accept :: (n_inbound: int, max_inbound: int, banned: bool, discouraged: bool, noban: bool, cands: [] CnCand, scratch: [] CnCand) -> CnAccept {
+cn_accept :: (n_inbound: int, max_inbound: int, banned: bool, discouraged: bool, noban: bool, cands: [] CnCand, scratch: [] CnCand) -> CnAccept #effects(all) {
   if banned && !noban { return CnAccept.{code=CN_DROP_BANNED, victim=-1}; }
   if discouraged && !noban && n_inbound + 1 >= max_inbound { return CnAccept.{code=CN_DROP_DISCOURAGED, victim=-1}; }
   if n_inbound < max_inbound { return CnAccept.{code=CN_ACCEPT, victim=-1}; }
@@ -779,7 +779,7 @@ Core's tests draw random candidates the same way:
 ```jai
 // GetRandomNodeEvictionCandidates (test/util/net.cpp): ids 0 to n - 1,
 // every other field drawn from rng in Core's order.
-cn_random_candidates :: (rng: [] AmRng, out: [] CnCand) {
+cn_random_candidates :: (rng: [] AmRng, out: [] CnCand) #effects(all) {
   for i: 0..<out.count {
     c := CnCand.{id=i};
     c.connected = am_randrange(rng, 100); c.ping = am_randrange(rng, 100);

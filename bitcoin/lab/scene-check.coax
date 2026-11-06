@@ -18,7 +18,7 @@ sc_frames :: (s:[]BitcoinLab,vertices:[]f32,u:[]f32,stats:[]int)->bool {
     }
   }}return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}port:=lr_number(args_at(a[..],0),65535);s:[1]BitcoinLab;v:[LAB_VERTICES*12]f32;u:[LAB_UNIFORMS]f32;stats:[2]int;
   lab_start(s[..]);lab_do(s[..],222);if !sc_pump(s[..],port) || s[0].remote[0].model[0].identity.height!=105 {return 1;}r:=s[0].remote[..];
   if !sc_frames(s[..],v[..],u[..],stats[..]) {return 1;}

@@ -23,24 +23,24 @@ HUD_CUT_BUTTON :: 7.0; HUD_CUT_PANEL :: 10.0; HUD_CUT_CARD :: 12.0;   // the cut
 }
 // The outline's points, 0 to 6 (6 is 0 again): top-left, along the top to
 // the cut, down the right, back along the bottom to the cut, up the left.
-verse_hud_frame_point :: (x0:f32,y0:f32,x1:f32,y1:f32,cut:f32,i:int)->HudPoint #export_c {
+verse_hud_frame_point :: (x0:f32,y0:f32,x1:f32,y1:f32,cut:f32,i:int)->HudPoint #export_c #effects(all) {
  xs:=[7]f32.[x0,x1-cut,x1,x1,x0+cut,x0,x0];ys:=[7]f32.[y0,y0,y0+cut,y1,y1,y1-cut,y0];
  out:HudPoint;if i<0 || i>6 {return out;}
  out.x=xs[i];out.y=ys[i];return out;
 }
 // A bracket's arm for a box width wide, at d pixels a point.
-verse_hud_frame_arm :: (width:f32,d:f32)->f32 #export_c {
+verse_hud_frame_arm :: (width:f32,d:f32)->f32 #export_c #effects(all) {
  a:=HUD_ARM*d;q:=width*0.25;if q<a {return q;}return a;
 }
 // The greys by name (0 white, 1 light, 2 mid, 3 dim) and the blue (4, 5, 6: r, g, b).
-verse_hud_tone :: (k:int)->f32 #export_c {
+verse_hud_tone :: (k:int)->f32 #export_c #effects(all) {
  t:=[7]f32.[HUD_GREY_WHITE,HUD_GREY_LIGHT,HUD_GREY_MID,HUD_GREY_DIM,HUD_ACCENT_R,HUD_ACCENT_G,HUD_ACCENT_B];
  if k<0 || k>6 {return 0;}return t[k];
 }
 // The cut for a button (0), a panel (1) or a card (2), points.
-verse_hud_cut :: (k:int)->f32 #export_c {
+verse_hud_cut :: (k:int)->f32 #export_c #effects(all) {
  if k==1 {return HUD_CUT_PANEL;}if k==2 {return HUD_CUT_CARD;}return HUD_CUT_BUTTON;
 }
 // The outline's light against the brackets', and a bracket's short side against its arm.
-verse_hud_outline :: ()->f32 #export_c {return HUD_OUTLINE;}
-verse_hud_arm_down :: ()->f32 #export_c {return HUD_ARM_DOWN;}
+verse_hud_outline :: ()->f32 #export_c #effects(all) {return HUD_OUTLINE;}
+verse_hud_arm_down :: ()->f32 #export_c #effects(all) {return HUD_ARM_DOWN;}

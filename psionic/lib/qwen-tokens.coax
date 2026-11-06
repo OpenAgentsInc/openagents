@@ -26,13 +26,13 @@ QxLayout :: struct {state:int;input:int;hidden:int;norm:int;temp:int;logits:int;
     out[0]=-7;out[1]=-7;tokens[0]=4;bad:=qx_block(model,tokens[..],rope[..],0,state[..],QrKind.choice,1,slots[..],out[..],prob[..],work[..],false);
     #assert bad.status==QxStatus.index && out[0]==-7 && out[1]==-7;
 }
-qx_remaining :: (vocab:int,row:int)->int {return vocab-row;}
-qx_chunk :: (remaining:int)->int {if remaining>=32769 {return 32768;}return remaining;}
-qx_layout :: (model:QxModel,start:int,count:int)->QxLayout {
+qx_remaining :: (vocab:int,row:int)->int #effects(all) {return vocab-row;}
+qx_chunk :: (remaining:int)->int #effects(all) {if remaining>=32769 {return 32768;}return remaining;}
+qx_layout :: (model:QxModel,start:int,count:int)->QxLayout #effects(all) {
     s:=model.shape;d:=s.linear.width;p:QxLayout;p.input=qp_total(s.state);p.hidden=p.input+count*d;p.norm=p.hidden+count*d;
     p.temp=p.norm+d;p.logits=p.temp+32768;p.engine=p.logits+model.vocab;p.total=p.engine+qe_layout(s,start,count).total;return p;
 }
-qx_block :: (model:QxModel,tokens:[]int,rope:[]f32,start:int,state:[]f32,kind:QrKind,temperature:f32,slots:[]int,out:[]f64,prob:[]f64,work:[]f32,overlap:bool)->QxResult #export_c {
+qx_block :: (model:QxModel,tokens:[]int,rope:[]f32,start:int,state:[]f32,kind:QrKind,temperature:f32,slots:[]int,out:[]f64,prob:[]f64,work:[]f32,overlap:bool)->QxResult #export_c #effects(all) {
     s:=model.shape;count:=tokens.count;
     if !qe_valid(s) || !qr_vocab_valid(model.vocab) || !qr_valid(cast(u8)kind,slots.count,temperature) {return QxResult.{status=QxStatus.shape};}
     if !qd_block_valid(start,count,s.state.capacity) {return QxResult.{status=QxStatus.capacity};}

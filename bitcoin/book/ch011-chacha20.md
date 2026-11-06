@@ -68,7 +68,7 @@ counter for a longer nonce, so one key and nonce can encrypt at most
 
 <!-- source: coax/lib/crypto/chacha20.coax cc_initial -->
 ```jai
-cc_initial :: (key:[]u8,nonce:[]u8,counter:u32)->CcWords {
+cc_initial :: (key:[]u8,nonce:[]u8,counter:u32)->CcWords #effects(all) {
   state:CcWords;
   defer {secure_zero(state.words[..]);#assert crypto_zeroed(state.words[..]);}
   state.words[0]=0x61707865;state.words[1]=0x3320646e;
@@ -87,7 +87,7 @@ lines adds, exclusive-ors, then rotates left:
 
 <!-- source: coax/lib/crypto/chacha20.coax cc_quarter -->
 ```jai
-cc_quarter :: (a_in:u32,b_in:u32,c_in:u32,d_in:u32)->CcQuarter {
+cc_quarter :: (a_in:u32,b_in:u32,c_in:u32,d_in:u32)->CcQuarter #effects(all) {
   a:=a_in;b:=b_in;c:=c_in;d:=d_in;
   a=add_wrap(a,b);d=rotl(d^a,16);
   c=add_wrap(c,d);b=rotl(b^c,12);
@@ -138,7 +138,7 @@ holding a block could undo the rounds and read the key out of words 4 to 11.
 
 <!-- source: coax/lib/crypto/chacha20.coax cc_block_words -->
 ```jai
-cc_block_words :: (initial:CcWords)->CcWords {
+cc_block_words :: (initial:CcWords)->CcWords #effects(all) {
   x:=initial;
   defer {secure_zero(x.words[..]);#assert crypto_zeroed(x.words[..]);}
   for round:0..<10 {
@@ -193,7 +193,7 @@ operation, because `(p ^ s) ^ s = p`.
 
 <!-- source: coax/lib/crypto/chacha20.coax chacha20_xor_checked -->
 ```jai
-chacha20_xor_checked :: (key:[]u8,nonce:[]u8,counter:u32,input:[]u8,out:[]u8,overlap:bool)->ChaChaResult #export_c {
+chacha20_xor_checked :: (key:[]u8,nonce:[]u8,counter:u32,input:[]u8,out:[]u8,overlap:bool)->ChaChaResult #export_c #effects(all) {
   error:=cc_admit(key.count,nonce.count,counter,input.count,out.count,overlap);
   if error!=CC_OK {return ChaChaResult.{error=error};}
   initial:=cc_initial(key,nonce,counter);
@@ -240,7 +240,7 @@ of `n` bytes needs `ceil(n / 64)` blocks, and from counter `c` only
 
 <!-- source: coax/lib/crypto/chacha20.coax cc_admit -->
 ```jai
-cc_admit :: (key_count:int,nonce_count:int,counter:u32,n:int,capacity:int,overlap:bool)->u32 #export_c {
+cc_admit :: (key_count:int,nonce_count:int,counter:u32,n:int,capacity:int,overlap:bool)->u32 #export_c #effects(all) {
   if key_count!=32 {return CC_KEY;}
   if nonce_count!=12 {return CC_NONCE;}
   if n<0 || n>CB_MAX_BYTES {return CC_INPUT;}
@@ -286,7 +286,7 @@ uses it for NIP-49 key backups.
 
 <!-- source: coax/lib/crypto/hchacha20.coax hchacha20_checked -->
 ```jai
-hchacha20_checked :: (key:[]u8,nonce:[]u8,out:[]u8,overlap:bool)->ChaChaResult #export_c {
+hchacha20_checked :: (key:[]u8,nonce:[]u8,out:[]u8,overlap:bool)->ChaChaResult #export_c #effects(all) {
   error:=hc_admit(key.count,nonce.count,out.count,overlap);
   if error!=CC_OK {return ChaChaResult.{error=error};}
   initial:=cc_initial(key,nonce[4..<16],cb_load_le32(nonce,0).value);

@@ -145,14 +145,14 @@ agree with it. The version is public, so these checks may branch:
 ```jai
 // 1 for a private version, 0 for a public one, or BIP32_BAD_VERSION.
 // Versions are public.
-hdk_kind :: (version: int) -> int {
+hdk_kind :: (version: int) -> int #effects(all) {
   if version == BIP32_XPRV || version == BIP32_TPRV { return 1; }
   if version == BIP32_XPUB || version == BIP32_TPUB { return 0; }
   return BIP32_BAD_VERSION;
 }
 // The kind of a node, after checking that its key byte fits its version:
 // 0x00 before a private key, 0x02 or 0x03 for a public one.
-hdk_check :: (node: [] u8) -> int {
+hdk_check :: (node: [] u8) -> int #effects(all) {
   kind := hdk_kind(hdk_get32(node, HDK_VERSION));
   if kind < 0 { return kind; }
   p := node[HDK_KEY];
@@ -188,7 +188,7 @@ BIP-32 skips:
 // loads as 0, whose product is the point at infinity, which has no
 // encoding: the answer is false and out is unwritten. That answer is
 // public.
-hdk_point_ct :: (key: [] u8, out: [] u8) -> bool {
+hdk_point_ct :: (key: [] u8, out: [] u8) -> bool #effects(all) {
   k := sc_load(key);
   return se_encode(smc_multiply(k.value, sg_generator()).value, SE_COMPRESSED, out) == SE_COMPRESSED;
 }
@@ -196,7 +196,7 @@ hdk_point_ct :: (key: [] u8, out: [] u8) -> bool {
 // BIP32_INVALID_KEY when I_L is n or more or the sum is 0; BIP-32 then
 // says to use the next index. The two checks become one flag, and the
 // procedure branches once, on it.
-hdk_tweak_ct :: (il: [] u8, key: [] u8, out: [] u8) -> int {
+hdk_tweak_ct :: (il: [] u8, key: [] u8, out: [] u8) -> int #effects(all) {
   t := sc_load(il); k := sc_load(key);
   sum := sc_add(t.value, k.value);
   bad := (ifx t.ok then cast(u64) 0 else 1) | (ifx sc_is_zero(sum) then cast(u64) 1 else 0);  // mutant: equivalent (any nonzero flag refuses)
@@ -215,7 +215,7 @@ exactly when `I_L` is 0 or `n` or more.
 // key "Bitcoin seed" over the seed, k = I_L and the chain code I_R. I_L of
 // 0 or n or more is refused, which is the tweak's rule with a parent key
 // of 0.
-hdk_master :: (seed: [] u8, testnet: bool, work: [] u8) -> int {
+hdk_master :: (seed: [] u8, testnet: bool, work: [] u8) -> int #effects(all) {
   node := work[HDK_NODE..<HDK_NODE + BIP32_NODE_BYTES]; i := work[HDK_I..<HDK_DATA];  // mutant: equivalent (HMAC fills the first 64 bytes of any longer slice)
   label := "Bitcoin seed"; key: [12] u8; zero: [32] u8;
   for j: 0..<12 { key[j] = label[j]; }
@@ -274,7 +274,7 @@ Every child records its parent's fingerprint, its depth and its index:
 // The parts every child shares: its parent's fingerprint (the first 4
 // bytes of HASH160 of the parent's public key, chapter 6), depth + 1, its
 // index and its chain code I_R.
-hdk_finish :: (node: [] u8, index: int, parent: [] u8, chain: [] u8, work: [] u8) {
+hdk_finish :: (node: [] u8, index: int, parent: [] u8, chain: [] u8, work: [] u8) #effects(all) {
   hash := work[HDK_DATA..<HDK_DATA + 20];  // mutant: equivalent (HASH160 fills the first 20 bytes of any longer slice)
   #assert hash160_checked(parent, hash, false) == RMD_OK;
   node[HDK_DEPTH] = cast(u8) (cast(int) node[HDK_DEPTH] + 1);
@@ -296,7 +296,7 @@ computes anyway, because the fingerprint needs it:
 // in place. A hardened index (2^31 and up) hashes 0x00 || k, which is the
 // node's key field as stored; a normal index hashes the public key k*G.
 // The parent's public key is computed either way, for the fingerprint.
-hdk_ckd_priv_ct :: (index: int, work: [] u8) -> int {
+hdk_ckd_priv_ct :: (index: int, work: [] u8) -> int #effects(all) {
   node := work[HDK_NODE..<HDK_NODE + BIP32_NODE_BYTES]; i := work[HDK_I..<HDK_DATA];  // mutant: equivalent (HMAC fills the first 64 bytes of any longer slice)
   data := work[HDK_DATA..<HDK_PUB]; pub := work[HDK_PUB..<HDK_CHILD];
   if !hdk_point_ct(node[HDK_KEY + 1..<BIP32_NODE_BYTES], pub) { return BIP32_INVALID_KEY; }
@@ -330,7 +330,7 @@ variable-time multiplication:
 // multiplication), into out[0..<33]. Returns 33, or BIP32_INVALID_KEY for
 // I_L of n or more, a K that isn't on the curve, or the point at
 // infinity.
-hdk_add_point :: (il: [] u8, key: [] u8, out: [] u8) -> int {
+hdk_add_point :: (il: [] u8, key: [] u8, out: [] u8) -> int #effects(all) {
   t := sc_load(il); k := se_decode(key);
   if !t.ok || !k.ok { return BIP32_INVALID_KEY; }
   p := ecmult_vartime(t.value, k.value, sc_small(1));
@@ -340,7 +340,7 @@ hdk_add_point :: (il: [] u8, key: [] u8, out: [] u8) -> int {
 // CKDpub: the child at a normal index of the public node in work's node
 // slot, in place. Everything it reads is public. A hardened child needs
 // the parent's private key, so it refuses.
-hdk_ckd_pub :: (index: int, work: [] u8) -> int {
+hdk_ckd_pub :: (index: int, work: [] u8) -> int #effects(all) {
   if index >= BIP32_HARDENED { return BIP32_NEEDS_PRIVATE; }
   node := work[HDK_NODE..<HDK_NODE + BIP32_NODE_BYTES]; i := work[HDK_I..<HDK_DATA];  // mutant: equivalent (HMAC fills the first 64 bytes of any longer slice)
   data := work[HDK_DATA..<HDK_PUB]; pub := work[HDK_PUB..<HDK_CHILD];
@@ -365,7 +365,7 @@ chapter 33's; here a path is the list of numbers.
 ```jai
 // One child of the node in work's node slot, in place: CKDpriv for a
 // private node, CKDpub for a public one. The kind is public.
-hdk_ckd :: (index: int, work: [] u8) -> int {
+hdk_ckd :: (index: int, work: [] u8) -> int #effects(all) {
   node := work[HDK_NODE..<HDK_NODE + BIP32_NODE_BYTES];
   kind := hdk_check(node);
   if kind < 0 { return kind; }
@@ -376,7 +376,7 @@ hdk_ckd :: (index: int, work: [] u8) -> int {
 // The master node of a 16- to 64-byte seed into node, xprv or, for the
 // test networks, tprv. Returns 78 or a refusal, and writes node only on
 // success. work comes back as zeros.
-bip32_master_ct :: (seed: [] u8, testnet: bool, work: [] u8, node: [] u8) -> int #export_c {
+bip32_master_ct :: (seed: [] u8, testnet: bool, work: [] u8, node: [] u8) -> int #export_c #effects(all) {
   if seed.count < 16 || seed.count > 64 { return BIP32_BAD_SIZE; }
   if node.count < BIP32_NODE_BYTES || work.count < BIP32_WORK_BYTES { return BIP32_CAPACITY; }
   result := hdk_master(seed, testnet, work);
@@ -388,7 +388,7 @@ bip32_master_ct :: (seed: [] u8, testnet: bool, work: [] u8, node: [] u8) -> int
 // parent itself. Returns 78 or a refusal, and writes child only on
 // success. work comes back as zeros, except after BIP32_BAD_SIZE,
 // BIP32_CAPACITY and BIP32_BAD_INDEX, which refuse before using it.
-bip32_ckd_ct :: (parent: [] u8, index: int, work: [] u8, child: [] u8) -> int #export_c {
+bip32_ckd_ct :: (parent: [] u8, index: int, work: [] u8, child: [] u8) -> int #export_c #effects(all) {
   if parent.count != BIP32_NODE_BYTES { return BIP32_BAD_SIZE; }
   if child.count < BIP32_NODE_BYTES || work.count < BIP32_WORK_BYTES { return BIP32_CAPACITY; }
   if index < 0 || index > 4294967295 { return BIP32_BAD_INDEX; }
@@ -400,7 +400,7 @@ bip32_ckd_ct :: (parent: [] u8, index: int, work: [] u8, child: [] u8) -> int #e
 }
 // The node at a list of indexes below parent, into node. An empty list
 // gives parent back after checking its version and key byte.
-bip32_descend_ct :: (parent: [] u8, indexes: [] int, work: [] u8, node: [] u8) -> int #export_c {
+bip32_descend_ct :: (parent: [] u8, indexes: [] int, work: [] u8, node: [] u8) -> int #export_c #effects(all) {
   if parent.count != BIP32_NODE_BYTES { return BIP32_BAD_SIZE; }
   if node.count < BIP32_NODE_BYTES || work.count < BIP32_WORK_BYTES { return BIP32_CAPACITY; }
   for index: indexes { if index < 0 || index > 4294967295 { return BIP32_BAD_INDEX; } }
@@ -488,7 +488,7 @@ is the fingerprint of its public node:
 ```jai
 // N(): the public node of a private one, into out: the version becomes
 // xpub or tpub and the key k*G. A public node comes back as it is.
-hdk_neuter_ct :: (work: [] u8) -> int {
+hdk_neuter_ct :: (work: [] u8) -> int #effects(all) {
   node := work[HDK_NODE..<HDK_NODE + BIP32_NODE_BYTES]; pub := work[HDK_PUB..<HDK_CHILD];  // mutant: equivalent (k*G fills the first 33 bytes of any longer slice)
   kind := hdk_check(node);
   if kind < 0 { return kind; }
@@ -500,7 +500,7 @@ hdk_neuter_ct :: (work: [] u8) -> int {
   }
   return BIP32_NODE_BYTES;
 }
-bip32_neuter_ct :: (node: [] u8, work: [] u8, out: [] u8) -> int #export_c {
+bip32_neuter_ct :: (node: [] u8, work: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if node.count != BIP32_NODE_BYTES { return BIP32_BAD_SIZE; }
   if out.count < BIP32_NODE_BYTES || work.count < BIP32_WORK_BYTES { return BIP32_CAPACITY; }
   for j: 0..<BIP32_NODE_BYTES { work[HDK_NODE + j] = node[j]; }
@@ -511,7 +511,7 @@ bip32_neuter_ct :: (node: [] u8, work: [] u8, out: [] u8) -> int #export_c {
 }
 // A node's fingerprint, the first 4 bytes of HASH160 of its public key,
 // into out[0..<4]. Its children carry it as their parent fingerprint.
-bip32_fingerprint_ct :: (node: [] u8, work: [] u8, out: [] u8) -> int #export_c {
+bip32_fingerprint_ct :: (node: [] u8, work: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if node.count != BIP32_NODE_BYTES { return BIP32_BAD_SIZE; }
   if out.count < 4 || work.count < BIP32_WORK_BYTES { return BIP32_CAPACITY; }
   for j: 0..<BIP32_NODE_BYTES { work[HDK_NODE + j] = node[j]; }
@@ -554,7 +554,7 @@ is a secret, so the encoder never branches on a byte or a digit:
 // all start 0x04, and every 82-byte value that starts with one of them is
 // at least 58^110 and below 58^111, so the text is always 111 characters.
 // Returns 111 or a refusal.
-hdk_encode_ct :: (work: [] u8, out: [] u8) -> int {
+hdk_encode_ct :: (work: [] u8, out: [] u8) -> int #effects(all) {
   node := work[HDK_NODE..<HDK_NODE + BIP32_NODE_BYTES]; b := work[HDK_TEXT..<HDK_NODE];  // mutant: equivalent (only the first 82 bytes are used)
   kind := hdk_check(node);
   if kind < 0 { return kind; }
@@ -575,7 +575,7 @@ hdk_encode_ct :: (work: [] u8, out: [] u8) -> int {
   for j: 0..<BIP32_TEXT { out[j] = b58_char_ct(cast(u64) out[j]); }
   return BIP32_TEXT;
 }
-bip32_encode_ct :: (node: [] u8, work: [] u8, out: [] u8) -> int #export_c {
+bip32_encode_ct :: (node: [] u8, work: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if node.count != BIP32_NODE_BYTES { return BIP32_BAD_SIZE; }
   if out.count < BIP32_TEXT || work.count < BIP32_WORK_BYTES { return BIP32_CAPACITY; }
   for j: 0..<BIP32_NODE_BYTES { work[HDK_NODE + j] = node[j]; }
@@ -598,7 +598,7 @@ the fields in a fixed order:
 // from 1 to n - 1 and a public key on the curve. The digits and the
 // checksum are read in constant time and become flags; the version, depth,
 // fingerprint, index and key byte are public, and each is checked in turn.
-hdk_decode_ct :: (text: string, work: [] u8) -> int {
+hdk_decode_ct :: (text: string, work: [] u8) -> int #effects(all) {
   if text.count != BIP32_TEXT { return BIP32_BAD_TEXT; }
   b := work[HDK_TEXT..<HDK_NODE]; sum := work[HDK_DATA..<HDK_DATA + 4];  // mutant: equivalent (only the first 82 and 4 bytes are used)
   for k: 0..<82 { b[k] = 0; }  // mutant: equivalent (the top byte times 58^111 has 2^759 as a factor and leaves the 82 bytes)
@@ -636,7 +636,7 @@ hdk_decode_ct :: (text: string, work: [] u8) -> int {
 }
 // An xprv, xpub, tprv or tpub into node. Returns 78 or a refusal, and
 // writes node only on success. work comes back as zeros.
-bip32_decode_ct :: (text: string, work: [] u8, node: [] u8) -> int #export_c {
+bip32_decode_ct :: (text: string, work: [] u8, node: [] u8) -> int #export_c #effects(all) {
   if node.count < BIP32_NODE_BYTES || work.count < BIP32_WORK_BYTES { return BIP32_CAPACITY; }
   result := hdk_decode_ct(text, work);
   if result > 0 { for j: 0..<BIP32_NODE_BYTES { node[j] = work[HDK_NODE + j]; } }  // mutant: equivalent (a result is 78 or negative)
@@ -750,12 +750,12 @@ The older interface is now a thin layer over the new procedures:
 <!-- source: coax/lib/crypto/bip32.coax older -->
 ```jai
 // The compressed public key (33 bytes) of a private key.
-bip32_public :: (key: [] u8, out: [] u8) -> bool #export_c {
+bip32_public :: (key: [] u8, out: [] u8) -> bool #export_c #effects(all) {
   if key.count != 32 || out.count < 33 { return false; }  // mutant: equivalent (a short key or out fails in hdk_point_ct anyway)
   return hdk_point_ct(key, out);
 }
 // The master key and chain code of a seed (16 to 64 bytes).
-bip32_master :: (seed: [] u8, key: [] u8, chain: [] u8) -> bool #export_c {
+bip32_master :: (seed: [] u8, key: [] u8, chain: [] u8) -> bool #export_c #effects(all) {
   if key.count != 32 || chain.count != 32 { return false; }
   work: [BIP32_WORK_BYTES] u8; node: [BIP32_NODE_BYTES] u8;
   ok := bip32_master_ct(seed, false, work[..], node[..]) > 0;  // mutant: equivalent (the version isn't copied out, and a result is 78 or negative)
@@ -764,7 +764,7 @@ bip32_master :: (seed: [] u8, key: [] u8, chain: [] u8) -> bool #export_c {
 }
 // The child at index (0 .. 2^32-1; BIP32_HARDENED and up is hardened) of
 // key and chain, into key_out and chain_out.
-bip32_child :: (key: [] u8, chain: [] u8, index: int, key_out: [] u8, chain_out: [] u8) -> bool #export_c {
+bip32_child :: (key: [] u8, chain: [] u8, index: int, key_out: [] u8, chain_out: [] u8) -> bool #export_c #effects(all) {
   if key.count != 32 || chain.count != 32 || key_out.count != 32 || chain_out.count != 32 { return false; }
   work: [BIP32_WORK_BYTES] u8; node: [BIP32_NODE_BYTES] u8;
   hdk_put32(node[..], HDK_VERSION, BIP32_XPRV);
@@ -775,7 +775,7 @@ bip32_child :: (key: [] u8, chain: [] u8, index: int, key_out: [] u8, chain_out:
 }
 // A path of indexes from a seed's master, into key and chain, which are
 // zeroed on a refusal.
-bip32_path :: (seed: [] u8, path: [] int, key: [] u8, chain: [] u8) -> bool #export_c {
+bip32_path :: (seed: [] u8, path: [] int, key: [] u8, chain: [] u8) -> bool #export_c #effects(all) {
   if key.count != 32 || chain.count != 32 { return false; }
   work: [BIP32_WORK_BYTES] u8; node: [BIP32_NODE_BYTES] u8;
   ok := bip32_master_ct(seed, false, work[..], node[..]) > 0 && bip32_descend_ct(node[..], path, work[..], node[..]) > 0;  // mutant: equivalent (the version isn't copied out, and a result is 78 or negative)
@@ -784,7 +784,7 @@ bip32_path :: (seed: [] u8, path: [] int, key: [] u8, chain: [] u8) -> bool #exp
   return ok;
 }
 // Copies a node's key and chain code out when ok, and zeroes the node.
-hdk_split :: (ok: bool, node: [] u8, key: [] u8, chain: [] u8) {
+hdk_split :: (ok: bool, node: [] u8, key: [] u8, chain: [] u8) #effects(all) {
   if ok { for j: 0..<32 { key[j] = node[HDK_KEY + 1 + j]; chain[j] = node[HDK_CHAIN + j]; } }
   for j: 0..<BIP32_NODE_BYTES { node[j] = 0; }
 }

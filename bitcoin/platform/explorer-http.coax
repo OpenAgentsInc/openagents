@@ -12,7 +12,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/net/socket_foreign.coax";
 #import "Basic";
-cxtool_out_flush :: () -> int #foreign;
+cxtool_out_flush :: () -> int #foreign #effects(all);
 
 ExplorerServer :: struct {
   table: [] u8; external: bool; mask: u64; log: [268435456] u8; used: int; loaded: bool; size: int; stamp: int;

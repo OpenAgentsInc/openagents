@@ -33,7 +33,7 @@ the grouped path off.
 
 <!-- source: psionic/lib/deepseek/prefill-plan.coax chunk -->
 ```jai
-dp_chunk :: (c:DpChunkConfig,remaining:int)->DpChunk #export_c {
+dp_chunk :: (c:DpChunkConfig,remaining:int)->DpChunk #export_c #effects(all) {
     if !dp_batch(c.max_chunk) || (!c.serial && c.max_chunk==1) || !dp_positive_cost(c.bytes_per_token) || !dp_nonnegative(c.fixed_ns) || !dp_positive_cost(c.token_ns) || !dp_nonnegative(c.expert_ns) || !dp_positive_cost(c.target_ns) || !dp_memory(c.workspace) || !dp_expert_k(c.experts,c.k) || !dp_prefix(remaining) || remaining==0 {return DpChunk.{status=DsStatus.shape};}
     cap:=dp_min(c.max_chunk,remaining);cap=dp_min(cap,c.workspace/c.bytes_per_token);if c.serial {cap=dp_min(cap,1);}
     low:=0;high:=cap+1;while low+1<high {middle:=(low+high)/2;if dp_cost(c,middle)<=c.target_ns {low=middle;}else {high=middle;}}
@@ -78,7 +78,7 @@ the grouping metadata. Dirty work and spare tails are tested explicitly.
 
 <!-- source: psionic/lib/deepseek/prefill-groups.coax group -->
 ```jai
-dp_groups :: (experts:int,batch:int,k:int,ids:[]int,weights:[]f32,order:[]int,offsets:[]int,keys:[]int,order_stage:[]int,offset_stage:[]int,key_stage:[]int,overlap:bool)->DpResult #export_c {
+dp_groups :: (experts:int,batch:int,k:int,ids:[]int,weights:[]f32,order:[]int,offsets:[]int,keys:[]int,order_stage:[]int,offset_stage:[]int,key_stage:[]int,overlap:bool)->DpResult #export_c #effects(all) {
     status:=dp_routes(experts,batch,k,ids,weights);if status!=DsStatus.ok {return DpResult.{status=status};}n:=batch*k;
     if order.count<n || offsets.count<experts+1 || keys.count<experts || order_stage.count<n || offset_stage.count<experts+1 || key_stage.count<experts {return DpResult.{status=DsStatus.capacity};}if overlap {return DpResult.{status=DsStatus.alias};}
     for i:0..<experts+1 {offset_stage[i]=0;}for id:ids {offset_stage[id+1]+=1;}for e:1..<experts {offset_stage[e+1]+=offset_stage[e];}
@@ -115,7 +115,7 @@ private flags instead of a public partial result.
 
 <!-- source: psionic/lib/deepseek/prefill-kernels.coax product -->
 ```jai
-dpkg_project :: (item:int,kind:int,rows:int,columns:int,batch:int,data:[]u8,scales:[]u8,input:[]f64,out:[]f32,flags:[]u8) #export_c {
+dpkg_project :: (item:int,kind:int,rows:int,columns:int,batch:int,data:[]u8,scales:[]u8,input:[]f64,out:[]f32,flags:[]u8) #export_c #effects(all) {
     row:=item%rows;first:=(item/rows)*8;sums:[8]f64;errors:[8]f64;bad:u8=0;
     for col:0..<columns {at:=row*columns+col;
         code:=data[ifx kind==0 then at/2 else at];scale:=scales[ifx kind==0 then at/32 else (row/32)*(columns/32)+col/32];
@@ -137,7 +137,7 @@ different width/hidden roles and expose exact private view extents.
 
 <!-- source: psionic/lib/deepseek/prefill-products.coax expert -->
 ```jai
-dp_expert :: (e:DeExpert,batch:int,x:[]f32,routes:[]f32,limit:f32,out:[]f32,work:DpWork,overlap:bool)->DpResult #export_c {
+dp_expert :: (e:DeExpert,batch:int,x:[]f32,routes:[]f32,limit:f32,out:[]f32,work:DpWork,overlap:bool)->DpResult #export_c #effects(all) {
     p:=dp_plan(e,batch);if p.status!=DsStatus.ok {return DpResult.{status=p.status};}n:=batch*p.width;
     if x.count!=n || routes.count!=batch || out.count<n || work.floats.count<p.floats || work.wide.count<p.wide || work.flags.count<p.flags {return DpResult.{status=DsStatus.capacity};}if overlap {return DpResult.{status=DsStatus.alias};}
     if !de_control(limit) {return DpResult.{status=DsStatus.number};}for route:routes {if !de_control(route) {return DpResult.{status=DsStatus.number};}}

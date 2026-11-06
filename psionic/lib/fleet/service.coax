@@ -20,11 +20,11 @@
     #assert !mf_free_service(pd_swap(out[..],PB_CONTENT,"\"price_hint_msat\":null","\"price_hint_msat\":\"0\""),PB_KEY,PB_IDENTITY);
     #assert !mf_free_service(pd_swap(out[..],PB_CONTENT,"\"price_hint_msat\":null","\"price_hint_msat\":0.0"),PB_KEY,PB_IDENTITY);
 }
-mf_contains :: (raw:string,value:string)->bool {
+mf_contains :: (raw:string,value:string)->bool #effects(all) {
     if !json_valid(raw) {return false;}j:[1]Json;json_start(j[..],raw);if json_next(j[..])!=JSON_ARRAY {return false;}found:=false;
     t:=json_next(j[..]);while t!=JSON_ARRAY_END {if t!=JSON_STRING {return false;}if json_is(json_text(j[..]),value) {found=true;}t=json_next(j[..]);}return found;
 }
-mf_free_service :: (content:string,provider:string,identity:string)->bool #export_c {
+mf_free_service :: (content:string,provider:string,identity:string)->bool #export_c #effects(all) {
     settlement:=mf_get(content,"settlement");services:=mf_get(content,"services");
     if !settlement.ok || !mf_contains(settlement.raw,"free-v1") || !services.ok || services.token!=JSON_ARRAY {return false;}
     cap:[128]u8;n:=json_raw(cap[..],0,provider);n=json_raw(cap[..],n,":pylon/decision");
@@ -56,7 +56,7 @@ mf_free_service :: (content:string,provider:string,identity:string)->bool #expor
 // Reuse chapter16's checked header parser for framing: only the response's
 // fixed200 status line is replaced with that parser's known request line.
 // This does not turn response JSON into a request or select its identity.
-mf_local_http :: (text:string)->MfResult #export_c {
+mf_local_http :: (text:string)->MfResult #export_c #effects(all) {
     bad:MfResult;if pb_index(text,"HTTP/1.1 200 ")!=0 {return bad;}
     at:=pb_index(text,"\r\n\r\n");if at==-1 {return bad;}
     // The double CRLF guarantees that a first CRLF exists at or before at.

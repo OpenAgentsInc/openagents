@@ -15,7 +15,7 @@
   used=kv_delete_vartime(light[..],used,v[..]);used=kv_set_vartime(light[..],used,x[..],bad[0..<0]);#assert !kv_is_error(used) && lab_profile(light[..],used,5)==0;
   used=kv_delete_vartime(light[..],used,x[..]);e:=AXI_META;used=kv_delete_vartime(light[..],used,e[..]);#assert lab_profile(light[..],used,5)==0;
 }
-lab_profile :: (table:[]u8,used:int,chain:int)->int #export_c {
+lab_profile :: (table:[]u8,used:int,chain:int)->int #export_c #effects(all) {
   if vxi_context(table,used).code==CS_OK {return ifx cs_tip_vartime(table,used).chain==chain then 2 else 0;}
   v:=CS_META;x:=VXI_META;if kv_find_vartime(table,used,v[..]).found || kv_find_vartime(table,used,x[..]).found {return 0;}
   if axi_context_vartime(table,used)!=LC_OK {return 0;}return ifx lc_tip_vartime(table,used).chain==chain then 1 else 0;

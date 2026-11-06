@@ -265,9 +265,9 @@ recomputing uses 1,604 / 1,792 = 0.895.
 <!-- source: psionic/lib/train-compare.coax compare -->
 ```jai
 // FNV-1a over 64-bit words, for the identity's digests.
-tc_mix :: (h:u64,x:u64)->u64 {return mul_wrap(h^x,1099511628211);}
-tc_bytes :: (f:TcFootprint)->TcFootprint {r:=f;r.bytes=4*f.values+8*f.grads+f.flags;return r;}
-tc_same :: (a:TcIdentity,b:TcIdentity)->TcStatus {
+tc_mix :: (h:u64,x:u64)->u64 #effects(all) {return mul_wrap(h^x,1099511628211);}
+tc_bytes :: (f:TcFootprint)->TcFootprint #effects(all) {r:=f;r.bytes=4*f.values+8*f.grads+f.flags;return r;}
+tc_same :: (a:TcIdentity,b:TcIdentity)->TcStatus #effects(all) {
     if a.program!=b.program {return TcStatus.program;}
     if a.config!=b.config {return TcStatus.config;}
     if a.seed!=b.seed {return TcStatus.seed;}
@@ -276,19 +276,19 @@ tc_same :: (a:TcIdentity,b:TcIdentity)->TcStatus {
     return TcStatus.ok;
 }
 // Two-pass and Welford agree to a part in a billion of the mean.
-tc_agree :: (x:CmStats,y:CmStats)->bool {
+tc_agree :: (x:CmStats,y:CmStats)->bool #effects(all) {
     return abs(x.mean-y.mean)<=1e-9*x.mean && abs(x.sd-y.sd)<=1e-9*x.mean;
 }
 // Steps n at which b's extra one-off cost is paid back: the least n >= 1
 // with n * mean_a >= extra + n * mean_b. Never (-1) unless b's step is faster.
-tc_break_even :: (extra:int,mean_a:f64,mean_b:f64)->int {
+tc_break_even :: (extra:int,mean_a:f64,mean_b:f64)->int #effects(all) {
     if mean_b>=mean_a {return -1;}
     if extra<=0 {return 1;}
     q:=f64(extra)/(mean_a-mean_b);n:=cast(int)q;
     if f64(n)<q {n+=1;}
     return n;
 }
-tc_report :: (a:TcSide,ta:[]int,b:TcSide,tb:[]int)->TcReport {
+tc_report :: (a:TcSide,ta:[]int,b:TcSide,tb:[]int)->TcReport #effects(all) {
     r:=TcReport.{status=tc_same(a.identity,b.identity),break_even=-1};
     if r.status!=TcStatus.ok {return r;}
     r.a=cm_two_pass(ta);r.b=cm_two_pass(tb);r.wa=cm_welford(ta);r.wb=cm_welford(tb);

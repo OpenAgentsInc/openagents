@@ -58,7 +58,7 @@ current pre coefficients as the carry for the next sub-block.
 
 <!-- source: psionic/lib/deepseek/hyper.coax prepare -->
 ```jai
-dh_prepare :: (width:int,x:[]f32,previous:DhCarry,w:DhWeights,out:[]f32,stage:[]f32,overlap:bool)->DhMixResult #export_c {
+dh_prepare :: (width:int,x:[]f32,previous:DhCarry,w:DhWeights,out:[]f32,stage:[]f32,overlap:bool)->DhMixResult #export_c #effects(all) {
     if !dh_width(width) {return DhMixResult.{status=DsStatus.shape};}
     if out.count<width || stage.count<width {return DhMixResult.{status=DsStatus.capacity};}
     if overlap {return DhMixResult.{status=DsStatus.alias};}

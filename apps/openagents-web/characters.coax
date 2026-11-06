@@ -99,10 +99,10 @@ Chars :: struct {
 }
 Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
 
-coaxial_chars_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_chars_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_chars_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
-coaxial_chars_inbox_cap :: () -> int #export_c { return INBOX; }
+coaxial_chars_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_chars_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_chars_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
+coaxial_chars_inbox_cap :: () -> int #export_c #effects(all) { return INBOX; }
 
 // ---- strokes (font.coax draws words with these)
 
@@ -346,7 +346,7 @@ take_link :: (c: [] Chars, hash: string) {
   emote(c, who, slot);
   say(c, "PLAYING YOUR MOTION · ", verse_motion_name(m), false);
 }
-coaxial_chars_hash :: (c: [] Chars, length: int) #export_c {
+coaxial_chars_hash :: (c: [] Chars, length: int) #export_c #effects(all) {
   n := clamp(cast(f32) length, 0, cast(f32) INBOX);
   count := cast(int) n;
   if !c[0].built {
@@ -474,7 +474,7 @@ slider_at :: (c: [] Chars, x: f32, y: f32) -> int {
 
 // ---- the frame
 
-coaxial_chars_frame :: (c: [] Chars, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+coaxial_chars_frame :: (c: [] Chars, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if !c[0].built { build(c); }
   step_dt := clamp(ifx finite(dt) then dt else 0, 0, 0.1);
   if still { step_dt = 0; }
@@ -605,7 +605,7 @@ button_at :: (c: [] Chars, x: f32, y: f32) -> int {
   for i: 0..<BUTTONS { if c[0].shown[i] && inside(c[0].boxes[i], x, y) { return i; } }
   return -1;
 }
-coaxial_chars_pointer :: (c: [] Chars, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+coaxial_chars_pointer :: (c: [] Chars, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if kind == 1 { c[0].touch = true; }
   if phase == 0 {
     c[0].idle = 0;
@@ -642,11 +642,11 @@ coaxial_chars_pointer :: (c: [] Chars, x: f32, y: f32, phase: int, kind: int, id
   }
   return true;
 }
-coaxial_chars_wheel :: (c: [] Chars, dy: f32) #export_c {
+coaxial_chars_wheel :: (c: [] Chars, dy: f32) #export_c #effects(all) {
   c[0].dist = clamp(c[0].dist * exp(clamp(dy, -200, 200) * 0.0015), 2.5, 16);
   c[0].idle = 0;
 }
-coaxial_chars_key :: (c: [] Chars, key: int, mods: int) -> bool #export_c {
+coaxial_chars_key :: (c: [] Chars, key: int, mods: int) -> bool #export_c #effects(all) {
   c[0].idle = 0;
   if key == '1' { act(c, BTN_STAND); return true; }
   if key == '2' { act(c, BTN_WALK); return true; }
@@ -659,7 +659,7 @@ coaxial_chars_key :: (c: [] Chars, key: int, mods: int) -> bool #export_c {
   if key == -4 { c[0].chosen = (c[0].chosen + c[0].fig_n - 1) % (ifx c[0].fig_n > 0 then c[0].fig_n else 1); return true; }
   return false;
 }
-coaxial_chars_cursor :: (c: [] Chars) -> int #export_c { return ifx c[0].hover >= 0 then 1 else 0; }
+coaxial_chars_cursor :: (c: [] Chars) -> int #export_c #effects(all) { return ifx c[0].hover >= 0 then 1 else 0; }
 
 #test "the cast is built once, and a gait change walks the chosen figure off" {
   cs: [1] Chars; c := cs[..];

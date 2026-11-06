@@ -8,14 +8,14 @@
 #load "../../verse/style-preset.coax";
 
 // The variant a name says (pastoral, action, dusk, neon), -1 for none of them.
-animelab_style_variant :: (name: string) -> int #export_c { return verse_style_anime_variant(name); }
+animelab_style_variant :: (name: string) -> int #export_c #effects(all) { return verse_style_anime_variant(name); }
 // The anime block for `variant` at `clock`, on a phone or not, into out (STYLE_FLOATS); false when
 // the variant is unknown.
-animelab_style_block :: (variant: int, phone: bool, clock: f32, out: [] f32) -> bool #export_c {
+animelab_style_block :: (variant: int, phone: bool, clock: f32, out: [] f32) -> bool #export_c #effects(all) {
   p := verse_style_anime(variant, ifx phone then STYLE_PHONE else STYLE_DESKTOP);
   return verse_style_at(p, clock, out);
 }
-animelab_style_floats :: () -> int #export_c { return STYLE_FLOATS; }
+animelab_style_floats :: () -> int #export_c #effects(all) { return STYLE_FLOATS; }
 
 #test "the action variant's block just after sunset: anime, its ink, its key light" {
   out: [STYLE_FLOATS] f32;

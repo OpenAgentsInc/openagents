@@ -2,7 +2,7 @@
 
 // Native-only verification adapter. Its arrays are fixed by the C harness.
 collision_checked :: (boxes: [] f32, bodies: [] f32, floors: [] f32, input: [] f32,
-                       dx: f32, dz: f32, output: [] f32) -> int #export_c {
+                       dx: f32, dz: f32, output: [] f32) -> int #export_c #effects(all) {
   if input.count != 6 || output.count != 8 { return -1; }
   c := Colliders.{boxes = boxes, capsules = bodies, floors = floors};
   p: CollideProfile;

@@ -20,11 +20,11 @@ GS_FAN :: 32;         // lists one merge item reads
 
 // book:begin order
 // Chapter 53's order: higher logit first; equal logits go to the lower ID.
-gs_before :: (logits:[]f32,a:int,b:int)->bool {return logits[a]>logits[b] || (logits[a]==logits[b] && a<b);}
+gs_before :: (logits:[]f32,a:int,b:int)->bool #effects(all) {return logits[a]>logits[b] || (logits[a]==logits[b] && a<b);}
 // Insert an ID into a list kept in that order, at most list.count long.
 // Returns the new length. A full list drops its last entry when the new ID
 // goes before it.
-gs_insert :: (logits:[]f32,id:int,list:[]int,count:int)->int {
+gs_insert :: (logits:[]f32,id:int,list:[]int,count:int)->int #effects(all) {
     k:=list.count;
     if count==k && !gs_before(logits,id,list[k-1]) {return count;}
     at:=count;if count==k {at=k-1;}
@@ -34,15 +34,15 @@ gs_insert :: (logits:[]f32,id:int,list:[]int,count:int)->int {
 // Lists live in one buffer: list L holds ids[L*k ..< L*k+k] and counts[L].
 // One item keeps the first k IDs of its `part` logits in order and flags a
 // logit chapter 53 would refuse.
-gs_top_part :: (item:int,part:int,k:int,logits:[]f32,ids:[]int,counts:[]int,flags:[]u8) #export_c {
+gs_top_part :: (item:int,part:int,k:int,logits:[]f32,ids:[]int,counts:[]int,flags:[]u8) #export_c #effects(all) {
     count:=0;bad:u8=0;first:=item*part;
     for j:0..<part {i:=first+j;if i<logits.count {if (f32_bits(logits[i])&0x7fffffff)>GS_LOGIT_LAST {bad=1;}count=gs_insert(logits,i,ids[item*k..<item*k+k],count);}}
     counts[item]=count;flags[item]=bad;
 }
-gs_min :: (a:int,b:int)->int {return (a+b-cast(int)abs(f64(a-b)))/2;}
+gs_min :: (a:int,b:int)->int #effects(all) {return (a+b-cast(int)abs(f64(a-b)))/2;}
 // One item merges up to GS_FAN of the `lists` lists that start at list
 // `from` into the first k of their union, written as list `to` + item.
-gs_top_merge :: (item:int,from:int,lists:int,to:int,k:int,logits:[]f32,ids:[]int,counts:[]int,flags:[]u8) #export_c {
+gs_top_merge :: (item:int,from:int,lists:int,to:int,k:int,logits:[]f32,ids:[]int,counts:[]int,flags:[]u8) #export_c #effects(all) {
     heads:[GS_FAN]int;base:=from+item*GS_FAN;n:=gs_min(lists-item*GS_FAN,GS_FAN);bad:u8=0;
     for j:0..<n {bad|=flags[base+j];}
     count:=0;
@@ -58,13 +58,13 @@ gs_top_merge :: (item:int,from:int,lists:int,to:int,k:int,logits:[]f32,ids:[]int
 
 // book:begin pick
 // splitmix64-top53-v1 (chapter 64), the same words as cr_bits.
-gs_bits :: (seed:u64,counter:u64)->u64 {
+gs_bits :: (seed:u64,counter:u64)->u64 #effects(all) {
     z:=add_wrap(seed,mul_wrap((cast(u64)0x9e3779b97f4a7c15),add_wrap(counter,(cast(u64)1))));
     z=mul_wrap(z^(z>>30),(cast(u64)0xbf58476d1ce4e5b9));z=mul_wrap(z^(z>>27),(cast(u64)0x94d049bb133111eb));return z^(z>>31);
 }
 // nx_pick on the kept IDs in ascending ID order: the first whose running
 // mass exceeds the uniform, else the last with positive mass.
-gs_choose :: (uniform:f64,ids:[]int,mass:[]f64,take:int)->int {
+gs_choose :: (uniform:f64,ids:[]int,mass:[]f64,take:int)->int #effects(all) {
     running:=0.0;
     for i:0..<take {running+=mass[i];if uniform<running {return ids[i];}}
     for step:0..<take {i:=take-1-step;if mass[i]>0 {return ids[i];}}
@@ -72,7 +72,7 @@ gs_choose :: (uniform:f64,ids:[]int,mass:[]f64,take:int)->int {
 }
 // One item: weights, top-p, the draw, then the control words. The final
 // list is list `from`. The draw's counter is the emitted count, control[3].
-gs_pick :: (item:int,from:int,k:int,temperature_bits:int,top_p_bits:int,seed:int,limit:int,logits:[]f32,ids:[]int,counts:[]int,flags:[]u8,weights:[]f64,sorted:[]int,by_id:[]f64,control:[]int,emitted_ids:[]int) #export_c {
+gs_pick :: (item:int,from:int,k:int,temperature_bits:int,top_p_bits:int,seed:int,limit:int,logits:[]f32,ids:[]int,counts:[]int,flags:[]u8,weights:[]f64,sorted:[]int,by_id:[]f64,control:[]int,emitted_ids:[]int) #export_c #effects(all) {
     // One item decides; any other item of the launch does nothing.
     if item!=0 || control[0]!=0 {return;}
     if flags[from]!=0 {control[0]=GS_NUMBER;return;}
@@ -96,42 +96,42 @@ gs_pick :: (item:int,from:int,k:int,temperature_bits:int,top_p_bits:int,seed:int
 // book:begin position
 // A step after a stop, or after a refused step, keeps the refusal and runs
 // nothing that reads the position.
-gs_begin :: (item:int,vocab:int,capacity:int,control:[]int) #export_c {
+gs_begin :: (item:int,vocab:int,capacity:int,control:[]int) #export_c #effects(all) {
     if control[0]!=0 {return;}
     if control[4]!=0 {control[0]=GS_STOPPED;return;}
     if control[2]<0 || control[2]>=capacity {control[0]=9;}
     if control[1]<0 || control[1]>=vocab {control[0]=7;control[1]=0;}
 }
 // Sliding layers pass their window; full layers pass 0.
-gs_first :: (position:int,window:int)->int {if window>0 && position>=window {return position+1-window;}return 0;}
-gs_rotate :: (item:int,heads:int,kv_heads:int,qkv:[]f32,rope:[]f32,pending:[]f32,flags:[]u8,control:[]int) #export_c {
+gs_first :: (position:int,window:int)->int #effects(all) {if window>0 && position>=window {return position+1-window;}return 0;}
+gs_rotate :: (item:int,heads:int,kv_heads:int,qkv:[]f32,rope:[]f32,pending:[]f32,flags:[]u8,control:[]int) #export_c #effects(all) {
     if control[0]!=0 {return;}gk_rotate(item,heads,kv_heads,control[2],qkv,rope,pending,flags);
 }
 // Launched over heads × the largest visible span; items past the span return.
-gs_scores :: (item:int,heads:int,kv_heads:int,window:int,capacity:int,stride:int,qkv:[]f32,cache:[]f32,pending:[]f32,scores:[]f32,control:[]int) #export_c {
+gs_scores :: (item:int,heads:int,kv_heads:int,window:int,capacity:int,stride:int,qkv:[]f32,cache:[]f32,pending:[]f32,scores:[]f32,control:[]int) #export_c #effects(all) {
     if control[0]!=0 {return;}position:=control[2];first:=gs_first(position,window);
     if item>=heads*(position-first+1) {return;}gk_scores(item,heads,kv_heads,position,first,capacity,stride,qkv,cache,pending,scores);
 }
-gs_prepare :: (item:int,window:int,stride:int,sinks:[]u16,scores:[]f32,denominators:[]f64,flags:[]u8,control:[]int) #export_c {
+gs_prepare :: (item:int,window:int,stride:int,sinks:[]u16,scores:[]f32,denominators:[]f64,flags:[]u8,control:[]int) #export_c #effects(all) {
     if control[0]!=0 {return;}position:=control[2];gk_softmax_prepare(item,position-gs_first(position,window)+1,stride,sinks,scores,denominators,flags);
 }
-gs_divide :: (item:int,heads:int,window:int,stride:int,denominators:[]f64,scores:[]f32,control:[]int) #export_c {
+gs_divide :: (item:int,heads:int,window:int,stride:int,denominators:[]f64,scores:[]f32,control:[]int) #export_c #effects(all) {
     if control[0]!=0 {return;}position:=control[2];visible:=position-gs_first(position,window)+1;
     if item>=heads*visible {return;}gk_softmax_divide(item,visible,stride,denominators,scores);
 }
-gs_context :: (item:int,heads:int,kv_heads:int,window:int,capacity:int,stride:int,lanes:int,scores:[]f32,cache:[]f32,pending:[]f32,partial:[]f32,control:[]int) #export_c {
+gs_context :: (item:int,heads:int,kv_heads:int,window:int,capacity:int,stride:int,lanes:int,scores:[]f32,cache:[]f32,pending:[]f32,partial:[]f32,control:[]int) #export_c #effects(all) {
     if control[0]!=0 {return;}position:=control[2];
     gk_context_part(item,heads,kv_heads,position,gs_first(position,window),capacity,stride,lanes,scores,cache,pending,partial);
 }
 // book:end position
 
 // book:begin replay
-gs_lists :: (n:int,part:int)->int {return (n+part-1)/part;}
-gs_up :: (lists:int)->int {return (lists+GS_FAN-1)/GS_FAN;}
+gs_lists :: (n:int,part:int)->int #effects(all) {return (n+part-1)/part;}
+gs_up :: (lists:int)->int #effects(all) {return (lists+GS_FAN-1)/GS_FAN;}
 // The sampler's launches replayed on the CPU, item by item: one list per
 // `part` logits, merges of GS_FAN lists until one remains, then the pick.
 // Returns the final list.
-gs_sample_cpu :: (logits:[]f32,part:int,k:int,temperature:f64,top_p:f64,seed:int,limit:int,ids:[]int,counts:[]int,flags:[]u8,weights:[]f64,sorted:[]int,by_id:[]f64,control:[]int,emitted:[]int)->int {
+gs_sample_cpu :: (logits:[]f32,part:int,k:int,temperature:f64,top_p:f64,seed:int,limit:int,ids:[]int,counts:[]int,flags:[]u8,weights:[]f64,sorted:[]int,by_id:[]f64,control:[]int,emitted:[]int)->int #effects(all) {
     n:=gs_lists(logits.count,part);from:=0;
     for i:0..<n {gs_top_part(i,part,k,logits,ids,counts,flags);}
     while n>1 {m:=gs_up(n);for i:0..<m {gs_top_merge(i,from,n,from+n,k,logits,ids,counts,flags);}from+=n;n=m;}
@@ -141,7 +141,7 @@ gs_sample_cpu :: (logits:[]f32,part:int,k:int,temperature:f64,top_p:f64,seed:int
 // book:end replay
 
 GsScratch :: struct {ids:[]int;counts:[]int;flags:[]u8;weights:[]f64;sorted:[]int;by_id:[]f64;}
-gs_run :: (x:[]f32,part:int,k:int,temperature:f64,top_p:f64,seed:int,limit:int,s:GsScratch,control:[]int,emitted:[]int)->int {
+gs_run :: (x:[]f32,part:int,k:int,temperature:f64,top_p:f64,seed:int,limit:int,s:GsScratch,control:[]int,emitted:[]int)->int #effects(all) {
     return gs_sample_cpu(x,part,k,temperature,top_p,seed,limit,s.ids,s.counts,s.flags,s.weights,s.sorted,s.by_id,control,emitted);
 }
 

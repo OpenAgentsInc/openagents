@@ -1,0 +1,4 @@
+// expect: E0317
+#load "../../lib/handle.coax";
+ship :: (h: Handle(HandlePlayer)) {}
+main :: () { ship(3); }

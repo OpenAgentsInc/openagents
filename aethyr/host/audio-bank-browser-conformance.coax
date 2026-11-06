@@ -8,14 +8,14 @@ AUDIO_BANK_BROWSER_WORDS :: 54;
 #forall "every measured browser bank and packet field is required" field:0..<54 {
  rows:=hpbb_fixture();rows[field]+=1;#assert !hpbb_accept(rows[..]);
 }
-hpbb_expected :: ()->[54]int {
+hpbb_expected :: ()->[54]int #effects(all) {
  // mode, bank status, count, pulse bytes, pulse2 bytes, packet status,
  // exactly one draining read, one positive drain and no pending packet.
  return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
   2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
   4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
 }
-hpbb_accept :: (rows:[]int)->bool #export_c {
+hpbb_accept :: (rows:[]int)->bool #export_c #effects(all) {
  if rows.count!=AUDIO_BANK_BROWSER_WORDS {return false;}expected:=hpbb_expected();
  for value,i:expected {if rows[i]!=value {return false;}}return true;
 }

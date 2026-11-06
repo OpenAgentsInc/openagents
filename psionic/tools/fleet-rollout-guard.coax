@@ -4,7 +4,7 @@
 #load "fleet-rollout-snapshot-policy.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     args:[1]Args;if !args_load(args[..]) || args[0].n!=11 {tool_errln("usage: fleet-rollout-guard candidate|promoted SERVICE TARGET OLD IMAGE BEFORE AFTER REVISION IAM_BEFORE IAM_AFTER OLD_REVISION");return 2;}
     mode:=args_at(args[..],0);phase:=ifx mode=="candidate" then 0 else ifx mode=="promoted" then 1 else -1;
     service:=args_at(args[..],1);target:=args_at(args[..],2);old:=args_at(args[..],3);image:=args_at(args[..],4);

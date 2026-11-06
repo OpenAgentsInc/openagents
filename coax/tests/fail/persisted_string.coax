@@ -1,0 +1,3 @@
+// expect: E0970
+Saved :: struct #persisted { name: string; }
+main :: () {}

@@ -24,15 +24,15 @@ CF_CAP :: 256; CF_EVERY :: 5000; CF_BOUND :: 30000; CF_RESPONSE :: 6000;
   #assert !cf_fenced(1,"fenced",OwnerGeneration.{value=7},101,3,OwnerGeneration.{value=7},101,3)&&!cf_fenced(2,"applied",OwnerGeneration.{value=7},101,3,OwnerGeneration.{value=7},101,3);
   #assert !cf_fenced(2,"fenced",OwnerGeneration.{value=8},101,3,OwnerGeneration.{value=7},101,3)&&!cf_fenced(2,"fenced",OwnerGeneration.{value=7},102,3,OwnerGeneration.{value=7},101,3)&&!cf_fenced(2,"fenced",OwnerGeneration.{value=7},101,4,OwnerGeneration.{value=7},101,3);
 }
-cf_fenced :: (version:int,status:string,owner:OwnerGeneration,process:int,rev:int,want_owner:OwnerGeneration,want_process:int,want_rev:int)->bool {
+cf_fenced :: (version:int,status:string,owner:OwnerGeneration,process:int,rev:int,want_owner:OwnerGeneration,want_process:int,want_rev:int)->bool #effects(all) {
   return version==2&&status=="fenced"&&owner==want_owner&&process==want_process&&rev==want_rev;
 }
-cf_fresh :: (accepted:bool,age:int)->bool{return accepted&&age>=0&&age<CF_BOUND;}
-cf_reuse :: (live:bool,pending:bool,seated:bool,flying:bool)->bool{return !live||(!pending&&!seated&&!flying);}
-cf_ack :: (version:int,status:string,owner:OwnerGeneration,process:int,rev:int,at:int,want_owner:OwnerGeneration,want_process:int,want_rev:int)->bool {
+cf_fresh :: (accepted:bool,age:int)->bool #effects(all) {return accepted&&age>=0&&age<CF_BOUND;}
+cf_reuse :: (live:bool,pending:bool,seated:bool,flying:bool)->bool #effects(all) {return !live||(!pending&&!seated&&!flying);}
+cf_ack :: (version:int,status:string,owner:OwnerGeneration,process:int,rev:int,at:int,want_owner:OwnerGeneration,want_process:int,want_rev:int)->bool #effects(all) {
   return version==2&&(status=="applied"||status=="duplicate")&&owner==want_owner&&process==want_process&&rev==want_rev&&at>0;
 }
-cf_wait :: (tries:int,salt:int)->int {
+cf_wait :: (tries:int,salt:int)->int #effects(all) {
   half:=500;if tries==2{half=1000;}else if tries==3{half=2000;}else if tries>=4{half=2500;}
   return half+salt%(half+1);
 }

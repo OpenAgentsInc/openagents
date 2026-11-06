@@ -108,26 +108,26 @@ CF_Context :: struct {c:CK_Context;flow:RF_Context;state:[]CF_State;}
  nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[5]=CK_Node.{kind=CK_Tag.stmt_range,a=6,b=7,c=8};nodes[6]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[7]=nodes[6];nodes[8]=CK_Node.{kind=CK_Tag.stmt_block,head=9};nodes[9]=CK_Node.{kind=CK_Tag.stmt_expr,a=10};nodes[10]=CK_Node.{kind=CK_Tag.expr_or_else,type=11,a=11,b=12};nodes[11]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3,loc=CK_Loc.{line=93,column=13}};nodes[12]=nodes[6];
  CF_stmt(f,5);#assert !ck[0].fatal && ck[0].error_count==1 && errors[0].code=="E0909" && errors[0].loc.line==93 && errors[0].loc.column==13 && ck[0].depth==0;
 }
-CF_result :: (c:CK_Context,t:int)->bool {return c.types[t].kind==CK_Kind.result;}
-CF_has_results :: (c:CK_Context)->bool {for i:16..<c.state[0].type_count {if CF_result(c,i) {return true;}}return false;}
-CF_ok :: (f:CF_Context)->bool {return !f.c.state[0].fatal && f.c.state[0].error_count==0 && f.flow.state[0].reason==RF_Reason.ok;}
+CF_result :: (c:CK_Context,t:int)->bool #effects(all) {return c.types[t].kind==CK_Kind.result;}
+CF_has_results :: (c:CK_Context)->bool #effects(all) {for i:16..<c.state[0].type_count {if CF_result(c,i) {return true;}}return false;}
+CF_ok :: (f:CF_Context)->bool #effects(all) {return !f.c.state[0].fatal && f.c.state[0].error_count==0 && f.flow.state[0].reason==RF_Reason.ok;}
 // No flow slots means inventory only; allocated slots enable registration.
-CF_collect :: (f:CF_Context,id:int,depth:int) {
+CF_collect :: (f:CF_Context,id:int,depth:int) #effects(all) {
  if id==0 {return;}n:=f.c.nodes[id];if !CK_enter(f.c,n.loc) {return;}defer CK_leave(f.c);
  if n.kind==CK_Tag.stmt_var && CF_result(f.c,n.type) {if f.flow.count>0 {ignored:=RF_register(f.flow,f.state[0].collected,id,depth);}f.state[0].collected+=1;}
  if n.kind==CK_Tag.stmt_block {at:=n.head;while at!=0 {CF_collect(f,at,depth+1);at=f.c.nodes[at].next;}}
  else if n.kind==CK_Tag.stmt_if {CF_collect(f,n.c,depth);CF_collect(f,n.d,depth);}
- else if n.kind==CK_Tag.stmt_while || n.kind==CK_Tag.stmt_range || n.kind==CK_Tag.stmt_each || n.kind==CK_Tag.stmt_defer {CF_collect(f,n.c,depth);}
+ else if n.kind==CK_Tag.stmt_while || n.kind==CK_Tag.stmt_range || n.kind==CK_Tag.stmt_each || n.kind==CK_Tag.stmt_defer || n.kind==CK_Tag.stmt_transaction {CF_collect(f,n.c,depth);}
  else if n.kind==CK_Tag.stmt_switch {at:=n.head;while at!=0 {CF_collect(f,f.c.nodes[at].b,depth);at=f.c.nodes[at].next;}}
 }
-CF_exit :: (f:CF_Context,scope:int,loc:CK_Loc) {
+CF_exit :: (f:CF_Context,scope:int,loc:CK_Loc) #effects(all) {
  if !CF_ok(f) {return;}if f.state[0].arguments {CK_error(f.c,loc,"E0907","try would abandon a pending Result argument before the call begins","");return;}
  for i:0..<f.flow.count {if RF_scope(f.flow,i)>=scope && RF_get(f.flow,i)==1 {CK_error(f.c,loc,"E0907","a Result remains pending on this exit","");return;}}
 }
-CF_join :: (f:CF_Context,base:int,loc:CK_Loc) {if CF_ok(f) && !RF_equal(f.flow,base) {if f.flow.state[0].reason==RF_Reason.ok {CK_error(f.c,loc,"E0909","continuing branches disagree about a Result transfer","");}}}
+CF_join :: (f:CF_Context,base:int,loc:CK_Loc) #effects(all) {if CF_ok(f) && !RF_equal(f.flow,base) {if f.flow.state[0].reason==RF_Reason.ok {CK_error(f.c,loc,"E0909","continuing branches disagree about a Result transfer","");}}}
 CF_Mode :: enum u8 {read;transfer;statement;}
-CF_visit :: (f:CF_Context,id:int,mode:CF_Mode) {if mode==CF_Mode.statement {CF_stmt(f,id);}else {CF_expr(f,id,mode==CF_Mode.transfer);}}
-CF_choice :: (f:CF_Context,a:int,b:int,mode:CF_Mode,loc:CK_Loc) {
+CF_visit :: (f:CF_Context,id:int,mode:CF_Mode) #effects(all) {if mode==CF_Mode.statement {CF_stmt(f,id);}else {CF_expr(f,id,mode==CF_Mode.transfer);}}
+CF_choice :: (f:CF_Context,a:int,b:int,mode:CF_Mode,loc:CK_Loc) #effects(all) {
  base:=RF_save(f.flow);if base<0 {return;}
  CF_visit(f,a,mode);if !CF_ok(f) {return;}left_alive:=f.state[0].alive;left:=RF_save(f.flow);if left<0 {return;}
  ignored:=RF_restore(f.flow,base);f.state[0].alive=true;
@@ -136,8 +136,8 @@ CF_choice :: (f:CF_Context,a:int,b:int,mode:CF_Mode,loc:CK_Loc) {
  ignored=RF_drop(f.flow,base);
 }
 // Read positions share one nontransfer policy, including builtin arguments.
-CF_read :: (f:CF_Context,id:int) {CF_expr(f,id,false);}
-CF_expr :: (f:CF_Context,id:int,consume:bool) {
+CF_read :: (f:CF_Context,id:int) #effects(all) {CF_expr(f,id,false);}
+CF_expr :: (f:CF_Context,id:int,consume:bool) #effects(all) {
  if id==0 || !CF_ok(f) {return;}e:=f.c.nodes[id];if !RF_tick(f.flow) || !CK_enter(f.c,e.loc) {return;}defer CK_leave(f.c);
  result:=CF_result(f.c,e.type);
  if e.kind==CK_Tag.expr_ident && result {
@@ -157,8 +157,9 @@ CF_expr :: (f:CF_Context,id:int,consume:bool) {
  }else {CF_read(f,e.a);CF_read(f,e.b);CF_read(f,e.c);at:=e.head;while at!=0 && CF_ok(f) {CF_read(f,at);at=f.c.nodes[at].next;}}
  if result && !consume && CF_ok(f) {CK_error(f.c,e.loc,"E0907","a produced Result must be handled or transferred","");}
 }
-CF_stmt :: (f:CF_Context,id:int) {
+CF_stmt :: (f:CF_Context,id:int) #effects(all) {
  if id==0 || !f.state[0].alive || !CF_ok(f) {return;}n:=f.c.nodes[id];if !RF_tick(f.flow) || !CK_enter(f.c,n.loc) {return;}defer CK_leave(f.c);
+ if n.kind==CK_Tag.stmt_transaction {CF_stmt(f,n.c);return;}
  if n.kind==CK_Tag.stmt_block {
   f.state[0].depth+=1;at:=n.head;while at!=0 && f.state[0].alive && CF_ok(f) {CF_stmt(f,at);at=f.c.nodes[at].next;}
   if f.state[0].alive {CF_exit(f,f.state[0].depth,n.loc);}
@@ -182,7 +183,7 @@ CF_stmt :: (f:CF_Context,id:int) {
  if n.kind==CK_Tag.stmt_break || n.kind==CK_Tag.stmt_continue {CF_exit(f,f.state[0].loop_scope,n.loc);f.state[0].alive=false;return;}
  if n.kind==CK_Tag.stmt_defer {saved:=f.state[0].defer_scope;f.state[0].defer_scope=f.state[0].depth+1;CF_stmt(f,n.c);f.state[0].defer_scope=saved;}
 }
-CK_result_proc :: (c:CK_Context,proc:int) {
+CK_result_proc :: (c:CK_Context,proc:int) #effects(all) {
  rs:[1]RF_State;state:[1]CF_State;f:=CF_Context.{c=c,flow=RF_Context.{words=c.result_work,state=rs[..]},state=state[..]};p:=c.nodes[proc];at:=p.head;
  // Both passes walk the body at the same depth; the first, with no flow
  // slots yet, only counts.
@@ -191,7 +192,7 @@ CK_result_proc :: (c:CK_Context,proc:int) {
  while at!=0 {if CF_result(c,c.nodes[at].type) {index:=state[0].collected;ignored:=RF_register(f.flow,index,at,0);ignored=RF_set(f.flow,index,1);state[0].collected+=1;}at=c.nodes[at].next;}
  CF_collect(f,p.b,body);CF_stmt(f,p.b);if state[0].alive {CF_exit(f,0,p.loc);}if rs[0].reason!=RF_Reason.ok && c.state[0].error_count==0 {CK_resource(c,p.loc);}
 }
-CK_results :: (c:CK_Context) {
+CK_results :: (c:CK_Context) #effects(all) {
  if !CF_has_results(c) {return;}
  at:=c.nodes[1].head;while at!=0 && c.state[0].error_count==0 && !c.state[0].fatal {n:=c.nodes[at];if n.kind==CK_Tag.proc && !n.generic && !n.flag2 {CK_result_proc(c,at);}if n.kind==CK_Tag.check {CK_result_proc(c,n.a);}at=n.next;}
  at=c.state[0].instances;while at!=0 && c.state[0].error_count==0 && !c.state[0].fatal {n:=c.nodes[at];if n.kind==CK_Tag.proc && !n.generic && !n.flag2 {CK_result_proc(c,at);}at=n.chain;}
@@ -319,4 +320,12 @@ CK_results :: (c:CK_Context) {
  nodes[10]=CK_Node.{kind=CK_Tag.stmt_expr,a=11};nodes[11]=CK_Node.{kind=CK_Tag.expr_or_else,type=11,a=12,b=13};nodes[12]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=5};nodes[13]=nodes[7];nodes[14]=CK_Node.{kind=CK_Tag.expr_array,type=17,head=15};nodes[15]=nodes[7];
  if mode==0 {nodes[3].kind=CK_Tag.stmt_while;nodes[3].a=8;}if mode==1 {nodes[3].kind=CK_Tag.stmt_range;nodes[3].a=7;nodes[3].b=9;}if mode==2 {nodes[3].kind=CK_Tag.stmt_each;nodes[3].a=14;}
  CF_collect(f,2,0);#assert CF_ok(f) && cs[0].collected==1 && RF_find(f.flow,5)==0 && RF_scope(f.flow,0)==2 && ck[0].depth==0;
+}
+
+#test "transaction return terminates its Result flow path" {
+ nodes:[6]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=5,type_count=16}];words:[16]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=0,state=rs[..]},state=cs[..]};
+ #assert RF_init(f.flow);nodes[2]=CK_Node.{kind=CK_Tag.stmt_transaction,c=3};nodes[3]=CK_Node.{kind=CK_Tag.stmt_return};
+ CF_stmt(f,2);#assert CF_ok(f) && !cs[0].alive && ck[0].depth==0;
 }

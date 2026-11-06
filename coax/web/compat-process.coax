@@ -1,0 +1,26 @@
+// Bounded process and commit-ID transport shared by the release gates.
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/sys/fs.coax";
+#forall "production references are complete or abbreviated hexadecimal commit IDs" valid:bool, length:0..<66 {
+  text:[65]u8;for i:0..<length {text[i]=ifx valid then 'a' else 'z';}
+  #assert cg_revision(cast(string)text[0..<length])==(valid && length>=7 && length<=64);
+}
+cg_revision :: (text:string)->bool {
+  if text.count<7 || text.count>64 {return false;}
+  for ch:text {if !((ch>='0' && ch<='9') || (ch>='a' && ch<='f')) {return false;}}
+  return true;
+}
+cg_run :: (args:[]string,out:[]u8)->int {
+  errors:[65536]u8;r:=proc_run(args,180000,out,errors[..]);
+  if r.started!=0 || r.cut || r.timed_out {tool_errln("compat gate: incomplete command");tool_errln(cast(string)errors[0..<r.err_n]);return -1;}
+  if r.status!=0 {tool_errln(cast(string)errors[0..<r.err_n]);return -1;}
+  return r.out_n;
+}
+cg_emit :: (compiler:string,source:string,path:string,legacy:bool)->bool {
+  args:=[5]string.[compiler,"compat","--emit",source,"--legacy"];output:[4194304]u8;
+  n:=cg_run(args[0..<(ifx legacy then 5 else 4)],output[..]);
+  if n<=0 || n>=output.count {return false;}
+  // proc_run joins lines without their final newline; manifests are canonical.
+  output[n]=10;return fs_write(path,cast(string)output[0..<n+1]);
+}

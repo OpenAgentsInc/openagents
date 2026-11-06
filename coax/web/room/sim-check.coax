@@ -137,7 +137,7 @@ sc_pid :: (out: [] u8, stamp: int, end: string) -> string {
   n := rs_put(out, 0, "p-simcheck-"); n = rs_int(out, n, stamp); n = rs_put(out, n, end);
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("sim-check: bad arguments"); return 2; }
   b: [512] u8;

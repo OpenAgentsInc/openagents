@@ -159,7 +159,7 @@ resource conflict. Written out for one resource:
 ```jai
 // Two entries on one resource conflict unless both read, or the reader holds
 // an immutable snapshot.
-coord_overlap :: (resource:string,write:bool,snapshot:string,h:CoordHold)->bool {
+coord_overlap :: (resource:string,write:bool,snapshot:string,h:CoordHold)->bool #effects(all) {
   if !kept_is(h.resource,resource) {return false;}
   if write && h.write {return true;}
   if write {return h.snapshot.n==0;}
@@ -175,7 +175,7 @@ every resource before it writes anything:
 
 <!-- source: coax/lib/nostr/coord/claim.coax claim -->
 ```jai
-coord_claim :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,q:CoordRequest,want:[]CoordWant,now:int)->u32 {
+coord_claim :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,q:CoordRequest,want:[]CoordWant,now:int)->u32 #effects(all) {
   st:=s[0];
   // 1. The request: some resources, each once, and a lease that ends after now.
   if want.count==0 {return CO_MALFORMED;}
@@ -224,7 +224,7 @@ a separately admitted controller) may cancel.
 // Renew moves the lease end to requested_until; release frees the holds
 // (the caller has fenced the old dispatchers); cancel, by the owner only,
 // stops dispatch and keeps the holds until a release.
-coord_control :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,token:int,action:int,actor:string,expected_revision:int,requested_until:int,now:int)->u32 {
+coord_control :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,token:int,action:int,actor:string,expected_revision:int,requested_until:int,now:int)->u32 #effects(all) {
   st:=s[0];
   k:=coord_find(claims,st.claims,token);
   if k<0 {return CO_NOT_ADMITTED;}
@@ -268,7 +268,7 @@ latest token registered in its trusted coordinator connection."
 <!-- source: coax/lib/nostr/coord/claim.coax fence -->
 ```jai
 // The dispatcher's check before one write on resource under (epoch, token).
-coord_fence :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,worker:string,resource:string,epoch:int,token:int,now:int)->u32 {
+coord_fence :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,worker:string,resource:string,epoch:int,token:int,now:int)->u32 #effects(all) {
   st:=s[0];
   k:=coord_find(claims,st.claims,token);
   if k<0 || !kept_is(claims[k].worker,worker) {return CO_NOT_ADMITTED;}
@@ -388,7 +388,7 @@ invitation and persists the grant atomically, before it answers.
 ```jai
 // Consumes the invitation a pairing response answers. On acceptance the new
 // grant goes to grants[count] and count grows by one.
-ctrl_pair :: (invitations:[]CtrlInvitation,grants:[]CtrlGrant,count:[]int,p:CtrlPairing,current:CtrlScope,owner_admitted:bool,grant:string,until:int,now:int)->u32 {
+ctrl_pair :: (invitations:[]CtrlInvitation,grants:[]CtrlGrant,count:[]int,p:CtrlPairing,current:CtrlScope,owner_admitted:bool,grant:string,until:int,now:int)->u32 #effects(all) {
   k:=-1;
   for i:0..<invitations.count {if invitations[i].invitation==p.invitation {k=i;}}
   if k<0 {return CT_NOT_ADMITTED;}
@@ -423,7 +423,7 @@ terminal for that grant ID. Re-enrolling creates a new grant ID.
 
 <!-- source: coax/lib/nostr/ctrl/command.coax revoke -->
 ```jai
-ctrl_revoke :: (grants:[]CtrlGrant,grant:string,actor:string,owner:string)->u32 {
+ctrl_revoke :: (grants:[]CtrlGrant,grant:string,actor:string,owner:string)->u32 #effects(all) {
   if actor!=owner {return CT_NOT_ADMITTED;}
   for i:0..<grants.count {
     if grants[i].grant==grant {
@@ -458,7 +458,7 @@ this order:
 
 <!-- source: coax/lib/nostr/ctrl/command.coax admit -->
 ```jai
-ctrl_command_admit :: (grants:[]CtrlGrant,retained:[]CtrlRetained,c:CtrlCommand,current:CtrlScope,revision:int,now:int)->u32 {
+ctrl_command_admit :: (grants:[]CtrlGrant,retained:[]CtrlRetained,c:CtrlCommand,current:CtrlScope,revision:int,now:int)->u32 #effects(all) {
   // 1. The grant, and the key it was paired with.
   k:=-1;
   for i:0..<grants.count {if grants[i].grant==c.grant {k=i;}}

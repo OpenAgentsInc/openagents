@@ -14,7 +14,7 @@ pt_run :: (argv:[]string,success:bool,work:string,label:string,out:[]u8)->bool {
   ok:=r.started==0 && !r.timed_out && !r.cut && r.status==(ifx success then 0 else 1);if !ok {tool_err("package port control failed: ");tool_errln(label);tool_err(cast(string)err[0..<r.err_n]);}return ok;
 }
 pt_json_equal :: (a:string,b:string)->bool {bytes:[1048576]u8;other:[1048576]u8;nodes:[32768]JvNode;other_nodes:[32768]JvNode;doc:[1]Jv;other_doc:[1]Jv;return rtq_json_file(a,bytes[..],nodes[..],doc[..]) && rtq_json_file(b,other[..],other_nodes[..],other_doc[..]) && rtq_equal(doc[0],0,other_doc[0],0);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])<4 {tool_errln("usage: check-package-tooling OUT PACKAGE_BINARY MOCK_COMPILER QUALIFIED_NATIVE_DIR [REFERENCE_ROOT]");return 2;}
   out:=args_at(a[..],0);package:=args_at(a[..],1);mock:=args_at(a[..],2);qualified:=args_at(a[..],3);root:=args_at(a[..],4);if root.count==0 {root=".";}if !fs_mkdir(out) {return 1;}
   image:[64]u8;mock_hash:[64]u8;if !rtq_hash_file(package,image[..]) || !rtq_hash_file(mock,mock_hash[..]) {return 1;}

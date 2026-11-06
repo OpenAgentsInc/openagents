@@ -38,20 +38,20 @@ HKDF_MAX_INFO :: 1024;
   #assert hkdf_extract_checked(salt[..],ikm[..],prk[..],true)==SHA_ALIAS;
   #assert hkdf_expand_checked(prk[..],ikm[..],out[..],-1,false)==SHA_LENGTH;
 }
-hkdf_expand_request :: (prk:int,info:int,out:int,length:int,overlap:bool)->u32 {
+hkdf_expand_request :: (prk:int,info:int,out:int,length:int,overlap:bool)->u32 #effects(all) {
   if prk<32 || !sha256_input_ok(prk) || info<0 || info>HKDF_MAX_INFO {return SHA_BAD_INPUT;}
   if length<0 || length>HKDF_MAX_OUTPUT {return SHA_LENGTH;}
   if !cb_span(out,0,length) {return SHA_BAD_OUTPUT;}
   if length>0 && overlap {return SHA_ALIAS;}
   return SHA_OK;
 }
-hkdf_extract_checked :: (salt:[]u8,ikm:[]u8,out:[]u8,overlap:bool)->u32 {
+hkdf_extract_checked :: (salt:[]u8,ikm:[]u8,out:[]u8,overlap:bool)->u32 #effects(all) {
   // An empty HMAC key zero-pads to the same block as RFC's absent-salt
   // HashLen zero bytes; no special salt representation or entropy is needed.
   return hmac_sha256_checked(salt,ikm,out,overlap);
 }
-hkdf_blocks :: (length:int)->int {return (length+31)/32;}
-hkdf_expand_checked :: (prk:[]u8,info:[]u8,out:[]u8,length:int,overlap:bool)->u32 {
+hkdf_blocks :: (length:int)->int #effects(all) {return (length+31)/32;}
+hkdf_expand_checked :: (prk:[]u8,info:[]u8,out:[]u8,length:int,overlap:bool)->u32 #effects(all) {
   status:=hkdf_expand_request(prk.count,info.count,out.count,length,overlap);if status!=SHA_OK {return status;}
   base:[224]u8;defer {secure_zero(base[..]);#assert crypto_zeroed(base[..]);}status=hmac_sha256_init_checked(base[..],prk,false);if status!=SHA_OK {return status;}
   staged:[HKDF_MAX_OUTPUT]u8;defer {secure_zero(staged[..]);#assert crypto_zeroed(staged[..]);}previous:[32]u8;defer {secure_zero(previous[..]);#assert crypto_zeroed(previous[..]);}previous_count:=0;

@@ -5,8 +5,8 @@
 #load "../../../coax/lib/sys/proc.coax";
 #load "../../../coax/lib/crypto/sha256-kernel.coax";
 #load "tooling-policy.coax";
-cxproc_read_bytes :: (handle:int,timeout_ms:int,out:[]u8)->int #foreign;
-cxproc_self_path :: (out:[]u8)->int #foreign;
+cxproc_read_bytes :: (handle:int,timeout_ms:int,out:[]u8)->int #foreign #effects(all);
+cxproc_self_path :: (out:[]u8)->int #foreign #effects(all);
 RTQ_DEADLINE_MS :: 810000;
 RTQ_FILE :: 67108864;
 RtqInput :: struct {path:[4096]u8;count:int;hash:[64]u8;}

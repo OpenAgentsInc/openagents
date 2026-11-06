@@ -132,7 +132,7 @@ The caller chooses each layer's full/window shape from the admitted model.
 
 <!-- source: psionic/lib/gptoss-attention.coax plan -->
 ```jai
-ga_plan :: (s:GaShape)->GaPlan #export_c {
+ga_plan :: (s:GaShape)->GaPlan #export_c #effects(all) {
     if s.heads<1 || s.heads>64 || s.kv_heads<1 || s.kv_heads>8 || s.heads%s.kv_heads!=0 || s.capacity<1 || s.capacity>128 || s.window<0 {return GaPlan.{status=GoStatus.shape};}
     if s.window!=0 && s.capacity!=s.window {return GaPlan.{status=GoStatus.shape};}
     q:=s.heads*64;kv:=s.kv_heads*64;
@@ -167,7 +167,7 @@ reject this model's valid rotary table.
 
 <!-- source: psionic/lib/gptoss-math.coax yarn -->
 ```jai
-go_yarn :: (start:int,count:int,out:[]f32)->GoResult #export_c {
+go_yarn :: (start:int,count:int,out:[]f32)->GoResult #export_c #effects(all) {
     if !go_range(start,count) {return GoResult.{status=GoStatus.range};}
     if out.count<64*count {return GoResult.{status=GoStatus.capacity};}
     low:=32*log(4096.0/(32*2*3.141592653589793))/log(150000.0);
@@ -193,7 +193,7 @@ casts are a different numerical profile.
 
 <!-- source: psionic/lib/gptoss-math.coax rotate -->
 ```jai
-go_rotate :: (heads:int,x:[]f32,c:[]f32,out:[]f32,work:[]f32,overlap:bool)->GoResult #export_c {
+go_rotate :: (heads:int,x:[]f32,c:[]f32,out:[]f32,work:[]f32,overlap:bool)->GoResult #export_c #effects(all) {
     if heads<1 || heads>64 {return GoResult.{status=GoStatus.shape};}
     n:=heads*64;
     if x.count!=n || c.count!=64 || out.count<n || work.count<n {return GoResult.{status=GoStatus.capacity};}
@@ -225,7 +225,7 @@ rotating Q/K and after attention for the output projection.
 
 <!-- source: psionic/lib/gptoss-math.coax project -->
 ```jai
-go_project :: (rows:int,columns:int,a:[]f32,x:[]f32,bias:[]f32,out:[]f32,work:[]f32,overlap:bool)->GoResult #export_c {
+go_project :: (rows:int,columns:int,a:[]f32,x:[]f32,bias:[]f32,out:[]f32,work:[]f32,overlap:bool)->GoResult #export_c #effects(all) {
     request:=PsionicRequest.{op=PsionicOp.matmul,rows=rows,width=columns,columns=1};plan:=psionic_ops_plan(request);
     if plan.status!=PsionicOpStatus.ok {return GoResult.{status=GoStatus.shape};}
     if a.count!=plan.a || x.count!=columns || bias.count!=rows || out.count<rows || work.count<3*rows {return GoResult.{status=GoStatus.capacity};}
@@ -265,7 +265,7 @@ Qwen SwiGLU helper.
 
 <!-- source: psionic/lib/gptoss-math.coax swiglu -->
 ```jai
-go_swiglu :: (pairs:[]f32,out:[]f32,overlap:bool)->GoResult #export_c {
+go_swiglu :: (pairs:[]f32,out:[]f32,overlap:bool)->GoResult #export_c #effects(all) {
     n:=pairs.count/2;
     if !go_pairs(n) || pairs.count%2!=0 {return GoResult.{status=GoStatus.shape};}
     if out.count<n {return GoResult.{status=GoStatus.capacity};}

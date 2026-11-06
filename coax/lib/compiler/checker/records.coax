@@ -13,7 +13,7 @@ CK_Loc :: struct {line:int;column:int;offset:int;}
 CK_Kind :: enum u8 {invalid;void_;integer;floating;bool_;string_;untyped_int;untyped_float;struct_;enum_;array;view;param;union_;result;optional;}
 CK_Tag :: enum u32 {invalid=0;type_named=1;type_array=2;type_view=3;type_dynamic=4;type_param=5;type_optional=6;
   expr_int=16;expr_float=17;expr_bool=18;expr_string=19;expr_ident=20;expr_call=21;expr_unary=22;expr_binary=23;expr_run=24;expr_field=25;expr_index=26;expr_slice=27;expr_struct=28;expr_array=29;expr_cast=30;expr_ifx=31;expr_enum=32;expr_ct=33;expr_sum=34;expr_null=35;expr_some=36;expr_try=37;expr_or_else=38;
-  stmt_block=40;stmt_expr=41;stmt_var=42;stmt_assign=43;stmt_return=44;stmt_if=45;stmt_while=46;stmt_range=47;stmt_each=48;stmt_break=49;stmt_continue=50;stmt_defer=51;stmt_assert=52;stmt_switch=53;
+  stmt_block=40;stmt_expr=41;stmt_var=42;stmt_assign=43;stmt_return=44;stmt_if=45;stmt_while=46;stmt_range=47;stmt_each=48;stmt_break=49;stmt_continue=50;stmt_defer=51;stmt_assert=52;stmt_switch=53;stmt_transaction=54;
   proc=64;constant=65;struct_=66;enum_=67;param=68;field=69;member=70;field_init=71;import_=72;check=73;file=74;assert_=75;unit_factor=76;union_=77;variant=78;switch_case=79;effect_name=80;case_binding=81;
 }
 CK_Lowering :: enum u8 {none;spatial_binary;spatial_unary;invalid=255;}
@@ -123,11 +123,11 @@ CK_RetainCaps :: struct {effects:int;reports:int;work:int;}
 // Independently specified source: manual/record-held-helper-state.coax
 // Input SHA256: 897108ad307f075cd54854d7d816927e620450d075d0a3b7bac563ff8c637caa
 
-CK_caps :: (nodes:int,source:int)->CK_Caps #export_c {
+CK_caps :: (nodes:int,source:int)->CK_Caps #export_c #effects(all) {
   if nodes<2 || nodes>2147483646 || source<0 || source>2147483646 {return CK_Caps.{};}
   return CK_Caps.{nodes=nodes*3+16,types=nodes*3+16,locals=nodes+16,errors=nodes*8+16,bytes=source*8+nodes*512+4096,result_work=nodes*8+32,names=nodes*3};
 }
-CK_builtin :: (id:int)->CK_Type #export_c {
+CK_builtin :: (id:int)->CK_Type #export_c #effects(all) {
   names:=[16] string.["<invalid>","void","bool","string","integer literal","float literal","f32","f64","s8","s16","s32","int","u8","u16","u32","u64"];
   kinds:=[16] CK_Kind.[CK_Kind.invalid,CK_Kind.void_,CK_Kind.bool_,CK_Kind.string_,CK_Kind.untyped_int,CK_Kind.untyped_float,CK_Kind.floating,CK_Kind.floating,CK_Kind.integer,CK_Kind.integer,CK_Kind.integer,CK_Kind.integer,CK_Kind.integer,CK_Kind.integer,CK_Kind.integer,CK_Kind.integer];
   sizes:=[16] int.[0,0,1,16,0,0,4,8,1,2,4,8,1,2,4,8];
@@ -140,12 +140,12 @@ CK_builtin :: (id:int)->CK_Type #export_c {
 // checker lays types out with. A view or string is {pointer, count}; every
 // other layout-query target is unsupported rather than borrowing these values.
 CK_Target :: struct {name:string;supported:bool;data_model:string;pointer_size:int;pointer_alignment:int;count_size:int;count_alignment:int;view_size:int;view_alignment:int;calling_convention:string;reason:string;}
-CK_target :: (name:string)->CK_Target #export_c {
+CK_target :: (name:string)->CK_Target #export_c #effects(all) {
   if name!="native-lp64" {return CK_Target.{name=name,reason="only the native-lp64 layout target is qualified; other targets have no layout description"};}
   view:=CK_builtin(3);
   return CK_Target.{name=name,supported=true,data_model="LP64",pointer_size=8,pointer_alignment=8,count_size=8,count_alignment=8,view_size=view.size,view_alignment=view.alignment,calling_convention="c"};
 }
-CK_builtin_type :: (name:string)->int {
+CK_builtin_type :: (name:string)->int #effects(all) {
   names:=[14] string.["int","s64","s8","s16","s32","u8","u16","u32","u64","uint","f32","f64","bool","string"];
   ids:=[14] int.[11,11,8,9,10,12,13,14,15,15,6,7,2,3];for x,i:names {if x==name {return ids[i];}}return CK_NONE;
 }

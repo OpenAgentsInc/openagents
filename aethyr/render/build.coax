@@ -254,7 +254,7 @@ rb_asset_table :: (profile:int)->bool {
   }
   jo_end(o[..]);jo_end(o[..]);if o[0].bad {return false;}print("%\n",jo_text(o[..]));return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;
   if !args_load(args[..]) {return 2;}
   if args_count(args[..])==1 && args_at(args[..],0)=="--profiles" {

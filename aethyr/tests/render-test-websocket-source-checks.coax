@@ -2,7 +2,7 @@
 // bodies. The sole superseded source is named explicitly, never guessed.
 #import "Basic";
 #load "render-test-origin.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}root:=args_at(a[..],0);target:=args_at(a[..],1);paths:[3][4096]u8;receipt:=fs_join(root,"evidence/actual-cap8/qualification.json",paths[0][..]);bytes:[65536]u8;nodes:[4096]JvNode;d:[1]Jv;if !rtq_json_file(receipt,bytes[..],nodes[..],d[..]) {return 1;}inputs:=jv_get(d[0],0,"inputs");row:=d[0].nodes[inputs].first;count:=0;same:=true;body:[131072]u8;o:[1]Jo;jo_start(o[..],body[..]);jo_obj(o[..]);jo_key(o[..],"rows");jo_arr(o[..]);
   repo:[4096]u8;repo_name:=fs_cwd(repo[..]);while row!= -1 {original:=jv_key(d[0],row);source_key:=original;if original.count>repo_name.count && original[0..<repo_name.count]==repo_name && original[repo_name.count]=='/' {source_key=original[repo_name.count+1..<original.count];}mapped:[8192]u8;w:[1]Jo;jo_start(w[..],mapped[..]);
     if original=="/tmp/aethyr-authority-budget-qualified-1fac/coax" {jo_put(w[..],"images/compiler-1fac");}

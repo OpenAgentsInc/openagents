@@ -30,7 +30,7 @@
 }
 
 // book:begin evaluate
-rk_measure :: (p:RkPolicy,expert:bool)->RkEval {
+rk_measure :: (p:RkPolicy,expert:bool)->RkEval #effects(all) {
   if !rk_policy_ok(p) {return RkEval.{status=RkStatus.policy};}
   successes:=0;total:=0.0;peak:RkPeak;
   for episode:100..<106 {
@@ -52,10 +52,10 @@ rk_measure :: (p:RkPolicy,expert:bool)->RkEval {
   return RkEval.{episodes=6,successes=successes,steps=6*RK_HORIZON,mse=total/f64(2*6*RK_HORIZON),final_error_max=peak.error,worst_episode=peak.episode,worst_axis=peak.axis};
 }
 // book:end evaluate
-rk_success :: (error:f64)->bool #export_c {return error>=0 && error<=RK_TOLERANCE;}
-rk_peak :: (prior:RkPeak,ex:f64,ey:f64,episode:int)->RkPeak {
+rk_success :: (error:f64)->bool #export_c #effects(all) {return error>=0 && error<=RK_TOLERANCE;}
+rk_peak :: (prior:RkPeak,ex:f64,ey:f64,episode:int)->RkPeak #effects(all) {
   axis:=1;error:=ey;if ex>=ey {error=ex;axis=0;}
   if error>prior.error {return RkPeak.{error=error,episode=episode,axis=axis};}return prior;
 }
-rk_evaluate :: (p:RkPolicy)->RkEval #export_c {return rk_measure(p,false);}
-rk_evaluate_expert :: ()->RkEval #export_c {return rk_measure(RkPolicy.{},true);}
+rk_evaluate :: (p:RkPolicy)->RkEval #export_c #effects(all) {return rk_measure(p,false);}
+rk_evaluate_expert :: ()->RkEval #export_c #effects(all) {return rk_measure(RkPolicy.{},true);}

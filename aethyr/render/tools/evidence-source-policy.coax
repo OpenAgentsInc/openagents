@@ -41,12 +41,12 @@ ES_ROOT :: "docs/verification/data/aethyr-ch11-2026-11-01/";
   #assert !es_same(-1, -1, digest, digest) && !es_same(7, 8, digest, digest);
   #assert !es_same(7, 7, digest, "") && !es_same(7, 7, "", "");
 }
-es_ends :: (s: string, tail: string) -> bool { return s.count >= tail.count && s[s.count - tail.count..<s.count] == tail; }
-es_prefix :: (s: string, prefix: string) -> bool { return s.count >= prefix.count && s[0..<prefix.count] == prefix; }
-es_path_byte :: (c: u8) -> bool {
+es_ends :: (s: string, tail: string) -> bool #effects(all) { return s.count >= tail.count && s[s.count - tail.count..<s.count] == tail; }
+es_prefix :: (s: string, prefix: string) -> bool #effects(all) { return s.count >= prefix.count && s[0..<prefix.count] == prefix; }
+es_path_byte :: (c: u8) -> bool #effects(all) {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.';
 }
-es_source_path :: (p: string) -> bool #export_c {
+es_source_path :: (p: string) -> bool #export_c #effects(all) {
   if !es_prefix(p, ES_ROOT) { return false; }
   if !(es_ends(p, ".ts") || es_ends(p, ".py") || es_ends(p, ".js") || es_ends(p, ".sh") || es_ends(p, ".cjs")) { return false; }
   at := ES_ROOT.count;
@@ -60,11 +60,11 @@ es_source_path :: (p: string) -> bool #export_c {
   }
   return true;
 }
-es_digest_ok :: (s: string) -> bool {
+es_digest_ok :: (s: string) -> bool #effects(all) {
   if s.count != 64 { return false; }
   for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
   return true;
 }
-es_same :: (before_n: int, after_n: int, before_hash: string, after_hash: string) -> bool #export_c {
+es_same :: (before_n: int, after_n: int, before_hash: string, after_hash: string) -> bool #export_c #effects(all) {
   return before_n >= 0 && before_n == after_n && es_digest_ok(before_hash) && before_hash == after_hash;
 }

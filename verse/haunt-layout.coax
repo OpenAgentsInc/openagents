@@ -23,7 +23,7 @@ HB_SCALAR_OFFSETS :: #run hb_scalar_offsets();
  offsets:=hb_scalar_offsets();
  #assert offsets[index]==index*4 && HB_SCALAR_OFFSETS[index]==index*4;
 }
-hb_scalar_offsets :: ()->[8]int {
+hb_scalar_offsets :: ()->[8]int #effects(all) {
  out:[8]int;at:=0;
  for field:0..<3 {
   info:=field_info(HauntVertexLayout,field);

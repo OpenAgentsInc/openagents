@@ -161,25 +161,25 @@ Bolt12 :: struct {
   records: [64] OfrRecord; count: int;
 }
 // The index of the record of this type, or -1.
-ofr_find :: (b: [] Bolt12, type: u64) -> int {
+ofr_find :: (b: [] Bolt12, type: u64) -> int #effects(all) {
   for i: 0..<b[0].count { if b[0].records[i].type == type { return i; } }
   return -1;
 }
-ofr_has :: (b: [] Bolt12, type: u64) -> bool { return ofr_find(b, type) >= 0; }
+ofr_has :: (b: [] Bolt12, type: u64) -> bool #effects(all) { return ofr_find(b, type) >= 0; }
 // The value of the record of this type; empty when it is missing.
-ofr_value :: (b: [] Bolt12, type: u64) -> [] u8 {
+ofr_value :: (b: [] Bolt12, type: u64) -> [] u8 #effects(all) {
   i := ofr_find(b, type);
   if i < 0 { return b[0].data[0..<0]; }
   r := b[0].records[i];
   return b[0].data[r.start..<r.start + r.length];
 }
 // The whole record, type and length included.
-ofr_raw :: (b: [] Bolt12, i: int) -> [] u8 {
+ofr_raw :: (b: [] Bolt12, i: int) -> [] u8 #effects(all) {
   r := b[0].records[i];
   return b[0].data[r.at..<r.start + r.length];
 }
 // A truncated number (tu64) the stream holds, or zero when it is missing.
-ofr_number :: (b: [] Bolt12, type: u64) -> u64 { return tu_read_vartime(ofr_value(b, type), 8).value; }
+ofr_number :: (b: [] Bolt12, type: u64) -> u64 #effects(all) { return tu_read_vartime(ofr_value(b, type), 8).value; }
 ```
 
 ## Text without a checksum
@@ -205,10 +205,10 @@ characters of the text.
 // follow a '+'; a reader removes them. All lowercase or all uppercase.
 OFR_CHARSET :: "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 OfrText :: struct { code: int; kind: int; length: int; }
-ofr_lower_char :: (c: u8) -> u8 { if c >= 'A' && c <= 'Z' { return c + 32; } return c; }
-ofr_alnum :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'); }
-ofr_space :: (c: u8) -> bool { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; }
-offer_text_decode_vartime :: (text: string, out: [] u8) -> OfrText {
+ofr_lower_char :: (c: u8) -> u8 #effects(all) { if c >= 'A' && c <= 'Z' { return c + 32; } return c; }
+ofr_alnum :: (c: u8) -> bool #effects(all) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'); }
+ofr_space :: (c: u8) -> bool #effects(all) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; }
+offer_text_decode_vartime :: (text: string, out: [] u8) -> OfrText #effects(all) {
   lower := false; upper := false;
   for c: text { if c >= 'a' && c <= 'z' { lower = true; } if c >= 'A' && c <= 'Z' { upper = true; } }
   if lower && upper { return OfrText.{code = OFR_BAD_TEXT}; }
@@ -252,7 +252,7 @@ offer_text_decode_vartime :: (text: string, out: [] u8) -> OfrText {
 }
 // The text of a stream, lowercase and with no '+'. Returns its length,
 // or -1 when out is too small.
-offer_text_encode_vartime :: (kind: int, data: [] u8, out: [] u8) -> int {
+offer_text_encode_vartime :: (kind: int, data: [] u8, out: [] u8) -> int #effects(all) {
   if kind < OFR_OFFER || kind > OFR_PROOF { return -1; }
   prefix := OFR_PREFIXES[kind - 1];
   if out.count < 4 + (data.count * 8 + 4) / 5 { return -1; }
@@ -285,7 +285,7 @@ path, so a payer can route to it without learning the hops.
 // data. final returns the last blinded_node_id of path which, the key an
 // invoice is signed with when the offer names no issuer.
 OfrPaths :: struct { code: int; count: int; final: [33] u8; }
-ofr_paths_vartime :: (v: [] u8, which: int) -> OfrPaths {
+ofr_paths_vartime :: (v: [] u8, which: int) -> OfrPaths #effects(all) {
   r: OfrPaths; at := 0;
   while at < v.count {
     if v[at] == 0 || v[at] == 1 {
@@ -317,7 +317,7 @@ ofr_paths_vartime :: (v: [] u8, which: int) -> OfrPaths {
 // features. A path whose features have an even bit cannot be used: no
 // payinfo feature is known yet.
 OfrPayinfo :: struct { code: int; count: int; usable: int; fee_base: u64; fee_ppm: u64; cltv: int; }
-ofr_payinfo_vartime :: (v: [] u8) -> OfrPayinfo {
+ofr_payinfo_vartime :: (v: [] u8) -> OfrPayinfo #effects(all) {
   r: OfrPayinfo; at := 0; none := OFR_NO_FEATURES;
   while at < v.count {
     if v.count - at < 28 { return OfrPayinfo.{code = OFR_BAD_LENGTH}; }
@@ -346,14 +346,14 @@ so a stream cut short reports that before any record's format.
 <!-- source: coax/lib/lightning/offers.coax record -->
 ```jai
 // The ranges of types each kind of stream allows, and the types it knows.
-ofr_in_range :: (kind: int, t: u64) -> bool {
+ofr_in_range :: (kind: int, t: u64) -> bool #effects(all) {
   if kind == OFR_OFFER { return (t >= 1 && t <= 79) || (t >= OFR_BILLION && t <= 1999999999); }
   sig := t >= 240 && t <= 1000;
   if kind == OFR_REQUEST { return t <= 159 || sig || (t >= OFR_BILLION && t <= 2999999999); }
   if kind == OFR_INVOICE { return t <= 1000 || (t >= OFR_BILLION && t <= 3999999999); }
   return (t >= 1 && t <= 1005) || (t >= OFR_BILLION && t <= 3999999999);
 }
-ofr_known :: (kind: int, t: u64) -> bool {
+ofr_known :: (kind: int, t: u64) -> bool #effects(all) {
   offer := t >= 2 && t <= 22 && t % 2 == 0;
   request := t == 0 || t == 80 || t == 82 || t == 84 || t == 86 || t == 88 || t == 89 || t == 90 || t == 91 || t == 240;
   invoice := t >= 160 && t <= 176 && t % 2 == 0;
@@ -364,7 +364,7 @@ ofr_known :: (kind: int, t: u64) -> bool {
 }
 // One record checked against its type: the range, the odd rule, then the
 // value's format.
-ofr_record_vartime :: (kind: int, t: u64, v: [] u8) -> int {
+ofr_record_vartime :: (kind: int, t: u64, v: [] u8) -> int #effects(all) {
   if !ofr_in_range(kind, t) { return OFR_RANGE; }
   if !ofr_known(kind, t) { return ifx t % 2 == 0 then OFR_UNKNOWN_EVEN else OFR_OK; }
   none := OFR_NO_FEATURES; mpp := OFR_INVOICE_FEATURES;
@@ -417,7 +417,7 @@ ofr_record_vartime :: (kind: int, t: u64, v: [] u8) -> int {
 }
 // The records of b[0].data[0..<n]: first the framing of the whole stream,
 // then each record against its type.
-ofr_frame_vartime :: (b: [] Bolt12) -> int {
+ofr_frame_vartime :: (b: [] Bolt12) -> int #effects(all) {
   b[0].count = 0; at := 0; previous: u64 = 0;
   while at < b[0].n {
     r := tlv_next_vartime(b[0].data[0..<b[0].n], at, previous, b[0].count == 0);
@@ -430,7 +430,7 @@ ofr_frame_vartime :: (b: [] Bolt12) -> int {
   }
   return OFR_OK;
 }
-ofr_stream_vartime :: (b: [] Bolt12) -> int {
+ofr_stream_vartime :: (b: [] Bolt12) -> int #effects(all) {
   framed := ofr_frame_vartime(b);
   if framed != OFR_OK { return framed; }
   for i: 0..<b[0].count {
@@ -471,22 +471,22 @@ the largest power of two below the count, with the rest.
 // invreq_metadata, unpredictable bytes, so a hidden field cannot be
 // guessed from its leaf. A branch is H("LnBranch", lesser || greater):
 // sorted, so a proof needs no left or right.
-ofr_tag :: (tag: [] u8, out: [] u8) { #assert sha256_hash_checked(tag, out, false) == SHA_OK; }
-ofr_tagged :: (t: [] u8, a: [] u8, b: [] u8, out: [] u8) {
+ofr_tag :: (tag: [] u8, out: [] u8) #effects(all) { #assert sha256_hash_checked(tag, out, false) == SHA_OK; }
+ofr_tagged :: (t: [] u8, a: [] u8, b: [] u8, out: [] u8) #effects(all) {
   sha: [1] ShaOwned;
   #assert so_init(sha[..]) && so_update(sha[..], t, false) && so_update(sha[..], t, false);
   #assert so_update(sha[..], a, false) && so_update(sha[..], b, false) && so_finish(sha[..], out, false);
 }
-ofr_less :: (a: [] u8, b: [] u8) -> bool {
+ofr_less :: (a: [] u8, b: [] u8) -> bool #effects(all) {
   for i: 0..<32 { if a[i] != b[i] { return a[i] < b[i]; } }
   return false;
 }
-ofr_branch :: (t: [] u8, a: [] u8, b: [] u8, out: [] u8) {
+ofr_branch :: (t: [] u8, a: [] u8, b: [] u8, out: [] u8) #effects(all) {
   if ofr_less(b, a) { ofr_tagged(t, b, a, out); } else { ofr_tagged(t, a, b, out); }
 }
 OfrTags :: struct { leaf: [32] u8; nonce: [32] u8; branch: [32] u8; }
 // The tags of a stream whose first record is first.
-ofr_tags :: (first: [] u8) -> OfrTags {
+ofr_tags :: (first: [] u8) -> OfrTags #effects(all) {
   r: OfrTags; m: [4200] u8;
   ofr_tag(ofr_text("LnLeaf", m[..]), r.leaf[..]); ofr_tag(ofr_text("LnBranch", m[..]), r.branch[..]);
   word := "LnNonce";
@@ -496,20 +496,20 @@ ofr_tags :: (first: [] u8) -> OfrTags {
   return r;
 }
 // A field's nonce leaf, and the branch of its leaf and nonce.
-ofr_nonce :: (tags: [] OfrTags, type: u64, out: [] u8) {
+ofr_nonce :: (tags: [] OfrTags, type: u64, out: [] u8) #effects(all) {
   t: [9] u8; n := bigsize_write_vartime(t[..], 0, type);
   ofr_tagged(tags[0].nonce[..], t[0..<n], t[0..<0], out);
 }
-ofr_leaf :: (tags: [] OfrTags, record: [] u8, nonce: [] u8, out: [] u8) {
+ofr_leaf :: (tags: [] OfrTags, record: [] u8, nonce: [] u8, out: [] u8) #effects(all) {
   leaf: [32] u8; ofr_tagged(tags[0].leaf[..], record, record[0..<0], leaf[..]);
   ofr_branch(tags[0].branch[..], leaf[..], nonce, out);
 }
-ofr_signed_type :: (t: u64) -> bool { return t >= 240 && t <= 1000; }
+ofr_signed_type :: (t: u64) -> bool #effects(all) { return t >= 240 && t <= 1000; }
 // The tree joins pairs, then pairs of pairs: with n leaves not a power of
 // two, the root joins the first 2^k (the largest power of two below n)
 // and the rest, so the lowest types sit deepest.
-ofr_split :: (n: int) -> int { k := 1; while k * 2 < n { k *= 2; } return k; }
-ofr_root :: (tags: [] OfrTags, nodes: [] [32] u8, lo: int, hi: int, out: [] u8) {
+ofr_split :: (n: int) -> int #effects(all) { k := 1; while k * 2 < n { k *= 2; } return k; }
+ofr_root :: (tags: [] OfrTags, nodes: [] [32] u8, lo: int, hi: int, out: [] u8) #effects(all) {
   if hi - lo == 1 { for i: 0..<32 { out[i] = nodes[lo][i]; } return; }
   k := ofr_split(hi - lo); a: [32] u8; c: [32] u8;
   ofr_root(tags, nodes, lo, lo + k, a[..]); ofr_root(tags, nodes, lo + k, hi, c[..]);
@@ -517,7 +517,7 @@ ofr_root :: (tags: [] OfrTags, nodes: [] [32] u8, lo: int, hi: int, out: [] u8) 
 }
 // The root of every record of b outside the signature range. False for
 // a stream with no such record.
-ofr_merkle_vartime :: (b: [] Bolt12, out: [] u8) -> bool {
+ofr_merkle_vartime :: (b: [] Bolt12, out: [] u8) -> bool #effects(all) {
   first := -1;
   for i: 0..<b[0].count { if first < 0 && !ofr_signed_type(b[0].records[i].type) { first = i; } }
   if first < 0 { return false; }
@@ -533,7 +533,7 @@ ofr_merkle_vartime :: (b: [] Bolt12, out: [] u8) -> bool {
 }
 // The message a signature signs: H("lightning" || stream name || field
 // name, root).
-ofr_sig_hash :: (kind: int, field: string, root: [] u8, out: [] u8) {
+ofr_sig_hash :: (kind: int, field: string, root: [] u8, out: [] u8) #effects(all) {
   m: [64] u8; n := 0;
   for c: "lightning" { m[n] = c; n += 1; }
   for c: OFR_NAMES[kind - 1] { m[n] = c; n += 1; }
@@ -542,7 +542,7 @@ ofr_sig_hash :: (kind: int, field: string, root: [] u8, out: [] u8) {
   ofr_tagged(t[..], root, root[0..<0], out);
 }
 // A BIP-340 signature under a 33-byte key: the x coordinate is the key.
-ofr_verify_vartime :: (b: [] Bolt12, field: string, key: [] u8, sig: [] u8) -> bool {
+ofr_verify_vartime :: (b: [] Bolt12, field: string, key: [] u8, sig: [] u8) -> bool #effects(all) {
   root: [32] u8; h: [32] u8;
   if key.count != 33 || sig.count != 64 || !ofr_merkle_vartime(b, root[..]) { return false; }
   ofr_sig_hash(b[0].kind, field, root[..], h[..]);
@@ -575,7 +575,7 @@ invoice came from the offer's issuer.
 // An offer: an amount needs a description and must be above zero, a
 // currency needs an amount, and a payer must have somewhere to send a
 // request: offer_issuer_id, offer_paths, or both.
-ofr_check_offer_vartime :: (b: [] Bolt12) -> int {
+ofr_check_offer_vartime :: (b: [] Bolt12) -> int #effects(all) {
   if ofr_has(b, OFR_AMOUNT) && ofr_number(b, OFR_AMOUNT) == 0 { return OFR_BAD_AMOUNT; }
   if ofr_has(b, OFR_AMOUNT) && !ofr_has(b, OFR_DESCRIPTION) { return OFR_REQUIRED; }
   if ofr_has(b, OFR_CURRENCY) && !ofr_has(b, OFR_AMOUNT) { return OFR_REQUIRED; }
@@ -600,7 +600,7 @@ amount and must not carry the fields only an offer has.
 // pays at least the offer's amount when the amount is in msat. Without
 // an offer it is an offer to send money: it names its amount and has no
 // chains, features or quantity of an offer.
-ofr_check_request_vartime :: (b: [] Bolt12) -> int {
+ofr_check_request_vartime :: (b: [] Bolt12) -> int #effects(all) {
   if !ofr_has(b, REQ_METADATA) || !ofr_has(b, REQ_PAYER_ID) || !ofr_has(b, OFR_SIGNATURE) { return OFR_REQUIRED; }
   if !ofr_verify_vartime(b, "signature", ofr_value(b, REQ_PAYER_ID), ofr_value(b, OFR_SIGNATURE)) { return OFR_BAD_SIGNATURE; }
   if ofr_has(b, OFR_ISSUER_ID) || ofr_has(b, OFR_PATHS) {
@@ -644,7 +644,7 @@ description or the quantity would be caught there.
 // blinded paths with one payinfo each and at least one a payer can use,
 // and a signature by invoice_node_id. When the offer named its issuer,
 // that is the node; when the request named an amount, that is the amount.
-ofr_check_invoice_vartime :: (b: [] Bolt12) -> int {
+ofr_check_invoice_vartime :: (b: [] Bolt12) -> int #effects(all) {
   if !ofr_has(b, INV_AMOUNT) || !ofr_has(b, INV_CREATED_AT) || !ofr_has(b, INV_PAYMENT_HASH) || !ofr_has(b, INV_NODE_ID) {
     return OFR_REQUIRED;
   }
@@ -661,14 +661,14 @@ ofr_check_invoice_vartime :: (b: [] Bolt12) -> int {
 }
 // An invoice is out of date when now is past invoice_created_at plus
 // invoice_relative_expiry, or two hours without one.
-offer_invoice_expired_vartime :: (b: [] Bolt12, now: u64) -> bool {
+offer_invoice_expired_vartime :: (b: [] Bolt12, now: u64) -> bool #effects(all) {
   expiry: u64 = ifx ofr_has(b, INV_RELATIVE_EXPIRY) then ofr_number(b, INV_RELATIVE_EXPIRY) else OFR_RELATIVE_EXPIRY;
   return now > ofr_number(b, INV_CREATED_AT) + expiry;
 }
 // A payer accepts an invoice for its own request only when every field of
 // the request's ranges (0 to 159, and the request's experimental billion)
 // is the same, and no field is added there.
-offer_matches_vartime :: (request: [] Bolt12, invoice: [] Bolt12) -> bool {
+offer_matches_vartime :: (request: [] Bolt12, invoice: [] Bolt12) -> bool #effects(all) {
   mine := 0;
   for i: 0..<invoice[0].count {
     t := invoice[0].records[i].type;
@@ -693,7 +693,7 @@ applies the rules of its kind.
 ```jai
 // Reads text into b[0]: the text, the stream, then the kind's rules.
 // Returns OFR_OK or the first refusal.
-offer_decode_vartime :: (text: string, b: [] Bolt12) -> int {
+offer_decode_vartime :: (text: string, b: [] Bolt12) -> int #effects(all) {
   fresh: Bolt12; b[0] = fresh;
   t := offer_text_decode_vartime(text, b[0].data[..]);
   if t.code != OFR_OK { b[0].code = t.code; return t.code; }
@@ -726,8 +726,8 @@ OfrWriter :: struct {
   pool: [4096] u8; used: int;
   types: [64] u64; starts: [64] int; lengths: [64] int; count: int;
 }
-offer_begin :: (w: [] OfrWriter, kind: int) { fresh: OfrWriter; w[0] = fresh; w[0].kind = kind; }
-offer_put_vartime :: (w: [] OfrWriter, type: u64, value: [] u8) -> int {
+offer_begin :: (w: [] OfrWriter, kind: int) #effects(all) { fresh: OfrWriter; w[0] = fresh; w[0].kind = kind; }
+offer_put_vartime :: (w: [] OfrWriter, type: u64, value: [] u8) -> int #effects(all) {
   if w[0].code != OFR_OK { return w[0].code; }
   if w[0].count == OFR_MAX_RECORDS || value.count > OFR_MAX_BYTES - w[0].used { w[0].code = OFR_CAPACITY; return w[0].code; }
   at := w[0].count;
@@ -741,12 +741,12 @@ offer_put_vartime :: (w: [] OfrWriter, type: u64, value: [] u8) -> int {
   return OFR_OK;
 }
 // A truncated number: no leading zero bytes, and zero as no bytes.
-offer_put_number_vartime :: (w: [] OfrWriter, type: u64, v: u64) -> int {
+offer_put_number_vartime :: (w: [] OfrWriter, type: u64, v: u64) -> int #effects(all) {
   b: [8] u8; n := tu_write_vartime(b[..], 0, v);
   return offer_put_vartime(w, type, b[0..<n]);
 }
 // The stream so far, written into b[0] and read back.
-offer_stream_vartime :: (w: [] OfrWriter, b: [] Bolt12) -> int {
+offer_stream_vartime :: (w: [] OfrWriter, b: [] Bolt12) -> int #effects(all) {
   fresh: Bolt12; b[0] = fresh; b[0].kind = w[0].kind;
   if w[0].code != OFR_OK { return w[0].code; }
   at := 0;
@@ -760,7 +760,7 @@ offer_stream_vartime :: (w: [] OfrWriter, b: [] Bolt12) -> int {
 // Signs the stream's Merkle root as field (a type in 240 to 1000, named
 // name) with key, BIP-340 with zero auxiliary randomness, and puts the
 // signature.
-offer_sign_vartime :: (w: [] OfrWriter, type: u64, name: string, key: [] u8) -> int {
+offer_sign_vartime :: (w: [] OfrWriter, type: u64, name: string, key: [] u8) -> int #effects(all) {
   b: [1] Bolt12; root: [32] u8; h: [32] u8; sig: [64] u8; aux: [32] u8; work: [1] SignWork;
   code := offer_stream_vartime(w, b[..]);
   if code != OFR_OK { return code; }
@@ -772,13 +772,13 @@ offer_sign_vartime :: (w: [] OfrWriter, type: u64, name: string, key: [] u8) -> 
   return offer_put_vartime(w, type, sig[..]);
 }
 // The text of the stream. Returns its length, or -1.
-offer_write_vartime :: (w: [] OfrWriter, out: [] u8) -> int {
+offer_write_vartime :: (w: [] OfrWriter, out: [] u8) -> int #effects(all) {
   b: [1] Bolt12;
   if offer_stream_vartime(w, b[..]) != OFR_OK { return -1; }
   return offer_text_encode_vartime(w[0].kind, b[0].data[0..<b[0].n], out);
 }
 // The compressed public key of a 32-byte secret.
-offer_public :: (key: [] u8) -> [33] u8 {
+offer_public :: (key: [] u8) -> [33] u8 #effects(all) {
   out: [33] u8; k := sc_load(key);
   n := se_encode(smc_multiply(k.value, sg_generator()).value, SE_COMPRESSED, out[..]);
   return out;
@@ -792,7 +792,7 @@ The payer's and the seller's steps:
 // A payer's request for an offer: every field of the offer, then
 // invreq_metadata, invreq_payer_id, and the amount and quantity when the
 // payer sets them (0 leaves them out), signed with the payer's key.
-offer_request_vartime :: (offer: [] Bolt12, metadata: [] u8, payer_key: [] u8, amount: u64, quantity: u64, w: [] OfrWriter) -> int {
+offer_request_vartime :: (offer: [] Bolt12, metadata: [] u8, payer_key: [] u8, amount: u64, quantity: u64, w: [] OfrWriter) -> int #effects(all) {
   offer_begin(w, OFR_REQUEST);
   if offer[0].kind != OFR_OFFER || offer[0].code != OFR_OK { w[0].code = OFR_FORBIDDEN; return w[0].code; }
   for i: 0..<offer[0].count {
@@ -812,7 +812,7 @@ offer_request_vartime :: (offer: [] Bolt12, metadata: [] u8, payer_key: [] u8, a
 // When the offer named no issuer, node_key is the secret of the last
 // blinded_node_id of the path the request came by (chapter 111).
 offer_invoice_vartime :: (request: [] Bolt12, node_key: [] u8, paths: [] u8, payinfo: [] u8, created_at: u64,
-                          payment_hash: [] u8, amount: u64, w: [] OfrWriter) -> int {
+                          payment_hash: [] u8, amount: u64, w: [] OfrWriter) -> int #effects(all) {
   offer_begin(w, OFR_INVOICE);
   if request[0].kind != OFR_REQUEST || request[0].code != OFR_OK { w[0].code = OFR_FORBIDDEN; return w[0].code; }
   for i: 0..<request[0].count {
@@ -867,7 +867,7 @@ OfrSub :: struct { code: int; known: bool; kept: bool; hash: [32] u8; }
 // Walks the tree smallest type first, children before parents. Where one
 // side holds no kept leaf and the other does, the writer appends that
 // side's hash to h, and the reader takes the next hash from h instead.
-ofr_proof_tree :: (tags: [] OfrTags, nodes: [] OfrNode, lo: int, hi: int, h: [] OfrHashes, reading: bool) -> OfrSub {
+ofr_proof_tree :: (tags: [] OfrTags, nodes: [] OfrNode, lo: int, hi: int, h: [] OfrHashes, reading: bool) -> OfrSub #effects(all) {
   if hi - lo == 1 {
     n := nodes[lo];
     return OfrSub.{known = n.state != OFR_UNKNOWN, kept = n.state == OFR_KEPT, hash = n.hash};
@@ -894,18 +894,18 @@ ofr_proof_tree :: (tags: [] OfrTags, nodes: [] OfrNode, lo: int, hi: int, h: [] 
   if r.known { ofr_branch(tags[0].branch[..], a.hash[..], c.hash[..], r.hash[..]); }
   return r;
 }
-ofr_invoice_type :: (t: u64) -> bool { return t <= 239 || (t >= OFR_BILLION && t <= 3999999999); }
+ofr_invoice_type :: (t: u64) -> bool #effects(all) { return t <= 239 || (t >= OFR_BILLION && t <= 3999999999); }
 // The marker of a hidden field: one more than the field before it when
 // that one is kept, else one more than the last marker (1 for the first,
 // and a billion after 239). Field 0 has no marker: it is always hidden.
-ofr_marker :: (previous_kept: bool, previous_type: u64, last: u64, count: int) -> u64 {
+ofr_marker :: (previous_kept: bool, previous_type: u64, last: u64, count: int) -> u64 #effects(all) {
   if previous_kept { return previous_type + 1; }
   if count == 0 { return 1; }
   if last == 239 { return OFR_BILLION; }
   return last + 1;
 }
 // Reads proof_omitted_tlvs into out; returns the count, or -1.
-ofr_markers :: (b: [] Bolt12, out: [] u64) -> int {
+ofr_markers :: (b: [] Bolt12, out: [] u64) -> int #effects(all) {
   v := ofr_value(b, PROOF_OMITTED); at := 0; n := 0;
   while at < v.count {
     s := bigsize_read_vartime(v, at);
@@ -914,7 +914,7 @@ ofr_markers :: (b: [] Bolt12, out: [] u64) -> int {
   }
   return n;
 }
-ofr_check_proof_vartime :: (b: [] Bolt12) -> int {
+ofr_check_proof_vartime :: (b: [] Bolt12) -> int #effects(all) {
   need := [8] u64.[REQ_PAYER_ID, INV_PAYMENT_HASH, INV_NODE_ID, OFR_SIGNATURE, PROOF_PREIMAGE, PROOF_MISSING, PROOF_LEAVES, PROOF_SIGNATURE];
   for t: need { if !ofr_has(b, t) { return OFR_REQUIRED; } }
   h: [32] u8;
@@ -978,7 +978,7 @@ hashes the reader will need:
 // nonces, and a note when it is not empty, signed with the payer's key.
 // explicit writes an empty proof_omitted_tlvs when nothing is hidden.
 offer_proof_vartime :: (invoice: [] Bolt12, preimage: [] u8, keep: [] u64, payer_key: [] u8, note: [] u8,
-                        explicit: bool, w: [] OfrWriter) -> int {
+                        explicit: bool, w: [] OfrWriter) -> int #effects(all) {
   offer_begin(w, OFR_PROOF);
   if invoice[0].kind != OFR_INVOICE || invoice[0].code != OFR_OK || invoice[0].count == 0 { w[0].code = OFR_FORBIDDEN; return w[0].code; }
   tags: [1] OfrTags; tags[0] = ofr_tags(ofr_raw(invoice, 0));

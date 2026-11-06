@@ -2,7 +2,7 @@
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/microcoder/tools.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   if cxproc_platform()!=3 {tool_errln("workspace profile v1 requires Linux x86-64");return 1;}
   b:[1024]u8;dir:=fs_temp("coder-sandbox-",b[..]);#assert dir.count>0;
   defer {r:=fs_remove(dir);}

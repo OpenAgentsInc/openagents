@@ -364,7 +364,7 @@ ev_start :: (v: [] RmServer, k: int) {
 }
 // The live instances with players in them whose world event is under way (past idle): a deploy
 // waits for them unless forced (room/deploy.sh, /health's "world events running", #12797).
-rm_events_running :: (v: [] RmServer) -> int #export_c {
+rm_events_running :: (v: [] RmServer) -> int #export_c #effects(all) {
   n := 0;
   for k: 0..<EG_ROOMS {
     if !v[0].eg[k].live || v[0].ev[k].kind == EV_NONE || v[0].ev[k].phase == EV_IDLE { continue; }

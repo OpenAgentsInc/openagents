@@ -24,9 +24,9 @@
  #assert abs(s.linear_acceleration[0]-61.4)<1e-13 && abs(s.linear_acceleration[1]+35.8)<1e-13 && abs(s.linear_acceleration[2]+5.4)<1e-13;
 }
 
-pid_cross :: (a:[3]f64,b:[3]f64)->[3]f64 {return [3]f64.[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
-pid_matvec :: (m:[9]f64,v:[3]f64)->[3]f64 {r:[3]f64;for i:0..<3 {for j:0..<3 {r[i]+=m[i*3+j]*v[j];}}return r;}
-pid_child :: (parent:PidBodyMotion,r:[3]f64,axis:[3]f64,kind:PidJoint,speed:f64,acceleration:f64)->PidBodyMotion {
+pid_cross :: (a:[3]f64,b:[3]f64)->[3]f64 #effects(all) {return [3]f64.[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
+pid_matvec :: (m:[9]f64,v:[3]f64)->[3]f64 #effects(all) {r:[3]f64;for i:0..<3 {for j:0..<3 {r[i]+=m[i*3+j]*v[j];}}return r;}
+pid_child :: (parent:PidBodyMotion,r:[3]f64,axis:[3]f64,kind:PidJoint,speed:f64,acceleration:f64)->PidBodyMotion #effects(all) {
  child:=parent;wr:=pid_cross(parent.angular,r);ar:=pid_cross(parent.angular_acceleration,r);centripetal:=pid_cross(parent.angular,wr);
  for i:0..<3 {child.linear[i]+=wr[i];child.linear_acceleration[i]+=ar[i]+centripetal[i];}
  if kind==PidJoint.hinge {turn:=pid_cross(parent.angular,axis);for i:0..<3 {child.angular[i]+=axis[i]*speed;child.angular_acceleration[i]+=axis[i]*acceleration+turn[i]*speed;}}

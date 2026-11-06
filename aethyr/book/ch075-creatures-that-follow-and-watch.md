@@ -89,7 +89,7 @@ says `invalid`, not `hidden`:
 // Whether a creature standing at `feet` sees `target` (a point on someone, such as their chest)
 // on tick `now`: near enough on the flat, and nothing between its eyes and the point. A query the
 // colliders refuse (too many heightfields, a broken mesh) senses nothing and says so.
-sense_sight :: (s: Senses, c: Colliders, feet: WorldPoint, target: WorldPoint, source: int, now: int) -> Sensed {
+sense_sight :: (s: Senses, c: Colliders, feet: WorldPoint, target: WorldPoint, source: int, now: int) -> Sensed #effects(all) {
   out: Sensed;
   if !senses_ok(s) || !sense_point_ok(feet) || !sense_point_ok(target) || now < 0 { out.status = SenseStatus.invalid; return out; }
   if sense_flat(feet, target) > s.sight { out.status = SenseStatus.out_of_range; return out; }
@@ -112,7 +112,7 @@ it:
 ```jai
 // Whether a creature at `feet` hears a sound made at `at` that carries `range` metres. Walls don't
 // stop a sound here, as they don't in the watch.
-sense_sound :: (s: Senses, feet: WorldPoint, at: WorldPoint, range: f32, source: int, now: int) -> Sensed {
+sense_sound :: (s: Senses, feet: WorldPoint, at: WorldPoint, range: f32, source: int, now: int) -> Sensed #effects(all) {
   out: Sensed;
   if !senses_ok(s) || !sense_point_ok(feet) || !sense_point_ok(at) || !sense_range_ok(range) || now < 0 { out.status = SenseStatus.invalid; return out; }
   if sense_flat(feet, at) > range { out.status = SenseStatus.out_of_range; return out; }
@@ -148,7 +148,7 @@ Noted :: struct { memory: Memory; status: NoteStatus; }
 
 // The memory on tick `now`, with every stimulus older than `forget` ticks gone. The rest keep
 // their order. A tick before the newest one noted changes nothing.
-memory_forget :: (m: Memory, s: Senses, now: int) -> Memory {
+memory_forget :: (m: Memory, s: Senses, now: int) -> Memory #effects(all) {
   if now < m.latest || !senses_ok(s) { return m; }
   out := m; out.count = 0;
   for i: 0..<m.count {
@@ -161,7 +161,7 @@ memory_forget :: (m: Memory, s: Senses, now: int) -> Memory {
 // The memory with one more stimulus. One of the same kind from the same source is refreshed in
 // place; a new one goes at the end, after the old ones are forgotten. Refused, and counted, when
 // it is broken, stamped before the newest tick, or there is no room.
-memory_note :: (m: Memory, s: Senses, st: Stimulus) -> Noted {
+memory_note :: (m: Memory, s: Senses, st: Stimulus) -> Noted #effects(all) {
   out := Noted.{memory = m};
   if st.kind == StimulusKind.none || !sense_point_ok(st.at) || st.tick < 0 || !senses_ok(s) {
     out.memory.refused += 1; out.status = NoteStatus.invalid; return out;
@@ -190,7 +190,7 @@ tick a sight wins over a sound, and a sound over a touch:
 // tie, sight before sound before touch), and how many ticks old it is. A decision reads this, not
 // where the source really is.
 Recall :: struct { known: bool; kind: StimulusKind; at: WorldPoint; age: int; }
-memory_recall :: (m: Memory, s: Senses, source: int, now: int) -> Recall {
+memory_recall :: (m: Memory, s: Senses, source: int, now: int) -> Recall #effects(all) {
   out: Recall;
   if now < m.latest || !senses_ok(s) { return out; }
   best := -1;

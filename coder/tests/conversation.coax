@@ -18,7 +18,7 @@ cv_sid :: (s:string,out:[]u8)->string {
     if cl_str(ar[..],line,"kind")=="session" {id:=cl_str(ar[..],line,"id");n:=pe_cat(out,0,id);return cast(string)out[0..<n];}}
   return "";
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}gate:=args_value(a[..],"--gate","");driver:=args_value(a[..],"--driver","");repo:=args_value(a[..],"--driver-repo","");cb:[4096]u8;coax:=proc_getenv("COAX",cb[..]);tb:[4096]u8;root:=fs_temp("coder-conversation-",tb[..]);
   if gate.count==0 || driver.count==0 || repo.count==0 || coax.count==0 || root.count==0 {return 2;}
   rb:[4096]u8;work:=pe_join(root,"repo",rb[..]);hb:[4096]u8;home:=pe_join(root,"home",hb[..]);ok:=fs_mkdir(work) && fs_mkdir(home);

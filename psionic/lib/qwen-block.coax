@@ -19,16 +19,16 @@
     #assert qb_finish(QmDtype.bf16,2,1,3,x[..],att[..],norm[..],gate[..],up[..],down[..],out[..],work[..],true).status==QmStatus.alias;
     #assert out[0]==-7 && out[1]==-7;
 }
-qb_width_valid :: (width:int,epsilon:f32)->bool {return width>=1 && width<=8192 && psionic_tensor_finite_bits(f32_bits(epsilon)) && epsilon>0;}
-qb_valid :: (tag:u8,width:int,hidden:int,epsilon:f32)->bool {
+qb_width_valid :: (width:int,epsilon:f32)->bool #effects(all) {return width>=1 && width<=8192 && psionic_tensor_finite_bits(f32_bits(epsilon)) && epsilon>0;}
+qb_valid :: (tag:u8,width:int,hidden:int,epsilon:f32)->bool #effects(all) {
     return tag<=1 && hidden>=1 && hidden<=32768 && qb_width_valid(width,epsilon);
 }
-qb_work_count :: (width:int,hidden:int)->int {return 4*width+4*hidden;}
-qb_sigmoid :: (x:f64)->f64 {e:=exp(-abs(x));return exp((x-abs(x))/2)/(1+e);}
-qb_data :: (a:[]f32)->QmStatus {for v:a {if !psionic_tensor_finite_bits(f32_bits(v)) {return QmStatus.number;}}return QmStatus.ok;}
+qb_work_count :: (width:int,hidden:int)->int #effects(all) {return 4*width+4*hidden;}
+qb_sigmoid :: (x:f64)->f64 #effects(all) {e:=exp(-abs(x));return exp((x-abs(x))/2)/(1+e);}
+qb_data :: (a:[]f32)->QmStatus #effects(all) {for v:a {if !psionic_tensor_finite_bits(f32_bits(v)) {return QmStatus.number;}}return QmStatus.ok;}
 // book:begin finish
 qb_finish :: (dtype:QmDtype,width:int,hidden:int,epsilon:f32,x:[]f32,attention:[]f32,scale:[]f32,
-        gate_weights:[]u8,up_weights:[]u8,down_weights:[]u8,out:[]f32,work:[]f32,overlap:bool)->QmResult #export_c {
+        gate_weights:[]u8,up_weights:[]u8,down_weights:[]u8,out:[]f32,work:[]f32,overlap:bool)->QmResult #export_c #effects(all) {
     if !qb_valid(cast(u8)dtype,width,hidden,epsilon) {return QmResult.{status=QmStatus.shape};}
     if x.count!=width || attention.count!=width || scale.count!=width || gate_weights.count!=qm_bytes(dtype,hidden,width) || up_weights.count!=qm_bytes(dtype,hidden,width) || down_weights.count!=qm_bytes(dtype,width,hidden) || out.count<width || work.count<qb_work_count(width,hidden) {return QmResult.{status=QmStatus.capacity};}
     if overlap {return QmResult.{status=QmStatus.alias};}
@@ -81,7 +81,7 @@ qb_finish :: (dtype:QmDtype,width:int,hidden:int,epsilon:f32,x:[]f32,attention:[
     #assert qb_begin(2,3.5f32,x[..],scale[..],out[..],work[..],true).status==QmStatus.alias;
 }
 // book:begin begin
-qb_begin :: (width:int,epsilon:f32,x:[]f32,scale:[]f32,out:[]f32,work:[]f32,overlap:bool)->QmResult #export_c {
+qb_begin :: (width:int,epsilon:f32,x:[]f32,scale:[]f32,out:[]f32,work:[]f32,overlap:bool)->QmResult #export_c #effects(all) {
     if !qb_width_valid(width,epsilon) {return QmResult.{status=QmStatus.shape};}
     if x.count!=width || scale.count!=width || out.count<width || work.count<width {return QmResult.{status=QmStatus.capacity};}
     if overlap {return QmResult.{status=QmStatus.alias};}

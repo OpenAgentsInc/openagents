@@ -17,9 +17,9 @@
  words:=pfd_words(value);for i:0..<9 {#assert words[i]==(ifx i==lane then bits else 0);}
 }
 
-pfd_subtract :: (applied:PidOutput,bias:PidOutput)->PidOutput {
+pfd_subtract :: (applied:PidOutput,bias:PidOutput)->PidOutput #effects(all) {
  net:PidOutput;for i:0..<7 {net.hinge[i]=applied.hinge[i]-bias.hinge[i];}for i:0..<2 {net.slide[i]=applied.slide[i]-bias.slide[i];}return net;
 }
-pfd_words :: (force:PidOutput)->[9]u64 {
+pfd_words :: (force:PidOutput)->[9]u64 #effects(all) {
  words:[9]u64;for i:0..<7 {words[i]=f64_bits(force.hinge[i].value);}for i:0..<2 {words[7+i]=f64_bits(force.slide[i].value);}return words;
 }

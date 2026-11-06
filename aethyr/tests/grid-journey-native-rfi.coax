@@ -193,7 +193,7 @@ gjn_run :: (browser_dir:string,native_dir:string,outdir:string)->bool {
     gjn_inventory(c[0],p[0],browser_dir,native_dir,outdir) &&
     fs_rename(fs_join(outdir,"frame.pending",from[..]),fs_join(outdir,"frame.config",into[..]));
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {tool_errln("usage: grid-journey-native-rfi BROWSER_CAPTURE NATIVE_DUMP OUTDIR");return 2;}
   ok:=gjn_run(args_at(a[..],0),args_at(a[..],1),args_at(a[..],2));
   print("% native producer to frozen Grid RFI\n",ifx ok then "pass" else "FAIL");return ifx ok then 0 else 1;

@@ -6,7 +6,7 @@
   #assert fc_launch_option(2)=="--stream-json";
   #assert fc_launch_option(-1)=="" && fc_launch_option(3)=="";
 }
-fc_launch_option :: (i:int)->string #export_c {
+fc_launch_option :: (i:int)->string #export_c #effects(all) {
   options:=[3]string.["--engine","auto","--stream-json"];
   return ifx i>=0 && i<options.count then options[i] else "";
 }

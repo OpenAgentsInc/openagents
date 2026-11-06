@@ -6,6 +6,6 @@
  q[3]=-1;#assert !hps_host(q[..]);q[3]=2;#assert !hps_host(q[..]);
  #assert !hps_host(q[0..<6]);extra:[8]int;#assert !hps_host(extra[..]);
 }
-hps_host :: (q:[]int)->bool #export_c {
+hps_host :: (q:[]int)->bool #export_c #effects(all) {
  return q.count==7&&q[0]==1&&q[1]==1&&q[2]==2&&(q[3]==0||q[3]==1)&&q[4]==1&&q[5]==1&&q[6]==0;
 }

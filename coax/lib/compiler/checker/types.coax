@@ -2,9 +2,9 @@
 // fields, casts, spatial, unit and quantity types. A part of the checker:
 // lib/compiler/checker.coax loads it (#12646).
 #authority;
-CK_local :: (c:CK_Context,name:string)->int {i:=c.state[0].local_count;while i>0 {i-=1;at:=i;if c.locals[at].name==name {return at;}}return -1;}
-CK_builtin_name :: (c:CK_Context,name:string)->bool {return CK_spatial_constructor(name,"")!=SP_Kind.raw || CK_unit_constructor(name,"")!=0 || name=="Result" || name=="convert_unit" || name=="type_name" || name=="field_info" || name=="enum_info" || (c.state[0].basic && name=="print") || name=="len" || name=="byte_at" || CK_intrinsic(name)!=0 || CK_byte_intrinsic(name)!=0;}
-CK_intern :: (c:CK_Context,kind:CK_Kind,elem:int,length:int)->int {
+CK_local :: (c:CK_Context,name:string)->int #effects(all) {i:=c.state[0].local_count;while i>0 {i-=1;at:=i;if c.locals[at].name==name {return at;}}return -1;}
+CK_builtin_name :: (c:CK_Context,name:string)->bool #effects(all) {return CK_spatial_constructor(name,"")!=SP_Kind.raw || CK_unit_constructor(name,"")!=0 || name=="Result" || name=="convert_unit" || name=="type_name" || name=="field_info" || name=="enum_info" || (c.state[0].basic && name=="print") || name=="len" || name=="byte_at" || CK_intrinsic(name)!=0 || CK_byte_intrinsic(name)!=0;}
+CK_intern :: (c:CK_Context,kind:CK_Kind,elem:int,length:int)->int #effects(all) {
   for i:16..<c.state[0].type_count {t:=c.types[i];if t.kind==kind && t.elem==elem && t.length==length {return i;}}
   name:="";size:=16;alignment:=8;
   if kind==CK_Kind.array && length<0 {prefix:=CK_join3(c,"[",c.types[-length].name,"] ");name=CK_join2(c,prefix,c.types[elem].name);size=0;alignment=c.types[elem].alignment;}
@@ -12,18 +12,18 @@ CK_intern :: (c:CK_Context,kind:CK_Kind,elem:int,length:int)->int {
   else {prefix:="[] ";if length==1 {prefix="[] const ";}name=CK_join2(c,prefix,c.types[elem].name);}
   id:=CK_new_type(c,CK_Type.{kind=kind,name=name,size=size,alignment=alignment,elem=elem,length=length,id=c.state[0].composite_count});c.state[0].composite_count+=1;return id;
 }
-CK_list_count :: (c:CK_Context,head:int)->int {count:=0;id:=head;while id!=CK_NONE {count+=1;id=c.nodes[id].next;}return count;}
-CK_at :: (c:CK_Context,head:int,index:int)->int {id:=head;i:=0;while id!=CK_NONE {if i==index {return id;}i+=1;id=c.nodes[id].next;}return CK_NONE;}
-CK_copy_expr :: (c:CK_Context,to:int,from:int,location:bool) {next:=c.nodes[to].next;loc:=c.nodes[to].loc;c.nodes[to]=c.nodes[from];c.nodes[to].next=next;if location {c.nodes[to].loc=loc;}}
+CK_list_count :: (c:CK_Context,head:int)->int #effects(all) {count:=0;id:=head;while id!=CK_NONE {count+=1;id=c.nodes[id].next;}return count;}
+CK_at :: (c:CK_Context,head:int,index:int)->int #effects(all) {id:=head;i:=0;while id!=CK_NONE {if i==index {return id;}i+=1;id=c.nodes[id].next;}return CK_NONE;}
+CK_copy_expr :: (c:CK_Context,to:int,from:int,location:bool) #effects(all) {next:=c.nodes[to].next;loc:=c.nodes[to].loc;c.nodes[to]=c.nodes[from];c.nodes[to].next=next;if location {c.nodes[to].loc=loc;}}
 
-CM_intop :: (op:u32,a:CM_Int,b:CM_Int)->CM_Int {
+CM_intop :: (op:u32,a:CM_Int,b:CM_Int)->CM_Int #effects(all) {
   if op==34 {return CM_add(a,b);}if op==35 {return CM_sub(a,b);}if op==36 {return CM_mul(a,b);}
   if op==37 || op==38 {return CM_divide(a,b,op==38);}if op>=39 && op<=41 {return CM_bitwise(op,a,b);}
   if op==42 || op==43 {if b.bad || b.negative || !CM_fits(b,64,true) {return CM_Int.{bad=true};}return CM_shift(op,a,cast(int)CM_low(b.mag));}return CM_Int.{bad=true};
 }
 // %g's six significant digits for a finite binary64 integer. Overflowing f32
 // literals have positive binary powers, so exact decimal digits are inexpensive.
-CM_g :: (bits:u64,out:[] u8)->int #export_c {
+CM_g :: (bits:u64,out:[] u8)->int #export_c #effects(all) {
   value:=CM_unpack(bits,CM_Width.f64);if value.special!=0 || value.power<0 {return -1;}
   digits:[320] u8;count:=0;v:=value.mantissa;
   while v!=0 {digits[count]=cast(u8)(v%10);v=v/10;count+=1;}
@@ -43,7 +43,7 @@ CM_g :: (bits:u64,out:[] u8)->int #export_c {
 // Explicit frames keep the semantic bound independent of the evaluator's
 // native procedure-call limit, including exact-bound constant expressions.
 CK_FoldFrame :: struct {id:int;depth:int;pending_left:bool;left:CM_Int;}
-CK_const_int_depth :: (c:CK_Context,id:int,depth:int)->CM_Int {
+CK_const_int_depth :: (c:CK_Context,id:int,depth:int)->CM_Int #effects(all) {
   frames:[66]CK_FoldFrame;frames[0]=CK_FoldFrame.{id=id,depth=depth};top:=0;ready:=false;done:=false;value:CM_Int;
   while !done {
     frame:=frames[top];e:=c.nodes[frame.id];
@@ -65,8 +65,8 @@ CK_const_int_depth :: (c:CK_Context,id:int,depth:int)->CM_Int {
     value=CM_Int.{bad=true};ready=true;
   }return value;
 }
-CK_const_int :: (c:CK_Context,id:int)->CM_Int {return CK_const_int_depth(c,id,0);}
-CK_resolve :: (c:CK_Context,id:int,by_value:CK_Access)->int {
+CK_const_int :: (c:CK_Context,id:int)->CM_Int #effects(all) {return CK_const_int_depth(c,id,0);}
+CK_resolve :: (c:CK_Context,id:int,by_value:CK_Access)->int #effects(all) {
   if id<2 {return CK_NONE;}e:=c.nodes[id];if !CK_enter(c,e.loc) {return CK_NONE;}defer CK_leave(c);
   if e.kind==CK_Tag.type_optional {return CK_sum_type(c,CK_Kind.optional,CK_sum_inner(c,e.b),0,e.loc);}
   if e.kind==CK_Tag.type_named {
@@ -108,22 +108,22 @@ CK_resolve :: (c:CK_Context,id:int,by_value:CK_Access)->int {
 // $T in its signature and body is that same type, so uses are checked
 // against it like any other type. Placeholders stay out of layouts and
 // emission: a generic procedure is checked but has no instances yet.
-CK_generic :: (c:CK_Context,t:int)->bool {
+CK_generic :: (c:CK_Context,t:int)->bool #effects(all) {
   at:=t;while c.types[at].kind==CK_Kind.view || c.types[at].kind==CK_Kind.array {if c.types[at].length<0 {return true;}at=c.types[at].elem;}
   if c.types[at].kind==CK_Kind.result {return CK_generic(c,c.types[at].elem) || CK_generic(c,c.types[at].sum_error);}if c.types[at].kind==CK_Kind.optional {return CK_generic(c,c.types[at].elem);}
   return c.types[at].kind==CK_Kind.param || (c.types[at].kind==CK_Kind.struct_ && c.nodes[c.types[at].decl].generic);
 }
 // A placeholder, or a generic struct over placeholders, may sit in a view or
 // array; a composite over one may not.
-CK_nests :: (c:CK_Context,t:int)->bool {k:=c.types[t].kind;return CK_generic(c,t) && k!=CK_Kind.param && k!=CK_Kind.struct_;}
-CK_nested :: (c:CK_Context,loc:CK_Loc,array:bool,elem:int) {
+CK_nests :: (c:CK_Context,t:int)->bool #effects(all) {k:=c.types[t].kind;return CK_generic(c,t) && k!=CK_Kind.param && k!=CK_Kind.struct_;}
+CK_nested :: (c:CK_Context,loc:CK_Loc,array:bool,elem:int) #effects(all) {
   what:="a view of '";if array {what="a fixed array of '";}
   parts:=[3] string.[what,c.types[elem].name,"' nests a type parameter; only '$T', '[] $T' and '[N] $T' are supported"];
   CK_error(c,loc,"E0394",CK_text(c,parts[..]),"take '[] $T' or '[$N] $T' and index it");
 }
 // The placeholder record a $NAME names for its owner: found, or bound here
 // when this site may bind (value: a $N array length, bits 1).
-CK_param :: (c:CK_Context,id:int,value:bool)->int {
+CK_param :: (c:CK_Context,id:int,value:bool)->int #effects(all) {
   e:=c.nodes[id];name:=CK_join2(c,"$",e.name);owner:=c.state[0].generic;site:=c.state[0].site;bits:=0;if value {bits=1;}
   // A field's owner is its struct: a template, an instance, or a plain struct with no parameters.
   // A struct parameter is a length or a type by its first use in a field (bits 2: not used yet).
@@ -138,22 +138,22 @@ CK_param :: (c:CK_Context,id:int,value:bool)->int {
   if site!=CK_Site.param {parts:=[5] string.["'",name,"' is not bound by a parameter of '",proc,"'"];CK_error(c,e.loc,"E0393",CK_text(c,parts[..]),CK_join3(c,"use ",name," in a parameter's type first"));return CK_NONE;}
   c.nodes[owner].generic=true;r:=CK_new_type(c,CK_Type.{kind=CK_Kind.param,name=name,decl=owner,scope=c.nodes[owner].scope,bits=bits});CK_constrain(c,id,r);return r;
 }
-CK_param_record :: (c:CK_Context,owner:int,name:string)->int {
+CK_param_record :: (c:CK_Context,owner:int,name:string)->int #effects(all) {
   for i:16..<c.state[0].type_count {r:=c.types[i];if r.kind==CK_Kind.param && r.decl==owner && r.name==name {return i;}}return CK_NONE;
 }
-CK_kind_clash :: (c:CK_Context,id:int,name:string,value:bool) {
+CK_kind_clash :: (c:CK_Context,id:int,name:string,value:bool) #effects(all) {
   what:="' is a type parameter, not an array length";fix:="write the length as $N in a fixed array type: [$N] T";
   if value {what="' is a value parameter, not a type";fix="write a type parameter as $T, and use $N only as an array length";}
   CK_error(c,c.nodes[id].loc,"E0368",CK_join3(c,"'",name,what),fix);
 }
 // A bound record stands for its binding: elem for $T, length for $N. A
 // failed lookup is record 0, whose elem and length are both 0 (none).
-CK_type_param :: (c:CK_Context,id:int)->int {
+CK_type_param :: (c:CK_Context,id:int)->int #effects(all) {
   r:=CK_param(c,id,false);t:=c.types[r];if t.bits==1 {CK_kind_clash(c,id,t.name,true);return CK_NONE;}
   if t.elem!=CK_NONE {return t.elem;}return r;
 }
 // An array length: the bound value, or minus the placeholder record.
-CK_length_param :: (c:CK_Context,id:int)->int {
+CK_length_param :: (c:CK_Context,id:int)->int #effects(all) {
   r:=CK_param(c,id,true);t:=c.types[r];if t.kind==CK_Kind.param && t.bits==0 {CK_kind_clash(c,id,t.name,false);return 0;}
   if t.length!=0 {return t.length;}return -r;
 }
@@ -191,7 +191,7 @@ CK_length_param :: (c:CK_Context,id:int)->int {
  nodes[5]=CK_Node.{kind=CK_Tag.proc,name="f"};nodes[6]=CK_Node.{kind=CK_Tag.field,name="y",a=7};nodes[7]=CK_Node.{kind=CK_Tag.type_param,name="T"};
  CK_layout(c,2);#assert state[0].site==CK_Site.param && state[0].generic==5 && nodes[3].type==11 && state[0].error_count==1 && errors[0].code=="E0395" && !nodes[5].generic;
 }
-CK_layout :: (c:CK_Context,id:int) {
+CK_layout :: (c:CK_Context,id:int) #effects(all) {
   if c.nodes[id].kind==CK_Tag.union_ {CK_union_layout(c,id);return;}
   if c.nodes[id].mark==2 {return;}
   if c.nodes[id].frame_decl {CK_frame_layout(c,id);return;}
@@ -216,15 +216,15 @@ CK_layout :: (c:CK_Context,id:int) {
   CK_quantity_layout(c,id);
   if c.nodes[id].generic {c.nodes[id].flag2=c.state[0].error_count!=errors;}
 }
-CK_untyped_int :: (c:CK_Context,id:int)->CM_Int {e:=c.nodes[id];return CM_signed_bits(e.value,e.negative);}
-CK_set_int :: (c:CK_Context,id:int,v:CM_Int) {
+CK_untyped_int :: (c:CK_Context,id:int)->CM_Int #effects(all) {e:=c.nodes[id];return CM_signed_bits(e.value,e.negative);}
+CK_set_int :: (c:CK_Context,id:int,v:CM_Int) #effects(all) {
   if !CM_fits(v,64,v.negative) {CK_error(c,c.nodes[id].loc,"E0350",CK_join3(c,"constant ",CK_number(c,v)," does not fit in 64 bits"),"");c.nodes[id].type=0;return;}
   operation:=c.nodes[id].kind!=CK_Tag.expr_int;c.nodes[id].kind=CK_Tag.expr_int;c.nodes[id].type=4;c.nodes[id].folded=c.nodes[id].folded || operation;
   c.nodes[id].negative=v.negative;c.nodes[id].value=CM_raw(v);c.nodes[id].a=0;c.nodes[id].b=0;
 }
-CK_set_float :: (c:CK_Context,id:int,bits:u64) {c.nodes[id].kind=CK_Tag.expr_float;c.nodes[id].type=5;c.nodes[id].floating=bits;c.nodes[id].a=0;c.nodes[id].b=0;}
-CK_as_double :: (c:CK_Context,id:int)->u64 {if c.nodes[id].type==5 {return c.nodes[id].floating;}return CM_to_float(CK_untyped_int(c,id));}
-CK_coerce :: (c:CK_Context,id:int,to:int) {
+CK_set_float :: (c:CK_Context,id:int,bits:u64) #effects(all) {c.nodes[id].kind=CK_Tag.expr_float;c.nodes[id].type=5;c.nodes[id].floating=bits;c.nodes[id].a=0;c.nodes[id].b=0;}
+CK_as_double :: (c:CK_Context,id:int)->u64 #effects(all) {if c.nodes[id].type==5 {return c.nodes[id].floating;}return CM_to_float(CK_untyped_int(c,id));}
+CK_coerce :: (c:CK_Context,id:int,to:int) #effects(all) {
   from:=c.nodes[id].type;if !CK_untyped(c,from) {return;}
   // an integer literal is a value of every numeric type, so of a numeric $T; each instance checks it again
   if from==4 && c.types[to].need==4 {c.nodes[id].type=to;return;}
@@ -250,9 +250,9 @@ CK_coerce :: (c:CK_Context,id:int,to:int) {
   }
   if from==5 && CK_integer(c,to) {CK_error(c,c.nodes[id].loc,"E0350",CK_join2(c,"a float literal cannot become ",c.types[to].name),CK_join3(c,"write an integer, or cast(",c.types[to].name,") a float value"));c.nodes[id].type=0;}
 }
-CK_default :: (t:int)->int {if t==4 {return 11;}if t==5 {return 7;}return t;}
-CK_value :: (c:CK_Context,id:int,want:CK_Hint)->int {t:=CK_expr(c,id,want);if CK_untyped(c,t) {to:=CK_default(t);if CK_numeric(c,want.type) {to=want.type;}CK_coerce(c,id,to);}CK_readonly_coerce(c,id,want.type);return c.nodes[id].type;}
-CK_fold_binary :: (c:CK_Context,id:int)->int {
+CK_default :: (t:int)->int #effects(all) {if t==4 {return 11;}if t==5 {return 7;}return t;}
+CK_value :: (c:CK_Context,id:int,want:CK_Hint)->int #effects(all) {t:=CK_expr(c,id,want);if CK_untyped(c,t) {to:=CK_default(t);if CK_numeric(c,want.type) {to=want.type;}CK_coerce(c,id,to);}CK_readonly_coerce(c,id,want.type);return c.nodes[id].type;}
+CK_fold_binary :: (c:CK_Context,id:int)->int #effects(all) {
   e:=c.nodes[id];any_float:=c.nodes[e.a].type==5 || c.nodes[e.b].type==5;
   if e.op>=44 && e.op<=49 {t:=11;if any_float {t=7;}CK_coerce(c,e.a,t);CK_coerce(c,e.b,t);return 2;}
   if e.op==50 || e.op==51 {CK_error(c,e.loc,"E0312",CK_join2(c,CK_op(e.op)," needs two bools, found numbers"),"");return CK_NONE;}
@@ -268,7 +268,7 @@ CK_fold_binary :: (c:CK_Context,id:int)->int {
   if (e.op==42 || e.op==43) && (y.negative || CM_bits(y.mag)>6) {CK_error(c,e.loc,"E0370","shift amount must be 0 to 63","");return CK_NONE;}
   CK_set_int(c,id,CM_intop(e.op,x,y));return c.nodes[id].type;
 }
-CK_constant_type :: (c:CK_Context,id:int)->int {
+CK_constant_type :: (c:CK_Context,id:int)->int #effects(all) {
   if c.nodes[id].mark==2 {return c.nodes[id].type;}
   if c.nodes[id].mark==1 {CK_error(c,c.nodes[id].loc,"E0340",CK_join3(c,"constant dependency cycle at '",c.nodes[id].name,"'"),"");return CK_NONE;}
   if c.state[0].constant_depth>=64 {CK_error(c,c.nodes[id].loc,"E0347","constant type dependency depth exceeds 64","");return CK_NONE;}
@@ -284,18 +284,18 @@ CK_constant_type :: (c:CK_Context,id:int)->int {
   if c.nodes[id].type==1 {CK_error(c,c.nodes[id].loc,"E0341","a constant must have a value","");}
   c.nodes[id].mark=2;c.state[0].constant_depth-=1;return c.nodes[id].type;
 }
-CK_op :: (op:u32)->string {
+CK_op :: (op:u32)->string #effects(all) {
   names:=[53] string.["end of file","identifier","keyword","integer","float","string","directive","annotation","'('","')'","'{'","'}'","'['","']'","','","';'","':'","'::'","':='","'->'","'.'","'..'","'..<'","'='","'+='","'-='","'*='","'/='","'%='","'&='","'|='","'^='","'<<='","'>>='","'+'","'-'","'*'","'/'","'%'","'&'","'|'","'^'","'<<'","'>>'","'=='","'!='","'<'","'<='","'>'","'>='","'&&'","'||'","'!'"];
   return names[cast(int)op];
 }
 
-CK_immutable :: (c:CK_Context,id:int)->string {
+CK_immutable :: (c:CK_Context,id:int)->string #effects(all) {
   e:=c.nodes[id];if e.kind==CK_Tag.expr_ident {local:=CK_local(c,e.name);if local>=0 {return c.locals[local].immutable;}return "constant";}
   if e.kind==CK_Tag.expr_field {if c.types[c.nodes[e.a].type].kind==CK_Kind.struct_ {return CK_immutable(c,e.a);}return "count";}
   if e.kind==CK_Tag.expr_index {kind:=c.types[c.nodes[e.a].type].kind;if kind==CK_Kind.view {if CK_readonly(c,c.nodes[e.a].type) {return "read-only view";}return "";}if kind==CK_Kind.string_ {return "string byte";}return CK_immutable(c,e.a);}
   return "temporary";
 }
-CK_mutable :: (c:CK_Context,id:int,loc:CK_Loc) {
+CK_mutable :: (c:CK_Context,id:int,loc:CK_Loc) #effects(all) {
   if c.nodes[id].kind==CK_Tag.expr_ident && c.types[c.nodes[id].type].kind==CK_Kind.result {CK_error(c,loc,"E0908","a Result binding cannot be reassigned","");return;}
   why:=CK_immutable(c,id);if why=="" {return;}
   if why=="constant" {CK_error(c,loc,"E0344","constants cannot be assigned","");}
@@ -305,12 +305,12 @@ CK_mutable :: (c:CK_Context,id:int,loc:CK_Loc) {
   else if why=="temporary" {CK_error(c,loc,"E0359","this value is a temporary and cannot be assigned","store it in a variable first");}
   else {CK_error(c,loc,"E0359",CK_join3(c,"a ",why," cannot be assigned"),"copy it into a local variable");}
 }
-CK_field_list :: (c:CK_Context,id:int,members:bool)->string {
+CK_field_list :: (c:CK_Context,id:int,members:bool)->string #effects(all) {
   text:="its fields are:";if members {text="its members are:";}field:=c.nodes[id].head;
   while field!=CK_NONE {text=CK_join3(c,text," ",c.nodes[field].name);field=c.nodes[field].next;}
   if !members && c.nodes[id].head==0 {text="it has no fields";}return text;
 }
-CK_field :: (c:CK_Context,id:int)->int {
+CK_field :: (c:CK_Context,id:int)->int #effects(all) {
   e:=c.nodes[id];left:=c.nodes[e.a];
   // alias.NAME is a qualified value; alias.Enum.member a qualified member.
   if CK_qualifier(c,e.a)>=0 {c.nodes[id].kind=CK_Tag.expr_ident;c.nodes[id].name2=left.name;c.nodes[id].loc=left.loc;c.nodes[id].a=CK_NONE;return CK_expr(c,id,CK_Hint.{});}
@@ -331,7 +331,7 @@ CK_field :: (c:CK_Context,id:int)->int {
   fix:="";if kind==CK_Kind.array || kind==CK_Kind.view || t==3 {fix="it has '.count'";}
   parts:=[4] string.[c.types[t].name," has no field '",e.name,"'"];CK_error(c,e.loc,"E0351",CK_text(c,parts[..]),fix);return CK_NONE;
 }
-CK_cast :: (c:CK_Context,id:int)->int {
+CK_cast :: (c:CK_Context,id:int)->int #effects(all) {
   e:=c.nodes[id];to:=CK_resolve(c,e.d,CK_Access.value);from:=CK_expr(c,e.a,CK_Hint.{type=to});if to==CK_NONE || from==CK_NONE {return CK_NONE;}
   if CK_sum(c,to) || CK_sum(c,from) {CK_error(c,e.loc,"E0903","sum tags and payloads cannot be cast directly","");return 0;}
   if CK_untyped(c,from) {
@@ -353,14 +353,14 @@ CK_cast :: (c:CK_Context,id:int)->int {
 }
 // Compiler-owned spatial values are ordinary aggregates. These helpers consume
 // initialized checker pools and publish only fully admitted private instances.
-CK_spatial_constructor :: (name:string,alias:string)->SP_Kind {
+CK_spatial_constructor :: (name:string,alias:string)->SP_Kind #effects(all) {
  if alias.count!=0 {return SP_Kind.raw;}if name=="Point3" {return SP_Kind.point;}if name=="Vector3" {return SP_Kind.vector;}return SP_Kind.raw;
 }
-CK_frame_layout :: (c:CK_Context,id:int) {
+CK_frame_layout :: (c:CK_Context,id:int) #effects(all) {
  n:=c.nodes[id];if n.quantity!=0 || n.d!=0 || n.head!=0 || !SP_frame_valid(n.frame) {CK_error(c,n.loc,"E0832","@frame requires an empty nongeneric frame tag and valid explicit metadata","");}
  c.types[n.type].size=1;c.types[n.type].alignment=1;c.nodes[id].mark=2;
 }
-CK_spatial_intern :: (c:CK_Context,kind:SP_Kind,frame:int,unit:int,rep:int,loc:CK_Loc)->int {
+CK_spatial_intern :: (c:CK_Context,kind:SP_Kind,frame:int,unit:int,rep:int,loc:CK_Loc)->int #effects(all) {
  if c.state[0].fatal {return 0;}
  if (kind!=SP_Kind.point && kind!=SP_Kind.vector) || frame<16 || frame>=c.state[0].type_count || unit<16 || unit>=c.state[0].type_count || (rep!=6 && rep!=7) {CK_error(c,loc,"E0833","spatial types require concrete frame and unit tags and f32 or f64","");return 0;}
  ft:=c.types[frame];ut:=c.types[unit];f:=c.nodes[ft.decl];u:=c.nodes[ut.decl];
@@ -378,18 +378,18 @@ CK_spatial_intern :: (c:CK_Context,kind:SP_Kind,frame:int,unit:int,rep:int,loc:C
  for i:0..<3 {field:=CK_new(c,CK_Tag.field,loc);c.nodes[field].name=names[i];c.nodes[field].type=rep;c.nodes[field].field_index=i*width;if last==0 {c.nodes[id].head=field;}else {c.nodes[last].next=field;}last=field;}c.nodes[id].tail=last;
  if c.state[0].fatal {return 0;}if !CK_chain(c,id,loc) {return 0;}c.nodes[id].spatial_link=c.state[0].spatial_types;c.state[0].spatial_types=id;return ty;
 }
-CK_spatial_type :: (c:CK_Context,id:int)->int {
+CK_spatial_type :: (c:CK_Context,id:int)->int #effects(all) {
  e:=c.nodes[id];if CK_list_count(c,e.head)!=3 {CK_error(c,e.loc,"E0833","Point3 and Vector3 take Frame, Unit and f32 or f64","");return 0;}
  a:=e.head;b:=c.nodes[a].next;d:=c.nodes[b].next;frame:=CK_resolve(c,a,CK_Access.value);unit:=CK_resolve(c,b,CK_Access.value);rep:=CK_resolve(c,d,CK_Access.value);
  if frame==0 || unit==0 || rep==0 {return 0;}return CK_spatial_intern(c,CK_spatial_constructor(e.name,e.name2),frame,unit,rep,e.loc);
 }
-CK_spatial_descriptor :: (c:CK_Context,t:int)->SP_Type {
+CK_spatial_descriptor :: (c:CK_Context,t:int)->SP_Type #effects(all) {
  if c.types[t].space.kind!=SP_Kind.raw {return c.types[t].space;}if t==6 {return SP_Type.{rep=32};}if t==7 {return SP_Type.{rep=64};}return SP_Type.{};
 }
-CK_spatial_projection :: (c:CK_Context,base:int,axis:int,rep:int,loc:CK_Loc)->int {
+CK_spatial_projection :: (c:CK_Context,base:int,axis:int,rep:int,loc:CK_Loc)->int #effects(all) {
  if c.types[c.nodes[base].type].space.kind==SP_Kind.raw {return base;}names:=[3]string.["x","y","z"];id:=CK_new(c,CK_Tag.expr_field,loc);c.nodes[id].name=names[axis];c.nodes[id].a=base;c.nodes[id].field_index=axis;c.nodes[id].type=rep;c.nodes[id].mark=1;return id;
 }
-CK_spatial_helper :: (c:CK_Context,op:u32,a:int,b:int,result:int,loc:CK_Loc)->int {
+CK_spatial_helper :: (c:CK_Context,op:u32,a:int,b:int,result:int,loc:CK_Loc)->int #effects(all) {
  if c.state[0].fatal {return 0;}
  key:=CK_join3(c,CK_join3(c,"o",CK_count(c,cast(int)op),"a"),CK_count(c,a),CK_join3(c,"b",CK_count(c,b),CK_join2(c,"r",CK_count(c,result))));
  at:=c.state[0].spatial_helpers;while at!=0 {if c.nodes[at].key==key {return at;}at=c.nodes[at].spatial_link;}
@@ -403,16 +403,16 @@ CK_spatial_helper :: (c:CK_Context,op:u32,a:int,b:int,result:int,loc:CK_Loc)->in
  c.nodes[aggregate].tail=last;ret:=CK_new(c,CK_Tag.stmt_return,loc);c.nodes[ret].a=aggregate;body:=CK_new(c,CK_Tag.stmt_block,loc);c.nodes[body].head=ret;c.nodes[body].tail=ret;c.nodes[id].b=body;
  if c.state[0].fatal {return 0;}if !CK_chain(c,id,loc) {return 0;}c.nodes[id].spatial_link=c.state[0].spatial_helpers;c.state[0].spatial_helpers=id;return id;
 }
-CK_spatial_call :: (c:CK_Context,id:int,op:u32,a:int,b:int,result:int)->int {
+CK_spatial_call :: (c:CK_Context,id:int,op:u32,a:int,b:int,result:int)->int #effects(all) {
  e:=c.nodes[id];helper:=CK_spatial_helper(c,op,a,b,result,e.loc);if helper==0 {return 0;}
  left:=CK_new(c,c.nodes[e.a].kind,c.nodes[e.a].loc);c.nodes[left]=c.nodes[e.a];c.nodes[left].next=0;last:=left;
  if b!=0 {right:=CK_new(c,c.nodes[e.b].kind,c.nodes[e.b].loc);c.nodes[right]=c.nodes[e.b];c.nodes[right].next=0;c.nodes[left].next=right;last=right;}
  if c.state[0].fatal {return 0;}c.nodes[id]=CK_Node.{kind=CK_Tag.expr_call,loc=e.loc,name="CoaxSpatialOp",head=left,tail=last,next=e.next,type=result,proc=helper,mark=2,op=op,lowering=ifx b==0 then CK_Lowering.spatial_unary else CK_Lowering.spatial_binary};return result;
 }
-CK_spatial_operation :: (token:u32)->SP_Op {
+CK_spatial_operation :: (token:u32)->SP_Op #effects(all) {
  tokens:=[4]u32.[34,35,36,37];operations:=[4]SP_Op.[SP_Op.add,SP_Op.sub,SP_Op.mul,SP_Op.div];for i:0..<4 {if token==tokens[i] {return operations[i];}}return SP_Op.invalid;
 }
-CK_spatial_binary :: (c:CK_Context,id:int,left:int,right:int)->int {
+CK_spatial_binary :: (c:CK_Context,id:int,left:int,right:int)->int #effects(all) {
  e:=c.nodes[id];
  if c.types[left].space.kind!=SP_Kind.raw {rep:=ifx c.types[left].space.rep==32 then 6 else 7;CK_coerce(c,e.b,rep);}
  if c.types[right].space.kind!=SP_Kind.raw {rep:=ifx c.types[right].space.rep==32 then 6 else 7;CK_coerce(c,e.a,rep);}
@@ -421,22 +421,22 @@ CK_spatial_binary :: (c:CK_Context,id:int,left:int,right:int)->int {
  decision:=SP_binary(op,CK_spatial_descriptor(c,a),CK_spatial_descriptor(c,b));if decision.status!=SP_Status.ok {why:="affine operation is not admitted";if decision.status==SP_Status.precision {why="spatial carriers differ";}if decision.status==SP_Status.frame {why="nominal frames differ";}if decision.status==SP_Status.unit {why="nominal units differ";}if decision.status==SP_Status.type {why="spatial scaling needs a matching raw f32 or f64";}CK_error(c,e.loc,"E0834",CK_join3(c,CK_join3(c,why,": ",c.types[a].name)," and ",c.types[b].name),"");return 0;}
  rep:=ifx decision.result.rep==32 then 6 else 7;result:=CK_spatial_intern(c,decision.result.kind,decision.result.frame,decision.result.unit,rep,e.loc);if result==0 {return 0;}return CK_spatial_call(c,id,e.op,a,b,result);
 }
-CK_spatial_unary :: (c:CK_Context,id:int,t:int)->int {
+CK_spatial_unary :: (c:CK_Context,id:int,t:int)->int #effects(all) {
  e:=c.nodes[id];decision:=SP_negate(c.types[t].space);if e.op!=35 || decision.status!=SP_Status.ok {CK_error(c,e.loc,"E0834",CK_join2(c,"only vectors support spatial negation: ",c.types[t].name),"");return 0;}return CK_spatial_call(c,id,e.op,t,0,t);
 }
 
-CK_spatial_token :: (operation:SP_Op)->u32 {
+CK_spatial_token :: (operation:SP_Op)->u32 #effects(all) {
  tokens:=[4]u32.[34,35,36,37];for token:tokens {if CK_spatial_operation(token)==operation {return token;}}return 0;
 }
 // Trusted checked-node references and acyclic argument/parameter lists are input preconditions.
-CK_spatial_mutation_candidate :: (c:CK_Context,id:int)->SOM_Candidate {
+CK_spatial_mutation_candidate :: (c:CK_Context,id:int)->SOM_Candidate #effects(all) {
  n:=c.nodes[id];if n.kind!=CK_Tag.expr_call || n.mark!=2 || n.lowering!=CK_Lowering.spatial_binary || CK_list_count(c,n.head)!=2 {return SOM_Candidate.{status=SOM_Status.metadata};}
  p:=c.nodes[n.proc];if p.kind!=CK_Tag.proc || p.type!=n.type || CK_list_count(c,p.head)!=2 {return SOM_Candidate.{status=SOM_Status.metadata};}
  a:=n.head;b:=c.nodes[a].next;pa:=p.head;pb:=c.nodes[pa].next;
  if c.nodes[pa].type!=c.nodes[a].type || c.nodes[pb].type!=c.nodes[b].type {return SOM_Candidate.{status=SOM_Status.metadata};}
  return SOM_candidate(CK_spatial_operation(n.op),CK_spatial_descriptor(c,c.nodes[a].type),CK_spatial_descriptor(c,c.nodes[b].type),CK_spatial_descriptor(c,n.type));
 }
-CK_prepare_spatial_mutations :: (c:CK_Context)->bool #export_c {
+CK_prepare_spatial_mutations :: (c:CK_Context)->bool #export_c #effects(all) {
  if c.state[0].fatal {return false;}limit:=c.state[0].used;
  for id:1..<limit+1 {n:=c.nodes[id];if n.lowering==CK_Lowering.none {continue;}
   if n.kind==CK_Tag.expr_call && n.mark==2 && n.lowering==CK_Lowering.spatial_unary {c.nodes[id].mutation_status=CK_Mutation.unsupported;continue;}
@@ -451,13 +451,13 @@ CK_prepare_spatial_mutations :: (c:CK_Context)->bool #export_c {
 
 // Derived-unit helpers consume admitted concrete unit tags. Generated nominal
 // factor facts stay in the checked node pool, never in a runtime value.
-CK_unit_constructor :: (name:string,alias:string)->int {if alias.count!=0 {return 0;}if name=="UnitOne" {return 1;}if name=="UnitProduct" {return 2;}if name=="UnitQuotient" {return 3;}return 0;}
-CK_unit_form :: (c:CK_Context,unit:int)->UF_Form {
+CK_unit_constructor :: (name:string,alias:string)->int #effects(all) {if alias.count!=0 {return 0;}if name=="UnitOne" {return 1;}if name=="UnitProduct" {return 2;}if name=="UnitQuotient" {return 3;}return 0;}
+CK_unit_form :: (c:CK_Context,unit:int)->UF_Form #effects(all) {
   n:=c.nodes[c.types[unit].decl];if !n.unit_generated {return UF_atom(unit).form;}
   form:=UF_one();at:=n.unit_form;
   while at!=0 {form.atoms[form.count]=c.nodes[at].a;form.powers[form.count]=c.nodes[at].b;form.count+=1;at=c.nodes[at].next;}return form;
 }
-CK_unit_intern :: (c:CK_Context,form:UF_Form,metadata:Q_Unit,loc:CK_Loc)->int {
+CK_unit_intern :: (c:CK_Context,form:UF_Form,metadata:Q_Unit,loc:CK_Loc)->int #effects(all) {
   if c.state[0].fatal {return 0;}
   if form.count==1 && form.powers[0]==1 {return form.atoms[0];}
   at:=c.state[0].unit_units;while at!=0 {if UF_equal(CK_unit_form(c,c.nodes[at].type),form) {return c.nodes[at].type;}at=c.nodes[at].unit_link;}
@@ -472,11 +472,11 @@ CK_unit_intern :: (c:CK_Context,form:UF_Form,metadata:Q_Unit,loc:CK_Loc)->int {
   last:=0;for i:0..<form.count {factor:=CK_new(c,CK_Tag.unit_factor,loc);if factor==0 {return 0;}c.nodes[factor].a=form.atoms[i];c.nodes[factor].b=form.powers[i];if last==0 {c.nodes[id].unit_form=factor;}else {c.nodes[last].next=factor;}last=factor;}
   if !CK_chain(c,id,loc) {return 0;}c.nodes[id].unit_link=c.state[0].unit_units;c.state[0].unit_units=id;return ty;
 }
-CK_unit_admit :: (c:CK_Context,unit:int,loc:CK_Loc)->bool {
+CK_unit_admit :: (c:CK_Context,unit:int,loc:CK_Loc)->bool #effects(all) {
   t:=c.types[unit];if t.kind==CK_Kind.struct_ {n:=c.nodes[t.decl];if n.quantity==1 && !n.generic && Q_unit_valid(n.unit) {return true;}}
   CK_error(c,loc,"E0830","derived units require concrete @unit tags","");return false;
 }
-CK_unit_compose :: (c:CK_Context,a:int,b:int,divide:bool,loc:CK_Loc)->int {
+CK_unit_compose :: (c:CK_Context,a:int,b:int,divide:bool,loc:CK_Loc)->int #effects(all) {
   if !CK_unit_admit(c,a,loc) || !CK_unit_admit(c,b,loc) {return 0;}
   left:=c.nodes[c.types[a].decl].unit;right:=c.nodes[c.types[b].decl].unit;metadata:=UA_product(left,right);if divide {metadata=UA_quotient(left,right);}
   if metadata.status!=Q_Status.ok {message:="derived unit scale exceeds the reduced metadata bound";if metadata.status==Q_Status.dimension {message="derived unit dimensions exceed -8 through 8";}CK_error(c,loc,"E0829",message,"");return 0;}
@@ -484,14 +484,14 @@ CK_unit_compose :: (c:CK_Context,a:int,b:int,divide:bool,loc:CK_Loc)->int {
   if form.status!=UF_Status.ok {message:="derived unit exceeds eight nominal atoms";if form.status==UF_Status.power {message="derived nominal atom power exceeds the signed-31-bit profile";}CK_error(c,loc,"E0831",message,"");return 0;}
   return CK_unit_intern(c,form.form,metadata.unit,loc);
 }
-CK_unit_type :: (c:CK_Context,id:int)->int {
+CK_unit_type :: (c:CK_Context,id:int)->int #effects(all) {
   e:=c.nodes[id];kind:=CK_unit_constructor(e.name,e.name2);count:=CK_list_count(c,e.head);
   if kind==1 {if count!=0 {CK_error(c,e.loc,"E0830","UnitOne takes no type arguments","");return 0;}return CK_unit_intern(c,UF_one(),Q_Unit.{numerator=1,denominator=1},e.loc);}
   if count!=2 {CK_error(c,e.loc,"E0830","unit product or quotient takes two unit type arguments","");return 0;}
   a:=CK_resolve(c,e.head,CK_Access.value);b:=CK_resolve(c,c.nodes[e.head].next,CK_Access.value);if a==0 || b==0 {return 0;}
   return CK_unit_compose(c,a,b,kind==3,e.loc);
 }
-CK_unit_target :: (c:CK_Context,id:int)->int {
+CK_unit_target :: (c:CK_Context,id:int)->int #effects(all) {
   e:=c.nodes[id];if !CK_enter(c,e.loc) {return 0;}defer CK_leave(c);
   if e.kind==CK_Tag.expr_ident {ref:=CK_new(c,CK_Tag.type_named,e.loc);c.nodes[ref].name=e.name;c.nodes[ref].name2=e.name2;c.nodes[ref].scope=e.scope;return ref;}
   if e.kind==CK_Tag.expr_field && c.nodes[e.a].kind==CK_Tag.expr_ident {ref:=CK_new(c,CK_Tag.type_named,e.loc);c.nodes[ref].name=e.name;c.nodes[ref].name2=c.nodes[e.a].name;c.nodes[ref].scope=e.scope;return ref;}
@@ -502,7 +502,7 @@ CK_unit_target :: (c:CK_Context,id:int)->int {
   // call. Its original arguments have no runtime reference after conversion.
   c.nodes[id]=CK_Node.{kind=CK_Tag.type_named,loc=e.loc,name=e.name,scope=e.scope,next=e.next};return ref;
 }
-CK_quantity_derived :: (c:CK_Context,id:int,a:int,b:int)->int {
+CK_quantity_derived :: (c:CK_Context,id:int,a:int,b:int)->int #effects(all) {
   e:=c.nodes[id];carrier:=c.types[a].carrier;
   if carrier!=c.types[b].carrier {CK_error(c,e.loc,"E0823","quantity product and quotient require one representation","");return 0;}
   unit:=CK_unit_compose(c,c.types[a].unit,c.types[b].unit,e.op==37,e.loc);if unit==0 {return 0;}
@@ -511,7 +511,7 @@ CK_quantity_derived :: (c:CK_Context,id:int,a:int,b:int)->int {
   raw:=CK_new(c,CK_Tag.expr_binary,e.loc);c.nodes[raw].op=e.op;c.nodes[raw].a=left;c.nodes[raw].b=right;c.nodes[raw].type=carrier;return CK_quantity_wrap(c,id,raw,result);
 }
 
-CK_quantity_layout :: (c:CK_Context,id:int) {
+CK_quantity_layout :: (c:CK_Context,id:int) #effects(all) {
   n:=c.nodes[id];if n.quantity==0 {return;}if n.quantity>=3 {CK_id_layout(c,id);return;}
   if n.quantity==1 {if n.d!=0 || n.head!=0 || !Q_unit_valid(n.unit) {CK_error(c,n.loc,"E0820","@unit requires an empty nongeneric tag and valid literal metadata","");}return;}
   origin:=n.origin;if origin==0 {origin=id;}params:=c.nodes[origin].d;field:=n.head;
@@ -528,15 +528,15 @@ CK_quantity_layout :: (c:CK_Context,id:int) {
   if c.state[0].quantity_device {CK_error(c,n.loc,"E0828","transparent quantities are qualified only for the C backend in this milestone","");return;}
   c.types[n.type].carrier=representation;c.types[n.type].unit=u;
 }
-CK_quantity_raw :: (c:CK_Context,operand:int)->int {
+CK_quantity_raw :: (c:CK_Context,operand:int)->int #effects(all) {
   ty:=c.nodes[operand].type;if c.types[ty].carrier==0 {return operand;}
   raw:=CK_new(c,CK_Tag.expr_field,c.nodes[operand].loc);c.nodes[raw].a=operand;c.nodes[raw].name="value";c.nodes[raw].field_index=0;c.nodes[raw].type=c.types[ty].carrier;return raw;
 }
-CK_quantity_wrap :: (c:CK_Context,id:int,raw:int,quantity:int)->int {
+CK_quantity_wrap :: (c:CK_Context,id:int,raw:int,quantity:int)->int #effects(all) {
   field:=CK_new(c,CK_Tag.field_init,c.nodes[id].loc);if field==0 {return 0;}c.nodes[field].name="value";c.nodes[field].field_index=0;c.nodes[field].a=raw;
   old:=c.nodes[id];c.nodes[id]=CK_Node.{kind=CK_Tag.expr_struct,loc=old.loc,next=old.next,head=field,tail=field,type=quantity,mark=1};return quantity;
 }
-CK_quantity_binary :: (c:CK_Context,id:int,a:int,b:int)->int {
+CK_quantity_binary :: (c:CK_Context,id:int,a:int,b:int)->int #effects(all) {
   e:=c.nodes[id];left:=c.types[a].carrier!=0;right:=c.types[b].carrier!=0;ar:=a;br:=b;if left {ar=c.types[a].carrier;}if right {br=c.types[b].carrier;}
   op:Q_Op;
   if e.op>=34 && e.op<=37 {ops:=[4]Q_Op.[Q_Op.add,Q_Op.sub,Q_Op.mul,Q_Op.div];op=ops[cast(int)e.op-34];}
@@ -555,13 +555,13 @@ CK_quantity_binary :: (c:CK_Context,id:int,a:int,b:int)->int {
   if !decision.result_quantity {return 2;}
   quantity:=a;if !left {quantity=b;}return CK_quantity_wrap(c,id,raw,quantity);
 }
-CK_quantity_target :: (c:CK_Context,source:int,target:int,loc:CK_Loc)->int {
+CK_quantity_target :: (c:CK_Context,source:int,target:int,loc:CK_Loc)->int #effects(all) {
   origin:=c.nodes[c.types[source].decl].origin;inst:=CK_struct_node(c,origin);p:=c.nodes[origin].d;
   ignored:=CK_new_type(c,CK_Type.{kind=CK_Kind.param,name=CK_join2(c,"$",c.nodes[p].name),decl=inst,elem=target});p=c.nodes[p].next;
   ignored2:=CK_new_type(c,CK_Type.{kind=CK_Kind.param,name=CK_join2(c,"$",c.nodes[p].name),decl=inst,elem=c.types[source].carrier});
   result:=CK_struct_intern(c,inst,loc,CK_Access.value);return ifx c.state[0].fatal then 0 else result;
 }
-CK_quantity_convert :: (c:CK_Context,id:int)->int {
+CK_quantity_convert :: (c:CK_Context,id:int)->int #effects(all) {
   e:=c.nodes[id];if CK_list_count(c,e.head)!=2 {CK_error(c,e.loc,"E0825","convert_unit requires a target unit type and one quantity","");return 0;}
   target:=e.head;value:=c.nodes[target].next;if c.nodes[target].kind==CK_Tag.expr_call && CK_unit_constructor(c.nodes[target].name,c.nodes[target].name2)!=0 {ref:=CK_unit_target(c,target);if ref==0 {return 0;}return CK_quantity_conversion(c,id,ref,value);}
   name:=c.nodes[target].name;alias:=c.nodes[target].name2;
@@ -570,7 +570,7 @@ CK_quantity_convert :: (c:CK_Context,id:int)->int {
   ref:=CK_new(c,CK_Tag.type_named,c.nodes[target].loc);c.nodes[ref].name=name;c.nodes[ref].name2=alias;c.nodes[ref].scope=e.scope;
   return CK_quantity_conversion(c,id,ref,value);
 }
-CK_quantity_conversion :: (c:CK_Context,id:int,ref:int,value:int)->int {
+CK_quantity_conversion :: (c:CK_Context,id:int,ref:int,value:int)->int #effects(all) {
   e:=c.nodes[id];unit:=CK_resolve(c,ref,CK_Access.value);source:=CK_expr(c,value,CK_Hint.{});
   if unit==0 || source==0 {return 0;}
   if c.types[unit].kind!=CK_Kind.struct_ || c.nodes[c.types[unit].decl].quantity!=1 || c.types[source].carrier==0 {CK_error(c,e.loc,"E0825","convert_unit needs a declared unit type and a quantity","");return 0;}

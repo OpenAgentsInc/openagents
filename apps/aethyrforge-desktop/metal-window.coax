@@ -6,7 +6,7 @@
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
 #load "metal-window-plan.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<4 {tool_errln("usage: metal-window ROOT STAGED_APP DATA_DIRECTORY NEW_OUTPUT [--hz HZ] [--size CSS_WIDTHxHEIGHT] [--warmup-ms MILLISECONDS] [--require-presentation]");return 2;}
  rate:=args_whole(args_value(a[..],"--hz","60"));size:=args_size(args_value(a[..],"--size","640x360"));warmup:=args_whole(args_value(a[..],"--warmup-ms","2000"));if rate<1 || rate>240 || !size.ok || warmup<0 || warmup>60000 {return 2;}
  root:=args_at(a[..],0);app:=args_at(a[..],1);data:=args_at(a[..],2);dir:=args_at(a[..],3);if !fs_mkdir(dir) {return 1;}paths:[4][4096]u8;report:=fs_join(dir,"window.json",paths[0][..]);plan:=fs_join(dir,"plan.json",paths[1][..]);

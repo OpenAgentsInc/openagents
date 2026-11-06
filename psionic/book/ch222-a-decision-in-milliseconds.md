@@ -141,11 +141,11 @@ The q8 copy takes 14,720 bytes; the binary64 original takes 70,784.
 
 <!-- source: psionic/lib/fast-encoder.coax quantize -->
 ```jai
-fe_q8_bytes :: ()->int {return FE_EMB+2*8*FE_VOCAB+FE_CODES+2*4*FE_CODES/FE_BLOCK+8*(FE_WEIGHTS-FE_HEAD_AT);}
+fe_q8_bytes :: ()->int #effects(all) {return FE_EMB+2*8*FE_VOCAB+FE_CODES+2*4*FE_CODES/FE_BLOCK+8*(FE_WEIGHTS-FE_HEAD_AT);}
 // Embedding rows: low = the row's least value, step = (most - least)/255,
 // code = the nearest whole number of steps. Layers: chapter 48's quantizer,
 // each 16 weights one block with its own scale.
-fe_quantize :: (w:[]f64,q:FeQ8)->FeStatus #export_c {
+fe_quantize :: (w:[]f64,q:FeQ8)->FeStatus #export_c #effects(all) {
     if w.count!=FE_WEIGHTS || !fe_q8_ok(q) {return FeStatus.storage;}
     for v:w {if !(abs(v)<=1000000) {return FeStatus.number;}}
     for r:0..<FE_VOCAB {
@@ -171,7 +171,7 @@ fe_quantize :: (w:[]f64,q:FeQ8)->FeStatus #export_c {
 ```jai
 // rows x width weights at w[at] times t inputs at x[xa], into y[ya]: binary64,
 // or chapter 48's int8 row kernel in chunks of 128 tokens.
-fe_linear :: (e:FeEngine,w:[]f64,q:FeQ8,k:FeWork,at:int,rows:int,width:int,t:int,x:[]f64,xa:int,y:[]f64,ya:int)->FeStatus {
+fe_linear :: (e:FeEngine,w:[]f64,q:FeQ8,k:FeWork,at:int,rows:int,width:int,t:int,x:[]f64,xa:int,y:[]f64,ya:int)->FeStatus #effects(all) {
     if e==FeEngine.reference {
         for i:0..<t {for r:0..<rows {
             acc:=0.0;
@@ -204,12 +204,12 @@ layout mistake fails a check instead of passing silently.
 
 <!-- source: psionic/lib/fast-encoder.coax forward -->
 ```jai
-fe_plan_f64 :: (t:int)->int {return t*FE_ROW;}
-fe_q8_ok :: (q:FeQ8)->bool {
+fe_plan_f64 :: (t:int)->int #effects(all) {return t*FE_ROW;}
+fe_q8_ok :: (q:FeQ8)->bool #effects(all) {
     return q.emb.count==FE_EMB && q.low.count==FE_VOCAB && q.step.count==FE_VOCAB && q.codes.count==FE_CODES
         && q.scales.count==FE_CODES/FE_BLOCK && q.offsets.count==FE_CODES/FE_BLOCK;
 }
-fe_forward :: (e:FeEngine,w:[]f64,q:FeQ8,k:FeWork,ids:[]int,z:[]f64)->FeStatus #export_c {
+fe_forward :: (e:FeEngine,w:[]f64,q:FeQ8,k:FeWork,ids:[]int,z:[]f64)->FeStatus #export_c #effects(all) {
     t:=ids.count;
     if e==FeEngine.none {return FeStatus.engine;}
     if t<1 || t>FE_TOKENS {return FeStatus.tokens;}
@@ -260,10 +260,10 @@ built here, so it is refused; nothing runs in its place.
 
 <!-- source: psionic/lib/fast-encoder.coax select -->
 ```jai
-fe_engine_name :: (e:FeEngine)->string {names:=[3]string.["none","fe-f64-reference-v1","fe-q8-cpu-v1"];return names[cast(int)e];}
+fe_engine_name :: (e:FeEngine)->string #effects(all) {names:=[3]string.["none","fe-f64-reference-v1","fe-q8-cpu-v1"];return names[cast(int)e];}
 // An engine is named, never inferred. A known engine that is not built here
 // is refused; nothing else runs in its place.
-fe_select :: (name:string)->FeChoice {
+fe_select :: (name:string)->FeChoice #effects(all) {
     for e:1..<3 {if name==fe_engine_name(cast(FeEngine)e) {return FeChoice.{engine=cast(FeEngine)e};}}
     if name=="fe-q8-cuda-v1" {return FeChoice.{status=FeStatus.unavailable};}
     return FeChoice.{status=FeStatus.engine};
@@ -292,10 +292,10 @@ whether they are right.
 
 <!-- source: psionic/lib/fast-encoder.coax parity -->
 ```jai
-fe_argmax :: (z:[]f64,at:int,n:int)->int {b:=at;for c:at+1..<at+n {if z[c]>z[b] {b=c;}}return b;}
+fe_argmax :: (z:[]f64,at:int,n:int)->int #effects(all) {b:=at;for c:at+1..<at+n {if z[c]>z[b] {b=c;}}return b;}
 // n requests of 9 logits each: every head's argmax must match, and the
 // largest difference must be within the frozen bound.
-fe_parity :: (reference:[]f64,derived:[]f64,n:int)->FeParity #export_c {
+fe_parity :: (reference:[]f64,derived:[]f64,n:int)->FeParity #export_c #effects(all) {
     if n<1 || reference.count!=n*FE_LOGITS || derived.count!=reference.count {return FeParity.{};}
     p:=FeParity.{decisions=3*n};
     for r:0..<n {for h:0..<3 {
@@ -309,7 +309,7 @@ fe_parity :: (reference:[]f64,derived:[]f64,n:int)->FeParity #export_c {
 // Chapter 50's card over every (request, head): gold is the reference
 // decision, since the stand-in has no labels; the card measures how far
 // quantization moves the decisions.
-fe_card :: (reference:[]f64,derived:[]f64,n:int,items:[]PqItem)->QzCard #export_c {
+fe_card :: (reference:[]f64,derived:[]f64,n:int,items:[]PqItem)->QzCard #export_c #effects(all) {
     if items.count<3*n {return QzCard.{status=QzStatus.capacity};}
     for r:0..<n {for h:0..<3 {
         at:=r*FE_LOGITS+FE_CLASS_AT[h];
@@ -329,7 +329,7 @@ deviation come from chapter 34's Welford pass.
 // Chapter 18's nearest rank: the value at rank ceil(p n / 100) in sorted order,
 // counting from 1; it holds that rank when fewer values are below it and at
 // least that many are at or below it.
-fe_rank :: (x:[]int,p:int)->int #export_c {
+fe_rank :: (x:[]int,p:int)->int #export_c #effects(all) {
     r:=(p*x.count+99)/100;
     for v:x {
         below:=0;atmost:=0;
@@ -340,7 +340,7 @@ fe_rank :: (x:[]int,p:int)->int #export_c {
 }
 // Refused unless the q8 engine ran the frozen workload with parity and a
 // promoted card, on 100 to 1,024 positive warm times, against the frozen limit.
-fe_gate :: (e:FeEngine,tokens:int,p:FeParity,c:QzCard,ns:[]int,limit:int)->FeGate #export_c {
+fe_gate :: (e:FeEngine,tokens:int,p:FeParity,c:QzCard,ns:[]int,limit:int)->FeGate #export_c #effects(all) {
     g:=FeGate.{limit=limit};
     if e!=FeEngine.q8 {g.reason=FeReason.engine;return g;}
     if tokens!=FE_TOKENS || limit!=FE_P99_LIMIT {g.reason=FeReason.workload;return g;}

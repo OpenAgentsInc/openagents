@@ -15,7 +15,7 @@ cb_save::(c:[]Cdp,path:string,expr:string)->bool{
   v:=cdp_evaluate(c,expr);b:[262144]u8;n:=ifx v>=0 then jv_str(cdp_doc(c),v,b[..]) else -1;
   return n>0&&fs_write(path,cast(string)b[0..<n]);
 }
-tool_main::()->int #export_c{
+tool_main::()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4{tool_errln("usage: capacity-browser LOCAL_URL OBSERVATION.json FRAMES.json desktop|phone");return 2;}
   rate:=cb_profile(args_at(a[..],3));if rate==0||!lb_local(args_at(a[..],0)){return 2;}
   c:[1]Cdp;if !cdp_launch(c[..],960,540,"room-capacity-"){return 1;}defer{cdp_close(c[..]);}

@@ -1269,7 +1269,7 @@ dr_write_rows :: (path: string, p: [] DrPage) {
   }
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   if args_has(a[..], "--input-only") { return ifx dr_input_check() then 0 else 1; }

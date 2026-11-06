@@ -37,7 +37,7 @@ fx_read :: (dir:string,name:string,out:[]u8)->int {
 fx_write :: (dir:string,name:string,bytes:[]u8)->bool {
     path:[4096]u8;return fs_write(fs_join(dir,name,path[..]),cast(string)bytes);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     args:[1]Args;if !args_load(args[..]) || args_count(args[..])<2 || args_count(args[..])>3 {print("usage: DATA_DIR OUT_DIR [EPOCHS_NOW]\n");return 2;}
     data:=args_at(args[..],0);out:=args_at(args[..],1);
     images:[47040016]u8;labels:[60008]u8;test_images:[7840016]u8;test_labels:[10008]u8;

@@ -6,7 +6,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc-raw.coax";
 #load "../../coax/lib/json/json.coax";
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) || (args_count(a[..]) != 3 && args_count(a[..]) != 4) { return 2; }
   legacy := args_count(a[..]) == 4 && args_at(a[..], 3) == "legacy";
   start := 0; if args_count(a[..]) == 4 && args_at(a[..], 3) == "failures" { start = 7; }

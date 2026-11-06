@@ -46,13 +46,13 @@ RenderRingDirection :: struct {valid:bool;direction:V2;}
 
 // sqrt(1/2), rounded once to the nearest binary32 value. Cardinal zeros and
 // poles are authored exactly; a repeated closing sample never evaluates2pi.
-render_ring8_direction :: (sample:u32)->RenderRingDirection {
+render_ring8_direction :: (sample:u32)->RenderRingDirection #effects(all) {
  if sample>8 {return RenderRingDirection.{};}
  ring8_h:=0.70710677f32;
  ring8_entries:=[9]V2.[v2(1,0),v2(ring8_h,ring8_h),v2(0,1),v2(-ring8_h,ring8_h),v2(-1,0),v2(-ring8_h,-ring8_h),v2(0,-1),v2(ring8_h,-ring8_h),v2(1,0)];
  return RenderRingDirection.{valid=true,direction=ring8_entries[cast(int)sample]};
 }
-render_capsule2_polar :: (row:u32)->RenderRingDirection {
+render_capsule2_polar :: (row:u32)->RenderRingDirection #effects(all) {
  if row>5 {return RenderRingDirection.{};}
  ring8_h:=0.70710677f32;
  ring8_entries:=[6]V2.[v2(0,-1),v2(ring8_h,-ring8_h),v2(1,0),v2(1,0),v2(ring8_h,ring8_h),v2(0,1)];

@@ -140,33 +140,33 @@ FitNeed :: struct {inputs:int;values:int;adjoints:int;flags:int;entry:int;parame
     bad=s;bad[0]=-inf;#assert fit_argmax(bad[..])== -1;
 }
 
-fit_split :: (s:FitSplit,rows:int)->bool {
+fit_split :: (s:FitSplit,rows:int)->bool #effects(all) {
     return s.first>=0 && s.count>=1 && s.first<=rows-s.count;
 }
 // Both splits are admitted first, so the sums below cannot overflow.
-fit_apart :: (a:FitSplit,b:FitSplit)->bool {
+fit_apart :: (a:FitSplit,b:FitSplit)->bool #effects(all) {
     return a.first+a.count<=b.first || b.first+b.count<=a.first;
 }
-fit_entries :: (x_data:bool,x_size:int,target_data:bool,target_size:int,scores:int)->bool {
+fit_entries :: (x_data:bool,x_size:int,target_data:bool,target_size:int,scores:int)->bool #effects(all) {
     return x_data && target_data && x_size==FIT_FEATURES && target_size==FIT_CLASSES && scores==FIT_CLASSES;
 }
-fit_settings :: (rows:bool,batch:int,examples:int,train:int,every:int,patience:int)->bool {
+fit_settings :: (rows:bool,batch:int,examples:int,train:int,every:int,patience:int)->bool #effects(all) {
     return rows && batch==1 && examples==train && examples<=FIT_EXAMPLES && every==0 && patience==0;
 }
-fit_stop :: (done:int,stop:int,epochs:int)->bool {return done>=0 && stop>done && stop<=epochs;}
-fit_save_at :: (revision:int,steps:int)->bool {return revision>=1 && revision<steps;}
-fit_room :: (need:FitNeed,have:FitNeed)->bool {
+fit_stop :: (done:int,stop:int,epochs:int)->bool #effects(all) {return done>=0 && stop>done && stop<=epochs;}
+fit_save_at :: (revision:int,steps:int)->bool #effects(all) {return revision>=1 && revision<steps;}
+fit_room :: (need:FitNeed,have:FitNeed)->bool #effects(all) {
     if need.parameters<1 || need.parameters>FIT_PARAMS || need.examples>FIT_EXAMPLES {return false;}
     return have.inputs>=need.inputs && have.values>=need.values && have.adjoints>=need.adjoints
         && have.flags>=need.flags && have.entry>=need.entry && have.parameters>=need.parameters
         && have.examples>=need.examples;
 }
-fit_gate :: (g:FitGate)->bool {
+fit_gate :: (g:FitGate)->bool #effects(all) {
     return g.count>=1 && g.correct>=0 && g.correct<=g.count && g.margin>=0 && g.margin<=g.count;
 }
 // The baseline is the TRAINING split's majority class scored on the held-out
 // rows; the held-out rows never choose a class, setting or checkpoint.
-fit_accept :: (g:FitGate,s:FitScore)->bool {
+fit_accept :: (g:FitGate,s:FitScore)->bool #effects(all) {
     // correct >= g.correct >= 0 and correct - baseline >= margin >= 0 bound
     // the rest: 0 <= baseline <= correct <= count once these hold.
     if !fit_gate(g) || s.count!=g.count || s.correct>s.count || s.baseline<0 {return false;}
@@ -174,7 +174,7 @@ fit_accept :: (g:FitGate,s:FitScore)->bool {
     return s.correct>=g.correct && s.correct-s.baseline>=g.margin && s.replayed && s.exported;
 }
 // The first largest score, or -1 when there is none or any score is not finite.
-fit_argmax :: (scores:[]f32)->int {
+fit_argmax :: (scores:[]f32)->int #effects(all) {
     if scores.count<1 {return -1;}
     for x:scores {if (f32_bits(x)&0x7fffffff)>=0x7f800000 {return -1;}}
     best:=0;for i:1..<scores.count {if scores[i]>scores[best] {best=i;}}

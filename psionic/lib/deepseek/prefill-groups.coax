@@ -60,17 +60,17 @@
     c[0]=3.4028234663852886e38f32;c[32]=3.4028234663852886e38f32;#assert dp_combine(3,1,2,32,ids[0..<2],weights[0..<2],receipts[..],true,c[0..<64],shared[..],out[..],stage[..],false).status==DsStatus.arithmetic;
 }
 
-dp_group_dimensions :: (experts:int,batch:int,k:int,width:int,expert:int)->bool {return dp_route_shape(experts,batch,k) && de_quant_count(width) && expert>=0 && expert<experts;}
-dp_group_counts :: (ids:int,order:int,offsets:int,n:int,experts:int)->bool {return ids==n && order==n && offsets==experts+1;}
-dp_extent :: (begin:int,end:int,n:int,batch:int)->bool {return begin>=0 && end>=begin && end<=n && end-begin<=batch;}
-dp_assignment :: (a:int,previous:int,n:int)->bool {return a>previous && a<n;}
-dp_route_shape :: (experts:int,batch:int,k:int)->bool {return experts>=1 && experts<=384 && dp_batch(batch) && k>=1 && k<=8 && k<=experts;}
-dp_routes :: (experts:int,batch:int,k:int,ids:[]int,weights:[]f32)->DsStatus {
+dp_group_dimensions :: (experts:int,batch:int,k:int,width:int,expert:int)->bool #effects(all) {return dp_route_shape(experts,batch,k) && de_quant_count(width) && expert>=0 && expert<experts;}
+dp_group_counts :: (ids:int,order:int,offsets:int,n:int,experts:int)->bool #effects(all) {return ids==n && order==n && offsets==experts+1;}
+dp_extent :: (begin:int,end:int,n:int,batch:int)->bool #effects(all) {return begin>=0 && end>=begin && end<=n && end-begin<=batch;}
+dp_assignment :: (a:int,previous:int,n:int)->bool #effects(all) {return a>previous && a<n;}
+dp_route_shape :: (experts:int,batch:int,k:int)->bool #effects(all) {return experts>=1 && experts<=384 && dp_batch(batch) && k>=1 && k<=8 && k<=experts;}
+dp_routes :: (experts:int,batch:int,k:int,ids:[]int,weights:[]f32)->DsStatus #effects(all) {
     if !dp_route_shape(experts,batch,k) {return DsStatus.shape;}if ids.count!=batch*k || weights.count!=batch*k {return DsStatus.capacity;}
     for t:0..<batch {s:=de_routes(experts,ids[t*k..<(t+1)*k],weights[t*k..<(t+1)*k]);if s!=DsStatus.ok {return s;}}return DsStatus.ok;
 }
 // book:begin group
-dp_groups :: (experts:int,batch:int,k:int,ids:[]int,weights:[]f32,order:[]int,offsets:[]int,keys:[]int,order_stage:[]int,offset_stage:[]int,key_stage:[]int,overlap:bool)->DpResult #export_c {
+dp_groups :: (experts:int,batch:int,k:int,ids:[]int,weights:[]f32,order:[]int,offsets:[]int,keys:[]int,order_stage:[]int,offset_stage:[]int,key_stage:[]int,overlap:bool)->DpResult #export_c #effects(all) {
     status:=dp_routes(experts,batch,k,ids,weights);if status!=DsStatus.ok {return DpResult.{status=status};}n:=batch*k;
     if order.count<n || offsets.count<experts+1 || keys.count<experts || order_stage.count<n || offset_stage.count<experts+1 || key_stage.count<experts {return DpResult.{status=DsStatus.capacity};}if overlap {return DpResult.{status=DsStatus.alias};}
     for i:0..<experts+1 {offset_stage[i]=0;}for id:ids {offset_stage[id+1]+=1;}for e:1..<experts {offset_stage[e+1]+=offset_stage[e];}
@@ -79,24 +79,24 @@ dp_groups :: (experts:int,batch:int,k:int,ids:[]int,weights:[]f32,order:[]int,of
     for i:0..<n {order[i]=order_stage[i];}for i:0..<experts+1 {offsets[i]=offset_stage[i];}for i:0..<groups {keys[i]=key_stage[i];}return DpResult.{written=n,groups=groups};
 }
 // book:end group
-dp_group_span :: (experts:int,batch:int,k:int,width:int,expert:int,ids:[]int,order:[]int,offsets:[]int)->DpResult {
+dp_group_span :: (experts:int,batch:int,k:int,width:int,expert:int,ids:[]int,order:[]int,offsets:[]int)->DpResult #effects(all) {
     if !dp_group_dimensions(experts,batch,k,width,expert) {return DpResult.{status=DsStatus.shape};}n:=batch*k;
     if !dp_group_counts(ids.count,order.count,offsets.count,n,experts) {return DpResult.{status=DsStatus.capacity};}
     begin:=offsets[expert];end:=offsets[expert+1];if !dp_extent(begin,end,n,batch) {return DpResult.{status=DsStatus.state};}
     previous:=-1;for i:begin..<end {a:=order[i];if !dp_assignment(a,previous,n) {return DpResult.{status=DsStatus.state};}if ids[a]!=expert {return DpResult.{status=DsStatus.state};}previous=a;}
     return DpResult.{written=end-begin};
 }
-dp_gather :: (experts:int,batch:int,k:int,width:int,expert:int,ids:[]int,weights:[]f32,order:[]int,offsets:[]int,x:[]f32,out:[]f32,routes:[]f32,overlap:bool)->DpResult #export_c {
+dp_gather :: (experts:int,batch:int,k:int,width:int,expert:int,ids:[]int,weights:[]f32,order:[]int,offsets:[]int,x:[]f32,out:[]f32,routes:[]f32,overlap:bool)->DpResult #export_c #effects(all) {
     r:=dp_group_span(experts,batch,k,width,expert,ids,order,offsets);if r.status!=DsStatus.ok {return r;}n:=r.written;
     if weights.count!=batch*k || x.count!=batch*width || out.count<n*width || routes.count<n {return DpResult.{status=DsStatus.capacity};}if overlap {return DpResult.{status=DsStatus.alias};}
     for j:0..<n {a:=order[offsets[expert]+j];routes[j]=weights[a];for d:0..<width {out[j*width+d]=x[(a/k)*width+d];}}return DpResult.{written=n*width,groups=n};
 }
-dp_scatter :: (experts:int,batch:int,k:int,width:int,expert:int,ids:[]int,order:[]int,offsets:[]int,input:[]f32,out:[]f32,overlap:bool)->DpResult #export_c {
+dp_scatter :: (experts:int,batch:int,k:int,width:int,expert:int,ids:[]int,order:[]int,offsets:[]int,input:[]f32,out:[]f32,overlap:bool)->DpResult #export_c #effects(all) {
     r:=dp_group_span(experts,batch,k,width,expert,ids,order,offsets);if r.status!=DsStatus.ok {return r;}n:=r.written;
     if input.count!=n*width || out.count<batch*k*width {return DpResult.{status=DsStatus.capacity};}if overlap {return DpResult.{status=DsStatus.alias};}
     for j:0..<n {a:=order[offsets[expert]+j];for d:0..<width {out[a*width+d]=input[j*width+d];}}return DpResult.{written=n*width};
 }
-dp_combine :: (experts:int,batch:int,k:int,width:int,ids:[]int,weights:[]f32,receipts:[]u8,shared_ready:bool,contribution:[]f32,shared:[]f32,out:[]f32,stage:[]f32,overlap:bool)->DpResult #export_c {
+dp_combine :: (experts:int,batch:int,k:int,width:int,ids:[]int,weights:[]f32,receipts:[]u8,shared_ready:bool,contribution:[]f32,shared:[]f32,out:[]f32,stage:[]f32,overlap:bool)->DpResult #export_c #effects(all) {
     status:=dp_routes(experts,batch,k,ids,weights);if status!=DsStatus.ok {return DpResult.{status=status};}if !de_quant_count(width) {return DpResult.{status=DsStatus.shape};}n:=batch*width;
     if receipts.count!=experts || contribution.count!=batch*k*width || shared.count!=n || out.count<n || stage.count<n {return DpResult.{status=DsStatus.capacity};}if overlap {return DpResult.{status=DsStatus.alias};}
     if !shared_ready {return DpResult.{status=DsStatus.state};}for id:ids {if receipts[id]!=1 {return DpResult.{status=DsStatus.state};}}

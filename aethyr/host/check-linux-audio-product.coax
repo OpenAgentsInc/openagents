@@ -4,18 +4,18 @@
 #load "audio-product-conformance.coax";
 #load "../render/tests/qualification-files.coax";
 #load "../../coax/lib/sys/args.coax";
-hpr_open :: (mode:int)->int #foreign;
-hpr_info :: (field:int)->int #foreign;
-hpr_send :: (bytes:[]u8) #foreign;
-hpr_after :: () #foreign;
-hpr_gesture :: () #foreign;
-hpr_shown :: (shown:bool) #foreign;
-hpr_frame :: ()->int #foreign;
-hpr_retire :: () #foreign;
-hpr_close :: ()->int #foreign;
+hpr_open :: (mode:int)->int #foreign #effects(all);
+hpr_info :: (field:int)->int #foreign #effects(all);
+hpr_send :: (bytes:[]u8) #foreign #effects(all);
+hpr_after :: () #foreign #effects(all);
+hpr_gesture :: () #foreign #effects(all);
+hpr_shown :: (shown:bool) #foreign #effects(all);
+hpr_frame :: ()->int #foreign #effects(all);
+hpr_retire :: () #foreign #effects(all);
+hpr_close :: ()->int #foreign #effects(all);
 hpa_send :: (text:string) {bytes:[128]u8;for b,i:text {bytes[i]=b;}hpr_send(bytes[0..<text.count]);}
 hpa_wait :: (before:int)->bool {deadline:=proc_now_ms()+5000;while hpr_info(23)<=before&&proc_now_ms()<deadline {proc_sleep(10);}return hpr_info(23)>before;}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: check-linux-audio-product NEW_OUT ROOT");return 2;}
  out:=args_at(a[..],0);root:=args_at(a[..],1);paths:[4][4096]u8;if !fs_mkdir(out) {return 1;}
  inputs:[1]RtqInputs;for file:[8]string.["verse/native/realm-host.c","verse/native/realm-host.h","verse/native/audio-host.c","verse/native/audio-pipewire.c","aethyr/host/tests/audio-fixture-face.c","aethyr/host/tests/linux-audio-product-effects.c","aethyr/host/audio-session.coax","aethyr/host/audio-product-conformance.coax"] {if !rtq_input_add(inputs[..],fs_join(root,file,paths[0][..])) {return 1;}}

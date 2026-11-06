@@ -25,7 +25,7 @@
   #assert forge_native_url_byte(49152,url.count)==-1;
   #assert forge_native_url_byte(8830,0)==-1;
 }
-forge_native_url :: (port:int,out:[]u8)->string {
+forge_native_url :: (port:int,out:[]u8)->string #effects(all) {
   if port<1024||port>65535||port==8830||port==8843||port==8872||port==8876||port==8913||out.count<55 {return "";}
   n:=0;for c:"http://127.0.0.1:" {out[n]=c;n+=1;}
   digits:[5]u8;k:=0;v:=port;while v>0 {digits[k]=cast(u8)('0'+v%10);v/=10;k+=1;}
@@ -33,7 +33,7 @@ forge_native_url :: (port:int,out:[]u8)->string {
   for c:"/worlds/everglade?forge=play#gate" {out[n]=c;n+=1;}
   return cast(string)out[0..<n];
 }
-forge_native_url_byte :: (port:int,index:int)->int #export_c {
+forge_native_url_byte :: (port:int,index:int)->int #export_c #effects(all) {
   out:[128]u8;url:=forge_native_url(port,out[..]);
   return ifx index>=0&&index<url.count then cast(int)url[index] else -1;
 }

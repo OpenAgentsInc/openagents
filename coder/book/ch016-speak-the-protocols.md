@@ -151,7 +151,7 @@ convention of `coax/lib/nostr/json.coax`'s writer that these reuse.
 ```jai
 // The writers append to out at at and return the new length, or -1 when
 // out is too small; -1 stays -1 down a chain.
-pr_type_put :: (out:[]u8,at:int,t:HtType)->int {
+pr_type_put :: (out:[]u8,at:int,t:HtType)->int #effects(all) {
     if t.kind==HtKind.integer {return json_raw(out,json_write_int(out,json_raw(out,at,"{\"type\":\"integer\",\"minimum\":0,\"maximum\":"),ht_power(t.digits)-1),"}");}
     if t.kind==HtKind.boolean {return json_raw(out,at,"{\"type\":\"boolean\"}");}
     n:=json_raw(out,at,"{\"type\":\"string\",\"enum\":[");
@@ -159,7 +159,7 @@ pr_type_put :: (out:[]u8,at:int,t:HtType)->int {
     return json_raw(out,n,"]}");
 }
 // An object schema: every field a property, in order, and every one required.
-pr_object_put :: (out:[]u8,at:int,fields:[]HtField)->int {
+pr_object_put :: (out:[]u8,at:int,fields:[]HtField)->int #effects(all) {
     n:=json_raw(out,at,"{\"type\":\"object\",\"properties\":{");
     for f,i:fields {if i>0 {n=json_raw(out,n,",");}n=pr_type_put(out,json_raw(out,json_write_string(out,n,f.name),":"),f.type);}
     n=json_raw(out,n,"},\"required\":[");
@@ -168,14 +168,14 @@ pr_object_put :: (out:[]u8,at:int,fields:[]HtField)->int {
 }
 // An MCP tool. The result is the property result of the output schema. MCP
 // has no word for a tool with no effect, so none crosses as read-only.
-pr_tool_put :: (out:[]u8,at:int,t:HtTool)->int {
+pr_tool_put :: (out:[]u8,at:int,t:HtTool)->int #effects(all) {
     result:=[1]HtField.[HtField.{name="result",type=t.result}];
     n:=pr_object_put(out,json_raw(out,json_write_string(out,json_raw(out,at,"{\"name\":"),t.name),",\"inputSchema\":"),t.fields);
     n=pr_object_put(out,json_raw(out,n,",\"outputSchema\":"),result[..]);
     return json_raw(out,n,ifx t.effect==HtEffect.write then ",\"annotations\":{\"readOnlyHint\":false}}" else ",\"annotations\":{\"readOnlyHint\":true}}");
 }
 // A JSON-RPC message's head: version and id.
-pr_head :: (out:[]u8,id:int)->int {return json_write_int(out,json_raw(out,0,"{\"jsonrpc\":\"2.0\",\"id\":"),id);}
+pr_head :: (out:[]u8,id:int)->int #effects(all) {return json_write_int(out,json_raw(out,0,"{\"jsonrpc\":\"2.0\",\"id\":"),id);}
 ```
 
 ## Import a tool list
@@ -192,7 +192,7 @@ caller's storage.
 // A property's schema as one of chapter 203's types. A JSON type with no
 // typed counterpart (number, array, object, a free string) is untyped; a
 // keyword outside the subset is a feature.
-pr_type :: (nodes:[]RsNode,i:int,words:[]string,used:int)->PrType {
+pr_type :: (nodes:[]RsNode,i:int,words:[]string,used:int)->PrType #effects(all) {
     r:=PrType.{why=PrWhy.feature,used=used};
     keys:=[5]string.["type","description","minimum","maximum","enum"];
     if !rs_kind(nodes,i,JSON_OBJECT) {r.why=PrWhy.malformed;return r;}
@@ -222,7 +222,7 @@ pr_type :: (nodes:[]RsNode,i:int,words:[]string,used:int)->PrType {
 // An object schema's properties as fields, in the order they are written.
 // Every property must be required exactly once; additionalProperties may
 // only be false.
-pr_object :: (nodes:[]RsNode,i:int,fields:[]HtField,words:[]string,used:int)->PrObject {
+pr_object :: (nodes:[]RsNode,i:int,fields:[]HtField,words:[]string,used:int)->PrObject #effects(all) {
     r:=PrObject.{why=PrWhy.feature,used=used};
     keys:=[4]string.["type","properties","required","additionalProperties"];
     if !rs_kind(nodes,i,JSON_OBJECT) {r.why=PrWhy.malformed;return r;}
@@ -248,7 +248,7 @@ pr_object :: (nodes:[]RsNode,i:int,fields:[]HtField,words:[]string,used:int)->Pr
 }
 // One MCP tool. The output schema must declare exactly one property,
 // result; readOnlyHint true imports as read, anything else as write.
-pr_tool :: (nodes:[]RsNode,i:int,fields:[]HtField,words:[]string,used:int,cost:int,out:[]HtTool)->PrObject {
+pr_tool :: (nodes:[]RsNode,i:int,fields:[]HtField,words:[]string,used:int,cost:int,out:[]HtTool)->PrObject #effects(all) {
     r:=PrObject.{why=PrWhy.malformed,used=used};
     keys:=[6]string.["name","title","description","inputSchema","outputSchema","annotations"];
     notes:=[5]string.["title","readOnlyHint","destructiveHint","idempotentHint","openWorldHint"];
@@ -266,7 +266,7 @@ pr_tool :: (nodes:[]RsNode,i:int,fields:[]HtField,words:[]string,used:int,cost:i
     x.used=y.used;return x;
 }
 // The JSON-RPC envelope of a reply to request id: the result node, or why not.
-pr_reply :: (nodes:[]RsNode,id:int)->PrObject {
+pr_reply :: (nodes:[]RsNode,id:int)->PrObject #effects(all) {
     r:=PrObject.{why=PrWhy.malformed};keys:=[4]string.["jsonrpc","id","result","error"];
     if !rs_keys(nodes,0,keys[..]) {return r;}
     if rs_string(nodes,rs_get(nodes,0,"jsonrpc"))!="2.0" {r.why=PrWhy.version;return r;}
@@ -278,7 +278,7 @@ pr_reply :: (nodes:[]RsNode,id:int)->PrObject {
 }
 // A tools/list reply to request id, imported into s: one page (no
 // nextCursor), at most 8 tools, each typed or the whole import refused.
-pr_import :: (reply:string,id:int,cost:int,s:[]PrStore)->PrImport {
+pr_import :: (reply:string,id:int,cost:int,s:[]PrStore)->PrImport #effects(all) {
     r:=PrImport.{why=PrWhy.malformed};
     if reply.count>PR_MESSAGE_MAX {r.why=PrWhy.shape;return r;}
     if !rs_json(reply,s[0].nodes[..],s[0].arena[..]).ok {return r;}
@@ -313,12 +313,12 @@ tool's own error (`isError`), then the typed value.
 ```jai
 // The client's three fixed requests, and the check of the server's answer
 // to initialize: the same protocol version, and a tools capability.
-pr_initialize :: (out:[]u8,id:int)->int {
+pr_initialize :: (out:[]u8,id:int)->int #effects(all) {
     return json_raw(out,pr_head(out,id),",\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"psionic\",\"version\":\"210\"}}}");
 }
-pr_initialized :: (out:[]u8)->int {return json_raw(out,0,"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");}
-pr_list :: (out:[]u8,id:int)->int {return json_raw(out,pr_head(out,id),",\"method\":\"tools/list\"}");}
-pr_check_init :: (reply:string,id:int)->PrWhy {
+pr_initialized :: (out:[]u8)->int #effects(all) {return json_raw(out,0,"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");}
+pr_list :: (out:[]u8,id:int)->int #effects(all) {return json_raw(out,pr_head(out,id),",\"method\":\"tools/list\"}");}
+pr_check_init :: (reply:string,id:int)->PrWhy #effects(all) {
     nodes:[32]RsNode;arena:[512]u8;
     if !rs_json(reply,nodes[..],arena[..]).ok {return PrWhy.malformed;}
     e:=pr_reply(nodes[..],id);if e.why!=PrWhy.none {return e.why;}
@@ -329,12 +329,12 @@ pr_check_init :: (reply:string,id:int)->PrWhy {
 }
 // A harness call, name{arguments}, as a tools/call request: the arguments
 // object is the call's own bytes after the name.
-pr_call_put :: (out:[]u8,id:int,t:HtTool,text:string)->int {
+pr_call_put :: (out:[]u8,id:int,t:HtTool,text:string)->int #effects(all) {
     n:=json_write_string(out,json_raw(out,pr_head(out,id),",\"method\":\"tools/call\",\"params\":{\"name\":"),t.name);
     return json_raw(out,json_raw(out,json_raw(out,n,",\"arguments\":"),text[t.name.count..<text.count]),"}}");
 }
 // A result as the tool returns it: {"result":value}, its declared type.
-pr_value_put :: (out:[]u8,at:int,t:HtType,v:int)->int {
+pr_value_put :: (out:[]u8,at:int,t:HtType,v:int)->int #effects(all) {
     n:=json_raw(out,at,"{\"result\":");
     if t.kind==HtKind.integer {n=json_write_int(out,n,v);}
     else if t.kind==HtKind.boolean {n=json_raw(out,n,ifx v==1 then "true" else "false");}
@@ -345,7 +345,7 @@ pr_value_put :: (out:[]u8,at:int,t:HtType,v:int)->int {
 // declared digits (JSON itself refuses a leading zero), a boolean, or one
 // of the words, which is exactly what chapter 203's ht_fits allows. -1 when
 // it is none of these.
-pr_value :: (nodes:[]RsNode,i:int,t:HtType)->int {
+pr_value :: (nodes:[]RsNode,i:int,t:HtType)->int #effects(all) {
     if t.kind==HtKind.integer {
         if !rs_kind(nodes,i,JSON_NUMBER) {return -1;}
         x:=nodes[i].text;v:=0;
@@ -361,7 +361,7 @@ pr_value :: (nodes:[]RsNode,i:int,t:HtType)->int {
 // A tools/call reply for tool t: a JSON-RPC error, the tool's own error
 // (isError true), or structuredContent {"result":value} whose value fits
 // the declared type, with the same bytes as its one text content.
-pr_result :: (reply:string,id:int,t:HtTool)->PrEvent {
+pr_result :: (reply:string,id:int,t:HtTool)->PrEvent #effects(all) {
     r:=PrEvent.{why=PrWhy.malformed,id=id};nodes:[48]RsNode;arena:[PR_MESSAGE_MAX]u8;
     if reply.count>PR_MESSAGE_MAX {r.why=PrWhy.shape;return r;}
     if !rs_json(reply,nodes[..],arena[..]).ok {return r;}
@@ -398,12 +398,12 @@ doesn't fit) answers as the tool's own error, `isError: true`.
 // spec's code for an unknown tool or bad arguments) with chapter 203's
 // rendered refusal as its message; a call that ran and failed is the
 // tool's error, isError true, with the refusal as its text.
-pr_error :: (out:[]u8,id:int,code:int,message:string)->int {
+pr_error :: (out:[]u8,id:int,code:int,message:string)->int #effects(all) {
     n:=ifx id== -1 then json_raw(out,0,"{\"jsonrpc\":\"2.0\",\"id\":null") else pr_head(out,id);
     n=json_write_string(out,json_raw(out,json_write_int(out,json_raw(out,n,",\"error\":{\"code\":"),code),",\"message\":"),message);
     return json_raw(out,n,"}}");
 }
-pr_serve :: (env:PrEnv,u:[]HtUsage,world:[]int,request:string,out:[]u8)->int {
+pr_serve :: (env:PrEnv,u:[]HtUsage,world:[]int,request:string,out:[]u8)->int #effects(all) {
     nodes:[64]RsNode;arena:[PR_MESSAGE_MAX]u8;keys:=[4]string.["jsonrpc","id","method","params"];
     if request.count>PR_MESSAGE_MAX || !rs_json(request,nodes[..],arena[..]).ok {return pr_error(out,-1,-32700,"Parse error");}
     k:=rs_get(nodes[..],0,"id");m:=rs_string(nodes[..],rs_get(nodes[..],0,"method"));id:=-1;
@@ -445,24 +445,24 @@ the name and the arguments.
 // {"type":"function","name":...,"parameters":schema,"strict":true}, a call
 // is a function_call item whose arguments are the JSON text as a string,
 // and its answer is a function_call_output with the same call_id.
-pr_function_put :: (out:[]u8,at:int,t:HtTool)->int {
+pr_function_put :: (out:[]u8,at:int,t:HtTool)->int #effects(all) {
     n:=json_write_string(out,json_raw(out,at,"{\"type\":\"function\",\"name\":"),t.name);
     return json_raw(out,pr_object_put(out,json_raw(out,n,",\"parameters\":"),t.fields),",\"strict\":true}");
 }
-pr_function_call_put :: (out:[]u8,call:string,text:string)->int {
+pr_function_call_put :: (out:[]u8,call:string,text:string)->int #effects(all) {
     p:=0;while p<text.count && text[p]!='{' {p+=1;}
     n:=json_write_string(out,json_raw(out,json_write_string(out,json_raw(out,0,"{\"type\":\"function_call\",\"call_id\":"),call),",\"name\":"),text[0..<p]);
     return json_raw(out,json_write_string(out,json_raw(out,n,",\"arguments\":"),text[p..<text.count]),"}");
 }
 // A function_call item as a harness call, name then arguments, in out.
 // -1 when the item is not a function_call of the subset.
-pr_function_call :: (item:string,out:[]u8)->int {
+pr_function_call :: (item:string,out:[]u8)->int #effects(all) {
     nodes:[8]RsNode;arena:[PR_MESSAGE_MAX]u8;keys:=[4]string.["type","call_id","name","arguments"];
     if !rs_json(item,nodes[..],arena[..]).ok || !rs_keys(nodes[..],0,keys[..]) || rs_string(nodes[..],rs_get(nodes[..],0,"type"))!="function_call" {return -1;}
     for k:keys[1..<4] {if !rs_kind(nodes[..],rs_get(nodes[..],0,k),JSON_STRING) {return -1;}}
     return json_raw(out,json_raw(out,0,rs_string(nodes[..],rs_get(nodes[..],0,"name"))),rs_string(nodes[..],rs_get(nodes[..],0,"arguments")));
 }
-pr_function_output_put :: (out:[]u8,call:string,text:string)->int {
+pr_function_output_put :: (out:[]u8,call:string,text:string)->int #effects(all) {
     n:=json_write_string(out,json_raw(out,0,"{\"type\":\"function_call_output\",\"call_id\":"),call);
     return json_raw(out,json_write_string(out,json_raw(out,n,",\"output\":"),text),"}");
 }
@@ -474,13 +474,13 @@ pr_function_output_put :: (out:[]u8,call:string,text:string)->int {
 ```jai
 // Every message, sent or received, is appended before anything acts on it.
 // Its digest covers the previous digest, the direction and the bytes.
-pr_digest :: (previous:[32]u8,sent:bool,text:string)->[32]u8 {
+pr_digest :: (previous:[32]u8,sent:bool,text:string)->[32]u8 #effects(all) {
     b:[PR_MESSAGE_MAX+96]u8;at:=su_text(b[..],0,"psionic.harness.protocols.message.v1");
     for x,i:previous {b[at+i]=x;}at=su_text(b[..],su_flag(b[..],at+32,sent),text);
     return su_hash(b[0..<at]);
 }
-pr_start :: (g:PrLog,i:int)->int {return ifx i==0 then 0 else g.ends[i-1];}
-pr_log :: (l:[]PrLog,sent:bool,text:string)->bool {
+pr_start :: (g:PrLog,i:int)->int #effects(all) {return ifx i==0 then 0 else g.ends[i-1];}
+pr_log :: (l:[]PrLog,sent:bool,text:string)->bool #effects(all) {
     g:=l[0];at:=pr_start(g,g.count);
     if text.count>PR_MESSAGE_MAX || g.count==g.ends.count || g.count==g.sent.count || g.count==g.heads.count || at+text.count>g.bytes.count {return false;}
     for c,i:text {g.bytes[at+i]=c;}
@@ -488,9 +488,9 @@ pr_log :: (l:[]PrLog,sent:bool,text:string)->bool {
     g.ends[g.count]=at+text.count;g.sent[g.count]=sent;g.heads[g.count]=pr_digest(previous,sent,text);l[0].count=g.count+1;
     return true;
 }
-pr_message :: (g:PrLog,i:int)->string {return cast(string)g.bytes[pr_start(g,i)..<g.ends[i]];}
+pr_message :: (g:PrLog,i:int)->string #effects(all) {return cast(string)g.bytes[pr_start(g,i)..<g.ends[i]];}
 // The first message whose digest the chain does not explain, or count.
-pr_verify :: (g:PrLog)->int {
+pr_verify :: (g:PrLog)->int #effects(all) {
     previous:[32]u8;
     for i:0..<g.count {d:=pr_digest(previous,g.sent[i],pr_message(g,i));if !su_same(d,g.heads[i]) {return i;}previous=d;}
     return g.count;
@@ -511,7 +511,7 @@ first, then reads it.
 // grant, the budgets, the argument grammar); the policy decides; the
 // request is logged; then the call is charged. A refusal sends and charges
 // nothing.
-pr_send :: (env:PrEnv,s:[]PrSession,text:string,approved:bool,out:[]u8,l:[]PrLog)->PrEvent {
+pr_send :: (env:PrEnv,s:[]PrSession,text:string,approved:bool,out:[]u8,l:[]PrLog)->PrEvent #effects(all) {
     x:=s[0];r:=PrEvent.{why=PrWhy.tool};p:=env.policy;
     r.call=ht_admit(env.tools,env.grant,x.usage,text,env.work);
     if r.call.why!=HtWhy.none {return r;}
@@ -533,7 +533,7 @@ pr_send :: (env:PrEnv,s:[]PrSession,text:string,approved:bool,out:[]u8,l:[]PrLog
     return r;
 }
 // The reply to a sent call, logged, then read through the after stage.
-pr_receive :: (env:PrEnv,sent:PrEvent,reply:string,l:[]PrLog)->PrEvent {
+pr_receive :: (env:PrEnv,sent:PrEvent,reply:string,l:[]PrLog)->PrEvent #effects(all) {
     r:=sent;if !pr_log(l,false,reply) {r.why=PrWhy.capacity;return r;}
     x:=pr_result(reply,sent.id,env.tools[sent.call.tool]);r.why=x.why;r.call.value=x.call.value;
     return r;

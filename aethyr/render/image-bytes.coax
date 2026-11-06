@@ -14,7 +14,7 @@
  for channel:0..<3 {bad:=[8]u8.[64,32,1,128,0,0,0,0];bad[4+channel]=1;#assert !render_image_straight(bad[..]);#assert bad[0]==64 && bad[1]==32 && bad[2]==1 && bad[4+channel]==1;}
  bad:=[4]u8.[1,0,0,0];#assert !render_image_straight(bad[..]) && bad[0]==1;
 }
-render_image_straight :: (rgba:[]u8)->bool #export_c {
+render_image_straight :: (rgba:[]u8)->bool #export_c #effects(all) {
  if rgba.count%4!=0 {return false;}
  for pixel:0..<rgba.count/4 {at:=pixel*4;alpha:=rgba[at+3];if rgba[at]>alpha || rgba[at+1]>alpha || rgba[at+2]>alpha {return false;}}
  for pixel:0..<rgba.count/4 {at:=pixel*4;alpha:=int(rgba[at+3]);

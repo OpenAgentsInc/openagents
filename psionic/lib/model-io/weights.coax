@@ -29,13 +29,13 @@
     }
 }
 
-pw_float_bits :: (file:[]u8,at:int,dtype:PwDtype)->u32 {
+pw_float_bits :: (file:[]u8,at:int,dtype:PwDtype)->u32 #effects(all) {
     word:=pw_word(file,at,pw_width(dtype));
     if dtype==PwDtype.bf16 {return pw_bf16_bits(cast(u16)word.bits);}return word.bits;
 }
 // book:begin decode
 // Metadata workspaces may change on refusal. Float output AND scratch do not.
-pw_decode_checked :: (file:[]u8,name:string,first:int,count:int,output:[]f32,scratch:[]f32,inventory:[]PwTensor,draft:[]PwTensor,overlap:bool)->PwResult #export_c {
+pw_decode_checked :: (file:[]u8,name:string,first:int,count:int,output:[]f32,scratch:[]f32,inventory:[]PwTensor,draft:[]PwTensor,overlap:bool)->PwResult #export_c #effects(all) {
     if overlap {return PwResult.{status=PwStatus.alias};}
     r:=pw_inspect_checked(file,inventory,draft,false);if r.status!=PwStatus.ok {return r;}
     at:=pw_find(inventory[0..<r.written],name);if at<0 {return PwResult.{status=PwStatus.manifest};}

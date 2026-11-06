@@ -68,7 +68,7 @@ IceScene :: struct {
 scene_cap :: (s: [] IceScene) -> int { return lo_int(MAX_SCENE, s[0].verts.count / SCENE_WORDS); }
 lo_int :: (a: int, b: int) -> int { if a < b { return a; } return b; }
 // The face's buffers: the vertex store and the round's trace (play.coax), kept outside the state.
-icecream_attach :: (s: [] IceScene, verts: [] u32, trace: [] u8) #export_c { s[0].verts = verts; s[0].plays[0].trace = trace; }
+icecream_attach :: (s: [] IceScene, verts: [] u32, trace: [] u8) #export_c #effects(all) { s[0].verts = verts; s[0].plays[0].trace = trace; }
 
 snorm8 :: (x: f32) -> u32 { return cast(u32) cast,trunc(u8) cast(s32) roundf(clampf(x, -1, 1) * 127); }
 pack_snorm :: (v: V3, w: f32) -> u32 { return snorm8(v.x) | (snorm8(v.y) << 8) | (snorm8(v.z) << 16) | (snorm8(w) << 24); }
@@ -115,7 +115,7 @@ model_build :: (m: int, v: [] Vtx) -> int {
 }
 
 // Builds the seed's house (the demo's default: Normal, Backrooms yellow) and every model, and stores them.
-icecream_scene_build :: (s: [] IceScene) #export_c {
+icecream_scene_build :: (s: [] IceScene) #export_c #effects(all) {
   g := s[0].games[..];
   t := g[0].tuning;
   s[0].seed = g[0].house.seed;
@@ -136,7 +136,7 @@ icecream_scene_build :: (s: [] IceScene) #export_c {
   s[0].sent = 0;
 }
 // The run's house changed (a new run, another seed): build it again.
-icecream_scene_stale :: (s: [] IceScene) -> bool #export_c { return !s[0].built || s[0].seed != s[0].games[0].house.seed || s[0].games[0].house.room_n == 0; }
+icecream_scene_stale :: (s: [] IceScene) -> bool #export_c #effects(all) { return !s[0].built || s[0].seed != s[0].games[0].house.seed || s[0].games[0].house.room_n == 0; }
 
 // ---- the objects this frame (world.cpp drawScene)
 
@@ -407,24 +407,24 @@ scene_objects :: (s: [] IceScene) {
 
 // ---- the frame
 
-icecream_frame :: (s: [] IceScene, width: f32, height: f32, dpr: f32, frame_dt: f32) #export_c {
+icecream_frame :: (s: [] IceScene, width: f32, height: f32, dpr: f32, frame_dt: f32) #export_c #effects(all) {
   ice_play_frame(s[0].plays[..], s[0].games[..], width, height, dpr, frame_dt);
   if icecream_scene_stale(s) { icecream_scene_build(s); }
   scene_objects(s);
 }
 // The realm's board over the house being played (play.coax board_now), after the face sets the options.
-icecream_board_now :: (s: [] IceScene) #export_c { board_now(s[0].plays[..], s[0].games[..]); }
-icecream_draw_count :: (s: [] IceScene) -> int #export_c { return ifx s[0].built then s[0].draw_n else 0; }
+icecream_board_now :: (s: [] IceScene) #export_c #effects(all) { board_now(s[0].plays[..], s[0].games[..]); }
+icecream_draw_count :: (s: [] IceScene) -> int #export_c #effects(all) { return ifx s[0].built then s[0].draw_n else 0; }
 // The store's bytes this frame: the house and models the first few frames after a build, then none; the objects every frame.
-icecream_scene_store_bytes :: (s: [] IceScene, k: int) -> int #export_c {
+icecream_scene_store_bytes :: (s: [] IceScene, k: int) -> int #export_c #effects(all) {
   if !s[0].built { return 0; }
   if k == 1 { return s[0].obj_n * OBJ_FLOATS * 4; }
   if s[0].sent >= 3 { return 0; }
   s[0].sent += 1;
   return s[0].vert_n * SCENE_WORDS * 4;
 }
-icecream_scene_store_cap :: (k: int) -> int #export_c { return ifx k == 1 then MAX_OBJECTS * OBJ_FLOATS * 4 else MAX_SCENE * SCENE_WORDS * 4; }
-icecream_scene_floats :: () -> int #export_c { return SCENE_FLOATS; }
+icecream_scene_store_cap :: (k: int) -> int #export_c #effects(all) { return ifx k == 1 then MAX_OBJECTS * OBJ_FLOATS * 4 else MAX_SCENE * SCENE_WORDS * 4; }
+icecream_scene_floats :: () -> int #export_c #effects(all) { return SCENE_FLOATS; }
 
 // ---- the light and the view's uniforms
 
@@ -455,7 +455,7 @@ view_rows :: (eye: V3, target: V3, fovy: f32, aspect: f32, out: [] f32, at: int)
 }
 
 // The scene's uniforms for a frame (the flicker held when still).
-icecream_scene_uniforms :: (s: [] IceScene, out: [] f32, width: f32, height: f32, still: bool) #export_c {
+icecream_scene_uniforms :: (s: [] IceScene, out: [] f32, width: f32, height: f32, still: bool) #export_c #effects(all) {
   if !s[0].built || out.count < SCENE_AT + SCENE_FLOATS || width < 1 || height < 1 { return; }
   g := s[0].games[..]; p := s[0].plays[..];
   aspect := width / height;
@@ -480,23 +480,23 @@ icecream_scene_uniforms :: (s: [] IceScene, out: [] f32, width: f32, height: f32
 
 // ---- the face's way in (each takes the scene, which holds the run)
 
-icecream_hash :: (s: [] IceScene, text: string) #export_c { ice_play_hash(s[0].plays[..], s[0].games[..], text); }
-icecream_seed :: (s: [] IceScene) -> u64 #export_c { return ice_play_seed(s[0].plays[..], s[0].games[..]); }
-icecream_key :: (s: [] IceScene, key: int, down: bool, mods: int) -> bool #export_c { return ice_play_key(s[0].plays[..], s[0].games[..], key, down, mods); }
-icecream_blur :: (s: [] IceScene) #export_c { ice_play_blur(s[0].plays[..]); }
-icecream_wheel :: (s: [] IceScene, dy: f32) #export_c { ice_play_wheel(s[0].plays[..], dy); }
-icecream_act :: (s: [] IceScene, a: int, arg: int) #export_c { ice_play_act(s[0].plays[..], s[0].games[..], a, arg); }
-icecream_suspend :: (s: [] IceScene, on: bool) #export_c { ice_play_suspend(s[0].plays[..], on); }
-icecream_pointer :: (s: [] IceScene, x: f32, y: f32, phase: int, kind: int, id: int, zone: int, cx: f32, cy: f32) #export_c {
+icecream_hash :: (s: [] IceScene, text: string) #export_c #effects(all) { ice_play_hash(s[0].plays[..], s[0].games[..], text); }
+icecream_seed :: (s: [] IceScene) -> u64 #export_c #effects(all) { return ice_play_seed(s[0].plays[..], s[0].games[..]); }
+icecream_key :: (s: [] IceScene, key: int, down: bool, mods: int) -> bool #export_c #effects(all) { return ice_play_key(s[0].plays[..], s[0].games[..], key, down, mods); }
+icecream_blur :: (s: [] IceScene) #export_c #effects(all) { ice_play_blur(s[0].plays[..]); }
+icecream_wheel :: (s: [] IceScene, dy: f32) #export_c #effects(all) { ice_play_wheel(s[0].plays[..], dy); }
+icecream_act :: (s: [] IceScene, a: int, arg: int) #export_c #effects(all) { ice_play_act(s[0].plays[..], s[0].games[..], a, arg); }
+icecream_suspend :: (s: [] IceScene, on: bool) #export_c #effects(all) { ice_play_suspend(s[0].plays[..], on); }
+icecream_pointer :: (s: [] IceScene, x: f32, y: f32, phase: int, kind: int, id: int, zone: int, cx: f32, cy: f32) #export_c #effects(all) {
   ice_play_pointer(s[0].plays[..], s[0].games[..], x, y, phase, kind, id, zone, cx, cy);
 }
-icecream_trace_ready :: (s: [] IceScene) -> bool #export_c { return ice_trace_ready(s[0].plays[..]); }
-icecream_trace_sent :: (s: [] IceScene) #export_c { ice_trace_sent(s[0].plays[..]); }
-icecream_trace_len :: (s: [] IceScene) -> int #export_c { return s[0].plays[0].trace_n; }
-icecream_save_ready :: (s: [] IceScene) -> bool #export_c { return ice_play_save_ready(s[0].plays[..]); }
-icecream_save :: (s: [] IceScene) -> int #export_c { return ice_play_save(s[0].plays[..]); }
-icecream_load :: (s: [] IceScene, text: string) #export_c { ice_play_load(s[0].plays[..], s[0].games[..], text); }
-icecream_facts :: (s: [] IceScene, out: [] f32) #export_c { ice_play_facts(s[0].plays[..], s[0].games[..], out); }
+icecream_trace_ready :: (s: [] IceScene) -> bool #export_c #effects(all) { return ice_trace_ready(s[0].plays[..]); }
+icecream_trace_sent :: (s: [] IceScene) #export_c #effects(all) { ice_trace_sent(s[0].plays[..]); }
+icecream_trace_len :: (s: [] IceScene) -> int #export_c #effects(all) { return s[0].plays[0].trace_n; }
+icecream_save_ready :: (s: [] IceScene) -> bool #export_c #effects(all) { return ice_play_save_ready(s[0].plays[..]); }
+icecream_save :: (s: [] IceScene) -> int #export_c #effects(all) { return ice_play_save(s[0].plays[..]); }
+icecream_load :: (s: [] IceScene, text: string) #export_c #effects(all) { ice_play_load(s[0].plays[..], s[0].games[..], text); }
+icecream_facts :: (s: [] IceScene, out: [] f32) #export_c #effects(all) { ice_play_facts(s[0].plays[..], s[0].games[..], out); }
 
 // ---- checks
 

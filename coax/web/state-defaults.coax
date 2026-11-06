@@ -682,7 +682,7 @@ Work :: struct {
   jobs: [SD_ENGINES * SD_UNITS] SdJob;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { return 2; }
   if args_count(a[..])>0&&args_at(a[..],0)=="native-prepared" {return sd_prepared(a[..]);}

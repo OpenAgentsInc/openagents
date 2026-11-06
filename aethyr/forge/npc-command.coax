@@ -50,31 +50,31 @@ FNP_NPC :: 1;FNP_PERSON :: 2;FNP_PLAYER :: 3;FNP_CREATURE :: 4;FNP_BUILDING :: 5
   #assert fnp_parse("{\"op\":\"remove\",\"base\":0,\"npc\":1}",c[..]) && c[0].group==0;
   for bad:[12]string.["{\"op\":1}","{\"op\":\"spawn\",\"base\":0,\"kind\":null}","{\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\",\"group\":1}","{\"op\":\"order\",\"base\":0,\"npc\":1,\"action\":\"stop\",\"kind\":\"cultist\"}","{\"op\":\"order\",\"base\":0,\"npc\":1,\"action\":\"attack\",\"target_kind\":\"building\"}","{\"op\":\"order\",\"base\":0,\"npc\":1,\"action\":\"attack\",\"target_kind\":\"building\",\"target_id\":0,\"x_cm\":0,\"z_cm\":0}","{\"op\":\"remove\",\"base\":0,\"npc\":1000001}","{\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\",\"x_cm\":16001,\"z_cm\":0}","{\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\",\"x_cm\":0,\"z_cm\":-16001}","{\"op\":\"order\",\"base\":0,\"npc\":1,\"action\":\"stop\",\"target_id\":0}","{\"op\":\"order\",\"base\":0,\"npc\":1,\"action\":\"stop\",\"target_kind\":\"building\"}","{\"op\":\"order\",\"base\":0,\"npc\":1,\"action\":\"stop\",\"x_cm\":0,\"z_cm\":0}"] {#assert !fnp_parse(bad,c[..]);}
 }
-fnp_access :: (dev:bool,admin:bool)->bool {return dev && admin;}
+fnp_access :: (dev:bool,admin:bool)->bool #effects(all) {return dev && admin;}
 #test "NPC writes and live-order admission refuse stale exhausted dead and self observations" {
   #assert fnp_write(0,0) && fnp_write(999999,999999) && !fnp_write(0,1) && !fnp_write(1000000,1000000) && !fnp_write(-1,-1);
   #assert fnp_spawn(31,1,1,999999,999999) && !fnp_spawn(31,1,1,1000000,999999) && !fnp_spawn(31,1,1,999999,1000000) && !fnp_spawn(32,1,1,0,0);
   #assert fnp_orderable(0,true,false) && !fnp_orderable(-1,true,false) && !fnp_orderable(0,false,false) && !fnp_orderable(0,true,true);
   #assert fnp_quarry(false,false,-1) && fnp_quarry(true,true,-1) && fnp_quarry(true,false,0) && !fnp_quarry(true,false,-1);
 }
-fnp_write :: (base:int,version:int)->bool {return base==version && version>=0 && version<1000000;}
-fnp_spawn :: (n:int,count:int,free:int,serial:int,groups:int)->bool {return fnp_capacity(n,count,free) && serial+count<=1000000 && groups<1000000;}
-fnp_orderable :: (slot:int,alive:bool,self:bool)->bool {return slot>=0 && alive && !self;}
-fnp_quarry :: (attack:bool,building:bool,foe:int)->bool {return !attack || building || foe>=0;}
-fnp_record :: (id:int,group:int,kind:int,action:int,x:int,z:int,tk:int,target:int)->bool {
+fnp_write :: (base:int,version:int)->bool #effects(all) {return base==version && version>=0 && version<1000000;}
+fnp_spawn :: (n:int,count:int,free:int,serial:int,groups:int)->bool #effects(all) {return fnp_capacity(n,count,free) && serial+count<=1000000 && groups<1000000;}
+fnp_orderable :: (slot:int,alive:bool,self:bool)->bool #effects(all) {return slot>=0 && alive && !self;}
+fnp_quarry :: (attack:bool,building:bool,foe:int)->bool #effects(all) {return !attack || building || foe>=0;}
+fnp_record :: (id:int,group:int,kind:int,action:int,x:int,z:int,tk:int,target:int)->bool #effects(all) {
   return id>=1 && id<=1000000 && group>=1 && group<=1000000 && kind>=0 && kind<FNP_KINDS.count && action>=FNP_STOP && action<=FNP_MOVE &&
     x>= -16000 && x<=16000 && z>= -16000 && z<=16000 && (ifx action==FNP_ATTACK then fnp_target(tk,target) else tk==0 && target==0);
 }
-fnp_capacity :: (n:int,count:int,free:int)->bool {return count>=1 && count<=8 && n+count<=FNP_MAX && free>=count;}
-fnp_target :: (kind:int,id:int)->bool {
+fnp_capacity :: (n:int,count:int,free:int)->bool #effects(all) {return count>=1 && count<=8 && n+count<=FNP_MAX && free>=count;}
+fnp_target :: (kind:int,id:int)->bool #effects(all) {
   if kind==FNP_NPC || kind==FNP_CREATURE {return id>=1 && id<=1000000;}
   if kind==FNP_PERSON {return id>=0 && id<47;}
   if kind==FNP_PLAYER {return id>=0 && id<16;}
   if kind==FNP_BUILDING {return id>=0 && id<60;}
   return false;
 }
-fnp_field :: (key:string)->int {for i:0..<FNP_NAMES.count {if FNP_NAMES[i]==key {return i;}}return FNP_NAMES.count;}
-fnp_parse :: (text:string,out:[]FnpCommand)->bool {
+fnp_field :: (key:string)->int #effects(all) {for i:0..<FNP_NAMES.count {if FNP_NAMES[i]==key {return i;}}return FNP_NAMES.count;}
+fnp_parse :: (text:string,out:[]FnpCommand)->bool #effects(all) {
   nodes:[32]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {return false;}
   v:=d[0];seen:u32=0;
   for i:1..<v.count {

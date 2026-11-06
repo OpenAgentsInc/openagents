@@ -11,7 +11,7 @@ ct_run :: (argv:[]string,success:bool,work:string,label:string,out:[]u8)->bool {
   if !rtq_record_run(work,label,argv,r,cast(string)out[0..<r.out_n],cast(string)err[0..<r.err_n]) {return false;}
   ok:=r.started==0 && !r.timed_out && !r.cut && r.status==(ifx success then 0 else 1);if !ok {tool_err("port control failed: ");tool_errln(label);tool_err(cast(string)err[0..<r.err_n]);}return ok;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])<4 {tool_errln("usage: check-catalog-tooling OUT CATALOG_BINARY MOCK_COMPILER QUALIFIED_NATIVE_DIR [REFERENCE_ROOT]");return 2;}
   out:=args_at(a[..],0);catalog:=args_at(a[..],1);mock:=args_at(a[..],2);qualified:=args_at(a[..],3);root:=args_at(a[..],4);if root.count==0 {root=".";}if !fs_mkdir(out) {return 1;}
   catalog_hash:[64]u8;mock_hash:[64]u8;if !rtq_hash_file(catalog,catalog_hash[..]) || !rtq_hash_file(mock,mock_hash[..]) {return 1;}

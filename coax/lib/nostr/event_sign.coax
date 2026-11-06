@@ -134,20 +134,20 @@ EVENT_REFUSED :: -1; EVENT_MORE :: 0;
 
 NostrSignWork :: struct {stage:int;sign:[1]SignWork;pub:[32]u8;id:[32]u8;sig:[64]u8;}
 
-es_inputs :: (created_at:int,kind:int,tags:string)->bool {
+es_inputs :: (created_at:int,kind:int,tags:string)->bool #effects(all) {
   return created_at>=0 && kind>=0 && kind<=65535 && json_valid(tags);
 }
-es_views :: (key:[]u8,aux:[]u8,work:[]NostrSignWork,scratch:[]u8,out:[]u8,overlap:bool)->bool {
+es_views :: (key:[]u8,aux:[]u8,work:[]NostrSignWork,scratch:[]u8,out:[]u8,overlap:bool)->bool #effects(all) {
   return work.count==1 && key.count==32 && aux.count==32 && scratch.count>0 && scratch.count<=NE_MAX_OUTPUT && out.count>0 && !overlap;
 }
-es_clear :: (work:[]NostrSignWork)->int {fresh:NostrSignWork;work[0]=fresh;return EVENT_REFUSED;}
+es_clear :: (work:[]NostrSignWork)->int #effects(all) {fresh:NostrSignWork;work[0]=fresh;return EVENT_REFUSED;}
 // Stage one runs only the signer's key stage; the message is not used yet.
-es_key :: (key:[]u8,aux:[]u8,work:[]NostrSignWork)->int {
+es_key :: (key:[]u8,aux:[]u8,work:[]NostrSignWork)->int #effects(all) {
   if schnorr_sign_step(key,aux,work[0].id[..],work[0].sign[..],work[0].sig[..],false)!=SIGN_MORE {return es_clear(work);}
   work[0].pub=work[0].sign[0].prep[0].public_key;work[0].stage=1;return EVENT_MORE;
 }
 // [0,pubkey,created_at,kind,tags,content], written exactly as ne_serialize does.
-es_id :: (created_at:int,kind:int,tags:string,content:string,work:[]NostrSignWork,scratch:[]u8)->int {
+es_id :: (created_at:int,kind:int,tags:string,content:string,work:[]NostrSignWork,scratch:[]u8)->int #effects(all) {
   decoded:[65536]u8;pub:[64]u8;key:=work[0].pub;
   h:=hex_encode_checked(cast(string)key[..],pub[..],false);
   n:=json_raw(scratch,ne_writer_start(h.error),"[0,");n=json_write_string(scratch,n,cast(string)pub[..]);
@@ -160,16 +160,16 @@ es_id :: (created_at:int,kind:int,tags:string,content:string,work:[]NostrSignWor
   hashed:=sha256_hash_checked(scratch[0..<n],work[0].id[..],false);
   work[0].stage=2;return EVENT_MORE;
 }
-es_sign :: (key:[]u8,aux:[]u8,work:[]NostrSignWork)->int {
+es_sign :: (key:[]u8,aux:[]u8,work:[]NostrSignWork)->int #effects(all) {
   status:=schnorr_sign_step(key,aux,work[0].id[..],work[0].sign[..],work[0].sig[..],false);
   if status==SIGN_REFUSED {return es_clear(work);}
   if status==SIGN_DONE {work[0].stage=3;}
   return EVENT_MORE;
 }
-es_fail :: (work:[]NostrSignWork,out:[]u8)->int {for i:0..<out.count {out[i]=0;}return es_clear(work);}
+es_fail :: (work:[]NostrSignWork,out:[]u8)->int #effects(all) {for i:0..<out.count {out[i]=0;}return es_clear(work);}
 // The reader recomputes the ID from the written JSON: any difference between
 // this writer and ne_serialize, or inputs changed between calls, refuses.
-es_write :: (created_at:int,kind:int,tags:string,content:string,work:[]NostrSignWork,scratch:[]u8,out:[]u8)->int {
+es_write :: (created_at:int,kind:int,tags:string,content:string,work:[]NostrSignWork,scratch:[]u8,out:[]u8)->int #effects(all) {
   decoded:[65536]u8;id:[64]u8;pub:[64]u8;sig:[128]u8;a:=work[0].id;b:=work[0].pub;c:=work[0].sig;
   h:=hex_encode_checked(cast(string)a[..],id[..],false);
   hb:=hex_encode_checked(cast(string)b[..],pub[..],false);hc:=hex_encode_checked(cast(string)c[..],sig[..],false);
@@ -190,7 +190,7 @@ es_write :: (created_at:int,kind:int,tags:string,content:string,work:[]NostrSign
 // is the host's truthful observation. Refused views and inputs change
 // nothing; any other refusal clears the workspace. Only the last stage
 // writes out, and its refusal clears out too.
-nostr_event_sign_step :: (key:[]u8,aux:[]u8,created_at:int,kind:int,tags:string,content:string,work:[]NostrSignWork,scratch:[]u8,out:[]u8,overlap:bool)->int #export_c {
+nostr_event_sign_step :: (key:[]u8,aux:[]u8,created_at:int,kind:int,tags:string,content:string,work:[]NostrSignWork,scratch:[]u8,out:[]u8,overlap:bool)->int #export_c #effects(all) {
   if !es_views(key,aux,work,scratch,out,overlap) || !es_inputs(created_at,kind,tags) {return EVENT_REFUSED;}
   stage:=work[0].stage;
   if stage==0 {return es_key(key,aux,work);}

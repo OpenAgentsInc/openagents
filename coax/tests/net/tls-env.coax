@@ -59,7 +59,7 @@ te_dir :: (t: [] Te, tail: string, out: [] u8) -> string {
   return te_cat(parts[..], out);
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   if tool_os() == TOOL_MAC { print("%\n", "tls-env: Linux only (macOS uses Network.framework)"); return 0; }
   t: [1] Te;
   args: [1] Args; loaded := args_load(args[..]);

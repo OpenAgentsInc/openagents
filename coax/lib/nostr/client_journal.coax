@@ -88,17 +88,17 @@ Cj :: struct {
 CjOpen :: struct { status: int; at: int; records: int; }
 
 // ---- check fixtures ---------------------------------------------------------
-cj_t_id :: (b: int) -> [32] u8 { k: [32] u8; k[0] = cast(u8) b; k[31] = 0xee; return k; }
+cj_t_id :: (b: int) -> [32] u8 #effects(all) { k: [32] u8; k[0] = cast(u8) b; k[31] = 0xee; return k; }
 CJ_T_R1 :: "wss://r1.example"; CJ_T_R2 :: "wss://r2.example"; CJ_T_R3 :: "wss://r3.example";
-cj_t_open :: (j: [] Cj, buf: [] u8, total: int) -> int { return cj_open(j, buf, total, cj_t_id(9)).status; }
+cj_t_open :: (j: [] Cj, buf: [] u8, total: int) -> int #effects(all) { return cj_open(j, buf, total, cj_t_id(9)).status; }
 // A new journal with relays r1 r2 r3.
-cj_t_three :: (j: [] Cj, buf: [] u8) {
+cj_t_three :: (j: [] Cj, buf: [] u8) #effects(all) {
   s := cj_t_open(j, buf, 0);
   a := cj_relay(j, buf, CJ_T_R1); b := cj_relay(j, buf, CJ_T_R2); c := cj_relay(j, buf, CJ_T_R3);
 }
 // A record of any type and body, checked but not applied: what another
 // writer, or a bug, might have left.
-cj_t_raw :: (j: [] Cj, buf: [] u8, type: int, body: [] u8) {
+cj_t_raw :: (j: [] Cj, buf: [] u8, type: int, body: [] u8) #effects(all) {
   at := cj_begin(j, buf, type, 1 + body.count);
   for i: 0..<body.count { buf[at + i] = body[i]; }
   cj_seal(buf, j[0].len, 1 + body.count); j[0].len += 9 + body.count;
@@ -357,7 +357,7 @@ cj_t_bytes :: "{\"id\":\"..\"}";
 // A journal with r1 r2 r3, your event 1 queued to r1 r2, and subscription
 // 0's cursor on r1 at 10; then one record that checks: is it refused at
 // that record?
-cj_t_refused :: (type: int, body: [] u8) -> bool {
+cj_t_refused :: (type: int, body: [] u8) -> bool #effects(all) {
   j: [1] Cj; buf: [1024] u8; cj_t_three(j[..], buf[..]); nz: [1] [32] u8;
   q := cj_queue(j[..], buf[..], cj_t_id(1), 3, "x");
   two := cj_t_id(2); d := cj_deliver(j[..], buf[..], 0, 0, 10, two, two, "y", nz[0..<0]);
@@ -464,26 +464,26 @@ cj_t_refused :: (type: int, body: [] u8) -> bool {
 }
 
 // ---- bytes ---------------------------------------------------------------------
-cj_eq :: (a: [32] u8, b: [32] u8) -> bool {
+cj_eq :: (a: [32] u8, b: [32] u8) -> bool #effects(all) {
   for i: 0..<32 { if a[i] != b[i] { return false; } }
   return true;
 }
-cj_not :: (x: u64) -> u64 { return x ^ 0xffffffffffffffff; }
-cj_put :: (buf: [] u8, at: int, v: u64, n: int) {
+cj_not :: (x: u64) -> u64 #effects(all) { return x ^ 0xffffffffffffffff; }
+cj_put :: (buf: [] u8, at: int, v: u64, n: int) #effects(all) {
   for i: 0..<n { buf[at + i] = cast(u8) ((v >> cast(u64) (8 * (n - 1 - i))) & 255); }
 }
-cj_get :: (buf: [] u8, at: int, n: int) -> u64 {
+cj_get :: (buf: [] u8, at: int, n: int) -> u64 #effects(all) {
   v: u64 = 0;
   for i: 0..<n { v = (v << 8) | cast(u64) buf[at + i]; }
   return v;
 }
-cj_id :: (buf: [] u8, at: int) -> [32] u8 {
+cj_id :: (buf: [] u8, at: int) -> [32] u8 #effects(all) {
   id: [32] u8;
   for i: 0..<32 { id[i] = buf[at + i]; }
   return id;
 }
-cj_put_id :: (buf: [] u8, at: int, id: [32] u8) { for i: 0..<32 { buf[at + i] = id[i]; } }
-cj_header_byte :: (owner: [32] u8, i: int) -> u8 {
+cj_put_id :: (buf: [] u8, at: int, id: [32] u8) #effects(all) { for i: 0..<32 { buf[at + i] = id[i]; } }
+cj_header_byte :: (owner: [32] u8, i: int) -> u8 #effects(all) {
   if i < 3 { return "NCJ"[i]; }
   if i == 3 { return CJ_VERSION; }
   return owner[i - 4];
@@ -491,39 +491,39 @@ cj_header_byte :: (owner: [32] u8, i: int) -> u8 {
 
 // ---- what the journal knows --------------------------------------------------------
 // The store index of an id, or -1.
-cj_find :: (j: [] Cj, id: [32] u8) -> int {
+cj_find :: (j: [] Cj, id: [32] u8) -> int #effects(all) {
   for k: 0..<j[0].events { if cj_eq(j[0].event[k].id, id) { return k; } }
   return -1;
 }
-cj_pub_of :: (j: [] Cj, id: [32] u8) -> int {
+cj_pub_of :: (j: [] Cj, id: [32] u8) -> int #effects(all) {
   for k: 0..<j[0].pubs { if cj_eq(j[0].pub[k].id, id) { return k; } }
   return -1;
 }
 // signer asked to delete id.
-cj_tombed :: (j: [] Cj, id: [32] u8, signer: [32] u8) -> bool {
+cj_tombed :: (j: [] Cj, id: [32] u8, signer: [32] u8) -> bool #effects(all) {
   for k: 0..<j[0].tombs { if cj_eq(j[0].tomb[k].id, id) && cj_eq(j[0].tomb[k].signer, signer) { return true; } }
   return false;
 }
 // Stored event k is shown: its author has not asked to delete it.
-cj_live :: (j: [] Cj, k: int) -> bool {
+cj_live :: (j: [] Cj, k: int) -> bool #effects(all) {
   return k >= 0 && k < j[0].events && !cj_tombed(j, j[0].event[k].id, j[0].event[k].author);
 }
 // The since= for subscription sub on relay r: the newest created_at
 // delivered or seen there, or -1 when none (ask without since).
-cj_since :: (j: [] Cj, sub: int, r: int) -> int {
+cj_since :: (j: [] Cj, sub: int, r: int) -> int #effects(all) {
   if !cj_sub_ok(sub) || r < 0 || r >= OB_RELAYS || (j[0].has[sub] & (cast(u64) 1 << r)) == 0 { return -1; }
   return j[0].cursor[sub * OB_RELAYS + r];
 }
-cj_sub_ok :: (sub: int) -> bool { return sub >= 0 && sub < CJ_SUBS; }
-cj_relay_ok :: (j: [] Cj, r: int) -> bool { return r >= 0 && r < j[0].pool[0].relays; }
-cj_known :: (j: [] Cj) -> u64 {
+cj_sub_ok :: (sub: int) -> bool #effects(all) { return sub >= 0 && sub < CJ_SUBS; }
+cj_relay_ok :: (j: [] Cj, r: int) -> bool #effects(all) { return r >= 0 && r < j[0].pool[0].relays; }
+cj_known :: (j: [] Cj) -> u64 #effects(all) {
   n := j[0].pool[0].relays;
   if n == OB_RELAYS { return cj_not(0); }
   return (cast(u64) 1 << n) - 1;
 }
 
 // Two states are the same: every field the writers and replay set.
-cj_same :: (a: [] Cj, b: [] Cj) -> bool {
+cj_same :: (a: [] Cj, b: [] Cj) -> bool #effects(all) {
   x := a[0]; y := b[0];
   if x.len != y.len || x.records != y.records || x.pubs != y.pubs || x.events != y.events || x.tombs != y.tombs || x.pool[0].relays != y.pool[0].relays { return false; }
   for k: 0..<x.pubs {
@@ -545,7 +545,7 @@ cj_same :: (a: [] Cj, b: [] Cj) -> bool {
 // Applies the record whose type is buf[at] and whose body is the n - 1
 // bytes after it. False, changing nothing, when the record is not one the
 // writers write: replay refuses the journal then.
-cj_apply :: (j: [] Cj, buf: [] u8, at: int, n: int) -> bool {
+cj_apply :: (j: [] Cj, buf: [] u8, at: int, n: int) -> bool #effects(all) {
   t := buf[at]; b := at + 1; m := n - 1;
   // A relay record numbers a new relay: ob_relay returns an older number
   // for a URL already in the pool, and -1 for one relay_uri refuses.
@@ -593,13 +593,13 @@ cj_apply :: (j: [] Cj, buf: [] u8, at: int, n: int) -> bool {
   return false;
 }
 // book:end apply
-cj_store :: (j: [] Cj, id: [32] u8, author: [32] u8, from: int, to: int, sub: int, r: int, at_s: int) {
+cj_store :: (j: [] Cj, id: [32] u8, author: [32] u8, from: int, to: int, sub: int, r: int, at_s: int) #effects(all) {
   j[0].event[j[0].events] = CjEvent.{id = id, author = author, from = from, to = to, sub = sub, relay = r, created_at = at_s};
   j[0].events += 1;
 }
 // Moves subscription sub's cursor on relay r to at_s when that is newer:
 // true when it moved.
-cj_advance :: (j: [] Cj, sub: int, r: int, at_s: int) -> bool {
+cj_advance :: (j: [] Cj, sub: int, r: int, at_s: int) -> bool #effects(all) {
   bit := cast(u64) 1 << r; i := sub * OB_RELAYS + r;
   if (j[0].has[sub] & bit) != 0 && at_s <= j[0].cursor[i] { return false; }
   j[0].cursor[i] = at_s; j[0].has[sub] |= bit;
@@ -608,36 +608,36 @@ cj_advance :: (j: [] Cj, sub: int, r: int, at_s: int) -> bool {
 
 // ---- appending ---------------------------------------------------------------------------
 // The buffer has room for a record of n bytes of type and body.
-cj_room :: (j: [] Cj, buf: [] u8, n: int) -> bool { return j[0].len + 8 + n <= buf.count; }
+cj_room :: (j: [] Cj, buf: [] u8, n: int) -> bool #effects(all) { return j[0].len + 8 + n <= buf.count; }
 // Writes a record's length, its complement and its type at len; returns
 // where its body goes.
-cj_begin :: (j: [] Cj, buf: [] u8, type: int, n: int) -> int {
+cj_begin :: (j: [] Cj, buf: [] u8, type: int, n: int) -> int #effects(all) {
   at := j[0].len;
   cj_put(buf, at, cast(u64) n, 2); cj_put(buf, at + 2, cast(u64) (n ^ 0xffff), 2);
   buf[at + 4] = cast(u8) type;
   return at + 5;
 }
 // The check of the record at `at` with n bytes of type and body.
-cj_check :: (buf: [] u8, at: int, n: int) -> [32] u8 {
+cj_check :: (buf: [] u8, at: int, n: int) -> [32] u8 #effects(all) {
   h: [32] u8; s := sha256_hash_checked(buf[at + 4..<at + 4 + n], h[..], false);
   return h;
 }
-cj_seal :: (buf: [] u8, at: int, n: int) {
+cj_seal :: (buf: [] u8, at: int, n: int) #effects(all) {
   h := cj_check(buf, at, n);
   for i: 0..<4 { buf[at + 4 + n + i] = h[i]; }
 }
 // Seals the record begun at len and applies it: false, leaving len where
 // it was, when the state has no room for it.
-cj_commit :: (j: [] Cj, buf: [] u8, n: int) -> bool {
+cj_commit :: (j: [] Cj, buf: [] u8, n: int) -> bool #effects(all) {
   at := j[0].len; cj_seal(buf, at, n);
   if !cj_apply(j, buf, at + 4, n) { return false; }
   j[0].len = at + 8 + n; j[0].records += 1;
   return true;
 }
-cj_status :: (ok: bool, value: int) -> int { return ifx ok then value else -CJ_FULL; }
+cj_status :: (ok: bool, value: int) -> int #effects(all) { return ifx ok then value else -CJ_FULL; }
 
 // ---- opening ------------------------------------------------------------------------------
-cj_header :: (buf: [] u8, total: int, owner: [32] u8) -> int {
+cj_header :: (buf: [] u8, total: int, owner: [32] u8) -> int #effects(all) {
   for i: 0..<CJ_HEADER {
     if i < total && buf[i] != cj_header_byte(owner, i) {
       if i < 3 { return CJO_MAGIC; }
@@ -646,18 +646,18 @@ cj_header :: (buf: [] u8, total: int, owner: [32] u8) -> int {
   }
   return CJO_DONE;
 }
-cj_zeros :: (buf: [] u8, from: int, total: int) -> bool {
+cj_zeros :: (buf: [] u8, from: int, total: int) -> bool #effects(all) {
   for i: from..<total { if buf[i] != 0 { return false; } }
   return true;
 }
-cj_opened :: (j: [] Cj, status: int, at: int, records: int) -> CjOpen {
+cj_opened :: (j: [] Cj, status: int, at: int, records: int) -> CjOpen #effects(all) {
   j[0].open = true; j[0].len = at; j[0].records = records;
   return CjOpen.{status = status, at = at, records = records};
 }
 // book:begin open
 // Replays the journal buf[0 ..< total] for owner: the state into j, and
 // what to keep of the file. total 0 starts a new journal.
-cj_open :: (j: [] Cj, buf: [] u8, total: int, owner: [32] u8) -> CjOpen {
+cj_open :: (j: [] Cj, buf: [] u8, total: int, owner: [32] u8) -> CjOpen #effects(all) {
   fresh: Cj; j[0] = fresh; j[0].owner = owner;
   if buf.count < CJ_HEADER || total < 0 || total > buf.count { return CjOpen.{status = CJO_SMALL}; }
   h := cj_header(buf, total, owner);
@@ -697,7 +697,7 @@ cj_open :: (j: [] Cj, buf: [] u8, total: int, owner: [32] u8) -> CjOpen {
 
 // ---- the writers ----------------------------------------------------------------------------
 // The number of a relay, journaled the first time it is added.
-cj_relay :: (j: [] Cj, buf: [] u8, url: string) -> int {
+cj_relay :: (j: [] Cj, buf: [] u8, url: string) -> int #effects(all) {
   if !j[0].open { return -CJ_SHUT; }
   for r: 0..<j[0].pool[0].relays { if ob_is(j[0].pool[..], r, url) { return r; } }
   if url.count > N65_URL_MOST || !relay_uri(url).ok { return -CJ_ARG; }
@@ -711,7 +711,7 @@ cj_relay :: (j: [] Cj, buf: [] u8, url: string) -> int {
 // set, before anything is sent: its publish slot. The same id again
 // returns the same slot and writes nothing, so an application that retries
 // after a restart cannot publish twice.
-cj_queue :: (j: [] Cj, buf: [] u8, id: [32] u8, relays: u64, bytes: string) -> int {
+cj_queue :: (j: [] Cj, buf: [] u8, id: [32] u8, relays: u64, bytes: string) -> int #effects(all) {
   if !j[0].open { return -CJ_SHUT; }
   k := cj_pub_of(j, id);
   if k >= 0 { return k; }
@@ -725,7 +725,7 @@ cj_queue :: (j: [] Cj, buf: [] u8, id: [32] u8, relays: u64, bytes: string) -> i
 }
 // Journals relay r's OK for your event id: CJK_ACKED when the publish was
 // pending there, CJK_UNKNOWN (nothing written) otherwise.
-cj_ok :: (j: [] Cj, buf: [] u8, id: [32] u8, r: int, outcome: int) -> int {
+cj_ok :: (j: [] Cj, buf: [] u8, id: [32] u8, r: int, outcome: int) -> int #effects(all) {
   if !j[0].open { return -CJ_SHUT; }
   k := cj_pub_of(j, id);
   if k < 0 || r < 0 || r >= OB_RELAYS || (j[0].pub[k].pending & (cast(u64) 1 << r)) == 0 { return CJK_UNKNOWN; }
@@ -742,7 +742,7 @@ cj_ok :: (j: [] Cj, buf: [] u8, id: [32] u8, r: int, outcome: int) -> int {
 // tags name. CJD_NEW: journaled and delivered (the tombstones first).
 // CJD_DUP: stored already. CJD_DELETED: its author asked to delete it.
 // Either of the last two moves the cursor when the event is newer.
-cj_deliver :: (j: [] Cj, buf: [] u8, sub: int, r: int, created_at: int, id: [32] u8, author: [32] u8, bytes: string, deletes: [] [32] u8) -> int {
+cj_deliver :: (j: [] Cj, buf: [] u8, sub: int, r: int, created_at: int, id: [32] u8, author: [32] u8, bytes: string, deletes: [] [32] u8) -> int #effects(all) {
   if !j[0].open { return -CJ_SHUT; }
   if !cj_sub_ok(sub) || !cj_relay_ok(j, r) || created_at < 0 || bytes.count < 1 || bytes.count > CJ_RECORD_MOST - CJ_EVENT_FIXED { return -CJ_ARG; }
   seen := ifx cj_tombed(j, id, author) then CJD_DELETED else ifx cj_find(j, id) >= 0 then CJD_DUP else CJD_NEW;

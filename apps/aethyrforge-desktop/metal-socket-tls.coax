@@ -7,7 +7,7 @@
 #load "../../aethyr/host/socket-tls-conformance.coax";
 mst_run :: (argv:[]string)->bool {out:[65536]u8;err:[65536]u8;r:=proc_run(argv,30000,out[..],err[..]);if r.started!=0||r.status!=0||r.cut||r.timed_out{tool_errln(cast(string)err[0..<r.err_n]);return false;}return true;}
 mst_text :: (d:Jv,row:int,key:string,out:[]u8)->string {n:=jv_str(d,jv_get(d,row,key),out);return ifx n<0 then "" else cast(string)out[0..<n];}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3{tool_errln("usage: metal-socket-tls ROOT TEST_TRUST_SDK NEW_OUTPUT");return 2;}root:=args_at(a[..],0);sdk:=args_at(a[..],1);dir:=args_at(a[..],2);if !fs_mkdir(dir){return 1;}
  paths:[32][4096]u8;names:=[12]string.["good.key","good.pem","good.cnf","rogue.key","rogue.pem","rogue.cnf","wrong.key","wrong.pem","wrong.cnf","wrong.csr","client.json","plan.json"];files:[12]string;for name,i:names{files[i]=fs_join(dir,name,paths[i][..]);}
  defer{for i:[3]int.[0,3,6]{removed:=fs_remove(files[i]);}}

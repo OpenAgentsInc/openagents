@@ -5,7 +5,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../aethyr/render/reference-raster.coax";
 #load "../../aethyr/render/tests/compare-frames-policy.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {tool_errln("usage: metal-quantize INPUT_RGBA_F32 OUTPUT_RGBA_F32");return 2;}
  bytes:[16777216]u8;n:=fs_read(args_at(a[..],0),bytes[..]);if n<16 || n%16!=0 {return 1;}
  for i:0..<n/4 {word:=cf_u32(bytes[..],i*4);value:=f32_from_bits(word);if !cf_finite(f64(value)) {return 1;}result:=f32_bits(rr_unorm8(value));for lane:0..<4 {bytes[4*i+lane]=cast,trunc(u8)((result>>(8*lane))&255);}}

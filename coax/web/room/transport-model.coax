@@ -191,7 +191,7 @@ tm_inputs :: (t: [] TmTrace, tcp: [] int, dg: [] int) {
   #assert dg[5] == t[0].sent[6] + 50 && tcp[5] == t[0].sent[5] + 300 && tcp[6] == tcp[5];
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   n: [1] TmNet;

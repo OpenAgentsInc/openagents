@@ -110,15 +110,15 @@ CsGroup :: struct { value: int; fee: int; long_term_fee: int; weight: int; count
 // spend, at feerate and long_term sat/kvB, as COutput and
 // OutputGroup::Insert value it. An unknown size (-1) has no fee and no
 // weight.
-cs_coin :: (value: int, input_bytes: int, feerate: int, long_term: int) -> CsGroup {
+cs_coin :: (value: int, input_bytes: int, feerate: int, long_term: int) -> CsGroup #effects(all) {
   if input_bytes < 0 { return CsGroup.{value=value, count=1}; }
   return CsGroup.{value=value, fee=fee_for_rate_vartime(feerate, input_bytes),
                   long_term_fee=fee_for_rate_vartime(long_term, input_bytes), weight=TX_SCALE * input_bytes, count=1};
 }
 // GetSelectionAmount: the effective value, amount minus fee.
-cs_amount :: (g: CsGroup) -> int { return g.value - g.fee; }
+cs_amount :: (g: CsGroup) -> int #effects(all) { return g.value - g.fee; }
 // A coin added to a group, as OutputGroup::Insert adds it.
-cs_group_add :: (g: CsGroup, c: CsGroup) -> CsGroup {
+cs_group_add :: (g: CsGroup, c: CsGroup) -> CsGroup #effects(all) {
   return CsGroup.{value=g.value+c.value, fee=g.fee+c.fee, long_term_fee=g.long_term_fee+c.long_term_fee,
                   weight=g.weight+c.weight, count=g.count+c.count};
 }
@@ -126,7 +126,7 @@ cs_group_add :: (g: CsGroup, c: CsGroup) -> CsGroup {
 // it) go into one group, so they are spent together or not at all. A
 // group holds at most CS_GROUP_MAX coins; the next coin of that address
 // starts a new group. Writes the groups into out and returns their count.
-cs_group_by_owner :: (coins: [] CsGroup, owner: [] int, out: [] CsGroup, out_owner: [] int) -> int {
+cs_group_by_owner :: (coins: [] CsGroup, owner: [] int, out: [] CsGroup, out_owner: [] int) -> int #effects(all) {
   n := 0;
   for i: 0..<coins.count {
     at := -1;
@@ -172,7 +172,7 @@ CsParams :: struct {
 // cost more than it is worth at rate. Its size plus the input that spends
 // it: 148 bytes, or 67 for a witness program, whose 107-byte signature
 // and key count a quarter. An OP_RETURN output is never dust.
-cs_dust_threshold_vartime :: (spk: [] u8, rate: int) -> int {
+cs_dust_threshold_vartime :: (spk: [] u8, rate: int) -> int #effects(all) {
   if spk.count > 0 && spk[0] == 0x6a { return 0; }
   size := fee_output_size_vartime(spk.count);
   program := spk.count >= 4 && spk.count <= 42 && (spk[0] == 0 || (spk[0] >= 0x51 && spk[0] <= 0x60)) && cast(int) spk[1] + 2 == spk.count;
@@ -182,7 +182,7 @@ cs_dust_threshold_vartime :: (spk: [] u8, rate: int) -> int {
 // GenerateChangeTarget: 50,000 satoshis plus the change fee for a small
 // payment; otherwise a random amount from 50,000 up to twice the payment
 // or 1,000,000, whichever is less, so change doesn't give the payment away.
-cs_change_target :: (payment: int, change_fee: int, r: [] CsRng) -> int {
+cs_change_target :: (payment: int, change_fee: int, r: [] CsRng) -> int #effects(all) {
   if payment <= CS_CHANGE_LOWER / 2 { return change_fee + CS_CHANGE_LOWER; }
   upper := ifx payment * 2 < CS_CHANGE_UPPER then payment * 2 else CS_CHANGE_UPPER;
   return change_fee + cs_randrange(r, upper - CS_CHANGE_LOWER) + CS_CHANGE_LOWER;
@@ -190,7 +190,7 @@ cs_change_target :: (payment: int, change_fee: int, r: [] CsRng) -> int {
 // The parameters as CreateTransactionInternal sets them for a change
 // output change_spk, paying recipients outputs worth payments in all.
 cs_params :: (feerate: int, long_term: int, discard: int, change_spk: [] u8, change_spend_size: int,
-              tx_noinputs_size: int, payments: int, recipients: int, r: [] CsRng) -> CsParams {
+              tx_noinputs_size: int, payments: int, recipients: int, r: [] CsRng) -> CsParams #effects(all) {
   p: CsParams;
   p.feerate = feerate; p.long_term = long_term; p.discard = discard;
   p.change_output_size = fee_output_size_vartime(change_spk.count);
@@ -229,9 +229,9 @@ CsResult :: struct {
   code: int; algo: int; count: int; value: int; effective: int; weight: int;
   fee: int; long_term_fee: int; tries: int; completed: bool; waste: int; target: int;
 }
-cs_fail :: (algo: int, code: int) -> CsResult { return CsResult.{code=code, algo=algo}; }
+cs_fail :: (algo: int, code: int) -> CsResult #effects(all) { return CsResult.{code=code, algo=algo}; }
 // AddInput: a group joins the result and is marked.
-cs_add :: (r: CsResult, pool: [] CsGroup, i: int, marks: [] int) -> CsResult {
+cs_add :: (r: CsResult, pool: [] CsGroup, i: int, marks: [] int) -> CsResult #effects(all) {
   x := r; g := pool[i];
   x.count += g.count; x.value += g.value; x.effective += cs_amount(g); x.weight += g.weight;
   x.fee += g.fee; x.long_term_fee += g.long_term_fee;
@@ -239,23 +239,23 @@ cs_add :: (r: CsResult, pool: [] CsGroup, i: int, marks: [] int) -> CsResult {
   return x;
 }
 // Clears algo's bit from every group.
-cs_unmark :: (marks: [] int, algo: int) {
+cs_unmark :: (marks: [] int, algo: int) #effects(all) {
   for i: 0..<marks.count { if (marks[i] >> algo) & 1 == 1 { marks[i] -= 1 << algo; } }
 }
-cs_clear :: (r: CsResult, marks: [] int) -> CsResult {
+cs_clear :: (r: CsResult, marks: [] int) -> CsResult #effects(all) {
   cs_unmark(marks, r.algo);
   return CsResult.{algo=r.algo, target=r.target, tries=r.tries, completed=r.completed};
 }
 // GetChange: what is left for a change output after the target and the
 // change output's own fee, or 0 when that is below min_viable_change.
-cs_change :: (r: CsResult, min_viable_change: int, change_fee: int) -> int {
+cs_change :: (r: CsResult, min_viable_change: int, change_fee: int) -> int #effects(all) {
   change := r.effective - r.target - change_fee;
   return ifx change < min_viable_change then 0 else change;
 }
 // RecalculateWaste: spending the inputs now rather than at the long-term
 // feerate (fee - long_term_fee), plus the cost of change when there is
 // change, or else the excess the transaction gives to the miners.
-cs_waste :: (r: CsResult, min_viable_change: int, change_cost: int, change_fee: int) -> int {
+cs_waste :: (r: CsResult, min_viable_change: int, change_cost: int, change_fee: int) -> int #effects(all) {
   waste := r.fee - r.long_term_fee;
   if cs_change(r, min_viable_change, change_fee) != 0 { waste += change_cost; }
   else { waste += r.effective - r.target; }
@@ -275,7 +275,7 @@ lets the searches skip it.
 ```jai
 // The groups to search, in pool order: all of them, or (positive) only
 // those with a positive effective value. Returns how many.
-cs_eligible :: (pool: [] CsGroup, order: [] int, positive: bool) -> int {
+cs_eligible :: (pool: [] CsGroup, order: [] int, positive: bool) -> int #effects(all) {
   n := 0;
   for i: 0..<pool.count { if !positive || cs_amount(pool[i]) > 0 { order[n] = i; n += 1; } }
   return n;
@@ -283,12 +283,12 @@ cs_eligible :: (pool: [] CsGroup, order: [] int, positive: bool) -> int {
 // Core's two orders: by effective value, largest first, then (by_weight)
 // lighter first, as descending_effval_weight, or less waste (fee -
 // long_term_fee) first, as descending. A stable insertion sort.
-cs_before :: (a: CsGroup, b: CsGroup, by_weight: bool) -> bool {
+cs_before :: (a: CsGroup, b: CsGroup, by_weight: bool) -> bool #effects(all) {
   if cs_amount(a) != cs_amount(b) { return cs_amount(a) > cs_amount(b); }
   if by_weight { return a.weight < b.weight; }
   return a.fee - a.long_term_fee < b.fee - b.long_term_fee;
 }
-cs_sort :: (pool: [] CsGroup, order: [] int, n: int, by_weight: bool) {
+cs_sort :: (pool: [] CsGroup, order: [] int, n: int, by_weight: bool) #effects(all) {
   for i: 1..<n {
     j := i;
     while j > 0 && cs_before(pool[order[j]], pool[order[j-1]], by_weight) { t := order[j]; order[j] = order[j-1]; order[j-1] = t; j -= 1; }
@@ -326,7 +326,7 @@ gives up.
 // effective value lands from target to target + cost_of_change. Such a
 // set needs no change output. Of those it finds, it keeps the least
 // waste. work holds 5 ints per group.
-cs_bnb :: (pool: [] CsGroup, target: int, cost_of_change: int, max_weight: int, marks: [] int, work: [] int) -> CsResult {
+cs_bnb :: (pool: [] CsGroup, target: int, cost_of_change: int, max_weight: int, marks: [] int, work: [] int) -> CsResult #effects(all) {
   r := CsResult.{algo=CS_BNB, target=target};
   if marks.count != pool.count || work.count < 5 * pool.count { return cs_fail(CS_BNB, CS_CAPACITY); }
   order := work[0..<pool.count];
@@ -408,7 +408,7 @@ long-term feerate: 30 sat/vB by default.
 // prunes on weight: a selection already heavier than the best can't
 // improve, and min_tail[i] (the lightest group after i) bounds how much
 // weight the missing amount still needs.
-cs_coin_grinder :: (pool: [] CsGroup, target: int, change_target: int, max_weight: int, marks: [] int, work: [] int) -> CsResult {
+cs_coin_grinder :: (pool: [] CsGroup, target: int, change_target: int, max_weight: int, marks: [] int, work: [] int) -> CsResult #effects(all) {
   r := CsResult.{algo=CS_CG, target=target};
   if marks.count != pool.count || work.count < 5 * pool.count { return cs_fail(CS_CG, CS_CAPACITY); }
   m := pool.count;
@@ -496,12 +496,12 @@ shuffle. This code uses a Fisher-Yates shuffle over `randrange`.
 // randbits, randrange and randbool. Chapter 69's address manager reads
 // the same stream.
 CsRng :: struct { key: [32] u8; block: u32; buf: [64] u8; left: int; bits: u64; nbits: int; }
-cs_rng :: (seed: [] u8) -> CsRng {
+cs_rng :: (seed: [] u8) -> CsRng #effects(all) {
   r: CsRng;
   for i: 0..<32 { r.key[i] = seed[i]; }
   return r;
 }
-cs_rand64 :: (r: [] CsRng) -> u64 {
+cs_rand64 :: (r: [] CsRng) -> u64 #effects(all) {
   if r[0].left == 0 {
     nonce: [12] u8;
     c := chacha20_block_checked(r[0].key[..], nonce[..], r[0].block, r[0].buf[..], false);
@@ -511,7 +511,7 @@ cs_rand64 :: (r: [] CsRng) -> u64 {
   r[0].left -= 8;
   return v;
 }
-cs_randbits :: (r: [] CsRng, bits: int) -> u64 {
+cs_randbits :: (r: [] CsRng, bits: int) -> u64 #effects(all) {
   if bits == 64 { return cs_rand64(r); }
   ret: u64;
   if bits <= r[0].nbits {
@@ -524,7 +524,7 @@ cs_randbits :: (r: [] CsRng, bits: int) -> u64 {
   }
   return ret & ((cast(u64) 1 << cast(u64) bits) - 1);
 }
-cs_randrange :: (r: [] CsRng, range: int) -> int {
+cs_randrange :: (r: [] CsRng, range: int) -> int #effects(all) {
   maxval := cast(u64) (range - 1);
   bits := 0;
   while (maxval >> cast(u64) bits) != 0 { bits += 1; }
@@ -534,11 +534,11 @@ cs_randrange :: (r: [] CsRng, range: int) -> int {
   }
   return 0;
 }
-cs_randbool :: (r: [] CsRng) -> bool { return cs_randbits(r, 1) == 1; }
+cs_randbool :: (r: [] CsRng) -> bool #effects(all) { return cs_randbits(r, 1) == 1; }
 // A Fisher-Yates shuffle of a[0..<n], from the back. Core calls
 // std::shuffle, whose draws depend on the C++ library, so no shuffle
 // matches every Core build; Core's tests check only what holds for all.
-cs_shuffle :: (r: [] CsRng, a: [] int, n: int) {
+cs_shuffle :: (r: [] CsRng, a: [] int, n: int) #effects(all) {
   i := n - 1;
   while i > 0 {
     j := cs_randrange(r, i + 1);
@@ -559,7 +559,7 @@ ones first.
 // value covers target + change_fee + CHANGE_LOWER, so the change is at
 // least 50,000 satoshis. Over max_weight, drop the least valuable (on a
 // tie the heaviest) groups drawn so far, as Core's priority queue does.
-cs_srd :: (pool: [] CsGroup, target: int, change_fee: int, max_weight: int, r: [] CsRng, marks: [] int, work: [] int) -> CsResult {
+cs_srd :: (pool: [] CsGroup, target: int, change_fee: int, max_weight: int, r: [] CsRng, marks: [] int, work: [] int) -> CsResult #effects(all) {
   if marks.count != pool.count || work.count < 5 * pool.count { return cs_fail(CS_SRD, CS_CAPACITY); }
   m := pool.count;
   order := work[0..<m]; held := work[m..<2*m];
@@ -613,7 +613,7 @@ is zero or negative.
 // reaching the target backs the last group out again to look for a
 // closer total. best gets the smallest total at or above target.
 cs_approximate :: (pool: [] CsGroup, groups: [] int, n: int, total_lower: int, target: int, max_weight: int,
-                   r: [] CsRng, best: [] int, included: [] int) -> int {
+                   r: [] CsRng, best: [] int, included: [] int) -> int #effects(all) {
   for i: 0..<n { best[i] = 1; }
   nbest := total_lower;
   rep := 0;
@@ -645,7 +645,7 @@ cs_approximate :: (pool: [] CsGroup, groups: [] int, n: int, total_lower: int, t
 // target + change_target, the closest random subset at or above the
 // target (or above target + change_target, to leave real change), unless
 // the smallest larger group is as close.
-cs_knapsack :: (pool: [] CsGroup, target: int, change_target: int, max_weight: int, r: [] CsRng, marks: [] int, work: [] int) -> CsResult {
+cs_knapsack :: (pool: [] CsGroup, target: int, change_target: int, max_weight: int, r: [] CsRng, marks: [] int, work: [] int) -> CsResult #effects(all) {
   res := CsResult.{algo=CS_KNAPSACK, target=target, completed=true};
   if marks.count != pool.count || work.count < 5 * pool.count { return cs_fail(CS_KNAPSACK, CS_CAPACITY); }
   cs_unmark(marks, CS_KNAPSACK);
@@ -705,7 +705,7 @@ change output.
 // leave room for a change output. CoinGrinder runs only when the feerate
 // is above three times the long-term feerate, where fewer inputs matter
 // most. marks gets each algorithm's bit; the winner's is result.algo.
-cs_choose :: (pool: [] CsGroup, target: int, p: CsParams, max_tx_weight: int, r: [] CsRng, marks: [] int, work: [] int) -> CsResult {
+cs_choose :: (pool: [] CsGroup, target: int, p: CsParams, max_tx_weight: int, r: [] CsRng, marks: [] int, work: [] int) -> CsResult #effects(all) {
   max_weight := max_tx_weight - TX_SCALE * p.tx_noinputs_size;
   if max_weight <= 0 { return cs_fail(CS_MANUAL, CS_MAX_WEIGHT); }
   results: [4] CsResult; nres := 0; first_error := CS_INSUFFICIENT;

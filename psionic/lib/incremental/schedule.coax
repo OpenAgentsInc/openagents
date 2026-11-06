@@ -29,11 +29,11 @@ IAS_FEATURES :: 750000;
 IAS_JOINT :: 753000;
 IAS_LOGITS :: 754000;
 IasExtents :: struct {weights:int;header:int;work:int;state:int;encoded:int;projected:int;}
-ias_extents :: ()->IasExtents #export_c {return IasExtents.{weights=IAS_WEIGHT_COUNT,header=IAS_HEADER_BYTES,work=IAS_WORK,state=IAS_STATE,encoded=IAS_H,projected=IAS_PROJ};}
+ias_extents :: ()->IasExtents #export_c #effects(all) {return IasExtents.{weights=IAS_WEIGHT_COUNT,header=IAS_HEADER_BYTES,work=IAS_WORK,state=IAS_STATE,encoded=IAS_H,projected=IAS_PROJ};}
 
-ias_launch :: (kind:int,items:int,n0:int,n1:int,n2:int,n3:int,n4:int,n5:int,scale:f32,a:[]f32,b:[]f32,c:[]f32,d:[]f32,e:[]f32,f:[]f32)->bool #foreign;
-ias_upload :: (x:[]f32)->bool #foreign;
-ias_read :: (x:[]f32,out:[]f32)->bool #foreign;
+ias_launch :: (kind:int,items:int,n0:int,n1:int,n2:int,n3:int,n4:int,n5:int,scale:f32,a:[]f32,b:[]f32,c:[]f32,d:[]f32,e:[]f32,f:[]f32)->bool #foreign #effects(all);
+ias_upload :: (x:[]f32)->bool #foreign #effects(all);
+ias_read :: (x:[]f32,out:[]f32)->bool #foreign #effects(all);
 
 ias_dense :: (rows:int,ni:int,no:int,bias:bool,x:[]f32,w:[]f32,at:int,bt:int,y:[]f32)->bool {
  return ias_launch(0,rows*((no+3)/4),rows,ni,no,ifx bias then 1 else 0,0,0,0,x,w[at..<at+ni*no],w[bt..<bt+ifx bias then no else 0],y,y,y);
@@ -49,7 +49,7 @@ ias_ff :: (w:[]f32,a:[]int,ng:int,nb:int,w1:int,w2:int,work:[]f32)->bool {
  return ias_norm(2,1024,h,w,a[ng],a[nb],n) && ias_dense(2,1024,4096,false,n,w,a[w1],0,wide) && ias_silu(wide) && ias_dense(2,4096,1024,false,wide,w,a[w2],0,tmp) && ias_add(tmp,h,0.5);
 }
 
-ias_device_prepare :: (w:[]f32,work:[]f32,state:[]f32)->bool #export_c {
+ias_device_prepare :: (w:[]f32,work:[]f32,state:[]f32)->bool #export_c #effects(all) {
  if w.count!=IAS_WEIGHT_COUNT || work.count<IAS_WORK || state.count<IAS_STATE {return false;}
  // The same relative offsets are used by every chunk; projection is once
  // per model open, not repeated for the retained attention context.
@@ -63,13 +63,13 @@ ias_device_prepare :: (w:[]f32,work:[]f32,state:[]f32)->bool #export_c {
  }
  return true;
 }
-ias_device_reset :: (state:[]f32)->bool #export_c {
+ias_device_reset :: (state:[]f32)->bool #export_c #effects(all) {
  if state.count<IAS_STATE {return false;}
  if !ias_zero(state[0..<26000]) || !ias_zero(state[IAS_DEC_STATE..<IAS_STATE]) {return false;}
  for layer:0..<24 {base:=IAS_CACHE_BASE+layer*IAS_LAYER_STATE;if !ias_zero(state[base..<base+151552]) {return false;}}
  return true;
 }
-ias_encode :: (w:[]f32,work:[]f32,state:[]f32,chunk:int)->bool #export_c {
+ias_encode :: (w:[]f32,work:[]f32,state:[]f32,chunk:int)->bool #export_c #effects(all) {
  first:=ifx chunk==0 then 1 else 0;frames:=ifx first==1 then 9 else 16;
  h1:=(frames+first)/2;h2:=(h1+first)/2;h3:=(h2+first)/2;
  a:=work[IAS_A..<IAS_A+200000];b:=work[IAS_B..<IAS_B+200000];x:=work[IAS_FEATURES..<IAS_FEATURES+frames*128];sub:=IAS_SUB;
@@ -106,7 +106,7 @@ ias_predict :: (w:[]f32,work:[]f32,state:[]f32,token:int)->bool {
  }
  return ias_dense(1,640,640,true,x,w,d[11],d[12],state[IAS_DEC_STATE+2560..<IAS_DEC_STATE+3200]);
 }
-ias_decode_chunk :: (w:[]f32,work:[]f32,state:[]f32,chunk:int,tokens:[]int,positions:[]int)->int #export_c {
+ias_decode_chunk :: (w:[]f32,work:[]f32,state:[]f32,chunk:int,tokens:[]int,positions:[]int)->int #export_c #effects(all) {
  d:=IAS_DEC;if chunk==0 {if !ias_predict(w,work,state,1024) {return -1;}}
  count:=0;logits:[1025]f32;
  for t:0..<2 {for step:0..<10 {
@@ -118,7 +118,7 @@ ias_decode_chunk :: (w:[]f32,work:[]f32,state:[]f32,chunk:int,tokens:[]int,posit
   if !ias_predict(w,work,state,pick) {return -1;}
  }}return count;
 }
-ias_cache_snapshot :: (state:[]f32,chunks:int,layer:int,keys:[]f32,conv:[]f32)->int #export_c {
+ias_cache_snapshot :: (state:[]f32,chunks:int,layer:int,keys:[]f32,conv:[]f32)->int #export_c #effects(all) {
  if chunks<1 || layer<0 || layer>=24 || state.count<IAS_STATE {return -1;}
  n:=ifx chunks<35 then chunks*2 else 70;if keys.count<n*1024 || conv.count<8192 {return -1;}
  base:=IAS_CACHE_BASE+layer*IAS_LAYER_STATE;

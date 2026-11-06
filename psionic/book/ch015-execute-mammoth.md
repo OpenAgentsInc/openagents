@@ -52,7 +52,7 @@ must supply:
 
 <!-- source: psionic/lib/decision-plan.coax plan -->
 ```jai
-ps_plan :: (kind:u8,capacity:int,tokens:int,prefix:int)->PsPlan #export_c {
+ps_plan :: (kind:u8,capacity:int,tokens:int,prefix:int)->PsPlan #export_c #effects(all) {
     target:=ps_target(kind,capacity);
     if target.status!=PsStatus.ok {return PsPlan.{status=PsPlanStatus.target,cause=cast(int)target.status};}
     if tokens<1 || tokens>capacity || prefix<0 || prefix>=tokens {return PsPlan.{status=PsPlanStatus.request};}

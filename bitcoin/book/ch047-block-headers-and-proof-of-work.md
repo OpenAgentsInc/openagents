@@ -111,10 +111,10 @@ BlockHeader :: struct {
   prev: [32] u8; merkle_root: [32] u8;
   time: u32; bits: u32; nonce: u32;
 }
-pw_le32 :: (b: [] u8, at: int) -> u32 {
+pw_le32 :: (b: [] u8, at: int) -> u32 #effects(all) {
   return cast(u32) b[at] | (cast(u32) b[at+1] << 8) | (cast(u32) b[at+2] << 16) | (cast(u32) b[at+3] << 24);
 }
-pow_header_read_vartime :: (b: [] u8) -> BlockHeader #export_c {
+pow_header_read_vartime :: (b: [] u8) -> BlockHeader #export_c #effects(all) {
   h: BlockHeader;
   if b.count != POW_HEADER { h.code = POW_CAPACITY; return h; }
   v := cast(int) pw_le32(b, 0);
@@ -123,7 +123,7 @@ pow_header_read_vartime :: (b: [] u8) -> BlockHeader #export_c {
   h.time = pw_le32(b, 68); h.bits = pw_le32(b, 72); h.nonce = pw_le32(b, 76);
   return h;
 }
-pow_header_write_vartime :: (h: BlockHeader, out: [] u8) -> bool #export_c {
+pow_header_write_vartime :: (h: BlockHeader, out: [] u8) -> bool #export_c #effects(all) {
   if out.count != POW_HEADER || h.version < -0x80000000 || h.version > 0x7fffffff { return false; }
   v := cast,trunc(u32) h.version;    // the low 32 bits: two's complement
   words := [4] u32.[v, h.time, h.bits, h.nonce];
@@ -164,14 +164,14 @@ at the front (chapter 5).
 ```jai
 // The block hash: SHA-256d of the 80 bytes, in hash order. Explorers show
 // it reversed (chapter 5).
-pow_block_hash_vartime :: (header: [] u8, out: [] u8) -> int #export_c {
+pow_block_hash_vartime :: (header: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if header.count != POW_HEADER || out.count != 32 { return POW_CAPACITY; }
   #assert sha256d_checked(header, out, false) == SHA_OK;
   return POW_OK;
 }
 // Core's CheckBlockHeader: the header's hash must meet its own nBits under
 // the chain's limit; any failure is "high-hash".
-pow_header_check_vartime :: (header: [] u8, limit: U256) -> int #export_c {
+pow_header_check_vartime :: (header: [] u8, limit: U256) -> int #export_c #effects(all) {
   h := pow_header_read_vartime(header);
   if h.code != POW_OK { return h.code; }
   hash: [32] u8;
@@ -180,7 +180,7 @@ pow_header_check_vartime :: (header: [] u8, limit: U256) -> int #export_c {
 }
 // Does header name prev as the block before it? Its bytes 4 to 36 must be
 // prev's hash.
-pow_links_vartime :: (header: [] u8, prev: [] u8) -> bool #export_c {
+pow_links_vartime :: (header: [] u8, prev: [] u8) -> bool #export_c #effects(all) {
   if header.count != POW_HEADER || prev.count != POW_HEADER { return false; }
   hash: [32] u8;
   #assert pow_block_hash_vartime(prev, hash[..]) == POW_OK;
@@ -219,19 +219,19 @@ at the *end*, in hash order, is a small number.
 // limb[0] lowest.
 U256 :: struct { limb: [8] u32; }
 // A number below 2^64.
-u256_small :: (v: u64) -> U256 #export_c {
+u256_small :: (v: u64) -> U256 #export_c #effects(all) {
   r: U256;
   r.limb[0] = cast,trunc(u32) v;
   r.limb[1] = cast,trunc(u32) (v >> 32);
   return r;
 }
 // The low 64 bits: Core's GetLow64.
-u256_low64 :: (a: U256) -> u64 #export_c {
+u256_low64 :: (a: U256) -> u64 #export_c #effects(all) {
   return cast(u64) a.limb[0] | (cast(u64) a.limb[1] << 32);
 }
 // Core's UintToArith256: a hash's 32 bytes as a little-endian number. A
 // view of another size is zero.
-u256_from_hash_vartime :: (hash: [] u8) -> U256 #export_c {
+u256_from_hash_vartime :: (hash: [] u8) -> U256 #export_c #effects(all) {
   r: U256;
   if hash.count != 32 { return r; }
   for i: 0..<8 {
@@ -240,13 +240,13 @@ u256_from_hash_vartime :: (hash: [] u8) -> U256 #export_c {
   return r;
 }
 // Core's ArithToUint256: the number as 32 little-endian bytes.
-u256_to_hash_vartime :: (a: U256, out: [] u8) -> bool #export_c {
+u256_to_hash_vartime :: (a: U256, out: [] u8) -> bool #export_c #effects(all) {
   if out.count != 32 { return false; }
   for i: 0..<8 { for j: 0..<4 { out[4*i+j] = cast,trunc(u8) (a.limb[i] >> (8 * cast(u32) j)); } }
   return true;
 }
 // -1, 0 or 1 as a is below, equal to or above b, from the top limb down.
-u256_compare_vartime :: (a: U256, b: U256) -> int #export_c {
+u256_compare_vartime :: (a: U256, b: U256) -> int #export_c #effects(all) {
   for k: 0..<8 {
     i := 7 - k;
     if a.limb[i] < b.limb[i] { return -1; }
@@ -254,12 +254,12 @@ u256_compare_vartime :: (a: U256, b: U256) -> int #export_c {
   }
   return 0;
 }
-u256_is_zero :: (a: U256) -> bool #export_c {
+u256_is_zero :: (a: U256) -> bool #export_c #effects(all) {
   for i: 0..<8 { if a.limb[i] != 0 { return false; } }
   return true;
 }
 // Core's bits(): the position of the highest set bit plus one; 0 for zero.
-u256_bits_vartime :: (a: U256) -> int #export_c {
+u256_bits_vartime :: (a: U256) -> int #export_c #effects(all) {
   for k: 0..<8 {
     i := 7 - k;
     if a.limb[i] != 0 {
@@ -282,7 +282,7 @@ for a shift of 2,016 bits.
 ```jai
 // Core's operator<<= and operator>>=: bits that leave the 256 are lost, so
 // a shift of 256 or more gives zero. A negative shift is zero as well.
-u256_shl_vartime :: (a: U256, shift: int) -> U256 #export_c {
+u256_shl_vartime :: (a: U256, shift: int) -> U256 #export_c #effects(all) {
   r: U256;
   if shift < 0 { return r; }
   k := shift / 32; s := cast(u64) (shift % 32);
@@ -293,7 +293,7 @@ u256_shl_vartime :: (a: U256, shift: int) -> U256 #export_c {
   }
   return r;
 }
-u256_shr_vartime :: (a: U256, shift: int) -> U256 #export_c {
+u256_shr_vartime :: (a: U256, shift: int) -> U256 #export_c #effects(all) {
   r: U256;
   if shift < 0 { return r; }
   k := shift / 32; s := cast(u64) (shift % 32);
@@ -313,7 +313,7 @@ Addition and subtraction carry and borrow through the limbs and wrap at
 <!-- source: coax/lib/bitcoin/pow.coax arith -->
 ```jai
 // a + b and a - b, wrapping at 2^256 as Core's do.
-u256_add :: (a: U256, b: U256) -> U256 #export_c {
+u256_add :: (a: U256, b: U256) -> U256 #export_c #effects(all) {
   r: U256; carry := cast(u64) 0;
   for i: 0..<8 {
     wide := cast(u64) a.limb[i] + cast(u64) b.limb[i] + carry;
@@ -321,7 +321,7 @@ u256_add :: (a: U256, b: U256) -> U256 #export_c {
   }
   return r;
 }
-u256_sub :: (a: U256, b: U256) -> U256 #export_c {
+u256_sub :: (a: U256, b: U256) -> U256 #export_c #effects(all) {
   r: U256; borrow := cast(u64) 0;
   for i: 0..<8 {
     wide := (cast(u64) 1 << 32) + cast(u64) a.limb[i] - cast(u64) b.limb[i] - borrow;
@@ -330,7 +330,7 @@ u256_sub :: (a: U256, b: U256) -> U256 #export_c {
   return r;
 }
 // ~a: every bit flipped, which is 2^256 - 1 - a.
-u256_not :: (a: U256) -> U256 #export_c {
+u256_not :: (a: U256) -> U256 #export_c #effects(all) {
   r: U256;
   for i: 0..<8 { r.limb[i] = a.limb[i] ^ 0xffffffff; }
   return r;
@@ -349,7 +349,7 @@ It takes at most 256 steps.
 // the dividend's, then take one quotient bit per step. A zero divisor is
 // not ok (Core throws).
 U256Quotient :: struct { ok: bool; q: U256; }
-u256_div_vartime :: (a: U256, b: U256) -> U256Quotient #export_c {
+u256_div_vartime :: (a: U256, b: U256) -> U256Quotient #export_c #effects(all) {
   r: U256Quotient;
   num_bits := u256_bits_vartime(a); div_bits := u256_bits_vartime(b);
   if div_bits == 0 { return r; }
@@ -407,7 +407,7 @@ Compact :: struct { target: U256; negative: bool; overflow: bool; }
 // the mantissa right and loses bytes; a larger size shifts it left, and
 // bits past 256 are lost, which the overflow flag reports. Both flags look
 // at the mantissa after a short size has shifted it, as Core's do.
-pow_compact_decode_vartime :: (bits: u32) -> Compact #export_c {
+pow_compact_decode_vartime :: (bits: u32) -> Compact #export_c #effects(all) {
   size := cast(int) (bits >> 24);
   word := bits & 0x007fffff;
   c: Compact;
@@ -424,7 +424,7 @@ pow_compact_decode_vartime :: (bits: u32) -> Compact #export_c {
 // Core's GetCompact: the shortest size that holds the number, its top
 // three bytes as the mantissa, and one byte more when the mantissa's top
 // bit would read as the sign. negative sets the sign bit, except on zero.
-pow_compact_encode_vartime :: (target: U256, negative: bool) -> u32 #export_c {
+pow_compact_encode_vartime :: (target: U256, negative: bool) -> u32 #export_c #effects(all) {
   size := (u256_bits_vartime(target) + 7) / 8;
   compact: u64;
   if size <= 3 {    // mutant: equivalent (at size 3 both branches shift by zero)
@@ -514,7 +514,7 @@ POW_LIMIT_MAINNET :: U256.{limb=[8]u32.[0xffffffff, 0xffffffff, 0xffffffff, 0xff
 // A target from nBits, or the reason it is refused: Core's DeriveTarget,
 // which tests negative, zero, overflow and the limit in that order.
 PowTarget :: struct { code: int; target: U256; }
-pow_target_vartime :: (bits: u32, limit: U256) -> PowTarget #export_c {
+pow_target_vartime :: (bits: u32, limit: U256) -> PowTarget #export_c #effects(all) {
   c := pow_compact_decode_vartime(bits);
   r := PowTarget.{target=c.target};
   if c.negative { r.code = POW_NEGATIVE; }
@@ -525,7 +525,7 @@ pow_target_vartime :: (bits: u32, limit: U256) -> PowTarget #export_c {
 }
 // Core's CheckProofOfWorkImpl: the hash, in the order SHA-256d gives it,
 // read as a little-endian number, must not be above the target.
-pow_check_vartime :: (hash: [] u8, bits: u32, limit: U256) -> int #export_c {
+pow_check_vartime :: (hash: [] u8, bits: u32, limit: U256) -> int #export_c #effects(all) {
   if hash.count != 32 { return POW_CAPACITY; }
   t := pow_target_vartime(bits, limit);
   if t.code != POW_OK { return t.code; }
@@ -536,7 +536,7 @@ pow_check_vartime :: (hash: [] u8, bits: u32, limit: U256) -> int #export_c {
 // 2^256 / (target + 1). 2^256 does not fit, so Core computes
 // ~target / (target + 1) + 1, which is equal. A target that is negative,
 // zero or overflows proves no work.
-pow_work_vartime :: (bits: u32) -> U256 #export_c {
+pow_work_vartime :: (bits: u32) -> U256 #export_c #effects(all) {
   c := pow_compact_decode_vartime(bits);
   if c.negative || c.overflow || u256_is_zero(c.target) { return U256.{}; }
   q := u256_div_vartime(u256_not(c.target), u256_add(c.target, u256_small(1)));

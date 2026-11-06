@@ -58,12 +58,12 @@ N26_DELEGATOR :: "8e0d3d3eb2881ec137a11debe736a9086715a8c8beeeda615780064d68bc25
 N26_DELEGATEE :: "477318cfb5427b9cfc66a9fa376150c1ddbc62115ae27cef72417eb959691396";
 N26_CONDS :: "kind=1&created_at>1674834236&created_at<1677426236";
 N26_TOKEN_HEX :: "6f44d7fe4f1c09f3954640fb58bd12bae8bb8ff4120853c4693106c82e920e2b898f1f9ba9bd65449a987c39c0423426ab7b53910c0c6abfb41b30bc16e5f524";
-n26_test_event :: (signer:string,kind:int,created_at:int,tags:string)->NostrEvent {
+n26_test_event :: (signer:string,kind:int,created_at:int,tags:string)->NostrEvent #effects(all) {
   e:=nt_event(tags);e.kind=kind;e.created_at=created_at;
   #assert ne_lower_hex(signer,e.public_key[..]);
   return e;
 }
-n26_tag :: (delegator:string,conditions:string,token:string,out:[]u8)->string {
+n26_tag :: (delegator:string,conditions:string,token:string,out:[]u8)->string #effects(all) {
   n:=json_raw(out,0,"[[\"delegation\",");n=json_write_string(out,n,delegator);n=json_raw(out,n,",");
   n=json_write_string(out,n,conditions);n=json_raw(out,n,",");n=json_write_string(out,n,token);
   n=json_raw(out,n,"]]");return cast(string)out[0..<n];
@@ -162,14 +162,14 @@ n26_tag :: (delegator:string,conditions:string,token:string,out:[]u8)->string {
 // book:begin conditions
 // A decimal number of at most ten digits, no sign and no leading zero, or
 // -1.
-n26_number :: (s:string)->int {
+n26_number :: (s:string)->int #effects(all) {
   if s.count==0 || s.count>10 || (s[0]=='0' && s.count>1) {return -1;}
   v:=0;for c:s {if c<'0' || c>'9' {return -1;}v=v*10+cast(int)(c-'0');}
   return v;
 }
 // N26_OK when an event of this kind and time meets the conditions,
 // N26_OUTSIDE when it doesn't, N26_CONDITIONS when they don't read.
-n26_conditions :: (text:string,kind:int,created_at:int)->int {
+n26_conditions :: (text:string,kind:int,created_at:int)->int #effects(all) {
   has_kind:=false;kind_ok:=false;times_ok:=true;from:=0;
   while from<=text.count {
     i:=from;while i<text.count && text[i]!='&' {i+=1;}
@@ -195,7 +195,7 @@ n26_conditions :: (text:string,kind:int,created_at:int)->int {
 
 // book:begin claim
 // "nostr:delegation:<signer hex>:<conditions>" into out: its length, or -1.
-n26_string :: (signer:[32]u8,conditions:string,out:[]u8)->int {
+n26_string :: (signer:[32]u8,conditions:string,out:[]u8)->int #effects(all) {
   if out.count<N26_PREFIX.count+65+conditions.count {return -1;}
   key:=signer;hex:[64]u8;h:=hex_encode_checked(cast(string)key[..],hex[..],false);
   #assert h.error==NC_OK;
@@ -206,10 +206,10 @@ n26_string :: (signer:[32]u8,conditions:string,out:[]u8)->int {
   for i:0..<conditions.count {out[n+i]=conditions[i];}
   return n+conditions.count;
 }
-n26_status :: (c:N26Claim,status:int)->N26Claim {r:=c;r.status=status;return r;}
+n26_status :: (c:N26Claim,status:int)->N26Claim #effects(all) {r:=c;r.status=status;return r;}
 // What the event's delegation tag claims, checked against its signer, kind
 // and created_at. A claim that reads OK is still only a claim.
-n26_claim :: (e:NostrEvent)->N26Claim {
+n26_claim :: (e:NostrEvent)->N26Claim #effects(all) {
   c:N26Claim;ev:=nt_event_of(e);
   count:=nt_tags(ev,"delegation");
   if count<0 {return c;}
@@ -230,13 +230,13 @@ n26_claim :: (e:NostrEvent)->N26Claim {
   return n26_status(c,held);
 }
 // The event's author is its signer, whatever its tags claim.
-n26_attribute :: (e:NostrEvent)->N26Attribution {
+n26_attribute :: (e:NostrEvent)->N26Attribution #effects(all) {
   return N26Attribution.{author=e.public_key,claim=n26_claim(e)};
 }
 // book:end claim
 
 // This stack makes no delegations: out is cleared and the call refuses.
-n26_delegate :: (secret:[]u8,delegatee:[]u8,conditions:string,out:[]u8)->int {
+n26_delegate :: (secret:[]u8,delegatee:[]u8,conditions:string,out:[]u8)->int #effects(all) {
   for i:0..<out.count {out[i]=0;}
   return N26_REFUSED;
 }

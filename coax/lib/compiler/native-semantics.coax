@@ -225,74 +225,74 @@ SM_Request :: struct {mode:u32;ordinal:int= -1;case_index:u64;reason:u32;}
 }
 
 SM_REASONS :: [12]string.["assertion failed","integer overflow in '+'","integer overflow in '-'","integer overflow in '*'","integer overflow in unary '-'","integer overflow in '/'","division by zero","division by zero in '%'","shift amount out of range","index out of bounds","slice out of bounds","cast out of range"];
-SM_reason :: (what:string)->u32 #export_c {for i:0..<SM_REASONS.count {if what==SM_REASONS[i] {return cast(u32)i+1;}}return 0;}
-SM_trap_limit :: ()->int #export_c {return 4128;}
-sm_identity :: (id:EP_Identity)->bool {return EP_row_valid(4096,id.ordinal,id.declaration_index,id.line,id.column,id.name.count,id.source.count,true,true,true);}
-sm_equal :: (a:EP_Identity,b:EP_Identity)->bool {return a.ordinal==b.ordinal && a.declaration_index==b.declaration_index && a.line==b.line && a.column==b.column && a.name==b.name && a.source==b.source;}
-sm_reason :: (reason:u32)->bool {return reason>=1 && reason<=12;}
-sm_expected :: (e:SM_Expected)->bool {return sm_identity(e.identity) && sm_reason(e.reason) && ep_location(e.line) && ep_text(e.path.count);}
-SM_encode_trap :: (id:EP_Identity,what:string,path:string,line:int,out:[]u8)->int #export_c {
+SM_reason :: (what:string)->u32 #export_c #effects(all) {for i:0..<SM_REASONS.count {if what==SM_REASONS[i] {return cast(u32)i+1;}}return 0;}
+SM_trap_limit :: ()->int #export_c #effects(all) {return 4128;}
+sm_identity :: (id:EP_Identity)->bool #effects(all) {return EP_row_valid(4096,id.ordinal,id.declaration_index,id.line,id.column,id.name.count,id.source.count,true,true,true);}
+sm_equal :: (a:EP_Identity,b:EP_Identity)->bool #effects(all) {return a.ordinal==b.ordinal && a.declaration_index==b.declaration_index && a.line==b.line && a.column==b.column && a.name==b.name && a.source==b.source;}
+sm_reason :: (reason:u32)->bool #effects(all) {return reason>=1 && reason<=12;}
+sm_expected :: (e:SM_Expected)->bool #effects(all) {return sm_identity(e.identity) && sm_reason(e.reason) && ep_location(e.line) && ep_text(e.path.count);}
+SM_encode_trap :: (id:EP_Identity,what:string,path:string,line:int,out:[]u8)->int #export_c #effects(all) {
  reason:=SM_reason(what);if !sm_identity(id) || !sm_reason(reason) || !ep_text(path.count) || !ep_location(line) || out.count<32+path.count {return -1;}
  for i:0..<8 {out[i]=SM_MAGIC[i];}ep_put(out,8,32+path.count);ep_put(out,12,cast(int)reason);ep_put(out,16,id.ordinal);ep_put(out,20,id.declaration_index);ep_put(out,24,line);ep_put(out,28,path.count);qe_copy(out,32,path);return 32+path.count;
 }
-SM_decode_trap :: (raw:[]u8)->SM_Trap #export_c {
+SM_decode_trap :: (raw:[]u8)->SM_Trap #export_c #effects(all) {
  if raw.count<33 || raw.count>SM_trap_limit() {return SM_Trap.{};}
  for i:0..<8 {if raw[i]!=SM_MAGIC[i] {return SM_Trap.{};}}
  reason:=cast(u32)ep_get(raw,12);row:=ep_get(raw,16);decl:=ep_get(raw,20);line:=ep_get(raw,24);n:=ep_get(raw,28);
  if ep_get(raw,8)!=raw.count || !sm_reason(reason) || !EP_select(4096,row) || !EP_select(4096,decl) || !ep_location(line) || n!=raw.count-32 {return SM_Trap.{};}
  return SM_Trap.{ok=true,reason=reason,ordinal=row,declaration_index=decl,line=line,path=cast(string)raw[32..<raw.count]};
 }
-SM_trap :: (expected:SM_Expected,raw:[]u8,qp:QE_Observation,process:EP_Process,abort_code:int)->SM_Result #export_c {
+SM_trap :: (expected:SM_Expected,raw:[]u8,qp:QE_Observation,process:EP_Process,abort_code:int)->SM_Result #export_c #effects(all) {
  t:=ep_transport(process);if t!=0 {return SM_Result.{outcome=t};}
  e:=expected;f:=SM_decode_trap(raw);s:=qp.state;
  if !sm_expected(e) || !f.ok || !qp.valid || qp.outcome!=1 || s.event!=1 || qp.slot!=0 || s.row!=e.identity.ordinal || s.declaration_index!=e.identity.declaration_index ||
   abort_code!=6 || process.returncode!= -abort_code || f.ordinal!=s.row || f.declaration_index!=s.declaration_index || f.reason!=e.reason || f.path!=e.path || f.line!=e.line {return SM_Result.{outcome=3};}
  return SM_Result.{recognized=true};
 }
-SM_baseline :: (validated:EP_BaseResult)->SM_Result #export_c {
+SM_baseline :: (validated:EP_BaseResult)->SM_Result #export_c #effects(all) {
  if validated.outcome==2 {return SM_Result.{outcome=2};}if !validated.valid || validated.reason!=0 || validated.outcome!=1 {return SM_Result.{outcome=3};}return SM_Result.{};
 }
-SM_baseline_inputs :: (validated:EP_BaseResult,meta:EP_Emission,evidence_sources:[]EP_Source,profile_sources:[]EP_Source,descriptors:[]EP_Source,sources_observed:bool,descriptors_observed:bool,process:EP_Process,expected_compiler:string)->u32 #export_c {
+SM_baseline_inputs :: (validated:EP_BaseResult,meta:EP_Emission,evidence_sources:[]EP_Source,profile_sources:[]EP_Source,descriptors:[]EP_Source,sources_observed:bool,descriptors_observed:bool,process:EP_Process,expected_compiler:string)->u32 #export_c #effects(all) {
  p:=ep_transport(process);if p!=0 {return p;}b:=SM_baseline(validated);if b.outcome!=0 {return b.outcome;}
  if process.returncode!=1 || meta.schema!=1 || meta.command!="test" || meta.backend!="evaluator" || !ep_text(expected_compiler.count) || meta.compiler!=expected_compiler ||
   meta.runtime_arithmetic!="checked" || meta.interpreter_arithmetic!="checked" || meta.build_profile!="development" || meta.success!=0 || meta.exit_status!=1 ||
   !sources_observed || !descriptors_observed || !EP_sources_match(evidence_sources,profile_sources) {return 3;}
  if descriptors.count>0 && !ep_sources_valid(descriptors) {return 3;}return 0;
 }
-SM_diagnostic :: (expected:SM_Expected,code:string,path:string,line:int,count:int)->bool #export_c {
+SM_diagnostic :: (expected:SM_Expected,code:string,path:string,line:int,count:int)->bool #export_c #effects(all) {
  e:=expected;if !sm_expected(e) || count!=1 || path!=e.path || line!=e.line {return false;}
  if e.reason==1 {return code=="E0406";}if e.reason<=8 {return code=="E0407";}if e.reason==10 || e.reason==11 {return code=="E0410";}return code=="E0411";
 }
-SM_qualified :: (outcome:u32,baseline_passed:bool,artifact_only:bool)->bool #export_c {return outcome==0 && baseline_passed && !artifact_only;}
-sm_signature :: (s:SM_Signature)->bool {return (s.optimization==0 || s.optimization==2) && sm_expected(SM_Expected.{identity=s.identity,reason=s.reason,line=s.line,path=s.path}) && SM_seed_id(s.seed_id);}
-SM_signature_equal :: (a:SM_Signature,b:SM_Signature)->bool #export_c {
+SM_qualified :: (outcome:u32,baseline_passed:bool,artifact_only:bool)->bool #export_c #effects(all) {return outcome==0 && baseline_passed && !artifact_only;}
+sm_signature :: (s:SM_Signature)->bool #effects(all) {return (s.optimization==0 || s.optimization==2) && sm_expected(SM_Expected.{identity=s.identity,reason=s.reason,line=s.line,path=s.path}) && SM_seed_id(s.seed_id);}
+SM_signature_equal :: (a:SM_Signature,b:SM_Signature)->bool #export_c #effects(all) {
  return sm_signature(a) && a.optimization==b.optimization && sm_equal(a.identity,b.identity) && a.reason==b.reason && a.line==b.line && a.path==b.path && a.seed_id==b.seed_id;
 }
-SM_accept :: (expected:SM_Signature,actual:SM_Signature,native_outcome:u32,recognized:bool)->bool #export_c {return native_outcome==1 && recognized && SM_signature_equal(expected,actual);}
-sm_index :: (d:FD_Domain,word:u64)->SM_Ordinal {
+SM_accept :: (expected:SM_Signature,actual:SM_Signature,native_outcome:u32,recognized:bool)->bool #export_c #effects(all) {return native_outcome==1 && recognized && SM_signature_equal(expected,actual);}
+sm_index :: (d:FD_Domain,word:u64)->SM_Ordinal #effects(all) {
  if !fd_shape(d) || !fd_canonical(word,d.bits,d.is_signed) {return SM_Ordinal.{reason=1};}
  if d.kind==4 {for i:0..<d.values.count {if d.values[i]==word {return SM_Ordinal.{ordinal=cast(u64)i};}}return SM_Ordinal.{reason=1};}
  if d.kind==2 || d.kind==5 {rank:=word^FD_SIGN;first:=fd_rank(d.first);if rank<first || rank-first>=d.count {return SM_Ordinal.{reason=1};}return SM_Ordinal.{ordinal=rank-first};}
  if word>=d.count {return SM_Ordinal.{reason=1};}return SM_Ordinal.{ordinal=word};
 }
-SM_ordinal :: (domains:[]FD_Domain,values:[]u64)->SM_Ordinal #export_c {
+SM_ordinal :: (domains:[]FD_Domain,values:[]u64)->SM_Ordinal #export_c #effects(all) {
  if !NC_native_arity(2,domains.count) || values.count!=domains.count {return SM_Ordinal.{reason=1};}
  total:u64=1;ordinal:u64=0;for i:0..<domains.count {
   d:=domains[i];p:=FD_combine(total,d.count);if p.reason!=0 {return SM_Ordinal.{reason=1};}v:=sm_index(d,values[i]);if v.reason!=0 {return SM_Ordinal.{reason=1};}ordinal=ordinal*d.count+v.ordinal;total=p.total;
  }return SM_Ordinal.{ordinal=ordinal};
 }
-SM_reduce_start :: (domains:[]FD_Domain,values:[]u64,budget:int)->SM_Reduction #export_c {
+SM_reduce_start :: (domains:[]FD_Domain,values:[]u64,budget:int)->SM_Reduction #export_c #effects(all) {
  if budget<1 || budget>32 || SM_ordinal(domains,values).reason!=0 {return SM_Reduction.{reason=1};}return SM_Reduction.{budget=budget,done=domains.count==0};
 }
-sm_reduction :: (s:SM_Reduction,count:int)->bool {return s.reason==0 && s.budget>=1 && s.budget<=32 && s.attempts>=0 && s.attempts<=s.budget && s.binding>=0 && s.binding<=count && (s.choice==0 || s.choice==1) && s.done==(s.binding==count || s.attempts==s.budget);}
-sm_magnitude :: (word:u64,is_signed:bool)->u64 {if is_signed && (word&FD_SIGN)!=0 {return (FD_LAST^word)+1;}return word;}
-sm_target :: (d:FD_Domain,current:u64,choice:int)->u64 {
+sm_reduction :: (s:SM_Reduction,count:int)->bool #effects(all) {return s.reason==0 && s.budget>=1 && s.budget<=32 && s.attempts>=0 && s.attempts<=s.budget && s.binding>=0 && s.binding<=count && (s.choice==0 || s.choice==1) && s.done==(s.binding==count || s.attempts==s.budget);}
+sm_magnitude :: (word:u64,is_signed:bool)->u64 #effects(all) {if is_signed && (word&FD_SIGN)!=0 {return (FD_LAST^word)+1;}return word;}
+sm_target :: (d:FD_Domain,current:u64,choice:int)->u64 #effects(all) {
  if d.kind==4 {return d.values[ifx choice==1 && d.values.count>1 then 1 else 0];}
  if choice==1 {return ifx d.is_signed && (current&FD_SIGN)!=0 then FD_LAST else 1;}
  
  return 0;
 }
-SM_reduce_next :: (state:SM_Reduction,domains:[]FD_Domain,current:[]u64,out:[]u64)->SM_Candidate #export_c {
+SM_reduce_next :: (state:SM_Reduction,domains:[]FD_Domain,current:[]u64,out:[]u64)->SM_Candidate #export_c #effects(all) {
  s:=state;if !sm_reduction(s,domains.count) || out.count!=current.count || SM_ordinal(domains,current).reason!=0 {return SM_Candidate.{state=SM_Reduction.{reason=1}};}
  candidate:[64]u64;
  while !s.done {
@@ -304,31 +304,31 @@ SM_reduce_next :: (state:SM_Reduction,domains:[]FD_Domain,current:[]u64,out:[]u6
   for i:0..<out.count {out[i]=candidate[i];}s.attempts+=1;s.done=s.binding==domains.count || s.attempts==s.budget;return SM_Candidate.{state=s,offered=true,ordinal=o.ordinal};
  }return SM_Candidate.{state=s};
 }
-sm_decimal :: (text:string,limit:u64)->SM_Ordinal {
+sm_decimal :: (text:string,limit:u64)->SM_Ordinal #effects(all) {
  if text.count<1 || (text.count>1 && text[0]=='0') {return SM_Ordinal.{reason=1};}value:u64=0;
  for c:text {if c<'0' || c>'9' {return SM_Ordinal.{reason=1};}value=value*10+cast(u64)(c-'0');if value>=limit {return SM_Ordinal.{reason=1};}}return SM_Ordinal.{ordinal=value};
 }
-SM_request :: (argc:int,mode:string,ordinal:string,case_index:string,progress_path:string)->SM_Request #export_c {
+SM_request :: (argc:int,mode:string,ordinal:string,case_index:string,progress_path:string)->SM_Request #export_c #effects(all) {
  if mode=="metadata" {if argc==2 && ordinal.count==0 && case_index.count==0 && progress_path.count==0 {return SM_Request.{mode=1};}return SM_Request.{reason=1};}
  row:=EP_ordinal(ordinal);if row<0 || !ep_text(progress_path.count) {return SM_Request.{reason=1};}
  if mode=="one" && argc==4 && case_index.count==0 {return SM_Request.{mode=2,ordinal=row};}
  if mode=="case" && argc==5 {index:=sm_decimal(case_index,FD_limit());if index.reason==0 {return SM_Request.{mode=3,ordinal=row,case_index=index.ordinal};}}
  return SM_Request.{reason=1};
 }
-SM_case :: (check:QE_Check,domains:[]FD_Domain,index:u64,values:[]u64)->bool #export_c {
+SM_case :: (check:QE_Check,domains:[]FD_Domain,index:u64,values:[]u64)->bool #export_c #effects(all) {
  if !QE_check_valid(check,4096,true,true,true,true) || check.binding_count!=domains.count {return false;}
  total:u64=1;for d:domains {p:=FD_combine(total,d.count);if p.reason!=0 {return false;}total=p.total;}
  if total!=check.cases {return false;}return FD_tuple(domains,index,values)==0;
 }
-SM_encode_replay :: (id:EP_Identity,index:u64,event:u32,returned:int,out:[]u8)->int #export_c {
+SM_encode_replay :: (id:EP_Identity,index:u64,event:u32,returned:int,out:[]u8)->int #export_c #effects(all) {
  if !sm_identity(id) || index>=FD_limit() || (event!=1 && event!=2) || returned!=0 || out.count<40 {return -1;}
  for i:0..<8 {out[i]=SM_PROGRESS[i];}ep_put(out,8,cast(int)event);ep_put(out,12,40);ep_put(out,16,id.ordinal);ep_put(out,20,id.declaration_index);qe_put64(out,24,index);qe_put64(out,32,0);return 40;
 }
-sm_replay_frame :: (id:EP_Identity,index:u64,event:u32,region:[]u8,at:int)->bool {
+sm_replay_frame :: (id:EP_Identity,index:u64,event:u32,region:[]u8,at:int)->bool #effects(all) {
  for i:0..<8 {if region[at+i]!=SM_PROGRESS[i] {return false;}}
  return ep_get(region,at+8)==cast(int)event && ep_get(region,at+12)==40 && ep_get(region,at+16)==id.ordinal && ep_get(region,at+20)==id.declaration_index && qe_get64(region,at+24)==index && qe_get64(region,at+32)==0;
 }
-SM_replay :: (check:QE_Check,domains:[]FD_Domain,index:u64,region:[]u8,process:EP_Process)->QE_Observation #export_c {
+SM_replay :: (check:QE_Check,domains:[]FD_Domain,index:u64,region:[]u8,process:EP_Process)->QE_Observation #export_c #effects(all) {
  p:=ep_transport(process);if region.count!=QE_region_size() || region[0]>1 {return qe_invalid(p);}
  words:[64]u64;if !NC_native_arity(2,domains.count) || !SM_case(check,domains,index,words[0..<domains.count]) {return qe_invalid(p);}
  slot:=cast(int)region[0];event:=cast(u32)slot+1;
@@ -338,14 +338,14 @@ SM_replay :: (check:QE_Check,domains:[]FD_Domain,index:u64,region:[]u8,process:E
  outcome:=EV_INFRASTRUCTURE;if p!=0 {outcome=p;}else if event==2 && process.returncode==0 {outcome=0;}else if event==1 && process.returncode<0 {outcome=1;}
  return QE_Observation.{outcome=outcome,valid=true,slot=slot,state=QE_State.{event=event,row=check.identity.ordinal,declaration_index=check.identity.declaration_index,case_index=index,total=check.cases,arity=domains.count,completed=cast(u64)slot}};
 }
-sm_at :: (input:[]u8,at:int,text:string)->bool {if input.count-at<text.count {return false;}for i:0..<text.count {if input[at+i]!=text[i] {return false;}}return true;}
-SM_seed :: (input:[]u8,out:[]u8)->int #export_c {
+sm_at :: (input:[]u8,at:int,text:string)->bool #effects(all) {if input.count-at<text.count {return false;}for i:0..<text.count {if input[at+i]!=text[i] {return false;}}return true;}
+SM_seed :: (input:[]u8,out:[]u8)->int #export_c #effects(all) {
  if !sm_at(input,0,SM_PREFIX) || out.count<input.count {return -1;}count:int=0;where:int;
  for i:SM_PREFIX.count..<input.count {if sm_at(input,i,SM_SEED_FROM) {count+=1;where=i;}}
  if count!=1 {return -1;}for i:0..<input.count {out[i]=input[i];}qe_copy(out,where,SM_SEED_TO);return input.count;
 }
 
-SM_seed_id :: (id:string)->bool #export_c {return id=="mul-add";}
-SM_probe :: (outcome:u32)->u32 #export_c {if outcome<=1 {return 0;}if outcome<=4 {return outcome;}return 3;}
+SM_seed_id :: (id:string)->bool #export_c #effects(all) {return id=="mul-add";}
+SM_probe :: (outcome:u32)->u32 #export_c #effects(all) {if outcome<=1 {return 0;}if outcome<=4 {return outcome;}return 3;}
 
-SM_reduce_status :: (state:SM_Reduction,count:int)->u32 #export_c {return ifx NC_native_arity(2,count) && sm_reduction(state,count) then 0 else 3;}
+SM_reduce_status :: (state:SM_Reduction,count:int)->u32 #export_c #effects(all) {return ifx NC_native_arity(2,count) && sm_reduction(state,count) then 0 else 3;}

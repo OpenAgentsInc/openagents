@@ -98,7 +98,7 @@ order, and the first one that fails names the refusal.
 <!-- source: psionic/lib/peer/pay.coax hold -->
 ```jai
 // A receipt digest is 64 lowercase hex digits, as audit-run.coax writes it.
-vp_digest_ok :: (s:string)->bool {
+vp_digest_ok :: (s:string)->bool #effects(all) {
     if s.count!=64 {return false;}
     for i:0..<64 {
         c:=s[i];
@@ -106,14 +106,14 @@ vp_digest_ok :: (s:string)->bool {
     }
     return true;
 }
-vp_find :: (l:VpLedger,receipt:string)->int {
+vp_find :: (l:VpLedger,receipt:string)->int #effects(all) {
     r:=kept64(receipt);
     for i:0..<l.n {if kept_same(l.jobs[i].receipt,r) {return i;}}
     return -1;
 }
 // Hold a quote before the work runs. unit is "msat" or "sat"; anything else
 // is not a Bitcoin amount and is refused. The hold must fit the owner's cap.
-vp_hold :: (l:VpLedger,receipt:string,payee:string,quote:int,unit:string)->VpStep #export_c {
+vp_hold :: (l:VpLedger,receipt:string,payee:string,quote:int,unit:string)->VpStep #export_c #effects(all) {
     r:=VpStep.{refuse=VpRefuse.receipt,ledger=l};
     if !vp_digest_ok(receipt) {return r;}
     r.refuse=VpRefuse.payee;
@@ -150,11 +150,11 @@ verdict and an unsampled job must not have one.
 
 <!-- source: psionic/lib/peer/pay.coax decide -->
 ```jai
-vp_policy_valid :: (p:VpPolicy)->bool {return bl_in(p.payout_cap,BL_MSAT_MOST);}
+vp_policy_valid :: (p:VpPolicy)->bool #effects(all) {return bl_in(p.payout_cap,BL_MSAT_MOST);}
 // Move job k to its end state. Review keeps the quote in escrow. Paid and
 // withheld release it; paid adds one intent, withheld adds to the refused
 // total, which never passes 21 million bitcoin.
-vp_end :: (l:VpLedger,k:int,amount:int,to:VpState)->VpStep {
+vp_end :: (l:VpLedger,k:int,amount:int,to:VpState)->VpStep #effects(all) {
     n:=l;n.jobs[k].amount=amount;n.jobs[k].state=to;
     if to==VpState.review {return VpStep.{state=to,ledger=n};}
     n.account.held-=l.jobs[k].quote;
@@ -171,7 +171,7 @@ vp_end :: (l:VpLedger,k:int,amount:int,to:VpState)->VpStep {
 // an unsampled one must not have one, as in pk_settle. Disagree withholds.
 // Unverifiable work, untrusted unsampled work and a payment above the cap
 // wait for the owner. Everything else is paid.
-vp_decide :: (l:VpLedger,p:VpPolicy,receipt:string,amount:int,sampled:bool,c:PkCompare)->VpStep #export_c {
+vp_decide :: (l:VpLedger,p:VpPolicy,receipt:string,amount:int,sampled:bool,c:PkCompare)->VpStep #export_c #effects(all) {
     r:=VpStep.{refuse=VpRefuse.policy,ledger=l};
     if !vp_policy_valid(p) {return r;}
     k:=vp_find(l,receipt);
@@ -188,7 +188,7 @@ vp_decide :: (l:VpLedger,p:VpPolicy,receipt:string,amount:int,sampled:bool,c:PkC
     return vp_end(l,k,amount,VpState.paid);
 }
 // The owner's decision on a job held for review: pay it or withhold it.
-vp_review :: (l:VpLedger,receipt:string,pay:bool)->VpStep #export_c {
+vp_review :: (l:VpLedger,receipt:string,pay:bool)->VpStep #export_c #effects(all) {
     k:=vp_find(l,receipt);
     r:=VpStep.{refuse=VpRefuse.unknown,ledger=l};
     if k<0 {return r;}
@@ -377,7 +377,7 @@ the recount refuses it there with `settled`.
 VpRail :: enum u8 {lightning;spark;}
 VpInvoice :: struct {refuse:VpRefuse;rail:VpRail;msat:int;sat:int;key:Kept(8);payee:Kept(8);}
 
-vp_invoice :: (l:VpLedger,key:string,rail:string)->VpInvoice #export_c {
+vp_invoice :: (l:VpLedger,key:string,rail:string)->VpInvoice #export_c #effects(all) {
     r:=VpInvoice.{refuse=VpRefuse.unknown};
     want:=kept64(key);k:=-1;
     for i:0..<l.m {if kept_same(l.jobs[l.intents[i].at].receipt,want) {k=i;}}
@@ -408,12 +408,12 @@ VpKind :: enum u8 {hold;decide;review;}
 VpEvent :: struct {kind:VpKind;receipt:string;payee:string;msat:int;sampled:bool;verdict:PkVerdict;pay:bool;}
 VpRecount :: struct {refuse:VpRefuse;at:int=-1;ledger:VpLedger;}
 
-vp_apply :: (l:VpLedger,p:VpPolicy,e:VpEvent)->VpStep {
+vp_apply :: (l:VpLedger,p:VpPolicy,e:VpEvent)->VpStep #effects(all) {
     if e.kind==VpKind.hold {return vp_hold(l,e.receipt,e.payee,e.msat,"msat");}
     if e.kind==VpKind.decide {return vp_decide(l,p,e.receipt,e.msat,e.sampled,PkCompare.{verdict=e.verdict});}
     return vp_review(l,e.receipt,e.pay);
 }
-vp_recount :: (budget:int,p:VpPolicy,events:[]VpEvent)->VpRecount #export_c {
+vp_recount :: (budget:int,p:VpPolicy,events:[]VpEvent)->VpRecount #export_c #effects(all) {
     l:=VpLedger.{account=BlAccount.{budget=budget}};
     for i:0..<events.count {
         t:=vp_apply(l,p,events[i]);

@@ -229,7 +229,7 @@ bc_peer::(port:int,room:string,secs:int)->int{
   print("warm peer: frames=% gap_ms=% closed=%\n",p[0].frames,p[0].gap,p[0].closed);return ifx ok then 0 else 1;
 }
 
-tool_main::()->int #export_c{
+tool_main::()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]){return 2;}if args_count(args[..])==2&&args_at(args[..],0)=="fixture"{return bc_fixture(args_at(args[..],1));}
   if args_count(args[..])==4&&args_at(args[..],0)=="peer"{return bc_peer(args_whole(args_at(args[..],1)),args_at(args[..],2),args_whole(args_at(args[..],3)));}
   if args_count(args[..])<1{return 2;}warm:=args_at(args[..],0)=="warm";startup:=args_at(args[..],0)=="startup";control:=args_at(args[..],0)=="stress-control";stress:=args_at(args[..],0)=="stress"||control;full:=args_at(args[..],0)=="full";offset:=ifx warm||startup||stress||full then 1 else 0;

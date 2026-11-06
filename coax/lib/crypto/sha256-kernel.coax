@@ -30,18 +30,18 @@ S_Digest :: struct {words:[8] u32;error:u32;}
 // bit length as a big-endian u64 in the last 8 bytes. It needs one block per
 // 64 input bytes plus one, and one more when the last block has fewer than 9
 // bytes free (the remainder is 56 to 63).
-S_length :: (n: int) -> bool { return n >= 0 && n <= 2305843009213693951; }
-S_blocks :: (n: int) -> int {
+S_length :: (n: int) -> bool #effects(all) { return n >= 0 && n <= 2305843009213693951; }
+S_blocks :: (n: int) -> int #effects(all) {
   blocks := n / 64 + 1;
   if n % 64 >= 56 { blocks += 1; }
   return blocks;
 }
-S_padding :: (count: int, at: int, total: int) -> u8 {
+S_padding :: (count: int, at: int, total: int) -> u8 #effects(all) {
   if at == count { return 128; }
   if at >= total - 8 { return cast,trunc(u8) ((cast(u64) count * 8) >> ((total - 1 - at) * 8)); }
   return 0;
 }
-S_padded :: (input: string, at: int, total: int) -> u8 {
+S_padded :: (input: string, at: int, total: int) -> u8 #effects(all) {
   if at < input.count { return input[at]; }
   return S_padding(input.count, at, total);
 }
@@ -49,18 +49,18 @@ S_padded :: (input: string, at: int, total: int) -> u8 {
 // book:begin words
 // Word arithmetic. Sums widen to u64 and keep the low 32 bits, so they wrap
 // the same way in checked and native builds.
-S_rotr :: (x: u32, n: int) -> u32 {
+S_rotr :: (x: u32, n: int) -> u32 #effects(all) {
   if n == 0 { return x; }
   return (x >> n) | (x << (32 - n));
 }
-S_sum2 :: (a: u32, b: u32) -> u32 { return cast,trunc(u32) (cast(u64) a + cast(u64) b); }
-S_sum4 :: (a: u32, b: u32, c: u32, d: u32) -> u32 { return cast,trunc(u32) (cast(u64) a + cast(u64) b + cast(u64) c + cast(u64) d); }
-S_sum5 :: (a: u32, b: u32, c: u32, d: u32, e: u32) -> u32 { return cast,trunc(u32) (cast(u64) a + cast(u64) b + cast(u64) c + cast(u64) d + cast(u64) e); }
+S_sum2 :: (a: u32, b: u32) -> u32 #effects(all) { return cast,trunc(u32) (cast(u64) a + cast(u64) b); }
+S_sum4 :: (a: u32, b: u32, c: u32, d: u32) -> u32 #effects(all) { return cast,trunc(u32) (cast(u64) a + cast(u64) b + cast(u64) c + cast(u64) d); }
+S_sum5 :: (a: u32, b: u32, c: u32, d: u32, e: u32) -> u32 #effects(all) { return cast,trunc(u32) (cast(u64) a + cast(u64) b + cast(u64) c + cast(u64) d + cast(u64) e); }
 // book:end words
 // book:begin compress
 // One 64-byte block of the padded message, starting at `at`, into the eight
 // hash words `h`.
-S_compress :: (h: [] u32, input: string, at: int, total: int) {
+S_compress :: (h: [] u32, input: string, at: int, total: int) #effects(all) {
   k:=[64] u32.[
     0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
     0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
@@ -101,12 +101,12 @@ S_compress :: (h: [] u32, input: string, at: int, total: int) {
 // book:begin hash
 // The initial hash words: the first 32 bits of the fractional parts of the
 // square roots of the first eight primes.
-S_seed :: (count: int) -> S_Digest {
+S_seed :: (count: int) -> S_Digest #effects(all) {
   if !S_length(count) { return S_Digest.{error = 1}; }
   h := [8] u32.[0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
   return S_Digest.{words = h};
 }
-S_hash :: (input: string) -> S_Digest #export_c {
+S_hash :: (input: string) -> S_Digest #export_c #effects(all) {
   seed := S_seed(input.count);
   if seed.error != 0 { return seed; }
   defer {secure_zero(seed.words[..]);for wiped:seed.words[..] {#assert wiped==0;}}
@@ -116,7 +116,7 @@ S_hash :: (input: string) -> S_Digest #export_c {
   return S_Digest.{words = h};
 }
 // book:end hash
-S_hex :: (digest: S_Digest, out: [] u8) -> bool #export_c {
+S_hex :: (digest: S_Digest, out: [] u8) -> bool #export_c #effects(all) {
   if digest.error != 0 || out.count < 64 { return false; }
   digits := "0123456789abcdef";
   for i: 0..<8 { for j: 0..<8 { n := (digest.words[i] >> ((7 - j) * 4)) & 15; out[i * 8 + j] = digits[n]; } }

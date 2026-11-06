@@ -4,7 +4,7 @@
 D_MAX_BYTES :: 8388608;
 // Must match PB_MAX_BYTES in wire.coax; importer tests check the shared cap.
 D_WIRE_MAX_BYTES :: 1048576;
-D_tighter_message_limit :: (n:u64)->bool {return n>0 && n<cast(u64)D_WIRE_MAX_BYTES;}
+D_tighter_message_limit :: (n:u64)->bool #effects(all) {return n>0 && n<cast(u64)D_WIRE_MAX_BYTES;}
 #test "only tighter message limits need a generated guard" {
  #assert !D_tighter_message_limit(0) && D_tighter_message_limit(1);
  #assert D_tighter_message_limit(1048575) && !D_tighter_message_limit(1048576) && !D_tighter_message_limit(1048577);
@@ -154,18 +154,18 @@ D_State :: struct {
   state[0].error="";v=D_scan(state[..],cast(string)a[0..<2],0);#assert state[0].error!="";
   state[0].error="";twice:=[4] u8.[8,1,8,2];v=D_one(state[..],cast(string)twice[..],1);#assert state[0].error!="";
 }
-D_storage :: (count:int,capacity:int)->bool {return count>=0 && count<capacity;}
-D_type_count :: (count:int)->bool {return count>=0 && count<256;}
-D_depth :: (count:int)->bool {return count>=0 && count<32;}
-D_work :: (count:int,total:int)->bool {return count<=40000 && total<=400000;}
-D_wire_number :: (n:u64)->bool {return n>=1 && n<=536870911;}
-D_field_number :: (n:u64)->bool {return D_wire_number(n) && !(n>=19000 && n<=19999);}
-G_output_room :: (written:int,size:int,capacity:int)->bool {return size<=capacity-written && size<=D_MAX_BYTES-written;}
-D_input :: (count:int,prefix:string)->bool {return D_small(count,D_MAX_BYTES) && D_identifier(prefix);}
+D_storage :: (count:int,capacity:int)->bool #effects(all) {return count>=0 && count<capacity;}
+D_type_count :: (count:int)->bool #effects(all) {return count>=0 && count<256;}
+D_depth :: (count:int)->bool #effects(all) {return count>=0 && count<32;}
+D_work :: (count:int,total:int)->bool #effects(all) {return count<=40000 && total<=400000;}
+D_wire_number :: (n:u64)->bool #effects(all) {return n>=1 && n<=536870911;}
+D_field_number :: (n:u64)->bool #effects(all) {return D_wire_number(n) && !(n>=19000 && n<=19999);}
+G_output_room :: (written:int,size:int,capacity:int)->bool #effects(all) {return size<=capacity-written && size<=D_MAX_BYTES-written;}
+D_input :: (count:int,prefix:string)->bool #effects(all) {return D_small(count,D_MAX_BYTES) && D_identifier(prefix);}
 D_Capacities :: struct {types:int;fields:int;values:int;groups:int;files:int;deps:int;symbols:int;arena:int;output:int;}
 // symbols is the generated-name table: twice as many slots as the 32768-name
 // budget (D_symbol). arena is the scratch ceiling; the host starts smaller.
-D_capacities :: ()->D_Capacities #export_c {
+D_capacities :: ()->D_Capacities #export_c #effects(all) {
   return D_Capacities.{types=256,fields=2048,values=8192,groups=65536,files=256,deps=8192,symbols=65536,arena=D_ARENA_MAX,output=D_MAX_BYTES};
 }
 D_ARENA_MAX :: 134217728;
@@ -175,17 +175,17 @@ D_SCRATCH_EXHAUSTED :: "importer scratch budget";
 // per input byte. An import that runs out is run again at the ceiling
 // (D_arena_retry). Generation is the same until scratch runs out, so the first
 // size changes only the cost of an import, never its source or diagnostic.
-D_arena_first :: (input:int)->int #export_c {if input>1048576 {return D_ARENA_MAX;}return 1048576+input*64;}
-D_arena_retry :: (error:string,size:int)->int #export_c {if error==D_SCRATCH_EXHAUSTED && size<D_ARENA_MAX {return D_ARENA_MAX;}return 0;}
-D_fail :: (s:[] D_State,message:string) {if s[0].error=="" {s[0].error=message;}}
-D_alpha :: (c:u8)->bool {return (c>=65 && c<=90) || (c>=97 && c<=122) || c==95;}
-D_digit :: (c:u8)->bool {return c>=48 && c<=57;}
-D_identifier :: (t:string)->bool {
+D_arena_first :: (input:int)->int #export_c #effects(all) {if input>1048576 {return D_ARENA_MAX;}return 1048576+input*64;}
+D_arena_retry :: (error:string,size:int)->int #export_c #effects(all) {if error==D_SCRATCH_EXHAUSTED && size<D_ARENA_MAX {return D_ARENA_MAX;}return 0;}
+D_fail :: (s:[] D_State,message:string) #effects(all) {if s[0].error=="" {s[0].error=message;}}
+D_alpha :: (c:u8)->bool #effects(all) {return (c>=65 && c<=90) || (c>=97 && c<=122) || c==95;}
+D_digit :: (c:u8)->bool #effects(all) {return c>=48 && c<=57;}
+D_identifier :: (t:string)->bool #effects(all) {
   if t.count==0 || t.count>256 {return false;}
   if !D_alpha(t[0]) {return false;}for c:t {if !D_alpha(c) && !D_digit(c) {return false;}}return true;
 }
-D_small :: (count:int,limit:int)->bool {return count>=0 && count<=limit;}
-D_var :: (s:[] D_State,t:string,at:int)->D_Wire {
+D_small :: (count:int,limit:int)->bool #effects(all) {return count>=0 && count<=limit;}
+D_var :: (s:[] D_State,t:string,at:int)->D_Wire #effects(all) {
   pos:=at;v:u64=0;shift:=0;
   while true {
     if pos<0 || pos>=t.count {D_fail(s,"truncated descriptor varint");return D_Wire.{};}
@@ -195,7 +195,7 @@ D_var :: (s:[] D_State,t:string,at:int)->D_Wire {
     if c<128 {return D_Wire.{raw=v,next=pos,present=true};}shift+=7;
   }return D_Wire.{};
 }
-D_scan :: (s:[] D_State,t:string,at:int)->D_Wire {
+D_scan :: (s:[] D_State,t:string,at:int)->D_Wire #effects(all) {
   if at==t.count {return D_Wire.{};}
   k:=D_var(s,t,at);if s[0].error!="" {return D_Wire.{};}
   number:=k.raw>>3;
@@ -208,33 +208,33 @@ D_scan :: (s:[] D_State,t:string,at:int)->D_Wire {
   if n>cast(u64)(t.count-f.next) {D_fail(s,"truncated descriptor field length");return D_Wire.{};}
   f.data=t[f.next..<f.next+cast(int)n];f.next+=cast(int)n;return f;
 }
-D_object :: (s:[] D_State,t:string) {
+D_object :: (s:[] D_State,t:string) #effects(all) {
   at:=0;count:=0;
   while at<t.count && s[0].error=="" {
     f:=D_scan(s,t,at);count+=1;s[0].visited+=1;
     if !D_work(count,s[0].visited) {D_fail(s,"descriptor field/work budget");return;}at=f.next;
   }
 }
-D_one :: (s:[] D_State,t:string,number:u32)->D_Wire {
+D_one :: (s:[] D_State,t:string,number:u32)->D_Wire #effects(all) {
   at:=0;found:D_Wire;
   while at<t.count && s[0].error=="" {f:=D_scan(s,t,at);at=f.next;if f.number==number {
     if found.present {D_fail(s,"duplicate descriptor metadata field");return D_Wire.{};}found=f;
   }}return found;
 }
-D_integer :: (s:[] D_State,t:string,number:u32)->u64 {
+D_integer :: (s:[] D_State,t:string,number:u32)->u64 #effects(all) {
   f:=D_one(s,t,number);if f.present && f.wt!=0 {D_fail(s,"descriptor integer wire type");}return f.raw;
 }
-D_bytes :: (s:[] D_State,f:D_Wire)->string {
+D_bytes :: (s:[] D_State,f:D_Wire)->string #effects(all) {
   if f.present && f.wt!=2 {D_fail(s,"descriptor bytes wire type");}return f.data;
 }
-D_text :: (s:[] D_State,t:string)->string {
+D_text :: (s:[] D_State,t:string)->string #effects(all) {
   if !D_small(t.count,16384) || !D_utf8(t) {D_fail(s,"invalid/oversized descriptor UTF-8 string");}return t;
 }
-D_get :: (s:[] D_State,t:string,number:u32)->string {return D_text(s,D_bytes(s,D_one(s,t,number)));}
-D_ident :: (s:[] D_State,t:string,number:u32)->string {
+D_get :: (s:[] D_State,t:string,number:u32)->string #effects(all) {return D_text(s,D_bytes(s,D_one(s,t,number)));}
+D_ident :: (s:[] D_State,t:string,number:u32)->string #effects(all) {
   v:=D_get(s,t,number);if !D_identifier(v) {D_fail(s,"invalid/oversized descriptor identifier");}return v;
 }
-D_utf8 :: (t:string)->bool {
+D_utf8 :: (t:string)->bool #effects(all) {
   at:=0;while at<t.count {a:=t[at];at+=1;if a<128 {continue;}
     n:int=---;lo:u8=128;hi:u8=191;
     if a>=194 && a<=223 {n=1;}else if a>=224 && a<=239 {n=2;if a==224 {lo=160;}if a==237 {hi=159;}}
@@ -243,20 +243,20 @@ D_utf8 :: (t:string)->bool {
     for i:1..<n {if t[at]<128 || t[at]>191 {return false;}at+=1;}
   }return true;
 }
-G_cat :: (s:[] D_State,parts:[] string)->string {
+G_cat :: (s:[] D_State,parts:[] string)->string #effects(all) {
   start:=s[0].used;
   for p:parts {if p.count>s[0].arena.count-s[0].used {D_fail(s,D_SCRATCH_EXHAUSTED);return "";}
     for c:p {s[0].arena[s[0].used]=c;s[0].used+=1;}}
   return cast(string)s[0].arena[start..<s[0].used];
 }
-G_num :: (s:[] D_State,n:s64)->string {
+G_num :: (s:[] D_State,n:s64)->string #effects(all) {
   digits:[20] u8;at:=20;value:u64=---;
   if n<0 {value=cast(u64)(-(n+1))+1;}else {value=cast(u64)n;}
   while true {at-=1;digits[at]=cast(u8)(value%10)+48;value=value/10;if value==0 {break;}}
   if n<0 {at-=1;digits[at]=45;}parts:=[1] string.[cast(string)digits[at..<20]];return G_cat(s,parts[..]);
 }
-D_has_option :: (o:D_Opts,n:int)->bool {return (o.bits & (cast(u32)1<<n))!=0;}
-D_options :: (s:[] D_State,wire:string,tag:u32,message:bool)->D_Opts {
+D_has_option :: (o:D_Opts,n:int)->bool #effects(all) {return (o.bits & (cast(u32)1<<n))!=0;}
+D_options :: (s:[] D_State,wire:string,tag:u32,message:bool)->D_Opts #effects(all) {
   t:=D_bytes(s,D_one(s,wire,tag));D_object(s,t);at:=0;o:D_Opts;
   seen:[999] bool;
   while at<t.count && s[0].error=="" {
@@ -274,14 +274,14 @@ D_options :: (s:[] D_State,wire:string,tag:u32,message:bool)->D_Opts {
     else {if f.wt!=0 || f.raw>9223372036854775807 || (n==4 && f.raw>1) || (n==9 && f.raw>4294967295) {D_fail(s,"invalid numeric policy option");return o;}o.n[n]=f.raw;}
   }return o;
 }
-D_leaf :: (t:string)->string {at:=0;for c,i:t {if c==46 {at=i+1;}}return t[at..<t.count];}
-D_full :: (s:[] D_State,parent:string,name:string)->string {p:=[3] string.[parent,".",name];return G_cat(s,p[..]);}
-D_package :: (t:string)->bool {
+D_leaf :: (t:string)->string #effects(all) {at:=0;for c,i:t {if c==46 {at=i+1;}}return t[at..<t.count];}
+D_full :: (s:[] D_State,parent:string,name:string)->string #effects(all) {p:=[3] string.[parent,".",name];return G_cat(s,p[..]);}
+D_package :: (t:string)->bool #effects(all) {
   if t.count>4096 {return false;}if t.count==0 {return true;}
   at:=0;parts:=0;for c,i:t {if c==46 {if !D_identifier(t[at..<i]) {return false;}at=i+1;parts+=1;}}
   return parts<32 && D_identifier(t[at..<t.count]);
 }
-D_enum :: (s:[] D_State,t:string,parent:string) {
+D_enum :: (s:[] D_State,t:string,parent:string) #effects(all) {
   D_object(s,t);name:=D_ident(s,t,1);e:=D_Type.{wire=t,full=D_full(s,parent,name),first=s[0].nv};at:=0;
   while at<t.count && s[0].error=="" {f:=D_scan(s,t,at);at=f.next;if f.number!=2 {continue;}
     q:=D_bytes(s,f);D_object(s,q);vn:=D_ident(s,q,1);num:=D_one(s,q,2);raw:=D_integer(s,q,2);
@@ -295,7 +295,7 @@ D_enum :: (s:[] D_State,t:string,parent:string) {
   if !D_storage(s[0].ne,s[0].enums.count) {D_fail(s,"descriptor enum budget exceeded");return;}
   s[0].enums[s[0].ne]=e;s[0].ne+=1;
 }
-D_message :: (s:[] D_State,t:string,parent:string,depth:int) {
+D_message :: (s:[] D_State,t:string,parent:string,depth:int) #effects(all) {
   if !D_depth(depth) {D_fail(s,"descriptor nesting budget");return;}D_object(s,t);
   m:=D_Type.{wire=t,full=D_full(s,parent,D_ident(s,t,1)),first=s[0].nf,groups=s[0].ng,opts=D_options(s,t,7,true)};
   if m.opts.map_entry || D_one(s,t,5).present || D_one(s,t,6).present {D_fail(s,"maps/message extensions are not supported");return;}
@@ -323,7 +323,7 @@ D_message :: (s:[] D_State,t:string,parent:string,depth:int) {
     if f.number==3 {D_message(s,D_bytes(s,f),m.full,depth+1);}if f.number==4 {D_enum(s,D_bytes(s,f),m.full);}
   }
 }
-D_bind :: (s:[] D_State,t:D_Type,prefix:string)->string {
+D_bind :: (s:[] D_State,t:D_Type,prefix:string)->string #effects(all) {
   leaf:=D_leaf(t.full);count:=0;
   for i:0..<s[0].nt {if D_leaf(s[0].types[i].full)==leaf {count+=1;}}
   for i:0..<s[0].ne {if D_leaf(s[0].enums[i].full)==leaf {count+=1;}}
@@ -332,7 +332,7 @@ D_bind :: (s:[] D_State,t:D_Type,prefix:string)->string {
   for c:alias {b:=[1] u8.[c];if c==46 {b[0]=95;}q:=[1] string.[cast(string)b[..]];piece:=G_cat(s,q[..]);}
   if s[0].error!="" {return "";}return cast(string)s[0].arena[start..<s[0].used];
 }
-D_parse :: (s:[] D_State,raw:string,prefix:string) {
+D_parse :: (s:[] D_State,raw:string,prefix:string) #effects(all) {
   if !D_input(raw.count,prefix) {D_fail(s,"descriptor byte budget or invalid prefix");return;}
   D_object(s,raw);at:=0;
   while at<raw.count && s[0].error=="" {rf:=D_scan(s,raw,at);at=rf.next;if rf.number!=1 {continue;}
@@ -378,8 +378,8 @@ D_parse :: (s:[] D_State,raw:string,prefix:string) {
 // at its FNV-1a hash and probes forward to itself or a free slot, so it meets
 // the few names beside it rather than every earlier one (#12685). The table is
 // never more than half full, so the probe always reaches a free slot.
-D_hash :: (t:string)->u64 {h:u64=14695981039346656037;for c:t {h=mul_wrap(h^cast(u64)c,1099511628211);}return h;}
-D_symbol :: (s:[] D_State,name:string) {
+D_hash :: (t:string)->u64 #effects(all) {h:u64=14695981039346656037;for c:t {h=mul_wrap(h^cast(u64)c,1099511628211);}return h;}
+D_symbol :: (s:[] D_State,name:string) #effects(all) {
   slots:=s[0].symbols.count;if slots==0 {D_fail(s,"generated symbol budget");return;}
   at:=cast(int)(D_hash(name)%cast(u64)slots);
   while s[0].symbols[at].count!=0 {
@@ -388,10 +388,10 @@ D_symbol :: (s:[] D_State,name:string) {
   }
   if !D_storage(s[0].ns,slots/2) {D_fail(s,"generated symbol budget");return;}s[0].symbols[at]=name;s[0].ns+=1;
 }
-D_forget :: (s:[] D_State) {for i:0..<s[0].symbols.count {s[0].symbols[i]="";}s[0].ns=0;}
+D_forget :: (s:[] D_State) #effects(all) {for i:0..<s[0].symbols.count {s[0].symbols[i]="";}s[0].ns=0;}
 // Template slots: 0 runtime prefix, 1 message, 2 field, 3 type, 4 option,
 // 5 field number, 6 wire type, 7 decoded value, 8 oneof, 9 method/extra.
-G_fmt :: (s:[] D_State,text:string,args:[] string)->string {
+G_fmt :: (s:[] D_State,text:string,args:[] string)->string #effects(all) {
   start:=s[0].used;at:=0;begin:=0;
   while at<text.count && s[0].error=="" {
     if text[at]!=36 {at+=1;continue;}
@@ -403,25 +403,25 @@ G_fmt :: (s:[] D_State,text:string,args:[] string)->string {
   tail:=[1] string.[text[begin..<text.count]];q:=G_cat(s,tail[..]);
   if s[0].error!="" {return "";}return cast(string)s[0].arena[start..<s[0].used];
 }
-G_write :: (s:[] D_State,text:string) {
+G_write :: (s:[] D_State,text:string) #effects(all) {
   if !G_output_room(s[0].written,text.count,s[0].output.count) {D_fail(s,"generated source budget");return;}
   for c:text {s[0].output[s[0].written]=c;s[0].written+=1;}
 }
-G_line :: (s:[] D_State,text:string,args:[] string) {G_write(s,G_fmt(s,text,args));G_write(s,"\n");}
-G_scalar :: (kind:int)->string {
+G_line :: (s:[] D_State,text:string,args:[] string) #effects(all) {G_write(s,G_fmt(s,text,args));G_write(s,"\n");}
+G_scalar :: (kind:int)->string #effects(all) {
   if kind==1 {return "f64";}if kind==2 {return "f32";}if kind==3 || kind==16 || kind==18 {return "s64";}
   if kind==4 || kind==6 {return "u64";}if kind==5 || kind==14 || kind==15 || kind==17 {return "s32";}
   if kind==7 || kind==13 {return "u32";}if kind==8 {return "bool";}if kind==9 {return "string";}
   if kind==12 {return "[] u8";}return "";
 }
-G_option :: (kind:int)->string {
+G_option :: (kind:int)->string #effects(all) {
   if kind==1 {return "F64";}if kind==2 {return "F32";}if kind==3 || kind==16 || kind==18 {return "S64";}
   if kind==4 || kind==6 {return "U64";}if kind==5 || kind==14 || kind==15 || kind==17 {return "S32";}
   if kind==7 || kind==13 {return "U32";}if kind==8 {return "Bool";}if kind==9 {return "String";}
   if kind==12 {return "Bytes";}return "";
 }
-G_wt :: (kind:int)->int {if kind==1 || kind==6 || kind==16 {return 1;}if kind==2 || kind==7 || kind==15 {return 5;}if kind==9 || kind==11 || kind==12 {return 2;}return 0;}
-G_value :: (s:[] D_State,f:D_Field,args:[] string)->string {
+G_wt :: (kind:int)->int #effects(all) {if kind==1 || kind==6 || kind==16 {return 1;}if kind==2 || kind==7 || kind==15 {return 5;}if kind==9 || kind==11 || kind==12 {return 2;}return 0;}
+G_value :: (s:[] D_State,f:D_Field,args:[] string)->string #effects(all) {
   if f.kind==11 {return G_fmt(s,"$3.{wire=f.payload}",args);}if f.kind==9 {return "cast(string) f.payload";}
   if f.kind==12 {return "f.payload";}if f.kind==3 || f.kind==5 || f.kind==14 || f.kind==15 || f.kind==16 {return G_fmt(s,"cast,trunc($3) f.raw",args);}
   if f.kind==4 || f.kind==6 {return "f.raw";}if f.kind==7 || f.kind==13 {return "cast(u32) f.raw";}
@@ -429,13 +429,13 @@ G_value :: (s:[] D_State,f:D_Field,args:[] string)->string {
   if f.kind==1 {return "f64_from_bits(f.raw)";}if f.kind==2 {return "f32_from_bits(cast(u32) f.raw)";}
   D_fail(s,"unimplemented descriptor scalar");return "";
 }
-G_args :: (s:[] D_State,m:D_Type,f:D_Field,p:string,args:[] string) {
+G_args :: (s:[] D_State,m:D_Type,f:D_Field,p:string,args:[] string) #effects(all) {
   args[0]=p;args[1]=m.name;args[2]=f.name;args[3]=G_scalar(f.kind);if f.kind==11 {args[3]=f.target;}
   if f.kind==11 {pieces:=[2] string.[f.target,"_Option"];args[4]=G_cat(s,pieces[..]);}
   else {pieces:=[2] string.[p,G_option(f.kind)];args[4]=G_cat(s,pieces[..]);}
   args[5]=G_num(s,cast(s64)f.number);args[6]=G_num(s,G_wt(f.kind));args[8]=G_num(s,f.oneof);args[7]=G_value(s,f,args);
 }
-G_constraints :: (s:[] D_State,f:D_Field,a:[] string) {
+G_constraints :: (s:[] D_State,f:D_Field,a:[] string) #effects(all) {
   G_line(s,"if f.wt!=$6 { $9WIRE}; }",a);
   if f.kind==7 || f.kind==13 || f.kind==17 {G_line(s,"if f.raw>4294967295 { $9VALUE}; }",a);}
   if f.kind==13 && D_has_option(f.opts,9) && f.opts.n[9]<4294967295 {a[5]=G_num(s,cast(s64)f.opts.n[9]);G_line(s,"if f.raw>$5 { $9VALUE}; }",a);}
@@ -448,7 +448,7 @@ G_constraints :: (s:[] D_State,f:D_Field,a:[] string) {
   }
   if (f.kind==1 || f.kind==2) && f.opts.text[5]=="rad" {G_line(s,"x:=$7;if x!=x || x < -3.141592653589793 || x>3.141592653589793 { $9VALUE}; }",a);}
 }
-G_check :: (s:[] D_State,m:D_Type,p:string) {
+G_check :: (s:[] D_State,m:D_Type,p:string) #effects(all) {
   a:[10] string;a[0]=p;a[1]=m.name;a[9]=G_fmt(s,"return $0Check.{error=$0",a[..]);
   G_line(s,"$1__check :: (wire:[] u8,depth:int,budget:int,required:bool,canonical:bool)->$0Check {",a[..]);
   G_line(s,"if !$0message_admitted(depth,wire.count) {return $0Check.{error=$0LIMIT};}",a[..]);
@@ -528,13 +528,13 @@ G_check :: (s:[] D_State,m:D_Type,p:string) {
   #assert cast(string)output[1024..<1536]=="t=f.next;\nf.wt=0;\nif f.wt!=0 { return P__pb_Check.{error=P__pb_WIRE}; }\nif f.raw>4294967295 { return P__pb_Check.{error=P__pb_VALUE}; }\ncount_numbers+=1;\n}} else {\nif f.wt!=0 { return P__pb_Check.{error=P__pb_WIRE}; }\nif f.raw>4294967295 { return P__pb_Check.{error=P__pb_VALUE}; }\ncount_numbers+=1;\n}\n}\nelse if f.number==3 {\nif one_0 {return P__pb_Check.{error=P__pb_DUPLICATE};} one_0=true;\nif f.wt!=2 { return P__pb_Check.{error=P__pb_WIRE}; }\nif !P__pb_utf8(f.payload) { return P__pb_Check.{error=P__pb_UTF8}";
   #assert cast(string)output[1536..<1973]=="; }\nseen_choice=true;\n}\nelse if f.number==4 {\nif f.wt!=2 { return P__pb_Check.{error=P__pb_WIRE}; }\ncount_blobs+=1;\nif count_blobs>2 {return P__pb_Check.{error=P__pb_LIMIT};}\n}\n}\nif required && count_texts==0 {return P__pb_Check.{error=P__pb_REQUIRED};}\nif required && count_numbers==0 {return P__pb_Check.{error=P__pb_REQUIRED};}\nif required && !seen_choice {return P__pb_Check.{error=P__pb_REQUIRED};}\nreturn P__pb_Check.{left=left};}\n";
 }
-G_getter :: (s:[] D_State,m:D_Type,f:D_Field,p:string) {
+G_getter :: (s:[] D_State,m:D_Type,f:D_Field,p:string) #effects(all) {
   a:[10] string;G_args(s,m,f,p,a[..]);
   G_line(s,"$1_get_$2 :: (msg:$1)->$4 {",a[..]);
   G_line(s,"if msg.error!=0 {return $4.{error=msg.error};}checked:=$1_decode(msg.wire);if checked.error!=0 {return $4.{error=checked.error};}",a[..]);
   G_line(s,"f:=$0find(msg.wire,$5);return $4.{value=$7,present=!f.done,error=f.error};}",a[..]);
 }
-G_iterator :: (s:[] D_State,m:D_Type,f:D_Field,p:string) {
+G_iterator :: (s:[] D_State,m:D_Type,f:D_Field,p:string) #effects(all) {
   a:[10] string;G_args(s,m,f,p,a[..]);a[9]=G_fmt(s,"$1_Iter_$2",a[..]);
   G_line(s,"$9 :: struct {wire:[] u8;cursor:int;packed:[] u8;packed_at:int;value:$3;has_value:bool;done:bool;error:u32;}",a[..]);
   G_line(s,"$1_iter_$2 :: (msg:$1)->$9 {if msg.error!=0 {return $9.{error=msg.error,done=true};}checked:=$1_decode(msg.wire);if checked.error!=0 {return $9.{error=checked.error,done=true};}return $1_next_$2($9.{wire=msg.wire});}",a[..]);
@@ -544,7 +544,7 @@ G_iterator :: (s:[] D_State,m:D_Type,f:D_Field,p:string) {
   if G_wt(f.kind)!=2 {G_line(s,"if f.wt==2 {iterator.packed=f.payload;iterator.packed_at=0;continue;}",a[..]);}
   G_line(s,"iterator.value=$7;iterator.has_value=true;return iterator;}return iterator;}",a[..]);
 }
-G_writer :: (s:[] D_State,m:D_Type,f:D_Field,p:string,clear:bool) {
+G_writer :: (s:[] D_State,m:D_Type,f:D_Field,p:string,clear:bool) #effects(all) {
   a:[10] string;G_args(s,m,f,p,a[..]);a[9]="set";if f.label==3 {a[9]="append";}if clear {a[9]="clear";}
   if clear {G_line(s,"$1_$9_$2 :: (msg:$1,out:[] u8)->$1 {",a[..]);}else {G_line(s,"$1_$9_$2 :: (msg:$1,value:$3,out:[] u8)->$1 {",a[..]);}
   G_line(s,"if msg.error!=0 {return $1.{error=msg.error};} checked:=$1__check(msg.wire,$0root_depth(),$0default_fields(),$0partial_fields(),false);if checked.error!=0 {return $1.{error=checked.error};}",a[..]);
@@ -572,7 +572,7 @@ G_writer :: (s:[] D_State,m:D_Type,f:D_Field,p:string,clear:bool) {
   else {G_line(s,"result:=$0rewrite(msg.wire,$9,$5,$6,raw,data,txt,is_text,false,out);",a[..]);}
   G_line(s,"if result.error!=0 {return $1.{error=result.error};} final:=$1__check(result.wire,$0root_depth(),$0default_fields(),$0partial_fields(),false);if final.error!=0 {return $1.{error=final.error};}return $1.{wire=result.wire};}",a[..]);
 }
-G_api :: (s:[] D_State,m:D_Type,p:string) {
+G_api :: (s:[] D_State,m:D_Type,p:string) #effects(all) {
   a:[10] string;a[0]=p;a[1]=m.name;
   G_line(s,"$1_new :: ()->$1 {return $1.{};}",a[..]);
   G_line(s,"$1_decode :: (wire:[] u8)->$1 {c:=$1__check(wire,$0root_depth(),$0default_fields(),$0require_fields(),false);if c.error!=0 {return $1.{error=c.error};}return $1.{wire=wire};}",a[..]);
@@ -597,13 +597,13 @@ G_api :: (s:[] D_State,m:D_Type,p:string) {
 }
 // PB_ is a reserved substitution marker in the owned runtime template.
 // The build checks exact emitted runtime bytes; it is not user-supplied code.
-G_runtime :: (s:[] D_State,text:string,prefix:string) {
+G_runtime :: (s:[] D_State,text:string,prefix:string) #effects(all) {
   at:=0;while at<text.count && s[0].error=="" {
     if at+3<=text.count && text[at..<at+3]=="PB_" {G_write(s,prefix);at+=3;}
     else {G_write(s,text[at..<at+1]);at+=1;}
   }G_write(s,"\n");
 }
-G_collisions :: (s:[] D_State) {
+G_collisions :: (s:[] D_State) #effects(all) {
   text:=cast(string)s[0].output[0..<s[0].written];at:=0;
   while at<text.count {
     end:=at;if D_alpha(text[at]) {while end<text.count && (D_alpha(text[end]) || D_digit(text[end])) {end+=1;}
@@ -611,7 +611,7 @@ G_collisions :: (s:[] D_State) {
     while end<text.count && text[end]!=10 {end+=1;}at=end+1;
   }
 }
-G_generate :: (s:[] D_State,raw:string,prefix:string,runtime:string)->int #export_c {
+G_generate :: (s:[] D_State,raw:string,prefix:string,runtime:string)->int #export_c #effects(all) {
   D_parse(s,raw,prefix);if s[0].error!="" {return 0;}
   parts:=[2] string.[prefix,"__pb_"];p:=G_cat(s,parts[..]);G_runtime(s,runtime,p);
   empty:[] string;G_line(s,"// @proto-descriptor-declarations",empty);

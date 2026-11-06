@@ -23,18 +23,18 @@ QmResult :: struct { status:QmStatus; written:int; }
     #assert qm_project(QmDtype.bf16,9223372036854775807,2,w[..],x[..],out[..],work[..],false).status==QmStatus.shape;
     #assert out[0]==-7 && work[0]==-9;
 }
-qm_valid :: (tag:u8,rows:int,cols:int)->bool {
+qm_valid :: (tag:u8,rows:int,cols:int)->bool #effects(all) {
     return tag<=1 && rows>=1 && rows<=32768 && cols>=1 && cols<=32768;
 }
-qm_bytes :: (dtype:QmDtype,rows:int,cols:int)->int {
+qm_bytes :: (dtype:QmDtype,rows:int,cols:int)->int #effects(all) {
     size:=2;if dtype==QmDtype.f32 {size=4;}return rows*cols*size;
 }
-qm_bits :: (dtype:QmDtype,w:[]u8,index:int)->u32 {
+qm_bits :: (dtype:QmDtype,w:[]u8,index:int)->u32 #effects(all) {
     if dtype==QmDtype.bf16 {p:=2*index;return (u32(w[p]) | (u32(w[p+1])<<8))<<16;}
     p:=4*index;return u32(w[p]) | (u32(w[p+1])<<8) | (u32(w[p+2])<<16) | (u32(w[p+3])<<24);
 }
 // book:begin matvec
-qm_project :: (dtype:QmDtype,rows:int,cols:int,w:[]u8,x:[]f32,out:[]f32,work:[]f32,overlap:bool)->QmResult #export_c {
+qm_project :: (dtype:QmDtype,rows:int,cols:int,w:[]u8,x:[]f32,out:[]f32,work:[]f32,overlap:bool)->QmResult #export_c #effects(all) {
     if !qm_valid(cast(u8)dtype,rows,cols) {return QmResult.{status=QmStatus.shape};}
     if w.count!=qm_bytes(dtype,rows,cols) || x.count!=cols || out.count<rows || work.count<rows {return QmResult.{status=QmStatus.capacity};}
     if overlap {return QmResult.{status=QmStatus.alias};}

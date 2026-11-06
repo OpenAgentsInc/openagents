@@ -34,10 +34,10 @@ FiClaimsSelection :: struct {status:int;community:int;issuer:int;projection:FiCl
  #assert fi_claims_reparse_ok(p,"a");#assert !fi_claims_reparse_ok(p,"b");
  p.ok=false;#assert !fi_claims_reparse_ok(p,"a");#assert !fi_claims_reparse_ok(p,"b");
 }
-fi_claims_reparse_ok :: (second:FiClaimsProjection,issuer:string)->bool {
+fi_claims_reparse_ok :: (second:FiClaimsProjection,issuer:string)->bool #effects(all) {
  p:=second;return p.ok && cast(string)p.issuer.bytes[0..<p.issuer.count]==issuer;
 }
-fi_claims_select :: (communities:[]FiCommunity,issuers:[]FiIssuer,host:string,text:string)->FiClaimsSelection #export_c {
+fi_claims_select :: (communities:[]FiCommunity,issuers:[]FiIssuer,host:string,text:string)->FiClaimsSelection #export_c #effects(all) {
  // Empty issuers cannot occur in a valid allowlist. This probes only the
  // configured Host/community before untrusted claims or issuer dependencies.
  host_only:=fi_select(communities,issuers,host,"");

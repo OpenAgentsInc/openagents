@@ -9,6 +9,6 @@
  #assert !hap_span(4294967280,64,16,4294967296,true);
  #assert !hap_span(18446744073709551600,64,16,18446744073709551615,true);
 }
-hap_span::(address:u64,capacity:u64,bytes:u64,address_limit:u64,capacity_present:bool)->bool #export_c {
+hap_span::(address:u64,capacity:u64,bytes:u64,address_limit:u64,capacity_present:bool)->bool #export_c #effects(all) {
  return bytes==0||(capacity_present&&htb_copy_span(address,capacity,bytes,address_limit));
 }

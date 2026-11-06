@@ -20,9 +20,9 @@ rfm_seed_pet :: (rfm_pet:[]PetUi) {
  pet_take_memorial(rfm_pet,RFM_MEMORIAL);rfm_pet[0].view=PV_MEMORIAL;rfm_pet[0].m_big=0;
  for rfm_i:0..<8 {rfm_pet[0].m_slug[rfm_i]="fixture0"[rfm_i];}
 }
-render_fixture_seed :: (rfm_scene:[]Villa) #export_c {rfm_seed_pet(rfm_scene[0].pet[..]);}
+render_fixture_seed :: (rfm_scene:[]Villa) #export_c #effects(all) {rfm_seed_pet(rfm_scene[0].pet[..]);}
 rfm_seed_video :: (rfm_pet:[]PetUi) {
  pet_take_memorial(rfm_pet,RFM_VIDEO);rfm_pet[0].view=PV_MEMORIAL;rfm_pet[0].m_big=0;
  for rfm_i:0..<8 {rfm_pet[0].m_slug[rfm_i]="fixture0"[rfm_i];}
 }
-render_fixture_video_seed :: (rfm_scene:[]Villa) #export_c {rfm_seed_video(rfm_scene[0].pet[..]);}
+render_fixture_video_seed :: (rfm_scene:[]Villa) #export_c #effects(all) {rfm_seed_video(rfm_scene[0].pet[..]);}

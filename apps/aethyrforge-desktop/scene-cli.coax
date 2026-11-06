@@ -66,7 +66,7 @@ scene_raid :: (api:string,json:string)->int {
   if r.error!=HTTP_OK || r.code!=200 || !jv_parse(j[..],cast(string)data[0..<r.n],nodes[..]) || jv_int(j[0],jv_get(j[0],0,"version"),-1)!=base+1 {return scene_error("Raid changed during readback. Read raid before another command.");}
   print("%\n",cast(string)data[0..<r.n]);return 0;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return scene_error("Arguments are too large.");}
   verb:=args_at(a[..],0);
   if verb=="--help" {print("usage: aethyrforge-scene show | apply 'JSON' | npcs [people|buildings] | npc 'JSON' | raid ['JSON'] [--session FILE]\n");return 0;}

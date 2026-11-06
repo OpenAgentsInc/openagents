@@ -14,7 +14,7 @@ mpb_headers :: (dir: string, name: string) -> bool {
   n := fs_read(fs_join(dir,name,source[..]),bytes[..]);
   return n > 0 && fs_write(fs_join(dir,"headers.next",temp[..]),cast(string)bytes[0..<n]) && fs_rename(fs_join(dir,"headers.next",temp[..]),fs_join(dir,"headers",target[..]));
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 2 { return 2; } dir := args_at(a[..],1);
   c: [1] Cdp; if !cdp_launch(c[..],1440,1000,"bitcoin-mempool-") { tool_errln(cdp_error(c[..])); return 1; }
   buffer: [4096] u8; o: [1] Jo; jo_start(o[..],buffer[..]); jo_obj(o[..]); jo_key(o[..],"url"); jo_str(o[..],args_at(a[..],0)); jo_end(o[..]);

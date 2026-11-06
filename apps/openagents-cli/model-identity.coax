@@ -15,6 +15,6 @@ OA_PK_TOKEN_HASH :: "bd321b096832a3f270bd3b2a88823957920f1a5c5ada71114a26ea729d0
     #assert !oa_pk_verified(OA_PK_BYTES, OA_PK_HASH, cast(string) b[..]);
   }
 }
-oa_pk_verified :: (bytes: int, weights: string, tokenizer: string) -> bool {
+oa_pk_verified :: (bytes: int, weights: string, tokenizer: string) -> bool #effects(all) {
   return bytes == OA_PK_BYTES && weights == OA_PK_HASH && tokenizer == OA_PK_TOKEN_HASH;
 }

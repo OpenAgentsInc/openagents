@@ -59,15 +59,15 @@
  for axis:0..<3 {target[0]=pps_goal(q);if axis==0 {target[0].position.x=11;}if axis==1 {target[0].position.y=11;}if axis==2 {target[0].position.z=11;}#assert pps_solve(q[..],target[..],0,out[..])==PpsStatus.range;pps_same(out[0],before);}
 }
 
-pps_reached :: (position:pfku.Quantity(pfku.Metre,f64),angle:pfku.Quantity(pfku.Radian,f64))->bool {return position.value<=1e-6 && angle.value<=1e-6;}
-pps_satisfied :: (value:PpoOutput)->bool {p:pfku.Quantity(pfku.Metre,f64);p.value=value.position_error_metres;return pps_reached(p,value.orientation_error);}
-pps_status :: (status:PpoStatus)->PpsStatus {return cast(PpsStatus)cast(u8)status;}
-pps_pack :: (value:PpoOutput,updates:int,projected:int)->PpsOutput {
+pps_reached :: (position:pfku.Quantity(pfku.Metre,f64),angle:pfku.Quantity(pfku.Radian,f64))->bool #effects(all) {return position.value<=1e-6 && angle.value<=1e-6;}
+pps_satisfied :: (value:PpoOutput)->bool #effects(all) {p:pfku.Quantity(pfku.Metre,f64);p.value=value.position_error_metres;return pps_reached(p,value.orientation_error);}
+pps_status :: (status:PpoStatus)->PpsStatus #effects(all) {return cast(PpsStatus)cast(u8)status;}
+pps_pack :: (value:PpoOutput,updates:int,projected:int)->PpsOutput #effects(all) {
  out:PpsOutput;out.angles=value.angles;out.position=value.position;out.world_from_grip_wxyz=value.world_from_grip_wxyz;out.position_error_metres=value.position_error_metres;out.orientation_error=value.orientation_error;out.weighted_error_metres=value.weighted_error_metres;out.updates=updates;out.projected_coordinates=projected;return out;
 }
 // Trusted staged operator. Its POD carries diagnostics even on exhaustion;
 // it is not an admission certificate and does not publish caller output.
-pps_walk :: (seed:[7]pfku.Quantity(pfku.Radian,f64),target:PpoTarget,max_updates:int)->PpsWalk {
+pps_walk :: (seed:[7]pfku.Quantity(pfku.Radian,f64),target:PpoTarget,max_updates:int)->PpsWalk #effects(all) {
  out:PpsWalk;out.status=PpsStatus.not_converged;q:=seed;fk:[1]PfkOutput;if pfk_forward(q[..],fk[..])!=PfkStatus.ok {out.status=PpsStatus.solve;return out;}
  measured:=ppo_finish(seed,fk[0].grip,target,0);out.candidate=pps_pack(measured,0,measured.projected_coordinates);if pps_satisfied(measured) {out.status=PpsStatus.ok;return out;}
  target_array:=[1]PpoTarget.[target];projected:int=0;
@@ -79,14 +79,14 @@ pps_walk :: (seed:[7]pfku.Quantity(pfku.Radian,f64),target:PpoTarget,max_updates
  }
  return out;
 }
-pps_solve :: (seed:[]pfku.Quantity(pfku.Radian,f64),target:[]PpoTarget,max_updates:int,output:[]PpsOutput)->PpsStatus #export_c {
+pps_solve :: (seed:[]pfku.Quantity(pfku.Radian,f64),target:[]PpoTarget,max_updates:int,output:[]PpsOutput)->PpsStatus #export_c #effects(all) {
  if seed.count!=7 || target.count!=1 || output.count!=1 {return PpsStatus.shape;}
  if max_updates<0 || max_updates>96 {return PpsStatus.range;}
  words:[10]u64;for i:0..<7 {words[i]=f64_bits(seed[i].value);}words[7]=f64_bits(target[0].position.x);words[8]=f64_bits(target[0].position.y);words[9]=f64_bits(target[0].position.z);admission:=ppo_admit_position(words);if admission!=PpoStatus.ok {return pps_status(admission);}
  quat:[4]u64;for i:0..<4 {quat[i]=f64_bits(target[0].world_from_grip_wxyz[i]);}admission=ppo_unit_bits(quat);if admission!=PpoStatus.ok {return pps_status(admission);}
  q:[7]pfku.Quantity(pfku.Radian,f64);for i:0..<7 {q[i]=seed[i];}run:=pps_walk(q,target[0],max_updates);if run.status!=PpsStatus.ok {return run.status;}output[0]=run.candidate;return PpsStatus.ok;
 }
-pps_solve_raw :: (seed:[]f64,target_xyz:[]f64,target_wxyz:[]f64,max_updates:int,output:[]PpsOutput)->PpsStatus #export_c {
+pps_solve_raw :: (seed:[]f64,target_xyz:[]f64,target_wxyz:[]f64,max_updates:int,output:[]PpsOutput)->PpsStatus #export_c #effects(all) {
  if seed.count!=7 || target_xyz.count!=3 || target_wxyz.count!=4 || output.count!=1 {return PpsStatus.shape;}
  q:[7]pfku.Quantity(pfku.Radian,f64);for i:0..<7 {q[i].value=seed[i];}target:[1]PpoTarget;target[0].position.x=target_xyz[0];target[0].position.y=target_xyz[1];target[0].position.z=target_xyz[2];for i:0..<4 {target[0].world_from_grip_wxyz[i]=target_wxyz[i];}return pps_solve(q[..],target[..],max_updates,output);
 }

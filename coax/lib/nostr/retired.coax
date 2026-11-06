@@ -115,7 +115,7 @@ RT_CHAPTER :: [RT_N] int.[68, 19, 46, 51, 66, 70, 59, 70, 59, 65, 57, 70, 60];
 
 // book:begin classify
 // The row whose kinds include kind, or RT_ALLOWED.
-rt_kind :: (kind:int)->int {
+rt_kind :: (kind:int)->int #effects(all) {
   if kind==1040 {return RT_03;}
   if kind==4 {return RT_04;}
   if kind==1021 || kind==1022 || (kind>=30017 && kind<=30020) {return RT_15;}
@@ -127,7 +127,7 @@ rt_kind :: (kind:int)->int {
   return RT_ALLOWED;
 }
 // Whether content holds a NIP-08 position "#[i]" naming a p or e tag.
-rt_mention :: (e:NostrEvent,content:string)->bool {
+rt_mention :: (e:NostrEvent,content:string)->bool #effects(all) {
   i:=0;t:=nostr_tag(e,i);
   while t.error!=NT_INDEX && t.error!=NT_EVENT {
     if t.error==NT_OK && (t.type==NT_E || t.type==NT_P) {
@@ -138,14 +138,14 @@ rt_mention :: (e:NostrEvent,content:string)->bool {
   }
   return false;
 }
-rt_holds :: (text:string,part:string)->bool {
+rt_holds :: (text:string,part:string)->bool #effects(all) {
   for i:0..<text.count-part.count+1 {if text[i..<i+part.count]==part {return true;}}
   return false;
 }
 // The rows of the retired forms an event with these tags and this decoded
 // content uses, into out in table order: their count (at most out.count),
 // or RT_EVENT.
-rt_scan :: (e:NostrEvent,content:string,out:[]int)->int {
+rt_scan :: (e:NostrEvent,content:string,out:[]int)->int #effects(all) {
   ev:=nt_event_of(e);
   delegations:=nt_tags(ev,"delegation");
   if delegations<0 {return RT_EVENT;}
@@ -158,7 +158,7 @@ rt_scan :: (e:NostrEvent,content:string,out:[]int)->int {
   return n;
 }
 // The retired forms a received event uses.
-rt_forms :: (e:NostrEvent,out:[]int)->int {
+rt_forms :: (e:NostrEvent,out:[]int)->int #effects(all) {
   if e.error!=NE_OK {return RT_EVENT;}
   decoded:[65536]u8;
   n:=json_unescape(e.original[e.content_from..<e.content_to],decoded[..]);
@@ -167,7 +167,7 @@ rt_forms :: (e:NostrEvent,out:[]int)->int {
 }
 // Before signing: RT_ALLOWED, the first retired row the event would use,
 // or RT_EVENT when the tags don't read.
-rt_write :: (kind:int,tags:string,content:string)->int {
+rt_write :: (kind:int,tags:string,content:string)->int #effects(all) {
   e:=nt_event(tags);e.kind=kind;out:[1]int;
   n:=rt_scan(e,content,out[..]);
   if n<0 {return n;}

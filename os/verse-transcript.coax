@@ -91,7 +91,7 @@ vt_pass :: (path: string, offset: int, quiet_until: int) -> int {
   return at - (ifx cn > VT_LINE then 0 else cn);   // a part line is read again next time, whole
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: verse-transcript PATH [--follow] [--last BYTES]"); return 2; }
   path := args_at(a[..], 0);

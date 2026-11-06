@@ -1,7 +1,7 @@
 # Appendix B. Error codes
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.51.2**. Status inventory schema: **1**.
+Current compiler: **coax0 0.52.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 This appendix lists every error code the current compiler can report. The tables
 below are the output of `coax explain --all --markdown`, which prints the
@@ -41,7 +41,6 @@ Chapter 4 explains how to read a diagnostic, and Chapter 27 shows which
 part of the compiler produces each stage's errors. With `--diagnostics json`,
 each diagnostic is one JSON object per line on stderr. It carries a schema,
 severity, code, message, source span, notes and proposed fixes.
-
 
 ## E01xx: lexer
 
@@ -311,7 +310,13 @@ severity, code, message, source span, notes and proposed fixes.
 | `E0911` | inspection profile has no tagged-value records | The requested published inspection profile cannot describe sums, propagation or exhaustive switches. Use an explicitly sum-capable profile when available; no partial successful inventory or cached query is produced. |
 | `E0950` | read-only element contains a writable descriptor | Read-only views may contain scalar values, inline aggregates, strings and read-only descriptors, but cannot expose an embedded writable view. Borrow individual fields or use read-only descriptors in the element. |
 | `E0951` | read-only view target is not qualified | Read-only views are supported by the evaluator and C output. Device output profiles refuse them until their access, layout and resource semantics are qualified. |
-| `E0940` | invalid or unsupported effect declaration | Use one well-formed #pure or #effects declaration with unique known names. Before effect admission is enabled these annotations are explicitly refused rather than trusted. |
+| `E0960` | invalid nominal ID declaration | Use struct @id with one concrete integer field named value and no initializer. Phantom generic parameters preserve distinct domains. @id(ordered) explicitly opts into ordering. Construction and extraction remain explicit. |
+| `E0961` | invalid nominal ID operation | Equality requires the same ID declaration on both sides. Ordering additionally requires @id(ordered). Arithmetic, bit operations, shifts and implicit conversions are unavailable: explicitly extract .value for integer arithmetic or codec conversion. |
+| `E0962` | nominal IDs in device output | The initial nominal integer ID profile supports the evaluator and C output, including C-to-Wasm. Extract an integer in a host-side adapter before using a device profile. |
+| `E0940` | invalid effect declaration | Use one well-formed #pure or #effects declaration with unique known capability names. |
 | `E0941` | declared effect bound is exceeded | A concrete procedure's direct or transitive capability exceeds its declared upper bound. Inspect the original site and call path; include the capability or remove its effect. |
-| `E0942` | effect admission is incomplete | Unknown or unreviewed foreign behavior cannot satisfy a checked purity or effect contract. Supply matching explicit boundary evidence or keep the obligation visible. |
+| `E0942` | required effect declaration is missing | Exported procedures, authority procedures and foreign declarations require #effects. Unannotated foreign behavior remains unknown and cannot satisfy a restricted caller. |
 | `E0943` | effect graph or workspace limit | Effect admission could not validate its complete bounded graph and scratch storage. No partial successful contract is published. |
+| `E0970` | persisted field does not own its value | Saved and wire records may contain scalar values, IDs, fixed arrays and owned optional or sum payloads. Views, strings and process-local handles need an owned encoding or a stable ID. |
+| `E0971` | transaction output profile is not qualified | Undo scopes are supported by the evaluator and C output, including C-to-Wasm. Device output refuses them until its undo storage and control-flow rules are qualified. |
+| `E0974` | transaction error would publish a rolled-back reference | A failing transaction cannot return a typed ID, handle or borrowed view in its Result error. Return an enum or owned ordinary error data, and return references only on success. Optional none carries no payload. |

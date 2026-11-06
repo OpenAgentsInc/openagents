@@ -28,26 +28,26 @@ SigninCode :: struct {
 }
 
 // Character classes, each checked over every byte below.
-si_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
-si_hexdigit :: (c: u8) -> bool { return si_digit(c) || (c >= 'a' && c <= 'f'); }
-si_slugchar :: (c: u8) -> bool { return si_digit(c) || (c >= 'a' && c <= 'z') || c == '-'; }
-si_space :: (c: u8) -> bool { return c == ' ' || c == '\n' || c == '\r' || c == '\t'; }
+si_digit :: (c: u8) -> bool #effects(all) { return c >= '0' && c <= '9'; }
+si_hexdigit :: (c: u8) -> bool #effects(all) { return si_digit(c) || (c >= 'a' && c <= 'f'); }
+si_slugchar :: (c: u8) -> bool #effects(all) { return si_digit(c) || (c >= 'a' && c <= 'z') || c == '-'; }
+si_space :: (c: u8) -> bool #effects(all) { return c == ' ' || c == '\n' || c == '\r' || c == '\t'; }
 // A byte a URL we write may hold: printable ASCII, no space, quote or backslash.
-si_urlchar :: (c: u8) -> bool { return c > 32 && c < 127 && c != '"' && c != '\\'; }
+si_urlchar :: (c: u8) -> bool #effects(all) { return c > 32 && c < 127 && c != '"' && c != '\\'; }
 
 // word at text[at..], at >= 0.
-si_starts :: (text: string, at: int, word: string) -> bool {
+si_starts :: (text: string, at: int, word: string) -> bool #effects(all) {
   if at + word.count > text.count { return false; }
   return text[at..<at + word.count] == word;
 }
 // The rest of text from at is exactly 64 lowercase hex digits.
-si_hex64 :: (text: string, at: int) -> bool {
+si_hex64 :: (text: string, at: int) -> bool #effects(all) {
   if at + 64 != text.count { return false; }
   for i: at..<text.count { if !si_hexdigit(text[i]) { return false; } }
   return true;
 }
 // Where word first starts in text, or -1.
-si_find :: (text: string, word: string) -> int {
+si_find :: (text: string, word: string) -> int #effects(all) {
   k := 0;
   while k + word.count <= text.count {
     if text[k..<k + word.count] == word { return k; }
@@ -56,14 +56,14 @@ si_find :: (text: string, word: string) -> int {
   return -1;
 }
 // The scheme's length: https:// and openagents:// (posted over https), http:// (local hosts only); else 0.
-si_scheme :: (t: string) -> int {
+si_scheme :: (t: string) -> int #effects(all) {
   if si_starts(t, 0, "https://") { return 8; }
   if si_starts(t, 0, "openagents://") { return 13; }
   if si_starts(t, 0, "http://") { return 7; }
   return 0;
 }
 // 127.0.0.1:PORT or localhost:PORT, PORT 1 to 5 digits.
-si_local :: (host: string) -> bool {
+si_local :: (host: string) -> bool #effects(all) {
   if !si_starts(host, 0, "127.0.0.1:") && !si_starts(host, 0, "localhost:") { return false; }
   // both prefixes are 10 bytes
   if host.count < 11 || host.count > 15 { return false; }
@@ -72,7 +72,7 @@ si_local :: (host: string) -> bool {
 }
 
 // The text's code, or kind SIGNIN_NONE. debug admits the local hosts.
-verse_signin_parse :: (raw: [] u8, debug: bool) -> SigninCode #export_c {
+verse_signin_parse :: (raw: [] u8, debug: bool) -> SigninCode #export_c #effects(all) {
   none: SigninCode;
   all := cast(string) raw;
   a := 0; b := all.count;
@@ -114,13 +114,13 @@ verse_signin_parse :: (raw: [] u8, debug: bool) -> SigninCode #export_c {
 }
 
 // text into buf at at; -1 when at is -1 already or it doesn't fit, so writes chain.
-si_put :: (buf: [] u8, at: int, text: string) -> int {
+si_put :: (buf: [] u8, at: int, text: string) -> int #effects(all) {
   if at < 0 || at + text.count > buf.count { return -1; }
   for i: 0..<text.count { buf[at + i] = text[i]; }
   return at + text.count;
 }
 // n >= 0 in decimal, the same way.
-si_num :: (buf: [] u8, at: int, n: int) -> int {
+si_num :: (buf: [] u8, at: int, n: int) -> int #effects(all) {
   digits: [20] u8; k := 0; x := n;
   if x == 0 { digits[0] = '0'; k = 1; }
   while x > 0 { digits[k] = cast(u8) ('0' + x % 10); x = x / 10; k += 1; }
@@ -128,10 +128,10 @@ si_num :: (buf: [] u8, at: int, n: int) -> int {
   for i: 0..<k { buf[at + i] = digits[k - 1 - i]; }
   return at + k;
 }
-si_part :: (raw: [] u8, at: int, n: int) -> string { return cast(string) raw[at..<at + n]; }
+si_part :: (raw: [] u8, at: int, n: int) -> string #effects(all) { return cast(string) raw[at..<at + n]; }
 
 // What the confirmation sheet asks.
-verse_signin_question :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c {
+verse_signin_question :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c #effects(all) {
   if c.kind == SIGNIN_SIGNIN {
     o := si_put(out, 0, "Log in to ");
     o = si_put(out, o, si_part(raw, c.host_at, c.host_n));
@@ -147,7 +147,7 @@ verse_signin_question :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_
 }
 
 // The URL the signed request goes to.
-verse_signin_url :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c {
+verse_signin_url :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c #effects(all) {
   if c.kind == SIGNIN_NONE { return -1; }
   o := si_put(out, 0, ifx c.local then "http://" else "https://");
   o = si_put(out, o, si_part(raw, c.host_at, c.host_n));
@@ -160,7 +160,7 @@ verse_signin_url :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c {
 }
 
 // The body, byte for byte (its SHA-256 goes in the payload tag).
-verse_signin_body :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c {
+verse_signin_body :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c #effects(all) {
   if c.kind == SIGNIN_NONE { return -1; }
   secret := si_part(raw, c.secret_at, c.secret_n);
   if c.kind == SIGNIN_INVITE {
@@ -174,18 +174,18 @@ verse_signin_body :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c {
 }
 
 // Hex that is exactly n lowercase digits.
-si_is_hex :: (text: string, n: int) -> bool {
+si_is_hex :: (text: string, n: int) -> bool #effects(all) {
   if text.count != n { return false; }
   for c: text { if !si_hexdigit(c) { return false; } }
   return true;
 }
 // A URL we wrote: 1 to 600 bytes of si_urlchar, so it needs no escaping in JSON.
-si_plain :: (text: string) -> bool {
+si_plain :: (text: string) -> bool #effects(all) {
   if text.count < 1 || text.count > 600 { return false; }
   for c: text { if !si_urlchar(c) { return false; } }
   return true;
 }
-si_tags :: (buf: [] u8, at: int, url: string, payload: string) -> int {
+si_tags :: (buf: [] u8, at: int, url: string, payload: string) -> int #effects(all) {
   o := si_put(buf, at, "[[\"u\",\"");
   o = si_put(buf, o, url);
   o = si_put(buf, o, "\"],[\"method\",\"POST\"],[\"payload\",\"");
@@ -194,7 +194,7 @@ si_tags :: (buf: [] u8, at: int, url: string, payload: string) -> int {
 }
 
 // NIP-01: [0,pubkey,created_at,27235,tags,""], whose SHA-256 is the event id.
-verse_signin_serial :: (pubkey: [] u8, created_at: int, url: [] u8, payload: [] u8, out: [] u8) -> int #export_c {
+verse_signin_serial :: (pubkey: [] u8, created_at: int, url: [] u8, payload: [] u8, out: [] u8) -> int #export_c #effects(all) {
   pk := cast(string) pubkey; u := cast(string) url; pl := cast(string) payload;
   if !si_is_hex(pk, 64) || !si_is_hex(pl, 64) || !si_plain(u) || created_at < 0 { return -1; }
   o := si_put(out, 0, "[0,\"");
@@ -207,7 +207,7 @@ verse_signin_serial :: (pubkey: [] u8, created_at: int, url: [] u8, payload: [] 
 }
 
 // The signed event (NIP-98 kind 27235), for "Authorization: Nostr <base64>".
-verse_signin_event :: (id: [] u8, pubkey: [] u8, created_at: int, url: [] u8, payload: [] u8, sig: [] u8, out: [] u8) -> int #export_c {
+verse_signin_event :: (id: [] u8, pubkey: [] u8, created_at: int, url: [] u8, payload: [] u8, sig: [] u8, out: [] u8) -> int #export_c #effects(all) {
   ih := cast(string) id; pk := cast(string) pubkey; u := cast(string) url; pl := cast(string) payload; sg := cast(string) sig;
   if !si_is_hex(ih, 64) || !si_is_hex(pk, 64) || !si_is_hex(pl, 64) || !si_is_hex(sg, 128) || !si_plain(u) || created_at < 0 { return -1; }
   o := si_put(out, 0, "{\"id\":\"");
@@ -224,7 +224,7 @@ verse_signin_event :: (id: [] u8, pubkey: [] u8, created_at: int, url: [] u8, pa
 }
 
 // A JSON answer's "name" (a member's name, 1 to 60 bytes), or "" when there is none or it needs unescaping.
-si_name :: (body: string) -> string {
+si_name :: (body: string) -> string #effects(all) {
   k := si_find(body, "\"name\":\"");
   if k < 0 { return ""; }
   a := k + 8; b := a;
@@ -237,7 +237,7 @@ si_name :: (body: string) -> string {
 }
 
 // What to say after the server answered (status 0: no answer at all).
-verse_signin_result :: (kind: int, status: int, body: [] u8, out: [] u8) -> int #export_c {
+verse_signin_result :: (kind: int, status: int, body: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if status == 200 {
     if kind == SIGNIN_SIGNIN { return si_put(out, 0, "Logged in. Look at your computer."); }
     name := si_name(cast(string) body);
@@ -255,7 +255,7 @@ verse_signin_result :: (kind: int, status: int, body: [] u8, out: [] u8) -> int 
 }
 
 // The phone's public key (32 bytes, x-only) as an npub, for showing; -1 if it isn't 32 bytes.
-verse_signin_npub :: (pubkey: [] u8, out: [] u8) -> int #export_c {
+verse_signin_npub :: (pubkey: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if pubkey.count != 32 { return -1; }
   r := nip19_encode_checked(N19_NPUB, cast(string) pubkey, out, false);
   if r.error != NC_OK { return -1; }
@@ -269,13 +269,13 @@ PUB :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
 
 // Test text: up to three strings joined, as bytes.
 Tx :: struct { b: [800] u8; n: int; }
-tx :: (a: string, b: string, c: string) -> Tx {
+tx :: (a: string, b: string, c: string) -> Tx #effects(all) {
   r: Tx;
   r.n = si_put(r.b[..], 0, a); r.n = si_put(r.b[..], r.n, b); r.n = si_put(r.b[..], r.n, c);
   return r;
 }
-si_text :: (raw: [] u8, at: int, n: int) -> string { return cast(string) raw[at..<at + n]; }
-kind_of :: (a: string, b: string, c: string, debug: bool) -> int { t := tx(a, b, c); return verse_signin_parse(t.b[0..<t.n], debug).kind; }
+si_text :: (raw: [] u8, at: int, n: int) -> string #effects(all) { return cast(string) raw[at..<at + n]; }
+kind_of :: (a: string, b: string, c: string, debug: bool) -> int #effects(all) { t := tx(a, b, c); return verse_signin_parse(t.b[0..<t.n], debug).kind; }
 
 #test "a sign-in code on production and staging" {
   t := tx("https://openagents.com/signin#c=", SECRET, "");
@@ -433,7 +433,7 @@ kind_of :: (a: string, b: string, c: string, debug: bool) -> int { t := tx(a, b,
 }
 
 // The classes over every byte, against the characters they name.
-in_set :: (c: int, set: string) -> bool { for x: set { if cast(int) x == c { return true; } } return false; }
+in_set :: (c: int, set: string) -> bool #effects(all) { for x: set { if cast(int) x == c { return true; } } return false; }
 #forall "hex digits" c: 0..<256 { #assert si_hexdigit(cast(u8) c) == in_set(c, "0123456789abcdef"); }
 #forall "digits" c: 0..<256 { #assert si_digit(cast(u8) c) == in_set(c, "0123456789"); }
 #forall "slug bytes" c: 0..<256 { #assert si_slugchar(cast(u8) c) == in_set(c, "abcdefghijklmnopqrstuvwxyz0123456789-"); }

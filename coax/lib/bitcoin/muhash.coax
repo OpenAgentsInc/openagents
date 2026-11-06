@@ -40,29 +40,29 @@ MuHash3072 :: struct { numerator: Num3072; denominator: Num3072; }
 // book:end types
 
 // ---- checks
-mh_small :: (v: u64) -> Num3072 { r: Num3072; r.limb[0] = v; return r; }
-mh_top :: () -> Num3072 {
+mh_small :: (v: u64) -> Num3072 #effects(all) { r: Num3072; r.limb[0] = v; return r; }
+mh_top :: () -> Num3072 #effects(all) {
   r: Num3072;
   for i: 0..<MH_LIMBS { r.limb[i] = 0xffffffffffffffff; }
   return r;
 }
 // The modulus itself, 2^3072 - 1103717, as limbs.
-mh_modulus :: () -> Num3072 {
+mh_modulus :: () -> Num3072 #effects(all) {
   r := mh_top();
   r.limb[0] = 0xffffffffffffffff - MH_DIFF + 1;
   return r;
 }
-mh_same :: (a: Num3072, b: Num3072) -> bool {
+mh_same :: (a: Num3072, b: Num3072) -> bool #effects(all) {
   for i: 0..<MH_LIMBS { if a.limb[i] != b.limb[i] { return false; } }
   return true;
 }
-mh_unhex :: (text: string, out: [] u8) -> [] u8 {
+mh_unhex :: (text: string, out: [] u8) -> [] u8 #effects(all) {
   for i: 0..<text.count/2 { out[i] = cast(u8) (mh_nibble(text[2*i])*16 + mh_nibble(text[2*i+1])); }
   return out[0..<text.count/2];
 }
-mh_nibble :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+mh_nibble :: (c: u8) -> int #effects(all) { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
 // Is the digest, reversed, the hex Core prints (uint256's GetHex)?
-mh_shown_is :: (digest: [] u8, text: string) -> bool {
+mh_shown_is :: (digest: [] u8, text: string) -> bool #effects(all) {
   if digest.count * 2 != text.count { return false; }
   for i: 0..<digest.count {
     if cast(int) digest[digest.count-1-i] != mh_nibble(text[2*i])*16 + mh_nibble(text[2*i+1]) { return false; }
@@ -70,13 +70,13 @@ mh_shown_is :: (digest: [] u8, text: string) -> bool {
   return true;
 }
 // Are the bytes, in order, this hex (HexStr)?
-mh_hex_is :: (digest: [] u8, text: string) -> bool {
+mh_hex_is :: (digest: [] u8, text: string) -> bool #effects(all) {
   if digest.count * 2 != text.count { return false; }
   for i: 0..<digest.count { if cast(int) digest[i] != mh_nibble(text[2*i])*16 + mh_nibble(text[2*i+1]) { return false; } }
   return true;
 }
 // crypto_tests.cpp's FromInt(i): the set holding the 32 bytes {i, 0, ..., 0}.
-mh_from_int :: (i: u8) -> MuHash3072 {
+mh_from_int :: (i: u8) -> MuHash3072 #effects(all) {
   b: [32] u8; b[0] = i;
   return muhash_insert_vartime(muhash_new(), b[..]);
 }
@@ -236,7 +236,7 @@ MH_CORE_SERIALIZED :: "1fa093295ea30a6a3acdc7b3f770fa538eff537528e990e2910e40bbc
 // significant, held in a view so each step updates it in place.
 // c += a * b. mul_wide gives the 128-bit product as two limbs; each carry
 // is "did the addition wrap", a sum smaller than what was added.
-mh_muladd3 :: (c: [] u64, a: u64, b: u64) {
+mh_muladd3 :: (c: [] u64, a: u64, b: u64) #effects(all) {
   t := mul_wide(a, b);
   c[0] = add_wrap(c[0], t.lo);
   th := t.hi + (ifx c[0] < t.lo then cast(u64) 1 else 0);   // t.hi <= 2^64 - 2: no overflow
@@ -244,7 +244,7 @@ mh_muladd3 :: (c: [] u64, a: u64, b: u64) {
   c[2] += ifx c[1] < th then cast(u64) 1 else 0;
 }
 // c += n * d, with c[2] zero on entry (Core's mulnadd3).
-mh_mulnadd3 :: (c: [] u64, d: [] u64, n: u64) {
+mh_mulnadd3 :: (c: [] u64, d: [] u64, n: u64) #effects(all) {
   t := mul_wide(d[0], n);
   c[0] = add_wrap(t.lo, c[0]);
   hi := t.hi + (ifx c[0] < t.lo then cast(u64) 1 else 0);
@@ -256,21 +256,21 @@ mh_mulnadd3 :: (c: [] u64, d: [] u64, n: u64) {
   c[2] = top + d[2] * n;
 }
 // [c0, c1] *= n, keeping two limbs (Core's muln2).
-mh_muln2 :: (c: [] u64, n: u64) {
+mh_muln2 :: (c: [] u64, n: u64) #effects(all) {
   t := mul_wide(c[0], n);
   c[0] = t.lo;
   c[1] = add_wrap(mul_wrap(c[1], n), t.hi);
 }
 // Shift the sum down one limb and return the limb that falls out (Core's
 // extract3).
-mh_extract3 :: (c: [] u64) -> u64 {
+mh_extract3 :: (c: [] u64) -> u64 #effects(all) {
   n := c[0];
   c[0] = c[1]; c[1] = c[2]; c[2] = 0;
   return n;
 }
 // [c0, c1] += a, then the low limb falls out and the rest shifts down one
 // limb (Core's addnextract2).
-mh_addnextract2 :: (c: [] u64, a: u64) -> u64 {
+mh_addnextract2 :: (c: [] u64, a: u64) -> u64 #effects(all) {
   c0 := add_wrap(c[0], a); c1 := c[1]; c2 := cast(u64) 0;
   if c0 < a {
     c1 = add_wrap(c1, 1);
@@ -284,14 +284,14 @@ mh_addnextract2 :: (c: [] u64, a: u64) -> u64 {
 // book:begin reduce
 // Is a at least the modulus? Only 1103717 numbers below 2^3072 are: every
 // limb all ones except limb 0, which is at least 2^64 - 1103717.
-mh_overflows :: (a: [] u64) -> bool {
+mh_overflows :: (a: [] u64) -> bool #effects(all) {
   if a[0] <= 0xffffffffffffffff - MH_DIFF { return false; }
   for i: 1..<MH_LIMBS { if a[i] != 0xffffffffffffffff { return false; } }
   return true;
 }
 // a - p in place, for an a at least p: add 1103717 and drop the carry out
 // of the top limb, which is 2^3072.
-mh_reduce :: (a: [] u64) {
+mh_reduce :: (a: [] u64) #effects(all) {
   c := [3] u64.[MH_DIFF, 0, 0];
   for i: 0..<MH_LIMBS { a[i] = mh_addnextract2(c[..], a[i]); }
 }
@@ -303,7 +303,7 @@ mh_reduce :: (a: [] u64) {
 // and 2^3072 is 1103717 mod p. So column j adds 1103717 times column 48 + j
 // as it goes (the first reduction). What carries past limb 47 is reduced
 // once more, and a result still at least p is reduced a last time.
-mh_mul_into :: (a: [] u64, b: [] u64, out: [] u64) {
+mh_mul_into :: (a: [] u64, b: [] u64, out: [] u64) #effects(all) {
   tmp: [48] u64; c: [3] u64; d: [3] u64;
   // Columns 0..46, each with its high partner folded in.
   for j: 0..<MH_LIMBS-1 {
@@ -325,18 +325,18 @@ mh_mul_into :: (a: [] u64, b: [] u64, out: [] u64) {
   if c[0] != 0 { mh_reduce(out); }
 }
 // The same on values.
-mh_multiply :: (a: Num3072, b: Num3072) -> Num3072 {
+mh_multiply :: (a: Num3072, b: Num3072) -> Num3072 #effects(all) {
   x := a; y := b; r: Num3072;
   mh_mul_into(x.limb[..], y.limb[..], r.limb[..]);
   return r;
 }
-mh_is_overflow :: (a: Num3072) -> bool { x := a; return mh_overflows(x.limb[..]); }
-mh_full_reduce :: (a: Num3072) -> Num3072 { r := a; mh_reduce(r.limb[..]); return r; }
+mh_is_overflow :: (a: Num3072) -> bool #effects(all) { x := a; return mh_overflows(x.limb[..]); }
+mh_full_reduce :: (a: Num3072) -> Num3072 #effects(all) { r := a; mh_reduce(r.limb[..]); return r; }
 // book:end multiply
 
 // book:begin inverse
 // a = a^(2^n) * m in place: n squarings, then one multiplication.
-mh_square_n_mul :: (a: [] u64, n: int, m: [] u64) {
+mh_square_n_mul :: (a: [] u64, n: int, m: [] u64) #effects(all) {
   for k: 0..<n { mh_mul_into(a, a, a); }
   mh_mul_into(a, m, a);
 }
@@ -347,7 +347,7 @@ mh_square_n_mul :: (a: [] u64, n: int, m: [] u64) {
 // = r(2048 + 512 + 256 + 128 + 64 + 32 + 8 + 2 + 1), and each tail run
 // shifts in its zeros and multiplies in its ones. 3071 squarings and 25
 // multiplications in all. a = 0 gives 0, which has no inverse.
-mh_inverse :: (a: Num3072) -> Num3072 {
+mh_inverse :: (a: Num3072) -> Num3072 #effects(all) {
   p: [12 * 48] u64;
   for i: 0..<MH_LIMBS { p[i] = a.limb[i]; }
   for i: 0..<11 {
@@ -378,13 +378,13 @@ mh_inverse :: (a: Num3072) -> Num3072 {
 // book:begin bytes
 // 384 bytes, little-endian, to a number and back. No reduction: Core
 // stores and reads limbs as they are, even at or above the modulus.
-mh_from_bytes :: (b: [] u8) -> Num3072 {
+mh_from_bytes :: (b: [] u8) -> Num3072 #effects(all) {
   r: Num3072;
   if b.count != MH_BYTES { return r; }
   for i: 0..<MH_LIMBS { r.limb[i] = cb_load_le64(b, 8 * i).value; }
   return r;
 }
-mh_to_bytes :: (a: Num3072, out: [] u8) -> int {
+mh_to_bytes :: (a: Num3072, out: [] u8) -> int #effects(all) {
   if out.count != MH_BYTES { return MUHASH_CAPACITY; }
   for i: 0..<MH_LIMBS { #assert cb_store_le64(out, 8 * i, a.limb[i]); }
   return MUHASH_OK;
@@ -395,7 +395,7 @@ mh_to_bytes :: (a: Num3072, out: [] u8) -> int {
 // One element's number (Core's ToNum3072): SHA-256 of the bytes is a
 // ChaCha20 key; its keystream from counter 0 with a zero nonce, six 64-byte
 // blocks, read little-endian, is the number.
-mh_element_vartime :: (data: [] u8) -> Num3072 {
+mh_element_vartime :: (data: [] u8) -> Num3072 #effects(all) {
   key: [32] u8; nonce: [12] u8; stream: [384] u8;
   #assert sha256_hash_checked(data, key[..], false) == SHA_OK;
   for k: 0..<6 {
@@ -407,30 +407,30 @@ mh_element_vartime :: (data: [] u8) -> Num3072 {
 
 // book:begin set
 // The empty set: 1 / 1.
-muhash_new :: () -> MuHash3072 {
+muhash_new :: () -> MuHash3072 #effects(all) {
   r: MuHash3072;
   r.numerator.limb[0] = 1; r.denominator.limb[0] = 1;
   return r;
 }
 // Insert multiplies the element into the numerator; Remove multiplies it
 // into the denominator. Neither divides, so both cost one multiplication.
-muhash_insert_vartime :: (m: MuHash3072, data: [] u8) -> MuHash3072 {
+muhash_insert_vartime :: (m: MuHash3072, data: [] u8) -> MuHash3072 #effects(all) {
   r := m;
   r.numerator = mh_multiply(r.numerator, mh_element_vartime(data));
   return r;
 }
-muhash_remove_vartime :: (m: MuHash3072, data: [] u8) -> MuHash3072 {
+muhash_remove_vartime :: (m: MuHash3072, data: [] u8) -> MuHash3072 #effects(all) {
   r := m;
   r.denominator = mh_multiply(r.denominator, mh_element_vartime(data));
   return r;
 }
 // Core's operator*= (the union of two disjoint sets) and operator/= (one
 // set taken out of another): fractions multiplied and divided.
-muhash_combine :: (m: MuHash3072, other: MuHash3072) -> MuHash3072 {
+muhash_combine :: (m: MuHash3072, other: MuHash3072) -> MuHash3072 #effects(all) {
   return MuHash3072.{numerator = mh_multiply(m.numerator, other.numerator),
     denominator = mh_multiply(m.denominator, other.denominator)};
 }
-muhash_divide :: (m: MuHash3072, other: MuHash3072) -> MuHash3072 {
+muhash_divide :: (m: MuHash3072, other: MuHash3072) -> MuHash3072 #effects(all) {
   return MuHash3072.{numerator = mh_multiply(m.numerator, other.denominator),
     denominator = mh_multiply(m.denominator, other.numerator)};
 }
@@ -441,7 +441,7 @@ muhash_divide :: (m: MuHash3072, other: MuHash3072) -> MuHash3072 {
 // denominator, reduced below p, as 384 little-endian bytes, then SHA-256.
 // The one inversion happens here. A denominator of 1 needs none, and its
 // inverse is 1, so skipping it changes nothing.
-muhash_finalize_vartime :: (m: MuHash3072, out: [] u8) -> int {
+muhash_finalize_vartime :: (m: MuHash3072, out: [] u8) -> int #effects(all) {
   if out.count != 32 { return MUHASH_CAPACITY; }
   n := m.numerator; d := m.denominator;
   if mh_is_overflow(n) { n = mh_full_reduce(n); }
@@ -460,14 +460,14 @@ muhash_finalize_vartime :: (m: MuHash3072, out: [] u8) -> int {
 
 // book:begin state
 // Core's serialization: the numerator's 384 bytes, then the denominator's.
-muhash_serialize :: (m: MuHash3072, out: [] u8) -> int {
+muhash_serialize :: (m: MuHash3072, out: [] u8) -> int #effects(all) {
   if out.count != MH_STATE_BYTES { return MUHASH_CAPACITY; }
   #assert mh_to_bytes(m.numerator, out[0..<MH_BYTES]) == MUHASH_OK;
   #assert mh_to_bytes(m.denominator, out[MH_BYTES..<MH_STATE_BYTES]) == MUHASH_OK;
   return MUHASH_OK;
 }
 MuHashRead :: struct { code: int; state: MuHash3072; }
-muhash_deserialize :: (b: [] u8) -> MuHashRead {
+muhash_deserialize :: (b: [] u8) -> MuHashRead #effects(all) {
   r: MuHashRead;
   if b.count != MH_STATE_BYTES { r.code = MUHASH_BAD_STATE; return r; }
   r.state.numerator = mh_from_bytes(b[0..<MH_BYTES]);
@@ -478,15 +478,15 @@ muhash_deserialize :: (b: [] u8) -> MuHashRead {
 
 // The C interface: a state is its 768 serialized bytes. Update inserts
 // data, or removes it when take_out is true; finalize writes the 32-byte hash.
-muhash_update_bytes_vartime :: (state: [] u8, data: [] u8, take_out: bool) -> int #export_c {
+muhash_update_bytes_vartime :: (state: [] u8, data: [] u8, take_out: bool) -> int #export_c #effects(all) {
   s := muhash_deserialize(state);
   if s.code != MUHASH_OK { return s.code; }
   m := ifx take_out then muhash_remove_vartime(s.state, data) else muhash_insert_vartime(s.state, data);
   return muhash_serialize(m, state);
 }
-muhash_finalize_bytes_vartime :: (state: [] u8, out: [] u8) -> int #export_c {
+muhash_finalize_bytes_vartime :: (state: [] u8, out: [] u8) -> int #export_c #effects(all) {
   s := muhash_deserialize(state);
   if s.code != MUHASH_OK { return s.code; }
   return muhash_finalize_vartime(s.state, out);
 }
-muhash_new_bytes :: (state: [] u8) -> int #export_c { return muhash_serialize(muhash_new(), state); }
+muhash_new_bytes :: (state: [] u8) -> int #export_c #effects(all) { return muhash_serialize(muhash_new(), state); }

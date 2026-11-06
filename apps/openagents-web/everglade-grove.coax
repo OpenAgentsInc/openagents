@@ -327,7 +327,7 @@ gv_bolt_land :: (s: [] Everglade, b: GvBolt) {
     for q: 0..<(ifx few then 6 else 12) { sp_add_spark(s, at, times(sp_spray(s, 0.5), 2 + 4 * sp_rand(s)), 0.6 + 0.6 * sp_rand(s), 0.022, v3(1.4, 0.6, 0.15), 9.81); }
     floor_y := sp_surface(s, at.x, at.z, at.y + 0.5);
     if b.target < 0 && at.y - floor_y < 0.6 && !fr_wet(s, at.x, at.z) { sp_add_scorch(s, v3(at.x, floor_y, at.z), 0.35, false); wd_light(s, v3(at.x, floor_y, at.z), WD_GEN - 2); }
-    if b.body >= 0 && b.body < DEMO_BODIES && sp_dm(s)[0].meta[b.body].kind != 0 { s[0].sp.burn[b.body] = hi(s[0].sp.burn[b.body], f32(GV_BURN)); s[0].sp.burn_by[b.body] = fi_owner(s); }
+    if b.body >= 0 && b.body < DEMO_BODIES && sp_dm(s)[0].meta[b.body].kind != 0 { s[0].sp.burn[b.body] = hi(s[0].sp.burn[b.body], f32(GV_BURN)); s[0].sp.burn_by[b.body] = fi_owner(s); s[0].sp.burn_owner[b.body]=fi_owner_reference(s,fi_owner(s)); }
     if b.target < 0 {
       _ := fi_catch(s, at, 0.6, FI_SPELL);   // wood it strikes catches
       // fire hurled at the town is a crime whether or not it catches: whoever sees or hears it comes
@@ -498,7 +498,7 @@ gv_el_at :: (s: [] Everglade, mode: int, at: Point) {
     }
     snuffed += wd_douse(s, c, f32(GV_EL_CUBE) * 0.7);
     if snuffed > 0 { sp_say(s, "ELEMENTALISM · BECKON FIRE · IT GOES OUT", -1, ""); }
-    else if catch >= 0 { s[0].sp.burn[catch] = f32(GV_BURN); s[0].sp.burn_by[catch] = fi_owner(s); sp_say(s, "ELEMENTALISM · BECKON FIRE · IT CATCHES", -1, ""); }
+    else if catch >= 0 { s[0].sp.burn[catch] = f32(GV_BURN); s[0].sp.burn_by[catch] = fi_owner(s); s[0].sp.burn_owner[catch]=fi_owner_reference(s,fi_owner(s)); sp_say(s, "ELEMENTALISM · BECKON FIRE · IT CATCHES", -1, ""); }
     else { sp_say(s, "ELEMENTALISM · BECKON FIRE", -1, ""); }
   } else {
     for q: 0..<(ifx few then 6 else 10) { gv_add_mist(s, add(mid, times(sp_spray(s, 0.1), 0.4)), times(sp_spray(s, 0.2), 0.4), 0.35, 1.8 + sp_rand(s), v3(0.7, 0.8, 0.9), 0.35); }

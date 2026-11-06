@@ -92,10 +92,10 @@
 
 // Caller owns valid, live writable storage. Refusal leaves it unchanged.
 // width/spacing are PUBLIC configuration, never scalar-derived.
-smb_profile_valid :: (width: int,spacing: int) -> bool {
+smb_profile_valid :: (width: int,spacing: int) -> bool #effects(all) {
   return width >= 1 && width <= 8 && spacing >= 1 && spacing <= 64;
 }
-smb_generate :: (out: [] SgPoint,width: int,spacing: int) -> bool #export_c {
+smb_generate :: (out: [] SgPoint,width: int,spacing: int) -> bool #export_c #effects(all) {
   if !smb_profile_valid(width,spacing) { return false; }
   count := 1 << width;
   if out.count != count { return false; }
@@ -111,7 +111,7 @@ smb_generate :: (out: [] SgPoint,width: int,spacing: int) -> bool #export_c {
 // Preconditions are owned by the fixed-profile wrappers: width1..8,
 // spacing1..64, all positions<288 and canonical generated table length2^width.
 // The extra zero limb makes web positions256..258 ordinary public indexing.
-smb_index :: (scalar: [9] u32,width: int,spacing: int,row: int) -> u64 {
+smb_index :: (scalar: [9] u32,width: int,spacing: int,row: int) -> u64 #effects(all) {
   index: u64;
   for tooth: 0..<width {
     position := row+tooth*spacing;
@@ -125,7 +125,7 @@ smb_index :: (scalar: [9] u32,width: int,spacing: int,row: int) -> u64 {
 // entry is visited and selected with the existing group equality/choice masks.
 // A missing digit produces canonical infinity; fixed wrappers prove its range
 // by gathering exactly width bits. The empty span is test-only refusal behavior.
-smb_pick_generated :: (table: [] SgPoint,which: u64) -> SgPoint {
+smb_pick_generated :: (table: [] SgPoint,which: u64) -> SgPoint #effects(all) {
   chosen := sg_infinity();
   for index: 0..<table.count {
     mask := sg_word_equal(which,cast(u64) index);
@@ -141,7 +141,7 @@ smb_pick_generated :: (table: [] SgPoint,which: u64) -> SgPoint {
   }
   return chosen;
 }
-smb_comb :: (input: ScScalar,table: [] SgPoint,width: int,spacing: int) -> SgPoint {
+smb_comb :: (input: ScScalar,table: [] SgPoint,width: int,spacing: int) -> SgPoint #effects(all) {
   scalar := sc_normalize(input); extended: [9] u32;
   for limb: 0..<8 { extended[limb] = scalar.limbs[limb]; }
   // The first PUBLIC row starts at infinity. Select it directly instead of

@@ -27,7 +27,7 @@ HmbCase :: struct {url:string;path:string;}
  for path:[5]string.["","/bundle","/bundle-other/a","bundle/a","/bundl/a"] {#assert !hmb_inside("/bundle",path);}
  #assert !hmb_inside("/","/")&&!hmb_inside("/","a")&&!hmb_inside("","/a")&&!hmb_inside("bundle","bundle/a")&&!hmb_inside("/bundle/","/bundle//a");
 }
-hmb_path :: (url:string,out:[]u8)->int #export_c {
+hmb_path :: (url:string,out:[]u8)->int #export_c #effects(all) {
  normalized:[12288]u8;n:=htr_http_target(url,normalized[..]);if n<1 {return -1;}
  end:=n;for c,i:normalized[0..<n] {if c=='?' {end=i;break;}}
  path:=cast(string)normalized[0..<end];prefix:="";start:=0;
@@ -36,7 +36,7 @@ hmb_path :: (url:string,out:[]u8)->int #export_c {
  count:=prefix.count+end-start;if count>out.count {return -1;}
  at:=0;for c:prefix {out[at]=c;at+=1;}for c:path[start..<end] {out[at]=c;at+=1;}return at;
 }
-hmb_inside :: (root:string,path:string)->bool #export_c {
+hmb_inside :: (root:string,path:string)->bool #export_c #effects(all) {
  if root.count<1||root[0]!='/' {return false;}
  if root=="/" {return path.count>1&&path[0]=='/';}
  if root[root.count-1]=='/' {return false;}

@@ -43,7 +43,7 @@ decimal :: (s: string) -> int {
   for c: s { if c < '0' || c > '9' { return -1; } n = n * 10 + cast(int) (c - '0'); }
   return n;
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 4 { tool_errln("usage: block-files scan|recover|append|read|import block|undo FILE MAGIC_HEX [BODY|POSITION OUT|OUT] [--xor xor.dat] [--prev WIRE_HASH_HEX]"); return 2; }
   action := args_at(a[..], 0); k := args_at(a[..], 1); path := args_at(a[..], 2);

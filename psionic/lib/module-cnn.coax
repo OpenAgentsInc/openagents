@@ -8,7 +8,7 @@
 // book:begin cnn-layers
 // Kernel [out,channels,kh,kw], bias [1,out,1,1], so addition broadcasts
 // over the batch and both spatial axes. Both use uniform fan-in bounds.
-mdl_conv2d :: (m:MdlModel,parent:int,name:string,x:int,out:int,kh:int,kw:int)->MdlModel {
+mdl_conv2d :: (m:MdlModel,parent:int,name:string,x:int,out:int,kh:int,kw:int)->MdlModel #effects(all) {
     if m.status!=MdlStatus.ok {return m;}
     if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
     s:=m.shapes[x];
@@ -25,7 +25,7 @@ mdl_conv2d :: (m:MdlModel,parent:int,name:string,x:int,out:int,kh:int,kw:int)->M
 
 // Keep the first axis as the batch. The ordinary reshape planner owns
 // contiguity and root lifetime checks; no data is copied by this layer.
-mdl_flatten :: (m:MdlModel,x:int)->MdlModel {
+mdl_flatten :: (m:MdlModel,x:int)->MdlModel #effects(all) {
     if m.status!=MdlStatus.ok {return m;}
     if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
     s:=m.shapes[x];if s.rank<2 {return mdl_fail(m,MdlStatus.shape);}

@@ -365,8 +365,8 @@ VsScore :: struct {why:VsWhy;lines:int;cut:int;first_sum:int;first_n:int;early:i
 // book:end check-set
 
 // book:begin config
-vs_written :: ()->VsCosts {return VsCosts.{cut=4,tick=0.02,restart=0.5,false_stop=2,missed=3};}
-vs_config :: ()->VsConfig {
+vs_written :: ()->VsCosts #effects(all) {return VsCosts.{cut=4,tick=0.02,restart=0.5,false_stop=2,missed=3};}
+vs_config :: ()->VsConfig #effects(all) {
     return VsConfig.{costs=vs_written(),model=VsModel.{on=true,latency=2,jitter=3,seed=1},share=4,floor=0.4,
         rule_end=70,hold_to=100,ask_end=16,window=[2]int.[8,16],rule_barge=24,
         pipe=VpConfig.{asr_lag=5,asr_final=4,quiet=0,prefill=6,per_word=2,step=3,cap=6,
@@ -375,8 +375,8 @@ vs_config :: ()->VsConfig {
 // book:end config
 
 // book:begin validate
-vs_cost_ok :: (x:f64)->bool {return x>0 && x<=TH_COST_MAX;}
-vs_check :: (c:VsConfig)->VsWhy #export_c {
+vs_cost_ok :: (x:f64)->bool #effects(all) {return x>0 && x<=TH_COST_MAX;}
+vs_check :: (c:VsConfig)->VsWhy #export_c #effects(all) {
     k:=c.costs;
     all:=[5]f64.[k.cut,k.tick,k.restart,k.false_stop,k.missed];
     for x:all {if !vs_cost_ok(x) {return VsWhy.costs;}}
@@ -392,8 +392,8 @@ vs_check :: (c:VsConfig)->VsWhy #export_c {
     return VsWhy.none;
 }
 // Chapter 184's configuration with the earliest end of a turn the model can choose.
-vs_pipe :: (c:VsConfig)->VpConfig {p:=c.pipe;p.hangover=c.ask_end;return p;}
-vs_line_check :: (c:VsConfig,x:VsLine)->VsWhy {
+vs_pipe :: (c:VsConfig)->VpConfig #effects(all) {p:=c.pipe;p.hangover=c.ask_end;return p;}
+vs_line_check :: (c:VsConfig,x:VsLine)->VsWhy #effects(all) {
     u:=x.turn;
     if vp_check(vs_pipe(c),u)!=VpWhy.none || u.end!=u.heard[u.n-1] || x.start[0]<0 {return VsWhy.line;}
     for w:0..<u.n {
@@ -411,27 +411,27 @@ vs_line_check :: (c:VsConfig,x:VsLine)->VsWhy {
 // A silence of 16 ticks follows the last word or a hesitation, 10 to 4;
 // the last word sounds complete 900 times in 1000 and falls 800; a
 // hesitation's word 150 and 300. p: the turn is over.
-vs_turn_p :: (complete:bool,fall:bool)->f64 {
+vs_turn_p :: (complete:bool,fall:bool)->f64 #effects(all) {
     a:=10*(ifx complete then 900 else 100)*(ifx fall then 800 else 200);
     b:=4*(ifx complete then 150 else 850)*(ifx fall then 300 else 700);
     return f64(a)/f64(a+b);
 }
 // Sound over the reply: a cough (3 in 10), a backchannel (3) or speech (4).
 // Per tick, per mille: speech-like, broadband, loud.
-vs_rate :: (e:int,f:int)->int {
+vs_rate :: (e:int,f:int)->int #effects(all) {
     r:=[9]int.[600,800,900,900,100,600,900,100,900];
     return r[3*e+f];
 }
 // The chance the sound is still going after w ticks: coughs last 10 to 40
 // ticks, backchannels 15 to 40, speech 60 to 120.
-vs_still :: (e:VsEvent,w:int)->f64 {
+vs_still :: (e:VsEvent,w:int)->f64 #effects(all) {
     lo:=60;hi:=120;
     if e==VsEvent.cough {lo=10;hi=40;} else if e==VsEvent.backchannel {lo=15;hi=40;}
     n:=0;for d:lo..<hi+1 {if d>w {n+=1;}}
     return f64(n)/f64(hi-lo+1);
 }
 // Unnormalized weights of each kind of sound, given its first w ticks.
-vs_barge_post :: (bits:[120]u8,w:int)->[3]f64 {
+vs_barge_post :: (bits:[120]u8,w:int)->[3]f64 #effects(all) {
     q:[3]f64;
     for e:0..<3 {
         v:=f64(ifx e==2 then 4 else 3)*vs_still(cast(VsEvent)cast(u8)e,w);
@@ -443,9 +443,9 @@ vs_barge_post :: (bits:[120]u8,w:int)->[3]f64 {
     }
     return q;
 }
-vs_barge_p :: (bits:[120]u8,w:int)->f64 {q:=vs_barge_post(bits,w);return q[2]/(q[0]+q[1]+q[2]);}
+vs_barge_p :: (bits:[120]u8,w:int)->f64 #effects(all) {q:=vs_barge_post(bits,w);return q[2]/(q[0]+q[1]+q[2]);}
 // The most probable kind; a tie keeps the earlier.
-vs_class :: (q:[3]f64)->VsEvent {
+vs_class :: (q:[3]f64)->VsEvent #effects(all) {
     k:=0;if q[1]>q[k] {k=1;}
     if q[2]>q[k] {k=2;}
     return cast(VsEvent)cast(u8)k;
@@ -455,27 +455,27 @@ vs_class :: (q:[3]f64)->VsEvent {
 // book:begin decide
 // Yes when chapter 216's cheapest answer at p is yes: a wrong yes costs
 // wrong_yes, a wrong no wrong_no, and asking a person is never cheaper.
-vs_yes :: (p:f64,wrong_yes:f64,wrong_no:f64)->bool {
+vs_yes :: (p:f64,wrong_yes:f64,wrong_no:f64)->bool #effects(all) {
     return th_answer(ThCosts.{wrong_yes=wrong_yes,wrong_no=wrong_no,ask=TH_COST_MAX},p).action==ThAction.yes;
 }
 // At k ticks of silence: ending now is wrong if the user goes on; not
 // ending is wrong by the ticks until the rule ends the turn. Holding is
 // wrong by the extra ticks if the user is done, and not holding by a
 // cut-off if the user goes on.
-vs_end_act :: (c:VsConfig,p:f64,k:int)->VsAct {
+vs_end_act :: (c:VsConfig,p:f64,k:int)->VsAct #effects(all) {
     if vs_yes(p,c.costs.cut,f64(c.rule_end-k)*c.costs.tick) {return VsAct.end;}
     if vs_yes(1-p,f64(c.hold_to-c.rule_end)*c.costs.tick,c.costs.cut) {return VsAct.hold;}
     return VsAct.none;
 }
 // Starting on the partial transcript is wrong if more words come (the run
 // is thrown away); waiting is wrong by the final transcript's delay.
-vs_start_act :: (c:VsConfig,p:f64)->bool {
+vs_start_act :: (c:VsConfig,p:f64)->bool #effects(all) {
     return vs_yes(p,c.costs.restart,f64(c.pipe.asr_final+c.pipe.hop[0])*c.costs.tick);
 }
 // Stopping is wrong if the sound is not speech. At window 0, not stopping
 // is wrong by the ticks until window 1; at window 1 it is a missed barge-in,
 // and the answer is ignore: the voice engine's counter is overruled.
-vs_barge_act :: (c:VsConfig,p:f64,which:int)->VsAct {
+vs_barge_act :: (c:VsConfig,p:f64,which:int)->VsAct #effects(all) {
     if which==0 {
         if vs_yes(p,c.costs.false_stop,f64(c.window[1]-c.window[0])*c.costs.tick) {return VsAct.stop;}
         return VsAct.none;
@@ -486,14 +486,14 @@ vs_barge_act :: (c:VsConfig,p:f64,which:int)->VsAct {
 // book:end decide
 
 // book:begin gate
-vs_fits :: (k:VsKind,a:VsAct)->bool {
+vs_fits :: (k:VsKind,a:VsAct)->bool #effects(all) {
     if k==VsKind.turn_end {return a==VsAct.end || a==VsAct.hold;}
     if k==VsKind.early_start {return a==VsAct.start;}
     return a==VsAct.stop || a==VsAct.ignore;
 }
 // The voice engine's order: shape, range, confidence floor, epoch, deadline.
 // The confidence is the probability of what the action bets on.
-vs_gate :: (c:VsConfig,d:VsProposal,epoch:int)->VsDrop {
+vs_gate :: (c:VsConfig,d:VsProposal,epoch:int)->VsDrop #effects(all) {
     if !vs_fits(d.kind,d.act) {return VsDrop.shape;}
     if !tb_in(d.p,0,1) {return VsDrop.clamp;}
     conf:=ifx d.act==VsAct.hold || d.act==VsAct.ignore then 1-d.p else d.p;
@@ -504,14 +504,14 @@ vs_gate :: (c:VsConfig,d:VsProposal,epoch:int)->VsDrop {
 }
 // The question is sent and the audio goes on; the answer arrives some
 // ticks later. call numbers the question so its delay is reproducible.
-vs_propose :: (c:VsConfig,lg:[]VsLog,k:VsKind,a:VsAct,p:f64,epoch:int,asked:int,call:int)->VsProposal {
+vs_propose :: (c:VsConfig,lg:[]VsLog,k:VsKind,a:VsAct,p:f64,epoch:int,asked:int,call:int)->VsProposal #effects(all) {
     lg[0].asked+=1;
     w:=c.model.latency+cast(int)(tb_bits(c.model.seed,cast(u64)call)%cast(u64)(c.model.jitter+1));
     return VsProposal.{kind=k,act=a,p=p,epoch=epoch,asked=asked,arrives=asked+w,deadline=asked+c.share};
 }
 // At the answer's arrival, with the epoch then current: kept or dropped,
 // and why. A stopped model's answer never arrives.
-vs_admit :: (c:VsConfig,lg:[]VsLog,d:VsProposal,epoch:int)->bool {
+vs_admit :: (c:VsConfig,lg:[]VsLog,d:VsProposal,epoch:int)->bool #effects(all) {
     if !c.model.on {lg[0].drops[cast(int)VsDrop.absent]+=1;return false;}
     lg[0].wait+=d.arrives-d.asked;
     if d.arrives<=d.deadline {lg[0].on_time+=1;}
@@ -525,11 +525,11 @@ vs_admit :: (c:VsConfig,lg:[]VsLog,d:VsProposal,epoch:int)->bool {
 // is asked; the epoch is the last word started, so speech resuming before
 // the answer makes it stale. The rule ends the turn at rule_end ticks, or
 // hold_to when a hold was admitted; an admitted end ends it when it arrives.
-vs_epoch :: (x:VsLine,t:int)->int {
+vs_epoch :: (x:VsLine,t:int)->int #effects(all) {
     e:=0;for w:1..<x.turn.n {if x.start[w]<=t {e=w;}}
     return e;
 }
-vs_turn :: (c:VsConfig,x:VsLine,id:int,o:[]VsOutcome) {
+vs_turn :: (c:VsConfig,x:VsLine,id:int,o:[]VsOutcome) #effects(all) {
     u:=x.turn;lg:=[1]VsLog.[o[0].log];
     for i:0..<u.n {
         last:=i==u.n-1;rule:=c.rule_end;ended:=false;
@@ -561,7 +561,7 @@ vs_turn :: (c:VsConfig,x:VsLine,id:int,o:[]VsOutcome) {
 // counter stopped it is stale: the epoch becomes the tick it stopped. An
 // admitted stop stops the reply; an admitted ignore overrules the counter.
 // The tick the counter stops the reply, or 0 if it never does.
-vs_counter :: (c:VsConfig,x:VsLine)->int {
+vs_counter :: (c:VsConfig,x:VsLine)->int #effects(all) {
     run:=0;
     for t:0..<x.dur {
         if (cast(int)x.bits[t])&5==5 {run+=1;} else if run>0 {run-=1;}
@@ -569,7 +569,7 @@ vs_counter :: (c:VsConfig,x:VsLine)->int {
     }
     return 0;
 }
-vs_barge :: (c:VsConfig,x:VsLine,id:int,o:[]VsOutcome) {
+vs_barge :: (c:VsConfig,x:VsLine,id:int,o:[]VsOutcome) #effects(all) {
     rule:=vs_counter(c,x);fired:=rule!=0;
     lg:=[1]VsLog.[o[0].log];veto:=false;said:=false;
     for which:0..<2 {
@@ -595,7 +595,7 @@ vs_barge :: (c:VsConfig,x:VsLine,id:int,o:[]VsOutcome) {
 // One line: the turn, then chapter 184's pipeline from the end the policy
 // chose (an early start is chapter 184's vp_start at that tick), then the
 // sound over the reply. The cost is the written price of what happened.
-vs_line :: (c:VsConfig,x:VsLine,id:int)->VsOutcome {
+vs_line :: (c:VsConfig,x:VsLine,id:int)->VsOutcome #effects(all) {
     o:=[1]VsOutcome.[VsOutcome.{why=vs_check(c)}];
     if o[0].why!=VsWhy.none {return o[0];}
     o[0].why=vs_line_check(c,x);if o[0].why!=VsWhy.none {return o[0];}
@@ -621,9 +621,9 @@ vs_line :: (c:VsConfig,x:VsLine,id:int)->VsOutcome {
 // A set of lines drawn from a seed: 2 to 7 words of 20 to 40 ticks with
 // gaps of 5 to 15, and in 4 lines of 10 one hesitation of 75 to 95 ticks;
 // then one sound over the reply.
-vs_count_ok :: (n:int)->bool {return n>=1 && n<=VS_LINES;}
-vs_draw :: (seed:u64,i:int,k:int,m:int)->int {return cast(int)(tb_bits(seed,cast(u64)(i*1024+k))%cast(u64)m);}
-vs_lines :: (seed:u64,out:[]VsLine)->VsWhy #export_c {
+vs_count_ok :: (n:int)->bool #effects(all) {return n>=1 && n<=VS_LINES;}
+vs_draw :: (seed:u64,i:int,k:int,m:int)->int #effects(all) {return cast(int)(tb_bits(seed,cast(u64)(i*1024+k))%cast(u64)m);}
+vs_lines :: (seed:u64,out:[]VsLine)->VsWhy #export_c #effects(all) {
     if !vs_count_ok(out.count) {return VsWhy.size;}
     for i:0..<out.count {
         x:VsLine;u:VpTurn;
@@ -651,7 +651,7 @@ vs_lines :: (seed:u64,out:[]VsLine)->VsWhy #export_c {
     return VsWhy.none;
 }
 // Every line, its cost into cost, and the totals.
-vs_score :: (c:VsConfig,lines:[]VsLine,cost:[]f64)->VsScore #export_c {
+vs_score :: (c:VsConfig,lines:[]VsLine,cost:[]f64)->VsScore #export_c #effects(all) {
     if !vs_count_ok(lines.count) || cost.count!=lines.count {return VsScore.{why=VsWhy.size};}
     s:=VsScore.{why=vs_check(c),lines=lines.count};if s.why!=VsWhy.none {return s;}
     for x:lines {if vs_line_check(c,x)!=VsWhy.none {return VsScore.{why=VsWhy.line};}}
@@ -669,11 +669,11 @@ vs_score :: (c:VsConfig,lines:[]VsLine,cost:[]f64)->VsScore #export_c {
 }
 // book:end set
 
-vs_why_name :: (w:VsWhy)->string {
+vs_why_name :: (w:VsWhy)->string #effects(all) {
     names:=[8]string.["none","costs","timing","budget","floor","pipe","line","size"];
     return names[cast(int)w];
 }
-vs_drop_name :: (d:VsDrop)->string {
+vs_drop_name :: (d:VsDrop)->string #effects(all) {
     names:=[7]string.["kept","absent","shape","clamp","floor","epoch","late"];
     return names[cast(int)d];
 }

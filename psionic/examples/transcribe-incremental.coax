@@ -4,15 +4,15 @@
 #import "Basic";
 #load "../lib/incremental/voice.coax";
 #load "../../aethyr/voice.coax";
-iasi_open :: (directory:[]u8)->int #foreign;
-iasi_close :: (handle:int) #foreign;
-iasi_reset :: (handle:int,epoch:u64)->bool #foreign;
-iasi_push :: (handle:int,epoch:u64,sequence:u64,samples:[]f32,final:bool)->int #foreign;
-iasi_cancel :: (handle:int,epoch:u64)->bool #foreign;
-iasi_text :: (handle:int,epoch:u64,out:[]u8)->int #foreign;
-iasi_info :: (handle:int,out:[]int)->bool #foreign;
-iasi_pcm :: (path:[]u8,out:[]s16)->int #foreign;
-iasi_now :: ()->int #foreign;
+iasi_open :: (directory:[]u8)->int #foreign #effects(all);
+iasi_close :: (handle:int) #foreign #effects(all);
+iasi_reset :: (handle:int,epoch:u64)->bool #foreign #effects(all);
+iasi_push :: (handle:int,epoch:u64,sequence:u64,samples:[]f32,final:bool)->int #foreign #effects(all);
+iasi_cancel :: (handle:int,epoch:u64)->bool #foreign #effects(all);
+iasi_text :: (handle:int,epoch:u64,out:[]u8)->int #foreign #effects(all);
+iasi_info :: (handle:int,out:[]int)->bool #foreign #effects(all);
+iasi_pcm :: (path:[]u8,out:[]s16)->int #foreign #effects(all);
+iasi_now :: ()->int #foreign #effects(all);
 
 // This is also the native ABI/lifecycle check. It uses only injected data
 // and the pinned resident model; refusal cases never start recognition.
@@ -26,7 +26,7 @@ iasi_boundaries :: (h:int)->bool {
  return true;
 }
 
-iasi_main :: (args:[]string)->int #export_c {
+iasi_main :: (args:[]string)->int #export_c #effects(all) {
  if args.count!=2 {print("usage: psionic-incremental MODEL_DIRECTORY MONO_16KHZ_S16LE_PCM\n");return 2;}
  path:[4096]u8;if args[0].count>4096 || args[1].count>4096 {return 2;}for i:0..<args[0].count {path[i]=args[0][i];}
  h:=iasi_open(path[0..<args[0].count]);if h==0 {return 3;}defer {iasi_close(h);}

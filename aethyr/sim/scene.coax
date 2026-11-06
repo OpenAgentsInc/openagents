@@ -107,7 +107,7 @@ MATRIX :: [12] Matrix_Row.[
   Matrix_Row.{solver = Solver.particles, backend = Backend.cuda, built = false},
   Matrix_Row.{solver = Solver.particles, backend = Backend.webgpu, built = false}];
 
-matrix_built :: (solver: Solver, backend: Backend) -> bool {
+matrix_built :: (solver: Solver, backend: Backend) -> bool #effects(all) {
   for row: MATRIX {
     if row.solver == solver && row.backend == backend { return row.built; }
   }
@@ -117,7 +117,7 @@ matrix_built :: (solver: Solver, backend: Backend) -> bool {
 // ---- admission: every refusal before anything is built
 
 // The first refusal for spec, in entity order, or Refusal.none.
-scene_admit :: (spec: Scene_Spec) -> Refusal {
+scene_admit :: (spec: Scene_Spec) -> Refusal #effects(all) {
   if spec.count < 1 { return Refusal.no_entities; }
   if spec.count > SCENE_ENTITIES { return Refusal.too_many_entities; }
   if !(spec.dt > 0.0) { return Refusal.bad_time_step; }
@@ -146,17 +146,17 @@ scene_admit :: (spec: Scene_Spec) -> Refusal {
 // ---- build
 
 // The height of a shape's centre above its lowest point.
-half_height :: (shape: Shape) -> f64 {
+half_height :: (shape: Shape) -> f64 #effects(all) {
   return ifx shape.kind == Shape_Kind.sphere then shape.size.x else shape.size.y * 0.5;
 }
 
-volume :: (shape: Shape) -> f64 {
+volume :: (shape: Shape) -> f64 #effects(all) {
   r := shape.size.x;
   return ifx shape.kind == Shape_Kind.sphere then 4.0 / 3.0 * 3.141592653589793 * r * r * r
          else shape.size.x * shape.size.y * shape.size.z;
 }
 
-scene_build :: (spec: Scene_Spec, s: [] Scene) -> Refusal {
+scene_build :: (spec: Scene_Spec, s: [] Scene) -> Refusal #effects(all) {
   refusal := scene_admit(spec);
   if refusal != Refusal.none { return refusal; }
   built: Scene;
@@ -206,7 +206,7 @@ Stage :: enum u8 { controls; prepare; rigid; particles; exchange; finalize; }
 // The stages of one step, in order: controls once, then per substep the
 // coupler's prepare, each solver, the coupler's exchange, then finalize.
 // Returns how many stages one substep's list holds.
-scene_schedule :: (out: [] Stage) -> int {
+scene_schedule :: (out: [] Stage) -> int #effects(all) {
   out[0] = Stage.controls;
   out[1] = Stage.prepare;
   out[2] = Stage.rigid;
@@ -217,7 +217,7 @@ scene_schedule :: (out: [] Stage) -> int {
 }
 
 // Semi-implicit Euler under gravity, stopped on the ground plane.
-fall :: (y: f64, vy: f64, rest: f64, g: f64, h: f64, out: [] f64) {
+fall :: (y: f64, vy: f64, rest: f64, g: f64, h: f64, out: [] f64) #effects(all) {
   v := vy + g * h;
   next := y + v * h;
   if next < rest { next = rest; v = 0.0; }
@@ -225,7 +225,7 @@ fall :: (y: f64, vy: f64, rest: f64, g: f64, h: f64, out: [] f64) {
   out[1] = v;
 }
 
-scene_step :: (s: [] Scene) {
+scene_step :: (s: [] Scene) #effects(all) {
   h := s[0].dt / cast(f64) s[0].substeps;
   pair: [2] f64;
   for sub: 0..<s[0].substeps {
@@ -247,13 +247,13 @@ scene_step :: (s: [] Scene) {
 
 // ---- digest and handles
 
-fnv :: (h: u64, word: u64) -> u64 {
+fnv :: (h: u64, word: u64) -> u64 #effects(all) {
   return mul_wrap(h ^ word, 1099511628211);
 }
 
 // FNV-1a over the step count and every live state value's bits. Appearance
 // is not state, so it can't change the digest.
-scene_digest :: (s: Scene) -> u64 {
+scene_digest :: (s: Scene) -> u64 #effects(all) {
   h: u64 = 14695981039346656037;
   h = fnv(h, cast(u64) s.steps);
   for k: 0..<s.rigid {
@@ -267,14 +267,14 @@ scene_digest :: (s: Scene) -> u64 {
 }
 
 // The height of value i in handle h's slice; NaN for an i outside it.
-scene_body_y :: (s: Scene, h: Handle, i: int) -> f64 {
+scene_body_y :: (s: Scene, h: Handle, i: int) -> f64 #effects(all) {
   if i < 0 || i >= h.count { return 0.0 / 0.0; }
   // A rigid body's slice is one value, so i is 0 there.
   return ifx h.solver == Solver.rigid then s.ry[h.first] else s.py[h.first + i];
 }
 
 // Add dvy to the vertical velocity of every value in h's slice: a control.
-scene_push :: (s: [] Scene, h: Handle, dvy: f64) {
+scene_push :: (s: [] Scene, h: Handle, dvy: f64) #effects(all) {
   for i: 0..<h.count {
     if h.solver == Solver.rigid { s[0].rvy[h.first] += dvy; }   // one value
     else { s[0].pvy[h.first + i] += dvy; }
@@ -284,7 +284,7 @@ scene_push :: (s: [] Scene, h: Handle, dvy: f64) {
 // ---- checks
 
 // A plane, a 1 m box of density 500 at 2 m and a 0.5 m sphere of particles at 4 m.
-demo_spec :: () -> Scene_Spec {
+demo_spec :: () -> Scene_Spec #effects(all) {
   spec: Scene_Spec;
   spec.count = 3;
   spec.entities[0] = Entity.{shape = Shape.{kind = Shape_Kind.plane}, material = Material.{solver = Solver.ground}};

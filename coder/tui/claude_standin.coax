@@ -29,8 +29,8 @@
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/json/json.coax";
 
-cxterm_byte :: (timeout_ms: int) -> int #foreign;
-cxterm_write :: (s: [] u8) -> int #foreign;
+cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 
 SI_LINE :: 262144;
 St :: struct {
@@ -245,7 +245,7 @@ si_call :: (s: [] St, k: int, name: string, input: string, spec: string) {
   if name == "Write" { pb: [1100] u8; n := 0; for c: cast(string) s[0].cwd[0..<s[0].ncwd] { pb[n] = c; n += 1; } for c: "/note.txt" { pb[n] = c; n += 1; } ok := fs_write(cast(string) pb[0..<n], "hi\n"); si_result_of(id, "written", false); return; }
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   av: [1] Args;
   if args_load(av[..]) && args_has(av[..], "--version") { si_send("0.0.0 (a stand-in claude for Coder's checks)"); return 0; }
   s_b: [1] St; s := s_b[..];

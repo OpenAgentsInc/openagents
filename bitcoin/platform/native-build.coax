@@ -2,7 +2,7 @@
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/tool.coax";
-cxproc_read_bytes :: (h: int, timeout_ms: int, out: [] u8) -> int #foreign;
+cxproc_read_bytes :: (h: int, timeout_ms: int, out: [] u8) -> int #foreign #effects(all);
 bn_emit :: (source: string, output: string, header: string) -> bool { return bn_emit_mode(source,output,header,true); }
 bn_emit_mode :: (source: string, output: string, header: string, release: bool) -> bool {
   h := proc_new(); if h < 0 { return false; }

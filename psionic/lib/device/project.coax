@@ -13,7 +13,7 @@ DV_LANES :: 16;
 DV_GROUPS_PER_CHUNK :: 64; // 64 of a slice's groups: 256 columns
 
 // Column j (0..3) of four BF16 values packed little-endian in a u64.
-dv_bf16 :: (bits:u64,lane:int)->f32 {
+dv_bf16 :: (bits:u64,lane:int)->f32 #effects(all) {
     half:=(bits>>cast(u64)(16*lane))&0xffff;
     return f32_from_bits(cast,trunc(u32)half<<16);
 }
@@ -24,7 +24,7 @@ dv_bf16 :: (bits:u64,lane:int)->f32 {
 }
 
 // Items of dv_project: 4 rows by 8 tokens by one slice of the columns.
-dv_project_items :: (rows:int,tokens:int,slices:int)->int {
+dv_project_items :: (rows:int,tokens:int,slices:int)->int #effects(all) {
     if rows<DV_ROWS || tokens<1 || slices<1 || rows%DV_ROWS!=0 {return 0;}
     return rows/DV_ROWS*((tokens+DV_TOKENS-1)/DV_TOKENS)*slices;
 }
@@ -40,12 +40,12 @@ dv_project_items :: (rows:int,tokens:int,slices:int)->int {
 // activations; the tiles of those blocks follow while their weight rows are
 // still cached. A row count that is not a multiple of 16 takes one block at a
 // time.
-dv_group :: (rows:int)->int {if (rows/DV_ROWS)%4!=0 {return 1;}return 4;}
-dv_row :: (item:int,rows:int,tokens:int,slices:int)->int {
+dv_group :: (rows:int)->int #effects(all) {if (rows/DV_ROWS)%4!=0 {return 1;}return 4;}
+dv_row :: (item:int,rows:int,tokens:int,slices:int)->int #effects(all) {
     tiles:=(tokens+DV_TOKENS-1)/DV_TOKENS;rest:=item/slices;group:=dv_group(rows);
     return (rest/group/tiles*group+rest%group)*DV_ROWS;
 }
-dv_token :: (item:int,rows:int,tokens:int,slices:int)->int {
+dv_token :: (item:int,rows:int,tokens:int,slices:int)->int #effects(all) {
     tiles:=(tokens+DV_TOKENS-1)/DV_TOKENS;
     return item/slices/dv_group(rows)%tiles*DV_TOKENS;
 }
@@ -75,7 +75,7 @@ dv_token :: (item:int,rows:int,tokens:int,slices:int)->int {
 // ..., so neighbouring work items read neighbouring bytes. With one slice the
 // item writes out; otherwise it writes partial[(s*tokens+t)*rows+r] for
 // dv_reduce. Ragged token tiles repeat the last token and write nothing.
-dv_project :: (item:int,rows:int,cols:int,tokens:int,slices:int,w:[]u64,x:[]f32,out:[]f32) #export_c {
+dv_project :: (item:int,rows:int,cols:int,tokens:int,slices:int,w:[]u64,x:[]f32,out:[]f32) #export_c #effects(all) {
     slice:=item%slices;r0:=dv_row(item,rows,tokens,slices);t0:=dv_token(item,rows,tokens,slices);
     groups:=cols/4;per:=groups/slices;
     base:[8]int;
@@ -114,7 +114,7 @@ dv_project :: (item:int,rows:int,cols:int,tokens:int,slices:int,w:[]u64,x:[]f32,
 // One token: item row*16+lane sums the groups lane, lane+16, ... of its row,
 // so the 16 lanes of a row read 128 contiguous bytes at a time. It writes
 // partial[lane*rows+row] for dv_reduce with 16 slices.
-dv_matvec :: (item:int,rows:int,cols:int,w:[]u64,x:[]f32,partial:[]f32) #export_c {
+dv_matvec :: (item:int,rows:int,cols:int,w:[]u64,x:[]f32,partial:[]f32) #export_c #effects(all) {
     groups:=cols/4;row:=item/DV_LANES;lane:=item%DV_LANES;per:=groups/DV_LANES;
     sum:f32=0;total:f32=0;
     for k:0..<per {
@@ -128,7 +128,7 @@ dv_matvec :: (item:int,rows:int,cols:int,w:[]u64,x:[]f32,partial:[]f32) #export_
 
 // book:begin reduce
 // out[i] for i = t*rows+r: the slice partials added in f64, in slice order.
-dv_reduce :: (item:int,count:int,slices:int,partial:[]f32,out:[]f32) #export_c {
+dv_reduce :: (item:int,count:int,slices:int,partial:[]f32,out:[]f32) #export_c #effects(all) {
     sum:f64=0;
     for s:0..<slices {sum+=f64(partial[s*count+item]);}
     out[item]=f32(sum);
@@ -136,13 +136,13 @@ dv_reduce :: (item:int,count:int,slices:int,partial:[]f32,out:[]f32) #export_c {
 // book:end reduce
 
 // The CPU runs the same kernels over every item, in reverse order.
-dv_project_run :: (rows:int,cols:int,tokens:int,slices:int,w:[]u64,x:[]f32,out:[]f32,partial:[]f32) {
+dv_project_run :: (rows:int,cols:int,tokens:int,slices:int,w:[]u64,x:[]f32,out:[]f32,partial:[]f32) #effects(all) {
     n:=dv_project_items(rows,tokens,slices);
     if slices==1 {for i:0..<n {dv_project(n-1-i,rows,cols,tokens,1,w,x,out);}return;}
     for i:0..<n {dv_project(n-1-i,rows,cols,tokens,slices,w,x,partial);}
     for i:0..<rows*tokens {dv_reduce(rows*tokens-1-i,rows*tokens,slices,partial,out);}
 }
-dv_matvec_run :: (rows:int,cols:int,w:[]u64,x:[]f32,out:[]f32,partial:[]f32) {
+dv_matvec_run :: (rows:int,cols:int,w:[]u64,x:[]f32,out:[]f32,partial:[]f32) #effects(all) {
     for i:0..<rows*DV_LANES {dv_matvec(rows*DV_LANES-1-i,rows,cols,w,x,partial);}
     for i:0..<rows {dv_reduce(rows-1-i,rows,DV_LANES,partial,out);}
 }

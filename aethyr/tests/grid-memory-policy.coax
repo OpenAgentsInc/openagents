@@ -6,11 +6,11 @@
 GmCursor :: struct { at: int; bad: bool; }
 GmDescription :: struct { valid: bool; header_valid: bool; minimum: int = -1; maximum: int = -1; stack: int = -1; }
 GmArena :: struct { valid: bool; base: int; state_bytes: int; need: int; pages: int; allocation: int; }
-gm_byte :: (bytes: [] u8, c: [] GmCursor) -> int {
+gm_byte :: (bytes: [] u8, c: [] GmCursor) -> int #effects(all) {
   if c[0].bad || c[0].at >= bytes.count { c[0].bad = true; return 0; }
   value := cast(int) bytes[c[0].at]; c[0].at += 1; return value;
 }
-gm_uleb :: (bytes: [] u8, c: [] GmCursor) -> int {
+gm_uleb :: (bytes: [] u8, c: [] GmCursor) -> int #effects(all) {
   value := 0;
   for index: 0..<5 {
     byte := gm_byte(bytes,c); if c[0].bad { return 0; }
@@ -19,7 +19,7 @@ gm_uleb :: (bytes: [] u8, c: [] GmCursor) -> int {
   }
   c[0].bad = true; return 0;
 }
-gm_sleb :: (bytes: [] u8, c: [] GmCursor) -> int {
+gm_sleb :: (bytes: [] u8, c: [] GmCursor) -> int #effects(all) {
   value := 0;
   for index: 0..<5 {
     byte := gm_byte(bytes,c); if c[0].bad { return 0; }
@@ -31,12 +31,12 @@ gm_sleb :: (bytes: [] u8, c: [] GmCursor) -> int {
   }
   c[0].bad = true; return 0;
 }
-gm_skip_name :: (bytes: [] u8, c: [] GmCursor) {
+gm_skip_name :: (bytes: [] u8, c: [] GmCursor) #effects(all) {
   count := gm_uleb(bytes,c);
   if count > bytes.count - c[0].at { c[0].bad = true; return; }
   c[0].at += count;
 }
-gm_describe :: (bytes: [] u8) -> GmDescription {
+gm_describe :: (bytes: [] u8) -> GmDescription #effects(all) {
   d: GmDescription; magic := [8] u8.[0,97,115,109,1,0,0,0];
   if bytes.count < 8 { return d; }
   for i: 0..<8 { if bytes[i] != magic[i] { return d; } }
@@ -68,7 +68,7 @@ gm_describe :: (bytes: [] u8) -> GmDescription {
   }
   d.valid = d.minimum >= 0 && d.maximum >= d.minimum && d.stack >= 0; return d;
 }
-gm_arena :: (heap: int, state: int, vertices: int, stride: int, uniforms: int, minimum: int, maximum: int) -> GmArena {
+gm_arena :: (heap: int, state: int, vertices: int, stride: int, uniforms: int, minimum: int, maximum: int) -> GmArena #effects(all) {
   a: GmArena;
   if heap < 0 || heap > 67108864 || state < 0 || state > 67108864 || vertices != 400000 || stride != 12 || uniforms != 112 || minimum < 0 || minimum > maximum || maximum != 1024 { return a; }
   initial := gm_max(minimum,128);
@@ -81,7 +81,7 @@ gm_arena :: (heap: int, state: int, vertices: int, stride: int, uniforms: int, m
 }
 // All callers bound the nonnegative inputs below2^27. Their exact difference,
 // sum and integer maximum are representable in binary64.
-gm_max :: (a: int, b: int) -> int { return (a + b + cast(int) abs(cast(f64) (a - b))) / 2; }
-gm_source_matches :: (observed_size: int, observed_hash: string, expected_size: int, expected_hash: string) -> bool {
+gm_max :: (a: int, b: int) -> int #effects(all) { return (a + b + cast(int) abs(cast(f64) (a - b))) / 2; }
+gm_source_matches :: (observed_size: int, observed_hash: string, expected_size: int, expected_hash: string) -> bool #effects(all) {
   return expected_size > 0 && expected_hash.count == 64 && observed_size == expected_size && observed_hash == expected_hash;
 }

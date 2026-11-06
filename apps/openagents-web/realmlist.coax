@@ -930,30 +930,30 @@ realms_hash :: (s: [] RealmsState, length: int) {
 }
 
 coaxial_realms_frame :: (s: [] RealmsState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32,
-                         dt: f32, still: bool) -> int #export_c {
+                         dt: f32, still: bool) -> int #export_c #effects(all) {
   return realms_frame(s, out, uniforms, width, height, dpr, dt, still);
 }
-coaxial_realms_pointer :: (s: [] RealmsState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c { return realms_pointer(s, x, y, phase, kind); }
-coaxial_realms_key :: (s: [] RealmsState, key: int, mods: int) -> bool #export_c { return realms_key(s, key, mods); }
-coaxial_realms_wheel :: (s: [] RealmsState, dy: f32) #export_c { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
-coaxial_realms_message :: (s: [] RealmsState, kind: int, length: int) #export_c { realms_message(s, kind, length); }
-coaxial_realms_hash :: (s: [] RealmsState, length: int) #export_c { realms_hash(s, length); }
+coaxial_realms_pointer :: (s: [] RealmsState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c #effects(all) { return realms_pointer(s, x, y, phase, kind); }
+coaxial_realms_key :: (s: [] RealmsState, key: int, mods: int) -> bool #export_c #effects(all) { return realms_key(s, key, mods); }
+coaxial_realms_wheel :: (s: [] RealmsState, dy: f32) #export_c #effects(all) { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
+coaxial_realms_message :: (s: [] RealmsState, kind: int, length: int) #export_c #effects(all) { realms_message(s, kind, length); }
+coaxial_realms_hash :: (s: [] RealmsState, length: int) #export_c #effects(all) { realms_hash(s, length); }
 // The face asks GET /api/playtest/access once (access.coax) and says the id its answer comes under.
-coaxial_realms_access_wants :: (s: [] RealmsState) -> bool #export_c { return s.count > 0 && access_wants(s[0].acc[..]); }
-coaxial_realms_access_sent :: (s: [] RealmsState, id: int) #export_c { if s.count > 0 { access_sent(s[0].acc[..], id); } }
+coaxial_realms_access_wants :: (s: [] RealmsState) -> bool #export_c #effects(all) { return s.count > 0 && access_wants(s[0].acc[..]); }
+coaxial_realms_access_sent :: (s: [] RealmsState, id: int) #export_c #effects(all) { if s.count > 0 { access_sent(s[0].acc[..], id); } }
 // And GET /api/playtest/realms/listed once (realms-listed.coax).
-coaxial_realms_listed_wants :: (s: [] RealmsState) -> bool #export_c { return s.count > 0 && listed_wants(s[0].listed[..]); }
-coaxial_realms_listed_sent :: (s: [] RealmsState, id: int) #export_c { if s.count > 0 { listed_sent(s[0].listed[..], id); } }
-coaxial_realms_cursor :: (s: [] RealmsState) -> int #export_c {
+coaxial_realms_listed_wants :: (s: [] RealmsState) -> bool #export_c #effects(all) { return s.count > 0 && listed_wants(s[0].listed[..]); }
+coaxial_realms_listed_sent :: (s: [] RealmsState, id: int) #export_c #effects(all) { if s.count > 0 { listed_sent(s[0].listed[..], id); } }
+coaxial_realms_cursor :: (s: [] RealmsState) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   return ifx s[0].hot != HIT_NONE then 1 else 0;
 }
-coaxial_realms_action :: (s: [] RealmsState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
-coaxial_realms_action_done :: (s: [] RealmsState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
-coaxial_realms_inbox_cap :: () -> int #export_c { return INBOX; }
-coaxial_realms_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_realms_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_realms_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_realms_action :: (s: [] RealmsState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_realms_action_done :: (s: [] RealmsState) #export_c #effects(all) { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_realms_inbox_cap :: () -> int #export_c #effects(all) { return INBOX; }
+coaxial_realms_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_realms_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_realms_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // ---------------------------------------------------------------- tests
 

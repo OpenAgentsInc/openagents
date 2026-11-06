@@ -154,7 +154,7 @@ fetching the whole block.
 // and the nonce (8 bytes, little-endian), whose first two 8-byte words,
 // little-endian, are k0 and k1.
 CmpctKeys :: struct { k0: u64; k1: u64; }
-cmpct_keys :: (header: [] u8, nonce: u64) -> CmpctKeys {
+cmpct_keys :: (header: [] u8, nonce: u64) -> CmpctKeys #effects(all) {
   input: [88] u8; d: [32] u8;
   for i: 0..<80 { input[i] = header[i]; }
   stored := cb_store_le64(input[..], 80, nonce);
@@ -163,7 +163,7 @@ cmpct_keys :: (header: [] u8, nonce: u64) -> CmpctKeys {
 }
 // A wtxid's short ID: SipHash-2-4 of its 32 bytes (hash order), with the
 // two high bytes dropped.
-cmpct_short_id :: (k: CmpctKeys, wtxid: [] u8) -> u64 {
+cmpct_short_id :: (k: CmpctKeys, wtxid: [] u8) -> u64 #effects(all) {
   return siphash24(k.k0, k.k1, wtxid) & 0xffffffffffff;
 }
 ```
@@ -222,7 +222,7 @@ CmpctTx :: struct { at: int; n: int; }
 // reading would go on), the transaction reader's code, and how many.
 CmpctList :: struct { code: int; at: int; tx_code: int; count: int; next: int; }
 // The transactions of a serialized block: where each is, and its wtxid.
-cmpct_block_txs_vartime :: (b: [] u8, txs: [] CmpctTx, wtxids: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> CmpctList {
+cmpct_block_txs_vartime :: (b: [] u8, txs: [] CmpctTx, wtxids: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> CmpctList #effects(all) {
   if b.count < 80 { return CmpctList.{code=CMPCT_BAD, tx_code=TX_TRUNCATED}; }
   c := tx_compact_read_vartime(b, 80);
   if c.code != TX_OK { return CmpctList.{code=CMPCT_BAD, at=80, tx_code=c.code}; }
@@ -244,7 +244,7 @@ cmpct_block_txs_vartime :: (b: [] u8, txs: [] CmpctTx, wtxids: [] u8, ins: [] Tx
 // is where transaction i is in src, read only for the prefilled ones.
 // Core's own constructor prefills the coinbase alone. Returns the length,
 // or -1 if out is too small or prefill is not ascending and in the block.
-cmpct_write_vartime :: (header: [] u8, nonce: u64, wtxids: [] u8, src: [] u8, txs: [] CmpctTx, prefill: [] int, out: [] u8) -> int {
+cmpct_write_vartime :: (header: [] u8, nonce: u64, wtxids: [] u8, src: [] u8, txs: [] CmpctTx, prefill: [] int, out: [] u8) -> int #effects(all) {
   count := wtxids.count / 32;
   for p: 0..<prefill.count {
     if prefill[p] >= count || (p > 0 && prefill[p] <= prefill[p-1]) || prefill[p] < 0 { return -1; }
@@ -296,7 +296,7 @@ CmpctPrefilled :: struct { diff: int; at: int; n: int; empty: bool; }
 // index must fit 16 bits, each transaction is read with its witness, and
 // a block of more than 0xffff transactions refuses after the whole read.
 // Bytes after the message are left alone, as Core leaves them.
-cmpct_read_vartime :: (b: [] u8, pre: [] CmpctPrefilled, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> CmpctBlock {
+cmpct_read_vartime :: (b: [] u8, pre: [] CmpctPrefilled, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> CmpctBlock #effects(all) {
   if b.count < 88 { return CmpctBlock.{code=CMPCT_BAD, at=b.count, tx_code=TX_TRUNCATED}; }
   k := CmpctBlock.{nonce=cb_load_le64(b, 80).value};
   c := tx_compact_read_vartime(b, 88);
@@ -327,7 +327,7 @@ cmpct_read_vartime :: (b: [] u8, pre: [] CmpctPrefilled, ins: [] TxIn, outs: [] 
   return k;
 }
 // Short ID i of a read cmpctblock: 6 bytes, little-endian.
-cmpct_short_at :: (b: [] u8, k: CmpctBlock, i: int) -> u64 {
+cmpct_short_at :: (b: [] u8, k: CmpctBlock, i: int) -> u64 #effects(all) {
   v: u64 = 0;
   for j: 0..<6 { v |= cast(u64) b[k.ids_at + 6*i + j] << cast(u64) (8 * j); }
   return v;
@@ -385,7 +385,7 @@ CmpctInit :: struct { status: int; count: int; prefilled: int; mempool: int; ext
 // short IDs in a hash table; here they are sorted and searched, with the
 // same answers. Core's further limit of 12 entries per hash-table bucket,
 // a defense of its own table, has no counterpart here.
-cmpct_init_vartime :: (b: [] u8, k: CmpctBlock, pre: [] CmpctPrefilled, pool_ids: [] u8, extra_keys: [] u8, extra_ids: [] u8, slots: [] CmpctSlot, map: [] CmpctEntry) -> CmpctInit {
+cmpct_init_vartime :: (b: [] u8, k: CmpctBlock, pre: [] CmpctPrefilled, pool_ids: [] u8, extra_keys: [] u8, extra_ids: [] u8, slots: [] CmpctSlot, map: [] CmpctEntry) -> CmpctInit #effects(all) {
   count := k.nshort + k.nprefilled;
   r := CmpctInit.{count=count};
   if tx_le_vartime(b, 72, 4) == 0 || count == 0 || count > CMPCT_MAX_TXS { r.status = CMPCT_INVALID; return r; }
@@ -441,13 +441,13 @@ cmpct_init_vartime :: (b: [] u8, k: CmpctBlock, pre: [] CmpctPrefilled, pool_ids
   return r;
 }
 // Is the transaction already in slot the one whose wtxid is id?
-cmpct_same_tx :: (slot: CmpctSlot, pool_ids: [] u8, extra_ids: [] u8, id: [] u8) -> bool {
+cmpct_same_tx :: (slot: CmpctSlot, pool_ids: [] u8, extra_ids: [] u8, id: [] u8) -> bool #effects(all) {
   have := ifx slot.source == CMPCT_MEMPOOL then pool_ids[32*slot.from..<32*slot.from+32] else extra_ids[32*slot.from..<32*slot.from+32];
   for i: 0..<32 { if have[i] != id[i] { return false; } }
   return true;
 }
 // Sort entries by short ID: Shell's sort with Ciura's gaps.
-cmpct_sort_vartime :: (map: [] CmpctEntry) {
+cmpct_sort_vartime :: (map: [] CmpctEntry) #effects(all) {
   gaps := [8] int.[701, 301, 132, 57, 23, 10, 4, 1];
   for g: 0..<8 {
     gap := gaps[g];
@@ -460,7 +460,7 @@ cmpct_sort_vartime :: (map: [] CmpctEntry) {
   }
 }
 // The entry with short ID id in the sorted map, or -1.
-cmpct_find_vartime :: (map: [] CmpctEntry, id: u64) -> int {
+cmpct_find_vartime :: (map: [] CmpctEntry, id: u64) -> int #effects(all) {
   lo := 0; hi := map.count;
   while lo < hi {
     mid := (lo + hi) / 2;
@@ -469,7 +469,7 @@ cmpct_find_vartime :: (map: [] CmpctEntry, id: u64) -> int {
   return ifx lo < map.count && map[lo].id == id then lo else -1;
 }
 // The block positions InitData didn't fill, ascending, into out; how many.
-cmpct_missing_vartime :: (slots: [] CmpctSlot, out: [] int) -> int {
+cmpct_missing_vartime :: (slots: [] CmpctSlot, out: [] int) -> int #effects(all) {
   n := 0;
   for i: 0..<slots.count {
     if slots[i].source == CMPCT_MISSING || slots[i].source == CMPCT_COLLIDED {
@@ -501,7 +501,7 @@ too many.
 // getblocktxn: the block hash, a count, then each index as the difference
 // from the previous one, minus one. Returns the length, or -1 if out is too
 // small or the indexes don't ascend from 0 to 0xffff.
-cmpct_request_write_vartime :: (hash: [] u8, indexes: [] int, out: [] u8) -> int {
+cmpct_request_write_vartime :: (hash: [] u8, indexes: [] int, out: [] u8) -> int #effects(all) {
   if out.count < 32 + 9 + 3 * indexes.count || hash.count != 32 { return -1; }
   for i: 0..<32 { out[i] = hash[i]; }
   at := tx_compact_write_vartime(out, 32, indexes.count);
@@ -515,7 +515,7 @@ cmpct_request_write_vartime :: (hash: [] u8, indexes: [] int, out: [] u8) -> int
 }
 // Reads a getblocktxn into absolute indexes. DifferenceFormatter refuses
 // the first index that passes 0xffff, as "differential value overflow".
-cmpct_request_read_vartime :: (b: [] u8, indexes: [] int) -> CmpctList {
+cmpct_request_read_vartime :: (b: [] u8, indexes: [] int) -> CmpctList #effects(all) {
   if b.count < 32 { return CmpctList.{code=CMPCT_BAD, at=b.count, tx_code=TX_TRUNCATED}; }
   c := tx_compact_read_vartime(b, 32);
   if c.code != TX_OK { return CmpctList.{code=CMPCT_BAD, at=32, tx_code=c.code}; }
@@ -546,7 +546,7 @@ CmpctWrite :: struct { code: int; n: int; }
 // SendBlockTransactions: the block hash, then the requested transactions
 // of the block b (txs says where each is), in the order requested. An
 // index past the block is Core's Misbehaving, and nothing is sent.
-cmpct_blocktxn_write_vartime :: (hash: [] u8, b: [] u8, txs: [] CmpctTx, indexes: [] int, out: [] u8) -> CmpctWrite {
+cmpct_blocktxn_write_vartime :: (hash: [] u8, b: [] u8, txs: [] CmpctTx, indexes: [] int, out: [] u8) -> CmpctWrite #effects(all) {
   room := 32 + 9;
   for i: 0..<indexes.count {
     if indexes[i] < 0 || indexes[i] >= txs.count { return CmpctWrite.{code=CMPCT_OUT_OF_BOUNDS}; }
@@ -564,7 +564,7 @@ cmpct_blocktxn_write_vartime :: (hash: [] u8, b: [] u8, txs: [] CmpctTx, indexes
 }
 // Reads a blocktxn: the hash, a count, then each transaction with its
 // witness; txs gets where each one is.
-cmpct_blocktxn_read_vartime :: (b: [] u8, txs: [] CmpctTx, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> CmpctList {
+cmpct_blocktxn_read_vartime :: (b: [] u8, txs: [] CmpctTx, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> CmpctList #effects(all) {
   if b.count < 32 { return CmpctList.{code=CMPCT_BAD, at=b.count, tx_code=TX_TRUNCATED}; }
   c := tx_compact_read_vartime(b, 32);
   if c.code != TX_OK { return CmpctList.{code=CMPCT_BAD, at=32, tx_code=c.code}; }
@@ -610,7 +610,7 @@ CmpctFill :: struct { status: int; n: int; reason: int; }
 // whole block. hashes holds 96 bytes per transaction.
 cmpct_fill_vartime :: (b: [] u8, pre: [] CmpctPrefilled, slots: [] CmpctSlot, store: [] u8, pool_txs: [] CmpctTx, extra_txs: [] CmpctTx,
                        bytes: [] u8, missing: [] CmpctTx, segwit: bool, out: [] u8,
-                       ins: [] TxIn, outs: [] TxOut, items: [] TxItem, hashes: [] u8) -> CmpctFill {
+                       ins: [] TxIn, outs: [] TxOut, items: [] TxItem, hashes: [] u8) -> CmpctFill #effects(all) {
   if tx_le_vartime(b, 72, 4) == 0 { return CmpctFill.{status=CMPCT_INVALID}; }
   count := slots.count;
   if out.count < 89 || hashes.count < 96 * count { return CmpctFill.{status=CMPCT_CAPACITY}; }
@@ -683,7 +683,7 @@ disconnects the peer.
 // oldest first; inbound says which peers connected to us. on is the peer
 // sent sendcmpct(1, 2) and off the one sent sendcmpct(0, 2), or -1.
 CmpctHb :: struct { n: int; on: int; off: int; }
-cmpct_hb_choose_vartime :: (list: [] int, n: int, peer: int, inbound: [] bool, provides: bool, blocksonly: bool) -> CmpctHb {
+cmpct_hb_choose_vartime :: (list: [] int, n: int, peer: int, inbound: [] bool, provides: bool, blocksonly: bool) -> CmpctHb #effects(all) {
   r := CmpctHb.{n=n, on=-1, off=-1};
   // A blocks-only node's mempool can't rebuild blocks, and a peer that
   // never sent sendcmpct(…, 2) can't send them.
@@ -712,14 +712,14 @@ cmpct_hb_choose_vartime :: (list: [] int, n: int, peer: int, inbound: [] bool, p
 // The answer to a getdata for MSG_CMPCT_BLOCK: a cmpctblock for a block
 // within 5 of the tip when the node can fetch directly, else the block.
 CMPCT_REPLY_NONE :: 0; CMPCT_REPLY_CMPCTBLOCK :: 1; CMPCT_REPLY_BLOCK :: 2; CMPCT_REPLY_BLOCKTXN :: 3; CMPCT_REPLY_DISCONNECT :: 4;
-cmpct_getdata_reply :: (height: int, tip: int, direct: bool) -> int {
+cmpct_getdata_reply :: (height: int, tip: int, direct: bool) -> int #effects(all) {
   return ifx direct && height >= tip - CMPCT_MAX_DEPTH then CMPCT_REPLY_CMPCTBLOCK else CMPCT_REPLY_BLOCK;
 }
 // The answer to a getblocktxn of count indexes: none is a disconnect; a
 // block the node lacks gets nothing; within 10 of the tip a blocktxn, and
 // deeper the whole block, so a peer can't make the node read old blocks
 // from disk for a few bytes of request.
-cmpct_getblocktxn_reply :: (count: int, have: bool, height: int, tip: int) -> int {
+cmpct_getblocktxn_reply :: (count: int, have: bool, height: int, tip: int) -> int #effects(all) {
   if count == 0 { return CMPCT_REPLY_DISCONNECT; }
   if !have { return CMPCT_REPLY_NONE; }
   return ifx height >= tip - CMPCT_MAX_BLOCKTXN_DEPTH then CMPCT_REPLY_BLOCKTXN else CMPCT_REPLY_BLOCK;

@@ -134,7 +134,7 @@ nt_admit_current :: (profile:int,compiler:string,root:string,emissions:string,pa
     else if !nt_artifact(0,d,emissions,payload,name,inputs,files) {return false;}
   }return rtq_inputs_match(current[..]);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}profile:=nv_profile(args_value(a[..],"--profile",""));host:=args_value(a[..],"--host","coderos-4080");work_arg:=args_value(a[..],"--work-dir","");receipt:=args_value(a[..],"--receipt","");emissions_arg:=args_value(a[..],"--emissions","");sources_arg:=args_value(a[..],"--source-root","");compiler:=args_value(a[..],"--coax","");
   historical:=args_has(a[..],"--historical-emissions");fresh:=args_has(a[..],"--fresh-emissions");reuse_arg:=args_value(a[..],"--reuse-emissions","");worker_compiler:=args_value(a[..],"--worker-coax",compiler);
   if profile<0 || !ng_host(host) || work_arg=="" || receipt=="" || compiler=="" || !nr_mode(historical,fresh,reuse_arg!="") || (historical && (emissions_arg=="" || sources_arg=="")) || !args_has(a[..],"--explore-stale-compiler") || fs_exists(work_arg) || fs_exists(receipt) || !fs_mkdir(work_arg) {tool_errln("native GPU requires one explicit fresh/reuse/historical emission mode, compiler, new work dir/receipt and exploration acknowledgement; see NATIVE_GPU.md");return 2;}

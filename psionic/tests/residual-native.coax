@@ -1,7 +1,7 @@
 // Native verification exports only. All caller spans are live and disjoint.
 #load "../lib/module-residual.coax";
 #load "../lib/module-train.coax";
-residual_native_vjp :: (x:[]f32,a:[]f32,b:[]f32,c:[]f32,d:[]f32,dy:[]f32,y:[]f32,gx:[]f32,ga:[]f32,gb:[]f32,gc:[]f32,gd:[]f32,loss:[]f32)->AdStatus #export_c {
+residual_native_vjp :: (x:[]f32,a:[]f32,b:[]f32,c:[]f32,d:[]f32,dy:[]f32,y:[]f32,gx:[]f32,ga:[]f32,gb:[]f32,gc:[]f32,gd:[]f32,loss:[]f32)->AdStatus #export_c #effects(all) {
     if x.count!=12 || a.count!=6 || b.count!=3 || c.count!=6 || d.count!=2 || dy.count!=12 || y.count!=12 || gx.count!=12 || ga.count!=6 || gb.count!=3 || gc.count!=6 || gd.count!=2 || loss.count!=1 {return AdStatus.capacity;}
     m:=mr_test_block();prediction:=m.node;forward:=m;
     m=mdl_data(m,"dy",m.shapes[prediction]);upstream:=m.node;
@@ -22,7 +22,7 @@ residual_native_vjp :: (x:[]f32,a:[]f32,b:[]f32,c:[]f32,d:[]f32,dy:[]f32,y:[]f32
     s=ad_gradient(t,run.cursor,7,grads[..],ds[..]);if s!=AdStatus.ok {return s;}
     for i:0..<12 {y[i]=ys[i];gx[i]=xs[i];}for i:0..<6 {ga[i]=as[i];gc[i]=cs[i];}for i:0..<3 {gb[i]=bs[i];}for i:0..<2 {gd[i]=ds[i];}loss[0]=ls[0];return AdStatus.ok;
 }
-residual_native_state :: ()->bool #export_c {
+residual_native_state :: ()->bool #export_c #effects(all) {
     m:=mr_test_block();inputs:[29]f32;other:[29]f32;
     if mdl_init(m,71,inputs[..])!=MdlStatus.ok || mdl_init(m,99,other[..])!=MdlStatus.ok {return false;}
     file:[4096]u8;stage:[4096]u8;saved:=mdl_save(m,inputs[..],file[..],stage[..]);

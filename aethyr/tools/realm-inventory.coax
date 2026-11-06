@@ -179,7 +179,7 @@ inv_list :: (mask: int, out: [] u8) -> string {
   return ifx n == 0 then "none" else cast(string) out[0..<n];
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   failed := 0;
   for r: INV_REALMS {
     have := 0; n := 0;

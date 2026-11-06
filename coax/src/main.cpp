@@ -22,6 +22,8 @@
 // --json prints diagnostics as one JSON object per line on stderr.
 // The C compiler is $COAX_CC, or cc.
 #include "coax.h"
+#include <charconv>
+#include <fstream>
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #endif
@@ -1130,6 +1132,7 @@ struct LoweringReport {
       case StmtKind::for_range: case StmtKind::for_each: unsupported = "for loops are not in the lowering subset"; break;
       case StmtKind::assert_: unsupported = "#assert statements are not in the lowering subset"; break;
       case StmtKind::switch_: unsupported = "switch requires a sum-capable lowering profile"; break;
+      case StmtKind::transaction_: unsupported = "#transaction requires an undo-aware lowering profile"; break;
     }
   }
 };
@@ -1819,6 +1822,7 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
     file->quantity_device=opts.quantity_device;
     file->execution_profile=std::to_string(opts.profile_identity);
     {TimedPhase phase{"check"};ok=check(arena,file,mutation_lowering);}
+    if(ok){TimedPhase phase{"effect contracts"};ok=effect_contracts(file,opts);}
     if(ok)record_tree_costs(file);
     // --run-steps overrides the entry file's #run_steps; either replaces the default.
     if(opts.run_steps_given || !file->run_steps) file->run_steps=opts.run_steps;
@@ -1946,6 +1950,8 @@ static int usage() {
           "       coax deps    file.coax --lowering [--proc NAME]  JSON ordered lowering: operations, traps, sequencing\n"
           "       coax deps    file.coax --effects [--proc NAME]   JSON transitive may-effects and witness paths\n"
           "       coax deps    file.coax --modules                 JSON module content and dependency revisions\n"
+          "       coax compat OLD NEW [--baseline BASE]  compare concrete published surfaces\n"
+          "       coax compat --emit MODULE.coax           retain native LP64 compatibility manifest\n"
           "       coax test    file.coax [--steps N] [--slots N] [--only SUBSTR] [--list] [--profile steps] [--evidence FILE]\n"
           "       coax mutate  file.coax [--jobs N] [--shard I/N | --merge RECORD...] [--evidence FILE]\n"
           "                    [--root-only | --unit PART.coax] [--killers FILE] [--source-order]\n"
@@ -2061,6 +2067,7 @@ static std::string executable_path() {
 }
 
 #include "query.cpp"
+#include "compat.cpp"
 static void query_snapshot(QueryParsed *parsed, const File *file) { parsed->file(file); }
 
 // coax query FILE defines NAME | uses NAME | exports [MODULE] [--json] [--fresh]
@@ -2175,6 +2182,7 @@ static int main_impl(int argc, char **argv) {
     if (!json) { fputs("\n", stderr); job_status(stderr, false); }
     return 0;
   }
+  if (cmd == "compat") return compat_command(argc,argv);
   if (cmd == "explain") return explain(argc, argv);
   if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "checks-c" && cmd != "check" && cmd != "lib" && cmd != "header" &&
       cmd != "layout" && cmd != "deps" && cmd != "metal" && cmd != "cuda" && cmd != "metal-compute" && cmd != "spirv" && cmd != "wgsl" && cmd != "test" && cmd != "mutate" && cmd != "proto" && cmd != "query")

@@ -59,18 +59,18 @@ The [example](../examples/loop.coax) runs in under a second.
 ```jai
 // loop-sim-v1. A set of tasks draws difficulties in [-2, 2]. The student
 // solves a task of difficulty d with skill s at 0.5+z/(2(1+|z|)), z = s-d.
-lp_tasks :: (seed:u64,out:[]f64)->LpStatus #export_c {
+lp_tasks :: (seed:u64,out:[]f64)->LpStatus #export_c #effects(all) {
     if out.count<1 || out.count>LP_TASKS_MAX {return LpStatus.shape;}
     for i:0..<out.count {out[i]=4*tb_uniform(seed,cast(u64)i)-2;}
     return LpStatus.ok;
 }
-lp_chance :: (skill:f64,d:f64)->f64 {z:=skill-d;return 0.5+z/(2*(1+abs(z)));}
+lp_chance :: (skill:f64,d:f64)->f64 #effects(all) {z:=skill-d;return 0.5+z/(2*(1+abs(z)));}
 // Draws come from four streams of one seed. The student's draws on the fixed
 // set depend on the task and the attempt but not the cycle, so a cycle that
 // changes nothing measures exactly what the one before it did.
-lp_draw :: (seed:u64,stream:int,index:int)->f64 {return tb_uniform(seed,cast(u64)(index*4+stream));}
+lp_draw :: (seed:u64,stream:int,index:int)->f64 #effects(all) {return tb_uniform(seed,cast(u64)(index*4+stream));}
 // A draw u solves at chance p when u+p reaches 1.
-lp_solves :: (u:f64,p:f64)->bool {return cast(int)(u+p)>0;}
+lp_solves :: (u:f64,p:f64)->bool #effects(all) {return cast(int)(u+p)>0;}
 ```
 
 The world is simulated, so what each proposal really does is known:
@@ -96,7 +96,7 @@ at the source.
 <!-- source: psionic/lib/loop.coax cycle -->
 ```jai
 // The student answers every fixed task, retrying once when the check fails.
-lp_measure :: (seed:u64,fixed:[]f64,skill:f64)->LpCycle {
+lp_measure :: (seed:u64,fixed:[]f64,skill:f64)->LpCycle #effects(all) {
     c:=LpCycle.{skill=skill,took=-1};
     for d,i:fixed {
         p:=lp_chance(skill,d);
@@ -113,7 +113,7 @@ lp_measure :: (seed:u64,fixed:[]f64,skill:f64)->LpCycle {
 // draws, the first largest gain adopted when it reaches the threshold; with no
 // grader the first proposal is adopted blindly.
 LpStep :: struct {took:int;effect:f64;spent:LpBudget;}
-lp_improve :: (seed:u64,grading:[]f64,world:LpWorld,l:LpLoop,cycle:int,skill:f64,spent:LpBudget)->LpStep {
+lp_improve :: (seed:u64,grading:[]f64,world:LpWorld,l:LpLoop,cycle:int,skill:f64,spent:LpBudget)->LpStep #effects(all) {
     r:=LpStep.{took=-1,spent=spent};
     if !l.proposer {return r;}
     effect:[LP_CANDIDATES_MAX]f64;
@@ -167,7 +167,7 @@ units a cycle.
 ```jai
 // Each component's worst case for one cycle; a cycle starts only when every
 // share still covers it, and otherwise the run stops and names the component.
-lp_need :: (l:LpLoop,fixed:int,improve:bool)->LpBudget {
+lp_need :: (l:LpLoop,fixed:int,improve:bool)->LpBudget #effects(all) {
     n:=LpBudget.{student=LP_ANSWER*f64(LP_ATTEMPTS*fixed)};
     if improve && l.proposer {
         n.proposer=LP_PROPOSE*f64(l.candidates);
@@ -176,20 +176,20 @@ lp_need :: (l:LpLoop,fixed:int,improve:bool)->LpBudget {
     }
     return n;
 }
-lp_short :: (budget:LpBudget,spent:LpBudget,need:LpBudget)->int {
+lp_short :: (budget:LpBudget,spent:LpBudget,need:LpBudget)->int #effects(all) {
     if spent.proposer+need.proposer>budget.proposer {return 0;}
     if spent.reflector+need.reflector>budget.reflector {return 1;}
     if spent.grader+need.grader>budget.grader {return 2;}
     if spent.student+need.student>budget.student {return 3;}
     return -1;
 }
-lp_loop_ok :: (l:LpLoop,grading:int)->bool {
+lp_loop_ok :: (l:LpLoop,grading:int)->bool #effects(all) {
     return l.cycles>=1 && l.cycles<=LP_CYCLES_MAX && l.candidates>=1 && l.candidates<=LP_CANDIDATES_MAX &&
         l.items>=1 && l.items<=grading && l.threshold>=1 && l.threshold<=l.items;
 }
 // Cycle 0 measures the student as it is; cycles 1 to l.cycles each improve,
 // then measure. out[c] holds cycle c.
-lp_run :: (seed:u64,fixed:[]f64,grading:[]f64,world:LpWorld,l:LpLoop,budget:LpBudget,out:[]LpCycle)->LpRun #export_c {
+lp_run :: (seed:u64,fixed:[]f64,grading:[]f64,world:LpWorld,l:LpLoop,budget:LpBudget,out:[]LpCycle)->LpRun #export_c #effects(all) {
     r:=LpRun.{seed=seed,cycles=-1};
     if fixed.count<1 || fixed.count>LP_TASKS_MAX || grading.count>LP_ITEMS_MAX || !lp_loop_ok(l,grading.count) ||
         out.count<=l.cycles || !(world.width>0 && world.width<LP_BIG && abs(world.low)<LP_BIG) {r.status=LpStatus.shape;return r;}
@@ -228,7 +228,7 @@ and 1,152. The student's share holds its worst case; on average it spends
 <!-- source: psionic/lib/loop.coax judge -->
 ```jai
 // The mean and standard error of a[i]-b[i] over paired runs.
-lp_paired :: (a:[]f64,b:[]f64)->LpStat {
+lp_paired :: (a:[]f64,b:[]f64)->LpStat #effects(all) {
     if a.count<2 || a.count>LP_RUNS_MAX || b.count!=a.count {return LpStat.{status=LpStatus.shape};}
     n:=f64(a.count);total:=0.0;
     for x,i:a {total+=x-b[i];}
@@ -237,13 +237,13 @@ lp_paired :: (a:[]f64,b:[]f64)->LpStat {
     return LpStat.{mean=mean,se=sqrt(squares/(n-1)/n)};
 }
 // A difference counts when it is more than twice its standard error.
-lp_verdict :: (s:LpStat)->LpVerdict {
+lp_verdict :: (s:LpStat)->LpVerdict #effects(all) {
     if s.mean>2*s.se {return LpVerdict.improving;}
     if s.mean< -2*s.se {return LpVerdict.worse;}
     return LpVerdict.flat;
 }
 // Runs compare only on the same fixed set, seed and number of cycles.
-lp_paired_runs :: (a:[]LpRun,b:[]LpRun)->bool {
+lp_paired_runs :: (a:[]LpRun,b:[]LpRun)->bool #effects(all) {
     if a.count!=b.count {return false;}
     for x,i:a {
         y:=b[i];
@@ -253,7 +253,7 @@ lp_paired_runs :: (a:[]LpRun,b:[]LpRun)->bool {
 }
 // Is the loop improving? The first cycle's cost per accepted result less the
 // last's, over replicate runs.
-lp_improvement :: (runs:[]LpRun)->LpStat #export_c {
+lp_improvement :: (runs:[]LpRun)->LpStat #export_c #effects(all) {
     if !lp_paired_runs(runs,runs) {return LpStat.{status=LpStatus.moved};}
     first:[LP_RUNS_MAX]f64;last:[LP_RUNS_MAX]f64;
     for r,i:runs {first[i]=r.first;last[i]=r.last;}
@@ -262,7 +262,7 @@ lp_improvement :: (runs:[]LpRun)->LpStat #export_c {
 // A component's ledger entry: what removing it does to the last cycle's cost
 // per accepted result (ablated less full, so a positive gain means the
 // component earns its place), its settings, and the mean it spent.
-lp_entry :: (component:LpComponent,settings:int,full:[]LpRun,ablated:[]LpRun)->LpEntry #export_c {
+lp_entry :: (component:LpComponent,settings:int,full:[]LpRun,ablated:[]LpRun)->LpEntry #export_c #effects(all) {
     e:=LpEntry.{component=component,settings=settings};
     if component==LpComponent.student {e.status=LpStatus.shape;return e;}
     if !lp_paired_runs(full,ablated) {e.status=LpStatus.moved;return e;}

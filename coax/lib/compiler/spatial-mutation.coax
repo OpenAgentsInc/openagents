@@ -52,17 +52,17 @@ SOM_Candidate :: struct {status:SOM_Status;operation:SP_Op=SP_Op.invalid;}
  #assert SOM_select(original,alternate,t)==expected && SOM_select(SP_Result.{result=t},SP_Result.{result=t},t)==SOM_Status.eligible;
 }
 
-SOM_pair :: (operation:SP_Op)->SP_Op #export_c {
+SOM_pair :: (operation:SP_Op)->SP_Op #export_c #effects(all) {
  from:=[4]SP_Op.[SP_Op.add,SP_Op.sub,SP_Op.mul,SP_Op.div];to:=[4]SP_Op.[SP_Op.sub,SP_Op.add,SP_Op.div,SP_Op.mul];
  for i:0..<4 {if operation==from[i] {return to[i];}}return SP_Op.invalid;
 }
-SOM_same :: (a:SP_Type,b:SP_Type)->bool #export_c {return a.kind==b.kind && a.frame==b.frame && a.unit==b.unit && a.rep==b.rep;}
-SOM_select :: (original:SP_Result,alternate:SP_Result,result:SP_Type)->SOM_Status #export_c {
+SOM_same :: (a:SP_Type,b:SP_Type)->bool #export_c #effects(all) {return a.kind==b.kind && a.frame==b.frame && a.unit==b.unit && a.rep==b.rep;}
+SOM_select :: (original:SP_Result,alternate:SP_Result,result:SP_Type)->SOM_Status #export_c #effects(all) {
  if original.status!=SP_Status.ok || !SOM_same(original.result,result) {return SOM_Status.metadata;}
  if alternate.status!=SP_Status.ok || !SOM_same(alternate.result,result) {return SOM_Status.no_alternative;}
  return SOM_Status.eligible;
 }
-SOM_candidate :: (operation:SP_Op,left:SP_Type,right:SP_Type,result:SP_Type)->SOM_Candidate #export_c {
+SOM_candidate :: (operation:SP_Op,left:SP_Type,right:SP_Type,result:SP_Type)->SOM_Candidate #export_c #effects(all) {
  alternate:=SOM_pair(operation);status:=SOM_select(SP_binary(operation,left,right),SP_binary(alternate,left,right),result);
  if status!=SOM_Status.eligible {return SOM_Candidate.{status=status};}
  return SOM_Candidate.{status=SOM_Status.eligible,operation=alternate};

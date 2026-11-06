@@ -10,10 +10,10 @@ FrError :: union {invalid_path:FrDetail;wrong_kind:FrDetail;capacity:FrDetail;de
 // error is meaningful only when secondary is true. An unconfirmed release
 // retires adapter authority, without asserting that the kernel closed the fd.
 FrCleanup :: struct {attempted:bool;confirmed:bool;secondary:bool;error:FrError=FrError.{descriptor=FrDetail.{domain=2,code=4,operation=FrOp.close}};}
-cxfr_open :: (path:[]u8)->int #foreign;
-cxfr_stat :: (fd:int,metadata:[]int)->int #foreign;
-cxfr_read :: (fd:int,out:[]u8)->int #foreign;
-cxfr_close :: (fd:int)->int #foreign;
+cxfr_open :: (path:[]u8)->int #foreign #effects(all);
+cxfr_stat :: (fd:int,metadata:[]int)->int #foreign #effects(all);
+cxfr_read :: (fd:int,out:[]u8)->int #foreign #effects(all);
+cxfr_close :: (fd:int)->int #foreign #effects(all);
 
 fr_error :: (d:FrDecision)->FrError {
  switch d.fault {

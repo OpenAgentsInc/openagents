@@ -88,7 +88,7 @@
   p=ja_policy(0);p.frame=1; #assert !ja_policy_valid(p);
 }
 
-ja_admit :: (text:string,p:JsonPolicy,frame_bytes:int,proto_bytes:int)->int #export_c {
+ja_admit :: (text:string,p:JsonPolicy,frame_bytes:int,proto_bytes:int)->int #export_c #effects(all) {
   state:[1]JsonAdmission;state[0]=ja_start(text.count,p,frame_bytes,proto_bytes);
   j:[1]Json;json_start(j[..],text);decoded:[65536]u8;
   while !state[0].finished && state[0].error==JA_OK {

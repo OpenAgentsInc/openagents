@@ -53,30 +53,30 @@
     #assert eg_lookup_ready(1,264,255,256,false)==EgStatus.capacity && eg_lookup_ready(1,264,256,255,false)==EgStatus.capacity;
     #assert eg_lookup_ready(1,264,257,257,false)==EgStatus.ok && eg_lookup_ready(1,264,256,256,true)==EgStatus.alias;
 }
-eg_lookup_ready :: (rows:int,packet:int,out:int,stage:int,overlap:bool)->EgStatus #export_c {
+eg_lookup_ready :: (rows:int,packet:int,out:int,stage:int,overlap:bool)->EgStatus #export_c #effects(all) {
     if !eg_read_count(rows) {return EgStatus.shape;}
     if packet!=rows*264 || out<rows*256 || stage<rows*256 {return EgStatus.capacity;}
     if overlap {return EgStatus.alias;}return EgStatus.ok;
 }
 
-eg_table_rows :: (n:int)->bool {return n>=1 && n<=1073741824;}
-eg_file_size :: (n:int)->bool {return n>=1 && n<=1099511627776;}
-eg_offset :: (n:int,size:int)->bool {return n>=0 && n<=size;}
-eg_table_valid :: (t:EgTable)->bool #export_c {
+eg_table_rows :: (n:int)->bool #effects(all) {return n>=1 && n<=1073741824;}
+eg_file_size :: (n:int)->bool #effects(all) {return n>=1 && n<=1099511627776;}
+eg_offset :: (n:int,size:int)->bool #effects(all) {return n>=0 && n<=size;}
+eg_table_valid :: (t:EgTable)->bool #export_c #effects(all) {
     if !eg_table_rows(t.rows) || !eg_file_size(t.file_bytes) || !eg_offset(t.data,t.file_bytes) || !eg_offset(t.scales,t.file_bytes) {return false;}
     data_end:=t.data+t.rows*256;scale_end:=t.scales+t.rows*8;
     return data_end<=t.file_bytes && scale_end<=t.file_bytes && (data_end<=t.scales || scale_end<=t.data);
 }
-eg_observed :: (t:EgTable,bytes:int)->EgStatus #export_c {return ifx bytes==t.file_bytes then EgStatus.ok else EgStatus.io;}
-eg_read_count :: (n:int)->bool {return n>=1 && n<=24;}
-eg_reads :: (t:EgTable,ids:[]int,out:[]EgRead,stage:[]EgRead,overlap:bool)->EgResult #export_c {
+eg_observed :: (t:EgTable,bytes:int)->EgStatus #export_c #effects(all) {return ifx bytes==t.file_bytes then EgStatus.ok else EgStatus.io;}
+eg_read_count :: (n:int)->bool #effects(all) {return n>=1 && n<=24;}
+eg_reads :: (t:EgTable,ids:[]int,out:[]EgRead,stage:[]EgRead,overlap:bool)->EgResult #export_c #effects(all) {
     if !eg_table_valid(t) || !eg_read_count(ids.count) {return EgResult.{status=EgStatus.shape};}
     count:=2*ids.count;if out.count<count || stage.count<count {return EgResult.{status=EgStatus.capacity};}if overlap {return EgResult.{status=EgStatus.alias};}
     for i:0..<ids.count {if ids[i]<0 || ids[i]>=t.rows {return EgResult.{status=EgStatus.token};}
         stage[2*i]=EgRead.{offset=t.data+ids[i]*256,bytes=256,destination=i*264};stage[2*i+1]=EgRead.{offset=t.scales+ids[i]*8,bytes=8,destination=i*264+256};}
     for i:0..<count {out[i]=stage[i];}return EgResult.{written=count,bytes=264*ids.count};
 }
-eg_decode :: (rows:int,packet:[]u8,out:[]u16,stage:[]u16,overlap:bool)->EgResult #export_c {
+eg_decode :: (rows:int,packet:[]u8,out:[]u16,stage:[]u16,overlap:bool)->EgResult #export_c #effects(all) {
     status:=eg_lookup_ready(rows,packet.count,out.count,stage.count,overlap);if status!=EgStatus.ok {return EgResult.{status=status};}n:=rows*256;
     for row:0..<rows {for col:0..<256 {r:=dk_lane(0,packet[row*264+col],packet[row*264+256+col/32]);if r.status!=DkStatus.ok {return EgResult.{status=cast(EgStatus)(cast(u8)r.status)};}stage[row*256+col]=r.bits;}}
     for i:0..<n {out[i]=stage[i];}return EgResult.{written=n,bytes=rows*264};

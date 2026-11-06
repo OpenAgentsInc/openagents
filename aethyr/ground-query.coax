@@ -229,8 +229,8 @@ GroundRayAxis :: struct { region: int; cell: int; u: f64; rate: f64; scale: f64;
 GroundRayTile :: struct { ok: bool; a: f64; b: f64; c: f64; d: f64; }
 GroundRayBoundary :: struct { t: f64; kind: int; }
 
-ground_ray_finite :: (v: f64) -> bool { return v > -GROUND_LIMIT && v < GROUND_LIMIT; }
-ground_ray_boundary :: (x: f64, z: f64, far: f64) -> GroundRayBoundary {
+ground_ray_finite :: (v: f64) -> bool #effects(all) { return v > -GROUND_LIMIT && v < GROUND_LIMIT; }
+ground_ray_boundary :: (x: f64, z: f64, far: f64) -> GroundRayBoundary #effects(all) {
   out := GroundRayBoundary.{t = far, kind = 4};
   if x < out.t { out.t = x; out.kind = 1; } else if x == out.t { out.kind |= 1; }
   if z < out.t { out.t = z; out.kind = 2; } else if z == out.t { out.kind |= 2; }
@@ -239,7 +239,7 @@ ground_ray_boundary :: (x: f64, z: f64, far: f64) -> GroundRayBoundary {
 
 // The region before the first vertex is -1; after the last, n. In an outer region the
 // height fraction is constant, while the ray's actual position keeps moving.
-ground_ray_axis :: (origin: f32, cell: f32, n: int, o: f32, d: f32, region: int, far: f64) -> GroundRayAxis {
+ground_ray_axis :: (origin: f32, cell: f32, n: int, o: f32, d: f32, region: int, far: f64) -> GroundRayAxis #effects(all) {
   at := region;
   if at == -1 { at = 0; } else if at == n { at = n - 1; }
   a := origin + f32(at) * cell; b := origin + f32(at + 1) * cell;
@@ -253,7 +253,7 @@ ground_ray_axis :: (origin: f32, cell: f32, n: int, o: f32, d: f32, region: int,
   return out;
 }
 
-ground_ray_start :: (origin: f32, cell: f32, n: int, o: f32, d: f32, far: f64) -> GroundRayAxis {
+ground_ray_start :: (origin: f32, cell: f32, n: int, o: f32, d: f32, far: f64) -> GroundRayAxis #effects(all) {
   end := origin + f32(n) * cell;
   axis := ground_axis(origin, cell, n, o);
   region := axis.i;
@@ -264,7 +264,7 @@ ground_ray_start :: (origin: f32, cell: f32, n: int, o: f32, d: f32, far: f64) -
   return ground_ray_axis(origin, cell, n, o, d, region, far);
 }
 
-ground_ray_tile :: (g: Ground, heights: [] f32, x: int, z: int) -> GroundRayTile {
+ground_ray_tile :: (g: Ground, heights: [] f32, x: int, z: int) -> GroundRayTile #effects(all) {
   at := z * (g.n + 1) + x;
   a := heights[at]; b := heights[at + 1]; c := heights[at + g.n + 1]; d := heights[at + g.n + 2];
   if !ground_finite(a) || !ground_finite(b) || !ground_finite(c) || !ground_finite(d) { return GroundRayTile.{}; }
@@ -274,7 +274,7 @@ ground_ray_tile :: (g: Ground, heights: [] f32, x: int, z: int) -> GroundRayTile
 // On one side of a cell's diagonal the ground is affine. The signed vertical gap is
 // affine too: if its ends are positive there is no touch; otherwise solve the first zero.
 ground_ray_piece :: (tile: GroundRayTile, x: GroundRayAxis, z: GroundRayAxis, o: WorldPoint, d: WorldPoint,
-    low: f64, high: f64, triangle: int) -> GroundRay {
+    low: f64, high: f64, triangle: int) -> GroundRay #effects(all) {
   out := GroundRay.{status = GroundRayStatus.ok};
   bx := tile.b - tile.a; bz := tile.d - tile.b;
   if triangle == 1 { bx = tile.d - tile.c; bz = tile.c - tile.a; }
@@ -293,7 +293,7 @@ ground_ray_piece :: (tile: GroundRayTile, x: GroundRayAxis, z: GroundRayAxis, o:
   return out;
 }
 
-ground_ray :: (g: Ground, heights: [] f32, o: WorldPoint, d: WorldPoint, far: f64, cells: int) -> GroundRay {
+ground_ray :: (g: Ground, heights: [] f32, o: WorldPoint, d: WorldPoint, far: f64, cells: int) -> GroundRay #effects(all) {
   if cells < 1 || cells > GROUND_RAY_CELLS || !(far >= 0) || !(far < GROUND_LIMIT)
     || !ground_finite(o.x) || !ground_finite(o.y) || !ground_finite(o.z)
     || !ground_finite(d.x) || !ground_finite(d.y) || !ground_finite(d.z) { return GroundRay.{}; }

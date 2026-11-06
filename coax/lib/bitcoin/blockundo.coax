@@ -99,7 +99,7 @@
 }
 
 // The caller's output is untouched on refusal. Coin compression is chapter 56.
-undo_coin_write_vartime :: (c: Coin, script: [] u8, out: [] u8) -> int #export_c {
+undo_coin_write_vartime :: (c: Coin, script: [] u8, out: [] u8) -> int #export_c #effects(all) {
   record: [10040] u8;
   n := coin_write_vartime(c, script, record[..]);
   if n == -COIN_CAPACITY || n == -COIN_BAD_AMOUNT || n == -COIN_BAD_HEIGHT { return n; }
@@ -115,7 +115,7 @@ undo_coin_write_vartime :: (c: Coin, script: [] u8, out: [] u8) -> int #export_c
 // Accept Core's historical uint32 dummy, including multi-byte VARINTs. A zero
 // height remains zero: importing old incomplete metadata needs Core's alternate
 // output lookup and is outside the validated v1 state writer's contract.
-undo_coin_read_vartime :: (b: [] u8, script: [] u8) -> CoinRead #export_c {
+undo_coin_read_vartime :: (b: [] u8, script: [] u8) -> CoinRead #export_c #effects(all) {
   code := coin_varint_read_vartime(b, 0, 0xffffffff);
   if code.code != COIN_OK { return CoinRead.{code=code.code}; }
   at := code.next;

@@ -22,7 +22,7 @@ discovery_hidden :: (d:Jv,w:int,out:[]u8)->string {
   n:=jv_str(d,jv_path(d,w,"realm.slug"),out);if n<0 {return "";}
   slug:=cast(string)out[0..<n];return ifx realm_discovery_slug(slug) then slug else "";
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) || args_count(args[..])>1 {return 2;}
   path:=ifx args_count(args[..])==1 then args_at(args[..],0) else "apps/openagents-web/realms.json";
   bytes:[262144]u8;n:=fs_read(path,bytes[..]);nodes:[16384]JvNode;d:[1]Jv;

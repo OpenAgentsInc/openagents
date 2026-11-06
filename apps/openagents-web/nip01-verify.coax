@@ -11,7 +11,7 @@ NV_OBSERVED :: 68;
 // observation: error, admission, bytes written, verified (0 or 1), then the
 // claimed id's 32 bytes and the computed id's 32. Synchronous scalar
 // transport for the face; no span outlives the call.
-nv_run :: (mode: int, observation: [] int) #export_c {
+nv_run :: (mode: int, observation: [] int) #export_c #effects(all) {
   if observation.count != NV_OBSERVED { return; }
   for i: 0..<NV_OBSERVED { observation[i] = 0; }
   if mode < 0 || mode >= NIP_CASES { observation[0] = NE_LIMIT; return; }

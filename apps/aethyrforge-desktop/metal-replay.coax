@@ -6,7 +6,7 @@
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
 mr_field :: (o:[]Jo,key:string,value:string) {jo_key(o,key);jo_str(o,value);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<5 {tool_errln("usage: metal-replay ROOT RESOURCES FRAME.CONFIG WEB.GPU.BIN OUTPUT [--recover]");return 2;}
  root:=args_at(a[..],0);res:=args_at(a[..],1);frame:=args_at(a[..],2);gold:=args_at(a[..],3);dir:=args_at(a[..],4);if !fs_mkdir(dir) {return 1;}
  paths:[9][4096]u8;screen:=fs_join(dir,"metal.f32",paths[0][..]);plan:=fs_join(dir,"plan.json",paths[1][..]);report:=fs_join(dir,"metal.json",paths[2][..]);receipt:=fs_join(dir,"comparison.json",paths[3][..]);bytes:[32768]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);mr_field(o[..],"schema","aethyr.metal.effects.v1");jo_key(o[..],"operations");jo_arr(o[..]);

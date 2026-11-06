@@ -25,12 +25,12 @@
   expected := (c>=48 && c<=57) || (c>=65 && c<=90) || (c>=97 && c<=122) || c==45 || c==95;
   #assert fc_can_answer(true,true,cast(string)b[..])==expected;
 }
-fc_can_send :: (busy:bool,text:string)->bool #export_c {
+fc_can_send :: (busy:bool,text:string)->bool #export_c #effects(all) {
   if busy || text.count>16384 {return false;}
   for c:text {if c!=' ' && c!=10 && c!=13 && c!=9 {return true;}}
   return false;
 }
-fc_can_answer :: (busy:bool,pending:bool,id:string)->bool #export_c {
+fc_can_answer :: (busy:bool,pending:bool,id:string)->bool #export_c #effects(all) {
   if !busy || !pending || id.count==0 || id.count>128 {return false;}
   for c:id {if !((c>='0' && c<='9') || (c>='a' && c<='z') || (c>='A' && c<='Z') || c=='-' || c=='_') {return false;}}
   return true;

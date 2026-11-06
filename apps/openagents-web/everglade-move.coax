@@ -22,7 +22,7 @@ EG_MOVE_HULLS :: 3;        // rowboats' hulls, 7 floats each
 // your water's medium, pace and current, the rowboat's seat (aboard), and the hulls round you. The
 // bodies (the city's, then the hulls) are left in s[0].move_bodies.
 everglade_move_world :: (s: [] Everglade, x: f32, y: f32, z: f32, medium: int, pace: f32, flow_x: f32, flow_z: f32,
-                         aboard: bool, seat_x: f32, seat_z: f32, seat_yaw: f32, hulls: [] f32) -> EgMoveWorld #export_c {
+                         aboard: bool, seat_x: f32, seat_z: f32, seat_yaw: f32, hulls: [] f32) -> EgMoveWorld #export_c #effects(all) {
   w: EgMoveWorld;
   k := everglade_knock(s);
   w.kx = k.x; w.ky = k.y; w.kz = k.z;
@@ -47,10 +47,10 @@ everglade_move_world :: (s: [] Everglade, x: f32, y: f32, z: f32, medium: int, p
   return w;
 }
 // The bodies everglade_move_world left round you, for the advance.
-everglade_move_bodies :: (s: [] Everglade) -> [] f32 #export_c { return s[0].move_bodies[..]; }
+everglade_move_bodies :: (s: [] Everglade) -> [] f32 #export_c #effects(all) { return s[0].move_bodies[..]; }
 
 // After the advance (b0 you before it, b after): lifts, currents, the city's edge, the clip's speed.
-everglade_move_after :: (s: [] Everglade, w: EgMoveWorld, b0: EgBody, b1: EgBody, dt: f32) -> EgBody #export_c {
+everglade_move_after :: (s: [] Everglade, w: EgMoveWorld, b0: EgBody, b1: EgBody, dt: f32) -> EgBody #export_c #effects(all) {
   b := b1;
   if !w.aboard {
     // Reverse Gravity's cylinder and the Wind Walls move you up (everglade-abilities.coax)

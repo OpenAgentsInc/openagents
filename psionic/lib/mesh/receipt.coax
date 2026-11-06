@@ -24,10 +24,10 @@ MR_CONTENT :: "{\"buyer\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2
 MR_DIGEST :: "12ec621098556c48810922e941b67da1bca33a0991fee657129121a63a9c2218";
 MR_TAGS :: "[[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"a\",\"30200:c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:demo-pylon\"],[\"t\",\"oa:pylon-receipt:v2\"],[\"x\",\"12ec621098556c48810922e941b67da1bca33a0991fee657129121a63a9c2218\"]]";
 MR_LABEL_TAGS :: "[[\"L\",\"openagents.pylon\"],[\"l\",\"check-pass\",\"openagents.pylon\"],[\"e\",\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"x\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]]";
-mr_fixture :: ()->MrReceipt {return MrReceipt.{ok=true,buyer=MR_BUYER,provider=MR_PROVIDER,pylon="demo-pylon",request=MR_REQUEST,request_digest=MR_REQUEST_DIGEST,result_digest=MR_RESULT_DIGEST,started_at=100,finished_at=102,created_at=103};}
-mr_check_fixture :: ()->MrCheck {return MrCheck.{ok=true,checker=MR_CHECKER,receipt=MR_RECEIPT_ID,provider=MR_PROVIDER,result_digest=MR_RESULT_DIGEST,method="max8-centred-log-f64-v1;ppb=1000",created_at=104,verdict=MR_PASS};}
+mr_fixture :: ()->MrReceipt #effects(all) {return MrReceipt.{ok=true,buyer=MR_BUYER,provider=MR_PROVIDER,pylon="demo-pylon",request=MR_REQUEST,request_digest=MR_REQUEST_DIGEST,result_digest=MR_RESULT_DIGEST,started_at=100,finished_at=102,created_at=103};}
+mr_check_fixture :: ()->MrCheck #effects(all) {return MrCheck.{ok=true,checker=MR_CHECKER,receipt=MR_RECEIPT_ID,provider=MR_PROVIDER,result_digest=MR_RESULT_DIGEST,method="max8-centred-log-f64-v1;ppb=1000",created_at=104,verdict=MR_PASS};}
 // Test rehashes invalid bodies so the reader reaches each semantic guard.
-mr_case :: (content:string)->MrReceipt {hex:[64]u8;hashed:=ph_digest(content,hex[..]);tags:[1024]u8;t:=pd_swap(tags[..],MR_TAGS,MR_DIGEST,cast(string)hex[..]);return mr_read(MR_KIND,MR_BUYER,103,t,content);}
+mr_case :: (content:string)->MrReceipt #effects(all) {hex:[64]u8;hashed:=ph_digest(content,hex[..]);tags:[1024]u8;t:=pd_swap(tags[..],MR_TAGS,MR_DIGEST,cast(string)hex[..]);return mr_read(MR_KIND,MR_BUYER,103,t,content);}
 
 #test "canonical free completion roundtrip pins all signed fields" {
     r:=mr_fixture();#assert r.created_at==103;body:[4096]u8;n:=mr_body(r,body[..]);#assert n>0 && cast(string)body[0..<n]==MR_CONTENT;
@@ -105,24 +105,24 @@ mr_case :: (content:string)->MrReceipt {hex:[64]u8;hashed:=ph_digest(content,hex
     method:[513]u8;for i:0..<513 {method[i]='a';}c:=mr_check_fixture();c.method=cast(string)method[0..<512];out:[1024]u8;#assert mr_check_tags(c,out[..])>0;c.method=cast(string)method[..];#assert mr_check_tags(c,out[..])==-1;
 }
 
-mr_time :: (value:int)->bool {return value>=0 && value<JSON_INT_MOST;}
-mr_stamp :: (f:MfField)->MrStamp {n:=json_int(f.text);if f.token!=JSON_NUMBER || !n.ok || !mr_time(n.value) {return MrStamp.{};}return MrStamp.{ok=true,value=n.value};}
-mr_object_count :: (text:string)->int {
+mr_time :: (value:int)->bool #effects(all) {return value>=0 && value<JSON_INT_MOST;}
+mr_stamp :: (f:MfField)->MrStamp #effects(all) {n:=json_int(f.text);if f.token!=JSON_NUMBER || !n.ok || !mr_time(n.value) {return MrStamp.{};}return MrStamp.{ok=true,value=n.value};}
+mr_object_count :: (text:string)->int #effects(all) {
     if !json_valid(text) {return -1;}j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return -1;}count:=0;
     while true {t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}t=json_next(j[..]);raw:=pt_raw(j[..],t);count+=1;}return count;
 }
-mr_array_count :: (text:string)->int {
+mr_array_count :: (text:string)->int #effects(all) {
     if !json_valid(text) {return -1;}j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_ARRAY {return -1;}count:=0;
     while true {t:=json_next(j[..]);if t==JSON_ARRAY_END {break;}raw:=pt_raw(j[..],t);count+=1;}return count;
 }
-mr_text :: (content:string,key:string)->string {f:=mf_get(content,key);if f.token!=JSON_STRING {return "";}return f.text;}
-mr_valid :: (r:MrReceipt)->bool {
+mr_text :: (content:string,key:string)->string #effects(all) {f:=mf_get(content,key);if f.token!=JSON_STRING {return "";}return f.text;}
+mr_valid :: (r:MrReceipt)->bool #effects(all) {
     return r.ok && pt_hex64(r.buyer) && pt_hex64(r.provider) && r.buyer!=r.provider && mr_slug(r.pylon) && pt_hex64(r.request) && pt_hex64(r.request_digest) && pt_hex64(r.result_digest) && r.started_at>=0 && r.finished_at>=r.started_at && r.finished_at<JSON_INT_MOST && mr_time(r.created_at);
 }
-mr_address :: (provider:string,pylon:string,out:[]u8)->string {
+mr_address :: (provider:string,pylon:string,out:[]u8)->string #effects(all) {
     n:=json_raw(out,0,"30200:");n=json_raw(out,n,provider);n=json_raw(out,n,":");n=json_raw(out,n,pylon);return cast(string)out[0..<n];
 }
-mr_body :: (r:MrReceipt,out:[]u8)->int #export_c {
+mr_body :: (r:MrReceipt,out:[]u8)->int #export_c #effects(all) {
     if !mr_valid(r) {return -1;}
     cap:[96]u8;k:=json_raw(cap[..],0,r.provider);k=json_raw(cap[..],k,":pylon/decision");
     n:=json_raw(out,0,"{\"buyer\":");n=json_write_string(out,n,r.buyer);n=json_raw(out,n,",\"capability\":");n=json_write_string(out,n,cast(string)cap[0..<k]);
@@ -130,12 +130,12 @@ mr_body :: (r:MrReceipt,out:[]u8)->int #export_c {
     n=json_raw(out,n,",\"pylon\":");n=json_write_string(out,n,r.pylon);n=json_raw(out,n,",\"request\":");n=json_write_string(out,n,r.request);n=json_raw(out,n,",\"request_digest\":");n=json_write_string(out,n,r.request_digest);
     n=json_raw(out,n,",\"requires\":[],\"result_digest\":");n=json_write_string(out,n,r.result_digest);n=json_raw(out,n,",\"started_at\":");n=json_write_int(out,n,r.started_at);return json_raw(out,n,",\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}");
 }
-mr_tags :: (r:MrReceipt,content:string,out:[]u8)->int #export_c {
+mr_tags :: (r:MrReceipt,content:string,out:[]u8)->int #export_c #effects(all) {
     if !mr_valid(r) {return -1;}canonical:[MR_BODY_MAX]u8;n:=mr_body(r,canonical[..]);if content!=cast(string)canonical[0..<n] {return -1;}
     hex:[64]u8;hashed:=ph_digest(content,hex[..]);address:[160]u8;a:=mr_address(r.provider,r.pylon,address[..]);
     n=json_raw(out,0,"[[\"p\",");n=json_write_string(out,n,r.provider);n=json_raw(out,n,"],[\"a\",");n=json_write_string(out,n,a);n=json_raw(out,n,"],[\"t\",\"oa:pylon-receipt:v2\"],[\"x\",\"");n=json_raw(out,n,cast(string)hex[..]);return json_raw(out,n,"\"]]");
 }
-mr_body_read :: (content:string,created_at:int)->MrReceipt {
+mr_body_read :: (content:string,created_at:int)->MrReceipt #effects(all) {
     bad:MrReceipt;if !mr_jcs(content) || mr_object_count(content)!=15 {return bad;}
     if !mf_string(mf_get(content,"v"),MR_VERSION) || !mf_empty(mf_get(content,"requires").raw) || !mf_string(mf_get(content,"lane"),"cj-decision") || !mf_string(mf_get(content,"outcome"),"accepted") || mf_get(content,"payment").token!=JSON_NULL {return bad;}
     units:=mf_get(content,"units");count:=mf_get(units.raw,"count");number:=json_int(count.text);
@@ -148,7 +148,7 @@ mr_body_read :: (content:string,created_at:int)->MrReceipt {
     return r;
 }
 // book:begin read
-mr_read :: (kind:int,signer:string,created_at:int,tags:string,content:string)->MrReceipt #export_c {
+mr_read :: (kind:int,signer:string,created_at:int,tags:string,content:string)->MrReceipt #export_c #effects(all) {
     bad:MrReceipt;if kind!=MR_KIND {return bad;}r:=mr_body_read(content,created_at);if !r.ok || r.buyer!=signer {return bad;}
     p:=pt_tag(tags,"p");a:=pt_tag(tags,"a");t:=pt_tag(tags,"t");x:=pt_tag(tags,"x");
     if mr_array_count(tags)!=4 || p.size!=2 || a.size!=2 || t.size!=2 || x.size!=2 {return bad;}
@@ -156,13 +156,13 @@ mr_read :: (kind:int,signer:string,created_at:int,tags:string,content:string)->M
     if p.v[1]!=r.provider || a.v[1]!=expected || t.v[1]!=MR_MARKER || x.v[1]!=cast(string)hex[..] {return bad;}return r;
 }
 // book:end read
-mr_check_name :: (verdict:int)->string {names:=[3]string.["check-pass","check-fail","check-inconclusive"];return names[verdict-1];}
-mr_check_valid :: (c:MrCheck)->bool {return c.ok && pt_hex64(c.checker) && pt_hex64(c.provider) && c.checker!=c.provider && pt_hex64(c.receipt) && pt_hex64(c.result_digest) && c.method.count>=1 && c.method.count<=512 && mr_time(c.created_at) && c.verdict>=1 && c.verdict<=3;}
-mr_check_tags :: (c:MrCheck,out:[]u8)->int #export_c {
+mr_check_name :: (verdict:int)->string #effects(all) {names:=[3]string.["check-pass","check-fail","check-inconclusive"];return names[verdict-1];}
+mr_check_valid :: (c:MrCheck)->bool #effects(all) {return c.ok && pt_hex64(c.checker) && pt_hex64(c.provider) && c.checker!=c.provider && pt_hex64(c.receipt) && pt_hex64(c.result_digest) && c.method.count>=1 && c.method.count<=512 && mr_time(c.created_at) && c.verdict>=1 && c.verdict<=3;}
+mr_check_tags :: (c:MrCheck,out:[]u8)->int #export_c #effects(all) {
     if !mr_check_valid(c) {return -1;}n:=json_raw(out,0,"[[\"L\",\"openagents.pylon\"],[\"l\",");n=json_write_string(out,n,mr_check_name(c.verdict));n=json_raw(out,n,",\"openagents.pylon\"],[\"e\",");n=json_write_string(out,n,c.receipt);
     n=json_raw(out,n,"],[\"p\",");n=json_write_string(out,n,c.provider);n=json_raw(out,n,"],[\"x\",");n=json_write_string(out,n,c.result_digest);return json_raw(out,n,"]]");
 }
-mr_check_read :: (kind:int,signer:string,created_at:int,tags:string,content:string)->MrCheck #export_c {
+mr_check_read :: (kind:int,signer:string,created_at:int,tags:string,content:string)->MrCheck #export_c #effects(all) {
     bad:MrCheck;if kind!=MR_LABEL_KIND || mr_array_count(tags)!=5 {return bad;}
     ns:=pt_tag(tags,"L");label:=pt_tag(tags,"l");e:=pt_tag(tags,"e");p:=pt_tag(tags,"p");x:=pt_tag(tags,"x");
     if ns.size!=2 || ns.v[1]!="openagents.pylon" || label.size!=3 || label.v[2]!="openagents.pylon" || e.size!=2 || p.size!=2 || x.size!=2 {return bad;}
@@ -215,8 +215,8 @@ mr_check_read :: (kind:int,signer:string,created_at:int,tags:string,content:stri
     text:[4097]u8;for i:0..<4097 {text[i]='a';}text[0]='"';text[4095]='"';
     #assert mr_jcs(cast(string)text[0..<4096]);text[4095]='a';text[4096]='"';#assert !mr_jcs(cast(string)text[..]);
 }
-mr_slug :: (text:string)->bool {if !pb_slug(text,64) {return false;}return text[0]!='-' && text[0]!='_';}
-mr_jcs :: (text:string)->bool {
+mr_slug :: (text:string)->bool #effects(all) {if !pb_slug(text,64) {return false;}return text[0]!='-' && text[0]!='_';}
+mr_jcs :: (text:string)->bool #effects(all) {
     if text.count>MR_BODY_MAX {return false;}
     out:[8192]u8;r:=jcs_canonicalize_checked(text,out[..],false);
     return r.error==JCS_OK && cast(string)out[0..<r.written]==text;

@@ -45,14 +45,14 @@ FI_B64URL_MAX :: 1398102;
  #assert fi_b64url_uint("",out[..]).error==NC_INVALID;
  #assert fi_b64url_uint("AAE",out[..]).error==NC_INVALID;
 }
-fi_b64url_size_allowed :: (n:int)->bool {return n>=0 && n<=FI_B64URL_MAX;}
-fi_b64url_digit :: (c:u8)->int {
+fi_b64url_size_allowed :: (n:int)->bool #effects(all) {return n>=0 && n<=FI_B64URL_MAX;}
+fi_b64url_digit :: (c:u8)->int #effects(all) {
  if c>='A' && c<='Z' {return cast(int)c-65;}
  if c>='a' && c<='z' {return cast(int)c-71;}
  if c>='0' && c<='9' {return cast(int)c+4;}
  if c=='-' {return 62;}if c=='_' {return 63;}return -1;
 }
-fi_b64url_decode_size_checked :: (input:string,admitted:bool)->int {
+fi_b64url_decode_size_checked :: (input:string,admitted:bool)->int #effects(all) {
  if !admitted {return -1;}
  n:=input.count;if n%4==1 {return -1;}
  for byte:input {if fi_b64url_digit(byte)<0 {return -1;}}
@@ -62,7 +62,7 @@ fi_b64url_decode_size_checked :: (input:string,admitted:bool)->int {
  size:=n/4*3;if remainder==2 {size+=1;}if remainder==3 {size+=2;}
  return size;
 }
-fi_b64url_decode :: (input:string,out:[]u8)->NC_Result {
+fi_b64url_decode :: (input:string,out:[]u8)->NC_Result #effects(all) {
  size:=fi_b64url_decode_size_checked(input,fi_b64url_size_allowed(input.count));
  if size<0 {return NC_Result.{error=NC_INVALID};}
  if out.count<size {return NC_Result.{error=NC_CAPACITY};}
@@ -81,7 +81,7 @@ fi_b64url_decode :: (input:string,out:[]u8)->NC_Result {
  return NC_Result.{error=NC_OK,written=written};
 }
 // Integer helper is deliberately limited to at most a 4096-bit RSA integer.
-fi_b64url_uint :: (input:string,out:[]u8)->NC_Result {
+fi_b64url_uint :: (input:string,out:[]u8)->NC_Result #effects(all) {
  scratch:[512]u8;r:=fi_b64url_decode(input,scratch[..]);
  if r.error!=NC_OK {return r;}
  if r.written==0 || scratch[0]==0 {return NC_Result.{error=NC_INVALID};}

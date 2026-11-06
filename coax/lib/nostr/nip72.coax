@@ -21,7 +21,7 @@ N72_OK :: 0; N72_EVENT :: 1; N72_KIND :: 2; N72_NOT_MODERATOR :: 3;
 N72_COMMUNITY :: 4; N72_POST :: 5; N72_AUTHOR :: 6; N72_UNTAGGED :: 7; N72_LIMIT :: 8;
 N72_COMMUNITY_KIND :: 34550; N72_APPROVAL_KIND :: 4550;
 
-n72_hex :: (b:[]u8,out:[]u8)->string {
+n72_hex :: (b:[]u8,out:[]u8)->string #effects(all) {
   d:="0123456789abcdef";
   for i:0..<b.count {out[2*i]=d[b[i]>>4];out[2*i+1]=d[b[i]&15];}
   return cast(string)out[0..<2*b.count];
@@ -29,7 +29,7 @@ n72_hex :: (b:[]u8,out:[]u8)->string {
 // book:begin address
 // The community's address, "34550:<author hex>:<d>", written to out: its
 // length, or -1 when the d tag does not read or out is too small.
-n72_address :: (c:NostrEvent,out:[]u8)->int {
+n72_address :: (c:NostrEvent,out:[]u8)->int #effects(all) {
   d:=nostr_tag_d(c);if d.error!=NT_OK {return -1;}
   n:=json_raw(out,0,"34550:");key:=c.public_key;
   hex:[64]u8;n=json_raw(out,n,n72_hex(key[..],hex[..]));n=json_raw(out,n,":");
@@ -38,7 +38,7 @@ n72_address :: (c:NostrEvent,out:[]u8)->int {
 // book:end address
 // Does e carry a tag named name (or alt) whose first value is v and, when
 // mark is not empty, whose fourth value is mark?
-n72_has :: (e:NostrEvent,name:string,alt:string,v:string,mark:string)->int {
+n72_has :: (e:NostrEvent,name:string,alt:string,v:string,mark:string)->int #effects(all) {
   k:=0;t:=g29_tag(e,0);
   while t.error==NT_OK {
     if (g29_tag_is(t,0,name) || g29_tag_is(t,0,alt)) && t.values>=2 && g29_tag_is(t,1,v) && (mark.count==0 || (t.values>=4 && g29_tag_is(t,3,mark))) {return N72_OK;}
@@ -48,7 +48,7 @@ n72_has :: (e:NostrEvent,name:string,alt:string,v:string,mark:string)->int {
 }
 // book:begin counts
 // Does the approval make the post count in the community?
-n72_counts :: (community:NostrEvent,post:NostrEvent,approval:NostrEvent)->int {
+n72_counts :: (community:NostrEvent,post:NostrEvent,approval:NostrEvent)->int #effects(all) {
   all:=[3]NostrEvent.[community,post,approval];
   for e:all {if e.error!=NE_OK || !e.verified {return N72_EVENT;}}
   if community.kind!=N72_COMMUNITY_KIND || approval.kind!=N72_APPROVAL_KIND {return N72_KIND;}

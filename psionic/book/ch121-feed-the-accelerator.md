@@ -64,7 +64,7 @@ The plan refuses a ring that does not fit the budget the caller states.
 // A batch is rows packed rows of length tokens. Rows are cut among workers by
 // chapter 35's partition, one row per chunk. The ring holds depth batches,
 // depth*rows*length bytes, and must fit the stated budget.
-fd_plan :: (rows:int,length:int,workers:int,depth:int,budget:int)->FdPlan #export_c {
+fd_plan :: (rows:int,length:int,workers:int,depth:int,budget:int)->FdPlan #export_c #effects(all) {
     if rows<1 || rows>FD_ROWS {return FdPlan.{status=FdStatus.rows};}
     if length<2 || length>PK_ROW {return FdPlan.{status=FdStatus.length};}
     cores:=pc_plan(rows,1,workers);if cores.status!=PcStatus.ok {return FdPlan.{status=FdStatus.workers};}
@@ -106,7 +106,7 @@ fd_seek :: (docs:[]PkDoc,cursor:PkCursor,n:int)->FdNext {
 }
 // Row r of a batch starts at cursors[r]; cursors[rows] is where the next
 // batch starts. Nothing is written unless the whole batch is in the stream.
-fd_cursors :: (docs:[]PkDoc,tokens:[]u8,p:FdPlan,start:PkCursor,cursors:[]PkCursor)->FdNext #export_c {
+fd_cursors :: (docs:[]PkDoc,tokens:[]u8,p:FdPlan,start:PkCursor,cursors:[]PkCursor)->FdNext #export_c #effects(all) {
     if p.status!=FdStatus.ok {return FdNext.{status=p.status,cursor=start};}
     if cursors.count!=p.rows+1 {return FdNext.{status=FdStatus.buffer,cursor=start};}
     if pk_dataset(docs,tokens)!=PkStatus.ok {return FdNext.{status=FdStatus.dataset,cursor=start};}
@@ -164,7 +164,7 @@ unpublished rather than half filled.
 // Worker w fills each row it owns with pk_next from that row's cursor,
 // checks that the row ends where the next one starts, and marks it w + 1.
 // It touches no other row.
-fd_worker :: (docs:[]PkDoc,tokens:[]u8,p:FdPlan,w:int,cursors:[]PkCursor,batch:[]u8,done:[]u8)->FdStatus #export_c {
+fd_worker :: (docs:[]PkDoc,tokens:[]u8,p:FdPlan,w:int,cursors:[]PkCursor,batch:[]u8,done:[]u8)->FdStatus #export_c #effects(all) {
     if p.status!=FdStatus.ok {return p.status;}
     if w<0 || w>=p.workers {return FdStatus.worker;}
     if cursors.count!=p.rows+1 || batch.count!=p.rows*p.length || done.count!=p.rows {return FdStatus.buffer;}
@@ -178,7 +178,7 @@ fd_worker :: (docs:[]PkDoc,tokens:[]u8,p:FdPlan,w:int,cursors:[]PkCursor,batch:[
     return FdStatus.ok;
 }
 // A batch is published only when every row is marked by its owner.
-fd_publish :: (p:FdPlan,done:[]u8)->FdStatus #export_c {
+fd_publish :: (p:FdPlan,done:[]u8)->FdStatus #export_c #effects(all) {
     if p.status!=FdStatus.ok {return p.status;}
     s:=pc_publish(p.cores,done);
     if s==PcStatus.size {return FdStatus.buffer;}
@@ -206,24 +206,24 @@ ring never holds more than the plan's `bytes`.
 // batch; the consumer reads slot fd_ready and releases it. The producer may
 // be at most depth batches ahead, so a fast loader waits instead of growing.
 // resume is the cursor after the last batch the consumer took.
-fd_ring :: (p:FdPlan,start:PkCursor)->FdTurn #export_c {
+fd_ring :: (p:FdPlan,start:PkCursor)->FdTurn #export_c #effects(all) {
     if p.status!=FdStatus.ok {return FdTurn.{status=p.status,slot=-1};}
     return FdTurn.{slot=-1,ring=FdRing.{depth=p.depth,resume=start}};
 }
-fd_free :: (r:FdRing)->int #export_c {
+fd_free :: (r:FdRing)->int #export_c #effects(all) {
     if r.depth<1 || r.depth>FD_DEPTH || r.produced-r.consumed>=r.depth {return -1;}
     return r.produced%r.depth;
 }
-fd_ready :: (r:FdRing)->int #export_c {
+fd_ready :: (r:FdRing)->int #export_c #effects(all) {
     if r.depth<1 || r.depth>FD_DEPTH || r.consumed==r.produced {return -1;}
     return r.consumed%r.depth;
 }
-fd_produce :: (r:FdRing,after:PkCursor)->FdTurn #export_c {
+fd_produce :: (r:FdRing,after:PkCursor)->FdTurn #export_c #effects(all) {
     if r.depth<1 || r.depth>FD_DEPTH {return FdTurn.{status=FdStatus.depth,slot=-1,ring=r};}
     slot:=fd_free(r);if slot<0 {return FdTurn.{status=FdStatus.full,slot=-1,ring=r};}
     q:=r;q.after[slot]=after;q.produced+=1;return FdTurn.{slot=slot,ring=q};
 }
-fd_consume :: (r:FdRing)->FdTurn #export_c {
+fd_consume :: (r:FdRing)->FdTurn #export_c #effects(all) {
     if r.depth<1 || r.depth>FD_DEPTH {return FdTurn.{status=FdStatus.depth,slot=-1,ring=r};}
     slot:=fd_ready(r);if slot<0 {return FdTurn.{status=FdStatus.empty,slot=-1,ring=r};}
     q:=r;q.resume=r.after[slot];q.consumed+=1;return FdTurn.{slot=slot,ring=q};
@@ -334,7 +334,7 @@ vary, because loads that ran ahead absorb a slow one. With compute 4 and loads
 // ring of depth slots. Batch i loads once batch i - 1 is loaded and its slot
 // is free (batch i - depth's compute has ended); compute i starts once
 // compute i - 1 has ended and batch i is loaded. Depth 1 runs them in turn.
-fd_overlap :: (compute:[]int,load:[]int,depth:int)->FdTime #export_c {
+fd_overlap :: (compute:[]int,load:[]int,depth:int)->FdTime #export_c #effects(all) {
     if compute.count<1 || compute.count!=load.count {return FdTime.{status=FdStatus.shape};}
     if depth<1 || depth>FD_DEPTH {return FdTime.{status=FdStatus.depth};}
     for i:0..<compute.count {if compute[i]<0 || load[i]<0 {return FdTime.{status=FdStatus.shape};}}
@@ -349,13 +349,13 @@ fd_overlap :: (compute:[]int,load:[]int,depth:int)->FdTime #export_c {
 }
 // The steady per-step time: compute plus load with one slot, the larger of
 // the two with two or more.
-fd_steady :: (compute:int,load:int,depth:int)->int #export_c {
+fd_steady :: (compute:int,load:int,depth:int)->int #export_c #effects(all) {
     if depth==1 {return compute+load;}
     return fd_max(compute,load);
 }
 fd_max :: (a:int,b:int)->int {return (a+b+cast(int)abs(f64(a-b)))/2;}
 // Idle time as thousandths of the run.
-fd_lost :: (t:FdTime)->int #export_c {if t.total<=0 {return 0;}return t.idle*1000/t.total;}
+fd_lost :: (t:FdTime)->int #export_c #effects(all) {if t.total<=0 {return 0;}return t.idle*1000/t.total;}
 ```
 
 ## Run the example

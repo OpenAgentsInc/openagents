@@ -17,7 +17,7 @@ main :: () {}
 }
 
 // Native/Wasm test bridge over the actual descriptor-generated reader/writer.
-mp_read :: (wire:[]u8,op:int)->s64 #export_c {
+mp_read :: (wire:[]u8,op:int)->s64 #export_c #effects(all) {
   p:=MP_Project_decode(wire);
   if op==0 {return cast(s64)p.error;}
   if p.error!=0 {return -cast(s64)p.error;}
@@ -27,7 +27,7 @@ mp_read :: (wire:[]u8,op:int)->s64 #export_c {
   if op==4 {return cast(s64)MP_Project_unknown(p,0).number;}
   return -99;
 }
-mp_copy :: (wire:[]u8,out:[]u8)->s64 #export_c {
+mp_copy :: (wire:[]u8,out:[]u8)->s64 #export_c #effects(all) {
   p:=MP_Project_encode(MP_Project_decode(wire),out);
   if p.error!=0 {return -cast(s64)p.error;}return cast(s64)p.wire.count;
 }

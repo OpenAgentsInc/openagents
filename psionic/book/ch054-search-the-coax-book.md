@@ -184,23 +184,23 @@ wrong label presents unbuilt work as shipped:
 // and one that is the Coax book's planned-feature note makes it planned;
 // every other chapter is implemented. Inside an implemented chapter, a
 // section whose heading says "(planned)" or "(later)" is planned.
-bs_status :: (name: string, text: string) -> BsStatus {
+bs_status :: (name: string, text: string) -> BsStatus #effects(all) {
   if name == "PLAN.md" { return BsStatus.planned; }
   if bs_line_starts(text, 2, BS_DRAFT) { return BsStatus.draft; }
   if bs_line_starts(text, 2, BS_PLANNED) { return BsStatus.planned; }
   return BsStatus.implemented;
 }
-bs_section_status :: (chapter: BsStatus, heading: string) -> BsStatus {
+bs_section_status :: (chapter: BsStatus, heading: string) -> BsStatus #effects(all) {
   if chapter != BsStatus.implemented { return chapter; }
   if bs_contains(heading, "(planned)") || bs_contains(heading, "(later)") { return BsStatus.planned; }
   return chapter;
 }
-bs_status_label :: (s: BsStatus) -> string {
+bs_status_label :: (s: BsStatus) -> string #effects(all) {
   if s == BsStatus.draft { return "design draft, not implemented"; }
   if s == BsStatus.planned { return "planned, not built"; }
   return "implemented";
 }
-bs_shipped :: (s: BsStatus) -> bool { return s == BsStatus.implemented; }
+bs_shipped :: (s: BsStatus) -> bool #effects(all) { return s == BsStatus.implemented; }
 ```
 
 The text output prints the label in brackets on every result. For a draft or
@@ -276,15 +276,15 @@ b = 0.75, and the IDF is Lucene's.
 // Okapi BM25 with k1 = 1.2 and b = 0.75. The IDF is Lucene's, which stays
 // positive for a term in more than half the passages. Callers pass tf >= 1
 // and an average length above zero; a term no passage holds scores zero.
-bs_idf :: (n: int, df: int) -> f64 { return log(1 + (f64(n) - f64(df) + 0.5) / (f64(df) + 0.5)); }
-bs_bm25 :: (tf: int, df: int, n: int, length: int, average: f64) -> f64 {
+bs_idf :: (n: int, df: int) -> f64 #effects(all) { return log(1 + (f64(n) - f64(df) + 0.5) / (f64(df) + 0.5)); }
+bs_bm25 :: (tf: int, df: int, n: int, length: int, average: f64) -> f64 #effects(all) {
   if df <= 0 || n <= 0 { return 0; }
   t := f64(tf);
   return bs_idf(n, df) * t * (BS_K1 + 1) / (t + BS_K1 * (1 - BS_B + BS_B * f64(length) / average));
 }
 // query: sorted distinct term ids. ids, counts: the passage's sorted distinct
 // terms and how often each occurs. A merge walks both lists once.
-bs_passage_bm25 :: (query: [] int, ids: [] int, counts: [] int, df: [] int, n: int, length: int, average: f64) -> f64 {
+bs_passage_bm25 :: (query: [] int, ids: [] int, counts: [] int, df: [] int, n: int, length: int, average: f64) -> f64 #effects(all) {
   score := 0.0; i := 0; j := 0;
   while i < query.count && j < ids.count {
     if query[i] < ids[j] { i += 1; }
@@ -508,13 +508,13 @@ every ranking is fully ordered and the same on every run.
 <!-- source: psionic/lib/book-search/rank.coax rank -->
 ```jai
 // a ranks before b: a higher score, or an equal score and an earlier passage.
-bs_before :: (a: BsHit, b: BsHit) -> bool {
+bs_before :: (a: BsHit, b: BsHit) -> bool #effects(all) {
   if a.score > b.score { return true; }
   if a.score < b.score { return false; }
   return a.passage < b.passage;
 }
 // The best out.count passages whose score is above least, best first.
-bs_top :: (scores: [] f64, least: f64, out: [] BsHit) -> int {
+bs_top :: (scores: [] f64, least: f64, out: [] BsHit) -> int #effects(all) {
   n := 0;
   for p: 0..<scores.count {
     if scores[p] <= least { continue; }
@@ -536,14 +536,14 @@ from vector search and fuses them by reciprocal rank: rank r adds
 <!-- source: psionic/lib/book-search/rank.coax fuse -->
 ```jai
 // Reciprocal-rank fusion: rank r (1 is best, 0 is absent) adds 1/(60 + r).
-bs_rrf :: (lexical: int, dense: int) -> f64 {
+bs_rrf :: (lexical: int, dense: int) -> f64 #effects(all) {
   s := 0.0;
   if lexical > 0 { s += 1.0 / f64(BS_FUSE + lexical); }
   if dense > 0 { s += 1.0 / f64(BS_FUSE + dense); }
   return s;
 }
 // scores: one per passage, zeroed here, then each passage's fused score.
-bs_fuse :: (lexical: [] BsHit, dense: [] BsHit, scores: [] f64) {
+bs_fuse :: (lexical: [] BsHit, dense: [] BsHit, scores: [] f64) #effects(all) {
   for i: 0..<scores.count { scores[i] = 0; }
   for i: 0..<lexical.count { scores[lexical[i].passage] += bs_rrf(i + 1, 0); }
   for i: 0..<dense.count { scores[dense[i].passage] += bs_rrf(0, i + 1); }
@@ -564,7 +564,7 @@ the lists:
 // files as they are. Fresh means identical lists: a changed, added or removed
 // chapter makes the index stale, and first names the first held file that
 // changed or went away.
-bs_freshness :: (held: [] string, held_hash: [] string, now: [] string, now_hash: [] string) -> BsFresh {
+bs_freshness :: (held: [] string, held_hash: [] string, now: [] string, now_hash: [] string) -> BsFresh #effects(all) {
   r := BsFresh.{first = -1};
   i := 0; j := 0;
   while i < held.count || j < now.count {
@@ -728,12 +728,12 @@ passage of the chapter relevant.
 <!-- source: psionic/lib/book-search/rank.coax metrics -->
 ```jai
 // The 1-based rank of the first relevant hit, or 0 when none is listed.
-bs_first_relevant :: (hits: [] BsHit, relevant: [] bool) -> int {
+bs_first_relevant :: (hits: [] BsHit, relevant: [] bool) -> int #effects(all) {
   for i: 0..<hits.count { if relevant[hits[i].passage] { return i + 1; } }
   return 0;
 }
 // How many relevant passages the first k hits hold.
-bs_found :: (hits: [] BsHit, relevant: [] bool, k: int) -> int {
+bs_found :: (hits: [] BsHit, relevant: [] bool, k: int) -> int #effects(all) {
   n := 0;
   for i: 0..<hits.count { if i < k && relevant[hits[i].passage] { n += 1; } }
   return n;
@@ -741,9 +741,9 @@ bs_found :: (hits: [] BsHit, relevant: [] bool, k: int) -> int {
 // Recall at k, per query: does the first k hold a relevant passage? A label
 // names a section or a chapter, which may span several passages; finding any
 // of them answers the query.
-bs_hit :: (hits: [] BsHit, relevant: [] bool, k: int) -> bool { return bs_found(hits, relevant, k) > 0; }
+bs_hit :: (hits: [] BsHit, relevant: [] bool, k: int) -> bool #effects(all) { return bs_found(hits, relevant, k) > 0; }
 // Reciprocal rank with a cutoff: 1/rank when 1 <= rank <= cutoff, else 0.
-bs_reciprocal :: (rank: int, cutoff: int) -> f64 {
+bs_reciprocal :: (rank: int, cutoff: int) -> f64 #effects(all) {
   if rank < 1 || rank > cutoff { return 0; }
   return 1.0 / f64(rank);
 }

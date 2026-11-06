@@ -13,7 +13,7 @@ RenderBindingSource :: struct {
 RBSAssetCounts :: struct {storage:int;meshes:int;layers:int;}
 #load "tests/binding-sources-checks.coax";
 
-rbs_assets :: (assets:string)->RBSAssetCounts {
+rbs_assets :: (assets:string)->RBSAssetCounts #effects(all) {
  result:=RBSAssetCounts.{};start:=0;
  for at:0..<assets.count+1 {
   if at==assets.count || assets[at]=='\n' {
@@ -27,7 +27,7 @@ rbs_assets :: (assets:string)->RBSAssetCounts {
  }
  return result;
 }
-rbs_target :: (name:string)->RenderTarget {
+rbs_target :: (name:string)->RenderTarget #effects(all) {
  if name=="shadow_map" {return RenderTarget.shadow_map;}
  if name=="water_scene" {return RenderTarget.water_light;}
  if name=="water_scene_depth" {return RenderTarget.water_depth;}
@@ -38,7 +38,7 @@ rbs_target :: (name:string)->RenderTarget {
  if name=="post_depth" {return RenderTarget.scene_depth;}
  return RenderTarget.invalid;
 }
-rbs_storage_source :: (ordinal:int,assets:RBSAssetCounts)->RenderBindingSource {
+rbs_storage_source :: (ordinal:int,assets:RBSAssetCounts)->RenderBindingSource #effects(all) {
  // The compiled storage layout has nonnegative ordinals/counts. External
  // storage payloads come first, followed by mesh assets, then realm stores.
  source:=RenderBindingSource.{valid=true,buffer_mode=resource_views.RenderBufferMode.immutable_payload};
@@ -47,7 +47,7 @@ rbs_storage_source :: (ordinal:int,assets:RBSAssetCounts)->RenderBindingSource {
  else {source.kind=RenderSourceKind.dynamic_store;source.index=ordinal-assets.storage-assets.meshes;source.buffer_mode=resource_views.RenderBufferMode.legacy_capacity;}
  return source;
 }
-render_binding_source :: (profile:int,binding_set:int,resource:int)->RenderBindingSource {
+render_binding_source :: (profile:int,binding_set:int,resource:int)->RenderBindingSource #effects(all) {
  meta:=render_catalog(profile);source:=RenderBindingSource.{};
  if !meta.valid {return source;}
  if binding_set==2 {

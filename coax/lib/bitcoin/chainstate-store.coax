@@ -23,7 +23,7 @@ CsResult :: struct {
 
 #load "../../tests/bitcoin/chainstate_store_checks.coax";
 
-cs_tip_vartime :: (table: [] u8, used: int) -> LcTip #export_c {
+cs_tip_vartime :: (table: [] u8, used: int) -> LcTip #export_c #effects(all) {
   r := LcTip.{code=CS_CONTEXT};
   if !lc_extent(table, used) { return r; }
   light := LC_META;
@@ -36,19 +36,19 @@ cs_tip_vartime :: (table: [] u8, used: int) -> LcTip #export_c {
   for k: 0..<32 { r.hash[k] = v[12+k]; }
   r.code = CS_OK; return r;
 }
-cs_tip_set_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, chain: int, height: int, hash: [] u8) -> bool {
+cs_tip_set_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, chain: int, height: int, hash: [] u8) -> bool #effects(all) {
   value: [44] u8; key := CS_META;
   kv_put32(value[..], 0, CS_VERSION); kv_put32(value[..], 4, chain); kv_put32(value[..], 8, height);
   for k: 0..<32 { value[12+k] = hash[k]; }
   return lc_put_vartime(table, c, batch, key[..], value[..]);
 }
-cs_undo_key :: (hash: [] u8, chunk: int, out: [] u8) {
+cs_undo_key :: (hash: [] u8, chunk: int, out: [] u8) #effects(all) {
   out[0] = 'O'; for k: 0..<32 { out[1+k] = hash[k]; } kv_put32(out, 33, chunk);
 }
-cs_undo_chunks :: (n: int) -> int { return (n + CS_UNDO_CHUNK - 1) / CS_UNDO_CHUNK; }
+cs_undo_chunks :: (n: int) -> int #effects(all) { return (n + CS_UNDO_CHUNK - 1) / CS_UNDO_CHUNK; }
 // Core's SHA256d(parent || serialized undo), without file XOR/offset arguments.
 // All views are admitted and disjoint. Reuse the already checked SHA stride.
-cs_undo_checksum :: (body: [] u8, parent: [] u8, out: [] u8) {
+cs_undo_checksum :: (body: [] u8, parent: [] u8, out: [] u8) #effects(all) {
   state: [SHA_STATE_BYTES] u8; first: [32] u8;
   #assert sha256_init(state[..]) == SHA_OK;
   #assert sha256_update_checked(state[..], parent, false) == SHA_OK;
@@ -60,7 +60,7 @@ cs_undo_checksum :: (body: [] u8, parent: [] u8, out: [] u8) {
   #assert sha256_final_checked(state[..], first[..], false) == SHA_OK;
   #assert sha256_hash_checked(first[..], out, false) == SHA_OK;
 }
-cs_undo_save_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, hash: [] u8, undo: [] u8) -> bool {
+cs_undo_save_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, hash: [] u8, undo: [] u8) -> bool #effects(all) {
   key: [37] u8; at := 0;
   for i: 0..<cs_undo_chunks(undo.count) {
     n := ifx i < undo.count/CS_UNDO_CHUNK then CS_UNDO_CHUNK else undo.count%CS_UNDO_CHUNK; cs_undo_key(hash, i, key[..]);
@@ -69,7 +69,7 @@ cs_undo_save_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, hash: [] u8
   }
   return true;
 }
-cs_undo_load_vartime :: (table: [] u8, used: int, hash: [] u8, n: int, undo: [] u8) -> int #export_c {
+cs_undo_load_vartime :: (table: [] u8, used: int, hash: [] u8, n: int, undo: [] u8) -> int #export_c #effects(all) {
   if n < 1 || n > KV_FRAME_MAX { return -CS_UNDO; }
   if n > undo.count { return -CS_CAPACITY; }
   key: [37] u8; at := 0;
@@ -83,7 +83,7 @@ cs_undo_load_vartime :: (table: [] u8, used: int, hash: [] u8, n: int, undo: [] 
   return n;
 }
 
-cs_disconnect_vartime :: (table: [] u8, used: int, stage: [] u8, batch: [] u8, undo: [] u8) -> CsResult #export_c {
+cs_disconnect_vartime :: (table: [] u8, used: int, stage: [] u8, batch: [] u8, undo: [] u8) -> CsResult #export_c #effects(all) {
   tip := cs_tip_vartime(table, used);
   if tip.code != CS_OK || tip.height == 0 { return CsResult.{code=CS_CONTEXT}; }
   hk: [33] u8; hk[0] = 'H'; for k: 0..<32 { hk[1+k] = tip.hash[k]; }

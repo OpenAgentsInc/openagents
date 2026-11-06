@@ -15,7 +15,7 @@
 EG_PLACE_DEEP :: 1.0;   // m of water over the ground: deeper and you would swim (verse/water-wade.coax SWIM_DEPTH 1.25)
 
 // The walk-in building (eg-buildings) whose floor (x, z) is on, or -1 outdoors.
-everglade_room_at :: (s: [] Everglade, x: f32, z: f32) -> int #export_c {
+everglade_room_at :: (s: [] Everglade, x: f32, z: f32) -> int #export_c #effects(all) {
   for b: 0..<EG_BUILDINGS {
     if !EG_INTERIOR[b] { continue; }
     k := b * EG_BOX;
@@ -27,7 +27,7 @@ everglade_room_at :: (s: [] Everglade, x: f32, z: f32) -> int #export_c {
 // Whether you may stand at (x, z): inside the world's edge, out of the
 // woods, clear of every wall and placed piece, and in the room `room` says
 // (-1: outdoors or any room you walk into).
-everglade_place_open :: (s: [] Everglade, x: f32, z: f32, room: int) -> bool #export_c {
+everglade_place_open :: (s: [] Everglade, x: f32, z: f32, room: int) -> bool #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   if !finite(x) || !finite(z) || x < -99 || x > 99 || z < -99 || z > 99 { return false; }
   if everglade_in_woods(x, z) { return false; }
@@ -38,7 +38,7 @@ everglade_place_open :: (s: [] Everglade, x: f32, z: f32, room: int) -> bool #ex
 
 // A kept place made good: itself when it is open, else the nearest open
 // spot round it (in the same room if it was in one), else the spawn.
-everglade_place_fix :: (s: [] Everglade, p: Place) -> Place #export_c {
+everglade_place_fix :: (s: [] Everglade, p: Place) -> Place #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   q := p;
   q.y = 0;
@@ -52,7 +52,7 @@ everglade_place_fix :: (s: [] Everglade, p: Place) -> Place #export_c {
 
 // Where you are, as the place to keep: the watch's respawn wins while they
 // hunt you or you lie dead (the Road In, facing up the road, the camera as it is).
-everglade_place_here :: (s: [] Everglade, here: Place) -> Place #export_c {
+everglade_place_here :: (s: [] Everglade, here: Place) -> Place #export_c #effects(all) {
   if !here.ok || !s[0].wv.started || !s[0].wt[0].on || !(watch_you(s[0].wt[..])[0].wanted || watch_you(s[0].wt[..])[0].dead) { return here; }
   p := here;
   p.x = f32(EG_SPAWN_X); p.y = 0; p.z = f32(EG_SPAWN_Z); p.face = 0; p.yaw = 0; p.room = -1;
@@ -60,7 +60,7 @@ everglade_place_here :: (s: [] Everglade, here: Place) -> Place #export_c {
 }
 
 // You are put at a kept place: the feet the page draws and the camera behind them as kept.
-everglade_place_camera :: (s: [] Everglade, p: Place) #export_c {
+everglade_place_camera :: (s: [] Everglade, p: Place) #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   s[0].feet = v3(p.x, ground_at(s, p.x, p.z), p.z);
   s[0].face = p.face;

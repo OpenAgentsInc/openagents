@@ -38,29 +38,29 @@
  b[0]= -1;#assert ppo_rotation_raw(a[0..<4],b[0..<4],out[0..<1])==PpoStatus.ok;#assert out[0].angle.value==0;
 }
 
-ppo_atan_ratio :: (z:f64)->f64 {
+ppo_atan_ratio :: (z:f64)->f64 #effects(all) {
  return ppo_atan_trace(z)[23];
 }
-ppo_norm3 :: (v:[3]f64)->f64 {
+ppo_norm3 :: (v:[3]f64)->f64 #effects(all) {
  scale:f64=0;for x:v {if pik_greater(abs(x),scale) {scale=abs(x);}}if scale==0 {return 0;}sum:f64=0;for x:v {ratio:=x/scale;sum+=ratio*ratio;}return scale*sqrt(sum);
 }
-ppo_unit_bits :: (words:[4]u64)->PpoStatus {
+ppo_unit_bits :: (words:[4]u64)->PpoStatus #effects(all) {
  norm:f64=0;for bits:words {if !pfk_finite(bits) {return PpoStatus.number;}v:=f64_from_bits(bits);if pik_greater(abs(v),2) {return PpoStatus.range;}norm+=v*v;}
  if pik_greater(abs(norm-1),2e-12) {return PpoStatus.rotation;}return PpoStatus.ok;
 }
-ppo_canonical :: (input:[4]f64)->[4]f64 {
+ppo_canonical :: (input:[4]f64)->[4]f64 #effects(all) {
  q:=pfk_normalize(input).value;negative:=pik_less(q[0],0);if q[0]==0 {if q[1]!=0 {negative=pik_less(q[1],0);}else if q[2]!=0 {negative=pik_less(q[2],0);}else {negative=pik_less(q[3],0);}}
  if negative {for i:0..<4 {q[i]= -q[i];}}for i:0..<4 {if q[i]==0 {q[i]=0.0;}}return q;
 }
-ppo_identical :: (a:[4]f64,b:[4]f64)->bool {return a[0]==b[0] && a[1]==b[1] && a[2]==b[2] && a[3]==b[3];}
-ppo_error_owned :: (current:[4]f64,target:[4]f64)->PpoRotation {
+ppo_identical :: (a:[4]f64,b:[4]f64)->bool #effects(all) {return a[0]==b[0] && a[1]==b[1] && a[2]==b[2] && a[3]==b[3];}
+ppo_error_owned :: (current:[4]f64,target:[4]f64)->PpoRotation #effects(all) {
  a:=ppo_canonical(current);b:=ppo_canonical(target);result:PpoRotation;if ppo_identical(a,b) {return result;}
  conjugate:=[4]f64.[a[0],-a[1],-a[2],-a[3]];relative:=ppo_canonical(pfk_multiply(b,conjugate));v:=[3]f64.[relative[1],relative[2],relative[3]];s:=ppo_norm3(v);x:=s/(1+relative[0]);factor:f64=0;
  if pik_greater(x,0.41421356237309515) {z:=(x-1)/(x+1);factor=(3.141592653589793+4*z*ppo_atan_ratio(z))/s;}
  else {factor=(4/(1+relative[0]))*ppo_atan_ratio(x);}
  for i:0..<3 {result.vector[i].value=factor*v[i];}result.angle.value=ppo_norm3([3]f64.[result.vector[0].value,result.vector[1].value,result.vector[2].value]);return result;
 }
-ppo_rotation_raw :: (current:[]f64,target:[]f64,output:[]PpoRotation)->PpoStatus #export_c {
+ppo_rotation_raw :: (current:[]f64,target:[]f64,output:[]PpoRotation)->PpoStatus #export_c #effects(all) {
  if current.count!=4 || target.count!=4 || output.count!=1 {return PpoStatus.shape;}
  a:[4]u64;b:[4]u64;for i:0..<4 {a[i]=f64_bits(current[i]);b[i]=f64_bits(target[i]);}
  status:=ppo_unit_bits(a);if status!=PpoStatus.ok {return status;}status=ppo_unit_bits(b);if status!=PpoStatus.ok {return status;}
@@ -69,7 +69,7 @@ ppo_rotation_raw :: (current:[]f64,target:[]f64,output:[]PpoRotation)->PpoStatus
 
 // The trace exposes the explicitly frozen24 Horner stages, including tails
 // below final-result rounding, so the approximation recipe is observable.
-ppo_atan_trace :: (z:f64)->[24]f64 {
+ppo_atan_trace :: (z:f64)->[24]f64 #effects(all) {
  trace:[24]f64;polynomial:f64=0;for back:0..<24 {k:=23-back;sign:=ifx k%2==0 then 1.0 else -1.0;polynomial=sign/f64(2*k+1)+(z*z)*polynomial;trace[back]=polynomial;}return trace;
 }
 #test "Panda pose every frozen Horner stage and dense equality operand remains observable" {

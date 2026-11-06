@@ -6,7 +6,7 @@
 #load "../../coax/lib/bitcoin/addrindex-private.coax";
 #load "../../coax/lib/crypto/rand_foreign.coax";
 #load "explorer-mempool.coax";
-bf_unlock :: (handle: int) -> int #foreign;
+bf_unlock :: (handle: int) -> int #foreign #effects(all);
 NODE_CAP :: 600000;
 NODE_BATCH :: 4096;
 NativeExplorer :: struct {
@@ -29,7 +29,7 @@ node_number :: (text: string) -> int {
   if text.count == 0 || text.count > 19 { return -1; } n := 0;
   for c: text { if c < '0' || c > '9' { return -1; } d := cast(int)(c-'0'); if n > (9223372036854775807-d)/10 { return -1; } n = n*10+d; } return n;
 }
-node_arena_capacity :: () -> int #export_c {
+node_arena_capacity :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) { return 0; }
   n := ifx args_count(a[..]) >= 8 then node_number(args_at(a[..],7)) else 137438953472;
   return ifx n >= KS_HEAD && n <= 137438953472 then n else 0;
@@ -222,7 +222,7 @@ node_finish_import :: (s: [] NativeExplorer, state: string, store: string, deadl
   }
   return result;
 }
-node_main :: (s: [] NativeExplorer) -> int #export_c {
+node_main :: (s: [] NativeExplorer) -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || (args_count(a[..]) < 7 || args_count(a[..]) > 11) { tool_errln("usage: explorer-node CHAIN STATE BLOCK_DIRECTORY HEADERS NOW PORT WEB_ROOT [ARENA_BYTES [OVERFLOW_DIRECTORY [SEGMENT_BYTES [BUDGET_MS]]]]"); return 2; }
   chain := 0; for i: 1..<6 { if args_at(a[..],0) == CHAIN_NAMES[i] { chain = i; } }

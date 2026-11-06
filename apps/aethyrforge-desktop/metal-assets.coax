@@ -7,7 +7,7 @@
 #load "../../aethyr/forge/pack.coax";
 #load "../../aethyr/render/native-texture-profile.coax";
 #load "../../aethyr/render/host-layers.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {tool_errln("usage: metal-assets ROOT PACK OUTPUT");return 2;}
  root:=args_at(a[..],0);file:=args_at(a[..],1);out:=args_at(a[..],2);
  data:[67108864]u8;n:=fs_read(file,data[..]);if n<0 {return 1;}p:=cast(string)data[0..<n];r:[1]PackRead;

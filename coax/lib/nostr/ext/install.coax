@@ -50,25 +50,25 @@ ExtCheckpoint :: struct {signer:string;package:string;revision:int;as_of:int;val
 ExtPolicy :: struct {strict_freshness:bool;max_age:int;skew:int;features:[]string;}
 // book:end record
 
-ext_root :: (package:string)->string {
+ext_root :: (package:string)->string #effects(all) {
   if package.count<66 || package[64]!=':' {return "";}
   return package[0..<64];
 }
-ext_has :: (list:[]string,s:string)->bool {for x:list {if x==s {return true;}}return false;}
+ext_has :: (list:[]string,s:string)->bool #effects(all) {for x:list {if x==s {return true;}}return false;}
 
 // book:begin revoked
 // A verified revocation of release by its root.
-ext_revokes :: (v:ExtRevocation,release:string,root:string,package:string)->bool {
+ext_revokes :: (v:ExtRevocation,release:string,root:string,package:string)->bool #effects(all) {
   return v.release==release && v.signer==root && v.package==package && v.effective_at<=v.created_at;
 }
-ext_revoked :: (revocations:[]ExtRevocation,r:ExtRelease)->bool {
+ext_revoked :: (revocations:[]ExtRevocation,r:ExtRelease)->bool #effects(all) {
   for v:revocations {if ext_revokes(v,r.event,r.signer,r.package) {return true;}}
   return false;
 }
 // book:end revoked
 
 // book:begin install
-ext_install :: (r:ExtRelease,releases:[]ExtRelease,revocations:[]ExtRevocation,c:ExtCheckpoint,have:bool,p:ExtPolicy,now:int)->u32 {
+ext_install :: (r:ExtRelease,releases:[]ExtRelease,revocations:[]ExtRevocation,c:ExtCheckpoint,have:bool,p:ExtPolicy,now:int)->u32 #effects(all) {
   // 1. A release, its namespace, and a manifest that agrees with it.
   root:=ext_root(r.package);
   if r.kind!=EXT_RELEASE_KIND || root=="" {return EXT_MALFORMED;}
@@ -113,7 +113,7 @@ ext_install :: (r:ExtRelease,releases:[]ExtRelease,revocations:[]ExtRevocation,c
 // Whether to keep checkpoint c over the one held (have says whether there
 // is one) for the same package. Revisions never go back; one revision has
 // one content; a later list keeps every revocation an earlier one had.
-ext_checkpoint_accept :: (held:ExtCheckpoint,have:bool,c:ExtCheckpoint)->u32 {
+ext_checkpoint_accept :: (held:ExtCheckpoint,have:bool,c:ExtCheckpoint)->u32 #effects(all) {
   if !have {return EXT_OK;}
   if c.revision<held.revision {return EXT_STALE;}
   for id:held.revocations {if !ext_has(c.revocations,id) {return EXT_CONFLICT;}}
@@ -126,17 +126,17 @@ ext_checkpoint_accept :: (held:ExtCheckpoint,have:bool,c:ExtCheckpoint)->u32 {
 XT_ROOT :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
 XT_OTHER :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
 XT_PACKAGE :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:hello";
-xt_release :: (event:string,version:string,manifest:string)->ExtRelease {
+xt_release :: (event:string,version:string,manifest:string)->ExtRelease #effects(all) {
   r:ExtRelease;r.event=event;r.signer=XT_ROOT;r.kind=3184;r.package=XT_PACKAGE;r.version=version;r.manifest=manifest;
   r.manifest_package=XT_PACKAGE;r.manifest_version=version;return r;
 }
-xt_revocation :: (event:string,release:string)->ExtRevocation {
+xt_revocation :: (event:string,release:string)->ExtRevocation #effects(all) {
   v:ExtRevocation;v.event=event;v.signer=XT_ROOT;v.package=XT_PACKAGE;v.release=release;v.effective_at=1000;v.created_at=1000;return v;
 }
-xt_checkpoint :: (revision:int,list:[]string)->ExtCheckpoint {
+xt_checkpoint :: (revision:int,list:[]string)->ExtCheckpoint #effects(all) {
   c:ExtCheckpoint;c.signer=XT_ROOT;c.package=XT_PACKAGE;c.revision=revision;c.as_of=1000;c.valid_until=1000+86400;c.revocations=list;return c;
 }
-xt_strict :: ()->ExtPolicy {p:ExtPolicy;p.strict_freshness=true;p.max_age=3600;p.skew=60;return p;}
+xt_strict :: ()->ExtPolicy #effects(all) {p:ExtPolicy;p.strict_freshness=true;p.max_age=3600;p.skew=60;return p;}
 
 #test "a release under its root, fresh and unrevoked, installs" {
   rs:[2]ExtRelease;rs[0]=xt_release("r1","1.0.0","m1");rs[1]=xt_release("r2","1.0.1","m2");

@@ -3,7 +3,7 @@
 // coax/web/tool.sh coax/web/strip-render-checks.coax OUTDIR
 #import "Basic";
 #load "../../aethyr/render/tests/qualification-files.coax";
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}
   directory:=args_at(a[..],0);if !fs_mkdir(directory) {return 2;}
   inputs:[1]RtqInputs;

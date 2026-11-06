@@ -17,7 +17,7 @@
   #assert realm_reply_rev("[]") == -1 && realm_reply_rev("true") == -1 && realm_reply_rev("") == -1;
 }
 
-realm_reply_rev :: (body: string) -> int {
+realm_reply_rev :: (body: string) -> int #effects(all) {
   nodes: [2048] JvNode; d: [1] Jv;
   if jv_parse(d[..],body,nodes[..]) {
     if jv_kind(d[0],0) != JV_OBJECT { return -1; }
@@ -47,7 +47,7 @@ realm_reply_rev :: (body: string) -> int {
   #assert !cli_slug_ok("") && !cli_slug_ok("A") && !cli_slug_ok("a/b") && !cli_slug_ok("a b") && !cli_slug_ok("a_b");
   #assert !cli_slug_ok("a.b") && !cli_slug_ok("a`") && !cli_slug_ok("a{") && !cli_slug_ok("a:") && !cli_slug_ok("a@") && !cli_slug_ok("a,");
 }
-cli_slug_ok :: (s: string) -> bool {
+cli_slug_ok :: (s: string) -> bool #effects(all) {
   if s.count < 1 || s.count > 48 { return false; }
   for c: s {
     if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; }
@@ -60,13 +60,13 @@ cli_slug_ok :: (s: string) -> bool {
   #assert cli_visibility_ok("private") && cli_visibility_ok("unlisted") && cli_visibility_ok("public");
   #assert !cli_visibility_ok("") && !cli_visibility_ok("Public") && !cli_visibility_ok("listed") && !cli_visibility_ok("publics");
 }
-cli_visibility_ok :: (s: string) -> bool { return s == "private" || s == "unlisted" || s == "public"; }
+cli_visibility_ok :: (s: string) -> bool #effects(all) { return s == "private" || s == "unlisted" || s == "public"; }
 
 // on or off: 1, 0, or -1 for anything else.
 #test "on and off" {
   #assert cli_onoff("on") == 1 && cli_onoff("off") == 0 && cli_onoff("On") == -1 && cli_onoff("") == -1 && cli_onoff("1") == -1;
 }
-cli_onoff :: (s: string) -> int {
+cli_onoff :: (s: string) -> int #effects(all) {
   if s == "on" { return 1; }
   if s == "off" { return 0; }
   return -1;
@@ -77,7 +77,7 @@ cli_onoff :: (s: string) -> int {
   #assert cli_flag_ok("realm_invites") && cli_flag_ok("auth_v2");
   #assert !cli_flag_ok("") && !cli_flag_ok("realm-invites") && !cli_flag_ok("auth_v3");
 }
-cli_flag_ok :: (s: string) -> bool { return s == "realm_invites" || s == "auth_v2"; }
+cli_flag_ok :: (s: string) -> bool #effects(all) { return s == "realm_invites" || s == "auth_v2"; }
 
 // A count in bounds as typed: plain decimal digits, no sign, at most 18; -1 otherwise.
 #test "counts in bounds" {
@@ -88,7 +88,7 @@ cli_flag_ok :: (s: string) -> bool { return s == "realm_invites" || s == "auth_v
   #assert cli_count("123456789012345678", 0, 999999999999999999) == 123456789012345678 && cli_count("1000000000000000000", 0, 9000000000000000000) == -1 && cli_count("", 0, 9) == -1;
   #assert cli_count("1:", 0, 1000) == -1 && cli_count("/", 0, 9) == -1 && cli_count(":", 0, 9) == -1 && cli_count("0", 0, 0) == 0 && cli_count("5", 5, 5) == 5 && cli_count("4", 5, 9) == -1;
 }
-cli_count :: (s: string, lo: int, hi: int) -> int {
+cli_count :: (s: string, lo: int, hi: int) -> int #effects(all) {
   if s.count < 1 || s.count > 18 { return -1; }
   v := 0;
   for c: s {
@@ -108,7 +108,7 @@ cli_count :: (s: string, lo: int, hi: int) -> int {
   #assert !cli_hex64("@000000000000000000000000000000000000000000000000000000000000000") && !cli_hex64("G000000000000000000000000000000000000000000000000000000000000000");
   #assert !cli_hex64("`000000000000000000000000000000000000000000000000000000000000000");
 }
-cli_hex64 :: (s: string) -> bool {
+cli_hex64 :: (s: string) -> bool #effects(all) {
   if s.count != 64 { return false; }
   for c: s {
     if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) { return false; }
@@ -127,7 +127,7 @@ cli_hex64 :: (s: string) -> bool {
   #assert !cli_who_ok("n-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0");
   #assert !cli_who_ok("n-g123456789abcdef") && !cli_who_ok("p-0123456789abcdef") && !cli_who_ok("n-0123456789abcd/f") && !cli_who_ok("n-0123456789abcd:f") && !cli_who_ok("n-0123456789abcd`f");
 }
-cli_who_ok :: (s: string) -> bool {
+cli_who_ok :: (s: string) -> bool #effects(all) {
   if cli_hex64(s) { return true; }
   if s.count < 18 || s.count > 66 || s[1] != '-' { return false; }
   if s[0] != 'e' && s[0] != 'n' && s[0] != 'w' { return false; }
@@ -147,7 +147,7 @@ cli_who_ok :: (s: string) -> bool {
   #assert cli_spec_value("xrev 1\nrev 2", "rev") == "2" && cli_spec_value("rev 1\nrev 2\n", "rev") == "1" && cli_spec_value("rev", "rev") == "";
   #assert cli_spec_value("rev \n", "rev") == "" && cli_spec_value("a\n\nrev 3", "rev") == "3" && cli_spec_value("\nrev 3", "rev") == "3";
 }
-cli_spec_value :: (text: string, key: string) -> string {
+cli_spec_value :: (text: string, key: string) -> string #effects(all) {
   at := 0;
   for end: 0..<text.count + 1 {
     if end < text.count && text[end] != '\n' { continue; }
@@ -173,7 +173,7 @@ AccessSum :: struct { invites_flag: int = -1; auth_flag: int = -1; invites: int;
   #assert cli_access_sum("\nC|x").creators == 1;
   #assert cli_field("a|b|c", 0) == "a" && cli_field("a|b|c", 2) == "c" && cli_field("a|b|c", 3) == "" && cli_field("|x", 0) == "" && cli_field("a||c", 1) == "";
 }
-cli_access_sum :: (text: string) -> AccessSum {
+cli_access_sum :: (text: string) -> AccessSum #effects(all) {
   s: AccessSum;
   at := 0;
   for end: 0..<text.count + 1 {
@@ -193,7 +193,7 @@ cli_access_sum :: (text: string) -> AccessSum {
   return s;
 }
 // The k-th '|' field of a line, or "".
-cli_field :: (line: string, k: int) -> string {
+cli_field :: (line: string, k: int) -> string #effects(all) {
   at := 0; seen := 0;
   for i: 0..<line.count + 1 {
     if i == line.count || line[i] == '|' {
@@ -228,8 +228,8 @@ PlanBoard :: struct { plan: int = -1; rows: int; }
 #test "a prefix" {
   #assert cli_prefix("f a", "f ") && cli_prefix("f ", "f ") && !cli_prefix("f", "f ") && !cli_prefix("g a", "f ") && cli_prefix("x", "");
 }
-cli_prefix :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
-cli_plan_board :: (text: string, on: [] bool) -> PlanBoard {
+cli_prefix :: (s: string, p: string) -> bool #effects(all) { return s.count >= p.count && s[0..<p.count] == p; }
+cli_plan_board :: (text: string, on: [] bool) -> PlanBoard #effects(all) {
   b: PlanBoard;
   at := 0;
   for end: 0..<text.count + 1 {
@@ -317,7 +317,7 @@ cli_plan_board :: (text: string, on: [] bool) -> PlanBoard {
 
 // Fixed decimal metres, with no binary floating conversion or rounding.
 // The sentinel is outside the admitted interval on both coordinates.
-cli_edit_cm :: (s: string) -> int {
+cli_edit_cm :: (s: string) -> int #effects(all) {
   if s.count == 0 { return 4001; }
   negative := s[0] == '-';
   start := ifx negative then 1 else 0;
@@ -340,7 +340,7 @@ cli_edit_cm :: (s: string) -> int {
   return ifx negative then -cm else cm;
 }
 
-cli_edit_row_ok :: (s: string) -> bool {
+cli_edit_row_ok :: (s: string) -> bool #effects(all) {
   if s.count < 1 || s.count > 63 { return false; }
   for c: s {
     if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= ':') || c == '-') { return false; }
@@ -348,14 +348,14 @@ cli_edit_row_ok :: (s: string) -> bool {
   return true;
 }
 
-cli_edit_commit_ok :: (s: string) -> bool {
+cli_edit_commit_ok :: (s: string) -> bool #effects(all) {
   if s.count < 7 || s.count > 64 { return false; }
   for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
   return true;
 }
 
 // Kept in step with verse.builder_tools() in migration 0048.
-cli_edit_tool_bit :: (s: string) -> int {
+cli_edit_tool_bit :: (s: string) -> int #effects(all) {
   if s == "build" { return 1; }
   if s == "fly" { return 2; }
   if s == "jump" { return 4; }
@@ -364,7 +364,7 @@ cli_edit_tool_bit :: (s: string) -> int {
   if s == "voice" { return 32; }
   return 0;
 }
-cli_edit_tools :: (s: string) -> bool {
+cli_edit_tools :: (s: string) -> bool #effects(all) {
   at := 0; seen := 0;
   for i: 0..<s.count + 1 {
     if i < s.count && s[i] != ',' { continue; }
@@ -378,7 +378,7 @@ cli_edit_tools :: (s: string) -> bool {
 
 // Read a complete spec into a new move projection. A bad line never changes
 // the caller's document, including its revision and undo history.
-cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool {
+cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool #effects(all) {
   if d.count < 1 { return false; }
   next: [1] ForgeDoc; forge_reset(next[..], d[0].rev);
   at := 0;
@@ -430,7 +430,7 @@ cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool {
   #assert cli_edit_next_space("a  c", 1) == 2;
   #assert cli_edit_next_space("a b", 1) == 3;
 }
-cli_edit_next_space :: (line: string, separator: int) -> int {
+cli_edit_next_space :: (line: string, separator: int) -> int #effects(all) {
   p := separator + 1;
   while p < line.count && line[p] != ' ' { p += 1; }
   return p;
@@ -733,9 +733,9 @@ REALM_COMMANDS :: [37] CliCommand.[
   CliCommand.{verb="leave",method="LOCAL",route="seat",arguments="slug",usage="SLUG",help="close the seat and its browser"}
 ];
 
-rc_find :: (verb: string) -> int { for i: 0..<REALM_COMMANDS.count { if REALM_COMMANDS[i].verb == verb { return i; } } return -1; }
+rc_find :: (verb: string) -> int #effects(all) { for i: 0..<REALM_COMMANDS.count { if REALM_COMMANDS[i].verb == verb { return i; } } return -1; }
 CliBound :: struct { min: int; max: int; }
-rc_bound :: (kind: string) -> CliBound {
+rc_bound :: (kind: string) -> CliBound #effects(all) {
   if kind == "slug" { return CliBound.{min=1,max=48}; }
   if kind == "row" { return CliBound.{min=1,max=63}; }
   if kind == "entity" { return CliBound.{min=3,max=24}; }
@@ -772,7 +772,7 @@ rc_bound :: (kind: string) -> CliBound {
   if kind == "thing" { return CliBound.{min=4,max=7}; }
   return CliBound.{};
 }
-rc_value :: (kind: string, value: string) -> bool {
+rc_value :: (kind: string, value: string) -> bool #effects(all) {
   if kind == "slug" { return cli_slug_ok(value); }
   if kind == "row" { return cli_edit_row_ok(value); }
   if kind == "entity" {
@@ -811,7 +811,7 @@ rc_value :: (kind: string, value: string) -> bool {
 // What a visitor's build pane offers (myrealm.coax THING_NAMES; realm-play.coax checks they agree).
 CLI_SEAT_THINGS :: [8] string.["crate", "barrel", "tree", "rock", "plant", "lantern", "fence", "chest"];
 // Degrees: an optional minus, up to three digits, at most two decimals, within max either way.
-rc_degrees_ok :: (value: string, max: int) -> bool {
+rc_degrees_ok :: (value: string, max: int) -> bool #effects(all) {
   if value.count == 0 { return false; }
   neg := value[0] == '-'; i := ifx neg then 1 else 0;
   whole := 0; digits := 0;
@@ -860,7 +860,7 @@ rc_degrees_ok :: (value: string, max: int) -> bool {
   #assert rc_validate(f[..],"look") != "";
   f[0].n = 5; #assert rc_validate(f[..],"look") == "";
 }
-rc_flag_kind :: (c: CliCommand, flag: string) -> string {
+rc_flag_kind :: (c: CliCommand, flag: string) -> string #effects(all) {
   if flag == "--json" { return "bool"; }
   if flag == "--profile" { return "who"; }
   if flag == "--origin" { return "file"; }
@@ -874,11 +874,11 @@ rc_flag_kind :: (c: CliCommand, flag: string) -> string {
   return "";
 }
 
-rc_is_flag :: (s: string) -> bool { return s.count >= 2 && s[0..<2] == "--"; }
+rc_is_flag :: (s: string) -> bool #effects(all) { return s.count >= 2 && s[0..<2] == "--"; }
 
 // Flag-shaped literal values belong to the flag that consumed them. Every
 // reader uses this token walk, rather than searching arbitrary argv words.
-rc_option_index :: (a: [] Args, verb: string, name: string, occurrence: int) -> int {
+rc_option_index :: (a: [] Args, verb: string, name: string, occurrence: int) -> int #effects(all) {
   ci := rc_find(verb); if ci < 0 { return -1; }
   c := REALM_COMMANDS[ci]; found := 0; skip := false;
   for i: 0..<args_count(a) {
@@ -892,19 +892,19 @@ rc_option_index :: (a: [] Args, verb: string, name: string, occurrence: int) -> 
   }
   return -1;
 }
-rc_has :: (a: [] Args, verb: string, name: string) -> bool { return rc_option_index(a,verb,name,0) >= 0; }
-rc_option :: (a: [] Args, verb: string, name: string, fallback: string) -> string {
+rc_has :: (a: [] Args, verb: string, name: string) -> bool #effects(all) { return rc_option_index(a,verb,name,0) >= 0; }
+rc_option :: (a: [] Args, verb: string, name: string, fallback: string) -> string #effects(all) {
   i := rc_option_index(a,verb,name,0);
   if i < 0 || i + 1 >= args_count(a) { return fallback; }
   if rc_flag_kind(REALM_COMMANDS[rc_find(verb)],name) == "bool" { return fallback; }
   return args_at(a,i+1);
 }
-rc_option_at :: (a: [] Args, verb: string, name: string, occurrence: int) -> string {
+rc_option_at :: (a: [] Args, verb: string, name: string, occurrence: int) -> string #effects(all) {
   i := rc_option_index(a,verb,name,occurrence);
   if i < 0 { return ""; }
   return args_at(a,i+1);
 }
-rc_pos :: (a: [] Args, verb: string, index: int) -> string {
+rc_pos :: (a: [] Args, verb: string, index: int) -> string #effects(all) {
   ci := rc_find(verb); if ci < 0 { return ""; }
   c := REALM_COMMANDS[ci]; seen := 0; skip := false;
   for i: 0..<args_count(a) {
@@ -923,7 +923,7 @@ rc_pos :: (a: [] Args, verb: string, index: int) -> string {
 
 // Returns a usage error, or empty. Global flags are admitted alongside the row's
 // flags. Repetition is only meaningful for a quest's three ordered steps.
-rc_validate :: (a: [] Args, verb: string) -> string {
+rc_validate :: (a: [] Args, verb: string) -> string #effects(all) {
   ci := rc_find(verb); if ci < 0 { return "unknown realm command"; }
   if a[0].full { return "arguments were truncated"; }
   c := REALM_COMMANDS[ci];
@@ -996,7 +996,7 @@ rc_validate :: (a: [] Args, verb: string) -> string {
   for w: [4] string.["realm","undo","garden","--nope"] { #assert args_add(b[..],w); }
   #assert rc_validate(b[..],"undo") == "that flag is not one this realm command takes (openagents help)";
 }
-rc_why :: (kind: string) -> string {
+rc_why :: (kind: string) -> string #effects(all) {
   if kind == "slug" { return "SLUG is 1 to 48 of a-z, 0-9 and -"; }
   if kind == "row" { return "ROW (or THING) is 1 to 63 of a-z, 0-9, : and -"; }
   if kind == "entity" { return "ENTITY is one thing of a board row as FEATURE:N, such as enclosure:0 or trees:3 (FEATURE at most 20 characters; realm show SLUG lists the rows)"; }
@@ -1061,7 +1061,7 @@ rc_why :: (kind: string) -> string {
     #assert rc_validate(c[..],"new") != "";
   }
 }
-cli_setup_ok :: (field: string, v: string) -> bool {
+cli_setup_ok :: (field: string, v: string) -> bool #effects(all) {
   words := ifx field == "style" then "lowpoly|painterly|flat" else ifx field == "time" then "day|dawn|dusk|night"
            else ifx field == "camera" then "third|first|top|side" else ifx field == "ground" then "meadow|forest|desert|snow|stone|beach" else "";
   i := 0;
@@ -1103,13 +1103,13 @@ cli_setup_ok :: (field: string, v: string) -> bool {
     }
   }
 }
-rc_contains :: (s: string, part: string) -> bool {
+rc_contains :: (s: string, part: string) -> bool #effects(all) {
   if part.count > s.count { return false; }
   for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
   return false;
 }
 // The k-th space-separated word of s, or "".
-rc_word :: (s: string, k: int) -> string {
+rc_word :: (s: string, k: int) -> string #effects(all) {
   at := 0; seen := 0;
   for i: 0..<s.count + 1 {
     if i == s.count || s[i] == ' ' {
@@ -1119,7 +1119,7 @@ rc_word :: (s: string, k: int) -> string {
   }
   return "";
 }
-rc_help_line :: (c: CliCommand, out: [] u8) -> string {
+rc_help_line :: (c: CliCommand, out: [] u8) -> string #effects(all) {
   n := forge_put(out,0,"  realm "); n = forge_put(out,n,c.verb);
   if c.usage.count > 0 { n = forge_put(out,n," "); n = forge_put(out,n,c.usage); }
   w := n;
@@ -1279,16 +1279,16 @@ RB_SPECS :: [20] RbSpec.[
   RbSpec.{verb="visibility",fields=[4] RbField.[RbField.{key="visibility"},RbField.{},RbField.{},RbField.{}]}
 ];
 
-rb_clear :: (a: [] Args) { a[0].n = 0; a[0].used = 0; a[0].full = false; }
-rb_find :: (raw: string) -> int { for i: 0..<RB_SPECS.count { if jv_raw_eq(raw,RB_SPECS[i].verb) { return i; } } return -1; }
-rb_string :: (d: Jv, at: int, a: [] Args) -> bool {
+rb_clear :: (a: [] Args) #effects(all) { a[0].n = 0; a[0].used = 0; a[0].full = false; }
+rb_find :: (raw: string) -> int #effects(all) { for i: 0..<RB_SPECS.count { if jv_raw_eq(raw,RB_SPECS[i].verb) { return i; } } return -1; }
+rb_string :: (d: Jv, at: int, a: [] Args) -> bool #effects(all) {
   bytes: [1024] u8;
   if jv_kind(d,at) != JV_STRING { return false; }
   n := jv_str(d,at,bytes[..]); if n < 0 { return false; }
   for i: 0..<n { if bytes[i] == 0 { return false; } }
   return args_add(a,cast(string)bytes[0..<n]);
 }
-rb_emit :: (d: Jv, at: int, f: RbField, a: [] Args) -> bool {
+rb_emit :: (d: Jv, at: int, f: RbField, a: [] Args) -> bool #effects(all) {
   if f.kind == 4 {
     if jv_kind(d,at) != JV_ARRAY || jv_len(d,at) > 3 { return false; }
     for i: 0..<jv_len(d,at) { if !args_add(a,f.flag) || !rb_string(d,jv_at(d,at,i),a) { return false; } }
@@ -1307,13 +1307,13 @@ rb_emit :: (d: Jv, at: int, f: RbField, a: [] Args) -> bool {
 // a slice of the line or of RB_SPECS), why says what it must be. why "" is admitted.
 RbWhy :: struct { field: string; why: string; }
 RB_OPS :: "is not an edit: move, rotate, resize, remove, switch, place, revise, ask, ask-delete, ask-done, row-delete, settings, lore, quest, accept, decline, undo, publish or visibility";
-rb_kind_why :: (kind: int) -> string {
+rb_kind_why :: (kind: int) -> string #effects(all) {
   if kind == 2 { return "must be a JSON number"; }
   if kind == 3 || kind == 5 { return "must be true or false"; }
   if kind == 4 { return "must be an array of at most three strings"; }
   return "must be a string (without NUL)";
 }
-rb_read :: (line: string, slug: string, a: [] Args) -> RbWhy {
+rb_read :: (line: string, slug: string, a: [] Args) -> RbWhy #effects(all) {
   if line.count > 8192 { return RbWhy.{why="a line is at most 8192 bytes"}; }
   nodes: [64] JvNode; d: [1] Jv;
   if !jv_parse(d[..],line,nodes[..]) || jv_kind(d[0],0) != JV_OBJECT { return RbWhy.{why="is not one JSON object such as {\"op\":\"undo\"}"}; }
@@ -1344,8 +1344,8 @@ rb_read :: (line: string, slug: string, a: [] Args) -> RbWhy {
   return RbWhy.{why=rc_validate(a,verb)};
 }
 // Failure leaves no partially parsed operation for a caller to execute.
-rb_args :: (line: string, slug: string, a: [] Args) -> bool { return rb_check(line,slug,a).why == ""; }
-rb_check :: (line: string, slug: string, a: [] Args) -> RbWhy {
+rb_args :: (line: string, slug: string, a: [] Args) -> bool #effects(all) { return rb_check(line,slug,a).why == ""; }
+rb_check :: (line: string, slug: string, a: [] Args) -> RbWhy #effects(all) {
   if a.count < 1 { return RbWhy.{why="no room for the operation"}; }
   rb_clear(a);
   w := rb_read(line,slug,a);
@@ -1401,7 +1401,7 @@ rb_check :: (line: string, slug: string, a: [] Args) -> RbWhy {
   #assert rc_contains(h, "quest giver ask steps reward?; accept id; decline id; undo; redo; publish listed?; visibility visibility") && !rc_contains(h, "  ");
   #assert rb_help(out[0..<10]) == "";
 }
-rb_help :: (out: [] u8) -> string {
+rb_help :: (out: [] u8) -> string #effects(all) {
   n := 0;
   for i: 0..<RB_SPECS.count {
     sp := RB_SPECS[i];
@@ -1442,7 +1442,7 @@ rb_help :: (out: [] u8) -> string {
   n = cli_realm_rows("realm a-very-long-realm-slug-name|123456|99|0|N|private", out[..]);
   #assert cast(string) out[0..<n] == "SLUG                         VISIBILITY  REV  PUBLISHED  NAME\na-very-long-realm-slug-name  private     123456 99         N\n";
 }
-cli_realm_rows :: (text: string, out: [] u8) -> int {
+cli_realm_rows :: (text: string, out: [] u8) -> int #effects(all) {
   slug_w := 4; rows := false; at := 0;
   for end: 0..<text.count + 1 {
     if end < text.count && text[end] != '\n' { continue; }
@@ -1474,7 +1474,7 @@ cli_realm_rows :: (text: string, out: [] u8) -> int {
   return n;
 }
 // text, then spaces to width (at least one).
-cli_cell :: (out: [] u8, at: int, text: string, width: int) -> int {
+cli_cell :: (out: [] u8, at: int, text: string, width: int) -> int #effects(all) {
   n := forge_put(out,forge_put(out,at,text)," ");
   w := text.count + 1;
   while w < width { n = forge_put(out,n," "); w += 1; }

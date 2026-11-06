@@ -3,4 +3,4 @@
 #test "real room ACKs release every admitted empty command while the connection stays open" {
  a:=[8]int.[64,0,64,0,0,1,0,0];#assert hbsl_accept(a[..]);for i:0..<a.count{a[i]+=1;#assert !hbsl_accept(a[..]);a[i]-=1;}#assert !hbsl_accept(a[0..<7]);
 }
-hbsl_accept :: (a:[]int)->bool #export_c {if a.count!=8{return false;}expected:=[8]int.[64,0,64,0,0,1,0,0];for n,i:expected{if a[i]!=n{return false;}}return true;}
+hbsl_accept :: (a:[]int)->bool #export_c #effects(all) {if a.count!=8{return false;}expected:=[8]int.[64,0,64,0,0,1,0,0];for n,i:expected{if a[i]!=n{return false;}}return true;}

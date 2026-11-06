@@ -12,7 +12,7 @@
 #load "../tdt.coax";
 
 // Wait for every launch so far, then copy the device's values of v into v.
-pkq_read :: (v:[]f32)->bool #foreign;
+pkq_read :: (v:[]f32)->bool #foreign #effects(all);
 
 PKG_ROWS :: 13;   // pkc_rows
 PKG_JOINT :: 14;  // pkc_joint_input
@@ -56,7 +56,7 @@ pkg_pick_of :: (s:TdtShape,pick:[]f32)->TdtPick {
 }
 // tdt_decode's admission, loop and results on the device. The work layout
 // is tdt_plan's; the decode needs nothing more.
-pkg_decode :: (s:TdtShape,w:[]f32,enc:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int)->TdtResult #export_c {
+pkg_decode :: (s:TdtShape,w:[]f32,enc:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int)->TdtResult #export_c #effects(all) {
  p:=tdt_plan(s,frames);if p.status!=TdtStatus.ok {return TdtResult.{status=p.status};}
  if w.count!=p.weights || enc.count!=frames*s.enc {return TdtResult.{status=TdtStatus.shape};}
  if work.count<p.work || at.count<tokens.count || 4*s.pred<3 {return TdtResult.{status=TdtStatus.capacity};}
@@ -75,8 +75,8 @@ pkg_decode :: (s:TdtShape,w:[]f32,enc:[]f32,frames:int,work:[]f32,tokens:[]int,a
  }return TdtResult.{written=n};
 }
 // The pinned model's shape, for the host's decode entry.
-pkg_decode_parakeet :: (w:[]f32,enc:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int)->TdtResult #export_c {return pkg_decode(tdt_parakeet_shape(),w,enc,frames,work,tokens,at);}
-pkg_work :: (frames:int)->int #export_c {return tdt_plan(tdt_parakeet_shape(),frames).work;}
+pkg_decode_parakeet :: (w:[]f32,enc:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int)->TdtResult #export_c #effects(all) {return pkg_decode(tdt_parakeet_shape(),w,enc,frames,work,tokens,at);}
+pkg_work :: (frames:int)->int #export_c #effects(all) {return tdt_plan(tdt_parakeet_shape(),frames).work;}
 
 #test "a read-back pick is a decision only when it is one" {
  s:=tdt_parakeet_shape();

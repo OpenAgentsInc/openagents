@@ -22,7 +22,7 @@ pl_run :: (argv:[]string,expected:int,output:string)->bool {
   op:[4096]u8;ep:[4096]u8;okay:=fs_write(pl_cat(output,".stdout",op[..]),cast(string)stdout[0..<r.out_n]) && fs_write(pl_cat(output,".stderr",ep[..]),cast(string)stderr[0..<r.err_n]);
   return okay && r.started==0 && !r.timed_out && !r.cut && r.status==expected;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}data:=args_value(a[..],"--data","");binary:=args_value(a[..],"--binary","");parity:=args_value(a[..],"--parity","");dir:=args_value(a[..],"--out","");
   sans_cases:=args_value(a[..],"--sans-cases","");sans_wgsl:=args_value(a[..],"--sans-wgsl","");
   if data=="" || binary=="" || parity=="" || dir=="" || sans_cases=="" || sans_wgsl=="" || fs_exists(dir) || !fs_mkdir(dir) {return 2;}

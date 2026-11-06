@@ -24,7 +24,7 @@
  pik_same(o[0],old);pik_same(o[1],old);
 }
 
-pik_step :: (seed:[]pfku.Quantity(pfku.Radian,f64),target:[]Point3(PfkWorld,pfku.Metre,f64),output:[]PikOutput)->PikStatus #export_c {
+pik_step :: (seed:[]pfku.Quantity(pfku.Radian,f64),target:[]Point3(PfkWorld,pfku.Metre,f64),output:[]PikOutput)->PikStatus #export_c #effects(all) {
  if seed.count!=7 || target.count!=1 || output.count!=1 {return PikStatus.shape;}
  words:[10]u64;for i:0..<7 {words[i]=f64_bits(seed[i].value);}words[7]=f64_bits(target[0].x);words[8]=f64_bits(target[0].y);words[9]=f64_bits(target[0].z);status:=pik_admit(words,96);if status!=PikStatus.ok {return status;}
  original:[1]PfkOutput;if pfk_forward(seed,original[..])!=PfkStatus.ok {return PikStatus.solve;}
@@ -33,7 +33,7 @@ pik_step :: (seed:[]pfku.Quantity(pfku.Radian,f64),target:[]Point3(PfkWorld,pfku
  lo:=pik_lower();hi:=pik_upper();fresh:PikOutput;fresh.updates=1;for i:0..<7 {unprojected:=seed[i].value+delta.radians[i];fresh.angles[i].value=pik_clip(unprojected,lo[i],hi[i]);if pik_less(unprojected,lo[i]) || pik_greater(unprojected,hi[i]) {fresh.projected_coordinates+=1;}}
  next:[1]PfkOutput;if pfk_forward(fresh.angles[..],next[..])!=PfkStatus.ok {return PikStatus.solve;}fresh.position=next[0].grip.position;fresh.error_metres=pik_error(fresh.position,target[0]);output[0]=fresh;return PikStatus.ok;
 }
-pik_solve :: (seed:[]pfku.Quantity(pfku.Radian,f64),target:[]Point3(PfkWorld,pfku.Metre,f64),max_updates:int,output:[]PikOutput)->PikStatus #export_c {
+pik_solve :: (seed:[]pfku.Quantity(pfku.Radian,f64),target:[]Point3(PfkWorld,pfku.Metre,f64),max_updates:int,output:[]PikOutput)->PikStatus #export_c #effects(all) {
  if seed.count!=7 || target.count!=1 || output.count!=1 {return PikStatus.shape;}
  words:[10]u64;for i:0..<7 {words[i]=f64_bits(seed[i].value);}words[7]=f64_bits(target[0].x);words[8]=f64_bits(target[0].y);words[9]=f64_bits(target[0].z);status:=pik_admit(words,max_updates);if status!=PikStatus.ok {return status;}
  fk:[1]PfkOutput;if pfk_forward(seed,fk[..])!=PfkStatus.ok {return PikStatus.solve;}fresh:PikOutput;for i:0..<7 {fresh.angles[i]=seed[i];}fresh.position=fk[0].grip.position;fresh.error_metres=pik_error(fresh.position,target[0]);
@@ -41,10 +41,10 @@ pik_solve :: (seed:[]pfku.Quantity(pfku.Radian,f64),target:[]Point3(PfkWorld,pfk
  for update:0..<max_updates {candidate:[1]PikOutput;status=pik_step(fresh.angles[..],target,candidate[..]);if status!=PikStatus.ok {return status;}candidate[0].updates=fresh.updates+1;candidate[0].projected_coordinates+=fresh.projected_coordinates;fresh=candidate[0];if pik_converged(fresh.error_metres) {output[0]=fresh;return PikStatus.ok;}}
  return PikStatus.not_converged;
 }
-pik_step_raw :: (radians:[]f64,target_xyz:[]f64,output:[]PikOutput)->PikStatus #export_c {
+pik_step_raw :: (radians:[]f64,target_xyz:[]f64,output:[]PikOutput)->PikStatus #export_c #effects(all) {
  if radians.count!=7 || target_xyz.count!=3 || output.count!=1 {return PikStatus.shape;}q:[7]pfku.Quantity(pfku.Radian,f64);for i:0..<7 {q[i].value=radians[i];}t:[1]Point3(PfkWorld,pfku.Metre,f64);t[0].x=target_xyz[0];t[0].y=target_xyz[1];t[0].z=target_xyz[2];return pik_step(q[..],t[..],output);
 }
-pik_solve_raw :: (radians:[]f64,target_xyz:[]f64,max_updates:int,output:[]PikOutput)->PikStatus #export_c {
+pik_solve_raw :: (radians:[]f64,target_xyz:[]f64,max_updates:int,output:[]PikOutput)->PikStatus #export_c #effects(all) {
  if radians.count!=7 || target_xyz.count!=3 || output.count!=1 {return PikStatus.shape;}q:[7]pfku.Quantity(pfku.Radian,f64);for i:0..<7 {q[i].value=radians[i];}t:[1]Point3(PfkWorld,pfku.Metre,f64);t[0].x=target_xyz[0];t[0].y=target_xyz[1];t[0].z=target_xyz[2];return pik_solve(q[..],t[..],max_updates,output);
 }
 
@@ -86,4 +86,4 @@ pik_solve_raw :: (radians:[]f64,target_xyz:[]f64,max_updates:int,output:[]PikOut
  }
  q[0].value=3;#assert pik_step(q[..],t[0..<1],out[0..<1])==PikStatus.limits && pik_solve(q[..],t[0..<1],1,out[0..<1])==PikStatus.limits;pik_same(out[0],old);pik_same(out[1],old);
 }
-pik_converged :: (error_metres:f64)->bool {return error_metres<=1e-6;}
+pik_converged :: (error_metres:f64)->bool #effects(all) {return error_metres<=1e-6;}

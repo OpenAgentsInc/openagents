@@ -34,7 +34,7 @@
   #assert sg_equal_mask(sg32_to_point(ef_add(g,negative)),sg_infinity())==CB_MAX64;
   #assert sg_equal_mask(sg32_to_point(ef_add(inf,g)),sg32_to_point(g))==CB_MAX64;
 }
-ef_finish :: (folded:Sf32Fold)->Sf32 {
+ef_finish :: (folded:Sf32Fold)->Sf32 #effects(all) {
   candidate:=sf32_fold_total(folded.value,1);defer {secure_zero(candidate.value.limb[..]);#assert crypto_zeroed(candidate.value.limb[..]);}
   mask:=cast,trunc(u32)(cb_mask(folded.carry|candidate.carry));r:Sf32;defer {secure_zero(r.limb[..]);#assert crypto_zeroed(r.limb[..]);}
   r.limb[0]=folded.value.limb[0]^((folded.value.limb[0]^candidate.value.limb[0])&value_barrier(mask));
@@ -47,12 +47,12 @@ ef_finish :: (folded:Sf32Fold)->Sf32 {
   r.limb[7]=folded.value.limb[7]^((folded.value.limb[7]^candidate.value.limb[7])&value_barrier(mask));
   return r;
 }
-ef_field_add :: (a:Sf32,b:Sf32)->Sf32 {
+ef_field_add :: (a:Sf32,b:Sf32)->Sf32 #effects(all) {
   r:Sf32;defer {secure_zero(r.limb[..]);#assert crypto_zeroed(r.limb[..]);}carry:u64;
   for i:0..<8 {wide:=cast(u64)a.limb[i]+cast(u64)b.limb[i]+carry;r.limb[i]=cast,trunc(u32)(wide);carry=wide>>32;}
   return ef_finish(sf32_fold_total(r,carry));
 }
-ef_field_mul :: (a:Sf32,b:Sf32)->Sf32 {
+ef_field_mul :: (a:Sf32,b:Sf32)->Sf32 #effects(all) {
   product:[16]u32;defer {secure_zero(product[..]);#assert crypto_zeroed(product[..]);}
   for i:0..<8 {
     carry:u64;wide:u64;
@@ -70,7 +70,7 @@ ef_field_mul :: (a:Sf32,b:Sf32)->Sf32 {
   for i:0..<8 {high:=cast(u64)product[i+8];wide:=cast(u64)product[i]+mul_wrap(high,977)+previous+carry;r.limb[i]=cast,trunc(u32)(wide);carry=wide>>32;previous=high;}
   return ef_finish(sf32_fold_total(r,previous+carry));
 }
-ef_double :: (p:Sg32)->Sg32 {
+ef_double :: (p:Sg32)->Sg32 #effects(all) {
   aa:=ef_field_mul(p.x,p.x);defer {secure_zero(aa.limb[..]);#assert crypto_zeroed(aa.limb[..]);}bb:=ef_field_mul(p.y,p.y);defer {secure_zero(bb.limb[..]);#assert crypto_zeroed(bb.limb[..]);}cc:=ef_field_mul(bb,bb);defer {secure_zero(cc.limb[..]);#assert crypto_zeroed(cc.limb[..]);}
   q:=ef_field_add(p.x,bb);defer {secure_zero(q.limb[..]);#assert crypto_zeroed(q.limb[..]);}dd:=sf32_sub(sf32_sub(ef_field_mul(q,q),aa),cc);defer {secure_zero(dd.limb[..]);#assert crypto_zeroed(dd.limb[..]);}dd=ef_field_add(dd,dd);
   ee:=ef_field_add(ef_field_add(aa,aa),aa);defer {secure_zero(ee.limb[..]);#assert crypto_zeroed(ee.limb[..]);}ff:=ef_field_mul(ee,ee);defer {secure_zero(ff.limb[..]);#assert crypto_zeroed(ff.limb[..]);}
@@ -79,7 +79,7 @@ ef_double :: (p:Sg32)->Sg32 {
   r.y=sf32_sub(ef_field_mul(ee,sf32_sub(dd,r.x)),eightcc);
   yz:=ef_field_mul(p.y,p.z);defer {secure_zero(yz.limb[..]);#assert crypto_zeroed(yz.limb[..]);}r.z=ef_field_add(yz,yz);return sg32_canonical_infinity(r);
 }
-ef_add :: (a:Sg32,b:Sg32)->Sg32 {
+ef_add :: (a:Sg32,b:Sg32)->Sg32 #effects(all) {
   z1z1:=ef_field_mul(a.z,a.z);defer {secure_zero(z1z1.limb[..]);#assert crypto_zeroed(z1z1.limb[..]);}z2z2:=ef_field_mul(b.z,b.z);defer {secure_zero(z2z2.limb[..]);#assert crypto_zeroed(z2z2.limb[..]);}
   u1:=ef_field_mul(a.x,z2z2);defer {secure_zero(u1.limb[..]);#assert crypto_zeroed(u1.limb[..]);}u2:=ef_field_mul(b.x,z1z1);defer {secure_zero(u2.limb[..]);#assert crypto_zeroed(u2.limb[..]);}
   s1:=ef_field_mul(a.y,ef_field_mul(b.z,z2z2));defer {secure_zero(s1.limb[..]);#assert crypto_zeroed(s1.limb[..]);}s2:=ef_field_mul(b.y,ef_field_mul(a.z,z1z1));defer {secure_zero(s2.limb[..]);#assert crypto_zeroed(s2.limb[..]);}
@@ -94,7 +94,7 @@ ef_add :: (a:Sg32,b:Sg32)->Sg32 {
   r=sg32_choose(sg32_mask_equal(b.z,zero),a,r);return sg32_canonical_infinity(r);
 }
 // The immutable public chain is admitted at compile time before any use.
-ef_schedule_valid :: (chain:[12]SfChainStep)->bool {
+ef_schedule_valid :: (chain:[12]SfChainStep)->bool #effects(all) {
   for i:0..<12 {if !sf_chain_step_valid(chain[i],i) {return false;}}return true;
 }
 #assert #run ef_schedule_valid(SF_FIELD_CHAIN);
@@ -103,11 +103,11 @@ ef_schedule_valid :: (chain:[12]SfChainStep)->bool {
   chain:=SF_FIELD_CHAIN;chain[index].left=index+1;#assert !ef_schedule_valid(chain);
 }
 // Public fixed exponent schedule inherited from the reviewed field chain.
-ef_square_n :: (a:Sf32,count:int)->Sf32 {
+ef_square_n :: (a:Sf32,count:int)->Sf32 #effects(all) {
   // Private: count is supplied by the validated public exponent schedule.
   r:=a;defer {secure_zero(r.limb[..]);#assert crypto_zeroed(r.limb[..]);}for i:0..<count {r=ef_field_mul(r,r);}return r;
 }
-ef_inverse :: (a:Sf32)->Sf32 {
+ef_inverse :: (a:Sf32)->Sf32 #effects(all) {
   cache:[13]Sf32;defer {for i:0..<13 {secure_zero(cache[i].limb[..]);}for item:cache {for word:item.limb {#assert word==0;}}}cache[0]=a;
   for i:0..<12 {
     step:=SF_FIELD_CHAIN[i];

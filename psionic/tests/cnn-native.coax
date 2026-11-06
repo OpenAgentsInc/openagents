@@ -2,7 +2,7 @@
 #load "../lib/module-cnn.coax";
 #load "../lib/module-train.coax";
 
-cnn_native_vjp :: (x:[]f32,w:[]f32,b:[]f32,dy:[]f32,y:[]f32,gx:[]f32,gw:[]f32,gb:[]f32,loss:[]f32)->AdStatus #export_c {
+cnn_native_vjp :: (x:[]f32,w:[]f32,b:[]f32,dy:[]f32,y:[]f32,gx:[]f32,gw:[]f32,gb:[]f32,loss:[]f32)->AdStatus #export_c #effects(all) {
     if x.count!=48 || w.count!=24 || b.count!=2 || dy.count!=16 || y.count!=16 || gx.count!=48 || gw.count!=24 || gb.count!=2 || loss.count!=1 {return AdStatus.capacity;}
     m:=mdl_data(mdl_model(),"x",TvShape.{rank=4,dims=[4]int.[2,2,3,4]});
     m=mdl_conv2d(m,MDL_ROOT,"conv",0,2,2,3);prediction:=m.node;forward:=m;
@@ -37,7 +37,7 @@ cnn_native_model :: ()->MdlModel {
     m=mdl_linear(m,MDL_ROOT,"head",m.node,2);
     return mdl_squared_error(m,MDL_ROOT,"loss",m.node,target);
 }
-cnn_native_state :: ()->bool #export_c {
+cnn_native_state :: ()->bool #export_c #effects(all) {
     m:=cnn_native_model();if m.status!=MdlStatus.ok || mdl_parameters(m)!=32 || m.top!=47 {return false;}
     inputs:[47]f32;other:[47]f32;
     if mdl_init(m,73,inputs[..])!=MdlStatus.ok || mdl_init(m,99,other[..])!=MdlStatus.ok {return false;}

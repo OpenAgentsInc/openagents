@@ -26,5 +26,6 @@ FROM debian:bookworm-slim
 # curl: the room posts players' HP to the API (room-host.c vitals_post, #12715)
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=build /room /usr/local/bin/room
+COPY compat/ /usr/share/coax/compat/
 USER nobody
 CMD ["room"]

@@ -44,7 +44,7 @@ mc_transport :: (o:[]Jo) {
  for i:0..<9 {mc_message(o,920,"/api/host-contract/batch");}mc_wait(o,500);
  for id:[4]string.["0","1","2","3"] {mc_message(o,912,id);}mc_wait(o,150);mc_observe(o,"events");
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<3 {tool_errln("usage: metal-conformance ROOT RESOURCES OUTPUT [--transport] [--sdk DIRECTORY]");return 2;}
  root:=args_at(a[..],0);res:=args_at(a[..],1);dir:=args_at(a[..],2);if !fs_mkdir(dir) {return 1;}
  transport:=args_has(a[..],"--transport");http:=args_has(a[..],"--http-target");lifecycle:=args_has(a[..],"--lifecycle");reconnect:=args_has(a[..],"--local-reconnect");scope:=ifx reconnect then "local-reconnect" else ifx lifecycle then "lifecycle" else ifx http then "http-target" else ifx transport then "transport" else "core";bytes:[65536]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);mc_str(o[..],"schema","aethyr.host.effects.v1");mc_str(o[..],"scope",scope);jo_key(o[..],"operations");jo_arr(o[..]);

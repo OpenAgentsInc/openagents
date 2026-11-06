@@ -132,7 +132,7 @@ gw_argmax :: (next:[]int,gamma:f64,value:[]f64,s:int)->int {
     for a:1..<4 {if gw_backup(next,gamma,value,s,a)>gw_backup(next,gamma,value,s,best) {best=a;}}
     return best;
 }
-gw_plan :: (t:GwTable,gamma:f64,tol:f64,sweeps:int)->GwPlan #export_c {
+gw_plan :: (t:GwTable,gamma:f64,tol:f64,sweeps:int)->GwPlan #export_c #effects(all) {
     if !(gamma>0 && gamma<1) {return GwPlan.{status=GwStatus.discount};}
     if !(tol>0) || sweeps<1 || sweeps>GW_SWEEPS_MAX || !gw_table_ok(t) {return GwPlan.{status=GwStatus.shape};}
     p:GwPlan;p.status=GwStatus.budget;next:=t.next;
@@ -218,7 +218,7 @@ bias below 2^−57, far under anything these runs can see.
 
 <!-- source: psionic/lib/gridworld.coax learn -->
 ```jai
-gw_learn :: (world:GwMap,q:[256]f64,model:GwTable,c:GwSettings)->GwLearn #export_c {
+gw_learn :: (world:GwMap,q:[256]f64,model:GwTable,c:GwSettings)->GwLearn #export_c #effects(all) {
     if world.status!=GwStatus.ok {return GwLearn.{status=world.status};}
     if !(c.alpha>0 && c.alpha<=1) || c.explore<0 || c.explore>16 || !(c.tol>0) || c.episodes<1 || c.episodes>GW_EPISODES_MAX
         || c.episode_steps<1 || c.episode_steps>GW_EPISODE_STEPS_MAX || !gw_table_ok(model) || model.goal!=world.goal {return GwLearn.{status=GwStatus.shape};}
@@ -283,7 +283,7 @@ is 9 moves, through column 1.
 ```jai
 // Plan on the model, take the first action in the world, write down where it
 // led, plan again. A plan whose walk never reaches the goal ends the run.
-gw_navigate :: (world:GwMap,model:GwTable,gamma:f64,limit:int)->GwRun #export_c {
+gw_navigate :: (world:GwMap,model:GwTable,gamma:f64,limit:int)->GwRun #export_c #effects(all) {
     if world.status!=GwStatus.ok {return GwRun.{status=world.status};}
     if limit<1 || limit>GW_WALK_MAX || !gw_table_ok(model) || model.goal!=world.goal {return GwRun.{status=GwStatus.shape};}
     r:GwRun;r.model=model;s:=world.start;

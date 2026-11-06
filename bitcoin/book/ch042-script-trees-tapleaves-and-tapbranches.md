@@ -86,7 +86,7 @@ TrTree :: struct { count: int; root: [32] u8; leaf: [TR_TREE_LEAVES][32] u8; pat
 // TapLeaf: H_TapLeaf(version || compact size(script) || script). The low
 // bit of a control block's first byte is the output key's parity, so a
 // leaf version is always even.
-taproot_leaf_hash_vartime :: (version: int, script: [] u8, out: [] u8) -> int {
+taproot_leaf_hash_vartime :: (version: int, script: [] u8, out: [] u8) -> int #effects(all) {
   if version < 0 || version > 0xfe || (version & 1) != 0 { return TR_BAD_LEAF_VERSION; }
   if out.count != 32 || !sha256_input_ok(script.count) { return TR_CAPACITY; }
   state: [SHA_STATE_BYTES] u8; prefix: [10] u8;
@@ -100,7 +100,7 @@ taproot_leaf_hash_vartime :: (version: int, script: [] u8, out: [] u8) -> int {
 // TapBranch: H_TapBranch of the two children, the smaller one first, so a
 // node's hash doesn't depend on which child is on the left. out may be a
 // or b.
-taproot_branch_vartime :: (a: [] u8, b: [] u8, out: [] u8) {
+taproot_branch_vartime :: (a: [] u8, b: [] u8, out: [] u8) #effects(all) {
   m: [64] u8;
   b_first := false;
   for i: 0..<32 { if a[i] != b[i] { b_first = b[i] < a[i]; break; } }
@@ -112,7 +112,7 @@ taproot_branch_vartime :: (a: [] u8, b: [] u8, out: [] u8) {
 // descriptors and PSBTs use. A stack joins the top two nodes while they
 // have the same depth. Each join adds each side's hash to the other side's
 // leaves' paths. The depths make a tree when one node of depth 0 is left.
-taproot_tree_vartime :: (depths: [] int, leaves: [] [32] u8, tree: [] TrTree) -> int {
+taproot_tree_vartime :: (depths: [] int, leaves: [] [32] u8, tree: [] TrTree) -> int #effects(all) {
   fresh: TrTree;
   if tree.count != 1 { return TR_CAPACITY; }
   tree[0] = fresh;
@@ -186,7 +186,7 @@ The parity is Q's: chapter 41 explains why the verifier checks it.
 // The control block that spends leaf k of tree (whose leaf version is
 // version) from the output of internal key P: one byte of leaf version
 // plus Q's parity, P, then the leaf's path. Returns its length, 33 + 32m.
-taproot_control_block_vartime :: (tree: [] TrTree, k: int, internal: [] u8, version: int, out: [] u8) -> int {
+taproot_control_block_vartime :: (tree: [] TrTree, k: int, internal: [] u8, version: int, out: [] u8) -> int #effects(all) {
   if tree.count != 1 { return TR_CAPACITY; }
   if k < 0 || k >= tree[0].count || version < 0 || version > 0xfe || (version & 1) != 0 { return TR_BAD_TREE; }
   n := 33 + 32 * tree[0].path_n[k];
@@ -205,7 +205,7 @@ taproot_control_block_vartime :: (tree: [] TrTree, k: int, internal: [] u8, vers
 // witness program and the parity in the control block. Bitcoin Core
 // reports every failure after the size check as
 // SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH: an internal key off the curve too.
-taproot_commitment_vartime :: (control: [] u8, script: [] u8, program: [] u8) -> int {
+taproot_commitment_vartime :: (control: [] u8, script: [] u8, program: [] u8) -> int #effects(all) {
   if control.count < 33 || control.count > TR_CONTROL_MAX || (control.count - 33) % 32 != 0 { return TR_BAD_CONTROL_SIZE; }
   if program.count != 32 { return TR_MISMATCH; }
   k: [32] u8;

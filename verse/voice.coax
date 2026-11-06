@@ -1010,14 +1010,14 @@ packet :: (out: [] s16, value: int) { for i: 0..<out.count { out[i] = cast(s16) 
 
 // ---------------------------------------------------------------- the engine
 
-verse_voice_init :: (s: [] VoiceState, rate: u32) #export_c {
+verse_voice_init :: (s: [] VoiceState, rate: u32) #export_c #effects(all) {
   fresh_state: VoiceState;
   s[0] = fresh_state;
   s[0].input_rate = rate_ok(rate);
   s[0].in_n = frame_samples(rate);
 }
 
-verse_voice_configure :: (s: [] VoiceState, c: VoiceConfig) #export_c {
+verse_voice_configure :: (s: [] VoiceState, c: VoiceConfig) #export_c #effects(all) {
   if c.end_silence_ms != 0 { s[0].cfg.end_silence_ms = clampu(c.end_silence_ms, 200, 3000); }
   if c.min_speech_ms != 0 { s[0].cfg.min_speech_ms = clampu(c.min_speech_ms, 40, 2000); }
   if c.max_turn_ms != 0 { s[0].cfg.max_turn_ms = clampu(c.max_turn_ms, 1000, 120000); }
@@ -1026,8 +1026,8 @@ verse_voice_configure :: (s: [] VoiceState, c: VoiceConfig) #export_c {
   if c.jitter_target != 0 { s[0].cfg.jitter_target = clampu(c.jitter_target, 1, 8); }
 }
 
-verse_voice_config :: (s: [] VoiceState) -> VoiceConfig #export_c { return s[0].cfg; }
-verse_voice_input_frame_samples :: (s: [] VoiceState) -> u32 #export_c { return s[0].in_n; }
+verse_voice_config :: (s: [] VoiceState) -> VoiceConfig #export_c #effects(all) { return s[0].cfg; }
+verse_voice_input_frame_samples :: (s: [] VoiceState) -> u32 #export_c #effects(all) { return s[0].in_n; }
 
 #test "configure clamps and keeps zeros" {
   s := fresh(48000);
@@ -1074,7 +1074,7 @@ self_decide :: (s: [] VoiceState, stream: u32, action: u32, extra: u32, value: f
 }
 
 // One uplink frame. Returns EV_* bits.
-verse_voice_uplink :: (s: [] VoiceState, pcm: [] s16, out: [] s16, f: [] VoiceFeatures) -> u32 #export_c {
+verse_voice_uplink :: (s: [] VoiceState, pcm: [] s16, out: [] s16, f: [] VoiceFeatures) -> u32 #export_c #effects(all) {
   ev: u32 = 0;
   if pcm.count < cast(int) s[0].in_n { return 0; }
   ev |= apply_due(s, STREAM_UPLINK);
@@ -1182,7 +1182,7 @@ verse_voice_uplink :: (s: [] VoiceState, pcm: [] s16, out: [] s16, f: [] VoiceFe
   return ev;
 }
 
-verse_voice_preroll :: (s: [] VoiceState, out: [] s16) -> u32 #export_c {
+verse_voice_preroll :: (s: [] VoiceState, out: [] s16) -> u32 #export_c #effects(all) {
   n := ifx cast(int) s[0].preroll_n < out.count then cast(int) s[0].preroll_n else out.count;
   n = n - n % FRAME;
   for i: 0..<n { out[i] = s[0].preroll[i]; }
@@ -1191,7 +1191,7 @@ verse_voice_preroll :: (s: [] VoiceState, out: [] s16) -> u32 #export_c {
 
 // Reply audio about to play: the gain/duck/pause state, ramped per sample
 // with a ~4 ms one-pole so changes never click.
-verse_voice_downlink :: (s: [] VoiceState, pcm: [] s16, rate: u32, f: [] VoiceFeatures) -> u32 #export_c {
+verse_voice_downlink :: (s: [] VoiceState, pcm: [] s16, rate: u32, f: [] VoiceFeatures) -> u32 #export_c #effects(all) {
   ev := apply_due(s, STREAM_DOWNLINK);
   // a reply starting after quiet: assume a strong echo until it is heard (echo_next)
   if pcm.count > 0 { s[0].recent_play = 10; }
@@ -1221,49 +1221,49 @@ verse_voice_downlink :: (s: [] VoiceState, pcm: [] s16, rate: u32, f: [] VoiceFe
   return ev;
 }
 
-verse_voice_decide :: (s: [] VoiceState, d: VoiceDecision) -> bool #export_c { return decide(s, d); }
-verse_voice_last_decision :: (s: [] VoiceState, out: [] VoiceDecision) -> bool #export_c {
+verse_voice_decide :: (s: [] VoiceState, d: VoiceDecision) -> bool #export_c #effects(all) { return decide(s, d); }
+verse_voice_last_decision :: (s: [] VoiceState, out: [] VoiceDecision) -> bool #export_c #effects(all) {
   if !s[0].has_last || out.count < 1 { return false; }
   out[0] = s[0].last;
   return true;
 }
-verse_voice_playing :: (s: [] VoiceState, playing: bool) #export_c {
+verse_voice_playing :: (s: [] VoiceState, playing: bool) #export_c #effects(all) {
   s[0].playing = playing;
   if !playing { s[0].recent_play = 0; }
 }
-verse_voice_epoch :: (s: [] VoiceState) -> u64 #export_c { return s[0].epoch; }
-verse_voice_set_epoch :: (s: [] VoiceState, epoch: u64) -> u64 #export_c {
+verse_voice_epoch :: (s: [] VoiceState) -> u64 #export_c #effects(all) { return s[0].epoch; }
+verse_voice_set_epoch :: (s: [] VoiceState, epoch: u64) -> u64 #export_c #effects(all) {
   if epoch > s[0].epoch { s[0].epoch = epoch; jitter_flush(s); }
   return s[0].epoch;
 }
-verse_voice_cut :: (s: [] VoiceState) -> u64 #export_c { cut(s); return s[0].epoch; }
+verse_voice_cut :: (s: [] VoiceState) -> u64 #export_c #effects(all) { cut(s); return s[0].epoch; }
 // Opt in after init; automatic conversation remains the default. Release ends
 // once, and cancellation disarms the held turn until another explicit press.
-verse_voice_push_to_talk :: (s:[]VoiceState,pressed:bool) #export_c {
+verse_voice_push_to_talk :: (s:[]VoiceState,pressed:bool) #export_c #effects(all) {
   if pressed && !s[0].pressed {s[0].turn=Turn.{};s[0].end_now=false;}
   s[0].push_to_talk=true;s[0].pressed=pressed;
 }
-verse_voice_cancel_turn :: (s: [] VoiceState) #export_c {
+verse_voice_cancel_turn :: (s: [] VoiceState) #export_c #effects(all) {
   s[0].turn = Turn.{};
   s[0].pressed=false;
   s[0].end_now = false;
   s[0].pend_on[STREAM_UPLINK] = false;
 }
-verse_voice_gain_db :: (s: [] VoiceState) -> f32 #export_c {
+verse_voice_gain_db :: (s: [] VoiceState) -> f32 #export_c #effects(all) {
   if s[0].paused { return -120.0; }
   return s[0].gain_db - (ifx s[0].ducked then s[0].duck_db else 0.0);
 }
-verse_voice_playback_rate :: (s: [] VoiceState) -> f32 #export_c { return s[0].rate; }
-verse_voice_turn_state :: (s: [] VoiceState) -> u32 #export_c { return s[0].turn.state; }
-verse_voice_playback_state :: (s: [] VoiceState) -> u32 #export_c { return playback_state(s); }
-verse_voice_uplink_sequence :: (s: [] VoiceState) -> u32 #export_c { return s[0].up_seq; }
-verse_voice_downlink_sequence :: (s: [] VoiceState) -> u32 #export_c { return s[0].down_seq; }
-verse_voice_turn_ms :: (s: [] VoiceState) -> u32 #export_c { return s[0].turn.turn_ms; }
-verse_voice_jitter_push :: (s: [] VoiceState, seq: u32, epoch: u64, pcm: [] s16) -> bool #export_c { return jitter_push(s, seq, epoch, pcm); }
-verse_voice_jitter_pop :: (s: [] VoiceState, out: [] s16) -> u32 #export_c { return jitter_pop(s, out); }
-verse_voice_jitter_depth :: (s: [] VoiceState) -> u32 #export_c { return s[0].jit.depth; }
-verse_voice_jitter_flush :: (s: [] VoiceState) #export_c { jitter_flush(s); }
-verse_voice_state_bytes :: () -> int #export_c { return size_of(VoiceState); }
+verse_voice_playback_rate :: (s: [] VoiceState) -> f32 #export_c #effects(all) { return s[0].rate; }
+verse_voice_turn_state :: (s: [] VoiceState) -> u32 #export_c #effects(all) { return s[0].turn.state; }
+verse_voice_playback_state :: (s: [] VoiceState) -> u32 #export_c #effects(all) { return playback_state(s); }
+verse_voice_uplink_sequence :: (s: [] VoiceState) -> u32 #export_c #effects(all) { return s[0].up_seq; }
+verse_voice_downlink_sequence :: (s: [] VoiceState) -> u32 #export_c #effects(all) { return s[0].down_seq; }
+verse_voice_turn_ms :: (s: [] VoiceState) -> u32 #export_c #effects(all) { return s[0].turn.turn_ms; }
+verse_voice_jitter_push :: (s: [] VoiceState, seq: u32, epoch: u64, pcm: [] s16) -> bool #export_c #effects(all) { return jitter_push(s, seq, epoch, pcm); }
+verse_voice_jitter_pop :: (s: [] VoiceState, out: [] s16) -> u32 #export_c #effects(all) { return jitter_pop(s, out); }
+verse_voice_jitter_depth :: (s: [] VoiceState) -> u32 #export_c #effects(all) { return s[0].jit.depth; }
+verse_voice_jitter_flush :: (s: [] VoiceState) #export_c #effects(all) { jitter_flush(s); }
+verse_voice_state_bytes :: () -> int #export_c #effects(all) { return size_of(VoiceState); }
 
 // ---------------------------------------------------------------- engine checks
 

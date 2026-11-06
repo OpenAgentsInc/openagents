@@ -142,21 +142,21 @@ DS_CHECK :: "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 DS_GENERATOR :: [5] u64.[0xf5dee51989, 0xa9fdca3312, 0x1bab10e32d, 0x3706b1677a, 0x644d626ffd];
 // One step of the BCH code: shift in a 5-bit symbol, and reduce by the
 // generator for each of the five bits that fell off the top.
-ds_polymod :: (c: u64, symbol: u64) -> u64 {
+ds_polymod :: (c: u64, symbol: u64) -> u64 #effects(all) {
   top := c >> 35;
   r := ((c & 0x7ffffffff) << 5) ^ symbol;
   for i: 0..<5 { if ((top >> cast(u64) i) & 1) != 0 { r ^= DS_GENERATOR[i]; } }
   return r;
 }
 // A character's place in the input set: 0 to 94, or -1.
-ds_position :: (c: u8) -> int {
+ds_position :: (c: u8) -> int #effects(all) {
   for k: 0..<DS_INPUT.count { if DS_INPUT[k] == c { return k; } }
   return -1;
 }
 // The eight checksum characters of a body into out. Each character gives
 // its place within its group of 32, and after every three characters one
 // more symbol gives the three groups.
-descriptor_checksum_vartime :: (body: string, out: [] u8) -> int #export_c {
+descriptor_checksum_vartime :: (body: string, out: [] u8) -> int #export_c #effects(all) {
   if out.count < DS_CHECKSUM_CHARS { return DS_CAPACITY; }
   c: u64 = 1; groups: u64 = 0; count := 0;
   for ch: body {
@@ -174,7 +174,7 @@ descriptor_checksum_vartime :: (body: string, out: [] u8) -> int #export_c {
 }
 // The body of a descriptor: the text before '#', whose checksum must match
 // when there is one. Returns the body's length or a refusal.
-ds_body :: (text: string) -> int {
+ds_body :: (text: string) -> int #effects(all) {
   hash := -1;
   for i: 0..<text.count { if text[i] == '#' && hash < 0 { hash = i; } }
   if hash < 0 {
@@ -228,12 +228,12 @@ next comma outside parentheses), and read hex the way Bitcoin Core's
 <!-- source: coax/lib/bitcoin/descriptor.coax text -->
 ```jai
 // The first c at or after from, or -1.
-ds_find :: (s: string, c: u8, from: int) -> int {
+ds_find :: (s: string, c: u8, from: int) -> int #effects(all) {
   for i: from..<s.count { if s[i] == c { return i; } }
   return -1;
 }
 // The ')' that closes the '(' at open, or -1.
-ds_close :: (s: string, open: int) -> int {
+ds_close :: (s: string, open: int) -> int #effects(all) {
   depth := 0;
   for i: open..<s.count {
     if s[i] == '(' { depth += 1; }
@@ -243,7 +243,7 @@ ds_close :: (s: string, open: int) -> int {
 }
 // The end of the argument that starts at from: the next ',' outside
 // parentheses, or the end of s.
-ds_arg_end :: (s: string, from: int) -> int {
+ds_arg_end :: (s: string, from: int) -> int #effects(all) {
   depth := 0;
   for i: from..<s.count {
     if s[i] == '(' { depth += 1; }
@@ -252,7 +252,7 @@ ds_arg_end :: (s: string, from: int) -> int {
   }
   return s.count;
 }
-ds_hex_digit :: (c: u8) -> int {
+ds_hex_digit :: (c: u8) -> int #effects(all) {
   if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
   if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
   if c >= 'A' && c <= 'F' { return cast(int) (c - 'A') + 10; }
@@ -260,20 +260,20 @@ ds_hex_digit :: (c: u8) -> int {
 }
 // Bitcoin Core's IsHex: an even number of hex digits, at least two, in
 // either case.
-ds_is_hex :: (s: string) -> bool {
+ds_is_hex :: (s: string) -> bool #effects(all) {
   if s.count == 0 || s.count % 2 != 0 { return false; }
   for ch: s { if ds_hex_digit(ch) < 0 { return false; } }
   return true;
 }
-ds_unhex :: (s: string, out: [] u8) {
+ds_unhex :: (s: string, out: [] u8) #effects(all) {
   for i: 0..<s.count / 2 { out[i] = cast(u8) (ds_hex_digit(s[2 * i]) * 16 + ds_hex_digit(s[2 * i + 1])); }
 }
 // A path step, or DS_BAD_STEP.
-ds_step :: (s: string) -> int {
+ds_step :: (s: string) -> int #effects(all) {
   r := path_step_vartime(s);
   return ifx r < 0 then DS_BAD_STEP else r;
 }
-ds_is_multipath :: (s: string) -> bool { return s.count >= 2 && s[0] == '<' && s[s.count - 1] == '>'; }
+ds_is_multipath :: (s: string) -> bool #effects(all) { return s.count >= 2 && s[0] == '<' && s[s.count - 1] == '>'; }
 ```
 
 ## Keys
@@ -293,7 +293,7 @@ multipath step.
 // A key origin's text between '[' and ']': 8 hex characters of fingerprint,
 // then /steps. It names where the key came from and changes no script, so
 // it is only checked. Returns 0 or a refusal.
-ds_origin :: (s: string) -> int {
+ds_origin :: (s: string) -> int #effects(all) {
   slash := ds_find(s, '/', 0);
   if slash < 0 { slash = s.count; }
   if slash != 8 || !ds_is_hex(s[0..<8]) { return DS_BAD_ORIGIN; }
@@ -328,7 +328,7 @@ nonstandard, so `wpkh()`, `wsh()` and `tr()` refuse one with
 ```jai
 // A key written in hex, or a WIF. In tr() a key is its 32-byte x
 // coordinate. Returns the key's length or a refusal.
-ds_plain_key :: (s: string, ctx: int, key_out: [] u8) -> int {
+ds_plain_key :: (s: string, ctx: int, key_out: [] u8) -> int #effects(all) {
   if ds_is_hex(s) {
     if s.count > 130 { return DS_BAD_KEY; }
     b: [65] u8; n := s.count / 2;
@@ -378,7 +378,7 @@ one descriptor: `<0;1>` is the receiving chain and the change chain.
 // An xpub or tpub, then /steps, an optional <a;b> step and an optional
 // final /*. Returns the child's key length or a refusal; with expand false
 // the xpub's own key stands in for the child.
-ds_ext_key :: (s: string, ctx: int, env: [] Ds_Env, key_out: [] u8) -> int {
+ds_ext_key :: (s: string, ctx: int, env: [] Ds_Env, key_out: [] u8) -> int #effects(all) {
   kend := ds_find(s, '/', 0);
   if kend < 0 { kend = s.count; }
   node: [BIP32_NODE_BYTES] u8; work: [BIP32_WORK_BYTES] u8;
@@ -469,7 +469,7 @@ before trying it as an extended key:
 ```jai
 // A key expression: an optional [origin], then a hex key, a WIF or an
 // extended key. Returns the key's length or a refusal.
-ds_key :: (s: string, ctx: int, env: [] Ds_Env, key_out: [] u8) -> int {
+ds_key :: (s: string, ctx: int, env: [] Ds_Env, key_out: [] u8) -> int #effects(all) {
   close := -1;
   for i: 0..<s.count { if s[i] == ']' { if close >= 0 { return DS_BAD_ORIGIN; } close = i; } }
   rest := s;
@@ -507,12 +507,12 @@ script, which allows 15 compressed keys.
 <!-- source: coax/lib/bitcoin/descriptor.coax multi -->
 ```jai
 // A push of a small number: OP_1 to OP_16, or one byte pushed.
-ds_number :: (n: int, out: [] u8, at: int) -> int {
+ds_number :: (n: int, out: [] u8, at: int) -> int #effects(all) {
   if n <= 16 { out[at] = cast(u8) (0x50 + n); return at + 1; }
   out[at] = 1; out[at + 1] = cast(u8) n; return at + 2;
 }
 // Whether key a sorts before key b, byte by byte (BIP-67).
-ds_before :: (keys: [] u8, lengths: [] int, a: int, b: int) -> bool {
+ds_before :: (keys: [] u8, lengths: [] int, a: int, b: int) -> bool #effects(all) {
   la := lengths[a]; lb := lengths[b];
   m := ifx la < lb then la else lb;
   for i: 0..<m {
@@ -523,7 +523,7 @@ ds_before :: (keys: [] u8, lengths: [] int, a: int, b: int) -> bool {
 }
 // multi(k,KEY,...) and sortedmulti(): k OP_n keys OP_CHECKMULTISIG. Every
 // key is read before the counts are checked, as Bitcoin Core does.
-ds_multi :: (inner: string, ctx: int, sorted: bool, env: [] Ds_Env, out: [] u8) -> int {
+ds_multi :: (inner: string, ctx: int, sorted: bool, env: [] Ds_Env, out: [] u8) -> int #effects(all) {
   e := ds_arg_end(inner, 0);
   threshold := inner[0..<e];
   if threshold.count == 0 { return DS_THRESHOLD; }
@@ -595,9 +595,9 @@ key.
 <!-- source: coax/lib/bitcoin/descriptor.coax script -->
 ```jai
 // A chapter 29 script builder's refusal, offset.
-ds_address :: (n: int) -> int { return ifx n < 0 then DS_ADDRESS + n else n; }
+ds_address :: (n: int) -> int #effects(all) { return ifx n < 0 then DS_ADDRESS + n else n; }
 // <key> OP_CHECKSIG.
-ds_pk :: (key: [] u8, out: [] u8) -> int {
+ds_pk :: (key: [] u8, out: [] u8) -> int #effects(all) {
   if out.count < key.count + 2 { return DS_CAPACITY; }
   out[0] = cast(u8) key.count;
   for i: 0..<key.count { out[1 + i] = key[i]; }
@@ -606,7 +606,7 @@ ds_pk :: (key: [] u8, out: [] u8) -> int {
 }
 // The script of the expression s, which sits in ctx. nth picks one of
 // combo()'s outputs.
-ds_script :: (s: string, ctx: int, env: [] Ds_Env, nth: int, out: [] u8) -> int {
+ds_script :: (s: string, ctx: int, env: [] Ds_Env, nth: int, out: [] u8) -> int #effects(all) {
   open := ds_find(s, '(', 0);
   if open < 0 { return DS_UNKNOWN_FUNCTION; }
   if ds_close(s, open) != s.count - 1 { return DS_SYNTAX; }
@@ -704,7 +704,7 @@ derives anything, then runs the second pass:
 <!-- source: coax/lib/bitcoin/descriptor.coax entry -->
 ```jai
 // Whether text parses on network, and its shape. Keys aren't derived.
-descriptor_info_vartime :: (text: string, network: int) -> Ds_Info #export_c {
+descriptor_info_vartime :: (text: string, network: int) -> Ds_Info #export_c #effects(all) {
   if network < SW_MAINNET || network > SW_REGTEST { return Ds_Info.{result = DS_BAD_NETWORK}; }
   body := ds_body(text);
   if body < 0 { return Ds_Info.{result = body}; }
@@ -719,7 +719,7 @@ descriptor_info_vartime :: (text: string, network: int) -> Ds_Info #export_c {
 // The scriptPubKey for one branch (a multipath item, 0 without one), one
 // index (the /* child, ignored when there is none) and one output (0, or
 // 0 to 3 for combo()). Returns its length or a refusal.
-descriptor_script_vartime :: (text: string, network: int, branch: int, index: int, nth: int, out: [] u8) -> int #export_c {
+descriptor_script_vartime :: (text: string, network: int, branch: int, index: int, nth: int, out: [] u8) -> int #export_c #effects(all) {
   info := descriptor_info_vartime(text, network);
   if info.result < 0 { return info.result; }
   if branch < 0 || branch >= info.branches { return DS_BAD_BRANCH; }

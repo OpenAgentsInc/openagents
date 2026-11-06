@@ -13,15 +13,15 @@ YE_LAYER0_TRANSFORMERS_FILE :: "96355941a92956255f1ad3aabf9a29500a88b6ee173aee55
 YE_PSIONIC_FILE :: "1cf6754f3840f9f8f147ffff03dbc30f85fef4ff543e13c6199d98df946095b9";
 YE_REQUEST_FILE :: "3c72fddd8566bdfa0cee7347c29f9e972725005fd3e2c6d5b1a03f5559755226";
 // book:begin policies
-ye_layer0_policy :: ()->QyPolicy {
+ye_layer0_policy :: ()->QyPolicy #effects(all) {
     return QyPolicy.{mode=QyMode.one_block,unit=QyUnit.hidden,values=4096,value_abs=0.000003,
         profile=qy_name(YE_PROFILE),reference_profile=qy_name(YE_REFERENCE),dataset=qy_text_digest(YE_LAYER0_INPUT)};
 }
-ye_decision_policy :: ()->QyPolicy {
+ye_decision_policy :: ()->QyPolicy #effects(all) {
     return QyPolicy.{mode=QyMode.replay,unit=QyUnit.probability,values=2,value_abs=0.0005,distribution=true,tv_max=0.0005,
         top=1,near_tie=0.0005,regret_max=0.0005,profile=qy_name(YE_PROFILE),reference_profile=qy_name(YE_REFERENCE),dataset=qy_hex(YE_REQUEST_FILE)};
 }
-ye_mass_policy :: ()->QyPolicy {
+ye_mass_policy :: ()->QyPolicy #effects(all) {
     return QyPolicy.{mode=QyMode.replay,unit=QyUnit.probability,values=1,value_abs=0.0005,
         profile=qy_name(YE_PROFILE),reference_profile=qy_name(YE_REFERENCE),dataset=qy_hex(YE_REQUEST_FILE)};
 }
@@ -105,9 +105,9 @@ YE_CASES :: 3;
     #assert ye_candidate_count(YE_CASES)==0 && ye_candidate_count(-1)==0;
 }
 
-ye_decode :: (bits:[4096]u32,out:[]f64) {for i:0..<4096 {out[i]=f64(f32_from_bits(bits[i]));}}
+ye_decode :: (bits:[4096]u32,out:[]f64) #effects(all) {for i:0..<4096 {out[i]=f64(f32_from_bits(bits[i]));}}
 // SHA-256 of the little-endian f32 bytes, as the files store them.
-ye_file_digest :: (bits:[4096]u32)->[32]u8 {
+ye_file_digest :: (bits:[4096]u32)->[32]u8 #effects(all) {
     state:[112]u8;digest:[32]u8;block:[64]u8;
     status:=sha256_init(state[..]);#assert status==SHA_OK;
     for i:0..<4096 {
@@ -118,7 +118,7 @@ ye_file_digest :: (bits:[4096]u32)->[32]u8 {
     return digest;
 }
 // The four pinned files as `sha256sum` prints them, in name order, then hashed.
-ye_model :: ()->[32]u8 {
+ye_model :: ()->[32]u8 #effects(all) {
     // The largest capacity: a different one would be refused and change the digest.
     t:=ps_target(0,16384);#assert t.status==PsStatus.ok;
     listing:[512]u8;at:=0;
@@ -133,13 +133,13 @@ ye_model :: ()->[32]u8 {
     out:[32]u8;status:=sha256_hash_checked(listing[0..<at],out[..],false);#assert status==SHA_OK;
     return out;
 }
-ye_policy :: (i:int)->QyPolicy {
+ye_policy :: (i:int)->QyPolicy #effects(all) {
     if i==0 {return ye_layer0_policy();}
     if i==1 {return ye_decision_policy();}
     if i==2 {return ye_mass_policy();}
     return QyPolicy.{};
 }
-ye_candidate_count :: (i:int)->int {
+ye_candidate_count :: (i:int)->int #effects(all) {
     if i==0 {return 4096;}
     if i==1 {return 2;}
     if i==2 {return 1;}
@@ -147,7 +147,7 @@ ye_candidate_count :: (i:int)->int {
 }
 // What chapter 14 recorded about the build that produced each candidate file.
 // book:begin history
-ye_record :: (i:int)->QyRecord {
+ye_record :: (i:int)->QyRecord #effects(all) {
     r:=QyRecord.{dataset=ye_policy(i).dataset,model=qy_hex(YE_MODEL),compiler=qy_name("coax0 0.16.0"),
         reference_profile=qy_name(YE_REFERENCE),role=QyRole.development};
     // Not recorded in chapter 14: the digest of the sources built, and the
@@ -160,7 +160,7 @@ ye_record :: (i:int)->QyRecord {
 }
 // book:end history
 // Copies case i's compared values into c and r and returns their count.
-ye_evidence :: (i:int,c:[]f64,r:[]f64)->int {
+ye_evidence :: (i:int,c:[]f64,r:[]f64)->int #effects(all) {
     if i==0 {
         // The embedded bits are chapter 14's files, or nothing is compared.
         #assert qy_same(ye_file_digest(YE_LAYER0_PSIONIC),qy_hex(YE_LAYER0_PSIONIC_FILE));
@@ -172,7 +172,7 @@ ye_evidence :: (i:int,c:[]f64,r:[]f64)->int {
     return ye_candidate_count(i);
 }
 // Qualify case i of chapter 14's recorded evidence.
-ye_case :: (i:int,c:[]f64,r:[]f64)->QyReport {
+ye_case :: (i:int,c:[]f64,r:[]f64)->QyReport #effects(all) {
     n:=ye_evidence(i,c,r);
     return qy_qualify(ye_policy(i),ye_record(i),c[0..<n],r[0..<n]);
 }

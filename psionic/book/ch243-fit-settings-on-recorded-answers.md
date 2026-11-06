@@ -64,7 +64,7 @@ afterwards.
 // many times the agent repeated its last call, and how many seconds passed
 // without output. The probability is honest but timid: a stalled step reads
 // 0.2 to 0.7, a working one 0 to 0.55.
-st_simulate :: (seed:u64,runs:int,out:[]StRow)->StStatus #export_c {
+st_simulate :: (seed:u64,runs:int,out:[]StRow)->StStatus #export_c #effects(all) {
     if runs<1 || runs>ST_ROWS_MAX/ST_STEPS {return StStatus.shape;}
     if out.count<runs*ST_STEPS {return StStatus.capacity;}
     for g:0..<runs {
@@ -98,10 +98,10 @@ out.
 // The detector: flag a step when the probability, raised by the weight for
 // each repeated call, reaches the threshold, or when it has been quiet for at
 // least the cut point in seconds.
-st_score_of :: (s:StSettings,row:StRow)->f64 {return row.p+s.weight*f64(row.repeats)/ST_REPEATS;}
-st_flag :: (s:StSettings,row:StRow)->bool {return st_score_of(s,row)>=s.threshold || row.quiet>=s.quiet;}
+st_score_of :: (s:StSettings,row:StRow)->f64 #effects(all) {return row.p+s.weight*f64(row.repeats)/ST_REPEATS;}
+st_flag :: (s:StSettings,row:StRow)->bool #effects(all) {return st_score_of(s,row)>=s.threshold || row.quiet>=s.quiet;}
 // Written costs: a missed stall and a false alarm, counted then priced.
-st_score :: (rows:[]StRow,s:StSettings,costs:StCosts)->StScore #export_c {
+st_score :: (rows:[]StRow,s:StSettings,costs:StCosts)->StScore #export_c #effects(all) {
     r:=StScore.{rows=rows.count};
     for row:rows {
         f:=st_flag(s,row);
@@ -133,7 +133,7 @@ of 351.
 // weight where a step that is below the threshold and repeated reaches it.
 // Between two such points every decision is the same, so the candidates are
 // the midpoints, plus one value past each end.
-st_candidates :: (rows:[]StRow,s:StSettings,which:int,out:[]f64)->int {
+st_candidates :: (rows:[]StRow,s:StSettings,which:int,out:[]f64)->int #effects(all) {
     points:[ST_ROWS_MAX]f64;n:=0;
     for row:rows {
         if which==0 {
@@ -163,7 +163,7 @@ worth trying. The weight is held between 0 and 4.
 ```jai
 // The candidate with the lowest written cost, the first on ties; it replaces
 // the current value only when strictly cheaper.
-st_best :: (rows:[]StRow,s:StSettings,which:int,costs:StCosts)->StBest {
+st_best :: (rows:[]StRow,s:StSettings,which:int,costs:StCosts)->StBest #effects(all) {
     out:[ST_ROWS_MAX+2]f64;k:=st_candidates(rows,s,which,out[..]);
     r:=StBest.{value=st_get(s,which),current=st_score(rows,s,costs).cost};r.cost=r.current;
     for x:out[0..<k] {
@@ -183,7 +183,7 @@ st_best :: (rows:[]StRow,s:StSettings,which:int,costs:StCosts)->StBest {
 // strictly cheaper on the recorded answers and, with cross-validation, when
 // refitting that one setting without each fold of runs and pricing it on the
 // fold is strictly cheaper, in total, than leaving it alone.
-st_fit :: (rows:[]StRow,start:StSettings,costs:StCosts,folds:int,cv:bool,passes:int,trail:[]StStep)->StFit #export_c {
+st_fit :: (rows:[]StRow,start:StSettings,costs:StCosts,folds:int,cv:bool,passes:int,trail:[]StStep)->StFit #export_c #effects(all) {
     status:=st_rows_ok(rows);if status!=StStatus.ok {return StFit.{status=status};}
     if !st_settings_ok(start) || !(costs.miss>=0 && costs.miss<=ST_BIG) || !(costs.alarm>=0 && costs.alarm<=ST_BIG) {return StFit.{status=StStatus.number};}
     if folds<2 || folds>ST_FOLDS_MAX || passes<1 || passes>ST_PASSES_MAX {return StFit.{status=StStatus.shape};}

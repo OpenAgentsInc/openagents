@@ -78,7 +78,7 @@ AoWork :: struct {scratch:[AO_REGION]u8;cipher:[2*AO_REGION]u8;body:[AO_REGION]u
 AoOpened :: struct {error:u32=AO_EVENT; frame:int; name:string; seq:int; payload:string;}
 // book:end record
 
-ao_hex64 :: (s:string)->bool {
+ao_hex64 :: (s:string)->bool #effects(all) {
   if s.count!=64 {return false;}
   for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
   return true;
@@ -88,7 +88,7 @@ ao_hex64 :: (s:string)->bool {
 // Exactly one p and one agent (64 hex each, written as plain hex, copied
 // out) and one frame. Returns the frame (AO_TELEMETRY, AO_CONTROL or
 // AO_UNKNOWN), or -1.
-ao_tags :: (tags:string,p:[]u8,agent:[]u8)->int {
+ao_tags :: (tags:string,p:[]u8,agent:[]u8)->int #effects(all) {
   j:[1]Json;json_start(j[..],tags);
   t:=json_next(j[..]);ps:=0;as:=0;fs:=0;fv:="";
   t=json_next(j[..]);
@@ -112,13 +112,13 @@ ao_tags :: (tags:string,p:[]u8,agent:[]u8)->int {
 // book:end tags
 
 // book:begin admit
-ao_owns :: (pairs:[]AoPair,agent:string,owner:string)->bool {
+ao_owns :: (pairs:[]AoPair,agent:string,owner:string)->bool #effects(all) {
   for q:pairs {if q.agent==agent && q.owner==owner {return true;}}
   return false;
 }
-ao_fail :: (f:AoFrame,error:u32)->AoFrame {r:=f;r.error=error;return r;}
+ao_fail :: (f:AoFrame,error:u32)->AoFrame #effects(all) {r:=f;r.error=error;return r;}
 // The relay's check of a frame whose id and signature verified.
-ao_check :: (e:NostrEvent,text:string,pairs:[]AoPair,now:int)->AoFrame {
+ao_check :: (e:NostrEvent,text:string,pairs:[]AoPair,now:int)->AoFrame #effects(all) {
   r:AoFrame;
   if e.kind!=AO_KIND_FRAME {return ao_fail(r,AO_KIND);}
   p:[64]u8;
@@ -140,7 +140,7 @@ ao_check :: (e:NostrEvent,text:string,pairs:[]AoPair,now:int)->AoFrame {
   if e.created_at<now-AO_WINDOW || e.created_at>now+AO_WINDOW {return ao_fail(r,AO_STALE);}
   return ao_fail(r,AO_FANOUT);
 }
-ao_admit :: (text:string,pairs:[]AoPair,now:int,scratch:[]u8)->AoFrame {
+ao_admit :: (text:string,pairs:[]AoPair,now:int,scratch:[]u8)->AoFrame #effects(all) {
   r:AoFrame;
   e:=nostr_event_read(text,scratch,false);
   if e.error!=NE_OK {return r;}
@@ -152,7 +152,7 @@ ao_admit :: (text:string,pairs:[]AoPair,now:int,scratch:[]u8)->AoFrame {
 // book:begin route
 // The relay's entry for one EVENT. snapshot receives a stored event's
 // frame; a 24200 never touches it.
-ps_route :: (text:string,pairs:[]AoPair,now:int,scratch:[]u8,snapshot:[]u8)->PsRoute {
+ps_route :: (text:string,pairs:[]AoPair,now:int,scratch:[]u8,snapshot:[]u8)->PsRoute #effects(all) {
   r:PsRoute;
   e:=nostr_event_read(text,scratch,false);
   if e.error!=NE_OK {return r;}
@@ -172,7 +172,7 @@ ps_route :: (text:string,pairs:[]AoPair,now:int,scratch:[]u8,snapshot:[]u8)->PsR
 }
 // The audit line for a route, written to out; returns its length. A frame
 // (kind 24200) is never logged, whatever happened to it.
-ps_log :: (r:PsRoute,out:[]u8)->int {
+ps_log :: (r:PsRoute,out:[]u8)->int #effects(all) {
   if r.kind==AO_KIND_FRAME {return 0;}
   if r.route==PS_STORED {
     n:=json_raw(out,0,"stored kind ");n=json_write_int(out,n,r.kind);n=json_raw(out,n," id ");
@@ -183,21 +183,21 @@ ps_log :: (r:PsRoute,out:[]u8)->int {
   return 0;
 }
 // The canary check: does text appear anywhere in bytes?
-ps_contains :: (bytes:string,text:string)->bool {
+ps_contains :: (bytes:string,text:string)->bool #effects(all) {
   for i:0..<bytes.count-text.count+1 {if bytes[i..<i+text.count]==text {return true;}}
   return false;
 }
 // book:end route
 
 // book:begin open
-ao_done :: (r:AoOpened,error:u32,w:[]AoWork)->AoOpened {
+ao_done :: (r:AoOpened,error:u32,w:[]AoWork)->AoOpened #effects(all) {
   for i:0..<AO_REGION {w[0].scratch[i]=0;w[0].body[i]=0;w[0].cipher[i]=0;w[0].cipher[AO_REGION+i]=0;}
   for i:0..<32 {w[0].ck[i]=0;}
   out:=r;out.error=error;return out;
 }
 // The client: me_x is this client's key (the frame's p), agent_x the agent
 // it trusts. The owner reads telemetry; the agent reads control.
-ao_open :: (text:string,secret:[]u8,me_x:string,agent_x:string,w:[]AoWork,a:[]AoText)->AoOpened {
+ao_open :: (text:string,secret:[]u8,me_x:string,agent_x:string,w:[]AoWork,a:[]AoText)->AoOpened #effects(all) {
   r:AoOpened;
   if secret.count!=32 || w.count!=1 {return r;}
   e:=nostr_event_read(text,w[0].scratch[..],false);
@@ -219,7 +219,7 @@ ao_open :: (text:string,secret:[]u8,me_x:string,agent_x:string,w:[]AoWork,a:[]Ao
 // Telemetry needs seq (an integer), timestamp and kind (strings) and
 // payload (an object); control needs type (a string). Then the name must
 // be known. The payload and the name are returned from the arena.
-ao_read :: (body:string,opened:AoOpened,w:[]AoWork,a:[]AoText)->AoOpened {
+ao_read :: (body:string,opened:AoOpened,w:[]AoWork,a:[]AoText)->AoOpened #effects(all) {
   r:=opened;
   if ja_admit(body,ja_policy(1),0,0)!=JA_OK {return ao_done(r,AO_SHAPE,w);}
   j:[1]Json;json_start(j[..],body);

@@ -72,7 +72,7 @@ So the host does two things before the first tick:
 // (coax_default_t_RmServer, room-host.c server_new: the C host's memory is otherwise zeros, and a
 // default such as the level cap's 2 would never hold), then calls this once. What it sets is what a
 // declared default can't say; rm_start_check holds the started server to the declarations (#12774).
-rm_init :: (v: [] RmServer) #export_c {
+rm_init :: (v: [] RmServer) #export_c #effects(all) {
   for i: 0..<CONNS { v[0].conns[i] = RmConn.{}; }
   for r: 0..<RELAYS { v[0].relays[r].live = false; }
   for k: 0..<EG_ROOMS { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }

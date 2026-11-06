@@ -1492,7 +1492,7 @@ follow_ship :: (s: [] Belt, k: int) {
 
 // ---- in from the host
 
-belt_message :: (s: [] Belt, kind: int, text: string) #export_c {
+belt_message :: (s: [] Belt, kind: int, text: string) #export_c #effects(all) {
   started(s);
   if net_socket(s, kind, text) { return; }
   if kind == HOST_PAGE {
@@ -1531,9 +1531,9 @@ tip_pointer :: (s: [] Belt, x: f32, y: f32, phase: int, kind: int, id: int) -> b
   if phase == 2 && on && s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/worlds/belt-2200/tip"); s[0].action = ACT_NAVIGATE; }
   return true;
 }
-belt_golden :: (s: [] Belt, on: bool) #export_c { s[0].golden = on; }
-belt_action :: (s: [] Belt) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
-belt_action_done :: (s: [] Belt) #export_c { s[0].out_n = 0; }
+belt_golden :: (s: [] Belt, on: bool) #export_c #effects(all) { s[0].golden = on; }
+belt_action :: (s: [] Belt) -> int #export_c #effects(all) { a := s[0].action; s[0].action = 0; return a; }
+belt_action_done :: (s: [] Belt) #export_c #effects(all) { s[0].out_n = 0; }
 
 HOLD_LEFT :: 1; HOLD_RIGHT :: 2; HOLD_UP :: 4; HOLD_DOWN :: 8; HOLD_IN :: 16; HOLD_OUT :: 32;
 hold_bit :: (key: int) -> int {
@@ -1560,7 +1560,7 @@ group_key :: (s: [] Belt, g: int, set: bool) {
   }
   if verse_command_group_recall(s[0].cmd[..], g) { s[0].dest = -1; say(s, cast(string) buf[0..<n]); }
 }
-belt_key :: (s: [] Belt, key: int, mods: int) -> bool #export_c {
+belt_key :: (s: [] Belt, key: int, mods: int) -> bool #export_c #effects(all) {
   started(s);
   track_key(s[0].track[..], key, false);
   if s[0].tac[0].on { return false; }
@@ -1590,14 +1590,14 @@ belt_key :: (s: [] Belt, key: int, mods: int) -> bool #export_c {
   }
   return false;
 }
-belt_key_up :: (s: [] Belt, key: int, mods: int) -> bool #export_c {
+belt_key_up :: (s: [] Belt, key: int, mods: int) -> bool #export_c #effects(all) {
   track_key_up(s[0].track[..], key);
   if key == KEY_SHIFT { s[0].shift = false; return true; }
   b := hold_bit(key);
   if b != 0 { s[0].held = s[0].held & (63 - b); return true; }
   return false;
 }
-belt_blur :: (s: [] Belt) #export_c { s[0].held = 0; s[0].shift = false; s[0].mouse_down = false; track_blur(s[0].track[..]); for i: 0..<2 { s[0].fingers[i].id = -1; } }
+belt_blur :: (s: [] Belt) #export_c #effects(all) { s[0].held = 0; s[0].shift = false; s[0].mouse_down = false; track_blur(s[0].track[..]); for i: 0..<2 { s[0].fingers[i].id = -1; } }
 
 button_at :: (s: [] Belt, x: f32, y: f32) -> int {
   for i: 0..<s[0].btn_n {
@@ -1793,7 +1793,7 @@ pan :: (s: [] Belt, dx: f32, dy: f32) {
   pick_ride(s, s[0].w / 2, s[0].h / 2);
 }
 
-belt_pointer :: (s: [] Belt, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+belt_pointer :: (s: [] Belt, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   started(s);
   if tip_pointer(s, x, y, phase, kind, id) { s[0].hover = -1; return true; }
   k := hi(s[0].dpr, 0.5);
@@ -1906,12 +1906,12 @@ belt_pointer :: (s: [] Belt, x: f32, y: f32, phase: int, kind: int, id: int) -> 
   return false;
 }
 
-belt_wheel :: (s: [] Belt, dy: f32) -> bool #export_c {
+belt_wheel :: (s: [] Belt, dy: f32) -> bool #export_c #effects(all) {
   started(s);
   zoom_at(s, exp(-f64(dy) * 0.0018), s[0].mx, s[0].my);
   return true;
 }
-belt_cursor :: (s: [] Belt) -> int #export_c {
+belt_cursor :: (s: [] Belt) -> int #export_c #effects(all) {
   if s[0].hover >= 0 || s[0].tip_hover { return 1; }
   if s[0].boxing { return 2; }
   return 0;
@@ -2774,9 +2774,9 @@ maker_line :: (s: [] Belt, out: [] f32, d: [] Draw) {
 
 // ---- the frame
 
-coaxial_belt_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_belt_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_belt_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_belt_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_belt_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_belt_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 belt_step :: (s: [] Belt, dt: f32) {
   real := f64(clamp(dt, 0, 0.1));
@@ -2833,7 +2833,7 @@ belt_step :: (s: [] Belt, dt: f32) {
   if s[0].stage == STAGE_HIGHLIGHT { stage_camera(s); }
 }
 
-belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   started(s);
   s[0].w = width; s[0].h = height; s[0].dpr = dpr;
   if !s[0].framed && width > 0 && height > 0 {

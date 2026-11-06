@@ -1,0 +1,3 @@
+// expect: E0970
+Saved :: struct($T:copyable) #persisted { data:$T; }
+main :: () { s:Saved(string); }

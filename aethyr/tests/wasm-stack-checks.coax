@@ -82,7 +82,7 @@ ws_case :: (python:string,objdump:string,oracle:string,dir:string,kind:int,name:
   log_name:[4096]u8;log_path:=fs_join(base,"oracle.stderr",log_name[..]);if !fs_write(log_path,cast(string)stderr[0..<result.err_n]) {return false;}
   print("stack oracle control %: expected exit %\n",name,expected);return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}
   out:=args_value(a[..],"--out","");python:=args_value(a[..],"--python","python3");objdump:=args_value(a[..],"--objdump","/opt/homebrew/opt/llvm/bin/llvm-objdump");oracle:=args_value(a[..],"--oracle","aethyr/tests/wasm_stack_oracle.py");
   if out=="" || !fs_mkdir(out) {tool_errln("stack controls: --out must name a new/empty retained directory");return 2;}

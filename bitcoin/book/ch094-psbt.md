@@ -125,7 +125,7 @@ amount and script:
 // One map, from at to its separator: each key once, each value checked,
 // each pair added to fields. found[t] says a pair of type t was read.
 // Returns where the next map starts, or -1.
-pr_map :: (b: [] u8, at: int, map: int, index: int, version: int, fields: [] PsbtField, w: [] PsbtRead, r: [] Psbt, found: [] bool) -> int {
+pr_map :: (b: [] u8, at: int, map: int, index: int, version: int, fields: [] PsbtField, w: [] PsbtRead, r: [] Psbt, found: [] bool) -> int #effects(all) {
   for t: 0..<256 { found[t] = false; }
   first := r[0].nfields;
   pos := at;
@@ -196,17 +196,17 @@ PsbtPair :: struct { map: int; index: int; key: int; key_n: int; value: int; val
 // A PSBT as its pairs: the version, the counts, pairs[0..<n] and the
 // arena's first used bytes. The roles read and change this.
 PsbtMaps :: struct { version: int; nin: int; nout: int; n: int; used: int; pairs: [PSBT_PAIRS] PsbtPair; arena: [PSBT_ARENA] u8; }
-pm_key :: (m: [] PsbtMaps, j: int) -> [] u8 { p := m[0].pairs[j]; return m[0].arena[p.key..<p.key+p.key_n]; }
-pm_value :: (m: [] PsbtMaps, j: int) -> [] u8 { p := m[0].pairs[j]; return m[0].arena[p.value..<p.value+p.value_n]; }
-pm_type :: (m: [] PsbtMaps, j: int) -> int { return tx_compact_read_vartime(pm_key(m, j), 0).value; }
-pm_copy :: (m: [] PsbtMaps, s: [] u8) -> int {
+pm_key :: (m: [] PsbtMaps, j: int) -> [] u8 #effects(all) { p := m[0].pairs[j]; return m[0].arena[p.key..<p.key+p.key_n]; }
+pm_value :: (m: [] PsbtMaps, j: int) -> [] u8 #effects(all) { p := m[0].pairs[j]; return m[0].arena[p.value..<p.value+p.value_n]; }
+pm_type :: (m: [] PsbtMaps, j: int) -> int #effects(all) { return tx_compact_read_vartime(pm_key(m, j), 0).value; }
+pm_copy :: (m: [] PsbtMaps, s: [] u8) -> int #effects(all) {
   at := m[0].used;
   for i: 0..<s.count { m[0].arena[at+i] = s[i]; }
   m[0].used += s.count;
   return at;
 }
 // The pair with this key in map (index), or -1.
-psbt_find_vartime :: (m: [] PsbtMaps, map: int, index: int, key: [] u8) -> int {
+psbt_find_vartime :: (m: [] PsbtMaps, map: int, index: int, key: [] u8) -> int #effects(all) {
   for j: 0..<m[0].n {
     p := m[0].pairs[j];
     if p.map == map && p.index == index && p.key_n == key.count {
@@ -218,13 +218,13 @@ psbt_find_vartime :: (m: [] PsbtMaps, map: int, index: int, key: [] u8) -> int {
   return -1;
 }
 // The pair of the one-byte key t, or -1.
-psbt_find1_vartime :: (m: [] PsbtMaps, map: int, index: int, t: int) -> int {
+psbt_find1_vartime :: (m: [] PsbtMaps, map: int, index: int, t: int) -> int #effects(all) {
   k := [1] u8.[cast(u8) t];
   return psbt_find_vartime(m, map, index, k[..]);
 }
 // The Updater: key's value in map (index) becomes value, added when the
 // key is new. False when the arena or the pairs are full.
-psbt_set_vartime :: (m: [] PsbtMaps, map: int, index: int, key: [] u8, value: [] u8) -> bool #export_c {
+psbt_set_vartime :: (m: [] PsbtMaps, map: int, index: int, key: [] u8, value: [] u8) -> bool #export_c #effects(all) {
   if m[0].used + key.count + value.count > PSBT_ARENA { return false; }
   j := psbt_find_vartime(m, map, index, key);
   if j < 0 {
@@ -235,12 +235,12 @@ psbt_set_vartime :: (m: [] PsbtMaps, map: int, index: int, key: [] u8, value: []
   m[0].pairs[j].value = pm_copy(m, value); m[0].pairs[j].value_n = value.count;
   return true;
 }
-psbt_set1_vartime :: (m: [] PsbtMaps, map: int, index: int, t: int, value: [] u8) -> bool {
+psbt_set1_vartime :: (m: [] PsbtMaps, map: int, index: int, t: int, value: [] u8) -> bool #effects(all) {
   k := [1] u8.[cast(u8) t];
   return psbt_set_vartime(m, map, index, k[..], value);
 }
 // A read PSBT's pairs, in the order they came.
-psbt_maps_vartime :: (b: [] u8, p: Psbt, fields: [] PsbtField, m: [] PsbtMaps) -> bool #export_c {
+psbt_maps_vartime :: (b: [] u8, p: Psbt, fields: [] PsbtField, m: [] PsbtMaps) -> bool #export_c #effects(all) {
   if p.code != PSBT_OK { return false; }
   m[0].version = p.version; m[0].nin = p.nin; m[0].nout = p.nout; m[0].n = 0; m[0].used = 0;
   for j: 0..<p.nfields {
@@ -271,7 +271,7 @@ a time:
 ```jai
 // The Creator: a version 0 PSBT for an unsigned transaction, which must
 // read in the legacy form with every scriptSig empty.
-psbt_create_vartime :: (unsigned: [] u8, m: [] PsbtMaps) -> bool #export_c {
+psbt_create_vartime :: (unsigned: [] u8, m: [] PsbtMaps) -> bool #export_c #effects(all) {
   w: [1] PsbtRead;
   t := tx_read_vartime(unsigned, false, w[0].ins[..], w[0].outs[..], w[0].items[0..<0]);
   if t.code != TX_OK { return false; }
@@ -283,7 +283,7 @@ psbt_create_vartime :: (unsigned: [] u8, m: [] PsbtMaps) -> bool #export_c {
 // fallback (or 0); else the largest height when every input that
 // requires a lock time accepts a height, else the largest time when every
 // one accepts a time; -1 when neither.
-psbt_locktime_vartime :: (m: [] PsbtMaps) -> int #export_c {
+psbt_locktime_vartime :: (m: [] PsbtMaps) -> int #export_c #effects(all) {
   height := 0; time := 0; any_height := true; any_time := true; seen := false;
   for i: 0..<m[0].nin {
     h := psbt_find1_vartime(m, PSBT_INPUT, i, 0x12); t := psbt_find1_vartime(m, PSBT_INPUT, i, 0x11);
@@ -304,7 +304,7 @@ psbt_locktime_vartime :: (m: [] PsbtMaps) -> int #export_c {
 // 2's built from its fields (empty scriptSigs, sequences 0xffffffff
 // unless given, BIP-370's lock time). Its length, or -1 when no lock time
 // satisfies every input or out is too short.
-psbt_unsigned_vartime :: (m: [] PsbtMaps, out: [] u8) -> int #export_c {
+psbt_unsigned_vartime :: (m: [] PsbtMaps, out: [] u8) -> int #export_c #effects(all) {
   if m[0].version < 2 {
     j := psbt_find1_vartime(m, PSBT_GLOBAL, 0, 0x00);
     v := pm_value(m, j);
@@ -381,7 +381,7 @@ PsbtSign :: struct {
 }
 // The output input n spends, into w.amount and w.spk: from its witness
 // UTXO, else from its non-witness UTXO. False when it has neither.
-ps_spent :: (m: [] PsbtMaps, n: int, w: [] PsbtSign) -> bool {
+ps_spent :: (m: [] PsbtMaps, n: int, w: [] PsbtSign) -> bool #effects(all) {
   u := psbt_find1_vartime(m, PSBT_INPUT, n, 0x01);
   s: [] u8;
   if u >= 0 {
@@ -406,25 +406,25 @@ ps_spent :: (m: [] PsbtMaps, n: int, w: [] PsbtSign) -> bool {
   return true;
 }
 // ALL, NONE or SINGLE, with or without ANYONECANPAY.
-ps_hashtype :: (h: int) -> bool { return (h >= 1 && h <= 3) || (h >= 0x81 && h <= 0x83); }
-ps_p2wpkh :: (s: [] u8) -> bool { return s.count == 22 && s[0] == 0 && s[1] == 20; }
-ps_p2wsh :: (s: [] u8) -> bool { return s.count == 34 && s[0] == 0 && s[1] == 32; }
-ps_p2tr :: (s: [] u8) -> bool { return s.count == 34 && s[0] == 0x51 && s[1] == 32; }
-ps_p2pkh :: (s: [] u8) -> bool { return s.count == 25 && s[0] == 0x76 && s[1] == 0xa9 && s[2] == 20 && s[23] == 0x88 && s[24] == 0xac; }
+ps_hashtype :: (h: int) -> bool #effects(all) { return (h >= 1 && h <= 3) || (h >= 0x81 && h <= 0x83); }
+ps_p2wpkh :: (s: [] u8) -> bool #effects(all) { return s.count == 22 && s[0] == 0 && s[1] == 20; }
+ps_p2wsh :: (s: [] u8) -> bool #effects(all) { return s.count == 34 && s[0] == 0 && s[1] == 32; }
+ps_p2tr :: (s: [] u8) -> bool #effects(all) { return s.count == 34 && s[0] == 0x51 && s[1] == 32; }
+ps_p2pkh :: (s: [] u8) -> bool #effects(all) { return s.count == 25 && s[0] == 0x76 && s[1] == 0xa9 && s[2] == 20 && s[23] == 0x88 && s[24] == 0xac; }
 // The P2PKH script of a 20-byte hash into out.
-ps_p2pkh_of :: (h: [] u8, out: [] u8) -> [] u8 {
+ps_p2pkh_of :: (h: [] u8, out: [] u8) -> [] u8 #effects(all) {
   out[0] = 0x76; out[1] = 0xa9; out[2] = 20;
   for k: 0..<20 { out[3+k] = h[k]; }
   out[23] = 0x88; out[24] = 0xac;
   return out[0..<25];
 }
-ps_equal :: (a: [] u8, b: [] u8) -> bool {
+ps_equal :: (a: [] u8, b: [] u8) -> bool #effects(all) {
   if a.count != b.count { return false; }
   for k: 0..<a.count { if a[k] != b[k] { return false; } }
   return true;
 }
 // Whether needle occurs in s.
-ps_contains :: (s: [] u8, needle: [] u8) -> bool {
+ps_contains :: (s: [] u8, needle: [] u8) -> bool #effects(all) {
   for k: 0..<s.count - needle.count + 1 { if ps_equal(s[k..<k+needle.count], needle) { return true; } }
   return false;
 }
@@ -435,7 +435,7 @@ ps_contains :: (s: [] u8, needle: [] u8) -> bool {
 // keeps it. grind selects Core's low-R signatures (ecdsa_sign_low_r);
 // BIP-174's worked example signs without it. aux is BIP-340's auxiliary
 // randomness.
-psbt_sign_vartime :: (m: [] PsbtMaps, n: int, key: [] u8, aux: [] u8, grind: bool, w: [] PsbtSign) -> int #export_c {
+psbt_sign_vartime :: (m: [] PsbtMaps, n: int, key: [] u8, aux: [] u8, grind: bool, w: [] PsbtSign) -> int #export_c #effects(all) {
   if psbt_final_vartime(m, n) { return PSBT_SIGN_FINAL; }
   size := psbt_unsigned_vartime(m, w[0].tx[..]);
   if size < 0 { return PSBT_SIGN_LOCKTIME; }
@@ -492,7 +492,7 @@ psbt_sign_vartime :: (m: [] PsbtMaps, n: int, key: [] u8, aux: [] u8, grind: boo
 // a signature by the key tweaked with the input's Merkle root (none for a
 // key with no scripts). The key is the input's when the signature
 // verifies under the scriptPubKey's output key.
-ps_sign_taproot :: (m: [] PsbtMaps, n: int, b: [] u8, key: [] u8, aux: [] u8, ht: int, w: [] PsbtSign) -> int {
+ps_sign_taproot :: (m: [] PsbtMaps, n: int, b: [] u8, key: [] u8, aux: [] u8, ht: int, w: [] PsbtSign) -> int #effects(all) {
   hashtype := ifx ht >= 0 then tx_le_vartime(pm_value(m, ht), 0, 4) else 0;
   if hashtype != 0 && !ps_hashtype(hashtype) { return PSBT_SIGN_SIGHASH; }
   tp := bt_tx_read(b);
@@ -534,7 +534,7 @@ Core does:
 ```jai
 // The Combiner: a's pairs, then each pair of b's whose key a lacks, into
 // out. False when the two aren't PSBTs of one unsigned transaction.
-psbt_combine_vartime :: (a: [] PsbtMaps, b: [] PsbtMaps, out: [] PsbtMaps) -> bool #export_c {
+psbt_combine_vartime :: (a: [] PsbtMaps, b: [] PsbtMaps, out: [] PsbtMaps) -> bool #export_c #effects(all) {
   ta: [PSBT_TX] u8; tb: [PSBT_TX] u8;
   na := psbt_unsigned_vartime(a, ta[..]); nb := psbt_unsigned_vartime(b, tb[..]);
   if na < 0 || !ps_equal(ta[0..<na], tb[0..<nb]) { return false; }
@@ -561,7 +561,7 @@ path takes its one signature:
 <!-- source: coax/lib/bitcoin/psbt.coax finalizer -->
 ```jai
 // A push of data, in the shortest form for its length.
-pf_push :: (data: [] u8, out: [] u8, at: int) -> int {
+pf_push :: (data: [] u8, out: [] u8, at: int) -> int #effects(all) {
   pos := at;
   if data.count == 0 { out[pos] = 0; return pos + 1; }
   if data.count < 0x4c { out[pos] = cast(u8) data.count; pos += 1; }
@@ -570,7 +570,7 @@ pf_push :: (data: [] u8, out: [] u8, at: int) -> int {
   return tx_put(out, pos, data);
 }
 // The partial signature of public key k (33 or 65 bytes), or -1.
-pf_sig :: (m: [] PsbtMaps, n: int, k: [] u8) -> int {
+pf_sig :: (m: [] PsbtMaps, n: int, k: [] u8) -> int #effects(all) {
   key: [66] u8; key[0] = 0x02;
   for x: 0..<k.count { key[1+x] = k[x]; }
   return psbt_find_vartime(m, PSBT_INPUT, n, key[0..<1+k.count]);
@@ -580,7 +580,7 @@ pf_sig :: (m: [] PsbtMaps, n: int, k: [] u8) -> int {
 // empty dummy): P2PKH takes a signature and its key, k-of-n
 // CHECKMULTISIG the dummy and k signatures in the script's key order.
 // Returns the stack's size, or -1.
-pf_satisfy :: (m: [] PsbtMaps, n: int, script: [] u8, stack: [] int, key: [] int) -> int {
+pf_satisfy :: (m: [] PsbtMaps, n: int, script: [] u8, stack: [] int, key: [] int) -> int #effects(all) {
   if ps_p2pkh(script) {
     for j: 0..<m[0].n {
       p := m[0].pairs[j];
@@ -607,7 +607,7 @@ pf_satisfy :: (m: [] PsbtMaps, n: int, script: [] u8, stack: [] int, key: [] int
 }
 // The stack's items: a pair's value, the public key in a P2PKH spend
 // (its partial signature's key without the type), or nothing.
-pf_item :: (m: [] PsbtMaps, item: int, key: int) -> [] u8 {
+pf_item :: (m: [] PsbtMaps, item: int, key: int) -> [] u8 #effects(all) {
   if item == -2 { k := pm_key(m, key); return k[1..<k.count]; }
   if item == -3 { return m[0].arena[0..<0]; }
   return pm_value(m, item);
@@ -616,7 +616,7 @@ pf_item :: (m: [] PsbtMaps, item: int, key: int) -> [] u8 {
 // witness (type 08) from its partial signatures and scripts, for P2PKH,
 // P2WPKH, multisig, P2SH, P2WSH and P2SH-P2WSH, and from its key-path
 // signature for P2TR. True when the input is final.
-psbt_finalize_input_vartime :: (m: [] PsbtMaps, n: int, w: [] PsbtSign) -> bool #export_c {
+psbt_finalize_input_vartime :: (m: [] PsbtMaps, n: int, w: [] PsbtSign) -> bool #export_c #effects(all) {
   if psbt_final_vartime(m, n) { return true; }
   size := psbt_unsigned_vartime(m, w[0].tx[..]);
   if size < 0 { return false; }
@@ -666,7 +666,7 @@ psbt_finalize_input_vartime :: (m: [] PsbtMaps, n: int, w: [] PsbtSign) -> bool 
   return true;
 }
 // Every input; true when all are final.
-psbt_finalize_vartime :: (m: [] PsbtMaps, w: [] PsbtSign) -> bool #export_c {
+psbt_finalize_vartime :: (m: [] PsbtMaps, w: [] PsbtSign) -> bool #export_c #effects(all) {
   all := true;
   for n: 0..<m[0].nin { if !psbt_finalize_input_vartime(m, n, w) { all = false; } }
   return all;
@@ -682,7 +682,7 @@ unsigned transaction:
 // final scriptSig and witness, in BIP-144's form when any input has a
 // witness. Its length in out, or -1 when an input isn't final or out is
 // too short.
-psbt_extract_vartime :: (m: [] PsbtMaps, out: [] u8, w: [] PsbtSign) -> int #export_c {
+psbt_extract_vartime :: (m: [] PsbtMaps, out: [] u8, w: [] PsbtSign) -> int #export_c #effects(all) {
   size := psbt_unsigned_vartime(m, w[0].tx[..]);
   if size < 0 { return -1; }
   b := w[0].tx[0..<size];

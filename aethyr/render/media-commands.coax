@@ -148,15 +148,15 @@ RenderMediaNumber :: struct {ok:bool;value:f64;}
   for c:0..<34 {#assert rmc_space(c)==(c==32 || (c>=9 && c<=13));}
 }
 
-rmc_finite :: (x:f64)->bool {return x>=-1.7976931348623157e308 && x<=1.7976931348623157e308;}
+rmc_finite :: (x:f64)->bool #effects(all) {return x>=-1.7976931348623157e308 && x<=1.7976931348623157e308;}
 // Both candidates are positive. Select their bits from the difference's sign
 // rather than subtracting nearly equal large values to recover a small ratio.
-rmc_lower_positive :: (a:f64,b:f64)->f64 {
+rmc_lower_positive :: (a:f64,b:f64)->f64 #effects(all) {
   mask:=cast,trunc(u64)(-cast(int)(f64_bits(a-b)>>63));
   return f64_from_bits(f64_bits(b)^((f64_bits(a)^f64_bits(b))&mask));
 }
-rmc_space :: (c:int)->bool {return c==32 || (c>=9 && c<=13);}
-rmc_digit :: (c:int)->int {
+rmc_space :: (c:int)->bool #effects(all) {return c==32 || (c>=9 && c<=13);}
+rmc_digit :: (c:int)->int #effects(all) {
   if c>='0' && c<='9' {return c-'0';}
   if c>='a' && c<='f' {return c-'a'+10;}
   if c>='A' && c<='F' {return c-'A'+10;}
@@ -164,7 +164,7 @@ rmc_digit :: (c:int)->int {
 }
 // The parser's mantissa is zero or at least1. Apply negative powers in
 // bounded finite pieces, then admit only a finite final value.
-rmc_scale_decimal :: (mantissa:f64,exponent:f64)->RenderMediaNumber {
+rmc_scale_decimal :: (mantissa:f64,exponent:f64)->RenderMediaNumber #effects(all) {
   value:=mantissa;power:=exponent;
   if power!=power {return RenderMediaNumber.{};}
   if value!=0 {
@@ -181,7 +181,7 @@ rmc_scale_decimal :: (mantissa:f64,exponent:f64)->RenderMediaNumber {
 }
 // The producer writes whole device pixels. Decimal fractions/exponents and
 // prefixed integer columns are also decoded here, without a host number parser.
-rmc_number :: (text:string)->RenderMediaNumber {
+rmc_number :: (text:string)->RenderMediaNumber #effects(all) {
   a:=0;b:=text.count;
   while a<b && rmc_space(cast(int)text[a]) {a+=1;}
   while b>a && rmc_space(cast(int)text[b-1]) {b-=1;}
@@ -227,7 +227,7 @@ rmc_number :: (text:string)->RenderMediaNumber {
   if negative {value= -value;}
   return RenderMediaNumber.{ok=rmc_finite(value),value=value};
 }
-rmc_line :: (text:string,line:int)->RenderMediaRequest {
+rmc_line :: (text:string,line:int)->RenderMediaRequest #effects(all) {
   columns:[6]string;at:=0;
   for i:0..<6 {
     rmc_begin:=at;while at<text.count && text[at]!=' ' {at+=1;}columns[i]=text[rmc_begin..<at];
@@ -245,7 +245,7 @@ rmc_line :: (text:string,line:int)->RenderMediaRequest {
   for i:0..<4 {number:=rmc_number(columns[i+2]);if !number.ok {return RenderMediaRequest.{};}rmc_request.box[i]=number.value;}
   return rmc_request;
 }
-rmc_parse_pass :: (text:string,out:[]RenderMediaRequest,store:bool)->RenderMediaParse {
+rmc_parse_pass :: (text:string,out:[]RenderMediaRequest,store:bool)->RenderMediaParse #effects(all) {
   r:RenderMediaParse;at:=0;
   for line:0..<RENDER_MEDIA_ITEMS {
     end:=at;while end<text.count && text[end]!=10 {end+=1;}
@@ -255,13 +255,13 @@ rmc_parse_pass :: (text:string,out:[]RenderMediaRequest,store:bool)->RenderMedia
   }
   r.truncated=true;return r;
 }
-render_media_parse :: (text:string,out:[]RenderMediaRequest)->RenderMediaParse {
+render_media_parse :: (text:string,out:[]RenderMediaRequest)->RenderMediaParse #effects(all) {
   if text.count>RENDER_MEDIA_TEXT_BYTES {return RenderMediaParse.{status=RenderMediaStatus.capacity};}
   counted:=rmc_parse_pass(text,out,false);
   if counted.count>out.count {counted.status=RenderMediaStatus.capacity;counted.count=0;return counted;}
   return rmc_parse_pass(text,out,true);
 }
-render_media_rect :: (rmc_request:RenderMediaRequest,width:int,height:int,image_width:int,image_height:int)->RenderMediaRect {
+render_media_rect :: (rmc_request:RenderMediaRequest,width:int,height:int,image_width:int,image_height:int)->RenderMediaRect #effects(all) {
   if (rmc_request.kind!=RenderMediaKind.image && rmc_request.kind!=RenderMediaKind.video) || rmc_request.line<0 || rmc_request.line>=RENDER_MEDIA_ITEMS || width<1 || height<1 {return RenderMediaRect.{};}
   bw:=rmc_request.box[2]-rmc_request.box[0];bh:=rmc_request.box[3]-rmc_request.box[1];
   if !rmc_finite(bw) || !rmc_finite(bh) {return RenderMediaRect.{};}
@@ -275,7 +275,7 @@ render_media_rect :: (rmc_request:RenderMediaRequest,width:int,height:int,image_
   for i:0..<4 {if !rmc_finite(values[i]) || abs(values[i])>3.4028234663852886e38 {return RenderMediaRect.{};}}
   for i:0..<4 {r.uniforms[i]=cast(f32)values[i];}r.uniforms[4]=1;r.draw=true;return r;
 }
-render_media_image_extent :: (kind:RenderMediaKind,width:int,height:int)->RenderMediaExtent {
+render_media_image_extent :: (kind:RenderMediaKind,width:int,height:int)->RenderMediaExtent #effects(all) {
   if (kind!=RenderMediaKind.image && kind!=RenderMediaKind.video) || width<1 || height<1 {return RenderMediaExtent.{};}
   if kind==RenderMediaKind.video {return RenderMediaExtent.{ok=true,width=width,height=height};}
   scale:=rmc_lower_positive(rmc_lower_positive(1.0,f64(RENDER_MEDIA_IMAGE_SIDE)/f64(width)),f64(RENDER_MEDIA_IMAGE_SIDE)/f64(height));

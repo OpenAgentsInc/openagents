@@ -2,7 +2,7 @@
 // only the operator configures the node's files and network.
 // tool.sh: run-steps 250000000
 #load "state.coax";
-ls_main :: (s:[]LabState)->int #export_c {
+ls_main :: (s:[]LabState)->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}
   if args_has(a[..],"--help") {print("usage: service --port PORT [--state JOURNAL --blocks BLOCKS --chain CHAIN]\n");return 0;}
   port:=args_whole(args_value(a[..],"--port","8835"));state:=args_value(a[..],"--state","");store:=args_value(a[..],"--blocks","");chain_name:=args_value(a[..],"--chain","regtest");chain:=0;

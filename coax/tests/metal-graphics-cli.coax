@@ -8,7 +8,7 @@ mc_tree_words :: (text:string)->string {for c,i:text{if c=='\n'{return text[0..<
 mc_run :: (cmd:[]string,ok:bool,stdout:[]u8,stderr:[]u8)->ProcRun {
   r:=proc_run(cmd,60000,stdout,stderr);#assert r.started==0&&!r.cut&&!r.timed_out&&((r.status==0)==ok);return r;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..])||args_count(args[..])!=3{return 2;}
   compiler:=args_at(args[..],0);dir:=args_at(args[..],1);root:=args_at(args[..],2);if !fs_mkdir(dir){return 1;}
   paths:[8][4096]u8;source:=fs_join(dir,"graphics.coax",paths[0][..]);library:=fs_join(root,"verse/gpu/shader.coax",paths[1][..]);

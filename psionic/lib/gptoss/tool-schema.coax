@@ -27,7 +27,7 @@ GT_MASK_BUDGET :: 16777216;
     #assert gt_mask(a[..],"",pieces[..],mask[..],stage[0..<4],false).status==GStatus.capacity;
     #assert gt_mask(a[..],"",pieces[..],mask[..],stage[..],true).status==GStatus.alias;
 }
-gt_schema :: (alternatives:[]string)->GResult #export_c {
+gt_schema :: (alternatives:[]string)->GResult #export_c #effects(all) {
     if !gt_variants(alternatives.count) {return GResult.{status=GStatus.shape};}total:=0;
     for text:alternatives {if !gt_argument_size(text.count) {return GResult.{status=GStatus.shape};}total+=text.count;
         j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return GResult.{status=GStatus.weights};}
@@ -40,11 +40,11 @@ gt_schema :: (alternatives:[]string)->GResult #export_c {
     }
     return GResult.{written=alternatives.count,bytes=total};
 }
-gt_variants :: (n:int)->bool {return n>=1 && n<=16;}
-gt_argument_size :: (n:int)->bool {return n>=2 && n<=512;}
-gt_key :: (key:string)->bool {if key.count<1 || key.count>64 {return false;}for c:key {if !((c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='_') {return false;}}return true;}
+gt_variants :: (n:int)->bool #effects(all) {return n>=1 && n<=16;}
+gt_argument_size :: (n:int)->bool #effects(all) {return n>=2 && n<=512;}
+gt_key :: (key:string)->bool #effects(all) {if key.count<1 || key.count>64 {return false;}for c:key {if !((c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='_') {return false;}}return true;}
 // book:begin allowed
-gt_allowed :: (prefix:string,fragment:string,ending:bool,alternatives:[]string)->bool #export_c {
+gt_allowed :: (prefix:string,fragment:string,ending:bool,alternatives:[]string)->bool #export_c #effects(all) {
     if ending && fragment.count!=0 {return false;}
     if !ending && fragment.count==0 {return false;}
     for text:alternatives {
@@ -54,7 +54,7 @@ gt_allowed :: (prefix:string,fragment:string,ending:bool,alternatives:[]string)-
     }return false;
 }
 // book:end allowed
-gt_mask :: (alternatives:[]string,prefix:string,pieces:[]string,out:[]u8,stage:[]u8,overlap:bool)->GResult #export_c {
+gt_mask :: (alternatives:[]string,prefix:string,pieces:[]string,out:[]u8,stage:[]u8,overlap:bool)->GResult #export_c #effects(all) {
     schema:=gt_schema(alternatives);if schema.status!=GStatus.ok {return schema;}
     if !gt_vocab(pieces.count) || !gt_prefix_size(prefix.count) || !gt_mask_budget(pieces.count,schema.bytes) {return GResult.{status=GStatus.budget};}
     if out.count<pieces.count || stage.count<pieces.count {return GResult.{status=GStatus.capacity};}if overlap {return GResult.{status=GStatus.alias};}
@@ -63,12 +63,12 @@ gt_mask :: (alternatives:[]string,prefix:string,pieces:[]string,out:[]u8,stage:[
     }
     for i:0..<pieces.count {out[i]=stage[i];}return GResult.{written=pieces.count};
 }
-gt_vocab :: (n:int)->bool {return n>=1 && n<=201088;}
+gt_vocab :: (n:int)->bool #effects(all) {return n>=1 && n<=201088;}
 
-gt_mask_budget :: (n:int,bytes:int)->bool {return n<=GT_MASK_BUDGET/bytes;}
-gt_prefix_size :: (n:int)->bool {return n>=0 && n<=512;}
-gt_piece_size :: (n:int)->bool {return n>=0 && n<=1024;}
-gt_token_allowed :: (id:int,prefix:string,piece:string,alternatives:[]string)->bool {if id<199998 {return gt_allowed(prefix,piece,false,alternatives);}if id==200012 {return gt_allowed(prefix,"",true,alternatives);}return false;}
+gt_mask_budget :: (n:int,bytes:int)->bool #effects(all) {return n<=GT_MASK_BUDGET/bytes;}
+gt_prefix_size :: (n:int)->bool #effects(all) {return n>=0 && n<=512;}
+gt_piece_size :: (n:int)->bool #effects(all) {return n>=0 && n<=1024;}
+gt_token_allowed :: (id:int,prefix:string,piece:string,alternatives:[]string)->bool #effects(all) {if id<199998 {return gt_allowed(prefix,piece,false,alternatives);}if id==200012 {return gt_allowed(prefix,"",true,alternatives);}return false;}
 #test "schema sizes, prefix work and vocabulary have exact endpoints" {
     #assert gt_variants(1) && gt_variants(16) && !gt_variants(0) && !gt_variants(17);
     #assert gt_argument_size(2) && gt_argument_size(512) && !gt_argument_size(1) && !gt_argument_size(513);

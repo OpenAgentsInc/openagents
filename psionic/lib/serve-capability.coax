@@ -34,20 +34,20 @@ CP_DOCUMENT_MAX :: 32768;
 // Checks come first. The values in them are derived by hand in chapter 173.
 CP_D1 :: "1111111111111111111111111111111111111111111111111111111111111111";
 CP_D2 :: "2222222222222222222222222222222222222222222222222222222222222222";
-cp_test_claim :: ()->CpClaim {
+cp_test_claim :: ()->CpClaim #effects(all) {
     return CpClaim.{model="toy",alias="",digest=CP_D1,backend=CpBackend.cpu,profile="p",limits=CpLimits.{questions=64,options=255,state=131072,deadline_ms=10000},memory=100};
 }
-cp_test_record :: ()->CpEvidence {
+cp_test_record :: ()->CpEvidence #effects(all) {
     return CpEvidence.{digest=CP_D1,backend=CpBackend.cpu,profile="p",record="r1",verdict=QyVerdict.qualified,covered=CpLimits.{questions=2,options=2,state=64,deadline_ms=30000}};
 }
 CpTestRequest :: struct {questions:[8]SvQuestion;state:[256]u8;}
-cp_test_request :: (t:[]CpTestRequest,model:string,options:[]int,state:int)->SvRequest {
+cp_test_request :: (t:[]CpTestRequest,model:string,options:[]int,state:int)->SvRequest #effects(all) {
     for i:0..<options.count {t[0].questions[i]=SvQuestion.{count=options[i]};}
     return SvRequest.{model=model,questions=options.count,state=PtEntry.{value=cast(string)t[0].state[0..<state]}};
 }
 CP_POST_ONE :: "POST /v1/systemone HTTP/1.1\r\nContent-Length: 69\r\n\r\n{\"model\":\"psionic-toy\",\"state\":\"s\",\"questions\":{\"a\":{\"type\":\"noul\"}}}";
 CP_POST_THREE :: "POST /v1/systemone HTTP/1.1\r\nContent-Length: 109\r\n\r\n{\"model\":\"psionic-toy\",\"state\":\"s\",\"questions\":{\"a\":{\"type\":\"noul\"},\"b\":{\"type\":\"noul\"},\"c\":{\"type\":\"noul\"}}}";
-cp_test_pools :: (t:[]CpTestRequest)->SvPools {return SvPools.{questions=t[0].questions[..]};}
+cp_test_pools :: (t:[]CpTestRequest)->SvPools #effects(all) {return SvPools.{questions=t[0].questions[..]};}
 
 #test "a claim needs a name, a digest, a backend, a profile and limits inside NIP-DEC" {
     c:=cp_test_claim();#assert cp_claim_valid(c) && c.limits.deadline_ms==10000;
@@ -279,40 +279,40 @@ cp_test_pools :: (t:[]CpTestRequest)->SvPools {return SvPools.{questions=t[0].qu
 }
 
 // Branch-free, as chapter 33's rp_min: exact for every bound here, far below 2^53.
-cp_min :: (a:int,b:int)->int {return (a+b-cast(int)abs(f64(a-b)))/2;}
-cp_max :: (a:int,b:int)->int {return (a+b+cast(int)abs(f64(a-b)))/2;}
-cp_hex64 :: (s:string)->bool {
+cp_min :: (a:int,b:int)->int #effects(all) {return (a+b-cast(int)abs(f64(a-b)))/2;}
+cp_max :: (a:int,b:int)->int #effects(all) {return (a+b+cast(int)abs(f64(a-b)))/2;}
+cp_hex64 :: (s:string)->bool #effects(all) {
     if s.count!=64 {return false;}for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;
 }
-cp_text :: (s:string,most:int)->bool {return s.count>=1 && s.count<=most && sv_visible(s);}
-cp_zero :: (l:CpLimits)->bool {return l.questions==0 && l.options==0 && l.state==0 && l.deadline_ms==0;}
+cp_text :: (s:string,most:int)->bool #effects(all) {return s.count>=1 && s.count<=most && sv_visible(s);}
+cp_zero :: (l:CpLimits)->bool #effects(all) {return l.questions==0 && l.options==0 && l.state==0 && l.deadline_ms==0;}
 // book:begin valid
-cp_limits_valid :: (l:CpLimits)->bool {
+cp_limits_valid :: (l:CpLimits)->bool #effects(all) {
     return l.questions>=1 && l.questions<=SV_QUESTIONS_MAX && l.options>=1 && l.options<=SV_OPTIONS_MAX
         && l.state>=1 && l.state<=sv_nip().state && l.deadline_ms>=1 && l.deadline_ms<=CP_DEADLINE_MOST;
 }
-cp_claim_valid :: (c:CpClaim)->bool {
+cp_claim_valid :: (c:CpClaim)->bool #effects(all) {
     return cp_text(c.model,CP_NAME_MAX) && (c.alias.count==0 || cp_text(c.alias,CP_NAME_MAX)) && cp_hex64(c.digest)
         && c.backend!=CpBackend.none && cp_text(c.profile,64) && cp_limits_valid(c.limits) && c.memory>=0;
 }
-cp_evidence_valid :: (e:CpEvidence)->bool {
+cp_evidence_valid :: (e:CpEvidence)->bool #effects(all) {
     return cp_hex64(e.digest) && e.backend!=CpBackend.none && cp_text(e.profile,64) && cp_text(e.record,CP_NAME_MAX) && cp_limits_valid(e.covered);
 }
 // book:end valid
 // book:begin narrow
-cp_matches :: (c:CpClaim,e:CpEvidence)->bool {return cp_evidence_valid(e) && e.digest==c.digest && e.backend==c.backend && e.profile==c.profile;}
+cp_matches :: (c:CpClaim,e:CpEvidence)->bool #effects(all) {return cp_evidence_valid(e) && e.digest==c.digest && e.backend==c.backend && e.profile==c.profile;}
 // Sizes shrink to what the record covered; the deadline grows to what it needed.
-cp_narrow :: (claim:CpLimits,covered:CpLimits)->CpLimits {
+cp_narrow :: (claim:CpLimits,covered:CpLimits)->CpLimits #effects(all) {
     return CpLimits.{questions=cp_min(claim.questions,covered.questions),options=cp_min(claim.options,covered.options),
         state=cp_min(claim.state,covered.state),deadline_ms=cp_max(claim.deadline_ms,covered.deadline_ms)};
 }
-cp_covers :: (published:CpLimits,covered:CpLimits)->bool {
+cp_covers :: (published:CpLimits,covered:CpLimits)->bool #effects(all) {
     return cp_limits_valid(published) && published.questions<=covered.questions && published.options<=covered.options
         && published.state<=covered.state && published.deadline_ms>=covered.deadline_ms;
 }
 // book:end narrow
 // book:begin entry
-cp_entry :: (c:CpClaim,evidence:[]CpEvidence,budget:int)->CpEntry {
+cp_entry :: (c:CpClaim,evidence:[]CpEvidence,budget:int)->CpEntry #effects(all) {
     e:=CpEntry.{claim=c,cause=CpCause.no_record};
     if !cp_claim_valid(c) {e.cause=CpCause.claim;return e;}
     if budget<c.memory {e.cause=CpCause.memory;return e;}
@@ -326,13 +326,13 @@ cp_entry :: (c:CpClaim,evidence:[]CpEvidence,budget:int)->CpEntry {
 }
 // book:end entry
 // Two claims clash when a client could name both with one string.
-cp_clash :: (a:CpClaim,b:CpClaim)->bool {
+cp_clash :: (a:CpClaim,b:CpClaim)->bool #effects(all) {
     // A valid claim's model is never empty, so it never equals an absent alias.
     if a.model==b.model || a.model==b.alias {return true;}
     return a.alias.count>0 && (a.alias==b.model || a.alias==b.alias);
 }
 // book:begin derive
-cp_derive :: (claims:[]CpClaim,evidence:[]CpEvidence,budget:int,out:[]CpEntry)->int {
+cp_derive :: (claims:[]CpClaim,evidence:[]CpEvidence,budget:int,out:[]CpEntry)->int #effects(all) {
     if claims.count>CP_ENTRIES_MAX || out.count<claims.count {return -1;}
     for i:0..<claims.count {
         e:=cp_entry(claims[i],evidence,budget);
@@ -343,7 +343,7 @@ cp_derive :: (claims:[]CpClaim,evidence:[]CpEvidence,budget:int,out:[]CpEntry)->
 }
 // book:end derive
 // book:begin honest
-cp_honest :: (entries:[]CpEntry,evidence:[]CpEvidence,budget:int)->CpFault {
+cp_honest :: (entries:[]CpEntry,evidence:[]CpEvidence,budget:int)->CpFault #effects(all) {
     if entries.count>CP_ENTRIES_MAX {return CpFault.{cause=CpCause.claim,entry=-1};}
     for i:0..<entries.count {
         e:=entries[i];
@@ -363,13 +363,13 @@ cp_honest :: (entries:[]CpEntry,evidence:[]CpEvidence,budget:int)->CpFault {
 }
 // book:end honest
 // book:begin admit
-cp_find :: (entries:[]CpEntry,model:string)->int {
+cp_find :: (entries:[]CpEntry,model:string)->int #effects(all) {
     for i:0..<entries.count {
         e:=entries[i];if e.qualified && (e.claim.model==model || (e.claim.alias.count>0 && e.claim.alias==model)) {return i;}
     }
     return -1;
 }
-cp_admit :: (entries:[]CpEntry,request:SvRequest,pools:SvPools)->CpAdmit {
+cp_admit :: (entries:[]CpEntry,request:SvRequest,pools:SvPools)->CpAdmit #effects(all) {
     if request.code!=SvCode.none {return CpAdmit.{code=request.code,entry=-1};}
     i:=cp_find(entries,request.model);if i<0 {return CpAdmit.{code=SvCode.not_admitted,entry=-1};}
     l:=entries[i].limits;
@@ -382,11 +382,11 @@ cp_admit :: (entries:[]CpEntry,request:SvRequest,pools:SvPools)->CpAdmit {
 // book:begin bytes
 // The engine that answers must be the checkpoint the entry advertises, and
 // able to answer as many options as the entry publishes.
-cp_serves :: (e:CpEntry,engine:SvEngine)->bool {
+cp_serves :: (e:CpEntry,engine:SvEngine)->bool #effects(all) {
     return e.qualified && engine.ok && engine.sealed && engine.name==e.claim.model && engine.alias==e.claim.alias
         && engine.digest==e.claim.digest && e.limits.options<=engine.options;
 }
-cp_bytes :: (slot:SvSlot,limits:SvLimits,engine:SvEngine,entries:[]CpEntry,pools:SvPools,text:string,now:int)->SvStep {
+cp_bytes :: (slot:SvSlot,limits:SvLimits,engine:SvEngine,entries:[]CpEntry,pools:SvPools,text:string,now:int)->SvStep #effects(all) {
     step:=sv_bytes(slot,limits,engine,pools,text,now);
     if step.action!=SvAction.decide {return step;}
     a:=cp_admit(entries,step.request,pools);
@@ -395,11 +395,11 @@ cp_bytes :: (slot:SvSlot,limits:SvLimits,engine:SvEngine,entries:[]CpEntry,pools
     s:=step;s.slot.deadline=now+entries[a.entry].limits.deadline_ms;return s;
 }
 // book:end bytes
-cp_backend_name :: (b:CpBackend)->string {names:=[4]string.["none","cpu","cuda","metal"];return names[cast(int)b];}
-cp_cause_name :: (c:CpCause)->string {names:=[7]string.["none","claim","memory","no_record","not_qualified","over","duplicate"];return names[cast(int)c];}
-cp_int :: (out:[]u8,at:int,key:string,v:int)->int {return json_write_int(out,json_raw(out,at,key),v);}
+cp_backend_name :: (b:CpBackend)->string #effects(all) {names:=[4]string.["none","cpu","cuda","metal"];return names[cast(int)b];}
+cp_cause_name :: (c:CpCause)->string #effects(all) {names:=[7]string.["none","claim","memory","no_record","not_qualified","over","duplicate"];return names[cast(int)c];}
+cp_int :: (out:[]u8,at:int,key:string,v:int)->int #effects(all) {return json_write_int(out,json_raw(out,at,key),v);}
 // book:begin render
-cp_render :: (entries:[]CpEntry,out:[]u8)->int {
+cp_render :: (entries:[]CpEntry,out:[]u8)->int #effects(all) {
     at:=json_raw(out,0,"{\"schema\":\"");at=json_raw(out,at,CP_SCHEMA);at=json_raw(out,at,"\",\"door\":\"");at=json_raw(out,at,SV_DOOR);
     at=json_raw(out,at,"\",\"version\":\"");at=json_raw(out,at,SV_VERSION);at=json_raw(out,at,"\",\"entries\":[");
     for i:0..<entries.count {
@@ -423,8 +423,8 @@ cp_render :: (entries:[]CpEntry,out:[]u8)->int {
     return json_raw(out,at,"]}");
 }
 // book:end render
-cp_probe :: (text:string)->bool {return sv_index(text,CP_PROBE)==0 && sv_index(text,"\r\n\r\n")!=-1;}
-cp_response :: (entries:[]CpEntry,out:[]u8)->int {
+cp_probe :: (text:string)->bool #effects(all) {return sv_index(text,CP_PROBE)==0 && sv_index(text,"\r\n\r\n")!=-1;}
+cp_response :: (entries:[]CpEntry,out:[]u8)->int #effects(all) {
     if entries.count>CP_ENTRIES_MAX {return -1;}
     body:[CP_DOCUMENT_MAX]u8;n:=cp_render(entries,body[..]);if n==-1 {return -1;}
     return sv_response(out,200,cast(string)body[0..<n]);

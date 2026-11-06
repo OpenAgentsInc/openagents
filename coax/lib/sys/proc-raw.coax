@@ -2,7 +2,7 @@
 // NUL bytes and final newlines rather than joining text lines. stderr is the
 // bounded tail returned by proc_stderr, as in proc_run.
 #load "proc.coax";
-cxproc_read_bytes :: (handle: int, timeout_ms: int, out: [] u8) -> int #foreign;
+cxproc_read_bytes :: (handle: int, timeout_ms: int, out: [] u8) -> int #foreign #effects(all);
 proc_run_bytes :: (argv: [] string, env: [] string, timeout_ms: int, out: [] u8, err: [] u8) -> ProcRun {
   r: ProcRun; h := proc_new();
   if h < 0 { r.started = PROC_ERROR; return r; }

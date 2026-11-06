@@ -68,7 +68,7 @@ hero_for :: (klass: int, name: string, team: int, level: int) -> RsCreature {
 
 // ---- a battle: you (creature 0) and three casters on the south rows, six Skeletons on the north
 
-mb_new :: (s: [] Mb, pick: int, seed: int) #export_c {
+mb_new :: (s: [] Mb, pick: int, seed: int) #export_c #effects(all) {
   rs_reset(s[0].battle[..]);   // in place: a battle is 300 KB (battle.coax RS_MAX), too big for the stack
   s[0].battle[0].w = COLS; s[0].battle[0].h = ROWS;
   s[0].pick = rs_max(0, rs_min(11, pick));
@@ -872,7 +872,7 @@ take_events :: (s: [] Mb) {
   }
 }
 
-mb_step :: (s: [] Mb, dt: f32) #export_c {
+mb_step :: (s: [] Mb, dt: f32) #export_c #effects(all) {
   b := bt(s);
   if s[0].over {
     b[0].clock += dt;
@@ -893,20 +893,20 @@ mb_step :: (s: [] Mb, dt: f32) #export_c {
 
 // ---- what the face reads
 
-mb_count :: (s: [] Mb) -> int #export_c { return s[0].battle[0].n; }
-mb_clock :: (s: [] Mb) -> f32 #export_c { return s[0].battle[0].clock; }
-mb_beat :: (s: [] Mb) -> f32 #export_c { return rs_beat(bt(s)); }
-mb_wave :: (s: [] Mb) -> int #export_c { return s[0].wave; }
-mb_kills :: (s: [] Mb) -> int #export_c { return s[0].kills; }
-mb_over :: (s: [] Mb) -> bool #export_c { return s[0].over; }
-mb_me :: (s: [] Mb) -> int #export_c { return s[0].me; }
-mb_target :: (s: [] Mb) -> int #export_c { return s[0].target; }
-mb_queued :: (s: [] Mb) -> int #export_c { return s[0].act; }
+mb_count :: (s: [] Mb) -> int #export_c #effects(all) { return s[0].battle[0].n; }
+mb_clock :: (s: [] Mb) -> f32 #export_c #effects(all) { return s[0].battle[0].clock; }
+mb_beat :: (s: [] Mb) -> f32 #export_c #effects(all) { return rs_beat(bt(s)); }
+mb_wave :: (s: [] Mb) -> int #export_c #effects(all) { return s[0].wave; }
+mb_kills :: (s: [] Mb) -> int #export_c #effects(all) { return s[0].kills; }
+mb_over :: (s: [] Mb) -> bool #export_c #effects(all) { return s[0].over; }
+mb_me :: (s: [] Mb) -> int #export_c #effects(all) { return s[0].me; }
+mb_target :: (s: [] Mb) -> int #export_c #effects(all) { return s[0].target; }
+mb_queued :: (s: [] Mb) -> int #export_c #effects(all) { return s[0].act; }
 // Each creature as MB_ACTOR_FLOATS numbers: its square (x, y), hit points, their most, Temporary
 // Hit Points, team, class, flags (1 up, 2 dead, 4 concentrating, 8 you, 16 your target, 32 has a
 // ranged weapon), when its next turn comes, the spell it concentrates on (-1), its speed in feet,
 // and its Armor Class.
-mb_actors :: (s: [] Mb, out: [] f32) -> int #export_c {
+mb_actors :: (s: [] Mb, out: [] f32) -> int #export_c #effects(all) {
   b := bt(s);
   n := rs_min(b[0].n, out.count / MB_ACTOR_FLOATS);
   for i: 0..<n {
@@ -930,21 +930,21 @@ mb_actors :: (s: [] Mb, out: [] f32) -> int #export_c {
   }
   return n;
 }
-mb_name :: (s: [] Mb, i: int, out: [] u8) -> int #export_c {
+mb_name :: (s: [] Mb, i: int, out: [] u8) -> int #export_c #effects(all) {
   if i < 0 || i >= s[0].battle[0].n { return 0; }
   n := rs_min(s[0].battle[0].c[i].name_n, out.count);
   for k: 0..<n { out[k] = s[0].battle[0].c[i].name[k]; }
   return n;
 }
 // The events told since the last take, MB_EV_FLOATS each; the count.
-mb_events :: (s: [] Mb, out: [] f32) -> int #export_c {
+mb_events :: (s: [] Mb, out: [] f32) -> int #export_c #effects(all) {
   n := rs_min(s[0].ev_n, out.count / MB_EV_FLOATS);
   for k: 0..<n * MB_EV_FLOATS { out[k] = s[0].ev[k]; }
   s[0].ev_n = 0;
   return n;
 }
 // The zones standing, 6 numbers each: spell, x0, y0, x1, y1, and the radius in feet of a round one (0).
-mb_zones :: (s: [] Mb, out: [] f32) -> int #export_c {
+mb_zones :: (s: [] Mb, out: [] f32) -> int #export_c #effects(all) {
   n := 0;
   for z: 0..<RS_ZONES {
     q := s[0].battle[0].zone[z];
@@ -960,13 +960,13 @@ mb_zones :: (s: [] Mb, out: [] f32) -> int #export_c {
 
 // ---- what the face tells it
 
-mb_want :: (s: [] Mb, x: int, y: int) #export_c { s[0].want_x = rs_max(0, rs_min(COLS - 1, x)); s[0].want_y = rs_max(0, rs_min(ROWS - 1, y)); }
-mb_set_target :: (s: [] Mb, j: int) #export_c {
+mb_want :: (s: [] Mb, x: int, y: int) #export_c #effects(all) { s[0].want_x = rs_max(0, rs_min(COLS - 1, x)); s[0].want_y = rs_max(0, rs_min(ROWS - 1, y)); }
+mb_set_target :: (s: [] Mb, j: int) #export_c #effects(all) {
   b := bt(s);
   if j >= 0 && j < b[0].n && rs_up(b[0].c[j]) && j != s[0].me { s[0].target = j; } else { s[0].target = -1; }
 }
 // Tab: the next foe up, nearest first after the one you have.
-mb_next_target :: (s: [] Mb) #export_c {
+mb_next_target :: (s: [] Mb) #export_c #effects(all) {
   b := bt(s);
   me := s[0].me;
   best := -1; bd := 1000000;
@@ -981,7 +981,7 @@ mb_next_target :: (s: [] Mb) #export_c {
   s[0].target = ifx best >= 0 then best else first;
 }
 // A slot pressed: queued for your next turn (pressed again, unqueued). False when it can't be used now.
-mb_queue :: (s: [] Mb, slot: int) -> bool #export_c {
+mb_queue :: (s: [] Mb, slot: int) -> bool #export_c #effects(all) {
   b := bt(s);
   me := s[0].me;
   list: [SLOTS] FbAb; n := abilities(b[0].c[me].klass, list[..]);
@@ -993,7 +993,7 @@ mb_queue :: (s: [] Mb, slot: int) -> bool #export_c {
 }
 // Your hotbar, MB_SLOT_FLOATS each: the kind (AB_*), the spell (-1), its level, ready (1 or 0),
 // what it has left (-1: nothing to count), and its aim (TG_*).
-mb_bar :: (s: [] Mb, out: [] f32) -> int #export_c {
+mb_bar :: (s: [] Mb, out: [] f32) -> int #export_c #effects(all) {
   b := bt(s);
   me := s[0].me;
   list: [SLOTS] FbAb; n := abilities(b[0].c[me].klass, list[..]);
@@ -1006,24 +1006,24 @@ mb_bar :: (s: [] Mb, out: [] f32) -> int #export_c {
   }
   return n;
 }
-mb_slot_name :: (s: [] Mb, slot: int, out: [] u8) -> int #export_c {
+mb_slot_name :: (s: [] Mb, slot: int, out: [] u8) -> int #export_c #effects(all) {
   list: [SLOTS] FbAb; n := abilities(s[0].battle[0].c[s[0].me].klass, list[..]);
   if slot < 0 || slot >= n { return 0; }
   return put(out, 0, list[slot].name);
 }
 // A slot's picture: its name in realms/5e-mmo/hotbar/ (fivemmo-hotbar.coax MH_NAME), the spell's
 // engine id or the feature's.
-mb_slot_art :: (s: [] Mb, slot: int, out: [] u8) -> int #export_c {
+mb_slot_art :: (s: [] Mb, slot: int, out: [] u8) -> int #export_c #effects(all) {
   list: [SLOTS] FbAb; n := abilities(s[0].battle[0].c[s[0].me].klass, list[..]);
   if slot < 0 || slot >= n { return 0; }
   return put(out, 0, list[slot].art);
 }
 // Your spell slots: how many you have left at each level 1 to 5, then their most (10 numbers).
-mb_slots :: (s: [] Mb, out: [] f32) #export_c {
+mb_slots :: (s: [] Mb, out: [] f32) #export_c #effects(all) {
   c := s[0].battle[0].c[s[0].me..<s[0].me + 1];
   for l: 1..<6 { if l * 2 - 1 < out.count { out[l * 2 - 2] = f32(c[0].slots[l]); out[l * 2 - 1] = f32(c[0].slots_max[l]); } }
 }
-mb_class_of :: (pick: int) -> int #export_c { return ROSTER[rs_max(0, rs_min(11, pick))]; }
+mb_class_of :: (pick: int) -> int #export_c #effects(all) { return ROSTER[rs_max(0, rs_min(11, pick))]; }
 
 // ---- checks (small battles: the interpreter's traversal is bounded)
 

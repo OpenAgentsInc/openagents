@@ -10,7 +10,7 @@ nc_command :: (path:string,status:int,inputs:[]RtqInputs)->bool {
   return jv_int(d[0],rtq_member(d[0],0,"started"),-1)==0 && jv_int(d[0],rtq_member(d[0],0,"exit"),-1)==status && jv_kind(d[0],rtq_member(d[0],0,"timed_out"))==JV_FALSE && jv_kind(d[0],rtq_member(d[0],0,"cut"))==JV_FALSE;
 }
 nc_label :: (prefix:string,i:int,suffix:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],prefix);jo_int(o[..],i);jo_put(o[..],suffix);return jo_text(o[..]);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}profile:=nv_profile(args_value(a[..],"--profile",""));work_arg:=args_value(a[..],"--work-dir","");run_receipt:=args_value(a[..],"--run-receipt","");receipt:=args_value(a[..],"--receipt","");executed:=args_value(a[..],"--executed-source","");fault:=args_value(a[..],"--fault","");
   if profile<0 || work_arg=="" || run_receipt=="" || receipt=="" || executed=="" || fs_exists(receipt) || (fault!="" && fault!="wrong-lane" && fault!="validation" && fault!="shader" && fault!="view" && fault!="feature") {return 2;}
   root_buf:[4096]u8;work_buf:[4096]u8;root:=fs_cwd(root_buf[..]);work:=fs_realpath(work_arg,work_buf[..]);if work=="" {return 2;}

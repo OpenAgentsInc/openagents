@@ -6,7 +6,7 @@ BenchPlan :: struct {warmup:int;samples:int;}
 #test "the frame capture has a fixed warmup and one complete workload cycle" {
  p:=verse_bench_plan();#assert p.warmup==180 && p.samples==540;
 }
-verse_bench_plan :: ()->BenchPlan #export_c {return BenchPlan.{warmup=180,samples=540};}
+verse_bench_plan :: ()->BenchPlan #export_c #effects(all) {return BenchPlan.{warmup=180,samples=540};}
 BenchStats :: struct {ok:bool;count:int;mean:f64;median:f64;p95:f64;minimum:f64;maximum:f64;cv:f64;}
 #forall "the live workload covers all six movement phases" phase:0..<6 {
  a:=verse_bench_frame(phase*90);
@@ -22,7 +22,7 @@ BenchStats :: struct {ok:bool;count:int;mean:f64;median:f64;p95:f64;minimum:f64;
  #assert verse_bench_frame(270+14).rising && !verse_bench_frame(270+15).rising;
  #assert verse_bench_frame(540).act==0 && verse_bench_frame(630).act==1;
 }
-verse_bench_frame :: (frame:int)->BenchFrame #export_c {
+verse_bench_frame :: (frame:int)->BenchFrame #export_c #effects(all) {
  phase:=(frame/90)%6;
  act:=phase;if phase>3 {act=0;}
  return BenchFrame.{now=f64(frame)/60,act=act,rising=phase==3 && frame%90<15,dance=phase==5 && frame%90==0,pad_y=ifx phase==1 || phase==2 then 1 else 0,run=phase==2,x=f32(frame)*0.002,z= -2,face=f32(frame)*0.001};
@@ -54,7 +54,7 @@ verse_bench_frame :: (frame:int)->BenchFrame #export_c {
  values:=[2]f64.[1,3];scratch:[2]f64;
  #assert verse_bench_stats(values[..],scratch[..]).cv==0.5;
 }
-bench_count_ok :: (count:int,scratch:int)->bool {return count>=1 && count<=65536 && scratch>=count;}
+bench_count_ok :: (count:int,scratch:int)->bool #effects(all) {return count>=1 && count<=65536 && scratch>=count;}
 #forall "nearest-rank boundaries are fixed by the reporting contract" pick:0..<3 {
  counts:=[3]int.[20,100,101];ranks:=[3]f64.[19,95,96];n:=counts[pick];
  values:[101]f64;scratch:[101]f64;for i:0..<n {values[i]=f64(n-i);}
@@ -64,7 +64,7 @@ bench_count_ok :: (count:int,scratch:int)->bool {return count>=1 && count<=65536
  values:[2048]f64;scratch:[2048]f64;
  result:=verse_bench_stats(values[..],scratch[..]);#assert result.ok && result.mean==0 && result.p95==0;
 }
-verse_bench_stats :: (values:[]f64,scratch:[]f64)->BenchStats #export_c {
+verse_bench_stats :: (values:[]f64,scratch:[]f64)->BenchStats #export_c #effects(all) {
  n:=values.count;
  if !bench_count_ok(n,scratch.count) {return BenchStats.{};}
  sum:f64=0;

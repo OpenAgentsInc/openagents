@@ -69,23 +69,23 @@ AgentOpened :: struct {
 // book:end record
 
 // Field by field, in place: no second workspace-sized value.
-ac_zero :: (b:[]u8) {for i:0..<b.count {b[i]=0;}}
-ac_clear :: (w:[]AgentWork) {ac_zero(w[0].pre[..]);ac_zero(w[0].body[..]);ac_zero(w[0].cipher[..]);ac_zero(w[0].scratch[..]);ac_zero(w[0].ck[..]);}
-ac_keep :: (a:[]AgText,s:string)->string {
+ac_zero :: (b:[]u8) #effects(all) {for i:0..<b.count {b[i]=0;}}
+ac_clear :: (w:[]AgentWork) #effects(all) {ac_zero(w[0].pre[..]);ac_zero(w[0].body[..]);ac_zero(w[0].cipher[..]);ac_zero(w[0].scratch[..]);ac_zero(w[0].ck[..]);}
+ac_keep :: (a:[]AgText,s:string)->string #effects(all) {
   from:=a[0].at;if from+s.count>a[0].buf.count {return "";}
   for i:0..<s.count {a[0].buf[from+i]=s[i];}a[0].at+=s.count;return cast(string)a[0].buf[from..<a[0].at];
 }
-ac_hex :: (a:[]AgText,bytes:[]u8)->string {
+ac_hex :: (a:[]AgText,bytes:[]u8)->string #effects(all) {
   h:[64]u8;r:=hex_encode_checked(cast(string)bytes,h[..],false);return ac_keep(a,cast(string)h[0..<r.written]);
 }
-ac_done :: (r:AgentOpened,error:u32,w:[]AgentWork)->AgentOpened {
+ac_done :: (r:AgentOpened,error:u32,w:[]AgentWork)->AgentOpened #effects(all) {
   ac_clear(w);out:=r;out.error=error;return out;
 }
 
 // book:begin tags
 // Exactly one ["p", recipient], one ["h", <64-hex>] (copied to mailbox) and
 // a ["t", "oa:artifact:v1"].
-ac_tags :: (tags:string,recipient_hex:string,mailbox:[]u8)->bool {
+ac_tags :: (tags:string,recipient_hex:string,mailbox:[]u8)->bool #effects(all) {
   decoded:[256]u8;j:[1]Json;json_start(j[..],tags);
   if json_next(j[..])!=JSON_ARRAY {return false;}
   ps:=0;hs:=0;topic:=false;
@@ -114,12 +114,12 @@ ac_tags :: (tags:string,recipient_hex:string,mailbox:[]u8)->bool {
 // Seals payload from sender to recipient_x under mailbox (64 hex). nonce
 // and aux are 32 fresh random bytes each from the host. The signed event
 // JSON goes to out; returns its length, or -1.
-agent_seal :: (payload:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u8,aux:[]u8,created_at:int,issued_at:int,retain_until:int,w:[]AgentWork,out:[]u8)->int {
+agent_seal :: (payload:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u8,aux:[]u8,created_at:int,issued_at:int,retain_until:int,w:[]AgentWork,out:[]u8)->int #effects(all) {
   if sender.count!=32 || recipient_x.count!=32 || nonce.count!=32 || aux.count!=32 || w.count!=1 || !ag_hex64(mailbox) {return -1;}
   n:=ac_seal(payload,sender,recipient_x,mailbox,nonce,aux,created_at,issued_at,retain_until,w,out);
   ac_clear(w);return n;
 }
-ac_seal :: (payload:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u8,aux:[]u8,created_at:int,issued_at:int,retain_until:int,w:[]AgentWork,out:[]u8)->int {
+ac_seal :: (payload:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u8,aux:[]u8,created_at:int,issued_at:int,retain_until:int,w:[]AgentWork,out:[]u8)->int #effects(all) {
   b:=envelope_build_checked(payload,AG_SCHEMA_ID,issued_at,retain_until,w[0].scratch[..],w[0].body[..],false);
   if b.error!=AE_OK {return -1;}
   ew:[1]EcdhScratch;
@@ -139,7 +139,7 @@ ac_seal :: (payload:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u
 // book:begin open
 // Opens a 3188 for the recipient whose secret and x-only key are given,
 // then applies the pin. Strings of the result live in the arena.
-agent_open :: (text:string,recipient:[]u8,recipient_x:[]u8,pin:AgentPin,w:[]AgentWork,a:[]AgText)->AgentOpened {
+agent_open :: (text:string,recipient:[]u8,recipient_x:[]u8,pin:AgentPin,w:[]AgentWork,a:[]AgText)->AgentOpened #effects(all) {
   r:AgentOpened;
   if recipient.count!=32 || recipient_x.count!=32 || w.count!=1 {return r;}
   e:=nostr_event_read(text,w[0].pre[..],false);
@@ -152,7 +152,7 @@ agent_open :: (text:string,recipient:[]u8,recipient_x:[]u8,pin:AgentPin,w:[]Agen
 }
 // After the signature and the conversation key: recipient, decryption,
 // envelope, payload and pin.
-ac_open :: (text:string,e:NostrEvent,recipient_x:[]u8,pin:AgentPin,w:[]AgentWork,a:[]AgText)->AgentOpened {
+ac_open :: (text:string,e:NostrEvent,recipient_x:[]u8,pin:AgentPin,w:[]AgentWork,a:[]AgText)->AgentOpened #effects(all) {
   r:AgentOpened;
   rhex:[64]u8;mail:[64]u8;peer:=e.public_key;eid:=e.id;
   hr:=hex_encode_checked(cast(string)recipient_x,rhex[..],false);
@@ -175,7 +175,7 @@ ac_open :: (text:string,e:NostrEvent,recipient_x:[]u8,pin:AgentPin,w:[]AgentWork
 // down, inside "artifact". The envelope check has already compared it with
 // the inline payload's JCS bytes, and no other string at that depth can be
 // "digest" in an admitted agent envelope. It is ASCII: the raw token is it.
-ac_digest :: (envelope:string)->string {
+ac_digest :: (envelope:string)->string #effects(all) {
   j:[1]Json;json_start(j[..],envelope);t:=json_next(j[..]);
   while t!=JSON_END && t!=JSON_ERROR {
     if t==JSON_STRING && j[0].depth==2 && json_text(j[..])=="digest" {t=json_next(j[..]);return json_text(j[..]);}

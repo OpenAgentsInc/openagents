@@ -50,7 +50,7 @@ is the oracle:
 ```jai
 // Sums, products and quotients of widened f32 values: a b + c, (a + b) - c
 // and a / b, in that order per item.
-ff_arith :: (item:int,a:[]f32,b:[]f32,c:[]f32,out:[]f64) #export_c {
+ff_arith :: (item:int,a:[]f32,b:[]f32,c:[]f32,out:[]f64) #export_c #effects(all) {
     x:=f64(a[item]);y:=f64(b[item]);z:=f64(c[item]);
     out[3*item]=x*y+z;out[3*item+1]=(x+y)-z;out[3*item+2]=x/y;
 }
@@ -131,17 +131,17 @@ tile kernel and no split or reduce:
 // Work item i of a TM x TN tiling: token tile i % tiles(tokens), row tile
 // i / tiles(tokens), so neighbouring threadgroups share one weight tile.
 DT_THREADS :: 128;
-dt_tiles :: (n:int,tile:int)->int {return (n+tile-1)/tile;}
-dt_items :: (rows:int,tokens:int,tm:int,tn:int)->int {return dt_tiles(tokens,tm)*dt_tiles(rows,tn);}
-dt_project_16x32 :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c {
+dt_tiles :: (n:int,tile:int)->int #effects(all) {return (n+tile-1)/tile;}
+dt_items :: (rows:int,tokens:int,tm:int,tn:int)->int #effects(all) {return dt_tiles(tokens,tm)*dt_tiles(rows,tn);}
+dt_project_16x32 :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {
     t:=dt_tiles(tokens,16);
     am_matmul_bf16(128,16,32,rows,cols,tokens,item/t*32,item%t*16,w,x,out);
 }
-dt_project_32x32 :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c {
+dt_project_32x32 :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {
     t:=dt_tiles(tokens,32);
     am_matmul_bf16(128,32,32,rows,cols,tokens,item/t*32,item%t*32,w,x,out);
 }
-dt_project_16x64 :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c {
+dt_project_16x64 :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {
     t:=dt_tiles(tokens,16);
     am_matmul_bf16(128,16,64,rows,cols,tokens,item/t*64,item%t*16,w,x,out);
 }
@@ -177,14 +177,14 @@ request's tokens match it.
 // A forked decision on an opened placement: the prefix pass over tokens
 // 0..prefix (one block, no readout), then one suffix pass per question over
 // tokens start..start+tokens, whose logits are the last token's.
-dp_plan_prefix :: (prefix:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
+dp_plan_prefix :: (prefix:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #export_c #effects(all) {
     return dp_plan_fork(DpFork.{on=true,save=true},prefix,opened,stream,ops);
 }
-dp_plan_suffix :: (start:int,tokens:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
+dp_plan_suffix :: (start:int,tokens:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #export_c #effects(all) {
     if start<1 {return DpPlan.{status=DpStatus.shape};}
     return dp_plan_fork(DpFork.{on=true,start=start},tokens,opened,stream,ops);
 }
-dp_plan_fork :: (fork:DpFork,tokens:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan {
+dp_plan_fork :: (fork:DpFork,tokens:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #effects(all) {
     m:=dp_model(opened.kind);
     if opened.status!=DpStatus.ok || stream.count!=dp_streamable(m) {return DpPlan.{status=DpStatus.capacity};}
     if tokens<1 || fork.start<0 || fork.start+tokens>DP_MAX_TOKENS {return DpPlan.{status=DpStatus.shape};}

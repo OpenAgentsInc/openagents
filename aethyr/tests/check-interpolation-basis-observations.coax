@@ -1,7 +1,7 @@
 #load "interpolation-basis-fixtures.coax";
 #load "depth-precision-policy.coax";
 #load "../render/tests/qualification-files.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {return 2;}kind:=args_at(a[..],0);input:=args_at(a[..],1);plan:=args_at(a[..],2);output:=args_at(a[..],3);hash:[64]u8;
   if (kind!="webgpu" && kind!="native") || !rtq_hash_file(plan,hash[..]) || cast(string)hash[..]!="e662959a1ca8f6c3cc082195d71de6d6ecb61e08a93c3639c50d73515e0715cb" {return 2;}
   inputs:[1]RtqInputs;if !rtq_input_add(inputs[..],plan) || !rtq_input_add(inputs[..],input) {return 2;}bytes:[524288]u8;nodes:[16384]JvNode;d:[1]Jv;if !rtq_json_file(input,bytes[..],nodes[..],d[..]) {return 2;}

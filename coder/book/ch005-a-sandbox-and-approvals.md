@@ -85,19 +85,19 @@ when none of them holds.
 // A policy is valid when what runs freely is inside the ceiling: allow no
 // stronger than ceiling, open a subset of reach, reach a mask of the three
 // rooms, and no limit negative.
-sb_valid :: (p:SbPolicy)->bool {
+sb_valid :: (p:SbPolicy)->bool #effects(all) {
     if cast(u8)p.allow>cast(u8)p.ceiling || p.reach<0 || p.reach>7 || (p.open|p.reach)!=p.reach {return false;}
     return p.cost>=0 && p.calls>=0 && p.bytes>=0 && p.ticks>=0 && p.timeout>=0 && p.wait>=0;
 }
 // Whether mask holds room; a call that names no room (-1) is in every scope.
-sb_in :: (mask:int,room:int)->bool {return room<0 || ((mask>>room)&1)==1;}
+sb_in :: (mask:int,room:int)->bool #effects(all) {return room<0 || ((mask>>room)&1)==1;}
 // The room a call touches: set's and get's first field, else none.
-sb_room :: (tools:[]HtTool,c:HtEvent)->int {
+sb_room :: (tools:[]HtTool,c:HtEvent)->int #effects(all) {
     b:=tools[c.tool].body;if b==HtBody.set || b==HtBody.get {return c.values[0];}
     return -1;
 }
 // Whether the session holds an unexpired pattern for this tool and room.
-sb_held :: (s:SbSession,tool:int,room:int)->bool {
+sb_held :: (s:SbSession,tool:int,room:int)->bool #effects(all) {
     for k:0..<nx_min(s.held,SB_HELD) {x:=s.patterns[k];if x.tool==tool && x.room==room && s.clock<=x.until {return true;}}
     return false;
 }
@@ -105,7 +105,7 @@ sb_held :: (s:SbSession,tool:int,room:int)->bool {
 // ceiling, which nothing passes; then a held pattern or an approval runs it;
 // otherwise it asks when its effect, its room or its cost is past what runs
 // freely.
-sb_decide :: (p:SbPolicy,s:SbSession,tools:[]HtTool,tool:int,room:int,n:int,approved:bool)->SbEvent {
+sb_decide :: (p:SbPolicy,s:SbSession,tools:[]HtTool,tool:int,room:int,n:int,approved:bool)->SbEvent #effects(all) {
     t:=tools[tool];d:=SB_TICKS[cast(int)t.body];e:=SbEvent.{room=room};
     if !sb_valid(p) {e.why=SbWhy.policy;}
     else if s.calls>=p.calls {e.why=SbWhy.calls;}
@@ -176,12 +176,12 @@ answer's event holds the answer as given and then what took effect.
 <!-- source: psionic/lib/harness/sandbox.coax log -->
 ```jai
 // Room for one more event of n tokens, outside any open turn.
-sb_fits :: (l:[]LgLog,n:int)->bool {
+sb_fits :: (l:[]LgLog,n:int)->bool #effects(all) {
     g:=l[0];return g.count<g.events.count && n<=g.tokens.count-g.used && !lg_fold_log(g,g.count).open;
 }
-sb_say :: (l:[]LgLog,t:[]int) {#assert lg_say(l,LgKind.context,t)==LgStatus.ok;}
+sb_say :: (l:[]LgLog,t:[]int) #effects(all) {#assert lg_say(l,LgKind.context,t)==LgStatus.ok;}
 // Open a session on an empty log: the policy is its first event.
-sb_open :: (id:int,p:SbPolicy,s:[]SbSession,l:[]LgLog)->SbWhy {
+sb_open :: (id:int,p:SbPolicy,s:[]SbSession,l:[]LgLog)->SbWhy #effects(all) {
     if !sb_valid(p) {return SbWhy.policy;}
     if l[0].count!=0 || !sb_fits(l,SB_OPEN_SIZE) {return SbWhy.log;}
     s[0]=SbSession.{id=id,policy=p};
@@ -190,14 +190,14 @@ sb_open :: (id:int,p:SbPolicy,s:[]SbSession,l:[]LgLog)->SbWhy {
 }
 // A call's event: the session, the outcome, chapter 203's verdict and value,
 // the request, then the call's text, byte by byte.
-sb_log_call :: (l:[]LgLog,id:int,e:SbEvent,text:string) {
+sb_log_call :: (l:[]LgLog,id:int,e:SbEvent,text:string) #effects(all) {
     t:[SB_CALL_HEAD+HT_TEXT_MAX]int;
     head:=[SB_CALL_HEAD]int.[SB_CALL,id,cast(int)e.verdict,cast(int)e.why,e.call.tool,e.room,cast(int)e.call.why,e.call.value,e.request];
     for x,i:head {t[i]=x;}for c,i:text {t[SB_CALL_HEAD+i]=cast(int)c;}
     sb_say(l,t[0..<SB_CALL_HEAD+text.count]);
 }
 // An answer's event: the answer as given, then what took effect.
-sb_log_answer :: (l:[]LgLog,a:SbAnswer,e:SbEvent) {
+sb_log_answer :: (l:[]LgLog,a:SbAnswer,e:SbEvent) #effects(all) {
     t:=[SB_ANSWER_SIZE]int.[SB_ANSWER,a.session,a.request,cast(int)a.decision,ifx a.pattern then 1 else 0,a.at,
         cast(int)e.verdict,cast(int)e.why,cast(int)e.decision,cast(int)e.call.why,e.call.value];
     sb_say(l,t[..]);
@@ -228,7 +228,7 @@ for room first, so an effect never happens without its event.
 ```jai
 // Run an admitted, decided call through chapter 203's pipeline, and charge
 // it to the session: one call, its bytes, and its ticks on the clock.
-sb_run :: (env:SbTools,s:[]SbSession,text:string,world:[]int)->HtEvent {
+sb_run :: (env:SbTools,s:[]SbSession,text:string,world:[]int)->HtEvent #effects(all) {
     u:=[1]HtUsage.[s[0].usage];c:=ht_call(env.tools,env.grant,u[..],text,world,env.work);
     s[0].usage=u[0];s[0].calls+=1;s[0].bytes+=text.count;s[0].clock+=SB_TICKS[cast(int)env.tools[c.tool].body];
     return c;
@@ -237,7 +237,7 @@ sb_run :: (env:SbTools,s:[]SbSession,text:string,world:[]int)->HtEvent {
 // is longer than a call may be, the world is too small or the log is full.
 // Otherwise: a paused session refuses it; chapter 203 admits it; the policy
 // decides; it runs, waits as a request, or is refused. Logged either way.
-sb_call :: (env:SbTools,s:[]SbSession,text:string,world:[]int,l:[]LgLog)->SbEvent {
+sb_call :: (env:SbTools,s:[]SbSession,text:string,world:[]int,l:[]LgLog)->SbEvent #effects(all) {
     e:=SbEvent.{};
     if text.count>HT_TEXT_MAX || world.count<HT_CHOICES_MAX {e.why=SbWhy.shape;return e;}
     if !sb_fits(l,SB_CALL_HEAD+text.count) {e.why=SbWhy.log;return e;}
@@ -284,7 +284,7 @@ approved call is refused.
 // the call, admitted and decided again at the new clock, with the approval
 // standing in for the asking rules only: the limits and the ceiling still
 // hold. A pattern approval also holds tool and room until at + wait.
-sb_answer :: (env:SbTools,s:[]SbSession,a:SbAnswer,world:[]int,l:[]LgLog)->SbEvent {
+sb_answer :: (env:SbTools,s:[]SbSession,a:SbAnswer,world:[]int,l:[]LgLog)->SbEvent #effects(all) {
     e:=SbEvent.{};
     if world.count<HT_CHOICES_MAX {e.why=SbWhy.shape;return e;}
     if !sb_fits(l,SB_ANSWER_SIZE) {e.why=SbWhy.log;return e;}
@@ -335,7 +335,7 @@ refused at the event where it happens.
 // policy, feed it each logged call and answer, and require each event the
 // fresh session logs to have the original's digest. The world the replay
 // leaves is the world the session left.
-sb_replay :: (env:SbTools,g:LgLog,s:[]SbSession,world:[]int,l:[]LgLog)->SbCheck {
+sb_replay :: (env:SbTools,g:LgLog,s:[]SbSession,world:[]int,l:[]LgLog)->SbCheck #effects(all) {
     if lg_verify(g).status!=LgStatus.ok {return SbCheck.{status=SbReplay.log};}
     if l[0].count!=0 {return SbCheck.{status=SbReplay.log};}
     for e,i:g.events[0..<g.count] {

@@ -23,7 +23,7 @@ op_prompt :: (id:int,d:OdData) {
     }
     print("Return the final three-integer JSON array immediately.\n");
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {tool_errln("usage: original-edit-propose prompt|live ID(13..15)");return 2;}
     id:=args_whole(args_at(a[..],1));if id<13 || id>15 {return 2;}d:=od_load();mode:=args_at(a[..],0);
     if mode=="prompt" {op_prompt(id,d);return 0;}if mode!="live" {return 2;}

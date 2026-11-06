@@ -311,7 +311,7 @@ fa_doc :: (f: [] Fa, slug: string, cond: string) -> bool {
   return fa_true(f, fa_text(q[..]));
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   b1: [256] u8; b2: [256] u8; b3: [1024] u8; b4: [1024] u8;
   f: [1] Fa;
   f[0].site = proc_getenv("SITE", b1[..]); f[0].api = proc_getenv("API", b2[..]);

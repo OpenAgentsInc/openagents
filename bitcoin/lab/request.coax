@@ -54,18 +54,18 @@ LabRoute :: struct {code:int=400;kind:int;source:int;phase:int;ticket:int;offset
 #forall "Lab public tokens accept exactly unescaped identifier bytes" c:0..<128 {
   text:=[1]u8.[cast(u8)c];#assert lr_token(cast(string)text[..],1)==((c>=48 && c<=57)||(c>=65 && c<=90)||(c>=97 && c<=122)||c==45||c==95);
 }
-lr_number :: (s:string,limit:int)->int {
+lr_number :: (s:string,limit:int)->int #effects(all) {
   if s.count==0 {return -1;}n:=0;
   for c:s {if c<'0' || c>'9' {return -1;}v:=cast(int)c-48;if n>limit/10 || (n==limit/10 && v>limit%10) {return -1;}n=n*10+v;}return n;
 }
-lr_token :: (s:string,cap:int)->bool {
+lr_token :: (s:string,cap:int)->bool #effects(all) {
   if s.count==0 || s.count>cap {return false;}
   for c:s {if !((c>='0' && c<='9')||(c>='A' && c<='Z')||(c>='a' && c<='z')||c=='-'||c=='_') {return false;}}return true;
 }
-lr_kind :: (s:string)->int {for name,i:[7]string.["snapshot","window","transactions","transaction","script","outputs","search"] {if s==name {return i+1;}}return 0;}
-lr_field :: (s:string)->int {for name,i:[6]string.["source","ticket","cursor","phase","offset","key"] {if s==name {return 1<<i;}}return 0;}
-lr_prefix :: (s:string,p:string)->bool {return s.count>=p.count && s[0..<p.count]==p;}
-lr_route :: (method:string,path:string)->LabRoute {
+lr_kind :: (s:string)->int #effects(all) {for name,i:[7]string.["snapshot","window","transactions","transaction","script","outputs","search"] {if s==name {return i+1;}}return 0;}
+lr_field :: (s:string)->int #effects(all) {for name,i:[6]string.["source","ticket","cursor","phase","offset","key"] {if s==name {return 1<<i;}}return 0;}
+lr_prefix :: (s:string,p:string)->bool #effects(all) {return s.count>=p.count && s[0..<p.count]==p;}
+lr_route :: (method:string,path:string)->LabRoute #effects(all) {
   r:LabRoute;if method!="GET" {r.code=405;return r;}prefix:="/api/lab/v1/";
   if path.count>1024 || !lr_prefix(path,prefix) {return r;}
   q:=prefix.count;while q<path.count && path[q]!='?' {q+=1;}r.kind=lr_kind(path[prefix.count..<q]);

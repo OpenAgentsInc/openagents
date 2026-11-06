@@ -22,13 +22,13 @@
   #assert forge_startup_phase(remaining,elapsed,visible)==phase;
 }
 ForgeStartupStep :: struct {remaining:int;phase:int;} // idle, counting, expired
-forge_startup_step :: (remaining:int,elapsed:int,visible:bool)->ForgeStartupStep {
+forge_startup_step :: (remaining:int,elapsed:int,visible:bool)->ForgeStartupStep #effects(all) {
   if remaining<=0 {return ForgeStartupStep.{phase=2};}
   if !visible || elapsed<=0 {return ForgeStartupStep.{remaining=remaining};}
   if elapsed>=remaining {return ForgeStartupStep.{phase=2};}
   return ForgeStartupStep.{remaining=remaining-elapsed,phase=1};
 }
-forge_startup_budget :: (remaining:int,elapsed:int,visible:bool)->int #export_c {
+forge_startup_budget :: (remaining:int,elapsed:int,visible:bool)->int #export_c #effects(all) {
   return forge_startup_step(remaining,elapsed,visible).remaining;
 }
-forge_startup_phase :: (remaining:int,elapsed:int,visible:bool)->int #export_c {return forge_startup_step(remaining,elapsed,visible).phase;}
+forge_startup_phase :: (remaining:int,elapsed:int,visible:bool)->int #export_c #effects(all) {return forge_startup_step(remaining,elapsed,visible).phase;}

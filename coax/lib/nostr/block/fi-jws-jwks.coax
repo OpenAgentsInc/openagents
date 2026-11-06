@@ -32,7 +32,7 @@
  #assert fi_compact_parse(cast(string)missing[..]).ok && !fi_jws_document_signature(missing[..],jwks);
 }
 // The parsed document is produced locally by fi_jwks_parse, never from a DTO.
-fi_jws_find_key :: (keys:FiParsedJwks,kid:string)->int {
+fi_jws_find_key :: (keys:FiParsedJwks,kid:string)->int #effects(all) {
  if !keys.ok || keys.count<1 || keys.count>16 {return -1;}
  for i:0..<keys.count {
   key:=keys.keys[i];
@@ -40,7 +40,7 @@ fi_jws_find_key :: (keys:FiParsedJwks,kid:string)->int {
  }
  return -1;
 }
-fi_jws_document_signature :: (token:[]u8,jwks:string)->bool #export_c {
+fi_jws_document_signature :: (token:[]u8,jwks:string)->bool #export_c #effects(all) {
  keys:=fi_jwks_parse(jwks);if !keys.ok {return false;}
  text:=cast(string)token;parts:=fi_compact_parse(text);if !parts.ok {return false;}
  bytes:[2048]u8;decoded:=fi_b64url_decode(text[0..<parts.protected_end],bytes[..]);

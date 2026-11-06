@@ -8,7 +8,7 @@
 #load "project-live.coax";
 
 // Check i, run; or, with run false, its name. The count of checks either way.
-native_check :: (i: int, run: bool) -> int #export_c {
+native_check :: (i: int, run: bool) -> int #export_c #effects(all) {
   if i == 0 { if run { plc_0(); } else { print("the page opens its socket, subscribes when it opens, counts frames, and reconnects with backoff when it closes"); } }
   if i == 1 { if run { plc_1(); } else { print("bounded history completes before the page goes live, and later events update its candidate"); } }
   if i == 2 { if run { plc_2(); } else { print("live, the page asks the relay for work across projects in two asks, and folds the answers as links.ts does"); } }

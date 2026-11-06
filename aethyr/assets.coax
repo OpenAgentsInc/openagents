@@ -27,32 +27,32 @@
 // An asset's identity: the SHA-256 of its bytes, as eight big-endian words.
 AssetId :: struct { words: [8] u32; }
 
-asset_id :: (content: string) -> AssetId {
+asset_id :: (content: string) -> AssetId #effects(all) {
   ast_d := S_hash(content);
   return AssetId.{words = ast_d.words};
 }
 
-asset_same :: (a: AssetId, b: AssetId) -> bool {
+asset_same :: (a: AssetId, b: AssetId) -> bool #effects(all) {
   for ast_k: 0..<8 { if a.words[ast_k] != b.words[ast_k] { return false; } }
   return true;
 }
 // book:end identity
 
 // The id as 64 lowercase hex digits, the form sha256sum prints and a pack's table holds.
-asset_hex :: (id: AssetId, out: [] u8) -> bool {
+asset_hex :: (id: AssetId, out: [] u8) -> bool #effects(all) {
   return S_hex(S_Digest.{words = id.words}, out);
 }
 
 ASSET_HEX_DIGITS :: "0123456789abcdef";
 
 // A hex digit's value, or -1 for anything else (uppercase included: a table has one spelling).
-asset_digit :: (c: u8) -> int {
+asset_digit :: (c: u8) -> int #effects(all) {
   for ast_k: 0..<16 { if ASSET_HEX_DIGITS[ast_k] == c { return ast_k; } }
   return -1;
 }
 
 // Reads a table's 64 hex digits into out[0]; refuses (and leaves out[0]) any other text.
-asset_parse :: (text: string, out: [] AssetId) -> bool {
+asset_parse :: (text: string, out: [] AssetId) -> bool #effects(all) {
   if text.count != 64 || out.count < 1 { return false; }
   ast_id := AssetId.{};
   for ast_k: 0..<64 {
@@ -92,24 +92,24 @@ AssetRegistry :: struct {
 }
 // book:end registry
 
-asset_registry :: (limit: int) -> AssetRegistry { return AssetRegistry.{limit = limit}; }
+asset_registry :: (limit: int) -> AssetRegistry #effects(all) { return AssetRegistry.{limit = limit}; }
 
 // The slot holding id, or ASSET_NONE.
-asset_find :: (r: AssetRegistry, id: AssetId) -> int {
+asset_find :: (r: AssetRegistry, id: AssetId) -> int #effects(all) {
   for ast_s: 0..<ASSET_SLOTS { if r.uses[ast_s] > 0 && asset_same(r.ids[ast_s], id) { return ast_s; } }
   return ASSET_NONE;
 }
 
-asset_uses :: (r: AssetRegistry, id: AssetId) -> int {
+asset_uses :: (r: AssetRegistry, id: AssetId) -> int #effects(all) {
   ast_s := asset_find(r, id);
   if ast_s == ASSET_NONE { return 0; }
   return r.uses[ast_s];
 }
 
 // Whether every pack so far was admitted: what a realm's asset check asserts.
-asset_ok :: (r: AssetRegistry) -> bool { return r.refused == 0; }
+asset_ok :: (r: AssetRegistry) -> bool #effects(all) { return r.refused == 0; }
 
-asset_refuse :: (r: [] AssetRegistry, kind: int, entry: int, asked: int, used: int) -> int {
+asset_refuse :: (r: [] AssetRegistry, kind: int, entry: int, asked: int, used: int) -> int #effects(all) {
   r[0].refused += 1;
   if r[0].refused == 1 { r[0].first = AssetRefusal.{kind = kind, entry = entry, asked = asked, used = used, limit = r[0].limit}; }
   return kind;
@@ -119,7 +119,7 @@ asset_refuse :: (r: [] AssetRegistry, kind: int, entry: int, asked: int, used: i
 // Admits a pack: content[k] is entry k's bytes and table[k] the id its table names. Every
 // entry is hashed and checked before anything is taken; then each entry adds a use, to the slot
 // that already holds it or to a free one. Returns ASSET_OK or the refusal, which changes nothing.
-asset_admit :: (r: [] AssetRegistry, content: [] string, table: [] AssetId) -> int {
+asset_admit :: (r: [] AssetRegistry, content: [] string, table: [] AssetId) -> int #effects(all) {
   if content.count != table.count || content.count > ASSET_SLOTS { return asset_refuse(r, ASSET_MALFORMED, ASSET_NONE, content.count, r[0].held); }
   ast_n := content.count;
   for ast_k: 0..<ast_n {
@@ -153,7 +153,7 @@ asset_admit :: (r: [] AssetRegistry, content: [] string, table: [] AssetId) -> i
 // book:end admit
 
 // Drops one use of id; its bytes and slot are freed with the last. False for an id not held.
-asset_release :: (r: [] AssetRegistry, id: AssetId) -> bool {
+asset_release :: (r: [] AssetRegistry, id: AssetId) -> bool #effects(all) {
   ast_s := asset_find(r[0], id);
   if ast_s == ASSET_NONE { return false; }
   r[0].uses[ast_s] -= 1;
@@ -173,10 +173,10 @@ ASSET_MESH :: "mesh: 24 vertices of a crate";
 ASSET_TEXTURE :: "texture: oak planks, 4x4";
 ASSET_SOUND :: "sound: a door";
 
-asset_hex_of :: (content: string, out: [] u8) -> bool { return asset_hex(asset_id(content), out); }
+asset_hex_of :: (content: string, out: [] u8) -> bool #effects(all) { return asset_hex(asset_id(content), out); }
 
 // A one-entry table and content, for checks.
-asset_one :: (r: [] AssetRegistry, content: string) -> int {
+asset_one :: (r: [] AssetRegistry, content: string) -> int #effects(all) {
   ast_c := [1] string.[content];
   ast_t := [1] AssetId.[asset_id(content)];
   return asset_admit(r, ast_c[..], ast_t[..]);

@@ -29,7 +29,7 @@ wsc_native :: ()->int {
     }
     #assert fs_remove(dir);return 0;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=1 {tool_errln("usage: check-weight-space all|native|checks|mutate|book");return 2;}
     phase:=args_at(args[..],0);out:[16777216]u8;
     if phase=="all" {

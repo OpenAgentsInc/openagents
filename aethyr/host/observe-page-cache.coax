@@ -33,7 +33,7 @@ opc_run::(argv:[]string,deadline:int,out:[]u8,err:[]u8)->ProcRun {
   left:=deadline-proc_now_ms();if left<=0{return ProcRun.{timed_out=true};}
   none:[1]string;return proc_run_bytes(argv,none[0..<0],ifx left<60000 then left else 60000,out,err);
 }
-tool_main::()->int #export_c {
+tool_main::()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..])||args_count(a[..])<3 {tool_errln("usage: observe-page-cache COMPILER_SHA256 CACHE_DIRECTORY EMPTY_OUTPUT_DIRECTORY [--unit SOURCE.coax --no-run-steps]");return 2;}
   compiler:=args_at(a[..],0);cache:=args_at(a[..],1);dir:=args_at(a[..],2);files:[1]FsList;deadline:=proc_now_ms()+780000;
   if compiler.count!=64||!fs_mkdir(dir)||fs_list(dir,files[..])!=0{return 2;}

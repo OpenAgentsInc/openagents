@@ -3,7 +3,7 @@
 #load "http-bytes-conformance.coax";
 #load "../render/tests/qualification-files.coax";
 hfbb_wait::(c:[]Cdp,expression:string)->bool{until:=proc_now_ms()+15000;while proc_now_ms()<until{if wc_eval(c,expression)=="true"{return true;}proc_sleep(50);}tool_errln(expression);tool_errln(cdp_error(c));return false;}
-tool_main::()->int #export_c {
+tool_main::()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2{return 2;}url:=args_at(a[..],0);out:=args_at(a[..],1);inputs:[1]RtqInputs;
  for file:[9]string.["coax/web/host.js","coax/web/http-requests.js","coax/web/host-transport.js","coax/web/services-host.js","aethyr/host/http-bytes-fixture.coax","aethyr/host/tests/http-bytes-fixture-face.c","aethyr/host/tests/network.coax","aethyr/host/http-bytes-conformance.coax","aethyr/host/check-browser-http-bytes.coax"]{if !rtq_input_add(inputs[..],file){return 1;}}
  c:[1]Cdp;if !cdp_launch(c[..],160,90,"aethyr-http-bytes-"){return 1;}defer{cdp_close(c[..]);}params:[4096]u8;o:[1]Jo;jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);nav:=cdp_call(c[..],"Page.navigate",jo_text(o[..]),CDP_CALL_MS);

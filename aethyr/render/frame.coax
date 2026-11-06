@@ -6,20 +6,20 @@
 #load "../tests/render-frame-checks.coax";
 #authority;
 
-render_frame_limits_ok :: (rf_l: RenderFrameLimits) -> bool {
+render_frame_limits_ok :: (rf_l: RenderFrameLimits) -> bool #effects(all) {
   return rf_l.max_width >= 1 && rf_l.max_width <= 65536 && rf_l.max_height >= 1 && rf_l.max_height <= 65536
     && rf_l.max_draws >= 0 && rf_l.max_draws <= 65536 && rf_l.max_uploads >= 0 && rf_l.max_uploads <= 48
     && rf_l.max_vertex_stride >= 0 && rf_l.max_vertex_stride <= 64 && rf_l.index_work >= 0 && rf_l.index_work <= 16777216;
 }
-render_count_word_ok :: (rf_count: int) -> bool { return rf_count >= 0 && rf_count <= 4294967295; }
-render_span_fits :: (rf_first: u64, rf_count: u64, rf_lower: u64, rf_end: u64) -> bool {
+render_count_word_ok :: (rf_count: int) -> bool #effects(all) { return rf_count >= 0 && rf_count <= 4294967295; }
+render_span_fits :: (rf_first: u64, rf_count: u64, rf_lower: u64, rf_end: u64) -> bool #effects(all) {
   return rf_first >= rf_lower && rf_first <= rf_end && rf_count <= rf_end - rf_first;
 }
-render_vertex_span_fits :: (rf_d: RenderDrawDomain, rf_first: u64, rf_count: u64) -> bool {
+render_vertex_span_fits :: (rf_d: RenderDrawDomain, rf_first: u64, rf_count: u64) -> bool #effects(all) {
   return render_span_fits(rf_first, rf_count, rf_d.vertex_begin, rf_d.vertices)
     || render_span_fits(rf_first, rf_count, rf_d.vertex_alt_begin, rf_d.vertex_alt_end);
 }
-render_frame_counts_ok :: (rf_c: FrameCounts, rf_l: RenderFrameLimits) -> bool {
+render_frame_counts_ok :: (rf_c: FrameCounts, rf_l: RenderFrameLimits) -> bool #effects(all) {
   return render_count_word_ok(rf_c.hud_vertices) && render_count_word_ok(rf_c.draw_count)
     && render_count_word_ok(rf_c.water_draws) && rf_c.water_draws <= rf_c.draw_count
     && render_count_word_ok(rf_c.grass_instances) && render_count_word_ok(rf_c.particle_instances)
@@ -30,7 +30,7 @@ render_frame_counts_ok :: (rf_c: FrameCounts, rf_l: RenderFrameLimits) -> bool {
 
 // Subtractions follow their ordering guards, so no addition can wrap at a
 // native address boundary. End points include the empty span at an end.
-render_upload_ok :: (rf_u: RenderUpload) -> bool {
+render_upload_ok :: (rf_u: RenderUpload) -> bool #effects(all) {
   rf_max: u64 = 18446744073709551615;
   if !(rf_u.alignment == 4 || rf_u.alignment == 8 || rf_u.alignment == 16 || rf_u.alignment == 32
       || rf_u.alignment == 64 || rf_u.alignment == 128 || rf_u.alignment == 256) { return false; }
@@ -43,7 +43,7 @@ render_upload_ok :: (rf_u: RenderUpload) -> bool {
 
 // The raw host bridge calls this before constructing any data view used
 // by geometry admission. Its descriptor view is caller-owned valid data.
-render_uploads_admit :: (rf_l: RenderFrameLimits, rf_uploads: [] RenderUpload) -> RenderFrameResult {
+render_uploads_admit :: (rf_l: RenderFrameLimits, rf_uploads: [] RenderUpload) -> RenderFrameResult #effects(all) {
   rf_out: RenderFrameResult;
   if !render_frame_limits_ok(rf_l) { rf_out.status = RenderFrameStatus.bad_limits; return rf_out; }
   if rf_uploads.count > rf_l.max_uploads { rf_out.status = RenderFrameStatus.capacity; return rf_out; }
@@ -57,7 +57,7 @@ render_uploads_admit :: (rf_l: RenderFrameLimits, rf_uploads: [] RenderUpload) -
 
 // Draw stays four u32 words. A nonindexed base's flag is not an instance
 // number; indexed draws retain their whole (necessarily flag-free) base.
-render_decode_draw :: (rf_words: [] u32, rf_record: int) -> RenderDecodedDraw {
+render_decode_draw :: (rf_words: [] u32, rf_record: int) -> RenderDecodedDraw #effects(all) {
   if rf_record < 0 || rf_record >= rf_words.count / 4 { return RenderDecodedDraw.{kind = RenderDrawKind.invalid}; }
   rf_at := rf_record * 4;
   rf_draw := RenderDecodedDraw.{first = rf_words[rf_at], count = rf_words[rf_at + 1],
@@ -72,7 +72,7 @@ render_decode_draw :: (rf_words: [] u32, rf_record: int) -> RenderDecodedDraw {
 }
 
 render_frame_admit :: (rf_c: FrameCounts, rf_l: RenderFrameLimits, rf_direct: RenderDirectDomains, rf_uploads: [] RenderUpload,
-    rf_words: [] u32, rf_domains: [] RenderDrawDomain, rf_indices: [] u32) -> RenderFrameResult {
+    rf_words: [] u32, rf_domains: [] RenderDrawDomain, rf_indices: [] u32) -> RenderFrameResult #effects(all) {
   rf_out: RenderFrameResult;
   if !render_frame_limits_ok(rf_l) { rf_out.status = RenderFrameStatus.bad_limits; return rf_out; }
   if rf_c.width < 1 || rf_c.width > rf_l.max_width || rf_c.height < 1 || rf_c.height > rf_l.max_height {
@@ -147,16 +147,16 @@ RfLimits :: struct {passes:int;bindings:int;draws:int;words:int;}
 RfFrame :: struct {active:bool;epoch:int;limit:RfLimits;passes:int;bindings:int;draws:int;words:int;}
 RfResult :: struct {accepted:bool;frame:RfFrame;}
 
-rf_viewport :: (width:f32,height:f32)->bool {
+rf_viewport :: (width:f32,height:f32)->bool #effects(all) {
     return width>0 && height>0 && width-width==0 && height-height==0;
 }
 
-rf_begin :: (epoch:int,limit:RfLimits)->RfFrame {
+rf_begin :: (epoch:int,limit:RfLimits)->RfFrame #effects(all) {
     if epoch<1 || limit.passes<1 || limit.bindings<0 || limit.draws<0 || limit.words<0 {return RfFrame.{};}
     return RfFrame.{active=true,epoch=epoch,limit=limit};
 }
 
-rf_live :: (resources:[]RfResource,h:RfHandle,epoch:int)->bool {
+rf_live :: (resources:[]RfResource,h:RfHandle,epoch:int)->bool #effects(all) {
     if h.slot<0 || h.slot>=resources.count || h.generation<1 {return false;}
     r:=resources[h.slot];
     return r.generation==h.generation && r.first<=epoch && epoch<=r.last;
@@ -166,7 +166,7 @@ rf_live :: (resources:[]RfResource,h:RfHandle,epoch:int)->bool {
 // A refusal returns the original frame. Publication is one value assignment.
 // Indexed geometry's index VALUES must already be admitted by its asset owner;
 // this checks index range and instance range, not index-buffer contents.
-rf_pass :: (f:RfFrame,resources:[]RfResource,target:RfHandle,bindings:[]RfBinding,draws:[]RfDraw,g:RfGeometry)->RfResult {
+rf_pass :: (f:RfFrame,resources:[]RfResource,target:RfHandle,bindings:[]RfBinding,draws:[]RfDraw,g:RfGeometry)->RfResult #effects(all) {
     no:=RfResult.{frame=f};
     if !f.active || f.passes>=f.limit.passes || bindings.count>f.limit.bindings-f.bindings || draws.count>f.limit.draws-f.draws {return no;}
     if !rf_live(resources,target,f.epoch) {return no;}
@@ -194,4 +194,4 @@ rf_pass :: (f:RfFrame,resources:[]RfResource,target:RfHandle,bindings:[]RfBindin
 
 // Finish and abort have the same CPU reservation cleanup; idempotent. This
 // does not destroy GPU objects: their host owner releases them after GPU use.
-rf_finish :: (f:RfFrame)->RfFrame {return RfFrame.{epoch=f.epoch,limit=f.limit};}
+rf_finish :: (f:RfFrame)->RfFrame #effects(all) {return RfFrame.{epoch=f.epoch,limit=f.limit};}

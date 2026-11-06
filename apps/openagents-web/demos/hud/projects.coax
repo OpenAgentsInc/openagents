@@ -334,7 +334,7 @@ demo_footer :: (s:[]ProjectsState,out:[]f32,at:int)->int {
   return v;
 }
 
-coaxial_projects_frame :: (s:[]ProjectsState,out:[]f32,u:[]f32,width:f32,height:f32,dpr:f32,dt:f32,still:bool)->int #export_c {
+coaxial_projects_frame :: (s:[]ProjectsState,out:[]f32,u:[]f32,width:f32,height:f32,dpr:f32,dt:f32,still:bool)->int #export_c #effects(all) {
   if s.count<1 || u.count<88 || out.count<12 || !(dpr>0 && width>0 && height>0) {return 0;}
   if !s[0].ready {s[0].focus=-1;s[0].ready=true;demo_arwes_reset(s);}
   s[0].width=width/dpr;s[0].height=height/dpr;s[0].d=dpr;
@@ -357,7 +357,7 @@ coaxial_projects_frame :: (s:[]ProjectsState,out:[]f32,u:[]f32,width:f32,height:
   }
   return v;
 }
-coaxial_projects_key :: (s:[]ProjectsState,key:int,mods:int)->bool #export_c {
+coaxial_projects_key :: (s:[]ProjectsState,key:int,mods:int)->bool #export_c #effects(all) {
   if key==-1 && s[0].inspected>0 {demo_apply(s,50);return true;}
   if s[0].inspected>0 && key>=49 && key<=54 {return true;}
   if key==54 {demo_apply(s,19);return true;}
@@ -371,7 +371,7 @@ coaxial_projects_key :: (s:[]ProjectsState,key:int,mods:int)->bool #export_c {
   if key==-6 || key==-10 {demo_apply(s,20);return true;}
   return false;
 }
-coaxial_projects_pointer :: (s:[]ProjectsState,x:f32,y:f32,phase:int,kind:int)->bool #export_c {
+coaxial_projects_pointer :: (s:[]ProjectsState,x:f32,y:f32,phase:int,kind:int)->bool #export_c #effects(all) {
   if !(s[0].d>0) {return false;}
   point_x:=x/s[0].d;yy:=y/s[0].d;
   s[0].pointer_x=point_x;s[0].pointer_y=yy;
@@ -386,14 +386,14 @@ coaxial_projects_pointer :: (s:[]ProjectsState,x:f32,y:f32,phase:int,kind:int)->
   if phase==2 {pressed:=s[0].press;s[0].press=0;if pressed>0 && id==pressed && !s[0].dragged {demo_apply(s,id);return true;}}
   return id>0;
 }
-coaxial_projects_wheel :: (s:[]ProjectsState,dy:f32) #export_c {if s[0].inspected==0 && dy==dy {s[0].scroll=demo_limit(s[0].scroll+dy/demo_max(1,s[0].d),0,s[0].scroll_max);}}
-coaxial_projects_max_vertices :: ()->int #export_c {return 240000;}
-coaxial_projects_vertex_floats :: ()->int #export_c {return 12;}
-coaxial_projects_uniform_floats :: ()->int #export_c {return 88;}
-coaxial_projects_inbox_cap :: ()->int #export_c {return 65536;}
-coaxial_projects_message :: (s:[]ProjectsState,kind:int,n:int) #export_c {}
-coaxial_projects_hash :: (s:[]ProjectsState,n:int) #export_c {}
-coaxial_projects_wants_text :: (s:[]ProjectsState)->bool #export_c {return false;}
-coaxial_projects_cursor :: (s:[]ProjectsState)->int #export_c {return ifx s[0].hot>0 then 1 else 0;}
-coaxial_projects_action :: (s:[]ProjectsState)->int #export_c {return 0;}
-coaxial_projects_action_done :: (s:[]ProjectsState) #export_c {s[0].action=0;}
+coaxial_projects_wheel :: (s:[]ProjectsState,dy:f32) #export_c #effects(all) {if s[0].inspected==0 && dy==dy {s[0].scroll=demo_limit(s[0].scroll+dy/demo_max(1,s[0].d),0,s[0].scroll_max);}}
+coaxial_projects_max_vertices :: ()->int #export_c #effects(all) {return 240000;}
+coaxial_projects_vertex_floats :: ()->int #export_c #effects(all) {return 12;}
+coaxial_projects_uniform_floats :: ()->int #export_c #effects(all) {return 88;}
+coaxial_projects_inbox_cap :: ()->int #export_c #effects(all) {return 65536;}
+coaxial_projects_message :: (s:[]ProjectsState,kind:int,n:int) #export_c #effects(all) {}
+coaxial_projects_hash :: (s:[]ProjectsState,n:int) #export_c #effects(all) {}
+coaxial_projects_wants_text :: (s:[]ProjectsState)->bool #export_c #effects(all) {return false;}
+coaxial_projects_cursor :: (s:[]ProjectsState)->int #export_c #effects(all) {return ifx s[0].hot>0 then 1 else 0;}
+coaxial_projects_action :: (s:[]ProjectsState)->int #export_c #effects(all) {return 0;}
+coaxial_projects_action_done :: (s:[]ProjectsState) #export_c #effects(all) {s[0].action=0;}

@@ -39,18 +39,18 @@ QfResult :: struct { status:QfStatus; written:int; }
     for x:out {#assert x==-7;}
 }
 // book:begin layout
-qf_valid :: (s:QfShape)->bool {
+qf_valid :: (s:QfShape)->bool #effects(all) {
     if s.heads<1 || s.heads>32 || s.kv_heads<1 || s.kv_heads>16 {return false;}
     if s.head_dim<1 || s.head_dim>256 || s.rotary_dim<0 || s.rotary_dim>s.head_dim {return false;}
     if s.rotary_dim%2!=0 || s.heads%s.kv_heads!=0 {return false;}
     return psionic_tensor_finite_bits(f32_bits(s.epsilon)) && s.epsilon>0;
 }
-qf_input_count :: (s:QfShape)->int {return 2*s.heads*s.head_dim+2*s.kv_heads*s.head_dim+2*s.head_dim+s.rotary_dim;}
-qf_output_count :: (s:QfShape)->int {return 2*s.heads*s.head_dim+2*s.kv_heads*s.head_dim;}
+qf_input_count :: (s:QfShape)->int #effects(all) {return 2*s.heads*s.head_dim+2*s.kv_heads*s.head_dim+2*s.head_dim+s.rotary_dim;}
+qf_output_count :: (s:QfShape)->int #effects(all) {return 2*s.heads*s.head_dim+2*s.kv_heads*s.head_dim;}
 // book:end layout
-qf_data_status :: (a:[]f32)->QfStatus {for x:a {if !psionic_tensor_finite_bits(f32_bits(x)) {return QfStatus.number;}}return QfStatus.ok;}
-qf_put :: (value:f64,a:[]f32,i:int)->bool {if !psionic_ops_fits_f32(value) {return false;}a[i]=f32(value);return true;}
-qf_norm :: (input:[]f32,base:int,scale:int,dim:int,epsilon:f32,out:[]f32,start:int)->bool {
+qf_data_status :: (a:[]f32)->QfStatus #effects(all) {for x:a {if !psionic_tensor_finite_bits(f32_bits(x)) {return QfStatus.number;}}return QfStatus.ok;}
+qf_put :: (value:f64,a:[]f32,i:int)->bool #effects(all) {if !psionic_ops_fits_f32(value) {return false;}a[i]=f32(value);return true;}
+qf_norm :: (input:[]f32,base:int,scale:int,dim:int,epsilon:f32,out:[]f32,start:int)->bool #effects(all) {
     squares:PsionicAccumulator;
     for i:0..<dim {x:=f64(input[base+i]);squares=psionic_ops_accumulate(squares,x*x);}
     div:=sqrt(psionic_ops_total(squares)/f64(dim)+f64(epsilon));
@@ -58,7 +58,7 @@ qf_norm :: (input:[]f32,base:int,scale:int,dim:int,epsilon:f32,out:[]f32,start:i
     return true;
 }
 // book:begin rotate
-qf_rotate :: (a:[]f32,start:int,rotary:int,rope:[]f32)->bool {
+qf_rotate :: (a:[]f32,start:int,rotary:int,rope:[]f32)->bool #effects(all) {
     half:=rotary/2;
     for i:0..<half {
         x:=f64(a[start+i]);y:=f64(a[start+half+i]);c:=f64(rope[2*i]);s:=f64(rope[2*i+1]);
@@ -68,7 +68,7 @@ qf_rotate :: (a:[]f32,start:int,rotary:int,rope:[]f32)->bool {
 }
 // book:end rotate
 // book:begin prepare
-qf_prepare :: (s:QfShape,input:[]f32,out:[]f32,overlap:bool)->QfResult #export_c {
+qf_prepare :: (s:QfShape,input:[]f32,out:[]f32,overlap:bool)->QfResult #export_c #effects(all) {
     if !qf_valid(s) {return QfResult.{status=QfStatus.shape};}
     if input.count!=qf_input_count(s) || out.count<qf_output_count(s) {return QfResult.{status=QfStatus.capacity};}
     if overlap {return QfResult.{status=QfStatus.alias};}
@@ -144,11 +144,11 @@ qf_prepare :: (s:QfShape,input:[]f32,out:[]f32,overlap:bool)->QfResult #export_c
     #assert qf_attend(s,1,input[..],mask[..],out[..],scratch[..],true).status==QfStatus.alias;
     for x:out {#assert x==-7;}for x:scratch {#assert x==-9;}
 }
-qf_token_count :: (tokens:int)->bool {return tokens>=1 && tokens<=16384;}
-qf_attend_count :: (s:QfShape,tokens:int)->int {return 2*s.heads*s.head_dim+2*tokens*s.kv_heads*s.head_dim;}
-qf_sigmoid :: (x:f64)->f64 {e:=exp(-abs(x));return exp((x-abs(x))/2)/(1+e);}
+qf_token_count :: (tokens:int)->bool #effects(all) {return tokens>=1 && tokens<=16384;}
+qf_attend_count :: (s:QfShape,tokens:int)->int #effects(all) {return 2*s.heads*s.head_dim+2*tokens*s.kv_heads*s.head_dim;}
+qf_sigmoid :: (x:f64)->f64 #effects(all) {e:=exp(-abs(x));return exp((x-abs(x))/2)/(1+e);}
 // book:begin attend
-qf_attend :: (s:QfShape,tokens:int,input:[]f32,mask:[]u8,out:[]f32,scratch:[]f32,overlap:bool)->QfResult #export_c {
+qf_attend :: (s:QfShape,tokens:int,input:[]f32,mask:[]u8,out:[]f32,scratch:[]f32,overlap:bool)->QfResult #export_c #effects(all) {
     if !qf_valid(s) {return QfResult.{status=QfStatus.shape};}
     if !qf_token_count(tokens) {return QfResult.{status=QfStatus.capacity};}
     q:=s.heads*s.head_dim;k:=s.kv_heads*s.head_dim;

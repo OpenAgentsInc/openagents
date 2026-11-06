@@ -123,29 +123,29 @@ places:
 <!-- source: coax/lib/nostr/nip94.coax field -->
 ```jai
 N94_KEYS :: [9] string.["url", "m", "x", "ox", "size", "dim", "blurhash", "alt", "fallback"];
-n94_key :: (s:string)->int {
+n94_key :: (s:string)->int #effects(all) {
   for k:0..<N94_KEYS.count {if s==N94_KEYS[k] {return k;}}
   return -1;
 }
 // A decimal count of at most 15 digits, or -1.
-n94_number :: (s:string)->int {
+n94_number :: (s:string)->int #effects(all) {
   if s.count==0 || s.count>15 {return -1;}
   v:=0;
   for c:s {if c<'0' || c>'9' {return -1;}v=v*10+cast(int)(c-'0');}
   return v;
 }
 // type/subtype: one slash with something on each side.
-n94_mime :: (s:string)->bool {
+n94_mime :: (s:string)->bool #effects(all) {
   slash:= -1;
   for i:0..<s.count {if s[i]=='/' {if slash>=0 {return false;}slash=i;}}
   return slash>0 && slash<s.count-1;
 }
 // Where the first c is, or s.count when there is none.
-n94_find :: (s:string,c:u8)->int {for i:0..<s.count {if s[i]==c {return i;}}return s.count;}
+n94_find :: (s:string,c:u8)->int #effects(all) {for i:0..<s.count {if s[i]==c {return i;}}return s.count;}
 // What follows position at, or "" when at is the end.
-n94_after :: (s:string,at:int)->string {return ifx at<s.count then s[at+1..<s.count] else "";}
+n94_after :: (s:string,at:int)->string #effects(all) {return ifx at<s.count then s[at+1..<s.count] else "";}
 // One field into f: its status is N94_OK or the refusal.
-n94_field :: (f:N94File,key:string,value:string)->N94File {
+n94_field :: (f:N94File,key:string,value:string)->N94File #effects(all) {
   o:=f;
   if key.count==0 || value.count==0 {return n94_status(o,N94_ENTRY);}
   k:=n94_key(key);
@@ -186,7 +186,7 @@ entry.
 <!-- source: coax/lib/nostr/nip94.coax imeta -->
 ```jai
 // The index'th tag read as an imeta tag.
-n94_imeta :: (e:NostrEvent,index:int)->N94File {
+n94_imeta :: (e:NostrEvent,index:int)->N94File #effects(all) {
   f:N94File;j:[1]Json;
   if index<0 || !nt_start(j[..],e) {return f;}
   tok:=json_next(j[..]);k:=0;
@@ -212,7 +212,7 @@ n94_imeta :: (e:NostrEvent,index:int)->N94File {
   if i<3 {return n94_refuse(f,N94_ALONE,index,-1);}
   return n94_refuse(f,N94_OK,-1,-1);
 }
-n94_has :: (f:N94File,k:int)->bool {return (f.seen&(cast(u32)1<<cast(u32)k))!=0;}
+n94_has :: (f:N94File,k:int)->bool #effects(all) {return (f.seen&(cast(u32)1<<cast(u32)k))!=0;}
 ```
 
 Each refusal names the tag (`at`) and, inside an `imeta` tag, the entry
@@ -247,7 +247,7 @@ without a check.
 <!-- source: coax/lib/nostr/nip94.coax file -->
 ```jai
 // A kind 1063 event's file metadata: url, m and x are required.
-n94_file :: (e:NostrEvent)->N94File {
+n94_file :: (e:NostrEvent)->N94File #effects(all) {
   f:N94File;if e.error!=NE_OK {return f;}
   if e.kind!=N94_KIND_FILE {return n94_at(f,N94_KIND,-1);}
   i:=0;
@@ -281,7 +281,7 @@ fields as the tags of a kind 1063 event. Values go through chapter 20's
 ```jai
 // One field after sep: "key value" in an imeta tag, or ["key","value"] as
 // a tag.
-n94_put :: (out:[]u8,at:int,sep:string,key:string,value:string,imeta:bool)->int {
+n94_put :: (out:[]u8,at:int,sep:string,key:string,value:string,imeta:bool)->int #effects(all) {
   n:=json_raw(out,at,sep);
   if imeta {
     s:[NT_MAX_VALUE+16]u8;m:=json_raw(s[..],0,key);m=json_raw(s[..],m," ");m=json_raw(s[..],m,value);
@@ -293,7 +293,7 @@ n94_put :: (out:[]u8,at:int,sep:string,key:string,value:string,imeta:bool)->int 
 // f's fields from at: an imeta tag ["imeta",...] or the tags of a kind
 // 1063 event [[...],...]. The new length, or -1 when it doesn't fit or f
 // has no url.
-n94_write :: (f:N94File,out:[]u8,at:int,imeta:bool)->int {
+n94_write :: (f:N94File,out:[]u8,at:int,imeta:bool)->int #effects(all) {
   if f.url.n==0 {return -1;}
   c:=f;hex:[64]u8;num:[48]u8;
   n:=ifx imeta then json_raw(out,at,"[\"imeta\"") else at;
@@ -328,7 +328,7 @@ it isn't checked against the original.
 // their count must equal size when there is one. With original, they must
 // hash to ox instead, the file before the server changed it; size is about
 // the served file, so it is not checked then.
-n94_check :: (f:N94File,bytes:[]u8,original:bool)->int {
+n94_check :: (f:N94File,bytes:[]u8,original:bool)->int #effects(all) {
   want:=ifx original then f.ox else f.x;
   has:=ifx original then f.has_ox else f.has_x;
   if !has {return N94_NO_HASH;}
@@ -339,7 +339,7 @@ n94_check :: (f:N94File,bytes:[]u8,original:bool)->int {
 }
 // The SHA-256 of bytes of any size, streamed in pieces of chunk bytes
 // (Bitcoin chapter 4's init, update and final); SHA_OK, or the hash's refusal.
-n94_digest :: (bytes:[]u8,chunk:int,out:[]u8)->u32 {
+n94_digest :: (bytes:[]u8,chunk:int,out:[]u8)->u32 #effects(all) {
   if chunk<1 {return SHA_BAD_INPUT;}
   state:[112]u8;
   status:=sha256_init(state[..]);
@@ -407,7 +407,7 @@ another server.
 ```jai
 // The blob a URL names: its last path segment is 64 lowercase hex digits,
 // then nothing or an extension starting with a dot.
-nb7_address :: (url:string)->NB7Blob {
+nb7_address :: (url:string)->NB7Blob #effects(all) {
   b:NB7Blob;from:=0;
   for i:0..<url.count {if url[i]=='/' {from=i+1;}}
   to:=from;
@@ -417,7 +417,7 @@ nb7_address :: (url:string)->NB7Blob {
   return b;
 }
 // Whether bytes fetched from url are the blob it names.
-nb7_fetch :: (url:string,bytes:[]u8)->int {
+nb7_fetch :: (url:string,bytes:[]u8)->int #effects(all) {
   b:=nb7_address(url);if !b.ok {return NB7_URL;}
   // Streamed in 1 MiB pieces (nip94.coax's n94_digest), so any size checks.
   h:[32]u8;
@@ -425,7 +425,7 @@ nb7_fetch :: (url:string,bytes:[]u8)->int {
 }
 // The blob's URL on server: server/hex then ext ("" or ".png"). The new
 // length, or -1 when it doesn't fit.
-nb7_blob_url :: (server:string,hash:[32]u8,ext:string,out:[]u8)->int {
+nb7_blob_url :: (server:string,hash:[32]u8,ext:string,out:[]u8)->int #effects(all) {
   s:=server;if s.count>0 && s[s.count-1]=='/' {s=s[0..<s.count-1];}
   h:=hash;hex:[64]u8;r:=hex_encode_checked(cast(string)h[..],hex[..],false);
   n:=json_raw(out,0,s);n=json_raw(out,n,"/");n=json_raw(out,n,cast(string)hex[..]);
@@ -442,7 +442,7 @@ A kind 10063 event lists a user's Blossom servers as `server` tags.
 <!-- source: coax/lib/nostr/nipb7.coax servers -->
 ```jai
 // A kind 10063 event's server tags, in order, into list.
-nb7_servers :: (e:NostrEvent,list:[]N32Text)->NB7Servers {
+nb7_servers :: (e:NostrEvent,list:[]N32Text)->NB7Servers #effects(all) {
   s:NB7Servers;if e.error!=NE_OK {return s;}
   if e.kind!=NB7_KIND_SERVERS {s.status=NB7_KIND;return s;}
   i:=0;
@@ -463,7 +463,7 @@ nb7_servers :: (e:NostrEvent,list:[]N32Text)->NB7Servers {
   s.status=NB7_OK;s.at= -1;return s;
 }
 // An http:// or https:// URL with something after the scheme.
-nb7_http :: (u:string)->bool {
+nb7_http :: (u:string)->bool #effects(all) {
   if u.count>8 && u[0..<8]=="https://" {return true;}
   return u.count>7 && u[0..<7]=="http://";
 }
@@ -496,7 +496,7 @@ is the one the server would store.
 ```jai
 // The tags of an authorization for verb on blob until expiration: t, then
 // x (not for list), then expiration. The new length, or -1.
-nb7_auth_tags :: (verb:int,blob:[32]u8,expiration:int,out:[]u8)->int {
+nb7_auth_tags :: (verb:int,blob:[32]u8,expiration:int,out:[]u8)->int #effects(all) {
   n:=json_raw(out,0,"[[\"t\",\"");n=json_raw(out,n,NB7_VERBS[verb]);n=json_raw(out,n,"\"],");
   if verb!=NB7_LIST {
     b:=blob;hex:[64]u8;r:=hex_encode_checked(cast(string)b[..],hex[..],false);
@@ -506,7 +506,7 @@ nb7_auth_tags :: (verb:int,blob:[32]u8,expiration:int,out:[]u8)->int {
   return json_raw(out,n,"\"]]");
 }
 // Whether a verified kind 24242 event authorizes verb on blob at now.
-nb7_admit :: (e:NostrEvent,verb:int,blob:[32]u8,now:int)->int {
+nb7_admit :: (e:NostrEvent,verb:int,blob:[32]u8,now:int)->int #effects(all) {
   if e.error!=NE_OK || !e.verified {return NB7_EVENT;}
   if e.kind!=NB7_KIND_AUTH {return NB7_KIND;}
   if e.created_at>now {return NB7_FUTURE;}
@@ -540,12 +540,12 @@ nb7_admit :: (e:NostrEvent,verb:int,blob:[32]u8,now:int)->int {
 // The server's check of an upload: the body's SHA-256 is the blob the
 // event must authorize. The body streams through the hash in 1 MiB
 // pieces, so it may be any size.
-nb7_upload :: (e:NostrEvent,body:[]u8,now:int)->int {
+nb7_upload :: (e:NostrEvent,body:[]u8,now:int)->int #effects(all) {
   return nb7_upload_pieces(e,body,CB_MAX_BYTES,now);
 }
 // The same check with the hash fed in pieces of chunk bytes. A hash that
 // refuses (a chunk under 1 byte) names no blob.
-nb7_upload_pieces :: (e:NostrEvent,body:[]u8,chunk:int,now:int)->int {
+nb7_upload_pieces :: (e:NostrEvent,body:[]u8,chunk:int,now:int)->int #effects(all) {
   h:[32]u8;
   if n94_digest(body,chunk,h[..])!=SHA_OK {return NB7_HASH;}
   return nb7_admit(e,NB7_UPLOAD,h,now);

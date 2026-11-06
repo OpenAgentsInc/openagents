@@ -28,7 +28,7 @@
 #authority;
 
 // ---- checks
-tr_unhex :: (h: string, out: [] u8) -> [] u8 { return bt_unhex(h, out); }
+tr_unhex :: (h: string, out: [] u8) -> [] u8 #effects(all) { return bt_unhex(h, out); }
 // SECP256K1's order n, and n - 1.
 TR_N :: "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141";
 TR_N1 :: "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140";
@@ -100,7 +100,7 @@ TR_BAD_HASHTYPE :: -2;      // 65 bytes ending in 0x00
 // SIGHASH_DEFAULT (0), and 65 bytes carry the type in the last byte. That
 // byte must not be 0x00, because SIGHASH_DEFAULT is written by leaving it
 // out: one hash type, one encoding.
-taproot_sig_hashtype_vartime :: (sig: [] u8) -> int {
+taproot_sig_hashtype_vartime :: (sig: [] u8) -> int #effects(all) {
   if sig.count == 64 { return BT_DEFAULT; }
   if sig.count != 65 { return TR_BAD_SIZE; }
   if sig[64] == 0 { return TR_BAD_HASHTYPE; }
@@ -111,14 +111,14 @@ taproot_sig_hashtype_vartime :: (sig: [] u8) -> int {
 // after OP_1 0x20 in the spent scriptPubKey). The caller computes sighash
 // with the hash type above (chapter 43), which refuses a type BIP-341
 // doesn't define.
-taproot_key_path_verify_vartime :: (output_key: [] u8, sig: [] u8, sighash: [] u8) -> bool {
+taproot_key_path_verify_vartime :: (output_key: [] u8, sig: [] u8, sighash: [] u8) -> bool #effects(all) {
   if output_key.count != 32 || sighash.count != 32 || taproot_sig_hashtype_vartime(sig) < 0 { return false; }
   return schnorr_verify_vartime(sighash, output_key, sig[0..<64]);
 }
 // book:end keypath
 
 // A vector's tree, from its leaves' depths and published scripts.
-tr_vector_tree :: (v: TrSpk, tree: [] TrTree) -> int {
+tr_vector_tree :: (v: TrSpk, tree: [] TrTree) -> int #effects(all) {
   depths: [TR_TREE_LEAVES] int; hashes: [TR_TREE_LEAVES][32] u8; sc: [64] u8;
   for k: 0..<v.count {
     leaf := TR_LEAVES[v.first + k]; depths[k] = leaf.depth;
@@ -211,7 +211,7 @@ TrTree :: struct { count: int; root: [32] u8; leaf: [TR_TREE_LEAVES][32] u8; pat
 // TapLeaf: H_TapLeaf(version || compact size(script) || script). The low
 // bit of a control block's first byte is the output key's parity, so a
 // leaf version is always even.
-taproot_leaf_hash_vartime :: (version: int, script: [] u8, out: [] u8) -> int {
+taproot_leaf_hash_vartime :: (version: int, script: [] u8, out: [] u8) -> int #effects(all) {
   if version < 0 || version > 0xfe || (version & 1) != 0 { return TR_BAD_LEAF_VERSION; }
   if out.count != 32 || !sha256_input_ok(script.count) { return TR_CAPACITY; }
   state: [SHA_STATE_BYTES] u8; prefix: [10] u8;
@@ -225,7 +225,7 @@ taproot_leaf_hash_vartime :: (version: int, script: [] u8, out: [] u8) -> int {
 // TapBranch: H_TapBranch of the two children, the smaller one first, so a
 // node's hash doesn't depend on which child is on the left. out may be a
 // or b.
-taproot_branch_vartime :: (a: [] u8, b: [] u8, out: [] u8) {
+taproot_branch_vartime :: (a: [] u8, b: [] u8, out: [] u8) #effects(all) {
   m: [64] u8;
   b_first := false;
   for i: 0..<32 { if a[i] != b[i] { b_first = b[i] < a[i]; break; } }
@@ -237,7 +237,7 @@ taproot_branch_vartime :: (a: [] u8, b: [] u8, out: [] u8) {
 // descriptors and PSBTs use. A stack joins the top two nodes while they
 // have the same depth. Each join adds each side's hash to the other side's
 // leaves' paths. The depths make a tree when one node of depth 0 is left.
-taproot_tree_vartime :: (depths: [] int, leaves: [] [32] u8, tree: [] TrTree) -> int {
+taproot_tree_vartime :: (depths: [] int, leaves: [] [32] u8, tree: [] TrTree) -> int #effects(all) {
   fresh: TrTree;
   if tree.count != 1 { return TR_CAPACITY; }
   tree[0] = fresh;
@@ -268,7 +268,7 @@ taproot_tree_vartime :: (depths: [] int, leaves: [] [32] u8, tree: [] TrTree) ->
 // The control block that spends leaf k of tree (whose leaf version is
 // version) from the output of internal key P: one byte of leaf version
 // plus Q's parity, P, then the leaf's path. Returns its length, 33 + 32m.
-taproot_control_block_vartime :: (tree: [] TrTree, k: int, internal: [] u8, version: int, out: [] u8) -> int {
+taproot_control_block_vartime :: (tree: [] TrTree, k: int, internal: [] u8, version: int, out: [] u8) -> int #effects(all) {
   if tree.count != 1 { return TR_CAPACITY; }
   if k < 0 || k >= tree[0].count || version < 0 || version > 0xfe || (version & 1) != 0 { return TR_BAD_TREE; }
   n := 33 + 32 * tree[0].path_n[k];
@@ -287,7 +287,7 @@ taproot_control_block_vartime :: (tree: [] TrTree, k: int, internal: [] u8, vers
 // witness program and the parity in the control block. Bitcoin Core
 // reports every failure after the size check as
 // SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH: an internal key off the curve too.
-taproot_commitment_vartime :: (control: [] u8, script: [] u8, program: [] u8) -> int {
+taproot_commitment_vartime :: (control: [] u8, script: [] u8, program: [] u8) -> int #effects(all) {
   if control.count < 33 || control.count > TR_CONTROL_MAX || (control.count - 33) % 32 != 0 { return TR_BAD_CONTROL_SIZE; }
   if program.count != 32 { return TR_MISMATCH; }
   k: [32] u8;
@@ -304,7 +304,7 @@ taproot_commitment_vartime :: (control: [] u8, script: [] u8, program: [] u8) ->
 // ---- chapter 43: signature hashes
 // The length BIP-341 gives for SigMsg, with the epoch byte and BIP-342's
 // 37-byte extension added.
-tr_msg_length :: (hashtype: int, annex: bool, ext: bool) -> int {
+tr_msg_length :: (hashtype: int, annex: bool, ext: bool) -> int #effects(all) {
   n := 1 + 174;
   if (hashtype & BT_ANYONE) != 0 { n -= 49; }
   if (hashtype & 3) == BT_NONE { n -= 32; }
@@ -313,7 +313,7 @@ tr_msg_length :: (hashtype: int, annex: bool, ext: bool) -> int {
   return n;
 }
 // BIP-341's transaction, read, with its spent outputs.
-tr_v341 :: (b: [] u8, spk: [] BtScript) -> BtTx {
+tr_v341 :: (b: [] u8, spk: [] BtScript) -> BtTx #effects(all) {
   for k: 0..<9 { spk[k] = bt_script(BT_V341_SPK[k]); }
   return bt_tx_read(bt_unhex(BT_V341_TX, b));
 }
@@ -392,7 +392,7 @@ TR_BAD_ANNEX :: -8;         // an annex that doesn't start with 0x50
 // (BT_NO_CODESEP for none). amounts and spent are every input's spent
 // output. False when the transaction doesn't read or the message refuses.
 taproot_script_sighash_vartime :: (b: [] u8, index: int, amounts: [] int, spent: [] BtScript, hashtype: int,
-                                   script: [] u8, annex: [] u8, codesep: int, out: [] u8) -> bool {
+                                   script: [] u8, annex: [] u8, codesep: int, out: [] u8) -> bool #effects(all) {
   tp := bt_tx_read(b);
   if !tp.ok { return false; }
   leaf: [32] u8;
@@ -402,7 +402,7 @@ taproot_script_sighash_vartime :: (b: [] u8, index: int, amounts: [] int, spent:
 // A tapscript signature: BIP-340 by key itself, not tweaked, since the
 // script names the key it checks, then the hash type as a 65th byte
 // unless it is SIGHASH_DEFAULT. Returns the length, 64 or 65, or 0.
-taproot_script_sign :: (key: [] u8, sighash: [] u8, aux: [] u8, hashtype: int, w: [] SignWork, out: [] u8) -> int {
+taproot_script_sign :: (key: [] u8, sighash: [] u8, aux: [] u8, hashtype: int, w: [] SignWork, out: [] u8) -> int #effects(all) {
   n := ifx hashtype == BT_DEFAULT then 64 else 65;
   if out.count < n || hashtype < 0 || hashtype > 255 { return 0; }
   status := SIGN_REFUSED;
@@ -417,7 +417,7 @@ taproot_script_sign :: (key: [] u8, sighash: [] u8, aux: [] u8, hashtype: int, w
 // bottom first, then the leaf script, the control block, and the annex
 // when there is one. Returns the length, TR_BAD_CONTROL_SIZE,
 // TR_BAD_ANNEX or TR_CAPACITY.
-taproot_script_witness_vartime :: (stack: [] [] u8, script: [] u8, control: [] u8, annex: [] u8, out: [] u8) -> int {
+taproot_script_witness_vartime :: (stack: [] [] u8, script: [] u8, control: [] u8, annex: [] u8, out: [] u8) -> int #effects(all) {
   if control.count < 33 || control.count > TR_CONTROL_MAX || (control.count - 33) % 32 != 0 { return TR_BAD_CONTROL_SIZE; }
   if annex.count > 0 && annex[0] != BT_ANNEX_TAG { return TR_BAD_ANNEX; }
   count := stack.count + 2 + (ifx annex.count > 0 then 1 else 0);
@@ -430,8 +430,8 @@ taproot_script_witness_vartime :: (stack: [] [] u8, script: [] u8, control: [] u
   if annex.count > 0 { at = tr_put(out, at, annex); }
   return at;
 }
-tr_sized :: (item: [] u8) -> int { return tx_compact_size_vartime(item.count) + item.count; }
-tr_put :: (out: [] u8, at: int, item: [] u8) -> int {
+tr_sized :: (item: [] u8) -> int #effects(all) { return tx_compact_size_vartime(item.count) + item.count; }
+tr_put :: (out: [] u8, at: int, item: [] u8) -> int #effects(all) {
   p := tx_compact_write_vartime(out, at, item.count);
   for i: 0..<item.count { out[p + i] = item[i]; }
   return p + item.count;

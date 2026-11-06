@@ -67,7 +67,7 @@ be_run :: (c:[]Cdp,url:string,phone:bool)->bool {
   if !bs_click(c,220) || !bs_wait(c,"coaxial.guardProbe(20)===0&&coaxial.guardProbe(30)===0&&labSourceErrors.length===0") {return false;}
   print("PASS %: exact graph/table/back/link/script/UTXO, real keyboard and pointer/touch, stale occurrence, both reorg directions, cancel/rescue/GPU recovery\n",ifx phone then "phone" else "desktop");return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}
   for phone:0..<2 {c:[1]Cdp;if !cdp_launch_background(c[..],1440,900,"bitcoin-explorer-") {return 1;}ok:=be_run(c[..],args_at(a[..],0),phone==1);
     if !ok {n:=cdp_evaluate(c[..],"JSON.stringify({errors:globalThis.labSourceErrors,text:document.body.innerText.slice(0,300),status:document.querySelector('#coaxial-a11y-status')?.textContent?.slice(0,1200),probe:Array.from({length:20},(_,i)=>globalThis.coaxial?.guardProbe?.(i+20))})");if n>=0 {print("%\n",jv_raw(c[0].doc[0],n));}}

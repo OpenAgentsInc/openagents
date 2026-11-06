@@ -104,7 +104,7 @@ RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1
   #assert !render_adoption("valley-canyons","valleycanyon").tracked_legacy;
 }
 #test "Valley world's source slice binds only its isolated initial renderer" {r:=render_adoption("valley-world","valleyworld");#assert r.tracked_legacy && !r.shared && r.profile== -1;#assert !render_adoption("valley-world","valleycanyon").tracked_legacy && !render_adoption("valley-worlds","valleyworld").tracked_legacy && !render_adoption("valley-canyon","valleyworld").tracked_legacy;}
-render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c {
+render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effects(all) {
   if slug == "valley-world" && app == "valleyworld" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "valley-canyon" && app == "valleycanyon" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "valley-lab" && app == "valleylab" { return RenderAdoption.{tracked_legacy = true}; }

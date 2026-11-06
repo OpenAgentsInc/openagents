@@ -18,16 +18,16 @@
   want:=item>=0 && item<values && item<bias && offset>=0 && offset+item<flags;
   #assert gms_kernel_bounds(item,values,bias,flags,offset)==want;
 }
-gms_numeric :: (bits:u32)->u8 {return ifx (bits&0x7f800000)==0x7f800000 then 1 else 0;}
+gms_numeric :: (bits:u32)->u8 #effects(all) {return ifx (bits&0x7f800000)==0x7f800000 then 1 else 0;}
 // Counts name valid typed extents; subtract nonnegative offset before comparing
 // so adding a work item to an untrusted offset cannot overflow.
-gms_kernel_bounds :: (item:int,values:int,bias:int,flags:int,offset:int)->bool {return item>=0 && item<values && item<bias && offset>=0 && item<flags-offset;}
-gms_bias_relu :: (item:int,values:[]f32,bias:[]f32,flags:[]u8,offset:int) #export_c {
+gms_kernel_bounds :: (item:int,values:int,bias:int,flags:int,offset:int)->bool #effects(all) {return item>=0 && item<values && item<bias && offset>=0 && item<flags-offset;}
+gms_bias_relu :: (item:int,values:[]f32,bias:[]f32,flags:[]u8,offset:int) #export_c #effects(all) {
   if !gms_kernel_bounds(item,values.count,bias.count,flags.count,offset) {return;}
   value:=values[item]+bias[item];bad:=gms_numeric(f32_bits(value));flags[offset+item]=bad;
   if bad!=0 {return;}if value<0 {value=0;}values[item]=value;
 }
-gms_bias :: (item:int,values:[]f32,bias:[]f32,flags:[]u8,offset:int) #export_c {
+gms_bias :: (item:int,values:[]f32,bias:[]f32,flags:[]u8,offset:int) #export_c #effects(all) {
   if !gms_kernel_bounds(item,values.count,bias.count,flags.count,offset) {return;}
   value:=values[item]+bias[item];bad:=gms_numeric(f32_bits(value));flags[offset+item]=bad;
   if bad!=0 {return;}values[item]=value;

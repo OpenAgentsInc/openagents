@@ -18,30 +18,30 @@ ImgInfo :: struct { status: int; w: int; h: int; work: int; }
 
 // A PNG starts with byte 137; anything else is the JPEG decoder's to take or call not a JPEG
 // (the two share their status codes).
-img_png :: (src: []u8) -> bool { return src.count > 0 && src[0] == 137; } // mutant: equivalent (one byte is not a PNG either way)
-img_info :: (src: []u8) -> ImgInfo {
+img_png :: (src: []u8) -> bool #effects(all) { return src.count > 0 && src[0] == 137; } // mutant: equivalent (one byte is not a PNG either way)
+img_info :: (src: []u8) -> ImgInfo #effects(all) {
   r: ImgInfo;
   if img_png(src) { p := png_info(src); r.status = p.status; r.w = p.w; r.h = p.h; r.work = p.work; }
   else { j := jpg_info(src); r.status = j.status; r.w = j.w; r.h = j.h; r.work = j.work; }
   return r;
 }
 // The image as RGBA8 into out (w*h*4 bytes), work at least img_info's: IMG_OK or why not.
-img_decode :: (src: []u8, work: []u8, out: []u8) -> int {
+img_decode :: (src: []u8, work: []u8, out: []u8) -> int #effects(all) {
   return ifx img_png(src) then png_decode(src, work, out) else jpg_decode(src, work, out);
 }
 
 // The number of levels a w by h texture has, down to 1 by 1.
-img_levels :: (w: int, h: int) -> int {
+img_levels :: (w: int, h: int) -> int #effects(all) {
   n := 1; m := ifx w > h then w else h; // mutant: equivalent (equal sides are the larger either way)
   while m > 1 { m = m >> 1; n += 1; }
   return n;
 }
 // One side of level l: halved l times, never below 1.
-img_side :: (side: int, l: int) -> int { v := side >> l; return ifx v > 0 then v else 1; } // mutant: equivalent (1 is 1)
+img_side :: (side: int, l: int) -> int #effects(all) { v := side >> l; return ifx v > 0 then v else 1; } // mutant: equivalent (1 is 1)
 // The level below a w by h RGBA8 image (src) into dst: each texel the 2x2 box above it (an odd
 // last row or column is left out, as the GPU's levels leave it; a side of 1 stays 1), alpha
 // the box's mean and colour the alpha-weighted mean, both rounded to nearest.
-img_half :: (src: []u8, w: int, h: int, dst: []u8) {
+img_half :: (src: []u8, w: int, h: int, dst: []u8) #effects(all) {
   dw := img_side(w, 1); dh := img_side(h, 1);
   for y: 0..<dh {
     y0 := 2 * y; y1 := ifx h > 1 then 2 * y + 1 else 0;
@@ -61,7 +61,7 @@ img_half :: (src: []u8, w: int, h: int, dst: []u8) {
   }
 }
 // Every level of a w by h image (level 0 in src) into out, level after level: the bytes written.
-img_mips :: (src: []u8, w: int, h: int, out: []u8) -> int {
+img_mips :: (src: []u8, w: int, h: int, out: []u8) -> int #effects(all) {
   at := w * h * 4;
   for i: 0..<at { out[i] = src[i]; }
   prev := 0;
@@ -76,7 +76,7 @@ img_mips :: (src: []u8, w: int, h: int, out: []u8) -> int {
 // draws it: each texel 9/16 the nearest source texel, 3/16 each of the two beside it across and
 // down, 1/16 the one diagonal, an edge repeating itself; rounded to nearest. (The browser's
 // resize of a layer smaller than the first is a higher-order filter; this is the near one.)
-img_double :: (src: []u8, w: int, h: int, dst: []u8) {
+img_double :: (src: []u8, w: int, h: int, dst: []u8) #effects(all) {
   for y: 0..<2 * h {
     j := y / 2; nj := ifx (y & 1) == 0 then j - 1 else j + 1;
     if nj < 0 { nj = 0; } // mutant: equivalent (0 is 0)
@@ -97,7 +97,7 @@ img_double :: (src: []u8, w: int, h: int, dst: []u8) {
 // alpha and copyExternalImageToTexture divides it out again): colour times alpha, rounded to a
 // byte, then divided by alpha and rounded; under alpha 0 the colour is gone (0). Opaque texels
 // are as they were.
-img_premul_trip :: (px: []u8) {
+img_premul_trip :: (px: []u8) #effects(all) {
   for t: 0..<px.count / 4 {
     a := cast(int) px[t * 4 + 3];
     for c: 0..<3 {

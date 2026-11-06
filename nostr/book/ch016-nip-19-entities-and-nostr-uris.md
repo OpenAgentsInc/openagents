@@ -85,7 +85,7 @@ payload:
 
 <!-- source: coax/lib/nostr/nip19-core.coax validate -->
 ```jai
-n19_field :: (source: N19_Source, at: int) -> N19_Field {
+n19_field :: (source: N19_Source, at: int) -> N19_Field #effects(all) {
   if at < 0 || at > source.count { return N19_Field.{error = NC_INVALID}; }
   if at == source.count { return N19_Field.{done = true}; }
   if source.count - at < 2 { return N19_Field.{error = NC_INVALID}; }
@@ -93,7 +93,7 @@ n19_field :: (source: N19_Source, at: int) -> N19_Field {
   if length > source.count - at - 2 { return N19_Field.{error = NC_INVALID}; }
   return N19_Field.{tag = tag, value = at + 2, length = length, next = at + 2 + length};
 }
-n19_validate :: (source: N19_Source, type: u32) -> N19_Result {
+n19_validate :: (source: N19_Source, type: u32) -> N19_Result #effects(all) {
   if !n19_count(source.count) || type < 1 || type > 6 { return N19_Result.{error = NC_INVALID}; }
   r := N19_Result.{written = source.count, type = type};
   if type <= N19_NOTE {
@@ -201,7 +201,7 @@ relays, 34 + 15 + 23 = 72 bytes.
 ```jai
 // Decodes one NIP-19 string. `secret` false refuses nsec from its HRP alone,
 // before any byte is decoded or written.
-n19_decode :: (input: string, out: [] u8, overlap: bool, secret: bool) -> N19_Result {
+n19_decode :: (input: string, out: [] u8, overlap: bool, secret: bool) -> N19_Result #effects(all) {
   h := b32_inspect(input, true);
   if h.error != NC_OK { return N19_Result.{error = h.error}; }
   type := n19_type(input[0..<h.hrp]);
@@ -216,7 +216,7 @@ n19_decode :: (input: string, out: [] u8, overlap: bool, secret: bool) -> N19_Re
   for i: 0..<r.written { out[i] = n19_byte(source, i); }
   return r;
 }
-nip19_decode_checked :: (input: string, out: [] u8, overlap: bool) -> N19_Result {
+nip19_decode_checked :: (input: string, out: [] u8, overlap: bool) -> N19_Result #effects(all) {
   return n19_decode(input, out, overlap, true);
 }
 ```
@@ -245,7 +245,7 @@ handles the link, so this code refuses it:
 ```jai
 // NIP-21: the scheme "nostr:" (in any case) and one NIP-19 string other than
 // nsec, which a URI must never carry.
-nip21_decode_checked :: (input: string, out: [] u8, overlap: bool) -> N19_Result {
+nip21_decode_checked :: (input: string, out: [] u8, overlap: bool) -> N19_Result #effects(all) {
   scheme := "nostr:";
   for i: 0..<scheme.count {
     if i >= input.count || b32_lower(input[i]) != scheme[i] { return N19_Result.{error = NC_INVALID}; }

@@ -45,17 +45,17 @@ DsFlow :: struct {ticket:int;phase:int;sequence:int;sent:int;busy:bool;}
  #assert ds_output_wait(100,100) && ds_output_wait(349,100) && !ds_output_wait(350,100) && !ds_output_wait(99,100);
  for phase:0..<6 {#assert ds_partial_phase(phase)==(phase>=2 && phase<=4);}
 }
-ds_output_wait :: (now:int,start:int)->bool {return now>=start && now-start<250;}
-ds_partial_phase :: (phase:int)->bool {return phase>=2 && phase<=4;}
-ds_options :: (mac:bool,gpu:int,events:bool,json:bool,format:int,terms:bool)->bool {return !mac && gpu==1 && !json && format==0 && !terms;}
-ds_begin :: (ticket:int)->DsFlow {if ticket<=0 {return DsFlow.{};}return DsFlow.{ticket=ticket,phase=1};}
-ds_can_submit :: (s:DsFlow,ticket:int,count:int,final:bool)->bool {
+ds_output_wait :: (now:int,start:int)->bool #effects(all) {return now>=start && now-start<250;}
+ds_partial_phase :: (phase:int)->bool #effects(all) {return phase>=2 && phase<=4;}
+ds_options :: (mac:bool,gpu:int,events:bool,json:bool,format:int,terms:bool)->bool #effects(all) {return !mac && gpu==1 && !json && format==0 && !terms;}
+ds_begin :: (ticket:int)->DsFlow #effects(all) {if ticket<=0 {return DsFlow.{};}return DsFlow.{ticket=ticket,phase=1};}
+ds_can_submit :: (s:DsFlow,ticket:int,count:int,final:bool)->bool #effects(all) {
  return s.phase==1 && !s.busy && ticket==s.ticket && s.sequence<9223372036854775807 && count>=0 && count<=DS_BATCH && count<=DS_MAX-s.sent && (ifx final then count==0 else count>0);
 }
 // Called only after ds_can_submit and the native owned-buffer handoff succeed.
-ds_submitted :: (s0:DsFlow,count:int,final:bool)->DsFlow {s:=s0;s.busy=true;s.sent+=count;s.sequence+=1;if final {s.phase=2;}return s;}
-ds_completed :: (s0:DsFlow,ticket:int,ok:bool)->DsFlow {
+ds_submitted :: (s0:DsFlow,count:int,final:bool)->DsFlow #effects(all) {s:=s0;s.busy=true;s.sent+=count;s.sequence+=1;if final {s.phase=2;}return s;}
+ds_completed :: (s0:DsFlow,ticket:int,ok:bool)->DsFlow #effects(all) {
  s:=s0;if !s.busy || ticket!=s.ticket {return s;}s.busy=false;if !ok {s.phase=4;}else if s.phase==2 {s.phase=3;}return s;
 }
-ds_revoke :: (s0:DsFlow)->DsFlow {s:=s0;s.phase=4;s.busy=false;return s;}
-ds_publish :: (s:DsFlow,ticket:int,final:bool)->bool {return ticket==s.ticket && !s.busy && s.phase==(ifx final then 3 else 1);}
+ds_revoke :: (s0:DsFlow)->DsFlow #effects(all) {s:=s0;s.phase=4;s.busy=false;return s;}
+ds_publish :: (s:DsFlow,ticket:int,final:bool)->bool #effects(all) {return ticket==s.ticket && !s.busy && s.phase==(ifx final then 3 else 1);}

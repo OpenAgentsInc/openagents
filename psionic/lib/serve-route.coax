@@ -409,11 +409,11 @@ RrReport :: struct {served:int;refused:int;hit:int;blocks:int;first:BnStats;late
 // Modeled microseconds: the uncached prompt positions run as rows of one
 // step that yields the first token; each further output token is a step of
 // one row (chapter 175's cb_step_ns). Cached positions are not run.
-rr_prefill :: (prompt:int,cached:int)->int {return cb_step_ns(prompt-cached)/1000;}
-rr_cost :: (prompt:int,output:int,cached:int)->int {return (cb_step_ns(prompt-cached)+(output-1)*cb_step_ns(1))/1000;}
+rr_prefill :: (prompt:int,cached:int)->int #effects(all) {return cb_step_ns(prompt-cached)/1000;}
+rr_cost :: (prompt:int,output:int,cached:int)->int #effects(all) {return (cb_step_ns(prompt-cached)+(output-1)*cb_step_ns(1))/1000;}
 // Predicted microseconds before a new request could start here: the rest
 // of the start, the rest of the running request, and the queued work.
-rr_wait :: (rep:[]RrReplica,k:int,now:int)->int {
+rr_wait :: (rep:[]RrReplica,k:int,now:int)->int #effects(all) {
     w:=rep[k].work;
     if rep[k].phase==RrPhase.starting {w+=rep[k].ready_at-now;}
     if rep[k].running>=0 {w+=rep[k].busy_until-now;}
@@ -426,7 +426,7 @@ rr_wait :: (rep:[]RrReplica,k:int,now:int)->int {
 // client's requests queued or running); otherwise take the replica, running or
 // starting with room in its queue, with the smallest predicted finish, the
 // lowest number on a tie. Round robin takes the first with room from turn.
-rr_route :: (rep:[]RrReplica,cfg:RrConfig,r:RrRequest,tok:[]int,now:int,held:[8]int,turn:int)->RrPick {
+rr_route :: (rep:[]RrReplica,cfg:RrConfig,r:RrRequest,tok:[]int,now:int,held:[8]int,turn:int)->RrPick #effects(all) {
     pick:=RrPick.{refusal=RrRefusal.shape,replica=-1,turn=turn};
     if r.client<0 || r.client>=cfg.clients || r.prompt<1 || r.prompt>PG_PROMPT || r.output<1 || r.output>RR_OUTPUT {return pick;}
     pick.refusal=RrRefusal.client;
@@ -449,7 +449,7 @@ rr_route :: (rep:[]RrReplica,cfg:RrConfig,r:RrRequest,tok:[]int,now:int,held:[8]
 
 // book:begin cache
 // An empty trie and free frames, as chapter 176 starts them.
-rr_store :: (c:PgConfig)->PgStore {
+rr_store :: (c:PgConfig)->PgStore #effects(all) {
     s:PgStore;s.cfg=c;s.pool=pg_pool(c);
     for n:0..<PG_NODES {s.node[n].frame=-1;}
     for i:0..<PG_REQUESTS {s.live[i]=-1;}
@@ -460,7 +460,7 @@ RrCached :: struct {st:PgStore;reused:int;}
 // hold the cached prefix's frames (a frame a request holds is never
 // moved), give the rest new frames, commit every whole block, and let go
 // of the request's table. The trie's least recently used blocks make room.
-rr_cache :: (from:PgStore,mem:[]f64,tok:[]int,prompt:int,stamp:int)->RrCached {
+rr_cache :: (from:PgStore,mem:[]f64,tok:[]int,prompt:int,stamp:int)->RrCached #effects(all) {
     s:=from;p:=s.cfg.page;path:=pg_match(s,0,tok,prompt);
     for k:0..<prompt/p {
         if k<path.n {f:=s.node[path.node[k]].frame;s.pool=pg_retain(s.pool,f);s.table[0].page[k]=f;}
@@ -479,7 +479,7 @@ rr_cache :: (from:PgStore,mem:[]f64,tok:[]int,prompt:int,stamp:int)->RrCached {
 // and the load has been high for less than a cold start.
 // Down by one when the load fits one replica fewer below the band, after
 // that has held for `down` ticks in a row. Never below the floor.
-rr_scale :: (c:RrScaler,o:RrLoad)->RrScale {
+rr_scale :: (c:RrScaler,o:RrLoad)->RrScale #effects(all) {
     n:=o.ready+o.starting;d:=RrScale.{why=RrWhy.floor};
     if n<c.floor {d.act=RrAct.up;d.count=c.floor-n;return d;}
     d.why=RrWhy.budget;
@@ -502,19 +502,19 @@ rr_scale :: (c:RrScaler,o:RrLoad)->RrScale {
 // book:end autoscale
 
 // book:begin start
-rr_config_ok :: (c:RrConfig)->bool {
+rr_config_ok :: (c:RrConfig)->bool #effects(all) {
     g:=c.pages;
     if c.replicas<1 || c.replicas>RR_REPLICAS || c.depth<1 || c.depth>RR_DEPTH || c.clients<1 || c.clients>RR_CLIENTS || c.share<1 {return false;}
     if c.events<1 || c.events>RR_EVENTS || g.page>PG_PAGE || g.dim<1 || g.dim>PG_DIM || g.hybrid {return false;}
     // The device tier only, and room for a whole prompt of 32 positions.
     return g.cap[0]*g.page>=PG_PROMPT && g.cap[0]<=PG_TIER && g.cap[1]==0 && g.cap[2]==0;
 }
-rr_scaler_ok :: (s:RrScaler,replicas:int)->bool {
+rr_scaler_ok :: (s:RrScaler,replicas:int)->bool #effects(all) {
     if !s.on {return true;}
     return s.floor>=0 && s.floor<=replicas && replicas<=s.budget && s.budget<=RR_REPLICAS && s.target>=1
         && s.band>=1 && s.band<100 && s.down>=1 && s.cold_us>=0 && s.tick_us>=1;
 }
-rr_check :: (cfg:RrConfig,sc:RrScaler,reqs:[]RrRequest,tok:[]int)->RrStatus {
+rr_check :: (cfg:RrConfig,sc:RrScaler,reqs:[]RrRequest,tok:[]int)->RrStatus #effects(all) {
     if !rr_config_ok(cfg) || !rr_scaler_ok(sc,cfg.replicas) || reqs.count<1 || reqs.count>RR_REQUESTS {return RrStatus.config;}
     if tok.count<reqs.count*PG_PROMPT {return RrStatus.config;}
     for i:0..<reqs.count {if reqs[i].arrive<0 || (i>0 && reqs[i].arrive<reqs[i-1].arrive) {return RrStatus.order;}}
@@ -529,7 +529,7 @@ rr_check :: (cfg:RrConfig,sc:RrScaler,reqs:[]RrRequest,tok:[]int)->RrStatus {
 // ticks. It ends when every request is done and, with the autoscaler on,
 // the fleet is back at its floor. (A queue waits on a running or starting
 // replica, whose events keep the loop going.)
-rr_sim :: (cfg:RrConfig,sc:RrScaler,reqs:[]RrRequest,tok:[]int)->RrSim {
+rr_sim :: (cfg:RrConfig,sc:RrScaler,reqs:[]RrRequest,tok:[]int)->RrSim #effects(all) {
     s:RrSim;s.status=rr_check(cfg,sc,reqs,tok);mem:[1728]f64;
     if s.status!=RrStatus.ok {return s;}
     rep:[8]RrReplica;
@@ -584,7 +584,7 @@ rr_sim :: (cfg:RrConfig,sc:RrScaler,reqs:[]RrRequest,tok:[]int)->RrSim {
 }
 // Replica k starts the head of its queue: its cached blocks are counted
 // now, when it runs, not when it was routed. Returns the blocks reused.
-rr_serve :: (rep:[]RrReplica,fate:[]RrFate,k:int,r:RrRequest,tok:[]int,mem:[]f64,now:int)->int {
+rr_serve :: (rep:[]RrReplica,fate:[]RrFate,k:int,r:RrRequest,tok:[]int,mem:[]f64,now:int)->int #effects(all) {
     i:=rep[k].queue[0];
     for j:1..<rep[k].nq {rep[k].queue[j-1]=rep[k].queue[j];}
     rep[k].nq-=1;rep[k].work-=fate[i].pred;
@@ -605,7 +605,7 @@ rr_serve :: (rep:[]RrReplica,fate:[]RrFate,k:int,r:RrRequest,tok:[]int,mem:[]f64
 // empty cache. Down stops one replica with nothing queued or running, a
 // starting one first, else the highest ready one; when every replica is
 // busy the step waits for the next tick.
-rr_tick :: (rep:[]RrReplica,sc:RrScaler,cfg:RrConfig,now:int,low:int,high:int,cold:int)->RrScale {
+rr_tick :: (rep:[]RrReplica,sc:RrScaler,cfg:RrConfig,now:int,low:int,high:int,cold:int)->RrScale #effects(all) {
     o:=RrLoad.{low=low,high=high,load=cold};
     for k:0..<rep.count {
         if rep[k].phase==RrPhase.ready {o.ready+=1;}
@@ -640,7 +640,7 @@ rr_tick :: (rep:[]RrReplica,sc:RrScaler,cfg:RrConfig,now:int,low:int,high:int,co
 // Requests served and refused; blocks reused of those a request could
 // reuse; nearest-rank time to first token and latency from arrival
 // (chapter 172's bn_stats: P50, P90, P95, P99).
-rr_report :: (s:RrSim,reqs:[]RrRequest)->RrReport {
+rr_report :: (s:RrSim,reqs:[]RrRequest)->RrReport #effects(all) {
     p:=RrReport.{hit=s.hit,blocks=s.blocks,peak=s.peak,replica_us=s.replica_us};
     first:[256]int;lat:[256]int;
     for i:0..<s.n {
@@ -658,19 +658,19 @@ rr_report :: (s:RrSim,reqs:[]RrRequest)->RrReport {
 // the shared prefixes, sampling the client, input the prompt length (at
 // most 32), output the output length. A prompt's first `prefix` tokens
 // are its family's; the rest are its own.
-rr_traffic :: (w:BnWorkload,prefix:int,out:[]RrRequest,tok:[]int)->BnStatus {
+rr_traffic :: (w:BnWorkload,prefix:int,out:[]RrRequest,tok:[]int)->BnStatus #effects(all) {
     b:[256]BnRequest;st:=bn_schedule(w,b[..]);
     if st!=BnStatus.ok {return st;}
     for i:0..<w.requests {rr_one(b[i],prefix,i,out,tok);}
     return BnStatus.ok;
 }
-rr_one :: (q:BnRequest,prefix:int,i:int,out:[]RrRequest,tok:[]int) {
+rr_one :: (q:BnRequest,prefix:int,i:int,out:[]RrRequest,tok:[]int) #effects(all) {
     out[i]=RrRequest.{client=q.sampling,arrive=q.at_us,prompt=cb_min(q.input,PG_PROMPT),output=q.output};
     for p:0..<PG_PROMPT {tok[i*PG_PROMPT+p]=ifx p<prefix then q.content*100+p+1 else 1000000+i*PG_PROMPT+p;}
 }
 // Recorded traffic: chapter 172's recorded schedule, replayed scale_pct
 // times as fast, mapped the same way.
-rr_recorded :: (rec:[]BnRequest,scale_pct:int,prefix:int,out:[]RrRequest,tok:[]int)->BnStatus {
+rr_recorded :: (rec:[]BnRequest,scale_pct:int,prefix:int,out:[]RrRequest,tok:[]int)->BnStatus #effects(all) {
     b:[256]BnRequest;st:=bn_replay(rec,scale_pct,b[..]);
     if st!=BnStatus.ok {return st;}
     for i:0..<rec.count {rr_one(b[i],prefix,i,out,tok);}
@@ -678,13 +678,13 @@ rr_recorded :: (rec:[]BnRequest,scale_pct:int,prefix:int,out:[]RrRequest,tok:[]i
 }
 // book:end traffic
 
-rr_refusal_name :: (r:RrRefusal)->string {
+rr_refusal_name :: (r:RrRefusal)->string #effects(all) {
     names:=[5]string.["none","request outside the bounds","client over its share","every queue full","no replica running or starting"];
     return names[cast(int)r];
 }
-rr_why_name :: (w:RrWhy)->string {names:=[6]string.["steady","floor","load","cold","budget","delay"];return names[cast(int)w];}
-rr_policy_name :: (p:RrPolicy)->string {names:=[3]string.["prefix affinity","least work","round robin"];return names[cast(int)p];}
-rr_status_name :: (s:RrStatus)->string {
+rr_why_name :: (w:RrWhy)->string #effects(all) {names:=[6]string.["steady","floor","load","cold","budget","delay"];return names[cast(int)w];}
+rr_policy_name :: (p:RrPolicy)->string #effects(all) {names:=[3]string.["prefix affinity","least work","round robin"];return names[cast(int)p];}
+rr_status_name :: (s:RrStatus)->string #effects(all) {
     names:=[4]string.["ok","configuration or traffic out of bounds","arrivals out of order","event limit reached"];
     return names[cast(int)s];
 }

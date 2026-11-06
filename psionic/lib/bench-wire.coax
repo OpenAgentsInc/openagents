@@ -121,7 +121,7 @@ BW_QUESTIONS :: [2]string.[
 }
 
 // book:begin workload
-bw_workload :: (target:BwTarget,seed:u64,requests:int,gap_us:int,jitter_pct:int)->BnWorkload #export_c {
+bw_workload :: (target:BwTarget,seed:u64,requests:int,gap_us:int,jitter_pct:int)->BnWorkload #export_c #effects(all) {
     w:=BnWorkload.{seed=seed,requests=requests,gap_us=gap_us,jitter_pct=jitter_pct,contents=4,samplings=3};
     // Input words 8, 32 or 128 in 4:2:1; output limits 16 or 32 in 2:1.
     w.input.count=3;w.input.len[0]=8;w.input.len[1]=32;w.input.len[2]=128;w.input.weight[0]=4;w.input.weight[1]=2;w.input.weight[2]=1;
@@ -136,12 +136,12 @@ bw_workload :: (target:BwTarget,seed:u64,requests:int,gap_us:int,jitter_pct:int)
 }
 // book:end workload
 
-bw_put :: (out:[]u8,at:int,s:string)->int {
+bw_put :: (out:[]u8,at:int,s:string)->int #effects(all) {
     if at<0 || at+s.count>out.count {return -1;}
     for i:0..<s.count {out[at+i]=s[i];}
     return at+s.count;
 }
-bw_int :: (out:[]u8,at:int,v:int)->int {
+bw_int :: (out:[]u8,at:int,v:int)->int #effects(all) {
     digits:[20]u8;n:=0;x:=v;
     while x>9 {digits[n]=cast(u8)(48+x%10);x/=10;n+=1;}
     digits[n]=cast(u8)(48+x);n+=1;
@@ -153,7 +153,7 @@ bw_int :: (out:[]u8,at:int,v:int)->int {
 // Request i's body. Its words are counters 2^32+64i onward of the run's seed,
 // so the same schedule always sends the same bytes. -1: no room, or a choice
 // the target does not have.
-bw_body :: (out:[]u8,target:BwTarget,model:string,r:BnRequest,i:int,seed:u64)->int #export_c {
+bw_body :: (out:[]u8,target:BwTarget,model:string,r:BnRequest,i:int,seed:u64)->int #export_c #effects(all) {
     if r.input<1 || r.output<1 || r.content<0 || r.sampling<0 {return -1;}
     at:=bw_put(out,0,"{\"model\":\"");at=bw_put(out,at,model);
     if target==BwTarget.systemone {
@@ -176,7 +176,7 @@ bw_body :: (out:[]u8,target:BwTarget,model:string,r:BnRequest,i:int,seed:u64)->i
 }
 // book:end body
 
-bw_starts :: (s:string,p:string)->bool {
+bw_starts :: (s:string,p:string)->bool #effects(all) {
     if s.count<p.count {return false;}
     return cast(string)s[0..<p.count]==p;
 }
@@ -184,7 +184,7 @@ bw_starts :: (s:string,p:string)->bool {
 // book:begin event
 // A token arrival is an SSE data line whose type ends in ".delta"; a response
 // ends at completed, incomplete or failed.
-bw_event :: (line:string)->BwEvent #export_c {
+bw_event :: (line:string)->BwEvent #export_c #effects(all) {
     head:="data: {\"type\":\"";
     if !bw_starts(line,head) {return BwEvent.other;}
     end:=head.count;
@@ -199,7 +199,7 @@ bw_event :: (line:string)->BwEvent #export_c {
 
 // The decision's own "latency_ms", in microseconds; -1 when absent, -2 when
 // it is not a number of one to ten digits.
-bw_latency_us :: (body:string)->int #export_c {
+bw_latency_us :: (body:string)->int #export_c #effects(all) {
     key:="\"latency_ms\":";
     for i:0..<body.count-key.count+1 {
         if cast(string)body[i..<i+key.count]==key {

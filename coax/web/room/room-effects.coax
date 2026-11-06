@@ -36,10 +36,10 @@
   for n:0..<EG_PLAYER_STRIKES{v[0].eg[k].strikes[n]=EgStrike.{by=0,slot=EG_WL_BLAST};}v[0].eg[k].strike_n=EG_PLAYER_STRIKES;
   #assert !rc_hear(v[..],k, SeatId.{value = 0},1,EG_WL_DOOR,0,0,0,-1,0)&&v[0].eg[k].cast_order==0;
 }
-rm_effect_sources::()->int #export_c{return EFFECT_HOUSE+1;}
+rm_effect_sources::()->int #export_c #effects(all) {return EFFECT_HOUSE+1;}
 // Free slots are a snapshot after this world's impacts step. Waiting casts and
 // staged transfers still own slots; they cannot be spent a second time.
-rm_effect_free::(v:[]RmServer,k:int,source:int,free:int) #export_c{
+rm_effect_free::(v:[]RmServer,k:int,source:int,free:int) #export_c #effects(all) {
   if !rm_eg_live(v,k){return;}span:=effect_span(source);if !span.ok{return;}
   available:=ifx free>=0&&free<=span.count then free else 0;
   if source<EFFECT_SEATS{v[0].eg[k].effect_known=true;v[0].eg[k].effect_free[source]=available;return;}
@@ -64,7 +64,7 @@ re_may_start::(v:[]RmServer,k:int, seat_id: SeatId,slot:int,exclude:int)->bool{ 
   for q:0..<v[0].eg[k].strike_n{c:=v[0].eg[k].strikes[q];if c.by==seat&&effect_physical(c.slot){held+=1;}}
   return effect_admit(v[0].eg[k].effect_free[seat],held,1,EFFECT_PLAYER_CAP);
 }
-rm_eg_strikes_taken::(v:[]RmServer,k:int,n:int) #export_c{
+rm_eg_strikes_taken::(v:[]RmServer,k:int,n:int) #export_c #effects(all) {
   if !rm_eg_live(v,k)||n<0||n>v[0].eg[k].strike_n{return;}
   total:=v[0].eg[k].strike_n;
   for q:n..<total{v[0].eg[k].strikes[q-n]=v[0].eg[k].strikes[q];}

@@ -675,7 +675,7 @@ vocab_main :: (off_dir: string, on_dir: string) -> int {
   return ifx g[0].crossed == 0 then 0 else 1;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: dictate-score corpus | run DIR STEP... | score DIR"); return 2; }
   cmd := args_at(a[..], 0);

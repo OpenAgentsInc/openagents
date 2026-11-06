@@ -60,11 +60,11 @@ HA_E1 :: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 HA_E2 :: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 HA_T0 :: 1790000000;
 
-ha_grant :: (id:string,device:string,epoch:int)->HostGrantRecord {
+ha_grant :: (id:string,device:string,epoch:int)->HostGrantRecord #effects(all) {
   g:HostGrantRecord;g.grant=id;g.device=device;g.epoch=epoch;g.issued_at=HA_T0;g.expires_at=HA_T0+86400;g.rights=HA_STANDARD;
   return g;
 }
-ha_request :: (at:int)->HostRequest {
+ha_request :: (at:int)->HostRequest #effects(all) {
   q:HostRequest;q.request=HA_R1;q.event=HA_E1;q.signer=HA_D3;q.grant=HA_G1;q.issued_at=at;q.expires_at=at+60;q.right=HA_OPERATE;
   return q;
 }
@@ -156,7 +156,7 @@ ha_request :: (at:int)->HostRequest {
 }
 
 // book:begin admit
-host_admit :: (grants:[]HostGrantRecord,epochs:[]HostEpoch,retained:[]HostRetained,q:HostRequest,now:int)->u32 {
+host_admit :: (grants:[]HostGrantRecord,epochs:[]HostEpoch,retained:[]HostRetained,q:HostRequest,now:int)->u32 #effects(all) {
   // 1. The request: at most 60 s long, not yet expired, not from the future.
   if q.expires_at<=q.issued_at || q.expires_at-q.issued_at>HA_WINDOW {return HA_MALFORMED;}
   if now>q.expires_at {return HA_SILENT;}
@@ -179,7 +179,7 @@ host_admit :: (grants:[]HostGrantRecord,epochs:[]HostEpoch,retained:[]HostRetain
   return HA_OK;
 }
 // book:end admit
-host_epoch :: (epochs:[]HostEpoch,device:string)->int {
+host_epoch :: (epochs:[]HostEpoch,device:string)->int #effects(all) {
   for e:epochs {if e.device==device {return e.epoch;}}
   return 0;
 }
@@ -187,7 +187,7 @@ host_epoch :: (epochs:[]HostEpoch,device:string)->int {
 // Marks every grant of device revoked and advances its epoch, together.
 // Returns the new epoch, or -1 when the device has no epoch entry (its
 // grants are still revoked; the caller adds the entry at epoch 1).
-host_revoke :: (grants:[]HostGrantRecord,epochs:[]HostEpoch,device:string)->int {
+host_revoke :: (grants:[]HostGrantRecord,epochs:[]HostEpoch,device:string)->int #effects(all) {
   for i:0..<grants.count {if grants[i].device==device {grants[i].revoked=true;}}
   for i:0..<epochs.count {if epochs[i].device==device {epochs[i].epoch+=1;return epochs[i].epoch;}}
   return -1;

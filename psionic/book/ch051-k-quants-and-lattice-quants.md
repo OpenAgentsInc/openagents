@@ -62,14 +62,14 @@ most once, so the two agree; the oracle below checks it.
 ```jai
 // A finite half as a signed integer number of 2^-24 units: exact for every
 // half, and products of a half with small codes stay below 2^53.
-kq_units :: (bits:int)->int {
+kq_units :: (bits:int)->int #effects(all) {
     e:=(bits>>10)&31;m:=bits&1023;
     v:=ifx e==0 then m else (1024+m)<<(e-1);
     return ifx (bits&0x8000)!=0 then -v else v;
 }
-kq_byte :: (b:[]u8,at:int)->int {return cast(int)b[at];}
-kq_half_bits :: (b:[]u8,at:int)->int {return kq_byte(b,at)|(kq_byte(b,at+1)<<8);}
-kq_half_units :: (b:[]u8,at:int)->int {return kq_units(kq_half_bits(b,at));}
+kq_byte :: (b:[]u8,at:int)->int #effects(all) {return cast(int)b[at];}
+kq_half_bits :: (b:[]u8,at:int)->int #effects(all) {return kq_byte(b,at)|(kq_byte(b,at+1)<<8);}
+kq_half_units :: (b:[]u8,at:int)->int #effects(all) {return kq_units(kq_half_bits(b,at));}
 ```
 
 ## Q2_K by hand
@@ -127,12 +127,12 @@ the spare top bits of bytes 4 to 11. This is ggml's `get_scale_min_k4`:
 ```jai
 // Q4_K and Q5_K: eight 6-bit scales (min = 0) or mins (min = 1) in the 12
 // bytes from offset 4, ggml's get_scale_min_k4.
-kq_scale_min :: (b:[]u8,j:int,min:int)->int {
+kq_scale_min :: (b:[]u8,j:int,min:int)->int #effects(all) {
     if j<4 {return kq_byte(b,4+j+4*min)&63;}
     return ((kq_byte(b,4+j+4)>>(4*min))&15)|((kq_byte(b,j+4*min)>>6)<<4);
 }
 // Element k of one block, in 2^-24 units.
-kq_value :: (kind:int,b:[]u8,k:int)->int {
+kq_value :: (kind:int,b:[]u8,k:int)->int #effects(all) {
     if kind==KQ_Q6_K {
         // 128 values per half: four runs of 32, low nibbles in ql, two high bits in qh.
         n:=k/128;part:=(k%128)/32;l:=k%32;
@@ -202,7 +202,7 @@ eight 6-bit sub-block scales (stored 32 higher) split into four low bits in
 
 <!-- source: psionic/lib/kquant.coax iq4 -->
 ```jai
-kq_iq4 :: (kind:int,b:[]u8,k:int)->int {
+kq_iq4 :: (kind:int,b:[]u8,k:int)->int #effects(all) {
     if kind==KQ_IQ4_NL {return kq_half_units(b,0)*KQ_IQ4[(kq_byte(b,2+k%16)>>(4*(k/16)))&15];}
     // IQ4_XS: eight sub-blocks of 32, each a 6-bit scale minus 32: four low
     // bits in scales_l (byte 4 + ib/2), two high bits in the 16-bit scales_h.
@@ -280,13 +280,13 @@ and position `k mod 8`:
 ```jai
 // Byte j of a grid entry, in memory order on a little-endian host, as ggml
 // reads it, and the sign of position j in an 8-bit sign mask.
-kq_grid_byte :: (entry:u64,j:int)->int {return cast(int)((entry>>cast(u64)(8*j))&255);}
-kq_sign :: (signs:int,j:int)->int {return ifx (signs&cast(int)KQ_KMASK[j])!=0 then -1 else 1;}
-kq_word :: (b:[]u8,at:int)->int {return kq_half_bits(b,at)|(kq_half_bits(b,at+2)<<16);}
+kq_grid_byte :: (entry:u64,j:int)->int #effects(all) {return cast(int)((entry>>cast(u64)(8*j))&255);}
+kq_sign :: (signs:int,j:int)->int #effects(all) {return ifx (signs&cast(int)KQ_KMASK[j])!=0 then -1 else 1;}
+kq_word :: (b:[]u8,at:int)->int #effects(all) {return kq_half_bits(b,at)|(kq_half_bits(b,at+2)<<16);}
 // Element k of a lattice block in 2^-27 units: sub-block ib of 32, group l
 // of 8, position j. ggml's scale is d (0.5 + s) / 4 for IQ2, d (0.5 + s) / 2
 // for IQ3_XXS and d (1 + 2 s) for IQ3_S, so d (2 s + 1) times 1, 2 or 8.
-kq_lattice :: (kind:int,b:[]u8,k:int)->int {
+kq_lattice :: (kind:int,b:[]u8,k:int)->int #effects(all) {
     ib:=k/32;l:=(k%32)/8;j:=k%8;d:=kq_half_units(b,0);
     if kind==KQ_IQ2_XXS {
         // Eight bytes a sub-block: four grid indices, then 4 x 7 sign bits and a 4-bit scale.
@@ -446,10 +446,10 @@ Psionic reads.
 
 <!-- source: psionic/lib/kquant.coax plan -->
 ```jai
-kq_lattice_kind :: (kind:int)->bool {return (kind>=KQ_IQ2_XXS && kind<=KQ_IQ3_XXS) || kind==KQ_IQ3_S || kind==KQ_IQ2_S;}
-kq_kind :: (kind:int)->bool {return (kind>=KQ_Q2_K && kind<=KQ_Q6_K) || kind==KQ_IQ4_NL || kind==KQ_IQ4_XS || kq_lattice_kind(kind);}
+kq_lattice_kind :: (kind:int)->bool #effects(all) {return (kind>=KQ_IQ2_XXS && kind<=KQ_IQ3_XXS) || kind==KQ_IQ3_S || kind==KQ_IQ2_S;}
+kq_kind :: (kind:int)->bool #effects(all) {return (kind>=KQ_Q2_K && kind<=KQ_Q6_K) || kind==KQ_IQ4_NL || kind==KQ_IQ4_XS || kq_lattice_kind(kind);}
 // Chapter 49's table gives each type's values and bytes per block.
-kq_plan :: (kind:int,rows:int,width:int)->QzPlan #export_c {
+kq_plan :: (kind:int,rows:int,width:int)->QzPlan #export_c #effects(all) {
     if !kq_kind(kind) {return QzPlan.{status=QzStatus.kind};}
     if rows<1 || width<1 {return QzPlan.{status=QzStatus.shape};}
     if width%PG_BLOCKS[kind]!=0 {return QzPlan.{status=QzStatus.partial};}
@@ -458,13 +458,13 @@ kq_plan :: (kind:int,rows:int,width:int)->QzPlan #export_c {
     return QzPlan.{blocks=blocks,bytes=blocks*PG_WIDTHS[kind],values=rows*width,block_bytes=PG_WIDTHS[kind]};
 }
 // Where each block keeps its half scales: d, and dmin (d again when there is none).
-kq_d_at :: (kind:int)->int {return ifx kind==KQ_Q2_K then 80 else ifx kind==KQ_Q3_K then 108 else ifx kind==KQ_Q6_K then 208 else 0;}
-kq_m_at :: (kind:int)->int {return ifx kind==KQ_Q2_K then 82 else ifx kind==KQ_Q4_K || kind==KQ_Q5_K then 2 else kq_d_at(kind);}
+kq_d_at :: (kind:int)->int #effects(all) {return ifx kind==KQ_Q2_K then 80 else ifx kind==KQ_Q3_K then 108 else ifx kind==KQ_Q6_K then 208 else 0;}
+kq_m_at :: (kind:int)->int #effects(all) {return ifx kind==KQ_Q2_K then 82 else ifx kind==KQ_Q4_K || kind==KQ_Q5_K then 2 else kq_d_at(kind);}
 ```
 
 <!-- source: psionic/lib/kquant.coax decode -->
 ```jai
-kq_decode :: (kind:int,rows:int,width:int,bytes:[]u8,out:[]f32)->QzResult #export_c {
+kq_decode :: (kind:int,rows:int,width:int,bytes:[]u8,out:[]f32)->QzResult #export_c #effects(all) {
     p:=kq_plan(kind,rows,width);
     if p.status!=QzStatus.ok {return QzResult.{status=p.status};}
     if bytes.count!=p.bytes {return QzResult.{status=QzStatus.storage};}
@@ -483,7 +483,7 @@ kq_decode :: (kind:int,rows:int,width:int,bytes:[]u8,out:[]f32)->QzResult #expor
     return QzResult.{written=p.values};
 }
 // One tensor from chapter 49's reader: chapter 50's types go to chapter 50.
-kq_tensor :: (t:PgTensor,file:[]u8,out:[]f32)->QzResult #export_c {
+kq_tensor :: (t:PgTensor,file:[]u8,out:[]f32)->QzResult #export_c #effects(all) {
     if t.kind==QZ_Q8_0 || t.kind==QZ_Q4_0 {return qz_tensor(t,file,out);}
     if t.dims[0]<1 {return QzResult.{status=QzStatus.shape};}
     if t.begin<0 || t.end>file.count {return QzResult.{status=QzStatus.storage};}

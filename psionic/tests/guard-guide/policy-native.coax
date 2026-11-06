@@ -23,7 +23,7 @@ guide_native_check :: (count:int)->bool {
     if gg_decode("{}").ok || gg_decode("{\"model\":\"elephant-1\"}").ok {return false;}
     return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     if !guide_native_check(5) {tool_errln("guard guide native check failed");return 1;}
     print("guard guide native: requested routes, quiet, current need, bounds and decoder checks passed\n");return 0;
 }

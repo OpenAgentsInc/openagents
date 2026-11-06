@@ -57,7 +57,7 @@ rps_tool_journal_failure :: (s:[]RpsTool,root:string,target:string,inputs:[]RtqI
   finalized:=rto_finalize(s[0].port);status:=proc_wait(server,5000);if status==PROC_RUNNING {killed:=proc_kill(server,PROC_SIGKILL);status=proc_wait(server,5000);}released:=proc_release(server);
   bytes:[65536]u8;nodes:[1024]JvNode;d:[1]Jv;final_path:[4096]u8;return okay && finalized && status==1 && rtq_json_file(fs_join(ld,"final.json",final_path[..]),bytes[..],nodes[..],d[..]) && jv_raw(d[0],jv_get(d[0],0,"status"))=="failed" && jv_kind(d[0],jv_get(d[0],0,"sink_outputs_unchanged"))==JV_TRUE && jv_kind(d[0],jv_get(d[0],0,"original_files_unchanged"))==JV_TRUE && jv_kind(d[0],jv_get(d[0],0,"post_staging_removed"))==JV_TRUE && jv_kind(d[0],jv_get(d[0],0,"post_ledger_complete"))==JV_FALSE;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}child:=rto_child(a[..]);if child>=0 {return child;}if args_count(a[..])!=1 {tool_errln("usage: render-test-sink-tool-checks NEW_OUTDIR");return 2;}
   if !fs_mkdir(args_at(a[..],0)) {return 2;}s:[1]RpsTool;dir:=fs_realpath(args_at(a[..],0),s[0].dir[..]);s[0].dn=dir.count;p:[4096]u8;receipt:=fs_join(dir,"qualification.json",p[..]);if dir=="" || fs_exists(receipt) {return 2;}
   start:=proc_now_ms();deadline:=start+180000;inputs:[1]RtqInputs;repo_buf:[4096]u8;repo:=fs_cwd(repo_buf[..]);compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);if compiler=="" {compiler="coax/bin/coax";}

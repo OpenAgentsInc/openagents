@@ -421,7 +421,7 @@ the sums. The kernel:
 // split keys would need. sinks is empty or one per head. tiles[item]
 // receives the number of tiles the group loaded.
 td_attend :: (item:int,heads:int,kv_heads:int,start:int,rows:int,tokens:int,kind:int,window:int,block:int,
-    q_stride:int,kv_stride:int,v_offset:int,q:[]f32,kv:[]f32,sinks:[]f32,out:[]f32,state:[]f32,tiles:[]int) #export_c {
+    q_stride:int,kv_stride:int,v_offset:int,q:[]f32,kv:[]f32,sinks:[]f32,out:[]f32,state:[]f32,tiles:[]int) #export_c #effects(all) {
     qr:[4096]f32;acc:[4096]f32;sc:[2048]f32;mx:[64]f32;den:[64]f32;kt:[2048]f32;vt:[2048]f32;
     head:=item%heads;kh:=head/(heads/kv_heads);r0:=item/heads*TD_THREADS;
     last:=r0+TD_THREADS-1;if last>=rows {last=rows-1;}
@@ -490,7 +490,7 @@ td_attend :: (item:int,heads:int,kv_heads:int,start:int,rows:int,tokens:int,kind
     }
 }
 // gpt-oss stores its sinks as BF16; the kernel reads f32.
-td_sinks :: (item:int,bits:[]u16,out:[]f32) #export_c {out[item]=f32_from_bits(cast(u32)bits[item]<<16);}
+td_sinks :: (item:int,bits:[]u16,out:[]f32) #export_c #effects(all) {out[item]=f32_from_bits(cast(u32)bits[item]<<16);}
 ```
 
 The arithmetic is the CPU fold's, in `f32`. Inside a tile the running
@@ -538,15 +538,15 @@ does not fit, with chapter 41's status names, and `tdp_admit` asks chapter
 ```jai
 // What td_attend needs: 64 threads, two shared tiles of 32 x 64 f32.
 TDP_NEEDS :: DaNeeds.{threads=64,shared=16384,mma=false};
-tdp_admit :: (major:int,minor:int,max_threads:int,max_shared:int)->DaStatus #export_c {
+tdp_admit :: (major:int,minor:int,max_threads:int,max_shared:int)->DaStatus #export_c #effects(all) {
     return da_admit(TDP_NEEDS,DaDevice.{major=major,minor=minor,max_threads=max_threads,max_shared=max_shared});
 }
 // Groups of a launch: one per block of 64 rows and head.
-tdp_groups :: (heads:int,rows:int)->int {return (rows+63)/64*heads;}
+tdp_groups :: (heads:int,rows:int)->int #effects(all) {return (rows+63)/64*heads;}
 // The checks a launch must pass, in order. counts: q, kv, sinks, out,
 // state and tiles view lengths.
 tdp_check :: (heads:int,kv_heads:int,start:int,rows:int,tokens:int,kind:int,window:int,block:int,
-    q_stride:int,kv_stride:int,v_offset:int,q:int,kv:int,sinks:int,out:int,state:int,tiles:int)->TaStatus #export_c {
+    q_stride:int,kv_stride:int,v_offset:int,q:int,kv:int,sinks:int,out:int,state:int,tiles:int)->TaStatus #export_c #effects(all) {
     if heads<1 || heads>64 || kv_heads<1 || kv_heads>8 || heads%kv_heads!=0 {return TaStatus.shape;}
     if tokens<1 || tokens>131072 || rows<1 || start<0 || start+rows>tokens {return TaStatus.range;}
     if kind<0 || kind>2 || (kind==1)!=(window>0) || window<0 || (kind==2)!=(block>0) || block>=tokens {return TaStatus.mask;}

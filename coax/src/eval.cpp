@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <map>
 #include <optional>
+#include <set>
+#include <tuple>
 
 // The same generated Coax kernels are compiled here and embedded in C output.
 // Keep their rounding explicit even in test harnesses that include main.cpp.
@@ -170,6 +172,20 @@ bool has_call(const Expr *e) {
   for (const Expr *a : e->args) if (has_call(a)) return true;
   for (const FieldInit &f : e->fields) if (has_call(f.value)) return true;
   return false;
+}
+
+// Physical graph observation shared with the C envelope's capture helpers.
+// Inline layout is already checked; recursion can recur only through a view.
+static bool transaction_views(Type t) {
+  if(!t)return false;
+  if(t->transaction_presence)return t->transaction_presence==2;
+  bool yes=t->kind==TypeKind::view&&t->length==0;
+  if(t->kind==TypeKind::array)yes=transaction_views(t->elem);
+  if(t->kind==TypeKind::struct_)for(const auto &f:t->struct_decl->fields)yes=yes||transaction_views(f.type);
+  if(t->kind==TypeKind::optional||t->kind==TypeKind::result)yes=transaction_views(t->elem);
+  if(t->kind==TypeKind::result)yes=yes||transaction_views(t->sum_error);
+  if(t->kind==TypeKind::union_)for(const auto &v:t->union_decl->variants)yes=yes||transaction_views(v.type);
+  t->transaction_presence=yes?2:1;return yes;
 }
 
 namespace {
@@ -687,6 +703,37 @@ struct Evaluator {
       for (size_t i = 0; i < dst.agg->size(); i++) assign_into((*dst.agg)[i], (*src.agg)[i], true);
     } else {
       dst = src;
+    }
+  }
+
+  struct TxBefore {
+    std::shared_ptr<CtStorage> owner, before;
+    int64_t offset = 0;
+  };
+  void transaction_capture(const Value &root,std::vector<TxBefore> &log,
+                           std::set<std::tuple<uintptr_t,int64_t,int64_t,uintptr_t>> &seen,
+                           std::set<std::tuple<uintptr_t,int64_t,int64_t>> &saved,Loc loc) {
+    struct Work {Value value;int64_t depth;};
+    std::vector<Work> work{{root,transaction_views(root.type)?1:0}};
+    while(!work.empty()&&!failed){
+      Work next=std::move(work.back());work.pop_back();Value value=std::move(next.value);if(!tick(loc))return;
+      const auto kind=value.type->kind;
+      if(kind==TypeKind::view&&value.type->length==1)continue;
+      if(next.depth&&!TX_depth(next.depth)){err(loc,"E0401","transaction traversal limit");return;}
+      if(!value.agg)continue;
+      if(kind!=TypeKind::view&&!is_aggregate(value.type)&&!is_sum(value.type))continue;
+      if(is_sum(value.type)&&!valid_sum(value,loc))return;
+      const int64_t offset=kind==TypeKind::view?value.offset:0;
+      const int64_t count=kind==TypeKind::view?value.count:(int64_t)value.agg->size();
+      if(offset<0||count<0||offset>(int64_t)value.agg->size()||count>(int64_t)value.agg->size()-offset){err(loc,"E0401","invalid transaction input span");return;}
+      if(!count)continue;
+      if(kind==TypeKind::view&&!seen.emplace((uintptr_t)value.agg.get(),offset,count,(uintptr_t)value.type).second)continue;
+      if(saved.emplace((uintptr_t)value.agg.get(),offset,count).second){
+        auto before=storage(loc);if(failed)return;before->reserve((size_t)count);
+        for(int64_t i=0;i<count&&!failed;i++){if(!tick(loc))return;before->push_back((*value.agg)[(size_t)(offset+i)]);}
+        log.push_back({value.agg,std::move(before),offset});
+      }
+      for(int64_t i=count;i-->0;){const Value &item=(*value.agg)[(size_t)(offset+i)];work.push_back({item,transaction_views(item.type)?next.depth+1:0});}
     }
   }
 
@@ -1607,6 +1654,27 @@ struct Evaluator {
   Flow stmt(Stmt *s, CtFrame &frame, Value *returned) {
     if (!tick(s->loc)) return Flow::normal;
     switch (s->kind) {
+      case StmtKind::transaction_: {
+        std::vector<TxBefore> log;std::set<std::tuple<uintptr_t,int64_t,int64_t,uintptr_t>> seen;
+        std::set<std::tuple<uintptr_t,int64_t,int64_t>> saved;
+        std::vector<CtLocal> locals_before=frame.locals;
+        for(auto at=locals_before.rbegin();at!=locals_before.rend();++at){
+          if(at->initialized)transaction_capture(at->value,log,seen,saved,s->loc);
+          if(failed)return Flow::normal;
+        }
+        Flow flow=stmt(s->then_,frame,returned);
+        if(!failed){
+          const auto kind=returned->type->kind;
+          const int64_t category=kind==TypeKind::result?1:kind==TypeKind::optional?2:0;
+          if(category&&!valid_sum(*returned,s->loc))return flow;
+          if(TX_abort(category,returned->sum_tag,flow==Flow::ret)){
+            for(auto at=log.rbegin();at!=log.rend();++at)
+              for(size_t i=0;i<at->before->size();i++)(*at->owner)[(size_t)at->offset+i]=(*at->before)[i];
+            frame.locals=std::move(locals_before);
+          }
+        }
+        return flow;
+      }
       case StmtKind::block: {
         size_t mark = frame.locals.size();
         std::vector<Stmt *> deferred;

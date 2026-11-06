@@ -15,11 +15,11 @@
  for i:0..<10 {old:=w[i];w[i]=0x7ff8000000000001;#assert ppo_admit_position(w)==PpoStatus.number;w[i]=f64_bits(11.0);#assert ppo_admit_position(w)==(ifx i<7 then PpoStatus.limits else PpoStatus.range);w[i]=old;}
 }
 
-ppo_weight :: ()->pfku.Quantity(PpoAngularWeight,f64) {r:pfku.Quantity(PpoAngularWeight,f64);r.value=0.25;return r;}
-ppo_admit_position :: (words:[10]u64)->PpoStatus {
+ppo_weight :: ()->pfku.Quantity(PpoAngularWeight,f64) #effects(all) {r:pfku.Quantity(PpoAngularWeight,f64);r.value=0.25;return r;}
+ppo_admit_position :: (words:[10]u64)->PpoStatus #effects(all) {
  status:=pik_admit(words,96);if status==PikStatus.number {return PpoStatus.number;}if status==PikStatus.range {return PpoStatus.range;}if status==PikStatus.limits {return PpoStatus.limits;}return PpoStatus.ok;
 }
-ppo_delta :: (j:[42]f64,error:[6]f64)->PpoDelta {
+ppo_delta :: (j:[42]f64,error:[6]f64)->PpoDelta #effects(all) {
  for x:j {if !pfk_finite(f64_bits(x)) {return PpoDelta.{status=PpoStatus.number};}if pik_greater(abs(x),4) {return PpoDelta.{status=PpoStatus.range};}}
  for x:error {if !pfk_finite(f64_bits(x)) {return PpoDelta.{status=PpoStatus.number};}if pik_greater(abs(x),20) {return PpoDelta.{status=PpoStatus.range};}}
  a:[49]f64;for row:0..<6 {for col:0..<6 {sum:f64=0;for k:0..<7 {sum+=j[row*7+k]*j[col*7+k];}if row==col {sum+=0.0025;}a[row*7+col]=sum;}}

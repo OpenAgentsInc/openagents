@@ -33,7 +33,7 @@ dg_wait :: (h: int, wanted: string, ms: int) -> bool {
   }
   return false;
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 2 { tool_errln("usage: desk-gpu-check COMPOSITOR KEYMAP [OUTPUT-DIR]"); return 2; }
   tmp: [4096] u8; dir := ifx args_count(a[..]) > 2 then args_at(a[..], 2) else fs_temp("verse-desk-gpu-", tmp[..]);

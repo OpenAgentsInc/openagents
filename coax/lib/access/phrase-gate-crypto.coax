@@ -98,17 +98,17 @@ PG_MAC_WORK :: 4296;
  #assert pg_cipher_checked(key[0..<31],nonce[..],input[..],out[0..<2]).error==PG_CRYPTO;
  #assert pg_cipher_checked(key[..],nonce[0..<11],input[..],out[0..<2]).error==PG_CRYPTO;
 }
-pg_cipher_checked :: (key:[]u8,nonce:[]u8,input:[]u8,out:[]u8)->PgText {
+pg_cipher_checked :: (key:[]u8,nonce:[]u8,input:[]u8,out:[]u8)->PgText #effects(all) {
  if out.count!=input.count {return PgText.{error=PG_CAPACITY};}
  result:=chacha20_xor_checked(key,nonce,1,input,out,false);
  return ifx result.error==0 then PgText.{written=result.written} else PgText.{error=PG_CRYPTO};
 }
-pg_kdf_salt :: (salt:[]u8,out:[]u8)->PgText {
+pg_kdf_salt :: (salt:[]u8,out:[]u8)->PgText #effects(all) {
   if salt.count!=16 {return PgText.{error=PG_FORMAT};}
   size:=PG_KDF_LABEL.count+salt.count;if out.count<size || out.count>64 {return PgText.{error=PG_CAPACITY};}
   at:=json_raw(out,0,PG_KDF_LABEL);for b:salt {out[at]=b;at+=1;}return PgText.{written=at};
 }
-pg_keys_checked :: (master:[]u8,salt:[]u8,context:[]u8,prk:[]u8,info:[]u8,keys:[]u8,overlap:bool)->u32 {
+pg_keys_checked :: (master:[]u8,salt:[]u8,context:[]u8,prk:[]u8,info:[]u8,keys:[]u8,overlap:bool)->u32 #effects(all) {
   if overlap {return PG_ALIAS;}
   if master.count!=32 || salt.count!=16 || context.count!=32 {return PG_CRYPTO;}
   if prk.count!=32 || keys.count!=64 || info.count<PG_KEYS_LABEL.count+32 || info.count>96 {return PG_CAPACITY;}
@@ -116,12 +116,12 @@ pg_keys_checked :: (master:[]u8,salt:[]u8,context:[]u8,prk:[]u8,info:[]u8,keys:[
   at:=json_raw(info,0,PG_KEYS_LABEL);for b:context {info[at]=b;at+=1;}
   return ifx hkdf_expand_checked(prk,info[0..<at],keys,64,false)==0 then PG_OK else PG_CRYPTO;
 }
-pg_mac_checked :: (keys:[]u8,authenticated:[]u8,mac:[]u8,tag:[]u8)->u32 {
+pg_mac_checked :: (keys:[]u8,authenticated:[]u8,mac:[]u8,tag:[]u8)->u32 #effects(all) {
   if keys.count!=64 || tag.count!=32 || mac.count!=4296 || authenticated.count<75 || authenticated.count>4170 {return PG_CAPACITY;}
   at:=json_raw(mac,0,PG_MAC_LABEL);for b:authenticated {mac[at]=b;at+=1;}
   return ifx hmac_sha256_checked(keys[32..<64],mac[0..<at],tag,false)==0 then PG_OK else PG_CRYPTO;
 }
-pg_open_payload_checked :: (keys:[]u8,wire:[]u8,context:[]u8,mac:[]u8,tag:[]u8,plain:[]u8,overlap:bool)->PgText {
+pg_open_payload_checked :: (keys:[]u8,wire:[]u8,context:[]u8,mac:[]u8,tag:[]u8,plain:[]u8,overlap:bool)->PgText #effects(all) {
   if overlap {return PgText.{error=PG_ALIAS};}
   frame:=pg_frame_checked(wire,context,false);if frame.error!=0 {return PgText.{error=frame.error};}
   if pg_output_admit(frame.size,plain.count)!=0 {return PgText.{error=PG_CAPACITY};}
@@ -130,7 +130,7 @@ pg_open_payload_checked :: (keys:[]u8,wire:[]u8,context:[]u8,mac:[]u8,tag:[]u8,p
   result:=pg_cipher_checked(keys[0..<32],wire[62..<74],wire[74..<74+frame.size],plain[0..<frame.size]);
   return ifx result.error==0 then PgText.{written=result.written} else PgText.{error=PG_CRYPTO};
 }
-pg_seal_payload_checked :: (keys:[]u8,salt:[]u8,nonce:[]u8,context:[]u8,plain:[]u8,staged:[]u8,mac:[]u8,tag:[]u8,out:[]u8,overlap:bool)->PgText {
+pg_seal_payload_checked :: (keys:[]u8,salt:[]u8,nonce:[]u8,context:[]u8,plain:[]u8,staged:[]u8,mac:[]u8,tag:[]u8,out:[]u8,overlap:bool)->PgText #effects(all) {
   if overlap {return PgText.{error=PG_ALIAS};}
   if keys.count!=64 || salt.count!=16 || nonce.count!=12 || context.count!=32 {return PgText.{error=PG_FORMAT};}
   if pg_plain_admit(plain.count)!=0 {return PgText.{error=PG_LIMIT};}

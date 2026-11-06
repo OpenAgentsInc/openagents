@@ -2,14 +2,14 @@
 // This does not authenticate handles or permit copying an active owner.
 #authority;
 
-so_start_allowed :: (handle:int)->bool {return handle == -1;}
+so_start_allowed :: (handle:int)->bool #effects(all) {return handle == -1;}
 
 // Frame callers use nonpositive waits as polls. Positive calls keep the
 // existing five-second finish wait. The native process contract uses -2
 // for a still-running child; EOF alone never grants terminal ownership.
-so_poll_should_wait :: (wait_ms:int)->bool {return wait_ms > 0;}
-so_poll_finish_wait_ms :: (wait_ms:int)->int {return ifx so_poll_should_wait(wait_ms) then 5000 else 0;}
-so_poll_pending :: (wait_ms:int,status:int)->bool {return !so_poll_should_wait(wait_ms) && status == -2;}
+so_poll_should_wait :: (wait_ms:int)->bool #effects(all) {return wait_ms > 0;}
+so_poll_finish_wait_ms :: (wait_ms:int)->int #effects(all) {return ifx so_poll_should_wait(wait_ms) then 5000 else 0;}
+so_poll_pending :: (wait_ms:int,status:int)->bool #effects(all) {return !so_poll_should_wait(wait_ms) && status == -2;}
 
 #test "a System One start admits only the initialized ownerless sentinel" {
   #assert so_start_allowed(-1);

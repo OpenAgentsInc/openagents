@@ -86,7 +86,7 @@ gc_steps :: (c: [] RelayConn, h: [] GcHeard, seq: [] int, ms: int) -> bool {
   return ok;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("guard-check: bad arguments"); return 2; }
   b: [512] u8;

@@ -115,13 +115,13 @@ FiKeySelection :: struct {status:int;index:int;hard_deadline:int;}
  keys[0].has_private=true;snap.fetched_at=100;#assert fi_snapshot_key(p,snap,id,1,100,"k").status==FI_UNAVAILABLE;
 }
 
-fi_address_record :: (a:FiAddress,transport:int)->bool {
+fi_address_record :: (a:FiAddress,transport:int)->bool #effects(all) {
  if a.length!=4 && a.length!=16 {return false;}bytes:=a.bytes;return fi_address_allowed(bytes[0..<a.length],transport);
 }
-fi_same_peer :: (a:FiAddress,b:FiAddress)->bool {
+fi_same_peer :: (a:FiAddress,b:FiAddress)->bool #effects(all) {
  if a.length!=b.length {return false;}for i:0..<a.length {if a.bytes[i]!=b.bytes[i] {return false;}}return true;
 }
-fi_fetch_candidate :: (uri:string,transport:int,f:FiFetch)->bool #export_c {
+fi_fetch_candidate :: (uri:string,transport:int,f:FiFetch)->bool #export_c #effects(all) {
  if !fi_source_uri(uri,transport) || f.answers.count<1 || f.answers.count>16 {return false;}
  if f.resolutions!=1 || f.connections!=1 || f.redirected || f.proxy_used || !f.pin_enforced {return false;}
  if f.elapsed_ms<0 || f.elapsed_ms>=10000 || f.status<200 || f.status>=300 || f.streamed_bytes<1 || f.streamed_bytes>524288 {return false;}
@@ -130,7 +130,7 @@ fi_fetch_candidate :: (uri:string,transport:int,f:FiFetch)->bool #export_c {
  if transport==FI_PUBLIC_HTTPS {return f.tls_identity_ok;}
  return f.mesh_endpoint_authorized;
 }
-fi_rsa_key_candidate :: (key:FiRsaKey)->bool #export_c {
+fi_rsa_key_candidate :: (key:FiRsaKey)->bool #export_c #effects(all) {
  if !fi_visible(key.kid,128) || key.kty!="RSA" || key.algorithm!="RS256" || key.use!="sig" || key.has_private {return false;}
  if !key.has_key_ops && key.key_ops.count!=0 {return false;}
  if key.has_key_ops && (key.key_ops.count!=1 || key.key_ops[0]!="verify") {return false;}
@@ -138,7 +138,7 @@ fi_rsa_key_candidate :: (key:FiRsaKey)->bool #export_c {
  if key.modulus[0]==0 || (key.modulus.count==256 && key.modulus[0]<128) || (key.modulus[key.modulus.count-1]&1)==0 {return false;}
  return key.exponent[0]==1 && key.exponent[1]==0 && key.exponent[2]==1;
 }
-fi_key_index :: (keys:[]FiRsaKey,kid:string)->FiKeySelection #export_c {
+fi_key_index :: (keys:[]FiRsaKey,kid:string)->FiKeySelection #export_c #effects(all) {
  bad:=FiKeySelection.{status=FI_UNAVAILABLE};if keys.count<1 || keys.count>16 {return bad;}
  // Bound and validate the whole snapshot before an attacker-selected lookup.
  for i:0..<keys.count {
@@ -147,7 +147,7 @@ fi_key_index :: (keys:[]FiRsaKey,kid:string)->FiKeySelection #export_c {
  }
  for i:0..<keys.count {if keys[i].kid==kid {return FiKeySelection.{index=i};}}return FiKeySelection.{status=FI_REJECTED};
 }
-fi_snapshot_key :: (p:FiIssuer,s:FiSnapshot,expected_id:[32]u8,expected_generation:int,now:int,kid:string)->FiKeySelection #export_c {
+fi_snapshot_key :: (p:FiIssuer,s:FiSnapshot,expected_id:[32]u8,expected_generation:int,now:int,kid:string)->FiKeySelection #export_c #effects(all) {
  bad:=FiKeySelection.{status=FI_UNAVAILABLE};
  if !s.available || s.last_refresh_failed || s.revoked || s.generation<1 || s.generation!=expected_generation || s.issuer!=p.issuer || s.source_uri!=p.jwks_uri {return bad;}
  for i:0..<32 {if s.policy_id[i]!=expected_id[i] {return bad;}}
@@ -157,20 +157,20 @@ fi_snapshot_key :: (p:FiIssuer,s:FiSnapshot,expected_id:[32]u8,expected_generati
 }
 // Call only after the validated positive policy and NumericDate candidate checks.
 // Even the maximum safe NumericDate plus the one-year cap fits signed int64.
-fi_session_deadline :: (connected:int,lifetime:int,expires:int,issued:int,maximum_age:int,snapshot_deadline:int)->int {
+fi_session_deadline :: (connected:int,lifetime:int,expires:int,issued:int,maximum_age:int,snapshot_deadline:int)->int #effects(all) {
  return fi_min_time(fi_min_time(connected+lifetime,expires),fi_min_time(issued+maximum_age,snapshot_deadline));
 }
 
 // Signed difference is bounded by the validated nonnegative safe-time domain.
 // Arithmetic right shift selects the smaller time without tie-only branches.
-fi_min_time :: (a:int,b:int)->int {difference:=a-b;return b+(difference&(difference>>63));}
+fi_min_time :: (a:int,b:int)->int #effects(all) {difference:=a-b;return b+(difference&(difference>>63));}
 #forall "minimum includes equal times and both orders" a:0..<12,b:0..<12 {
  result:=fi_min_time(a,b);#assert result<=a && result<=b && (result==a || result==b);
 }
 
 // No network access here: admission reads only the current local snapshot.
 // The returned key is a cryptographic verification candidate, never a grant.
-fi_assertion_candidate :: (communities:[]FiCommunity,issuers:[]FiIssuer,host:string,h:FiHeader,c:FiClaims,now:int,s:FiSnapshot,expected_id:[32]u8,expected_generation:int)->FiKeySelection #export_c {
+fi_assertion_candidate :: (communities:[]FiCommunity,issuers:[]FiIssuer,host:string,h:FiHeader,c:FiClaims,now:int,s:FiSnapshot,expected_id:[32]u8,expected_generation:int)->FiKeySelection #export_c #effects(all) {
  selected:=fi_select(communities,issuers,host,c.issuer);
  if selected.status!=FI_CANDIDATE {return FiKeySelection.{status=selected.status};}
  p:=issuers[selected.issuer];community:=communities[selected.community];

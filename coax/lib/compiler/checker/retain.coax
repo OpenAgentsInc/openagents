@@ -6,25 +6,25 @@ CR_Shape :: struct {type:int;decl:int;head:int;count:int;max_field:int;max_type:
 CR_State :: struct {effects:int;reports:int;shape:CR_Shape;shape_previous:CR_Shape;leaves:int;join_arrays:bool;}
 CR_Context :: struct {b:CB_Context;effects:[]CK_RetainEffect;reports:[]CK_RetainObservation;state:[]CR_State;}
 CR_Result :: struct {complete:bool;relation:bool;pending:int;}
-CR_shape_matches :: (shape:CR_Shape,type:int,decl:int,head:int)->bool {return shape.type==type && shape.decl==decl && shape.head==head;}
-CR_shape_keep :: (r:CR_Context,shape:CR_Shape) {
+CR_shape_matches :: (shape:CR_Shape,type:int,decl:int,head:int)->bool #effects(all) {return shape.type==type && shape.decl==decl && shape.head==head;}
+CR_shape_keep :: (r:CR_Context,shape:CR_Shape) #effects(all) {
  // Promote/deduplicate only a fully validated successful shape. Nested child
  // work may have changed the current slot, so retain that actual last shape.
  if !CR_shape_matches(r.state[0].shape,shape.type,shape.decl,shape.head) {r.state[0].shape_previous=r.state[0].shape;}
  r.state[0].shape=shape;
 }
-CK_retain_caps :: (nodes:int)->CK_RetainCaps #export_c {
+CK_retain_caps :: (nodes:int)->CK_RetainCaps #export_c #effects(all) {
  if nodes<1 || nodes>2147483646 {return CK_RetainCaps.{};}
  n:=nodes*2;delta:=n-128;n=128+(delta & ((delta>>63)^ -1));delta=16384-n;n=16384-(delta & ((delta>>63)^ -1));
  reports:=nodes;delta=reports-128;reports=128+(delta & ((delta>>63)^ -1));delta=16384-reports;reports=16384-(delta & ((delta>>63)^ -1));
  return CK_RetainCaps.{effects=n,reports=reports,work=2097152};
 }
-CR_record :: (r:CR_Context,kind:u8,owner:int,site:int,complete:bool,relation:bool,pending:int) {
+CR_record :: (r:CR_Context,kind:u8,owner:int,site:int,complete:bool,relation:bool,pending:int) #effects(all) {
  if r.reports.count==0 {return;}
  if r.state[0].reports>=r.reports.count {CK_resource(r.b.c,r.b.c.nodes[site].loc);return;}
  r.reports[r.state[0].reports]=CK_RetainObservation.{kind=kind,owner=owner,site=site,facts_complete=complete,relation_complete=relation,pending=pending};r.state[0].reports+=1;
 }
-CR_address :: (b:CB_Context,id:int,path:BS_Path,slot_type:int,out:[]BS_Origin)->CB_Result {
+CR_address :: (b:CB_Context,id:int,path:BS_Path,slot_type:int,out:[]BS_Origin)->CB_Result #effects(all) {
  if id<2 || id>b.c.state[0].used || !BS_path_valid(path) || !CB_tick(b,CK_Loc.{}) {CK_resource(b.c,b.state[0].loc);return CB_Result.{};}
  if b.state[0].depth>=32 {CK_resource(b.c,b.state[0].loc);return CB_Result.{};}b.state[0].depth+=1;defer b.state[0].depth-=1;e:=b.c.nodes[id];
  if e.type<1 || e.type>=b.c.state[0].type_count {CK_resource(b.c,e.loc);return CB_Result.{};}
@@ -69,12 +69,12 @@ CR_address :: (b:CB_Context,id:int,path:BS_Path,slot_type:int,out:[]BS_Origin)->
 }
 // Per-call pending effects share this procedure's bounded summary capacity.
 // The supplied-store RP kernel keeps its independent64-term staging limit.
-CR_pending_insert :: (staging:[]RP_Obligation,used:int,value:RP_Obligation)->int {
+CR_pending_insert :: (staging:[]RP_Obligation,used:int,value:RP_Obligation)->int #effects(all) {
  if used<0 || used>staging.count || staging.count>CR_MAX_EFFECTS {return -1;}at:=used;
  for i:0..<used {comparison:=rp_compare(staging[i],value);if comparison<0 {continue;}if comparison==0 {return used;}at=i;break;}
  if used>=staging.count {return -1;}i:=used;while i>at {staging[i]=staging[i-1];i-=1;}staging[at]=value;return used+1;
 }
-CR_effect :: (r:CR_Context,owner:int,site:int,row:RP_Obligation) {
+CR_effect :: (r:CR_Context,owner:int,site:int,row:RP_Obligation) #effects(all) {
  b:=r.b;link:=b.c.nodes[owner].retain_head;
  while link!=0 {if link<1 || link>r.state[0].effects || !CB_tick(b,b.c.nodes[site].loc) {CK_resource(b.c,b.c.nodes[site].loc);return;}old:=r.effects[link-1];if bs_compare(old.source,row.source.origin)==0 && bs_compare(old.destination,row.destination.storage.origin)==0 {return;}link=old.next;}
  if b.c.nodes[owner].retain_count>=CR_MAX_EFFECTS || r.state[0].effects>=r.effects.count {CK_resource(b.c,b.c.nodes[site].loc);return;}
@@ -82,7 +82,7 @@ CR_effect :: (r:CR_Context,owner:int,site:int,row:RP_Obligation) {
  formal:=CB_at(b,b.c.nodes[owner].head,row.source.origin.root);if b.c.state[0].fatal {return;}place:=CB_type(b,b.c.nodes[formal].type,row.source.origin.path);if b.c.state[0].fatal {return;}
  at:=r.state[0].effects;r.effects[at]=CK_RetainEffect.{source=row.source.origin,destination=row.destination.storage.origin,value_type=row.destination.value_type,witness=site,next=b.c.nodes[owner].retain_head,source_storage=b.c.types[place].kind==CK_Kind.array};r.state[0].effects+=1;b.c.nodes[owner].retain_head=at+1;b.c.nodes[owner].retain_count+=1;
 }
-CR_pairs :: (r:CR_Context,owner:int,site:int,key:int,sources:[]BS_Origin,sc:bool,addresses:[]BS_Origin,dc:bool,pending:[]RP_Obligation,prior:CR_Result)->CR_Result {
+CR_pairs :: (r:CR_Context,owner:int,site:int,key:int,sources:[]BS_Origin,sc:bool,addresses:[]BS_Origin,dc:bool,pending:[]RP_Obligation,prior:CR_Result)->CR_Result #effects(all) {
  b:=r.b;if b.c.state[0].error_count>0 {return CR_Result.{};}src:[64]RP_Term;dst:[64]RP_Address;
  if sources.count<0 || sources.count>64 || addresses.count<0 || addresses.count>64 {CK_resource(b.c,b.c.nodes[site].loc);return CR_Result.{};}
  for i:0..<sources.count {src[i]=RP_Term.{frame=ifx sources[i].kind==BS_STATIC then 0 else owner,origin=sources[i]};}
@@ -120,13 +120,13 @@ CR_pairs :: (r:CR_Context,owner:int,site:int,key:int,sources:[]BS_Origin,sc:bool
 
 // B1-only presence memo: the checked type graph is immutable during this pass.
 // The initial computation remains the shared A1 discovery with its same fuel.
-CR_presence :: (b:CB_Context,type:int)->bool {
+CR_presence :: (b:CB_Context,type:int)->bool #effects(all) {
  if b.c.state[0].fatal {return false;}if type<1 || type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return false;}
  cached:=b.c.types[type].retain_presence;if cached==1 {return false;}if cached==2 {return true;}
  result:=CB_discover(b,type,0,false);if !b.c.state[0].fatal {b.c.types[type].retain_presence=ifx result then cast(u8)2 else cast(u8)1;}return result;
 }
 // Mutability is separate from any-borrow presence (a string has only the latter).
-CR_mutable :: (b:CB_Context,type:int)->bool {
+CR_mutable :: (b:CB_Context,type:int)->bool #effects(all) {
  if b.c.state[0].fatal {return false;}if type<1 || type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return false;}
  cached:=b.c.types[type].retain_mutable;if cached==1 {return false;}if cached==2 {return true;}
  result:=CB_discover(b,type,0,true);if !b.c.state[0].fatal {b.c.types[type].retain_mutable=ifx result then cast(u8)2 else cast(u8)1;}return result;
@@ -175,13 +175,13 @@ CR_mutable :: (b:CB_Context,type:int)->bool {
 }
 
 // CB_leaf_count is a count up to 64, or 128 for more than that.
-CR_join_arrays :: (b:CB_Context,type:int)->bool {
+CR_join_arrays :: (b:CB_Context,type:int)->bool #effects(all) {
  if b.c.state[0].fatal {return false;}if type<1 || type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return false;}
  cached:=b.c.types[type].retain_join;if cached==1 {return false;}if cached==2 {return true;}if cached!=0 {CK_resource(b.c,b.state[0].loc);return false;}
  result:=CB_leaf_count(b,type)==128;if b.c.state[0].fatal {return false;}b.c.types[type].retain_join=ifx result then cast(u8)2 else cast(u8)1;return result;
 }
 
-CR_leaf :: (r:CR_Context,owner:int,write:int,type:int,path:BS_Path) {
+CR_leaf :: (r:CR_Context,owner:int,write:int,type:int,path:BS_Path) #effects(all) {
  b:=r.b;if !CB_tick(b,b.c.nodes[write].loc) {return;}if type<1 || type>=b.c.state[0].type_count {CK_resource(b.c,b.c.nodes[write].loc);return;}t:=b.c.types[type];
  if type==3 || t.kind==CK_Kind.view {
   r.state[0].leaves+=1;rhs:=b.c.nodes[write].a;target:=b.c.nodes[write].c;b.state[0].loc=b.c.nodes[rhs].loc;source:[64]BS_Origin;address:[64]BS_Origin;
@@ -231,8 +231,8 @@ CR_leaf :: (r:CR_Context,owner:int,write:int,type:int,path:BS_Path) {
 // Source-produced foreign declarations are bodyless (PS_proc returns at semicolon).
 // Generic or bodyless definitions are excluded; no forged-body host proof is granted.
 // Body presence and generic eligibility are traits of the checked declaration.
-CR_eligible :: (generic:bool,body:int)->bool {return !generic && body!=0;}
-CR_seed :: (r:CR_Context,owner:int) {
+CR_eligible :: (generic:bool,body:int)->bool #effects(all) {return !generic && body!=0;}
+CR_seed :: (r:CR_Context,owner:int) #effects(all) {
  b:=r.b;if owner<2 || owner>b.c.state[0].used || b.c.nodes[owner].kind!=CK_Tag.proc {CK_resource(b.c,b.state[0].loc);return;}n:=b.c.nodes[owner];if !CR_eligible(n.generic,n.b) {return;}if n.retain_mark!=CR_Phase.fresh {return;}
  b.c.nodes[owner].retain_mark=CR_Phase.seeded;b.c.nodes[owner].retain_relation=true;write:=n.borrow_writes;
  while write!=0 {
@@ -250,7 +250,7 @@ CR_seed :: (r:CR_Context,owner:int) {
  else {#assert !state[0].fatal && state[0].error_count==0 && nodes[2].retain_count==128 && rs[0].effects==256 && rs[0].reports==1 && reports[0].facts_complete && !reports[0].relation_complete && reports[0].pending==128;}
 }
 
-CR_apply :: (r:CR_Context,owner:int,call:int,active:bool) {
+CR_apply :: (r:CR_Context,owner:int,call:int,active:bool) #effects(all) {
  b:=r.b;e:=b.c.nodes[call];callee:=b.c.nodes[e.proc];if callee.retain_count<0 || callee.retain_count>CR_MAX_EFFECTS {CK_resource(b.c,e.loc);return;}pending:[CR_MAX_EFFECTS]RP_Obligation;result:=CR_Result.{complete=!active && !callee.retain_incomplete,relation=callee.retain_relation};
  link:=callee.retain_head;remaining:=callee.retain_count;
  while remaining>0 {
@@ -272,7 +272,7 @@ CR_apply :: (r:CR_Context,owner:int,call:int,active:bool) {
 // retain_return names the call that entered it (0 for the walk's root), so a
 // finished callee resumes its caller at that call. The walk's height is
 // therefore bounded by the program's procedures; CB_tick bounds its work.
-CR_summary :: (r:CR_Context,root:int) {
+CR_summary :: (r:CR_Context,root:int) #effects(all) {
  b:=r.b;if root<2 || root>b.c.state[0].used || b.c.nodes[root].kind!=CK_Tag.proc {CK_resource(b.c,b.state[0].loc);return;}n:=b.c.nodes[root];if !CR_eligible(n.generic,n.b) {return;}if n.retain_mark==CR_Phase.done || n.retain_mark==CR_Phase.active {return;}
  if n.retain_mark!=CR_Phase.seeded {CK_resource(b.c,n.loc);return;}b.c.nodes[root].retain_mark=CR_Phase.active;b.c.nodes[root].retain_return=0;owner:=root;call:=n.borrow_calls;
  while true {
@@ -299,7 +299,7 @@ CR_summary :: (r:CR_Context,root:int) {
   if b.c.state[0].fatal || b.c.state[0].error_count>0 {return;}call=b.c.nodes[call].borrow_next;
  }
 }
-CR_walk :: (r:CR_Context,head:int,instances:bool,seed:bool) {
+CR_walk :: (r:CR_Context,head:int,instances:bool,seed:bool) #effects(all) {
  b:=r.b;if b.c.state[0].error_count>0 {return;}id:=head;
  while id!=0 {
   if id<2 || id>b.c.state[0].used {CK_resource(b.c,b.state[0].loc);return;}n:=b.c.nodes[id];owner:=ifx n.kind==CK_Tag.check then n.a else id;
@@ -308,8 +308,8 @@ CR_walk :: (r:CR_Context,head:int,instances:bool,seed:bool) {
   if b.c.state[0].fatal || b.c.state[0].error_count>0 {return;}CB_close(b);id=ifx instances then n.chain else n.next;
  }
 }
-CR_workspace_admitted :: (effect_count:int,report_count:int)->bool {return effect_count>=128 && effect_count<=16384 && report_count>=0 && report_count<=16384;}
-CR_execute :: (b:CB_Context,effects:[]CK_RetainEffect) {
+CR_workspace_admitted :: (effect_count:int,report_count:int)->bool #effects(all) {return effect_count>=128 && effect_count<=16384 && report_count>=0 && report_count<=16384;}
+CR_execute :: (b:CB_Context,effects:[]CK_RetainEffect) #effects(all) {
  c:=b.c;if !CR_workspace_admitted(effects.count,c.retain_reports.count) {CK_resource(c,CK_Loc.{line=1,column=1});return;}
  state:[1]CR_State;r:=CR_Context.{b=b,effects=effects,reports=c.retain_reports,state=state[..]};
  // Every eligible concrete body is eagerly seeded with relation=true before use.
@@ -320,7 +320,7 @@ CR_execute :: (b:CB_Context,effects:[]CK_RetainEffect) {
  // The final post-summary guard below still blocks public report publication.
  CR_walk(r,c.nodes[1].head,false,false);CR_walk(r,c.state[0].instances,true,false);if c.state[0].fatal || c.state[0].error_count>0 {return;}c.state[0].retain_report_count=state[0].reports;
 }
-CR_run :: (b:CB_Context) {
+CR_run :: (b:CB_Context) #effects(all) {
  b.c.state[0].retain_report_count=0;raw:=b;raw.retain_classes=false;
  // Reset only the committed type prefix; the type graph is frozen for this run.
  for type:1..<b.c.state[0].type_count {if !CB_tick(b,b.state[0].loc) {return;}b.c.types[type].retain_presence=0;b.c.types[type].retain_mutable=0;b.c.types[type].retain_join=0;b.c.types[type].retain_fields=0;CB_close(b);}

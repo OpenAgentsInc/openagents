@@ -1,7 +1,7 @@
 // Native-only capacity assertions over the real application. The C harness
 // owns these large buffers; the authority kernel is linked as a separate unit.
 #load "../../../apps/openagents-web/project.coax";
-project_capacity_choose_refused :: (t:[]Tree,w:[]Work,lv:[]Live,items:string)->bool #export_c {
+project_capacity_choose_refused :: (t:[]Tree,w:[]Work,lv:[]Live,items:string)->bool #export_c #effects(all) {
   w[0].baked=4;w[0].read=true;w[0].n=1;w[0].text="old-items";
   w[0].plans="old-plans";w[0].plan_info="old-info";w[0].details="old-details";w[0].log="old-log";
   w[0].links="old-links";w[0].name="Old project";w[0].slug="old";w[0].key="old-key";
@@ -17,7 +17,7 @@ project_capacity_choose_refused :: (t:[]Tree,w:[]Work,lv:[]Live,items:string)->b
   return true;
 }
 
-project_capacity_live_refused :: (lv:[]Live,w:[]Work,oversized:bool)->bool #export_c {
+project_capacity_live_refused :: (lv:[]Live,w:[]Work,oversized:bool)->bool #export_c #effects(all) {
   w[0].read=true;w[0].n=7;w[0].text="old-items";w[0].plans="old-plans";
   w[0].plan_info="old-info";w[0].details="old-details";w[0].log="old-log";
   w[0].name="Old project";w[0].slug="old";w[0].queue[0]=29;

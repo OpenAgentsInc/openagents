@@ -17,13 +17,13 @@
 #load "record-policy.coax";
 #load "camera-serve.coax";
 
-cxsock_host_push :: (byte: int) -> int #foreign;
-cxsock_connect_unix :: (timeout_ms: int) -> int #foreign;
-cxsock_write :: (h: int, byte: int) -> int #foreign;
-cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
-cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
-cxsock_byte :: (h: int, i: int) -> int #foreign;
-cxsock_close :: (h: int) -> int #foreign;
+cxsock_host_push :: (byte: int) -> int #foreign #effects(all);
+cxsock_connect_unix :: (timeout_ms: int) -> int #foreign #effects(all);
+cxsock_write :: (h: int, byte: int) -> int #foreign #effects(all);
+cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
+cxsock_read :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
+cxsock_byte :: (h: int, i: int) -> int #foreign #effects(all);
+cxsock_close :: (h: int) -> int #foreign #effects(all);
 
 CAM_USAGE :: "usage: coderos-camera [--json] serve | status | outputs | record start [<path>] | record stop | hands on | hands off | stop";
 CAM_ANSWER_MS :: 60000;
@@ -250,7 +250,7 @@ cam_speak :: (socket: string, line: string, out: [] u8) -> int {
 }
 cam_blank :: (s: string) -> bool { for c: s { if c != ' ' && c != '\t' && c != '\r' && c != '\n' { return false; } } return true; }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   json := false; words: [64] string; nw := 0;

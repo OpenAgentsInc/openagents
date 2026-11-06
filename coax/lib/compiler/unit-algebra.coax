@@ -99,13 +99,13 @@ UA_Result :: struct {status:Q_Status;unit:Q_Unit;}
 }
 
 // Implementation follows the independently stated checks above.
-UA_gcd :: (a:int,b:int)->int {
+UA_gcd :: (a:int,b:int)->int #effects(all) {
   // Private precondition: positive admitted scale products, at most 2^40.
   x:=a;y:=b;
   while y!=0 {remainder:=x%y;x=y;y=remainder;}
   return x;
 }
-UA_finish :: (dimensions:Q_Unit,numerator:int,denominator:int)->UA_Result {
+UA_finish :: (dimensions:Q_Unit,numerator:int,denominator:int)->UA_Result #effects(all) {
   // Inputs are already admitted. Only the newly composed dimensions and
   // reduced scale can fail. No unreduced product is tested against 2^20.
   if dimensions.mass< -8 || dimensions.mass>8 || dimensions.length< -8 || dimensions.length>8 ||
@@ -117,21 +117,21 @@ UA_finish :: (dimensions:Q_Unit,numerator:int,denominator:int)->UA_Result {
   unit:=dimensions;unit.numerator=n;unit.denominator=d;
   return UA_Result.{unit=unit};
 }
-UA_normalize :: (u:Q_Unit)->UA_Result #export_c {
+UA_normalize :: (u:Q_Unit)->UA_Result #export_c #effects(all) {
   if !Q_unit_valid(u) {return UA_Result.{status=Q_Status.metadata};}
   return UA_finish(u,u.numerator,u.denominator);
 }
-UA_product :: (a:Q_Unit,b:Q_Unit)->UA_Result #export_c {
+UA_product :: (a:Q_Unit,b:Q_Unit)->UA_Result #export_c #effects(all) {
   if !Q_unit_valid(a) || !Q_unit_valid(b) {return UA_Result.{status=Q_Status.metadata};}
   dimensions:=Q_Unit.{mass=a.mass+b.mass,length=a.length+b.length,time=a.time+b.time,angle=a.angle+b.angle};
   return UA_finish(dimensions,a.numerator*b.numerator,a.denominator*b.denominator);
 }
-UA_quotient :: (a:Q_Unit,b:Q_Unit)->UA_Result #export_c {
+UA_quotient :: (a:Q_Unit,b:Q_Unit)->UA_Result #export_c #effects(all) {
   if !Q_unit_valid(a) || !Q_unit_valid(b) {return UA_Result.{status=Q_Status.metadata};}
   dimensions:=Q_Unit.{mass=a.mass-b.mass,length=a.length-b.length,time=a.time-b.time,angle=a.angle-b.angle};
   return UA_finish(dimensions,a.numerator*b.denominator,a.denominator*b.numerator);
 }
-UA_ratio :: (source:Q_Unit,target:Q_Unit)->UA_Result #export_c {
+UA_ratio :: (source:Q_Unit,target:Q_Unit)->UA_Result #export_c #effects(all) {
   if !Q_unit_valid(source) || !Q_unit_valid(target) {return UA_Result.{status=Q_Status.metadata};}
   if source.mass!=target.mass || source.length!=target.length || source.time!=target.time || source.angle!=target.angle {
     return UA_Result.{status=Q_Status.dimension};

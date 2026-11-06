@@ -47,7 +47,7 @@ best_ms :: (argv: [] string, out: [] u8, err: [] u8) -> int {
   return best;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) != 2 { tool_errln("usage: stale-compiler.coax COAX_DIR COMPILER"); return 2; }
   coax := args_at(a[..], 0);

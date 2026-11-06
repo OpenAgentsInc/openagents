@@ -50,7 +50,7 @@ RI_NSD_DELETED :: 30; RI_NSD_NO_ROOM :: 31;
   for r: 0..<RS_REASONS { #assert ri_stored(r) == r; }
 }
 // The outcome of a store result r (a relay reason, or store_delete.coax's two).
-ri_stored :: (r: int) -> int {
+ri_stored :: (r: int) -> int #effects(all) {
   if r == RI_NSD_DELETED { return RI_DELETED; }
   if r == RI_NSD_NO_ROOM { return RI_NO_TOMBS; }
   return r;
@@ -58,7 +58,7 @@ ri_stored :: (r: int) -> int {
 
 // book:begin frame
 // The checks on a line before it is read as an event.
-ri_frame :: (line: string, ended: bool) -> int {
+ri_frame :: (line: string, ended: bool) -> int #effects(all) {
   if !ended { return RI_CUT; }
   if line.count == 0 { return RI_EMPTY; }
   if line.count > RI_LINE_MAX { return RI_LONG; }
@@ -66,7 +66,7 @@ ri_frame :: (line: string, ended: bool) -> int {
 }
 // The outcome of a read and verified line before the store: RS_ACCEPT means
 // "offer it to the store".
-ri_check :: (r: RsAdmit) -> int {
+ri_check :: (r: RsAdmit) -> int #effects(all) {
   if r.reason != RS_ACCEPT { return r.reason; }
   if r.kclass == RS_EPHEMERAL { return RI_EPHEMERAL; }
   return RS_ACCEPT;
@@ -90,16 +90,16 @@ ri_check :: (r: RsAdmit) -> int {
 
 // book:begin tally
 // Where the line starting at at ends: the index of its "\n", or export.count.
-ri_line_end :: (export: string, at: int) -> int {
+ri_line_end :: (export: string, at: int) -> int #effects(all) {
   to := at;
   while to < export.count && export[to] != '\n' { to += 1; }
   return to;
 }
 // Whether an outcome leaves the line's event where the old relay had it:
 // stored, already stored, or replaced by a newer version.
-ri_kept :: (o: int) -> bool { return o == RS_ACCEPT || o == RS_DUP || o == RS_SUPERSEDED; }
+ri_kept :: (o: int) -> bool #effects(all) { return o == RS_ACCEPT || o == RS_DUP || o == RS_SUPERSEDED; }
 // Counts one line's outcome o; the first refused line is remembered.
-ri_tally :: (rep: [] RiReport, o: int) {
+ri_tally :: (rep: [] RiReport, o: int) #effects(all) {
   rep[0].lines += 1;
   rep[0].count[o] += 1;
   if !ri_kept(o) && o != RS_EXPIRED && rep[0].first_refused == 0 { rep[0].first_refused = rep[0].lines; }
@@ -125,7 +125,7 @@ ri_tally :: (rep: [] RiReport, o: int) {
 // earlier deletion covers is refused: the old relay kept it), clean
 // otherwise. Expired events are dropped on purpose (the old relay no longer
 // serves them either).
-ri_verdict :: (rep: RiReport) -> int {
+ri_verdict :: (rep: RiReport) -> int #effects(all) {
   if rep.count[RI_CUT] > 0 || rep.count[RI_LONG] > 0 || rep.count[RS_FULL] > 0 || rep.count[RI_NO_TOMBS] > 0 { return RI_INCOMPLETE; }
   kept := rep.count[RS_ACCEPT] + rep.count[RS_DUP] + rep.count[RS_SUPERSEDED] + rep.count[RS_EXPIRED];
   if kept != rep.lines { return RI_REFUSED; }

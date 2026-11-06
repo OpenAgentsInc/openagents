@@ -28,11 +28,11 @@ GR_Q6_K :: 14;
 GR_LAYERS_MAX :: 128;
 
 // Slot of a tensor in the bound table: 0..2 are global, then nine a layer.
-gr_index :: (layer:int,slot:int)->int {return 3+layer*GR_SLOTS+slot;}
-gr_table_count :: (layers:int)->int {return 3+layers*GR_SLOTS;}
+gr_index :: (layer:int,slot:int)->int #effects(all) {return 3+layer*GR_SLOTS+slot;}
+gr_table_count :: (layers:int)->int #effects(all) {return 3+layers*GR_SLOTS;}
 // The matrix formats a projection may use, and the only format of a norm.
-gr_matrix_kind :: (kind:int)->bool {return kind==GR_Q8_0 || kind==GR_Q4_K || kind==GR_Q6_K;}
-gr_slot_norm :: (slot:int)->bool {return slot==0 || slot==5;}
+gr_matrix_kind :: (kind:int)->bool #effects(all) {return kind==GR_Q8_0 || kind==GR_Q4_K || kind==GR_Q6_K;}
+gr_slot_norm :: (slot:int)->bool #effects(all) {return slot==0 || slot==5;}
 
 #test "slots, kinds and names have fixed positions" {
     #assert gr_index(0,0)==3 && gr_index(1,0)==12 && gr_index(39,8)==362 && gr_table_count(40)==363;
@@ -43,8 +43,8 @@ gr_slot_norm :: (slot:int)->bool {return slot==0 || slot==5;}
     n=gr_layer_name(0,0,text[..]);#assert cast(string)text[0..<n]=="blk.0.attn_norm.weight";
     n=gr_layer_name(100,1,text[..]);#assert cast(string)text[0..<n]=="blk.100.attn_q.weight";
 }
-gr_put :: (out:[]u8,at:int,s:string)->int {for i:0..<s.count {out[at+i]=s[i];}return at+s.count;}
-gr_layer_name :: (layer:int,slot:int,out:[]u8)->int {
+gr_put :: (out:[]u8,at:int,s:string)->int #effects(all) {for i:0..<s.count {out[at+i]=s[i];}return at+s.count;}
+gr_layer_name :: (layer:int,slot:int,out:[]u8)->int #effects(all) {
     at:=gr_put(out,0,"blk.");digits:[8]u8;n:=0;v:=layer;
     while true {digits[n]=cast(u8)(48+v%10);n+=1;v/=10;if v==0 {break;}}
     for i:0..<n {out[at+i]=digits[n-1-i];}at+=n;out[at]='.';at+=1;
@@ -74,7 +74,7 @@ gr_layer_name :: (layer:int,slot:int,out:[]u8)->int {
     #assert gr_bind(h[0..<100],GR_TINY_BYTES,m[..],mw[..],t[..],tw[..],out[..]).status==GrStatus.header;
 }
 // A header with one f32 value replaced.
-gr_tiny_with :: (at:int,bits:u32,out:[]GrTensor)->GrBinding {
+gr_tiny_with :: (at:int,bits:u32,out:[]GrTensor)->GrBinding #effects(all) {
     h:=GR_TINY_HEADER;for i:0..<4 {h[at+i]=cast,trunc(u8)(bits>>cast(u32)(8*i));}
     m:[32]PgMeta;mw:[32]PgMeta;t:[32]PgTensor;tw:[32]PgTensor;return gr_bind(h[..],GR_TINY_BYTES,m[..],mw[..],t[..],tw[..],out);
 }
@@ -100,24 +100,24 @@ gr_tiny_with :: (at:int,bits:u32,out:[]GrTensor)->GrBinding {
 }
 // book:end bind-tests
 // Where `word` first starts in the tiny header.
-gr_seek :: (h:[]u8,word:string)->int {
+gr_seek :: (h:[]u8,word:string)->int #effects(all) {
     for i:0..<h.count-word.count {same:=true;for k:0..<word.count {if h[i+k]!=word[k] {same=false;break;}}if same {return i;}}
     return -1;
 }
 // The tiny model with `width` bytes of `bits` written at `delta` bytes after
 // the end of `word`: delta 4 is a key's value, -1 its last letter.
-gr_tiny_write :: (h:[]u8,word:string,delta:int,bits:u32,width:int) {
+gr_tiny_write :: (h:[]u8,word:string,delta:int,bits:u32,width:int) #effects(all) {
     at:=gr_seek(h,word)+word.count+delta;
     for i:0..<width {h[at+i]=ifx i<4 then cast,trunc(u8)(bits>>cast(u32)(8*i)) else 0;}
 }
-gr_tiny_patch :: (word:string,delta:int,bits:u32,width:int,file_bytes:int,out:[]GrTensor)->GrBinding {
+gr_tiny_patch :: (word:string,delta:int,bits:u32,width:int,file_bytes:int,out:[]GrTensor)->GrBinding #effects(all) {
     h:=GR_TINY_HEADER;gr_tiny_write(h[..],word,delta,bits,width);
     m:[32]PgMeta;mw:[32]PgMeta;t:[32]PgTensor;tw:[32]PgTensor;return gr_bind(h[..],file_bytes,m[..],mw[..],t[..],tw[..],out);
 }
-gr_tiny_set :: (key:string,bits:u32,out:[]GrTensor)->GrBinding {return gr_tiny_patch(key,4,bits,4,GR_TINY_BYTES,out);}
+gr_tiny_set :: (key:string,bits:u32,out:[]GrTensor)->GrBinding #effects(all) {return gr_tiny_patch(key,4,bits,4,GR_TINY_BYTES,out);}
 // The key's last letter becomes '_'.
-gr_tiny_rename :: (h:[]u8,key:string) {gr_tiny_write(h,key,-1,0x5f,1);}
-gr_tiny_drop :: (key:string,out:[]GrTensor)->GrBinding {
+gr_tiny_rename :: (h:[]u8,key:string) #effects(all) {gr_tiny_write(h,key,-1,0x5f,1);}
+gr_tiny_drop :: (key:string,out:[]GrTensor)->GrBinding #effects(all) {
     h:=GR_TINY_HEADER;gr_tiny_rename(h[..],key);
     m:[32]PgMeta;mw:[32]PgMeta;t:[32]PgTensor;tw:[32]PgTensor;return gr_bind(h[..],GR_TINY_BYTES,m[..],mw[..],t[..],tw[..],out);
 }
@@ -178,25 +178,25 @@ gr_tiny_drop :: (key:string,out:[]GrTensor)->GrBinding {
 }
 
 // book:begin metadata
-gr_find :: (meta:[]PgMeta,key:string)->int {for i:0..<meta.count {if meta[i].key==key {return i;}}return -1;}
+gr_find :: (meta:[]PgMeta,key:string)->int #effects(all) {for i:0..<meta.count {if meta[i].key==key {return i;}}return -1;}
 // An unsigned 32-bit key (GGUF type 4), or -1 when it is missing or of another type.
-gr_u32 :: (header:[]u8,meta:[]PgMeta,key:string)->int {
+gr_u32 :: (header:[]u8,meta:[]PgMeta,key:string)->int #effects(all) {
     i:=gr_find(meta,key);if i<0 || meta[i].kind!=4 {return -1;}
     return cast(int)pg_uint(PgCursor.{data=header,at=meta[i].begin},4).word;
 }
 // A binary32 key (GGUF type 6) as its bits; -1 when missing or of another type.
-gr_f32_bits :: (header:[]u8,meta:[]PgMeta,key:string)->int {
+gr_f32_bits :: (header:[]u8,meta:[]PgMeta,key:string)->int #effects(all) {
     i:=gr_find(meta,key);if i<0 || meta[i].kind!=6 {return -1;}
     return cast(int)pg_uint(PgCursor.{data=header,at=meta[i].begin},4).word;
 }
-gr_string_is :: (header:[]u8,meta:[]PgMeta,key:string,want:string)->bool {
+gr_string_is :: (header:[]u8,meta:[]PgMeta,key:string,want:string)->bool #effects(all) {
     i:=gr_find(meta,key);if i<0 || meta[i].kind!=8 {return false;}
     return pg_string(PgCursor.{data=header,at=meta[i].begin},header.count).text==want;
 }
 // An array key of one item type: its element count and where the first
 // element starts, or count -1.
 GrArray :: struct {count:int;first:int;}
-gr_array :: (header:[]u8,meta:[]PgMeta,key:string,item:int)->GrArray {
+gr_array :: (header:[]u8,meta:[]PgMeta,key:string,item:int)->GrArray #effects(all) {
     i:=gr_find(meta,key);if i<0 || meta[i].kind!=9 {return GrArray.{count= -1};}
     c:=pg_atom(PgCursor.{data=header,at=meta[i].begin},9);
     if c.status!=PgStatus.ok || c.item!=item {return GrArray.{count= -1};}
@@ -206,12 +206,12 @@ gr_array :: (header:[]u8,meta:[]PgMeta,key:string,item:int)->GrArray {
 
 GR_ONE_BITS :: 0x3f800000;
 // A norm is one row of cols values; a projection is rows by cols.
-gr_dims_are :: (x:PgTensor,norm:bool,cols:int,rows:int)->bool {
+gr_dims_are :: (x:PgTensor,norm:bool,cols:int,rows:int)->bool #effects(all) {
     if norm {return x.rank==1 && x.dims[0]==cols;}
     return x.rank==2 && x.dims[0]==cols && x.dims[1]==rows;
 }
 // book:begin bind
-gr_bind :: (header:[]u8,file_bytes:int,meta:[]PgMeta,meta_work:[]PgMeta,tensors:[]PgTensor,tensor_work:[]PgTensor,out:[]GrTensor)->GrBinding #export_c {
+gr_bind :: (header:[]u8,file_bytes:int,meta:[]PgMeta,meta_work:[]PgMeta,tensors:[]PgTensor,tensor_work:[]PgTensor,out:[]GrTensor)->GrBinding #export_c #effects(all) {
     r:=pg_read(header,file_bytes,meta,meta_work,tensors,tensor_work,false);
     if r.status!=PgStatus.ok {return GrBinding.{status=GrStatus.header,cause=cast(int)(cast(u8)r.status)};}
     m:=meta[0..<r.metadata];t:=tensors[0..<r.tensors];

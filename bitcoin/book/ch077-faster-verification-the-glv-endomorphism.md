@@ -96,7 +96,7 @@ product, and adds bit 383 to round:
 ```jai
 // round(k·g / 2^384) for k < n and a 256-bit g: the top 128 bits of the
 // 512-bit product, plus bit 383 to round. The result fits in 129 bits.
-glv_mul_shift_vartime :: (k: ScScalar, g: ScScalar) -> ScScalar {
+glv_mul_shift_vartime :: (k: ScScalar, g: ScScalar) -> ScScalar #effects(all) {
   wide: [16] u32;
   for i: 0..<8 {
     carry := cast(u64) 0;
@@ -126,7 +126,7 @@ point instead of the scalar:
 // k = r1 + λ·r2 (mod n), with r1 and r2 each within 2^128 of 0 or of n
 // (libsecp256k1's secp256k1_scalar_split_lambda). c1 and c2 estimate
 // k·b2/n and k·(-b1)/n, so r2 = -(c1·b1 + c2·b2) and r1 = k - λ·r2.
-glv_split_vartime :: (k: ScScalar) -> GlvSplit {
+glv_split_vartime :: (k: ScScalar) -> GlvSplit #effects(all) {
   key := sc_normalize(k);
   c1 := sc_mul(glv_mul_shift_vartime(key, GLV_G1), GLV_MINUS_B1);
   c2 := sc_mul(glv_mul_shift_vartime(key, GLV_G2), GLV_MINUS_B2);
@@ -136,7 +136,7 @@ glv_split_vartime :: (k: ScScalar) -> GlvSplit {
 }
 // The shorter of r and n - r, and which one it is. After a split, the value
 // is below 2^128; a negative half negates its point instead.
-glv_half_vartime :: (r: ScScalar) -> GlvHalf {
+glv_half_vartime :: (r: ScScalar) -> GlvHalf #effects(all) {
   wide: [9] u32; carry: u32;
   for i: 0..<8 { wide[i] = (r.limbs[i] << 1) | carry; carry = r.limbs[i] >> 31; }
   wide[8] = carry;
@@ -159,17 +159,17 @@ multiplications once `P`'s odd multiples are built:
 ```jai
 // λ·P = (β·x, y). In Jacobian coordinates x = X/Z², so βX does the same.
 // Infinity stays the canonical infinity.
-glv_lambda_point :: (point: SgPoint) -> SgPoint {
+glv_lambda_point :: (point: SgPoint) -> SgPoint #effects(all) {
   r := sg_normalize(point); r.x = sf_normalize(sf_multiply(r.x, GLV_BETA));
   return sg_canonical_infinity(r);
 }
-glv_lambda_table :: (table: [8] SgPoint) -> [8] SgPoint {
+glv_lambda_table :: (table: [8] SgPoint) -> [8] SgPoint #effects(all) {
   r: [8] SgPoint;
   for i: 0..<8 { r[i] = glv_lambda_point(table[i]); }
   return r;
 }
 // P, 3P, ..., 15P, normalized so that negating y needs no reduction.
-glv_odd_table_vartime :: (point: SgPoint) -> [8] SgPoint {
+glv_odd_table_vartime :: (point: SgPoint) -> [8] SgPoint #effects(all) {
   table := sm_odd_table_vartime(point);
   for i: 0..<8 { table[i] = sg_normalize(table[i]); }
   return table;
@@ -192,7 +192,7 @@ term:
 ```jai
 // Add the term for one signed digit d: |d|·T from the odd table, negated
 // when d and the half's sign differ.
-glv_add_digit :: (result: SgPoint, table: [8] SgPoint, digit: int, negative: bool) -> SgPoint {
+glv_add_digit :: (result: SgPoint, table: [8] SgPoint, digit: int, negative: bool) -> SgPoint #effects(all) {
   d := ifx negative then -digit else digit;
   selected := table[((ifx d < 0 then -d else d) - 1) / 2];
   if d < 0 { selected.y = sf_negate(selected.y); }
@@ -201,7 +201,7 @@ glv_add_digit :: (result: SgPoint, table: [8] SgPoint, digit: int, negative: boo
 // a·G + b·P with a = a1 + λ·a2 and b = b1 + λ·b2: four width-5 wNAFs of
 // at most 129 digits over G, λG, P and λP, sharing one chain of doublings
 // (Strauss, also called Shamir's trick). P must be valid.
-glv_ecmult_counted_vartime :: (a: ScScalar, point: SgPoint, b: ScScalar) -> GlvCount {
+glv_ecmult_counted_vartime :: (a: ScScalar, point: SgPoint, b: ScScalar) -> GlvCount #effects(all) {
   p_table := glv_odd_table_vartime(point); l_table := glv_lambda_table(p_table);
   sa := glv_split_vartime(a); sb := glv_split_vartime(b);
   a1 := glv_half_vartime(sa.r1); a2 := glv_half_vartime(sa.r2);
@@ -224,7 +224,7 @@ glv_ecmult_counted_vartime :: (a: ScScalar, point: SgPoint, b: ScScalar) -> GlvC
 }
 // The same result as chapter 16's ecmult_vartime, with an invalid point
 // refused the same way.
-ecmult_glv_vartime :: (a: ScScalar, point: SgPoint, b: ScScalar) -> SgResult #export_c {
+ecmult_glv_vartime :: (a: ScScalar, point: SgPoint, b: ScScalar) -> SgResult #export_c #effects(all) {
   if sg_valid_mask(point) != CB_MAX64 { return SgResult.{value=sg_infinity()}; }
   return SgResult.{value=glv_ecmult_counted_vartime(a, point, b).value,ok=true};
 }

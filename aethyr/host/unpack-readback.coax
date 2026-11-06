@@ -16,7 +16,7 @@ hu_unpack :: (source:[]u8,format:int,out:[]u8) {
     for k:0..<4 {out[at+k]=cast,trunc(u8)(bits>>(8*k));}
   }}
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {tool_errln("usage: unpack-readback INPUT FORMAT NEW_RGBA32F");return 2;}
   source:=args_at(a[..],0);format:=cf_format(args_at(a[..],1));out:=args_at(a[..],2);size:=fs_size(source);
   if format<0 || size<1 || size%cf_stride(format)!=0 || fs_exists(out) || !fs_write(out,"") {return 2;}

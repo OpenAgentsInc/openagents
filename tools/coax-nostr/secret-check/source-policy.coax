@@ -8,4 +8,4 @@
  #assert audit_source_token_allowed(false,"if") && audit_source_token_allowed(false,"#if");
  #assert !audit_source_token_allowed(true,"if");
 }
-audit_source_token_allowed :: (directive:bool,text:string)->bool #export_c {return !directive || text!="if";}
+audit_source_token_allowed :: (directive:bool,text:string)->bool #export_c #effects(all) {return !directive || text!="if";}

@@ -40,7 +40,7 @@ route_body :: (b: [] SoBody, buf: [] u8, state: string) {
 
 // Asks Mammoth. The checked response goes in out and its length is returned;
 // on a failure the reason goes in out and its length is returned negated.
-coaxial_route :: (state: string, out: [] u8, scratch: [] u8, err: [] u8) -> int #export_c {
+coaxial_route :: (state: string, out: [] u8, scratch: [] u8, err: [] u8) -> int #export_c #effects(all) {
   buf: [16384] u8;
   b: [1] SoBody;
   route_body(b[..], buf[..], state);

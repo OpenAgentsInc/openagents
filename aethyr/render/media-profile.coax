@@ -22,12 +22,12 @@ RenderMediaEntry :: struct {
   #assert render_media_use(-1).resource == -1 && render_media_use(3).resource == -1;
   #assert render_media_use(-1).slot == -1 && render_media_use(3).slot == -1;
 }
-render_media_entry :: ()->RenderMediaEntry {
+render_media_entry :: ()->RenderMediaEntry #effects(all) {
   return RenderMediaEntry.{valid=true,source="aethyr/render/media.coax",vertex="media_vs",fragment="media_fs",wgsl_vertex="vs",wgsl_fragment="fs",binding_set=2,wgsl_file="media.wgsl"};
 }
-render_media_binding_count :: ()->int {return 3;}
-render_media_use_count :: ()->int {return 3;}
-render_media_binding :: (i:int)->bindings.RenderBinding {
+render_media_binding_count :: ()->int #effects(all) {return 3;}
+render_media_use_count :: ()->int #effects(all) {return 3;}
+render_media_binding :: (i:int)->bindings.RenderBinding #effects(all) {
   rows:=[3]bindings.RenderBinding.[
     bindings.RenderBinding.{name="u",kind=bindings.RenderResourceKind.uniform,stride=4,uniform_vec4s=2},
     bindings.RenderBinding.{name="media_image",kind=bindings.RenderResourceKind.image2d,binding=1},
@@ -35,7 +35,7 @@ render_media_binding :: (i:int)->bindings.RenderBinding {
   if i<0 || i>=3 {return bindings.RenderBinding.{kind=bindings.RenderResourceKind.invalid};}
   return rows[i];
 }
-render_media_use :: (i:int)->bindings.RenderUse {
+render_media_use :: (i:int)->bindings.RenderUse #effects(all) {
   rows:=[3]bindings.RenderUse.[
     bindings.RenderUse.{native_kind=1,stride=4,stages=3},
     bindings.RenderUse.{resource=1,slot=1,native_kind=2,stages=2},
@@ -52,13 +52,13 @@ RenderMediaQuad :: struct {corners:[6]RenderMediaCorner;}
  #assert render_media_vertex_count()==6 && p.corners.count==6;
  for j:0..<6 {#assert f32_bits(p.corners[j].x)==f32_bits(x[j]) && f32_bits(p.corners[j].y)==f32_bits(y[j]);}
 }
-render_media_quad :: ()->RenderMediaQuad {
+render_media_quad :: ()->RenderMediaQuad #effects(all) {
  return RenderMediaQuad.{corners=[6]RenderMediaCorner.[RenderMediaCorner.{x=0,y=0},RenderMediaCorner.{x=1,y=0},RenderMediaCorner.{x=0,y=1},RenderMediaCorner.{x=0,y=1},RenderMediaCorner.{x=1,y=0},RenderMediaCorner.{x=1,y=1}]};
 }
-render_media_vertex_count :: ()->int {return RenderMediaQuad.{}.corners.count;}
+render_media_vertex_count :: ()->int #effects(all) {return RenderMediaQuad.{}.corners.count;}
 
 RenderMediaEffects :: struct {format:string;premultiplied_alpha:bool;resize_quality:string;}
 #test "media image uploads preserve the declared legacy colour and alpha representation" {
  rme_effects:=render_media_effects();#assert rme_effects.format=="rgba8unorm" && !rme_effects.premultiplied_alpha && rme_effects.resize_quality=="high";
 }
-render_media_effects :: ()->RenderMediaEffects {return RenderMediaEffects.{format="rgba8unorm",premultiplied_alpha=false,resize_quality="high"};}
+render_media_effects :: ()->RenderMediaEffects #effects(all) {return RenderMediaEffects.{format="rgba8unorm",premultiplied_alpha=false,resize_quality="high"};}

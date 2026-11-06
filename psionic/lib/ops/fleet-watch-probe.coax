@@ -19,7 +19,7 @@
   no:=pd_swap(second[..],MF_RESPONSE,"\"choice\":\"yes\"","\"choice\":\"no\"");
   #assert !fw_probe_success(MF_CALL,no,MF_ID,PB_KEY,"studio-gpu");
 }
-fw_probe_success :: (request:string,response:string,identity:string,provider:string,slug:string)->bool #export_c {
+fw_probe_success :: (request:string,response:string,identity:string,provider:string,slug:string)->bool #export_c #effects(all) {
   storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);
   r:=sv_decode(request,pools);
   if r.code!=SvCode.none {return false;}

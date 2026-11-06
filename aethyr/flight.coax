@@ -36,7 +36,7 @@ FlightTurn :: struct { vy: f32; beat: bool; diving: bool; }
 
 // ---- checks, authored before the rule
 
-flight_fairy_profile :: () -> FlightProfile { return flight_profile_lookup("fairy-forest"); }
+flight_fairy_profile :: () -> FlightProfile #effects(all) { return flight_profile_lookup("fairy-forest"); }
 
 #test "Fairy Forest's flight keeps the numbers its face flew by" {
   p := flight_fairy_profile();
@@ -173,15 +173,15 @@ flight_fairy_profile :: () -> FlightProfile { return flight_profile_lookup("fair
 
 // ---- the rule
 
-flight_finite :: (a: f32) -> bool { return a == a && a > -f32(FLIGHT_LIMIT) && a < f32(FLIGHT_LIMIT); }
-flight_profile_ok :: (p: FlightProfile) -> bool {
+flight_finite :: (a: f32) -> bool #effects(all) { return a == a && a > -f32(FLIGHT_LIMIT) && a < f32(FLIGHT_LIMIT); }
+flight_profile_ok :: (p: FlightProfile) -> bool #effects(all) {
   values := [6] f32.[p.flap_up, p.flap_keep, p.climb, p.glide, p.dive, p.ceiling];
   for i: 0..<6 { if !flight_finite(values[i]) { return false; } }
   return p.flap_up >= 0 && p.flap_keep >= 0 && p.flap_keep <= 1 && p.climb >= 0 && p.glide <= 0 && p.dive <= 0 && p.ceiling >= 0;
 }
 
 // The realms that fly, by the names the walker's realm lookup takes (aethyr/collision-profiles.coax).
-flight_profile_lookup :: (name: string) -> FlightProfile {
+flight_profile_lookup :: (name: string) -> FlightProfile #effects(all) {
   p: FlightProfile;
   if name == "fairy-forest" || name == "fairy" { p.on = true; }
   return p;
@@ -191,7 +191,7 @@ flight_profile_lookup :: (name: string) -> FlightProfile {
 // One step in the air: vy is your vertical speed after gravity, y your feet. A beat (a press
 // taken this step) lifts you, a held jump climbs, between beats you glide, past the ceiling a
 // rise stops, and a held dive folds the wings unless this step beat.
-flight_vertical :: (p: FlightProfile, vy: f32, y: f32, beat: bool, climb: bool, dive: bool, wings: bool) -> FlightTurn {
+flight_vertical :: (p: FlightProfile, vy: f32, y: f32, beat: bool, climb: bool, dive: bool, wings: bool) -> FlightTurn #effects(all) {
   out := FlightTurn.{vy = vy};
   if !flight_profile_ok(p) { return out; }
   v := ifx flight_finite(vy) then vy else 0.0f32;

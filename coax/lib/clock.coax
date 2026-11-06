@@ -52,25 +52,25 @@ DAY_NS :: 86400 * NS;
 Instant :: struct($C: copyable) { ns: s64; }
 
 // An instant on one clock, from its nanosecond count.
-sim_at :: (ns: s64) -> Instant(Sim) { r: Instant(Sim); r.ns = ns; return r; }
-steady_at :: (ns: s64) -> Instant(Steady) { r: Instant(Steady); r.ns = ns; return r; }
-civil_at :: (ns: s64) -> Instant(Civil) { r: Instant(Civil); r.ns = ns; return r; }
-utc_at :: (ns: s64) -> Instant(UTC) { r: Instant(UTC); r.ns = ns; return r; }
-tai_at :: (ns: s64) -> Instant(TAI) { r: Instant(TAI); r.ns = ns; return r; }
-tt_at :: (ns: s64) -> Instant(TT) { r: Instant(TT); r.ns = ns; return r; }
-tdb_at :: (ns: s64) -> Instant(TDB) { r: Instant(TDB); r.ns = ns; return r; }
+sim_at :: (ns: s64) -> Instant(Sim) #effects(all) { r: Instant(Sim); r.ns = ns; return r; }
+steady_at :: (ns: s64) -> Instant(Steady) #effects(all) { r: Instant(Steady); r.ns = ns; return r; }
+civil_at :: (ns: s64) -> Instant(Civil) #effects(all) { r: Instant(Civil); r.ns = ns; return r; }
+utc_at :: (ns: s64) -> Instant(UTC) #effects(all) { r: Instant(UTC); r.ns = ns; return r; }
+tai_at :: (ns: s64) -> Instant(TAI) #effects(all) { r: Instant(TAI); r.ns = ns; return r; }
+tt_at :: (ns: s64) -> Instant(TT) #effects(all) { r: Instant(TT); r.ns = ns; return r; }
+tdb_at :: (ns: s64) -> Instant(TDB) #effects(all) { r: Instant(TDB); r.ns = ns; return r; }
 
-elapsed :: (later: Instant($C: copyable), earlier: Instant($C)) -> s64 {
+elapsed :: (later: Instant($C: copyable), earlier: Instant($C)) -> s64 #effects(all) {
   return later.ns - earlier.ns;
 }
 
-advance :: (at: Instant($C: copyable), ns: s64) -> Instant($C) {
+advance :: (at: Instant($C: copyable), ns: s64) -> Instant($C) #effects(all) {
   result := at;
   result.ns = at.ns + ns;
   return result;
 }
 
-seconds :: (ns: s64) -> units.Quantity(units.Second, f64) {
+seconds :: (ns: s64) -> units.Quantity(units.Second, f64) #effects(all) {
   return units.Quantity.{value = cast(f64) ns / 1000000000.0};
 }
 
@@ -83,7 +83,7 @@ Clock_Map :: struct($From: copyable, $To: copyable) { offset_ns: s64; source: u6
 
 Mapped :: struct($To: copyable) { at: Instant($To); source: u64; }
 
-map_clock :: (m: Clock_Map($From: copyable, $To: copyable), at: Instant($From)) -> Mapped($To) {
+map_clock :: (m: Clock_Map($From: copyable, $To: copyable), at: Instant($From)) -> Mapped($To) #effects(all) {
   result: Mapped($To);
   result.at.ns = at.ns + m.offset_ns;
   result.source = m.source;
@@ -101,7 +101,7 @@ Hold :: struct($T: copyable, $C: copyable) { value: $T; at: Instant($C); max_age
 // What a reader sees: the held value and its age, or why it can't have it.
 Held :: struct($T: copyable) { value: $T; age_ns: s64; error: Hold_Error; }
 
-hold_put :: (h: Hold($T: copyable, $C: copyable), value: $T, at: Instant($C)) -> Hold($T, $C) {
+hold_put :: (h: Hold($T: copyable, $C: copyable), value: $T, at: Instant($C)) -> Hold($T, $C) #effects(all) {
   result := h;
   result.value = value;
   result.at = at;
@@ -109,7 +109,7 @@ hold_put :: (h: Hold($T: copyable, $C: copyable), value: $T, at: Instant($C)) ->
   return result;
 }
 
-hold_get :: (h: Hold($T: copyable, $C: copyable), now: Instant($C)) -> Held($T) {
+hold_get :: (h: Hold($T: copyable, $C: copyable), now: Instant($C)) -> Held($T) #effects(all) {
   result: Held($T);
   if !h.written { result.error = Hold_Error.empty; return result; }
   age := now.ns - h.at.ns;
@@ -130,7 +130,7 @@ Rate_Task :: struct { period_ns: s64; phase_ns: s64; }
 // phases, it is the same on every run. A task with a period below one, or
 // more due tasks than out holds, traps. A task whose period is below one
 // never runs.
-schedule_due :: (tasks: [] Rate_Task, now: Instant(Sim), out: [] s64) -> s64 {
+schedule_due :: (tasks: [] Rate_Task, now: Instant(Sim), out: [] s64) -> s64 #effects(all) {
   count: s64 = 0;
   for i: 0..<tasks.count {
     t := tasks[i];
@@ -151,7 +151,7 @@ Scaled :: struct($To: copyable) { at: Instant($To); table: u64; error: Scale_Err
 
 // Days from 1970-01-01 to a proleptic Gregorian date (H. Hinnant's
 // days_from_civil), for years above -399,999.
-days_from_civil :: (year: s64, month: s64, day: s64) -> s64 {
+days_from_civil :: (year: s64, month: s64, day: s64) -> s64 #effects(all) {
   y := ifx month <= 2 then year - 1 else year;
   era := (y + 400000) / 400 - 1000;
   yoe := y - era * 400;
@@ -178,7 +178,7 @@ LEAP_TABLE_ID :: #run leap_table_id();
 LEAP_TABLE_START :: 63072000 * NS;
 LEAP_TABLE_END :: 1782604800 * NS;
 
-leap_table_id :: () -> u64 {
+leap_table_id :: () -> u64 #effects(all) {
   h: u64 = 14695981039346656037;
   for i: 0..<LEAPS.count {
     h = mul_wrap(h ^ cast(u64) LEAPS[i], 1099511628211);
@@ -188,7 +188,7 @@ leap_table_id :: () -> u64 {
 
 // UTC instants count POSIX nanoseconds: days of 86,400 s, so the leap second
 // itself (23:59:60) has no UTC instant here.
-utc_to_tai :: (at: Instant(UTC)) -> Scaled(TAI) {
+utc_to_tai :: (at: Instant(UTC)) -> Scaled(TAI) #effects(all) {
   result: Scaled(TAI);
   result.table = LEAP_TABLE_ID;
   if at.ns < LEAP_TABLE_START { result.error = Scale_Error.before_table; return result; }
@@ -203,7 +203,7 @@ utc_to_tai :: (at: Instant(UTC)) -> Scaled(TAI) {
 }
 
 // TT = TAI + 32.184 s exactly.
-tai_to_tt :: (at: Instant(TAI)) -> Instant(TT) {
+tai_to_tt :: (at: Instant(TAI)) -> Instant(TT) #effects(all) {
   result: Instant(TT);
   result.ns = at.ns + 32184000000;
   return result;
@@ -215,7 +215,7 @@ J2000_TT_NS :: #run days_from_civil(2000, 1, 1) * DAY_NS + 43200 * NS;
 // TDB - TT in nanoseconds: the series of USNO Circular 179, equation 2.6,
 // in Julian centuries T of TT from J2000.0. The circular gives it as good to
 // about 10 microseconds from 1600 to 2200.
-tdb_minus_tt_ns :: (at: Instant(TT)) -> s64 {
+tdb_minus_tt_ns :: (at: Instant(TT)) -> s64 #effects(all) {
   t := cast(f64) (at.ns - J2000_TT_NS) / (36525.0 * 86400.0 * 1000000000.0);
   s := 0.001657 * sin(628.3076 * t + 6.2401)
      + 0.000022 * sin(575.3385 * t + 4.2970)
@@ -227,7 +227,7 @@ tdb_minus_tt_ns :: (at: Instant(TT)) -> s64 {
   return cast(s64) floor(s * 1000000000.0 + 0.5);
 }
 
-tt_to_tdb :: (at: Instant(TT)) -> Instant(TDB) {
+tt_to_tdb :: (at: Instant(TT)) -> Instant(TDB) #effects(all) {
   result: Instant(TDB);
   result.ns = at.ns + tdb_minus_tt_ns(at);
   return result;
@@ -240,7 +240,7 @@ tt_to_tdb :: (at: Instant(TT)) -> Instant(TDB) {
 // a larger warp takes fewer steps and lands on every event all the same.
 // A product past s64 is capped at the event. A steady step or warp below
 // one, or an event already behind now, gives a step of zero.
-warp_step :: (now: Instant(Sim), steady_ns: s64, warp: s64, next_event: Instant(Sim)) -> s64 {
+warp_step :: (now: Instant(Sim), steady_ns: s64, warp: s64, next_event: Instant(Sim)) -> s64 #effects(all) {
   room := next_event.ns - now.ns;
   if steady_ns < 1 || warp < 1 || room < 1 { return 0; }
   if warp > room / steady_ns { return room; }
@@ -341,7 +341,7 @@ warp_step :: (now: Instant(Sim), steady_ns: s64, warp: s64, next_event: Instant(
 }
 
 // Reference: count days one year and one month at a time.
-naive_days :: (year: s64, month: s64, day: s64) -> s64 {
+naive_days :: (year: s64, month: s64, day: s64) -> s64 #effects(all) {
   lengths := [11] s64.[31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30];
   days: s64 = 0;
   for y: 1970..<year { days += ifx (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 then 366 else 365; }

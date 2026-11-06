@@ -80,7 +80,7 @@ ST_ONLINE :: 0; ST_DRAINING :: 1; ST_OFFLINE :: 2; ST_STALE :: 3;
   #assert land_capture_age(s[..])>=0;
   #assert coaxial_land_captured()>0;
 }
-coaxial_land_captured :: ()->int #export_c {return LAND_CAPTURED;}
+coaxial_land_captured :: ()->int #export_c #effects(all) {return LAND_CAPTURED;}
 pylon_active :: (status:int)->bool {return status==ST_ONLINE || status==ST_DRAINING;}
 land_beacon_state :: (status:int,demo:bool,valid_for:int,age:int,clock:bool)->int {
   return ifx !demo && (!clock || valid_for<0 || age>=valid_for) then ST_STALE else status;
@@ -90,7 +90,7 @@ land_capture_age :: (s:[]LandState)->int {
   return hi_int(0,s[0].wall-LAND_CAPTURED)+hi_int(0,elapsed);
 }
 // PAGE facts carry the browser's wall clock as a generic host effect.
-coaxial_land_message :: (s:[]LandState,kind:int,text:string) #export_c {
+coaxial_land_message :: (s:[]LandState,kind:int,text:string) #export_c #effects(all) {
   if s.count==1 && kind==LOCAL_KIND && text.count<=4096 {local_message(s[0].local[..],text);return;}
   if s.count==1 && kind==LOCAL_DESK_KIND {s[0].local[0].desk=text.count>=6 && text[0..<6]=="desk=1";return;}
   if s.count!=1 || kind!=600 || text.count>4096 {return;}
@@ -1779,7 +1779,7 @@ card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t
 
 // The homepage's Pylon board uses its existing verified watch and owned rows.
 NetworkCounts :: struct {online:int;free:int;draining:int;}
-network_counts :: (s:[]LandState)->NetworkCounts #export_c {
+network_counts :: (s:[]LandState)->NetworkCounts #export_c #effects(all) {
   result:NetworkCounts;now:=land_now(s);
   for i:0..<s[0].pylons {q:=s[0].pyl[i];until:=ifx q.live then q.valid_until else LAND_CAPTURED+q.valid_for;
     if q.status==ST_ONLINE && until>now {result.online+=1;result.free+=q.free;}
@@ -1926,7 +1926,7 @@ slot_of :: (s: [] LandState, id: int) -> int {
   for i: 0..<s[0].touches { if s[0].ids[i] == id { return i; } }
   return -1;
 }
-coaxial_land_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+coaxial_land_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   d := hi(s[0].dpr, 1);
   s[0].px = x; s[0].py = y; s[0].pointed = true;
@@ -2003,7 +2003,7 @@ coaxial_land_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int,
   return click(s, x, y);
 }
 // The wheel (and a trackpad's pinch) zooms toward the pointer.
-coaxial_land_wheel :: (s: [] LandState, dy: f32) #export_c {
+coaxial_land_wheel :: (s: [] LandState, dy: f32) #export_c #effects(all) {
   if s.count < 1 { return; }
   if s[0].card==CARD_NETWORK {s[0].network_scroll=clamp(s[0].network_scroll+dy,0,s[0].network_scroll_max);return;}
   take(s);
@@ -2013,7 +2013,7 @@ coaxial_land_wheel :: (s: [] LandState, dy: f32) #export_c {
   s[0].vel_x = 0; s[0].vel_z = 0;
 }
 KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;   // host.js KEYS
-coaxial_land_key :: (s: [] LandState, key: int, mods: int) -> bool #export_c {
+coaxial_land_key :: (s: [] LandState, key: int, mods: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   if key == KEY_ESCAPE && s[0].card != CARD_NONE { close_card(s); return true; }
   if s[0].card==CARD_NETWORK {if key==KEY_UP || key==KEY_DOWN {s[0].network_scroll=clamp(s[0].network_scroll+(ifx key==KEY_DOWN then 48 else -48),0,s[0].network_scroll_max);return true;}return false;}
@@ -2023,7 +2023,7 @@ coaxial_land_key :: (s: [] LandState, key: int, mods: int) -> bool #export_c {
   if key == KEY_ESCAPE && s[0].gal_sel >= 0 { s[0].gal_sel = -1; return true; }
   return false;
 }
-coaxial_land_cursor :: (s: [] LandState) -> int #export_c {
+coaxial_land_cursor :: (s: [] LandState) -> int #export_c #effects(all) {
   if s.count < 1 || s[0].touch || !s[0].pointed || (s[0].down && s[0].moved) { return 0; }
   x := s[0].px; y := s[0].py;
   if inside(s[0].network_box,x,y) {return 1;}
@@ -2036,13 +2036,13 @@ coaxial_land_cursor :: (s: [] LandState) -> int #export_c {
   if inside(s[0].playtest, x, y) || inside(s[0].walk_box, x, y) || pick(s, x, y).kind != CARD_NONE { return 1; }
   return 0;
 }
-coaxial_land_action :: (s: [] LandState) -> int #export_c {
+coaxial_land_action :: (s: [] LandState) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   // the Grid's edit layer's request (the doc picker and the like) when the page has none of its own
   if s[0].walking && s[0].action == 0 { e := redit_take_action(s[0].ed[..], s[0].outbox[..]); if e.kind != 0 { s[0].out_n = e.n; s[0].action = e.kind; } }
   return s[0].action;
 }
-coaxial_land_action_done :: (s: [] LandState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_land_action_done :: (s: [] LandState) #export_c #effects(all) { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
 
 // ---------------------------------------------------------------- the frame
 
@@ -2109,7 +2109,7 @@ land_status :: (s: [] LandState, capture: [] u8) -> int {
   return cn;
 }
 
-coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   f := land_begin(s, uniforms, width, height, dpr, dt, still);
   step := f.step; d := f.d; t := f.t; l := f.l; p := f.p; motion := f.motion;
@@ -2196,9 +2196,9 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   return v;
 }
 
-coaxial_land_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_land_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_land_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_land_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_land_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_land_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // ---------------------------------------------------------------- checks
 

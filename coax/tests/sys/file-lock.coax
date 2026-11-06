@@ -4,9 +4,9 @@
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/fs.coax";
 #load "../../lib/sys/proc.coax";
-cxproc_self_path :: (out: []u8) -> int #foreign;
-cxtool_out_flush :: () -> int #foreign;
-tool_main :: () -> int #export_c {
+cxproc_self_path :: (out: []u8) -> int #foreign #effects(all);
+cxtool_out_flush :: () -> int #foreign #effects(all);
+tool_main :: () -> int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) {return 1;}
   if args_at(args[..],0)=="try" {
     got:=fs_try_lock(args_at(args[..],1));expected:=args_at(args[..],2)=="yes";

@@ -291,7 +291,7 @@ SU_MAX_EXPORTS :: 512;
 #forall "execution and mutation obligations retain source ownership" authority:bool, entry:bool, mutation:bool {
  #assert SU_check_required(authority,entry,mutation)==(authority || (entry && mutation));
 }
-SU_check_required :: (authority:bool,entry:bool,mutation:bool)->bool #export_c {return authority || (entry && mutation);}
+SU_check_required :: (authority:bool,entry:bool,mutation:bool)->bool #export_c #effects(all) {return authority || (entry && mutation);}
 
 // Export lists: `#export a, b;` at file scope names declarations its logical
 // module makes visible to other modules. Error 1 is syntax, 2 capacity,
@@ -379,7 +379,7 @@ SU_check_required :: (authority:bool,entry:bool,mutation:bool)->bool #export_c {
  #assert SU_library_checks(root,authority,proto,alone)==(alone && !root && !authority && !proto);
 }
 // Implementations follow only after their checks have been written.
-SU_scan :: (tokens:[] SU_Token,out:[] SU_Load)->SU_Scan #export_c {
+SU_scan :: (tokens:[] SU_Token,out:[] SU_Load)->SU_Scan #export_c #effects(all) {
  r:SU_Scan;stack:[128] u32;depth:=0;i:=0;
  while i<tokens.count {
   t:=tokens[i];
@@ -420,7 +420,7 @@ SU_scan :: (tokens:[] SU_Token,out:[] SU_Load)->SU_Scan #export_c {
  if depth!=0 {r.balanced=false;}
  return r;
 }
-SU_exports :: (tokens:[] SU_Token,out:[] SU_Export)->SU_Exports #export_c {
+SU_exports :: (tokens:[] SU_Token,out:[] SU_Export)->SU_Exports #export_c #effects(all) {
  r:SU_Exports;depth:=0;i:=0;
  while i<tokens.count {
   t:=tokens[i];
@@ -449,7 +449,7 @@ SU_exports :: (tokens:[] SU_Token,out:[] SU_Export)->SU_Exports #export_c {
 // A check with no block, or a block the tokens end inside, is no span: the
 // parser reports it. Each unit balances its own delimiters, so a composed
 // program's tokens scan as well as one unit's.
-SU_check_spans :: (tokens:[] SU_Token,out:[] SU_CheckSpan)->int #export_c {
+SU_check_spans :: (tokens:[] SU_Token,out:[] SU_CheckSpan)->int #export_c #effects(all) {
  n:=0;depth:=0;i:=0;
  while i<tokens.count {
   t:=tokens[i];
@@ -474,18 +474,18 @@ SU_check_spans :: (tokens:[] SU_Token,out:[] SU_CheckSpan)->int #export_c {
 // never the entry unit's, nor those of a unit whose load closure has an
 // #authority unit (its checks may count toward that unit's coverage) or an
 // #import_proto; otherwise when they checked in the unit's own closure.
-SU_library_checks :: (root:bool,authority:bool,proto:bool,alone:bool)->bool #export_c {
+SU_library_checks :: (root:bool,authority:bool,proto:bool,alone:bool)->bool #export_c #effects(all) {
  return alone && !root && !authority && !proto;
 }
-SU_admit :: (units:int,depth:int,total:int,bytes:int)->bool #export_c {
+SU_admit :: (units:int,depth:int,total:int,bytes:int)->bool #export_c #effects(all) {
  return units>=0 && units<SU_MAX_UNITS && depth>=0 && depth<SU_MAX_DEPTH && total>=0 && bytes>=0 && bytes<=SU_MAX_BYTES-total;
 }
-SU_unit_limit :: ()->int #export_c {return SU_MAX_UNITS;}
-SU_depth_limit :: ()->int #export_c {return SU_MAX_DEPTH;}
-SU_byte_limit :: ()->int #export_c {return SU_MAX_BYTES;}
-SU_load_limit :: ()->int #export_c {return SU_MAX_LOADS;}
-SU_export_limit :: ()->int #export_c {return SU_MAX_EXPORTS;}
-SU_visit :: (paths:[] string,states:[] u8,path:string)->SU_Visit #export_c {
+SU_unit_limit :: ()->int #export_c #effects(all) {return SU_MAX_UNITS;}
+SU_depth_limit :: ()->int #export_c #effects(all) {return SU_MAX_DEPTH;}
+SU_byte_limit :: ()->int #export_c #effects(all) {return SU_MAX_BYTES;}
+SU_load_limit :: ()->int #export_c #effects(all) {return SU_MAX_LOADS;}
+SU_export_limit :: ()->int #export_c #effects(all) {return SU_MAX_EXPORTS;}
+SU_visit :: (paths:[] string,states:[] u8,path:string)->SU_Visit #export_c #effects(all) {
  if paths.count!=states.count {return SU_Visit.{action=3};}
  for i:0..<paths.count {
   if paths[i]==path {
@@ -496,7 +496,7 @@ SU_visit :: (paths:[] string,states:[] u8,path:string)->SU_Visit #export_c {
  }
  return SU_Visit.{};
 }
-SU_module_valid :: (id:string)->bool #export_c {
+SU_module_valid :: (id:string)->bool #export_c #effects(all) {
  if id.count==0 || id.count>128 {return false;}
  start:=true;
  for c:id {
@@ -507,7 +507,7 @@ SU_module_valid :: (id:string)->bool #export_c {
  }
  return !start;
 }
-SU_ident_valid :: (name:string)->bool #export_c {
+SU_ident_valid :: (name:string)->bool #export_c #effects(all) {
  if name.count==0 || name.count>255 {return false;}
  for c, i:name {
   alpha:=(c>='a' && c<='z') || (c>='A' && c<='Z') || c=='_';
@@ -515,21 +515,21 @@ SU_ident_valid :: (name:string)->bool #export_c {
  }
  return true;
 }
-SU_path_file :: (path:string)->bool #export_c {
+SU_path_file :: (path:string)->bool #export_c #effects(all) {
  return path.count>5 && path[path.count-5..<path.count]==".coax";
 }
-SU_owner_join :: (current:int,reaching:int)->int #export_c {
+SU_owner_join :: (current:int,reaching:int)->int #export_c #effects(all) {
  if current== -2 || reaching<0 || current==reaching {return current;}
  if current== -1 {return reaching;}
  return -2;
 }
-SU_claim_index :: (claims:[] string,id:string)->int #export_c {
+SU_claim_index :: (claims:[] string,id:string)->int #export_c #effects(all) {
  for c, i:claims {if c.count!=0 && c==id {return i;}}
  return -1;
 }
 SU_DECL_PREFIX :: "coax.decl.v1:";
 SU_DECL_KINDS :: [4] string.["proc","struct","enum","const"];
-SU_decl_id :: (module:string,kind:u8,name:string,out:[] u8)->int #export_c {
+SU_decl_id :: (module:string,kind:u8,name:string,out:[] u8)->int #export_c #effects(all) {
  if !SU_module_valid(module) || kind>=4 || !SU_ident_valid(name) {return -1;}
  k:=SU_DECL_KINDS[kind];
  if out.count<SU_DECL_PREFIX.count+module.count+k.count+name.count+2 {return -1;}
@@ -542,12 +542,12 @@ SU_decl_id :: (module:string,kind:u8,name:string,out:[] u8)->int #export_c {
  for c:name {out[n]=c;n+=1;}
  return n;
 }
-SU_digest_valid :: (d:string)->bool #export_c {
+SU_digest_valid :: (d:string)->bool #export_c #effects(all) {
  if d.count!=64 {return false;}
  for c:d {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
  return true;
 }
-SU_digest_cmp :: (a:string,b:string)->int #export_c {
+SU_digest_cmp :: (a:string,b:string)->int #export_c #effects(all) {
  for c, i:a {
   if i>=b.count {return 1;}
   if c<b[i] {return -1;}
@@ -556,7 +556,7 @@ SU_digest_cmp :: (a:string,b:string)->int #export_c {
  if a.count<b.count {return -1;}
  return 0;
 }
-SU_digests_sorted :: (ds:[] string)->bool #export_c {
+SU_digests_sorted :: (ds:[] string)->bool #export_c #effects(all) {
  for d, i:ds {
   if !SU_digest_valid(d) {return false;}
   if i>0 && SU_digest_cmp(ds[i-1],d)>0 {return false;}
@@ -564,7 +564,7 @@ SU_digests_sorted :: (ds:[] string)->bool #export_c {
  return true;
 }
 SU_REVISION_KINDS :: [2] string.["content","module"];
-SU_revision_text :: (kind:u8,own:[] string,deps:[] string,out:[] u8)->int #export_c {
+SU_revision_text :: (kind:u8,own:[] string,deps:[] string,out:[] u8)->int #export_c #effects(all) {
  if kind>=2 || !SU_digests_sorted(own) || !SU_digests_sorted(deps) {return -1;}
  head:="coax.revision.v1:";k:=SU_REVISION_KINDS[kind];
  if out.count<head.count+k.count+1+65*own.count+2+65*deps.count {return -1;}

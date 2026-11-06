@@ -141,29 +141,29 @@ Player :: struct {
 }
 // book:end state
 
-lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
-hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
-clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
-mix :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
-mix3 :: (a: Vec3, b: Vec3, t: f32) -> Vec3 {
+lo :: (a: f32, b: f32) -> f32 #effects(all) { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 #effects(all) { if a > b { return a; } return b; }
+clamp :: (a: f32, low: f32, high: f32) -> f32 #effects(all) { return lo(high, hi(low, a)); }
+mix :: (a: f32, b: f32, t: f32) -> f32 #effects(all) { return a + (b - a) * t; }
+mix3 :: (a: Vec3, b: Vec3, t: f32) -> Vec3 #effects(all) {
   return Vec3.{x = mix(a.x, b.x, t), y = mix(a.y, b.y, t), z = mix(a.z, b.z, t)};
 }
-finite :: (a: f32) -> bool { return a == a && a < 1000000.0 && a > -1000000.0; }
+finite :: (a: f32) -> bool #effects(all) { return a == a && a < 1000000.0 && a > -1000000.0; }
 // Strict sign decisions are shared by quadrant selection and view changes;
 // neither signed zero is negative, and an unordered value is not negative.
-player_negative :: (value: f32) -> bool { return value < 0; }
+player_negative :: (value: f32) -> bool #effects(all) { return value < 0; }
 
 // An angle in [-PI, PI).
-wrap_angle :: (a: f32) -> f32 { return a - f32(TAU) * floor((a + f32(PI)) / f32(TAU)); }
+wrap_angle :: (a: f32) -> f32 #effects(all) { return a - f32(TAU) * floor((a + f32(PI)) / f32(TAU)); }
 
 // atan on [0, 1], within 2e-5 rad.
-atan_unit :: (t: f32) -> f32 {
+atan_unit :: (t: f32) -> f32 #effects(all) {
   s := t * t;
   return t * (0.99997726 + s * (-0.33262347 + s * (0.19354346 + s * (-0.11643287 + s * (0.05265332 + s * -0.01172120)))));
 }
 
 // The angle of (x, y) from +X, in [-PI, PI]; 0 for the origin.
-atan2 :: (y: f32, x: f32) -> f32 {
+atan2 :: (y: f32, x: f32) -> f32 #effects(all) {
   ax := abs(x); ay := abs(y);
   if ax == 0 && ay == 0 { return 0; }
   a := ifx ay > ax then f32(PI / 2) - atan_unit(ax / ay) else atan_unit(ay / ax);
@@ -176,26 +176,26 @@ atan2 :: (y: f32, x: f32) -> f32 {
 
 // The world as Aethyr's colliders: the ground, the walls as boxes, the bodies as capsules and
 // the floors (aethyr/query.coax).
-colliders :: (w: World) -> Colliders {
+colliders :: (w: World) -> Colliders #effects(all) {
   return Colliders.{ground = w.ground, boxes = w.walls, capsules = w.bodies, floors = w.floors, heightfields = w.heightfields};
 }
 // The floor under feet at (x, z): what they stand on (query_stand), the ground or the highest
 // wall top your capsule is over or floor you are over that is no more than STEP_UP above them.
-floor_at :: (w: World, x: f32, z: f32, feet: f32) -> f32 { return floor_under(w, x, z, feet).y; }
+floor_at :: (w: World, x: f32, z: f32, feet: f32) -> f32 #effects(all) { return floor_under(w, x, z, feet).y; }
 // The same with its slope (a wall's top and the ground are level).
 // book:begin ground
-floor_under :: (w: World, x: f32, z: f32, feet: f32) -> StandHit {
+floor_under :: (w: World, x: f32, z: f32, feet: f32) -> StandHit #effects(all) {
   g := query_ground(colliders(w), x, z, feet + w.collision.step_up, w.collision.radius);
   return StandHit.{y = g.y, gx = g.gx, gz = g.gz};
 }
 // book:end ground
 // The trusted adapters retain the old direct-helper contract, including large
 // moves used by tools and checks. The real fixed step uses collide_move below.
-collision_state :: (p: Player) -> CollideState { return CollideState.{feet = wp(p.pos), velocity = wp(p.vel)}; }
-collision_apply :: (p: Player, s: CollideState) -> Player {
+collision_state :: (p: Player) -> CollideState #effects(all) { return CollideState.{feet = wp(p.pos), velocity = wp(p.vel)}; }
+collision_apply :: (p: Player, s: CollideState) -> Player #effects(all) {
   next := p; next.pos = vp(s.feet); next.vel = vp(s.velocity); return next;
 }
-collision_report :: (p: Player, r: CollideResult) -> Player {
+collision_report :: (p: Player, r: CollideResult) -> Player #effects(all) {
   next := p;
   next.query_status = QueryStatus.ok;
   next.collision_status = r.status; next.collision_residual = r.residual;
@@ -203,29 +203,29 @@ collision_report :: (p: Player, r: CollideResult) -> Player {
   if r.status != CollideStatus.ok && next.collision_refusals < 18446744073709551615 { next.collision_refusals += 1; }
   return next;
 }
-floor_cuts :: (w: World, x: f32, z: f32, feet: f32) -> bool {
+floor_cuts :: (w: World, x: f32, z: f32, feet: f32) -> bool #effects(all) {
   return collide_floor_cuts(colliders(w), w.collision, world_point(x, feet, z));
 }
-off_floors :: (w: World, from: Player, p: Player) -> Player {
+off_floors :: (w: World, from: Player, p: Player) -> Player #effects(all) {
   return collision_apply(p, collide_floor_sides(colliders(w), w.collision, collision_state(from), collision_state(p)));
 }
 // book:begin walls
-out_of_walls :: (w: World, p: Player) -> Player {
+out_of_walls :: (w: World, p: Player) -> Player #effects(all) {
   return collision_apply(p, collide_walls(colliders(w), w.collision, collision_state(p)));
 }
 
 // book:end walls
 
-v3 :: (x: f32, y: f32, z: f32) -> Vec3 { return Vec3.{x = x, y = y, z = z}; }
-add :: (a: Vec3, b: Vec3) -> Vec3 { return v3(a.x + b.x, a.y + b.y, a.z + b.z); }
-sub :: (a: Vec3, b: Vec3) -> Vec3 { return v3(a.x - b.x, a.y - b.y, a.z - b.z); }
-times :: (a: Vec3, k: f32) -> Vec3 { return v3(a.x * k, a.y * k, a.z * k); }
-dot :: (a: Vec3, b: Vec3) -> f32 { return a.x * b.x + a.y * b.y + a.z * b.z; }
+v3 :: (x: f32, y: f32, z: f32) -> Vec3 #effects(all) { return Vec3.{x = x, y = y, z = z}; }
+add :: (a: Vec3, b: Vec3) -> Vec3 #effects(all) { return v3(a.x + b.x, a.y + b.y, a.z + b.z); }
+sub :: (a: Vec3, b: Vec3) -> Vec3 #effects(all) { return v3(a.x - b.x, a.y - b.y, a.z - b.z); }
+times :: (a: Vec3, k: f32) -> Vec3 #effects(all) { return v3(a.x * k, a.y * k, a.z * k); }
+dot :: (a: Vec3, b: Vec3) -> f32 #effects(all) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 
 // Compatibility for callers inspecting segment parameters. The actual closest
 // pair comes from Aethyr; recovering its parameters does not resolve contacts.
 Closest :: struct { s: f32; t: f32; p: Vec3; q: Vec3; }
-closest :: (p0: Vec3, p1: Vec3, q0: Vec3, q1: Vec3) -> Closest {
+closest :: (p0: Vec3, p1: Vec3, q0: Vec3, q1: Vec3) -> Closest #effects(all) {
   pair := collide_closest(wp(p0), wp(p1), wp(q0), wp(q1), 0.000001);
   out := Closest.{p = vp(pair.p), q = vp(pair.q)};
   first := sub(p1, p0); second := sub(q1, q0);
@@ -237,7 +237,7 @@ closest :: (p0: Vec3, p1: Vec3, q0: Vec3, q1: Vec3) -> Closest {
 
 // book:begin across
 // A trusted direct move, deliberately not the bounded fixed-step entry.
-move_across :: (w: World, p: Player, dx: f32, dz: f32) -> Player {
+move_across :: (w: World, p: Player, dx: f32, dz: f32) -> Player #effects(all) {
   next := collision_state(p); next.feet.x += dx; next.feet.z += dz;
   for pass: 0..<w.collision.max_passes {
     bodies := collide_bodies(colliders(w), w.collision, next, dx, dz);
@@ -252,27 +252,27 @@ move_across :: (w: World, p: Player, dx: f32, dz: f32) -> Player {
 // How far the camera may sit from target along offset (a unit direction)
 // before something is in the way, up to max: the room, and CAM_CLEAR short
 // of the nearest body the line crosses (aethyr/follow.coax follow_room).
-camera_room :: (w: World, target: Vec3, offset: Vec3, max: f32) -> f32 {
+camera_room :: (w: World, target: Vec3, offset: Vec3, max: f32) -> f32 #effects(all) {
   return follow_room(colliders(w), w.room, wp(target), wp(offset), max);
 }
 
 // The camera as Aethyr's follow (aethyr/follow.coax): the player keeps its camera's fields, as
 // the realms' C faces read them, and each call copies back the fields the follow moved.
-wp :: (v: Vec3) -> WorldPoint { return world_point(v.x, v.y, v.z); }
-vp :: (w: WorldPoint) -> Vec3 { return Vec3.{x = w.x, y = w.y, z = w.z}; }
-follow_of :: (p: Player) -> Follow {
+wp :: (v: Vec3) -> WorldPoint #effects(all) { return world_point(v.x, v.y, v.z); }
+vp :: (w: WorldPoint) -> Vec3 #effects(all) { return Vec3.{x = w.x, y = w.y, z = w.z}; }
+follow_of :: (p: Player) -> Follow #effects(all) {
   return Follow.{theta = p.theta, phi = p.phi, dist = p.dist, max_dist = p.max_dist, target = wp(p.target), vel = wp(p.spring_vel)};
 }
 
 // ---- The controller ----
 
-look_at :: (p: Player) -> Vec3 { return Vec3.{x = p.pos.x, y = p.pos.y + f32(LOOK_AT_HEIGHT), z = p.pos.z}; }
+look_at :: (p: Player) -> Vec3 #effects(all) { return Vec3.{x = p.pos.x, y = p.pos.y + f32(LOOK_AT_HEIGHT), z = p.pos.z}; }
 
-orbit_offset :: (p: Player) -> Vec3 {
+orbit_offset :: (p: Player) -> Vec3 #effects(all) {
   return vp(follow_offset(follow_of(p)));
 }
 
-place_in :: (w: World, x: f32, y: f32, z: f32, yaw: f32) -> Player {
+place_in :: (w: World, x: f32, y: f32, z: f32, yaw: f32) -> Player #effects(all) {
   p: Player;
   p.pos = Vec3.{x = x, y = y, z = z};
   p.face = wrap_angle(yaw);
@@ -286,7 +286,7 @@ place_in :: (w: World, x: f32, y: f32, z: f32, yaw: f32) -> Player {
 }
 
 // Stands at feet facing yaw, with the camera behind.
-walk_place :: (x: f32, y: f32, z: f32, yaw: f32) -> Player {
+walk_place :: (x: f32, y: f32, z: f32, yaw: f32) -> Player #effects(all) {
   w: World;
   return place_in(w, x, y, z, yaw);
 }
@@ -300,7 +300,7 @@ walk_place :: (x: f32, y: f32, z: f32, yaw: f32) -> Player {
 // single-sample primitive applies look immediately. Frame-driven consumers use
 // walk-control.coax's versioned sidecar; the Grid samples before calling here.
 walk_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
-                          run: bool, jump: bool, dyaw: f32, dpitch: f32) -> Player {
+                          run: bool, jump: bool, dyaw: f32, dpitch: f32) -> Player #effects(all) {
   next := p;
   next.key_x = clamp(key_x, -1, 1);
   next.key_y = clamp(key_y, -1, 1);
@@ -326,7 +326,7 @@ walk_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
 // the jump is held; one per frame, as the face counted them), whether you may beat and climb
 // now (`wings`) and the dive held.
 walk_fly_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32, run: bool, jump: bool,
-                   taps: int, wings: bool, dive: bool) -> Player {
+                   taps: int, wings: bool, dive: bool) -> Player #effects(all) {
   next := walk_input(p, key_x, key_y, pad_x, pad_y, run, jump, 0, 0);
   if taps > 0 && next.jumps.pressed == p.jumps.pressed {
     next.jumps = input_press(next.jumps);
@@ -336,11 +336,11 @@ walk_fly_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32, ru
   return next;
 }
 
-walk_runs :: (shift: bool, stick_run: bool, pad_x: f32, pad_y: f32) -> bool {
+walk_runs :: (shift: bool, stick_run: bool, pad_x: f32, pad_y: f32) -> bool #effects(all) {
   return input_runs(shift, stick_run, pad_x, pad_y);
 }
 // One frame's Intent (aethyr/input.coax), from the keyboard or the touch stick alike.
-walk_intent :: (p: Player, i: Intent) -> Player {
+walk_intent :: (p: Player, i: Intent) -> Player #effects(all) {
   return walk_input(p, 0, 0, i.move_x, i.move_y, i.run, i.jump, i.look_x, i.look_y);
 }
 
@@ -349,7 +349,7 @@ Wish :: struct { x: f32; z: f32; on: bool; }
 
 // Stick when it is past the dead zone, else keys, turned from the camera's
 // frame into the world's.
-wish :: (p: Player) -> Wish {
+wish :: (p: Player) -> Wish #effects(all) {
   ax := p.key_x; ay := p.key_y;
   if sqrt(p.pad_x * p.pad_x + p.pad_y * p.pad_y) > f32(DEAD_ZONE) { ax = p.pad_x; ay = p.pad_y; }
   size := sqrt(ax * ax + ay * ay);
@@ -369,7 +369,7 @@ wish :: (p: Player) -> Wish {
 // The motion your controls ask for, m/s on the flat: the wish at the pace you walk or run. A follow
 // camera turns toward this, not toward the velocity, which a wall, a push or a room server's
 // correction changes without you asking (#12777).
-walk_asked :: (p: Player) -> Vec3 {
+walk_asked :: (p: Player) -> Vec3 #effects(all) {
   w := wish(p);
   if !w.on { return Vec3.{}; }
   pace := ifx p.run then f32(RUN) else f32(WALK);
@@ -389,14 +389,14 @@ walk_asked :: (p: Player) -> Vec3 {
 
 // The library's spring: a critically damped follow of dest, per axis. It
 // returns the new position in x and the new velocity in y.
-spring_axis :: (cur: f32, vel: f32, dest: f32, dt: f32) -> Vec3 {
+spring_axis :: (cur: f32, vel: f32, dest: f32, dt: f32) -> Vec3 #effects(all) {
   a := follow_spring_axis(cur, vel, dest, dt);
   return Vec3.{x = a.at, y = a.vel, z = 0};
 }
 
 // book:begin take
 // One fixed step. It first takes a waiting jump press: from the ground, it jumps.
-step :: (w: World, given: Player, dt: f32) -> Player {
+step :: (w: World, given: Player, dt: f32) -> Player #effects(all) {
   if !locomotion_profile_ok(w.locomotion) || w.locomotion.run_speed * f32(STEP) > w.collision.max_travel {
     return collision_report(given, CollideResult.{state = collision_state(given), status = CollideStatus.bad_profile});
   }
@@ -509,7 +509,7 @@ step :: (w: World, given: Player, dt: f32) -> Player {
 // the step's result and the colliders and changes only the camera's fields, so the player's step
 // is the same with the camera or without it. The player keeps those fields because the realms'
 // C faces read them.
-camera_step :: (w: World, p: Player, dt: f32) -> Player {
+camera_step :: (w: World, p: Player, dt: f32) -> Player #effects(all) {
   next := p;
   cam := follow_track(follow_of(p), colliders(w), w.room, wp(look_at(p)), dt);
   next.target = vp(cam.target); next.spring_vel = vp(cam.vel); next.dist = cam.dist;
@@ -517,7 +517,7 @@ camera_step :: (w: World, p: Player, dt: f32) -> Player {
   return next;
 }
 // One fixed step of the player, then of its camera: what steps_in runs each step.
-step_once :: (w: World, p: Player, dt: f32) -> Player {
+step_once :: (w: World, p: Player, dt: f32) -> Player #effects(all) {
   next := step(w, p, dt);
   if next.collision_status != CollideStatus.ok { return next; }
   return camera_step(w, next, dt);
@@ -528,7 +528,7 @@ step_once :: (w: World, p: Player, dt: f32) -> Player {
 // Advances by a frame's time in fixed steps, on the player's clock (aethyr/loop.coax):
 // the frame's time is clamped, at most LOOP_MAX_STEPS run, and a longer backlog is
 // dropped, so a stall never makes a frame slower.
-advance_in :: (w: World, p: Player, frame: f32) -> Player {
+advance_in :: (w: World, p: Player, frame: f32) -> Player #effects(all) {
   return advance_traced(w, p, frame).player;
 }
 
@@ -536,7 +536,7 @@ AdvanceTrace :: struct { player: Player; count: int; targets: [LOOP_MAX_STEPS] S
 WalkSchedule :: struct { ok: bool; clock: FrameClock; count: int; }
 // A new walking frame starts from a paid fixed clock. Zeroed clock defaults
 // normalize through loop_accept, but a different positive period is refused.
-walk_schedule :: (clock: FrameClock, frame: f32) -> WalkSchedule {
+walk_schedule :: (clock: FrameClock, frame: f32) -> WalkSchedule #effects(all) {
   if (clock.step_ns > 0 && clock.step_ns != LOOP_STEP_NS) || clock.max_steps > LOOP_MAX_STEPS || clock.carry_ns < 0 || clock.carry_ns >= LOOP_STEP_NS || clock.due != 0 {
     return WalkSchedule.{};
   }
@@ -546,11 +546,11 @@ walk_schedule :: (clock: FrameClock, frame: f32) -> WalkSchedule {
   // make loop_accept's count lie in0..8, including normalized clock defaults.
   return WalkSchedule.{ok = true, clock = accepted, count = count};
 }
-walk_target :: (p: Player) -> StepTarget {
+walk_target :: (p: Player) -> StepTarget #effects(all) {
   return StepTarget.{feet = wp(p.pos), velocity = StepVelocity.{x = p.vel.x, y = p.vel.y, z = p.vel.z},
     face = p.face, act = cast(u8) p.act, collision_status = cast(u8) p.collision_status};
 }
-advance_traced :: (w: World, p: Player, frame: f32) -> AdvanceTrace {
+advance_traced :: (w: World, p: Player, frame: f32) -> AdvanceTrace #effects(all) {
   out := AdvanceTrace.{player = p};
   schedule := walk_schedule(p.clock, frame);
   if !schedule.ok {
@@ -565,14 +565,14 @@ advance_traced :: (w: World, p: Player, frame: f32) -> AdvanceTrace {
   next.clock = loop_ran(next.clock); out.player = next;
   return out;
 }
-history_step :: (w: World, p: Player) -> Player {
+history_step :: (w: World, p: Player) -> Player #effects(all) {
   next := p; next.prev_pos = p.pos; next.prev_target = p.target;
   next.prev_face = p.face; next.prev_dist = p.dist;
   return step_once(w, next, STEP);
 }
 // Runs n fixed steps (what a clock says are due), keeping where the last began, so the
 // frame interpolates between the last two.
-steps_in :: (w: World, p: Player, n: int) -> Player {
+steps_in :: (w: World, p: Player, n: int) -> Player #effects(all) {
   next := p;
   for i: 0..<n {
     next = history_step(w, next);
@@ -581,7 +581,7 @@ steps_in :: (w: World, p: Player, n: int) -> Player {
 }
 // book:end advance
 
-walk_advance :: (p: Player, frame: f32) -> Player {
+walk_advance :: (p: Player, frame: f32) -> Player #effects(all) {
   w: World;
   return advance_in(w, p, frame);
 }
@@ -589,14 +589,14 @@ walk_advance :: (p: Player, frame: f32) -> Player {
 // The same among bodies (BODY numbers each, as verse_cast_bodies writes
 // them) and walls (WALL numbers each, as verse_grid_walls writes them); a
 // partial last one is ignored.
-walk_advance_among :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32) -> Player {
+walk_advance_among :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32) -> Player #effects(all) {
   w: World;
   w.bodies = bodies;
   w.walls = walls;
   return advance_in(w, p, frame);
 }
 // And on floors (STAND_FLOATS numbers each, aethyr/stand.coax), on the same floor as the walls.
-walk_advance_on :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32) -> Player {
+walk_advance_on :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32) -> Player #effects(all) {
   w: World;
   w.bodies = bodies;
   w.walls = walls;
@@ -606,10 +606,10 @@ walk_advance_on :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32, floors
 
 // A shipped walking realm uses its declared profile. An unknown renderer
 // refuses before accepting time or consuming a waiting input press.
-walk_advance_in_realm :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32, realm: string) -> Player {
+walk_advance_in_realm :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32, realm: string) -> Player #effects(all) {
   return walk_advance_in_realm_traced(p, frame, bodies, walls, floors, realm).player;
 }
-walk_advance_in_realm_traced :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32, realm: string) -> AdvanceTrace {
+walk_advance_in_realm_traced :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32, realm: string) -> AdvanceTrace #effects(all) {
   declaration := realm_collision.collision_profile_lookup(realm);
   if declaration.status != realm_collision.CollisionProfileStatus.ok {
     return AdvanceTrace.{player = collision_report(p, CollideResult.{state = collision_state(p), status = CollideStatus.bad_profile})};
@@ -618,47 +618,47 @@ walk_advance_in_realm_traced :: (p: Player, frame: f32, bodies: [] f32, walls: [
   return advance_traced(w, p, frame);
 }
 
-walk_collision_status :: (p: Player) -> int { return cast(int) cast(u8) p.collision_status; }
-walk_collision_refusals :: (p: Player) -> u64 { return p.collision_refusals; }
-walk_collision_residual :: (p: Player) -> f32 { return p.collision_residual; }
-walk_collision_passes :: (p: Player) -> int { return p.collision_passes; }
-walk_collision_floor_cut :: (p: Player) -> bool { return p.collision_floor_cut; }
-walk_query_status :: (p: Player) -> int { return cast(int) cast(u8) p.query_status; }
-walk_camera_query_status :: (p: Player) -> int { return cast(int) cast(u8) p.camera_query_status; }
+walk_collision_status :: (p: Player) -> int #effects(all) { return cast(int) cast(u8) p.collision_status; }
+walk_collision_refusals :: (p: Player) -> u64 #effects(all) { return p.collision_refusals; }
+walk_collision_residual :: (p: Player) -> f32 #effects(all) { return p.collision_residual; }
+walk_collision_passes :: (p: Player) -> int #effects(all) { return p.collision_passes; }
+walk_collision_floor_cut :: (p: Player) -> bool #effects(all) { return p.collision_floor_cut; }
+walk_query_status :: (p: Player) -> int #effects(all) { return cast(int) cast(u8) p.query_status; }
+walk_camera_query_status :: (p: Player) -> int #effects(all) { return cast(int) cast(u8) p.camera_query_status; }
 
 // The seconds a frame of `frame` counts for on the player's clock, before it advances: what a
 // page face moves the rest of its realm by (its animation, its room's timing), so the realm
 // and the player are clamped and dropped by the one clock. It replaced the faces' own 0.1 s
 // clamps.
-walk_counts :: (p: Player, frame: f32) -> f32 {
+walk_counts :: (p: Player, frame: f32) -> f32 #effects(all) {
   schedule := walk_schedule(p.clock, frame);
   return ifx schedule.ok then f32(f64(schedule.clock.counted_ns) / f64(LOOP_SECOND)) else 0.0f32;
 }
 // The fixed steps the player's last frame ran.
-walk_ran :: (p: Player) -> int { return p.clock.ran; }
+walk_ran :: (p: Player) -> int #effects(all) { return p.clock.ran; }
 
 // How far this frame is between the last two steps, in [0, 1].
-alpha :: (p: Player) -> f32 { return loop_alpha(p.clock); }
+alpha :: (p: Player) -> f32 #effects(all) { return loop_alpha(p.clock); }
 
 // book:begin drawn
 // The feet and facing to draw this frame.
-walk_feet :: (p: Player) -> Vec3 { return mix3(p.prev_pos, p.pos, alpha(p)); }
-walk_face :: (p: Player) -> f32 {
+walk_feet :: (p: Player) -> Vec3 #effects(all) { return mix3(p.prev_pos, p.pos, alpha(p)); }
+walk_face :: (p: Player) -> f32 #effects(all) {
   return wrap_angle(p.prev_face + wrap_angle(p.face - p.prev_face) * alpha(p));
 }
 // The camera this frame, Aethyr's third-person shot: what it looks at, and where it is. A wall
 // pulls the camera in at once, so it is never shown further out than the last step.
-walk_shot :: (p: Player) -> CameraShot { return follow_shot(follow_of(p), wp(p.prev_target), p.prev_dist, alpha(p)); }
-walk_at :: (p: Player) -> Vec3 { return vp(walk_shot(p).at); }
-walk_eye :: (p: Player) -> Vec3 { return vp(walk_shot(p).eye); }
+walk_shot :: (p: Player) -> CameraShot #effects(all) { return follow_shot(follow_of(p), wp(p.prev_target), p.prev_dist, alpha(p)); }
+walk_at :: (p: Player) -> Vec3 #effects(all) { return vp(walk_shot(p).at); }
+walk_eye :: (p: Player) -> Vec3 #effects(all) { return vp(walk_shot(p).eye); }
 // book:end drawn
-walk_act :: (p: Player) -> int { return cast(int) cast(u8) p.act; }
+walk_act :: (p: Player) -> int #effects(all) { return cast(int) cast(u8) p.act; }
 
 // ---- Checks ----
 
-near :: (a: f32, b: f32, tolerance: f32) -> bool { return abs(a - b) <= tolerance; }
-flat_speed :: (p: Player) -> f32 { return sqrt(p.vel.x * p.vel.x + p.vel.z * p.vel.z); }
-held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player {
+near :: (a: f32, b: f32, tolerance: f32) -> bool #effects(all) { return abs(a - b) <= tolerance; }
+flat_speed :: (p: Player) -> f32 #effects(all) { return sqrt(p.vel.x * p.vel.x + p.vel.z * p.vel.z); }
+held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player #effects(all) {
   return walk_input(p, key_x, key_y, 0, 0, run, false, 0, 0);
 }
 
@@ -1007,7 +1007,7 @@ held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player {
 // run into a wall and round it, past a body, two jumps and a steady turn, at 60 FPS, the player is the same,
 // bit for bit, whether its camera steps after every step, never, or twice a step. Only the
 // camera's own fields differ, and the camera did meet the wall.
-walker_same :: (a: Player, b: Player) -> bool {
+walker_same :: (a: Player, b: Player) -> bool #effects(all) {
   return a.pos.x == b.pos.x && a.pos.y == b.pos.y && a.pos.z == b.pos.z && a.vel.x == b.vel.x && a.vel.y == b.vel.y
     && a.vel.z == b.vel.z && a.face == b.face && a.on_ground == b.on_ground && a.act == b.act && a.theta == b.theta
     && a.phi == b.phi && a.max_dist == b.max_dist && a.prev_pos.x == b.prev_pos.x && a.prev_pos.y == b.prev_pos.y
@@ -1016,7 +1016,7 @@ walker_same :: (a: Player, b: Player) -> bool {
     && a.clock.carry_ns == b.clock.carry_ns;
 }
 // A frame as advance_in runs it, with the camera stepped `cams` times after each player step.
-frame_with :: (w: World, p: Player, frame: f32, cams: int) -> Player {
+frame_with :: (w: World, p: Player, frame: f32, cams: int) -> Player #effects(all) {
   next := p;
   next.clock = loop_accept(p.clock, cast(f64) frame);
   for i: 0..<loop_due(next.clock) {
@@ -1191,7 +1191,7 @@ frame_with :: (w: World, p: Player, frame: f32, cams: int) -> Player {
 // the frame rate, so a run and jump fed at 30, 60, 120 or 144 frames a second passes
 // through the same states, bit for bit, at every step. Only how many steps each frame
 // runs, and the point drawn between the last two, differ.
-same_step :: (a: Player, b: Player) -> bool {
+same_step :: (a: Player, b: Player) -> bool #effects(all) {
   return a.pos.x == b.pos.x && a.pos.y == b.pos.y && a.pos.z == b.pos.z && a.vel.x == b.vel.x && a.vel.y == b.vel.y
     && a.vel.z == b.vel.z && a.face == b.face && a.on_ground == b.on_ground && a.target.y == b.target.y && a.dist == b.dist;
 }
@@ -1305,7 +1305,7 @@ same_step :: (a: Player, b: Player) -> bool {
 
 // A body standing 2 m ahead (+Z): a post 0.2 m wide from the floor to 3 m.
 POST :: 7;
-post :: (out: [] f32, x: f32, z: f32, r: f32) {
+post :: (out: [] f32, x: f32, z: f32, r: f32) #effects(all) {
   out[0] = x; out[1] = 0; out[2] = z; out[3] = x; out[4] = 3; out[5] = z; out[6] = r;
 }
 
@@ -1442,7 +1442,7 @@ post :: (out: [] f32, x: f32, z: f32, r: f32) {
 // ---- Walls ----
 
 // The terminal: a desk 2.8 x 1 x 1 m at (0, 0, 4) and a screen on it.
-desk :: (out: [] f32) {
+desk :: (out: [] f32) #effects(all) {
   out[0] = -1.4; out[1] = 0; out[2] = 3.5; out[3] = 1.4; out[4] = 1; out[5] = 4.5;
   out[6] = -1.2; out[7] = 1; out[8] = 3.9; out[9] = 1.2; out[10] = 2.4; out[11] = 4.1;
 }
@@ -1598,15 +1598,15 @@ desk :: (out: [] f32) {
 // book:begin views
 // The camera a mode shows, as one of Aethyr's shots (aethyr/follow.coax): first person, the
 // follow behind you, or top down. Each reads only what is drawn this frame.
-walk_view :: (p: Player, mode: int) -> CameraShot {
+walk_view :: (p: Player, mode: int) -> CameraShot #effects(all) {
   if mode == 0 { return follow_first_shot(follow_of(p), wp(walk_feet(p))); }
   if mode == 2 { return shot_top(wp(walk_feet(p))); }
   return walk_shot(p);
 }
-walk_view_eye :: (p: Player, mode: int) -> Vec3 { return vp(walk_view(p, mode).eye); }
-walk_view_at :: (p: Player, mode: int) -> Vec3 { return vp(walk_view(p, mode).at); }
+walk_view_eye :: (p: Player, mode: int) -> Vec3 #effects(all) { return vp(walk_view(p, mode).eye); }
+walk_view_at :: (p: Player, mode: int) -> Vec3 #effects(all) { return vp(walk_view(p, mode).at); }
 // book:end views
-walk_zoom :: (p:Player,delta:f32)->Player {next:=p;next.max_dist=follow_zoom(follow_of(p),delta).max_dist;return next;}
+walk_zoom :: (p:Player,delta:f32)->Player #effects(all) {next:=p;next.max_dist=follow_zoom(follow_of(p),delta).max_dist;return next;}
 // Zooming crosses between first and third person. Out from first person
 // past ZOOM_OUT starts third person at its closest; in past the closest
 // third-person distance by ZOOM_IN goes to first person. The push gathers
@@ -1615,7 +1615,7 @@ walk_zoom :: (p:Player,delta:f32)->Player {next:=p;next.max_dist=follow_zoom(fol
 ZOOM_OUT :: 0.3;
 ZOOM_IN :: 0.6;
 PlayerZoom :: struct { player: Player; mode: int; }
-walk_zoom_view :: (p:Player,mode:int,delta:f32)->PlayerZoom {
+walk_zoom_view :: (p:Player,mode:int,delta:f32)->PlayerZoom #effects(all) {
  z:PlayerZoom;z.player=p;z.mode=mode;if !finite(delta) || delta==0 {return z;}
  if mode==2 {z.player=walk_zoom(p,delta);return z;}
  if mode==0 {
@@ -1644,7 +1644,7 @@ walk_zoom_view :: (p:Player,mode:int,delta:f32)->PlayerZoom {
  z=walk_zoom_view(z.player,0,0.4);#assert z.mode==1;
  t:=walk_zoom_view(p,2,-3);#assert t.mode==2 && near(t.player.max_dist,1.4,0.0001);
 }
-walk_constrain :: (p:Player,x:f32,z:f32)->Player {
+walk_constrain :: (p:Player,x:f32,z:f32)->Player #effects(all) {
  next:=p;dx:=x-p.pos.x;dz:=z-p.pos.z;
  if dx!=0 {next.pos.x=x;next.prev_pos.x=x;next.target.x+=dx;next.prev_target.x+=dx;next.vel.x=0;}
  if dz!=0 {next.pos.z=z;next.prev_pos.z=z;next.target.z+=dz;next.prev_target.z+=dz;next.vel.z=0;}
@@ -1654,7 +1654,7 @@ walk_constrain :: (p:Player,x:f32,z:f32)->Player {
 // ---- floors (aethyr/stand.coax): a roof's slopes, a tower's cone
 
 // A gable roof 8 m across x and 10 m along z, its ridge along z at x 0: eaves `eave` up, the ridge 3 m over them.
-gable :: (f: [] f32, eave: f32) {
+gable :: (f: [] f32, eave: f32) #effects(all) {
   stand_put_quad(f, 0, -4, -5, 4, 0, 0, 10, eave, 3, 0);
   stand_put_quad(f, 1, 4, -5, -4, 0, 0, 10, eave, 3, 0);
 }
@@ -1741,24 +1741,24 @@ gable :: (f: [] f32, eave: f32) {
 
 // ---- Flight (aethyr/flight.coax): the per-step hook a flying realm declares ----
 
-flier :: () -> World { w: World; w.flight = flight_profile_lookup("fairy-forest"); return w; }
+flier :: () -> World #effects(all) { w: World; w.flight = flight_profile_lookup("fairy-forest"); return w; }
 // The flying session's controls in window k of 1/6 s each. A window starts on a frame at 30,
 // 60, 120 and 144 FPS alike and, with the clock started half a step in, at least a sixth of a
 // 1/64 s step from a step's end, so every rate starts the window's controls on the same step: walk, a jump from the ground held into a climb, a glide,
 // a beat held into a climb, a beat and a longer climb, a dive and a glide to the ground.
 FLY_WINDOWS :: 18;
-fly_controls :: (p: Player, k: int) -> Player {
+fly_controls :: (p: Player, k: int) -> Player #effects(all) {
   held_up := k == 1 || k == 2 || k == 5 || k == 7 || k == 8;
   dive := k == 10 || k == 11;
   return walk_fly_input(p, 0, ifx k < 14 then 1.0f32 else 0, 0, 0, false, held_up, 0, true, dive);
 }
 // The step a window's controls start on: floor(k * 64 / 6 + 1 / 2).
-fly_window_step :: (k: int) -> int { return (64 * k + 3) / 6; }
-fly_start :: () -> Player { p := walk_place(0, 0, 0, 0); p.clock.carry_ns = LOOP_STEP_NS / 2; return p; }
-same_flight :: (a: Player, b: Player) -> bool {
+fly_window_step :: (k: int) -> int #effects(all) { return (64 * k + 3) / 6; }
+fly_start :: () -> Player #effects(all) { p := walk_place(0, 0, 0, 0); p.clock.carry_ns = LOOP_STEP_NS / 2; return p; }
+same_flight :: (a: Player, b: Player) -> bool #effects(all) {
   return same_step(a, b) && a.beats == b.beats && a.diving == b.diving && a.jumps.taken == b.jumps.taken;
 }
-fly_reference :: (out: [] Player) {
+fly_reference :: (out: [] Player) #effects(all) {
   w := flier();
   q := fly_start();
   k := 0;
@@ -1770,7 +1770,7 @@ fly_reference :: (out: [] Player) {
   }
 }
 // Frames whose times sum to 1/6 s, unevenly: 4, 1, 2, 5 and 8 of 1/120 s.
-fly_uneven :: (f: int) -> f32 {
+fly_uneven :: (f: int) -> f32 #effects(all) {
   parts := [5] f32.[4.0 / 120.0, 1.0 / 120.0, 2.0 / 120.0, 5.0 / 120.0, 8.0 / 120.0];
   return parts[f % 5];
 }

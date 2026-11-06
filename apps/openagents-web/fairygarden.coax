@@ -41,7 +41,7 @@ ffg_use :: (s: [] Fairy, you: Point) -> bool {
 ffg_word :: (v: int) -> string { return ifx v == FFG_PLANT then "PLANT" else ifx v == FFG_WATER then "WATER" else "SING"; }
 
 // The face's wall clock, in ms since 1970: the garden's days.
-fairy_clock :: (s: [] Fairy, ms: f64) #export_c {
+fairy_clock :: (s: [] Fairy, ms: f64) #export_c #effects(all) {
   if !(ms > 0) { return; }
   s[0].now_min = ms / 60000;
   ffg_day(s[0].life[..], s[0].now_min);

@@ -34,10 +34,10 @@
  c[7]=0;e[7]=0;refused:int=0;for sign:[2]f64.[-1,1] {e[1]=sign*10000;out[0]=old;status:=psf_forward_raw(q[..],v[..],c[..],e[..],out[..]);if status==PmsStatus.range {refused+=1;psf_same(out[0],old);}else {#assert status==PmsStatus.ok;#assert out[0].applied.hinge[1].value==sign*10000;}}#assert refused==1;
 }
 
-psf_applied :: (actuator:PidOutput,external:PidOutput,passive:PidOutput)->PidOutput {
+psf_applied :: (actuator:PidOutput,external:PidOutput,passive:PidOutput)->PidOutput #effects(all) {
  out:PidOutput;for i:0..<7 {driven:=actuator.hinge[i]+external.hinge[i];out.hinge[i]=driven+passive.hinge[i];}for i:0..<2 {driven:=actuator.slide[i]+external.slide[i];out.slide[i]=driven+passive.slide[i];}return out;
 }
-psf_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),hinge_rates:[]pfku.Quantity(PidAngularRate,f64),slide_rates:[]pfku.Quantity(PidLinearRate,f64),arm_control:[]pfku.Quantity(PmHingeGravity,f64),finger_target:[]pfku.Quantity(pfku.Metre,f64),external_hinge:[]pfku.Quantity(PmHingeGravity,f64),external_slide:[]pfku.Quantity(PmSlideGravity,f64),output:[]PsfOutput)->PmsStatus #export_c {
+psf_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),hinge_rates:[]pfku.Quantity(PidAngularRate,f64),slide_rates:[]pfku.Quantity(PidLinearRate,f64),arm_control:[]pfku.Quantity(PmHingeGravity,f64),finger_target:[]pfku.Quantity(pfku.Metre,f64),external_hinge:[]pfku.Quantity(PmHingeGravity,f64),external_slide:[]pfku.Quantity(PmSlideGravity,f64),output:[]PsfOutput)->PmsStatus #export_c #effects(all) {
  if angles.count!=7 || slides.count!=2 || hinge_rates.count!=7 || slide_rates.count!=2 || arm_control.count!=7 || finger_target.count!=2 || external_hinge.count!=7 || external_slide.count!=2 || output.count!=1 {return PmsStatus.shape;}
  external:PidOutput;for i:0..<7 {external.hinge[i]=external_hinge[i];}for i:0..<2 {external.slide[i]=external_slide[i];}
  status:=pms_forces_admit(pfd_words(external));if status!=PmsStatus.ok {return status;}
@@ -47,7 +47,7 @@ psf_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(p
  status=pfd_forward(angles,slides,hinge_rates,slide_rates,applied.hinge[..],applied.slide[..],acceleration[..]);if status!=PmsStatus.ok {return status;}
  fresh:=PsfOutput.{applied=applied,acceleration=acceleration[0],control_clipped=actuator[0].control_clipped,force_clipped=actuator[0].force_clipped};output[0]=fresh;return PmsStatus.ok;
 }
-psf_forward_raw :: (coordinates:[]f64,rates:[]f64,controls:[]f64,external:[]f64,output:[]PsfOutput)->PmsStatus #export_c {
+psf_forward_raw :: (coordinates:[]f64,rates:[]f64,controls:[]f64,external:[]f64,output:[]PsfOutput)->PmsStatus #export_c #effects(all) {
  if coordinates.count!=9 || rates.count!=9 || controls.count!=9 || external.count!=9 {return PmsStatus.shape;}
  q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);u:[7]pfku.Quantity(PmHingeGravity,f64);t:[2]pfku.Quantity(pfku.Metre,f64);eh:[7]pfku.Quantity(PmHingeGravity,f64);es:[2]pfku.Quantity(PmSlideGravity,f64);
  for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];u[i].value=controls[i];eh[i].value=external[i];}for i:0..<2 {s[i].value=coordinates[7+i];sv[i].value=rates[7+i];t[i].value=controls[7+i];es[i].value=external[7+i];}return psf_forward(q[..],s[..],v[..],sv[..],u[..],t[..],eh[..],es[..],output);

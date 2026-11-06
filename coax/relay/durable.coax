@@ -7,28 +7,28 @@
 // result counts as, the verdict), both #authority. This file hashes, reads
 // and prints; relay-host.c does the file effects.
 
-cxstore_size :: () -> int #foreign;
-cxstore_bulk :: (on: int) #foreign;
-cxstore_sync :: () -> int #foreign;
-ry_host_mode :: () -> int #foreign;
-ry_host_now_flag :: () -> int #foreign;
-ry_host_adopt :: () -> int #foreign;
-ry_host_exit :: (code: int) #foreign;
-ry_host_ns :: () -> int #foreign;
-ry_host_peak_kib :: () -> int #foreign;
-ry_import_load :: () -> int #foreign;
-ry_import_byte :: (i: int) -> int #foreign;
-ry_host_fresh :: () -> int #foreign;
-ry_fresh_load :: () -> int #foreign;
-ry_fresh_byte :: (i: int) -> int #foreign;
-ry_fresh_put :: (b: int) -> int #foreign;
-ry_fresh_commit :: () -> int #foreign;
-ry_host_tombs_extra :: () -> int #foreign;
-ry_host_export_from :: () -> int #foreign;
-ry_export_open :: () -> int #foreign;
-ry_export_put :: (b: int) -> int #foreign;
-ry_export_commit :: () -> int #foreign;
-ry_export_abort :: () #foreign;
+cxstore_size :: () -> int #foreign #effects(all);
+cxstore_bulk :: (on: int) #foreign #effects(all);
+cxstore_sync :: () -> int #foreign #effects(all);
+ry_host_mode :: () -> int #foreign #effects(all);
+ry_host_now_flag :: () -> int #foreign #effects(all);
+ry_host_adopt :: () -> int #foreign #effects(all);
+ry_host_exit :: (code: int) #foreign #effects(all);
+ry_host_ns :: () -> int #foreign #effects(all);
+ry_host_peak_kib :: () -> int #foreign #effects(all);
+ry_import_load :: () -> int #foreign #effects(all);
+ry_import_byte :: (i: int) -> int #foreign #effects(all);
+ry_host_fresh :: () -> int #foreign #effects(all);
+ry_fresh_load :: () -> int #foreign #effects(all);
+ry_fresh_byte :: (i: int) -> int #foreign #effects(all);
+ry_fresh_put :: (b: int) -> int #foreign #effects(all);
+ry_fresh_commit :: () -> int #foreign #effects(all);
+ry_host_tombs_extra :: () -> int #foreign #effects(all);
+ry_host_export_from :: () -> int #foreign #effects(all);
+ry_export_open :: () -> int #foreign #effects(all);
+ry_export_put :: (b: int) -> int #foreign #effects(all);
+ry_export_commit :: () -> int #foreign #effects(all);
+ry_export_abort :: () #foreign #effects(all);
 
 RY_SERVE :: 0; RY_IMPORT :: 1; RY_CHECK :: 2; RY_EXPORT :: 3;
 RY_STORE_FILE :: 0; RY_JOURNAL_FILE :: 1;
@@ -166,7 +166,7 @@ RY_TOMBS_EXTRA_MAX :: 16777216;
 // read without verifying (an upper bound: refused lines still count), plus
 // --tombstones more for requests that come later (RD_TOMBS_EXTRA without
 // it). -1, after saying why, when --tombstones is over RY_TOMBS_EXTRA_MAX.
-ry_store_tombs :: () -> int #export_c {
+ry_store_tombs :: () -> int #export_c #effects(all) {
   extra := ry_host_tombs_extra();
   if extra < 0 { extra = RD_TOMBS_EXTRA; }
   if extra > RY_TOMBS_EXTRA_MAX { print("relay: --tombstones takes 0 to %\n", RY_TOMBS_EXTRA_MAX); return -1; }

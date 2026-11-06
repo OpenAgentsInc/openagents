@@ -21,7 +21,7 @@ RQSamples :: struct {status:RQStatus;colors:[4]RQColor;}
 #load "tests/reference-quad-checks.coax";
 #load "tests/reference-filter-checks.coax";
 
-rq_derivative :: (q:RQQuad,axis:int,mode:RQDerivative)->RQQuad {
+rq_derivative :: (q:RQQuad,axis:int,mode:RQDerivative)->RQQuad #effects(all) {
  r:RQQuad;if axis!=0 && axis!=1 {return r;}
  for lane:0..<4 {
   pair:=ifx mode==RQDerivative.coarse then 0 else (ifx axis==0 then (lane/2)*2 else lane%2);
@@ -29,19 +29,19 @@ rq_derivative :: (q:RQQuad,axis:int,mode:RQDerivative)->RQQuad {
   r.v[lane]=q.v[other]-q.v[pair];
  }return r;
 }
-rq_fwidth :: (q:RQQuad,mode:RQDerivative)->RQQuad {
+rq_fwidth :: (q:RQQuad,mode:RQDerivative)->RQQuad #effects(all) {
  x:=rq_derivative(q,0,mode);y:=rq_derivative(q,1,mode);r:RQQuad;
  for k:0..<4 {r.v[k]=abs(x.v[k])+abs(y.v[k]);}return r;
 }
-rq_discard :: (q:RQControl,lanes:u32)->RQControl {r:=q;r.discarded|=lanes&15;return r;}
-rq_publish_mask :: (q:RQControl)->u32 {return q.coverage&15&(q.discarded^15);}
-rq_helper_mask :: (q:RQControl)->u32 {return 15;}
-rq_finite :: (v:f32)->bool {return v==v && v>=-3.4028234663852886e38f32 && v<=3.4028234663852886e38f32;}
-rq_clamp :: (x:f32,a:f32,b:f32)->f32 {if x<a{return a;}if x>b{return b;}return x;}
-rq_mix_color :: (a:RQColor,b:RQColor,t:f32)->RQColor {
+rq_discard :: (q:RQControl,lanes:u32)->RQControl #effects(all) {r:=q;r.discarded|=lanes&15;return r;}
+rq_publish_mask :: (q:RQControl)->u32 #effects(all) {return q.coverage&15&(q.discarded^15);}
+rq_helper_mask :: (q:RQControl)->u32 #effects(all) {return 15;}
+rq_finite :: (v:f32)->bool #effects(all) {return v==v && v>=-3.4028234663852886e38f32 && v<=3.4028234663852886e38f32;}
+rq_clamp :: (x:f32,a:f32,b:f32)->f32 #effects(all) {if x<a{return a;}if x>b{return b;}return x;}
+rq_mix_color :: (a:RQColor,b:RQColor,t:f32)->RQColor #effects(all) {
  return RQColor.{r=a.r+(b.r-a.r)*t,g=a.g+(b.g-a.g)*t,b=a.b+(b.b-a.b)*t,a=a.a+(b.a-a.a)*t};
 }
-rq_texture_status :: (t:RQTexture)->RQStatus {
+rq_texture_status :: (t:RQTexture)->RQStatus #effects(all) {
  if t.layers<1 || t.levels.count<1 {return RQStatus.resource;}
  if t.layers>2048 || t.levels.count>32 {return RQStatus.capacity;}
  w:=t.levels[0].width;h:=t.levels[0].height;end:=0;
@@ -57,8 +57,8 @@ rq_texture_status :: (t:RQTexture)->RQStatus {
  }
  return RQStatus.ok;
 }
-rq_texture_ok :: (t:RQTexture)->bool {return rq_texture_status(t)==RQStatus.ok;}
-rq_sampler_status :: (s:RQSampler)->RQStatus {
+rq_texture_ok :: (t:RQTexture)->bool #effects(all) {return rq_texture_status(t)==RQStatus.ok;}
+rq_sampler_status :: (s:RQSampler)->RQStatus #effects(all) {
  // Enum variants are checked by Coax at construction; native callers supply
  // the manifest's typed sampler records, not arbitrary byte tags.
  if !rq_filter_limits(s.precision).ok {return RQStatus.unsupported;}
@@ -68,7 +68,7 @@ rq_sampler_status :: (s:RQSampler)->RQStatus {
  if s.max_anisotropy!=1 {return RQStatus.unsupported;}
  return RQStatus.ok;
 }
-rq_address :: (i:int,n:int,mode:RQAddress)->int {
+rq_address :: (i:int,n:int,mode:RQAddress)->int #effects(all) {
  if mode==RQAddress.clamp {
   if i>=n {return n-1;}
   // For negative i the exact f64 cancellation is zero. Otherwise i<n<=16384,
@@ -79,7 +79,7 @@ rq_address :: (i:int,n:int,mode:RQAddress)->int {
  j:=i%period;if j<0 {j+=period;}
  if j>=n {return period-1-j;}return j;
 }
-rq_compare :: (actual:f32,ref:f32,mode:RQCompare)->f32 {
+rq_compare :: (actual:f32,ref:f32,mode:RQCompare)->f32 #effects(all) {
  yes:=false;
  if mode==RQCompare.less {yes=ref<actual;}
  else if mode==RQCompare.equal {yes=ref==actual;}
@@ -90,12 +90,12 @@ rq_compare :: (actual:f32,ref:f32,mode:RQCompare)->f32 {
  else if mode==RQCompare.always {yes=true;}
  return ifx yes then 1.0f32 else 0.0f32;
 }
-rq_texel :: (t:RQTexture,s:RQSampler,level:int,layer:int,x:int,y:int,comparison:bool,ref:f32)->RQColor {
+rq_texel :: (t:RQTexture,s:RQSampler,level:int,layer:int,x:int,y:int,comparison:bool,ref:f32)->RQColor #effects(all) {
  m:=t.levels[level];ix:=rq_address(x,m.width,s.address_u);iy:=rq_address(y,m.height,s.address_v);
  c:=t.texels[m.offset+layer*m.width*m.height+iy*m.width+ix];
  if comparison {v:=rq_compare(c.r,ref,s.compare);return RQColor.{r=v,g=v,b=v,a=v};}return c;
 }
-rq_mip_sample :: (t:RQTexture,s:RQSampler,u:f32,v:f32,layer:int,level:int,linear:bool,comparison:bool,ref:f32)->RQColor {
+rq_mip_sample :: (t:RQTexture,s:RQSampler,u:f32,v:f32,layer:int,level:int,linear:bool,comparison:bool,ref:f32)->RQColor #effects(all) {
  m:=t.levels[level];fx:=u*cast(f32)m.width-0.5f32;fy:=v*cast(f32)m.height-0.5f32;
  if !linear {return rq_texel(t,s,level,layer,cast(int)floor(fx+0.5f32),cast(int)floor(fy+0.5f32),comparison,ref);}
  x:=floor(fx);y:=floor(fy);tx:=fx-x;ty:=fy-y;ix:=cast(int)x;iy:=cast(int)y;
@@ -103,7 +103,7 @@ rq_mip_sample :: (t:RQTexture,s:RQSampler,u:f32,v:f32,layer:int,level:int,linear
  b:=rq_mix_color(rq_texel(t,s,level,layer,ix,iy+1,comparison,ref),rq_texel(t,s,level,layer,ix+1,iy+1,comparison,ref),tx);
  return rq_mix_color(a,b,ty);
 }
-rq_sample :: (t:RQTexture,s:RQSampler,u:f32,v:f32,layer:int,lod:f32,comparison:bool,ref:f32)->RQSample {
+rq_sample :: (t:RQTexture,s:RQSampler,u:f32,v:f32,layer:int,lod:f32,comparison:bool,ref:f32)->RQSample #effects(all) {
  status:=rq_sampler_status(s);if status!=RQStatus.ok {return RQSample.{status=status};}
  texture:=rq_texture_status(t);if texture!=RQStatus.ok {return RQSample.{status=texture};}
  if !rq_finite(u) || !rq_finite(v) || abs(u)>1000000000 || abs(v)>1000000000 ||
@@ -122,7 +122,7 @@ RQFilterBytes :: struct {status:RQStatus;v:[4]f64;}
 // The physical decoder supplies UNORM8 values. Recovering their exact byte
 // codes before filtering avoids a second normalized-f32 rounding at output
 // ties. The profile's weighted byte sums are exact binary fractions.
-rq_filter_mip :: (t:RQTexture,s:RQSampler,u:f32,v:f32,layer:int,level:int,limits:RQFilterLimits)->RQFilterBytes {
+rq_filter_mip :: (t:RQTexture,s:RQSampler,u:f32,v:f32,layer:int,level:int,limits:RQFilterLimits)->RQFilterBytes #effects(all) {
  m:=t.levels[level];fx:=u*cast(f32)m.width-0.5f32;fy:=v*cast(f32)m.height-0.5f32;
  x:=floor(fx);y:=floor(fy);scale:=cast(f64)limits.axis;
  tx:=floor(cast(f64)(fx-x)*scale+0.5)/scale;ty:=floor(cast(f64)(fy-y)*scale+0.5)/scale;
@@ -136,7 +136,7 @@ rq_filter_mip :: (t:RQTexture,s:RQSampler,u:f32,v:f32,layer:int,level:int,limits
   }
  }return r;
 }
-rq_sample_measured :: (t:RQTexture,s:RQSampler,u:f32,v:f32,layer:int,lod:f32,linear:bool,comparison:bool)->RQSample {
+rq_sample_measured :: (t:RQTexture,s:RQSampler,u:f32,v:f32,layer:int,lod:f32,linear:bool,comparison:bool)->RQSample #effects(all) {
  if t.storage!=RQStorageFormat.unorm8 || !linear || !s.mip_linear || comparison {return RQSample.{status=RQStatus.unsupported};}
  limits:=rq_filter_limits(s.precision);
  if limits.integer_lod && lod!=floor(lod) {return RQSample.{status=RQStatus.unsupported};}
@@ -148,17 +148,17 @@ rq_sample_measured :: (t:RQTexture,s:RQSampler,u:f32,v:f32,layer:int,lod:f32,lin
  for ch:0..<4 {value:=a.v[ch]+(b.v[ch]-a.v[ch])*amount;values[ch]=cast(f32)(floor(value*cast(f64)limits.units+0.5)/cast(f64)limits.result);}
  return RQSample.{color=RQColor.{r=values[0],g=values[1],b=values[2],a=values[3]}};
 }
-rq_sample_level :: (t:RQTexture,s:RQSampler,u:f32,v:f32,layer:int,lod:f32)->RQSample {return rq_sample(t,s,u,v,layer,lod,false,0);}
-rq_sample_compare :: (t:RQTexture,s:RQSampler,u:f32,v:f32,layer:int,lod:f32,ref:f32)->RQSample {return rq_sample(t,s,u,v,layer,lod,true,ref);}
+rq_sample_level :: (t:RQTexture,s:RQSampler,u:f32,v:f32,layer:int,lod:f32)->RQSample #effects(all) {return rq_sample(t,s,u,v,layer,lod,false,0);}
+rq_sample_compare :: (t:RQTexture,s:RQSampler,u:f32,v:f32,layer:int,lod:f32,ref:f32)->RQSample #effects(all) {return rq_sample(t,s,u,v,layer,lod,true,ref);}
 // Squared footprint axes are nonnegative f32. The f64 identity avoids an
 // unobservable equality branch and returns their exact f32 maximum, including
 // tiny subnormals, without overflowing the sum at f32's finite upper bound.
-rq_footprint_lod :: (x:f32,y:f32,bias:f32)->f32 {
+rq_footprint_lod :: (x:f32,y:f32,bias:f32)->f32 #effects(all) {
  rho:=cast(f32)((cast(f64)x+cast(f64)y+abs(cast(f64)x-cast(f64)y))*0.5);
  if rho==0 {return -1;}
  return 0.5f32*log(rho)/log(2.0f32)+bias;
 }
-rq_sample_quad :: (t:RQTexture,s:RQSampler,u:RQQuad,v:RQQuad,layer:int,bias:f32,mode:RQDerivative)->RQSamples {
+rq_sample_quad :: (t:RQTexture,s:RQSampler,u:RQQuad,v:RQQuad,layer:int,bias:f32,mode:RQDerivative)->RQSamples #effects(all) {
  texture:=rq_texture_status(t);if texture!=RQStatus.ok {return RQSamples.{status=texture};}
  if !rq_finite(bias) {return RQSamples.{status=RQStatus.resource};}
  dx:=rq_derivative(u,0,mode);dy:=rq_derivative(u,1,mode);vx:=rq_derivative(v,0,mode);vy:=rq_derivative(v,1,mode);

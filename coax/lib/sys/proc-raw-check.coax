@@ -3,7 +3,7 @@
 #import "Basic";
 #load "tool.coax";
 #load "proc-raw.coax";
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   out: [64] u8; err: [64] u8; env: [] string;
   bytes := [2] string.["/usr/bin/printf", "\\000\\377\\n"];
   r := proc_run_bytes(bytes[..], env, 1000, out[..], err[..]);

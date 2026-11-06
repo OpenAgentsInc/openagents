@@ -84,7 +84,7 @@ are the new task; odd rows are a task the base already does:
 // recorded at time g. Even rows are the new task (x2 matters, x3 = 1), odd
 // rows the retained one (x2 = x3 = 0). The truth's logit is 3 (x0 + x1),
 // plus 8 x2 - 2 on the new task.
-pt_world :: (seed:u64,first:int,groups:int,per:int,model:[32]u8,rows:[]PtRow)->int {
+pt_world :: (seed:u64,first:int,groups:int,per:int,model:[32]u8,rows:[]PtRow)->int #effects(all) {
     if groups<1 || per<1 || per>8 || first<0 || first+groups>PT_GROUPS_MAX || rows.count!=groups*per {return -1;}
     for g:0..<groups {for j:0..<per {
         c:=cast(u64)((first+g)*64+j*8);
@@ -115,7 +115,7 @@ is `x` and `out` is 4. On the readout region, `u` is the hidden layer and
 ```jai
 // The frozen layers, plus (alpha / rank) B (A u) on the selected region,
 // where u is the input to that region's matrix.
-pt_forward :: (b:PtBase,a:PtAdapter,x:[4]f64)->PtPass {
+pt_forward :: (b:PtBase,a:PtAdapter,x:[4]f64)->PtPass #effects(all) {
     q:PtPass;on:=a.rank>0;s:=0.0;if on {s=a.alpha/f64(a.rank);}
     hidden:=on && a.region==PtRegion.hidden;
     readout:=on && a.region==PtRegion.readout;
@@ -189,7 +189,7 @@ The loss is cross-entropy plus a weight times the Brier score. Brier is
 // gradient in the adapter's used parameters (A, then B). The upstream
 // gradient g passes back through the frozen readout and tanh to the hidden
 // region; the frozen weights get none.
-pt_gradient :: (b:PtBase,a:PtAdapter,rows:[]PtRow,brier:f64,grad:[]f64)->f64 {
+pt_gradient :: (b:PtBase,a:PtAdapter,rows:[]PtRow,brier:f64,grad:[]f64)->f64 #effects(all) {
     for k:0..<16 {grad[k]=0;}
     s:=a.alpha/f64(a.rank);out:=pt_out(a.region);total:=0.0;
     for row:rows {
@@ -209,7 +209,7 @@ pt_gradient :: (b:PtBase,a:PtAdapter,rows:[]PtRow,brier:f64,grad:[]f64)->f64 {
     for k:0..<pt_count(a) {grad[k]/=n;}
     return total/n;
 }
-pt_loss :: (b:PtBase,a:PtAdapter,rows:[]PtRow,brier:f64)->f64 {g:[16]f64;return pt_gradient(b,a,rows,brier,g[..]);}
+pt_loss :: (b:PtBase,a:PtAdapter,rows:[]PtRow,brier:f64)->f64 #effects(all) {g:[16]f64;return pt_gradient(b,a,rows,brier,g[..]);}
 ```
 
 The check `backward through frozen layers matches central differences`
@@ -229,7 +229,7 @@ row of `B`. The transcript's resume line counts them.
 // Every row must come from this base, with a finite input, a 0 or 1 label
 // and task, and a group in range. A group with a held-out row may have no
 // row in any other split; the refusal names the later row of the pair.
-pt_admit :: (model:[32]u8,rows:[]PtRow,cuts:TrCuts)->PtAdmit {
+pt_admit :: (model:[32]u8,rows:[]PtRow,cuts:TrCuts)->PtAdmit #effects(all) {
     n:=rows.count;
     if n<1 || n>PT_ROWS_MAX || !tr_cuts_ok(cuts) {return PtAdmit.{status=PtStatus.shape,row=-1};}
     roles:[PT_GROUPS_MAX]u8;a:=PtAdmit.{row=-1};
@@ -261,7 +261,7 @@ admission.
 ```jai
 // Full-batch AdamW on the training split only. Everything is admitted
 // before the first step; a refusal returns the trainer unchanged.
-pt_train :: (b:PtBase,t:PtTrainer,rows:[]PtRow,cuts:TrCuts,recipe:PtRecipe,steps:int)->PtTrain {
+pt_train :: (b:PtBase,t:PtTrainer,rows:[]PtRow,cuts:TrCuts,recipe:PtRecipe,steps:int)->PtTrain #effects(all) {
     r:=PtTrain.{trainer=t};
     if steps<0 || steps>PT_STEPS_MAX {r.status=PtStatus.shape;return r;}
     r.status=pt_adapter_ok(t.adapter);
@@ -308,13 +308,13 @@ different result.
 
 <!-- source: psionic/lib/post-train.coax digest -->
 ```jai
-pt_put :: (buf:[]u8,n:int,v:f64)->int {
+pt_put :: (buf:[]u8,n:int,v:f64)->int #effects(all) {
     w:=f64_bits(v);
     for i:0..<8 {buf[n+i]=cast(u8)((w>>cast(u64)(i*8))&0xff);}
     return n+8;
 }
 // SHA-256 over w1, c1, w2 and c2 in that order.
-pt_digest :: (b:PtBase)->[32]u8 {
+pt_digest :: (b:PtBase)->[32]u8 #effects(all) {
     buf:[200]u8;n:=0;
     for v:b.w1 {n=pt_put(buf[..],n,v);}
     for v:b.c1 {n=pt_put(buf[..],n,v);}
@@ -333,7 +333,7 @@ base in hand:
 ```jai
 // Serving checks the adapter against the base it is loaded on; rank 0 is
 // the base alone.
-pt_serve :: (b:PtBase,a:PtAdapter,x:[4]f64)->PtServe {
+pt_serve :: (b:PtBase,a:PtAdapter,x:[4]f64)->PtServe #effects(all) {
     s:=pt_adapter_ok(a);
     if s!=PtStatus.ok {return PtServe.{status=s};}
     if a.rank>0 && !pt_same(a.base,pt_digest(b)) {return PtServe.{status=PtStatus.identity};}

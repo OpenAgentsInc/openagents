@@ -155,7 +155,7 @@ Nip37Keys :: struct {ec:[1]EcdhScratch; self:[32]u8; ck:[32]u8;}
 // book:begin draft
 // The kind of a draft event's JSON: an object whose one "kind" member is an
 // integer 0-65535. -1 for anything else.
-n37_draft_kind :: (text:string)->int {
+n37_draft_kind :: (text:string)->int #effects(all) {
   j:[1]Json;json_start(j[..],text);
   if json_next(j[..])!=JSON_OBJECT {return -1;}
   kind:=-1;seen:=false;tok:=json_next(j[..]);
@@ -177,7 +177,7 @@ n37_draft_kind :: (text:string)->int {
 // book:begin tags
 // The wrap's tags [["d",d],["k",kind]] and, when expiration >= 0,
 // ["expiration",expiration], into out: its length, or -1.
-nip37_tags :: (d:string,kind:int,expiration:int,out:[]u8)->int {
+nip37_tags :: (d:string,kind:int,expiration:int,out:[]u8)->int #effects(all) {
   if d.count==0 || kind<0 || kind>65535 {return -1;}
   n:=json_raw(out,0,"[[\"d\",");n=json_write_string(out,n,d);n=json_raw(out,n,"],[\"k\",\"");
   n=json_write_int(out,n,kind);n=json_raw(out,n,"\"]");
@@ -190,14 +190,14 @@ nip37_tags :: (d:string,kind:int,expiration:int,out:[]u8)->int {
 // Your x-only public key into keys.self: x(secret*G), an ECDH with the
 // generator. Then the conversation key from secret to that key into
 // keys.ck. N37_KEY for a secret that is 0 or not below n.
-n37_keys :: (secret:[]u8,keys:[]Nip37Keys)->int {
+n37_keys :: (secret:[]u8,keys:[]Nip37Keys)->int #effects(all) {
   g:=NIP44_KEY_GENERATOR_X;
   if ecdh_stage(secret,g[..],keys[0].ec[..])!=EC_OK {return N37_KEY;}
   for i:0..<32 {keys[0].self[i]=keys[0].ec[0].staged[i];}
   #assert nip44_conversation_key_from_keys_checked(secret,keys[0].self[..],keys[0].ec[..],keys[0].ck[..],false)==NIP44_OK;
   return N37_OK;
 }
-n37_payload :: (status:u32)->int {
+n37_payload :: (status:u32)->int #effects(all) {
   if status==NIP44_OUTPUT || status==NIP44_CAPACITY {return N37_OUTPUT;}
   return N37_PAYLOAD;
 }
@@ -207,7 +207,7 @@ n37_payload :: (status:u32)->int {
 // The content of a draft wrap: draft (an unsigned event's JSON) NIP-44
 // encrypted with nonce from secret to its own public key, into out. work
 // holds NIP-44's encryption work. overlap: any two views share memory.
-nip37_seal :: (secret:[]u8,nonce:[]u8,draft:[]u8,keys:[]Nip37Keys,work:[]u8,out:[]u8,overlap:bool)->Nip37Sealed {
+nip37_seal :: (secret:[]u8,nonce:[]u8,draft:[]u8,keys:[]Nip37Keys,work:[]u8,out:[]u8,overlap:bool)->Nip37Sealed #effects(all) {
   r:Nip37Sealed;
   if secret.count!=32 || nonce.count!=32 || keys.count!=1 || overlap {return r;}
   kind:=n37_draft_kind(cast(string)draft);
@@ -227,7 +227,7 @@ nip37_seal :: (secret:[]u8,nonce:[]u8,draft:[]u8,keys:[]Nip37Keys,work:[]u8,out:
 // A draft wrap opened by the holder of secret: the draft JSON into out.
 // scratch holds the wrap's serialization; work holds NIP-44's decryption
 // work.
-nip37_open :: (secret:[]u8,text:string,keys:[]Nip37Keys,scratch:[]u8,work:[]u8,out:[]u8,overlap:bool)->Nip37Opened {
+nip37_open :: (secret:[]u8,text:string,keys:[]Nip37Keys,scratch:[]u8,work:[]u8,out:[]u8,overlap:bool)->Nip37Opened #effects(all) {
   r:Nip37Opened;
   if secret.count!=32 || keys.count!=1 || overlap {return r;}
   r.error=n37_keys(secret,keys);
@@ -235,7 +235,7 @@ nip37_open :: (secret:[]u8,text:string,keys:[]Nip37Keys,scratch:[]u8,work:[]u8,o
   keys[0]=Nip37Keys.{};
   return r;
 }
-n37_check :: (self:[]u8,ck:[]u8,text:string,scratch:[]u8,work:[]u8,out:[]u8)->Nip37Opened {
+n37_check :: (self:[]u8,ck:[]u8,text:string,scratch:[]u8,work:[]u8,out:[]u8)->Nip37Opened #effects(all) {
   r:Nip37Opened;
   e:=nostr_event_read(text,scratch,false);if e.error!=NE_OK {r.error=N37_EVENT;return r;}
   if e.kind!=N37_WRAP {r.error=N37_KIND;return r;}

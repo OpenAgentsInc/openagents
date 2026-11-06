@@ -61,7 +61,7 @@ N78Data :: struct {
 
 // book:begin read
 // A kind 30078 or 78 event's d tag.
-n78_read :: (e:NostrEvent)->N78Data {
+n78_read :: (e:NostrEvent)->N78Data #effects(all) {
   r:N78Data;if e.error!=NE_OK {return r;}
   t:=n10_text(e,"d",r.d.b[..]);
   if t.status==N10_LIMIT {r.error=N78_LIMIT;return r;}
@@ -74,7 +74,7 @@ n78_read :: (e:NostrEvent)->N78Data {
 }
 // Whether a relay serves e to a client that authenticated (NIP-42) as who:
 // app data only to its author, everything else to anyone.
-n78_serve :: (e:NostrEvent,authenticated:bool,who:[32]u8)->bool {
+n78_serve :: (e:NostrEvent,authenticated:bool,who:[32]u8)->bool #effects(all) {
   if e.kind!=N78_APP && e.kind!=N78_REGULAR {return true;}
   return authenticated && ns_equal32(e.public_key,who);
 }
@@ -83,7 +83,7 @@ n78_serve :: (e:NostrEvent,authenticated:bool,who:[32]u8)->bool {
 // book:begin write
 // A kind 30078's tags, [["d", d]], into out: its length, or -1 for an
 // empty d or a short out.
-n78_tags :: (d:string,out:[]u8)->int {
+n78_tags :: (d:string,out:[]u8)->int #effects(all) {
   if d.count==0 {return -1;}
   n:=json_raw(out,0,"[[\"d\",");n=json_write_string(out,n,d);
   return json_raw(out,n,"]]");

@@ -34,7 +34,7 @@ VXI_META :: [2]u8.['X',2];
   absent:[64]u8;bad:=[1]LcCursor.[LcCursor.{n=12}];
   #assert !vxi_sync(absent[..],bad[..],batch[..],0);
 }
-vxi_context :: (table:[]u8,used:int)->TxiMeta #export_c {
+vxi_context :: (table:[]u8,used:int)->TxiMeta #export_c #effects(all) {
   tip:=cs_tip_vartime(table,used);if tip.code!=CS_OK {return TxiMeta.{code=CS_CONTEXT};}
   for prefix:[2]u8.['I','E'] {key:=[1]u8.[prefix];if kv_find_vartime(table,used,key[..]).found {return TxiMeta.{code=CS_CONTEXT};}}
   key:=VXI_META;v:=lc_value_vartime(table,used,key[..]);
@@ -42,7 +42,7 @@ vxi_context :: (table:[]u8,used:int)->TxiMeta #export_c {
   if kv_get32(v,0)!=2 || kv_get32(v,4)!=tip.chain || kv_get32(v,8)!=tip.height || !lc_same(v[16..<48],tip.hash[..]) {return TxiMeta.{code=CS_CONTEXT};}
   return TxiMeta.{next=kv_get32(v,12)};
 }
-vxi_sync :: (table:[]u8,c:[]LcCursor,batch:[]u8,next:int)->bool {
+vxi_sync :: (table:[]u8,c:[]LcCursor,batch:[]u8,next:int)->bool #effects(all) {
   tip:=cs_tip_vartime(table,c[0].used);if tip.code!=CS_OK || next<0 || next>4294967295 {return false;}
   key:=VXI_META;v:[48]u8;kv_put32(v[..],0,2);kv_put32(v[..],4,tip.chain);kv_put32(v[..],8,tip.height);kv_put32(v[..],12,next);
   for i:0..<32 {v[16+i]=tip.hash[i];}return lc_put_vartime(table,c,batch,key[..],v[..]);

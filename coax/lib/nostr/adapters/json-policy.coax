@@ -115,17 +115,17 @@ JsonAdmission :: struct {
   #assert s[0].error==JA_OK && s[0].work==2 && s[0].count==2;
 }
 
-ja_policy :: (domain:int)->JsonPolicy #export_c {
+ja_policy :: (domain:int)->JsonPolicy #export_c #effects(all) {
   p:=JsonPolicy.{domain=domain,input=262144,frame=262144,raw=65536,decoded=65536,content=65536,depth=16,keys=1024,key_bytes=65536,work=1048576};
   if domain==1 {p.input=65536;p.frame=0;p.content=0;}
   if domain==2 {p.input=524288;p.frame=0;p.proto=1048576;}
   return p;
 }
 // The supplied fields are fixed-order policy data, not observations from JSON.
-ja_with_limits :: (p:JsonPolicy,v:[]int)->JsonPolicy {
+ja_with_limits :: (p:JsonPolicy,v:[]int)->JsonPolicy #effects(all) {
   q:=p;q.input=v[0];q.raw=v[1];q.decoded=v[2];q.content=v[3];q.depth=v[4];q.keys=v[5];q.key_bytes=v[6];q.work=v[7];q.frame=v[8];q.proto=v[9];return q;
 }
-ja_policy_valid :: (p:JsonPolicy)->bool #export_c {
+ja_policy_valid :: (p:JsonPolicy)->bool #export_c #effects(all) {
   if p.domain<0 || p.domain>2 {return false;}
   base:=ja_policy(p.domain);
   values:=[10]int.[p.input,p.raw,p.decoded,p.content,p.depth,p.keys,p.key_bytes,p.work,p.frame,p.proto];
@@ -133,7 +133,7 @@ ja_policy_valid :: (p:JsonPolicy)->bool #export_c {
   for i:0..<10 {if values[i]<0 || values[i]>maxima[i] || (values[i]==0 && maxima[i]!=0) {return false;}}
   return p.raw<=p.input && p.decoded<=p.raw && p.content<=p.decoded && (p.frame==0 || p.input<=p.frame);
 }
-ja_integer :: (raw:string)->JsonSafeInt #export_c {
+ja_integer :: (raw:string)->JsonSafeInt #export_c #effects(all) {
   if raw.count==0 {return JsonSafeInt.{};}
   i:=0;negative:=false;if raw[0]=='-' {negative=true;i=1;}
   if i>=raw.count {return JsonSafeInt.{};}
@@ -141,13 +141,13 @@ ja_integer :: (raw:string)->JsonSafeInt #export_c {
   value:=0;while i<raw.count {b:=raw[i];if b<'0' || b>'9' {return JsonSafeInt.{};}digit:=cast(int)(b-'0');if value>(JA_SAFE-digit)/10 {return JsonSafeInt.{};}value=value*10+digit;i+=1;}
   return JsonSafeInt.{ok=true,value=ifx negative then -value else value};
 }
-ja_field :: (key:string,domain:int)->int {
+ja_field :: (key:string,domain:int)->int #effects(all) {
   if domain==1 {if key=="exp" || key=="iat" || key=="nbf" {return 2;}return 0;}
   if key=="kind" || key=="created_at" {return 2;}
   if key=="content" {return 1;}return 0;
 }
 
-ja_start :: (input:int,p:JsonPolicy,frame:int,proto:int)->JsonAdmission {
+ja_start :: (input:int,p:JsonPolicy,frame:int,proto:int)->JsonAdmission #effects(all) {
   s:JsonAdmission;s.policy=p;
   if !ja_policy_valid(p) {s.error=JA_POLICY;return s;}
   if input<0 || input>p.input || frame<0 || proto<0 || proto>p.proto {s.error=JA_SIZE;return s;}
@@ -157,7 +157,7 @@ ja_start :: (input:int,p:JsonPolicy,frame:int,proto:int)->JsonAdmission {
 }
 // Token numbers are the shipped JSON pull-parser ABI; position is the opening
 // object's original byte offset, stable and unique within one input document.
-ja_feed :: (s:[]JsonAdmission,token:int,depth:int,key:bool,position:int,raw:string,decoded:[]u8,n:int) {
+ja_feed :: (s:[]JsonAdmission,token:int,depth:int,key:bool,position:int,raw:string,decoded:[]u8,n:int) #effects(all) {
   if s[0].error!=JA_OK {return;}
   if token<0 || token>9 {s[0].error=JA_JSON;return;}
   if token==0 {s[0].finished=true;return;}

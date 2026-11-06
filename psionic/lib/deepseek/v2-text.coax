@@ -34,19 +34,19 @@ DvText :: struct {status:DsStatus;count:int;pool:int;}
     #assert !dv_text_admit(table[..]);
     #assert dv_answer_count(4096) && !dv_answer_count(4097) && dv_answer_bytes(65536) && !dv_answer_bytes(65537);
 }
-dv_text_u32 :: (data:[]u8,at:int)->int {return cast(int)(u32(data[at])|(u32(data[at+1])<<8)|(u32(data[at+2])<<16)|(u32(data[at+3])<<24));}
-dv_text_layout :: (data:[]u8)->DvText {
+dv_text_u32 :: (data:[]u8,at:int)->int #effects(all) {return cast(int)(u32(data[at])|(u32(data[at+1])<<8)|(u32(data[at+2])<<16)|(u32(data[at+3])<<24));}
+dv_text_layout :: (data:[]u8)->DvText #effects(all) {
     if !dv_text_header(data.count) {return DvText.{status=DsStatus.format};}magic:="DV2T0001";for i:0..<8 {if data[i]!=magic[i] {return DvText.{status=DsStatus.format};}}
     n:=dv_text_u32(data,8);if !dv_logits_count(n) {return DvText.{status=DsStatus.format};}pool:=16+8*n;
     if data.count<pool || dv_text_u32(data,12)!=data.count-pool {return DvText.{status=DsStatus.format};}return DvText.{count=n,pool=pool};
 }
-dv_text_header :: (n:int)->bool {return n>=16;}
-dv_text_record :: (begin:int,bytes:int,pool:int)->bool {return begin<=pool && bytes<=pool-begin;}
-dv_text_admit :: (data:[]u8)->bool #export_c {return pw_digest(data,DV_TEXT_SHA);}
-dv_answer_count :: (n:int)->bool {return n<=4096;}
-dv_answer_bytes :: (n:int)->bool {return n<=65536;}
-dv_answer_room :: (n:int,bytes:int)->bool {return dv_answer_bytes(n+bytes);}
-dv_decode_answer :: (data:[]u8,ids:[]int,out:[]u8,stage:[]u8,overlap:bool)->DsResult #export_c {
+dv_text_header :: (n:int)->bool #effects(all) {return n>=16;}
+dv_text_record :: (begin:int,bytes:int,pool:int)->bool #effects(all) {return begin<=pool && bytes<=pool-begin;}
+dv_text_admit :: (data:[]u8)->bool #export_c #effects(all) {return pw_digest(data,DV_TEXT_SHA);}
+dv_answer_count :: (n:int)->bool #effects(all) {return n<=4096;}
+dv_answer_bytes :: (n:int)->bool #effects(all) {return n<=65536;}
+dv_answer_room :: (n:int,bytes:int)->bool #effects(all) {return dv_answer_bytes(n+bytes);}
+dv_decode_answer :: (data:[]u8,ids:[]int,out:[]u8,stage:[]u8,overlap:bool)->DsResult #export_c #effects(all) {
     if overlap {return DsResult.{status=DsStatus.alias};}layout:=dv_text_layout(data);if layout.status!=DsStatus.ok {return DsResult.{status=layout.status};}
     if !dv_answer_count(ids.count) {return DsResult.{status=DsStatus.budget};}n:=0;
     for i:0..<ids.count {id:=ids[i];if id==dv_original_bos() {return DsResult.{status=DsStatus.format};}

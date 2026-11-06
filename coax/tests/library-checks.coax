@@ -57,7 +57,7 @@ run :: (compiler: string, dir: string, body: string, out: [] u8) -> ProcRun {
 // (default $D/cache), then its library_checks counts.
 FUNCTIONS :: "compile() { COAX_CHECK_CACHE=\"$D/${3:-cache}\" \"$C\" c \"$1\" --timings \"$D/$2.json\" > \"$D/$2.c\" 2>&1 || cat \"$D/$2.c\"; grep -o '\"library_checks\":{[^}]*}' \"$D/$2.json\"; }";
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: library-checks.coax COMPILER"); return 2; }
   compiler := args_at(a[..], 0);

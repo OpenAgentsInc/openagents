@@ -20,7 +20,7 @@ MR_ROOM :: 1024;     // inputs, outputs and witness items in one transaction
 // as given. Writes the branch root's code and root, and the proof's code.
 // Numbers are 8-byte little-endian. Returns the bytes written, or -1 when
 // out is too short or the case too large.
-merkle_report_vartime :: (op: int, b: [] u8, index: int, count: int, out: [] u8) -> int #export_c {
+merkle_report_vartime :: (op: int, b: [] u8, index: int, count: int, out: [] u8) -> int #export_c #effects(all) {
   if out.count < 64 { return -1; }
   work: [32 * MR_LEAVES] u8;
   if op == 0 {

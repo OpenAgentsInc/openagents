@@ -71,13 +71,13 @@ ParentMesh :: struct {p:[PARENT_VERTICES]Point;i:[PARENT_INDICES]u32;vertices:in
   i:=[12]u32.[0,1,2,1,3,4,2,3,4,0,1,3];#assert !parent_reduce(m[..],p[..],i[..],0);
   i=[12]u32.[0,1,2,4,4,1,2,4,3,3,4,0];#assert !parent_reduce(m[..],p[..],i[..],0);
 }
-parent_apex :: (counts:[]int,triangles:int)->int {for count,k:counts {if count==triangles {return k;}}return -1;}
+parent_apex :: (counts:[]int,triangles:int)->int #effects(all) {for count,k:counts {if count==triangles {return k;}}return -1;}
 
-parent_error :: (apex:f32,plane:f32,child:f32)->f32 {
+parent_error :: (apex:f32,plane:f32,child:f32)->f32 #effects(all) {
   exact:=abs(cast(f64)apex-cast(f64)plane)+cast(f64)child;rounded:=cast(f32)exact;
   if cast(f64)rounded<exact {return f32_from_bits(f32_bits(rounded)+1);}return rounded;
 }
-parent_reduce :: (out:[]ParentMesh,p:[]Point,indices:[]u32,child_error:f32)->bool {
+parent_reduce :: (out:[]ParentMesh,p:[]Point,indices:[]u32,child_error:f32)->bool #effects(all) {
   if p.count<4 || p.count>PARENT_VERTICES || indices.count!=(p.count-1)*3 || !(child_error>=0 && child_error<1000000) {return false;}
   for v:p {if !finite3(v) {return false;}}
   for v:indices {if cast(int)v>=p.count {return false;}}

@@ -16,7 +16,7 @@ DaNeeds :: struct {threads:int;shared:int;mma:bool;}
 // What the device reports (CUDA device attributes 75, 76, 1 and 8).
 DaDevice :: struct {major:int;minor:int;max_threads:int;max_shared:int;}
 
-da_admit :: (need:DaNeeds,dev:DaDevice)->DaStatus {
+da_admit :: (need:DaNeeds,dev:DaDevice)->DaStatus #effects(all) {
     if dev.major<1 || dev.minor<0 || dev.minor>9 || dev.max_threads<32 || dev.max_shared<0 {return DaStatus.report;}
     if need.threads<32 || need.threads/32>32 || need.threads%32!=0 || need.shared<0 {return DaStatus.kernel;}
     if need.threads>dev.max_threads {return DaStatus.threads;}
@@ -24,7 +24,7 @@ da_admit :: (need:DaNeeds,dev:DaDevice)->DaStatus {
     if need.mma && dev.major<8 {return DaStatus.mma;}
     return DaStatus.ok;
 }
-da_text :: (s:DaStatus)->string {
+da_text :: (s:DaStatus)->string #effects(all) {
     if s==DaStatus.ok {return "admitted";}
     if s==DaStatus.report {return "refused: the device report is malformed";}
     if s==DaStatus.kernel {return "refused: the kernel's needs are malformed";}
@@ -41,14 +41,14 @@ da_text :: (s:DaStatus)->string {
 // [256]f32 tile; its [128]f32 accumulator is per-thread registers),
 // 3 dw_mma_tile (one warp, registers only).
 DA_KERNELS :: 4;
-da_needs :: (kernel:int)->DaNeeds {
+da_needs :: (kernel:int)->DaNeeds #effects(all) {
     if kernel==0 {return DaNeeds.{threads=128,shared=1024,mma=false};}
     if kernel==1 {return DaNeeds.{threads=32,shared=256,mma=false};}
     if kernel==2 {return DaNeeds.{threads=128,shared=1024,mma=false};}
     if kernel==3 {return DaNeeds.{threads=32,shared=0,mma=true};}
     return DaNeeds.{threads=0,shared=0,mma=false};
 }
-da_name :: (kernel:int)->string {
+da_name :: (kernel:int)->string #effects(all) {
     if kernel==0 {return "dc_tile_sum";}
     if kernel==1 {return "dc_butterfly";}
     if kernel==2 {return "dc_bf16_rows";}
@@ -59,12 +59,12 @@ da_name :: (kernel:int)->string {
 
 // The C host's entry: the decision for kernel `kernel` on the reported
 // device, as the DaStatus number (0 admits).
-da_admit_kernel :: (kernel:int,major:int,minor:int,max_threads:int,max_shared:int)->int #export_c {
+da_admit_kernel :: (kernel:int,major:int,minor:int,max_threads:int,max_shared:int)->int #export_c #effects(all) {
     return cast(int)da_admit(da_needs(kernel),DaDevice.{major=major,minor=minor,max_threads=max_threads,max_shared=max_shared});
 }
 
 // ---- Checks.
-da_4080 :: ()->DaDevice {return DaDevice.{major=8,minor=9,max_threads=1024,max_shared=49152};}
+da_4080 :: ()->DaDevice #effects(all) {return DaDevice.{major=8,minor=9,max_threads=1024,max_shared=49152};}
 #test "the RTX 4080 report admits all four kernels" {
     // The report psionic/tests/cooperate_device.c reads on this host.
     d:=da_4080();

@@ -6,7 +6,7 @@ hhn_header :: (head:string,key:string)->string {
  at:=0;while at<head.count {end:=rtq_find(head,"\r\n",at);if end<0 {return "";}line:=head[at..<end];colon:=rtq_find(line,":",0);same:=colon==key.count;for i:0..<key.count {if i>=colon||rto_lower(line[i])!=rto_lower(key[i]) {same=false;}}if same {return rto_trim(line[colon+1..<line.count]);}at=end+2;}return "";
 }
 hhn_path :: (status:int,target:int,post:int,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"/r/");jo_int(o[..],status);jo_put(o[..],"/");jo_int(o[..],target);jo_put(o[..],"/");jo_int(o[..],post);return jo_text(o[..]);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) {return 2;}
  if args_at(a[..],0)=="--redirect-peer" {if args_count(a[..])!=5 {return 2;}return hdr_peer(args_at(a[..],1),args_at(a[..],2),args_at(a[..],3),args_at(a[..],4));}
  if args_count(a[..])!=3 {tool_errln("usage: check-linux-http-redirect ROOT HELPER NEW_OUT");return 2;}

@@ -12,7 +12,7 @@
 #load "../../lib/crypto/bip32.coax";
 
 // The x-only public key of secret into out (32 bytes). False for a bad key.
-runner_coax_pubkey :: (secret: [] u8, out: [] u8) -> bool #export_c {
+runner_coax_pubkey :: (secret: [] u8, out: [] u8) -> bool #export_c #effects(all) {
   if secret.count != 32 || out.count < 32 { return false; }
   pub: [33] u8;
   if !bip32_public(secret, pub[..]) { return false; }
@@ -22,7 +22,7 @@ runner_coax_pubkey :: (secret: [] u8, out: [] u8) -> bool #export_c {
 
 // One event signed with secret: kind, created_at, tags (a JSON array) and an
 // empty content, into out as NIP-01 JSON. Its length, or -1.
-runner_coax_sign :: (secret: [] u8, aux: [] u8, created_at: int, kind: int, tags: [] u8, out: [] u8) -> int #export_c {
+runner_coax_sign :: (secret: [] u8, aux: [] u8, created_at: int, kind: int, tags: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if secret.count != 32 || aux.count != 32 { return -1; }
   work: [1] NostrSignWork; scratch: [16384] u8;
   r := EVENT_MORE; steps := 0;

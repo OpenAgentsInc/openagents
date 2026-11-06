@@ -89,7 +89,7 @@ wl_decoder_prompt :: (p:[]f64,mode:int,o:[]WlText) {
         }
     }
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     args:[1]Args;if !args_load(args[..]) || args_count(args[..])<1 || args_count(args[..])>2 {tool_errln("usage: weight-space-llm OUTDIR [--replay]");return 2;}
     replay:=args_count(args[..])==2;#assert !replay || args_at(args[..],1)=="--replay";
     dir:=args_at(args[..],0);#assert fs_mkdir(dir);print("case,condition,proposal,base_right,edited_right,total,changed\n");

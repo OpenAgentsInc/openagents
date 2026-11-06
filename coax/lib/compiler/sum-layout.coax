@@ -39,7 +39,7 @@ SL_Layout :: struct {valid:bool;size:int;alignment:int;offset:int;}
  else if mode==5 {#assert l.valid && l.size==1073741824 && l.alignment==536870912 && l.offset==536870912;}
  else {#assert !l.valid && l.size==0 && l.alignment==0 && l.offset==0;}
 }
-SL_layout :: (sizes:[]int,aligns:[]int)->SL_Layout {
+SL_layout :: (sizes:[]int,aligns:[]int)->SL_Layout #effects(all) {
  if sizes.count<1 || sizes.count>64 || sizes.count!=aligns.count {return SL_Layout.{};}
  size:=0;alignment:=4;
  for i:0..<sizes.count {

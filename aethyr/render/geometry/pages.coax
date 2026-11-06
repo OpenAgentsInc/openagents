@@ -42,7 +42,7 @@ GeometryPages :: struct {slot:[2]PageSlot;pending:[2]PageTicket;epoch:int=1;seri
   c[0].slot[1].pin=false;#assert page_arrive(c[..],td,d.data[0..<d.bytes]) && c[0].evictions==1 && page_find(c[..],b.key)== -1 && page_find(c[..],d.key)==1;
 }
 
-page_number_ok :: (data:[]u8,at:int)->bool {return (page_word(data,at)&0x7f800000)!=0x7f800000;}
+page_number_ok :: (data:[]u8,at:int)->bool #effects(all) {return (page_word(data,at)&0x7f800000)!=0x7f800000;}
 #test "float page words distinguish exponent masks including NaN payload low bits" {
   b:[4]u8;for word:[5]u32.[0x7f800000,0xff800000,0x7fc00001,0x7fffffff,0xff800001] {page_put(b[..],0,word);#assert !page_number_ok(b[..],0);}
   page_put(b[..],0,0x3f800001);#assert page_number_ok(b[..],0);
@@ -117,14 +117,14 @@ page_number_ok :: (data:[]u8,at:int)->bool {return (page_word(data,at)&0x7f80000
   }
 }
 
-page_put :: (out:[]u8,at:int,value:u32) {for k:0..<4 {out[at+k]=cast(u8)((value>>(k*8))&255);}}
-page_word :: (data:[]u8,at:int)->u32 {v:u32=0;for k:0..<4 {v|=cast(u32)data[at+k]<<(k*8);}return v;}
-geometry_page :: (mesh:ParentMesh)->GeometryPage {
+page_put :: (out:[]u8,at:int,value:u32) #effects(all) {for k:0..<4 {out[at+k]=cast(u8)((value>>(k*8))&255);}}
+page_word :: (data:[]u8,at:int)->u32 #effects(all) {v:u32=0;for k:0..<4 {v|=cast(u32)data[at+k]<<(k*8);}return v;}
+geometry_page :: (mesh:ParentMesh)->GeometryPage #effects(all) {
   p:=GeometryPage.{};page_put(p.data[..],0,0x31504756);page_put(p.data[..],4,cast(u32)mesh.vertices);page_put(p.data[..],8,cast(u32)mesh.indices);page_put(p.data[..],12,f32_bits(mesh.error));at:=16;
   for k:0..<mesh.vertices {for v:[3]f32.[mesh.p[k].x,mesh.p[k].y,mesh.p[k].z] {page_put(p.data[..],at,f32_bits(v));at+=4;}}
   for k:0..<mesh.indices {page_put(p.data[..],at,mesh.i[k]);at+=4;}p.bytes=at;p.key=asset_id(cast(string)p.data[0..<at]);return p;
 }
-page_decode :: (out:[]ParentMesh,data:[]u8)->bool {
+page_decode :: (out:[]ParentMesh,data:[]u8)->bool #effects(all) {
   if data.count<64 || page_word(data,0)!=0x31504756 {return false;}
   n:=cast(int)page_word(data,4);indices:=cast(int)page_word(data,8);bits:=page_word(data,12);if !page_number_ok(data,12) {return false;}error:=f32_from_bits(bits);
   if n>PARENT_VERTICES || indices==0 || indices/3>PARENT_INDICES/3 || indices%3!=0 || data.count!=16+n*12+indices*4 || !(error>=0 && error<1000000) {return false;}
@@ -134,14 +134,14 @@ page_decode :: (out:[]ParentMesh,data:[]u8)->bool {
   for t:0..<indices/3 {a:=m.p[cast(int)m.i[t*3]];b:=m.p[cast(int)m.i[t*3+1]];c:=m.p[cast(int)m.i[t*3+2]];area:=cross(sub(b,a),sub(c,a));if dot(area,area)==0 {return false;}}
   out[0]=m;return true;
 }
-page_find :: (c:[]GeometryPages,key:AssetId)->int {for a,k:c[0].slot {if a.cost!=0 && asset_same(a.page.key,key) {return k;}}return -1;}
-page_request :: (c:[]GeometryPages,key:AssetId,bytes:int)->PageTicket {
+page_find :: (c:[]GeometryPages,key:AssetId)->int #effects(all) {for a,k:c[0].slot {if a.cost!=0 && asset_same(a.page.key,key) {return k;}}return -1;}
+page_request :: (c:[]GeometryPages,key:AssetId,bytes:int)->PageTicket #effects(all) {
   if bytes<1 || bytes>GEOMETRY_PAGE_BYTES || page_find(c,key)!= -1 {return PageTicket.{};}
   for t:c[0].pending {if t.serial!=0 && asset_same(t.key,key) {return t;}}
   for t,k:c[0].pending {if t.serial==0 {ticket:=PageTicket.{serial=c[0].serial,epoch=c[0].epoch,key=key,bytes=bytes};c[0].serial+=1;c[0].pending[k]=ticket;c[0].requests+=1;return ticket;}}
   return PageTicket.{};
 }
-page_arrive :: (c:[]GeometryPages,t:PageTicket,data:[]u8)->bool {
+page_arrive :: (c:[]GeometryPages,t:PageTicket,data:[]u8)->bool #effects(all) {
   pending:= -1;for a,k:c[0].pending {if a.serial==t.serial && a.serial!=0 {pending=k;}}
   if pending<0 || t.epoch!=c[0].epoch || t.bytes!=data.count || !asset_same(t.key,c[0].pending[pending].key) || !asset_same(t.key,asset_id(cast(string)data)) {c[0].refused+=1;return false;}
   mesh:[1]ParentMesh;if !page_decode(mesh[..],data) {c[0].refused+=1;return false;}
@@ -158,6 +158,6 @@ page_arrive :: (c:[]GeometryPages,t:PageTicket,data:[]u8)->bool {
   for v,k:data {next.slot[slot].page.data[k]=v;}next.slot[slot].page.bytes=data.count;next.slot[slot].page.key=t.key;
   next.used+=cost;next.pending[pending]=PageTicket.{};next.arrivals+=1;c[0]=next;return true;
 }
-page_reset :: (c:[]GeometryPages) {
+page_reset :: (c:[]GeometryPages) #effects(all) {
   c[0].epoch+=1;c[0].used=0;for k:0..<2 {c[0].slot[k]=PageSlot.{};c[0].pending[k]=PageTicket.{};}
 }

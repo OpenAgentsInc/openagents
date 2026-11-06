@@ -177,7 +177,7 @@ mt_json :: (m:[]MtState,root:string,out:[]u8)->int {
   }jo_end(o[..]);if last<0||m[0].ops[last].nc<1{return -1;}
   jo_key(o[..],"outputs");jo_arr(o[..]);for k:0..<m[0].ops[last].nc{jo_int(o[..],m[0].ops[last].colors[k]);}jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..])||args_count(args[..])!=4{tool_errln("usage: metal-pass.coax ABS_SPEC_DIR SPEC_NAME ABS_SHADER_DIR OUTPUT.json");return 2;}
   root:=args_at(args[..],0);shaders:=args_at(args[..],2);source:[65536]u8;p:[4096]u8;n:=fs_read(fs_join(root,args_at(args[..],1),p[..]),source[..]);if n<0{return 1;}
   state:[1]MtState;if !mt_parse(state[..],cast(string)source[0..<n],root,shaders){tool_errln("Metal plan refused the spec, files or reflection.");return 1;}

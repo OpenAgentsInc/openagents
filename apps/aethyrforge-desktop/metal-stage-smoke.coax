@@ -5,7 +5,7 @@
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
 mss_int :: (d:Jv,n:int,key:string)->int {return jv_int(d,jv_get(d,n,key),-1);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<3 {tool_errln("usage: metal-stage-smoke ISOLATED_APP PERSISTED_DATA NEW_OUTPUT [--existing] [--require-network] [--require-audio]");return 2;}
  network:=args_has(a[..],"--require-network");audio:=args_has(a[..],"--require-audio");held:=network||audio;
  app:=args_at(a[..],0);data:=args_at(a[..],1);dir:=args_at(a[..],2);paths:[4][4096]u8;if !fs_mkdir(dir) {return 1;}report:=fs_join(dir,"window.json",paths[0][..]);input:=fs_join(dir,"plan.json",paths[1][..]);bytes:[16384]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.metal.window-plan.v1");jo_key(o[..],"report");jo_str(o[..],report);jo_key(o[..],"operations");jo_arr(o[..]);

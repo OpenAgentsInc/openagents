@@ -76,7 +76,7 @@ weights must instead sum to one, within their stated rounding tolerance.
 
 <!-- source: psionic/lib/moe.coax route -->
 ```jai
-mo_route :: (logits:[]f32,k:int)->MoRoute #export_c {
+mo_route :: (logits:[]f32,k:int)->MoRoute #export_c #effects(all) {
     if logits.count<1 || logits.count>128 || k<1 || k>4 || k>logits.count {return MoRoute.{status=MoStatus.shape};}
     for value:logits {if !psionic_tensor_finite_bits(f32_bits(value)) {return MoRoute.{status=MoStatus.number};}}
     result:MoRoute;
@@ -135,7 +135,7 @@ resident_bytes = resident_count * (d*d + d) * 4
 
 <!-- source: psionic/lib/moe.coax plan -->
 ```jai
-mo_plan :: (width:int,residents:int,budget:int)->MoPlan #export_c {
+mo_plan :: (width:int,residents:int,budget:int)->MoPlan #export_c #effects(all) {
     if width<1 || width>16 || residents<1 || residents>128 {return MoPlan.{status=MoStatus.shape};}
     bytes:=(width*width+width)*residents*4;
     if budget<bytes {return MoPlan.{status=MoStatus.budget};}
@@ -161,7 +161,7 @@ the final weighted sum uses compensated `f64` accumulation and one checked
 
 <!-- source: psionic/lib/moe.coax forward -->
 ```jai
-mo_forward :: (logits:[]f32,k:int,x:[]f32,experts:[]MoExpert,budget:int,out:[]f32,overlap:bool)->MoResult #export_c {
+mo_forward :: (logits:[]f32,k:int,x:[]f32,experts:[]MoExpert,budget:int,out:[]f32,overlap:bool)->MoResult #export_c #effects(all) {
     route:=mo_route(logits,k);if route.status!=MoStatus.ok {return MoResult.{status=route.status};}
     d:=x.count;plan:=mo_plan(d,experts.count,budget);if plan.status!=MoStatus.ok {return MoResult.{status=plan.status};}
     if experts.count>logits.count {return MoResult.{status=MoStatus.shape};}

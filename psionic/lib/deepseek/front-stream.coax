@@ -96,22 +96,22 @@
     r=df_feed(DfState.{total=65535},bytes[0..<1],out[..],tmp[..],false);#assert r.status==DfStatus.ok && r.state.total==65536;
 }
 
-df_put :: (w:DfWriter,kind:DfKind,call:int,c:u8)->DfWriter {
+df_put :: (w:DfWriter,kind:DfKind,call:int,c:u8)->DfWriter #effects(all) {
     r:=w;if r.status!=DfStatus.ok {return r;}
     if r.written==r.events.count {r.status=DfStatus.capacity;return r;}
     r.events[r.written]=DfEvent.{kind=kind,call=call,byte=c};r.written+=1;return r;
 }
-df_text :: (w:DfWriter,kind:DfKind,call:int,text:string)->DfWriter {
+df_text :: (w:DfWriter,kind:DfKind,call:int,text:string)->DfWriter #effects(all) {
     r:=w;for c:text {r=df_put(r,kind,call,c);}return r;
 }
-df_escape :: (w:DfWriter,call:int,c:u8)->DfWriter {
+df_escape :: (w:DfWriter,call:int,c:u8)->DfWriter #effects(all) {
     if c==34 || c==92 {r:=df_put(w,DfKind.arguments,call,92);return df_put(r,DfKind.arguments,call,c);}
     if c<32 {r:=df_text(w,DfKind.arguments,call,"\\u00");hex:="0123456789abcdef";r=df_put(r,DfKind.arguments,call,hex[cast(int)c/16]);return df_put(r,DfKind.arguments,call,hex[cast(int)c%16]);}
     return df_put(w,DfKind.arguments,call,c);
 }
 // The bounded pending window matches typed units. @, ~ and ! here stand for
 // DSML, end_think and EOS controls; ordinary bytes with those spellings differ.
-df_marker :: (phase:int,branch:int)->string {
+df_marker :: (phase:int,branch:int)->string #effects(all) {
     if phase==0 {return ifx branch==0 then "~" else "<@ calls>";}
     if phase==1 {return ifx branch==0 then "!" else "<@ calls>";}
     if phase==2 {return ifx branch==0 then "<@ invoke name=\"" else "</@ calls>";}
@@ -121,13 +121,13 @@ df_marker :: (phase:int,branch:int)->string {
     if phase==6 || phase==7 {return ifx branch==0 then "</@ parameter>" else "";}
     if phase==8 {return ifx branch==0 then "!" else "";}return "";
 }
-df_pattern_unit :: (c:u8)->int {
+df_pattern_unit :: (c:u8)->int #effects(all) {
     if c==64 {return 263;}if c==126 {return 262;}if c==33 {return 257;}return cast(int)c;
 }
-df_identifier :: (c:int)->bool {return (c>=65 && c<=90) || (c>=97 && c<=122) || (c>=48 && c<=57) || c==95 || c==45 || c==46;}
-df_space :: (c:int)->bool {return c==32 || c==10 || c==13 || c==9;}
+df_identifier :: (c:int)->bool #effects(all) {return (c>=65 && c<=90) || (c>=97 && c<=122) || (c>=48 && c<=57) || c==95 || c==45 || c==46;}
+df_space :: (c:int)->bool #effects(all) {return c==32 || c==10 || c==13 || c==9;}
 // Emit a scalar only after its final byte is valid. Never expose partial UTF8.
-df_data :: (state:DfState,c:int,kind:DfKind,escaped:bool,writer:DfWriter)->DfStep {
+df_data :: (state:DfState,c:int,kind:DfKind,escaped:bool,writer:DfWriter)->DfStep #effects(all) {
     s:=state;w:=writer;
     if c<0 || c>255 {w.status=DfStatus.format;return DfStep.{s=s,w=w};}
     if s.left==0 {
@@ -145,7 +145,7 @@ df_data :: (state:DfState,c:int,kind:DfKind,escaped:bool,writer:DfWriter)->DfSte
         for i:0..<s.utf_count {w=df_put(w,kind,s.call,s.utf[i]);}s.utf_count=0;
     }return DfStep.{s=s,w=w};
 }
-df_unmatched :: (state:DfState,c:int,writer:DfWriter)->DfStep {
+df_unmatched :: (state:DfState,c:int,writer:DfWriter)->DfStep #effects(all) {
     s:=state;w:=writer;
     if s.phase==0 || s.phase==1 {kind:=ifx s.phase==0 then DfKind.reasoning else DfKind.content;return df_data(s,c,kind,false,w);}
     if s.phase==6 || s.phase==7 {return df_data(s,c,DfKind.arguments,s.phase==6,w);}
@@ -158,7 +158,7 @@ df_unmatched :: (state:DfState,c:int,writer:DfWriter)->DfStep {
     if (s.phase==2 || s.phase==4 || s.phase==8) && df_space(c) {return DfStep.{s=s,w=w};}
     w.status=DfStatus.format;return DfStep.{s=s,w=w};
 }
-df_matched :: (state:DfState,branch:int,writer:DfWriter)->DfStep {
+df_matched :: (state:DfState,branch:int,writer:DfWriter)->DfStep #effects(all) {
     s:=state;w:=writer;
     if s.left!=0 {w.status=DfStatus.utf8;return DfStep.{s=s,w=w};}
     if s.phase==0 || s.phase==1 {if branch==1 {s.phase=2;}else {s.phase=ifx s.phase==0 then 1 else 9;}}
@@ -176,7 +176,7 @@ df_matched :: (state:DfState,branch:int,writer:DfWriter)->DfStep {
     else if s.phase==8 {s.phase=9;}
     return DfStep.{s=s,w=w};
 }
-df_push :: (state:DfState,c:int,writer:DfWriter)->DfStep {
+df_push :: (state:DfState,c:int,writer:DfWriter)->DfStep #effects(all) {
     s:=state;w:=writer;s.pending[s.count]=c;s.count+=1;
     while s.count!=0 {
         prefix:=false;matched:=-1;
@@ -188,7 +188,7 @@ df_push :: (state:DfState,c:int,writer:DfWriter)->DfStep {
     }return DfStep.{s=s,w=w};
 }
 // book:begin feed
-df_feed :: (state:DfState,units:[]int,output:[]DfEvent,stage:[]DfEvent,overlap:bool)->DfResult #export_c {
+df_feed :: (state:DfState,units:[]int,output:[]DfEvent,stage:[]DfEvent,overlap:bool)->DfResult #export_c #effects(all) {
     if overlap {return DfResult.{status=DfStatus.alias,state=state};}
     if state.finished || state.phase<0 || state.phase>9 {return DfResult.{status=DfStatus.state,state=state};}
     if units.count>4096 || units.count>65536-state.total {return DfResult.{status=DfStatus.budget,state=state};}
@@ -197,7 +197,7 @@ df_feed :: (state:DfState,units:[]int,output:[]DfEvent,stage:[]DfEvent,overlap:b
     if w.written>output.count {return DfResult.{status=DfStatus.capacity,state=state};}
     for i:0..<w.written {output[i]=stage[i];}s.total+=units.count;return DfResult.{state=s,written=w.written};
 }
-df_end :: (state:DfState,finish:bool)->DfResult #export_c {
+df_end :: (state:DfState,finish:bool)->DfResult #export_c #effects(all) {
     if state.finished {return DfResult.{status=DfStatus.state,state=state};}
     if !finish || state.phase!=9 || state.count!=0 || state.left!=0 {return DfResult.{status=DfStatus.incomplete,state=state};}
     s:=state;s.finished=true;return DfResult.{state=s};

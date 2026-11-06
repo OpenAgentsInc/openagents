@@ -56,16 +56,16 @@ TAU :: 6.2831853;
 
 SetPiece :: struct { piece: int = -1; count: int = -1; kind: int = -1; colour: int = -1; size: int = -1; }
 
-verse_piece_count :: () -> int #export_c { return PIECES; }
-verse_piece_name :: (piece: int) -> string #export_c { if piece < 0 || piece >= PIECES { return ""; } return PIECE_NAMES[piece]; }
-verse_piece_mesh :: (mesh: int) -> string #export_c { if mesh < 0 || mesh >= PIECE_MESHES { return ""; } return PIECE_MESH_NAMES[mesh]; }
-verse_piece_label :: (mesh: int) -> string #export_c { if mesh < 0 || mesh >= PIECE_MESHES { return ""; } return PIECE_MESH_LABELS[mesh]; }
-verse_piece_places_max :: () -> int #export_c { return PLACES_MAX; }
+verse_piece_count :: () -> int #export_c #effects(all) { return PIECES; }
+verse_piece_name :: (piece: int) -> string #export_c #effects(all) { if piece < 0 || piece >= PIECES { return ""; } return PIECE_NAMES[piece]; }
+verse_piece_mesh :: (mesh: int) -> string #export_c #effects(all) { if mesh < 0 || mesh >= PIECE_MESHES { return ""; } return PIECE_MESH_NAMES[mesh]; }
+verse_piece_label :: (mesh: int) -> string #export_c #effects(all) { if mesh < 0 || mesh >= PIECE_MESHES { return ""; } return PIECE_MESH_LABELS[mesh]; }
+verse_piece_places_max :: () -> int #export_c #effects(all) { return PLACES_MAX; }
 
 sp_clamp :: (x: int, a: int, b: int) -> int { if x < a { return a; } if x > b { return b; } return x; }
 
 // Holds a piece to the catalogue (see the top of the file).
-verse_piece_check :: (p: SetPiece) -> SetPiece #export_c {
+verse_piece_check :: (p: SetPiece) -> SetPiece #export_c #effects(all) {
   out: SetPiece;
   if p.piece < 0 || p.piece >= PIECES { return out; }
   k := p.piece;
@@ -115,7 +115,7 @@ sp_int :: (digits: string) -> int {
 
 // Reads the selector's answer ({piece, count, kind, colour, size}) and
 // holds it to the catalogue.
-verse_piece_read :: (json: string) -> SetPiece #export_c {
+verse_piece_read :: (json: string) -> SetPiece #export_c #effects(all) {
   pieces := PIECE_NAMES; kinds := KIND_NAMES; colours := COLOUR_NAMES; sizes := SIZE_NAMES;
   p: SetPiece;
   p.piece = sp_find(pieces[..], sp_value(json, "piece"));
@@ -127,7 +127,7 @@ verse_piece_read :: (json: string) -> SetPiece #export_c {
 }
 
 // What the piece is, for the notice: "A flock of 7 crows".
-verse_piece_says :: (p: SetPiece, buf: [] u8) -> string #export_c {
+verse_piece_says :: (p: SetPiece, buf: [] u8) -> string #export_c #effects(all) {
   n := 0;
   if p.piece == PIECE_FLOCK { n = sp_text(buf, n, "A flock of "); n = sp_number(buf, n, p.count); n = sp_text(buf, n, ifx p.kind == 1 then " bats" else " birds"); }
   if p.piece == PIECE_LANTERNS { n = sp_text(buf, n, "A ring of "); n = sp_number(buf, n, p.count); n = sp_text(buf, n, " "); n = sp_text(buf, n, COLOUR_NAMES[sp_clamp(p.colour, 0, COLOURS - 1)]); n = sp_text(buf, n, " lanterns"); }
@@ -160,19 +160,19 @@ sp_put :: (out: [] f32, n: int, mesh: int, x: f32, y: f32, z: f32, yaw: f32, sca
 }
 
 // How far the piece reaches from its middle, metres.
-verse_piece_reach :: (p: SetPiece) -> f32 #export_c {
+verse_piece_reach :: (p: SetPiece) -> f32 #export_c #effects(all) {
   if p.piece == PIECE_LANTERNS { return ifx p.size == 0 then 3.0f32 else ifx p.size == 2 then 8.0f32 else 5.0f32; }
   if p.piece == PIECE_GROVE { spread := ifx p.size == 0 then 1.6f32 else ifx p.size == 2 then 2.8f32 else 2.2f32; return spread * sqrt(cast(f32) p.count) + 1.0f32; }
   if p.piece == PIECE_POND { return verse_piece_pond_radius(p) + 1.5f32; }
   return 0.0f32;
 }
-verse_piece_pond_radius :: (p: SetPiece) -> f32 #export_c { return ifx p.size == 0 then 1.8f32 else ifx p.size == 2 then 4.2f32 else 2.8f32; }
+verse_piece_pond_radius :: (p: SetPiece) -> f32 #export_c #effects(all) { return ifx p.size == 0 then 1.8f32 else ifx p.size == 2 then 4.2f32 else 2.8f32; }
 
 // Lays piece p out for someone standing at (x, z) looking along heading
 // (they look along -(sin heading, cos heading)): a flock round them, the
 // rest just in front, clear of their feet. Writes placements to out and
 // returns how many (0 for no piece). The same seed lays it out the same way.
-verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out: [] f32) -> int #export_c {
+verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out: [] f32) -> int #export_c #effects(all) {
   q := verse_piece_check(p);
   if q.piece < 0 { return 0; }
   r: [1] Seeded; r[0].s = (seed % 4294967296 + 4294967296) % 4294967296;
@@ -344,7 +344,7 @@ verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out
 
 // The selector's request body, {"sentence": "..."}: quotes and backslashes
 // escaped, control bytes as spaces. Returns its length, or -1 if it doesn't fit.
-verse_piece_body :: (sentence: string, out: [] u8) -> int #export_c {
+verse_piece_body :: (sentence: string, out: [] u8) -> int #export_c #effects(all) {
   n := sp_text(out, 0, "{\"sentence\":\"");
   for i: 0..<sentence.count {
     c := sentence[i];

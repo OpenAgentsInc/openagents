@@ -881,32 +881,32 @@ dsk_reveal :: (k: [] Desk, i: int) {
 
 // ---------------------------------------------------------------- the host's calls
 
-coaxial_desk_add :: (k: [] Desk, s: [] ZeronState, cwd: string) -> int #export_c { if k.count < 1 { return -1; } return dsk_add(k, s, cwd); }
-coaxial_desk_frame :: (k: [] Desk, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c {
+coaxial_desk_add :: (k: [] Desk, s: [] ZeronState, cwd: string) -> int #export_c #effects(all) { if k.count < 1 { return -1; } return dsk_add(k, s, cwd); }
+coaxial_desk_frame :: (k: [] Desk, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
   if k.count < 1 || width < 1 || height < 1 { return 0; }
   return dsk_frame(k, out, width, height, dpr, dt);
 }
-coaxial_desk_pointer :: (k: [] Desk, x: f32, y: f32, phase: int, clicks: int, mods: int) -> bool #export_c { return k.count > 0 && dsk_pointer(k, x, y, phase, clicks, mods); }
-coaxial_desk_wheel :: (k: [] Desk, dy: f32) -> bool #export_c { return k.count > 0 && dsk_wheel(k, dy); }
-coaxial_desk_key :: (k: [] Desk, key: int, mods: int) -> bool #export_c { return k.count > 0 && dsk_key(k, key, mods); }
-coaxial_desk_close_tab :: (k: [] Desk) -> bool #export_c { return k.count > 0 && dsk_close_tab(k); }
-coaxial_desk_toggle :: (k: [] Desk) #export_c { if k.count > 0 { dsk_toggle(k); } }
-coaxial_desk_active :: (k: [] Desk) -> int #export_c { return ifx k.count > 0 then k[0].active else -1; }
-coaxial_desk_count :: (k: [] Desk) -> int #export_c { return ifx k.count > 0 then k[0].n else 0; }
-coaxial_desk_tabs :: (k: [] Desk) -> int #export_c { return ifx k.count > 0 then k[0].ntabs else 0; }
-coaxial_desk_tab :: (k: [] Desk, t: int) -> int #export_c { return ifx k.count > 0 && t >= 0 && t < k[0].ntabs then k[0].tabs[t] else -1; }
-coaxial_desk_collapsed :: (k: [] Desk) -> bool #export_c { return k.count > 0 && k[0].collapsed; }
+coaxial_desk_pointer :: (k: [] Desk, x: f32, y: f32, phase: int, clicks: int, mods: int) -> bool #export_c #effects(all) { return k.count > 0 && dsk_pointer(k, x, y, phase, clicks, mods); }
+coaxial_desk_wheel :: (k: [] Desk, dy: f32) -> bool #export_c #effects(all) { return k.count > 0 && dsk_wheel(k, dy); }
+coaxial_desk_key :: (k: [] Desk, key: int, mods: int) -> bool #export_c #effects(all) { return k.count > 0 && dsk_key(k, key, mods); }
+coaxial_desk_close_tab :: (k: [] Desk) -> bool #export_c #effects(all) { return k.count > 0 && dsk_close_tab(k); }
+coaxial_desk_toggle :: (k: [] Desk) #export_c #effects(all) { if k.count > 0 { dsk_toggle(k); } }
+coaxial_desk_active :: (k: [] Desk) -> int #export_c #effects(all) { return ifx k.count > 0 then k[0].active else -1; }
+coaxial_desk_count :: (k: [] Desk) -> int #export_c #effects(all) { return ifx k.count > 0 then k[0].n else 0; }
+coaxial_desk_tabs :: (k: [] Desk) -> int #export_c #effects(all) { return ifx k.count > 0 then k[0].ntabs else 0; }
+coaxial_desk_tab :: (k: [] Desk, t: int) -> int #export_c #effects(all) { return ifx k.count > 0 && t >= 0 && t < k[0].ntabs then k[0].tabs[t] else -1; }
+coaxial_desk_collapsed :: (k: [] Desk) -> bool #export_c #effects(all) { return k.count > 0 && k[0].collapsed; }
 // The sidebar's width as drawn, logical px (the host moves IME rectangles by it).
-coaxial_desk_side :: (k: [] Desk) -> f32 #export_c { return ifx k.count > 0 then dsk_side(k) else 0.0f32; }
+coaxial_desk_side :: (k: [] Desk) -> f32 #export_c #effects(all) { return ifx k.count > 0 then dsk_side(k) else 0.0f32; }
 // -1: the chat's own cursor; else 0 arrow, 3 resize left-right.
-coaxial_desk_cursor :: (k: [] Desk) -> int #export_c { return ifx k.count > 0 then k[0].cursor else -1; }
-coaxial_desk_take_action :: (k: [] Desk) -> int #export_c {
+coaxial_desk_cursor :: (k: [] Desk) -> int #export_c #effects(all) { return ifx k.count > 0 then k[0].cursor else -1; }
+coaxial_desk_take_action :: (k: [] Desk) -> int #export_c #effects(all) {
   if k.count < 1 { return 0; }
   a := k[0].host_action; k[0].host_action = DSK_HOST_NONE;
   return a;
 }
 // The shown session's folder, for the folder picker's start and Cmd+N.
-coaxial_desk_cwd :: (k: [] Desk, out: [] u8) -> int #export_c {
+coaxial_desk_cwd :: (k: [] Desk, out: [] u8) -> int #export_c #effects(all) {
   if k.count < 1 || k[0].n == 0 { return 0; }
   c := dsk_cwd(k, k[0].active);
   n := 0;
@@ -914,13 +914,13 @@ coaxial_desk_cwd :: (k: [] Desk, out: [] u8) -> int #export_c {
   return n;
 }
 // The room's MCP server for Codex: the app's binary and the host's socket.
-coaxial_desk_set_room :: (k: [] Desk, exe: string, sock: string) #export_c {
+coaxial_desk_set_room :: (k: [] Desk, exe: string, sock: string) #export_c #effects(all) {
   if k.count < 1 { return; }
   k[0].room_exe_n = e_set(k[0].room_exe[..], 0, exe); k[0].room_sock_n = e_set(k[0].room_sock[..], 0, sock);
 }
-coaxial_desk_room_line :: (k: [] Desk, conn: int, line: string) -> bool #export_c { return k.count > 0 && dsk_room_line(k, conn, line); }
+coaxial_desk_room_line :: (k: [] Desk, conn: int, line: string) -> bool #export_c #effects(all) { return k.count > 0 && dsk_room_line(k, conn, line); }
 // The next answer for a connection: its length (0 for none) and the connection in conn[0].
-coaxial_desk_room_out :: (k: [] Desk, conn: [] int, out: [] u8) -> int #export_c {
+coaxial_desk_room_out :: (k: [] Desk, conn: [] int, out: [] u8) -> int #export_c #effects(all) {
   if k.count < 1 || k[0].nout == 0 { return 0; }
   n := e_copy(out, 0, cast(string) k[0].outs[0].line[0..<k[0].outs[0].n]);
   conn[0] = k[0].outs[0].conn;
@@ -930,7 +930,7 @@ coaxial_desk_room_out :: (k: [] Desk, conn: [] int, out: [] u8) -> int #export_c
 }
 // The app run as Codex's MCP server for the room (OpenAgents --mcp-room SOCKET AGENT): a JSON-RPC line from
 // Codex in; 1 with the answer in out, 2 with the line for the app's socket in out, 0 for nothing (a notification).
-coaxial_room_mcp :: (line: string, agent: int, out: [] u8, n: [] int) -> int #export_c {
+coaxial_room_mcp :: (line: string, agent: int, out: [] u8, n: [] int) -> int #export_c #effects(all) {
   o: [1] ClOptions;
   e_room_tools(o[..]);
   server := o[0].servers[0];
@@ -950,7 +950,7 @@ coaxial_room_mcp :: (line: string, agent: int, out: [] u8, n: [] int) -> int #ex
   n[0] = w[0].len; return 1;
 }
 // The app's answer ({"rpc":ID,"text":T,"error":B}) as the JSON-RPC result Codex reads.
-coaxial_room_mcp_result :: (reply: string, out: [] u8) -> int #export_c {
+coaxial_room_mcp_result :: (reply: string, out: [] u8) -> int #export_c #effects(all) {
   abuf: [16384] u8; ar: [1] ClArena; ar[0].buf = abuf[..];
   w: [1] ClOut; w[0].buf = out;
   cl_put(w[..], "{\"jsonrpc\":\"2.0\",\"id\":"); cl_put(w[..], cl_raw(reply, "rpc")); cl_put(w[..], ",\"result\":");
@@ -958,11 +958,11 @@ coaxial_room_mcp_result :: (reply: string, out: [] u8) -> int #export_c {
   cl_put(w[..], "}");
   return w[0].len;
 }
-coaxial_desk_shortcut :: (k: [] Desk, j: int, out: [] u8) -> int #export_c { if k.count < 1 { return 0; } return e_copy(out, 0, dsk_shortcut(k, j)); }
-coaxial_desk_still :: (k: [] Desk) #export_c { if k.count > 0 { k[0].still = true; } }
-coaxial_desk_room_shown :: (k: [] Desk) -> bool #export_c { return k.count > 0 && k[0].room_shown; }
-coaxial_desk_show_room :: (k: [] Desk) #export_c { if k.count > 0 && k[0].room[0].count > 0 { k[0].room_shown = true; k[0].room_scroll = 0; } }
-coaxial_desk_quit :: (k: [] Desk) #export_c {
+coaxial_desk_shortcut :: (k: [] Desk, j: int, out: [] u8) -> int #export_c #effects(all) { if k.count < 1 { return 0; } return e_copy(out, 0, dsk_shortcut(k, j)); }
+coaxial_desk_still :: (k: [] Desk) #export_c #effects(all) { if k.count > 0 { k[0].still = true; } }
+coaxial_desk_room_shown :: (k: [] Desk) -> bool #export_c #effects(all) { return k.count > 0 && k[0].room_shown; }
+coaxial_desk_show_room :: (k: [] Desk) #export_c #effects(all) { if k.count > 0 && k[0].room[0].count > 0 { k[0].room_shown = true; k[0].room_scroll = 0; } }
+coaxial_desk_quit :: (k: [] Desk) #export_c #effects(all) {
   if k.count < 1 { return; }
   for i: 0..<k[0].n { coaxial_zeron_quit(k[0].chats[i].s); }
 }
@@ -1224,13 +1224,13 @@ cl_str_is :: (text: string, path: string, want: string) -> bool { abuf: [4096] u
   #assert dsk_wrap_count(a[0].atlas[..], FONT_INPUT, "one\ntwo", 1000) == 2;
 }
 
-coaxial_desk_dictation_enabled :: (k:[]Desk)->bool #export_c {return k.count>0 && k[0].dictation_enabled;}
-coaxial_desk_dictation_set :: (k:[]Desk,enabled:bool) #export_c {if k.count>0 {k[0].dictation_enabled=enabled;}}
-coaxial_desk_dictation_hit :: (k:[]Desk,x:f32,y:f32)->bool #export_c {
+coaxial_desk_dictation_enabled :: (k:[]Desk)->bool #export_c #effects(all) {return k.count>0 && k[0].dictation_enabled;}
+coaxial_desk_dictation_set :: (k:[]Desk,enabled:bool) #export_c #effects(all) {if k.count>0 {k[0].dictation_enabled=enabled;}}
+coaxial_desk_dictation_hit :: (k:[]Desk,x:f32,y:f32)->bool #export_c #effects(all) {
  if k.count<1 || k[0].n<1 || k[0].room_shown {return false;}d:=ifx k[0].d<1 then 1.0f32 else k[0].d;
  return coaxial_zeron_dictation_hit(dsk_chat(k),x-dsk_side(k)*d,y);
 }
-coaxial_desk_dictation_point :: (k:[]Desk,out:[]f32)->bool #export_c {
+coaxial_desk_dictation_point :: (k:[]Desk,out:[]f32)->bool #export_c #effects(all) {
  if k.count<1 || k[0].n<1 || !k[0].dictation_enabled || k[0].room_shown || out.count<2 {return false;}
  s:=dsk_chat(k);c:=s[0].composer[..];d:=ifx k[0].d<1 then 1.0f32 else k[0].d;
  out[0]=(c[0].x+c[0].w-14+dsk_side(k))*d;out[1]=(c[0].y+c[0].h+18)*d;return true;

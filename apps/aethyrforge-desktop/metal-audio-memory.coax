@@ -8,7 +8,7 @@
 mam_run :: (cmd:[]string)->bool {out:[1048576]u8;err:[1048576]u8;r:=proc_run(cmd,120000,out[..],err[..]);if r.started!=0||r.status!=0||r.timed_out||r.cut {tool_errln(cast(string)out[0..<r.out_n]);tool_errln(cast(string)err[0..<r.err_n]);return false;}return true;}
 mam_same :: (left:string,right:string)->bool {size:=fs_size(left);if size<1||fs_size(right)!=size {return false;}a:[65536]u8;b:[65536]u8;at:=0;while at<size {n:=ifx size-at<a.count then size-at else a.count;if fs_read_at(left,at,a[0..<n])!=n||fs_read_at(right,at,b[0..<n])!=n||cast(string)a[0..<n]!=cast(string)b[0..<n] {return false;}at+=n;}return true;}
 mam_text :: (d:Jv,at:int,out:[]u8)->string {n:=jv_str(d,at,out);return ifx n>0 then cast(string)out[0..<n] else "";}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<3 {tool_errln("usage: metal-audio-memory ROOT SDK_DIR OUTPUT [--sanitize] [--prepared] [--existing] [--resources DIR --producer DYLIB --golden PCM_DIR]");return 2;}
  root:=args_at(a[..],0);sdk:=args_at(a[..],1);out:=args_at(a[..],2);if !fs_mkdir(out) {return 1;}paths:[8][4096]u8;program:=fs_join(sdk,"MetalAudioMemory",paths[0][..]);report:=fs_join(out,"receipt.json",paths[1][..]);
  if !args_has(a[..],"--existing") {

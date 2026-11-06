@@ -81,16 +81,16 @@ cw_int :: (s: string) -> int { v := 0; if s.count == 0 { return -1; } for ch: s 
 // ---- the key, and the record
 
 // A new key from 32 random bytes (the face's crypto.getRandomValues). False when they make no key.
-cw_new_key :: (w: [] ComputerWire, random: [] u8) -> bool #export_c {
+cw_new_key :: (w: [] ComputerWire, random: [] u8) -> bool #export_c #effects(all) {
   if random.count != 32 { return false; }
   for i: 0..<32 { w[0].secret[i] = random[i]; }
   w[0].has_key = hb_public(w[0].secret[..], w[0].pub[..]) && hb_hex(w[0].pub[..], w[0].pub_hex[..]);
   w[0].grant_n = 0; w[0].keep_due = true;
   return w[0].has_key;
 }
-cw_has_key :: (w: [] ComputerWire) -> bool #export_c { return w[0].has_key; }
+cw_has_key :: (w: [] ComputerWire) -> bool #export_c #effects(all) { return w[0].has_key; }
 // The record: "secret HEX" and "grant HEX EPOCH EXPIRES"; the pane's own lines ride along.
-cw_restore :: (w: [] ComputerWire, text: string) #export_c {
+cw_restore :: (w: [] ComputerWire, text: string) #export_c #effects(all) {
   i := 0;
   while i < text.count {
     e := i; while e < text.count && text[e] != '\n' { e += 1; }
@@ -112,7 +112,7 @@ cw_restore :: (w: [] ComputerWire, text: string) #export_c {
   }
 }
 // The record to keep: the key, the grant, then the pane's lines as given.
-cw_keep :: (w: [] ComputerWire, pane: string, out: [] u8) -> int #export_c {
+cw_keep :: (w: [] ComputerWire, pane: string, out: [] u8) -> int #export_c #effects(all) {
   w[0].keep_due = false;
   if !w[0].has_key { return 0; }
   n := cw_put(out, 0, "secret ");
@@ -125,12 +125,12 @@ cw_keep :: (w: [] ComputerWire, pane: string, out: [] u8) -> int #export_c {
   }
   return cw_put(out, n, pane);
 }
-cw_wants_keep :: (w: [] ComputerWire) -> bool #export_c { return w[0].keep_due; }
+cw_wants_keep :: (w: [] ComputerWire) -> bool #export_c #effects(all) { return w[0].keep_due; }
 // After FORGET: the grant goes (the face makes a new key too).
-cw_forgotten :: (w: [] ComputerWire) #export_c { w[0].grant_n = 0; w[0].has_host = false; w[0].keep_due = true; }
+cw_forgotten :: (w: [] ComputerWire) #export_c #effects(all) { w[0].grant_n = 0; w[0].has_host = false; w[0].keep_due = true; }
 
 // The computer's key as pasted: npub1... or 64 hex.
-cw_set_host :: (w: [] ComputerWire, text: string) -> bool #export_c {
+cw_set_host :: (w: [] ComputerWire, text: string) -> bool #export_c #effects(all) {
   x: [32] u8; ok := false;
   if hb_hex64(text) { ok = hb_unhex(text, x[..]); }
   else if text.count > 5 && text[0..<5] == "npub1" {
@@ -148,15 +148,15 @@ cw_set_host :: (w: [] ComputerWire, text: string) -> bool #export_c {
 
 // The relay: CW_RELAY, or a test relay on this machine (ws://localhost:PORT) a page asked for.
 cw_relay :: (w: [] ComputerWire) -> string { return ifx w[0].relay_n > 0 then cast(string) w[0].relay[0..<w[0].relay_n] else CW_RELAY; }
-cw_set_relay :: (w: [] ComputerWire, text: string) -> bool #export_c {
+cw_set_relay :: (w: [] ComputerWire, text: string) -> bool #export_c #effects(all) {
   if text.count == 0 { w[0].relay_n = 0; return true; }
   if text.count <= CW_LOCAL.count || text.count > CW_LOCAL.count + 5 || text[0..<CW_LOCAL.count] != CW_LOCAL { return false; }
   for ch: text[CW_LOCAL.count..<text.count] { if ch < '0' || ch > '9' { return false; } }
   for i: 0..<text.count { w[0].relay[i] = text[i]; } w[0].relay_n = text.count;
   return true;
 }
-cw_socket_url :: (w: [] ComputerWire) -> string #export_c { return cw_relay(w); }
-cw_wants_socket :: (w: [] ComputerWire) -> bool #export_c { return !w[0].open && w[0].has_key; }
+cw_socket_url :: (w: [] ComputerWire) -> string #export_c #effects(all) { return cw_relay(w); }
+cw_wants_socket :: (w: [] ComputerWire) -> bool #export_c #effects(all) { return !w[0].open && w[0].has_key; }
 cw_ready :: (w: [] ComputerWire, now: int) -> bool { return w[0].open && (w[0].authed || (w[0].challenge_n == 0 && now - w[0].opened_at >= CW_AUTH_WAIT_S)); }
 
 // NIP-42: kind 22242 with the relay and the challenge, signed with this browser's key.
@@ -191,7 +191,7 @@ cw_close_sub :: (w: [] ComputerWire) {
 }
 
 // A socket event (coax/web/host.js: 0 opened, 1 a frame, 2 closed, 3 an error). aux: 32 fresh random bytes.
-cw_socket :: (w: [] ComputerWire, event: int, text: string, aux: [] u8, now: int) #export_c {
+cw_socket :: (w: [] ComputerWire, event: int, text: string, aux: [] u8, now: int) #export_c #effects(all) {
   if event == 0 { w[0].open = true; w[0].opened_at = now; w[0].authed = false; w[0].challenge_n = 0; if w[0].ever_open { cw_line(w, "online"); } w[0].ever_open = true; return; }
   if event == 2 || event == 3 {
     if w[0].open || event == 3 { cw_line(w, "offline"); }
@@ -223,7 +223,7 @@ cw_args :: (op: int, a: string, b: string, cursor: int, out: [] u8) -> int {
 // The pane's op: host (the key as pasted), arg (the pairing request for STATUS and CHECK, the thread
 // for READ and STOP, the words for RUN), realm, cursor, label; random: 96 fresh bytes (request ID,
 // NIP-44 nonce, BIP-340 aux). CW_SENT, CW_WAIT (the socket isn't ready: ask again), CW_BADKEY, CW_REFUSED.
-cw_op :: (w: [] ComputerWire, op: int, host: string, arg: string, realm: string, cursor: int, label: string, random: [] u8, now: int) -> int #export_c {
+cw_op :: (w: [] ComputerWire, op: int, host: string, arg: string, realm: string, cursor: int, label: string, random: [] u8, now: int) -> int #export_c #effects(all) {
   if !w[0].has_key || random.count != 96 { return CW_WAIT; }
   if !cw_set_host(w, host) { cw_line(w, "key bad"); return CW_BADKEY; }
   if !cw_ready(w, now) { return CW_WAIT; }
@@ -327,7 +327,7 @@ cw_reply :: (w: [] ComputerWire, text: string) {
 // ---- out to the face
 
 // The next frame for the socket into out: its length, 0 none.
-cw_take_frame :: (w: [] ComputerWire, out: [] u8) -> int #export_c {
+cw_take_frame :: (w: [] ComputerWire, out: [] u8) -> int #export_c #effects(all) {
   if w[0].frames_n == 0 { return 0; }
   e := 0; while e < w[0].frames_n && w[0].frames[e] != 0 { e += 1; }
   if e > out.count { w[0].frames_n = 0; return 0; }
@@ -338,7 +338,7 @@ cw_take_frame :: (w: [] ComputerWire, out: [] u8) -> int #export_c {
   return e;
 }
 // The lines for the pane (rc_reply) into out: their length, 0 none.
-cw_take_lines :: (w: [] ComputerWire, out: [] u8) -> int #export_c {
+cw_take_lines :: (w: [] ComputerWire, out: [] u8) -> int #export_c #effects(all) {
   n := w[0].lines_n; if n > out.count { n = out.count; }
   for i: 0..<n { out[i] = w[0].lines[i]; }
   w[0].lines_n = 0;

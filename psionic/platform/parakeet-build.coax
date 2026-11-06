@@ -15,7 +15,7 @@ pkb_run :: (argv:[]string,output:[]u8,deadline:int)->int {
  left:=deadline-proc_now_ms();if left<=0 {tool_errln("Parakeet build exceeded its fourteen-minute limit");return -1;}
  err:[65536]u8;r:=proc_run(argv,ifx left<180000 then left else 180000,output,err[..]);if r.status!=0 || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);tool_errln(cast(string)output[0..<r.out_n]);return -1;}return r.out_n;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  deadline:=proc_now_ms()+840000;args:[1]Args;if !args_load(args[..]) || args_count(args[..])>2 {tool_errln("usage: parakeet-build [OUTPUT_DIRECTORY [SOURCE_ROOT]]");return 2;}
  cwd:[4096]u8;root:=ifx args_count(args[..])==2 then args_at(args[..],1) else fs_cwd(cwd[..]);raw_dir:=ifx args_count(args[..])>=1 then args_at(args[..],0) else "psionic/build/parakeet";
  if root.count<1 || root.count>512 || raw_dir.count<1 || raw_dir.count>512 {tool_errln("invalid source/output directory extent");return 2;}p:[1]PkbPaths;dir:=ifx raw_dir[0]=='/' then raw_dir else pkb_path(p[..],root,raw_dir);env:[4096]u8;ccenv:[4096]u8;coax:=proc_getenv("COAX",env[..]);if coax.count==0 {coax=pkb_path(p[..],root,"coax/bin/coax");}cc:=proc_getenv("COAX_CC",ccenv[..]);if cc.count==0 {cc="cc";}

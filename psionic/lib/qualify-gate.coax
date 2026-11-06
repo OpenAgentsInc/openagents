@@ -5,7 +5,7 @@ YE_GATE_CASES :: 8;
 
 // book:begin gate
 // Prints case k's report and returns the status the process exits with.
-ye_gate :: (k:int)->int #export_c {
+ye_gate :: (k:int)->int #export_c #effects(all) {
     c:[4096]f64;r:[4096]f64;
     if k==0 {
         names:=[3]string.["chapter 14, layer 0 of token 32","chapter 14, decision probabilities","chapter 14, decision slot mass"];

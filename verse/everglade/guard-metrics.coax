@@ -75,29 +75,29 @@ GaMetrics :: struct {
   }
 }
 
-gm_bin :: (ms:int)->int {
+gm_bin :: (ms:int)->int #effects(all) {
   if ms<0 || ms>GM_TIME_MAX {return -1;}
   for i:0..<GM_LIMITS.count {if ms<GM_LIMITS[i] {return i;}}return GM_HIST_BINS-1;
 }
-gm_ms :: (ms:int)->GmLatency {
+gm_ms :: (ms:int)->GmLatency #effects(all) {
   if ms>=GM_MS_CAP {return GmLatency.{value=GM_MS_CAP,clipped=true};}return GmLatency.{value=ms};
 }
-gm_find :: (m:[]GaMetrics,sequence:int)->int {
+gm_find :: (m:[]GaMetrics,sequence:int)->int #effects(all) {
   for i:0..<m[0].used {if m[0].entries[i].sequence==sequence {return i;}}return -1;
 }
-gm_begin :: (m:[]GaMetrics,sequence:int,now_ms:int)->bool {
+gm_begin :: (m:[]GaMetrics,sequence:int,now_ms:int)->bool #effects(all) {
   if m.count!=1 || sequence<=0 || now_ms<0 || now_ms>GM_TIME_MAX {return false;}
   if m[0].used>=GM_CAP || gm_find(m,sequence)>=0 {return false;}
   m[0].entries[m[0].used]=GmEntry.{sequence=sequence,started_ms=now_ms};m[0].used+=1;return true;
 }
-gm_reply :: (m:[]GaMetrics,sequence:int,now_ms:int)->bool {
+gm_reply :: (m:[]GaMetrics,sequence:int,now_ms:int)->bool #effects(all) {
   if m.count!=1 {return false;}i:=gm_find(m,sequence);if i<0 {return false;}e:=m[0].entries[i];
   if e.terminal!=0 || e.replied || now_ms<e.started_ms || now_ms>GM_TIME_MAX {return false;}
   elapsed:=now_ms-e.started_ms;bin:=gm_bin(elapsed);clip:=gm_ms(elapsed);
   m[0].entries[i].replied=true;m[0].entries[i].reply_ms=now_ms;m[0].replies+=1;
   m[0].network[bin].value+=1;m[0].last_network=clip.value;m[0].network_clipped=clip.clipped;return true;
 }
-gm_admit :: (m:[]GaMetrics,sequence:int,now_ms:int)->bool {
+gm_admit :: (m:[]GaMetrics,sequence:int,now_ms:int)->bool #effects(all) {
   if m.count!=1 {return false;}i:=gm_find(m,sequence);if i<0 {return false;}e:=m[0].entries[i];
   if e.terminal!=0 || !e.replied || now_ms<e.reply_ms || now_ms>GM_TIME_MAX {return false;}
   queue:=now_ms-e.reply_ms;total:=now_ms-e.started_ms;q:=gm_ms(queue);t:=gm_ms(total);
@@ -105,15 +105,15 @@ gm_admit :: (m:[]GaMetrics,sequence:int,now_ms:int)->bool {
   m[0].queue[gm_bin(queue)].value+=1;m[0].total[gm_bin(total)].value+=1;
   m[0].last_queue=q.value;m[0].last_total=t.value;m[0].queue_clipped=q.clipped;m[0].total_clipped=t.clipped;return true;
 }
-gm_end :: (m:[]GaMetrics,sequence:int,reason:int)->bool {
+gm_end :: (m:[]GaMetrics,sequence:int,reason:int)->bool #effects(all) {
   if m.count!=1 || reason<GM_AUTH || reason>GM_HTTP {return false;}i:=gm_find(m,sequence);if i<0 || m[0].entries[i].terminal!=0 {return false;}
   m[0].entries[i].terminal=reason;m[0].terminals+=1;m[0].outcomes[reason-1].value+=1;m[0].last_reason=reason;return true;
 }
-gm_late :: (m:[]GaMetrics,sequence:int)->bool {
+gm_late :: (m:[]GaMetrics,sequence:int)->bool #effects(all) {
   if m.count!=1 {return false;}i:=gm_find(m,sequence);if i<0 || m[0].entries[i].terminal==0 || m[0].entries[i].late_seen {return false;}
   m[0].entries[i].late_seen=true;m[0].late+=1;return true;
 }
-gm_probe :: (m:[]GaMetrics,field:int)->int #export_c {
+gm_probe :: (m:[]GaMetrics,field:int)->int #export_c #effects(all) {
   if m.count!=1 {return -1;}s:=m[0];if field==7 {return 1;}if field==8 {return s.used;}if field==9 {return s.replies;}
   if field==10 {return s.terminals;}if field==11 {return s.last_reason;}if field==12 {return s.late;}
   if field==13 {return s.last_network;}if field==14 {return s.last_queue;}if field==15 {return s.last_total;}

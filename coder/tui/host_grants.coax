@@ -51,62 +51,62 @@ HsStatus :: struct { code: string; state: int; grant: int; }
 HsRefusal :: struct { code: string; missing: string; }
 
 // A field of fixed bytes set from s (cut to the field); its length.
-hs_set :: (dst: [] u8, s: string) -> int { n := 0; for c: s { if n < dst.count { dst[n] = c; n += 1; } } return n; }
+hs_set :: (dst: [] u8, s: string) -> int #effects(all) { n := 0; for c: s { if n < dst.count { dst[n] = c; n += 1; } } return n; }
 // 64 lowercase hex digits: a grant id.
-hs_hex64 :: (s: string) -> bool {
+hs_hex64 :: (s: string) -> bool #effects(all) {
   if s.count != 64 { return false; }
   for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
   return true;
 }
-hs_label :: (p: [] HsPairing, i: int) -> string { return cast(string) p[i].label[0..<p[i].nlabel]; }
+hs_label :: (p: [] HsPairing, i: int) -> string #effects(all) { return cast(string) p[i].label[0..<p[i].nlabel]; }
 
 // A pairing is waiting while asked and younger than ten minutes.
-hs_waiting :: (p: HsPairing, now: int) -> bool { return p.state == HG_ASKED && now - p.at < HG_WAIT; }
-hs_state_of :: (p: HsPairing, now: int) -> int { return ifx p.state == HG_ASKED && !hs_waiting(p, now) then HG_EXPIRED else p.state; }
-hs_epoch_of :: (st: [] HsState, device: string) -> int {
+hs_waiting :: (p: HsPairing, now: int) -> bool #effects(all) { return p.state == HG_ASKED && now - p.at < HG_WAIT; }
+hs_state_of :: (p: HsPairing, now: int) -> int #effects(all) { return ifx p.state == HG_ASKED && !hs_waiting(p, now) then HG_EXPIRED else p.state; }
+hs_epoch_of :: (st: [] HsState, device: string) -> int #effects(all) {
   for i: 0..<st[0].ne { if cast(string) st[0].epochs[i].device[..] == device { return st[0].epochs[i].epoch; } }
   return 0;
 }
 // A grant is current while unrevoked, unexpired and at its device's epoch.
-hs_current :: (st: [] HsState, i: int, now: int) -> bool {
+hs_current :: (st: [] HsState, i: int, now: int) -> bool #effects(all) {
   g := st[0].grants[i];
   dev := g.device;
   return !g.revoked && now < g.expires && g.epoch == hs_epoch_of(st, cast(string) dev[..]);
 }
 // The device's newest current grant, or -1.
-hs_grant_of :: (st: [] HsState, device: string, now: int) -> int {
+hs_grant_of :: (st: [] HsState, device: string, now: int) -> int #effects(all) {
   k := -1;
   for i: 0..<st[0].ng {
     if cast(string) st[0].grants[i].device[..] == device && hs_current(st, i, now) && (k < 0 || st[0].grants[i].issued >= st[0].grants[k].issued) { k = i; }
   }
   return k;
 }
-hs_pairing_find :: (st: [] HsState, id: string) -> int {
+hs_pairing_find :: (st: [] HsState, id: string) -> int #effects(all) {
   for i: 0..<st[0].np { if cast(string) st[0].pairings[i].id[..] == id { return i; } }
   return -1;
 }
-hs_thread_find :: (st: [] HsState, thread: string) -> int {
+hs_thread_find :: (st: [] HsState, thread: string) -> int #effects(all) {
   for i: 0..<st[0].nt { if cast(string) st[0].threads[i].thread[..] == thread { return i; } }
   return -1;
 }
-hs_thread_by_request :: (st: [] HsState, request: string) -> int {
+hs_thread_by_request :: (st: [] HsState, request: string) -> int #effects(all) {
   for i: 0..<st[0].nt { if cast(string) st[0].threads[i].request[..] == request { return i; } }
   return -1;
 }
 // The thread a browser may read or stop: one it started. -1 for another key's or none.
-hs_thread_of :: (st: [] HsState, thread: string, signer: string) -> int {
+hs_thread_of :: (st: [] HsState, thread: string, signer: string) -> int #effects(all) {
   t := hs_thread_find(st, thread);
   if t < 0 || cast(string) st[0].threads[t].device[..] != signer { return -1; }
   return t;
 }
 
-hs_pairing_drop :: (st: [] HsState, i: int) {
+hs_pairing_drop :: (st: [] HsState, i: int) #effects(all) {
   for j: i..<st[0].np - 1 { st[0].pairings[j] = st[0].pairings[j + 1]; }
   st[0].np -= 1;
 }
 // Adds a waiting pairing. The same key's waiting request goes; when the
 // record is full the oldest settled one makes room. -1 when eight already wait.
-hs_pairing_add :: (st: [] HsState, id: string, key: string, label: string, now: int) -> int {
+hs_pairing_add :: (st: [] HsState, id: string, key: string, label: string, now: int) -> int #effects(all) {
   w := 0; i := 0;
   while i < st[0].np {
     p := st[0].pairings[i];
@@ -132,7 +132,7 @@ hs_pairing_add :: (st: [] HsState, id: string, key: string, label: string, now: 
 
 // Allows a waiting pairing: a browser grant (observe and operate, seven
 // days) at the device's current epoch. The grant's index, or -1.
-hs_allow :: (st: [] HsState, i: int, grant_id: string, now: int) -> int {
+hs_allow :: (st: [] HsState, i: int, grant_id: string, now: int) -> int #effects(all) {
   if i < 0 || i >= st[0].np || !hs_waiting(st[0].pairings[i], now) || !hs_hex64(grant_id) { return -1; }
   if st[0].ng == HS_GRANTS {
     // the grant that no longer admits anything and ended first makes room
@@ -154,14 +154,14 @@ hs_allow :: (st: [] HsState, i: int, grant_id: string, now: int) -> int {
   return n;
 }
 // Refuses a waiting pairing; false when it isn't waiting.
-hs_deny :: (st: [] HsState, i: int, now: int) -> bool {
+hs_deny :: (st: [] HsState, i: int, now: int) -> bool #effects(all) {
   if i < 0 || i >= st[0].np || !hs_waiting(st[0].pairings[i], now) { return false; }
   st[0].pairings[i].state = HG_DENIED;
   return true;
 }
 // Revokes every grant of a device and advances its epoch (admit.coax's
 // host_revoke over the host's record). The new epoch, or -1 when the epoch table is full.
-hs_revoke :: (st: [] HsState, device: string) -> int {
+hs_revoke :: (st: [] HsState, device: string) -> int #effects(all) {
   for i: 0..<st[0].ng { if cast(string) st[0].grants[i].device[..] == device { st[0].grants[i].revoked = true; } }
   for i: 0..<st[0].ne { if cast(string) st[0].epochs[i].device[..] == device { st[0].epochs[i].epoch += 1; return st[0].epochs[i].epoch; } }
   if st[0].ne == HS_EPOCHS { return -1; }
@@ -169,12 +169,12 @@ hs_revoke :: (st: [] HsState, device: string) -> int {
   return 1;
 }
 // browser.forget: the key's grants are revoked and its waiting requests denied. The new epoch, or -1.
-hs_forget :: (st: [] HsState, key: string) -> int {
+hs_forget :: (st: [] HsState, key: string) -> int #effects(all) {
   e := hs_revoke(st, key);
   for i: 0..<st[0].np { if cast(string) st[0].pairings[i].key[..] == key && st[0].pairings[i].state == HG_ASKED { st[0].pairings[i].state = HG_DENIED; } }
   return e;
 }
-hs_thread_add :: (st: [] HsState, thread: string, request: string, device: string, session: string, realm: string, now: int) {
+hs_thread_add :: (st: [] HsState, thread: string, request: string, device: string, session: string, realm: string, now: int) #effects(all) {
   if st[0].nt == HS_THREADS { for j: 0..<st[0].nt - 1 { st[0].threads[j] = st[0].threads[j + 1]; } st[0].nt -= 1; }
   n := st[0].nt; fresh: HsThread; st[0].threads[n] = fresh;
   a := hs_set(st[0].threads[n].thread[..], thread); b := hs_set(st[0].threads[n].request[..], request); c := hs_set(st[0].threads[n].device[..], device);
@@ -185,7 +185,7 @@ hs_thread_add :: (st: [] HsState, thread: string, request: string, device: strin
 }
 
 // The host's record as admit.coax reads it: every grant observe and operate. The strings view st.
-hs_records :: (st: [] HsState, g: [] HostGrantRecord, e: [] HostEpoch) {
+hs_records :: (st: [] HsState, g: [] HostGrantRecord, e: [] HostEpoch) #effects(all) {
   for i: 0..<st[0].ng {
     g[i].grant = cast(string) st[0].grants[i].grant[..]; g[i].device = cast(string) st[0].grants[i].device[..];
     g[i].epoch = st[0].grants[i].epoch; g[i].issued_at = st[0].grants[i].issued; g[i].expires_at = st[0].grants[i].expires;
@@ -196,7 +196,7 @@ hs_records :: (st: [] HsState, g: [] HostGrantRecord, e: [] HostEpoch) {
 
 // browser.status for pairing, asked by signer: only the key that asked reads
 // it. Allowed once and no current grant: denied when revoked, else expired.
-hs_status :: (st: [] HsState, pairing: string, signer: string, now: int) -> HsStatus {
+hs_status :: (st: [] HsState, pairing: string, signer: string, now: int) -> HsStatus #effects(all) {
   r: HsStatus; r.grant = -1;
   i := hs_pairing_find(st, pairing);
   if i < 0 { r.code = "unavailable"; return r; }
@@ -212,7 +212,7 @@ hs_status :: (st: [] HsState, pairing: string, signer: string, now: int) -> HsSt
 
 // The refusal for an admit.coax verdict other than HA_OK, HA_RETRY and HA_SILENT.
 // Not admitted under the signer's own grant is a missing right; else forbidden.
-hs_refusal :: (st: [] HsState, verdict: u32, grant: string, signer: string, right: int) -> HsRefusal {
+hs_refusal :: (st: [] HsState, verdict: u32, grant: string, signer: string, right: int) -> HsRefusal #effects(all) {
   r: HsRefusal; r.code = "forbidden";
   if verdict == HA_MALFORMED || verdict == HA_EARLY { r.code = "malformed"; }
   if verdict == HA_REVOKED { r.code = "revoked"; }
@@ -230,11 +230,11 @@ hs_refusal :: (st: [] HsState, verdict: u32, grant: string, signer: string, righ
 }
 
 // Whether another browser job may start while running ones run.
-hs_may_run :: (running: int) -> bool { return running < HG_RUNNING_MAX; }
+hs_may_run :: (running: int) -> bool #effects(all) { return running < HG_RUNNING_MAX; }
 
 // The job's argv: `coder run PROMPT --detach --json` on the engine, under the
 // read ceiling with the realm tools, in its own folder.
-hs_job_argv :: (coder_sh: string, prompt: string, engine: string, cwd: string, argv: [] string) -> int {
+hs_job_argv :: (coder_sh: string, prompt: string, engine: string, cwd: string, argv: [] string) -> int #effects(all) {
   a := [14] string.[coder_sh, "run", prompt, "--detach", "--json", "--engine", engine, "--ceiling", "read", "--allow", "read", "--realm-tools", "--cwd", cwd];
   for s, i: a { argv[i] = s; }
   return a.count;
@@ -251,14 +251,14 @@ HST_G2 :: "4444444444444444444444444444444444444444444444444444444444444444";
 HST_T0 :: 1790000000;
 
 // A grant id: 62 zeros and i in two hex digits.
-hst_id :: (i: int, out: [] u8) -> string {
+hst_id :: (i: int, out: [] u8) -> string #effects(all) {
   hex := "0123456789abcdef";
   for j: 0..<64 { out[j] = '0'; }
   out[62] = hex[i >> 4]; out[63] = hex[i & 15];
   return cast(string) out[0..<64];
 }
 // A 64-character key or id made of one character.
-hst_key :: (c: u8, out: [] u8) -> string { for j: 0..<64 { out[j] = c; } return cast(string) out[0..<64]; }
+hst_key :: (c: u8, out: [] u8) -> string #effects(all) { for j: 0..<64 { out[j] = c; } return cast(string) out[0..<64]; }
 
 #test "host grants: small rules" {
   b: [3] u8; idb: [64] u8;

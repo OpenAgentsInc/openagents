@@ -44,25 +44,25 @@ OX_STEMS :: [7]string.["gather","reducemean","conv","relu","flatten","gemm","sof
 
 // A protobuf writer for hand-made wire cases: a varint, a key, a
 // length-delimited field.
-ox_t_var :: (out:[]u8,at:int,v:u64)->int {
+ox_t_var :: (out:[]u8,at:int,v:u64)->int #effects(all) {
     x:=v;p:=at;
     while x>=128 {out[p]=cast(u8)(x&127)|128;x>>=7;p+=1;}
     out[p]=cast(u8)x;return p+1;
 }
-ox_t_bytes :: (out:[]u8,at:int,number:u64,data:[]u8)->int {
+ox_t_bytes :: (out:[]u8,at:int,number:u64,data:[]u8)->int #effects(all) {
     p:=ox_t_var(out,at,number*8+2);p=ox_t_var(out,p,cast(u64)data.count);
     for b,i:data {out[p+i]=b;}
     return p+data.count;
 }
 // The example's pixels. SplitMix64's last mixing step is left out: it changes
 // only bits below the 1/32 grid the pixels are rounded to.
-ox_t_pixel :: (seed:u64,i:u64)->f32 {
+ox_t_pixel :: (seed:u64,i:u64)->f32 #effects(all) {
     z:=add_wrap(seed,mul_wrap(0x9e3779b97f4a7c15,add_wrap(i,1)));
     z=mul_wrap(z^(z>>30),0xbf58476d1ce4e5b9);z=mul_wrap(z^(z>>27),0x94d049bb133111eb);
     return f32(floor((2*(f64(z>>11)/9007199254740992.0)-1)*32+0.5)/32);
 }
-ox_t_name :: (m:OxModel,t:int,text:string)->bool {x:=m.tensors[t];return ox_is(x.name[0..<x.length],text);}
-ox_t_shape :: (s:OxShape,rank:int,a:int,b:int,c:int,d:int)->bool {
+ox_t_name :: (m:OxModel,t:int,text:string)->bool #effects(all) {x:=m.tensors[t];return ox_is(x.name[0..<x.length],text);}
+ox_t_shape :: (s:OxShape,rank:int,a:int,b:int,c:int,d:int)->bool #effects(all) {
     return s.rank==rank && s.dims[0]==a && s.dims[1]==b && s.dims[2]==c && s.dims[3]==d;
 }
 
@@ -231,19 +231,19 @@ OxCase :: struct {at:int;size:int;status:OxStatus;node:int;feed_at:int;feed:int;
 }
 
 
-ox_t_varint :: (out:[]u8,at:int,number:u64,v:u64)->int {return ox_t_var(out,ox_t_var(out,at,number*8),v);}
-ox_t_fixed :: (out:[]u8,at:int,number:u64,bits:u32)->int {
+ox_t_varint :: (out:[]u8,at:int,number:u64,v:u64)->int #effects(all) {return ox_t_var(out,ox_t_var(out,at,number*8),v);}
+ox_t_fixed :: (out:[]u8,at:int,number:u64,bits:u32)->int #effects(all) {
     p:=ox_t_var(out,at,number*8+5);
     for k:0..<4 {out[p+k]=cast,trunc(u8)(bits>>cast(u32)(8*k));}
     return p+4;
 }
-ox_t_text :: (out:[]u8,at:int,number:u64,s:string)->int {
+ox_t_text :: (out:[]u8,at:int,number:u64,s:string)->int #effects(all) {
     p:=ox_t_var(out,at,number*8+2);p=ox_t_var(out,p,cast(u64)s.count);
     for k:0..<s.count {out[p+k]=s[k];}
     return p+s.count;
 }
 // A tensor value_info: a name, an element type and static dimensions.
-ox_t_decl :: (out:[]u8,name:string,elem:u64,dims:[]u64)->int {
+ox_t_decl :: (out:[]u8,name:string,elem:u64,dims:[]u64)->int #effects(all) {
     shape:[64]u8;sp:=0;
     for d:dims {one:[16]u8;n:=ox_t_varint(one[..],0,1,d);sp=ox_t_bytes(shape[..],sp,1,one[0..<n]);}
     tensor:[96]u8;tp:=ox_t_varint(tensor[..],0,1,elem);tp=ox_t_bytes(tensor[..],tp,2,shape[0..<sp]);
@@ -300,7 +300,7 @@ ox_t_decl :: (out:[]u8,name:string,elem:u64,dims:[]u64)->int {
     #assert ox_initializer(buf[0..<p],OxModel.{},arena[..]).status==OxStatus.ok;
 }
 
-ox_t_body :: (buf:[]u8,at:int,pack:[]u8)->int {p:=ox_t_bytes(buf,at,9,pack);return ox_t_text(buf,p,8,"t");}
+ox_t_body :: (buf:[]u8,at:int,pack:[]u8)->int #effects(all) {p:=ox_t_bytes(buf,at,9,pack);return ox_t_text(buf,p,8,"t");}
 #test "an initializer's refusals" {
     buf:[64]u8;arena:[8]f32;pack:[8]u8;
     // No element type, then DOUBLE: dtype, before the data are looked at.
@@ -363,7 +363,7 @@ ox_t_body :: (buf:[]u8,at:int,pack:[]u8)->int {p:=ox_t_bytes(buf,at,9,pack);retu
     #assert ox_declaration(buf[0..<m]).status==OxStatus.wire;
 }
 
-ox_t_typed :: (out:[]u8,tensor:[]u8)->int {
+ox_t_typed :: (out:[]u8,tensor:[]u8)->int #effects(all) {
     t:[160]u8;n:=ox_t_bytes(t[..],0,1,tensor);
     p:=ox_t_text(out,0,1,"x");return ox_t_bytes(out,p,2,t[0..<n]);
 }
@@ -408,13 +408,13 @@ ox_t_typed :: (out:[]u8,tensor:[]u8)->int {
     #assert ox_declaration(buf[0..<n]).status==OxStatus.wire;
 }
 
-ox_t_attr :: (out:[]u8,name:string,kind:u64)->int {p:=ox_t_text(out,0,1,name);return ox_t_varint(out,p,20,kind);}
-ox_t_ints :: (out:[]u8,at:int,values:[]u64)->int {
+ox_t_attr :: (out:[]u8,name:string,kind:u64)->int #effects(all) {p:=ox_t_text(out,0,1,name);return ox_t_varint(out,p,20,kind);}
+ox_t_ints :: (out:[]u8,at:int,values:[]u64)->int #effects(all) {
     run:[40]u8;n:=0;
     for v:values {n=ox_t_var(run[..],n,v);}
     return ox_t_bytes(out,at,8,run[0..<n]);
 }
-ox_t_admits :: (wire:[]u8,op:OxOp)->bool {return ox_attribute(wire,op,OxAttrs.{}).status==OxStatus.ok;}
+ox_t_admits :: (wire:[]u8,op:OxOp)->bool #effects(all) {return ox_attribute(wire,op,OxAttrs.{}).status==OxStatus.ok;}
 #test "attributes: each name, type, operator and value" {
     buf:[64]u8;
     // INT attributes: axis, keepdims, group, transA, transB.
@@ -481,7 +481,7 @@ ox_t_admits :: (wire:[]u8,op:OxOp)->bool {return ox_attribute(wire,op,OxAttrs.{}
     q=ox_t_attr(buf[..],"unknown",2);#assert !ox_t_admits(buf[0..<q],OxOp.conv);
 }
 
-ox_t_stem :: (s:string,op:OxOp,index:int,out:[]u8)->int {b:[80]u8;for k:0..<s.count {b[k]=s[k];} return ox_stem(b[0..<s.count],op,index,out);}
+ox_t_stem :: (s:string,op:OxOp,index:int,out:[]u8)->int #effects(all) {b:[80]u8;for k:0..<s.count {b[k]=s[k];} return ox_stem(b[0..<s.count],op,index,out);}
 #test "names from module paths, or from the operator and position" {
     out:[64]u8;
     #assert ox_is(out[0..<ox_t_stem("/enc/layer/fc/Gemm",OxOp.gemm,3,out[..])],"enc.layer.fc");
@@ -573,7 +573,7 @@ ox_t_stem :: (s:string,op:OxOp,index:int,out:[]u8)->int {b:[80]u8;for k:0..<s.co
 OX_BYTES_MAX :: 1048576;
 OxVar :: struct {value:u64;next:int;error:bool;}
 OxField :: struct {number:u64;wt:u64;raw:u64;payload:[]u8;next:int;error:bool;done:bool;}
-ox_var :: (wire:[]u8,at:int)->OxVar {
+ox_var :: (wire:[]u8,at:int)->OxVar #effects(all) {
     pos:=at;value:u64=0;shift:u64=0;
     while pos<wire.count {
         b:=wire[pos];pos+=1;
@@ -584,7 +584,7 @@ ox_var :: (wire:[]u8,at:int)->OxVar {
     }
     return OxVar.{error=true};
 }
-ox_scan :: (wire:[]u8,at:int)->OxField {
+ox_scan :: (wire:[]u8,at:int)->OxField #effects(all) {
     if at==wire.count {return OxField.{next=at,done=true};}
     key:=ox_var(wire,at);
     if key.error || key.value<8 {return OxField.{error=true};}
@@ -602,7 +602,7 @@ ox_scan :: (wire:[]u8,at:int)->OxField {
     return f;
 }
 // The first field with this number; done when there is none.
-ox_field :: (wire:[]u8,number:u64)->OxField {
+ox_field :: (wire:[]u8,number:u64)->OxField #effects(all) {
     f:=ox_scan(wire,0);
     while !f.error && !f.done && f.number!=number {f=ox_scan(wire,f.next);}
     return f;
@@ -610,24 +610,24 @@ ox_field :: (wire:[]u8,number:u64)->OxField {
 // book:end wire
 
 // An enumeration value as an int; anything past 255 is no value this reader knows.
-ox_small :: (raw:u64)->int {return ifx raw<256 then cast(int)raw else -1;}
-ox_is :: (b:[]u8,s:string)->bool {
+ox_small :: (raw:u64)->int #effects(all) {return ifx raw<256 then cast(int)raw else -1;}
+ox_is :: (b:[]u8,s:string)->bool #effects(all) {
     if b.count!=s.count {return false;}
     for i:0..<b.count {if b[i]!=s[i] {return false;}}
     return true;
 }
-ox_same :: (a:[]u8,b:[]u8)->bool {
+ox_same :: (a:[]u8,b:[]u8)->bool #effects(all) {
     if a.count!=b.count {return false;}
     for i:0..<a.count {if a[i]!=b[i] {return false;}}
     return true;
 }
-ox_find :: (m:OxModel,name:[]u8)->int {
+ox_find :: (m:OxModel,name:[]u8)->int #effects(all) {
     for i:0..<m.value_count {if ox_same(m.values[i].name,name) {return i;}}
     return -1;
 }
 // The element count, or 0 above the profile's limit or for a dimension below
 // 1. Dimensions reach here already at most 4,096, so the product can't overflow.
-ox_elements :: (s:OxShape)->int {
+ox_elements :: (s:OxShape)->int #effects(all) {
     n:=1;
     for i:0..<s.rank {
         if s.dims[i]<1 || s.dims[i]>OX_ELEMENTS_MAX/n {return 0;}
@@ -635,18 +635,18 @@ ox_elements :: (s:OxShape)->int {
     }
     return n;
 }
-ox_shape_same :: (a:OxShape,b:OxShape)->bool {
+ox_shape_same :: (a:OxShape,b:OxShape)->bool #effects(all) {
     if a.rank!=b.rank {return false;}
     for i:0..<a.rank {if a.dims[i]!=b.dims[i] {return false;}}
     return true;
 }
-ox_default :: (domain:[]u8)->bool {return domain.count==0 || ox_is(domain,"ai.onnx");}
+ox_default :: (domain:[]u8)->bool #effects(all) {return domain.count==0 || ox_is(domain,"ai.onnx");}
 
 // book:begin ints
 // A repeated integer field arrives packed (one length-delimited run) or one
 // varint at a time; both are read, up to four values.
 OxInts :: struct {ok:bool;count:int;values:[4]s64;}
-ox_ints :: (f:OxField,into:OxInts)->OxInts {
+ox_ints :: (f:OxField,into:OxInts)->OxInts #effects(all) {
     r:=into;
     if f.wt==0 {
         if r.count==4 {r.ok=false;return r;}
@@ -663,10 +663,10 @@ ox_ints :: (f:OxField,into:OxInts)->OxInts {
 }
 // book:end ints
 
-ox_refuse :: (m:OxModel,status:OxStatus,node:int)->OxModel {r:=m;r.status=status;r.node=node;return r;}
+ox_refuse :: (m:OxModel,status:OxStatus,node:int)->OxModel #effects(all) {r:=m;r.status=status;r.node=node;return r;}
 // A refusal that belongs to no node.
-ox_fail :: (m:OxModel,status:OxStatus)->OxModel {return ox_refuse(m,status,-1);}
-ox_word :: (b:[]u8,at:int)->f32 {
+ox_fail :: (m:OxModel,status:OxStatus)->OxModel #effects(all) {return ox_refuse(m,status,-1);}
+ox_word :: (b:[]u8,at:int)->f32 #effects(all) {
     bits:u32=0;
     for k:0..<4 {bits|=cast(u32)b[at+k]<<cast(u32)(8*k);}
     return f32_from_bits(bits);
@@ -677,7 +677,7 @@ ox_word :: (b:[]u8,at:int)->f32 {
 // as raw little-endian bytes or as float_data, exactly as many values as its
 // dimensions hold. Other element types are refused first; then external data
 // and any other data field. Its values go into the arena.
-ox_initializer :: (wire:[]u8,m:OxModel,arena:[]f32)->OxModel {
+ox_initializer :: (wire:[]u8,m:OxModel,arena:[]f32)->OxModel #effects(all) {
     r:=m;dims:=OxInts.{ok=true};dtype:=0;name:[]u8;raw:[]u8;has_raw:=false;floats:=0;elsewhere:=false;
     at:=r.arena;
     f:=ox_scan(wire,0);
@@ -721,7 +721,7 @@ ox_initializer :: (wire:[]u8,m:OxModel,arena:[]f32)->OxModel {
 // A graph input or output declares a tensor type with static dimensions; a
 // named (symbolic) dimension or any other type is refused.
 OxDecl :: struct {status:OxStatus;name:[]u8;elem:int;shape:OxShape;}
-ox_dims :: (wire:[]u8,d:OxDecl)->OxDecl {
+ox_dims :: (wire:[]u8,d:OxDecl)->OxDecl #effects(all) {
     r:=d;
     f:=ox_scan(wire,0);
     while !f.done {
@@ -736,7 +736,7 @@ ox_dims :: (wire:[]u8,d:OxDecl)->OxDecl {
     }
     return r;
 }
-ox_tensor_type :: (wire:[]u8,d:OxDecl)->OxDecl {
+ox_tensor_type :: (wire:[]u8,d:OxDecl)->OxDecl #effects(all) {
     r:=d;typed:=false;
     g:=ox_scan(wire,0);
     while !g.done {
@@ -749,7 +749,7 @@ ox_tensor_type :: (wire:[]u8,d:OxDecl)->OxDecl {
     if !typed {r.status=OxStatus.shape;}
     return r;
 }
-ox_declaration :: (wire:[]u8)->OxDecl {
+ox_declaration :: (wire:[]u8)->OxDecl #effects(all) {
     r:=OxDecl.{status=OxStatus.shape};
     f:=ox_scan(wire,0);
     while !f.done {
@@ -777,12 +777,12 @@ OxAttrs :: struct {status:OxStatus;axis:s64;has_axis:bool;axes:OxInts;drop:bool;
 OX_INT :: 2;
 OX_INTS :: 7;
 OX_FLOAT_ATTR :: 1;
-ox_one :: (ints:OxInts,count:int)->bool {
+ox_one :: (ints:OxInts,count:int)->bool #effects(all) {
     if !ints.ok || ints.count!=count {return false;}
     for k:0..<count {if ints.values[k]!=1 {return false;}}
     return true;
 }
-ox_attribute :: (wire:[]u8,op:OxOp,into:OxAttrs)->OxAttrs {
+ox_attribute :: (wire:[]u8,op:OxOp,into:OxAttrs)->OxAttrs #effects(all) {
     r:=into;name:[]u8;kind:=0;i:s64=0;value:f32=0;ints:=OxInts.{ok=true};
     f:=ox_scan(wire,0);
     while !f.done {
@@ -821,7 +821,7 @@ ox_attribute :: (wire:[]u8,op:OxOp,into:OxAttrs)->OxAttrs {
 // and its last part becomes the stem ("encoder.fc"). A node with no module
 // path ("/Flatten", "" or "fc") is named by its operator and position
 // ("gemm3"). The first weight slot is the weight, the second the bias.
-ox_stem :: (node:[]u8,op:OxOp,index:int,out:[]u8)->int {
+ox_stem :: (node:[]u8,op:OxOp,index:int,out:[]u8)->int #effects(all) {
     slashes:=0;last:int=---;
     for c,k:node {if c=='/' {slashes+=1;last=k;}}
     n:=0;
@@ -835,7 +835,7 @@ ox_stem :: (node:[]u8,op:OxOp,index:int,out:[]u8)->int {
     out[n]=cast(u8)('0'+index%10);
     return n+1;
 }
-ox_name_weight :: (m:OxModel,node:[]u8,op:OxOp,index:int,slot:int,value:int)->OxModel {
+ox_name_weight :: (m:OxModel,node:[]u8,op:OxOp,index:int,slot:int,value:int)->OxModel #effects(all) {
     r:=m;t:=OxTensor.{value=value};
     n:=ox_stem(node,op,index,t.name[..]);
     suffix:=ifx slot==2 then ".bias" else ".weight";
@@ -851,11 +851,11 @@ ox_name_weight :: (m:OxModel,node:[]u8,op:OxOp,index:int,slot:int,value:int)->Ox
 // book:begin node
 // Which input slots hold weights, how many inputs an operator takes, and
 // which slot must hold integers.
-ox_weight_slot :: (op:OxOp,slot:int)->bool {
+ox_weight_slot :: (op:OxOp,slot:int)->bool #effects(all) {
     if op==OxOp.gather {return slot==0;}
     return (op==OxOp.conv || op==OxOp.gemm) && slot>=1;
 }
-ox_arity_ok :: (op:OxOp,n:int)->bool {
+ox_arity_ok :: (op:OxOp,n:int)->bool #effects(all) {
     if op==OxOp.gather {return n==2;}
     if op==OxOp.conv || op==OxOp.gemm {return n==2 || n==3;}
     return n==1;
@@ -863,7 +863,7 @@ ox_arity_ok :: (op:OxOp,n:int)->bool {
 // The output shape of a node whose inputs are known, or a refusal. A Conv
 // input below rank 4 leaves a zero extent that no kernel fits.
 OxInfer :: struct {status:OxStatus;shape:OxShape;axis:int;}
-ox_infer :: (m:OxModel,op:OxOp,inputs:[3]int,arity:int,a:OxAttrs)->OxInfer {
+ox_infer :: (m:OxModel,op:OxOp,inputs:[3]int,arity:int,a:OxAttrs)->OxInfer #effects(all) {
     x:=m.values[inputs[0]].shape;r:=OxInfer.{shape=x};
     if op==OxOp.gather {
         i:=m.values[inputs[1]].shape;
@@ -904,7 +904,7 @@ ox_infer :: (m:OxModel,op:OxOp,inputs:[3]int,arity:int,a:OxAttrs)->OxInfer {
 // One node, in file order: its operator, attributes and inputs are checked,
 // each weight named, and its output given a shape and a place in the arena.
 OX_ATTRS_MAX :: 8;
-ox_node :: (wire:[]u8,m:OxModel,index:int,arena:int)->OxModel {
+ox_node :: (wire:[]u8,m:OxModel,index:int,arena:int)->OxModel #effects(all) {
     r:=m;names:[3][]u8;arity:=0;outs:=0;output:[]u8;node_name:[]u8;op_type:[]u8;domain:[]u8;
     attrs:[OX_ATTRS_MAX][]u8;attr_count:=0;
     f:=ox_scan(wire,0);
@@ -960,7 +960,7 @@ ox_node :: (wire:[]u8,m:OxModel,index:int,arena:int)->OxModel {
 // read a value defined before it, so a graph out of topological order is
 // refused.
 OX_FIELDS_MAX :: 64;
-ox_graph :: (wire:[]u8,m:OxModel,arena:[]f32)->OxModel {
+ox_graph :: (wire:[]u8,m:OxModel,arena:[]f32)->OxModel #effects(all) {
     r:=m;at:[4][OX_FIELDS_MAX][]u8;count:[4]int;
     f:=ox_scan(wire,0);
     while !f.done {
@@ -1012,7 +1012,7 @@ ox_graph :: (wire:[]u8,m:OxModel,arena:[]f32)->OxModel {
 // domain at version 17, and one graph. Producer names, versions, doc strings
 // and metadata are skipped; local functions, training information and any
 // other field are refused.
-ox_read :: (wire:[]u8,arena:[]f32)->OxModel #export_c {
+ox_read :: (wire:[]u8,arena:[]f32)->OxModel #export_c #effects(all) {
     r:=OxModel.{node=-1,input=-1,output=-1};
     if wire.count>OX_BYTES_MAX {return ox_fail(r,OxStatus.capacity);}
     graph:[]u8;graphs:=0;opsets:=0;
@@ -1042,7 +1042,7 @@ ox_read :: (wire:[]u8,arena:[]f32)->OxModel #export_c {
 // book:begin run
 // The admitted graph on the CPU: binary32 values, sums in a fixed order,
 // Softmax in binary64. An index outside the table is refused at run time.
-ox_run :: (m:OxModel,arena:[]f32,ids:[]s64,pixels:[]f32)->OxRun #export_c {
+ox_run :: (m:OxModel,arena:[]f32,ids:[]s64,pixels:[]f32)->OxRun #export_c #effects(all) {
     if m.status!=OxStatus.ok || arena.count<m.arena {return OxRun.{status=OxStatus.capacity,node=-1};}
     x:=m.values[m.input];
     if x.integer {

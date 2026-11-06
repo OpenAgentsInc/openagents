@@ -169,7 +169,7 @@ wp_head :: (t: string) -> string {
   return t[0..<e];
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("everglade-wire-profile PROFILE.json"); return 2; }
   text: [65536] u8;

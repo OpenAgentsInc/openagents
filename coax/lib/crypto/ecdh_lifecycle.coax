@@ -7,7 +7,7 @@ EL_WORK :: 1; EL_STAGE :: 2; EL_OUT :: 4;
 ElSlot :: struct {generation:u64;phase:u32;dirty:u32;reason:u32;}
 ElChange :: struct {slot:ElSlot;status:u32;}
 
-el_valid :: (s:ElSlot)->bool #export_c {
+el_valid :: (s:ElSlot)->bool #export_c #effects(all) {
  if s.dirty>7 || s.reason>1 {return false;}
  if s.phase==EL_FREE {return s.dirty==0 && s.reason==0;}
  if s.generation==0 {return false;}
@@ -20,27 +20,27 @@ el_valid :: (s:ElSlot)->bool #export_c {
  }
  return s.phase==EL_OUTPUT && s.dirty==EL_STAGE && s.reason==0;
 }
-el_open :: (s:ElSlot)->ElChange #export_c {
+el_open :: (s:ElSlot)->ElChange #export_c #effects(all) {
  if !el_valid(s) || s.phase!=EL_FREE {return ElChange.{slot=s,status=EL_INVALID};}
  if s.generation==cast(u64)18446744073709551615 {return ElChange.{slot=s,status=EL_EXHAUSTED};}
  t:=s;t.generation+=1;t.phase=EL_READY;return ElChange.{slot=t};
 }
-el_begin :: (s:ElSlot,generation:u64)->ElChange #export_c {
+el_begin :: (s:ElSlot,generation:u64)->ElChange #export_c #effects(all) {
  if !el_valid(s) || generation==0 || generation!=s.generation || s.phase!=EL_READY {return ElChange.{slot=s,status=EL_INVALID};}
  t:=s;t.phase=EL_RUNNING;t.dirty=EL_WORK|EL_STAGE;return ElChange.{slot=t};
 }
-el_stop :: (s:ElSlot,generation:u64,reason:u32)->ElChange #export_c {
+el_stop :: (s:ElSlot,generation:u64,reason:u32)->ElChange #export_c #effects(all) {
  if !el_valid(s) || generation!=s.generation || s.phase!=EL_RUNNING || reason>1 {return ElChange.{slot=s,status=EL_INVALID};}
  t:=s;t.phase=EL_CLEANING;t.reason=reason;return ElChange.{slot=t,status=EL_INCOMPLETE};
 }
-el_cancel :: (s:ElSlot,generation:u64)->ElChange #export_c {
+el_cancel :: (s:ElSlot,generation:u64)->ElChange #export_c #effects(all) {
  if !el_valid(s) || generation!=s.generation || (s.phase!=EL_RUNNING && s.phase!=EL_CLEANING && s.phase!=EL_OUTPUT) {return ElChange.{slot=s,status=EL_INVALID};}
  t:=s;t.phase=EL_CLEANING;t.reason=1;return ElChange.{slot=t,status=EL_INCOMPLETE};
 }
 // The host calls this only after a verified wipe effect for exactly one region.
 // A failed effect discards success and remains incomplete until every dirty
 // region, including any already copied output, has been acknowledged.
-el_wipe :: (s:ElSlot,generation:u64,region:u32,success:bool)->ElChange #export_c {
+el_wipe :: (s:ElSlot,generation:u64,region:u32,success:bool)->ElChange #export_c #effects(all) {
  if !el_valid(s) || generation!=s.generation || s.phase!=EL_CLEANING || (region!=EL_WORK && region!=EL_STAGE && region!=EL_OUT) || (s.dirty&region)==0 {return ElChange.{slot=s,status=EL_INVALID};}
  if s.reason==0 && (region==EL_OUT || (region==EL_STAGE && (s.dirty&EL_OUT)==0)) {return ElChange.{slot=s,status=EL_INVALID};}
  t:=s;if !success {t.reason=1;return ElChange.{slot=t,status=EL_INCOMPLETE};}
@@ -50,17 +50,17 @@ el_wipe :: (s:ElSlot,generation:u64,region:u32,success:bool)->ElChange #export_c
  return ElChange.{slot=t,status=EL_INCOMPLETE};
 }
 // Host validates and keeps output private before copying the staged result.
-el_copy :: (s:ElSlot,generation:u64)->ElChange #export_c {
+el_copy :: (s:ElSlot,generation:u64)->ElChange #export_c #effects(all) {
  if !el_valid(s) || generation!=s.generation || s.phase!=EL_OUTPUT {return ElChange.{slot=s,status=EL_INVALID};}
  t:=s;t.phase=EL_CLEANING;t.dirty=EL_STAGE|EL_OUT;return ElChange.{slot=t,status=EL_INCOMPLETE};
 }
 // Release output only after the stage has been erased. This acknowledges a
 // transfer of ownership rather than an erasure of the caller's output.
-el_publish :: (s:ElSlot,generation:u64)->ElChange #export_c {
+el_publish :: (s:ElSlot,generation:u64)->ElChange #export_c #effects(all) {
  if !el_valid(s) || generation!=s.generation || s.phase!=EL_CLEANING || s.reason!=0 || s.dirty!=EL_OUT {return ElChange.{slot=s,status=EL_INVALID};}
  t:=s;t.phase=EL_DONE;t.dirty=0;return ElChange.{slot=t};
 }
-el_close :: (s:ElSlot,generation:u64)->ElChange #export_c {
+el_close :: (s:ElSlot,generation:u64)->ElChange #export_c #effects(all) {
  if !el_valid(s) || generation!=s.generation || (s.phase!=EL_READY && s.phase!=EL_DONE) {return ElChange.{slot=s,status=EL_INVALID};}
  t:=s;t.phase=EL_FREE;t.reason=0;return ElChange.{slot=t};
 }

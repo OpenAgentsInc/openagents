@@ -8,7 +8,7 @@ cc_bf16 :: (bits:u64,j:int)->f32 {
     return f32_from_bits(cast,trunc(u32)half<<16);
 }
 // partial[s*rows+row]: the products of row's group-slice s, groups of four.
-cc_matvec :: (item:int,rows:int,cols:int,slices:int,w:[]u64,x:[]f32,partial:[]f32) #export_c {
+cc_matvec :: (item:int,rows:int,cols:int,slices:int,w:[]u64,x:[]f32,partial:[]f32) #export_c #effects(all) {
     row:=item/slices;s:=item%slices;groups:=cols/4;per:=groups/slices;sum:f32=0;
     for k:0..<per {
         g:=s*per+k;bits:=w[row*groups+g];
@@ -16,7 +16,7 @@ cc_matvec :: (item:int,rows:int,cols:int,slices:int,w:[]u64,x:[]f32,partial:[]f3
     }
     partial[s*rows+row]=sum;
 }
-cc_reduce :: (item:int,rows:int,slices:int,partial:[]f32,out:[]f32) #export_c {
+cc_reduce :: (item:int,rows:int,slices:int,partial:[]f32,out:[]f32) #export_c #effects(all) {
     sum:f64=0;
     for s:0..<slices {sum+=f64(partial[s*rows+item]);}
     out[item]=f32(sum);

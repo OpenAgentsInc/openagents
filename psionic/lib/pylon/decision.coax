@@ -40,8 +40,8 @@ PD_CALL :: "{\"v\":\"openagents.systemone.v1\",\"requires\":[],\"type\":\"system
 PD_BODY :: "{\"model\":\"elephant-1\",\"state\":{\"ticket\":\"I was billed twice\"},\"questions\":{\"refund\":{\"type\":\"noul\",\"instructions\":\"Does the customer ask for money back?\"}}}";
 PD_ANSWER :: "{\"model\":\"elephant-1\",\"answers\":{\"refund\":{\"type\":\"noul\",\"noul\":0.93}},\"usage\":null,\"service\":{\"door\":\"psionic\",\"version\":\"psionic-serve-v1\",\"identity\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"},\"latency_ms\":412}";
 
-pd_env :: (plaintext:string)->PdEnvelope {return PdEnvelope.{kind=25910,id=PD_EVENT,pubkey=PD_CALLER,created_at=1791400000,tags=PD_TAGS,plaintext=plaintext};}
-pd_swap :: (out:[]u8,text:string,from:string,to:string)->string {
+pd_env :: (plaintext:string)->PdEnvelope #effects(all) {return PdEnvelope.{kind=25910,id=PD_EVENT,pubkey=PD_CALLER,created_at=1791400000,tags=PD_TAGS,plaintext=plaintext};}
+pd_swap :: (out:[]u8,text:string,from:string,to:string)->string #effects(all) {
     at:=pb_index(text,from);
     n:=json_raw(out,0,text[0..<at]);n=json_raw(out,n,to);n=json_raw(out,n,text[at+from.count..<text.count]);return cast(string)out[0..<n];
 }
@@ -222,26 +222,26 @@ pd_swap :: (out:[]u8,text:string,from:string,to:string)->string {
     #assert pd_same("AZ","az") && !pd_same("@","`") && !pd_same("[","{") && !pd_same("a","ab") && !pd_same("ab","ac") && pd_same("","");
 }
 
-pd_id :: (s:string)->bool {
+pd_id :: (s:string)->bool #effects(all) {
     if s.count<1 || s.count>PD_ID_MOST {return false;}
     for c:s {if c<33 || c>126 || c=='"' || c=='\\' {return false;}}
     return true;
 }
 // A payload field a credential could hide behind (case-insensitive): refused malformed.
-pd_credential :: (key:string)->bool {
+pd_credential :: (key:string)->bool #effects(all) {
     names:=[9]string.["key","secret","authorization","credential","credentials","api_key","apikey","bearer","token"];
     for n:names {if pd_same(key,n) {return true;}}
     return false;
 }
-pd_lower :: (c:u8)->u8 {if c>='A' && c<='Z' {return c+32;}return c;}
-pd_same :: (a:string,b:string)->bool {
+pd_lower :: (c:u8)->u8 #effects(all) {if c>='A' && c<='Z' {return c+32;}return c;}
+pd_same :: (a:string,b:string)->bool #effects(all) {
     if a.count!=b.count {return false;}for i:0..<a.count {if pd_lower(a[i])!=pd_lower(b[i]) {return false;}}return true;
 }
-pd_code_name :: (c:PdCode)->string {
+pd_code_name :: (c:PdCode)->string #effects(all) {
     names:=[17]string.["","malformed","not_addressed","unsupported_version","unsupported_feature","invalid_request","too_many_questions","too_many_options","not_admitted","limit_exceeded","unsupported_input","stale","busy","timeout","cancelled","identity_mismatch","internal"];
     return names[cast(int)c];
 }
-pd_message :: (c:PdCode)->string {
+pd_message :: (c:PdCode)->string #effects(all) {
     messages:=[17]string.["","the payload is not a decision request","","this pylon reads openagents.systemone.v1 only","this pylon supports no request features","the request breaks a NIP-DEC bound",
         "a request has 1 to 64 questions","a choice has 1 to 255 options and a score 2 to 10 levels","this pylon does not serve that model","the request exceeds a size or token bound",
         "the request is valid but outside this model's text profile","the request is outside its time window","the pylon is answering another decision; retry later",
@@ -250,14 +250,14 @@ pd_message :: (c:PdCode)->string {
 }
 // The server's refusal by its name (sv_code_name of sv_decode, sv_admit or
 // sv_answers) as the wire's code. A name only HTTP uses is internal here.
-pd_code :: (name:string)->PdCode #export_c {
+pd_code :: (name:string)->PdCode #export_c #effects(all) {
     if name=="" {return PdCode.none;}
     wire:=[9]PdCode.[PdCode.malformed,PdCode.invalid_request,PdCode.too_many_questions,PdCode.too_many_options,PdCode.not_admitted,PdCode.limit_exceeded,PdCode.unsupported_input,PdCode.busy,PdCode.timeout];
     for c:wire {if pd_code_name(c)==name {return c;}}
     return PdCode.internal;
 }
 // One pass over the payload's top level. Values the server reads are kept as exact bytes.
-pd_fields :: (text:string)->PdFields {
+pd_fields :: (text:string)->PdFields #effects(all) {
     f:PdFields;j:[1]Json;json_start(j[..],text);
     if json_next(j[..])!=JSON_OBJECT {f.json=PdCode.malformed;return f;}
     while true {
@@ -286,8 +286,8 @@ pd_fields :: (text:string)->PdFields {
     if json_next(j[..])!=JSON_END {f.json=ifx j[0].depth==JSON_DEPTH then PdCode.unsupported_input else PdCode.malformed;}
     return f;
 }
-pd_refuse :: (jb:PdJob,code:PdCode)->PdJob {j:=jb;j.code=code;return j;}
-pd_body :: (out:[]u8,f:PdFields)->int {
+pd_refuse :: (jb:PdJob,code:PdCode)->PdJob #effects(all) {j:=jb;j.code=code;return j;}
+pd_body :: (out:[]u8,f:PdFields)->int #effects(all) {
     n:=json_raw(out,0,"{");first:=true;
     names:=[3]string.["model","state","questions"];values:=[3]string.[f.model,f.state,f.questions];
     for i:0..<3 {
@@ -302,7 +302,7 @@ pd_body :: (out:[]u8,f:PdFields)->int {
 // holds the server's request ({model, state, questions}, exact bytes) and
 // the job's body field its length; the host then runs
 // pd_code(sv_code_name(sv_admit(engine, sv_decode(body, pools), pools))).
-pd_admit :: (env:PdEnvelope,worker:string,now:int,body:[]u8)->PdJob #export_c {
+pd_admit :: (env:PdEnvelope,worker:string,now:int,body:[]u8)->PdJob #export_c #effects(all) {
     jb:=PdJob.{id=env.id,caller=env.pubkey};
     if env.kind!=PD_REQUEST || !pt_hex64(env.id) || !pt_hex64(env.pubkey) {return pd_refuse(jb,PdCode.malformed);}
     p:=pt_tag(env.tags,"p");if !p.ok || p.count!=1 || p.size<2 || p.v[1]!=worker {return pd_refuse(jb,PdCode.not_addressed);}
@@ -330,27 +330,27 @@ pd_admit :: (env:PdEnvelope,worker:string,now:int,body:[]u8)->PdJob #export_c {
 // The milliseconds left before the job's deadline: -2 for no deadline, -1
 // when it has passed. The host gives the server the smaller of this and its
 // own decide limit.
-pd_left_ms :: (jb:PdJob,now:int)->int #export_c {
+pd_left_ms :: (jb:PdJob,now:int)->int #export_c #effects(all) {
     if jb.deadline==-1 {return -2;}if jb.deadline<=now {return -1;}return (jb.deadline-now)*1000;
 }
 // What a cancel does to a pending call: nothing unless the same signer names
 // the same request and event; before dispatch the job is dropped, after it
 // the host stops the child (sv_closed gives cancel_close) and sends a
 // 27010 error "cancelled". The cancel's receipt is not proof of stop.
-pd_cancel :: (pending:PdJob,dispatched:bool,cancel:PdJob)->PdCancel #export_c {
+pd_cancel :: (pending:PdJob,dispatched:bool,cancel:PdJob)->PdCancel #export_c #effects(all) {
     if cancel.code!=PdCode.none || cancel.type!=PdType.cancel || pending.type!=PdType.call {return PdCancel.ignore;}
     if cancel.caller!=pending.caller || cancel.target!=pending.id || cancel.request!=pending.request {return PdCancel.ignore;}
     if dispatched {return PdCancel.stop;}return PdCancel.drop;
 }
-pd_head :: (out:[]u8,jb:PdJob)->int {
+pd_head :: (out:[]u8,jb:PdJob)->int #effects(all) {
     n:=json_raw(out,0,"{\"attempt\":");return json_write_int(out,n,jb.attempt);
 }
-pd_tail :: (out:[]u8,at:int,jb:PdJob,after:string)->int {
+pd_tail :: (out:[]u8,at:int,jb:PdJob,after:string)->int #effects(all) {
     n:=json_raw(out,at,",\"request\":\"");n=json_raw(out,n,jb.request);n=json_raw(out,n,"\",\"requires\":[]");return json_raw(out,n,after);
 }
 // A 27010 body, keys in JCS order. An error names a code (and, for busy, a
 // retry); queued and processing name none.
-pd_status :: (out:[]u8,jb:PdJob,status:PdStatus,code:PdCode,retry_ms:int)->int #export_c {
+pd_status :: (out:[]u8,jb:PdJob,status:PdStatus,code:PdCode,retry_ms:int)->int #export_c #effects(all) {
     if !jb.answerable || (status==PdStatus.error)!=(code!=PdCode.none) || code==PdCode.not_addressed || (status!=PdStatus.error && retry_ms>=0) {return -1;}
     n:=pd_head(out,jb);
     if status==PdStatus.error {n=json_raw(out,n,",\"code\":\"");n=json_raw(out,n,pd_code_name(code));n=json_raw(out,n,"\",\"message\":");n=json_write_string(out,n,pd_message(code));}
@@ -362,7 +362,7 @@ pd_status :: (out:[]u8,jb:PdJob,status:PdStatus,code:PdCode,retry_ms:int)->int #
 // The 26910 body from the server's 200 body: the server's answers, its model
 // checked against the beacon's identity, and service naming this pylon.
 // receipt is the caller's execution receipt object (see the record).
-pd_result :: (out:[]u8,jb:PdJob,answer:string,slug:string,provider:string,version:string,identity:string,receipt:string)->PdOut #export_c {
+pd_result :: (out:[]u8,jb:PdJob,answer:string,slug:string,provider:string,version:string,identity:string,receipt:string)->PdOut #export_c #effects(all) {
     fail:=PdOut.{code=PdCode.internal};
     if jb.code!=PdCode.none || !jb.answerable || !pb_slug(slug,64) || !pt_hex64(provider) || version.count==0 || !pb_identity(identity) {return fail;}
     if !json_valid(receipt) || receipt[0]!='{' || !json_valid(answer) {return fail;}
@@ -400,7 +400,7 @@ pd_result :: (out:[]u8,jb:PdJob,answer:string,slug:string,provider:string,versio
 }
 // The unsigned 26910 or 27010 template answering the job: one p naming the
 // caller, one e naming the request event. content is the NIP-44 ciphertext.
-pd_template :: (out:[]u8,worker:string,now:int,kind:int,jb:PdJob,content:string)->int #export_c {
+pd_template :: (out:[]u8,worker:string,now:int,kind:int,jb:PdJob,content:string)->int #export_c #effects(all) {
     if (kind!=PD_RESULT && kind!=PD_STATUS) || !jb.answerable {return -1;}
     tags:[192]u8;n:=json_raw(tags[..],0,"[[\"p\",\"");n=json_raw(tags[..],n,jb.caller);n=json_raw(tags[..],n,"\"],[\"e\",\"");n=json_raw(tags[..],n,jb.id);n=json_raw(tags[..],n,"\"]]");
     return pt_template(out,worker,now,kind,cast(string)tags[0..<n],content);

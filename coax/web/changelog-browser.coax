@@ -8,7 +8,7 @@ CB_INIT :: "globalThis.__copy='';globalThis.__events=[];Object.defineProperty(na
 CB_READY :: "(async()=>{for(let i=0;i<100;i++){if(!globalThis.__changelogLeaving&&globalThis.coaxial?.ready&&document.querySelector('canvas')?.width>0){await new Promise(r=>setTimeout(r,250));return true}await new Promise(r=>setTimeout(r,50))}return false})()";
 CB_READER_READY :: "(async()=>{for(let i=0;i<100;i++){if(coaxial.probe()>0){await new Promise(r=>setTimeout(r,200));return true}await new Promise(r=>setTimeout(r,50))}return false})()";
 
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {tool_errln("usage: changelog-browser BASE OUTPUT_DIRECTORY");return 2;}
   base:=args_at(a[..],0);out:=args_at(a[..],1);
   if !fs_mkdir(out) {return 2;}

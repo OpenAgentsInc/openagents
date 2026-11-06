@@ -13,7 +13,7 @@ MmPlan :: struct {status:MmStatus;admission:DaStatus;split_items:int;part_items:
 // What mm_part needs: one warp, registers only, and the tensor-core
 // instruction.
 MM_NEEDS :: DaNeeds.{threads=32,shared=0,mma=true};
-mm_plan :: (rows:int,cols:int,tokens:int,slots:int,slices:int,dev:DaDevice)->MmPlan {
+mm_plan :: (rows:int,cols:int,tokens:int,slots:int,slices:int,dev:DaDevice)->MmPlan #effects(all) {
     if rows<16 || rows%16!=0 || cols<32 || cols%32!=0 || slots<1 {return MmPlan.{status=MmStatus.shape};}
     if slices<1 || cols%(16*slices)!=0 {return MmPlan.{status=MmStatus.slices};}
     if tokens<1 || tokens>4096 {return MmPlan.{status=MmStatus.tokens};}
@@ -23,7 +23,7 @@ mm_plan :: (rows:int,cols:int,tokens:int,slots:int,slices:int,dev:DaDevice)->MmP
     return MmPlan.{split_items=slots*((tokens+7)/8*8)*cols/2,part_items=slots*groups*rows/16*slices,
         finish_items=slots*tokens*rows,instructions=mm_instructions(cols,slices)};
 }
-mm_text :: (p:MmPlan)->string {
+mm_text :: (p:MmPlan)->string #effects(all) {
     if p.status==MmStatus.ok {return "admitted";}
     if p.status==MmStatus.shape {return "refused: rows must be a multiple of 16 and columns a multiple of 32";}
     if p.status==MmStatus.slices {return "refused: the slices must divide the 16-column steps";}
@@ -35,7 +35,7 @@ mm_text :: (p:MmPlan)->string {
 // The C host's entry: the plan as numbers. out receives split, part and
 // finish work items and the instruction count; the result is the MmStatus
 // number, and with 4 (device) the DaStatus number is added times 16.
-mm_plan_c :: (rows:int,cols:int,tokens:int,slots:int,slices:int,major:int,minor:int,max_threads:int,max_shared:int,out:[]int)->int #export_c {
+mm_plan_c :: (rows:int,cols:int,tokens:int,slots:int,slices:int,major:int,minor:int,max_threads:int,max_shared:int,out:[]int)->int #export_c #effects(all) {
     p:=mm_plan(rows,cols,tokens,slots,slices,DaDevice.{major=major,minor=minor,max_threads=max_threads,max_shared=max_shared});
     if out.count<4 {return -1;}
     out[0]=p.split_items;out[1]=p.part_items;out[2]=p.finish_items;out[3]=p.instructions;
@@ -45,14 +45,14 @@ mm_plan_c :: (rows:int,cols:int,tokens:int,slots:int,slices:int,major:int,minor:
 // reference, as a fraction of the magnitude sum, written to out[0], and the
 // bound for n instructions as the same fraction to out[1]. Returns 1 when
 // the output is within the bound.
-mm_check_c :: (rows:int,cols:int,stride:int,expert:int,row:int,slot:int,token:int,instructions:int,got:f32,packed:[]u8,scales:[]u8,bias:[]u16,x:[]f32,out:[]f64)->int #export_c {
+mm_check_c :: (rows:int,cols:int,stride:int,expert:int,row:int,slot:int,token:int,instructions:int,got:f32,packed:[]u8,scales:[]u8,bias:[]u16,x:[]f32,out:[]f64)->int #export_c #effects(all) {
     r:=mm_reference(rows,cols,stride,expert,row,slot,token,packed,scales,bias,x);
     err:=abs(f64(got)-r.value);bound:=mm_bound(instructions,r.magnitude);
     if out.count>=2 && r.magnitude>0 {out[0]=err/r.magnitude;out[1]=bound/r.magnitude;}
     return ifx err<=bound then 1 else 0;
 }
 // Chapter 66's rule for the C host: 1 when candidate passes against reference.
-mm_rule_c :: (candidate:f32,reference:f32)->int #export_c {return ifx mm_rule_66(candidate,reference) then 1 else 0;}
+mm_rule_c :: (candidate:f32,reference:f32)->int #export_c #effects(all) {return ifx mm_rule_66(candidate,reference) then 1 else 0;}
 
 // ---- Checks.
 #test "the plan refuses shapes, slices, tokens and devices without the instruction" {

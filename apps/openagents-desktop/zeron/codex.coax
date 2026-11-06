@@ -39,7 +39,7 @@
 #load "../../../coax/lib/agent/codex/fixture.coax";
 
 // The wall clock in seconds (zeron-face.c): a limit's reset time is a Unix time.
-zr_unix_s :: () -> int #foreign;
+zr_unix_s :: () -> int #foreign #effects(all);
 
 CODEX_LEVEL_IDS :: [7] string.["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
 CODEX_LEVEL_NAMES :: [7] string.["Minimal", "Low", "Medium", "High", "X-High", "Max", "Ultra"];

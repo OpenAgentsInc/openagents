@@ -39,11 +39,11 @@ HL_X :: 120;
 HL_BOS :: 320;HL_END :: 324;HL_CALL :: 325;HL_CLOSE :: 326;HL_OUT :: 327;HL_OUT_END :: 328;
 HL_TEST_CONTEXT :: 48;
 // A scripted model over the chapter's table.
-hl_scripted :: (table:[]u8,script:[]int,starts:[]int,context:int)->HlModel {
+hl_scripted :: (table:[]u8,script:[]int,starts:[]int,context:int)->HlModel #effects(all) {
     c:=SF_TEST;c.context=context;
     return HlModel.{c=c,base=HL_BOS,table=table,script=script,starts=starts};
 }
-hl_text :: (b:[]u8,n:int)->string {return cast(string)b[0..<n];}
+hl_text :: (b:[]u8,n:int)->string #effects(all) {return cast(string)b[0..<n];}
 #test "the calculator call: grammar, values and refusals" {
     tb:=NC_LEARNED;tr:=HL_TRACE;ts:=HL_TRACE_STARTS;
     c:=hl_parse("37+48");#assert c.ok && c.a==37 && c.op=='+' && c.b==48 && hl_apply(c)==85;
@@ -73,11 +73,11 @@ HL_PROMPT :: [5]int.[320,321,63,322,323];
 HL_TRACE :: [17]int.[325,51,55,43,52,56,326, 325,56,53,42,50,326, 49,55,48,324];
 HL_TRACE_STARTS :: [4]int.[0,7,13,17];
 HL_TRACE_BUDGET :: HlBudget.{steps=3,tokens=17,deadline=68,reply=8,tool=3};
-hl_trace :: (tb:[]u8,b:HlBudget,context:int,ids:[]int,steps:[]HlStep)->HlTurn {
+hl_trace :: (tb:[]u8,b:HlBudget,context:int,ids:[]int,steps:[]HlStep)->HlTurn #effects(all) {
     s:=HL_TRACE;st:=HL_TRACE_STARTS;for i:0..<5 {ids[i]=HL_PROMPT[i];}
     return hl_run(hl_scripted(tb,s[..],st[..],context),b,7,5,ids,steps);
 }
-hl_expect :: (t:HlTurn,stop:HlStop,steps:int,at:int,tokens:int,ticks:int,tools:int) {
+hl_expect :: (t:HlTurn,stop:HlStop,steps:int,at:int,tokens:int,ticks:int,tools:int) #effects(all) {
     #assert t.stop==stop;#assert t.steps==steps;#assert t.at==at;#assert t.tokens==tokens;#assert t.ticks==ticks;#assert t.tools==tools;
 }
 #test "the hand trace: two calls and an answer, step by step" {
@@ -227,17 +227,17 @@ HL_PAIRS :: [7][2]int.[[2]int.[323,325],[2]int.[325,49],[2]int.[49,43],[2]int.[4
 // book:begin call
 // The calculator's call: "a op b", each number one to four decimal digits,
 // op one of + - *. The grammar is chapter 136's; parsing runs nothing.
-hl_digits :: (s:string,at:int)->int {e:=at;while e<s.count && s[e]>='0' && s[e]<='9' {e+=1;}return e-at;}
-hl_number :: (s:string,at:int,n:int)->int {x:=0;for i:at..<at+n {x=x*10+cast(int)(s[i]-'0');}return x;}
-hl_parse :: (s:string)->HlCall {
+hl_digits :: (s:string,at:int)->int #effects(all) {e:=at;while e<s.count && s[e]>='0' && s[e]<='9' {e+=1;}return e-at;}
+hl_number :: (s:string,at:int,n:int)->int #effects(all) {x:=0;for i:at..<at+n {x=x*10+cast(int)(s[i]-'0');}return x;}
+hl_parse :: (s:string)->HlCall #effects(all) {
     da:=hl_digits(s,0);if da<1 || da>4 || da>=s.count {return HlCall.{};}
     op:=s[da];if op!='+' && op!='-' && op!='*' {return HlCall.{};}
     db:=hl_digits(s,da+1);if db<1 || db>4 || da+1+db!=s.count {return HlCall.{};}
     return HlCall.{ok=true,a=hl_number(s,0,da),op=op,b=hl_number(s,da+1,db)};
 }
-hl_apply :: (c:HlCall)->int {if c.op=='+' {return c.a+c.b;}if c.op=='-' {return c.a-c.b;}return c.a*c.b;}
+hl_apply :: (c:HlCall)->int #effects(all) {if c.op=='+' {return c.a+c.b;}if c.op=='-' {return c.a-c.b;}return c.a*c.b;}
 // book:end call
-hl_itoa :: (x:int,out:[]u8)->int {
+hl_itoa :: (x:int,out:[]u8)->int #effects(all) {
     n:=0;v:=x;if x<0 {out[0]='-';n=1;v=-x;}
     digits:[20]u8;k:=0;while true {digits[k]='0'+cast(u8)(v%10);k+=1;v/=10;if v==0 {break;}}
     for i:0..<k {out[n+i]=digits[k-1-i];}return n+k;
@@ -250,7 +250,7 @@ hl_itoa :: (x:int,out:[]u8)->int {
 // is malformed and runs nothing. The
 // output goes to out between <|output_start|> and <|output_end|>, or, when
 // out cannot hold it, nowhere.
-hl_tool :: (table:[]u8,base:int,reply:[]int,out:[]int)->HlTool {
+hl_tool :: (table:[]u8,base:int,reply:[]int,out:[]int)->HlTool #effects(all) {
     s:=0;while s<reply.count && reply[s]!=base+NC_PYTHON_START {s+=1;}
     if s==reply.count {return HlTool.{stop=HlStop.malformed};}
     call:=reply[s+1..<reply.count-1];
@@ -268,7 +268,7 @@ hl_tool :: (table:[]u8,base:int,reply:[]int,out:[]int)->HlTool {
 // script's tokens through chapter 126's own stop rule (ne_after), so it
 // stops, keeps tokens and counts positions exactly as the engine does. A
 // script reply that ends before it stops is the model's failure.
-hl_reply :: (m:HlModel,k:int,prompt:[]int,seed:u64,limit:int,out:[]int)->NeReply {
+hl_reply :: (m:HlModel,k:int,prompt:[]int,seed:u64,limit:int,out:[]int)->NeReply #effects(all) {
     if m.engine {return ne_generate(m.c,m.w,m.base,prompt,m.options,seed,limit,out,m.work,false);}
     if k+1>=m.starts.count || m.starts[k]<0 || m.starts[k+1]>m.script.count {return NeReply.{status=NeStatus.shape};}
     r:=m.script[m.starts[k]..<m.script.count];python:=false;at:=prompt.count;
@@ -287,16 +287,16 @@ hl_reply :: (m:HlModel,k:int,prompt:[]int,seed:u64,limit:int,out:[]int)->NeReply
 // What ends the turn when a reply's draw limit is spent (n is that limit,
 // the least of the four) or when one of them leaves nothing (n is 0):
 // tokens first, then the deadline, then the window, else the per-reply cap.
-hl_binding :: (n:int,tokens:int,time:int,room:int)->HlStop {
+hl_binding :: (n:int,tokens:int,time:int,room:int)->HlStop #effects(all) {
     if tokens<=n {return HlStop.tokens;}
     if time<=n {return HlStop.deadline;}
     if room<=n {return HlStop.window;}
     return HlStop.length;
 }
-hl_least :: (a:int,b:int)->int {return (a+b-cast(int)abs(f64(a-b)))/2;}
+hl_least :: (a:int,b:int)->int #effects(all) {return (a+b-cast(int)abs(f64(a-b)))/2;}
 // A reply of limit draws reads at most positions 0..at+limit-1, so the
 // clock may reach ticks+at+limit-1 and no further.
-hl_draws :: (g:NeReply)->int {return ifx g.stop==NeStop.assistant_end || g.stop==NeStop.bos then g.written+1 else g.written;}
+hl_draws :: (g:NeReply)->int #effects(all) {return ifx g.stop==NeStop.assistant_end || g.stop==NeStop.bos then g.written+1 else g.written;}
 // book:end budget
 
 // book:begin loop
@@ -305,7 +305,7 @@ hl_draws :: (g:NeReply)->int {return ifx g.stop==NeStop.assistant_end || g.stop=
 // Before each request it checks the cancel, the step count, and what the
 // tokens, the clock and the window leave; a request whose worst case would
 // pass the deadline gets a smaller limit, and one with no room is refused.
-hl_run :: (m:HlModel,b:HlBudget,seed:u64,prompt:int,ids:[]int,steps:[]HlStep)->HlTurn {
+hl_run :: (m:HlModel,b:HlBudget,seed:u64,prompt:int,ids:[]int,steps:[]HlStep)->HlTurn #effects(all) {
     t:=HlTurn.{at=prompt,reply=prompt};context:=m.c.context;
     if prompt<1 || ids.count<context || b.steps<0 || steps.count<b.steps || b.reply<1 || b.tool<0 {t.stop=HlStop.shape;return t;}
     while true {
@@ -338,7 +338,7 @@ hl_run :: (m:HlModel,b:HlBudget,seed:u64,prompt:int,ids:[]int,steps:[]HlStep)->H
 // The record replays: step k's request, rebuilt from ids[0..<seen] and its
 // seed, gives the recorded reply token for token, the tool gives the
 // recorded output, and the steps tile the transcript with nothing between.
-hl_replay :: (m:HlModel,seed:u64,prompt:int,ids:[]int,t:HlTurn,steps:[]HlStep,scratch:[]int)->bool {
+hl_replay :: (m:HlModel,seed:u64,prompt:int,ids:[]int,t:HlTurn,steps:[]HlStep,scratch:[]int)->bool #effects(all) {
     at:=prompt;
     for k:0..<t.steps {
         s:=steps[k];if s.seen!=at || s.seed!=cr_bits(seed,cast(u64)k) || s.limit>scratch.count {return false;}
@@ -360,7 +360,7 @@ hl_replay :: (m:HlModel,seed:u64,prompt:int,ids:[]int,t:HlTurn,steps:[]HlStep,sc
 
 // The prompt for one question, rendered by chapter 126's ne_prompt; 0 when
 // it cannot be rendered.
-hl_ask :: (m:HlModel,question:string,ids:[]int)->int {
+hl_ask :: (m:HlModel,question:string,ids:[]int)->int #effects(all) {
     msg:=[2]NcMessage.[NcMessage.{role=NcRole.user,text=question},NcMessage.{role=NcRole.assistant}];none:[1]NcPart;sp:[9]int;ne_specials(sp[..]);
     p:=ne_prompt(m.table,sp[..],m.c.vocab,msg[..],none[..],ids,false);
     return ifx p.status==NeStatus.ok then p.written else 0;

@@ -24,7 +24,7 @@
 #load "../../../apps/openagents-cli/relay.coax";
 #run_steps 250000000;
 
-cxproc_wall_us :: () -> int #foreign;
+cxproc_wall_us :: () -> int #foreign #effects(all);
 
 // What apps/openagents-cli/relay.coax takes from the CLI around it.
 wipe :: (b: [] u8) { for i: 0..<b.count { b[i] = 0; } }
@@ -92,7 +92,7 @@ vp_median :: (v: [] int, n: int) -> int {
   #assert vp_median(v[..], 5) == 5 && vp_median(v[..], 1) == 9 && vp_median(v[..], 0) == -1;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("verse_presence_pair: arguments too long"); return 2; }
   role := args_value(a[..], "--role", "");

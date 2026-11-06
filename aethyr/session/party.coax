@@ -41,7 +41,7 @@ PARTY_SAME :: 4;              // already a member: nothing changes
 
 // book:begin party-rules
 // Why a join by a code is refused, or PARTY_OK (or PARTY_SAME). The checks run in this order.
-party_join_why :: (code_live: bool, already: bool, blocked: bool, members: int) -> int {
+party_join_why :: (code_live: bool, already: bool, blocked: bool, members: int) -> int #effects(all) {
   if !code_live { return PARTY_GONE; }
   if already { return PARTY_SAME; }
   if blocked { return PARTY_BLOCKED; }
@@ -49,18 +49,18 @@ party_join_why :: (code_live: bool, already: bool, blocked: bool, members: int) 
   return PARTY_OK;
 }
 // Whether a code made at made_ms is live at now.
-party_code_live :: (made_ms: int, now: int) -> bool { return now < made_ms + PARTY_INVITE_MS; }
+party_code_live :: (made_ms: int, now: int) -> bool #effects(all) { return now < made_ms + PARTY_INVITE_MS; }
 // Whether a party's member shows to an asker: both in the party, and the member is the asker, or
 // neither hidden nor blocked either way.
-party_sees :: (same: bool, you: bool, hidden: bool, blocked: bool) -> bool { return same && (you || (!hidden && !blocked)); }
+party_sees :: (same: bool, you: bool, hidden: bool, blocked: bool) -> bool #effects(all) { return same && (you || (!hidden && !blocked)); }
 // Whether a room's HP report made at hp_at still shows at now.
-party_hp_shown :: (hp_at: int, now: int) -> bool { return hp_at > now - PARTY_HP_MS; }
+party_hp_shown :: (hp_at: int, now: int) -> bool #effects(all) { return hp_at > now - PARTY_HP_MS; }
 
 // Where a party sits: among the rooms another visible member is in (taken seats each, in the host's
 // order), the first with the fewest taken that has a seat. When none has, the first room, full.
 // room -1: no member sits anywhere.
 PartyPlace :: struct { room: int = -1; full: bool; }
-party_place :: (taken: [] int, n: int, seats: int) -> PartyPlace {
+party_place :: (taken: [] int, n: int, seats: int) -> PartyPlace #effects(all) {
   best := -1;
   for r: 0..<n { if taken[r] < seats && (best < 0 || taken[r] < taken[best]) { best = r; } }
   if best >= 0 { return PartyPlace.{room = best}; }
@@ -68,7 +68,7 @@ party_place :: (taken: [] int, n: int, seats: int) -> PartyPlace {
   return PartyPlace.{};
 }
 // Following one member: their room (taken seats), when they show to the asker and sit somewhere.
-party_follow :: (sees: bool, sits: bool, taken: int, seats: int) -> PartyPlace {
+party_follow :: (sees: bool, sits: bool, taken: int, seats: int) -> PartyPlace #effects(all) {
   if !sees || !sits { return PartyPlace.{}; }
   return PartyPlace.{room = 0, full = taken >= seats};
 }
@@ -88,14 +88,14 @@ PartyBook :: struct {
   code_party: [PARTY_SLOTS] int;     // one code per slot: its party (index + 1), 0 used or none
   code_made: [PARTY_SLOTS] int;
 }
-party_members :: (b: [] PartyBook, p: int) -> int {
+party_members :: (b: [] PartyBook, p: int) -> int #effects(all) {
   n := 0;
   for q: 0..<PARTY_PLAYERS { if b[0].of[q] == p + 1 { n += 1; } }
   return n;
 }
-party_blocked :: (b: [] PartyBook, a: int, c: int) -> bool { return ((b[0].blocks[a] >> c) & 1) != 0 || ((b[0].blocks[c] >> a) & 1) != 0; }
+party_blocked :: (b: [] PartyBook, a: int, c: int) -> bool #effects(all) { return ((b[0].blocks[a] >> c) & 1) != 0 || ((b[0].blocks[c] >> a) & 1) != 0; }
 // Player me leaves their party; the last out ends it.
-party_leave :: (b: [] PartyBook, me: int) {
+party_leave :: (b: [] PartyBook, me: int) #effects(all) {
   p := b[0].of[me] - 1;
   if p < 0 { return; }
   b[0].of[me] = 0; b[0].hidden[me] = false;
@@ -104,7 +104,7 @@ party_leave :: (b: [] PartyBook, me: int) {
 }
 // An invite's code (slot k) for me's party, made at now; a party of one is made when me has none.
 // False: no free party.
-party_invite :: (b: [] PartyBook, me: int, k: int, now: int) -> bool {
+party_invite :: (b: [] PartyBook, me: int, k: int, now: int) -> bool #effects(all) {
   p := b[0].of[me] - 1;
   if p < 0 {
     for i: 0..<PARTY_SLOTS { if p < 0 && !b[0].live[i] { p = i; } }
@@ -115,7 +115,7 @@ party_invite :: (b: [] PartyBook, me: int, k: int, now: int) -> bool {
   return true;
 }
 // Player me joins by the code in slot k at now.
-party_join :: (b: [] PartyBook, me: int, k: int, now: int) -> int {
+party_join :: (b: [] PartyBook, me: int, k: int, now: int) -> int #effects(all) {
   p := b[0].code_party[k] - 1;
   live := p >= 0 && b[0].live[p] && party_code_live(b[0].code_made[k], now);
   blocked := false;
@@ -128,14 +128,14 @@ party_join :: (b: [] PartyBook, me: int, k: int, now: int) -> int {
   return PARTY_OK;
 }
 // me's health hidden (on) or shown. False: me is in no party.
-party_hide :: (b: [] PartyBook, me: int, on: bool) -> bool {
+party_hide :: (b: [] PartyBook, me: int, on: bool) -> bool #effects(all) {
   p := b[0].of[me] - 1;
   if p < 0 { return false; }
   if b[0].hidden[me] != on { b[0].hidden[me] = on; b[0].version[p] += 1; }
   return true;
 }
 // Whether member q is in asker me's roster.
-party_roster_has :: (b: [] PartyBook, me: int, q: int) -> bool {
+party_roster_has :: (b: [] PartyBook, me: int, q: int) -> bool #effects(all) {
   return party_sees(b[0].of[me] != 0 && b[0].of[me] == b[0].of[q], q == me, b[0].hidden[q], party_blocked(b, me, q));
 }
 

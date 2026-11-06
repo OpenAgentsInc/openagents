@@ -97,7 +97,7 @@ An initializer is the strictest:
 // as raw little-endian bytes or as float_data, exactly as many values as its
 // dimensions hold. Other element types are refused first; then external data
 // and any other data field. Its values go into the arena.
-ox_initializer :: (wire:[]u8,m:OxModel,arena:[]f32)->OxModel {
+ox_initializer :: (wire:[]u8,m:OxModel,arena:[]f32)->OxModel #effects(all) {
     r:=m;dims:=OxInts.{ok=true};dtype:=0;name:[]u8;raw:[]u8;has_raw:=false;floats:=0;elsewhere:=false;
     at:=r.arena;
     f:=ox_scan(wire,0);
@@ -152,7 +152,7 @@ it is given is refused as `capacity`, never truncated.
 // and its last part becomes the stem ("encoder.fc"). A node with no module
 // path ("/Flatten", "" or "fc") is named by its operator and position
 // ("gemm3"). The first weight slot is the weight, the second the bias.
-ox_stem :: (node:[]u8,op:OxOp,index:int,out:[]u8)->int {
+ox_stem :: (node:[]u8,op:OxOp,index:int,out:[]u8)->int #effects(all) {
     slashes:=0;last:int=---;
     for c,k:node {if c=='/' {slashes+=1;last=k;}}
     n:=0;
@@ -166,7 +166,7 @@ ox_stem :: (node:[]u8,op:OxOp,index:int,out:[]u8)->int {
     out[n]=cast(u8)('0'+index%10);
     return n+1;
 }
-ox_name_weight :: (m:OxModel,node:[]u8,op:OxOp,index:int,slot:int,value:int)->OxModel {
+ox_name_weight :: (m:OxModel,node:[]u8,op:OxOp,index:int,slot:int,value:int)->OxModel #effects(all) {
     r:=m;t:=OxTensor.{value=value};
     n:=ox_stem(node,op,index,t.name[..]);
     suffix:=ifx slot==2 then ".bias" else ".weight";
@@ -195,7 +195,7 @@ path, such as `/Flatten`, or an empty name, is named by operator and position
 // read a value defined before it, so a graph out of topological order is
 // refused.
 OX_FIELDS_MAX :: 64;
-ox_graph :: (wire:[]u8,m:OxModel,arena:[]f32)->OxModel {
+ox_graph :: (wire:[]u8,m:OxModel,arena:[]f32)->OxModel #effects(all) {
     r:=m;at:[4][OX_FIELDS_MAX][]u8;count:[4]int;
     f:=ox_scan(wire,0);
     while !f.done {
@@ -261,7 +261,7 @@ refused as `shape`.
 ```jai
 // The admitted graph on the CPU: binary32 values, sums in a fixed order,
 // Softmax in binary64. An index outside the table is refused at run time.
-ox_run :: (m:OxModel,arena:[]f32,ids:[]s64,pixels:[]f32)->OxRun #export_c {
+ox_run :: (m:OxModel,arena:[]f32,ids:[]s64,pixels:[]f32)->OxRun #export_c #effects(all) {
     if m.status!=OxStatus.ok || arena.count<m.arena {return OxRun.{status=OxStatus.capacity,node=-1};}
     x:=m.values[m.input];
     if x.integer {

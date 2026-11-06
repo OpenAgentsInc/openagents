@@ -29,23 +29,23 @@
     #assert dc_ranges(6,10,7,67,keys[0..<0],out[..],stage[..],false).status==DsStatus.ok;
 }
 
-dc_blocks :: (n:int)->bool {return n>=1 && n<=256;}
-dc_dimension :: (n:int)->bool {return n%32==0 && dc_blocks(n/32);}
-dc_packet :: (width:int,hidden:int)->DcPacket #export_c {
+dc_blocks :: (n:int)->bool #effects(all) {return n>=1 && n<=256;}
+dc_dimension :: (n:int)->bool #effects(all) {return n%32==0 && dc_blocks(n/32);}
+dc_packet :: (width:int,hidden:int)->DcPacket #export_c #effects(all) {
     if !dc_dimension(width) || !dc_dimension(hidden) {return DcPacket.{status=DsStatus.shape};}
     count:=width*hidden;codes:=count/2;scales:=count/32;pair:=codes+scales;
     return DcPacket.{width=width,hidden=hidden,bytes=3*pair,begin=[7]int.[0,codes,pair,pair+codes,2*pair,2*pair+codes,3*pair]};
 }
 // book:begin bind
-dc_bind :: (width:int,hidden:int,packet:[]u8)->DcBound #export_c {
+dc_bind :: (width:int,hidden:int,packet:[]u8)->DcBound #export_c #effects(all) {
     p:=dc_packet(width,hidden);if p.status!=DsStatus.ok {return DcBound.{status=p.status};}if packet.count!=p.bytes {return DcBound.{status=DsStatus.capacity};}
     matrices:[3]DeMatrix;for i:0..<3 {matrices[i]=DeMatrix.{kind=DeKind.fp4,rows=ifx i==2 then width else hidden,columns=ifx i==2 then hidden else width,data=packet[p.begin[2*i]..<p.begin[2*i+1]],scales=packet[p.begin[2*i+1]..<p.begin[2*i+2]]};}
     return DcBound.{value=DeExpert.{gate=matrices[0],up=matrices[1],down=matrices[2]}};
 }
 // book:end bind
-dc_keys :: (n:int)->bool {return n>=1 && n<=16512;}
-dc_file_extent :: (base:int,bytes:int)->bool {return base>=0 && bytes>=base && bytes<=1099511627776;}
-dc_ranges :: (keys:int,stride:int,base:int,file_bytes:int,ids:[]int,out:[]int,stage:[]int,overlap:bool)->DcResult #export_c {
+dc_keys :: (n:int)->bool #effects(all) {return n>=1 && n<=16512;}
+dc_file_extent :: (base:int,bytes:int)->bool #effects(all) {return base>=0 && bytes>=base && bytes<=1099511627776;}
+dc_ranges :: (keys:int,stride:int,base:int,file_bytes:int,ids:[]int,out:[]int,stage:[]int,overlap:bool)->DcResult #export_c #effects(all) {
     if !dc_keys(keys) || !dc_stride(stride) || !dc_file_extent(base,file_bytes) {return DcResult.{status=DsStatus.shape};}if keys*stride>file_bytes-base {return DcResult.{status=DsStatus.capacity};}
     if out.count<ids.count || stage.count<ids.count {return DcResult.{status=DsStatus.capacity};}if overlap {return DcResult.{status=DsStatus.alias};}
     for i:0..<ids.count {if ids[i]<0 || ids[i]>=keys {return DcResult.{status=DsStatus.token};}stage[i]=base+ids[i]*stride;}

@@ -59,7 +59,7 @@ The second hash always reads exactly 32 bytes, so it is always one block.
 // SHA-256d: SHA-256 of the SHA-256 of the input, into the first 32 bytes
 // of out. The first digest stays in a local buffer, so input and out are
 // read and written once each.
-sha256d_checked :: (input: [] u8, out: [] u8, overlap: bool) -> u32 {
+sha256d_checked :: (input: [] u8, out: [] u8, overlap: bool) -> u32 #effects(all) {
   status := sha256_request(input.count, out.count, overlap); if status != SHA_OK { return status; }
   first: [32] u8;
   status = sha256_hash_checked(input, first[..], false); if status != SHA_OK { return status; }
@@ -67,7 +67,7 @@ sha256d_checked :: (input: [] u8, out: [] u8, overlap: bool) -> u32 {
 }
 // Txids and block hashes are shown as the digest's bytes in reverse order.
 // digest and out may be the same view.
-bitcoin_reverse32 :: (digest: [] u8, out: [] u8) -> u32 {
+bitcoin_reverse32 :: (digest: [] u8, out: [] u8) -> u32 #effects(all) {
   if digest.count != 32 { return SHA_BAD_INPUT; }
   if out.count != 32 { return SHA_BAD_OUTPUT; }
   copy: [32] u8; for i: 0..<32 { copy[i] = digest[i]; }
@@ -132,7 +132,7 @@ so its checksum is the first 4 bytes of SHA-256d of nothing: `5df6e0e2`.
 ```jai
 // The P2P message checksum: the first 4 bytes of SHA-256d of the payload,
 // into out[0..<4].
-bitcoin_checksum_checked :: (payload: [] u8, out: [] u8, overlap: bool) -> u32 {
+bitcoin_checksum_checked :: (payload: [] u8, out: [] u8, overlap: bool) -> u32 #effects(all) {
   if !sha256_input_ok(payload.count) { return SHA_BAD_INPUT; }
   if out.count < 4 { return SHA_BAD_OUTPUT; }
   if overlap { return SHA_ALIAS; }
@@ -142,7 +142,7 @@ bitcoin_checksum_checked :: (payload: [] u8, out: [] u8, overlap: bool) -> u32 {
   return SHA_OK;
 }
 // True only when checksum is exactly 4 bytes and equals the payload's.
-bitcoin_checksum_matches :: (payload: [] u8, checksum: [] u8) -> bool {
+bitcoin_checksum_matches :: (payload: [] u8, checksum: [] u8) -> bool #effects(all) {
   if checksum.count != 4 { return false; }
   want: [4] u8;
   if bitcoin_checksum_checked(payload, want[..], false) != SHA_OK { return false; }
@@ -178,7 +178,7 @@ and stream each message after it. `sha256_tagged_init` returns that state:
 ```jai
 // A fresh state that has absorbed SHA256(tag) || SHA256(tag): one full block,
 // so the state holds the tag's midstate and nothing buffered.
-sha256_tagged_init :: (state: [] u8, tag: string) -> u32 {
+sha256_tagged_init :: (state: [] u8, tag: string) -> u32 #effects(all) {
   if !sha256_tag_ok(tag.count) {return SHA_BAD_TAG;}
   if state.count != SHA_STATE_BYTES {return SHA_BAD_STATE;}
   digest:=S_hash(tag);if digest.error != 0 {return digest.error;}
@@ -205,7 +205,7 @@ own (chapters 66, 100 and 97). `hash.coax` names the seven with an ID:
 <!-- source: coax/lib/bitcoin/hash.coax tagged -->
 ```jai
 // The tag string for a tag ID, or "" for an unknown ID.
-bitcoin_tag_name :: (tag: int) -> string {
+bitcoin_tag_name :: (tag: int) -> string #effects(all) {
   if tag == BH_AUX { return "BIP0340/aux"; }
   if tag == BH_NONCE { return "BIP0340/nonce"; }
   if tag == BH_CHALLENGE { return "BIP0340/challenge"; }
@@ -216,13 +216,13 @@ bitcoin_tag_name :: (tag: int) -> string {
   return "";
 }
 // SHA256(SHA256(tag) || SHA256(tag) || input) for a tag ID.
-bitcoin_tagged_checked :: (tag: int, input: [] u8, out: [] u8, overlap: bool) -> u32 {
+bitcoin_tagged_checked :: (tag: int, input: [] u8, out: [] u8, overlap: bool) -> u32 #effects(all) {
   if tag < 0 || tag >= BH_TAGS { return SHA_BAD_TAG; }
   return sha256_tagged_checked(bitcoin_tag_name(tag), input, out, overlap);
 }
 // A streaming state for a tag ID that has already absorbed the 64-byte
 // prefix. Update it with the message pieces, then finalize.
-bitcoin_tagged_init :: (state: [] u8, tag: int) -> u32 {
+bitcoin_tagged_init :: (state: [] u8, tag: int) -> u32 #effects(all) {
   if tag < 0 || tag >= BH_TAGS { return SHA_BAD_TAG; }
   return sha256_tagged_init(state, bitcoin_tag_name(tag));
 }

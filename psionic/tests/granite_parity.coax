@@ -10,7 +10,7 @@
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/sys/proc.coax";
 
-cxproc_self_path :: (out: [] u8) -> int #foreign;
+cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
 
 
 GP_VOCAB :: 262144;      // logits a step at most
@@ -203,7 +203,7 @@ gp_json_ints_at :: (v: [] int, depth: int) {
   print("\n"); for k: 0..<depth { print(" "); } print("]");
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   if !ok || args_count(a[..]) < 2 { tool_errln("usage: granite_parity.coax PSIONIC.bin LLAMA.bin [--require] [--json OUT]"); return 2; }

@@ -33,7 +33,7 @@ MB_LEAF :: 4;
 MB_TRI_WORDS :: 27;
 MB_CREASE :: 0.64;     // the cosine of the bend (50 degrees) past which a neighbour's face is not smoothed in
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 3 { tool_errln("usage: mesh-bvh GLB MESH OUT [--cells N] [--length M] [--floor Y] [--report]"); return 2; }
   cells := args_whole(args_value(a[..], "--cells", "90"));

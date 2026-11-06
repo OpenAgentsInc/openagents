@@ -50,7 +50,7 @@ GA_RESPONSE :: "{\"model\":\"elephant-1\",\"answers\":{\"ambient\":{\"type\":\"c
   #assert !ga_decode(ga_swap(b[..],GA_RESPONSE,"\"greeting\":0.8","\"greeting\":\"0.8\"")).ok;
 }
 
-ga_mode :: (url:string)->int {
+ga_mode :: (url:string)->int #effects(all) {
   if url.count>2048 {return 0;}start:=0;stop:=url.count;
   for i:0..<url.count {if url[i]=='#' {stop=i;break;}if url[i]=='?' && start==0 {start=i+1;}}
   if start==0 {return 0;}at:=start;mode:=0;seen:=false;
@@ -59,28 +59,28 @@ ga_mode :: (url:string)->int {
     if end==stop {break;}at=end+1;
   }return mode;
 }
-ga_eligible :: (o:GaObservation)->bool {return o.calm && o.alive && o.near && o.visible && o.safe && o.playable && o.day>=0 && o.day<4 && o.weather>=0 && o.weather<4;}
-ga_probability :: (text:string)->GaNumber {
+ga_eligible :: (o:GaObservation)->bool #effects(all) {return o.calm && o.alive && o.near && o.visible && o.safe && o.playable && o.day>=0 && o.day<4 && o.weather>=0 && o.weather<4;}
+ga_probability :: (text:string)->GaNumber #effects(all) {
   if text.count<1 || (text[0]!='0' && text[0]!='1') {return GaNumber.{};}
   units:=cast(int)(text[0]-'0')*GA_UNIT;if text.count==1 {return GaNumber.{ok=true,units=units};}
   if text.count<3 || text.count>11 || text[1]!='.' {return GaNumber.{};}scale:=100000000;
   for i:2..<text.count {if text[i]<'0' || text[i]>'9' {return GaNumber.{};}units+=cast(int)(text[i]-'0')*scale;scale/=10;}
   return GaNumber.{ok=units<=GA_UNIT,units=units};
 }
-ga_get :: (text:string,key:string)->GaField {
+ga_get :: (text:string,key:string)->GaField #effects(all) {
   f:GaField;if !json_valid(text) {return f;}j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return f;}
   while true {t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}name:=json_text(j[..]);t=json_next(j[..]);value:=json_text(j[..]);raw:=value;if t==JSON_OBJECT || t==JSON_ARRAY {start:=j[0].from;_:=json_skip(j[..]);raw=text[start..<j[0].at];}
     if json_is(name,key) {if f.ok {return GaField.{};}f=GaField.{ok=true,token=t,raw=raw,text=value};}}
   return f;
 }
-ga_is :: (f:GaField,text:string)->bool {return f.ok && f.token==JSON_STRING && json_is(f.text,text);}
-ga_count :: (text:string)->int {
+ga_is :: (f:GaField,text:string)->bool #effects(all) {return f.ok && f.token==JSON_STRING && json_is(f.text,text);}
+ga_count :: (text:string)->int #effects(all) {
   if !json_valid(text) {return -1;}j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return -1;}n:=0;
   while true {t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}t=json_next(j[..]);if t==JSON_ARRAY || t==JSON_OBJECT {_:=json_skip(j[..]);}n+=1;}
   return n;
 }
-ga_hex :: (s:string)->bool {if s.count!=64 {return false;}for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;}
-ga_decode :: (text:string)->GaAnswer {
+ga_hex :: (s:string)->bool #effects(all) {if s.count!=64 {return false;}for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;}
+ga_decode :: (text:string)->GaAnswer #effects(all) {
   bad:GaAnswer;if text.count>GA_BODY_MAX || !json_valid(text) {return bad;}
   if !ga_is(ga_get(text,"model"),GA_MODEL) {return bad;}
   service:=ga_get(text,"service");if !ga_is(ga_get(service.raw,"version"),"psionic-pylon-v1") || !ga_is(ga_get(service.raw,"identity"),GA_IDENTITY) {return bad;}
@@ -141,12 +141,12 @@ GaSession :: struct {
   #assert s[0].accepted==0 && s[0].ticket[0].phase==0;
   #assert json_valid(cast(string)s[0].body[0..<s[0].body_n]);
 }
-ga_invalidate :: (s:[]GaSession) {
+ga_invalidate :: (s:[]GaSession) #effects(all) {
   if s[0].ticket[0].phase!=0 {metric_ended:=gm_end(s[0].metrics[..],s[0].ticket[0].sequence,GM_REVOKED);_:=gd_cancel(s[0].ticket[..],s[0].ticket[0].sequence);s[0].refused+=1;}
   s[0].send=false;if s[0].epoch<GD_SEQUENCE_MAX {s[0].epoch+=1;}else {s[0].disabled=true;}
 }
 // book:begin request
-ga_request :: (out:[]u8,o:GaObservation)->int {
+ga_request :: (out:[]u8,o:GaObservation)->int #effects(all) {
   days:=[4]string.["night","morning","afternoon","evening"];weather:=[4]string.["clear","cloudy","rain","storm"];
   n:=json_raw(out,0,"{\"model\":\"elephant-1\",\"state\":\"A calm healthy town guard and a nearby peaceful living player. Time: ");
   n=json_raw(out,n,days[o.day]);n=json_raw(out,n,". Weather: ");n=json_raw(out,n,weather[o.weather]);
@@ -154,7 +154,7 @@ ga_request :: (out:[]u8,o:GaObservation)->int {
 }
 // book:end request
 // book:begin frame
-ga_frame :: (s:[]GaSession,o:GaObservation,generation:int,revision:int,now_ms:int) {
+ga_frame :: (s:[]GaSession,o:GaObservation,generation:int,revision:int,now_ms:int) #effects(all) {
   c:=GdContext.{epoch=s[0].epoch,actor=0,generation=generation,revision=revision*16+o.day*4+o.weather,policy=1,options=1};
   revoked:=s[0].mode!=1 || s[0].disabled || !ga_eligible(o) || s[0].suspended;
   expired:=now_ms>=s[0].ticket[0].ticket.expires_ms;
@@ -175,10 +175,10 @@ ga_frame :: (s:[]GaSession,o:GaObservation,generation:int,revision:int,now_ms:in
   s[0].send=true;
 }
 // book:end frame
-ga_sent :: (s:[]GaSession,sequence:int,started:bool) #export_c {
+ga_sent :: (s:[]GaSession,sequence:int,started:bool) #export_c #effects(all) {
   if s[0].ticket[0].phase!=GD_WAITING || sequence!=s[0].ticket[0].sequence {return;}s[0].send=false;if !started {_:=gm_end(s[0].metrics[..],sequence,GM_NO_TRANSPORT);ga_invalidate(s);}
 }
-ga_reply :: (s:[]GaSession,sequence:int,now_ms:int,status:string,body:string) {
+ga_reply :: (s:[]GaSession,sequence:int,now_ms:int,status:string,body:string) #effects(all) {
   if s[0].ticket[0].phase!=GD_WAITING || sequence!=s[0].ticket[0].sequence {_:=gm_late(s[0].metrics[..],sequence);return;}
   // Record one owned arrival, even when its eventual answer must be refused.
   metric_replied:=gm_reply(s[0].metrics[..],sequence,now_ms);
@@ -195,7 +195,7 @@ ga_reply :: (s:[]GaSession,sequence:int,now_ms:int,status:string,body:string) {
 }
 
 // The face forwards data and ticks. Only a page simulation boundary may apply/start.
-ga_page :: (s:[]GaSession,input:GaInput,now_ms:int) #export_c {
+ga_page :: (s:[]GaSession,input:GaInput,now_ms:int) #export_c #effects(all) {
   if !s[0].initialized {s[0].initialized=true;s[0].epoch=1;s[0].last_action=-1;}
   if input.configured && !s[0].configured {s[0].configured=true;s[0].mode=ga_mode(input.url);}
   if input.epoch!=s[0].page_epoch {ga_observed_revoke(s,now_ms);s[0].page_epoch=input.epoch;}
@@ -203,17 +203,17 @@ ga_page :: (s:[]GaSession,input:GaInput,now_ms:int) #export_c {
   if s[0].suspended && s[0].ticket[0].phase!=0 {ga_observed_revoke(s,now_ms);}
   if input.boundary {ga_frame(s,input.observation,input.generation,input.revision,now_ms);}
 }
-ga_effect :: (s:[]GaSession,now_ms:int)->GaEffect #export_c {
+ga_effect :: (s:[]GaSession,now_ms:int)->GaEffect #export_c #effects(all) {
   if !s[0].send {return GaEffect.{};}
   remaining:=s[0].ticket[0].ticket.expires_ms-now_ms;if remaining<=0 {_:=gm_end(s[0].metrics[..],s[0].ticket[0].sequence,GM_TIMEOUT);ga_invalidate(s);return GaEffect.{};}
   return GaEffect.{url="/api/v1/systemone",body=cast(string)s[0].body[0..<s[0].body_n],flags=5,timeout_ms=remaining};
 }
-ga_pending :: (s:[]GaSession,sequence:int)->bool #export_c {return s[0].ticket[0].phase==GD_WAITING && s[0].ticket[0].sequence==sequence;}
-ga_sequence :: (s:[]GaSession)->int #export_c {return s[0].ticket[0].sequence;}
-ga_receive :: (s:[]GaSession,sequence:int,now_ms:int,text:string) #export_c {
+ga_pending :: (s:[]GaSession,sequence:int)->bool #export_c #effects(all) {return s[0].ticket[0].phase==GD_WAITING && s[0].ticket[0].sequence==sequence;}
+ga_sequence :: (s:[]GaSession)->int #export_c #effects(all) {return s[0].ticket[0].sequence;}
+ga_receive :: (s:[]GaSession,sequence:int,now_ms:int,text:string) #export_c #effects(all) {
   status:="";body:="";if text.count>=4 {status=text[0..<4];body=text[4..<text.count];}ga_reply(s,sequence,now_ms,status,body);
 }
-ga_probe :: (s:[]GaSession,field:int)->int #export_c {
+ga_probe :: (s:[]GaSession,field:int)->int #export_c #effects(all) {
   a:=s[0];if field==0 {return a.mode;}if field==1 {return a.attempts;}if field==2 {return a.ticket[0].phase;}
   if field==3 {return a.accepted;}if field==4 {return a.refused;}if field==5 {return a.last_action;}if field==6 {return ifx a.disabled then 1 else 0;}return gm_probe(s[0].metrics[..],field);
 }
@@ -390,7 +390,7 @@ ga_probe :: (s:[]GaSession,field:int)->int #export_c {
 
 // A known-clock lifecycle event classifies expiry before revocation, without
 // changing the gate: every path still performs the same local cancellation.
-ga_observed_revoke :: (s:[]GaSession,now_ms:int) {
+ga_observed_revoke :: (s:[]GaSession,now_ms:int) #effects(all) {
   reason:=ifx now_ms>=s[0].ticket[0].ticket.expires_ms then GM_TIMEOUT else GM_REVOKED;
   _:=gm_end(s[0].metrics[..],s[0].ticket[0].sequence,reason);ga_invalidate(s);
 }

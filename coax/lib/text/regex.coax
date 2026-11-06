@@ -16,7 +16,7 @@ RX_NO :: 0; RX_YES :: 1; RX_REFUSED :: -1;
 RX_STEPS :: 20000;   // backtracking budget per search (a device name under the host's pattern takes under 200); past it the pattern is refused
 
 // Whether a pattern is inside the subset.
-rx_valid :: (p: string) -> bool {
+rx_valid :: (p: string) -> bool #effects(all) {
   i := ifx p.count > 0 && p[0] == '^' then 1 else 0;
   while i < p.count {
     if p[i] == '$' && i == p.count - 1 { return true; }
@@ -29,7 +29,7 @@ rx_valid :: (p: string) -> bool {
   return true;
 }
 // The end of the atom at i, or -1 when it is outside the subset.
-rx_atom_end :: (p: string, i: int) -> int {
+rx_atom_end :: (p: string, i: int) -> int #effects(all) {
   c := p[i];
   if c == '(' || c == ')' || c == '|' || c == '{' || c == '}' || c == '*' || c == '+' || c == '?' || c == '^' || c == '$' { return -1; }
   if c == '\\' { return ifx i + 1 < p.count && rx_escape_ok(p[i + 1]) then i + 2 else -1; }
@@ -46,7 +46,7 @@ rx_atom_end :: (p: string, i: int) -> int {
   }
   return i + 1;
 }
-rx_escape_ok :: (c: u8) -> bool {
+rx_escape_ok :: (c: u8) -> bool #effects(all) {
   for x: ".\\*+?[](){}|^$-/dDwWsS" { if x == c { return true; } }
   return false;
 }
@@ -57,7 +57,7 @@ rx_escape_ok :: (c: u8) -> bool {
 }
 
 // Whether byte c matches the atom at p[i..<e].
-rx_one :: (p: string, i: int, e: int, c: u8) -> bool {
+rx_one :: (p: string, i: int, e: int, c: u8) -> bool #effects(all) {
   a := p[i];
   if a == '.' { return c != '\n'; }
   if a == '\\' { return rx_escaped(p[i + 1], c); }
@@ -87,7 +87,7 @@ rx_one :: (p: string, i: int, e: int, c: u8) -> bool {
   }
   return a == c;
 }
-rx_escaped :: (x: u8, c: u8) -> bool {
+rx_escaped :: (x: u8, c: u8) -> bool #effects(all) {
   digit := c >= '0' && c <= '9';
   word := digit || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
   space := c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == 11 || c == 12;
@@ -115,7 +115,7 @@ rx_escaped :: (x: u8, c: u8) -> bool {
 // Matching the pattern from pi against the text from ti: the text's end when it matches, -1
 // when it does not, -2 when the budget ran out.
 Rx :: struct { steps: int; budget: int; }
-rx_here :: (r: [] Rx, p: string, pi: int, t: string, ti: int) -> int {
+rx_here :: (r: [] Rx, p: string, pi: int, t: string, ti: int) -> int #effects(all) {
   r[0].steps += 1;
   if r[0].steps > r[0].budget { return -2; }
   if pi == p.count { return ti; }
@@ -139,9 +139,9 @@ rx_here :: (r: [] Rx, p: string, pi: int, t: string, ti: int) -> int {
 
 // Does the pattern match somewhere in the text: RX_YES, RX_NO, or RX_REFUSED (outside the subset,
 // or past the backtracking budget).
-rx_test :: (p: string, t: string) -> int { return rx_search(p, t, RX_STEPS); }
+rx_test :: (p: string, t: string) -> int #effects(all) { return rx_search(p, t, RX_STEPS); }
 // rx_test with a backtracking budget of its own.
-rx_search :: (p: string, t: string, budget: int) -> int {
+rx_search :: (p: string, t: string, budget: int) -> int #effects(all) {
   if !rx_valid(p) { return RX_REFUSED; }
   r: [1] Rx; r[0].budget = budget;
   if p.count > 0 && p[0] == '^' {

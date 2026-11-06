@@ -69,10 +69,10 @@ The text side names the tokens: `vision_start_token_id` 248053,
 // merging, width 1152 in 16 heads, 27 blocks, a 48 by 48 position table.
 // Only the merger's output width differs: the text model's hidden size.
 // The processor's smallest area is 65536 pixels (256 by 256).
-sv_elephant :: ()->SvConfig {
+sv_elephant :: ()->SvConfig #effects(all) {
     return SvConfig.{patch=16,temporal=2,merge=2,width=1152,heads=16,inner=4304,depth=27,positions=2304,out=4096,least=65536,epsilon=0.000001,theta=10000.0};
 }
-sv_mammoth :: ()->SvConfig {c:=sv_elephant();c.out=5120;return c;}
+sv_mammoth :: ()->SvConfig #effects(all) {c:=sv_elephant();c.out=5120;return c;}
 ```
 
 The tensors follow from these numbers. Nine are shared: the patch
@@ -111,10 +111,10 @@ BF16, with its shape, and no other tensor under `model.visual.`.
 // shape; every one is BF16.
 SV_SHARED :: 9;
 SV_PER_BLOCK :: 12;
-sv_tensors :: (c:SvConfig)->int {return SV_SHARED+SV_PER_BLOCK*c.depth;}
-sv_s1 :: (a:int)->P5Shape {return P5Shape.{rank=1,dims=[5]int.[a,0,0,0,0]};}
-sv_s2 :: (a:int,b:int)->P5Shape {return P5Shape.{rank=2,dims=[5]int.[a,b,0,0,0]};}
-sv_need :: (c:SvConfig,i:int,name:[]u8)->SvNeed {
+sv_tensors :: (c:SvConfig)->int #effects(all) {return SV_SHARED+SV_PER_BLOCK*c.depth;}
+sv_s1 :: (a:int)->P5Shape #effects(all) {return P5Shape.{rank=1,dims=[5]int.[a,0,0,0,0]};}
+sv_s2 :: (a:int,b:int)->P5Shape #effects(all) {return P5Shape.{rank=2,dims=[5]int.[a,b,0,0,0]};}
+sv_need :: (c:SvConfig,i:int,name:[]u8)->SvNeed #effects(all) {
     d:=c.width;k:=c.merge*c.merge*d;
     n:=json_raw(name,0,"model.visual.");
     if i<SV_SHARED {
@@ -131,14 +131,14 @@ sv_need :: (c:SvConfig,i:int,name:[]u8)->SvNeed {
     n=json_raw(name,n,"blocks.");n=json_write_int(name,n,b);n=json_raw(name,n,".");
     return SvNeed.{count=json_raw(name,n,suffixes[j]),shape=shapes[j]};
 }
-sv_visual :: (name:string)->bool {
+sv_visual :: (name:string)->bool #effects(all) {
     prefix:="model.visual.";if name.count<prefix.count {return false;}
     for i:0..<prefix.count {if name[i]!=prefix[i] {return false;}}
     return true;
 }
 // Every needed tensor present once, BF16, with the config's shape, and no
 // other tensor under model.visual. Returns the parameter count.
-sv_inventory :: (c:SvConfig,inventory:[]P5Tensor)->SvResult {
+sv_inventory :: (c:SvConfig,inventory:[]P5Tensor)->SvResult #effects(all) {
     if sv_config_status(c)!=SvStatus.ok {return SvResult.{status=SvStatus.config};}
     total:=0;
     for i:0..<sv_tensors(c) {
@@ -183,8 +183,8 @@ refused with a typed reason, before any value is computed.
 
 <!-- source: psionic/lib/see.coax admit -->
 ```jai
-sv_side :: (n:int)->int {s:=1;while (s+1)*(s+1)<=n {s+=1;}return s;}
-sv_config_status :: (c:SvConfig)->SvStatus {
+sv_side :: (n:int)->int #effects(all) {s:=1;while (s+1)*(s+1)<=n {s+=1;}return s;}
+sv_config_status :: (c:SvConfig)->SvStatus #effects(all) {
     sizes:=[8]int.[c.patch,c.temporal,c.merge,c.width,c.heads,c.inner,c.positions,c.out];
     for s:sizes {if s<1 || s>SV_EXTENT_MAX {return SvStatus.config;}}
     if c.depth<1 || c.least<1 || !(c.epsilon>0) || !(c.theta>1) {return SvStatus.config;}
@@ -199,7 +199,7 @@ sv_config_status :: (c:SvConfig)->SvStatus {
 // chapter 142's 512-pixel side. For such an image the processor's resize
 // rule (round each side to a multiple of 32, then keep the area within its
 // bounds) leaves the size unchanged, so no resampling happens here.
-sv_admit :: (c:SvConfig,image:PxImage)->SvGrid {
+sv_admit :: (c:SvConfig,image:PxImage)->SvGrid #effects(all) {
     if sv_config_status(c)!=SvStatus.ok {return SvGrid.{status=SvStatus.config};}
     s:=px_image_status(image);
     if s==PxStatus.shape {return SvGrid.{status=SvStatus.shape};}
@@ -239,7 +239,7 @@ embedding's weight `[1152, 3, 2, 16, 16]`.
 ```jai
 // Patch r of the processor's order: merged blocks left to right and top to
 // bottom, and inside each block its merge by merge patches in the same order.
-sv_cell :: (c:SvConfig,g:SvGrid,r:int)->[2]int {
+sv_cell :: (c:SvConfig,g:SvGrid,r:int)->[2]int #effects(all) {
     per:=c.merge*c.merge;across:=g.grid_w/c.merge;b:=r/per;i:=r%per;
     return [2]int.[(b/across)*c.merge+i/c.merge,(b%across)*c.merge+i%c.merge];
 }
@@ -248,10 +248,10 @@ sv_cell :: (c:SvConfig,g:SvGrid,r:int)->[2]int {
 // channel-major image; each patch row then holds (channel, frame, row,
 // column) values, the layout of the patch embedding's weights. A still image
 // repeats in every frame of the temporal patch.
-sv_profile :: (image:PxImage)->PxProfile {
+sv_profile :: (image:PxImage)->PxProfile #effects(all) {
     return PxProfile.{scale=1.0/255,mean=[3]f64.[0.5,0.5,0.5],std=[3]f64.[0.5,0.5,0.5],height=image.height,width=image.width,filter=PxFilter.nearest};
 }
-sv_pixels :: (c:SvConfig,image:PxImage,bytes:[]u8,work:[]f32,out:[]f32,overlap:bool)->SvResult {
+sv_pixels :: (c:SvConfig,image:PxImage,bytes:[]u8,work:[]f32,out:[]f32,overlap:bool)->SvResult #effects(all) {
     g:=sv_admit(c,image);if g.status!=SvStatus.ok {return SvResult.{status=g.status};}
     area:=image.width*image.height;stage:=3*area;
     if bytes.count!=stage {return SvResult.{status=SvStatus.shape};}
@@ -293,8 +293,8 @@ table row 4. A one-row grid reads table row 0. This differs from chapter
 // position of its cell. The 48 by 48 table is resized to the patch grid
 // bilinearly with corners aligned: grid row y reads table row
 // y * (side - 1) / (rows - 1) and blends the two rows around it.
-sv_embed_work :: (c:SvConfig,g:SvGrid)->int {return g.patches*c.width;}
-sv_embed :: (c:SvConfig,image:PxImage,patches:[]f32,w:[]f32,bias:[]f32,table:[]f32,out:[]f32,work:[]f32,overlap:bool)->SvResult {
+sv_embed_work :: (c:SvConfig,g:SvGrid)->int #effects(all) {return g.patches*c.width;}
+sv_embed :: (c:SvConfig,image:PxImage,patches:[]f32,w:[]f32,bias:[]f32,table:[]f32,out:[]f32,work:[]f32,overlap:bool)->SvResult #effects(all) {
     g:=sv_admit(c,image);if g.status!=SvStatus.ok {return SvResult.{status=g.status};}
     n:=g.patches;f:=g.features;d:=c.width;
     if patches.count!=n*f || w.count!=d*f || bias.count!=d || table.count!=c.positions*d {return SvResult.{status=SvStatus.shape};}
@@ -317,7 +317,7 @@ sv_embed :: (c:SvConfig,image:PxImage,patches:[]f32,w:[]f32,bias:[]f32,table:[]f
     return SvResult.{written=n*d};
 }
 SvPoint :: struct {low:int;high:int;fraction:f64;}
-sv_point :: (i:int,count:int,side:int)->SvPoint {
+sv_point :: (i:int,count:int,side:int)->SvPoint #effects(all) {
     if count==1 {return SvPoint.{}; }
     p:=f64(i*(side-1))/f64(count-1);low:=cast(int)floor(p);
     return SvPoint.{low=low,high=ifx low<side-1 then low+1 else low,fraction=p-f64(low)};
@@ -344,7 +344,7 @@ the patch's row and the last 18 its column, each times a frequency
 // second halves together; the first quarter of frequencies turns with the
 // patch's row, the second with its column. Frequency j of d/4 is
 // theta^(-4j/d), the table of a rotary embedding of width d/2.
-sv_angle :: (c:SvConfig,g:SvGrid,r:int,i:int)->f64 {
+sv_angle :: (c:SvConfig,g:SvGrid,r:int,i:int)->f64 #effects(all) {
     d:=c.width/c.heads;quarter:=d/4;j:=i%(d/2);cell:=sv_cell(c,g,r);
     p:=cell[0];if j>=quarter {p=cell[1];j-=quarter;}
     return f64(p)*exp(-log(c.theta)*f64(4*j)/f64(d));
@@ -359,8 +359,8 @@ thousands do not overflow; a check builds scores of 3600 to prove it.
 // One encoder block: x + attention(norm1(x)), then + fc2(gelu(fc1(norm2(x)))).
 // Attention is bidirectional over the image's patches, per head, with the
 // rotary angles above applied to queries and keys.
-sv_block_work :: (c:SvConfig,n:int)->int {return n*(6*c.width+c.inner);}
-sv_block_status :: (c:SvConfig,w:SvBlock)->SvStatus {
+sv_block_work :: (c:SvConfig,n:int)->int #effects(all) {return n*(6*c.width+c.inner);}
+sv_block_status :: (c:SvConfig,w:SvBlock)->SvStatus #effects(all) {
     d:=c.width;i:=c.inner;
     counts:=[12]int.[w.norm1.count,w.norm1_bias.count,w.qkv.count,w.qkv_bias.count,w.proj.count,w.proj_bias.count,
         w.norm2.count,w.norm2_bias.count,w.fc1.count,w.fc1_bias.count,w.fc2.count,w.fc2_bias.count];
@@ -370,7 +370,7 @@ sv_block_status :: (c:SvConfig,w:SvBlock)->SvStatus {
     for p:parts {if !px_finite(p) {return SvStatus.number;}}
     return SvStatus.ok;
 }
-sv_block :: (c:SvConfig,image:PxImage,x:[]f32,w:SvBlock,out:[]f32,work:[]f32,overlap:bool)->SvResult {
+sv_block :: (c:SvConfig,image:PxImage,x:[]f32,w:SvBlock,out:[]f32,work:[]f32,overlap:bool)->SvResult #effects(all) {
     g:=sv_admit(c,image);if g.status!=SvStatus.ok {return SvResult.{status=g.status};}
     n:=g.patches;d:=c.width;heads:=c.heads;hd:=d/heads;half:=hd/2;
     if x.count!=n*d {return SvResult.{status=SvStatus.shape};}
@@ -410,7 +410,7 @@ sv_block :: (c:SvConfig,image:PxImage,x:[]f32,w:SvBlock,out:[]f32,work:[]f32,ove
     for i:0..<n*d {out[i]=att[i];}
     return SvResult.{written=n*d};
 }
-sv_score :: (qkv:[]f32,q:int,k:int,width:int,scale:f64)->f64 {
+sv_score :: (qkv:[]f32,q:int,k:int,width:int,scale:f64)->f64 #effects(all) {
     acc:=0.0;for e:0..<width {acc+=f64(qkv[q+e])*f64(qkv[k+e]);}return acc*scale;
 }
 ```
@@ -430,9 +430,9 @@ an approximation the oracle does not share; the tolerances below cover it.
 ```jai
 // A value too large for f32 becomes NaN, which the finiteness check after
 // each stage refuses.
-sv_f32 :: (v:f64)->f32 {if psionic_ops_fits_f32(v) {return f32(v);}return f32(0.0/0.0);}
+sv_f32 :: (v:f64)->f32 #effects(all) {if psionic_ops_fits_f32(v) {return f32(v);}return f32(0.0/0.0);}
 // y = x W^T + b over rows, binary64 sums, one rounding per stored value.
-sv_linear :: (x:[]f32,rows:int,inputs:int,w:[]f32,bias:[]f32,outputs:int,y:[]f32) {
+sv_linear :: (x:[]f32,rows:int,inputs:int,w:[]f32,bias:[]f32,outputs:int,y:[]f32) #effects(all) {
     for r:0..<rows {for o:0..<outputs {
         acc:=f64(bias[o]);
         for k:0..<inputs {acc+=f64(x[r*inputs+k])*f64(w[o*inputs+k]);}
@@ -441,7 +441,7 @@ sv_linear :: (x:[]f32,rows:int,inputs:int,w:[]f32,bias:[]f32,outputs:int,y:[]f32
 }
 // Layer normalization over each row: population variance, epsilon inside
 // the root, then scale and shift.
-sv_norm :: (x:[]f32,rows:int,width:int,gain:[]f32,bias:[]f32,epsilon:f64,y:[]f32) {
+sv_norm :: (x:[]f32,rows:int,width:int,gain:[]f32,bias:[]f32,epsilon:f64,y:[]f32) #effects(all) {
     for r:0..<rows {
         mean:=0.0;for k:0..<width {mean+=f64(x[r*width+k]);}mean/=f64(width);
         spread:=0.0;for k:0..<width {d:=f64(x[r*width+k])-mean;spread+=d*d;}
@@ -450,19 +450,19 @@ sv_norm :: (x:[]f32,rows:int,width:int,gain:[]f32,bias:[]f32,epsilon:f64,y:[]f32
     }
 }
 // tanh as 1 - 2 / (e^(2a) + 1); past |a| = 10 it is within 5e-9 of 1.
-sv_tanh :: (a:f64)->f64 {if a>10.0 {return 1.0;}if a<-10.0 {return -1.0;}return 1-2/(exp(2*a)+1);}
+sv_tanh :: (a:f64)->f64 #effects(all) {if a>10.0 {return 1.0;}if a<-10.0 {return -1.0;}return 1-2/(exp(2*a)+1);}
 // The block's activation, GELU with the tanh approximation.
-sv_gelu_tanh :: (z:f64)->f64 {return 0.5*z*(1+sv_tanh(0.7978845608028654*(z+0.044715*z*z*z)));}
+sv_gelu_tanh :: (z:f64)->f64 #effects(all) {return 0.5*z*(1+sv_tanh(0.7978845608028654*(z+0.044715*z*z*z)));}
 // The merger's activation, GELU with erf. erf by Abramowitz and Stegun
 // 7.1.26, absolute error below 1.5e-7, odd in x; past |x| = 8 it is 1 to
 // that accuracy.
-sv_erf :: (x:f64)->f64 {
+sv_erf :: (x:f64)->f64 #effects(all) {
     z:=abs(x);t:=1/(1+0.3275911*z);
     p:=((((1.061405429*t-1.453152027)*t+1.421413741)*t-0.284496736)*t+0.254829592)*t;
     v:=1-p*exp(-z*z);
     return ifx x<0 then -v else v;
 }
-sv_gelu :: (z:f64)->f64 {return 0.5*z*(1+sv_erf(z*0.7071067811865476));}
+sv_gelu :: (z:f64)->f64 #effects(all) {return 0.5*z*(1+sv_erf(z*0.7071067811865476));}
 ```
 
 <!-- source: psionic/lib/see.coax merge -->
@@ -470,8 +470,8 @@ sv_gelu :: (z:f64)->f64 {return 0.5*z*(1+sv_erf(z*0.7071067811865476));}
 // The merger: layer-normalize each patch, join each block's merge by merge
 // patches into one row (4 * 1152 = 4608 values), then fc2(gelu(fc1(row))):
 // one token of the text model's width per block.
-sv_merge_work :: (c:SvConfig,g:SvGrid)->int {k:=c.merge*c.merge*c.width;return g.patches*c.width+g.tokens*(k+c.out);}
-sv_merge :: (c:SvConfig,image:PxImage,x:[]f32,m:SvMerger,out:[]f32,work:[]f32,overlap:bool)->SvResult {
+sv_merge_work :: (c:SvConfig,g:SvGrid)->int #effects(all) {k:=c.merge*c.merge*c.width;return g.patches*c.width+g.tokens*(k+c.out);}
+sv_merge :: (c:SvConfig,image:PxImage,x:[]f32,m:SvMerger,out:[]f32,work:[]f32,overlap:bool)->SvResult #effects(all) {
     g:=sv_admit(c,image);if g.status!=SvStatus.ok {return SvResult.{status=g.status};}
     n:=g.patches;t:=g.tokens;d:=c.width;k:=c.merge*c.merge*d;
     if x.count!=n*d || m.norm.count!=d || m.norm_bias.count!=d || m.fc1.count!=k*k || m.fc1_bias.count!=k || m.fc2.count!=c.out*k || m.fc2_bias.count!=c.out {
@@ -536,8 +536,8 @@ such a request is refused, so only the layout places image tokens.
 // tokens carry the image's start s on the time row and s plus their block's
 // row and column; text after the image continues from the largest
 // position used plus one.
-sv_layout_length :: (g:SvGrid,before:int,after:int)->int {return before+after+g.tokens+2;}
-sv_layout :: (c:SvConfig,image:PxImage,before:[]int,after:[]int,ids:[]int,pos:[]int)->SvResult {
+sv_layout_length :: (g:SvGrid,before:int,after:int)->int #effects(all) {return before+after+g.tokens+2;}
+sv_layout :: (c:SvConfig,image:PxImage,before:[]int,after:[]int,ids:[]int,pos:[]int)->SvResult #effects(all) {
     g:=sv_admit(c,image);if g.status!=SvStatus.ok {return SvResult.{status=g.status};}
     for t:before {if !sv_text_token(t) {return SvResult.{status=SvStatus.layout,cause=t};}}
     for t:after {if !sv_text_token(t) {return SvResult.{status=SvStatus.layout,cause=t};}}
@@ -555,14 +555,14 @@ sv_layout :: (c:SvConfig,image:PxImage,before:[]int,after:[]int,ids:[]int,pos:[]
 }
 // Vision start and end, the vision pad, image and video tokens are reserved:
 // a client's text cannot place them.
-sv_text_token :: (t:int)->bool {return t>=0 && t<SV_VOCAB && (t<SV_VISION_START || t>SV_VIDEO);}
-sv_put :: (ids:[]int,pos:[]int,total:int,at:int,id:int,t:int,h:int,w:int) {ids[at]=id;pos[at]=t;pos[total+at]=h;pos[2*total+at]=w;}
+sv_text_token :: (t:int)->bool #effects(all) {return t>=0 && t<SV_VOCAB && (t<SV_VISION_START || t>SV_VIDEO);}
+sv_put :: (ids:[]int,pos:[]int,total:int,at:int,id:int,t:int,h:int,w:int) #effects(all) {ids[at]=id;pos[at]=t;pos[total+at]=h;pos[2*total+at]=w;}
 // The text model's rotary frequency j (of 32: rotary width 64 of head width
 // 256) reads one of the three rows. Interleaved sections (11, 11, 10): j mod
 // 3 = 1 reads height for the first 11 such j, j mod 3 = 2 reads width for
 // the first 10,
 // every other j reads time.
-sv_mrope_axis :: (sections:[3]int,j:int)->int {
+sv_mrope_axis :: (sections:[3]int,j:int)->int #effects(all) {
     if j%3==1 && j/3<sections[1] {return 1;}
     if j%3==2 && j/3<sections[2] {return 2;}
     return 0;

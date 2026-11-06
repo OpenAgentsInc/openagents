@@ -12,7 +12,7 @@
     #assert fm_capture(ready==1,visible==1,active==1)==(ready==1 && visible==1 && active==1);
   }}}
 }
-fm_permission :: (trusted:bool,audio:bool,authorized:bool)->bool #export_c {
+fm_permission :: (trusted:bool,audio:bool,authorized:bool)->bool #export_c #effects(all) {
   return trusted && audio && authorized;
 }
 
@@ -24,9 +24,9 @@ fm_permission :: (trusted:bool,audio:bool,authorized:bool)->bool #export_c {
 }
 // AVAuthorizationStatus: 0 not determined, 1 restricted, 2 denied, 3 authorized.
 // Existing saved setup is eligible without displaying the setup pane again.
-fm_setup_request :: (visible:bool,active:bool,shown:bool,completed:bool,status:int,pending:bool,interactive:bool)->bool #export_c {
+fm_setup_request :: (visible:bool,active:bool,shown:bool,completed:bool,status:int,pending:bool,interactive:bool)->bool #export_c #effects(all) {
   return visible && active && (shown || completed) && status==0 && !pending && interactive;
 }
-fm_capture :: (ready:bool,visible:bool,active:bool)->bool #export_c {
+fm_capture :: (ready:bool,visible:bool,active:bool)->bool #export_c #effects(all) {
   return ready && visible && active;
 }

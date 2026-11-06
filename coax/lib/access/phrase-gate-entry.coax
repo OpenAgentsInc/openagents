@@ -44,10 +44,10 @@ PG_ENTRY_MAX :: 6144;
   #assert pg_entry_decode_checked("{\"v\":\"openagents.phrase-gate.v2\",\"payload\":\"AA==\"}",work[0..<8448],out[0..<4202],false).error==PG_LIMIT;
   #assert pg_entry_decode_checked("{\"v\":\"openagents.phrase-gate.v2\",\"payload\":\"AAAA\"}x",work[0..<8448],out[0..<4202],false).error==PG_FORMAT;
 }
-pg_entry_text_admit :: (n:int)->u32 {return ifx n<1 || n>6144 then PG_LIMIT else PG_OK;}
-pg_entry_output_admit :: (n:int)->u32 {return ifx n<0 || n>4202 then PG_CAPACITY else PG_OK;}
-pg_payload :: (raw:string,out:[]u8)->int {if out.count!=5604 {return -1;}return json_unescape(raw,out);}
-pg_entry_decode_checked :: (entry:string,work:[]u8,out:[]u8,overlap:bool)->PgText #export_c {
+pg_entry_text_admit :: (n:int)->u32 #effects(all) {return ifx n<1 || n>6144 then PG_LIMIT else PG_OK;}
+pg_entry_output_admit :: (n:int)->u32 #effects(all) {return ifx n<0 || n>4202 then PG_CAPACITY else PG_OK;}
+pg_payload :: (raw:string,out:[]u8)->int #effects(all) {if out.count!=5604 {return -1;}return json_unescape(raw,out);}
+pg_entry_decode_checked :: (entry:string,work:[]u8,out:[]u8,overlap:bool)->PgText #export_c #effects(all) {
   if overlap {return PgText.{error=PG_ALIAS};}
   if pg_entry_text_admit(entry.count)!=0 {return PgText.{error=PG_LIMIT};}
   if work.count!=8448 || pg_entry_output_admit(out.count)!=0 {return PgText.{error=PG_CAPACITY};}
@@ -69,7 +69,7 @@ pg_entry_decode_checked :: (entry:string,work:[]u8,out:[]u8,overlap:bool)->PgTex
   result:=base64_decode_checked(text,out,false);
   return ifx result.error==NC_OK then PgText.{written=result.written} else PgText.{error=PG_FORMAT};
 }
-pg_entry_encode_checked :: (wire:[]u8,context:[]u8,out:[]u8,overlap:bool)->PgText #export_c {
+pg_entry_encode_checked :: (wire:[]u8,context:[]u8,out:[]u8,overlap:bool)->PgText #export_c #effects(all) {
   if overlap {return PgText.{error=PG_ALIAS};}
   frame:=pg_frame_checked(wire,context,false);if frame.error!=0 {return PgText.{error=frame.error};}
   count:=base64_encode_size(wire.count);required:=PG_ENTRY_PREFIX.count+count+2;

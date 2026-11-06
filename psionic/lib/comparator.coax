@@ -153,7 +153,7 @@ CM_RUNS_MAX :: 1024;
 
 // book:begin admit
 // The checks both methods share: 5 to 1,024 runs, each a positive time.
-cm_admit :: (x:[]int)->CmStats {
+cm_admit :: (x:[]int)->CmStats #effects(all) {
     st:=CmStats.{n=x.count};
     if x.count<CM_RUNS_MIN {st.status=CmStatus.few;return st;}
     if x.count>CM_RUNS_MAX {st.status=CmStatus.capacity;return st;}
@@ -164,7 +164,7 @@ cm_admit :: (x:[]int)->CmStats {
 
 // book:begin two-pass
 // First pass: the mean. Second pass: squared distances from it.
-cm_two_pass :: (x:[]int)->CmStats #export_c {
+cm_two_pass :: (x:[]int)->CmStats #export_c #effects(all) {
     st:=cm_admit(x);
     if st.status!=CmStatus.ok {return st;}
     sum:=0.0;
@@ -181,7 +181,7 @@ cm_two_pass :: (x:[]int)->CmStats #export_c {
 // One pass: after k runs, mean is their mean and m2 their summed squared
 // distances from it. Run k+1 moves the mean by d / (k + 1) and adds
 // d * (x - new mean) to m2, where d = x - old mean.
-cm_welford :: (x:[]int)->CmStats #export_c {
+cm_welford :: (x:[]int)->CmStats #export_c #effects(all) {
     st:=cm_admit(x);
     if st.status!=CmStatus.ok {return st;}
     mean:=0.0;m2:=0.0;k:=0;
@@ -198,7 +198,7 @@ cm_welford :: (x:[]int)->CmStats #export_c {
 // book:end welford
 
 // book:begin compare
-cm_same_work :: (a:CmWork,b:CmWork)->CmReason {
+cm_same_work :: (a:CmWork,b:CmWork)->CmReason #effects(all) {
     if a.file!=b.file {return CmReason.file;}
     known:=a.weights!=CmFormat.unknown && a.activations!=CmFormat.unknown && a.accumulate!=CmFormat.unknown;
     if !known || a.weights!=b.weights || a.activations!=b.activations || a.accumulate!=b.accumulate {return CmReason.format;}
@@ -207,7 +207,7 @@ cm_same_work :: (a:CmWork,b:CmWork)->CmReason {
 }
 // Side a against side b. The mean of each side is in nanoseconds, so lower
 // is faster.
-cm_compare :: (a:CmSide,sa:CmStats,b:CmSide,sb:CmStats)->CmCall #export_c {
+cm_compare :: (a:CmSide,sa:CmStats,b:CmSide,sb:CmStats)->CmCall #export_c #effects(all) {
     call:=CmCall.{verdict=CmVerdict.refused};
     if a.engine==0 || a.build==0 || a.machine==0 || b.engine==0 || b.build==0 || b.machine==0 {call.reason=CmReason.unbound;return call;}
     if a.machine!=b.machine {call.reason=CmReason.machine;return call;}
@@ -226,19 +226,19 @@ cm_compare :: (a:CmSide,sa:CmStats,b:CmSide,sb:CmStats)->CmCall #export_c {
 }
 // book:end compare
 
-cm_status_name :: (s:CmStatus)->string {
+cm_status_name :: (s:CmStatus)->string #effects(all) {
     names:=[4]string.["ok","fewer than 5 warm runs","more than 1024 warm runs","a run time that is not positive"];
     return names[cast(int)s];
 }
-cm_format_name :: (f:CmFormat)->string {
+cm_format_name :: (f:CmFormat)->string #effects(all) {
     names:=[8]string.["unknown","f32","bf16","f16","Q8_0","Q4_0","Q4_K","MXFP4"];
     return names[cast(int)f];
 }
-cm_verdict_name :: (v:CmVerdict)->string {
+cm_verdict_name :: (v:CmVerdict)->string #effects(all) {
     names:=[5]string.["refused","faster","slower","the same within two standard errors","too noisy to rank"];
     return names[cast(int)v];
 }
-cm_reason_name :: (r:CmReason)->string {
+cm_reason_name :: (r:CmReason)->string #effects(all) {
     names:=[8]string.["none","an engine, build or machine is not recorded","different machines","different weight files",
         "different number formats","different shapes","no warm-up run","the timings were refused"];
     return names[cast(int)r];

@@ -4,7 +4,7 @@
 RAS_URLS :: 128;
 RasPlan :: struct {ok:bool;count:int;urls:[RAS_URLS][4096]u8;lengths:[RAS_URLS]int;profile:int;slug:[4096]u8;slug_count:int;}
 #load "tests/asset-staging-checks.coax";
-ras_url :: (s:string)->bool {
+ras_url :: (s:string)->bool #effects(all) {
   if s.count<2 || s[0]!='/' {return false;}
   begin:=1;
   for c,i:s {
@@ -13,17 +13,17 @@ ras_url :: (s:string)->bool {
   }
   return ras_segment(s[begin..<s.count]);
 }
-ras_segment :: (s:string)->bool {return s.count>0 && s!="." && s!="..";}
+ras_segment :: (s:string)->bool #effects(all) {return s.count>0 && s!="." && s!="..";}
 // Both arguments are the platform's canonical existing paths.
-ras_inside :: (root:string,path:string)->bool {
+ras_inside :: (root:string,path:string)->bool #effects(all) {
   if root=="/" {return path.count>1 && path[0]=='/';}
   return path.count>root.count && path[0..<root.count]==root && path[root.count]=='/';
 }
-ras_flags :: (initial:int,required:int)->int {
+ras_flags :: (initial:int,required:int)->int #effects(all) {
   if (initial!=JV_TRUE && initial!=JV_FALSE) || (required!=JV_TRUE && required!=JV_FALSE) {return -1;}
   return ifx initial==JV_TRUE || required==JV_TRUE then 1 else 0;
 }
-ras_parse :: (table:string,package:string)->RasPlan {
+ras_parse :: (table:string,package:string)->RasPlan #effects(all) {
   p:RasPlan;doc:[1]Jv;nodes:[8192]JvNode;
   if !jv_parse(doc[..],table,nodes[..]) {return p;}d:=doc[0];
   schema:[64]u8;n:=jv_str(d,jv_get(d,0,"schema"),schema[..]);expected:="aethyr.render.assets.v1";
@@ -47,5 +47,5 @@ ras_parse :: (table:string,package:string)->RasPlan {
   }
   p.ok=true;return p;
 }
-ras_string_size :: (n:int)->bool {return n>=0 && n<=4096;}
-ras_row_count :: (n:int)->bool {return n>=0 && n<=48;}
+ras_string_size :: (n:int)->bool #effects(all) {return n>=0 && n<=4096;}
+ras_row_count :: (n:int)->bool #effects(all) {return n>=0 && n<=48;}

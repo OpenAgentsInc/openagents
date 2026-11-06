@@ -57,7 +57,7 @@ sc_allow :: (name: string) -> string {
 // source's scale, w the pass), as verse/gpu/everglade-pass.coax's EP_BLOOM
 SC_BLOOM :: [5] string.["q0 light 0 0 0 4", "q1 q0 1 0 1 1", "q0 q1 0 1 1 1", "e1 q0 1 0 1 2", "e0 e1 0 1 1 1"];
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 2 { tool_errln("usage: scene-pass HOST REALM [--allow N] [--keep DIR] [--live] [--emit DIR] [--facts FILE]"); return 2; }
   tb: [1024] u8;

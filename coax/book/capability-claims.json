@@ -113,11 +113,11 @@
       "evidence": [
         {
           "path": "psionic/lib/tape.coax",
-          "sha256": "4c7ab5eb73a556cdb56139b3da2eceb9c0b91f9ef94b24cb1036641e55672230"
+          "sha256": "6ebd4791c0333bc5148bb96e8feb67ab9359b21f35ec5cbbb8c990a6a35b8392"
         },
         {
           "path": "psionic/lib/autodiff.coax",
-          "sha256": "fb4c0c18cd75af0601ca67c51acd1afc0bb19a90a4407c72fa4ba1eaf52ea752"
+          "sha256": "a9d30b0b49c43cd43cd57c1c199d6049d701e24e4840d0b2ecdee14aa57c4ab3"
         },
         {
           "path": "docs/verification/psionic-ch71-2026-10-29.md",
@@ -133,7 +133,7 @@
         },
         {
           "path": "psionic/lib/function-linearize.coax",
-          "sha256": "950dba6b5997ebe6e04b075d7fb15e2d9c71df94377b364ae5cbc9fd2540aa38"
+          "sha256": "0500fea9ebd1670fb6cbef01e0d02dc8f743c24e385d6ce8935892fc4e619eb4"
         },
         {
           "path": "psionic/fixtures/function-native-qualification.json",
@@ -145,15 +145,15 @@
         },
         {
           "path": "psionic/book/ch129-train-a-whole-model-on-one-gpu.md",
-          "sha256": "b8b575e7b28ddb6fab415ecc4f35633ac672f72b18b6b53d25c2be0d0a53d39e"
+          "sha256": "a2cf110cebe4a6ee5a25c98c6bad65574df7558dabe8d8661e8f9fab28e2481d"
         },
         {
           "path": "psionic/lib/transformer/train-kernels.coax",
-          "sha256": "fec352683d50d01cd442d7ae6c7c18a6c80959e07f30796ed3fa2b39577c2d14"
+          "sha256": "f1dc6e9c13fa5873d241a6f60cb9792443604bff2548392dd99196ceb68da3e7"
         },
         {
           "path": "psionic/lib/transformer/gpu-train.coax",
-          "sha256": "22fb960750db0f4af2ff173c607db8178b57ea5b7a939fddb3a5a9e88f8353a9"
+          "sha256": "64f81b0ab58cdc35794b20a7b8212936fc360c67ee20f749d0535a7cb5f8e375"
         },
         {
           "path": "psionic/tests/gpu_train_device.c",
@@ -218,7 +218,7 @@
         },
         {
           "path": "psionic/lib/function-linearize.coax",
-          "sha256": "950dba6b5997ebe6e04b075d7fb15e2d9c71df94377b364ae5cbc9fd2540aa38"
+          "sha256": "0500fea9ebd1670fb6cbef01e0d02dc8f743c24e385d6ce8935892fc4e619eb4"
         },
         {
           "path": "psionic/fixtures/function-native-qualification.json",
@@ -230,15 +230,15 @@
         },
         {
           "path": "psionic/book/ch129-train-a-whole-model-on-one-gpu.md",
-          "sha256": "b8b575e7b28ddb6fab415ecc4f35633ac672f72b18b6b53d25c2be0d0a53d39e"
+          "sha256": "a2cf110cebe4a6ee5a25c98c6bad65574df7558dabe8d8661e8f9fab28e2481d"
         },
         {
           "path": "psionic/lib/transformer/train-kernels.coax",
-          "sha256": "fec352683d50d01cd442d7ae6c7c18a6c80959e07f30796ed3fa2b39577c2d14"
+          "sha256": "f1dc6e9c13fa5873d241a6f60cb9792443604bff2548392dd99196ceb68da3e7"
         },
         {
           "path": "psionic/lib/transformer/gpu-train.coax",
-          "sha256": "22fb960750db0f4af2ff173c607db8178b57ea5b7a939fddb3a5a9e88f8353a9"
+          "sha256": "64f81b0ab58cdc35794b20a7b8212936fc360c67ee20f749d0535a7cb5f8e375"
         },
         {
           "path": "psionic/tests/gpu_train_device.c",
@@ -333,23 +333,23 @@
       "evidence": [
         {
           "path": "psionic/lib/tensor-ir.coax",
-          "sha256": "0b14fbdebc6feed34f2bf85ef54ad7d8bcdafe38ab45f3751aa6e07a5e444ab5"
+          "sha256": "4b52a902a64b6664c0be56c0dbbc2b32ac9ae8ecb7abc5b8c2ec048d821f971e"
         },
         {
           "path": "psionic/lib/tensor-template.coax",
-          "sha256": "b95bf3419a86bff4916e723e62ef420d2257c69b11686432a78c8404481db086"
+          "sha256": "e5d6618c07f26c506d2900ce1fe779fb84cf70ee1ed8140c06d2afa7cccf8e9e"
         },
         {
           "path": "psionic/lib/operator-registry.coax",
-          "sha256": "84d426f5d744544a4e900e5f152b45068a9f61242883110b955bd892847c6433"
+          "sha256": "93f45ec54426b54dc946a215db59d9196e8157fc1a77e375e1b804aece5319bc"
         },
         {
           "path": "psionic/lib/autodiff.coax",
-          "sha256": "fb4c0c18cd75af0601ca67c51acd1afc0bb19a90a4407c72fa4ba1eaf52ea752"
+          "sha256": "a9d30b0b49c43cd43cd57c1c199d6049d701e24e4840d0b2ecdee14aa57c4ab3"
         },
         {
           "path": "coax/lib/compiler/wgsl.coax",
-          "sha256": "8240fe0375793dc7fe5aa40e5a77cc26899f7103b5b4dff522f2f6fb87995317"
+          "sha256": "bdd399f6e85490c0a46938b0e6419988ff32f40fbeeea65f748fa33e1e6bfa32"
         },
         {
           "path": "docs/verse/native-gpu.md",
@@ -365,7 +365,7 @@
         },
         {
           "path": "coax/lib/compiler/quantity.coax",
-          "sha256": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441"
+          "sha256": "73e6facfbf2d53b8ab6efb87ba882ecde5a5360fa2208feb5e9af049d1615247"
         },
         {
           "path": "coax/tests/quantity.py",
@@ -453,7 +453,7 @@
       "evidence": [
         {
           "path": "coax/lib/compiler/wgsl.coax",
-          "sha256": "8240fe0375793dc7fe5aa40e5a77cc26899f7103b5b4dff522f2f6fb87995317"
+          "sha256": "bdd399f6e85490c0a46938b0e6419988ff32f40fbeeea65f748fa33e1e6bfa32"
         },
         {
           "path": "coax/src/shader.cpp",

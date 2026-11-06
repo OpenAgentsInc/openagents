@@ -31,7 +31,7 @@ RFInput :: struct {
  buffers:[]RenderHostNamedBuffer;textures:[]RFNamedTexture;media_context:int=-1;media:[]RenderMediaRect;
 }
 RFPolicy :: struct {shader_work:int=100000000;pixel_work:int=100000000;raster:RRRasterProfile;work_profile:RRWorkProfile=RRWorkProfile.standard;filter:RQFilterProfile;}
-rf_work_policy :: (profile:RRWorkProfile)->RFPolicy {return RFPolicy.{shader_work=rr_work_limits(profile).pass_steps,work_profile=profile};}
+rf_work_policy :: (profile:RRWorkProfile)->RFPolicy #effects(all) {return RFPolicy.{shader_work=rr_work_limits(profile).pass_steps,work_profile=profile};}
 RFWorking :: struct {
  images:[]RQColor;target:[]RRPixel;scratch:[]RRPixel;words:[]u32;meta:[]int;
  domains:[]RenderDrawDomain;decoded:[]RenderDecodedDraw;
@@ -43,11 +43,11 @@ RFResult :: struct {
  pass_steps:[14]int;draws:int;written:int;
 }
 #load "tests/reference-frame-checks.coax";
-rf_catalog_layout :: (profile:int,pass:RenderPassId,p:RQProgram,tree:[]u32,meta:[]int)->RFShaderLayout {return rf_shader_layout(profile,cast(int)pass,p,tree,meta);}
-rf_shader_use :: (profile:int,index:int,slot:int)->RenderUse {
+rf_catalog_layout :: (profile:int,pass:RenderPassId,p:RQProgram,tree:[]u32,meta:[]int)->RFShaderLayout #effects(all) {return rf_shader_layout(profile,cast(int)pass,p,tree,meta);}
+rf_shader_use :: (profile:int,index:int,slot:int)->RenderUse #effects(all) {
  if index==13 {return render_media_use(slot);}return render_catalog_use(profile,cast(RenderPassId)index,slot);
 }
-rf_shader_layout :: (profile:int,index:int,p:RQProgram,tree:[]u32,meta:[]int)->RFShaderLayout {
+rf_shader_layout :: (profile:int,index:int,p:RQProgram,tree:[]u32,meta:[]int)->RFShaderLayout #effects(all) {
  if p.status!=RQStatus.ok {return RFShaderLayout.{status=p.status};}
  if index<0 || index>13 {return RFShaderLayout.{status=RQStatus.resource};}
  entry:RenderEntry;
@@ -93,7 +93,7 @@ rf_shader_layout :: (profile:int,index:int,p:RQProgram,tree:[]u32,meta:[]int)->R
  return r;
 }
 
-rf_require :: (profile:int,c:FrameCounts,ready:RenderReadiness,particles:bool,coarse:bool,screen:RenderTextureFormat)->RFRequirements {
+rf_require :: (profile:int,c:FrameCounts,ready:RenderReadiness,particles:bool,coarse:bool,screen:RenderTextureFormat)->RFRequirements #effects(all) {
  a:=render_catalog(profile);if !a.valid || c.vertex_stride!=a.vertex_stride || c.draw_count>4096 {return RFRequirements.{status=RQStatus.resource};}
  plan:=render_plan(a.features,c,ready,particles);
  if plan.status==RenderPlanStatus.invalid {return RFRequirements.{status=RQStatus.resource};}
@@ -117,7 +117,7 @@ rf_require :: (profile:int,c:FrameCounts,ready:RenderReadiness,particles:bool,co
  return r;
 }
 
-rf_run :: (input:RFInput,shaders:[]RFShader,coarse:bool,screen:RenderTextureFormat,policy:RFPolicy,work:RFWorking,out:[]RQColor)->RFResult {
+rf_run :: (input:RFInput,shaders:[]RFShader,coarse:bool,screen:RenderTextureFormat,policy:RFPolicy,work:RFWorking,out:[]RQColor)->RFResult #effects(all) {
  r:RFResult;
  if !rq_filter_limits(policy.filter).ok {r.status=RQStatus.unsupported;return r;}
  if !rr_raster_profile_ok(policy.raster) {r.status=RQStatus.unsupported;return r;}
@@ -179,24 +179,24 @@ rf_run :: (input:RFInput,shaders:[]RFShader,coarse:bool,screen:RenderTextureForm
 }
 
 RFBufferResult :: struct {status:RQStatus;buffer:RQBuffer;}
-rf_buffer_name :: (source:RenderBindingSource,out:[]u8)->string {return render_host_buffer_name(source,out);}
+rf_buffer_name :: (source:RenderBindingSource,out:[]u8)->string #effects(all) {return render_host_buffer_name(source,out);}
 
-rf_sampler :: (name:string)->RQSampler {
+rf_sampler :: (name:string)->RQSampler #effects(all) {
  s:=render_sampler_desc(name);
  return RQSampler.{address_u=ifx s.address_u==RenderSamplerAddress.repeat then RQAddress.repeat else RQAddress.clamp,address_v=ifx s.address_v==RenderSamplerAddress.repeat then RQAddress.repeat else RQAddress.clamp,min_linear=s.min_linear,mag_linear=s.mag_linear,mip_linear=s.mip_linear,compare=ifx s.compare==RenderSamplerCompare.less then RQCompare.less else RQCompare.none,max_anisotropy=s.physical_anisotropy};
 }
 // Canonical Sans is five independently rasterized UNORM8 mips. Span and
 // per-level halving remain the separate shared rq_texture_status contract.
-rf_sans_profile :: (storage:RQStorageFormat,levels:[]RQMip)->bool {
+rf_sans_profile :: (storage:RQStorageFormat,levels:[]RQMip)->bool #effects(all) {
  if storage!=RQStorageFormat.unorm8 || levels.count!=SANS_LEVELS {return false;}
  first:=render_sans_level(0);return levels[0].width==first.width && levels[0].height==first.height;
 }
 rf_resources :: (input:RFInput,index:int,layout:RFShaderLayout,op:RenderOp,req:RFRequirements,images:[]RQColor,uniforms:[]u32,bloom:[]u32,
-    buffers:[]RQBuffer,textures:[]RQTexture,samplers:[]RQSampler,levels:[]RQMip)->RQStatus {
+    buffers:[]RQBuffer,textures:[]RQTexture,samplers:[]RQSampler,levels:[]RQMip)->RQStatus #effects(all) {
  return rf_resources_profile(input,index,layout,op,req,images,uniforms,bloom,buffers,textures,samplers,levels,RQFilterProfile.analytic);
 }
 rf_resources_profile :: (input:RFInput,index:int,layout:RFShaderLayout,op:RenderOp,req:RFRequirements,images:[]RQColor,uniforms:[]u32,bloom:[]u32,
-    buffers:[]RQBuffer,textures:[]RQTexture,samplers:[]RQSampler,levels:[]RQMip,precision:RQFilterProfile)->RQStatus {
+    buffers:[]RQBuffer,textures:[]RQTexture,samplers:[]RQSampler,levels:[]RQMip,precision:RQFilterProfile)->RQStatus #effects(all) {
  binding_set:=ifx index==13 then 2 else render_catalog_entry(input.profile,cast(RenderPassId)index).binding_set;
  if input.textures.count>RENDER_HOST_TEXTURES {return RQStatus.capacity;}
  observed:[RENDER_HOST_TEXTURES]RenderHostNamedTexture;for j:0..<input.textures.count {t:=input.textures[j];observed[j]=RenderHostNamedTexture.{name=t.name,layers=t.texture.layers,depth=t.texture.depth};}
@@ -222,14 +222,14 @@ rf_resources_profile :: (input:RFInput,index:int,layout:RFShaderLayout,op:Render
  }
  return RQStatus.ok;
 }
-rf_pixel_work :: (r:RFResult,policy:RFPolicy,amount:int)->RFResult {
+rf_pixel_work :: (r:RFResult,policy:RFPolicy,amount:int)->RFResult #effects(all) {
  q:=r;if amount>policy.pixel_work-q.pixel_steps {q.status=RQStatus.budget;return q;}q.pixel_steps+=amount;return q;
 }
-rf_format :: (format:RenderTextureFormat)->RRFormat {
+rf_format :: (format:RenderTextureFormat)->RRFormat #effects(all) {
  if format==RenderTextureFormat.rgba16f {return RRFormat.half;}
  if format==RenderTextureFormat.depth32 {return RRFormat.f32;}return RRFormat.unorm8;
 }
-rf_pixels :: (req:RFRequirements,active:RenderOp,images:[]RQColor,pixels:[]RRPixel,publish:bool) {
+rf_pixels :: (req:RFRequirements,active:RenderOp,images:[]RQColor,pixels:[]RRPixel,publish:bool) #effects(all) {
  target:=ifx active.colour0!=RenderTarget.none then active.colour0 else active.depth;canvas:=req.images[cast(int)target];n:=canvas.descriptor.width*canvas.descriptor.height;
  for at:0..<n {
   p:=RRPixel.{depth=1};if publish {p=pixels[at];}
@@ -245,7 +245,7 @@ rf_pixels :: (req:RFRequirements,active:RenderOp,images:[]RQColor,pixels:[]RRPix
 
 // The same checked draw path executes catalog and media entries. Working
 // images are candidates; rf_run publishes the external image only on success.
-rf_execute_draw :: (input:RFInput,index:int,entry:RFPrepared,tree:[]u32,meta:[]int,op:RenderOp,active:RenderOp,req:RFRequirements,uniforms:[]u32,bloom:[]u32,attrs:RRAttributes,draws:[]RenderDecodedDraw,policy:RFPolicy,work:RFWorking,result:RFResult)->RFResult {
+rf_execute_draw :: (input:RFInput,index:int,entry:RFPrepared,tree:[]u32,meta:[]int,op:RenderOp,active:RenderOp,req:RFRequirements,uniforms:[]u32,bloom:[]u32,attrs:RRAttributes,draws:[]RenderDecodedDraw,policy:RFPolicy,work:RFWorking,result:RFResult)->RFResult #effects(all) {
  r:=result;layout:=entry.layout;if r.pass_steps[index]>=policy.shader_work {r.status=RQStatus.budget;return r;}
  buffers:[48]RQBuffer;textures:[48]RQTexture;samplers:[48]RQSampler;levels:[48]RQMip;
  status:=rf_resources_profile(input,index,entry.layout,op,req,work.images,uniforms,bloom,buffers[..],textures[..],samplers[..],levels[..],policy.filter);if status!=RQStatus.ok {r.status=status;return r;}
@@ -256,7 +256,7 @@ rf_execute_draw :: (input:RFInput,index:int,entry:RFPrepared,tree:[]u32,meta:[]i
  r.pass_steps[index]+=q.steps;r.shader_steps+=q.steps;
  if q.status!=RQStatus.ok {r.status=q.status;return r;}rf_pixels(req,active,work.images,work.target,true);r.draws+=1;r.written+=q.written;return r;
 }
-rf_media_status :: (media:[]RenderMediaRect)->RQStatus {
+rf_media_status :: (media:[]RenderMediaRect)->RQStatus #effects(all) {
  if media.count>RENDER_MEDIA_ITEMS {return RQStatus.capacity;}
  for j:0..<media.count {
   rect:=media[j];if !rect.ok || !rect.draw {continue;}
@@ -266,7 +266,7 @@ rf_media_status :: (media:[]RenderMediaRect)->RQStatus {
  }
  return RQStatus.ok;
 }
-rf_media :: (input:RFInput,over:bool,prepared:RFPrepared,tree:[]u32,req:RFRequirements,active:RenderOp,policy:RFPolicy,work:RFWorking,result:RFResult)->RFResult {
+rf_media :: (input:RFInput,over:bool,prepared:RFPrepared,tree:[]u32,req:RFRequirements,active:RenderOp,policy:RFPolicy,work:RFWorking,result:RFResult)->RFResult #effects(all) {
  r:=result;r.status=rf_media_status(input.media);if r.status!=RQStatus.ok {return r;}
  if !render_catalog(input.profile).features.media {r.status=RQStatus.unsupported;return r;}
  // Source line order is canonical even if the observed ready subset arrives
@@ -288,7 +288,7 @@ rf_media :: (input:RFInput,over:bool,prepared:RFPrepared,tree:[]u32,req:RFRequir
 
 // Internal admitted graph operations, shared with small bounded conformance
 // fixtures. Canvas spans and operation targets belong to the immutable plan.
-rf_clear_targets :: (req:RFRequirements,op:RenderOp,images:[]RQColor,policy:RFPolicy,result:RFResult)->RFResult {
+rf_clear_targets :: (req:RFRequirements,op:RenderOp,images:[]RQColor,policy:RFPolicy,result:RFResult)->RFResult #effects(all) {
  r:=result;if op.keep {return r;}
  for id:[3]RenderTarget.[op.colour0,op.colour1,op.depth] {
   if id==RenderTarget.none {continue;}canvas:=req.images[cast(int)id];n:=canvas.descriptor.width*canvas.descriptor.height;
@@ -298,14 +298,14 @@ rf_clear_targets :: (req:RFRequirements,op:RenderOp,images:[]RQColor,policy:RFPo
  }
  return r;
 }
-rf_copy_target :: (req:RFRequirements,op:RenderOp,images:[]RQColor,policy:RFPolicy,result:RFResult)->RFResult {
+rf_copy_target :: (req:RFRequirements,op:RenderOp,images:[]RQColor,policy:RFPolicy,result:RFResult)->RFResult #effects(all) {
  r:=result;src:=req.images[cast(int)op.source];dst:=req.images[cast(int)op.target];n:=src.descriptor.width*src.descriptor.height;
  r=rf_pixel_work(r,policy,n);if r.status!=RQStatus.ok {return r;}for j:0..<n {images[dst.offset+j]=images[src.offset+j];}return r;
 }
 
-rf_resource_status :: (status:RenderResourceStatus)->RQStatus {if status==RenderResourceStatus.ok {return RQStatus.ok;}if status==RenderResourceStatus.capacity {return RQStatus.capacity;}return RQStatus.resource;}
+rf_resource_status :: (status:RenderResourceStatus)->RQStatus #effects(all) {if status==RenderResourceStatus.ok {return RQStatus.ok;}if status==RenderResourceStatus.capacity {return RQStatus.capacity;}return RQStatus.resource;}
 RFBufferObservations :: struct {status:RQStatus;count:int;}
-rf_buffer_observations :: (files:[]RenderHostNamedBuffer,uniforms:[]u32,out:[]RenderHostNamedBuffer)->RFBufferObservations {
+rf_buffer_observations :: (files:[]RenderHostNamedBuffer,uniforms:[]u32,out:[]RenderHostNamedBuffer)->RFBufferObservations #effects(all) {
  admitted:=render_host_named_buffers(files);if admitted!=RenderResourceStatus.ok {return RFBufferObservations.{status=rf_resource_status(admitted)};}
  name_scratch:[]u8;main_name:=render_host_buffer_name(RenderBindingSource.{kind=RenderSourceKind.main_uniform},name_scratch);found:=-1;
  for j:0..<files.count {if files[j].name==main_name {found=j;}}
@@ -317,7 +317,7 @@ rf_buffer_observations :: (files:[]RenderHostNamedBuffer,uniforms:[]u32,out:[]Re
  if uniforms.count>0 {at:=ifx found<0 then files.count else found;out[at]=render_host_owned_buffer(main_name,uniforms);}
  return RFBufferObservations.{status=rf_resource_status(render_host_named_buffers(out[0..<count])),count=count};
 }
-rf_resolve_buffer :: (profile:int,set:int,resource:int,files:[]RenderHostNamedBuffer,uniforms:[]u32,bloom:[]u32)->RFBufferResult {
+rf_resolve_buffer :: (profile:int,set:int,resource:int,files:[]RenderHostNamedBuffer,uniforms:[]u32,bloom:[]u32)->RFBufferResult #effects(all) {
  named:[RENDER_RESOURCES]RenderHostNamedBuffer;r:=rf_buffer_observations(files,uniforms,named[..]);if r.status!=RQStatus.ok {return RFBufferResult.{status=r.status};}
  binding:=render_host_binding(profile,set,resource);words:=ifx binding.source.kind==RenderSourceKind.bloom_step then bloom else uniforms;
  generated:=render_host_owned_buffer("",words);
@@ -328,7 +328,7 @@ rf_resolve_buffer :: (profile:int,set:int,resource:int,files:[]RenderHostNamedBu
 RFMediaPrepared :: struct {status:RQStatus;count:int;bad_bitmap:int=-1;parsed:RenderMediaParse;composed:RenderHostMediaReceipt;}
 // Identity/readiness and physical metadata policy are shared with GPU hosts.
 // This adapter projects decoded descriptors and validates CPU mip/texel spans.
-rf_prepare_media :: (profile:int,text:string,width:int,height:int,files:[]RFNamedTexture,images:[]RenderHostMediaImage,out:[]RenderMediaRect)->RFMediaPrepared {
+rf_prepare_media :: (profile:int,text:string,width:int,height:int,files:[]RFNamedTexture,images:[]RenderHostMediaImage,out:[]RenderMediaRect)->RFMediaPrepared #effects(all) {
  requests:[RENDER_MEDIA_ITEMS]RenderMediaRequest;r:=RFMediaPrepared.{parsed=render_media_parse(text,requests[..])};
  if r.parsed.status!=RenderMediaStatus.ok {r.status=RQStatus.capacity;return r;}if r.parsed.count==0 {return r;}
  if !render_catalog(profile).features.media {r.status=RQStatus.unsupported;return r;}
@@ -346,17 +346,17 @@ rf_prepare_media :: (profile:int,text:string,width:int,height:int,files:[]RFName
 
 // Resource effects form one independently executable graph step. A canonical
 // render_plan has at most one water each-block; its current index starts once.
-rf_transfer_op :: (req:RFRequirements,op:RenderOp,images:[]RQColor,policy:RFPolicy,result:RFResult)->RFResult {
+rf_transfer_op :: (req:RFRequirements,op:RenderOp,images:[]RQColor,policy:RFPolicy,result:RFResult)->RFResult #effects(all) {
  if op.kind==RenderOpKind.begin {return rf_clear_targets(req,op,images,policy,result);}
  if op.kind==RenderOpKind.copy {return rf_copy_target(req,op,images,policy,result);}return result;
 }
 
 RFMemory :: struct {arena:[]u32;uniforms:[]u32;hud:[]u32;}
 // Caller has admitted the combined allocation before publishing these views.
-rf_partition_words :: (words:[]u32,uniform_words:int,hud_words:int)->RFMemory {
+rf_partition_words :: (words:[]u32,uniform_words:int,hud_words:int)->RFMemory #effects(all) {
  end_uniforms:=RQ_IR_WORDS+uniform_words;
  return RFMemory.{arena=words[0..<RQ_IR_WORDS],uniforms=words[RQ_IR_WORDS..<end_uniforms],hud=words[end_uniforms..<end_uniforms+hud_words]};
 }
 // The admitted working allocation contains fourteen independent metadata
 // arenas. Preparation and execution borrow the same exact slot ownership.
-rf_metadata_slot :: (words:[]int,index:int)->[]int {return words[index*RQ_IR_META..<(index+1)*RQ_IR_META];}
+rf_metadata_slot :: (words:[]int,index:int)->[]int #effects(all) {return words[index*RQ_IR_META..<(index+1)*RQ_IR_META];}

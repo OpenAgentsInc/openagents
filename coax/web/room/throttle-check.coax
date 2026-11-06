@@ -138,7 +138,7 @@ tc_before :: (t: string, tail: string) -> int {
   #assert tc_before(t, " bytes most") == 51234 && tc_before(t, " ms oldest") == 2400 && tc_before(t, " slow closed") == 1 && tc_before(t, " nothing") == -1;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 3 { tool_errln("usage: coax/web/tool.sh coax/web/room/throttle-check.coax ROOM_PORT PROXY_PORT SLOW [SECONDS_SLOW] [SECONDS_AFTER] [ROOM]"); return 2; }
   room := rs_num(args_at(a[..], 0)); proxy := rs_num(args_at(a[..], 1)); slow_file := args_at(a[..], 2);

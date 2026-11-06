@@ -45,7 +45,7 @@ ct_checks :: (binary:string,dir:string)->bool {
   if !ct_case(binary,dir,"unknown",cpu[..],cpu[..],2,0,0) {return false;}
   return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}binary:=args_value(a[..],"--binary","");
   if binary=="" {tool_errln("comparison checks: --binary is required");return 2;}
   temp:[4096]u8;dir:=fs_temp("aethyr-compare-cli-",temp[..]);if dir=="" {return 1;}

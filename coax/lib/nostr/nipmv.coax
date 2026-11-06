@@ -84,18 +84,18 @@ MV_STATE_TAGS :: "[[\"d\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28
 // NIP-MV's own entity state content.
 MV_STATE_BODY :: "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[3.2,0,-10.5],\"q\":[0,0.38,0,0.92],\"t\":1790000000000,\"online\":true}";
 
-mv_plaza :: ()->MvWorld {a:[256]u8;return mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,MV_PLAZA_BODY,a[..]);}
+mv_plaza :: ()->MvWorld #effects(all) {a:[256]u8;return mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,MV_PLAZA_BODY,a[..]);}
 // The swapped content lives in these helpers' own buffers, so only the codes
 // and numbers come back: a string read from it would dangle (E0383).
-mv_frame_with :: (from:string,to:string)->MvFrame {
+mv_frame_with :: (from:string,to:string)->MvFrame #effects(all) {
   o:[2048]u8;poses:[MV_ENTITIES]MvPose;
   f:=mv_frame_read(MV_FRAME,MV_FRAME_TAGS,ts_swap(MV_FRAME_BODY,from,to,o[..]),MV_PLAZA,mv_plaza(),poses[..]);
   return MvFrame.{code=f.code,at=f.at,n=f.n,t=f.t,count=f.count};
 }
-mv_world_with :: (from:string,to:string)->MvWorld {
+mv_world_with :: (from:string,to:string)->MvWorld #effects(all) {
   o:[512]u8;a:[256]u8;return mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,ts_swap(MV_PLAZA_BODY,from,to,o[..]),a[..]);
 }
-mv_state_with :: (tags:string,from:string,to:string)->MvState {
+mv_state_with :: (tags:string,from:string,to:string)->MvState #effects(all) {
   o:[1024]u8;s:=mv_state_read(MV_STATE,tags,ts_swap(MV_STATE_BODY,from,to,o[..]),MV_PLAZA,mv_plaza());
   return MvState.{code=s.code,p=s.p,q=s.q,t=s.t,online=s.online,cx=s.cx,cz=s.cz};
 }
@@ -366,9 +366,9 @@ mv_state_with :: (tags:string,from:string,to:string)->MvState {
 // ---- reading helpers
 
 // x-x is NaN for NaN and for either infinity.
-mv_finite :: (x:f64)->bool {return x-x==0.0 && x<MV_MAX_COORD && x> -MV_MAX_COORD;}
+mv_finite :: (x:f64)->bool #effects(all) {return x-x==0.0 && x<MV_MAX_COORD && x> -MV_MAX_COORD;}
 // The array whose first token was just read, as exactly out.count finite numbers.
-mv_vec :: (j:[]Json,tok:int,out:[]f64)->bool {
+mv_vec :: (j:[]Json,tok:int,out:[]f64)->bool #effects(all) {
   if tok!=JSON_ARRAY {return false;}
   for i:0..<out.count {
     if json_next(j)!=JSON_NUMBER {return false;}
@@ -379,31 +379,31 @@ mv_vec :: (j:[]Json,tok:int,out:[]f64)->bool {
   return json_next(j)==JSON_ARRAY_END;
 }
 // A non-negative integer token.
-mv_count :: (j:[]Json,tok:int)->int {
+mv_count :: (j:[]Json,tok:int)->int #effects(all) {
   if tok!=JSON_NUMBER {return -1;}
   v:=json_int(json_text(j));
   return ifx v.ok && v.value>=0 then v.value else -1;
 }
 // An entity id: 1 to 64 bytes of [a-z0-9_-].
-mv_id_ok :: (s:string)->bool {
+mv_id_ok :: (s:string)->bool #effects(all) {
   if s.count<1 || s.count>64 {return false;}
   for c:s {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='_' || c=='-') {return false;}}
   return true;
 }
-mv_plain :: (s:string)->bool {for c:s {if c=='\\' {return false;}}return true;}
+mv_plain :: (s:string)->bool #effects(all) {for c:s {if c=='\\' {return false;}}return true;}
 // floor(x / cell), toward minus infinity.
-mv_cell :: (x:f64,cell:f64)->int {
+mv_cell :: (x:f64,cell:f64)->int #effects(all) {
   q:=x/cell;c:=cast(int)q;
   if f64(c)>q {c-=1;}
   return c;
 }
-mv_inside :: (w:MvWorld,p:[3]f64)->bool {
+mv_inside :: (w:MvWorld,p:[3]f64)->bool #effects(all) {
   if !w.bounded {return true;}
   for i:0..<3 {if p[i]<w.lo[i] || p[i]>w.hi[i] {return false;}}
   return true;
 }
 // q normalized in place: false when its squared length is near zero.
-mv_unit :: (q:[]f64)->bool {
+mv_unit :: (q:[]f64)->bool #effects(all) {
   sq:=q[0]*q[0]+q[1]*q[1]+q[2]*q[2]+q[3]*q[3];
   if sq<MV_QUAT_MIN {return false;}
   r:=sqrt(sq);
@@ -412,7 +412,7 @@ mv_unit :: (q:[]f64)->bool {
 }
 // The one value of tag name, or found false; n -1 when the tags don't read.
 MvTag :: struct {n:int;value:string;}
-mv_tag :: (tags:string,name:string)->MvTag {
+mv_tag :: (tags:string,name:string)->MvTag #effects(all) {
   e:NtEvent;e.ok=true;e.original=tags;e.tags_to=tags.count;t:=nt_tag(e,name,0);
   r:MvTag;r.n=t.n;
   if t.n>=1 {if t.values<1 {r.n= -1;return r;}r.value=nt_raw(e,t.v[0]);}
@@ -420,7 +420,7 @@ mv_tag :: (tags:string,name:string)->MvTag {
 }
 
 // ---- 33300: a world definition. address is written into out.
-mv_world_read :: (kind:int,pubkey:string,tags:string,content:string,out:[]u8)->MvWorld {
+mv_world_read :: (kind:int,pubkey:string,tags:string,content:string,out:[]u8)->MvWorld #effects(all) {
   r:MvWorld;
   if kind!=MV_WORLD {return MvWorld.{code=MvCode.kind};}
   d:=mv_tag(tags,"d");w:=mv_tag(tags,"w");
@@ -457,7 +457,7 @@ mv_world_read :: (kind:int,pubkey:string,tags:string,content:string,out:[]u8)->M
   return r;
 }
 // {"min":[x,y,z],"max":[x,y,z]}, exactly, with min <= max on each axis.
-mv_bounds :: (j:[]Json,tok:int,lo:[]f64,hi:[]f64)->bool {
+mv_bounds :: (j:[]Json,tok:int,lo:[]f64,hi:[]f64)->bool #effects(all) {
   if tok!=JSON_OBJECT {return false;}
   seen:=0;t:=json_next(j);
   while t!=JSON_OBJECT_END {
@@ -474,7 +474,7 @@ mv_bounds :: (j:[]Json,tok:int,lo:[]f64,hi:[]f64)->bool {
 }
 
 // ---- 23300: a pose frame for world, its entries into out.
-mv_frame_read :: (kind:int,tags:string,content:string,world:string,w:MvWorld,out:[]MvPose)->MvFrame {
+mv_frame_read :: (kind:int,tags:string,content:string,world:string,w:MvWorld,out:[]MvPose)->MvFrame #effects(all) {
   r:MvFrame;
   if kind!=MV_FRAME {return MvFrame.{code=MvCode.kind};}
   wt:=mv_tag(tags,"w");
@@ -521,7 +521,7 @@ mv_frame_read :: (kind:int,tags:string,content:string,world:string,w:MvWorld,out
 // book:begin entry
 // One entry, its opening brace just read.
 MvEntry :: struct {code:MvCode;pose:MvPose;}
-mv_entry :: (j:[]Json,w:MvWorld)->MvEntry {
+mv_entry :: (j:[]Json,w:MvWorld)->MvEntry #effects(all) {
   r:MvEntry;seen:=0;spare:[3]f64;
   t:=json_next(j);
   while t!=JSON_OBJECT_END {
@@ -559,7 +559,7 @@ mv_entry :: (j:[]Json,w:MvWorld)->MvEntry {
 
 // ---- ordering and presence
 // book:begin order
-mv_order :: (seen:[]MvSeen,count:int,pubkey:string,s:string,n:int,ms:int)->MvOrder {
+mv_order :: (seen:[]MvSeen,count:int,pubkey:string,s:string,n:int,ms:int)->MvOrder #effects(all) {
   for i:0..<count {
     if seen[i].pubkey==pubkey && seen[i].s==s {
       if n<=seen[i].n {return MvOrder.{code=MvCode.old,count=count};}
@@ -571,12 +571,12 @@ mv_order :: (seen:[]MvSeen,count:int,pubkey:string,s:string,n:int,ms:int)->MvOrd
   seen[count]=MvSeen.{pubkey=pubkey,s=s,n=n,ms=ms};
   return MvOrder.{count=count+1};
 }
-mv_online :: (last_ms:int,now_ms:int)->bool {return now_ms-last_ms<MV_OFFLINE_MS;}
+mv_online :: (last_ms:int,now_ms:int)->bool #effects(all) {return now_ms-last_ms<MV_OFFLINE_MS;}
 // book:end order
 
 // ---- 33301: an entity state in world.
 // "obj-" and the first 20 hex digits of SHA-256(node), into out (24 bytes); "" when it can't.
-mv_object_id :: (node:string,out:[]u8)->string {
+mv_object_id :: (node:string,out:[]u8)->string #effects(all) {
   if out.count<24 || node.count>256 {return "";}
   bytes:[256]u8;for i:0..<node.count {bytes[i]=node[i];}
   h:[32]u8;
@@ -586,7 +586,7 @@ mv_object_id :: (node:string,out:[]u8)->string {
   for i:0..<10 {out[n]=digits[h[i]>>4];out[n+1]=digits[h[i]&15];n+=2;}
   return cast(string)out[0..<n];
 }
-mv_state_read :: (kind:int,tags:string,content:string,world:string,w:MvWorld)->MvState {
+mv_state_read :: (kind:int,tags:string,content:string,world:string,w:MvWorld)->MvState #effects(all) {
   r:MvState;
   if kind!=MV_STATE {return MvState.{code=MvCode.kind};}
   d:=mv_tag(tags,"d");wt:=mv_tag(tags,"w");rt:=mv_tag(tags,"role");

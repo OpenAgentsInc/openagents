@@ -32,17 +32,17 @@
  #assert hspc_peer(4,-2,100)&&hspc_peer(99999,-2,1000);
  #assert !hspc_peer(3,-2,100)&&!hspc_peer(100000,-2,100)&&!hspc_peer(4,-1,100)&&!hspc_peer(4,-2,99);
 }
-hspc_hold :: (a:[]int,b:[]int)->bool #export_c {
+hspc_hold :: (a:[]int,b:[]int)->bool #export_c #effects(all) {
  if a.count!=10||b.count!=10 {return false;}expected:=[9]int.[6,512,0,0,6,512,6,0,0];
  for value,i:expected {at:=ifx i<6 then i else i+1;if a[at]!=value||b[at]!=value {return false;}}return a[6]>0&&b[6]>=a[6];
 }
-hspc_commands :: (a:[]int,max:[]int)->bool #export_c {
+hspc_commands :: (a:[]int,max:[]int)->bool #export_c #effects(all) {
  if a.count!=65||max.count!=2 {return false;}if max[0]!=64||max[1]!=0 {return false;}for i:0..<65 {if a[i]!=(ifx i<64 then 1 else 0) {return false;}}return true;
 }
-hspc_payload :: (index:int,bytes:[]u8)->bool #export_c {expected:[128]u8;if bytes.count!=128||!hsp_payload(index,expected[..]) {return false;}return cast(string)bytes==cast(string)expected[..];}
-hspc_opens :: (ids:[]int)->bool #export_c {if ids.count!=4 {return false;}seen:[4]bool;for id:ids {if id<0||id>=4 {return false;}if seen[id] {return false;}seen[id]=true;}return true;}
-hspc_pool :: (max:[]int,closed:[]int)->bool #export_c {
+hspc_payload :: (index:int,bytes:[]u8)->bool #export_c #effects(all) {expected:[128]u8;if bytes.count!=128||!hsp_payload(index,expected[..]) {return false;}return cast(string)bytes==cast(string)expected[..];}
+hspc_opens :: (ids:[]int)->bool #export_c #effects(all) {if ids.count!=4 {return false;}seen:[4]bool;for id:ids {if id<0||id>=4 {return false;}if seen[id] {return false;}seen[id]=true;}return true;}
+hspc_pool :: (max:[]int,closed:[]int)->bool #export_c #effects(all) {
  if max.count!=5||closed.count!=5 {return false;}limits:=[4]int.[9,8,4,512];for value,i:limits {if closed[i]!=0||max[i]<0||max[i]>value {return false;}}
  return max[0]>0&&max[1]>0&&max[4]==4&&closed[4]==0;
 }
-hspc_peer :: (frames:int,failure:int,elapsed:int)->bool #export_c {return frames>=4&&frames<100000&&failure== -2&&elapsed>=100;}
+hspc_peer :: (frames:int,failure:int,elapsed:int)->bool #export_c #effects(all) {return frames>=4&&frames<100000&&failure== -2&&elapsed>=100;}

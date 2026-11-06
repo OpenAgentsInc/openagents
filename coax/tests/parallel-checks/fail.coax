@@ -2,8 +2,8 @@
 // #assert that fails and a #forall with a counterexample. Both compiles
 // report the same two errors, in order, and exit 1.
 #authority;
-fee :: (amount: int) -> int { return amount / 100 + 3; }
-refund_ok :: (paid: int, refund: int) -> bool { return refund >= 0 && refund < paid; }
+fee :: (amount: int) -> int #effects(all) { return amount / 100 + 3; }
+refund_ok :: (paid: int, refund: int) -> bool #effects(all) { return refund >= 0 && refund < paid; }
 #test "a fee is one percent and three" { #assert fee(1000) == 13; }
 #test "a fee is one percent and nothing more" { #assert fee(1000) == 10; }
 #test "a small refund" { #assert refund_ok(7, 2); }

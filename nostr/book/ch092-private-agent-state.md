@@ -148,7 +148,7 @@ letter or digit and runs at most 64 characters:
 ```jai
 // "core", or ^mem/[a-z0-9][a-z0-9_-]{0,63}(/[a-z0-9][a-z0-9_-]{0,63})*$
 // in at most 255 bytes.
-ae_slug_ok :: (s:string)->bool {
+ae_slug_ok :: (s:string)->bool #effects(all) {
   if s=="core" {return true;}
   if s.count<5 || s.count>AE_MAX_SLUG || s[0..<4]!="mem/" {return false;}
   run:=0;   // characters in the current segment
@@ -174,7 +174,7 @@ d = lower_hex(HMAC-SHA256(K_c, utf8("agent-memory/v1/d-tag") || 0x00 || utf8(slu
 // d = lower_hex(HMAC-SHA256(K_c, "agent-memory/v1/d-tag" || 0x00 || slug)),
 // written as 64 characters to out. The slug must already be valid (at most
 // 255 bytes), so the message fits and the HMAC cannot refuse.
-ae_derive :: (ck:[]u8,slug:string,out:[]u8)->string {
+ae_derive :: (ck:[]u8,slug:string,out:[]u8)->string #effects(all) {
   m:[22+AE_MAX_SLUG]u8;
   for i:0..<21 {m[i]=AE_DOMAIN[i];}
   for i:0..<slug.count {m[22+i]=slug[i];}
@@ -228,7 +228,7 @@ The tag reader:
 // Exactly one ["d", <64 hex>] (copied to d) and exactly one ["p", owner];
 // any other tag (alt, say) is ignored. Names and p are compared as JSON
 // strings (escapes allowed); d must be written as plain hex.
-ae_tags :: (tags:string,owner_hex:string,d:[]u8)->bool {
+ae_tags :: (tags:string,owner_hex:string,d:[]u8)->bool #effects(all) {
   j:[1]Json;json_start(j[..],tags);
   t:=json_next(j[..]);ds:=0;ps:=0;
   t=json_next(j[..]);
@@ -258,14 +258,14 @@ The body reader, which does rules 3 to 5:
 // The slug and value are unescaped into the arena.
 AeBody :: struct {error:u32=AE_JSON; slug:string; core:bool; tombstone:bool; value:string;}
 AE_ABSENT :: 0; AE_STRING :: 1; AE_NULL :: 2;   // a wrong type reads as absent
-ae_state :: (t:int)->int {return ifx t==JSON_STRING then AE_STRING else ifx t==JSON_NULL then AE_NULL else AE_ABSENT;}
+ae_state :: (t:int)->int #effects(all) {return ifx t==JSON_STRING then AE_STRING else ifx t==JSON_NULL then AE_NULL else AE_ABSENT;}
 AeStr :: struct {ok:bool;s:string;}
-ae_string :: (raw:string,a:[]AeText)->AeStr {
+ae_string :: (raw:string,a:[]AeText)->AeStr #effects(all) {
   r:AeStr;n:=json_unescape(raw,a[0].buf[a[0].at..<a[0].buf.count]);
   if n<0 {return r;}   // the arena is full
   r.s=cast(string)a[0].buf[a[0].at..<a[0].at+n];a[0].at+=n;r.ok=true;return r;
 }
-ae_body :: (body:string,ck:[]u8,d:string,a:[]AeText)->AeBody {
+ae_body :: (body:string,ck:[]u8,d:string,a:[]AeText)->AeBody #effects(all) {
   r:AeBody;
   if ja_admit(body,ja_policy(1),0,0)!=JA_OK {return r;}   // valid JSON, no repeated name at any depth
   j:[1]Json;json_start(j[..],body);
@@ -298,11 +298,11 @@ And the whole open:
 
 <!-- source: coax/lib/nostr/nipae.coax open -->
 ```jai
-ae_done :: (r:AeRecord,error:u32,w:[]AeWork)->AeRecord {ae_clear(w);out:=r;out.error=error;return out;}
+ae_done :: (r:AeRecord,error:u32,w:[]AeWork)->AeRecord #effects(all) {ae_clear(w);out:=r;out.error=error;return out;}
 // Opens one kind 30174 for the pair (agent_x, owner_x). The reader is the
 // owner when as_owner (secret is the owner's), else the agent. Strings of
 // the result live in the arena.
-ae_open :: (text:string,secret:[]u8,agent_x:[]u8,owner_x:[]u8,as_owner:bool,w:[]AeWork,a:[]AeText)->AeRecord {
+ae_open :: (text:string,secret:[]u8,agent_x:[]u8,owner_x:[]u8,as_owner:bool,w:[]AeWork,a:[]AeText)->AeRecord #effects(all) {
   r:AeRecord;
   if secret.count!=32 || agent_x.count!=32 || owner_x.count!=32 || w.count!=1 {return r;}
   e:=nostr_event_read(text,w[0].scratch[..],false);
@@ -344,7 +344,7 @@ bytes (NIP-44's plaintext limit) refuses as `input`:
 // (from ae_write_at). nonce and aux are 32 fresh random bytes each from the
 // host. The body is read exactly as a reader will read it first, so the
 // agent never publishes a record its owner would refuse.
-ae_seal :: (slug:string,body:string,agent:[]u8,owner_x:[]u8,nonce:[]u8,aux:[]u8,created_at:int,w:[]AeWork,out:[]u8)->AeSealed {
+ae_seal :: (slug:string,body:string,agent:[]u8,owner_x:[]u8,nonce:[]u8,aux:[]u8,created_at:int,w:[]AeWork,out:[]u8)->AeSealed #effects(all) {
   r:AeSealed;
   // A key that is not 32 bytes is refused by the conversation key below.
   if nonce.count!=32 || aux.count!=32 || w.count!=1 || body.count>AE_MAX_BODY {return r;}
@@ -352,7 +352,7 @@ ae_seal :: (slug:string,body:string,agent:[]u8,owner_x:[]u8,nonce:[]u8,aux:[]u8,
   r=ae_seal_in(slug,body,agent,owner_x,nonce,aux,created_at,w,out);
   ae_clear(w);return r;
 }
-ae_seal_in :: (slug:string,body:string,agent:[]u8,owner_x:[]u8,nonce:[]u8,aux:[]u8,created_at:int,w:[]AeWork,out:[]u8)->AeSealed {
+ae_seal_in :: (slug:string,body:string,agent:[]u8,owner_x:[]u8,nonce:[]u8,aux:[]u8,created_at:int,w:[]AeWork,out:[]u8)->AeSealed #effects(all) {
   r:AeSealed;ew:[1]EcdhScratch;
   if nip44_conversation_key_from_keys_checked(agent,owner_x,ew[..],w[0].ck[..],false)!=NIP44_OK {return r;}
   dh:[64]u8;d:=ae_derive(w[0].ck[..],slug,dh[..]);
@@ -396,16 +396,16 @@ publishing. It leaves the threshold to the implementation; this code uses
 <!-- source: coax/lib/nostr/nipae.coax head -->
 ```jai
 // Equal-length lowercase hex compares as bytes.
-ae_lower_id :: (a:string,b:string)->bool {
+ae_lower_id :: (a:string,b:string)->bool #effects(all) {
   for i:0..<a.count {if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}}
   return false;
 }
 // a replaces b: a later created_at, or the same second and a lower id.
-ae_newer :: (a:AeRecord,b:AeRecord)->bool {
+ae_newer :: (a:AeRecord,b:AeRecord)->bool #effects(all) {
   return a.created_at>b.created_at || (a.created_at==b.created_at && ae_lower_id(a.event,b.event));
 }
 // The head of d among opened records: valid ones only. -1 when none.
-ae_head :: (rs:[]AeRecord,d:string)->int {
+ae_head :: (rs:[]AeRecord,d:string)->int #effects(all) {
   best:=-1;
   for i:0..<rs.count {
     if rs[i].error==AE_OK && rs[i].d==d && (best<0 || ae_newer(rs[i],rs[best])) {best=i;}
@@ -414,7 +414,7 @@ ae_head :: (rs:[]AeRecord,d:string)->int {
 }
 // The local view: next replaces held only when it is valid, addresses the
 // same d and is newer. held.error != AE_OK means nothing is held yet.
-ae_accept :: (held:AeRecord,next:AeRecord)->u32 {
+ae_accept :: (held:AeRecord,next:AeRecord)->u32 #effects(all) {
   if next.error!=AE_OK {return next.error;}
   if held.error!=AE_OK {return AE_OK;}
   if next.d!=held.d {return AE_ADDRESS;}
@@ -423,7 +423,7 @@ ae_accept :: (held:AeRecord,next:AeRecord)->u32 {
 }
 // Writing step 2: created_at = max(now, T + 1), T the head's created_at or
 // 0; a conflict when that is more than AE_MAX_AHEAD seconds after now.
-ae_write_at :: (now:int,head:AeRecord)->AeWhen {
+ae_write_at :: (now:int,head:AeRecord)->AeWhen #effects(all) {
   r:AeWhen;t:=ifx head.error==AE_OK then head.created_at else 0;
   r.created_at=now;if t>=now {r.created_at=t+1;}
   if r.created_at-now>AE_MAX_AHEAD {r.error=AE_CONFLICT;}
@@ -521,7 +521,7 @@ relay's clock:
 // Exactly one p and one agent (64 hex each, written as plain hex, copied
 // out) and one frame. Returns the frame (AO_TELEMETRY, AO_CONTROL or
 // AO_UNKNOWN), or -1.
-ao_tags :: (tags:string,p:[]u8,agent:[]u8)->int {
+ao_tags :: (tags:string,p:[]u8,agent:[]u8)->int #effects(all) {
   j:[1]Json;json_start(j[..],tags);
   t:=json_next(j[..]);ps:=0;as:=0;fs:=0;fv:="";
   t=json_next(j[..]);
@@ -546,13 +546,13 @@ ao_tags :: (tags:string,p:[]u8,agent:[]u8)->int {
 
 <!-- source: coax/lib/nostr/nipao.coax admit -->
 ```jai
-ao_owns :: (pairs:[]AoPair,agent:string,owner:string)->bool {
+ao_owns :: (pairs:[]AoPair,agent:string,owner:string)->bool #effects(all) {
   for q:pairs {if q.agent==agent && q.owner==owner {return true;}}
   return false;
 }
-ao_fail :: (f:AoFrame,error:u32)->AoFrame {r:=f;r.error=error;return r;}
+ao_fail :: (f:AoFrame,error:u32)->AoFrame #effects(all) {r:=f;r.error=error;return r;}
 // The relay's check of a frame whose id and signature verified.
-ao_check :: (e:NostrEvent,text:string,pairs:[]AoPair,now:int)->AoFrame {
+ao_check :: (e:NostrEvent,text:string,pairs:[]AoPair,now:int)->AoFrame #effects(all) {
   r:AoFrame;
   if e.kind!=AO_KIND_FRAME {return ao_fail(r,AO_KIND);}
   p:[64]u8;
@@ -574,7 +574,7 @@ ao_check :: (e:NostrEvent,text:string,pairs:[]AoPair,now:int)->AoFrame {
   if e.created_at<now-AO_WINDOW || e.created_at>now+AO_WINDOW {return ao_fail(r,AO_STALE);}
   return ao_fail(r,AO_FANOUT);
 }
-ao_admit :: (text:string,pairs:[]AoPair,now:int,scratch:[]u8)->AoFrame {
+ao_admit :: (text:string,pairs:[]AoPair,now:int,scratch:[]u8)->AoFrame #effects(all) {
   r:AoFrame;
   e:=nostr_event_read(text,scratch,false);
   if e.error!=NE_OK {return r;}
@@ -602,7 +602,7 @@ code. It writes nothing for a frame, whatever happened to it:
 ```jai
 // The relay's entry for one EVENT. snapshot receives a stored event's
 // frame; a 24200 never touches it.
-ps_route :: (text:string,pairs:[]AoPair,now:int,scratch:[]u8,snapshot:[]u8)->PsRoute {
+ps_route :: (text:string,pairs:[]AoPair,now:int,scratch:[]u8,snapshot:[]u8)->PsRoute #effects(all) {
   r:PsRoute;
   e:=nostr_event_read(text,scratch,false);
   if e.error!=NE_OK {return r;}
@@ -622,7 +622,7 @@ ps_route :: (text:string,pairs:[]AoPair,now:int,scratch:[]u8,snapshot:[]u8)->PsR
 }
 // The audit line for a route, written to out; returns its length. A frame
 // (kind 24200) is never logged, whatever happened to it.
-ps_log :: (r:PsRoute,out:[]u8)->int {
+ps_log :: (r:PsRoute,out:[]u8)->int #effects(all) {
   if r.kind==AO_KIND_FRAME {return 0;}
   if r.route==PS_STORED {
     n:=json_raw(out,0,"stored kind ");n=json_write_int(out,n,r.kind);n=json_raw(out,n," id ");
@@ -633,7 +633,7 @@ ps_log :: (r:PsRoute,out:[]u8)->int {
   return 0;
 }
 // The canary check: does text appear anywhere in bytes?
-ps_contains :: (bytes:string,text:string)->bool {
+ps_contains :: (bytes:string,text:string)->bool #effects(all) {
   for i:0..<bytes.count-text.count+1 {if bytes[i..<i+text.count]==text {return true;}}
   return false;
 }
@@ -648,14 +648,14 @@ telemetry kinds and control types, as NIP-AO requires:
 
 <!-- source: coax/lib/nostr/nipao.coax open -->
 ```jai
-ao_done :: (r:AoOpened,error:u32,w:[]AoWork)->AoOpened {
+ao_done :: (r:AoOpened,error:u32,w:[]AoWork)->AoOpened #effects(all) {
   for i:0..<AO_REGION {w[0].scratch[i]=0;w[0].body[i]=0;w[0].cipher[i]=0;w[0].cipher[AO_REGION+i]=0;}
   for i:0..<32 {w[0].ck[i]=0;}
   out:=r;out.error=error;return out;
 }
 // The client: me_x is this client's key (the frame's p), agent_x the agent
 // it trusts. The owner reads telemetry; the agent reads control.
-ao_open :: (text:string,secret:[]u8,me_x:string,agent_x:string,w:[]AoWork,a:[]AoText)->AoOpened {
+ao_open :: (text:string,secret:[]u8,me_x:string,agent_x:string,w:[]AoWork,a:[]AoText)->AoOpened #effects(all) {
   r:AoOpened;
   if secret.count!=32 || w.count!=1 {return r;}
   e:=nostr_event_read(text,w[0].scratch[..],false);
@@ -677,7 +677,7 @@ ao_open :: (text:string,secret:[]u8,me_x:string,agent_x:string,w:[]AoWork,a:[]Ao
 // Telemetry needs seq (an integer), timestamp and kind (strings) and
 // payload (an object); control needs type (a string). Then the name must
 // be known. The payload and the name are returned from the arena.
-ao_read :: (body:string,opened:AoOpened,w:[]AoWork,a:[]AoText)->AoOpened {
+ao_read :: (body:string,opened:AoOpened,w:[]AoWork,a:[]AoText)->AoOpened #effects(all) {
   r:=opened;
   if ja_admit(body,ja_policy(1),0,0)!=JA_OK {return ao_done(r,AO_SHAPE,w);}
   j:[1]Json;json_start(j[..],body);

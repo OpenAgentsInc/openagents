@@ -3,7 +3,7 @@
 #import "Basic";
 #load "../render/tests/qualification-files.coax";
 #load "../../coax/lib/sys/args.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<4||args_count(a[..])>7 {tool_errln("usage: build-native-producer-cached ROOT C_CACHE MATCHING_FACE_DIR NEW_OUT [--sanitize] [--objects PRIOR_BUILD]");return 2;}
  for i:4..<args_count(a[..]) {if args_at(a[..],i)=="--objects" {if i+1>=args_count(a[..]) {return 2;}continue;}if args_at(a[..],i)!="--sanitize"&&(i==4||args_at(a[..],i-1)!="--objects") {return 2;}}
  if cxtool_os()!=2 {return 2;}root:=args_at(a[..],0);cache:=args_at(a[..],1);face:=args_at(a[..],2);out:=args_at(a[..],3);sanitize:=args_has(a[..],"--sanitize");paths:[20][4096]u8;inputs:[1]RtqInputs;

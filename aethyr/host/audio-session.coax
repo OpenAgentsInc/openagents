@@ -22,10 +22,10 @@ HostAudioSessionOffer :: struct {active:bool;started:bool;retired:bool;}
   for kind:[4]int.[-1,0,5,9223372036854775807] {q=has_event(s[..],kind);#assert q.started==((flags&1)!=0)&&q.retired==((flags&4)!=0)&&q.active==(flags==1)&&s[0].covered==((flags&2)!=0);}
  }
 }
-has_open :: ()->HostAudioSession #export_c {return HostAudioSession.{};}
-has_offer :: (s:[]HostAudioSession)->HostAudioSessionOffer #export_c {return HostAudioSessionOffer.{active=s[0].started&&!s[0].covered&&!s[0].retired,started=s[0].started,retired=s[0].retired};}
+has_open :: ()->HostAudioSession #export_c #effects(all) {return HostAudioSession.{};}
+has_offer :: (s:[]HostAudioSession)->HostAudioSessionOffer #export_c #effects(all) {return HostAudioSessionOffer.{active=s[0].started&&!s[0].covered&&!s[0].retired,started=s[0].started,retired=s[0].retired};}
 // 1 actual gesture, 2 covered, 3 uncovered, 4 engine retired.
-has_event :: (s:[]HostAudioSession,kind:int)->HostAudioSessionOffer #export_c {
+has_event :: (s:[]HostAudioSession,kind:int)->HostAudioSessionOffer #export_c #effects(all) {
  if !s[0].retired {if kind==1 {s[0].started=true;}if kind==2 {s[0].covered=true;}if kind==3 {s[0].covered=false;}if kind==4 {s[0].retired=true;}}
  return has_offer(s);
 }

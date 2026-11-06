@@ -13,7 +13,7 @@ TR_MAX :: 256;    // the most inputs, outputs or witness items a caller may ask 
 // wtxid (hash order); the stripped serialization; and the full one.
 // Returns the bytes written, or -1 when out is too short or a room is
 // out of range.
-tx_report_vartime :: (b: [] u8, mode: int, nin: int, nout: int, nitems: int, out: [] u8) -> int #export_c {
+tx_report_vartime :: (b: [] u8, mode: int, nin: int, nout: int, nitems: int, out: [] u8) -> int #export_c #effects(all) {
   if nin < 0 || nin > TR_MAX || nout < 0 || nout > TR_MAX || nitems < 0 || nitems > TR_MAX || out.count < 16 { return -1; }
   ins: [TR_MAX] TxIn; outs: [TR_MAX] TxOut; items: [TR_MAX] TxItem;
   t: Tx;

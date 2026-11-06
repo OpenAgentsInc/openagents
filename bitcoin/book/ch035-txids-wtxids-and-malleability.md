@@ -75,7 +75,7 @@ with the lax parser and writes it in strict DER, with either `s`:
 // replaced by n - s when flip is true. Both forms verify for the same key
 // and digest. Returns the new length, or -1 when the lax parser can't read
 // the signature, r or s is zero, or out has fewer than 73 bytes.
-mal_reencode_vartime :: (sig: [] u8, flip: bool, out: [] u8) -> int #export_c {
+mal_reencode_vartime :: (sig: [] u8, flip: bool, out: [] u8) -> int #export_c #effects(all) {
   compact: [64] u8;
   if sig.count < 2 || out.count < 73 || !der_read_lax_vartime(sig[0..<sig.count-1], compact[..]) { return -1; }
   if flip {
@@ -100,7 +100,7 @@ push opcodes a scriptSig is made of:
 // when the length doesn't read, the field runs past the end, or out is too
 // small. Nothing else changes: a scriptSig still has its input, an item
 // its stack.
-mal_replace_vartime :: (b: [] u8, prefix: int, new: [] u8, out: [] u8) -> int #export_c {
+mal_replace_vartime :: (b: [] u8, prefix: int, new: [] u8, out: [] u8) -> int #export_c #effects(all) {
   c := tx_compact_read_vartime(b, prefix);
   if c.code != TX_OK || c.value > b.count - c.next { return -1; }
   after := c.next + c.value;                     // the first byte after the old field
@@ -124,7 +124,7 @@ mal_replace_vartime :: (b: [] u8, prefix: int, new: [] u8, out: [] u8) -> int #e
 // Pushing 1 to 16 or 0x81 with OP_1..OP_16 and OP_1NEGATE is also
 // shortest; chapter 36's interpreter checks that. Returns where writing
 // ends, or -1.
-mal_push_vartime :: (data: [] u8, minimal: bool, out: [] u8, at: int) -> int #export_c {
+mal_push_vartime :: (data: [] u8, minimal: bool, out: [] u8, at: int) -> int #export_c #effects(all) {
   if data.count > 255 { return -1; }
   head := ifx minimal && data.count <= 75 then 1 else 2;
   if at + head + data.count > out.count { return -1; }
@@ -229,7 +229,7 @@ the optional last witness item that starts with `0x50`, is signed too.
 // stacks, one serialized stack per input in order, before the locktime.
 // Returns the new size, or -1 when t is not a read legacy transaction or
 // out is too small. Chapter 34's reader checks the result.
-mal_add_witness_vartime :: (b: [] u8, t: Tx, stacks: [] u8, out: [] u8) -> int #export_c {
+mal_add_witness_vartime :: (b: [] u8, t: Tx, stacks: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if t.code != TX_OK || t.segwit { return -1; }
   size := t.total + 2 + stacks.count;
   if size > out.count { return -1; }

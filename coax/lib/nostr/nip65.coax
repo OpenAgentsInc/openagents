@@ -26,13 +26,13 @@ Nip65List :: struct {
   read: [N65_MOST] bool; write: [N65_MOST] bool;
 }
 // Whether relay k of the list is exactly the bytes s.
-n65_is :: (l: Nip65List, k: int, s: string) -> bool {
+n65_is :: (l: Nip65List, k: int, s: string) -> bool #effects(all) {
   url: [N65_URL_MOST] u8;
   for i: 0..<l.url_n[k] { url[i] = l.url[k * N65_URL_MOST + i]; }
   return cast(string) url[0..<l.url_n[k]] == s;
 }
 
-n65_event :: (kind: int, tags: string) -> NostrEvent { e := nt_event(tags); e.kind = kind; return e; }
+n65_event :: (kind: int, tags: string) -> NostrEvent #effects(all) { e := nt_event(tags); e.kind = kind; return e; }
 // NIP-65's example list, byte for byte.
 N65_EXAMPLE :: "[[\"r\",\"wss://alicerelay.example.com\"],[\"r\",\"wss://brando-relay.com\"],[\"r\",\"wss://expensive-relay.example2.com\",\"write\"],[\"r\",\"wss://nostr-relay.example.com\",\"read\"]]";
 
@@ -107,12 +107,12 @@ N65_EXAMPLE :: "[[\"r\",\"wss://alicerelay.example.com\"],[\"r\",\"wss://brando-
   l := nip65_read(n65_event(10002, cast(string) buf[0..<n])); #assert l.error == N65_TOO_MANY && l.tag == 16 && l.count == 16;
 }
 
-n65_fail :: (l: Nip65List, error: int, tag: int) -> Nip65List { r := l; r.error = error; r.tag = tag; return r; }
+n65_fail :: (l: Nip65List, error: int, tag: int) -> Nip65List #effects(all) { r := l; r.error = error; r.tag = tag; return r; }
 
 // book:begin read
 // The r tags of a parsed kind 10002 event. The signature is not checked
 // here: relay.coax refuses forged events before they reach a reader.
-nip65_read :: (e: NostrEvent) -> Nip65List {
+nip65_read :: (e: NostrEvent) -> Nip65List #effects(all) {
   l: Nip65List; j: [1] Json;
   if !nt_start(j[..], e) { return l; }
   if e.kind != N65_KIND_RELAYS { return n65_fail(l, N65_KIND, 0); }

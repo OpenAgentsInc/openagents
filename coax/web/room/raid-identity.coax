@@ -16,7 +16,7 @@
  got:=raid_identity(319,SeatId.{value=3},b[0..<capacity]);
  #assert got==(ifx capacity>=want.count then want else "");
 }
-raid_identity :: (room:int,seat:SeatId,out:[]u8)->string {
+raid_identity :: (room:int,seat:SeatId,out:[]u8)->string #effects(all) {
  o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"p-raidcheck-");jo_int(o[..],room);jo_put(o[..],"-");jo_int(o[..],seat.value);
  return ifx o[0].bad then "" else jo_text(o[..]);
 }

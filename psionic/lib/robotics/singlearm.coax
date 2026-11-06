@@ -61,20 +61,20 @@
   #assert jv_parse(d[..],"30",n[..]) && !sr_string(d[0],0,"30") && !sr_string(d[0],-1,"");
 }
 
-sr_member :: (d:Jv,parent:int,key:string)->int {
+sr_member :: (d:Jv,parent:int,key:string)->int #effects(all) {
   if jv_kind(d,parent)!=JV_OBJECT {return -1;}found:= -1;
   for i:0..<jv_len(d,parent) {k:=jv_at(d,parent,i);if jv_raw_eq(jv_key(d,k),key) {if found!= -1 {return -1;}found=k;}}
   return found;
 }
-sr_integer :: (d:Jv,node:int)->int {return jv_int(d,node,-1);}
-sr_string :: (d:Jv,node:int,value:string)->bool {return jv_kind(d,node)==JV_STRING && jv_raw_eq(jv_raw(d,node),value);}
-sr_feature :: (d:Jv,node:int,names:[]string)->bool {
+sr_integer :: (d:Jv,node:int)->int #effects(all) {return jv_int(d,node,-1);}
+sr_string :: (d:Jv,node:int,value:string)->bool #effects(all) {return jv_kind(d,node)==JV_STRING && jv_raw_eq(jv_raw(d,node),value);}
+sr_feature :: (d:Jv,node:int,names:[]string)->bool #effects(all) {
   shape:=sr_member(d,node,"shape");list:=sr_member(d,node,"names");
   if !sr_string(d,sr_member(d,node,"dtype"),"float32") || jv_kind(d,shape)!=JV_ARRAY || jv_len(d,shape)!=1 || sr_integer(d,jv_at(d,shape,0))!=names.count || jv_kind(d,list)!=JV_ARRAY || jv_len(d,list)!=names.count {return false;}
   for name,i:names {if !sr_string(d,jv_at(d,list,i),name) {return false;}}return true;
 }
 // book:begin metadata
-sr_info :: (text:string)->SrInfo #export_c {
+sr_info :: (text:string)->SrInfo #export_c #effects(all) {
   if text.count>8192 {return SrInfo.{status=SrStatus.capacity};}
   d:[1]Jv;nodes:[768]JvNode;
   if !jv_parse(d[..],text,nodes[..]) || jv_kind(d[0],0)!=JV_OBJECT {return SrInfo.{status=SrStatus.shape};}
@@ -83,16 +83,16 @@ sr_info :: (text:string)->SrInfo #export_c {
   return SrInfo.{states=25,actions=8,fps=30,episodes=1273,frames=154256};
 }
 // book:end metadata
-sr_number :: (bits:int)->bool {
+sr_number :: (bits:int)->bool #effects(all) {
   if (bits>>32)!=0 || (bits&0x7f800000)==0x7f800000 {return false;}
   value:=f32_from_bits(cast(u32)bits);return value>= -1000 && value<=1000;
 }
-sr_values :: (d:Jv,node:int,out:[]f32)->bool {
+sr_values :: (d:Jv,node:int,out:[]f32)->bool #effects(all) {
   if jv_kind(d,node)!=JV_ARRAY || jv_len(d,node)!=out.count {return false;}
   for i:0..<out.count {bits:=sr_integer(d,jv_at(d,node,i));if !sr_number(bits) {return false;}out[i]=f32_from_bits(cast(u32)bits);}return true;
 }
 // book:begin samples
-sr_samples :: (text:string,out:[]SrSample)->SrRead #export_c {
+sr_samples :: (text:string,out:[]SrSample)->SrRead #export_c #effects(all) {
   if text.count>8192 {return SrRead.{status=SrStatus.capacity};}
   d:[1]Jv;nodes:[768]JvNode;
   if !jv_parse(d[..],text,nodes[..]) || jv_kind(d[0],0)!=JV_OBJECT {return SrRead.{status=SrStatus.shape};}

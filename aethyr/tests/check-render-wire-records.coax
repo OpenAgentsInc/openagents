@@ -17,7 +17,7 @@ wire_input :: (d: Jv, suffix: string) -> string {
   }
   return ifx count==1 then found else "";
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=3 {return 2;}
   old_bytes:[65536]u8;new_bytes:[65536]u8;
   old_n:=fs_read(args_at(args[..],0),old_bytes[..]);new_n:=fs_read(args_at(args[..],1),new_bytes[..]);

@@ -35,7 +35,7 @@ DKD_WIDTH :: 128;    // key and value width per head
 // state[(h*128 + r)*128 + c] for key row r and value column c, and receives
 // the carried state.
 dkd_chunk :: (item:int,tokens:int,chunk:int,heads:int,key_heads:int,channels:int,conv:[]f32,q:[]f32,k:[]f32,
-    beta:[]f32,decay:[]f32,out:[]f32,state:[]f32) #export_c {
+    beta:[]f32,decay:[]f32,out:[]f32,state:[]f32) #export_c #effects(all) {
     // Registers: st, each thread's 16 state rows, and uu, its column's
     // corrections for the chunk. Shared: the chunk's keys; per-slice partial
     // sums pu (predictions) and py (reads); D (k . k) and D (q . k); G,

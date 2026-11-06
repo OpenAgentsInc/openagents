@@ -16,7 +16,7 @@ hvb_flags :: (text:string,argv:[]string,at:int)->int {
   n:=at;i:=0;while i<text.count {while i<text.count && (text[i]==' ' || text[i]=='\n' || text[i]==9) {i+=1;}start:=i;while i<text.count && text[i]!=' ' && text[i]!='\n' && text[i]!=9 {i+=1;}if i>start {if n>=argv.count {return -1;}argv[n]=text[start..<i];n+=1;}}
   return n;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])<2 || args_count(a[..])>5 {tool_errln("usage: build-vulkan OUT COAX [--sanitize] [--native-address] [--transport|--lifecycle|--present]");return 2;}
   for i:2..<args_count(a[..]) {if args_at(a[..],i)!="--sanitize" && args_at(a[..],i)!="--native-address" && args_at(a[..],i)!="--transport" && args_at(a[..],i)!="--lifecycle" && args_at(a[..],i)!="--present" {return 2;}}
   sanitize:=args_has(a[..],"--sanitize");transport:=args_has(a[..],"--transport");lifecycle:=args_has(a[..],"--lifecycle");present:=args_has(a[..],"--present");if (transport&&lifecycle)||(present&&(transport||lifecycle)) {return 2;}

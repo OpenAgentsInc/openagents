@@ -293,7 +293,7 @@ lo_serve :: (f: [] Lo, h: int, app: string, runner: bool) {
   ok := lo_reply(h, 200, lo_type(file), cast(string) f[0].file[0..<n]);
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   loaded := args_load(a[..]);
   port := args_whole(args_value(a[..], "--listen", ""));

@@ -30,7 +30,7 @@ ST_BIG :: 1.0e300;
 
 // Checks precede the implementation. Pinned values come from
 // psionic/tests/settings_oracle.py --tests; the rest are worked by hand.
-st_tiny :: ()->[6]StRow {
+st_tiny :: ()->[6]StRow #effects(all) {
     return [6]StRow.[StRow.{group=0,p=0.6,quiet=10,stalled=true},StRow.{group=0,p=0.3,repeats=4,quiet=20,stalled=true},
         StRow.{group=1,p=0.2,quiet=500,stalled=true},StRow.{group=1,p=0.45,quiet=30},
         StRow.{group=2,p=0.1,repeats=2,quiet=40},StRow.{group=2,p=0.55,repeats=8,quiet=600}];
@@ -38,10 +38,10 @@ st_tiny :: ()->[6]StRow {
 // The hand-written settings and the written costs of chapter 243.
 ST_START :: StSettings.{weight=0,threshold=0.5,quiet=700};
 ST_COSTS :: StCosts.{miss=4,alarm=1};
-st_score_is :: (s:StScore,rows:int,stalls:int,flagged:int,caught:int,missed:int,alarms:int,cost:f64)->bool {
+st_score_is :: (s:StScore,rows:int,stalls:int,flagged:int,caught:int,missed:int,alarms:int,cost:f64)->bool #effects(all) {
     return s.rows==rows && s.stalls==stalls && s.flagged==flagged && s.caught==caught && s.missed==missed && s.alarms==alarms && s.cost==cost;
 }
-st_step_is :: (s:StStep,pass:int,which:int,outcome:StOutcome,to:f64,before:f64,after:f64,held:f64)->bool {
+st_step_is :: (s:StStep,pass:int,which:int,outcome:StOutcome,to:f64,before:f64,after:f64,held:f64)->bool #effects(all) {
     return s.pass==pass && s.which==which && s.outcome==outcome && s.to==to && s.before==before && s.after==after && s.held==held;
 }
 
@@ -232,7 +232,7 @@ st_step_is :: (s:StStep,pass:int,which:int,outcome:StOutcome,to:f64,before:f64,a
 // many times the agent repeated its last call, and how many seconds passed
 // without output. The probability is honest but timid: a stalled step reads
 // 0.2 to 0.7, a working one 0 to 0.55.
-st_simulate :: (seed:u64,runs:int,out:[]StRow)->StStatus #export_c {
+st_simulate :: (seed:u64,runs:int,out:[]StRow)->StStatus #export_c #effects(all) {
     if runs<1 || runs>ST_ROWS_MAX/ST_STEPS {return StStatus.shape;}
     if out.count<runs*ST_STEPS {return StStatus.capacity;}
     for g:0..<runs {
@@ -258,10 +258,10 @@ st_simulate :: (seed:u64,runs:int,out:[]StRow)->StStatus #export_c {
 // The detector: flag a step when the probability, raised by the weight for
 // each repeated call, reaches the threshold, or when it has been quiet for at
 // least the cut point in seconds.
-st_score_of :: (s:StSettings,row:StRow)->f64 {return row.p+s.weight*f64(row.repeats)/ST_REPEATS;}
-st_flag :: (s:StSettings,row:StRow)->bool {return st_score_of(s,row)>=s.threshold || row.quiet>=s.quiet;}
+st_score_of :: (s:StSettings,row:StRow)->f64 #effects(all) {return row.p+s.weight*f64(row.repeats)/ST_REPEATS;}
+st_flag :: (s:StSettings,row:StRow)->bool #effects(all) {return st_score_of(s,row)>=s.threshold || row.quiet>=s.quiet;}
 // Written costs: a missed stall and a false alarm, counted then priced.
-st_score :: (rows:[]StRow,s:StSettings,costs:StCosts)->StScore #export_c {
+st_score :: (rows:[]StRow,s:StSettings,costs:StCosts)->StScore #export_c #effects(all) {
     r:=StScore.{rows=rows.count};
     for row:rows {
         f:=st_flag(s,row);
@@ -276,17 +276,17 @@ st_score :: (rows:[]StRow,s:StSettings,costs:StCosts)->StScore #export_c {
 }
 // book:end rule
 
-st_with :: (s:StSettings,which:int,x:f64)->StSettings {
+st_with :: (s:StSettings,which:int,x:f64)->StSettings #effects(all) {
     r:=s;
     if which==0 {r.weight=x;}
     if which==1 {r.threshold=x;}
     if which==2 {r.quiet=x;}
     return r;
 }
-st_get :: (s:StSettings,which:int)->f64 {return ifx which==0 then s.weight else ifx which==1 then s.threshold else s.quiet;}
+st_get :: (s:StSettings,which:int)->f64 #effects(all) {return ifx which==0 then s.weight else ifx which==1 then s.threshold else s.quiet;}
 // Sorted distinct values, in place: each value is inserted into the sorted
 // prefix unless it is already there. Returns how many.
-st_distinct :: (v:[]f64,n:int)->int {
+st_distinct :: (v:[]f64,n:int)->int #effects(all) {
     m:=0;
     for i:0..<n {
         x:=v[i];j:=m;
@@ -305,7 +305,7 @@ st_distinct :: (v:[]f64,n:int)->int {
 // weight where a step that is below the threshold and repeated reaches it.
 // Between two such points every decision is the same, so the candidates are
 // the midpoints, plus one value past each end.
-st_candidates :: (rows:[]StRow,s:StSettings,which:int,out:[]f64)->int {
+st_candidates :: (rows:[]StRow,s:StSettings,which:int,out:[]f64)->int #effects(all) {
     points:[ST_ROWS_MAX]f64;n:=0;
     for row:rows {
         if which==0 {
@@ -325,7 +325,7 @@ st_candidates :: (rows:[]StRow,s:StSettings,which:int,out:[]f64)->int {
 // book:begin best
 // The candidate with the lowest written cost, the first on ties; it replaces
 // the current value only when strictly cheaper.
-st_best :: (rows:[]StRow,s:StSettings,which:int,costs:StCosts)->StBest {
+st_best :: (rows:[]StRow,s:StSettings,which:int,costs:StCosts)->StBest #effects(all) {
     out:[ST_ROWS_MAX+2]f64;k:=st_candidates(rows,s,which,out[..]);
     r:=StBest.{value=st_get(s,which),current=st_score(rows,s,costs).cost};r.cost=r.current;
     for x:out[0..<k] {
@@ -336,7 +336,7 @@ st_best :: (rows:[]StRow,s:StSettings,which:int,costs:StCosts)->StBest {
 }
 // book:end best
 
-st_rows_ok :: (rows:[]StRow)->StStatus {
+st_rows_ok :: (rows:[]StRow)->StStatus #effects(all) {
     if rows.count>ST_ROWS_MAX {return StStatus.shape;}
     for row:rows {
         if row.group<0 || row.repeats<0 || row.repeats>ST_REPEATS_MAX {return StStatus.shape;}
@@ -344,7 +344,7 @@ st_rows_ok :: (rows:[]StRow)->StStatus {
     }
     return StStatus.ok;
 }
-st_settings_ok :: (s:StSettings)->bool {
+st_settings_ok :: (s:StSettings)->bool #effects(all) {
     return s.weight>=0 && s.weight<=ST_WEIGHT_MAX && s.threshold>=-ST_BIG && s.threshold<=ST_BIG && s.quiet>=-ST_BIG && s.quiet<=ST_BIG;
 }
 
@@ -354,7 +354,7 @@ st_settings_ok :: (s:StSettings)->bool {
 // strictly cheaper on the recorded answers and, with cross-validation, when
 // refitting that one setting without each fold of runs and pricing it on the
 // fold is strictly cheaper, in total, than leaving it alone.
-st_fit :: (rows:[]StRow,start:StSettings,costs:StCosts,folds:int,cv:bool,passes:int,trail:[]StStep)->StFit #export_c {
+st_fit :: (rows:[]StRow,start:StSettings,costs:StCosts,folds:int,cv:bool,passes:int,trail:[]StStep)->StFit #export_c #effects(all) {
     status:=st_rows_ok(rows);if status!=StStatus.ok {return StFit.{status=status};}
     if !st_settings_ok(start) || !(costs.miss>=0 && costs.miss<=ST_BIG) || !(costs.alarm>=0 && costs.alarm<=ST_BIG) {return StFit.{status=StStatus.number};}
     if folds<2 || folds>ST_FOLDS_MAX || passes<1 || passes>ST_PASSES_MAX {return StFit.{status=StStatus.shape};}

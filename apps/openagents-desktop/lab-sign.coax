@@ -4,6 +4,6 @@
 #load "../../coax/lib/gateway/ours_sign.coax";
 
 // The signed event's base64 into out: its length, or -1 (gw_nip98).
-coaxial_lab_nip98 :: (key: [] u8, aux: [] u8, now_s: int, tags: string, out: [] u8) -> int #export_c {
+coaxial_lab_nip98 :: (key: [] u8, aux: [] u8, now_s: int, tags: string, out: [] u8) -> int #export_c #effects(all) {
   return gw_nip98(key, aux, now_s, tags, out);
 }

@@ -15,5 +15,5 @@
   #assert crypto_zeroed(w[0].ck[..]);
 }
 
-kc_zero :: (b:[]u8) {secure_zero(b);}
-kc_clear :: (w:[]KcWork) {kc_zero(w[0].pre[..]);kc_zero(w[0].body[..]);kc_zero(w[0].cipher[..]);kc_zero(w[0].scratch[..]);kc_zero(w[0].ck[..]);}
+kc_zero :: (b:[]u8) #effects(all) {secure_zero(b);}
+kc_clear :: (w:[]KcWork) #effects(all) {kc_zero(w[0].pre[..]);kc_zero(w[0].body[..]);kc_zero(w[0].cipher[..]);kc_zero(w[0].scratch[..]);kc_zero(w[0].ck[..]);}

@@ -18,7 +18,7 @@ pf_missing_stopped :: (path:string)->bool {
   bytes:[1048576]u8;nodes:[16384]JvNode;d:[1]Jv;if !rtq_json_file(path,bytes[..],nodes[..],d[..]) {return false;}
   for i:0..<d[0].count {if jv_kind(d[0],i)==JV_OBJECT && jv_kind(d[0],rtq_member(d[0],i,"defined"))==JV_FALSE && jv_kind(d[0],rtq_member(d[0],i,"value"))==JV_NULL {return true;}}return false;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}work:=args_value(a[..],"--work-dir","");receipt:=args_value(a[..],"--receipt","");observer:=args_value(a[..],"--observer","");observer_expected:=args_value(a[..],"--observer-sha256","");bun:=args_value(a[..],"--bun","");parity:=args_value(a[..],"--parity","");compiler:=args_value(a[..],"--coax","");
   reference:=args_value(a[..],"--reference-source","aethyr/tests/capture-render-frame.ts");
   clang:=args_value(a[..],"--clang","/opt/homebrew/opt/llvm/bin/clang");sysroot:=args_value(a[..],"--sysroot","/opt/homebrew/opt/wasi-libc/share/wasi-sysroot");resources:=args_value(a[..],"--resources","/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes");

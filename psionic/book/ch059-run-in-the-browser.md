@@ -68,7 +68,7 @@ from those values alone:
 // embeddings were made by that same encoder; the index's recorded corpus
 // digest is the digest of the files it lists; and that corpus is the books
 // the manifest says are current.
-bb_admit :: (m: BbManifest, s: BbSeen) -> BbVerdict {
+bb_admit :: (m: BbManifest, s: BbSeen) -> BbVerdict #effects(all) {
   if !m.ok { return BbVerdict.malformed; }
   if m.profile != BB_PROFILE { return BbVerdict.wrong_profile; }
   if s.encoder_bytes != m.encoder_bytes || !bb_same(s.encoder, m.encoder) { return BbVerdict.encoder_changed; }

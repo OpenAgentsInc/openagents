@@ -10,7 +10,7 @@
 #include <time.h>
 #include "Rules.h"
 
-static coax_t_Store store;
+static coax_t_DgStore store;
 static coax_v_t_Store view(void) { return (coax_v_t_Store){&store, 1}; }
 
 static double now_ms(void) {

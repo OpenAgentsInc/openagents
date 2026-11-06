@@ -134,37 +134,37 @@
 #assert RR_NEG_IN * 2 == JSON_MAX_STRING && RR_NEG_FRAME * 2 <= JSON_MAX_STRING;
 #assert RY_SENT <= 2032;
 
-cxsrv_listen :: (port: int) -> int #foreign;
-cxsrv_bound_port :: () -> int #foreign;
-cxsrv_poll :: (timeout_ms: int) -> int #foreign;
-cxsrv_accept :: () -> int #foreign;
-cxsrv_read :: (h: int) -> int #foreign;
-cxsrv_byte :: (h: int, i: int) -> int #foreign;
-cxsrv_write :: (h: int, byte: int) -> int #foreign;
-cxsrv_flush :: (h: int, timeout_ms: int) -> int #foreign;
-cxsrv_close :: (h: int) -> int #foreign;
-cxsrv_now_s :: () -> int #foreign;
-ry_host_port :: () -> int #foreign;
-ry_host_url_count :: () -> int #foreign;
-ry_host_url_byte :: (i: int) -> int #foreign;
-ry_host_address_count :: () -> int #foreign;
-ry_host_address_byte :: (i: int) -> int #foreign;
-ry_host_random :: () -> int #foreign;
-ry_host_store :: () -> int #foreign;
-ry_host_tls :: () -> int #foreign;
-ry_host_rate :: (i: int) -> int #foreign;
-ry_host_pow :: () -> int #foreign;
-ry_host_admin_count :: () -> int #foreign;
-ry_host_groups :: () -> int #foreign;
-ry_host_admin_len :: (k: int) -> int #foreign;
-ry_host_admin_byte :: (k: int, i: int) -> int #foreign;
+cxsrv_listen :: (port: int) -> int #foreign #effects(all);
+cxsrv_bound_port :: () -> int #foreign #effects(all);
+cxsrv_poll :: (timeout_ms: int) -> int #foreign #effects(all);
+cxsrv_accept :: () -> int #foreign #effects(all);
+cxsrv_read :: (h: int) -> int #foreign #effects(all);
+cxsrv_byte :: (h: int, i: int) -> int #foreign #effects(all);
+cxsrv_write :: (h: int, byte: int) -> int #foreign #effects(all);
+cxsrv_flush :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
+cxsrv_close :: (h: int) -> int #foreign #effects(all);
+cxsrv_now_s :: () -> int #foreign #effects(all);
+ry_host_port :: () -> int #foreign #effects(all);
+ry_host_url_count :: () -> int #foreign #effects(all);
+ry_host_url_byte :: (i: int) -> int #foreign #effects(all);
+ry_host_address_count :: () -> int #foreign #effects(all);
+ry_host_address_byte :: (i: int) -> int #foreign #effects(all);
+ry_host_random :: () -> int #foreign #effects(all);
+ry_host_store :: () -> int #foreign #effects(all);
+ry_host_tls :: () -> int #foreign #effects(all);
+ry_host_rate :: (i: int) -> int #foreign #effects(all);
+ry_host_pow :: () -> int #foreign #effects(all);
+ry_host_admin_count :: () -> int #foreign #effects(all);
+ry_host_groups :: () -> int #foreign #effects(all);
+ry_host_admin_len :: (k: int) -> int #foreign #effects(all);
+ry_host_admin_byte :: (k: int, i: int) -> int #foreign #effects(all);
 // FILE.nip86, the policy journal (relay-host.c; store-file-native.c's effects
 // for a second file, created at the first change).
-ry_journal_load :: () -> int #foreign;
-ry_journal_byte :: (i: int) -> int #foreign;
-ry_journal_put :: (b: int) -> int #foreign;
-ry_journal_commit :: () -> int #foreign;
-ry_journal_truncate :: (n: int) -> int #foreign;
+ry_journal_load :: () -> int #foreign #effects(all);
+ry_journal_byte :: (i: int) -> int #foreign #effects(all);
+ry_journal_put :: (b: int) -> int #foreign #effects(all);
+ry_journal_commit :: () -> int #foreign #effects(all);
+ry_journal_truncate :: (n: int) -> int #foreign #effects(all);
 
 // RY_IN holds one partial frame (at most RS_MAX_MESSAGE + 14 bytes) plus one
 // transport read (socket-server-native.h's CXSRV_MAX_IN, 65536), so a client
@@ -705,17 +705,17 @@ ry_rate :: () -> RtConfig {
 #assert RR_CAP_DEFAULT == RSD_MAX && RR_CAP_DEFAULT * RR_ARENA_PER == RSD_ARENA && RR_CAP_MIN * RR_ARENA_PER >= NS_FRAME_MAX_ORIGINAL;
 // The store's records for --store-capacity's value (-1 when absent), or -1
 // after saying why it is refused.
-ry_store_events :: (flag: int) -> int #export_c {
+ry_store_events :: (flag: int) -> int #export_c #effects(all) {
   n := rr_capacity(flag);
   if n < 0 { print("relay: --store-capacity takes % to % events\n", RR_CAP_MIN, RR_CAP_MAX); }
   return n;
 }
 // The store's arena bytes, and its tag-index entries, for events records.
-ry_store_arena :: (events: int) -> int #export_c { return rr_arena(events); }
-ry_store_tags :: (events: int) -> int #export_c { return events * RS_MAX_TAGS; }
+ry_store_arena :: (events: int) -> int #export_c #effects(all) { return rr_arena(events); }
+ry_store_tags :: (events: int) -> int #export_c #effects(all) { return events * RS_MAX_TAGS; }
 // The slots of each admission lookup (store_core.coax's ids and addrs) for
 // events records: twice as many plus one, so at most half are ever in use.
-ry_store_slots :: (events: int) -> int #export_c { return 2 * events + 1; }
+ry_store_slots :: (events: int) -> int #export_c #effects(all) { return 2 * events + 1; }
 main :: () { print("relay: start the relay with the host that coax/relay/build.sh builds\n"); }
 // The relay, over the store's arrays, which the host allocated zeroed at
 // ry_store_events records (count_out and count_seen: one COUNT's slots).
@@ -723,7 +723,7 @@ main :: () { print("relay: start the relay with the host that coax/relay/build.s
 // ids and addrs: the store's admission lookups (ry_store_slots each);
 // tombs and tomb_slots: the tombstones (ry_store_tombs) and their lookup.
 ry_main :: (arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time: [] int, tag_key: [] int, tag_rec: [] int, count_out: [] int, count_seen: [] u8, items: [] NegItem,
-  ids: [] int, addrs: [] int, tombs: [] NsdTomb, tomb_slots: [] int) #export_c {
+  ids: [] int, addrs: [] int, tombs: [] NsdTomb, tomb_slots: [] int) #export_c #effects(all) {
   mode := ry_host_mode();
   // --import, --check-store and --export don't listen; their clock is --now
   // (the wall clock without it, for --check-store and --export), and the

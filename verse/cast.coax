@@ -227,7 +227,7 @@ robots_ok :: (bones: int, frames: int, robot_clips: int) -> bool {
 between :: (a: f32, most: f32) -> bool { return a > 0 && a <= most; }
 
 // Admits Cast.bin. A Cast that is not ok draws nothing.
-verse_cast_open :: (b: [] u8) -> Cast #export_c {
+verse_cast_open :: (b: [] u8) -> Cast #export_c #effects(all) {
   c: Cast;
   bad := c;
   if b.count < 16 + BUFFERS * 32 || int_at(b, 0) != MAGIC || int_at(b, 4) != 1 || int_at(b, 8) != BUFFERS { return bad; }
@@ -295,9 +295,9 @@ verse_cast_open :: (b: [] u8) -> Cast #export_c {
 }
 
 // Robots on the Grid: one per patrol, and the Foreman.
-verse_cast_robots :: (c: Cast) -> int #export_c { return ifx c.ok then c.patrols.count + 1 else 0; }
+verse_cast_robots :: (c: Cast) -> int #export_c #effects(all) { return ifx c.ok then c.patrols.count + 1 else 0; }
 // The palette's joints: yours, then each robot's.
-verse_cast_palette :: (c: Cast) -> int #export_c { return ifx c.ok then c.joints + verse_cast_robots(c) * c.bones else 0; }
+verse_cast_palette :: (c: Cast) -> int #export_c #effects(all) { return ifx c.ok then c.joints + verse_cast_robots(c) * c.bones else 0; }
 
 // ---- Your clips ----
 
@@ -333,7 +333,7 @@ ground :: (act: int) -> Move {
 // time in seconds, as aethyr's AnimationSystem: a jump starts, loops in the
 // air and lands; walking off a ledge only loops; landing while you move
 // goes straight back to the walk.
-verse_cast_update :: (b: [] u8, c: Cast, a: Anim, act: int, rising: bool, now: f64) -> Anim #export_c {
+verse_cast_update :: (b: [] u8, c: Cast, a: Anim, act: int, rising: bool, now: f64) -> Anim #export_c #effects(all) {
   if !c.ok || b.count != c.size { return a; }
   out := a;
   moving := act == 1 || act == 2;
@@ -357,7 +357,7 @@ verse_cast_update :: (b: [] u8, c: Cast, a: Anim, act: int, rising: bool, now: f
 }
 
 // Asks for the dance, or stops it if you are dancing.
-verse_cast_dance :: (a: Anim) -> Anim #export_c {
+verse_cast_dance :: (a: Anim) -> Anim #export_c #effects(all) {
   out := a;
   out.dance = !a.dance;
   return out;
@@ -451,7 +451,7 @@ fading :: (a: Anim, now: f64) -> f32 {
 }
 
 // Your pose at `now`, placed at the feet facing `face`, into out[0..joints).
-verse_cast_pose :: (b: [] u8, c: Cast, a: Anim, now: f64, x: f32, y: f32, z: f32, face: f32, out: [] Joint) -> bool #export_c {
+verse_cast_pose :: (b: [] u8, c: Cast, a: Anim, now: f64, x: f32, y: f32, z: f32, face: f32, out: [] Joint) -> bool #export_c #effects(all) {
   if !c.ok || b.count != c.size || out.count < c.joints { return false; }
   if !finite(x) || !finite(y) || !finite(z) || !finite(face) { return false; }
   w := fading(a, now);
@@ -531,7 +531,7 @@ patrol :: (b: [] u8, c: Cast, r: int, seconds: f64) -> Sample {
 }
 
 // Every robot at `now` seconds into the Grid, into out after your joints.
-verse_cast_robots_pose :: (b: [] u8, c: Cast, now: f64, out: [] Joint) -> bool #export_c {
+verse_cast_robots_pose :: (b: [] u8, c: Cast, now: f64, out: [] Joint) -> bool #export_c #effects(all) {
   if !c.ok || b.count != c.size || out.count < verse_cast_palette(c) { return false; }
   if !(now >= 0) || !(now < 100000000) { return false; }
   for r: 0..<c.patrols.count {
@@ -555,7 +555,7 @@ moved :: (j: Joint, p: Vec3) -> Vec3 {
 // `palette`: BODY numbers each (one end, the other, the radius), robot by
 // robot, into out. Returns how many capsules, or 0 if out or the palette is
 // short.
-verse_cast_bodies :: (b: [] u8, c: Cast, palette: [] Joint, out: [] f32) -> int #export_c {
+verse_cast_bodies :: (b: [] u8, c: Cast, palette: [] Joint, out: [] f32) -> int #export_c #effects(all) {
   if !c.ok || b.count != c.size || palette.count < verse_cast_palette(c) { return 0; }
   n := verse_cast_robots(c) * c.robot_bodies.count;
   if out.count < n * BODY { return 0; }

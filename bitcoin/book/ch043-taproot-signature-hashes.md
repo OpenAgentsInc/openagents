@@ -163,7 +163,7 @@ BT_ANNEX_TAG :: 0x50;        // an annex's first byte
 
 // sha_annex: SHA-256 of the annex with its CompactSize length, fed in
 // pieces so that an annex of any length hashes.
-bt_annex_hash :: (annex:[]u8,out:[]u8) {
+bt_annex_hash :: (annex:[]u8,out:[]u8) #effects(all) {
   st:[SHA_STATE_BYTES]u8;c:[9]u8;
   #assert sha256_init(st[..])==SHA_OK && sha256_update_checked(st[..],c[0..<bt_var_put(c[..],0,annex.count)],false)==SHA_OK;
   at:=0;
@@ -184,7 +184,7 @@ bt_annex_hash :: (annex:[]u8,out:[]u8) {
 // position of the last OP_CODESEPARATOR run (BT_NO_CODESEP for none). Hash
 // types 0 (SIGHASH_DEFAULT), 1, 2, 3 and 0x81 to 0x83; SIGHASH_SINGLE
 // needs an output at index.
-bt_sigmsg_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,m:[]u8)->int {t:=tp;
+bt_sigmsg_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,m:[]u8)->int #effects(all) {t:=tp;
   if !t.ok || index<0 || index>=t.nin || amounts.count!=t.nin || spk.count!=t.nin || m.count<BT_SIGMSG {return -1;}
   // A hash type that doesn't exist refuses before any hashing.
   if !((hashtype>=0 && hashtype<=3) || (hashtype>=0x81 && hashtype<=0x83)) || ((hashtype&3)==BT_SINGLE && index>=t.nout) {return -1;}
@@ -200,7 +200,7 @@ bt_sigmsg_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hash
 // sha_outputs; version, locktime, prev (the outpoint) and seq are the
 // transaction's bytes; amount and spk are the spent output's; single is the
 // output at index, serialized, or empty when there is none.
-bt_sigmsg_taproot_parts :: (h:[][32]u8,version:[]u8,locktime:[]u8,index:int,prev:[]u8,amount:int,spk:[]u8,seq:[]u8,single:[]u8,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,m:[]u8)->int {
+bt_sigmsg_taproot_parts :: (h:[][32]u8,version:[]u8,locktime:[]u8,index:int,prev:[]u8,amount:int,spk:[]u8,seq:[]u8,single:[]u8,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,m:[]u8)->int #effects(all) {
   base:=hashtype&3;anyone:=(hashtype&BT_ANYONE)!=0;
   if !((hashtype>=0 && hashtype<=3) || (hashtype>=0x81 && hashtype<=0x83)) {return -1;}
   if m.count<BT_SIGMSG || amount<0 || (base==BT_SINGLE && single.count==0) {return -1;}
@@ -224,7 +224,7 @@ bt_sigmsg_taproot_parts :: (h:[][32]u8,version:[]u8,locktime:[]u8,index:int,prev
 }
 // The signature hash hash_TapSighash(0x00 || SigMsg), into out (32
 // bytes); false when the message refuses.
-bt_sighash_taproot_ext :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,out:[]u8)->bool {
+bt_sighash_taproot_ext :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,out:[]u8)->bool #effects(all) {
   if out.count!=32 {return false;}
   m:[BT_SIGMSG]u8;n:=bt_sigmsg_taproot(b,tp,index,amounts,spk,hashtype,annex,leaf,codesep,m[..]);
   if n<0 {return false;}
@@ -232,7 +232,7 @@ bt_sighash_taproot_ext :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript
   return true;
 }
 // The key-path signature hash with no annex.
-bt_sighash_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,out:[]u8)->bool {
+bt_sighash_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,out:[]u8)->bool #effects(all) {
   return bt_sighash_taproot_ext(b,tp,index,amounts,spk,hashtype,b[0..<0],b[0..<0],BT_NO_CODESEP,out);
 }
 ```

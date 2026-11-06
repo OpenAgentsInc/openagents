@@ -105,7 +105,7 @@ and whether its layer is one of the outer eight:
 //   the drafter's routed experts:         as released (FP4)
 //   norms, biases, mixing, sinks, BF16 compressor and indexer: as released
 // An FP8 or FP4 tensor's UE8M0 scales are folded into its new blocks.
-mr_format :: (name:string,dtype:int,outer:bool)->MrFormat {
+mr_format :: (name:string,dtype:int,outer:bool)->MrFormat #effects(all) {
     experts:=dv_has(name,".ffn.experts.");
     if experts && dv_starts(name,"mtp.") {return MrFormat.released;}
     if dtype==DV_E8M0 {return MrFormat.dropped;}
@@ -163,7 +163,7 @@ width doubles for those:
 ```jai
 // One tensor's bytes in format f, or -1 when a row's width is not a whole
 // number of the format's blocks.
-mr_size :: (f:MrFormat,r:DvRow,bytes:int)->int {
+mr_size :: (f:MrFormat,r:DvRow,bytes:int)->int #effects(all) {
     i:=cast(int)f;
     if f==MrFormat.released {return bytes;}
     if mr_width(r)%MR_SPAN[i]!=0 {return -1;}
@@ -183,7 +183,7 @@ tower is the same code that split the original checkpoint:
 // model is the file without the Engram tables, the drafter and the vision
 // tower, files adds the Engram tables.
 MrBytes :: struct {status:MrStatus;bad:int=-1;split:DvBytes;inner:int;outer:int;values:int;model:int;files:int;}
-mr_requant :: (rows:[]DvRow,out:[]DvRow)->MrBytes #export_c {
+mr_requant :: (rows:[]DvRow,out:[]DvRow)->MrBytes #export_c #effects(all) {
     b:MrBytes;
     if out.count<rows.count {b.status=MrStatus.capacity;return b;}
     for i:0..<rows.count {
@@ -230,7 +230,7 @@ positions where that layer's output is still needed:
 // is needed on the last (layers after it) * (window - 1) + 1 positions:
 // the last token, and window - 1 more for each layer it passes through.
 MrSkip :: struct {last:int;after:int;tokens:int;}
-mr_skip :: (rows:[]DvRow,c:DvConfig)->MrSkip #export_c {
+mr_skip :: (rows:[]DvRow,c:DvConfig)->MrSkip #export_c #effects(all) {
     s:=MrSkip.{last=-1};
     for r:rows {
         if dv_starts(r.name,"layers.") && (dv_has(r.name,".attn.compressor.") || dv_has(r.name,".indexer.wk.")) {
@@ -275,7 +275,7 @@ disk.
 // again; the rest of each layer's 384 are read from disk. The files must fit
 // on the free disk.
 MrPlace :: struct {status:DvVerdict;gpu:RpPlan;vectors:int;stride:int;vram:int;ram:int;disk:int;}
-mr_place :: (b:MrBytes,h:DvHost,context:int)->MrPlace #export_c {
+mr_place :: (b:MrBytes,h:DvHost,context:int)->MrPlace #export_c #effects(all) {
     s:=b.split;
     if b.status!=MrStatus.ok || b.inner<1 || b.outer<1 || s.shared<1 || s.dense<1 || s.embed<1 || s.engram<1 {return MrPlace.{status=DvVerdict.bytes};}
     if h.gpu<1 || h.ram<1 || h.reserve<0 || h.disk_free<0 || h.gpu_bw<1000000 || h.link_bw<1000000 || h.disk_bw<1000000 {return MrPlace.{status=DvVerdict.bytes};}
@@ -315,7 +315,7 @@ of 32,768 tokens, which this plan's one-token step does not.
 // 6000 (96 GB, 1,792 GB/s), 176 GiB of RAM with 8 GiB kept for the system,
 // a 900 GB disk. Link and disk rates are Maya's own start-up timings there:
 // one 10,598,400-byte expert in 0.34 ms over PCIe and 5.3 ms from disk.
-mr_reference_host :: ()->DvHost #export_c {
+mr_reference_host :: ()->DvHost #export_c #effects(all) {
     return DvHost.{gpu=96000000000,ram=188978561024,reserve=8589934592,disk_free=900000000000,gpu_bw=1792000000000,link_bw=31171764705,disk_bw=1999698113};
 }
 ```
@@ -333,8 +333,8 @@ or from disk, and each tier's bytes take their time at the host's rate:
 // take their time at the host's rate, rounded up to a microsecond.
 MrReads :: struct {tokens:int;gpu:[2]int;link:[2]int;disk:[2]int;}
 MrRate :: struct {status:DvVerdict;bytes_gpu:int;bytes_link:int;bytes_disk:int;micros:int;milli_tokens:int;}
-mr_us :: (bytes:int,rate:int)->int {per:=rate/1000000;return (bytes+per-1)/per;}
-mr_rate :: (b:MrBytes,h:DvHost,t:MrReads)->MrRate #export_c {
+mr_us :: (bytes:int,rate:int)->int #effects(all) {per:=rate/1000000;return (bytes+per-1)/per;}
+mr_rate :: (b:MrBytes,h:DvHost,t:MrReads)->MrRate #export_c #effects(all) {
     s:=b.split;
     if t.tokens<1 || b.inner<1 || b.outer<1 || h.gpu_bw<1000000 || h.link_bw<1000000 || h.disk_bw<1000000 {return MrRate.{status=DvVerdict.bytes};}
     for i:0..<2 {if t.gpu[i]<0 || t.link[i]<0 || t.disk[i]<0 {return MrRate.{status=DvVerdict.bytes};}}

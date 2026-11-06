@@ -35,35 +35,35 @@
   #assert f32_bits(gak_logarithm())==0x41135d8e;
   d:[256]f32;df:[256]u8;for step:1..<4 {for i:[4]int.[0,1,127,255] {gak_time(i,1,step,d[..],df[..]);exponent:=f32(-f64(gak_logarithm())*f64(i%128));exponent=f32(f64(exponent)/127);phase:=f32(f64(f32(exp(f64(exponent))))*f64(250*step));expected:=ifx i<128 then f32(cos(f64(phase))) else f32(sin(f64(phase)));#assert abs(d[i]-expected)<2e-5f32 && df[i]==0;}}
 }
-gak_concat_bounds :: (i:int,a:int,t:int,o:int,f:int)->bool {return i>=0 && i<122880 && a==61440 && t==1536 && o>=122880 && f>=122880;}
-gak_hidden_bounds :: (i:int,s:int,a:int,p:int,o:int,f:int)->bool {return i>=0 && i<62976 && s==1536 && a==61440 && p==61440 && o>=62976 && f>=62976;}
-gak_euler_bounds :: (i:int,a:int,v:int,o:int,f:int)->bool {return i>=0 && i<5280 && a==5280 && v==5280 && o>=5280 && f>=5280;}
-gak_logarithm :: ()->f32 {return f32_from_bits(0x41135d8e);}
+gak_concat_bounds :: (i:int,a:int,t:int,o:int,f:int)->bool #effects(all) {return i>=0 && i<122880 && a==61440 && t==1536 && o>=122880 && f>=122880;}
+gak_hidden_bounds :: (i:int,s:int,a:int,p:int,o:int,f:int)->bool #effects(all) {return i>=0 && i<62976 && s==1536 && a==61440 && p==61440 && o>=62976 && f>=62976;}
+gak_euler_bounds :: (i:int,a:int,v:int,o:int,f:int)->bool #effects(all) {return i>=0 && i<5280 && a==5280 && v==5280 && o>=5280 && f>=5280;}
+gak_logarithm :: ()->f32 #effects(all) {return f32_from_bits(0x41135d8e);}
 
-gak_element_bounds :: (item:int,width:int,kind:int,n:int,bias:int,residual:int,out:int,flags:int)->bool {if item<0 || item>=n || width<1 || width>8192 || n%width!=0 || kind<0 || kind>2 || bias!=width || out<n || flags<n {return false;}return residual==(ifx kind==1 then n else 0);}
-gak_element :: (item:int,width:int,kind:int,x:[]f32,bias:[]f32,residual:[]f32,out:[]f32,flags:[]u8) #export_c {
+gak_element_bounds :: (item:int,width:int,kind:int,n:int,bias:int,residual:int,out:int,flags:int)->bool #effects(all) {if item<0 || item>=n || width<1 || width>8192 || n%width!=0 || kind<0 || kind>2 || bias!=width || out<n || flags<n {return false;}return residual==(ifx kind==1 then n else 0);}
+gak_element :: (item:int,width:int,kind:int,x:[]f32,bias:[]f32,residual:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
   if !gak_element_bounds(item,width,kind,x.count,bias.count,residual.count,out.count,flags.count) {return;}
   a:=x[item];b:=bias[item%width];value:=a+b;checked:=gdk_count(gdk_count(0,f32_bits(a)),f32_bits(b));wanted:=3;
   if kind==1 {value+=residual[item];checked=gdk_count(checked,f32_bits(residual[item]));wanted+=1;}
   if kind==2 && value<0 {value=0;}out[item]=value;checked=gdk_count(checked,f32_bits(value));flags[item]=gdk_receipt(checked,wanted);
 }
-gak_time_bounds :: (item:int,kind:int,step:int,out:int,flags:int)->bool {if kind<0 || kind>1 || step<0 || step>3 {return false;}width:=ifx kind==0 then 1536 else 256;return item>=0 && item<width && out>=width && flags>=width;}
-gak_time :: (item:int,kind:int,step:int,out:[]f32,flags:[]u8) #export_c {
+gak_time_bounds :: (item:int,kind:int,step:int,out:int,flags:int)->bool #effects(all) {if kind<0 || kind>1 || step<0 || step>3 {return false;}width:=ifx kind==0 then 1536 else 256;return item>=0 && item<width && out>=width && flags>=width;}
+gak_time :: (item:int,kind:int,step:int,out:[]f32,flags:[]u8) #export_c #effects(all) {
   if !gak_time_bounds(item,kind,step,out.count,flags.count) {return;}half:=ifx kind==0 then 768 else 128;i:=item%half;logarithm:=gak_logarithm();exponent:f32;
   if kind==0 {coefficient:=logarithm/768.0f32;exponent= -f32(i)*coefficient;}else {exponent= -logarithm*f32(i);exponent/=127.0f32;}
   frequency:=exp(exponent);phase:=f32(step*250)*frequency;cosine:=ifx kind==0 then item>=half else item<half;value:=ifx cosine then cos(phase) else sin(phase);out[item]=value;flags[item]=gdk_numeric(f32_bits(value));
 }
-gak_concat :: (item:int,a:[]f32,time:[]f32,out:[]f32,flags:[]u8) #export_c {
+gak_concat :: (item:int,a:[]f32,time:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
   if !gak_concat_bounds(item,a.count,time.count,out.count,flags.count) {return;}
   token:=item/3072;axis:=item%3072;value:=ifx axis<1536 then a[token*1536+axis] else time[axis-1536];out[item]=value;flags[item]=gdk_numeric(f32_bits(value));
 }
-gak_hidden :: (item:int,state:[]f32,a:[]f32,position:[]f32,out:[]f32,flags:[]u8) #export_c {
+gak_hidden :: (item:int,state:[]f32,a:[]f32,position:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
   if !gak_hidden_bounds(item,state.count,a.count,position.count,out.count,flags.count) {return;}
   value:f32;checked:int;wanted:int;if item<1536 {value=state[item];checked=gdk_count(0,f32_bits(value));wanted=1;}
   else {j:=item-1536;left:=a[j];right:=position[j];value=left+right;checked=gdk_count(gdk_count(gdk_count(0,f32_bits(left)),f32_bits(right)),f32_bits(value));wanted=3;}
   out[item]=value;flags[item]=gdk_receipt(checked,wanted);
 }
-gak_euler :: (item:int,old:[]f32,velocity:[]f32,out:[]f32,flags:[]u8) #export_c {
+gak_euler :: (item:int,old:[]f32,velocity:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
   if !gak_euler_bounds(item,old.count,velocity.count,out.count,flags.count) {return;}
   product:=0.25f32*velocity[item];value:=old[item]+product;out[item]=value;checked:=gdk_count(gdk_count(gdk_count(0,f32_bits(old[item])),f32_bits(velocity[item])),f32_bits(value));flags[item]=gdk_receipt(checked,3);
 }

@@ -43,20 +43,20 @@
  #assert pid_inverse_raw(rq[0..<8],rv[..],ra[..],raw[..])==PfkStatus.shape;pid_same(raw[0],out[0]);
 }
 
-pid_shapes :: (q:int,s:int,v:int,sv:int,a:int,sa:int,out:int)->bool {return q==7 && s==2 && v==7 && sv==2 && a==7 && sa==2 && out==1;}
-pid_raw_shapes :: (q:int,v:int,a:int,out:int)->bool {return q==9 && v==9 && a==9 && out==1;}
+pid_shapes :: (q:int,s:int,v:int,sv:int,a:int,sa:int,out:int)->bool #effects(all) {return q==7 && s==2 && v==7 && sv==2 && a==7 && sa==2 && out==1;}
+pid_raw_shapes :: (q:int,v:int,a:int,out:int)->bool #effects(all) {return q==9 && v==9 && a==9 && out==1;}
 // Positive finite bounds are fixed policy constants at the admitted entry point.
-pid_admit :: (words:[9]u64,hinge:f64,slide:f64)->PfkStatus {
+pid_admit :: (words:[9]u64,hinge:f64,slide:f64)->PfkStatus #effects(all) {
  for i:0..<9 {if !pfk_finite(words[i]) {return PfkStatus.number;}limit:=ifx i<7 then hinge else slide;if abs(f64_from_bits(words[i]))>limit {return PfkStatus.range;}}return PfkStatus.ok;
 }
-pid_inverse :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),velocities:[]pfku.Quantity(PidAngularRate,f64),slide_velocities:[]pfku.Quantity(PidLinearRate,f64),accelerations:[]pfku.Quantity(PidAngularAcceleration,f64),slide_accelerations:[]pfku.Quantity(PidLinearAcceleration,f64),output:[]PidOutput)->PfkStatus #export_c {
+pid_inverse :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),velocities:[]pfku.Quantity(PidAngularRate,f64),slide_velocities:[]pfku.Quantity(PidLinearRate,f64),accelerations:[]pfku.Quantity(PidAngularAcceleration,f64),slide_accelerations:[]pfku.Quantity(PidLinearAcceleration,f64),output:[]PidOutput)->PfkStatus #export_c #effects(all) {
  if !pid_shapes(angles.count,slides.count,velocities.count,slide_velocities.count,accelerations.count,slide_accelerations.count,output.count) {return PfkStatus.shape;}
  poses:[1]PffOutput;status:=pff_forward(angles,slides,poses[..]);if status!=PfkStatus.ok {return status;}
  v:[9]f64;a:[9]f64;vw:[9]u64;aw:[9]u64;for i:0..<7 {v[i]=velocities[i].value;a[i]=accelerations[i].value;vw[i]=f64_bits(v[i]);aw[i]=f64_bits(a[i]);}for i:0..<2 {v[i+7]=slide_velocities[i].value;a[i+7]=slide_accelerations[i].value;vw[i+7]=f64_bits(v[i+7]);aw[i+7]=f64_bits(a[i+7]);}
  status=pid_admit(vw,20,2);if status!=PfkStatus.ok {return status;}status=pid_admit(aw,200,20);if status!=PfkStatus.ok {return status;}
  fresh:=pid_sum_owned(poses[0],pm_profile(),v,a);output[0]=fresh;return PfkStatus.ok;
 }
-pid_inverse_raw :: (positions:[]f64,velocities:[]f64,accelerations:[]f64,output:[]PidOutput)->PfkStatus #export_c {
+pid_inverse_raw :: (positions:[]f64,velocities:[]f64,accelerations:[]f64,output:[]PidOutput)->PfkStatus #export_c #effects(all) {
  if !pid_raw_shapes(positions.count,velocities.count,accelerations.count,output.count) {return PfkStatus.shape;}
  q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);a:[7]pfku.Quantity(PidAngularAcceleration,f64);sa:[2]pfku.Quantity(PidLinearAcceleration,f64);
  for i:0..<7 {q[i].value=positions[i];v[i].value=velocities[i];a[i].value=accelerations[i];}for i:0..<2 {s[i].value=positions[i+7];sv[i].value=velocities[i+7];sa[i].value=accelerations[i+7];}return pid_inverse(q[..],s[..],v[..],sv[..],a[..],sa[..],output);

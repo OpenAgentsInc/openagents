@@ -22,7 +22,7 @@ mq_has::(text:string,part:string)->bool {
 mq_env::(key:string,value:string,out:[]u8)->string {
   j:[1]Jo;jo_start(j[..],out);jo_put(j[..],key);jo_put(j[..],"=");jo_put(j[..],value);return ifx j[0].bad then "" else jo_text(j[..]);
 }
-tool_main::()->int #export_c {
+tool_main::()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4{tool_errln("usage: mmo-fault BIN SOURCE_LABEL OUT_DIR durable|overlap|startup|isolation");return 2;}
   kind:=mq_slice(args_at(a[..],3));binb:[FS_PATH_MAX]u8;bin:=fs_realpath(args_at(a[..],0),binb[..]);label:=args_at(a[..],1);out:=args_at(a[..],2);
   if kind<0||bin==""||label.count==0||label.count>128||fs_kind(".git")!=1{tool_errln("An implemented slice, completed binary, source label and owned worktree are required.");return 2;}

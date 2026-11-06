@@ -34,12 +34,12 @@ FC_SOURCES :: 12;
 FC_EXAMPLES_MAX :: 1024;
 
 // Checks precede the implementation.
-fc_t_base :: (arg:int,top:int,second:int,local:int,depth:int,outputs:int,ip:int)->[ES_BASE]int {
+fc_t_base :: (arg:int,top:int,second:int,local:int,depth:int,outputs:int,ip:int)->[ES_BASE]int #effects(all) {
     return [ES_BASE]int.[1,arg,top,second,local,depth,outputs,ip];
 }
-fc_t_value :: (core:FcCore,s:FcSource,b:[ES_BASE]int)->int {v:=fc_value(core,s,b);#assert v.ok;return v.v;}
+fc_t_value :: (core:FcCore,s:FcSource,b:[ES_BASE]int)->int #effects(all) {v:=fc_value(core,s,b);#assert v.ok;return v.v;}
 // A controller routing every token as the machine does, written by hand.
-fc_t_rules :: ()->FcController {
+fc_t_rules :: ()->FcController #effects(all) {
     c:FcController;
     c=fc_t_route(c,TmCode.push,FcSource.arg,FcSource.up);c=fc_t_route(c,TmCode.get,FcSource.local,FcSource.arg);
     c=fc_t_route(c,TmCode.set,FcSource.top,FcSource.arg);c=fc_t_route(c,TmCode.add,FcSource.add,FcSource.down);
@@ -48,12 +48,12 @@ fc_t_rules :: ()->FcController {
     // ret routes to zero as every unseen code does.
     return c;
 }
-fc_t_route :: (c:FcController,code:TmCode,x:FcSource,y:FcSource)->FcController {
+fc_t_route :: (c:FcController,code:TmCode,x:FcSource,y:FcSource)->FcController #effects(all) {
     r:=c;at:=cast(int)code*2*FC_SOURCES;
     r.logits[at+cast(int)x]=1;r.logits[at+FC_SOURCES+cast(int)y]=1;r.seen[cast(int)code]=true;
     return r;
 }
-fc_t_examples :: (family:EsFamily,n:int,ex:[]EsExample,at:int)->int {
+fc_t_examples :: (family:EsFamily,n:int,ex:[]EsExample,at:int)->int #effects(all) {
     p:[17]TmOp;k:=es_program(family,n,p[..]);rows:[2048]int;outs:[TM_OUTPUTS]int;
     m:=rx_claim(p[0..<k],TM_STEPS_MAX,rows[..],outs[..]);
     return es_examples(p[0..<k],rows[..],m.claim.steps,ex,at);
@@ -252,22 +252,22 @@ fc_t_examples :: (family:EsFamily,n:int,ex:[]EsExample,at:int)->int {
 // book:begin core
 // Inputs second, top, ip and arg; outputs second + top, second - top,
 // second * top, and ip + 1 when top is 0, arg otherwise.
-fc_core_graph :: ()->[11]GgNode {
+fc_core_graph :: ()->[11]GgNode #effects(all) {
     return [11]GgNode.[
         GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.input,k=1},GgNode.{op=GgOp.input,k=2},GgNode.{op=GgOp.input,k=3},
         GgNode.{op=GgOp.add,a=0,b=1},GgNode.{op=GgOp.sub,a=0,b=1},GgNode.{op=GgOp.mul,a=0,b=1},
         GgNode.{op=GgOp.eq0,a=1},GgNode.{op=GgOp.constant,k=1},GgNode.{op=GgOp.add,a=2,b=8},
         GgNode.{op=GgOp.select,c=7,a=9,b=3}];
 }
-fc_core_outs :: ()->[4]int {return [4]int.[4,5,6,10];}
-fc_core :: ()->FcCore {
+fc_core_outs :: ()->[4]int #effects(all) {return [4]int.[4,5,6,10];}
+fc_core :: ()->FcCore #effects(all) {
     c:FcCore;g:=fc_core_graph();o:=fc_core_outs();
     c.block=wm_module(gg_compile(g[..],o[..],c.weights[..]),WmLabel.exact);
     return c;
 }
 // Chapter 237's admission: the weights hash to the pin, four cases pass, and
 // the source graph recompiles to the same pin.
-fc_admit :: (core:FcCore)->WmStatus {
+fc_admit :: (core:FcCore)->WmStatus #effects(all) {
     fresh:=fc_core();pin:=wm_digest(fresh.block,fresh.weights[..]);
     // Each case: second, top, then ip when top is 0 and arg otherwise, then
     // the four outputs. When top isn't 0, ip is given second's value.
@@ -287,7 +287,7 @@ fc_admit :: (core:FcCore)->WmStatus {
 // book:begin sources
 // Every source's value in a state, from one run of the core; a core output
 // outside the core's range is not ok.
-fc_values :: (core:FcCore,b:[ES_BASE]int)->FcValues {
+fc_values :: (core:FcCore,b:[ES_BASE]int)->FcValues #effects(all) {
     r:FcValues;
     plain:=[8]int.[0,b[1],b[2],b[3],b[4],b[5]+1,b[5]-1,b[6]+1];
     for s:0..<8 {r.ok[s]=true;r.v[s]=plain[s];}
@@ -298,7 +298,7 @@ fc_values :: (core:FcCore,b:[ES_BASE]int)->FcValues {
     }
     return r;
 }
-fc_value :: (core:FcCore,s:FcSource,b:[ES_BASE]int)->FcValue {
+fc_value :: (core:FcCore,s:FcSource,b:[ES_BASE]int)->FcValue #effects(all) {
     r:=fc_values(core,b);
     return FcValue.{ok=r.ok[cast(int)s],v=r.v[cast(int)s]};
 }
@@ -307,31 +307,31 @@ fc_value :: (core:FcCore,s:FcSource,b:[ES_BASE]int)->FcValue {
 // book:begin controller
 // The route for (code, token) is the source with the largest logit, the
 // first on a tie: a code never seen routes to zero.
-fc_route :: (c:FcController,code:int,t:int)->FcSource {
+fc_route :: (c:FcController,code:int,t:int)->FcSource #effects(all) {
     at:=(code*2+t)*FC_SOURCES;best:=0;
     for s:1..<FC_SOURCES {if c.logits[at+s]>c.logits[at+best] {best=s;}}
     return cast(FcSource)best;
 }
-fc_softmax :: (c:FcController,code:int,t:int,p:[]f64) {
+fc_softmax :: (c:FcController,code:int,t:int,p:[]f64) #effects(all) {
     at:=(code*2+t)*FC_SOURCES;top:=c.logits[at+cast(int)fc_route(c,code,t)];total:=0.0;
     for s:0..<FC_SOURCES {p[s]=exp(c.logits[at+s]-top);total+=p[s];}
     for s:0..<FC_SOURCES {p[s]=p[s]/total;}
 }
 // The other sources whose logit equals the route's, as a bit mask: training
 // that never told them apart.
-fc_ties :: (c:FcController,code:int,t:int)->int {
+fc_ties :: (c:FcController,code:int,t:int)->int #effects(all) {
     at:=(code*2+t)*FC_SOURCES;best:=cast(int)fc_route(c,code,t);m:=0;
     // The route is the first largest logit, so ties can only come after it.
     for s:best+1..<FC_SOURCES {if c.logits[at+s]==c.logits[at+best] {m|=1<<s;}}
     return m;
 }
 // The probability of the chosen route.
-fc_confidence :: (c:FcController,code:int,t:int)->f64 {
+fc_confidence :: (c:FcController,code:int,t:int)->f64 #effects(all) {
     p:[FC_SOURCES]f64;fc_softmax(c,code,t,p[..]);
     return p[cast(int)fc_route(c,code,t)];
 }
 // The probability of the sources in a bit mask.
-fc_mass :: (p:[]f64,mask:int)->f64 {
+fc_mass :: (p:[]f64,mask:int)->f64 #effects(all) {
     mass:=0.0;
     for v,s:p {if ((mask>>s)&1)==1 {mass+=v;}}
     return mass;
@@ -339,7 +339,7 @@ fc_mass :: (p:[]f64,mask:int)->f64 {
 // Each logit set starts at zero and takes `epochs` full-batch steps down the
 // mean of -log(the probability of the sources whose value is the machine's
 // token). A row no source can give is counted as unroutable and left out.
-fc_train :: (core:FcCore,ex:[]EsExample,epochs:int,rate:f64)->FcFit {
+fc_train :: (core:FcCore,ex:[]EsExample,epochs:int,rate:f64)->FcFit #effects(all) {
     f:FcFit;
     if ex.count<1 || epochs<0 {f.status=FcStatus.shape;return f;}
     if ex.count>FC_EXAMPLES_MAX {f.status=FcStatus.capacity;return f;}
@@ -394,7 +394,7 @@ fc_train :: (core:FcCore,ex:[]EsExample,epochs:int,rate:f64)->FcFit {
 
 // book:begin factorial
 // fact n prints n! = 1 * 2 * ... * n, the product kept in local 1.
-fc_program :: (n:int,out:[]TmOp)->int {
+fc_program :: (n:int,out:[]TmOp)->int #effects(all) {
     if n<1 || n>ES_N_MAX || out.count<17 {return 0;}
     T:=TmCode.push;G:=TmCode.get;S:=TmCode.set;
     p:=[17]TmOp.[es_op(T,n),es_op(S,0),es_op(T,1),es_op(S,1),es_op(G,1),es_op(G,0),es_op(TmCode.mul,0),es_op(S,1),
@@ -409,7 +409,7 @@ fc_program :: (n:int,out:[]TmOp)->int {
 // As chapter 235's rollout, but every x and y is copied from its routed
 // source. A core output outside the core's range ends the run as refused,
 // before its row is written.
-fc_rollout :: (core:FcCore,c:FcController,program:[]TmOp,budget:int,rows:[]int,outs:[]int)->FcRun {
+fc_rollout :: (core:FcCore,c:FcController,program:[]TmOp,budget:int,rows:[]int,outs:[]int)->FcRun #effects(all) {
     r:FcRun;
     if budget<1 || rows.count<budget*TM_TOKENS || outs.count<TM_OUTPUTS || tm_admit(program)!=TmStatus.ok {
         r.status=FcStatus.shape;return r;
@@ -433,7 +433,7 @@ fc_rollout :: (core:FcCore,c:FcController,program:[]TmOp,budget:int,rows:[]int,o
 // The run is claimed and replayed by chapter 234, as in chapter 235. A
 // refused run that matched the machine up to its refusal is reported as
 // refused at that step: it stopped, it did not answer wrongly.
-fc_score :: (core:FcCore,c:FcController,program:[]TmOp,rows:[]int,truth:[]int,outs:[]int)->FcScore {
+fc_score :: (core:FcCore,c:FcController,program:[]TmOp,rows:[]int,truth:[]int,outs:[]int)->FcScore #effects(all) {
     s:FcScore;s.token=-1;
     m:=rx_claim(program,TM_STEPS_MAX,truth,outs);
     if m.status!=TmStatus.ok {s.status=FcStatus.shape;return s;}

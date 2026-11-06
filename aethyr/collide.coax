@@ -27,7 +27,7 @@ CollideResult :: struct { state: CollideState; status: CollideStatus; passes: in
 CollideClosest :: struct { p: WorldPoint; q: WorldPoint; }
 CollideBodyPass :: struct { state: CollideState; pushed: bool; }
 
-collide_profile_ok :: (p: CollideProfile) -> bool {
+collide_profile_ok :: (p: CollideProfile) -> bool #effects(all) {
   // A positive max_travel bounded by radius/2 already proves radius positive;
   // finite height >= 2*radius and that travel bound reject nonfinite radii.
   return query_finite(p.height) && p.height >= 2 * p.radius &&
@@ -35,7 +35,7 @@ collide_profile_ok :: (p: CollideProfile) -> bool {
     p.max_passes >= 1 && p.max_passes <= COLLIDE_MAX_PASSES &&
     query_finite(p.max_travel) && p.max_travel > 0 && p.max_travel <= p.radius / 2 && p.epsilon == 0.000001;
 }
-collide_state_ok :: (p: CollideProfile, s: CollideState) -> bool {
+collide_state_ok :: (p: CollideProfile, s: CollideState) -> bool #effects(all) {
   return query_point_finite(s.feet) && query_point_finite(s.velocity) && query_finite(s.feet.y + p.height);
 }
 
@@ -43,7 +43,7 @@ collide_state_ok :: (p: CollideProfile, s: CollideState) -> bool {
 // points; nearly parallel axes retain the first endpoint until the other
 // segment's end requires a correction. The F64
 // test oracle instead enumerates quadratic pieces of a vertical-axis distance.
-collide_closest :: (p0: WorldPoint, p1: WorldPoint, q0: WorldPoint, q1: WorldPoint, epsilon: f32) -> CollideClosest {
+collide_closest :: (p0: WorldPoint, p1: WorldPoint, q0: WorldPoint, q1: WorldPoint, epsilon: f32) -> CollideClosest #effects(all) {
   d1 := world_sub(p1, p0); d2 := world_sub(q1, q0); r := world_sub(p0, q0);
   a := world_dot(d1, d1); e := world_dot(d2, d2); f := world_dot(d2, r);
   s := 0.0f32; t := 0.0f32;
@@ -65,18 +65,18 @@ collide_closest :: (p0: WorldPoint, p1: WorldPoint, q0: WorldPoint, q1: WorldPoi
   }
   return CollideClosest.{p = world_add(p0, world_scale(d1, s)), q = world_add(q0, world_scale(d2, t))};
 }
-collide_axis :: (p: CollideProfile, s: CollideState, b: QueryCapsule) -> CollideClosest {
+collide_axis :: (p: CollideProfile, s: CollideState, b: QueryCapsule) -> CollideClosest #effects(all) {
   lower := world_point(s.feet.x, s.feet.y + p.radius, s.feet.z);
   upper := world_point(s.feet.x, s.feet.y + (p.height - p.radius), s.feet.z);
   return collide_closest(lower, upper, b.a, b.b, p.epsilon);
 }
 // Side contact uses an open vertical interval: touching at a cap's height
 // is distinct from a nonzero horizontal reach.
-collide_vertical_overlap :: (dy: f32, need: f32) -> bool { return abs(dy) < need; }
-collide_wall_blocks :: (p: CollideProfile, s: CollideState, b: QueryBox) -> bool {
+collide_vertical_overlap :: (dy: f32, need: f32) -> bool #effects(all) { return abs(dy) < need; }
+collide_wall_blocks :: (p: CollideProfile, s: CollideState, b: QueryBox) -> bool #effects(all) {
   return b.ok && b.high.y > s.feet.y + p.step_up && b.low.y < s.feet.y + p.height;
 }
-collide_walls :: (c: Colliders, p: CollideProfile, given: CollideState) -> CollideState {
+collide_walls :: (c: Colliders, p: CollideProfile, given: CollideState) -> CollideState #effects(all) {
   next := given;
   for i: 0..<query_boxes(c) {
     b := query_box(c, i);
@@ -100,7 +100,7 @@ collide_walls :: (c: Colliders, p: CollideProfile, given: CollideState) -> Colli
   }
   return next;
 }
-collide_bodies :: (c: Colliders, p: CollideProfile, given: CollideState, dx: f32, dz: f32) -> CollideBodyPass {
+collide_bodies :: (c: Colliders, p: CollideProfile, given: CollideState, dx: f32, dz: f32) -> CollideBodyPass #effects(all) {
   next := given; pushed := false;
   for i: 0..<query_capsules(c) {
     b := query_capsule(c, i); if !b.ok { continue; }
@@ -123,12 +123,12 @@ collide_bodies :: (c: Colliders, p: CollideProfile, given: CollideState, dx: f32
   }
   return CollideBodyPass.{state = next, pushed = pushed};
 }
-collide_floor_cuts :: (c: Colliders, p: CollideProfile, feet: WorldPoint) -> bool {
+collide_floor_cuts :: (c: Colliders, p: CollideProfile, feet: WorldPoint) -> bool #effects(all) {
   count := c.floors.count / STAND_FLOATS;
   whole := c.floors[0..<count * STAND_FLOATS];
   return stand_cuts(whole, count, feet.x, feet.z, feet.y + p.step_up, feet.y + p.height - 0.1);
 }
-collide_floor_sides :: (c: Colliders, p: CollideProfile, before: CollideState, given: CollideState) -> CollideState {
+collide_floor_sides :: (c: Colliders, p: CollideProfile, before: CollideState, given: CollideState) -> CollideState #effects(all) {
   if !collide_floor_cuts(c, p, given.feet) || collide_floor_cuts(c, p, before.feet) { return given; }
   next := given;
   if !collide_floor_cuts(c, p, world_point(given.feet.x, given.feet.y, before.feet.z)) {
@@ -142,7 +142,7 @@ collide_floor_sides :: (c: Colliders, p: CollideProfile, before: CollideState, g
 }
 // Maximum remaining overlap of valid solid shapes. Floors have their own
 // explicit cut flag: a surface is not a solid with a penetration depth.
-collide_residual :: (c: Colliders, p: CollideProfile, s: CollideState) -> f32 {
+collide_residual :: (c: Colliders, p: CollideProfile, s: CollideState) -> f32 #effects(all) {
   worst := 0.0f32;
   for i: 0..<query_boxes(c) {
     b := query_box(c, i);
@@ -155,13 +155,13 @@ collide_residual :: (c: Colliders, p: CollideProfile, s: CollideState) -> f32 {
   }
   return worst;
 }
-collide_publish :: (given: CollideState, candidate: CollideState, passes: int, residual: f32, floor_cut: bool) -> CollideResult {
+collide_publish :: (given: CollideState, candidate: CollideState, passes: int, residual: f32, floor_cut: bool) -> CollideResult #effects(all) {
   out := CollideResult.{state = given, passes = passes, residual = residual, floor_cut = floor_cut};
   if residual > COLLIDE_EPS || floor_cut { out.status = CollideStatus.unresolved; return out; }
   out.state = candidate;
   return out;
 }
-collide_move :: (c: Colliders, p: CollideProfile, given: CollideState, dx: f32, dz: f32) -> CollideResult {
+collide_move :: (c: Colliders, p: CollideProfile, given: CollideState, dx: f32, dz: f32) -> CollideResult #effects(all) {
   out := CollideResult.{state = given};
   if !collide_profile_ok(p) { out.status = CollideStatus.bad_profile; return out; }
   if !collide_state_ok(p, given) {
@@ -184,10 +184,10 @@ collide_move :: (c: Colliders, p: CollideProfile, given: CollideState, dx: f32, 
   return collide_publish(given, next, out.passes, collide_residual(c, p, next), collide_floor_cuts(c, p, next.feet));
 }
 
-collide_test_state :: (x: f32, y: f32, z: f32, vx: f32, vy: f32, vz: f32) -> CollideState {
+collide_test_state :: (x: f32, y: f32, z: f32, vx: f32, vy: f32, vz: f32) -> CollideState #effects(all) {
   return CollideState.{feet = world_point(x, y, z), velocity = world_point(vx, vy, vz)};
 }
-collide_test_same :: (a: CollideState, b: CollideState) -> bool {
+collide_test_same :: (a: CollideState, b: CollideState) -> bool #effects(all) {
   return a.feet.x == b.feet.x && a.feet.y == b.feet.y && a.feet.z == b.feet.z &&
     a.velocity.x == b.velocity.x && a.velocity.y == b.velocity.y && a.velocity.z == b.velocity.z;
 }

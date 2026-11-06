@@ -14,8 +14,8 @@ VOICE_CUT_FRAME :: 320;   // 20 ms at 16 kHz: the voice engine's frame
 // on either side of it; it beats the best so far (if any) when it is quieter,
 // or as quiet and nearer the target (squared distance d). On a tie in both,
 // the boundary seen first stays: the earlier one, as both scan forward.
-voice_cut_cost :: (speech: [] u8, f: int) -> int { return cast(int) speech[f - 1] + cast(int) speech[f]; }
-voice_cut_better :: (found: bool, cost: int, d: int, best_cost: int, best_dist: int) -> bool {
+voice_cut_cost :: (speech: [] u8, f: int) -> int #effects(all) { return cast(int) speech[f - 1] + cast(int) speech[f]; }
+voice_cut_better :: (found: bool, cost: int, d: int, best_cost: int, best_dist: int) -> bool #effects(all) {
   return !found || cost < best_cost || (cost == best_cost && d < best_dist);
 }
 
@@ -23,7 +23,7 @@ voice_cut_better :: (found: bool, cost: int, d: int, best_cost: int, best_dist: 
 // and a frame on each side in speech: the lowest speech[f - 1] + speech[f]
 // (f = c / VOICE_CUT_FRAME), then the nearest `target`, then the earlier. -1 when
 // the range holds no such boundary.
-voice_cut_quietest :: (lo: int, hi: int, target: int, speech: [] u8) -> int {
+voice_cut_quietest :: (lo: int, hi: int, target: int, speech: [] u8) -> int #effects(all) {
   best := -1;
   found := false;
   best_cost: int;

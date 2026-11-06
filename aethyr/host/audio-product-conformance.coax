@@ -22,7 +22,7 @@ HostAudioProductObserved :: struct {
  q.device_closed=0;#assert !hpa_accept(q);q.device_closed=1;q.context_closed=0;#assert !hpa_accept(q);q.context_closed=1;q.nonzero=1;#assert !hpa_accept(q);q.nonzero=0;q.packet_refusals=2;#assert !hpa_accept(q);q.packet_refusals=3;
  q.bad_metadata=0;#assert !hpa_accept(q);q.bad_metadata=-1;q.bad_source=0;#assert !hpa_accept(q);q.bad_source=-1;q.remaining_assets=0;#assert !hpa_accept(q);q.remaining_assets=1;q.unavailable=0;#assert !hpa_accept(q);q.unavailable=-1;q.remaining_cue=1;#assert !hpa_accept(q);q.remaining_cue=0;q.world_frames=1;#assert !hpa_accept(q);q.world_frames=2;q.drains=4;#assert !hpa_accept(q);
 }
-hpa_accept :: (q:HostAudioProductObserved)->bool #export_c {
+hpa_accept :: (q:HostAudioProductObserved)->bool #export_c #effects(all) {
  if q.assets!=2||q.words!=16||q.control!=128||q.pre_cue!= -2||q.pre_frames!=0||q.pre_callbacks!=0||q.covered_frames!=0||q.covered_callbacks!=0||q.started!=1 {return false;}
  if q.running_frames<1||q.running_callbacks<1||q.cue!=0||q.accepted!=2||q.repeat_accepted!=2 {return false;}
  if q.hidden_frames!=q.running_frames||q.hidden_callbacks!=q.running_callbacks||q.resumed_frames<=q.hidden_frames||q.resumed_callbacks<=q.hidden_callbacks {return false;}

@@ -25,12 +25,12 @@
   #assert work[0].valid==9;#assert sk_prepare_key(key[0..<32],work[..]) && work[0].valid==0;
 }
 SignPrepare :: struct {key:[1]SignScalar;point:[1]SignPoint;public_key:[32]u8;normalized:[32]u8;valid:u64;}
-sk_clear :: (work:[]SignPrepare) {work[0].valid=0;}
-sk_prepare_key :: (key:[]u8,work:[]SignPrepare)->bool {sk_clear(work);return ss_key(key,work[0].key[..],false);}
+sk_clear :: (work:[]SignPrepare) #effects(all) {work[0].valid=0;}
+sk_prepare_key :: (key:[]u8,work:[]SignPrepare)->bool #effects(all) {sk_clear(work);return ss_key(key,work[0].key[..],false);}
 // The caller owns stable disjoint key and work, retains the valid bit through
 // publication, and must wipe the complete workspace. A true return is not a
 // signing authorization or evidence that the secret is valid.
-sk_prepare :: (key:[]u8,work:[]SignPrepare,overlap:bool)->bool #export_c {
+sk_prepare :: (key:[]u8,work:[]SignPrepare,overlap:bool)->bool #export_c #effects(all) {
   if work.count!=1 || key.count!=32 || overlap {return false;}
   ok:=sk_prepare_key(key,work);if !ok {return ok;}
   ok=sp_base(work[0].key[0].safe,work[0].point[..]);if !ok {return ok;}

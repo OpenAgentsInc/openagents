@@ -7,7 +7,7 @@
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/text/base64.coax";
 mi_text :: (o:[]Jo,key:string,value:string) {jo_key(o,key);jo_str(o,value);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: metal-image ROOT RESOURCES FRAME.CONFIG OUTPUT");return 2;}
  root:=args_at(a[..],0);res:=args_at(a[..],1);frame:=args_at(a[..],2);dir:=args_at(a[..],3);if !fs_mkdir(dir) {return 1;}paths:[9][4096]u8;
  plan:=fs_join(dir,"plan.json",paths[0][..]);report:=fs_join(dir,"result.json",paths[1][..]);image:=fs_join(dir,"frame",paths[2][..]);b:[32768]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);mi_text(o[..],"schema","aethyr.metal.effects.v1");jo_key(o[..],"operations");jo_arr(o[..]);

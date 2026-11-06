@@ -21,7 +21,7 @@ wd_expf :: (x: f32) -> f32 {
 }
 // LayerNorm of row item of x (d values) into y, as engine.coax's we_norm
 // but in f32: (x - mean) / sqrt(var + 1e-5) * g + b.
-wd_norm :: (item: int, d: int, x: [] f32, g: [] f32, b: [] f32, y: [] f32) #export_c {
+wd_norm :: (item: int, d: int, x: [] f32, g: [] f32, b: [] f32, y: [] f32) #export_c #effects(all) {
   part: [128] f32;
   xr := x[item * d..<x.count]; yr := y[item * d..<y.count];  // the row, so each index is small
   per := (d + WD_THREADS - 1) / WD_THREADS;

@@ -54,7 +54,7 @@ bb_run :: (c:[]Cdp,url:string,dir:string,phone:bool)->bool {
   if !bb_eval(c,"blockErrors.length===0&&coaxial.guardProbe(7)===0") {return false;}
   print("PASS: % solid scene, bounded block window, A/B/C reorg, exact tx/outpoints, share route, GPU captures\n",ifx phone then "phone" else "desktop");return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {return 2;}
   for phone:0..<2 {
     c:[1]Cdp;if !cdp_launch_background(c[..],ifx phone==1 then 390 else 1440,ifx phone==1 then 844 else 900,"bitcoin-blocks-") {return 1;}

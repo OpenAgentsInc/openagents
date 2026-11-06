@@ -12,7 +12,7 @@ RenderHostMediaReceipt :: struct {status:RenderHostMediaStatus;count:int;bad_ima
 // URL, readiness dimensions and duplicate-key admission still belong to the
 // complete composition below; this constructor preserves the raw observation.
 RenderHostMediaObserved :: struct {status:RenderHostMediaStatus;image:RenderHostMediaImage;}
-render_host_media_observe_raw :: (hm_kind:int,hm_url:string,hm_ready:int,hm_width:int,hm_height:int)->RenderHostMediaObserved {
+render_host_media_observe_raw :: (hm_kind:int,hm_url:string,hm_ready:int,hm_width:int,hm_height:int)->RenderHostMediaObserved #effects(all) {
   if (hm_kind!=1 && hm_kind!=2) || (hm_ready!=0 && hm_ready!=1) {return RenderHostMediaObserved.{status=RenderHostMediaStatus.invalid};}
   return RenderHostMediaObserved.{image=RenderHostMediaImage.{kind=cast(RenderMediaKind)hm_kind,url=hm_url,ready=hm_ready==1,width=hm_width,height=hm_height}};
 }
@@ -119,11 +119,11 @@ render_host_media_observe_raw :: (hm_kind:int,hm_url:string,hm_ready:int,hm_widt
   #assert hm_receipt.status==RenderHostMediaStatus.invalid && hm_receipt.count==0 && hm_receipt.bad_image==0 && hm_receipt.bad_request== -1 && hm_out[0].line==81;
 }
 
-hm_identity :: (hm_kind:RenderMediaKind,hm_url:string)->bool {
+hm_identity :: (hm_kind:RenderMediaKind,hm_url:string)->bool #effects(all) {
   if (hm_kind!=RenderMediaKind.image && hm_kind!=RenderMediaKind.video) || hm_url.count==0 || hm_url[0]!='/' {return false;}
   return hm_url.count==1 || hm_url[1]!='/';
 }
-render_host_media_rects :: (hm_requests:[]RenderMediaRequest,hm_images:[]RenderHostMediaImage,hm_width:int,hm_height:int,hm_out:[]RenderMediaRect)->RenderHostMediaReceipt {
+render_host_media_rects :: (hm_requests:[]RenderMediaRequest,hm_images:[]RenderHostMediaImage,hm_width:int,hm_height:int,hm_out:[]RenderMediaRect)->RenderHostMediaReceipt #effects(all) {
   if hm_requests.count>RENDER_MEDIA_ITEMS || hm_images.count>RENDER_MEDIA_ITEMS || hm_out.count<hm_requests.count {return RenderHostMediaReceipt.{status=RenderHostMediaStatus.capacity};}
   if hm_width<1 || hm_height<1 {return RenderHostMediaReceipt.{status=RenderHostMediaStatus.invalid};}
   for hm_i:0..<hm_images.count {
@@ -153,10 +153,10 @@ render_host_media_rects :: (hm_requests:[]RenderMediaRequest,hm_images:[]RenderH
 
 // A successful composition admits unique observed keys. Drawn receipts below
 // therefore have one ready image; the same lookup owns both matching paths.
-hm_find_image :: (hm_kind:RenderMediaKind,hm_url:string,hm_images:[]RenderHostMediaImage)->int {
+hm_find_image :: (hm_kind:RenderMediaKind,hm_url:string,hm_images:[]RenderHostMediaImage)->int #effects(all) {
   for hm_i:0..<hm_images.count {if hm_images[hm_i].kind==hm_kind && hm_images[hm_i].url==hm_url {return hm_i;}}return -1;
 }
-render_host_media_draws :: (hm_profile:int,hm_requests:[]RenderMediaRequest,hm_images:[]RenderHostMediaImage,hm_width:int,hm_height:int,hm_textures:[]RenderHostMediaTexture,hm_out:[]RenderMediaRect)->RenderHostMediaReceipt {
+render_host_media_draws :: (hm_profile:int,hm_requests:[]RenderMediaRequest,hm_images:[]RenderHostMediaImage,hm_width:int,hm_height:int,hm_textures:[]RenderHostMediaTexture,hm_out:[]RenderMediaRect)->RenderHostMediaReceipt #effects(all) {
   if hm_textures.count>RENDER_HOST_TEXTURES || hm_out.count<hm_requests.count {return RenderHostMediaReceipt.{status=RenderHostMediaStatus.capacity};}
   hm_catalog:=render_catalog(hm_profile);
   if !hm_catalog.valid || (!hm_catalog.features.media && hm_requests.count>0) {return RenderHostMediaReceipt.{status=RenderHostMediaStatus.invalid};}

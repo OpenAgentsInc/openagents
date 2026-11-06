@@ -170,7 +170,7 @@ GgsSession :: struct {
 }
 
 // No decoding/normalization of query bytes: only this one literal opt-in works.
-ggs_mode :: (url:string)->int {
+ggs_mode :: (url:string)->int #effects(all) {
   if url.count>2048 {return 0;}start:=-1;stop:=url.count;
   for index:0..<url.count {if url[index]=='#' {stop=index;break;}if url[index]=='?' && start<0 {start=index;}}
   if start<0 {return 0;}at:=start+1;seen:=false;mode:=0;
@@ -181,12 +181,12 @@ ggs_mode :: (url:string)->int {
     if end==stop {break;}at=end+1;
   }return mode;
 }
-ggs_key :: (i:GgsInput)->GgsKey {return GgsKey.{epoch=i.epoch,actor=i.actor,generation=i.generation,world_revision=i.world_revision,goal_revision=i.goal_revision,goal=i.observation.goal};}
-ggs_same_key :: (a:GgsKey,b:GgsKey)->bool {return a.epoch==b.epoch && a.actor==b.actor && a.generation==b.generation && a.world_revision==b.world_revision && a.goal_revision==b.goal_revision && a.goal==b.goal;}
-ggs_context :: (i:GgsInput)->GdContext {return GdContext.{epoch=i.epoch,actor=i.actor,generation=i.generation,revision=i.intent,policy=2,options=1};}
-ggs_input_ok :: (i:GgsInput)->bool {return i.epoch>0 && i.actor>=0 && i.generation>=0 && i.world_revision>=0 && i.goal_revision>=0 && i.intent>=0 && i.intent<=GD_SEQUENCE_MAX;}
-ggs_clock :: (s:[]GgsSession,now_ms:int)->bool {return now_ms>=0 && now_ms<=GD_TIME_MAX && now_ms>=s[0].last_ms;}
-ggs_observation :: (s:[]GgsSession,i:GgsInput)->GgObservation {
+ggs_key :: (i:GgsInput)->GgsKey #effects(all) {return GgsKey.{epoch=i.epoch,actor=i.actor,generation=i.generation,world_revision=i.world_revision,goal_revision=i.goal_revision,goal=i.observation.goal};}
+ggs_same_key :: (a:GgsKey,b:GgsKey)->bool #effects(all) {return a.epoch==b.epoch && a.actor==b.actor && a.generation==b.generation && a.world_revision==b.world_revision && a.goal_revision==b.goal_revision && a.goal==b.goal;}
+ggs_context :: (i:GgsInput)->GdContext #effects(all) {return GdContext.{epoch=i.epoch,actor=i.actor,generation=i.generation,revision=i.intent,policy=2,options=1};}
+ggs_input_ok :: (i:GgsInput)->bool #effects(all) {return i.epoch>0 && i.actor>=0 && i.generation>=0 && i.world_revision>=0 && i.goal_revision>=0 && i.intent>=0 && i.intent<=GD_SEQUENCE_MAX;}
+ggs_clock :: (s:[]GgsSession,now_ms:int)->bool #effects(all) {return now_ms>=0 && now_ms<=GD_TIME_MAX && now_ms>=s[0].last_ms;}
+ggs_observation :: (s:[]GgsSession,i:GgsInput)->GgObservation #effects(all) {
   o:=i.observation;
   // Provenance is essential: an old/external tip cannot borrow this exemption.
   // Keep ownership after visual expiry, since the same intent's cooldown can
@@ -194,8 +194,8 @@ ggs_observation :: (s:[]GgsSession,i:GgsInput)->GgObservation {
   if s[0].local_action>0 && s[0].local_intent==i.intent && i.hint_intent==i.intent {o.hint_visible=false;}
   return o;
 }
-ggs_clear_line :: (s:[]GgsSession) {s[0].local_action=0;s[0].local_intent=0;s[0].until_ms=0;}
-ggs_finish :: (s:[]GgsSession,reason:int) {
+ggs_clear_line :: (s:[]GgsSession) #effects(all) {s[0].local_action=0;s[0].local_intent=0;s[0].until_ms=0;}
+ggs_finish :: (s:[]GgsSession,reason:int) #effects(all) {
   if s[0].ticket[0].phase==0 {return;}
   sequence:=s[0].ticket[0].sequence;
   if gm_end(s[0].metrics[..],sequence,reason) {s[0].fallback+=1;}
@@ -204,7 +204,7 @@ ggs_finish :: (s:[]GgsSession,reason:int) {
 
 // A nonboundary observation may revoke; only the post-gameplay boundary may
 // mint a network request or count a staged shadow. No remote enum is displayed.
-ggs_step :: (s:[]GgsSession,i:GgsInput,now_ms:int) #export_c {
+ggs_step :: (s:[]GgsSession,i:GgsInput,now_ms:int) #export_c #effects(all) {
   if s.count!=1 {return;}
   if !s[0].initialized {s[0].initialized=true;s[0].last_raw=-1;s[0].last_admitted=-1;}
   s[0].mode=ggs_mode(i.url);
@@ -254,26 +254,26 @@ ggs_step :: (s:[]GgsSession,i:GgsInput,now_ms:int) #export_c {
   // requests (685..695 bytes). No private game/history fields are serialized.
   s[0].body_n=gg_request(o,s[0].body[..]);s[0].send=true;
 }
-ggs_view :: (s:[]GgsSession,now_ms:int)->GgsView #export_c {
+ggs_view :: (s:[]GgsSession,now_ms:int)->GgsView #export_c #effects(all) {
   if s.count!=1 || !ggs_clock(s,now_ms) {return GgsView.{};}
   // Only showing a checked nonquiet local line sets a positive until_ms;
   // every revocation clears that deadline. Zero is already invisible at now0.
   visible:=now_ms<s[0].until_ms;
   return GgsView.{offer=s[0].offer,can_request=s[0].offer && !s[0].external_hint && now_ms>=s[0].cooldown_until_ms,local_action=ifx visible then s[0].local_action else 0,local_intent=s[0].local_intent,visible=visible,until_ms=s[0].until_ms,cooldown_until_ms=s[0].cooldown_until_ms};
 }
-ggs_pending :: (s:[]GgsSession,sequence:int)->bool #export_c {return s.count==1 && s[0].ticket[0].phase==GD_WAITING && s[0].ticket[0].sequence==sequence;}
-ggs_effect :: (s:[]GgsSession,now_ms:int)->GgsEffect #export_c {
+ggs_pending :: (s:[]GgsSession,sequence:int)->bool #export_c #effects(all) {return s.count==1 && s[0].ticket[0].phase==GD_WAITING && s[0].ticket[0].sequence==sequence;}
+ggs_effect :: (s:[]GgsSession,now_ms:int)->GgsEffect #export_c #effects(all) {
   if s.count!=1 || !s[0].send {return GgsEffect.{};}
   if !ggs_clock(s,now_ms) {ggs_finish(s,GM_REVOKED);return GgsEffect.{};}
   if now_ms>=s[0].ticket[0].ticket.expires_ms {ggs_finish(s,GM_TIMEOUT);return GgsEffect.{};}
   s[0].last_ms=now_ms;
   return GgsEffect.{sequence=s[0].ticket[0].sequence,intent=s[0].ticket[0].ticket.context.revision,url="/api/v1/systemone",body=cast(string)s[0].body[0..<s[0].body_n],flags=5,timeout_ms=s[0].ticket[0].ticket.expires_ms-now_ms};
 }
-ggs_sent :: (s:[]GgsSession,sequence:int,started:bool) #export_c {
+ggs_sent :: (s:[]GgsSession,sequence:int,started:bool) #export_c #effects(all) {
   if !ggs_pending(s,sequence) || !s[0].send {return;}s[0].send=false;
   if !started {ggs_finish(s,GM_NO_TRANSPORT);}
 }
-ggs_receive :: (s:[]GgsSession,sequence:int,now_ms:int,text:string) #export_c {
+ggs_receive :: (s:[]GgsSession,sequence:int,now_ms:int,text:string) #export_c #effects(all) {
   if s.count!=1 {return;}
   if !ggs_pending(s,sequence) {_:=gm_late(s[0].metrics[..],sequence);return;}
   if s[0].send {return;}
@@ -293,7 +293,7 @@ ggs_receive :: (s:[]GgsSession,sequence:int,now_ms:int,text:string) #export_c {
 // 207raw,208admittedAction,209reason,210terminal,211late,212phase,213seq,
 // 214disabled,215localAction,216localIntent,217lastIntent,218cooldown.
 // 220..228reasons;400..410network;420..430queue;440..450total;293..296last.
-ggs_probe :: (s:[]GgsSession,field:int)->int #export_c {
+ggs_probe :: (s:[]GgsSession,field:int)->int #export_c #effects(all) {
   if s.count!=1 {return -1;}
   if field==200 {return 1;}if field==201 {return s[0].mode;}if field==202 {return s[0].local_shown;}
   if field==203 {return s[0].metrics[0].used;}if field==204 {return s[0].metrics[0].replies;}if field==205 {return s[0].admitted;}if field==206 {return s[0].fallback;}

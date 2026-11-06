@@ -56,7 +56,7 @@ and response serialization are separate work.
 
 <!-- source: psionic/lib/readout.coax readout -->
 ```jai
-qr_read :: (kind:QrKind,temperature:f32,logits:[]f32,slots:[]int,out:[]f64,work:[]f64,overlap:bool)->QrResult #export_c {
+qr_read :: (kind:QrKind,temperature:f32,logits:[]f32,slots:[]int,out:[]f64,work:[]f64,overlap:bool)->QrResult #export_c #effects(all) {
     n:=slots.count;if !qr_valid(cast(u8)kind,n,temperature) || !qr_vocab_valid(logits.count) {return QrResult.{status=QrStatus.shape};}
     if out.count<n || work.count<n {return QrResult.{status=QrStatus.capacity};}
     if overlap {return QrResult.{status=QrStatus.alias};}

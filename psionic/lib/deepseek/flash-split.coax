@@ -52,17 +52,17 @@ DstLayout :: struct {count:int;words:int;parts:[8]DstPart;}
 // book:begin geometry
 // Chapter 100's synthetic stack: 32-wide streams, 16-byte FP4 rows with two
 // E4M3 scales, 16-byte FP4 keys with one UE8M0 scale, top 3, 8 rows.
-dst_tiny :: ()->DstGeometry {return DstGeometry.{width=32,hc=4,ids=24,comp=18,key=17,topk=3,mask=8};}
+dst_tiny :: ()->DstGeometry #effects(all) {return DstGeometry.{width=32,hc=4,ids=24,comp=18,key=17,topk=3,mask=8};}
 // The pinned checkpoint: 5,120-wide streams, a 512-value FP4 compressed row
 // (256 bytes and 32 E4M3 scales), a 128-value FP4 index key (64 bytes and
 // 4 UE8M0 scales), top 512, and one mask byte per row of the context.
-dst_real :: (context:int)->DstGeometry {return DstGeometry.{width=5120,hc=4,ids=24,comp=288,key=68,topk=512,mask=context};}
+dst_real :: (context:int)->DstGeometry #effects(all) {return DstGeometry.{width=5120,hc=4,ids=24,comp=288,key=68,topk=512,mask=context};}
 // book:end geometry
-dst_valid :: (g:DstGeometry)->bool {
+dst_valid :: (g:DstGeometry)->bool #effects(all) {
     return stg_in(g.width,1,8192) && stg_in(g.hc,1,8) && stg_in(g.ids,1,64) && stg_in(g.comp,1,4096) && stg_in(g.key,1,4096) &&
         stg_in(g.topk,1,4096) && stg_in(g.mask,1,STG_CONTEXT_MAX);
 }
-dst_words :: (g:DstGeometry,kind:DstKind)->int {
+dst_words :: (g:DstGeometry,kind:DstKind)->int #effects(all) {
     words:=[7]int.[g.hc*g.width,g.hc,g.ids,1+(g.comp+3)/4,1+(g.key+3)/4,1+g.topk,(g.mask+3)/4];
     return words[cast(int)kind];
 }
@@ -72,7 +72,7 @@ dst_words :: (g:DstGeometry,kind:DstKind)->int {
 // with compression reads its KV owner's rows; an indexer reads its KV
 // owner's keys; a layer reads its indexer's selection; the indexers after
 // layer 20 read its candidate mask.
-dst_needed :: (cut:int,kind:DstKind,s:int)->bool {
+dst_needed :: (cut:int,kind:DstKind,s:int)->bool #effects(all) {
     for l:cut..<dv_flash_config().layers {k:=da_flash_links(l);
         if kind==DstKind.comp && k.kv==s {return true;}
         if kind==DstKind.keys && k.produce_index && k.kv==s {return true;}
@@ -83,7 +83,7 @@ dst_needed :: (cut:int,kind:DstKind,s:int)->bool {
 }
 // The parts that cross the cut before layer `cut`, in order. An invalid
 // geometry or a cut outside 1..39 gives no parts.
-dst_layout :: (g:DstGeometry,cut:int)->DstLayout {
+dst_layout :: (g:DstGeometry,cut:int)->DstLayout #effects(all) {
     out:DstLayout;if !dst_valid(g) || cut<1 || cut>=DST_LAYERS {return out;}
     kinds:[8]DstKind;sources:[8]int;kinds[1]=DstKind.carry;sources[0]=cut;sources[1]=cut;n:=2;
     for e:DST_ENGRAM {if e>=cut {kinds[n]=DstKind.engram;sources[n]=e;n+=1;}}
@@ -97,8 +97,8 @@ dst_layout :: (g:DstGeometry,cut:int)->DstLayout {
     return out;
 }
 // book:end needed
-dst_message_bytes :: (g:DstGeometry,cut:int)->int {return 4*dst_layout(g,cut).words;}
-dst_tag :: (p:DstPart)->u32 {return cast(u32)(cast(int)p.kind+256*p.source);}
+dst_message_bytes :: (g:DstGeometry,cut:int)->int #effects(all) {return 4*dst_layout(g,cut).words;}
+dst_tag :: (p:DstPart)->u32 #effects(all) {return cast(u32)(cast(int)p.kind+256*p.source);}
 
 // book:begin boundary
 // The message is 32-bit words: version, the model's digest (two halves),
@@ -111,18 +111,18 @@ DstVerdict :: struct {refusal:DstRefusal;part:int=-1;}
 // Write the header and the part directory with zeroed data; the sender
 // fills each part at its offset, then seals. -1: no such cut or step, or
 // the buffer is too small.
-dst_frame :: (g:DstGeometry,model:u64,cut:int,step:int,wire:[]u32)->int {
+dst_frame :: (g:DstGeometry,model:u64,cut:int,step:int,wire:[]u32)->int #effects(all) {
     l:=dst_layout(g,cut);if l.count==0 || !stg_in(step,0,DST_STEPS-1) || wire.count<l.words {return -1;}
     head:=[9]u32.[DST_VERSION,cast(u32)(model&4294967295),cast(u32)(model>>32),cast(u32)cut,cast(u32)step,cast(u32)l.count,cast(u32)g.width,STG_F32,0];
     for k:0..<DST_HEAD {wire[k]=head[k];}
     for i:0..<l.count {p:=l.parts[i];wire[p.offset-2]=dst_tag(p);wire[p.offset-1]=cast(u32)p.words;for k:0..<p.words {wire[p.offset+k]=0;}}
     return l.words;
 }
-dst_seal :: (wire:[]u32) {wire[8]=stg_sum(wire);}
+dst_seal :: (wire:[]u32) #effects(all) {wire[8]=stg_sum(wire);}
 // The receiver's checks, in order: a whole header, version, model, its own
 // first layer, the step it expects, the geometry, then every listed part
 // in place with its length, nothing more, and the checksum.
-dst_check :: (g:DstGeometry,want:DstExpect,wire:[]u32)->DstVerdict {
+dst_check :: (g:DstGeometry,want:DstExpect,wire:[]u32)->DstVerdict #effects(all) {
     v:DstVerdict;l:=dst_layout(g,want.cut);
     if wire.count<DST_HEAD {v.refusal=DstRefusal.partial;return v;}
     if wire[0]!=DST_VERSION {v.refusal=DstRefusal.version;return v;}
@@ -145,11 +145,11 @@ dst_check :: (g:DstGeometry,want:DstExpect,wire:[]u32)->DstVerdict {
     return v;
 }
 // book:end boundary
-dst_refusal_name :: (r:DstRefusal)->string {
+dst_refusal_name :: (r:DstRefusal)->string #effects(all) {
     names:=[12]string.["none","partial","version","model","layer","position","geometry","missing","size","extra","excess","checksum"];
     return names[cast(int)r];
 }
-dst_kind_name :: (k:DstKind)->string {names:=[7]string.["residual","carry","engram","comp","keys","index","mask"];return names[cast(int)k];}
+dst_kind_name :: (k:DstKind)->string #effects(all) {names:=[7]string.["residual","carry","engram","comp","keys","index","mask"];return names[cast(int)k];}
 
 // ---- the planner -------------------------------------------------------------
 
@@ -163,7 +163,7 @@ DstModel :: struct {weight:[40]int;engram:[40]int;read:[40]int;cache:[40]int;emb
 // Packed bytes of one window row (512 FP8 values, 16 UE8M0 scales), one
 // compressed row and one index-key row: chapter 98's layouts.
 DST_WINDOW_ROW :: 528;DST_COMP_ROW :: 288;DST_KEY_ROW :: 68;DST_WINDOW :: 128;
-dst_model :: (rows:[]DvRow)->DstModel {
+dst_model :: (rows:[]DvRow)->DstModel #effects(all) {
     m:DstModel;
     for r:rows {
         if r.name=="embed.weight" {m.embed=r.bytes;}
@@ -177,7 +177,7 @@ dst_model :: (rows:[]DvRow)->DstModel {
     return m;
 }
 // book:end model
-dst_model_valid :: (m:DstModel)->bool {
+dst_model_valid :: (m:DstModel)->bool #effects(all) {
     for l:0..<DST_LAYERS {if !stg_in(m.weight[l],1,STG_BIG) || !stg_in(m.engram[l],0,STG_BIG) || !stg_in(m.read[l],1,STG_BIG) || !stg_in(m.cache[l],0,STG_RATE) {return false;}}
     return stg_in(m.embed,1,STG_BIG) && stg_in(m.head,1,STG_BIG);
 }
@@ -187,7 +187,7 @@ dst_model_valid :: (m:DstModel)->bool {
 // are resident), a window ring per layer, the caches it owns over the
 // context, the borrowed rows it mirrors, its incoming and outgoing message
 // buffers, the embedding if first and the readout if last.
-dst_stage_inner :: (m:DstModel,a:int,b:int,context:int,resident:bool)->int {
+dst_stage_inner :: (m:DstModel,a:int,b:int,context:int,resident:bool)->int #effects(all) {
     n:=0;
     for l:a..<b {n+=m.weight[l]+DST_WINDOW*DST_WINDOW_ROW+m.cache[l]*context;if resident {n+=m.engram[l];}}
     for s:DST_KV {if s<a {r:=da_flash_links(s).ratio;comp:=false;keys:=false;
@@ -198,12 +198,12 @@ dst_stage_inner :: (m:DstModel,a:int,b:int,context:int,resident:bool)->int {
     if b==DST_LAYERS {n+=m.head;}
     return n;
 }
-dst_stage_bytes :: (m:DstModel,a:int,b:int,context:int,resident:bool)->int {
+dst_stage_bytes :: (m:DstModel,a:int,b:int,context:int,resident:bool)->int #effects(all) {
     g:=dst_real(context);return dst_stage_inner(m,a,b,context,resident)+dst_message_bytes(g,a)+dst_message_bytes(g,b);
 }
 // The weight bytes it reads for one token: its layers, one embedding row
 // if first, the whole readout if last.
-dst_stage_read :: (m:DstModel,a:int,b:int)->int {
+dst_stage_read :: (m:DstModel,a:int,b:int)->int #effects(all) {
     n:=0;for l:a..<b {n+=m.read[l];}
     if a==0 {n+=m.embed/129280;}
     if b==DST_LAYERS {n+=m.head;}
@@ -217,7 +217,7 @@ DstStatus :: enum u8 {ok;model;stages;context;total;split;}
 // reads per token, and the message it sends per token. cause: the bytes
 // the hosts lack in total.
 DstPlan :: struct {status:DstStatus;stages:int;cause:int;slowest:int;cut:[17]int;bytes:[16]int;read:[16]int;sent:[16]int;}
-dst_plan :: (m:DstModel,budget:[]int,context:int,resident:bool)->DstPlan {
+dst_plan :: (m:DstModel,budget:[]int,context:int,resident:bool)->DstPlan #effects(all) {
     n:=budget.count;p:=DstPlan.{stages=n};
     if !dst_model_valid(m) {p.status=DstStatus.model;return p;}
     if n<1 || n>DST_STAGES {p.status=DstStatus.stages;return p;}
@@ -249,7 +249,7 @@ dst_plan :: (m:DstModel,budget:[]int,context:int,resident:bool)->DstPlan {
     return p;
 }
 // book:end plan
-dst_status_name :: (s:DstStatus)->string {
+dst_status_name :: (s:DstStatus)->string #effects(all) {
     names:=[6]string.["ok","model: a layer, the embedding or the readout has no bytes","stages: 1 to 16 hosts, each budget 0 to 2^56 bytes",
         "context: 1 to 1,048,576 positions","total: the hosts together are too small","split: no contiguous split fits the hosts"];
     return names[cast(int)s];

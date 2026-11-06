@@ -28,6 +28,7 @@ bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE])
 void world_floats(int k, float dt);
 bool world_boat(int k, int n, float out[WORLD_BOAT]);
 void world_gone(int k, int s);
+void world_seat_owner(int k, int s, uint64_t owner);
 /* seat s of room k on the bank beside its n-th rowboat (room-control.coax "place"): false none there */
 bool world_place_boat(int k, int s, int n);
 /* whether seat s of room k moved in one jump since last asked (placed, teleported, into or out of a boat), once */

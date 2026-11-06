@@ -109,7 +109,7 @@ not tried, with the fewest attempts open, then the fewest sent.
 
 <!-- source: psionic/lib/serve-fault.coax machines -->
 ```jai
-sf_health :: (p:SfPolicy,h:SfHealth,ok:bool,probe:bool,ups:int)->SfHealth {
+sf_health :: (p:SfPolicy,h:SfHealth,ok:bool,probe:bool,ups:int)->SfHealth #effects(all) {
     n:=h;
     // Up: client results count; probes are not sent.
     if h.up && !probe {
@@ -127,11 +127,11 @@ sf_health :: (p:SfPolicy,h:SfHealth,ok:bool,probe:bool,ups:int)->SfHealth {
     return n;
 }
 // Retries and hedges together stay within budget_pct percent of first attempts, plus reserve.
-sf_extra_ok :: (p:SfPolicy,firsts:int,extras:int)->bool {return (extras+1)*100<=p.budget_pct*firsts+p.reserve*100;}
+sf_extra_ok :: (p:SfPolicy,firsts:int,extras:int)->bool #effects(all) {return (extras+1)*100<=p.budget_pct*firsts+p.reserve*100;}
 // Whether a request may send another attempt now: its attempt limit, then
 // its deadline (an attempt that cannot finish in time is not sent), then,
 // for any attempt after the first, the budget.
-sf_again :: (p:SfPolicy,tries:int,firsts:int,extras:int,now:int,deadline:int,cost:int)->SfWhy {
+sf_again :: (p:SfPolicy,tries:int,firsts:int,extras:int,now:int,deadline:int,cost:int)->SfWhy #effects(all) {
     if tries>=p.tries {return SfWhy.tries;}
     if now+cost>deadline {return SfWhy.time;}
     if tries>0 && !sf_extra_ok(p,firsts,extras) {return SfWhy.budget;}
@@ -141,7 +141,7 @@ sf_again :: (p:SfPolicy,tries:int,firsts:int,extras:int,now:int,deadline:int,cos
 // the fewest attempts open, then the one sent a request longest ago (last
 // holds when, as a count of attempts; 0 is never), then the lowest number;
 // -1 when there is none.
-sf_pick :: (h:[]SfHealth,load:[]int,last:[]int,tried:int)->int {
+sf_pick :: (h:[]SfHealth,load:[]int,last:[]int,tried:int)->int #effects(all) {
     best:=-1;
     for k:0..<h.count {
         if h[k].up && (tried>>k)%2==0 && (best<0 || load[k]<load[best] || (load[k]==load[best] && last[k]<last[best])) {best=k;}
@@ -219,7 +219,7 @@ settlement of one request is impossible however many attempts it took.
 // Settle one key: chapter 180 charges the smaller of the price and the
 // quote and releases the hold, and the usage record is folded into the
 // metrics. A key already settled is refused and changes nothing.
-sf_settle :: (l:SfLedger,ev:UmEvidence,s:BlSchedule,key:int,q:BlPrice,u:BlUse,latency:int)->SfSettle {
+sf_settle :: (l:SfLedger,ev:UmEvidence,s:BlSchedule,key:int,q:BlPrice,u:BlUse,latency:int)->SfSettle #effects(all) {
     r:=SfSettle.{cause=SfCharge.twice,ledger=l};
     for i:0..<l.n {if l.keys[i]==key {return r;}}
     r.cause=SfCharge.full;
@@ -301,12 +301,12 @@ never counts twice.
 <!-- source: psionic/lib/serve-fault.coax sim -->
 ```jai
 // Close one attempt as the client sees it.
-sf_close :: (att:[]SfAttempt,out:[]SfOutcome,load:[]int,probing:[]bool,a:int,res:SfResult,now:int) {
+sf_close :: (att:[]SfAttempt,out:[]SfOutcome,load:[]int,probing:[]bool,a:int,res:SfResult,now:int) #effects(all) {
     x:=att[a];x.result=res;x.ended=now;att[a]=x;load[x.replica]-=1;
     if x.req>=0 {out[x.req].open-=1;} else {probing[x.replica]=false;}
 }
 // A result reaches the health checker.
-sf_heard :: (p:SfPolicy,h:[]SfHealth,k:int,ok:bool,probe:bool,c:SfCount)->SfCount {
+sf_heard :: (p:SfPolicy,h:[]SfHealth,k:int,ok:bool,probe:bool,c:SfCount)->SfCount #effects(all) {
     ups:=0;for j:0..<h.count {if h[j].up {ups+=1;}}
     n:=c;was:=h[k].up;h[k]=sf_health(p,h[k],ok,probe,ups);
     if was && !h[k].up {n.ejects+=1;}
@@ -315,7 +315,7 @@ sf_heard :: (p:SfPolicy,h:[]SfHealth,k:int,ok:bool,probe:bool,c:SfCount)->SfCoun
 }
 // Send an attempt, unless the record is full. A crashed replica refuses it
 // at once; a partitioned one never hears of it.
-sf_send :: (r:SfRun,att:[]SfAttempt,out:[]SfOutcome,load:[]int,probing:[]bool,last:[]int,h:[]SfHealth,req:int,k:int,kind:SfKind,now:int,c:SfCount)->SfCount {
+sf_send :: (r:SfRun,att:[]SfAttempt,out:[]SfOutcome,load:[]int,probing:[]bool,last:[]int,h:[]SfHealth,req:int,k:int,kind:SfKind,now:int,c:SfCount)->SfCount #effects(all) {
     n:=c;a:=n.na;
     if a==att.count {n.full=true;return n;}
     n.na+=1;
@@ -326,14 +326,14 @@ sf_send :: (r:SfRun,att:[]SfAttempt,out:[]SfOutcome,load:[]int,probing:[]bool,la
     return n;
 }
 // The deadline an attempt carries, and when the client gives up on it.
-sf_due :: (r:SfRun,reqs:[]SfRequest,x:SfAttempt)->int {
+sf_due :: (r:SfRun,reqs:[]SfRequest,x:SfAttempt)->int #effects(all) {
     if x.req<0 {return x.sent+r.policy.attempt_us;}
     q:=reqs[x.req];return cb_min(x.sent+r.policy.attempt_us,q.arrive+q.deadline);
 }
 // Chapter 177's attempt time on chapter 175's step model: one prefill step
 // over the prompt, then one decode step per further output token.
-sf_time :: (prompt:int,output:int)->int {return (cb_step_ns(prompt)+(output-1)*cb_step_ns(1))/1000;}
-sf_cost :: (reqs:[]SfRequest,req:int)->int {
+sf_time :: (prompt:int,output:int)->int #effects(all) {return (cb_step_ns(prompt)+(output-1)*cb_step_ns(1))/1000;}
+sf_cost :: (reqs:[]SfRequest,req:int)->int #effects(all) {
     if req<0 {return SF_PROBE_US;}
     return sf_time(reqs[req].prompt,reqs[req].output);
 }
@@ -344,7 +344,7 @@ sf_cost :: (reqs:[]SfRequest,req:int)->int {
 // then, until nothing changes, requests with no attempt open are retried or
 // settled, due hedges are sent, and idle replicas start their next attempt
 // or refuse it for its deadline.
-sf_sim :: (r:SfRun,reqs:[]SfRequest)->SfSim {
+sf_sim :: (r:SfRun,reqs:[]SfRequest)->SfSim #effects(all) {
     s:SfSim;s.status=sf_check(r,reqs);
     if s.status!=SfStatus.ok {return s;}
     p:=r.policy;s.n=reqs.count;s.ledger.account.budget=r.budget;
@@ -500,7 +500,7 @@ sf_sim :: (r:SfRun,reqs:[]SfRequest)->SfSim {
 // Settle a request that just ended: the winner's tokens and device time if
 // it was answered, nothing otherwise (refused before any attempt, or busy:
 // no attempt answered).
-sf_bill :: (r:SfRun,reqs:[]SfRequest,out:[]SfOutcome,att:[]SfAttempt,l:SfLedger,i:int,now:int)->SfLedger {
+sf_bill :: (r:SfRun,reqs:[]SfRequest,out:[]SfOutcome,att:[]SfAttempt,l:SfLedger,i:int,now:int)->SfLedger #effects(all) {
     o:=out[i];q:=reqs[i];u:=BlUse.{status=ifx o.end==SfEnd.refused then BlStatus.refused else BlStatus.busy};
     if o.end==SfEnd.answered {w:=att[o.winner];u=BlUse.{status=BlStatus.answered,tokens_in=q.prompt,tokens_out=q.output,device_us=w.finish-w.start};}
     t:=sf_settle(l,r.evidence,r.price,q.key,BlPrice.{msat=o.quote},u,now-q.arrive);
@@ -742,7 +742,7 @@ answer cost 3,322 msat: 64 × 3,322 = 212,608.
 // expired and refused requests, the nearest-rank P95 of the answered ones'
 // latency from arrival, and the millisatoshis charged.
 SfReport :: struct {keys:int;answered:int;failed:int;expired:int;refused:int;p95_us:int;charged:int;attempts:int;}
-sf_report :: (s:SfSim,reqs:[]SfRequest)->SfReport {
+sf_report :: (s:SfSim,reqs:[]SfRequest)->SfReport #effects(all) {
     p:SfReport;lat:[64]int;
     for i:0..<s.n {
         o:=s.out[i];

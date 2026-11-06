@@ -70,27 +70,27 @@ SP_Result :: struct {status:SP_Status;result:SP_Type;}
 }
 
 // Implementation follows the independently stated checks.
-SP_frame_valid :: (frame:SP_Frame)->bool #export_c {
+SP_frame_valid :: (frame:SP_Frame)->bool #export_c #effects(all) {
   if frame.handedness!= -1 && frame.handedness!=1 {return false;}
   if frame.convention!=SP_Convention.cartesian && frame.convention!=SP_Convention.body && frame.convention!=SP_Convention.optical {return false;}
   if frame.continuity!=SP_Continuity.continuous && frame.continuity!=SP_Continuity.jumping {return false;}
   if frame.min_rep!=32 && frame.min_rep!=64 {return false;}
   return frame.convention!=SP_Convention.optical || frame.handedness==1;
 }
-SP_type_valid :: (type:SP_Type)->bool #export_c {
+SP_type_valid :: (type:SP_Type)->bool #export_c #effects(all) {
   if type.rep!=32 && type.rep!=64 {return false;}
   if type.kind==SP_Kind.raw {return type.frame==0 && type.unit==0;}
   if type.kind!=SP_Kind.point && type.kind!=SP_Kind.vector {return false;}
   return type.frame>=1 && type.frame<=2147483647 && type.unit>=1 && type.unit<=2147483647;
 }
-SP_admit :: (type:SP_Type,frame:SP_Frame,unit:Q_Unit)->SP_Status #export_c {
+SP_admit :: (type:SP_Type,frame:SP_Frame,unit:Q_Unit)->SP_Status #export_c #effects(all) {
   if !SP_type_valid(type) {return SP_Status.type;}if type.kind==SP_Kind.raw {return SP_Status.ok;}
   if !SP_frame_valid(frame) || !Q_unit_valid(unit) {return SP_Status.metadata;}
   if type.kind==SP_Kind.point && (unit.mass!=0 || unit.length!=1 || unit.time!=0 || unit.angle!=0) {return SP_Status.unit;}
   if frame.min_rep==64 && type.rep!=64 {return SP_Status.precision;}
   return SP_Status.ok;
 }
-SP_binary :: (op:SP_Op,left:SP_Type,right:SP_Type)->SP_Result #export_c {
+SP_binary :: (op:SP_Op,left:SP_Type,right:SP_Type)->SP_Result #export_c #effects(all) {
   if !SP_type_valid(left) || !SP_type_valid(right) {return SP_Result.{status=SP_Status.type};}
   kind:=SP_Kind.raw;
   if op==SP_Op.add {
@@ -114,7 +114,7 @@ SP_binary :: (op:SP_Op,left:SP_Type,right:SP_Type)->SP_Result #export_c {
   result:=left;if left.kind==SP_Kind.raw {result=right;}result.kind=kind;
   return SP_Result.{result=result};
 }
-SP_negate :: (type:SP_Type)->SP_Result #export_c {
+SP_negate :: (type:SP_Type)->SP_Result #export_c #effects(all) {
   if !SP_type_valid(type) {return SP_Result.{status=SP_Status.type};}
   if type.kind!=SP_Kind.vector {return SP_Result.{status=SP_Status.operation};}
   return SP_Result.{result=type};

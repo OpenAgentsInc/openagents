@@ -49,8 +49,8 @@ Motion :: struct {
   line: int;   // the line an error is on (from 1); 0 none
 }
 
-verse_motion_name :: (m: [] Motion) -> string #export_c { return cast(string) m[0].name[0..<m[0].name_n]; }
-verse_motion_error :: (m: [] Motion) -> string #export_c { return cast(string) m[0].error[0..<m[0].error_n]; }
+verse_motion_name :: (m: [] Motion) -> string #export_c #effects(all) { return cast(string) m[0].name[0..<m[0].name_n]; }
+verse_motion_error :: (m: [] Motion) -> string #export_c #effects(all) { return cast(string) m[0].error[0..<m[0].error_n]; }
 
 // ---- reading
 
@@ -119,7 +119,7 @@ motion_range :: (buf: [] u8, r: Fv) -> string {
 
 // Reads and checks a motion; m[0].ok says whether it may play, and if not
 // m[0].error says why, starting with its line.
-verse_motion_read :: (m: [] Motion, text: string) -> bool #export_c {
+verse_motion_read :: (m: [] Motion, text: string) -> bool #export_c #effects(all) {
   blank: Motion; m[0] = blank;
   if text.count > MAX_TEXT { return motion_refuse(m, 0, "a motion is at most 8192 bytes", "", ""); }
   has_name := false; has_rig := false; has_seconds := false;
@@ -244,14 +244,14 @@ motion_turn_at :: (m: [] Motion, k: int, joint: int) -> Fv {
 Play :: struct { motion: int = -1; start: f32; stop: f32 = -1; }
 
 // How far into the motion a play is at now (seconds; a loop wraps).
-verse_motion_time :: (m: [] Motion, p: Play, now: f32) -> f32 #export_c {
+verse_motion_time :: (m: [] Motion, p: Play, now: f32) -> f32 #export_c #effects(all) {
   t := hi(0, now - p.start);
   if m[0].mode == MODE_LOOP { return t - m[0].seconds * floor(t / m[0].seconds); }
   return lo(t, m[0].seconds);
 }
 // How much of the motion shows now: 0 to 1, fading in from its start and
 // out at its end (once) or from when it was asked to stop.
-verse_motion_weight :: (m: [] Motion, p: Play, now: f32) -> f32 #export_c {
+verse_motion_weight :: (m: [] Motion, p: Play, now: f32) -> f32 #export_c #effects(all) {
   if !m[0].ok || p.motion < 0 { return 0; }
   t := now - p.start;
   if t < 0 { return 0; }
@@ -262,7 +262,7 @@ verse_motion_weight :: (m: [] Motion, p: Play, now: f32) -> f32 #export_c {
   return clamp(w, 0, 1);
 }
 // Whether a play has finished: a once past its end, or anything stopped and faded out.
-verse_motion_done :: (m: [] Motion, p: Play, now: f32) -> bool #export_c {
+verse_motion_done :: (m: [] Motion, p: Play, now: f32) -> bool #export_c #effects(all) {
   if !m[0].ok || p.motion < 0 { return true; }
   if p.stop >= 0 && now - p.stop >= m[0].fade { return true; }
   return m[0].mode == MODE_ONCE && now - p.start >= m[0].seconds;
@@ -270,7 +270,7 @@ verse_motion_done :: (m: [] Motion, p: Play, now: f32) -> bool #export_c {
 // The base pose with the motion over it, at weight w (0 the base, 1 the
 // motion), joint by joint, only the joints it names; the result held to
 // every joint's limits.
-verse_motion_apply :: (m: [] Motion, base: Pose, t: f32, w: f32) -> Pose #export_c {
+verse_motion_apply :: (m: [] Motion, base: Pose, t: f32, w: f32) -> Pose #export_c #effects(all) {
   r := base;
   if !m[0].ok || w <= 0 { return r; }
   k := clamp(w, 0, 1);
@@ -282,7 +282,7 @@ verse_motion_apply :: (m: [] Motion, base: Pose, t: f32, w: f32) -> Pose #export
   return r;
 }
 // A play on top of a pose, at now.
-verse_motion_over :: (m: [] Motion, p: Play, base: Pose, now: f32) -> Pose #export_c {
+verse_motion_over :: (m: [] Motion, p: Play, base: Pose, now: f32) -> Pose #export_c #effects(all) {
   return verse_motion_apply(m, base, verse_motion_time(m, p, now), verse_motion_weight(m, p, now));
 }
 

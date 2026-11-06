@@ -154,7 +154,7 @@ sm_turn :: (x:f64)->SmTurn {
     if abs(x)<=SM_LIMIT {return sm_small_turn(x);}
     return sm_large_turn(x);
 }
-SM_sin :: (x:f64)->f64 #export_c {
+SM_sin :: (x:f64)->f64 #export_c #effects(all) {
     if abs(x)>SM_MAX || x!=x {return f64_from_bits(0x7ff8000000000000);}
     if abs(x)<0.000000007450580596923828125 {return x;}
     t:=sm_turn(x);q:=t.n&3;
@@ -163,7 +163,7 @@ SM_sin :: (x:f64)->f64 #export_c {
     if q==2 {return -sm_ksin(t.y0,t.y1);}
     return -sm_kcos(t.y0,t.y1);
 }
-SM_cos :: (x:f64)->f64 #export_c {
+SM_cos :: (x:f64)->f64 #export_c #effects(all) {
     if abs(x)>SM_MAX || x!=x {return f64_from_bits(0x7ff8000000000000);}
     if abs(x)<0.000000007450580596923828125 {return 1;}
     t:=sm_turn(x);q:=t.n&3;
@@ -172,7 +172,7 @@ SM_cos :: (x:f64)->f64 #export_c {
     if q==2 {return -sm_kcos(t.y0,t.y1);}
     return sm_ksin(t.y0,t.y1);
 }
-SM_exp :: (x:f64)->f64 #export_c {
+SM_exp :: (x:f64)->f64 #export_c #effects(all) {
     if x!=x {return x;}
     if x>SM_EXP_OVER {return f64_from_bits(0x7ff0000000000000);}
     if x<-745.1332191019412 {return 0;}
@@ -188,7 +188,7 @@ SM_exp :: (x:f64)->f64 #export_c {
 
 // ln x: x = 2^k m, m in [sqrt(2)/2, sqrt(2)), f = m - 1, s = f/(2 + f), and
 // ln m = f - (f^2/2 - s (f^2/2 + R(s^2))) by fdlibm's polynomial R.
-SM_log :: (x:f64)->f64 #export_c {
+SM_log :: (x:f64)->f64 #export_c #effects(all) {
     if x!=x {return x;}
     if x==0 {return f64_from_bits(0xfff0000000000000);}
     if x<0 {return f64_from_bits(0x7ff8000000000000);}

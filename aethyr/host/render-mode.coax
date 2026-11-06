@@ -5,4 +5,4 @@
  versions:=[5]int.[-1,0,1,2,9223372036854775807];profiles:=[4]int.[-1,2,13,18];
  #assert hrm_presentation(versions[which/4],profiles[which%4])==(which==9);
 }
-hrm_presentation :: (version:int,profile:int)->bool #export_c {return version==1&&profile==2;}
+hrm_presentation :: (version:int,profile:int)->bool #export_c #effects(all) {return version==1&&profile==2;}

@@ -125,7 +125,7 @@ vl_run :: (c:[]Cdp,url:string,phone:bool)->bool {
   if !vl_eval(c,"document.querySelector('meta[name=robots]')?.content==='noindex, nofollow' && valleyErrors.length===0 && coaxial.guardProbe(5)>600") {return false;}
   print("PASS Valley Lab %: direct route, rendered geometry, WASD, jump/land, reset, %, noindex, no console errors\n",ifx phone then "phone" else "desktop",ifx phone then "actual touch movement" else "keyboard controls");return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}
   for phone:0..<2 {
     c:[1]Cdp;if !cdp_launch_background(c[..],ifx phone==1 then 390 else 1280,ifx phone==1 then 844 else 800,"valley-lab-check-") {return 1;}

@@ -137,12 +137,12 @@ somewhere along it, or a 64-hex directory (a render package's):
 ```jai
 // A path the manifest may name: from the site's root, plain characters, no empty or dot-dot
 // segments, and named by its content somewhere along it.
-engine_path_ok :: (p: string) -> bool {
+engine_path_ok :: (p: string) -> bool #effects(all) {
   return p.count <= ENGINE_PATH && engine_at(p, 0, "/") && engine_segments(p[1..<p.count], false);
 }
 // The segments after a slash: none empty, "." or "..", plain characters, one of them (or one
 // before, `named`) a content name.
-engine_segments :: (rest: string, named: bool) -> bool {
+engine_segments :: (rest: string, named: bool) -> bool #effects(all) {
   cut := engine_upto(rest, '/');
   seg := rest[0..<cut];
   if seg.count == 0 || seg == "." || seg == ".." || !engine_all(seg, ENGINE_PATH_CHARS) { return false; }
@@ -159,7 +159,7 @@ manifest read back:
 // One attribute into the manifest: its name, then its value with every run of white space one
 // space and none at either end, checked once written. A name seen before, more than
 // ENGINE_ATTRS, or a value naming anything not named by its content spoils the manifest.
-engine_add :: (buf: [] u8, a: [] EngineAcc, name: string, raw: string) {
+engine_add :: (buf: [] u8, a: [] EngineAcc, name: string, raw: string) #effects(all) {
   if !engine_name_ok(name) || a[0].count == ENGINE_ATTRS { a[0].bad = true; return; }
   for k: 0..<a[0].count { if a[0].names[k] == name { a[0].bad = true; } }
   a[0].names[a[0].count] = name; a[0].count += 1;
@@ -181,7 +181,7 @@ engine_add :: (buf: [] u8, a: [] EngineAcc, name: string, raw: string) {
 }
 // The manifest, or "" when anything spoiled it, it is over ENGINE_TEXT bytes, or the host script,
 // engine, wasm or shaders are missing.
-engine_finish :: (buf: [] u8, a: [] EngineAcc) -> string {
+engine_finish :: (buf: [] u8, a: [] EngineAcc) -> string #effects(all) {
   if a[0].bad || a[0].n > ENGINE_TEXT || !a[0].src || !a[0].app || !a[0].wasm || !a[0].wgsl { return ""; }
   return cast(string) buf[0..<a[0].n];
 }
@@ -192,7 +192,7 @@ engine_finish :: (buf: [] u8, a: [] EngineAcc) -> string {
 // The made-realm engine's script in a page: what follows "<script " in the one tag that opens like
 // the engine's and names data-app="myrealm", to before its ">". "" when there is none, two, or one
 // that doesn't end.
-engine_tag :: (t: string) -> string {
+engine_tag :: (t: string) -> string #effects(all) {
   found := ""; seen := false;
   for i: 0..<t.count {
     if !engine_at(t, i, ENGINE_OPEN) { continue; }
@@ -209,7 +209,7 @@ engine_tag :: (t: string) -> string {
 // script in the page's order, NAME="VALUE" each. "" when the page is refused: no such script, an
 // attribute malformed or repeated, a value naming anything not named by its content, no host
 // script, wasm or shaders, or more than the buffer or ENGINE_TEXT holds.
-engine_manifest :: (template: string, buf: [] u8) -> string {
+engine_manifest :: (template: string, buf: [] u8) -> string #effects(all) {
   out := buf;
   a: [1] EngineAcc;
   engine_put(out, a[..], ENGINE_HEADER);
@@ -232,7 +232,7 @@ engine_manifest :: (template: string, buf: [] u8) -> string {
 ```jai
 // A manifest read back (from the server's publish record) holds when it is exactly what
 // engine_manifest writes: written again line by line through the same rule, the same bytes.
-engine_check :: (m: string) -> bool {
+engine_check :: (m: string) -> bool #effects(all) {
   if !engine_at(m, 0, ENGINE_HEADER) { return false; }
   buf: [ENGINE_TEXT] u8; a: [1] EngineAcc;
   engine_put(buf[..], a[..], ENGINE_HEADER);
@@ -267,7 +267,7 @@ served when its page is next written.
 ```jai
 // A publish record (GET .../<slug>/published) holds together: a revision, the document's 64-hex
 // hash, a manifest this rule writes, and the engine hash is that manifest's.
-engine_record_ok :: (rev: int, doc_sha: string, engine: string, want: string) -> bool {
+engine_record_ok :: (rev: int, doc_sha: string, engine: string, want: string) -> bool #effects(all) {
   if rev < 1 || doc_sha.count != 64 || !engine_all(doc_sha, ENGINE_HEXES) || !engine_check(engine) { return false; }
   h: [64] u8;
   return engine_sha(engine, h[..]) && cast(string) h[..] == want;

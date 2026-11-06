@@ -23,7 +23,7 @@ pkfe_json :: (text:string,total:int,parts:int,last_offset:int,last_count:int,sil
  }
  return at==total;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {tool_errln("usage: parakeet-file-effects-check FIXTURE_EXECUTABLE LONG_WAV");return 2;}
  binary:=args_at(args[..],0);wav:=args_at(args[..],1);out:[262144]u8;err:[32768]u8;checks:=0;
  formats:=[4]string.["--text","--srt","--vtt","--json"];

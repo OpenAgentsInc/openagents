@@ -36,7 +36,7 @@ ReDiff :: struct {
 
 // book:begin items
 // The store's set at now, sorted: the count (at most out.count).
-re_items :: (s: [] RsdStore, now: int, out: [] NegItem) -> int {
+re_items :: (s: [] RsdStore, now: int, out: [] NegItem) -> int #effects(all) {
   n := 0;
   for i: 0..<s[0].n {
     if !ns_store_visible(s, i, now) || n >= out.count { continue; }
@@ -47,7 +47,7 @@ re_items :: (s: [] RsdStore, now: int, out: [] NegItem) -> int {
   return n;
 }
 // SHA-256 over the sorted items: 8 bytes of created_at, big-endian, then the id.
-re_digest :: (items: [] NegItem, out: [] u8) {
+re_digest :: (items: [] NegItem, out: [] u8) #effects(all) {
   st: [SHA_STATE_BYTES] u8;
   #assert sha256_init(st[..]) == SHA_OK;
   for item: items {
@@ -64,7 +64,7 @@ re_digest :: (items: [] NegItem, out: [] u8) {
 // Compares sorted item lists a and b. q and r hold one Negentropy message
 // each way; d.only_a and d.only_b are the caller's, and so is d.max_rounds,
 // the most round trips it may take.
-re_compare :: (a: [] NegItem, b: [] NegItem, d: [] ReDiff, q: [] u8, r: [] u8) -> int {
+re_compare :: (a: [] NegItem, b: [] NegItem, d: [] ReDiff, q: [] u8, r: [] u8) -> int #effects(all) {
   d[0].a_n = a.count; d[0].b_n = b.count; d[0].only_a_n = 0; d[0].only_b_n = 0; d[0].rounds = 0; d[0].error = NEG_OK;
   re_digest(a, d[0].a_digest[..]); re_digest(b, d[0].b_digest[..]);
   if cast(string) d[0].a_digest[..] == cast(string) d[0].b_digest[..] { d[0].verdict = RE_EQUAL; return RE_EQUAL; }
@@ -87,20 +87,20 @@ re_compare :: (a: [] NegItem, b: [] NegItem, d: [] ReDiff, q: [] u8, r: [] u8) -
   d[0].verdict = RE_DIFFER;
   return RE_DIFFER;
 }
-re_fail :: (d: [] ReDiff, e: int) -> int { d[0].error = e; d[0].verdict = RE_ERROR; return RE_ERROR; }
+re_fail :: (d: [] ReDiff, e: int) -> int #effects(all) { d[0].error = e; d[0].verdict = RE_ERROR; return RE_ERROR; }
 // Compares two stores as they serve at now. ia and ib hold their items.
-re_stores :: (a: [] RsdStore, b: [] RsdStore, now: int, ia: [] NegItem, ib: [] NegItem, d: [] ReDiff, q: [] u8, r: [] u8) -> int {
+re_stores :: (a: [] RsdStore, b: [] RsdStore, now: int, ia: [] NegItem, ib: [] NegItem, d: [] ReDiff, q: [] u8, r: [] u8) -> int #effects(all) {
   na := re_items(a, now, ia); nb := re_items(b, now, ib);
   return re_compare(ia[0..<na], ib[0..<nb], d, q, r);
 }
 // book:end compare
 
 // ---- checks ------------------------------------------------------------------
-re_t_item :: (created: int, first: int, last: int) -> NegItem {
+re_t_item :: (created: int, first: int, last: int) -> NegItem #effects(all) {
   x: NegItem; x.created = created; x.id[0] = cast(u8) first; x.id[31] = cast(u8) last; return x;
 }
 ReT :: struct { a: [640] NegItem; b: [640] NegItem; only_a: [80] NegId; only_b: [80] NegId; d: [1] ReDiff; q: [65536] u8; r: [65536] u8; }
-re_t_run :: (t: [] ReT, na: int, nb: int) -> int {
+re_t_run :: (t: [] ReT, na: int, nb: int) -> int #effects(all) {
   t[0].d[0].only_a = t[0].only_a[..]; t[0].d[0].only_b = t[0].only_b[..]; t[0].d[0].max_rounds = RE_ROUNDS;
   return re_compare(t[0].a[0..<na], t[0].b[0..<nb], t[0].d[..], t[0].q[..], t[0].r[..]);
 }

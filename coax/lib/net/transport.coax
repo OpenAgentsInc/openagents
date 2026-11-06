@@ -5,10 +5,10 @@
 // contracts are in socket-native.h and tls-native.h. Link both, with the
 // flags from coax/platform/tls-env.sh.
 #load "socket_foreign.coax";
-cxtls_host_push :: (byte: int) -> int #foreign;
-cxtls_connect :: (port: int, timeout_ms: int) -> int #foreign;
-cxtls_write :: (h: int, byte: int) -> int #foreign;
-cxtls_flush :: (h: int, timeout_ms: int) -> int #foreign;
-cxtls_read :: (h: int, timeout_ms: int) -> int #foreign;
-cxtls_byte :: (h: int, i: int) -> int #foreign;
-cxtls_close :: (h: int) -> int #foreign;
+cxtls_host_push :: (byte: int) -> int #foreign #effects(all);
+cxtls_connect :: (port: int, timeout_ms: int) -> int #foreign #effects(all);
+cxtls_write :: (h: int, byte: int) -> int #foreign #effects(all);
+cxtls_flush :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
+cxtls_read :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
+cxtls_byte :: (h: int, i: int) -> int #foreign #effects(all);
+cxtls_close :: (h: int) -> int #foreign #effects(all);

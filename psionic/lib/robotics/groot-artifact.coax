@@ -69,12 +69,12 @@ GCA_SHARD2_BYTES :: 1919980184;
   #assert gca_inventory_valid(1) && gca_inventory_valid(4096) && !gca_inventory_valid(0) && !gca_inventory_valid(-1) && !gca_inventory_valid(4097);
 }
 
-gca_header_admit :: (header:int,file_bytes:int,shard:int,out:int,work:int,overlap:bool)->PwStatus #export_c {
+gca_header_admit :: (header:int,file_bytes:int,shard:int,out:int,work:int,overlap:bool)->PwStatus #export_c #effects(all) {
   if !pw_file_size(file_bytes) || header<2 || header>PW_HEADER_MAX || header>file_bytes-8 {return PwStatus.size;}
   if shard<0 || shard>=PW_SHARDS_MAX {return PwStatus.manifest;}
   if out<1 || work<1 {return PwStatus.capacity;}if overlap {return PwStatus.alias;}return PwStatus.ok;
 }
-gca_header :: (header:string,file_bytes:int,shard:int,out:[]P5Tensor,draft:[]P5Tensor,overlap:bool)->PwResult #export_c {
+gca_header :: (header:string,file_bytes:int,shard:int,out:[]P5Tensor,draft:[]P5Tensor,overlap:bool)->PwResult #export_c #effects(all) {
   status:=gca_header_admit(header.count,file_bytes,shard,out.count,draft.count,overlap);if status!=PwStatus.ok {return PwResult.{status=status};}
   j:[1]Json;json_start_bounded(j[..],header,header.count,header.count);
   if json_next(j[..])!=JSON_OBJECT {return PwResult.{status=PwStatus.json};}
@@ -99,13 +99,13 @@ gca_header :: (header:string,file_bytes:int,shard:int,out:[]P5Tensor,draft:[]P5T
   if out.count<count {return PwResult.{status=PwStatus.capacity};}
   for i:0..<count {out[i]=draft[i];}return PwResult.{written=count,bytes=covered};
 }
-gca_spec :: (part:int)->GcaSpec #export_c {
+gca_spec :: (part:int)->GcaSpec #export_c #effects(all) {
   if part<0 || part>=4 {return GcaSpec.{};}
   n:=GCA_INPUT[part];m:=GCA_OUTPUT[part];s:=P5Shape.{rank=2,dims=[5]int.[32,m,0,0,0]};stride:=2*m;
   if (part&1)==0 {s=P5Shape.{rank=3,dims=[5]int.[32,n,m,0,0]};stride*=n;}
   return GcaSpec.{ok=true,name=GCA_NAMES[part],shape=s,begin=GCA_START[part],stride=stride,inputs=n,outputs=m};
 }
-gca_state_range :: (part:int,category:int,inventory:[]P5Tensor,file_bytes:int)->GcaRange #export_c {
+gca_state_range :: (part:int,category:int,inventory:[]P5Tensor,file_bytes:int)->GcaRange #export_c #effects(all) {
   s:=gca_spec(part);if !s.ok || category<0 || category>=32 {return GcaRange.{status=PwStatus.shape};}
   if file_bytes!=GCA_SHARD2_BYTES {return GcaRange.{status=PwStatus.manifest};}
   if !gca_inventory_valid(inventory.count) {return GcaRange.{status=PwStatus.capacity};}
@@ -115,4 +115,4 @@ gca_state_range :: (part:int,category:int,inventory:[]P5Tensor,file_bytes:int)->
   for i:0..<5 {if t.shape.dims[i]!=s.shape.dims[i] {return GcaRange.{status=PwStatus.manifest};}}
   begin:=s.begin+category*s.stride;return GcaRange.{name=s.name,begin=begin,end=begin+s.stride,bytes=s.stride,inputs=s.inputs,outputs=s.outputs,category=category};
 }
-gca_inventory_valid :: (count:int)->bool #export_c {return count>=1 && count<=PW_TENSORS_MAX;}
+gca_inventory_valid :: (count:int)->bool #export_c #effects(all) {return count>=1 && count<=PW_TENSORS_MAX;}

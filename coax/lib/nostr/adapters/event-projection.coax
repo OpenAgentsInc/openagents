@@ -6,11 +6,11 @@
 #load "../../../tests/nostr/proto_wire_N.coax";
 #authority;
 NpaEvent :: struct {original:[]u8;consistent:bool;}
-npa_equal_bytes :: (a:[]u8,b:[]u8)->bool {
+npa_equal_bytes :: (a:[]u8,b:[]u8)->bool #effects(all) {
   if a.count!=b.count {return false;}
   for i:0..<a.count {if a[i]!=b[i] {return false;}}return true;
 }
-npa_tags :: (original:NostrEvent,projected:N_Event)->bool {
+npa_tags :: (original:NostrEvent,projected:N_Event)->bool #effects(all) {
   json:[1]Json;json_start(json[..],original.original[original.tags_from..<original.tags_to]);
   if json_next(json[..])!=JSON_ARRAY {return false;}
   // The generated event iterator validates all nested tags first. With a
@@ -33,7 +33,7 @@ npa_tags :: (original:NostrEvent,projected:N_Event)->bool {
   }
   return !tags.has_value && tags.error==0 && json_next(json[..])==JSON_END;
 }
-npa_fields :: (original:NostrEvent,projected:N_Event)->bool {
+npa_fields :: (original:NostrEvent,projected:N_Event)->bool #effects(all) {
   if original.error!=NE_OK || projected.error!=0 {return false;}
   // Revalidate the complete borrowed child; generated decode recursively checks
   // required fields and tags. The caller keeps its wire stable while read.
@@ -48,7 +48,7 @@ npa_fields :: (original:NostrEvent,projected:N_Event)->bool {
 }
 // This validates equality with the original only. It must not be used as a
 // signature, membership, ownership, freshness or command authorization.
-npa_read :: (wire:[]u8)->NpaEvent #export_c {
+npa_read :: (wire:[]u8)->NpaEvent #export_c #effects(all) {
   envelope:=N_SignedEvent_decode(wire);if envelope.error!=0 {return NpaEvent.{};}
   raw:=N_SignedEvent_get_original_json(envelope);projected:=N_SignedEvent_get_event(envelope);
   original:=ne_parse(cast(string)raw.value);if !npa_fields(original,projected.value) {return NpaEvent.{};}

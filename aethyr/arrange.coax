@@ -48,7 +48,7 @@ Arrange :: struct {
   hover_stem: int;
 }
 
-verse_arrange_new :: (centre: Point, radius: f32) -> Arrange #export_c {
+verse_arrange_new :: (centre: Point, radius: f32) -> Arrange #export_c #effects(all) {
   a: Arrange;
   a.centre = centre;
   a.radius = hi(radius, 0.01);
@@ -58,21 +58,21 @@ verse_arrange_new :: (centre: Point, radius: f32) -> Arrange #export_c {
 
 // Into the close-up, facing the way the world's camera faced (yaw), so the
 // blend is a move in, not a swing round.
-verse_arrange_open :: (a: Arrange, yaw: f32) -> Arrange #export_c {
+verse_arrange_open :: (a: Arrange, yaw: f32) -> Arrange #export_c #effects(all) {
   next := a;
   if !next.open && next.blend <= 0 { next.yaw = ifx finite(yaw) then wrap_angle(yaw) else 0.0f32; }
   next.open = true;
   return next;
 }
 
-verse_arrange_close :: (a: Arrange) -> Arrange #export_c {
+verse_arrange_close :: (a: Arrange) -> Arrange #export_c #effects(all) {
   next := a;
   next.open = false;
   next.hover = ARRANGE_NONE; next.hover_stem = -1;
   return next;
 }
 
-verse_arrange_step :: (a: Arrange, dt: f32, reduced: bool) -> Arrange #export_c {
+verse_arrange_step :: (a: Arrange, dt: f32, reduced: bool) -> Arrange #export_c #effects(all) {
   next := a;
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
   k := ifx reduced then 1.0f32 else t / f32(ARRANGE_IN);
@@ -81,12 +81,12 @@ verse_arrange_step :: (a: Arrange, dt: f32, reduced: bool) -> Arrange #export_c 
 }
 
 // In the close-up (or blending): the world's camera should not take input.
-verse_arrange_active :: (a: Arrange) -> bool #export_c { return a.open || a.blend > 0; }
+verse_arrange_active :: (a: Arrange) -> bool #export_c #effects(all) { return a.open || a.blend > 0; }
 
 // Far enough in that a click means the object.
-verse_arrange_ready :: (a: Arrange) -> bool #export_c { return a.open && a.blend >= 0.9; }
+verse_arrange_ready :: (a: Arrange) -> bool #export_c #effects(all) { return a.open && a.blend >= 0.9; }
 
-verse_arrange_shot :: (a: Arrange) -> Shot #export_c {
+verse_arrange_shot :: (a: Arrange) -> Shot #export_c #effects(all) {
   at := add(a.centre, v3(0, f32(ARRANGE_LIFT), 0));
   p := f32(ARRANGE_PITCH); d := f32(ARRANGE_DIST);
   back := v3(-sin(a.yaw) * cos(p), sin(p), -cos(a.yaw) * cos(p));
@@ -94,26 +94,26 @@ verse_arrange_shot :: (a: Arrange) -> Shot #export_c {
 }
 
 // What to draw: the world's live camera, the close-up, or between.
-verse_arrange_view :: (a: Arrange, live: Shot) -> Shot #export_c {
+verse_arrange_view :: (a: Arrange, live: Shot) -> Shot #export_c #effects(all) {
   return verse_shot_mix(live, verse_arrange_shot(a), a.blend);
 }
 
 // Walks the view round the object: + turns it left, like an orbit's look.
-verse_arrange_turn :: (a: Arrange, dyaw: f32) -> Arrange #export_c {
+verse_arrange_turn :: (a: Arrange, dyaw: f32) -> Arrange #export_c #effects(all) {
   next := a;
   if finite(dyaw) { next.yaw = wrap_angle(next.yaw + dyaw); }
   return next;
 }
 
-verse_arrange_pick :: (a: Arrange, kind: int) -> Arrange #export_c { next := a; next.kind = kind; return next; }
+verse_arrange_pick :: (a: Arrange, kind: int) -> Arrange #export_c #effects(all) { next := a; next.kind = kind; return next; }
 
-verse_arrange_base :: (a: Arrange, i: int) -> Point #export_c {
+verse_arrange_base :: (a: Arrange, i: int) -> Point #export_c #effects(all) {
   if i < 0 || i >= a.count { return a.centre; }
   s := a.stems[i];
   return add(a.centre, v3(s.x, 0, s.z));
 }
 
-verse_arrange_tip :: (a: Arrange, i: int) -> Point #export_c {
+verse_arrange_tip :: (a: Arrange, i: int) -> Point #export_c #effects(all) {
   if i < 0 || i >= a.count { return a.centre; }
   s := a.stems[i];
   up := v3(sin(s.lean) * sin(s.toward), cos(s.lean), sin(s.lean) * cos(s.toward));
@@ -134,7 +134,7 @@ ray_ball :: (r: OrbitRay, c: Point, radius: f32) -> f32 {
 
 // What the pointer is on: a stem's head (nearest first), else the opening
 // (generously: a pointer just off its rim means its edge), else nothing.
-verse_arrange_point :: (a: Arrange, ray: OrbitRay) -> Arrange #export_c {
+verse_arrange_point :: (a: Arrange, ray: OrbitRay) -> Arrange #export_c #effects(all) {
   next := a;
   next.hover = ARRANGE_NONE; next.hover_stem = -1;
   if !next.open || !finite3(ray.from) || !finite3(ray.dir) { return next; }
@@ -160,7 +160,7 @@ verse_arrange_point :: (a: Arrange, ray: OrbitRay) -> Arrange #export_c {
 
 // Places a stem where the pointer is, leaning out the further from the
 // middle it stands, or takes out the stem it is on. A full vase refuses.
-verse_arrange_click :: (a: Arrange) -> Arrange #export_c {
+verse_arrange_click :: (a: Arrange) -> Arrange #export_c #effects(all) {
   next := a;
   if !verse_arrange_ready(next) { return next; }
   if next.hover == ARRANGE_TAKE && next.hover_stem >= 0 && next.hover_stem < next.count {

@@ -2,9 +2,9 @@
 // a check names it only in a branch that is never taken. 'late' runs only
 // in the last check, so coverage must come from every child.
 #authority;
-early :: (n: int) -> int { return n + 1; }
-late :: (n: int) -> int { return n * 2; }
-unused :: (n: int) -> int { return n - 1; }
+early :: (n: int) -> int #effects(all) { return n + 1; }
+late :: (n: int) -> int #effects(all) { return n * 2; }
+unused :: (n: int) -> int #effects(all) { return n - 1; }
 #test "early" { #assert early(1) == 2; }
 #test "early again" { n := early(2); if n > 5 { #assert unused(n) == 0; } #assert n == 3; }
 #test "late" { #assert late(3) == 6; }

@@ -143,7 +143,7 @@ DOOR_PRED :: 1.0;               // s: longer than a round trip and a tick
 // through. The room swings none: a door is open or shut at once, its capsules with it (door_bodies).
 DOOR_SLACK :: 1.5;              // m past DOOR_REACH the room allows for where the page had you
 // Seat at (x, z) uses door i: opened or shut. False when it is down or out of reach.
-everglade_room_door :: (s: [] Everglade, i: int, x: f32, z: f32) -> bool #export_c {
+everglade_room_door :: (s: [] Everglade, i: int, x: f32, z: f32) -> bool #export_c #effects(all) {
   if !door_up(s, i) { return false; }
   d := s[0].doors.d[i..<i + 1];
   dx := d[0].mx - x; dz := d[0].mz - z;
@@ -153,7 +153,7 @@ everglade_room_door :: (s: [] Everglade, i: int, x: f32, z: f32) -> bool #export
   return true;
 }
 // The doors open, word w of them (a bit each, WIRE_DOOR_WORD a word: everglade-wire.coax WK_DOORS).
-everglade_room_doors :: (s: [] Everglade, w: int) -> int #export_c {
+everglade_room_doors :: (s: [] Everglade, w: int) -> int #export_c #effects(all) {
   bits := 0;
   for b: 0..<WIRE_DOOR_WORD {
     i := w * WIRE_DOOR_WORD + b;

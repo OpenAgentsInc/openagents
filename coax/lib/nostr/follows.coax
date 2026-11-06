@@ -23,7 +23,7 @@ NostrFollow :: struct {
 // zeros between, to make 64. The fourth is the NIP's petname example; a t tag and a bare
 // p tag follow.
 FL_EXAMPLE :: "[[\"p\",\"91cf90000000000000000000000000000000000000000000000000000004e5ca\",\"wss://alicerelay.com/\",\"alice\"],[\"p\",\"14aeb0000000000000000000000000000000000000000000000000000008dad4\",\"wss://bobrelay.com/nostr\",\"bob\"],[\"p\",\"612ae000000000000000000000000000000000000000000000000000000e610f\",\"ws://carolrelay.com/ws\",\"carol\"],[\"p\",\"21df6d143fb96c2ec9d63726bf9edc7121df6d143fb96c2ec9d63726bf9edc71\",\"\",\"erin\"],[\"t\",\"x\"],[\"p\",\"21df6d143fb96c2ec9d63726bf9edc7121df6d143fb96c2ec9d63726bf9edc71\"]]";
-fl_event :: (kind: int, tags: string) -> NostrEvent { e := nt_event(tags); e.kind = kind; return e; }
+fl_event :: (kind: int, tags: string) -> NostrEvent #effects(all) { e := nt_event(tags); e.kind = kind; return e; }
 
 #test "NIP-02's example: pubkey, relay and petname per p tag" {
   e := fl_event(3, FL_EXAMPLE);
@@ -80,12 +80,12 @@ fl_event :: (kind: int, tags: string) -> NostrEvent { e := nt_event(tags); e.kin
   f = nostr_follow(fl_event(3, cast(string) long[0..<n]), 0); #assert f.error == FL_TAG && f.tag == NT_LIMIT;
 }
 
-fl_fail :: (f: NostrFollow, error: int) -> NostrFollow { r := f; r.error = error; return r; }
-fl_name_char :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
+fl_fail :: (f: NostrFollow, error: int) -> NostrFollow #effects(all) { r := f; r.error = error; return r; }
+fl_name_char :: (c: u8) -> bool #effects(all) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
 // The petname of tag index, decoded into out: its length, 0 when absent, or
 // -1 when it does not fit. nostr_tag has already read the tag.
 
-fl_petname :: (e: NostrEvent, index: int, out: [] u8) -> int {
+fl_petname :: (e: NostrEvent, index: int, out: [] u8) -> int #effects(all) {
   j: [1] Json; started := nt_start(j[..], e);
   tok := json_next(j[..]);
   for k: 0..<index { skipped := json_skip(j[..]); tok = json_next(j[..]); }
@@ -97,7 +97,7 @@ fl_petname :: (e: NostrEvent, index: int, out: [] u8) -> int {
   return 0;
 }
 // The index'th tag of a kind 3 event as a follow: FL_NOT_P for any other tag.
-nostr_follow :: (e: NostrEvent, index: int) -> NostrFollow {
+nostr_follow :: (e: NostrEvent, index: int) -> NostrFollow #effects(all) {
   f: NostrFollow; j: [1] Json;
   if !nt_start(j[..], e) { return f; }
   if e.kind != FL_KIND_FOLLOWS { return fl_fail(f, FL_KIND); }

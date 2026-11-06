@@ -456,7 +456,7 @@ redit_read_cards :: (e: [] RealmEdit, p_body: string) {
 // ---- requests: one at a time (apps/openagents-web/edit-face.h sends it, then says its id)
 
 redit_busy :: (e: [] RealmEdit) -> bool { return e[0].req_ready || e[0].req_id >= 0; }
-redit_requested :: (e: [] RealmEdit, id: int) #export_c {
+redit_requested :: (e: [] RealmEdit, id: int) #export_c #effects(all) {
   e[0].req_ready = false; e[0].req_id = id;
   if id < 0 {
     if e[0].req_what == REQ_E_SPEC && !e[0].ready { e[0].failed = true; }
@@ -700,7 +700,7 @@ redit_answer :: (e: [] RealmEdit, text: string) {
 
 // ---- in from the host: true when it was this layer's
 
-redit_message :: (e: [] RealmEdit, kind: int, text: string) -> bool #export_c {
+redit_message :: (e: [] RealmEdit, kind: int, text: string) -> bool #export_c #effects(all) {
   if kind == REDIT_FACTS { e[0].voice = fact_of(text, "voice").count > 0; rc_facts(e[0].pc[..], fact_of(text, "ua"), fact_of(text, "url")); return false; }
   if kind >= HTTP_KIND && kind < HTTP_KIND + 8 && e[0].req_id >= 0 && kind - HTTP_KIND == e[0].req_id { redit_answer(e, text); return true; }
   if kind == REDIT_MSG_TEXT && e[0].typing && e[0].field > 0 {

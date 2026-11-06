@@ -56,19 +56,19 @@ CheckpointRead :: struct {
 }
 // book:end checkpoint-format
 
-ck_sum :: (b: [] int) -> int {
+ck_sum :: (b: [] int) -> int #effects(all) {
   h := 2166136261;
   for i: 0..<b.count { h = replay_mix_wide(h, b[i]); }
   return h;
 }
 // Which slot the next checkpoint goes to: the one not holding the newest.
-checkpoint_slot :: (count: int) -> int { return count % 2; }
+checkpoint_slot :: (count: int) -> int #effects(all) { return count % 2; }
 
 // book:begin checkpoint-write
 // Writes a checkpoint of session `s` at its current step (a step boundary: no event for this step
 // taken yet) with the realm's `state`, into `out`. Returns the words written, or 0 if `out` is too
 // small. The checksum is the last word: a write cut before it reads as torn.
-checkpoint_write :: (out: [] int, pins: CheckpointPins, owner: int, s: ReplaySession, state: [] int) -> int {
+checkpoint_write :: (out: [] int, pins: CheckpointPins, owner: int, s: ReplaySession, state: [] int) -> int #effects(all) {
   n := CK_HEADER + REPLAY_SOURCES * CK_CHANNEL + state.count + 1;
   if out.count < n { return 0; }
   h := [CK_HEADER] int.[CHECKPOINT_MAGIC, CHECKPOINT_SCHEMA, pins.engine, pins.content, pins.rules, pins.profile, owner,
@@ -88,7 +88,7 @@ checkpoint_write :: (out: [] int, pins: CheckpointPins, owner: int, s: ReplaySes
 // book:begin checkpoint-read
 // Reads the checkpoint in the first `n` words of `b`, as this build (`pins`) and with the owners'
 // fence (the newest owner generation the realm's directory has issued).
-checkpoint_read :: (b: [] int, n: int, pins: CheckpointPins, fence: int) -> CheckpointRead {
+checkpoint_read :: (b: [] int, n: int, pins: CheckpointPins, fence: int) -> CheckpointRead #effects(all) {
   out: CheckpointRead;
   if n <= 0 { out.status = CK_EMPTY; return out; }
   if n > b.count || n < CK_HEADER + REPLAY_SOURCES * CK_CHANNEL + 1 || b[0] != CHECKPOINT_MAGIC { out.status = CK_TORN; return out; }
@@ -101,7 +101,7 @@ checkpoint_read :: (b: [] int, n: int, pins: CheckpointPins, fence: int) -> Chec
     state = CK_HEADER + REPLAY_SOURCES * CK_CHANNEL, words = words};
 }
 // Of two slots' reads, the one to restore: the newer whole one; 0 or 1, or -1 if neither is.
-checkpoint_pick :: (a: CheckpointRead, b: CheckpointRead) -> int {
+checkpoint_pick :: (a: CheckpointRead, b: CheckpointRead) -> int #effects(all) {
   if a.status != CK_OK && b.status != CK_OK { return -1; }
   if a.status != CK_OK { return 1; }
   if b.status != CK_OK { return 0; }
@@ -116,7 +116,7 @@ JOURNAL_EVENT :: 1;
 JOURNAL_MARK :: 2;
 JOURNAL_ENTRY :: 18;   // kind, owner, tick, source, request, epoch, ten words, the mark, the checksum
 
-journal_put :: (j: [] int, at: int, kind: int, owner: int, e: ReplayEvent, mark: int) -> int {
+journal_put :: (j: [] int, at: int, kind: int, owner: int, e: ReplayEvent, mark: int) -> int #effects(all) {
   if at < 0 || at + JOURNAL_ENTRY > j.count { return 0; }
   j[at] = kind; j[at + 1] = owner; j[at + 2] = e.tick; j[at + 3] = e.source; j[at + 4] = e.request; j[at + 5] = e.epoch;
   for w: 0..<REPLAY_WORDS { j[at + 6 + w] = e.words[w]; }
@@ -125,16 +125,16 @@ journal_put :: (j: [] int, at: int, kind: int, owner: int, e: ReplayEvent, mark:
   return JOURNAL_ENTRY;
 }
 // Appends an accepted event at word `at`: the words written, 0 if no room.
-journal_event :: (j: [] int, at: int, owner: int, e: ReplayEvent) -> int { return journal_put(j, at, JOURNAL_EVENT, owner, e, 0); }
+journal_event :: (j: [] int, at: int, owner: int, e: ReplayEvent) -> int #effects(all) { return journal_put(j, at, JOURNAL_EVENT, owner, e, 0); }
 // Appends step `tick`'s digest.
-journal_mark :: (j: [] int, at: int, owner: int, tick: int, digest: int) -> int { return journal_put(j, at, JOURNAL_MARK, owner, ReplayEvent.{tick = tick}, digest); }
+journal_mark :: (j: [] int, at: int, owner: int, tick: int, digest: int) -> int #effects(all) { return journal_put(j, at, JOURNAL_MARK, owner, ReplayEvent.{tick = tick}, digest); }
 
 JournalRead :: struct { events: int; marks: int; fenced: int; torn: bool; }
 // Reads the first `n` words of journal `j` into session `s` (its events and marks, from the
 // start), for owners at or above `fence`. It stops at the first entry cut short or changed: what
 // follows a torn entry was never published. An entry from an owner older than one already read
 // is a write after the realm moved on, and is dropped.
-journal_read :: (j: [] int, n: int, fence: int, s: ReplaySession) -> JournalRead {
+journal_read :: (j: [] int, n: int, fence: int, s: ReplaySession) -> JournalRead #effects(all) {
   out: JournalRead;
   newest := fence;
   at := 0;
@@ -165,7 +165,7 @@ journal_read :: (j: [] int, n: int, fence: int, s: ReplaySession) -> JournalRead
 // Sets session `s` (whose events and marks journal_read filled) to replay from checkpoint `r`:
 // the gate's channels as the checkpoint has them, the step, the first event to take, the seed.
 // Every step it runs from here is compared with the journal's mark for it.
-checkpoint_resume :: (s: ReplaySession, b: [] int, r: CheckpointRead, j: JournalRead) -> bool {
+checkpoint_resume :: (s: ReplaySession, b: [] int, r: CheckpointRead, j: JournalRead) -> bool #effects(all) {
   if r.status != CK_OK || r.cursor > j.events || s.n.count < REPLAY_COUNTERS || s.channels.count < REPLAY_SOURCES { return false; }
   for c: 0..<REPLAY_SOURCES {
     k := CK_HEADER + c * CK_CHANNEL;
@@ -185,7 +185,7 @@ checkpoint_resume :: (s: ReplaySession, b: [] int, r: CheckpointRead, j: Journal
 // An effect in a durable domain outside the realm (XP, a save, a grant): its id from the owner's
 // generation, the step and the effect's index in the step. A replay makes the same id, so the
 // domain, which applies each id once, is not changed twice.
-checkpoint_op :: (owner: int, tick: int, k: int) -> int { return replay_mix_wide(replay_mix_wide(replay_mix_wide(2166136261, owner), tick), k); }
+checkpoint_op :: (owner: int, tick: int, k: int) -> int #effects(all) { return replay_mix_wide(replay_mix_wide(replay_mix_wide(2166136261, owner), tick), k); }
 // book:end restore
 
 // ---- checks

@@ -101,7 +101,7 @@ multisig holds at most 15 keys. P2WSH has no such limit up to 20 keys.
 ```jai
 // CScript() << n for a count: OP_1 to OP_16, else the minimal CScriptNum
 // pushed. Returns the next position.
-ms_number :: (n: int, out: [] u8, at: int) -> int {
+ms_number :: (n: int, out: [] u8, at: int) -> int #effects(all) {
   if n >= 1 && n <= 16 { out[at] = cast(u8) (0x50 + n); return at + 1; }
   num: [9] u8;
   k := script_num_write_vartime(n, num[..]);
@@ -110,14 +110,14 @@ ms_number :: (n: int, out: [] u8, at: int) -> int {
   return at + 1 + k;
 }
 // The order of n keys of size bytes each, sorted as bytes (BIP-67).
-ms_sort :: (keys: [] u8, size: int, n: int, order: [] int) {
+ms_sort :: (keys: [] u8, size: int, n: int, order: [] int) #effects(all) {
   for i: 0..<n { order[i] = i; }
   for i: 1..<n {
     j := i;
     while j > 0 && ms_before(keys, size, order[j], order[j-1]) { t := order[j]; order[j] = order[j-1]; order[j-1] = t; j -= 1; }
   }
 }
-ms_before :: (keys: [] u8, size: int, a: int, b: int) -> bool {
+ms_before :: (keys: [] u8, size: int, a: int, b: int) -> bool #effects(all) {
   for k: 0..<size { x := keys[a*size+k]; y := keys[b*size+k]; if x != y { return x < y; } }
   return false;
 }
@@ -126,7 +126,7 @@ ms_before :: (keys: [] u8, size: int, a: int, b: int) -> bool {
 // BIP-67's. Like Core's GetScriptForMultisig it doesn't check that a key
 // is on the curve; BIP-67 sorts only compressed keys. Returns the
 // script's length or a code.
-multisig_script_vartime :: (m: int, keys: [] u8, n: int, sorted: bool, out: [] u8) -> int #export_c {
+multisig_script_vartime :: (m: int, keys: [] u8, n: int, sorted: bool, out: [] u8) -> int #export_c #effects(all) {
   if n < 1 || n > MS_MAX_KEYS || keys.count != 33 * n { return MS_KEY_COUNT; }
   if m < 1 || m > n { return MS_THRESHOLD; }
   for i: 0..<n {
@@ -150,7 +150,7 @@ multisig_script_vartime :: (m: int, keys: [] u8, n: int, sorted: bool, out: [] u
 // script itself, its HASH160 under P2SH, its SHA-256 under P2WSH, or the
 // P2WSH program's HASH160 under P2SH. For P2SH-P2WSH the redeem script,
 // the P2WSH program, goes into redeem (34 bytes). Returns its length.
-multisig_output_vartime :: (kind: int, script: [] u8, out: [] u8, redeem: [] u8) -> int #export_c {
+multisig_output_vartime :: (kind: int, script: [] u8, out: [] u8, redeem: [] u8) -> int #export_c #effects(all) {
   if out.count < 34 { return MS_CAPACITY; }
   if kind == MS_BARE { if out.count < script.count { return MS_CAPACITY; } return tx_put(out, 0, script); }
   if kind == MS_P2SH { if script.count > AD_REDEEM_MAX { return MS_TOO_LONG; } return p2sh_script_vartime(script, out); }
@@ -173,14 +173,14 @@ equal the number of keys, and `OP_CHECKMULTISIG` must be the last byte.
 <!-- source: coax/lib/bitcoin/multisig.coax match -->
 ```jai
 // Core's CPubKey::ValidSize: 33 bytes after 02 or 03, 65 after 04, 06 or 07.
-ms_valid_size :: (s: [] u8, at: int, n: int) -> bool {
+ms_valid_size :: (s: [] u8, at: int, n: int) -> bool #effects(all) {
   if n == 0 { return false; }
   h := s[at];
   return (n == 33 && (h == 2 || h == 3)) || (n == 65 && (h == 4 || h == 6 || h == 7));
 }
 // Core's GetScriptNumber: OP_1 to OP_16, or a minimal push of a minimal
 // CScriptNum, from lo to hi; -1 otherwise.
-ms_script_number :: (s: [] u8, op: ScriptOp, lo: int, hi: int) -> int {
+ms_script_number :: (s: [] u8, op: ScriptOp, lo: int, hi: int) -> int #effects(all) {
   v := -1;
   if op.op >= OP_1 && op.op <= OP_16 { v = op.op - 0x50; }
   else if op.ok && op.op <= OP_PUSHDATA4 {
@@ -197,7 +197,7 @@ ms_script_number :: (s: [] u8, op: ScriptOp, lo: int, hi: int) -> int {
 MultisigMatch :: struct { ok: bool; m: int; n: int; }
 // Core's MatchMultisig: the last byte is OP_CHECKMULTISIG, then m, keys
 // of a valid size, n equal to the keys counted, and OP_CHECKMULTISIG.
-multisig_match_vartime :: (s: [] u8, key: [] int, key_n: [] int) -> MultisigMatch #export_c {
+multisig_match_vartime :: (s: [] u8, key: [] int, key_n: [] int) -> MultisigMatch #export_c #effects(all) {
   if s.count < 1 || s[s.count-1] != 0xae { return MultisigMatch.{}; }
   op := script_op_vartime(s, 0);
   if !op.ok { return MultisigMatch.{}; }
@@ -251,7 +251,7 @@ interpreter runs it in full.
 // BIP-387's multi_a: <key 1> OP_CHECKSIG <key 2> OP_CHECKSIGADD ...
 // <key n> OP_CHECKSIGADD m OP_NUMEQUAL, for n x-only keys (32 bytes
 // each), in their order or sorted. Returns the leaf script's length.
-multisig_a_script_vartime :: (m: int, keys: [] u8, n: int, sorted: bool, order: [] int, out: [] u8) -> int #export_c {
+multisig_a_script_vartime :: (m: int, keys: [] u8, n: int, sorted: bool, order: [] int, out: [] u8) -> int #export_c #effects(all) {
   if n < 1 || n > MS_A_MAX_KEYS || keys.count != 32 * n || order.count < n { return MS_KEY_COUNT; }
   if m < 1 || m > n { return MS_THRESHOLD; }
   if out.count < 34 * n + 5 { return MS_CAPACITY; }
@@ -270,7 +270,7 @@ multisig_a_script_vartime :: (m: int, keys: [] u8, n: int, sorted: bool, order: 
 // Core's MatchMultiA: 32-byte keys, the first followed by OP_CHECKSIG
 // and the rest by OP_CHECKSIGADD, then the threshold and OP_NUMEQUAL. Key
 // i is at s[34 * i + 1].
-multisig_a_match_vartime :: (s: [] u8) -> MultisigMatch #export_c {
+multisig_a_match_vartime :: (s: [] u8) -> MultisigMatch #export_c #effects(all) {
   if s.count == 0 || s[0] != 32 || s[s.count-1] != 0x9c { return MultisigMatch.{}; }
   at := 0; n := 0;
   while s.count - at >= 34 {
@@ -289,7 +289,7 @@ multisig_a_match_vartime :: (s: [] u8) -> MultisigMatch #export_c {
 // BIP-342's script-path signature hash of input index for a leaf of
 // version 0xc0: BIP-341's message with the leaf hash, key version 0 and
 // no OP_CODESEPARATOR.
-multisig_a_sighash_vartime :: (b: [] u8, index: int, amounts: [] int, spent: [] BtScript, hashtype: int, leaf: [] u8, out: [] u8) -> bool #export_c {
+multisig_a_sighash_vartime :: (b: [] u8, index: int, amounts: [] int, spent: [] BtScript, hashtype: int, leaf: [] u8, out: [] u8) -> bool #export_c #effects(all) {
   tp := bt_tx_read(b);
   if !tp.ok { return false; }
   h: [32] u8;
@@ -298,7 +298,7 @@ multisig_a_sighash_vartime :: (b: [] u8, index: int, amounts: [] int, spent: [] 
 }
 // A BIP-340 signature of sighash by key (not tweaked: a script-path key
 // signs as itself), into out (64 bytes).
-multisig_a_sign :: (key: [] u8, sighash: [] u8, aux: [] u8, w: [] SignWork, out: [] u8) -> bool {
+multisig_a_sign :: (key: [] u8, sighash: [] u8, aux: [] u8, w: [] SignWork, out: [] u8) -> bool #effects(all) {
   status := SIGN_REFUSED;
   for k: 0..<6 { status = schnorr_sign_step(key, aux, sighash, w, out, false); }
   return status == SIGN_DONE;
@@ -309,7 +309,7 @@ multisig_a_sign :: (key: [] u8, sighash: [] u8, aux: [] u8, w: [] SignWork, out:
 // hash type of 0x01 to 0x03 or 0x81 to 0x83 that hashtypes[] says the
 // hash was made with); the count must be m. False for a stack of the
 // wrong size.
-multisig_a_check_vartime :: (s: [] u8, items: [] [] u8, sighashes: [] [32] u8, hashtypes: [] int) -> bool #export_c {
+multisig_a_check_vartime :: (s: [] u8, items: [] [] u8, sighashes: [] [32] u8, hashtypes: [] int) -> bool #export_c #effects(all) {
   x := multisig_a_match_vartime(s);
   if !x.ok || items.count != x.n { return false; }
   count := 0;

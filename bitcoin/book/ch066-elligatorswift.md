@@ -115,13 +115,13 @@ below multiplies by roots, so it needs BIP-324's:
 // of a as a^((p+1)/4), which is itself a square. Chapter 13's sf_sqrt
 // returns the even root instead, and xswiftec_inv needs BIP-324's sign.
 EsRoot :: struct { value: SecpField; ok: u64; }
-es_sqrt :: (a: SecpField) -> EsRoot {
+es_sqrt :: (a: SecpField) -> EsRoot #effects(all) {
   cache := sf_chain_prefix(a);
   root := sf_square_n(sf_multiply(sf_square_n(cache.value[12], 6), cache.value[1]), 2);
   return EsRoot.{value = root, ok = sf_equal_mask(sf_square(root), a)};
 }
 // x is a valid x coordinate when x^3 + 7 is a square.
-es_valid_x :: (x: SecpField) -> u64 {
+es_valid_x :: (x: SecpField) -> u64 #effects(all) {
   return es_sqrt(sf_add(sf_multiply(sf_square(x), x), es_small(7))).ok;
 }
 ```
@@ -156,7 +156,7 @@ becomes 1, `t = 0` becomes 1, and when `u^3 + t^2 + 7 = 0`, `t` doubles.
 ```jai
 // xswiftec: any (u, t) gives a valid x. One of three candidates is always
 // on the curve; the first valid one wins.
-ellswift_xswiftec :: (u_in: SecpField, t_in: SecpField) -> SecpField {
+ellswift_xswiftec :: (u_in: SecpField, t_in: SecpField) -> SecpField #effects(all) {
   one := es_small(1); seven := es_small(7);
   u := es_choose(es_is_zero(u_in), one, u_in);
   t := es_choose(es_is_zero(t_in), one, t_in);
@@ -175,7 +175,7 @@ ellswift_xswiftec :: (u_in: SecpField, t_in: SecpField) -> SecpField {
   return es_choose(es_valid_x(x1), x1, es_choose(es_valid_x(x2), x2, x3));
 }
 // Decode 64 bytes, u then t, each read big-endian modulo p, to a 32-byte x.
-ellswift_decode :: (ell: [] u8, out: [] u8) -> bool {
+ellswift_decode :: (ell: [] u8, out: [] u8) -> bool #effects(all) {
   if ell.count != 64 || out.count != 32 { return false; }
   u := sf_load(ell[0..<32]).value; t := sf_load(ell[32..<64]).value;
   return sf_store(ellswift_xswiftec(u, t), out);
@@ -214,7 +214,7 @@ case's `t`.
 // picks which candidate of xswiftec produces x; bits 0 and 2 pick the
 // signs. Both halves are computed and the case selects with masks.
 EsT :: struct { t: SecpField; ok: u64; }
-ellswift_xswiftec_inv :: (x: SecpField, u: SecpField, which: int) -> EsT {
+ellswift_xswiftec_inv :: (x: SecpField, u: SecpField, which: int) -> EsT #effects(all) {
   bit0 := cb_mask(cast(u64) which & 1); bit1 := cb_mask((cast(u64) which >> 1) & 1);
   bit2 := cb_mask((cast(u64) which >> 2) & 1);
   g := sf_add(sf_multiply(sf_square(u), u), es_small(7));  // u^3 + 7
@@ -240,7 +240,7 @@ ellswift_xswiftec_inv :: (x: SecpField, u: SecpField, which: int) -> EsT {
   bad := es_choose64(bit1, bad_b, bad_a) | (CB_MAX64 ^ w.ok);
   return EsT.{t = t, ok = bad ^ CB_MAX64};
 }
-es_choose64 :: (mask: u64, a: u64, b: u64) -> u64 { return cb_ct_select64(mask, a, b); }
+es_choose64 :: (mask: u64, a: u64, b: u64) -> u64 #effects(all) { return cb_ct_select64(mask, a, b); }
 ```
 
 The procedure computes both halves for every case, and selects with masks.
@@ -266,7 +266,7 @@ that passes fresh random bytes gets a uniform encoding.
 // the case has a preimage. Each attempt succeeds with probability about
 // 1/4, so the loop bound is never reached in practice.
 ELLSWIFT_ATTEMPTS :: 1024;
-ellswift_encode :: (x_bytes: [] u8, rnd: [] u8, out: [] u8) -> bool {
+ellswift_encode :: (x_bytes: [] u8, rnd: [] u8, out: [] u8) -> bool #effects(all) {
   if x_bytes.count != 32 || rnd.count != 32 || out.count != 64 { return false; }
   x := sf_load(x_bytes).value;
   if es_valid_x(x) != CB_MAX64 { return false; }  // x is public; refuse a bad one
@@ -289,7 +289,7 @@ ellswift_encode :: (x_bytes: [] u8, rnd: [] u8, out: [] u8) -> bool {
 }
 // A key's encoding: x(secret * G), encoded with rnd. EC_OK or ecdh_stage's
 // refusal; the caller wipes work, which holds the key's x.
-ellswift_create :: (secret: [] u8, rnd: [] u8, out: [] u8, work: [] EcdhScratch) -> u32 {
+ellswift_create :: (secret: [] u8, rnd: [] u8, out: [] u8, work: [] EcdhScratch) -> u32 #effects(all) {
   if out.count != 64 || rnd.count != 32 { return EC_LENGTH; }
   generator_x := ECDH_TEST_PEER;
   code := ecdh_stage(secret, generator_x[..], work);
@@ -325,7 +325,7 @@ gets a different secret.
 // BIP-324's shared secret: x(secret * decode(theirs)), hashed with both
 // encodings in the order initiator, responder, under the tag
 // "bip324_ellswift_xonly_ecdh". The caller wipes work.
-ellswift_xdh :: (ours: [] u8, theirs: [] u8, secret: [] u8, initiating: bool, out: [] u8, work: [] EcdhScratch) -> u32 {
+ellswift_xdh :: (ours: [] u8, theirs: [] u8, secret: [] u8, initiating: bool, out: [] u8, work: [] EcdhScratch) -> u32 #effects(all) {
   if ours.count != 64 || theirs.count != 64 || out.count != 32 { return EC_LENGTH; }
   their_x: [32] u8;
   if !ellswift_decode(theirs, their_x[..]) { return EC_LENGTH; }

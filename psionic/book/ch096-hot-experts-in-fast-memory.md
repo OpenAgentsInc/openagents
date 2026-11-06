@@ -75,7 +75,7 @@ concurrent request fencing and complete model-step publication.
 
 <!-- source: psionic/lib/deepseek/hot-swap.coax plan -->
 ```jai
-dc_plan :: (c:DcConfig,state:DcState,proposed:[]int,moves:[]DcMove,slots_work:[]int,moves_work:[]DcMove,overlap:bool)->DcPlan #export_c {
+dc_plan :: (c:DcConfig,state:DcState,proposed:[]int,moves:[]DcMove,slots_work:[]int,moves_work:[]DcMove,overlap:bool)->DcPlan #export_c #effects(all) {
     status:=dc_state(c,state);if status!=DsStatus.ok {return DcPlan.{status=status};}if state.head.busy || state.head.revision==1048576 {return DcPlan.{status=DsStatus.state};}
     k:=c.layers*c.slots;if proposed.count<k || moves.count<k || slots_work.count<k || moves_work.count<k {return DcPlan.{status=DsStatus.capacity};}if overlap {return DcPlan.{status=DsStatus.alias};}
     for i:0..<k {slots_work[i]=state.slots[i];}count:=0;
@@ -116,7 +116,7 @@ and exact packet extent, then returns borrowed `DeExpert` views. The original
 
 <!-- source: psionic/lib/deepseek/hot-weights.coax bind -->
 ```jai
-dc_bind :: (width:int,hidden:int,packet:[]u8)->DcBound #export_c {
+dc_bind :: (width:int,hidden:int,packet:[]u8)->DcBound #export_c #effects(all) {
     p:=dc_packet(width,hidden);if p.status!=DsStatus.ok {return DcBound.{status=p.status};}if packet.count!=p.bytes {return DcBound.{status=DsStatus.capacity};}
     matrices:[3]DeMatrix;for i:0..<3 {matrices[i]=DeMatrix.{kind=DeKind.fp4,rows=ifx i==2 then width else hidden,columns=ifx i==2 then hidden else width,data=packet[p.begin[2*i]..<p.begin[2*i+1]],scales=packet[p.begin[2*i+1]..<p.begin[2*i+2]]};}
     return DcBound.{value=DeExpert.{gate=matrices[0],up=matrices[1],down=matrices[2]}};

@@ -118,7 +118,7 @@ everything said so far.
 // Both sides of a connection compute the same point, and hashing its
 // compressed form, parity byte included, gives the same 32 bytes.
 NoisePublic :: struct { ok: bool; bytes: [33] u8; }
-noise_public :: (secret: [] u8) -> NoisePublic {
+noise_public :: (secret: [] u8) -> NoisePublic #effects(all) {
   r: NoisePublic; k := sc_load(secret);
   if !k.ok || sc_is_zero(k.value) { return r; }
   p := smc_multiply(k.value, sg_generator());
@@ -126,7 +126,7 @@ noise_public :: (secret: [] u8) -> NoisePublic {
   k = ScLoad.{}; p = SgResult.{};
   return r;
 }
-noise_ecdh :: (secret: [] u8, peer: [] u8, out: [] u8) -> int {
+noise_ecdh :: (secret: [] u8, peer: [] u8, out: [] u8) -> int #effects(all) {
   if peer.count != 33 { return NOISE_BAD_PUBKEY; }
   point := se_decode(peer);
   if !point.ok { return NOISE_BAD_PUBKEY; }
@@ -141,7 +141,7 @@ noise_ecdh :: (secret: [] u8, peer: [] u8, out: [] u8) -> int {
 }
 // HKDF(salt, ikm) with empty info and 64 bytes out: the first 32 replace
 // one key, the last 32 another.
-noise_hkdf :: (salt: [] u8, ikm: [] u8, first: [] u8, second: [] u8) {
+noise_hkdf :: (salt: [] u8, ikm: [] u8, first: [] u8, second: [] u8) #effects(all) {
   prk: [32] u8; okm: [64] u8; empty: [1] u8;
   #assert hkdf_extract_checked(salt, ikm, prk[..], false) == SHA_OK;
   #assert hkdf_expand_checked(prk[..], empty[0..<0], okm[..], 64, false) == SHA_OK;
@@ -149,12 +149,12 @@ noise_hkdf :: (salt: [] u8, ikm: [] u8, first: [] u8, second: [] u8) {
   noise_wipe(prk[..]); noise_wipe(okm[..]);
 }
 // The nonce: 32 zero bits, then n as a little-endian 64-bit number.
-noise_nonce :: (n: u64) -> [12] u8 { nonce: [12] u8; stored := cb_store_le64(nonce[..], 4, n); return nonce; }
-noise_seal :: (key: [] u8, n: u64, ad: [] u8, plain: [] u8, out: [] u8) {
+noise_nonce :: (n: u64) -> [12] u8 #effects(all) { nonce: [12] u8; stored := cb_store_le64(nonce[..], 4, n); return nonce; }
+noise_seal :: (key: [] u8, n: u64, ad: [] u8, plain: [] u8, out: [] u8) #effects(all) {
   nonce := noise_nonce(n);
   #assert chacha20_poly1305_seal(key, nonce[..], ad, plain, out[0..<plain.count + NOISE_TAG], false) == CCP_OK;
 }
-noise_open :: (key: [] u8, n: u64, ad: [] u8, box: [] u8, out: [] u8) -> bool {
+noise_open :: (key: [] u8, n: u64, ad: [] u8, box: [] u8, out: [] u8) -> bool #effects(all) {
   nonce := noise_nonce(n);
   return chacha20_poly1305_open(key, nonce[..], ad, box, out[0..<box.count - NOISE_TAG], false) == CCP_OK;
 }
@@ -191,7 +191,7 @@ NOISE_PROTOCOL :: "Noise_XK_secp256k1_ChaChaPoly_SHA256";
 NOISE_PROLOGUE :: "lightning";
 // The initiator knows the responder's static key; the responder passes
 // its own. Returns NOISE_OK or NOISE_BAD_KEY or NOISE_BAD_PUBKEY.
-noise_handshake_init :: (hs: [] NoiseHandshake, initiator: bool, s_priv: [] u8, responder: [] u8) -> int {
+noise_handshake_init :: (hs: [] NoiseHandshake, initiator: bool, s_priv: [] u8, responder: [] u8) -> int #effects(all) {
   if hs.count != 1 || s_priv.count != 32 || responder.count != 33 || !se_decode(responder).ok { return NOISE_BAD_PUBKEY; }
   mine := noise_public(s_priv);
   if !mine.ok { return NOISE_BAD_KEY; }
@@ -225,7 +225,7 @@ the key, then the tag, in that order, and stops at the first failure.
 // Act one, initiator to responder: -> e, es. The initiator proves it knows
 // the responder's static key: only that key's holder can compute es and
 // check the tag.
-noise_act_one_write :: (hs: [] NoiseHandshake, e_priv: [] u8, out: [] u8) -> int {
+noise_act_one_write :: (hs: [] NoiseHandshake, e_priv: [] u8, out: [] u8) -> int #effects(all) {
   if hs[0].act != 1 || !hs[0].initiator { return NOISE_STATE; }
   if out.count < NOISE_ACT_ONE { return NOISE_CAPACITY; }
   e := noise_public(e_priv);
@@ -241,7 +241,7 @@ noise_act_one_write :: (hs: [] NoiseHandshake, e_priv: [] u8, out: [] u8) -> int
   hs[0].act = 2;
   return code;
 }
-noise_act_one_read :: (hs: [] NoiseHandshake, m: [] u8) -> int {
+noise_act_one_read :: (hs: [] NoiseHandshake, m: [] u8) -> int #effects(all) {
   if hs[0].act != 1 || hs[0].initiator { return NOISE_STATE; }
   if m.count != NOISE_ACT_ONE { return NOISE_TRUNCATED; }
   if m[0] != 0 { return NOISE_BAD_VERSION; }
@@ -272,7 +272,7 @@ Act two has the same 50-byte layout as act one.
 ```jai
 // Act two, responder to initiator: <- e, ee. Both ephemeral keys meet, so
 // everything after this depends on fresh secrets: forward secrecy.
-noise_act_two_write :: (hs: [] NoiseHandshake, e_priv: [] u8, out: [] u8) -> int {
+noise_act_two_write :: (hs: [] NoiseHandshake, e_priv: [] u8, out: [] u8) -> int #effects(all) {
   if hs[0].act != 2 || hs[0].initiator { return NOISE_STATE; }
   if out.count < NOISE_ACT_TWO { return NOISE_CAPACITY; }
   e := noise_public(e_priv);
@@ -288,7 +288,7 @@ noise_act_two_write :: (hs: [] NoiseHandshake, e_priv: [] u8, out: [] u8) -> int
   hs[0].act = 3;
   return code;
 }
-noise_act_two_read :: (hs: [] NoiseHandshake, m: [] u8) -> int {
+noise_act_two_read :: (hs: [] NoiseHandshake, m: [] u8) -> int #effects(all) {
   if hs[0].act != 2 || !hs[0].initiator { return NOISE_STATE; }
   if m.count != NOISE_ACT_TWO { return NOISE_TRUNCATED; }
   if m[0] != 0 { return NOISE_BAD_VERSION; }
@@ -319,7 +319,7 @@ rotation.
 // The session: a key and nonce each way, and a chaining key each way for
 // rotation. Both start from the handshake's final ck.
 NoiseTransport :: struct { sk: [32] u8; rk: [32] u8; sn: u64; rn: u64; sck: [32] u8; rck: [32] u8; }
-noise_split :: (hs: [] NoiseHandshake, t: [] NoiseTransport) {
+noise_split :: (hs: [] NoiseHandshake, t: [] NoiseTransport) #effects(all) {
   empty: [1] u8; first: [32] u8; second: [32] u8;
   noise_hkdf(hs[0].ck[..], empty[0..<0], first[..], second[..]);
   t[0] = NoiseTransport.{sck = hs[0].ck, rck = hs[0].ck};
@@ -350,7 +350,7 @@ encrypted key, `BAD_TAG` for the last.
 // Act three, initiator to responder: -> s, se. The initiator sends its
 // static key encrypted under temp_k2 with nonce 1, then proves it holds
 // the matching secret with a tag under temp_k3.
-noise_act_three_write :: (hs: [] NoiseHandshake, out: [] u8, t: [] NoiseTransport) -> int {
+noise_act_three_write :: (hs: [] NoiseHandshake, out: [] u8, t: [] NoiseTransport) -> int #effects(all) {
   if hs[0].act != 3 || !hs[0].initiator { return NOISE_STATE; }
   if out.count < NOISE_ACT_THREE { return NOISE_CAPACITY; }
   c: [49] u8;
@@ -364,7 +364,7 @@ noise_act_three_write :: (hs: [] NoiseHandshake, out: [] u8, t: [] NoiseTranspor
   noise_split(hs, t);
   return code;
 }
-noise_act_three_read :: (hs: [] NoiseHandshake, m: [] u8, t: [] NoiseTransport) -> int {
+noise_act_three_read :: (hs: [] NoiseHandshake, m: [] u8, t: [] NoiseTransport) -> int #effects(all) {
   if hs[0].act != 3 || hs[0].initiator { return NOISE_STATE; }
   if m.count != NOISE_ACT_THREE { return NOISE_TRUNCATED; }
   if m[0] != 0 { return NOISE_BAD_VERSION; }
@@ -399,7 +399,7 @@ stream is corrupt or forged, and the receiver closes the connection.
 // Encrypt one message: its 2-byte big-endian length sealed with sn, then
 // the message sealed with sn + 1. out gets 18 + m.count + 16 bytes;
 // returns that length, or -1.
-noise_encrypt :: (t: [] NoiseTransport, m: [] u8, out: [] u8) -> int {
+noise_encrypt :: (t: [] NoiseTransport, m: [] u8, out: [] u8) -> int #effects(all) {
   if m.count > NOISE_MAX_MESSAGE || out.count < NOISE_HEADER + m.count + NOISE_TAG { return -1; }
   length := [2] u8.[cast(u8) (m.count >> 8), cast(u8) (m.count & 255)];
   n: [1] u64;
@@ -414,7 +414,7 @@ noise_encrypt :: (t: [] NoiseTransport, m: [] u8, out: [] u8) -> int {
 // the caller then reads with its 16-byte tag. A bad tag here means the
 // stream is corrupt; the connection ends.
 NoiseLength :: struct { code: int; n: int; }
-noise_decrypt_length :: (t: [] NoiseTransport, header: [] u8) -> NoiseLength {
+noise_decrypt_length :: (t: [] NoiseTransport, header: [] u8) -> NoiseLength #effects(all) {
   if header.count != NOISE_HEADER { return NoiseLength.{code = NOISE_TRUNCATED}; }
   length: [2] u8; empty: [1] u8; n: [1] u64;
   ok := noise_open(t[0].rk[..], t[0].rn, empty[0..<0], header, length[..]);
@@ -423,7 +423,7 @@ noise_decrypt_length :: (t: [] NoiseTransport, header: [] u8) -> NoiseLength {
   return NoiseLength.{n = (cast(int) length[0] << 8) | cast(int) length[1]};
 }
 // Then the body and its tag, decrypted into out.
-noise_decrypt_body :: (t: [] NoiseTransport, body: [] u8, out: [] u8) -> int {
+noise_decrypt_body :: (t: [] NoiseTransport, body: [] u8, out: [] u8) -> int #effects(all) {
   if body.count < NOISE_TAG { return NOISE_TRUNCATED; }
   if out.count < body.count - NOISE_TAG { return NOISE_CAPACITY; }
   empty: [1] u8; n: [1] u64;
@@ -443,7 +443,7 @@ retired, and a key stolen later does not decrypt earlier traffic.
 // A key rotates after 1,000 uses: ck', k' = HKDF(ck, k), and its nonce
 // starts again at 0. Each message uses a key twice, length and body, so
 // keys rotate every 500 messages.
-noise_used :: (key: [] u8, ck: [] u8, n: [] u64) {
+noise_used :: (key: [] u8, ck: [] u8, n: [] u64) #effects(all) {
   n[0] += 1;
   if n[0] == NOISE_ROTATE {
     old_k: [32] u8; old_ck: [32] u8;

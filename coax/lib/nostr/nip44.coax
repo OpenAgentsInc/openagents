@@ -217,11 +217,11 @@ Nip44Span :: struct { at:int; count:int; error:u32; }
   for i:99..<133 {#assert work[i]==0;}
 }
 
-nip44_fail :: (error:u32)->Nip44Result {return Nip44Result.{error=error};}
+nip44_fail :: (error:u32)->Nip44Result #effects(all) {return Nip44Result.{error=error};}
 
 // Spec calc_padded_len with 64-bit arithmetic. `power` is the smallest power
 // of two above n-1; buckets are 32 bytes until it exceeds 256.
-nip44_calc_padded_len :: (n:int)->int #export_c {
+nip44_calc_padded_len :: (n:int)->int #export_c #effects(all) {
   if n<1 || n>NIP44_SPEC_MAX {return -1;}
   last:=n-1;rest:=last;power:=1;
   while rest>0 {rest=rest>>1;power=power<<1;}
@@ -230,9 +230,9 @@ nip44_calc_padded_len :: (n:int)->int #export_c {
   return chunk*(last/chunk+1);
 }
 // Internal callers have admitted 1 <= n <= profile maximum.
-nip44_prefix_len :: (n:int)->int {return ifx n>=NIP44_EXTENDED_AT then 6 else 2;}
+nip44_prefix_len :: (n:int)->int #effects(all) {return ifx n>=NIP44_EXTENDED_AT then 6 else 2;}
 // out has at least six bytes; returns the prefix length written.
-nip44_write_prefix :: (n:int,out:[]u8)->int {
+nip44_write_prefix :: (n:int,out:[]u8)->int #effects(all) {
   if n>=NIP44_EXTENDED_AT {
     out[0]=0;out[1]=0;
     stored:=cb_store_be32(out,2,cast(u32)n);
@@ -242,7 +242,7 @@ nip44_write_prefix :: (n:int,out:[]u8)->int {
   return 2;
 }
 // Reads the decrypted prefix and checks the exact padded length.
-nip44_unpad_span :: (padded:[]u8)->Nip44Span {
+nip44_unpad_span :: (padded:[]u8)->Nip44Span #effects(all) {
   if padded.count<NIP44_MIN_PADDED {return Nip44Span.{error=NIP44_PADDING};}
   n:=(cast(int)padded[0]<<8)|cast(int)padded[1];at:=2;
   if n==0 {
@@ -253,31 +253,31 @@ nip44_unpad_span :: (padded:[]u8)->Nip44Span {
   return Nip44Span.{at=at,count=n};
 }
 
-nip44_profile_max :: (profile:u32)->int #export_c {
+nip44_profile_max :: (profile:u32)->int #export_c #effects(all) {
   if profile==NIP44_COMPAT {return NIP44_COMPAT_MAX;}
   if profile==NIP44_EXTENDED {return NIP44_EXTENDED_MAX;}
   return 0;
 }
 // Decoded payload bytes for an n-byte plaintext, or -1 outside the profile.
-nip44_raw_size :: (profile:u32,n:int)->int #export_c {
+nip44_raw_size :: (profile:u32,n:int)->int #export_c #effects(all) {
   if n<1 || n>nip44_profile_max(profile) {return -1;}
   return NIP44_OVERHEAD+nip44_prefix_len(n)+nip44_calc_padded_len(n);
 }
-nip44_payload_size :: (profile:u32,n:int)->int #export_c {return base64_encode_size(nip44_raw_size(profile,n));}
+nip44_payload_size :: (profile:u32,n:int)->int #export_c #effects(all) {return base64_encode_size(nip44_raw_size(profile,n));}
 // Encrypt work: the decoded payload followed by the padded plaintext.
-nip44_encrypt_work_size :: (profile:u32,n:int)->int #export_c {
+nip44_encrypt_work_size :: (profile:u32,n:int)->int #export_c #effects(all) {
   raw:=nip44_raw_size(profile,n);
   if raw==-1 {return -1;}
   return 2*raw-NIP44_OVERHEAD;
 }
-nip44_max_payload :: (profile:u32)->int #export_c {return nip44_payload_size(profile,nip44_profile_max(profile));}
+nip44_max_payload :: (profile:u32)->int #export_c #effects(all) {return nip44_payload_size(profile,nip44_profile_max(profile));}
 // Decrypt work bound for a payload of `chars` characters, or -1 if refused.
-nip44_decrypt_work_size :: (profile:u32,chars:int)->int #export_c {
+nip44_decrypt_work_size :: (profile:u32,chars:int)->int #export_c #effects(all) {
   if chars<NIP44_MIN_PAYLOAD || chars>nip44_max_payload(profile) {return -1;}
   return 2*(chars/4*3)-NIP44_OVERHEAD;
 }
 
-nip44_message_keys_checked :: (conversation_key:[]u8,nonce:[]u8,keys:[]u8,overlap:bool)->u32 {
+nip44_message_keys_checked :: (conversation_key:[]u8,nonce:[]u8,keys:[]u8,overlap:bool)->u32 #effects(all) {
   if conversation_key.count!=32 || nonce.count!=32 {return NIP44_KEY;}
   if keys.count<76 {return NIP44_OUTPUT;}
   if overlap {return NIP44_ALIAS;}
@@ -285,7 +285,7 @@ nip44_message_keys_checked :: (conversation_key:[]u8,nonce:[]u8,keys:[]u8,overla
   return NIP44_OK;
 }
 // HKDF-extract(salt "nip44-v2", IKM = raw unhashed shared x from ECDH).
-nip44_conversation_key_checked :: (shared_x:[]u8,out:[]u8,overlap:bool)->u32 {
+nip44_conversation_key_checked :: (shared_x:[]u8,out:[]u8,overlap:bool)->u32 #effects(all) {
   if shared_x.count!=32 {return NIP44_KEY;}
   if out.count<32 {return NIP44_OUTPUT;}
   if overlap {return NIP44_ALIAS;}
@@ -294,7 +294,7 @@ nip44_conversation_key_checked :: (shared_x:[]u8,out:[]u8,overlap:bool)->u32 {
   return NIP44_OK;
 }
 // HMAC-SHA256(hmac_key, aad || ciphertext); all views are admitted.
-nip44_mac :: (key:[]u8,aad:[]u8,ciphertext:[]u8,out:[]u8)->u32 {
+nip44_mac :: (key:[]u8,aad:[]u8,ciphertext:[]u8,out:[]u8)->u32 #effects(all) {
   state:[224]u8;
   defer {secure_zero(state[..]);#assert crypto_zeroed(state[..]);}
   if hmac_sha256_init_checked(state[..],key,false)!=SHA_OK {return NIP44_INTERNAL;}
@@ -304,7 +304,7 @@ nip44_mac :: (key:[]u8,aad:[]u8,ciphertext:[]u8,out:[]u8)->u32 {
   return NIP44_OK;
 }
 
-nip44_encrypt_request :: (profile:u32,key_count:int,nonce_count:int,n:int,work_count:int,out_count:int,overlap:bool)->u32 #export_c {
+nip44_encrypt_request :: (profile:u32,key_count:int,nonce_count:int,n:int,work_count:int,out_count:int,overlap:bool)->u32 #export_c #effects(all) {
   max:=nip44_profile_max(profile);
   if max==0 {return NIP44_PROFILE;}
   if key_count!=32 || nonce_count!=32 {return NIP44_KEY;}
@@ -316,7 +316,7 @@ nip44_encrypt_request :: (profile:u32,key_count:int,nonce_count:int,n:int,work_c
 }
 // The caller supplies a fresh CSPRNG nonce (entropy.coax); never reuse one.
 // `overlap` is the truthful fact that any two of the views share memory.
-nip44_encrypt_checked :: (profile:u32,conversation_key:[]u8,nonce:[]u8,plaintext:[]u8,work:[]u8,out:[]u8,overlap:bool)->Nip44Result {
+nip44_encrypt_checked :: (profile:u32,conversation_key:[]u8,nonce:[]u8,plaintext:[]u8,work:[]u8,out:[]u8,overlap:bool)->Nip44Result #effects(all) {
   status:=nip44_encrypt_request(profile,conversation_key.count,nonce.count,plaintext.count,work.count,out.count,overlap);
   if status!=NIP44_OK {return nip44_fail(status);}
   n:=plaintext.count;
@@ -342,7 +342,7 @@ nip44_encrypt_checked :: (profile:u32,conversation_key:[]u8,nonce:[]u8,plaintext
   return Nip44Result.{written=encoded.written};
 }
 // Decrypts only after the MAC matches; out is written only for valid padding.
-nip44_decrypt_checked :: (profile:u32,conversation_key:[]u8,payload:string,work:[]u8,out:[]u8,overlap:bool)->Nip44Result {
+nip44_decrypt_checked :: (profile:u32,conversation_key:[]u8,payload:string,work:[]u8,out:[]u8,overlap:bool)->Nip44Result #effects(all) {
   max_chars:=nip44_max_payload(profile);
   if max_chars==-1 {return nip44_fail(NIP44_PROFILE);}
   if conversation_key.count!=32 {return nip44_fail(NIP44_KEY);}

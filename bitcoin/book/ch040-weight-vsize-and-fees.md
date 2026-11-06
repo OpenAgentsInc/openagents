@@ -102,7 +102,7 @@ the inputs (`bad-txns-in-belowout`):
 // or a running total is outside 0..MAX_MONEY or the outputs pay more than
 // the inputs; it also refuses a count of values that isn't t's input count.
 FeeResult :: struct { ok: bool; fee: int; inputs: int; outputs: int; }
-fee_vartime :: (b: [] u8, t: Tx, outs: [] TxOut, values: [] int) -> FeeResult #export_c {
+fee_vartime :: (b: [] u8, t: Tx, outs: [] TxOut, values: [] int) -> FeeResult #export_c #effects(all) {
   r: FeeResult; bad: FeeResult;
   if t.code != TX_OK || values.count != t.nin { return bad; }
   for i: 0..<values.count {
@@ -146,7 +146,7 @@ example uses mempool.space's published costs.
 // cost of 0 it is chapter 34's vsize. Returns -1 for a negative input, a
 // weight above a block's, a sigop cost above a block's 80,000, or
 // bytes_per_sigop above 1,000.
-fee_vsize_sigops_vartime :: (weight: int, sigop_cost: int, bytes_per_sigop: int) -> int #export_c {
+fee_vsize_sigops_vartime :: (weight: int, sigop_cost: int, bytes_per_sigop: int) -> int #export_c #effects(all) {
   if weight < 0 || weight > FEE_MAX_BLOCK_WEIGHT || sigop_cost < 0 || sigop_cost > 80000 || bytes_per_sigop < 0 || bytes_per_sigop > 1000 { return -1; }
   w := weight;
   if sigop_cost * bytes_per_sigop > w { w = sigop_cost * bytes_per_sigop; }
@@ -156,11 +156,11 @@ fee_vsize_sigops_vartime :: (weight: int, sigop_cost: int, bytes_per_sigop: int)
 // Core's unit), or per 1,000 weight units (sat/kWU, LDK's and Lightning's
 // unit). 1 sat/vB is 1,000 sat/kvB and 250 sat/kWU. -1 for a fee outside
 // 0..MAX_MONEY or a size of 0 or less.
-fee_per_kvb_vartime :: (fee: int, vsize: int) -> int #export_c {
+fee_per_kvb_vartime :: (fee: int, vsize: int) -> int #export_c #effects(all) {
   if fee < 0 || fee > FEE_MAX_MONEY || vsize <= 0 { return -1; }
   return fee * 1000 / vsize;
 }
-fee_per_kwu_vartime :: (fee: int, weight: int) -> int #export_c {
+fee_per_kwu_vartime :: (fee: int, weight: int) -> int #export_c #effects(all) {
   if fee < 0 || fee > FEE_MAX_MONEY || weight <= 0 { return -1; }
   return fee * 1000 / weight;
 }
@@ -168,7 +168,7 @@ fee_per_kwu_vartime :: (fee: int, weight: int) -> int #export_c {
 // rate × vsize / 1000, rounded up. The rate is split into its thousands
 // and the rest so that no product passes 2^63. -1 for a rate outside
 // 0..MAX_MONEY or a size outside 0..MAX_BLOCK_WEIGHT.
-fee_for_rate_vartime :: (rate: int, vsize: int) -> int #export_c {
+fee_for_rate_vartime :: (rate: int, vsize: int) -> int #export_c #effects(all) {
   if rate < 0 || rate > FEE_MAX_MONEY || vsize < 0 || vsize > FEE_MAX_BLOCK_WEIGHT { return -1; }
   return (rate / 1000) * vsize + ((rate % 1000) * vsize + 999) / 1000;
 }
@@ -225,7 +225,7 @@ FEE_SCHNORR :: 64;           // BIP-340, with SIGHASH_DEFAULT and no sighash byt
 FEE_INPUT_FIXED :: 32 + 4 + 4;   // every input's txid, output index and sequence
 // The weight one input adds, signed with the longest signature its kind
 // allows, or -1 for an unknown kind. A byte outside the witness weighs 4.
-fee_input_weight_vartime :: (kind: int) -> int #export_c {
+fee_input_weight_vartime :: (kind: int) -> int #export_c #effects(all) {
   if kind == FEE_P2PKH {
     script := 1 + FEE_SIG_MAX + 1 + FEE_KEY;                    // two pushes: 107 bytes
     return TX_SCALE * (FEE_INPUT_FIXED + tx_compact_size_vartime(script) + script);
@@ -236,7 +236,7 @@ fee_input_weight_vartime :: (kind: int) -> int #export_c {
   return -1;
 }
 // The serialized size of an output whose scriptPubKey has script_n bytes.
-fee_output_size_vartime :: (script_n: int) -> int #export_c {
+fee_output_size_vartime :: (script_n: int) -> int #export_c #effects(all) {
   if script_n < 0 { return -1; }
   return 8 + tx_compact_size_vartime(script_n) + script_n;
 }
@@ -245,7 +245,7 @@ fee_output_size_vartime :: (script_n: int) -> int #export_c {
 // the inputs, the outputs and the locktime; and with any segwit input the
 // marker and flag, and an empty stack for each P2PKH input. -1 for an
 // unknown kind or a negative count or size.
-fee_estimate_weight_vartime :: (kinds: [] int, nout: int, output_bytes: int) -> int #export_c {
+fee_estimate_weight_vartime :: (kinds: [] int, nout: int, output_bytes: int) -> int #export_c #effects(all) {
   if nout < 0 || output_bytes < 0 { return -1; }
   w := TX_SCALE * (4 + tx_compact_size_vartime(kinds.count) + tx_compact_size_vartime(nout) + output_bytes + 4);
   legacy := 0;

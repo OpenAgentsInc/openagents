@@ -27,17 +27,17 @@ PidWrench :: struct {force:[3]f64;torque:[3]f64;}
  for i:0..<2 {want:=m.slide_gravity[i].value;for j:0..<7 {want+=m.slide_hinge[i*7+j].value*a[j];}for j:0..<2 {want+=m.slide_slide[i*2+j].value*a[j+7];}#assert abs(out.slide[i].value-want)<2e-10;}
 }
 
-pid_wrench :: (pose:PfkPose,body:PmBody,motion:PidBodyMotion,gravity:[3]f64)->PidWrench {
+pid_wrench :: (pose:PfkPose,body:PmBody,motion:PidBodyMotion,gravity:[3]f64)->PidWrench #effects(all) {
  com:=pm_com(pose,body.com);r:=[3]f64.[com[0]-pose.position.x,com[1]-pose.position.y,com[2]-pose.position.z];turn:=pid_cross(motion.angular_acceleration,r);spin:=pid_cross(motion.angular,pid_cross(motion.angular,r));inertia:=pm_inertia(pose,body.inertial,body.principal);iw:=pid_matvec(inertia,motion.angular);ia:=pid_matvec(inertia,motion.angular_acceleration);gyro:=pid_cross(motion.angular,iw);w:PidWrench;
  for i:0..<3 {w.force[i]=body.mass*(motion.linear_acceleration[i]+turn[i]+spin[i]-gravity[i]);w.torque[i]=ia[i]+gyro[i];}return w;
 }
-pid_project :: (columns:PmColumns,wrench:PidWrench,joint:int)->f64 {
+pid_project :: (columns:PmColumns,wrench:PidWrench,joint:int)->f64 #effects(all) {
  value:f64=0;for row:0..<3 {value+=columns.linear[row*9+joint]*wrench.force[row]+columns.angular[row*9+joint]*wrench.torque[row];}return value;
 }
-pid_pack :: (values:[9]f64)->PidOutput {out:PidOutput;for i:0..<7 {out.hinge[i].value=values[i];}for i:0..<2 {out.slide[i].value=values[i+7];}return out;}
+pid_pack :: (values:[9]f64)->PidOutput #effects(all) {out:PidOutput;for i:0..<7 {out.hinge[i].value=values[i];}for i:0..<2 {out.slide[i].value=values[i+7];}return out;}
 // Helpers trust a locally produced pose and the exact source profile. Neither
 // caller-authored PmProfile nor writable PidOutput values attest provenance.
-pid_sum_owned :: (poses:PffOutput,profile:PmProfile,velocities:[9]f64,accelerations:[9]f64)->PidOutput {
+pid_sum_owned :: (poses:PffOutput,profile:PmProfile,velocities:[9]f64,accelerations:[9]f64)->PidOutput #effects(all) {
  motion:=pid_motion(poses,velocities,accelerations);values:[9]f64;
  // Fixed bodies0/1 have no generalized columns; their base reactions are not outputs.
  for body:2..<16 {pose:=pid_pose(poses,body);b:=profile.bodies[body];wrench:=pid_wrench(pose,b,motion[body],profile.gravity);com:=pm_com(pose,b.com);columns:=pm_columns(com,b.ancestors,poses);for joint:0..<9 {values[joint]+=pid_project(columns,wrench,joint);}}

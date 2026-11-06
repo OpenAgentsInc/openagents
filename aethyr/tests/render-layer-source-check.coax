@@ -2,7 +2,7 @@
 // structured failed receipt and never publish a qualified layer artifact.
 #import "Basic";
 #load "render-layer-tools.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}work_arg:=args_value(a[..],"--work-dir","");surface:=args_value(a[..],"--surface-root","");wasm:=args_value(a[..],"--wasm","");package:=args_value(a[..],"--package","");observer:=args_value(a[..],"--observer","");if work_arg=="" || surface=="" || wasm=="" || package=="" || observer=="" || !fs_mkdir(work_arg) {return 2;}
   work_buf:[4096]u8;work:=fs_realpath(work_arg,work_buf[..]);paths:[7][4096]u8;receipt:=fs_join(work,"qualification.json",paths[0][..]);copy:=fs_join(work,"surface",paths[1][..]);worker_dir:=fs_join(work,"worker",paths[2][..]);if fs_exists(receipt) || fs_exists(copy) {return 2;}start:=proc_now_ms();deadline:=start+210000;inputs:[1]RtqInputs;compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);if compiler=="" {compiler="coax/bin/coax";}
   if !rtq_deps(inputs[..],compiler,"aethyr/tests/render-layer-source-check.coax",deadline,work,"tool-dependencies") {return 1;}self:[4096]u8;image:=gp_self(self[..]);image_hash:[64]u8;if !rtq_hash_file(image,image_hash[..]) {return 1;}for file:[4]string.[image,compiler,observer,"/bin/cp"] {if !rtq_input_add(inputs[..],file) {return 1;}}

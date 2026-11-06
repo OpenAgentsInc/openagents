@@ -76,7 +76,7 @@ hcn_step :: (c:[]HcnConnection) {
     }
   }
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}
   port:=args_whole(args_at(a[..],0));if port<1024 || port>65535 {return 2;}
   listener:=cxsock_listen(port);if listener<0 {tool_errln("host network fixture could not bind loopback");return 1;}defer {closed:=cxsock_close(listener);}

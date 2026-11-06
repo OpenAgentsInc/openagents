@@ -1,13 +1,13 @@
 // Haunted House's linear-light material functions, emitted directly as Metal.
 hl_min :: (a:f32,b:f32)->f32 {if a<b{return a;}return b;}
 hl_max :: (a:f32,b:f32)->f32 {if a>b{return a;}return b;}
-verse_haunt_attenuate :: (d:f32,r:f32)->f32 #export_c {q:=hl_max(0.0f32,1.0f32-d/hl_max(r,0.01f32));return q*q;}
-verse_haunt_ambient :: (ny:f32,channel:f32)->f32 #export_c {
+verse_haunt_attenuate :: (d:f32,r:f32)->f32 #export_c #effects(all) {q:=hl_max(0.0f32,1.0f32-d/hl_max(r,0.01f32));return q*q;}
+verse_haunt_ambient :: (ny:f32,channel:f32)->f32 #export_c #effects(all) {
  sky:=ifx channel<0.5f32 then 0.08f32 else ifx channel<1.5f32 then 0.09f32 else 0.15f32;
  ground:=ifx channel<0.5f32 then 0.03f32 else ifx channel<1.5f32 then 0.025f32 else 0.02f32;
  return ground+(sky-ground)*(ny*0.5f32+0.5f32);
 }
-verse_haunt_shade :: (albedo:f32,light:f32,glow:f32,distance:f32,channel:f32,flash:f32)->f32 #export_c {
+verse_haunt_shade :: (albedo:f32,light:f32,glow:f32,distance:f32,channel:f32,flash:f32)->f32 #export_c #effects(all) {
  fog:=1.0f32-exp(-distance*distance*0.000121f32);
  fogcolor:=ifx channel<0.5f32 then 0.035f32 else ifx channel<1.5f32 then 0.04f32 else 0.07f32;
  lit:=albedo*(light+glow*2.0f32+flash*2.0f32)*1.3f32;
@@ -16,20 +16,20 @@ verse_haunt_shade :: (albedo:f32,light:f32,glow:f32,distance:f32,channel:f32,fla
 // The night's key light: the moon, from the house's look (moonDir, normalized),
 // its blue-white light, and how far round the player its shadows reach (a
 // square that many metres each way, and that deep along the light).
-verse_haunt_moon_dir :: (axis:f32)->f32 #export_c {return ifx axis<0.5f32 then -0.552944f32 else ifx axis<1.5f32 then 0.552944f32 else -0.623310f32;}
-verse_haunt_moonlight :: (channel:f32)->f32 #export_c {return ifx channel<0.5f32 then 0.33f32 else ifx channel<1.5f32 then 0.375f32 else 0.51f32;}
-verse_haunt_shadow_reach :: (axis:f32)->f32 #export_c {return ifx axis<0.5f32 then 26.0f32 else 70.0f32;}
+verse_haunt_moon_dir :: (axis:f32)->f32 #export_c #effects(all) {return ifx axis<0.5f32 then -0.552944f32 else ifx axis<1.5f32 then 0.552944f32 else -0.623310f32;}
+verse_haunt_moonlight :: (channel:f32)->f32 #export_c #effects(all) {return ifx channel<0.5f32 then 0.33f32 else ifx channel<1.5f32 then 0.375f32 else 0.51f32;}
+verse_haunt_shadow_reach :: (axis:f32)->f32 #export_c #effects(all) {return ifx axis<0.5f32 then 26.0f32 else 70.0f32;}
 // How much of the moon a point at shadow-map coordinates (u, v) gets when lit
 // is the share of the map's taps that see it: full light outside the map, and
 // the map fading out over its last tenth so its edge never shows.
-verse_haunt_shadow_edge :: (u:f32,v:f32,lit:f32)->f32 #export_c {
+verse_haunt_shadow_edge :: (u:f32,v:f32,lit:f32)->f32 #export_c #effects(all) {
  e:=hl_max(hl_max(u*2.0f32-1.0f32,1.0f32-u*2.0f32),hl_max(v*2.0f32-1.0f32,1.0f32-v*2.0f32));
  fade:=hl_min(1.0f32,hl_max(0.0f32,(e-0.9f32)*10.0f32));
  return lit+(1.0f32-lit)*fade;
 }
 // Night's tone: the engine's curve, its darks lifted so a moonlit yard still
 // reads (a fifth of the square root), white still white and black still black.
-verse_haunt_night :: (light:f32)->f32 #export_c {
+verse_haunt_night :: (light:f32)->f32 #export_c #effects(all) {
  t:=1.0f32-exp(-light*1.35f32);
  return t*0.8f32+sqrt(hl_max(t,0.0f32))*0.2f32;
 }
@@ -37,12 +37,12 @@ verse_haunt_night :: (light:f32)->f32 #export_c {
 // its material's glow (an emissive white pet, a lit flower: glow 1 blooms
 // most of it); plain surfaces bloom only what is past white. Then a pixel's
 // light with the bloom round it, a quarter-size blur and an eighth-size one.
-verse_haunt_bloom_share :: (peak:f32,glow:f32)->f32 #export_c {
+verse_haunt_bloom_share :: (peak:f32,glow:f32)->f32 #export_c #effects(all) {
  own:=hl_min(0.9f32,hl_max(0.0f32,glow)*0.8f32);
  past:=hl_min(1.0f32,hl_max(0.0f32,peak-1.0f32)/(peak+0.5f32));
  return own+(1.0f32-own)*past*0.6f32;
 }
-verse_haunt_glow :: (light:f32,near:f32,far:f32)->f32 #export_c {return light+near*1.2f32+far*1.1f32;}
+verse_haunt_glow :: (light:f32,near:f32,far:f32)->f32 #export_c #effects(all) {return light+near*1.2f32+far*1.1f32;}
 #test "point lights end at their radius" {#assert verse_haunt_attenuate(5.0f32,5.0f32)==0.0f32;#assert verse_haunt_attenuate(0.0f32,5.0f32)==1.0f32;}
 #test "the moon is a unit light from the look's moonDir, above the horizon" {
  x:=verse_haunt_moon_dir(0.0f32);y:=verse_haunt_moon_dir(1.0f32);z:=verse_haunt_moon_dir(2.0f32);

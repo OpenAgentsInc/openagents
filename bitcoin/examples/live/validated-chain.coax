@@ -43,7 +43,7 @@ cs_file_append :: (f: [] CsFile, path: string, r: CsResult, sequence: u64, initi
   kv_seal_vartime(frame, r.n, sequence+1, 0);
   return fs_append_durable(path, cast(string) f[0].frame[0..<start+8+r.n]);
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 3 { tool_errln("usage: validated-chain init|tip|recover|disconnect CHAIN STATE; apply CHAIN STATE HEADERS NOW BLOCK..."); return 2; }
   action := args_at(a[..], 0); network := cs_file_chain(args_at(a[..], 1)); path := args_at(a[..], 2);

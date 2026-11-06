@@ -28,14 +28,14 @@ FcDevice :: struct {memory:int;buffer:int;read_rate:int;link_rate:int;host:int;}
 // bytes; read and copied are one worst-case step's bytes; step_us its time.
 FcPlan :: struct {status:FcStatus;mode:FcMode;dense:int;experts:int;state:int;scratch:int;slots:int;device:int;pinned:int;read:int;copied:int;step_us:int;milli:int;}
 
-fc_us :: (bytes:int,rate:int)->int {return (bytes+rate-1)/rate;}
+fc_us :: (bytes:int,rate:int)->int #effects(all) {return (bytes+rate-1)/rate;}
 
 // book:begin rate
 // An effective read rate from a measured decode run: steps decode steps
 // starting at position first took ns nanoseconds; chapter 33 counts the
 // bytes each step reads. Bytes a microsecond, rounded down; 0 for a run
 // outside the model's bounds.
-fc_rate :: (m:RpModel,first:int,steps:int,ns:int)->int {
+fc_rate :: (m:RpModel,first:int,steps:int,ns:int)->int #effects(all) {
     if steps<1 || ns<1 || rp_decode(m,first).status!=RpStatus.ok || rp_decode(m,first+steps-1).status!=RpStatus.ok {return 0;}
     bytes:=0;
     for n:first..<first+steps {bytes+=rp_decode(m,n).bytes;}
@@ -46,7 +46,7 @@ fc_rate :: (m:RpModel,first:int,steps:int,ns:int)->int {
 // book:begin plan
 // The streamed mode keeps at least two layers' selections in the cache:
 // one layer's experts in use while the next layer's are copied.
-fc_plan :: (m:RpModel,r:RpRequest,d:FcDevice)->FcPlan {
+fc_plan :: (m:RpModel,r:RpRequest,d:FcDevice)->FcPlan #effects(all) {
     if !rp_valid(m) || m.arch!=RpArch.moe {return FcPlan.{status=FcStatus.model};}
     if r.capacity<1 || r.capacity>m.max_tokens || r.chunk<1 || r.chunk>r.capacity {return FcPlan.{status=FcStatus.request};}
     if d.memory<0 || d.buffer<0 || d.read_rate<1 || d.link_rate<0 || d.host<0 {return FcPlan.{status=FcStatus.device};}
@@ -74,7 +74,7 @@ fc_plan :: (m:RpModel,r:RpRequest,d:FcDevice)->FcPlan {
 // book:begin pick
 // Plan every device and return the index of the admitted one with the
 // highest worst-case rate (the first on a tie), or -1 when none admits.
-fc_pick :: (m:RpModel,r:RpRequest,devices:[]FcDevice,plans:[]FcPlan)->int {
+fc_pick :: (m:RpModel,r:RpRequest,devices:[]FcDevice,plans:[]FcPlan)->int #effects(all) {
     best:=-1;top:int;
     for i:0..<devices.count {
         p:=fc_plan(m,r,devices[i]);
@@ -85,14 +85,14 @@ fc_pick :: (m:RpModel,r:RpRequest,devices:[]FcDevice,plans:[]FcPlan)->int {
 }
 // book:end pick
 
-fc_status_name :: (s:FcStatus)->string {
+fc_status_name :: (s:FcStatus)->string #effects(all) {
     names:=[8]string.["ok","model: not a valid mixture-of-experts shape","request: capacity or chunk outside 1..max tokens",
         "device: a negative size or a rate below 1","state: the state and scratch alone exceed the device",
         "memory: the weights exceed unified memory and nothing can stream","dense: the dense weights, state, scratch and two layers of experts exceed the device",
         "host: the host cannot pin every expert"];
     return names[cast(int)s];
 }
-fc_mode_name :: (m:FcMode)->string {names:=[3]string.["refused","resident","experts streamed"];return names[cast(int)m];}
+fc_mode_name :: (m:FcMode)->string #effects(all) {names:=[3]string.["refused","resident","experts streamed"];return names[cast(int)m];}
 
 // ---- Checks. Independent values are worked by hand in chapter 74 from the
 // pinned 120b inventory: 36 * 128 experts of 13,236,480 bytes, and
@@ -132,9 +132,9 @@ FC_MAC :: FcDevice.{memory=115427246080,buffer=86543591014,read_rate=130953,host
     // 25,118.7 rounds up to 25,119; 79,998.9 to 79,999.
     #assert p.step_us==25119+79999 && p.milli==9513;
 }
-pick1 :: (a:FcDevice,plans:[]FcPlan)->int {d:=[1]FcDevice.[a];return fc_pick(rp_gptoss_120b(),FC_REQ,d[..],plans);}
-pick2 :: (a:FcDevice,b:FcDevice,plans:[]FcPlan)->int {d:=[2]FcDevice.[a,b];return fc_pick(rp_gptoss_120b(),FC_REQ,d[..],plans);}
-pick3 :: (a:FcDevice,b:FcDevice,c:FcDevice,plans:[]FcPlan)->int {d:=[3]FcDevice.[a,b,c];return fc_pick(rp_gptoss_120b(),FC_REQ,d[..],plans);}
+pick1 :: (a:FcDevice,plans:[]FcPlan)->int #effects(all) {d:=[1]FcDevice.[a];return fc_pick(rp_gptoss_120b(),FC_REQ,d[..],plans);}
+pick2 :: (a:FcDevice,b:FcDevice,plans:[]FcPlan)->int #effects(all) {d:=[2]FcDevice.[a,b];return fc_pick(rp_gptoss_120b(),FC_REQ,d[..],plans);}
+pick3 :: (a:FcDevice,b:FcDevice,c:FcDevice,plans:[]FcPlan)->int #effects(all) {d:=[3]FcDevice.[a,b,c];return fc_pick(rp_gptoss_120b(),FC_REQ,d[..],plans);}
 #test "pick prefers the faster admitted device, the first on a tie" {
     plans:[3]FcPlan;
     #assert pick2(FC_4080,FC_MAC,plans[..])==1;

@@ -74,16 +74,16 @@
     im:=[2]f32.[inf,0];tik_run(1,l[..],1,im[..],work[..],out[..],flags[..]);#assert flags[1]==2 && work[1]==0;
     pm[1]=big;tik_run(0,l[..],1,pm[..],work[..],out[..],flags[..]);#assert flags[0]==2;
 }
-tik_finite :: (x:f32)->bool {return (f32_bits(x)&0x7fffffff)<0x7f800000;}
+tik_finite :: (x:f32)->bool #effects(all) {return (f32_bits(x)&0x7fffffff)<0x7f800000;}
 // Divide out the extents of the axes after `axis`, then reduce by its own.
 // Items and extents are positive, so the order of the divisions is free.
-tik_coord :: (m:[]int,item:int,axis:int)->int {n:=item;for a:axis+1..<m[3] {n/=m[4+a];}return n%m[4+axis];}
+tik_coord :: (m:[]int,item:int,axis:int)->int #effects(all) {n:=item;for a:axis+1..<m[3] {n/=m[4+a];}return n%m[4+axis];}
 // A rank-two operand's address: its row and column strides only.
-tik_read2 :: (m:[]int,at:int,c0:int,c1:int,input:[]f32,work:[]f32)->f32 {address:=m[at+1]+c0*m[at+7]+c1*m[at+8];if m[at]==0 {return input[address];}return work[address];}
-tik_read :: (m:[]int,at:int,c0:int,c1:int,c2:int,c3:int,input:[]f32,work:[]f32)->f32 {address:=m[at+1]+c0*m[at+7]+c1*m[at+8]+c2*m[at+9]+c3*m[at+10];if m[at]==0 {return input[address];}return work[address];}
-tik_broadcast :: (m:[]int,at:int,item:int,input:[]f32,work:[]f32)->f32 {address:=m[at+1];for i:0..<m[at+2] {if m[at+3+i]!=1 {address+=tik_coord(m,item,i+m[3]-m[at+2])*m[at+7+i];}}if m[at]==0 {return input[address];}return work[address];}
+tik_read2 :: (m:[]int,at:int,c0:int,c1:int,input:[]f32,work:[]f32)->f32 #effects(all) {address:=m[at+1]+c0*m[at+7]+c1*m[at+8];if m[at]==0 {return input[address];}return work[address];}
+tik_read :: (m:[]int,at:int,c0:int,c1:int,c2:int,c3:int,input:[]f32,work:[]f32)->f32 #effects(all) {address:=m[at+1]+c0*m[at+7]+c1*m[at+8]+c2*m[at+9]+c3*m[at+10];if m[at]==0 {return input[address];}return work[address];}
+tik_broadcast :: (m:[]int,at:int,item:int,input:[]f32,work:[]f32)->f32 #effects(all) {address:=m[at+1];for i:0..<m[at+2] {if m[at+3+i]!=1 {address+=tik_coord(m,item,i+m[3]-m[at+2])*m[at+7+i];}}if m[at]==0 {return input[address];}return work[address];}
 // book:begin kernel
-tik_run :: (item:int,m:[]int,epsilon:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c {
+tik_run :: (item:int,m:[]int,epsilon:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
     op:=m[0];c:[4]int;for axis:0..<m[3] {c[axis]=tik_coord(m,item,axis);}value:f32=0;bad:=false;
     if op==2 || op==3 {a:=tik_broadcast(m,8,item,input,work);b:=tik_broadcast(m,19,item,input,work);value=a+b;if op==3 {value=a*b;}}
     else if op==4 || op==10 {value=tik_read(m,8,c[0],c[1],c[2],c[3],input,work);if op==4 {if !tik_finite(value) {bad=true;}if !(value>0) {value=0;}}}

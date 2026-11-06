@@ -16,7 +16,7 @@ pin_done :: (line: string) -> int {
   return v;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   dbb: [1024] u8; pb: [1024] u8; fb: [1024] u8;
   db := proc_getenv("PGURL", dbb[..]); psql := proc_getenv("PSQL", pb[..]);
   file := proc_getenv("PIN_SQL", fb[..]);

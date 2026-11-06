@@ -20,7 +20,7 @@ BswState :: struct {
   scores: [BSW_PASSAGES] f64; result: [1] BbResult; store: [1] BbStore;
 }
 
-bsw_init :: (w: [] BswState) #export_c {
+bsw_init :: (w: [] BswState) #export_c #effects(all) {
   w[0].vocab[0] = BsVocab.{slots = w[0].slots[..], pool = w[0].vpool[..], from = w[0].vfrom[..], size = w[0].vsize[..], count = w[0].vcount[..]};
   w[0].store[0] = BbStore.{table = w[0].table[..], query = w[0].query[..], vocab = w[0].vocab[..], names = w[0].names[..], path_from = w[0].path_from[..],
     path_to = w[0].path_to[..], hashes = w[0].hashes[..], status = w[0].status[..], book = w[0].book[..], heads = w[0].heads[..], passages = w[0].passages[..],
@@ -29,21 +29,21 @@ bsw_init :: (w: [] BswState) #export_c {
   w[0].admitted = false; w[0].verdict = -1;
 }
 // The verdict as a number (BbVerdict); 0 is admitted.
-bsw_load :: (w: [] BswState, manifest: [] u8, encoder: [] u8, index: [] u8) -> int #export_c {
+bsw_load :: (w: [] BswState, manifest: [] u8, encoder: [] u8, index: [] u8) -> int #export_c #effects(all) {
   w[0].admitted = false;
   v := bb_load(manifest, encoder, index, w[0].store[..]);
   w[0].verdict = cast(int) v; w[0].admitted = v == BbVerdict.admitted;
   return w[0].verdict;
 }
 // The verdict's text into out; its length.
-bsw_message :: (w: [] BswState, out: [] u8) -> int #export_c {
+bsw_message :: (w: [] BswState, out: [] u8) -> int #export_c #effects(all) {
   b := [1] BbW.[BbW.{buf = out}];
   if w[0].verdict < 0 { bb_text(b[..], "nothing loaded"); } else { bb_text(b[..], bb_verdict_text(cast(BbVerdict) w[0].verdict)); }
   return b[0].n;
 }
 // Every query of a query file, one result line each, into out; the bytes
 // written, or -1 when nothing was admitted or out is too small.
-bsw_queries :: (w: [] BswState, file: [] u8, out: [] u8) -> int #export_c {
+bsw_queries :: (w: [] BswState, file: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if !w[0].admitted { return -1; }
   b := [1] BbW.[BbW.{buf = out}];
   n := bb_queries(w[0].store[0], cast(string) file, w[0].scores[..], w[0].result[..], b[..]);
@@ -51,7 +51,7 @@ bsw_queries :: (w: [] BswState, file: [] u8, out: [] u8) -> int #export_c {
 }
 // One query, shown as text: the fused top k with book, file, heading path
 // and status, into out; the bytes written, or -1.
-bsw_search :: (w: [] BswState, text: [] u8, k: int, out: [] u8) -> int #export_c {
+bsw_search :: (w: [] BswState, text: [] u8, k: int, out: [] u8) -> int #export_c #effects(all) {
   if !w[0].admitted { return -1; }
   b := [1] BbW.[BbW.{buf = out}];
   s := w[0].store[0];
@@ -68,7 +68,7 @@ bsw_search :: (w: [] BswState, text: [] u8, k: int, out: [] u8) -> int #export_c
   }
   return ifx b[0].full then -1 else b[0].n;
 }
-bsw_counts :: (w: [] BswState, what: int) -> int #export_c {
+bsw_counts :: (w: [] BswState, what: int) -> int #export_c #effects(all) {
   if what == 0 { return w[0].store[0].passage_n; }
   if what == 1 { return w[0].store[0].words; }
   return w[0].store[0].file_n;

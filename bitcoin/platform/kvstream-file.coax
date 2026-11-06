@@ -2,10 +2,10 @@
 // this private table only after code==KV_OK and application context checks.
 #load "../../coax/lib/bitcoin/kvstream.coax";
 #load "../../coax/lib/sys/fs.coax";
-bf_native_read_at :: (path: [] u8, offset: int, out: [] u8) -> int #foreign;
-bf_native_lock :: (path: [] u8) -> int #foreign;
-bf_native_append_sync :: (path: [] u8, data: [] u8) -> bool #foreign;
-bf_native_free_bytes :: (path: [] u8) -> int #foreign;
+bf_native_read_at :: (path: [] u8, offset: int, out: [] u8) -> int #foreign #effects(all);
+bf_native_lock :: (path: [] u8) -> int #foreign #effects(all);
+bf_native_append_sync :: (path: [] u8, data: [] u8) -> bool #foreign #effects(all);
+bf_native_free_bytes :: (path: [] u8) -> int #foreign #effects(all);
 bf_path :: (path: string, out: [] u8) -> int {
   if !fs_path_ok(path) { return -1; } for i: 0..<path.count { out[i] = path[i]; } return path.count;
 }

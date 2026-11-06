@@ -303,7 +303,7 @@ su_contains :: (hay: string, needle: string) -> bool {
 
 Lane :: struct { h: int; suite: int; started_ms: int; last: [512] u8; last_n: int; fails: [6] [256] u8; fail_n: [6] int; fails_kept: int; tmp: [4096] u8; tmp_n: int; }   // tmp: a native suite's build, removed when it ends
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("suites: too many arguments"); return 2; }
   since := args_value(a[..], "--since", ""); only := args_value(a[..], "--only", "");

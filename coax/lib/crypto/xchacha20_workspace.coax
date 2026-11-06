@@ -37,19 +37,19 @@
   }
 }
 XcWorkspace :: struct {initial:[16]u32;state:[16]u32;subkey:[32]u8;nonce:[12]u8;}
-xc_quarter :: (work:[]XcWorkspace,a:int,b:int,c:int,d:int) {
+xc_quarter :: (work:[]XcWorkspace,a:int,b:int,c:int,d:int) #effects(all) {
   work[0].state[a]=add_wrap(work[0].state[a],work[0].state[b]);work[0].state[d]=rotl(work[0].state[d]^work[0].state[a],16);
   work[0].state[c]=add_wrap(work[0].state[c],work[0].state[d]);work[0].state[b]=rotl(work[0].state[b]^work[0].state[c],12);
   work[0].state[a]=add_wrap(work[0].state[a],work[0].state[b]);work[0].state[d]=rotl(work[0].state[d]^work[0].state[a],8);
   work[0].state[c]=add_wrap(work[0].state[c],work[0].state[d]);work[0].state[b]=rotl(work[0].state[b]^work[0].state[c],7);
 }
-xc_rounds :: (work:[]XcWorkspace) {
+xc_rounds :: (work:[]XcWorkspace) #effects(all) {
   for round:0..<10 {
     xc_quarter(work,0,4,8,12);xc_quarter(work,1,5,9,13);xc_quarter(work,2,6,10,14);xc_quarter(work,3,7,11,15);
     xc_quarter(work,0,5,10,15);xc_quarter(work,1,6,11,12);xc_quarter(work,2,7,8,13);xc_quarter(work,3,4,9,14);
   }
 }
-xc_initial :: (work:[]XcWorkspace,key:[]u8,nonce:[]u8,counter:u32) {
+xc_initial :: (work:[]XcWorkspace,key:[]u8,nonce:[]u8,counter:u32) #effects(all) {
   work[0].initial[0]=0x61707865;work[0].initial[1]=0x3320646e;work[0].initial[2]=0x79622d32;work[0].initial[3]=0x6b206574;
   work[0].initial[12]=counter;
   for i:0..<8 {work[0].initial[4+i]=cb_load_le32(key,i*4).value;}
@@ -57,14 +57,14 @@ xc_initial :: (work:[]XcWorkspace,key:[]u8,nonce:[]u8,counter:u32) {
   for i:0..<16 {work[0].state[i]=work[0].initial[i];}
 }
 // Views must be valid, stable, disjoint and accurately described by the host.
-xc_hchacha :: (key:[]u8,nonce:[]u8,work:[]XcWorkspace,out:[]u8,overlap:bool)->ChaChaResult #export_c {
+xc_hchacha :: (key:[]u8,nonce:[]u8,work:[]XcWorkspace,out:[]u8,overlap:bool)->ChaChaResult #export_c #effects(all) {
   error:=hc_admit(key.count,nonce.count,out.count,overlap);if error!=CC_OK {return ChaChaResult.{error=error};}
   if work.count!=1 {return ChaChaResult.{error=CC_OUTPUT};}
   work[0]=XcWorkspace.{};xc_initial(work,key,nonce[4..<nonce.count],cb_load_le32(nonce,0).value);xc_rounds(work);
   for i:0..<8 {source:=ifx i<4 then i else i+8;stored:=cb_store_le32(out,i*4,work[0].state[source]);}
   return ChaChaResult.{written=32};
 }
-xc_xor :: (key:[]u8,nonce:[]u8,counter:u32,input:[]u8,work:[]XcWorkspace,out:[]u8,overlap:bool)->ChaChaResult #export_c {
+xc_xor :: (key:[]u8,nonce:[]u8,counter:u32,input:[]u8,work:[]XcWorkspace,out:[]u8,overlap:bool)->ChaChaResult #export_c #effects(all) {
   if key.count!=32 {return ChaChaResult.{error=CC_KEY};}if nonce.count!=24 {return ChaChaResult.{error=CC_NONCE};}
   error:=cc_admit(32,12,counter,input.count,out.count,overlap);if error!=CC_OK {return ChaChaResult.{error=error};}
   if work.count!=1 {return ChaChaResult.{error=CC_OUTPUT};}

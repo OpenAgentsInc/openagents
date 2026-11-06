@@ -396,7 +396,7 @@ in its scope, and the scopes disagree. `n22_kinds` refuses it with
 // A comment's parent is the root item (a top-level comment) or another
 // comment under it (kind 1111). Any other parent kind must be the root's
 // kind, as spelled in K, or the comment refuses.
-n22_kinds :: (e:NtEvent,c:N22Comment)->int {
+n22_kinds :: (e:NtEvent,c:N22Comment)->int #effects(all) {
  if c.parent.kind_value==N34_KIND_COMMENT {return N34_OK;}
  if nt_raw(e,c.parent.kind.v[0])!=nt_raw(e,c.root.kind.v[0]) {return N22_KINDS;}
  return N34_OK;

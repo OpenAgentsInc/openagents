@@ -74,22 +74,22 @@ NostrMetadata :: struct {
 
 NMD_FIXTURE :: "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1,\"kind\":0,\"tags\":[],\"content\":\"{\\\"name\\\":\\\"Ada\\\",\\\"about\\\":\\\"writes \\\\\\\"proofs\\\\\\\"\\\",\\\"picture\\\":\\\"https://example.com/a.png\\\",\\\"website\\\":\\\"x\\\"}\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}";
 
-nmd_fail :: (m:NostrMetadata,error:int)->NostrMetadata {r:=m;r.error=error;return r;}
-nmd_text :: (m:NostrMetadata,field:int)->string {
+nmd_fail :: (m:NostrMetadata,error:int)->NostrMetadata #effects(all) {r:=m;r.error=error;return r;}
+nmd_text :: (m:NostrMetadata,field:int)->string #effects(all) {
   if field<0 || field>2 || !m.has[field] {return "";}
   return m.content[m.field[field].from..<m.field[field].to];
 }
 // A field's decoded value into out: its length, or -1 when absent or it doesn't fit.
-nmd_decoded :: (m:NostrMetadata,field:int,out:[]u8)->int #export_c {
+nmd_decoded :: (m:NostrMetadata,field:int,out:[]u8)->int #export_c #effects(all) {
   if field<0 || field>2 || !m.has[field] {return -1;}
   return json_unescape(nmd_text(m,field),out);
 }
-nmd_field :: (raw:string)->int {
+nmd_field :: (raw:string)->int #effects(all) {
   if json_is(raw,"name") {return NMD_NAME;}if json_is(raw,"about") {return NMD_ABOUT;}if json_is(raw,"picture") {return NMD_PICTURE;}
   return -1;
 }
 // The decoded content of a kind 0 event. Spans point into content.
-nostr_metadata_parse :: (content:string)->NostrMetadata #export_c {
+nostr_metadata_parse :: (content:string)->NostrMetadata #export_c #effects(all) {
   m:NostrMetadata;
   if content.count>NMD_MAX_CONTENT || !json_valid(content) {return nmd_fail(m,NMD_JSON);}
   m.content=content;
@@ -112,7 +112,7 @@ nostr_metadata_parse :: (content:string)->NostrMetadata #export_c {
 }
 // A parsed kind 0 event's metadata. buf receives the decoded content and
 // must outlive the result; overlap reports that buf aliases the event.
-nostr_metadata_read :: (e:NostrEvent,buf:[]u8,overlap:bool)->NostrMetadata #export_c {
+nostr_metadata_read :: (e:NostrEvent,buf:[]u8,overlap:bool)->NostrMetadata #export_c #effects(all) {
   m:NostrMetadata;
   if e.error!=NE_OK || e.content_from<0 || e.content_to>e.original.count || e.content_from>e.content_to {return nmd_fail(m,NMD_EVENT);}
   if e.kind!=0 {return nmd_fail(m,NMD_KIND);}

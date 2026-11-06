@@ -17,10 +17,10 @@ IasVoice :: struct {media:u64;turn:u64;ticket:u64;phase:int;}
  s:IasVoice;#assert ias_voice_start(s,0,1).phase==1 && ias_voice_start(s,1,0).phase==0;
  s.ticket=18446744073709551615;#assert ias_voice_start(s,1,1).phase==0;
 }
-ias_voice_start :: (s:IasVoice,media:u64,turn:u64)->IasVoice {
+ias_voice_start :: (s:IasVoice,media:u64,turn:u64)->IasVoice #effects(all) {
  if turn==0 || media<s.media || (media==s.media && turn<=s.turn) || s.ticket==18446744073709551615 {return s;}
  return IasVoice.{media=media,turn=turn,ticket=s.ticket+1,phase=1};
 }
-ias_voice_event :: (s:IasVoice,media:u64,turn:u64,ticket:u64,phase:int)->bool {return s.phase==1 && s.media==media && s.turn==turn && s.ticket==ticket && (phase==2 || phase==3);}
-ias_voice_stop :: (s:IasVoice)->IasVoice {r:=s;r.phase=3;return r;}
-ias_voice_finish :: (s:IasVoice)->IasVoice {r:=s;r.phase=2;return r;}
+ias_voice_event :: (s:IasVoice,media:u64,turn:u64,ticket:u64,phase:int)->bool #effects(all) {return s.phase==1 && s.media==media && s.turn==turn && s.ticket==ticket && (phase==2 || phase==3);}
+ias_voice_stop :: (s:IasVoice)->IasVoice #effects(all) {r:=s;r.phase=3;return r;}
+ias_voice_finish :: (s:IasVoice)->IasVoice #effects(all) {r:=s;r.phase=2;return r;}

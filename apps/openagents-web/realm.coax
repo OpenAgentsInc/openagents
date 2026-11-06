@@ -262,7 +262,7 @@ Realm :: struct {
 }
 
 // What voice.js says (message 50): "phase|caption". "off" or "notice" means the microphone is off.
-realm_voice :: (r: [] Realm, text: string) #export_c {
+realm_voice :: (r: [] Realm, text: string) #export_c #effects(all) {
   split := 0;
   while split < text.count && text[split] != '|' { split += 1; }
   r[0].voice_phase_n = 0;
@@ -279,14 +279,14 @@ realm_voice :: (r: [] Realm, text: string) #export_c {
     r[0].asks |= ASK_VOICE;
   }
 }
-realm_heard :: (r: [] Realm) -> string #export_c { return cast(string) r[0].heard[0..<r[0].heard_n]; }
+realm_heard :: (r: [] Realm) -> string #export_c #effects(all) { return cast(string) r[0].heard[0..<r[0].heard_n]; }
 // What VOICE heard said to the realm itself (no one faced): its owner's and admins' words go to the
 // edit layer's selector (verse/edit/edit.coax redit_hear), whose reply is shown and spoken.
-realm_hear :: (r: [] Realm) -> bool #export_c { return redit_hear(r[0].ed[..], realm_heard(r)); }
+realm_hear :: (r: [] Realm) -> bool #export_c #effects(all) { return redit_hear(r[0].ed[..], realm_heard(r)); }
 
 // Who is logged in (host.js message 606, /api/auth/me's lines): the npub of
 // a "K|" line, shortened to its start and end for the HUD; "" nobody.
-realm_viewer :: (r: [] Realm, text: string) #export_c {
+realm_viewer :: (r: [] Realm, text: string) #export_c #effects(all) {
   r[0].viewer_n = 0;
   i := 0;
   while i < text.count {
@@ -304,13 +304,13 @@ realm_viewer :: (r: [] Realm, text: string) #export_c {
     i = e + 1;
   }
 }
-realm_me :: (r: [] Realm) -> string #export_c { return cast(string) r[0].viewer[0..<r[0].viewer_n]; }
+realm_me :: (r: [] Realm) -> string #export_c #effects(all) { return cast(string) r[0].viewer[0..<r[0].viewer_n]; }
 
 // Every frame: whom you're talking to ("" nobody), told to voice.js when it
 // changes and the host's outbox is free, so VOICE answers as them. Talking to
 // nobody, the realm's owner and admins face the realm itself: the page answers
 // what VOICE heard through the edit layer's selector (realm_hear).
-realm_voice_to :: (r: [] Realm, p_said_to: string) #export_c {
+realm_voice_to :: (r: [] Realm, p_said_to: string) #export_c #effects(all) {
   who := ifx p_said_to.count == 0 && redit_may(r[0].ed[..]) then REDIT_FACING else p_said_to;
   if r[0].action != 0 || seen_same(r[0].voice_to[..], r[0].voice_to_n, who) { return; }
   r[0].voice_to_n = tw_copy(r[0].voice_to[..], 0, who);
@@ -320,16 +320,16 @@ realm_voice_to :: (r: [] Realm, p_said_to: string) #export_c {
 }
 // Their answer to what VOICE heard, for voice.js to speak; false while the
 // outbox is busy (the face tries again next frame).
-realm_voice_say :: (r: [] Realm, words: string) -> bool #export_c {
+realm_voice_say :: (r: [] Realm, words: string) -> bool #export_c #effects(all) {
   if r[0].action != 0 { return false; }
   r[0].out_n = put(r[0].outbox[..], 0, words);
   r[0].action = ACT_VOICE_SAY;
   return true;
 }
 
-realm_set_quality :: (r: [] Realm, q: int) #export_c { if q >= 0 && q < 3 { r[0].quality = q; } }
+realm_set_quality :: (r: [] Realm, q: int) #export_c #effects(all) { if q >= 0 && q < 3 { r[0].quality = q; } }
 
-realm_reset :: (r: [] Realm) #export_c {
+realm_reset :: (r: [] Realm) #export_c #effects(all) {
   r[0].press = -1; r[0].press_id = -1; r[0].moved_at = -1; r[0].ready_at = -1; r[0].hover = -1;
   r[0].hold = -1; r[0].jump_id = -1; r[0].scale_by = 1; r[0].turn_by = 0; r[0].wf_n = 0;
 }
@@ -337,20 +337,20 @@ realm_reset :: (r: [] Realm) #export_c {
 // The typed box: the survey's (the face opens it at the last step's orb),
 // or a question or a lesson for whoever you're talking to (ASK, TEACH);
 // what's typed, and closing it.
-realm_ask_text :: (r: [] Realm) #export_c { realm_open_text(r, TYPE_SURVEY); }
-realm_open_text :: (r: [] Realm, kind: int) #export_c { r[0].typing = true; r[0].typing_for = kind; r[0].typed_n = 0; r[0].typed_all = false; }
-realm_typing_for :: (r: [] Realm) -> int #export_c { return r[0].typing_for; }
-realm_typed :: (r: [] Realm) -> string #export_c { return cast(string) r[0].typed[0..<r[0].typed_n]; }
-realm_close_text :: (r: [] Realm) #export_c { r[0].typing = false; }
-realm_wants_text :: (r: [] Realm) -> bool #export_c { return r[0].typing || redit_typing(r[0].ed[..]); }
+realm_ask_text :: (r: [] Realm) #export_c #effects(all) { realm_open_text(r, TYPE_SURVEY); }
+realm_open_text :: (r: [] Realm, kind: int) #export_c #effects(all) { r[0].typing = true; r[0].typing_for = kind; r[0].typed_n = 0; r[0].typed_all = false; }
+realm_typing_for :: (r: [] Realm) -> int #export_c #effects(all) { return r[0].typing_for; }
+realm_typed :: (r: [] Realm) -> string #export_c #effects(all) { return cast(string) r[0].typed[0..<r[0].typed_n]; }
+realm_close_text :: (r: [] Realm) #export_c #effects(all) { r[0].typing = false; }
+realm_wants_text :: (r: [] Realm) -> bool #export_c #effects(all) { return r[0].typing || redit_typing(r[0].ed[..]); }
 // The edit layer's, for the face: a row of its board, and its push to talk handed to the host's outbox.
-realm_row_on :: (r: [] Realm, key: string) -> bool #export_c { return redit_row_on(r[0].ed[..], key); }
-realm_edit_message :: (r: [] Realm, kind: int, text: string) -> bool #export_c { return redit_message(r[0].ed[..], kind, text); }
+realm_row_on :: (r: [] Realm, key: string) -> bool #export_c #effects(all) { return redit_row_on(r[0].ed[..], key); }
+realm_edit_message :: (r: [] Realm, kind: int, text: string) -> bool #export_c #effects(all) { return redit_message(r[0].ed[..], kind, text); }
 // Who may make a realm (access.coax): the face asks once and hands the answer back.
-realm_access_wants :: (r: [] Realm) -> bool #export_c { return access_wants(r[0].acc[..]); }
-realm_access_sent :: (r: [] Realm, id: int) #export_c { access_sent(r[0].acc[..], id); }
-realm_access_take :: (r: [] Realm, kind: int, text: string) -> bool #export_c { return access_take(r[0].acc[..], kind, text); }
-realm_edit_act :: (r: [] Realm) #export_c {
+realm_access_wants :: (r: [] Realm) -> bool #export_c #effects(all) { return access_wants(r[0].acc[..]); }
+realm_access_sent :: (r: [] Realm, id: int) #export_c #effects(all) { access_sent(r[0].acc[..], id); }
+realm_access_take :: (r: [] Realm, kind: int, text: string) -> bool #export_c #effects(all) { return access_take(r[0].acc[..], kind, text); }
+realm_edit_act :: (r: [] Realm) #export_c #effects(all) {
   if r[0].action != 0 { return; }
   e := redit_take_action(r[0].ed[..], r[0].outbox[..]);
   if e.kind == 0 { return; }
@@ -359,7 +359,7 @@ realm_edit_act :: (r: [] Realm) #export_c {
   if e.kind == REDIT_ACT_VOICE_TO { r[0].voice_to_n = tw_copy(r[0].voice_to[..], 0, REDIT_FACING); }
 }
 // Typed or pasted text (the host's field on a phone): printable bytes only.
-realm_type :: (r: [] Realm, text: string) #export_c {
+realm_type :: (r: [] Realm, text: string) #export_c #effects(all) {
   if !r[0].typing { return; }
   if r[0].typed_all { r[0].typed_n = 0; r[0].typed_all = false; }
   for i: 0..<text.count {
@@ -384,16 +384,16 @@ realm_unType :: (r: [] Realm) {
 }
 
 // Takes the asks since the last frame.
-realm_take :: (r: [] Realm) -> int #export_c { a := r[0].asks; r[0].asks = 0; return a; }
+realm_take :: (r: [] Realm) -> int #export_c #effects(all) { a := r[0].asks; r[0].asks = 0; return a; }
 
 // Keyboard axes: x right, y forward, -1 to 1.
-realm_key_x :: (r: [] Realm) -> f32 #export_c {
+realm_key_x :: (r: [] Realm) -> f32 #export_c #effects(all) {
   x := 0.0f32;
   if r[0].held & HOLD_RIGHT != 0 { x += 1; }
   if r[0].held & HOLD_LEFT != 0 { x -= 1; }
   return x;
 }
-realm_key_y :: (r: [] Realm) -> f32 #export_c {
+realm_key_y :: (r: [] Realm) -> f32 #export_c #effects(all) {
   y := 0.0f32;
   if r[0].held & HOLD_FORWARD != 0 { y += 1; }
   if r[0].held & HOLD_BACK != 0 { y -= 1; }
@@ -463,7 +463,7 @@ xform :: (r: [] Realm, scale: f32, turn: f32) {
 }
 // The size and turn gathered since the face last took them, as (scale, turn); then none.
 Xform :: struct { scale: f32; turn: f32; }
-realm_take_xform :: (r: [] Realm) -> Xform #export_c {
+realm_take_xform :: (r: [] Realm) -> Xform #export_c #effects(all) {
   x := Xform.{scale = r[0].scale_by, turn = r[0].turn_by};
   r[0].scale_by = 1; r[0].turn_by = 0;
   return x;
@@ -485,7 +485,7 @@ picked_key :: (r: [] Realm, v: RealmView, key: int) -> bool {
 
 // A key down (down) or up. Returns whether it was used. A key held down
 // repeats; only its first press acts.
-realm_key :: (r: [] Realm, v: RealmView, key: int, mods: int, down: bool) -> bool #export_c {
+realm_key :: (r: [] Realm, v: RealmView, key: int, mods: int, down: bool) -> bool #export_c #effects(all) {
   used := redit_key(r[0].ed[..], key, down);
   if used > 0 { return used == 1; }
   cmd := tk_command(key, mods);
@@ -553,7 +553,7 @@ realm_key :: (r: [] Realm, v: RealmView, key: int, mods: int, down: bool) -> boo
 }
 
 // The window lost the keyboard: nothing is held any more.
-realm_blur :: (r: [] Realm) #export_c {
+realm_blur :: (r: [] Realm) #export_c #effects(all) {
   r[0].held = 0; r[0].looking = false; r[0].press = -1; r[0].hover = -1;
   r[0].wf_n = 0; r[0].wf_two = false; r[0].wf_grab = false; r[0].jump_id = -1;
 }
@@ -690,7 +690,7 @@ on_stick :: (r: [] Realm, x: f32, y: f32) -> bool {
 // 0 a mouse, 1 a finger or pen; id the host's number for it. Returns
 // whether it was used here: only a finger that starts on the move stick is
 // the face's, for the thumbs (verse_sticks_world_touch).
-realm_pointer :: (r: [] Realm, v: RealmView, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+realm_pointer :: (r: [] Realm, v: RealmView, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if redit_pointer(r[0].ed[..], x, y, phase, id) { return true; }
   r[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then button_at(r, x, y) else -1;
   if phase == POINTER_DOWN {
@@ -726,12 +726,12 @@ realm_pointer :: (r: [] Realm, v: RealmView, x: f32, y: f32, phase: int, kind: i
 LOOK_RADIANS :: 0.006;   // grid.coax LOOK
 
 // The wheel, in CSS pixels down: sizes the picked thing, else zooms the camera out (verse_player_zoom).
-realm_wheel :: (r: [] Realm, dy: f32) #export_c {
+realm_wheel :: (r: [] Realm, dy: f32) #export_c #effects(all) {
   if r[0].sized { xform(r, exp(-dy * 0.0015), 0); return; }
   r[0].zoom += dy * 0.01;
 }
 
-realm_cursor :: (r: [] Realm) -> int #export_c { return ifx r[0].press >= 0 then 1 else 0; }
+realm_cursor :: (r: [] Realm) -> int #export_c #effects(all) { return ifx r[0].press >= 0 then 1 else 0; }
 
 // Every frame, before the HUD: a finger held on the jump circle emotes.
 realm_tick :: (r: [] Realm) {
@@ -802,7 +802,7 @@ talk_box :: (r: [] Realm) -> Box {
 
 // The map the face draws the house's into: the minimap, or (M, or a tap on
 // it) a square in the middle.
-realm_map_box :: (r: [] Realm) -> Box #export_c {
+realm_map_box :: (r: [] Realm) -> Box #export_c #effects(all) {
   if edit_aside(r) { return Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }   // the feature list's pane fills a phone: no map over it
   if !r[0].map { return minimap_box(r); }
   k := r[0].dpr;
@@ -1407,7 +1407,7 @@ draw_loading :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
 
 // The frame: steps the clock and draws the HUD over the house. Returns the
 // vertex count.
-realm_draw :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c {
+realm_draw :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
   if uniforms.count < UNIFORM_FLOATS { return 0; }
   r[0].plate_n = 0;
   n := realm_hud(r, v, out, uniforms, width, height, dpr, dt);
@@ -1537,10 +1537,10 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
 HELP_DESK :: "WASD MOVE · DRAG LOOK · CLICK PLACES OR PICKS · E USE · X EMOTE";
 HELP_PHONE :: "STICK MOVES · DRAG LOOKS · TAP PLACES OR PICKS";
 
-coaxial_realm_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_realm_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_realm_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
-coaxial_realm_map_max :: () -> int #export_c { return MAP_MAX; }
+coaxial_realm_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_realm_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_realm_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
+coaxial_realm_map_max :: () -> int #export_c #effects(all) { return MAP_MAX; }
 
 // ---- what the house records (analytics.coax): the playtest's Haunted House
 // events, from what the HUD shows changing frame to frame
@@ -1575,7 +1575,7 @@ realm_world :: (t: [] Track) -> string {
 }
 
 // Every frame, after realm_draw: the house's changes as events.
-realm_track :: (r: [] Realm, s: [] RealmSeen, t: [] Track, v: RealmView, camera: int) #export_c {
+realm_track :: (r: [] Realm, s: [] RealmSeen, t: [] Track, v: RealmView, camera: int) #export_c #effects(all) {
   if !t[0].ready { return; }
   if v.failed && !s[0].broke { s[0].broke = true; track_error(t, "the house didn't load", "realm", 0); }
   if !v.ready { return; }
@@ -1647,7 +1647,7 @@ realm_track_voice :: (r: [] Realm, s: [] RealmSeen, t: [] Track, v: RealmView) {
   }
 }
 // The survey's answer, sent: the words, with consent (the box says they're saved).
-realm_track_answer :: (t: [] Track, text: string) #export_c {
+realm_track_answer :: (t: [] Track, text: string) #export_c #effects(all) {
   if track_begin(t, "survey-sent") { track_str(t, "q", "how it went"); track_str(t, "world", realm_world(t)); track_words(t, text); track_end(t); }
 }
 realm_put :: (out: [] u8, o: int, s: string) -> int {
@@ -1658,7 +1658,7 @@ realm_put :: (out: [] u8, o: int, s: string) -> int {
 // The survey's answer for the server's feedback (/api/playtest/survey/answer,
 // pt-feedback), as the demo keeps one: this browser's visitor id as the
 // respondent, the question, this visit's session and the words. Its length in out.
-realm_answer_body :: (t: [] Track, text: string, out: [] u8) -> int #export_c {
+realm_answer_body :: (t: [] Track, text: string, out: [] u8) -> int #export_c #effects(all) {
   o := 0;
   o = realm_put(out, o, "{\"rid\":\""); o = realm_put(out, o, cast(string) t[0].pid[0..<t[0].pid_n]);
   o = realm_put(out, o, "\",\"q\":\"howItWent\",\"n\":1,\"of\":1,\"sid\":\""); o = realm_put(out, o, cast(string) t[0].sid[0..<t[0].sid_n]);
@@ -1685,8 +1685,8 @@ json_put_str :: (out: [] u8, o: int, text: string) -> int {
 // The conversation, remembered for the character's next answer: forgotten
 // when a new one starts; a line kept to MEMORY_LINE bytes (whole
 // characters) on one line; the oldest goes after MEMORY_LINES.
-realm_forget :: (r: [] Realm) #export_c { r[0].memory_n = 0; r[0].memory_lines = 0; }
-realm_remember :: (r: [] Realm, from_them: bool, text: string) #export_c {
+realm_forget :: (r: [] Realm) #export_c #effects(all) { r[0].memory_n = 0; r[0].memory_lines = 0; }
+realm_remember :: (r: [] Realm, from_them: bool, text: string) #export_c #effects(all) {
   n := text.count;
   if n > MEMORY_LINE { n = MEMORY_LINE; while n > 0 && text[n] & 0xC0 == 0x80 { n -= 1; } }
   if n == 0 { return; }
@@ -1709,7 +1709,7 @@ memory_drop :: (r: [] Realm) {
 // they are (name, role, what players taught them, their greeting), the
 // world, the conversation so far and the question. Its length in out, -1
 // when it doesn't fit.
-realm_npc_body :: (r: [] Realm, name: string, role: string, knowledge: string, greet: string, question: string, out: [] u8) -> int #export_c {
+realm_npc_body :: (r: [] Realm, name: string, role: string, knowledge: string, greet: string, question: string, out: [] u8) -> int #export_c #effects(all) {
   o := realm_put(out, 0, "{\"npc\":{\"name\":\""); o = json_put_str(out, o, name);
   o = realm_put(out, o, "\",\"role\":\""); o = json_put_str(out, o, role);
   o = realm_put(out, o, "\",\"knowledge\":\""); o = json_put_str(out, o, knowledge);
@@ -1743,7 +1743,7 @@ hex4 :: (s: string, at: int) -> int {
 json_space :: (c: u8) -> bool { return c == 32 || c == 9 || c == 10 || c == 13; }
 // The character's words in the server's answer ({"text": "...", "model": ...}),
 // unescaped into out, on one line. Their length, or -1 when there are none.
-realm_npc_text :: (body: string, out: [] u8) -> int #export_c {
+realm_npc_text :: (body: string, out: [] u8) -> int #export_c #effects(all) {
   key := "\"text\"";
   i := 0;
   while i + key.count <= body.count && body[i..<i + key.count] != key { i += 1; }
@@ -1790,25 +1790,25 @@ realm_npc_text :: (body: string, out: [] u8) -> int #export_c {
   return n;
 }
 // A question to a character, and whether the server answered it (else their own lines did).
-realm_track_ask :: (t: [] Track, who: string, question: string, ok: bool) #export_c {
+realm_track_ask :: (t: [] Track, who: string, question: string, ok: bool) #export_c #effects(all) {
   if track_begin(t, "prompt") {
     track_str(t, "via", "npc"); track_str(t, "who", who); track_bool(t, "ok", ok); track_str(t, "world", realm_world(t));
     track_words(t, question); track_end(t);
   }
 }
 // Something taught to a character.
-realm_track_teach :: (t: [] Track, who: string, lesson: string) #export_c {
+realm_track_teach :: (t: [] Track, who: string, lesson: string) #export_c #effects(all) {
   if track_begin(t, "prompt") {
     track_str(t, "via", "npc"); track_str(t, "who", who); track_bool(t, "teach", true); track_bool(t, "ok", true);
     track_str(t, "world", realm_world(t)); track_words(t, lesson); track_end(t);
   }
 }
 // A line said in the room's chat.
-realm_track_chat :: (t: [] Track, room: string, text: string) #export_c {
+realm_track_chat :: (t: [] Track, room: string, text: string) #export_c #effects(all) {
   if track_begin(t, "chat") { track_str(t, "room", room); track_str(t, "world", realm_world(t)); track_words(t, text); track_end(t); }
 }
 // Who is in the room: when you come in, and whenever the number here changes.
-realm_track_presence :: (t: [] Track, room: string, here: int, full: bool) #export_c {
+realm_track_presence :: (t: [] Track, room: string, here: int, full: bool) #export_c #effects(all) {
   if track_begin(t, "presence") { track_str(t, "room", room); track_int(t, "here", here); track_bool(t, "full", full); track_end(t); }
 }
 #test "the survey's answer goes to the server's feedback with the visitor and the session" {
@@ -1822,11 +1822,11 @@ realm_track_presence :: (t: [] Track, room: string, here: int, full: bool) #expo
   #assert realm_answer_body(t[..], "x", small[..]) == -1;
 }
 // Something placed from edit mode's hotbar or the quest's orb.
-realm_track_place :: (t: [] Track, item: string, via: string) #export_c {
+realm_track_place :: (t: [] Track, item: string, via: string) #export_c #effects(all) {
   if track_begin(t, "place") { track_str(t, "item", item); track_str(t, "via", via); track_str(t, "world", realm_world(t)); track_end(t); }
 }
 // The label of the button at (x, y), for a click ("" none).
-realm_button_label :: (r: [] Realm, x: f32, y: f32) -> string #export_c {
+realm_button_label :: (r: [] Realm, x: f32, y: f32) -> string #export_c #effects(all) {
   b := button_at(r, x, y);
   if b == BTN_USE { return "use"; } if b == BTN_VIEW { return "view"; } if b == BTN_MAP { return "map"; }
   if b == BTN_EXIT { return "exit"; } if b == BTN_HINT { return "hint"; } if b == BTN_BYE { return "bye"; }
@@ -1841,7 +1841,7 @@ realm_button_label :: (r: [] Realm, x: f32, y: f32) -> string #export_c {
 }
 // An edit to the picked thing or the zone (OP_*): delete, undo and redo as
 // themselves, the rest as the playtest's build with what it did.
-realm_track_edit :: (t: [] Track, op: int) #export_c {
+realm_track_edit :: (t: [] Track, op: int) #export_c #effects(all) {
   if op == OP_DROP { return; }
   ev := ifx op == OP_DELETE then "delete" else ifx op == OP_UNDO then "undo" else ifx op == OP_REDO then "redo" else "build";
   if track_begin(t, ev) {

@@ -3,7 +3,7 @@ Sample :: struct {
  value:u32;
  #if BUILD_DEBUG {magnitude:u64;}
 }
-inspect :: (value:u32)->u32 #export_c {
+inspect :: (value:u32)->u32 #export_c #effects(all) {
  sample:Sample;sample.value=value;
  #if BUILD_DEBUG {sample.magnitude=1;#assert sample.magnitude==1;}
  return sample.value;

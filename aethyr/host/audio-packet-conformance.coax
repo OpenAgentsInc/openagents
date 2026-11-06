@@ -19,13 +19,13 @@
   big:=[6]int.[1,4097,total,1,0,0];#assert !happ_producer(big[..],cast(string)large[..]);
   edge:=[6]int.[1,4096,total-int(large[4096]),1,0,0];#assert happ_producer(edge[..],cast(string)large[0..<4096]);
 }
-happ_accept :: (rows:[]int)->bool #export_c {
+happ_accept :: (rows:[]int)->bool #export_c #effects(all) {
   want:=[24]int.[1,0,0, 1,4,261, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 1,4,261, 1,0,0];
   if rows.count!=want.count {return false;}
   for value,i:want {if rows[i]!=value {return false;}}
   return true;
 }
-happ_producer :: (rows:[]int,packet:string)->bool #export_c {
+happ_producer :: (rows:[]int,packet:string)->bool #export_c #effects(all) {
   if rows.count!=6||rows[0]!=1||rows[1]>4096||rows[1]!=packet.count||rows[3]!=1||rows[4]!=0||rows[5]!=0 {return false;}
   prefix:="!room room\n";if packet.count<prefix.count||packet[0..<prefix.count]!=prefix {return false;}
   sum:=0;for b:packet {sum+=int(b);}return sum==rows[2];

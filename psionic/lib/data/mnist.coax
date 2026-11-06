@@ -147,11 +147,11 @@ MN_CLASSES :: 10;
 }
 
 // Internal: the caller has already established four readable header bytes.
-mn_be32 :: (bytes:[]u8,at:int)->int {
+mn_be32 :: (bytes:[]u8,at:int)->int #effects(all) {
     return int(bytes[at])*16777216+int(bytes[at+1])*65536+int(bytes[at+2])*256+int(bytes[at+3]);
 }
-mn_count :: (count:int)->bool {return count>=1 && count<=MN_MAX_IMAGES;}
-mn_images :: (images:[]u8)->MnDataset {
+mn_count :: (count:int)->bool #effects(all) {return count>=1 && count<=MN_MAX_IMAGES;}
+mn_images :: (images:[]u8)->MnDataset #effects(all) {
     if images.count<16 || mn_be32(images,0)!=2051 {return MnDataset.{status=MnStatus.format};}
     n:=mn_be32(images,4);rows:=mn_be32(images,8);cols:=mn_be32(images,12);
     if !mn_count(n) || rows!=MN_SIDE || cols!=MN_SIDE {return MnDataset.{status=MnStatus.shape};}
@@ -159,7 +159,7 @@ mn_images :: (images:[]u8)->MnDataset {
     if images.count!=16+n*MN_PIXELS {return MnDataset.{status=MnStatus.capacity};}
     return MnDataset.{count=n,rows=rows,cols=cols};
 }
-mn_admit :: (images:[]u8,labels:[]u8)->MnDataset #export_c {
+mn_admit :: (images:[]u8,labels:[]u8)->MnDataset #export_c #effects(all) {
     d:=mn_images(images);if d.status!=MnStatus.ok {return d;}
     if labels.count<8 || mn_be32(labels,0)!=2049 {return MnDataset.{status=MnStatus.format};}
     if mn_be32(labels,4)!=d.count {return MnDataset.{status=MnStatus.shape};}
@@ -170,7 +170,7 @@ mn_admit :: (images:[]u8,labels:[]u8)->MnDataset #export_c {
 
 // Writes exactly 196 row-major features, leaving any output tail alone.
 // Each feature is the 2x2 byte sum / (4*255), rounded once from f64 to f32.
-mn_pool :: (dataset:MnDataset,images:[]u8,index:int,out:[]f32)->MnStatus #export_c {
+mn_pool :: (dataset:MnDataset,images:[]u8,index:int,out:[]f32)->MnStatus #export_c #effects(all) {
     if dataset.status!=MnStatus.ok {return dataset.status;}
     d:=mn_images(images);if d.status!=MnStatus.ok {return d.status;}
     if dataset.count!=d.count || dataset.rows!=d.rows || dataset.cols!=d.cols {return MnStatus.shape;}
@@ -185,13 +185,13 @@ mn_pool :: (dataset:MnDataset,images:[]u8,index:int,out:[]f32)->MnStatus #export
     for i:0..<MN_FEATURES {out[i]=stage[i];}
     return MnStatus.ok;
 }
-mn_target :: (label:int,out:[]f32)->MnStatus #export_c {
+mn_target :: (label:int,out:[]f32)->MnStatus #export_c #effects(all) {
     if label<0 || label>=MN_CLASSES {return MnStatus.label;}
     if out.count<MN_CLASSES {return MnStatus.capacity;}
     for i:0..<MN_CLASSES {out[i]=ifx i==label then 1.0f32 else 0.0f32;}
     return MnStatus.ok;
 }
-mn_argmax :: (scores:[]f32)->MnPick #export_c {
+mn_argmax :: (scores:[]f32)->MnPick #export_c #effects(all) {
     if scores.count!=MN_CLASSES {return MnPick.{status=MnStatus.shape};}
     for i:0..<MN_CLASSES {
         if (f32_bits(scores[i])&0x7fffffff)>=0x7f800000 {return MnPick.{status=MnStatus.number};}

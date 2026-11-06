@@ -74,7 +74,7 @@ PlaceKeeper :: struct {
   resend: bool;                  // send where you are again (a 409, or a send that waited)
 }
 
-verse_place :: (px: f32, py: f32, pz: f32, pface: f32, pyaw: f32, ppitch: f32, pzoom: f32, pview: int, proom: int, pat: f64) -> Place #export_c {
+verse_place :: (px: f32, py: f32, pz: f32, pface: f32, pyaw: f32, ppitch: f32, pzoom: f32, pview: int, proom: int, pat: f64) -> Place #export_c #effects(all) {
   p: Place;
   p.ok = place_finite(px) && place_finite(py) && place_finite(pz) && place_finite(pface) && place_finite(pyaw) && place_finite(ppitch) && place_finite(pzoom);
   p.x = px; p.y = py; p.z = pz; p.face = pface; p.yaw = pyaw; p.pitch = ppitch; p.zoom = pzoom;
@@ -110,7 +110,7 @@ place_line :: (out: [] u8, at: int, key: string, v: int) -> int {
 }
 
 // The place as text for the realm `realm`; its length, or 0 when it isn't a place or doesn't fit.
-verse_place_text :: (p: Place, realm: string, out: [] u8) -> int #export_c {
+verse_place_text :: (p: Place, realm: string, out: [] u8) -> int #export_c #effects(all) {
   if !p.ok || realm.count == 0 || realm.count > 64 || out.count < PLACE_HEAD.count + realm.count + 8 { return 0; }
   for k: 0..<PLACE_HEAD.count { out[k] = PLACE_HEAD[k]; }
   o := PLACE_HEAD.count;
@@ -148,7 +148,7 @@ place_int :: (s: string, ok: [] bool) -> int {
 
 // A kept text read back for the realm `realm`; ok false when it is another
 // realm's, another version's, or any field is missing or not a number.
-verse_place_read :: (text: string, realm: string) -> Place #export_c {
+verse_place_read :: (text: string, realm: string) -> Place #export_c #effects(all) {
   none: Place;
   if text.count < PLACE_HEAD.count || text[0..<PLACE_HEAD.count] != PLACE_HEAD { return none; }
   p: Place;
@@ -180,7 +180,7 @@ verse_place_read :: (text: string, realm: string) -> Place #export_c {
 }
 
 // Whether two places differ by more than a step or a glance (or a room or view).
-verse_place_differs :: (a: Place, b: Place) -> bool #export_c {
+verse_place_differs :: (a: Place, b: Place) -> bool #export_c #effects(all) {
   if a.ok != b.ok || a.view != b.view || a.room != b.room { return true; }
   far := place_milli(a.x - b.x); far2 := place_milli(a.z - b.z); far3 := place_milli(a.y - b.y);
   if far > PLACE_STILL_MM || far < -PLACE_STILL_MM || far2 > PLACE_STILL_MM || far2 < -PLACE_STILL_MM { return true; }
@@ -197,7 +197,7 @@ place_turned :: (a: f32, b: f32) -> bool {
 // ---- the keeper
 
 // The page facts: the save slot and whether the player has an account.
-verse_place_facts :: (k: [] PlaceKeeper, facts: string) #export_c {
+verse_place_facts :: (k: [] PlaceKeeper, facts: string) #export_c #effects(all) {
   at: [1] int; at[0] = 0;
   while at[0] < facts.count {
     pline := save_line(facts, at[..]);
@@ -208,20 +208,20 @@ verse_place_facts :: (k: [] PlaceKeeper, facts: string) #export_c {
     if pline.count > 8 && pline[0..<8] == "account=" { k[0].account = true; }
   }
 }
-verse_place_slot :: (k: [] PlaceKeeper) -> string #export_c { return cast(string) k[0].slot[0..<k[0].slot_n]; }
-verse_place_golden :: (k: [] PlaceKeeper, on: bool) #export_c { k[0].golden = on; }
+verse_place_slot :: (k: [] PlaceKeeper) -> string #export_c #effects(all) { return cast(string) k[0].slot[0..<k[0].slot_n]; }
+verse_place_golden :: (k: [] PlaceKeeper, on: bool) #export_c #effects(all) { k[0].golden = on; }
 // The location's hash named a place (the realm decides what it names): it wins over a kept one.
-verse_place_named :: (k: [] PlaceKeeper, named: bool) #export_c { if named { k[0].named = true; } }
+verse_place_named :: (k: [] PlaceKeeper, named: bool) #export_c #effects(all) { if named { k[0].named = true; } }
 
 // Where you are when the realm first puts you down.
-verse_place_open :: (k: [] PlaceKeeper, here: Place) #export_c {
+verse_place_open :: (k: [] PlaceKeeper, here: Place) #export_c #effects(all) {
   k[0].start = here; k[0].browser = here; k[0].server = here; k[0].moved = false;
 }
 
 // A kept place (this browser's or the server's): true when the face should
 // put you there. Not over a place the hash named, in golden mode, once you
 // have moved, or when it is no newer than the place in force.
-verse_place_take :: (k: [] PlaceKeeper, kept: Place) -> bool #export_c {
+verse_place_take :: (k: [] PlaceKeeper, kept: Place) -> bool #export_c #effects(all) {
   if !kept.ok || k[0].named || k[0].golden || k[0].moved || kept.at <= k[0].newest { return false; }
   k[0].newest = kept.at;
   k[0].start = kept; k[0].browser = kept; k[0].server = kept;
@@ -230,7 +230,7 @@ verse_place_take :: (k: [] PlaceKeeper, kept: Place) -> bool #export_c {
 
 // What to do with where you are now (t: the page's clock in seconds;
 // leaving: the page is hidden or being left): PLACE_KEEP and PLACE_SEND bits.
-verse_place_due :: (k: [] PlaceKeeper, here: Place, t: f64, leaving: bool) -> int #export_c {
+verse_place_due :: (k: [] PlaceKeeper, here: Place, t: f64, leaving: bool) -> int #export_c #effects(all) {
   if k[0].golden || !here.ok || here.at <= 0 || k[0].slot_n == 0 { return 0; }
   if !k[0].moved && verse_place_differs(here, k[0].start) { k[0].moved = true; }
   if !k[0].moved { return 0; }
@@ -240,7 +240,7 @@ verse_place_due :: (k: [] PlaceKeeper, here: Place, t: f64, leaving: bool) -> in
   return due;
 }
 // It was kept (what: the bits done).
-verse_place_kept :: (k: [] PlaceKeeper, here: Place, t: f64, what: int) #export_c {
+verse_place_kept :: (k: [] PlaceKeeper, here: Place, t: f64, what: int) #export_c #effects(all) {
   if what & PLACE_KEEP != 0 { k[0].browser = here; k[0].browser_t = t; }
   if what & PLACE_SEND != 0 { k[0].server = here; k[0].server_t = t; k[0].resend = false; }
   if what != 0 && here.at > k[0].newest { k[0].newest = here.at; }
@@ -249,7 +249,7 @@ verse_place_kept :: (k: [] PlaceKeeper, here: Place, t: f64, what: int) #export_
 // ---- the server's copy
 
 // The URL of this realm's place on the server: /api/playtest/progress/<slot>/place.
-verse_place_url :: (k: [] PlaceKeeper, out: [] u8) -> int #export_c {
+verse_place_url :: (k: [] PlaceKeeper, out: [] u8) -> int #export_c #effects(all) {
   head := "/api/playtest/progress/"; tail := "/place";
   n := head.count + k[0].slot_n + tail.count;
   if k[0].slot_n == 0 || n > out.count { return 0; }
@@ -259,13 +259,13 @@ verse_place_url :: (k: [] PlaceKeeper, out: [] u8) -> int #export_c {
   return n;
 }
 // Whether to ask the server for its copy now (once, with an account).
-verse_place_ask :: (k: [] PlaceKeeper) -> bool #export_c {
+verse_place_ask :: (k: [] PlaceKeeper) -> bool #export_c #effects(all) {
   if k[0].asked || !k[0].account || k[0].golden || k[0].slot_n == 0 { return false; }
   k[0].asked = true;
   return true;
 }
 // The body that keeps a place on the server ({"bytes": the AESV container, "at"}); its length or 0.
-verse_place_body :: (k: [] PlaceKeeper, here: Place, out: [] u8) -> int #export_c {
+verse_place_body :: (k: [] PlaceKeeper, here: Place, out: [] u8) -> int #export_c #effects(all) {
   text: [PLACE_TEXT] u8;
   n := verse_place_text(here, verse_place_slot(k), text[..]);
   if n <= 0 { return 0; }
@@ -277,7 +277,7 @@ verse_place_body :: (k: [] PlaceKeeper, here: Place, out: [] u8) -> int #export_
 }
 // The body that sends a place to the server from the revision this page has; 0 when it is to wait
 // (a send in flight, or the server's copy not come yet: verse_place_heard asks for it again).
-verse_place_send :: (k: [] PlaceKeeper, here: Place, leaving: bool, out: [] u8) -> int #export_c {
+verse_place_send :: (k: [] PlaceKeeper, here: Place, leaving: bool, out: [] u8) -> int #export_c #effects(all) {
   base := save_sync_send(k[0].sync[..], leaving);
   if base == SAVE_WAIT { return 0; }
   text: [PLACE_TEXT] u8;
@@ -289,14 +289,14 @@ verse_place_send :: (k: [] PlaceKeeper, here: Place, leaving: bool, out: [] u8) 
   return ifx b > 0 then b else 0;
 }
 // The answer to a send; a 409 or a send that waited: send again.
-verse_place_heard :: (k: [] PlaceKeeper, answer: string) #export_c {
+verse_place_heard :: (k: [] PlaceKeeper, answer: string) #export_c #effects(all) {
   if save_sync_heard(k[0].sync[..], answer, SAVE_MINE) == SAVE_MINE { k[0].resend = true; }
 }
 // A send the host never made.
-verse_place_unsent :: (k: [] PlaceKeeper) #export_c { save_sync_unsent(k[0].sync[..]); }
+verse_place_unsent :: (k: [] PlaceKeeper) #export_c #effects(all) { save_sync_unsent(k[0].sync[..]); }
 // The server's answer ("STATUS\n" then {rev, current, previous}) as a place; ok false when it has
 // none. From a server with revisions it is newer than any place this browser kept.
-verse_place_server :: (k: [] PlaceKeeper, answer: string) -> Place #export_c {
+verse_place_server :: (k: [] PlaceKeeper, answer: string) -> Place #export_c #effects(all) {
   none: Place;
   if save_sync_read(k[0].sync[..], answer) == SAVE_MINE { k[0].resend = true; }
   bytes: [2048] u8;
@@ -316,8 +316,8 @@ verse_place_server :: (k: [] PlaceKeeper, answer: string) -> Place #export_c {
 // reach 20 m.
 PLACE_RINGS :: 40;
 PLACE_TRIES :: 3 * PLACE_RINGS * (PLACE_RINGS + 1) + 1;
-verse_place_tries :: () -> int #export_c { return PLACE_TRIES; }
-verse_place_try :: (x: f32, z: f32, i: int) -> Place #export_c {
+verse_place_tries :: () -> int #export_c #effects(all) { return PLACE_TRIES; }
+verse_place_try :: (x: f32, z: f32, i: int) -> Place #export_c #effects(all) {
   p: Place;
   p.ok = true; p.x = x; p.z = z;
   if i <= 0 { return p; }
@@ -332,7 +332,7 @@ verse_place_try :: (x: f32, z: f32, i: int) -> Place #export_c {
 // Whether a body radius r standing at (x, y, z) is clear of walls (min x,
 // y, z, max x, y, z each, aethyr/player.coax WALL): the ones it would stand
 // inside, from its feet to its head.
-verse_place_clear :: (walls: [] f32, n: int, x: f32, y: f32, z: f32, r: f32) -> bool #export_c {
+verse_place_clear :: (walls: [] f32, n: int, x: f32, y: f32, z: f32, r: f32) -> bool #export_c #effects(all) {
   for w: 0..<n {
     k := w * 6;
     if k + 6 > walls.count { break; }

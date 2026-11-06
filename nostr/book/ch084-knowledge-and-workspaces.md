@@ -132,7 +132,7 @@ qualified component ID `<pubkey>:kb/<slug>`, where the slug replaces each
 <!-- source: coax/lib/nostr/kb/entry.coax id -->
 ```jai
 // ^[a-z][a-z0-9.-]{0,127}$: no '_', so the qualified slug mapping reverses.
-kb_id_ok :: (s:string)->bool {
+kb_id_ok :: (s:string)->bool #effects(all) {
   if s.count<1 || s.count>128 || s[0]<'a' {return false;}  // digits, '.' and '-' sort below 'a'
   for c:s {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='.' || c=='-') {return false;}}
   return true;
@@ -153,7 +153,7 @@ the word the kind names:
 // The fields each type has, as bits of KB_FIELDS' order.
 KB_FIELDS :: [9]string.["v","requires","type","id","version","kind","document","entry","reason"];
 KB_MASKS :: [3]int.[0x7f,0x9f,0x19f];
-kb_body :: (body:string,t:int,r:[]KbRecord,a:[]KbText)->u32 {
+kb_body :: (body:string,t:int,r:[]KbRecord,a:[]KbText)->u32 #effects(all) {
   j:[1]Json;json_start(j[..],body);
   if json_next(j[..])!=JSON_OBJECT {return KB_SHAPE;}
   seen:=0;k:=json_next(j[..]);
@@ -190,7 +190,7 @@ kb_body :: (body:string,t:int,r:[]KbRecord,a:[]KbText)->u32 {
   return KB_OK;
 }
 // entry: exactly {id, pubkey, kind: 3190}.
-kb_ref :: (j:[]Json,r:[]KbRecord,a:[]KbText)->u32 {
+kb_ref :: (j:[]Json,r:[]KbRecord,a:[]KbText)->u32 #effects(all) {
   seen:=0;k:=json_next(j);
   while k==JSON_STRING {
     key:=json_text(j);f:=ifx key=="id" then 0 else ifx key=="pubkey" then 1 else ifx key=="kind" then 2 else -1;
@@ -227,10 +227,10 @@ refuses:
 
 <!-- source: coax/lib/nostr/kb/entry.coax tags -->
 ```jai
-kb_prefix :: (s:string,p:string)->bool {return s.count>=p.count && s[0..<p.count]==p;}
-kb_find :: (s:string,from:int,c:u8)->int {for i:from..<s.count {if s[i]==c {return i;}}return -1;}
-kb_lower :: (s:string)->bool {for c:s {if c>='A' && c<='Z' {return false;}}return true;}
-kb_tags :: (tags:string,t:int,r:[]KbRecord,a:[]KbText)->u32 {
+kb_prefix :: (s:string,p:string)->bool #effects(all) {return s.count>=p.count && s[0..<p.count]==p;}
+kb_find :: (s:string,from:int,c:u8)->int #effects(all) {for i:from..<s.count {if s[i]==c {return i;}}return -1;}
+kb_lower :: (s:string)->bool #effects(all) {for c:s {if c>='A' && c<='Z' {return false;}}return true;}
+kb_tags :: (tags:string,t:int,r:[]KbRecord,a:[]KbText)->u32 #effects(all) {
   value:[256]u8;j:[1]Json;json_start(j[..],tags);
   if json_next(j[..])!=JSON_ARRAY {return KB_TAGS;}
   ds:=0;xs:=0;es:=0;markers:=0;kinds:=0;
@@ -280,7 +280,7 @@ summary or a list of citations doesn't confuse it:
 // " #" and is trimmed. id, version and kind must each appear once and equal
 // the body's; status, when present, is one of three words.
 KB_FRONT_KEYS :: [4]string.["id:","version:","kind:","status:"];
-kb_value :: (line:string,from:int)->string {
+kb_value :: (line:string,from:int)->string #effects(all) {
   to:=line.count;
   for i:from..<line.count-1 {if to==line.count && line[i]==' ' && line[i+1]=='#' {to=i;}}
   at:=from;
@@ -288,7 +288,7 @@ kb_value :: (line:string,from:int)->string {
   while to>at && line[to-1]==' ' {to-=1;}
   return line[at..<to];
 }
-kb_front :: (doc:string,r:[]KbRecord)->u32 {
+kb_front :: (doc:string,r:[]KbRecord)->u32 #effects(all) {
   if !kb_prefix(doc,"---\n") {return KB_DOCUMENT;}
   at:=4;seen:=0;
   while true {
@@ -328,10 +328,10 @@ version, so `entry.pubkey` must be the event's signer:
 
 <!-- source: coax/lib/nostr/kb/entry.coax read -->
 ```jai
-kb_fail :: (r:KbRecord,error:u32)->KbRecord {out:=r;out.error=error;return out;}
+kb_fail :: (r:KbRecord,error:u32)->KbRecord #effects(all) {out:=r;out.error=error;return out;}
 // out is the event reader's scratch (at least the event's serialized size);
 // a holds every string the record returns.
-kb_read :: (text:string,out:[]u8,a:[]KbText)->KbRecord {
+kb_read :: (text:string,out:[]u8,a:[]KbText)->KbRecord #effects(all) {
   r:KbRecord;
   e:=nostr_event_verify_vartime(text,out,false);
   if e.error==NE_SIGNATURE {return kb_fail(r,KB_SIGNATURE);}
@@ -339,7 +339,7 @@ kb_read :: (text:string,out:[]u8,a:[]KbText)->KbRecord {
   return kb_admit(e,a);
 }
 // The KB checks on an event whose id (and, from kb_read, signature) verified.
-kb_admit :: (e:NostrEvent,a:[]KbText)->KbRecord {
+kb_admit :: (e:NostrEvent,a:[]KbText)->KbRecord #effects(all) {
   r:=[1]KbRecord.[KbRecord.{}];text:=e.original;id:=e.id;key:=e.public_key;
   t:=-1;for i:0..<3 {if e.kind==KB_EVENT_KINDS[i] {t=i;}}
   if t<0 {return kb_fail(r[0],KB_KIND);}
@@ -383,20 +383,20 @@ rules, and `current.coax` applies them:
 
 <!-- source: coax/lib/nostr/kb/current.coax rules -->
 ```jai
-kb_less :: (a:string,b:string)->bool {
+kb_less :: (a:string,b:string)->bool #effects(all) {
   for i:0..<a.count {if i>=b.count {return false;}if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}}
   return a.count<b.count;
 }
-kb_mine :: (r:KbRecord,type:int,author:string,id:string)->bool {
+kb_mine :: (r:KbRecord,type:int,author:string,id:string)->bool #effects(all) {
   return r.error==KB_OK && r.type==type && r.author==author && r.id==id;
 }
 // A withdrawal by the version's own author, bound to its exact event.
-kb_withdrawn :: (rs:[]KbRecord,v:KbRecord)->bool {
+kb_withdrawn :: (rs:[]KbRecord,v:KbRecord)->bool #effects(all) {
   for w:rs {if kb_mine(w,KB_WITHDRAWAL,v.author,v.id) && w.entry==v.event && w.version==v.version {return true;}}
   return false;
 }
 // The same author, ID and version under another digest.
-kb_conflict :: (rs:[]KbRecord,v:KbRecord)->bool {
+kb_conflict :: (rs:[]KbRecord,v:KbRecord)->bool #effects(all) {
   for u:rs {if kb_mine(u,KB_ENTRY,v.author,v.id) && u.version==v.version && u.digest!=v.digest {return true;}}
   return false;
 }
@@ -415,7 +415,7 @@ KbCurrent :: struct {
 
 <!-- source: coax/lib/nostr/kb/current.coax current -->
 ```jai
-kb_current :: (rs:[]KbRecord,author:string,id:string)->KbCurrent {
+kb_current :: (rs:[]KbRecord,author:string,id:string)->KbCurrent #effects(all) {
   c:KbCurrent;
   head:=-1;
   for i:0..<rs.count {
@@ -457,7 +457,7 @@ reader must not show them as admitted:
 
 <!-- source: coax/lib/nostr/kb/current.coax status -->
 ```jai
-kb_status :: (r:KbRecord,reader:string,trusted:[]string)->int {
+kb_status :: (r:KbRecord,reader:string,trusted:[]string)->int #effects(all) {
   if r.author==reader {return r.status;}
   for t:trusted {if r.author==t {return r.status;}}
   if r.status==KS_ADMITTED {return KS_CANDIDATE;}
@@ -541,8 +541,8 @@ The host decides in a fixed order:
 
 <!-- source: coax/lib/nostr/ws/change.coax admit -->
 ```jai
-ws_out :: (code:u32)->WsResult {r:WsResult;r.code=code;return r;}
-ws_change :: (b:WsBinding,res:[]WsResource,grants:[]WsGrant,kept:[]WsRetained,n:[]int,c:WsChange,now:int)->WsResult {
+ws_out :: (code:u32)->WsResult #effects(all) {r:WsResult;r.code=code;return r;}
+ws_change :: (b:WsBinding,res:[]WsResource,grants:[]WsGrant,kept:[]WsRetained,n:[]int,c:WsChange,now:int)->WsResult #effects(all) {
   if c.signer!=c.actor {return ws_out(WS_IDENTITY);}
   if c.expires_at<=c.issued_at || c.expires_at-c.issued_at>WS_WINDOW || c.issued_at>now+WS_SKEW {return ws_out(WS_MALFORMED);}
   if now>=c.expires_at {return ws_out(WS_EXPIRED);}

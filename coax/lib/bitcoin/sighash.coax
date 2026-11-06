@@ -193,7 +193,7 @@ BtTapWork :: struct {key:[1]SignScalar;point:[1]SignPoint;internal:[32]u8;tweake
 // (outpoint, scriptSig, sequence), 1 to BT_IO outputs, locktime, and
 // nothing after, read by Bitcoin chapter 34's tx_read_vartime in the legacy
 // form. A witness marker reads as zero inputs and refuses.
-bt_tx_read :: (b:[]u8)->BtTx {
+bt_tx_read :: (b:[]u8)->BtTx #effects(all) {
   r:=[1]BtTx.[BtTx.{}];bad:BtTx;
   if b.count>BT_TX {return bad;}
   ins:[BT_IO]TxIn;outs:[BT_IO]TxOut;items:[1]TxItem;
@@ -211,20 +211,20 @@ bt_tx_read :: (b:[]u8)->BtTx {
 // book:end tx
 
 // ---- hashing helpers (public data)
-bt_put :: (out:[]u8,at:int,s:[]u8)->int {for k:0..<s.count {out[at+k]=s[k];}return at+s.count;}
-bt_le :: (out:[]u8,at:int,v:int,n:int)->int {for k:0..<n {out[at+k]=cast(u8)((v>>(8*k))&255);}return at+n;}
+bt_put :: (out:[]u8,at:int,s:[]u8)->int #effects(all) {for k:0..<s.count {out[at+k]=s[k];}return at+s.count;}
+bt_le :: (out:[]u8,at:int,v:int,n:int)->int #effects(all) {for k:0..<n {out[at+k]=cast(u8)((v>>(8*k))&255);}return at+n;}
 // A compact size, by chapter 34's writer.
-bt_var_put :: (out:[]u8,at:int,v:int)->int {return tx_compact_write_vartime(out,at,v);}
+bt_var_put :: (out:[]u8,at:int,v:int)->int #effects(all) {return tx_compact_write_vartime(out,at,v);}
 // SHA-256 and double SHA-256 into a 32-byte out; lengths here are always valid.
-bt_sha :: (b:[]u8,out:[]u8) {#assert sha256_hash_checked(b,out,false)==SHA_OK;}
+bt_sha :: (b:[]u8,out:[]u8) #effects(all) {#assert sha256_hash_checked(b,out,false)==SHA_OK;}
 // Both come from hash.coax (Bitcoin chapter 5).
-bt_sha2 :: (b:[]u8,out:[]u8) {#assert sha256d_checked(b,out,false)==SHA_OK;}
+bt_sha2 :: (b:[]u8,out:[]u8) #effects(all) {#assert sha256d_checked(b,out,false)==SHA_OK;}
 // SHA-256(SHA-256(tag) || SHA-256(tag) || b), for a BH_* tag ID.
-bt_tagged :: (tag:int,b:[]u8,out:[]u8) {#assert bitcoin_tagged_checked(tag,b,out,false)==SHA_OK;}
+bt_tagged :: (tag:int,b:[]u8,out:[]u8) #effects(all) {#assert bitcoin_tagged_checked(tag,b,out,false)==SHA_OK;}
 // The outpoints, the sequences and the outputs, serialized, into m; the length.
-bt_prevouts :: (tp:BtTx,m:[]u8)->int {t:=tp;n:=0;for k:0..<t.nin {n=bt_put(m,n,t.inputs[k].prev[..]);}return n;}
-bt_sequences :: (tp:BtTx,m:[]u8)->int {t:=tp;n:=0;for k:0..<t.nin {n=bt_put(m,n,t.inputs[k].seq[..]);}return n;}
-bt_outputs :: (b:[]u8,tp:BtTx,m:[]u8)->int {t:=tp;n:=0;for k:0..<t.nout {n=bt_put(m,n,b[t.out_at[k]..<t.out_at[k]+t.out_n[k]]);}return n;}
+bt_prevouts :: (tp:BtTx,m:[]u8)->int #effects(all) {t:=tp;n:=0;for k:0..<t.nin {n=bt_put(m,n,t.inputs[k].prev[..]);}return n;}
+bt_sequences :: (tp:BtTx,m:[]u8)->int #effects(all) {t:=tp;n:=0;for k:0..<t.nin {n=bt_put(m,n,t.inputs[k].seq[..]);}return n;}
+bt_outputs :: (b:[]u8,tp:BtTx,m:[]u8)->int #effects(all) {t:=tp;n:=0;for k:0..<t.nout {n=bt_put(m,n,b[t.out_at[k]..<t.out_at[k]+t.out_n[k]]);}return n;}
 
 // ---- BIP-143
 // book:begin bip143
@@ -232,7 +232,7 @@ bt_outputs :: (b:[]u8,tp:BtTx,m:[]u8)->int {t:=tp;n:=0;for k:0..<t.nout {n=bt_pu
 // under script code (for P2WSH the witness script, for P2WPKH the P2PKH
 // script of its key hash; at most BT_TX bytes), with hash type hashtype,
 // into out.
-bt_sighash_v0 :: (b:[]u8,tp:BtTx,index:int,code:[]u8,amount:int,hashtype:int,out:[]u8)->bool {t:=tp;
+bt_sighash_v0 :: (b:[]u8,tp:BtTx,index:int,code:[]u8,amount:int,hashtype:int,out:[]u8)->bool #effects(all) {t:=tp;
   if !t.ok || index<0 || index>=t.nin || amount<0 || code.count>BT_TX || out.count!=32 {return false;}
   anyone:=(hashtype&BT_ANYONE)!=0;base:=hashtype&0x1f;
   m:[BT_TX+160]u8;hp:[32]u8;hs:[32]u8;ho:[32]u8;           // the hashes BIP-143 zeroes stay zero
@@ -253,7 +253,7 @@ bt_sighash_v0 :: (b:[]u8,tp:BtTx,index:int,code:[]u8,amount:int,hashtype:int,out
 // ---- BIP-341
 // sha_prevouts, sha_amounts, sha_scriptpubkeys, sha_sequences and
 // sha_outputs (single SHA-256), into h; false on a negative amount.
-bt_tap_hashes :: (b:[]u8,tp:BtTx,amounts:[]int,spk:[]BtScript,h:[][32]u8)->bool {t:=tp;
+bt_tap_hashes :: (b:[]u8,tp:BtTx,amounts:[]int,spk:[]BtScript,h:[][32]u8)->bool #effects(all) {t:=tp;
   m:[BT_TX+BT_IO*(BT_SPK+1)]u8;
   bt_sha(m[0..<bt_prevouts(t,m[..])],h[0][..]);
   n:=0;for k:0..<t.nin {if amounts[k]<0 {return false;}n=bt_le(m[..],n,amounts[k],8);}
@@ -271,7 +271,7 @@ BT_ANNEX_TAG :: 0x50;        // an annex's first byte
 
 // sha_annex: SHA-256 of the annex with its CompactSize length, fed in
 // pieces so that an annex of any length hashes.
-bt_annex_hash :: (annex:[]u8,out:[]u8) {
+bt_annex_hash :: (annex:[]u8,out:[]u8) #effects(all) {
   st:[SHA_STATE_BYTES]u8;c:[9]u8;
   #assert sha256_init(st[..])==SHA_OK && sha256_update_checked(st[..],c[0..<bt_var_put(c[..],0,annex.count)],false)==SHA_OK;
   at:=0;
@@ -292,7 +292,7 @@ bt_annex_hash :: (annex:[]u8,out:[]u8) {
 // position of the last OP_CODESEPARATOR run (BT_NO_CODESEP for none). Hash
 // types 0 (SIGHASH_DEFAULT), 1, 2, 3 and 0x81 to 0x83; SIGHASH_SINGLE
 // needs an output at index.
-bt_sigmsg_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,m:[]u8)->int {t:=tp;
+bt_sigmsg_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,m:[]u8)->int #effects(all) {t:=tp;
   if !t.ok || index<0 || index>=t.nin || amounts.count!=t.nin || spk.count!=t.nin || m.count<BT_SIGMSG {return -1;}
   // A hash type that doesn't exist refuses before any hashing.
   if !((hashtype>=0 && hashtype<=3) || (hashtype>=0x81 && hashtype<=0x83)) || ((hashtype&3)==BT_SINGLE && index>=t.nout) {return -1;}
@@ -308,7 +308,7 @@ bt_sigmsg_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hash
 // sha_outputs; version, locktime, prev (the outpoint) and seq are the
 // transaction's bytes; amount and spk are the spent output's; single is the
 // output at index, serialized, or empty when there is none.
-bt_sigmsg_taproot_parts :: (h:[][32]u8,version:[]u8,locktime:[]u8,index:int,prev:[]u8,amount:int,spk:[]u8,seq:[]u8,single:[]u8,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,m:[]u8)->int {
+bt_sigmsg_taproot_parts :: (h:[][32]u8,version:[]u8,locktime:[]u8,index:int,prev:[]u8,amount:int,spk:[]u8,seq:[]u8,single:[]u8,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,m:[]u8)->int #effects(all) {
   base:=hashtype&3;anyone:=(hashtype&BT_ANYONE)!=0;
   if !((hashtype>=0 && hashtype<=3) || (hashtype>=0x81 && hashtype<=0x83)) {return -1;}
   if m.count<BT_SIGMSG || amount<0 || (base==BT_SINGLE && single.count==0) {return -1;}
@@ -332,7 +332,7 @@ bt_sigmsg_taproot_parts :: (h:[][32]u8,version:[]u8,locktime:[]u8,index:int,prev
 }
 // The signature hash hash_TapSighash(0x00 || SigMsg), into out (32
 // bytes); false when the message refuses.
-bt_sighash_taproot_ext :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,out:[]u8)->bool {
+bt_sighash_taproot_ext :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,out:[]u8)->bool #effects(all) {
   if out.count!=32 {return false;}
   m:[BT_SIGMSG]u8;n:=bt_sigmsg_taproot(b,tp,index,amounts,spk,hashtype,annex,leaf,codesep,m[..]);
   if n<0 {return false;}
@@ -340,7 +340,7 @@ bt_sighash_taproot_ext :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript
   return true;
 }
 // The key-path signature hash with no annex.
-bt_sighash_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,out:[]u8)->bool {
+bt_sighash_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,out:[]u8)->bool #effects(all) {
   return bt_sighash_taproot_ext(b,tp,index,amounts,spk,hashtype,b[0..<0],b[0..<0],BT_NO_CODESEP,out);
 }
 // book:end bip341
@@ -349,7 +349,7 @@ bt_sighash_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,has
 // book:begin tweak
 // The internal key P = dG (public, into w.internal), then the tweak hash
 // TapTweak(P || merkle) into th.
-bt_internal :: (key:[]u8,merkle:[]u8,w:[]BtTapWork,th:[]u8) {
+bt_internal :: (key:[]u8,merkle:[]u8,w:[]BtTapWork,th:[]u8) #effects(all) {
   #assert ss_key(key,w[0].key[..],false) && sp_base(w[0].key[0].safe,w[0].point[..]) && sp_x(w[0].point[..],w[0].internal[..]);
   m:[64]u8;n:=bt_put(m[..],0,w[0].internal[..]);
   bt_tagged(BH_TAPTWEAK,m[0..<bt_put(m[..],n,merkle)],th);
@@ -357,7 +357,7 @@ bt_internal :: (key:[]u8,merkle:[]u8,w:[]BtTapWork,th:[]u8) {
 // The tweaked key d' + t into w.tweaked, where d' is d or n - d so that P
 // has an even y and t is the tweak hash th; false when t >= n. valid is
 // the masked result: d in [1, n-1] and d' + t not zero.
-bt_tweak :: (th:[]u8,w:[]BtTapWork)->bool {
+bt_tweak :: (th:[]u8,w:[]BtTapWork)->bool #effects(all) {
   t:=sc_load(th);                                       // public: from the public key
   tweaked:=sc_add(ss_even(w[0].key[0].safe,w[0].point[0].odd&1),t.value);
   #assert ss_write(tweaked,w[0].tweaked[..]);
@@ -365,7 +365,7 @@ bt_tweak :: (th:[]u8,w:[]BtTapWork)->bool {
   return t.ok;
 }
 // book:end tweak
-bt_tap_clear :: (w:[]BtTapWork)->bool {fresh:BtTapWork;w[0]=fresh;return false;}
+bt_tap_clear :: (w:[]BtTapWork)->bool #effects(all) {fresh:BtTapWork;w[0]=fresh;return false;}
 // book:begin taproot
 // The BIP-340 signature of a key-path sighash by the key tweaked with
 // merkle (empty for a key with no script tree, else 32 bytes), with aux
@@ -374,7 +374,7 @@ bt_tap_clear :: (w:[]BtTapWork)->bool {fresh:BtTapWork;w[0]=fresh;return false;}
 // disjoint; the workspace is cleared on every return. schnorr_sign_step
 // takes exactly six calls to publish; a refusal clears its workspace, and
 // the calls left can't reach a signature.
-bt_taproot_sign :: (key:[]u8,merkle:[]u8,sighash:[]u8,aux:[]u8,w:[]BtTapWork,out:[]u8,overlap:bool)->bool {
+bt_taproot_sign :: (key:[]u8,merkle:[]u8,sighash:[]u8,aux:[]u8,w:[]BtTapWork,out:[]u8,overlap:bool)->bool #effects(all) {
   if w.count!=1 || key.count!=32 || (merkle.count!=0 && merkle.count!=32) || sighash.count!=32 || aux.count!=32 || out.count!=64 || overlap {return false;}
   th:[32]u8;bt_internal(key,merkle,w,th[..]);
   if !bt_tweak(th[..],w) || !ec_declassify(w[0].valid) {return bt_tap_clear(w);}

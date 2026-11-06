@@ -15,7 +15,7 @@
 // establishes only what that document says, not implementation conformance.
 NG_RELAY_INFO :: "{\"name\":\"OpenAgents Relay\",\"supported_nips\":[1,9,11,40,45,50,65,67,77,94,17,42,59,70,29,98]}";
 
-ng_advertised :: (text:string,nip:int)->int #export_c {
+ng_advertised :: (text:string,nip:int)->int #export_c #effects(all) {
   if !json_valid(text) {return -1;}j:[1]Json;json_start(j[..],text);
   if json_next(j[..])!=JSON_OBJECT {return -1;}seen:=false;found:=false;
   while true {
@@ -45,7 +45,7 @@ ng_discovery :: (nip:int,mode:int)->int {
   if mode==2 {return ng_advertised("{\"supported_nips\":true}",nip);}
   return ng_advertised(NG_RELAY_INFO,nip);
 }
-ng_demo :: (nip:int,mode:int)->int #export_c {
+ng_demo :: (nip:int,mode:int)->int #export_c #effects(all) {
   if mode<0 || mode>2 {return -1;}
   if nip==1 {o:[68]int;nv_run(ifx mode==0 then 0 else ifx mode==1 then 3 else 4,o[..]);return o[0];}
   if nip==10 {

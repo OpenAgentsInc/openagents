@@ -27,7 +27,7 @@
     #assert ph_beacon(b,PbAuth.{},scratch[0..<100],out[..])==-1;
 }
 // The lowercase SHA-256 of content into hex (64 bytes).
-ph_digest :: (content:string,hex:[]u8)->bool #export_c {
+ph_digest :: (content:string,hex:[]u8)->bool #export_c #effects(all) {
     if hex.count!=64 {return false;}
     state:[SHA_STATE_BYTES]u8;status:=sha256_init(state[..]);chunk:[256]u8;at:=0;
     while at<content.count {
@@ -40,13 +40,13 @@ ph_digest :: (content:string,hex:[]u8)->bool #export_c {
     return true;
 }
 // The unsigned 30200 template for b: content into scratch, its digest, pb_write.
-ph_beacon :: (b:PbBeacon,auth:PbAuth,scratch:[]u8,out:[]u8)->int #export_c {
+ph_beacon :: (b:PbBeacon,auth:PbAuth,scratch:[]u8,out:[]u8)->int #export_c #effects(all) {
     n:=pb_content(b,scratch);if n<0 {return -1;}
     hex:[64]u8;if !ph_digest(cast(string)scratch[0..<n],hex[..]) {return -1;}
     return pb_write(b,auth,cast(string)scratch[0..<n],cast(string)hex[..],out);
 }
 // pb_read with the content's real digest.
-ph_read_beacon :: (kind:int,signer:string,tags:string,content:string)->PbRead #export_c {
+ph_read_beacon :: (kind:int,signer:string,tags:string,content:string)->PbRead #export_c #effects(all) {
     hex:[64]u8;if !ph_digest(content,hex[..]) {return PbRead.{code=PbCode.digest};}
     return pb_read(kind,signer,tags,content,cast(string)hex[..]);
 }

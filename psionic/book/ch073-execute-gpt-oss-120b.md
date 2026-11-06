@@ -48,7 +48,7 @@ before a cache write. It does not impose a deadline or reserve physical RAM.
 
 <!-- source: psionic/lib/gptoss/layout.coax plan -->
 ```jai
-g_plan :: (s:GShape)->GPlan #export_c {
+g_plan :: (s:GShape)->GPlan #export_c #effects(all) {
     if !g_shape(s) {return GPlan.{status=GStatus.shape};}if !g_mac_fits(s.vocab,s.width) {return GPlan.{status=GStatus.budget};}
     d:=s.width;q:=s.heads*64;k:=s.kv_heads*64;h:=s.hidden;l:=s.layers;r:=s.vocab+2*h+q+2*k+d+s.experts;
     lengths:=[17]int.[d,d,q+2*k,q,d,s.experts,2*h,h,d,d,3*q+k,2*k*l,2*d*l,l*s.selected,s.vocab,r,r];

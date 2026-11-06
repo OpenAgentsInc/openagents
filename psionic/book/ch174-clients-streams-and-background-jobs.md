@@ -86,7 +86,7 @@ refused, which the code reports as `none`:
 // admits it, and ends done, cancelled or failed; a cancel or a deadline can
 // end it queued or running. An ended job's result expires into gone.
 // Anything else is refused.
-sc_next :: (s:ScState,e:ScEdge)->ScState {
+sc_next :: (s:ScState,e:ScEdge)->ScState #effects(all) {
     live:=s==ScState.queued || s==ScState.running;
     over:=s==ScState.done || s==ScState.cancelled || s==ScState.failed;
     if s==ScState.none && e==ScEdge.submit {return ScState.queued;}
@@ -97,7 +97,7 @@ sc_next :: (s:ScState,e:ScEdge)->ScState {
     if over && e==ScEdge.expire {return ScState.gone;}
     return ScState.none;
 }
-sc_live :: (s:ScState)->bool {return s==ScState.queued || s==ScState.running;}
+sc_live :: (s:ScState)->bool #effects(all) {return s==ScState.queued || s==ScState.running;}
 ```
 
 The checks write the same table out again as 42 numbers in
@@ -130,7 +130,7 @@ with `order` only after the configuration itself has passed.
 ```jai
 // Chapter 175 checks its own configuration: given no requests it refuses
 // with order only when the configuration itself passed.
-sc_open :: (cfg:ScConfig)->ScServer {
+sc_open :: (cfg:ScConfig)->ScServer #effects(all) {
     v:ScServer;v.cfg=cfg;v.why=ScWhy.config;
     none:[1]CbRequest;s:=cb_start(cfg.batch,none[0..<0]);
     if s.status!=CbStatus.order || cfg.batch.clients>SC_CLIENTS || cfg.retain<1 || !bl_schedule_valid(cfg.price) || !um_evidence_valid(cfg.evidence) {return v;}
@@ -163,18 +163,18 @@ with its arrival set to the next step.
 ```jai
 // The quote's device time: every step of the deadline at the scheduler's
 // widest step, rounded up to a microsecond.
-sc_quote :: (cfg:ScConfig,r:ScRequest)->BlPrice {
+sc_quote :: (cfg:ScConfig,r:ScRequest)->BlPrice #effects(all) {
     us:=bl_ceil(r.deadline*cb_step_ns(cfg.batch.tokens),1000);
     return bl_quote(cfg.price,r.prompt,r.output,us);
 }
-sc_same :: (a:ScRequest,b:ScRequest)->bool {
+sc_same :: (a:ScRequest,b:ScRequest)->bool #effects(all) {
     return a.mode==b.mode && a.body==b.body && a.prompt==b.prompt && a.output==b.output && a.deadline==b.deadline;
 }
 // Admission, in order: a known client and a request that fits; then the
 // key (the same request again is its first job, a different one under the
 // same key is refused); then room in the table, the client's limit on
 // unfinished jobs, and an account that holds the quote.
-sc_submit :: (sv:[]ScServer,r:ScRequest)->ScSubmit {
+sc_submit :: (sv:[]ScServer,r:ScRequest)->ScSubmit #effects(all) {
     if sv[0].why!=ScWhy.none {return ScSubmit.{why=sv[0].why,id= -1};}
     b:=sv[0].cfg.batch;
     if r.client<0 || r.client>=b.clients {return ScSubmit.{why=ScWhy.client,id= -1};}
@@ -223,20 +223,20 @@ counts the tokens it produced. A job that never ran pays nothing.
 
 <!-- source: psionic/lib/serve-client.coax step -->
 ```jai
-sc_move :: (sv:[]ScServer,i:int,e:ScEdge) {
+sc_move :: (sv:[]ScServer,i:int,e:ScEdge) #effects(all) {
     t:=sc_next(sv[0].jobs[i].state,e);n:=sv[0].jobs[i].nt;
     sv[0].jobs[i].state=t;sv[0].jobs[i].trail[n]=t;sv[0].jobs[i].nt=n+1;
 }
-sc_emit :: (sv:[]ScServer,i:int,kind:ScKind,token:int) {
+sc_emit :: (sv:[]ScServer,i:int,kind:ScKind,token:int) #effects(all) {
     n:=sv[0].jobs[i].n;sv[0].jobs[i].ev[n]=ScEvent.{kind=kind,token=token};sv[0].jobs[i].n=n+1;
 }
 // The stand-in model: token k of a body.
-sc_token :: (body:int,k:int)->int {return (body*31+k*7)%1000;}
+sc_token :: (body:int,k:int)->int #effects(all) {return (body*31+k*7)%1000;}
 // Take a job out of the scheduler: before it arrives, it never will;
 // queued, it leaves its client's queue unadmitted, so its client's virtual
 // time is not charged; running, its slot and its state are free for the
 // next step's admission.
-sc_withdraw :: (sv:[]ScServer,i:int) {
+sc_withdraw :: (sv:[]ScServer,i:int) #effects(all) {
     r:=sv[0].s.req[i];step:=sv[0].s.step;
     if sv[0].s.fate[i].admit>=0 {
         m:=0;
@@ -252,7 +252,7 @@ sc_withdraw :: (sv:[]ScServer,i:int) {
 // End a job: its last event, and its one settlement. A job that ran pays
 // chapter 180's price for the device time it held (answered: plus its
 // tokens), capped at its quote; one that never ran pays nothing.
-sc_end :: (sv:[]ScServer,i:int,e:ScEdge,kind:ScKind) {
+sc_end :: (sv:[]ScServer,i:int,e:ScEdge,kind:ScKind) #effects(all) {
     sc_move(sv,i,e);sc_emit(sv,i,kind,0);
     c:=sv[0].jobs[i].req.client;clock:=sv[0].s.clock;
     device:=0;if sv[0].jobs[i].ran {device=(clock-sv[0].jobs[i].admit_ns)/1000;}
@@ -264,7 +264,7 @@ sc_end :: (sv:[]ScServer,i:int,e:ScEdge,kind:ScKind) {
 // One scheduler step. Deadlines first, so a job out of time never takes a
 // slot; then chapter 175's step; then every admission, token and finish it
 // made becomes an event; then results past the retention window expire.
-sc_tick :: (sv:[]ScServer)->ScWhy {
+sc_tick :: (sv:[]ScServer)->ScWhy #effects(all) {
     if sv[0].why!=ScWhy.none {return sv[0].why;}
     now:=sv[0].s.step;
     if now==sv[0].cfg.batch.steps {sv[0].why=ScWhy.steps;return ScWhy.steps;}
@@ -306,20 +306,20 @@ has expired as `gone`.
 ```jai
 // A client cancels a job, or its connection drops: a sync job is cancelled,
 // a stream or background job keeps running.
-sc_cancel :: (sv:[]ScServer,i:int)->ScWhy {
+sc_cancel :: (sv:[]ScServer,i:int)->ScWhy #effects(all) {
     if i<0 || i>=sv[0].n {return ScWhy.unknown;}
     if !sc_live(sv[0].jobs[i].state) {return ScWhy.over;}
     sc_withdraw(sv,i);sc_end(sv,i,ScEdge.cancel,ScKind.cancelled);
     return ScWhy.none;
 }
-sc_drop :: (sv:[]ScServer,i:int)->ScWhy {
+sc_drop :: (sv:[]ScServer,i:int)->ScWhy #effects(all) {
     if i<0 || i>=sv[0].n {return ScWhy.unknown;}
     if sv[0].jobs[i].req.mode==ScMode.sync {return sc_cancel(sv,i);}
     return ScWhy.none;
 }
 // Read a job's events after the cursor (a stream's Last-Event-ID, 0 for
 // the start), as many as fit in out.
-sc_read :: (sv:[]ScServer,i:int,after:int,out:[]ScEvent)->ScRead {
+sc_read :: (sv:[]ScServer,i:int,after:int,out:[]ScEvent)->ScRead #effects(all) {
     if i<0 || i>=sv[0].n {return ScRead.{why=ScWhy.unknown};}
     t:=sv[0].jobs[i].state;n:=sv[0].jobs[i].n;
     if t==ScState.gone {return ScRead.{why=ScWhy.gone};}
@@ -330,7 +330,7 @@ sc_read :: (sv:[]ScServer,i:int,after:int,out:[]ScEvent)->ScRead {
     last:=after+count;
     return ScRead.{count=count,last=last,end=last==n && !sc_live(t)};
 }
-sc_poll :: (sv:[]ScServer,i:int)->ScPoll {
+sc_poll :: (sv:[]ScServer,i:int)->ScPoll #effects(all) {
     if i<0 || i>=sv[0].n {return ScPoll.{why=ScWhy.unknown};}
     j:=sv[0].jobs[i];
     return ScPoll.{state=j.state,produced=j.produced,charge=j.charge};
@@ -347,7 +347,7 @@ number, because the stand-in model has no vocabulary.
 // One event as a server-sent event: its sequence number is its id, the
 // cursor a reconnecting client sends back as Last-Event-ID. -1 when out
 // is too short.
-sc_sse :: (id:int,e:ScEvent,out:[]u8,at:int)->int {
+sc_sse :: (id:int,e:ScEvent,out:[]u8,at:int)->int #effects(all) {
     names:=[6]string.["response.queued","response.in_progress","response.output_text.delta","response.completed","response.cancelled","response.failed"];
     name:=names[cast(int)e.kind];
     n:=um_int(out,um_put(out,at,"id: "),id);n=um_put(out,um_put(out,um_put(out,n,"\nevent: "),name),"\ndata: {\"type\":\"");

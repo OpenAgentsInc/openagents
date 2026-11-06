@@ -58,7 +58,7 @@ gp_capture :: (c:[]Cdp,mode:int,wgsl:string,output:string,url:string,inputs:[]GP
   if !admitted || changed {tool_errln("WebGPU probe: shader/readback/source checks failed");return 1;}
   print("WebGPU probe: % authored observations retained; all finite, alpha1, no shader messages/errors or source drift\n",gp_config(mode).count);return 0;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}
   if args_has(a[..],"--serve") {return gp_serve(args_value(a[..],"--serve",""));}
   mode:=gp_mode(args_at(a[..],0));config:=gp_config(mode);wgsl:=args_at(a[..],1);output:=args_at(a[..],2);

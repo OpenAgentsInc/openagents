@@ -118,7 +118,7 @@ the open condensation at the begin event's index instead of guessing.
 <!-- source: psionic/lib/harness/condense.coax view -->
 ```jai
 // Event e's digest as eight words of four little-endian bytes each.
-cd_word :: (d:[32]u8,w:int)->int {
+cd_word :: (d:[32]u8,w:int)->int #effects(all) {
     x:=0;for b:0..<4 {x=256*x+cast(int)d[4*w+3-b];}
     return x;
 }
@@ -126,7 +126,7 @@ cd_word :: (d:[32]u8,w:int)->int {
 // replaces, then the first token of each named user event, in order. It is
 // not a model; it is deterministic, short, and a function of the named
 // events' tokens only, so a verifier can recompute it.
-cd_summarize :: (g:LgLog,names:[]int,out:[]int)->int {
+cd_summarize :: (g:LgLog,names:[]int,out:[]int)->int #effects(all) {
     out[0]=CD_SUMMARY;out[1]=names.count;out[2]=0;n:=3;
     for x:names {
         at:=lg_offset(g,x);e:=g.events[x];out[2]+=e.count;
@@ -134,9 +134,9 @@ cd_summarize :: (g:LgLog,names:[]int,out:[]int)->int {
     }
     return n;
 }
-cd_refuse :: (v:CdView,status:CdStatus,event:int)->CdView {r:=v;r.status=status;r.event=event;return r;}
+cd_refuse :: (v:CdView,status:CdStatus,event:int)->CdView #effects(all) {r:=v;r.status=status;r.event=event;return r;}
 // The view position of event x, or the view's length.
-cd_find :: (v:CdView,x:int)->int {
+cd_find :: (v:CdView,x:int)->int #effects(all) {
     item:=v.item;for y,p:item[0..<v.items] {if y==x {return p;}}
     return v.items;
 }
@@ -145,7 +145,7 @@ cd_find :: (v:CdView,x:int)->int {
 // pinned fact, unredacted, and named with its own digest; the next event
 // must be the summarizer's output for them. The summary takes the first
 // named event's place, and the others leave the view.
-cd_apply :: (from:CdView,g:LgLog,i:int,start:int)->CdView {
+cd_apply :: (from:CdView,g:LgLog,i:int,start:int)->CdView #effects(all) {
     v:=from;at:=start;e:=g.events[i];k:=e.count/9;
     if (e.count-2)%9!=0 || k<1 || k>CD_NAMES || g.tokens[at+1]!=k {return cd_refuse(v,CdStatus.names,i);}
     names:[8]int;next:=0;
@@ -173,7 +173,7 @@ cd_apply :: (from:CdView,g:LgLog,i:int,start:int)->CdView {
 // The condensed view of a verified log of text events. A context event that
 // starts with CD_BEGIN is a condensation; one that starts with CD_SUMMARY
 // must follow a begin event.
-cd_view :: (g:LgLog)->CdView {
+cd_view :: (g:LgLog)->CdView #effects(all) {
     v:CdView;
     if g.count>CD_EVENTS {return cd_refuse(v,CdStatus.shape,g.count);}
     c:=lg_verify(g);if c.status!=LgStatus.ok {return cd_refuse(v,CdStatus.log,c.index);}
@@ -199,7 +199,7 @@ cd_view :: (g:LgLog)->CdView {
     return v;
 }
 // The log as it stood after its first n events.
-cd_at :: (g:LgLog,n:int)->LgLog {return LgLog.{events=g.events,tokens=g.tokens,count=n,used=lg_offset(g,n)};}
+cd_at :: (g:LgLog,n:int)->LgLog #effects(all) {return LgLog.{events=g.events,tokens=g.tokens,count=n,used=lg_offset(g,n)};}
 ```
 
 ## When and what to condense
@@ -227,7 +227,7 @@ after the begin event, it is left open exactly as after a crash.
 // cut is the view position of the keep-th user event from the end; the
 // events before it, oldest first, up to eight, except pinned facts, are
 // named. A plan that would still not fit is refused, and nothing is logged.
-cd_plan :: (s:PxRequest,g:LgLog,tail:int,p:CdPolicy)->CdPlan {
+cd_plan :: (s:PxRequest,g:LgLog,tail:int,p:CdPolicy)->CdPlan #effects(all) {
     r:CdPlan;r.status=CdStatus.shape;
     if s.status!=PxStatus.ok || p.window<1 || p.keep<0 || tail<0 {return r;}
     v:=cd_view(g);if v.status!=CdStatus.ok {r.status=v.status;return r;}
@@ -244,14 +244,14 @@ cd_plan :: (s:PxRequest,g:LgLog,tail:int,p:CdPolicy)->CdPlan {
     r.condense=true;return r;
 }
 // One to eight events of the log, by index.
-cd_named :: (g:LgLog,names:[]int)->bool {
+cd_named :: (g:LgLog,names:[]int)->bool #effects(all) {
     if names.count<1 || names.count>CD_NAMES {return false;}
     for x:names {if x<0 || x>=g.count {return false;}}
     return true;
 }
 // The begin event: the mark, the count, then each named event's index and
 // digest words.
-cd_begin :: (l:[]LgLog,names:[]int)->CdStatus {
+cd_begin :: (l:[]LgLog,names:[]int)->CdStatus #effects(all) {
     g:=l[0];b:[74]int;b[0]=CD_BEGIN;b[1]=names.count;
     if !cd_named(g,names) {return CdStatus.shape;}
     for x,j:names {b[2+9*j]=x;for w:0..<8 {b[3+9*j+w]=cd_word(g.events[x].digest,w);}}
@@ -261,14 +261,14 @@ cd_begin :: (l:[]LgLog,names:[]int)->CdStatus {
 // The summary event for the same names, right after the begin event. If the
 // log is full here, it holds an open condensation, as after a crash; the
 // verifier refuses a summary that does not match its begin event.
-cd_end :: (l:[]LgLog,names:[]int)->CdStatus {
+cd_end :: (l:[]LgLog,names:[]int)->CdStatus #effects(all) {
     g:=l[0];s:[11]int;
     if !cd_named(g,names) {return CdStatus.shape;}
     if lg_say(l,LgKind.context,s[0..<cd_summarize(g,names,s[..])])!=LgStatus.ok {return CdStatus.shape;}
     return CdStatus.ok;
 }
 // Plan, and when the plan says so, log both events.
-cd_condense :: (l:[]LgLog,s:PxRequest,tail:int,p:CdPolicy)->CdPlan {
+cd_condense :: (l:[]LgLog,s:PxRequest,tail:int,p:CdPolicy)->CdPlan #effects(all) {
     r:=cd_plan(s,l[0],tail,p);
     if r.condense {
         r.status=cd_begin(l,r.name[0..<r.names]);
@@ -286,17 +286,17 @@ its history section.
 ```jai
 // A request from the condensed view: chapter 202's frozen prefix, the view
 // as its history section, then the tail.
-cd_history :: (s:PxRequest,v:CdView)->PxRequest {
+cd_history :: (s:PxRequest,v:CdView)->PxRequest #effects(all) {
     r:=s;
     if r.status!=PxStatus.ok {return r;}
     if v.status!=CdStatus.ok {r.status=PxStatus.log;return r;}
     tok:=v.tok;return px_add(r,PxKind.history,0,tok[0..<v.n]);
 }
-cd_build :: (s:PxRequest,v:CdView,tail:[]int)->PxRequest {return px_add(cd_history(s,v),PxKind.tail,0,tail);}
-cd_assemble :: (s:PxRequest,g:LgLog,tail:[]int)->PxRequest {return cd_build(s,cd_view(g),tail);}
+cd_build :: (s:PxRequest,v:CdView,tail:[]int)->PxRequest #effects(all) {return px_add(cd_history(s,v),PxKind.tail,0,tail);}
+cd_assemble :: (s:PxRequest,g:LgLog,tail:[]int)->PxRequest #effects(all) {return cd_build(s,cd_view(g),tail);}
 // What the harness does before each request: condense if the policy says
 // so, then assemble from the log.
-cd_request :: (l:[]LgLog,s:PxRequest,tail:[]int,p:CdPolicy)->CdStep {
+cd_request :: (l:[]LgLog,s:PxRequest,tail:[]int,p:CdPolicy)->CdStep #effects(all) {
     r:CdStep;r.plan=cd_condense(l,s,tail.count,p);r.at=l[0].count;
     r.r.status=PxStatus.log;
     if r.plan.status==CdStatus.ok {r.r=cd_assemble(s,l[0],tail);}
@@ -327,7 +327,7 @@ its replay: every request is rebuilt from the log alone.
 // Every token of r must be the frozen prefix, the view of the log's first
 // at events, and r's own tail, in that order; a refusal names the first
 // position that differs.
-cd_match :: (s:PxRequest,v:CdView,r:PxRequest)->CdVerdict {
+cd_match :: (s:PxRequest,v:CdView,r:PxRequest)->CdVerdict #effects(all) {
     if r.status!=PxStatus.ok {return CdVerdict.{status=CdStatus.shape};}
     tok:=r.tok;w:=cd_build(s,v,tok[px_boundary(r)..<r.n]);
     if w.status!=PxStatus.ok {return CdVerdict.{status=CdStatus.shape};}
@@ -335,7 +335,7 @@ cd_match :: (s:PxRequest,v:CdView,r:PxRequest)->CdVerdict {
     if p<w.n || p<r.n {return CdVerdict.{status=CdStatus.source,at=p};}
     return CdVerdict.{};
 }
-cd_check :: (s:PxRequest,g:LgLog,at:int,r:PxRequest)->CdVerdict {
+cd_check :: (s:PxRequest,g:LgLog,at:int,r:PxRequest)->CdVerdict #effects(all) {
     if at<0 || at>g.count {return CdVerdict.{status=CdStatus.shape};}
     v:=cd_view(cd_at(g,at));
     if v.status!=CdStatus.ok {return CdVerdict.{status=v.status,event=v.event};}
@@ -346,7 +346,7 @@ cd_check :: (s:PxRequest,g:LgLog,at:int,r:PxRequest)->CdVerdict {
 // token of prev before prev's boundary, the first difference must be at or
 // after the first event of prev's view that a logged condensation has since
 // removed; by names that condensation's begin event.
-cd_admit :: (s:PxRequest,g:LgLog,pat:int,prev:PxRequest,nat:int,next:PxRequest)->CdVerdict {
+cd_admit :: (s:PxRequest,g:LgLog,pat:int,prev:PxRequest,nat:int,next:PxRequest)->CdVerdict #effects(all) {
     if pat<0 || pat>nat || nat>g.count {return CdVerdict.{status=CdStatus.shape};}
     b:=cd_view(cd_at(g,nat));a:=cd_view(cd_at(g,pat));
     if b.status!=CdStatus.ok {return CdVerdict.{status=b.status,event=b.event};}
@@ -367,7 +367,7 @@ cd_admit :: (s:PxRequest,g:LgLog,pat:int,prev:PxRequest,nat:int,next:PxRequest)-
 // A session's requests and the log lengths they were assembled at: the
 // first refusal, with the request's index, or the last verdict with the
 // number of admitted breaks. Every request is rebuilt from the log.
-cd_session :: (s:PxRequest,g:LgLog,at:[]int,reqs:[]PxRequest)->CdVerdict {
+cd_session :: (s:PxRequest,g:LgLog,at:[]int,reqs:[]PxRequest)->CdVerdict #effects(all) {
     if reqs.count<1 || at.count!=reqs.count {return CdVerdict.{status=CdStatus.shape};}
     c:=cd_check(s,g,at[0],reqs[0]);n:=0;
     for i:1..<reqs.count {

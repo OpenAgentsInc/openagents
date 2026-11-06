@@ -19,18 +19,18 @@ QdLayout :: struct {norm:int;temp:int;prepare:int;prepared:int;attend:int;att_ou
     r:=qd_block(s,w,x[..],rope[..],0,2,cache[..],out[..],work[..],false);
     #assert r.status==QhStatus.number && r.written==0;for v:cache {#assert v==7;}for v:out {#assert v==-7;}
 }
-qd_block_valid :: (start:int,count:int,capacity:int)->bool {
+qd_block_valid :: (start:int,count:int,capacity:int)->bool #effects(all) {
     if start<0 || count<1 || count>capacity {return false;}
     return start<=capacity-count;
 }
-qd_layout :: (s:QhShape,start:int,count:int)->QdLayout {
+qd_layout :: (s:QhShape,start:int,count:int)->QdLayout #effects(all) {
     q:=s.attention.heads*s.attention.head_dim;p:QdLayout;p.temp=s.width;p.prepare=p.temp+2*q+s.width;
     p.prepared=p.prepare+qf_input_count(s.attention);p.attend=p.prepared+count*qf_output_count(s.attention);
     p.att_out=p.attend+qf_attend_count(s.attention,start+count);p.att_work=p.att_out+q;
     p.mixed=p.att_work+q;p.draft=p.mixed+s.width;p.block=p.draft+count*s.width;p.total=p.block+qb_work_count(s.width,s.hidden);return p;
 }
 // book:begin block
-qd_block :: (s:QhShape,w:QhWeights,x:[]f32,rope:[]f32,start:int,count:int,cache:[]f32,out:[]f32,work:[]f32,overlap:bool)->QhResult #export_c {
+qd_block :: (s:QhShape,w:QhWeights,x:[]f32,rope:[]f32,start:int,count:int,cache:[]f32,out:[]f32,work:[]f32,overlap:bool)->QhResult #export_c #effects(all) {
     if !qh_valid(s) {return QhResult.{status=QhStatus.shape};}
     if !qd_block_valid(start,count,s.capacity) {return QhResult.{status=QhStatus.capacity};}
     d:=s.width;f:=s.hidden;q:=s.attention.heads*s.attention.head_dim;k:=s.attention.kv_heads*s.attention.head_dim;dim:=s.attention.head_dim;rot:=s.attention.rotary_dim;tokens:=start+count;

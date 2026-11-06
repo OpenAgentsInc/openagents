@@ -57,22 +57,22 @@
   #assert !gvi_element_bounds(2097152,4096,0,2097152,4096,0,2097152,2097152) && !gvi_element_bounds(0,4096,0,2097153,4096,0,2097153,2097153) && !gvi_element_bounds(0,4097,0,4097,4097,0,4097,4097);
   #assert !gvi_element_bounds(0,1,0,1,1,0,0,1) && !gvi_element_bounds(0,1,0,1,1,0,1,0) && !gvi_element_bounds(0,2,0,3,2,0,3,3) && !gvi_element_bounds(0,1,0,1,1,1,1,1);
 }
-gvi_bad :: (bits:u32)->u8 {return ifx (bits&0x7f800000)==0x7f800000 then cast(u8)1 else cast(u8)0;}
-gvi_coordinate :: (token:int,column:bool)->int {local:=token%256;block:=local/4;return ifx column then 2*(block%8)+local%2 else 2*(block/8)+(local%4)/2;}
+gvi_bad :: (bits:u32)->u8 #effects(all) {return ifx (bits&0x7f800000)==0x7f800000 then cast(u8)1 else cast(u8)0;}
+gvi_coordinate :: (token:int,column:bool)->int #effects(all) {local:=token%256;block:=local/4;return ifx column then 2*(block%8)+local%2 else 2*(block/8)+(local%4)/2;}
 // Source CPU torch.linspace uses one rounded step and symmetric endpoints.
-gvi_linspace :: (coordinate:int)->f32 {step:=47.0f32/15.0f32;return ifx coordinate<8 then f32(coordinate)*step else 47.0f32-f32(15-coordinate)*step;}
-gvi_position :: (token:int,column:bool)->f32 {return gvi_linspace(gvi_coordinate(token,column));}
-gvi_index :: (token:int,corner:int)->int {y:=cast(int)gvi_position(token,false);x:=cast(int)gvi_position(token,true);if (corner&2)!=0 && y<47 {y+=1;}if (corner&1)!=0 && x<47 {x+=1;}return y*48+x;}
-gvi_weight :: (token:int,corner:int)->f32 {y:=gvi_position(token,false);x:=gvi_position(token,true);dy:=y-f32(cast(int)y);dx:=x-f32(cast(int)x);return (ifx (corner&2)!=0 then dy else 1.0f32-dy)*(ifx (corner&1)!=0 then dx else 1.0f32-dx);}
-gvi_inverse :: (pair:int)->f32 {words:=[16]u32.[0x3f800000,0x3f0ff59a,0x3ea1e89b,0x3e361887,0x3dcccccd,0x3d6655c2,0x3d0186e3,0x3c91ad39,0x3c23d70a,0x3bb8449c,0x3b4f3e38,0x3ae91528,0x3a83126f,0x3a136a16,0x39a5cb60,0x393a7753];return f32_from_bits(words[pair]);}
-gvi_bf16 :: (words:[]u32,index:int)->f32 {word:=words[index/2];half:=ifx index%2==0 then word&0xffff else word>>16;return f32_from_bits(half<<16);}
-gvi_posadd :: (item:int,x:[]f32,bias:[]f32,positions:[]u32,out:[]f32,flags:[]u8) #export_c {
+gvi_linspace :: (coordinate:int)->f32 #effects(all) {step:=47.0f32/15.0f32;return ifx coordinate<8 then f32(coordinate)*step else 47.0f32-f32(15-coordinate)*step;}
+gvi_position :: (token:int,column:bool)->f32 #effects(all) {return gvi_linspace(gvi_coordinate(token,column));}
+gvi_index :: (token:int,corner:int)->int #effects(all) {y:=cast(int)gvi_position(token,false);x:=cast(int)gvi_position(token,true);if (corner&2)!=0 && y<47 {y+=1;}if (corner&1)!=0 && x<47 {x+=1;}return y*48+x;}
+gvi_weight :: (token:int,corner:int)->f32 #effects(all) {y:=gvi_position(token,false);x:=gvi_position(token,true);dy:=y-f32(cast(int)y);dx:=x-f32(cast(int)x);return (ifx (corner&2)!=0 then dy else 1.0f32-dy)*(ifx (corner&1)!=0 then dx else 1.0f32-dx);}
+gvi_inverse :: (pair:int)->f32 #effects(all) {words:=[16]u32.[0x3f800000,0x3f0ff59a,0x3ea1e89b,0x3e361887,0x3dcccccd,0x3d6655c2,0x3d0186e3,0x3c91ad39,0x3c23d70a,0x3bb8449c,0x3b4f3e38,0x3ae91528,0x3a83126f,0x3a136a16,0x39a5cb60,0x393a7753];return f32_from_bits(words[pair]);}
+gvi_bf16 :: (words:[]u32,index:int)->f32 #effects(all) {word:=words[index/2];half:=ifx index%2==0 then word&0xffff else word>>16;return f32_from_bits(half<<16);}
+gvi_posadd :: (item:int,x:[]f32,bias:[]f32,positions:[]u32,out:[]f32,flags:[]u8) #export_c #effects(all) {
   if !gvi_pos_bounds(item,x.count,bias.count,positions.count,out.count,flags.count) {return;}
   token:=item/1024;column:=item%1024;position:f32=0;
   for corner:0..<4 {index:=gvi_index(token,corner)*1024+column;if index/2>=positions.count {return;}word:=positions[index/2];half:=ifx index%2==0 then word&0xffff else word>>16;bits:=half<<16;bad:=gvi_bad(bits);if bad!=0 {flags[item]=bad;return;}value:=f32_from_bits(bits);position+=value*gvi_weight(token,corner);}
   value:=(x[item]+bias[column])+position;out[item]=value;flags[item]=gvi_bad(f32_bits(value));
 }
-gvi_qkv :: (item:int,x:[]f32,bias:[]f32,q:[]f32,k:[]f32,v:[]f32,flags:[]u8) #export_c {
+gvi_qkv :: (item:int,x:[]f32,bias:[]f32,q:[]f32,k:[]f32,v:[]f32,flags:[]u8) #export_c #effects(all) {
   if !gvi_qkv_bounds(item,x.count,bias.count,q.count,k.count,v.count,flags.count) {return;}
   token:=item/1024;axis:=item%1024;d:=axis%64;other:=ifx d<32 then axis+32 else axis-32;sign:=ifx d<32 then -1.0f32 else 1.0f32;
   phase:=f32(gvi_coordinate(token,(d%32)>=16))*gvi_inverse(d%16);co:=cos(phase);si:=sin(phase);base:=token*3072;
@@ -83,20 +83,20 @@ gvi_qkv :: (item:int,x:[]f32,bias:[]f32,q:[]f32,k:[]f32,v:[]f32,flags:[]u8) #exp
 // Abramowitz-Stegun7.1.26 erf approximation, not the tanh GELU formula.
 // F32 error is qualified independently at2e-6+2e-6*abs(reference). Beyond8,
 // the true Gaussian tail is below F32 relevance; avoid squaring huge inputs.
-gvi_gelu :: (value:f32)->f32 {
+gvi_gelu :: (value:f32)->f32 #effects(all) {
   tail:=gvi_tail(value);if tail!=0 {return ifx tail==1 then value else 0.0f32;}
   z:=abs(value)*0.7071067811865476f32;t:=1.0f32/(1.0f32+0.3275911f32*z);
   p:=1.061405429f32*t-1.453152027f32;p=p*t+1.421413741f32;p=p*t-0.284496736f32;p=p*t+0.254829592f32;p*=t;
   erf:=1.0f32-p*exp(-z*z);if gvi_negative(value) {erf=-erf;}return (0.5f32*value)*(1.0f32+erf);
 }
-gvi_element :: (item:int,width:int,kind:int,x:[]f32,bias:[]f32,residual:[]f32,out:[]f32,flags:[]u8) #export_c {
+gvi_element :: (item:int,width:int,kind:int,x:[]f32,bias:[]f32,residual:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
   if !gvi_element_bounds(item,width,kind,x.count,bias.count,residual.count,out.count,flags.count) {return;}
   value:=x[item]+bias[item%width];before:=f32_bits(value);if kind==1 {value+=residual[item];}if kind==2 {value=gvi_gelu(value);}out[item]=value;flags[item]=gvi_or(gvi_bad(before),gvi_bad(f32_bits(value)));
 }
 
-gvi_or :: (a:u8,b:u8)->u8 {return a|b;}
-gvi_tail :: (x:f32)->int {if x>=8 {return 1;}if x<=-8 {return -1;}return 0;}
-gvi_negative :: (x:f32)->bool {return x<0;}
-gvi_pos_bounds :: (item:int,n:int,bias:int,pos:int,out:int,flags:int)->bool {return item>=0 && item<n && n>=1024 && n/1024<=512 && n%1024==0 && bias==1024 && pos>=512 && pos/512<=2304 && pos%512==0 && out>=n && flags>=n;}
-gvi_qkv_bounds :: (item:int,nx:int,nb:int,nq:int,nk:int,nv:int,nf:int)->bool {if nx%3072!=0 || nx/3072>512 {return false;}n:=nx/3;return item>=0 && item<n && nb==3072 && nq>=n && nk>=n && nv>=n && nf>=n;}
-gvi_element_bounds :: (item:int,width:int,kind:int,n:int,bias:int,residual:int,out:int,flags:int)->bool {if item<0 || item>=n || n>2097152 || width<1 || width>4096 || n%width!=0 || kind<0 || kind>2 || bias!=width || out<n || flags<n {return false;}return residual==(ifx kind==1 then n else 0);}
+gvi_or :: (a:u8,b:u8)->u8 #effects(all) {return a|b;}
+gvi_tail :: (x:f32)->int #effects(all) {if x>=8 {return 1;}if x<=-8 {return -1;}return 0;}
+gvi_negative :: (x:f32)->bool #effects(all) {return x<0;}
+gvi_pos_bounds :: (item:int,n:int,bias:int,pos:int,out:int,flags:int)->bool #effects(all) {return item>=0 && item<n && n>=1024 && n/1024<=512 && n%1024==0 && bias==1024 && pos>=512 && pos/512<=2304 && pos%512==0 && out>=n && flags>=n;}
+gvi_qkv_bounds :: (item:int,nx:int,nb:int,nq:int,nk:int,nv:int,nf:int)->bool #effects(all) {if nx%3072!=0 || nx/3072>512 {return false;}n:=nx/3;return item>=0 && item<n && nb==3072 && nq>=n && nk>=n && nv>=n && nf>=n;}
+gvi_element_bounds :: (item:int,width:int,kind:int,n:int,bias:int,residual:int,out:int,flags:int)->bool #effects(all) {if item<0 || item>=n || n>2097152 || width<1 || width>4096 || n%width!=0 || kind<0 || kind>2 || bias!=width || out<n || flags<n {return false;}return residual==(ifx kind==1 then n else 0);}

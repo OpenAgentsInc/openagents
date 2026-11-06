@@ -12,7 +12,7 @@ ReleaseFeature :: struct {id:string;section:string;name:string;meaning:string;st
   #assert RM_version_code("0.14.0")==14000 && RM_version_code("1.2.3")==1002003;
   #assert RM_version_code("bad")== -1;
 }
-RM_version_valid :: (v:string)->bool #export_c {
+RM_version_valid :: (v:string)->bool #export_c #effects(all) {
   dots:=0;digits:=0;value:=0;
   for c,i:v {
     if c=='.' {
@@ -26,7 +26,7 @@ RM_version_valid :: (v:string)->bool #export_c {
   }
   return dots==2 && digits>0;
 }
-RM_version_code :: (v:string)->int #export_c {
+RM_version_code :: (v:string)->int #export_c #effects(all) {
   if !RM_version_valid(v) {return -1;}
   out:=0;value:=0;
   for c:v {if c=='.' {out=out*1000+value;value=0;} else {value=value*10+int(c)-int('0');}}
@@ -40,7 +40,7 @@ RM_version_code :: (v:string)->int #export_c {
   #assert RM_state_valid("works") && RM_state_valid("partial") && RM_state_valid("reserved") && RM_state_valid("designed");
   #assert !RM_state_valid("passed") && !RM_state_valid("");
 }
-RM_text_valid :: (s:string,empty:bool)->bool #export_c {
+RM_text_valid :: (s:string,empty:bool)->bool #export_c #effects(all) {
   if s.count==0 {return empty;}
   for c:s {if c<32 || c==127 {return false;}}
   marker:="COAX_RELEASE";
@@ -52,13 +52,13 @@ RM_text_valid :: (s:string,empty:bool)->bool #export_c {
   }
   return true;
 }
-RM_state_valid :: (s:string)->bool #export_c {return s=="works" || s=="partial" || s=="reserved" || s=="designed";}
+RM_state_valid :: (s:string)->bool #export_c #effects(all) {return s=="works" || s=="partial" || s=="reserved" || s=="designed";}
 #test "every admitted section has a rendered table" {
   #assert RM_section_valid("Keywords") && RM_section_valid("Directives") && RM_section_valid("Intrinsics");
   #assert RM_section_valid("Conversions") && RM_section_valid("Literals") && RM_section_valid("Types") && RM_section_valid("Capabilities");
   #assert !RM_section_valid("") && !RM_section_valid("Hidden");
 }
-RM_section_valid :: (s:string)->bool #export_c {
+RM_section_valid :: (s:string)->bool #export_c #effects(all) {
   return s=="Keywords" || s=="Directives" || s=="Intrinsics" || s=="Conversions" || s=="Literals" || s=="Types" || s=="Capabilities";
 }
 #test "only implemented status has an optional historical introduction" {
@@ -74,7 +74,7 @@ RM_section_valid :: (s:string)->bool #export_c {
   r.meaning="";#assert RM_row_valid(r,"0.14.0");
   #assert !RM_row_valid(r,"bad");
 }
-RM_row_valid :: (r:ReleaseFeature,version:string)->bool #export_c {
+RM_row_valid :: (r:ReleaseFeature,version:string)->bool #export_c #effects(all) {
   if !RM_version_valid(version) || !RM_text_valid(r.id,false) || !RM_section_valid(r.section) || !RM_text_valid(r.name,false) || !RM_text_valid(r.meaning,true) || !RM_state_valid(r.status) {return false;}
   if r.introduced=="" {return true;}
   return (r.status=="works" || r.status=="partial") && RM_version_valid(r.introduced) && RM_version_code(r.introduced)<=RM_version_code(version);
@@ -87,7 +87,7 @@ RM_row_valid :: (r:ReleaseFeature,version:string)->bool #export_c {
   rows[1].id="a";#assert !RM_catalogue_valid(rows[..],"0.14.0",1);
   rows[1].id="b";rows[1].name="";#assert !RM_catalogue_valid(rows[..],"0.14.0",1);
 }
-RM_catalogue_valid :: (rows:[]ReleaseFeature,version:string,schema:int)->bool #export_c {
+RM_catalogue_valid :: (rows:[]ReleaseFeature,version:string,schema:int)->bool #export_c #effects(all) {
   if schema!=1 || rows.count==0 {return false;}
   for i:0..<rows.count {
     if !RM_row_valid(rows[i],version) {return false;}

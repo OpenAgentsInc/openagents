@@ -4,17 +4,17 @@
 #load "witness-encode.coax";
 #load "opening.coax";
 
-cxproc_new :: ()->int #foreign;
-cxproc_push :: (h:int,field:int,byte:int)->int #foreign;
-cxproc_end :: (h:int,field:int)->int #foreign;
-cxproc_spawn :: (h:int)->int #foreign;
-cxproc_write :: (h:int,byte:int)->int #foreign;
-cxproc_flush_timeout :: (h:int,timeout:int)->int #foreign;
-cxproc_close_stdin :: (h:int)->int #foreign;
-cxproc_read_line :: (h:int,timeout:int)->int #foreign;
-cxproc_line_byte :: (h:int,index:int)->int #foreign;
-cxproc_wait :: (h:int,timeout:int)->int #foreign;
-cxproc_release :: (h:int)->int #foreign;
+cxproc_new :: ()->int #foreign #effects(all);
+cxproc_push :: (h:int,field:int,byte:int)->int #foreign #effects(all);
+cxproc_end :: (h:int,field:int)->int #foreign #effects(all);
+cxproc_spawn :: (h:int)->int #foreign #effects(all);
+cxproc_write :: (h:int,byte:int)->int #foreign #effects(all);
+cxproc_flush_timeout :: (h:int,timeout:int)->int #foreign #effects(all);
+cxproc_close_stdin :: (h:int)->int #foreign #effects(all);
+cxproc_read_line :: (h:int,timeout:int)->int #foreign #effects(all);
+cxproc_line_byte :: (h:int,index:int)->int #foreign #effects(all);
+cxproc_wait :: (h:int,timeout:int)->int #foreign #effects(all);
+cxproc_release :: (h:int)->int #foreign #effects(all);
 mh_arg :: (h:int,value:string)->bool {for b:value {if cxproc_push(h,0,cast(int)b)!=0 {return false;}}return cxproc_end(h,0)==0;}
 mh_stop_children :: (f:[]Fm) {for i:0..<f[0].child_count {x:=cxproc_release(f[0].children[i]);}f[0].child_count=0;}
 mh_poll_children :: (f:[]Fm) {

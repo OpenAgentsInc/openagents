@@ -75,13 +75,13 @@ BLOCK_OPT_WITNESS :: 128;        // the data arrived with witnesses
 SEQ_ID_BEST_CHAIN_FROM_DISK :: 0;
 SEQ_ID_INIT_FROM_DISK :: 1;
 // IsValid: not failed, and at least this level.
-bi_is_valid :: (status: u32, level: u32) -> bool #export_c {
+bi_is_valid :: (status: u32, level: u32) -> bool #export_c #effects(all) {
   if status & BLOCK_FAILED_VALID != 0 { return false; }
   return status & BLOCK_VALID_MASK >= level;
 }
 // RaiseValidity: raise the level, never lower it, and never on a failed
 // entry. Returns whether it changed.
-bi_raise_validity :: (status: [] u32, level: u32) -> bool #export_c {
+bi_raise_validity :: (status: [] u32, level: u32) -> bool #export_c #effects(all) {
   if status[0] & BLOCK_FAILED_VALID != 0 { return false; }
   if status[0] & BLOCK_VALID_MASK >= level { return false; }
   status[0] = status[0] - (status[0] & BLOCK_VALID_MASK) + level;
@@ -141,8 +141,8 @@ when it is added, to an ancestor at `GetSkipHeight` of its height:
 // Core's GetSkipHeight: the height a skip pointer jumps back to. Even
 // heights clear their lowest set bit; odd ones clear the two lowest set
 // bits of height - 1 and add one back.
-bi_invert_lowest_one :: (n: int) -> int { return n & (n - 1); }
-bi_skip_height :: (height: int) -> int #export_c {
+bi_invert_lowest_one :: (n: int) -> int #effects(all) { return n & (n - 1); }
+bi_skip_height :: (height: int) -> int #export_c #effects(all) {
   if height < 2 { return 0; }
   if height & 1 != 0 { return bi_invert_lowest_one(bi_invert_lowest_one(height - 1)) + 1; }
   return bi_invert_lowest_one(height);
@@ -151,7 +151,7 @@ bi_skip_height :: (height: int) -> int #export_c {
 // unless the parent's skip pointer gets closer. Returns the entry and the
 // number of steps; -1 when height is above i or negative.
 BiWalk :: struct { index: int; steps: int; }
-bi_ancestor_walk :: (l: [] BiLink, i: int, height: int) -> BiWalk #export_c {
+bi_ancestor_walk :: (l: [] BiLink, i: int, height: int) -> BiWalk #export_c #effects(all) {
   w := BiWalk.{index=-1};
   if i < 0 || height > l[i].height || height < 0 { return w; }
   w.index = i;
@@ -171,17 +171,17 @@ bi_ancestor_walk :: (l: [] BiLink, i: int, height: int) -> BiWalk #export_c {
   }
   return w;
 }
-bi_ancestor :: (l: [] BiLink, i: int, height: int) -> int #export_c {
+bi_ancestor :: (l: [] BiLink, i: int, height: int) -> int #export_c #effects(all) {
   return bi_ancestor_walk(l, i, height).index;
 }
 // BuildSkip: the skip pointer of a new entry whose parent is set.
-bi_build_skip :: (l: [] BiLink, i: int) {
+bi_build_skip :: (l: [] BiLink, i: int) #effects(all) {
   l[i].skip = ifx l[i].prev >= 0 then bi_ancestor(l, l[i].prev, bi_skip_height(l[i].height)) else -1;
 }
 // LastCommonAncestor: bring both to one height, then follow skip pointers
 // while they differ and parents once they agree. Equal heights have equal
 // skip heights, so the two walks stay level.
-bi_last_common_ancestor :: (l: [] BiLink, pa: int, pb: int) -> int #export_c {
+bi_last_common_ancestor :: (l: [] BiLink, pa: int, pb: int) -> int #export_c #effects(all) {
   a := pa; b := pb;
   if l[a].height > l[b].height { a = bi_ancestor(l, a, l[b].height); }
   else if l[b].height > l[a].height { b = bi_ancestor(l, b, l[a].height); }
@@ -221,20 +221,20 @@ it, then steps that double, and genesis last:
 <!-- source: coax/lib/bitcoin/blockindex.coax chain -->
 ```jai
 // CChain: the active chain as an array by height.
-bi_tip :: (t: [] BlockTree) -> int #export_c { return ifx t[0].height >= 0 then t[0].chain[t[0].height] else -1; }
-bi_contains :: (t: [] BlockTree, i: int) -> bool #export_c {
+bi_tip :: (t: [] BlockTree) -> int #export_c #effects(all) { return ifx t[0].height >= 0 then t[0].chain[t[0].height] else -1; }
+bi_contains :: (t: [] BlockTree, i: int) -> bool #export_c #effects(all) {
   h := t[0].l[i].height;
   return h <= t[0].height && t[0].chain[h] == i;
 }
 // SetTip: fill the array back from the new tip until it meets the old
 // chain.
-bi_set_tip :: (t: [] BlockTree, i: int) {
+bi_set_tip :: (t: [] BlockTree, i: int) #effects(all) {
   t[0].height = t[0].l[i].height;
   j := i;
   while j >= 0 && t[0].chain[t[0].l[j].height] != j { t[0].chain[t[0].l[j].height] = j; j = t[0].l[j].prev; }
 }
 // FindFork: the last block of the active chain that is an ancestor of i.
-bi_find_fork :: (t: [] BlockTree, index: int) -> int #export_c {
+bi_find_fork :: (t: [] BlockTree, index: int) -> int #export_c #effects(all) {
   i := index;
   if t[0].l[i].height > t[0].height { i = bi_ancestor(t[0].l, i, t[0].height); }
   while i >= 0 && !bi_contains(t, i) { i = t[0].l[i].prev; }
@@ -242,7 +242,7 @@ bi_find_fork :: (t: [] BlockTree, index: int) -> int #export_c {
 }
 // LocatorEntries: the block, the 10 before it one by one, then steps that
 // double, and genesis last. Writes entries to out; returns how many.
-bi_locator :: (l: [] BiLink, index: int, out: [] int) -> int #export_c {
+bi_locator :: (l: [] BiLink, index: int, out: [] int) -> int #export_c #effects(all) {
   i := index; n := 0; step := 1;
   while i >= 0 {
     out[n] = i; n += 1;
@@ -292,17 +292,17 @@ BlockTree :: struct {
   best_header: int; best_invalid: int;
   next_seq: int; next_arrival: int;
 }
-bi_slot :: (t: [] BlockTree, hash: [] u8) -> int {
+bi_slot :: (t: [] BlockTree, hash: [] u8) -> int #effects(all) {
   key := 0;
   for k: 0..<7 { key |= cast(int) hash[k] << (8 * k); }
   return key & (t[0].slots.count - 1);
 }
-bi_same :: (a: [] u8, b: [] u8) -> bool {
+bi_same :: (a: [] u8, b: [] u8) -> bool #effects(all) {
   for k: 0..<32 { if a[k] != b[k] { return false; } }
   return true;
 }
 // The entry with this hash, or -1.
-bi_find :: (t: [] BlockTree, hash: [] u8) -> int #export_c {
+bi_find :: (t: [] BlockTree, hash: [] u8) -> int #export_c #effects(all) {
   s := bi_slot(t, hash);
   while t[0].slots[s] != 0 {
     i := t[0].slots[s] - 1;
@@ -313,7 +313,7 @@ bi_find :: (t: [] BlockTree, hash: [] u8) -> int #export_c {
 }
 // An empty tree for the network p in the caller's memory: entries, a
 // table of at least twice as many slots, and room for the chain.
-bi_init :: (t: [] BlockTree, p: ChainParams, l: [] BiLink, e: [] BiEntry, slots: [] int, chain: [] int) -> bool #export_c {
+bi_init :: (t: [] BlockTree, p: ChainParams, l: [] BiLink, e: [] BiEntry, slots: [] int, chain: [] int) -> bool #export_c #effects(all) {
   if l.count != e.count || slots.count < 2 * e.count || slots.count & (slots.count - 1) != 0 || chain.count < e.count { return false; }
   for s: 0..<slots.count { slots[s] = 0; }
   t[0] = BlockTree.{p=p, l=l, e=e, slots=slots, chain=chain, height=-1, best_header=-1, best_invalid=-1, next_seq=SEQ_ID_INIT_FROM_DISK + 1, next_arrival=1};
@@ -333,7 +333,7 @@ if it has strictly more work than the best header so far:
 // time and its chainwork (the parent's plus GetBlockProof of its nBits,
 // chapter 48), raises it to BLOCK_VALID_TREE, and becomes the best header
 // when it has more work. A known hash returns its entry.
-bi_add_vartime :: (t: [] BlockTree, h: BlockHeader, hash: [] u8) -> int #export_c {
+bi_add_vartime :: (t: [] BlockTree, h: BlockHeader, hash: [] u8) -> int #export_c #effects(all) {
   known := bi_find(t, hash);
   if known >= 0 { return known; }
   if t[0].count >= t[0].e.count { return -1; }
@@ -385,21 +385,21 @@ from the index itself:
 ```jai
 // GetMedianTimePast of entry i: the median of its time and the up to 10
 // before it.
-bi_times :: (l: [] BiLink, e: [] BiEntry, i: int, out: [] int) -> [] int {
+bi_times :: (l: [] BiLink, e: [] BiEntry, i: int, out: [] int) -> [] int #effects(all) {
   n := 0; j := i;
   while n < LOCKTIME_MEDIAN_SPAN && j >= 0 { n += 1; j = l[j].prev; }
   j = i;
   for k: 0..<n { out[n - 1 - k] = cast(int) e[j].time; j = l[j].prev; }
   return out[0..<n];
 }
-bi_median_time_past :: (l: [] BiLink, e: [] BiEntry, i: int) -> int #export_c {
+bi_median_time_past :: (l: [] BiLink, e: [] BiEntry, i: int) -> int #export_c #effects(all) {
   times: [LOCKTIME_MEDIAN_SPAN] int;
   return locktime_median_time_past_vartime(bi_times(l, e, i, times[..]));
 }
 // GetNextWorkRequired for a header with time new_time after entry last:
 // the last nBits off a boundary (with testnet's minimum-difficulty walk
 // back), and chapter 48's retarget from the period's first block on one.
-bi_next_bits_vartime :: (t: [] BlockTree, last: int, new_time: u32) -> u32 #export_c {
+bi_next_bits_vartime :: (t: [] BlockTree, last: int, new_time: u32) -> u32 #export_c #effects(all) {
   e := t[0].e;
   l := t[0].l;
   r := t[0].p.retarget;
@@ -437,7 +437,7 @@ BiAccept :: struct { code: int; index: int; }
 // Genesis skips them. The anti-DoS work check before a header is stored
 // (min_pow_checked) is chapter 71's and 72's; here every header has
 // passed it.
-bi_accept_header_vartime :: (t: [] BlockTree, raw: [] u8, now: int) -> BiAccept #export_c {
+bi_accept_header_vartime :: (t: [] BlockTree, raw: [] u8, now: int) -> BiAccept #export_c #effects(all) {
   r := BiAccept.{index=-1};
   h := pow_header_read_vartime(raw);
   if h.code != POW_OK { r.code = BI_HIGH_HASH; return r; }
@@ -463,7 +463,7 @@ bi_accept_header_vartime :: (t: [] BlockTree, raw: [] u8, now: int) -> BiAccept 
   if r.index < 0 { r.code = BI_FULL; }
   return r;
 }
-bi_reason :: (code: int) -> string {
+bi_reason :: (code: int) -> string #effects(all) {
   if code >= BI_HEADER { return HEADER_REASONS[code - BI_HEADER]; }
   return BI_REASONS[code];
 }
@@ -504,7 +504,7 @@ The tip is the best of the candidates, ordered by
 // CBlockIndexWorkComparator: whether a sorts below b, so b is the better
 // tip. More work wins; then the lower sequence id, the block whose data
 // came first; then the lower pointer, here the lower position.
-bi_worse :: (e: [] BiEntry, a: int, b: int) -> bool #export_c {
+bi_worse :: (e: [] BiEntry, a: int, b: int) -> bool #export_c #effects(all) {
   c := u256_compare_vartime(e[a].work, e[b].work);
   if c != 0 { return c < 0; }
   if e[a].seq != e[b].seq { return e[a].seq > e[b].seq; }
@@ -529,7 +529,7 @@ when the parent's turn comes:
 ```jai
 // TryAddBlockIndexCandidate: a block is a candidate when it is not worse
 // than the tip.
-bi_try_add_candidate :: (t: [] BlockTree, i: int) {
+bi_try_add_candidate :: (t: [] BlockTree, i: int) #effects(all) {
   tip := bi_tip(t);
   if tip >= 0 && bi_worse(t[0].e, i, tip) { return; }
   t[0].e[i].candidate = true;
@@ -540,7 +540,7 @@ bi_try_add_candidate :: (t: [] BlockTree, i: int) {
 // whole chain has data, it and every waiting descendant, in the order
 // their data arrived, get a transaction count and the next sequence id,
 // and become candidates.
-bi_received_block_vartime :: (t: [] BlockTree, i: int, ntx: int) #export_c {
+bi_received_block_vartime :: (t: [] BlockTree, i: int, ntx: int) #export_c #effects(all) {
   e := t[0].e;
   l := t[0].l;
   e[i].ntx = ntx;
@@ -590,14 +590,14 @@ tries the next:
 // chain has data and no failed block. A candidate that fails the walk is
 // dropped with every block above the one that failed it, and the next is
 // tried. Returns -1 when no candidate is left.
-bi_best_candidate :: (t: [] BlockTree) -> int {
+bi_best_candidate :: (t: [] BlockTree) -> int #effects(all) {
   best := -1;
   for c: 0..<t[0].count {
     if t[0].e[c].candidate && (best < 0 || bi_worse(t[0].e, best, c)) { best = c; }
   }
   return best;
 }
-bi_find_most_work_chain :: (t: [] BlockTree) -> int #export_c {
+bi_find_most_work_chain :: (t: [] BlockTree) -> int #export_c #effects(all) {
   e := t[0].e;
   l := t[0].l;
   while true {
@@ -625,7 +625,7 @@ bi_find_most_work_chain :: (t: [] BlockTree) -> int #export_c {
   return -1;
 }
 // PruneBlockIndexCandidates: drop every candidate worse than the tip.
-bi_prune_candidates :: (t: [] BlockTree) {
+bi_prune_candidates :: (t: [] BlockTree) #effects(all) {
   tip := bi_tip(t);
   for c: 0..<t[0].count {
     if t[0].e[c].candidate && bi_worse(t[0].e, c, tip) { t[0].e[c].candidate = false; }
@@ -634,7 +634,7 @@ bi_prune_candidates :: (t: [] BlockTree) {
 // ActivateBestChain without connecting: move the tip to the most-work
 // chain while that chain has more work than the tip. Chapter 60 connects
 // and disconnects the blocks in between and may find one invalid.
-bi_activate_best_chain :: (t: [] BlockTree) -> int #export_c {
+bi_activate_best_chain :: (t: [] BlockTree) -> int #export_c #effects(all) {
   best := bi_find_most_work_chain(t);
   tip := bi_tip(t);
   if best >= 0 && (tip < 0 || bi_worse(t[0].e, tip, best)) {
@@ -685,7 +685,7 @@ the failed header itself, sent again, as `duplicate-invalid`:
 ```jai
 // RecalculateBestHeader: the tip, or the first entry with more work that
 // has not failed.
-bi_recalculate_best_header :: (t: [] BlockTree) {
+bi_recalculate_best_header :: (t: [] BlockTree) #effects(all) {
   e := t[0].e;
   l := t[0].l;
   b := bi_tip(t);
@@ -697,7 +697,7 @@ bi_recalculate_best_header :: (t: [] BlockTree) {
 // InvalidChainFound: remember the best invalid block, mark every
 // descendant failed (SetBlockFailureFlags), and choose a new best header
 // when the old one descends from the failed block.
-bi_invalid_chain_found :: (t: [] BlockTree, i: int) #export_c {
+bi_invalid_chain_found :: (t: [] BlockTree, i: int) #export_c #effects(all) {
   e := t[0].e;
   l := t[0].l;
   if t[0].best_invalid < 0 || u256_compare_vartime(e[i].work, e[t[0].best_invalid].work) > 0 { t[0].best_invalid = i; }
@@ -710,7 +710,7 @@ bi_invalid_chain_found :: (t: [] BlockTree, i: int) #export_c {
 // InvalidBlockFound: block i failed a check of its data or of
 // ConnectBlock. A mutated block (chapter 46's or 49's) is not marked: the
 // header may be fine and another copy of the block valid.
-bi_invalid_block_found :: (t: [] BlockTree, i: int, mutated: bool) #export_c {
+bi_invalid_block_found :: (t: [] BlockTree, i: int, mutated: bool) #export_c #effects(all) {
   if mutated { return; }
   t[0].e[i].status |= BLOCK_FAILED_VALID;
   t[0].e[i].candidate = false;
@@ -720,7 +720,7 @@ bi_invalid_block_found :: (t: [] BlockTree, i: int, mutated: bool) #export_c {
 // chapter 60: the active chain falls back to i's parent, i and its
 // descendants fail, and every block that is still valid with data and as
 // good as the new tip becomes a candidate again.
-bi_invalidate_block :: (t: [] BlockTree, i: int) #export_c {
+bi_invalidate_block :: (t: [] BlockTree, i: int) #export_c #effects(all) {
   e := t[0].e;
   l := t[0].l;
   if bi_contains(t, i) && l[i].prev >= 0 { bi_set_tip(t, l[i].prev); }
@@ -770,7 +770,7 @@ it in floating point:
 // GetDifficulty (rpc/blockchain.cpp): how many times harder than the
 // minimum target, 0xffff * 256^(0x1d - 3), the header's target is, in
 // floating point.
-bi_difficulty :: (bits: u32) -> f64 #export_c {
+bi_difficulty :: (bits: u32) -> f64 #export_c #effects(all) {
   shift := cast(int) (bits >> 24) & 0xff;
   d := cast(f64) 0xffff / cast(f64) (bits & 0x00ffffff);
   while shift < 29 { d *= 256.0; shift += 1; }

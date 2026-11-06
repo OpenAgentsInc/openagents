@@ -127,11 +127,11 @@ CbU64 :: struct { value: u64; ok: bool; }
   #assert cb_load_be32(high[..], 0).value == 0x80000001 && cb_load_le32(high[..], 0).value == 0x01000080;
 }
 
-cb_span :: (total: int, at: int, n: int) -> bool #export_c {
+cb_span :: (total: int, at: int, n: int) -> bool #export_c #effects(all) {
   if total < 0 || total > CB_MAX_BYTES || at < 0 || n < 0 || at > total { return false; }
   return n <= total - at;
 }
-cb_load_word :: (data: [] u8, at: int, width: int, big: bool) -> CbU64 {
+cb_load_word :: (data: [] u8, at: int, width: int, big: bool) -> CbU64 #effects(all) {
   result: CbU64;
   if (width != 4 && width != 8) || !cb_span(data.count, at, width) { return result; }
   value: u64;
@@ -142,7 +142,7 @@ cb_load_word :: (data: [] u8, at: int, width: int, big: bool) -> CbU64 {
   result.value = value; result.ok = true;
   return result;
 }
-cb_store_word :: (out: [] u8, at: int, value: u64, width: int, big: bool) -> bool {
+cb_store_word :: (out: [] u8, at: int, value: u64, width: int, big: bool) -> bool #effects(all) {
   if (width != 4 && width != 8) || !cb_span(out.count, at, width) { return false; }
   if width == 4 && value > 4294967295 { return false; }
   for i: 0..<width {
@@ -155,7 +155,7 @@ cb_store_word :: (out: [] u8, at: int, value: u64, width: int, big: bool) -> boo
 // bits left by 8 and ORs in a byte widened without a checked cast, so no bit is
 // lost and no runtime guard depends on the loaded bytes. Only the public span
 // and index decide control flow. Refusal returns zero.
-cb_load_word32 :: (data: [] u8, at: int, big: bool) -> CbU32 {
+cb_load_word32 :: (data: [] u8, at: int, big: bool) -> CbU32 #effects(all) {
   result: CbU32;
   if !cb_span(data.count, at, 4) { return result; }
   value: u32;
@@ -166,23 +166,23 @@ cb_load_word32 :: (data: [] u8, at: int, big: bool) -> CbU32 {
   result.value = value; result.ok = true;
   return result;
 }
-cb_load_be32 :: (data: [] u8, at: int) -> CbU32 #export_c { return cb_load_word32(data, at, true); }
-cb_load_le32 :: (data: [] u8, at: int) -> CbU32 #export_c { return cb_load_word32(data, at, false); }
-cb_load_be64 :: (data: [] u8, at: int) -> CbU64 #export_c { return cb_load_word(data, at, 8, true); }
-cb_load_le64 :: (data: [] u8, at: int) -> CbU64 #export_c { return cb_load_word(data, at, 8, false); }
-cb_store_be32 :: (out: [] u8, at: int, value: u32) -> bool #export_c { return cb_store_word(out, at, cast(u64) value, 4, true); }
-cb_store_le32 :: (out: [] u8, at: int, value: u32) -> bool #export_c { return cb_store_word(out, at, cast(u64) value, 4, false); }
-cb_store_be64 :: (out: [] u8, at: int, value: u64) -> bool #export_c { return cb_store_word(out, at, value, 8, true); }
-cb_store_le64 :: (out: [] u8, at: int, value: u64) -> bool #export_c { return cb_store_word(out, at, value, 8, false); }
+cb_load_be32 :: (data: [] u8, at: int) -> CbU32 #export_c #effects(all) { return cb_load_word32(data, at, true); }
+cb_load_le32 :: (data: [] u8, at: int) -> CbU32 #export_c #effects(all) { return cb_load_word32(data, at, false); }
+cb_load_be64 :: (data: [] u8, at: int) -> CbU64 #export_c #effects(all) { return cb_load_word(data, at, 8, true); }
+cb_load_le64 :: (data: [] u8, at: int) -> CbU64 #export_c #effects(all) { return cb_load_word(data, at, 8, false); }
+cb_store_be32 :: (out: [] u8, at: int, value: u32) -> bool #export_c #effects(all) { return cb_store_word(out, at, cast(u64) value, 4, true); }
+cb_store_le32 :: (out: [] u8, at: int, value: u32) -> bool #export_c #effects(all) { return cb_store_word(out, at, cast(u64) value, 4, false); }
+cb_store_be64 :: (out: [] u8, at: int, value: u64) -> bool #export_c #effects(all) { return cb_store_word(out, at, value, 8, true); }
+cb_store_le64 :: (out: [] u8, at: int, value: u64) -> bool #export_c #effects(all) { return cb_store_word(out, at, value, 8, false); }
 
 // (bit & 1) is 0 or 1, so the product is 0 or all ones. The multiply wraps
 // explicitly: a checked u64 multiply's overflow test branches on a zero
 // operand and divides by it, which would depend on the secret bit.
 // The barrier obscures the resulting mask; it does not erase memory.
-cb_mask :: (bit: u64) -> u64 #export_c { return value_barrier(mul_wrap(bit & 1, CB_MAX64)); }
-cb_ct_select64 :: (mask: u64, a: u64, b: u64) -> u64 #export_c { return b ^ ((a ^ b) & value_barrier(mask)); }
-cb_ct_select32 :: (mask: u32, a: u32, b: u32) -> u32 #export_c { return b ^ ((a ^ b) & value_barrier(mask)); }
-cb_ct_equal :: (a: [] u8, b: [] u8) -> u64 #export_c {
+cb_mask :: (bit: u64) -> u64 #export_c #effects(all) { return value_barrier(mul_wrap(bit & 1, CB_MAX64)); }
+cb_ct_select64 :: (mask: u64, a: u64, b: u64) -> u64 #export_c #effects(all) { return b ^ ((a ^ b) & value_barrier(mask)); }
+cb_ct_select32 :: (mask: u32, a: u32, b: u32) -> u32 #export_c #effects(all) { return b ^ ((a ^ b) & value_barrier(mask)); }
+cb_ct_equal :: (a: [] u8, b: [] u8) -> u64 #export_c #effects(all) {
   // Equal counts share one bounds check; the host still owns both pointers.
   if a.count != b.count || !cb_span(a.count, 0, a.count) { return 0; }
   diff: u64;
@@ -191,13 +191,13 @@ cb_ct_equal :: (a: [] u8, b: [] u8) -> u64 #export_c {
   // bit8 without underflow, signed conversion or a secret comparison/branch.
   return cb_mask(((diff + 255) >> 8) ^ 1);
 }
-cb_copy_checked :: (source: [] u8, out: [] u8, overlap: bool) -> bool {
+cb_copy_checked :: (source: [] u8, out: [] u8, overlap: bool) -> bool #effects(all) {
   if !cb_span(source.count, 0, source.count) || !cb_span(out.count, 0, source.count) { return false; }
   if source.count > 0 && overlap { return false; }
   for i: 0..<source.count { out[i] = source[i]; }
   return true;
 }
-cb_select_checked :: (mask: u64, a: [] u8, b: [] u8, out: [] u8, overlap_a: bool, overlap_b: bool) -> bool {
+cb_select_checked :: (mask: u64, a: [] u8, b: [] u8, out: [] u8, overlap_a: bool, overlap_b: bool) -> bool #effects(all) {
   if a.count != b.count || !cb_span(a.count, 0, a.count) || !cb_span(out.count, 0, a.count) { return false; }
   if a.count > 0 && (overlap_a || overlap_b) { return false; }
   for i: 0..<a.count { out[i] = cast(u8) cb_ct_select64(mask, cast(u64) a[i], cast(u64) b[i]); }

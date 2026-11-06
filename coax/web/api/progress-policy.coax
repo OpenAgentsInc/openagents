@@ -78,7 +78,7 @@ PP_NOT_REV :: -2;   // the body names one that is not a whole number of at least
 // Whether a save is kept. rev: the slot's revision (0 when it was never saved);
 // marked: a page with revisions has saved the slot; sent_rev: the revision the save was made from
 // (PP_NO_REV none, PP_NOT_REV not a whole number).
-pp_save :: (rev: int, marked: bool, sent_rev: int) -> int #export_c {
+pp_save :: (rev: int, marked: bool, sent_rev: int) -> int #export_c #effects(all) {
   if sent_rev == PP_NO_REV {
     if marked { return PP_CHANGED; }
     return PP_KEEP;
@@ -88,18 +88,18 @@ pp_save :: (rev: int, marked: bool, sent_rev: int) -> int #export_c {
   return PP_KEEP;
 }
 // The revision a kept save makes.
-pp_next :: (rev: int) -> int #export_c { return rev + 1; }
+pp_next :: (rev: int) -> int #export_c #effects(all) { return rev + 1; }
 // Whether the slot is marked after a kept save: once a page with revisions saves it, for good.
-pp_marks :: (sent_rev: int, marked: bool) -> bool #export_c { return marked || sent_rev >= 0; }
-pp_no_rev :: () -> int #export_c { return PP_NO_REV; }
-pp_not_rev :: () -> int #export_c { return PP_NOT_REV; }
-pp_status :: (code: int) -> int #export_c {
+pp_marks :: (sent_rev: int, marked: bool) -> bool #export_c #effects(all) { return marked || sent_rev >= 0; }
+pp_no_rev :: () -> int #export_c #effects(all) { return PP_NO_REV; }
+pp_not_rev :: () -> int #export_c #effects(all) { return PP_NOT_REV; }
+pp_status :: (code: int) -> int #export_c #effects(all) {
   if code == PP_KEEP { return 200; }
   if code == PP_CHANGED { return 409; }
   if code == PP_BAD_REV { return 400; }
   return 500;
 }
-pp_text :: (code: int) -> string #export_c {
+pp_text :: (code: int) -> string #export_c #effects(all) {
   if code == PP_CHANGED { return "changed since"; }
   if code == PP_BAD_REV { return "rev: the revision this save was made from, a whole number"; }
   return "";

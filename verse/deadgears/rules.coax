@@ -9,7 +9,7 @@
 //
 // Every mutant, part, bolt, beam, crate, cover block, you, the support
 // engineer and the reactor is an entity; their values are columns (one
-// element per slot) in a Store the host or a test owns, bound into a Game
+// element per slot) in a DgStore the host or a test owns, bound into a Game
 // of views (dg_bind). The rules are eight fixed-step systems in the
 // original model's order: clock, cargo, weapon, repair, fire, mutants,
 // bolts and support. dg_frame runs a frame untimed; a host that times each
@@ -29,7 +29,7 @@
 #load "ecs.coax";
 #load "arena.coax";
 
-DG_CAP :: 512;       // entity slots in a Store (the rules have no caps of their own)
+DG_CAP :: 512;       // entity slots in a DgStore (the rules have no caps of their own)
 DG_EVENTS :: 256;    // events kept a frame
 DG_SYSTEMS :: 8;
 
@@ -130,18 +130,18 @@ State :: struct {
   phase: int;
   psi: f32 = 100; power_at: f32 = -100; stun_cooldown: f32; pulse: f32;
   ally_time: f32;
-  held: int = -1;
+  held: Handle(Entity) = ECS_NONE;
   next_seq: int;
   skip: bool;      // no fighting this step (paused, over, or repairing)
   step: int;       // fighting steps run: the clock a mutant's memory keeps (#12854)
   retries: int; stops: int;   // mutants that got stuck and planned again, and that gave up
 }
 
-Event :: struct { kind: int; who: int; n: int; amount: f32; at: Point; to: Point; flag: bool; }
+Event :: struct { kind: int; who: Handle(Entity); n: int; amount: f32; at: Point; to: Point; flag: bool; }
 
 // Everything a fight is, as storage. A host allocates one (zeros) and
 // binds it; a test declares one.
-Store :: struct {
+DgStore :: struct {
   // aethyr/entity.coax's EntityStore, then the component bits beside it
   gen: [DG_CAP] int; live: [DG_CAP] bool; born: [DG_CAP] bool; doomed: [DG_CAP] bool;
   ids: [DG_CAP] int; free: [DG_CAP] int; spawns: [DG_CAP] int; n: [ENTITY_COUNTERS] int;
@@ -171,7 +171,7 @@ Game :: struct {
   stats: Stats;
 }
 
-dg_bind :: (s: [] Store) -> Game {
+dg_bind :: (s: [] DgStore) -> Game {
   g: Game;
   store := EntityStore.{gen = s[0].gen[..], live = s[0].live[..], born = s[0].born[..], doomed = s[0].doomed[..],
                         ids = s[0].ids[..], free = s[0].free[..], spawns = s[0].spawns[..], n = s[0].n[..]};
@@ -191,7 +191,7 @@ dg_bind :: (s: [] Store) -> Game {
 
 // ---- small helpers
 
-slot_of :: (e: int) -> int { return ecs_index(e); }
+slot_of :: (e: Handle(Entity)) -> int { return ecs_index(e); }
 direction :: (ax: f32, az: f32) -> Point {
   d := sqrt(ax * ax + az * az);
   if d > 0.0001 { return v3(ax / d, 0, az / d); }
@@ -215,9 +215,9 @@ dg_events :: (g: Game, kind: int) -> int {
 alive_mutant :: (g: Game, i: int) -> bool { return ecs_match(g.e, i, C_MUTANT | C_HEALTH, 0) && g.hp[i] > 0; }
 mutant_radius :: (m: Mutant) -> f32 { return hi(0.08, m.size * 0.3); }
 
-dg_player :: (g: Game) -> int { return ecs_first(g.e, C_ENGINEER); }
-dg_support :: (g: Game) -> int { return ecs_first(g.e, C_SUPPORT); }
-dg_reactor :: (g: Game) -> int { return ecs_first(g.e, C_REACTOR); }
+dg_player :: (g: Game) -> Handle(Entity) { return ecs_first(g.e, C_ENGINEER); }
+dg_support :: (g: Game) -> Handle(Entity) { return ecs_first(g.e, C_SUPPORT); }
+dg_reactor :: (g: Game) -> Handle(Entity) { return ecs_first(g.e, C_REACTOR); }
 dg_player_pos :: (g: Game) -> Point {
   p := dg_player(g);
   if p == ECS_NONE { return v3(0, 0, 9); }
@@ -240,7 +240,7 @@ dg_mutants :: (g: Game) -> int { return ecs_count_of(g.e, C_MUTANT); }
 // spawned this step, which join at its flush (a reaver's severed parts).
 dg_standing :: (g: Game) -> int {
   n := 0;
-  for i: 0..<ecs_high(g.e) { if alive_mutant(g, i) || (ecs_waiting(g.e, i, C_MUTANT | C_HEALTH) && !ecs_pending_destroy(g.e, entity_handle(i, g.e.s.gen[i])) && g.hp[i] > 0) { n += 1; } }
+  for i: 0..<ecs_high(g.e) { if alive_mutant(g, i) || (ecs_waiting(g.e, i, C_MUTANT | C_HEALTH) && !ecs_pending_destroy(g.e, entity_handle(i, EntityGeneration.{value=g.e.s.gen[i]})) && g.hp[i] > 0) { n += 1; } }
   return n;
 }
 
@@ -257,7 +257,7 @@ dg_near_cover :: (g: Game, p: Point) -> bool {
 
 // ---- spawning (the prefabs)
 
-new_entity :: (g: Game, bits: int) -> int {
+new_entity :: (g: Game, bits: int) -> Handle(Entity) {
   e := ecs_spawn(g.e);
   if e == ECS_NONE { return e; }
   i := slot_of(e);
@@ -273,7 +273,7 @@ new_entity :: (g: Game, bits: int) -> int {
   return e;
 }
 
-dg_spawn_mutant :: (g: Game, kind: int, x: f32, z: f32, part: int) -> int {
+dg_spawn_mutant :: (g: Game, kind: int, x: f32, z: f32, part: int) -> Handle(Entity) {
   e := new_entity(g, C_POS | C_HEALTH | C_TEAM | C_MUTANT);
   if e == ECS_NONE { return e; }
   i := slot_of(e);
@@ -294,13 +294,13 @@ dg_spawn_mutant :: (g: Game, kind: int, x: f32, z: f32, part: int) -> int {
   return e;
 }
 
-spawn_cargo :: (g: Game, x: f32, z: f32, kind: int) -> int {
+spawn_cargo :: (g: Game, x: f32, z: f32, kind: int) -> Handle(Entity) {
   e := new_entity(g, C_POS | C_VEL | C_CARGO);
   if e != ECS_NONE { g.pos[slot_of(e)] = v3(x, 0.3, z); g.cargo[slot_of(e)].kind = kind; }
   return e;
 }
 
-dg_spawn_bolt :: (g: Game, at: Point, v: Point) -> int {
+dg_spawn_bolt :: (g: Game, at: Point, v: Point) -> Handle(Entity) {
   e := new_entity(g, C_POS | C_VEL | C_BOLT);
   if e != ECS_NONE { g.pos[slot_of(e)] = v3(at.x, 1, at.z); g.vel[slot_of(e)] = v; g.bolt[slot_of(e)] = 3; }
   return e;
@@ -318,7 +318,7 @@ add_beam :: (g: Game, from: Point, to: Point, ttl: f32, ally: bool) {
 destroy_all :: (g: Game, now: bool, bits: int) {
   for i: 0..<ecs_high(g.e) {
     if ecs_match(g.e, i, bits, 0) { ecs_despawn(g.e, ecs_at(g.e, i)); }
-    else if ecs_waiting(g.e, i, bits) { ecs_despawn(g.e, entity_handle(i, g.e.s.gen[i])); }
+    else if ecs_waiting(g.e, i, bits) { ecs_despawn(g.e, entity_handle(i, EntityGeneration.{value=g.e.s.gen[i]})); }
   }
   if now { ecs_flush(g.e); }
 }
@@ -340,7 +340,7 @@ dg_damage :: (g: Game, n: f32, from: Point) {
   }
 }
 
-dg_hit :: (g: Game, e: int, n: f32) {
+dg_hit :: (g: Game, e: Handle(Entity), n: f32) {
   if g.st[0].phase != FIGHT || !ecs_has(g.e, e, C_HEALTH | C_MUTANT) { return; }
   i := slot_of(e);
   if g.hp[i] == 0 { return; }
@@ -356,7 +356,7 @@ dg_hit :: (g: Game, e: int, n: f32) {
   }
 }
 
-dg_head_hit :: (g: Game, e: int) {
+dg_head_hit :: (g: Game, e: Handle(Entity)) {
   if !ecs_has(g.e, e, C_HEALTH | C_MUTANT) || g.hp[slot_of(e)] <= 0 || g.st[0].phase != FIGHT { return; }
   i := slot_of(e);
   g.mutant[i].head_hp -= 40;
@@ -386,7 +386,7 @@ dg_head_hit :: (g: Game, e: int) {
 
 // The mutant the cutter would hit along aim from p, or ECS_NONE. Lift's
 // throw still leads its crate at a mutant this way; the cutter does not.
-dg_target :: (g: Game, p: Point, ax: f32, az: f32, range: f32, spread: f32) -> int {
+dg_target :: (g: Game, p: Point, ax: f32, az: f32, range: f32, spread: f32) -> Handle(Entity) {
   dir := direction(ax, az);
   best := ECS_NONE; best_score: f32 = 1000000000;
   for i: 0..<ecs_high(g.e) {
@@ -469,7 +469,7 @@ dg_part_at :: (g: Game, i: int, k: int) -> Point {
 RayHit :: struct {
   t: f32;            // metres along the ray
   at: Point;
-  who: int = -1;     // the mutant hit (an entity), or ECS_NONE
+  who: Handle(Entity) = ECS_NONE;     // the mutant hit (an entity), or ECS_NONE
   region: int;
   solid: bool;       // it met cover, a wall, the reactor or the deck
 }
@@ -619,7 +619,7 @@ dg_can_power :: (g: Game) -> bool { return !g.st[0].paused && (g.st[0].phase == 
 dg_held_alive :: (g: Game) -> bool { return ecs_alive(g.e, g.st[0].held); }
 
 // What lift would pick up now, or ECS_NONE.
-dg_grab_target :: (g: Game) -> int {
+dg_grab_target :: (g: Game) -> Handle(Entity) {
   p := dg_player_pos(g);
   dir := direction(g.input[0].aim_x, g.input[0].aim_z);
   chosen := ECS_NONE; score: f32 = 1000000000;
@@ -1091,7 +1091,7 @@ dg_give_way :: (e: Entities, hp: [] f32, pos: [] Point, yaw: [] f32, i: int, x: 
 
 // A wall, rubble or crate dropped on the deck at (x, z): the arena and the walking grid are built
 // again, and every route is searched afresh.
-dg_add_cover :: (g: Game, x: f32, z: f32, w: f32, d: f32, h: f32) -> int {
+dg_add_cover :: (g: Game, x: f32, z: f32, w: f32, d: f32, h: f32) -> Handle(Entity) {
   e := new_entity(g, C_POS | C_COVER);
   if e == ECS_NONE { return e; }
   g.pos[slot_of(e)] = v3(x, 0, z); g.cover[slot_of(e)] = Cover.{w = w, d = d, h = h};
@@ -1442,12 +1442,12 @@ dg_setup :: (g: Game) {
   dg_reset(g);
 }
 
-// ---- saving: a fight is its Store, so a save is a copy and plays on
+// ---- saving: a fight is its DgStore, so a save is a copy and plays on
 // exactly as the original (the walking grid and its flows are pure
 // functions of the boxes and goals, and copied with it).
 
 dg_copy :: (from: Game, to: Game) {
-  copied := entity_copy(from.e.s, to.e.s);   // a Store's two stores always have the same capacity
+  copied := entity_copy(from.e.s, to.e.s);   // a DgStore's two stores always have the same capacity
   for i: 0..<from.e.mask.count {
     to.e.mask[i] = from.e.mask[i]; to.e.dropping[i] = from.e.dropping[i];
     to.pos[i] = from.pos[i]; to.yaw[i] = from.yaw[i]; to.scale[i] = from.scale[i]; to.vel[i] = from.vel[i];
@@ -1492,39 +1492,39 @@ dg_same :: (a: Game, b: Game) -> bool {
   return true;
 }
 
-// ---- the C face's calls: a host holds one Store and passes it as a view
+// ---- the C face's calls: a host holds one DgStore and passes it as a view
 
-verse_dg_setup :: (s: [] Store) #export_c { dg_setup(dg_bind(s)); }
-verse_dg_input :: (s: [] Store, px: f32, pz: f32, firing: bool, repairing: bool, ax: f32, az: f32) #export_c {
+verse_dg_setup :: (s: [] DgStore) #export_c #effects(all) { dg_setup(dg_bind(s)); }
+verse_dg_input :: (s: [] DgStore, px: f32, pz: f32, firing: bool, repairing: bool, ax: f32, az: f32) #export_c #effects(all) {
   g := dg_bind(s);
   me := dg_player(g);
   if me != ECS_NONE { g.pos[slot_of(me)] = v3(px, 0, pz); }
   g.input[0] = Input.{aim_x = ax, aim_z = az, firing = firing, repairing = repairing};
 }
 // n more mutants, laid out as the 200-mutant check lays them out.
-verse_dg_spawn_crowd :: (s: [] Store, n: int) #export_c {
+verse_dg_spawn_crowd :: (s: [] DgStore, n: int) #export_c #effects(all) {
   g := dg_bind(s);
   for k: 0..<n { e := dg_spawn_mutant(g, k % TYPES, -14 + f32(k % 28), -20 + f32(k / 28) * 0.5, -1); }
   ecs_flush(g.e);   // between frames: they join before the next step
 }
-verse_dg_frame :: (s: [] Store, frame_dt: f32) #export_c { dg_frame(dg_bind(s), frame_dt); }
-verse_dg_frame_begin :: (s: [] Store, frame_dt: f32) -> int #export_c { return dg_frame_begin(dg_bind(s), frame_dt); }
-verse_dg_run :: (s: [] Store, id: int) #export_c { g := dg_bind(s); dg_run(g, id, g.clock[0].dt); }
-verse_dg_step_end :: (s: [] Store) #export_c { dg_step_end(dg_bind(s)); }
-verse_dg_frame_end :: (s: [] Store) #export_c { dg_frame_end(dg_bind(s)); }
-verse_dg_timed :: (s: [] Store, id: int, ms: f64) #export_c { ecs_stats_add(dg_bind(s).stats, id, ms); }
-verse_dg_systems :: () -> int #export_c { return DG_SYSTEMS; }
-verse_dg_alive :: (s: [] Store) -> int #export_c { return dg_alive_mutants(dg_bind(s)); }
-verse_dg_entities :: (s: [] Store) -> int #export_c { return ecs_count(dg_bind(s).e); }
-verse_dg_phase :: (s: [] Store) -> int #export_c { return s[0].st[0].phase; }
+verse_dg_frame :: (s: [] DgStore, frame_dt: f32) #export_c #effects(all) { dg_frame(dg_bind(s), frame_dt); }
+verse_dg_frame_begin :: (s: [] DgStore, frame_dt: f32) -> int #export_c #effects(all) { return dg_frame_begin(dg_bind(s), frame_dt); }
+verse_dg_run :: (s: [] DgStore, id: int) #export_c #effects(all) { g := dg_bind(s); dg_run(g, id, g.clock[0].dt); }
+verse_dg_step_end :: (s: [] DgStore) #export_c #effects(all) { dg_step_end(dg_bind(s)); }
+verse_dg_frame_end :: (s: [] DgStore) #export_c #effects(all) { dg_frame_end(dg_bind(s)); }
+verse_dg_timed :: (s: [] DgStore, id: int, ms: f64) #export_c #effects(all) { ecs_stats_add(dg_bind(s).stats, id, ms); }
+verse_dg_systems :: () -> int #export_c #effects(all) { return DG_SYSTEMS; }
+verse_dg_alive :: (s: [] DgStore) -> int #export_c #effects(all) { return dg_alive_mutants(dg_bind(s)); }
+verse_dg_entities :: (s: [] DgStore) -> int #export_c #effects(all) { return ecs_count(dg_bind(s).e); }
+verse_dg_phase :: (s: [] DgStore) -> int #export_c #effects(all) { return s[0].st[0].phase; }
 
 // ---- checks: every check of the demo's tests/dead-gears-test.cpp
 
 // A check's own spawns are made between frames, as a host's are, so they
 // join at once (a flush); the old store made them live at once too. Spawns
 // the rules make inside a step wait for the step's flush.
-spawn_now :: (g: Game, kind: int, x: f32, z: f32, part: int) -> int { e := dg_spawn_mutant(g, kind, x, z, part); ecs_flush(g.e); return e; }
-bolt_now :: (g: Game, at: Point, v: Point) -> int { e := dg_spawn_bolt(g, at, v); ecs_flush(g.e); return e; }
+spawn_now :: (g: Game, kind: int, x: f32, z: f32, part: int) -> Handle(Entity) { e := dg_spawn_mutant(g, kind, x, z, part); ecs_flush(g.e); return e; }
+bolt_now :: (g: Game, at: Point, v: Point) -> Handle(Entity) { e := dg_spawn_bolt(g, at, v); ecs_flush(g.e); return e; }
 
 ME :: Point.{x = 0, y = 0, z = 9};
 
@@ -1539,7 +1539,7 @@ place :: (g: Game, p: Point, ax: f32, az: f32) {
   g.input[0].aim_x = ax; g.input[0].aim_z = az;
 }
 // The n-th mutant (slot order), or ECS_NONE.
-nth_mutant :: (g: Game, n: int) -> int {
+nth_mutant :: (g: Game, n: int) -> Handle(Entity) {
   k := 0;
   for i: 0..<ecs_high(g.e) { if ecs_match(g.e, i, C_MUTANT, 0) { if k == n { return ecs_at(g.e, i); } k += 1; } }
   return ECS_NONE;
@@ -1551,7 +1551,7 @@ clear_mutants :: (g: Game) {
 kill_all :: (g: Game) {
   for i: 0..<ecs_high(g.e) { if ecs_match(g.e, i, C_MUTANT, 0) { dg_hit(g, ecs_at(g.e, i), 999); } }
 }
-dist_to :: (g: Game, e: int, p: Point) -> f32 { return flat(g.pos[slot_of(e)], p); }
+dist_to :: (g: Game, e: Handle(Entity), p: Point) -> f32 { return flat(g.pos[slot_of(e)], p); }
 // Aims the crosshair from your chest at p toward a point.
 aim_at :: (g: Game, p: Point, to: Point) {
   g.pos[slot_of(dg_player(g))] = p;
@@ -1563,7 +1563,7 @@ aim_at :: (g: Game, p: Point, to: Point) {
 // The part a test aims at: the head in HEAD mode while it has one, else the core.
 aim_part :: (g: Game, i: int) -> int { return ifx g.st[0].mode == HEAD && mutant_part(g.mutant[i], 1).on then 1 else 0; }
 // The first live mutant a shot from p at its aimed part would hit.
-visible :: (g: Game, p: Point) -> int {
+visible :: (g: Game, p: Point) -> Handle(Entity) {
   for i: 0..<ecs_high(g.e) {
     if !alive_mutant(g, i) { continue; }
     from := v3(p.x, 1.35, p.z);
@@ -1590,7 +1590,7 @@ fight_wave :: (g: Game, p: Point) -> int {
 repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -1, 0.05); } }
 
 #test "waves and severing" {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   #assert dg_mutants(g) == dg_wave_count(1);
   kinds: [5] bool; distinct := 0;
   for n: 0..<dg_wave_count(1) {
@@ -1618,7 +1618,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
 }
 
 #test "ammo, reload, cover and pause" #steps 53000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   place(g, ME, 0, 1);
   g.st[0].ammo = 1;
   dg_fire(g);
@@ -1635,14 +1635,14 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
   #assert dg_wall_ray(g, v3(8, 0, -16), v3(8, 0, -8));
   #assert !dg_wall_ray(g, v3(4, 0, -8), v3(4, 0, -2));   // low cover permits peeking
   g.st[0].paused = true;
-  copy: [1] Store; c := dg_bind(copy[..]);
+  copy: [1] DgStore; c := dg_bind(copy[..]);
   dg_copy(g, c);
   tick(g, v3(-5, 0, 4.5), true, false, 0, -1, 100);
   #assert dg_same(g, c);
 }
 
 #test "waves, repairs and loss" #steps 35000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   for round: 1..<4 {
     #assert g.st[0].wave == round;
     kill_all(g);
@@ -1662,13 +1662,13 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
 }
 
 #test "a shooting run clears a wave" #steps 300000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   most := fight_wave(g, ME);
   #assert g.st[0].phase == REPAIR && g.st[0].kills == dg_wave_count(1) && dg_health(g) > 0;
 }
 
 #test "three waves to victory" #steps 1300000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   for round: 0..<3 {
     most := fight_wave(g, ME);
     #assert g.st[0].phase == REPAIR;
@@ -1678,7 +1678,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
 }
 
 #test "a headshot drops a reaver's head and claw, which crawl on" {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 100;
   clear_mutants(g);
   parent := spawn_now(g, REAVER, 0, 3, -1);
@@ -1692,7 +1692,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
   for i: 0..<ecs_high(g.e) { if ecs_waiting(g.e, i, C_MUTANT) && g.mutant[i].kind == SKITTER { waiting += 1; } }
   #assert waiting == 2 && dg_mutants(g) == 1 && dg_alive_mutants(g) == 0 && dg_standing(g) == 2;   // the parent lies dead
   ecs_flush(g.e);
-  parts: [2] int; n := 0;
+  parts: [2] Handle(Entity); n := 0;
   for i: 0..<ecs_high(g.e) { if ecs_match(g.e, i, C_MUTANT, 0) && g.mutant[i].kind == SKITTER { #assert n < 2; parts[n] = ecs_at(g.e, i); n += 1; } }
   #assert n == 2;
   for k: 0..<2 { q := slot_of(parts[k]); #assert g.mutant[q].air > 0 && !dg_blocked(g, g.pos[q].x, g.pos[q].z, 0.15); }
@@ -1710,7 +1710,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
 }
 
 #test "an animal's headshot kills it outright" {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   hound := spawn_now(g, HOUND, 0, 2, -1);
   dg_head_hit(g, hound);
@@ -1718,7 +1718,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
 }
 
 #test "lift and throw" {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 100;
   clear_mutants(g);
   brute := spawn_now(g, BRUTE, 0, 1, -1);
@@ -1741,7 +1741,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
 }
 
 #test "stun, and pause freezes everything" #steps 152000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 100;
   clear_mutants(g);
   hound := spawn_now(g, HOUND, 0, 3, -1);
@@ -1755,7 +1755,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
   for k: 0..<20 { tk(g, ME); }
   #assert g.pos[h].z == z && dg_health(g) == 100;
   g.st[0].paused = true;
-  copy: [1] Store; c := dg_bind(copy[..]);
+  copy: [1] DgStore; c := dg_bind(copy[..]);
   dg_copy(g, c);
   tick(g, ME, false, false, 0, -1, 100);
   #assert dg_same(g, c);
@@ -1766,7 +1766,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
 }
 
 #test "failed grabs cost nothing" {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   place(g, v3(0, 0, 12), 0, 1);
   #assert !dg_lift(g) && g.st[0].psi == 100;
   place(g, ME, 0, -1);
@@ -1775,7 +1775,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
 }
 
 #test "a headshot playthrough has no cap on mutants" #steps 1100000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].mode = HEAD;
   g.st[0].ally_time = 1000;
   most := 0;
@@ -1797,7 +1797,7 @@ shot_hits :: (g: Game) -> int {
 }
 
 #test "a shot at empty floor hits nothing, even with a mutant a metre to the side" {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 1000;
   clear_mutants(g);
   e := spawn_now(g, REAVER, 1, 4, -1);
@@ -1818,7 +1818,7 @@ shot_hits :: (g: Game) -> int {
 }
 
 #test "tilting the view up and down moves where the shot lands" {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   g.input[0].ray = true; g.input[0].from = v3(0, 1.35, 9);
   g.input[0].dir = v3(0, sin(-0.35f32), -cos(-0.35f32));
@@ -1847,7 +1847,7 @@ shot_hits :: (g: Game) -> int {
 }
 
 #test "a shot through a gap in cover hits the mutant behind it; one at cover hits the cover" {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 1000;
   clear_mutants(g);
   // The two low covers at (-5, 3) and (5, 3) leave a gap from x -3.4 to 3.4.
@@ -1881,7 +1881,7 @@ shot_hits :: (g: Game) -> int {
 // ---- roles (#96d6): runners flank, the brute pins, crawlers use the vents and the reactor
 
 #test "a runner reaches you from the side while you face a crawler" #steps 168000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 1000000;   // the support engineer holds its fire
   clear_mutants(g);
   me := v3(0, 0, 8);
@@ -1907,7 +1907,7 @@ shot_hits :: (g: Game) -> int {
 // Full native integration scenario: aethyr/tests/check_native_gameplay.py.
 
 #test "the brute holds off where it sees you and shoots; behind cover it can't" #steps 167000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 1000000;
   clear_mutants(g);
   b := spawn_now(g, BRUTE, 0, -2, -1);
@@ -1951,7 +1951,7 @@ mind_run :: (g: Game, frame_dt: f32, seen: f32, until: f32) -> int {
 }
 
 #test "a mutant goes where it last saw you, looks round there, and gives up" #steps 400000000 {
-  st: [1] Store; g := dg_bind(st[..]);
+  st: [1] DgStore; g := dg_bind(st[..]);
   i := mind_run(g, 0.05, 1, 1);
   #assert dg_wall_ray(g, MIND_FROM, MIND_HIDE);
   #assert dg_wall_ray(g, MIND_SEEN, MIND_HIDE);
@@ -1973,7 +1973,7 @@ mind_run :: (g: Game, frame_dt: f32, seen: f32, until: f32) -> int {
   #assert !dg_recall(g, i).known && dg_role(g, i) == ROLE_IDLE && g.st[0].step - last <= MIND_SENSES.forget + 3;
   #assert g.st[0].step - last == MIND_SENSES.forget + 1 || g.st[0].step - last == MIND_SENSES.forget + 2 || g.st[0].step - last == MIND_SENSES.forget + 3;
   // one step before, it still knew
-  st2: [1] Store; h := dg_bind(st2[..]);
+  st2: [1] DgStore; h := dg_bind(st2[..]);
   j := mind_run(h, 0.05, 1, 1);
   seen_at := h.st[0].step;
   while h.st[0].step < seen_at + MIND_SENSES.forget - 3 { tick(h, MIND_HIDE, false, false, 0, -1, 0.05); }
@@ -1985,7 +1985,7 @@ mind_run :: (g: Game, frame_dt: f32, seen: f32, until: f32) -> int {
 }
 
 #test "seeing you again refreshes what a mutant remembers" #steps 200000000 {
-  st: [1] Store; g := dg_bind(st[..]);
+  st: [1] DgStore; g := dg_bind(st[..]);
   i := mind_run(g, 0.05, 1, 3);
   #assert dg_recall(g, i).age > 20;
   there := v3(g.pos[i].x + 4, 0, g.pos[i].z - 2);
@@ -1999,9 +1999,9 @@ mind_run :: (g: Game, frame_dt: f32, seen: f32, until: f32) -> int {
 }
 
 #test "what a mutant remembers is the same at any frame rate" #steps 900000000 {
-  a: [1] Store; ga := dg_bind(a[..]); ia := mind_run(ga, 0.05, 1, 6);
-  b: [1] Store; gb := dg_bind(b[..]); ib := mind_run(gb, 0.025, 1, 6);
-  c: [1] Store; gc := dg_bind(c[..]); ic := mind_run(gc, 0.0125, 1, 6);
+  a: [1] DgStore; ga := dg_bind(a[..]); ia := mind_run(ga, 0.05, 1, 6);
+  b: [1] DgStore; gb := dg_bind(b[..]); ib := mind_run(gb, 0.025, 1, 6);
+  c: [1] DgStore; gc := dg_bind(c[..]); ic := mind_run(gc, 0.0125, 1, 6);
   #assert ga.st[0].step == gb.st[0].step && gb.st[0].step == gc.st[0].step;
   #assert f32_bits(ga.pos[ia].x) == f32_bits(gb.pos[ib].x) && f32_bits(ga.pos[ia].z) == f32_bits(gb.pos[ib].z);
   #assert f32_bits(gb.pos[ib].x) == f32_bits(gc.pos[ic].x) && f32_bits(gb.pos[ib].z) == f32_bits(gc.pos[ic].z);
@@ -2017,7 +2017,7 @@ mind_saw :: (g: Game, i: int, p: Point) {
 }
 
 #test "a mutant that can't reach its goal plans again, then stops, and goes when the goal moves" #steps 900000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 1000000;
   clear_mutants(g);
   e := spawn_now(g, HOUND, 3, -12, -1);
@@ -2044,7 +2044,7 @@ mind_saw :: (g: Game, i: int, p: Point) {
 }
 
 #test "rubble dropped on a mutant's way: it plans round it" #steps 400000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 1000000;
   clear_mutants(g);
   e := spawn_now(g, HOUND, -12, 2, -1);
@@ -2066,11 +2066,11 @@ mind_saw :: (g: Game, i: int, p: Point) {
 }
 
 #test "mutants searching more routes than a step's budget walk straight, and the step stays in budget" #steps 400000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 1000000;
   clear_mutants(g);
   n := 6;
-  ids: [6] int;
+  ids: [6] Handle(Entity);
   for k: 0..<n { ids[k] = spawn_now(g, REAVER, -12 + 4 * f32(k), -16, -1); }
   // each remembers you somewhere else, behind the covers from it
   for f: 0..<20 {
@@ -2083,7 +2083,7 @@ mind_saw :: (g: Game, i: int, p: Point) {
 }
 
 #test "crawlers come up from the vents, and go for the reactor when you are far from it" #steps 46000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   vented := 0;
   for i: 0..<ecs_high(g.e) {
     if !alive_mutant(g, i) || g.mutant[i].kind != CRAWLER { continue; }
@@ -2115,7 +2115,7 @@ mind_saw :: (g: Game, i: int, p: Point) {
 }
 
 #test "aim assist bends a near miss a few degrees on a phone, never with a mouse (#8703)" {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 1000000;
   clear_mutants(g);
   e := spawn_now(g, CRAWLER, 0, -10, -1);   // 18 m off: 3 degrees is a clean miss
@@ -2143,7 +2143,7 @@ mind_saw :: (g: Game, i: int, p: Point) {
 }
 
 #test "a creature hit on its left recoils to its right (#3f12)" {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 1000000;
   clear_mutants(g);
   e := spawn_now(g, HOUND, 0, 0, -1);
@@ -2158,7 +2158,7 @@ mind_saw :: (g: Game, i: int, p: Point) {
 
 #test "dodging through a brute's bolt avoids it (#cf81)" {
   for dodge: 0..<2 {
-    st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+    st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
     g.st[0].ally_time = 1000000;
     clear_mutants(g);
     me := v3(0, 0, 6);
@@ -2173,7 +2173,7 @@ mind_saw :: (g: Game, i: int, p: Point) {
 }
 
 #test "a brute winds up before its bolt, and the bolt can be stepped out of (#adba)" #steps 142000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 1000000;
   clear_mutants(g);
   b := spawn_now(g, BRUTE, 0, -2, -1);
@@ -2198,7 +2198,7 @@ spawn_crowd :: (g: Game) {
 }
 
 #test "no fixed caps: 205 mutants at once" #steps 246000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   for k: 0..<5 { e := spawn_now(g, k % TYPES, -6 + f32(k) * 3, -12, -1); }
   spawn_crowd(g);
@@ -2210,7 +2210,7 @@ spawn_crowd :: (g: Game) {
 // Full native integration scenario: aethyr/tests/check_native_gameplay.py.
 
 #test "events reach the HUD" {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   b := slot_of(nth_mutant(g, 0));
   g.pos[b] = v3(0, 0, 0);
   tick(g, ME, true, false, 0, -1, 0.05);
@@ -2221,7 +2221,7 @@ spawn_crowd :: (g: Game) {
 
 // Mutants walk round the cover between them and you, never into it.
 #test "mutants path round cover" #steps 117000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   // Behind the tall cover at (-8, -12) (2 x 3 m, 1.6 m high), you in front.
   me := v3(-8, 0, -8.4);
@@ -2241,7 +2241,7 @@ spawn_crowd :: (g: Game) {
 
 // The support engineer follows you, and gets behind cover from a mutant it sees.
 #test "the support engineer follows and takes cover" #steps 100000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   ally := dg_support(g);
   for k: 0..<80 { tk(g, v3(8, 0, 6)); }
@@ -2258,7 +2258,7 @@ spawn_crowd :: (g: Game) {
 // and repairs beside you; alone it finishes the repair. A save mid-repair
 // plays on exactly as the original (#39).
 #test "the support engineer repairs" #steps 63000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   kill_all(g);
   #assert g.st[0].phase == REPAIR;
   ally := dg_support(g);
@@ -2275,14 +2275,14 @@ spawn_crowd :: (g: Game) {
   before := dg_repair_progress(g);
   for k: 0..<20 { tk(g, ME); }
   #assert dg_repair_progress(g) > before + 0.1 && dg_repair_progress(g) < before + 0.2;   // a third of your speed
-  sb: [1] Store; b := dg_bind(sb[..]);
+  sb: [1] DgStore; b := dg_bind(sb[..]);
   dg_copy(g, b);
   for k: 0..<40 { tk(g, ME); tk(b, ME); }
   #assert dg_same(g, b) && dg_support_repairing(b);
   for k: 0..<200 { if g.st[0].wave != 1 { break; } tk(g, ME); }
   #assert g.st[0].wave == 2 && g.st[0].repairs == 1 && !dg_support_repairing(g);
   // With you at the reactor too it goes faster than you alone (2.5 s).
-  sh: [1] Store; h := dg_bind(sh[..]); dg_setup(h);
+  sh: [1] DgStore; h := dg_bind(sh[..]); dg_setup(h);
   kill_all(h);
   for k: 0..<400 { if dg_support_repairing(h) { break; } tk(h, ME); }
   ticks := 0;
@@ -2293,7 +2293,7 @@ spawn_crowd :: (g: Game) {
 // Mutants are character bodies (#19): a crowd closing on you keeps apart
 // and never stands inside you, and a save mid-fight plays on exactly.
 #test "mutants keep apart" #steps 388000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   g.st[0].ally_time = 1000000000;   // the support engineer holds its fire
   me := v3(0, 0, 6);
@@ -2313,7 +2313,7 @@ spawn_crowd :: (g: Game) {
   #assert nearest_gap > f32(REACH) - 0.05;
   #assert near_you > f32(REACH) - 0.05;
   for i: 0..<ecs_high(g.e) { if ecs_match(g.e, i, C_MUTANT, 0) { #assert flat(g.pos[i], me) < 4; } }   // still round you
-  sb: [1] Store; b := dg_bind(sb[..]);
+  sb: [1] DgStore; b := dg_bind(sb[..]);
   dg_copy(g, b);
   for k: 0..<40 { tk(g, me); tk(b, me); }
   #assert dg_same(g, b);
@@ -2322,7 +2322,7 @@ spawn_crowd :: (g: Game) {
 // A throw too fast to step through cover is swept (#19): it stops at the
 // cover's face rather than passing through it.
 #test "a fast throw meets cover" {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   crate := slot_of(ecs_first(g.e, C_CARGO));
   g.cargo[crate].thrown = true;
@@ -2334,7 +2334,7 @@ spawn_crowd :: (g: Game) {
 }
 
 #forall "a thrown crate never passes through cover, however fast and from wherever" k: 0..<24 #steps 191000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   crate := slot_of(ecs_first(g.e, C_CARGO));
   g.cargo[crate].thrown = true;
@@ -2348,7 +2348,7 @@ spawn_crowd :: (g: Game) {
 // A brute's bolt is swept too (#80): one too fast to step through cover
 // stops at the cover's face and does not reach you behind it.
 #test "a fast bolt meets cover" #steps 28000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   // The low cover at (-5, 3) spans z 2.35 .. 3.65; you stand behind it.
   me := v3(-5, 0, 1);
@@ -2361,7 +2361,7 @@ spawn_crowd :: (g: Game) {
   #assert walls_hit == 1 && struck == 0;
   #assert dg_health(g) == hp;
   // In the open the same bolt meets you, even passing you within a step.
-  sh: [1] Store; h := dg_bind(sh[..]); dg_setup(h);
+  sh: [1] DgStore; h := dg_bind(sh[..]); dg_setup(h);
   clear_mutants(h);
   c := bolt_now(h, v3(8, 1, 10), v3(0, 0, -300));
   tk(h, v3(8, 0, 6));
@@ -2371,7 +2371,7 @@ spawn_crowd :: (g: Game) {
 }
 
 #forall "a bolt never reaches you through cover, whatever its speed" k: 0..<20 #steps 445000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   me := v3(-5.6 + f32(k % 5) * 0.3, 0, 1.4);
   b := bolt_now(g, v3(me.x, 1, 6 + f32(k % 3)), v3(0, 0, -(7 + f32(k) * 30)));
@@ -2382,7 +2382,7 @@ spawn_crowd :: (g: Game) {
 // The support engineer is a body that moves like one (#80): walking into
 // you it goes round you rather than into you, and it slides along cover.
 #test "the support engineer moves as a body" #steps 56000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   ally := dg_support(g);
   me := v3(0, 0, 6);
@@ -2397,14 +2397,14 @@ spawn_crowd :: (g: Game) {
   }
   #assert nearest_gap > f32(REACH) - 0.05;
   #assert !inside;
-  sb: [1] Store; b := dg_bind(sb[..]);
+  sb: [1] DgStore; b := dg_bind(sb[..]);
   dg_copy(g, b);
   for k: 0..<40 { tk(g, v3(6, 0, -2)); tk(b, v3(6, 0, -2)); }
   #assert dg_same(g, b);
 }
 
 #test "a full store refuses spawns instead of overwriting" #steps 314000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   n := 0;
   for k: 0..<DG_CAP { if spawn_now(g, k % TYPES, 0, -10, -1) != ECS_NONE { n += 1; } }
   #assert ecs_count(g.e) == DG_CAP && n < DG_CAP;
@@ -2433,7 +2433,7 @@ dg_digest :: (g: Game) -> int {
   h = dg_mix_f(dg_mix_f(dg_mix_f(dg_mix_f(h, st.time), st.reload), st.cooldown), st.psi);
   h = dg_mix_f(dg_mix_f(dg_mix_f(dg_mix_f(h, st.power_at), st.stun_cooldown), st.pulse), st.ally_time);
   h = entity_mix(entity_mix(entity_mix(entity_mix(entity_mix(h, st.ammo), st.reserve), st.mode), st.wave), st.repairs);
-  h = entity_mix(entity_mix(entity_mix(entity_mix(entity_mix(h, st.kills), st.phase), st.held), st.next_seq), ifx st.cover then 1 else 0);
+  h = entity_mix(entity_mix(entity_mix(entity_mix(entity_mix(h, st.kills), st.phase), cast(int) st.held.value), st.next_seq), ifx st.cover then 1 else 0);
   h = dg_mix_b(h, st.paused);
   for i: 0..<ecs_high(g.e) {
     if !g.e.s.live[i] { continue; }
@@ -2473,8 +2473,8 @@ DG_UNEVEN :: [10] f32.[0.004, 0.031, 0, 0.017, 0.12, 0.009, 0.05, 0.0021, 0.026,
 DG_REPLAY_STEPS :: 150;
 
 #test "dg_digest tells fights apart" {
-  sa: [1] Store; a := dg_bind(sa[..]); dg_setup(a);
-  sb: [1] Store; b := dg_bind(sb[..]); dg_setup(b);
+  sa: [1] DgStore; a := dg_bind(sa[..]); dg_setup(a);
+  sb: [1] DgStore; b := dg_bind(sb[..]); dg_setup(b);
   d := dg_digest(a);
   #assert d == dg_digest(b) && dg_same(a, b);
   m := slot_of(nth_mutant(b, 0));
@@ -2493,13 +2493,13 @@ DG_REPLAY_STEPS :: 150;
 }
 
 #test "30, 60, 120 and 144 FPS and uneven frames give the same fight at every fixed step" #steps 900000000 {
-  sr: [1] Store; r := dg_bind(sr[..]); dg_setup(r);
+  sr: [1] DgStore; r := dg_bind(sr[..]); dg_setup(r);
   marks: [DG_REPLAY_STEPS] int;
   for k: 0..<DG_REPLAY_STEPS { dg_replay_step(r, k); marks[k] = dg_digest(r); }
   // the fight did something: kills, spawns mid-step (beams, parts), despawns
   #assert r.st[0].kills > 0 && r.e.s.n[ENTITY_NEXT_ID] > 20 && r.e.s.n[ENTITY_NEXT_ID] - ecs_count(r.e) > 5;
   fps := [4] f32.[30, 60, 120, 144];
-  sb: [1] Store; b := dg_bind(sb[..]);
+  sb: [1] DgStore; b := dg_bind(sb[..]);
   for rate: 0..<5 {
     dg_setup(b);
     done := 0; frames := 0; most := 0; idle := 0;

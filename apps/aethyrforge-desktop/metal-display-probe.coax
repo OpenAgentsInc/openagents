@@ -8,7 +8,7 @@
 #load "../../coax/lib/crypto/sha256-kernel.coax";
 mdp_string :: (o:[]Jo,key:string,value:string) {jo_key(o,key);jo_str(o,value);}
 mdp_hash :: (o:[]Jo,key:string,bytes:[]u8) {hash:[64]u8;ok:=S_hex(S_hash(cast(string)bytes),hash[..]);mdp_string(o,key,ifx ok then cast(string)hash[..] else "");}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<5 {tool_errln("usage: metal-display-probe ROOT RESOURCES EFFECTS FIXTURE_DIR NEW_OUTPUT [--rgba8] [--legacy]");return 2;}
  root:=args_at(a[..],0);res:=args_at(a[..],1);effects:=args_at(a[..],2);fixture:=args_at(a[..],3);dir:=args_at(a[..],4);if !fs_mkdir(dir) {return 1;}
  paths:[10][4096]u8;text:[32768]u8;n:=fs_read(fs_join(fixture,"plan.json",paths[0][..]),text[..]);d:[1]Jv;nodes:[512]JvNode;

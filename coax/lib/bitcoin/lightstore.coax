@@ -177,37 +177,37 @@ LcTip :: struct { code: int; chain: int; height: int; hash: [32] u8; }
   #assert lc_change_vartime(table[..], c[..], batch[..], hash[..], 0, key[..], value[..], true) == LC_CAPACITY;
 }
 
-lc_negative :: (offset: int) -> bool { return offset < 0; }
-lc_extent :: (bytes: [] u8, used: int) -> bool { return used >= 0 && used <= bytes.count; }
+lc_negative :: (offset: int) -> bool #effects(all) { return offset < 0; }
+lc_extent :: (bytes: [] u8, used: int) -> bool #effects(all) { return used >= 0 && used <= bytes.count; }
 
-lc_same :: (a: [] u8, b: [] u8) -> bool {
+lc_same :: (a: [] u8, b: [] u8) -> bool #effects(all) {
   if a.count != b.count { return false; }
   for i: 0..<a.count { if a[i] != b[i] { return false; } }
   return true;
 }
-lc_key :: (prefix: u8, ordinal: int, out: [] u8) {
+lc_key :: (prefix: u8, ordinal: int, out: [] u8) #effects(all) {
   out[0] = prefix; kv_put32(out, out.count - 4, ordinal);
 }
 // A borrowed view, used only until the next table mutation. Empty means absent;
 // all light-profile values are nonempty.
-lc_value_vartime :: (table: [] u8, used: int, key: [] u8) -> [] u8 {
+lc_value_vartime :: (table: [] u8, used: int, key: [] u8) -> [] u8 #effects(all) {
   f := kv_find_vartime(table, used, key);
   if !f.found { return table[0..<0]; }
   return kv_entry_vartime(table, used, f.at).value;
 }
-lc_put_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, key: [] u8, value: [] u8) -> bool {
+lc_put_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, key: [] u8, value: [] u8) -> bool #effects(all) {
   n := kv_batch_put_vartime(batch, c[0].n, key, value);
   if lc_negative(n) { return false; }
   used := kv_set_vartime(table, c[0].used, key, value);
   if lc_negative(used) { return false; }
   c[0].n = n; c[0].used = used; return true;
 }
-lc_delete_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, key: [] u8) -> bool {
+lc_delete_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, key: [] u8) -> bool #effects(all) {
   n := kv_batch_delete_vartime(batch, c[0].n, key);
   if lc_negative(n) { return false; }
   c[0].n = n; c[0].used = kv_delete_vartime(table, c[0].used, key); return true;
 }
-lc_tip_vartime :: (table: [] u8, used: int) -> LcTip #export_c {
+lc_tip_vartime :: (table: [] u8, used: int) -> LcTip #export_c #effects(all) {
   r := LcTip.{code=LC_CONTEXT};
   if !lc_extent(table, used) { return r; }
   key := LC_META; v := lc_value_vartime(table, used, key[..]);
@@ -218,20 +218,20 @@ lc_tip_vartime :: (table: [] u8, used: int) -> LcTip #export_c {
   for i: 0..<32 { r.hash[i] = v[12+i]; }
   r.code = LC_OK; return r;
 }
-lc_set_tip_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, chain: int, height: int, hash: [] u8) -> bool {
+lc_set_tip_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, chain: int, height: int, hash: [] u8) -> bool #effects(all) {
   v: [44] u8; key := LC_META;
   kv_put32(v[..], 0, LC_VERSION); kv_put32(v[..], 4, chain); kv_put32(v[..], 8, height);
   for i: 0..<32 { v[12+i] = hash[i]; }
   return lc_put_vartime(table, c, batch, key[..], v[..]);
 }
-lc_begin_vartime :: (table: [] u8, used: int, stage: [] u8, batch: [] u8, c: [] LcCursor) -> bool {
+lc_begin_vartime :: (table: [] u8, used: int, stage: [] u8, batch: [] u8, c: [] LcCursor) -> bool #effects(all) {
   if !lc_extent(table, used) || !lc_extent(stage, used) { return false; }
   n := kv_batch_new(batch);
   if lc_negative(n) { return false; }
   for i: 0..<used { stage[i] = table[i]; }
   c[0] = LcCursor.{used=used, n=n}; return true;
 }
-lc_init_vartime :: (chain: int, genesis: [] u8, table: [] u8, used: int, stage: [] u8, batch: [] u8) -> LcResult #export_c {
+lc_init_vartime :: (chain: int, genesis: [] u8, table: [] u8, used: int, stage: [] u8, batch: [] u8) -> LcResult #export_c #effects(all) {
   if chain < 1 || chain > 5 || genesis.count != 32 || used != 0 { return LcResult.{code=LC_CONTEXT}; }
   c: [1] LcCursor;
   if !lc_begin_vartime(table, used, stage, batch, c[..]) { return LcResult.{code=LC_CAPACITY}; }
@@ -243,7 +243,7 @@ lc_init_vartime :: (chain: int, genesis: [] u8, table: [] u8, used: int, stage: 
 // Value: old-present, new-present, outpoint[36], old-length-le32,
 // old coin bytes, SHA256d(new coin) (zero bytes when the new coin is absent).
 // Copy views before inserting anything: sorted-table writes move their bytes.
-lc_change_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, hash: [] u8, ordinal: int, key: [] u8, value: [] u8, present: bool) -> int {
+lc_change_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, hash: [] u8, ordinal: int, key: [] u8, value: [] u8, present: bool) -> int #effects(all) {
   undo: [74 + LC_COIN_HEAD + LC_SCRIPT_MAX] u8; uk: [37] u8;
   old := lc_value_vartime(table, c[0].used, key);
   if old.count > LC_COIN_HEAD + LC_SCRIPT_MAX || value.count > LC_COIN_HEAD + LC_SCRIPT_MAX { return LC_CONTEXT; }
@@ -261,7 +261,7 @@ lc_change_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, hash: [] u8, o
   } else { if !lc_delete_vartime(table, c, batch, key) { return LC_CAPACITY; } }
   return LC_OK;
 }
-lc_reverse_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, hash: [] u8, ordinal: int) -> int {
+lc_reverse_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, hash: [] u8, ordinal: int) -> int #effects(all) {
   uk: [37] u8; key: [37] u8; old: [LC_COIN_HEAD + LC_SCRIPT_MAX] u8; sum: [32] u8;
   lc_key('U', ordinal, uk[..]); for i: 0..<32 { uk[1+i] = hash[i]; }
   u := lc_value_vartime(table, c[0].used, uk[..]);
@@ -288,7 +288,7 @@ lc_reverse_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, hash: [] u8, 
 
 // Bind all inverse bytes to this block and its parent before disconnecting.
 // Each record is length-prefixed, so concatenations cannot be ambiguous.
-lc_undo_digest_vartime :: (table: [] u8, used: int, hash: [] u8, parent: [] u8, count: int, out: [] u8) -> bool {
+lc_undo_digest_vartime :: (table: [] u8, used: int, hash: [] u8, parent: [] u8, count: int, out: [] u8) -> bool #effects(all) {
   state: [SHA_STATE_BYTES] u8; first: [32] u8; key: [37] u8; length: [4] u8;
   if lc_negative(count) { return false; }
   #assert sha256_init(state[..]) == SHA_OK;

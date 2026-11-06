@@ -26,7 +26,7 @@ X402_MSAT_PER_BTC :: 100_000_000_000;
 // Where a bolt11 invoice's human-readable part ends: the index of its last
 // '1', the separator, when that is past "lnbc" and at least one more
 // character; s.count when there is none.
-x402_bolt11_sep :: (s: string) -> int {
+x402_bolt11_sep :: (s: string) -> int #effects(all) {
   i := s.count;
   while i > 5 { i -= 1; if s[i] == '1' { return i; } }
   return s.count;
@@ -38,7 +38,7 @@ x402_bolt11_sep :: (s: string) -> int {
 // a leading zero, a p amount that is not whole msat (its last digit must be
 // 0), more than 21 million BTC, or, in the p unit, more than 2.1 * 10^17 msat
 // (2.1 million BTC), which keeps the arithmetic inside 64 bits.
-x402_bolt11_msat :: (invoice: string) -> int {
+x402_bolt11_msat :: (invoice: string) -> int #effects(all) {
   sep := x402_bolt11_sep(invoice);
   if sep == invoice.count || invoice[0..<4] != "lnbc" { return -1; }
   hrp := invoice[4..<sep];
@@ -63,7 +63,7 @@ x402_bolt11_msat :: (invoice: string) -> int {
 
 // book:begin settle
 // The offer's invoice states exactly the terms' amount: "" or why not.
-x402_check_invoice :: (o: [] X402Offer) -> string {
+x402_check_invoice :: (o: [] X402Offer) -> string #effects(all) {
   m := x402_bolt11_msat(cast(string) o[0].invoice[0..<o[0].ni]);
   if m == -1 { return "the invoice states no amount"; }
   if m != o[0].msat { return "the invoice's amount is not the terms' amount"; }
@@ -71,11 +71,11 @@ x402_check_invoice :: (o: [] X402Offer) -> string {
 }
 
 // One lowercase hex digit already checked by x402_is_hex64.
-x402_nibble :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+x402_nibble :: (c: u8) -> int #effects(all) { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
 
 // Whether the 64-digit hex preimage hashes, by SHA-256 of its 32 bytes, to the
 // 64-digit hex payment hash.
-x402_preimage_matches :: (preimage: string, hash: string) -> bool {
+x402_preimage_matches :: (preimage: string, hash: string) -> bool #effects(all) {
   if !x402_is_hex64(preimage) || !x402_is_hex64(hash) { return false; }
   b: [32] u8; h: [32] u8;
   for i: 0..<32 { b[i] = cast(u8) (x402_nibble(preimage[2 * i]) * 16 + x402_nibble(preimage[2 * i + 1])); }
@@ -97,7 +97,7 @@ X402Record :: struct {
 // profile's order. issued_s is when the invoice was made; it ends
 // maxTimeoutSeconds later and a paid retry has X402_SKEW_S more, inclusive.
 // rec is one record; payer is the preimage the payer sent, or "".
-x402_settle :: (o: [] X402Offer, rec: [] X402Record, payer: string, issued_s: int, now_s: int) -> string {
+x402_settle :: (o: [] X402Offer, rec: [] X402Record, payer: string, issued_s: int, now_s: int) -> string #effects(all) {
   why := x402_check_invoice(o);
   if why != "" { return why; }
   if now_s > issued_s + o[0].timeout_s + X402_SKEW_S { return "the invoice has expired"; }
@@ -118,13 +118,13 @@ X402_FIX_PREIMAGE :: "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d
 X402_FIX_HASH :: "ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9";
 X402_FIX_INVOICE :: "lnbc500n1p4wfve5pp54cskcth4y3ar0qkpxhh6y7drunxuvyy5yu8462l9333qfdaxztys";
 
-x402_fix_offer :: (o: [] X402Offer, invoice: string, msat: int) {
+x402_fix_offer :: (o: [] X402Offer, invoice: string, msat: int) #effects(all) {
   for i: 0..<invoice.count { o[0].invoice[i] = invoice[i]; }
   o[0].ni = invoice.count;
   for i: 0..<64 { o[0].hash[i] = X402_FIX_HASH[i]; }
   o[0].nh = 64; o[0].msat = msat; o[0].timeout_s = 600;
 }
-x402_fix_record :: (r: [] X402Record, paid: bool, msat: int, preimage: string) -> [] X402Record {
+x402_fix_record :: (r: [] X402Record, paid: bool, msat: int, preimage: string) -> [] X402Record #effects(all) {
   r[0].paid = paid; r[0].msat = msat;
   for i: 0..<preimage.count { r[0].preimage[i] = preimage[i]; }
   r[0].np = preimage.count;

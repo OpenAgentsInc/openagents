@@ -81,41 +81,41 @@
   h.epoch=0;#assert pl_finish(h,true).status==PlStatus.shape;
 }
 
-pl_phase_valid :: (phase:int)->bool #export_c {return phase>=0 && phase<=6;}
-pl_counter :: (n:int)->bool {return n>=0 && n<=1000000;}
-pl_valid :: (s:PlState)->bool #export_c {
+pl_phase_valid :: (phase:int)->bool #export_c #effects(all) {return phase>=0 && phase<=6;}
+pl_counter :: (n:int)->bool #effects(all) {return n>=0 && n<=1000000;}
+pl_valid :: (s:PlState)->bool #export_c #effects(all) {
   return pl_phase_valid(cast(int)s.phase) && s.epoch>=1 && s.epoch<=1000000 && pl_counter(s.serial) && s.tick>=0 && s.tick<=720 && s.origin>=0 && s.origin<=s.tick && s.index>=0 && s.index<=8 && pl_counter(s.refusals) && pl_counter(s.fallbacks);
 }
-pl_new :: ()->PlState #export_c {return PlState.{epoch=1};}
-pl_result :: (status:PlStatus,s:PlState)->PlResult {return PlResult.{status=status,state=s,slot=-1};}
-pl_reset :: (s:PlState)->PlResult #export_c {
+pl_new :: ()->PlState #export_c #effects(all) {return PlState.{epoch=1};}
+pl_result :: (status:PlStatus,s:PlState)->PlResult #effects(all) {return PlResult.{status=status,state=s,slot=-1};}
+pl_reset :: (s:PlState)->PlResult #export_c #effects(all) {
   if !pl_valid(s) {return pl_result(PlStatus.shape,s);}if s.epoch==1000000 {return pl_result(PlStatus.exhausted,s);}return pl_result(PlStatus.ok,PlState.{epoch=s.epoch+1});
 }
-pl_reset_done :: (s:PlState,effect:int)->PlResult #export_c {
+pl_reset_done :: (s:PlState,effect:int)->PlResult #export_c #effects(all) {
   if !pl_valid(s) {return pl_result(PlStatus.shape,s);}if s.phase!=PlPhase.resetting {return pl_result(PlStatus.order,s);}next:=s;
   if effect!=0 {next.phase=PlPhase.halted;return pl_result(PlStatus.effect,next);}next.phase=PlPhase.empty;return pl_result(PlStatus.ok,next);
 }
-pl_request :: (s:PlState)->PlResult #export_c {
+pl_request :: (s:PlState)->PlResult #export_c #effects(all) {
   if !pl_valid(s) {return pl_result(PlStatus.shape,s);}if s.phase!=PlPhase.empty {return pl_result(PlStatus.order,s);}if s.tick==720 || s.serial==1000000 {return pl_result(PlStatus.exhausted,s);}
   next:=s;next.serial+=1;next.origin=s.tick;next.index=0;next.phase=PlPhase.waiting;r:=pl_result(PlStatus.ok,next);r.tag=PlTag.{epoch=s.epoch,serial=next.serial,tick=s.tick,profile=1};return r;
 }
-pl_finite :: (bits:u32)->bool {return (bits&0x7f800000)!=0x7f800000;}
-pl_accept :: (s:PlState,tag:PlTag,now:int,words:[]u32,out:[]PlAction,work:[]PlAction,overlap:bool)->PlResult #export_c {
+pl_finite :: (bits:u32)->bool #effects(all) {return (bits&0x7f800000)!=0x7f800000;}
+pl_accept :: (s:PlState,tag:PlTag,now:int,words:[]u32,out:[]PlAction,work:[]PlAction,overlap:bool)->PlResult #export_c #effects(all) {
   if !pl_valid(s) {return pl_result(PlStatus.shape,s);}if s.phase!=PlPhase.waiting {return pl_result(PlStatus.order,s);}if now!=s.tick {return pl_result(PlStatus.clock,s);}
   if tag.epoch!=s.epoch || tag.serial!=s.serial || tag.tick!=s.origin || tag.profile!=1 || now!=s.origin {return pl_result(PlStatus.stale,s);}
   if words.count!=112 {return pl_result(PlStatus.shape,s);}if out.count<8 || work.count<8 {return pl_result(PlStatus.capacity,s);}if overlap {return pl_result(PlStatus.alias,s);}
   for i:0..<112 {bits:=words[i];if !pl_finite(bits) {return pl_result(PlStatus.number,s);}x:=f32_from_bits(bits);if abs(x)>1 || (i%7==6 && x!=0 && x!=1 && x!=-1) {return pl_result(PlStatus.limit,s);}if i<56 {work[i/7].v[i%7]=x;}}
   for i:0..<8 {out[i]=work[i];}next:=s;next.phase=PlPhase.ready;return pl_result(PlStatus.ok,next);
 }
-pl_choose :: (s:PlState,now:int)->PlResult #export_c {
+pl_choose :: (s:PlState,now:int)->PlResult #export_c #effects(all) {
   if !pl_valid(s) {return pl_result(PlStatus.shape,s);}if s.phase!=PlPhase.ready {return pl_result(PlStatus.order,s);}if now!=s.tick || now!=s.origin+s.index {return pl_result(PlStatus.clock,s);}
   if s.index==8 || s.tick==720 {return pl_result(PlStatus.exhausted,s);}next:=s;next.phase=PlPhase.stepping;next.holding=false;next.resume_waiting=false;r:=pl_result(PlStatus.ok,next);r.slot=s.index;return r;
 }
-pl_hold :: (s:PlState,now:int)->PlResult #export_c {
+pl_hold :: (s:PlState,now:int)->PlResult #export_c #effects(all) {
   if !pl_valid(s) {return pl_result(PlStatus.shape,s);}if s.phase!=PlPhase.empty && s.phase!=PlPhase.waiting {return pl_result(PlStatus.order,s);}if now!=s.tick {return pl_result(PlStatus.clock,s);}
   if s.tick==720 || s.fallbacks==1000000 {return pl_result(PlStatus.exhausted,s);}next:=s;next.phase=PlPhase.stepping;next.holding=true;next.resume_waiting=s.phase==PlPhase.waiting;r:=pl_result(PlStatus.ok,next);r.fallback=true;return r;
 }
-pl_commit :: (s:PlState,now:int,physics_steps:int,effect:int)->PlResult #export_c {
+pl_commit :: (s:PlState,now:int,physics_steps:int,effect:int)->PlResult #export_c #effects(all) {
   if !pl_valid(s) {return pl_result(PlStatus.shape,s);}if s.phase!=PlPhase.stepping {return pl_result(PlStatus.order,s);}next:=s;
   if now!=s.tick || physics_steps!=25 || effect!=0 {next.phase=PlPhase.halted;return pl_result(PlStatus.effect,next);}
   if s.tick==720 {next.phase=PlPhase.halted;return pl_result(PlStatus.exhausted,next);}next.tick+=1;
@@ -123,11 +123,11 @@ pl_commit :: (s:PlState,now:int,physics_steps:int,effect:int)->PlResult #export_
   else {if s.index==8 {next.phase=PlPhase.halted;return pl_result(PlStatus.exhausted,next);}next.index+=1;next.phase=ifx next.index==8 then PlPhase.empty else PlPhase.ready;}
   next.holding=false;next.resume_waiting=false;if next.tick==720 {next.phase=PlPhase.finished;}return pl_result(PlStatus.ok,next);
 }
-pl_refuse :: (s:PlState)->PlResult #export_c {
+pl_refuse :: (s:PlState)->PlResult #export_c #effects(all) {
   if !pl_valid(s) {return pl_result(PlStatus.shape,s);}if s.phase!=PlPhase.waiting && s.phase!=PlPhase.ready {return pl_result(PlStatus.order,s);}if s.refusals==1000000 {return pl_result(PlStatus.exhausted,s);}
   next:=s;next.refusals+=1;next.phase=PlPhase.empty;next.origin=s.tick;next.index=0;return pl_result(PlStatus.ok,next);
 }
-pl_finish :: (s:PlState,success:bool)->PlResult #export_c {
+pl_finish :: (s:PlState,success:bool)->PlResult #export_c #effects(all) {
   if !pl_valid(s) {return pl_result(PlStatus.shape,s);}if s.phase==PlPhase.resetting || s.phase==PlPhase.stepping || s.phase==PlPhase.halted {return pl_result(PlStatus.order,s);}
   next:=s;next.phase=PlPhase.finished;next.success=s.success || success;return pl_result(PlStatus.ok,next);
 }

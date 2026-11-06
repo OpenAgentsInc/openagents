@@ -1,0 +1,4 @@
+// expect: E0970
+Borrowed :: struct { data: [] int; }
+Saved :: struct #persisted { nested: [2] Borrowed?; }
+main :: () {}

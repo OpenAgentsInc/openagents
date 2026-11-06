@@ -18,24 +18,24 @@
 // Checks: coax test coax/lib/compute/mma.coax --library (no main of its own).
 #authority;
 
-cu_bf16 :: (word:u32,high:bool)->f32 {
+cu_bf16 :: (word:u32,high:bool)->f32 #effects(all) {
     if high {return f32_from_bits((word>>16)<<16);}
     return f32_from_bits(word<<16);
 }
 // A[m][k] of the A fragment.
-cu_mma_a :: (a:[]u32,m:int,k:int)->f32 {
+cu_mma_a :: (a:[]u32,m:int,k:int)->f32 #effects(all) {
     lane:=(m%8)*4+(k%8)/2;reg:=m/8+2*(k/8);
     return cu_bf16(a[4*lane+reg],k%2==1);
 }
 // B[k][n] of the B fragment.
-cu_mma_b :: (b:[]u32,k:int,n:int)->f32 {
+cu_mma_b :: (b:[]u32,k:int,n:int)->f32 #effects(all) {
     lane:=n*4+(k%8)/2;
     return cu_bf16(b[2*lane+k/8],k%2==1);
 }
 // The position of C[m][n] in the C fragment.
-cu_mma_c :: (m:int,n:int)->int {return 4*((m%8)*4+n/2)+2*(m/8)+n%2;}
+cu_mma_c :: (m:int,n:int)->int #effects(all) {return 4*((m%8)*4+n/2)+2*(m/8)+n%2;}
 
-cu_mma_bf16_16x8x16 :: (a:[]u32,b:[]u32,c:[]f32) {
+cu_mma_bf16_16x8x16 :: (a:[]u32,b:[]u32,c:[]f32) #effects(all) {
     for m:0..<16 {
         for n:0..<8 {
             sum:f64=0;
@@ -61,10 +61,10 @@ cu_mma_bf16_16x8x16 :: (a:[]u32,b:[]u32,c:[]f32) {
 }
 // Fragments with A[m][k] = (m+2k)%5 - 2 and B[k][n] = (3k+n)%7 - 3, each u32
 // written whole from the layout above.
-cu_test_word :: (lo:f32,hi:f32)->u32 {return (f32_bits(lo)>>16)|((f32_bits(hi)>>16)<<16);}
-cu_test_a :: (m:int,k:int)->f32 {return f32((m+2*k)%5)-2;}
-cu_test_b :: (k:int,n:int)->f32 {return f32((3*k+n)%7)-3;}
-cu_test_fill :: (a:[]u32,b:[]u32) {
+cu_test_word :: (lo:f32,hi:f32)->u32 #effects(all) {return (f32_bits(lo)>>16)|((f32_bits(hi)>>16)<<16);}
+cu_test_a :: (m:int,k:int)->f32 #effects(all) {return f32((m+2*k)%5)-2;}
+cu_test_b :: (k:int,n:int)->f32 #effects(all) {return f32((3*k+n)%7)-3;}
+cu_test_fill :: (a:[]u32,b:[]u32) #effects(all) {
     for lane:0..<32 {
         g:=lane/4;t:=lane%4;
         a[4*lane]=cu_test_word(cu_test_a(g,2*t),cu_test_a(g,2*t+1));

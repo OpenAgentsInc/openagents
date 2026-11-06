@@ -34,17 +34,17 @@
  #assert hwt_rectangle(0,0,1,1)&&hwt_rectangle(-1000000,1000000,1000000,1)&&hwt_rectangle(1000000,-1000000,1,1000000);
  #assert !hwt_rectangle(-1000001,0,1,1)&&!hwt_rectangle(0,1000001,1,1)&&!hwt_rectangle(0,0,0,1)&&!hwt_rectangle(0,0,1,0)&&!hwt_rectangle(0,0,1000001,1)&&!hwt_rectangle(0,0,1,1000001);
 }
-hwt_text::(bytes:string,clipboard:bool)->bool #export_c {
+hwt_text::(bytes:string,clipboard:bool)->bool #export_c #effects(all) {
  if !hwt_count(bytes.count,clipboard)||!ws_utf8(bytes){return false;}
  for byte:bytes{if byte==0{return false;}}return true;
 }
-hwt_count::(bytes:int,clipboard:bool)->bool #export_c {return bytes>=0&&bytes<=(ifx clipboard then 2097152 else 4096);}
-hwt_serial::(current:int,since:int,done:int)->bool #export_c {return since>0&&since<=done&&done<=current&&current<=2147483647;}
-hwt_owner::(saved:u64,current:u64,focused:bool,wants:bool)->bool #export_c {return saved!=0&&saved==current&&focused&&wants;}
-hwt_epoch::(current:u64)->u64 #export_c {if current==0||current>=9223372036854775807{return 0;}return current+1;}
-hwt_chunk::(used:int,bytes:int)->bool #export_c {return used>=0&&bytes>=0&&bytes<=2097152-used;}
-hwt_lease::(cells:int,total:int,bytes:int)->bool #export_c {return cells>=0&&cells<4&&total>=0&&hwt_chunk(0,bytes)&&bytes<=8388608-total;}
-hwt_time::(start:int,now:int)->bool #export_c {return start>=0&&now>=start&&now-start<5000;}
-hwt_paste::(code:int,mods:int,wants:bool)->bool #export_c {return wants&&((code==47&&(mods==2||mods==3))||(code==110&&mods==1));}
-hwt_boundary::(code:int)->bool #export_c {return code==1||code==15||code==28;}
-hwt_rectangle::(x:f64,y:f64,w:f64,h:f64)->bool #export_c {return x>= -1000000&&x<=1000000&&y>= -1000000&&y<=1000000&&w>=1&&w<=1000000&&h>=1&&h<=1000000;}
+hwt_count::(bytes:int,clipboard:bool)->bool #export_c #effects(all) {return bytes>=0&&bytes<=(ifx clipboard then 2097152 else 4096);}
+hwt_serial::(current:int,since:int,done:int)->bool #export_c #effects(all) {return since>0&&since<=done&&done<=current&&current<=2147483647;}
+hwt_owner::(saved:u64,current:u64,focused:bool,wants:bool)->bool #export_c #effects(all) {return saved!=0&&saved==current&&focused&&wants;}
+hwt_epoch::(current:u64)->u64 #export_c #effects(all) {if current==0||current>=9223372036854775807{return 0;}return current+1;}
+hwt_chunk::(used:int,bytes:int)->bool #export_c #effects(all) {return used>=0&&bytes>=0&&bytes<=2097152-used;}
+hwt_lease::(cells:int,total:int,bytes:int)->bool #export_c #effects(all) {return cells>=0&&cells<4&&total>=0&&hwt_chunk(0,bytes)&&bytes<=8388608-total;}
+hwt_time::(start:int,now:int)->bool #export_c #effects(all) {return start>=0&&now>=start&&now-start<5000;}
+hwt_paste::(code:int,mods:int,wants:bool)->bool #export_c #effects(all) {return wants&&((code==47&&(mods==2||mods==3))||(code==110&&mods==1));}
+hwt_boundary::(code:int)->bool #export_c #effects(all) {return code==1||code==15||code==28;}
+hwt_rectangle::(x:f64,y:f64,w:f64,h:f64)->bool #export_c #effects(all) {return x>= -1000000&&x<=1000000&&y>= -1000000&&y<=1000000&&w>=1&&w<=1000000&&h>=1&&h<=1000000;}

@@ -66,10 +66,10 @@ slower for every request, and nothing about the request itself shows that.
 
 <!-- source: psionic/lib/tabular.coax simulate -->
 ```jai
-tb_on_time :: (seconds:f64)->bool {return seconds<=TB_DEADLINE;}
+tb_on_time :: (seconds:f64)->bool #effects(all) {return seconds<=TB_DEADLINE;}
 // deadline-sim-v1. Session g draws its memory headroom and machine slowness;
 // request i draws its prompt length, queue depth, model and noise.
-tb_simulate :: (seed:u64,sessions:int,x:[]f64,y:[]f64,latency:[]f64,groups:[]int,overlap:bool)->TbSim #export_c {
+tb_simulate :: (seed:u64,sessions:int,x:[]f64,y:[]f64,latency:[]f64,groups:[]int,overlap:bool)->TbSim #export_c #effects(all) {
     if sessions<1 || sessions>TB_SESSIONS_MAX {return TbSim.{status=TbStatus.shape};}
     n:=sessions*TB_PER_SESSION;
     if x.count<4*n || y.count<n || latency.count<n || groups.count<n {return TbSim.{status=TbStatus.capacity};}
@@ -110,14 +110,14 @@ three in five to training, one to validation, one to test.
 <!-- source: psionic/lib/tabular.coax split -->
 ```jai
 // Whole sessions go to one part: 0 training (three in five), 1 validation, 2 test.
-tb_part :: (group:int)->int {
+tb_part :: (group:int)->int #effects(all) {
     k:=group%5;
     if k<3 {return 0;}
     if k==3 {return 1;}
     return 2;
 }
 // The rows of one part, in row order. -1 for a bad part, group, short or overlapping output.
-tb_rows :: (groups:[]int,part:int,out:[]int,overlap:bool)->int #export_c {
+tb_rows :: (groups:[]int,part:int,out:[]int,overlap:bool)->int #export_c #effects(all) {
     if part<0 || part>2 || overlap {return -1;}
     n:=0;
     for g:groups {
@@ -146,7 +146,7 @@ and test rows never shape the model.
 <!-- source: psionic/lib/tabular.coax scale -->
 ```jai
 // Mean and population standard deviation of each feature over the training rows only.
-tb_fit_scale :: (x:[]f64,d:int,rows:[]int,mean:[]f64,sd:[]f64,overlap:bool)->TbStatus #export_c {
+tb_fit_scale :: (x:[]f64,d:int,rows:[]int,mean:[]f64,sd:[]f64,overlap:bool)->TbStatus #export_c #effects(all) {
     if !tb_table_ok(x,d) || !tb_row_ok(rows,x.count/d) {return TbStatus.shape;}
     if mean.count<d || sd.count<d {return TbStatus.capacity;}
     if overlap {return TbStatus.alias;}
@@ -164,7 +164,7 @@ tb_fit_scale :: (x:[]f64,d:int,rows:[]int,mean:[]f64,sd:[]f64,overlap:bool)->TbS
     for j:0..<d {mean[j]=m[j];sd[j]=s[j];}
     return TbStatus.ok;
 }
-tb_apply_scale :: (x:[]f64,d:int,mean:[]f64,sd:[]f64,out:[]f64,overlap:bool)->TbStatus #export_c {
+tb_apply_scale :: (x:[]f64,d:int,mean:[]f64,sd:[]f64,out:[]f64,overlap:bool)->TbStatus #export_c #effects(all) {
     if !tb_table_ok(x,d) || mean.count<d || sd.count<d {return TbStatus.shape;}
     if out.count<x.count {return TbStatus.capacity;}
     if overlap {return TbStatus.alias;}
@@ -200,20 +200,20 @@ A model is an array of parameters plus a layout:
 <!-- source: psionic/lib/tabular.coax model -->
 ```jai
 // hidden 0: output = b + sum w_j x_j. hidden h: W1 [h,d], b1 [h], w2 [h], b2.
-tb_param_count :: (m:TbModel)->int #export_c {
+tb_param_count :: (m:TbModel)->int #export_c #effects(all) {
     if !tb_model_ok(m) {return 0;}
     if m.hidden==0 {return m.features+1;}
     return m.hidden*m.features+2*m.hidden+1;
 }
-tb_tanh :: (a:f64)->f64 {
+tb_tanh :: (a:f64)->f64 #effects(all) {
     t:=exp(-2*abs(a));v:=(1-t)/(1+t);
     if a<0 {return -v;}
     return v;
 }
 // exp(min(z, 0)) / (1 + exp(-|z|)): no exponential of a large positive number.
-tb_sigmoid :: (z:f64)->f64 {return exp((z-abs(z))/2)/(1+exp(-abs(z)));}
-tb_softplus :: (z:f64)->f64 {return (z+abs(z))/2+log(1+exp(-abs(z)));}
-tb_hidden :: (m:TbModel,p:[]f64,v:[]f64,h:[]f64) {
+tb_sigmoid :: (z:f64)->f64 #effects(all) {return exp((z-abs(z))/2)/(1+exp(-abs(z)));}
+tb_softplus :: (z:f64)->f64 #effects(all) {return (z+abs(z))/2+log(1+exp(-abs(z)));}
+tb_hidden :: (m:TbModel,p:[]f64,v:[]f64,h:[]f64) #effects(all) {
     d:=m.features;
     for k:0..<m.hidden {
         a:PsionicAccumulator;a=psionic_ops_accumulate(a,p[m.hidden*d+k]);
@@ -221,7 +221,7 @@ tb_hidden :: (m:TbModel,p:[]f64,v:[]f64,h:[]f64) {
         h[k]=tb_tanh(psionic_ops_total(a));
     }
 }
-tb_output :: (m:TbModel,p:[]f64,v:[]f64)->f64 {
+tb_output :: (m:TbModel,p:[]f64,v:[]f64)->f64 #effects(all) {
     d:=m.features;a:PsionicAccumulator;
     if m.hidden==0 {
         a=psionic_ops_accumulate(a,p[d]);
@@ -251,7 +251,7 @@ hidden unit it is also scaled by `w₂ₖ` and by tanh's slope, `1 − hₖ²`.
 ```jai
 // Mean gradient of the per-row loss over `rows`: log loss on a logit, or
 // half the squared error of a value. Both give d loss / d output = residual.
-tb_gradient :: (m:TbModel,p:[]f64,x:[]f64,y:[]f64,rows:[]int,g:[]f64) {
+tb_gradient :: (m:TbModel,p:[]f64,x:[]f64,y:[]f64,rows:[]int,g:[]f64) #effects(all) {
     d:=m.features;n:=tb_param_count(m);acc:[161]PsionicAccumulator;h:[16]f64;
     for r:rows {
         v:=x[r*d..<r*d+d];z:=tb_output(m,p,v);
@@ -294,7 +294,7 @@ gradient and adds `decay · θ` for weights, never for biases, then moves
 <!-- source: psionic/lib/tabular.coax train -->
 ```jai
 // Every refusal, before any work. Chapter 104's trainer shares it.
-tb_admit_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,order:[]int,overlap:bool)->TbStatus {
+tb_admit_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,order:[]int,overlap:bool)->TbStatus #effects(all) {
     n:=tb_param_count(m);d:=m.features;
     if !tb_budget(m,c,rows.count) || c.batch<1 || c.batch>TB_BATCH_MAX || !(c.rate>0 && c.rate<=16) || !tb_in(c.decay,0,1) {return TbStatus.shape;}
     if x.count!=y.count*d || !tb_row_ok(rows,y.count) {return TbStatus.shape;}
@@ -307,7 +307,7 @@ tb_admit_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,
     }
     return TbStatus.ok;
 }
-tb_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,order:[]int,overlap:bool)->TbTrain #export_c {
+tb_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,order:[]int,overlap:bool)->TbTrain #export_c #effects(all) {
     admitted:=tb_admit_train(m,c,x,y,rows,params,order,overlap);
     if admitted!=TbStatus.ok {return TbTrain.{status=admitted};}
     n:=tb_param_count(m);
@@ -366,11 +366,11 @@ per-token and queue costs, doubles the estimate for safety, and ignores memory:
 ```jai
 // An operator's rule: the documented per-token and queue costs, doubled for
 // safety, and nothing about memory. 1 means "on time", 0 means "flag it".
-tb_rule_seconds :: (prompt:f64,queue:f64,large:f64)->f64 {
+tb_rule_seconds :: (prompt:f64,queue:f64,large:f64)->f64 #effects(all) {
     cost:=0.0003;if large==1 {cost=0.0009;}
     return 2*(0.2+0.15*queue+prompt*cost);
 }
-tb_rule :: (x:[]f64,out:[]f64,overlap:bool)->TbStatus #export_c {
+tb_rule :: (x:[]f64,out:[]f64,overlap:bool)->TbStatus #export_c #effects(all) {
     if !tb_table_ok(x,4) {return TbStatus.shape;}
     if out.count<x.count/4 {return TbStatus.capacity;}
     if overlap {return TbStatus.alias;}

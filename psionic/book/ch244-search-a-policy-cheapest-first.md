@@ -49,13 +49,13 @@ The [example](../examples/policy-search.coax) runs in about four seconds.
 <!-- source: psionic/lib/search.coax manifest -->
 ```jai
 // A policy's digest: chapter 239's encoding under its own tag.
-sr_digest :: (p:SrPolicy)->[32]u8 #export_c {
+sr_digest :: (p:SrPolicy)->[32]u8 #export_c #effects(all) {
     buf:[64]u8;at:=su_text(buf[..],0,"psionic.policy.v1");buf[at]=p.model;
     at=su_u64(buf[..],at+1,cast(u64)p.retries);buf[at]=p.context;at=su_flag(buf[..],at+1,p.verify);
     return su_hash(buf[0..<at]);
 }
 // Each operator changes one field and says so; at its limit it changes nothing.
-sr_apply :: (p:SrPolicy,op:SrOp)->SrApplied {
+sr_apply :: (p:SrPolicy,op:SrOp)->SrApplied #effects(all) {
     r:=SrApplied.{policy=p};
     if op==SrOp.escalate && p.model==0 {r.policy.model=1;r.changed=true;}
     if op==SrOp.retry && p.retries<SR_RETRIES_MAX {r.policy.retries+=1;r.changed=true;}
@@ -67,7 +67,7 @@ sr_apply :: (p:SrPolicy,op:SrOp)->SrApplied {
 // operator or a later one, so each is reached by one path (escalate, then
 // retries, then widen, then verify) and none twice; each is recorded with
 // its digest, the policy it came from and the operator used.
-sr_expand :: (out:[]SrEntry)->SrExpand #export_c {
+sr_expand :: (out:[]SrEntry)->SrExpand #export_c #effects(all) {
     n:=1;
     if out.count<32 {return SrExpand.{status=SrStatus.capacity};}
     out[0]=SrEntry.{policy=SR_SIMPLEST,digest=sr_digest(SR_SIMPLEST),parent=-1};
@@ -103,7 +103,7 @@ winner, #30, is the simplest policy after retry, retry, retry, widen, verify.
 ```jai
 // world-sim-v1. Task i draws a difficulty in [-2, 2], whether it needs long
 // context (3 in 10) and whether its answer can be checked (4 in 10).
-sr_tasks :: (seed:u64,out:[]SrTask)->SrStatus #export_c {
+sr_tasks :: (seed:u64,out:[]SrTask)->SrStatus #export_c #effects(all) {
     if out.count<1 || out.count>SR_TASKS_MAX {return SrStatus.shape;}
     for i:0..<out.count {
         b:=cast(u64)(3*i);
@@ -112,14 +112,14 @@ sr_tasks :: (seed:u64,out:[]SrTask)->SrStatus #export_c {
     }
     return SrStatus.ok;
 }
-sr_chance :: (p:SrPolicy,task:SrTask)->f64 {
+sr_chance :: (p:SrPolicy,task:SrTask)->f64 #effects(all) {
     z:=SR_SKILL[cast(int)p.model]-task.difficulty;
     if task.needs_context {z+=ifx p.context==1 then 1.5 else -1.0;}
     return 0.5+z/(2*(1+abs(z)));
 }
 // Without a check that can run, the agent cannot tell a wrong answer from a
 // right one, so it never retries.
-sr_trial :: (seed:u64,p:SrPolicy,task:SrTask,index:int,trial:int)->SrTrial {
+sr_trial :: (seed:u64,p:SrPolicy,task:SrTask,index:int,trial:int)->SrTrial #effects(all) {
     q:=sr_chance(p,task);
     attempts:=ifx p.verify && task.checkable then 1+p.retries else 1;
     r:=SrTrial.{attempts=attempts};
@@ -149,7 +149,7 @@ task's score is its success rate less 0.04 per unit of mean cost.
 // A tier's measurement: each task tried trials times; its cell holds the
 // success rate, the mean cost and the score. The spend is every unit paid;
 // the score is the cells' scores summed in task order.
-sr_measure :: (seed:u64,p:SrPolicy,tasks:[]SrTask,trials:int,out:[]SrCell)->SrMeasure #export_c {
+sr_measure :: (seed:u64,p:SrPolicy,tasks:[]SrTask,trials:int,out:[]SrCell)->SrMeasure #export_c #effects(all) {
     status:=sr_tasks_ok(tasks);if status!=SrStatus.ok {return SrMeasure.{status=status};}
     if trials<1 || trials>SR_TRIALS_MAX || !sr_policy_ok(p) {return SrMeasure.{status=SrStatus.shape};}
     if out.count<tasks.count {return SrMeasure.{status=SrStatus.capacity};}
@@ -175,7 +175,7 @@ last tier can do that, so only a few policies reach it.
 <!-- source: psionic/lib/search.coax rank -->
 ```jai
 // Positions by total, highest first, the earlier position first on ties.
-sr_rank :: (total:[]f64,order:[]int) {
+sr_rank :: (total:[]f64,order:[]int) #effects(all) {
     for j:0..<total.count {
         q:=j;
         while q>0 && total[j]>total[order[q-1]] {order[q]=order[q-1];q-=1;}
@@ -184,7 +184,7 @@ sr_rank :: (total:[]f64,order:[]int) {
 }
 // The position that alone holds the best score on task i of m, or -1 when
 // the best is shared.
-sr_lone_best :: (cells:[]SrCell,count:int,m:int,i:int)->int {
+sr_lone_best :: (cells:[]SrCell,count:int,m:int,i:int)->int #effects(all) {
     for j:0..<count {
         alone:=true;
         for q:0..<count {if q!=j && cells[q*m+i].score>=cells[j*m+i].score {alone=false;}}
@@ -194,7 +194,7 @@ sr_lone_best :: (cells:[]SrCell,count:int,m:int,i:int)->int {
 }
 // Keeps every position that alone holds the best score on one of m tasks;
 // returns how many were not kept already.
-sr_frontier :: (cells:[]SrCell,count:int,m:int,keep:[]bool)->int {
+sr_frontier :: (cells:[]SrCell,count:int,m:int,keep:[]bool)->int #effects(all) {
     added:=0;
     for i:0..<m {
         j:=sr_lone_best(cells,count,m,i);
@@ -220,7 +220,7 @@ nobody: either of them would do.
 // are ranked by their total score, the lower number first on ties. All but
 // the last tier keep the best keeps[k], and any other policy that alone holds
 // the best score on some task. The last tier's first is the winner.
-sr_search :: (entries:[]SrEntry,tasks:[]SrTask,tiers:[]SrTier,keeps:[]int,rounds:[]SrRound)->SrSearch #export_c {
+sr_search :: (entries:[]SrEntry,tasks:[]SrTask,tiers:[]SrTier,keeps:[]int,rounds:[]SrRound)->SrSearch #export_c #effects(all) {
     n:=entries.count;
     if n<1 || n>SR_POLICIES_MAX || tiers.count<1 || tiers.count>SR_TIERS_MAX || keeps.count!=tiers.count-1 {return SrSearch.{status=SrStatus.shape};}
     status:=sr_tasks_ok(tasks);if status!=SrStatus.ok {return SrSearch.{status=status};}

@@ -2,7 +2,7 @@
 // refuses constructing these numbers. All assertions and arithmetic are Coax.
 #load "../lib/weight-edit.coax";
 
-weight_edit_native_checks :: ()->int #export_c {
+weight_edit_native_checks :: ()->int #export_c #effects(all) {
     ts:=we_example_tensors();p:=[4]f64.[1,2,3,4];pin:=we_identity("linear-v1",ts[..],p[..]);
     encodings:=[5]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001,0x7ff0000000000001,0xfff8000000000001];
     for bits:encodings {

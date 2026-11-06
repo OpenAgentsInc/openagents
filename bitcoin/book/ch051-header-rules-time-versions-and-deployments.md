@@ -66,7 +66,7 @@ within 11 blocks of genesis, where there are as many as there are blocks.
 // prev_times holds the times of the previous block and the up to 10
 // before it, oldest first: 11 of them, or prev_height + 1 near genesis,
 // the most GetMedianTimePast can read.
-header_times_fit :: (prev_height: int, prev_times: [] int) -> bool #export_c {
+header_times_fit :: (prev_height: int, prev_times: [] int) -> bool #export_c #effects(all) {
   if prev_height < 0 { return false; }
   want := ifx prev_height + 1 < LOCKTIME_MEDIAN_SPAN then prev_height + 1 else LOCKTIME_MEDIAN_SPAN;
   return prev_times.count == want;
@@ -93,7 +93,7 @@ times. This chapter reuses it:
 // before it (times holds 1 to 11 of them, in any order). With an even
 // count it is the upper of the two middle times, as in Core.
 LOCKTIME_MEDIAN_SPAN :: 11;
-locktime_median_time_past_vartime :: (times: [] int) -> int {
+locktime_median_time_past_vartime :: (times: [] int) -> int #effects(all) {
   #assert times.count >= 1 && times.count <= LOCKTIME_MEDIAN_SPAN;
   sorted: [LOCKTIME_MEDIAN_SPAN] int;
   n := times.count;
@@ -195,7 +195,7 @@ the same order there too:
 // The lowest version a header at this height may have. Core refuses a
 // version below 2 once BIP-34 is active, below 3 once BIP-66 is, and below
 // 4 once BIP-65 is; the highest active minimum covers the others.
-header_min_version :: (p: ChainParams, height: int) -> int #export_c {
+header_min_version :: (p: ChainParams, height: int) -> int #export_c #effects(all) {
   if chain_deployment_active(p, DEP_CLTV, height) { return 4; }
   if chain_deployment_active(p, DEP_DERSIG, height) { return 3; }
   if chain_deployment_active(p, DEP_HEIGHTINCB, height) { return 2; }
@@ -222,7 +222,7 @@ rules:
 // block is at prev_height; required_bits is the nBits chapter 48's
 // retarget_next_bits_vartime gives for the new header; now is the node's
 // clock, in seconds since 1970.
-header_check_vartime :: (p: ChainParams, prev_height: int, prev_times: [] int, required_bits: u32, h: BlockHeader, now: int) -> int #export_c {
+header_check_vartime :: (p: ChainParams, prev_height: int, prev_times: [] int, required_bits: u32, h: BlockHeader, now: int) -> int #export_c #effects(all) {
   if !header_times_fit(prev_height, prev_times) { return HEADER_CONTEXT; }
   height := prev_height + 1;
   if h.bits != required_bits { return HEADER_BAD_DIFFBITS; }
@@ -298,7 +298,7 @@ Bip9Deployment :: struct {
 }
 // Core's DEPLOYMENT_TESTDUMMY on each network: never active outside
 // regtest, where it starts at once and counts 108 of 144 blocks.
-header_testdummy :: (chain: int) -> Bip9Deployment #export_c {
+header_testdummy :: (chain: int) -> Bip9Deployment #export_c #effects(all) {
   d := Bip9Deployment.{bit=28, start=BIP9_NEVER_ACTIVE, timeout=BIP9_NO_TIMEOUT, period=2016, threshold=1815};
   if chain == CHAIN_TESTNET3 || chain == CHAIN_TESTNET4 { d.threshold = 1512; }
   if chain == CHAIN_REGTEST { d.start = 0; d.period = 144; d.threshold = 108; }
@@ -319,17 +319,17 @@ parameters come from Core v22.0, before it was buried.
 ```jai
 // A version signals a deployment when its top three bits are 001 and the
 // deployment's bit is set. A negative version never signals.
-header_signals :: (d: Bip9Deployment, version: int) -> bool #export_c {
+header_signals :: (d: Bip9Deployment, version: int) -> bool #export_c #effects(all) {
   return (version & VERSIONBITS_TOP_MASK) == VERSIONBITS_TOP_BITS && ((version >> d.bit) & 1) != 0;
 }
-header_bip9_count_vartime :: (d: Bip9Deployment, versions: [] int) -> int #export_c {
+header_bip9_count_vartime :: (d: Bip9Deployment, versions: [] int) -> int #export_c #effects(all) {
   n := 0;
   for i: 0..<versions.count { if header_signals(d, versions[i]) { n += 1; } }
   return n;
 }
 // The version Core mines with (ComputeBlockVersion), for one deployment:
 // the top bits, and the deployment's bit while it is started or locked in.
-header_bip9_version :: (d: Bip9Deployment, state: int) -> int #export_c {
+header_bip9_version :: (d: Bip9Deployment, state: int) -> int #export_c #effects(all) {
   v := VERSIONBITS_TOP_BITS;
   if state == BIP9_STARTED || state == BIP9_LOCKED_IN { v |= 1 << d.bit; }
   return v;
@@ -378,7 +378,7 @@ Bip9Period :: struct { mtp: int; count: int; }
 // DEFINED at genesis. As in Core, any period whose median time past is
 // before the start puts the next period back in DEFINED, so the walk
 // starts again after the last such period.
-header_bip9_state_vartime :: (d: Bip9Deployment, periods: [] Bip9Period) -> int #export_c {
+header_bip9_state_vartime :: (d: Bip9Deployment, periods: [] Bip9Period) -> int #export_c #effects(all) {
   if d.start == BIP9_ALWAYS_ACTIVE { return BIP9_ACTIVE; }
   if d.start == BIP9_NEVER_ACTIVE { return BIP9_FAILED; }
   first := 0;

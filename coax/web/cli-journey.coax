@@ -14,7 +14,7 @@
 #load "../lib/sys/fs.coax";
 #load "cli-journey-fixture.coax";
 
-cxrand_draw :: (out: [] u8, n: int) -> int #foreign;
+cxrand_draw :: (out: [] u8, n: int) -> int #foreign #effects(all);
 CjDoc :: struct { ok: bool; rev: int; hash: [64] u8; moves: [8192] u8; moves_n: int; parent: [64] u8; parent_n: int; parent_rev: int; }
 
 #test "CLI journey confines its writes to exact staging or loopback origins" {
@@ -248,7 +248,7 @@ cj_batches :: (r: [] CjRun, parent: string) -> bool {
   ok := cj_batch_steps(r,slug,dir); removed := fs_remove(dir); return ok && removed;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) { return 2; }
   r: [1] CjRun; r[0].end_ms = proc_now_ms() + 840000; // strict 14-minute whole-journey limit
   r[0].cli = args_value(a[..], "--cli", "apps/openagents-cli/build/openagents");

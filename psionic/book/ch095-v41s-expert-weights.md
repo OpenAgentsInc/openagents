@@ -70,7 +70,7 @@ clamp cases also distinguish an upper-only gate clamp from a symmetric one.
 
 <!-- source: psionic/lib/deepseek/expert.coax expert -->
 ```jai
-de_expert :: (e:DeExpert,x:[]f32,route:f32,limit:f32,out:[]f32,work:DeWork,overlap:bool)->DeResult #export_c {
+de_expert :: (e:DeExpert,x:[]f32,route:f32,limit:f32,out:[]f32,work:DeWork,overlap:bool)->DeResult #export_c #effects(all) {
     p:=de_plan(e);if p.status!=DsStatus.ok {return DeResult.{status=p.status};}
     if x.count!=p.width || out.count<p.width || work.floats.count<p.floats || work.wide.count<p.wide {return DeResult.{status=DsStatus.capacity};}if overlap {return DeResult.{status=DsStatus.alias};}
     v:=de_views(work.floats,p);r:=de_project(e.gate,x,v.gate,work.wide,v.stage,false);if r.status!=DsStatus.ok {return r;}

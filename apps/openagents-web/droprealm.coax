@@ -171,7 +171,7 @@ decimal_at :: (text: string, at: [] int) -> f32 {
 
 // ---- in from the host
 
-realm_message :: (s: [] DropRealm, kind: int, text: string) #export_c {
+realm_message :: (s: [] DropRealm, kind: int, text: string) #export_c #effects(all) {
   if !s[0].started { realm_reset(s); }
   if kind == MSG_PACK {
     at: [1] int;
@@ -195,14 +195,14 @@ hold_of :: (key: int) -> int {
   if key == KEY_RIGHT || key == 'd' || key == 'D' { return HOLD_RIGHT; }
   return 0;
 }
-realm_key :: (s: [] DropRealm, key: int, down: bool) -> bool #export_c {
+realm_key :: (s: [] DropRealm, key: int, down: bool) -> bool #export_c #effects(all) {
   if !s[0].started { realm_reset(s); }
   h := hold_of(key);
   if h != 0 { s[0].held = ifx down then s[0].held | h else s[0].held & (15 - h); return true; }
   if down && key == KEY_ESCAPE { leave(s); return true; }
   return false;
 }
-realm_blur :: (s: [] DropRealm) #export_c { s[0].held = 0; s[0].stick = false; s[0].turning = false; s[0].press = -1; }
+realm_blur :: (s: [] DropRealm) #export_c #effects(all) { s[0].held = 0; s[0].stick = false; s[0].turning = false; s[0].press = -1; }
 
 back_url :: (s: [] DropRealm) -> string { return ifx s[0].back_n > 0 then cast(string) s[0].back[0..<s[0].back_n] else "/worlds"; }
 leave :: (s: [] DropRealm) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, back_url(s)); s[0].action = ACT_NAVIGATE; } }
@@ -212,7 +212,7 @@ button_at :: (s: [] DropRealm, x: f32, y: f32) -> int {
   return -1;
 }
 // A press off the buttons: a thumb (touch, pen) walks and turns; a mouse turns.
-realm_pointer :: (s: [] DropRealm, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+realm_pointer :: (s: [] DropRealm, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if !s[0].started { realm_reset(s); }
   b := button_at(s, x, y);
   s[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then b else -1;
@@ -241,13 +241,13 @@ realm_pointer :: (s: [] DropRealm, x: f32, y: f32, phase: int, kind: int, id: in
   }
   return false;
 }
-realm_cursor :: (s: [] DropRealm) -> int #export_c { return ifx s[0].hover >= 0 then 1 else 0; }
-realm_action :: (s: [] DropRealm) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
-realm_action_done :: (s: [] DropRealm) #export_c { s[0].out_n = 0; }
+realm_cursor :: (s: [] DropRealm) -> int #export_c #effects(all) { return ifx s[0].hover >= 0 then 1 else 0; }
+realm_action :: (s: [] DropRealm) -> int #export_c #effects(all) { a := s[0].action; s[0].action = 0; return a; }
+realm_action_done :: (s: [] DropRealm) #export_c #effects(all) { s[0].out_n = 0; }
 
 // ---- the pack's catalog (docs/verse/realm-host.md): a line each
 
-realm_catalog :: (s: [] DropRealm, text: string) #export_c {
+realm_catalog :: (s: [] DropRealm, text: string) #export_c #effects(all) {
   if !s[0].started { realm_reset(s); }
   s[0].mesh_n = 0; s[0].licence_n = 0; s[0].textures = 0;
   i := 0;
@@ -384,8 +384,8 @@ atan_pos :: (v: f32) -> f32 {
   h2 := h * h;
   return 4 * h * (1 - h2 / 3 + h2 * h2 / 5 - h2 * h2 * h2 / 7);
 }
-realm_pack_failed :: (s: [] DropRealm) #export_c { if !s[0].pack_ready { s[0].pack_failed = true; } }
-realm_draw_count :: (s: [] DropRealm) -> int #export_c { return ifx s[0].pack_ready then s[0].draw_n else 0; }
+realm_pack_failed :: (s: [] DropRealm) #export_c #effects(all) { if !s[0].pack_ready { s[0].pack_failed = true; } }
+realm_draw_count :: (s: [] DropRealm) -> int #export_c #effects(all) { return ifx s[0].pack_ready then s[0].draw_n else 0; }
 
 // ---- walking
 
@@ -601,7 +601,7 @@ draw_realm :: (s: [] DropRealm, out: [] f32) -> int {
 
 // ---- the frame
 
-realm_frame :: (s: [] DropRealm, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+realm_frame :: (s: [] DropRealm, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   if !s[0].started { realm_reset(s); }
   // Golden mode holds the effects (the ember's pulse, the lamp's flicker, the stars' twinkle) as
@@ -635,11 +635,11 @@ realm_frame :: (s: [] DropRealm, out: [] f32, uniforms: [] f32, width: f32, heig
   return n;
 }
 
-realm_golden :: (s: [] DropRealm, on: bool) #export_c { s[0].golden = on; }
+realm_golden :: (s: [] DropRealm, on: bool) #export_c #effects(all) { s[0].golden = on; }
 
-coaxial_droprealm_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_droprealm_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_droprealm_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_droprealm_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_droprealm_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_droprealm_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // ---- checks
 

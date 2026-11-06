@@ -14,10 +14,10 @@ VECTOR_MAX :: 65536;
   #assert !vector_digest(empty[..],out[0..<31]);
   for i:0..<32 {#assert out[i]==before[i];}
 }
-vector_allowed :: (count:int,capacity:int)->bool {
+vector_allowed :: (count:int,capacity:int)->bool #effects(all) {
   return count>=0 && count<=VECTOR_MAX && capacity>=32;
 }
-vector_digest :: (input:[]u8,out:[]u8)->bool #export_c {
+vector_digest :: (input:[]u8,out:[]u8)->bool #export_c #effects(all) {
   if !vector_allowed(input.count,out.count) {return false;}
   digest:=S_hash(cast(string)input);
   for i:0..<8 {

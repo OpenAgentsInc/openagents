@@ -32,11 +32,11 @@ DESK_XR24 :: 875713112;
   #assert !desk_plane(false, false, 0, -1);
 }
 
-desk_buffer :: (w: int, h: int, stride: int, offset: int, fmt: int, flags: int, advertised: bool) -> bool {
+desk_buffer :: (w: int, h: int, stride: int, offset: int, fmt: int, flags: int, advertised: bool) -> bool #effects(all) {
   if w < 1 || w > 3840 || h < 1 || h > 2160 { return false; }
   if stride < w * 4 || stride > 65536 || offset < 0 || offset > 4294967295 { return false; }
   return (fmt == DESK_AR24 || fmt == DESK_XR24) && flags == 0 && advertised;
 }
-desk_plane :: (used: bool, has_plane: bool, plane: int, fd: int) -> bool {
+desk_plane :: (used: bool, has_plane: bool, plane: int, fd: int) -> bool #effects(all) {
   return !used && !has_plane && plane == 0 && fd >= 0;
 }

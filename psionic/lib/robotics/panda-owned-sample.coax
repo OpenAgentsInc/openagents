@@ -79,23 +79,23 @@
  #assert pcs_forward(q[..],s[..],v[..],w[..],out[..])==PcStatus.range;pcs_same(out[0],old);
 }
 
-pcs_status :: (s:PfkStatus)->PcStatus {
+pcs_status :: (s:PfkStatus)->PcStatus #effects(all) {
  if s==PfkStatus.ok {return PcStatus.ok;}if s==PfkStatus.shape {return PcStatus.shape;}if s==PfkStatus.number {return PcStatus.number;}if s==PfkStatus.range {return PcStatus.range;}return PcStatus.pose;
 }
-pcs_rates :: (v:[9]f64)->PcStatus {
+pcs_rates :: (v:[9]f64)->PcStatus #effects(all) {
  for i:0..<9 {x:=v[i];if !pfk_finite(f64_bits(x)) {return PcStatus.number;}limit:=ifx i<7 then 20.0 else 2.0;if x < -limit || x > limit {return PcStatus.range;}}return PcStatus.ok;
 }
-pcs_velocity :: (j:PjOutput,v:[7]pfku.Quantity(PidAngularRate,f64))->[6]f64 {
+pcs_velocity :: (j:PjOutput,v:[7]pfku.Quantity(PidAngularRate,f64))->[6]f64 #effects(all) {
  out:[6]f64;for row:0..<3 {linear:pfku.Quantity(PidLinearRate,f64);angular:pfku.Quantity(PidAngularRate,f64);
   for i:0..<7 {linear=linear+convert_unit(PidLinearRate,j.linear[row*7+i]*v[i]);angular=angular+convert_unit(PidAngularRate,j.angular[row*7+i]*v[i]);}out[row]=linear.value;out[3+row]=angular.value;
  }return out;
 }
-pcs_pack :: (p:PffOutput,m:PmOutput,j:PjOutput,b:PidOutput,q:[7]pfku.Quantity(pfku.Radian,f64),v:[7]pfku.Quantity(PidAngularRate,f64))->PcSample {
+pcs_pack :: (p:PffOutput,m:PmOutput,j:PjOutput,b:PidOutput,q:[7]pfku.Quantity(pfku.Radian,f64),v:[7]pfku.Quantity(PidAngularRate,f64))->PcSample #effects(all) {
  s:PcSample;s.position=[3]f64.[p.arm.grip.position.x,p.arm.grip.position.y,p.arm.grip.position.z];s.rotation=p.arm.grip.rotation;
  for i:0..<7 {s.q[i]=q[i].value;s.qd[i]=v[i].value;s.bias[i]=b.hinge[i].value;s.lower[i]=-pc_limit(i);s.upper[i]=pc_limit(i);}
  for i:0..<49 {s.mass[i]=m.hinge_hinge[i].value;}for i:0..<21 {s.jp[i]=j.linear[i].value;s.jr[i]=j.angular[i].value;}s.velocity=pcs_velocity(j,v);return s;
 }
-pcs_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),hinge_rates:[]pfku.Quantity(PidAngularRate,f64),slide_rates:[]pfku.Quantity(PidLinearRate,f64),output:[]PcSample)->PcStatus #export_c {
+pcs_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),hinge_rates:[]pfku.Quantity(PidAngularRate,f64),slide_rates:[]pfku.Quantity(PidLinearRate,f64),output:[]PcSample)->PcStatus #export_c #effects(all) {
  if hinge_rates.count!=7 || slide_rates.count!=2 || output.count!=1 {return PcStatus.shape;}
  poses:[1]PffOutput;status:=pff_forward(angles,slides,poses[..]);if status!=PfkStatus.ok {return pcs_status(status);}
  q:[7]pfku.Quantity(pfku.Radian,f64);v:[7]pfku.Quantity(PidAngularRate,f64);rawv:[9]f64;
@@ -105,7 +105,7 @@ pcs_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(p
  profile:=pm_profile();metric:=pm_sum_owned(poses[0],profile);jacobian:=pj_project_owned(poses[0].arm);zero_acceleration:[9]f64;bias:=pid_sum_owned(poses[0],profile,rawv,zero_acceleration);
  fresh:=pcs_pack(poses[0],metric,jacobian,bias,q,v);output[0]=fresh;return PcStatus.ok;
 }
-pcs_forward_raw :: (coordinates:[]f64,rates:[]f64,output:[]PcSample)->PcStatus #export_c {
+pcs_forward_raw :: (coordinates:[]f64,rates:[]f64,output:[]PcSample)->PcStatus #export_c #effects(all) {
  if coordinates.count!=9 || rates.count!=9 || output.count!=1 {return PcStatus.shape;}
  q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);v:[7]pfku.Quantity(PidAngularRate,f64);w:[2]pfku.Quantity(PidLinearRate,f64);
  for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];}for i:0..<2 {s[i].value=coordinates[7+i];w[i].value=rates[7+i];}return pcs_forward(q[..],s[..],v[..],w[..],output);

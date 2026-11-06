@@ -24,10 +24,10 @@ LabPlace :: struct {ok:bool;source:int;phase:int;chain:int;kind:int;offset:int;r
   #assert lsp_parts("a/b",parts[..])==2 && parts[0]=="a" && parts[1]=="b";
   #assert lsp_parts("a/b/c",parts[..])== -1 && lsp_parts("",parts[0..<0])== -1;
 }
-lsp_parts :: (text:string,parts:[]string)->int {
+lsp_parts :: (text:string,parts:[]string)->int #effects(all) {
   start:=0;count:=0;for i:0..<text.count+1 {if i==text.count || text[i]=='/' {if count==parts.count {return -1;}parts[count]=text[start..<i];count+=1;start=i+1;}}return count;
 }
-lsp_read :: (text:string)->LabPlace #export_c {
+lsp_read :: (text:string)->LabPlace #export_c #effects(all) {
   p:LabPlace;parts:[11]string;count:=lsp_parts(text,parts[..]);
   if count!=11 || parts[0]!="lab1" {return p;}
   p.source=lr_number(parts[1],2);p.phase=lr_number(parts[2],2);p.chain=lr_number(parts[3],5);p.kind=lr_number(parts[4],6);p.offset=lr_number(parts[5],2147483647);p.row=lr_number(parts[6],32);p.vout=lr_number(parts[7],2147483647);p.table=lr_number(parts[8],1);
@@ -38,7 +38,7 @@ lsp_read :: (text:string)->LabPlace #export_c {
   if p.kind!=2 {p.kn=parts[10].count;for i:0..<p.kn {p.key[i]=parts[10][i];}}
   p.ok=true;return p;
 }
-lsp_write :: (place:LabPlace,out:[]u8)->int {
+lsp_write :: (place:LabPlace,out:[]u8)->int #effects(all) {
   p:=place;o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"lab1");
   for value:[8]int.[p.source,p.phase,p.chain,p.kind,p.offset,p.row,p.vout,p.table] {jo_put(o[..],"/");jo_int(o[..],value);}
   jo_put(o[..],"/");jo_put(o[..],cast(string)p.cursor[0..<p.cn]);jo_put(o[..],"/");jo_put(o[..],ifx p.kind==2 then "-" else cast(string)p.key[0..<p.kn]);return ifx o[0].bad then -1 else o[0].n;

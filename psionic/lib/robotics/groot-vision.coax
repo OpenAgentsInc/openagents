@@ -89,19 +89,19 @@
   #assert gv_rope(g,1,x[..],out[..],work[..],true).status==GvStatus.alias;for value:out {#assert value==-7;}
 }
 
-gv_grid :: (g:GvGrid)->bool #export_c {return g.t>=1 && g.t<=4 && g.h>=2 && g.h/2<=16 && g.h%2==0 && g.w>=2 && g.w/2<=16 && g.w%2==0;}
-gv_plan :: (frames:int,height:int,width:int)->GvPlan #export_c {
+gv_grid :: (g:GvGrid)->bool #export_c #effects(all) {return g.t>=1 && g.t<=4 && g.h>=2 && g.h/2<=16 && g.h%2==0 && g.w>=2 && g.w/2<=16 && g.w%2==0;}
+gv_plan :: (frames:int,height:int,width:int)->GvPlan #export_c #effects(all) {
   if frames<1 || frames>8 || height<32 || height/32>16 || height%32!=0 || width<32 || width/32>16 || width%32!=0 {return GvPlan.{status=GvStatus.shape};}
   g:=GvGrid.{t=(frames+1)/2,h=height/16,w=width/16};n:=g.t*g.h*g.w;
   return GvPlan.{grid=g,pixels=frames*3*height*width,patches=n,packed=n*GV_VECTOR};
 }
-gv_position :: (g:GvGrid,token:int)->GvPosition #export_c {
+gv_position :: (g:GvGrid,token:int)->GvPosition #export_c #effects(all) {
   if !gv_grid(g) || token<0 || token>=g.t*g.h*g.w {return GvPosition.{status=GvStatus.shape};}
   local:=token%(g.h*g.w);block:=local/4;inside:=local%4;
   return GvPosition.{time=token/(g.h*g.w),row=(block/(g.w/2))*2+inside/2,column=(block%(g.w/2))*2+inside%2};
 }
 // book:begin patches
-gv_pack :: (frames:int,height:int,width:int,pixels:[]f32,out:[]f32,overlap:bool)->GvRead #export_c {
+gv_pack :: (frames:int,height:int,width:int,pixels:[]f32,out:[]f32,overlap:bool)->GvRead #export_c #effects(all) {
   p:=gv_plan(frames,height,width);if p.status!=GvStatus.ok {return GvRead.{status=p.status};}
   if pixels.count!=p.pixels || out.count<p.packed {return GvRead.{status=GvStatus.capacity};}
   if overlap {return GvRead.{status=GvStatus.alias};}
@@ -116,31 +116,31 @@ gv_pack :: (frames:int,height:int,width:int,pixels:[]f32,out:[]f32,overlap:bool)
   return GvRead.{written=p.packed};
 }
 // book:end patches
-gv_merge_layout :: (g:GvGrid,channels:int,postshuffle:bool)->GvMerge #export_c {
+gv_merge_layout :: (g:GvGrid,channels:int,postshuffle:bool)->GvMerge #export_c #effects(all) {
   if !gv_grid(g) || channels<1 || channels>2048 {return GvMerge.{status=GvStatus.shape};}
   n:=g.t*g.h*g.w;return GvMerge.{rows=n/4,width=4*channels,norm_width=ifx postshuffle then 4*channels else channels,values=n*channels};
 }
-gv_deepstack :: (layer:int)->int #export_c {if layer==5 {return 0;}if layer==11 {return 1;}if layer==17 {return 2;}return -1;}
-gv_posmix :: (g:GvGrid,token:int)->GvMix #export_c {
+gv_deepstack :: (layer:int)->int #export_c #effects(all) {if layer==5 {return 0;}if layer==11 {return 1;}if layer==17 {return 2;}return -1;}
+gv_posmix :: (g:GvGrid,token:int)->GvMix #export_c #effects(all) {
   p:=gv_position(g,token);if p.status!=GvStatus.ok {return GvMix.{status=p.status};}
   y:=f32(f64(p.row)*47/f64(g.h-1));x:=f32(f64(p.column)*47/f64(g.w-1));
   yl:=cast(int)y;xl:=cast(int)x;yh:=yl;xh:=xl;if yl<47 {yh+=1;}if xl<47 {xh+=1;}
   dy:=f32(f64(y)-f64(yl));dx:=f32(f64(x)-f64(xl));ay:=f32(1.0-f64(dy));ax:=f32(1.0-f64(dx));
   return GvMix.{indices=[4]int.[yl*48+xl,yl*48+xh,yh*48+xl,yh*48+xh],weights=[4]f32.[f32(f64(ay)*f64(ax)),f32(f64(ay)*f64(dx)),f32(f64(dy)*f64(ax)),f32(f64(dy)*f64(dx))]};
 }
-gv_inverse :: (pair:int)->f32 {power:=f32(exp(log(f64(10000))*f64(pair)/16));return f32(1.0/f64(power));}
-gv_rotate :: (x:f32,y:f32,co:f32,si:f32)->GvRotation {
+gv_inverse :: (pair:int)->f32 #effects(all) {power:=f32(exp(log(f64(10000))*f64(pair)/16));return f32(1.0/f64(power));}
+gv_rotate :: (x:f32,y:f32,co:f32,si:f32)->GvRotation #effects(all) {
   a:=f32(f64(x)*f64(co));b:=f32(f64(y)*f64(si));c:=f32(f64(y)*f64(co));d:=f32(f64(x)*f64(si));
   rx:=f64(a)-f64(b);ry:=f64(c)+f64(d);
   if !psionic_ops_fits_f32(rx) || !psionic_ops_fits_f32(ry) {return GvRotation.{status=GvStatus.arithmetic};}
   return GvRotation.{x=f32(rx),y=f32(ry)};
 }
-gv_rope_span :: (g:GvGrid,heads:int)->GvSpan #export_c {
+gv_rope_span :: (g:GvGrid,heads:int)->GvSpan #export_c #effects(all) {
   if !gv_grid(g) || heads<1 || heads>16 {return GvSpan.{status=GvStatus.shape};}
   return GvSpan.{count=g.t*g.h*g.w*heads*GV_HEAD};
 }
 // book:begin rope
-gv_rope :: (g:GvGrid,heads:int,input:[]f32,out:[]f32,work:[]f32,overlap:bool)->GvRead #export_c {
+gv_rope :: (g:GvGrid,heads:int,input:[]f32,out:[]f32,work:[]f32,overlap:bool)->GvRead #export_c #effects(all) {
   p:=gv_rope_span(g,heads);if p.status!=GvStatus.ok {return GvRead.{status=p.status};}
   if input.count!=p.count || out.count<p.count || work.count<p.count {return GvRead.{status=GvStatus.capacity};}
   if overlap {return GvRead.{status=GvStatus.alias};}

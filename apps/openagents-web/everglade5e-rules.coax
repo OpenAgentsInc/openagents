@@ -43,7 +43,7 @@ E5R_BLOCK_NAME :: [9] string.["Commoner", "Guard", "Warrior Veteran", "Mage", "K
 E5R_SCORES :: [54] int.[10, 10, 10, 10, 10, 10,  13, 12, 12, 10, 11, 10,  16, 13, 14, 10, 11, 10,  9, 14, 11, 17, 12, 11,
                         16, 11, 14, 11, 11, 15,  10, 10, 12, 13, 16, 13,  10, 14, 12, 20, 15, 16,  18, 15, 16, 10, 12, 15,
                         11, 14, 12, 11, 13, 11];
-e5r_scores :: (block: int) -> [6] int {
+e5r_scores :: (block: int) -> [6] int #effects(reads, writes, traps) {
   o: [6] int;
   for q: 0..<6 { o[q] = E5R_SCORES[block * 6 + q]; }
   return o;
@@ -58,8 +58,8 @@ E5r :: struct {
   started: bool;
 }
 
-e5r_sq :: (m: f32) -> int { return cast(int) floor((m - f32(E5R_X0)) / f32(E5R_SQ)); }
-e5r_start :: (r: [] E5r, seed: int) #export_c {
+e5r_sq :: (m: f32) -> int #effects(reads, writes, traps) { return cast(int) floor((m - f32(E5R_X0)) / f32(E5R_SQ)); }
+e5r_start :: (r: [] E5r, seed: int) #export_c #effects(reads, writes, traps) {
   b := r[0].b[..];
   b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = E5R_SIDE; b[0].h = E5R_SIDE;
   b[0].beat = f32(E5R_BEAT); b[0].recharge = f32(E5R_RECHARGE);
@@ -77,7 +77,7 @@ e5r_start :: (r: [] E5r, seed: int) #export_c {
 }
 // Your class (the CHARACTER picker, everglade-join.coax): the druid (0) or the Warlock (1). A change makes
 // you that class's caster, whole.
-e5r_class :: (r: [] E5r, klass: int) #export_c {
+e5r_class :: (r: [] E5r, klass: int) #export_c #effects(reads, writes, traps) {
   if !r[0].started || (klass == 1) == r[0].warlock { return; }
   b := r[0].b[..];
   r[0].warlock = klass == 1;
@@ -86,22 +86,22 @@ e5r_class :: (r: [] E5r, klass: int) #export_c {
   b[0].c[E5R_ME].x = c.x; b[0].c[E5R_ME].y = c.y; b[0].c[E5R_ME].turn_at = c.turn_at; b[0].c[E5R_ME].round_at = c.round_at;
 }
 // Bar slot k's entry: Everglade's bar (0 to FB_EG_SLOTS - 1), the Warlock's (FB_WL0 on); ok false for none.
-e5r_has :: (k: int) -> bool { return (k >= 0 && k < FB_EG_SLOTS) || (k >= FB_WL0 && k < FB_WL0 + FB_WL_SLOTS); }
-e5r_entry :: (r: [] E5r, k: int) -> FbAb { return ifx k >= FB_WL0 then r[0].wbar[k - FB_WL0] else r[0].bar[k]; }
+e5r_has :: (k: int) -> bool #effects(reads, writes, traps) { return (k >= 0 && k < FB_EG_SLOTS) || (k >= FB_WL0 && k < FB_WL0 + FB_WL_SLOTS); }
+e5r_entry :: (r: [] E5r, k: int) -> FbAb #effects(reads, writes, traps) { return ifx k >= FB_WL0 then r[0].wbar[k - FB_WL0] else r[0].bar[k]; }
 // Your Hit Points and Temporary Hit Points, the room's (the page's: everglade5e.coax e5_me): at 0 the
 // bar can't be used.
-e5r_you :: (r: [] E5r, hp: f32, temp: f32) #export_c {
+e5r_you :: (r: [] E5r, hp: f32, temp: f32) #export_c #effects(reads, writes, traps) {
   if !r[0].started { return; }
   c := r[0].b[0].c[E5R_ME..<E5R_ME + 1];
   c[0].hp = rs_min(rs_max(cast(int) hp, 0), c[0].hp_max); c[0].temp = rs_max(cast(int) temp, 0);
   c[0].dead = c[0].hp <= 0;
 }
-clamp_r :: (v: int, lo_v: int, hi_v: int) -> int { return rs_max(lo_v, rs_min(hi_v, v)); }
+clamp_r :: (v: int, lo_v: int, hi_v: int) -> int #effects(reads, writes, traps) { return rs_max(lo_v, rs_min(hi_v, v)); }
 
 // ---- what each slot can do now
 
 // What entry a spends: its action, Bonus Action or Reaction (a feature taken at once: Bonus Action).
-e5r_cost_of :: (a: FbAb) -> int {
+e5r_cost_of :: (a: FbAb) -> int #effects(reads, writes, traps) {
   if a.kind == FB_WORLD { return E5R_COST_NONE; }
   if a.kind == FB_RESURGE { return E5R_COST_BONUS; }
   if a.kind != FB_SPELL { return E5R_COST_ACTION; }
@@ -110,7 +110,7 @@ e5r_cost_of :: (a: FbAb) -> int {
   if t == RS_T_REACTION { return E5R_COST_REACTION; }
   return E5R_COST_ACTION;
 }
-e5r_can_of :: (r: [] E5r, a: FbAb) -> int {
+e5r_can_of :: (r: [] E5r, a: FbAb) -> int #effects(reads, writes, traps) {
   b := r[0].b[..];
   if a.kind == FB_WORLD { return E5R_READY; }
   me := b[0].c[E5R_ME];
@@ -120,7 +120,7 @@ e5r_can_of :: (r: [] E5r, a: FbAb) -> int {
 // Each of the bar's slots, E5R_SLOT_FLOATS each: whether it can be used now (E5R_READY or why not),
 // what it has left (slots at its level, uses; -1 nothing to count), seconds till its next slot is
 // back (0 none), what it spends, seconds from its press to its strike, its slot level.
-e5r_bar :: (r: [] E5r, out: [] f32) -> int #export_c {
+e5r_bar :: (r: [] E5r, out: [] f32) -> int #export_c #effects(reads, writes, traps) {
   if !r[0].started { return 0; }
   b := r[0].b[..];
   n := 0;
@@ -139,7 +139,7 @@ e5r_bar :: (r: [] E5r, out: [] f32) -> int #export_c {
   return n;
 }
 // The Warlock's bar the same way: its FB_WL_SLOTS slots (FB_WL0 + k on the wire).
-e5r_wbar :: (r: [] E5r, out: [] f32) -> int #export_c {
+e5r_wbar :: (r: [] E5r, out: [] f32) -> int #export_c #effects(reads, writes, traps) {
   if !r[0].started { return 0; }
   n := 0;
   for k: 0..<FB_WL_SLOTS {
@@ -153,12 +153,12 @@ e5r_wbar :: (r: [] E5r, out: [] f32) -> int #export_c {
   }
   return n;
 }
-hi_r :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
-lo_r :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
+hi_r :: (a: f32, b: f32) -> f32 #effects(reads, writes, traps) { return ifx a > b then a else b; }
+lo_r :: (a: f32, b: f32) -> f32 #effects(reads, writes, traps) { return ifx a < b then a else b; }
 // You, E5R_HERO_FLOATS: hp, max, temp, AC, the spell held (-1 none), action, Bonus Action and slot
 // spent this turn (1 spent), seconds to your next turn, save DC, spell attack, conditions, then your
 // slots at levels 1 to 9 and their most (from 12 and 21), the clock (30) and whether your turn is open (31).
-e5r_hero :: (r: [] E5r, out: [] f32) -> int #export_c {
+e5r_hero :: (r: [] E5r, out: [] f32) -> int #export_c #effects(reads, writes, traps) {
   if !r[0].started || out.count < E5R_HERO_FLOATS { return 0; }
   b := r[0].b[..];
   c := b[0].c[E5R_ME];
@@ -176,7 +176,7 @@ e5r_hero :: (r: [] E5r, out: [] f32) -> int #export_c {
 
 // What slot k does under the rules, one line for the bar's card: its name, its level, how it
 // resolves, and whether it is a house rule.
-e5r_describe :: (r: [] E5r, k: int, out: [] u8) -> int #export_c {
+e5r_describe :: (r: [] E5r, k: int, out: [] u8) -> int #export_c #effects(reads, writes, traps) {
   if !e5r_has(k) { return 0; }
   a := e5r_entry(r, k);
   n := 0;

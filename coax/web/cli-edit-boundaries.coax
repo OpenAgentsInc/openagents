@@ -11,7 +11,7 @@
 #load "../lib/sys/fs.coax";
 #load "cli-journey-fixture.coax";
 
-cxrand_draw :: (out: [] u8, n: int) -> int #foreign;
+cxrand_draw :: (out: [] u8, n: int) -> int #foreign #effects(all);
 CB_REPLY :: 400000;
 CbFault :: struct { mode: int; gets: int; docs: int; posts: int; bad: int; yaw: [16] u8; yaw_n: int; out_n: int; }
 CbResult :: struct { completed: bool; code: int = -1; json: bool; failure: bool; ok: bool; rev: int = -1; status: int; }
@@ -190,7 +190,7 @@ cb_file_sha :: (path: string, out: [] u8) -> string {
   for i: 0..<64 { c := stdout[i]; if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return ""; } out[i] = c; }
   return cast(string)out[0..<64];
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) { return 2; }
   cli := args_value(a[..],"--cli","apps/openagents-cli/build/openagents"); profiles := args_has(a[..],"--publish-profiles");
   hash_buf: [64] u8; hash := cb_file_sha(cli,hash_buf[..]); if hash == "" { tool_errln("cli-edit-boundaries: could not hash the CLI"); return 1; }

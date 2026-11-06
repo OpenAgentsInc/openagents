@@ -104,20 +104,20 @@ Mmo :: struct {
 
 mm_world :: (x: f32, y: f32) -> Point { return v3(f32(MM_X0) + (x + 0.5) * f32(MM_SQ), 0, f32(MM_Z0) + (y + 0.5) * f32(MM_SQ)); }
 // The square under a point in Everglade's metres, as x * 100 + y; -1 off the grid.
-mmo_square :: (x: f32, z: f32) -> int #export_c {
+mmo_square :: (x: f32, z: f32) -> int #export_c #effects(all) {
   gx := cast(int) floor((x - f32(MM_X0)) / f32(MM_SQ)); gy := cast(int) floor((z - f32(MM_Z0)) / f32(MM_SQ));
   gx = clamp_i(gx, 0, MM_COLS - 1); gy = clamp_i(gy, 0, MM_ROWS - 1);
   return gx * 100 + gy;
 }
 // Where a body may stand: the grid's squares, a little in from their outer edge.
-mmo_hold :: (m: [] Mmo, x: f32, z: f32) -> Point #export_c {
+mmo_hold :: (m: [] Mmo, x: f32, z: f32) -> Point #export_c #effects(all) {
   e := 0.3f32;
   return v3(clamp(x, f32(MM_X0) + e, f32(MM_X0) + f32(MM_COLS) * f32(MM_SQ) - e), 0, clamp(z, f32(MM_Z0) + e, f32(MM_Z0) + f32(MM_ROWS) * f32(MM_SQ) - e));
 }
-mmo_start_point :: (m: [] Mmo) -> Point #export_c { return mm_world(6, 9); }
+mmo_start_point :: (m: [] Mmo) -> Point #export_c #effects(all) { return mm_world(6, 9); }
 
 // The battle's numbers this frame (fivemmo-battle.coax mb_actors).
-mmo_take :: (s: [] Everglade, m: [] Mmo, a: [] f32, n: int, clock: f32, beat: f32, wave: int, kills: int, over: bool, me: int, target: int, queued: int) #export_c {
+mmo_take :: (s: [] Everglade, m: [] Mmo, a: [] f32, n: int, clock: f32, beat: f32, wave: int, kills: int, over: bool, me: int, target: int, queued: int) #export_c #effects(all) {
   m[0].n = clamp_i(n, 0, MM_N);
   for i: 0..<m[0].n {
     o := i * MM_ACTOR_FLOATS;
@@ -139,7 +139,7 @@ mmo_take :: (s: [] Everglade, m: [] Mmo, a: [] f32, n: int, clock: f32, beat: f3
   m[0].clock = clock; m[0].beat = beat; m[0].wave = wave; m[0].kills = kills; m[0].over = over;
   m[0].me = me; m[0].target = target; m[0].queued = queued;
 }
-mmo_set_name :: (m: [] Mmo, i: int, name: string) #export_c {
+mmo_set_name :: (m: [] Mmo, i: int, name: string) #export_c #effects(all) {
   if i < 0 || i >= MM_N { return; }
   n := clamp_i(name.count, 0, MM_NAME);
   for k: 0..<n { m[0].name[i * MM_NAME + k] = name[k]; }
@@ -149,7 +149,7 @@ mm_name :: (m: [] Mmo, i: int) -> string { return cast(string) m[0].name[i * MM_
 
 // The pace the controller walks you at: the engine's squares a beat as metres a second, over
 // aethyr/walk.coax's walk (3.5 m/s). 0 when you can't move (Restrained, Paralyzed, down).
-mmo_pace :: (m: [] Mmo) -> f32 #export_c {
+mmo_pace :: (m: [] Mmo) -> f32 #export_c #effects(all) {
   me := m[0].me;
   if me < 0 || me >= m[0].n || m[0].flags[me] & MM_UP == 0 || m[0].beat <= 0 { return 0; }
   feet := m[0].speed[me];
@@ -159,7 +159,7 @@ mmo_pace :: (m: [] Mmo) -> f32 #export_c {
 }
 // How far (in squares, the larger of across and along) your body has got from your square in the
 // battle; past 2.5 the face pulls you back to it.
-mmo_drift :: (m: [] Mmo, x: f32, z: f32) -> f32 #export_c {
+mmo_drift :: (m: [] Mmo, x: f32, z: f32) -> f32 #export_c #effects(all) {
   me := m[0].me;
   if me < 0 { return 0; }
   w := mm_world(m[0].sx[me], m[0].sy[me]);
@@ -167,12 +167,12 @@ mmo_drift :: (m: [] Mmo, x: f32, z: f32) -> f32 #export_c {
 }
 // The ground's height under a point (Everglade's terrain): the walking controller's floor is flat at
 // 0, and this green rises above it, so the face stands you on this.
-mmo_ground :: (s: [] Everglade, x: f32, z: f32) -> f32 #export_c { return ground_at(s, x, z); }
-mmo_home :: (m: [] Mmo) -> Point #export_c { me := clamp_i(m[0].me, 0, MM_N - 1); return mm_world(m[0].sx[me], m[0].sy[me]); }
+mmo_ground :: (s: [] Everglade, x: f32, z: f32) -> f32 #export_c #effects(all) { return ground_at(s, x, z); }
+mmo_home :: (m: [] Mmo) -> Point #export_c #effects(all) { me := clamp_i(m[0].me, 0, MM_N - 1); return mm_world(m[0].sx[me], m[0].sy[me]); }
 
 // The others' bodies for the walking controller, 7 numbers each (a capsule: two ends and a radius),
 // so you walk round them, not through them.
-mmo_bodies :: (s: [] Everglade, m: [] Mmo, out: [] f32) -> int #export_c {
+mmo_bodies :: (s: [] Everglade, m: [] Mmo, out: [] f32) -> int #export_c #effects(all) {
   n := 0;
   for i: 0..<m[0].n {
     if i == m[0].me || m[0].flags[i] & MM_DEAD != 0 || (n + 1) * 7 > out.count { continue; }
@@ -189,7 +189,7 @@ mmo_bodies :: (s: [] Everglade, m: [] Mmo, out: [] f32) -> int #export_c {
 
 // What the battle told this frame (fivemmo-battle.coax mb_events): who casts and who strikes, so
 // their bodies play it, and whom they turn to.
-mmo_events :: (s: [] Everglade, m: [] Mmo, ev: [] f32, n: int) #export_c {
+mmo_events :: (s: [] Everglade, m: [] Mmo, ev: [] f32, n: int) #export_c #effects(all) {
   for e: 0..<n {
     o := e * MM_EV_FLOATS;
     if o + MM_EV_FLOATS > ev.count { break; }
@@ -223,7 +223,7 @@ mmo_nearest_foe :: (m: [] Mmo, i: int) -> int {
 }
 
 MM_SLIDE :: 2.6;   // metres a second a body walks to its square at most
-mmo_pose :: (s: [] Everglade, m: [] Mmo, fx: f32, fy: f32, fz: f32, face: f32, speed: f32, dt: f32) #export_c {
+mmo_pose :: (s: [] Everglade, m: [] Mmo, fx: f32, fy: f32, fz: f32, face: f32, speed: f32, dt: f32) #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   m[0].t += dt;
   s[0].cast_only = true;
@@ -396,7 +396,7 @@ held_shapes :: (s: [] Everglade, m: [] Mmo) {
 // Everglade's frame built its shape draws before these shapes; its people's and the Ranger's
 // draws are made again here: the people's from this frame's parts, the Ranger never (you are one of
 // the people).
-mmo_finish :: (s: [] Everglade, m: [] Mmo, out: [] f32, u: [] f32) -> int #export_c {
+mmo_finish :: (s: [] Everglade, m: [] Mmo, out: [] f32, u: [] f32) -> int #export_c #effects(all) {
   if !s[0].started || u.count < UNIFORM_FLOATS { return 0; }
   held_shapes(s, m);
   for i: 0..<m[0].n {
@@ -529,7 +529,7 @@ MM_KEY_TAB :: -15;   // host.js's Tab
 MM_DO_NONE :: 0; MM_DO_SLOT :: 100; MM_DO_TAB :: 200; MM_DO_PICK :: 300; MM_DO_AIM :: 400;
 // A key down: the hotbar's 1 to 9 (MM_DO_SLOT + slot), Tab (the next foe), the camera's + and -,
 // and the walking keys (everglade.coax hold_bit). 0: not used, 1: used here.
-mmo_key :: (s: [] Everglade, m: [] Mmo, key: int, mods: int) -> int #export_c {
+mmo_key :: (s: [] Everglade, m: [] Mmo, key: int, mods: int) -> int #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   if key >= '1' && key <= '9' { return MM_DO_SLOT + key - '1'; }
   if key == MM_KEY_TAB || key == 't' || key == 'T' { return MM_DO_TAB; }   // Tab, or T where the page's own Tab moves focus
@@ -540,7 +540,7 @@ mmo_key :: (s: [] Everglade, m: [] Mmo, key: int, mods: int) -> int #export_c {
   s[0].held = s[0].held | b;
   return 1;
 }
-mmo_key_up :: (s: [] Everglade, key: int) -> bool #export_c {
+mmo_key_up :: (s: [] Everglade, key: int) -> bool #export_c #effects(all) {
   b := hold_bit(key);
   if b == 0 { return false; }
   if s[0].held & b != 0 { s[0].held = s[0].held - b; }
@@ -548,7 +548,7 @@ mmo_key_up :: (s: [] Everglade, key: int) -> bool #export_c {
 }
 // A press: a class button (MM_DO_PICK + its index), else (a click, not a drag) a creature under it
 // (MM_DO_AIM + its index); a mouse drag turns the camera. 0: not used (a finger: the face's sticks).
-mmo_pointer :: (s: [] Everglade, m: [] Mmo, x: f32, y: f32, phase: int, kind: int, id: int) -> int #export_c {
+mmo_pointer :: (s: [] Everglade, m: [] Mmo, x: f32, y: f32, phase: int, kind: int, id: int) -> int #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
   if phase == 0 {
     for i: 0..<12 { if in_box(m[0].picks[i], x, y) { return MM_DO_PICK + i; } }
@@ -586,9 +586,9 @@ mmo_pick_at :: (s: [] Everglade, m: [] Mmo, x: f32, y: f32) -> int {
   }
   return best;
 }
-mmo_set_pick :: (m: [] Mmo, pick: int) #export_c { m[0].pick = clamp_i(pick, 0, 11); for i: 0..<MM_N { m[0].placed[i] = false; } }
+mmo_set_pick :: (m: [] Mmo, pick: int) #export_c #effects(all) { m[0].pick = clamp_i(pick, 0, 11); for i: 0..<MM_N { m[0].placed[i] = false; } }
 // The hash: #class=NAME picks your class (one of the twelve, by its name).
-mmo_hash_pick :: (hash: string) -> int #export_c {
+mmo_hash_pick :: (hash: string) -> int #export_c #effects(all) {
   for i: 0..<12 {
     nm := MM_PICK_NAME[i];
     want := 6 + nm.count;

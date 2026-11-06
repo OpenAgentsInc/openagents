@@ -314,18 +314,18 @@ RL_SAME :: 1.0/1073741824.0;
 // the questions whose outcome changed, the share that changed to right has
 // a 95% Wilson interval whose lower end is above one half: more gained than
 // lost, beyond chance.
-rl_accept :: (before:RlRate,after:RlRate,was:[]u8,now:[]u8)->bool {
+rl_accept :: (before:RlRate,after:RlRate,was:[]u8,now:[]u8)->bool #effects(all) {
     if before.status!=RlStatus.ok || after.status!=RlStatus.ok || after.count!=before.count {return false;}
     return rl_above(rl_changes(was,now),0.5);
 }
 // right: the questions gained; count: those gained or lost.
-rl_changes :: (was:[]u8,now:[]u8)->RlRate {
+rl_changes :: (was:[]u8,now:[]u8)->RlRate #effects(all) {
     r:=RlRate.{};if was.count!=now.count {r.status=RlStatus.data;return r;}
     for i:0..<was.count {if was[i]!=now[i] {r.count+=1;if now[i]==1 {r.right+=1;}}}
     return r;
 }
 // The lower end of r's interval is above bound.
-rl_above :: (r:RlRate,bound:f64)->bool {return r.status==RlStatus.ok && pf_wilson(r.right,r.count).lo>bound;}
+rl_above :: (r:RlRate,bound:f64)->bool #effects(all) {return r.status==RlStatus.ok && pf_wilson(r.right,r.count).lo>bound;}
 // book:end accept
 
 // book:begin rollout
@@ -333,7 +333,7 @@ rl_above :: (r:RlRate,bound:f64)->bool {return r.status==RlStatus.ok && pf_wilso
 // sf_ask, but every token is drawn with options from seed's two streams, the
 // stop token the sampler drew is kept, and every token the model drew is a
 // target: the prompt and the calculator's output are not.
-rl_rollout :: (c:NcConfig,w:[]f64,table:[]u8,specials:[]int,p:SfProblem,options:NxOptions,seed:u64,work:NeWork,tok:[]int,tgt:[]int)->RlRoll {
+rl_rollout :: (c:NcConfig,w:[]f64,table:[]u8,specials:[]int,p:SfProblem,options:NxOptions,seed:u64,work:NeWork,tok:[]int,tgt:[]int)->RlRoll #effects(all) {
     if tok.count<c.context || tgt.count<c.context {return RlRoll.{status=RlStatus.shape};}
     q:[24]u8;m:=[2]NcMessage.[NcMessage.{role=NcRole.user,text=sf_text(q[..],sf_question(p,q[..]))},NcMessage.{role=NcRole.assistant}];none:[1]NcPart;
     pr:=ne_prompt(table,specials,c.vocab,m[..],none[..],tok,false);
@@ -360,7 +360,7 @@ rl_rollout :: (c:NcConfig,w:[]f64,table:[]u8,specials:[]int,p:SfProblem,options:
 }
 // The reply's end: a drawn <|assistant_end|> or <|bos|> stays, as the token
 // the sampler chose.
-rl_close :: (base:int,g:NeReply,at:int,tok:[]int)->int {
+rl_close :: (base:int,g:NeReply,at:int,tok:[]int)->int #effects(all) {
     end:=at+g.written;
     if g.stop==NeStop.assistant_end {tok[end]=base+NC_ASSISTANT_END;end+=1;}
     if g.stop==NeStop.bos {tok[end]=base;end+=1;}
@@ -374,7 +374,7 @@ rl_close :: (base:int,g:NeReply,at:int,tok:[]int)->int {
 // <|assistant_end|> and the reply before it, after the calculator's output
 // when there was a call, is exactly the right number. A rollout whose
 // recorded output is not what the calculator returns for the call is refused.
-rl_grade :: (table:[]u8,base:int,p:SfProblem,tok:[]int,prompt:int)->RlGrade {
+rl_grade :: (table:[]u8,base:int,p:SfProblem,tok:[]int,prompt:int)->RlGrade #effects(all) {
     n:=tok.count;if prompt<1 || prompt>=n {return RlGrade.{status=RlStatus.shape};}
     e:[12]u8;v:[12]u8;expr:=sf_text(e[..],sf_expr(p,e[..]));want:=sf_text(v[..],sf_itoa(sf_value(p),v[..]));
     done:=tok[n-1]==base+NC_ASSISTANT_END;r:=RlGrade.{};
@@ -389,7 +389,7 @@ rl_grade :: (table:[]u8,base:int,p:SfProblem,tok:[]int,prompt:int)->RlGrade {
     r.answered=done && sf_says(table,tok[at..<n-1],want);
     return r;
 }
-rl_reward :: (g:RlGrade)->f64 {return ifx g.called && g.answered then 1.0 else 0.0;}
+rl_reward :: (g:RlGrade)->f64 #effects(all) {return ifx g.called && g.answered then 1.0 else 0.0;}
 // book:end grade
 
 // book:begin advantages
@@ -397,7 +397,7 @@ rl_reward :: (g:RlGrade)->f64 {return ifx g.called && g.answered then 1.0 else 0
 // beta times its log-probability ratio to the reference; its advantage is
 // that minus its group's mean, and over the group's standard deviation when
 // scale is set (0 when the group is all alike).
-rl_advantages :: (group:int,beta:f64,scale:bool,reward:[]f64,logp:[]f64,logr:[]f64,out:[]f64)->RlStatus {
+rl_advantages :: (group:int,beta:f64,scale:bool,reward:[]f64,logp:[]f64,logr:[]f64,out:[]f64)->RlStatus #effects(all) {
     n:=reward.count;
     if group<1 || n%group!=0 || logp.count!=n || logr.count!=n || out.count!=n {return RlStatus.data;}
     if !(beta>=0) {return RlStatus.config;}
@@ -415,7 +415,7 @@ rl_advantages :: (group:int,beta:f64,scale:bool,reward:[]f64,logp:[]f64,logr:[]f
 // the seed cr_bits(plan.seed, (s*prompts+j)*group+k). Each is graded, read by
 // the policy and the frozen reference, and given its advantage.
 rl_collect :: (plan:RlPlan,version:int,c:NcConfig,w:[]f64,ref:[]f64,table:[]u8,specials:[]int,problems:[]SfProblem,work:NeWork,k:PfWork,
-               tok:[]int,tgt:[]int,start:[]int,reward:[]f64,logp:[]f64,logr:[]f64,adv:[]f64)->RlBatch {
+               tok:[]int,tgt:[]int,start:[]int,reward:[]f64,logp:[]f64,logr:[]f64,adv:[]f64)->RlBatch #effects(all) {
     count:=plan.prompts*plan.group;b:=RlBatch.{version=version};
     if plan.prompts<1 || plan.group<1 || problems.count<1 || version<0 {b.status=RlStatus.config;return b;}
     if start.count<count+1 || reward.count<count || logp.count<count || logr.count<count || adv.count<count || tok.count<count*c.context || tgt.count<count*c.context {b.status=RlStatus.shape;return b;}
@@ -442,7 +442,7 @@ rl_collect :: (plan:RlPlan,version:int,c:NcConfig,w:[]f64,ref:[]f64,table:[]u8,s
 // the schedule and AdamW as in chapter 128. A batch sampled at another
 // version, or whose recorded log-probabilities the current weights do not
 // give, is refused before anything moves.
-rl_step :: (p:NpPlan,run:NpRun,batch:RlBatch,tok:[]int,tgt:[]int,start:[]int,logp:[]f64,adv:[]f64,w:[]f64,m:[]f64,v:[]f64,total:[]f64,k:PfWork)->RlStep {
+rl_step :: (p:NpPlan,run:NpRun,batch:RlBatch,tok:[]int,tgt:[]int,start:[]int,logp:[]f64,adv:[]f64,w:[]f64,m:[]f64,v:[]f64,total:[]f64,k:PfWork)->RlStep #effects(all) {
     c:=p.model;n:=w.count;fail:=RlStep.{run=run};
     if run.step>=p.steps {fail.status=RlStatus.config;return fail;}
     if batch.status!=RlStatus.ok || batch.count<1 || start.count<batch.count+1 || logp.count<batch.count || adv.count<batch.count || batch.kept<1 {fail.status=RlStatus.data;return fail;}
@@ -466,7 +466,7 @@ rl_step :: (p:NpPlan,run:NpRun,batch:RlBatch,tok:[]int,tgt:[]int,start:[]int,log
 // book:begin rate
 // Held-out success: each question answered greedily and graded by rl_grade,
 // its outcome in out (1 when the reward is 1).
-rl_rate :: (c:NcConfig,w:[]f64,table:[]u8,specials:[]int,problems:[]SfProblem,work:NeWork,out:[]u8)->RlRate {
+rl_rate :: (c:NcConfig,w:[]f64,table:[]u8,specials:[]int,problems:[]SfProblem,work:NeWork,out:[]u8)->RlRate #effects(all) {
     r:=RlRate.{};if problems.count==0 || out.count!=problems.count {r.status=RlStatus.data;return r;}
     tok:[NE_PROMPT_MAX]int;tgt:[NE_PROMPT_MAX]int;greedy:=NxOptions.{temperature=0};
     for p:problems {o:=rl_rollout(c,w,table,specials,p,greedy,cast(u64)r.count,work,tok[..],tgt[..]);if o.status!=RlStatus.ok {r.status=o.status;return r;}

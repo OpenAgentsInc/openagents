@@ -1,7 +1,7 @@
 // Native-only boundary witness: checks public draft observations after the
 // same guarded insertion path that the desktop screen calls.
 #load "../zeron/dictation.coax";
-dictation_insertion_native :: ()->int #export_c {
+dictation_insertion_native :: ()->int #export_c #effects(all) {
  c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;composer_insert(c[..],"prefix tail");c[0].anchor=7;c[0].caret=7;count:=c[0].hist[UNDO].count;
  if !zdi_begin(g[..],c[..],1) || !zdi_apply(g[..],c[..],1,"hello\nrun_command") {return 1;}
  if typed(c[..])!="prefix hello\nrun_command tail" || c[0].sent!=0 || c[0].last_n!=0 || c[0].hist[UNDO].count!=count+1 {return 2;}

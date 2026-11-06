@@ -45,14 +45,14 @@ DB_ASSET :: 0;DB_DOCUMENT :: 1;DB_DECISION :: 2;DB_VIEWER :: 3;DB_OTHER_API :: 4
     #assert !db_same_hash(cast(string)a[..],cast(string)a[0..<63]);
 }
 
-db_prefix :: (text:string,prefix:string)->bool {return text.count>=prefix.count && text[0..<prefix.count]==prefix;}
-db_origin :: (origin:string)->bool {
+db_prefix :: (text:string,prefix:string)->bool #effects(all) {return text.count>=prefix.count && text[0..<prefix.count]==prefix;}
+db_origin :: (origin:string)->bool #effects(all) {
     prefix:="http://127.0.0.1:";
     if !db_prefix(origin,prefix) {return false;}n:=origin.count-prefix.count;if n<1 || n>5 {return false;}
     port:=0;for i:prefix.count..<origin.count {c:=origin[i];if c<'0' || c>'9' {return false;}port=port*10+cast(int)(c-'0');}
     return port>=1 && port<=65535;
 }
-db_route :: (origin:string,url:string)->int {
+db_route :: (origin:string,url:string)->int #effects(all) {
     if !db_origin(origin) || url.count<=origin.count || !db_prefix(url,origin) || url[origin.count]!='/' {return DB_EXTERNAL;}
     path:=url[origin.count..<url.count];document:="/realms/everglade";
     if db_prefix(path,document) {tail:=path[document.count..<path.count];if tail.count==0 || tail[0]=='?' {return DB_DOCUMENT;}}
@@ -61,10 +61,10 @@ db_route :: (origin:string,url:string)->int {
     if path=="/api/playtest/world/everglade" {return DB_WORLD;}
     return ifx db_prefix(path,"/api/") then DB_OTHER_API else DB_ASSET;
 }
-db_wire :: (method:string,authorization:bool,player:bool,body_bytes:int)->bool {
+db_wire :: (method:string,authorization:bool,player:bool,body_bytes:int)->bool #effects(all) {
     return method=="POST" && !authorization && !player && body_bytes>=1 && body_bytes<=4096;
 }
-db_contract :: (body:string,expected:string,calls:int,wire:bool)->bool {return expected.count>0 && body==expected && calls==1 && wire;}
-db_same_hash :: (before:string,after:string)->bool {return before.count==64 && before==after;}
+db_contract :: (body:string,expected:string,calls:int,wire:bool)->bool #effects(all) {return expected.count>0 && body==expected && calls==1 && wire;}
+db_same_hash :: (before:string,after:string)->bool #effects(all) {return before.count==64 && before==after;}
 // The Directions request names this exact policy; nothing else is counted as one.
-db_guide_policy :: (policy:string)->bool {return policy=="everglade-directions-v1";}
+db_guide_policy :: (policy:string)->bool #effects(all) {return policy=="everglade-directions-v1";}

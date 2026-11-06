@@ -31,18 +31,18 @@ ResumeEnvelope :: struct {ok:bool;legacy:[256]u8;legacy_n:int;capture:CharacterC
   #assert rt_mac("profile-check-key-not-a-secret-0123456789","v4.alpha.-",mac[..]);
   #assert cast(string)mac[..]=="c841d86727f5eab86de80bfd3ab0376b01e98a9968cb8325b686599f6a33c692";
 }
-rt_mac :: (key:string,text:string,out:[]u8)->bool {
+rt_mac :: (key:string,text:string,out:[]u8)->bool #effects(all) {
   if key.count<32||key.count>128||!rt_size(text.count)||out.count<64{return false;}
   k:[128]u8;b:[RT_TEXT]u8;mac:[32]u8;for i:0..<key.count{k[i]=key[i];}for i:0..<text.count{b[i]=text[i];}
   _:=hmac_sha256_checked(k[0..<key.count],b[0..<text.count],mac[..],false);
   alphabet:="0123456789abcdef";for i:0..<32{out[i*2]=alphabet[cast(int)(mac[i]>>4)];out[i*2+1]=alphabet[cast(int)(mac[i]&15)];}return true;
 }
-resume_ticket_wrap :: (key:string,legacy:string,saved:string,out:[]u8)->string #export_c {
+resume_ticket_wrap :: (key:string,legacy:string,saved:string,out:[]u8)->string #export_c #effects(all) {
   b:[RT_TEXT]u8;prefix:=resume_ticket_prefix(legacy,saved,b[..]);if prefix==""{return "";}n:=prefix.count;
   mac:[64]u8;if !rt_mac(key,cast(string)b[0..<n],mac[..])||!rt_fit(n,out.count){return "";}
   for i:0..<n{out[i]=b[i];}out[n]='.';for i:0..<64{out[n+1+i]=mac[i];}return cast(string)out[0..<n+65];
 }
-rt_read :: (key:string,text:string)->ResumeEnvelope {
+rt_read :: (key:string,text:string)->ResumeEnvelope #effects(all) {
   r:=ResumeEnvelope.{};if !rt_size(text.count){return r;}
   starts:[4]int;if rt_split(text,starts[..])!=4{return r;}f:[4]string;for i:0..<4{end:=ifx i==3 then text.count else starts[i+1]-1;f[i]=text[starts[i]..<end];}
   if f[0]!="v4"||f[3].count!=64{return r;}
@@ -53,7 +53,7 @@ rt_read :: (key:string,text:string)->ResumeEnvelope {
   r.ok=true;return r;
 }
 
-rt_split :: (text:string,starts:[]int)->int {
+rt_split :: (text:string,starts:[]int)->int #effects(all) {
   fields:=1;for i:0..<text.count{if text[i]=='.'{if fields>=starts.count{return -1;}starts[fields]=i+1;fields+=1;}}return fields;
 }
 #test "resume envelope: malformed header and a first-byte MAC change cannot bypass authentication" {

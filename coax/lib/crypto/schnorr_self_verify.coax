@@ -47,7 +47,7 @@ SSV_SIG :: [64]u8.[233,7,131,31,128,132,141,16,105,165,55,27,64,36,16,54,75,223,
 // 8x32 form, computed by tools/coax-nostr/fuzz/oracle.py (point_mul).
 SSV_NEG_E :: ScScalar.{limbs=[8]u32.[349747827,36148612,4098338157,1274856864,1683309728,846049456,1846350655,2487830213]};
 SSV_EP :: Sg32.{x=Sf32.{limb=[8]u32.[2937904500,3194218660,1788718318,3240692724,63033429,3192549047,3678484726,3261118877]},y=Sf32.{limb=[8]u32.[2779812506,3456191338,1531934662,2592375517,628585005,2972270915,3562684465,3070154552]},z=Sf32.{limb=[8]u32.[1,0,0,0,0,0,0,0]}};
-ssv_test_clear :: (work:[]SsvWork)->bool {
+ssv_test_clear :: (work:[]SsvWork)->bool #effects(all) {
   w:=work[0];bits:u64;
   for i:0..<32 {bits|=cast(u64)(w.tag[i]|w.digest[i]|w.key[i]);}for j:0..<64 {bits|=cast(u64)w.sha[0].block[j]|cast(u64)w.sha[0].schedule[j];}
   for i:0..<8 {bits|=cast(u64)w.sha[0].h[i];}bits|=w.sha[0].total|cast(u64)w.sha[0].used|cast(u64)w.sha[0].phase;
@@ -172,7 +172,7 @@ ssv_test_clear :: (work:[]SsvWork)->bool {
   for i:0..<32 {work[0].key[i]=key[i];}for j:0..<64 {work[0].candidate[j]=sig[j];}sig[63]^=1;
   #assert ssv_step(message[..],key[..],sig[0..<32],sig[..],work[..],false)==SSV_MORE && work[0].stage==2 && work[0].bound==0;
 }
-ssv_test_final :: (message:[]u8,key:[]u8,sig:[]u8,work:[]SsvWork)->u64 {
+ssv_test_final :: (message:[]u8,key:[]u8,sig:[]u8,work:[]SsvWork)->u64 #effects(all) {
   // Stage 0 on official vector 0, then the recorded (-e)*P in place of stage 1.
   zero:[32]u8;k:=SSV_KEY;s:=SSV_SIG;#assert ssv_step(zero[..],k[..],s[0..<32],s[..],work,false)==SSV_MORE;
   work[0].ep=SSV_EP;work[0].stage=2;return ssv_step(message,key,sig[0..<32],sig,work,false);
@@ -226,30 +226,30 @@ SSV_ALT_EP :: Sg32.{x=Sf32.{limb=[8]u32.[4059365033,2740183597,536602856,1697533
 // ---------- implementation ----------
 // Public metadata only: lengths, the single work record and the host's
 // truthful observation that work overlaps an input view.
-ssv_views :: (message_count:int,public_count:int,r_count:int,candidate_count:int,work_count:int,overlap:bool)->bool {
+ssv_views :: (message_count:int,public_count:int,r_count:int,candidate_count:int,work_count:int,overlap:bool)->bool #effects(all) {
   return message_count>=0 && message_count<=SV_MAX_MESSAGE && public_count==32 && r_count==32 && candidate_count==64 && work_count==1 && !overlap;
 }
 // R as a field element: value is R mod p and below is the R<p mask, from one
 // fixed borrow chain and a masked select. R is the first 32 bytes of bytes,
 // so a whole 64-byte candidate gives its r.
-ssv_load_field :: (bytes:[]u8)->SsvField {
+ssv_load_field :: (bytes:[]u8)->SsvField #effects(all) {
   raw:Sf32;for i:0..<8 {raw.limb[i]=cb_load_be32(bytes,(7-i)*4).value;}
   r:SsvField;reduced:Sf32;borrow:u64;
   for i:0..<8 {wide:=(cast(u64)1<<32)+cast(u64)raw.limb[i]-cast(u64)SF32_P.limb[i]-borrow;reduced.limb[i]=cast(u32)(wide&SF32_WORD);borrow=1-(wide>>32);}
   r.below=cb_mask(borrow);r.value=sg32_choose_field(r.below,raw,reduced);return r;
 }
 // s as raw 256 bits with its s<n mask; the base multiplier reduces it.
-ssv_load_scalar :: (bytes:[]u8)->SsvScalar {
+ssv_load_scalar :: (bytes:[]u8)->SsvScalar #effects(all) {
   r:SsvScalar;wide:[9]u32;
   for i:0..<8 {r.value.limbs[i]=cb_load_be32(bytes,(7-i)*4).value;wide[i]=r.value.limbs[i];}
   r.below=cb_mask(sc_subtract_n(wide).borrow);return r;
 }
-ssv_scalar_mask_equal :: (a:ScScalar,b:ScScalar)->u64 {
+ssv_scalar_mask_equal :: (a:ScScalar,b:ScScalar)->u64 #effects(all) {
   difference:u64;for i:0..<8 {difference|=cast(u64)(a.limbs[i]^b.limbs[i]);}return sg_word_equal(difference,0);
 }
 // e = H_challenge(R||P||m) mod n, stored negated. SHA-256 work depends only
 // on the public message length; statuses depend only on view metadata.
-ssv_challenge :: (message:[]u8,public_key:[]u8,r:[]u8,work:[]SsvWork)->bool {
+ssv_challenge :: (message:[]u8,public_key:[]u8,r:[]u8,work:[]SsvWork)->bool #effects(all) {
   digest:=SV_TAG_HASH;ok:=sha256_emit(digest.words[..],work[0].tag[..])==SHA_OK;
   sha:=work[0].sha[..];
   ok=ok && so_init(sha) && so_update(sha,work[0].tag[..],false) && so_update(sha,work[0].tag[..],false) && so_update(sha,r,false) && so_update(sha,public_key,false) && so_update(sha,message,false) && so_finish(sha,work[0].digest[..],false);
@@ -257,25 +257,25 @@ ssv_challenge :: (message:[]u8,public_key:[]u8,r:[]u8,work:[]SsvWork)->bool {
 }
 // Fixed-chain affine conversion; infinity (z=0) inverts to zero and is
 // carried only by the finite mask.
-ssv_affine :: (point:Sg32,work:[]SsvWork) {
+ssv_affine :: (point:Sg32,work:[]SsvWork) #effects(all) {
   zero:Sf32;inverse:=ef_inverse(point.z);z2:=ef_field_mul(inverse,inverse);
   y:=ef_field_mul(point.y,ef_field_mul(z2,inverse));
   work[0].affine[0].x=ef_field_mul(point.x,z2);
   work[0].affine[0].finite=sg32_mask_equal(point.z,zero)^CB_MAX64;
   work[0].affine[0].even=cb_mask(cast(u64)(y.limb[0]&1)^1);
 }
-ssv_combine :: (r_below:u64,s_below:u64,finite:u64,even:u64,x_match:u64,bound:u64)->u64 {
+ssv_combine :: (r_below:u64,s_below:u64,finite:u64,even:u64,x_match:u64,bound:u64)->u64 #effects(all) {
   return value_barrier(r_below&s_below&finite&even&x_match&bound);
 }
 // Masked: are the current candidate and key the stage-0 copies?
-ssv_bind :: (public_key:[]u8,candidate:[]u8,work:[]SsvWork)->u64 {
+ssv_bind :: (public_key:[]u8,candidate:[]u8,work:[]SsvWork)->u64 #effects(all) {
   return cb_ct_equal(public_key,work[0].key[..])&cb_ct_equal(candidate,work[0].candidate[..]);
 }
-ssv_clear :: (work:[]SsvWork)->u64 {fresh:SsvWork;work[0]=fresh;return 0;}
+ssv_clear :: (work:[]SsvWork)->u64 #effects(all) {fresh:SsvWork;work[0]=fresh;return 0;}
 // r is the candidate's R as a separate public view: the challenge hashes r,
 // never the candidate, and r must equal candidate[0..<32] (a masked compare),
 // or the result is refused.
-ssv_prepare :: (message:[]u8,public_key:[]u8,r:[]u8,candidate:[]u8,work:[]SsvWork)->u64 {
+ssv_prepare :: (message:[]u8,public_key:[]u8,r:[]u8,candidate:[]u8,work:[]SsvWork)->u64 #effects(all) {
   point:=sg_lift_x_public(public_key);cleared:=ssv_clear(work);if !point.ok {return cleared;}
   // The lifted public key is stored before the copy loops, so the audit's
   // loop rule doesn't taint it with the candidate.
@@ -286,12 +286,12 @@ ssv_prepare :: (message:[]u8,public_key:[]u8,r:[]u8,candidate:[]u8,work:[]SsvWor
   work[0].r[0]=ssv_load_field(candidate);work[0].s[0]=ssv_load_scalar(candidate[32..<64]);
   work[0].stage=1;return SSV_MORE;
 }
-ssv_peer :: (public_key:[]u8,candidate:[]u8,work:[]SsvWork)->u64 {
+ssv_peer :: (public_key:[]u8,candidate:[]u8,work:[]SsvWork)->u64 #effects(all) {
   work[0].bound&=ssv_bind(public_key,candidate,work);
   work[0].ep=sg32_from_point(smc_multiply(work[0].negative_e,work[0].peer).value);
   work[0].stage=2;return SSV_MORE;
 }
-ssv_finish :: (message:[]u8,public_key:[]u8,r:[]u8,candidate:[]u8,work:[]SsvWork)->u64 {
+ssv_finish :: (message:[]u8,public_key:[]u8,r:[]u8,candidate:[]u8,work:[]SsvWork)->u64 #effects(all) {
   work[0].bound&=ssv_bind(public_key,candidate,work);stored:=work[0].negative_e;
   if !ssv_challenge(message,public_key,r,work) {return ssv_clear(work);}
   work[0].bound&=ssv_scalar_mask_equal(stored,work[0].negative_e);
@@ -305,7 +305,7 @@ ssv_finish :: (message:[]u8,public_key:[]u8,r:[]u8,candidate:[]u8,work:[]SsvWork
 // SSV_VALID for a valid BIP-340 signature of message under public_key, or 0.
 // The candidate is never written. Refused views leave work untouched; every
 // other non-SSV_MORE return leaves work cleared. No caller success input.
-ssv_step :: (message:[]u8,public_key:[]u8,r:[]u8,candidate:[]u8,work:[]SsvWork,overlap:bool)->u64 #export_c {
+ssv_step :: (message:[]u8,public_key:[]u8,r:[]u8,candidate:[]u8,work:[]SsvWork,overlap:bool)->u64 #export_c #effects(all) {
   if !ssv_views(message.count,public_key.count,r.count,candidate.count,work.count,overlap) {return 0;}
   stage:=work[0].stage;
   if stage==0 {return ssv_prepare(message,public_key,r,candidate,work);}
@@ -314,6 +314,6 @@ ssv_step :: (message:[]u8,public_key:[]u8,r:[]u8,candidate:[]u8,work:[]SsvWork,o
   return ssv_clear(work);
 }
 // Nostr: the message is exactly the 32-byte event id.
-ssv_nostr_step :: (event_id:[]u8,public_key:[]u8,r:[]u8,candidate:[]u8,work:[]SsvWork,overlap:bool)->u64 #export_c {
+ssv_nostr_step :: (event_id:[]u8,public_key:[]u8,r:[]u8,candidate:[]u8,work:[]SsvWork,overlap:bool)->u64 #export_c #effects(all) {
   if event_id.count!=32 {return 0;}return ssv_step(event_id,public_key,r,candidate,work,overlap);
 }

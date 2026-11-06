@@ -1,0 +1,56 @@
+// Native integration assertions use the actual room, combat and ledger entry points.
+// tool.sh: stack-gib 1
+#import "Basic";
+#load "../web/room/room.coax";
+native_seat_lifetime :: () #effects(all) {
+  v:[1]RmServer;k:=rc_test_room(v[..],"handles",2,false);r:=v[0].eg[k].relay;
+  old:=eg_seat_ref(v[..],k,SeatId.{value=0});
+  #assert handle_present(old) && eg_seat_ref_live(v[..],k,old);
+  eg_rejoin(v[..],r,0,SeatId.{value=0});
+  #assert eg_seat_ref(v[..],k,SeatId.{value=0})==old;
+  #assert rc_hear(v[..],k,SeatId.{value=0},7,0,1,0,1,-1,0);
+  saved:=v[0].eg[k].casts[0];#assert saved.owner==old;
+  eg_left(v[..],r,SeatId.{value=0});eg_join(v[..],r,0,SeatId.{value=0});
+  fresh:=eg_seat_ref(v[..],k,SeatId.{value=0});
+  #assert fresh!=old && handle_slot(fresh)==handle_slot(old);
+  switch eg_seat_get(v[..],k,old) {case none {} case some(wrong) {#assert false;}}
+  switch eg_seat_get(v[..],k,fresh) {case none {#assert false;} case some(current) {#assert current[0].live;}}
+  #assert !rc_owner_live(v[..],k,saved) && !rc_ready(v[..],k,saved);
+  v[0].eg[k].casts[0]=saved;v[0].eg[k].casts[0].phase=RC_FLIGHT;
+  strikes:=v[0].eg[k].strike_n;rc_strike(v[..],k,0);
+  #assert !v[0].eg[k].casts[0].on && v[0].eg[k].strike_n==strikes;
+  #assert rm_eg_seat_owner(v[..],k,SeatId.{value=0})==fresh.value;
+  #assert !handle_present(eg_seat_ref(v[..],-1,SeatId.{value=0})) && !handle_present(eg_seat_ref(v[..],EG_ROOMS,SeatId.{value=0}));
+  #assert !handle_present(eg_seat_ref(v[..],k,SeatId.{value= -1})) && !handle_present(eg_seat_ref(v[..],k,SeatId.{value=EG_SEATS}));
+  #assert !handle_present(eg_seat_ref(v[..],k,SeatId.{value=2}));
+  #assert !eg_seat_ref_live(v[..],-1,fresh) && !eg_seat_ref_live(v[..],EG_ROOMS,fresh);
+  #assert !eg_seat_ref_live(v[..],k,Handle(EvergladeSeat).{}) && !eg_seat_ref_live(v[..],k,Handle(EvergladeSeat).{value=4294967312});
+  v[0].eg[k].strike_n=1;v[0].eg[k].strikes[0]=EgStrike.{by=0,owner=fresh};
+  #assert rm_eg_strike_current(v[..],k,0);
+  v[0].eg[k].strikes[0].owner=old;#assert !rm_eg_strike_current(v[..],k,0);
+  v[0].eg[k].strikes[0].by= -1;#assert rm_eg_strike_current(v[..],k,0);
+  #assert !rm_eg_strike_current(v[..],-1,0) && !rm_eg_strike_current(v[..],EG_ROOMS,0);
+  #assert !rm_eg_strike_current(v[..],k,-1) && !rm_eg_strike_current(v[..],k,1);
+  v[0].ab[k].q_n=1;v[0].ab[k].q[0]=RaCast.{by=0,owner=old};#assert !rm_ra_cast_current(v[..],k,0);
+  v[0].ab[k].q[0].owner=fresh;#assert rm_ra_cast_current(v[..],k,0);
+  #assert !rm_ra_cast_current(v[..],k,-1) && !rm_ra_cast_current(v[..],k,1) && !rm_ra_cast_current(v[..],-1,0);
+}
+native_repair_rollback :: () #effects(all) {
+  seat:=[1]EgSeat.[EgSeat.{repaired=9}];casting:=[1]EgCast.[EgCast.{phase=RC_BAR,x=1,y=2,z=3}];strikes:[1]EgStrike;
+  switch rc_repair_commit(seat[..],casting[..],strikes[..],1,50,EgPose.{},EgPose.{x=7,y=8,z=9},true) {case none {} case some(wrong) {#assert false;}}
+  #assert seat[0].repaired==9 && casting[0].phase==RC_BAR && casting[0].x==1 && casting[0].y==2 && casting[0].z==3;
+  switch rc_repair_commit(seat[..],casting[..],strikes[..],0,50,EgPose.{},EgPose.{x=7,y=8,z=9},true) {case none {#assert false;} case some(count) {#assert count==1;}}
+  #assert seat[0].repaired==50 && casting[0].phase==RC_FLIGHT && strikes[0].ax==7;
+}
+native_fire_rollback :: () #effects(all) {
+  r:[1]E5rRoom;e5rr_start(r[..],9);e5rr_test_people(r[..]);
+  first:=e5rr_folk(0);second:=e5rr_folk(1);hp0:=r[0].b[0].c[first].hp;hp1:=r[0].b[0].c[second].hp;
+  random:=r[0].b[0].dice[0].state;events:=r[0].b[0].book[0].seq;
+  hits:=[3]E5rrDamage.[E5rrDamage.{who=first,by=first,amount=3},E5rrDamage.{who=second,by=first,amount=4},E5rrDamage.{who= -1,amount=5}];
+  switch e5rr_damage_many(r[0].b[..],hits[..]) {case none {} case some(wrong) {#assert false;}}
+  #assert r[0].b[0].c[first].hp==hp0 && r[0].b[0].c[second].hp==hp1;
+  #assert r[0].b[0].dice[0].state==random && r[0].b[0].book[0].seq==events;
+  switch e5rr_damage_many(r[0].b[..],hits[0..<2]) {case none {#assert false;} case some(applied) {#assert applied;}}
+  #assert r[0].b[0].c[first].hp==hp0-3 && r[0].b[0].c[second].hp==hp1-4;
+}
+tool_main :: ()->int #export_c #effects(all) {native_seat_lifetime();native_repair_rollback();native_fire_rollback();print("native Everglade safety: 3 passed\n");return 0;}

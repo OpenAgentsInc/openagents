@@ -87,14 +87,14 @@ N90In :: struct {data:string; type:int; relay:string; marker:string;}
 N90Pair :: struct {key:string; value:string;}
 // book:end record
 
-n90_req_fail :: (r:N90Request,error:int,at:int)->N90Request {o:=r;o.error=error;o.at=at;return o;}
-n90_reply_fail :: (r:N90Reply,error:int,at:int)->N90Reply {o:=r;o.error=error;o.at=at;return o;}
-n90_job_fail :: (j:N90Job,error:int)->N90Job {o:=j;o.error=error;return o;}
+n90_req_fail :: (r:N90Request,error:int,at:int)->N90Request #effects(all) {o:=r;o.error=error;o.at=at;return o;}
+n90_reply_fail :: (r:N90Reply,error:int,at:int)->N90Reply #effects(all) {o:=r;o.error=error;o.at=at;return o;}
+n90_job_fail :: (j:N90Job,error:int)->N90Job #effects(all) {o:=j;o.error=error;return o;}
 
 // book:begin msats
 // A decimal amount of millisats: digits, no sign, no leading zero, at most
 // 21 million bitcoin. -1 when it isn't one.
-n90_msats :: (s:string)->int {
+n90_msats :: (s:string)->int #effects(all) {
   if s.count==0 || (s[0]=='0' && s.count>1) {return -1;}
   v:=0;
   for c:s {
@@ -112,7 +112,7 @@ n90_msats :: (s:string)->int {
 // after the first byte, -2 no amount, -3 not a Bitcoin currency, -4 a
 // leading zero, -5 part of a millisat, -6 too large. The checksum and the
 // signature are the wallet's to check.
-n90_invoice :: (bolt11:string)->int {
+n90_invoice :: (bolt11:string)->int #effects(all) {
   sep:=-1;
   for i:1..<bolt11.count {if bolt11[i]=='1' {sep=i;}}
   if sep== -1 {return -1;}
@@ -148,7 +148,7 @@ n90_invoice :: (bolt11:string)->int {
 // The i tag at index: its type and data, and its relay and marker (the
 // third and fourth values). An event or job input names a 64-hex event id;
 // a relay, when given, is a ws:// or wss:// URL. type -1 when it isn't.
-n90_input :: (e:NostrEvent,index:int,t:N32Tag)->N90Input {
+n90_input :: (e:NostrEvent,index:int,t:N32Tag)->N90Input #effects(all) {
   x:N90Input;bad:N90Input;
   for k:0..<4 {if n32_is(t.v[2],N90_INPUT_NAMES[k]) {x.type=k;}}
   x.data=t.v[1];
@@ -163,13 +163,13 @@ n90_input :: (e:NostrEvent,index:int,t:N32Tag)->N90Input {
 }
 // Whether the content is a NIP-04 payload: NIP-04's ?iv= suffix. NIP-44's
 // base64 never holds a ?.
-n90_nip04 :: (e:NostrEvent)->bool {
+n90_nip04 :: (e:NostrEvent)->bool #effects(all) {
   for i:e.content_from..<e.content_to {if e.original[i]=='?' {return true;}}
   return false;
 }
 // A job request (kind 5000-5999). An encrypted one names one provider and
 // carries no clear i or param tags.
-n90_request :: (e:NostrEvent)->N90Request {
+n90_request :: (e:NostrEvent)->N90Request #effects(all) {
   r:N90Request;if e.error!=NE_OK {return r;}
   if e.kind<N90_REQUEST_MIN || e.kind>N90_REQUEST_MAX {return n90_req_fail(r,N90_KIND,-1);}
   r.kind=e.kind;i:=0;has_output:=false;
@@ -219,7 +219,7 @@ n90_request :: (e:NostrEvent)->N90Request {
 // NIP-44 v2 with the conversation key into out, read as a tag array, and
 // its i and param tags put in place of the request's. work holds the
 // decoded payload (nip44_decrypt_work_size).
-n90_private :: (e:NostrEvent,r:N90Request,conversation_key:[]u8,work:[]u8,out:[]u8)->N90Request {
+n90_private :: (e:NostrEvent,r:N90Request,conversation_key:[]u8,work:[]u8,out:[]u8)->N90Request #effects(all) {
   if r.error!=N90_OK || !r.encrypted {return n90_req_fail(r,N90_ENCRYPTED,-1);}
   d:=nip44_decrypt_checked(NIP44_COMPAT,conversation_key,e.original[e.content_from..<e.content_to],work,out,false);
   if d.error!=NIP44_OK {return n90_req_fail(r,N90_DECRYPT,-1);}
@@ -234,7 +234,7 @@ n90_private :: (e:NostrEvent,r:N90Request,conversation_key:[]u8,work:[]u8,out:[]
 
 // book:begin reply
 // Whether tag index is named name, read from its raw first value.
-n90_named :: (e:NostrEvent,index:int,name:string)->bool {
+n90_named :: (e:NostrEvent,index:int,name:string)->bool #effects(all) {
   j:[1]Json;started:=nt_start(j[..],e);
   tok:=json_next(j[..]);
   for i:0..<index {skipped:=json_skip(j[..]);tok=json_next(j[..]);}
@@ -244,7 +244,7 @@ n90_named :: (e:NostrEvent,index:int,name:string)->bool {
 // A job result (kind 6000-6999) or feedback (kind 7000): one e tag naming
 // the request and one p tag naming the customer; a result has a request
 // tag and no status, feedback one known status.
-n90_reply :: (e:NostrEvent)->N90Reply {
+n90_reply :: (e:NostrEvent)->N90Reply #effects(all) {
   r:N90Reply;if e.error!=NE_OK {return r;}
   result:=e.kind>=N90_REQUEST_MIN+N90_RESULT_OFFSET && e.kind<=N90_REQUEST_MAX+N90_RESULT_OFFSET;
   if !result && e.kind!=N90_FEEDBACK {return n90_reply_fail(r,N90_KIND,-1);}
@@ -298,7 +298,7 @@ n90_reply :: (e:NostrEvent)->N90Reply {
 // id check, as an event with the request's id. work holds that embedded
 // request twice: decoded, then serialized for its hash; N90_LIMIT when it
 // doesn't fit.
-n90_match :: (request:NostrEvent,reply:NostrEvent,work:[]u8)->int {
+n90_match :: (request:NostrEvent,reply:NostrEvent,work:[]u8)->int #effects(all) {
   r:=n90_reply(reply);
   if r.error!=N90_OK {return r.error;}
   if request.kind<N90_REQUEST_MIN || request.kind>N90_REQUEST_MAX {return N90_KIND;}
@@ -319,7 +319,7 @@ n90_match :: (request:NostrEvent,reply:NostrEvent,work:[]u8)->int {
 // Whether the customer pays amount millisats: an invoice, when given,
 // states the same amount; nothing is owed for 0; otherwise the request's
 // bid is the ceiling, and without a bid nothing is paid automatically.
-n90_price :: (bid:int,amount:int,bolt11:string)->N90Price {
+n90_price :: (bid:int,amount:int,bolt11:string)->N90Price #effects(all) {
   p:N90Price;p.msats=amount;
   if amount<0 {p.error=N90_AMOUNT;return p;}
   if bolt11.count>0 && n90_invoice(bolt11)!=amount {p.error=N90_INVOICE;return p;}
@@ -333,14 +333,14 @@ n90_price :: (bid:int,amount:int,bolt11:string)->N90Price {
 // book:begin job
 // A new job for a request the customer published: it waits for answers
 // until wait seconds after the request's created_at.
-n90_job :: (request:NostrEvent,wait:int)->N90Job {
+n90_job :: (request:NostrEvent,wait:int)->N90Job #effects(all) {
   j:N90Job;r:=n90_request(request);
   if r.error!=N90_OK {j.state=N90_FAILED;j.error=r.error;return j;}
   j.sent=request.created_at;j.deadline=request.created_at+wait;j.bid=r.bid;j.updated=request.created_at;
   return j;
 }
 // The job at time now: an open job past its deadline has expired.
-n90_tick :: (j:N90Job,now:int)->N90Job {
+n90_tick :: (j:N90Job,now:int)->N90Job #effects(all) {
   s:=j;if s.state<N90_DONE && now>s.deadline {s.state=N90_EXPIRED;}
   return s;
 }
@@ -348,7 +348,7 @@ n90_tick :: (j:N90Job,now:int)->N90Job {
 // the state as it was and sets error. Feedback older than the last one
 // taken is stale; a result is final whenever it was made. An amount over
 // the bid, or with no bid, closes the job as too dear.
-n90_step :: (j:N90Job,request:NostrEvent,ev:NostrEvent,now:int,work:[]u8)->N90Job {
+n90_step :: (j:N90Job,request:NostrEvent,ev:NostrEvent,now:int,work:[]u8)->N90Job #effects(all) {
   s:=n90_job_fail(n90_tick(j,now),N90_OK);
   if s.state>=N90_DONE {return n90_job_fail(s,N90_CLOSED);}
   if ev.created_at<s.sent || ev.created_at>now {return n90_job_fail(s,N90_TIME);}
@@ -375,18 +375,18 @@ n90_step :: (j:N90Job,request:NostrEvent,ev:NostrEvent,now:int,work:[]u8)->N90Jo
 
 // book:begin write
 // ,[ after the array so far, or [ when it is still empty.
-n90_next :: (out:[]u8,n:int)->int {
+n90_next :: (out:[]u8,n:int)->int #effects(all) {
   if n==1 {return json_raw(out,n,"[");}
   return json_raw(out,n,",[");
 }
-n90_write_input :: (out:[]u8,at:int,data:string,type:int,relay:string,marker:string)->int {
+n90_write_input :: (out:[]u8,at:int,data:string,type:int,relay:string,marker:string)->int #effects(all) {
   n:=n90_next(out,at);n=json_raw(out,n,"\"i\",");n=json_write_string(out,n,data);
   n=json_raw(out,n,",\"");n=json_raw(out,n,N90_INPUT_NAMES[type]);n=json_raw(out,n,"\"");
   if relay.count+marker.count>0 {n=json_raw(out,n,",");n=json_write_string(out,n,relay);}
   if marker.count>0 {n=json_raw(out,n,",");n=json_write_string(out,n,marker);}
   return json_raw(out,n,"]");
 }
-n90_write_amount :: (out:[]u8,at:int,amount:int,bolt11:string)->int {
+n90_write_amount :: (out:[]u8,at:int,amount:int,bolt11:string)->int #effects(all) {
   if amount<0 {return at;}
   n:=n90_next(out,at);n=json_raw(out,n,"\"amount\",\"");n=json_write_int(out,n,amount);n=json_raw(out,n,"\"");
   if bolt11.count!=0 {n=json_raw(out,n,",");n=json_write_string(out,n,bolt11);}
@@ -394,7 +394,7 @@ n90_write_amount :: (out:[]u8,at:int,amount:int,bolt11:string)->int {
 }
 // A job request's tags as a JSON array into out: its length, or minus the
 // refusal (N90_INPUT, N90_PARAM, N90_BID, N90_OUTPUT). bid -1 writes none.
-n90_request_tags :: (inputs:[]N90In,params:[]N90Pair,output:string,bid:int,relays:[]string,providers:[][32]u8,encrypted:bool,out:[]u8)->int {
+n90_request_tags :: (inputs:[]N90In,params:[]N90Pair,output:string,bid:int,relays:[]string,providers:[][32]u8,encrypted:bool,out:[]u8)->int #effects(all) {
   n:=json_raw(out,0,"[");
   for x:inputs {
     id:[32]u8;
@@ -428,7 +428,7 @@ n90_request_tags :: (inputs:[]N90In,params:[]N90Pair,output:string,bid:int,relay
 // that status. Its length, or minus the refusal: the request's own, or
 // N90_STATUS, N90_TAG (a relay that isn't ws:// or wss://), N90_AMOUNT,
 // N90_INVOICE (an invoice whose amount differs) or N90_OUTPUT.
-n90_reply_tags :: (request:NostrEvent,status:int,extra:string,relay:string,amount:int,bolt11:string,out:[]u8)->int {
+n90_reply_tags :: (request:NostrEvent,status:int,extra:string,relay:string,amount:int,bolt11:string,out:[]u8)->int #effects(all) {
   q:=n90_request(request);
   if q.error!=N90_OK {return -q.error;}
   if status< -1 || status>N90_PARTIAL {return -N90_STATUS;}

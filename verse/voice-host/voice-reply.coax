@@ -46,11 +46,11 @@ PLAN_WAIT :: 3;
 
 // Every voiced frame plus the guard. voiced_end >= 0 (the host's count of
 // turn audio); with no audio a recognition of nothing covers nothing.
-covers :: (cover: int, voiced_end: int) -> bool {
+covers :: (cover: int, voiced_end: int) -> bool #effects(all) {
   return cover >= voiced_end + GUARD_MS;
 }
 
-verse_voice_reply_final_plan :: (voiced_end: int, done_cover: int, done_text: bool, done_cut_silence: int, flight_cover: int) -> int #export_c {
+verse_voice_reply_final_plan :: (voiced_end: int, done_cover: int, done_text: bool, done_cut_silence: int, flight_cover: int) -> int #export_c #effects(all) {
   if done_text && covers(done_cover, voiced_end) { return PLAN_USE; }
   if covers(flight_cover, voiced_end) { return PLAN_WAIT; }
   if done_text && done_cover > 0 && done_cut_silence >= CUT_SILENCE_MS { return PLAN_TAIL; }
@@ -94,7 +94,7 @@ verse_voice_reply_final_plan :: (voiced_end: int, done_cover: int, done_text: bo
 
 // Recognize early: the speaker has been quiet for EARLY_MS after voicing,
 // and nothing finished or in flight covers the last voiced frame yet.
-verse_voice_reply_recognize_early :: (silence_ms: int, voiced_end: int, cover: int) -> bool #export_c {
+verse_voice_reply_recognize_early :: (silence_ms: int, voiced_end: int, cover: int) -> bool #export_c #effects(all) {
   if voiced_end <= 0 { return false; }
   if silence_ms < EARLY_MS { return false; }
   return !covers(cover, voiced_end);
@@ -126,9 +126,9 @@ verse_voice_reply_recognize_early :: (silence_ms: int, voiced_end: int, cover: i
 // the reply's first piece (`first`) must be MIN_FIRST bytes and may also end
 // at ',' ';' ':' followed by whitespace. A very short sentence ("Hi.") joins
 // the next one.
-is_space :: (c: int) -> bool { return c == ' ' || c == '\n' || c == '\t' || c == '\r'; }
+is_space :: (c: int) -> bool #effects(all) { return c == ' ' || c == '\n' || c == '\t' || c == '\r'; }
 
-verse_voice_reply_sentence_end :: (cur: int, next: int, length: int, first: bool) -> bool #export_c {
+verse_voice_reply_sentence_end :: (cur: int, next: int, length: int, first: bool) -> bool #export_c #effects(all) {
   if next == -2 { return false; }
   if length < MIN_SENTENCE { return false; }
   if first && length < MIN_FIRST { return false; }

@@ -52,7 +52,7 @@ The [example](../examples/watch-drift.coax) runs in about three seconds.
 
 <!-- source: psionic/lib/drift.coax record -->
 ```jai
-dr_decide :: (policy:DrPolicy,map:CfMap,version:int,id:int,raw:f64,u:f64)->DrRecord {
+dr_decide :: (policy:DrPolicy,map:CfMap,version:int,id:int,raw:f64,u:f64)->DrRecord #effects(all) {
     c:=cf_map(map,raw);greedy:=0;
     if c>=policy.threshold {greedy=1;}
     r:=DrRecord.{id=id,model=map.model,questions=map.questions,map_version=version,policy_version=policy.version,
@@ -63,7 +63,7 @@ dr_decide :: (policy:DrPolicy,map:CfMap,version:int,id:int,raw:f64,u:f64)->DrRec
     return r;
 }
 // An outcome joins its record once: the label and the cost of the action taken.
-dr_join :: (entries:[]DrRecord,logged:int,id:int,label:f64,at:int,policy:DrPolicy)->DrStatus #export_c {
+dr_join :: (entries:[]DrRecord,logged:int,id:int,label:f64,at:int,policy:DrPolicy)->DrStatus #export_c #effects(all) {
     if id<0 || id>=logged || logged>entries.count {return DrStatus.shape;}
     if label!=0 && label!=1 {return DrStatus.number;}
     if entries[id].status==DrOutcome.observed {return DrStatus.duplicate;}
@@ -119,7 +119,7 @@ asks how often chance alone would produce it:
 // own probabilities, 200 times, so that they are calibrated by construction,
 // and count the draws whose error is at least the window's. Rows are 0 to
 // count - 1.
-dr_exceed :: (p:[]f64,y:[]f64,rows:[]int,seed:u64,window:int)->int {
+dr_exceed :: (p:[]f64,y:[]f64,rows:[]int,seed:u64,window:int)->int #effects(all) {
     observed:=cf_measure(p,y,rows).ece;z:[1000]f64;count:=0;
     for b:0..<DR_DRAWS {
         base:=cast(u64)((window*DR_DRAWS+b)*DR_WINDOW_MAX);
@@ -131,7 +131,7 @@ dr_exceed :: (p:[]f64,y:[]f64,rows:[]int,seed:u64,window:int)->int {
 // The watcher reads only the log: each window's joined records, their
 // calibration error, and an alert when fewer than 2 of 200 calibrated draws
 // reach it (about a 1 percent chance for a calibrated window).
-dr_watch :: (entries:[]DrRecord,window:int,seed:u64)->DrWatch #export_c {
+dr_watch :: (entries:[]DrRecord,window:int,seed:u64)->DrWatch #export_c #effects(all) {
     v:=DrWatch.{windows=dr_windows(window,entries.count)};
     if v.windows==0 {return DrWatch.{status=DrStatus.shape};}
     p:[1000]f64;y:[1000]f64;rows:[1000]int;
@@ -144,7 +144,7 @@ dr_watch :: (entries:[]DrRecord,window:int,seed:u64)->DrWatch #export_c {
 }
 // Refit from the raw probabilities of two older windows, gated on a newer
 // one against the map in use: chapter 215's three kinds and its gate.
-dr_refit :: (entries:[]DrRecord,current:CfMap,fit_from:int,gate_from:int,window:int)->DrRefit {
+dr_refit :: (entries:[]DrRecord,current:CfMap,fit_from:int,gate_from:int,window:int)->DrRefit #effects(all) {
     fp:[2000]f64;fy:[2000]f64;fq:[2000]int;rows:[2000]int;gp:[1000]f64;gy:[1000]f64;gr:[1000]int;mapped:[1000]f64;
     n:=dr_rows(entries,fit_from,fit_from+DR_FIT*window,true,fp[..],fy[..],rows[..]);
     g:=dr_rows(entries,gate_from,gate_from+window,true,gp[..],gy[..],gr[..]);
@@ -201,7 +201,7 @@ has already arrived:
 // has. Outcomes arrive at most half a window late. At each step, outcomes
 // arriving now join; every four windows the map is refitted from windows
 // whose outcomes are all in; then the next decision.
-dr_run :: (seed:u64,policy:DrPolicy,first:CfMap,window:int,drift_at:int,shift:f64,entries:[]DrRecord)->DrRun #export_c {
+dr_run :: (seed:u64,policy:DrPolicy,first:CfMap,window:int,drift_at:int,shift:f64,entries:[]DrRecord)->DrRun #export_c #effects(all) {
     n:=entries.count;windows:=dr_windows(window,n);
     if windows==0 || first.status!=CfStatus.ok {return DrRun.{status=DrStatus.shape};}
     if !dr_inputs_ok(policy,shift) {return DrRun.{status=DrStatus.number};}
@@ -267,7 +267,7 @@ have cost?
 // have taken the same action, weighted by one over that action's selection
 // probability. A threshold that needs an action the log never made eligible
 // is refused: the log can't say what it would cost.
-dr_ips :: (entries:[]DrRecord,threshold:f64)->DrValue #export_c {
+dr_ips :: (entries:[]DrRecord,threshold:f64)->DrValue #export_c #effects(all) {
     if entries.count>DR_WINDOWS_MAX*DR_WINDOW_MAX {return DrValue.{status=DrStatus.shape};}
     if !tb_in(threshold,0,1) {return DrValue.{status=DrStatus.number};}
     s:PsionicAccumulator;used:=0;
@@ -291,7 +291,7 @@ dr_ips :: (entries:[]DrRecord,threshold:f64)->DrValue #export_c {
     return DrValue.{used=used,value=mean,half=1.96*sqrt(psionic_ops_total(v)/f64(used-1)/f64(used))};
 }
 // The simulator knows every label, lost or not: the threshold's true mean cost.
-dr_truth :: (seed:u64,drift_at:int,shift:f64,policy:DrPolicy,entries:[]DrRecord,threshold:f64)->f64 #export_c {
+dr_truth :: (seed:u64,drift_at:int,shift:f64,policy:DrPolicy,entries:[]DrRecord,threshold:f64)->f64 #export_c #effects(all) {
     s:PsionicAccumulator;
     for r,t:entries {
         y:=dr_label(seed,t,ifx t>=drift_at then shift else 0);

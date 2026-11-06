@@ -132,7 +132,7 @@ G29_ROLE_NAMES :: [2] string.["admin", "moderator"];
 G29_ROLE_CAN :: [2] int.[G29_CAN_ALL, G29_CAN_DELETE];
 G29_ROLE_ABOUT :: [2] string.["every moderation action", "delete events"];
 // The bit a moderation kind needs; 0 for a kind this relay does not build.
-g29_needs :: (kind:int)->int {
+g29_needs :: (kind:int)->int #effects(all) {
   if kind==G29_PUT_USER {return G29_CAN_PUT;}
   if kind==G29_REMOVE_USER {return G29_CAN_REMOVE;}
   if kind==G29_EDIT_METADATA {return G29_CAN_EDIT;}
@@ -147,7 +147,7 @@ g29_needs :: (kind:int)->int {
 ```jai
 // What the signer may do: everything for the relay's own key, else the
 // union of what the member's roles grant.
-g29_can :: (g:G29Group,key:[32]u8,relay:[32]u8)->int {
+g29_can :: (g:G29Group,key:[32]u8,relay:[32]u8)->int #effects(all) {
   if ns_equal32(key,relay) {return G29_CAN_ALL;}
   m:=g29_member(g,key);if m<0 {return 0;}
   can:=0;
@@ -178,7 +178,7 @@ with `G29_KIND`: this relay does not build them.
 <!-- source: coax/lib/nostr/nip29.coax moderate -->
 ```jai
 // A moderation event the signer is allowed to send: its change to the state.
-g29_moderate :: (g:[]G29Group,kind:int,r:G29Read)->int {
+g29_moderate :: (g:[]G29Group,kind:int,r:G29Read)->int #effects(all) {
   if kind==G29_PUT_USER || kind==G29_REMOVE_USER {
     if !r.has_p {return G29_SHAPE;}
     if kind==G29_PUT_USER {return g29_put(g,r.p,r);}
@@ -226,7 +226,7 @@ an event it admits:
 // Admit one verified event to the group g[0] holds, changing the state when
 // it is admitted. G29_PASS: the event names no group, so this file has no
 // say in it.
-g29_admit :: (g:[]G29Group,e:NostrEvent,relay:[32]u8)->int {
+g29_admit :: (g:[]G29Group,e:NostrEvent,relay:[32]u8)->int #effects(all) {
   if e.error!=NE_OK || !e.verified {return G29_EVENT;}
   if e.kind>=G29_METADATA && e.kind<=39005 {
     return ifx ns_equal32(e.public_key,relay) then G29_OK else G29_SIGNER;
@@ -302,7 +302,7 @@ tags; the example signs them.
 <!-- source: coax/lib/nostr/nip29.coax publish -->
 ```jai
 // 39000: the id, name and flags.
-g29_write_metadata :: (g:G29Group,out:[]u8)->int {
+g29_write_metadata :: (g:G29Group,out:[]u8)->int #effects(all) {
   n:=g29_open(out,g);
   if g.name.n>0 {n=json_raw(out,n,",[\"name\",");n=g29_put_name(out,n,g.name);n=json_raw(out,n,"]");}
   if g.is_private {n=json_raw(out,n,",[\"private\"]");}
@@ -312,7 +312,7 @@ g29_write_metadata :: (g:G29Group,out:[]u8)->int {
   return json_raw(out,n,"]");
 }
 // 39001: members whose roles grant something, with all their roles.
-g29_write_admins :: (g:G29Group,relay:[32]u8,out:[]u8)->int {
+g29_write_admins :: (g:G29Group,relay:[32]u8,out:[]u8)->int #effects(all) {
   n:=g29_open(out,g);
   for i:0..<g.n {
     if g29_can(g,g.members[i].key,relay)==0 {continue;}
@@ -323,13 +323,13 @@ g29_write_admins :: (g:G29Group,relay:[32]u8,out:[]u8)->int {
   return json_raw(out,n,"]");
 }
 // 39002: every member.
-g29_write_members :: (g:G29Group,out:[]u8)->int {
+g29_write_members :: (g:G29Group,out:[]u8)->int #effects(all) {
   n:=g29_open(out,g);
   for i:0..<g.n {n=json_raw(out,n,",[\"p\",");n=g29_put_key(out,n,g.members[i].key);n=json_raw(out,n,"]");}
   return json_raw(out,n,"]");
 }
 // 39003: the roles this relay grants something to.
-g29_write_roles :: (g:G29Group,out:[]u8)->int {
+g29_write_roles :: (g:G29Group,out:[]u8)->int #effects(all) {
   n:=g29_open(out,g);
   for k:0..<G29_ROLE_NAMES.count {
     n=json_raw(out,n,",[\"role\",");n=json_write_string(out,n,G29_ROLE_NAMES[k]);
@@ -397,7 +397,7 @@ tag the community with `a` or `A`.
 <!-- source: coax/lib/nostr/nip72.coax counts -->
 ```jai
 // Does the approval make the post count in the community?
-n72_counts :: (community:NostrEvent,post:NostrEvent,approval:NostrEvent)->int {
+n72_counts :: (community:NostrEvent,post:NostrEvent,approval:NostrEvent)->int #effects(all) {
   all:=[3]NostrEvent.[community,post,approval];
   for e:all {if e.error!=NE_OK || !e.verified {return N72_EVENT;}}
   if community.kind!=N72_COMMUNITY_KIND || approval.kind!=N72_APPROVAL_KIND {return N72_KIND;}

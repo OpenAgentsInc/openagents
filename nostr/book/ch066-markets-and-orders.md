@@ -159,7 +159,7 @@ The code reads every one of them, and these rules decide the rest:
 ```jai
 // A decimal string: one to 16 digits, then optionally a point and one to
 // 16 more. Anything else is refused.
-n99_decimal :: (s:string)->N99Decimal {
+n99_decimal :: (s:string)->N99Decimal #effects(all) {
   d:N99Decimal;i:=0;
   while i<s.count && n99_digit(s[i]) {
     if i==N99_MAX_DIGITS {return d;}
@@ -179,7 +179,7 @@ n99_decimal :: (s:string)->N99Decimal {
 }
 // A currency code: three or four ASCII letters, any case. BTC and SAT or
 // SATS are bitcoin; any other code is shown as data.
-n99_unit :: (t:N32Text)->int {
+n99_unit :: (t:N32Text)->int #effects(all) {
   own:=t;lower:[4]u8;
   if own.n<3 || own.n>4 {return N99_UNIT_BAD;}
   for i:0..<own.n {
@@ -194,7 +194,7 @@ n99_unit :: (t:N32Text)->int {
 }
 // The amount in satoshis, or -1: not bitcoin, not whole sats, or over 21
 // million bitcoin.
-n99_sats :: (d:N99Decimal,unit:int)->int {
+n99_sats :: (d:N99Decimal,unit:int)->int #effects(all) {
   if !d.ok {return -1;}
   if unit==N99_UNIT_SAT {
     if d.frac!=0 || d.whole>N99_MAX_SATS {return -1;}
@@ -206,7 +206,7 @@ n99_sats :: (d:N99Decimal,unit:int)->int {
   return d.whole*N99_SATS_PER_BTC+f;
 }
 // The k'th value of the index'th tag (0 is its name).
-n99_value :: (e:NostrEvent,index:int,k:int)->N99Value {
+n99_value :: (e:NostrEvent,index:int,k:int)->N99Value #effects(all) {
   r:N99Value;j:[1]Json;if !nt_start(j[..],e) {return r;}
   i:=0;tok:=json_next(j[..]);
   while tok==JSON_ARRAY && i<index {skipped:=json_skip(j[..]);i+=1;tok=json_next(j[..]);}
@@ -226,7 +226,7 @@ n99_value :: (e:NostrEvent,index:int,k:int)->N99Value {
 }
 // The index'th tag as a price: ["price", amount, currency] or with a
 // fourth value, the frequency. A bitcoin price must be whole sats.
-n99_price :: (e:NostrEvent,index:int)->N99Price {
+n99_price :: (e:NostrEvent,index:int)->N99Price #effects(all) {
   p:N99Price;t:=n32_tag(e,index);
   if t.error!=NT_OK || !n32_is(t.v[0],"price") || t.values<3 || t.values>4 {return p;}
   p.amount=t.v[1];p.currency=t.v[2];
@@ -269,7 +269,7 @@ references.
 ```jai
 // A classified listing. The first d, title, summary, location, status,
 // published_at and price tags are read; later ones are counted or ignored.
-n99_listing :: (e:NostrEvent)->N99Listing {
+n99_listing :: (e:NostrEvent)->N99Listing #effects(all) {
   l:N99Listing;if e.error!=NE_OK {return l;}
   if e.kind!=N99_KIND_LISTING && e.kind!=N99_KIND_DRAFT {return n99_refuse(l,N99_KIND,-1);}
   l.draft=e.kind==N99_KIND_DRAFT;
@@ -322,7 +322,7 @@ it is not settled.
 // What a buyer could be asked to pay for a listing, in sats. A price in
 // another currency is shown as written and never converted; a recurring
 // price is shown and not settled here.
-n99_due :: (l:N99Listing)->N99Due {
+n99_due :: (l:N99Listing)->N99Due #effects(all) {
   d:N99Due;
   if l.status!=N99_OK {return d;}
   d.status=N99_DUE_DRAFT;if l.draft {return d;}
@@ -354,7 +354,7 @@ is a decimal with an optional minus sign.
 ```jai
 // A peer-to-peer order. The first of each tag is read; later ones are
 // ignored.
-n69_order :: (e:NostrEvent)->N69Order {
+n69_order :: (e:NostrEvent)->N69Order #effects(all) {
   o:N69Order;if e.error!=NE_OK {return o;}
   if e.kind!=N69_KIND_ORDER {return n69_refuse(o,N69_KIND,-1);}
   seen:[12]bool;   // the required tags, then expires_at and expiration
@@ -422,7 +422,7 @@ such an order.
 // Whether this stack may settle an order: on Bitcoin's chain, Lightning or
 // Spark, on mainnet, still pending, with its amount in sats. The layer is
 // checked first: an order on any other layer is shown and never settled.
-n69_settle :: (o:N69Order)->int {
+n69_settle :: (o:N69Order)->int #effects(all) {
   if o.status!=N69_OK {return N69_SETTLE_ORDER;}
   if o.layer==N69_LAYER_OTHER {return N69_SETTLE_LAYER;}
   if !n32_is(o.network,"mainnet") {return N69_SETTLE_NETWORK;}
@@ -458,7 +458,7 @@ they must be plain decimals, so a sign or an exponent is refused.
 <!-- source: coax/lib/nostr/nip15.coax stall -->
 ```jai
 // A stall's content: id, name and currency, and its shipping zones.
-n15_stall_parse :: (text:string)->N15Stall {
+n15_stall_parse :: (text:string)->N15Stall #effects(all) {
   s:N15Stall;j:[1]Json;st:=n15_start(j[..],text);if st!=N15_OK {s.status=st;return s;}
   has:[3]bool;
   t:=json_next(j[..]);
@@ -480,7 +480,7 @@ n15_stall_parse :: (text:string)->N15Stall {
   s.status=N15_OK;return s;
 }
 // A kind 30017 event: its content, with the d tag the same as the id.
-n15_stall :: (e:NostrEvent,buf:[]u8)->N15Stall {
+n15_stall :: (e:NostrEvent,buf:[]u8)->N15Stall #effects(all) {
   s:N15Stall;n:=n15_content(e,buf);if n== -1 {return s;}
   if e.kind!=N15_KIND_STALL {s.status=N15_KIND;return s;}
   if n<0 {s.status=N15_LIMIT;return s;}
@@ -494,7 +494,7 @@ n15_stall :: (e:NostrEvent,buf:[]u8)->N15Stall {
 ```jai
 // A product's content: id, stall, name, currency, price, quantity (null:
 // unlimited) and extra shipping costs per zone.
-n15_product_parse :: (text:string)->N15Product {
+n15_product_parse :: (text:string)->N15Product #effects(all) {
   p:N15Product;j:[1]Json;st:=n15_start(j[..],text);if st!=N15_OK {p.status=st;return p;}
   has:[5]bool;
   t:=json_next(j[..]);
@@ -523,7 +523,7 @@ n15_product_parse :: (text:string)->N15Product {
   p.status=N15_OK;return p;
 }
 // A kind 30018 event: its content, with the d tag the same as the id.
-n15_product :: (e:NostrEvent,buf:[]u8)->N15Product {
+n15_product :: (e:NostrEvent,buf:[]u8)->N15Product #effects(all) {
   p:N15Product;n:=n15_content(e,buf);if n== -1 {return p;}
   if e.kind!=N15_KIND_PRODUCT {p.status=N15_KIND;return p;}
   if n<0 {p.status=N15_LIMIT;return p;}
@@ -559,7 +559,7 @@ refuses to write any other.
 <!-- source: coax/lib/nostr/nip15.coax checkout -->
 ```jai
 // A checkout message's type: 0, 1 or 2, or -1.
-n15_type :: (text:string)->int {
+n15_type :: (text:string)->int #effects(all) {
   j:[1]Json;if n15_start(j[..],text)!=N15_OK {return -1;}
   t:=json_next(j[..]);
   while t==JSON_STRING {
@@ -574,7 +574,7 @@ n15_type :: (text:string)->int {
 }
 // A customer's new order (type 0): id, contact key, address, items and the
 // shipping zone. A product named twice is refused.
-n15_order_parse :: (text:string)->N15Order {
+n15_order_parse :: (text:string)->N15Order #effects(all) {
   o:N15Order;j:[1]Json;st:=n15_start(j[..],text);if st!=N15_OK {o.status=st;return o;}
   typed:=false;
   t:=json_next(j[..]);
@@ -630,13 +630,13 @@ n15_order_parse :: (text:string)->N15Order {
 // A merchant's payment request (type 1): the order id and its payment
 // options, each marked with its rail. Options on another rail are kept
 // and never chosen.
-n15_rail :: (type:string)->int {
+n15_rail :: (type:string)->int #effects(all) {
   if type=="btc" {return N15_RAIL_ONCHAIN;}
   if type=="ln" {return N15_RAIL_LIGHTNING;}
   if type=="lnurl" {return N15_RAIL_LNURL;}
   return N15_RAIL_NONE;
 }
-n15_request_parse :: (text:string)->N15Request {
+n15_request_parse :: (text:string)->N15Request #effects(all) {
   r:N15Request;j:[1]Json;st:=n15_start(j[..],text);if st!=N15_OK {r.status=st;return r;}
   typed:=false;
   t:=json_next(j[..]);
@@ -679,13 +679,13 @@ n15_request_parse :: (text:string)->N15Request {
   r.status=N15_OK;return r;
 }
 // The first option on a Bitcoin rail, or -1.
-n15_choice :: (r:N15Request)->int {
+n15_choice :: (r:N15Request)->int #effects(all) {
   if r.status!=N15_OK {return -1;}
   for k:0..<r.options_n {if r.options[k].rail!=N15_RAIL_NONE {return k;}}
   return -1;
 }
 // A merchant's status update (type 2): paid and shipped.
-n15_update_parse :: (text:string)->N15Update {
+n15_update_parse :: (text:string)->N15Update #effects(all) {
   u:N15Update;j:[1]Json;st:=n15_start(j[..],text);if st!=N15_OK {u.status=st;return u;}
   typed:=false;has:[2]bool;
   t:=json_next(j[..]);
@@ -712,10 +712,10 @@ n15_update_parse :: (text:string)->N15Update {
 
 <!-- source: coax/lib/nostr/nip15.coax write -->
 ```jai
-n15_put :: (out:[]u8,at:int,t:N32Text)->int {own:=t;return json_write_string(out,at,cast(string)own.b[0..<own.n]);}
+n15_put :: (out:[]u8,at:int,t:N32Text)->int #effects(all) {own:=t;return json_write_string(out,at,cast(string)own.b[0..<own.n]);}
 // A new order from a record that reads: N15_W_SHAPE when it doesn't,
 // N15_W_FULL when out is too small.
-n15_write_order :: (out:[]u8,o:N15Order)->int {
+n15_write_order :: (out:[]u8,o:N15Order)->int #effects(all) {
   if o.status!=N15_OK {return N15_W_SHAPE;}
   n:=json_raw(out,0,"{\"id\":");n=n15_put(out,n,o.id);n=json_raw(out,n,",\"type\":0");
   if o.address.n>0 {n=json_raw(out,n,",\"address\":");n=n15_put(out,n,o.address);}
@@ -731,7 +731,7 @@ n15_write_order :: (out:[]u8,o:N15Order)->int {
 }
 // A payment request offering only Bitcoin rails: N15_W_RAIL when any type
 // is not btc, ln or lnurl.
-n15_write_request :: (out:[]u8,id:string,message:string,types:[]string,links:[]string)->int {
+n15_write_request :: (out:[]u8,id:string,message:string,types:[]string,links:[]string)->int #effects(all) {
   if id.count==0 || types.count==0 || types.count!=links.count || types.count>N15_MAX_OPTIONS {return N15_W_SHAPE;}
   for k:0..<types.count {if n15_rail(types[k])==N15_RAIL_NONE {return N15_W_RAIL;}}
   n:=json_raw(out,0,"{\"id\":");n=json_write_string(out,n,id);n=json_raw(out,n,",\"type\":1");
@@ -744,7 +744,7 @@ n15_write_request :: (out:[]u8,id:string,message:string,types:[]string,links:[]s
   }
   return json_raw(out,n,"]}");
 }
-n15_write_update :: (out:[]u8,id:string,message:string,paid:bool,shipped:bool)->int {
+n15_write_update :: (out:[]u8,id:string,message:string,paid:bool,shipped:bool)->int #effects(all) {
   if id.count==0 {return N15_W_SHAPE;}
   n:=json_raw(out,0,"{\"id\":");n=json_write_string(out,n,id);
   n=json_raw(out,n,",\"type\":2,\"message\":");n=json_write_string(out,n,message);
@@ -771,7 +771,7 @@ million bitcoin before it is added, so no multiplication overflows.
 // zone's base shipping cost, and each item's extra cost for that zone
 // times its quantity. Only when the stall and every product are priced in
 // BTC or sats; no exchange rate is ever used.
-n15_total :: (s:N15Stall,products:[]N15Product,o:N15Order)->N15Total {
+n15_total :: (s:N15Stall,products:[]N15Product,o:N15Order)->N15Total #effects(all) {
   r:N15Total;
   if s.status!=N15_OK || o.status!=N15_OK {return r;}
   r.status=N15_TOTAL_RATE;if s.unit==N99_UNIT_OTHER {return r;}

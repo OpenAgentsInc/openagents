@@ -48,17 +48,17 @@ CdPolicy :: struct {
 CD_REALM_TOOL :: "mcp__openagents__realm_";   // the openagents MCP server's realm tools (cd_claude_realm_tools)
 
 // s after out[0..<n], cut to out; the new length.
-ce_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+ce_cat :: (out: [] u8, n: int, s: string) -> int #effects(all) { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
 
 // -1 when name isn't an effect.
-cd_effect_index :: (name: string) -> int {
+cd_effect_index :: (name: string) -> int #effects(all) {
   effects := CD_EFFECTS;
   for e, i: effects { if e == name { return i; } }
   return -1;
 }
 
 // The effect of a Claude Code tool, by its exact name.
-cd_effect_of :: (tool: string) -> int {
+cd_effect_of :: (tool: string) -> int #effects(all) {
   reads := [9] string.["Read", "Glob", "Grep", "LS", "NotebookRead", "TodoWrite", "TodoRead", "Task", "ToolSearch"];   // ToolSearch only loads a tool's schema
   for r: reads { if r == tool { return CD_EFFECT_READ; } }
   if tool == "WebFetch" || tool == "WebSearch" { return CD_EFFECT_NETWORK; }
@@ -68,14 +68,14 @@ cd_effect_of :: (tool: string) -> int {
 }
 
 // Whether tool is one of the realm tools: the prefix and a verb after it.
-cd_realm_tool :: (tool: string) -> bool {
+cd_realm_tool :: (tool: string) -> bool #effects(all) {
   return tool.count > CD_REALM_TOOL.count && cast(string) tool[0..<CD_REALM_TOOL.count] == CD_REALM_TOOL;
 }
 
 // The verdict for one Claude Code tool call. With --realm-tools the realm
 // tools run under any ceiling: a job a browser starts through `coder host`
 // has --ceiling read, so it reads and edits realms and does nothing else.
-cd_policy_tool :: (p: [] CdPolicy, tool: string, inside: bool, why: [] u8) -> int {
+cd_policy_tool :: (p: [] CdPolicy, tool: string, inside: bool, why: [] u8) -> int #effects(all) {
   if p[0].realm && cd_realm_tool(tool) {
     n := ce_cat(why, 0, "a realm tool (--realm-tools)");
     return CD_VERDICT_RUN;
@@ -84,14 +84,14 @@ cd_policy_tool :: (p: [] CdPolicy, tool: string, inside: bool, why: [] u8) -> in
 }
 
 // Whether path is under root (or is root).
-cd_under :: (path: string, root: string) -> bool {
+cd_under :: (path: string, root: string) -> bool #effects(all) {
   r := root; while r.count > 1 && r[r.count - 1] == '/' { r = cast(string) r[0..<r.count - 1]; }
   if r.count == 0 || path.count < r.count || cast(string) path[0..<r.count] != r { return false; }
   return path.count == r.count || path[r.count] == '/' || r == "/";
 }
 
 // Whether a part of path is "..".
-cd_has_dotdot :: (path: string) -> bool {
+cd_has_dotdot :: (path: string) -> bool #effects(all) {
   for i: 0..<path.count - 1 {
     if path[i] == '.' && path[i + 1] == '.' && (i == 0 || path[i - 1] == '/') && (i + 2 == path.count || path[i + 2] == '/') { return true; }
   }
@@ -100,7 +100,7 @@ cd_has_dotdot :: (path: string) -> bool {
 
 // Whether one path is inside the policy's roots or the working directory;
 // a relative path is under the working directory.
-cd_inside :: (p: [] CdPolicy, cwd: string, path: string) -> bool {
+cd_inside :: (p: [] CdPolicy, cwd: string, path: string) -> bool #effects(all) {
   if path.count == 0 { return true; }
   if cd_has_dotdot(path) { return false; }
   if path[0] != '/' { return true; }
@@ -118,7 +118,7 @@ cd_inside :: (p: [] CdPolicy, cwd: string, path: string) -> bool {
 }
 
 // The verdict for an effect in a room; why says which rule decided.
-cd_policy_decide :: (p: [] CdPolicy, effect: int, inside: bool, why: [] u8) -> int {
+cd_policy_decide :: (p: [] CdPolicy, effect: int, inside: bool, why: [] u8) -> int #effects(all) {
   effects := CD_EFFECTS;
   if effect > p[0].ceiling {
     n := ce_cat(why, 0, effects[effect]); n = ce_cat(why, n, " is above the ceiling, ");
@@ -133,7 +133,7 @@ cd_policy_decide :: (p: [] CdPolicy, effect: int, inside: bool, why: [] u8) -> i
 }
 
 // Reads --allow, --ceiling and --root; "" when they are fine, else why not.
-cd_policy_args :: (p: [] CdPolicy, allow: string, ceiling: string, roots: string) -> string {
+cd_policy_args :: (p: [] CdPolicy, allow: string, ceiling: string, roots: string) -> string #effects(all) {
   p[0] = CdPolicy.{};             // allow read
   p[0].ceiling = CD_EFFECT_RUN;
   if allow.count == 0 && ceiling.count == 0 && roots.count == 0 { return ""; }
@@ -160,19 +160,19 @@ cd_policy_args :: (p: [] CdPolicy, allow: string, ceiling: string, roots: string
 // Codex's sandbox under a policy: below write, read-only (a browser's job
 // can't write even inside its folder); otherwise its folder, with asks.
 // asked: --ask, a policy or a tool_call hook; none of them, full access.
-cd_codex_sandbox :: (p: [] CdPolicy, asked: bool) -> string {
+cd_codex_sandbox :: (p: [] CdPolicy, asked: bool) -> string #effects(all) {
   if p[0].on && p[0].ceiling < CD_EFFECT_WRITE { return "read-only"; }
   if asked || p[0].on { return "workspace-write"; }
   return "danger-full-access";
 }
 
 // The verdict and exactly the words why gives (a fresh buffer: what's after them is zero).
-ce_decides :: (p: [] CdPolicy, effect: int, inside: bool, verdict: int, words: string) -> bool {
+ce_decides :: (p: [] CdPolicy, effect: int, inside: bool, verdict: int, words: string) -> bool #effects(all) {
   why: [256] u8;
   v := cd_policy_decide(p, effect, inside, why[..]);
   return v == verdict && cast(string) why[0..<words.count] == words && why[words.count] == 0;
 }
-ce_tool :: (p: [] CdPolicy, tool: string, inside: bool, verdict: int, words: string) -> bool {
+ce_tool :: (p: [] CdPolicy, tool: string, inside: bool, verdict: int, words: string) -> bool #effects(all) {
   why: [256] u8;
   v := cd_policy_tool(p, tool, inside, why[..]);
   return v == verdict && cast(string) why[0..<words.count] == words && why[words.count] == 0;

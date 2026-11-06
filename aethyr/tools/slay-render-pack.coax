@@ -13,7 +13,7 @@
  #assert scan_u32(b[..],40)==0 && scan_u32(b[..],56)==0 && scan_u32(b[..],80)==0;
 }
 slay_sword_binding :: (b:[]u8,at:int) {scan_put(b,at+32,28);scan_put(b,at+36,135);scan_put(b,at+52,255);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}root:=args_at(a[..],0);dest:=args_at(a[..],1);g:[1]EpJson;raw:[4194304]u8;uv:[101672*8]u8;path:[4096]u8;
  ep_load(g[..],root,"SK_Echo.gltf");primitives:=ep_get(g[..],ep_top(g[..],"meshes",0),"primitives");at:=0;
  for k:0..<ep_len(g[..],primitives) {attr:=ep_get(g[..],ep_item(g[..],primitives,k),"attributes");acc:=ep_read(g[..],ep_int(g[..],attr,"TEXCOORD_0",-1),raw[..]);#assert acc.component==5126 && acc.components==2 && at+acc.count*8<=uv.count;for i:0..<acc.count*8 {uv[at+i]=raw[i];}at+=acc.count*8;}

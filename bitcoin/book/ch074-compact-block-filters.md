@@ -96,13 +96,13 @@ division and no bias worth counting.
 <!-- source: coax/lib/bitcoin/blockfilter.coax hash -->
 ```jai
 // The key from a block hash in hash order (the bytes SHA-256d produced).
-bf_key :: (block_hash: [] u8) -> BfKey {
+bf_key :: (block_hash: [] u8) -> BfKey #effects(all) {
   return BfKey.{k0 = cb_load_le64(block_hash, 0).value, k1 = cb_load_le64(block_hash, 8).value};
 }
 // HashToRange: SipHash-2-4, then a 64x64 multiply keeping the high word,
 // which maps [0, 2^64) onto [0, f) without a division (FastRange64).
-bf_range :: (h: u64, f: u64) -> u64 { return mul_wide(h, f).hi; }
-bf_hash_vartime :: (key: BfKey, element: [] u8, f: u64) -> u64 {
+bf_range :: (h: u64, f: u64) -> u64 #effects(all) { return mul_wide(h, f).hi; }
+bf_hash_vartime :: (key: BfKey, element: [] u8, f: u64) -> u64 #effects(all) {
   return bf_range(siphash24(key.k0, key.k1, element), f);
 }
 ```
@@ -117,7 +117,7 @@ came from: the builder needs that to drop duplicates.
 <!-- source: coax/lib/bitcoin/blockfilter.coax sort -->
 ```jai
 // Heapsort of values, carrying idx along: n log n with no extra memory.
-bf_sift :: (v: [] u64, idx: [] int, start: int, end: int) {
+bf_sift :: (v: [] u64, idx: [] int, start: int, end: int) #effects(all) {
   root := start;
   while 2 * root + 1 < end {
     child := 2 * root + 1;
@@ -128,7 +128,7 @@ bf_sift :: (v: [] u64, idx: [] int, start: int, end: int) {
     root = child;
   }
 }
-bf_sort :: (v: [] u64, idx: [] int, n: int) {
+bf_sort :: (v: [] u64, idx: [] int, n: int) #effects(all) {
   s := n / 2 - 1;
   while s >= 0 { bf_sift(v, idx, s, n); s -= 1; }
   e := n - 1;
@@ -161,18 +161,18 @@ Bits go most significant first, and the last byte is padded with zeros.
 // Bits are written and read most significant first, as Core's
 // BitStreamWriter and BitStreamReader do; the last byte is padded with
 // zeros. pos counts bits from the start of out.
-bf_put_bits :: (out: [] u8, pos: int, value: u64, nbits: int) -> int {
+bf_put_bits :: (out: [] u8, pos: int, value: u64, nbits: int) -> int #effects(all) {
   for i: 0..<nbits {
     bit := (value >> cast(u64) (nbits - 1 - i)) & 1;
     if bit == 1 { out[(pos+i)/8] |= cast(u8) (0x80 >> ((pos + i) % 8)); }
   }
   return pos + nbits;
 }
-bf_get_bit :: (b: [] u8, pos: int) -> int { return cast(int) ((b[pos/8] >> cast(u8) (7 - pos % 8)) & 1); }
+bf_get_bit :: (b: [] u8, pos: int) -> int #effects(all) { return cast(int) ((b[pos/8] >> cast(u8) (7 - pos % 8)) & 1); }
 // GolombRiceEncode: the quotient x >> P in unary (that many ones, then a
 // zero), then the low P bits. Returns the new bit position, or -1 when out
 // is too small.
-bf_golomb_put :: (out: [] u8, pos: int, x: u64) -> int {
+bf_golomb_put :: (out: [] u8, pos: int, x: u64) -> int #effects(all) {
   q := cast(int) (x >> cast(u64) BF_P);
   if pos + q + 1 + BF_P > out.count * 8 { return -1; }
   p := pos;
@@ -183,7 +183,7 @@ bf_golomb_put :: (out: [] u8, pos: int, x: u64) -> int {
 // GolombRiceDecode at bit pos of b: the value, and where the next code
 // starts (-1 when the bits run out first, Core's "end of data").
 BfCode :: struct { value: u64; next: int; }
-bf_golomb_get :: (b: [] u8, pos: int) -> BfCode {
+bf_golomb_get :: (b: [] u8, pos: int) -> BfCode #effects(all) {
   limit := b.count * 8; p := pos; q := cast(u64) 0;
   while true {
     if p >= limit { return BfCode.{next = -1}; }
@@ -222,7 +222,7 @@ any value.
 // have the same 64-bit hash, so sorting by it puts duplicates side by side,
 // and the range map keeps the order, so the sorted hashes give the sorted
 // values once N is known.
-bf_build_vartime :: (key: BfKey, pool: [] u8, spans: [] BfSpan, n: int, values: [] u64, idx: [] int, out: [] u8) -> BfFilter {
+bf_build_vartime :: (key: BfKey, pool: [] u8, spans: [] BfSpan, n: int, values: [] u64, idx: [] int, out: [] u8) -> BfFilter #effects(all) {
   if values.count < n || idx.count < n || spans.count < n { return BfFilter.{code = BF_CAPACITY}; }
   for i: 0..<n {
     values[i] = siphash24(key.k0, key.k1, pool[spans[i].at..<spans[i].at+spans[i].n]);
@@ -254,7 +254,7 @@ bf_build_vartime :: (key: BfKey, pool: [] u8, spans: [] BfSpan, n: int, values: 
   }
   return BfFilter.{size = (pos + 7) / 8, n = unique};
 }
-bf_same :: (pool: [] u8, a: BfSpan, b: BfSpan) -> bool {
+bf_same :: (pool: [] u8, a: BfSpan, b: BfSpan) -> bool #effects(all) {
   if a.n != b.n { return false; }
   for i: 0..<a.n { if pool[a.at+i] != pool[b.at+i] { return false; } }
   return true;
@@ -277,7 +277,7 @@ scripts against a filter at once.
 ```jai
 // Core's GCSFilter from encoded bytes, with its decode check: N below 2^32
 // and exactly N codes, with nothing after the byte the last one ends in.
-bf_read_vartime :: (filter: [] u8) -> BfRead {
+bf_read_vartime :: (filter: [] u8) -> BfRead #effects(all) {
   c := tx_compact_read_vartime(filter, 0);
   if c.code != TX_OK || c.value > 0xffffffff { return BfRead.{code = BF_BAD_FILTER}; }
   pos := c.next * 8;
@@ -292,7 +292,7 @@ bf_read_vartime :: (filter: [] u8) -> BfRead {
 // MatchAny: is any of the n query elements in the filter? The queries are
 // hashed into values (scratch, n long) and sorted, then one pass over the
 // filter walks both lists in order, as Core's MatchInternal does.
-bf_match_any_vartime :: (key: BfKey, filter: [] u8, pool: [] u8, spans: [] BfSpan, n: int, values: [] u64, idx: [] int) -> BfMatch {
+bf_match_any_vartime :: (key: BfKey, filter: [] u8, pool: [] u8, spans: [] BfSpan, n: int, values: [] u64, idx: [] int) -> BfMatch #effects(all) {
   r := bf_read_vartime(filter);
   if r.code != BF_OK { return BfMatch.{code = r.code}; }
   if values.count < n || idx.count < n || spans.count < n { return BfMatch.{code = BF_CAPACITY}; }
@@ -310,7 +310,7 @@ bf_match_any_vartime :: (key: BfKey, filter: [] u8, pool: [] u8, spans: [] BfSpa
   return BfMatch.{};
 }
 // Match: one element.
-bf_match_vartime :: (key: BfKey, filter: [] u8, element: [] u8) -> BfMatch {
+bf_match_vartime :: (key: BfKey, filter: [] u8, element: [] u8) -> BfMatch #effects(all) {
   spans: [1] BfSpan; values: [1] u64; idx: [1] int;
   spans[0] = BfSpan.{at = 0, n = element.count};
   return bf_match_any_vartime(key, filter, element, spans[..], 1, values[..], idx[..]);
@@ -344,7 +344,7 @@ the result is `BF_BAD_PREVOUTS`.
 // scripts are not in the block: they come from the node's undo data, here
 // as prevouts, one CompactSize-prefixed script per input after the
 // coinbase, in block order. Each element is copied into pool.
-bf_gather_vartime :: (block: [] u8, prevouts: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, pool: [] u8, spans: [] BfSpan) -> BfGather {
+bf_gather_vartime :: (block: [] u8, prevouts: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, pool: [] u8, spans: [] BfSpan) -> BfGather #effects(all) {
   if block.count < BF_HEADER { return BfGather.{code = BF_BAD_BLOCK}; }
   c := tx_compact_read_vartime(block, BF_HEADER);
   if c.code != TX_OK { return BfGather.{code = BF_BAD_BLOCK, at = c.next}; }
@@ -382,14 +382,14 @@ bf_gather_vartime :: (block: [] u8, prevouts: [] u8, ins: [] TxIn, outs: [] TxOu
   return g;
 }
 // One element into the pool and the span list.
-bf_add :: (s: [] u8, pool: [] u8, spans: [] BfSpan, g: BfGather) -> BfGather {
+bf_add :: (s: [] u8, pool: [] u8, spans: [] BfSpan, g: BfGather) -> BfGather #effects(all) {
   if g.n >= spans.count || s.count > pool.count - g.used { return BfGather.{code = BF_CAPACITY, n = g.n, used = g.used}; }
   for i: 0..<s.count { pool[g.used+i] = s[i]; }
   spans[g.n] = BfSpan.{at = g.used, n = s.count};
   return BfGather.{n = g.n + 1, used = g.used + s.count};
 }
 // The block hash: SHA-256d of the 80-byte header.
-bf_block_hash :: (block: [] u8, out: [] u8) {
+bf_block_hash :: (block: [] u8, out: [] u8) #effects(all) {
   #assert sha256d_checked(block[0..<BF_HEADER], out, false) == SHA_OK;
 }
 ```
@@ -411,7 +411,7 @@ The genesis block's previous filter header is 32 zero bytes.
 // BIP-157's filter header: SHA-256d of the filter's hash and the previous
 // filter header, both in hash order. The genesis block's previous header
 // is 32 zero bytes.
-bf_filter_header :: (filter: [] u8, prev: [] u8, out: [] u8) {
+bf_filter_header :: (filter: [] u8, prev: [] u8, out: [] u8) #effects(all) {
   pair: [64] u8;
   #assert sha256d_checked(filter, pair[0..<32], false) == SHA_OK;
   for i: 0..<32 { pair[32+i] = prev[i]; }
@@ -429,7 +429,7 @@ the header to get the key, build the filter and chain its header.
 // caller's scratch: ins, outs and items for one transaction at a time, and
 // pool, spans, values and idx for the block's elements.
 bf_basic_vartime :: (block: [] u8, prevouts: [] u8, prev_header: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem,
-                     pool: [] u8, spans: [] BfSpan, values: [] u64, idx: [] int, out: [] u8, header_out: [] u8) -> BfFilter {
+                     pool: [] u8, spans: [] BfSpan, values: [] u64, idx: [] int, out: [] u8, header_out: [] u8) -> BfFilter #effects(all) {
   if prev_header.count != 32 || header_out.count != 32 { return BfFilter.{code = BF_CAPACITY}; }
   g := bf_gather_vartime(block, prevouts, ins, outs, items, pool, spans);
   if g.code != BF_OK { return BfFilter.{code = g.code}; }

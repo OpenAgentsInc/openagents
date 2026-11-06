@@ -141,23 +141,23 @@ WcResult :: struct { code: int; used: int; n: int; }
   #assert wc_read_vartime(base[..], 0, scratch[..], du, b[..]).value[0] == 2;
 }
 
-wc_extent :: (n: int, capacity: int) -> bool { return n >= 0 && n <= capacity; }
-wc_payload_ok :: (n: int, capacity: int) -> bool { return n >= 0 && n < KV_VALUE_MAX && n < capacity; }
-wc_same :: (a: [] u8, b: [] u8) -> bool {
+wc_extent :: (n: int, capacity: int) -> bool #effects(all) { return n >= 0 && n <= capacity; }
+wc_payload_ok :: (n: int, capacity: int) -> bool #effects(all) { return n >= 0 && n < KV_VALUE_MAX && n < capacity; }
+wc_same :: (a: [] u8, b: [] u8) -> bool #effects(all) {
   if a.count != b.count { return false; }
   for k: 0..<a.count { if a[k] != b[k] { return false; } } return true;
 }
 // Checked KV tables only. Preserve the distinction between absent and empty.
-wc_value_vartime :: (table: [] u8, used: int, key: [] u8) -> WcValue {
+wc_value_vartime :: (table: [] u8, used: int, key: [] u8) -> WcValue #effects(all) {
   f := kv_find_vartime(table, used, key);
   if !f.found { return WcValue.{code=KV_NOT_FOUND}; }
   e := kv_entry_vartime(table, used, f.at); return WcValue.{value=e.value};
 }
-wc_tag_ok :: (value: [] u8) -> bool {
+wc_tag_ok :: (value: [] u8) -> bool #effects(all) {
   if value.count < 1 { return false; }
   return value[0] == KV_PUT || (value[0] == KV_DELETE && value.count == 1);
 }
-wc_read_vartime :: (base: [] u8, base_used: int, delta: [] u8, used: int, key: [] u8) -> WcValue #export_c {
+wc_read_vartime :: (base: [] u8, base_used: int, delta: [] u8, used: int, key: [] u8) -> WcValue #export_c #effects(all) {
   if !wc_extent(base_used, base.count) || !wc_extent(used, delta.count) { return WcValue.{code=KV_CORRUPT}; }
   cached := wc_value_vartime(delta, used, key);
   if cached.code == KV_NOT_FOUND { return wc_value_vartime(base, base_used, key); }
@@ -168,7 +168,7 @@ wc_read_vartime :: (base: [] u8, base_used: int, delta: [] u8, used: int, key: [
 // The delta keeps only differences from the immutable base. This derives
 // freshness from actual base absence: create/spend cancels, but an existing
 // base coin's spend/re-add/spend retains its deletion until the flush.
-wc_apply_vartime :: (base: [] u8, base_used: int, delta: [] u8, used: int, body: [] u8, scratch: [] u8, record: [] u8) -> int #export_c {
+wc_apply_vartime :: (base: [] u8, base_used: int, delta: [] u8, used: int, body: [] u8, scratch: [] u8, record: [] u8) -> int #export_c #effects(all) {
   if !wc_extent(base_used, base.count) || !wc_extent(used, delta.count) { return -KV_CORRUPT; }
   b := kv_batch_check_vartime(body);
   if b.code != KV_OK || b.seq != 0 || !kv_frame_size_ok(body.count) { return -KV_BAD_BATCH; }
@@ -194,7 +194,7 @@ wc_apply_vartime :: (base: [] u8, base_used: int, delta: [] u8, used: int, body:
   }
   return next;
 }
-wc_batch_vartime :: (delta: [] u8, used: int, body: [] u8) -> int #export_c {
+wc_batch_vartime :: (delta: [] u8, used: int, body: [] u8) -> int #export_c #effects(all) {
   if !wc_extent(used, delta.count) { return -KV_CORRUPT; }
   n := kv_batch_new(body); if kv_is_error(n) { return n; } at := 0;
   while at != used {
@@ -206,7 +206,7 @@ wc_batch_vartime :: (delta: [] u8, used: int, body: [] u8) -> int #export_c {
   }
   return n;
 }
-wc_materialize_vartime :: (base: [] u8, base_used: int, delta: [] u8, used: int, stage: [] u8, body: [] u8) -> WcResult #export_c {
+wc_materialize_vartime :: (base: [] u8, base_used: int, delta: [] u8, used: int, stage: [] u8, body: [] u8) -> WcResult #export_c #effects(all) {
   if !wc_extent(base_used, base.count) { return WcResult.{code=KV_CORRUPT}; }
   n := wc_batch_vartime(delta, used, body);
   if kv_is_error(n) { return WcResult.{code=-n}; }

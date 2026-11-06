@@ -32,7 +32,7 @@
 
 #load "record-supervise.coax";
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { return 2; }
   return ra_main(a[..]);

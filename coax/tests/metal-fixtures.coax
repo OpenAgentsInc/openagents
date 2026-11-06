@@ -14,7 +14,7 @@ MF_CASES :: [13]MfCase.[
   MfCase.{name="MIX",tree=MS_TREE_MIX,names=MS_NAMES_MIX},MfCase.{name="K",tree=MS_TREE_K,names=MS_NAMES_K},
   MfCase.{name="EMPTY",tree=MS_TREE_EMPTY,names=MS_NAMES_EMPTY},MfCase.{name="BRANCH",tree=MS_TREE_BRANCH,names=MS_NAMES_BRANCH},
   MfCase.{name="CONSTANTS",tree=MS_TREE_CONSTANTS,names=MS_NAMES_CONSTANTS}];
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..])||args_count(args[..])!=1{return 2;}dir:=args_at(args[..],0);if !fs_mkdir(dir){return 1;}
   p:[4][4096]u8;expected:=fs_join(dir,"expected.coax",p[0][..]);if !fs_write(expected,"// SDK-accepted Metal graphics contracts; GPU parity is qualified separately.\n"){return 1;}
   for c:MF_CASES {

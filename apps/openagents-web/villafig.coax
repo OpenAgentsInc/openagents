@@ -48,7 +48,7 @@ Figs :: struct {
   error: [MOTION_ERROR] u8; error_n: int;   // why the last motion an agent wrote was refused
 }
 
-vf_start :: (f: [] Figs) #export_c {
+vf_start :: (f: [] Figs) #export_c #effects(all) {
   f[0].started = true;
   f[0].motion_n = 0;
   for i: 0..<ANIMAL_MOTIONS { if verse_motion_read(f[0].motions[f[0].motion_n..<f[0].motion_n + 1], ANIMAL_MOTION_TEXT[i]) { f[0].motion_n += 1; } }
@@ -65,7 +65,7 @@ vf_start :: (f: [] Figs) #export_c {
 }
 
 // A motion slot by name: -1 none.
-vf_motion_named :: (f: [] Figs, name: string) -> int #export_c {
+vf_motion_named :: (f: [] Figs, name: string) -> int #export_c #effects(all) {
   for i: 0..<f[0].motion_n {
     m := f[0].motions[i..<i + 1];
     if m[0].ok && verse_motion_name(m) == name { return i; }
@@ -74,14 +74,14 @@ vf_motion_named :: (f: [] Figs, name: string) -> int #export_c {
 }
 
 // The slot of the pet's n-th stock emote (VF_PET_EMOTE_NAMES), or -1.
-vf_pet_emote :: (f: [] Figs, n: int) -> int #export_c {
+vf_pet_emote :: (f: [] Figs, n: int) -> int #export_c #effects(all) {
   if n < 0 || n >= VF_PET_EMOTES { return -1; }
   return vf_motion_named(f, VF_PET_EMOTE_NAMES[n]);
 }
 
 // A motion an agent wrote, added to the library (or replacing the one of
 // that name it added before): its slot, or -1 and the reason (vf_error).
-vf_motion_add :: (f: [] Figs, text: string) -> int #export_c {
+vf_motion_add :: (f: [] Figs, text: string) -> int #export_c #effects(all) {
   if !f[0].started { vf_start(f); }
   one: [1] Motion;
   if !verse_motion_read(one[..], text) {
@@ -101,12 +101,12 @@ vf_motion_add :: (f: [] Figs, text: string) -> int #export_c {
   f[0].motion_n += 1;
   return f[0].motion_n - 1;
 }
-vf_error :: (f: [] Figs) -> string #export_c { return cast(string) f[0].error[0..<f[0].error_n]; }
+vf_error :: (f: [] Figs) -> string #export_c #effects(all) { return cast(string) f[0].error[0..<f[0].error_n]; }
 
 // Figure i's build: a person or a dog, its ten numbers (figure.coax
 // SHAPE_NAMES), its pattern and colours. Out-of-range numbers are held to
 // their range.
-vf_set :: (f: [] Figs, i: int, dog: bool, numbers: [] f32, pattern: int, cr: f32, cg: f32, cb: f32, mr: f32, mg: f32, mb: f32) #export_c {
+vf_set :: (f: [] Figs, i: int, dog: bool, numbers: [] f32, pattern: int, cr: f32, cg: f32, cb: f32, mr: f32, mg: f32, mb: f32) #export_c #effects(all) {
   if i < 0 || i >= VF_FIGS { return; }
   if !f[0].started { vf_start(f); }
   s: Shape;
@@ -123,7 +123,7 @@ vf_set :: (f: [] Figs, i: int, dog: bool, numbers: [] f32, pattern: int, cr: f32
 // A dog's details past its build (after vf_set): its tail's shape (0 straight, 1 a plume:
 // raised and bushy, 2 curled over the back) and the fur on its chest (0 .. 1).
 VF_TAIL_STRAIGHT :: 0; VF_TAIL_PLUME :: 1; VF_TAIL_CURL :: 2;
-vf_dress :: (f: [] Figs, i: int, tail: int, ruff: f32) #export_c {
+vf_dress :: (f: [] Figs, i: int, tail: int, ruff: f32) #export_c #effects(all) {
   if i < 0 || i >= VF_FIGS { return; }
   s := f[0].figs[i].shape;
   if s.rig != Rig.animal { return; }
@@ -144,13 +144,13 @@ gait_for_speed :: (s: Shape, speed: f32) -> Gait {
   return Gait.run;
 }
 
-vf_tick :: (f: [] Figs, dt: f32) #export_c {
+vf_tick :: (f: [] Figs, dt: f32) #export_c #effects(all) {
   if !f[0].started { vf_start(f); }
   if finite(dt) { f[0].clock += clamp(dt, 0, 0.25); }
 }
 
 // Figure i moved this fast this frame: its gait follows, its stride runs on.
-vf_step :: (f: [] Figs, i: int, speed: f32, dt: f32) #export_c {
+vf_step :: (f: [] Figs, i: int, speed: f32, dt: f32) #export_c #effects(all) {
   if i < 0 || i >= VF_FIGS { return; }
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
   w := f[0].figs[i];
@@ -175,7 +175,7 @@ vf_step :: (f: [] Figs, i: int, speed: f32, dt: f32) #export_c {
 
 // Plays motion slot on figure i; the one playing fades out under it. The
 // same loop or hold again stops it.
-vf_emote :: (f: [] Figs, i: int, slot: int) -> bool #export_c {
+vf_emote :: (f: [] Figs, i: int, slot: int) -> bool #export_c #effects(all) {
   if i < 0 || i >= VF_FIGS || slot < 0 || slot >= f[0].motion_n { return false; }
   m := f[0].motions[slot..<slot + 1];
   w := f[0].figs[i];
@@ -192,7 +192,7 @@ vf_emote :: (f: [] Figs, i: int, slot: int) -> bool #export_c {
 }
 
 // Figure i is playing a motion that keeps it where it is (a sit, a dig).
-vf_still :: (f: [] Figs, i: int) -> bool #export_c {
+vf_still :: (f: [] Figs, i: int) -> bool #export_c #effects(all) {
   if i < 0 || i >= VF_FIGS { return false; }
   p := f[0].figs[i].now;
   if p.motion < 0 || p.motion >= f[0].motion_n || p.stop >= 0 { return false; }
@@ -200,7 +200,7 @@ vf_still :: (f: [] Figs, i: int) -> bool #export_c {
 }
 
 // The motion figure i plays now, or -1.
-vf_playing :: (f: [] Figs, i: int) -> int #export_c {
+vf_playing :: (f: [] Figs, i: int) -> int #export_c #effects(all) {
   if i < 0 || i >= VF_FIGS { return -1; }
   p := f[0].figs[i].now;
   if p.motion < 0 || p.stop >= 0 { return -1; }
@@ -221,7 +221,7 @@ vf_pose :: (f: [] Figs, w: VfFig) -> Pose {
 
 // Figure i posed standing at x, y, z facing yaw (radians, 0 toward +z):
 // its bones into out (BONE_FLOATS each) and a sphere round them into bound.
-vf_place :: (f: [] Figs, i: int, x: f32, y: f32, z: f32, yaw: f32, out: [] f32, bound: [] f32) -> int #export_c {
+vf_place :: (f: [] Figs, i: int, x: f32, y: f32, z: f32, yaw: f32, out: [] f32, bound: [] f32) -> int #export_c #effects(all) {
   if i < 0 || i >= VF_FIGS || !f[0].started { return 0; }
   w := f[0].figs[i];
   // a dog that sits (any motion that folds its hind legs under it) rests its rump on the ground
@@ -229,16 +229,16 @@ vf_place :: (f: [] Figs, i: int, x: f32, y: f32, z: f32, yaw: f32, out: [] f32, 
 }
 
 // A still emote (sit, sleep, dig...) ends: it fades back to standing.
-vf_stop :: (f: [] Figs, i: int) #export_c {
+vf_stop :: (f: [] Figs, i: int) #export_c #effects(all) {
   if i < 0 || i >= VF_FIGS { return; }
   w := f[0].figs[i];
   if w.now.motion >= 0 && w.now.motion < f[0].motion_n && w.now.stop < 0 { w.now.stop = f[0].clock; }
   f[0].figs[i] = w;
 }
 
-vf_bone_floats :: () -> int #export_c { return BONE_FLOATS; }
-vf_size :: () -> int #export_c { return size_of(Figs); }
-vf_max_bones :: () -> int #export_c { return MAX_PARTS; }
+vf_bone_floats :: () -> int #export_c #effects(all) { return BONE_FLOATS; }
+vf_size :: () -> int #export_c #effects(all) { return size_of(Figs); }
+vf_max_bones :: () -> int #export_c #effects(all) { return MAX_PARTS; }
 
 #test "the pets' six emotes and the person's all read, and play on a dog" {
   f: [1] Figs;

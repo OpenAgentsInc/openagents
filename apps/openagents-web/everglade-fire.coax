@@ -49,7 +49,8 @@ FI_SHARDS :: 14;
 FI_SHARD_HURT :: 4.0;      // m/s: a slab moving faster than this hurts who it strikes
 FI_RUBBLE_SPEED :: 4.0;    // m/s: debris striking the dome this fast wears it
 
-FiBurn :: struct { piece: int; t: f32; tick: f32; spread: f32; by: int; }   // by: the seat that started it (fi_owner)
+#load "everglade-handles.coax";
+FiBurn :: struct { piece: int; t: f32; tick: f32; spread: f32; by: int; owner:Handle(EvergladeSeat); }
 FiShard :: struct { live: bool; at: Point; vel: Point; yaw: f32; tilt: f32; spin: f32; sx: f32; sy: f32; sz: f32; still: bool; struck: bool; }
 Fire :: struct {
   time: f32;
@@ -58,6 +59,7 @@ Fire :: struct {
   lit: int;                               // pieces caught so far (the checks count them)
   crime_at: f32;                          // when its spreading last made a crime
   broke_by: int = -2;                     // this frame: the starter of the last fire that broke a piece (FI_CASTER none)
+  broke_owner:Handle(EvergladeSeat);
   next: [WATCH_ACTORS] f32; you_next: f32;
   embers_t: f32;
   dome_dmg: int; dome_gone: bool; dome_cool: f32;
@@ -66,6 +68,7 @@ Fire :: struct {
   gate_on: [EG_GATES] bool;      // alight
   gate_down: [EG_GATES] bool;    // burnt through: no leaf in the gap until R or a long rest
   gate_t: [EG_GATES] f32; gate_tick: [EG_GATES] f32; gate_hurt: [EG_GATES] int; gate_soot: [EG_GATES] f32; gate_by: [EG_GATES] int;
+  gate_owner:[EG_GATES]Handle(EvergladeSeat);
 }
 fi_of :: (s: [] Everglade) -> [] Fire { return s[0].sp.fi[..]; }
 // Whose a fire starting now is, in a room: the seat whose fire spreads to it (fi_as), else the
@@ -81,6 +84,27 @@ fi_owner :: (s: [] Everglade) -> int {
 // What follows acts as seat by's fire (FI_CASTER: as the step's caster again).
 fi_as :: (s: [] Everglade, by: int) { s[0].wv.fire_own = by != FI_CASTER; s[0].wv.fire_by = by; }
 fi_acting :: (s: [] Everglade) -> int { return ifx s[0].wv.fire_own then s[0].wv.fire_by else FI_CASTER; }
+fi_owner_reference :: (s:[]Everglade,by:int)->Handle(EvergladeSeat) {
+  if !s[0].wv.net || by<0 || by>=16 {return Handle(EvergladeSeat).{};}
+  return s[0].wv.seat_owner[by];
+}
+fi_as_reference :: (s:[]Everglade,by:int,owner:Handle(EvergladeSeat)) {
+  current:=fi_owner_reference(s,by);
+  resolved:=ev_seat_owner(by,owner,current,s[0].wv.net);
+  fi_as(s,resolved);
+}
+#test "fire ownership: a departed starter's fire cannot blame the next character in that seat" #steps 2000000000 {
+  s:[1]Everglade;s[0].wv.net=true;
+  old:=ev_seat_reference(0,1);fresh:=ev_seat_reference(0,2);
+  everglade_room_seat_owner(s[..],0,old.value);
+  burning:=FiBurn.{piece=3,by=0,owner=fi_owner_reference(s[..],0)};
+  fi_as_reference(s[..],burning.by,burning.owner);#assert fi_owner(s[..])==0;
+  everglade_room_seat_owner(s[..],0,fresh.value);
+  fi_as_reference(s[..],burning.by,burning.owner);#assert fi_owner(s[..])== -1;
+  fi_as_reference(s[..],0,fresh);#assert fi_owner(s[..])==0;
+  everglade_room_seat_owner(s[..],0,0);
+  fi_as_reference(s[..],0,fresh);#assert fi_owner(s[..])== -1;
+}
 fi_cap :: (s: [] Everglade) -> int { return ifx phone(s) then FI_MAX / 2 else FI_MAX; }
 
 // Whether piece i burns, and how readily (the plaster walls are timber frames filled with plaster:
@@ -107,7 +131,8 @@ fi_ignite :: (s: [] Everglade, i: int) -> bool {
   p := w[0].pieces[i];
   if p.state != DP_STANDING || fi_fuel(p) <= 0 || fi_burning(s, i) { return false; }
   if fr_wet(s, p.cx, p.cz) && p.y0 < ground_at(s, p.cx, p.cz) + 0.5 { return false; }   // stood in water
-  v[0].burn[v[0].n] = FiBurn.{piece = i, t = 0, tick = f32(FI_KINDLE), spread = f32(FI_SPREAD) * (0.6 + 0.8 * sp_rand(s)), by = fi_owner(s)};
+  by:=fi_owner(s);
+  v[0].burn[v[0].n] = FiBurn.{piece = i, t = 0, tick = f32(FI_KINDLE), spread = f32(FI_SPREAD) * (0.6 + 0.8 * sp_rand(s)), by = by, owner=fi_owner_reference(s,by)};
   v[0].n += 1;
   v[0].lit += 1;
   return true;
@@ -211,7 +236,7 @@ fi_char_chunks :: (s: [] Everglade, burning: bool) {
     if w[0].meta[b].kind == 0 || w[0].meta[b].born != w[0].clock { continue; }
     k := 0.25 + 0.2 * sp_rand(s);
     w[0].meta[b].cr *= k; w[0].meta[b].cg *= k * 0.92; w[0].meta[b].cb *= k * 0.85;
-    if burning && sp_rand(s) < 0.6 { s[0].sp.burn[b] = hi(s[0].sp.burn[b], f32(FI_BURN_DEBRIS) * (0.5 + sp_rand(s))); s[0].sp.burn_by[b] = fi_owner(s); }
+    if burning && sp_rand(s) < 0.6 { s[0].sp.burn[b] = hi(s[0].sp.burn[b], f32(FI_BURN_DEBRIS) * (0.5 + sp_rand(s))); s[0].sp.burn_by[b] = fi_owner(s); s[0].sp.burn_owner[b]=fi_owner_reference(s,fi_owner(s)); }
   }
 }
 
@@ -262,10 +287,10 @@ fi_frame :: (s: [] Everglade, dt: f32) {
   while k < v[0].n {
     i := v[0].burn[k].piece;
     p := w[0].pieces[i];
-    fi_as(s, v[0].burn[k].by);
+    fi_as_reference(s, v[0].burn[k].by,v[0].burn[k].owner);
     if p.state != DP_STANDING {
       // it fell whole: it burns on as debris
-      if p.state == DP_LOOSE && p.body >= 0 && p.body < DEMO_BODIES { s[0].sp.burn[p.body] = hi(s[0].sp.burn[p.body], f32(FI_BURN_DEBRIS)); s[0].sp.burn_by[p.body] = v[0].burn[k].by; }
+      if p.state == DP_LOOSE && p.body >= 0 && p.body < DEMO_BODIES { s[0].sp.burn[p.body] = hi(s[0].sp.burn[p.body], f32(FI_BURN_DEBRIS)); s[0].sp.burn_by[p.body] = v[0].burn[k].by; s[0].sp.burn_owner[p.body]=v[0].burn[k].owner; }
       fi_drop(s, k); continue;
     }
     v[0].burn[k].t += dt;
@@ -283,6 +308,7 @@ fi_frame :: (s: [] Everglade, dt: f32) {
         s[0].sp.broke += 1;
         broke = true;
         v[0].broke_by = e.by;
+        v[0].broke_owner=e.owner;
         fi_drop(s, k); continue;
       }
       // the dome by it wears in the heat
@@ -297,7 +323,7 @@ fi_frame :: (s: [] Everglade, dt: f32) {
     k += 1;
   }
   if broke {
-    fi_as(s, v[0].broke_by);   // what that dropped burns on as theirs
+    fi_as_reference(s, v[0].broke_by,v[0].broke_owner);   // what that dropped burns on as theirs
     _ := demo_settle(w);
     fi_char_chunks(s, true);   // what that dropped
     s[0].sp.walls_dirty = true;
@@ -311,7 +337,7 @@ fi_frame :: (s: [] Everglade, dt: f32) {
     for b: 0..<DEMO_BODIES {
       if tried >= 6 || s[0].sp.burn[b] <= 0 || !demo_chunk_box(w, b, box[..]) { continue; }
       tried += 1;
-      fi_as(s, s[0].sp.burn_by[b]);
+      fi_as_reference(s, s[0].sp.burn_by[b],s[0].sp.burn_owner[b]);
       _ := fi_catch(s, box[0].at, 0.5, FI_EMBER);
     }
   }
@@ -648,7 +674,7 @@ fi_gates_catch :: (s: [] Everglade, at: Point, r: f32, odds: f32) -> int {
     if b.y1 < at.y - 1.5 || b.y0 > at.y + 4.5 { continue; }
     dx := clamp(at.x, b.x0, b.x1) - at.x; dz := clamp(at.z, b.z0, b.z1) - at.z;
     if dx * dx + dz * dz > r * r || sp_rand(s) >= odds { continue; }
-    v[0].gate_on[g] = true; v[0].gate_t[g] = 0; v[0].gate_tick[g] = f32(FI_KINDLE); v[0].gate_by[g] = fi_owner(s);
+    v[0].gate_on[g] = true; v[0].gate_t[g] = 0; v[0].gate_tick[g] = f32(FI_KINDLE); v[0].gate_by[g] = fi_owner(s);v[0].gate_owner[g]=fi_owner_reference(s,fi_owner(s));
     n += 1;
   }
   return n;

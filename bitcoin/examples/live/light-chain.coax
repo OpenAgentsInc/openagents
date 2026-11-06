@@ -49,7 +49,7 @@ lc_file_append :: (f: [] LcFile, path: string, r: LcResult, sequence: u64, initi
   // The acknowledgement comes only after the complete frame and name sync.
   return fs_append_durable(path, cast(string) f[0].frame[0..<start+8+r.n]);
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 3 { tool_errln("usage: light-chain init|tip|recover|disconnect CHAIN STATE; apply CHAIN STATE HEADERS NOW BLOCK..."); return 2; }
   action := args_at(a[..], 0); chain := lc_file_chain(args_at(a[..], 1)); path := args_at(a[..], 2);

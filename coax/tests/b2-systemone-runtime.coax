@@ -1,5 +1,5 @@
 // Actual synchronous API; independent native buffer oracle, no live service.
 #load "../lib/systemone/transport.coax";
-b2_post :: (client:SoClient,body:string,out:[]u8,err:[]u8)->SoResult #export_c {
+b2_post :: (client:SoClient,body:string,out:[]u8,err:[]u8)->SoResult #export_c #effects(all) {
   return so_post(client,body,out,err);
 }

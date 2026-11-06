@@ -31,7 +31,7 @@ rtc_authenticate_snapshot :: (d:Jv,directory:string,deadline:int)->bool {
     child=d.nodes[child].next;
   }return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}
   header_path:=args_value(a[..],"--check-header","");
   if header_path.count>0 {bytes:[1048576]u8;n:=fs_read(header_path,bytes[..]);return ifx n>=0 && rtc_abi(cast(string)bytes[0..<n]) then 0 else 1;}

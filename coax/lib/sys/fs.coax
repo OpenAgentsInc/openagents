@@ -9,29 +9,29 @@
 //   names: [1] FsList; k := fs_list(dir, names[..]);   // fs_entry(names[..], i)
 // A path holds no zero byte and is at most FS_PATH_MAX bytes.
 
-cxfs_path_push :: (byte: int) -> int #foreign;
-cxfs_read :: () -> int #foreign;
-cxfs_read_at :: (offset: int, count: int) -> int #foreign;
-cxfs_byte :: (i: int) -> int #foreign;
-cxfs_put :: (byte: int) -> int #foreign;
-cxfs_write :: (mode: int) -> int #foreign;
-cxfs_kind :: () -> int #foreign;
-cxfs_size :: () -> int #foreign;
-cxfs_mkdir :: () -> int #foreign;
-cxfs_temp :: () -> int #foreign;
-cxfs_name_byte :: (i: int) -> int #foreign;
-cxfs_remove :: () -> int #foreign;
-cxfs_list :: () -> int #foreign;
-cxfs_entry_len :: (i: int) -> int #foreign;
-cxfs_entry_byte :: (i: int, j: int) -> int #foreign;
-cxfs_cwd :: () -> int #foreign;
-cxfs_realpath :: () -> int #foreign;
-cxfs_hold :: () -> int #foreign;
-cxfs_rename :: () -> int #foreign;
-cxfs_mtime_ns :: () -> int #foreign;
-cxfs_truncate :: (size: int) -> int #foreign;
-cxfs_try_lock :: () -> int #foreign;
-cxfs_unlock :: () -> int #foreign;
+cxfs_path_push :: (byte: int) -> int #foreign #effects(all);
+cxfs_read :: () -> int #foreign #effects(all);
+cxfs_read_at :: (offset: int, count: int) -> int #foreign #effects(all);
+cxfs_byte :: (i: int) -> int #foreign #effects(all);
+cxfs_put :: (byte: int) -> int #foreign #effects(all);
+cxfs_write :: (mode: int) -> int #foreign #effects(all);
+cxfs_kind :: () -> int #foreign #effects(all);
+cxfs_size :: () -> int #foreign #effects(all);
+cxfs_mkdir :: () -> int #foreign #effects(all);
+cxfs_temp :: () -> int #foreign #effects(all);
+cxfs_name_byte :: (i: int) -> int #foreign #effects(all);
+cxfs_remove :: () -> int #foreign #effects(all);
+cxfs_list :: () -> int #foreign #effects(all);
+cxfs_entry_len :: (i: int) -> int #foreign #effects(all);
+cxfs_entry_byte :: (i: int, j: int) -> int #foreign #effects(all);
+cxfs_cwd :: () -> int #foreign #effects(all);
+cxfs_realpath :: () -> int #foreign #effects(all);
+cxfs_hold :: () -> int #foreign #effects(all);
+cxfs_rename :: () -> int #foreign #effects(all);
+cxfs_mtime_ns :: () -> int #foreign #effects(all);
+cxfs_truncate :: (size: int) -> int #foreign #effects(all);
+cxfs_try_lock :: () -> int #foreign #effects(all);
+cxfs_unlock :: () -> int #foreign #effects(all);
 
 FS_PATH_MAX :: 4096;
 FS_NONE :: 0; FS_FILE :: 1; FS_DIR :: 2; FS_OTHER :: 3;

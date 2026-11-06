@@ -156,10 +156,10 @@ HostDelivery :: struct {deliver:bool;kind:int=-1;bytes:int;failure:bool;}
   a:=ht_http_timeout(s[..],o,1);#assert a.deliver && a.kind==512+id && a.bytes==2 && a.failure;
 }
 
-ht_socket_owner :: (s:[]HostTransport,o:HostOwner)->bool {
+ht_socket_owner :: (s:[]HostTransport,o:HostOwner)->bool #effects(all) {
   return !s[0].retired && o.id>=0 && o.id<HOST_SOCKETS && o.engine==s[0].engine && o.generation>0 && o.generation==s[0].sockets[o.id].generation;
 }
-ht_socket_reserve :: (s:[]HostTransport)->HostOwner #export_c {
+ht_socket_reserve :: (s:[]HostTransport)->HostOwner #export_c #effects(all) {
   if s[0].retired {return HostOwner.{};}
   for i:0..<HOST_SOCKETS {
     if s[0].sockets[i].phase!=0 || s[0].sockets[i].generation==HOST_OWNER_MAX {continue;}
@@ -168,12 +168,12 @@ ht_socket_reserve :: (s:[]HostTransport)->HostOwner #export_c {
   }
   return HostOwner.{};
 }
-ht_socket_send :: (s:[]HostTransport,o:HostOwner)->bool #export_c {return ht_socket_owner(s,o) && s[0].sockets[o.id].phase==2;}
-ht_socket_close :: (s:[]HostTransport,o:HostOwner)->bool #export_c {
+ht_socket_send :: (s:[]HostTransport,o:HostOwner)->bool #export_c #effects(all) {return ht_socket_owner(s,o) && s[0].sockets[o.id].phase==2;}
+ht_socket_close :: (s:[]HostTransport,o:HostOwner)->bool #export_c #effects(all) {
   if !ht_socket_owner(s,o) || s[0].sockets[o.id].phase==0 {return false;}
   s[0].sockets[o.id].phase=0;s[0].sockets[o.id].close_pending=true;return true;
 }
-ht_socket_deliver :: (s:[]HostTransport,o:HostOwner,event:int,bytes:int,capacity:int)->HostDelivery #export_c {
+ht_socket_deliver :: (s:[]HostTransport,o:HostOwner,event:int,bytes:int,capacity:int)->HostDelivery #export_c #effects(all) {
   if !ht_socket_owner(s,o) || event<0 || event>3 || bytes<0 || capacity<0 {return HostDelivery.{};}
   phase:=s[0].sockets[o.id].phase;
   if event==2 && phase==0 && s[0].sockets[o.id].close_pending {
@@ -186,12 +186,12 @@ ht_socket_deliver :: (s:[]HostTransport,o:HostOwner,event:int,bytes:int,capacity
   return HostDelivery.{deliver=true,kind=256+4*o.id+event,bytes=bytes};
 }
 
-ht_http_owner :: (s:[]HostTransport,o:HostOwner)->bool {
+ht_http_owner :: (s:[]HostTransport,o:HostOwner)->bool #effects(all) {
   return !s[0].retired && o.id>=0 && o.id<HOST_REQUESTS && o.engine==s[0].engine && o.generation>0 && o.generation==s[0].requests[o.id].generation && s[0].requests[o.id].active;
 }
 // Only response-bearing requests reserve a slot. Beacon/fire-and-forget
 // effects return0 at the import boundary after route/header preflight.
-ht_http_reserve :: (s:[]HostTransport,flags:int,bounded:bool,timeout_ms:int,now:int,capacity:int)->HostOwner #export_c {
+ht_http_reserve :: (s:[]HostTransport,flags:int,bounded:bool,timeout_ms:int,now:int,capacity:int)->HostOwner #export_c #effects(all) {
   if s[0].retired || (flags&4)==0 {return HostOwner.{};}
   if bounded && ((flags&2)!=0 || timeout_ms<1 || timeout_ms>2147483647 || capacity<2 || now<0 || now>HOST_OWNER_MAX-timeout_ms) {return HostOwner.{};}
   for i:0..<HOST_REQUESTS {
@@ -202,33 +202,33 @@ ht_http_reserve :: (s:[]HostTransport,flags:int,bounded:bool,timeout_ms:int,now:
   }
   return HostOwner.{};
 }
-ht_http_capacity :: (s:[]HostTransport,o:HostOwner)->int #export_c {
+ht_http_capacity :: (s:[]HostTransport,o:HostOwner)->int #export_c #effects(all) {
   if !ht_http_owner(s,o) {return -1;}return s[0].requests[o.id].capacity;
 }
 // Header bytes are a chunk too. Preflight before retaining streamed bytes.
-ht_http_chunk :: (s:[]HostTransport,o:HostOwner,bytes:int)->bool #export_c {
+ht_http_chunk :: (s:[]HostTransport,o:HostOwner,bytes:int)->bool #export_c #effects(all) {
   if !ht_http_owner(s,o) {return false;}
   r:=s[0].requests[o.id];
   if r.failed {return false;}
   if bytes<0 || bytes>HOST_OWNER_MAX-r.received || (r.bounded && bytes>r.capacity-r.received) {s[0].requests[o.id].failed=true;return false;}
   s[0].requests[o.id].received+=bytes;return true;
 }
-ht_http_finish :: (s:[]HostTransport,o:HostOwner,now:int,ok:bool,utf8_valid:bool)->HostDelivery #export_c {
+ht_http_finish :: (s:[]HostTransport,o:HostOwner,now:int,ok:bool,utf8_valid:bool)->HostDelivery #export_c #effects(all) {
   if !ht_http_owner(s,o) {return HostDelivery.{};}
   r:=s[0].requests[o.id];s[0].requests[o.id].active=false;
   failed:=!ok || r.failed || r.received<2 || (r.bounded && (!utf8_valid || now>=r.deadline));
   return HostDelivery.{deliver=true,kind=512+o.id,bytes=ifx failed then 2 else r.received,failure=failed};
 }
-ht_http_timeout :: (s:[]HostTransport,o:HostOwner,now:int)->HostDelivery #export_c {
+ht_http_timeout :: (s:[]HostTransport,o:HostOwner,now:int)->HostDelivery #export_c #effects(all) {
   if !ht_http_owner(s,o) || !s[0].requests[o.id].bounded || now<s[0].requests[o.id].deadline {return HostDelivery.{};}
   s[0].requests[o.id].active=false;
   return HostDelivery.{deliver=true,kind=512+o.id,bytes=2,failure=true};
 }
-ht_http_cancel :: (s:[]HostTransport,id:int)->bool #export_c {
+ht_http_cancel :: (s:[]HostTransport,id:int)->bool #export_c #effects(all) {
   if id<0 || id>=HOST_REQUESTS || !s[0].requests[id].active {return false;}
   s[0].requests[id].active=false;return true;
 }
-ht_reset :: (s:[]HostTransport)->bool #export_c {
+ht_reset :: (s:[]HostTransport)->bool #export_c #effects(all) {
   for i:0..<HOST_SOCKETS {s[0].sockets[i].phase=0;s[0].sockets[i].close_pending=false;}
   for i:0..<HOST_REQUESTS {s[0].requests[i].active=false;}
   if s[0].retired || s[0].engine==HOST_OWNER_MAX {s[0].retired=true;return false;}

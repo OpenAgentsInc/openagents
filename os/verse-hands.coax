@@ -38,7 +38,7 @@ hands_find :: (text: string, pattern: string, from: int) -> int {
 }
 // One line: what the first hand shows (k 0: HANDS_NONE, HANDS_POINT or HANDS_PINCH; 1: the
 // fingertip's x in millionths of the camera's view; 2: its y), -1 for a coordinate of no hand.
-verse_hands_read :: (text: string, k: int) -> int #export_c {
+verse_hands_read :: (text: string, k: int) -> int #export_c #effects(all) {
   lm := hands_find(text, "\"landmarks\":[", 0);
   if lm < 0 { return ifx k == 0 then HANDS_NONE else -1; }
   // the ninth {"x": is landmark 8, the index fingertip
@@ -65,7 +65,7 @@ verse_hands_read :: (text: string, k: int) -> int #export_c {
 
 // The camera's point (millionths) on the screen (millionths): mirrored, the middle HANDS_SPAN of
 // the view stretched to the whole screen, clamped to it. axis 0 is x (mirrored), 1 is y.
-verse_hands_screen :: (v: int, axis: int) -> int #export_c {
+verse_hands_screen :: (v: int, axis: int) -> int #export_c #effects(all) {
   f := cast(f64) v / 1000000;
   if axis == 0 { f = 1 - f; }
   lo: f64 = (1 - HANDS_SPAN) / 2;
@@ -80,7 +80,7 @@ verse_hands_screen :: (v: int, axis: int) -> int #export_c {
   #assert verse_hands_screen(0, 1) == 0 && verse_hands_screen(1000000, 1) == 1000000;
 }
 // The smoothed pointer: a fifth of the way from was to now (millionths); -1 was is the first point.
-verse_hands_ease :: (was: int, now: int) -> int #export_c {
+verse_hands_ease :: (was: int, now: int) -> int #export_c #effects(all) {
   if was < 0 { return now; }
   return was + cast(int) (cast(f64) (now - was) * HANDS_EASE);
 }
@@ -88,12 +88,12 @@ verse_hands_ease :: (was: int, now: int) -> int #export_c {
 // The button after this frame: down after HANDS_DOWN_FRAMES pinched frames in a row, up after
 // HANDS_UP_FRAMES unpinched ones. run is how many frames in a row the pinch has (positive) or
 // has not (negative) been seen, this frame included.
-verse_hands_down :: (was_down: bool, run: int) -> bool #export_c {
+verse_hands_down :: (was_down: bool, run: int) -> bool #export_c #effects(all) {
   if !was_down { return run >= HANDS_DOWN_FRAMES; }
   return !(run <= -HANDS_UP_FRAMES);
 }
 // The run after a frame that pinched or not.
-verse_hands_run :: (run: int, pinched: bool) -> int #export_c {
+verse_hands_run :: (run: int, pinched: bool) -> int #export_c #effects(all) {
   if pinched { return ifx run > 0 then run + 1 else 1; }
   return ifx run < 0 then run - 1 else -1;
 }

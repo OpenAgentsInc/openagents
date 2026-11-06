@@ -51,7 +51,7 @@ a11y_line :: (buf: [] u8, at: int, id: int, role: string, state: string, label: 
   return put(buf, n, "\n");
 }
 // The page's controls now, a line each (the canvas's, as the last frame laid them out).
-realm_a11y :: (s: [] MyRealm, buf: [] u8) -> int #export_c {
+realm_a11y :: (s: [] MyRealm, buf: [] u8) -> int #export_c #effects(all) {
   n := 0;
   if s[0].note_n > 0 && s[0].time - s[0].note_at < 8 { n = a11y_line(buf, n, A11Y_STATUS, "status", "-", cast(string) s[0].note[0..<s[0].note_n]); }
   for b: 0..<BUTTONS {
@@ -89,7 +89,7 @@ a11y_pick :: (s: [] MyRealm, k: int) -> bool {
   return true;
 }
 // A control pressed in the accessible layer: what a tap on it does. False for one not shown now.
-realm_a11y_do :: (s: [] MyRealm, t: [] Track, id: int) -> bool #export_c {
+realm_a11y_do :: (s: [] MyRealm, t: [] Track, id: int) -> bool #export_c #effects(all) {
   if id >= 0 && id < BUTTONS { if !s[0].shown[id] { return false; } press_button(s, t, id); return true; }
   if id >= A11Y_PICK && id < A11Y_PICK + 5 { return a11y_pick(s, id - A11Y_PICK); }
   if id >= A11Y_CELL && id < A11Y_CELL + THINGS { if !s[0].cell_shown[id - A11Y_CELL] { return false; } place_thing(s, t, id - A11Y_CELL); return true; }
@@ -109,7 +109,7 @@ realm_pick_key :: (s: [] MyRealm, key: int) -> bool {
 // A controller, once a frame: its left stick (x right, y forward, as a pad reads them) and whether
 // its first button is down. aethyr/input.coax decides: the dead zone, a junk number mended to none,
 // a press counted once however long it is held.
-realm_pad :: (s: [] MyRealm, x: f32, y: f32, jump_down: bool) #export_c {
+realm_pad :: (s: [] MyRealm, x: f32, y: f32, jump_down: bool) #export_c #effects(all) {
   i := input_stick(x, y, false, false, false, 0, 0, 0);
   s[0].pad_x = i.move_x; s[0].pad_y = i.move_y; s[0].pad_mended += i.mended;
   s[0].pad_jump = input_level(s[0].pad_jump, jump_down);

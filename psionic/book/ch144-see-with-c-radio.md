@@ -78,7 +78,7 @@ stores as `input_conditioner.norm_mean` and `norm_std`.
 // one cls token per teacher (4) and 4 registers. summary_idxs is [0, 1, 2]:
 // the teachers with use_summary. The conditioner's mean and spread are the
 // stored f32 values of OpenAI CLIP's.
-rd_c_radio_v3_b :: ()->RdConfig {
+rd_c_radio_v3_b :: ()->RdConfig #effects(all) {
     return RdConfig.{patch=16,width=768,heads=12,inner=3072,depth=12,side=128,cls=4,registers=4,summary=3,epsilon=0.000001,
         mean=[3]f64.[0.48145467042922974,0.45782750844955444,0.40821072459220886],std=[3]f64.[0.2686295509338379,0.2613025903701782,0.27577710151672363]};
 }
@@ -126,9 +126,9 @@ RD_PER_BLOCK :: 14;
 RdDtype :: enum u8 {f32;i64;}
 RdTensor :: struct {name:string;dtype:RdDtype;shape:P5Shape;elements:int;}
 RdNeed :: struct {count:int;dtype:RdDtype;shape:P5Shape;}
-rd_s3 :: (a:int,b:int,c:int)->P5Shape {s:=sv_s2(a,b);s.rank=3;s.dims[2]=c;return s;}
-rd_tensors :: (c:RdConfig)->int {return RD_SHARED+RD_PER_BLOCK*c.depth;}
-rd_need :: (c:RdConfig,i:int,name:[]u8)->RdNeed {
+rd_s3 :: (a:int,b:int,c:int)->P5Shape #effects(all) {s:=sv_s2(a,b);s.rank=3;s.dims[2]=c;return s;}
+rd_tensors :: (c:RdConfig)->int #effects(all) {return RD_SHARED+RD_PER_BLOCK*c.depth;}
+rd_need :: (c:RdConfig,i:int,name:[]u8)->RdNeed #effects(all) {
     d:=c.width;
     n:=json_raw(name,0,"radio_model.");
     if i<RD_SHARED {
@@ -150,7 +150,7 @@ rd_need :: (c:RdConfig,i:int,name:[]u8)->RdNeed {
 }
 // Every needed tensor present once, with its type and the config's shape,
 // and nothing else in the file. Returns the element count.
-rd_inventory :: (c:RdConfig,inventory:[]RdTensor)->RdResult {
+rd_inventory :: (c:RdConfig,inventory:[]RdTensor)->RdResult #effects(all) {
     if rd_config_status(c)!=RdStatus.ok {return RdResult.{status=RdStatus.config};}
     total:=0;
     for i:0..<rd_tensors(c) {
@@ -182,7 +182,7 @@ is computed.
 
 <!-- source: psionic/lib/radio.coax admit -->
 ```jai
-rd_config_status :: (c:RdConfig)->RdStatus {
+rd_config_status :: (c:RdConfig)->RdStatus #effects(all) {
     sizes:=[7]int.[c.patch,c.width,c.heads,c.inner,c.depth,c.side,c.summary];
     for s:sizes {if s<1 || s>SV_EXTENT_MAX {return RdStatus.config;}}
     if c.summary>c.cls || c.registers<0 || c.cls+c.registers>SV_EXTENT_MAX || c.width%c.heads!=0 || !(c.epsilon>0) {return RdStatus.config;}
@@ -193,7 +193,7 @@ rd_config_status :: (c:RdConfig)->RdStatus {
 // (the model's min_resolution_step without windowed attention), at most
 // chapter 142's 512-pixel side and at most the position table's grid.
 // The pinned processor does not resize, so neither does this.
-rd_admit :: (c:RdConfig,image:PxImage)->RdGrid {
+rd_admit :: (c:RdConfig,image:PxImage)->RdGrid #effects(all) {
     if rd_config_status(c)!=RdStatus.ok {return RdGrid.{status=RdStatus.config};}
     s:=px_image_status(image);
     if s==PxStatus.shape {return RdGrid.{status=RdStatus.shape};}
@@ -229,12 +229,12 @@ That is the layout of `embedder.weight`'s 768 inputs.
 ```jai
 // The input conditioner: bytes / 255, then (x - mean) / spread per channel;
 // chapter 142's preprocessing with no resize.
-rd_profile :: (c:RdConfig,image:PxImage)->PxProfile {
+rd_profile :: (c:RdConfig,image:PxImage)->PxProfile #effects(all) {
     return PxProfile.{scale=1.0/255,mean=c.mean,std=c.std,height=image.height,width=image.width,filter=PxFilter.nearest};
 }
 // Patch rows left to right, top to bottom; each holds (channel, row, column)
 // values, the layout of the patch embedding's weight [768, 3 * 16 * 16].
-rd_pixels :: (c:RdConfig,image:PxImage,bytes:[]u8,work:[]f32,out:[]f32,overlap:bool)->RdResult {
+rd_pixels :: (c:RdConfig,image:PxImage,bytes:[]u8,work:[]f32,out:[]f32,overlap:bool)->RdResult #effects(all) {
     g:=rd_admit(c,image);if g.status!=RdStatus.ok {return RdResult.{status=g.status};}
     stage:=3*image.width*image.height;
     if bytes.count!=stage {return RdResult.{status=RdStatus.shape};}
@@ -275,8 +275,8 @@ distance from the top-left corner relative to the longer side.
 // bilinearly, corners aligned, to a square whose side is the grid's longer
 // side, then cut to the grid from the top-left corner. The cls and register
 // tokens go first, without positions.
-rd_embed_work :: (c:RdConfig,g:RdGrid)->int {return (g.patches+1)*c.width;}
-rd_embed :: (c:RdConfig,image:PxImage,patches:[]f32,w:[]f32,table:[]f32,tokens:[]f32,out:[]f32,work:[]f32,overlap:bool)->RdResult {
+rd_embed_work :: (c:RdConfig,g:RdGrid)->int #effects(all) {return (g.patches+1)*c.width;}
+rd_embed :: (c:RdConfig,image:PxImage,patches:[]f32,w:[]f32,table:[]f32,tokens:[]f32,out:[]f32,work:[]f32,overlap:bool)->RdResult #effects(all) {
     g:=rd_admit(c,image);if g.status!=RdStatus.ok {return RdResult.{status=g.status};}
     n:=g.patches;d:=c.width;s:=c.cls+c.registers;
     if patches.count!=n*g.features || w.count!=d*g.features || table.count!=c.side*c.side*d || tokens.count!=s*d {return RdResult.{status=RdStatus.shape};}
@@ -320,10 +320,10 @@ rotary position.
 // position: the positions were added once, at the embedding.
 // The layer-scaled branch rounds to f32 before the residual sum; a value
 // past f32 stays as it is, so the sum's rounding refuses it.
-rd_finite :: (v:f32)->bool {return psionic_tensor_finite_bits(f32_bits(v));}
-rd_round :: (v:f64)->f64 {if psionic_ops_fits_f32(v) {return f64(f32(v));}return v;}
-rd_block_work :: (c:RdConfig,n:int)->int {return n*(6*c.width+c.inner);}
-rd_block_status :: (c:RdConfig,w:RdBlock)->RdStatus {
+rd_finite :: (v:f32)->bool #effects(all) {return psionic_tensor_finite_bits(f32_bits(v));}
+rd_round :: (v:f64)->f64 #effects(all) {if psionic_ops_fits_f32(v) {return f64(f32(v));}return v;}
+rd_block_work :: (c:RdConfig,n:int)->int #effects(all) {return n*(6*c.width+c.inner);}
+rd_block_status :: (c:RdConfig,w:RdBlock)->RdStatus #effects(all) {
     d:=c.width;i:=c.inner;
     parts:=[14][]f32.[w.norm1,w.norm1_bias,w.qkv,w.qkv_bias,w.proj,w.proj_bias,w.ls1,w.norm2,w.norm2_bias,w.fc1,w.fc1_bias,w.fc2,w.fc2_bias,w.ls2];
     want:=[14]int.[d,d,3*d*d,3*d,d*d,d,d,d,d,i*d,i,d*i,d,d];
@@ -331,7 +331,7 @@ rd_block_status :: (c:RdConfig,w:RdBlock)->RdStatus {
     for p:parts {if !px_finite(p) {return RdStatus.number;}}
     return RdStatus.ok;
 }
-rd_block :: (c:RdConfig,image:PxImage,x:[]f32,w:RdBlock,out:[]f32,work:[]f32,overlap:bool)->RdResult {
+rd_block :: (c:RdConfig,image:PxImage,x:[]f32,w:RdBlock,out:[]f32,work:[]f32,overlap:bool)->RdResult #effects(all) {
     g:=rd_admit(c,image);if g.status!=RdStatus.ok {return RdResult.{status=g.status};}
     n:=g.tokens;d:=c.width;
     if x.count!=n*d {return RdResult.{status=RdStatus.shape};}
@@ -358,7 +358,7 @@ rd_block :: (c:RdConfig,image:PxImage,x:[]f32,w:RdBlock,out:[]f32,work:[]f32,ove
 }
 // Softmax attention per head over all n tokens. The largest score is
 // subtracted before exponentiating, so scores past 709 do not overflow.
-rd_attend :: (qkv:[]f32,n:int,d:int,heads:int,att:[]f32) {
+rd_attend :: (qkv:[]f32,n:int,d:int,heads:int,att:[]f32) #effects(all) {
     hd:=d/heads;scale:=1/sqrt(f64(hd));
     for head:0..<heads {for r:0..<n {
         q:=r*3*d+head*hd;top:f64;
@@ -386,7 +386,7 @@ divided by 16.
 // first `summary` cls tokens joined end to end (3 * 768 = 2304 values); the
 // spatial features are every patch token, after the cls and register
 // tokens, one row of 768 per grid cell, rows then columns.
-rd_split :: (c:RdConfig,image:PxImage,y:[]f32,summary:[]f32,features:[]f32)->RdResult {
+rd_split :: (c:RdConfig,image:PxImage,y:[]f32,summary:[]f32,features:[]f32)->RdResult #effects(all) {
     g:=rd_admit(c,image);if g.status!=RdStatus.ok {return RdResult.{status=g.status};}
     d:=c.width;s:=c.cls+c.registers;
     if y.count!=g.tokens*d {return RdResult.{status=RdStatus.shape};}
@@ -402,16 +402,16 @@ rd_split :: (c:RdConfig,image:PxImage,y:[]f32,summary:[]f32,features:[]f32)->RdR
 // The whole encoder: bytes to patch rows, the embedding, every block, then
 // the summary and the spatial features.
 RdWeights :: struct {patch:[]f32;table:[]f32;tokens:[]f32;blocks:[]RdBlock;}
-rd_encode_work :: (c:RdConfig,image:PxImage)->int {
+rd_encode_work :: (c:RdConfig,image:PxImage)->int #effects(all) {
     g:=rd_admit(c,image);if g.status!=RdStatus.ok {return 0;}
     return rd_scratch(c,image,g)+g.patches*g.features+2*g.tokens*c.width;
 }
 // The scratch serves the pixels (two channel-major images) and then each
 // block: the larger of the two.
-rd_scratch :: (c:RdConfig,image:PxImage,g:RdGrid)->int {
+rd_scratch :: (c:RdConfig,image:PxImage,g:RdGrid)->int #effects(all) {
     p:=6*image.width*image.height;b:=rd_block_work(c,g.tokens);return (p+b+cast(int)abs(f64(p-b)))/2;
 }
-rd_encode :: (c:RdConfig,image:PxImage,bytes:[]u8,w:RdWeights,summary:[]f32,features:[]f32,work:[]f32,overlap:bool)->RdResult {
+rd_encode :: (c:RdConfig,image:PxImage,bytes:[]u8,w:RdWeights,summary:[]f32,features:[]f32,work:[]f32,overlap:bool)->RdResult #effects(all) {
     g:=rd_admit(c,image);if g.status!=RdStatus.ok {return RdResult.{status=g.status};}
     if w.blocks.count!=c.depth {return RdResult.{status=RdStatus.shape};}
     if work.count<rd_encode_work(c,image) {return RdResult.{status=RdStatus.capacity};}

@@ -73,10 +73,10 @@ most 1,048,576 multiply-adds, the same work limit as chapter 4.
 
 <!-- source: psionic/lib/int8-products.coax plan -->
 ```jai
-int8_block_fits :: (block:int)->bool {return block<=INT8_S32_MAX/(INT8_CODE_MAX*INT8_CODE_MAX);}
+int8_block_fits :: (block:int)->bool #effects(all) {return block<=INT8_S32_MAX/(INT8_CODE_MAX*INT8_CODE_MAX);}
 // Work in binary64: exact below 2^53, and far above the limit beyond it.
-int8_work_fits :: (rows:int,width:int,tokens:int)->bool {return f64(rows)*f64(width)*f64(tokens)<=f64(INT8_MAC_LIMIT);}
-int8_plan :: (r:Int8Request)->Int8Plan #export_c {
+int8_work_fits :: (rows:int,width:int,tokens:int)->bool #effects(all) {return f64(rows)*f64(width)*f64(tokens)<=f64(INT8_MAC_LIMIT);}
+int8_plan :: (r:Int8Request)->Int8Plan #export_c #effects(all) {
     if r.rows<1 || r.tokens<1 || r.block<4 || r.block%4!=0 {return Int8Plan.{status=Int8Status.shape};}
     if !int8_block_fits(r.block) {return Int8Plan.{status=Int8Status.overflow};}
     if r.width<r.block || r.width%r.block!=0 {return Int8Plan.{status=Int8Status.shape};}
@@ -116,16 +116,16 @@ amax/`d` could be a little over 127.5 for a tiny (subnormal) block and round to
 
 <!-- source: psionic/lib/int8-products.coax quantize -->
 ```jai
-int8_finite :: (v:f32)->bool {return (f32_bits(v)&0x7fffffff)<0x7f800000;}
+int8_finite :: (v:f32)->bool #effects(all) {return (f32_bits(v)&0x7fffffff)<0x7f800000;}
 // The smallest f32 at or above amax/127, so amax/scale never exceeds 127.
-int8_scale :: (amax:f32)->f32 {
+int8_scale :: (amax:f32)->f32 #effects(all) {
     want:=f64(amax)/127;d:=f32(want);
     if f64(d)<want {d=f32_from_bits(f32_bits(d)+1);}
     return d;
 }
 // Nearest integer, ties upward.
-int8_nearest :: (t:f64)->int {return int(floor(t+0.5));}
-int8_quantize :: (r:Int8Request,x:[]f32,out:Int8Activations)->Int8Result #export_c {
+int8_nearest :: (t:f64)->int #effects(all) {return int(floor(t+0.5));}
+int8_quantize :: (r:Int8Request,x:[]f32,out:Int8Activations)->Int8Result #export_c #effects(all) {
     p:=int8_plan(r);
     if p.status!=Int8Status.ok {return Int8Result.{status=p.status};}
     if x.count!=p.activation_codes {return Int8Result.{status=Int8Status.storage};}
@@ -177,17 +177,17 @@ section bounds that before it is measured.
 <!-- source: psionic/lib/int8-products.coax dot -->
 ```jai
 // Groups of four products, as one dp4a instruction would add them.
-int8_dot4 :: (a:[]s8,at:int,b:[]s8,bt:int)->s32 {
+int8_dot4 :: (a:[]s8,at:int,b:[]s8,bt:int)->s32 #effects(all) {
     return cast(s32)a[at]*cast(s32)b[bt]+cast(s32)a[at+1]*cast(s32)b[bt+1]
         +cast(s32)a[at+2]*cast(s32)b[bt+2]+cast(s32)a[at+3]*cast(s32)b[bt+3];
 }
-int8_dot :: (a:[]s8,ai:int,b:[]s8,bi:int,n:int)->s32 {
+int8_dot :: (a:[]s8,ai:int,b:[]s8,bi:int,n:int)->s32 #effects(all) {
     acc:s32=0;
     for g:0..<n/4 {acc+=int8_dot4(a,ai+4*g,b,bi+4*g);}
     return acc;
 }
 // One block's contribution: d_w d_x S + m d_x sum(x codes), in binary64.
-int8_term :: (w:Int8Weights,wb:int,x:Int8Activations,xb:int,dot:s32)->f64 {
+int8_term :: (w:Int8Weights,wb:int,x:Int8Activations,xb:int,dot:s32)->f64 #effects(all) {
     dx:=f64(x.scales[xb]);
     return f64(w.scales[wb])*dx*f64(dot)+f64(w.offsets[wb])*dx*f64(x.sums[xb]);
 }
@@ -223,7 +223,7 @@ either product, so the bound cannot be fitted to the result.
 <!-- source: psionic/lib/int8-products.coax reference -->
 ```jai
 // Weights as f32 for chapter 4's float product. Refuses values f32 cannot hold.
-int8_dequantize :: (r:Int8Request,w:Int8Weights,out:[]f32)->Int8Result #export_c {
+int8_dequantize :: (r:Int8Request,w:Int8Weights,out:[]f32)->Int8Result #export_c #effects(all) {
     p:=int8_plan(r);
     if p.status!=Int8Status.ok {return Int8Result.{status=p.status};}
     if w.codes.count!=p.weight_codes || w.scales.count!=p.weight_scales || w.offsets.count!=p.weight_scales {return Int8Result.{status=Int8Status.storage};}
@@ -241,7 +241,7 @@ int8_dequantize :: (r:Int8Request,w:Int8Weights,out:[]f32)->Int8Result #export_c
 // half a step per activation times |w| (quantization), times (1 + 2^-40) for
 // the binary64 division, plus 2^-22 sum |w x| for f32 weights, binary64
 // combining and chapter 4's one narrowing to f32.
-int8_bound :: (r:Int8Request,wf:[]f32,x:[]f32,a:Int8Activations,out:[]f64)->Int8Result #export_c {
+int8_bound :: (r:Int8Request,wf:[]f32,x:[]f32,a:Int8Activations,out:[]f64)->Int8Result #export_c #effects(all) {
     p:=int8_plan(r);
     if p.status!=Int8Status.ok {return Int8Result.{status=p.status};}
     if wf.count!=p.weight_codes || x.count!=p.activation_codes || a.scales.count!=p.activation_scales {return Int8Result.{status=Int8Status.storage};}
@@ -269,8 +269,8 @@ both outputs unchanged.
 
 <!-- source: psionic/lib/int8-products.coax admit -->
 ```jai
-int8_scale_ok :: (v:f32)->bool {return int8_finite(v) && (f32_bits(v)&0x80000000)==0;}
-int8_admit :: (r:Int8Request,w:Int8Weights,x:Int8Activations,dots:[]s32,y:[]f64,tiled:bool)->Int8Plan {
+int8_scale_ok :: (v:f32)->bool #effects(all) {return int8_finite(v) && (f32_bits(v)&0x80000000)==0;}
+int8_admit :: (r:Int8Request,w:Int8Weights,x:Int8Activations,dots:[]s32,y:[]f64,tiled:bool)->Int8Plan #effects(all) {
     p:=int8_plan(r);
     if p.status!=Int8Status.ok {return p;}
     if tiled && (r.rows%INT8_TILE!=0 || r.tokens%INT8_TILE!=0) {return Int8Plan.{status=Int8Status.tile};}
@@ -299,7 +299,7 @@ in `dots`, and adds that block's term to a binary64 total, in block order.
 <!-- source: psionic/lib/int8-products.coax row -->
 ```jai
 // Decode shape: for each token and each output row, walk the row's blocks.
-int8_row :: (r:Int8Request,w:Int8Weights,x:Int8Activations,dots:[]s32,y:[]f64)->Int8Result #export_c {
+int8_row :: (r:Int8Request,w:Int8Weights,x:Int8Activations,dots:[]s32,y:[]f64)->Int8Result #export_c #effects(all) {
     p:=int8_admit(r,w,x,dots,y,false);
     if p.status!=Int8Status.ok {return Int8Result.{status=p.status};}
     nb:=p.blocks;
@@ -334,11 +334,11 @@ interleaved order starts 0 1 2 3, 8 9 10 11, 16 17 18 19, 24 25 26 27.
 // Interleaved weights: for each tile of four rows and each block, group g of
 // row i sits at ((tile*nb + b)*(block/4) + g)*16 + 4*i, so one 16-byte read
 // gives four rows the same four activation codes.
-int8_at :: (r:Int8Request,row:int,k:int)->int {
+int8_at :: (r:Int8Request,row:int,k:int)->int #effects(all) {
     nb:=r.width/r.block;b:=k/r.block;g:=(k%r.block)/4;
     return (((row/INT8_TILE)*nb+b)*(r.block/4)+g)*16+4*(row%INT8_TILE)+k%4;
 }
-int8_interleave :: (r:Int8Request,codes:[]s8,out:[]s8)->Int8Result #export_c {
+int8_interleave :: (r:Int8Request,codes:[]s8,out:[]s8)->Int8Result #export_c #effects(all) {
     p:=int8_plan(r);
     if p.status!=Int8Status.ok {return Int8Result.{status=p.status};}
     if r.rows%INT8_TILE!=0 {return Int8Result.{status=Int8Status.tile};}
@@ -349,7 +349,7 @@ int8_interleave :: (r:Int8Request,codes:[]s8,out:[]s8)->Int8Result #export_c {
 }
 // Prompt shape: a 4 x 4 tile of s32 accumulators per block; the same
 // blocks are added to each output in the same order as the row kernel.
-int8_tiled :: (r:Int8Request,w:Int8Weights,x:Int8Activations,dots:[]s32,y:[]f64)->Int8Result #export_c {
+int8_tiled :: (r:Int8Request,w:Int8Weights,x:Int8Activations,dots:[]s32,y:[]f64)->Int8Result #export_c #effects(all) {
     p:=int8_admit(r,w,x,dots,y,true);
     if p.status!=Int8Status.ok {return Int8Result.{status=p.status};}
     nb:=p.blocks;
@@ -503,9 +503,9 @@ the same sum as the CPU's.
 <!-- source: psionic/lib/device/int8-kernels.coax bytes -->
 ```jai
 // Code k (0..3) of a word, sign-extended.
-i8_code :: (word:u32,k:int)->s32 {return cast(s32)cast,trunc(s8)(word>>cast(u32)(8*k));}
+i8_code :: (word:u32,k:int)->s32 #effects(all) {return cast(s32)cast,trunc(s8)(word>>cast(u32)(8*k));}
 // What one dp4a instruction computes: acc plus four products of codes.
-i8_dp4a :: (a:u32,b:u32,acc:s32)->s32 {
+i8_dp4a :: (a:u32,b:u32,acc:s32)->s32 #effects(all) {
     return acc+i8_code(a,0)*i8_code(b,0)+i8_code(a,1)*i8_code(b,1)+i8_code(a,2)*i8_code(b,2)+i8_code(a,3)*i8_code(b,3);
 }
 ```
@@ -525,14 +525,14 @@ division.
 <!-- source: psionic/lib/device/int8-kernels.coax quantize -->
 ```jai
 // int8_scale and int8_nearest of int8-products.coax, for the device.
-i8_scale :: (amax:f32)->f32 {
+i8_scale :: (amax:f32)->f32 #effects(all) {
     want:=f64(amax)/127;d:=f32(want);
     if f64(d)<want {d=f32_from_bits(f32_bits(d)+1);}
     return d;
 }
 // Item i: activation block i (token i/nb, block i%nb), quantized as
 // int8_quantize does, four codes to a word.
-i8_quantize :: (item:int,block:int,x:[]f32,codes:[]u32,scales:[]f32,sums:[]s32) #export_c {
+i8_quantize :: (item:int,block:int,x:[]f32,codes:[]u32,scales:[]f32,sums:[]s32) #export_c #effects(all) {
     at:=item*block;top:=0;
     for k:0..<block {v:=cast(int)(f32_bits(x[at+k])&0x7fffffff);top=cast(int)((f64(top+v)+abs(f64(top-v)))/2);}
     d:=i8_scale(f32_from_bits(cast(u32)top));sum:s32=0;
@@ -561,7 +561,7 @@ for bit.
 // Decode shape. Item (t*rows+row)*nb+b: block b of weight row `row` times
 // block b of token t, one word (four codes) at a time. Neighbouring items
 // read neighbouring blocks of one row.
-i8_dots :: (item:int,rows:int,width:int,block:int,w:[]u32,x:[]u32,dots:[]s32) #export_c {
+i8_dots :: (item:int,rows:int,width:int,block:int,w:[]u32,x:[]u32,dots:[]s32) #export_c #effects(all) {
     nb:=width/block;b:=item%nb;row:=item/nb%rows;t:=item/nb/rows;
     wa:=(row*width+b*block)/4;xa:=(t*width+b*block)/4;acc:s32=0;
     for g:0..<block/4 {acc=i8_dp4a(w[wa+g],x[xa+g],acc);}
@@ -573,7 +573,7 @@ i8_dots :: (item:int,rows:int,width:int,block:int,w:[]u32,x:[]u32,dots:[]s32) #e
 ```jai
 // Item t*rows+row: the block terms of int8_term added in binary64 in block
 // order, exactly as int8_row adds them.
-i8_finish :: (item:int,rows:int,nb:int,ws:[]f32,wo:[]f32,xs:[]f32,xm:[]s32,dots:[]s32,y:[]f64) #export_c {
+i8_finish :: (item:int,rows:int,nb:int,ws:[]f32,wo:[]f32,xs:[]f32,xm:[]s32,dots:[]s32,y:[]f64) #export_c #effects(all) {
     row:=item%rows;t:=item/rows;acc:f64=0;
     for b:0..<nb {
         dx:=f64(xs[t*nb+b]);
@@ -623,8 +623,8 @@ I8_TILES :: 4;   // token tiles of 8 per warp
 I8_TOKENS :: 32; // tokens per warp
 // Two codes of a word (half h: bytes 2h and 2h+1) as a BF16 pair. Every code
 // in [-127, 127] is exact in BF16.
-i8_bf16 :: (code:s32)->u32 {return f32_bits(f32(code))>>16;}
-i8_pair :: (word:u32,h:int)->u32 {return i8_bf16(i8_code(word,2*h))|(i8_bf16(i8_code(word,2*h+1))<<16);}
+i8_bf16 :: (code:s32)->u32 #effects(all) {return f32_bits(f32(code))>>16;}
+i8_pair :: (word:u32,h:int)->u32 #effects(all) {return i8_bf16(i8_code(word,2*h))|(i8_bf16(i8_code(word,2*h+1))<<16);}
 // One warp: rows r0..r0+15 times tokens t0..t0+31, every block in order.
 // Work item group*(rows/16)+rowblock. x holds the tokens rounded up to a
 // multiple of 8: a ragged tile reads the padding, whatever it holds, and
@@ -635,7 +635,7 @@ i8_pair :: (word:u32,h:int)->u32 {return i8_bf16(i8_code(word,2*h))|(i8_bf16(i8_
 // sum converts to s32 without loss. After each block the warp adds its terms
 // to binary64 totals, in block order, as i8_finish and int8_row do, and
 // writes y at the end. With record 1 it also writes every block sum to dots.
-i8_mma :: (item:int,rows:int,width:int,tokens:int,block:int,w:[]u32,x:[]u32,ws:[]f32,wo:[]f32,xs:[]f32,xm:[]s32,record:int,dots:[]s32,y:[]f64) #export_c {
+i8_mma :: (item:int,rows:int,width:int,tokens:int,block:int,w:[]u32,x:[]u32,ws:[]f32,wo:[]f32,xs:[]f32,xm:[]s32,record:int,dots:[]s32,y:[]f64) #export_c #effects(all) {
     blocks:=rows/16;r0:=item%blocks*16;t0:=item/blocks*I8_TOKENS;
     nb:=width/block;q:=width/4;used:=(tokens-t0+7)/8;
     fa:[128]u32;fb:[64]u32;fc:[128]f32;acc:[512]f32;total:[512]f64;
@@ -711,7 +711,7 @@ I8_MMA_STEPS_MAX :: 65;       // 65 steps of 16 codes: 1040 * 127 * 127 = 16,774
 // special instruction; i8_mma is one warp on the BF16 tensor cores.
 I8_ROW_NEEDS :: DaNeeds.{threads=256,shared=0,mma=false};
 I8_MMA_NEEDS :: DaNeeds.{threads=32,shared=0,mma=true};
-i8_plan :: (kernel:I8Kernel,rows:int,width:int,tokens:int,block:int,dev:DaDevice)->I8Plan {
+i8_plan :: (kernel:I8Kernel,rows:int,width:int,tokens:int,block:int,dev:DaDevice)->I8Plan #effects(all) {
     if rows<1 || tokens<1 || block<4 || block%4!=0 {return I8Plan.{status=I8Status.shape};}
     if !int8_block_fits(block) {return I8Plan.{status=I8Status.overflow};}
     if width<block || width%block!=0 {return I8Plan.{status=I8Status.shape};}
@@ -727,7 +727,7 @@ i8_plan :: (kernel:I8Kernel,rows:int,width:int,tokens:int,block:int,dev:DaDevice
     if kernel==I8Kernel.mma {p.dot_items=0;p.mma_items=(tokens+I8_TOKENS-1)/I8_TOKENS*(rows/16);p.finish_items=0;p.x_words=(tokens+7)/8*8*width/4;}
     return p;
 }
-i8_text :: (p:I8Plan)->string {
+i8_text :: (p:I8Plan)->string #effects(all) {
     if p.status==I8Status.ok {return "admitted";}
     if p.status==I8Status.shape {return "refused: the block must be a positive multiple of 4 that divides the width";}
     if p.status==I8Status.overflow {return "refused: a block that long could overflow s32";}
@@ -747,7 +747,7 @@ products before it uploads them.
 // What int8_admit checks of the codes, scales and sums, for buffers too large
 // for the CPU plan's work limit: no code -128, every scale finite and not
 // negative, every offset finite, every stored sum equal to its codes' sum.
-i8_inputs :: (rows:int,width:int,tokens:int,block:int,w:Int8Weights,x:Int8Activations)->Int8Status {
+i8_inputs :: (rows:int,width:int,tokens:int,block:int,w:Int8Weights,x:Int8Activations)->Int8Status #effects(all) {
     nb:=width/block;
     if w.codes.count!=rows*width || w.scales.count!=rows*nb || w.offsets.count!=rows*nb {return Int8Status.storage;}
     if x.codes.count!=tokens*width || x.scales.count!=tokens*nb || x.sums.count!=tokens*nb {return Int8Status.storage;}
@@ -874,7 +874,7 @@ standard errors, and a spread over a tenth of either mean ranks nothing.
 // spread over a tenth of either mean ranks nothing. cm_compare also demands
 // the same number formats; here the formats differ on purpose (int8 against
 // f32 or BF16), so the rule is applied to the times alone.
-i8_rank :: (a:CmStats,b:CmStats)->CmCall {
+i8_rank :: (a:CmStats,b:CmStats)->CmCall #effects(all) {
     call:=CmCall.{verdict=CmVerdict.refused};
     if a.status!=CmStatus.ok || b.status!=CmStatus.ok {call.reason=CmReason.stats;return call;}
     call.ratio=b.mean/a.mean;

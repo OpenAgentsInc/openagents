@@ -239,7 +239,7 @@ eg_card_sizes :: (hb: []Hb, buf: []u8, dir: string, slots: []HbSlot, ws: []int, 
   return true;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   hbs: [1] Hb; hb := hbs[..];
   cwd: [4096] u8; root := fs_cwd(cwd[..]);
   if !fs_exists(fs_join(root, EG_TABLE, hb[0].path[..])) { tool_errln("everglade_hotbar: run it from the repository's root"); return 2; }

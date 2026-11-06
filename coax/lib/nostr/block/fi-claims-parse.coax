@@ -192,19 +192,19 @@ FiClaimsProjection :: struct {
 }
 // Member names are bounded independently of string values; duplicate detection
 // compares their decoded bytes, including unrecognized names.
-fi_claim_field :: (name:string)->int {
+fi_claim_field :: (name:string)->int #effects(all) {
  if name=="iss" {return 1;}if name=="sub" {return 2;}if name=="aud" {return 4;}
  if name=="nostr_pubkey" {return 8;}if name=="iat" {return 16;}if name=="exp" {return 32;}
  if name=="nbf" {return 64;}if name=="nostr_owner_pubkey" {return 128;}if name=="client_id" {return 256;}return 0;
 }
-fi_claim_ascii :: (value:string)->bool {
+fi_claim_ascii :: (value:string)->bool #effects(all) {
  for b:value {if b<33 || b>126 {return false;}}return true;
 }
-fi_claim_input_ok :: (n:int,marker:string)->bool {
+fi_claim_input_ok :: (n:int,marker:string)->bool #effects(all) {
  return n>=0 && n<=65536 && (marker.count==0 || fi_visible(marker,128));
 }
 // mode 0 projects issuer only; mode 1 is dedicated; mode 2 is access.
-fi_claims_profile :: (text:string,marker:string,mode:int)->FiClaimsProjection {
+fi_claims_profile :: (text:string,marker:string,mode:int)->FiClaimsProjection #effects(all) {
  result:FiClaimsProjection;if mode<0 || mode>2 || (mode!=2 && marker.count!=0) || !fi_claim_input_ok(text.count,marker) {return result;}
  j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return result;}
  names:[64]FiClaimName;count:=0;seen:=0;
@@ -256,6 +256,6 @@ fi_claims_profile :: (text:string,marker:string,mode:int)->FiClaimsProjection {
  result.ok=true;return result;
 }
 // Strict projection without authority; selector uses the explicit class mode.
-fi_claims_parse :: (text:string,marker:string)->FiClaimsProjection #export_c {
+fi_claims_parse :: (text:string,marker:string)->FiClaimsProjection #export_c #effects(all) {
  return fi_claims_profile(text,marker,2);
 }

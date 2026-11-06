@@ -1,0 +1,10 @@
+#load "../transaction-graph-lib.coax";
+main :: () {
+  nodes:[3]GraphNode;tx_graph_make(nodes[..]);nodes[1].next=nodes[0..<1];
+  switch tx_graph_change(nodes[..]) {case none {} case some(wrong) {#assert false;}}
+  #assert nodes[0].n==10 && nodes[1].n==11 && nodes[2].n==12;
+  #assert nodes[0].next[0].n==11 && nodes[1].next[0].n==10;
+  chain:[127]GraphNode;tx_graph_make(chain[..]);
+  switch tx_graph_run(chain[0..<1]) {case none {} case some(wrong) {#assert false;}}
+  #assert chain[0].n==10 && chain[126].n==136;
+}

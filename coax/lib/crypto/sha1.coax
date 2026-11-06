@@ -50,7 +50,7 @@ SHA1_MAX_INPUT :: 4096;
   #assert !sha1_hex(out[..], hex[0..<39]) && !sha1_hex(out[0..<19], hex[..]);
 }
 
-sha1_padded :: (input: string, at: int, total: int) -> u8 {
+sha1_padded :: (input: string, at: int, total: int) -> u8 #effects(all) {
   if at < input.count { return input[at]; }
   if at == input.count { return 128; }
   // the 64-bit big-endian bit count: inputs of at most 4096 bytes need its last two bytes
@@ -60,7 +60,7 @@ sha1_padded :: (input: string, at: int, total: int) -> u8 {
 }
 // The digest of input into out[0..<20]; false (out untouched) when input is
 // over SHA1_MAX_INPUT or out is shorter than 20.
-sha1_hash :: (input: string, out: [] u8) -> bool #export_c {
+sha1_hash :: (input: string, out: [] u8) -> bool #export_c #effects(all) {
   if input.count > SHA1_MAX_INPUT || out.count < 20 { return false; }
   blocks := input.count / 64 + 1;
   if input.count % 64 >= 56 { blocks += 1; }
@@ -97,7 +97,7 @@ sha1_hash :: (input: string, out: [] u8) -> bool #export_c {
   return true;
 }
 // Lowercase hex of a 20-byte digest, for checks and logs.
-sha1_hex :: (digest: [] u8, out: [] u8) -> bool {
+sha1_hex :: (digest: [] u8, out: [] u8) -> bool #effects(all) {
   if digest.count < 20 || out.count < 40 { return false; }
   digits := "0123456789abcdef";
   for i: 0..<20 { out[i * 2] = digits[digest[i] >> 4]; out[i * 2 + 1] = digits[digest[i] & 15]; }

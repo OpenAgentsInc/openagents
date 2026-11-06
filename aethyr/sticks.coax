@@ -163,17 +163,17 @@ sticks_touch :: (s: Sticks, slot: int, phase: int, x: f32, y: f32, width: f32, h
 
 // After the controller has read a frame's controls: the look and the jump
 // are spent; the stick stays held.
-verse_sticks_used :: (s: Sticks) -> Sticks #export_c {
+verse_sticks_used :: (s: Sticks) -> Sticks #export_c #effects(all) {
   next := s;
   next.dyaw = 0; next.dpitch = 0; next.jump = false; next.dance = false; next.zoom = 0;
   return next;
 }
 
 // After a pause: no fingers are down.
-verse_sticks_reset :: () -> Sticks #export_c { s: Sticks; return s; }
+verse_sticks_reset :: () -> Sticks #export_c #effects(all) { s: Sticks; return s; }
 
-verse_sticks_touch :: (s:Sticks,slot:int,phase:int,x:f32,y:f32,width:f32,height:f32,scale:f32,now:f64)->Sticks #export_c {return sticks_touch(s,slot,phase,x,y,width,height,scale,now,true);}
-verse_sticks_world_touch :: (s:Sticks,slot:int,phase:int,x:f32,y:f32,width:f32,height:f32,scale:f32,now:f64)->Sticks #export_c {return sticks_touch(s,slot,phase,x,y,width,height,scale,now,false);}
+verse_sticks_touch :: (s:Sticks,slot:int,phase:int,x:f32,y:f32,width:f32,height:f32,scale:f32,now:f64)->Sticks #export_c #effects(all) {return sticks_touch(s,slot,phase,x,y,width,height,scale,now,true);}
+verse_sticks_world_touch :: (s:Sticks,slot:int,phase:int,x:f32,y:f32,width:f32,height:f32,scale:f32,now:f64)->Sticks #export_c #effects(all) {return sticks_touch(s,slot,phase,x,y,width,height,scale,now,false);}
 
 // ---- Checks ----
 

@@ -4,7 +4,7 @@
 #load "../../verse/valley/rock.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) || args_count(args[..])>1 {return 2;}
   r:[1]Rock;
   for divisions:[3]int.[8,16,32] {

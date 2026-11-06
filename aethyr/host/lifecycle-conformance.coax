@@ -10,7 +10,7 @@
   #assert !hcl_lifecycle(0,73,0,0,life[..],rows[..]) && !hcl_lifecycle(2,73,0,0,life[..],rows[..]) && !hcl_lifecycle(1,0,0,0,life[..],rows[..]) && !hcl_lifecycle(1,73,1,0,life[..],rows[..]) && !hcl_lifecycle(1,73,0,1,life[..],rows[..]);
   #assert !hcl_lifecycle(1,73,0,0,life[0..<4],rows[..]) && !hcl_lifecycle(1,73,0,0,life[..],rows[0..<9]);extra:[11][8]int;for i:0..<10 {extra[i]=rows[i];}#assert !hcl_lifecycle(1,73,0,0,life[..],extra[..]);
 }
-hcl_lifecycle :: (version:int,constructed:int,dropped:int,held:int,life:[]int,events:[][8]int)->bool #export_c {
+hcl_lifecycle :: (version:int,constructed:int,dropped:int,held:int,life:[]int,events:[][8]int)->bool #export_c #effects(all) {
   if version!=1 || constructed!=73 || dropped!=0 || held!=0 || life.count!=5 {return false;}
   expected:=[5]int.[1,1,1,1,4015625];for v,i:expected {if life[i]!=v {return false;}}
   rows:=[10][8]int.[[8]int.[1,1134559232,1127481344,1065353216,0,0,0,0],[8]int.[1,1134559232,1127481344,1065353216,1015021568,0,0,0],[8]int.[2,119,0,1,0,0,0,0],[8]int.[5,1,0,0,0,0,0,0],[8]int.[5,0,0,0,0,0,0,0],[8]int.[1,1134559232,1127481344,1065353216,0,0,0,0],[8]int.[5,0,0,0,0,0,0,0],[8]int.[1,1134559232,1127481344,1065353216,0,0,0,0],[8]int.[1,1134559232,1127481344,1065353216,0,0,0,0],[8]int.[1,1134559232,1127481344,1065353216,1015021568,0,0,0]];

@@ -58,7 +58,7 @@ rw_build_run :: (compiler: string, source: string, work: string, dir: string, mo
   run_label: [256] u8; rn := 0; for c: name {run_label[rn]=c;rn+=1;} for c: "-run" {run_label[rn]=c;rn+=1;}
   run := [1]string.[ep];return rw_run(run[..],cast(string)run_label[0..<rn],dir,negative,deadline);
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args; if !args_load(args[..]) {return 2;}
   source := args_value(args[..],"--c",""); header := args_value(args[..],"--header",""); out := args_value(args[..],"--out","");
   if source=="" || header=="" || out=="" {tool_errln("usage: check-render-host-wire.coax --c Render.c --header Render.h --out DIR");return 2;}

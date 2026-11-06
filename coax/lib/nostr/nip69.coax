@@ -43,7 +43,7 @@ N69Order :: struct {
 
 N69_EXAMPLE :: "[[\"d\",\"ede61c96-4c13-4519-bf3a-dcf7f1e9d842\"],[\"k\",\"sell\"],[\"f\",\"VES\"],[\"s\",\"pending\"],[\"amt\",\"0\"],[\"fa\",\"100\"],[\"pm\",\"face to face\",\"bank transfer\"],[\"premium\",\"1\"],[\"rating\",\"{\\\"total_reviews\\\":1,\\\"total_rating\\\":3.0,\\\"last_rating\\\":3,\\\"max_rate\\\":5,\\\"min_rate\\\":1}\"],[\"source\",\"https://t.me/p2plightning/xxxxxxx\"],[\"network\",\"mainnet\"],[\"layer\",\"lightning\"],[\"name\",\"Nakamoto\"],[\"g\",\"<geohash>\"],[\"bond\",\"0\"],[\"expires_at\",\"1719391096\"],[\"expiration\",\"1719995896\"],[\"y\",\"lnp2pbot\"],[\"z\",\"order\"]]";
 // An order with the given amt, status, network and layer.
-n69_with :: (amt:string,s:string,network:string,layer:string,out:[]u8)->NostrEvent {
+n69_with :: (amt:string,s:string,network:string,layer:string,out:[]u8)->NostrEvent #effects(all) {
   n:=json_raw(out,0,"[[\"d\",\"o1\"],[\"k\",\"buy\"],[\"f\",\"EUR\"],[\"s\",\"");n=json_raw(out,n,s);
   n=json_raw(out,n,"\"],[\"amt\",\"");n=json_raw(out,n,amt);
   n=json_raw(out,n,"\"],[\"fa\",\"10\",\"20.5\"],[\"pm\",\"SEPA\"],[\"premium\",\"-1.5\"],[\"network\",\"");n=json_raw(out,n,network);
@@ -129,9 +129,9 @@ n69_with :: (amt:string,s:string,network:string,layer:string,out:[]u8)->NostrEve
   o=n69_order(n32_event(N69_KIND_ORDER,cast(string)two[0..<n]));#assert o.status==N69_OK && o.layer==N69_LAYER_LIGHTNING && o.side==N69_BUY && o.sats==5;
 }
 
-n69_refuse :: (r:N69Order,status:int,at:int)->N69Order {o:=r;o.status=status;o.at=at;return o;}
+n69_refuse :: (r:N69Order,status:int,at:int)->N69Order #effects(all) {o:=r;o.status=status;o.at=at;return o;}
 // A whole number of one to 16 digits, or -1.
-n69_whole :: (t:N32Text)->int {
+n69_whole :: (t:N32Text)->int #effects(all) {
   own:=t;d:=n99_decimal(cast(string)own.b[0..<own.n]);
   if !d.ok || d.frac_digits>0 {return -1;}
   return d.whole;
@@ -140,7 +140,7 @@ n69_whole :: (t:N32Text)->int {
 // book:begin order
 // A peer-to-peer order. The first of each tag is read; later ones are
 // ignored.
-n69_order :: (e:NostrEvent)->N69Order {
+n69_order :: (e:NostrEvent)->N69Order #effects(all) {
   o:N69Order;if e.error!=NE_OK {return o;}
   if e.kind!=N69_KIND_ORDER {return n69_refuse(o,N69_KIND,-1);}
   seen:[12]bool;   // the required tags, then expires_at and expiration
@@ -196,7 +196,7 @@ n69_order :: (e:NostrEvent)->N69Order {
 // Whether this stack may settle an order: on Bitcoin's chain, Lightning or
 // Spark, on mainnet, still pending, with its amount in sats. The layer is
 // checked first: an order on any other layer is shown and never settled.
-n69_settle :: (o:N69Order)->int {
+n69_settle :: (o:N69Order)->int #effects(all) {
   if o.status!=N69_OK {return N69_SETTLE_ORDER;}
   if o.layer==N69_LAYER_OTHER {return N69_SETTLE_LAYER;}
   if !n32_is(o.network,"mainnet") {return N69_SETTLE_NETWORK;}

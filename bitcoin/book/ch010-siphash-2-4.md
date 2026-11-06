@@ -81,12 +81,12 @@ modulo 2^64 in every build mode, and `rotl` rotates:
 <!-- source: coax/lib/crypto/siphash.coax round -->
 ```jai
 // The initial state: the key XOR the ASCII of "somepseudorandomlygeneratedbytes".
-sip_init :: (k0: u64, k1: u64) -> SipState {
+sip_init :: (k0: u64, k1: u64) -> SipState #effects(all) {
   return SipState.{v0 = k0 ^ 0x736f6d6570736575, v1 = k1 ^ 0x646f72616e646f6d,
     v2 = k0 ^ 0x6c7967656e657261, v3 = k1 ^ 0x7465646279746573};
 }
 // One SipRound: additions modulo 2^64, rotations by fixed distances and XORs.
-sip_round :: (s: SipState) -> SipState {
+sip_round :: (s: SipState) -> SipState #effects(all) {
   v0 := s.v0; v1 := s.v1; v2 := s.v2; v3 := s.v3;
   v0 = add_wrap(v0, v1); v1 = rotl(v1, 13); v1 ^= v0; v0 = rotl(v0, 32);
   v2 = add_wrap(v2, v3); v3 = rotl(v3, 16); v3 ^= v2;
@@ -124,7 +124,7 @@ After the last word, finalization XORs `0xff` into `v2`, runs 4 SipRounds
 ```jai
 // The last word: the 0-7 bytes after the last full word, little-endian, with
 // the input length mod 256 in the top byte.
-sip_last_word :: (input: [] u8, total: int) -> u64 {
+sip_last_word :: (input: [] u8, total: int) -> u64 #effects(all) {
   b := cast(u64) (total & 255) << 56;
   tail := input.count - input.count % 8;
   for i: tail..<input.count { b |= cast(u64) input[i] << ((i - tail) * 8); }
@@ -132,7 +132,7 @@ sip_last_word :: (input: [] u8, total: int) -> u64 {
 }
 // Each 8-byte word goes into v3, through two SipRounds (the "2"), then into
 // v0. Finalization runs four SipRounds (the "4").
-siphash24 :: (k0: u64, k1: u64, input: [] u8) -> u64 {
+siphash24 :: (k0: u64, k1: u64, input: [] u8) -> u64 #effects(all) {
   s := sip_init(k0, k1);
   words := input.count / 8;
   for w: 0..<words + 1 {
@@ -198,7 +198,7 @@ give `0x74f839c593dc67fd`. Written as 8 little-endian bytes, that's
 // 8-byte tag written little-endian. The checks run first, so a refusal writes
 // nothing. `overlap` says whether the output shares memory with the key or
 // the input.
-siphash24_checked :: (key: [] u8, input: [] u8, out: [] u8, overlap: bool) -> u32 #export_c {
+siphash24_checked :: (key: [] u8, input: [] u8, out: [] u8, overlap: bool) -> u32 #export_c #effects(all) {
   status := sip_request(key.count, input.count, out.count, overlap);
   if status != SIP_OK { return status; }
   tag := siphash24(cb_load_le64(key, 0).value, cb_load_le64(key, 8).value, input);

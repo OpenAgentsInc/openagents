@@ -42,7 +42,7 @@ everything before it:
 <!-- source: apps/openagents-web/save.coax pack -->
 ```jai
 // payload packed into out as a progress container; its length, or -1 when it doesn't fit.
-save_pack :: (world: string, schema: int, payload: [] u8, n: int, out: [] u8) -> int #export_c {
+save_pack :: (world: string, schema: int, payload: [] u8, n: int, out: [] u8) -> int #export_c #effects(all) {
   if out.count < 16 + world.count + n || n < 0 || n > payload.count { return -1; }
   out[0] = 65; out[1] = 69; out[2] = 83; out[3] = 86;
   out[4] = SAVE_VERSION; out[5] = SAVE_PROGRESS; out[6] = 0; out[7] = 0;
@@ -68,7 +68,7 @@ newer than the build's, the world, and lengths that end exactly at the CRC:
 ```jai
 // A container's payload, when its magic, version, layer, CRC and world are
 // right and its schema is one this build knows (at most max_schema).
-save_open :: (b: [] u8, n: int, world: string, max_schema: int) -> SaveOpened #export_c {
+save_open :: (b: [] u8, n: int, world: string, max_schema: int) -> SaveOpened #export_c #effects(all) {
   no: SaveOpened;
   if n < 18 || n > b.count || b[0] != 65 || b[1] != 69 || b[2] != 83 || b[3] != 86 { return no; }
   if (b[4] != 1 && b[4] != 2) || b[5] != SAVE_PROGRESS { return no; }
@@ -122,7 +122,7 @@ then the last good one:
 SavePick :: struct { which: int; at: int; count: int; schema: int; time: f64; }   // which: 0 none, 1 current, 2 previous
 // The save to load, trying the current one first (from `from`: 1, or 2 when
 // the current one opened but its house didn't), then the last good one.
-save_pick :: (bytes: [] u8, s: SaveSlots, world: string, max_schema: int, from: int) -> SavePick #export_c {
+save_pick :: (bytes: [] u8, s: SaveSlots, world: string, max_schema: int, from: int) -> SavePick #export_c #effects(all) {
   none: SavePick;
   if from <= 1 && s.cur_n > 0 {
     if s.legacy { return SavePick.{which = 1, at = s.cur, count = s.cur_n, schema = 0, time = 0}; }

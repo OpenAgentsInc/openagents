@@ -11,12 +11,12 @@ RQParameter :: struct {status:RQStatus;ty:int;word_offset:int;words:int;kind:int
 RQIOField :: struct {status:RQStatus;ty:int;word_offset:int;words:int;byte_offset:int;location:int=-1;position:bool;flat:bool;depth:bool;}
 #load "tests/reference-io-checks.coax";
 
-rq_ir_vector_width :: (p:RQProgram,tree:[]u32,meta:[]int,ty:int)->int {
+rq_ir_vector_width :: (p:RQProgram,tree:[]u32,meta:[]int,ty:int)->int #effects(all) {
  if p.status!=RQStatus.ok || cast,trunc(u64)ty>=cast(u64)p.types || rq_ir_type(meta,ty,0)!=7 {return 0;}
  at:=rq_ir_type(meta,ty,1);n:=cast(int)tree[at+1];if n<2 || n>4 {return 0;}
  for j:0..<n {if cast(int)tree[at+2+j*2]!=2 {return 0;}}return n;
 }
-rq_ir_parameter :: (p:RQProgram,tree:[]u32,meta:[]int,stage:int,index:int)->RQParameter {
+rq_ir_parameter :: (p:RQProgram,tree:[]u32,meta:[]int,stage:int,index:int)->RQParameter #effects(all) {
  if p.status!=RQStatus.ok {return RQParameter.{status=p.status};}
  proc:=rq_ir_entry(p,tree,meta,stage);
  if proc<0 || index<0 || index>=rq_ir_proc(meta,proc,1) {return RQParameter.{status=RQStatus.resource};}
@@ -34,7 +34,7 @@ rq_ir_parameter :: (p:RQProgram,tree:[]u32,meta:[]int,stage:int,index:int)->RQPa
  else if raw==11 {kind=3;shape=cast(int)tree[type_at+1];}
  return RQParameter.{ty=ty,word_offset=offset,words=rq_ir_type(meta,ty,2),kind=kind,shape=shape,stride=stride,name_id=name_id};
 }
-rq_ir_io_field_count :: (p:RQProgram,tree:[]u32,meta:[]int,ty:int,role:int)->int {
+rq_ir_io_field_count :: (p:RQProgram,tree:[]u32,meta:[]int,ty:int,role:int)->int #effects(all) {
  if p.status!=RQStatus.ok || cast,trunc(u64)ty>=cast(u64)p.types || cast,trunc(u64)role>2 {return 0;}
  vector:=rq_ir_vector_width(p,tree,meta,ty);
  if vector==4 && role!=1 {return 1;}
@@ -43,7 +43,7 @@ rq_ir_io_field_count :: (p:RQProgram,tree:[]u32,meta:[]int,ty:int,role:int)->int
 }
 // One canonical IO slot: a bare V4 is a whole value at index0. Struct
 // members retain storage layout/flags. Stage classification is separate.
-rq_ir_field_layout :: (p:RQProgram,tree:[]u32,meta:[]int,ty:int,index:int)->RQIOField {
+rq_ir_field_layout :: (p:RQProgram,tree:[]u32,meta:[]int,ty:int,index:int)->RQIOField #effects(all) {
  count:=rq_ir_io_field_count(p,tree,meta,ty,0);
  if index<0 || index>=count {return RQIOField.{status=RQStatus.resource};}
  r:RQIOField;vector:=rq_ir_vector_width(p,tree,meta,ty);
@@ -58,7 +58,7 @@ rq_ir_field_layout :: (p:RQProgram,tree:[]u32,meta:[]int,ty:int,index:int)->RQIO
  if scalar==3 || scalar==4 {r.flat=true;}
  return r;
 }
-rq_ir_io_field :: (p:RQProgram,tree:[]u32,meta:[]int,ty:int,index:int,role:int)->RQIOField {
+rq_ir_io_field :: (p:RQProgram,tree:[]u32,meta:[]int,ty:int,index:int,role:int)->RQIOField #effects(all) {
  count:=rq_ir_io_field_count(p,tree,meta,ty,role);
  if index<0 || index>=count {return RQIOField.{status=RQStatus.resource};}
  r:=rq_ir_field_layout(p,tree,meta,ty,index);vector:=rq_ir_vector_width(p,tree,meta,ty);
@@ -81,7 +81,7 @@ rq_ir_io_field :: (p:RQProgram,tree:[]u32,meta:[]int,ty:int,index:int,role:int)-
  }
  return r;
 }
-rq_ir_interface :: (p:RQProgram,tree:[]u32,meta:[]int,stage:int)->RQInterface {
+rq_ir_interface :: (p:RQProgram,tree:[]u32,meta:[]int,stage:int)->RQInterface #effects(all) {
  if p.status!=RQStatus.ok {return RQInterface.{status=p.status};}
  proc:=rq_ir_entry(p,tree,meta,stage);if proc<0 {return RQInterface.{status=RQStatus.resource};}
  params:=rq_ir_proc(meta,proc,1);ret:=rq_ir_proc(meta,proc,0);

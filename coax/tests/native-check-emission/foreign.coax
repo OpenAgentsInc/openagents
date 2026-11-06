@@ -1,2 +1,2 @@
 #test "reachable foreign effect" { #assert external_value() == 7; }
-external_value :: () -> int #foreign;
+external_value :: () -> int #foreign #effects(all);

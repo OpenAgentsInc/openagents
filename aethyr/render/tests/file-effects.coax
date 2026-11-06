@@ -33,7 +33,7 @@ ff_checks :: (dir:string)->bool {
   if fs_realpath(alias,other[..])!=full {return false;}
   return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   temp:[4096]u8;dir:=fs_temp("aethyr-file-effects-",temp[..]);
   if dir=="" {tool_errln("file effects: temporary directory failed");return 1;}
   okay:=ff_checks(dir);removed:=fs_remove(dir);

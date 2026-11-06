@@ -6,10 +6,10 @@
 // them add in the same order and the packs come out the same, byte for byte.
 #load "ph_num.coax";
 
-exit :: (code: s32) #foreign;
-atan2 :: (y: f64, x: f64) -> f64 #foreign;
-acos :: (x: f64) -> f64 #foreign;
-ceil :: (x: f64) -> f64 #foreign;
+exit :: (code: s32) #foreign #effects(all);
+atan2 :: (y: f64, x: f64) -> f64 #foreign #effects(all);
+acos :: (x: f64) -> f64 #foreign #effects(all);
+ceil :: (x: f64) -> f64 #foreign #effects(all);
 PH_PI :: 3.141592653589793;
 
 // ---- fatal errors (Python's SystemExit): the message on stderr, exit status 1

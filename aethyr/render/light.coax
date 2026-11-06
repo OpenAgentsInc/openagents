@@ -14,51 +14,51 @@
 #load "material.coax";
 
 // A hemisphere ambient channel: ground below, sky above, by the normal's y.
-verse_style_ambient :: (ny:f32,sky:f32,ground:f32,scale:f32)->f32 #export_c {
+verse_style_ambient :: (ny:f32,sky:f32,ground:f32,scale:f32)->f32 #export_c #effects(all) {
  return (ground+(sky-ground)*(st_sat(ny*0.5f32+0.5f32)))*scale;
 }
 // ---- 3. Real shadows: the key light's shadow map (host.js shadowLayout, 2048 square, 1024 on a phone)
 // How far round the eye the map reaches, in metres: the camera's near 60 m, 40 m on a phone.
-verse_style_shadow_reach :: (on_phone:f32)->f32 #export_c {if on_phone>0.5f32 {return 40.0f32;} return 60.0f32;}
+verse_style_shadow_reach :: (on_phone:f32)->f32 #export_c #effects(all) {if on_phone>0.5f32 {return 40.0f32;} return 60.0f32;}
 // The map's place snapped to whole texels (reach across size texels each way), so shadows hold still as the eye moves.
-verse_style_shadow_snap :: (x:f32,reach:f32,size:f32)->f32 #export_c {
+verse_style_shadow_snap :: (x:f32,reach:f32,size:f32)->f32 #export_c #effects(all) {
  texel:=2.0f32*reach/st_max(size,1.0f32);
  return floor(x/texel+0.5f32)*texel;
 }
 // A point's place across the map, -1 to 1 from its middle (x metres across the light from the
 // snapped middle), and its depth, 0 to 1, from how far it lies toward the light (`along`, metres
 // past the middle): nearer the light is nearer 0, and the map holds twice its reach either way.
-verse_style_shadow_across :: (x:f32,reach:f32)->f32 #export_c {return x/st_max(reach,0.001f32);}
-verse_style_shadow_depth :: (along:f32,reach:f32)->f32 #export_c {return 0.5f32-along/(4.0f32*st_max(reach,0.001f32));}
+verse_style_shadow_across :: (x:f32,reach:f32)->f32 #export_c #effects(all) {return x/st_max(reach,0.001f32);}
+verse_style_shadow_depth :: (along:f32,reach:f32)->f32 #export_c #effects(all) {return 0.5f32-along/(4.0f32*st_max(reach,0.001f32));}
 // How many Poisson taps the filter takes (where they are and how far out they reach,
 // verse_style_shadow_tap and verse_style_shadow_radius, stay in verse/style.coax).
-verse_style_shadow_taps :: (on_phone:f32)->f32 #export_c {if on_phone>0.5f32 {return 4.0f32;} return 9.0f32;}
+verse_style_shadow_taps :: (on_phone:f32)->f32 #export_c #effects(all) {if on_phone>0.5f32 {return 4.0f32;} return 9.0f32;}
 // The cast shadow (1 lit, 0 shadowed) with a mover's blob under it: the blob darkens to
 // 1 - strength (0.35) at its middle and never lightens a cast shadow.
-verse_style_contact :: (cast_lit:f32,blob:f32,strength:f32)->f32 #export_c {return st_min(cast_lit,1.0f32-strength*st_sat(blob));}
+verse_style_contact :: (cast_lit:f32,blob:f32,strength:f32)->f32 #export_c #effects(all) {return st_min(cast_lit,1.0f32-strength*st_sat(blob));}
 
 // ---- 4. Atmosphere: haze
 // The haze's share at distance d, height y over the ground at the eye (base_y):
 // exponential past `start`, thinner higher up (falloff), capped.
-verse_style_haze :: (d:f32,y:f32,base_y:f32,start:f32,density:f32,cap:f32,falloff:f32)->f32 #export_c {
+verse_style_haze :: (d:f32,y:f32,base_y:f32,start:f32,density:f32,cap:f32,falloff:f32)->f32 #export_c #effects(all) {
  dist:=1.0f32-exp(-density*st_max(d-start,0.0f32));
  height:=exp(-st_max(y-base_y,0.0f32)/st_max(falloff,0.001f32));
  return st_min(dist*(1.0f32+(height-1.0f32)*0.6f32),cap);
 }
 // How much of the key light's colour the haze takes looking toward it (V.L).
-verse_style_haze_glow :: (vdl:f32)->f32 #export_c {
+verse_style_haze_glow :: (vdl:f32)->f32 #export_c #effects(all) {
  a:=st_sat(vdl);a2:=a*a;a4:=a2*a2;
  return a4*a4*0.45f32;
 }
 // One channel of a surface through the haze: toward haze_c (the haze's colour
 // with the key's glow mixed in) by the haze's share f.
-verse_style_fog :: (c:f32,haze_c:f32,f:f32)->f32 #export_c {return c+(haze_c-c)*st_sat(f);}
+verse_style_fog :: (c:f32,haze_c:f32,f:f32)->f32 #export_c #effects(all) {return c+(haze_c-c)*st_sat(f);}
 
 // The haze's hue by its share (art-styles.md 4): teal where it is thin, the middle distance, turning
 // to the preset's blue as it thickens toward its cap, so far ridges step back teal, then blue, and
 // the haze never whitens what's near. One channel (0 red, 1 green, 2 blue) of the haze colour h.
-verse_style_haze_teal :: (ch:f32)->f32 #export_c {if ch<0.5f32 {return 0.70f32;} if ch<1.5f32 {return 1.0f32;} return 0.84f32;}
-verse_style_haze_hue :: (h:f32,ch:f32,f:f32,cap:f32)->f32 #export_c {
+verse_style_haze_teal :: (ch:f32)->f32 #export_c #effects(all) {if ch<0.5f32 {return 0.70f32;} if ch<1.5f32 {return 1.0f32;} return 0.84f32;}
+verse_style_haze_hue :: (h:f32,ch:f32,f:f32,cap:f32)->f32 #export_c #effects(all) {
  t:=verse_style_haze_teal(ch);
  far:=verse_style_soft_step((0.15f32+cap)*0.5f32,(cap-0.15f32)*0.5f32,f);
  return h*(t+(1.0f32-t)*far);

@@ -21,7 +21,7 @@
   if !local && limited && key {#assert check==(given || required);}
   #assert native_local_seats(local,16)==ifx local then 1 else 16;
 }
-native_local_enable :: (development:bool,address:string)->bool {return development && address=="127.0.0.1";}
-native_local_path :: (enabled:bool,game:string,code:string)->bool {return enabled && game=="everglade" && code=="local-1";}
-native_local_ticket_check :: (local:bool,limited:bool,key:bool,given:bool,required:bool)->bool {return !local && limited && key && (given || required);}
-native_local_seats :: (local:bool,usual:int)->int {return ifx local then 1 else usual;}
+native_local_enable :: (development:bool,address:string)->bool #effects(all) {return development && address=="127.0.0.1";}
+native_local_path :: (enabled:bool,game:string,code:string)->bool #effects(all) {return enabled && game=="everglade" && code=="local-1";}
+native_local_ticket_check :: (local:bool,limited:bool,key:bool,given:bool,required:bool)->bool #effects(all) {return !local && limited && key && (given || required);}
+native_local_seats :: (local:bool,usual:int)->int #effects(all) {return ifx local then 1 else usual;}

@@ -143,11 +143,11 @@ then the command. The reader follows the same order:
 ```jai
 // The protocol admits payloads larger than a one-shot SHA request. Reuse
 // chapter 34's bounded streaming updates, keeping chapter 5's limit intact.
-p2p_checksum_vartime :: (payload: [] u8, out: [] u8) {
+p2p_checksum_vartime :: (payload: [] u8, out: [] u8) #effects(all) {
   digest: [32] u8; tx_hash(payload,[6] int.[0,payload.count,0,0,0,0],digest[..]);
   for i: 0..<4 { out[i] = digest[i]; }
 }
-p2p_frame_extent :: (payload: int, capacity: int) -> bool {
+p2p_frame_extent :: (payload: int, capacity: int) -> bool #effects(all) {
   if payload < 0 || payload > P2P_MAX_MESSAGE { return false; } return capacity >= P2P_HEADER+payload;
 }
 // The header of the message at the start of b, then its payload. Checks
@@ -155,7 +155,7 @@ p2p_frame_extent :: (payload: int, capacity: int) -> bool {
 // bytes are there, then the checksum and the command once the payload is.
 // TRUNCATED means "not yet": a stream reader waits for more bytes.
 P2pFrame :: struct { code: int; command_n: int; length: int; payload: int; next: int; }
-p2p_frame_read_vartime :: (b: [] u8, magic: [4] u8) -> P2pFrame #export_c {
+p2p_frame_read_vartime :: (b: [] u8, magic: [4] u8) -> P2pFrame #export_c #effects(all) {
 
   if b.count < P2P_HEADER { return P2pFrame.{code=P2P_TRUNCATED}; }
   for i: 0..<4 { if b[i] != magic[i] { return P2pFrame.{code=P2P_BAD_MAGIC}; } }
@@ -172,7 +172,7 @@ p2p_frame_read_vartime :: (b: [] u8, magic: [4] u8) -> P2pFrame #export_c {
 }
 // CMessageHeader::IsMessageTypeValid: printable ASCII (0x20 to 0x7e), and
 // after the first zero byte nothing but zeros.
-p2p_command_valid_vartime :: (command: [] u8) -> bool #export_c {
+p2p_command_valid_vartime :: (command: [] u8) -> bool #export_c #effects(all) {
   if command.count != P2P_COMMAND { return false; }
   ended := false;
   for c: command {
@@ -182,7 +182,7 @@ p2p_command_valid_vartime :: (command: [] u8) -> bool #export_c {
   return true;
 }
 // True when the read frame's command is name.
-p2p_command_is :: (b: [] u8, f: P2pFrame, name: string) -> bool {
+p2p_command_is :: (b: [] u8, f: P2pFrame, name: string) -> bool #effects(all) {
   if f.code != P2P_OK || f.command_n != name.count { return false; }
   for i: 0..<name.count { if b[4+i] != name[i] { return false; } }
   return true;
@@ -190,7 +190,7 @@ p2p_command_is :: (b: [] u8, f: P2pFrame, name: string) -> bool {
 // A whole message into out: magic, command padded with zeros, length,
 // checksum, payload. Returns its size, or -1 for a command Core would
 // refuse, a payload above the limit or an out too small.
-p2p_frame_write_vartime :: (magic: [4] u8, command: string, payload: [] u8, out: [] u8) -> int #export_c {
+p2p_frame_write_vartime :: (magic: [4] u8, command: string, payload: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if command.count > P2P_COMMAND || !p2p_frame_extent(payload.count,out.count) { return -1; }
   padded: [12] u8;
   for i: 0..<command.count { padded[i] = command[i]; }
@@ -283,13 +283,13 @@ are left unread.
 P2pAddress :: struct { time: u32; services: u64; net: int; at: int; n: int; port: int; known: bool; }
 P2P_V4_PREFIX :: [12] u8.[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff];
 // The 26-byte v1 form without time: services, 16 address bytes, port.
-p2p_addr_v1_read_vartime :: (b: [] u8, at: int) -> P2pAddress {
+p2p_addr_v1_read_vartime :: (b: [] u8, at: int) -> P2pAddress #effects(all) {
   a := P2pAddress.{services=p2p_u64(b, at), net=P2P_NET_IPV4, at=at+20, n=4, known=true};
   for i: 0..<12 { if b[at+8+i] != P2P_V4_PREFIX[i] { a.net = P2P_NET_IPV6; a.at = at + 8; a.n = 16; } }
   a.port = (cast(int) b[at+24] << 8) | cast(int) b[at+25];
   return a;
 }
-p2p_addr_v1_write_vartime :: (src: [] u8, a: P2pAddress, out: [] u8, at: int) -> int {
+p2p_addr_v1_write_vartime :: (src: [] u8, a: P2pAddress, out: [] u8, at: int) -> int #effects(all) {
   w := p2p_put_u64(out, at, a.services);
   prefix := P2P_V4_PREFIX;
   if a.n == 4 { w = p2p_put(out, w, prefix[..]); }
@@ -308,7 +308,7 @@ P2pVersion :: struct {
   parts: int; from: P2pAddress; nonce: u64; agent: int; agent_n: int;
   height: int = -1; relay: bool = true; next: int;
 }
-p2p_version_read_vartime :: (b: [] u8) -> P2pVersion #export_c {
+p2p_version_read_vartime :: (b: [] u8) -> P2pVersion #export_c #effects(all) {
   bad := P2pVersion.{code=P2P_BAD_PAYLOAD};
   if b.count < 46 { return bad; }
   v := P2pVersion.{version=p2p_signed32(b, 0), services=p2p_u64(b, 4), time=tx_le_vartime(b, 12, 8)};
@@ -334,7 +334,7 @@ p2p_version_read_vartime :: (b: [] u8) -> P2pVersion #export_c {
 }
 // The message back, with v.parts optional groups; the address and user
 // agent bytes come from src. Returns the size, or -1 if out is too small.
-p2p_version_write_vartime :: (src: [] u8, v: P2pVersion, out: [] u8) -> int #export_c {
+p2p_version_write_vartime :: (src: [] u8, v: P2pVersion, out: [] u8) -> int #export_c #effects(all) {
   need := 46;
   if v.parts >= 1 { need += 34; }
   if v.parts >= 2 { need += tx_compact_size_vartime(v.agent_n) + v.agent_n; }
@@ -373,16 +373,16 @@ version; chapter 74 acts on it. `wtxidrelay` (BIP-339), `sendaddrv2`
 // ping, pong and the 8-byte nonces they carry; feefilter's rate in
 // sat/kvB, which Core applies only inside MoneyRange.
 P2pNumber :: struct { code: int; value: u64; }
-p2p_u64_read_vartime :: (b: [] u8) -> P2pNumber #export_c {
+p2p_u64_read_vartime :: (b: [] u8) -> P2pNumber #export_c #effects(all) {
   if b.count < 8 { return P2pNumber.{code=P2P_BAD_PAYLOAD}; }
   return P2pNumber.{value=p2p_u64(b, 0)};
 }
-p2p_u64_write_vartime :: (v: u64, out: [] u8) -> int #export_c {
+p2p_u64_write_vartime :: (v: u64, out: [] u8) -> int #export_c #effects(all) {
   if out.count < 8 { return -1; }
   return p2p_put_u64(out, 0, v);
 }
 P2pFeeFilter :: struct { code: int; rate: int; in_range: bool; }
-p2p_feefilter_read_vartime :: (b: [] u8) -> P2pFeeFilter #export_c {
+p2p_feefilter_read_vartime :: (b: [] u8) -> P2pFeeFilter #export_c #effects(all) {
   if b.count < 8 { return P2pFeeFilter.{code=P2P_BAD_PAYLOAD}; }
   rate := tx_le_vartime(b, 0, 8);        // a signed CAmount
   return P2pFeeFilter.{rate=rate, in_range=rate >= 0 && rate <= 2100000000000000};
@@ -390,7 +390,7 @@ p2p_feefilter_read_vartime :: (b: [] u8) -> P2pFeeFilter #export_c {
 // sendcmpct (BIP-152): announce with cmpctblock or not, and a version.
 // Read only; chapter 74 acts on it.
 P2pSendCmpct :: struct { code: int; announce: bool; version: u64; }
-p2p_sendcmpct_read_vartime :: (b: [] u8) -> P2pSendCmpct #export_c {
+p2p_sendcmpct_read_vartime :: (b: [] u8) -> P2pSendCmpct #export_c #effects(all) {
   if b.count < 9 { return P2pSendCmpct.{code=P2P_BAD_PAYLOAD}; }
   return P2pSendCmpct.{announce=b[0] != 0, version=p2p_u64(b, 1)};
 }
@@ -423,7 +423,7 @@ its wtxid instead of its txid.
 // longer than the bytes is a failed read, not too many.
 P2pInv :: struct { type: u32; hash: int; }
 P2pList :: struct { code: int; count: int; next: int; }
-p2p_inv_read_vartime :: (b: [] u8, out: [] P2pInv) -> P2pList #export_c {
+p2p_inv_read_vartime :: (b: [] u8, out: [] P2pInv) -> P2pList #export_c #effects(all) {
   n := tx_compact_read_vartime(b, 0);
   if n.code != TX_OK { return P2pList.{code=P2P_BAD_PAYLOAD}; }
   if b.count - n.next < 36 * n.value { return P2pList.{code=P2P_BAD_PAYLOAD}; }
@@ -435,17 +435,17 @@ p2p_inv_read_vartime :: (b: [] u8, out: [] P2pInv) -> P2pList #export_c {
   }
   return P2pList.{count=n.value, next=n.next+36*n.value};
 }
-p2p_inv_write_vartime :: (src: [] u8, entries: [] P2pInv, out: [] u8) -> int #export_c {
+p2p_inv_write_vartime :: (src: [] u8, entries: [] P2pInv, out: [] u8) -> int #export_c #effects(all) {
   if !p2p_inv_extent(entries.count,out.count) { return -1; }
   at := tx_compact_write_vartime(out, 0, entries.count);
   for e: entries { at = p2p_put_u32(out, at, e.type); at = p2p_put(out, at, src[e.hash..<e.hash+32]); }
   return at;
 }
-p2p_inv_extent :: (count: int, capacity: int) -> bool {
+p2p_inv_extent :: (count: int, capacity: int) -> bool #effects(all) {
   if count < 0 || count > P2P_MAX_INV { return false; } return capacity >= tx_compact_size_vartime(count)+36*count;
 }
 // CInv::GetMessageType's names; "" for a type Core doesn't know.
-p2p_inv_type_name :: (type: u32) -> string {
+p2p_inv_type_name :: (type: u32) -> string #effects(all) {
   witness := (type & P2P_MSG_WITNESS_FLAG) != 0;
   names := [6] string.["", "tx", "block", "merkleblock", "cmpctblock", "wtx"];
   wnames := [6] string.["", "witness-tx", "witness-block", "witness-merkleblock", "witness-cmpctblock", "witness-wtx"];
@@ -474,7 +474,7 @@ knows and replies from there.
 // getblocks and getheaders: a version Core ignores, a block locator of at
 // most 101 hashes, and the hash to stop at. first and stop are positions.
 P2pLocator :: struct { code: int; version: int; count: int; first: int; stop: int; next: int; }
-p2p_locator_read_vartime :: (b: [] u8) -> P2pLocator #export_c {
+p2p_locator_read_vartime :: (b: [] u8) -> P2pLocator #export_c #effects(all) {
   bad := P2pLocator.{code=P2P_BAD_PAYLOAD};
   n := tx_compact_read_vartime(b, 4);
   if n.code != TX_OK { return bad; }
@@ -487,7 +487,7 @@ p2p_locator_read_vartime :: (b: [] u8) -> P2pLocator #export_c {
   stop := n.next + 32 * n.value;
   return P2pLocator.{version=tx_le_vartime(b, 0, 4), count=n.value, first=n.next, stop=stop, next=stop+32};
 }
-p2p_locator_write_vartime :: (version: int, hashes: [] u8, stop: [] u8, out: [] u8) -> int #export_c {
+p2p_locator_write_vartime :: (version: int, hashes: [] u8, stop: [] u8, out: [] u8) -> int #export_c #effects(all) {
   n := hashes.count / 32;
   if hashes.count != 32 * n || n > P2P_MAX_LOCATOR || stop.count != 32 { return -1; }
   if out.count < 4 + tx_compact_size_vartime(n) + hashes.count + 32 { return -1; }
@@ -499,7 +499,7 @@ p2p_locator_write_vartime :: (version: int, hashes: [] u8, stop: [] u8, out: [] 
 // height tip, as Core's LocatorEntries (chain.cpp) walks back: the newest
 // ten one by one, then steps that double, and always genesis. Returns how
 // many, or -1 if out is too small or tip is negative.
-p2p_locator_heights_vartime :: (tip: int, out: [] int) -> int #export_c {
+p2p_locator_heights_vartime :: (tip: int, out: [] int) -> int #export_c #effects(all) {
   if tip < 0 { return -1; }
   height := tip; step := 1; n := 0;
   while true {
@@ -545,7 +545,7 @@ before the headers are read, as Core does:
 // headers: a count of at most 2,000, then each 80-byte header followed by
 // a transaction count, which Core reads and ignores. out gets each
 // header's position.
-p2p_headers_read_vartime :: (b: [] u8, out: [] int) -> P2pList #export_c {
+p2p_headers_read_vartime :: (b: [] u8, out: [] int) -> P2pList #export_c #effects(all) {
   n := tx_compact_read_vartime(b, 0);
   if n.code != TX_OK { return P2pList.{code=P2P_BAD_PAYLOAD}; }
   if n.value > P2P_MAX_HEADERS { return P2pList.{code=P2P_TOO_MANY}; }
@@ -596,7 +596,7 @@ reader marks such an entry unknown.
 // refuses; an unknown ID, Tor v2's 3 included, is read and marked unknown.
 // Like inv, the count is checked after the entries are read.
 P2P_V2_LENGTHS :: [7] int.[0, 4, 16, 0, 32, 32, 16];
-p2p_addr_read_vartime :: (b: [] u8, v2: bool, out: [] P2pAddress) -> P2pList #export_c {
+p2p_addr_read_vartime :: (b: [] u8, v2: bool, out: [] P2pAddress) -> P2pList #export_c #effects(all) {
   bad := P2pList.{code=P2P_BAD_PAYLOAD};
   n := tx_compact_read_vartime(b, 0);
   if n.code != TX_OK { return bad; }
@@ -629,7 +629,7 @@ p2p_addr_read_vartime :: (b: [] u8, v2: bool, out: [] P2pAddress) -> P2pList #ex
   return P2pList.{count=n.value, next=at};
 }
 // The message back from entries read out of src. Returns its size or -1.
-p2p_addr_write_vartime :: (src: [] u8, entries: [] P2pAddress, v2: bool, out: [] u8) -> int #export_c {
+p2p_addr_write_vartime :: (src: [] u8, entries: [] P2pAddress, v2: bool, out: [] u8) -> int #export_c #effects(all) {
   if entries.count > P2P_MAX_ADDR { return -1; }
   need := tx_compact_size_vartime(entries.count);
   for a: entries { need += ifx v2 then 4 + p2p_compact64_size(a.services) + 1 + tx_compact_size_vartime(a.n) + a.n + 2 else 30; }
@@ -645,7 +645,7 @@ p2p_addr_write_vartime :: (src: [] u8, entries: [] P2pAddress, v2: bool, out: []
   }
   return at;
 }
-p2p_compact64_size :: (v: u64) -> int { return ifx v < 253 then 1 else (ifx v <= 65535 then 3 else (ifx v <= 4294967295 then 5 else 9)); }
+p2p_compact64_size :: (v: u64) -> int #effects(all) { return ifx v < 253 then 1 else (ifx v <= 65535 then 3 else (ifx v <= 4294967295 then 5 else 9)); }
 ```
 
 ## The example

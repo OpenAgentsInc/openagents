@@ -95,7 +95,7 @@ for versions 1 to 16. The program follows as one push.
 // The two legacy templates around a 20-byte hash, and a witness program:
 // the version as one opcode (OP_0, or OP_1 to OP_16 as 0x51 to 0x60), then
 // one push of the program.
-ad_hash_script :: (p2pkh: bool, hash: [] u8, out: [] u8) -> int {
+ad_hash_script :: (p2pkh: bool, hash: [] u8, out: [] u8) -> int #effects(all) {
   n := ifx p2pkh then 25 else 23;
   if out.count < n { return AD_CAPACITY; }
   at := 0;
@@ -106,7 +106,7 @@ ad_hash_script :: (p2pkh: bool, hash: [] u8, out: [] u8) -> int {
   else { out[22] = 0x87; }                               // OP_EQUAL
   return n;
 }
-ad_witness_script :: (version: int, program: [] u8, out: [] u8) -> int {
+ad_witness_script :: (version: int, program: [] u8, out: [] u8) -> int #effects(all) {
   if out.count < program.count + 2 { return AD_CAPACITY; }
   out[0] = cast(u8) (ifx version == 0 then 0 else 0x50 + version);
   out[1] = cast(u8) program.count;
@@ -134,14 +134,14 @@ their coins needs that form, not the compressed one.
 ```jai
 // P2PKH commits to HASH160 of the key as given, compressed (33 bytes) or
 // uncompressed (65): the two forms of one key are two different addresses.
-p2pkh_script_vartime :: (key: [] u8, out: [] u8) -> int #export_c {
+p2pkh_script_vartime :: (key: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if !se_decode(key).ok { return AD_BAD_KEY; }
   hash: [20] u8;
   #assert hash160_checked(key, hash[..], false) == RMD_OK;
   return ad_hash_script(true, hash[..], out);
 }
 // P2WPKH is version 0 with HASH160 of the key, which must be compressed.
-p2wpkh_script_vartime :: (key: [] u8, out: [] u8) -> int #export_c {
+p2wpkh_script_vartime :: (key: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if !se_decode(key).ok { return AD_BAD_KEY; }
   if key.count != SE_COMPRESSED { return AD_UNCOMPRESSED; }
   hash: [20] u8;
@@ -177,7 +177,7 @@ coordinates.
 ```jai
 // P2SH commits to HASH160 of a redeem script; the spender reveals the
 // script, so it must fit in one 520-byte push.
-p2sh_script_vartime :: (redeem: [] u8, out: [] u8) -> int #export_c {
+p2sh_script_vartime :: (redeem: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if redeem.count > AD_REDEEM_MAX { return AD_SCRIPT_TOO_LONG; }
   hash: [20] u8;
   #assert hash160_checked(redeem, hash[..], false) == RMD_OK;
@@ -185,7 +185,7 @@ p2sh_script_vartime :: (redeem: [] u8, out: [] u8) -> int #export_c {
 }
 // P2WSH is version 0 with SHA-256 of a witness script: 32 bytes, so a
 // collision costs 2^128 work instead of HASH160's 2^80.
-p2wsh_script_vartime :: (witness_script: [] u8, out: [] u8) -> int #export_c {
+p2wsh_script_vartime :: (witness_script: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if witness_script.count > AD_WITNESS_MAX { return AD_SCRIPT_TOO_LONG; }
   hash: [32] u8;
   #assert sha256_hash_checked(witness_script, hash[..], false) == SHA_OK;
@@ -193,7 +193,7 @@ p2wsh_script_vartime :: (witness_script: [] u8, out: [] u8) -> int #export_c {
 }
 // P2SH-P2WPKH: the P2WPKH scriptPubKey becomes a P2SH redeem script, so a
 // wallet that only knows Base58 addresses can pay a segwit key.
-p2sh_p2wpkh_script_vartime :: (key: [] u8, out: [] u8) -> int #export_c {
+p2sh_p2wpkh_script_vartime :: (key: [] u8, out: [] u8) -> int #export_c #effects(all) {
   redeem: [22] u8;
   n := p2wpkh_script_vartime(key, redeem[..]);
   if n != 22 { return n; }
@@ -259,11 +259,11 @@ returns it. A key-path signature uses the private key tweaked the same way
 // t = H_TapTweak(internal) and Q = P + tG, chapter 41's output key with an
 // empty Merkle root. Writes Q's x (32 bytes) and returns Q's y parity, 0
 // or 1, which a script-path spend reveals in its control block.
-taproot_tweak_vartime :: (internal: [] u8, output: [] u8) -> int #export_c {
+taproot_tweak_vartime :: (internal: [] u8, output: [] u8) -> int #export_c #effects(all) {
   return taproot_output_key_vartime(internal, internal[0..<0], output);
 }
 // P2TR is version 1 with the tweaked key's x.
-p2tr_script_vartime :: (internal: [] u8, out: [] u8) -> int #export_c {
+p2tr_script_vartime :: (internal: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if out.count < 34 { return AD_CAPACITY; }
   q: [32] u8;
   parity := taproot_tweak_vartime(internal, q[..]);
@@ -320,7 +320,7 @@ output (`<key> OP_CHECKSIG`) or an `OP_RETURN` output, has no address.
 // The output type of a scriptPubKey, or AD_NO_ADDRESS. A witness program is
 // a version opcode then one push of 2 to 40 bytes that ends the script;
 // version 0 has only two lengths.
-script_kind_vartime :: (s: [] u8) -> int #export_c {
+script_kind_vartime :: (s: [] u8) -> int #export_c #effects(all) {
   n := s.count;
   if n == 25 && s[0] == 0x76 && s[1] == 0xa9 && s[2] == 20 && s[23] == 0x88 && s[24] == 0xac { return AD_P2PKH; }
   if n == 23 && s[0] == 0xa9 && s[1] == 20 && s[22] == 0x87 { return AD_P2SH; }
@@ -340,7 +340,7 @@ script_kind_vartime :: (s: [] u8) -> int #export_c {
 ```jai
 // The address of a scriptPubKey on a network. Testnet and regtest share
 // the Base58 versions; segwit gives each its own HRP.
-address_encode_vartime :: (network: int, script: [] u8, out: [] u8) -> int #export_c {
+address_encode_vartime :: (network: int, script: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if network < SW_MAINNET || network > SW_REGTEST { return AD_BAD_NETWORK; }
   kind := script_kind_vartime(script);
   if kind < AD_P2PKH { return kind; }
@@ -381,14 +381,14 @@ differ only in which reason a refusal gives.
 // Whether text is read as segwit: the part before its last '1' is bc, tb
 // or bcrt in either case. A Base58 address with a known version starts
 // with 1, 3, m, n or 2, so it never is.
-ad_is_segwit :: (text: string) -> bool {
+ad_is_segwit :: (text: string) -> bool #effects(all) {
   if text.count == 0 { return false; }
   at := text.count - 1;
   while at > 0 && text[at] != '1' { at -= 1; }  // mutant: equivalent (stopping at 0 or 1 leaves no HRP)
   return sw_network(text[0..<at]) != SW_UNKNOWN_HRP;
 }
 // The scriptPubKey an address names on a network, and its kind.
-address_decode_vartime :: (network: int, text: string, script_out: [] u8) -> Address_Script #export_c {
+address_decode_vartime :: (network: int, text: string, script_out: [] u8) -> Address_Script #export_c #effects(all) {
   if network < SW_MAINNET || network > SW_REGTEST { return Address_Script.{length = AD_BAD_NETWORK}; }
   script: [AD_SCRIPT_MAX] u8;
   n: int;

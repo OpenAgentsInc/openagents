@@ -1,0 +1,169 @@
+// Declared language effects. Resource observations in coax.effects.v1 keep
+// their separate conservative contract; a trap's diagnostic is not source I/O.
+#authority;
+
+EC_ALL :: 1 | 2 | 8 | 16 | 32 | 512 | 1024 | 2048 | 4096; // io, foreign, traps, reads, writes, unsafe, clock, suspends, allocates
+EC_UNKNOWN :: 4;
+EC_Procedure :: struct { declared: bool; required: bool; foreign: bool; allowed: u32; }
+EC_Edge :: struct { from: int; to: int; }
+EC_Site :: struct { procedure: int; effects: u32; }
+EC_Result :: struct { status: int; inferred: u32; missing: u32; witness: int = -1; terminal: int = -1; reached: int; }
+
+#test "declared effects name language capabilities and reject unknown names" {
+  names := [11] string.["computes", "io", "foreign", "traps", "reads", "writes", "unsafe", "clock", "suspends", "allocates", "all"];
+  bits := [11] int.[0, 1, 2, 8, 16, 32, 512, 1024, 2048, 4096, EC_ALL];
+  for i: 0..<11 { #assert EC_name(names[i]) == bits[i]; }
+  #assert EC_name("unknown") == -1 && EC_name("read") == -1 && EC_name("") == -1;
+  #assert EC_expand(EC_UNKNOWN) == EC_ALL && EC_expand(16) == 16 && EC_expand(20) == EC_ALL;
+}
+
+#forall "effect declarations are required on an opted-in unit's published and authority procedures" enabled: bool, authority: bool, exported: bool, foreign: bool, entry: bool {
+  #assert EC_required(enabled, authority, exported, foreign, entry) == (enabled && !entry && (authority || exported || foreign));
+}
+#test "language effects distinguish source I/O from trap diagnostics and resource observations" {
+  bits := [13] u32.[0, 1, 2, 4, 8, 16, 32, 0, 512, 16, 8, 0, 48];
+  for kind: 0..<13 {
+    #assert EC_observe(kind, false) == bits[kind];
+    #assert EC_observe(kind, true) == (ifx kind == 10 then cast(u32) 0 else bits[kind]);
+  }
+  #assert EC_observe(-1, false) == EC_UNKNOWN && EC_observe(13, false) == EC_UNKNOWN;
+}
+
+#forall "effect subset checks every supported capability and preserves shortest paths" at: 0..<9, declared: bool {
+  bits := [9] u32.[1, 2, 8, 16, 32, 512, 1024, 2048, 4096];
+  p := [4] EC_Procedure.[EC_Procedure.{declared = true, allowed = ifx declared then bits[at] else 0}, EC_Procedure.{}, EC_Procedure.{}, EC_Procedure.{}];
+  e := [4] EC_Edge.[EC_Edge.{from = 0, to = 1}, EC_Edge.{from = 0, to = 2}, EC_Edge.{from = 1, to = 3}, EC_Edge.{from = 2, to = 3}];
+  s := [2] EC_Site.[EC_Site.{procedure = 3, effects = bits[at]}, EC_Site.{procedure = 2, effects = bits[at]}];
+  parents: [4] int; via: [4] int; queue: [4] int;
+  r := EC_trace(p[..], e[..], s[..], 0, parents[..], via[..], queue[..]);
+  #assert r.status == (ifx declared then 0 else 3) && r.inferred == bits[at] && r.missing == (ifx declared then cast(u32) 0 else bits[at]);
+  #assert r.reached == 4 && r.witness == (ifx declared then -1 else 1) && r.terminal == (ifx declared then -1 else 2);
+  #assert parents[0] == -1 && parents[1] == 0 && parents[2] == 0 && parents[3] == 1;
+  #assert via[0] == -1 && via[1] == 0 && via[2] == 1 && via[3] == 2;
+}
+
+#test "foreign summaries retain foreign and unknown bodies cannot acquire a pure contract" {
+  p := [2] EC_Procedure.[EC_Procedure.{declared = true, allowed = 2}, EC_Procedure.{foreign = true, declared = true, allowed = 1024}];
+  e := [2] EC_Edge.[EC_Edge.{from = 0, to = 1}, EC_Edge.{from = 1, to = 0}];
+  s: [1] EC_Site; parent: [2] int; via: [2] int; queue: [2] int;
+  r := EC_trace(p[..], e[..], s[0..<0], 0, parent[..], via[..], queue[..]);
+  #assert r.status == 3 && r.inferred == 1026 && r.missing == 1024 && r.witness == -1 && r.terminal == 1 && r.reached == 2;
+  p[1].declared = false;
+  r = EC_trace(p[..], e[..], s[0..<0], 0, parent[..], via[..], queue[..]);
+  #assert r.status == 3 && r.inferred == EC_ALL && r.missing == (cast(u32) EC_ALL & (cast(u32) 4294967295 ^ cast(u32) 2)) && r.terminal == 1;
+  p[1].foreign = false; s[0] = EC_Site.{procedure = 1, effects = EC_UNKNOWN};
+  r = EC_trace(p[..], e[..], s[..], 0, parent[..], via[..], queue[..]);
+  #assert r.status == 3 && r.inferred == EC_ALL && r.witness == 0;
+  p[0].declared = false;
+  r = EC_trace(p[..], e[..], s[..], 0, parent[..], via[..], queue[..]);
+  #assert r.status == 0 && r.inferred == EC_ALL && r.missing == 0 && r.witness == -1 && r.terminal == -1;
+  p[0].required = true;
+  r = EC_trace(p[..], e[..], s[..], 0, parent[..], via[..], queue[..]);
+  #assert r.status == 2 && r.reached == 0;
+}
+
+#test "a single root and a nonzero root keep exact first-site and first-foreign witnesses" {
+  p := [3] EC_Procedure.[EC_Procedure.{declared = true, required = true}, EC_Procedure.{declared = true, foreign = true, allowed = 1}, EC_Procedure.{declared = true, foreign = true, allowed = 1024}];
+  e := [2] EC_Edge.[EC_Edge.{from = 0, to = 1}, EC_Edge.{from = 0, to = 2}];
+  s := [2] EC_Site.[EC_Site.{procedure = 0, effects = 16}, EC_Site.{procedure = 1, effects = 32}];
+  parent := [3] int.[71, 71, 71]; via := [3] int.[72, 72, 72]; queue := [3] int.[73, 73, 73];
+  r := EC_trace(p[0..<1], e[0..<0], s[0..<1], 0, parent[..], via[..], queue[..]);
+  #assert r.status == 3 && r.inferred == 16 && r.terminal == 0 && r.witness == 0 && r.reached == 1;
+  r = EC_trace(p[..], e[..], s[..], 0, parent[..], via[..], queue[..]);
+  #assert r.status == 3 && r.inferred == 1075 && r.terminal == 0 && r.witness == 0;
+  r = EC_trace(p[..], e[..], s[0..<0], 0, parent[..], via[..], queue[..]);
+  #assert r.status == 3 && r.inferred == 1027 && r.terminal == 1 && r.witness == -1;
+  p[0].allowed = 2;
+  r = EC_trace(p[..], e[..], s[0..<0], 0, parent[..], via[..], queue[..]);
+  #assert r.status == 3 && r.missing == 1025 && r.terminal == 1;
+  p[0].allowed = EC_ALL;
+  r = EC_trace(p[..], e[..], s[..], 0, parent[..], via[..], queue[..]);
+  #assert r.status == 0 && r.terminal == -1 && r.witness == -1;
+  r = EC_trace(p[..], e[..], s[0..<0], 2, parent[..], via[..], queue[..]);
+  #assert r.status == 3 && r.missing == 2 && r.terminal == 2 && r.reached == 1 && parent[2] == -1 && parent[0] == -2 && queue[0] == 2;
+  p[2].allowed = 1026;
+  r = EC_trace(p[..], e[..], s[0..<0], 2, parent[..], via[..], queue[..]);
+  #assert r.status == 0 && r.inferred == 1026 && r.terminal == -1 && r.witness == -1;
+}
+
+#forall "malformed effect graphs refuse before touching scratch" mode: 0..<15 {
+  p := [2] EC_Procedure.[EC_Procedure.{declared = true}, EC_Procedure.{}];
+  e := [1] EC_Edge.[EC_Edge.{from = 0, to = 1}];
+  s := [1] EC_Site.[EC_Site.{procedure = 1, effects = 16}];
+  parent := [3] int.[71, 71, 71]; via := [3] int.[72, 72, 72]; queue := [3] int.[73, 73, 73];
+  count := 2; root := 0; pn := 3; vn := 3; qn := 3;
+  if mode == 0 { count = 0; } if mode == 1 { root = -1; } if mode == 2 { root = 2; }
+  if mode == 3 { pn = 1; } if mode == 4 { vn = 1; } if mode == 5 { qn = 1; }
+  if mode == 6 { e[0].from = -1; } if mode == 7 { e[0].to = 2; }
+  if mode == 8 { s[0].procedure = -1; } if mode == 9 { s[0].procedure = 2; }
+  if mode == 10 { s[0].effects = 64; } if mode == 11 { p[0].allowed = EC_UNKNOWN; } if mode == 12 { p[1].allowed = 8192; }
+  if mode == 13 { e[0].from = 2; } if mode == 14 { e[0].to = -1; }
+  r := EC_trace(p[0..<count], e[..], s[..], root, parent[0..<pn], via[0..<vn], queue[0..<qn]);
+  #assert r.status == 1 && r.inferred == 0 && r.reached == 0 && r.witness == -1;
+  for i: 0..<3 { #assert parent[i] == 71 && via[i] == 72 && queue[i] == 73; }
+}
+
+EC_name :: (name: string) -> int #export_c #effects(all) {
+  if name == "all" {return EC_ALL;}
+  if name == "computes" { return 0; }
+  if name == "io" { return 1; } if name == "foreign" { return 2; }
+  if name == "traps" { return 8; } if name == "reads" { return 16; } if name == "writes" { return 32; }
+  if name == "unsafe" { return 512; } if name == "clock" { return 1024; }
+  if name == "suspends" { return 2048; } if name == "allocates" { return 4096; }
+  return -1;
+}
+#forall "an explicit all-capabilities contract needs no subset witness" declared:bool, bound:0..<3 {
+  allowed:=ifx bound==0 then cast(u32)0 else ifx bound==1 then cast(u32)EC_ALL else cast(u32)(EC_ALL ^ 1);
+  #assert EC_needs_closure(declared,allowed)==(!declared || bound!=1);
+}
+EC_needs_closure :: (declared:bool,allowed:u32)->bool #export_c #effects(all) {return !declared || allowed!=EC_ALL;}
+EC_expand :: (bits: u32) -> u32 #export_c #effects(all) { return ifx (bits & EC_UNKNOWN) != 0 then cast(u32) EC_ALL else bits; }
+EC_required :: (enabled: bool, authority: bool, exported: bool, foreign: bool, entry: bool) -> bool #export_c #effects(all) {
+  return enabled && !entry && (authority || exported || foreign);
+}
+// The observer supplies the same operation kinds as effects.v1. Resource
+// uncertainty is retained in that inventory, separately from language effects.
+EC_observe :: (kind: int, wrapping: bool) -> u32 #export_c #effects(all) {
+  if kind == 0 || kind == 7 || kind == 11 { return 0; }
+  if kind == 1 { return 1; } if kind == 2 { return 2; }
+  if kind == 3 { return EC_UNKNOWN; } if kind == 4 { return 8; }
+  if kind == 5 || kind == 9 { return 16; } if kind == 6 { return 32; }
+  if kind == 8 { return 512; } if kind == 10 { return ifx wrapping then cast(u32) 0 else cast(u32) 8; }
+  if kind == 12 { return 48; }
+  return EC_UNKNOWN;
+}
+
+// Status 1: malformed facts/capacity. 2: required declaration absent.
+// 3: inferred effects exceed the declaration. Scratch is caller-owned/disjoint.
+EC_trace :: (procs: [] EC_Procedure, edges: [] EC_Edge, sites: [] EC_Site, root: int, parent: [] int, via: [] int, queue: [] int) -> EC_Result #export_c #effects(all) {
+  n := procs.count;
+  if n < 1 || root < 0 || root >= n || parent.count < n || via.count < n || queue.count < n { return EC_Result.{status = 1}; }
+  for p: procs { if (p.allowed & (cast(u32) 4294967295 ^ cast(u32) EC_ALL)) != 0 { return EC_Result.{status = 1}; } }
+  for e: edges { if e.from < 0 || e.from >= n || e.to < 0 || e.to >= n { return EC_Result.{status = 1}; } }
+  for s: sites { if s.procedure < 0 || s.procedure >= n || (s.effects & (cast(u32) 4294967295 ^ cast(u32) (EC_ALL | EC_UNKNOWN))) != 0 { return EC_Result.{status = 1}; } }
+  if procs[root].required && !procs[root].declared { return EC_Result.{status = 2}; }
+  for i: 0..<n { parent[i] = -2; via[i] = -1; }
+  parent[root] = -1; queue[0] = root; head := 0; tail := 1;
+  result: EC_Result;
+  allowed := ifx procs[root].declared then procs[root].allowed else cast(u32) EC_ALL;
+  while head < tail {
+    current := queue[head]; head += 1;
+    if procs[current].foreign {
+      bits := ifx procs[current].declared then procs[current].allowed | 2 else cast(u32) EC_ALL;
+      result.inferred |= bits;
+      if result.terminal < 0 && (bits & (cast(u32) 4294967295 ^ allowed)) != 0 { result.terminal = current; }
+    }
+    for s, i: sites {
+      if s.procedure != current { continue; }
+      bits := EC_expand(s.effects); result.inferred |= bits;
+      if result.terminal < 0 && (bits & (cast(u32) 4294967295 ^ allowed)) != 0 { result.terminal = current; result.witness = i; }
+    }
+    for e, i: edges {
+      if e.from != current || parent[e.to] != -2 { continue; }
+      parent[e.to] = current; via[e.to] = i; queue[tail] = e.to; tail += 1;
+    }
+  }
+  result.reached = tail; result.missing = result.inferred & (cast(u32) 4294967295 ^ allowed);
+  if result.missing != 0 { result.status = 3; }
+  return result;
+}

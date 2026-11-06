@@ -47,11 +47,11 @@ HostInboxQueue :: struct {valid:bool;capacity:int;limit:int;count:int;bytes:int;
  #assert hiq_reset(q[..])&&!q[0].retired&&q[0].serial==0&&q[0].epoch==2&&hiq_reserve(q[..],0).status==HostInboxStatus.ok;
  q[0].epoch=9223372036854775807;#assert !hiq_reset(q[..])&&q[0].retired&&q[0].count==0&&q[0].bytes==0&&hiq_reserve(q[..],0).status==HostInboxStatus.retired;
 }
-hiq_open :: (capacity:int)->HostInboxQueue #export_c {
+hiq_open :: (capacity:int)->HostInboxQueue #export_c #effects(all) {
  if capacity<0||capacity>HOST_INBOX_CAPACITY {return HostInboxQueue.{};}
  return HostInboxQueue.{valid=true,capacity=capacity,limit=capacity*4};
 }
-hiq_reserve :: (q:[]HostInboxQueue,bytes:int)->HostInboxGrant #export_c {
+hiq_reserve :: (q:[]HostInboxQueue,bytes:int)->HostInboxGrant #export_c #effects(all) {
  if !q[0].valid||bytes<0||bytes>q[0].capacity {return HostInboxGrant.{};}
  if q[0].retired||q[0].serial==9223372036854775807 {q[0].retired=true;return HostInboxGrant.{status=HostInboxStatus.retired};}
  if bytes>q[0].limit-q[0].bytes {return HostInboxGrant.{status=HostInboxStatus.full};}
@@ -60,12 +60,12 @@ hiq_reserve :: (q:[]HostInboxQueue,bytes:int)->HostInboxGrant #export_c {
   return HostInboxGrant.{status=HostInboxStatus.ok,lease=HostInboxLease.{slot=i,serial=q[0].serial,epoch=q[0].epoch}};
  }}return HostInboxGrant.{status=HostInboxStatus.full};
 }
-hiq_release :: (q:[]HostInboxQueue,lease:HostInboxLease)->bool #export_c {
+hiq_release :: (q:[]HostInboxQueue,lease:HostInboxLease)->bool #export_c #effects(all) {
  if lease.slot<0||lease.slot>=HOST_INBOX_EVENTS||lease.epoch!=q[0].epoch {return false;}
  entry:=q[0].entries[lease.slot];if !entry.live||entry.serial!=lease.serial {return false;}
  q[0].count-=1;q[0].bytes-=entry.bytes;q[0].entries[lease.slot]=HostInboxEntry.{};return true;
 }
-hiq_reset :: (q:[]HostInboxQueue)->bool #export_c {
+hiq_reset :: (q:[]HostInboxQueue)->bool #export_c #effects(all) {
  q[0].count=0;q[0].bytes=0;q[0].serial=0;for i:0..<HOST_INBOX_EVENTS {q[0].entries[i]=HostInboxEntry.{};}
  if q[0].epoch==9223372036854775807 {q[0].retired=true;return false;}
  q[0].epoch+=1;q[0].retired=false;return q[0].valid;

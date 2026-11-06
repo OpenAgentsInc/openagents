@@ -9,7 +9,7 @@
 hsb_words :: (text:string,out:[]string,start:int)->int {
  n:=start;from:=0;for i:0..<text.count+1 {if i==text.count||text[i]==' '||text[i]=='\n'||text[i]=='\t' {if i>from {if n==out.count {return -1;}out[n]=text[from..<i];n+=1;}from=i+1;}}return n;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<5||args_count(a[..])>7||cxtool_os()!=2 {tool_errln("usage: build-linux-socket-effects ROOT EMISSION NEW_OUT TLS_CFLAGS_FILE TLS_LIBS_FILE [--sanitize] [--transport]");return 2;}
  for i:5..<args_count(a[..]) {if args_at(a[..],i)!="--sanitize"&&args_at(a[..],i)!="--transport" {return 2;}}transport:=args_has(a[..],"--transport");
  root:=args_at(a[..],0);emission:=args_at(a[..],1);out:=args_at(a[..],2);sanitize:=args_has(a[..],"--sanitize");if !fs_mkdir(out) {return 1;}

@@ -29,15 +29,15 @@ DvRotateResult :: struct {status:DsStatus;query_written:int;key_written:int;}
         for x:out {#assert x==7;}for x:key {#assert x==9;}
     }}
 }
-dv_rope_width :: (rope:int)->bool {return rope>=2 && rope/2<=64 && rope%2==0;}
-dv_rotary_shape :: (heads:int,nope:int,rope:int)->bool {return heads>=1 && heads<=64 && nope>=1 && nope<=256 && dv_rope_width(rope);}
-dv_position :: (pos:int)->bool {return pos>=0 && pos<163840;}
-dv_attention_scale :: (nope:int,rope:int)->f64 #export_c {
+dv_rope_width :: (rope:int)->bool #effects(all) {return rope>=2 && rope/2<=64 && rope%2==0;}
+dv_rotary_shape :: (heads:int,nope:int,rope:int)->bool #effects(all) {return heads>=1 && heads<=64 && nope>=1 && nope<=256 && dv_rope_width(rope);}
+dv_position :: (pos:int)->bool #effects(all) {return pos>=0 && pos<163840;}
+dv_attention_scale :: (nope:int,rope:int)->f64 #export_c #effects(all) {
     if nope<1 || nope>256 || !dv_rope_width(rope) {return 0;}
     m:=1+0.1*0.707*log(40.0);return m*m/sqrt(f64(nope+rope));
 }
 // book:begin yarn
-dv_yarn :: (rope:int,position:int,out:[]f32,stage:[]f32,overlap:bool)->DsResult #export_c {
+dv_yarn :: (rope:int,position:int,out:[]f32,stage:[]f32,overlap:bool)->DsResult #export_c #effects(all) {
     if !dv_rope_width(rope) {return DsResult.{status=DsStatus.shape};}if !dv_position(position) {return DsResult.{status=DsStatus.state};}
     if out.count<rope || stage.count<rope {return DsResult.{status=DsStatus.capacity};}if overlap {return DsResult.{status=DsStatus.alias};}
     // For every admitted width, 0 <= lo < hi <= rope-1 under these fixed
@@ -50,7 +50,7 @@ dv_yarn :: (rope:int,position:int,out:[]f32,stage:[]f32,overlap:bool)->DsResult 
     for j:0..<rope {out[j]=stage[j];}return DsResult.{written=rope};
 }
 // book:end yarn
-dv_rotary :: (heads:int,nope:int,rope:int,query:[]f32,key:[]f32,position:int,query_out:[]f32,key_out:[]f32,work:[]f32,overlap:bool)->DvRotateResult #export_c {
+dv_rotary :: (heads:int,nope:int,rope:int,query:[]f32,key:[]f32,position:int,query_out:[]f32,key_out:[]f32,work:[]f32,overlap:bool)->DvRotateResult #export_c #effects(all) {
     if !dv_rotary_shape(heads,nope,rope) {return DvRotateResult.{status=DsStatus.shape};}if !dv_position(position) {return DvRotateResult.{status=DsStatus.state};}
     n:=heads*(nope+rope);if query.count!=n || key.count!=rope || query_out.count<n || key_out.count<rope || work.count<n+rope {return DvRotateResult.{status=DsStatus.capacity};}
     if overlap {return DvRotateResult.{status=DsStatus.alias};}for x:query {if !ds_finite(x) {return DvRotateResult.{status=DsStatus.number};}}for x:key {if !ds_finite(x) {return DvRotateResult.{status=DsStatus.number};}}

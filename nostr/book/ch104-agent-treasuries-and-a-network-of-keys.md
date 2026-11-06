@@ -119,14 +119,14 @@ characters also contribute a group symbol from their high bits (`pos >> 5`).
 KY_INPUT :: "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ ";
 KY_CHECK :: "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 KY_GEN :: [5] u64.[0xf5dee51989, 0xa9fdca3312, 0x1bab10e32d, 0x3706b1677a, 0x644d626ffd];
-ky_polymod :: (c:u64,v:u64)->u64 {
+ky_polymod :: (c:u64,v:u64)->u64 #effects(all) {
   top:=c>>35;r:=((c&0x7ffffffff)<<5)^v;
   for i:0..<KY_GEN.count {if ((top>>cast(u64)i)&1)!=0 {r^=KY_GEN[i];}}
   return r;
 }
 // The eight checksum characters of a descriptor without its "#...", into
 // out; false on a character outside BIP-380's input set.
-ky_checksum :: (s:string,out:[]u8)->bool {
+ky_checksum :: (s:string,out:[]u8)->bool #effects(all) {
   c:u64=1;cls:u64=0;count:=0;
   for ch:s {
     pos:=-1;for k:0..<KY_INPUT.count {if KY_INPUT[k]==ch {pos=k;}}
@@ -154,7 +154,7 @@ change):
 // path and one timelocked path: wsh(or_d(multi(primary),
 // and_v(v:older(n)|v:after(h),multi(recovery)))). Every enrollment is in
 // exactly one path, and every primary key precedes every recovery key.
-ky_descriptor :: (w:KyWallet,e:[]KyEnrollment,out:[]u8)->int {
+ky_descriptor :: (w:KyWallet,e:[]KyEnrollment,out:[]u8)->int #effects(all) {
   if w.npaths>2 {return -1;}
   p:=ky_primary(w);a:int;
   if w.npaths==1 {
@@ -211,7 +211,7 @@ enrollment ArtifactRefs and the timelock `null`, `{older: blocks}` or
 ```jai
 // One spending path: name, threshold, keys (enrollment ArtifactRefs) and
 // timelock (null, {older: blocks} or {after: height}).
-ky_path :: (j:[]Json,p:[]KyPath)->KyCode {
+ky_path :: (j:[]Json,p:[]KyPath)->KyCode #effects(all) {
   names:=[4]string.["name","threshold","keys","timelock"];
   seen:=0;
   while true {
@@ -244,7 +244,7 @@ no timelock: the primary path.
 
 <!-- source: coax/lib/nostr/nipkeys.coax wallet -->
 ```jai
-ky_wallet_read :: (content:string)->KyWallet {
+ky_wallet_read :: (content:string)->KyWallet #effects(all) {
   w:=[1]KyWallet.[KyWallet.{}];names:=KY_WALLET_FIELDS;
   j:[1]Json;json_start(j[..],content);if json_next(j[..])!=JSON_OBJECT {return ky_wfail(KyCode.json);}
   seen:=0;
@@ -305,7 +305,7 @@ build reads it and doesn't verify it.
 
 <!-- source: coax/lib/nostr/nipkeys.coax enrollment -->
 ```jai
-ky_enrollment_read :: (signer:string,content:string)->KyEnrollment {
+ky_enrollment_read :: (signer:string,content:string)->KyEnrollment #effects(all) {
   e:KyEnrollment;cls:string;att:=false;names:=KY_ENR_FIELDS;
   if !ky_sha(content,e.digest[..]) {return ky_efail(KyCode.json);}
   j:[1]Json;json_start(j[..],content);if json_next(j[..])!=JSON_OBJECT {return ky_efail(KyCode.json);}
@@ -361,7 +361,7 @@ Admission binds the records together, then checks the rules:
 // min_lock: the holder policy's shortest recovery timelock (KY_MIN_LOCK
 // unless the policy says otherwise). proven stays false: possession proofs
 // (BIP-322) are read and not verified in this build.
-ky_admit :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,sov:bool,min_lock:int,now:int,height:int)->KyAdmit {
+ky_admit :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,sov:bool,min_lock:int,now:int,height:int)->KyAdmit #effects(all) {
   r:KyAdmit;r.code=w.code;
   if w.code!=KyCode.ok {return r;}
   r.code=KyCode.enrollment;
@@ -412,12 +412,12 @@ ky_admit :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,sov:bool,min_lock:
 
 <!-- source: coax/lib/nostr/nipkeys.coax compose -->
 ```jai
-ky_operator :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,i:int)->string {
+ky_operator :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,i:int)->string #effects(all) {
   if e[i].agent!=w.holder {return ind[i].op;}
   for k:0..<w.nenroll {if e[k].agent==w.holder {return ind[k].op;}}
   return "";
 }
-ky_compose :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,sov:bool,min_lock:int,height:int)->KyCode {
+ky_compose :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,sov:bool,min_lock:int,height:int)->KyCode #effects(all) {
   pi:=ky_primary(w);
   for p:0..<w.npaths {
     path:=w.paths[p];plain:=0;
@@ -479,7 +479,7 @@ since nothing here is secret. It reads and writes the 33-byte key with
 ```jai
 // A base58check extended public key: 78 bytes, version, depth, parent
 // fingerprint, child number, chain code and a compressed public key.
-ky_ext_key :: (s:string)->KyExtKey {
+ky_ext_key :: (s:string)->KyExtKey #effects(all) {
   r:KyExtKey;b:[82]u8;
   for c:s {
     d:=-1;for k:0..<58 {if KY_B58[k]==c {d=k;}}
@@ -498,7 +498,7 @@ ky_ext_key :: (s:string)->KyExtKey {
   return r;
 }
 // The public child at a normal index: K + IL·G, chain code IR.
-ky_child :: (parent:KyExtKey,index:int)->KyExtKey {
+ky_child :: (parent:KyExtKey,index:int)->KyExtKey #effects(all) {
   r:KyExtKey;p:=parent;
   if !p.ok || index<0 || index>=BIP32_HARDENED {return r;}
   data:[37]u8;i:[64]u8;
@@ -523,7 +523,7 @@ scriptPubKey is `0x00 0x20` followed by the script's SHA-256:
 // The P2WSH scriptPubKey of a one-path wallet at one index, from each
 // key's branch key (account/0 for receive, account/1 for change):
 // 0x00 0x20 SHA-256(k <sorted child keys> n CHECKMULTISIG).
-ky_script :: (w:KyWallet,branch:[]KyExtKey,index:int)->KyScript {
+ky_script :: (w:KyWallet,branch:[]KyExtKey,index:int)->KyScript #effects(all) {
   r:KyScript;p:=w.paths[0];keys:[KY_KEYS][33]u8;
   for i:0..<w.nenroll {
     c:=ky_child(branch[i],index);
@@ -558,7 +558,7 @@ the fee and a nonce, and names the wallet revision and the PSBT by digest:
 
 <!-- source: coax/lib/nostr/nipkeys.coax request -->
 ```jai
-ky_request_read :: (content:string)->KyRequest {
+ky_request_read :: (content:string)->KyRequest #effects(all) {
   r:=[1]KyRequest.[KyRequest.{}];names:=KY_REQ_FIELDS;
   if !ky_sha(content,r[0].digest[..]) {return ky_rfail(KyCode.json);}
   j:[1]Json;json_start(j[..],content);if json_next(j[..])!=JSON_OBJECT {return ky_rfail(KyCode.json);}
@@ -602,7 +602,7 @@ as `not_built`:
 
 <!-- source: coax/lib/nostr/nipkeys.coax psbt -->
 ```jai
-ky_psbt_read :: (b:[]u8)->KyPsbt {
+ky_psbt_read :: (b:[]u8)->KyPsbt #effects(all) {
   r:=[1]KyPsbt.[KyPsbt.{}];bad:=KyPsbt.{code=KyCode.psbt};
   for k:0..<KY_MAGIC.count {if ky_at(b,k)!=cast(int)KY_MAGIC[k] {return bad;}}
   g:=ky_map(b,5);
@@ -646,7 +646,7 @@ The signer never trusts `outputs` or `fee_sat`:
 // admitted wallet revision's digest, all its scripts (ky_scripts, derived
 // once at admission), psbt the bytes the request names, ceiling the
 // signing policy's fee ceiling in satoshis.
-ky_sign_check :: (w:KyWallet,wallet_digest:[32]u8,all:KyScripts,r:KyRequest,psbt:[]u8,ceiling:int,now:int)->KyCode {
+ky_sign_check :: (w:KyWallet,wallet_digest:[32]u8,all:KyScripts,r:KyRequest,psbt:[]u8,ceiling:int,now:int)->KyCode #effects(all) {
   if r.code!=KyCode.ok {return r.code;}
   if !ky_digest_is(r.wallet,wallet_digest) {return KyCode.wallet;}
   if now>=r.deadline {return KyCode.deadline;}
@@ -706,7 +706,7 @@ refuses with `outputs`.
 // recorded with its outcome before any partial signature leaves; an exact
 // retry returns the retained outcome; a changed request with a used nonce
 // refuses. A full ledger refuses new requests.
-ky_consume :: (l:[]KyLedger,agent:string,r:KyRequest,code:KyCode)->KyRetry {
+ky_consume :: (l:[]KyLedger,agent:string,r:KyRequest,code:KyCode)->KyRetry #effects(all) {
   if agent.count>KY_TEXT || r.requester.count>KY_TEXT || r.nonce.count>KY_TEXT {return KyRetry.{code=KyCode.field};}
   a:=kept64(agent);q:=kept64(r.requester);n:=kept64(r.nonce);
   for i:0..<l[0].count {
@@ -780,8 +780,8 @@ this signer in full, with its vectors and its secret-flow probe.
 // first two candidates for key and hash, into w.first and w.second.
 // bits2octets(h) is h mod n. data is empty or 32 bytes of extra data
 // (section 3.6). buf holds V || tag || key || h || data.
-ec_candidates :: (key: [] u8, hash: [] u8, w: [] EcdsaWork) { ec_seed(key, hash, hash[0..<0], w); }
-ec_seed :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork) {
+ec_candidates :: (key: [] u8, hash: [] u8, w: [] EcdsaWork) #effects(all) { ec_seed(key, hash, hash[0..<0], w); }
+ec_seed :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork) #effects(all) {
   z := sc_reduce_bytes(hash);                      // the message hash is public
   for i: 0..<32 { w[0].hv[i] = 1; w[0].hk[i] = 0; w[0].buf[33+i] = key[i]; }   // b, c: V = 01..01, K = 00..00
   #assert ss_write(z.value, w[0].buf[65..<97]);
@@ -812,7 +812,7 @@ replaces *s* by *n* − *s* with a mask when 2*s* ≥ *n*:
 // 6979's nonce (with data as extra data when it isn't empty), into out:
 // r || s (32 bytes each, s in the low half), then the recovery ID when out
 // has 65 bytes. The caller checks the views.
-ec_sign :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork, out: [] u8) -> bool {
+ec_sign :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork, out: [] u8) -> bool #effects(all) {
   #assert ss_key(key, w[0].key[..], false);              // d, or 1 with valid = 0
   ec_seed(key, hash, data, w);
   ec_pick(w);                                            // k
@@ -834,7 +834,7 @@ ec_sign :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork, out: [] u8) -
 // The low-S ECDSA signature r || s (32 bytes each). Views are stable and
 // disjoint (overlap is the host's truthful observation). out is written
 // only when the result is true; the workspace is cleared either way.
-ecdsa_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c {
+ecdsa_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c #effects(all) {
   if !ec_views(key, hash, w, out, overlap, 64) { return false; }
   return ec_sign(key, hash, hash[0..<0], w, out);
 }
@@ -869,7 +869,7 @@ it computed: a lie about an input's value changes the digest.
 // under script code (for P2WSH the witness script, for P2WPKH the P2PKH
 // script of its key hash; at most BT_TX bytes), with hash type hashtype,
 // into out.
-bt_sighash_v0 :: (b:[]u8,tp:BtTx,index:int,code:[]u8,amount:int,hashtype:int,out:[]u8)->bool {t:=tp;
+bt_sighash_v0 :: (b:[]u8,tp:BtTx,index:int,code:[]u8,amount:int,hashtype:int,out:[]u8)->bool #effects(all) {t:=tp;
   if !t.ok || index<0 || index>=t.nin || amount<0 || code.count>BT_TX || out.count!=32 {return false;}
   anyone:=(hashtype&BT_ANYONE)!=0;base:=hashtype&0x1f;
   m:[BT_TX+160]u8;hp:[32]u8;hs:[32]u8;ho:[32]u8;           // the hashes BIP-143 zeroes stay zero
@@ -924,7 +924,7 @@ amount and scriptPubKey, so a signer can't be lied to about any of them.
 ```jai
 // The internal key P = dG (public, into w.internal), then the tweak hash
 // TapTweak(P || merkle) into th.
-bt_internal :: (key:[]u8,merkle:[]u8,w:[]BtTapWork,th:[]u8) {
+bt_internal :: (key:[]u8,merkle:[]u8,w:[]BtTapWork,th:[]u8) #effects(all) {
   #assert ss_key(key,w[0].key[..],false) && sp_base(w[0].key[0].safe,w[0].point[..]) && sp_x(w[0].point[..],w[0].internal[..]);
   m:[64]u8;n:=bt_put(m[..],0,w[0].internal[..]);
   bt_tagged(BH_TAPTWEAK,m[0..<bt_put(m[..],n,merkle)],th);
@@ -932,7 +932,7 @@ bt_internal :: (key:[]u8,merkle:[]u8,w:[]BtTapWork,th:[]u8) {
 // The tweaked key d' + t into w.tweaked, where d' is d or n - d so that P
 // has an even y and t is the tweak hash th; false when t >= n. valid is
 // the masked result: d in [1, n-1] and d' + t not zero.
-bt_tweak :: (th:[]u8,w:[]BtTapWork)->bool {
+bt_tweak :: (th:[]u8,w:[]BtTapWork)->bool #effects(all) {
   t:=sc_load(th);                                       // public: from the public key
   tweaked:=sc_add(ss_even(w[0].key[0].safe,w[0].point[0].odd&1),t.value);
   #assert ss_write(tweaked,w[0].tweaked[..]);
@@ -964,7 +964,7 @@ the child key comes from BIP-32 private derivation on the comb
 // per input. An exact retry signs again, to the same bytes (RFC 6979).
 // account is the agent's account private key and chain code (64 bytes);
 // wit the wallet's witness scripts (ky_witnesses).
-ky_sign :: (w:KyWallet,wallet_digest:[32]u8,all:KyScripts,wit:KyWitnesses,e:[]KyEnrollment,me:int,r:KyRequest,psbt:[]u8,ceiling:int,now:int,l:[]KyLedger,account:[]u8,work:[]KySignWork)->KySigned {
+ky_sign :: (w:KyWallet,wallet_digest:[32]u8,all:KyScripts,wit:KyWitnesses,e:[]KyEnrollment,me:int,r:KyRequest,psbt:[]u8,ceiling:int,now:int,l:[]KyLedger,account:[]u8,work:[]KySignWork)->KySigned #effects(all) {
   code:=ky_sign_check(w,wallet_digest,all,r,psbt,ceiling,now);
   if !ky_account_is(e,me,account,work) {return ky_refusal(work,KyCode.xpub,false);}
   c:=ky_consume(l,e[me].agent,r,code);
@@ -1002,7 +1002,7 @@ the witness script's key order, then the witness script:
 // scripts. Each input's witness is 0, then a threshold of signatures in
 // the witness script's key order, then the witness script. Into out; the
 // length, or -1 when an input has fewer than a threshold of signatures.
-ky_combine :: (w:KyWallet,all:KyScripts,wit:KyWitnesses,psbt:[]u8,s:[]KySigned,out:[]u8)->int {
+ky_combine :: (w:KyWallet,all:KyScripts,wit:KyWitnesses,psbt:[]u8,s:[]KySigned,out:[]u8)->int #effects(all) {
   t:=ky_psbt_read(psbt);x:=wit;
   if t.code!=KyCode.ok {return -1;}
   d:[32]u8;bt_sha(psbt,d[..]);u:=ky_unsigned(psbt);

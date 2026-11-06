@@ -41,14 +41,14 @@ NsDuplicateDecision :: struct {ok:bool;replace:bool;bytes:int;}
  #assert !ns_duplicate_decide("a",above,1,NS_LOG_MAX_BYTES).ok;
 }
 // Lexicographic order of exact original UTF-8 bytes, not decoded text.
-ns_original_before :: (a:string,b:string)->bool {
+ns_original_before :: (a:string,b:string)->bool #effects(all) {
  i:=0;
  while i<a.count && i<b.count {if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}i+=1;}
  return a.count<b.count;
 }
 // bytes and quota count payload bytes, excluding frame headers; a duplicate
 // never increases record count. This policy returns a value and writes no data.
-ns_duplicate_decide :: (old:string,candidate:string,bytes:int,quota:int)->NsDuplicateDecision {
+ns_duplicate_decide :: (old:string,candidate:string,bytes:int,quota:int)->NsDuplicateDecision #effects(all) {
  if old.count<1 || old.count>NS_FRAME_MAX_ORIGINAL || candidate.count<1 || candidate.count>NS_FRAME_MAX_ORIGINAL {return NsDuplicateDecision.{};}
  if quota>NS_LOG_MAX_BYTES || bytes<old.count || bytes>quota {return NsDuplicateDecision.{};}
  if !ns_original_before(candidate,old) {return NsDuplicateDecision.{ok=true,bytes=bytes};}

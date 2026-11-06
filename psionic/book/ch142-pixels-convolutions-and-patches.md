@@ -138,17 +138,17 @@ PIL nor PyTorch defines.
 ```jai
 // ImageNet's statistics, as most convolutional and many transformer image
 // models were trained with them.
-px_imagenet :: ()->PxProfile {
+px_imagenet :: ()->PxProfile #effects(all) {
     return PxProfile.{scale=1.0/255,mean=[3]f64.[0.485,0.456,0.406],std=[3]f64.[0.229,0.224,0.225],height=224,width=224,filter=PxFilter.bilinear};
 }
-px_image_status :: (image:PxImage)->PxStatus {
+px_image_status :: (image:PxImage)->PxStatus #effects(all) {
     if image.width<1 || image.height<1 {return PxStatus.shape;}
     if image.width>PX_SIDE_MAX || image.height>PX_SIDE_MAX {return PxStatus.limit;}
     if image.channels!=3 {return PxStatus.channels;}
     if image.depth!=8 {return PxStatus.depth;}
     return PxStatus.ok;
 }
-px_profile_status :: (p:PxProfile)->PxStatus {
+px_profile_status :: (p:PxProfile)->PxStatus #effects(all) {
     if p.width<1 || p.height<1 {return PxStatus.parameter;}
     if p.width>PX_SIDE_MAX || p.height>PX_SIDE_MAX {return PxStatus.limit;}
     if !(p.scale>0 && p.scale<=1) {return PxStatus.parameter;}
@@ -211,7 +211,7 @@ an image plane and a position table.
 // the fraction between them) on each axis and blends the four neighbours.
 // The grid is read at base + r * row + c * column, so one procedure serves a
 // channel-major image plane and a position table with features innermost.
-px_sample :: (data:[]f32,base:int,row:int,column:int,h:int,w:int,size_h:int,size_w:int,filter:PxFilter,y:int,x:int)->f64 {
+px_sample :: (data:[]f32,base:int,row:int,column:int,h:int,w:int,size_h:int,size_w:int,filter:PxFilter,y:int,x:int)->f64 #effects(all) {
     if filter==PxFilter.nearest {return f64(data[base+(y*h/size_h)*row+(x*w/size_w)*column]);}
     a:=to_point(y,h,size_h);b:=to_point(x,w,size_w);
     top:=(1-b.fraction)*f64(data[base+a.low*row+b.low*column])+b.fraction*f64(data[base+a.low*row+b.high*column]);
@@ -229,12 +229,12 @@ output to be identical.
 
 <!-- source: psionic/lib/pixels.coax preprocess -->
 ```jai
-px_preprocess_work :: (image:PxImage,p:PxProfile)->int {return 3*image.width*image.height;}
+px_preprocess_work :: (image:PxImage,p:PxProfile)->int #effects(all) {return 3*image.width*image.height;}
 // Bytes to model values: pick the model's channel order and lay the image out
 // channel by channel, times the scale; resize, and crop when the profile names
 // a shorter side; subtract the mean and divide by the spread. Each stage
 // rounds to f32 once, as chapter 5's operators do.
-px_preprocess :: (image:PxImage,pixels:[]u8,p:PxProfile,work:[]f32,out:[]f32,overlap:bool)->PxResult {
+px_preprocess :: (image:PxImage,pixels:[]u8,p:PxProfile,work:[]f32,out:[]f32,overlap:bool)->PxResult #effects(all) {
     s:=px_image_status(image);if s!=PxStatus.ok {return PxResult.{status=s};}
     s=px_profile_status(p);if s!=PxStatus.ok {return PxResult.{status=s};}
     h:=image.height;w:=image.width;area:=h*w;size:=p.height*p.width;
@@ -319,12 +319,12 @@ chapter 5's operators.
 // truncated powers: (a + 2)t^3 - (a + 3)t^2 + 1 up to t = 1, plus
 // (t - 1)^2 (-2t - 4a - 1) from 1, minus a(t - 1)(t - 2)^2 from 2, where it
 // cancels to 0. (u + |u|) / 2 is u above 0 and 0 below.
-px_cubic :: (x:f64,a:f64)->f64 {
+px_cubic :: (x:f64,a:f64)->f64 #effects(all) {
     t:=abs(x);r:=(t-1+abs(t-1))/2;s:=(t-2+abs(t-2))/2;
     return ((a+2)*t-(a+3))*t*t+1+r*r*(-2*t-4*a-1)-s*s*a*(t-1);
 }
 // i moved into 0 to n - 1.
-px_clamp :: (i:int,n:int)->int {low:=(i+tv_magnitude(i))/2;return (low+n-1-tv_magnitude(low-n+1))/2;}
+px_clamp :: (i:int,n:int)->int #effects(all) {low:=(i+tv_magnitude(i))/2;return (low+n-1-tv_magnitude(low-n+1))/2;}
 // The source pixels output o reads along an axis of input pixels resized to
 // size, from first, with their weights. Three rules:
 // - nearest reads floor(o * input / size), or with corners aligned the
@@ -338,7 +338,7 @@ px_clamp :: (i:int,n:int)->int {low:=(i+tv_magnitude(i))/2;return (low+n-1-tv_ma
 //   (size - 1) with corners aligned, then 2 or 4 neighbours whose indices
 //   stop at the edges; bilinear moves a point below 0 up to 0, bicubic uses
 //   a = -0.75. Repeated edge pixels add their weights.
-px_taps :: (input:int,size:int,filter:PxFilter,corners:bool,antialias:bool,o:int,weights:[]f64)->PxTaps {
+px_taps :: (input:int,size:int,filter:PxFilter,corners:bool,antialias:bool,o:int,weights:[]f64)->PxTaps #effects(all) {
     if filter==PxFilter.nearest {
         first:=o*input/size;
         if corners && size>1 {first=(2*o*(input-1)+size-1)/(2*(size-1));}
@@ -381,7 +381,7 @@ px_taps :: (input:int,size:int,filter:PxFilter,corners:bool,antialias:bool,o:int
 // One resized value. The half-pixel nearest and bilinear rules without
 // antialiasing take chapter 5's arithmetic above; every other rule sums the
 // two axes' taps.
-px_resample :: (data:[]f32,base:int,row:int,column:int,h:int,w:int,size_h:int,size_w:int,p:PxProfile,y:int,x:int)->f64 {
+px_resample :: (data:[]f32,base:int,row:int,column:int,h:int,w:int,size_h:int,size_w:int,p:PxProfile,y:int,x:int)->f64 #effects(all) {
     if !p.corners && !p.antialias && p.filter!=PxFilter.bicubic {return px_sample(data,base,row,column,h,w,size_h,size_w,p.filter,y,x);}
     wy:[512]f64;wx:[512]f64;
     a:=px_taps(h,size_h,p.filter,p.corners,p.antialias,y,wy[..]);b:=px_taps(w,size_w,p.filter,p.corners,p.antialias,x,wx[..]);
@@ -408,12 +408,12 @@ which rounds to the even 58. The resized grid is never stored: output pixel
 <!-- source: psionic/lib/pixels.coax fit -->
 ```jai
 // Half of d, rounded half to even, as torchvision's centre crop rounds.
-px_centre :: (d:int)->int {k:=d/2;if d%2==1 && k%2==1 {k+=1;}return k;}
+px_centre :: (d:int)->int #effects(all) {k:=d/2;if d%2==1 && k%2==1 {k+=1;}return k;}
 // Without a shorter side, the image is resized straight to height by width.
 // With one, the shorter image side becomes that many pixels, the longer side
 // keeps the aspect ratio rounded down (torchvision's Resize(int)), and the
 // output is the centred height by width crop of that grid.
-px_fit :: (h:int,w:int,p:PxProfile)->PxFit {
+px_fit :: (h:int,w:int,p:PxProfile)->PxFit #effects(all) {
     if p.shorter==0 {return PxFit.{height=p.height,width=p.width};}
     short:=(h+w-tv_magnitude(h-w))/2;rh:=p.shorter*h/short;rw:=p.shorter*w/short;
     if rh>PX_EXTENT_MAX || rw>PX_EXTENT_MAX {return PxFit.{status=PxStatus.limit};}
@@ -438,7 +438,7 @@ weights. It shares no code with `px_taps`.
 // One output value straight from the bytes, in binary64: the resized grid
 // and crop computed in floating point as torchvision does, then each source
 // pixel times its two axis weights.
-px_reference :: (image:PxImage,pixels:[]u8,p:PxProfile,c:int,y:int,x:int)->f64 {
+px_reference :: (image:PxImage,pixels:[]u8,p:PxProfile,c:int,y:int,x:int)->f64 #effects(all) {
     source:=c;if image.order!=p.order {source=2-c;}
     h:=image.height;w:=image.width;size_h:=p.height;size_w:=p.width;top:=0;left:=0;
     if p.shorter>0 {
@@ -452,13 +452,13 @@ px_reference :: (image:PxImage,pixels:[]u8,p:PxProfile,c:int,y:int,x:int)->f64 {
     return (v*p.scale-p.mean[c])/p.std[c];
 }
 // Python's round(), which rounds halves to even, as torchvision calls it.
-px_round_even :: (v:f64)->int {r:=floor(v);if v-r==0.5 && int(r)%2==1 {r+=1;}return int(r);}
+px_round_even :: (v:f64)->int #effects(all) {r:=floor(v);if v-r==0.5 && int(r)%2==1 {r+=1;}return int(r);}
 // The weight of every source pixel along one axis for output o, written into
 // weights that arrive as zeros, from each rule's usual floating-point
 // description: the source point and its floor; PyTorch's cubic convolution
 // formulas; PIL's filter evaluated at every pixel's distance from the
 // centre rather than only inside a window, its pieces as clamped arguments.
-px_reference_axis :: (input:int,size:int,p:PxProfile,o:int,weights:[]f64) {
+px_reference_axis :: (input:int,size:int,p:PxProfile,o:int,weights:[]f64) #effects(all) {
     if p.filter==PxFilter.nearest {
         s:=floor(f64(o)*f64(input)/f64(size));
         if p.corners && size>1 {s=floor(f64(o)*f64(input-1)/f64(size-1)+0.5);}
@@ -496,7 +496,7 @@ px_reference_axis :: (input:int,size:int,p:PxProfile,o:int,weights:[]f64) {
     }
 }
 // The larger of two values.
-px_most :: (a:f64,b:f64)->f64 {return (a+b+abs(a-b))/2;}
+px_most :: (a:f64,b:f64)->f64 #effects(all) {return (a+b+abs(a-b))/2;}
 ```
 
 On a 7 by 5 image resized to 9 by 4 under ImageNet's profile, the largest
@@ -553,14 +553,14 @@ at most 2²⁰ values. The forward pass and the input gradient each do at most
 <!-- source: psionic/lib/pixels.coax plan -->
 ```jai
 // The product of four counts, or -1 once it passes the bound.
-px_product :: (a:int,b:int,c:int,d:int,bound:int)->int {
+px_product :: (a:int,b:int,c:int,d:int,bound:int)->int #effects(all) {
     dims:=[4]int.[a,b,c,d];n:=1;
     for e:dims {if e>bound/n {return -1;}n*=e;}
     return n;
 }
-px_elements :: (a:int,b:int,c:int,d:int)->int {return px_product(a,b,c,d,PX_ELEMENTS_MAX);}
-px_work :: (a:int,b:int,c:int,d:int)->int {return px_product(a,b,c,d,PX_WORK_MAX);}
-px_conv_plan :: (c:PxConv)->PxConvPlan {
+px_elements :: (a:int,b:int,c:int,d:int)->int #effects(all) {return px_product(a,b,c,d,PX_ELEMENTS_MAX);}
+px_work :: (a:int,b:int,c:int,d:int)->int #effects(all) {return px_product(a,b,c,d,PX_WORK_MAX);}
+px_conv_plan :: (c:PxConv)->PxConvPlan #effects(all) {
     extents:=[7]int.[c.batch,c.channels,c.height,c.width,c.filters,c.kernel_h,c.kernel_w];
     for e:extents {if e<1 {return PxConvPlan.{status=PxStatus.shape};}}
     for e:extents {if e>PX_EXTENT_MAX {return PxConvPlan.{status=PxStatus.limit};}}
@@ -603,7 +603,7 @@ too large for f32 is refused with nothing written.
 // i, j) over the channels of f's group and the kernel taps that land inside
 // the image; taps in the padding read zero. No kernel flip: this is the
 // cross-correlation every framework calls convolution.
-px_conv_value :: (c:PxConv,p:PxConvPlan,x:[]f32,w:[]f32,bias:[]f32,i:int)->f64 {
+px_conv_value :: (c:PxConv,p:PxConvPlan,x:[]f32,w:[]f32,bias:[]f32,i:int)->f64 #effects(all) {
     ow:=i%p.out_w;oh:=(i/p.out_w)%p.out_h;f:=(i/(p.out_w*p.out_h))%c.filters;n:=i/(p.out_w*p.out_h*c.filters);
     per:=c.channels/c.groups;first:=f/(c.filters/c.groups)*per;
     t:PsionicAccumulator;if bias.count>0 {t=psionic_ops_accumulate(t,f64(bias[f]));}
@@ -617,7 +617,7 @@ px_conv_value :: (c:PxConv,p:PxConvPlan,x:[]f32,w:[]f32,bias:[]f32,i:int)->f64 {
     }}
     return psionic_ops_total(t);
 }
-px_conv_direct :: (c:PxConv,x:[]f32,w:[]f32,bias:[]f32,y:[]f32,scratch:[]f32,overlap:bool)->PxResult {
+px_conv_direct :: (c:PxConv,x:[]f32,w:[]f32,bias:[]f32,y:[]f32,scratch:[]f32,overlap:bool)->PxResult #effects(all) {
     p:=px_conv_admit(c,x,w,bias,y.count,scratch.count,false,overlap);if p.status!=PxStatus.ok {return PxResult.{status=p.status};}
     for i:0..<p.y {v:=px_conv_value(c,p,x,w,bias,i);if !psionic_ops_fits_f32(v) {return PxResult.{status=PxStatus.number};}scratch[i]=f32(v);}
     for i:0..<p.y {y[i]=scratch[i];}
@@ -640,7 +640,7 @@ group's columns. Chapter 4's `psionic_ops_checked` does the product.
 // the padding. Each group's filters, a (filters/groups) by patch matrix, then
 // multiply its columns with chapter 4's matrix product. Scratch holds the
 // columns, chapter 4's staging, and the product, in that order.
-px_conv_im2col :: (c:PxConv,x:[]f32,w:[]f32,bias:[]f32,work:[]f32,y:[]f32,overlap:bool)->PxResult {
+px_conv_im2col :: (c:PxConv,x:[]f32,w:[]f32,bias:[]f32,work:[]f32,y:[]f32,overlap:bool)->PxResult #effects(all) {
     p:=px_conv_plan(c);if p.status!=PxStatus.ok {return PxResult.{status=p.status};}
     per:=c.channels/c.groups;each:=c.filters/c.groups;L:=p.columns;
     request:=PsionicRequest.{op=PsionicOp.matmul,rows=each,width=p.patch,columns=L};
@@ -711,7 +711,7 @@ stride 2 on a 1 by 3 row, the middle pixel is never read, so its gradient is
 // Input pixel (n, ch, row, col) received weight (f, k, i, j) at every output
 // (oh, ow) with oh*stride - pad + i*dilation = row; dx gathers those. dw sums
 // pixel times dy over every output that used the weight, and db sums dy.
-px_conv_dx :: (c:PxConv,p:PxConvPlan,w:[]f32,dy:[]f32,i:int)->f64 {
+px_conv_dx :: (c:PxConv,p:PxConvPlan,w:[]f32,dy:[]f32,i:int)->f64 #effects(all) {
     col:=i%c.width;row:=(i/c.width)%c.height;ch:=(i/(c.width*c.height))%c.channels;n:=i/(c.width*c.height*c.channels);
     per:=c.channels/c.groups;each:=c.filters/c.groups;g:=ch/per;k:=ch%per;t:PsionicAccumulator;
     for e:0..<each {f:=g*each+e;for a:0..<c.kernel_h {
@@ -723,7 +723,7 @@ px_conv_dx :: (c:PxConv,p:PxConvPlan,w:[]f32,dy:[]f32,i:int)->f64 {
     }}
     return psionic_ops_total(t);
 }
-px_conv_dw :: (c:PxConv,p:PxConvPlan,x:[]f32,dy:[]f32,i:int)->f64 {
+px_conv_dw :: (c:PxConv,p:PxConvPlan,x:[]f32,dy:[]f32,i:int)->f64 #effects(all) {
     b:=i%c.kernel_w;a:=(i/c.kernel_w)%c.kernel_h;per:=c.channels/c.groups;k:=(i/(c.kernel_w*c.kernel_h))%per;f:=i/(c.kernel_w*c.kernel_h*per);
     ch:=f/(c.filters/c.groups)*per+k;t:PsionicAccumulator;
     for n:0..<c.batch {for oh:0..<p.out_h {
@@ -735,12 +735,12 @@ px_conv_dw :: (c:PxConv,p:PxConvPlan,x:[]f32,dy:[]f32,i:int)->f64 {
     }}
     return psionic_ops_total(t);
 }
-px_conv_db :: (c:PxConv,p:PxConvPlan,dy:[]f32,f:int)->f64 {
+px_conv_db :: (c:PxConv,p:PxConvPlan,dy:[]f32,f:int)->f64 #effects(all) {
     t:PsionicAccumulator;area:=p.out_h*p.out_w;
     for n:0..<c.batch {for j:0..<area {t=psionic_ops_accumulate(t,f64(dy[(n*c.filters+f)*area+j]));}}
     return psionic_ops_total(t);
 }
-px_conv_backward :: (c:PxConv,x:[]f32,w:[]f32,dy:[]f32,dx:[]f32,dw:[]f32,db:[]f32,scratch:[]f32,overlap:bool)->PxResult {
+px_conv_backward :: (c:PxConv,x:[]f32,w:[]f32,dy:[]f32,dx:[]f32,dw:[]f32,db:[]f32,scratch:[]f32,overlap:bool)->PxResult #effects(all) {
     p:=px_conv_plan(c);if p.status!=PxStatus.ok {return PxResult.{status=p.status};}
     if x.count!=p.x || w.count!=p.w || dy.count!=p.y {return PxResult.{status=PxStatus.shape};}
     total:=p.x+p.w+c.filters;
@@ -805,7 +805,7 @@ written, even if their actual sums would fit.
 // multiply-adds. Chapter 4's product takes at most 2^20 multiply-adds at a
 // time, so the plan cuts the tokens into tiles: as many tokens as keep one
 // tile within 2^20 - 1 multiply-adds beside all of the weights.
-px_patch_plan :: (q:PxPatch)->PxPatchPlan {
+px_patch_plan :: (q:PxPatch)->PxPatchPlan #effects(all) {
     extents:=[6]int.[q.batch,q.channels,q.height,q.width,q.patch,q.dim];
     for e:extents {if e<1 {return PxPatchPlan.{status=PxStatus.shape};}}
     for e:extents {if e>PX_EXTENT_MAX {return PxPatchPlan.{status=PxStatus.limit};}}
@@ -821,18 +821,18 @@ px_patch_plan :: (q:PxPatch)->PxPatchPlan {
     return p;
 }
 // The smaller of two counts.
-px_patch_work :: (a:int,b:int,c:int)->int {return px_product(a,b,c,1,PX_PATCH_WORK_MAX);}
-px_fewer :: (a:int,b:int)->int {return (a+b-tv_magnitude(a-b))/2;}
+px_patch_work :: (a:int,b:int,c:int)->int #effects(all) {return px_product(a,b,c,1,PX_PATCH_WORK_MAX);}
+px_fewer :: (a:int,b:int)->int #effects(all) {return (a+b-tv_magnitude(a-b))/2;}
 // Where feature k of token r sits in the image: image r / tokens, grid cell
 // r % tokens, and within its square (channel, row, column).
-px_patch_pixel :: (q:PxPatch,p:PxPatchPlan,r:int,k:int)->int {
+px_patch_pixel :: (q:PxPatch,p:PxPatchPlan,r:int,k:int)->int #effects(all) {
     n:=r/p.tokens;gy:=(r%p.tokens)/p.grid_w;gx:=r%p.grid_w;ch:=k/(q.patch*q.patch);dy:=(k/q.patch)%q.patch;dx:=k%q.patch;
     return ((n*q.channels+ch)*q.height+gy*q.patch+dy)*q.width+gx*q.patch+dx;
 }
 // Cut each image into patch by patch squares, left to right and top to
 // bottom; each square becomes one row of features in (channel, row, column)
 // order, the order of the convolution's weights.
-px_patchify :: (q:PxPatch,x:[]f32,tokens:[]f32)->int {
+px_patchify :: (q:PxPatch,x:[]f32,tokens:[]f32)->int #effects(all) {
     p:=px_patch_plan(q);if p.status!=PxStatus.ok || x.count!=p.x || tokens.count<p.x {return 0;}
     for i:0..<p.x {tokens[i]=x[px_patch_pixel(q,p,i/p.features,i%p.features)];}
     return p.x;
@@ -844,7 +844,7 @@ px_patchify :: (q:PxPatch,x:[]f32,tokens:[]f32)->int {
 // largest pixel times the largest weight, plus the largest bias, at most
 // 2^127. No tile can then fail, and each writes its outputs directly.
 // Scratch holds one tile's tokens, its product and chapter 4's staging.
-px_patch_embed :: (q:PxPatch,x:[]f32,w:[]f32,bias:[]f32,work:[]f32,out:[]f32,overlap:bool)->PxResult {
+px_patch_embed :: (q:PxPatch,x:[]f32,w:[]f32,bias:[]f32,work:[]f32,out:[]f32,overlap:bool)->PxResult #effects(all) {
     p:=px_patch_plan(q);if p.status!=PxStatus.ok {return PxResult.{status=p.status};}
     if x.count!=p.x || w.count!=p.w || bias.count!=q.dim {return PxResult.{status=PxStatus.shape};}
     if work.count<p.scratch || out.count<p.out {return PxResult.{status=PxStatus.capacity};}
@@ -853,9 +853,9 @@ px_patch_embed :: (q:PxPatch,x:[]f32,w:[]f32,bias:[]f32,work:[]f32,out:[]f32,ove
     if !(f64(p.features)*px_largest(x)*px_largest(w)+px_largest(bias)<=PX_SUM_MAX) {return PxResult.{status=PxStatus.number};}
     return px_patch_tiles(q,p,x,w,bias,work,out);
 }
-px_largest :: (x:[]f32)->f64 {m:=0.0;for v:x {m=px_most(m,abs(f64(v)));}return m;}
+px_largest :: (x:[]f32)->f64 #effects(all) {m:=0.0;for v:x {m=px_most(m,abs(f64(v)));}return m;}
 // The product for an admitted plan, p.rows tokens at a time.
-px_patch_tiles :: (q:PxPatch,p:PxPatchPlan,x:[]f32,w:[]f32,bias:[]f32,work:[]f32,out:[]f32)->PxResult {
+px_patch_tiles :: (q:PxPatch,p:PxPatchPlan,x:[]f32,w:[]f32,bias:[]f32,work:[]f32,out:[]f32)->PxResult #effects(all) {
     total:=q.batch*p.tokens;idx:[1]int;mask:[1]u8;
     for tile:0..<(total+p.rows-1)/p.rows {
         first:=tile*p.rows;columns:=px_fewer(total-first,p.rows);
@@ -872,7 +872,7 @@ px_patch_tiles :: (q:PxPatch,p:PxPatchPlan,x:[]f32,w:[]f32,bias:[]f32,work:[]f32
 }
 // One projected value as a direct sum, bias included, in binary64 with
 // chapter 4's compensated accumulator. Weight (d, k) is at d * features + k.
-px_patch_value :: (q:PxPatch,p:PxPatchPlan,x:[]f32,w:[]f32,bias:[]f32,i:int)->f64 {
+px_patch_value :: (q:PxPatch,p:PxPatchPlan,x:[]f32,w:[]f32,bias:[]f32,i:int)->f64 #effects(all) {
     d:=i%q.dim;r:=i/q.dim;s:PsionicAccumulator;s=psionic_ops_accumulate(s,f64(bias[d]));
     for k:0..<p.features {s=psionic_ops_accumulate(s,f64(x[px_patch_pixel(q,p,r,k)])*f64(w[d*p.features+k]));}
     return psionic_ops_total(s);
@@ -926,7 +926,7 @@ PxLowered :: struct {status:PxStatus;program:TiProgram;plan:PxConvPlan;reuse:boo
 // the plane of every stride-th padded row starting at r. Each phase becomes
 // one input channel, and tap i becomes weight q of that channel: a valid,
 // stride-one convolution with taps_h = (kernel_h - 1) * d / stride + 1 rows.
-px_lower_conv :: (c:PxConv,bias:bool,reuse:bool)->PxLowered {
+px_lower_conv :: (c:PxConv,bias:bool,reuse:bool)->PxLowered #effects(all) {
     p:=px_conv_plan(c);if p.status!=PxStatus.ok {return PxLowered.{status=p.status};}
     l:=PxLowered.{plan=p,reuse=reuse,taps_h=(c.kernel_h-1)*c.dilation_h/c.stride_h+1,taps_w=(c.kernel_w-1)*c.dilation_w/c.stride_w+1};
     l.channels=c.channels*c.stride_h*c.stride_w;l.height=p.out_h+l.taps_h-1;l.width=p.out_w+l.taps_w-1;
@@ -947,7 +947,7 @@ px_lower_conv :: (c:PxConv,bias:bool,reuse:bool)->PxLowered {
     return l;
 }
 // Pack the program's inputs: the padded phases, the spread weights, the bias.
-px_lower_inputs :: (c:PxConv,l:PxLowered,x:[]f32,w:[]f32,bias:[]f32,input:[]f32)->PxResult {
+px_lower_inputs :: (c:PxConv,l:PxLowered,x:[]f32,w:[]f32,bias:[]f32,input:[]f32)->PxResult #effects(all) {
     if input.count<l.input {return PxResult.{status=PxStatus.capacity};}
     for i:0..<l.x {
         v:=i%l.width;u:=(i/l.width)%l.height;phase:=(i/(l.width*l.height))%l.channels;n:=i/(l.width*l.height*l.channels);
@@ -982,11 +982,11 @@ token, dim), and chapter 38's publication copies it out in that order.
 // Lower, pack and run on chapter 38's CPU path: reuse selects its planned
 // kernels, otherwise chapter 5's reference arithmetic. Scratch holds the
 // program's inputs, its workspace and its staged output.
-px_conv_ir :: (c:PxConv,x:[]f32,w:[]f32,bias:[]f32,reuse:bool,scratch:[]f32,flags:[]u8,y:[]f32)->PxResult {
+px_conv_ir :: (c:PxConv,x:[]f32,w:[]f32,bias:[]f32,reuse:bool,scratch:[]f32,flags:[]u8,y:[]f32)->PxResult #effects(all) {
     l:=px_lower_conv(c,bias.count>0,reuse);if l.status!=PxStatus.ok {return PxResult.{status=l.status};}
     return px_ir_run(c,l,x,w,bias,scratch,flags,y);
 }
-px_ir_run :: (c:PxConv,l:PxLowered,x:[]f32,w:[]f32,bias:[]f32,scratch:[]f32,flags:[]u8,y:[]f32)->PxResult {
+px_ir_run :: (c:PxConv,l:PxLowered,x:[]f32,w:[]f32,bias:[]f32,scratch:[]f32,flags:[]u8,y:[]f32)->PxResult #effects(all) {
     if x.count!=l.plan.x || w.count!=l.plan.w || (bias.count!=0 && bias.count!=c.filters) {return PxResult.{status=PxStatus.shape};}
     if scratch.count<l.input+l.workspace+l.stage || flags.count<l.flags || y.count<l.stage {return PxResult.{status=PxStatus.capacity};}
     #assert px_lower_inputs(c,l,x,w,bias,scratch[0..<l.input]).written==l.input;
@@ -998,7 +998,7 @@ px_ir_run :: (c:PxConv,l:PxLowered,x:[]f32,w:[]f32,bias:[]f32,scratch:[]f32,flag
 // A patch projection is the convolution with kernel and stride both the
 // patch size; one more node views its (batch, dim, grid) result as (batch,
 // token, dim), and chapter 38's publication copies it out in that order.
-px_patch_ir :: (q:PxPatch,x:[]f32,w:[]f32,bias:[]f32,reuse:bool,scratch:[]f32,flags:[]u8,out:[]f32)->PxResult {
+px_patch_ir :: (q:PxPatch,x:[]f32,w:[]f32,bias:[]f32,reuse:bool,scratch:[]f32,flags:[]u8,out:[]f32)->PxResult #effects(all) {
     p:=px_patch_plan(q);if p.status!=PxStatus.ok {return PxResult.{status=p.status};}
     if bias.count!=q.dim {return PxResult.{status=PxStatus.shape};}
     c:=PxConv.{batch=q.batch,channels=q.channels,height=q.height,width=q.width,filters=q.dim,kernel_h=q.patch,kernel_w=q.patch,stride_h=q.patch,stride_w=q.patch};
@@ -1028,7 +1028,7 @@ that with the bilinear rule above, reading the table in its natural
 ```jai
 // A learned position table, one row of dim values per grid cell (row,
 // column, feature), resized to a new grid by the bilinear rule above.
-px_positions :: (grid_h:int,grid_w:int,dim:int,table:[]f32,new_h:int,new_w:int,out:[]f32,overlap:bool)->PxResult {
+px_positions :: (grid_h:int,grid_w:int,dim:int,table:[]f32,new_h:int,new_w:int,out:[]f32,overlap:bool)->PxResult #effects(all) {
     if grid_h<1 || grid_w<1 || dim<1 {return PxResult.{status=PxStatus.shape};}
     if grid_h>PX_SIDE_MAX || grid_w>PX_SIDE_MAX || dim>PX_EXTENT_MAX {return PxResult.{status=PxStatus.limit};}
     if new_h<1 || new_w<1 {return PxResult.{status=PxStatus.parameter};}

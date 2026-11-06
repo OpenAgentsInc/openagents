@@ -16,6 +16,6 @@
  q[0]=2048;q[1]=16;#assert haoc_clock(q[..]);
  for i:0..<6 {q[i]=1;}#assert haoc_clock(q[..]);
 }
-haoc_decode :: (q:[]int)->bool #export_c {if q.count!=6 {return false;}expected:=[6]int.[153,32,121,0,0,0];for value,i:expected {if q[i]!=value {return false;}}return true;}
-haoc_demand :: (q:[]int)->bool #export_c {if q.count!=10 {return false;}expected:=[10]int.[122,7739161,7739161,0,0,0,0,66,0,0];for value,i:expected {if q[i]!=value {return false;}}return true;}
-haoc_clock :: (q:[]int)->bool #export_c {return q.count==9&&q[0]>0&&q[1]>0&&q[2]>=q[0]&&q[3]>=q[1]&&q[4]==q[2]&&q[5]==q[3]&&q[6]==0&&q[7]==0&&q[8]==1;}
+haoc_decode :: (q:[]int)->bool #export_c #effects(all) {if q.count!=6 {return false;}expected:=[6]int.[153,32,121,0,0,0];for value,i:expected {if q[i]!=value {return false;}}return true;}
+haoc_demand :: (q:[]int)->bool #export_c #effects(all) {if q.count!=10 {return false;}expected:=[10]int.[122,7739161,7739161,0,0,0,0,66,0,0];for value,i:expected {if q[i]!=value {return false;}}return true;}
+haoc_clock :: (q:[]int)->bool #export_c #effects(all) {return q.count==9&&q[0]>0&&q[1]>0&&q[2]>=q[0]&&q[3]>=q[1]&&q[4]==q[2]&&q[5]==q[3]&&q[6]==0&&q[7]==0&&q[8]==1;}

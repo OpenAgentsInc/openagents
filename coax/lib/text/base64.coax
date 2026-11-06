@@ -34,11 +34,11 @@ B64_CHARS :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   for i: 0..<256 { #assert back[i] == cast(u8) i; }
   #assert b64_value('A') == 0 && b64_value('/') == 63 && b64_value('+') == 62 && b64_value('a') == 26 && b64_value('9') == 61 && b64_value('-') == -1;
 }
-b64_encoded_size :: (n: int) -> int { return (n + 2) / 3 * 4; }
+b64_encoded_size :: (n: int) -> int #effects(all) { return (n + 2) / 3 * 4; }
 // At most how many bytes text of n characters decodes to.
-b64_decoded_max :: (n: int) -> int { return (n + 3) / 4 * 3; }
+b64_decoded_max :: (n: int) -> int #effects(all) { return (n + 3) / 4 * 3; }
 // input as padded base64 into out: the length, or -1 when out is too small.
-b64_encode :: (input: string, out: [] u8) -> int {
+b64_encode :: (input: string, out: [] u8) -> int #effects(all) {
   needed := b64_encoded_size(input.count);
   if out.count < needed { return -1; }
   at := 0; w := 0;
@@ -53,7 +53,7 @@ b64_encode :: (input: string, out: [] u8) -> int {
   }
   return needed;
 }
-b64_value :: (c: u8) -> int {
+b64_value :: (c: u8) -> int #effects(all) {
   if c >= 'A' && c <= 'Z' { return cast(int) (c - 'A'); }
   if c >= 'a' && c <= 'z' { return cast(int) (c - 'a') + 26; }
   if c >= '0' && c <= '9' { return cast(int) (c - '0') + 52; }
@@ -63,7 +63,7 @@ b64_value :: (c: u8) -> int {
 }
 // text decoded into out: the length, or -1 when it is not base64 or out is
 // too small. Whitespace is skipped; padding is optional but only at the end.
-b64_decode :: (text: string, out: [] u8) -> int {
+b64_decode :: (text: string, out: [] u8) -> int #effects(all) {
   acc: u32 = 0; bits := 0; n := 0; pad := 0; chars := 0;
   for c: text {
     if c == ' ' || c == '\n' || c == '\r' || c == '\t' { continue; }

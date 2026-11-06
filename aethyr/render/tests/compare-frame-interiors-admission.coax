@@ -8,28 +8,28 @@
 #load "compare-frame-interiors-boundary-checks.coax";
 CiCertificate :: struct {valid:bool;width:int;height:int;profile:string;geometry_bytes:int;triangles:int;mask_bytes:int;mask_pixels:int;edges_bytes:int;witness_bytes:int;geometry_hash:string;mask_hash:string;oracle_hash:string;oracle_path:string;edges_hash:string;witness_hash:string;}
 CiObserved :: struct {width:int;height:int;profile:string;geometry_bytes:int;mask_bytes:int;mask_pixels:int;edges_bytes:int;witness_bytes:int;geometry_hash:string;mask_hash:string;oracle_hash:string;oracle_path:string;edges_hash:string;witness_hash:string;}
-cia_member :: (d:Jv,parent:int,key:string)->int {if jv_kind(d,parent)!=JV_OBJECT {return -1;}return rtq_member(d,parent,key);}
-cia_keys :: (d:Jv,parent:int,keys:[]string)->bool {if jv_kind(d,parent)!=JV_OBJECT {return false;}if jv_len(d,parent)!=keys.count {return false;}for key:keys {if cia_member(d,parent,key)== -1 {return false;}}return true;}
-cia_equal :: (d:Jv,parent:int,key:string,wanted:string)->bool {node:=cia_member(d,parent,key);return jv_kind(d,node)==JV_STRING && jv_raw(d,node)==wanted;}
-cia_int :: (d:Jv,parent:int,key:string)->int {n:=jv_int(d,cia_member(d,parent,key),-1);return ifx n>=0 && n<=67108864 then n else -1;}
-cia_hash :: (d:Jv,parent:int,key:string)->string {node:=cia_member(d,parent,key);text:=jv_raw(d,node);if jv_kind(d,node)!=JV_STRING || text.count!=64 {return "";}for byte:text {if !((byte>='0' && byte<='9') || (byte>='a' && byte<='f')) {return "";}}return text;}
-cia_pixel_budget :: (pixels:int)->bool {return pixels>=0 && pixels<=1048576;}
-cia_extent :: (width:int,height:int)->bool {return width>=1 && width<=8192 && height>=1 && height<=8192 && cia_pixel_budget(width*height);}
-cia_geometry_shape :: (bytes:int,triangles:int)->bool {return triangles>=1 && triangles<=20000 && bytes==triangles*168;}
-cia_path_decode :: (raw:string,out:[]u8)->int {n:=jv_unescape(raw,out);if n<1 {return -1;}for byte:out[0..<n] {if byte==0 {return -1;}}return n;}
-cia_path_matches :: (raw:string,observed:string)->bool {buf:[4096]u8;n:=cia_path_decode(raw,buf[..]);return n!= -1 && cast(string)buf[0..<n]==observed;}
+cia_member :: (d:Jv,parent:int,key:string)->int #effects(all) {if jv_kind(d,parent)!=JV_OBJECT {return -1;}return rtq_member(d,parent,key);}
+cia_keys :: (d:Jv,parent:int,keys:[]string)->bool #effects(all) {if jv_kind(d,parent)!=JV_OBJECT {return false;}if jv_len(d,parent)!=keys.count {return false;}for key:keys {if cia_member(d,parent,key)== -1 {return false;}}return true;}
+cia_equal :: (d:Jv,parent:int,key:string,wanted:string)->bool #effects(all) {node:=cia_member(d,parent,key);return jv_kind(d,node)==JV_STRING && jv_raw(d,node)==wanted;}
+cia_int :: (d:Jv,parent:int,key:string)->int #effects(all) {n:=jv_int(d,cia_member(d,parent,key),-1);return ifx n>=0 && n<=67108864 then n else -1;}
+cia_hash :: (d:Jv,parent:int,key:string)->string #effects(all) {node:=cia_member(d,parent,key);text:=jv_raw(d,node);if jv_kind(d,node)!=JV_STRING || text.count!=64 {return "";}for byte:text {if !((byte>='0' && byte<='9') || (byte>='a' && byte<='f')) {return "";}}return text;}
+cia_pixel_budget :: (pixels:int)->bool #effects(all) {return pixels>=0 && pixels<=1048576;}
+cia_extent :: (width:int,height:int)->bool #effects(all) {return width>=1 && width<=8192 && height>=1 && height<=8192 && cia_pixel_budget(width*height);}
+cia_geometry_shape :: (bytes:int,triangles:int)->bool #effects(all) {return triangles>=1 && triangles<=20000 && bytes==triangles*168;}
+cia_path_decode :: (raw:string,out:[]u8)->int #effects(all) {n:=jv_unescape(raw,out);if n<1 {return -1;}for byte:out[0..<n] {if byte==0 {return -1;}}return n;}
+cia_path_matches :: (raw:string,observed:string)->bool #effects(all) {buf:[4096]u8;n:=cia_path_decode(raw,buf[..]);return n!= -1 && cast(string)buf[0..<n]==observed;}
 // Returns the eligible bucket, including an omitted zero bucket, or -1.
-cia_eligibility :: (d:Jv,node:int,total:int)->int {
+cia_eligibility :: (d:Jv,node:int,total:int)->int #effects(all) {
  if jv_kind(d,node)!=JV_OBJECT {return -1;}if jv_len(d,node)==0 {return -1;}
  allowed:=[6]string.["eligible","world_degenerate","nonpositive_w","near_far_crossing_or_outside","outside_guard","snapped_screen_degenerate"];sum:=0;eligible:=0;child:=d.nodes[node].first;
  for i:0..<jv_len(d,node) {key:=jv_key(d,child);known:=false;for name:allowed {if key==name {known=true;}}n:=cia_int(d,node,key);if !known || n<0 {return -1;}sum+=n;if key=="eligible" {eligible=n;}child=d.nodes[child].next;}
  return ifx sum==total then eligible else -1;
 }
-cia_artifact :: (d:Jv,node:int,name:string,pixels:bool,records:bool)->bool {
+cia_artifact :: (d:Jv,node:int,name:string,pixels:bool,records:bool)->bool #effects(all) {
  keys:=[5]string.["file","sha256","bytes","pixels","records"];count:=3;if pixels {count+=1;}if records {keys[count]="records";count+=1;}
  return cia_keys(d,node,keys[0..<count]) && cia_equal(d,node,"file",name) && cia_hash(d,node,"sha256")!="" && cia_int(d,node,"bytes")>=0 && (!pixels || cia_int(d,node,"pixels")>=0) && (!records || cia_int(d,node,"records")>=0);
 }
-cia_read :: (d:Jv)->CiCertificate {
+cia_read :: (d:Jv)->CiCertificate #effects(all) {
  r:CiCertificate;rootkeys:=[21]string.["schema","algorithm_version","scope","eligibility","width","height","profile","radius","geometry","mask","zero_radius_control","zero_mask_control","edges","witnesses","census","oracle_source","coordinate_model","geometry_scope","unchecked","image_inputs","admitted"];
  if !cia_keys(d,0,rootkeys[..]) || !cia_equal(d,0,"schema","aethyr.render.shared-edge-envelope.v1") || !cia_equal(d,0,"algorithm_version","exact-shared-world-fold-linf-cell-v1") || !cia_equal(d,0,"scope","declared_conservative_geometry_boundary_not_hardware_error_bound") || !cia_equal(d,0,"eligibility","exact_clip_world_shared_noncoplanar_edges_of_positive_w_in_depth_nondegenerate_guard_valid_original_triangles") {return r;}
  if !cia_equal(d,0,"coordinate_model","exact_stored_f32_rationals_perspective_divide_then_declared_nearest_grid") || !cia_equal(d,0,"geometry_scope","All original triangles and exact endpoint edge occurrences are censused. Eligible shared noncoplanar groups only; no synthetic clipping edges. Ineligible and unmatched geometry remains strict. Occluded eligible edges may be conservatively included without claiming visibility.") || !cia_equal(d,0,"unchecked","Whole RGBA packets at mask pixels are UNQUALIFIED; no color/depth/hardware-legality conclusion. Nonfinite values remain fatal outside this oracle too.") {return r;}
@@ -53,6 +53,6 @@ cia_read :: (d:Jv)->CiCertificate {
  oracle:=cia_member(d,0,"oracle_source");ok:=[2]string.["path","sha256"];if !cia_keys(d,oracle,ok[..]) {return r;}r.oracle_hash=cia_hash(d,oracle,"sha256");path:=cia_member(d,oracle,"path");r.oracle_path=jv_raw(d,path);path_buf:[4096]u8;if r.oracle_hash=="" || jv_kind(d,path)!=JV_STRING || cia_path_decode(r.oracle_path,path_buf[..])== -1 {return r;}
  r.valid=true;return r;
 }
-cia_bind :: (c:CiCertificate,v:CiObserved)->bool {return c.valid && v.width==c.width && v.height==c.height && v.profile==c.profile && v.geometry_bytes==c.geometry_bytes && v.mask_bytes==c.mask_bytes && v.mask_pixels==c.mask_pixels && v.edges_bytes==c.edges_bytes && v.witness_bytes==c.witness_bytes && v.geometry_hash==c.geometry_hash && v.mask_hash==c.mask_hash && v.oracle_hash==c.oracle_hash && cia_path_matches(c.oracle_path,v.oracle_path) && v.edges_hash==c.edges_hash && v.witness_hash==c.witness_hash;}
-cia_mask_count :: (bytes:[]u8)->int {count:=0;for byte:bytes {if byte>1 {return -1;}count+=cast(int)byte;}return count;}
-cia_geometry :: (bytes:[]u8)->bool {if !cia_geometry_shape(bytes.count,bytes.count/168) {return false;}for k:0..<bytes.count/4 {at:=k*4;if (bytes[at+3]&127)==127 && bytes[at+2]>=128 {return false;}}return true;}
+cia_bind :: (c:CiCertificate,v:CiObserved)->bool #effects(all) {return c.valid && v.width==c.width && v.height==c.height && v.profile==c.profile && v.geometry_bytes==c.geometry_bytes && v.mask_bytes==c.mask_bytes && v.mask_pixels==c.mask_pixels && v.edges_bytes==c.edges_bytes && v.witness_bytes==c.witness_bytes && v.geometry_hash==c.geometry_hash && v.mask_hash==c.mask_hash && v.oracle_hash==c.oracle_hash && cia_path_matches(c.oracle_path,v.oracle_path) && v.edges_hash==c.edges_hash && v.witness_hash==c.witness_hash;}
+cia_mask_count :: (bytes:[]u8)->int #effects(all) {count:=0;for byte:bytes {if byte>1 {return -1;}count+=cast(int)byte;}return count;}
+cia_geometry :: (bytes:[]u8)->bool #effects(all) {if !cia_geometry_shape(bytes.count,bytes.count/168) {return false;}for k:0..<bytes.count/4 {at:=k*4;if (bytes[at+3]&127)==127 && bytes[at+2]>=128 {return false;}}return true;}

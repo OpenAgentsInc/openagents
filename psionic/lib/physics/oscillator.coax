@@ -51,25 +51,25 @@
   s=OsState.{};r:=os_rollout(p,s,forces[0..<128],0.05,out[..],false);#assert r.status==OsStatus.ok && r.written==129;
 }
 
-os_profile :: ()->string #export_c {return "oscillator-rk4-f64-v1";}
-os_bits_finite :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
-os_finite :: (v:f64)->bool {return os_bits_finite(f64_bits(v));}
-os_state_ok :: (s:OsState)->bool {return abs(s.position)<=2 && abs(s.velocity)<=4;}
-os_admit :: (p:OsParams,s:OsState,force:f64,dt:f64)->OsStatus {
+os_profile :: ()->string #export_c #effects(all) {return "oscillator-rk4-f64-v1";}
+os_bits_finite :: (bits:u64)->bool #effects(all) {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+os_finite :: (v:f64)->bool #effects(all) {return os_bits_finite(f64_bits(v));}
+os_state_ok :: (s:OsState)->bool #effects(all) {return abs(s.position)<=2 && abs(s.velocity)<=4;}
+os_admit :: (p:OsParams,s:OsState,force:f64,dt:f64)->OsStatus #effects(all) {
   numbers:=[7]f64.[p.mass,p.spring,p.damping,s.position,s.velocity,force,dt];for v:numbers {if !os_finite(v) {return OsStatus.number;}}
   if p.mass!=1 || p.spring<0.5 || p.spring>4 || p.damping<0.1 || p.damping>1 {return OsStatus.parameters;}
   if !os_state_ok(s) {return OsStatus.state;}if abs(force)>2 {return OsStatus.force;}
   if dt<0.0009765625 || dt>0.05 {return OsStatus.time;}return OsStatus.ok;
 }
 // book:begin field
-os_rhs :: (p:OsParams,s:OsState,force:f64)->OsState {
+os_rhs :: (p:OsParams,s:OsState,force:f64)->OsState #effects(all) {
   return OsState.{position=s.velocity,velocity=(force-p.damping*s.velocity)-p.spring*s.position};
 }
 // book:end field
-os_shift :: (s:OsState,k:OsState,h:f64)->OsState {return OsState.{position=s.position+h*k.position,velocity=s.velocity+h*k.velocity};}
-os_energy :: (p:OsParams,s:OsState)->f64 {return 0.5*s.velocity*s.velocity+0.5*p.spring*s.position*s.position;}
+os_shift :: (s:OsState,k:OsState,h:f64)->OsState #effects(all) {return OsState.{position=s.position+h*k.position,velocity=s.velocity+h*k.velocity};}
+os_energy :: (p:OsParams,s:OsState)->f64 #effects(all) {return 0.5*s.velocity*s.velocity+0.5*p.spring*s.position*s.position;}
 // book:begin step
-os_step :: (p:OsParams,s:OsState,force:f64,dt:f64)->OsStep #export_c {
+os_step :: (p:OsParams,s:OsState,force:f64,dt:f64)->OsStep #export_c #effects(all) {
   status:=os_admit(p,s,force,dt);if status!=OsStatus.ok {return OsStep.{status=status,state=s};}
   a:=os_rhs(p,s,force);b:=os_rhs(p,os_shift(s,a,dt/2),force);
   c:=os_rhs(p,os_shift(s,b,dt/2),force);d:=os_rhs(p,os_shift(s,c,dt),force);
@@ -77,7 +77,7 @@ os_step :: (p:OsParams,s:OsState,force:f64,dt:f64)->OsStep #export_c {
   if !os_state_ok(next) {return OsStep.{status=OsStatus.state,state=s};}return OsStep.{state=next};
 }
 // book:end step
-os_rollout :: (p:OsParams,initial:OsState,forces:[]f64,dt:f64,out:[]OsState,overlap:bool)->OsRun #export_c {
+os_rollout :: (p:OsParams,initial:OsState,forces:[]f64,dt:f64,out:[]OsState,overlap:bool)->OsRun #export_c #effects(all) {
   if forces.count<0 || forces.count>128 {return OsRun.{status=OsStatus.shape};}
   if out.count<forces.count+1 {return OsRun.{status=OsStatus.capacity};}if overlap {return OsRun.{status=OsStatus.overlap};}
   status:=os_admit(p,initial,0,dt);if status!=OsStatus.ok {return OsRun.{status=status};}

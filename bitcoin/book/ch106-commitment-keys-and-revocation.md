@@ -80,7 +80,7 @@ happens in practice, but the code still says what it does.
 ```jai
 // SHA256(a || b) for two compressed points, as a scalar.
 LnkTweak :: struct { code: int; value: ScScalar; }
-lnk_tweak :: (a: [] u8, b: [] u8) -> LnkTweak {
+lnk_tweak :: (a: [] u8, b: [] u8) -> LnkTweak #effects(all) {
   joined: [66] u8; hash: [32] u8;
   for i: 0..<33 { joined[i] = a[i]; joined[33 + i] = b[i]; }
   #assert sha256_hash_checked(joined[..], hash[..], false) == SHA_OK;
@@ -101,7 +101,7 @@ the commitment is revoked.
 ```jai
 // per_commitment_point = per_commitment_secret * G. The secret is the
 // shachain secret of chapter 107; the point goes to the peer.
-lnk_point :: (secret: [] u8) -> LnkKey {
+lnk_point :: (secret: [] u8) -> LnkKey #effects(all) {
   if secret.count != LNK_SECRET { return LnkKey.{code = LNK_BAD_SECRET}; }
   k := sc_load(secret);
   if !k.ok || sc_is_zero(k.value) { k = ScLoad.{}; return LnkKey.{code = LNK_BAD_SECRET}; }
@@ -134,7 +134,7 @@ per-commitment point.
 // pubkey = basepoint + SHA256(per_commitment_point || basepoint) * G.
 // localpubkey, local_htlcpubkey, remote_htlcpubkey, local_delayedpubkey
 // and remote_delayedpubkey all use this, each from its own basepoint.
-lnk_pubkey_vartime :: (basepoint: [] u8, point: [] u8) -> LnkKey {
+lnk_pubkey_vartime :: (basepoint: [] u8, point: [] u8) -> LnkKey #effects(all) {
   if basepoint.count != LNK_POINT || point.count != LNK_POINT { return LnkKey.{code = LNK_BAD_POINT}; }
   b := se_decode(basepoint);
   if !b.ok || !se_decode(point).ok { return LnkKey.{code = LNK_BAD_POINT}; }
@@ -145,7 +145,7 @@ lnk_pubkey_vartime :: (basepoint: [] u8, point: [] u8) -> LnkKey {
 }
 // privkey = basepoint_secret + SHA256(per_commitment_point || basepoint),
 // for the keys whose basepoint secret this node holds.
-lnk_privkey :: (base_secret: [] u8, point: [] u8, out: [] u8) -> int {
+lnk_privkey :: (base_secret: [] u8, point: [] u8, out: [] u8) -> int #effects(all) {
   base := lnk_point(base_secret);
   if base.code != LNK_OK { return base.code; }
   if point.count != LNK_POINT || !se_decode(point).ok { return LNK_BAD_POINT; }
@@ -161,7 +161,7 @@ lnk_privkey :: (base_secret: [] u8, point: [] u8, out: [] u8) -> int {
 // With option_static_remotekey, remotepubkey is the remote node's
 // payment_basepoint itself: no per-commitment point, so a node that lost
 // its state can still spend its to_remote output.
-lnk_remotepubkey_vartime :: (payment_basepoint: [] u8) -> LnkKey {
+lnk_remotepubkey_vartime :: (payment_basepoint: [] u8) -> LnkKey #effects(all) {
   if payment_basepoint.count != LNK_POINT || !se_decode(payment_basepoint).ok { return LnkKey.{code = LNK_BAD_POINT}; }
   r: LnkKey; for i: 0..<33 { r.bytes[i] = payment_basepoint[i]; }
   return r;
@@ -196,7 +196,7 @@ pair in a way neither side can steer.
 // revocationpubkey = R * SHA256(R || P) + P * SHA256(P || R), with R this
 // node's revocation_basepoint and P the peer's per_commitment_point.
 // Neither side can know its secret alone.
-lnk_revocation_pubkey_vartime :: (revocation_basepoint: [] u8, point: [] u8) -> LnkKey {
+lnk_revocation_pubkey_vartime :: (revocation_basepoint: [] u8, point: [] u8) -> LnkKey #effects(all) {
   if revocation_basepoint.count != LNK_POINT || point.count != LNK_POINT { return LnkKey.{code = LNK_BAD_POINT}; }
   r := se_decode(revocation_basepoint); p := se_decode(point);
   if !r.ok || !p.ok { return LnkKey.{code = LNK_BAD_POINT}; }
@@ -209,7 +209,7 @@ lnk_revocation_pubkey_vartime :: (revocation_basepoint: [] u8, point: [] u8) -> 
 }
 // revocationprivkey = r * SHA256(R || P) + p * SHA256(P || R). Once the
 // peer reveals p to revoke its commitment, this node knows both secrets.
-lnk_revocation_privkey :: (revocation_secret: [] u8, commitment_secret: [] u8, out: [] u8) -> int {
+lnk_revocation_privkey :: (revocation_secret: [] u8, commitment_secret: [] u8, out: [] u8) -> int #effects(all) {
   big_r := lnk_point(revocation_secret); big_p := lnk_point(commitment_secret);
   if big_r.code != LNK_OK || big_p.code != LNK_OK { return LNK_BAD_SECRET; }
   tr := lnk_tweak(big_r.bytes[..], big_p.bytes[..]); tp := lnk_tweak(big_p.bytes[..], big_r.bytes[..]);

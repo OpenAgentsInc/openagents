@@ -124,7 +124,7 @@ The read rate is the bytes of a measured run divided by its time:
 // starting at position first took ns nanoseconds; chapter 33 counts the
 // bytes each step reads. Bytes a microsecond, rounded down; 0 for a run
 // outside the model's bounds.
-fc_rate :: (m:RpModel,first:int,steps:int,ns:int)->int {
+fc_rate :: (m:RpModel,first:int,steps:int,ns:int)->int #effects(all) {
     if steps<1 || ns<1 || rp_decode(m,first).status!=RpStatus.ok || rp_decode(m,first+steps-1).status!=RpStatus.ok {return 0;}
     bytes:=0;
     for n:first..<first+steps {bytes+=rp_decode(m,n).bytes;}
@@ -139,7 +139,7 @@ It then tries resident and falls through to experts streamed or a refusal:
 ```jai
 // The streamed mode keeps at least two layers' selections in the cache:
 // one layer's experts in use while the next layer's are copied.
-fc_plan :: (m:RpModel,r:RpRequest,d:FcDevice)->FcPlan {
+fc_plan :: (m:RpModel,r:RpRequest,d:FcDevice)->FcPlan #effects(all) {
     if !rp_valid(m) || m.arch!=RpArch.moe {return FcPlan.{status=FcStatus.model};}
     if r.capacity<1 || r.capacity>m.max_tokens || r.chunk<1 || r.chunk>r.capacity {return FcPlan.{status=FcStatus.request};}
     if d.memory<0 || d.buffer<0 || d.read_rate<1 || d.link_rate<0 || d.host<0 {return FcPlan.{status=FcStatus.device};}
@@ -172,7 +172,7 @@ Picking compares those worst-case rates:
 ```jai
 // Plan every device and return the index of the admitted one with the
 // highest worst-case rate (the first on a tie), or -1 when none admits.
-fc_pick :: (m:RpModel,r:RpRequest,devices:[]FcDevice,plans:[]FcPlan)->int {
+fc_pick :: (m:RpModel,r:RpRequest,devices:[]FcDevice,plans:[]FcPlan)->int #effects(all) {
     best:=-1;top:int;
     for i:0..<devices.count {
         p:=fc_plan(m,r,devices[i]);

@@ -107,7 +107,7 @@ can explicitly cancel or expire it.
 
 <!-- source: psionic/lib/game/decision.coax take -->
 ```jai
-gd_take :: (s:[]GdState,sequence:int,current:GdContext,now_ms:int,legal_mask:int)->GdChoice #export_c {
+gd_take :: (s:[]GdState,sequence:int,current:GdContext,now_ms:int,legal_mask:int)->GdChoice #export_c #effects(all) {
     if s.count!=1 {return GdChoice.{code=GdCode.state};}
     if s[0].phase==0 || sequence!=s[0].ticket.sequence || !gd_same_context(current,s[0].ticket.context) {return GdChoice.{code=GdCode.stale};}
     if now_ms<0 || now_ms>GD_TIME_MAX || legal_mask<0 || legal_mask>2147483647 {return GdChoice.{code=GdCode.bounds};}

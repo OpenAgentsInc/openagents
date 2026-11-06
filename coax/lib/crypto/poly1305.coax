@@ -204,7 +204,7 @@ POLY_CLAMP_LO :: cast(u64)0x0ffffffc0fffffff;
 POLY_CLAMP_HI :: cast(u64)0x0ffffffc0ffffffc;
 // book:end state
 
-poly_admit :: (key:int,msg:int,capacity:int,overlap:bool)->bool {
+poly_admit :: (key:int,msg:int,capacity:int,overlap:bool)->bool #effects(all) {
   return key==32 && msg>=0 && msg<=CB_MAX_BYTES && capacity>=16 && capacity<=CB_MAX_BYTES && !overlap;
 }
 
@@ -213,19 +213,19 @@ poly_admit :: (key:int,msg:int,capacity:int,overlap:bool)->bool {
 // What passes out of limb 4 is a multiple of 2^130, and 2^130 = 5 mod p, so
 // it comes back into limb 0 times 5. Three passes bring every limb below
 // 2^26 (coax/tests/nostr/poly1305_bounds.py checks this with Z3).
-poly_carry :: (x:[]u64) {
+poly_carry :: (x:[]u64) #effects(all) {
   for i:0..<5 {
     carry:=x[i]>>26;x[i]&=POLY_BASE_MASK;
     if i==4 {x[0]+=carry*5;} else {x[i+1]+=carry;}
   }
 }
-poly_normalize :: (x:[]u64) {poly_carry(x);poly_carry(x);poly_carry(x);}
+poly_normalize :: (x:[]u64) #effects(all) {poly_carry(x);poly_carry(x);poly_carry(x);}
 // book:end carry
 // book:begin reduce
 // h is below 2^130 in canonical limbs, so h mod p is h or h - p. h + 5
 // reaches 2^130 exactly when h >= p, and then its low 130 bits are h - p.
 // The bit above them becomes a mask that selects without a branch.
-poly_reduce :: (h:[]u64,scratch:[]u64) {
+poly_reduce :: (h:[]u64,scratch:[]u64) #effects(all) {
   for i:0..<5 {scratch[i]=h[i];}scratch[0]+=5;
   for i:0..<4 {carry:=scratch[i]>>26;scratch[i]&=POLY_BASE_MASK;scratch[i+1]+=carry;}
   overflow:=scratch[4]>>26;scratch[4]&=POLY_BASE_MASK;
@@ -237,7 +237,7 @@ poly_reduce :: (h:[]u64,scratch:[]u64) {
 // book:begin start
 // Add a 128-bit number, given as its low and high 64 bits, to five 26-bit
 // limbs: bits 0-25, 26-51, 52-77, 78-103 and 104-127.
-poly_split :: (lo:u64,hi:u64,limbs:[]u64) {
+poly_split :: (lo:u64,hi:u64,limbs:[]u64) #effects(all) {
   limbs[0]+=lo&POLY_BASE_MASK;
   limbs[1]+=(lo>>26)&POLY_BASE_MASK;
   limbs[2]+=((lo>>52)|(hi<<12))&POLY_BASE_MASK;
@@ -245,7 +245,7 @@ poly_split :: (lo:u64,hi:u64,limbs:[]u64) {
   limbs[4]+=hi>>40;
 }
 // r is the first 16 key bytes, little-endian and clamped; s is the last 16.
-poly_start :: (state:[]Poly1305State,key:[]u8) {
+poly_start :: (state:[]Poly1305State,key:[]u8) #effects(all) {
   state[0]=Poly1305State.{phase=POLY_ACTIVE};
   lo:=cb_load_le64(key,0).value&POLY_CLAMP_LO;
   hi:=cb_load_le64(key,8).value&POLY_CLAMP_HI;
@@ -258,7 +258,7 @@ poly_start :: (state:[]Poly1305State,key:[]u8) {
 // first `length` bytes are the message; the rest are zero. Adding 2^(8 *
 // length) appends the 0x01 byte. Limb i times limb j lands in limb i + j;
 // past limb 4 it wraps to limb i + j - 5 times 5, because 2^130 = 5 mod p.
-poly_block :: (state:[]Poly1305State,length:int) {
+poly_block :: (state:[]Poly1305State,length:int) #effects(all) {
   poly_split(cb_load_le64(state[0].block[..],0).value,cb_load_le64(state[0].block[..],8).value,state[0].h[..]);
   top:=length*8;state[0].h[top/26]+=cast(u64)1<<(top%26);
   for i:0..<5 {for j:0..<5 {
@@ -273,7 +273,7 @@ poly_block :: (state:[]Poly1305State,length:int) {
 // book:begin absorb
 // Full blocks are taken as soon as they fill; a partial one waits in the
 // state for more bytes or for final.
-poly_absorb :: (state:[]Poly1305State,msg:[]u8) {
+poly_absorb :: (state:[]Poly1305State,msg:[]u8) #effects(all) {
   used:=state[0].used;
   for byte:msg {
     state[0].block[used]=byte;used+=1;
@@ -285,7 +285,7 @@ poly_absorb :: (state:[]Poly1305State,msg:[]u8) {
 // book:begin finish
 // The tag is (h mod p + s) mod 2^128, little-endian. Every field of the
 // state is erased afterwards.
-poly_finish :: (state:[]Poly1305State,out:[]u8) {
+poly_finish :: (state:[]Poly1305State,out:[]u8) #effects(all) {
   if state[0].used>0 {poly_block(state,state[0].used);}
   poly_reduce(state[0].h[..],state[0].product[..]);
   // The low 128 bits of h as two 64-bit halves; bits 128 and 129 drop out.
@@ -311,7 +311,7 @@ poly_finish :: (state:[]Poly1305State,out:[]u8) {
 // than compute with it. The secret fields are folded into one value that is
 // tested once, so a valid state takes the same path whatever its key and
 // message.
-poly_check :: (state:[]Poly1305State)->u32 {
+poly_check :: (state:[]Poly1305State)->u32 #effects(all) {
   if state.count!=1 {return POLY_BAD_STATE;}
   if state[0].phase==0 {return POLY_PHASE;}
   used:=state[0].used;
@@ -323,28 +323,28 @@ poly_check :: (state:[]Poly1305State)->u32 {
   return POLY_OK;
 }
 // The size and overlap checks of one update's input and of final's output.
-poly_input :: (count:int,overlap:bool)->u32 {
+poly_input :: (count:int,overlap:bool)->u32 #effects(all) {
   if count<0 || count>CB_MAX_BYTES {return POLY_BAD_INPUT;}
   if count>0 && overlap {return POLY_ALIAS;}
   return POLY_OK;
 }
-poly_output :: (count:int,overlap:bool)->u32 {
+poly_output :: (count:int,overlap:bool)->u32 #effects(all) {
   if count<16 || count>CB_MAX_BYTES {return POLY_BAD_OUTPUT;}
   if overlap {return POLY_ALIAS;}
   return POLY_OK;
 }
-poly1305_init :: (state:[]Poly1305State,key:[]u8,overlap:bool)->u32 #export_c {
+poly1305_init :: (state:[]Poly1305State,key:[]u8,overlap:bool)->u32 #export_c #effects(all) {
   if state.count!=1 {return POLY_BAD_STATE;}
   if key.count!=32 {return POLY_BAD_KEY;}
   if overlap {return POLY_ALIAS;}
   poly_start(state,key);return POLY_OK;
 }
-poly1305_update :: (state:[]Poly1305State,msg:[]u8,overlap:bool)->u32 #export_c {
+poly1305_update :: (state:[]Poly1305State,msg:[]u8,overlap:bool)->u32 #export_c #effects(all) {
   status:=poly_check(state);if status!=POLY_OK {return status;}
   status=poly_input(msg.count,overlap);if status!=POLY_OK {return status;}
   poly_absorb(state,msg);return POLY_OK;
 }
-poly1305_final :: (state:[]Poly1305State,out:[]u8,overlap:bool)->u32 #export_c {
+poly1305_final :: (state:[]Poly1305State,out:[]u8,overlap:bool)->u32 #export_c #effects(all) {
   status:=poly_check(state);if status!=POLY_OK {return status;}
   status=poly_output(out.count,overlap);if status!=POLY_OK {return status;}
   poly_finish(state,out);return POLY_OK;
@@ -354,7 +354,7 @@ poly1305_final :: (state:[]Poly1305State,out:[]u8,overlap:bool)->u32 #export_c {
 // book:begin oneshot
 // One-shot MAC for NIP-49 and the AEADs: the same steps over a local state,
 // which poly_finish erases.
-poly1305_checked :: (key:[]u8,msg:[]u8,out:[]u8,overlap:bool)->bool #export_c {
+poly1305_checked :: (key:[]u8,msg:[]u8,out:[]u8,overlap:bool)->bool #export_c #effects(all) {
   if !poly_admit(key.count,msg.count,out.count,overlap) {return false;}
   state:[1]Poly1305State;
   poly_start(state[..],key);poly_absorb(state[..],msg);poly_finish(state[..],out);

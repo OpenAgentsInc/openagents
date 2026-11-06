@@ -13,16 +13,16 @@
 KS_CASES :: 10;
 KS_EPSILON :: 1e-6;
 KsShape :: struct {rows:int;width:int;}
-ks_shape :: (c:int)->KsShape #export_c {
+ks_shape :: (c:int)->KsShape #export_c #effects(all) {
     s:=[20]int.[86,4096, 1,4096, 7,5120, 3,1000, 5,4097, 2,1, 1,17, 4,4096, 2,4096, 3,4096];
     if c<0 || c>=KS_CASES {return KsShape.{};}
     return KsShape.{rows=s[2*c],width=s[2*c+1]};
 }
 // A value from a 32-bit xorshift: about -4 to 4 with 20 fraction bits.
-ks_random :: (state:u32)->u32 {
+ks_random :: (state:u32)->u32 #effects(all) {
     s:=state;s^=s<<13;s^=s>>17;s^=s<<5;return s;
 }
-ks_fill :: (c:int,x:[]f32,scale:[]f32) #export_c {
+ks_fill :: (c:int,x:[]f32,scale:[]f32) #export_c #effects(all) {
     sh:=ks_shape(c);n:=sh.rows*sh.width;state:=mul_wrap(cast(u32)(c+1),cast(u32)2654435761);
     extremes:=[8]f32.[3.4028235e38,-3.4028235e38,f32_from_bits(1),0,1,-1e-20,65504,-f32_from_bits(0x7fffff)];
     for i:0..<n {
@@ -43,12 +43,12 @@ ks_fill :: (c:int,x:[]f32,scale:[]f32) #export_c {
 // prefill, the largest f32, was never written: no norm comes near it.
 KsCheck :: struct {wrong:int;unwritten:int;first:int;}
 KS_UNWRITTEN :: 0x7f7fffff;
-ks_ulp :: (r:f32)->f64 {
+ks_ulp :: (r:f32)->f64 #effects(all) {
     a:=abs(r);return f64(f32_from_bits(f32_bits(a)+1))-f64(a);
 }
 // Written so that a NaN, which compares false, is not within.
-ks_within :: (got:f32,want:f64)->bool {return abs(f64(got)-want)<=ks_ulp(f32(want));}
-ks_check :: (c:int,x:[]f32,scale:[]f32,out:[]f32)->KsCheck #export_c {
+ks_within :: (got:f32,want:f64)->bool #effects(all) {return abs(f64(got)-want)<=ks_ulp(f32(want));}
+ks_check :: (c:int,x:[]f32,scale:[]f32,out:[]f32)->KsCheck #export_c #effects(all) {
     sh:=ks_shape(c);k:KsCheck;k.first=-1;
     for r:0..<sh.rows {
         at:=r*sh.width;sum:f64=0;
@@ -71,7 +71,7 @@ ks_check :: (c:int,x:[]f32,scale:[]f32,out:[]f32)->KsCheck #export_c {
 // faster than another only when its slowest trial beats the other's fastest.
 KS_TRIALS_MAX :: 64;
 KsTiming :: struct {median:f64;low:f64;high:f64;count:int;}
-ks_timing :: (trials:[]f64)->KsTiming {
+ks_timing :: (trials:[]f64)->KsTiming #effects(all) {
     t:KsTiming;n:=trials.count;
     if n<1 || n>KS_TRIALS_MAX {return t;}
     s:[KS_TRIALS_MAX]f64;
@@ -84,14 +84,14 @@ ks_timing :: (trials:[]f64)->KsTiming {
     t.low=s[0];t.high=s[n-1];t.count=n;
     return t;
 }
-ks_faster :: (a:KsTiming,b:KsTiming)->bool {return a.count>0 && b.count>0 && a.high<b.low;}
+ks_faster :: (a:KsTiming,b:KsTiming)->bool #effects(all) {return a.count>0 && b.count>0 && a.high<b.low;}
 // book:end timing
 
 // book:begin choose
 // The tuner's choice among measured configurations: the lowest median among
 // those that passed every case. -1 when none passed.
 KsConfig :: struct {knob:int;block:int;passed:bool;timing:KsTiming;}
-ks_best :: (configs:[]KsConfig)->int {
+ks_best :: (configs:[]KsConfig)->int #effects(all) {
     best:=-1;
     for c,i:configs {
         if !c.passed || c.timing.count==0 {continue;}
@@ -126,7 +126,7 @@ ks_best :: (configs:[]KsConfig)->int {
     ks_fill(8,w[..],s[..]);for v:w {#assert v==0;}
 }
 // The norm of case c, written plainly, rounded to f32.
-ks_t_norm :: (c:int,x:[]f32,scale:[]f32,out:[]f32) {
+ks_t_norm :: (c:int,x:[]f32,scale:[]f32,out:[]f32) #effects(all) {
     sh:=ks_shape(c);
     for r:0..<sh.rows {
         sum:f64=0;

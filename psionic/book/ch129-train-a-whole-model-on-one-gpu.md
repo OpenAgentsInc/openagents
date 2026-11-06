@@ -180,23 +180,23 @@ gk_rope :: (v:[]f64,vo:int,heads:int,e:int,rope:[]f64,t:int,back:bool) {
 // Kernel 1, one item per parameter: chapter 118's tr_add over the step's
 // micro-batches, in their order: the sum starts at zero and adds each row's
 // gradient divided by the micro-batch count.
-gk_mean :: (item:int,micro:int,n:int,grads:[]f64,total:[]f64) #export_c {
+gk_mean :: (item:int,micro:int,n:int,grads:[]f64,total:[]f64) #export_c #effects(all) {
     total[item]=0;for k:0..<micro {total[item]+=grads[k*n+item]/f64(micro);}
 }
 // Kernel 2, one item: the squared global norm, summed in parameter order as
 // tr_apply sums it.
-gk_squares :: (item:int,n:int,total:[]f64,out:[]f64) #export_c {
+gk_squares :: (item:int,n:int,total:[]f64,out:[]f64) #export_c #effects(all) {
     s:=0.0;for i:0..<n {s+=total[i]*total[i];}out[item]=s;
 }
 // Kernel 3, one item per parameter, launched only when the norm is over the
 // clip: tr_apply's scaling.
-gk_clip :: (item:int,clip:f64,norm:f64,total:[]f64) #export_c {
+gk_clip :: (item:int,clip:f64,norm:f64,total:[]f64) #export_c #effects(all) {
     total[item]=total[item]*clip/norm;
 }
 // Kernel 4, one item per parameter: chapter 124's aw_cell at step t, with
 // c1 = 1 - beta1^t and c2 = 1 - beta2^t from the host. The new parameter,
 // moments go to the stage (p, m, v as three spans of n); nothing live changes.
-gk_adamw :: (item:int,n:int,lr:f64,beta1:f64,beta2:f64,eps:f64,decay:f64,c1:f64,c2:f64,p:[]f64,total:[]f64,m:[]f64,v:[]f64,stage:[]f64) #export_c {
+gk_adamw :: (item:int,n:int,lr:f64,beta1:f64,beta2:f64,eps:f64,decay:f64,c1:f64,c2:f64,p:[]f64,total:[]f64,m:[]f64,v:[]f64,stage:[]f64) #export_c #effects(all) {
     grad:=total[item];
     decayed:=p[item]*(1-lr*decay);
     m2:=beta1*m[item]+(1-beta1)*grad;
@@ -208,13 +208,13 @@ gk_finite :: (x:f64)->bool {return x>=-GK_MAX && x<=GK_MAX;}
 // Kernel 5, one item: what the host needs to admit the staged step. out[0]
 // is 1 when a staged value is not finite (AdamW refuses the step), out[1]
 // is 1 when a staged parameter is outside the bound.
-gk_admit :: (item:int,n:int,bound:f64,stage:[]f64,out:[]f64) #export_c {
+gk_admit :: (item:int,n:int,bound:f64,stage:[]f64,out:[]f64) #export_c #effects(all) {
     bad:=0.0;far:=0.0;
     for i:0..<n {if !gk_finite(stage[i]) || !gk_finite(stage[n+i]) || !gk_finite(stage[2*n+i]) {bad=1;}if !(stage[i]<=bound && stage[i]>=-bound) {far=1;}}
     out[2*item]=bad;out[2*item+1]=far;
 }
 // Kernel 6, one item per parameter, launched only for an admitted step.
-gk_commit :: (item:int,n:int,stage:[]f64,p:[]f64,m:[]f64,v:[]f64) #export_c {
+gk_commit :: (item:int,n:int,stage:[]f64,p:[]f64,m:[]f64,v:[]f64) #export_c #effects(all) {
     p[item]=stage[item];m[item]=stage[n+item];v[item]=stage[2*n+item];
 }
 ```
@@ -243,7 +243,7 @@ GtPlan :: struct {status:GtStatus;parameters:int;work:int;rows:int;bytes:int;siz
 // What one run of chapter 115's decoder needs on the device, in bytes, and
 // whether the device has a kernel for every part of the step. Nothing is
 // allocated unless the whole plan fits the budget.
-gt_plan :: (s:TdShape,c:TrConfig,docs:[]PkDoc,tokens:[]u8,budget:int)->GtPlan #export_c {
+gt_plan :: (s:TdShape,c:TrConfig,docs:[]PkDoc,tokens:[]u8,budget:int)->GtPlan #export_c #effects(all) {
     if !td_valid(s) {return GtPlan.{status=GtStatus.shape};}
     n:=td_parameter_count(s);
     // The trainer admits the run first: its checkpoint (chapter 122's
@@ -296,7 +296,7 @@ GtDecide :: struct {status:TrStatus;revision:int;loss:f64;norm:f64;rate:f64;clip
 // tr_apply. The loss sums the rows' losses over the micro-batch count in
 // order; the norm decides clipping; the schedule gives the rate; AdamW's
 // bias corrections for the next step are computed here, once.
-gt_decide :: (c:TrConfig,run:TrRun,b:TrBatch,losses:[]f64,squares:f64)->GtDecide #export_c {
+gt_decide :: (c:TrConfig,run:TrRun,b:TrBatch,losses:[]f64,squares:f64)->GtDecide #export_c #effects(all) {
     fail:=GtDecide.{status=TrStatus.order,revision=run.revision};
     if b.status!=TrStatus.ok || b.revision!=run.revision || b.micro<1 || losses.count!=b.micro {return fail;}
     k:=f64(b.micro);loss:=0.0;for x:losses {loss+=x/k;}
@@ -310,7 +310,7 @@ gt_decide :: (c:TrConfig,run:TrRun,b:TrBatch,losses:[]f64,squares:f64)->GtDecide
 // AdamW refuses; flags[1]: a parameter outside the bound): the rest of
 // tr_apply. Only an admitted step advances the run; the caller then
 // launches the commit.
-gt_commit :: (c:TrConfig,run:TrRun,b:TrBatch,d:GtDecide,flags:[]f64)->TrStep #export_c {
+gt_commit :: (c:TrConfig,run:TrRun,b:TrBatch,d:GtDecide,flags:[]f64)->TrStep #export_c #effects(all) {
     fail:=TrStep.{run=run,status=d.status};
     if d.status!=TrStatus.ok {return fail;}
     if d.revision!=run.revision || b.revision!=run.revision || b.status!=TrStatus.ok {fail.status=TrStatus.order;return fail;}
@@ -348,11 +348,11 @@ and it is how the checks know the kernels are right:
 <!-- source: psionic/lib/transformer/gpu-train.coax cpu -->
 ```jai
 // The shape as the kernels read it.
-gt_shape :: (s:TdShape,sh:[]int) #export_c {x:=[8]int.[s.vocab,s.width,s.heads,s.kv_heads,s.head_width,s.hidden,s.layers,s.context];for i:0..<8 {sh[i]=x[i];}}
+gt_shape :: (s:TdShape,sh:[]int) #export_c #effects(all) {x:=[8]int.[s.vocab,s.width,s.heads,s.kv_heads,s.head_width,s.hidden,s.layers,s.context];for i:0..<8 {sh[i]=x[i];}}
 // One step on the CPU: the device's launches, in the device's order, each
 // kernel run once for every work item. rows holds the batch tr_next filled.
 // flags is scalars[1..<3]: the norm is scalars[0].
-gt_step_cpu :: (s:TdShape,c:TrConfig,run:TrRun,b:TrBatch,rows:[]u8,rope:[]f64,p:[]f64,m:[]f64,v:[]f64,stage:[]f64,total:[]f64,grads:[]f64,work:[]f64,dwork:[]f64,losses:[]f64,scalars:[]f64)->TrStep #export_c {
+gt_step_cpu :: (s:TdShape,c:TrConfig,run:TrRun,b:TrBatch,rows:[]u8,rope:[]f64,p:[]f64,m:[]f64,v:[]f64,stage:[]f64,total:[]f64,grads:[]f64,work:[]f64,dwork:[]f64,losses:[]f64,scalars:[]f64)->TrStep #export_c #effects(all) {
     sh:[8]int;gt_shape(s,sh[..]);n:=p.count;micro:=b.micro;
     if b.status!=TrStatus.ok || micro<1 || micro>losses.count {return TrStep.{status=TrStatus.order,run=run};}
     for i:0..<micro {gk_rows(i,sh[..],p,rows,rope,work,dwork,grads,losses);}
@@ -377,7 +377,7 @@ It is compared with chapter 118's own run, which calls chapter 113's
 // chapter 113's td_gradients on each row, tr_add and tr_apply. rows holds a
 // step's rows, w and dw one row's work, g one row's gradient, stage 3 * n
 // values; losses gets each step's loss.
-gt_reference :: (s:TdShape,c:TrConfig,docs:[]PkDoc,tokens:[]u8,order:[]int,run:TrRun,count:int,rows:[]u8,w:[]f64,dw:[]f64,g:[]f64,p:[]f64,m:[]f64,v:[]f64,total:[]f64,stage:[]f64,losses:[]f64)->TrStep #export_c {
+gt_reference :: (s:TdShape,c:TrConfig,docs:[]PkDoc,tokens:[]u8,order:[]int,run:TrRun,count:int,rows:[]u8,w:[]f64,dw:[]f64,g:[]f64,p:[]f64,m:[]f64,v:[]f64,total:[]f64,stage:[]f64,losses:[]f64)->TrStep #export_c #effects(all) {
     n:=p.count;ints:[64]int;r:=run;nw:=td_work_count(s);
     if !td_valid(s) || n!=td_parameter_count(s) || w.count<nw || dw.count<nw || g.count<n || rows.count<c.accumulate*c.length || c.length>64 {return TrStep.{status=TrStatus.shape,run=run};}
     for k:0..<count {
@@ -410,7 +410,7 @@ any difference forward. The comparison rule was written into
 ```jai
 // Chapter 118's tm_decoder: AdamW on chapter 115's linear schedule, each
 // step `rows` packed rows of the context length, one row a micro-batch.
-gt_config :: (s:TdShape,rows:int,steps:int)->TrConfig #export_c {
+gt_config :: (s:TdShape,rows:int,steps:int)->TrConfig #export_c #effects(all) {
     return TrConfig.{optimizer=TrOptimizer.adamw,schedule=TrSchedule.linear,source=TrSource.stream,rate=TT_RATE,drop=0.9,beta1=0.9,beta2=0.99,eps=0.00000001,
         bound=TD_NUMBER,batch=1,accumulate=rows,length=s.context,steps=steps,seed=TT_ORDER};
 }

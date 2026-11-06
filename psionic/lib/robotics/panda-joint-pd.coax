@@ -25,7 +25,7 @@
  }
 }
 
-pjp_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),rates:[]pfku.Quantity(PidAngularRate,f64),target:[]pfku.Quantity(pfku.Radian,f64),target_rates:[]pfku.Quantity(PidAngularRate,f64),kp:[]pfku.Quantity(PjpStiffness,f64),kd:[]pfku.Quantity(PjpDamping,f64),output:[]PjpOutput)->PjpStatus #export_c {
+pjp_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),rates:[]pfku.Quantity(PidAngularRate,f64),target:[]pfku.Quantity(pfku.Radian,f64),target_rates:[]pfku.Quantity(PidAngularRate,f64),kp:[]pfku.Quantity(PjpStiffness,f64),kd:[]pfku.Quantity(PjpDamping,f64),output:[]PjpOutput)->PjpStatus #export_c #effects(all) {
  if angles.count!=7 || slides.count!=2 || rates.count!=7 || target.count!=7 || target_rates.count!=7 || kp.count!=7 || kd.count!=7 || output.count!=1 {return PjpStatus.shape;}
  words:[44]u64;for i:0..<7 {words[i]=f64_bits(angles[i].value);words[9+i]=f64_bits(rates[i].value);words[16+i]=f64_bits(target[i].value);words[23+i]=f64_bits(target_rates[i].value);words[30+i]=f64_bits(kp[i].value);words[37+i]=f64_bits(kd[i].value);}for i:0..<2 {words[7+i]=f64_bits(slides[i].value);}
  admitted:=pjp_admit(words);if admitted!=PjpStatus.ok {return admitted;}
@@ -33,7 +33,7 @@ pjp_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(p
  x:PjpInput;for i:0..<7 {x.q[i]=angles[i];x.rate[i]=rates[i];x.target[i]=target[i];x.target_rate[i]=target_rates[i];x.kp[i]=kp[i];x.kd[i]=kd[i];}
  fresh:=pjp_assemble(x,gravity[0].hinge_gravity);output[0]=fresh;return PjpStatus.ok;
 }
-pjp_forward_raw :: (coefficients:[]f64,output:[]PjpOutput)->PjpStatus #export_c {
+pjp_forward_raw :: (coefficients:[]f64,output:[]PjpOutput)->PjpStatus #export_c #effects(all) {
  if coefficients.count!=44 || output.count!=1 {return PjpStatus.shape;}
  x:PjpInput;for i:0..<7 {x.q[i].value=coefficients[i];x.rate[i].value=coefficients[9+i];x.target[i].value=coefficients[16+i];x.target_rate[i].value=coefficients[23+i];x.kp[i].value=coefficients[30+i];x.kd[i].value=coefficients[37+i];}for i:0..<2 {x.slides[i].value=coefficients[7+i];}
  return pjp_forward(x.q[..],x.slides[..],x.rate[..],x.target[..],x.target_rate[..],x.kp[..],x.kd[..],output);

@@ -18,12 +18,12 @@
  row:=jv_get(d[0],0,keys[index]);at:=d[0].nodes[jv_at(d[0],row,0)].from;b[at]='9';
  #assert jv_parse(d[..],cast(string)b[0..<HSRB_GOOD.count],n[..])&&!hsrb_accept(d[0]);
 }
-hsrb_row :: (d:Jv,key:string,expected:[]int)->bool {
+hsrb_row :: (d:Jv,key:string,expected:[]int)->bool #effects(all) {
  row:=jv_get(d,0,key);if jv_kind(d,row)!=JV_ARRAY || jv_len(d,row)!=expected.count {return false;}
  for i:0..<expected.count {if jv_int(d,jv_at(d,row,i),-1)!=expected[i] {return false;}}
  return true;
 }
-hsrb_accept :: (d:Jv)->bool #export_c {
+hsrb_accept :: (d:Jv)->bool #export_c #effects(all) {
  plan:=[10]int.[4,64,0,0,8,32,0,0,8388608,33554432];
  copy:=[17]int.[2,9,2,2,9,0,0,2,195,169,240,159,153,130,116,119,111];
  oversize:=[6]int.[1,0,3,0,0,0];

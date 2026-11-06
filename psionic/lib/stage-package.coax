@@ -275,7 +275,7 @@ SP_VERSION :: 1;
 // Which tensor a name is: chapter 81's inventory index e (0 the final norm,
 // 1 the tied embedding, 2 + 9 x layer + k a layer's k-th tensor), or -1
 // for a tensor no text stage runs.
-sp_entry :: (name:string)->int {
+sp_entry :: (name:string)->int #effects(all) {
     if name=="norm.weight" {return 0;}
     if name=="tok_embeddings.weight" {return 1;}
     prefix:="layers.";
@@ -294,7 +294,7 @@ sp_entry :: (name:string)->int {
 // Does stage `stage` of plan p need tensor e? Its own layers; the embedding
 // if it is first, and again as the tied readout if it is last; the final
 // norm if it is last.
-sp_needs :: (e:int,p:StgPlan,stage:int)->bool {
+sp_needs :: (e:int,p:StgPlan,stage:int)->bool #effects(all) {
     if e<0 {return false;}
     last:=stage==p.stages-1;
     if e==0 {return last;}
@@ -304,7 +304,7 @@ sp_needs :: (e:int,p:StgPlan,stage:int)->bool {
 }
 // The inventory entries stage `stage` needs, in the file's header order.
 SpSelected :: struct {status:SpStatus;count:int;bytes:int;}
-sp_select :: (inventory:[]P5Tensor,p:StgPlan,stage:int,out:[]int)->SpSelected {
+sp_select :: (inventory:[]P5Tensor,p:StgPlan,stage:int,out:[]int)->SpSelected #effects(all) {
     if p.status!=StgStatus.ok || stage<0 || stage>=p.stages {return SpSelected.{status=SpStatus.stage};}
     r:SpSelected;
     for i:0..<inventory.count {
@@ -315,13 +315,13 @@ sp_select :: (inventory:[]P5Tensor,p:StgPlan,stage:int,out:[]int)->SpSelected {
     return r;
 }
 // A tensor's bytes in chapter 81's inventory for shape s.
-sp_size :: (s:MsShape,e:int)->int {x:=ms_expected(s,e);n:=2*x.rows;if x.rank==2 {n*=x.cols;}return n;}
+sp_size :: (s:MsShape,e:int)->int #effects(all) {x:=ms_expected(s,e);n:=2*x.rows;if x.rank==2 {n*=x.cols;}return n;}
 // book:end select
 
 // book:begin text
 // SHA-256 of data as 64 lowercase hex digits, fed `chunk` bytes at a time
 // (chapter 7's streaming limit is 1 MiB a call).
-sp_hex_chunks :: (data:[]u8,chunk:int)->[64]u8 {
+sp_hex_chunks :: (data:[]u8,chunk:int)->[64]u8 #effects(all) {
     state:[112]u8;digest:[32]u8;out:[64]u8;at:=0;
     #assert sha256_init(state[..])==SHA_OK;
     while at<data.count {n:=stg_min(chunk,data.count-at);#assert sha256_update_checked(state[..],data[at..<at+n],false)==SHA_OK;at+=n;}
@@ -330,10 +330,10 @@ sp_hex_chunks :: (data:[]u8,chunk:int)->[64]u8 {
     for i:0..<32 {out[2*i]=digits[digest[i]>>4];out[2*i+1]=digits[digest[i]&15];}
     return out;
 }
-sp_hex :: (data:[]u8)->[64]u8 {return sp_hex_chunks(data,CB_MAX_BYTES);}
+sp_hex :: (data:[]u8)->[64]u8 #effects(all) {return sp_hex_chunks(data,CB_MAX_BYTES);}
 // The plan as text: its stages, slowest stage, cuts, and each stage's
 // bytes, cache bytes and multiply-adds. Its SHA-256 is the plan's digest.
-sp_plan_text :: (p:StgPlan,out:[]u8)->int {
+sp_plan_text :: (p:StgPlan,out:[]u8)->int #effects(all) {
     at:=pv_decimal(p.slowest,out,pv_text(" ",out,pv_decimal(p.stages,out,pv_text("psionic-stage-plan 1 ",out,0))));
     for i:0..<p.stages+1 {at=pv_decimal(p.cut[i],out,pv_text(" ",out,at));}
     for i:0..<p.stages {
@@ -343,7 +343,7 @@ sp_plan_text :: (p:StgPlan,out:[]u8)->int {
     }
     return pv_text("\n",out,at);
 }
-sp_plan_digest :: (p:StgPlan)->[64]u8 {text:[2048]u8;return sp_hex(text[0..<sp_plan_text(p,text[..])]);}
+sp_plan_digest :: (p:StgPlan)->[64]u8 #effects(all) {text:[2048]u8;return sp_hex(text[0..<sp_plan_text(p,text[..])]);}
 // The manifest's five header lines, k = 0..<5:
 //   psionic-stage-package 1
 //   model SHA256          the parent safetensors file
@@ -352,7 +352,7 @@ sp_plan_digest :: (p:StgPlan)->[64]u8 {text:[2048]u8;return sp_hex(text[0..<sp_p
 //   stage I of N layers A B
 // then one line a tensor, in the file's header order:
 //   tensor NAME BEGIN END SHA256    (BEGIN..<END: bytes of the original file)
-sp_head :: (k:int,model:string,plan:[]u8,p:StgPlan,stage:int,out:[]u8)->int {
+sp_head :: (k:int,model:string,plan:[]u8,p:StgPlan,stage:int,out:[]u8)->int #effects(all) {
     if k==0 {return pv_text("\n",out,pv_decimal(SP_VERSION,out,pv_text("psionic-stage-package ",out,0)));}
     if k==1 {return pv_text("\n",out,pv_text(model,out,pv_text("model ",out,0)));}
     if k==2 {return pv_text("\n",out,pv_text(cast(string)plan,out,pv_text("plan ",out,0)));}
@@ -363,8 +363,8 @@ sp_head :: (k:int,model:string,plan:[]u8,p:StgPlan,stage:int,out:[]u8)->int {
 }
 SP_NEWLINE :: [1]u8.['\n'];
 SP_HEAD_REFUSALS :: [5]SpStatus.[SpStatus.version,SpStatus.model,SpStatus.plan,SpStatus.boundary,SpStatus.stage];
-sp_name_piece :: (t:P5Tensor,out:[]u8)->int {return pv_text(" ",out,pv_text(t.name,out,pv_text("tensor ",out,0)));}
-sp_range_piece :: (t:P5Tensor,out:[]u8)->int {return pv_text(" ",out,pv_decimal(t.end,out,pv_text(" ",out,pv_decimal(t.begin,out,0))));}
+sp_name_piece :: (t:P5Tensor,out:[]u8)->int #effects(all) {return pv_text(" ",out,pv_text(t.name,out,pv_text("tensor ",out,0)));}
+sp_range_piece :: (t:P5Tensor,out:[]u8)->int #effects(all) {return pv_text(" ",out,pv_decimal(t.end,out,pv_text(" ",out,pv_decimal(t.begin,out,0))));}
 // book:end text
 
 // book:begin build
@@ -374,7 +374,7 @@ SpBuilt :: struct {status:SpStatus;length:int;count:int;bytes:int;}
 // Build stage `stage`'s manifest from the original file, whose SHA-256 is
 // `model`: read its header (chapter 7), choose the stage's tensors, hash
 // each one's bytes in place, and write the text into out.
-sp_build :: (file:[]u8,model:string,p:StgPlan,stage:int,w:SpScratch,out:[]u8)->SpBuilt {
+sp_build :: (file:[]u8,model:string,p:StgPlan,stage:int,w:SpScratch,out:[]u8)->SpBuilt #effects(all) {
     if !pw_hex_digest(model) {return SpBuilt.{status=SpStatus.shape};}
     scan:=p5_inspect_checked(file,w.inventory,w.draft,false);
     if scan.status!=PwStatus.ok {return SpBuilt.{status=SpStatus.shape};}
@@ -400,7 +400,7 @@ SpStage :: struct {
     tag:u64;embed:[]u8;norm:[]u8;tensors:int;read:int;
 }
 // Is piece at text[at..]?
-sp_same :: (text:[]u8,at:int,piece:[]u8)->bool {
+sp_same :: (text:[]u8,at:int,piece:[]u8)->bool #effects(all) {
     if at+piece.count>text.count {return false;}
     for i:0..<piece.count {if text[at+i]!=piece[i] {return false;}}
     return true;
@@ -410,7 +410,7 @@ sp_same :: (text:[]u8,at:int,piece:[]u8)->bool {
 // this stage would build. The header lines and every tensor's name and
 // range are compared before any tensor is hashed. The result's tensor is
 // the manifest line (0 = first tensor) where the text first differs.
-sp_verify :: (text:[]u8,digest:string,file:[]u8,model:string,p:StgPlan,stage:int,w:SpScratch)->SpStage {
+sp_verify :: (text:[]u8,digest:string,file:[]u8,model:string,p:StgPlan,stage:int,w:SpScratch)->SpStage #effects(all) {
     if !pw_hex_digest(digest) || !pw_hex_digest(model) {return SpStage.{status=SpStatus.shape};}
     if !pw_digest(text,digest) {return SpStage.{status=SpStatus.digest};}
     scan:=p5_inspect_checked(file,w.inventory,w.draft,false);
@@ -447,7 +447,7 @@ sp_verify :: (text:[]u8,digest:string,file:[]u8,model:string,p:StgPlan,stage:int
 // book:begin load
 // The boundary tag chapter 186's messages carry: the parent digest's first
 // 8 bytes.
-sp_tag :: (model:string)->u64 {
+sp_tag :: (model:string)->u64 #effects(all) {
     t:u64=0;
     for i:0..<16 {c:=model[i];v:=ifx c>='a' then c-'a'+10 else c-'0';t|=cast(u64)v<<(60-4*i);}
     return t;
@@ -457,7 +457,7 @@ sp_tag :: (model:string)->u64 {
 // file for exactly the package's tensors, each the size chapter 81
 // expects, into layers[cut..] (and embed, norm). On any refusal the stage
 // fails for good and gets no views. read counts the bytes handed out.
-sp_stage :: (text:[]u8,digest:string,file:[]u8,model:string,p:StgPlan,stage:int,s:MsShape,golden:int,w:SpScratch,layers:[]MsLayer)->SpStage {
+sp_stage :: (text:[]u8,digest:string,file:[]u8,model:string,p:StgPlan,stage:int,s:MsShape,golden:int,w:SpScratch,layers:[]MsLayer)->SpStage #effects(all) {
     life:=cs_start(golden);
     if life.state==CsState.failed {return SpStage.{status=SpStatus.shape,life=life};}
     r:=sp_verify(text,digest,file,model,p,stage,w);
@@ -483,10 +483,10 @@ sp_stage :: (text:[]u8,digest:string,file:[]u8,model:string,p:StgPlan,stage:int,
     v.life=cs_step(r.life,CsEvent.mapped,true);
     return v;
 }
-sp_unmapped :: (r:SpStage,tensor:int)->SpStage {u:=r;u.status=SpStatus.shape;u.tensor=tensor;u.life=cs_step(r.life,CsEvent.mapped,false);return u;}
+sp_unmapped :: (r:SpStage,tensor:int)->SpStage #effects(all) {u:=r;u.status=SpStatus.shape;u.tensor=tensor;u.life=cs_step(r.life,CsEvent.mapped,false);return u;}
 // book:end load
 
-sp_status_name :: (s:SpStatus)->string {
+sp_status_name :: (s:SpStatus)->string #effects(all) {
     names:=[12]string.["ok","shape","capacity","digest","version","model","plan","boundary","stage","set","range","hash"];
     return names[cast(int)s];
 }

@@ -12,8 +12,8 @@
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/sys/proc.coax";
 
-cxproc_self_path :: (out: [] u8) -> int #foreign;
-cxtool_out_flush :: () -> int #foreign;
+cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
+cxtool_out_flush :: () -> int #foreign #effects(all);
 
 CG_KEEP :: 0;       // stdout passes through (prefixed)
 CG_TAIL :: 1;       // only its last lines (prefixed)
@@ -108,7 +108,7 @@ done :: (w: [] W) -> int {
   return w[0].status;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   wb: [1] W; w := wb[..];
   a: [1] Args;
   ok := args_load(a[..]);

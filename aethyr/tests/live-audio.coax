@@ -231,7 +231,7 @@ LA_GAINF :: [4] f64.[1.0, 0.5, 0.8, 0.25];
 LA_PANF :: [4] f64.[0.0, -0.4, 0.7, -1.0];
 la_lsb :: (err: f64) -> f64 { return err * 32768.0; }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   url := args_at(a[..], 0);

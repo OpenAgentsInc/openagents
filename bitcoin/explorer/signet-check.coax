@@ -1,6 +1,6 @@
 // Actual full-signet browser acceptance against the frozen reference tuple.
 #load "browser-check.coax";
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 7 { tool_errln("usage: signet-check URL HEIGHT HASH TXID ADDRESS BALANCE OUTPUT_DIR"); return 2; }
   height := 0; for c: args_at(a[..],1) { if c < '0' || c > '9' { return 2; } height = height*10+cast(int)(c-'0'); }
   c: [1] Cdp; if !cdp_launch(c[..],1440,1000,"bitcoin-signet-acceptance-") { tool_errln(cdp_error(c[..])); return 1; }

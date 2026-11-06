@@ -45,29 +45,29 @@ PaResult :: struct { status: PaStatus; written: int; }
 }
 
 // book:begin plan
-pa_valid :: (s: PaShape) -> bool {
+pa_valid :: (s: PaShape) -> bool #effects(all) {
     if s.width/2>8 || s.heads<1 || s.kv_heads<1 || s.head_width<2 || s.hidden<1 || s.hidden>32 || s.capacity<1 || s.capacity>16 {return false;}
     if s.head_width%2!=0 {return false;}
     if s.width/s.head_width!=s.heads || s.width%s.head_width!=0 || s.heads%s.kv_heads!=0 {return false;}
     return psionic_tensor_finite_bits(f32_bits(s.epsilon)) && s.epsilon>0;
 }
-pa_weight_count :: (s: PaShape) -> int {
+pa_weight_count :: (s: PaShape) -> int #effects(all) {
     d:=s.width;k:=s.kv_heads*s.head_width;f:=s.hidden;
     return 2*d+2*d*d+2*k*d+3*f*d;
 }
-pa_cache_count :: (s: PaShape) -> int {return 2*s.capacity*s.kv_heads*s.head_width;}
-pa_rope_count :: (s: PaShape) -> int {return s.capacity*s.head_width;}
+pa_cache_count :: (s: PaShape) -> int #effects(all) {return 2*s.capacity*s.kv_heads*s.head_width;}
+pa_rope_count :: (s: PaShape) -> int #effects(all) {return s.capacity*s.head_width;}
 // book:end plan
 
-pa_number :: (x:f32)->bool {return psionic_tensor_finite_bits(f32_bits(x));}
-pa_data_status :: (a:[]f32)->PaStatus {for x:a {if !pa_number(x) {return PaStatus.number;}}return PaStatus.ok;}
-pa_cache_prefix :: (position:int,k:int)->int {return position*2*k;}
-pa_visible :: (position:int)->int {return position+1;}
-pa_narrow :: (value:f64,out:[]f32,index:int)->bool {
+pa_number :: (x:f32)->bool #effects(all) {return psionic_tensor_finite_bits(f32_bits(x));}
+pa_data_status :: (a:[]f32)->PaStatus #effects(all) {for x:a {if !pa_number(x) {return PaStatus.number;}}return PaStatus.ok;}
+pa_cache_prefix :: (position:int,k:int)->int #effects(all) {return position*2*k;}
+pa_visible :: (position:int)->int #effects(all) {return position+1;}
+pa_narrow :: (value:f64,out:[]f32,index:int)->bool #effects(all) {
     if !psionic_ops_fits_f32(value) {return false;}
     out[index]=f32(value);return true;
 }
-pa_linear :: (w:[]f32,offset:int,rows:int,cols:int,x:[]f32,out:[]f32)->bool {
+pa_linear :: (w:[]f32,offset:int,rows:int,cols:int,x:[]f32,out:[]f32)->bool #effects(all) {
     for row:0..<rows {
         sum:PsionicAccumulator;
         for col:0..<cols {sum=psionic_ops_accumulate(sum,f64(w[offset+row*cols+col])*f64(x[col]));}
@@ -75,7 +75,7 @@ pa_linear :: (w:[]f32,offset:int,rows:int,cols:int,x:[]f32,out:[]f32)->bool {
     }
     return true;
 }
-pa_norm :: (x:[]f32,weights:[]f32,offset:int,epsilon:f32,out:[]f32)->bool {
+pa_norm :: (x:[]f32,weights:[]f32,offset:int,epsilon:f32,out:[]f32)->bool #effects(all) {
     squares:PsionicAccumulator;
     for value:x {squares=psionic_ops_accumulate(squares,f64(value)*f64(value));}
     divisor:=sqrt(psionic_ops_total(squares)/f64(x.count)+f64(epsilon));
@@ -84,7 +84,7 @@ pa_norm :: (x:[]f32,weights:[]f32,offset:int,epsilon:f32,out:[]f32)->bool {
 }
 // Interleaved coordinate pairs; each position's [cos,sin] pairs are shared by heads.
 // book:begin rotate
-pa_rotate :: (v:[]f32,heads:int,dim:int,rope:[]f32,position:int)->bool {
+pa_rotate :: (v:[]f32,heads:int,dim:int,rope:[]f32,position:int)->bool #effects(all) {
     for h:0..<heads {
         for pair:0..<dim/2 {
             i:=h*dim+2*pair; r:=position*dim+2*pair;
@@ -97,7 +97,7 @@ pa_rotate :: (v:[]f32,heads:int,dim:int,rope:[]f32,position:int)->bool {
 // book:end rotate
 
 // book:begin step
-pa_step :: (s:PaShape,w:[]f32,rope:[]f32,x:[]f32,position:int,cache:[]f32,out:[]f32,overlap:bool)->PaResult #export_c {
+pa_step :: (s:PaShape,w:[]f32,rope:[]f32,x:[]f32,position:int,cache:[]f32,out:[]f32,overlap:bool)->PaResult #export_c #effects(all) {
     if !pa_valid(s) {return PaResult.{status=PaStatus.shape};}
     d:=s.width;k:=s.kv_heads*s.head_width;f:=s.hidden;
     if w.count!=pa_weight_count(s) || rope.count!=pa_rope_count(s) || x.count!=d || position<0 || position>=s.capacity || cache.count<pa_cache_count(s) || out.count<d {return PaResult.{status=PaStatus.capacity};}
@@ -152,7 +152,7 @@ pa_step :: (s:PaShape,w:[]f32,rope:[]f32,x:[]f32,position:int,cache:[]f32,out:[]
 // book:end step
 
 // book:begin full
-pa_forward :: (s:PaShape,w:[]f32,rope:[]f32,x:[]f32,steps:int,out:[]f32,overlap:bool)->PaResult #export_c {
+pa_forward :: (s:PaShape,w:[]f32,rope:[]f32,x:[]f32,steps:int,out:[]f32,overlap:bool)->PaResult #export_c #effects(all) {
     if !pa_valid(s) {return PaResult.{status=PaStatus.shape};}
     if steps<1 {return PaResult.{status=PaStatus.capacity};}
     if steps>s.capacity {return PaResult.{status=PaStatus.capacity};}

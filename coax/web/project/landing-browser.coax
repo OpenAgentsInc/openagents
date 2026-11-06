@@ -21,15 +21,15 @@ LbSeen :: struct {n:int;start:int;started:bool;ids:[LR_EVENTS*32]u8;}
   #assert lb_message(held[..],"[\"EOSE\",\"home-xp\"]",keys,0,out[..]).code==5;
   #assert lb_message(held[..],"[\"CLOSED\",\"home-xp\",\"restricted: no\"]",keys,0,out[..]).code==0;
 }
-lb_once :: (s:[]LbSeen,id:[]u8)->bool {
+lb_once :: (s:[]LbSeen,id:[]u8)->bool #effects(all) {
   for k:0..<s[0].n {if lr_equal_id(s[0].ids[k*32..<k*32+32],id) {return false;}}
   if id.count!=32 || s[0].n>=LR_EVENTS {return false;}
   for i:0..<32 {s[0].ids[s[0].n*32+i]=id[i];}s[0].n+=1;return true;
 }
-lb_begin :: (s:[]LbSeen,mode:int,keys:string,now:int,out:[]u8)->int #export_c {
+lb_begin :: (s:[]LbSeen,mode:int,keys:string,now:int,out:[]u8)->int #export_c #effects(all) {
   n:=lb_request(mode,keys,now,out);if n>0 && mode==2 && !s[0].started {s[0].start=now;s[0].started=true;}return n;
 }
-lb_request :: (mode:int,keys:string,now:int,out:[]u8)->int #export_c {
+lb_request :: (mode:int,keys:string,now:int,out:[]u8)->int #export_c #effects(all) {
   if mode>=3 && mode<=5 {return ifx now<0 || now>NF_SAFE then -1 else lx_request(mode-3,out);}
   if mode<0 || mode>2 || now<0 || now>NF_SAFE {return -1;}
   authors:[8]string;count:=lr_ids(keys,authors[..]);if count<1 {return -1;}
@@ -41,7 +41,7 @@ lb_request :: (mode:int,keys:string,now:int,out:[]u8)->int #export_c {
   if mode==2 {sub="home-work";kinds[0]=26910;kinds[1]=27010;f.kinds=kinds[0..<2];}
   filters:=[1]NostrFilter.[f];return nostr_message_write_req(sub,filters[..],out,false);
 }
-lb_message :: (seen:[]LbSeen,text:string,keys:string,now:int,out:[]u8)->LbMessage #export_c {
+lb_message :: (seen:[]LbSeen,text:string,keys:string,now:int,out:[]u8)->LbMessage #export_c #effects(all) {
   m:=nostr_message_read(text);if m.error!=NM_OK {return LbMessage.{};}
   sub:=nm_text(m,m.sub);
   if sub==LX_SUB || sub==LX_WORK_SUB || sub==LX_CHECK_SUB {
@@ -86,7 +86,7 @@ lb_message :: (seen:[]LbSeen,text:string,keys:string,now:int,out:[]u8)->LbMessag
 // its signature isn't checked twice and its copy here stays the one kept.
 // 0 ignored or known, 1 a new admitted event kept, 2 page ended; negative
 // refuses, as lr_frame.
-lb_frame :: (s:[]LrQuery,c:[]HcCache,k:int,text:string)->int #export_c {
+lb_frame :: (s:[]LrQuery,c:[]HcCache,k:int,text:string)->int #export_c #effects(all) {
   if s[0].state!=2 {return -1;}
   m:=nostr_message_read(text);
   if m.error!=NM_OK {return ifx lr_auth(text) then 0 else -2;}

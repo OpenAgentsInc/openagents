@@ -13,8 +13,8 @@
   #assert !realm_discovery_slug("{") && !realm_discovery_slug(":") && !realm_discovery_slug("/");
 }
 // JSON's stable JV_FALSE kind is 2. Missing listed preserves default listing.
-realm_discovery_hidden :: (listed_kind:int)->bool {return listed_kind==2;}
-realm_discovery_slug :: (s:string)->bool {
+realm_discovery_hidden :: (listed_kind:int)->bool #effects(all) {return listed_kind==2;}
+realm_discovery_slug :: (s:string)->bool #effects(all) {
   if s.count<1 || s.count>48 || s[0]=='-' {return false;}
   for c:s {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}
   return true;

@@ -49,7 +49,7 @@ wrong. When the interpreter and the weights disagree, the emitted weights are.
 // and the evaluator alone decides what was intended. A node's reported value is
 // what its gate wrote, or its linear form over the values already reported;
 // the outputs are read from the final residual, as the block reads them.
-ch_interpret :: (plan:GgPlan,nodes:[]GgNode,inputs:[]int,values:[]int,read:[]int)->GgResult #export_c {
+ch_interpret :: (plan:GgPlan,nodes:[]GgNode,inputs:[]int,values:[]int,read:[]int)->GgResult #export_c #effects(all) {
     if plan.status!=GgStatus.ok {return GgResult.{status=plan.status};}
     if nodes.count!=plan.nodes {return GgResult.{status=GgStatus.shape};}
     if inputs.count!=plan.inputs || values.count<nodes.count || read.count<plan.outputs {return GgResult.{status=GgStatus.capacity};}
@@ -89,9 +89,9 @@ ch_interpret :: (plan:GgPlan,nodes:[]GgNode,inputs:[]int,values:[]int,read:[]int
     }
     return GgResult.{};
 }
-ch_relu :: (x:int)->int {return (x+cast(int)abs(f64(x)))/2;}
+ch_relu :: (x:int)->int #effects(all) {return (x+cast(int)abs(f64(x)))/2;}
 // A form over base nodes, read through the plan's slots. Constants are k times slot 0.
-ch_form :: (f:RaForm,plan:GgPlan,s:[]int)->int {
+ch_form :: (f:RaForm,plan:GgPlan,s:[]int)->int #effects(all) {
     sum:=0;
     for t:0..<f.count {sum+=f.coefs[t]*s[plan.slot[f.slots[t]]];}
     return sum;
@@ -117,7 +117,7 @@ still counts against the schedule, not the weights.
 // every node, so a schedule bug names its first node; the block is compared on
 // the graph's real outputs only. Making every node an output would keep every
 // slot alive, and no slot would ever be reused: the probe would hide the bugs.
-ch_run :: (nodes:[]GgNode,outputs:[]int,inputs:[]int,fault:GgFault)->ChRun #export_c {
+ch_run :: (nodes:[]GgNode,outputs:[]int,inputs:[]int,fault:GgFault)->ChRun #export_c #effects(all) {
     if nodes.count<1 || nodes.count>CH_GRAPH_NODES {return ChRun.{status=GgStatus.shape};}
     every:[16]int;for i:1..<nodes.count {every[i]=i;}  // every[0] is already 0
     want:[16]int;
@@ -135,7 +135,7 @@ ch_run :: (nodes:[]GgNode,outputs:[]int,inputs:[]int,fault:GgFault)->ChRun #expo
     return ChRun.{};
 }
 // The first index where two equally long lists differ, or -1.
-ch_first_difference :: (a:[]int,b:[]int)->int {
+ch_first_difference :: (a:[]int,b:[]int)->int #effects(all) {
     for i:0..<a.count {if a[i]!=b[i] {return i;}}
     return -1;
 }
@@ -154,8 +154,8 @@ Skipped cases are counted and never taken as agreement.
 ```jai
 // A seeded graph of at most 16 nodes: one to three inputs, then gates and
 // linear nodes over earlier nodes, with selects only on earlier bits.
-ch_next :: (x:int)->int {return (x*1103515245+12345)%2147483648;}
-ch_generate :: (seed:int,graph:int,nodes:[]GgNode)->int #export_c {
+ch_next :: (x:int)->int #effects(all) {return (x*1103515245+12345)%2147483648;}
+ch_generate :: (seed:int,graph:int,nodes:[]GgNode)->int #export_c #effects(all) {
     x:=ch_next((seed%65536)*65537+graph%65536);
     x=ch_next(x);inputs:=1+x%3;count:=inputs;
     for i:0..<inputs {nodes[i]=GgNode.{op=GgOp.input,k=i};}
@@ -184,18 +184,18 @@ ch_generate :: (seed:int,graph:int,nodes:[]GgNode)->int #export_c {
 // A whole case from a seed and an index: the graph, inputs from -100 to 100,
 // and two outputs (one chosen node and the last). Reproducible, so any catch
 // can be replayed.
-ch_case :: (seed:int,graph:int,nodes:[]GgNode)->ChCase #export_c {
+ch_case :: (seed:int,graph:int,nodes:[]GgNode)->ChCase #export_c #effects(all) {
     c:ChCase;c.count=ch_generate(seed,graph,nodes);
     x:=ch_next(seed*7919+graph);
     for i:0..<c.count {if nodes[i].op==GgOp.input {x=ch_next(x);c.values[c.inputs]=x%201-100;c.inputs+=1;}}
     x=ch_next(x);c.outputs[0]=x%(c.count-1);c.outputs[1]=c.count-1;
     return c;
 }
-ch_count_ok :: (count:int)->bool {return count>=1 && count<=CH_RUNS_MAX;}
+ch_count_ok :: (count:int)->bool #effects(all) {return count>=1 && count<=CH_RUNS_MAX;}
 // Run `count` cases with the given planted fault and stop at the first one
 // where the three paths disagree. Cases that cannot be compared (a value out
 // of range, a form too long) are skipped and counted, never taken as agreement.
-ch_differential :: (seed:int,count:int,fault:GgFault)->ChCatch #export_c {
+ch_differential :: (seed:int,count:int,fault:GgFault)->ChCatch #export_c #effects(all) {
     if !ch_count_ok(count) {return ChCatch.{status=GgStatus.shape};}
     result:ChCatch;nodes:[16]GgNode;
     for g:0..<count {

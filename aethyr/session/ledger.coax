@@ -67,10 +67,10 @@ LedgerAsk :: struct { id: int; op: int; c: CharacterId; gen: OwnerGeneration; ve
 LedgerAnswer :: struct { status: int; item: ItemId = ItemId.{value = -1}; replay: bool; }
 // book:end ledger-profile
 
-ledger_same :: (o: LedgerOp, a: LedgerAsk) -> bool { return o.op == a.op && o.c == a.c && o.item == a.item && o.to == a.to && o.kind == a.kind; }
+ledger_same :: (o: LedgerOp, a: LedgerAsk) -> bool #effects(all) { return o.op == a.op && o.c == a.c && o.item == a.item && o.to == a.to && o.kind == a.kind; }
 
 // One mutation, all or nothing, at tick `now`.
-ledger_apply :: (l: [] Ledger, a: LedgerAsk, now: int) -> LedgerAnswer {
+ledger_apply :: (l: [] Ledger, a: LedgerAsk, now: int) -> LedgerAnswer #effects(all) {
   if a.c.value < 0 || a.c.value >= CONTROL_CHARACTERS { return LedgerAnswer.{status = LEDGER_HELD}; }
   // the ID first: a retry gets its first answer, whatever changed since
   free := -1;
@@ -83,24 +83,51 @@ ledger_apply :: (l: [] Ledger, a: LedgerAsk, now: int) -> LedgerAnswer {
     return LedgerAnswer.{status = o.result, item = o.made, replay = true};
   }
   if now - a.sent >= LEDGER_KEEP { return LedgerAnswer.{status = LEDGER_EXPIRED}; }
-  if free == -1 || l[0].out_n >= LEDGER_OUTBOX { return LedgerAnswer.{status = LEDGER_FULL}; }
+  if free == -1 { return LedgerAnswer.{status = LEDGER_FULL}; }
   st := ledger_check(l, a);
   made := ItemId.{value = -1};
   if st == LEDGER_OK && a.op == LOP_GRANT {
     for i: 0..<LEDGER_ITEMS { if !l[0].items[i].live { made = ItemId.{value = i}; break; } }
     if made.value < 0 { st = LEDGER_FULL; }
   }
-  // a refusal is recorded too, so a retry hears the same answer
-  l[0].ops[free] = LedgerOp.{live = true, id = a.id, op = a.op, c = a.c, item = a.item, to = a.to, kind = a.kind, at = now, result = st, made = made};
-  if st != LEDGER_OK { return LedgerAnswer.{status = st}; }
   item := ifx a.op == LOP_GRANT then made else a.item;
-  ledger_mutate(l, a.op, a.c, item, a.to, a.kind);
-  l[0].out[l[0].out_n] = LedgerEntry.{seq = l[0].out_n + 1, op = a.op, c = a.c, item = item, to = a.to, kind = a.kind};
-  l[0].out_n += 1;
-  return LedgerAnswer.{status = LEDGER_OK, item = item};
+  if st==LEDGER_OK {
+    switch ledger_commit(l,a,item) {
+      case none {return LedgerAnswer.{status=LEDGER_FULL};}
+      case some(committed) {}
+    }
+  } else if l[0].out_n>=LEDGER_OUTBOX {
+    return LedgerAnswer.{status=LEDGER_FULL};
+  }
+  // Keep a refusal receipt too. A full outbox keeps no receipt, so the same
+  // operation can be retried when capacity returns, as before.
+  l[0].ops[free] = LedgerOp.{live = true, id = a.id, op = a.op, c = a.c, item = a.item, to = a.to, kind = a.kind, at = now, result = st, made = made};
+  return LedgerAnswer.{status=st,item=ifx st==LEDGER_OK then item else ItemId.{value= -1}};
+}
+// The item/version transition and its in-memory outbox are one undo scope.
+// Refusal receipts belong to ledger_apply; durable service commits stay there.
+ledger_commit :: (l:[]Ledger,a:LedgerAsk,item:ItemId)->ItemId? #effects(all) {
+  #transaction {
+    ledger_mutate(l,a.op,a.c,item,a.to,a.kind);
+    if l[0].out_n>=LEDGER_OUTBOX {return null;}
+    l[0].out[l[0].out_n]=LedgerEntry.{seq=l[0].out_n+1,op=a.op,c=a.c,item=item,to=a.to,kind=a.kind};
+    l[0].out_n+=1;
+  }
+  return some(item);
+}
+#test "ledger transaction: outbox refusal after the first state write restores items, versions and the outbox" {
+  l:[1]Ledger;l[0].out_n=LEDGER_OUTBOX;l[0].out[0]=LedgerEntry.{seq=7,kind=99};
+  ask:=LedgerAsk.{id=1,op=LOP_GRANT,c=CharacterId.{value=0},gen=OwnerGeneration.{value=1},kind=3};
+  switch ledger_commit(l[..],ask,ItemId.{value=0}) {case none {} case some(wrong) {#assert false;}}
+  #assert !l[0].items[0].live && l[0].items[0].kind==0 && l[0].version[0]==0;
+  #assert l[0].out_n==LEDGER_OUTBOX && l[0].out[0].seq==7 && l[0].out[0].kind==99;
+  answer:=ledger_apply(l[..],ask,1);
+  #assert answer.status==LEDGER_FULL && !l[0].items[0].live && l[0].version[0]==0 && !l[0].ops[0].live;
+  invalid:=ask;invalid.op=LOP_TRANSFER;invalid.item=ItemId.{value=0};
+  #assert ledger_apply(l[..],invalid,1).status==LEDGER_FULL && !l[0].ops[0].live;
 }
 // Whether a may apply now (nothing changes).
-ledger_check :: (l: [] Ledger, a: LedgerAsk) -> int {
+ledger_check :: (l: [] Ledger, a: LedgerAsk) -> int #effects(all) {
   st := ledger_allowed(l, a);
   if st != LEDGER_OK { return st; }
   // every version the change advances must have a next one, or nothing changes
@@ -110,14 +137,14 @@ ledger_check :: (l: [] Ledger, a: LedgerAsk) -> int {
   return LEDGER_OK;
 }
 // Whether character c's inventory version can advance.
-ledger_has_next :: (l: [] Ledger, c: CharacterId) -> bool { return add_checked(l[0].version[c.value], 1) != null; }
+ledger_has_next :: (l: [] Ledger, c: CharacterId) -> bool #effects(all) { return add_checked(l[0].version[c.value], 1) != null; }
 // Character c's inventory version advances; at its last it stays (ledger_check refused the change first).
-ledger_bump :: (l: [] Ledger, c: CharacterId) {
+ledger_bump :: (l: [] Ledger, c: CharacterId) #effects(all) {
   next := add_checked(l[0].version[c.value], 1);
   switch next { case none {} case some(v) { l[0].version[c.value] = v; } }
 }
 // The writer's generation, version, item and escrow rules (nothing changes).
-ledger_allowed :: (l: [] Ledger, a: LedgerAsk) -> int {
+ledger_allowed :: (l: [] Ledger, a: LedgerAsk) -> int #effects(all) {
   if l[0].fence[0].gen[a.c.value] > a.gen.value { return LEDGER_STALE; }
   if a.ver != l[0].version[a.c.value] { return LEDGER_VERSION; }
   if a.op == LOP_GRANT { return LEDGER_OK; }
@@ -132,7 +159,7 @@ ledger_allowed :: (l: [] Ledger, a: LedgerAsk) -> int {
   return LEDGER_HELD;
 }
 // The change itself, shared by apply and replay.
-ledger_mutate :: (l: [] Ledger, op: int, c: CharacterId, item: ItemId, to: CharacterId, kind: int) {
+ledger_mutate :: (l: [] Ledger, op: int, c: CharacterId, item: ItemId, to: CharacterId, kind: int) #effects(all) {
   if op == LOP_GRANT { l[0].items[item.value] = LedgerItem.{live = true, kind = kind, owner = c}; ledger_bump(l, c); return; }
   if op == LOP_TRANSFER { l[0].items[item.value].owner = to; ledger_bump(l, c); ledger_bump(l, to); return; }
   if op == LOP_ESCROW { l[0].items[item.value].escrow_to = to; ledger_bump(l, c); return; }
@@ -140,19 +167,19 @@ ledger_mutate :: (l: [] Ledger, op: int, c: CharacterId, item: ItemId, to: Chara
   if op == LOP_CANCEL { l[0].items[item.value].escrow_to = CharacterId.{value = -1}; ledger_bump(l, c); }
 }
 // A new owner generation for character c reaches the store (control.coax): older writers are fenced.
-ledger_fence :: (l: [] Ledger, c: CharacterId, gen: OwnerGeneration) -> bool { return control_fence(l[0].fence[..], c, gen.value) == CONTROL_OK; }
+ledger_fence :: (l: [] Ledger, c: CharacterId, gen: OwnerGeneration) -> bool #effects(all) { return control_fence(l[0].fence[..], c, gen.value) == CONTROL_OK; }
 
 // A consumer of the outbox: it takes entries in sequence and skips one it has seen; a gap waits for
 // the missing entry.
 LedgerView :: struct { seen: int; }
-ledger_consume :: (v: [] LedgerView, e: LedgerEntry) -> bool {
+ledger_consume :: (v: [] LedgerView, e: LedgerEntry) -> bool #effects(all) {
   if e.seq != v[0].seen + 1 { return false; }
   v[0].seen = e.seq;
   return true;
 }
 // Restore: replay the first n outbox entries onto an empty ledger; true when the items, owners and
 // versions equal l's (the audit's reconciliation).
-ledger_reconcile :: (l: [] Ledger, n: int) -> bool {
+ledger_reconcile :: (l: [] Ledger, n: int) -> bool #effects(all) {
   r: [1] Ledger;
   for i: 0..<n { e := l[0].out[i]; ledger_mutate(r[..], e.op, e.c, e.item, e.to, e.kind); }
   for i: 0..<LEDGER_ITEMS {
@@ -165,11 +192,11 @@ ledger_reconcile :: (l: [] Ledger, n: int) -> bool {
 
 // ---- checks
 
-ledger_ask :: (id: int, op: int, c: CharacterId, gen: OwnerGeneration, ver: int, item: ItemId, to: CharacterId, kind: int) -> LedgerAsk {
+ledger_ask :: (id: int, op: int, c: CharacterId, gen: OwnerGeneration, ver: int, item: ItemId, to: CharacterId, kind: int) -> LedgerAsk #effects(all) {
   return LedgerAsk.{id = id, op = op, c = c, gen = gen, ver = ver, item = item, to = to, kind = kind};
 }
 
-ledger_sent :: (a: LedgerAsk, t: int) -> LedgerAsk { b := a; b.sent = t; return b; }
+ledger_sent :: (a: LedgerAsk, t: int) -> LedgerAsk #effects(all) { b := a; b.sent = t; return b; }
 
 #test "ledger: a duplicate grant is answered once and applied once; another payload under its ID is refused" {
   l: [1] Ledger;

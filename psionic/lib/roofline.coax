@@ -52,16 +52,16 @@ RfPlace :: struct {bound:RfBound;attainable:int;ridge:int;ns:int;}
 
 // book:begin kernels
 // a = b + s * c: reads 8 bytes and writes 4 per element, two FLOPs.
-rf_triad :: (a:[]f32,b:[]f32,c:[]f32,s:f32)->int #export_c {
+rf_triad :: (a:[]f32,b:[]f32,c:[]f32,s:f32)->int #export_c #effects(all) {
     if b.count!=a.count || c.count!=a.count {return -1;}
     for i:0..<a.count {a[i]=b[i]+s*c[i];}
     return a.count;
 }
-rf_triad_bytes :: (n:int)->int #export_c {return 12*n;}
+rf_triad_bytes :: (n:int)->int #export_c #effects(all) {return 12*n;}
 // x = x * m + k, rounds times over a buffer small enough to stay in cache:
 // two FLOPs per value per round, and the values are independent, so the
 // compiler may keep several in flight at once.
-rf_madd :: (x:[]f32,rounds:int,m:f32,k:f32)->int #export_c {
+rf_madd :: (x:[]f32,rounds:int,m:f32,k:f32)->int #export_c #effects(all) {
     if rounds<0 {return -1;}
     for r:0..<rounds {for i:0..<x.count {x[i]=x[i]*m+k;}}
     return 2*rounds*x.count;
@@ -70,13 +70,13 @@ rf_madd :: (x:[]f32,rounds:int,m:f32,k:f32)->int #export_c {
 
 // book:begin place
 // Millions of units per second from units (at least 0) done in ns nanoseconds.
-rf_rate :: (units:int,ns:int)->int #export_c {
+rf_rate :: (units:int,ns:int)->int #export_c #effects(all) {
     if ns<=0 {return 0;}
     return units/ns*1000+units%ns*1000/ns;
 }
 // Place a phase with intensity milli (chapter 33's rp_* accounting) and
 // flops FLOPs against the host's two roofs.
-rf_place :: (h:RfHost,milli:int,flops:int)->RfPlace #export_c {
+rf_place :: (h:RfHost,milli:int,flops:int)->RfPlace #export_c #effects(all) {
     if h.mflops<=0 || h.mbytes<=0 || milli<0 || flops<0 {return RfPlace.{};}
     p:=RfPlace.{ridge=h.mflops*1000/h.mbytes};
     memory:=h.mbytes*milli/1000;

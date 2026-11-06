@@ -1,0 +1,5 @@
+// expect: E0970
+#load "../../lib/handle.coax";
+Player :: struct {hp:int;}
+Saved :: struct #persisted { player:Handle(Player); }
+main :: () {}

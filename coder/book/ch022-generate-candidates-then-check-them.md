@@ -57,8 +57,8 @@ coax/bin/coax test psionic/tests/candidates-checks.coax
 // with u drawn on counter 2^40 + r, so tasks run from hopeless to easy and
 // average skill. Candidate i is chapter 242's attempt i of rollout r at that
 // chance: each candidate is fixed by (seed, r, i) alone.
-cd_chance :: (s:CdSampler,r:int)->f64 {return 2*s.skill*tb_uniform(s.seed,CD_DIFFICULTY+cast(u64)r);}
-cd_sample :: (s:CdSampler,t:EnTask,r:int,i:int)->EnWork {
+cd_chance :: (s:CdSampler,r:int)->f64 #effects(all) {return 2*s.skill*tb_uniform(s.seed,CD_DIFFICULTY+cast(u64)r);}
+cd_sample :: (s:CdSampler,t:EnTask,r:int,i:int)->EnWork #effects(all) {
     return en_attempt(EnAgent.{seed=s.seed,skill=cd_chance(s,r)},t,r,i);
 }
 ```
@@ -84,12 +84,12 @@ higher skill is refused.
 ```jai
 // What one check costs, in units: the screen reads one number, the visible
 // check half the input, the exact check all of it.
-cd_cost :: (check:CdCheck,t:EnTask)->int {
+cd_cost :: (check:CdCheck,t:EnTask)->int #effects(all) {
     if check==CdCheck.length {return 1;}
     if check==CdCheck.visible {return 1+(t.work.size+1)/2;}
     return 1+t.work.size;
 }
-cd_passes :: (check:CdCheck,t:EnTask,w:EnWork)->bool {
+cd_passes :: (check:CdCheck,t:EnTask,w:EnWork)->bool #effects(all) {
     if check==CdCheck.exact {return en_check(EnChecker.exact,t,w);}
     if !en_check(EnChecker.length_only,t,w) {return false;}
     want:=en_solve(t);m:=ifx check==CdCheck.visible then (want.size+1)/2 else 0;
@@ -119,7 +119,7 @@ to measure what selecting with a weaker check than the score costs.
 // Candidates in order, each screened by length before the selection check
 // runs. The first to pass is chosen, so ties go to the lower number. A check
 // the budget cannot cover is not run: the selection stops there.
-cd_select :: (t:EnTask,c:[]EnWork,check:CdCheck,budget:int)->CdPick #export_c {
+cd_select :: (t:EnTask,c:[]EnWork,check:CdCheck,budget:int)->CdPick #export_c #effects(all) {
     out:=CdPick.{pick=-1};
     if check==CdCheck.none {out.status=CdStatus.no_checker;return out;}
     if c.count<1 || c.count>CD_CANDIDATES_MAX || budget<0 {out.status=CdStatus.shape;return out;}
@@ -220,14 +220,14 @@ Two examples by hand:
 // pass@k from n samples with c right: one minus the chance that k drawn
 // without replacement are all wrong, C(n-c,k)/C(n,k), written as the
 // product of (1 - k/i) for i from n-c+1 to n. A factor is 0 once n-c < k.
-cd_pass_at :: (n:int,c:int,k:int)->CdValue #export_c {
+cd_pass_at :: (n:int,c:int,k:int)->CdValue #export_c #effects(all) {
     if n<1 || n>CD_SAMPLES_MAX || c<0 || c>n || k<1 || k>n {return CdValue.{status=CdStatus.shape};}
     q:=1.0;for i:n-c+1..<n+1 {q*=1-f64(k)/f64(i);}
     return CdValue.{value=1-q};
 }
 // The Wilson score interval for k of n at z = 1.96; at 0 and at n the
 // bounds are exactly 0 and 1.
-cd_wilson :: (k:int,n:int)->CdInterval #export_c {
+cd_wilson :: (k:int,n:int)->CdInterval #export_c #effects(all) {
     if n<1 || k<0 || k>n {return CdInterval.{status=CdStatus.shape};}
     m:=f64(n);p:=f64(k)/m;z2:=CD_Z*CD_Z;d:=1+z2/m;
     c:=(p+z2/(2*m))/d;h:=CD_Z*sqrt(p*(1-p)/m+z2/(4*m*m))/d;
@@ -251,13 +251,13 @@ the formula is off by rounding there.
 
 <!-- source: psionic/lib/harness/candidates.coax run -->
 ```jai
-cd_sampler_ok :: (s:CdSampler)->bool {return s.skill>=0 && s.skill<=CD_SKILL_MAX;}
+cd_sampler_ok :: (s:CdSampler)->bool #effects(all) {return s.skill>=0 && s.skill<=CD_SKILL_MAX;}
 // Draws n candidates for task r and selects among them. Only the candidates
 // the selection examined count as generated: drawing them one at a time gives
 // the same candidates, because each depends only on (seed, r, i). The digest
 // starts from the task, the sampler and the settings, chains each examined
 // candidate, and ends with the selection.
-cd_run :: (s:CdSampler,t:EnTask,r:int,n:int,check:CdCheck,budget:int)->CdRun #export_c {
+cd_run :: (s:CdSampler,t:EnTask,r:int,n:int,check:CdCheck,budget:int)->CdRun #export_c #effects(all) {
     out:=CdRun.{pick=CdPick.{status=CdStatus.shape,pick=-1}};
     if !cd_sampler_ok(s) || r<0 || n<1 || n>CD_CANDIDATES_MAX || budget<0 {return out;}
     c:[CD_CANDIDATES_MAX]EnWork;for i:0..<n {c[i]=cd_sample(s,t,r,i);}
@@ -285,10 +285,10 @@ the record, since a run that stops early never generates them.
 
 <!-- source: psionic/lib/harness/candidates.coax replay -->
 ```jai
-cd_pick_same :: (a:CdPick,b:CdPick)->bool {
+cd_pick_same :: (a:CdPick,b:CdPick)->bool #effects(all) {
     return a.status==b.status && a.pick==b.pick && a.examined==b.examined && a.checks==b.checks && a.cost==b.cost;
 }
-cd_replay :: (s:CdSampler,t:EnTask,r:int,n:int,check:CdCheck,budget:int,claimed:CdRun)->bool #export_c {
+cd_replay :: (s:CdSampler,t:EnTask,r:int,n:int,check:CdCheck,budget:int,claimed:CdRun)->bool #export_c #effects(all) {
     x:=cd_run(s,t,r,n,check,budget);
     return cd_pick_same(x.pick,claimed.pick) && x.tokens==claimed.tokens && su_same(x.digest,claimed.digest);
 }
@@ -304,12 +304,12 @@ number, fewer than 1 or more than 8 candidates, or a negative budget.
 <!-- source: psionic/lib/harness/candidates.coax tally -->
 ```jai
 // How many of n samples for task r are right.
-cd_right :: (s:CdSampler,t:EnTask,r:int,n:int)->int {
+cd_right :: (s:CdSampler,t:EnTask,r:int,n:int)->int #effects(all) {
     c:=0;for i:0..<n {if cd_passes(CdCheck.exact,t,cd_sample(s,t,r,i)) {c+=1;}}
     return c;
 }
 // One strategy over a task set: task r is rollout r.
-cd_tally :: (s:CdSampler,tasks:[]EnTask,n:int,check:CdCheck,budget:int)->CdTally #export_c {
+cd_tally :: (s:CdSampler,tasks:[]EnTask,n:int,check:CdCheck,budget:int)->CdTally #export_c #effects(all) {
     out:CdTally;
     for t,r:tasks {
         x:=cd_run(s,t,r,n,check,budget);p:=x.pick;
@@ -324,7 +324,7 @@ cd_tally :: (s:CdSampler,tasks:[]EnTask,n:int,check:CdCheck,budget:int)->CdTally
     return out;
 }
 // The mean of pass@k over a task set, n samples per task.
-cd_pass_mean :: (s:CdSampler,tasks:[]EnTask,n:int,k:int)->CdValue #export_c {
+cd_pass_mean :: (s:CdSampler,tasks:[]EnTask,n:int,k:int)->CdValue #export_c #effects(all) {
     if !cd_sampler_ok(s) || tasks.count<1 || n>CD_CANDIDATES_MAX {return CdValue.{status=CdStatus.shape};}
     sum:=0.0;
     for t,r:tasks {

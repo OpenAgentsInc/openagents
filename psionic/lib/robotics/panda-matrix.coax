@@ -38,17 +38,17 @@
   #assert pm_rotation(1,2,0.25)>0 && pm_rotation(2,1,0.25)<0;
   #assert abs(pm_rotation(1,1e151,0.5)-5e-152)<1e-165;
 }
-pm_size :: (n:int)->bool {return n>=1 && n<=7;}
-pm_finite_bits :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
-pm_count :: (n:int,bits:u64)->int {return n+(ifx pm_finite_bits(bits) then 1 else 0);}
-pm_values :: (a:[49]f64)->bool {checked:=0;for x:a {checked=pm_count(checked,f64_bits(x));}return checked==49;}
-pm_mul :: (rows:int,inner:int,cols:int,a:[49]f64,b:[49]f64)->PmResult #export_c {
+pm_size :: (n:int)->bool #effects(all) {return n>=1 && n<=7;}
+pm_finite_bits :: (bits:u64)->bool #effects(all) {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+pm_count :: (n:int,bits:u64)->int #effects(all) {return n+(ifx pm_finite_bits(bits) then 1 else 0);}
+pm_values :: (a:[49]f64)->bool #effects(all) {checked:=0;for x:a {checked=pm_count(checked,f64_bits(x));}return checked==49;}
+pm_mul :: (rows:int,inner:int,cols:int,a:[49]f64,b:[49]f64)->PmResult #export_c #effects(all) {
   if !pm_size(rows) || !pm_size(inner) || !pm_size(cols) {return PmResult.{status=PmCode.shape};}
   if !pm_pair(pm_values(a),pm_values(b)) {return PmResult.{status=PmCode.number};}r:PmResult;
   for i:0..<rows {for j:0..<cols {sum:f64=0;for k:0..<inner {sum+=a[i*7+k]*b[k*7+j];}r.value[i*7+j]=sum;}}
   if !pm_values(r.value) {return PmResult.{status=PmCode.number};}return r;
 }
-pm_inverse :: (n:int,a:[49]f64)->PmResult #export_c {
+pm_inverse :: (n:int,a:[49]f64)->PmResult #export_c #effects(all) {
   if !pm_size(n) {return PmResult.{status=PmCode.shape};}if !pm_values(a) {return PmResult.{status=PmCode.number};}
   l:[49]f64;for i:0..<n {for j:0..<(i+1) {
     if !pm_symmetric(a[i*7+j],a[j*7+i]) {return PmResult.{status=PmCode.range};}
@@ -61,12 +61,12 @@ pm_inverse :: (n:int,a:[49]f64)->PmResult #export_c {
   }
   if !pm_values(r.value) {return PmResult.{status=PmCode.number};}return r;
 }
-pm_rotation :: (alpha:f64,beta:f64,gamma:f64)->f64 {
+pm_rotation :: (alpha:f64,beta:f64,gamma:f64)->f64 #effects(all) {
   if gamma==0 {return 0;}z:=(beta-alpha)/(2*gamma);if pm_large_rotation(z) {return 0.5/z;}
   magnitude:=1.0/(abs(z)+sqrt(1+z*z));return ifx z<0 then -magnitude else magnitude;
 }
-pm_pinv :: (n:int,a:[49]f64)->PmResult #export_c {return pm_pinv_limit(n,a,64);}
-pm_pinv_limit :: (n:int,a:[49]f64,sweeps:int)->PmResult {
+pm_pinv :: (n:int,a:[49]f64)->PmResult #export_c #effects(all) {return pm_pinv_limit(n,a,64);}
+pm_pinv_limit :: (n:int,a:[49]f64,sweeps:int)->PmResult #effects(all) {
   if !pm_sweeps(sweeps) {return PmResult.{status=PmCode.range};}
   if !pm_size(n) {return PmResult.{status=PmCode.shape};}if !pm_values(a) {return PmResult.{status=PmCode.number};}
   scale:f64=0;for i:0..<n {for j:0..<n {if pm_greater(abs(a[i*7+j]),scale) {scale=abs(a[i*7+j]);}}}
@@ -101,10 +101,10 @@ pm_pinv_limit :: (n:int,a:[49]f64,sweeps:int)->PmResult {
   direct:=pm_inverse(6,a);pseudo:=pm_pinv(6,a);#assert direct.status==PmCode.ok && pseudo.status==PmCode.ok && pseudo.rank==6;for i:0..<49 {#assert abs(direct.value[i]-pseudo.value[i])<1e-12;}
   #assert pm_pinv_limit(6,a,1).status==PmCode.convergence;
 }
-pm_pair :: (a:bool,b:bool)->bool {return a && b;}
-pm_symmetric :: (a:f64,b:f64)->bool {return abs(a-b)<=1e-12*(1+abs(a));}
-pm_large_rotation :: (z:f64)->bool {return abs(z)>1e150;}
-pm_greater :: (a:f64,b:f64)->bool {return a>b;}
-pm_cosine :: (t:f64)->f64 {return 1.0/sqrt(1+t*t);}
-pm_sweeps :: (n:int)->bool {return n>=0 && n<=64;}
-pm_orthogonal :: (alpha:f64,beta:f64,gamma:f64)->bool {return alpha==0 || beta==0 || abs(gamma)<=1e-15*sqrt(alpha*beta);}
+pm_pair :: (a:bool,b:bool)->bool #effects(all) {return a && b;}
+pm_symmetric :: (a:f64,b:f64)->bool #effects(all) {return abs(a-b)<=1e-12*(1+abs(a));}
+pm_large_rotation :: (z:f64)->bool #effects(all) {return abs(z)>1e150;}
+pm_greater :: (a:f64,b:f64)->bool #effects(all) {return a>b;}
+pm_cosine :: (t:f64)->f64 #effects(all) {return 1.0/sqrt(1+t*t);}
+pm_sweeps :: (n:int)->bool #effects(all) {return n>=0 && n<=64;}
+pm_orthogonal :: (alpha:f64,beta:f64,gamma:f64)->bool #effects(all) {return alpha==0 || beta==0 || abs(gamma)<=1e-15*sqrt(alpha*beta);}

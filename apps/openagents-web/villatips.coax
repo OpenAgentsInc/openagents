@@ -54,7 +54,7 @@ tips_go :: (s: [] Villa, step: int) {
 }
 
 // The browser's kept text, at load ("tips=N").
-villa_kept :: (s: [] Villa, t: string) #export_c {
+villa_kept :: (s: [] Villa, t: string) #export_c #effects(all) {
   if t.count < 6 || t[0..<5] != "tips=" { return; }
   n := cast(int) t[5] - 48;
   if n < 0 || n > TIPS_DONE { return; }

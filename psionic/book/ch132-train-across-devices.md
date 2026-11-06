@@ -45,10 +45,10 @@ including, `(d + 1) * rows / devices`. Every device owns at least one row.
 // Rows of a step over devices: device d owns rows dg_first(d) up to
 // dg_first(d+1), a contiguous run, and every device owns at least one.
 DgPlan :: struct {status:DgStatus;devices:int;rows:int;collective:DgCollective;}
-dg_power :: (n:int)->bool {return n>0 && (n&(n-1))==0;}
+dg_power :: (n:int)->bool #effects(all) {return n>0 && (n&(n-1))==0;}
 // The levels of a pairwise tree over n leaves: the least l with 2^l >= n.
-dg_log2 :: (n:int)->int {l:=0;while (1<<l)<n {l+=1;}return l;}
-dg_plan :: (devices:int,rows:int,collective:DgCollective)->DgPlan #export_c {
+dg_log2 :: (n:int)->int #effects(all) {l:=0;while (1<<l)<n {l+=1;}return l;}
+dg_plan :: (devices:int,rows:int,collective:DgCollective)->DgPlan #export_c #effects(all) {
     p:=DgPlan.{devices=devices,rows=rows,collective=collective};
     if devices<1 || devices>DG_MAX_DEVICES {p.status=DgStatus.devices;return p;}
     if rows<1 || rows>DG_MAX_ROWS || devices>rows {p.status=DgStatus.rows;return p;}
@@ -57,8 +57,8 @@ dg_plan :: (devices:int,rows:int,collective:DgCollective)->DgPlan #export_c {
     if collective==DgCollective.ring || (collective==DgCollective.tree && !(dg_power(devices) && dg_power(rows))) {p.status=DgStatus.collective;}
     return p;
 }
-dg_first :: (p:DgPlan,d:int)->int #export_c {return d*p.rows/p.devices;}
-dg_owner :: (p:DgPlan,row:int)->int {
+dg_first :: (p:DgPlan,d:int)->int #export_c #effects(all) {return d*p.rows/p.devices;}
+dg_owner :: (p:DgPlan,row:int)->int #effects(all) {
     if row<0 || row>=p.rows {return -1;}
     d:=row*p.devices/p.rows;while dg_first(p,d+1)<=row {d+=1;}
     return d;
@@ -115,7 +115,7 @@ against itself bit for bit.
 // slot is the step's gradient, which goes back to every device. The
 // additions are chapter 129's gk_mean, in the same order, at any device
 // count.
-dg_chain :: (p:DgPlan,d:int,n:int,grads:[]f64,msgs:[]f64) {
+dg_chain :: (p:DgPlan,d:int,n:int,grads:[]f64,msgs:[]f64) #effects(all) {
     k:=f64(p.rows);
     for i:0..<n {acc:=0.0;if d>0 {acc=msgs[(d-1)*n+i];}
         for r:dg_first(p,d)..<dg_first(p,d+1) {acc+=grads[r*n+i]/k;}
@@ -125,13 +125,13 @@ dg_chain :: (p:DgPlan,d:int,n:int,grads:[]f64,msgs:[]f64) {
 // into its slot; then the devices' slots combine the same way: at stride s,
 // device d adds the slot of device d+s. With power-of-two counts this is one
 // fixed tree over the rows, whatever the device count.
-dg_tree :: (p:DgPlan,d:int,n:int,grads:[]f64,part:[]f64) {
+dg_tree :: (p:DgPlan,d:int,n:int,grads:[]f64,part:[]f64) #effects(all) {
     k:=f64(p.rows);lo:=dg_first(p,d);count:=dg_first(p,d+1)-lo;
     for i:0..<n {x:[64]f64;for r:0..<count {x[r]=grads[(lo+r)*n+i]/k;}
         for level:0..<dg_log2(count) {s:=1<<level;for j:0..<count/(2*s) {x[2*s*j]+=x[2*s*j+s];}}
         part[d*n+i]=x[0];}
 }
-dg_reduce :: (p:DgPlan,n:int,grads:[]f64,slots:[]f64,total:[]f64) {
+dg_reduce :: (p:DgPlan,n:int,grads:[]f64,slots:[]f64,total:[]f64) #effects(all) {
     if p.collective==DgCollective.chain {
         for d:0..<p.devices {dg_chain(p,d,n,grads,slots);}
         for i:0..<n {total[i]=slots[(p.devices-1)*n+i];}
@@ -165,14 +165,14 @@ at fault, so the answer does not depend on the arrival order either.
 // deadline uses) and whether it failed.
 DgReport :: struct {device:int;revision:int;first:int;count:int;at:int;failed:bool;}
 DgGather :: struct {status:DgStatus;device:int=-1;}
-dg_report :: (p:DgPlan,run:TrRun,d:int,at:int)->DgReport {
+dg_report :: (p:DgPlan,run:TrRun,d:int,at:int)->DgReport #effects(all) {
     lo:=dg_first(p,d);return DgReport.{device=d,revision=run.revision,first=lo,count=dg_first(p,d+1)-lo,at=at};
 }
 // Admits a step's reports, which may arrive in any order. Every device must
 // report exactly once, for this revision and its own rows, by the deadline,
 // without a failure. A refusal names the lowest device at fault, so the
 // answer does not depend on the arrival order either.
-dg_gather :: (p:DgPlan,run:TrRun,reports:[]DgReport,deadline:int)->DgGather {
+dg_gather :: (p:DgPlan,run:TrRun,reports:[]DgReport,deadline:int)->DgGather #effects(all) {
     if p.status!=DgStatus.ok {return DgGather.{status=p.status};}
     seen:[64]int;g:DgGather;
     for r:reports {
@@ -209,7 +209,7 @@ DgStep :: struct {status:DgStatus;device:int=-1;step:TrStep;}
 // writing only those rows' slices of work, dwork, grads and losses. The
 // caller (a thread, a GPU's host, or the CPU loop below) stamps the report
 // with the time it finished. A batch the plan does not cover is not computed.
-dg_rows :: (s:TdShape,p:DgPlan,d:int,b:TrBatch,rows:[]u8,rope:[]f64,pm:[]f64,work:[]f64,dwork:[]f64,grads:[]f64,losses:[]f64)->DgReport #export_c {
+dg_rows :: (s:TdShape,p:DgPlan,d:int,b:TrBatch,rows:[]u8,rope:[]f64,pm:[]f64,work:[]f64,dwork:[]f64,grads:[]f64,losses:[]f64)->DgReport #export_c #effects(all) {
     lo:=dg_first(p,d);hi:=dg_first(p,d+1);r:=DgReport.{device=d,revision=b.revision,first=lo,count=hi-lo};
     if p.status!=DgStatus.ok || b.status!=TrStatus.ok || b.micro!=p.rows || d<0 || d>=p.devices {r.failed=true;return r;}
     sh:[8]int;gt_shape(s,sh[..]);
@@ -219,7 +219,7 @@ dg_rows :: (s:TdShape,p:DgPlan,d:int,b:TrBatch,rows:[]u8,rope:[]f64,pm:[]f64,wor
 // The rest of the step, once reports are in. Only a gathered step reaches
 // the all-reduce; then chapter 129's step runs on every device's copy, and
 // only an admitted step is committed.
-dg_finish :: (c:TrConfig,p:DgPlan,run:TrRun,b:TrBatch,reports:[]DgReport,deadline:int,pm:[]f64,m:[]f64,v:[]f64,stage:[]f64,total:[]f64,grads:[]f64,losses:[]f64,scalars:[]f64,slots:[]f64)->DgStep #export_c {
+dg_finish :: (c:TrConfig,p:DgPlan,run:TrRun,b:TrBatch,reports:[]DgReport,deadline:int,pm:[]f64,m:[]f64,v:[]f64,stage:[]f64,total:[]f64,grads:[]f64,losses:[]f64,scalars:[]f64,slots:[]f64)->DgStep #export_c #effects(all) {
     fail:=DgStep.{status=p.status,step=TrStep.{status=TrStatus.order,run=run}};
     if p.status!=DgStatus.ok {return fail;}
     if b.micro!=p.rows {fail.status=DgStatus.rows;return fail;}
@@ -238,7 +238,7 @@ dg_finish :: (c:TrConfig,p:DgPlan,run:TrRun,b:TrBatch,reports:[]DgReport,deadlin
 // One step with every device on this CPU, run one after another in `order`
 // and stamped with the matching time in `at`. reports holds order.count.
 dg_step_cpu :: (s:TdShape,c:TrConfig,p:DgPlan,run:TrRun,b:TrBatch,rows:[]u8,rope:[]f64,pm:[]f64,m:[]f64,v:[]f64,stage:[]f64,total:[]f64,grads:[]f64,work:[]f64,dwork:[]f64,losses:[]f64,scalars:[]f64,slots:[]f64,
-        order:[]int,at:[]int,deadline:int,reports:[]DgReport)->DgStep {
+        order:[]int,at:[]int,deadline:int,reports:[]DgReport)->DgStep #effects(all) {
     for k:0..<order.count {reports[k]=dg_rows(s,p,order[k],b,rows,rope,pm,work,dwork,grads,losses);reports[k].at=at[k];}
     return dg_finish(c,p,run,b,reports[0..<order.count],deadline,pm,m,v,stage,total,grads,losses,scalars,slots);
 }
@@ -268,7 +268,7 @@ the time `hops * latency + path / bandwidth`.
 //   ring:  d-1 steps to sum, d-1 to share, each moving one d-th of the values
 //          (rounded up) between every neighbour pair at once.
 DgCost :: struct {hops:int;path:int;bytes:int;ns:int;}
-dg_cost :: (k:DgCollective,devices:int,n:int,latency:int,bandwidth:int)->DgCost #export_c {
+dg_cost :: (k:DgCollective,devices:int,n:int,latency:int,bandwidth:int)->DgCost #export_c #effects(all) {
     c:DgCost;if devices<2 {return c;}
     if bandwidth<1 {c.ns=-1;return c;}
     if k==DgCollective.chain {c.hops=2*(devices-1);c.path=c.hops*n*8;c.bytes=c.path;}

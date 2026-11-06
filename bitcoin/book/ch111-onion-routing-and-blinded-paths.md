@@ -105,13 +105,13 @@ The shared secret is SHA-256 of the compressed point k·P, as in BOLT 8.
 // Keys from a shared secret: HMAC-SHA256 with the key type's name as the
 // HMAC key, "rho", "mu", "um", "pad", "ammag" or "blinded_node_id", and
 // the secret as the message.
-onion_key :: (kind: string, secret: [] u8, out: [] u8) {
+onion_key :: (kind: string, secret: [] u8, out: [] u8) #effects(all) {
   name: [16] u8; for i: 0..<kind.count { name[i] = kind[i]; }
   #assert hmac_sha256_checked(name[0..<kind.count], secret, out, false) == SHA_OK;
 }
 // The pseudo-random stream: ChaCha20 under the key with a zero nonce,
 // from block 0. XOR it onto data, in place; onto zeros it is the stream.
-onion_xor :: (key: [] u8, data: [] u8) {
+onion_xor :: (key: [] u8, data: [] u8) #effects(all) {
   nonce: [12] u8; chunk: [512] u8; out: [512] u8; at := 0;
   while at < data.count {
     n := ifx data.count - at < 512 then data.count - at else 512;
@@ -124,7 +124,7 @@ onion_xor :: (key: [] u8, data: [] u8) {
   onion_wipe(chunk[..]); onion_wipe(out[..]);
 }
 // HMAC-SHA256 of a || b.
-onion_mac :: (key: [] u8, a: [] u8, b: [] u8, out: [] u8) {
+onion_mac :: (key: [] u8, a: [] u8, b: [] u8, out: [] u8) #effects(all) {
   state: [224] u8;
   #assert hmac_sha256_init_checked(state[..], key, false) == SHA_OK;
   #assert hmac_sha256_update_checked(state[..], a, false) == SHA_OK;
@@ -133,7 +133,7 @@ onion_mac :: (key: [] u8, a: [] u8, b: [] u8, out: [] u8) {
   onion_wipe(state[..]);
 }
 // The shared secret: SHA-256 of the compressed point k * P, as in BOLT 8.
-onion_ecdh :: (k: ScScalar, point: [] u8, out: [] u8) -> int {
+onion_ecdh :: (k: ScScalar, point: [] u8, out: [] u8) -> int #effects(all) {
   if point.count != 33 { return ONION_BAD_POINT; }
   p := se_decode(point);
   if !p.ok { return ONION_BAD_POINT; }
@@ -144,7 +144,7 @@ onion_ecdh :: (k: ScScalar, point: [] u8, out: [] u8) -> int {
 }
 // A 32-byte secret as a scalar, refusing zero and n or more.
 OnionSecret :: struct { code: int; value: ScScalar; }
-onion_secret :: (secret: [] u8) -> OnionSecret {
+onion_secret :: (secret: [] u8) -> OnionSecret #effects(all) {
   if secret.count != 32 { return OnionSecret.{code = ONION_BAD_KEY}; }
   k := sc_load(secret);
   if !k.ok || sc_is_zero(k.value) { k = ScLoad.{}; return OnionSecret.{code = ONION_BAD_KEY}; }
@@ -152,7 +152,7 @@ onion_secret :: (secret: [] u8) -> OnionSecret {
   return r;
 }
 // A point times the 32-byte hash h, in constant time: the blinding steps.
-onion_tweak :: (h: [] u8, point: [] u8) -> OnionPoint {
+onion_tweak :: (h: [] u8, point: [] u8) -> OnionPoint #effects(all) {
   t := onion_secret(h); p := se_decode(point);
   if t.code != ONION_OK { return OnionPoint.{code = t.code}; }
   if !p.ok { return OnionPoint.{code = ONION_BAD_POINT}; }
@@ -161,7 +161,7 @@ onion_tweak :: (h: [] u8, point: [] u8) -> OnionPoint {
   return r;
 }
 // A secret's public key.
-onion_public :: (secret: [] u8) -> OnionPoint {
+onion_public :: (secret: [] u8) -> OnionPoint #effects(all) {
   k := onion_secret(secret);
   if k.code != ONION_OK { return OnionPoint.{code = k.code}; }
   r := onion_encode(smc_multiply(k.value, sg_generator())); k = OnionSecret.{};
@@ -186,7 +186,7 @@ factor.
 // factor SHA256(epk || ss), so every hop sees a different key, and each
 // hop's shared secret is ECDH of its ephemeral key and the hop's node key.
 OnionRoute :: struct { hops: int; epk: [891] u8; ss: [864] u8; }
-onion_route :: (session: [] u8, pubkeys: [] u8, route: [] OnionRoute) -> int {
+onion_route :: (session: [] u8, pubkeys: [] u8, route: [] OnionRoute) -> int #effects(all) {
   n := pubkeys.count / 33;
   if pubkeys.count % 33 != 0 || n == 0 || n > ONION_MAX_HOPS { return ONION_TOO_LONG; }
   e := onion_secret(session);
@@ -221,7 +221,7 @@ hops in route order.
 // A route as the payer builds it: each hop's node key, and its payload, a
 // TLV stream, with the stream's BigSize length in front.
 OnionHops :: struct { pubkeys: [891] u8; keys_n: int; payloads: [1300] u8; payloads_n: int; }
-onion_add_hop_vartime :: (h: [] OnionHops, pubkey: [] u8, payload: [] u8) -> int {
+onion_add_hop_vartime :: (h: [] OnionHops, pubkey: [] u8, payload: [] u8) -> int #effects(all) {
   if pubkey.count != 33 || h[0].keys_n + 33 > 891 { return ONION_TOO_LONG; }
   at := bigsize_write_vartime(h[0].payloads[..], h[0].payloads_n, cast(u64) payload.count);
   if at < 0 || payload.count > ONION_PAYLOADS - at { return ONION_TOO_LONG; }
@@ -245,7 +245,7 @@ the filler.
 // HMAC and appends that many stream bytes, so the last hop's payloads end
 // in bytes every earlier hop's stream made. The payer computes them, so
 // the last hop's HMAC covers them too.
-onion_filler :: (route: [] OnionRoute, size: [] int, filler: [] u8) -> int {
+onion_filler :: (route: [] OnionRoute, size: [] int, filler: [] u8) -> int #effects(all) {
   s: [2600] u8; rho: [32] u8; length := 0;
   for i: 0..<route[0].hops - 1 {
     for j: length..<length + size[i] { filler[j] = 0; }
@@ -279,7 +279,7 @@ all-zero next HMAC.
 // covered by every HMAC. Wrapping starts at the last hop: each layer puts
 // a payload and the HMAC for the next hop in front, encrypts all 1,300
 // bytes under rho, and computes this hop's HMAC under mu.
-onion_wrap :: (session: [] u8, pubkeys: [] u8, payloads: [] u8, ad: [] u8, out: [] u8) -> int {
+onion_wrap :: (session: [] u8, pubkeys: [] u8, payloads: [] u8, ad: [] u8, out: [] u8) -> int #effects(all) {
   if out.count < ONION_PACKET { return ONION_CAPACITY; }
   route: [1] OnionRoute;
   code := onion_route(session, pubkeys, route[..]);
@@ -339,7 +339,7 @@ bytes and the next hop cannot tell how far along the route it is.
 // shifts the rest left to make the next hop's packet. An all-zero next
 // HMAC means this hop is the last. ss is kept to wrap a failure later.
 OnionPeel :: struct { code: int; last: bool; payload_n: int; ss: [32] u8; }
-onion_peel :: (secret: [] u8, onion: [] u8, ad: [] u8, payload: [] u8, next: [] u8) -> OnionPeel {
+onion_peel :: (secret: [] u8, onion: [] u8, ad: [] u8, payload: [] u8, next: [] u8) -> OnionPeel #effects(all) {
   if onion.count != ONION_PACKET { return OnionPeel.{code = ONION_BAD_LENGTH}; }
   if onion[0] != 0 { return OnionPeel.{code = ONION_BAD_VERSION}; }
   if payload.count < ONION_PAYLOADS || next.count < ONION_PACKET { return OnionPeel.{code = ONION_CAPACITY}; }
@@ -366,7 +366,7 @@ onion_peel :: (secret: [] u8, onion: [] u8, ad: [] u8, payload: [] u8, next: [] 
 // The decrypted payloads, now this hop's own: its payload, then the next
 // packet with the next ephemeral key, epk times SHA256(epk || ss).
 OnionTake :: struct { code: int; last: bool; payload_n: int; }
-onion_take_vartime :: (d: [] u8, payload: [] u8, epk: [] u8, ss: [] u8, next: [] u8) -> OnionTake {
+onion_take_vartime :: (d: [] u8, payload: [] u8, epk: [] u8, ss: [] u8, next: [] u8) -> OnionTake #effects(all) {
   l := bigsize_read_vartime(d, 0);
   if l.code != LN_OK || l.value == 0 || l.value > cast(u64) ONION_PAYLOADS { return OnionTake.{code = ONION_BAD_PAYLOAD}; }
   n := cast(int) l.value; at := l.next + n;
@@ -404,7 +404,7 @@ failed.
 // pad_len is pad_to, at least 256. Every node on the way back, the erring
 // node first, XORs the whole packet with its ammag stream. Returns the
 // packet's length, or -1.
-onion_error_create :: (ss: [] u8, failure: [] u8, pad_to: int, out: [] u8) -> int {
+onion_error_create :: (ss: [] u8, failure: [] u8, pad_to: int, out: [] u8) -> int #effects(all) {
   pad := pad_to - failure.count;
   if pad < 0 { pad = 0; }
   n := ONION_HMAC + 2 + failure.count + 2 + pad;
@@ -420,7 +420,7 @@ onion_error_create :: (ss: [] u8, failure: [] u8, pad_to: int, out: [] u8) -> in
   return n;
 }
 // Each node passing the error back adds its layer.
-onion_error_forward :: (ss: [] u8, packet: [] u8) {
+onion_error_forward :: (ss: [] u8, packet: [] u8) #effects(all) {
   key: [32] u8;
   onion_key("ammag", ss, key[..]); onion_xor(key[..], packet);
   onion_wipe(key[..]);
@@ -429,7 +429,7 @@ onion_error_forward :: (ss: [] u8, packet: [] u8) {
 // packet carries hop i's um HMAC if hop i made it. The failure message is
 // at packet[failure..<failure + failure_n].
 OnionFailure :: struct { code: int; hop: int; failure: int; failure_n: int; }
-onion_error_open :: (route: [] OnionRoute, packet: [] u8) -> OnionFailure {
+onion_error_open :: (route: [] OnionRoute, packet: [] u8) -> OnionFailure #effects(all) {
   if packet.count < ONION_HMAC + 4 { return OnionFailure.{code = ONION_BAD_LENGTH}; }
   key: [32] u8; mac: [32] u8; empty: [1] u8;
   for i: 0..<route[0].hops {
@@ -471,7 +471,7 @@ the introduction node's real key and to the blinded IDs after it.
 // ChaCha20-Poly1305 under rho with a zero nonce. Then e becomes
 // e * SHA256(E || ss). Setting e anew joins another path.
 OnionBlindHop :: struct { code: int; path_key: [33] u8; blinded: [33] u8; }
-onion_blind_hop :: (e: [] u8, node_id: [] u8, data: [] u8, box: [] u8) -> OnionBlindHop {
+onion_blind_hop :: (e: [] u8, node_id: [] u8, data: [] u8, box: [] u8) -> OnionBlindHop #effects(all) {
   if box.count != data.count + ONION_TAG { return OnionBlindHop.{code = ONION_CAPACITY}; }
   k := onion_secret(e);
   if k.code != ONION_OK { return OnionBlindHop.{code = k.code}; }
@@ -509,7 +509,7 @@ and the override is the next path key instead.
 // A hop on a blinded path is given the path key E. Its blinded secret is
 // its node secret times HMAC("blinded_node_id", ss), with ss the ECDH of
 // its node secret and E: that is the key the onion was wrapped to.
-onion_blinded_secret :: (node_secret: [] u8, path_key: [] u8, out: [] u8) -> int {
+onion_blinded_secret :: (node_secret: [] u8, path_key: [] u8, out: [] u8) -> int #effects(all) {
   k := onion_secret(node_secret);
   if k.code != ONION_OK { return k.code; }
   ss: [32] u8; h: [32] u8;
@@ -527,7 +527,7 @@ onion_blinded_secret :: (node_secret: [] u8, path_key: [] u8, out: [] u8) -> int
 // path key: E * SHA256(E || ss), unless the data holds
 // next_path_key_override (type 8), where the path joins another one.
 OnionUnblind :: struct { code: int; data_n: int; next_path_key: [33] u8; }
-onion_unblind :: (node_secret: [] u8, path_key: [] u8, box: [] u8, data: [] u8) -> OnionUnblind {
+onion_unblind :: (node_secret: [] u8, path_key: [] u8, box: [] u8, data: [] u8) -> OnionUnblind #effects(all) {
   if box.count < ONION_TAG || data.count < box.count - ONION_TAG { return OnionUnblind.{code = ONION_CAPACITY}; }
   k := onion_secret(node_secret);
   if k.code != ONION_OK { return OnionUnblind.{code = k.code}; }
@@ -554,7 +554,7 @@ onion_unblind :: (node_secret: [] u8, path_key: [] u8, box: [] u8, data: [] u8) 
 }
 // One record of a TLV stream, by type: where its value is, if present.
 OnionRecord :: struct { code: int; found: bool; start: int; length: int; }
-onion_record_vartime :: (b: [] u8, type: u64) -> OnionRecord {
+onion_record_vartime :: (b: [] u8, type: u64) -> OnionRecord #effects(all) {
   at := 0; previous: u64 = 0; first := true; r: OnionRecord;
   while at < b.count {
     t := tlv_next_vartime(b, at, previous, first);

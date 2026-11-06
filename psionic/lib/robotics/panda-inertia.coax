@@ -32,16 +32,16 @@
  p:PmProfile;for i:0..<16 {p.bodies[i].inertial[0]=1;}p.bodies[12+finger].mass=1;p.bodies[12+finger].ancestors=1;p.gravity=[3]f64.[1,2,3];out:=pm_sum_owned(poses,p);x:=4+f64(finger);y:=5+2*f64(finger);#assert out.hinge_hinge[0].value==x*x+y*y && out.hinge_gravity[0].value== -3;
 }
 
-pm_sum_owned :: (poses:PffOutput,profile:PmProfile)->PmOutput {
+pm_sum_owned :: (poses:PffOutput,profile:PmProfile)->PmOutput #effects(all) {
  m:[81]f64;g:[9]f64;for body:0..<16 {pose:PfkPose;if body<12 {pose=poses.arm.links[body];}else {pose=poses.fingers[body-12];}b:=profile.bodies[body];com:=pm_com(pose,b.com);inertia:=pm_inertia(pose,b.inertial,b.principal);columns:=pm_columns(com,b.ancestors,poses);
   for i:0..<9 {g[i]+=pm_gravity(b.mass,columns,profile.gravity,i);for j:i..<9 {m[i*9+j]+=pm_metric(b.mass,columns,inertia,i,j);}}
  }
  for i:0..<9 {m[i*9+i]+=profile.armature[i];for j:i+1..<9 {m[j*9+i]=m[i*9+j];}}return pm_pack(m,g);
 }
-pm_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),output:[]PmOutput)->PfkStatus #export_c {
+pm_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),output:[]PmOutput)->PfkStatus #export_c #effects(all) {
  if output.count!=1 {return PfkStatus.shape;}poses:[1]PffOutput;status:=pff_forward(angles,slides,poses[..]);if status!=PfkStatus.ok {return status;}
  fresh:=pm_sum_owned(poses[0],pm_profile());output[0]=fresh;return PfkStatus.ok;
 }
-pm_forward_raw :: (radians:[]f64,metres:[]f64,output:[]PmOutput)->PfkStatus #export_c {
+pm_forward_raw :: (radians:[]f64,metres:[]f64,output:[]PmOutput)->PfkStatus #export_c #effects(all) {
  if radians.count!=7 || metres.count!=2 {return PfkStatus.shape;}q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);for i:0..<7 {q[i].value=radians[i];}for i:0..<2 {s[i].value=metres[i];}return pm_forward(q[..],s[..],output);
 }

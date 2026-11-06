@@ -6,7 +6,7 @@ ngq_run :: (dir:string,label:string,argv:[]string,host:string,remote:bool,out:[]
   env:[]string;r:=ifx remote then ng_ssh(host,argv,30000,out,err) else rtq_run_raw(argv,env,30000,out,err);
   if !rtq_record_run(dir,label,argv,r,cast(string)out[0..<r.out_n],cast(string)err[0..<r.err_n]) {r.cut=true;}return r;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}host:=args_at(a[..],0);directory:=args_at(a[..],1);
   if !ng_host(host) || !fs_mkdir(directory) {return 2;}
   inputs:[1]RtqInputs;compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);if compiler=="" {compiler="coax/bin/coax";}

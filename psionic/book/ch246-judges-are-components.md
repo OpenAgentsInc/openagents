@@ -153,14 +153,14 @@ the student's own weights.
 
 <!-- source: psionic/lib/judge.coax identity -->
 ```jai
-jg_component_ok :: (c:JgComponent)->bool {
+jg_component_ok :: (c:JgComponent)->bool #effects(all) {
     return c.rubric.count>=1 && c.rubric.count<=JG_RUBRIC_MAX &&
         c.temperature>=0 && c.temperature<=JG_TEMPERATURE_MAX && c.samples>=1 && c.samples<=JG_SAMPLES_MAX &&
         tb_in(c.price,0,JG_PRICE_MAX);
 }
 // Chapter 239's encoding under its own tag: the model, the weights' digest,
 // the rubric's bytes and the settings. A changed byte anywhere is a new judge.
-jg_identity :: (c:JgComponent)->[32]u8 #export_c {
+jg_identity :: (c:JgComponent)->[32]u8 #export_c #effects(all) {
     if !jg_component_ok(c) {return su_zero();}
     buf:[4224]u8;at:=su_text(buf[..],0,"psionic.component.v1");
     buf[at]=cast(u8)c.model;at+=1;
@@ -170,12 +170,12 @@ jg_identity :: (c:JgComponent)->[32]u8 #export_c {
     return su_hash(buf[0..<at]);
 }
 // Calls per judgment times the price of one; a pair judged both ways is two.
-jg_cost :: (c:JgComponent,pair:bool)->f64 #export_c {
+jg_cost :: (c:JgComponent,pair:bool)->f64 #export_c #effects(all) {
     return c.price*f64(c.samples)*(ifx pair && c.swap then 2.0 else 1.0);
 }
 // The grader grades someone else's work: a different identity and different
 // weights from the student and the reflector.
-jg_separate :: (grader:JgComponent,student:JgComponent,reflector:JgComponent)->JgSeparation #export_c {
+jg_separate :: (grader:JgComponent,student:JgComponent,reflector:JgComponent)->JgSeparation #export_c #effects(all) {
     if !jg_component_ok(grader) || !jg_component_ok(student) || !jg_component_ok(reflector) {return JgSeparation.shape;}
     g:=jg_identity(grader);
     if su_same(g,jg_identity(student)) || su_same(g,jg_identity(reflector)) {return JgSeparation.same_identity;}
@@ -203,9 +203,9 @@ held apart.
 <!-- source: psionic/lib/judge.coax agreement -->
 ```jai
 // Only a label from a check or a diff is truth (chapter 247's rule).
-jg_counted :: (o:TrOutcome)->bool {return o.from==TrLabel.check || o.from==TrLabel.diff;}
+jg_counted :: (o:TrOutcome)->bool #effects(all) {return o.from==TrLabel.check || o.from==TrLabel.diff;}
 // The Wilson score interval for k agreements in n at z = 1.96.
-jg_wilson :: (k:int,n:int)->[2]f64 {
+jg_wilson :: (k:int,n:int)->[2]f64 #effects(all) {
     m:=f64(n);p:=f64(k)/m;z2:=JG_Z*JG_Z;d:=1+z2/m;
     c:=(p+z2/(2*m))/d;h:=JG_Z*sqrt(p*(1-p)/m+z2/(4*m*m))/d;
     // At 0 and at n the bounds are exactly 0 and 1; rounding is kept out.
@@ -214,7 +214,7 @@ jg_wilson :: (k:int,n:int)->[2]f64 {
 // The judge's probability of yes p against labelled outcomes; yes is p >= 0.5.
 // Kappa's interval maps agreement's interval through the same formula, with
 // chance agreement held at its measured value.
-jg_agreement :: (p:[]f64,truth:[]TrOutcome)->JgAgreement #export_c {
+jg_agreement :: (p:[]f64,truth:[]TrOutcome)->JgAgreement #export_c #effects(all) {
     n:=p.count;
     if n<1 || n>JG_ITEMS_MAX || truth.count!=n {return JgAgreement.{status=JgStatus.shape};}
     for i:0..<n {
@@ -257,12 +257,12 @@ compute by hand, as in the section above.
 
 <!-- source: psionic/lib/judge.coax probe -->
 ```jai
-jg_unit :: (v:[]f64)->bool {for x:v {if !tb_in(x,0,1) {return false;}}return true;}
-jg_side :: (v:[]int)->bool {for x:v {if x!=0 && x!=1 {return false;}}return true;}
+jg_unit :: (v:[]f64)->bool #effects(all) {for x:v {if !tb_in(x,0,1) {return false;}}return true;}
+jg_side :: (v:[]int)->bool #effects(all) {for x:v {if x!=0 && x!=1 {return false;}}return true;}
 // first and second: two runs of the same judge on the same items. q: the
 // probability that the answer shown first is better, shown (a, b); r: the
 // same, shown (b, a). longer and better name a (0) or b (1).
-jg_probe :: (first:[]f64,second:[]f64,q:[]f64,r:[]f64,longer:[]int,better:[]int)->JgProbe #export_c {
+jg_probe :: (first:[]f64,second:[]f64,q:[]f64,r:[]f64,longer:[]int,better:[]int)->JgProbe #export_c #effects(all) {
     n:=first.count;m:=q.count;
     if n<1 || n>JG_ITEMS_MAX || second.count!=n || m<1 || m>JG_ITEMS_MAX || r.count!=m || longer.count!=m || better.count!=m {
         return JgProbe.{status=JgStatus.shape};
@@ -313,13 +313,13 @@ length bias is (3 − 2) / 4 = 0.25.
 
 <!-- source: psionic/lib/judge.coax gate -->
 ```jai
-jg :: (v:VdVerdict,why:JgReason)->JgResult {return JgResult.{verdict=v,reason=why};}
-jg_policy_ok :: (y:JgPolicy)->bool {
+jg :: (v:VdVerdict,why:JgReason)->JgResult #effects(all) {return JgResult.{verdict=v,reason=why};}
+jg_policy_ok :: (y:JgPolicy)->bool #effects(all) {
     return y.items_min>=1 && tb_in(y.kappa_min,-1,1) && tb_in(y.flip_max,0,1) && tb_in(y.position_max,0,1) && tb_in(y.length_max,0,1);
 }
 // Enough labelled items in two classes first; then a bias fails the judge,
 // noise between runs leaves it unverifiable, and kappa's interval decides.
-jg_gate :: (a:JgAgreement,p:JgProbe,y:JgPolicy)->JgResult #export_c {
+jg_gate :: (a:JgAgreement,p:JgProbe,y:JgPolicy)->JgResult #export_c #effects(all) {
     if a.status!=JgStatus.ok || p.status!=JgStatus.ok || !jg_policy_ok(y) {return jg(VdVerdict.unverifiable,JgReason.unmeasured);}
     if a.items<y.items_min {return jg(VdVerdict.unverifiable,JgReason.few_items);}
     if a.chance>=1 {return jg(VdVerdict.unverifiable,JgReason.one_class);}
@@ -331,13 +331,13 @@ jg_gate :: (a:JgAgreement,p:JgProbe,y:JgPolicy)->JgResult #export_c {
     return jg(VdVerdict.unverifiable,JgReason.unclear);
 }
 // A grade counts only from a separate judge that passed its gate.
-jg_grade :: (s:JgSeparation,judge:JgResult,grade:VdResult)->JgResult #export_c {
+jg_grade :: (s:JgSeparation,judge:JgResult,grade:VdResult)->JgResult #export_c #effects(all) {
     if s!=JgSeparation.separate {return jg(VdVerdict.unverifiable,JgReason.shared);}
     if judge.verdict!=VdVerdict.passed {return jg(VdVerdict.unverifiable,JgReason.unproven);}
     return jg(grade.verdict,JgReason.graded);
 }
 // A grade offered as a row carries its source, so chapter 247 refuses it.
-jg_opinion :: (group:int,time:int,decision:int,p:f64)->TrOutcome #export_c {
+jg_opinion :: (group:int,time:int,decision:int,p:f64)->TrOutcome #export_c #effects(all) {
     return TrOutcome.{group=group,time=time,decision=decision,label=ifx p>=0.5 then 1 else 0,from=TrLabel.judge};
 }
 ```
@@ -384,8 +384,8 @@ model trained on them learns the judge's mistakes as if they were facts.
 // draws are keyed by the judge's identity, so a new rubric draws anew.
 JgBehavior :: struct {skill:f64;length:f64;position:f64;}
 JG_PAIR_BASE :: 4096;
-jg_seed :: (d:[32]u8)->u64 {s:u64=0;for i:0..<8 {s|=cast(u64)d[i]<<cast(u64)(8*i);}return s;}
-jg_call :: (c:JgComponent,seed:u64,z:f64,slot:int,run:int)->f64 {
+jg_seed :: (d:[32]u8)->u64 #effects(all) {s:u64=0;for i:0..<8 {s|=cast(u64)d[i]<<cast(u64)(8*i);}return s;}
+jg_call :: (c:JgComponent,seed:u64,z:f64,slot:int,run:int)->f64 #effects(all) {
     total:=0.0;
     for k:0..<c.samples {
         u:=tb_uniform(seed,cast(u64)((slot*JG_SAMPLES_MAX+k)*2+run));
@@ -395,11 +395,11 @@ jg_call :: (c:JgComponent,seed:u64,z:f64,slot:int,run:int)->f64 {
 }
 // One item: truth 0 or 1, how clearly the answer shows it in [0, 1], and
 // length in [-1, 1].
-jg_point :: (c:JgComponent,seed:u64,b:JgBehavior,truth:int,clarity:f64,length:f64,item:int,run:int)->f64 {
+jg_point :: (c:JgComponent,seed:u64,b:JgBehavior,truth:int,clarity:f64,length:f64,item:int,run:int)->f64 #effects(all) {
     return jg_call(c,seed,b.skill*f64(2*truth-1)*clarity+b.length*length,item,run);
 }
 // One pair as shown: quality and length of the first less the second's.
-jg_pair :: (c:JgComponent,seed:u64,b:JgBehavior,quality:f64,length:f64,pair:int,order:int)->f64 {
+jg_pair :: (c:JgComponent,seed:u64,b:JgBehavior,quality:f64,length:f64,pair:int,order:int)->f64 #effects(all) {
     return jg_call(c,seed,b.skill*quality+b.length*length+b.position,JG_PAIR_BASE+pair,order);
 }
 ```

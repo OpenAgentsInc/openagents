@@ -6,7 +6,7 @@
 #load "metal-window-plan.coax";
 #load "../../aethyr/host/metal-session-conformance.coax";
 hms_audio :: (d:Jv,row:int,key:string)->int {return mw_field(d,jv_get(d,row,"audio"),key);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<3 {tool_errln("usage: metal-session ISOLATED_APP PERSISTED_DATA NEW_OUTPUT [--existing]");return 2;}
  app:=args_at(a[..],0);data:=args_at(a[..],1);dir:=args_at(a[..],2);paths:[4][4096]u8;if !fs_mkdir(dir){return 1;}report:=fs_join(dir,"window.json",paths[0][..]);plan:=fs_join(dir,"plan.json",paths[1][..]);raw:[32768]u8;o:[1]Jo;jo_start(o[..],raw[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.metal.window-plan.v1");jo_key(o[..],"report");jo_str(o[..],report);jo_key(o[..],"operations");jo_arr(o[..]);
  mw_op(o[..],"raise");jo_end(o[..]);mw_op(o[..],"audio");jo_end(o[..]);mw_wait(o[..],1000);for down:[2]bool.[true,false]{mw_op(o[..],"key");jo_key(o[..],"key");jo_int(o[..],-2);jo_key(o[..],"down");jo_bool(o[..],down);jo_end(o[..]);}mw_wait(o[..],500);mw_observe(o[..],"before");

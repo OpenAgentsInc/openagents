@@ -1016,7 +1016,7 @@ write_bundle :: (held: Bs, now: Bs, wpath: string, dir: string, queries: string)
 }
 
 // ---- main ------------------------------------------------------------------------
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("book-search: arguments too long"); return 2; }
   query := ""; i := 0;

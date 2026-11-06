@@ -175,7 +175,7 @@ NostrMessage :: struct {
 }
 
 // The line'th line of text (0-based), without its newline.
-nm_line :: (text:string,line:int)->NmSpan {
+nm_line :: (text:string,line:int)->NmSpan #effects(all) {
   at:=0;k:=0;from:=0;
   while at<=text.count {
     if at==text.count || text[at]==10 {if k==line {return NmSpan.{from=from,to=at};}k+=1;from=at+1;}
@@ -183,17 +183,17 @@ nm_line :: (text:string,line:int)->NmSpan {
   }
   return NmSpan.{from=0,to=0};
 }
-nm_text :: (m:NostrMessage,s:NmSpan)->string {return m.original[s.from..<s.to];}
+nm_text :: (m:NostrMessage,s:NmSpan)->string #effects(all) {return m.original[s.from..<s.to];}
 // Characters (UTF-8 scalar values) in a valid UTF-8 string.
-nm_chars :: (s:string)->int {n:=0;for c:s {if (c&0xC0)!=0x80 {n+=1;}}return n;}
-nm_sub_ok :: (s:string)->bool {
+nm_chars :: (s:string)->int #effects(all) {n:=0;for c:s {if (c&0xC0)!=0x80 {n+=1;}}return n;}
+nm_sub_ok :: (s:string)->bool #effects(all) {
   i:=0;while i<s.count {k:=json_utf8(s,i);if k==0 {return false;}i+=k;}
   n:=nm_chars(s);return n>=1 && n<=NM_MAX_SUB;
 }
 // A decoded OK/CLOSED message's prefix: NM_PREFIX_NONE when empty, 1..8 for
 // a NIP-01 word, NM_PREFIX_OTHER for another word, -1 when there is none.
-nm_word :: (c:u8)->bool {return (c>='0' && c<='9') || (c>='A' && c<='Z') || (c>='a' && c<='z') || c=='-' || c=='_';}
-nm_prefix :: (s:string)->int {
+nm_word :: (c:u8)->bool #effects(all) {return (c>='0' && c<='9') || (c>='A' && c<='Z') || (c>='a' && c<='z') || c=='-' || c=='_';}
+nm_prefix :: (s:string)->int #effects(all) {
   if s.count==0 {return NM_PREFIX_NONE;}
   for i:0..<s.count {
     if !nm_word(s[i]) {
@@ -205,19 +205,19 @@ nm_prefix :: (s:string)->int {
   return -1;
 }
 // A string token's decoded bytes into buf; -1 when it doesn't fit.
-nm_decode :: (j:[]Json,buf:[]u8)->int {return json_unescape(json_text(j),buf);}
-nm_span :: (j:[]Json)->NmSpan {return NmSpan.{from=j[0].from,to=j[0].to};}
-nm_fail :: (m:NostrMessage,error:int)->NostrMessage {r:=m;r.error=error;return r;}
+nm_decode :: (j:[]Json,buf:[]u8)->int #effects(all) {return json_unescape(json_text(j),buf);}
+nm_span :: (j:[]Json)->NmSpan #effects(all) {return NmSpan.{from=j[0].from,to=j[0].to};}
+nm_fail :: (m:NostrMessage,error:int)->NostrMessage #effects(all) {r:=m;r.error=error;return r;}
 // Readers below run on text json_valid accepted, so the parser can't refuse
 // it; each step keeps NM_PENDING until the frame is complete.
 NM_PENDING :: -1;
-nm_sub :: (j:[]Json,m:NostrMessage)->NostrMessage {
+nm_sub :: (j:[]Json,m:NostrMessage)->NostrMessage #effects(all) {
   if json_next(j)!=JSON_STRING {return nm_fail(m,NM_SHAPE);}
   buf:[1024]u8;n:=nm_decode(j,buf[..]);if n<1 || !nm_sub_ok(cast(string)buf[0..<n]) {return nm_fail(m,NM_SUB);}
   r:=m;r.sub=nm_span(j);return r;
 }
 // A message string that must carry a prefix (required unless accepted).
-nm_message :: (j:[]Json,m:NostrMessage,required:bool)->NostrMessage {
+nm_message :: (j:[]Json,m:NostrMessage,required:bool)->NostrMessage #effects(all) {
   if json_next(j)!=JSON_STRING {return nm_fail(m,NM_SHAPE);}
   // json_valid bounds a string at JSON_MAX_STRING bytes and decoding never
   // lengthens one, so the decoded message always fits.
@@ -226,19 +226,19 @@ nm_message :: (j:[]Json,m:NostrMessage,required:bool)->NostrMessage {
   if r.prefix<0 || (required && r.prefix==NM_PREFIX_NONE) {return nm_fail(r,NM_MESSAGE);}
   return r;
 }
-nm_end :: (j:[]Json,m:NostrMessage)->NostrMessage {
+nm_end :: (j:[]Json,m:NostrMessage)->NostrMessage #effects(all) {
   if m.error!=NM_PENDING {return m;}
   if json_next(j)!=JSON_ARRAY_END {return nm_fail(m,NM_SHAPE);}
   return nm_fail(m,NM_OK);
 }
-nm_label :: (raw:string)->int {
+nm_label :: (raw:string)->int #effects(all) {
   labels:=[5]string.["EVENT","OK","EOSE","CLOSED","NOTICE"];
   for k:0..<5 {if json_is(raw,labels[k]) {return k+1;}}
   return 0;
 }
 // Every frame is one complete JSON value. JSON errors are reported before
 // shape errors, so a truncated frame never reads as a shorter valid one.
-nostr_message_read :: (text:string)->NostrMessage #export_c {
+nostr_message_read :: (text:string)->NostrMessage #export_c #effects(all) {
   m:NostrMessage;
   if text.count>NM_MAX_FRAME {return nm_fail(m,NM_LIMIT);}
   if !json_valid(text) {return nm_fail(m,NM_JSON);}
@@ -276,7 +276,7 @@ nostr_message_read :: (text:string)->NostrMessage #export_c {
 }
 // Reads an EVENT frame and verifies the event it carries with the shared
 // raw-event verifier. out is ID-preimage scratch, as for that verifier.
-nostr_message_event_verify_vartime :: (text:string,out:[]u8,overlap:bool)->NostrEvent #export_c {
+nostr_message_event_verify_vartime :: (text:string,out:[]u8,overlap:bool)->NostrEvent #export_c #effects(all) {
   e:NostrEvent;if overlap {e.error=NE_ALIAS;return e;}
   m:=nostr_message_read(text);if m.error!=NM_OK || m.type!=NM_EVENT {return e;}
   return nostr_event_verify_vartime(text[m.event.from..<m.event.to],out,false);
@@ -288,11 +288,11 @@ nostr_message_event_verify_vartime :: (text:string,out:[]u8,overlap:bool)->Nostr
 
 // ["EVENT",<event>]: the event's original bytes, which must parse as an
 // event. The relay, not this writer, verifies its id and signature.
-nostr_message_write_event :: (event:string,out:[]u8,overlap:bool)->int #export_c {
+nostr_message_write_event :: (event:string,out:[]u8,overlap:bool)->int #export_c #effects(all) {
   if ne_io(event.count,event.count,overlap)!=NE_OK || ne_parse(event).error!=NE_OK {return -1;}
   n:=json_raw(out,0,"[\"EVENT\",");n=json_raw(out,n,event);return json_raw(out,n,"]");
 }
-nostr_message_write_req :: (sub:string,filters:[]NostrFilter,out:[]u8,overlap:bool)->int #export_c {
+nostr_message_write_req :: (sub:string,filters:[]NostrFilter,out:[]u8,overlap:bool)->int #export_c #effects(all) {
   if overlap || !nm_sub_ok(sub) || filters.count<1 || filters.count>NM_MAX_FILTERS {return -1;}
   n:=json_raw(out,0,"[\"REQ\",");n=json_write_string(out,n,sub);
   for f:filters {
@@ -302,7 +302,7 @@ nostr_message_write_req :: (sub:string,filters:[]NostrFilter,out:[]u8,overlap:bo
   }
   return json_raw(out,n,"]");
 }
-nostr_message_write_close :: (sub:string,out:[]u8,overlap:bool)->int #export_c {
+nostr_message_write_close :: (sub:string,out:[]u8,overlap:bool)->int #export_c #effects(all) {
   if overlap || !nm_sub_ok(sub) {return -1;}
   n:=json_raw(out,0,"[\"CLOSE\",");n=json_write_string(out,n,sub);return json_raw(out,n,"]");
 }

@@ -11,7 +11,7 @@ hpa_measure :: (o:[]Jo,q:HostPcmCompare) {
   jo_key(o,"max_abs_f64_bits");jo_int(o,cast(int)f64_bits(q.max_abs));jo_key(o,"browser_peak_f64_bits");jo_int(o,cast(int)f64_bits(q.peak_a));jo_key(o,"native_peak_f64_bits");jo_int(o,cast(int)f64_bits(q.peak_b));
   jo_key(o,"browser_squares_f64_bits");jo_int(o,cast(int)f64_bits(q.squares_a));jo_key(o,"native_squares_f64_bits");jo_int(o,cast(int)f64_bits(q.squares_b));jo_key(o,"first_browser_frame");jo_int(o,q.first_a);jo_key(o,"first_native_frame");jo_int(o,q.first_b);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: compare-audio-frames BROWSER_DIR NATIVE_DIR OUT.json DIAGNOSTIC_DELAY_FRAMES");return 2;}
   delay:=args_whole(args_at(a[..],3));if delay<0 || delay>48000 {return 2;}
   report:[32768]u8;o:[1]Jo;jo_start(o[..],report[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.audio-comparison.v1");jo_key(o[..],"rate");jo_int(o[..],48000);jo_key(o[..],"cases");jo_arr(o[..]);

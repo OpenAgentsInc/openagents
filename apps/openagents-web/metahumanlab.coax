@@ -606,7 +606,7 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   return n;
 }
 
-lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   lab_start(s);
   if u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   s[0].width = width; s[0].height = height; s[0].dpr = dpr;
@@ -717,7 +717,7 @@ held_of :: (key: int) -> int {
   if key == 'e' || key == 'E' { return 5; }
   return -1;
 }
-lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
+lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
   lab_start(s);
   if key == KEY_ESCAPE { leave_to(s, "/worlds"); return true; }
   if key == ' ' || key == KEY_ENTER { s[0].paused = !s[0].paused; return true; }
@@ -741,13 +741,13 @@ lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
   if key == KEY_SHIFT { s[0].shift = true; return false; }
   return false;
 }
-lab_key_up :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
+lab_key_up :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
   if key == KEY_SHIFT { s[0].shift = false; }
   h := held_of(key);
   if h >= 0 { s[0].held[h] = false; return true; }
   return false;
 }
-lab_blur :: (s: [] Lab) #export_c {
+lab_blur :: (s: [] Lab) #export_c #effects(all) {
   s[0].pressing = 0; s[0].dragging = false; s[0].shift = false; s[0].fingers = 0;
   for i: 0..<FLY_HOLD { s[0].held[i] = false; }
 }
@@ -762,12 +762,12 @@ cam_pan :: (s: [] Lab, dx: f32, dy: f32) {
   s[0].pz = clamp(s[0].pz - s[0].right.z * dx * m + s[0].up.z * dy * m, -40, 40);
 }
 // The wheel (CSS px, down is out) zooms.
-lab_wheel :: (s: [] Lab, dy: f32) -> bool #export_c {
+lab_wheel :: (s: [] Lab, dy: f32) -> bool #export_c #effects(all) {
   lab_start(s);
   cam_zoom(s, 1 + clamp(dy, -200, 200) * 0.0012);
   return true;
 }
-lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   lab_start(s);
   if phase == 0 {
     if in_rect(s[0].back, x, y) { s[0].pressing = 1; return true; }
@@ -821,8 +821,8 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
   if held == 4 { if phase == 2 && in_rect(s[0].body_b, x, y) { switch_body(s); } return true; }
   return false;
 }
-lab_cursor :: (s: [] Lab) -> int #export_c { return 0; }
-lab_message :: (s: [] Lab, kind: int, t: string) #export_c {
+lab_cursor :: (s: [] Lab) -> int #export_c #effects(all) { return 0; }
+lab_message :: (s: [] Lab, kind: int, t: string) #export_c #effects(all) {
   lab_start(s);
   if kind == 600 { speak_stage(s, t); }
 }
@@ -857,7 +857,7 @@ speak_ready :: (s: [] Lab) -> int {
   if s[0].pack_failed || (mesh_on(s) && s[0].face_state < 0) { return 1; }
   return 0;
 }
-lab_probe :: (s: [] Lab) -> int #export_c { return speak_ready(s); }
+lab_probe :: (s: [] Lab) -> int #export_c #effects(all) { return speak_ready(s); }
 // Head and shoulders: the camera level with the face, close, on the head as it moves.
 SPEAK_DIST :: 0.68; SPEAK_DROP :: 0.05;
 speak_camera :: (s: [] Lab) {
@@ -865,15 +865,15 @@ speak_camera :: (s: [] Lab) {
   s[0].yaw = 0; s[0].pitch = 0.03; s[0].dist = s[0].speak_dist;
   s[0].px = h.x; s[0].py = h.y - s[0].speak_drop; s[0].pz = h.z; s[0].vx = 0; s[0].vy = 0; s[0].vz = 0;
 }
-lab_golden :: (s: [] Lab, on: bool) #export_c { lab_start(s); s[0].golden = on; }
-lab_action :: (s: [] Lab) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
-lab_action_done :: (s: [] Lab) #export_c { s[0].out_n = 0; }
+lab_golden :: (s: [] Lab, on: bool) #export_c #effects(all) { lab_start(s); s[0].golden = on; }
+lab_action :: (s: [] Lab) -> int #export_c #effects(all) { a := s[0].action; s[0].action = 0; return a; }
+lab_action_done :: (s: [] Lab) #export_c #effects(all) { s[0].out_n = 0; }
 
 // ---- the mesh: a human pack's skin on the people rig
 
 // The pack's catalog (pack_human.coax has its lines): the body, each joint's bind position, the
 // materials and the pieces, a draw each.
-lab_catalog :: (s: [] Lab, text: string) #export_c {
+lab_catalog :: (s: [] Lab, text: string) #export_c #effects(all) {
   lab_start(s);
   s[0].draw_n = 0; s[0].water_n = 0; s[0].binds = 0; s[0].pack_body = -1; s[0].lod = 0;
   s[0].outfit_n = 0; s[0].outfit_base_n = 0;
@@ -895,7 +895,7 @@ lab_catalog :: (s: [] Lab, text: string) #export_c {
   mesh_ready(s);
 }
 // One of the pack's parts arrived (bytes > 0) or failed (0): the mesh draws once all four are in.
-lab_pack_part :: (s: [] Lab, i: int, bytes: int) #export_c {
+lab_pack_part :: (s: [] Lab, i: int, bytes: int) #export_c #effects(all) {
   if i < PACK_CATALOG || i >= PACK_CATALOG + PACK_PARTS { return; }
   if bytes <= 0 { s[0].pack_failed = true; s[0].mesh = false; return; }
   s[0].pack_in |= 1 << i;
@@ -905,9 +905,9 @@ mesh_ready :: (s: [] Lab) {
   s[0].mesh = !s[0].pack_failed && s[0].pack_in == (1 << PACK_PARTS) - 1 && s[0].draw_n > 0;
   if s[0].mesh { lab_palette(s); }
 }
-lab_draw_count :: (s: [] Lab) -> int #export_c { return ifx mesh_on(s) then s[0].lod_n[s[0].lod] else 0; }
-lab_draw_first :: (s: [] Lab) -> int #export_c { return s[0].lod_first[s[0].lod]; }
-lab_water_draws :: (s: [] Lab) -> int #export_c { return ifx mesh_on(s) && s[0].lod == 0 then s[0].water_n else 0; }
+lab_draw_count :: (s: [] Lab) -> int #export_c #effects(all) { return ifx mesh_on(s) then s[0].lod_n[s[0].lod] else 0; }
+lab_draw_first :: (s: [] Lab) -> int #export_c #effects(all) { return s[0].lod_first[s[0].lod]; }
+lab_water_draws :: (s: [] Lab) -> int #export_c #effects(all) { return ifx mesh_on(s) && s[0].lod == 0 then s[0].water_n else 0; }
 mh_word :: (line: string, from: int) -> int { e := from; while e < line.count && line[e] != ' ' { e += 1; } return e; }
 // An integer from at[0] (spaces before it skipped); at[0] is then past it, or -1 with none.
 mh_int :: (text: string, at: [] int) -> int {
@@ -1091,7 +1091,7 @@ mesh_uniforms :: (s: [] Lab, u: [] f32, mid: Point, reach: f32) {
 // rows (4 floats each: the move in metres and the normal word) into rows. cat is the whole catalog
 // (the block sits in it); work holds FACE_WORK floats and still FACE_JOINTS flags. True when the
 // rows changed.
-lab_face :: (s: [] Lab, cat: string, work: [] f32, still: [] bool, rows: [] f32) -> bool #export_c {
+lab_face :: (s: [] Lab, cat: string, work: [] f32, still: [] bool, rows: [] f32) -> bool #export_c #effects(all) {
   if s[0].face_state == 1 {
     s[0].face_state = -1;
     if s[0].face_off + s[0].face_len > cat.count || work.count < FACE_WORK || still.count < FACE_JOINTS { return false; }
@@ -1190,9 +1190,9 @@ face_name :: (s: [] Lab, blk: string) {
   for i: 0..<n.count { if i < 16 { b := n[i]; s[0].expr_name[i] = ifx b >= 'a' && b <= 'z' then b - 32 else b; s[0].expr_name_n = i + 1; } }
 }
 
-coaxial_lab_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_lab_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_lab_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_lab_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_lab_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_lab_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // ---- checks
 

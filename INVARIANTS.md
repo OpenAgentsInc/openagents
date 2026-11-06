@@ -1563,7 +1563,8 @@ and the touch stick drive the same session to the same states").
 
 ## Nominal integer domains require explicit conversion
 
-A nongeneric `struct @id` holds one concrete integer field named `value`.
+A `struct @id` holds one concrete integer field named `value`; phantom generic
+parameters preserve separate domains.
 Only the same nominal domain compares for equality; `@id(ordered)` also
 admits ordering. Construction and `.value` extraction are explicit. Integer
 arithmetic and numeric constraints never implicitly accept a wrapper.
@@ -1578,7 +1579,7 @@ Existing header schemas retain their identity. Device output refuses E0962.
 `aethyr/ids.coax` defines the shared seat, entity, character, item and
 owner-generation domains. Codec adapters construct/extract them; a decoded
 wrapper grants no liveness or permission. Entity liveness requires a
-canonical 32-bit handle and the live slot's generation. Handle construction
+canonical `Handle(Entity)` word and the live slot's generation. Handle construction
 refuses out-of-range components. Stable entity ID exhaustion refuses before
 reserving a slot. Checks: `coax/tests/nominal-ids.py`, compiler parser/checker
 checks and zero-survivor mutation gates, and `aethyr/entity.coax`'s decoded
@@ -5807,3 +5808,19 @@ each candidate upload. Its recorded dialogue and model-critic preferences
 grant no game-state authority or serving promotion. Fixed-prefix numerical
 equivalence, original parity, no-op/restoration and failures are recorded in
 `docs/verification/verse-villain-2026-11-02.md`.
+
+## Recoverable state changes have explicit boundaries
+
+`coax/checked-state.md` defines typed store/seat lifetimes, enforced source
+effects, in-memory rollback and persisted compatibility. A stale reference
+returns absence and cannot acquire the next occupant's authority. Generations
+retire before wrapping; saved references use stable IDs. Shared Everglade rules
+exclude clock, I/O and foreign effects through every call.
+
+A transaction commits on normal completion and undoes escaping Result errors
+or optional absence, including helper and aliased-view writes. Traps stay fatal.
+Refusal payloads cannot publish borrows or nominal references from aborted
+state. Service commits retain their own operation IDs and revision fences.
+Release compatibility compares retained production contracts and suppresses only
+the same pre-existing failures. No mechanism here closes general view regions
+or changes the spec's memory-safety claim.

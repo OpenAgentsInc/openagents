@@ -1,4 +1,4 @@
 // Independent observed physical HTTP/read-cancel receipt.
 #authority;
 #test "physical pack receipt requires full bytes, split header and actual remote close" {good:=[10]int.[512,5,1,1,1,1,1,0,1,8388608];#assert hppc_accept(good[..]);for i:0..<good.count{good[i]+=1;#assert !hppc_accept(good[..]);good[i]-=1;}#assert !hppc_accept(good[0..<9]);}
-hppc_accept :: (v:[]int)->bool #export_c {if v.count!=10{return false;}return v[0]==512&&v[1]==5&&v[2]==1&&v[3]==1&&v[4]==1&&v[5]==1&&v[6]==1&&v[7]==0&&v[8]==1&&v[9]==8388608;}
+hppc_accept :: (v:[]int)->bool #export_c #effects(all) {if v.count!=10{return false;}return v[0]==512&&v[1]==5&&v[2]==1&&v[3]==1&&v[4]==1&&v[5]==1&&v[6]==1&&v[7]==0&&v[8]==1&&v[9]==8388608;}

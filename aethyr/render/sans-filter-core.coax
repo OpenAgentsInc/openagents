@@ -40,18 +40,18 @@ RenderSansFilterCell :: struct {valid:bool;x0:s32;y0:s32;x1:s32;y1:s32;tx:f32;ty
  q:=render_sans_filter_bilinear(a,b,c,d,0.25,0.5);#assert q.x==5 && q.y==9 && q.z==13 && q.w==17;
  m:=render_sans_filter_interpolate(v4(2,4,6,8),v4(10,20,30,40),0.25);#assert m.x==4 && m.y==8 && m.z==12 && m.w==16;
 }
-render_sans_filter_width :: (level:s32)->s32 {return RSANS_FILTER_WIDTH>>level;}
-render_sans_filter_height :: (level:s32)->s32 {return RSANS_FILTER_HEIGHT>>level;}
-render_sans_filter_lod :: (width:s32,height:s32,lod:f32)->RenderSansFilterLOD {
+render_sans_filter_width :: (level:s32)->s32 #effects(all) {return RSANS_FILTER_WIDTH>>level;}
+render_sans_filter_height :: (level:s32)->s32 #effects(all) {return RSANS_FILTER_HEIGHT>>level;}
+render_sans_filter_lod :: (width:s32,height:s32,lod:f32)->RenderSansFilterLOD #effects(all) {
  if width!=render_sans_filter_width(0) || height!=render_sans_filter_height(0) || (lod-lod)!=0 {return RenderSansFilterLOD.{};}
  last:=cast(f32)(SANS_LEVELS-1);bounded:=clampf(lod,0,last);low:=cast(s32)floor(bounded);high:=cast(s32)fmin(cast(f32)(low+1),last);
  return RenderSansFilterLOD.{valid=true,low=low,high=high,amount=bounded-cast(f32)low};
 }
-render_sans_filter_cell :: (width:s32,height:s32,u:f32,v:f32)->RenderSansFilterCell {
+render_sans_filter_cell :: (width:s32,height:s32,u:f32,v:f32)->RenderSansFilterCell #effects(all) {
  if width<1 || width>render_sans_filter_width(0) || height<1 || height>render_sans_filter_height(0) || (u-u)!=0 || (v-v)!=0 {return RenderSansFilterCell.{};}
  fx:=clampf(u,0,1)*cast(f32)width-0.5f32;fy:=clampf(v,0,1)*cast(f32)height-0.5f32;
  x:=cast(int)floor(fx);y:=cast(int)floor(fy);
  return RenderSansFilterCell.{valid=true,x0=cast(s32)clamp_texel(x,cast(int)width),y0=cast(s32)clamp_texel(y,cast(int)height),x1=cast(s32)clamp_texel(x+1,cast(int)width),y1=cast(s32)clamp_texel(y+1,cast(int)height),tx=fx-cast(f32)x,ty=fy-cast(f32)y};
 }
-render_sans_filter_bilinear :: (a:V4,b:V4,c:V4,d:V4,tx:f32,ty:f32)->V4 {return mix4(mix4(a,b,tx),mix4(c,d,tx),ty);}
-render_sans_filter_interpolate :: (low:V4,high:V4,amount:f32)->V4 {return mix4(low,high,amount);}
+render_sans_filter_bilinear :: (a:V4,b:V4,c:V4,d:V4,tx:f32,ty:f32)->V4 #effects(all) {return mix4(mix4(a,b,tx),mix4(c,d,tx),ty);}
+render_sans_filter_interpolate :: (low:V4,high:V4,amount:f32)->V4 #effects(all) {return mix4(low,high,amount);}

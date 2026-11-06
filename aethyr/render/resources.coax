@@ -28,18 +28,18 @@ RenderBufferObserved :: struct {
 RenderBufferView :: struct {status:RenderResourceStatus;offset:u64;bytes:u64;elements:u64;}
 #load "tests/resources-checks.coax";
 
-render_device_limit :: (actual:int)->int {
+render_device_limit :: (actual:int)->int #effects(all) {
  // Same exact signed positive-part intersection used by raw host targets.
  positive:=actual&((actual>>63)^(-1));
  excess:=positive-target_limits.RenderFrameLimits.{}.max_width;
  return positive-(excess&((excess>>63)^(-1)));
 }
-render_viewport_desc :: (w:int,h:int,max_dimension:int)->RenderTargetDescriptor {
+render_viewport_desc :: (w:int,h:int,max_dimension:int)->RenderTargetDescriptor #effects(all) {
  if w<1 || h<1 || max_dimension<1 || max_dimension>16384 {return RenderTargetDescriptor.{};}
  if w>max_dimension || h>max_dimension {return RenderTargetDescriptor.{status=RenderResourceStatus.capacity};}
  return RenderTargetDescriptor.{status=RenderResourceStatus.ok,width=w,height=h,format=RenderTextureFormat.rgba16f};
 }
-render_target_desc_with_limit :: (target:passes.RenderTarget,w:int,h:int,coarse:bool,screen_format:RenderTextureFormat,max_dimension:int)->RenderTargetDescriptor {
+render_target_desc_with_limit :: (target:passes.RenderTarget,w:int,h:int,coarse:bool,screen_format:RenderTextureFormat,max_dimension:int)->RenderTargetDescriptor #effects(all) {
  r:=render_viewport_desc(w,h,max_dimension);if r.status!=RenderResourceStatus.ok {return r;}
  if target==passes.RenderTarget.screen {
   if screen_format==RenderTextureFormat.depth32 || screen_format==RenderTextureFormat.invalid {return RenderTargetDescriptor.{};}
@@ -51,14 +51,14 @@ render_target_desc_with_limit :: (target:passes.RenderTarget,w:int,h:int,coarse:
  else if target!=passes.RenderTarget.light && target!=passes.RenderTarget.aux && target!=passes.RenderTarget.water_light {return RenderTargetDescriptor.{};}
  return r;
 }
-render_sampler_desc :: (name:string)->RenderSamplerDescriptor {
+render_sampler_desc :: (name:string)->RenderSamplerDescriptor #effects(all) {
  if name!="sheet" && name!="shadow_cmp" && name!="bloom_lin" && name!="post_lin" && name!="sans_sampler" && name!="media_sampler" {return RenderSamplerDescriptor.{};}
  r:=RenderSamplerDescriptor.{status=RenderResourceStatus.ok,min_linear=true,mag_linear=true,logical_anisotropy=1,physical_anisotropy=1};
  if name=="sheet" {r.address_u=RenderSamplerAddress.repeat;r.address_v=RenderSamplerAddress.repeat;r.mip_linear=true;r.logical_anisotropy=8;}
  if name=="shadow_cmp" {r.compare=RenderSamplerCompare.less;}
  if name=="sans_sampler" {r.mip_linear=true;}return r;
 }
-render_texture_layout :: (binding:bindings.RenderBinding)->RenderTextureLayout {
+render_texture_layout :: (binding:bindings.RenderBinding)->RenderTextureLayout #effects(all) {
  b:=[1]bindings.RenderBinding.[binding];if bindings.render_bindings(b[..])!=bindings.RenderBindingStatus.ok {return RenderTextureLayout.{};}
  r:=RenderTextureLayout.{status=RenderResourceStatus.ok};
  if binding.kind==bindings.RenderResourceKind.image2d {if binding.name=="water_scene" {r.sample=RenderTextureSample.unfilterable;}}
@@ -71,7 +71,7 @@ render_texture_layout :: (binding:bindings.RenderBinding)->RenderTextureLayout {
 // prefix. zero_initialized attests that the entire GPU allocation was cleared.
 // Legacy views include their historical16-byte minimum/padding, not pooled GPU
 // tail capacity. The raw CPU span remains separate for upload-range checks.
-render_buffer_view :: (binding:bindings.RenderBinding,mode:RenderBufferMode,o:RenderBufferObserved)->RenderBufferView {
+render_buffer_view :: (binding:bindings.RenderBinding,mode:RenderBufferMode,o:RenderBufferObserved)->RenderBufferView #effects(all) {
  b:=[1]bindings.RenderBinding.[binding];if bindings.render_bindings(b[..])!=bindings.RenderBindingStatus.ok {return RenderBufferView.{};}
  alignment_ok:=false;for bit:2..<17 {alignment_ok=alignment_ok || o.alignment==(cast(u64)1<<cast(u32)bit);}
  if !alignment_ok || o.offset%o.alignment!=0 || o.upload_bytes%4!=0 || o.initialized_highwater>o.gpu_bytes {return RenderBufferView.{};}
@@ -94,6 +94,6 @@ render_buffer_view :: (binding:bindings.RenderBinding,mode:RenderBufferMode,o:Re
  return RenderBufferView.{status=RenderResourceStatus.ok,offset=o.offset,bytes=bytes,elements=bytes/cast(u64)binding.stride};
 }
 
-render_target_desc :: (target:passes.RenderTarget,w:int,h:int,coarse:bool,screen_format:RenderTextureFormat)->RenderTargetDescriptor {
+render_target_desc :: (target:passes.RenderTarget,w:int,h:int,coarse:bool,screen_format:RenderTextureFormat)->RenderTargetDescriptor #effects(all) {
  return render_target_desc_with_limit(target,w,h,coarse,screen_format,16384);
 }

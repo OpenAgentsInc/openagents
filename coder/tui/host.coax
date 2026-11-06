@@ -40,9 +40,9 @@
 #load "../../apps/openagents-cli/relay.coax";
 #load "../../coax/lib/nostr/nip19-core.coax";
 
-cxterm_write :: (s: [] u8) -> int #foreign;
-cxproc_wall_us :: () -> int #foreign;
-cxproc_pid_alive :: (pid: int) -> int #foreign;
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+cxproc_wall_us :: () -> int #foreign #effects(all);
+cxproc_pid_alive :: (pid: int) -> int #foreign #effects(all);
 
 HS_RELAY :: "wss://relay.openagents.com";
 HS_RETAINED :: 16; HS_REPLY_MAX :: 16384;
@@ -880,7 +880,7 @@ hs_cmd_call :: (args: [] Args, op_name: string) -> int {
 
 HS_USAGE :: "usage: coder host [serve] [--relay URL] [--engine claude|codex|cursor|micro|psionic|echo] [--for SECONDS]\n       coder host list [--json] | allow ID | deny ID | forget ID | key\n       coder host call OP --host KEY --browser-key FILE [--label L] [--request ID] [--text T --realm R] [--thread T] [--after N] [--grant G --epoch E]\nA browser on openagents.com pairs with this computer over the relay (wss://relay.openagents.com, or $OPENAGENTS_NIP_HOST_RELAY);\nonly you allow it, here. An allowed browser runs realm jobs on your engine: read access and the realm tools, no shell, no writes.";
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   args_b: [1] Args; args := args_b[..];
   if !args_load(args) { tool_errln("coder host: bad arguments"); return 2; }
   // the arguments as coder.sh passes them: host VERB ...

@@ -77,10 +77,10 @@ N15_P1 :: "{\"id\":\"p1\",\"stall_id\":\"s1\",\"name\":\"Mug\",\"images\":[\"htt
 N15_P2 :: "{\"id\":\"p2\",\"stall_id\":\"s1\",\"name\":\"Ebook\",\"currency\":\"BTC\",\"price\":0.0001,\"quantity\":null}";
 N15_ORDER_TEXT :: "{\"id\":\"o1\",\"type\":0,\"name\":\"Bob\",\"address\":\"1 Main St\",\"message\":\"hi\",\"contact\":{\"nostr\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"email\":\"b@x\"},\"items\":[{\"product_id\":\"p1\",\"quantity\":2},{\"product_id\":\"p2\",\"quantity\":1}],\"shipping_id\":\"eu\"}";
 
-n15_raw :: (text:string,o:N15Option)->string {return text[o.from..<o.to];}
-n15_all :: (out:[]N15Product) {out[0]=n15_product_parse(N15_P1);out[1]=n15_product_parse(N15_P2);}
+n15_raw :: (text:string,o:N15Option)->string #effects(all) {return text[o.from..<o.to];}
+n15_all :: (out:[]N15Product) #effects(all) {out[0]=n15_product_parse(N15_P1);out[1]=n15_product_parse(N15_P2);}
 // text with the first from replaced by to.
-n15_swap :: (text:string,from:string,to:string,out:[]u8)->string {
+n15_swap :: (text:string,from:string,to:string,out:[]u8)->string #effects(all) {
   for i:0..<text.count-from.count+1 {
     if text[i..<i+from.count]==from {
       n:=json_raw(out,0,text[0..<i]);n=json_raw(out,n,to);n=json_raw(out,n,text[i+from.count..<text.count]);
@@ -370,28 +370,28 @@ n15_swap :: (text:string,from:string,to:string,out:[]u8)->string {
   t=n15_total(s,other[..],o);#assert t.status==N15_TOTAL_OK && t.goods==10000 && t.shipping==2000;
 }
 
-n15_err :: (v:N99Value)->int {return ifx v.error==NT_LIMIT then N15_LIMIT else N15_FIELD;}
+n15_err :: (v:N99Value)->int #effects(all) {return ifx v.error==NT_LIMIT then N15_LIMIT else N15_FIELD;}
 // The string value just read, decoded.
-n15_string :: (j:[]Json,tok:int)->N99Value {
+n15_string :: (j:[]Json,tok:int)->N99Value #effects(all) {
   r:N99Value;if tok!=JSON_STRING {return r;}
   n:=json_unescape(json_text(j),r.v.b[..]);
   if n<0 {r.error=NT_LIMIT;return r;}
   r.v.n=n;r.error=NT_OK;return r;
 }
 // The number value just read, as a plain decimal.
-n15_number :: (j:[]Json,tok:int)->N99Decimal {
+n15_number :: (j:[]Json,tok:int)->N99Decimal #effects(all) {
   d:N99Decimal;if tok!=JSON_NUMBER {return d;}
   return n99_decimal(json_text(j));
 }
 // The integer value just read, 0 or more, or -1.
-n15_int :: (j:[]Json,tok:int)->int {
+n15_int :: (j:[]Json,tok:int)->int #effects(all) {
   if tok!=JSON_NUMBER {return -1;}
   v:=json_int(json_text(j));
   if !v.ok || v.value<0 {return -1;}
   return v.value;
 }
 // Opens text as one JSON object without duplicate keys.
-n15_start :: (j:[]Json,text:string)->int {
+n15_start :: (j:[]Json,text:string)->int #effects(all) {
   a:=ja_admit(text,ja_policy(0),text.count,0);
   if a==JA_DUPLICATE {return N15_DUPLICATE;}
   if a!=JA_OK {return N15_JSON;}
@@ -399,9 +399,9 @@ n15_start :: (j:[]Json,text:string)->int {
   if json_next(j)!=JSON_OBJECT {return N15_JSON;}
   return N15_OK;
 }
-n15_same :: (a:N32Text,b:N32Text)->bool {x:=a;y:=b;return cast(string)x.b[0..<x.n]==cast(string)y.b[0..<y.n];}
+n15_same :: (a:N32Text,b:N32Text)->bool #effects(all) {x:=a;y:=b;return cast(string)x.b[0..<x.n]==cast(string)y.b[0..<y.n];}
 // A shipping zone, its { just read: id and cost; other fields skipped.
-n15_zone :: (j:[]Json)->N15ZoneRead {
+n15_zone :: (j:[]Json)->N15ZoneRead #effects(all) {
   r:N15ZoneRead;has_id:=false;has_cost:=false;
   t:=json_next(j);
   while t==JSON_STRING {
@@ -419,7 +419,7 @@ n15_zone :: (j:[]Json)->N15ZoneRead {
   return r;
 }
 // An array of shipping zones, its first token read, into out.
-n15_zones :: (j:[]Json,tok:int,out:[]N15Zone)->N15Count {
+n15_zones :: (j:[]Json,tok:int,out:[]N15Zone)->N15Count #effects(all) {
   c:N15Count;if tok!=JSON_ARRAY {c.status=N15_FIELD;return c;}
   t:=json_next(j);
   while t!=JSON_ARRAY_END {
@@ -433,25 +433,25 @@ n15_zones :: (j:[]Json,tok:int,out:[]N15Zone)->N15Count {
 }
 // The event's content decoded into buf: its length, or -1 for a forged
 // record, -2 when buf is too small.
-n15_content :: (e:NostrEvent,buf:[]u8)->int {
+n15_content :: (e:NostrEvent,buf:[]u8)->int #effects(all) {
   if e.error!=NE_OK || e.content_from<0 || e.content_to>e.original.count || e.content_from>e.content_to {return -1;}
   n:=json_unescape(e.original[e.content_from..<e.content_to],buf);
   if n<0 {return -2;}
   return n;
 }
-n15_d_is :: (e:NostrEvent,id:N32Text)->bool {
+n15_d_is :: (e:NostrEvent,id:N32Text)->bool #effects(all) {
   d:=nostr_tag_d(e);own:=id;
   return d.error==NT_OK && cast(string)d.d[0..<d.d_n]==cast(string)own.b[0..<own.n];
 }
 // A parsed event with these tags and this content, for checks.
-n15_event :: (kind:int,tags:string,content:string,out:[]u8)->NostrEvent {
+n15_event :: (kind:int,tags:string,content:string,out:[]u8)->NostrEvent #effects(all) {
   n:=json_raw(out,0,tags);n=json_write_string(out,n,content);
   e:NostrEvent;e.error=NE_OK;e.original=cast(string)out[0..<n];e.tags_to=tags.count;e.content_from=tags.count+1;e.content_to=n-1;e.kind=kind;return e;
 }
 
 // book:begin stall
 // A stall's content: id, name and currency, and its shipping zones.
-n15_stall_parse :: (text:string)->N15Stall {
+n15_stall_parse :: (text:string)->N15Stall #effects(all) {
   s:N15Stall;j:[1]Json;st:=n15_start(j[..],text);if st!=N15_OK {s.status=st;return s;}
   has:[3]bool;
   t:=json_next(j[..]);
@@ -473,7 +473,7 @@ n15_stall_parse :: (text:string)->N15Stall {
   s.status=N15_OK;return s;
 }
 // A kind 30017 event: its content, with the d tag the same as the id.
-n15_stall :: (e:NostrEvent,buf:[]u8)->N15Stall {
+n15_stall :: (e:NostrEvent,buf:[]u8)->N15Stall #effects(all) {
   s:N15Stall;n:=n15_content(e,buf);if n== -1 {return s;}
   if e.kind!=N15_KIND_STALL {s.status=N15_KIND;return s;}
   if n<0 {s.status=N15_LIMIT;return s;}
@@ -486,7 +486,7 @@ n15_stall :: (e:NostrEvent,buf:[]u8)->N15Stall {
 // book:begin product
 // A product's content: id, stall, name, currency, price, quantity (null:
 // unlimited) and extra shipping costs per zone.
-n15_product_parse :: (text:string)->N15Product {
+n15_product_parse :: (text:string)->N15Product #effects(all) {
   p:N15Product;j:[1]Json;st:=n15_start(j[..],text);if st!=N15_OK {p.status=st;return p;}
   has:[5]bool;
   t:=json_next(j[..]);
@@ -515,7 +515,7 @@ n15_product_parse :: (text:string)->N15Product {
   p.status=N15_OK;return p;
 }
 // A kind 30018 event: its content, with the d tag the same as the id.
-n15_product :: (e:NostrEvent,buf:[]u8)->N15Product {
+n15_product :: (e:NostrEvent,buf:[]u8)->N15Product #effects(all) {
   p:N15Product;n:=n15_content(e,buf);if n== -1 {return p;}
   if e.kind!=N15_KIND_PRODUCT {p.status=N15_KIND;return p;}
   if n<0 {p.status=N15_LIMIT;return p;}
@@ -527,7 +527,7 @@ n15_product :: (e:NostrEvent,buf:[]u8)->N15Product {
 
 // book:begin checkout
 // A checkout message's type: 0, 1 or 2, or -1.
-n15_type :: (text:string)->int {
+n15_type :: (text:string)->int #effects(all) {
   j:[1]Json;if n15_start(j[..],text)!=N15_OK {return -1;}
   t:=json_next(j[..]);
   while t==JSON_STRING {
@@ -542,7 +542,7 @@ n15_type :: (text:string)->int {
 }
 // A customer's new order (type 0): id, contact key, address, items and the
 // shipping zone. A product named twice is refused.
-n15_order_parse :: (text:string)->N15Order {
+n15_order_parse :: (text:string)->N15Order #effects(all) {
   o:N15Order;j:[1]Json;st:=n15_start(j[..],text);if st!=N15_OK {o.status=st;return o;}
   typed:=false;
   t:=json_next(j[..]);
@@ -598,13 +598,13 @@ n15_order_parse :: (text:string)->N15Order {
 // A merchant's payment request (type 1): the order id and its payment
 // options, each marked with its rail. Options on another rail are kept
 // and never chosen.
-n15_rail :: (type:string)->int {
+n15_rail :: (type:string)->int #effects(all) {
   if type=="btc" {return N15_RAIL_ONCHAIN;}
   if type=="ln" {return N15_RAIL_LIGHTNING;}
   if type=="lnurl" {return N15_RAIL_LNURL;}
   return N15_RAIL_NONE;
 }
-n15_request_parse :: (text:string)->N15Request {
+n15_request_parse :: (text:string)->N15Request #effects(all) {
   r:N15Request;j:[1]Json;st:=n15_start(j[..],text);if st!=N15_OK {r.status=st;return r;}
   typed:=false;
   t:=json_next(j[..]);
@@ -647,13 +647,13 @@ n15_request_parse :: (text:string)->N15Request {
   r.status=N15_OK;return r;
 }
 // The first option on a Bitcoin rail, or -1.
-n15_choice :: (r:N15Request)->int {
+n15_choice :: (r:N15Request)->int #effects(all) {
   if r.status!=N15_OK {return -1;}
   for k:0..<r.options_n {if r.options[k].rail!=N15_RAIL_NONE {return k;}}
   return -1;
 }
 // A merchant's status update (type 2): paid and shipped.
-n15_update_parse :: (text:string)->N15Update {
+n15_update_parse :: (text:string)->N15Update #effects(all) {
   u:N15Update;j:[1]Json;st:=n15_start(j[..],text);if st!=N15_OK {u.status=st;return u;}
   typed:=false;has:[2]bool;
   t:=json_next(j[..]);
@@ -679,10 +679,10 @@ n15_update_parse :: (text:string)->N15Update {
 // book:end checkout
 
 // book:begin write
-n15_put :: (out:[]u8,at:int,t:N32Text)->int {own:=t;return json_write_string(out,at,cast(string)own.b[0..<own.n]);}
+n15_put :: (out:[]u8,at:int,t:N32Text)->int #effects(all) {own:=t;return json_write_string(out,at,cast(string)own.b[0..<own.n]);}
 // A new order from a record that reads: N15_W_SHAPE when it doesn't,
 // N15_W_FULL when out is too small.
-n15_write_order :: (out:[]u8,o:N15Order)->int {
+n15_write_order :: (out:[]u8,o:N15Order)->int #effects(all) {
   if o.status!=N15_OK {return N15_W_SHAPE;}
   n:=json_raw(out,0,"{\"id\":");n=n15_put(out,n,o.id);n=json_raw(out,n,",\"type\":0");
   if o.address.n>0 {n=json_raw(out,n,",\"address\":");n=n15_put(out,n,o.address);}
@@ -698,7 +698,7 @@ n15_write_order :: (out:[]u8,o:N15Order)->int {
 }
 // A payment request offering only Bitcoin rails: N15_W_RAIL when any type
 // is not btc, ln or lnurl.
-n15_write_request :: (out:[]u8,id:string,message:string,types:[]string,links:[]string)->int {
+n15_write_request :: (out:[]u8,id:string,message:string,types:[]string,links:[]string)->int #effects(all) {
   if id.count==0 || types.count==0 || types.count!=links.count || types.count>N15_MAX_OPTIONS {return N15_W_SHAPE;}
   for k:0..<types.count {if n15_rail(types[k])==N15_RAIL_NONE {return N15_W_RAIL;}}
   n:=json_raw(out,0,"{\"id\":");n=json_write_string(out,n,id);n=json_raw(out,n,",\"type\":1");
@@ -711,7 +711,7 @@ n15_write_request :: (out:[]u8,id:string,message:string,types:[]string,links:[]s
   }
   return json_raw(out,n,"]}");
 }
-n15_write_update :: (out:[]u8,id:string,message:string,paid:bool,shipped:bool)->int {
+n15_write_update :: (out:[]u8,id:string,message:string,paid:bool,shipped:bool)->int #effects(all) {
   if id.count==0 {return N15_W_SHAPE;}
   n:=json_raw(out,0,"{\"id\":");n=json_write_string(out,n,id);
   n=json_raw(out,n,",\"type\":2,\"message\":");n=json_write_string(out,n,message);
@@ -726,7 +726,7 @@ n15_write_update :: (out:[]u8,id:string,message:string,paid:bool,shipped:bool)->
 // zone's base shipping cost, and each item's extra cost for that zone
 // times its quantity. Only when the stall and every product are priced in
 // BTC or sats; no exchange rate is ever used.
-n15_total :: (s:N15Stall,products:[]N15Product,o:N15Order)->N15Total {
+n15_total :: (s:N15Stall,products:[]N15Product,o:N15Order)->N15Total #effects(all) {
   r:N15Total;
   if s.status!=N15_OK || o.status!=N15_OK {return r;}
   r.status=N15_TOTAL_RATE;if s.unit==N99_UNIT_OTHER {return r;}

@@ -17,13 +17,13 @@
 #load "../host/action-packet.coax";
 #authority;
 
-aethyr_native_resource_limit :: ()->int #export_c {return RENDER_RESOURCES;}
-aethyr_native_uploads :: (rn_limits:RenderFrameLimits,rn_uploads:[]RenderUpload)->RenderFrameResult #export_c {return render_uploads_admit(rn_limits,rn_uploads);}
-aethyr_native_span :: (rn_address:u64,rn_bytes:u64,rn_base:u64,rn_capacity:u64)->bool #export_c {return render_host_bytes(rn_address,rn_base,rn_capacity,rn_bytes).status==RenderFrameStatus.ok;}
-aethyr_native_resolve_buffer :: (rn_profile:int,rn_set:int,rn_resource:int,rn_named:[]RenderHostNamedBuffer,rn_generated:RenderHostNamedBuffer)->RenderHostBufferReceipt #export_c {
+aethyr_native_resource_limit :: ()->int #export_c #effects(all) {return RENDER_RESOURCES;}
+aethyr_native_uploads :: (rn_limits:RenderFrameLimits,rn_uploads:[]RenderUpload)->RenderFrameResult #export_c #effects(all) {return render_uploads_admit(rn_limits,rn_uploads);}
+aethyr_native_span :: (rn_address:u64,rn_bytes:u64,rn_base:u64,rn_capacity:u64)->bool #export_c #effects(all) {return render_host_bytes(rn_address,rn_base,rn_capacity,rn_bytes).status==RenderFrameStatus.ok;}
+aethyr_native_resolve_buffer :: (rn_profile:int,rn_set:int,rn_resource:int,rn_named:[]RenderHostNamedBuffer,rn_generated:RenderHostNamedBuffer)->RenderHostBufferReceipt #export_c #effects(all) {
   return render_host_resolve_buffer(rn_profile,rn_set,rn_resource,rn_named,rn_generated);
 }
-aethyr_native_geometry_buffers :: (rn_profile:int,rn_named:[]RenderHostNamedBuffer,rn_out:[]RenderGeometryBuffer)->RenderHostGeometryBuffers #export_c {
+aethyr_native_geometry_buffers :: (rn_profile:int,rn_named:[]RenderHostNamedBuffer,rn_out:[]RenderGeometryBuffer)->RenderHostGeometryBuffers #export_c #effects(all) {
   return render_host_geometry_buffers(rn_profile,rn_named,rn_out);
 }
 

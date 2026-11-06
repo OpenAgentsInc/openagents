@@ -16,7 +16,7 @@ DC_UNKNOWN :: -1; DC_ELSEWHERE :: -2; DC_NO_FIXTURE :: -3;
 // The named backend on this system. "" is the system's own: PipeWire on
 // Linux, CoreAudio on macOS. The recorded-audio backend exists only when a
 // test names its fixture (OPENAGENTS_DICTATE_FIXTURE); it never opens a device.
-dc_capture :: (name: string, mac: bool, fixture: bool) -> int {
+dc_capture :: (name: string, mac: bool, fixture: bool) -> int #effects(all) {
   if name == "fixture" { return ifx fixture then DC_FIXTURE else DC_NO_FIXTURE; }
   if name == "" { return ifx mac then DC_COREAUDIO else DC_PIPEWIRE; }
   if name == "coreaudio" { return ifx mac then DC_COREAUDIO else DC_ELSEWHERE; }
@@ -25,7 +25,7 @@ dc_capture :: (name: string, mac: bool, fixture: bool) -> int {
   return ifx mac then DC_ELSEWHERE else linux;
 }
 
-dc_capture_name :: (kind: int) -> string {
+dc_capture_name :: (kind: int) -> string #effects(all) {
   if kind == DC_PIPEWIRE { return "pipewire"; }
   if kind == DC_PULSE { return "pulse"; }
   if kind == DC_ALSA { return "alsa"; }
@@ -54,7 +54,7 @@ dc_capture_name :: (kind: int) -> string {
 // The CPU is slow there (8 to 15 times the audio's length) and is used only
 // when named. A named device is never swapped for the other, so a Linux
 // computer without an NVIDIA GPU refuses the default and says so.
-dc_device :: (name: string) -> int {
+dc_device :: (name: string) -> int #effects(all) {
   if name == "gpu" || name == "" { return 1; }
   if name == "cpu" { return 0; }
   return -1;
@@ -70,7 +70,7 @@ dc_device :: (name: string) -> int {
 // apps/shared/dictation-text.coax's spoken symbols, casing and filler rules,
 // and JSON also carries the raw transcript. Nothing else is a format.
 DC_PLAIN :: 0; DC_CODE :: 1;
-dc_format :: (name: string) -> int {
+dc_format :: (name: string) -> int #effects(all) {
   if name == "" || name == "plain" { return DC_PLAIN; }
   if name == "code" { return DC_CODE; }
   return -1;
@@ -84,7 +84,7 @@ dc_format :: (name: string) -> int {
 // Seconds of listening before dictation stops by itself: 1 through 60 (the
 // controller's complete capture cap). "" is the whole 60.
 DC_SECONDS :: 60;
-dc_seconds :: (text: string) -> int {
+dc_seconds :: (text: string) -> int #effects(all) {
   if text == "" { return DC_SECONDS; }
   if text.count > 2 { return -1; }
   v := 0;
@@ -101,7 +101,7 @@ dc_seconds :: (text: string) -> int {
 // ---- input device names ----
 // An explicit input is a CoreAudio UID or a recorder's target name: printable,
 // at most 256 bytes, and never a flag. "" is the system default.
-dc_input :: (name: string) -> bool {
+dc_input :: (name: string) -> bool #effects(all) {
   if name.count > 256 || (name.count > 0 && name[0] == '-') { return false; }
   for c: name { if c < 32 || c == 127 { return false; } }
   return true;
@@ -123,7 +123,7 @@ dc_input :: (name: string) -> bool {
 // parec and arecord fail on a missing device by themselves). Returns argc,
 // or 0 for a backend with no recorder program.
 DC_RATE :: 48000; DC_ARGS :: 17;
-dc_recorder :: (kind: int, input: string, out: [] string) -> int {
+dc_recorder :: (kind: int, input: string, out: [] string) -> int #effects(all) {
   if out.count < DC_ARGS { return 0; }
   n := 0;
   if kind == DC_PIPEWIRE {
@@ -174,7 +174,7 @@ dc_recorder :: (kind: int, input: string, out: [] string) -> int {
 // and other keys are never commands.
 DC_KEY_NONE :: 0; DC_KEY_START :: 1; DC_KEY_STOP :: 2; DC_KEY_CANCEL :: 3;
 DC_POLL_SIGNAL :: -3;
-dc_key :: (byte: int, started: bool) -> int {
+dc_key :: (byte: int, started: bool) -> int #effects(all) {
   if byte == 10 || byte == 13 { return ifx started then DC_KEY_STOP else DC_KEY_START; }
   if byte == 27 || byte == 3 || byte == DC_POLL_SIGNAL { return DC_KEY_CANCEL; }
   return DC_KEY_NONE;
@@ -192,7 +192,7 @@ dc_key :: (byte: int, started: bool) -> int {
 // more than 1 s after that; otherwise the input has failed (a missing
 // device, a stalled recorder), not gone silent: silence still arrives.
 DC_FIRST_AUDIO_MS :: 2000; DC_GAP_MS :: 1000;
-dc_input_stalled :: (now: int, opened: int, last_audio: int, any: bool) -> bool {
+dc_input_stalled :: (now: int, opened: int, last_audio: int, any: bool) -> bool #effects(all) {
   if !any { return now - opened > DC_FIRST_AUDIO_MS; }
   return now - last_audio > DC_GAP_MS;
 }
@@ -210,7 +210,7 @@ DC_FINAL :: 0; DC_NO_SPEECH :: 1; DC_CANCELLED :: 2; DC_ERROR :: 3;
 DC_E_PERMISSION :: 1; DC_E_MODEL :: 2; DC_E_CAPTURE :: 3; DC_E_RECOGNITION :: 4; DC_E_FORMAT :: 5;
 DC_E_DEVICE :: 6; DC_E_PROGRAM :: 7; DC_E_MODEL_MISSING :: 8; DC_E_TOO_LONG :: 9;
 
-dc_error_name :: (e: int) -> string {
+dc_error_name :: (e: int) -> string #effects(all) {
   if e == DC_E_PERMISSION { return "permission"; }
   if e == DC_E_MODEL { return "model"; }
   if e == DC_E_RECOGNITION { return "recognition"; }
@@ -224,7 +224,7 @@ dc_error_name :: (e: int) -> string {
 
 DC_EXIT_OK :: 0; DC_EXIT_FAIL :: 1; DC_EXIT_FORBIDDEN :: 4; DC_EXIT_NOT_FOUND :: 6;
 DC_EXIT_MISSING :: 8; DC_EXIT_NO_SPEECH :: 9; DC_EXIT_CANCELLED :: 130;
-dc_exit :: (result: int, e: int) -> int {
+dc_exit :: (result: int, e: int) -> int #effects(all) {
   if result == DC_FINAL { return DC_EXIT_OK; }
   if result == DC_NO_SPEECH { return DC_EXIT_NO_SPEECH; }
   if result == DC_CANCELLED { return DC_EXIT_CANCELLED; }
@@ -248,7 +248,7 @@ dc_exit :: (result: int, e: int) -> int {
 // success is final text; silence and a tap are no speech; a cancel is
 // cancelled; an error is an error. -1 while it is still listening or the
 // clip is waiting for recognition (no outcome, or the duration cap).
-dc_result :: (outcome: int) -> int {
+dc_result :: (outcome: int) -> int #effects(all) {
   if outcome == 5 { return DC_FINAL; }
   if outcome == 1 || outcome == 2 { return DC_NO_SPEECH; }
   if outcome == 3 { return DC_CANCELLED; }
@@ -256,7 +256,7 @@ dc_result :: (outcome: int) -> int {
   return -1;
 }
 // No speech says why: a hold under 300 ms, or nothing loud and voiced.
-dc_no_speech_reason :: (outcome: int) -> string { return ifx outcome == 1 then "too_short" else "silence"; }
+dc_no_speech_reason :: (outcome: int) -> string #effects(all) { return ifx outcome == 1 then "too_short" else "silence"; }
 
 #test "controller outcomes map to the four endings" {
   wants := [8] int.[-1, 1, 1, 2, 3, 0, -1, -1];

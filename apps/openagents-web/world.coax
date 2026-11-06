@@ -16,7 +16,7 @@ WorldOffers :: struct {
   summary_at: int; summary_n: int;
 }
 
-world_id_ok :: (s: string) -> bool #export_c {
+world_id_ok :: (s: string) -> bool #export_c #effects(all) {
   if s.count < 1 || s.count > 64 { return false; }
   for i: 0..<s.count {
     c := s[i];
@@ -32,7 +32,7 @@ world_put :: (out: [] u8, at: int, s: string) -> int {
   return at + s.count;
 }
 
-world_url :: (world: string, what: int, offer: string, out: [] u8) -> int #export_c {
+world_url :: (world: string, what: int, offer: string, out: [] u8) -> int #export_c #effects(all) {
   if !world_id_ok(world) { return -1; }
   o := world_put(out, 0, ifx what == WORLD_LOG then "/api/playtest/log/" else ifx what >= WORLD_CHANGE then "/api/playtest/change/" else "/api/playtest/world/");
   o = world_put(out, o, world);
@@ -108,7 +108,7 @@ world_field :: (t: string, obj: int, key: string, at: [] int) -> int {
 
 // The offers waiting in a log answer ("STATUS\n" and the list, newest
 // first): how many, and the newest one's id, who offered it and what it does.
-world_offers :: (answer: string) -> WorldOffers #export_c {
+world_offers :: (answer: string) -> WorldOffers #export_c #effects(all) {
   w: WorldOffers;
   if answer.count < 5 || answer[0..<4] != "200\n" { return w; }
   i := world_space(answer, 4);
@@ -138,7 +138,7 @@ world_offers :: (answer: string) -> WorldOffers #export_c {
 }
 
 // The owner's answer: whether this player may act as the world's owner.
-world_you :: (answer: string) -> bool #export_c {
+world_you :: (answer: string) -> bool #export_c #effects(all) {
   if answer.count < 5 || answer[0..<4] != "200\n" { return false; }
   t := answer[4..<answer.count];
   at: [1] int;
@@ -148,7 +148,7 @@ world_you :: (answer: string) -> bool #export_c {
 
 // A JSON string's text for the HUD: \" \\ \/ and \n as themselves, other
 // escapes dropped.
-world_unescape :: (s: string, out: [] u8) -> int #export_c {
+world_unescape :: (s: string, out: [] u8) -> int #export_c #effects(all) {
   o := 0; i := 0;
   while i < s.count && o < out.count {
     c := s[i];
@@ -165,7 +165,7 @@ world_unescape :: (s: string, out: [] u8) -> int #export_c {
 }
 
 // The published world as a save: slots like the server's progress save.
-world_from_server :: (answer: string, bytes: [] u8) -> SaveSlots #export_c {
+world_from_server :: (answer: string, bytes: [] u8) -> SaveSlots #export_c #effects(all) {
   s: SaveSlots;
   if answer.count < 4 || answer[0..<4] != "200\n" { return s; }
   body := answer[4..<answer.count];
@@ -178,7 +178,7 @@ world_from_server :: (answer: string, bytes: [] u8) -> SaveSlots #export_c {
 
 // The body that publishes the house (container c, n bytes, made at) or
 // offers it as a change: {"doc", "summary"} and, for an offer, the delta.
-world_body :: (c: [] u8, n: int, at: f64, summary: string, offer: bool, out: [] u8) -> int #export_c {
+world_body :: (c: [] u8, n: int, at: f64, summary: string, offer: bool, out: [] u8) -> int #export_c #effects(all) {
   o := world_put(out, 0, "{\"doc\":{\"kind\":\"verse.haunt.save\",\"bytes\":\"");
   if o < 0 { return -1; }
   o = save_b64(c, n, out, o);

@@ -33,13 +33,13 @@
 #load "verse-pylon-policy.coax";
 #load "verse-agents.coax";
 
-cxtool_out_flush :: () -> int #foreign;
-cxsock_host_push :: (byte: int) -> int #foreign;
-cxsock_connect_unix :: (timeout_ms: int) -> int #foreign;
-cxsock_write :: (h: int, byte: int) -> int #foreign;
-cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
-cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
-cxsock_close :: (h: int) -> int #foreign;
+cxtool_out_flush :: () -> int #foreign #effects(all);
+cxsock_host_push :: (byte: int) -> int #foreign #effects(all);
+cxsock_connect_unix :: (timeout_ms: int) -> int #foreign #effects(all);
+cxsock_write :: (h: int, byte: int) -> int #foreign #effects(all);
+cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
+cxsock_read :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
+cxsock_close :: (h: int) -> int #foreign #effects(all);
 // The session's log is its stdout, kept by the login (verse-session.log): each line written out at
 // once, so a reboot or a kill doesn't lose the last of them.
 vs_flush :: () { r := cxtool_out_flush(); }
@@ -541,7 +541,7 @@ vs_num :: (n: int, out: [] u8) -> string {
 }
 #test "numbers" { b: [24] u8; #assert vs_num(0, b[..]) == "0" && vs_num(31536000, b[..]) == "31536000"; }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   usage := "usage: verse-session --dir DIR [--first REALM] [--tty N] [--leave-to VT] [--state DIR] [--once] [--window | --fullscreen] [--desk-size WxH] [--run DIR] [--cli PATH] [--voice-source WAV] [--pylon [--pylon-model M] [--pylon-source DIR]]";
   if !args_load(a[..]) { tool_errln(usage); return 2; }

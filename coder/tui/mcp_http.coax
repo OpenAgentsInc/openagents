@@ -111,8 +111,8 @@ cd_http_reply :: (head: string, body: string, ss: [] CdHttpSessions, fresh: stri
   return r;
 }
 
-cxrand_fill :: (n: int) -> int #foreign;
-cxrand_byte :: (i: int) -> int #foreign;
+cxrand_fill :: (n: int) -> int #foreign #effects(all);
+cxrand_byte :: (i: int) -> int #foreign #effects(all);
 
 // 16 random bytes as 32 hex digits, from the system's entropy.
 cd_http_fresh :: (out: [] u8) -> string {

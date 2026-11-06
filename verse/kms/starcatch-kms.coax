@@ -8,7 +8,7 @@
 
 // The key the demo holds now: Space when a game is not running, an arrow
 // toward the lowest star, or 0 to stand still.
-catch_demo_key :: (s: [] Catch) -> int #export_c {
+catch_demo_key :: (s: [] Catch) -> int #export_c #effects(all) {
   catch_start(s);
   if s[0].phase != PLAY { return ' '; }
   best := -1; by := -1.0f32;

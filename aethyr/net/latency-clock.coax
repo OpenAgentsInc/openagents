@@ -44,23 +44,23 @@ LatClock :: struct {ok:bool;at:int;lo:int;hi:int;quantum:int;ppm:int;}
   #assert !lc_uplink(c,1,2,1,o[0..<1])&&!lc_downlink(c,1,2,1,o[0..<1]);
 }
 
-lc_sync::(c0:int,s1:int,s2:int,c3:int,quantum:int,ppm:int)->LatClock {
+lc_sync::(c0:int,s1:int,s2:int,c3:int,quantum:int,ppm:int)->LatClock #effects(all) {
   if c0<=0||s1<=0||s2<s1||c3<c0||c3>LC_MAX||s2>LC_MAX||quantum<1||quantum>1000000||ppm<0||ppm>1000000{return LatClock.{};}
   if s2-s1>c3-c0{return LatClock.{};}
   return LatClock.{ok=true,at=c3,lo=s2-c3-2*quantum,hi=s1-c0+2*quantum,quantum=quantum,ppm=ppm};
 }
-lc_bounds::(c:LatClock,now:int,out:[]int)->bool {
+lc_bounds::(c:LatClock,now:int,out:[]int)->bool #effects(all) {
   if !c.ok||out.count<2||now<c.at||now-c.at>LC_FRESH_US{return false;}
   extra:=((now-c.at)*c.ppm+999999)/1000000;out[0]=c.lo-extra;out[1]=c.hi+extra;return true;
 }
-lc_uplink::(c:LatClock,client_send:int,server_receive:int,now:int,out:[]int)->bool {
+lc_uplink::(c:LatClock,client_send:int,server_receive:int,now:int,out:[]int)->bool #effects(all) {
   b:[2]int;if out.count<2||!lc_bounds(c,now,b[..]){return false;}
   low:=server_receive-client_send-b[1];high:=server_receive-client_send-b[0];if high<0{return false;}
   // Preserve a negative lower bound: it exposes clock uncertainty across zero,
   // rather than asserting a physically negative transit or a precise zero.
   out[0]=low;out[1]=high;return true;
 }
-lc_downlink::(c:LatClock,server_queue:int,client_receive:int,now:int,out:[]int)->bool {
+lc_downlink::(c:LatClock,server_queue:int,client_receive:int,now:int,out:[]int)->bool #effects(all) {
   b:[2]int;if out.count<2||!lc_bounds(c,now,b[..]){return false;}
   low:=client_receive+b[0]-server_queue;high:=client_receive+b[1]-server_queue;if high<0{return false;}
   out[0]=low;out[1]=high;return true;

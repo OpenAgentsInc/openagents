@@ -50,11 +50,11 @@ sits on device `d`, or `-1` when device `d` does not hold it.
 // matters only for a shard.
 SdLayout :: struct {kind:SdKind;axis:int;}
 SdTensor :: struct {status:SdStatus;rows:int;cols:int;devices:int;layout:SdLayout;}
-sd_replicated :: ()->SdLayout {return SdLayout.{kind=SdKind.replicated};}
-sd_shard :: (axis:int)->SdLayout {return SdLayout.{kind=SdKind.shard,axis=axis};}
-sd_partial :: ()->SdLayout {return SdLayout.{kind=SdKind.partial};}
-sd_same :: (a:SdLayout,b:SdLayout)->bool {return a.kind==b.kind && (a.kind!=SdKind.shard || a.axis==b.axis);}
-sd_tensor :: (rows:int,cols:int,devices:int,l:SdLayout)->SdTensor #export_c {
+sd_replicated :: ()->SdLayout #effects(all) {return SdLayout.{kind=SdKind.replicated};}
+sd_shard :: (axis:int)->SdLayout #effects(all) {return SdLayout.{kind=SdKind.shard,axis=axis};}
+sd_partial :: ()->SdLayout #effects(all) {return SdLayout.{kind=SdKind.partial};}
+sd_same :: (a:SdLayout,b:SdLayout)->bool #effects(all) {return a.kind==b.kind && (a.kind!=SdKind.shard || a.axis==b.axis);}
+sd_tensor :: (rows:int,cols:int,devices:int,l:SdLayout)->SdTensor #export_c #effects(all) {
     t:=SdTensor.{rows=rows,cols=cols,devices=devices,layout=l};
     if devices<1 || devices>SD_MAX_DEVICES {t.status=SdStatus.devices;}
     else if rows<1 || rows>SD_MAX_EXTENT || cols<1 || cols>SD_MAX_EXTENT {t.status=SdStatus.shape;}
@@ -63,10 +63,10 @@ sd_tensor :: (rows:int,cols:int,devices:int,l:SdLayout)->SdTensor #export_c {
 }
 // Device d's piece of an extent runs from sd_first(d) up to sd_first(d+1):
 // chapter 132's split. With more devices than the extent, some are empty.
-sd_first :: (extent:int,devices:int,d:int)->int {return d*extent/devices;}
+sd_first :: (extent:int,devices:int,d:int)->int #effects(all) {return d*extent/devices;}
 // Where global element (i, j) sits in device d's block, or -1 when device d
 // does not hold it.
-sd_index :: (t:SdTensor,d:int,i:int,j:int)->int #export_c {
+sd_index :: (t:SdTensor,d:int,i:int,j:int)->int #export_c #effects(all) {
     base:=d*t.rows*t.cols;
     if t.layout.kind!=SdKind.shard {return base+i*t.cols+j;}
     if t.layout.axis==0 {lo:=sd_first(t.rows,t.devices,d);
@@ -102,7 +102,7 @@ cannot be placed. Only an operation makes one.
 ```jai
 // From one device's row-major copy to every device's block. A partial
 // cannot be placed: only an operation makes one.
-sd_place :: (t:SdTensor,global:[]f64,local:[]f64)->SdStatus #export_c {
+sd_place :: (t:SdTensor,global:[]f64,local:[]f64)->SdStatus #export_c #effects(all) {
     if t.status!=SdStatus.ok {return t.status;}
     if t.layout.kind==SdKind.partial {return SdStatus.make_partial;}
     if global.count<t.rows*t.cols || !sd_fits(t,local) {return SdStatus.storage;}
@@ -112,7 +112,7 @@ sd_place :: (t:SdTensor,global:[]f64,local:[]f64)->SdStatus #export_c {
 // Back to one row-major copy. A shard's element comes from its one holder,
 // a replicated element from device 0, and a partial element is device 0's
 // addend, plus device 1's, and so on in device order.
-sd_gather :: (t:SdTensor,local:[]f64,out:[]f64)->SdStatus #export_c {
+sd_gather :: (t:SdTensor,local:[]f64,out:[]f64)->SdStatus #export_c #effects(all) {
     if t.status!=SdStatus.ok {return t.status;}
     if out.count<t.rows*t.cols || !sd_fits(t,local) {return SdStatus.storage;}
     for i:0..<t.rows {for j:0..<t.cols {v:=0.0;held:=false;
@@ -157,7 +157,7 @@ by an all-gather.
 <!-- source: psionic/lib/shard.coax redistribute -->
 ```jai
 SdMove :: struct {status:SdStatus;collective:SdCollective;moved:int;tensor:SdTensor;}
-sd_collective :: (from:SdLayout,to:SdLayout)->SdCollective {
+sd_collective :: (from:SdLayout,to:SdLayout)->SdCollective #effects(all) {
     if sd_same(from,to) {return SdCollective.none;}
     if to.kind==SdKind.partial {return SdCollective.refused;}
     if from.kind==SdKind.replicated {return SdCollective.slice;}
@@ -171,7 +171,7 @@ sd_collective :: (from:SdLayout,to:SdLayout)->SdCollective {
 // first device that will hold it, which receives the other devices' addends;
 // then every other holder receives the sum. Other elements come from a
 // device that holds them, unless the receiver holds one already.
-sd_redistribute :: (t:SdTensor,local:[]f64,to:SdLayout,out:[]f64)->SdMove #export_c {
+sd_redistribute :: (t:SdTensor,local:[]f64,to:SdLayout,out:[]f64)->SdMove #export_c #effects(all) {
     u:=sd_tensor(t.rows,t.cols,t.devices,to);m:=SdMove.{status=t.status,collective=sd_collective(t.layout,to),tensor=u};
     if t.status!=SdStatus.ok {return m;}
     if u.status!=SdStatus.ok {m.status=u.status;return m;}
@@ -211,7 +211,7 @@ can be priced before anything runs. The checks compare it with what
 //   all-reduce:     a reduce-scatter, then an all-gather: 2 * (D - 1) * n.
 //   all-to-all:     everything except what each device keeps, the cells in
 //                   both its row piece and its column piece.
-sd_cost :: (rows:int,cols:int,devices:int,from:SdLayout,to:SdLayout)->int #export_c {
+sd_cost :: (rows:int,cols:int,devices:int,from:SdLayout,to:SdLayout)->int #export_c #effects(all) {
     n:=rows*cols;c:=sd_collective(from,to);
     if c==SdCollective.refused {return -1;}
     if c==SdCollective.all_gather || c==SdCollective.reduce_scatter {return 8*(devices-1)*n;}
@@ -274,7 +274,7 @@ partials add addend by addend. Relu keeps any layout except partial:
 SdRule :: struct {status:SdStatus;layout:SdLayout;}
 // The layout of a @ b, or why there is none. The contraction axis is a's
 // columns and b's rows.
-sd_matmul_rule :: (a:SdLayout,b:SdLayout)->SdRule #export_c {
+sd_matmul_rule :: (a:SdLayout,b:SdLayout)->SdRule #export_c #effects(all) {
     ak:=a.kind==SdKind.shard && a.axis==1;bk:=b.kind==SdKind.shard && b.axis==0;
     // Row-parallel: each device's run of the contraction makes an addend.
     if ak && bk {return SdRule.{layout=sd_partial()};}
@@ -286,28 +286,28 @@ sd_matmul_rule :: (a:SdLayout,b:SdLayout)->SdRule #export_c {
     if b.kind==SdKind.replicated {return SdRule.{layout=a};}
     return SdRule.{status=SdStatus.mesh};
 }
-sd_add_rule :: (a:SdLayout,b:SdLayout)->SdRule {
+sd_add_rule :: (a:SdLayout,b:SdLayout)->SdRule #effects(all) {
     if !sd_same(a,b) {return SdRule.{status=SdStatus.layouts};}
     return SdRule.{layout=a};
 }
-sd_relu_rule :: (a:SdLayout)->SdRule {
+sd_relu_rule :: (a:SdLayout)->SdRule #effects(all) {
     if a.kind==SdKind.partial {return SdRule.{status=SdStatus.nonlinear};}
     return SdRule.{layout=a};
 }
 // The output tensor of each operation, from its inputs' tensors alone.
-sd_matmul_out :: (a:SdTensor,b:SdTensor)->SdTensor {
+sd_matmul_out :: (a:SdTensor,b:SdTensor)->SdTensor #effects(all) {
     if a.status!=SdStatus.ok {return a;}
     if b.status!=SdStatus.ok {return b;}
     if a.devices!=b.devices || a.cols!=b.rows {return SdTensor.{status=SdStatus.mismatch};}
     r:=sd_matmul_rule(a.layout,b.layout);c:=sd_tensor(a.rows,b.cols,a.devices,r.layout);c.status=r.status;return c;
 }
-sd_add_out :: (a:SdTensor,b:SdTensor)->SdTensor {
+sd_add_out :: (a:SdTensor,b:SdTensor)->SdTensor #effects(all) {
     if a.status!=SdStatus.ok {return a;}
     if b.status!=SdStatus.ok {return b;}
     if a.devices!=b.devices || a.rows!=b.rows || a.cols!=b.cols {return SdTensor.{status=SdStatus.mismatch};}
     c:=a;c.status=sd_add_rule(a.layout,b.layout).status;return c;
 }
-sd_relu_out :: (a:SdTensor)->SdTensor {c:=a;if a.status==SdStatus.ok {c.status=sd_relu_rule(a.layout).status;}return c;}
+sd_relu_out :: (a:SdTensor)->SdTensor #effects(all) {c:=a;if a.status==SdStatus.ok {c.status=sd_relu_rule(a.layout).status;}return c;}
 ```
 
 ## Running the operations
@@ -321,12 +321,12 @@ element sums `a[i][p] * b[p][j]` from `p = 0` up.
 <!-- source: psionic/lib/shard.coax ops -->
 ```jai
 // The one-device product: c[i][j] sums a[i][p] * b[p][j] from p = 0 up.
-sd_matmul_one :: (m:int,k:int,n:int,a:[]f64,b:[]f64,c:[]f64) {
+sd_matmul_one :: (m:int,k:int,n:int,a:[]f64,b:[]f64,c:[]f64) #effects(all) {
     for i:0..<m {for j:0..<n {acc:=0.0;for p:0..<k {acc+=a[i*k+p]*b[p*n+j];}c[i*n+j]=acc;}}
 }
 // Every device computes the elements its block of c holds, over the whole
 // contraction, or over its own run of it when the contraction is split.
-sd_matmul :: (a:SdTensor,la:[]f64,b:SdTensor,lb:[]f64,lc:[]f64)->SdTensor #export_c {
+sd_matmul :: (a:SdTensor,la:[]f64,b:SdTensor,lb:[]f64,lc:[]f64)->SdTensor #export_c #effects(all) {
     c:=sd_matmul_out(a,b);
     if c.status!=SdStatus.ok {return c;}
     if !sd_fits(a,la) || !sd_fits(b,lb) || !sd_fits(c,lc) {c.status=SdStatus.storage;return c;}
@@ -337,14 +337,14 @@ sd_matmul :: (a:SdTensor,la:[]f64,b:SdTensor,lb:[]f64,lc:[]f64)->SdTensor #expor
         lc[k]=acc;}}}
     return c;
 }
-sd_add :: (a:SdTensor,la:[]f64,b:SdTensor,lb:[]f64,lc:[]f64)->SdTensor {
+sd_add :: (a:SdTensor,la:[]f64,b:SdTensor,lb:[]f64,lc:[]f64)->SdTensor #effects(all) {
     c:=sd_add_out(a,b);
     if c.status!=SdStatus.ok {return c;}
     if !sd_fits(a,la) || !sd_fits(b,lb) || !sd_fits(c,lc) {c.status=SdStatus.storage;return c;}
     for d:0..<c.devices {for i:0..<c.rows {for j:0..<c.cols {k:=sd_index(c,d,i,j);if k>=0 {lc[k]=la[k]+lb[k];}}}}
     return c;
 }
-sd_relu :: (a:SdTensor,la:[]f64,lc:[]f64)->SdTensor {
+sd_relu :: (a:SdTensor,la:[]f64,lc:[]f64)->SdTensor #effects(all) {
     c:=sd_relu_out(a);
     if c.status!=SdStatus.ok {return c;}
     if !sd_fits(a,la) || !sd_fits(c,lc) {c.status=SdStatus.storage;return c;}
@@ -394,7 +394,7 @@ operations use. It stops at the first refused node and names it.
 SdNode :: struct {op:SdOp;a:int;b:int;rows:int;cols:int;layout:SdLayout;}
 SdCheck :: struct {status:SdStatus;node:int=-1;}
 // Gives every node's tensor, or the first node refused and why.
-sd_propagate :: (devices:int,nodes:[]SdNode,out:[]SdTensor)->SdCheck #export_c {
+sd_propagate :: (devices:int,nodes:[]SdNode,out:[]SdTensor)->SdCheck #export_c #effects(all) {
     if out.count<nodes.count {return SdCheck.{status=SdStatus.storage};}
     for x,n:nodes {t:SdTensor;
         if x.op==SdOp.input {t=sd_tensor(x.rows,x.cols,devices,x.layout);}

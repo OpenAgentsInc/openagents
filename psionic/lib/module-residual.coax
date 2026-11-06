@@ -8,7 +8,7 @@
 
 // y = x + contract(relu(expand(x))). Both named convolutions have 1x1
 // kernels. The second restores x's channel count; N/H/W never change.
-mdl_residual_conv1x1 :: (m:MdlModel,parent:int,name:string,x:int,hidden:int)->MdlModel {
+mdl_residual_conv1x1 :: (m:MdlModel,parent:int,name:string,x:int,hidden:int)->MdlModel #effects(all) {
     if m.status!=MdlStatus.ok {return m;}
     if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
     s:=m.shapes[x];if s.rank!=4 {return mdl_fail(m,MdlStatus.shape);}

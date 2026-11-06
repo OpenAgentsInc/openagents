@@ -15,7 +15,7 @@
 #load "../../lib/sys/proc.coax";
 #load "../../lib/crypto/sha256_workspace.coax";
 
-cxproc_self_path :: (out: [] u8) -> int #foreign;
+cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
 
 WK_UNITS :: [6] string.["coax/web/room/room.coax", "apps/openagents-web/everglade.coax", "apps/openagents-web/everglade-step.coax", "verse/grid.coax", "verse/everglade/river.coax", "verse/everglade/guard-guide-policy.coax"];
 WK_FILE :: 67108864;      // the largest file read whole (a unit's C, the module)
@@ -170,7 +170,7 @@ wk_copy :: (from: string, to: string, buf: [] u8) -> bool {
   return n >= 0 && n < buf.count && fs_write(to, cast(string) buf[0..<n]);
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) > 1 { tool_errln("usage: worker.coax [OUT.wasm]"); return 2; }
   sb: [4096] u8; sn := cxproc_self_path(sb[..]);

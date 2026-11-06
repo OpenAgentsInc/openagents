@@ -182,9 +182,9 @@ across_of :: (x: f32, z: f32) -> f32 { return (x - f32(GATE_X)) * f32(ACROSS_X) 
 
 // ---- the page's state
 
-coaxial_gridcrowd_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_gridcrowd_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_gridcrowd_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_gridcrowd_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_gridcrowd_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_gridcrowd_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 gridcrowd_start :: (s: [] GridCrowd) {
   s[0].started = true;
@@ -193,7 +193,7 @@ gridcrowd_start :: (s: [] GridCrowd) {
 
 // grid.data (pack_grid.py's header): the counts and the clips (its patrols
 // aren't walked here). False, and nothing kept, when it isn't one.
-gridcrowd_data :: (s: [] GridCrowd, b: string) -> bool #export_c {
+gridcrowd_data :: (s: [] GridCrowd, b: string) -> bool #export_c #effects(all) {
   if !s[0].started { gridcrowd_start(s); }
   if b.count < 44 || b[0] != 'A' || b[1] != 'G' || b[2] != 'R' || b[3] != 'D' { s[0].failed = true; return false; }
   clips := whole_at(b, 28);
@@ -213,22 +213,22 @@ gridcrowd_data :: (s: [] GridCrowd, b: string) -> bool #export_c {
   return true;
 }
 // One of the GPU's assets came, or didn't.
-gridcrowd_arrived :: (s: [] GridCrowd, ok: bool) #export_c {
+gridcrowd_arrived :: (s: [] GridCrowd, ok: bool) #export_c #effects(all) {
   if !s[0].started { gridcrowd_start(s); }
   if ok { s[0].arrived += 1; } else { s[0].failed = true; }
 }
 // The face opened Cast.bin: where the character's vertices and triangles start (in 4-byte words),
 // how many corners its triangles have, and its joints. No player draws until it has.
-gridcrowd_cast :: (s: [] GridCrowd, ok: bool, vertex_word: int, index_word: int, corners: int, joints: int) #export_c {
+gridcrowd_cast :: (s: [] GridCrowd, ok: bool, vertex_word: int, index_word: int, corners: int, joints: int) #export_c #effects(all) {
   s[0].cast_ok = ok && corners > 0 && corners % 3 == 0 && joints > 0;
   s[0].cast_vertex = vertex_word; s[0].cast_index = index_word; s[0].cast_corners = corners; s[0].cast_joints = joints;
 }
 ready :: (s: [] GridCrowd) -> bool { return s[0].data_ready && s[0].arrived >= GPU_ASSETS && !s[0].failed; }
-gridcrowd_draws :: (s: [] GridCrowd) -> int #export_c { return ifx ready(s) then DRAWS else 0; }
-gridcrowd_store_bytes :: (s: [] GridCrowd) -> int #export_c { return (hi_i(s[0].robot_n, 0) + 1) * ROBOT_FLOATS * 4; }
-gridcrowd_people :: (s: [] GridCrowd) -> int #export_c { return s[0].people_n; }
+gridcrowd_draws :: (s: [] GridCrowd) -> int #export_c #effects(all) { return ifx ready(s) then DRAWS else 0; }
+gridcrowd_store_bytes :: (s: [] GridCrowd) -> int #export_c #effects(all) { return (hi_i(s[0].robot_n, 0) + 1) * ROBOT_FLOATS * 4; }
+gridcrowd_people :: (s: [] GridCrowd) -> int #export_c #effects(all) { return s[0].people_n; }
 // The crowd's clock, in seconds, for the face's clips.
-gridcrowd_time :: (s: [] GridCrowd) -> f64 #export_c { return f64(s[0].ticks) / f64(TICKS); }
+gridcrowd_time :: (s: [] GridCrowd) -> f64 #export_c #effects(all) { return f64(s[0].ticks) / f64(TICKS); }
 
 // ---- the stage, from the page's address
 
@@ -258,7 +258,7 @@ count_of :: (text: string, otherwise: int) -> int {
   }
   return n;
 }
-gridcrowd_stage :: (s: [] GridCrowd, url: string) #export_c {
+gridcrowd_stage :: (s: [] GridCrowd, url: string) #export_c #effects(all) {
   if !s[0].started { gridcrowd_start(s); }
   s[0].asked = true;
   s[0].staged = query_value(url, "stage") == "crowd";
@@ -269,7 +269,7 @@ gridcrowd_stage :: (s: [] GridCrowd, url: string) #export_c {
 clamp_i :: (a: int, low: int, high: int) -> int { return lo_i(high, hi_i(low, a)); }
 
 // The page's facts (host.js message 600): the stage is in its url.
-gridcrowd_message :: (s: [] GridCrowd, kind: int, text: string) #export_c {
+gridcrowd_message :: (s: [] GridCrowd, kind: int, text: string) #export_c #effects(all) {
   if kind != 600 { return; }
   at := 0;
   while at < text.count {
@@ -352,7 +352,7 @@ gridcrowd_seconds :: (s: [] GridCrowd) -> f32 { return f32(s[0].ticks) / f32(TIC
 // The crowd at the start: everyone somewhere between NEAR_START and their far
 // edge, evenly by distance (so as many reach the gate each second), with a
 // few tries each for a spot clear of the ones already placed.
-gridcrowd_fill :: (s: [] GridCrowd) #export_c {
+gridcrowd_fill :: (s: [] GridCrowd) #export_c #effects(all) {
   c := s[0].crowd[..];
   c[0].players = s[0].want_players;
   c[0].n = s[0].want_players + s[0].want_agents;
@@ -648,7 +648,7 @@ camera_at :: (t: f32) -> Shot {
 
 // ---- the frame
 
-gridcrowd_frame :: (s: [] GridCrowd, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+gridcrowd_frame :: (s: [] GridCrowd, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if !s[0].started { gridcrowd_start(s); }
   if u.count < UNIFORM_FLOATS { return 0; }
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;

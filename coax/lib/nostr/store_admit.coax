@@ -53,7 +53,7 @@ NS_WRONG_SIGNER_TEST :: "{\"pubkey\":\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0
 }
 // This private helper stages one unverified byte string; only the verified
 // entry below may publish it as admitted evidence.
-ns_frame_one :: (text:string,out:[]u8)->bool {
+ns_frame_one :: (text:string,out:[]u8)->bool #effects(all) {
  layout:=ns_log_layout(1,text.count,2,out.count,false);
  if !layout.ok || !ns_payload_valid(text.count,0,text.count) {return false;}
  out[0]=78;out[1]=83;out[2]=76;out[3]=71;
@@ -63,7 +63,7 @@ ns_frame_one :: (text:string,out:[]u8)->bool {
 // overlap is a truthful observation covering all input, scratch and output
 // storage. The caller guarantees live, exclusive, stable and disjoint spans.
 // Scratch may change on refusal; output is written only after verification.
-ns_admit_one :: (text:string,scratch:[]u8,out:[]u8,overlap:bool)->NsAdmission #export_c {
+ns_admit_one :: (text:string,scratch:[]u8,out:[]u8,overlap:bool)->NsAdmission #export_c #effects(all) {
  if overlap {return NsAdmission.{status=NS_ADMIT_ALIAS};}
  event:=nostr_event_read(text,scratch,false);
  if event.error!=NE_OK {return NsAdmission.{status=NS_ADMIT_INVALID};}

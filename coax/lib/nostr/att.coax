@@ -370,24 +370,24 @@ AT_TOKEN_KIND :: "gcp-confidential-space-token";
 }
 
 // ---- small readers
-at_hex64 :: (s:string)->bool {
+at_hex64 :: (s:string)->bool #effects(all) {
   if s.count!=64 {return false;}
   for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
   return true;
 }
-at_slug :: (s:string)->bool {
+at_slug :: (s:string)->bool #effects(all) {
   if s.count==0 || s.count>64 {return false;}
   for c:s {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}
   return true;
 }
-at_image_digest :: (s:string)->bool {return s.count==71 && s[0..<7]=="sha256:" && at_hex64(s[7..<71]);}
-at_uint :: (j:[]Json,t:int)->int {
+at_image_digest :: (s:string)->bool #effects(all) {return s.count==71 && s[0..<7]=="sha256:" && at_hex64(s[7..<71]);}
+at_uint :: (j:[]Json,t:int)->int #effects(all) {
   if t!=JSON_NUMBER {return -1;}v:=json_int(json_text(j));if !v.ok || v.value<0 {return -1;}return v.value;
 }
 // The tags named name: how many, the first one's first value, and whether
 // any of them has value as its first value. Every tag must be an array of
 // strings; values are read raw (unescaped hex and slugs).
-at_tag :: (tags:string,name:string,value:string)->AtTag {
+at_tag :: (tags:string,name:string,value:string)->AtTag #effects(all) {
   r:AtTag;j:[1]Json;json_start(j[..],tags);if json_next(j[..])!=JSON_ARRAY {return r;}
   t:=json_next(j[..]);
   while t==JSON_ARRAY {
@@ -406,14 +406,14 @@ at_tag :: (tags:string,name:string,value:string)->AtTag {
   r.ok=t==JSON_ARRAY_END && json_next(j[..])==JSON_END;return r;
 }
 // requires must be [] for every version this reader knows.
-at_requires_empty :: (j:[]Json,t:int)->bool {return t==JSON_ARRAY && json_next(j)==JSON_ARRAY_END;}
+at_requires_empty :: (j:[]Json,t:int)->bool #effects(all) {return t==JSON_ARRAY && json_next(j)==JSON_ARRAY_END;}
 
 // ---- the release, kind 3202
-at_release_field :: (key:string)->int {
+at_release_field :: (key:string)->int #effects(all) {
   names:=[16]string.["v","requires","workload","publisher","image","platforms","measurements","gpu","models","components","source","rebuilds","transparency","changes","published_at","meta"];
   for i:0..<16 {if json_is(key,names[i]) {return i;}}return -1;
 }
-at_image :: (j:[]Json,r:[]AtRelease)->bool {
+at_image :: (j:[]Json,r:[]AtRelease)->bool #effects(all) {
   seen:=0;
   while true {
     t:=json_next(j);if t==JSON_OBJECT_END {break;}
@@ -428,7 +428,7 @@ at_image :: (j:[]Json,r:[]AtRelease)->bool {
 }
 // Exactly one platform, gcp-confidential-space, with hwmodel and support.
 // Other kinds (tdx, sev-snp, apple-app-attest) are not built here.
-at_platforms :: (j:[]Json,r:[]AtRelease)->bool {
+at_platforms :: (j:[]Json,r:[]AtRelease)->bool #effects(all) {
   count:=0;v:=json_next(j);
   while v!=JSON_ARRAY_END {
     if v!=JSON_OBJECT {return false;}
@@ -451,7 +451,7 @@ at_platforms :: (j:[]Json,r:[]AtRelease)->bool {
 // book:begin release
 // signer is the verified event's pubkey, tags its tag array, content its
 // unescaped content, digest the lowercase SHA-256 of content.
-at_release_read :: (signer:string,tags:string,content:string,digest:string)->AtRelease {
+at_release_read :: (signer:string,tags:string,content:string,digest:string)->AtRelease #effects(all) {
   r:=[1]AtRelease.[AtRelease.{}];
   tt:=at_tag(tags,"t","");x:=at_tag(tags,"x","");w:=at_tag(tags,"w","");
   if !tt.ok || tt.count!=1 || x.count!=1 || w.count!=1 {return AtRelease.{code=AtCode.tags};}
@@ -483,11 +483,11 @@ at_release_read :: (signer:string,tags:string,content:string,digest:string)->AtR
 // book:end release
 
 // ---- the release head, kind 30202
-at_head_field :: (key:string)->int {
+at_head_field :: (key:string)->int #effects(all) {
   names:=[8]string.["v","requires","workload","generation","notice_seconds","admitted","emergency","meta"];
   for i:0..<8 {if json_is(key,names[i]) {return i;}}return -1;
 }
-at_admit :: (j:[]Json,h:[]AtHead)->bool {
+at_admit :: (j:[]Json,h:[]AtHead)->bool #effects(all) {
   v:=json_next(j);
   while v!=JSON_ARRAY_END {
     if v!=JSON_OBJECT || h[0].count==AT_ADMITTED {return false;}
@@ -507,7 +507,7 @@ at_admit :: (j:[]Json,h:[]AtHead)->bool {
   return true;
 }
 // null, or {release, reason} with a nonempty reason.
-at_emergency :: (j:[]Json,t:int,h:[]AtHead)->bool {
+at_emergency :: (j:[]Json,t:int,h:[]AtHead)->bool #effects(all) {
   if t==JSON_NULL {return true;}
   if t!=JSON_OBJECT {return false;}
   seen:=0;
@@ -522,7 +522,7 @@ at_emergency :: (j:[]Json,t:int,h:[]AtHead)->bool {
   return seen==3;
 }
 // book:begin head
-at_head_read :: (signer:string,tags:string,content:string)->AtHead {
+at_head_read :: (signer:string,tags:string,content:string)->AtHead #effects(all) {
   h:=[1]AtHead.[AtHead.{}];
   d:=at_tag(tags,"d","");tt:=at_tag(tags,"t","");
   if !d.ok || d.count!=1 || tt.count!=1 {return AtHead.{code=AtCode.tags};}
@@ -553,7 +553,7 @@ at_head_read :: (signer:string,tags:string,content:string)->AtHead {
 // NIP-ATT: admitted at now when listed, effective_at <= now, retire_at
 // null or later than now, and effective_at at least the notice delay after
 // the release's published_at (one day for the head's emergency release).
-at_admitted :: (h:AtHead,release:string,published_at:int,now:int)->AtCode {
+at_admitted :: (h:AtHead,release:string,published_at:int,now:int)->AtCode #effects(all) {
   for i:0..<h.count {
     a:=h.admitted[i];
     if a.release==release {
@@ -567,7 +567,7 @@ at_admitted :: (h:AtHead,release:string,published_at:int,now:int)->AtCode {
   return AtCode.listed;
 }
 // held is the highest generation this reader has seen for the workload.
-at_generation :: (h:AtHead,held:int)->AtCode {return ifx h.generation<held then AtCode.generation else AtCode.ok;}
+at_generation :: (h:AtHead,held:int)->AtCode #effects(all) {return ifx h.generation<held then AtCode.generation else AtCode.ok;}
 // book:end admitted
 
 // ---- the endpoint, kind 30203
@@ -575,7 +575,7 @@ at_generation :: (h:AtHead,held:int)->AtCode {return ifx h.generation<held then 
 // SHA-256("openagents.att.v1" || 0 || endpoint (32 bytes) || release id
 // (32 bytes)), as 64 lowercase hex digits. hpke is null here, so it adds no
 // bytes.
-at_binding :: (endpoint:string,release:string,out:[]u8)->bool {
+at_binding :: (endpoint:string,release:string,out:[]u8)->bool #effects(all) {
   if !at_hex64(endpoint) || !at_hex64(release) {return false;}
   msg:[82]u8;for i:0..<AT_DOMAIN.count {msg[i]=AT_DOMAIN[i];}   // msg[17] stays 0
   for i:0..<32 {msg[18+i]=cast(u8)(at_nibble(endpoint[2*i])*16+at_nibble(endpoint[2*i+1]));msg[50+i]=cast(u8)(at_nibble(release[2*i])*16+at_nibble(release[2*i+1]));}
@@ -585,14 +585,14 @@ at_binding :: (endpoint:string,release:string,out:[]u8)->bool {
   return status==SHA_OK;
 }
 // book:end binding
-at_nibble :: (c:u8)->int {return ifx c>='a' then cast(int)(c-'a')+10 else cast(int)(c-'0');}
-at_endpoint_field :: (key:string)->int {
+at_nibble :: (c:u8)->int #effects(all) {return ifx c>='a' then cast(int)(c-'a')+10 else cast(int)(c-'0');}
+at_endpoint_field :: (key:string)->int #effects(all) {
   names:=[11]string.["v","requires","release","endpoint","hpke","binding","evidence","operator","issued_at","valid_until","meta"];
   for i:0..<11 {if json_is(key,names[i]) {return i;}}return -1;
 }
 // Exactly one evidence entry: a Confidential Space PKI token. Raw TDX and
 // SEV-SNP quotes, App Attest and NVIDIA evidence are not built: refused.
-at_evidence :: (j:[]Json,e:[]AtEndpoint)->bool {
+at_evidence :: (j:[]Json,e:[]AtEndpoint)->bool #effects(all) {
   count:=0;v:=json_next(j);
   while v!=JSON_ARRAY_END {
     if v!=JSON_OBJECT {return false;}
@@ -612,7 +612,7 @@ at_evidence :: (j:[]Json,e:[]AtEndpoint)->bool {
   return count==1;
 }
 // book:begin endpoint
-at_endpoint_read :: (signer:string,tags:string,content:string)->AtEndpoint {
+at_endpoint_read :: (signer:string,tags:string,content:string)->AtEndpoint #effects(all) {
   e:=[1]AtEndpoint.[AtEndpoint.{}];
   d:=at_tag(tags,"d","");tt:=at_tag(tags,"t","");a:=at_tag(tags,"a","");et:=at_tag(tags,"e","");x:=at_tag(tags,"expiration","");
   if !d.ok || d.count!=1 || !at_hex64(d.first) || tt.count!=1 || a.count!=1 || et.count!=1 || x.count!=1 {return AtEndpoint.{code=AtCode.tags};}
@@ -647,7 +647,7 @@ at_endpoint_read :: (signer:string,tags:string,content:string)->AtEndpoint {
 
 // ---- the Confidential Space token's claims (signature not checked)
 // A base64url digit's value, or -1.
-at_b64v :: (c:u8)->int {
+at_b64v :: (c:u8)->int #effects(all) {
   if c>='A' && c<='Z' {return cast(int)(c-'A');}
   if c>='a' && c<='z' {return cast(int)(c-'a')+26;}
   if c>='0' && c<='9' {return cast(int)(c-'0')+52;}
@@ -658,7 +658,7 @@ at_b64v :: (c:u8)->int {
 // The middle part of header.payload.signature, base64url without padding,
 // decoded into out; "" when the token is not three nonempty parts of
 // base64url digits or the payload does not fit.
-at_payload :: (token:string,out:[]u8)->string {
+at_payload :: (token:string,out:[]u8)->string #effects(all) {
   dots:=0;first:int;second:int;
   for i:0..<token.count {
     c:=token[i];
@@ -680,7 +680,7 @@ at_payload :: (token:string,out:[]u8)->string {
 AtClaims :: struct {ok:bool;iss:bool;aud:bool;exp:int=-1;hwmodel:string;dbg:bool;image:string;stable:bool;nonce:bool;}
 // submods: container.image_digest and confidential_space.support_attributes.
 // A refused text stops at the next key; the caller's end check refuses it.
-at_submods :: (j:[]Json,c:[]AtClaims) {
+at_submods :: (j:[]Json,c:[]AtClaims) #effects(all) {
   while true {
     t:=json_next(j);if t!=JSON_STRING {return;}
     key:=json_text(j);t=json_next(j);
@@ -703,7 +703,7 @@ at_submods :: (j:[]Json,c:[]AtClaims) {
 // book:begin claims
 // The claims a client compares with the release. Unknown claims are
 // skipped: a JWT carries many, and only these decide.
-at_claims :: (payload:string,binding:string)->AtClaims {
+at_claims :: (payload:string,binding:string)->AtClaims #effects(all) {
   c:=[1]AtClaims.[AtClaims.{}];j:[1]Json;json_start(j[..],payload);
   if json_next(j[..])!=JSON_OBJECT {return AtClaims.{};}
   while true {
@@ -735,7 +735,7 @@ at_claims :: (payload:string,binding:string)->AtClaims {
 // highest generation held), endpoint (its reading; its signer is checked by
 // at_endpoint_read), at the reader's clock now. Step 3, the token's
 // signature to Google's root, is not built, so the level is open.
-at_verify :: (release_id:string,r:AtRelease,head_signer:string,h:AtHead,held:int,e:AtEndpoint,now:int)->AtVerdict {
+at_verify :: (release_id:string,r:AtRelease,head_signer:string,h:AtHead,held:int,e:AtEndpoint,now:int)->AtVerdict #effects(all) {
   if e.code!=AtCode.ok {return AtVerdict.{code=e.code};}
   if r.code!=AtCode.ok {return AtVerdict.{code=r.code};}
   if h.code!=AtCode.ok {return AtVerdict.{code=h.code};}
@@ -764,7 +764,7 @@ at_verify :: (release_id:string,r:AtRelease,head_signer:string,h:AtHead,held:int
 }
 // Whether data whose policy requires level required may go to this
 // endpoint. Never falls back to a lower level.
-at_may_send :: (v:AtVerdict,required:AtLevel)->bool {
+at_may_send :: (v:AtVerdict,required:AtLevel)->bool #effects(all) {
   return v.code==AtCode.ok && cast(int)v.level>=cast(int)required;
 }
 // book:end verify

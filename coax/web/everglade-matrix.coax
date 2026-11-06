@@ -26,7 +26,7 @@ mx_run :: (args:[]string,deadline:int)->bool {
 mx_remote :: (remote:string,args:[]string,deadline:int)->bool {c:[1]MxText;mx_command(c[..],args);argv:=[3]string.["ssh",remote,mx_text(c[..])];return mx_run(argv[..],deadline);}
 mx_copy :: (from:string,to:string,deadline:int)->bool {argv:=[3]string.["ditto",from,to];return mx_run(argv[..],deadline);}
 mx_join :: (a:string,b:string,storage:[]u8)->string {return fs_join(a,b,storage);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]){return 2;}
   prepared:=args_value(a[..],"--prepared","");app:=args_value(a[..],"--app","");out:=args_value(a[..],"--out","");
   remote:=args_value(a[..],"--remote","coderos-4080");remote_root:=args_value(a[..],"--remote-root","/home/christopherdavid/.openagents/aethyrforge/benchmark-12864");

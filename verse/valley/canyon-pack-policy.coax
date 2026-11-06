@@ -12,7 +12,7 @@ CANYON_PACK_DIGEST :: [32]u8.[0x9c,0x28,0x5e,0x9f,0xfa,0x59,0xb8,0x50,0xe9,0x33,
   #assert !canyon_pack_accept(digest[0..<32],794477567) && !canyon_pack_accept(digest[0..<32],794477569);
   for k:0..<32 {digest[k]^=1;#assert !canyon_pack_accept(digest[0..<32],794477568);digest[k]^=1;}
 }
-canyon_pack_accept :: (digest:[]u8,bytes:int)->bool {
+canyon_pack_accept :: (digest:[]u8,bytes:int)->bool #effects(all) {
   if digest.count!=32 || bytes!=CANYON_PACK_BYTES {return false;}
   for k:0..<32 {if digest[k]!=CANYON_PACK_DIGEST[k] {return false;}}return true;
 }

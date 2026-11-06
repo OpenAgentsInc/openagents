@@ -14,7 +14,7 @@ ExRpc :: struct { error: int; kind: int; key: string; id: string = "null"; }
   }
   #assert !ex_rpc_notification("{\"jsonrpc\":\"2.0\",\"method\":\"explorer.tip\",\"params\":{},\"params\":{}}",nodes[..]);
 }
-ex_rpc_notification :: (text: string, nodes: [] JvNode) -> bool {
+ex_rpc_notification :: (text: string, nodes: [] JvNode) -> bool #effects(all) {
   d: [1] Jv; if !jv_parse(d[..],text,nodes) { return false; } v := d[0];
   version := jv_get(v,0,"jsonrpc");
   if jv_kind(v,version) != JV_STRING || !jv_raw_eq(jv_raw(v,version),"2.0") || jv_kind(v,jv_get(v,0,"method")) != JV_STRING { return false; }
@@ -74,7 +74,7 @@ ex_rpc_notification :: (text: string, nodes: [] JvNode) -> bool {
   #assert ex_rpc("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"explorer.Tip\",\"params\":{}}",key[..],nodes[..]).error == -32601;
   #assert ex_rpc("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"explorer.block\",\"params\":{\"key\":\"\"}}",key[..],nodes[..]).error == -32602;
 }
-ex_rpc_integer_id :: (raw: string) -> bool {
+ex_rpc_integer_id :: (raw: string) -> bool #effects(all) {
   if raw.count == 0 { return false; } at := ifx raw[0] == '-' then 1 else 0; n := raw.count-at;
   if n < 1 || n > 16 { return false; }
   for i: at..<raw.count { if raw[i] < '0' || raw[i] > '9' { return false; } }
@@ -82,7 +82,7 @@ ex_rpc_integer_id :: (raw: string) -> bool {
   for i: 0..<16 { if raw[at+i] < limit[i] { return true; } if raw[at+i] > limit[i] { return false; } } return true;
 }
 
-ex_rpc :: (text: string, key: [] u8, nodes: [] JvNode) -> ExRpc #export_c {
+ex_rpc :: (text: string, key: [] u8, nodes: [] JvNode) -> ExRpc #export_c #effects(all) {
   d: [1] Jv;
   if !jv_parse(d[..],text,nodes) { return ExRpc.{error=-32700}; } v := d[0];
   if jv_kind(v,0) != JV_OBJECT || jv_len(v,0) != 4 { return ExRpc.{error=-32600}; }

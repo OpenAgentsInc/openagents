@@ -13,7 +13,7 @@
 of_valid :: (worker:bool,workers:int,frames:int,messages:int,samples:int)->bool {
   return workers==(ifx worker then 1 else 0) && frames>100 && messages>100 && samples>0;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {
     tool_errln("usage: coax/web/tool.sh apps/aethyrforge-desktop/offline-check.coax APP OUT_DIR");return 2;
   }

@@ -58,7 +58,7 @@ bool parser_expr_tag(uint32_t kind) { switch(kind) {
   default:return false;
 }}
 bool parser_stmt_tag(uint32_t kind) { switch(kind) {
-  case COAX_PS_Tag_stmt_block:case COAX_PS_Tag_stmt_expr:case COAX_PS_Tag_stmt_var:case COAX_PS_Tag_stmt_assign:case COAX_PS_Tag_stmt_ret:case COAX_PS_Tag_stmt_if_:case COAX_PS_Tag_stmt_while_:case COAX_PS_Tag_stmt_for_range:case COAX_PS_Tag_stmt_for_each:case COAX_PS_Tag_stmt_break_:case COAX_PS_Tag_stmt_continue_:case COAX_PS_Tag_stmt_defer:case COAX_PS_Tag_stmt_assert_:case COAX_PS_Tag_stmt_switch:return true;
+  case COAX_PS_Tag_stmt_block:case COAX_PS_Tag_stmt_expr:case COAX_PS_Tag_stmt_var:case COAX_PS_Tag_stmt_assign:case COAX_PS_Tag_stmt_ret:case COAX_PS_Tag_stmt_if_:case COAX_PS_Tag_stmt_while_:case COAX_PS_Tag_stmt_for_range:case COAX_PS_Tag_stmt_for_each:case COAX_PS_Tag_stmt_break_:case COAX_PS_Tag_stmt_continue_:case COAX_PS_Tag_stmt_defer:case COAX_PS_Tag_stmt_assert_:case COAX_PS_Tag_stmt_switch:case COAX_PS_Tag_stmt_transaction:return true;
   default:return false;
 }}
 Loc parser_loc(coax_t_PS_Loc l) {return {(int32_t)l.line,(int32_t)l.column,(int32_t)l.offset};}
@@ -187,7 +187,7 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &all_tokens,F
     }else switch(v.kind) {
       case COAX_PS_Tag_decl_proc:{auto *p=parser_ref<ProcDecl>(objects,id);p->loc=loc;p->end=(int32_t)v.end;p->name=name;p->ret_expr=parser_ref<TypeExpr>(objects,v.a);p->body=parser_ref<Stmt>(objects,v.b);p->export_c=v.flag;p->foreign=v.flag2;p->effect_present=v.effect_present;p->pure_decl=v.pure_decl;p->effect_loc=parser_loc(v.effect_loc);break;}
       case COAX_PS_Tag_decl_constant:{auto *p=parser_ref<ConstDecl>(objects,id);p->loc=loc;p->end=(int32_t)v.end;p->name=name;p->expr=parser_ref<Expr>(objects,v.a);break;}
-      case COAX_PS_Tag_decl_struct_:{auto *p=parser_ref<StructDecl>(objects,id);p->loc=loc;p->end=(int32_t)v.end;p->name=name;break;}
+      case COAX_PS_Tag_decl_struct_:{auto *p=parser_ref<StructDecl>(objects,id);p->persisted=v.flag;p->loc=loc;p->end=(int32_t)v.end;p->name=name;break;}
       case COAX_PS_Tag_decl_enum_:{auto *p=parser_ref<EnumDecl>(objects,id);p->loc=loc;p->end=(int32_t)v.end;p->name=name;p->base_expr=parser_ref<TypeExpr>(objects,v.a);break;}
       case COAX_PS_Tag_decl_param:{auto *p=parser_ref<Param>(objects,id);p->loc=loc;p->name=name;p->type_expr=parser_ref<TypeExpr>(objects,v.a);break;}
       case COAX_PS_Tag_decl_field:{auto *p=parser_ref<Field>(objects,id);p->loc=loc;p->name=name;p->type_expr=parser_ref<TypeExpr>(objects,v.a);p->init=parser_ref<Expr>(objects,v.b);p->flat=v.flag;p->depth=v.flag2;break;}
@@ -234,6 +234,7 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &all_tokens,F
   if(nodes[(size_t)result.root].value) out->run_steps=nodes[(size_t)result.root].value;
   out->src=src;out->authority=nodes[(size_t)result.root].flag;out->imports=to_slice(arena,imports);out->procs=to_slice(arena,procs);
   out->constants=to_slice(arena,constants);out->structs=to_slice(arena,structs);out->enums=to_slice(arena,enums);out->unions=to_slice(arena,unions);out->assertions=to_slice(arena,assertions);out->checks=to_slice(arena,checks);
+  for(int64_t id=1;id<=state.used;id++)if(nodes[(size_t)id].kind==COAX_PS_Tag_stmt_transaction)out->has_transactions=true;
   attach_check_input(out,nodes,objects,state.used);
   return true;
 }

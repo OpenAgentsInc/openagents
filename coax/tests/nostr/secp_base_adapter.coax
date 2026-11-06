@@ -3,7 +3,7 @@
 #load "../../lib/crypto/secp_mult_base_native.coax";
 // Public test inventory only. Secret multiplication never indexes either
 // immutable table this way; it uses the full scan in smb_comb.
-smb_table_entry_public :: (native: bool,index: int) -> SgPoint #export_c {
+smb_table_entry_public :: (native: bool,index: int) -> SgPoint #export_c #effects(all) {
   if native {
     if index < 0 || index >= 256 { return sg_infinity(); }
     return SMB_NATIVE_TABLE[index];

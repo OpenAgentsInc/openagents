@@ -99,7 +99,7 @@ half as many hashes. The last level has one hash: the root.
 ```jai
 // One inner node: SHA-256d of the left child's 32 bytes, then the right's,
 // into out. out may be either child: both are copied first.
-merkle_parent_vartime :: (left: [] u8, right: [] u8, out: [] u8) -> bool #export_c {
+merkle_parent_vartime :: (left: [] u8, right: [] u8, out: [] u8) -> bool #export_c #effects(all) {
   if left.count != MERKLE_HASH || right.count != MERKLE_HASH || out.count != MERKLE_HASH { return false; }
   pair: [64] u8;
   for i: 0..<32 { pair[i] = left[i]; pair[32+i] = right[i]; }
@@ -121,7 +121,7 @@ MerkleRoot :: struct { code: int; mutated: bool; }
 // Core's mutation test for one level of n hashes: is any pair (0, 1),
 // (2, 3), ... two equal hashes? An odd level's last hash is not compared:
 // pairing it with itself is the rule, not a mutation.
-merkle_pairs_equal_vartime :: (work: [] u8, n: int) -> bool #export_c {
+merkle_pairs_equal_vartime :: (work: [] u8, n: int) -> bool #export_c #effects(all) {
   found := false;
   for pos: 0..<n/2 {
     same := true;
@@ -132,7 +132,7 @@ merkle_pairs_equal_vartime :: (work: [] u8, n: int) -> bool #export_c {
 }
 // One level of the tree, in place: work holds n hashes; afterwards its
 // first (n + 1) / 2 hashes are their parents.
-merkle_level_vartime :: (work: [] u8, n: int) {
+merkle_level_vartime :: (work: [] u8, n: int) #effects(all) {
   for k: 0..<(n+1)/2 {
     right := ifx 2*k+1 < n then 2*k+1 else 2*k;    // an odd level's last hash pairs with itself
     #assert merkle_parent_vartime(work[64*k..<64*k+32], work[32*right..<32*right+32], work[32*k..<32*k+32]);
@@ -142,7 +142,7 @@ merkle_level_vartime :: (work: [] u8, n: int) {
 // another) into out, using work, which holds at least as many bytes as
 // the leaves. No leaves is MERKLE_EMPTY with a root of zero, as in Core.
 // mutated is Core's flag: some level paired two equal hashes.
-merkle_root_vartime :: (leaves: [] u8, work: [] u8, out: [] u8) -> MerkleRoot #export_c {
+merkle_root_vartime :: (leaves: [] u8, work: [] u8, out: [] u8) -> MerkleRoot #export_c #effects(all) {
   if leaves.count % MERKLE_HASH != 0 || work.count < leaves.count || out.count != MERKLE_HASH {
     return MerkleRoot.{code=MERKLE_CAPACITY};
   }
@@ -286,7 +286,7 @@ order:
 // block's header, in Core's order: a different root is "bad-txnmrklroot",
 // then a mutated tree is "bad-txns-duplicate". Core's CheckBlock then
 // refuses a block with no transactions; that is MERKLE_EMPTY here.
-merkle_check_vartime :: (leaves: [] u8, work: [] u8, header_root: [] u8) -> int #export_c {
+merkle_check_vartime :: (leaves: [] u8, work: [] u8, header_root: [] u8) -> int #export_c #effects(all) {
   if header_root.count != MERKLE_HASH { return MERKLE_CAPACITY; }
   root: [32] u8;
   r := merkle_root_vartime(leaves, work, root[..]);
@@ -434,7 +434,7 @@ sibling is the node itself.
 <!-- source: coax/lib/bitcoin/merkle.coax branch -->
 ```jai
 // The number of levels above n leaves: how long a branch is.
-merkle_depth_vartime :: (n: int) -> int #export_c {
+merkle_depth_vartime :: (n: int) -> int #export_c #effects(all) {
   depth := 0; m := n;
   while m > 1 { m = (m + 1) / 2; depth += 1; }
   return depth;
@@ -443,7 +443,7 @@ MerkleBranch :: struct { code: int; depth: int; }
 // TransactionMerklePath: the siblings of leaf index from the leaves up,
 // into branch, depth hashes. At an odd level's end the sibling is the
 // hash itself.
-merkle_branch_vartime :: (leaves: [] u8, index: int, work: [] u8, branch: [] u8) -> MerkleBranch #export_c {
+merkle_branch_vartime :: (leaves: [] u8, index: int, work: [] u8, branch: [] u8) -> MerkleBranch #export_c #effects(all) {
   if leaves.count % MERKLE_HASH != 0 || work.count < leaves.count { return MerkleBranch.{code=MERKLE_CAPACITY}; }
   n := leaves.count / MERKLE_HASH;
   if n == 0 { return MerkleBranch.{code=MERKLE_EMPTY}; }
@@ -476,7 +476,7 @@ Verifying is the reverse walk, followed by the checks a light client needs:
 // ComputeMerkleRootFromBranch: the root a branch gives for a leaf at
 // index. Each bit of index, from the lowest, says whether the node is a
 // right child (1) or a left one (0); bits past the branch are ignored.
-merkle_branch_root_vartime :: (leaf: [] u8, branch: [] u8, index: int, out: [] u8) -> int #export_c {
+merkle_branch_root_vartime :: (leaf: [] u8, branch: [] u8, index: int, out: [] u8) -> int #export_c #effects(all) {
   if leaf.count != MERKLE_HASH || branch.count % MERKLE_HASH != 0 || out.count != MERKLE_HASH || index < 0 { return MERKLE_CAPACITY; }
   node: [32] u8; at := index;
   for i: 0..<32 { node[i] = leaf[i]; }
@@ -494,7 +494,7 @@ merkle_branch_root_vartime :: (leaf: [] u8, branch: [] u8, index: int, out: [] u
 // as that tree is deep. Without the count, a 64-byte transaction's two
 // halves pass as an inner node, and a branch one level longer or shorter
 // can prove a transaction the block doesn't hold.
-merkle_verify_vartime :: (leaf: [] u8, branch: [] u8, index: int, count: int, root: [] u8) -> int #export_c {
+merkle_verify_vartime :: (leaf: [] u8, branch: [] u8, index: int, count: int, root: [] u8) -> int #export_c #effects(all) {
   if leaf.count != MERKLE_HASH || branch.count % MERKLE_HASH != 0 || root.count != MERKLE_HASH { return MERKLE_CAPACITY; }
   if count < 1 || index < 0 || index >= count { return MERKLE_BAD_INDEX; }
   if branch.count != merkle_depth_vartime(count) * MERKLE_HASH { return MERKLE_BAD_DEPTH; }
@@ -552,7 +552,7 @@ depends on the root. BIP-141 takes the coinbase's wtxid as 32 zero bytes.
 // BlockWitnessMerkleRoot: the root of a block's wtxids, with the
 // coinbase's (the first) taken as 32 zero bytes. Core ignores the mutated
 // flag here: the txid tree has already refused a repeated transaction.
-merkle_witness_root_vartime :: (wtxids: [] u8, work: [] u8, out: [] u8) -> int #export_c {
+merkle_witness_root_vartime :: (wtxids: [] u8, work: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if wtxids.count % MERKLE_HASH != 0 || work.count < wtxids.count || out.count != MERKLE_HASH { return MERKLE_CAPACITY; }
   for i: 0..<wtxids.count { work[i] = ifx i < MERKLE_HASH then 0 else wtxids[i]; }
   return merkle_root_vartime(work[0..<wtxids.count], work, out).code;
@@ -593,7 +593,7 @@ MERKLE_HEADER :: 80;
 // nothing after. Writes each txid into txids and each wtxid into wtxids
 // (hash order, 32 bytes each). With bip54, a transaction of 64 stripped
 // bytes refuses (MERKLE_TX_64); that rule is proposed, not consensus.
-merkle_block_ids_vartime :: (b: [] u8, bip54: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, txids: [] u8, wtxids: [] u8) -> MerkleBlock #export_c {
+merkle_block_ids_vartime :: (b: [] u8, bip54: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, txids: [] u8, wtxids: [] u8) -> MerkleBlock #export_c #effects(all) {
   if b.count < MERKLE_HEADER { return MerkleBlock.{code=MERKLE_BAD_BLOCK, tx_code=TX_TRUNCATED, first64=-1}; }
   c := tx_compact_read_vartime(b, MERKLE_HEADER);
   if c.code != TX_OK { return MerkleBlock.{code=MERKLE_BAD_BLOCK, at=c.next, tx_code=c.code, first64=-1}; }

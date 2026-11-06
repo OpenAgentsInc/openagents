@@ -25,7 +25,7 @@ egt_note :: (s: [] Everglade, slot: int, used: bool) {
   s[0].sp.notes[s[0].sp.note_n] = slot * 2 + (ifx used then 1 else 0); s[0].sp.note_n += 1;
 }
 
-everglade_track :: (s: [] Everglade, w: [] EgSeen, t: [] Track, x: f32, z: f32) #export_c {
+everglade_track :: (s: [] Everglade, w: [] EgSeen, t: [] Track, x: f32, z: f32) #export_c #effects(all) {
   if !t[0].ready { return; }
   egt_w := s[0].wt[..];
   if !w[0].started {

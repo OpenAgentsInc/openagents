@@ -19,7 +19,7 @@ HmRead :: struct {read:EmRead;compares:int;vertex:int;}
 // Records write number x.writes, key k, value v. Finding the key's place is
 // a binary search; a key already present keeps its place and takes the
 // later write, because a later write wins every tie the scan would see.
-hm_insert :: (x:HmIndex,k:int,v:int)->HmInsert {
+hm_insert :: (x:HmIndex,k:int,v:int)->HmInsert #effects(all) {
     r:=HmInsert.{index=x};
     if k< -EM_KEY_MAX || k>EM_KEY_MAX {r.status=EmStatus.range;return r;}
     lo:=0;hi:=x.count;
@@ -44,7 +44,7 @@ hm_insert :: (x:HmIndex,k:int,v:int)->HmInsert {
 // neighbour finds the peak. Two different keys tie only when q lies midway
 // between them, where neither is q and the read is refused anyway; so the
 // result, value and position, is the scan's.
-hm_read :: (x:HmIndex,q:int)->HmRead {
+hm_read :: (x:HmIndex,q:int)->HmRead #effects(all) {
     r:HmRead;
     if q< -EM_KEY_MAX || q>EM_KEY_MAX {r.read.status=EmStatus.range;return r;}
     if x.count==0 {r.read.status=EmStatus.missing;return r;}
@@ -67,7 +67,7 @@ HmRun :: struct {result:TmResult;stores:int;reads:int;hull:int;scan:int;}
 // every step, each of the 64 cells is read through the hull. scan counts
 // the comparisons chapter 227's read makes over the same stores (one fewer
 // than the number of stores, per read); hull counts this chapter's.
-hm_run :: (program:[]TmOp,budget:int,trace:[]int,index:HmIndex)->HmRun {
+hm_run :: (program:[]TmOp,budget:int,trace:[]int,index:HmIndex)->HmRun #effects(all) {
     out:HmRun;x:=index;x.count=0;
     admitted:=tm_admit(program);if admitted!=TmStatus.ok {out.result.status=admitted;return out;}
     if budget<1 || budget>TM_STEPS_MAX {out.result.status=TmStatus.budget;return out;}
@@ -103,10 +103,10 @@ hm_run :: (program:[]TmOp,budget:int,trace:[]int,index:HmIndex)->HmRun {
 }
 // book:end run
 
-hm_index :: (keys:[]int,values:[]int,positions:[]int,n:int)->HmIndex {
+hm_index :: (keys:[]int,values:[]int,positions:[]int,n:int)->HmIndex #effects(all) {
     return HmIndex.{keys=keys[0..<n],values=values[0..<n],positions=positions[0..<n]};
 }
-hm_put :: (x:HmIndex,k:int,v:int)->HmIndex {
+hm_put :: (x:HmIndex,k:int,v:int)->HmIndex #effects(all) {
     w:=hm_insert(x,k,v);#assert w.status==EmStatus.ok;
     return w.index;
 }
@@ -163,7 +163,7 @@ hm_put :: (x:HmIndex,k:int,v:int)->HmIndex {
 }
 // Compares every read in [lo, hi] with chapter 227's scan over the same
 // writes: the number of reads, or -1 at the first that differs.
-hm_agrees :: (x:HmIndex,keys:[]int,values:[]int,n:int,lo:int,hi:int)->int {
+hm_agrees :: (x:HmIndex,keys:[]int,values:[]int,n:int,lo:int,hi:int)->int #effects(all) {
     for q:lo..<hi+1 {
         a:=hm_read(x,q).read;b:=em_read(keys,values,n,q);
         if a.status!=b.status {return -1;}
@@ -184,7 +184,7 @@ hm_agrees :: (x:HmIndex,keys:[]int,values:[]int,n:int,lo:int,hi:int)->int {
 // Generated writes, with every read checked after each one: the reads
 // compared, the distinct keys, and a checksum of the writes made.
 HmSequence :: struct {reads:int;sum:int;count:int;}
-hm_sequence :: (seed0:int,n:int,span:int)->HmSequence {
+hm_sequence :: (seed0:int,n:int,span:int)->HmSequence #effects(all) {
     ks:[64]int;vs:[64]int;ps:[64]int;x:=hm_index(ks[..],vs[..],ps[..],64);keys:[80]int;values:[80]int;seed:=seed0;
     out:HmSequence;
     for i:0..<n {
@@ -232,7 +232,7 @@ hm_sequence :: (seed0:int,n:int,span:int)->HmSequence {
     #assert h.stores==4 && h.reads==53*64 && h.scan==4608 && h.hull==3121;
     #assert o[0]==17 && h.result.digest[0]==0xd7 && h.result.digest[1]==0xbe;
 }
-rx_like_squares :: ()->[20]TmOp {
+rx_like_squares :: ()->[20]TmOp #effects(all) {
     return [20]TmOp.[TmOp.{code=TmCode.push,arg=4},TmOp.{code=TmCode.set,arg=0},
         TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.get,arg=0},
         TmOp.{code=TmCode.mul},TmOp.{code=TmCode.store},

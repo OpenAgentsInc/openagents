@@ -18,26 +18,26 @@ st_max :: (a:f32,b:f32)->f32 {if a>b{return a;}return b;}
 st_sat :: (x:f32)->f32 {return st_min(1.0f32,st_max(0.0f32,x));}
 // book:begin bands
 // smoothstep(e - s, e + s, x): a band edge at e, blended over 2s.
-verse_style_soft_step :: (e:f32,s:f32,x:f32)->f32 #export_c {
+verse_style_soft_step :: (e:f32,s:f32,x:f32)->f32 #export_c #effects(all) {
  t:=st_sat((x-(e-s))/st_max(2.0f32*s,0.000001f32));
  return t*t*(3.0f32-2.0f32*t);
 }
 
 // ---- 1. Shading: soft toon bands
 // Wrapped Lambert: N.L lifted a quarter, so the terminator sits past the side.
-verse_style_wrap :: (ndl:f32)->f32 #export_c {return st_sat((ndl+0.25f32)/1.25f32);}
+verse_style_wrap :: (ndl:f32)->f32 #export_c #effects(all) {return st_sat((ndl+0.25f32)/1.25f32);}
 // Three bands: shadow 0, mid (`mid`, 0.55), lit 1, edges e0 and e1 (0.20, 0.58)
 // softened over s (0.06). w is the wrapped term times the shadow map's soft term.
-verse_style_bands :: (w:f32,e0:f32,e1:f32,s:f32,mid:f32)->f32 #export_c {
+verse_style_bands :: (w:f32,e0:f32,e1:f32,s:f32,mid:f32)->f32 #export_c #effects(all) {
  return mid*verse_style_soft_step(e0,s,w)+(1.0f32-mid)*verse_style_soft_step(e1,s,w);
 }
 // Two bands, for characters: one edge (0.40, softness 0.08).
-verse_style_bands2 :: (w:f32,e:f32,s:f32)->f32 #export_c {return verse_style_soft_step(e,s,w);}
+verse_style_bands2 :: (w:f32,e:f32,s:f32)->f32 #export_c #effects(all) {return verse_style_soft_step(e,s,w);}
 // book:end bands
 // One channel of a banded surface: the albedo under the tinted ambient in the
 // shadow band (`shadow_light`: shadow tint times ambient) and under the key
 // plus ambient in the lit one (`lit_light`), mixed by the band.
-verse_style_shade :: (albedo:f32,shadow_light:f32,lit_light:f32,band:f32)->f32 #export_c {
+verse_style_shade :: (albedo:f32,shadow_light:f32,lit_light:f32,band:f32)->f32 #export_c #effects(all) {
  return albedo*(shadow_light+(lit_light-shadow_light)*st_sat(band));
 }
 // Painterly shadows are cool (art-styles.md 3), warm albedos too: the shadow band's colour (one
@@ -45,28 +45,28 @@ verse_style_shade :: (albedo:f32,shadow_light:f32,lit_light:f32,band:f32)->f32 #
 // the tint's luminance), raised to `amount` (the preset's `cool`), and verse_style_keep_value then
 // scales the three back to the luminance they had. A multiply, not a mix: mixing a warm colour toward
 // blue passes through grey, while multiplying turns olive teal and brown slate and keeps colour in it.
-verse_style_cool :: (c:f32,tint:f32,tint_lum:f32,amount:f32)->f32 #export_c {
+verse_style_cool :: (c:f32,tint:f32,tint_lum:f32,amount:f32)->f32 #export_c #effects(all) {
  return c*pow(st_max(tint,0.000001f32)/st_max(tint_lum,0.000001f32),st_max(amount,0.0f32));
 }
 // One channel of the cooled colour put back to the luminance `before` from `after` (both from verse_style_luma).
-verse_style_keep_value :: (c:f32,before:f32,after:f32)->f32 #export_c {return c*before/st_max(after,0.000001f32);}
+verse_style_keep_value :: (c:f32,before:f32,after:f32)->f32 #export_c #effects(all) {return c*before/st_max(after,0.000001f32);}
 // One channel of a banded surface from its cooled shadow colour and its lit colour (albedo times
 // key plus ambient), mixed by the band.
-verse_style_banded :: (shadow_c:f32,lit_c:f32,band:f32)->f32 #export_c {return shadow_c+(lit_c-shadow_c)*st_sat(band);}
+verse_style_banded :: (shadow_c:f32,lit_c:f32,band:f32)->f32 #export_c #effects(all) {return shadow_c+(lit_c-shadow_c)*st_sat(band);}
 // The one hard dab of a wet, metal or glass surface: R.L past `cut` (0.92) at `strength` (0.35).
-verse_style_dab :: (rdl:f32,cut:f32,strength:f32)->f32 #export_c {return ifx rdl>=cut then strength else 0.0f32;}
+verse_style_dab :: (rdl:f32,cut:f32,strength:f32)->f32 #export_c #effects(all) {return ifx rdl>=cut then strength else 0.0f32;}
 
 // ---- 2. Rim light
 // How much rim a surface gets: from where it turns `start` (N.V 0.38) from the
 // eye to full at `full` (0.12), more on the key light's side, times strength.
-verse_style_rim :: (ndv:f32,ndl:f32,start:f32,full:f32,strength:f32)->f32 #export_c {
+verse_style_rim :: (ndv:f32,ndl:f32,start:f32,full:f32,strength:f32)->f32 #export_c #effects(all) {
  t:=st_sat((ndv-start)/(full-start));
  edge:=t*t*(3.0f32-2.0f32*t);
  return edge*(0.35f32+0.65f32*st_sat(ndl+0.3f32))*strength;
 }
 
 // Relative luminance of linear RGB.
-verse_style_luma :: (r:f32,g:f32,b:f32)->f32 #export_c {return 0.2126f32*r+0.7152f32*g+0.0722f32*b;}
+verse_style_luma :: (r:f32,g:f32,b:f32)->f32 #export_c #effects(all) {return 0.2126f32*r+0.7152f32*g+0.0722f32*b;}
 
 // book:begin record
 // The styles a material is drawn in: the values of verse/style-preset.coax's STYLE_*.

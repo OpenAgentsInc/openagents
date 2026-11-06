@@ -71,7 +71,7 @@ FUNCTIONS :: "one() { ok=$1; on=$2; shift 2; COAX_CHECK_CACHE=\"$D/$ok\" \"${COM
 // files=M" and the files that differ.
 CORPUS :: "d=0; m=0; same3() { cmp -s \"$1.out\" \"$2.out\" && cmp -s \"$1.err\" \"$2.err\" && cmp -s \"$1.status\" \"$2.status\"; }; c1() { COAX_CHECK_CACHE=\"$1\" \"$C\" c \"$2\" > \"$3.out\" 2> \"$3.err\"; echo $? > \"$3.status\"; }; for f in tests/pass/*.coax tests/fail/*.coax tests/diagnostics/*.coax tests/parallel-checks/*.coax tests/authority-cache/*.coax tests/library-checks/*.coax tests/check-reuse/main.coax; do m=$((m + 1)); k=\"$D/corpus/$m\"; mkdir -p \"$k\"; c1 \"$k/cache\" \"$f\" \"$k/cold\"; c1 \"$k/cache\" \"$f\" \"$k/warm\"; same3 \"$k/cold\" \"$k/warm\" || { d=$((d + 1)); echo \"differs warm $f\"; }; if grep -q '^#authority;' \"$f\"; then cp -R \"$(dirname \"$f\")\" \"$k/src\"; g=\"$k/src/$(basename \"$f\")\"; printf '\\n// edited\\n' >> \"$g\"; c1 \"$k/cache\" \"$g\" \"$k/edit\"; c1 \"$k/new\" \"$g\" \"$k/edit-cold\"; same3 \"$k/edit\" \"$k/edit-cold\" || { d=$((d + 1)); echo \"differs edited $f\"; }; fi; done; echo \"corpus differs=$d files=$m\"";
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: check-reuse.coax COMPILER"); return 2; }
   compiler := args_at(a[..], 0);

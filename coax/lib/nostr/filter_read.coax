@@ -106,7 +106,7 @@ FrSearch :: struct { has: bool; text: string; }
 }
 
 // A string list: each decoded value appended to the space. FR_OK or a refusal.
-fr_strings :: (j: [] Json, sp: [] FrSpace, values: [] []string) -> int {
+fr_strings :: (j: [] Json, sp: [] FrSpace, values: [] []string) -> int #effects(all) {
   if j[0].tok != JSON_ARRAY { return FR_TYPE; }
   from := sp[0].strs_used;
   t := json_next(j);
@@ -123,7 +123,7 @@ fr_strings :: (j: [] Json, sp: [] FrSpace, values: [] []string) -> int {
   values[0] = sp[0].strs[from..<sp[0].strs_used];
   return FR_OK;
 }
-fr_kinds :: (j: [] Json, sp: [] FrSpace, f: [] NostrFilter) -> int {
+fr_kinds :: (j: [] Json, sp: [] FrSpace, f: [] NostrFilter) -> int #effects(all) {
   if j[0].tok != JSON_ARRAY { return FR_TYPE; }
   from := sp[0].ints_used;
   t := json_next(j);
@@ -137,20 +137,20 @@ fr_kinds :: (j: [] Json, sp: [] FrSpace, f: [] NostrFilter) -> int {
   f[0].has_kinds = true; f[0].kinds = sp[0].ints[from..<sp[0].ints_used];
   return FR_OK;
 }
-fr_letter :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+fr_letter :: (c: u8) -> bool #effects(all) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
 // Reads the filter object text into f[0]. On a refusal f[0] is unspecified
 // and the space may have advanced; the caller discards both.
-filter_read :: (text: string, f: [] NostrFilter, sp: [] FrSpace) -> int {
+filter_read :: (text: string, f: [] NostrFilter, sp: [] FrSpace) -> int #effects(all) {
   q: [1] FrSearch;
   return fr_read(text, f, sp, q[..], false);
 }
 // The same, and NIP-50's "search" key (chapter 41): a string, decoded into
 // the space, in q[0]; q[0].has says whether the key was there. Only a
 // reader that answers searches calls this; filter_read refuses the key.
-filter_read_search :: (text: string, f: [] NostrFilter, sp: [] FrSpace, q: [] FrSearch) -> int {
+filter_read_search :: (text: string, f: [] NostrFilter, sp: [] FrSpace, q: [] FrSearch) -> int #effects(all) {
   return fr_read(text, f, sp, q, true);
 }
-fr_read :: (text: string, f: [] NostrFilter, sp: [] FrSpace, q: [] FrSearch, search: bool) -> int {
+fr_read :: (text: string, f: [] NostrFilter, sp: [] FrSpace, q: [] FrSearch, search: bool) -> int #effects(all) {
   f[0] = NostrFilter.{}; q[0] = FrSearch.{};
   j: [1] Json; json_start(j[..], text);
   if json_next(j[..]) != JSON_OBJECT { return FR_JSON; }

@@ -95,7 +95,7 @@ ac_cast :: (c: [] RelayConn, h: [] AcHeard, seq: [] int, i: int, slot: int) -> b
   return relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]);
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("abilities-check: bad arguments"); return 2; }
   b: [512] u8;

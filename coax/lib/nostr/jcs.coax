@@ -138,7 +138,7 @@ JcsCompare :: struct {order:int;work:int;ok:bool;}
 
 // Decode one UTF-8 scalar; -1 is EOF, -2 invalid UTF-8. UTF-16 conversion
 // and I-JSON noncharacter admission are separate consumers below.
-jcs_point :: (text:string,state:[]JcsUnits)->int {
+jcs_point :: (text:string,state:[]JcsUnits)->int #effects(all) {
   if state[0].at>=text.count {return -1;}
   at:=state[0].at;b:=cast(int)text[at];n:=json_utf8(text,at);
   if n==0 {return -2;}
@@ -148,7 +148,7 @@ jcs_point :: (text:string,state:[]JcsUnits)->int {
   state[0].at+=n;
   return cp;
 }
-jcs_unicode_admit :: (text:string)->bool {
+jcs_unicode_admit :: (text:string)->bool #effects(all) {
   state:[1]JcsUnits;
   while state[0].at<text.count {
     cp:=jcs_point(text,state[..]);
@@ -158,13 +158,13 @@ jcs_unicode_admit :: (text:string)->bool {
   }
   return true;
 }
-jcs_unit :: (text:string,state:[]JcsUnits)->int {
+jcs_unit :: (text:string,state:[]JcsUnits)->int #effects(all) {
   if state[0].low!=0 {v:=state[0].low;state[0].low=0;return v;}
   cp:=jcs_point(text,state);
   if cp>0xffff {cp-=0x10000;state[0].low=0xdc00+(cp&1023);return 0xd800+(cp>>10);}
   return cp;
 }
-jcs_compare :: (a:string,b:string,budget:int)->JcsCompare {
+jcs_compare :: (a:string,b:string,budget:int)->JcsCompare #effects(all) {
   x:[1]JcsUnits;y:[1]JcsUnits;work:=0;
   while work<budget {
     av:=jcs_unit(a,x[..]);bv:=jcs_unit(b,y[..]);work+=1;
@@ -175,8 +175,8 @@ jcs_compare :: (a:string,b:string,budget:int)->JcsCompare {
   }
   return JcsCompare.{work=work};
 }
-jcs_budget :: (used:int)->int {return JCS_MAX_WORK-used;}
-jcs_add :: (tree:[]JcsTree,node:JcsNode,parent:int)->int {
+jcs_budget :: (used:int)->int #effects(all) {return JCS_MAX_WORK-used;}
+jcs_add :: (tree:[]JcsTree,node:JcsNode,parent:int)->int #effects(all) {
   if tree[0].count>=JCS_MAX_NODES {tree[0].error=JCS_LIMIT;return -1;}
   id:=tree[0].count;tree[0].count+=1;tree[0].nodes[id]=node;
   if parent<0 {return id;}
@@ -202,7 +202,7 @@ jcs_add :: (tree:[]JcsTree,node:JcsNode,parent:int)->int {
   }
   return id;
 }
-jcs_build :: (text:string,tree:[]JcsTree,decoded:[]u8)->u32 {
+jcs_build :: (text:string,tree:[]JcsTree,decoded:[]u8)->u32 #effects(all) {
   j:[1]Json;json_start(j[..],text);depth:=0;parents:[16]int;key_from:[16]int;key_count:[16]int;
   while true {
     token:=json_next(j[..]);
@@ -230,7 +230,7 @@ jcs_build :: (text:string,tree:[]JcsTree,decoded:[]u8)->u32 {
   }
   return JCS_JSON;
 }
-jcs_string_size :: (text:string)->int {
+jcs_string_size :: (text:string)->int #effects(all) {
   count:=2;
   for c:text {
     if c=='"' || c=='\\' || c==8 || c==9 || c==10 || c==12 || c==13 {count+=2;}
@@ -238,16 +238,16 @@ jcs_string_size :: (text:string)->int {
   }
   return count;
 }
-jcs_int_size :: (v:int)->int {
+jcs_int_size :: (v:int)->int #effects(all) {
   x:=v;count:=1;if x<0 {count+=1;x=-x;}
   while x>=10 {count+=1;x/=10;}
   return count;
 }
-jcs_raw :: (out:[]u8,at:int,text:string,measure:bool)->int {
+jcs_raw :: (out:[]u8,at:int,text:string,measure:bool)->int #effects(all) {
   if measure {return at+text.count;}
   return json_raw(out,at,text);
 }
-jcs_emit :: (tree:[]JcsTree,text:string,node_id:int,out:[]u8,start:int,measure:bool,decoded:[]u8)->int {
+jcs_emit :: (tree:[]JcsTree,text:string,node_id:int,out:[]u8,start:int,measure:bool,decoded:[]u8)->int #effects(all) {
   node:=tree[0].nodes[node_id];at:=start;
   if node.kind==JSON_OBJECT || node.kind==JSON_ARRAY {
     object:=node.kind==JSON_OBJECT;
@@ -270,12 +270,12 @@ jcs_emit :: (tree:[]JcsTree,text:string,node_id:int,out:[]u8,start:int,measure:b
   if node.kind==JSON_NUMBER {return ifx measure then at+jcs_int_size(node.number) else json_write_int(out,at,node.number);}
   return jcs_raw(out,at,text[node.from..<node.to],measure);
 }
-jcs_admit_counts :: (input:int,capacity:int,overlap:bool)->u32 #export_c {
+jcs_admit_counts :: (input:int,capacity:int,overlap:bool)->u32 #export_c #effects(all) {
   if input<0 || input>JCS_MAX_INPUT {return JCS_LIMIT;}
   if capacity<0 || capacity>JCS_MAX_INPUT {return JCS_OUTPUT;}
   if overlap {return JCS_ALIAS;}return JCS_OK;
 }
-jcs_canonicalize_checked :: (text:string,out:[]u8,overlap:bool)->JcsResult #export_c {
+jcs_canonicalize_checked :: (text:string,out:[]u8,overlap:bool)->JcsResult #export_c #effects(all) {
   admitted:=jcs_admit_counts(text.count,out.count,overlap);if admitted!=JCS_OK {return JcsResult.{error=admitted};}
   tree:[1]JcsTree;decoded:[65536]u8;
   error:=jcs_build(text,tree[..],decoded[..]);if error!=JCS_OK {return JcsResult.{error=error};}

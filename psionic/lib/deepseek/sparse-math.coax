@@ -89,23 +89,23 @@
     #assert r.status==DkStatus.ok;for j:0..<32 {#assert out[j]==0x4300;}
 }
 
-da_rows :: (kind:u8,rows:int,width:int)->DkPlan #export_c {
+da_rows :: (kind:u8,rows:int,width:int)->DkPlan #export_c #effects(all) {
     if rows<0 || rows>1048576 {return DkPlan.{status=DkStatus.shape};}p:=dk_plan(kind,1,width);if p.status!=DkStatus.ok {return p;}
     return DkPlan.{values=p.values*rows,group=p.group,data=p.data*rows,scales=p.scales*rows,bytes=p.bytes*rows};
 }
-da_row_views :: (stage:[]u8,p:DkPlan)->DaRowViews {return DaRowViews.{pending=DkPacked.{data=stage[0..<p.data],scales=stage[p.data..<p.bytes]},scratch=stage[p.bytes..<2*p.bytes]};}
-da_store :: (kind:u8,rows:int,width:int,row:int,x:[]u16,out:DkPacked,stage:[]u8,overlap:bool)->DkResult #export_c {
+da_row_views :: (stage:[]u8,p:DkPlan)->DaRowViews #effects(all) {return DaRowViews.{pending=DkPacked.{data=stage[0..<p.data],scales=stage[p.data..<p.bytes]},scratch=stage[p.bytes..<2*p.bytes]};}
+da_store :: (kind:u8,rows:int,width:int,row:int,x:[]u16,out:DkPacked,stage:[]u8,overlap:bool)->DkResult #export_c #effects(all) {
     p:=dk_plan(kind,rows,width);if p.status!=DkStatus.ok {return DkResult.{status=p.status};}if row<0 || row>=rows {return DkResult.{status=DkStatus.format};}
     one:=dk_plan(kind,1,width);if x.count!=width || out.data.count<p.data || out.scales.count<p.scales || stage.count<2*one.bytes {return DkResult.{status=DkStatus.capacity};}if overlap {return DkResult.{status=DkStatus.alias};}
     v:=da_row_views(stage,one);r:=dk_pack(kind,1,width,x,v.pending,v.scratch,false);if r.status!=DkStatus.ok {return r;}
     for j:0..<one.data {out.data[row*one.data+j]=v.pending.data[j];}for j:0..<one.scales {out.scales[row*one.scales+j]=v.pending.scales[j];}return DkResult.{written=width};
 }
-da_read :: (kind:u8,width:int,row:int,col:int,x:DkPacked)->DkScalar {
+da_read :: (kind:u8,width:int,row:int,col:int,x:DkPacked)->DkScalar #effects(all) {
     at:=row*width+col;code:=ifx kind==0 then x.data[at] else cast(u8)((x.data[at/2]>>cast(u8)((at%2)*4))&15);
     return dk_lane(kind,code,x.scales[at/(ifx kind==1 then 16 else 32)]);
 }
-da_index_shape :: (heads:int,width:int,rows:int,visible:int)->bool {return heads>=1 && heads<=32 && width>=32 && width/32<=4 && width%32==0 && rows>=1 && rows<=1048576 && visible>=0 && visible<=rows;}
-da_index :: (heads:int,width:int,rows:int,visible:int,q:DkPacked,keys:DkPacked,weights:[]u16,out:[]f32,stage:[]f32,overlap:bool)->DkResult #export_c {
+da_index_shape :: (heads:int,width:int,rows:int,visible:int)->bool #effects(all) {return heads>=1 && heads<=32 && width>=32 && width/32<=4 && width%32==0 && rows>=1 && rows<=1048576 && visible>=0 && visible<=rows;}
+da_index :: (heads:int,width:int,rows:int,visible:int,q:DkPacked,keys:DkPacked,weights:[]u16,out:[]f32,stage:[]f32,overlap:bool)->DkResult #export_c #effects(all) {
     if !da_index_shape(heads,width,rows,visible) {return DkResult.{status=DkStatus.shape};}qp:=da_rows(2,heads,width);kp:=da_rows(2,rows,width);
     if q.data.count!=qp.data || q.scales.count!=qp.scales || keys.data.count!=kp.data || keys.scales.count!=kp.scales || weights.count!=heads || out.count<visible || stage.count<visible {return DkResult.{status=DkStatus.capacity};}if overlap {return DkResult.{status=DkStatus.alias};}
     if visible==0 {return DkResult.{};}query:[4096]u16;weighted:[32]u16;
@@ -120,16 +120,16 @@ da_index :: (heads:int,width:int,rows:int,visible:int,q:DkPacked,keys:DkPacked,w
         value:=psionic_ops_total(total);if !psionic_ops_fits_f32(value) {return DkResult.{status=DkStatus.arithmetic};}b:=dk_bf16(f32(value));if b.status!=DkStatus.ok {return DkResult.{status=b.status};}stage[row]=f32_from_bits(u32(b.bits)<<16);}
     for row:0..<visible {out[row]=stage[row];}return DkResult.{written=visible};
 }
-da_attention_shape :: (s:DaAttention)->bool {return s.heads>=1 && s.heads<=64 && s.width>=32 && s.width/32<=16 && s.width%32==0 && s.window>=1 && s.window<=128 && s.capacity>=1 && s.capacity<=1048576 && s.ratio>=0 && s.ratio<=2;}
-da_attention_plan :: (s:DaAttention,position:int,compressed_rows:int,selected:int)->DaAttentionPlan #export_c {
+da_attention_shape :: (s:DaAttention)->bool #effects(all) {return s.heads>=1 && s.heads<=64 && s.width>=32 && s.width/32<=16 && s.width%32==0 && s.window>=1 && s.window<=128 && s.capacity>=1 && s.capacity<=1048576 && s.ratio>=0 && s.ratio<=2;}
+da_attention_plan :: (s:DaAttention,position:int,compressed_rows:int,selected:int)->DaAttentionPlan #export_c #effects(all) {
     if !da_attention_shape(s) || compressed_rows<0 || compressed_rows>1048576 || selected<0 || selected>512 {return DaAttentionPlan.{status=DkStatus.shape};}
     if position<0 || position>=s.capacity {return DaAttentionPlan.{status=DkStatus.format};}
     visible:=0;if s.ratio>0 {visible=(position+1)/s.ratio;}else if compressed_rows!=0 || selected!=0 {return DaAttentionPlan.{status=DkStatus.shape};}
     if visible>compressed_rows || selected>visible {return DaAttentionPlan.{status=DkStatus.capacity};}
     return DaAttentionPlan.{values=s.heads*s.width,scores=s.window+selected,visible=visible};
 }
-da_wide_larger :: (a:f64,b:f64)->bool {return a>b;}
-da_attend :: (s:DaAttention,position:int,q:[]u16,window:DkPacked,compressed_rows:int,compressed:DkPacked,ids:[]int,sink:[]f32,out:[]u16,work:DaAttentionWork,overlap:bool)->DkResult #export_c {
+da_wide_larger :: (a:f64,b:f64)->bool #effects(all) {return a>b;}
+da_attend :: (s:DaAttention,position:int,q:[]u16,window:DkPacked,compressed_rows:int,compressed:DkPacked,ids:[]int,sink:[]f32,out:[]u16,work:DaAttentionWork,overlap:bool)->DkResult #export_c #effects(all) {
     p:=da_attention_plan(s,position,compressed_rows,ids.count);if p.status!=DkStatus.ok {return DkResult.{status=p.status};}wp:=da_rows(0,s.window,s.width);cp:=da_rows(1,compressed_rows,s.width);
     if q.count!=p.values || window.data.count!=wp.data || window.scales.count!=wp.scales || compressed.data.count!=cp.data || compressed.scales.count!=cp.scales || sink.count!=s.heads || out.count<p.values || work.bits.count<p.values || work.scores.count<p.scores {return DkResult.{status=DkStatus.capacity};}if overlap {return DkResult.{status=DkStatus.alias};}
     for i:0..<ids.count {if ids[i]<0 || ids[i]>=p.visible {return DkResult.{status=DkStatus.format};}if i>0 && ids[i]<=ids[i-1] {return DkResult.{status=DkStatus.format};}}

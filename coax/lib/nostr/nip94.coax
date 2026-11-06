@@ -182,36 +182,36 @@ N94_T_URL :: "https://nostr.build/i/my-image.jpg";
   #assert n94_write(f,t[0..<40],0,true)== -1 && n94_write(f,t[0..<40],0,false)== -1;
 }
 
-n94_refuse :: (f:N94File,status:int,at:int,entry:int)->N94File {o:=f;o.status=status;o.at=at;o.entry=entry;return o;}
-n94_status :: (f:N94File,status:int)->N94File {o:=f;o.status=status;return o;}
-n94_at :: (f:N94File,status:int,at:int)->N94File {o:=f;o.status=status;o.at=at;return o;}
-n94_text :: (s:string)->N32Text {t:N32Text;for i:0..<s.count {t.b[i]=s[i];}t.n=s.count;return t;}
+n94_refuse :: (f:N94File,status:int,at:int,entry:int)->N94File #effects(all) {o:=f;o.status=status;o.at=at;o.entry=entry;return o;}
+n94_status :: (f:N94File,status:int)->N94File #effects(all) {o:=f;o.status=status;return o;}
+n94_at :: (f:N94File,status:int,at:int)->N94File #effects(all) {o:=f;o.status=status;o.at=at;return o;}
+n94_text :: (s:string)->N32Text #effects(all) {t:N32Text;for i:0..<s.count {t.b[i]=s[i];}t.n=s.count;return t;}
 
 // book:begin field
 N94_KEYS :: [9] string.["url", "m", "x", "ox", "size", "dim", "blurhash", "alt", "fallback"];
-n94_key :: (s:string)->int {
+n94_key :: (s:string)->int #effects(all) {
   for k:0..<N94_KEYS.count {if s==N94_KEYS[k] {return k;}}
   return -1;
 }
 // A decimal count of at most 15 digits, or -1.
-n94_number :: (s:string)->int {
+n94_number :: (s:string)->int #effects(all) {
   if s.count==0 || s.count>15 {return -1;}
   v:=0;
   for c:s {if c<'0' || c>'9' {return -1;}v=v*10+cast(int)(c-'0');}
   return v;
 }
 // type/subtype: one slash with something on each side.
-n94_mime :: (s:string)->bool {
+n94_mime :: (s:string)->bool #effects(all) {
   slash:= -1;
   for i:0..<s.count {if s[i]=='/' {if slash>=0 {return false;}slash=i;}}
   return slash>0 && slash<s.count-1;
 }
 // Where the first c is, or s.count when there is none.
-n94_find :: (s:string,c:u8)->int {for i:0..<s.count {if s[i]==c {return i;}}return s.count;}
+n94_find :: (s:string,c:u8)->int #effects(all) {for i:0..<s.count {if s[i]==c {return i;}}return s.count;}
 // What follows position at, or "" when at is the end.
-n94_after :: (s:string,at:int)->string {return ifx at<s.count then s[at+1..<s.count] else "";}
+n94_after :: (s:string,at:int)->string #effects(all) {return ifx at<s.count then s[at+1..<s.count] else "";}
 // One field into f: its status is N94_OK or the refusal.
-n94_field :: (f:N94File,key:string,value:string)->N94File {
+n94_field :: (f:N94File,key:string,value:string)->N94File #effects(all) {
   o:=f;
   if key.count==0 || value.count==0 {return n94_status(o,N94_ENTRY);}
   k:=n94_key(key);
@@ -243,7 +243,7 @@ n94_field :: (f:N94File,key:string,value:string)->N94File {
 
 // book:begin imeta
 // The index'th tag read as an imeta tag.
-n94_imeta :: (e:NostrEvent,index:int)->N94File {
+n94_imeta :: (e:NostrEvent,index:int)->N94File #effects(all) {
   f:N94File;j:[1]Json;
   if index<0 || !nt_start(j[..],e) {return f;}
   tok:=json_next(j[..]);k:=0;
@@ -269,12 +269,12 @@ n94_imeta :: (e:NostrEvent,index:int)->N94File {
   if i<3 {return n94_refuse(f,N94_ALONE,index,-1);}
   return n94_refuse(f,N94_OK,-1,-1);
 }
-n94_has :: (f:N94File,k:int)->bool {return (f.seen&(cast(u32)1<<cast(u32)k))!=0;}
+n94_has :: (f:N94File,k:int)->bool #effects(all) {return (f.seen&(cast(u32)1<<cast(u32)k))!=0;}
 // book:end imeta
 
 // book:begin file
 // A kind 1063 event's file metadata: url, m and x are required.
-n94_file :: (e:NostrEvent)->N94File {
+n94_file :: (e:NostrEvent)->N94File #effects(all) {
   f:N94File;if e.error!=NE_OK {return f;}
   if e.kind!=N94_KIND_FILE {return n94_at(f,N94_KIND,-1);}
   i:=0;
@@ -301,7 +301,7 @@ n94_file :: (e:NostrEvent)->N94File {
 // their count must equal size when there is one. With original, they must
 // hash to ox instead, the file before the server changed it; size is about
 // the served file, so it is not checked then.
-n94_check :: (f:N94File,bytes:[]u8,original:bool)->int {
+n94_check :: (f:N94File,bytes:[]u8,original:bool)->int #effects(all) {
   want:=ifx original then f.ox else f.x;
   has:=ifx original then f.has_ox else f.has_x;
   if !has {return N94_NO_HASH;}
@@ -312,7 +312,7 @@ n94_check :: (f:N94File,bytes:[]u8,original:bool)->int {
 }
 // The SHA-256 of bytes of any size, streamed in pieces of chunk bytes
 // (Bitcoin chapter 4's init, update and final); SHA_OK, or the hash's refusal.
-n94_digest :: (bytes:[]u8,chunk:int,out:[]u8)->u32 {
+n94_digest :: (bytes:[]u8,chunk:int,out:[]u8)->u32 #effects(all) {
   if chunk<1 {return SHA_BAD_INPUT;}
   state:[112]u8;
   status:=sha256_init(state[..]);
@@ -329,7 +329,7 @@ n94_digest :: (bytes:[]u8,chunk:int,out:[]u8)->u32 {
 // book:begin write
 // One field after sep: "key value" in an imeta tag, or ["key","value"] as
 // a tag.
-n94_put :: (out:[]u8,at:int,sep:string,key:string,value:string,imeta:bool)->int {
+n94_put :: (out:[]u8,at:int,sep:string,key:string,value:string,imeta:bool)->int #effects(all) {
   n:=json_raw(out,at,sep);
   if imeta {
     s:[NT_MAX_VALUE+16]u8;m:=json_raw(s[..],0,key);m=json_raw(s[..],m," ");m=json_raw(s[..],m,value);
@@ -341,7 +341,7 @@ n94_put :: (out:[]u8,at:int,sep:string,key:string,value:string,imeta:bool)->int 
 // f's fields from at: an imeta tag ["imeta",...] or the tags of a kind
 // 1063 event [[...],...]. The new length, or -1 when it doesn't fit or f
 // has no url.
-n94_write :: (f:N94File,out:[]u8,at:int,imeta:bool)->int {
+n94_write :: (f:N94File,out:[]u8,at:int,imeta:bool)->int #effects(all) {
   if f.url.n==0 {return -1;}
   c:=f;hex:[64]u8;num:[48]u8;
   n:=ifx imeta then json_raw(out,at,"[\"imeta\"") else at;

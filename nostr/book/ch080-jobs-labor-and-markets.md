@@ -144,7 +144,7 @@ CJ_REQUEST_KIND :: 25900; CJ_RESULT_KIND :: 26900; CJ_FEEDBACK_KIND :: 27000;
 ```jai
 // The family of a kind of the given role (request 25900, result 26900 or
 // feedback 27000 as base): 0 conversation, 1 decision, 2 execution, -1 none.
-cj_family :: (kind:int,base:int)->int {
+cj_family :: (kind:int,base:int)->int #effects(all) {
   d:=kind-base;
   if d==0 || d==10 || d==20 {return d/10;}
   return -1;
@@ -160,7 +160,7 @@ the whole reading fail:
 // The event's p and e tags: np and ne count them, p and e hold the last of
 // each, and a malformed one makes ok false. Other tags are not read.
 CjTags :: struct {ok:bool=true;np:int;ne:int;p:[32]u8;e:[32]u8;}
-cj_tags :: (ev:NostrEvent)->CjTags {
+cj_tags :: (ev:NostrEvent)->CjTags #effects(all) {
   r:CjTags;i:=0;
   while true {
     t:=nostr_tag(ev,i);
@@ -173,7 +173,7 @@ cj_tags :: (ev:NostrEvent)->CjTags {
   }
   return r;
 }
-cj_same :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+cj_same :: (a:[32]u8,b:[32]u8)->bool #effects(all) {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
 ```
 
 `cj_answer` applies the checks in a fixed order. The signer check comes
@@ -183,7 +183,7 @@ refuses as `CJ_SIGNER` whatever its tags say:
 <!-- source: coax/lib/nostr/cj/result.coax answer -->
 ```jai
 // Whether response answers request: CJ_OK or the first refusal, in this order.
-cj_answer :: (request:NostrEvent,response:NostrEvent)->int {
+cj_answer :: (request:NostrEvent,response:NostrEvent)->int #effects(all) {
   if request.error!=NE_OK || !request.verified || response.error!=NE_OK || !response.verified {return CJ_EVENT;}
   family:=cj_family(request.kind,CJ_REQUEST_KIND);
   answer:=cj_family(response.kind,CJ_RESULT_KIND);
@@ -332,9 +332,9 @@ The four negotiation steps:
 
 <!-- source: coax/lib/nostr/mkt/order.coax negotiate -->
 ```jai
-mkt_bit :: (x:int)->bool {return x==1 || x==2 || x==4;}
+mkt_bit :: (x:int)->bool #effects(all) {return x==1 || x==2 || x==4;}
 
-mkt_rfq :: (m:[]MktMarket,o:MktOffering,signer:string,price_limit:int,response_due_at:int,retain_until:int,now:int)->int {
+mkt_rfq :: (m:[]MktMarket,o:MktOffering,signer:string,price_limit:int,response_due_at:int,retain_until:int,now:int)->int #effects(all) {
   if signer!=m[0].buyer {return MKT_NOT_ADMITTED;}
   if m[0].stage!=MKT_OPEN {return MKT_CONFLICT;}
   if o.provider!=m[0].provider {return MKT_IDENTITY;}
@@ -344,7 +344,7 @@ mkt_rfq :: (m:[]MktMarket,o:MktOffering,signer:string,price_limit:int,response_d
   return MKT_OK;
 }
 
-mkt_quote :: (m:[]MktMarket,q:[]MktTerms,t:MktTerms,signer:string,now:int)->int {
+mkt_quote :: (m:[]MktMarket,q:[]MktTerms,t:MktTerms,signer:string,now:int)->int #effects(all) {
   if signer!=m[0].provider {return MKT_NOT_ADMITTED;}
   if m[0].stage!=MKT_ASKED {return MKT_CONFLICT;}
   if now>m[0].response_due_at {return MKT_STALE;}
@@ -369,7 +369,7 @@ mkt_quote :: (m:[]MktMarket,q:[]MktTerms,t:MktTerms,signer:string,now:int)->int 
 }
 
 // The award: the buyer orders exactly one quote's terms.
-mkt_order :: (m:[]MktMarket,q:[]MktTerms,signer:string,quote_id:string,terms_digest:string,order_id:string,now:int)->int {
+mkt_order :: (m:[]MktMarket,q:[]MktTerms,signer:string,quote_id:string,terms_digest:string,order_id:string,now:int)->int #effects(all) {
   if signer!=m[0].buyer {return MKT_NOT_ADMITTED;}
   if m[0].stage!=MKT_ASKED {return MKT_CONFLICT;}
   if order_id.count>MKT_TEXT {return MKT_MALFORMED;}
@@ -387,7 +387,7 @@ mkt_order :: (m:[]MktMarket,q:[]MktTerms,signer:string,quote_id:string,terms_dig
 
 // The provider confirms (or refuses) the order. A refusal frees the
 // negotiation for another order; the refused quote stays consumed.
-mkt_ack :: (m:[]MktMarket,q:[]MktTerms,signer:string,confirm:bool,now:int)->int {
+mkt_ack :: (m:[]MktMarket,q:[]MktTerms,signer:string,confirm:bool,now:int)->int #effects(all) {
   if signer!=m[0].provider {return MKT_NOT_ADMITTED;}
   if m[0].stage!=MKT_ORDERED {return MKT_CONFLICT;}
   if !confirm {m[0].stage=MKT_ASKED;m[0].order=-1;m[0].order_id=kept72("");return MKT_OK;}
@@ -413,7 +413,7 @@ and the worker is the execution role.
 ```jai
 // Submission zero from the worker the confirmed terms name; any other key
 // refuses, the provider's included.
-mkt_submit :: (m:[]MktMarket,q:[]MktTerms,signer:string,now:int)->int {
+mkt_submit :: (m:[]MktMarket,q:[]MktTerms,signer:string,now:int)->int #effects(all) {
   if m[0].stage!=MKT_CONFIRMED {return MKT_CONFLICT;}
   if !kept_is(q[m[0].order].worker,signer) {return MKT_NOT_ADMITTED;}
   if m[0].submitted {return MKT_CONFLICT;}
@@ -421,7 +421,7 @@ mkt_submit :: (m:[]MktMarket,q:[]MktTerms,signer:string,now:int)->int {
   return MKT_OK;
 }
 
-mkt_verify :: (m:[]MktMarket,q:[]MktTerms,signer:string,verdict:int)->int {
+mkt_verify :: (m:[]MktMarket,q:[]MktTerms,signer:string,verdict:int)->int #effects(all) {
   if m[0].stage!=MKT_CONFIRMED || !m[0].submitted {return MKT_CONFLICT;}
   if !kept_is(q[m[0].order].reviewer,signer) {return MKT_NOT_ADMITTED;}
   if verdict<MKT_PASSED || verdict>MKT_NOT_RUN {return MKT_MALFORMED;}
@@ -432,7 +432,7 @@ mkt_verify :: (m:[]MktMarket,q:[]MktTerms,signer:string,verdict:int)->int {
 
 // The buyer's acceptance with its delivery receipt: received_at is when it
 // fetched the submission. Accepted means the amount due is the price.
-mkt_accept :: (m:[]MktMarket,q:[]MktTerms,signer:string,received_at:int,now:int)->int {
+mkt_accept :: (m:[]MktMarket,q:[]MktTerms,signer:string,received_at:int,now:int)->int #effects(all) {
   if signer!=m[0].buyer {return MKT_NOT_ADMITTED;}
   if m[0].stage!=MKT_CONFIRMED || !m[0].submitted || m[0].accepted {return MKT_CONFLICT;}
   if received_at<m[0].submitted_at || received_at>now {return MKT_MALFORMED;}
@@ -466,7 +466,7 @@ calls its wallet, then records what the wallet observed.
 <!-- source: coax/lib/nostr/mkt/order.coax settle -->
 ```jai
 // The provider's payment instruction for the earned price.
-mkt_instruct :: (m:[]MktMarket,q:[]MktTerms,signer:string,obligation:string,amount_msat:int,invoice:string,payment_hash:string,expires_at:int,now:int)->int {
+mkt_instruct :: (m:[]MktMarket,q:[]MktTerms,signer:string,obligation:string,amount_msat:int,invoice:string,payment_hash:string,expires_at:int,now:int)->int #effects(all) {
   if signer!=m[0].provider {return MKT_NOT_ADMITTED;}
   if m[0].stage!=MKT_CONFIRMED {return MKT_CONFLICT;}
   t:=q[m[0].order];
@@ -481,7 +481,7 @@ mkt_instruct :: (m:[]MktMarket,q:[]MktTerms,signer:string,obligation:string,amou
 }
 
 // The buyer persists attempt number n before it calls its wallet.
-mkt_attempt :: (m:[]MktMarket,q:[]MktTerms,signer:string,n:int,fee_limit_msat:int,now:int)->int {
+mkt_attempt :: (m:[]MktMarket,q:[]MktTerms,signer:string,n:int,fee_limit_msat:int,now:int)->int #effects(all) {
   if signer!=m[0].buyer {return MKT_NOT_ADMITTED;}
   if m[0].obligation.n==0 {return MKT_NOT_ACCEPTED;}
   if m[0].payment==MKT_PAY_CONFIRMED {return MKT_PAID;}
@@ -494,7 +494,7 @@ mkt_attempt :: (m:[]MktMarket,q:[]MktTerms,signer:string,n:int,fee_limit_msat:in
 
 // The buyer's wallet observation of the pending attempt. Only a Lightning
 // proof settles: the exact amount and a preimage of the payment hash.
-mkt_result :: (m:[]MktMarket,signer:string,p:MktProof)->int {
+mkt_result :: (m:[]MktMarket,signer:string,p:MktProof)->int #effects(all) {
   if signer!=m[0].buyer {return MKT_NOT_ADMITTED;}
   if m[0].payment==MKT_PAY_CONFIRMED {return MKT_PAID;}
   if m[0].payment!=MKT_PAY_PENDING && m[0].payment!=MKT_PAY_UNKNOWN {return MKT_CONFLICT;}

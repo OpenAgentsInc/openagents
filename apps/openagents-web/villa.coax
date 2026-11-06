@@ -306,23 +306,23 @@ no_box :: () -> Box { return Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
 
 // The moon's phase at a moment (milliseconds since 1970): 0 new, 0.5 full,
 // from the mean new moon of 6 January 2000 18:14 UTC and the mean synodic month.
-villa_moon_phase :: (ms: f64) -> f32 #export_c {
+villa_moon_phase :: (ms: f64) -> f32 #export_c #effects(all) {
   if !(ms > 0) { return f32(GOLDEN_PHASE); }
   days := ms / 86400000.0 - 10957.0;
   age := (days - 5.7597) / 29.530588853;
   return f32(age - floor(age));
 }
 // How much of the disc is lit at that phase, 0 to 1.
-villa_moon_lit :: (phase: f32) -> f32 #export_c { return (1 - cos(phase * f32(TAU))) * 0.5; }
+villa_moon_lit :: (phase: f32) -> f32 #export_c #effects(all) { return (1 - cos(phase * f32(TAU))) * 0.5; }
 // The moon stands still in the sky, east-south-east and about 33 degrees up, so the faces you
 // see from the gate take its light and the shadows fall long across the paths.
 moon_dir :: () -> Point { return unit_or(v3(0.72, 0.55, -0.42), v3(0, 1, 0)); }
 
 // ---- the page's state
 
-coaxial_villa_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_villa_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_villa_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_villa_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_villa_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_villa_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 ground :: () -> Ground { g: Ground; g.n = CELLS; g.cell = CELL; g.west = EDGE; g.south = EDGE; g.rim_from = 40; g.rim = 0.02; return g; }
 ground_at :: (s: [] Villa, x: f32, z: f32) -> f32 { return verse_terrain_height(ground(), s[0].heights[..], x, z); }
@@ -404,9 +404,9 @@ build_scenery :: (s: [] Villa) {
   add_block(s, -b - 2, -b, -b, b, 9, false); add_block(s, b, -b, b + 2, b, 9, false);
 }
 
-villa_walls :: (s: [] Villa) -> int #export_c { if !s[0].started { villa_start(s); } return s[0].wall_n; }
+villa_walls :: (s: [] Villa) -> int #export_c #effects(all) { if !s[0].started { villa_start(s); } return s[0].wall_n; }
 // The actual page selects the clocked adapter before accepting keys.
-villa_on_realm_clock :: (s: [] Villa) #export_c {
+villa_on_realm_clock :: (s: [] Villa) #export_c #effects(all) {
   if !s[0].started { villa_start(s); }
   s[0].follower_clocked = true;
 }
@@ -414,14 +414,14 @@ villa_on_realm_clock :: (s: [] Villa) #export_c {
 // ---- where you are, kept so a reload puts you back (eg-pos, place.coax)
 
 // Open ground: inside the world's edge and clear of the walls, hedges and stones.
-villa_place_open :: (s: [] Villa, x: f32, z: f32) -> bool #export_c {
+villa_place_open :: (s: [] Villa, x: f32, z: f32) -> bool #export_c #effects(all) {
   if !s[0].started { villa_start(s); }
   e := abs(f32(EDGE)) - 1;
   if !finite(x) || !finite(z) || x < -e || x > e || z < -e || z > e { return false; }
   return verse_place_clear(s[0].walls[..], s[0].wall_n, x, 0, z, 0.35);
 }
 // A kept place made good: itself when open, else the nearest open spot, else the spawn.
-villa_place_fix :: (s: [] Villa, p: Place) -> Place #export_c {
+villa_place_fix :: (s: [] Villa, p: Place) -> Place #export_c #effects(all) {
   q := p; q.y = 0; q.room = -1;
   for i: 0..<PLACE_TRIES {
     t := verse_place_try(p.x, p.z, i);
@@ -432,7 +432,7 @@ villa_place_fix :: (s: [] Villa, p: Place) -> Place #export_c {
 }
 // You are put back where you were: no fly-in to the gate (you are already
 // here), the orbit as kept and the dog at your heel.
-villa_place_camera :: (s: [] Villa, p: Place) #export_c {
+villa_place_camera :: (s: [] Villa, p: Place) #export_c #effects(all) {
   if !s[0].started { villa_start(s); }
   s[0].feet = v3(p.x, ground_at(s, p.x, p.z), p.z); s[0].face = p.face;
   s[0].orbit = verse_place_orbit(p, s[0].feet);
@@ -444,7 +444,7 @@ villa_place_camera :: (s: [] Villa, p: Place) #export_c {
   s[0].follower_alpha = 0; s[0].follower_steps = 0;
   s[0].orbit_clocked = false;   // the camera starts again where you are put
 }
-villa_spawn :: (s: [] Villa) -> Point #export_c { return v3(f32(SPAWN_X), 0, f32(SPAWN_Z)); }
+villa_spawn :: (s: [] Villa) -> Point #export_c #effects(all) { return v3(f32(SPAWN_X), 0, f32(SPAWN_Z)); }
 
 // ---- the controls
 
@@ -464,7 +464,7 @@ hold_bit :: (key: int) -> int {
 
 // The flight owns the camera now (flying, or handing back).
 flying :: (s: [] Villa) -> bool { return s[0].fl_flying; }
-villa_busy :: (s: [] Villa) -> bool #export_c { return s[0].fl_active; }
+villa_busy :: (s: [] Villa) -> bool #export_c #effects(all) { return s[0].fl_active; }
 
 skip_flight :: (s: [] Villa) -> bool {
   if !flying(s) { return false; }
@@ -472,7 +472,7 @@ skip_flight :: (s: [] Villa) -> bool {
   return true;
 }
 
-villa_key :: (s: [] Villa, key: int, mods: int) -> bool #export_c {
+villa_key :: (s: [] Villa, key: int, mods: int) -> bool #export_c #effects(all) {
   if !s[0].started { villa_start(s); }
   used := redit_key(s[0].ed[..], key, true);
   if used > 0 { return used == 1; }
@@ -488,7 +488,7 @@ villa_key :: (s: [] Villa, key: int, mods: int) -> bool #export_c {
   return true;
 }
 
-villa_key_up :: (s: [] Villa, key: int, mods: int) -> bool #export_c {
+villa_key_up :: (s: [] Villa, key: int, mods: int) -> bool #export_c #effects(all) {
   if redit_key(s[0].ed[..], key, false) == 1 { return true; }
   if redit_typing(s[0].ed[..]) { return false; }
   b := hold_bit(key);
@@ -497,11 +497,11 @@ villa_key_up :: (s: [] Villa, key: int, mods: int) -> bool #export_c {
   return true;
 }
 
-villa_blur :: (s: [] Villa) #export_c { s[0].held = 0; s[0].drag_on = false; }
+villa_blur :: (s: [] Villa) #export_c #effects(all) { s[0].held = 0; s[0].drag_on = false; }
 
 // A mouse drag turns the camera. While the flight flies, any press skips it.
 // A finger is the face's (the sticks): this says it isn't used.
-villa_pointer :: (s: [] Villa, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+villa_pointer :: (s: [] Villa, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if !s[0].started { villa_start(s); }
   if !in_space(s) && redit_pointer(s[0].ed[..], x, y, phase, id) { return true; }
   if kind != 0 { s[0].touch = true; }
@@ -523,7 +523,7 @@ villa_pointer :: (s: [] Villa, x: f32, y: f32, phase: int, kind: int, id: int) -
   return true;
 }
 
-villa_wheel :: (s: [] Villa, dy: f32) #export_c {
+villa_wheel :: (s: [] Villa, dy: f32) #export_c #effects(all) {
   if finite(dy) { s[0].orbit = verse_orbit_zoom(s[0].orbit, clamp(dy, -400, 400) * f32(WHEEL_ZOOM)); }
 }
 
@@ -536,7 +536,7 @@ axis :: (held: int, plus: int, minus: int) -> f32 {
 
 // Before the player moves: what the keys say and the camera's turn, so you
 // walk the way the camera looks. dyaw and dpitch are a thumb's turn.
-villa_controls :: (s: [] Villa, dt: f32, dyaw: f32, dpitch: f32) #export_c {
+villa_controls :: (s: [] Villa, dt: f32, dyaw: f32, dpitch: f32) #export_c #effects(all) {
   if !s[0].started { villa_start(s); }
   h := s[0].held;
   s[0].key_x = axis(h, HOLD_RIGHT, HOLD_LEFT);
@@ -550,7 +550,7 @@ villa_controls :: (s: [] Villa, dt: f32, dyaw: f32, dpitch: f32) #export_c {
   s[0].look_yaw = 0; s[0].look_pitch = 0;
 }
 
-villa_player_theta :: (s: [] Villa) -> f32 #export_c { return wrap_angle(s[0].orbit.yaw + f32(PI)); }
+villa_player_theta :: (s: [] Villa) -> f32 #export_c #effects(all) { return wrap_angle(s[0].orbit.yaw + f32(PI)); }
 
 // ---- the flight
 
@@ -574,28 +574,28 @@ flash_now :: (s: [] Villa) -> f32 {
   return 1 - t / f32(FLASH);
 }
 // Where the flight is this frame, and the shot it shows.
-villa_flight :: (s: [] Villa, active: bool, flying_now: bool, take: int, t: f32, ex: f32, ey: f32, ez: f32, ax: f32, ay: f32, az: f32) #export_c {
+villa_flight :: (s: [] Villa, active: bool, flying_now: bool, take: int, t: f32, ex: f32, ey: f32, ez: f32, ax: f32, ay: f32, az: f32) #export_c #effects(all) {
   s[0].fl_active = active; s[0].fl_flying = flying_now; s[0].fl_take = take; s[0].fl_t = t;
   shot := Shot.{eye = v3(ex, ey, ez), at = v3(ax, ay, az)};
   if finite3(shot.eye) && finite3(shot.at) { s[0].shot = shot; }
 }
 // The face asks: whether to fly at all (reduced motion, the release walk and a visit after the
 // flight has played don't), and a skip.
-villa_fly_wanted :: (s: [] Villa) -> bool #export_c { return !s[0].still && !s[0].golden && !s[0].tips[0].been; }
-villa_take_skip :: (s: [] Villa) -> bool #export_c { a := s[0].skip_ask; s[0].skip_ask = false; return a; }
-villa_live :: (s: [] Villa) -> Shot #export_c { return s[0].live; }
+villa_fly_wanted :: (s: [] Villa) -> bool #export_c #effects(all) { return !s[0].still && !s[0].golden && !s[0].tips[0].been; }
+villa_take_skip :: (s: [] Villa) -> bool #export_c #effects(all) { a := s[0].skip_ask; s[0].skip_ask = false; return a; }
+villa_live :: (s: [] Villa) -> Shot #export_c #effects(all) { return s[0].live; }
 
 // ---- a frame's step: the flight, the camera, the dog
 
 // After the player moved: you are at feet (on its flat floor) facing face,
 // doing act, moving vx, vz.
 // Trusted variable-time entry retained for existing callers and examples.
-villa_step :: (s: [] Villa, dt: f32, fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32) #export_c {
+villa_step :: (s: [] Villa, dt: f32, fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32) #export_c #effects(all) {
   no_clock: realm_loop.FrameClock; no_targets: [1] walk_frame.StepTarget;
   villa_step_in(s, dt, fx, fy, fz, face, act, vx, vz, false, no_clock, no_targets[0..<0]);
 }
 villa_step_on_clock :: (s: [] Villa, paid: realm_loop.FrameClock, targets: [] walk_frame.StepTarget,
-    fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32) #export_c {
+    fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32) #export_c #effects(all) {
   villa_step_in(s, 0, fx, fy, fz, face, act, vx, vz, true, paid, targets);
 }
 villa_step_in :: (s: [] Villa, dt: f32, fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32,
@@ -749,16 +749,16 @@ orbit_between :: (a: Orbit, b: Orbit, t: f32) -> Orbit {
 }
 
 // Where the face poses the figures: 0 you, 1 your dog.
-villa_dog :: (s: [] Villa) -> Follower #export_c { return s[0].fetch.dog; }
+villa_dog :: (s: [] Villa) -> Follower #export_c #effects(all) { return s[0].fetch.dog; }
 villa_fetch_draw :: (s: [] Villa) -> Fetch {
   return ifx s[0].follower_clocked then follow.fetch_draw(s[0].fetch, s[0].follower_previous, s[0].follower_alpha) else s[0].fetch;
 }
-villa_draw_dog :: (s: [] Villa) -> Follower #export_c { return villa_fetch_draw(s).dog; }
-villa_you_speed :: (s: [] Villa) -> f32 #export_c { return ifx villa_busy(s) then 0.0f32 else s[0].speed; }
-villa_set_pet_still :: (s: [] Villa, still: bool) #export_c { s[0].pet_still = still; }
+villa_draw_dog :: (s: [] Villa) -> Follower #export_c #effects(all) { return villa_fetch_draw(s).dog; }
+villa_you_speed :: (s: [] Villa) -> f32 #export_c #effects(all) { return ifx villa_busy(s) then 0.0f32 else s[0].speed; }
+villa_set_pet_still :: (s: [] Villa, still: bool) #export_c #effects(all) { s[0].pet_still = still; }
 // The face's posed bones for figure i: n of them, and their bound.
-villa_bones_at :: (s: [] Villa, i: int) -> int #export_c { return i * FIG_BONES * BONE_FLOATS; }
-villa_set_bones :: (s: [] Villa, i: int, n: int) #export_c { if i >= 0 && i < FIGS { s[0].bone_n[i] = clamp_int(n, 0, FIG_BONES); } }
+villa_bones_at :: (s: [] Villa, i: int) -> int #export_c #effects(all) { return i * FIG_BONES * BONE_FLOATS; }
+villa_set_bones :: (s: [] Villa, i: int, n: int) #export_c #effects(all) { if i >= 0 && i < FIGS { s[0].bone_n[i] = clamp_int(n, 0, FIG_BONES); } }
 clamp_int :: (a: int, low: int, high: int) -> int { if a < low { return low; } if a > high { return high; } return a; }
 
 // ---- the scene's shapes
@@ -1274,8 +1274,8 @@ particles :: (s: [] Villa) {
   // fireflies over the field
   if redit_row_on(s[0].ed[..], "fireflies") && verse_emitter_put(out, s[0].emitter_n, 22, ground_at(s, 22, 0) + 0.9, 0, 16, 0.75, 0.9, 0.8, 0.9, 2, 64, 0.05, 0.5, 11.0) { s[0].emitter_n += 1; }
 }
-villa_emitter_count :: (s: [] Villa) -> int #export_c { return s[0].emitter_n; }
-villa_particles_per :: () -> int #export_c { return VERSE_PARTICLES_PER; }
+villa_emitter_count :: (s: [] Villa) -> int #export_c #effects(all) { return s[0].emitter_n; }
+villa_particles_per :: () -> int #export_c #effects(all) { return VERSE_PARTICLES_PER; }
 
 // ---- the HUD
 
@@ -1362,7 +1362,7 @@ effect_time :: (s: [] Villa) -> f32 { return ifx s[0].golden then f32(GOLDEN_TIM
 // uniforms, lays out the scene, and returns the vertex count. A thumb on
 // the move stick is drawn from move_on, ox, oy and the pad.
 villa_draw :: (s: [] Villa, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32,
-               move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c {
+               move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c #effects(all) {
   if !s[0].started { villa_start(s); }
   if u.count < UNIFORM_FLOATS { return 0; }
   s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5);
@@ -1470,24 +1470,24 @@ dog_name :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   return draw_text(out, m, text, x - tw / 2, y, cap, GAP, SPACE, ink(k, 0.95 * a, 0.97, 0.97, 1.0), false, true);
 }
 
-villa_draws :: (s: [] Villa) -> int #export_c { return DRAWS; }
+villa_draws :: (s: [] Villa) -> int #export_c #effects(all) { return DRAWS; }
 
 // ---- your pet, for the face (villapet.coax)
-villa_pet_next :: (s: [] Villa) -> int #export_c { return pet_next(s[0].pet[..]); }
-villa_pet_next_in :: (s: [] Villa, slow: bool) -> int #export_c { return pet_next_in(s[0].pet[..], ifx slow then ASK_SLOW else -1 - ASK_SLOW); }
-villa_pet_post :: (kind: int) -> bool #export_c { return pet_post(kind); }
-villa_pet_url :: (s: [] Villa, kind: int, out: [] u8) -> int #export_c { return pet_url(s[0].pet[..], kind, out); }
-villa_pet_body :: (s: [] Villa, kind: int, out: [] u8) -> int #export_c { return pet_body(s[0].pet[..], kind, out); }
-villa_pet_answer :: (s: [] Villa, kind: int, status: int, t: string) #export_c { pet_answer(s[0].pet[..], kind, status, t); }
-villa_pet_files :: (s: [] Villa, t: string) #export_c { s[0].pet[0].files_n = pet_copy(s[0].pet[0].files[..], t); }
-villa_pet_scanned :: (s: [] Villa, t: string) #export_c { pet_take(s[0].pet[..], t, false); pet_ev(s[0].pet[..], EV_UPLOAD, 0); }
-villa_typed :: (s: [] Villa, t: string) #export_c { if s[0].chat[0].typing { chat_typed(s[0].chat[..], t); } else { pet_typed(s[0].pet[..], t); } }
-villa_wants_text :: (s: [] Villa) -> bool #export_c { return redit_typing(s[0].ed[..]) || s[0].chat[0].typing || s[0].pet[0].focus != -1 && s[0].pet[0].view != PV_NONE; }
-villa_hash :: (s: [] Villa, t: string) #export_c {
+villa_pet_next :: (s: [] Villa) -> int #export_c #effects(all) { return pet_next(s[0].pet[..]); }
+villa_pet_next_in :: (s: [] Villa, slow: bool) -> int #export_c #effects(all) { return pet_next_in(s[0].pet[..], ifx slow then ASK_SLOW else -1 - ASK_SLOW); }
+villa_pet_post :: (kind: int) -> bool #export_c #effects(all) { return pet_post(kind); }
+villa_pet_url :: (s: [] Villa, kind: int, out: [] u8) -> int #export_c #effects(all) { return pet_url(s[0].pet[..], kind, out); }
+villa_pet_body :: (s: [] Villa, kind: int, out: [] u8) -> int #export_c #effects(all) { return pet_body(s[0].pet[..], kind, out); }
+villa_pet_answer :: (s: [] Villa, kind: int, status: int, t: string) #export_c #effects(all) { pet_answer(s[0].pet[..], kind, status, t); }
+villa_pet_files :: (s: [] Villa, t: string) #export_c #effects(all) { s[0].pet[0].files_n = pet_copy(s[0].pet[0].files[..], t); }
+villa_pet_scanned :: (s: [] Villa, t: string) #export_c #effects(all) { pet_take(s[0].pet[..], t, false); pet_ev(s[0].pet[..], EV_UPLOAD, 0); }
+villa_typed :: (s: [] Villa, t: string) #export_c #effects(all) { if s[0].chat[0].typing { chat_typed(s[0].chat[..], t); } else { pet_typed(s[0].pet[..], t); } }
+villa_wants_text :: (s: [] Villa) -> bool #export_c #effects(all) { return redit_typing(s[0].ed[..]) || s[0].chat[0].typing || s[0].pet[0].focus != -1 && s[0].pet[0].view != PV_NONE; }
+villa_hash :: (s: [] Villa, t: string) #export_c #effects(all) {
   if !s[0].started { villa_start(s); }
   if t.count == 10 && t[0] == 'm' && t[1] == '/' { pet_open_memorial(s[0].pet[..], t[2..<10]); }
 }
-villa_store_cap :: (k: int) -> int #export_c {
+villa_store_cap :: (k: int) -> int #export_c #effects(all) {
   if k == 0 { return GROUND_POINTS * 4; }
   return OBJECTS * OBJECT_FLOATS * 4;
 }
@@ -1721,16 +1721,16 @@ shapes :: (s: [] Villa) -> int { n := 0; for k: 0..<KINDS { n += s[0].counts[k];
 }
 
 // The steps for the analytics (EV_*), oldest first; the face sends and clears them.
-villa_ev_count :: (s: [] Villa) -> int #export_c { return s[0].pet[0].ev_n; }
-villa_ev_name :: (s: [] Villa, i: int) -> string #export_c { k := s[0].pet[0].evs[i]; return ifx k >= 0 && k < EV_KINDS then EV_NAMES[k] else ""; }
-villa_ev_arg :: (s: [] Villa, i: int) -> int #export_c { return s[0].pet[0].ev_arg[i]; }
-villa_ev_clear :: (s: [] Villa) #export_c { s[0].pet[0].ev_n = 0; }
+villa_ev_count :: (s: [] Villa) -> int #export_c #effects(all) { return s[0].pet[0].ev_n; }
+villa_ev_name :: (s: [] Villa, i: int) -> string #export_c #effects(all) { k := s[0].pet[0].evs[i]; return ifx k >= 0 && k < EV_KINDS then EV_NAMES[k] else ""; }
+villa_ev_arg :: (s: [] Villa, i: int) -> int #export_c #effects(all) { return s[0].pet[0].ev_arg[i]; }
+villa_ev_clear :: (s: [] Villa) #export_c #effects(all) { s[0].pet[0].ev_n = 0; }
 
 // Emotes the agent made (villapet.coax): the one to check, and the ones kept.
-villa_emote_check :: (s: [] Villa) -> bool #export_c { return s[0].pet[0].em == EM_CHECK; }
-villa_emote_text :: (s: [] Villa) -> string #export_c { p := s[0].pet[..]; return cast(string) p[0].em_text[0..<p[0].em_text_n]; }
-villa_emote_checked :: (s: [] Villa, ok: bool, why: string) #export_c { pet_emote_checked(s[0].pet[..], ok, why); }
-villa_my_emote_text :: (s: [] Villa, i: int) -> string #export_c {
+villa_emote_check :: (s: [] Villa) -> bool #export_c #effects(all) { return s[0].pet[0].em == EM_CHECK; }
+villa_emote_text :: (s: [] Villa) -> string #export_c #effects(all) { p := s[0].pet[..]; return cast(string) p[0].em_text[0..<p[0].em_text_n]; }
+villa_emote_checked :: (s: [] Villa, ok: bool, why: string) #export_c #effects(all) { pet_emote_checked(s[0].pet[..], ok, why); }
+villa_my_emote_text :: (s: [] Villa, i: int) -> string #export_c #effects(all) {
   p := s[0].pet[..];
   if i < 0 || i >= p[0].my_n { return ""; }
   return cast(string) p[0].my_text[i * EMOTE_TEXT..<i * EMOTE_TEXT + p[0].my_text_n[i]];

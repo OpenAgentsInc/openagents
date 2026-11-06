@@ -39,7 +39,7 @@ Both call the step in the same order on the same input and the same world:
 ```jai
 // Before the advance: a blast's throw into your velocity; held or busy, no input of yours; your input;
 // prone or caught, still; the pace and grip; the camera's yaw; a fork's low gravity while you're up.
-eg_step_begin :: (p0: walk.Player, input: EgMoveIn, w: EgMoveWorld, dt: f32) -> walk.Player #export_c {
+eg_step_begin :: (p0: walk.Player, input: EgMoveIn, w: EgMoveWorld, dt: f32) -> walk.Player #export_c #effects(reads, writes, traps) {
   p := p0;
   if w.kx != 0 || w.ky != 0 || w.kz != 0 {
     p.vel.x += w.kx; p.vel.z += w.kz;

@@ -113,7 +113,7 @@ Python harness checks both against Python's integers.
 ```jai
 // Core's operator*=(uint32_t): each limb times the word plus the carry.
 // The carry out of the top limb is lost, so the product wraps at 2^256.
-u256_mul32 :: (a: U256, b: u32) -> U256 #export_c {
+u256_mul32 :: (a: U256, b: u32) -> U256 #export_c #effects(all) {
   r: U256; carry := cast(u64) 0;
   for i: 0..<8 {
     wide := cast(u64) a.limb[i] * cast(u64) b + carry;
@@ -126,7 +126,7 @@ u256_mul32 :: (a: U256, b: u32) -> U256 #export_c {
 // by the timespan with its general operator/= (chapter 47's shift and
 // subtract); the quotient is the same, in eight steps instead of about
 // two hundred. A zero divisor is not ok.
-u256_div32_vartime :: (a: U256, d: u32) -> U256Quotient #export_c {
+u256_div32_vartime :: (a: U256, d: u32) -> U256Quotient #export_c #effects(all) {
   r: U256Quotient;
   if d == 0 { return r; }
   r.ok = true;
@@ -154,7 +154,7 @@ Any failure is `RETARGET_PARAMS`.
 // whole number of blocks, and four times the largest target still fits in
 // 256 bits after the multiplication. Core multiplies by a uint32_t, so
 // four timespans must fit one.
-retarget_params_check_vartime :: (p: RetargetParams) -> int #export_c {
+retarget_params_check_vartime :: (p: RetargetParams) -> int #export_c #effects(all) {
   if p.spacing <= 0 || p.timespan <= 0 || p.timespan % p.spacing != 0 { return RETARGET_PARAMS; }
   if u256_is_zero(p.pow_limit) || p.timespan > 0xffffffff / 4 { return RETARGET_PARAMS; }
   if !p.no_retargeting {
@@ -164,7 +164,7 @@ retarget_params_check_vartime :: (p: RetargetParams) -> int #export_c {
   return RETARGET_OK;
 }
 // Core's DifficultyAdjustmentInterval: 2,016 on mainnet.
-retarget_interval :: (p: RetargetParams) -> int #export_c {
+retarget_interval :: (p: RetargetParams) -> int #export_c #effects(all) {
   return ifx p.spacing > 0 then p.timespan / p.spacing else 0;
 }
 ```
@@ -200,7 +200,7 @@ BlockStamp :: struct { time: u32; bits: u32; }
 // divided by the timespan, capped at powLimit and encoded, which rounds it
 // down to three bytes of mantissa. BIP-94 starts from the first block's
 // nBits instead of the last's.
-retarget_calculate_vartime :: (p: RetargetParams, last: BlockStamp, first: BlockStamp) -> u32 #export_c {
+retarget_calculate_vartime :: (p: RetargetParams, last: BlockStamp, first: BlockStamp) -> u32 #export_c #effects(all) {
   if p.no_retargeting { return last.bits; }
   actual := cast(int) last.time - cast(int) first.time;
   if actual < p.timespan / 4 { actual = p.timespan / 4; }    // mutant: equivalent (at the bound both give a quarter)
@@ -238,7 +238,7 @@ that view has `last_height % 2016 + 1` blocks; any other length is
 //   the walk back stops at the period's first block.
 // - On a boundary, the period's first and last blocks give the new target.
 Retarget :: struct { code: int; bits: u32; }
-retarget_next_bits_vartime :: (p: RetargetParams, period: [] BlockStamp, last_height: int, new_time: u32) -> Retarget #export_c {
+retarget_next_bits_vartime :: (p: RetargetParams, period: [] BlockStamp, last_height: int, new_time: u32) -> Retarget #export_c #effects(all) {
   r: Retarget;
   r.code = retarget_params_check_vartime(p);
   if r.code != RETARGET_OK { return r; }
@@ -261,7 +261,7 @@ retarget_next_bits_vartime :: (p: RetargetParams, period: [] BlockStamp, last_he
 }
 // Core's ContextualCheckBlockHeader, its first rule: a header whose nBits
 // is not the required one is refused as "bad-diffbits".
-retarget_check_vartime :: (p: RetargetParams, period: [] BlockStamp, last_height: int, header: BlockStamp) -> int #export_c {
+retarget_check_vartime :: (p: RetargetParams, period: [] BlockStamp, last_height: int, header: BlockStamp) -> int #export_c #effects(all) {
   r := retarget_next_bits_vartime(p, period, last_height, header.time);
   if r.code != RETARGET_OK { return r.code; }
   if header.bits != r.bits { return RETARGET_BAD_DIFFBITS; }
@@ -438,7 +438,7 @@ range is `RETARGET_NOT_PERMITTED`.
 // times four, each capped and rounded through the compact form as the
 // retarget rounds; elsewhere nBits must not change. Testnet allows
 // anything, because a minimum-difficulty block can come at any height.
-retarget_permitted_vartime :: (p: RetargetParams, height: int, old_bits: u32, new_bits: u32) -> int #export_c {
+retarget_permitted_vartime :: (p: RetargetParams, height: int, old_bits: u32, new_bits: u32) -> int #export_c #effects(all) {
   code := retarget_params_check_vartime(p);
   if code != RETARGET_OK { return code; }
   if height < 0 { return RETARGET_PERIOD; }
@@ -491,7 +491,7 @@ period adds 2,016 times one header's work.
 // the chainwork getblockheader prints. Each block adds GetBitsProof of its
 // nBits; this adds count blocks that share one nBits, as a mainnet period
 // does. The sum wraps at 2^256, as Core's does; it would take 2^256 hashes.
-retarget_chain_work_vartime :: (total: U256, bits: u32, count: u32) -> U256 #export_c {
+retarget_chain_work_vartime :: (total: U256, bits: u32, count: u32) -> U256 #export_c #effects(all) {
   return u256_add(total, u256_mul32(pow_work_vartime(bits), count));
 }
 ```

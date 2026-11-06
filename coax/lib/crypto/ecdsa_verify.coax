@@ -187,13 +187,13 @@ ev_prepared_matches_vartime :: (prepared: EvPrepared) -> bool {
 // in SEC 1 form (33 bytes compressed or 65 uncompressed; chapter 17). With
 // low_s, an s above (n-1)/2 refuses, as BIP-146 and Wycheproof's Bitcoin
 // variant require; without it, both halves verify, as consensus allows.
-ecdsa_verify_vartime :: (hash: [] u8, public_key: [] u8, signature: [] u8, low_s: bool) -> bool #export_c {
+ecdsa_verify_vartime :: (hash: [] u8, public_key: [] u8, signature: [] u8, low_s: bool) -> bool #export_c #effects(all) {
   key := se_decode(public_key);
   if !key.ok { return false; }
   return ev_prepared_matches_vartime(ev_prepare_vartime(hash, key.value, signature, low_s));
 }
 // The same for a strict DER signature (no sighash byte).
-ecdsa_verify_der_vartime :: (hash: [] u8, public_key: [] u8, der: [] u8, low_s: bool) -> bool #export_c {
+ecdsa_verify_der_vartime :: (hash: [] u8, public_key: [] u8, der: [] u8, low_s: bool) -> bool #export_c #effects(all) {
   signature: [64] u8;
   if !ecdsa_der_read_vartime(der, signature[..]) { return false; }
   return ecdsa_verify_vartime(hash, public_key, signature[..], low_s);
@@ -220,7 +220,7 @@ ev_der_integer_vartime :: (der: [] u8, at: int, out: [] u8) -> EvInteger {
 // read into the compact r || s. out is written only when the result is true.
 // The range of r and s is checked later, by the verifier. The shortest
 // signature is 8 bytes; two 33-byte integers make the longest, 72.
-ecdsa_der_read_vartime :: (der: [] u8, out: [] u8) -> bool #export_c {
+ecdsa_der_read_vartime :: (der: [] u8, out: [] u8) -> bool #export_c #effects(all) {
   if out.count != 64 || der.count < 8 { return false; }
   if der[0] != 0x30 || cast(int) der[1] != der.count - 2 { return false; }   // short-form length only
   compact: [64] u8;

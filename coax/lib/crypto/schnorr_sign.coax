@@ -174,8 +174,8 @@ SIGN_REFUSED :: 0; SIGN_MORE :: 1; SIGN_DONE :: 2;
 // prepared, and its recorded (-e)*P in place of stage five (SSV_EP is
 // vector 0's, as in schnorr_self_verify.coax).
 // An injected workspace records its message as stage 1 would.
-ss_bind :: (message:[]u8,work:[]SignWork) {status:=sha256_hash_checked(message,work[0].message[..],false);}
-ss_final :: (v:SignVector,work:[]SignWork) {
+ss_bind :: (message:[]u8,work:[]SignWork) #effects(all) {status:=sha256_hash_checked(message,work[0].message[..],false);}
+ss_final :: (v:SignVector,work:[]SignWork) #effects(all) {
   work[0].stage=5;work[0].prep[0].public_key=v.pub;work[0].sig=v.sig;
   work[0].prep[0].valid=1;work[0].nonce[0].valid=1;work[0].math[0].valid=1;
   pub:=v.pub;sig:=v.sig;message:=v.message;rr:=v.r;
@@ -187,39 +187,39 @@ SignWork :: struct {stage:int;prep:[1]SignPrepare;nonce:[1]SignNoncePoint;math:[
 
 // The whole workspace returns to its initial value. Compiler or host copies
 // of secret values are outside this reach; the host still wipes the region.
-sw_clear :: (work:[]SignWork)->int {fresh:SignWork;work[0]=fresh;return SIGN_REFUSED;}
-sw_views :: (key:[]u8,aux:[]u8,message:[]u8,work:[]SignWork,out:[]u8,overlap:bool)->bool {
+sw_clear :: (work:[]SignWork)->int #effects(all) {fresh:SignWork;work[0]=fresh;return SIGN_REFUSED;}
+sw_views :: (key:[]u8,aux:[]u8,message:[]u8,work:[]SignWork,out:[]u8,overlap:bool)->bool #effects(all) {
   return work.count==1 && key.count==32 && aux.count==32 && message.count>=0 && message.count<=SV_MAX_MESSAGE && out.count==64 && !overlap;
 }
 // An invalid key refuses here; its validity is the call's public result.
 // Declassification points, each reported by the secret-source audit (#4828).
 // Key and nonce validity are each call's public result.
-sw_valid_declassify :: (valid:u64)->bool {return valid==1;}
+sw_valid_declassify :: (valid:u64)->bool #effects(all) {return valid==1;}
 // The public key and R are published inside every signature.
-sw_bytes_declassify :: (bytes:[]u8)->bool {return bytes.count==32;}
+sw_bytes_declassify :: (bytes:[]u8)->bool #effects(all) {return bytes.count==32;}
 // The self-check status: whether to continue, then the publication verdict.
-sw_status_declassify :: (r:u64)->u64 {return r;}
+sw_status_declassify :: (r:u64)->u64 #effects(all) {return r;}
 // The BIP-340 challenge hash over public R, public key and message, through
 // the fixed-flow SHA-256 workspace, so the audit checks it with public inputs.
-sw_challenge_public :: (message:[]u8,pub:[]u8,r:[]u8,sha:[]ShaOwned,tag:[]u8,out:[]u8)->bool {
+sw_challenge_public :: (message:[]u8,pub:[]u8,r:[]u8,sha:[]ShaOwned,tag:[]u8,out:[]u8)->bool #effects(all) {
   tagvalue:=SV_TAG_HASH;ok:=sha256_emit(tagvalue.words[..],tag)==SHA_OK;
   return ok && so_init(sha) && so_update(sha,tag,false) && so_update(sha,tag,false) && so_update(sha,r,false) && so_update(sha,pub,false) && so_update(sha,message,false) && so_finish(sha,out,false);
 }
 // SHA-256 of the message through the fixed-flow workspace the audit can follow.
-sw_message_digest :: (message:[]u8,out:[]u8)->bool {sha:[1]ShaOwned;return so_init(sha[..]) && so_update(sha[..],message,false) && so_finish(sha[..],out,false);}
-sw_key :: (key:[]u8,work:[]SignWork)->int {
+sw_message_digest :: (message:[]u8,out:[]u8)->bool #effects(all) {sha:[1]ShaOwned;return so_init(sha[..]) && so_update(sha[..],message,false) && so_finish(sha[..],out,false);}
+sw_key :: (key:[]u8,work:[]SignWork)->int #effects(all) {
   if !sk_prepare(key,work[0].prep[..],false) || !sw_valid_declassify(work[0].prep[0].valid) {return sw_clear(work);}
   if !sw_bytes_declassify(work[0].prep[0].public_key[..]) {return sw_clear(work);}
   work[0].stage=1;return SIGN_MORE;
 }
-sw_nonce :: (aux:[]u8,message:[]u8,work:[]SignWork)->int {
+sw_nonce :: (aux:[]u8,message:[]u8,work:[]SignWork)->int #effects(all) {
   if !snp_prepare(work[0].prep[0].normalized[..],work[0].prep[0].public_key[..],aux,message,work[0].nonce[..],false) {return sw_clear(work);}
   if !sw_bytes_declassify(work[0].nonce[0].r[..]) {return sw_clear(work);}
   if !sw_message_digest(message,work[0].message[..]) {return sw_clear(work);}
   work[0].stage=2;return SIGN_MORE;
 }
 // r, the public key and the message are public: the challenge may vary in time.
-sw_scalar :: (key:[]u8,message:[]u8,work:[]SignWork)->int {
+sw_scalar :: (key:[]u8,message:[]u8,work:[]SignWork)->int #effects(all) {
   if !sw_same_message(message,work) {return sw_clear(work);}
   // Parities stay secret; &1 keeps each 0/1 value and states its range.
   sha:[1]ShaOwned;tag:[32]u8;digest:[32]u8;
@@ -235,7 +235,7 @@ sw_scalar :: (key:[]u8,message:[]u8,work:[]SignWork)->int {
 // the self-check: nothing is published unless the finished signature
 // verifies. The unpublished candidate is checked only by ssv_step, one of
 // its stages per call, and only its final mask decides publication.
-sw_check :: (message:[]u8,work:[]SignWork)->int {
+sw_check :: (message:[]u8,work:[]SignWork)->int #effects(all) {
   r:=ssv_step(message,work[0].prep[0].public_key[..],work[0].nonce[0].r[..],work[0].sig[..],work[0].check[..],false);
   if sw_status_declassify(r)!=cast(u64)SSV_MORE {return sw_clear(work);}
   work[0].stage+=1;return SIGN_MORE;
@@ -245,13 +245,13 @@ sw_check :: (message:[]u8,work:[]SignWork)->int {
 // need no check: the self-check verifies against each call's message, so a
 // message changed after stage 2 fails it. The message is public, so this
 // check may branch.
-sw_same_message :: (message:[]u8,work:[]SignWork)->bool {
+sw_same_message :: (message:[]u8,work:[]SignWork)->bool #effects(all) {
   digest:[32]u8;
   return sw_message_digest(message,digest[..]) && cb_ct_equal(digest[..],work[0].message[..])==CB_MAX64;
 }
 // The self-check always finishes before the validity bits are read, so a
 // refusal does the same work as a publication.
-sw_publish :: (message:[]u8,work:[]SignWork,out:[]u8)->int {
+sw_publish :: (message:[]u8,work:[]SignWork,out:[]u8)->int #effects(all) {
   r:=ssv_step(message,work[0].prep[0].public_key[..],work[0].nonce[0].r[..],work[0].sig[..],work[0].check[..],false);
   valid:=work[0].prep[0].valid & work[0].nonce[0].valid & work[0].math[0].valid;
   if !sw_valid_declassify(valid) || sw_status_declassify(r)!=SSV_VALID {return sw_clear(work);}
@@ -262,7 +262,7 @@ sw_publish :: (message:[]u8,work:[]SignWork,out:[]u8)->int {
 // disjoint, and overlap is the host's truthful observation. Refused views
 // change nothing; any other refusal clears the workspace. out is written
 // only on SIGN_DONE.
-schnorr_sign_step :: (key:[]u8,aux:[]u8,message:[]u8,work:[]SignWork,out:[]u8,overlap:bool)->int #export_c {
+schnorr_sign_step :: (key:[]u8,aux:[]u8,message:[]u8,work:[]SignWork,out:[]u8,overlap:bool)->int #export_c #effects(all) {
   if !sw_views(key,aux,message,work,out,overlap) {return SIGN_REFUSED;}
   stage:=work[0].stage;
   if stage==0 {return sw_key(key,work);}
@@ -272,6 +272,6 @@ schnorr_sign_step :: (key:[]u8,aux:[]u8,message:[]u8,work:[]SignWork,out:[]u8,ov
   if stage==5 {return sw_publish(message,work,out);}
   return sw_clear(work);
 }
-nostr_sign_step :: (key:[]u8,aux:[]u8,event_id:[]u8,work:[]SignWork,out:[]u8,overlap:bool)->int #export_c {
+nostr_sign_step :: (key:[]u8,aux:[]u8,event_id:[]u8,work:[]SignWork,out:[]u8,overlap:bool)->int #export_c #effects(all) {
   if event_id.count!=32 {return SIGN_REFUSED;}return schnorr_sign_step(key,aux,event_id,work,out,overlap);
 }

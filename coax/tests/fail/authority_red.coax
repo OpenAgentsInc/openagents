@@ -1,5 +1,5 @@
 // expect: E0406
 #authority;
-double :: (x: int) -> int { return x + 2; }
+double :: (x: int) -> int #effects(all) { return x + 2; }
 #forall x: 0..<10 { #assert double(x) == x * 2; }
 main :: () { }

@@ -52,7 +52,7 @@
 
 // Four output rows per 128-thread group, one warp per output; columns in
 // lane order. Every input time row gets its own groups. Bias is explicit.
-ias_k_dense :: (item:int,rows:int,ni:int,no:int,bias:int,x:[]f32,w:[]f32,b:[]f32,y:[]f32) #export_c {
+ias_k_dense :: (item:int,rows:int,ni:int,no:int,bias:int,x:[]f32,w:[]f32,b:[]f32,y:[]f32) #export_c #effects(all) {
  groups:=(no+3)/4;t:=item/groups;o0:=item%groups*4;part:[128]f32;
  for thread:0..<128 {
   o:=o0+thread/32;lane:=thread%32;v:f32=0;
@@ -65,7 +65,7 @@ ias_k_dense :: (item:int,rows:int,ni:int,no:int,bias:int,x:[]f32,w:[]f32,b:[]f32
 }
 // Three-tap stride-two time/frequency convolution. Time padding is two on
 // the first chunk, one cached row afterward. Frequency always pads (2,1).
-ias_k_sub :: (item:int,frames:int,iw:int,ic:int,oc:int,groups:int,first:int,x:[]f32,old:[]f32,w:[]f32,b:[]f32,y:[]f32) #export_c {
+ias_k_sub :: (item:int,frames:int,iw:int,ic:int,oc:int,groups:int,first:int,x:[]f32,old:[]f32,w:[]f32,b:[]f32,y:[]f32) #export_c #effects(all) {
  oh:=(frames+first)/2;ow:=iw/2+1;o:=item/(oh*ow);t:=item/ow%oh;f:=item%ow;per:=ic/groups;group:=o/(oc/groups);v:=b[o];
  for c:0..<per {for kt:0..<3 {for kf:0..<3 {
   ti:=t*2+kt-1-first;fi:=f*2+kf-2;ch:=group*per+c;value:f32=0;
@@ -76,21 +76,21 @@ ias_k_sub :: (item:int,frames:int,iw:int,ic:int,oc:int,groups:int,first:int,x:[]
   v+=value*w[((o*per+c)*3+kt)*3+kf];
  }}}y[item]=v;
 }
-ias_k_save_sub :: (item:int,frames:int,iw:int,x:[]f32,y:[]f32) #export_c {c:=item/iw;f:=item%iw;y[item]=x[(c*frames+frames-1)*iw+f];}
-ias_k_point :: (item:int,frames:int,iw:int,ic:int,oc:int,x:[]f32,w:[]f32,b:[]f32,y:[]f32) #export_c {
+ias_k_save_sub :: (item:int,frames:int,iw:int,x:[]f32,y:[]f32) #export_c #effects(all) {c:=item/iw;f:=item%iw;y[item]=x[(c*frames+frames-1)*iw+f];}
+ias_k_point :: (item:int,frames:int,iw:int,ic:int,oc:int,x:[]f32,w:[]f32,b:[]f32,y:[]f32) #export_c #effects(all) {
  o:=item/(frames*iw);at:=item%(frames*iw);v:=b[o];for c:0..<ic {v+=w[o*ic+c]*x[c*frames*iw+at];}y[item]=v;
 }
-ias_k_gather :: (item:int,frames:int,iw:int,channels:int,x:[]f32,y:[]f32) #export_c {t:=item/(channels*iw);c:=item/iw%channels;f:=item%iw;y[item]=x[(c*frames+t)*iw+f];}
-ias_k_glu :: (item:int,d:int,x:[]f32,y:[]f32) #export_c {t:=item/d;c:=item%d;y[item]=x[t*2*d+c]/(1+wd_expf(-x[t*2*d+d+c]));}
-ias_k_dw :: (item:int,d:int,x:[]f32,w:[]f32,y:[]f32) #export_c {t:=item/d;c:=item%d;v:f32=0;for j:0..<9 {v+=x[(t+j)*d+c]*w[c*9+j];}y[item]=v;}
-ias_k_silu :: (item:int,x:[]f32) #export_c {v:=x[item];x[item]=v/(1+wd_expf(-v));}
-ias_k_relu :: (item:int,x:[]f32) #export_c {x[item]=ifx x[item]>0 then x[item] else 0;}
-ias_k_add :: (item:int,scale:f32,x:[]f32,y:[]f32) #export_c {y[item]+=scale*x[item];}
-ias_k_copy :: (item:int,x:[]f32,y:[]f32) #export_c {y[item]=x[item];}
-ias_k_zero :: (item:int,x:[]f32) #export_c {x[item]=0;}
+ias_k_gather :: (item:int,frames:int,iw:int,channels:int,x:[]f32,y:[]f32) #export_c #effects(all) {t:=item/(channels*iw);c:=item/iw%channels;f:=item%iw;y[item]=x[(c*frames+t)*iw+f];}
+ias_k_glu :: (item:int,d:int,x:[]f32,y:[]f32) #export_c #effects(all) {t:=item/d;c:=item%d;y[item]=x[t*2*d+c]/(1+wd_expf(-x[t*2*d+d+c]));}
+ias_k_dw :: (item:int,d:int,x:[]f32,w:[]f32,y:[]f32) #export_c #effects(all) {t:=item/d;c:=item%d;v:f32=0;for j:0..<9 {v+=x[(t+j)*d+c]*w[c*9+j];}y[item]=v;}
+ias_k_silu :: (item:int,x:[]f32) #export_c #effects(all) {v:=x[item];x[item]=v/(1+wd_expf(-v));}
+ias_k_relu :: (item:int,x:[]f32) #export_c #effects(all) {x[item]=ifx x[item]>0 then x[item] else 0;}
+ias_k_add :: (item:int,scale:f32,x:[]f32,y:[]f32) #export_c #effects(all) {y[item]+=scale*x[item];}
+ias_k_copy :: (item:int,x:[]f32,y:[]f32) #export_c #effects(all) {y[item]=x[item];}
+ias_k_zero :: (item:int,x:[]f32) #export_c #effects(all) {x[item]=0;}
 // Two current rows, at most seventy old rows. The projected position table
 // is fixed at offsets +71..-71, precomputed once for each original layer.
-ias_k_attend :: (item:int,cached:int,d:int,heads:int,q:[]f32,k:[]f32,v:[]f32,p:[]f32,bias:[]f32,y:[]f32) #export_c {
+ias_k_attend :: (item:int,cached:int,d:int,heads:int,q:[]f32,k:[]f32,v:[]f32,p:[]f32,bias:[]f32,y:[]f32) #export_c #effects(all) {
  hd:=d/heads;head:=item/2;t:=item%2;n:=cached+2;at:=head*hd;acc:[128]f32;best:f32= -3.0e38;total:f32=0;
  for j:0..<n {
   score:f32=0;rel:=71-cached-t+j;
@@ -104,6 +104,6 @@ ias_k_attend :: (item:int,cached:int,d:int,heads:int,q:[]f32,k:[]f32,v:[]f32,p:[
 // F32 LSTM gates, with a stable logistic. Each unit writes disjoint state.
 ias_sigmoid :: (v:f32)->f32 {return ifx v>=0 then 1/(1+wd_expf(-v)) else wd_expf(v)/(1+wd_expf(v));}
 ias_tanh :: (v:f32)->f32 {a:=wd_expf(-2*abs(v));r:=(1-a)/(1+a);return ifx v>=0 then r else -r;}
-ias_k_cell :: (item:int,d:int,g:[]f32,c:[]f32,h:[]f32) #export_c {
+ias_k_cell :: (item:int,d:int,g:[]f32,c:[]f32,h:[]f32) #export_c #effects(all) {
  j:=item;v:=ias_sigmoid(g[d+j])*c[j]+ias_sigmoid(g[j])*ias_tanh(g[2*d+j]);c[j]=v;h[j]=ias_sigmoid(g[3*d+j])*ias_tanh(v);
 }

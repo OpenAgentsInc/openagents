@@ -18,6 +18,6 @@
   #assert !forge_world_paused(true,false,true,false,false);
   #assert !forge_world_paused(false,true,false,false,false);
 }
-forge_world_paused :: (ready:bool,setup:bool,visible:bool,minimized:bool,occluded:bool)->bool #export_c {
+forge_world_paused :: (ready:bool,setup:bool,visible:bool,minimized:bool,occluded:bool)->bool #export_c #effects(all) {
   return ready && (!visible || minimized || occluded || setup);
 }

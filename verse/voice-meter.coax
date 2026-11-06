@@ -34,64 +34,64 @@ MeterReport :: struct {
 // Each comparison is placed where its boundary changes the answer, so the
 // boundary is something a check can see (a saturated sum at exactly TOP - 1
 // is not saturated; usage of exactly the free amount owes nothing).
-meter_add_sat :: (a: u64, b: u64) -> u64 {
+meter_add_sat :: (a: u64, b: u64) -> u64 #effects(all) {
   if b == TOP { return TOP; }
   if a > TOP - 1 - b { return TOP; }
   return a + b;
 }
 // Units of `used` beyond `free` (free < TOP).
-over :: (used: u64, free: u64) -> u64 {
+over :: (used: u64, free: u64) -> u64 #effects(all) {
   if used < free + 1 { return 0; }
   return used - free;
 }
 // What is left of `free` (free >= 1) after `used`.
-left :: (free: u64, used: u64) -> u64 {
+left :: (free: u64, used: u64) -> u64 #effects(all) {
   if used > free - 1 { return 0; }
   return free - used;
 }
-meter_mul_sat :: (a: u64, b: u64) -> u64 {
+meter_mul_sat :: (a: u64, b: u64) -> u64 #effects(all) {
   if b != 0 && a > TOP / b { return TOP; }
   return a * b;
 }
 
 // Millisatoshis owed for a day's usage.
-owed :: (ms: u64, chars: u64) -> u64 {
+owed :: (ms: u64, chars: u64) -> u64 #effects(all) {
   return meter_add_sat(meter_mul_sat(over(ms, FREE_MS), MSAT_PER_MS), meter_mul_sat(over(chars, FREE_CHARS), MSAT_PER_CHAR));
 }
 
-verse_voice_meter_free_ms :: () -> u64 #export_c { return FREE_MS; }
-verse_voice_meter_free_chars :: () -> u64 #export_c { return FREE_CHARS; }
-verse_voice_meter_msat_per_ms :: () -> u64 #export_c { return MSAT_PER_MS; }
-verse_voice_meter_msat_per_char :: () -> u64 #export_c { return MSAT_PER_CHAR; }
+verse_voice_meter_free_ms :: () -> u64 #export_c #effects(all) { return FREE_MS; }
+verse_voice_meter_free_chars :: () -> u64 #export_c #effects(all) { return FREE_CHARS; }
+verse_voice_meter_msat_per_ms :: () -> u64 #export_c #effects(all) { return MSAT_PER_MS; }
+verse_voice_meter_msat_per_char :: () -> u64 #export_c #effects(all) { return MSAT_PER_CHAR; }
 
-verse_voice_meter_init :: (m: [] Meter, day: u32, budget: u64) #export_c {
+verse_voice_meter_init :: (m: [] Meter, day: u32, budget: u64) #export_c #effects(all) {
   m[0] = Meter.{day = day, budget = budget};
 }
 
 // A later day starts over; an earlier one is ignored.
-verse_voice_meter_day :: (m: [] Meter, day: u32) #export_c {
+verse_voice_meter_day :: (m: [] Meter, day: u32) #export_c #effects(all) {
   if day <= m[0].day { return; }
   m[0].day = day;
   m[0].ms = 0;
   m[0].chars = 0;
 }
 
-verse_voice_meter_budget :: (m: [] Meter, budget: u64) #export_c { m[0].budget = budget; }
+verse_voice_meter_budget :: (m: [] Meter, budget: u64) #export_c #effects(all) { m[0].budget = budget; }
 
 // May a turn of at most max_ms recognized and max_chars synthesized run?
-verse_voice_meter_may_run :: (m: [] Meter, max_ms: u64, max_chars: u64) -> bool #export_c {
+verse_voice_meter_may_run :: (m: [] Meter, max_ms: u64, max_chars: u64) -> bool #export_c #effects(all) {
   return owed(meter_add_sat(m[0].ms, max_ms), meter_add_sat(m[0].chars, max_chars)) <= m[0].budget;
 }
 
 // Record what was used (it happened, so it always counts). False when the
 // account is now past its free tier plus budget: refuse further turns.
-verse_voice_meter_charge :: (m: [] Meter, ms: u64, chars: u64) -> bool #export_c {
+verse_voice_meter_charge :: (m: [] Meter, ms: u64, chars: u64) -> bool #export_c #effects(all) {
   m[0].ms = meter_add_sat(m[0].ms, ms);
   m[0].chars = meter_add_sat(m[0].chars, chars);
   return owed(m[0].ms, m[0].chars) <= m[0].budget;
 }
 
-verse_voice_meter_report :: (m: [] Meter) -> MeterReport #export_c {
+verse_voice_meter_report :: (m: [] Meter) -> MeterReport #export_c #effects(all) {
   return MeterReport.{recognized_ms = m[0].ms, synthesized_chars = m[0].chars,
     free_ms_left = left(FREE_MS, m[0].ms), free_chars_left = left(FREE_CHARS, m[0].chars),
     owed_msat = owed(m[0].ms, m[0].chars)};

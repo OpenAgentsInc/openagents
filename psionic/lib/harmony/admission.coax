@@ -6,5 +6,5 @@
     table:[1]u8;#assert !hs_admit(table[0..<0]);
 }
 // book:begin admit
-hs_admit :: (table:[]u8)->bool #export_c {return pw_digest(table,HS_TABLE_SHA);}
+hs_admit :: (table:[]u8)->bool #export_c #effects(all) {return pw_digest(table,HS_TABLE_SHA);}
 // book:end admit

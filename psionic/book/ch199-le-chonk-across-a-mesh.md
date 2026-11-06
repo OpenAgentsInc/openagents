@@ -88,7 +88,7 @@ CkModel :: struct {layers:int;hidden:int;select:int;src:[128]int;full:[128]int;r
 // cut reads them and its selection when a layer after the cut reuses it;
 // then, when the draft head runs (it sits on the last stage), every tap
 // before the cut. Returns how many.
-ck_contract :: (m:CkModel,cut:int,head:bool,parts:[]CkPart)->int {
+ck_contract :: (m:CkModel,cut:int,head:bool,parts:[]CkPart)->int #effects(all) {
     parts[0]=CkPart.{kind=CkKind.hidden,layer=cut,width=m.hidden};n:=1;
     for x:0..<cut {
         reads:=false;picks:=false;
@@ -105,7 +105,7 @@ ck_contract :: (m:CkModel,cut:int,head:bool,parts:[]CkPart)->int {
 }
 // The bytes those parts cost for `positions` positions, each part one of
 // chapter 186's f32 messages.
-ck_bytes :: (parts:[]CkPart,positions:int)->int {b:=0;for x:parts {b+=stg_message_bytes(positions,x.width);}return b;}
+ck_bytes :: (parts:[]CkPart,positions:int)->int #effects(all) {b:=0;for x:parts {b+=stg_message_bytes(positions,x.width);}return b;}
 ```
 
 Large 4's maps come from chapter 86's fixture and the taps from
@@ -117,7 +117,7 @@ params.json:
 // selection at `context` positions, and params.json's
 // mtp.target_activation_layers "1,18,36,54,71".
 CK_TAPS :: [5]int.[1,18,36,54,71];
-ck_large4 :: (c:L4Config,context:int)->CkModel {
+ck_large4 :: (c:L4Config,context:int)->CkModel #effects(all) {
     m:=CkModel.{layers=c.layers,hidden=c.dim,select=l4_min(context,c.index_topk),ntaps=5};
     for l:0..<c.layers {m.src[l]=cast(int)ML4_KV_SOURCE[l];m.full[l]=cast(int)ML4_INDEXER_FULL[l];m.row[l]=l4_row(c,l);}
     for j:0..<5 {m.taps[j]=CK_TAPS[j];}
@@ -130,7 +130,7 @@ ck_large4 :: (c:L4Config,context:int)->CkModel {
 // the last 2,048 positions (mtp.ragged_attention "2048,2048,2048").
 CkHead :: struct {backbone:int;step:int;cache:int;}
 CK_HEAD_WINDOW :: 2048;
-ck_head :: (m:L4Mesh)->CkHead {
+ck_head :: (m:L4Mesh)->CkHead #effects(all) {
     s:=DH_LARGE4;h:CkHead;
     for e:0..<8+10*s.layers {
         t:=dh_large4_tensor(s,e);b:=2*t.rows*(ifx t.cols==0 then 1 else t.cols);
@@ -200,7 +200,7 @@ from one memory.
 // experts assumed distinct, the most reading), each position's cache rows
 // and index keys, the embedding rows on the first stage and the readout
 // once on the last. One token is chapter 198's l4_stage read.
-ck_read :: (c:L4Config,m:L4Mesh,y:[]L4Layer,t:L4Top,a:int,b:int,i:int,n:int,tokens:int)->int {
+ck_read :: (c:L4Config,m:L4Mesh,y:[]L4Layer,t:L4Top,a:int,b:int,i:int,n:int,tokens:int)->int #effects(all) {
     share:=c.experts/m.width;active:=(c.top_k+m.width-1)/m.width;sel:=l4_min(m.context,c.index_topk);r:=0;
     for l:a..<b {
         for p:0..<L4_PARTS {if p!=L4_EXPERT {r+=y[l].part[p];}}
@@ -214,7 +214,7 @@ ck_read :: (c:L4Config,m:L4Mesh,y:[]L4Layer,t:L4Top,a:int,b:int,i:int,n:int,toke
 // One mixture layer's expert exchange for `tokens` positions, each routed
 // as chapter 198's l4_exchange routes one: slot k on peer 1 + k mod
 // (width - 1).
-ck_exchange :: (c:L4Config,m:L4Mesh,tokens:int)->int {
+ck_exchange :: (c:L4Config,m:L4Mesh,tokens:int)->int #effects(all) {
     if m.width==1 {return 0;}
     owner:[256]int;o:=owner[0..<c.experts];
     if xm_contiguous(c.experts,m.width,o)!=XmStatus.ok {return -1;}
@@ -234,7 +234,7 @@ ck_exchange :: (c:L4Config,m:L4Mesh,tokens:int)->int {
 // leader has no room for the head (gap: the bytes missing).
 CkRound :: struct {status:CkStatus;plan:L4Plan;k:int;compute:[8]int;send:[8]int;hop:[8]int;draft:int;round:int;gap:int;}
 CK_DRAFTS_MAX :: 8;
-ck_round :: (c:L4Config,m:L4Mesh,p:L4Plan,k:int)->CkRound {
+ck_round :: (c:L4Config,m:L4Mesh,p:L4Plan,k:int)->CkRound #effects(all) {
     r:=CkRound.{k=k,plan=p};
     if k<0 || k>CK_DRAFTS_MAX {r.status=CkStatus.input;return r;}
     if p.status!=L4Status.ok {r.status=CkStatus.plan;return r;}
@@ -258,21 +258,21 @@ ck_round :: (c:L4Config,m:L4Mesh,p:L4Plan,k:int)->CkRound {
 // Time a token at per-draft acceptance alpha (each draft kept with
 // probability alpha, independently, an assumption): a round emits
 // 1 + alpha + ... + alpha^k tokens on average.
-ck_per_token :: (r:CkRound,alpha:f64)->int {
+ck_per_token :: (r:CkRound,alpha:f64)->int #effects(all) {
     e:=1.0;a:=1.0;for j:0..<r.k {a*=alpha;e+=a;}
     v:=cast(f64)r.round/e;t:=cast(int)v;
     return ifx cast(f64)t<v then t+1 else t;
 }
 // Of rounds that are ok, the one with the least time a token; the earlier
 // on a tie (-1: none is ok).
-ck_pick :: (rounds:[]CkRound,alpha:f64)->int {
+ck_pick :: (rounds:[]CkRound,alpha:f64)->int #effects(all) {
     best:=-1;
     for i:0..<rounds.count {if rounds[i].status==CkStatus.ok && (best<0 || ck_per_token(rounds[i],alpha)<ck_per_token(rounds[best],alpha)) {best=i;}}
     return best;
 }
 // The pick of every k from 0 to CK_DRAFTS_MAX on plan p: the k with the
 // least time a token (-1 when the plan is refused).
-ck_best :: (c:L4Config,m:L4Mesh,p:L4Plan,alpha:f64)->int {
+ck_best :: (c:L4Config,m:L4Mesh,p:L4Plan,alpha:f64)->int #effects(all) {
     rounds:[CK_DRAFTS_MAX+1]CkRound;for k:0..<CK_DRAFTS_MAX+1 {rounds[k]=ck_round(c,m,p,k);}
     return ck_pick(rounds[..],alpha);
 }
@@ -406,16 +406,16 @@ embedding and readout.
 CkToy :: struct {base:L4Toy;model:CkModel;vocab:int;embed:[]f32;out:[]f32;}
 CkDraft :: struct {cell:DhCell;proj:[]f64;}
 CK_POS_MAX :: 32;CK_HIDDEN :: 8;CK_ROW :: 7;
-ck_next :: (t:CkToy,x:[]f32)->int {
+ck_next :: (t:CkToy,x:[]f32)->int #effects(all) {
     best:=-1;top:=0.0;h:=x.count;
     for v:0..<t.vocab {s:=0.0;for j:0..<h {s+=cast(f64)t.out[v*h+j]*cast(f64)x[j];}if best<0 || s>top {best=v;top=s;}}
     return best;
 }
 // The head's state from the taps' rows, then chapter 87's greedy drafts.
-ck_start :: (d:CkDraft,taps:[]f32,g:[]f64) {
+ck_start :: (d:CkDraft,taps:[]f32,g:[]f64) #effects(all) {
     for i:0..<g.count {s:=0.0;for j:0..<taps.count {s+=d.proj[i*taps.count+j]*cast(f64)taps[j];}g[i]=s/(1+abs(s));}
 }
-ck_draft :: (d:CkDraft,taps:[]f32,pending:int,k:int,drafts:[]int) {
+ck_draft :: (d:CkDraft,taps:[]f32,pending:int,k:int,drafts:[]int) #effects(all) {
     g:[DH_WIDTH_MAX]f64;q:[DH_DRAFTS_MAX*DH_VOCAB_MAX]f64;none:[1]f64;
     ck_start(d,taps,g[0..<d.cell.width]);
     used:=dh_draft(d.cell,g[0..<d.cell.width],pending,k,true,none[..],drafts,q[..]);#assert used==0;
@@ -437,7 +437,7 @@ CkRun :: struct {status:CkStatus;refusal:StgRefusal;part:CkPart;written:int;roun
 // The rows a part reads or writes on stage i (whose first layer is a) for
 // positions p..<p+count: hidden from the pass rows, a cache from the
 // stage's own cache or its copy, a tap from the stage's tap rows.
-ck_rows :: (st:CkState,t:CkToy,x:CkPart,i:int,a:int,p:int,count:int)->[]f32 {
+ck_rows :: (st:CkState,t:CkToy,x:CkPart,i:int,a:int,p:int,count:int)->[]f32 #effects(all) {
     if x.kind==CkKind.hidden {return st.rows[0..<count*CK_HIDDEN];}
     if x.kind==CkKind.tap {j:=0;while t.model.taps[j]!=x.layer {j+=1;}return st.taps[4*i+j][0..<count*CK_HIDDEN];}
     if x.layer>=a {return st.cache[x.layer][p*CK_ROW..<(p+count)*CK_ROW];}
@@ -448,7 +448,7 @@ ck_rows :: (st:CkState,t:CkToy,x:CkPart,i:int,a:int,p:int,count:int)->[]f32 {
 // computes, then sends its cut's contract as one message a part; the next
 // stage receives each part it expects, in order, through chapter 186's
 // checks, and refuses a missing or extra part.
-ck_pass :: (st:CkState,t:CkToy,cut:[]int,head:bool,p:int,tokens:[]int,peers:[][]XmPeer,owner:[][]int,fault:CkFault,given:CkRun)->CkRun {
+ck_pass :: (st:CkState,t:CkToy,cut:[]int,head:bool,p:int,tokens:[]int,peers:[][]XmPeer,owner:[][]int,fault:CkFault,given:CkRun)->CkRun #effects(all) {
     r:=given;
     s:=m4o_shape();n:=cut.count-1;count:=tokens.count;parts:[CK_PARTS_MAX]CkPart;
     for q:0..<count {for j:0..<CK_HIDDEN {st.rows[q*CK_HIDDEN+j]=t.embed[tokens[q]*CK_HIDDEN+j];}}
@@ -496,7 +496,7 @@ ck_pass :: (st:CkState,t:CkToy,cut:[]int,head:bool,p:int,tokens:[]int,peers:[][]
 // (or, when all are kept, the next one) becomes pending. A rejected
 // position's cache rows are written again by the next pass before any
 // later position reads them. k = 0 is plain decoding, one position a pass.
-ck_generate :: (t:CkToy,d:CkDraft,cut:[]int,prompt:[]int,steps:int,k:int,peers:[][]XmPeer,owner:[][]int,fault:CkFault,out:[]int)->CkRun {
+ck_generate :: (t:CkToy,d:CkDraft,cut:[]int,prompt:[]int,steps:int,k:int,peers:[][]XmPeer,owner:[][]int,fault:CkFault,out:[]int)->CkRun #effects(all) {
     r:CkRun;n:=cut.count-1;L:=t.base.layers;
     // Cuts rising from 0 to the layers (at most 8) make at most 8 stages.
     ok:=k>=0 && k<=CK_DRAFTS_MAX && prompt.count>=2 && steps>=1 && out.count>=steps && prompt.count+steps+k<=CK_POS_MAX+1 && cut.count>0 && t.model.ntaps<=4;

@@ -127,14 +127,14 @@ up to the saturation of tanh. Units 1 to 3 have zero weights.
 // Elephant's recorded answer to a request, as the student's input: its yes
 // logit over 16, its slot mass, the logit's size, and 1. A certain answer
 // has no logit: its x0 is not a number, which admission refuses.
-dm_features :: (p:f64,mass:f64)->[4]f64 {
+dm_features :: (p:f64,mass:f64)->[4]f64 #effects(all) {
     if !(p>0 && p<1) {return [4]f64.[0.0/0.0,mass,0,1];}
     z:=log(p/(1-p))/16;
     return [4]f64.[z,mass,abs(z),1];
 }
 // The frozen base: unit 0 is tanh(x0) and the yes logit 16 h0, which keeps
 // Elephant's own logit to within its saturation.
-dm_base :: ()->PtBase {b:PtBase;b.w1[0]=1;b.w2[0]=16;return b;}
+dm_base :: ()->PtBase #effects(all) {b:PtBase;b.w1[0]=1;b.w2[0]=16;return b;}
 ```
 
 The adapter is chapter 140's, rank 2 with scale 2 on the hidden layer: it
@@ -158,7 +158,7 @@ family with rows on both sides of the split; the refusal names the row:
 // 0 or 1 gold label, a family in range and finite features; a family may
 // not have rows on both sides of the split, and the refusal names the later
 // row of the pair.
-dm_admit :: (teacher:[32]u8,profile:DmProfile,rows:[]DmRow)->DmAdmit {
+dm_admit :: (teacher:[32]u8,profile:DmProfile,rows:[]DmRow)->DmAdmit #effects(all) {
     if rows.count<1 || rows.count>PT_ROWS_MAX {return DmAdmit.{status=DmStatus.shape,row=-1};}
     sides:[DM_FAMILIES]u8;a:=DmAdmit.{row=-1};
     for r,i:rows {
@@ -184,7 +184,7 @@ probability `t` to the student's `q`, with `0·log 0 = 0`:
 <!-- source: psionic/lib/distill-mammoth.coax kl -->
 ```jai
 // KL(t || s) for one yes-or-no answer, with 0 log 0 = 0.
-dm_kl :: (t:f64,s:f64)->f64 {
+dm_kl :: (t:f64,s:f64)->f64 #effects(all) {
     k:=0.0;
     if t>0 {k+=t*log(t/s);}
     if t<1 {k+=(1-t)*log((1-t)/(1-s));}
@@ -202,12 +202,12 @@ training reuses chapter 140's `pt_gradient` unchanged:
 // The mean KL from the teacher over one side's rows. Chapter 140's
 // cross-entropy with the teacher's probability as the label is this plus
 // the teacher's entropy, so its gradient is this loss's gradient.
-dm_loss :: (b:PtBase,a:PtAdapter,rows:[]DmRow,held:bool)->f64 {
+dm_loss :: (b:PtBase,a:PtAdapter,rows:[]DmRow,held:bool)->f64 #effects(all) {
     total:=0.0;n:=0;
     for r:rows {if r.held==held {total+=dm_kl(r.p,pt_forward(b,a,r.x).p);n+=1;}}
     return total/f64(n);
 }
-dm_entropy :: (rows:[]DmRow,held:bool)->f64 {
+dm_entropy :: (rows:[]DmRow,held:bool)->f64 #effects(all) {
     total:=0.0;n:=0;
     for r:rows {if r.held==held {total+=dm_kl(r.p,0.5)-log(2.0);n+=1;}}
     return -total/f64(n);
@@ -243,7 +243,7 @@ admitted before the first step, and a refusal returns the trainer unchanged:
 ```jai
 // Full-batch AdamW on the training families only. Everything is admitted
 // before the first step; a refusal returns the trainer unchanged.
-dm_train :: (b:PtBase,t:PtTrainer,teacher:[32]u8,profile:DmProfile,rows:[]DmRow,steps:int)->DmTrain {
+dm_train :: (b:PtBase,t:PtTrainer,teacher:[32]u8,profile:DmProfile,rows:[]DmRow,steps:int)->DmTrain #effects(all) {
     r:=DmTrain.{trainer=t};
     if steps<0 || steps>PT_STEPS_MAX || t.adapter.rank==0 {r.status=DmStatus.shape;return r;}
     ps:=pt_adapter_ok(t.adapter);
@@ -286,7 +286,7 @@ bins):
 ```jai
 // One model's yes probabilities p on rows, against the teacher and the gold
 // labels. An answer is yes when p is at least one half.
-dm_score :: (rows:[]DmRow,p:[]f64)->DmScore {
+dm_score :: (rows:[]DmRow,p:[]f64)->DmScore #effects(all) {
     s:DmScore;probs:[2*PT_ROWS_MAX]f64;items:[PT_ROWS_MAX]PqItem;
     for r,i:rows {
         if (p[i]>=0.5)==(r.p>=0.5) {s.agree+=1;}
@@ -328,7 +328,7 @@ than 0.02 of Brier score against gold:
 // The frozen rule: closer to Mammoth than the undistilled student, agreeing
 // with it at least as often, and no more than DM_BRIER_SLACK worse against
 // gold.
-dm_gate :: (c:DmCard)->DmVerdict {
+dm_gate :: (c:DmCard)->DmVerdict #effects(all) {
     if c.status!=DmStatus.ok || c.n<1 {return DmVerdict.{reason=DmReason.card};}
     if c.after.kl>=c.before.kl {return DmVerdict.{reason=DmReason.kl};}
     if c.after.agree<c.before.agree {return DmVerdict.{reason=DmReason.agreement};}
@@ -353,7 +353,7 @@ reused for it:
 // The student's identity: SHA-256 over the base's digest, the adapter's
 // region, rank and scale, and its 16 parameter words. No result of either
 // parent is reused for it.
-dm_student :: (b:PtBase,a:PtAdapter)->[32]u8 {
+dm_student :: (b:PtBase,a:PtAdapter)->[32]u8 #effects(all) {
     buf:[170]u8;d:=pt_digest(b);
     for v,i:d {buf[i]=v;}
     buf[32]=cast(u8)a.region;buf[33]=cast(u8)a.rank;n:=pt_put(buf[..],34,a.alpha);

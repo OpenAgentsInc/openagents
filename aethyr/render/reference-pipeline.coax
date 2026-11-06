@@ -27,7 +27,7 @@ RRShaded :: struct {status:RQStatus;steps:int;publish:u32;colour:[4]RQColor;aux:
 RRPassResult :: struct {status:RQStatus;steps:int;triangles:int;quads:int;fragments:int;written:int;}
 #load "tests/reference-pipeline-checks.coax";
 
-rr_pipeline :: (p:RQProgram,tree:[]u32,meta:[]int)->RRPipeline {
+rr_pipeline :: (p:RQProgram,tree:[]u32,meta:[]int)->RRPipeline #effects(all) {
  vs:=rq_ir_interface(p,tree,meta,0);if vs.status!=RQStatus.ok {return RRPipeline.{status=vs.status};}
  if rq_ir_entry(p,tree,meta,1)<0 {return RRPipeline.{vs=vs};}
  fs:=rq_ir_interface(p,tree,meta,1);if fs.status!=RQStatus.ok {return RRPipeline.{status=fs.status};}
@@ -62,7 +62,7 @@ rr_pipeline :: (p:RQProgram,tree:[]u32,meta:[]int)->RRPipeline {
 // Parameter IDs and logical resource indices come from admitted checked
 // reflection; raw word pointers do not select a shader binding implicitly.
 rr_arguments :: (p:RQProgram,tree:[]u32,meta:[]int,stage:int,io:RQInterface,
-    res:RQResources,bindings:[]RRBinding,input:[]u32)->RQStatus {
+    res:RQResources,bindings:[]RRBinding,input:[]u32)->RQStatus #effects(all) {
  for j:io.resource_start..<io.params {
   param:=rq_ir_parameter(p,tree,meta,stage,j);found:=-1;
   for b:0..<bindings.count {
@@ -77,7 +77,7 @@ rr_arguments :: (p:RQProgram,tree:[]u32,meta:[]int,stage:int,io:RQInterface,
  return RQStatus.ok;
 }
 rr_vertices :: (r:RRPipeline,p:RQProgram,tree:[]u32,meta:[]int,res:RQResources,bindings:[]RRBinding,
-    attributes:RRAttributes,ids:[3]u32,instance:u32,budget:int,memory:[]u32)->RRVertices {
+    attributes:RRAttributes,ids:[3]u32,instance:u32,budget:int,memory:[]u32)->RRVertices #effects(all) {
  if budget<1 {return RRVertices.{status=RQStatus.budget};}
  input:[RR_INPUT_WORDS]u32;output:[RR_OUTPUT_WORDS]u32;
  status:=rr_arguments(p,tree,meta,0,r.vs,res,bindings,input[0..<r.vs.input_words]);if status!=RQStatus.ok {return RRVertices.{status=status};}
@@ -116,7 +116,7 @@ rr_vertices :: (r:RRPipeline,p:RQProgram,tree:[]u32,meta:[]int,res:RQResources,b
 // canonical0/1 bool words. The packet can be recorded independently of the
 // interpreter and is the same carrier rq_ir_run accepts.
 rr_fragment_inputs :: (r:RRPipeline,p:RQProgram,tree:[]u32,meta:[]int,res:RQResources,bindings:[]RRBinding,
-    quad:RRQuad,front:bool,input:[]u32)->RQStatus {
+    quad:RRQuad,front:bool,input:[]u32)->RQStatus #effects(all) {
  if !r.has_fragment {return RQStatus.unsupported;}
  if input.count<r.fs.input_words {return RQStatus.capacity;}
  status:=rr_arguments(p,tree,meta,1,r.fs,res,bindings,input[0..<r.fs.input_words]);if status!=RQStatus.ok {return status;}
@@ -129,7 +129,7 @@ rr_fragment_inputs :: (r:RRPipeline,p:RQProgram,tree:[]u32,meta:[]int,res:RQReso
  return RQStatus.ok;
 }
 rr_shade :: (r:RRPipeline,p:RQProgram,tree:[]u32,meta:[]int,res:RQResources,bindings:[]RRBinding,
-    quad:RRQuad,front:bool,budget:int,memory:[]u32)->RRShaded {
+    quad:RRQuad,front:bool,budget:int,memory:[]u32)->RRShaded #effects(all) {
  if budget<0 {return RRShaded.{status=RQStatus.budget};}
  if !r.has_fragment {
   result:=RRShaded.{publish=quad.coverage};
@@ -155,17 +155,17 @@ rr_shade :: (r:RRPipeline,p:RQProgram,tree:[]u32,meta:[]int,res:RQResources,bind
 }
 rr_reference_pass :: (r:RRPipeline,p:RQProgram,tree:[]u32,meta:[]int,res:RQResources,bindings:[]RRBinding,
     attributes:RRAttributes,draws:[]RenderDecodedDraw,indices:[]u32,state:RenderPassState,width:int,height:int,format:RRFormat,
-    budget:int,memory:[]u32,scratch:[]RRPixel,target:[]RRPixel)->RRPassResult {
+    budget:int,memory:[]u32,scratch:[]RRPixel,target:[]RRPixel)->RRPassResult #effects(all) {
  return rr_reference_pass_profile(r,p,tree,meta,res,bindings,attributes,draws,indices,state,width,height,format,budget,memory,scratch,target,RRRasterProfile.{});
 }
 rr_reference_pass_profile :: (r:RRPipeline,p:RQProgram,tree:[]u32,meta:[]int,res:RQResources,bindings:[]RRBinding,
     attributes:RRAttributes,draws:[]RenderDecodedDraw,indices:[]u32,state:RenderPassState,width:int,height:int,format:RRFormat,
-    budget:int,memory:[]u32,scratch:[]RRPixel,target:[]RRPixel,profile:RRRasterProfile)->RRPassResult {
+    budget:int,memory:[]u32,scratch:[]RRPixel,target:[]RRPixel,profile:RRRasterProfile)->RRPassResult #effects(all) {
  return rr_reference_pass_work_profile(r,p,tree,meta,res,bindings,attributes,draws,indices,state,width,height,format,budget,memory,scratch,target,profile,RRWorkProfile.standard);
 }
 rr_reference_pass_work_profile :: (r:RRPipeline,p:RQProgram,tree:[]u32,meta:[]int,res:RQResources,bindings:[]RRBinding,
     attributes:RRAttributes,draws:[]RenderDecodedDraw,indices:[]u32,state:RenderPassState,width:int,height:int,format:RRFormat,
-    budget:int,memory:[]u32,scratch:[]RRPixel,target:[]RRPixel,profile:RRRasterProfile,work_profile:RRWorkProfile)->RRPassResult {
+    budget:int,memory:[]u32,scratch:[]RRPixel,target:[]RRPixel,profile:RRRasterProfile,work_profile:RRWorkProfile)->RRPassResult #effects(all) {
  if !rr_raster_profile_ok(profile) {return RRPassResult.{status=RQStatus.unsupported};}
  if r.status!=RQStatus.ok {return RRPassResult.{status=r.status};}
  limits:=rr_work_limits(work_profile);if !limits.ok {return RRPassResult.{status=RQStatus.unsupported};}

@@ -13,7 +13,7 @@ smooth :: (edge0: f32, edge1: f32, x: f32) -> f32 {
 
 // Light at (x, y) on a quad that runs from -1 to 1: a bright core,
 // a soft halo, and nothing at the quad's edge.
-glow_dot :: (x: f32, y: f32, light: f32) -> f32 #export_c {
+glow_dot :: (x: f32, y: f32, light: f32) -> f32 #export_c #effects(all) {
   r2 := x * x + y * y;
   if r2 >= 1.0f32 { return 0.0f32; }
   core := exp(-r2 * 12.0f32);
@@ -23,7 +23,7 @@ glow_dot :: (x: f32, y: f32, light: f32) -> f32 #export_c {
 }
 
 // Map scene light (0 and up) to a screen value below 1.
-glow_tone :: (light: f32) -> f32 #export_c {
+glow_tone :: (light: f32) -> f32 #export_c #effects(all) {
   return 1.0f32 - exp(-light * 1.35f32);
 }
 

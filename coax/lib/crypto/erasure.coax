@@ -19,7 +19,7 @@
     #assert crypto_zeroed(bytes[..]) && crypto_zeroed(words[..]) && crypto_zeroed(wide[..]);
   }
 }
-crypto_zeroed :: (data:[]$T:equatable)->bool {
+crypto_zeroed :: (data:[]$T:equatable)->bool #effects(all) {
   zero:$T;clean:=true;
   for word:data {clean=(word==zero) && clean;}
   return clean;

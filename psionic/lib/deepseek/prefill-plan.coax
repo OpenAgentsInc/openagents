@@ -50,20 +50,20 @@
     key:=[1]int.[0];#assert dp_keys(key[..],1,1) && !dp_keys(key[0..<0],1,1) && !dp_keys(keys[..],6,5);
 }
 
-dp_min :: (a:int,b:int)->int {return (a+b-cast(int)abs(f64(a-b)))/2;}
-dp_expert_k :: (experts:int,k:int)->bool {return experts>=1 && experts<=384 && k>=1 && k<=8 && k<=experts;}
-dp_layers :: (layers:int)->bool {return layers>=1 && layers<=43;}
-dp_key_count :: (count:int,experts:int,assignments:int)->bool {return count>=1 && count<=experts && count<=assignments;}
-dp_terminal :: (layer:int,layers:int,group:int,keys:int)->bool {return layer==layers && group==0 && keys==0;}
-dp_index :: (index:int,count:int)->bool {return index>=0 && index<count;}
-dp_phase :: (phase:u8)->bool {return phase<=6;}
-dp_nonnegative :: (v:int)->bool {return v>=0 && v<=1000000000000;}
-dp_positive_cost :: (v:int)->bool {return v>=1 && v<=1000000000000;}
-dp_memory :: (v:int)->bool {return v>=0 && v<=1125899906842624;}
-dp_prefix :: (v:int)->bool {return v>=0 && v<=1048576;}
-dp_cost :: (c:DpChunkConfig,n:int)->int {active:=dp_min(n*c.k,c.experts);return c.fixed_ns+n*c.token_ns+active*c.expert_ns;}
+dp_min :: (a:int,b:int)->int #effects(all) {return (a+b-cast(int)abs(f64(a-b)))/2;}
+dp_expert_k :: (experts:int,k:int)->bool #effects(all) {return experts>=1 && experts<=384 && k>=1 && k<=8 && k<=experts;}
+dp_layers :: (layers:int)->bool #effects(all) {return layers>=1 && layers<=43;}
+dp_key_count :: (count:int,experts:int,assignments:int)->bool #effects(all) {return count>=1 && count<=experts && count<=assignments;}
+dp_terminal :: (layer:int,layers:int,group:int,keys:int)->bool #effects(all) {return layer==layers && group==0 && keys==0;}
+dp_index :: (index:int,count:int)->bool #effects(all) {return index>=0 && index<count;}
+dp_phase :: (phase:u8)->bool #effects(all) {return phase<=6;}
+dp_nonnegative :: (v:int)->bool #effects(all) {return v>=0 && v<=1000000000000;}
+dp_positive_cost :: (v:int)->bool #effects(all) {return v>=1 && v<=1000000000000;}
+dp_memory :: (v:int)->bool #effects(all) {return v>=0 && v<=1125899906842624;}
+dp_prefix :: (v:int)->bool #effects(all) {return v>=0 && v<=1048576;}
+dp_cost :: (c:DpChunkConfig,n:int)->int #effects(all) {active:=dp_min(n*c.k,c.experts);return c.fixed_ns+n*c.token_ns+active*c.expert_ns;}
 // book:begin chunk
-dp_chunk :: (c:DpChunkConfig,remaining:int)->DpChunk #export_c {
+dp_chunk :: (c:DpChunkConfig,remaining:int)->DpChunk #export_c #effects(all) {
     if !dp_batch(c.max_chunk) || (!c.serial && c.max_chunk==1) || !dp_positive_cost(c.bytes_per_token) || !dp_nonnegative(c.fixed_ns) || !dp_positive_cost(c.token_ns) || !dp_nonnegative(c.expert_ns) || !dp_positive_cost(c.target_ns) || !dp_memory(c.workspace) || !dp_expert_k(c.experts,c.k) || !dp_prefix(remaining) || remaining==0 {return DpChunk.{status=DsStatus.shape};}
     cap:=dp_min(c.max_chunk,remaining);cap=dp_min(cap,c.workspace/c.bytes_per_token);if c.serial {cap=dp_min(cap,1);}
     low:=0;high:=cap+1;while low+1<high {middle:=(low+high)/2;if dp_cost(c,middle)<=c.target_ns {low=middle;}else {high=middle;}}
@@ -71,17 +71,17 @@ dp_chunk :: (c:DpChunkConfig,remaining:int)->DpChunk #export_c {
     return DpChunk.{count=low,predicted_ns=dp_cost(c,low),tail=remaining==1,serial=c.serial};
 }
 // book:end chunk
-dp_keys :: (keys:[]int,experts:int,assignments:int)->bool {if !dp_key_count(keys.count,experts,assignments) {return false;}previous:=-1;for key:keys {if key<=previous || key>=experts {return false;}previous=key;}return true;}
-dp_cursor_valid :: (c:DpCursor)->bool {
+dp_keys :: (keys:[]int,experts:int,assignments:int)->bool #effects(all) {if !dp_key_count(keys.count,experts,assignments) {return false;}previous:=-1;for key:keys {if key<=previous || key>=experts {return false;}previous=key;}return true;}
+dp_cursor_valid :: (c:DpCursor)->bool #effects(all) {
     if !dp_phase(cast(u8)c.phase) || !dp_prefix(c.first) || !dp_batch(c.count) || c.first+c.count>1048576 || !dp_layers(c.layers) || !dp_route_shape(c.experts,c.count,c.k) || !dp_prefix(c.epoch) {return false;}
     if c.phase==DpPhase.commit || c.phase==DpPhase.done {return dp_terminal(c.layer,c.layers,c.group,c.keys.count);}
     if c.layer<0 || c.layer>=c.layers {return false;}if c.phase==DpPhase.attention || c.phase==DpPhase.route {return c.group==0 && c.keys.count==0;}
     if !dp_keys(c.keys,c.experts,c.count*c.k) {return false;}if c.phase==DpPhase.expert {return dp_index(c.group,c.keys.count);}return c.group==0;
 }
-dp_start :: (first:int,count:int,layers:int,experts:int,k:int,epoch:int)->DpNext #export_c {
+dp_start :: (first:int,count:int,layers:int,experts:int,k:int,epoch:int)->DpNext #export_c #effects(all) {
     c:=DpCursor.{first=first,count=count,layers=layers,experts=experts,k=k,epoch=epoch};if !dp_cursor_valid(c) || epoch==1048576 {return DpNext.{status=DsStatus.shape};}return DpNext.{value=c};
 }
-dp_advance :: (c:DpCursor,r:DpReceipt,keys:[]int)->DpNext #export_c {
+dp_advance :: (c:DpCursor,r:DpReceipt,keys:[]int)->DpNext #export_c #effects(all) {
     if !dp_cursor_valid(c) || c.phase==DpPhase.done || !r.ok || r.epoch!=c.epoch || r.layer!=c.layer || r.phase!=c.phase || r.group!=c.group {return DpNext.{status=DsStatus.state};}
     if c.phase!=DpPhase.route && keys.count!=0 {return DpNext.{status=DsStatus.state};}next:=c;
     if c.phase==DpPhase.attention {next.phase=DpPhase.route;}

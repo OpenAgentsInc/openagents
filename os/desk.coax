@@ -16,13 +16,13 @@
 #load "../coax/lib/sys/proc.coax";
 #load "../coax/lib/json/json.coax";
 
-cxsock_host_push :: (byte: int) -> int #foreign;
-cxsock_connect_unix :: (timeout_ms: int) -> int #foreign;
-cxsock_write :: (h: int, byte: int) -> int #foreign;
-cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
-cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
-cxsock_byte :: (h: int, i: int) -> int #foreign;
-cxsock_close :: (h: int) -> int #foreign;
+cxsock_host_push :: (byte: int) -> int #foreign #effects(all);
+cxsock_connect_unix :: (timeout_ms: int) -> int #foreign #effects(all);
+cxsock_write :: (h: int, byte: int) -> int #foreign #effects(all);
+cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
+cxsock_read :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
+cxsock_byte :: (h: int, i: int) -> int #foreign #effects(all);
+cxsock_close :: (h: int) -> int #foreign #effects(all);
 
 DK_GENERATION :: 1;
 DK_USAGE :: 2; DK_NO_SESSION :: 3; DK_UNREACHABLE :: 4; DK_REFUSED :: 5; DK_UNREADABLE :: 6;
@@ -602,7 +602,7 @@ dk_ask :: (socket: string, line: string, want: string, text: [] u8, d: [] Jv, no
   return v.code;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("usage: coder-desk VERB [ARGS...]"); return DK_USAGE; }
   argv: [32] string; nargs := args_count(a[..]);

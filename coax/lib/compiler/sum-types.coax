@@ -171,12 +171,12 @@
 }
 // Semantic sum metadata; all storage/identity/default decisions stay in Coax.
 // CK_Context is supplied by the including checker, not a native fallback.
-CK_sum :: (c:CK_Context,t:int)->bool {k:=c.types[t].kind;return k==CK_Kind.union_ || k==CK_Kind.result || k==CK_Kind.optional;}
+CK_sum :: (c:CK_Context,t:int)->bool #effects(all) {k:=c.types[t].kind;return k==CK_Kind.union_ || k==CK_Kind.result || k==CK_Kind.optional;}
 CK_SumFrame :: struct {type:int;field:int;entered:bool;}
 CK_SumBudget :: struct {used:int;limit:int;}
 // The caller owns one initialized budget, with used nonnegative. A failed
 // charge keeps used unchanged and records E0381 before any traversal work.
-CK_sum_tick :: (c:CK_Context,budget:[]CK_SumBudget)->bool {
+CK_sum_tick :: (c:CK_Context,budget:[]CK_SumBudget)->bool #effects(all) {
  if budget[0].used>=budget[0].limit {CK_resource(c,CK_Loc.{});return false;}
  budget[0].used+=1;return true;
 }
@@ -184,7 +184,7 @@ CK_sum_tick :: (c:CK_Context,budget:[]CK_SumBudget)->bool {
 // sums (=---). Mode3: a nondefaultable value, skipping explicit field defaults.
 // Per-query memoization removes shared-DAG expansion; above the private memo
 // capacity traversal remains fully metered, never truncated or called empty.
-CK_sum_scan :: (c:CK_Context,t:int,mode:int,limit:int)->bool {
+CK_sum_scan :: (c:CK_Context,t:int,mode:int,limit:int)->bool #effects(all) {
  if t<16 || c.state[0].fatal || c.state[0].error_count>0 {return false;}
  if limit>1048576 {CK_resource(c,CK_Loc.{});return true;}
  frames:[256]CK_SumFrame;visited:[256]int;seen_count:=1;visited[0]=t;top:=0;frames[0].type=t;budget:=[1]CK_SumBudget.[CK_SumBudget.{limit=limit}];
@@ -209,20 +209,20 @@ CK_sum_scan :: (c:CK_Context,t:int,mode:int,limit:int)->bool {
  }
  return false;
 }
-CK_sum_contains :: (c:CK_Context,t:int,results:bool)->bool {return CK_sum_contains_bounded(c,t,results,1048576);}
-CK_sum_count :: (c:CK_Context,t:int)->int {if c.types[t].kind==CK_Kind.union_ {return CK_list_count(c,c.nodes[c.types[t].decl].head);}return 2;}
-CK_sum_payload :: (c:CK_Context,t:int,ordinal:int)->int {
+CK_sum_contains :: (c:CK_Context,t:int,results:bool)->bool #effects(all) {return CK_sum_contains_bounded(c,t,results,1048576);}
+CK_sum_count :: (c:CK_Context,t:int)->int #effects(all) {if c.types[t].kind==CK_Kind.union_ {return CK_list_count(c,c.nodes[c.types[t].decl].head);}return 2;}
+CK_sum_payload :: (c:CK_Context,t:int,ordinal:int)->int #effects(all) {
  if ordinal<0 || ordinal>=CK_sum_count(c,t) {return 0;}r:=c.types[t];
  if r.kind==CK_Kind.union_ {return c.nodes[CK_at(c,c.nodes[r.decl].head,ordinal)].type;}
  if r.kind==CK_Kind.result {if ordinal==0 {return r.elem;}return r.sum_error;}
  if r.kind==CK_Kind.optional {if ordinal==0 {return 1;}return r.elem;}return 0;
 }
-CK_sum_name :: (c:CK_Context,t:int,ordinal:int)->string {
+CK_sum_name :: (c:CK_Context,t:int,ordinal:int)->string #effects(all) {
  r:=c.types[t];if r.kind==CK_Kind.union_ {return c.nodes[CK_at(c,c.nodes[r.decl].head,ordinal)].name;}
  if r.kind==CK_Kind.result {if ordinal==0 {return "ok";}return "err";}if ordinal==0 {return "none";}return "some";
 }
-CK_sum_inner :: (c:CK_Context,id:int)->int {n:=c.nodes[id];if n.kind==CK_Tag.type_named && n.name=="void" && n.name2.count==0 && n.head==0 {return 1;}return CK_resolve(c,id,CK_Access.value);}
-CK_sum_type :: (c:CK_Context,kind:CK_Kind,elem:int,error:int,loc:CK_Loc)->int {
+CK_sum_inner :: (c:CK_Context,id:int)->int #effects(all) {n:=c.nodes[id];if n.kind==CK_Tag.type_named && n.name=="void" && n.name2.count==0 && n.head==0 {return 1;}return CK_resolve(c,id,CK_Access.value);}
+CK_sum_type :: (c:CK_Context,kind:CK_Kind,elem:int,error:int,loc:CK_Loc)->int #effects(all) {
  if elem==0 || (kind==CK_Kind.result && error==0) {return 0;}
  if (kind==CK_Kind.optional && elem==1) || (kind==CK_Kind.result && error==1) || CK_sum_contains(c,elem,true) || CK_sum_contains(c,error,true) {CK_error(c,loc,"E0900","Result cannot be contained in another value type; optional payload and Result error must be non-void","");return 0;}
  for i:16..<c.state[0].type_count {r:=c.types[i];if r.kind==kind && r.elem==elem && r.sum_error==error {return i;}}
@@ -235,16 +235,16 @@ CK_sum_type :: (c:CK_Context,kind:CK_Kind,elem:int,error:int,loc:CK_Loc)->int {
  if kind==CK_Kind.result {name=CK_join3(c,"Result(",c.types[elem].name,CK_join3(c,", ",c.types[error].name,")"));default= -1;}
  return CK_new_type(c,CK_Type.{kind=kind,name=name,elem=elem,sum_error=error,size=l.size,alignment=l.alignment,bits=32,sum_payload_offset=l.offset,sum_default=default});
 }
-CK_sum_type_tag :: (tag:u32)->bool {return tag>=1 && tag<=6;}
-CK_sum_can_propagate :: (current:int,kind:CK_Kind,error:int,out_kind:CK_Kind,out_error:int)->bool {
+CK_sum_type_tag :: (tag:u32)->bool #effects(all) {return tag>=1 && tag<=6;}
+CK_sum_can_propagate :: (current:int,kind:CK_Kind,error:int,out_kind:CK_Kind,out_error:int)->bool #effects(all) {
  return current!=0 && kind==out_kind && (kind!=CK_Kind.result || error==out_error);
 }
-CK_result_syntax :: (c:CK_Context,id:int)->int {
+CK_result_syntax :: (c:CK_Context,id:int)->int #effects(all) {
  e:=c.nodes[id];if CK_list_count(c,e.head)!=2 {CK_error(c,e.loc,"E0900","Result requires exactly success and error type arguments","");return 0;}
  arg:=e.head;while arg!=0 {tag:=cast(u32)c.nodes[arg].kind;if !CK_sum_type_tag(tag) {CK_error(c,c.nodes[arg].loc,"E0900","Result arguments must both be types, not length or value arguments","");return 0;}arg=c.nodes[arg].next;}
  a:=CK_sum_inner(c,e.head);b:=CK_sum_inner(c,c.nodes[e.head].next);return CK_sum_type(c,CK_Kind.result,a,b,e.loc);
 }
-CK_union_layout :: (c:CK_Context,id:int) {
+CK_union_layout :: (c:CK_Context,id:int) #effects(all) {
  n:=c.nodes[id];if n.mark==2 {return;}if n.mark==1 {CK_error(c,n.loc,"E0900","a union cannot contain itself by value","");return;}
  if !CK_enter(c,n.loc) {return;}defer CK_leave(c);c.nodes[id].mark=1;
  count:=CK_list_count(c,n.head);if count<1 || count>64 || n.d!=0 {CK_error(c,n.loc,"E0900","a nongeneric union requires one through sixty four alternatives","");return;}
@@ -258,10 +258,10 @@ CK_union_layout :: (c:CK_Context,id:int) {
  l:=SL_layout(sizes[0..<count],aligns[0..<count]);if !l.valid {CK_resource(c,n.loc);return;}
  t:=n.type;c.types[t].size=l.size;c.types[t].alignment=l.alignment;c.types[t].bits=32;c.types[t].sum_payload_offset=l.offset;c.nodes[id].mark=2;
 }
-CK_defaultable :: (c:CK_Context,t:int)->bool {return !CK_sum_scan(c,t,3,1048576);}
+CK_defaultable :: (c:CK_Context,t:int)->bool #effects(all) {return !CK_sum_scan(c,t,3,1048576);}
 // A view does not inline its element storage.
-CK_inline_sum :: (c:CK_Context,t:int)->bool {return CK_sum_scan(c,t,2,1048576);}
-CK_sum_construct :: (c:CK_Context,id:int,t:int)->int {
+CK_inline_sum :: (c:CK_Context,t:int)->bool #effects(all) {return CK_sum_scan(c,t,2,1048576);}
+CK_sum_construct :: (c:CK_Context,id:int,t:int)->int #effects(all) {
  if t==0 {return 0;}e:=c.nodes[id];if CK_list_count(c,e.head)!=1 {CK_error(c,e.loc,"E0901","construct exactly one sum alternative","");return 0;}
  init:=c.nodes[e.head];ordinal:= -1;for i:0..<CK_sum_count(c,t) {if CK_sum_name(c,t,i)==init.name {ordinal=i;}}
  if ordinal<0 {CK_error(c,init.loc,"E0901","unknown sum alternative","");return 0;}
@@ -269,13 +269,13 @@ CK_sum_construct :: (c:CK_Context,id:int,t:int)->int {
  else {if init.a==0 {CK_error(c,init.loc,"E0901","this alternative requires its payload","");return 0;}a:=CK_value(c,init.a,CK_Hint.{type=payload});if a==0 {return 0;}if a!=payload {CK_error(c,c.nodes[init.a].loc,"E0901","sum payload type does not match its alternative","");return 0;}}
  c.nodes[id].kind=CK_Tag.expr_sum;c.nodes[id].name=init.name;c.nodes[id].a=init.a;c.nodes[id].head=0;c.nodes[id].tail=0;c.nodes[id].sum_variant=ordinal;return t;
 }
-CK_some :: (c:CK_Context,id:int,want:CK_Hint)->int {
+CK_some :: (c:CK_Context,id:int,want:CK_Hint)->int #effects(all) {
  e:=c.nodes[id];if CK_list_count(c,e.head)!=1 {CK_error(c,e.loc,"E0910","some takes exactly one payload","");return 0;}
  inner:=0;if c.types[want.type].kind==CK_Kind.optional {inner=c.types[want.type].elem;}
  t:=CK_value(c,e.head,CK_Hint.{type=inner});if t==0 {return 0;}if inner!=0 && t!=inner {CK_error(c,e.loc,"E0910","some payload does not match the optional context","");return 0;}
  r:=CK_sum_type(c,CK_Kind.optional,t,0,e.loc);if r==0 {return 0;}c.nodes[id].kind=CK_Tag.expr_some;c.nodes[id].a=e.head;c.nodes[id].head=0;c.nodes[id].tail=0;c.nodes[id].sum_variant=1;return r;
 }
-CK_sum_expression :: (c:CK_Context,id:int,want:CK_Hint)->int {
+CK_sum_expression :: (c:CK_Context,id:int,want:CK_Hint)->int #effects(all) {
  e:=c.nodes[id];if e.kind==CK_Tag.expr_null {if c.types[want.type].kind!=CK_Kind.optional {CK_error(c,e.loc,"E0910","null requires an optional type context","");return 0;}c.nodes[id].sum_variant=0;return want.type;}
  if e.kind==CK_Tag.expr_sum || e.kind==CK_Tag.expr_some {return e.type;}
  t:=CK_value(c,e.a,CK_Hint.{});if t==0 {return 0;}r:=c.types[t];
@@ -286,11 +286,11 @@ CK_sum_expression :: (c:CK_Context,id:int,want:CK_Hint)->int {
  if !CK_sum_can_propagate(c.state[0].current,r.kind,r.sum_error,out.kind,out.sum_error) {CK_error(c,e.loc,"E0905","try requires the same propagation family and exact error type","");return 0;}
  c.nodes[id].propagate_type=ret;CK_borrow_return(c,id);c.nodes[id].sum_variant=ifx r.kind==CK_Kind.result then 1 else 0;return r.elem;
 }
-CK_literal_defaults :: (c:CK_Context,id:int,decl:int) {
+CK_literal_defaults :: (c:CK_Context,id:int,decl:int) #effects(all) {
  field:=c.nodes[decl].head;while field!=0 {f:=c.nodes[field];found:=false;a:=c.nodes[id].head;while a!=0 {if c.nodes[a].name==f.name {found=true;}a=c.nodes[a].next;}
   if !found && f.b==0 && !CK_defaultable(c,f.type) {CK_error(c,c.nodes[id].loc,"E0902","a nondefaultable field requires an initializer","");}field=f.next;}
 }
-CK_switch :: (c:CK_Context,id:int) {
+CK_switch :: (c:CK_Context,id:int) #effects(all) {
  s:=c.nodes[id];t:=CK_value(c,s.a,CK_Hint.{});if t==0 {return;}is_sum:=CK_sum(c,t);r:=c.types[t];
  if !is_sum && r.kind!=CK_Kind.enum_ {CK_error(c,s.loc,"E0904","switch requires a tagged sum or enum","");return;}
  count:=CK_list_count(c,c.nodes[r.decl].head);if is_sum {count=CK_sum_count(c,t);}
@@ -307,9 +307,9 @@ CK_switch :: (c:CK_Context,id:int) {
  }
  if CK_list_count(c,s.head)!=count {CK_error(c,s.loc,"E0904","switch must cover every alternative exactly once","");}
 }
-CK_null_comparison :: (c:CK_Context,id:int)->int {
+CK_null_comparison :: (c:CK_Context,id:int)->int #effects(all) {
  e:=c.nodes[id];left:=c.nodes[e.a].kind==CK_Tag.expr_null;other:=e.a;if left {other=e.b;}
  t:=CK_value(c,other,CK_Hint.{});if t==0 {return 0;}if c.types[t].kind!=CK_Kind.optional || (e.op!=44 && e.op!=45) {CK_error(c,e.loc,"E0910","null compares only for equality with an optional","");return 0;}
  null_id:=e.b;if left {null_id=e.a;}ignored:=CK_value(c,null_id,CK_Hint.{type=t});return 2;
 }
-CK_sum_contains_bounded :: (c:CK_Context,t:int,results:bool,limit:int)->bool {return CK_sum_scan(c,t,ifx results then 0 else 1,limit);}
+CK_sum_contains_bounded :: (c:CK_Context,t:int,results:bool,limit:int)->bool #effects(all) {return CK_sum_scan(c,t,ifx results then 0 else 1,limit);}

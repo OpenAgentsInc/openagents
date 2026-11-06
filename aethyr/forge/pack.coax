@@ -55,18 +55,18 @@ PackRead :: struct {
 PackSource :: struct { kind: int; licence: int; name: string; data: string; }
 // book:end format
 
-pack_u32 :: (p: string, at: int) -> int {
+pack_u32 :: (p: string, at: int) -> int #effects(all) {
   pk_n := 0;
   for pk_k: 0..<4 { pk_n = pk_n | (cast(int) p[at + pk_k] << (8 * pk_k)); }
   return pk_n;
 }
-pack_pad :: (n: int) -> int { return (n + 3) / 4 * 4; }
-pack_why :: (r: [] PackRead, why: string, entry: int) -> bool {
+pack_pad :: (n: int) -> int #effects(all) { return (n + 3) / 4 * 4; }
+pack_why :: (r: [] PackRead, why: string, entry: int) -> bool #effects(all) {
   r[0] = PackRead.{why = why, entry = entry};
   return false;
 }
 // A whole number written plainly (no sign, no leading zero), or -1.
-pack_number :: (s: string) -> int {
+pack_number :: (s: string) -> int #effects(all) {
   if s.count == 0 || s.count > 10 || (s[0] == '0' && s.count > 1) { return -1; }
   pk_n := 0;
   for pk_c: s {
@@ -76,7 +76,7 @@ pack_number :: (s: string) -> int {
   return pk_n;
 }
 // The i-th field of a line, fields split by single spaces; "" past the last.
-pack_field :: (line: string, i: int) -> string {
+pack_field :: (line: string, i: int) -> string #effects(all) {
   pk_at := 0; pk_f := 0;
   for pk_k: 0..<line.count + 1 {
     if pk_k == line.count || line[pk_k] == ' ' {
@@ -88,7 +88,7 @@ pack_field :: (line: string, i: int) -> string {
 }
 // A name in its 32-byte field: printable bytes, then zeros to the field's end (at least one). ""
 // when it isn't one, or the field is empty.
-pack_name :: (field: string) -> string {
+pack_name :: (field: string) -> string #effects(all) {
   if field.count != PACK_NAME { return ""; }
   pk_n := 0; pk_end := false;
   for pk_c, pk_k: field {
@@ -102,7 +102,7 @@ pack_name :: (field: string) -> string {
 // book:begin read
 // Read a pack whole: its header, its table in the format's order and layout, and its catalog's
 // account of every licence. False, with why and the entry, at the first thing that doesn't hold.
-pack_read :: (p: string, r: [] PackRead) -> bool {
+pack_read :: (p: string, r: [] PackRead) -> bool #effects(all) {
   if p.count < PACK_HEADER || p[0..<4] != PACK_MAGIC { return pack_why(r, "not a VPK1 pack", -1); }
   pk_count := pack_u32(p, 4);
   if pack_u32(p, 8) != p.count { return pack_why(r, "its stated size isn't its size", -1); }
@@ -142,7 +142,7 @@ pack_read :: (p: string, r: [] PackRead) -> bool {
 // book:begin catalog
 // The catalog's account: the pack's budget and size again, its sources in order, every mesh's
 // source declared, and each layer and sound the source its own entry says.
-pack_catalog :: (t: string, r: [] PackRead) -> bool {
+pack_catalog :: (t: string, r: [] PackRead) -> bool #effects(all) {
   if t.count == 0 || t[t.count - 1] != '\n' { return pack_why(r, "a catalog that doesn't end its last line", 0); }
   pk_stated := 0; pk_layer := 0; pk_sound := 0; pk_at := 0;
   pk_layers := 0; pk_sounds := 0;
@@ -182,7 +182,7 @@ pack_catalog :: (t: string, r: [] PackRead) -> bool {
 }
 // book:end catalog
 // The table index of the n-th entry of a kind, or -1.
-pack_nth :: (r: [] PackRead, kind: int, n: int) -> int {
+pack_nth :: (r: [] PackRead, kind: int, n: int) -> int #effects(all) {
   pk_seen := 0;
   for pk_k: 0..<r[0].count {
     if r[0].entries[pk_k].kind != kind { continue; }
@@ -192,26 +192,26 @@ pack_nth :: (r: [] PackRead, kind: int, n: int) -> int {
   return -1;
 }
 // An entry's bytes in the pack read.
-pack_bytes :: (p: string, r: [] PackRead, k: int) -> string {
+pack_bytes :: (p: string, r: [] PackRead, k: int) -> string #effects(all) {
   pk_e := r[0].entries[k];
   return p[pk_e.at..<pk_e.at + pk_e.n];
 }
 
 // book:begin write
 // The bytes a pack of these entries takes: header, table, and each entry padded to 4 bytes.
-pack_size :: (s: [] PackSource) -> int {
+pack_size :: (s: [] PackSource) -> int #effects(all) {
   pk_n := PACK_HEADER + PACK_ENTRY * s.count;
   for pk_e: s { pk_n += pack_pad(pk_e.data.count); }
   return pk_n;
 }
-pack_put32 :: (out: [] u8, at: int, v: int) {
+pack_put32 :: (out: [] u8, at: int, v: int) #effects(all) {
   out[at] = cast,trunc(u8) v; out[at + 1] = cast,trunc(u8) (v >> 8);
   out[at + 2] = cast,trunc(u8) (v >> 16); out[at + 3] = cast,trunc(u8) (v >> 24);
 }
 // Write a pack as pack_realm.py does: the bytes written, or -1 when out can't hold them, there are
 // more than PACK_MAX entries, or a name isn't 1 to 31 bytes. Nothing is checked beyond the layout:
 // pack_read is the check, so what this writes is read back before it is kept.
-pack_write :: (s: [] PackSource, budget: int, out: [] u8) -> int {
+pack_write :: (s: [] PackSource, budget: int, out: [] u8) -> int #effects(all) {
   pk_total := pack_size(s);
   if s.count > PACK_MAX || pk_total > out.count { return -1; }
   for pk_e: s { if pk_e.name.count == 0 || pk_e.name.count >= PACK_NAME { return -1; } }
@@ -236,7 +236,7 @@ pack_write :: (s: [] PackSource, budget: int, out: [] u8) -> int {
 // book:begin admit
 // A pack read takes its place in a realm's assets as its entries, each known by its content
 // (chapter 16): taken whole, or refused whole and nothing held changes.
-pack_admit :: (reg: [] AssetRegistry, p: string, r: [] PackRead) -> int {
+pack_admit :: (reg: [] AssetRegistry, p: string, r: [] PackRead) -> int #effects(all) {
   if !r[0].ok { return asset_refuse(reg, ASSET_MALFORMED, ASSET_NONE, 0, reg[0].held); }
   pk_content: [PACK_MAX] string; pk_table: [PACK_MAX] AssetId;
   for pk_k: 0..<r[0].count { pk_content[pk_k] = pack_bytes(p, r, pk_k); pk_table[pk_k] = asset_id(pk_content[pk_k]); }
@@ -250,45 +250,45 @@ pack_admit :: (reg: [] AssetRegistry, p: string, r: [] PackRead) -> int {
 
 PACK_TEST_CATALOG :: "pack tiny\nbudget 600\nbytes 512\nL 0 Kit|CC0 1.0 Universal|https://example.org/\nL 1 Sounds|CC0 1.0 Universal|https://example.org/\nM Crate 0 3 0 -0.500 0.000 -0.500 0.500 1.000 0.500\nT 0 layer3.jpg 0\nS door 1\n";
 
-pack_test_sources :: (catalog: string, out: [] PackSource) {
+pack_test_sources :: (catalog: string, out: [] PackSource) #effects(all) {
   out[0] = PackSource.{kind = PACK_CATALOG, licence = PACK_MANY, name = "catalog", data = catalog};
   out[1] = PackSource.{kind = PACK_VERTICES, licence = PACK_MANY, name = "vertices", data = "vvvvvv"};
   out[2] = PackSource.{kind = PACK_INDICES, licence = PACK_MANY, name = "indices", data = "iiiiiiiiiiii"};
   out[3] = PackSource.{kind = PACK_LAYER, licence = 0, name = "layer0", data = "JPEG!"};
   out[4] = PackSource.{kind = PACK_SOUND, licence = 1, name = "door", data = "mp3"};
 }
-pack_test :: (budget: int, out: [] u8) -> string {
+pack_test :: (budget: int, out: [] u8) -> string #effects(all) {
   s: [5] PackSource; pack_test_sources(PACK_TEST_CATALOG, s[..]);
   pk_w := pack_write(s[..], budget, out);
   return cast(string) out[0..<pk_w];
 }
 // The pack with byte `at` set to v.
-pack_test_poke :: (p: string, at: int, v: int, out: [] u8) -> string {
+pack_test_poke :: (p: string, at: int, v: int, out: [] u8) -> string #effects(all) {
   for pk_c, pk_k: p { out[pk_k] = pk_c; }
   out[at] = cast,trunc(u8) v;
   return cast(string) out[0..<p.count];
 }
-pack_test_why :: (p: string) -> string { r: [1] PackRead; pk_ok := pack_read(p, r[..]); return ifx pk_ok then "" else r[0].why; }
-pack_test_entry :: (p: string) -> int { r: [1] PackRead; pk_ok := pack_read(p, r[..]); return ifx pk_ok then -2 else r[0].entry; }
+pack_test_why :: (p: string) -> string #effects(all) { r: [1] PackRead; pk_ok := pack_read(p, r[..]); return ifx pk_ok then "" else r[0].why; }
+pack_test_entry :: (p: string) -> int #effects(all) { r: [1] PackRead; pk_ok := pack_read(p, r[..]); return ifx pk_ok then -2 else r[0].entry; }
 // A byte of the test pack changed: why it is refused and the entry named, as "WHY@ENTRY".
-pack_test_refused :: (at: int, v: int, why: string, entry: int) -> bool {
+pack_test_refused :: (at: int, v: int, why: string, entry: int) -> bool #effects(all) {
   b: [600] u8; c: [600] u8; p := pack_test_poke(pack_test(600, b[..]), at, v, c[..]);
   return pack_test_why(p) == why && pack_test_entry(p) == entry;
 }
 // The test pack's table read, for checking a catalog by itself.
-pack_test_table :: (r: [] PackRead, b: [] u8) {
+pack_test_table :: (r: [] PackRead, b: [] u8) #effects(all) {
   pk_ok := pack_read(pack_test(600, b), r);
   r[0].sources = 0;
 }
-pack_test_catalog :: (t: string) -> string {
+pack_test_catalog :: (t: string) -> string #effects(all) {
   r: [1] PackRead; tb: [600] u8; pack_test_table(r[..], tb[..]);
   return ifx pack_catalog(t, r[..]) then "" else r[0].why;
 }
-pack_test_catalog_entry :: (t: string) -> int {
+pack_test_catalog_entry :: (t: string) -> int #effects(all) {
   r: [1] PackRead; tb: [600] u8; pack_test_table(r[..], tb[..]);
   return ifx pack_catalog(t, r[..]) then -2 else r[0].entry;
 }
-pack_test_join :: (a: string, b: string, buf: [] u8) -> string {
+pack_test_join :: (a: string, b: string, buf: [] u8) -> string #effects(all) {
   for pk_c, pk_k: a { buf[pk_k] = pk_c; }
   for pk_c, pk_k: b { buf[a.count + pk_k] = pk_c; }
   return cast(string) buf[0..<a.count + b.count];
@@ -471,7 +471,7 @@ PACK_TEST_HEAD :: "budget 600\nbytes 512\nL 0 Kit|CC0|u\nL 1 Sounds|CC0|u\n";
 
 // A pack of three empty entries and `sounds` empty sounds, its catalog stating its bytes (worked
 // out by hand: 32 + 48 * (3 + sounds), then the catalog padded to 4) and a budget of 9999.
-pack_test_sounds :: (sounds: int, bytes: string, out: [] u8) -> string {
+pack_test_sounds :: (sounds: int, bytes: string, out: [] u8) -> string #effects(all) {
   c: [1024] u8; n := 0;
   for ch: "budget 9999\nbytes " { c[n] = ch; n += 1; }
   for ch: bytes { c[n] = ch; n += 1; }

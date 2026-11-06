@@ -1,0 +1,23 @@
+#load "../../lib/handle.coax";
+#import "Basic";
+
+main :: () {
+  handles_contract(HandlePlayer.{hp = 20});
+  handles_contract(HandleItem.{count = 5});
+  values: [1] HandlePlayer; generations: [1] u32; live: [1] bool; free: [1] int; state: [1] StoreState;
+  players := Store(HandlePlayer).{values = values[..], generations = generations[..], live = live[..], free = free[..], state = state[..]};
+  switch store_put(players, HandlePlayer.{hp = 20}) {
+    case none { #assert false; }
+    case some(caster) {
+      #assert store_remove(players, caster);
+      switch store_put(players, HandlePlayer.{hp = 30}) {
+        case none { #assert false; }
+        case some(next) {
+          switch store_get(players, caster) { case none {} case some(wrong) { wrong[0].hp = 0; #assert false; } }
+          #assert store_get_live(players, next)[0].hp == 30;
+        }
+      }
+    }
+  }
+  print("handles: ok\n");
+}

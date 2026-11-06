@@ -25,11 +25,11 @@
     #assert (cgl_kind(cast(string)s[..])!=0)==(expected && c!=':');
   }
 }
-cgl_byte :: (c:u8)->bool {
+cgl_byte :: (c:u8)->bool #effects(all) {
   return c>32 && c!=127 && c!='"' && c!='\'' && c!='<' && c!='>' && c!='\\' && c!='`';
 }
-cgl_https :: (s:string)->bool {return s.count>=8 && s[0..<8]=="https://";}
-cgl_kind :: (s:string)->int {
+cgl_https :: (s:string)->bool #effects(all) {return s.count>=8 && s[0..<8]=="https://";}
+cgl_kind :: (s:string)->int #effects(all) {
   if s.count==0 {return 0;}
   for c:s {if !cgl_byte(c) {return 0;}}
   if cgl_https(s) {

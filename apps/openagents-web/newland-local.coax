@@ -143,7 +143,7 @@ local_occlude :: (s: [] LandState, out: [] f32, from: int, to: int, c: Cam, mid:
 
 // The rectangle for the host: k 0..3 x0 y0 x1 y1 in the realm's pixels, 4 whether it is on screen.
 // k 5..12: the corners, x then y, bottom-left, bottom-right, top-right, top-left (for perspective).
-coaxial_land_panel :: (s: [] LandState, k: int) -> f32 #export_c {
+coaxial_land_panel :: (s: [] LandState, k: int) -> f32 #export_c #effects(all) {
   if s.count < 1 || k < 0 || k > 13 + 64 { return -1; }
   l := s[0].local[..];
   // k 13: how many occluders; 14 + 4i ..: occluder i's x0 y0 x1 y1
@@ -238,7 +238,7 @@ local_click :: (s: [] LandState, x: f32, y: f32, phase: int, d: f32) -> bool {
 }
 // What the host is asked since it last looked: agent K's transcript (K), a new agent like K to talk
 // to (1000 + K), or -1; asking clears it.
-coaxial_land_os_request :: (s: [] LandState) -> int #export_c {
+coaxial_land_os_request :: (s: [] LandState) -> int #export_c #effects(all) {
   if s.count < 1 { return -1; }
   a := s[0].local[0].asked - 1; s[0].local[0].asked = 0;
   if a < 0 || a >= s[0].local[0].n { return -1; }
@@ -252,7 +252,7 @@ local_key :: (s: [] LandState, key: int) -> bool {
   l[0].asked = l[0].offer; l[0].talk = true; l[0].offer = 0;
   return true;
 }
-coaxial_land_local_key :: (s: [] LandState, key: int) -> bool #export_c { return local_key(s, key); }
+coaxial_land_local_key :: (s: [] LandState, key: int) -> bool #export_c #effects(all) { return local_key(s, key); }
 #test "T after a click asks for a new agent to talk to; late, or with nothing clicked, it is a key like any" {
   s: [1] LandState;
   local_message(s[0].local[..], "agent=claude|openagents|working|0\n");
@@ -275,4 +275,4 @@ coaxial_land_local_key :: (s: [] LandState, key: int) -> bool #export_c { return
   #assert !local_click(s[..], 500, 320, 0, 1) && !local_click(s[..], 560, 320, 2, 1);
   #assert !local_click(s[..], 900, 320, 0, 1) && !local_click(s[..], 900, 320, 2, 1) && coaxial_land_os_request(s[..]) == -1;
 }
-coaxial_land_local_click :: (s: [] LandState, x: f32, y: f32, phase: int) -> bool #export_c { return local_click(s, x, y, phase, 1); }
+coaxial_land_local_click :: (s: [] LandState, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) { return local_click(s, x, y, phase, 1); }

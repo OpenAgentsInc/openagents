@@ -7,7 +7,7 @@
 och_run :: (args:[]string,seconds:int,out:[]u8)->int {
     err:[65536]u8;r:=proc_run(args,seconds*1000,out,err[..]);if r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);tool_errln(cast(string)out[0..<r.out_n]);return -1;}return r.out_n;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 {return 2;}
     if args_at(a[..],0)=="run" {
         if args_count(a[..])!=3 {return 2;}mode:=args_at(a[..],1);root:=args_at(a[..],2);cmd:=[4]string.["coax/web/build/tools/villain/runner",root,"coax/web/build/tools/villain/kernels.metal",mode];out:[1048576]u8;start:=proc_now_ms();n:=och_run(cmd[..],840,out[..]);elapsed:=proc_now_ms()-start;

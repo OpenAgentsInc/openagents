@@ -53,7 +53,7 @@ N75_T_GOAL :: "{\"id\":\"0d139a55394917832d2a910655312ec8362a01ef3a194c0243ecf67
 N75_T_CLOSE :: 1761690000;
 
 // A receipt by the server for this request and invoice, with p and e, dated at.
-n75_receipt_in :: (request:string,invoice:string,e:string,at:int,out:[]u8)->NostrEvent {
+n75_receipt_in :: (request:string,invoice:string,e:string,at:int,out:[]u8)->NostrEvent #effects(all) {
   tags:[3000]u8;
   r:=n57_event_in(9735,n57_receipt_tags(N57_T_BOB,e,"",invoice,request,"",tags[..]),N57_T_SERVER,out);
   r.created_at=at;return r;
@@ -139,11 +139,11 @@ n75_receipt_in :: (request:string,invoice:string,e:string,at:int,out:[]u8)->Nost
 }
 
 // book:begin goal
-n75_refuse :: (g:N75Goal,status:int,at:int)->N75Goal {o:=g;o.status=status;o.at=at;return o;}
+n75_refuse :: (g:N75Goal,status:int,at:int)->N75Goal #effects(all) {o:=g;o.status=status;o.at=at;return o;}
 // A goal: kind 9041, one amount tag with a positive msat number, one relays
 // tag whose first relay is ws:// or wss://, at most one closed_at, a
 // positive number of seconds.
-n75_goal :: (e:NostrEvent)->N75Goal {
+n75_goal :: (e:NostrEvent)->N75Goal #effects(all) {
   g:N75Goal;if e.error!=NE_OK {return g;}
   if e.kind!=N75_KIND_GOAL {return n75_refuse(g,N75_KIND,-1);}
   g.id=e.id;g.author=e.public_key;
@@ -175,7 +175,7 @@ n75_goal :: (e:NostrEvent)->N75Goal {
 
 // book:begin tally
 // One valid receipt z added to the progress p of goal g at time now.
-n75_add :: (p:N75Progress,g:N75Goal,z:N57Zap,now:int)->N75Progress {
+n75_add :: (p:N75Progress,g:N75Goal,z:N57Zap,now:int)->N75Progress #effects(all) {
   r:=p;
   if !z.request.has_event || !ns_equal32(z.request.event,g.id) || !ns_equal32(z.request.recipient,g.author) {r.other+=1;return r;}
   if g.closed_at!= -1 && z.created_at>g.closed_at {r.late+=1;return r;}
@@ -188,7 +188,7 @@ n75_add :: (p:N75Progress,g:N75Goal,z:N57Zap,now:int)->N75Progress {
 // The goal's progress at time now from the receipts in set, checked
 // against the nostrPubkey of the goal author's LNURL server and, when not
 // "", the author's lnurl. Events of other kinds are passed over.
-n75_tally :: (goal:NostrEvent,set:[]NostrEvent,server:[32]u8,lnurl:string,now:int)->N75Progress {
+n75_tally :: (goal:NostrEvent,set:[]NostrEvent,server:[32]u8,lnurl:string,now:int)->N75Progress #effects(all) {
   p:N75Progress;g:=n75_goal(goal);p.status=g.status;
   if g.status!=N75_OK {return p;}
   for e:set {

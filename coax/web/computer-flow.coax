@@ -445,7 +445,7 @@ fl_check :: (f: [] Flow, name: string, ok: bool, seen: int) {
   f[0].failed += 1;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   loaded := args_load(a[..]);
   relay := args_at(a[..], 0); module := args_at(a[..], 1); shots := args_at(a[..], 2);

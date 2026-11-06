@@ -5,6 +5,6 @@
   expected := length==64 && same==1 && revision>active && safe==1;
   #assert fe_publish_offer(length,same==1,revision,active,safe==1)==expected;
 }
-fe_publish_offer :: (identity_length: int, same: bool, revision: int, active: int, safe: bool) -> bool #export_c {
+fe_publish_offer :: (identity_length: int, same: bool, revision: int, active: int, safe: bool) -> bool #export_c #effects(all) {
   return identity_length == 64 && same && revision > active && safe;
 }

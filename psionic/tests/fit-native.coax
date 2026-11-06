@@ -28,7 +28,7 @@ fn_model :: ()->FitModel {
     return fit_model(m,prediction);
 }
 
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     train_images:[16+5120*784]u8;train_labels:[8+5120]u8;test_images:[16+2048*784]u8;test_labels:[8+2048]u8;
     fn_idx(5120,71,train_images[..],train_labels[..]);fn_idx(2048,72,test_images[..],test_labels[..]);
     train:=fit_mnist(train_images[..],train_labels[..]);test:=fit_mnist(test_images[..],test_labels[..]);

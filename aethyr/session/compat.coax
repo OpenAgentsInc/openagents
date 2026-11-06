@@ -36,7 +36,7 @@ CompatRoute :: struct { status: int; server: int = -1; }
 // book:end compat-profile
 
 // Whether a client with pins `c` (its wire, and the schema of its durable data) may join server s.
-compat_admit :: (s: CompatServer, c: CompatPins) -> int {
+compat_admit :: (s: CompatServer, c: CompatPins) -> int #effects(all) {
   if c.engine != s.pins.engine { return CP_ENGINE; }
   if c.rules != s.pins.rules { return CP_RULES; }
   if c.content != s.pins.content { return CP_CONTENT; }
@@ -47,7 +47,7 @@ compat_admit :: (s: CompatServer, c: CompatPins) -> int {
 }
 // A new session: the first server that admits it and can take it. With none, the reason the
 // nearest one gave (or no capacity when every compatible one is full, drained or not ready).
-compat_route :: (servers: [] CompatServer, c: CompatPins) -> CompatRoute {
+compat_route :: (servers: [] CompatServer, c: CompatPins) -> CompatRoute #effects(all) {
   why := CP_NO_CAPACITY; seen := false;
   for i: 0..<servers.count {
     s := servers[i];
@@ -62,7 +62,7 @@ compat_route :: (servers: [] CompatServer, c: CompatPins) -> CompatRoute {
   return CompatRoute.{status = why};
 }
 // A session admitted to server i reconnects: the same server under the same pins, drained or not.
-compat_reconnect :: (servers: [] CompatServer, i: int, c: CompatPins) -> int {
+compat_reconnect :: (servers: [] CompatServer, i: int, c: CompatPins) -> int #effects(all) {
   if i < 0 || i >= servers.count || !servers[i].up { return CP_GONE; }
   return compat_admit(servers[i], c);
 }
@@ -71,7 +71,7 @@ compat_reconnect :: (servers: [] CompatServer, i: int, c: CompatPins) -> int {
 
 COMPAT_OLD :: CompatPins.{engine = 7, rules = 3, content = 41, wire = 5, schema = 2};
 COMPAT_NEW :: CompatPins.{engine = 8, rules = 4, content = 42, wire = 6, schema = 3};
-compat_server :: (p: CompatPins, wire_min: int, room: int) -> CompatServer { return CompatServer.{pins = p, wire_min = wire_min, up = true, ready = true, room = room}; }
+compat_server :: (p: CompatPins, wire_min: int, room: int) -> CompatServer #effects(all) { return CompatServer.{pins = p, wire_min = wire_min, up = true, ready = true, room = room}; }
 
 #test "compat: admission names the identity that differs" {
   s := compat_server(COMPAT_NEW, 5, 4);

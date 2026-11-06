@@ -5,6 +5,6 @@
  for i:0..<12 {q[i]+=1;#assert !hhrn_accept(q[..]);q[i]-=2;#assert !hhrn_accept(q[..]);q[i]+=1;}
  #assert !hhrn_accept(q[0..<11]);long:[13]int;#assert !hhrn_accept(long[..]);
 }
-hhrn_accept :: (q:[]int)->bool #export_c {
+hhrn_accept :: (q:[]int)->bool #export_c #effects(all) {
  return q.count==12&&q[0]==30&&q[1]==30&&q[2]==15&&q[3]==15&&q[4]==15&&q[5]==15&&q[6]==0&&q[7]==0&&q[8]==5&&q[9]==1&&q[10]==1&&q[11]==1;
 }

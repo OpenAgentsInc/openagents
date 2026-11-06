@@ -58,12 +58,12 @@
 }
 
 N98SourceTags :: struct {valid:bool;uc:int;mc:int;pc:int;un:int;mn:int;pn:int;}
-n98_tag_input_size :: (n:int)->bool {return n>=0 && n<=262144;}
+n98_tag_input_size :: (n:int)->bool #effects(all) {return n>=0 && n<=262144;}
 
 // The array may be a slice from a separately verified original event, but
 // this entry accepts arbitrary JSON; it cannot assert or confer verification.
 // Buffers are private scratch and may change on a refused parse.
-n98_source_tags :: (tags:string,u:[]u8,m:[]u8,p:[]u8,overlap:bool)->N98SourceTags #export_c {
+n98_source_tags :: (tags:string,u:[]u8,m:[]u8,p:[]u8,overlap:bool)->N98SourceTags #export_c #effects(all) {
  r:N98SourceTags;if overlap || !n98_tag_input_size(tags.count) {return r;}
  count:=0;j:[1]Json;json_start(j[..],tags);
  if json_next(j[..])!=JSON_ARRAY {return r;}

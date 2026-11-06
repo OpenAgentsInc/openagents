@@ -222,17 +222,17 @@ CWD :: "/tmp/oa-agent/turn-7-1/repo";
 }
 
 // Whether path is cwd or inside it, as text.
-cf_under :: (path: string, cwd: string) -> bool {
+cf_under :: (path: string, cwd: string) -> bool #effects(all) {
   if path.count < cwd.count || path[0..<cwd.count] != cwd { return false; }
   return path.count == cwd.count || path[cwd.count] == '/';
 }
 // Whether path[i..] is a ".." step.
-cf_dotdot :: (path: string, i: int) -> bool {
+cf_dotdot :: (path: string, i: int) -> bool #effects(all) {
   return path[i] == '.' && i + 1 < path.count && path[i + 1] == '.' && (i == 0 || path[i - 1] == '/') && (i + 2 == path.count || path[i + 2] == '/');
 }
 
 // A path as the model wrote it: CF_OK and the part relative to the checkout, or why not.
-cf_relative :: (path: string, cwd: string) -> CfSpan {
+cf_relative :: (path: string, cwd: string) -> CfSpan #effects(all) {
   if cwd.count < 2 || cwd[0] != '/' || cwd[cwd.count - 1] == '/' { return CfSpan.{verdict = CF_BAD}; }
   if path.count > CF_PATH_MAX { return CfSpan.{verdict = CF_BAD}; }
   from := 0;
@@ -253,7 +253,7 @@ cf_relative :: (path: string, cwd: string) -> CfSpan {
 // starts from, or why not. Braces could put a ".." step together from parts
 // ("{.,x}."), so a step with braces, a dot, and only dots outside the
 // braces is refused like "..".
-cf_pattern :: (p: string, cwd: string) -> CfSpan {
+cf_pattern :: (p: string, cwd: string) -> CfSpan #effects(all) {
   r := cf_relative(p, cwd);
   if r.verdict != CF_OK { return r; }
   meta := p.count;
@@ -284,7 +284,7 @@ cf_pattern :: (p: string, cwd: string) -> CfSpan {
 
 // The k-th ancestor of rel, as its length: rel itself (k = 0), one step
 // shorter, ..., the checkout (0), then -1.
-cf_ancestor :: (rel: string, k: int) -> int {
+cf_ancestor :: (rel: string, k: int) -> int #effects(all) {
   n := rel.count;
   for step: 0..<k {
     if n == 0 { return -1; }
@@ -295,7 +295,7 @@ cf_ancestor :: (rel: string, k: int) -> int {
 }
 
 // One path as found: a directory, or (the path itself) a file with one link.
-cf_judge :: (code: int, kind: int, links: int, ancestor: bool) -> int {
+cf_judge :: (code: int, kind: int, links: int, ancestor: bool) -> int #effects(all) {
   if code == CFN_LINK { return CF_LINK; }
   if code == CFN_ESCAPE { return CF_ESCAPE; }
   if code != CFN_FOUND { return CF_ERROR; }
@@ -306,14 +306,14 @@ cf_judge :: (code: int, kind: int, links: int, ancestor: bool) -> int {
   return CF_SPECIAL;
 }
 // A path and its ancestors as found, nearest first: the first that exists decides.
-cf_decide :: (codes: [] int, kinds: [] int, links: [] int, n: int) -> int {
+cf_decide :: (codes: [] int, kinds: [] int, links: [] int, n: int) -> int #effects(all) {
   for i: 0..<n {
     if codes[i] != CFN_MISSING { return cf_judge(codes[i], kinds[i], links[i], i > 0); }
   }
   return CF_ERROR;
 }
 
-cf_tool :: (tool: string, writes: bool) -> int {
+cf_tool :: (tool: string, writes: bool) -> int #effects(all) {
   if tool == "Read" { return CFT_READ; }
   if tool == "Glob" { return CFT_GLOB; }
   if tool == "Grep" { return CFT_GREP; }
@@ -321,23 +321,23 @@ cf_tool :: (tool: string, writes: bool) -> int {
   if tool == "MultiEdit" || tool == "NotebookEdit" || tool == "NotebookRead" || tool == "LS" { return CFT_REFUSED; }
   return CFT_NONE;
 }
-cf_path_field :: (kind: int) -> string {
+cf_path_field :: (kind: int) -> string #effects(all) {
   if kind == CFT_READ || kind == CFT_WRITE { return "file_path"; }
   if kind == CFT_GLOB || kind == CFT_GREP { return "path"; }
   return "";
 }
-cf_glob_field :: (kind: int) -> string {
+cf_glob_field :: (kind: int) -> string #effects(all) {
   if kind == CFT_GLOB { return "pattern"; }
   if kind == CFT_GREP { return "glob"; }
   return "";
 }
 // Whether a field's text (raw JSON, "" when absent) was read whole: a path
 // that couldn't be decoded must not be checked as "" (the checkout).
-cf_field_ok :: (raw: string, decoded: string) -> bool {
+cf_field_ok :: (raw: string, decoded: string) -> bool #effects(all) {
   return decoded.count > 0 || raw.count == 0 || raw == "null" || raw == "\"\"";
 }
 // Whether a step of path is ".git", in any case.
-cf_in_git :: (path: string) -> bool {
+cf_in_git :: (path: string) -> bool #effects(all) {
   for i: 0..<path.count {
     if i + 4 > path.count || (i > 0 && path[i - 1] != '/') { continue; }
     if (i + 4 == path.count || path[i + 4] == '/') && path[i] == '.' && (path[i + 1] | 32) == 'g' && (path[i + 2] | 32) == 'i' && (path[i + 3] | 32) == 't' { return true; }
@@ -346,7 +346,7 @@ cf_in_git :: (path: string) -> bool {
 }
 // A call: its tool's kind, its path field and that path's verdict, its
 // pattern field and that pattern's verdict.
-cf_verdict :: (kind: int, path: string, path_v: int, glob: string, glob_v: int) -> int {
+cf_verdict :: (kind: int, path: string, path_v: int, glob: string, glob_v: int) -> int #effects(all) {
   if kind == CFT_NONE { return CF_OK; }
   if kind == CFT_REFUSED { return CF_TOOL; }
   if (kind == CFT_READ || kind == CFT_WRITE) && path.count == 0 { return CF_REQUIRED; }
@@ -358,7 +358,7 @@ cf_verdict :: (kind: int, path: string, path_v: int, glob: string, glob_v: int) 
 }
 
 // The walk of the checkout before the model starts.
-cf_sweep :: (n: [] int) -> int {
+cf_sweep :: (n: [] int) -> int #effects(all) {
   if n.count < CFS_COUNT || n[CFS_ERRORS] != 0 || n[CFS_CUT] != 0 { return CF_ERROR; }
   if n[CFS_LINKS] != 0 { return CF_LINK; }
   if n[CFS_MULTI] != 0 { return CF_HARDLINK; }
@@ -366,7 +366,7 @@ cf_sweep :: (n: [] int) -> int {
   return CF_OK;
 }
 
-cf_reason :: (v: int) -> string {
+cf_reason :: (v: int) -> string #effects(all) {
   if v == CF_OK { return ""; }
   if v == CF_OUTSIDE { return "the path is outside the checkout"; }
   if v == CF_DOTDOT { return "the path has a .. step"; }

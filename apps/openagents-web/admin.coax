@@ -105,7 +105,7 @@ AdminHost :: struct {
   inbox: [AD_INBOX] u8;
 }
 // Before every call: the state sees the host's buffers (they move with it).
-coaxial_admin_bind :: (h: [] AdminHost) #export_c {
+coaxial_admin_bind :: (h: [] AdminHost) #export_c #effects(all) {
   if h.count < 1 { return; }
   h[0].s[0].data = h[0].data[..];
   h[0].s[0].inbox = h[0].inbox[..];
@@ -215,8 +215,8 @@ ad_decide :: (s: [] AdminState, row: int, what: int) {
 }
 ad_word_char :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'); }
 // The face sent it.
-coaxial_admin_asked :: (s: [] AdminState) #export_c { s[0].ask_n = 0; }
-coaxial_admin_body_n :: (s: [] AdminState) -> int #export_c { if s.count < 1 || !s[0].post { return 0; } return s[0].pbody_n; }
+coaxial_admin_asked :: (s: [] AdminState) #export_c #effects(all) { s[0].ask_n = 0; }
+coaxial_admin_body_n :: (s: [] AdminState) -> int #export_c #effects(all) { if s.count < 1 || !s[0].post { return 0; } return s[0].pbody_n; }
 
 // An answer: "STATUS\n" then the rows.
 ad_answer :: (s: [] AdminState, bytes: string) {
@@ -632,7 +632,7 @@ ad_number :: (buf: [] u8, n: int, word: string) -> int {
   return o;
 }
 
-coaxial_admin_frame :: (s: [] AdminState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+coaxial_admin_frame :: (s: [] AdminState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   if !s[0].ready { s[0].ready = true; s[0].hot = -1; s[0].press = -1; s[0].days = 1; s[0].status = -1; }
   if s[0].status == -1 { ad_ask(s); }
@@ -744,7 +744,7 @@ ad_act :: (s: [] AdminState, target: int) {
   ad_ask(s);
 }
 
-coaxial_admin_pointer :: (s: [] AdminState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
+coaxial_admin_pointer :: (s: [] AdminState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   d := hi(s[0].d, 1);
   if phase == P_DOWN {
@@ -772,7 +772,7 @@ coaxial_admin_pointer :: (s: [] AdminState, x: f32, y: f32, phase: int, kind: in
   return true;
 }
 
-coaxial_admin_key :: (s: [] AdminState, key: int) -> bool #export_c {
+coaxial_admin_key :: (s: [] AdminState, key: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   d := hi(s[0].d, 1);
   if key == -1 || key == -3 { ad_back(s); return true; }    // Escape, Backspace
@@ -784,17 +784,17 @@ coaxial_admin_key :: (s: [] AdminState, key: int) -> bool #export_c {
   if key == K_END { s[0].scroll = 1000000000; return true; }
   return false;
 }
-coaxial_admin_wheel :: (s: [] AdminState, dy: f32) #export_c { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
-coaxial_admin_message :: (s: [] AdminState, kind: int, length: int) #export_c {
+coaxial_admin_wheel :: (s: [] AdminState, dy: f32) #export_c #effects(all) { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
+coaxial_admin_message :: (s: [] AdminState, kind: int, length: int) #export_c #effects(all) {
   if s.count < 1 || kind < AD_HTTP || kind >= AD_HTTP + 8 || length < 0 || length > s[0].inbox.count { return; }
   ad_answer(s, cast(string) s[0].inbox[0..<length]);
 }
-coaxial_admin_cursor :: (s: [] AdminState) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].hot != -1 then 1 else 0; }
-coaxial_admin_action :: (s: [] AdminState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
-coaxial_admin_action_done :: (s: [] AdminState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
-coaxial_admin_inbox_cap :: () -> int #export_c { return AD_INBOX; }
-coaxial_admin_page :: (s: [] AdminState, page: int) #export_c { if s.count > 0 { s[0].page = ifx page == 1 then AD_REPORTS else ifx page == 2 then AD_ACCESS else ifx page == 3 then AD_ROOMS else AD_ANALYTICS; } }
-coaxial_admin_max_vertices :: () -> int #export_c { return AD_MAX_VERTICES; }
+coaxial_admin_cursor :: (s: [] AdminState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return ifx s[0].hot != -1 then 1 else 0; }
+coaxial_admin_action :: (s: [] AdminState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_admin_action_done :: (s: [] AdminState) #export_c #effects(all) { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_admin_inbox_cap :: () -> int #export_c #effects(all) { return AD_INBOX; }
+coaxial_admin_page :: (s: [] AdminState, page: int) #export_c #effects(all) { if s.count > 0 { s[0].page = ifx page == 1 then AD_REPORTS else ifx page == 2 then AD_ACCESS else ifx page == 3 then AD_ROOMS else AD_ANALYTICS; } }
+coaxial_admin_max_vertices :: () -> int #export_c #effects(all) { return AD_MAX_VERTICES; }
 
 // ---- checks
 

@@ -6,9 +6,9 @@ RspProduct :: struct { name:[128]u8; name_count:int; hash:[64]u8; }
 RspPlan :: struct { ok:bool; count:int; rows:[31]RspProduct; }
 RspIdentity :: struct { ok:bool; profile:int; }
 #load "tests/staging-policy-checks.coax";
-rsp_lower :: (c:u8)->bool {return c>='a' && c<='z';}
-rsp_digit :: (c:u8)->bool {return c>='0' && c<='9';}
-rsp_url :: (s:string)->bool {
+rsp_lower :: (c:u8)->bool #effects(all) {return c>='a' && c<='z';}
+rsp_digit :: (c:u8)->bool #effects(all) {return c>='0' && c<='9';}
+rsp_url :: (s:string)->bool #effects(all) {
   prefix:="/build/render/";suffix:="/render.json";
   if s.count<=prefix.count+suffix.count {return false;}
   end:=s.count-suffix.count;
@@ -16,27 +16,27 @@ rsp_url :: (s:string)->bool {
   for c:s[prefix.count..<end] {if !(rsp_lower(c) || rsp_digit(c) || c=='-') {return false;}}
   return true;
 }
-rsp_sibling :: (s:string,extension:string)->bool {
+rsp_sibling :: (s:string,extension:string)->bool #effects(all) {
   if !rsp_length(s.count,extension.count) {return false;}
   if s[0]=='.' || s[s.count-extension.count..<s.count]!=extension {return false;}
   for c:s {if !(rsp_lower(c) || (c>='A' && c<='Z') || rsp_digit(c) || c=='-' || c=='_' || c=='.') {return false;}}
   return true;
 }
-rsp_length :: (count:int,extension:int)->bool {return count>=1 && count<=128 && count>=extension;}
-rsp_identity :: (s:string)->bool {
+rsp_length :: (count:int,extension:int)->bool #effects(all) {return count>=1 && count<=128 && count>=extension;}
+rsp_identity :: (s:string)->bool #effects(all) {
   if s.count<1 || !rsp_lower(s[0]) {return false;}
   for c:s {if !(rsp_lower(c) || rsp_digit(c) || c=='-') {return false;}}
   return true;
 }
-rsp_counts :: (m:int,e:int)->bool {return m>=1 && m<=3 && e>=1 && e<=14;}
-rsp_hash :: (s:string)->bool {
+rsp_counts :: (m:int,e:int)->bool #effects(all) {return m>=1 && m<=3 && e>=1 && e<=14;}
+rsp_hash :: (s:string)->bool #effects(all) {
   if s.count!=64 {return false;}
   for c:s {if !(rsp_digit(c) || (c>='a' && c<='f')) {return false;}}
   return true;
 }
-rsp_product_name :: (p:[]RspProduct)->string {return cast(string)p[0].name[0..<p[0].name_count];}
-rsp_product_hash :: (p:[]RspProduct)->string {return cast(string)p[0].hash[..];}
-rsp_parse :: (text:string)->RspPlan {
+rsp_product_name :: (p:[]RspProduct)->string #effects(all) {return cast(string)p[0].name[0..<p[0].name_count];}
+rsp_product_hash :: (p:[]RspProduct)->string #effects(all) {return cast(string)p[0].hash[..];}
+rsp_parse :: (text:string)->RspPlan #effects(all) {
   p:RspPlan;nodes:[16384]JvNode;doc:[1]Jv;
   if !jv_parse(doc[..],text,nodes[..]) {return p;}d:=doc[0];
   schema:[64]u8;n:=jv_str(d,jv_get(d,0,"schema"),schema[..]);
@@ -61,8 +61,8 @@ rsp_parse :: (text:string)->RspPlan {
   }
   p.ok=true;return p;
 }
-rsp_array_length :: (d:Jv,node:int)->int {return ifx jv_kind(d,node)==JV_ARRAY then jv_len(d,node) else -1;}
-rsp_read_identity :: (text:string,app:string,slug:string)->RspIdentity {
+rsp_array_length :: (d:Jv,node:int)->int #effects(all) {return ifx jv_kind(d,node)==JV_ARRAY then jv_len(d,node) else -1;}
+rsp_read_identity :: (text:string,app:string,slug:string)->RspIdentity #effects(all) {
   if !rsp_identity(app) || !rsp_identity(slug) {return RspIdentity.{};}
   nodes:[16384]JvNode;doc:[1]Jv;
   if !jv_parse(doc[..],text,nodes[..]) {return RspIdentity.{};}d:=doc[0];
@@ -72,7 +72,7 @@ rsp_read_identity :: (text:string,app:string,slug:string)->RspIdentity {
   profile:=jv_int(d,jv_get(d,0,"profile_index"),-1);
   return RspIdentity.{ok=profile>=0,profile=profile};
 }
-rsp_header :: (identity:RspIdentity,app:string,slug:string,hash:string,out:[]u8)->string {
+rsp_header :: (identity:RspIdentity,app:string,slug:string,hash:string,out:[]u8)->string #effects(all) {
   if !identity.ok {return "";}
   o:[1]Jo;jo_start(o[..],out);
   jo_put(o[..],"// Generated from the Coax-built render.json; do not edit.\n#ifndef AETHYR_RENDER_IDENTITY_H\n#define AETHYR_RENDER_IDENTITY_H\n#include <stdint.h>\n#define AETHYR_RENDER_TYPED 1\n#define AETHYR_RENDER_PROFILE_ID INT64_C(");

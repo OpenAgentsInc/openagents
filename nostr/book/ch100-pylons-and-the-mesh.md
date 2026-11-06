@@ -233,7 +233,7 @@ attempt known); otherwise it too is ignored.
 // What a received event gets. verified: its id and BIP-340 signature checked;
 // decrypted: NIP-44 opened its content; code, type and answerable are
 // pd_admit's; free is pq_free.
-pq_route :: (verified:bool,kind:int,decrypted:bool,code:int,type:int,answerable:bool,draining:bool,free:int)->PqRoute #export_c {
+pq_route :: (verified:bool,kind:int,decrypted:bool,code:int,type:int,answerable:bool,draining:bool,free:int)->PqRoute #export_c #effects(all) {
     if !verified || kind!=PQ_REQUEST || !decrypted {return PqRoute.ignore;}
     if code!=PQ_NONE {return ifx answerable then PqRoute.refuse else PqRoute.ignore;}
     if type==PQ_CANCEL {return PqRoute.cancel;}

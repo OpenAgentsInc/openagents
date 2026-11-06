@@ -107,7 +107,7 @@ SM_BETA_MAX :: 1000000;
 // book:begin format
 // A number format rounds every value a transformer would hold: scores,
 // logits, probabilities and the stored values themselves.
-sm_round :: (x:f64,format:SmFormat)->f64 {
+sm_round :: (x:f64,format:SmFormat)->f64 #effects(all) {
     if format==SmFormat.f64 {return x;}
     bits:=f32_bits(f32(x));
     if format==SmFormat.bf16 {bits=(bits+0x7fff+((bits>>16)&1))&0xffff0000;}
@@ -117,16 +117,16 @@ sm_round :: (x:f64,format:SmFormat)->f64 {
 
 // Round half up: truncate x + 0.5, then step down where truncation rounded a
 // negative value up.
-sm_nearest :: (x:f64)->int {
+sm_nearest :: (x:f64)->int #effects(all) {
     r:=cast(int)(x+0.5);
     if f64(r)>x+0.5 {r-=1;}
     return r;
 }
-sm_shift_ok :: (d:f64)->bool {return d<=f64(SM_SHIFT_MAX);}
+sm_shift_ok :: (d:f64)->bool #effects(all) {return d<=f64(SM_SHIFT_MAX);}
 
 // book:begin bound
 // The smallest sharpness that keeps every read exact, for values in [-V, V].
-sm_beta_bound :: (v:int)->f64 #export_c {
+sm_beta_bound :: (v:int)->f64 #export_c #effects(all) {
     if v<1 || v>EM_VALUE_MAX {return 0;}
     return log(4.0*f64(v));
 }
@@ -136,7 +136,7 @@ sm_beta_bound :: (v:int)->f64 #export_c {
 // Softmax over recency-weighted scores at sharpness `beta`, every quantity
 // rounded to `format`, then the weighted value rounded to the nearest integer.
 // Exact means that integer is the value a hard-max read returns.
-sm_read :: (keys:[]int,values:[]int,count:int,q:int,beta:f64,format:SmFormat)->SmRead #export_c {
+sm_read :: (keys:[]int,values:[]int,count:int,q:int,beta:f64,format:SmFormat)->SmRead #export_c #effects(all) {
     hard:=em_read(keys,values,count,q);
     if hard.status==EmStatus.capacity {return SmRead.{status=SmStatus.capacity};}
     if hard.status==EmStatus.range {return SmRead.{status=SmStatus.range};}
@@ -161,7 +161,7 @@ sm_read :: (keys:[]int,values:[]int,count:int,q:int,beta:f64,format:SmFormat)->S
 }
 // The chapter 227 score with the recency term a transformer needs: scaled by
 // count + 1 so that position t breaks ties but never outweighs a key mismatch.
-sm_logit :: (k:int,q:int,t:int,count:int,beta:f64,format:SmFormat)->f64 {
+sm_logit :: (k:int,q:int,t:int,count:int,beta:f64,format:SmFormat)->f64 #effects(all) {
     score:=em_score(k,q)*(count+1)+t;
     return sm_round(beta*sm_round(f64(score),format),format);
 }
@@ -172,7 +172,7 @@ sm_logit :: (k:int,q:int,t:int,count:int,beta:f64,format:SmFormat)->f64 {
 // one write of +v to k, then n - 1 writes of -v to the neighbouring key k - 1.
 // Same: n writes to k, the latest holding +v and the rest -v. Each stream's n
 // doubles from 1 up to the scratch length until its read is wrong.
-sm_scan :: (near:bool,k:int,v:int,beta:f64,format:SmFormat,keys:[]int,values:[]int)->SmScan {
+sm_scan :: (near:bool,k:int,v:int,beta:f64,format:SmFormat,keys:[]int,values:[]int)->SmScan #effects(all) {
     result:SmScan;n:=1;
     while n<=keys.count {
         if near {
@@ -187,7 +187,7 @@ sm_scan :: (near:bool,k:int,v:int,beta:f64,format:SmFormat,keys:[]int,values:[]i
     }
     return result;
 }
-sm_limit :: (k:int,v:int,beta:f64,format:SmFormat,keys:[]int,values:[]int,overlap:bool)->SmLimit #export_c {
+sm_limit :: (k:int,v:int,beta:f64,format:SmFormat,keys:[]int,values:[]int,overlap:bool)->SmLimit #export_c #effects(all) {
     if keys.count<1 || values.count<keys.count {return SmLimit.{status=SmStatus.capacity};}
     if k<1 || k>EM_KEY_MAX || v<1 || v>EM_VALUE_MAX {return SmLimit.{status=SmStatus.range};}
     if overlap {return SmLimit.{status=SmStatus.alias};}

@@ -9,12 +9,12 @@ SV_MAX_MESSAGE :: 1048576;
 SV_TAG_HASH :: #run S_hash("BIP0340/challenge");
 SvPrepared :: struct { s: ScScalar; negative_e: ScScalar; point: SgPoint; r: SecpField; ready: bool; }
 
-sv_lengths_vartime :: (message_count: int,public_count: int,signature_count: int) -> bool {
+sv_lengths_vartime :: (message_count: int,public_count: int,signature_count: int) -> bool #effects(all) {
   return message_count >= 0 && message_count <= SV_MAX_MESSAGE && public_count == 32 && signature_count == 64;
 }
 // Signature-r || public-key || message is fed as separate borrowed chunks.
 // The local state, tag hash and output cannot overlap caller-owned inputs.
-sv_challenge_vartime :: (message: [] u8,public_key: [] u8,r: [] u8) -> ScLoad {
+sv_challenge_vartime :: (message: [] u8,public_key: [] u8,r: [] u8) -> ScLoad #effects(all) {
   if r.count != 32 || !sv_lengths_vartime(message.count,public_key.count,64) { return ScLoad.{}; }
   digest := SV_TAG_HASH; tag: [32] u8; out: [32] u8; state: [112] u8;
   status := sha256_emit(digest.words[..],tag[..]); if status != SHA_OK { return ScLoad.{}; }
@@ -28,7 +28,7 @@ sv_challenge_vartime :: (message: [] u8,public_key: [] u8,r: [] u8) -> ScLoad {
   return sc_reduce_bytes(out[..]);
 }
 // ready means preparation succeeded, not that this signature is valid.
-sv_prepare_vartime :: (message: [] u8,public_key: [] u8,signature: [] u8) -> SvPrepared {
+sv_prepare_vartime :: (message: [] u8,public_key: [] u8,signature: [] u8) -> SvPrepared #effects(all) {
   result: SvPrepared;
   if !sv_lengths_vartime(message.count,public_key.count,signature.count) { return result; }
   r := sf_load_strict(signature[0..<32]); s := sc_load(signature[32..<64]);
@@ -37,18 +37,18 @@ sv_prepare_vartime :: (message: [] u8,public_key: [] u8,signature: [] u8) -> SvP
   challenge := sv_challenge_vartime(message,public_key,signature[0..<32]); if !challenge.ok { return result; }
   return SvPrepared.{s=s.value,negative_e=sc_negate(challenge.value),point=point.value,r=r.value,ready=true};
 }
-sv_prepare_nostr_vartime :: (nostr_id: [] u8,public_key: [] u8,signature: [] u8) -> SvPrepared {
+sv_prepare_nostr_vartime :: (nostr_id: [] u8,public_key: [] u8,signature: [] u8) -> SvPrepared #effects(all) {
   if nostr_id.count != 32 { return SvPrepared.{}; }
   return sv_prepare_vartime(nostr_id,public_key,signature);
 }
 // Inputs come from the canonical affine conversion below. Refusals and
 // infinity have a nonzero infinity flag, so they cannot pass this comparison.
-sv_affine_matches_vartime :: (r: SecpField,affine: SgAffine) -> bool {
+sv_affine_matches_vartime :: (r: SecpField,affine: SgAffine) -> bool #effects(all) {
   return affine.infinity == 0 && (affine.y.limb[0]&1) == 0 && sf_equal_mask(r,affine.x) == CB_MAX64;
 }
 // This is only a mathematical equation comparison over internal data. A forged
 // prepared record is NOT a verified signature. It stays non-exported.
-sv_prepared_matches_vartime :: (prepared: SvPrepared) -> bool {
+sv_prepared_matches_vartime :: (prepared: SvPrepared) -> bool #effects(all) {
   if !prepared.ready { return false; }
   // Chapter 77's endomorphism path: the same point as ecmult_vartime.
   result := ecmult_glv_vartime(prepared.s,prepared.point,prepared.negative_e);
@@ -57,9 +57,9 @@ sv_prepared_matches_vartime :: (prepared: SvPrepared) -> bool {
   affine := sg_to_affine(result.value);
   return sv_affine_matches_vartime(prepared.r,affine.value);
 }
-schnorr_verify_vartime :: (message: [] u8,public_key: [] u8,signature: [] u8) -> bool #export_c {
+schnorr_verify_vartime :: (message: [] u8,public_key: [] u8,signature: [] u8) -> bool #export_c #effects(all) {
   return sv_prepared_matches_vartime(sv_prepare_vartime(message,public_key,signature));
 }
-nostr_verify_vartime :: (nostr_id: [] u8,public_key: [] u8,signature: [] u8) -> bool #export_c {
+nostr_verify_vartime :: (nostr_id: [] u8,public_key: [] u8,signature: [] u8) -> bool #export_c #effects(all) {
   return sv_prepared_matches_vartime(sv_prepare_nostr_vartime(nostr_id,public_key,signature));
 }

@@ -5,7 +5,7 @@
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/nostr/json.coax";
 #load "../../coax/lib/crypto/sha256-memory.coax";
-cxterm_write :: (bytes:[]u8)->int #foreign;
+cxterm_write :: (bytes:[]u8)->int #foreign #effects(all);
 pe_put :: (s:string) {b:[65536]u8;if s.count>b.count {tool_errln("output too large");return;}for c,i:s {b[i]=c;}r:=cxterm_write(b[0..<s.count]);}
 pe_cat :: (b:[]u8,n:int,s:string)->int {return json_raw(b,n,s);}
 pe_num :: (x:int,b:[]u8)->string {n:=json_write_int(b,0,x);return cast(string)b[0..<n];}
@@ -122,7 +122,7 @@ v2_interrupt :: (base:PeEnv,root:string,partial:bool)->int {
  retained=retained && r[0].status==0 && v2_read(dir,"effect.txt",marker[..])==(ifx partial then "partial" else "x");
  return v2_report(observed && killed && status!=PROC_RUNNING && unknown && retained && saved,ifx partial then "kill during partial edit: unknown, replay inert, continuation preserves bytes" else "kill after append: unknown, replay inert, continuation does not duplicate effect");
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) {return 2;}mode:=args_at(a[..],0);
  if mode!="offline" && mode!="run" && mode!="interrupt" && mode!="availability" {tool_errln("repository-v2.coax offline | interrupt | availability | run --case 0..3 --engine codex|micro|claude|psionic");return 2;}
  rb:[4096]u8;repo:=fs_cwd(rb[..]);cb:[4096]u8;coax:=proc_getenv("COAX",cb[..]);if coax.count==0 {return 2;}
@@ -136,7 +136,7 @@ tool_main :: ()->int #export_c {
  return v2_case(e,root,cast(int)(k[0]-'0'),engine,false);
 }
 
-cxproc_wall_us :: ()->int #foreign;
+cxproc_wall_us :: ()->int #foreign #effects(all);
 // A local protocol fixture, not a live provider. The product parses and
 // persists its typed terminal failure through the actual CLI boundary.
 v2_availability :: (base:PeEnv,root:string)->int {

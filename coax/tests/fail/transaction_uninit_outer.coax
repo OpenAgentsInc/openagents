@@ -1,0 +1,7 @@
+// expect: E0941
+f :: () -> int? {
+  scratch: [1] int = ---;
+  scratch[0] = 1;
+  #transaction { scratch[0] = 2; return null; }
+}
+main :: () {}

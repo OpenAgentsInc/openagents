@@ -13,11 +13,11 @@
 #load "../aethyr/render/light.coax";      // ambient, the shadow map, contact and haze (Aethyr book chapter 13)
 // Where the shadow filter's taps are and how far out they reach, in texels (aethyr/render/light.coax
 // has how many). They stay here until a shader change can drop the tap's redundant writes of 0.
-verse_style_shadow_radius :: (on_phone:f32)->f32 #export_c {return 2.5f32+0.0f32*on_phone;}
+verse_style_shadow_radius :: (on_phone:f32)->f32 #export_c #effects(all) {return 2.5f32+0.0f32*on_phone;}
 #test "the shadow filter's taps reach 2.5 texels, on a phone too" {#assert verse_style_shadow_radius(0.0f32)==2.5f32 && verse_style_shadow_radius(1.0f32)==2.5f32;}
 // Tap k's offset on the unit disc, `which` 0 across and 1 down: nine spread Poisson points, or a
 // phone's four in a turned square.
-verse_style_shadow_tap :: (k:f32,on_phone:f32,which:f32)->f32 #export_c {
+verse_style_shadow_tap :: (k:f32,on_phone:f32,which:f32)->f32 #export_c #effects(all) {
  x:=0.0f32; y:=0.0f32;
  if on_phone>0.5f32 {
   if k<0.5f32 {x=-0.60f32;y=-0.25f32;} else if k<1.5f32 {x=0.25f32;y=-0.60f32;} else if k<2.5f32 {x=0.60f32;y=0.25f32;} else {x=-0.25f32;y=0.60f32;}
@@ -55,11 +55,11 @@ verse_style_shadow_tap :: (k:f32,on_phone:f32,which:f32)->f32 #export_c {
 }
 // ---- 5. Sky
 // The gradient from horizon (0) to zenith (1) by the view ray's elevation sine.
-verse_style_sky_t :: (up:f32)->f32 #export_c {return pow(st_max(up,0.000001f32),0.55f32);}
+verse_style_sky_t :: (up:f32)->f32 #export_c #effects(all) {return pow(st_max(up,0.000001f32),0.55f32);}
 // The horizon band: within 6 degrees (sine 0.1045) of the horizon, lifted toward the haze.
-verse_style_sky_band :: (up:f32,lift:f32)->f32 #export_c {return lift*(1.0f32-st_sat(abs(up)/0.1045f32));}
+verse_style_sky_band :: (up:f32,lift:f32)->f32 #export_c #effects(all) {return lift*(1.0f32-st_sat(abs(up)/0.1045f32));}
 // A halo term, exp(-k (1 - cos theta)).
-verse_style_halo :: (cos_t:f32,k:f32)->f32 #export_c {return exp(-k*st_max(1.0f32-cos_t,0.0f32));}
+verse_style_halo :: (cos_t:f32,k:f32)->f32 #export_c #effects(all) {return exp(-k*st_max(1.0f32-cos_t,0.0f32));}
 
 // ---- 5b. Clouds: one dome layer (1,500 m), two octaves of value noise (one on a on_phone), cut soft,
 // shaded in two tones. Fairy Forest's sky is these, lifted into the engine.
@@ -67,11 +67,11 @@ verse_style_halo :: (cos_t:f32,k:f32)->f32 #export_c {return exp(-k*st_max(1.0f3
 #test "style live lattice uses the portable integer noise profile" {
  #assert f32_bits(verse_style_hash(1,2))==0x3f6013da;
 }
-verse_style_hash :: (x:f32,y:f32)->f32 #export_c {
+verse_style_hash :: (x:f32,y:f32)->f32 #export_c #effects(all) {
  return render_noise2(x,y);
 }
 // Value noise at (x, y): the four lattice hashes round it, eased between.
-verse_style_noise :: (x:f32,y:f32)->f32 #export_c {
+verse_style_noise :: (x:f32,y:f32)->f32 #export_c #effects(all) {
  ix:=floor(x); iy:=floor(y); fx:=x-ix; fy:=y-iy;
  sx:=fx*fx*(3.0f32-2.0f32*fx); sy:=fy*fy*(3.0f32-2.0f32*fy);
  a:=verse_style_hash(ix,iy); b:=verse_style_hash(ix+1.0f32,iy);
@@ -80,141 +80,141 @@ verse_style_noise :: (x:f32,y:f32)->f32 #export_c {
 }
 // The cloud field at (x, z) metres on the layer: the first octave at s1 per metre, and with two
 // octaves 0.35 of a second at s2, offset so they don't line up.
-verse_style_cloud_field :: (x:f32,z:f32,s1:f32,s2:f32,octaves:f32)->f32 #export_c {
+verse_style_cloud_field :: (x:f32,z:f32,s1:f32,s2:f32,octaves:f32)->f32 #export_c #effects(all) {
  n:=verse_style_noise(x*s1,z*s1);
  if octaves<1.5f32 {return n;}
  return n*0.65f32+verse_style_noise(x*s2+3.1f32,z*s2+7.7f32)*0.35f32;
 }
 // How much of the sky the field covers: cut soft from cut_lo to cut_hi (0.48, 0.62) at the default cover
 // 0.35, more cover lowering the cut; none at all at cover 0.
-verse_style_cloud_cover :: (n:f32,cover:f32,cut_lo:f32,cut_hi:f32)->f32 #export_c {
+verse_style_cloud_cover :: (n:f32,cover:f32,cut_lo:f32,cut_hi:f32)->f32 #export_c #effects(all) {
  return verse_style_soft_step((cut_lo+cut_hi)*0.5f32,(cut_hi-cut_lo)*0.5f32,n+(cover-0.35f32)*0.4f32)*verse_style_soft_step(0.025f32,0.025f32,cover);
 }
 // The lit share of a cloud, from the field here and a little toward the light: thinning toward the
 // light is the lit top, thickening its underside.
-verse_style_cloud_lit :: (n:f32,toward:f32)->f32 #export_c {return st_sat((n-toward)*5.0f32+0.55f32);}
+verse_style_cloud_lit :: (n:f32,toward:f32)->f32 #export_c #effects(all) {return st_sat((n-toward)*5.0f32+0.55f32);}
 // Clouds fade into the horizon band: none under 0.01 of elevation sine, all by 0.16, at most 0.92.
-verse_style_cloud_fade :: (up:f32)->f32 #export_c {return verse_style_soft_step(0.085f32,0.075f32,up)*0.92f32;}
+verse_style_cloud_fade :: (up:f32)->f32 #export_c #effects(all) {return verse_style_soft_step(0.085f32,0.075f32,up)*0.92f32;}
 
 // ---- 8. Grass and wind (art-styles.md 8): blades instanced from a hash of their cell, bent by one
 // wind every realm and the foliage's sway share.
 // The gust at (x, z) metres: value noise at `scale` (1/25 per metre) moving with the wave, -1 to 1.
-verse_style_gust :: (x:f32,z:f32,t:f32,wx:f32,wz:f32,speed:f32,scale:f32)->f32 #export_c {
+verse_style_gust :: (x:f32,z:f32,t:f32,wx:f32,wz:f32,speed:f32,scale:f32)->f32 #export_c #effects(all) {
  return 2.0f32*verse_style_noise((x-wx*speed*t)*scale,(z-wz*speed*t)*scale)-1.0f32;
 }
 // The wind's bend (radians) where the wave's phase coordinate (metres along the wind) is `along`:
 // A (0.6 sin(k along - w t) + 0.4 gust), wavelength 12 m, moving 3 m/s, A 0.30 rad.
-verse_style_wind :: (along:f32,gust:f32,t:f32,amp:f32,wavelength:f32,speed:f32)->f32 #export_c {
+verse_style_wind :: (along:f32,gust:f32,t:f32,amp:f32,wavelength:f32,speed:f32)->f32 #export_c #effects(all) {
  k:=6.2831853f32/st_max(wavelength,0.001f32);
  return amp*(0.6f32*sin(k*along-k*speed*t)+0.4f32*gust);
 }
 // How far a point `share` of the way up a blade (or a canopy over its tree's height) moves for a bend
 // theta: with the square of its height, so the base stays put.
-verse_style_bend :: (theta:f32,height:f32,share:f32)->f32 #export_c {return sin(theta)*height*share*share;}
+verse_style_bend :: (theta:f32,height:f32,share:f32)->f32 #export_c #effects(all) {return sin(theta)*height*share*share;}
 // The bent blade's normal tilts toward the light by its bend, up to `most` (20 degrees) at the full
 // bend: the bands that roll across a field. Signed: a blade bent away from the light darkens.
-verse_style_grass_tilt :: (theta:f32,amp:f32,tilt_most:f32)->f32 #export_c {return tilt_most*st_max(-1.0f32,st_min(1.0f32,theta/st_max(amp,0.0001f32)));}
+verse_style_grass_tilt :: (theta:f32,amp:f32,tilt_most:f32)->f32 #export_c #effects(all) {return tilt_most*st_max(-1.0f32,st_min(1.0f32,theta/st_max(amp,0.0001f32)));}
 // A blade's height from its hash h (0 to 1): 0.35 to 0.60 m.
-verse_style_blade_height :: (h:f32,low:f32,high:f32)->f32 #export_c {return low+(high-low)*st_sat(h);}
+verse_style_blade_height :: (h:f32,low:f32,high:f32)->f32 #export_c #effects(all) {return low+(high-low)*st_sat(h);}
 // How much of a blade stands at distance d from the eye: all of it to 6 m inside the radius (32 m,
 // 18 on a on_phone), shrinking to nothing at the radius, so the field has no edge.
-verse_style_grass_fade :: (d:f32,radius:f32,fade:f32)->f32 #export_c {return 1.0f32-verse_style_soft_step(radius-fade*0.5f32,fade*0.5f32,d);}
+verse_style_grass_fade :: (d:f32,radius:f32,fade:f32)->f32 #export_c #effects(all) {return 1.0f32-verse_style_soft_step(radius-fade*0.5f32,fade*0.5f32,d);}
 // How many blades the realm draws in the half disc ahead of the eye: a square 2 radius across and
 // one radius deep, at the density (24 a square metre, 8 on a on_phone).
-verse_style_grass_blades :: (radius:f32,density:f32)->f32 #export_c {return 2.0f32*radius*radius*density;}
+verse_style_grass_blades :: (radius:f32,density:f32)->f32 #export_c #effects(all) {return 2.0f32*radius*radius*density;}
 // The mask: a blade's share of its height by its distance past a masked shape's edge (a path, a
 // plot, a floor): none on it, all of it 0.25 m clear of it.
-verse_style_grass_clear :: (past:f32)->f32 #export_c {return verse_style_soft_step(0.125f32,0.125f32,past);}
+verse_style_grass_clear :: (past:f32)->f32 #export_c #effects(all) {return verse_style_soft_step(0.125f32,0.125f32,past);}
 // The distance from (x, z) to the segment a..b: a capsule's mask is this less its radius.
-verse_style_segment :: (x:f32,z:f32,ax:f32,az:f32,bx:f32,bz:f32)->f32 #export_c {
+verse_style_segment :: (x:f32,z:f32,ax:f32,az:f32,bx:f32,bz:f32)->f32 #export_c #effects(all) {
  ux:=bx-ax; uz:=bz-az; px:=x-ax; pz:=z-az;
  h:=st_sat((px*ux+pz*uz)/st_max(ux*ux+uz*uz,0.000001f32));
  dx:=px-ux*h; dz:=pz-uz*h;
  return sqrt(dx*dx+dz*dz);
 }
 // A mover parts the grass: a blade within `radius` (0.7 m) leans away, fully at the mover, by this share.
-verse_style_part :: (d:f32,radius:f32)->f32 #export_c {return st_sat(1.0f32-d/st_max(radius,0.001f32));}
+verse_style_part :: (d:f32,radius:f32)->f32 #export_c #effects(all) {return st_sat(1.0f32-d/st_max(radius,0.001f32));}
 // One channel of a blade's tip: the ground's colour lifted 15% and warmed (the brush stroke's lifted
 // end), red and green up, blue held.
-verse_style_tip :: (c:f32,ch:f32,lift:f32)->f32 #export_c {
+verse_style_tip :: (c:f32,ch:f32,lift:f32)->f32 #export_c #effects(all) {
  if ch<0.5f32 {return c*(1.0f32+lift*1.3f32);} if ch<1.5f32 {return c*(1.0f32+lift);} return c;
 }
 // One channel's hue jitter for a blade with hash h: red and blue apart by up to `jitter` (4%), green held.
-verse_style_jitter :: (c:f32,ch:f32,h:f32,jitter:f32)->f32 #export_c {
+verse_style_jitter :: (c:f32,ch:f32,h:f32,jitter:f32)->f32 #export_c #effects(all) {
  j:=(h*2.0f32-1.0f32)*jitter;
  if ch<0.5f32 {return c*(1.0f32+j);} if ch<1.5f32 {return c;} return c*(1.0f32-j);
 }
 
 // ---- 9. Tone
 // The tone curve: 1 - exp(-c exposure).
-verse_style_tone :: (c:f32,exposure:f32)->f32 #export_c {return 1.0f32-exp(-st_max(c,0.0f32)*exposure);}
+verse_style_tone :: (c:f32,exposure:f32)->f32 #export_c #effects(all) {return 1.0f32-exp(-st_max(c,0.0f32)*exposure);}
 // Saturation about luminance: a channel pushed away from the pixel's luminance.
-verse_style_saturation :: (c:f32,lum:f32,amount:f32)->f32 #export_c {return st_max(0.0f32,lum+(c-lum)*amount);}
+verse_style_saturation :: (c:f32,lum:f32,amount:f32)->f32 #export_c #effects(all) {return st_max(0.0f32,lum+(c-lum)*amount);}
 // Blacks lifted before encoding: c = lift + (1 - lift) c.
-verse_style_lift :: (c:f32,lift:f32)->f32 #export_c {return lift+(1.0f32-lift)*c;}
+verse_style_lift :: (c:f32,lift:f32)->f32 #export_c #effects(all) {return lift+(1.0f32-lift)*c;}
 // The share of a pixel's light that blooms (art-styles.md 6): none under the
 // threshold less the knee, all of the excess past the threshold, a quadratic
 // knee between so the glow starts without a seam. As a fraction of the light.
-verse_style_bloom_share :: (lum:f32,threshold:f32,knee:f32)->f32 #export_c {
+verse_style_bloom_share :: (lum:f32,threshold:f32,knee:f32)->f32 #export_c #effects(all) {
  if lum<=0.0f32 {return 0.0f32;}
  k:=st_max(knee,0.00001f32);
  q:=st_min(st_max(lum-threshold+k,0.0f32),2.0f32*k);
  return st_min(st_max(q*q/(4.0f32*k),lum-threshold)/lum,1.0f32);
 }
 // The light with its blurred bright share mixed back: gently, `amount` of it.
-verse_style_bloom_mix :: (c:f32,bloom:f32,amount:f32)->f32 #export_c {return c+bloom*amount;}
+verse_style_bloom_mix :: (c:f32,bloom:f32,amount:f32)->f32 #export_c #effects(all) {return c+bloom*amount;}
 // ---- 6b. Light shafts: a radial blur of the sky's glow toward the key light's place on screen
 // The glow a sky pixel puts into the blur: the sky near the light, by the ray's cosine to it
 // (exp(-24 (1 - cos)): half at 14 degrees, a tenth at 25), so gaps in a canopy against the sky round
 // the sun stream light and open sky far from it adds nothing. A surface passes it on in the share the
 // haze has taken of it (the lit air in front of a far ridge glows; a near trunk blocks).
-verse_style_shaft_source :: (cos_t:f32)->f32 #export_c {return exp(-24.0f32*st_max(1.0f32-cos_t,0.0f32));}
+verse_style_shaft_source :: (cos_t:f32)->f32 #export_c #effects(all) {return exp(-24.0f32*st_max(1.0f32-cos_t,0.0f32));}
 // How much of the shafts show, by where the light sits on screen (x, y: 0 to 1 across the frame,
 // outside it past an edge): all of them inside the frame, fading out over `margin` (0.35) of the
 // frame past its edge, none further.
-verse_style_shaft_fade :: (x:f32,y:f32,margin:f32)->f32 #export_c {
+verse_style_shaft_fade :: (x:f32,y:f32,margin:f32)->f32 #export_c #effects(all) {
  out:=st_max(st_max(st_max(-x,x-1.0f32),st_max(-y,y-1.0f32)),0.0f32);
  return 1.0f32-verse_style_soft_step(margin*0.5f32,margin*0.5f32,out);
 }
 // Tap i's weight along the march from the pixel toward the light: decay^i (0.94).
-verse_style_shaft_tap :: (i:f32,decay:f32)->f32 #export_c {return pow(st_max(decay,0.000001f32),i);}
+verse_style_shaft_tap :: (i:f32,decay:f32)->f32 #export_c #effects(all) {return pow(st_max(decay,0.000001f32),i);}
 // All n taps' weights together, to share the shafts' strength over them.
-verse_style_shaft_total :: (n:f32,decay:f32)->f32 #export_c {
+verse_style_shaft_total :: (n:f32,decay:f32)->f32 #export_c #effects(all) {
  if abs(1.0f32-decay)<0.000001f32 {return n;}
  return (1.0f32-pow(st_max(decay,0.000001f32),n))/(1.0f32-decay);
 }
 // A pixel's shafts: `sum` (the taps' glow, each times its weight) shared over the taps, at the
 // preset's weight (0.44 by day, 0.20 at night) and the frame-edge fade. Added to the light, coloured
 // like the key light in the haze.
-verse_style_shaft :: (sum:f32,total:f32,weight:f32,fade:f32)->f32 #export_c {return sum/st_max(total,0.000001f32)*weight*st_sat(fade);}
+verse_style_shaft :: (sum:f32,total:f32,weight:f32,fade:f32)->f32 #export_c #effects(all) {return sum/st_max(total,0.000001f32)*weight*st_sat(fade);}
 
 // ---- 7. Foliage: blob canopies (art-styles.md 7). A canopy shades as one soft blob round its centre,
 // not as its leaf cards: its normal leans 0.85 of the way to the blob's.
 // One channel of the blob's direction at a canopy point p with centre c and half size `half` on that
 // which: (p - c) / half^2, an ellipsoid's gradient (a sphere's when the three half sizes match), so a
 // pine's tall crown rounds over its top and sides alike. The three are normalized together.
-verse_style_canopy_axis :: (p:f32,c:f32,half:f32)->f32 #export_c {h:=st_max(half,0.001f32);return (p-c)/(h*h);}
+verse_style_canopy_axis :: (p:f32,c:f32,half:f32)->f32 #export_c #effects(all) {h:=st_max(half,0.001f32);return (p-c)/(h*h);}
 // One channel of the canopy normal before normalizing: the mesh's normal mixed `k` (0.85) toward the blob's.
-verse_style_canopy_normal :: (mesh_n:f32,blob_n:f32,k:f32)->f32 #export_c {return mesh_n+(blob_n-mesh_n)*k;}
+verse_style_canopy_normal :: (mesh_n:f32,blob_n:f32,k:f32)->f32 #export_c #effects(all) {return mesh_n+(blob_n-mesh_n)*k;}
 // How far a canopy point `share` of its tree's height up (from the trunk's base) moves in the wind:
 // `reach` (0.05 m) times its share times the wind's bend over its amplitude, so the canopy breathes
 // with the grass and the trunk stays still.
-verse_style_canopy_sway :: (theta:f32,amp:f32,reach:f32,share:f32)->f32 #export_c {
+verse_style_canopy_sway :: (theta:f32,amp:f32,reach:f32,share:f32)->f32 #export_c #effects(all) {
  return reach*st_sat(share)*st_max(-1.0f32,st_min(1.0f32,theta/st_max(amp,0.0001f32)));
 }
 // Leafy gaps: whether the canopy is open at a point whose leaf noise is n (0 to 1): open where the noise
 // is under `gap` (the preset's 0.36), so the sky shows through in holes and the light shafts streak.
-verse_style_canopy_open :: (n:f32,gap:f32)->f32 #export_c {return ifx n<gap then 1.0f32 else 0.0f32;}
+verse_style_canopy_open :: (n:f32,gap:f32)->f32 #export_c #effects(all) {return ifx n<gap then 1.0f32 else 0.0f32;}
 // The near ring (another.jpg's forest floor): a square 2 reach across round the eye where more
 // blades grow (the preset's grass_near a m2, on top of the far field's), and the blades nearer
 // than reach widen toward the eye, 2.4 times at it, so the ground under you reads as thick grass.
-verse_style_near_reach :: (on_phone:f32)->f32 #export_c {return ifx on_phone>0.5f32 then 6.0f32 else 7.0f32;}
-verse_style_near_blades :: (reach:f32,density:f32)->f32 #export_c {return 4.0f32*reach*reach*density;}
-verse_style_near_width :: (d:f32,reach:f32)->f32 #export_c {return 1.0f32+1.4f32*(1.0f32-st_sat(d/st_max(reach,0.001f32)));}
+verse_style_near_reach :: (on_phone:f32)->f32 #export_c #effects(all) {return ifx on_phone>0.5f32 then 6.0f32 else 7.0f32;}
+verse_style_near_blades :: (reach:f32,density:f32)->f32 #export_c #effects(all) {return 4.0f32*reach*reach*density;}
+verse_style_near_width :: (d:f32,reach:f32)->f32 #export_c #effects(all) {return 1.0f32+1.4f32*(1.0f32-st_sat(d/st_max(reach,0.001f32)));}
 // The cap on how far the shadow tint and the light may grey a surface: its saturation (chroma over
 // value) kept to at least `keep` of its albedo's; the gain to put on its distance from grey (1 when it
 // is saturated enough, never more than 2.5).
-verse_style_chroma_gain :: (have:f32,albedo:f32,keep:f32)->f32 #export_c {
+verse_style_chroma_gain :: (have:f32,albedo:f32,keep:f32)->f32 #export_c #effects(all) {
  if have<0.0001f32 {return 1.0f32;}
  return st_min(2.5f32,st_max(1.0f32,albedo*keep/have));
 }
@@ -225,26 +225,26 @@ verse_style_chroma_gain :: (have:f32,albedo:f32,keep:f32)->f32 #export_c {
 // some hems; now and then a slight dithered gradient down a tall shape. The edges here are the
 // flat preset's (verse/style-preset.coax STYLE_FLAT), as literals because coax wgsl writes these.
 // The light on a flat surface: half Lambert (N.L folded into 0 to 1) under the cast shadow's light.
-verse_style_flat_light :: (fl_ndl:f32,fl_lit:f32)->f32 #export_c {return st_sat(fl_ndl*0.5f32+0.5f32)*st_sat(fl_lit);}
+verse_style_flat_light :: (fl_ndl:f32,fl_lit:f32)->f32 #export_c #effects(all) {return st_sat(fl_ndl*0.5f32+0.5f32)*st_sat(fl_lit);}
 // Three flat tones from that light: dark (0) under 0.38, shade (0.5) to 0.62, lit (1) above it. Each
 // edge is a hard step, antialiased over 0.01 either side, never a gradient.
-verse_style_flat_band :: (fl_w:f32)->f32 #export_c {return verse_style_bands(fl_w,0.38f32,0.62f32,0.01f32,0.5f32);}
+verse_style_flat_band :: (fl_w:f32)->f32 #export_c #effects(all) {return verse_style_bands(fl_w,0.38f32,0.62f32,0.01f32,0.5f32);}
 // Two for characters: shade and lit, one edge at 0.45.
-verse_style_flat_band2 :: (fl_w:f32)->f32 #export_c {return verse_style_soft_step(0.45f32,0.01f32,fl_w);}
+verse_style_flat_band2 :: (fl_w:f32)->f32 #export_c #effects(all) {return verse_style_soft_step(0.45f32,0.01f32,fl_w);}
 // The sky: one flat colour, and toward the horizon a soft band of the horizon colour, all of it at
 // and under the horizon and none 0.24 (elevation sine, 14 degrees) up. Its share of the horizon colour.
-verse_style_flat_sky :: (fl_up:f32)->f32 #export_c {return 1.0f32-verse_style_soft_step(0.12f32,0.12f32,fl_up);}
+verse_style_flat_sky :: (fl_up:f32)->f32 #export_c #effects(all) {return 1.0f32-verse_style_soft_step(0.12f32,0.12f32,fl_up);}
 // A cast shadow's cover at d (its distance from the middle over its radius): flat all through, a
 // soft rim from 0.7 out to the radius. The realm darkens toward its shadow colour by cover times strength.
-verse_style_flat_shadow :: (fl_d:f32)->f32 #export_c {return 1.0f32-verse_style_soft_step(0.85f32,0.15f32,fl_d);}
+verse_style_flat_shadow :: (fl_d:f32)->f32 #export_c #effects(all) {return 1.0f32-verse_style_soft_step(0.85f32,0.15f32,fl_d);}
 // Far off, a surface goes over to the horizon colour: nothing to `start` metres, then softly up to
 // `cap` by `start` plus `reach`. One fade, no fog layers.
-verse_style_flat_fade :: (fl_d:f32,fl_start:f32,fl_reach:f32,fl_cap:f32)->f32 #export_c {
+verse_style_flat_fade :: (fl_d:f32,fl_start:f32,fl_reach:f32,fl_cap:f32)->f32 #export_c #effects(all) {
  return fl_cap*verse_style_soft_step(fl_start+fl_reach*0.5f32,st_max(fl_reach*0.5f32,0.001f32),fl_d);
 }
 // A 4 by 4 ordered (Bayer) threshold at pixel (px, py), 0 to 15/16 plus half a step.
 st_bayer2 :: (fl_a:f32,fl_b:f32)->f32 {return 2.0f32*fl_a+3.0f32*fl_b-4.0f32*fl_a*fl_b;}
-verse_style_bayer :: (fl_px:f32,fl_py:f32)->f32 #export_c {
+verse_style_bayer :: (fl_px:f32,fl_py:f32)->f32 #export_c #effects(all) {
  fl_x:=fl_px-4.0f32*floor(fl_px*0.25f32); fl_y:=fl_py-4.0f32*floor(fl_py*0.25f32);
  fl_x0:=fl_x-2.0f32*floor(fl_x*0.5f32); fl_y0:=fl_y-2.0f32*floor(fl_y*0.5f32);
  fl_x1:=floor(fl_x*0.5f32); fl_y1:=floor(fl_y*0.5f32);
@@ -252,13 +252,13 @@ verse_style_bayer :: (fl_px:f32,fl_py:f32)->f32 #export_c {
 }
 // A slight gradient down a tall shape, in `steps` flat steps dithered at pixel (px, py) where they meet:
 // t (0 at its top, 1 at its foot) to the step it shows, 0 to 1.
-verse_style_flat_dither :: (fl_t:f32,fl_px:f32,fl_py:f32,fl_steps:f32)->f32 #export_c {
+verse_style_flat_dither :: (fl_t:f32,fl_px:f32,fl_py:f32,fl_steps:f32)->f32 #export_c #effects(all) {
  fl_n:=st_max(fl_steps,1.0f32);
  return st_sat(floor(st_sat(fl_t)*fl_n+verse_style_bayer(fl_px,fl_py))/fl_n);
 }
 // A hem's trim: 1 on a thin line `width` deep from the edge (y: the distance from it, in the same
 // units), antialiased over aa; 0 past it. Trim, not an outline: only where a realm asks for it.
-verse_style_flat_hem :: (fl_y:f32,fl_width:f32,fl_aa:f32)->f32 #export_c {return 1.0f32-verse_style_soft_step(fl_width,st_max(fl_aa,0.000001f32),fl_y);}
+verse_style_flat_hem :: (fl_y:f32,fl_width:f32,fl_aa:f32)->f32 #export_c #effects(all) {return 1.0f32-verse_style_soft_step(fl_width,st_max(fl_aa,0.000001f32),fl_y);}
 
 // The palettes (art-styles.md, Flat: palettes): each flat realm's few colours, in sRGB 0 to 1. A slot
 // is a role; the realm draws only these (and mixes of them). The two realms in the style so far:
@@ -273,7 +273,7 @@ FLAT_WOOD :: 14; FLAT_WARM :: 15; FLAT_MINT :: 16; FLAT_ROCK :: 17; FLAT_LAVENDE
 FLAT_SLOTS :: 20;
 st_pick :: (fl_ch:f32,fl_r:f32,fl_g:f32,fl_b:f32)->f32 {if fl_ch<0.5f32 {return fl_r;} if fl_ch<1.5f32 {return fl_g;} return fl_b;}
 // One channel (0 red, 1 green, 2 blue) of a slot of a palette, sRGB.
-verse_style_flat_srgb :: (fl_realm:f32,fl_slot:f32,fl_ch:f32)->f32 #export_c {
+verse_style_flat_srgb :: (fl_realm:f32,fl_slot:f32,fl_ch:f32)->f32 #export_c #effects(all) {
  if fl_realm<0.5f32 {
   if fl_slot<0.5f32 {return st_pick(fl_ch,0.400f32,0.463f32,0.690f32);}    // sky: soft periwinkle
   if fl_slot<1.5f32 {return st_pick(fl_ch,0.745f32,0.706f32,0.847f32);}    // horizon: pale lilac
@@ -340,10 +340,10 @@ verse_style_flat_srgb :: (fl_realm:f32,fl_slot:f32,fl_ch:f32)->f32 #export_c {
  return st_pick(fl_ch,0.655f32,0.710f32,0.604f32);                       // sage
 }
 // The same, linear (what the shaders compute in).
-verse_style_flat_colour :: (fl_realm:f32,fl_slot:f32,fl_ch:f32)->f32 #export_c {return pow(verse_style_flat_srgb(fl_realm,fl_slot,fl_ch),2.2f32);}
+verse_style_flat_colour :: (fl_realm:f32,fl_slot:f32,fl_ch:f32)->f32 #export_c #effects(all) {return pow(verse_style_flat_srgb(fl_realm,fl_slot,fl_ch),2.2f32);}
 // What the time of day does to a palette, one channel's factor: dusk warms it, night takes it down to
 // a blue dusk. The cemetery's palette is its night already, so it holds all day.
-verse_style_flat_time :: (fl_realm:f32,fl_ch:f32,fl_dusk:f32,fl_night:f32)->f32 #export_c {
+verse_style_flat_time :: (fl_realm:f32,fl_ch:f32,fl_dusk:f32,fl_night:f32)->f32 #export_c #effects(all) {
  if fl_realm<0.5f32 {return 1.0f32;}
  fl_warm:=1.0f32+(st_pick(fl_ch,1.0f32,0.80f32,0.68f32)-1.0f32)*st_sat(fl_dusk);
  return fl_warm+(st_pick(fl_ch,0.20f32,0.25f32,0.44f32)-fl_warm)*st_sat(fl_night);
@@ -355,14 +355,14 @@ verse_style_flat_time :: (fl_realm:f32,fl_ch:f32,fl_dusk:f32,fl_night:f32)->f32 
 // stone reads as cut, not turned; and a crisp light line runs along a shape's outline where it stands
 // in front of something further off. Shared by the flat realms that ask for it.
 // One face's tone from its normal's N.L under the light left (lit): half Lambert eased, 0 (shade) to 1 (lit).
-verse_style_facet_tone :: (fl_ndl:f32,fl_lit:f32)->f32 #export_c {
+verse_style_facet_tone :: (fl_ndl:f32,fl_lit:f32)->f32 #export_c #effects(all) {
  fl_t:=st_sat(((fl_ndl*0.5f32+0.5f32)*st_sat(fl_lit)-0.18f32)/0.7f32);
  return fl_t*fl_t*(3.0f32-2.0f32*fl_t);
 }
 // How far a round shape's corner (i round, j down, of a grid `round` corners round) moves out (+) or
 // in (-), -1 to 1 times the shape's nudge. The seam (i = round) and each pole (j = 0 or `down`) share one
 // value, so no face ever opens a crack.
-verse_style_facet_jitter :: (fl_i:f32,fl_j:f32,fl_round:f32,fl_down:f32,fl_seed:f32)->f32 #export_c {
+verse_style_facet_jitter :: (fl_i:f32,fl_j:f32,fl_round:f32,fl_down:f32,fl_seed:f32)->f32 #export_c #effects(all) {
  fl_a:=fl_i-fl_round*floor(fl_i/st_max(fl_round,1.0f32));
  if fl_j<0.5f32 || fl_j>fl_down-0.5f32 {fl_a=0.0f32;}
  return verse_style_hash(fl_a+fl_seed*13.0f32,fl_j+fl_seed*7.0f32)*2.0f32-1.0f32;
@@ -370,7 +370,7 @@ verse_style_facet_jitter :: (fl_i:f32,fl_j:f32,fl_round:f32,fl_down:f32,fl_seed:
 // The light edge at a pixel whose surface lies `own` metres off, beside one `other` metres off (0: the
 // sky, or nothing): 1 where the other is clearly further (more than 4 percent and 0.25 m), easing in
 // over the same again; 0 for a pixel that asks for no edge (own 0 or less: the ground, the water).
-verse_style_facet_edge :: (fl_own:f32,fl_other:f32)->f32 #export_c {
+verse_style_facet_edge :: (fl_own:f32,fl_other:f32)->f32 #export_c #effects(all) {
  if fl_own<=0.0f32 {return 0.0f32;}
  if fl_other<=0.0f32 {return 1.0f32;}
  fl_gap:=st_max(fl_other,-fl_other)-fl_own;
@@ -388,33 +388,33 @@ verse_style_facet_edge :: (fl_own:f32,fl_other:f32)->f32 #export_c {
 // the anime preset's (verse/style-preset.coax STYLE_ANIME, verse_style_anime(variant, tier)), passed in
 // from its block, so one function serves every variant.
 // The light a cel band reads: half Lambert (N.L folded into 0 to 1) under the cast shadow's light.
-verse_style_anime_light :: (an_ndl:f32,an_lit:f32)->f32 #export_c {return st_sat(an_ndl*0.5f32+0.5f32)*st_sat(an_lit);}
+verse_style_anime_light :: (an_ndl:f32,an_lit:f32)->f32 #export_c #effects(all) {return st_sat(an_ndl*0.5f32+0.5f32)*st_sat(an_lit);}
 // Two tones from that light: shadow (0) under `edge` (SU_BANDS.x), lit (1) over it. The edge is a hard
 // step antialiased over `aa` (SU_BANDS.z) either side, never a gradient.
-verse_style_anime_cel :: (an_w:f32,an_edge:f32,an_aa:f32)->f32 #export_c {return verse_style_soft_step(an_edge,st_max(an_aa,0.000001f32),an_w);}
+verse_style_anime_cel :: (an_w:f32,an_edge:f32,an_aa:f32)->f32 #export_c #effects(all) {return verse_style_soft_step(an_edge,st_max(an_aa,0.000001f32),an_w);}
 // Characters' two tones (edge SU_BANDS2.x, aa SU_BANDS2.y): the edge eases down by 0.12 where the
 // surface faces the eye (N.V), so a face toward the camera keeps its lit tone and the shadow falls on
 // the sides turning away, as anime draws faces.
-verse_style_anime_cel_char :: (an_w:f32,an_ndv:f32,an_edge:f32,an_aa:f32)->f32 #export_c {
+verse_style_anime_cel_char :: (an_w:f32,an_ndv:f32,an_edge:f32,an_aa:f32)->f32 #export_c #effects(all) {
  return verse_style_soft_step(an_edge-0.12f32*st_sat(an_ndv),st_max(an_aa,0.000001f32),an_w);
 }
 // The third tone: a sharp highlight spot (hair sheen, metal, an eye's glint) where N.H passes `cut`
 // (SU_BANDS2.z), antialiased over aa, at `strength` (SU_BANDS2.w). Added in the key light's colour.
-verse_style_anime_spot :: (an_ndh:f32,an_cut:f32,an_aa:f32,an_strength:f32)->f32 #export_c {
+verse_style_anime_spot :: (an_ndh:f32,an_cut:f32,an_aa:f32,an_strength:f32)->f32 #export_c #effects(all) {
  return verse_style_soft_step(an_cut,st_max(an_aa,0.000001f32),an_ndh)*an_strength;
 }
 // One channel c of the shadow tone from the lit tone's: `depth` (SU_BANDS.w) of its value, turned toward
 // the shadow tint's hue (tint over tint_lum, SU_TINT, its luminance from verse_style_luma): a multiply,
 // so a warm albedo goes cool and keeps its colour. Put the three back to depth times the lit tone's
 // luminance with verse_style_keep_value and the shadow keeps its value exactly.
-verse_style_anime_shadow :: (an_c:f32,an_tint:f32,an_tint_lum:f32,an_depth:f32)->f32 #export_c {
+verse_style_anime_shadow :: (an_c:f32,an_tint:f32,an_tint_lum:f32,an_depth:f32)->f32 #export_c #effects(all) {
  return an_c*an_depth*st_max(an_tint,0.000001f32)/st_max(an_tint_lum,0.000001f32);
 }
 // Where an ink line falls, 0 to 1, from a pixel's screen-space differences: `gap` (metres: its
 // neighbour's distance less its own, the realm's largest of four), its own distance d, and `ndn`, the
 // dot of its normal and the neighbour's. A silhouette where the gap is past 4 percent of the distance
 // and 0.15 m (easing in over a quarter more), a crease where the normals turn past 40 degrees.
-verse_style_anime_ink_edge :: (an_gap:f32,an_d:f32,an_ndn:f32)->f32 #export_c {
+verse_style_anime_ink_edge :: (an_gap:f32,an_d:f32,an_ndn:f32)->f32 #export_c #effects(all) {
  an_at:=st_max(an_d,0.0f32)*0.04f32+0.15f32;
  an_sil:=verse_style_soft_step(an_at*1.125f32,an_at*0.125f32,an_gap);
  an_crease:=1.0f32-verse_style_soft_step(0.8f32,0.04f32,an_ndn);
@@ -422,40 +422,40 @@ verse_style_anime_ink_edge :: (an_gap:f32,an_d:f32,an_ndn:f32)->f32 #export_c {
 }
 // The line's width in pixels at distance d: `width` (SU_RIM2.w) near, from a tenth of `far` (SU_BLOOM.w)
 // thinning smoothly to a quarter of it at `far` and beyond.
-verse_style_anime_ink_width :: (an_d:f32,an_width:f32,an_far:f32)->f32 #export_c {
+verse_style_anime_ink_width :: (an_d:f32,an_width:f32,an_far:f32)->f32 #export_c #effects(all) {
  an_f:=st_max(an_far,0.001f32);
  return an_width*(1.0f32-0.75f32*verse_style_soft_step(an_f*0.55f32,an_f*0.45f32,an_d));
 }
 // A line thinner than a pixel covers it in part: the edge times its width, at most all of it.
-verse_style_anime_ink_cover :: (an_edge:f32,an_width_px:f32)->f32 #export_c {return st_sat(an_edge)*st_sat(an_width_px);}
+verse_style_anime_ink_cover :: (an_edge:f32,an_width_px:f32)->f32 #export_c #effects(all) {return st_sat(an_edge)*st_sat(an_width_px);}
 // One channel of the ink: the albedo darkened to `dark` (SU_GROUND_AMB.w) of itself, a coloured line,
 // never pure black (no less than 0.04 of the albedo).
-verse_style_anime_ink_colour :: (an_c:f32,an_dark:f32)->f32 #export_c {return an_c*st_max(an_dark,0.04f32);}
+verse_style_anime_ink_colour :: (an_c:f32,an_dark:f32)->f32 #export_c #effects(all) {return an_c*st_max(an_dark,0.04f32);}
 // A thin, hard rim: where N.V is under `start` (SU_RIM2.y) the surface takes it, all of it by `full`
 // (SU_RIM2.z), more on the key light's side, times strength (SU_RIM.w on the world, SU_RIM2.x on
 // characters). Added in the rim colour (SU_RIM).
-verse_style_anime_rim :: (an_ndv:f32,an_ndl:f32,an_start:f32,an_full:f32,an_strength:f32)->f32 #export_c {
+verse_style_anime_rim :: (an_ndv:f32,an_ndl:f32,an_start:f32,an_full:f32,an_strength:f32)->f32 #export_c #effects(all) {
  an_edge:=1.0f32-verse_style_soft_step((an_start+an_full)*0.5f32,st_max((an_start-an_full)*0.5f32,0.000001f32),an_ndv);
  return an_edge*(0.2f32+0.8f32*st_sat(an_ndl+0.35f32))*an_strength;
 }
 // The sky: horizon (0) to zenith (1) by the view's elevation sine, at `power` (SU_HORIZON.w, under 1:
 // the zenith's deep colour comes down most of the sky and the pale band hugs the horizon).
-verse_style_anime_sky_t :: (an_up:f32,an_power:f32)->f32 #export_c {return pow(st_max(st_sat(an_up),0.000001f32),an_power);}
+verse_style_anime_sky_t :: (an_up:f32,an_power:f32)->f32 #export_c #effects(all) {return pow(st_max(st_sat(an_up),0.000001f32),an_power);}
 // One channel of the sky's gradient from the zenith's (SU_ZENITH) and the horizon's (SU_HORIZON).
-verse_style_anime_sky :: (an_zenith:f32,an_horizon:f32,an_up:f32,an_power:f32)->f32 #export_c {
+verse_style_anime_sky :: (an_zenith:f32,an_horizon:f32,an_up:f32,an_power:f32)->f32 #export_c #effects(all) {
  return an_horizon+(an_zenith-an_horizon)*verse_style_anime_sky_t(an_up,an_power);
 }
 // The warm band low over the horizon at dawn and dusk (in SU_HAZE_KEY's colour, at its .w strength):
 // its share at elevation sine up, where cs is the view's horizontal cosine to the sun. Full at the
 // horizon, gone by `height` (SU_ZENITH.w) toward the sun and 0.6 of it away, a third as strong away.
-verse_style_anime_glow :: (an_up:f32,an_cs:f32,an_height:f32,an_strength:f32)->f32 #export_c {
+verse_style_anime_glow :: (an_up:f32,an_cs:f32,an_height:f32,an_strength:f32)->f32 #export_c #effects(all) {
  an_side:=st_sat(an_cs*0.5f32+0.5f32);
  an_h:=st_max(an_height,0.001f32)*(0.6f32+0.4f32*an_side);
  return (1.0f32-verse_style_soft_step(an_h*0.5f32,an_h*0.5f32,an_up))*(0.33f32+0.67f32*an_side)*an_strength;
 }
 // A star in a cell of the night sky (x, y: the view direction over the cell size, the realm's choice):
 // one cell in `density` holds a small round point near its middle, twinkling with t. Times SU_SUN.w.
-verse_style_anime_star :: (an_x:f32,an_y:f32,an_density:f32,an_t:f32)->f32 #export_c {
+verse_style_anime_star :: (an_x:f32,an_y:f32,an_density:f32,an_t:f32)->f32 #export_c #effects(all) {
  an_ix:=floor(an_x); an_iy:=floor(an_y);
  an_h:=verse_style_hash(an_ix,an_iy);
  if an_h<1.0f32-an_density {return 0.0f32;}
@@ -466,44 +466,44 @@ verse_style_anime_star :: (an_x:f32,an_y:f32,an_density:f32,an_t:f32)->f32 #expo
 // The clouds' flat tones from a cloud's lit share (verse_style_cloud_lit, or verse_style_anime_cumulus_lit):
 // shadow 0, mid 0.5, lit 1, the two edges (0.35, 0.7) hard, antialiased over aa. Its cover comes
 // from verse_style_cloud_cover with the preset's narrow cut (SU_CLOUDS2.zw): a crisp edge.
-verse_style_anime_cloud_tone :: (an_lit:f32,an_aa:f32)->f32 #export_c {
+verse_style_anime_cloud_tone :: (an_lit:f32,an_aa:f32)->f32 #export_c #effects(all) {
  an_a:=st_max(an_aa,0.000001f32);
  return 0.5f32*verse_style_soft_step(0.35f32,an_a,an_lit)+0.5f32*verse_style_soft_step(0.7f32,an_a,an_lit);
 }
 // One channel of a cloud: its lit top's colour (SU_CLOUD_TOP), the shadow tone that colour drawn
 // `under` (SU_CLOUD_TOP.w) of the way to the zenith's (the sky's own blue in the shade, never grey).
-verse_style_anime_cloud_colour :: (an_top:f32,an_zenith:f32,an_under:f32,an_tone:f32)->f32 #export_c {
+verse_style_anime_cloud_colour :: (an_top:f32,an_zenith:f32,an_under:f32,an_tone:f32)->f32 #export_c #effects(all) {
  an_shade:=an_top+(an_zenith-an_top)*st_sat(an_under);
  return an_shade+(an_top-an_shade)*st_sat(an_tone);
 }
 // The towering cumulus over the horizon: the bank's top (elevation sine) at azimuth a (radians), heads
 // of two sizes over a low base, `tall` (0.3) at most. Seamless all the way round; `seed` moves it.
-verse_style_anime_cumulus_top :: (an_a:f32,an_tall:f32,an_seed:f32)->f32 #export_c {
+verse_style_anime_cumulus_top :: (an_a:f32,an_tall:f32,an_seed:f32)->f32 #export_c #effects(all) {
  an_c:=cos(an_a); an_s:=sin(an_a);
  an_n1:=verse_style_noise(an_c*2.2f32+an_seed,an_s*2.2f32+an_seed*0.7f32);
  an_n2:=verse_style_noise(an_c*6.5f32+an_seed+11.0f32,an_s*6.5f32+an_seed+3.0f32);
  return an_tall*(0.12f32+0.88f32*an_n1*an_n1*(0.75f32+0.25f32*an_n2));
 }
 // Whether the view at elevation sine up is in the bank under its top, antialiased over aa: 1 in it.
-verse_style_anime_cumulus :: (an_up:f32,an_top:f32,an_aa:f32)->f32 #export_c {return 1.0f32-verse_style_soft_step(an_top,st_max(an_aa,0.000001f32),an_up);}
+verse_style_anime_cumulus :: (an_up:f32,an_top:f32,an_aa:f32)->f32 #export_c #effects(all) {return 1.0f32-verse_style_soft_step(an_top,st_max(an_aa,0.000001f32),an_up);}
 // The bank's lit share, for verse_style_anime_cloud_tone: higher in a head is lit, and the sun's side
 // (cs, the horizontal cosine to it), with the noise's grain (0 to 1) breaking the tones into heads.
-verse_style_anime_cumulus_lit :: (an_up:f32,an_top:f32,an_cs:f32,an_grain:f32)->f32 #export_c {
+verse_style_anime_cumulus_lit :: (an_up:f32,an_top:f32,an_cs:f32,an_grain:f32)->f32 #export_c #effects(all) {
  return st_sat(0.55f32*st_sat(an_up/st_max(an_top,0.001f32))+0.35f32*st_sat(an_cs*0.5f32+0.5f32)+0.25f32*(an_grain-0.5f32));
 }
 // Aerial perspective: a far surface's share of the pale sky colour (the horizon's): none to `start`
 // metres, then toward `cap` at `density` a metre (SU_HAZE x, y, z). No height term: a painted
 // backdrop, not fog.
-verse_style_anime_aerial :: (an_d:f32,an_start:f32,an_density:f32,an_cap:f32)->f32 #export_c {
+verse_style_anime_aerial :: (an_d:f32,an_start:f32,an_density:f32,an_cap:f32)->f32 #export_c #effects(all) {
  return an_cap*(1.0f32-exp(-an_density*st_max(an_d-an_start,0.0f32)));
 }
 // Far off the painting softens: the cel edge's antialias widens 1 + 8 times the aerial share, so the
 // background reads painted and the foreground crisp.
-verse_style_anime_far_aa :: (an_aa:f32,an_share:f32)->f32 #export_c {return an_aa*(1.0f32+8.0f32*st_sat(an_share));}
+verse_style_anime_far_aa :: (an_aa:f32,an_share:f32)->f32 #export_c #effects(all) {return an_aa*(1.0f32+8.0f32*st_sat(an_share));}
 // Speed lines at a screen point, polar about the frame's centre (angle a radians, radius r in half
 // heights): `count` thin spokes round, each on for one draw in two, redrawn 12 times a second by t;
 // none inside `inner` (the clear middle), full 0.3 past it. 0 to 1, drawn in the light's colour.
-verse_style_anime_speed_lines :: (an_a:f32,an_r:f32,an_t:f32,an_count:f32,an_inner:f32)->f32 #export_c {
+verse_style_anime_speed_lines :: (an_a:f32,an_r:f32,an_t:f32,an_count:f32,an_inner:f32)->f32 #export_c #effects(all) {
  an_q:=an_a/6.2831853f32*an_count;
  an_cell:=floor(an_q);
  an_f:=floor(an_t*12.0f32);
@@ -513,21 +513,21 @@ verse_style_anime_speed_lines :: (an_a:f32,an_r:f32,an_t:f32,an_count:f32,an_inn
  return an_line*verse_style_soft_step(an_inner+0.15f32,0.15f32,an_r);
 }
 // A light streak through a bright point, from it by (dx, dy) pixels: long along x (`length`), thin across (`width`).
-verse_style_anime_streak :: (an_dx:f32,an_dy:f32,an_length:f32,an_width:f32)->f32 #export_c {
+verse_style_anime_streak :: (an_dx:f32,an_dy:f32,an_length:f32,an_width:f32)->f32 #export_c #effects(all) {
  return exp(-abs(an_dx)/st_max(an_length,0.000001f32))*exp(-abs(an_dy)/st_max(an_width,0.000001f32));
 }
 // A lens sparkle: a four-point star, two crossing streaks `size` long and a twelfth as thick.
-verse_style_anime_sparkle :: (an_dx:f32,an_dy:f32,an_size:f32)->f32 #export_c {
+verse_style_anime_sparkle :: (an_dx:f32,an_dy:f32,an_size:f32)->f32 #export_c #effects(all) {
  return st_max(verse_style_anime_streak(an_dx,an_dy,an_size,an_size/12.0f32),verse_style_anime_streak(an_dy,an_dx,an_size,an_size/12.0f32));
 }
 // What blooms: the light's share past the threshold (verse_style_bloom_share at SU_BLOOM's numbers),
 // and all of what glows on purpose (emissive, 0 to 1: a spell, a brazier, neon, the guardian).
-verse_style_anime_glow_share :: (an_lum:f32,an_threshold:f32,an_knee:f32,an_emissive:f32)->f32 #export_c {
+verse_style_anime_glow_share :: (an_lum:f32,an_threshold:f32,an_knee:f32,an_emissive:f32)->f32 #export_c #effects(all) {
  return st_max(verse_style_bloom_share(an_lum,an_threshold,an_knee),st_sat(an_emissive));
 }
 // A gentle vignette at (x, y), -1 to 1 across the frame (the realm corrects for aspect): 1 in the
 // middle, down by `strength` (SU_HAZE_COLOUR.w) in the corners.
-verse_style_anime_vignette :: (an_x:f32,an_y:f32,an_strength:f32)->f32 #export_c {
+verse_style_anime_vignette :: (an_x:f32,an_y:f32,an_strength:f32)->f32 #export_c #effects(all) {
  return 1.0f32-an_strength*verse_style_soft_step(1.1f32,0.6f32,an_x*an_x+an_y*an_y);
 }
 // The anime palette (art-styles.md, Anime: palette): clean saturated albedos in sRGB 0 to 1, the
@@ -539,7 +539,7 @@ ANIME_GOLD :: 12; ANIME_SPELL :: 13; ANIME_SPELL2 :: 14; ANIME_FIRE :: 15; ANIME
 ANIME_NEON_MAGENTA :: 17; ANIME_ASPHALT :: 18; ANIME_GUARDIAN :: 19;
 ANIME_SLOTS :: 20;
 // One channel (0 red, 1 green, 2 blue) of an anime slot, sRGB.
-verse_style_anime_srgb :: (an_slot:f32,an_ch:f32)->f32 #export_c {
+verse_style_anime_srgb :: (an_slot:f32,an_ch:f32)->f32 #export_c #effects(all) {
  if an_slot<0.5f32 {return st_pick(an_ch,0.400f32,0.741f32,0.263f32);}    // grass: lush summer green
  if an_slot<1.5f32 {return st_pick(an_ch,0.635f32,0.851f32,0.341f32);}    // grass2: sunlit yellow-green
  if an_slot<2.5f32 {return st_pick(an_ch,0.169f32,0.494f32,0.282f32);}    // foliage: deep leaf
@@ -562,7 +562,7 @@ verse_style_anime_srgb :: (an_slot:f32,an_ch:f32)->f32 #export_c {
  return st_pick(an_ch,0.941f32,0.976f32,1.000f32);                       // guardian: white light, a touch of blue
 }
 // The same, linear (what the shaders compute in).
-verse_style_anime_colour :: (an_slot:f32,an_ch:f32)->f32 #export_c {return pow(verse_style_anime_srgb(an_slot,an_ch),2.2f32);}
+verse_style_anime_colour :: (an_slot:f32,an_ch:f32)->f32 #export_c #effects(all) {return pow(verse_style_anime_srgb(an_slot,an_ch),2.2f32);}
 
 #test "facets: one tone a face from its normal; corners nudged without cracks; an edge only in front of something further" {
  #assert verse_style_facet_tone(1.0f32,1.0f32)==1.0f32 && verse_style_facet_tone(-1.0f32,1.0f32)==0.0f32 && verse_style_facet_tone(1.0f32,0.0f32)==0.0f32;

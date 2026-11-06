@@ -102,33 +102,33 @@ N46Bunker :: struct {key:[32]u8; secret:N46Id; used:bool; offer:N46Perms; sessio
 N46Admit :: struct {error:int; method:int=-1; kind:int=-1; session:int=-1;}
 // book:end record
 
-n46_same :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}} return true;}
-n46_is :: (s:N46Id,text:string)->bool {own:=s;return cast(string)own.b[0..<own.n]==text;}
-n46_eq :: (a:N46Id,b:N46Id)->bool {own:=b;return n46_is(a,cast(string)own.b[0..<own.n]);}
+n46_same :: (a:[32]u8,b:[32]u8)->bool #effects(all) {for i:0..<32 {if a[i]!=b[i] {return false;}} return true;}
+n46_is :: (s:N46Id,text:string)->bool #effects(all) {own:=s;return cast(string)own.b[0..<own.n]==text;}
+n46_eq :: (a:N46Id,b:N46Id)->bool #effects(all) {own:=b;return n46_is(a,cast(string)own.b[0..<own.n]);}
 // An id or a secret: 1 to 64 printable ASCII bytes, no spaces. A reader
 // unescapes into t and sets n to json_unescape's result, -1 or -2 on failure.
-n46_printable :: (t:N46Id)->bool {
+n46_printable :: (t:N46Id)->bool #effects(all) {
   ok:=t.n>0;
   for i:0..<t.n {if t.b[i]<0x21 || t.b[i]>0x7e {ok=false;}}
   return ok;
 }
-n46_token :: (s:string,out:[]N46Id)->bool {
+n46_token :: (s:string,out:[]N46Id)->bool #effects(all) {
   if s.count>N46_MAX_ID {return false;}
   for i:0..<s.count {out[0].b[i]=s[i];}
   out[0].n=s.count;return n46_printable(out[0]);
 }
-n46_word :: (raw:string)->int {
+n46_word :: (raw:string)->int #effects(all) {
   for k:0..<N46_METHODS.count {if json_is(raw,N46_METHODS[k]) {return k;}}
   return -1;
 }
-n46_legacy :: (method:int)->bool {return method==M_NIP04_ENC || method==M_NIP04_DEC;}
+n46_legacy :: (method:int)->bool #effects(all) {return method==M_NIP04_ENC || method==M_NIP04_DEC;}
 
 // book:begin perms
 // A comma-separated perms list, "method[:param]": sign_event:<kind> grants
 // one kind, a bare method grants it for any params. Unknown methods and
 // params on other methods are counted, not granted; the NIP-04 methods are
 // never granted. An empty list grants nothing.
-n46_perms :: (text:string)->N46Perms {
+n46_perms :: (text:string)->N46Perms #effects(all) {
   p:N46Perms;from:=0;
   if text.count==0 {return p;}
   for i:0..<text.count+1 {
@@ -155,7 +155,7 @@ n46_perms :: (text:string)->N46Perms {
 }
 // Whether perms let a session call method (with kind, for sign_event).
 // ping, get_public_key, switch_relays and logout need only a session.
-n46_allow :: (p:N46Perms,method:int,kind:int)->bool {
+n46_allow :: (p:N46Perms,method:int,kind:int)->bool #effects(all) {
   if method==M_PING || method==M_PUBKEY || method==M_SWITCH || method==M_LOGOUT {return true;}
   if (p.methods&(1<<method))!=0 {return true;}
   if method!=M_SIGN {return false;}
@@ -163,7 +163,7 @@ n46_allow :: (p:N46Perms,method:int,kind:int)->bool {
   return false;
 }
 // What a session gets: what the user offers and the client asked for.
-n46_meet :: (offer:N46Perms,asked:N46Perms)->N46Perms {
+n46_meet :: (offer:N46Perms,asked:N46Perms)->N46Perms #effects(all) {
   g:N46Perms;g.methods=offer.methods&asked.methods;
   for k:0..<offer.nkinds {
     // An offered kind the client asked for (by kind, or by any kind).
@@ -181,7 +181,7 @@ n46_meet :: (offer:N46Perms,asked:N46Perms)->N46Perms {
 // book:begin uri
 // One query value with %XX escapes and + (a space) decoded: its length,
 // -1 for a broken escape, -2 when it doesn't fit.
-n46_unescape :: (s:string,out:[]u8)->int {
+n46_unescape :: (s:string,out:[]u8)->int #effects(all) {
   n:=0;i:=0;
   while i<s.count {
     c:=s[i];
@@ -202,7 +202,7 @@ n46_unescape :: (s:string,out:[]u8)->int {
 // the key as 64 lowercase hex digits, one to four ws:// or wss:// relays,
 // one secret (both flows here), and for nostrconnect optional perms and
 // name. Other parameters are skipped.
-n46_uri :: (text:string)->N46Uri {
+n46_uri :: (text:string)->N46Uri #effects(all) {
   u:N46Uri;p:=0;
   if text.count>=73 && text[0..<9]=="bunker://" {u.flow=N46_BUNKER;p=9;}
   if text.count>=79 && text[0..<15]=="nostrconnect://" {u.flow=N46_NOSTRCONNECT;p=15;}
@@ -258,13 +258,13 @@ n46_uri :: (text:string)->N46Uri {
   return u;
 }
 // Wipes a token, its secret with it, when the connection is removed.
-n46_forget :: (u:[]N46Uri) {for i:0..<u.count {u[i]=N46Uri.{};}}
+n46_forget :: (u:[]N46Uri) #effects(all) {for i:0..<u.count {u[i]=N46Uri.{};}}
 // book:end uri
 
 // book:begin read
 // A request's plaintext. The id is read even when the method is unknown,
 // so that the remote signer can answer with an error under that id.
-n46_request :: (text:string)->N46Call {
+n46_request :: (text:string)->N46Call #effects(all) {
   c:N46Call;j:[1]Json;json_start(j[..],text);has_id:=false;has_method:=false;has_params:=false;
   if json_next(j[..])!=JSON_OBJECT {return c;}
   t:=json_next(j[..]);
@@ -312,7 +312,7 @@ n46_request :: (text:string)->N46Call {
 }
 // A response's plaintext: result a string (or null, absent), error a
 // string when the call failed. One of the two must be there.
-n46_response :: (text:string)->N46Reply {
+n46_response :: (text:string)->N46Reply #effects(all) {
   r:N46Reply;j:[1]Json;json_start(j[..],text);has_id:=false;seen_result:=false;seen_error:=false;
   if json_next(j[..])!=JSON_OBJECT {return r;}
   t:=json_next(j[..]);
@@ -350,13 +350,13 @@ n46_response :: (text:string)->N46Reply {
   return r;
 }
 // An auth challenge: result "auth_url", the URL to show in error.
-n46_auth :: (r:N46Reply)->bool {
+n46_auth :: (r:N46Reply)->bool #effects(all) {
   own:=r.result;
   return r.error==N46_OK && r.failed && r.has_result && cast(string)own.b[0..<own.n]=="auth_url";
 }
 // sign_event's param: {"kind", "created_at", "tags", "content"} in any
 // order, other keys skipped.
-n46_template :: (text:string)->N46Template {
+n46_template :: (text:string)->N46Template #effects(all) {
   m:N46Template;j:[1]Json;json_start(j[..],text);have:=0;
   if json_next(j[..])!=JSON_OBJECT {return m;}
   t:=json_next(j[..]);
@@ -380,7 +380,7 @@ n46_template :: (text:string)->N46Template {
 // book:begin write
 // A request's plaintext, or -1 when it isn't one n46_request would accept
 // or out is too small.
-n46_request_json :: (c:N46Call,out:[]u8)->int {
+n46_request_json :: (c:N46Call,out:[]u8)->int #effects(all) {
   if c.method<0 || c.id.n==0 || c.nparams<N46_LEAST[c.method] || c.nparams>N46_MOST[c.method] {return -1;}
   id:=c.id;
   n:=json_raw(out,0,"{\"id\":");n=json_write_string(out,n,cast(string)id.b[0..<id.n]);
@@ -393,7 +393,7 @@ n46_request_json :: (c:N46Call,out:[]u8)->int {
   return json_raw(out,n,"]}");
 }
 // A response's plaintext: id, then result and error when present.
-n46_response_json :: (r:N46Reply,out:[]u8)->int {
+n46_response_json :: (r:N46Reply,out:[]u8)->int #effects(all) {
   if r.id.n==0 || (!r.has_result && !r.failed) {return -1;}
   id:=r.id;res:=r.result;msg:=r.message;
   n:=json_raw(out,0,"{\"id\":");n=json_write_string(out,n,cast(string)id.b[0..<id.n]);
@@ -403,7 +403,7 @@ n46_response_json :: (r:N46Reply,out:[]u8)->int {
 }
 // sign_event's param for an event: kind, created_at, tags, content, the
 // order Bitcoin chapter 18's signer_template writes for NIP-07.
-n46_sign_params :: (kind:int,created_at:int,tags:string,content:string,out:[]u8)->int {
+n46_sign_params :: (kind:int,created_at:int,tags:string,content:string,out:[]u8)->int #effects(all) {
   decoded:[N46_MAX_STR]u8;
   if kind<0 || kind>65535 || created_at<0 {return -1;}
   n:=json_raw(out,0,"{\"kind\":");n=json_write_int(out,n,kind);
@@ -416,13 +416,13 @@ n46_sign_params :: (kind:int,created_at:int,tags:string,content:string,out:[]u8)
 
 // book:begin events
 // Both directions carry one p tag: the key the event is for.
-n46_tags :: (peer:[32]u8,out:[]u8)->int {
+n46_tags :: (peer:[32]u8,out:[]u8)->int #effects(all) {
   hex:[64]u8;own:=peer;h:=hex_encode_checked(cast(string)own[..],hex[..],false);
   n:=json_raw(out,0,"[[\"p\",\"");n=json_raw(out,n,cast(string)hex[..]);
   return json_raw(out,n,"\"]]");
 }
 // The reading of an event by the key me: kind 24133 and a p tag naming me.
-n46_event :: (e:NostrEvent,me:[32]u8)->int {
+n46_event :: (e:NostrEvent,me:[32]u8)->int #effects(all) {
   if e.error!=NE_OK || e.kind!=N46_EVENT {return N46_KIND;}
   for i:0..<e.tags {
     t:=nostr_tag(e,i);
@@ -431,13 +431,13 @@ n46_event :: (e:NostrEvent,me:[32]u8)->int {
   return N46_P;
 }
 // The conversation key of this side's secret and the other side's key.
-n46_key :: (secret:[]u8,peer:[32]u8,out:[]u8)->int {
+n46_key :: (secret:[]u8,peer:[32]u8,out:[]u8)->int #effects(all) {
   work:[1]EcdhScratch;pub:=peer;
   r:=nip44_conversation_key_from_keys_checked(secret,pub[..],work[..],out,false);
   return ifx r==NIP44_OK then N46_OK else N46_KEY;
 }
 // plain encrypted as NIP-44 v2 with the caller's fresh nonce.
-n46_seal :: (key:[]u8,nonce:[]u8,plain:string,out:[]u8)->N46Out {
+n46_seal :: (key:[]u8,nonce:[]u8,plain:string,out:[]u8)->N46Out #effects(all) {
   o:N46Out;o.error=N46_LIMIT;
   if plain.count>N46_MAX_PLAIN {return o;}
   work:[N46_WORK]u8;defer {secure_zero(work[..]);#assert crypto_zeroed(work[..]);}bytes:[N46_MAX_PLAIN]u8;defer {secure_zero(bytes[..]);#assert crypto_zeroed(bytes[..]);}
@@ -448,7 +448,7 @@ n46_seal :: (key:[]u8,nonce:[]u8,plain:string,out:[]u8)->N46Out {
 }
 // An event's content opened. A NIP-04 payload (its ?iv= suffix) is
 // refused; NIP-44's MAC is checked before decryption.
-n46_open :: (key:[]u8,payload:string,out:[]u8)->N46Out {
+n46_open :: (key:[]u8,payload:string,out:[]u8)->N46Out #effects(all) {
   o:N46Out;o.error=N46_ENCRYPTION;
   for c:payload {if c=='?' {return o;}}
   work:[N46_WORK]u8;defer {secure_zero(work[..]);#assert crypto_zeroed(work[..]);}
@@ -462,7 +462,7 @@ n46_open :: (key:[]u8,payload:string,out:[]u8)->N46Out {
 // A client for a token: for bunker:// it knows the signer and sends
 // connect; for its own nostrconnect:// it waits, until now + wait, for the
 // signer's connect response.
-n46_client :: (u:N46Uri,now:int,wait:int)->N46Client {
+n46_client :: (u:N46Uri,now:int,wait:int)->N46Client #effects(all) {
   c:N46Client;c.state=C_CLOSED;
   if u.error!=N46_OK || wait<1 || wait>N46_MAX_WAIT {return c;}
   c.flow=u.flow;c.secret=u.secret;c.state=C_IDLE;
@@ -474,7 +474,7 @@ n46_client :: (u:N46Uri,now:int,wait:int)->N46Client {
 // connect only from a bunker:// token before connecting; get_public_key,
 // ping, switch_relays and logout once connected; sign_event and nip44_*
 // once the user's key is known; the NIP-04 methods never.
-n46_ask :: (c:[]N46Client,method:int,id:string,now:int,wait:int)->int {
+n46_ask :: (c:[]N46Client,method:int,id:string,now:int,wait:int)->int #effects(all) {
   if method<0 || method>=N46_METHODS.count || wait<1 || wait>N46_MAX_WAIT {return N46_WAIT;}
   if n46_legacy(method) {return N46_LEGACY;}
   s:=c[0].state;
@@ -495,12 +495,12 @@ n46_ask :: (c:[]N46Client,method:int,id:string,now:int,wait:int)->int {
   return N46_OK;
 }
 // Frees a slot; a connect that ended without success leaves the client idle.
-n46_end :: (c:[]N46Client,k:int) {
+n46_end :: (c:[]N46Client,k:int) #effects(all) {
   if c[0].pending[k].method==M_CONNECT {c[0].state=C_IDLE;}
   c[0].pending[k]=N46Pending.{};
 }
 // Marks every request past its deadline expired; returns how many.
-n46_expire :: (c:[]N46Client,now:int)->int {
+n46_expire :: (c:[]N46Client,now:int)->int #effects(all) {
   n:=0;
   for k:0..<N46_SLOTS {if c[0].pending[k].state!=P_FREE && now>c[0].pending[k].deadline {n46_end(c,k);n+=1;}}
   if c[0].flow==N46_NOSTRCONNECT && c[0].state==C_CONNECTING && now>c[0].deadline {c[0].state=C_CLOSED;n+=1;}
@@ -511,7 +511,7 @@ n46_expire :: (c:[]N46Client,now:int)->int {
 // frees it (N46_ERROR), a result frees it. connect must answer "ack" or
 // the secret; for a nostrconnect:// token the response comes unasked and
 // must echo the secret, and its author becomes the signer.
-n46_take :: (c:[]N46Client,author:[32]u8,r:N46Reply,now:int)->N46Take {
+n46_take :: (c:[]N46Client,author:[32]u8,r:N46Reply,now:int)->N46Take #effects(all) {
   k:N46Take;k.error=r.error;
   if r.error!=N46_OK {return k;}
   res:=r.result;result:=cast(string)res.b[0..<res.n];sec:=c[0].secret;
@@ -551,12 +551,12 @@ n46_take :: (c:[]N46Client,author:[32]u8,r:N46Reply,now:int)->N46Take {
 
 // book:begin signer
 // The session of a client key, or -1.
-n46_session :: (b:N46Bunker,client:[32]u8)->int {
+n46_session :: (b:N46Bunker,client:[32]u8)->int #effects(all) {
   for i:0..<N46_SESSIONS {if b.sessions[i].live && n46_same(b.sessions[i].client,client) {return i;}}
   return -1;
 }
 // A session for client with perms: its old one replaced, else a free one.
-n46_open_session :: (b:[]N46Bunker,client:[32]u8,perms:N46Perms)->int {
+n46_open_session :: (b:[]N46Bunker,client:[32]u8,perms:N46Perms)->int #effects(all) {
   at:=n46_session(b[0],client);
   for i:0..<N46_SESSIONS {if at<0 && !b[0].sessions[i].live {at=i;}}
   if at>=0 {b[0].sessions[at]=N46Session.{live=true,client=client,perms=perms};}
@@ -567,7 +567,7 @@ n46_open_session :: (b:[]N46Bunker,client:[32]u8,perms:N46Perms)->int {
 // the user offers and the client asked for; every other method needs a
 // session and its permission; logout ends the session; the NIP-04 methods
 // are refused. A refusal is answered with an error under the request's id.
-n46_admit :: (b:[]N46Bunker,client:[32]u8,c:N46Call)->N46Admit {
+n46_admit :: (b:[]N46Bunker,client:[32]u8,c:N46Call)->N46Admit #effects(all) {
   a:N46Admit;a.error=c.error;a.method=c.method;
   if c.error!=N46_OK {return a;}
   a.error=N46_LEGACY;
@@ -610,7 +610,7 @@ n46_admit :: (b:[]N46Bunker,client:[32]u8,c:N46Call)->N46Admit {
 // The signer's side of a nostrconnect:// token its user pasted: a session
 // for the client's key with what the user offers and the token asked for.
 // The signer then answers connect with the token's secret as its result.
-n46_accept :: (b:[]N46Bunker,u:N46Uri)->int {
+n46_accept :: (b:[]N46Bunker,u:N46Uri)->int #effects(all) {
   if u.error!=N46_OK || u.flow!=N46_NOSTRCONNECT {return N46_SCHEME;}
   return ifx n46_open_session(b,u.peer,n46_meet(b[0].offer,u.perms))<0 then N46_FULL else N46_OK;
 }

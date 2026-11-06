@@ -81,20 +81,20 @@ unit direction from the target to the camera. It uses `math_sin` and
 ```jai
 // The look input turns and tilts the camera (radians; positive turns left and looks up), and
 // the zoom moves it out (metres). A value that isn't a number changes nothing.
-follow_look :: (f: Follow, dyaw: f32, dpitch: f32) -> Follow {
+follow_look :: (f: Follow, dyaw: f32, dpitch: f32) -> Follow #effects(all) {
   next := f;
   if follow_finite(dyaw) { next.theta = follow_wrap(f.theta + dyaw); }
   if follow_finite(dpitch) { next.phi = follow_clamp(f.phi + dpitch, FOLLOW_PHI_MIN, FOLLOW_PHI_MAX); }
   return next;
 }
-follow_zoom :: (f: Follow, delta: f32) -> Follow {
+follow_zoom :: (f: Follow, delta: f32) -> Follow #effects(all) {
   next := f;
   if follow_finite(delta) { next.max_dist = follow_clamp(f.max_dist + delta, FOLLOW_ZOOM_MIN, FOLLOW_ZOOM_MAX); }
   return next;
 }
 // The unit direction from the target out to the camera. It uses aethyr/math.coax, so a step
 // that reads it has the same bits on every host.
-follow_offset :: (f: Follow) -> WorldPoint {
+follow_offset :: (f: Follow) -> WorldPoint #effects(all) {
   out := math_sin(f.phi);
   return world_point(out * math_sin(f.theta), math_cos(f.phi), out * math_cos(f.theta));
 }
@@ -126,7 +126,7 @@ itself. This keeps a camera that backs away from a wall out of the wall
 // FOLLOW_CLEAR band) holds the camera in only if the line runs into the box itself, so backing
 // away from a wall never puts the camera in it. It reads the colliders and changes nothing.
 FollowRoom :: struct { room: f32; terrain_room: f32; status: QueryStatus; }
-follow_room_checked :: (c: Colliders, limit: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> FollowRoom {
+follow_room_checked :: (c: Colliders, limit: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> FollowRoom #effects(all) {
   room := follow_lo(limit, max);
   if c.boxes.count >= QUERY_BOX { room = follow_room_boxes(c, room, target, offset, max); }
   if c.capsules.count >= QUERY_CAPSULE { room = follow_room_capsules(c, room, target, offset, max); }
@@ -143,10 +143,10 @@ follow_room_checked :: (c: Colliders, limit: f32, target: WorldPoint, offset: Wo
   }
   return FollowRoom.{room = room, terrain_room = terrain_room};
 }
-follow_room :: (c: Colliders, limit: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> f32 {
+follow_room :: (c: Colliders, limit: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> f32 #effects(all) {
   return follow_room_checked(c, limit, target, offset, max).room;
 }
-follow_room_boxes :: (c: Colliders, start: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> f32 {
+follow_room_boxes :: (c: Colliders, start: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> f32 #effects(all) {
   room := start;
   o := query_axes(target); d := query_axes(offset);
   for i: 0..<query_boxes(c) {
@@ -178,7 +178,7 @@ follow_room_boxes :: (c: Colliders, start: f32, target: WorldPoint, offset: Worl
   }
   return room;
 }
-follow_room_capsules :: (c: Colliders, start: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> f32 {
+follow_room_capsules :: (c: Colliders, start: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> f32 #effects(all) {
   room := start;
   far := world_add(target, world_scale(offset, max));
   for i: 0..<query_capsules(c) {
@@ -218,7 +218,7 @@ back out as far as one step of `dt`:
 // One step of the camera: the target follows `dest` on the spring, then the camera pulls in at
 // once to the room it has, or backs out toward it by FOLLOW_EASE each 1/60 s.
 // A mesh contact may be nearer than FOLLOW_CLOSEST; a refused query preserves state.
-follow_track :: (f: Follow, c: Colliders, limit: f32, dest: WorldPoint, dt: f32) -> Follow {
+follow_track :: (f: Follow, c: Colliders, limit: f32, dest: WorldPoint, dt: f32) -> Follow #effects(all) {
   next := follow_spring(f, dest, dt);
   available := follow_room_checked(c, limit, next.target, follow_offset(next), next.max_dist);
   if available.status != QueryStatus.ok { refused := f; refused.status = available.status; return refused; }
@@ -241,10 +241,10 @@ outside the wall:
 // Where to draw the camera: the target mixed between the last two steps by `share` (the loop's alpha, in [0, 1]),
 // out along the camera's direction by the mixed distance, but never further than the last step
 // (a wall pulls the camera in at once, and drawing never shows it further out).
-follow_at :: (prev: WorldPoint, cur: WorldPoint, share: f32) -> WorldPoint {
+follow_at :: (prev: WorldPoint, cur: WorldPoint, share: f32) -> WorldPoint #effects(all) {
   return world_point(prev.x + (cur.x - prev.x) * share, prev.y + (cur.y - prev.y) * share, prev.z + (cur.z - prev.z) * share);
 }
-follow_eye :: (at: WorldPoint, offset: WorldPoint, prev_dist: f32, dist: f32, share: f32) -> WorldPoint {
+follow_eye :: (at: WorldPoint, offset: WorldPoint, prev_dist: f32, dist: f32, share: f32) -> WorldPoint #effects(all) {
   d := follow_lo(prev_dist + (dist - prev_dist) * share, dist);
   return world_point(at.x + offset.x * d, at.y + offset.y * d, at.z + offset.z * d);
 }
@@ -255,15 +255,15 @@ The walker draws its camera with these two calls:
 <!-- source: aethyr/walk.coax drawn -->
 ```jai
 // The feet and facing to draw this frame.
-walk_feet :: (p: Player) -> Vec3 { return mix3(p.prev_pos, p.pos, alpha(p)); }
-walk_face :: (p: Player) -> f32 {
+walk_feet :: (p: Player) -> Vec3 #effects(all) { return mix3(p.prev_pos, p.pos, alpha(p)); }
+walk_face :: (p: Player) -> f32 #effects(all) {
   return wrap_angle(p.prev_face + wrap_angle(p.face - p.prev_face) * alpha(p));
 }
 // The camera this frame, Aethyr's third-person shot: what it looks at, and where it is. A wall
 // pulls the camera in at once, so it is never shown further out than the last step.
-walk_shot :: (p: Player) -> CameraShot { return follow_shot(follow_of(p), wp(p.prev_target), p.prev_dist, alpha(p)); }
-walk_at :: (p: Player) -> Vec3 { return vp(walk_shot(p).at); }
-walk_eye :: (p: Player) -> Vec3 { return vp(walk_shot(p).eye); }
+walk_shot :: (p: Player) -> CameraShot #effects(all) { return follow_shot(follow_of(p), wp(p.prev_target), p.prev_dist, alpha(p)); }
+walk_at :: (p: Player) -> Vec3 #effects(all) { return vp(walk_shot(p).at); }
+walk_eye :: (p: Player) -> Vec3 #effects(all) { return vp(walk_shot(p).eye); }
 ```
 
 ## One shot for every camera
@@ -300,11 +300,11 @@ above the drawn feet, and it looks the way the follow camera looks:
 // person, the eyes above the drawn feet looking the way the follow camera looks.
 FOLLOW_FIRST_EYE :: 1.6;     // first person: the eyes, above the feet
 
-follow_shot :: (f: Follow, prev_target: WorldPoint, prev_dist: f32, share: f32) -> CameraShot {
+follow_shot :: (f: Follow, prev_target: WorldPoint, prev_dist: f32, share: f32) -> CameraShot #effects(all) {
   at := follow_at(prev_target, f.target, share);
   return CameraShot.{eye = follow_eye(at, follow_offset(f), prev_dist, f.dist, share), at = at};
 }
-follow_first_shot :: (f: Follow, feet: WorldPoint) -> CameraShot {
+follow_first_shot :: (f: Follow, feet: WorldPoint) -> CameraShot #effects(all) {
   eye := world_point(feet.x, feet.y + f32(FOLLOW_FIRST_EYE), feet.z);
   return CameraShot.{eye = eye, at = world_sub(eye, follow_offset(f))};
 }
@@ -317,13 +317,13 @@ drawn this frame:
 ```jai
 // The camera a mode shows, as one of Aethyr's shots (aethyr/follow.coax): first person, the
 // follow behind you, or top down. Each reads only what is drawn this frame.
-walk_view :: (p: Player, mode: int) -> CameraShot {
+walk_view :: (p: Player, mode: int) -> CameraShot #effects(all) {
   if mode == 0 { return follow_first_shot(follow_of(p), wp(walk_feet(p))); }
   if mode == 2 { return shot_top(wp(walk_feet(p))); }
   return walk_shot(p);
 }
-walk_view_eye :: (p: Player, mode: int) -> Vec3 { return vp(walk_view(p, mode).eye); }
-walk_view_at :: (p: Player, mode: int) -> Vec3 { return vp(walk_view(p, mode).at); }
+walk_view_eye :: (p: Player, mode: int) -> Vec3 #effects(all) { return vp(walk_view(p, mode).eye); }
+walk_view_at :: (p: Player, mode: int) -> Vec3 #effects(all) { return vp(walk_view(p, mode).at); }
 ```
 
 ### The free orbit
@@ -452,7 +452,7 @@ player's step and then the camera's, so every realm that advances through
 // the step's result and the colliders and changes only the camera's fields, so the player's step
 // is the same with the camera or without it. The player keeps those fields because the realms'
 // C faces read them.
-camera_step :: (w: World, p: Player, dt: f32) -> Player {
+camera_step :: (w: World, p: Player, dt: f32) -> Player #effects(all) {
   next := p;
   cam := follow_track(follow_of(p), colliders(w), w.room, wp(look_at(p)), dt);
   next.target = vp(cam.target); next.spring_vel = vp(cam.vel); next.dist = cam.dist;
@@ -460,7 +460,7 @@ camera_step :: (w: World, p: Player, dt: f32) -> Player {
   return next;
 }
 // One fixed step of the player, then of its camera: what steps_in runs each step.
-step_once :: (w: World, p: Player, dt: f32) -> Player {
+step_once :: (w: World, p: Player, dt: f32) -> Player #effects(all) {
   next := step(w, p, dt);
   if next.collision_status != CollideStatus.ok { return next; }
   return camera_step(w, next, dt);
@@ -481,7 +481,7 @@ wall pulled the camera in:
 // run into a wall and round it, past a body, two jumps and a steady turn, at 60 FPS, the player is the same,
 // bit for bit, whether its camera steps after every step, never, or twice a step. Only the
 // camera's own fields differ, and the camera did meet the wall.
-walker_same :: (a: Player, b: Player) -> bool {
+walker_same :: (a: Player, b: Player) -> bool #effects(all) {
   return a.pos.x == b.pos.x && a.pos.y == b.pos.y && a.pos.z == b.pos.z && a.vel.x == b.vel.x && a.vel.y == b.vel.y
     && a.vel.z == b.vel.z && a.face == b.face && a.on_ground == b.on_ground && a.act == b.act && a.theta == b.theta
     && a.phi == b.phi && a.max_dist == b.max_dist && a.prev_pos.x == b.prev_pos.x && a.prev_pos.y == b.prev_pos.y
@@ -490,7 +490,7 @@ walker_same :: (a: Player, b: Player) -> bool {
     && a.clock.carry_ns == b.clock.carry_ns;
 }
 // A frame as advance_in runs it, with the camera stepped `cams` times after each player step.
-frame_with :: (w: World, p: Player, frame: f32, cams: int) -> Player {
+frame_with :: (w: World, p: Player, frame: f32, cams: int) -> Player #effects(all) {
   next := p;
   next.clock = loop_accept(p.clock, cast(f64) frame);
   for i: 0..<loop_due(next.clock) {

@@ -31,7 +31,7 @@ UN_BAD_ID :: 1;         // not an event, or its id isn't the hash of its fields
 UN_BAD_SIGNATURE :: 2;  // the id holds; the signature doesn't
 
 // The x-only public key of secret into out (32 bytes). False for a bad key.
-unlock_pubkey :: (secret: [] u8, out: [] u8) -> bool #export_c {
+unlock_pubkey :: (secret: [] u8, out: [] u8) -> bool #export_c #effects(all) {
   if out.count != 32 { return false; }
   pub: [33] u8;   // bip32_public refuses a secret that isn't 32 bytes or isn't a key
   if !bip32_public(secret, pub[..]) { return false; }
@@ -43,7 +43,7 @@ unlock_pubkey :: (secret: [] u8, out: [] u8) -> bool #export_c {
 // string arrays) and content, into out as NIP-01 JSON. aux is 32 fresh random
 // bytes from the host. Its length, or -1 (EVENT_REFUSED). Each step either
 // advances event_sign.coax's four stages or refuses, so the loop ends.
-unlock_sign :: (secret: [] u8, aux: [] u8, created_at: int, kind: int, tags: [] u8, content: [] u8, out: [] u8) -> int #export_c {
+unlock_sign :: (secret: [] u8, aux: [] u8, created_at: int, kind: int, tags: [] u8, content: [] u8, out: [] u8) -> int #export_c #effects(all) {
   work: [1] NostrSignWork; scratch: [65536] u8;
   r := EVENT_MORE;
   while r == EVENT_MORE {
@@ -54,7 +54,7 @@ unlock_sign :: (secret: [] u8, aux: [] u8, created_at: int, kind: int, tags: [] 
 
 // An event's verdict: UN_OK when its id is the hash of its fields and its
 // signature verifies under its pubkey; otherwise why not.
-unlock_verify :: (event: [] u8) -> int #export_c {
+unlock_verify :: (event: [] u8) -> int #export_c #effects(all) {
   scratch: [NE_MAX_OUTPUT] u8;
   e := nostr_event_read(cast(string) event, scratch[..], false);
   if e.error != NE_OK { return UN_BAD_ID; }
@@ -64,7 +64,7 @@ unlock_verify :: (event: [] u8) -> int #export_c {
 // Whether an event's id is the hash of its fields, its signature unchecked:
 // a NIP-59 rumor is unsigned (the seal authenticates it), so the opener
 // passes it with any 64-byte sig and only its id counts.
-unlock_id_matches :: (event: [] u8) -> bool #export_c {
+unlock_id_matches :: (event: [] u8) -> bool #export_c #effects(all) {
   scratch: [NE_MAX_OUTPUT] u8;
   return nostr_event_read(cast(string) event, scratch[..], false).error == NE_OK;
 }
@@ -73,7 +73,7 @@ unlock_id_matches :: (event: [] u8) -> bool #export_c {
 // into out (32 bytes): NIP44_OK (0), or why not (NIP44_KEY, NIP44_OUTPUT,
 // NIP44_PEER for a peer that isn't on the curve, NIP44_SECRET for a bad key).
 // nip44-key.coax wipes the ECDH scratch on every path.
-unlock_conversation_key :: (secret: [] u8, peer: [] u8, out: [] u8) -> int #export_c {
+unlock_conversation_key :: (secret: [] u8, peer: [] u8, out: [] u8) -> int #export_c #effects(all) {
   work: [1] EcdhScratch;
   return cast(int) nip44_conversation_key_from_keys_checked(secret, peer, work[..], out, false);
 }
@@ -81,23 +81,23 @@ unlock_conversation_key :: (secret: [] u8, peer: [] u8, out: [] u8) -> int #expo
 // bytes from the host) into out as the base64 payload: its length, or the
 // negative NIP-44 code. work holds nip44_encrypt_work_size(NIP44_COMPAT, n)
 // bytes; the face passes disjoint buffers and wipes work after.
-unlock_encrypt :: (ck: [] u8, nonce: [] u8, plaintext: [] u8, work: [] u8, out: [] u8) -> int #export_c {
+unlock_encrypt :: (ck: [] u8, nonce: [] u8, plaintext: [] u8, work: [] u8, out: [] u8) -> int #export_c #effects(all) {
   r := nip44_encrypt_checked(NIP44_COMPAT, ck, nonce, plaintext, work, out, false);
   return ifx r.error == NIP44_OK then r.written else -cast(int) r.error;
 }
 // A payload opened under a conversation key into out: the plaintext's length,
 // or the negative NIP-44 code (NIP44_MAC for a changed byte or another key,
 // and then nothing is written to out).
-unlock_decrypt :: (ck: [] u8, payload: [] u8, work: [] u8, out: [] u8) -> int #export_c {
+unlock_decrypt :: (ck: [] u8, payload: [] u8, work: [] u8, out: [] u8) -> int #export_c #effects(all) {
   r := nip44_decrypt_checked(NIP44_COMPAT, ck, cast(string) payload, work, out, false);
   return ifx r.error == NIP44_OK then r.written else -cast(int) r.error;
 }
 
 // ---- checks (test keys only)
 
-un_bytes :: (s: string, out: [] u8) -> [] u8 { for i: 0..<s.count { out[i] = s[i]; } return out[0..<s.count]; }
+un_bytes :: (s: string, out: [] u8) -> [] u8 #effects(all) { for i: 0..<s.count { out[i] = s[i]; } return out[0..<s.count]; }
 // The test key k: 31 zero bytes and k (k = 1 is the generator's scalar), in a fresh (zero) buffer or one only un_key wrote.
-un_key :: (k: u8, out: [] u8) { out[31] = k; }
+un_key :: (k: u8, out: [] u8) #effects(all) { out[31] = k; }
 UN_TAGS :: "[[\"relay\",\"wss://relay.example\"],[\"challenge\",\"c-1\"]]";
 // The generator's x coordinate: the public key of scalar 1.
 UN_G :: [32] u8.[0x79, 0xbe, 0x66, 0x7e, 0xf9, 0xdc, 0xbb, 0xac, 0x55, 0xa0, 0x62, 0x95, 0xce, 0x87, 0x0b, 0x07,

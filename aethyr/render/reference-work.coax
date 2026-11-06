@@ -18,18 +18,18 @@ RRWorkLimits :: struct {ok:bool;pass_steps:int;invocation_steps:int;}
  for n,i:inputs {#assert rr_work_invocation(n)==expected[i];}
  #assert rr_work_invocation(-9223372036854775807-1)==(-1) && rr_work_invocation(9223372036854775807)==(-1);
 }
-rr_work_profile :: (rrw_name:string)->RRWorkProfile {
+rr_work_profile :: (rrw_name:string)->RRWorkProfile #effects(all) {
  if rrw_name=="standard" {return RRWorkProfile.standard;}
  if rrw_name=="large-world" {return RRWorkProfile.large_world;}
  if rrw_name=="complex-world" {return RRWorkProfile.complex_world;}return RRWorkProfile.invalid;
 }
-rr_work_limits :: (rrw_profile:RRWorkProfile)->RRWorkLimits {
+rr_work_limits :: (rrw_profile:RRWorkProfile)->RRWorkLimits #effects(all) {
  if rrw_profile==RRWorkProfile.standard {return RRWorkLimits.{ok=true,pass_steps=100000000,invocation_steps=100000000};}
  if rrw_profile==RRWorkProfile.large_world {return RRWorkLimits.{ok=true,pass_steps=1000000000,invocation_steps=100000000};}
  if rrw_profile==RRWorkProfile.complex_world {return RRWorkLimits.{ok=true,pass_steps=3000000000,invocation_steps=100000000};}
  return RRWorkLimits.{};
 }
-rr_work_invocation :: (rrw_left:int)->int {
+rr_work_invocation :: (rrw_left:int)->int #effects(all) {
  if rrw_left<0 || rrw_left>3000000000 {return -1;}
  // All admitted integers and this sum/difference are exactly representable
  // in f64. Clear only the difference's sign to take its absolute value.
@@ -45,7 +45,7 @@ rr_work_invocation :: (rrw_left:int)->int {
  zero:=0.0;#assert rrw_integer(zero/zero)==(-1) && rrw_integer(1.0/zero)==(-1) && rrw_integer(-1.0/zero)==(-1);
 }
 // Admit an exact integer work receipt before narrowing a floating calculation.
-rrw_integer :: (rrw_value:f64)->int {
+rrw_integer :: (rrw_value:f64)->int #effects(all) {
  if !(rrw_value>=0 && rrw_value<=100000000) {return -1;}
  result:=int(rrw_value);if f64(result)!=rrw_value {return -1;}return result;
 }

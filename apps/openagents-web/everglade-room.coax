@@ -36,9 +36,9 @@ EgChat :: struct {
   fresh: f32;              // s since the last line came in
 }
 
-everglade_room_name :: () -> string #export_c { return EG_ROOM; }
+everglade_room_name :: () -> string #export_c #effects(all) { return EG_ROOM; }
 // The next line to say, once: the face takes it and posts it, and hands the answer to everglade_chat_answer.
-everglade_chat_take :: (s: [] Everglade) -> string #export_c {
+everglade_chat_take :: (s: [] Everglade) -> string #export_c #effects(all) {
   c := s[0].chat;
   if c.queued == 0 || c.out || c.wait > 0 { return ""; }
   s[0].chat.out = true;
@@ -55,7 +55,7 @@ chat_note :: (s: [] Everglade, why: int) { s[0].chat.why = why; s[0].chat.why_t 
 // The room's answer to the line sent ("STATUS\n" and the body; "0\n" when the network lost it): kept,
 // refused for speed (429) or lost (sent again after CHAT_RETRY), kicked (403 "kicked": the lines go,
 // and you're told), anything else the room won't keep (that line goes).
-everglade_chat_answer :: (s: [] Everglade, answer: string) #export_c {
+everglade_chat_answer :: (s: [] Everglade, answer: string) #export_c #effects(all) {
   s[0].chat.out = false;
   status := 0; i := 0;
   while i < answer.count && answer[i] >= '0' && answer[i] <= '9' { status = status * 10 + cast(int) (answer[i] - '0'); i += 1; }

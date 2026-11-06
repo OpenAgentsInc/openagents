@@ -19,16 +19,16 @@
  #assert !dci_format(cast(f64)rates[rate],channels,0,true);
  #assert !dci_format(cast(f64)rates[rate],channels,stride,false);
 }
-dci_uid :: (uid:string)->bool {
+dci_uid :: (uid:string)->bool #effects(all) {
  if uid.count<0 || uid.count>512 {return false;}
  for c:uid {if c<32 || c==127 {return false;}}
  return true;
 }
-dci_matches :: (wanted:string,observed:string,is_default:bool)->bool #export_c {
+dci_matches :: (wanted:string,observed:string,is_default:bool)->bool #export_c #effects(all) {
  if !dci_uid(wanted) || !dci_uid(observed) || observed.count==0 {return false;}
  return ifx wanted.count==0 then is_default else wanted==observed;
 }
-dci_format :: (rate:f64,channels:int,stride:int,host_time:bool)->bool #export_c {
+dci_format :: (rate:f64,channels:int,stride:int,host_time:bool)->bool #export_c #effects(all) {
  return host_time && (rate==16000 || rate==24000 || rate==44100 || rate==48000)
   && channels>=1 && channels<=32 && (stride==1 || stride==channels);
 }

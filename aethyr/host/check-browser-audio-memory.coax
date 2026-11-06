@@ -3,7 +3,7 @@
 #load "../../coax/web/wasm-chrome.coax";
 #load "audio-memory-conformance.coax";
 #load "audio-retention-conformance.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4 {tool_errln("usage: check-browser-audio-memory SITE_ROOT LOCAL_URL REACTOR.wasm OUT.json");return 2;}
  url:=args_at(a[..],1);if url.count<17||url[0..<17]!="http://127.0.0.1:" {return 2;}
  site:=args_at(a[..],0);paths:[3][4096]u8;binary:[262144]u8;n:=fs_read(args_at(a[..],2),binary[..]);build:=fs_join(site,"build",paths[0][..]);

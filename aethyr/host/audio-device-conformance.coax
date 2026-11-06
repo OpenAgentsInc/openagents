@@ -30,8 +30,8 @@ HostAudioDeviceObserved :: struct {
  v:=HostAudioDeviceObserved.{format=1,muted=1,rate=48000,channels=2,running_callbacks=1,running_frames=1,running_coax=1024,held_callbacks=1,held_coax=1024,resumed_callbacks=2,resumed_frames=1025,resumed_coax=2048,closed_coax=2048,after_close_coax=2048,node=1};#assert had_device(v);
  v.resumed_frames=2048;#assert had_device(v);v.resumed_frames=2049;#assert !had_device(v);
 }
-had_block_clock :: (device:int,coax:int)->bool {return device>0&&coax>=device&&coax-device<1024&&coax%1024==0;}
-had_device :: (v:HostAudioDeviceObserved)->bool #export_c {
+had_block_clock :: (device:int,coax:int)->bool #effects(all) {return device>0&&coax>=device&&coax-device<1024&&coax%1024==0;}
+had_device :: (v:HostAudioDeviceObserved)->bool #export_c #effects(all) {
  if v.format!=1||v.muted!=1||v.rate!=48000||v.channels!=2||v.initial_callbacks!=0||v.initial_coax!=0||v.running_callbacks<1||v.failures!=0||v.node<1||v.nonzero!=0 {return false;}
  if !had_block_clock(v.running_frames,v.running_coax)||v.held_callbacks!=v.running_callbacks||v.held_coax!=v.running_coax {return false;}
  if v.resumed_callbacks<=v.held_callbacks||v.resumed_frames<=v.running_frames||!had_block_clock(v.resumed_frames,v.resumed_coax) {return false;}

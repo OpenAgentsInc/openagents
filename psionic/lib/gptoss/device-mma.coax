@@ -18,7 +18,7 @@
 // the last tile (gk_expert_tile gives `experts`, which owns no pairs), are
 // left as they are: they reach only accumulator columns that gk_mma_part
 // never stores.
-gk_mma_split :: (item:int,cols:int,tokens:int,experts:int,selected:int,slot_input:int,map:[]int,counts:[]int,x:[]f32,hi:[]u32,lo:[]u32) #export_c {
+gk_mma_split :: (item:int,cols:int,tokens:int,experts:int,selected:int,slot_input:int,map:[]int,counts:[]int,x:[]f32,hi:[]u32,lo:[]u32) #export_c #effects(all) {
     half:=cols/2;p:=item%half;g:=item/half;
     e:=gk_expert_tile(g/8,experts,counts);o:=g-8*counts[experts+e];
     if o>=counts[e] {return;}
@@ -34,7 +34,7 @@ gk_mma_split :: (item:int,cols:int,tokens:int,experts:int,selected:int,slot_inpu
 // The expert and group of one warp's 32 grouped rows, as
 // expert*65536+group, or -1 past the last group: expert e owns
 // ceil(counts[e] / 32) groups, in expert order.
-gk_mma_group :: (quad:int,experts:int,counts:[]int)->int {
+gk_mma_group :: (quad:int,experts:int,counts:[]int)->int #effects(all) {
     r:=-1;seen:=0;
     for e:0..<experts {q:=(counts[e]+31)/32;if r<0 && quad<seen+q {r=e*65536+quad-seen;}seen+=q;}
     return r;
@@ -44,7 +44,7 @@ gk_mma_group :: (quad:int,experts:int,counts:[]int)->int {
 // Writes partial[(slice*grouped+g)*rows+row] for each valid grouped row g,
 // and marks there 1 when the lane read a scale above 252 (gk_mma_finish then
 // flags the output, as gk_batch_mx_part's non-finite partials do).
-gk_mma_part :: (item:int,rows:int,cols:int,experts:int,slices:int,grouped:int,packed:[]u8,scales:[]u8,counts:[]int,hi:[]u32,lo:[]u32,partial:[]f32,marks:[]u8) #export_c {
+gk_mma_part :: (item:int,rows:int,cols:int,experts:int,slices:int,grouped:int,packed:[]u8,scales:[]u8,counts:[]int,hi:[]u32,lo:[]u32,partial:[]f32,marks:[]u8) #export_c #effects(all) {
     slice:=item%slices;rest:=item/slices;blocks:=rows/16;block:=rest%blocks;quad:=rest/blocks;
     q:=gk_mma_group(quad,experts,counts);
     if q<0 {return;}
@@ -92,7 +92,7 @@ gk_mma_part :: (item:int,rows:int,cols:int,experts:int,slices:int,grouped:int,pa
 // Item g*rows+row: the slices added in f64 in slice order, rounded to f32,
 // plus the expert's BF16 bias, stored at pair map[...]'s output row, as
 // gk_mx_finish stores it. A marked slice flags the output.
-gk_mma_finish :: (item:int,rows:int,tokens:int,experts:int,slices:int,grouped:int,map:[]int,counts:[]int,partial:[]f32,marks:[]u8,bias:[]u16,out:[]f32,flags:[]u8) #export_c {
+gk_mma_finish :: (item:int,rows:int,tokens:int,experts:int,slices:int,grouped:int,map:[]int,counts:[]int,partial:[]f32,marks:[]u8,bias:[]u16,out:[]f32,flags:[]u8) #export_c #effects(all) {
     row:=item%rows;g:=item/rows;
     e:=gk_expert_tile(g/8,experts,counts);o:=g-8*counts[experts+e];
     if o>=counts[e] {return;}

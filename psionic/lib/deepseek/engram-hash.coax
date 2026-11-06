@@ -65,31 +65,31 @@
     #assert eg_hash(m,eg_start(),tokens[..],mask[..],out[..],stage[..],false).status==EgStatus.token;
 }
 
-eg_prime :: (n:int)->bool {if n<2 {return false;}if n%2==0 {return n==2;}d:=3;while d<=n/d {if n%d==0 {return false;}d+=2;}return true;}
-eg_next_prime :: (n:int)->int {at:=n;while !eg_prime(at) {at+=1;}return at;}
-eg_u32 :: (data:[]u8,at:int)->int {return cast(int)(u32(data[at])|(u32(data[at+1])<<8)|(u32(data[at+2])<<16)|(u32(data[at+3])<<24));}
-eg_raw_size :: (raw:int)->bool {return raw>=1 && raw<=1048576;}
-eg_advance :: (next:int,count:int)->bool {return next+count<=1048576;}
-eg_map_dimensions :: (raw:int,compressed:int,pad:int)->bool {return eg_raw_size(raw) && compressed>=1 && compressed<=1048576 && pad>=0 && pad<raw;}
-eg_admit_map :: (data:[]u8,raw:int,compressed:int,pad:int,sha:string)->EgAdmission #export_c {
+eg_prime :: (n:int)->bool #effects(all) {if n<2 {return false;}if n%2==0 {return n==2;}d:=3;while d<=n/d {if n%d==0 {return false;}d+=2;}return true;}
+eg_next_prime :: (n:int)->int #effects(all) {at:=n;while !eg_prime(at) {at+=1;}return at;}
+eg_u32 :: (data:[]u8,at:int)->int #effects(all) {return cast(int)(u32(data[at])|(u32(data[at+1])<<8)|(u32(data[at+2])<<16)|(u32(data[at+3])<<24));}
+eg_raw_size :: (raw:int)->bool #effects(all) {return raw>=1 && raw<=1048576;}
+eg_advance :: (next:int,count:int)->bool #effects(all) {return next+count<=1048576;}
+eg_map_dimensions :: (raw:int,compressed:int,pad:int)->bool #effects(all) {return eg_raw_size(raw) && compressed>=1 && compressed<=1048576 && pad>=0 && pad<raw;}
+eg_admit_map :: (data:[]u8,raw:int,compressed:int,pad:int,sha:string)->EgAdmission #export_c #effects(all) {
     if !eg_map_dimensions(raw,compressed,pad) {return EgAdmission.{status=EgStatus.shape};}if data.count!=raw*4 {return EgAdmission.{status=EgStatus.capacity};}
     if !pw_digest(data,sha) {return EgAdmission.{status=EgStatus.identity};}
     for i:0..<raw {if eg_u32(data,4*i)>=compressed {return EgAdmission.{status=EgStatus.token};}}
     return EgAdmission.{value=EgMap.{raw=raw,compressed=compressed,pad=eg_u32(data,4*pad),data=data}};
 }
-eg_v41_contract :: ()->EgMapContract #export_c {return EgMapContract.{raw=129280,compressed=99092,pad=2,sha=EG_MAP_SHA};}
-eg_v41_map :: (data:[]u8)->EgAdmission #export_c {c:=eg_v41_contract();return eg_admit_map(data,c.raw,c.compressed,c.pad,c.sha);}
-eg_start :: ()->EgHistory #export_c {return EgHistory.{last=[3]int.[-1,-1,-1]};}
-eg_history_valid :: (h:EgHistory)->bool {
+eg_v41_contract :: ()->EgMapContract #export_c #effects(all) {return EgMapContract.{raw=129280,compressed=99092,pad=2,sha=EG_MAP_SHA};}
+eg_v41_map :: (data:[]u8)->EgAdmission #export_c #effects(all) {c:=eg_v41_contract();return eg_admit_map(data,c.raw,c.compressed,c.pad,c.sha);}
+eg_start :: ()->EgHistory #export_c #effects(all) {return EgHistory.{last=[3]int.[-1,-1,-1]};}
+eg_history_valid :: (h:EgHistory)->bool #effects(all) {
     if h.next<0 || h.next>1048576 {return false;}for j:0..<3 {if h.last[j]<-1 || h.last[j]>=99092 {return false;}if j>=h.next && h.last[j]!=-1 {return false;}}return true;
 }
-eg_look :: (current:int,h:EgHistory)->[4]int {
+eg_look :: (current:int,h:EgHistory)->[4]int #effects(all) {
     inputs:=[4]int.[current,h.last[0],h.last[1],h.last[2]];out:[4]int;blocked:=false;
     for j:0..<4 {blocked=blocked || inputs[j]==-1;out[j]=ifx blocked then 2 else inputs[j];}return out;
 }
-eg_hash_size :: (count:int)->bool {return count>=1 && count<=1048576;}
+eg_hash_size :: (count:int)->bool #effects(all) {return count>=1 && count<=1048576;}
 // book:begin hash
-eg_hash :: (m:EgMap,state:EgHistory,tokens:[]int,mask:[]u8,out:[]int,stage:[]int,overlap:bool)->EgHash #export_c {
+eg_hash :: (m:EgMap,state:EgHistory,tokens:[]int,mask:[]u8,out:[]int,stage:[]int,overlap:bool)->EgHash #export_c #effects(all) {
     if !eg_hash_size(tokens.count) {return EgHash.{status=EgStatus.shape};}
     if !eg_raw_size(m.raw) || m.data.count!=m.raw*4 || m.compressed!=99092 || m.pad!=2 {return EgHash.{status=EgStatus.identity};}
     if !eg_history_valid(state) || !eg_advance(state.next,tokens.count) {return EgHash.{status=EgStatus.state};}

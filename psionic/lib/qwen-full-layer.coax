@@ -25,23 +25,23 @@ QhLayout :: struct {norm:int;temp:int;prepare:int;prepared:int;attend:int;att_ou
     #assert r.status==QhStatus.number && r.written==0;
     for v:cache {#assert v==7;}for v:out {#assert v==-7;}
 }
-qh_valid :: (s:QhShape)->bool {return qb_valid(cast(u8)s.dtype,s.width,s.hidden,s.attention.epsilon) && qf_valid(s.attention) && qf_token_count(s.capacity);}
-qh_rope_offset :: (base:int,dim:int)->int {return base+2*dim;}
-qh_cache_count :: (s:QhShape)->int {return 2*s.capacity*s.attention.kv_heads*s.attention.head_dim;}
-qh_layout :: (s:QhShape,position:int)->QhLayout {
+qh_valid :: (s:QhShape)->bool #effects(all) {return qb_valid(cast(u8)s.dtype,s.width,s.hidden,s.attention.epsilon) && qf_valid(s.attention) && qf_token_count(s.capacity);}
+qh_rope_offset :: (base:int,dim:int)->int #effects(all) {return base+2*dim;}
+qh_cache_count :: (s:QhShape)->int #effects(all) {return 2*s.capacity*s.attention.kv_heads*s.attention.head_dim;}
+qh_layout :: (s:QhShape,position:int)->QhLayout #effects(all) {
     q:=s.attention.heads*s.attention.head_dim;p:QhLayout;p.temp=s.width;p.prepare=p.temp+2*q+s.width;
     p.prepared=p.prepare+qf_input_count(s.attention);p.attend=p.prepared+qf_output_count(s.attention);
     p.att_out=p.attend+qf_attend_count(s.attention,position+1);p.att_work=p.att_out+q;
     p.mixed=p.att_work+q;p.draft=p.mixed+s.width;p.block=p.draft+s.width;p.total=p.block+qb_work_count(s.width,s.hidden);return p;
 }
-qh_weights_valid :: (s:QhShape,w:QhWeights)->bool {
+qh_weights_valid :: (s:QhShape,w:QhWeights)->bool #effects(all) {
     d:=s.width;f:=s.hidden;q:=s.attention.heads*s.attention.head_dim;k:=s.attention.kv_heads*s.attention.head_dim;dim:=s.attention.head_dim;
     return w.input_norm.count==d && w.post_norm.count==d && w.q_norm.count==dim && w.k_norm.count==dim && w.q.count==qm_bytes(s.dtype,2*q,d) && w.k.count==qm_bytes(s.dtype,k,d) && w.v.count==qm_bytes(s.dtype,k,d) && w.mixer_out.count==qm_bytes(s.dtype,d,q) && w.gate.count==qm_bytes(s.dtype,f,d) && w.up.count==qm_bytes(s.dtype,f,d) && w.down.count==qm_bytes(s.dtype,d,f);
 }
-qh_mstatus :: (s:QmStatus)->QhStatus {return cast(QhStatus)cast(u8)s;}
-qh_fstatus :: (s:QfStatus)->QhStatus {return cast(QhStatus)cast(u8)s;}
+qh_mstatus :: (s:QmStatus)->QhStatus #effects(all) {return cast(QhStatus)cast(u8)s;}
+qh_fstatus :: (s:QfStatus)->QhStatus #effects(all) {return cast(QhStatus)cast(u8)s;}
 // book:begin layer
-qh_step :: (s:QhShape,w:QhWeights,x:[]f32,rope:[]f32,position:int,cache:[]f32,out:[]f32,work:[]f32,overlap:bool)->QhResult #export_c {
+qh_step :: (s:QhShape,w:QhWeights,x:[]f32,rope:[]f32,position:int,cache:[]f32,out:[]f32,work:[]f32,overlap:bool)->QhResult #export_c #effects(all) {
     if !qh_valid(s) {return QhResult.{status=QhStatus.shape};}
     if position<0 || position>=s.capacity {return QhResult.{status=QhStatus.capacity};}
     d:=s.width;f:=s.hidden;q:=s.attention.heads*s.attention.head_dim;k:=s.attention.kv_heads*s.attention.head_dim;dim:=s.attention.head_dim;tokens:=position+1;

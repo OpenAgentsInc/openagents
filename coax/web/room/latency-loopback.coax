@@ -7,7 +7,7 @@
   #assert lb_local("http://localhost:00001/")&&lb_local("http://localhost:90/");
   for url:[16]string.["https://openagents.com/","http://127.0.0.1:8830/","http://127.0.0.1:8843/","http://127.0.0.1:8872/","http://127.0.0.1:8876/","http://127.0.0.1:8913/","http://127.0.0.1:0/","http://localhost:65536/","http://127.0.0.1:61252evil/","http://localhost:/","http://localhost:1","http://localhost:000001/","http://localhost:00000000000000000000001/","http://127.0.0.1.evil:12/","http://127.0.0.1:1?x=/",""]{#assert !lb_local(url);}
 }
-lb_local::(url:string)->bool {
+lb_local::(url:string)->bool #effects(all) {
   if !uri_prefix(url,"http://127.0.0.1:")&&!uri_prefix(url,"http://localhost:"){return false;}
   port:=0;digits:=0;
   for b:url[17..<url.count]{

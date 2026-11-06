@@ -83,14 +83,14 @@ KyRetry :: struct {code:KyCode;retry:bool;}
 KY_INPUT :: "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ ";
 KY_CHECK :: "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 KY_GEN :: [5] u64.[0xf5dee51989, 0xa9fdca3312, 0x1bab10e32d, 0x3706b1677a, 0x644d626ffd];
-ky_polymod :: (c:u64,v:u64)->u64 {
+ky_polymod :: (c:u64,v:u64)->u64 #effects(all) {
   top:=c>>35;r:=((c&0x7ffffffff)<<5)^v;
   for i:0..<KY_GEN.count {if ((top>>cast(u64)i)&1)!=0 {r^=KY_GEN[i];}}
   return r;
 }
 // The eight checksum characters of a descriptor without its "#...", into
 // out; false on a character outside BIP-380's input set.
-ky_checksum :: (s:string,out:[]u8)->bool {
+ky_checksum :: (s:string,out:[]u8)->bool #effects(all) {
   c:u64=1;cls:u64=0;count:=0;
   for ch:s {
     pos:=-1;for k:0..<KY_INPUT.count {if KY_INPUT[k]==ch {pos=k;}}
@@ -106,7 +106,7 @@ ky_checksum :: (s:string,out:[]u8)->bool {
 }
 // book:end checksum
 // A descriptor "body#checksum" whose checksum is right.
-ky_checksum_ok :: (d:string)->bool {
+ky_checksum_ok :: (d:string)->bool #effects(all) {
   if d.count<10 || d[d.count-9]!='#' {return false;}
   cs:[8]u8;if !ky_checksum(d[0..<d.count-9],cs[..]) {return false;}
   for k:0..<8 {if cs[k]!=d[d.count-8+k] {return false;}}
@@ -129,17 +129,17 @@ ky_checksum_ok :: (d:string)->bool {
 }
 
 // ---- small readers
-ky_hex64 :: (s:string)->bool {
+ky_hex64 :: (s:string)->bool #effects(all) {
   if s.count!=64 {return false;}
   for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
   return true;
 }
-ky_uint :: (j:[]Json,t:int)->int {
+ky_uint :: (j:[]Json,t:int)->int #effects(all) {
   if t!=JSON_NUMBER {return -1;}v:=json_int(json_text(j));if !v.ok || v.value<0 {return -1;}return v.value;
 }
-ky_requires_empty :: (j:[]Json,t:int)->bool {return t==JSON_ARRAY && json_next(j)==JSON_ARRAY_END;}
-ky_field :: (key:string,names:[]string)->int {for i:0..<names.count {if json_is(key,names[i]) {return i;}}return -1;}
-ky_digest_is :: (ref:string,d:[32]u8)->bool {
+ky_requires_empty :: (j:[]Json,t:int)->bool #effects(all) {return t==JSON_ARRAY && json_next(j)==JSON_ARRAY_END;}
+ky_field :: (key:string,names:[]string)->int #effects(all) {for i:0..<names.count {if json_is(key,names[i]) {return i;}}return -1;}
+ky_digest_is :: (ref:string,d:[32]u8)->bool #effects(all) {
   if ref.count!=71 {return false;}
   hx:="0123456789abcdef";
   for i:0..<32 {if ref[7+2*i]!=hx[cast(int)(d[i]>>4)] || ref[8+2*i]!=hx[cast(int)(d[i]&15)] {return false;}}
@@ -147,14 +147,14 @@ ky_digest_is :: (ref:string,d:[32]u8)->bool {
 }
 // The SHA-256 of a string's bytes, fed 64 at a time.
 // 64 lowercase hex characters (checked by the caller) into 32 bytes.
-ky_bytes :: (h:string)->[32]u8 {
+ky_bytes :: (h:string)->[32]u8 #effects(all) {
   r:[32]u8;
   for i:0..<32 {r[i]=cast(u8)(ky_nibble(h[2*i])*16+ky_nibble(h[2*i+1]));}
   return r;
 }
-ky_nibble :: (c:u8)->int {return ifx c>='a' then cast(int)(c-'a')+10 else cast(int)(c-'0');}
-ky_eq32 :: (a:[32]u8,b:[32]u8)->bool {for k:0..<32 {if a[k]!=b[k] {return false;}}return true;}
-ky_sha :: (s:string,out:[]u8)->bool {
+ky_nibble :: (c:u8)->int #effects(all) {return ifx c>='a' then cast(int)(c-'a')+10 else cast(int)(c-'0');}
+ky_eq32 :: (a:[32]u8,b:[32]u8)->bool #effects(all) {for k:0..<32 {if a[k]!=b[k] {return false;}}return true;}
+ky_sha :: (s:string,out:[]u8)->bool #effects(all) {
   state:[112]u8;chunk:[64]u8;
   #assert sha256_init(state[..])==SHA_OK;
   n:=0;
@@ -168,7 +168,7 @@ ky_sha :: (s:string,out:[]u8)->bool {
 // An ArtifactRef object (the opening brace read): its digest, or "" when it
 // isn't one. size and media_type are required; schema, event and sources
 // are allowed and not interpreted here.
-ky_ref :: (j:[]Json)->string {
+ky_ref :: (j:[]Json)->string #effects(all) {
   names:=[6]string.["digest","size","media_type","schema","event","sources"];
   seen:=0;digest:string;
   while true {
@@ -185,7 +185,7 @@ ky_ref :: (j:[]Json)->string {
   return digest;
 }
 // A list of ArtifactRefs into out as digest bytes; the count, or -1.
-ky_refs :: (j:[]Json,t:int,out:[][32]u8)->int {
+ky_refs :: (j:[]Json,t:int,out:[][32]u8)->int #effects(all) {
   if t!=JSON_ARRAY {return -1;}
   n:=0;v:=json_next(j);
   while v!=JSON_ARRAY_END {
@@ -196,7 +196,7 @@ ky_refs :: (j:[]Json,t:int,out:[][32]u8)->int {
   return n;
 }
 // A list of 64-hex public keys into out; the count, or -1.
-ky_keys :: (j:[]Json,t:int,out:[][32]u8)->int {
+ky_keys :: (j:[]Json,t:int,out:[][32]u8)->int #effects(all) {
   if t!=JSON_ARRAY {return -1;}
   n:=0;v:=json_next(j);
   while v!=JSON_ARRAY_END {
@@ -210,7 +210,7 @@ ky_keys :: (j:[]Json,t:int,out:[][32]u8)->int {
 // book:begin path
 // One spending path: name, threshold, keys (enrollment ArtifactRefs) and
 // timelock (null, {older: blocks} or {after: height}).
-ky_path :: (j:[]Json,p:[]KyPath)->KyCode {
+ky_path :: (j:[]Json,p:[]KyPath)->KyCode #effects(all) {
   names:=[4]string.["name","threshold","keys","timelock"];
   seen:=0;
   while true {
@@ -236,7 +236,7 @@ ky_path :: (j:[]Json,p:[]KyPath)->KyCode {
 // book:end path
 KY_WALLET_FIELDS :: [14] string.["v","requires","meta","wallet","holder","revision","previous","network","descriptor","paths","enrollments","recipients","starts_at","expires_at"];
 // book:begin wallet
-ky_wallet_read :: (content:string)->KyWallet {
+ky_wallet_read :: (content:string)->KyWallet #effects(all) {
   w:=[1]KyWallet.[KyWallet.{}];names:=KY_WALLET_FIELDS;
   j:[1]Json;json_start(j[..],content);if json_next(j[..])!=JSON_OBJECT {return ky_wfail(KyCode.json);}
   seen:=0;
@@ -290,7 +290,7 @@ ky_wallet_read :: (content:string)->KyWallet {
 }
 // book:end wallet
 // The primary path's index (the one with no timelock).
-ky_primary :: (w:KyWallet)->int {
+ky_primary :: (w:KyWallet)->int #effects(all) {
   for i:0..<w.npaths {if w.paths[i].older==0 && w.paths[i].after==0 {return i;}}
   return 0;
 }
@@ -300,7 +300,7 @@ KY_B58 :: "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 // book:begin xpub
 // A base58check extended public key: 78 bytes, version, depth, parent
 // fingerprint, child number, chain code and a compressed public key.
-ky_ext_key :: (s:string)->KyExtKey {
+ky_ext_key :: (s:string)->KyExtKey #effects(all) {
   r:KyExtKey;b:[82]u8;
   for c:s {
     d:=-1;for k:0..<58 {if KY_B58[k]==c {d=k;}}
@@ -319,7 +319,7 @@ ky_ext_key :: (s:string)->KyExtKey {
   return r;
 }
 // The public child at a normal index: K + IL·G, chain code IR.
-ky_child :: (parent:KyExtKey,index:int)->KyExtKey {
+ky_child :: (parent:KyExtKey,index:int)->KyExtKey #effects(all) {
   r:KyExtKey;p:=parent;
   if !p.ok || index<0 || index>=BIP32_HARDENED {return r;}
   data:[37]u8;i:[64]u8;
@@ -335,10 +335,10 @@ ky_child :: (parent:KyExtKey,index:int)->KyExtKey {
 }
 // book:end xpub
 // s[i], or 0 past the end.
-ky_ch :: (s:string,i:int)->u8 {return ifx i<s.count then s[i] else 0;}
+ky_ch :: (s:string,i:int)->u8 #effects(all) {return ifx i<s.count then s[i] else 0;}
 // An enrollment's xpub field: "[" 8 lowercase hex, then "/" and indexes
 // with an optional h or ', "]", then the extended key. The key part, or "".
-ky_origin :: (s:string)->string {
+ky_origin :: (s:string)->string #effects(all) {
   if ky_ch(s,0)!='[' || ky_ch(s,9)!='/' {return "";}
   for k:1..<9 {c:=ky_ch(s,k);if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return "";}}
   i:=10;
@@ -373,7 +373,7 @@ ky_origin :: (s:string)->string {
 // ---- enrollment and independence
 KY_ENR_FIELDS :: [12] string.["v","requires","meta","agent","wallet","xpub","possession","class","attestation","signing_policy","independence","expires_at"];
 // book:begin enrollment
-ky_enrollment_read :: (signer:string,content:string)->KyEnrollment {
+ky_enrollment_read :: (signer:string,content:string)->KyEnrollment #effects(all) {
   e:KyEnrollment;cls:string;att:=false;names:=KY_ENR_FIELDS;
   if !ky_sha(content,e.digest[..]) {return ky_efail(KyCode.json);}
   j:[1]Json;json_start(j[..],content);if json_next(j[..])!=JSON_OBJECT {return ky_efail(KyCode.json);}
@@ -413,7 +413,7 @@ ky_enrollment_read :: (signer:string,content:string)->KyEnrollment {
 }
 // book:end enrollment
 KY_IND_FIELDS :: [10] string.["v","requires","meta","agent","operator","jurisdiction","custody","affiliations","insurance","observed_at"];
-ky_independence_read :: (signer:string,content:string)->KyIndependence {
+ky_independence_read :: (signer:string,content:string)->KyIndependence #effects(all) {
   r:KyIndependence;names:=KY_IND_FIELDS;
   if !ky_sha(content,r.digest[..]) {return ky_ifail(KyCode.json);}
   j:[1]Json;json_start(j[..],content);if json_next(j[..])!=JSON_OBJECT {return ky_ifail(KyCode.json);}
@@ -439,21 +439,21 @@ ky_independence_read :: (signer:string,content:string)->KyIndependence {
 
 // ---- admission
 // The enrollment index a path key names, or -1.
-ky_find :: (w:KyWallet,ref:[32]u8)->int {for i:0..<w.nenroll {if ky_eq32(w.enrollments[i],ref) {return i;}}return -1;}
+ky_find :: (w:KyWallet,ref:[32]u8)->int #effects(all) {for i:0..<w.nenroll {if ky_eq32(w.enrollments[i],ref) {return i;}}return -1;}
 // The keys of a path in enrollment order, each with "/<0;1>/*", after
 // prefix; the new length, or -1 when out is full.
-ky_put :: (out:[]u8,at:int,s:string)->int {
+ky_put :: (out:[]u8,at:int,s:string)->int #effects(all) {
   if at<0 || at+s.count>out.count {return -1;}
   for k:0..<s.count {out[at+k]=s[k];}
   return at+s.count;
 }
-ky_put_int :: (out:[]u8,at:int,v:int)->int {
+ky_put_int :: (out:[]u8,at:int,v:int)->int #effects(all) {
   d:[20]u8;n:=0;x:=v;
   while true {d[n]=cast(u8)('0'+x%10);n+=1;x/=10;if x==0 {break;}}
   a:=at;for k:0..<n {a=ky_put(out,a,cast(string)d[n-1-k..<n-k]);}
   return a;
 }
-ky_multi :: (out:[]u8,at:int,name:string,w:KyWallet,e:[]KyEnrollment,p:KyPath)->int {
+ky_multi :: (out:[]u8,at:int,name:string,w:KyWallet,e:[]KyEnrollment,p:KyPath)->int #effects(all) {
   a:=ky_put(out,at,name);a=ky_put(out,a,"(");a=ky_put_int(out,a,p.threshold);
   for i:0..<w.nenroll {
     for k:0..<p.count {if ky_eq32(p.keys[k],w.enrollments[i]) {a=ky_put(out,a,",");a=ky_put(out,a,e[i].xpub);a=ky_put(out,a,"/<0;1>/*");}}
@@ -466,7 +466,7 @@ ky_multi :: (out:[]u8,at:int,name:string,w:KyWallet,e:[]KyEnrollment,p:KyPath)->
 // path and one timelocked path: wsh(or_d(multi(primary),
 // and_v(v:older(n)|v:after(h),multi(recovery)))). Every enrollment is in
 // exactly one path, and every primary key precedes every recovery key.
-ky_descriptor :: (w:KyWallet,e:[]KyEnrollment,out:[]u8)->int {
+ky_descriptor :: (w:KyWallet,e:[]KyEnrollment,out:[]u8)->int #effects(all) {
   if w.npaths>2 {return -1;}
   p:=ky_primary(w);a:int;
   if w.npaths==1 {
@@ -485,7 +485,7 @@ ky_descriptor :: (w:KyWallet,e:[]KyEnrollment,out:[]u8)->int {
 // book:end descriptor
 // Every enrollment in exactly one path's keys, each path key an enrollment,
 // and (two paths) primary keys first.
-ky_layout :: (w:KyWallet)->KyCode {
+ky_layout :: (w:KyWallet)->KyCode #effects(all) {
   owner:[KY_KEYS]int;for i:0..<w.nenroll {owner[i]=-1;}
   for p:0..<w.npaths {
     for k:0..<w.paths[p].count {
@@ -502,12 +502,12 @@ ky_layout :: (w:KyWallet)->KyCode {
 // Composition rules 1 to 3 over every path. The holder's keys are one
 // operator: they take the operator of the holder's first enrollment.
 // book:begin compose
-ky_operator :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,i:int)->string {
+ky_operator :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,i:int)->string #effects(all) {
   if e[i].agent!=w.holder {return ind[i].op;}
   for k:0..<w.nenroll {if e[k].agent==w.holder {return ind[k].op;}}
   return "";
 }
-ky_compose :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,sov:bool,min_lock:int,height:int)->KyCode {
+ky_compose :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,sov:bool,min_lock:int,height:int)->KyCode #effects(all) {
   pi:=ky_primary(w);
   for p:0..<w.npaths {
     path:=w.paths[p];plain:=0;
@@ -529,8 +529,8 @@ ky_compose :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,sov:bool,min_loc
   return KyCode.ok;
 }
 // book:end compose
-ky_holder :: (w:KyWallet,e:[]KyEnrollment)->int {for k:0..<w.nenroll {if e[k].agent==w.holder {return k;}}return -1;}
-ky_recipient :: (w:KyWallet,key:string)->bool {b:=ky_bytes(key);for i:0..<w.nrecip {if ky_eq32(w.recipients[i],b) {return true;}}return false;}
+ky_holder :: (w:KyWallet,e:[]KyEnrollment)->int #effects(all) {for k:0..<w.nenroll {if e[k].agent==w.holder {return k;}}return -1;}
+ky_recipient :: (w:KyWallet,key:string)->bool #effects(all) {b:=ky_bytes(key);for i:0..<w.nrecip {if ky_eq32(w.recipients[i],b) {return true;}}return false;}
 // book:begin admit
 // Admission of one wallet revision at now (unix seconds) and height (the
 // chain tip). e and ind are the enrollments in the wallet's order and each
@@ -538,7 +538,7 @@ ky_recipient :: (w:KyWallet,key:string)->bool {b:=ky_bytes(key);for i:0..<w.nrec
 // min_lock: the holder policy's shortest recovery timelock (KY_MIN_LOCK
 // unless the policy says otherwise). proven stays false: possession proofs
 // (BIP-322) are read and not verified in this build.
-ky_admit :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,sov:bool,min_lock:int,now:int,height:int)->KyAdmit {
+ky_admit :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,sov:bool,min_lock:int,now:int,height:int)->KyAdmit #effects(all) {
   r:KyAdmit;r.code=w.code;
   if w.code!=KyCode.ok {return r;}
   r.code=KyCode.enrollment;
@@ -572,7 +572,7 @@ ky_admit :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,sov:bool,min_lock:
 // Composition rule 4: does next weaken prev? A lower threshold or shorter
 // timelock on a path of the same name, a removed path, or a removed key
 // agent.
-ky_weakens :: (prev:KyWallet,pe:[]KyEnrollment,next:KyWallet,ne:[]KyEnrollment)->bool {
+ky_weakens :: (prev:KyWallet,pe:[]KyEnrollment,next:KyWallet,ne:[]KyEnrollment)->bool #effects(all) {
   for p:0..<prev.npaths {
     a:=prev.paths[p];found:=false;
     for q:0..<next.npaths {
@@ -595,7 +595,7 @@ ky_weakens :: (prev:KyWallet,pe:[]KyEnrollment,next:KyWallet,ne:[]KyEnrollment)-
 // lineage, and, when it weakens prev, POL approvals of its exact bytes from
 // a primary quorum of prev. approved: the agents whose approvals the caller
 // verified.
-ky_successor :: (prev:KyWallet,prev_digest:[32]u8,pe:[]KyEnrollment,next:KyWallet,ne:[]KyEnrollment,approved:[]string)->KyCode {
+ky_successor :: (prev:KyWallet,prev_digest:[32]u8,pe:[]KyEnrollment,next:KyWallet,ne:[]KyEnrollment,approved:[]string)->KyCode #effects(all) {
   if next.wallet!=prev.wallet || next.revision!=prev.revision+1 || !next.has_previous || !ky_eq32(next.previous,prev_digest) {return KyCode.revision;}
   if !ky_weakens(prev,pe,next,ne) {return KyCode.ok;}
   p:=prev.paths[ky_primary(prev)];yes:=0;
@@ -609,7 +609,7 @@ ky_successor :: (prev:KyWallet,prev_digest:[32]u8,pe:[]KyEnrollment,next:KyWalle
 // ---- the sign request
 KY_REQ_FIELDS :: [13] string.["v","requires","meta","wallet","requester","psbt","outputs","fee_sat","purpose","action","treasury","nonce","deadline"];
 KY_OUT_FIELDS :: [3] string.["address","amount_sat","change"];
-ky_stated :: (j:[]Json,s:[]KyStated)->bool {
+ky_stated :: (j:[]Json,s:[]KyStated)->bool #effects(all) {
   seen:=0;names:=KY_OUT_FIELDS;
   t:=json_next(j);
   while t==JSON_STRING {
@@ -623,7 +623,7 @@ ky_stated :: (j:[]Json,s:[]KyStated)->bool {
   return t==JSON_OBJECT_END && seen==7;
 }
 // book:begin request
-ky_request_read :: (content:string)->KyRequest {
+ky_request_read :: (content:string)->KyRequest #effects(all) {
   r:=[1]KyRequest.[KyRequest.{}];names:=KY_REQ_FIELDS;
   if !ky_sha(content,r[0].digest[..]) {return ky_rfail(KyCode.json);}
   j:[1]Json;json_start(j[..],content);if json_next(j[..])!=JSON_OBJECT {return ky_rfail(KyCode.json);}
@@ -659,7 +659,7 @@ ky_request_read :: (content:string)->KyRequest {
   return r[0];
 }
 // book:end request
-at_slug_ky :: (s:string)->bool {
+at_slug_ky :: (s:string)->bool #effects(all) {
   if s.count==0 || s.count>64 {return false;}
   for c:s {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}
   return true;
@@ -671,15 +671,15 @@ at_slug_ky :: (s:string)->bool {
 // ReadCompactSize reads it, in all its forms, each only in its shortest
 // encoding and none above MAX_SIZE.
 KyVar :: struct {ok:bool;value:int;next:int;}
-ky_var :: (b:[]u8,at:int)->KyVar {
+ky_var :: (b:[]u8,at:int)->KyVar #effects(all) {
   if at<0 {return KyVar.{};}
   c:=tx_compact_read_vartime(b,at);
   if c.code!=TX_OK {return KyVar.{};}
   return KyVar.{ok=true,value=c.value,next=c.next};
 }
-ky_le :: (b:[]u8,at:int,n:int)->int {v:=0;for k:0..<n {v|=cast(int)b[at+k]<<(8*k);}return v;}
+ky_le :: (b:[]u8,at:int,n:int)->int #effects(all) {v:=0;for k:0..<n {v|=cast(int)b[at+k]<<(8*k);}return v;}
 // value (8 bytes little-endian) then a script; the next position, or -1.
-ky_txout :: (b:[]u8,at:int,end:int,value:[]int,s:[]KyScript)->int {
+ky_txout :: (b:[]u8,at:int,end:int,value:[]int,s:[]KyScript)->int #effects(all) {
   if at+9>end {return -1;}
   value[0]=ky_le(b,at,8);
   if value[0]<0 || value[0]>KY_MAX_SAT {return -1;}
@@ -694,7 +694,7 @@ ky_txout :: (b:[]u8,at:int,end:int,value:[]int,s:[]KyScript)->int {
 // either repeats; the version (key 0xfb); and the map's end (after 0x00)
 // when it is well formed; all zero when it isn't.
 KyMap :: struct {ok:bool;end:int;found:[2]bool;at:[2]int;n:[2]int;dup:bool;other:int;}
-ky_map :: (b:[]u8,at:int)->KyMap {
+ky_map :: (b:[]u8,at:int)->KyMap #effects(all) {
   r:KyMap;i:=at;
   while true {
     k:=ky_var(b,i);if !k.ok {return KyMap.{};}
@@ -710,9 +710,9 @@ ky_map :: (b:[]u8,at:int)->KyMap {
 }
 KY_MAGIC :: [5]u8.['p','s','b','t',0xff];
 // b[i], or -1 past the end.
-ky_at :: (b:[]u8,i:int)->int {return ifx i<b.count then cast(int)b[i] else -1;}
+ky_at :: (b:[]u8,i:int)->int #effects(all) {return ifx i<b.count then cast(int)b[i] else -1;}
 // book:begin psbt
-ky_psbt_read :: (b:[]u8)->KyPsbt {
+ky_psbt_read :: (b:[]u8)->KyPsbt #effects(all) {
   r:=[1]KyPsbt.[KyPsbt.{}];bad:=KyPsbt.{code=KyCode.psbt};
   for k:0..<KY_MAGIC.count {if ky_at(b,k)!=cast(int)KY_MAGIC[k] {return bad;}}
   g:=ky_map(b,5);
@@ -753,7 +753,7 @@ ky_psbt_read :: (b:[]u8)->KyPsbt {
 // The P2WSH scriptPubKey of a one-path wallet at one index, from each
 // key's branch key (account/0 for receive, account/1 for change):
 // 0x00 0x20 SHA-256(k <sorted child keys> n CHECKMULTISIG).
-ky_script :: (w:KyWallet,branch:[]KyExtKey,index:int)->KyScript {
+ky_script :: (w:KyWallet,branch:[]KyExtKey,index:int)->KyScript #effects(all) {
   r:KyScript;p:=w.paths[0];keys:[KY_KEYS][33]u8;
   for i:0..<w.nenroll {
     c:=ky_child(branch[i],index);
@@ -773,15 +773,15 @@ ky_script :: (w:KyWallet,branch:[]KyExtKey,index:int)->KyScript {
   r.n=34;return r;
 }
 // book:end scripts
-ky_less :: (a:[33]u8,b:[33]u8)->bool {for k:0..<33 {if a[k]<b[k] {return true;}if a[k]>b[k] {return false;}}return false;}
-ky_same :: (a:KyScript,b:KyScript)->bool {
+ky_less :: (a:[33]u8,b:[33]u8)->bool #effects(all) {for k:0..<33 {if a[k]<b[k] {return true;}if a[k]>b[k] {return false;}}return false;}
+ky_same :: (a:KyScript,b:KyScript)->bool #effects(all) {
   if a.n!=b.n {return false;}
   for k:0..<a.n {if a.b[k]!=b.b[k] {return false;}}
   return true;
 }
 KyScripts :: struct {s:[2*KY_GAP]KyScript;}
 // Every receive and change script below KY_GAP, deriving each branch key once.
-ky_scripts :: (w:KyWallet,e:[]KyEnrollment)->KyScripts {
+ky_scripts :: (w:KyWallet,e:[]KyEnrollment)->KyScripts #effects(all) {
   r:KyScripts;b:[KY_KEYS]KyExtKey;
   for br:0..<2 {
     for i:0..<w.nenroll {b[i]=ky_child(ky_ext_key(e[i].key),br);}
@@ -790,13 +790,13 @@ ky_scripts :: (w:KyWallet,e:[]KyEnrollment)->KyScripts {
   return r;
 }
 // Is s a wallet script on branch br (or either, br = -1)?
-ky_is_ours :: (all:KyScripts,s:KyScript,br:int)->bool {
+ky_is_ours :: (all:KyScripts,s:KyScript,br:int)->bool #effects(all) {
   for k:0..<2*KY_GAP {if (br<0 || k/KY_GAP==br) && all.s[k].n>0 && ky_same(all.s[k],s) {return true;}}
   return false;
 }
 // The scriptPubKey a stated address pays: a segwit address on the wallet's
 // network (bc for mainnet, tb otherwise), version byte then the program.
-ky_address :: (w:KyWallet,address:string)->KyScript {
+ky_address :: (w:KyWallet,address:string)->KyScript #effects(all) {
   r:KyScript;t:=a3_segwit(address);
   mainnet:=json_is(w.network,"mainnet");
   if !a3_starts_ci(address,ifx mainnet then "bc1" else "tb1") {return r;}
@@ -811,7 +811,7 @@ ky_address :: (w:KyWallet,address:string)->KyScript {
 // admitted wallet revision's digest, all its scripts (ky_scripts, derived
 // once at admission), psbt the bytes the request names, ceiling the
 // signing policy's fee ceiling in satoshis.
-ky_sign_check :: (w:KyWallet,wallet_digest:[32]u8,all:KyScripts,r:KyRequest,psbt:[]u8,ceiling:int,now:int)->KyCode {
+ky_sign_check :: (w:KyWallet,wallet_digest:[32]u8,all:KyScripts,r:KyRequest,psbt:[]u8,ceiling:int,now:int)->KyCode #effects(all) {
   if r.code!=KyCode.ok {return r.code;}
   if !ky_digest_is(r.wallet,wallet_digest) {return KyCode.wallet;}
   if now>=r.deadline {return KyCode.deadline;}
@@ -843,17 +843,17 @@ ky_sign_check :: (w:KyWallet,wallet_digest:[32]u8,all:KyScripts,r:KyRequest,psbt
 }
 // book:end sign
 
-ky_wfail :: (c:KyCode)->KyWallet {r:KyWallet;r.code=c;return r;}
-ky_efail :: (c:KyCode)->KyEnrollment {r:KyEnrollment;r.code=c;return r;}
-ky_ifail :: (c:KyCode)->KyIndependence {r:KyIndependence;r.code=c;return r;}
-ky_rfail :: (c:KyCode)->KyRequest {r:KyRequest;r.code=c;return r;}
+ky_wfail :: (c:KyCode)->KyWallet #effects(all) {r:KyWallet;r.code=c;return r;}
+ky_efail :: (c:KyCode)->KyEnrollment #effects(all) {r:KyEnrollment;r.code=c;return r;}
+ky_ifail :: (c:KyCode)->KyIndependence #effects(all) {r:KyIndependence;r.code=c;return r;}
+ky_rfail :: (c:KyCode)->KyRequest #effects(all) {r:KyRequest;r.code=c;return r;}
 // ---- idempotency, timelocks, rotation, the co-signer's delay, the hot ceiling
 // book:begin ledger
 // (agent, requester, nonce) with the request digest. A new triple is
 // recorded with its outcome before any partial signature leaves; an exact
 // retry returns the retained outcome; a changed request with a used nonce
 // refuses. A full ledger refuses new requests.
-ky_consume :: (l:[]KyLedger,agent:string,r:KyRequest,code:KyCode)->KyRetry {
+ky_consume :: (l:[]KyLedger,agent:string,r:KyRequest,code:KyCode)->KyRetry #effects(all) {
   if agent.count>KY_TEXT || r.requester.count>KY_TEXT || r.nonce.count>KY_TEXT {return KyRetry.{code=KyCode.field};}
   a:=kept64(agent);q:=kept64(r.requester);n:=kept64(r.nonce);
   for i:0..<l[0].count {
@@ -871,32 +871,32 @@ ky_consume :: (l:[]KyLedger,agent:string,r:KyRequest,code:KyCode)->KyRetry {
 // book:end ledger
 // A timelocked path is spendable for a coin confirmed at conf_height when
 // the tip is height: older(n) needs n confirmations, after(h) needs h.
-ky_path_open :: (p:KyPath,conf_height:int,height:int)->KyCode {
+ky_path_open :: (p:KyPath,conf_height:int,height:int)->KyCode #effects(all) {
   if p.older>0 && height-conf_height+1<p.older {return KyCode.locked;}
   if height<p.after {return KyCode.locked;}                 // after 0: every tip is past it
   return KyCode.ok;
 }
 // A retired wallet's signers sign only its rotation's sweeps.
-ky_retired :: (retired:bool,request_digest:[32]u8,sweeps:[]string)->KyCode {
+ky_retired :: (retired:bool,request_digest:[32]u8,sweeps:[]string)->KyCode #effects(all) {
   if !retired {return KyCode.ok;}
   for s:sweeps {if ky_digest_is(s,request_digest) {return KyCode.ok;}}
   return KyCode.retired;
 }
 // A compromised signer is left out of a sweep when the others can meet the
 // threshold without the compromised keys.
-ky_sweep_signer :: (p:KyPath,compromised:int,signer_compromised:bool)->KyCode {
+ky_sweep_signer :: (p:KyPath,compromised:int,signer_compromised:bool)->KyCode #effects(all) {
   if signer_compromised && p.count-compromised>=p.threshold {return KyCode.compromised;}
   return KyCode.ok;
 }
 // The attested co-signer: a spend above delay_above signs no earlier than
 // delay seconds after receipt, and any primary refusal meanwhile cancels it.
-ky_delay :: (amount:int,delay_above:int,delay:int,received_at:int,now:int,refused:bool)->KyCode {
+ky_delay :: (amount:int,delay_above:int,delay:int,received_at:int,now:int,refused:bool)->KyCode #effects(all) {
   if amount<=delay_above {return KyCode.ok;}
   if refused || now<received_at+delay {return KyCode.delay;}
   return KyCode.ok;
 }
 // A hot-topup may not raise the hot Lightning balance above its ceiling.
-ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
+ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode #effects(all) {
   if amount_sat<0 || amount_sat>KY_MAX_SAT || hot_msat<0 || hot_msat+amount_sat*1000>ceiling_msat {return KyCode.hot;}
   return KyCode.ok;
 }

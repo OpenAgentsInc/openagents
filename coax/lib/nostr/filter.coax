@@ -62,16 +62,16 @@ NostrFilter :: struct {
   gate:int; readers:[]u8;
 }
 NF_SAFE :: 9007199254740991;
-nf_hex :: (s:string)->bool {
+nf_hex :: (s:string)->bool #effects(all) {
   if s.count!=64 {return false;}
   for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
   return true;
 }
-nf_utf8 :: (s:string)->bool {
+nf_utf8 :: (s:string)->bool #effects(all) {
   if s.count>256 {return false;}
   i:=0;while i<s.count {n:=json_utf8(s,i);if n==0 {return false;}i+=n;}return true;
 }
-nf_valid :: (f:NostrFilter)->bool {
+nf_valid :: (f:NostrFilter)->bool #effects(all) {
   if f.ids.count>64 || f.authors.count>64 || f.kinds.count>64 {return false;}
   if (!f.has_ids && f.ids.count!=0) || (!f.has_authors && f.authors.count!=0) || (!f.has_kinds && f.kinds.count!=0) {return false;}
   for s:f.ids {if !nf_hex(s) {return false;}}
@@ -88,16 +88,16 @@ nf_valid :: (f:NostrFilter)->bool {
   if f.has_limit && (f.limit<0 || f.limit>NF_SAFE) {return false;}
   return true;
 }
-nf_hex_match :: (values:[]string, bytes:[]u8)->bool {
+nf_hex_match :: (values:[]string, bytes:[]u8)->bool #effects(all) {
   if bytes.count!=32 {return false;}
   digits:="0123456789abcdef";encoded:[64]u8;
   for i:0..<32 {encoded[i*2]=digits[cast(int)(bytes[i]>>4)];encoded[i*2+1]=digits[cast(int)(bytes[i]&15)];}
   for s:values {if s==cast(string)encoded[..] {return true;}}return false;
 }
 // Entire tag array is scanned, so malformed trailing material cannot match.
-nf_tag_limit :: ()->int {return NE_MAX_TAGS;}
-nf_tag_match :: (tag:NostrTagFilter, text:string)->bool {return nf_tag_match_limit(tag,text,nf_tag_limit());}
-nf_tag_match_limit :: (tag:NostrTagFilter, text:string, limit:int)->bool {
+nf_tag_limit :: ()->int #effects(all) {return NE_MAX_TAGS;}
+nf_tag_match :: (tag:NostrTagFilter, text:string)->bool #effects(all) {return nf_tag_match_limit(tag,text,nf_tag_limit());}
+nf_tag_match_limit :: (tag:NostrTagFilter, text:string, limit:int)->bool #effects(all) {
   j:[1]Json;json_start(j[..],text);
   if json_next(j[..])!=JSON_ARRAY {return false;}
   found:=false;count:=0;t:=json_next(j[..]);
@@ -115,7 +115,7 @@ nf_tag_match_limit :: (tag:NostrTagFilter, text:string, limit:int)->bool {
   }
   if json_next(j[..])!=JSON_END {return false;}return found;
 }
-nf_tag_span_valid :: (total:int,from:int,to:int)->bool {
+nf_tag_span_valid :: (total:int,from:int,to:int)->bool #effects(all) {
   return cb_span(total,to,0) && cb_span(to,from,0);
 }
 #test "tag span validates empty and bounded ranges before parsing" {
@@ -123,7 +123,7 @@ nf_tag_span_valid :: (total:int,from:int,to:int)->bool {
   #assert !nf_tag_span_valid(5,2,1) && !nf_tag_span_valid(5,0,6);
   #assert !nf_tag_span_valid(5,-1,0) && !nf_tag_span_valid(5,0,-1);
 }
-nf_match :: (f:NostrFilter,e:NostrEvent)->bool {
+nf_match :: (f:NostrFilter,e:NostrEvent)->bool #effects(all) {
   if !nf_valid(f) || e.error!=NE_OK || e.created_at<0 || e.created_at>NF_SAFE || e.kind<0 || e.kind>65535 {return false;}
   id:=e.id; key:=e.public_key;
   if f.has_ids && !nf_hex_match(f.ids,id[..]) {return false;}
@@ -138,18 +138,18 @@ nf_match :: (f:NostrFilter,e:NostrEvent)->bool {
   // limit applies to the initial query's result count, not each event.
   return true;
 }
-nf_key :: (out:[]u8,at:int,first:bool,key:string)->int {
+nf_key :: (out:[]u8,at:int,first:bool,key:string)->int #effects(all) {
   n:=at;if !first {n=json_raw(out,n,",");}n=json_write_string(out,n,key);return json_raw(out,n,":");
 }
-nf_strings :: (out:[]u8,at:int,values:[]string)->int {
+nf_strings :: (out:[]u8,at:int,values:[]string)->int #effects(all) {
   n:=json_raw(out,at,"[");for i:0..<values.count {if i>0 {n=json_raw(out,n,",");}n=json_write_string(out,n,values[i]);}return json_raw(out,n,"]");
 }
-nf_numbers :: (out:[]u8,at:int,values:[]int)->int {
+nf_numbers :: (out:[]u8,at:int,values:[]int)->int #effects(all) {
   n:=json_raw(out,at,"[");for i:0..<values.count {if i>0 {n=json_raw(out,n,",");}n=json_write_int(out,n,values[i]);}return json_raw(out,n,"]");
 }
 // Output must be disjoint from every filter view; overlap is a truthful host
 // observation. Failure may leave partial scratch bytes and returns -1.
-nf_write :: (f:NostrFilter,out:[]u8,overlap:bool)->int {
+nf_write :: (f:NostrFilter,out:[]u8,overlap:bool)->int #effects(all) {
   if overlap || !nf_valid(f) {return -1;}
   n:=json_raw(out,0,"{");first:=true;
   if f.has_ids {n=nf_key(out,n,first,"ids");n=nf_strings(out,n,f.ids);first=false;}

@@ -3,7 +3,7 @@
 #import "Basic";
 #load "../../verse/valley/rock.coax";
 #load "../render/geometry/clusters.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   r:[1]Rock;c:[1]Clusters;
   for detail:[3]int.[8,16,32] {
     if !rock_build(r[..],detail,12609) || !clusters_build(c[..],r[0].p[0..<r[0].vertices],r[0].i[0..<r[0].indices],CLUSTER_LEAVES) {return 1;}

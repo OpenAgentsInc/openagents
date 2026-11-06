@@ -445,11 +445,11 @@ has_eff :: (b: [] RsBattle, i: int, kind: int) -> bool {
   return false;
 }
 // The pack's catalog arrived (fivelab-face.c): the figures' parts.
-lab_catalog :: (s: [] Lab, text: string) #export_c { figs.bd_catalog(s[0].bodies[..], text); }
+lab_catalog :: (s: [] Lab, text: string) #export_c #effects(all) { figs.bd_catalog(s[0].bodies[..], text); }
 // The clips baked into the bake store, once (fivelab-face.c).
-lab_bake :: (d: [] figs.People, out: [] f32) #export_c { figs.people_load(d); figs.bd_bake(d, out); }
+lab_bake :: (d: [] figs.People, out: [] f32) #export_c #effects(all) { figs.people_load(d); figs.bd_bake(d, out); }
 // The figures' instances for the frame (the objects store) and their draws; the count of draws.
-lab_scene :: (s: [] Lab, out: [] f32) -> int #export_c {
+lab_scene :: (s: [] Lab, out: [] f32) -> int #export_c #effects(all) {
   if !s[0].started || s[0].view != VIEW_GLADE { s[0].bodies[0].draw_n = 0; return 0; }
   c := figs.BdCam.{ex = s[0].eye.x, ey = s[0].eye.y, ez = s[0].eye.z, fx = s[0].fwd.x, fy = s[0].fwd.y, fz = s[0].fwd.z,
               rx = s[0].right.x, ry = s[0].right.y, rz = s[0].right.z, ux = s[0].up.x, uy = s[0].up.y, uz = s[0].up.z,
@@ -1914,7 +1914,7 @@ you_theta :: (s: [] Lab) -> f32 {
 LabWalk :: struct { on: bool; put: bool; x: f32; z: f32; face: f32; }
 // Whether the face walks your body this frame, and a place to put it first: a new hero, or your
 // token moved by what the rules did (a shove, a new battle).
-lab_walk :: (s: [] Lab) -> LabWalk #export_c {
+lab_walk :: (s: [] Lab) -> LabWalk #export_c #effects(all) {
   w: LabWalk;
   if !s[0].started || !s[0].player || s[0].me < 0 || s[0].golden { s[0].you_on = false; return w; }
   b := bt(s);
@@ -1937,7 +1937,7 @@ lab_walk :: (s: [] Lab) -> LabWalk #export_c {
 }
 // Your keys for Everglade's step: W, A, S and D along the camera, Shift (Everglade runs unless it
 // is held: verse_runs), Space to jump. The face adds the thumb's stick.
-lab_move_in :: (s: [] Lab) -> EgMoveIn #export_c {
+lab_move_in :: (s: [] Lab) -> EgMoveIn #export_c #effects(all) {
   h := s[0].held;
   return EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].shift,
                    jump = h & HOLD_JUMP != 0, theta = you_theta(s)};
@@ -1945,7 +1945,7 @@ lab_move_in :: (s: [] Lab) -> EgMoveIn #export_c {
 // The world where you stand, for Everglade's step: the figures round you (lab_move_bodies), your
 // Speed as the walk's pace (30 feet Everglade's own), still while you can't move. The glade has no
 // walls or floors; `deck` keeps eg_step_advance's Everglade fountain out of the first figure.
-lab_move_world :: (s: [] Lab, x: f32, z: f32) -> EgMoveWorld #export_c {
+lab_move_world :: (s: [] Lab, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
   w: EgMoveWorld;
   w.deck = true;
   b := bt(s);
@@ -1971,7 +1971,7 @@ lab_move_world :: (s: [] Lab, x: f32, z: f32) -> EgMoveWorld #export_c {
   w.bodies = n;
   return w;
 }
-lab_move_bodies :: (s: [] Lab) -> [] f32 #export_c { return s[0].move_bodies[..]; }
+lab_move_bodies :: (s: [] Lab) -> [] f32 #export_c #effects(all) { return s[0].move_bodies[..]; }
 // Where your body may be: within one turn's Speed of your token (a box, as the grid counts
 // diagonals: 5 feet each), and on the grid.
 you_box :: (s: [] Lab) -> Rect {
@@ -1980,19 +1980,19 @@ you_box :: (s: [] Lab) -> Rect {
   hx := f32(s[0].cols) * f32(SQ) / 2 - 0.3; hz := f32(s[0].rows) * f32(SQ) / 2 - 0.3;
   return Rect.{x0 = hi(cx - r, -hx), y0 = hi(cz - r, -hz), x1 = lo(cx + r, hx), y1 = lo(cz + r, hz)};
 }
-lab_keep :: (s: [] Lab, x: f32, z: f32) -> P3 #export_c {
+lab_keep :: (s: [] Lab, x: f32, z: f32) -> P3 #export_c #effects(all) {
   if s[0].me < 0 { return P3.{x = x, z = z}; }
   r := you_box(s);
   return P3.{x = lo(r.x1, hi(r.x0, x)), z = lo(r.y1, hi(r.y0, z))};
 }
 // Your body after the step (its feet, its facing) and the thumb's stick, for the frame.
-lab_you :: (s: [] Lab, x: f32, y: f32, z: f32, face: f32, touch: bool, stick_on: bool, ox: f32, oy: f32, px: f32, py: f32) #export_c {
+lab_you :: (s: [] Lab, x: f32, y: f32, z: f32, face: f32, touch: bool, stick_on: bool, ox: f32, oy: f32, px: f32, py: f32) #export_c #effects(all) {
   s[0].you_x = x; s[0].you_y = y; s[0].you_z = z; s[0].you_face = face;
   if touch { s[0].touch = true; }
   s[0].stick_on = stick_on; s[0].stick_ox = ox; s[0].stick_oy = oy; s[0].stick_px = px; s[0].stick_py = py;
 }
 // A thumb's look and pinch (aethyr/sticks.coax), as a drag and the wheel.
-lab_look :: (s: [] Lab, dyaw: f32, dpitch: f32, zoom: f32) #export_c {
+lab_look :: (s: [] Lab, dyaw: f32, dpitch: f32, zoom: f32) #export_c #effects(all) {
   s[0].look_yaw += dyaw; s[0].look_pitch += dpitch;
   if zoom != 0 { s[0].orbit = figs.verse_orbit_zoom(s[0].orbit, zoom * f32(WHEEL_ZOOM)); }
 }
@@ -2932,7 +2932,7 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
   return n;
 }
 
-lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   lab_start(s);
   if u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   s[0].width = width; s[0].height = height; s[0].dpr = dpr;
@@ -3200,7 +3200,7 @@ switch_mode :: (s: [] Lab) {
   s[0].mode = 1 - s[0].mode;
   new_battle(s);
 }
-lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
+lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
   lab_start(s);
   // Escape pauses and resumes, as a game's does (WORLDS, top right, goes back to the worlds)
   if key == KEY_ESCAPE { s[0].paused = !s[0].paused; s[0].held = 0; return true; }
@@ -3233,7 +3233,7 @@ lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
   }
   return false;
 }
-lab_key_up :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
+lab_key_up :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
   if key == KEY_SHIFT { s[0].shift = false; }
   h := ifx key == ' ' then HOLD_JUMP else hold_bit(key);
   s[0].held = s[0].held & (HOLD_ALL - h);   // h is one HOLD_ bit or none
@@ -3255,7 +3255,7 @@ target_next :: (s: [] Lab) {
   }
   s[0].target = ifx best >= 0 then best else first;
 }
-lab_blur :: (s: [] Lab) #export_c { s[0].stick_on = false; s[0].sliding = -1; s[0].pressing = 0; s[0].dragging = false; s[0].shift = false; s[0].fingers = 0; s[0].held = 0; }
+lab_blur :: (s: [] Lab) #export_c #effects(all) { s[0].stick_on = false; s[0].sliding = -1; s[0].pressing = 0; s[0].dragging = false; s[0].shift = false; s[0].fingers = 0; s[0].held = 0; }
 // The keys that fly the camera while they are held.
 hold_bit :: (key: int) -> int {
   if key == 'w' || key == 'W' { return HOLD_W; }
@@ -3329,14 +3329,14 @@ cam_pan :: (s: [] Lab, dx: f32, dy: f32) {
   s[0].px = lo(hx, hi(-hx, s[0].px)); s[0].pz = lo(hz, hi(-hz, s[0].pz));
 }
 // The wheel (CSS px, down is out) zooms.
-lab_wheel :: (s: [] Lab, dy: f32) -> bool #export_c {
+lab_wheel :: (s: [] Lab, dy: f32) -> bool #export_c #effects(all) {
   lab_start(s);
   if s[0].view != VIEW_GLADE { return false; }
   if s[0].player { s[0].orbit = figs.verse_orbit_zoom(s[0].orbit, lo(400, hi(-400, dy)) * f32(WHEEL_ZOOM)); return true; }
   cam_zoom(s, 1 + lo(200, hi(-200, dy)) * 0.0012);
   return true;
 }
-lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   lab_start(s);
   if phase == 0 {
     if in_rect(s[0].back, x, y) { s[0].pressing = 1; return true; }
@@ -3427,21 +3427,21 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
   }
   return false;
 }
-lab_cursor :: (s: [] Lab) -> int #export_c { return 0; }
+lab_cursor :: (s: [] Lab) -> int #export_c #effects(all) { return 0; }
 HOST_PAGE :: 600;   // coax/web/host.js's page facts: key=value lines, the url among them
-lab_message :: (s: [] Lab, kind: int, t: string) #export_c {
+lab_message :: (s: [] Lab, kind: int, t: string) #export_c #effects(all) {
   lab_start(s);
   if kind == HOST_PAGE { changed := url_sizes(s, t); }
 }
-lab_golden :: (s: [] Lab, on: bool) #export_c { lab_start(s); s[0].golden = on; }
-lab_action :: (s: [] Lab) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
-lab_action_done :: (s: [] Lab) #export_c { s[0].out_n = 0; }
+lab_golden :: (s: [] Lab, on: bool) #export_c #effects(all) { lab_start(s); s[0].golden = on; }
+lab_action :: (s: [] Lab) -> int #export_c #effects(all) { a := s[0].action; s[0].action = 0; return a; }
+lab_action_done :: (s: [] Lab) #export_c #effects(all) { s[0].out_n = 0; }
 
-coaxial_lab_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_lab_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_lab_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_lab_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_lab_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_lab_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 // The frame store's floats this frame: every token's room, then the grid's squares.
-coaxial_lab_frame_floats :: (s: [] Lab) -> int #export_c { return F_SQUARES + s[0].cols * s[0].rows; }
+coaxial_lab_frame_floats :: (s: [] Lab) -> int #export_c #effects(all) { return F_SQUARES + s[0].cols * s[0].rows; }
 
 // ---- checks
 

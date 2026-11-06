@@ -1,0 +1,23 @@
+GraphNode :: struct {next:[]GraphNode;n:int;}
+tx_graph_make :: (nodes:[]GraphNode) #effects(reads,writes,traps) {
+  for i:0..<nodes.count {nodes[i].n=10+i;if i+1<nodes.count {nodes[i].next=nodes[i+1..<i+2];}}
+}
+tx_graph_run :: (first:[]GraphNode)->int? #effects(reads,writes,traps) {
+  #transaction {first[0].n=500;return null;}
+}
+tx_graph_change :: (nodes:[]GraphNode)->int? #effects(reads,writes,traps) {
+  #transaction {
+    nodes[0].next[0].n=91;
+    nodes[0].next=nodes[2..<3];nodes[0].next[0].n=92;
+    return null;
+  }
+}
+#test "transaction capture follows cycles, preserves aliased descriptors and accepts its last traversal depth" {
+  nodes:[3]GraphNode;tx_graph_make(nodes[..]);nodes[1].next=nodes[0..<1];
+  switch tx_graph_change(nodes[..]) {case none {} case some(wrong) {#assert false;}}
+  #assert nodes[0].n==10 && nodes[1].n==11 && nodes[2].n==12;
+  #assert nodes[0].next[0].n==11 && nodes[1].next[0].n==10;
+  chain:[127]GraphNode;tx_graph_make(chain[..]);
+  switch tx_graph_run(chain[0..<1]) {case none {} case some(wrong) {#assert false;}}
+  #assert chain[0].n==10 && chain[126].n==136;
+}

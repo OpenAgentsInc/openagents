@@ -10,7 +10,7 @@ Floor :: struct {
 }
 
 // Withdrawing consent also takes the floor back.
-floor_consent :: (f: Floor, slot: s32, yes: bool) -> Floor {
+floor_consent :: (f: Floor, slot: s32, yes: bool) -> Floor #effects(all) {
   g := f;
   if slot < 0 || slot >= SLOTS { return g; }
   g.consent[cast(int) slot] = yes;
@@ -19,7 +19,7 @@ floor_consent :: (f: Floor, slot: s32, yes: bool) -> Floor {
 }
 
 // Only a consenting slot can be granted the floor; -1 releases it.
-floor_grant :: (f: Floor, slot: s32) -> Floor {
+floor_grant :: (f: Floor, slot: s32) -> Floor #effects(all) {
   g := f;
   if slot == -1 { g.holder = -1; return g; }
   if slot < 0 || slot >= SLOTS { return g; }
@@ -28,7 +28,7 @@ floor_grant :: (f: Floor, slot: s32) -> Floor {
   return g;
 }
 
-may_hear :: (f: Floor, slot: s32) -> bool {
+may_hear :: (f: Floor, slot: s32) -> bool #effects(all) {
   if slot < 0 || slot >= SLOTS { return false; }
   return f.consent[cast(int) slot] && f.holder == slot;
 }

@@ -36,7 +36,7 @@ ReachSample :: struct {generation:int;observed_at:int;received_at:int;}
 // book:end sample
 
 RF_T0 :: 1790000000;
-rf_sample :: (generation:int,observed:int,received:int)->ReachSample {
+rf_sample :: (generation:int,observed:int,received:int)->ReachSample #effects(all) {
   s:ReachSample;s.generation=generation;s.observed_at=observed;s.received_at=received;return s;
 }
 
@@ -83,7 +83,7 @@ rf_sample :: (generation:int,observed:int,received:int)->ReachSample {
 // book:begin presence
 // Whether to keep sample s, given the sample held for that host (have
 // says whether there is one).
-reach_presence_accept :: (held:ReachSample,have:bool,s:ReachSample)->u32 {
+reach_presence_accept :: (held:ReachSample,have:bool,s:ReachSample)->u32 #effects(all) {
   if s.observed_at>s.received_at+RF_SKEW {return RF_FUTURE;}
   if s.received_at-s.observed_at>RF_MAX_AGE {return RF_STALE;}
   if have && s.generation<held.generation {return RF_ROLLBACK;}
@@ -91,14 +91,14 @@ reach_presence_accept :: (held:ReachSample,have:bool,s:ReachSample)->u32 {
   return RF_OK;
 }
 // Whether a kept sample is still fresh at now, the reader's clock.
-reach_presence_fresh :: (s:ReachSample,now:int)->bool {
+reach_presence_fresh :: (s:ReachSample,now:int)->bool #effects(all) {
   return now-s.received_at<=RF_MAX_AGE && s.received_at-s.observed_at<=RF_MAX_AGE;
 }
 // book:end presence
 // book:begin hints
 // Whether a hint set of this generation and expiry may be tried at now,
 // against the presence sample held for its host.
-reach_hints_usable :: (generation:int,expires_at:int,presence:ReachSample,have:bool,now:int)->u32 {
+reach_hints_usable :: (generation:int,expires_at:int,presence:ReachSample,have:bool,now:int)->u32 #effects(all) {
   if !have || !reach_presence_fresh(presence,now) || generation!=presence.generation {return RF_STALE;}
   if now>=expires_at {return RF_STALE;}
   return RF_OK;

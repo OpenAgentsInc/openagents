@@ -134,13 +134,13 @@ WE_NUMBER :: 1048576.0;
     n=we_text(b[..],0,"abc");#assert n==11 && b[0]==3 && b[8]==97 && b[9]==98 && b[10]==99;
 }
 
-we_example_tensors :: ()->[2]WeTensor {return [2]WeTensor.[WeTensor.{name="matrix",rank=1,dims=[4]int.[3,0,0,0]},WeTensor.{name="bias",first=3,rank=1,dims=[4]int.[1,0,0,0]}];}
-we_name :: (s:string)->bool {
+we_example_tensors :: ()->[2]WeTensor #effects(all) {return [2]WeTensor.[WeTensor.{name="matrix",rank=1,dims=[4]int.[3,0,0,0]},WeTensor.{name="bias",first=3,rank=1,dims=[4]int.[1,0,0,0]}];}
+we_name :: (s:string)->bool #effects(all) {
     if s.count<1 || s.count>64 {return false;}
     for c:s {if c<33 || c>126 {return false;}}
     return true;
 }
-we_size :: (t:WeTensor)->int {
+we_size :: (t:WeTensor)->int #effects(all) {
     if t.rank<0 || t.rank>4 {return 0;}
     n:=1;
     for i:0..<4 {
@@ -150,7 +150,7 @@ we_size :: (t:WeTensor)->int {
     }
     return n;
 }
-we_layout :: (profile:string,ts:[]WeTensor,n:int)->bool {
+we_layout :: (profile:string,ts:[]WeTensor,n:int)->bool #effects(all) {
     if !we_name(profile) || ts.count<1 || ts.count>WE_TENSORS || n<1 || n>WE_VALUES {return false;}
     at:=0;
     for i:0..<ts.count {
@@ -161,13 +161,13 @@ we_layout :: (profile:string,ts:[]WeTensor,n:int)->bool {
     }
     return at==n;
 }
-we_same :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
-we_number :: (v:f64)->bool {return v>=-WE_NUMBER && v<=WE_NUMBER;}
+we_same :: (a:[32]u8,b:[32]u8)->bool #effects(all) {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+we_number :: (v:f64)->bool #effects(all) {return v>=-WE_NUMBER && v<=WE_NUMBER;}
 // Little-endian u64 words; strings are byte-count followed by bytes.
-we_word :: (buf:[]u8,n:int,v:u64)->int {for i:0..<8 {buf[n+i]=cast(u8)((v>>cast(u64)(i*8))&255);}return n+8;}
-we_text :: (buf:[]u8,n:int,s:string)->int {at:=we_word(buf,n,cast(u64)s.count);for c:s {buf[at]=c;at+=1;}return at;}
+we_word :: (buf:[]u8,n:int,v:u64)->int #effects(all) {for i:0..<8 {buf[n+i]=cast(u8)((v>>cast(u64)(i*8))&255);}return n+8;}
+we_text :: (buf:[]u8,n:int,s:string)->int #effects(all) {at:=we_word(buf,n,cast(u64)s.count);for c:s {buf[at]=c;at+=1;}return at;}
 // book:begin identity
-we_identity :: (profile:string,ts:[]WeTensor,p:[]f64)->WeIdentity {
+we_identity :: (profile:string,ts:[]WeTensor,p:[]f64)->WeIdentity #effects(all) {
     r:WeIdentity;
     if !we_layout(profile,ts,p.count) {r.status=WeStatus.layout;return r;}
     for v:p {if !we_number(v) {r.status=WeStatus.number;return r;}}
@@ -183,7 +183,7 @@ we_identity :: (profile:string,ts:[]WeTensor,p:[]f64)->WeIdentity {
 }
 // book:end identity
 // book:begin apply
-we_apply :: (profile:string,ts:[]WeTensor,p:[]f64,pin:[32]u8,edits:[]WeEdit)->WeResult {
+we_apply :: (profile:string,ts:[]WeTensor,p:[]f64,pin:[32]u8,edits:[]WeEdit)->WeResult #effects(all) {
     r:WeResult;id:=we_identity(profile,ts,p);
     if id.status!=WeStatus.ok {r.status=id.status;return r;}
     if !we_same(id.digest,pin) {r.status=WeStatus.identity;return r;}

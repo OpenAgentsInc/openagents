@@ -75,55 +75,55 @@
   for mode:0..<8 {bad:=sc_begin();if mode==0 {bad.now.epoch=0;}if mode==1 {bad.origin=-25;}if mode==2 {bad.origin=25;}if mode==3 {bad.serial=-1;}if mode==4 {bad.serial=1000001;}if mode==5 {bad.remaining=-1;}if mode==6 {bad.remaining=9;}if mode==7 {bad.origin=1;}#assert !sc_schedule_valid(bad) && sc_request(bad,ScObservation.{}).status==ScStatus.range;}
 }
 
-sc_phase_valid :: (phase:u8)->bool #export_c {return phase<=6;}
-sc_schedule_valid :: (s:ScSchedule)->bool #export_c {
+sc_phase_valid :: (phase:u8)->bool #export_c #effects(all) {return phase<=6;}
+sc_schedule_valid :: (s:ScSchedule)->bool #export_c #effects(all) {
   if !sc_sim_valid(s.now) || s.origin<0 || s.origin>s.now.step || s.origin%25!=0 || s.serial<0 || s.serial>SC_ID_MAX || s.remaining<0 || s.remaining>8 || !sc_phase_valid(cast(u8)s.phase) {return false;}
   if s.phase==ScPhase.row || s.phase==ScPhase.waiting {if s.now.step%25!=0 || s.holding {return false;}if s.phase==ScPhase.row {return !s.pending;}return s.pending && s.remaining==0;}
   if s.phase==ScPhase.sample || s.phase==ScPhase.control || s.phase==ScPhase.receipt {return ifx s.holding then s.remaining==0 else s.remaining>0 && !s.pending;}
   return true;
 }
-sc_begin :: ()->ScSchedule #export_c {return ScSchedule.{now=ScSimInstant.{epoch=1}};}
-sc_result :: (status:ScStatus,s:ScSchedule)->ScResult {return ScResult.{status=status,state=s};}
-sc_reset :: (s:ScSchedule)->ScResult #export_c {
+sc_begin :: ()->ScSchedule #export_c #effects(all) {return ScSchedule.{now=ScSimInstant.{epoch=1}};}
+sc_result :: (status:ScStatus,s:ScSchedule)->ScResult #effects(all) {return ScResult.{status=status,state=s};}
+sc_reset :: (s:ScSchedule)->ScResult #export_c #effects(all) {
   if !sc_schedule_valid(s) {return sc_result(ScStatus.range,s);}if s.now.epoch==SC_ID_MAX {return sc_result(ScStatus.exhausted,s);}
   return sc_result(ScStatus.ok,ScSchedule.{now=ScSimInstant.{epoch=s.now.epoch+1}});
 }
-sc_observation :: (at:ScSimInstant)->ScObservation #export_c {
+sc_observation :: (at:ScSimInstant)->ScObservation #export_c #effects(all) {
   if !sc_sim_valid(at) {return ScObservation.{};}last:=at;if at.step>0 {last.step-=1;}return ScObservation.{last_forward=last,qpos=at};
 }
-sc_request :: (s:ScSchedule,observation:ScObservation)->ScResult #export_c {
+sc_request :: (s:ScSchedule,observation:ScObservation)->ScResult #export_c #effects(all) {
   if !sc_schedule_valid(s) {return sc_result(ScStatus.range,s);}if s.phase!=ScPhase.row || s.remaining!=0 {return sc_result(ScStatus.order,s);}
   if s.now.step==SC_STEP_MAX || s.serial==SC_ID_MAX {return sc_result(ScStatus.exhausted,s);}
   expected:=sc_observation(s.now);
   if observation.last_forward.epoch!=expected.last_forward.epoch || observation.last_forward.step!=expected.last_forward.step || observation.qpos.epoch!=expected.qpos.epoch || observation.qpos.step!=expected.qpos.step {return sc_result(ScStatus.sample,s);}
   next:=s;next.serial+=1;next.origin=s.now.step;next.pending=true;next.phase=ScPhase.waiting;r:=sc_result(ScStatus.ok,next);r.ticket=ScTicket.{epoch=s.now.epoch,serial=next.serial,profile=1,base_step=s.now.step};return r;
 }
-sc_accept :: (s:ScSchedule,ticket:ScTicket)->ScResult #export_c {
+sc_accept :: (s:ScSchedule,ticket:ScTicket)->ScResult #export_c #effects(all) {
   if !sc_schedule_valid(s) {return sc_result(ScStatus.range,s);}if s.phase!=ScPhase.waiting {return sc_result(ScStatus.order,s);}
   if ticket.epoch!=s.now.epoch || ticket.serial!=s.serial || ticket.profile!=1 || ticket.base_step!=s.origin || s.now.step!=s.origin {return sc_result(ScStatus.stale,s);}
   next:=s;next.remaining=8;next.pending=false;next.phase=ScPhase.row;return sc_result(ScStatus.ok,next);
 }
-sc_refuse :: (s:ScSchedule)->ScResult #export_c {
+sc_refuse :: (s:ScSchedule)->ScResult #export_c #effects(all) {
   if !sc_schedule_valid(s) {return sc_result(ScStatus.range,s);}if s.phase!=ScPhase.waiting && !(s.phase==ScPhase.row && s.remaining>0) {return sc_result(ScStatus.order,s);}
   next:=s;next.remaining=0;next.origin=s.now.step;next.pending=false;next.phase=ScPhase.row;return sc_result(ScStatus.ok,next);
 }
-sc_select :: (s:ScSchedule,hold:bool)->ScResult #export_c {
+sc_select :: (s:ScSchedule,hold:bool)->ScResult #export_c #effects(all) {
   if !sc_schedule_valid(s) {return sc_result(ScStatus.range,s);}
   if hold {if (s.phase!=ScPhase.row && s.phase!=ScPhase.waiting) || s.remaining!=0 {return sc_result(ScStatus.order,s);}}
   else {if s.phase!=ScPhase.row || s.remaining==0 {return sc_result(ScStatus.order,s);}if s.now.step!=s.origin+(8-s.remaining)*25 {return sc_result(ScStatus.stale,s);}}
   if s.now.step==SC_STEP_MAX {return sc_result(ScStatus.exhausted,s);}next:=s;next.phase=ScPhase.sample;next.holding=hold;r:=sc_result(ScStatus.ok,next);if !hold {r.slot=8-s.remaining;}return r;
 }
-sc_sample :: (s:ScSchedule,fresh:ScSimInstant)->ScResult #export_c {
+sc_sample :: (s:ScSchedule,fresh:ScSimInstant)->ScResult #export_c #effects(all) {
   if !sc_schedule_valid(s) {return sc_result(ScStatus.range,s);}if s.phase!=ScPhase.sample {return sc_result(ScStatus.order,s);}
   if fresh.epoch!=s.now.epoch || fresh.step!=s.now.step {return sc_result(ScStatus.sample,s);}
   next:=s;next.phase=ScPhase.control;r:=sc_result(ScStatus.ok,next);r.goal_update=s.now.step%25==0;return r;
 }
 // Goal changes at 20Hz; torque/gripper intent is admitted on every 500Hz step.
-sc_control :: (s:ScSchedule,goal_update:bool,gripper_update:bool)->ScResult #export_c {
+sc_control :: (s:ScSchedule,goal_update:bool,gripper_update:bool)->ScResult #export_c #effects(all) {
   if !sc_schedule_valid(s) {return sc_result(ScStatus.range,s);}if s.phase!=ScPhase.control || goal_update!=(s.now.step%25==0) || !gripper_update {return sc_result(ScStatus.order,s);}
   next:=s;next.phase=ScPhase.receipt;return sc_result(ScStatus.ok,next);
 }
-sc_receipt :: (s:ScSchedule,after:ScSimInstant,effect:int)->ScResult #export_c {
+sc_receipt :: (s:ScSchedule,after:ScSimInstant,effect:int)->ScResult #export_c #effects(all) {
   if !sc_schedule_valid(s) {return sc_result(ScStatus.range,s);}next:=s;if s.phase!=ScPhase.receipt {next.phase=ScPhase.halted;return sc_result(ScStatus.order,next);}
   if s.now.step==SC_STEP_MAX {next.phase=ScPhase.halted;return sc_result(ScStatus.exhausted,next);}
   if effect!=0 || after.epoch!=s.now.epoch || after.step!=s.now.step+1 {next.phase=ScPhase.halted;return sc_result(ScStatus.effect,next);}

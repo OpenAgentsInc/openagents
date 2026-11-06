@@ -39,6 +39,6 @@ loop_sum :: () -> int {
   return total;
 }
 
-unrelated_foreign :: () -> int #foreign;
+unrelated_foreign :: () -> int #foreign #effects(all);
 unrelated_effect :: () { print("this effect is outside the check closure"); }
 main :: () { unrelated_effect(); value := unrelated_foreign(); }

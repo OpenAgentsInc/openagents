@@ -10,7 +10,7 @@
  for c:"/:@G`g{" {bytes[0]=c;#assert !pyd_label_ok(cast(string)bytes[..]);}
  bytes[0]='a';bytes[63]='g';#assert !pyd_label_ok(cast(string)bytes[..]);
 }
-pyd_label_ok :: (label:string)->bool {
+pyd_label_ok :: (label:string)->bool #effects(all) {
  if label.count!=64 {return false;}
  for c:label {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
  return true;

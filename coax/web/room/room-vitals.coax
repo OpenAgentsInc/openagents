@@ -147,7 +147,7 @@ rv_back :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
 }
 // For the host, placing seat s of room k: 1 when it goes back where its player stood, then (field 1
 // to 4) that place's x, y, z and facing; 0 to the gate.
-rm_eg_back :: (v: [] RmServer, k: int, s_id: SeatId, field: int) -> f32 #export_c { s := s_id.value;
+rm_eg_back :: (v: [] RmServer, k: int, s_id: SeatId, field: int) -> f32 #export_c #effects(all) { s := s_id.value;
   if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || !v[0].eg[k].seat[s].live || !v[0].eg[k].seat[s].back { return 0; }
   st := v[0].eg[k].seat[s];
   if field == 1 { return st.back_x; }
@@ -196,7 +196,7 @@ rv_hp_back :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
 //   PID HP MAX XP WANTED REV AT   a player's values at revision REV, changed at AT (wall ms)
 // The operation ID of a line is (SHARD, GEN, PID, REV). GEN lets the API refuse a replaced process's
 // reports once the directory fences owners (#12797).
-rm_vitals_due :: (v: [] RmServer) -> int #export_c {
+rm_vitals_due :: (v: [] RmServer) -> int #export_c #effects(all) {
   v[0].vit.out_n = 0;
   if v[0].tkey_n == 0 { return 0; }
   if v[0].vit.gen == 0 { v[0].vit.gen = v[0].wall_ms; }
@@ -271,7 +271,7 @@ rv_failed :: (v: [] RmServer) {
 // Each of these is final, and marks that line's revision saved, but for an f on a line whose player
 // sat here again since with a newer ticket: it goes again as that owner. A line with no code stays in
 // the outbox. Anything else (an older API's {"kept":N} aside) is a failure, and the post is sent again.
-rm_vitals_answer :: (v: [] RmServer, batch: int, status: int, body: string) #export_c {
+rm_vitals_answer :: (v: [] RmServer, batch: int, status: int, body: string) #export_c #effects(all) {
   if !v[0].vit.fly || batch != v[0].vit.batch { v[0].vit.late += 1; return; }
   if status >= 200 && status < 300 {
     if body.count > 8 && body[0..<8] == "receipt " {
@@ -326,7 +326,7 @@ rm_vitals_answer :: (v: [] RmServer, batch: int, status: int, body: string) #exp
 }
 // --dev with no vitals URL: the stand-in keeps the room's own notes (room-dev.coax), so the post in
 // flight is applied at once.
-rm_vitals_local :: (v: [] RmServer) #export_c {
+rm_vitals_local :: (v: [] RmServer) #export_c #effects(all) {
   if !v[0].vit.fly { return; }
   b: [128] u8;
   n := tk_add(b[..], 0, "receipt "); n = rv_int(b[..], n, v[0].vit.gen); n = tk_add(b[..], n, " "); n = rv_int(b[..], n, v[0].vit.batch); n = tk_add(b[..], n, " ");
@@ -335,11 +335,11 @@ rm_vitals_local :: (v: [] RmServer) #export_c {
 }
 // The room is draining (SIGTERM; #12797): every seat noted now and the outbox posted at the next call,
 // without waiting out a backoff.
-rm_vitals_flush :: (v: [] RmServer) #export_c {
+rm_vitals_flush :: (v: [] RmServer) #export_c #effects(all) {
   v[0].vit.flush = true; v[0].vit.retry_at = 0;
 }
 // Entries whose newest revision no receipt covers yet.
-rm_vitals_pending :: (v: [] RmServer) -> int #export_c {
+rm_vitals_pending :: (v: [] RmServer) -> int #export_c #effects(all) {
   n := 0;
   for i: 0..<VITALS { if v[0].vit.v[i].live && v[0].vit.v[i].rev > v[0].vit.v[i].acked { n += 1; } }
   return n;
@@ -347,7 +347,7 @@ rm_vitals_pending :: (v: [] RmServer) -> int #export_c {
 // The counts for the minute log: 0 posts, 1 retried, 2 failed, 3 applied, 4 already applied, 5 stale,
 // 6 refused, 7 late answers, 8 given up, 9 evicted unsaved, 10 pending now, 11 fenced (#12834), 12 seats
 // that went for it.
-rm_vitals_stat :: (v: [] RmServer, which: int) -> int #export_c {
+rm_vitals_stat :: (v: [] RmServer, which: int) -> int #export_c #effects(all) {
   t := v[0].vit;
   if which == 0 { return t.posts; }
   if which == 1 { return t.retried; }
@@ -365,7 +365,7 @@ rm_vitals_stat :: (v: [] RmServer, which: int) -> int #export_c {
   return 0;
 }
 // This process's generation (the host's start, wall ms): a later process's is larger.
-rm_vitals_gen :: (v: [] RmServer, gen: int) #export_c { if gen > 0 { v[0].vit.gen = gen; } }
+rm_vitals_gen :: (v: [] RmServer, gen: int) #export_c #effects(all) { if gen > 0 { v[0].vit.gen = gen; } }
 rv_num :: (t: string) -> int {
   if t.count == 0 || t.count > 18 { return -1; }
   x := 0;

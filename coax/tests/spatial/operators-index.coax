@@ -6,4 +6,4 @@
  v[0].x=8;v[0].y=16;v[0].z=32;v[1].x=2;
  r:=indexed(p[..],v[..]);#assert r.x==18 && r.y==36 && r.z==62;
 }
-indexed :: (points:[]Point3(World,u.Metre,f64),vectors:[]Vector3(World,u.Metre,f64))->Point3(World,u.Metre,f64) {return points[0]+vectors[0];}
+indexed :: (points:[]Point3(World,u.Metre,f64),vectors:[]Vector3(World,u.Metre,f64))->Point3(World,u.Metre,f64) #effects(all) {return points[0]+vectors[0];}

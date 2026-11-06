@@ -138,7 +138,7 @@ only after its final byte passes overlong, surrogate and Unicode-range checks.
 
 <!-- source: psionic/lib/deepseek/front-stream.coax feed -->
 ```jai
-df_feed :: (state:DfState,units:[]int,output:[]DfEvent,stage:[]DfEvent,overlap:bool)->DfResult #export_c {
+df_feed :: (state:DfState,units:[]int,output:[]DfEvent,stage:[]DfEvent,overlap:bool)->DfResult #export_c #effects(all) {
     if overlap {return DfResult.{status=DfStatus.alias,state=state};}
     if state.finished || state.phase<0 || state.phase>9 {return DfResult.{status=DfStatus.state,state=state};}
     if units.count>4096 || units.count>65536-state.total {return DfResult.{status=DfStatus.budget,state=state};}
@@ -147,7 +147,7 @@ df_feed :: (state:DfState,units:[]int,output:[]DfEvent,stage:[]DfEvent,overlap:b
     if w.written>output.count {return DfResult.{status=DfStatus.capacity,state=state};}
     for i:0..<w.written {output[i]=stage[i];}s.total+=units.count;return DfResult.{state=s,written=w.written};
 }
-df_end :: (state:DfState,finish:bool)->DfResult #export_c {
+df_end :: (state:DfState,finish:bool)->DfResult #export_c #effects(all) {
     if state.finished {return DfResult.{status=DfStatus.state,state=state};}
     if !finish || state.phase!=9 || state.count!=0 || state.left!=0 {return DfResult.{status=DfStatus.incomplete,state=state};}
     s:=state;s.finished=true;return DfResult.{state=s};
@@ -215,7 +215,7 @@ Unicode-16 and Unicode-17 additions.
 
 <!-- source: psionic/lib/deepseek/front-v41-token.coax v41-text -->
 ```jai
-dvf_text :: (table:[]u8,text:string,output:[]int,stage:[]int,symbols:[]int,overlap:bool)->PtResult #export_c {
+dvf_text :: (table:[]u8,text:string,output:[]int,stage:[]int,symbols:[]int,overlap:bool)->PtResult #export_c #effects(all) {
     if overlap {return PtResult.{status=PtStatus.alias};}if !pt_text_count(text.count) {return PtResult.{status=PtStatus.size};}
     valid:=pt_utf8_validate(text);if valid!=PtStatus.ok {return PtResult.{status=valid};}t:=pt_layout(table);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}
     at:=0;n:=0;work:=0;

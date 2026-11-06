@@ -270,7 +270,7 @@ rh_deadgears :: (c: [] Cdp) -> bool {
   return rh_check(same, "the browser's crowds differ from native") && rh_check(native[0] != native[1] && native[1] != native[2], "two cases gave one digest");
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { return 2; }
   only := ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "";

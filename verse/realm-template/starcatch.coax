@@ -310,7 +310,7 @@ catch_run :: (s: [] Catch, dt: f32) {
   s[0].steps = loop_ran(c);
 }
 
-catch_frame :: (s: [] Catch, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+catch_frame :: (s: [] Catch, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   catch_start(s);
   if u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   s[0].width = width; s[0].height = height; s[0].dpr = dpr;
@@ -333,7 +333,7 @@ catch_frame :: (s: [] Catch, out: [] f32, u: [] f32, width: f32, height: f32, dp
 
 // ---- input
 
-catch_key :: (s: [] Catch, key: int, mods: int) -> bool #export_c {
+catch_key :: (s: [] Catch, key: int, mods: int) -> bool #export_c #effects(all) {
   catch_start(s);
   if key == KEY_LEFT || key == 'a' || key == 'A' { s[0].keys |= HOLD_LEFT; return true; }
   if key == KEY_RIGHT || key == 'd' || key == 'D' { s[0].keys |= HOLD_RIGHT; return true; }
@@ -341,15 +341,15 @@ catch_key :: (s: [] Catch, key: int, mods: int) -> bool #export_c {
   if key == KEY_ESCAPE { leave_to(s, "/worlds"); return true; }
   return false;
 }
-catch_key_up :: (s: [] Catch, key: int, mods: int) -> bool #export_c {
+catch_key_up :: (s: [] Catch, key: int, mods: int) -> bool #export_c #effects(all) {
   if key == KEY_LEFT || key == 'a' || key == 'A' { s[0].keys = s[0].keys & HOLD_RIGHT; return true; }
   if key == KEY_RIGHT || key == 'd' || key == 'D' { s[0].keys = s[0].keys & HOLD_LEFT; return true; }
   return false;
 }
-catch_blur :: (s: [] Catch) #export_c { s[0].keys = 0; s[0].finger = 0; s[0].pressing_galaxy = false; }
+catch_blur :: (s: [] Catch) #export_c #effects(all) { s[0].keys = 0; s[0].finger = 0; s[0].pressing_galaxy = false; }
 // A finger or the mouse: REALMS leaves; otherwise a press starts the game, and
 // holding the left or right half of the screen moves the basket that way.
-catch_pointer :: (s: [] Catch, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+catch_pointer :: (s: [] Catch, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   catch_start(s);
   if phase == 0 {
     if in_rect(s[0].galaxy, x, y) { s[0].pressing_galaxy = true; return true; }
@@ -370,8 +370,8 @@ catch_pointer :: (s: [] Catch, x: f32, y: f32, phase: int, kind: int, id: int) -
   if id == s[0].finger_id { s[0].finger = 0; }
   return true;
 }
-catch_cursor :: (s: [] Catch) -> int #export_c { return 0; }
-catch_message :: (s: [] Catch, kind: int, t: string) #export_c {
+catch_cursor :: (s: [] Catch) -> int #export_c #effects(all) { return 0; }
+catch_message :: (s: [] Catch, kind: int, t: string) #export_c #effects(all) {
   catch_start(s);
   if kind != HOST_PAGE { return; }
   // a different sky each visit, from the tab's id; golden mode keeps the first
@@ -382,13 +382,13 @@ catch_message :: (s: [] Catch, kind: int, t: string) #export_c {
     s[0].seed = ifx h == 0 then 1 else h;
   }
 }
-catch_golden :: (s: [] Catch, on: bool) #export_c { catch_start(s); s[0].golden = on; }
-catch_action :: (s: [] Catch) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
-catch_action_done :: (s: [] Catch) #export_c { s[0].out_n = 0; }
+catch_golden :: (s: [] Catch, on: bool) #export_c #effects(all) { catch_start(s); s[0].golden = on; }
+catch_action :: (s: [] Catch) -> int #export_c #effects(all) { a := s[0].action; s[0].action = 0; return a; }
+catch_action_done :: (s: [] Catch) #export_c #effects(all) { s[0].out_n = 0; }
 
-coaxial_catch_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_catch_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_catch_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_catch_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_catch_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_catch_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // ---- checks
 

@@ -24,11 +24,11 @@
  #assert CK_readonly_element(c,t,CK_Loc.{})==(kind<2 || readonly);
  #assert state[0].depth==0;
 }
-CK_readonly :: (c:CK_Context,type:int)->bool {return c.types[type].kind==CK_Kind.view && c.types[type].length==1;}
-CK_readonly_conversion :: (c:CK_Context,from:int,to:int)->bool {
+CK_readonly :: (c:CK_Context,type:int)->bool #effects(all) {return c.types[type].kind==CK_Kind.view && c.types[type].length==1;}
+CK_readonly_conversion :: (c:CK_Context,from:int,to:int)->bool #effects(all) {
  return c.types[from].kind==CK_Kind.view && c.types[from].length==0 && CK_readonly(c,to) && c.types[from].elem==c.types[to].elem;
 }
-CK_readonly_coerce :: (c:CK_Context,id:int,to:int) {
+CK_readonly_coerce :: (c:CK_Context,id:int,to:int) #effects(all) {
  if !CK_readonly_conversion(c,c.nodes[id].type,to) {return;}
  original:=CK_new(c,c.nodes[id].kind,c.nodes[id].loc);if original==0 {return;}c.nodes[original]=c.nodes[id];c.nodes[original].next=0;
  // Calls are indexed intrusively as soon as their expression is checked.
@@ -44,7 +44,7 @@ CK_readonly_coerce :: (c:CK_Context,id:int,to:int) {
 // A read-only aggregate may be copied by value. It must not carry an embedded
 // writable descriptor, whose copy could otherwise recover a write capability.
 // Read-only descriptors and strings are allowed and keep ordinary borrow checks.
-CK_readonly_element :: (c:CK_Context,type:int,loc:CK_Loc)->bool {
+CK_readonly_element :: (c:CK_Context,type:int,loc:CK_Loc)->bool #effects(all) {
  if type==0 {return false;}cached:=c.types[type].readonly_state;
  if cached!=0 {return cached==2;}
  if !CK_enter(c,loc) {return false;}defer CK_leave(c);c.types[type].readonly_state=1;
@@ -57,7 +57,7 @@ CK_readonly_element :: (c:CK_Context,type:int,loc:CK_Loc)->bool {
 }
 // Run after layouts and concrete generic instances are complete. In particular,
 // a forward-declared record's unresolved field must not look borrow-free.
-CK_readonly_validate :: (c:CK_Context) {
+CK_readonly_validate :: (c:CK_Context) #effects(all) {
  for t:1..<c.state[0].type_count {c.types[t].readonly_state=0;}
  for t:16..<c.state[0].type_count {if CK_readonly(c,t) && !CK_readonly_element(c,c.types[t].elem,CK_Loc.{}) {CK_error(c,CK_Loc.{},"E0950","a read-only view element cannot contain writable or recursively unresolved descriptors","use read-only descriptors in the element, or borrow its individual fields");return;}}
 }

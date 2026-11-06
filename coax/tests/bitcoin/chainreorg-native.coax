@@ -2,7 +2,7 @@
 #run_steps 250000000;
 #load "chainstate-native.coax";
 #load "../../lib/bitcoin/chainreorg.coax";
-cr_native_receive :: (d: [] ValidationNative, i: int, block: [] u8) -> int #export_c {
+cr_native_receive :: (d: [] ValidationNative, i: int, block: [] u8) -> int #export_c #effects(all) {
   if !lc_index_extent(i, d[0].tree[0].count) { return -1; }
   hash: [32] u8;
   if block.count < 80 || pow_block_hash_vartime(block[0..<80], hash[..]) != POW_OK || !lc_same(hash[..], d[0].entries[i].hash[..]) { return -1; }
@@ -10,13 +10,13 @@ cr_native_receive :: (d: [] ValidationNative, i: int, block: [] u8) -> int #expo
   if r.code != BLOCK_OK { return -100-r.code; }
   bi_received_block_vartime(d[0].tree[..], i, r.count); return 0;
 }
-cr_native_status :: (d: [] ValidationNative, i: int) -> u32 #export_c { return d[0].entries[i].status; }
-cr_native_tip :: (d: [] ValidationNative) -> int #export_c { return bi_tip(d[0].tree[..]); }
-cr_native_best :: (d: [] ValidationNative) -> int #export_c { return bi_find_most_work_chain(d[0].tree[..]); }
-cr_native_publish :: (d: [] ValidationNative, table: [] u8, used: int, target: int) -> bool #export_c {
+cr_native_status :: (d: [] ValidationNative, i: int) -> u32 #export_c #effects(all) { return d[0].entries[i].status; }
+cr_native_tip :: (d: [] ValidationNative) -> int #export_c #effects(all) { return bi_tip(d[0].tree[..]); }
+cr_native_best :: (d: [] ValidationNative) -> int #export_c #effects(all) { return bi_find_most_work_chain(d[0].tree[..]); }
+cr_native_publish :: (d: [] ValidationNative, table: [] u8, used: int, target: int) -> bool #export_c #effects(all) {
   return cr_publish_vartime(d[0].tree[..], table, used, target);
 }
-cr_native_prepare :: (d: [] ValidationNative, table: [] u8, used: int, target: int, indices: [] int, bodies: [] u8, offsets: [] int, stage: [] u8, scratch: [] u8, batch: [] u8, temp: [] u8, undo: [] u8) -> CrResult #export_c {
+cr_native_prepare :: (d: [] ValidationNative, table: [] u8, used: int, target: int, indices: [] int, bodies: [] u8, offsets: [] int, stage: [] u8, scratch: [] u8, batch: [] u8, temp: [] u8, undo: [] u8) -> CrResult #export_c #effects(all) {
   if indices.count > 128 || offsets.count != indices.count+1 { return cr_refused(CS_CONTEXT); }
   blocks: [128] CrBlock; path: [128] int;
   for k: 0..<indices.count {

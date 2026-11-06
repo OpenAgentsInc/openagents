@@ -205,7 +205,7 @@ md_say :: (s: [] Everglade, a: string, b: string) {
   if s[0].started { sp_say(s, cast(string) t[0..<k], -1, ""); }
 }
 // The API's answer to the last ask ("200\n{...}", anything else a refusal).
-net_moderated :: (s: [] Everglade, answer: string) #export_c {
+net_moderated :: (s: [] Everglade, answer: string) #export_c #effects(all) {
   if !net_on(s) { return; }
   if ege_answered(s, answer) { return; }   // the EVENTS pane's (everglade-events.coax)
   if jn_invited(s, answer) { return; }      // INVITE's seat hold (everglade-join.coax, #12795)

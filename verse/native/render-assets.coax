@@ -51,7 +51,7 @@ ras_stage :: (table_path:string,package_path:string,web_root:string,output:strin
   if !ras_atomic(fs_join(output,"assets.json",path[..]),cast(string)table[0..<tn]) {return false;}
   return fs_write(fs_join(output,"staging.json",path[..]),text);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) {return 2;}
   table:=args_value(args[..],"--table","");package:=args_value(args[..],"--package","");web:=args_value(args[..],"--web-root","");out:=args_value(args[..],"--output","");
   if table.count==0 || package.count==0 || web.count==0 || out.count==0 {tool_errln("usage: render-assets --table FILE --package FILE --web-root DIR --output DIR");return 2;}

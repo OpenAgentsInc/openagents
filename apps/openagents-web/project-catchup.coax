@@ -18,7 +18,7 @@
 #load "../../coax/tests/nostr/project_capacity_adapter.coax";
 #load "../../coax/lib/json/json.coax";
 
-native_check :: (i: int, run: bool) -> int #export_c {
+native_check :: (i: int, run: bool) -> int #export_c #effects(all) {
   if i == 0 { if run { lc_0(); } else { print("capped history and exact ID repair load all 155 rows plus older current workers, plans and statuses"); } }
   if i == 1 { if run { lc_1(); } else { print("a missing known ID, an auth CLOSED, a timestamp tie and the page budget keep the last complete view"); } }
   if i == 2 { if run { lc_2(); } else { print("table output exhaustion and a catch-up timeout keep the previous complete view"); } }

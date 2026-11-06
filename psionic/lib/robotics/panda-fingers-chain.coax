@@ -43,13 +43,13 @@
  #assert pff_forward_raw(rawq[..],raws[0..<1],a[..])==PfkStatus.shape;pff_same(a[0],b[0]);
 }
 
-pff_slides_admit :: (words:[2]u64)->PfkStatus {for bits:words {if !pfk_finite(bits) {return PfkStatus.number;}if abs(f64_from_bits(bits))>1 {return PfkStatus.range;}}return PfkStatus.ok;}
-pff_branch :: (parent:PfkPose,node:PffNode,coordinate:pfku.Quantity(pfku.Metre,f64))->PfkPose {
+pff_slides_admit :: (words:[2]u64)->PfkStatus #effects(all) {for bits:words {if !pfk_finite(bits) {return PfkStatus.number;}if abs(f64_from_bits(bits))>1 {return PfkStatus.range;}}return PfkStatus.ok;}
+pff_branch :: (parent:PfkPose,node:PffNode,coordinate:pfku.Quantity(pfku.Metre,f64))->PfkPose #effects(all) {
  child:PfkRigid;child.position=pfk_shift(parent.position,parent.quaternion,node.offset);child.quaternion=pfk_multiply(parent.quaternion,pfk_normalize(node.fixed).value);
  if node.joint>=0 {delta:=coordinate.value-node.reference;offset:[3]f64;for i:0..<3 {offset[i]=node.axis[i]*delta;}child.position=pfk_shift(child.position,child.quaternion,offset);}
  return pfk_pose(child);
 }
-pff_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),output:[]PffOutput)->PfkStatus #export_c {
+pff_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),output:[]PffOutput)->PfkStatus #export_c #effects(all) {
  if angles.count!=7 || slides.count!=2 || output.count!=1 {return PfkStatus.shape;}
  // Arm evaluation is private, so a later slide refusal still publishes nothing.
  arm:[1]PfkOutput;status:=pfk_forward(angles,arm[..]);if status!=PfkStatus.ok {return status;}
@@ -58,6 +58,6 @@ pff_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(p
  for i:0..<4 {node:=nodes[i];parent:PfkPose;if node.parent==10 {parent=fresh.arm.links[node.parent];}else {parent=fresh.fingers[node.parent-12];}q:pfku.Quantity(pfku.Metre,f64);if node.joint>=0 {q=slides[node.joint];}fresh.fingers[i]=pff_branch(parent,node,q);}
  output[0]=fresh;return PfkStatus.ok;
 }
-pff_forward_raw :: (radians:[]f64,metres:[]f64,output:[]PffOutput)->PfkStatus #export_c {
+pff_forward_raw :: (radians:[]f64,metres:[]f64,output:[]PffOutput)->PfkStatus #export_c #effects(all) {
  if radians.count!=7 || metres.count!=2 {return PfkStatus.shape;}q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);for i:0..<7 {q[i].value=radians[i];}for i:0..<2 {s[i].value=metres[i];}return pff_forward(q[..],s[..],output);
 }

@@ -26,17 +26,17 @@ FR_PREFIX :: "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deplo
     #assert fr_spec(a,b,"new") && !fr_spec(a,b,"wrong") && !fr_spec("{}",b,"new") && !fr_spec(a,"{}","new") && !fr_spec("bad",b,"new") && !fr_spec(a,"bad","new");
     for bad:[5]string.["{\"containers\":[{\"env\":[{\"name\":\"PIN\",\"value\":\"other\"}],\"image\":\"new\",\"resources\":{\"cpu\":\"1\"}}],\"serviceAccountName\":\"acct\",\"timeoutSeconds\":30}","{\"containers\":[{\"env\":[{\"name\":\"PIN\",\"value\":\"fixed\"}],\"image\":\"new\",\"resources\":{\"cpu\":\"2\"}}],\"serviceAccountName\":\"acct\",\"timeoutSeconds\":30}","{\"containers\":[{\"env\":[{\"name\":\"PIN\",\"value\":\"fixed\"}],\"image\":\"new\",\"resources\":{\"cpu\":\"1\"}}],\"serviceAccountName\":\"foreign\",\"timeoutSeconds\":30}","{\"containers\":[{\"env\":[{\"name\":\"PIN\",\"value\":\"fixed\"}],\"image\":\"new\",\"resources\":{\"cpu\":\"1\"}}],\"serviceAccountName\":\"acct\",\"timeoutSeconds\":31}","{\"containers\":[]}"] {#assert !fr_spec(a,bad,"new");}
 }
-fr_image :: (image:string)->bool {
+fr_image :: (image:string)->bool #effects(all) {
     if image.count!=FR_PREFIX.count+64 || image[0..<FR_PREFIX.count]!=FR_PREFIX {return false;}
     for i:FR_PREFIX.count..<image.count {c:=image[i];if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;
 }
-fr_traffic :: (phase:int,old:string,target:string,latest:string,names:[]string,percent:[]int)->bool {
+fr_traffic :: (phase:int,old:string,target:string,latest:string,names:[]string,percent:[]int)->bool #effects(all) {
     if phase<0 || phase>1 || old.count==0 || target.count==0 || old==target || latest!=target || names.count==0 || names.count!=percent.count {return false;}
     sum:=0;expected:=ifx phase==0 then old else target;
     for i:0..<names.count {p:=percent[i];if !fr_percent(p) || (p>0 && names[i]!=expected) {return false;}sum+=p;}
     return sum==100;
 }
-fr_spec :: (before:string,after:string,image:string)->bool {
+fr_spec :: (before:string,after:string,image:string)->bool #effects(all) {
     an:[512]JvNode;bn:[512]JvNode;a:[1]Jv;b:[1]Jv;
     if !jv_parse(a[..],before,an[..]) {return false;}
     if !jv_parse(b[..],after,bn[..]) {return false;}
@@ -59,7 +59,7 @@ main :: () {}
     names:=[1]string.["N"];p:=[1]int.[100];#assert fr_traffic(1,"O","N","N",names[..],p[..]);
     #assert fr_percent(0) && fr_percent(100) && !fr_percent(-1) && !fr_percent(101) && !fr_percent(9223372036854775807);
 }
-fr_percent :: (p:int)->bool {return p>=0 && p<=100;}
+fr_percent :: (p:int)->bool #effects(all) {return p>=0 && p<=100;}
 #test "structural counterexamples do not hide behind equal node counts" {
     #assert !fr_spec("{\"containers\":[]}","{\"containers\":[]}","new");
     #assert !fr_spec("{\"containers\":[{\"image\":\"old\"}]}","{\"containers\":[],\"x\":0,\"y\":0}","new");

@@ -2,7 +2,7 @@
 // object store. Its authored centre is 1.66 m above the figure's root.
 #load "../../apps/openagents-web/garden.coax";
 
-drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c {
+drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c #effects(all) {
   s: [1] Garden;
   garden_start(s[..]);
   for i: 0..<GROUND_POINTS { s[0].heights[i] = 2.5; }

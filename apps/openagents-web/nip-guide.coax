@@ -33,10 +33,10 @@
 }
 
 Ng :: struct {page:int;mode:int;view:int;code:int;pending:bool;selected:int;scroll:f32;width:f32;height:f32;dpr:f32=1;down:int=-1;down_y:f32;start_scroll:f32;action:int;route:[256]u8;route_n:int;}
-ng_number :: (page:int)->int #export_c {if page<1 || page>NG_COUNT {return -1;}return NG_NUMBERS[page-1];}
-ng_page :: (s:[]Ng,page:int) #export_c {s[0]=Ng.{};if page>=0 && page<=NG_COUNT {s[0].page=page;}s[0].pending=s[0].page>0;}
-ng_requested :: (s:[]Ng)->int #export_c {if s[0].page<1 || s[0].page>NG_COUNT || s[0].mode<0 || s[0].mode>2 || !s[0].pending {return -1;}return (s[0].page-1)*3+s[0].mode;}
-ng_observed :: (s:[]Ng,code:int) #export_c {s[0].code=code;s[0].pending=false;}
+ng_number :: (page:int)->int #export_c #effects(all) {if page<1 || page>NG_COUNT {return -1;}return NG_NUMBERS[page-1];}
+ng_page :: (s:[]Ng,page:int) #export_c #effects(all) {s[0]=Ng.{};if page>=0 && page<=NG_COUNT {s[0].page=page;}s[0].pending=s[0].page>0;}
+ng_requested :: (s:[]Ng)->int #export_c #effects(all) {if s[0].page<1 || s[0].page>NG_COUNT || s[0].mode<0 || s[0].mode>2 || !s[0].pending {return -1;}return (s[0].page-1)*3+s[0].mode;}
+ng_observed :: (s:[]Ng,code:int) #export_c #effects(all) {s[0].code=code;s[0].pending=false;}
 ng_path :: (s:[]Ng,path:string) {s[0].route_n=put(s[0].route[..],0,path);s[0].action=1;}
 ng_go :: (s:[]Ng,page:int) {if page==0 {ng_path(s,"/nip");return;}if page<1 || page>NG_COUNT {return;}
   n:=put(s[0].route[..],0,"/nip/");number:=NG_NUMBERS[page-1];if number<10 {n=put(s[0].route[..],n,"0");}s[0].route_n=put_int(s[0].route[..],n,number);s[0].action=1;
@@ -54,9 +54,9 @@ ng_label :: (nip:int,code:int)->string {
 }
 ng_columns :: (s:[]Ng)->int {return ifx s[0].width/s[0].dpr>=900 then 2 else 1;}
 ng_scroll_limit :: (s:[]Ng)->f32 {rows:=(NG_COUNT+ng_columns(s)-1)/ng_columns(s);return hi(0,cast(f32)rows*58-(s[0].height/s[0].dpr-190));}
-ng_wheel :: (s:[]Ng,dy:f32) #export_c {if s[0].page==0 {s[0].scroll=clamp(s[0].scroll+dy,0,ng_scroll_limit(s));}}
+ng_wheel :: (s:[]Ng,dy:f32) #export_c #effects(all) {if s[0].page==0 {s[0].scroll=clamp(s[0].scroll+dy,0,ng_scroll_limit(s));}}
 ng_select :: (s:[]Ng,mode:int) {if mode>=0 && mode<3 {s[0].mode=mode;s[0].pending=true;s[0].view=0;}}
-ng_key :: (s:[]Ng,key:int)->bool #export_c {
+ng_key :: (s:[]Ng,key:int)->bool #export_c #effects(all) {
   if key==-1 {ng_go(s,0);return true;}
   if s[0].page==0 {
     if key==-2 {ng_go(s,s[0].selected+1);return true;}
@@ -73,7 +73,7 @@ ng_hit :: (s:[]Ng,x:f32,y:f32)->int {
   for i:0..<3 {if inside(ng_case_box(s,i),x,y) {return i;}}
   for i:0..<5 {if inside(ng_nav_box(s,i),x,y) {return i+10;}}return -1;
 }
-ng_pointer :: (s:[]Ng,x:f32,y:f32,phase:int)->bool #export_c {
+ng_pointer :: (s:[]Ng,x:f32,y:f32,phase:int)->bool #export_c #effects(all) {
   hit:=ng_hit(s,x,y);
   if phase==POINTER_DOWN {s[0].down=hit;s[0].down_y=y;s[0].start_scroll=s[0].scroll;return hit>=0;}
   if phase==POINTER_MOVE && s[0].page==0 && s[0].down>=0 {s[0].scroll=clamp(s[0].start_scroll+(s[0].down_y-y)/s[0].dpr,0,ng_scroll_limit(s));return true;}
@@ -89,7 +89,7 @@ ng_paragraph :: (out:[]f32,at:int,text:string,x:f32,y:f32,width:f32,size:f32,d:f
   while from<text.count && line<12 {end:=wrap(text,from,width/size,0.2,0.65,false,next[..]);v=write(d,out,v,text[from..<end],x,y+cast(f32)line*size*1.65,size,0.2,0.65,color,false,false);if next[0]<=from {break;}from=next[0];line+=1;}return v;
 }
 ng_lines :: (text:string,width:f32,size:f32)->int {from:=0;line:=0;next:[1]int;while from<text.count && line<12 {end:=wrap(text,from,width/size,0.2,0.65,false,next[..]);if next[0]<=from {break;}from=next[0];line+=1;}return line;}
-ng_frame :: (s:[]Ng,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bool)->int #export_c {
+ng_frame :: (s:[]Ng,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bool)->int #export_c #effects(all) {
   if s.count!=1 || u.count<16 || w<1 || h<1 || d<0.5 || d>4 {return 0;}
   s[0].width=w;s[0].height=h;s[0].dpr=d;for i:0..<16 {u[i]=0;}u[0]=w;u[1]=h;u[3]=1;u[4]=1;
   v:=0;left:=24*d;room:=w-48*d;white:=ink(0.6*d,0.95,5*d,0.95,0.95,0.95);muted:=ink(0.4*d,0.65,3*d,0.7,0.76,0.79);orange:=ink(0.6*d,0.9,4*d,1,0.62,0.2);

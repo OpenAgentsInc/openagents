@@ -32,21 +32,21 @@ and two smoothed steps place the shadow, mid and lit bands:
 <!-- source: aethyr/render/material.coax bands -->
 ```jai
 // smoothstep(e - s, e + s, x): a band edge at e, blended over 2s.
-verse_style_soft_step :: (e:f32,s:f32,x:f32)->f32 #export_c {
+verse_style_soft_step :: (e:f32,s:f32,x:f32)->f32 #export_c #effects(all) {
  t:=st_sat((x-(e-s))/st_max(2.0f32*s,0.000001f32));
  return t*t*(3.0f32-2.0f32*t);
 }
 
 // ---- 1. Shading: soft toon bands
 // Wrapped Lambert: N.L lifted a quarter, so the terminator sits past the side.
-verse_style_wrap :: (ndl:f32)->f32 #export_c {return st_sat((ndl+0.25f32)/1.25f32);}
+verse_style_wrap :: (ndl:f32)->f32 #export_c #effects(all) {return st_sat((ndl+0.25f32)/1.25f32);}
 // Three bands: shadow 0, mid (`mid`, 0.55), lit 1, edges e0 and e1 (0.20, 0.58)
 // softened over s (0.06). w is the wrapped term times the shadow map's soft term.
-verse_style_bands :: (w:f32,e0:f32,e1:f32,s:f32,mid:f32)->f32 #export_c {
+verse_style_bands :: (w:f32,e0:f32,e1:f32,s:f32,mid:f32)->f32 #export_c #effects(all) {
  return mid*verse_style_soft_step(e0,s,w)+(1.0f32-mid)*verse_style_soft_step(e1,s,w);
 }
 // Two bands, for characters: one edge (0.40, softness 0.08).
-verse_style_bands2 :: (w:f32,e:f32,s:f32)->f32 #export_c {return verse_style_soft_step(e,s,w);}
+verse_style_bands2 :: (w:f32,e:f32,s:f32)->f32 #export_c #effects(all) {return verse_style_soft_step(e,s,w);}
 ```
 
 These are plain `f32` functions that work on one colour channel at a time,

@@ -45,7 +45,7 @@ Args :: struct {
   #assert !args_add(b[..], "") && b[0].full && args_count(b[..]) == ARGS_MAX;
 }
 // Appends one argument; false (and full set) when it does not fit.
-args_add :: (a: [] Args, s: string) -> bool {
+args_add :: (a: [] Args, s: string) -> bool #effects(all) {
   if a[0].n >= ARGS_MAX || a[0].used + s.count > ARGS_BYTES { a[0].full = true; return false; }
   at := a[0].used;
   for i: 0..<s.count { a[0].bytes[at + i] = s[i]; }
@@ -54,20 +54,20 @@ args_add :: (a: [] Args, s: string) -> bool {
   a[0].n += 1;
   return true;
 }
-args_count :: (a: [] Args) -> int { return a[0].n; }
+args_count :: (a: [] Args) -> int #effects(all) { return a[0].n; }
 // Argument i (0 is the first after the program name), or "".
-args_at :: (a: [] Args, i: int) -> string {
+args_at :: (a: [] Args, i: int) -> string #effects(all) {
   if i < 0 || i >= a[0].n { return ""; }
   return a[0].v[i];
 }
 // The index of the first argument equal to name, or -1.
-args_find :: (a: [] Args, name: string) -> int {
+args_find :: (a: [] Args, name: string) -> int #effects(all) {
   for i: 0..<a[0].n { if a[0].v[i] == name { return i; } }
   return -1;
 }
-args_has :: (a: [] Args, name: string) -> bool { return args_find(a, name) >= 0; }
+args_has :: (a: [] Args, name: string) -> bool #effects(all) { return args_find(a, name) >= 0; }
 // The word after name's first occurrence, or fallback when name is absent or last.
-args_value :: (a: [] Args, name: string, fallback: string) -> string {
+args_value :: (a: [] Args, name: string, fallback: string) -> string #effects(all) {
   i := args_find(a, name);
   if i < 0 || i + 1 >= a[0].n { return fallback; }
   return a[0].v[i + 1];
@@ -92,7 +92,7 @@ ArgsNumber :: struct { ok: bool; value: f64; }
 // exponent within 1e-22..1e22 (exact: integer mantissa times a power of ten
 // that is itself exact); anything else is refused (ok false), where Number()
 // would give NaN or a value we do not need.
-args_number :: (text: string) -> ArgsNumber {
+args_number :: (text: string) -> ArgsNumber #effects(all) {
   r: ArgsNumber;
   first := 0; last := text.count;
   while first < last && text[first] == ' ' { first += 1; }
@@ -144,7 +144,7 @@ ArgsSize :: struct { ok: bool; w: int; h: int; }
   #assert !args_size("1.5x2").ok && !args_size("-1x2").ok && !args_size("1x2x3").ok && !args_size("99999x1").ok && !args_size("0x5").ok;
 }
 // "WxH" with whole positive numbers up to 16384 each.
-args_size :: (text: string) -> ArgsSize {
+args_size :: (text: string) -> ArgsSize #effects(all) {
   r: ArgsSize;
   x := -1;
   for c, i: text { if c == 'x' { if x >= 0 { return r; } x = i; } }
@@ -159,7 +159,7 @@ args_size :: (text: string) -> ArgsSize {
   #assert args_whole("123456789") == 123456789 && args_whole("1234567890") == -1 && args_whole("-3") == -1;
 }
 // Decimal digits only, at most nine of them: the value, or -1.
-args_whole :: (text: string) -> int {
+args_whole :: (text: string) -> int #effects(all) {
   if text.count < 1 || text.count > 9 { return -1; }
   v := 0;
   for c: text {

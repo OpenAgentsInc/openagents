@@ -53,6 +53,16 @@ for k in $(seq 1 "$shards"); do
   fi
 done
 g() { gcloud "$@" --project "$project" --quiet; }
+# Compare every revision currently receiving traffic, including a pinned rollback.
+# This read-only gate runs before ticket keys, drains or a new image are requested.
+coax="${COAX:-$root/coax/bin/coax}"
+compat_dir="$(mktemp -d)"
+if COAX="$coax" coax/web/tool.sh compat-room "$coax" "$project" "$region" "$service" "$shards" "$compat_dir"; then
+  rm -rf "$compat_dir"
+else rm -rf "$compat_dir"; echo "room: compatibility regression against production: not deploying" >&2; exit 1
+fi
+build_commit="$(git rev-parse HEAD)"
+
 # The checks and the drains sign with the seat-ticket key, which stays in this process's environment and
 # is never printed or put in an argument list.
 OA_ROOM_TICKET_KEY="$(g secrets versions access latest --secret oa-room-ticket-key)"; export OA_ROOM_TICKET_KEY
@@ -87,6 +97,7 @@ done
 cp "$here/room-host.c" "$here/room-tick.c" "$here/room-stats.h" "$here/room-world.c" "$here/room-world.h" "$here/room-math.c" verse/voice-host/ws.c verse/voice-host/ws.h "$stage/src/"
 coax/web/tool.sh "$here/room-catalog.coax" apps/openagents-web/realms/everglade/assets/everglade.pack "$stage/src/room-catalog.c"
 cp "$here/Dockerfile" "$stage/"
+cp -R coax/web/compat "$stage/compat"
 image="$region-docker.pkg.dev/$project/cloud-run-source-deploy/$service:$(git rev-parse --short HEAD)-$(date +%Y%m%d-%H%M%S)"
 gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$image" --quiet \
   --service-account "projects/$project/serviceAccounts/oa-mvp-automation@$project.iam.gserviceaccount.com" \
@@ -101,6 +112,7 @@ svc() { if [[ "$1" == 1 ]]; then echo "$service"; else echo "$service-$1"; fi; }
 for k in $(seq 1 "$shards"); do
   drain "$k" || exit 1
   out="$(g run deploy "$(svc "$k")" --image "$image" --region "$region" \
+    --labels "coax-commit=$build_commit" \
     --allow-unauthenticated --port 8080 --cpu 1 --memory 512Mi \
     --startup-probe "httpGet.path=/ready,httpGet.port=8080,periodSeconds=2,timeoutSeconds=2,failureThreshold=60" \
     --min-instances 0 --max-instances 1 --concurrency 1000 --timeout 3600 --session-affinity --no-cpu-throttling \

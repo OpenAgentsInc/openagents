@@ -23,7 +23,7 @@ dc_live :: (thread:int,half:int)->bool {return thread<half;}
 // element, and threads t < half add the element half places on. Each phase
 // reads one array and writes the other, so no phase writes an element
 // another thread reads in that phase.
-dc_tile_sum :: (item:int,count:int,x:[]f32,sums:[]f32) #export_c {
+dc_tile_sum :: (item:int,count:int,x:[]f32,sums:[]f32) #export_c #effects(all) {
     a:[128]f32;b:[128]f32;
     for thread:0..<DC_THREADS {
         at:=item*DC_TILE+thread;lo:f32=0;hi:f32=0;
@@ -50,7 +50,7 @@ DC_WARP :: 32;
 // count). In the step with mask m it adds the value of thread t^m. After
 // masks 16, 8, 4, 2 and 1 every thread holds the same total, which it writes
 // to out[item*32+t] (inside count).
-dc_butterfly :: (item:int,count:int,x:[]f32,out:[]f32) #export_c {
+dc_butterfly :: (item:int,count:int,x:[]f32,out:[]f32) #export_c #effects(all) {
     a:[32]f32;b:[32]f32;
     for thread:0..<DC_WARP {
         at:=item*DC_WARP+thread;v:f32=0;
@@ -86,7 +86,7 @@ dc_bf16 :: (word:u32,high:bool)->f32 {
 // 256: every thread loads two of its values into the shared tile, then
 // every thread reads the whole tile. Each thread adds its row's products in
 // f32 in column order.
-dc_bf16_rows :: (item:int,rows:int,cols:int,w:[]u32,x:[]f32,out:[]f32) #export_c {
+dc_bf16_rows :: (item:int,rows:int,cols:int,w:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {
     tile:[256]f32;acc:[128]f32;
     words:=cols/2;
     for s:0..<dc_groups(cols,DC_TILE) {

@@ -19,7 +19,7 @@ stars_min :: (a:f32,b:f32)->f32 { if a<b { return a; } return b; }
 
 // One layer: cells `cell` pixels wide, a star in a share `density` of them,
 // each `size` pixels across, twinkling with time t.
-verse_star_layer :: (x:f32,y:f32,cell:f32,density:f32,size:f32,t:f32,seed:f32)->f32 #export_c {
+verse_star_layer :: (x:f32,y:f32,cell:f32,density:f32,size:f32,t:f32,seed:f32)->f32 #export_c #effects(all) {
   cx:=floor(x/cell); cy:=floor(y/cell);
   pick:=stars_hash(cx+seed,cy-seed*0.37f32);
   if pick<1.0f32-density { return 0.0f32; }
@@ -33,7 +33,7 @@ verse_star_layer :: (x:f32,y:f32,cell:f32,density:f32,size:f32,t:f32,seed:f32)->
 }
 
 // The starfield at pixel x, y with the camera's drift (pixels) and time.
-verse_starfield :: (x:f32,y:f32,drift_x:f32,drift_y:f32,t:f32,dpr:f32)->f32 #export_c {
+verse_starfield :: (x:f32,y:f32,drift_x:f32,drift_y:f32,t:f32,dpr:f32)->f32 #export_c #effects(all) {
   k:=stars_max(dpr,0.5f32);
   far:=verse_star_layer(x+drift_x*0.02f32,y+drift_y*0.02f32,9.0f32*k,0.12f32,0.55f32*k,t,1.0f32)*0.55f32;
   mid:=verse_star_layer(x+drift_x*0.05f32,y+drift_y*0.05f32,23.0f32*k,0.10f32,0.8f32*k,t,7.0f32)*0.85f32;
@@ -42,7 +42,7 @@ verse_starfield :: (x:f32,y:f32,drift_x:f32,drift_y:f32,t:f32,dpr:f32)->f32 #exp
 }
 
 // The Sun's disc, d pixels from its centre, of radius r pixels: 1 inside, soft at the limb.
-verse_sun_disc :: (d:f32,r:f32)->f32 #export_c {
+verse_sun_disc :: (d:f32,r:f32)->f32 #export_c #effects(all) {
   rr:=stars_max(r,0.75f32);
   x:=(d-rr)/stars_max(rr*0.08f32,0.75f32);
   if x<=-1.0f32 { return 1.0f32; }
@@ -51,7 +51,7 @@ verse_sun_disc :: (d:f32,r:f32)->f32 #export_c {
 }
 // Its corona and halo outside the disc: bright near the limb, wide and faint
 // far out, never zero, so a distant Sun is still a star that lights the view.
-verse_sun_corona :: (d:f32,r:f32,dpr:f32)->f32 #export_c {
+verse_sun_corona :: (d:f32,r:f32,dpr:f32)->f32 #export_c #effects(all) {
   k:=stars_max(dpr,0.5f32);
   rr:=stars_max(r,0.75f32);
   out:=stars_max(d-rr,0.0f32);

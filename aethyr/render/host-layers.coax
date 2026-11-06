@@ -59,14 +59,14 @@ HostLayersProfile :: struct {valid:bool;side:int;}
  #assert out[0]==100 && out[1]==199 && out[2]==50 && out[3]==128;
 }
 
-htx_layout :: (info:ImgInfo,side:int,source_bytes:int)->HostLayerPlan {
+htx_layout :: (info:ImgInfo,side:int,source_bytes:int)->HostLayerPlan #effects(all) {
  if info.status!=IMG_OK || side<1 || side>HOST_LAYER_SIDE || source_bytes<1 || source_bytes>HOST_LAYER_SOURCE_BYTES || info.w<1 || info.h!=info.w || (info.w!=side && info.w*2!=side) || info.work<1 || info.work>HOST_LAYER_WORK_BYTES {return HostLayerPlan.{};}
  levels:=img_levels(side,side);bytes:=0;for level:0..<levels {w:=img_side(side,level);bytes+=w*w*4;}
  return HostLayerPlan.{status=IMG_OK,side=side,width=info.w,height=info.h,levels=levels,bytes=bytes,work=info.work,base_offset=ifx info.w==side then 0 else side*side*4,source_bytes=source_bytes};
 }
-htx_profile :: (profile:int)->HostLayersProfile #export_c {return ifx profile==2 then HostLayersProfile.{valid=true,side=512} else HostLayersProfile.{};}
-htx_plan :: (src:[]u8,side:int)->HostLayerPlan #export_c {return htx_layout(img_info(src),side,src.count);}
-htx_decode :: (src:[]u8,side:int,work:[]u8,out:[]u8)->int #export_c {
+htx_profile :: (profile:int)->HostLayersProfile #export_c #effects(all) {return ifx profile==2 then HostLayersProfile.{valid=true,side=512} else HostLayersProfile.{};}
+htx_plan :: (src:[]u8,side:int)->HostLayerPlan #export_c #effects(all) {return htx_layout(img_info(src),side,src.count);}
+htx_decode :: (src:[]u8,side:int,work:[]u8,out:[]u8)->int #export_c #effects(all) {
  p:=htx_plan(src,side);if p.status!=IMG_OK {return p.status;}if work.count<p.work || out.count<p.bytes {return IMG_SMALL;}
  count:=p.width*p.height*4;status:=img_decode(src,work[0..<p.work],out[p.base_offset..<p.base_offset+count]);if status!=IMG_OK {return status;}
  if p.base_offset!=0 {img_double(out[p.base_offset..<p.base_offset+count],p.width,p.height,out[0..<p.base_offset]);}

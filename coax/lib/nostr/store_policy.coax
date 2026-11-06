@@ -44,19 +44,19 @@ NsMeta :: struct {id:[32]u8;author:[32]u8;kind:int;created:int;identifier:string
 }
 #test "absent expiration does not expire" {#assert !ns_expired(-1,0) && !ns_expired(-1,9223372036854775807);}
 
-ns_class :: (kind:int)->u32 #export_c {
+ns_class :: (kind:int)->u32 #export_c #effects(all) {
  if kind==0 || kind==3 || (kind>=10000 && kind<20000) {return NS_REPLACEABLE;}
  if kind>=20000 && kind<30000 {return NS_EPHEMERAL;}
  if kind>=30000 && kind<40000 {return NS_ADDRESSABLE;}
  return NS_ORDINARY;
 }
-ns_equal32 :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
-ns_before :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}}return false;}
-ns_same_key :: (a:NsMeta,b:NsMeta)->bool {
+ns_equal32 :: (a:[32]u8,b:[32]u8)->bool #effects(all) {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+ns_before :: (a:[32]u8,b:[32]u8)->bool #effects(all) {for i:0..<32 {if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}}return false;}
+ns_same_key :: (a:NsMeta,b:NsMeta)->bool #effects(all) {
  kind:=ns_class(a.kind);if a.kind!=b.kind || !ns_equal32(a.author,b.author) {return false;}
  if kind==NS_REPLACEABLE {return true;}if kind==NS_ADDRESSABLE {return a.identifier==b.identifier;}return false;
 }
-ns_newer :: (a:NsMeta,b:NsMeta)->bool {return a.created>b.created || (a.created==b.created && ns_before(a.id,b.id));}
-ns_expired :: (expiry:int,now:int)->bool {return expiry>=0 && now>=expiry;}
-ns_delete_id :: (target:NsMeta,author:[32]u8,id:[32]u8)->bool {return target.kind!=5 && ns_equal32(target.author,author) && ns_equal32(target.id,id);}
-ns_delete_address :: (target:NsMeta,request:NsMeta,signer:[32]u8)->bool {return ns_equal32(request.author,signer) && ns_same_key(target,request) && target.created<=request.created;}
+ns_newer :: (a:NsMeta,b:NsMeta)->bool #effects(all) {return a.created>b.created || (a.created==b.created && ns_before(a.id,b.id));}
+ns_expired :: (expiry:int,now:int)->bool #effects(all) {return expiry>=0 && now>=expiry;}
+ns_delete_id :: (target:NsMeta,author:[32]u8,id:[32]u8)->bool #effects(all) {return target.kind!=5 && ns_equal32(target.author,author) && ns_equal32(target.id,id);}
+ns_delete_address :: (target:NsMeta,request:NsMeta,signer:[32]u8)->bool #effects(all) {return ns_equal32(request.author,signer) && ns_same_key(target,request) && target.created<=request.created;}

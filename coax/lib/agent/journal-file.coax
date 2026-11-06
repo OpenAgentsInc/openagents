@@ -5,11 +5,11 @@
 #load "journal-flow.coax";
 #load "../nostr/json.coax";
 
-cxjournal_path_push :: (byte:int)->int #foreign;
-cxjournal_open :: ()->int #foreign;
-cxjournal_put :: (byte:int)->int #foreign;
-cxjournal_commit :: ()->int #foreign;
-cxjournal_close :: ()->int #foreign;
+cxjournal_path_push :: (byte:int)->int #foreign #effects(all);
+cxjournal_open :: ()->int #foreign #effects(all);
+cxjournal_put :: (byte:int)->int #foreign #effects(all);
+cxjournal_commit :: ()->int #foreign #effects(all);
+cxjournal_close :: ()->int #foreign #effects(all);
 
 JfWriter :: struct {flow:AfState;opened:bool;frame:[32857]u8;previous:[262144]u8;previous_count:int;previous_identity:[8192]u8;identity_count:int;prefix_count:int;}
 #assert AJ_PAYLOAD+AJ_OVERHEAD==32857;

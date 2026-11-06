@@ -33,17 +33,17 @@ DS_END_THINK :: 151649;
     ids[3]=DS_END_THINK;ids[4]=DS_THINK;#assert ds_parts(ids[..]).status==DsStatus.format;
 }
 // Chapter 9's classes include marks; this original tokenizer's word runs do not.
-ds_piece :: (table:[]u8,t:PtLayout,s:string,at:int)->int {
+ds_piece :: (table:[]u8,t:PtLayout,s:string,at:int)->int #effects(all) {
     end:=pt_contraction(s,at);if end>at {return end;}r:=pt_rune(s,at);if pt_has(table,t,r.cp,4) {return r.next;}
     pos:=at;if r.cp!=13 && r.cp!=10 {pos=r.next;}end=pt_run(table,t,s,pos,1,true);if end>pos {return end;}end=pt_run(table,t,s,at,1,true);if end>at {return end;}
     pos=at;if r.cp==32 {pos=r.next;}end=pt_run(table,t,s,pos,13,false);if end>pos {while end!=s.count {c:=pt_rune(s,end);if c.cp!=13 && c.cp!=10 {break;}end=c.next;}return end;}
     space:=at;last_newline:=at;last_space:=at;while space!=s.count {c:=pt_rune(s,space);if !pt_has(table,t,c.cp,8) {break;}last_space=space;space=c.next;if c.cp==13 || c.cp==10 {last_newline=space;}}
     if last_newline>at {return last_newline;}if space==s.count {return space;}if last_space>at {return last_space;}return space;
 }
-ds_tokenizer_pin :: ()->DsArtifact {return DS_PINS[4];}
-ds_tokenizer_admit :: (table:[]u8)->bool #export_c {p:=ds_tokenizer_pin();return table.count==p.bytes && pw_digest(table,p.sha);}
+ds_tokenizer_pin :: ()->DsArtifact #effects(all) {return DS_PINS[4];}
+ds_tokenizer_admit :: (table:[]u8)->bool #export_c #effects(all) {p:=ds_tokenizer_pin();return table.count==p.bytes && pw_digest(table,p.sha);}
 // book:begin encode
-ds_encode :: (table:[]u8,input:string,output:[]int,stage:[]int,normal:[]u8,scalars:[]int,symbols:[]int,overlap:bool)->PtResult #export_c {
+ds_encode :: (table:[]u8,input:string,output:[]int,stage:[]int,normal:[]u8,scalars:[]int,symbols:[]int,overlap:bool)->PtResult #export_c #effects(all) {
     if overlap {return PtResult.{status=PtStatus.alias};}t:=pt_layout(table);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}
     norm:=pt_normalize_checked(table,input,normal,scalars,false);if norm.status!=PtStatus.ok {return norm;}
     if !pt_text_count(norm.written) {return PtResult.{status=PtStatus.size};}text:=cast(string)normal[0..<norm.written];at:=0;n:=0;used:=0;
@@ -52,10 +52,10 @@ ds_encode :: (table:[]u8,input:string,output:[]int,stage:[]int,normal:[]u8,scala
     if n>output.count {return PtResult.{status=PtStatus.capacity};}for i:0..<n {output[i]=stage[i];}return PtResult.{written=n,work=used};
 }
 // book:end encode
-ds_after_think :: (text:string)->int {last:=0;marker:="</think>";for i:0..<text.count {if text.count-i>=marker.count {same:=true;for j:0..<marker.count {if text[i+j]!=marker[j] {same=false;}}if same {last=i+marker.count;}}}return last;}
-ds_append :: (table:[]u8,text:string,out:[]int,temp:[]int,normal:[]u8,scalars:[]int,symbols:[]int)->PtResult {return ds_encode(table,text,out,temp,normal,scalars,symbols,false);}
+ds_after_think :: (text:string)->int #effects(all) {last:=0;marker:="</think>";for i:0..<text.count {if text.count-i>=marker.count {same:=true;for j:0..<marker.count {if text[i+j]!=marker[j] {same=false;}}if same {last=i+marker.count;}}}return last;}
+ds_append :: (table:[]u8,text:string,out:[]int,temp:[]int,normal:[]u8,scalars:[]int,symbols:[]int)->PtResult #effects(all) {return ds_encode(table,text,out,temp,normal,scalars,symbols,false);}
 // Text subset: optional first system, alternating user/assistant, final user.
-ds_chat :: (table:[]u8,messages:[]DsMessage,output:[]int,stage:[]int,temp:[]int,normal:[]u8,scalars:[]int,symbols:[]int,overlap:bool)->PtResult #export_c {
+ds_chat :: (table:[]u8,messages:[]DsMessage,output:[]int,stage:[]int,temp:[]int,normal:[]u8,scalars:[]int,symbols:[]int,overlap:bool)->PtResult #export_c #effects(all) {
     if overlap {return PtResult.{status=PtStatus.alias};}if messages.count<1 || messages.count>64 {return PtResult.{status=PtStatus.size};}
     valid:=ds_messages_valid(messages);if valid!=PtStatus.ok {return PtResult.{status=valid};}first:=0;if messages[0].role==DsRole.system {first=1;}
     layout:=pt_layout(table);if layout.status!=PtStatus.ok {return PtResult.{status=layout.status};}
@@ -66,13 +66,13 @@ ds_chat :: (table:[]u8,messages:[]DsMessage,output:[]int,stage:[]int,temp:[]int,
     if stage.count-n<3 {return PtResult.{status=PtStatus.capacity};}stage[n]=DS_ASSISTANT;stage[n+1]=DS_THINK;stage[n+2]=pt_u32(table,72);n+=3;
     if !pt_token_count(n) {return PtResult.{status=PtStatus.size};}if output.count<n {return PtResult.{status=PtStatus.capacity};}for i:0..<n {output[i]=stage[i];}return PtResult.{written=n};
 }
-ds_decode :: (table:[]u8,tokens:[]int,output:[]u8,stage:[]u8,overlap:bool)->PtResult #export_c {
+ds_decode :: (table:[]u8,tokens:[]int,output:[]u8,stage:[]u8,overlap:bool)->PtResult #export_c #effects(all) {
     if overlap {return PtResult.{status=PtStatus.alias};}t:=pt_layout(table);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}if !pt_token_count(tokens.count) {return PtResult.{status=PtStatus.size};}n:=0;
     for id:tokens {s:=pt_span(table,t,id);if s.status!=PtStatus.ok {return PtResult.{status=s.status};}count:=s.end-s.begin;if count>65536-n {return PtResult.{status=PtStatus.size};}if count>stage.count-n {return PtResult.{status=PtStatus.capacity};}for i:0..<count {stage[n+i]=table[s.begin+i];}n+=count;}
     if output.count<n {return PtResult.{status=PtStatus.capacity};}for i:0..<n {output[i]=stage[i];}return PtResult.{written=n};
 }
 // book:begin parts
-ds_parts :: (ids:[]int)->DsParts #export_c {
+ds_parts :: (ids:[]int)->DsParts #export_c #effects(all) {
     if ids.count>16384 {return DsParts.{status=DsStatus.budget};}p:=DsParts.{reasoning_end=ids.count,final_begin=ids.count,final_end=ids.count};closed:=false;
     for i:0..<ids.count {id:=ids[i];if id<0 || id>=151936 {return DsParts.{status=DsStatus.token};}
         if id==DS_THINK {if i!=0 {return DsParts.{status=DsStatus.format};}p.reasoning_begin=1;}
@@ -82,7 +82,7 @@ ds_parts :: (ids:[]int)->DsParts #export_c {
     }return p;
 }
 // book:end parts
-ds_greedy :: (logits:[]f32)->DsResult #export_c {if !ds_logits_count(logits.count) {return DsResult.{status=DsStatus.shape};}best:=0;if !ds_finite(logits[0]) {return DsResult.{status=DsStatus.number};}for i:1..<logits.count {if !ds_finite(logits[i]) {return DsResult.{status=DsStatus.number};}if logits[i]>logits[best] {best=i;}}return DsResult.{next=best};}
+ds_greedy :: (logits:[]f32)->DsResult #export_c #effects(all) {if !ds_logits_count(logits.count) {return DsResult.{status=DsStatus.shape};}best:=0;if !ds_finite(logits[0]) {return DsResult.{status=DsStatus.number};}for i:1..<logits.count {if !ds_finite(logits[i]) {return DsResult.{status=DsStatus.number};}if logits[i]>logits[best] {best=i;}}return DsResult.{next=best};}
 #test "decoding is staged and greedy ties prefer the lowest token ID" {
     table:=PT_TOY;ids:=[2]int.[256,257];out:[16]u8;work:[16]u8;r:=ds_decode(table[..],ids[..],out[..],work[..],false);
     #assert r.status==PtStatus.ok && cast(string)out[0..<r.written]=="ababa";
@@ -101,19 +101,19 @@ DsAdvance :: struct {status:DsStatus;token:int;stop:u8;}
     #assert ds_advance(logits[..],1,8,0,4,true).stop==4;
     #assert ds_advance(logits[..],-1,8,0,4,false).status==DsStatus.state;
 }
-ds_advance :: (logits:[]f32,position:int,capacity:int,generated:int,limit:int,cancel:bool)->DsAdvance #export_c {
+ds_advance :: (logits:[]f32,position:int,capacity:int,generated:int,limit:int,cancel:bool)->DsAdvance #export_c #effects(all) {
     if position<0 || capacity<1 || capacity>16384 || position>capacity || generated<0 || limit<1 || limit>16384 || generated>limit {return DsAdvance.{status=DsStatus.state};}
     if cancel {return DsAdvance.{stop=4};}if generated==limit {return DsAdvance.{stop=2};}if position==capacity {return DsAdvance.{stop=3};}
     r:=ds_greedy(logits);if r.status!=DsStatus.ok {return DsAdvance.{status=r.status};}return DsAdvance.{token=r.next,stop=ds_token_stop(r.next)};
 }
 #load "../../fixtures/deepseek/text-goldens.coax";
 
-ds_messages_valid :: (messages:[]DsMessage)->PtStatus {
+ds_messages_valid :: (messages:[]DsMessage)->PtStatus #effects(all) {
     first:=0;if messages[0].role==DsRole.system {first=1;}if ((messages.count%2)==0)!=(first==1) {return PtStatus.unsupported;}
     total:=0;expect_user:=true;for i:0..<messages.count {m:=messages[i];if m.content.count>65536-total {return PtStatus.size;}total+=m.content.count;if i>=first {wanted:=ifx expect_user then DsRole.user else DsRole.assistant;if m.role!=wanted {return PtStatus.unsupported;}expect_user= !expect_user;}}
     return PtStatus.ok;
 }
-ds_logits_count :: (n:int)->bool {return n>=1 && n<=151936;}
+ds_logits_count :: (n:int)->bool #effects(all) {return n>=1 && n<=151936;}
 #test "all message roles sizes and public text capacities have explicit refusals" {
     table:=PT_TOY;messages:[65]DsMessage;for i:0..<65 {messages[i]=DsMessage.{role=ifx i%2==0 then DsRole.user else DsRole.assistant,content=""};}
     out:[128]int;stage:[128]int;temp:[128]int;normal:[512]u8;scalars:[512]int;symbols:[1024]int;
@@ -141,7 +141,7 @@ ds_logits_count :: (n:int)->bool {return n>=1 && n<=151936;}
     #assert ds_parts(ids[0..<2]).complete;ids[1]=DS_END_THINK;#assert ds_parts(ids[0..<2]).status==DsStatus.format;
     one:=[1]f32.[4];#assert ds_greedy(one[..]).status==DsStatus.ok && ds_greedy(one[..]).next==0;
 }
-ds_token_stop :: (id:int)->u8 {return ifx id==DS_EOS then 1 else 0;}
+ds_token_stop :: (id:int)->u8 #effects(all) {return ifx id==DS_EOS then 1 else 0;}
 #test "exact text capacities history endings and generation endpoints" {
     table:=PT_TOY;out:[128]int;stage:[128]int;temp:[128]int;normal:[512]u8;scalars:[512]int;symbols:[1024]int;
     #assert ds_encode(table[..],"ab",out[0..<1],stage[0..<1],normal[..],scalars[..],symbols[..],false).status==PtStatus.ok;

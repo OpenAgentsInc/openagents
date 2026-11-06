@@ -130,21 +130,21 @@ PT_WORK_MAX :: 16777216;
     #assert pt_utf8_validate("name")==PtStatus.ok;
     bad:=[1]u8.[255];#assert pt_utf8_validate(cast(string)bad[..])==PtStatus.utf8;
 }
-pt_utf8_validate :: (text:string)->PtStatus {
+pt_utf8_validate :: (text:string)->PtStatus #effects(all) {
     at:=0;while at<text.count {r:=pt_rune(text,at);if r.status!=PtStatus.ok {return r.status;}at=r.next;}return PtStatus.ok;
 }
 
-pt_header_count :: (n:int)->bool {return n>=32;}
-pt_mid :: (lo:int,hi:int)->int {return lo+(hi-lo)/2;}
-pt_row_valid :: (row:int,count:int)->bool {return row<count;}
-pt_u32 :: (data:[]u8,at:int)->int {
+pt_header_count :: (n:int)->bool #effects(all) {return n>=32;}
+pt_mid :: (lo:int,hi:int)->int #effects(all) {return lo+(hi-lo)/2;}
+pt_row_valid :: (row:int,count:int)->bool #effects(all) {return row<count;}
+pt_u32 :: (data:[]u8,at:int)->int #effects(all) {
     n:u32=0;for i:0..<4 {n |= cast(u32)data[at+i]<<(i*8);}return cast(int)n;
 }
-pt_count :: (k:int,n:int)->bool {
+pt_count :: (k:int,n:int)->bool #effects(all) {
     if n<0 || n>PT_CAP[k] {return false;}
     if k==0 {return n>=256;}if k==2 {return n>=1;}return true;
 }
-pt_layout :: (data:[]u8)->PtLayout #export_c {
+pt_layout :: (data:[]u8)->PtLayout #export_c #effects(all) {
     if !pt_header_count(data.count) {return PtLayout.{status=PtStatus.artifact};}
     if data[0]!='P' || data[1]!='S' || data[2]!='T' || data[3]!='5' {return PtLayout.{status=PtStatus.artifact};}
     t:PtLayout;at:=1056;
@@ -154,8 +154,8 @@ pt_layout :: (data:[]u8)->PtLayout #export_c {
     }
     if at!=data.count {return PtLayout.{status=PtStatus.artifact};}return t;
 }
-pt_row :: (t:PtLayout,k:int,i:int)->int {return t.starts[k]+i*PT_WIDTH[k];}
-pt_pair :: (data:[]u8,t:PtLayout,k:int,a:int,b:int)->int {
+pt_row :: (t:PtLayout,k:int,i:int)->int #effects(all) {return t.starts[k]+i*PT_WIDTH[k];}
+pt_pair :: (data:[]u8,t:PtLayout,k:int,a:int,b:int)->int #effects(all) {
     lo:=0;hi:=t.counts[k];
     while lo<hi {
         mid:=pt_mid(lo,hi);row:=pt_row(t,k,mid);x:=pt_u32(data,row);y:=pt_u32(data,row+4);
@@ -163,26 +163,26 @@ pt_pair :: (data:[]u8,t:PtLayout,k:int,a:int,b:int)->int {
     }
     if pt_row_valid(lo,t.counts[k]) {row:=pt_row(t,k,lo);if pt_u32(data,row)==a && pt_u32(data,row+4)==b {return lo;}}return -1;
 }
-pt_prop :: (data:[]u8,t:PtLayout,cp:int)->PtProp {
+pt_prop :: (data:[]u8,t:PtLayout,cp:int)->PtProp #effects(all) {
     lo:=0;hi:=t.counts[2];
     while lo<hi {mid:=pt_mid(lo,hi);if pt_u32(data,pt_row(t,2,mid))<=cp {lo=mid+1;}else {hi=mid;}}
     if lo==0 {return PtProp.{};}row:=pt_row(t,2,lo-1);if cp>pt_u32(data,row+4) {return PtProp.{};}
     return PtProp.{flags=pt_u32(data,row+8),ccc=pt_u32(data,row+12)};
 }
-pt_decomposition :: (data:[]u8,t:PtLayout,cp:int)->int {
+pt_decomposition :: (data:[]u8,t:PtLayout,cp:int)->int #effects(all) {
     lo:=0;hi:=t.counts[3];
     while lo<hi {mid:=pt_mid(lo,hi);if pt_u32(data,pt_row(t,3,mid))<cp {lo=mid+1;}else {hi=mid;}}
     if pt_row_valid(lo,t.counts[3]) {if pt_u32(data,pt_row(t,3,lo))==cp {return lo;}}return -1;
 }
-pt_scalar :: (cp:int)->bool {return cp>=0 && cp<=1114111 && (cp<55296 || cp>57343);}
-pt_text_count :: (n:int)->bool {return n>=0 && n<=PT_TEXT_MAX;}
-pt_token_count :: (n:int)->bool {return n>=0 && n<=PT_TOKENS_MAX;}
-pt_marks :: (n:int)->bool {return n<=128;}
-pt_budget :: (used:int,next:int)->bool {return next<=PT_WORK_MAX-used;}
-pt_lead :: (b:int)->int {
+pt_scalar :: (cp:int)->bool #effects(all) {return cp>=0 && cp<=1114111 && (cp<55296 || cp>57343);}
+pt_text_count :: (n:int)->bool #effects(all) {return n>=0 && n<=PT_TEXT_MAX;}
+pt_token_count :: (n:int)->bool #effects(all) {return n>=0 && n<=PT_TOKENS_MAX;}
+pt_marks :: (n:int)->bool #effects(all) {return n<=128;}
+pt_budget :: (used:int,next:int)->bool #effects(all) {return next<=PT_WORK_MAX-used;}
+pt_lead :: (b:int)->int #effects(all) {
     if b<128 {return 1;}if b>=194 && b<=223 {return 2;}if b>=224 && b<=239 {return 3;}if b>=240 && b<=244 {return 4;}return 0;
 }
-pt_rune :: (s:string,at:int)->PtRune #export_c {
+pt_rune :: (s:string,at:int)->PtRune #export_c #effects(all) {
     if at<0 || at>=s.count {return PtRune.{status=PtStatus.utf8};}
     b:=cast(int)s[at];width:=pt_lead(b);if width==0 {return PtRune.{status=PtStatus.utf8};}
     if width==1 {return PtRune.{cp=b,next=at+1};}
@@ -192,15 +192,15 @@ pt_rune :: (s:string,at:int)->PtRune #export_c {
     for i:1..<width {v:=cast(int)s[at+i];if v<128 || v>191 {return PtRune.{status=PtStatus.utf8};}cp=(cp<<6)|(v&63);}
     if cp<minimum || !pt_scalar(cp) {return PtRune.{status=PtStatus.utf8};}return PtRune.{cp=cp,next=at+width};
 }
-pt_utf8_width :: (cp:int)->int {if cp<128 {return 1;}if cp<2048 {return 2;}if cp<65536 {return 3;}return 4;}
-pt_put_utf8 :: (out:[]u8,at:int,cp:int)->int {
+pt_utf8_width :: (cp:int)->int #effects(all) {if cp<128 {return 1;}if cp<2048 {return 2;}if cp<65536 {return 3;}return 4;}
+pt_put_utf8 :: (out:[]u8,at:int,cp:int)->int #effects(all) {
     n:=pt_utf8_width(cp);if n==1 {out[at]=cast(u8)cp;return at+1;}
     lead:=240;if n==2 {lead=192;}else if n==3 {lead=224;}
     out[at]=cast(u8)(lead|(cp>>(6*(n-1))));
     for i:1..<n {out[at+i]=cast(u8)(128|((cp>>(6*(n-i-1)))&63));}return at+n;
 }
 // book:begin normalize
-pt_normalize_checked :: (table:[]u8,input:string,output:[]u8,scalars:[]int,overlap:bool)->PtResult #export_c {
+pt_normalize_checked :: (table:[]u8,input:string,output:[]u8,scalars:[]int,overlap:bool)->PtResult #export_c #effects(all) {
     if !pt_text_count(input.count) {return PtResult.{status=PtStatus.size};}
     if overlap {return PtResult.{status=PtStatus.alias};}
     t:=pt_layout(table);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}

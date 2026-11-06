@@ -3,7 +3,7 @@
 #load "action-packet-conformance.coax";
 #load "../render/tests/qualification-files.coax";
 hapc_wait::(c:[]Cdp,expression:string)->bool{until:=proc_now_ms()+15000;while proc_now_ms()<until{if wc_eval(c,expression)=="true"{return true;}proc_sleep(50);}tool_errln(expression);tool_errln(cdp_error(c));return false;}
-tool_main::()->int #export_c{
+tool_main::()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3{return 2;}
  inputs:[1]RtqInputs;compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);directory:=fs_dir(args_at(a[..],2));
  if !rtq_input_add(inputs[..],compiler)||!rtq_deps(inputs[..],compiler,"aethyr/host/services-carrier.coax",proc_now_ms()+30000,directory,"services-deps")||!rtq_deps(inputs[..],compiler,"aethyr/host/action-fixture.coax",proc_now_ms()+30000,directory,"fixture-deps"){return 1;}

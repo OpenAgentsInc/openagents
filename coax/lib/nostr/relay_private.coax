@@ -77,13 +77,13 @@ RpTags :: struct {
 }
 
 // Whether v is 64 lowercase hex digits.
-rp_hex :: (v: string) -> bool {
+rp_hex :: (v: string) -> bool #effects(all) {
   if v.count != 64 { return false; }
   for c: v { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
   return true;
 }
 // Whether key (32 bytes) is one of readers (32 bytes each).
-rp_has :: (readers: [] u8, key: [32] u8) -> bool {
+rp_has :: (readers: [] u8, key: [32] u8) -> bool #effects(all) {
   for r: 0..<readers.count / 32 {
     same := true;
     for b: 0..<32 { if readers[32 * r + b] != key[b] { same = false; } }
@@ -92,7 +92,7 @@ rp_has :: (readers: [] u8, key: [32] u8) -> bool {
   return false;
 }
 // Whether v names a reader: 64 lowercase hex digits spelling one's key.
-rp_names :: (v: string, readers: [] u8) -> bool {
+rp_names :: (v: string, readers: [] u8) -> bool #effects(all) {
   if !rp_hex(v) { return false; }
   key: [32] u8;
   for i: 0..<32 {
@@ -105,7 +105,7 @@ rp_names :: (v: string, readers: [] u8) -> bool {
 }
 
 // Reads tags (an event's tags array) once, against readers and author.
-rp_read :: (tags: string, author: [32] u8, readers: [] u8) -> RpTags {
+rp_read :: (tags: string, author: [32] u8, readers: [] u8) -> RpTags #effects(all) {
   t: [1] RpTags;
   j: [1] Json; json_start(j[..], tags);
   if json_next(j[..]) != JSON_ARRAY { return t[0]; }
@@ -139,7 +139,7 @@ rp_read :: (tags: string, author: [32] u8, readers: [] u8) -> RpTags {
 }
 // One tag's first value s, by the tag's name. long: s is over 64 bytes (or
 // doesn't decode), so it is no key, no hex id, and equal to no short value.
-rp_value :: (t: [] RpTags, name: string, s: string, long: bool, author: [32] u8, readers: [] u8) {
+rp_value :: (t: [] RpTags, name: string, s: string, long: bool, author: [32] u8, readers: [] u8) #effects(all) {
   if name == "p" {
     if t[0].p_values == 0 {
       t[0].p_first = rp_names(s, readers); t[0].p_hex = rp_hex(s);
@@ -170,20 +170,20 @@ rp_value :: (t: [] RpTags, name: string, s: string, long: bool, author: [32] u8,
 }
 
 // To their p recipient; to their author.
-rp_wrap :: (k: int) -> bool { return k == 1059 || k == 21059 || k == 24200 || k == 30622 || k == 44200; }
-rp_owned :: (k: int) -> bool { return k == 78 || k == 30078 || k == 30300 || k == 30350; }
+rp_wrap :: (k: int) -> bool #effects(all) { return k == 1059 || k == 21059 || k == 24200 || k == 30622 || k == 44200; }
+rp_owned :: (k: int) -> bool #effects(all) { return k == 78 || k == 30078 || k == 30300 || k == 30350; }
 // The kinds the SQL doesn't serve to anyone; the kinds a search never matches.
-rp_listed :: (k: int) -> bool { return rp_wrap(k) || rp_owned(k) || k == 30174 || k == 30175 || k == 30178 || k == 3187 || k == 3188 || k == 30186; }
+rp_listed :: (k: int) -> bool #effects(all) { return rp_wrap(k) || rp_owned(k) || k == 30174 || k == 30175 || k == 30178 || k == 3187 || k == 3188 || k == 30186; }
 // (The SQL's search list also names 30179, which is never served at all.)
-rp_unsearched :: (k: int) -> bool { return rp_listed(k) && k != 24200; }
+rp_unsearched :: (k: int) -> bool #effects(all) { return rp_listed(k) && k != 24200; }
 // Never served by a stored read.
-rp_hidden :: (kind: int) -> bool { return (kind >= 39604 && kind <= 39613) || kind == 39620 || kind == 39650 || kind == 30179; }
+rp_hidden :: (kind: int) -> bool #effects(all) { return (kind >= 39604 && kind <= 39613) || kind == 39620 || kind == 39650 || kind == 30179; }
 
 // Whether readers may read an event of kind by author with tags (its tags
 // array's text): a stored read (mode RP_STORED, or RP_SEARCH for a filter
 // with a search) or a live delivery (RP_LIVE). Kinds no rule names need no
 // tags read.
-rp_visible :: (mode: int, kind: int, author: [32] u8, tags: string, readers: [] u8) -> bool {
+rp_visible :: (mode: int, kind: int, author: [32] u8, tags: string, readers: [] u8) -> bool #effects(all) {
   live := mode == RP_LIVE;
   if !live && rp_hidden(kind) { return false; }
   if mode == RP_SEARCH && rp_unsearched(kind) { return false; }
@@ -194,7 +194,7 @@ rp_visible :: (mode: int, kind: int, author: [32] u8, tags: string, readers: [] 
   return rp_stored(kind, a, t, mode == RP_SEARCH);
 }
 // The SQL's rule (a: the author is a reader).
-rp_stored :: (kind: int, a: bool, t: RpTags, search: bool) -> bool {
+rp_stored :: (kind: int, a: bool, t: RpTags, search: bool) -> bool #effects(all) {
   if kind == 30181 && t.policy { return a && !search; }
   one := t.p_same && t.p_first;
   if rp_wrap(kind) { return one; }
@@ -205,7 +205,7 @@ rp_stored :: (kind: int, a: bool, t: RpTags, search: bool) -> bool {
   return true;
 }
 // event_visible_to_reader's rule.
-rp_live :: (kind: int, a: bool, t: RpTags) -> bool {
+rp_live :: (kind: int, a: bool, t: RpTags) -> bool #effects(all) {
   if kind == 1059 || kind == 21059 { return t.p_values == 1 && t.p_first; }
   if rp_wrap(kind) { return t.p_first; }
   if rp_owned(kind) { return a; }
@@ -234,18 +234,18 @@ RP_TEXT :: [7] string.["",
   "to read these private events, filter authors to your own authenticated public key",
   "to read agent engrams, filter authors to the agent or #p to its owner, using your authenticated public key"];
 // Whether every one of values names a reader, and there is one.
-rp_all :: (values: [] string, readers: [] u8) -> bool {
+rp_all :: (values: [] string, readers: [] u8) -> bool #effects(all) {
   if values.count == 0 { return false; }
   for v: values { if !rp_names(v, readers) { return false; } }
   return true;
 }
 // Whether f's kinds name kind.
-rp_asks :: (f: NostrFilter, kind: int) -> bool {
+rp_asks :: (f: NostrFilter, kind: int) -> bool #effects(all) {
   for k: f.kinds { if k == kind { return true; } }
   return false;
 }
 // Why f may not be read by readers, or RP_OK.
-rp_deny :: (f: NostrFilter, readers: [] u8) -> int {
+rp_deny :: (f: NostrFilter, readers: [] u8) -> int #effects(all) {
   gifts := rp_asks(f, 1059);
   p_kinds := rp_asks(f, 24200) || rp_asks(f, 44200) || rp_asks(f, 30622);
   author_kinds := rp_asks(f, 30300) || rp_asks(f, 30350);
@@ -268,15 +268,15 @@ RP_HB :: "2222222222222222222222222222222222222222222222222222222222222222";
 RP_HC :: "3333333333333333333333333333333333333333333333333333333333333333";
 RP_H64 :: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 // Readers by number: 0 none, 1 A, 2 B, 3 C, 4 B then A. The author is A.
-rp_t_key :: (b: u8) -> [32] u8 { k: [32] u8; for i: 0..<32 { k[i] = b; } return k; }
-rp_t_readers :: (who: int, out: [] u8) -> [] u8 {
+rp_t_key :: (b: u8) -> [32] u8 #effects(all) { k: [32] u8; for i: 0..<32 { k[i] = b; } return k; }
+rp_t_readers :: (who: int, out: [] u8) -> [] u8 #effects(all) {
   if who == 0 { return out[0..<0]; }
   bytes := [4] u8.[0x11, 0x22, 0x33, 0x22];
   for i: 0..<32 { out[i] = bytes[who - 1]; out[32 + i] = 0x11; }
   return out[0..<32 * ifx who == 4 then 2 else 1];
 }
 // Which readers (bit who) may read kind with tags in mode.
-rp_t_bits :: (mode: int, kind: int, tags: string) -> int {
+rp_t_bits :: (mode: int, kind: int, tags: string) -> int #effects(all) {
   bits := 0; buf: [64] u8;
   for who: 0..<5 { if rp_visible(mode, kind, rp_t_key(0x11), tags, rp_t_readers(who, buf[..])) { bits += 1 << who; } }
   return bits;
@@ -427,7 +427,7 @@ RP_T_ART :: "[[\"p\",\"222222222222222222222222222222222222222222222222222222222
 }
 // A filter of kinds (k, or k and l), with #p p and authors au when given.
 // (A value "" names no reader, as an absent #p or authors does.)
-rp_t_deny :: (k: int, l: int, p: string, au: string, who: int) -> int {
+rp_t_deny :: (k: int, l: int, p: string, au: string, who: int) -> int #effects(all) {
   kinds := [2] int.[k, l]; ps := [1] string.[p]; aus := [1] string.[au];
   tags := [1] NostrTagFilter.[NostrTagFilter.{name = 'p', values = ps[..]}];
   f: NostrFilter; f.kinds = kinds[..]; f.tags = tags[..]; f.has_authors = true; f.authors = aus[..];

@@ -74,8 +74,8 @@ FSU_IDS :: [4] string.["claude", "codex", "coder", "cursor"];
   fsu_voice_ready(s[..],99);#assert fsu_text(s[..],16)=="Voice prepares automatically after approval";
 }
 
-fsu_reset :: (s: [] ForgeSetup) #export_c { s[0] = ForgeSetup.{}; }
-fsu_read :: (s: [] ForgeSetup, kind: int, text: string) -> bool #export_c {
+fsu_reset :: (s: [] ForgeSetup) #export_c #effects(all) { s[0] = ForgeSetup.{}; }
+fsu_read :: (s: [] ForgeSetup, kind: int, text: string) -> bool #export_c #effects(all) {
   nodes: [2048] JvNode; d: [1] Jv;
   if !jv_parse(d[..], text, nodes[..]) { s[0].problem = kind + 1; return false; }
   v := d[0];
@@ -129,14 +129,14 @@ fsu_read :: (s: [] ForgeSetup, kind: int, text: string) -> bool #export_c {
   }
   return false;
 }
-fsu_can_enter :: (s: [] ForgeSetup, scene: bool) -> bool #export_c { return scene && s[0].cli && s[0].agents && s[0].models; }
-fsu_completed :: (s: [] ForgeSetup) -> bool #export_c { return s[0].completed; }
-fsu_microphone :: (s:[]ForgeSetup,status:int,pending:bool) #export_c {s[0].microphone=status;s[0].microphone_pending=pending;}
-fsu_voice_ready :: (s:[]ForgeSetup,stage:int) #export_c {s[0].voice_stage=ifx stage>=0 && stage<=3 then stage else 0;}
-fsu_choose :: (s: [] ForgeSetup, kind: int) #export_c { if kind == -1 || (kind >= 0 && kind < 4 && s[0].counts[kind] > 0) { s[0].selected = kind; } }
-fsu_count :: (s: [] ForgeSetup, kind: int) -> int #export_c { return ifx kind >= 0 && kind < 4 then s[0].counts[kind] else s[0].total; }
-fsu_selected :: (s: [] ForgeSetup) -> int #export_c { return s[0].selected; }
-fsu_status :: (s: [] ForgeSetup, kind: int) -> int #export_c {
+fsu_can_enter :: (s: [] ForgeSetup, scene: bool) -> bool #export_c #effects(all) { return scene && s[0].cli && s[0].agents && s[0].models; }
+fsu_completed :: (s: [] ForgeSetup) -> bool #export_c #effects(all) { return s[0].completed; }
+fsu_microphone :: (s:[]ForgeSetup,status:int,pending:bool) #export_c #effects(all) {s[0].microphone=status;s[0].microphone_pending=pending;}
+fsu_voice_ready :: (s:[]ForgeSetup,stage:int) #export_c #effects(all) {s[0].voice_stage=ifx stage>=0 && stage<=3 then stage else 0;}
+fsu_choose :: (s: [] ForgeSetup, kind: int) #export_c #effects(all) { if kind == -1 || (kind >= 0 && kind < 4 && s[0].counts[kind] > 0) { s[0].selected = kind; } }
+fsu_count :: (s: [] ForgeSetup, kind: int) -> int #export_c #effects(all) { return ifx kind >= 0 && kind < 4 then s[0].counts[kind] else s[0].total; }
+fsu_selected :: (s: [] ForgeSetup) -> int #export_c #effects(all) { return s[0].selected; }
+fsu_status :: (s: [] ForgeSetup, kind: int) -> int #export_c #effects(all) {
   if kind==3 {
     if s[0].microphone_pending {return 0;}
     if s[0].microphone==0 {return 1;}
@@ -174,11 +174,11 @@ fsu_text :: (s: [] ForgeSetup, field: int) -> string {
   if field >= 10 && field < 14 { return FSU_NAMES[field - 10]; }
   return "";
 }
-fsu_text_byte :: (s: [] ForgeSetup, field: int, index: int) -> int #export_c { text := fsu_text(s[..], field); return ifx index >= 0 && index < text.count then cast(int) text[index] else -1; }
+fsu_text_byte :: (s: [] ForgeSetup, field: int, index: int) -> int #export_c #effects(all) { text := fsu_text(s[..], field); return ifx index >= 0 && index < text.count then cast(int) text[index] else -1; }
 fsu_settings :: (s: [] ForgeSetup, out: [] u8) -> string {
   o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]); jo_key(o[..], "schema"); jo_str(o[..], "openagents.aethyrforge.setup.v1");
   jo_key(o[..], "audio_model"); jo_str(o[..], "parakeet"); jo_key(o[..], "agent_engine");
   if s[0].selected >= 0 { jo_str(o[..], FSU_IDS[s[0].selected]); } else { jo_null(o[..]); }
   jo_end(o[..]); return ifx o[0].bad then "" else jo_text(o[..]);
 }
-fsu_settings_byte :: (s: [] ForgeSetup, index: int) -> int #export_c { b: [512] u8; text := fsu_settings(s[..], b[..]); return ifx index >= 0 && index < text.count then cast(int) text[index] else -1; }
+fsu_settings_byte :: (s: [] ForgeSetup, index: int) -> int #export_c #effects(all) { b: [512] u8; text := fsu_settings(s[..], b[..]); return ifx index >= 0 && index < text.count then cast(int) text[index] else -1; }

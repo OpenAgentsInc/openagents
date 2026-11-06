@@ -131,7 +131,7 @@ fg_plan :: (v:[]RmServer,k:int,c:FnpCommand)->bool {
   d.version+=1;v[0].forge.staged=d;v[0].forge.pending=true;return true;
 }
 // 0 not this route; otherwise an HTTP status and a JSON body in forge.out.
-rm_forge_api :: (v:[]RmServer,req:string)->int #export_c {
+rm_forge_api :: (v:[]RmServer,req:string)->int #export_c #effects(all) {
   raid:=fg_raid_api(v,req);if raid>0 {return raid;}
   get:=dv_path(req,"GET","/api/playtest/forge/npcs ");post:=dv_path(req,"POST","/api/playtest/forge/npcs ");
   if !get && !post {return 0;}
@@ -143,15 +143,15 @@ rm_forge_api :: (v:[]RmServer,req:string)->int #export_c {
   fg_sync(v,k);if !fg_plan(v,k,c[0]) {_:=fg_answer(v,false,"NPC batch refused: blocked floor, capacity, missing/dead/self target, or unknown selection. Nothing changed.");return 400;}
   return 200;
 }
-rm_forge_save :: (v:[]RmServer)->int #export_c {v[0].forge.n=fnd_write(v[0].forge.staged,v[0].forge.out[..]);return v[0].forge.n;}
-rm_forge_commit :: (v:[]RmServer) #export_c {
+rm_forge_save :: (v:[]RmServer)->int #export_c #effects(all) {v[0].forge.n=fnd_write(v[0].forge.staged,v[0].forge.out[..]);return v[0].forge.n;}
+rm_forge_commit :: (v:[]RmServer) #export_c #effects(all) {
   if !v[0].forge.pending {return;}v[0].forge.doc=v[0].forge.staged;v[0].forge.pending=false;k:=fg_room(v);if k>=0 {_:=fg_show(v,k);}
 }
-rm_forge_abort :: (v:[]RmServer) #export_c {v[0].forge.pending=false;}
-rm_forge_active :: (v:[]RmServer)->bool #export_c {return v[0].dev.on && v[0].forge.doc.n>0;}
-rm_forge_load :: (v:[]RmServer,text:string)->bool #export_c {d:[1]ForgeNpcs;if !fnd_read(text,d[..]) {return false;}v[0].forge.doc=d[0];return true;}
+rm_forge_abort :: (v:[]RmServer) #export_c #effects(all) {v[0].forge.pending=false;}
+rm_forge_active :: (v:[]RmServer)->bool #export_c #effects(all) {return v[0].dev.on && v[0].forge.doc.n>0;}
+rm_forge_load :: (v:[]RmServer,text:string)->bool #export_c #effects(all) {d:[1]ForgeNpcs;if !fnd_read(text,d[..]) {return false;}v[0].forge.doc=d[0];return true;}
 // Collision observations come from the actual Coax world, through its C SDK.
-rm_forge_probe :: (v:[]RmServer,req:string)->int #export_c {
+rm_forge_probe :: (v:[]RmServer,req:string)->int #export_c #effects(all) {
   v[0].forge.probe_n=0;
   if !fnp_access(v[0].dev.on,v[0].dev.admin) || !dv_path(req,"POST","/api/playtest/forge/npcs ") {return 0;}
   k:=fg_room(v);c:[1]FnpCommand;if k<0 || !fnp_parse(dv_body(req),c[..]) {return 0;}
@@ -164,11 +164,11 @@ rm_forge_probe :: (v:[]RmServer,req:string)->int #export_c {
   }
   return v[0].forge.probe_n;
 }
-rm_forge_probe_at :: (v:[]RmServer,p:int,out:[]f32)->int #export_c {out[0]=v[0].forge.probe_xy[p*2];out[1]=v[0].forge.probe_xy[p*2+1];return fg_room(v);}
-rm_forge_probe_open :: (v:[]RmServer,p:int,open:bool) #export_c {v[0].forge.probe_open[p]=open;}
+rm_forge_probe_at :: (v:[]RmServer,p:int,out:[]f32)->int #export_c #effects(all) {out[0]=v[0].forge.probe_xy[p*2];out[1]=v[0].forge.probe_xy[p*2+1];return fg_room(v);}
+rm_forge_probe_open :: (v:[]RmServer,p:int,open:bool) #export_c #effects(all) {v[0].forge.probe_open[p]=open;}
 // Desired motion is Coax; the host asks the actual world's collision controller
 // for the next position and carries those numbers back to the battle.
-rm_forge_motion :: (v:[]RmServer,k:int,q:int,out:[]f32)->bool #export_c {
+rm_forge_motion :: (v:[]RmServer,k:int,q:int,out:[]f32)->bool #export_c #effects(all) {
   if !v[0].dev.on || !rm_eg_live(v,k) {return false;}fg_sync(v,k);r:=v[0].eg[k].rules[..];bt:=r[0].beasts[q];
   if bt.id==0 || bt.forge_id==0 {return false;}c:=r[0].b[0].c[E5RR_BEAST0+q];r[0].beasts[q].moving=false;
   if c.dead {return false;}
@@ -182,7 +182,7 @@ rm_forge_motion :: (v:[]RmServer,k:int,q:int,out:[]f32)->bool #export_c {
   dx:=tx-bt.x;dz:=tz-bt.z;distance:=sqrt(dx*dx+dz*dz);if distance<=stop {return true;}
   out[0]=bt.x;out[1]=bt.z;out[2]=bt.yaw;out[3]=tx;out[4]=tz;out[5]=lo(3.0*f32(c.speed)/30.0/f32(EG_HZ),distance-stop);return true;
 }
-rm_forge_moved :: (v:[]RmServer,k:int,q:int,out:[]f32) #export_c {
+rm_forge_moved :: (v:[]RmServer,k:int,q:int,out:[]f32) #export_c #effects(all) {
   bt:=v[0].eg[k].rules[0].beasts[q..<q+1];bt[0].x=out[0];bt[0].z=out[1];bt[0].yaw=out[2];bt[0].y=out[3];bt[0].grounded=true;bt[0].moving=out[4]>0.5;
   i:=E5RR_BEAST0+q;v[0].eg[k].rules[0].b[0].c[i].x=e5r_sq(bt[0].x);v[0].eg[k].rules[0].b[0].c[i].y=e5r_sq(bt[0].z);
 }

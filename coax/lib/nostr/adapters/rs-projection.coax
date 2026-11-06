@@ -21,20 +21,20 @@ RsaReadState :: struct {original:[]u8;consistent:bool;}
 RSA_PREFIX :: "read-state:";
 
 // 32 lowercase hex characters.
-rsa_slot :: (s:string)->bool {
+rsa_slot :: (s:string)->bool #effects(all) {
  if s.count!=32 {return false;}
  for i:0..<32 {c:=s[i];if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
  return true;
 }
 // d is the prefix and then exactly the slot.
-rsa_d :: (d:string,slot:string)->bool {
+rsa_d :: (d:string,slot:string)->bool #effects(all) {
  if d.count!=RSA_PREFIX.count+slot.count {return false;}
  for i:0..<RSA_PREFIX.count {if d[i]!=RSA_PREFIX[i] {return false;}}
  for i:0..<slot.count {if d[RSA_PREFIX.count+i]!=slot[i] {return false;}}
  return true;
 }
 
-rsa_tags :: (m:RS_ReadStateEvent,e:N_Event)->bool {
+rsa_tags :: (m:RS_ReadStateEvent,e:N_Event)->bool #effects(all) {
  slot:=RS_ReadStateEvent_get_slot(m).value;
  if !rsa_slot(slot) {return false;}
  ds:=0;ts:=0;tags:=N_Event_iter_tags(e);
@@ -50,7 +50,7 @@ rsa_tags :: (m:RS_ReadStateEvent,e:N_Event)->bool {
  return ds==1 && ts==1;
 }
 
-rsa_read :: (wire:[]u8)->RsaReadState #export_c {
+rsa_read :: (wire:[]u8)->RsaReadState #export_c #effects(all) {
  m:=RS_ReadStateEvent_decode(wire);if m.error!=0 {return RsaReadState.{};}
  source:=RS_ReadStateEvent_get_original(m).value;
  checked:=npa_read(source.wire);if !checked.consistent {return RsaReadState.{};}

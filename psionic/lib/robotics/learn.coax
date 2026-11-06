@@ -30,7 +30,7 @@
 }
 
 // book:begin train
-rk_demonstrations :: ()->RkDemonstrations #export_c {
+rk_demonstrations :: ()->RkDemonstrations #export_c #effects(all) {
   d:RkDemonstrations;
   for episode:0..<4 {
     state:=rk_episode(episode).state;
@@ -43,12 +43,12 @@ rk_demonstrations :: ()->RkDemonstrations #export_c {
   }
   d.count=32;d.episodes=4;return d;
 }
-rk_training_config :: ()->TbConfig #export_c {return TbConfig.{epochs=128,batch=32,rate=1,decay=0,shuffle_seed=112};}
-rk_finish :: (rx:TbTrain,ry:TbTrain,p:RkPolicy)->RkFit {
+rk_training_config :: ()->TbConfig #export_c #effects(all) {return TbConfig.{epochs=128,batch=32,rate=1,decay=0,shuffle_seed=112};}
+rk_finish :: (rx:TbTrain,ry:TbTrain,p:RkPolicy)->RkFit #effects(all) {
   if rx.status!=TbStatus.ok || ry.status!=TbStatus.ok || !rk_policy_ok(p) {return RkFit.{status=RkStatus.train};}
   return RkFit.{policy=p,steps=rx.steps+ry.steps,loss_x=rx.loss,loss_y=ry.loss};
 }
-rk_train :: ()->RkFit #export_c {
+rk_train :: ()->RkFit #export_c #effects(all) {
   d:=rk_demonstrations();model:=TbModel.{features=1};config:=rk_training_config();order:[32]int;
   px:[2]f64;py:[2]f64;
   rx:=tb_train(model,config,d.x[..],d.y[..],d.rows[..],px[..],order[..],false);

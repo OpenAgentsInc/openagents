@@ -1,0 +1,16 @@
+// Native ledger rollback through the real owner and outbox.
+// tool.sh: stack-gib 1
+#import "Basic";
+#load "../../aethyr/session/ledger.coax";
+native_ledger_rollback :: () #effects(all) {
+  l:[1]Ledger;l[0].out_n=LEDGER_OUTBOX;l[0].out[0]=LedgerEntry.{seq=7,kind=99};
+  ask:=LedgerAsk.{id=1,op=LOP_GRANT,c=CharacterId.{value=0},gen=OwnerGeneration.{value=1},kind=3};
+  switch ledger_commit(l[..],ask,ItemId.{value=0}) {case none {} case some(wrong) {#assert false;}}
+  #assert !l[0].items[0].live && l[0].items[0].kind==0 && l[0].version[0]==0;
+  #assert l[0].out_n==LEDGER_OUTBOX && l[0].out[0].seq==7 && l[0].out[0].kind==99;
+  answer:=ledger_apply(l[..],ask,1);
+  #assert answer.status==LEDGER_FULL && !l[0].items[0].live && l[0].version[0]==0 && !l[0].ops[0].live;
+  invalid:=ask;invalid.op=LOP_TRANSFER;invalid.item=ItemId.{value=0};
+  #assert ledger_apply(l[..],invalid,1).status==LEDGER_FULL && !l[0].ops[0].live;
+}
+tool_main :: ()->int #export_c #effects(all) {native_ledger_rollback();print("native ledger rollback: passed\n");return 0;}

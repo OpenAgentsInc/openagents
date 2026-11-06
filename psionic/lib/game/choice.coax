@@ -59,7 +59,7 @@ CHOICE_FIXTURE :: "{\"model\":\"m\",\"answers\":{\"steer\":{\"type\":\"choice\",
   #assert !choice_decode("{}", "m", "id", "steer", names[..]).ok;
   #assert !choice_decode("{", "m", "id", "steer", names[..]).ok;
 }
-choice_units :: (s: string) -> int {
+choice_units :: (s: string) -> int #effects(all) {
   if s.count == 0 || (s[0] != '0' && s[0] != '1') { return -1; }
   value := cast(int) (s[0] - '0') * CHOICE_UNIT;
   if s.count == 1 { return value; }
@@ -68,7 +68,7 @@ choice_units :: (s: string) -> int {
   for i: 2..<s.count { if s[i] < '0' || s[i] > '9' { return -1; } value += cast(int) (s[i] - '0') * scale; scale /= 10; }
   return ifx value <= CHOICE_UNIT then value else -1;
 }
-choice_member :: (d: Jv, object: int, key: string) -> int {
+choice_member :: (d: Jv, object: int, key: string) -> int #effects(all) {
   if jv_kind(d, object) != JV_OBJECT { return -1; }
   found := -1;
   for i: 0..<jv_len(d, object) {
@@ -77,8 +77,8 @@ choice_member :: (d: Jv, object: int, key: string) -> int {
   }
   return found;
 }
-choice_is :: (d: Jv, at: int, value: string) -> bool { return jv_kind(d, at) == JV_STRING && jv_raw_eq(jv_raw(d, at), value); }
-choice_decode :: (body: string, model: string, identity: string, question: string, names: [] string) -> ChoiceReply {
+choice_is :: (d: Jv, at: int, value: string) -> bool #effects(all) { return jv_kind(d, at) == JV_STRING && jv_raw_eq(jv_raw(d, at), value); }
+choice_decode :: (body: string, model: string, identity: string, question: string, names: [] string) -> ChoiceReply #effects(all) {
   bad: ChoiceReply;
   if names.count < 2 || names.count > 8 || body.count > 8192 { return bad; }
   for i: 1..<names.count { for j: 0..<i { if names[i] == names[j] { return bad; } } }

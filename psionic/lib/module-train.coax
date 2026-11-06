@@ -21,13 +21,13 @@ MtrStep :: struct {status:MtrStatus;loss:f64;}
 #load "../tests/module-train-checks.coax";
 
 // Counts and spans stay below TV_LIMIT, so this integer maximum is exact.
-mtr_max :: (a:int,b:int)->int {return (a+b+cast(int)abs(f64(a-b)))/2;}
+mtr_max :: (a:int,b:int)->int #effects(all) {return (a+b+cast(int)abs(f64(a-b)))/2;}
 
 // Accept models built with the public constructors. Naming and initialization
 // semantics remain those constructors' contract. Capacity refusal precedes
 // graph/shape refusal; execution descriptors are checked before mdl_mode or
 // mdl_refresh uses them. This is not an arbitrary forged-model/tape parser.
-mtr_plan :: (model:MdlModel)->MtrPlan {
+mtr_plan :: (model:MdlModel)->MtrPlan #effects(all) {
     fail:=MtrPlan.{status=MtrStatus.model};
     if model.status!=MdlStatus.ok {return fail;}
     if model.count<1 || model.count>TI_NODES || model.module_count<1 || model.module_count>MDL_MODULES {return MtrPlan.{status=MtrStatus.capacity};}
@@ -65,7 +65,7 @@ mtr_plan :: (model:MdlModel)->MtrPlan {
     return MtrPlan.{model=model,tape=tape,parameters=parameters,largest=largest,inputs=top,values=tape.values.top,adjoints=tape.grads.top,flags=flags};
 }
 
-mtr_run :: (plan:MtrPlan,seed:u64,master:[]f64,inputs:[]f32,values:[]f32,adjoints:[]f64,flags:[]u8,entry_gradient:[]f32,gradient_stage:[]f64,gradient:[]f64)->MtrStep {
+mtr_run :: (plan:MtrPlan,seed:u64,master:[]f64,inputs:[]f32,values:[]f32,adjoints:[]f64,flags:[]u8,entry_gradient:[]f32,gradient_stage:[]f64,gradient:[]f64)->MtrStep #effects(all) {
     if plan.status!=MtrStatus.ok {return MtrStep.{status=plan.status};}
     if master.count!=plan.parameters {return MtrStep.{status=MtrStatus.shape};}
     if inputs.count<plan.inputs || values.count<plan.values || adjoints.count<plan.adjoints || flags.count<plan.flags || entry_gradient.count<plan.largest || gradient_stage.count<plan.parameters || gradient.count<plan.parameters {return MtrStep.{status=MtrStatus.capacity};}

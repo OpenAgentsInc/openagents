@@ -164,11 +164,11 @@ Chapter 118's own two models pass. The MLP is `Linear`, `ReLU`, `Linear`,
 
 <!-- source: psionic/lib/pytorch-audit.coax audit -->
 ```jai
-pa_level :: (op:int)->int #export_c {
+pa_level :: (op:int)->int #export_c #effects(all) {
     if op<0 || op>=PA_OPS {return 0;}
     return PA_LEVEL[op];
 }
-pa_count :: ()->PaCount {
+pa_count :: ()->PaCount #effects(all) {
     c:PaCount;
     for i:0..<PA_OPS {
         l:=PA_LEVEL[i];
@@ -178,7 +178,7 @@ pa_count :: ()->PaCount {
 }
 // The first refusal, in a fixed order: the description itself, each layer
 // in order, dtype, device, then the trainer's three capacities.
-pa_audit :: (m:PaModel)->PaAudit {
+pa_audit :: (m:PaModel)->PaAudit #effects(all) {
     if m.count<1 || m.count>PA_LAYERS {return PaAudit.{status=PaStatus.layers,at= -1};}
     for i:0..<m.count {
         l:=pa_level(m.ops[i]);

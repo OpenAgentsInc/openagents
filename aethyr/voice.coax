@@ -55,22 +55,22 @@ VoiceRealm :: struct {
   state: int;              // the realm's digest of what it heard
 }
 
-voice_session :: (r: [] VoiceRealm) -> ReplaySession {
+voice_session :: (r: [] VoiceRealm) -> ReplaySession #effects(all) {
   return ReplaySession.{events = r[0].events[..], marks = r[0].marks[..], channels = r[0].channels[..], n = r[0].n[..]};
 }
 
 // FNV-1a over a transcript's bytes.
-aethyr_voice_digest :: (text: string) -> int #export_c {
+aethyr_voice_digest :: (text: string) -> int #export_c #effects(all) {
   h := 2166136261;
   for c: text { h = ((h ^ cast(int) c) * 16777619) & 4294967295; }
   return h;
 }
 
-aethyr_voice_size :: () -> int #export_c { return size_of(VoiceRealm); }
+aethyr_voice_size :: () -> int #export_c #effects(all) { return size_of(VoiceRealm); }
 
 // A new recording: nothing heard, nothing asked.
 VOICE_INITIAL :: 2166136261;   // the constructed realm's digest: nothing heard
-aethyr_voice_init :: (r: [] VoiceRealm, seed: int) #export_c {
+aethyr_voice_init :: (r: [] VoiceRealm, seed: int) #export_c #effects(all) {
   r[0] = VoiceRealm.{};
   replay_record(voice_session(r), VOICE_INITIAL, seed);
   r[0].state = VOICE_INITIAL;
@@ -82,19 +82,19 @@ aethyr_voice_init :: (r: [] VoiceRealm, seed: int) #export_c {
 // its way is stale).
 VOICE_PRESS :: 1;
 VOICE_CANCEL :: 2;
-aethyr_voice_control :: (r: [] VoiceRealm, kind: int) -> int #export_c {
+aethyr_voice_control :: (r: [] VoiceRealm, kind: int) -> int #export_c #effects(all) {
   s := voice_session(r);
   e := ReplayEvent.{source = REPLAY_ACTIONS, request = r[0].channels[REPLAY_ACTIONS].last + 1, epoch = r[0].channels[REPLAY_ACTIONS].epoch};
   e.words[VW_KIND] = kind;
   return replay_offer(s, e);
 }
 // The open hold's request (0 when none) and the epoch its answer must carry.
-aethyr_voice_holding :: (r: [] VoiceRealm) -> int #export_c { return r[0].holding; }
-aethyr_voice_epoch :: (r: [] VoiceRealm) -> int #export_c { return replay_epoch(voice_session(r), REPLAY_MODEL); }
+aethyr_voice_holding :: (r: [] VoiceRealm) -> int #export_c #effects(all) { return r[0].holding; }
+aethyr_voice_epoch :: (r: [] VoiceRealm) -> int #export_c #effects(all) { return replay_epoch(voice_session(r), REPLAY_MODEL); }
 
 // The voice host's final transcript for (request, epoch): REPLAY_ACCEPTED, or why not. An
 // accepted answer applies at the next step; its text goes into the log first.
-aethyr_voice_offer :: (r: [] VoiceRealm, request: int, epoch: int, text: string) -> int #export_c {
+aethyr_voice_offer :: (r: [] VoiceRealm, request: int, epoch: int, text: string) -> int #export_c #effects(all) {
   s := voice_session(r);
   e := ReplayEvent.{source = REPLAY_MODEL, request = request, epoch = epoch};
   v := replay_verdict(s, e);
@@ -113,7 +113,7 @@ aethyr_voice_offer :: (r: [] VoiceRealm, request: int, epoch: int, text: string)
 
 // One step, live or in a replay: apply the answers the record holds for it, then mark the
 // step with the realm's digest. Returns the answers applied this step.
-aethyr_voice_step :: (r: [] VoiceRealm) -> int #export_c {
+aethyr_voice_step :: (r: [] VoiceRealm) -> int #export_c #effects(all) {
   s := voice_session(r);
   took := 0;
   while true {
@@ -152,20 +152,20 @@ aethyr_voice_step :: (r: [] VoiceRealm) -> int #export_c {
   return took;
 }
 
-aethyr_voice_heard :: (r: [] VoiceRealm, out: [] u8) -> int #export_c {
+aethyr_voice_heard :: (r: [] VoiceRealm, out: [] u8) -> int #export_c #effects(all) {
   if out.count < r[0].heard_bytes { return -1; }
   for i: 0..<r[0].heard_bytes { out[i] = r[0].heard[i]; }
   return r[0].heard_bytes;
 }
-aethyr_voice_heard_kind :: (r: [] VoiceRealm) -> int #export_c { return r[0].heard_kind; }
-aethyr_voice_heard_request :: (r: [] VoiceRealm) -> int #export_c { return r[0].heard_request; }
-aethyr_voice_applied :: (r: [] VoiceRealm) -> int #export_c { return r[0].applied; }
-aethyr_voice_refused :: (r: [] VoiceRealm, verdict: int) -> int #export_c { return replay_refused(voice_session(r), verdict); }
+aethyr_voice_heard_kind :: (r: [] VoiceRealm) -> int #export_c #effects(all) { return r[0].heard_kind; }
+aethyr_voice_heard_request :: (r: [] VoiceRealm) -> int #export_c #effects(all) { return r[0].heard_request; }
+aethyr_voice_applied :: (r: [] VoiceRealm) -> int #export_c #effects(all) { return r[0].applied; }
+aethyr_voice_refused :: (r: [] VoiceRealm, verdict: int) -> int #export_c #effects(all) { return replay_refused(voice_session(r), verdict); }
 
 // Replays the recording in place (its record and log kept) from a realm constructed again,
 // whose digest is `initial`: false, and nothing changed, if that is not the recording's.
 // Then true when every step matched.
-aethyr_voice_replay :: (r: [] VoiceRealm, initial: int, steps: int) -> bool #export_c {
+aethyr_voice_replay :: (r: [] VoiceRealm, initial: int, steps: int) -> bool #export_c #effects(all) {
   s := voice_session(r);
   if !replay_play(s, initial) { return false; }
   r[0].heard_bytes = 0; r[0].heard_kind = 0; r[0].heard_request = 0; r[0].applied = 0; r[0].corrupt = 0;
@@ -174,7 +174,7 @@ aethyr_voice_replay :: (r: [] VoiceRealm, initial: int, steps: int) -> bool #exp
   for k: 0..<steps { a := aethyr_voice_step(r); }
   return replay_matched(s);
 }
-aethyr_voice_digest_session :: (r: [] VoiceRealm) -> int #export_c { return replay_digest(voice_session(r)); }
+aethyr_voice_digest_session :: (r: [] VoiceRealm) -> int #export_c #effects(all) { return replay_digest(voice_session(r)); }
 
 // ---- checks
 

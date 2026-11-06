@@ -71,30 +71,30 @@ starts with the lowest frame on top, so a fresh pool hands out frames 0, 1,
 
 <!-- source: psionic/lib/serve-pages.coax pool -->
 ```jai
-pg_tier :: (f:int)->int {return f/PG_TIER;}
+pg_tier :: (f:int)->int #effects(all) {return f/PG_TIER;}
 // Every frame free; each tier's stack pops its lowest frame first.
-pg_pool :: (c:PgConfig)->PgPool {
+pg_pool :: (c:PgConfig)->PgPool #effects(all) {
     p:PgPool;
     for t:0..<3 {for k:0..<c.cap[t] {p.stack[t*PG_TIER+k]=t*PG_TIER+c.cap[t]-1-k;}p.nfree[t]=c.cap[t];}
     return p;
 }
 // Take the top of tier t's free stack (got = -1 when it is empty).
-pg_alloc :: (from:PgPool,t:int)->PgPool {
+pg_alloc :: (from:PgPool,t:int)->PgPool #effects(all) {
     p:=from;p.got=-1;
     if p.nfree[t]==0 {return p;}
     p.nfree[t]-=1;f:=p.stack[t*PG_TIER+p.nfree[t]];
     p.ref[f]=1;p.got=f;
     return p;
 }
-pg_retain :: (from:PgPool,f:int)->PgPool {p:=from;p.ref[f]+=1;return p;}
+pg_retain :: (from:PgPool,f:int)->PgPool #effects(all) {p:=from;p.ref[f]+=1;return p;}
 // Drop one reference; the last one returns the frame to its tier's stack.
-pg_release :: (from:PgPool,f:int)->PgPool {
+pg_release :: (from:PgPool,f:int)->PgPool #effects(all) {
     p:=from;p.ref[f]-=1;
     if p.ref[f]==0 {t:=pg_tier(f);p.stack[t*PG_TIER+p.nfree[t]]=f;p.nfree[t]+=1;}
     return p;
 }
-pg_width :: (c:PgConfig)->int {return (c.page+1)*c.dim;}
-pg_copy :: (c:PgConfig,mem:[]f64,from:int,to:int) {
+pg_width :: (c:PgConfig)->int #effects(all) {return (c.page+1)*c.dim;}
+pg_copy :: (c:PgConfig,mem:[]f64,from:int,to:int) #effects(all) {
     w:=pg_width(c);
     for j:0..<w {mem[to*w+j]=mem[from*w+j];}
 }
@@ -112,14 +112,14 @@ and then copy only the page they write.
 <!-- source: psionic/lib/serve-pages.coax cow -->
 ```jai
 // Share every page of table a with table b.
-pg_fork :: (from:PgStore,a:int,b:int)->PgStore {
+pg_fork :: (from:PgStore,a:int,b:int)->PgStore #effects(all) {
     s:=from;s.table[b]=s.table[a];
     for k:0..<s.table[a].n {s.pool=pg_retain(s.pool,s.table[a].page[k]);}
     return s;
 }
 // Write one position's values. A frame that another holder also references
 // is copied first, so the write never shows through anyone else's table.
-pg_write :: (from:PgStore,mem:[]f64,i:int,pos:int,x:[]f64)->PgStore {
+pg_write :: (from:PgStore,mem:[]f64,i:int,pos:int,x:[]f64)->PgStore #effects(all) {
     s:=from;k:=pos/s.cfg.page;f:=s.table[i].page[k];
     if s.pool.ref[f]>1 {
         s=pg_take(s,mem);
@@ -130,7 +130,7 @@ pg_write :: (from:PgStore,mem:[]f64,i:int,pos:int,x:[]f64)->PgStore {
     for j:0..<s.cfg.dim {mem[f*w+pos%s.cfg.page*s.cfg.dim+j]=x[j];}
     return s;
 }
-pg_free_table :: (from:PgStore,i:int)->PgStore {
+pg_free_table :: (from:PgStore,i:int)->PgStore #effects(all) {
     s:=from;
     for k:0..<s.table[i].n {s.pool=pg_release(s.pool,s.table[i].page[k]);}
     s.table[i].n=0;
@@ -158,14 +158,14 @@ decide it, so two prefixes whose hashes collide are still two prefixes.
 <!-- source: psionic/lib/serve-pages.coax hash -->
 ```jai
 // The chained hash: a first block starts from the model identity.
-pg_hash :: (h:int,tok:[]int)->int {
+pg_hash :: (h:int,tok:[]int)->int #effects(all) {
     x:=h;
     for t:tok {x=(x*31+t+1)%PG_HASH;}
     return x;
 }
 // The node for this parent and these exact tokens, or -1. The hash narrows
 // the search; the parent and the tokens decide it, so a collision is a miss.
-pg_child :: (node:[]PgNode,parent:int,h:int,tok:[]int)->int {
+pg_child :: (node:[]PgNode,parent:int,h:int,tok:[]int)->int #effects(all) {
     for n:0..<PG_NODES {
         d:=node[n];
         if d.frame>=0 && d.hash==h && d.parent==parent {
@@ -179,7 +179,7 @@ pg_child :: (node:[]PgNode,parent:int,h:int,tok:[]int)->int {
 // The cached blocks a prompt can reuse: its longest cached prefix of whole
 // blocks, never the block that holds its last position, because that
 // position must run to produce the first output token.
-pg_match :: (from:PgStore,model:int,tok:[]int,prompt:int)->PgPath {
+pg_match :: (from:PgStore,model:int,tok:[]int,prompt:int)->PgPath #effects(all) {
     s:=from;p:=s.cfg.page;r:PgPath;parent:=-1-model;h:=model;
     for k:0..<(prompt-1)/p {
         b:[8]int;for j:0..<p {b[j]=tok[k*p+j];}
@@ -229,7 +229,7 @@ Restoring a prefix brings its nodes back to the device root first.
 // child in the same tier, and on the device referenced by the cache alone.
 // A node with nowhere to go (on disk, or the tier below is full with
 // nothing movable) is dropped with everything under it.
-pg_spill :: (from:PgStore,mem:[]f64,t:int)->PgStore {
+pg_spill :: (from:PgStore,mem:[]f64,t:int)->PgStore #effects(all) {
     s:=from;v:=-1;
     for n:0..<PG_NODES {
         d:=s.node[n];
@@ -249,18 +249,18 @@ pg_spill :: (from:PgStore,mem:[]f64,t:int)->PgStore {
     }
     return s;
 }
-pg_child_in :: (node:[]PgNode,n:int,t:int)->bool {
+pg_child_in :: (node:[]PgNode,n:int,t:int)->bool #effects(all) {
     for c:0..<PG_NODES {if node[c].frame>=0 && node[c].parent==n && pg_tier(node[c].frame)==t {return true;}}
     return false;
 }
 // Is node n the node v or under it?
-pg_under :: (node:[]PgNode,n:int,v:int)->bool {
+pg_under :: (node:[]PgNode,n:int,v:int)->bool #effects(all) {
     a:=n;
     while a>=0 {if a==v {return true;}a=node[a].parent;}
     return false;
 }
 // A device frame for a request: free one first if none is.
-pg_take :: (from:PgStore,mem:[]f64)->PgStore {
+pg_take :: (from:PgStore,mem:[]f64)->PgStore #effects(all) {
     s:=from;
     if s.pool.nfree[0]==0 {s=pg_spill(s,mem,0);}
     s.pool=pg_alloc(s.pool,0);
@@ -289,7 +289,7 @@ of pages, a request fits in positions exactly when it fits in pages.
 // Refuse a page configuration or a request outside the bounds; the
 // scheduler's state budget becomes the device tier in positions, and a
 // hybrid model's recurrent state is charged one page per request.
-pg_start :: (cfg:PgConfig,batch:CbConfig,reqs:[]CbRequest,model:[]int,tok:[]int)->PgState {
+pg_start :: (cfg:PgConfig,batch:CbConfig,reqs:[]CbRequest,model:[]int,tok:[]int)->PgState #effects(all) {
     s:PgState;s.cfg=cfg;s.status=PgStatus.pages;
     if cfg.page<1 || cfg.page>PG_PAGE || cfg.dim<1 || cfg.dim>PG_DIM || cfg.cap[0]<1 {return s;}
     for t:0..<3 {if cfg.cap[t]<0 || cfg.cap[t]>PG_TIER {return s;}}
@@ -336,7 +336,7 @@ prefix also costs its client less of its share.
 // that must come back up from host or disk, plus its recurrent-state page.
 // It is admitted when the charge fits in the free device frames and the
 // frames that cached blocks it does not need could give back.
-pg_admit :: (from:PgState,mem:[]f64)->PgState {
+pg_admit :: (from:PgState,mem:[]f64)->PgState #effects(all) {
     s:=from;p:=s.cfg.page;
     while s.cb.nrun<s.cb.cfg.slots {
         c:=-1;
@@ -389,11 +389,11 @@ the trie and retires finished requests, releasing their frames.
 // frames through the page tables; pg_finish puts every whole prompt block
 // written so far in the trie, marks its last use, and retires the finished
 // requests.
-pg_step :: (from:PgState,mem:[]f64)->PgState {
+pg_step :: (from:PgState,mem:[]f64)->PgState #effects(all) {
     s:=from;s.cb=cb_arrive(s.cb);s=pg_admit(s,mem);s.cb=cb_tokens(s.cb);
     return s;
 }
-pg_finish :: (from:PgState)->PgState {
+pg_finish :: (from:PgState)->PgState #effects(all) {
     s:=from;
     for q:0..<s.cb.nrun {
         i:=s.cb.run[q];
@@ -415,7 +415,7 @@ pg_finish :: (from:PgState)->PgState {
 // on the device replaces the request's copy; one on host or disk is replaced
 // by the request's device frame. A block already linked finds itself, and
 // only its last use moves.
-pg_commit :: (from:PgStore,i:int,k:int,model:int,tok:[]int,step:int)->PgStore {
+pg_commit :: (from:PgStore,i:int,k:int,model:int,tok:[]int,step:int)->PgStore #effects(all) {
     s:=from;p:=s.cfg.page;parent:=-1-model;h:=model;
     if k>0 {parent=s.table[i].node[k-1];h=s.node[parent].hash;}
     b:[8]int;for j:0..<p {b[j]=tok[k*p+j];}
@@ -432,7 +432,7 @@ pg_commit :: (from:PgStore,i:int,k:int,model:int,tok:[]int,step:int)->PgStore {
 }
 // Without a model: every step's rows are taken as run. Page contents stay
 // as they are; admission, sharing and tiers do not depend on them.
-pg_run :: (cfg:PgConfig,batch:CbConfig,reqs:[]CbRequest,model:[]int,tok:[]int,mem:[]f64)->PgState {
+pg_run :: (cfg:PgConfig,batch:CbConfig,reqs:[]CbRequest,model:[]int,tok:[]int,mem:[]f64)->PgState #effects(all) {
     s:=pg_start(cfg,batch,reqs,model,tok);
     if s.status!=PgStatus.ok {return s;}
     while s.cb.done<s.cb.n && s.cb.step<s.cb.cfg.steps {s=pg_finish(pg_step(s,mem));}

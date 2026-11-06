@@ -31,15 +31,15 @@
  p:Point3(PfkWorld,pfku.Metre,f64);p.x=1;p.y=2;p.z=3;t:Point3(PfkWorld,pfku.Metre,f64);t.x=4;t.y= -2;t.z=15;#assert pik_error(p,t)==13 && pik_error(p,p)==0;
 }
 
-pik_lower :: ()->[7]f64 #export_c {return [7]f64.[-2.8973,-1.7628,-2.8973,-3.0718,-2.8973,-0.0175,-2.8973];}
-pik_upper :: ()->[7]f64 #export_c {return [7]f64.[2.8973,1.7628,2.8973,-0.0698,2.8973,3.7525,2.8973];}
-pik_home :: ()->[7]pfku.Quantity(pfku.Radian,f64) #export_c {v:=[7]f64.[0,0.19634954084936207,0,-2.617993877991494,0,2.941592653589793,0.7853981633974483];q:[7]pfku.Quantity(pfku.Radian,f64);for back:0..<7 {i:=6-back;q[i].value=v[i];}return q;}
-pik_admit :: (words:[10]u64,max_updates:int)->PikStatus {
+pik_lower :: ()->[7]f64 #export_c #effects(all) {return [7]f64.[-2.8973,-1.7628,-2.8973,-3.0718,-2.8973,-0.0175,-2.8973];}
+pik_upper :: ()->[7]f64 #export_c #effects(all) {return [7]f64.[2.8973,1.7628,2.8973,-0.0698,2.8973,3.7525,2.8973];}
+pik_home :: ()->[7]pfku.Quantity(pfku.Radian,f64) #export_c #effects(all) {v:=[7]f64.[0,0.19634954084936207,0,-2.617993877991494,0,2.941592653589793,0.7853981633974483];q:[7]pfku.Quantity(pfku.Radian,f64);for back:0..<7 {i:=6-back;q[i].value=v[i];}return q;}
+pik_admit :: (words:[10]u64,max_updates:int)->PikStatus #effects(all) {
  if max_updates<0 || max_updates>96 {return PikStatus.range;}lo:=pik_lower();hi:=pik_upper();
  for i:0..<7 {if (words[i]&0x7ff0000000000000)==0x7ff0000000000000 {return PikStatus.number;}v:=f64_from_bits(words[i]);if v<lo[i] || v>hi[i] {return PikStatus.limits;}}
  for i:7..<10 {if (words[i]&0x7ff0000000000000)==0x7ff0000000000000 {return PikStatus.number;}if abs(f64_from_bits(words[i]))>10 {return PikStatus.range;}}return PikStatus.ok;
 }
-pik_delta :: (j:[21]f64,error:[3]f64)->PikDelta {
+pik_delta :: (j:[21]f64,error:[3]f64)->PikDelta #effects(all) {
  for x:j {if !pm_finite_bits(f64_bits(x)) {return PikDelta.{status=PikStatus.number};}if abs(x)>4 {return PikDelta.{status=PikStatus.range};}}
  for x:error {if !pm_finite_bits(f64_bits(x)) {return PikDelta.{status=PikStatus.number};}if abs(x)>20 {return PikDelta.{status=PikStatus.range};}}
  a:[49]f64;for row:0..<3 {for col:0..<3 {sum:f64=0;for k:0..<7 {sum+=j[row*7+k]*j[col*7+k];}if row==col {sum+=0.0025;}a[row*7+col]=sum;}}
@@ -48,11 +48,11 @@ pik_delta :: (j:[21]f64,error:[3]f64)->PikDelta {
  result:PikDelta;largest:f64=0;for k:0..<7 {for row:0..<3 {result.radians[k]+=j[row*7+k]*weighted[row];}if pik_greater(abs(result.radians[k]),largest) {largest=abs(result.radians[k]);}}
  if pik_greater(largest,0.1) {for k:0..<7 {result.radians[k]*=0.1/largest;}}return result;
 }
-pik_clip :: (value:f64,lower:f64,upper:f64)->f64 {if pik_less(value,lower) {return lower;}if pik_greater(value,upper) {return upper;}return value;}
-pik_error :: (position:Point3(PfkWorld,pfku.Metre,f64),target:Point3(PfkWorld,pfku.Metre,f64))->f64 {x:=target.x-position.x;y:=target.y-position.y;z:=target.z-position.z;return sqrt(x*x+y*y+z*z);}
+pik_clip :: (value:f64,lower:f64,upper:f64)->f64 #effects(all) {if pik_less(value,lower) {return lower;}if pik_greater(value,upper) {return upper;}return value;}
+pik_error :: (position:Point3(PfkWorld,pfku.Metre,f64),target:Point3(PfkWorld,pfku.Metre,f64))->f64 #effects(all) {x:=target.x-position.x;y:=target.y-position.y;z:=target.z-position.z;return sqrt(x*x+y*y+z*z);}
 
-pik_less :: (a:f64,b:f64)->bool {return a<b;}
-pik_greater :: (a:f64,b:f64)->bool {return a>b;}
+pik_less :: (a:f64,b:f64)->bool #effects(all) {return a<b;}
+pik_greater :: (a:f64,b:f64)->bool #effects(all) {return a>b;}
 
 #test "Panda IK exact home tuple strict predicates and IEEE words expose all admission branches" {
  h:=pik_home();expected:=[7]f64.[0,0.19634954084936207,0,-2.617993877991494,0,2.941592653589793,0.7853981633974483];for i:0..<7 {#assert h[i].value==expected[i];}

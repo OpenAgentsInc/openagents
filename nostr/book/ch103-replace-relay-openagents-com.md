@@ -114,7 +114,7 @@ in a line with no `\n`. The line checks come before any parsing:
 <!-- source: coax/lib/nostr/relay_import.coax frame -->
 ```jai
 // The checks on a line before it is read as an event.
-ri_frame :: (line: string, ended: bool) -> int {
+ri_frame :: (line: string, ended: bool) -> int #effects(all) {
   if !ended { return RI_CUT; }
   if line.count == 0 { return RI_EMPTY; }
   if line.count > RI_LINE_MAX { return RI_LONG; }
@@ -122,7 +122,7 @@ ri_frame :: (line: string, ended: bool) -> int {
 }
 // The outcome of a read and verified line before the store: RS_ACCEPT means
 // "offer it to the store".
-ri_check :: (r: RsAdmit) -> int {
+ri_check :: (r: RsAdmit) -> int #effects(all) {
   if r.reason != RS_ACCEPT { return r.reason; }
   if r.kclass == RS_EPHEMERAL { return RI_EPHEMERAL; }
   return RS_ACCEPT;
@@ -176,7 +176,7 @@ forged line in its export means its database or the copy was changed.
 // earlier deletion covers is refused: the old relay kept it), clean
 // otherwise. Expired events are dropped on purpose (the old relay no longer
 // serves them either).
-ri_verdict :: (rep: RiReport) -> int {
+ri_verdict :: (rep: RiReport) -> int #effects(all) {
   if rep.count[RI_CUT] > 0 || rep.count[RI_LONG] > 0 || rep.count[RS_FULL] > 0 || rep.count[RI_NO_TOMBS] > 0 { return RI_INCOMPLETE; }
   kept := rep.count[RS_ACCEPT] + rep.count[RS_DUP] + rep.count[RS_SUPERSEDED] + rep.count[RS_EXPIRED];
   if kept != rep.lines { return RI_REFUSED; }
@@ -200,7 +200,7 @@ a time `now`: its live, unexpired records. Each becomes a NIP-77 item, its
 <!-- source: coax/lib/nostr/relay_equal.coax items -->
 ```jai
 // The store's set at now, sorted: the count (at most out.count).
-re_items :: (s: [] RsdStore, now: int, out: [] NegItem) -> int {
+re_items :: (s: [] RsdStore, now: int, out: [] NegItem) -> int #effects(all) {
   n := 0;
   for i: 0..<s[0].n {
     if !ns_store_visible(s, i, now) || n >= out.count { continue; }
@@ -211,7 +211,7 @@ re_items :: (s: [] RsdStore, now: int, out: [] NegItem) -> int {
   return n;
 }
 // SHA-256 over the sorted items: 8 bytes of created_at, big-endian, then the id.
-re_digest :: (items: [] NegItem, out: [] u8) {
+re_digest :: (items: [] NegItem, out: [] u8) #effects(all) {
   st: [SHA_STATE_BYTES] u8;
   #assert sha256_init(st[..]) == SHA_OK;
   for item: items {
@@ -253,7 +253,7 @@ decide and the second to name the difference:
 // Compares sorted item lists a and b. q and r hold one Negentropy message
 // each way; d.only_a and d.only_b are the caller's, and so is d.max_rounds,
 // the most round trips it may take.
-re_compare :: (a: [] NegItem, b: [] NegItem, d: [] ReDiff, q: [] u8, r: [] u8) -> int {
+re_compare :: (a: [] NegItem, b: [] NegItem, d: [] ReDiff, q: [] u8, r: [] u8) -> int #effects(all) {
   d[0].a_n = a.count; d[0].b_n = b.count; d[0].only_a_n = 0; d[0].only_b_n = 0; d[0].rounds = 0; d[0].error = NEG_OK;
   re_digest(a, d[0].a_digest[..]); re_digest(b, d[0].b_digest[..]);
   if cast(string) d[0].a_digest[..] == cast(string) d[0].b_digest[..] { d[0].verdict = RE_EQUAL; return RE_EQUAL; }
@@ -276,9 +276,9 @@ re_compare :: (a: [] NegItem, b: [] NegItem, d: [] ReDiff, q: [] u8, r: [] u8) -
   d[0].verdict = RE_DIFFER;
   return RE_DIFFER;
 }
-re_fail :: (d: [] ReDiff, e: int) -> int { d[0].error = e; d[0].verdict = RE_ERROR; return RE_ERROR; }
+re_fail :: (d: [] ReDiff, e: int) -> int #effects(all) { d[0].error = e; d[0].verdict = RE_ERROR; return RE_ERROR; }
 // Compares two stores as they serve at now. ia and ib hold their items.
-re_stores :: (a: [] RsdStore, b: [] RsdStore, now: int, ia: [] NegItem, ib: [] NegItem, d: [] ReDiff, q: [] u8, r: [] u8) -> int {
+re_stores :: (a: [] RsdStore, b: [] RsdStore, now: int, ia: [] NegItem, ib: [] NegItem, d: [] ReDiff, q: [] u8, r: [] u8) -> int #effects(all) {
   na := re_items(a, now, ia); nb := re_items(b, now, ib);
   return re_compare(ia[0..<na], ib[0..<nb], d, q, r);
 }
@@ -299,31 +299,31 @@ compare, and classify every difference.
 
 <!-- source: coax/lib/nostr/relay_shadow.coax classify -->
 ```jai
-sh_same :: (a: NegId, b: NegId) -> bool {
+sh_same :: (a: NegId, b: NegId) -> bool #effects(all) {
   for k: 0..<32 { if a.b[k] != b.b[k] { return false; } }
   return true;
 }
-sh_in :: (ids: [] NegId, n: int, id: NegId) -> bool {
+sh_in :: (ids: [] NegId, n: int, id: NegId) -> bool #effects(all) {
   for i: 0..<n { if sh_same(ids[i], id) { return true; } }
   return false;
 }
 // Whether id is in the known set difference.
-sh_known :: (d: ReDiff, id: NegId) -> bool {
+sh_known :: (d: ReDiff, id: NegId) -> bool #effects(all) {
   return sh_in(d.only_a, d.only_a_n, id) || sh_in(d.only_b, d.only_b_n, id);
 }
 // The answer without the known difference's ids.
-sh_strip :: (x: ShAnswer, d: ReDiff) -> ShAnswer {
+sh_strip :: (x: ShAnswer, d: ReDiff) -> ShAnswer #effects(all) {
   y: ShAnswer;
   for i: 0..<x.n { if !sh_known(d, x.ids[i]) { y.ids[y.n] = x.ids[i]; y.n += 1; } }
   return y;
 }
 // Whether the first n ids of a and b are the same, in order.
-sh_prefix :: (a: ShAnswer, b: ShAnswer, n: int) -> bool {
+sh_prefix :: (a: ShAnswer, b: ShAnswer, n: int) -> bool #effects(all) {
   for i: 0..<n { if !sh_same(a.ids[i], b.ids[i]) { return false; } }
   return true;
 }
 // Whether the shorter of a and b is the start of the other.
-sh_starts :: (a: ShAnswer, b: ShAnswer) -> bool {
+sh_starts :: (a: ShAnswer, b: ShAnswer) -> bool #effects(all) {
   for i: 0..<a.n {
     if i == b.n { return true; }
     if !sh_same(a.ids[i], b.ids[i]) { return false; }
@@ -331,7 +331,7 @@ sh_starts :: (a: ShAnswer, b: ShAnswer) -> bool {
   return true;
 }
 // The class of answers a and b to one filter whose limit is limit.
-sh_classify :: (a: ShAnswer, b: ShAnswer, limit: int, d: ReDiff) -> int {
+sh_classify :: (a: ShAnswer, b: ShAnswer, limit: int, d: ReDiff) -> int #effects(all) {
   if a.n == b.n && sh_prefix(a, b, a.n) { return SH_MATCH; }
   if a.n == b.n {
     all := true;

@@ -70,17 +70,17 @@ A3List :: struct {status:int=A3_EVENT; at:int=-1; count:int; payable:int; t:[A3_
 // book:end record
 
 // ---- test helpers
-a3_text :: (s:string)->N32Text {t:N32Text;for i:0..<s.count {t.b[i]=s[i];}t.n=s.count;return t;}
-a3_try :: (type:string,address:string)->A3Target {return a3_target(a3_text(type),a3_text(address));}
-a3_hex_is :: (b:[]u8,hex:string)->bool {
+a3_text :: (s:string)->N32Text #effects(all) {t:N32Text;for i:0..<s.count {t.b[i]=s[i];}t.n=s.count;return t;}
+a3_try :: (type:string,address:string)->A3Target #effects(all) {return a3_target(a3_text(type),a3_text(address));}
+a3_hex_is :: (b:[]u8,hex:string)->bool #effects(all) {
   if b.count*2!=hex.count {return false;}
   d:="0123456789abcdef";
   for i:0..<b.count {if d[b[i]>>4]!=hex[2*i] || d[b[i]&15]!=hex[2*i+1] {return false;}}
   return true;
 }
-a3_program_is :: (t:A3Target,hex:string)->bool {c:=t;return a3_hex_is(c.program[0..<c.n],hex);}
-a3_w3 :: (a:string,b:string,c:string,out:[]int)->int {t:=[3]string.[a,b,c];return a3_weights(t[..],out);}
-a3_s3 :: (total:int,a:int,b:int,c:int,out:[]int)->int {w:=[3]int.[a,b,c];return a3_split(total,w[..],out);}
+a3_program_is :: (t:A3Target,hex:string)->bool #effects(all) {c:=t;return a3_hex_is(c.program[0..<c.n],hex);}
+a3_w3 :: (a:string,b:string,c:string,out:[]int)->int #effects(all) {t:=[3]string.[a,b,c];return a3_weights(t[..],out);}
+a3_s3 :: (total:int,a:int,b:int,c:int,out:[]int)->int #effects(all) {w:=[3]int.[a,b,c];return a3_split(total,w[..],out);}
 
 #test "NIP-A3's example: the bitcoin target is offered, nano and unknowntype are not" {
   e:=n32_event(10133,"[[\"payto\",\"bitcoin\",\"bc1qxq66e0t8d7ugdecwnmv58e90tpry23nc84pg9k\"],[\"payto\",\"nano\",\"nano_1dctqbmqxfppo9pswbm6kg9d4s4mbraqn8i4m7ob9gnzz91aurmuho48jx3c\"],[\"payto\",\"unknowntype\",\"l7tbta5b9xze6ckkfc99uohzxd009b0r\"]]");
@@ -279,10 +279,10 @@ a3_s3 :: (total:int,a:int,b:int,c:int,out:[]int)->int {w:=[3]int.[a,b,c];return 
 
 // ---- reading
 
-a3_is_in :: (list:[]string,s:string)->bool {for x:list {if x==s {return true;}}return false;}
-a3_fail :: (t:A3Target,status:int)->A3Target {r:=t;r.status=status;return r;}
+a3_is_in :: (list:[]string,s:string)->bool #effects(all) {for x:list {if x==s {return true;}}return false;}
+a3_fail :: (t:A3Target,status:int)->A3Target #effects(all) {r:=t;r.status=status;return r;}
 // A NIP-A3 type: lowercase ASCII letters, digits and "-".
-a3_type_ok :: (s:string)->bool {
+a3_type_ok :: (s:string)->bool #effects(all) {
   if s.count==0 {return false;}
   for c:s {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}
   return true;
@@ -291,7 +291,7 @@ a3_type_ok :: (s:string)->bool {
 // book:begin target
 // One payto target: its type sorted, and a bitcoin or lightning address
 // checked. Only status A3_OK may be offered as a way to pay.
-a3_target :: (type:N32Text,address:N32Text)->A3Target {
+a3_target :: (type:N32Text,address:N32Text)->A3Target #effects(all) {
   t:A3Target;t.type=type;t.address=address;
   ty:=cast(string)t.type.b[0..<t.type.n];ad:=cast(string)t.address.b[0..<t.address.n];
   if !a3_type_ok(ty) || ad.count==0 {return t;}
@@ -311,7 +311,7 @@ a3_target :: (type:N32Text,address:N32Text)->A3Target {
 // The payto tags of a kind 10133 event, in tag order. A bad target is kept
 // with its status; only an unreadable event, the wrong kind or more than
 // A3_MAX targets refuses the list.
-a3_list :: (e:NostrEvent)->A3List {
+a3_list :: (e:NostrEvent)->A3List #effects(all) {
   r:A3List;if e.error!=NE_OK {return r;}
   if e.kind!=A3_LIST_KIND {r.status=A3_KIND;return r;}
   i:=0;
@@ -337,7 +337,7 @@ a3_list :: (e:NostrEvent)->A3List {
 // The URI a client may offer as a payment link: bitcoin:<address> (bech32
 // in lower case) or lightning:<address>. -1 when the target must not be
 // offered or out is too small; nothing is written then.
-a3_pay_uri :: (t:A3Target,out:[]u8)->int {
+a3_pay_uri :: (t:A3Target,out:[]u8)->int #effects(all) {
   if t.status!=A3_OK {return -1;}
   scheme:=ifx t.form==A3_LN_ADDRESS then "lightning:" else "bitcoin:";
   c:=t;ad:=cast(string)c.address.b[0..<c.address.n];
@@ -349,8 +349,8 @@ a3_pay_uri :: (t:A3Target,out:[]u8)->int {
 }
 // book:end uri
 
-a3_is_ci :: (s:string,p:string)->bool {return s.count==p.count && a3_starts_ci(s,p);}
-a3_starts_ci :: (s:string,p:string)->bool {
+a3_is_ci :: (s:string,p:string)->bool #effects(all) {return s.count==p.count && a3_starts_ci(s,p);}
+a3_starts_ci :: (s:string,p:string)->bool #effects(all) {
   if s.count<p.count {return false;}
   for i:0..<p.count {if b32_lower(s[i])!=p[i] {return false;}}
   return true;
@@ -361,7 +361,7 @@ a3_starts_ci :: (s:string,p:string)->bool {
 // Bech32 and A3_BECH32M for Bech32m; version 0 needs the first, versions 1
 // to 16 the second. Program, version and form are filled in before the
 // network is checked, so a testnet address reports what it holds.
-a3_segwit :: (s:string)->A3Target {
+a3_segwit :: (s:string)->A3Target #effects(all) {
   t:A3Target;t.status=A3_ADDRESS;
   if s.count>90 {return t;}
   sep:=s.count;upper:=false;lower:=false;   // no 1: the whole string is the hrp
@@ -408,7 +408,7 @@ a3_segwit :: (s:string)->A3Target {
 // A base58check address: 25 bytes, version, 20-byte hash and checksum,
 // with one leading "1" per leading zero byte.
 A3_BASE58 :: "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-a3_base58 :: (s:string)->A3Target {
+a3_base58 :: (s:string)->A3Target #effects(all) {
   t:A3Target;t.status=A3_ADDRESS;
   b:[25]u8;
   for c:s {
@@ -436,7 +436,7 @@ a3_base58 :: (s:string)->A3Target {
 
 // A Lightning address (LUD-16): name@domain. A second @ fails the domain's
 // characters.
-a3_lightning :: (t:A3Target,s:string)->A3Target {
+a3_lightning :: (t:A3Target,s:string)->A3Target #effects(all) {
   r:=t;r.status=A3_ADDRESS;
   in_name:=true;named:=false;               // reading the name; the name has a character
   dot:=false;empty:=true;                   // the domain has a dot; its last label is empty
@@ -454,7 +454,7 @@ a3_lightning :: (t:A3Target,s:string)->A3Target {
   r.form=A3_LN_ADDRESS;r.status=A3_OK;return r;
 }
 // A lower-case letter, a digit or "-".
-a3_ldh :: (c:u8)->bool {return (c>='a' && c<='z') || (c>='0' && c<='9') || c=='-';}
+a3_ldh :: (c:u8)->bool #effects(all) {return (c>='a' && c<='z') || (c>='0' && c<='9') || c=='-';}
 
 // ---- zap splits
 
@@ -463,7 +463,7 @@ a3_ldh :: (c:u8)->bool {return (c>='a' && c<='z') || (c>='0' && c<='9') || c=='-
 // no weight). No weights at all: equal shares. Some weights: a tag without
 // one gets 0. A weight is a whole number 0 to A3_MAX_WEIGHT written without
 // a sign or leading zeros.
-a3_weights :: (texts:[]string,out:[]int)->int {
+a3_weights :: (texts:[]string,out:[]int)->int #effects(all) {
   if texts.count<1 || texts.count>A3_MAX || out.count<texts.count {return A3_LIMIT;}
   any:=false;for s:texts {if s.count>0 {any=true;}}
   positive:=false;
@@ -491,7 +491,7 @@ a3_weights :: (texts:[]string,out:[]int)->int {
 // recipients) go one each to the largest remainders total·w mod W, the
 // earlier tag first on a tie. Computed as q·w + r·w/W with q, r = total
 // divided by W, so nothing overflows 64 bits.
-a3_split :: (total:int,weights:[]int,out:[]int)->int {
+a3_split :: (total:int,weights:[]int,out:[]int)->int #effects(all) {
   n:=weights.count;
   if n<1 || n>A3_MAX || out.count<n {return A3_LIMIT;}
   if total<1 || total>A3_MAX_MSAT {return A3_AMOUNT;}

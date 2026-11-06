@@ -100,7 +100,7 @@ td_advance :: (s:TdShape,p:[]f64,w:[]f64,token:int,t:int) {
 ```jai
 // One incremental step: `filled` positions are already in the cache; this
 // writes position `filled` and returns its logits.
-td_decode :: (s:TdShape,p:[]f64,cache:[]f64,filled:int,token:int,logits:[]f64,overlap:bool)->TdResult #export_c {
+td_decode :: (s:TdShape,p:[]f64,cache:[]f64,filled:int,token:int,logits:[]f64,overlap:bool)->TdResult #export_c #effects(all) {
     status:=td_admit(s,p,cache);if status!=TdStatus.ok {return TdResult.{status=status};}
     if filled<0 || filled>=s.context {return TdResult.{status=TdStatus.position};}if token<0 || token>=s.vocab {return TdResult.{status=TdStatus.token};}
     if logits.count<s.vocab {return TdResult.{status=TdStatus.capacity};}if overlap {return TdResult.{status=TdStatus.alias};}
@@ -139,7 +139,7 @@ its first block's input gradient.
 
 <!-- source: psionic/lib/transformer/decoder.coax backward -->
 ```jai
-td_gradients :: (s:TdShape,p:[]f64,tokens:[]int,w:[]f64,dw:[]f64,grads:[]f64,overlap:bool)->TdResult #export_c {
+td_gradients :: (s:TdShape,p:[]f64,tokens:[]int,w:[]f64,dw:[]f64,grads:[]f64,overlap:bool)->TdResult #export_c #effects(all) {
     status:=td_admit(s,p,w);if status!=TdStatus.ok {return TdResult.{status=status};}
     status=td_tokens(s,tokens);if status!=TdStatus.ok {return TdResult.{status=status};}if tokens.count<2 {return TdResult.{status=TdStatus.shape};}
     if dw.count<td_work_count(s) || grads.count!=p.count {return TdResult.{status=TdStatus.capacity};}if overlap {return TdResult.{status=TdStatus.alias};}

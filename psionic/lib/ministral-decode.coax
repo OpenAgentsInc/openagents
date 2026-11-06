@@ -9,7 +9,7 @@
 // layer rotates with YaRN over adjacent pairs. The cache holds at most
 // LM_POSITIONS_MAX = 64 positions, far inside the original 16,384, so the
 // Llama 4 query scale is exactly 1 and is not applied.
-md_model :: (embed:[]u8,norm:[]u8,layers:[]MsLayer)->LmModel #export_c {
+md_model :: (embed:[]u8,norm:[]u8,layers:[]MsLayer)->LmModel #export_c #effects(all) {
     return LmModel.{embed=embed,norm=norm,head=embed,layers=layers,rope=LmRope.yarn};
 }
 // book:end model

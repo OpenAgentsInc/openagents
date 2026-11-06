@@ -56,11 +56,11 @@ HostFrameOffer :: struct {admit:bool;dt:f64;}
   #assert htl_event_us(s[..],LC_FOCUS,33334,0).does==4 && s[0].profile[0].active;
   #assert htl_event_us(s[..],LC_HIDDEN,1000000,0).does==3 && s[0].profile[0].away_since==30;
 }
-htl_event_us :: (s:[]HostLifecycle,kind:int,now_us:int,arg:int)->LifeActions #export_c {
+htl_event_us :: (s:[]HostLifecycle,kind:int,now_us:int,arg:int)->LifeActions #export_c #effects(all) {
   return htl_event(s,kind,ifx now_us<0 then -1 else htl_tick(now_us),arg);
 }
-htl_tick :: (microseconds:int)->int #export_c {return microseconds/1000000*30+(microseconds%1000000)*30/1000000;}
-htl_event :: (s:[]HostLifecycle,kind:int,tick:int,arg:int)->LifeActions #export_c {
+htl_tick :: (microseconds:int)->int #export_c #effects(all) {return microseconds/1000000*30+(microseconds%1000000)*30/1000000;}
+htl_event :: (s:[]HostLifecycle,kind:int,tick:int,arg:int)->LifeActions #export_c #effects(all) {
   if tick<0 {return LifeActions.{};}
   if kind==LC_BLUR {s[0].focused=false;}if kind==LC_HIDDEN {s[0].shown=false;}
   if kind==LC_FOCUS {s[0].focused=true;if !s[0].shown {return LifeActions.{};}}
@@ -69,7 +69,7 @@ htl_event :: (s:[]HostLifecycle,kind:int,tick:int,arg:int)->LifeActions #export_
   if (a.does&(LC_STOP_CLOCK|LC_START_CLOCK|LC_RELOAD_GPU|LC_RESTART_MODULE))!=0 {s[0].last_us= -1;}
   return a;
 }
-htl_offer :: (s:[]HostLifecycle,now_us:int,pending:int)->HostFrameOffer #export_c {
+htl_offer :: (s:[]HostLifecycle,now_us:int,pending:int)->HostFrameOffer #export_c #effects(all) {
   if !s[0].shown || !s[0].profile[0].drawing || !afp_submit_allowed(pending) || now_us<0 || now_us<s[0].last_us {return HostFrameOffer.{};}
   dt:=0.0;if s[0].profile[0].active && s[0].last_us>=0 {dt=f64(now_us-s[0].last_us)/1000000.0;}
   s[0].last_us=now_us;return HostFrameOffer.{admit=true,dt=dt};

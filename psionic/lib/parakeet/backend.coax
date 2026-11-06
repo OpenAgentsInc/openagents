@@ -15,14 +15,14 @@ PK_DEVICE_CUDA :: 2;   // NVIDIA CUDA, PARAKEET-CUDA-F32-v1
  for good:0..<3 {#assert pk_device_known(good);}
 }
 
-pk_device_known :: (device:int)->bool {return device>=PK_DEVICE_CPU && device<=PK_DEVICE_CUDA;}
-pk_backend_name :: (device:int)->string {
+pk_device_known :: (device:int)->bool #effects(all) {return device>=PK_DEVICE_CPU && device<=PK_DEVICE_CUDA;}
+pk_backend_name :: (device:int)->string #effects(all) {
  if device==PK_DEVICE_CPU {return "cpu-exact";}
  if device==PK_DEVICE_METAL {return "metal";}
  if device==PK_DEVICE_CUDA {return "cuda";}
  return "";
 }
-pk_device_name :: (device:int)->string {
+pk_device_name :: (device:int)->string #effects(all) {
  if device==PK_DEVICE_CPU {return "cpu";}
  if device==PK_DEVICE_METAL {return "apple-metal";}
  if device==PK_DEVICE_CUDA {return "nvidia-cuda";}

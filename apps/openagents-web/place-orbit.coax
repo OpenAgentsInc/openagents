@@ -6,11 +6,11 @@
 #load "../../aethyr/camera.coax";
 
 // Where you are, for keeping: feet (the face's player), facing, the orbit, the room.
-verse_place_of :: (x: f32, y: f32, z: f32, face: f32, o: Orbit, room: int) -> Place #export_c {
+verse_place_of :: (x: f32, y: f32, z: f32, face: f32, o: Orbit, room: int) -> Place #export_c #effects(all) {
   return verse_place(x, y, z, face, o.yaw, o.pitch, o.want, 0, room, 0);
 }
 // The orbit for a kept place at these feet: its yaw and pitch, its distance within the orbit's reach.
-verse_place_orbit :: (p: Place, feet: Point) -> Orbit #export_c {
+verse_place_orbit :: (p: Place, feet: Point) -> Orbit #export_c #effects(all) {
   o := verse_orbit_start(feet, p.yaw);
   o.pitch = ifx finite(p.pitch) then clamp(p.pitch, f32(FREE_PITCH_MIN), f32(FREE_PITCH_MAX)) else f32(FREE_PITCH);
   z := ifx finite(p.zoom) then clamp(p.zoom, f32(FREE_NEAR), f32(FREE_FAR)) else f32(FREE_DIST);

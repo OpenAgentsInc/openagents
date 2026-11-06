@@ -31,7 +31,7 @@ reh_has :: (s: string, p: string) -> bool {
   return false;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   t: [1] Reh; dbb: [1024] u8; pb: [1024] u8;
   base := proc_getenv("API",t[0].api[..]); t[0].api_n = base.count;
   db := proc_getenv("PGURL",dbb[..]); psql := proc_getenv("PSQL",pb[..]);

@@ -16,7 +16,7 @@
 // op 3: parameters. Writes the sanity check's code and the interval.
 // op 4: a (32 bytes), a word, nBits, a count. Writes a times the word, the
 // division by the word (ok, quotient) and a plus count blocks of work.
-retarget_report_vartime :: (op: int, b: [] u8, out: [] u8) -> int #export_c {
+retarget_report_vartime :: (op: int, b: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if out.count < 256 { return -1; }
   if op == 4 {
     if b.count != 44 { return -1; }

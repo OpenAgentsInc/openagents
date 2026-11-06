@@ -17,7 +17,7 @@
 #load "../../aethyr/host/lifecycle.coax";
 #load "../../aethyr/host/http-image.coax";
 #load "../../aethyr/host/http-redirect.coax";
-metal_pack_read :: (bytes:string,out:[]PackRead)->bool #export_c {return pack_read(bytes,out);}
-metal_geometry_diagnose :: (c:FrameCounts,records:[]u32,index:[]u32,u:[]f32,b:[]RenderGeometryBuffer,hud:[]f32,domains:[]RenderDrawDomain)->RenderGeometryResult #export_c {
+metal_pack_read :: (bytes:string,out:[]PackRead)->bool #export_c #effects(all) {return pack_read(bytes,out);}
+metal_geometry_diagnose :: (c:FrameCounts,records:[]u32,index:[]u32,u:[]f32,b:[]RenderGeometryBuffer,hud:[]f32,domains:[]RenderDrawDomain)->RenderGeometryResult #export_c #effects(all) {
  return render_geometry_admit(2,c,records,index,u,b,hud,domains,RENDER_GEOMETRY_WORK);
 }

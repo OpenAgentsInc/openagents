@@ -47,7 +47,7 @@ wc_num :: (s: string) -> int {
 }
 wc_f :: (s: string) -> f32 { return f32_from_bits(cast(u32) wc_num(s)); }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; ok := args_load(a[..]);
   if !ok || args_count(a[..]) != 1 { tool_errln("usage: wm-check FILE"); return 2; }
   text: [4194304] u8; n := fs_read(args_at(a[..], 0), text[..]);

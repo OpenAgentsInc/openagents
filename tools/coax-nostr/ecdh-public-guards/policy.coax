@@ -22,7 +22,7 @@ GdInput :: struct {
  else if variant==18 {row.return_mask=0;}else if variant==19 {row.target_approved=true;}else if variant==20 {row.production_approved=true;}else if variant==21 {row.compiler_version="wrong";}else {row.reviews="wrong";}
  #assert !GD_accept(row);
 }
-GD_reviewed :: ()->GdInput {
+GD_reviewed :: ()->GdInput #effects(all) {
  return GdInput.{entry="ecdh_stage",profile="native-c-checked-library",compiler="9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",compiler_version="coax0 0.22.0",
   source="41fea82f7e66f516ed411814644ee1f8315ba540b039301e22931e8860e45b0c",tool="64a407a965023f9bb7b70ffa980e90f31a43d7ddb4a1707b2831bef4377c4baf",
   types="f1fff1b2a59a44de648f16f9ad9615170cf45c65de1330579d2afe755f1fa1f6",parameters="9496fc933de4235abd190c8bbc38ebb8a927ebac69d8d1feb14c6cfbe7d94dd9",
@@ -30,7 +30,7 @@ GD_reviewed :: ()->GdInput {
   model="29ed435052659d1ec7446eaddd780342673a1a5349267f1212d12d0d250d0d20",runtime="858b9965d5dff972a1bd15664f12d97a23a92ca87c48dd7dfcb23dd3f6fade6a",reviews="d1c4fe6ae518691fb811e7386999209b990c04cc0a35c12f0ffabc2a2e992ba5",
   status="analyzed-with-guard-obligations",classification="explicit whole-parameter classification",error=14,default_steps=true,reached=61,visits=168959,return_mask=1};
 }
-GD_accept :: (value:GdInput)->bool #export_c {
+GD_accept :: (value:GdInput)->bool #export_c #effects(all) {
  expected:=GD_reviewed();
  return value.entry==expected.entry && value.profile==expected.profile && value.compiler==expected.compiler && value.compiler_version==expected.compiler_version && value.source==expected.source &&
   value.tool==expected.tool && value.types==expected.types && value.parameters==expected.parameters && value.guards==expected.guards &&

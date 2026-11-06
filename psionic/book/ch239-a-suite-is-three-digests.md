@@ -53,13 +53,13 @@ encoding:
 
 <!-- source: psionic/lib/suite.coax encode -->
 ```jai
-su_zero :: ()->[32]u8 {z:[32]u8;return z;}
-su_same :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+su_zero :: ()->[32]u8 #effects(all) {z:[32]u8;return z;}
+su_same :: (a:[32]u8,b:[32]u8)->bool #effects(all) {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
 // Little-endian u64s, and texts as a u64 length then their bytes.
-su_u64 :: (buf:[]u8,at:int,x:u64)->int {for i:0..<8 {buf[at+i]=cast(u8)((x>>(i*8))&255);}return at+8;}
-su_text :: (buf:[]u8,at:int,s:string)->int {p:=su_u64(buf,at,cast(u64)s.count);for i:0..<s.count {buf[p+i]=s[i];}return p+s.count;}
-su_flag :: (buf:[]u8,at:int,b:bool)->int {buf[at]=ifx b then 1 else 0;return at+1;}
-su_hash :: (bytes:[]u8)->[32]u8 {out:[32]u8;status:=sha256_hash_checked(bytes,out[..],false);#assert status==SHA_OK;return out;}
+su_u64 :: (buf:[]u8,at:int,x:u64)->int #effects(all) {for i:0..<8 {buf[at+i]=cast(u8)((x>>(i*8))&255);}return at+8;}
+su_text :: (buf:[]u8,at:int,s:string)->int #effects(all) {p:=su_u64(buf,at,cast(u64)s.count);for i:0..<s.count {buf[p+i]=s[i];}return p+s.count;}
+su_flag :: (buf:[]u8,at:int,b:bool)->int #effects(all) {buf[at]=ifx b then 1 else 0;return at+1;}
+su_hash :: (bytes:[]u8)->[32]u8 #effects(all) {out:[32]u8;status:=sha256_hash_checked(bytes,out[..],false);#assert status==SHA_OK;return out;}
 ```
 
 Numbers are little-endian u64s; floats are their bit patterns. A text is its
@@ -74,7 +74,7 @@ items digest can never equal a question digest of other bytes.
 // The items digest covers every item field, its task and partition, and the
 // set of locked partitions; the question digest covers only the questions;
 // the gate digest covers every gate setting.
-su_suite :: (items:[]SuItem,questions:[]string,gate:SuGate,locked:u64)->SuSuite #export_c {
+su_suite :: (items:[]SuItem,questions:[]string,gate:SuGate,locked:u64)->SuSuite #export_c #effects(all) {
     n:=items.count;
     if n<1 || n>SU_ITEMS_MAX || questions.count!=n {return SuSuite.{status=SuStatus.shape};}
     for item:items {if !su_item_ok(item) {return SuSuite.{status=SuStatus.shape};}}
@@ -136,7 +136,7 @@ inside a "new version" of the suite.
 
 <!-- source: psionic/lib/suite.coax store -->
 ```jai
-su_receipt_digest :: (r:SuReceipt)->[32]u8 #export_c {
+su_receipt_digest :: (r:SuReceipt)->[32]u8 #export_c #effects(all) {
     buf:[512]u8;at:=su_text(buf[..],0,"psionic.suite.receipt.v1");at=su_u64(buf[..],at,cast(u64)r.sequence);
     for i:0..<32 {buf[at+i]=r.previous[i];buf[at+32+i]=r.suite.items[i];buf[at+64+i]=r.suite.questions[i];buf[at+96+i]=r.suite.gate[i];}
     at+=128;at=su_u64(buf[..],at,r.suite.mask);at=su_u64(buf[..],at,cast(u64)r.partition);
@@ -146,7 +146,7 @@ su_receipt_digest :: (r:SuReceipt)->[32]u8 #export_c {
 }
 // Append at count: the receipt takes the next sequence number and the previous
 // receipt's digest. A locked partition of a suite's items can be read once.
-su_append :: (store:[]SuReceipt,count:int,r:SuReceipt)->SuAppend #export_c {
+su_append :: (store:[]SuReceipt,count:int,r:SuReceipt)->SuAppend #export_c #effects(all) {
     if count<0 || count>store.count || r.suite.status!=SuStatus.ok || r.read<1 {return SuAppend.{status=SuStatus.shape};}
     if r.partition<0 || r.partition>=SU_PARTITIONS {return SuAppend.{status=SuStatus.shape};}
     if !(r.score>=-1.0e300 && r.score<=1.0e300) {return SuAppend.{status=SuStatus.number};}
@@ -161,7 +161,7 @@ su_append :: (store:[]SuReceipt,count:int,r:SuReceipt)->SuAppend #export_c {
     return SuAppend.{count=count+1};
 }
 // The first receipt whose sequence, link or digest does not hold.
-su_verify :: (store:[]SuReceipt,count:int)->SuCheck #export_c {
+su_verify :: (store:[]SuReceipt,count:int)->SuCheck #export_c #effects(all) {
     if count<0 || count>store.count {return SuCheck.{status=SuStatus.shape};}
     for r,i:store[0..<count] {
         previous:=ifx i==0 then su_zero() else store[i-1].digest;
@@ -198,7 +198,7 @@ digest would see it.
 ```jai
 // Two results compare only over the same items, gate and partition; the
 // questions may differ, which is what rewording measures.
-su_compare :: (a:SuReceipt,b:SuReceipt)->SuComparison #export_c {
+su_compare :: (a:SuReceipt,b:SuReceipt)->SuComparison #export_c #effects(all) {
     if a.suite.status!=SuStatus.ok || b.suite.status!=SuStatus.ok {return SuComparison.{status=SuStatus.shape};}
     if !su_same(a.suite.items,b.suite.items) || a.suite.mask!=b.suite.mask {return SuComparison.{status=SuStatus.items};}
     if !su_same(a.suite.gate,b.suite.gate) {return SuComparison.{status=SuStatus.gate};}

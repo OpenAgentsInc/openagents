@@ -59,17 +59,17 @@
 }
 
 rnf_decode :: (rnf_format:string,rnf_layers:int,rnf_levels:[]RenderTextureLevel,rnf_bytes:[]u8,
- rnf_colors:[]RQColor,rnf_mips:[]RQMip)->RFTextureDecoded #export_c {
+ rnf_colors:[]RQColor,rnf_mips:[]RQMip)->RFTextureDecoded #export_c #effects(all) {
  return rf_texture_decode(rnf_format,rnf_layers,rnf_levels,rnf_bytes,rnf_colors,rnf_mips);
 }
 rnf_sample :: (rnf_texture:RQTexture,rnf_profile:string,rnf_sampler:RQSampler,
- rnf_x:f32,rnf_y:f32,rnf_lod:f32)->RQSample #export_c {
+ rnf_x:f32,rnf_y:f32,rnf_lod:f32)->RQSample #export_c #effects(all) {
  rnf_config:=rnf_sampler;rnf_config.precision=rq_filter_profile(rnf_profile);
  // Exact f32 expression order from render_filter_format_fs's shared fixture.
  return rq_sample_level(rnf_texture,rnf_config,(0.5f32+rnf_x)*0.5f32,(0.5f32+rnf_y)*0.5f32,0,rnf_lod);
 }
 rnf_compare :: (rnf_texture:RQTexture,rnf_profile:string,rnf_sampler:RQSampler,
- rnf_x:f32,rnf_y:f32,rnf_lod:f32,rnf_ref:f32)->RQSample #export_c {
+ rnf_x:f32,rnf_y:f32,rnf_lod:f32,rnf_ref:f32)->RQSample #export_c #effects(all) {
  rnf_config:=rnf_sampler;rnf_config.precision=rq_filter_profile(rnf_profile);
  return rq_sample_compare(rnf_texture,rnf_config,(0.5f32+rnf_x)*0.5f32,(0.5f32+rnf_y)*0.5f32,0,rnf_lod,rnf_ref);
 }

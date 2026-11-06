@@ -78,11 +78,11 @@ Chapter 175's model prices a step of `r` rows at 17,792,472 ns plus
 // Modeled microseconds: the uncached prompt positions run as rows of one
 // step that yields the first token; each further output token is a step of
 // one row (chapter 175's cb_step_ns). Cached positions are not run.
-rr_prefill :: (prompt:int,cached:int)->int {return cb_step_ns(prompt-cached)/1000;}
-rr_cost :: (prompt:int,output:int,cached:int)->int {return (cb_step_ns(prompt-cached)+(output-1)*cb_step_ns(1))/1000;}
+rr_prefill :: (prompt:int,cached:int)->int #effects(all) {return cb_step_ns(prompt-cached)/1000;}
+rr_cost :: (prompt:int,output:int,cached:int)->int #effects(all) {return (cb_step_ns(prompt-cached)+(output-1)*cb_step_ns(1))/1000;}
 // Predicted microseconds before a new request could start here: the rest
 // of the start, the rest of the running request, and the queued work.
-rr_wait :: (rep:[]RrReplica,k:int,now:int)->int {
+rr_wait :: (rep:[]RrReplica,k:int,now:int)->int #effects(all) {
     w:=rep[k].work;
     if rep[k].phase==RrPhase.starting {w+=rep[k].ready_at-now;}
     if rep[k].running>=0 {w+=rep[k].busy_until-now;}
@@ -137,7 +137,7 @@ turn.
 // client's requests queued or running); otherwise take the replica, running or
 // starting with room in its queue, with the smallest predicted finish, the
 // lowest number on a tie. Round robin takes the first with room from turn.
-rr_route :: (rep:[]RrReplica,cfg:RrConfig,r:RrRequest,tok:[]int,now:int,held:[8]int,turn:int)->RrPick {
+rr_route :: (rep:[]RrReplica,cfg:RrConfig,r:RrRequest,tok:[]int,now:int,held:[8]int,turn:int)->RrPick #effects(all) {
     pick:=RrPick.{refusal=RrRefusal.shape,replica=-1,turn=turn};
     if r.client<0 || r.client>=cfg.clients || r.prompt<1 || r.prompt>PG_PROMPT || r.output<1 || r.output>RR_OUTPUT {return pick;}
     pick.refusal=RrRefusal.client;
@@ -170,7 +170,7 @@ no model runs, no frame is ever copied or written.
 <!-- source: psionic/lib/serve-route.coax cache -->
 ```jai
 // An empty trie and free frames, as chapter 176 starts them.
-rr_store :: (c:PgConfig)->PgStore {
+rr_store :: (c:PgConfig)->PgStore #effects(all) {
     s:PgStore;s.cfg=c;s.pool=pg_pool(c);
     for n:0..<PG_NODES {s.node[n].frame=-1;}
     for i:0..<PG_REQUESTS {s.live[i]=-1;}
@@ -181,7 +181,7 @@ RrCached :: struct {st:PgStore;reused:int;}
 // hold the cached prefix's frames (a frame a request holds is never
 // moved), give the rest new frames, commit every whole block, and let go
 // of the request's table. The trie's least recently used blocks make room.
-rr_cache :: (from:PgStore,mem:[]f64,tok:[]int,prompt:int,stamp:int)->RrCached {
+rr_cache :: (from:PgStore,mem:[]f64,tok:[]int,prompt:int,stamp:int)->RrCached #effects(all) {
     s:=from;p:=s.cfg.page;path:=pg_match(s,0,tok,prompt);
     for k:0..<prompt/p {
         if k<path.n {f:=s.node[path.node[k]].frame;s.pool=pg_retain(s.pool,f);s.table[0].page[k]=f;}
@@ -303,7 +303,7 @@ Below the floor, the autoscaler goes straight to it.
 // and the load has been high for less than a cold start.
 // Down by one when the load fits one replica fewer below the band, after
 // that has held for `down` ticks in a row. Never below the floor.
-rr_scale :: (c:RrScaler,o:RrLoad)->RrScale {
+rr_scale :: (c:RrScaler,o:RrLoad)->RrScale #effects(all) {
     n:=o.ready+o.starting;d:=RrScale.{why=RrWhy.floor};
     if n<c.floor {d.act=RrAct.up;d.count=c.floor-n;return d;}
     d.why=RrWhy.budget;
@@ -404,7 +404,7 @@ begins empty.
 // empty cache. Down stops one replica with nothing queued or running, a
 // starting one first, else the highest ready one; when every replica is
 // busy the step waits for the next tick.
-rr_tick :: (rep:[]RrReplica,sc:RrScaler,cfg:RrConfig,now:int,low:int,high:int,cold:int)->RrScale {
+rr_tick :: (rep:[]RrReplica,sc:RrScaler,cfg:RrConfig,now:int,low:int,high:int,cold:int)->RrScale #effects(all) {
     o:=RrLoad.{low=low,high=high,load=cold};
     for k:0..<rep.count {
         if rep[k].phase==RrPhase.ready {o.ready+=1;}
@@ -455,7 +455,7 @@ times than the configuration allows.
 // ticks. It ends when every request is done and, with the autoscaler on,
 // the fleet is back at its floor. (A queue waits on a running or starting
 // replica, whose events keep the loop going.)
-rr_sim :: (cfg:RrConfig,sc:RrScaler,reqs:[]RrRequest,tok:[]int)->RrSim {
+rr_sim :: (cfg:RrConfig,sc:RrScaler,reqs:[]RrRequest,tok:[]int)->RrSim #effects(all) {
     s:RrSim;s.status=rr_check(cfg,sc,reqs,tok);mem:[1728]f64;
     if s.status!=RrStatus.ok {return s;}
     rep:[8]RrReplica;
@@ -510,7 +510,7 @@ rr_sim :: (cfg:RrConfig,sc:RrScaler,reqs:[]RrRequest,tok:[]int)->RrSim {
 }
 // Replica k starts the head of its queue: its cached blocks are counted
 // now, when it runs, not when it was routed. Returns the blocks reused.
-rr_serve :: (rep:[]RrReplica,fate:[]RrFate,k:int,r:RrRequest,tok:[]int,mem:[]f64,now:int)->int {
+rr_serve :: (rep:[]RrReplica,fate:[]RrFate,k:int,r:RrRequest,tok:[]int,mem:[]f64,now:int)->int #effects(all) {
     i:=rep[k].queue[0];
     for j:1..<rep[k].nq {rep[k].queue[j-1]=rep[k].queue[j];}
     rep[k].nq-=1;rep[k].work-=fate[i].pred;

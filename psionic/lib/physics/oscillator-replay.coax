@@ -71,16 +71,16 @@
   ids:=or_fixture_ids();for i:0..<32 {#assert ids.program[i]==cast(u8)(i+1) && ids.numeric[i]==cast(u8)(i+33) && ids.target[i]==cast(u8)(i+65) && ids.build[i]==cast(u8)(i+97) && ids.run[i]==cast(u8)(i+129);}
 }
 
-or_profile :: ()->string #export_c {return "oscillator-replay-f64-v1";}
-or_id_bound :: (id:[32]u8)->bool {seen:u8=0;for byte:id {seen|=byte;}return seen!=0;}
-or_id_equal :: (a:[32]u8,b:[32]u8)->bool {for byte,i:a {if byte!=b[i] {return false;}}return true;}
-or_ids_bound :: (ids:OrIds)->bool {return or_id_bound(ids.program) && or_id_bound(ids.numeric) && or_id_bound(ids.target) && or_id_bound(ids.build) && or_id_bound(ids.run);}
-or_id_status :: (a:OrIds,b:OrIds)->OrStatus #export_c {
+or_profile :: ()->string #export_c #effects(all) {return "oscillator-replay-f64-v1";}
+or_id_bound :: (id:[32]u8)->bool #effects(all) {seen:u8=0;for byte:id {seen|=byte;}return seen!=0;}
+or_id_equal :: (a:[32]u8,b:[32]u8)->bool #effects(all) {for byte,i:a {if byte!=b[i] {return false;}}return true;}
+or_ids_bound :: (ids:OrIds)->bool #effects(all) {return or_id_bound(ids.program) && or_id_bound(ids.numeric) && or_id_bound(ids.target) && or_id_bound(ids.build) && or_id_bound(ids.run);}
+or_id_status :: (a:OrIds,b:OrIds)->OrStatus #export_c #effects(all) {
   if !or_ids_bound(a) || !or_ids_bound(b) {return OrStatus.identity;}
   if !or_id_equal(a.program,b.program) {return OrStatus.program;}if !or_id_equal(a.numeric,b.numeric) {return OrStatus.numeric;}if !or_id_equal(a.target,b.target) {return OrStatus.target;}if !or_id_equal(a.build,b.build) {return OrStatus.build;}if !or_id_equal(a.run,b.run) {return OrStatus.run;}return OrStatus.ok;
 }
-or_tick_room :: (tick:int)->OrRoom {if tick<0 || tick>OR_TICK_MAX {return OrRoom.{};}return OrRoom.{ok=true,remaining=OR_TICK_MAX-tick};}
-or_snapshot_status :: (s:OrSnapshot)->OrStatus #export_c {
+or_tick_room :: (tick:int)->OrRoom #effects(all) {if tick<0 || tick>OR_TICK_MAX {return OrRoom.{};}return OrRoom.{ok=true,remaining=OR_TICK_MAX-tick};}
+or_snapshot_status :: (s:OrSnapshot)->OrStatus #export_c #effects(all) {
   if !or_ids_bound(s.ids) {return OrStatus.identity;}
   room:=or_tick_room(s.tick);if !room.ok || s.pending<0 || s.pending>128 {return OrStatus.range;}if s.pending>room.remaining {return OrStatus.range;}
   numbers:=[6]f64.[s.params.mass,s.params.spring,s.params.damping,s.state.position,s.state.velocity,s.dt];for x:numbers {if !os_finite(x) {return OrStatus.number;}}
@@ -89,9 +89,9 @@ or_snapshot_status :: (s:OrSnapshot)->OrStatus #export_c {
   for i:0..<128 {v:=s.forces[i];if i<s.pending {if !os_finite(v) {return OrStatus.number;}if abs(v)>2 {return OrStatus.force;}}else {if f64_bits(v)!=0 {return OrStatus.canonical;}}}
   return OrStatus.ok;
 }
-or_begin :: (params:OsParams,state:OsState,dt:f64,ids:OrIds)->OrResult #export_c {s:=OrSnapshot.{ids=ids,params=params,state=state,dt=dt};return OrResult.{status=or_snapshot_status(s),snapshot=s};}
+or_begin :: (params:OsParams,state:OsState,dt:f64,ids:OrIds)->OrResult #export_c #effects(all) {s:=OrSnapshot.{ids=ids,params=params,state=state,dt=dt};return OrResult.{status=or_snapshot_status(s),snapshot=s};}
 // book:begin accept
-or_accept :: (s:OrSnapshot,forces:[]f64)->OrResult #export_c {
+or_accept :: (s:OrSnapshot,forces:[]f64)->OrResult #export_c #effects(all) {
   status:=or_snapshot_status(s);if status!=OrStatus.ok {return OrResult.{status=status,snapshot=s};}
   if forces.count<0 || forces.count>128-s.pending {return OrResult.{status=OrStatus.capacity,snapshot=s};}
   if forces.count>OR_TICK_MAX-s.tick-s.pending {return OrResult.{status=OrStatus.range,snapshot=s};}
@@ -100,19 +100,19 @@ or_accept :: (s:OrSnapshot,forces:[]f64)->OrResult #export_c {
 }
 // book:end accept
 // book:begin advance
-or_advance :: (s:OrSnapshot)->OrStep #export_c {
+or_advance :: (s:OrSnapshot)->OrStep #export_c #effects(all) {
   status:=or_snapshot_status(s);if status!=OrStatus.ok {return OrStep.{status=status,snapshot=s};}if s.pending==0 {return OrStep.{status=OrStatus.empty,snapshot=s};}
   step:=os_step(s.params,s.state,s.forces[0],s.dt);if step.status!=OsStatus.ok {return OrStep.{status=OrStatus.state,snapshot=s};}
   next:=s;next.state=step.state;next.tick+=1;next.pending-=1;for i:0..<next.pending {next.forces[i]=s.forces[i+1];}next.forces[next.pending]=0;
   return OrStep.{snapshot=next,frame=OrFrame.{tick=next.tick,force=f64_bits(s.forces[0]),position=f64_bits(next.state.position),velocity=f64_bits(next.state.velocity)}};
 }
 // book:end advance
-or_replay :: (s:OrSnapshot,out:[]OrFrame,overlap:bool)->OrReplay #export_c {
+or_replay :: (s:OrSnapshot,out:[]OrFrame,overlap:bool)->OrReplay #export_c #effects(all) {
   status:=or_snapshot_status(s);if status!=OrStatus.ok {return OrReplay.{status=status,final=s};}if out.count<s.pending {return OrReplay.{status=OrStatus.capacity,final=s};}if overlap {return OrReplay.{status=OrStatus.overlap,final=s};}
   stage:[128]OrFrame;cursor:=s;for i:0..<s.pending {next:=or_advance(cursor);if next.status!=OrStatus.ok {return OrReplay.{status=next.status,final=s};}stage[i]=next.frame;cursor=next.snapshot;}
   for i:0..<s.pending {out[i]=stage[i];}return OrReplay.{written=s.pending,final=cursor};
 }
-or_trace_status :: (frames:[]OrFrame)->OrStatus #export_c {
+or_trace_status :: (frames:[]OrFrame)->OrStatus #export_c #effects(all) {
   if frames.count<0 || frames.count>128 {return OrStatus.shape;}
   for f,i:frames {if f.tick<1 || f.tick>OR_TICK_MAX {return OrStatus.range;}if i>0 && f.tick!=frames[i-1].tick+1 {return OrStatus.canonical;}
     words:=[3]u64.[f.force,f.position,f.velocity];for word:words {if !os_bits_finite(word) {return OrStatus.number;}}
@@ -121,7 +121,7 @@ or_trace_status :: (frames:[]OrFrame)->OrStatus #export_c {
   return OrStatus.ok;
 }
 // book:begin difference
-or_first :: (a_ids:OrIds,b_ids:OrIds,a:[]OrFrame,b:[]OrFrame)->OrDifference #export_c {
+or_first :: (a_ids:OrIds,b_ids:OrIds,a:[]OrFrame,b:[]OrFrame)->OrDifference #export_c #effects(all) {
   status:=or_id_status(a_ids,b_ids);if status!=OrStatus.ok {return OrDifference.{status=status,field=or_identity_field(status),source=OrSource.profile_identity};}
   status=or_trace_status(a);if status!=OrStatus.ok {return OrDifference.{status=status,source=OrSource.trace_validation};}status=or_trace_status(b);if status!=OrStatus.ok {return OrDifference.{status=status,source=OrSource.trace_validation};}
   for i:0..<a.count {
@@ -134,7 +134,7 @@ or_first :: (a_ids:OrIds,b_ids:OrIds,a:[]OrFrame,b:[]OrFrame)->OrDifference #exp
   if a.count!=b.count {return OrDifference.{tick=b[a.count].tick,index=a.count,field=OrField.length,source=OrSource.trace_length,left=cast(u64)a.count,right=cast(u64)b.count};}return OrDifference.{equal=true};
 }
 // book:end difference
-or_identity_field :: (status:OrStatus)->OrField {if status==OrStatus.program {return OrField.program;}if status==OrStatus.numeric {return OrField.numeric;}if status==OrStatus.target {return OrField.target;}if status==OrStatus.build {return OrField.build;}if status==OrStatus.run {return OrField.run;}return OrField.none;}
-or_field_name :: (field:OrField)->string #export_c {if field==OrField.tick {return "completed_tick";}if field==OrField.force {return "applied_force";}if field==OrField.position {return "position";}if field==OrField.velocity {return "velocity";}if field==OrField.length {return "trace_length";}if field==OrField.program {return "program_identity";}if field==OrField.numeric {return "numeric_identity";}if field==OrField.target {return "target_identity";}if field==OrField.build {return "build_identity";}if field==OrField.run {return "run_identity";}return "none";}
-or_source_name :: (source:OrSource)->string #export_c {if source==OrSource.profile_identity {return "oscillator-replay:profile_identity";}if source==OrSource.completed_clock {return "oscillator-replay:completed_tick";}if source==OrSource.accepted_force {return "oscillator-replay:accepted_force_order";}if source==OrSource.next_position {return "psionic/lib/physics/oscillator.coax:os_step:next.position";}if source==OrSource.next_velocity {return "psionic/lib/physics/oscillator.coax:os_step:next.velocity";}if source==OrSource.trace_length {return "oscillator-replay:trace_length";}if source==OrSource.trace_validation {return "oscillator-replay:trace_validation";}return "none";}
-or_fixture_ids :: ()->OrIds {ids:OrIds;for i:0..<32 {ids.program[i]=cast(u8)(i+1);ids.numeric[i]=cast(u8)(i+33);ids.target[i]=cast(u8)(i+65);ids.build[i]=cast(u8)(i+97);ids.run[i]=cast(u8)(i+129);}return ids;}
+or_identity_field :: (status:OrStatus)->OrField #effects(all) {if status==OrStatus.program {return OrField.program;}if status==OrStatus.numeric {return OrField.numeric;}if status==OrStatus.target {return OrField.target;}if status==OrStatus.build {return OrField.build;}if status==OrStatus.run {return OrField.run;}return OrField.none;}
+or_field_name :: (field:OrField)->string #export_c #effects(all) {if field==OrField.tick {return "completed_tick";}if field==OrField.force {return "applied_force";}if field==OrField.position {return "position";}if field==OrField.velocity {return "velocity";}if field==OrField.length {return "trace_length";}if field==OrField.program {return "program_identity";}if field==OrField.numeric {return "numeric_identity";}if field==OrField.target {return "target_identity";}if field==OrField.build {return "build_identity";}if field==OrField.run {return "run_identity";}return "none";}
+or_source_name :: (source:OrSource)->string #export_c #effects(all) {if source==OrSource.profile_identity {return "oscillator-replay:profile_identity";}if source==OrSource.completed_clock {return "oscillator-replay:completed_tick";}if source==OrSource.accepted_force {return "oscillator-replay:accepted_force_order";}if source==OrSource.next_position {return "psionic/lib/physics/oscillator.coax:os_step:next.position";}if source==OrSource.next_velocity {return "psionic/lib/physics/oscillator.coax:os_step:next.velocity";}if source==OrSource.trace_length {return "oscillator-replay:trace_length";}if source==OrSource.trace_validation {return "oscillator-replay:trace_validation";}return "none";}
+or_fixture_ids :: ()->OrIds #effects(all) {ids:OrIds;for i:0..<32 {ids.program[i]=cast(u8)(i+1);ids.numeric[i]=cast(u8)(i+33);ids.target[i]=cast(u8)(i+65);ids.build[i]=cast(u8)(i+97);ids.run[i]=cast(u8)(i+129);}return ids;}

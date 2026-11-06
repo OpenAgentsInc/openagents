@@ -74,7 +74,7 @@ LifeActions :: struct { does: int; released: int; resend: [LIFECYCLE_PENDING] in
 // book:end lifecycle-profile
 
 // A command the client sent at tick `now`; false when its pending list is full (the client waits).
-life_sent :: (s: [] LifeState, seq: int, now: int) -> bool {
+life_sent :: (s: [] LifeState, seq: int, now: int) -> bool #effects(all) {
   if s[0].pending_n >= LIFECYCLE_PENDING { return false; }
   s[0].pending[s[0].pending_n] = LifePending.{seq = seq, sent = now};
   s[0].pending_n += 1;
@@ -83,7 +83,7 @@ life_sent :: (s: [] LifeState, seq: int, now: int) -> bool {
 
 // book:begin lifecycle-event
 // The host reports event `kind` at tick `now` (`arg`: the accepted command for LC_ACK).
-life_event :: (s: [] LifeState, kind: int, now: int, arg: int) -> LifeActions {
+life_event :: (s: [] LifeState, kind: int, now: int, arg: int) -> LifeActions #effects(all) {
   out: LifeActions;
   if kind == LC_RESIZE { out.does = LC_LAYOUT; }
   if kind == LC_BLUR || kind == LC_HIDDEN {
@@ -113,13 +113,13 @@ life_event :: (s: [] LifeState, kind: int, now: int, arg: int) -> LifeActions {
   return out;
 }
 // Every pending command is revoked: none is ever sent again. Returns how many.
-life_revoke :: (s: [] LifeState) -> int {
+life_revoke :: (s: [] LifeState) -> int #effects(all) {
   n := 0;
   for k: 0..<s[0].pending_n { if !s[0].pending[k].revoked { s[0].pending[k].revoked = true; n += 1; } }
   return n;
 }
 // The room accepted every command up to seq: they leave the pending list, in order.
-life_ack :: (s: [] LifeState, seq: int) {
+life_ack :: (s: [] LifeState, seq: int) #effects(all) {
   d := f64(seq - s[0].accepted);
   s[0].accepted += cast(int) ((d + abs(d)) / 2);   // only forward
   keep := 0;
@@ -133,11 +133,11 @@ life_ack :: (s: [] LifeState, seq: int) {
 // book:begin lifecycle-room
 // The room takes command seq when it is newer than the last it accepted and the last it queued
 // (queued 0: none queued).
-life_room_takes :: (seq: int, accepted: int, queued: int) -> bool { return seq > accepted && seq > queued; }
+life_room_takes :: (seq: int, accepted: int, queued: int) -> bool #effects(all) { return seq > accepted && seq > queued; }
 // A seat held since held_ms still waits for its player at now_ms.
-life_room_holds :: (held_ms: int, now_ms: int) -> bool { return now_ms - held_ms < LIFECYCLE_HOLD_MS; }
+life_room_holds :: (held_ms: int, now_ms: int) -> bool #effects(all) { return now_ms - held_ms < LIFECYCLE_HOLD_MS; }
 // Whether a host's measured 95th-percentile tick (µs) is within its budget.
-life_tick_ok :: (host: int, p95_us: int) -> bool {
+life_tick_ok :: (host: int, p95_us: int) -> bool #effects(all) {
   if host < 0 || host >= LIFECYCLE_TICK_US.count || p95_us < 0 { return false; }
   return p95_us <= LIFECYCLE_TICK_US[host];
 }

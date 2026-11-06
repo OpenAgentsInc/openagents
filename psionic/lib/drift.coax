@@ -49,9 +49,9 @@ DRIFT :: 282;
 TRUTH_SEED :: 3;
 EDGE1 :: 6;
 EDGE2 :: 5;
-dr_none :: ()->CfMap {return CfMap.{status=CfStatus.ok,model=7,questions=9};}
+dr_none :: ()->CfMap #effects(all) {return CfMap.{status=CfStatus.ok,model=7,questions=9};}
 // A map that answers p for everything.
-dr_constant :: (p:f64)->CfMap {m:=dr_none();m.kind=CfKind.binned;m.value[0]=p;return m;}
+dr_constant :: (p:f64)->CfMap #effects(all) {m:=dr_none();m.kind=CfKind.binned;m.value[0]=p;return m;}
 
 #test "the world at its counters" {
     lost:=0;changed:=0;
@@ -311,10 +311,10 @@ dr_constant :: (p:f64)->CfMap {m:=dr_none();m.kind=CfKind.binned;m.value[0]=p;re
 // [-3, 3]; a label, yes with probability sigmoid(logit - shift); the model's
 // raw sigmoid(2 logit); an arrival 1 to delay decisions later, or 0 (never)
 // when its draw is at least 0.9, with probability 0.1; and the exploration draw.
-dr_logit :: (seed:u64,t:int)->f64 {return 6*tb_uniform(seed,cast(u64)(5*t))-3;}
-dr_raw :: (seed:u64,t:int)->f64 {return tb_sigmoid(2*dr_logit(seed,t));}
-dr_label :: (seed:u64,t:int,shift:f64)->f64 {return floor(tb_uniform(seed,cast(u64)(5*t+1))+tb_sigmoid(dr_logit(seed,t)-shift));}
-dr_draw :: (seed:u64,t:int,shift:f64,delay:int)->DrDraw {
+dr_logit :: (seed:u64,t:int)->f64 #effects(all) {return 6*tb_uniform(seed,cast(u64)(5*t))-3;}
+dr_raw :: (seed:u64,t:int)->f64 #effects(all) {return tb_sigmoid(2*dr_logit(seed,t));}
+dr_label :: (seed:u64,t:int,shift:f64)->f64 #effects(all) {return floor(tb_uniform(seed,cast(u64)(5*t+1))+tb_sigmoid(dr_logit(seed,t)-shift));}
+dr_draw :: (seed:u64,t:int,shift:f64,delay:int)->DrDraw #effects(all) {
     c:=cast(u64)(5*t);
     d:=DrDraw.{raw=dr_raw(seed,t),label=dr_label(seed,t,shift),explore=tb_uniform(seed,c+4)};
     d.arrival=(t+1+cast(int)floor(f64(delay)*tb_uniform(seed,c+2)))*(1-cast(int)floor(tb_uniform(seed,c+3)+DR_LOST));
@@ -322,7 +322,7 @@ dr_draw :: (seed:u64,t:int,shift:f64,delay:int)->DrDraw {
 }
 
 // book:begin record
-dr_decide :: (policy:DrPolicy,map:CfMap,version:int,id:int,raw:f64,u:f64)->DrRecord {
+dr_decide :: (policy:DrPolicy,map:CfMap,version:int,id:int,raw:f64,u:f64)->DrRecord #effects(all) {
     c:=cf_map(map,raw);greedy:=0;
     if c>=policy.threshold {greedy=1;}
     r:=DrRecord.{id=id,model=map.model,questions=map.questions,map_version=version,policy_version=policy.version,
@@ -333,7 +333,7 @@ dr_decide :: (policy:DrPolicy,map:CfMap,version:int,id:int,raw:f64,u:f64)->DrRec
     return r;
 }
 // An outcome joins its record once: the label and the cost of the action taken.
-dr_join :: (entries:[]DrRecord,logged:int,id:int,label:f64,at:int,policy:DrPolicy)->DrStatus #export_c {
+dr_join :: (entries:[]DrRecord,logged:int,id:int,label:f64,at:int,policy:DrPolicy)->DrStatus #export_c #effects(all) {
     if id<0 || id>=logged || logged>entries.count {return DrStatus.shape;}
     if label!=0 && label!=1 {return DrStatus.number;}
     if entries[id].status==DrOutcome.observed {return DrStatus.duplicate;}
@@ -345,7 +345,7 @@ dr_join :: (entries:[]DrRecord,logged:int,id:int,label:f64,at:int,policy:DrPolic
 // book:end record
 
 // Observed records in [from, to): calibrated (or, with raw, raw) probabilities and labels.
-dr_rows :: (entries:[]DrRecord,from:int,to:int,raw:bool,p:[]f64,y:[]f64,rows:[]int)->int {
+dr_rows :: (entries:[]DrRecord,from:int,to:int,raw:bool,p:[]f64,y:[]f64,rows:[]int)->int #effects(all) {
     m:=0;
     for i:from..<to {
         if entries[i].status==DrOutcome.observed {
@@ -361,7 +361,7 @@ dr_rows :: (entries:[]DrRecord,from:int,to:int,raw:bool,p:[]f64,y:[]f64,rows:[]i
 // own probabilities, 200 times, so that they are calibrated by construction,
 // and count the draws whose error is at least the window's. Rows are 0 to
 // count - 1.
-dr_exceed :: (p:[]f64,y:[]f64,rows:[]int,seed:u64,window:int)->int {
+dr_exceed :: (p:[]f64,y:[]f64,rows:[]int,seed:u64,window:int)->int #effects(all) {
     observed:=cf_measure(p,y,rows).ece;z:[1000]f64;count:=0;
     for b:0..<DR_DRAWS {
         base:=cast(u64)((window*DR_DRAWS+b)*DR_WINDOW_MAX);
@@ -373,7 +373,7 @@ dr_exceed :: (p:[]f64,y:[]f64,rows:[]int,seed:u64,window:int)->int {
 // The watcher reads only the log: each window's joined records, their
 // calibration error, and an alert when fewer than 2 of 200 calibrated draws
 // reach it (about a 1 percent chance for a calibrated window).
-dr_watch :: (entries:[]DrRecord,window:int,seed:u64)->DrWatch #export_c {
+dr_watch :: (entries:[]DrRecord,window:int,seed:u64)->DrWatch #export_c #effects(all) {
     v:=DrWatch.{windows=dr_windows(window,entries.count)};
     if v.windows==0 {return DrWatch.{status=DrStatus.shape};}
     p:[1000]f64;y:[1000]f64;rows:[1000]int;
@@ -386,7 +386,7 @@ dr_watch :: (entries:[]DrRecord,window:int,seed:u64)->DrWatch #export_c {
 }
 // Refit from the raw probabilities of two older windows, gated on a newer
 // one against the map in use: chapter 215's three kinds and its gate.
-dr_refit :: (entries:[]DrRecord,current:CfMap,fit_from:int,gate_from:int,window:int)->DrRefit {
+dr_refit :: (entries:[]DrRecord,current:CfMap,fit_from:int,gate_from:int,window:int)->DrRefit #effects(all) {
     fp:[2000]f64;fy:[2000]f64;fq:[2000]int;rows:[2000]int;gp:[1000]f64;gy:[1000]f64;gr:[1000]int;mapped:[1000]f64;
     n:=dr_rows(entries,fit_from,fit_from+DR_FIT*window,true,fp[..],fy[..],rows[..]);
     g:=dr_rows(entries,gate_from,gate_from+window,true,gp[..],gy[..],gr[..]);
@@ -413,7 +413,7 @@ dr_refit :: (entries:[]DrRecord,current:CfMap,fit_from:int,gate_from:int,window:
 // has. Outcomes arrive at most half a window late. At each step, outcomes
 // arriving now join; every four windows the map is refitted from windows
 // whose outcomes are all in; then the next decision.
-dr_run :: (seed:u64,policy:DrPolicy,first:CfMap,window:int,drift_at:int,shift:f64,entries:[]DrRecord)->DrRun #export_c {
+dr_run :: (seed:u64,policy:DrPolicy,first:CfMap,window:int,drift_at:int,shift:f64,entries:[]DrRecord)->DrRun #export_c #effects(all) {
     n:=entries.count;windows:=dr_windows(window,n);
     if windows==0 || first.status!=CfStatus.ok {return DrRun.{status=DrStatus.shape};}
     if !dr_inputs_ok(policy,shift) {return DrRun.{status=DrStatus.number};}
@@ -446,18 +446,18 @@ dr_run :: (seed:u64,policy:DrPolicy,first:CfMap,window:int,drift_at:int,shift:f6
 }
 // book:end run
 // Windows of 50 to 1,000 decisions, 1 to 16 of them, or 0 when the log has another shape.
-dr_windows :: (window:int,n:int)->int {
+dr_windows :: (window:int,n:int)->int #effects(all) {
     if window<DR_WINDOW_MIN || window>DR_WINDOW_MAX || n%window!=0 || n<window || n>DR_WINDOWS_MAX*window {return 0;}
     return n/window;
 }
-dr_inputs_ok :: (p:DrPolicy,shift:f64)->bool {return dr_policy_ok(p) && tb_in(shift,-8,8);}
-dr_policy_ok :: (p:DrPolicy)->bool {
+dr_inputs_ok :: (p:DrPolicy,shift:f64)->bool #effects(all) {return dr_policy_ok(p) && tb_in(shift,-8,8);}
+dr_policy_ok :: (p:DrPolicy)->bool #effects(all) {
     return tb_in(p.threshold,0,1) && tb_in(p.explore,0.01,0.25) && tb_in(p.sure,0,0.25) && tb_in(p.wrong_yes,0,1000000) && tb_in(p.wrong_no,0,1000000);
 }
 
 // Calibration data before the stream, from seed + 1 with no drift: records
 // that were never decisions, only raw probabilities with their labels.
-dr_calibration :: (seed:u64,entries:[]DrRecord)->DrStatus #export_c {
+dr_calibration :: (seed:u64,entries:[]DrRecord)->DrStatus #export_c #effects(all) {
     if entries.count<1 || entries.count>DR_WINDOWS_MAX*DR_WINDOW_MAX {return DrStatus.shape;}
     for t:0..<entries.count {
         r:=dr_raw(seed+1,t);
@@ -466,7 +466,7 @@ dr_calibration :: (seed:u64,entries:[]DrRecord)->DrStatus #export_c {
     return DrStatus.ok;
 }
 // The first map: fitted on two windows of calibration data, gated on a third against the raw probabilities.
-dr_first :: (entries:[]DrRecord,window:int,model:u64,questions:u64)->DrRefit #export_c {
+dr_first :: (entries:[]DrRecord,window:int,model:u64,questions:u64)->DrRefit #export_c #effects(all) {
     if dr_windows(window,entries.count)!=3 {return DrRefit.{map=CfMap.{status=CfStatus.shape}};}
     return dr_refit(entries,CfMap.{status=CfStatus.ok,model=model,questions=questions},0,DR_FIT*window,window);
 }
@@ -476,7 +476,7 @@ dr_first :: (entries:[]DrRecord,window:int,model:u64,questions:u64)->DrRefit #ex
 // have taken the same action, weighted by one over that action's selection
 // probability. A threshold that needs an action the log never made eligible
 // is refused: the log can't say what it would cost.
-dr_ips :: (entries:[]DrRecord,threshold:f64)->DrValue #export_c {
+dr_ips :: (entries:[]DrRecord,threshold:f64)->DrValue #export_c #effects(all) {
     if entries.count>DR_WINDOWS_MAX*DR_WINDOW_MAX {return DrValue.{status=DrStatus.shape};}
     if !tb_in(threshold,0,1) {return DrValue.{status=DrStatus.number};}
     s:PsionicAccumulator;used:=0;
@@ -500,7 +500,7 @@ dr_ips :: (entries:[]DrRecord,threshold:f64)->DrValue #export_c {
     return DrValue.{used=used,value=mean,half=1.96*sqrt(psionic_ops_total(v)/f64(used-1)/f64(used))};
 }
 // The simulator knows every label, lost or not: the threshold's true mean cost.
-dr_truth :: (seed:u64,drift_at:int,shift:f64,policy:DrPolicy,entries:[]DrRecord,threshold:f64)->f64 #export_c {
+dr_truth :: (seed:u64,drift_at:int,shift:f64,policy:DrPolicy,entries:[]DrRecord,threshold:f64)->f64 #export_c #effects(all) {
     s:PsionicAccumulator;
     for r,t:entries {
         y:=dr_label(seed,t,ifx t>=drift_at then shift else 0);

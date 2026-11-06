@@ -29,10 +29,10 @@ HostAudioFixturePacket :: struct {address:u64;capacity:int=1024;extra:int;}
  #assert hfa_packet_extent(s[..],4096,18446744073709551615).address==18446744073709551600;
  #assert hfa_packet_extent(s[..],4096,14).address==0&&hfa_packet_extent(s[..],4096,15).address==0&&hfa_packet_extent(s[..],4096,16).address==1;
 }
-hfa_open :: ()->HostAudioFixture #export_c {return HostAudioFixture.{};}
-hfa_wave :: (out:[]u8)->int #export_c {pcm:=[8]int.[0,8192,16384,8192,0,-8192,-16384,-8192];return wav_write(pcm[..],1,48000,out);}
-hfa_offer :: (s:[]HostAudioFixture,text:string)->bool #export_c {if text.count>1024 {return false;}for b,i:text {s[0].line[i]=b;}s[0].count=text.count;return true;}
-hfa_take :: (s:[]HostAudioFixture)->int #export_c {s[0].reads+=1;n:=s[0].count;s[0].count=0;if n>0 {s[0].drains+=1;}return n;}
-hfa_bank :: (s:[]HostAudioFixture)->HostAudioFixtureBank #export_c {return HostAudioFixtureBank.{extra=ifx s[0].mode==1 then 256 else 0,offset=ifx s[0].mode==2 then 60 else 0,bytes=ifx s[0].mode==2 then 1 else 60};}
-hfa_packet :: (s:[]HostAudioFixture,base:u64)->HostAudioFixturePacket #export_c {return hfa_packet_extent(s,base,4294967295);}
-hfa_packet_extent :: (s:[]HostAudioFixture,base:u64,maximum_address:u64)->HostAudioFixturePacket #export_c {return HostAudioFixturePacket.{address=ifx s[0].mode==4 then 0 else ifx s[0].mode==5 then (ifx maximum_address>=15 then maximum_address-15 else 0) else base,extra=ifx s[0].mode==3 then 1024 else 0};}
+hfa_open :: ()->HostAudioFixture #export_c #effects(all) {return HostAudioFixture.{};}
+hfa_wave :: (out:[]u8)->int #export_c #effects(all) {pcm:=[8]int.[0,8192,16384,8192,0,-8192,-16384,-8192];return wav_write(pcm[..],1,48000,out);}
+hfa_offer :: (s:[]HostAudioFixture,text:string)->bool #export_c #effects(all) {if text.count>1024 {return false;}for b,i:text {s[0].line[i]=b;}s[0].count=text.count;return true;}
+hfa_take :: (s:[]HostAudioFixture)->int #export_c #effects(all) {s[0].reads+=1;n:=s[0].count;s[0].count=0;if n>0 {s[0].drains+=1;}return n;}
+hfa_bank :: (s:[]HostAudioFixture)->HostAudioFixtureBank #export_c #effects(all) {return HostAudioFixtureBank.{extra=ifx s[0].mode==1 then 256 else 0,offset=ifx s[0].mode==2 then 60 else 0,bytes=ifx s[0].mode==2 then 1 else 60};}
+hfa_packet :: (s:[]HostAudioFixture,base:u64)->HostAudioFixturePacket #export_c #effects(all) {return hfa_packet_extent(s,base,4294967295);}
+hfa_packet_extent :: (s:[]HostAudioFixture,base:u64,maximum_address:u64)->HostAudioFixturePacket #export_c #effects(all) {return HostAudioFixturePacket.{address=ifx s[0].mode==4 then 0 else ifx s[0].mode==5 then (ifx maximum_address>=15 then maximum_address-15 else 0) else base,extra=ifx s[0].mode==3 then 1024 else 0};}

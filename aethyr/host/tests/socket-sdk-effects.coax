@@ -5,24 +5,24 @@
 #load "../../../coax/lib/sys/fs.coax";
 #load "../../../coax/lib/sys/proc.coax";
 #load "../../../coax/lib/json/json.coax";
-hse_open :: (capacity:int)->int #foreign;
-hse_start :: (context:int,id:int,generation:int,engine:int,url:[]u8)->bool #foreign;
-hse_send :: (context:int,id:int,generation:int,engine:int,text:[]u8)->bool #foreign;
-hse_next :: (context:int)->bool #foreign;
-hse_field :: (field:int)->int #foreign;
-hse_bytes :: (out:[]u8)->int #foreign;
-hse_token :: ()->int #foreign;
-hse_done :: (token:int) #foreign;
-hse_close :: (context:int) #foreign;
-hse_info :: (context:int,field:int)->int #foreign;
-hse_pool :: (field:int)->int #foreign;
-hse_shutdown :: () #foreign;
+hse_open :: (capacity:int)->int #foreign #effects(all);
+hse_start :: (context:int,id:int,generation:int,engine:int,url:[]u8)->bool #foreign #effects(all);
+hse_send :: (context:int,id:int,generation:int,engine:int,text:[]u8)->bool #foreign #effects(all);
+hse_next :: (context:int)->bool #foreign #effects(all);
+hse_field :: (field:int)->int #foreign #effects(all);
+hse_bytes :: (out:[]u8)->int #foreign #effects(all);
+hse_token :: ()->int #foreign #effects(all);
+hse_done :: (token:int) #foreign #effects(all);
+hse_close :: (context:int) #foreign #effects(all);
+hse_info :: (context:int,field:int)->int #foreign #effects(all);
+hse_pool :: (field:int)->int #foreign #effects(all);
+hse_shutdown :: () #foreign #effects(all);
 hses_key :: (o:[]Jo,key:string,value:string){jo_key(o,key);jo_str(o,value);}
 hses_fields :: (o:[]Jo,key:string,context:int,pool:bool){jo_key(o,key);jo_arr(o);for i:0..<(ifx pool then 5 else 10) {jo_int(o,ifx pool then hse_pool(i) else hse_info(context,i));}jo_end(o);}
 hses_event :: (o:[]Jo)->bool {
  bytes:[8388608]u8;n:=hse_bytes(bytes[..]);if n<0 {return false;}jo_obj(o);jo_key(o,"owner");jo_arr(o);for i:0..<3 {jo_int(o,hse_field(i));}jo_end(o);jo_key(o,"event");jo_int(o,hse_field(3));jo_key(o,"bytes");jo_arr(o);for b:bytes[0..<n] {jo_int(o,int(b));}jo_end(o);jo_end(o);return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {return 2;}text:[65536]u8;n:=fs_read(args_at(a[..],0),text[..]);nodes:[8192]JvNode;doc:[1]Jv;if n<1||!jv_parse(doc[..],cast(string)text[0..<n],nodes[..]) {return 2;}d:=doc[0];ops:=jv_get(d,0,"operations");if jv_len(d,ops)<1 {return 2;}
  names:[16]string;contexts:[16]int;used:=0;held:[64]int;held_n:=0;record:[1048576]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);hses_key(o[..],"schema","aethyr.metal.socket-effects.v1");hses_key(o[..],"platform","linux");jo_key(o[..],"observations");jo_arr(o[..]);
  defer {for token:held[0..<held_n] {hse_done(token);}for c:contexts {if c!=0 {hse_close(c);}}hse_shutdown();}

@@ -26,7 +26,7 @@ ordinary text; this trainer does not create or recognize control IDs.
 
 <!-- source: psionic/lib/bpe-train.coax split -->
 ```jai
-bt_piece :: (table:[]u8,t:PtLayout,s:string,at:int)->int {
+bt_piece :: (table:[]u8,t:PtLayout,s:string,at:int)->int #effects(all) {
  end:=pt_contraction(s,at);if end>at {return end;}r:=pt_rune(s,at);
  if pt_has(table,t,r.cp,4) {end=r.next;if end==s.count {return end;}next:=pt_rune(s,end);if pt_has(table,t,next.cp,4) {end=next.next;}return end;}
  pos:=at;if r.cp!=13 && r.cp!=10 && !pt_has(table,t,r.cp,5) {pos=r.next;}end=pt_run(table,t,s,pos,1,true);if end>pos {return end;}
@@ -55,7 +55,7 @@ pretokenized pieces and remaining training symbols.
 
 <!-- source: psionic/lib/bpe-train.coax train -->
 ```jai
-bt_train :: (table:[]u8,documents:[]string,requested:int)->BtModel #export_c {
+bt_train :: (table:[]u8,documents:[]string,requested:int)->BtModel #export_c #effects(all) {
  if !bt_docs(documents.count) || !bt_merges(requested) {return BtModel.{status=PtStatus.size};}t:=pt_layout(table);if t.status!=PtStatus.ok {return BtModel.{status=t.status};}total:=0;for text:documents {if !bt_bytes(text.count) || !bt_bytes(total+text.count) {return BtModel.{status=PtStatus.size};}total+=text.count;status:=pt_utf8_validate(text);if status!=PtStatus.ok {return BtModel.{status=status};}}
  symbols:[4096]int;groups:[4096]int;n:=0;pieces:=0;for text:documents {at:=0;while at<text.count {end:=bt_piece(table,t,text,at);for i:at..<end {symbols[n]=cast(int)text[i];groups[n]=pieces;n+=1;}pieces+=1;at=end;}}
  counts:[102400]int;touched:[4096]int;model:=BtModel.{source_bytes=total,pieces=pieces};
@@ -165,7 +165,7 @@ counts nothing, a special token counts zero bytes, and the result is nats over
 
 <!-- source: psionic/lib/nanochat-chat.coax bpb -->
 ```jai
-nc_bpb :: (table:[]u8,targets:[]int,losses:[]f64)->NcBpb #export_c {
+nc_bpb :: (table:[]u8,targets:[]int,losses:[]f64)->NcBpb #export_c #effects(all) {
     if !nc_ok(pt_layout(table)) {return NcBpb.{status=NcChatStatus.artifact};}
     if targets.count!=losses.count {return NcBpb.{status=NcChatStatus.shape};}
     nats:PsionicAccumulator;bytes:=0;

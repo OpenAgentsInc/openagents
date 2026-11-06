@@ -76,7 +76,7 @@
   #assert aar_error_word(0) == "internal_error" && aar_error_word(200) == "internal_error" && aar_error_word(-1) == "internal_error";
 }
 
-aar_http :: (method: string, content: string, bytes: int) -> int #export_c {
+aar_http :: (method: string, content: string, bytes: int) -> int #export_c #effects(all) {
   if method != "POST" { return 405; }
   if bytes < 1 || bytes > 16384 { return 413; }
   if content != "application/json" && content != "application/json; charset=utf-8" && content != "application/json;charset=utf-8" { return 415; }
@@ -86,12 +86,12 @@ aar_http :: (method: string, content: string, bytes: int) -> int #export_c {
 // Call before identity verification so a foreign Origin cannot consume a
 // signature's first use. Absence is valid for signed native callers; cookie
 // callers still need a matching Origin in aar_auth.
-aar_origin :: (has_origin: bool, same_origin: bool) -> int #export_c {
+aar_origin :: (has_origin: bool, same_origin: bool) -> int #export_c #effects(all) {
   if has_origin && !same_origin { return 403; }
   return 200;
 }
 
-aar_auth :: (authenticated: bool, signed: bool, payload: bool, unseen: bool, has_origin: bool, same_origin: bool) -> int #export_c {
+aar_auth :: (authenticated: bool, signed: bool, payload: bool, unseen: bool, has_origin: bool, same_origin: bool) -> int #export_c #effects(all) {
   origin_status := aar_origin(has_origin,same_origin);
   if origin_status != 200 { return origin_status; }
   if !authenticated { return 401; }
@@ -100,7 +100,7 @@ aar_auth :: (authenticated: bool, signed: bool, payload: bool, unseen: bool, has
   return 200;
 }
 
-aar_budget :: (minute: int, userday: int, globalday: int, useractive: int, globalactive: int) -> int #export_c {
+aar_budget :: (minute: int, userday: int, globalday: int, useractive: int, globalactive: int) -> int #export_c #effects(all) {
   if minute < 0 || userday < 0 || globalday < 0 || useractive < 0 || globalactive < 0 { return 503; }
   if minute >= 12 || userday >= 120 || globalday >= 1200 || useractive >= 1 || globalactive >= 4 { return 429; }
   return 200;
@@ -109,7 +109,7 @@ aar_budget :: (minute: int, userday: int, globalday: int, useractive: int, globa
 // A bounded integer reader, including zero; -1 distinguishes invalid input.
 // It never multiplies a value above 15000, so arbitrary leading zeroes are
 // accepted without an overflow or an unbounded integer representation.
-aar_timeout_digits :: (raw: string) -> int {
+aar_timeout_digits :: (raw: string) -> int #effects(all) {
   value := 0;
   for c: raw {
     if c < '0' || c > '9' { return -1; }
@@ -118,20 +118,20 @@ aar_timeout_digits :: (raw: string) -> int {
   }
   return value;
 }
-aar_timeout :: (raw: string) -> int #export_c {
+aar_timeout :: (raw: string) -> int #export_c #effects(all) {
   if raw == "" { return 8000; }
   n := aar_timeout_digits(raw);
   return ifx n < 1 then 0 else n;
 }
 
-aar_upstream :: (http: int) -> int #export_c {
+aar_upstream :: (http: int) -> int #export_c #effects(all) {
   if http == 200 { return 200; }
   if http == 0 || http == 429 { return 503; }
   return 502;
 }
-aar_lease_ms :: () -> int #export_c { return 60000; }
+aar_lease_ms :: () -> int #export_c #effects(all) { return 60000; }
 
-aar_error_word :: (status: int) -> string {
+aar_error_word :: (status: int) -> string #effects(all) {
   if status == 400 { return "invalid_input"; }
   if status == 401 { return "authentication_required"; }
   if status == 403 { return "cross_site"; }
@@ -145,7 +145,7 @@ aar_error_word :: (status: int) -> string {
   if status == 504 { return "director_timeout"; }
   return "internal_error";
 }
-aar_error :: (status: int, out: [] u8) -> int #export_c {
+aar_error :: (status: int, out: [] u8) -> int #export_c #effects(all) {
   word := aar_error_word(status); prefix := "{\"v\":1,\"error\":\"";
   n := prefix.count+word.count+2;
   if n > out.count { return -1; }

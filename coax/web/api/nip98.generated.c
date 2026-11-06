@@ -4,23 +4,25 @@ struct coax_source_range { int first, last, base, fixed; const char *path; };
 static const struct coax_source_range coax_source_ranges[] = {
   {1,588,1,0,"coax/web/api/nip98.coax"},
   {589,725,1,0,"coax/lib/crypto/schnorr_fast.coax"},
-  {726,789,1,0,"coax/lib/crypto/schnorr.coax"},
-  {790,964,1,0,"coax/lib/crypto/secp_mult.coax"},
-  {965,1250,1,0,"coax/lib/crypto/secp_group.coax"},
-  {1251,1817,1,0,"coax/lib/crypto/secp_field.coax"},
-  {1818,2021,1,0,"coax/lib/crypto/bytes.coax"},
-  {2022,2212,1,0,"coax/lib/crypto/secp_scalar.coax"},
-  {2213,2252,1,0,"coax/tests/nostr/scalar_fixtures.coax"},
-  {2253,2496,1,0,"coax/lib/crypto/sha256.coax"},
-  {2497,2697,1,0,"coax/lib/crypto/sha256-kernel.coax"},
-  {2698,2745,1,0,"coax/tests/nostr/schnorr_checks.coax"},
-  {2746,2947,1,0,"coax/tests/nostr/schnorr_fixtures.coax"},
-  {2948,3066,1,0,"coax/lib/crypto/ecdh_fast.coax"},
-  {3067,3152,1,0,"coax/lib/crypto/secp_group32.coax"},
-  {3153,3237,1,0,"coax/lib/crypto/secp_field32_total.coax"},
-  {3238,3330,1,0,"coax/lib/crypto/secp_field32.coax"},
-  {3331,3340,1,0,"coax/web/api/nip98_vectors.coax"},
-  {3341,3398,1,0,"coax/web/api/nip98_testkit.coax"},
+  {726,790,1,0,"coax/lib/crypto/schnorr.coax"},
+  {791,1060,1,0,"coax/lib/crypto/secp_glv.coax"},
+  {1061,1235,1,0,"coax/lib/crypto/secp_mult.coax"},
+  {1236,1521,1,0,"coax/lib/crypto/secp_group.coax"},
+  {1522,2088,1,0,"coax/lib/crypto/secp_field.coax"},
+  {2089,2293,1,0,"coax/lib/crypto/bytes.coax"},
+  {2294,2319,1,0,"coax/lib/crypto/erasure.coax"},
+  {2320,2510,1,0,"coax/lib/crypto/secp_scalar.coax"},
+  {2511,2550,1,0,"coax/tests/nostr/scalar_fixtures.coax"},
+  {2551,2821,1,0,"coax/lib/crypto/sha256.coax"},
+  {2822,3023,1,0,"coax/lib/crypto/sha256-kernel.coax"},
+  {3024,3071,1,0,"coax/tests/nostr/schnorr_checks.coax"},
+  {3072,3273,1,0,"coax/tests/nostr/schnorr_fixtures.coax"},
+  {3274,3392,1,0,"coax/lib/crypto/ecdh_fast.coax"},
+  {3393,3478,1,0,"coax/lib/crypto/secp_group32.coax"},
+  {3479,3563,1,0,"coax/lib/crypto/secp_field32_total.coax"},
+  {3564,3656,1,0,"coax/lib/crypto/secp_field32.coax"},
+  {3657,3666,1,0,"coax/web/api/nip98_vectors.coax"},
+  {3667,3724,1,0,"coax/web/api/nip98_testkit.coax"},
 };
 static const struct coax_source_range *coax_find_source(int line) {
   for (unsigned i=0;i<sizeof(coax_source_ranges)/sizeof(coax_source_ranges[0]);i++) if (line>=coax_source_ranges[i].first && line<=coax_source_ranges[i].last) return &coax_source_ranges[i];
@@ -194,6 +196,15 @@ static void coax_show_string(coax_string s) {
   }
   fputc('"', stdout);
 }
+
+/* Observable stores on native and wasm. Allocation/lifetime remain caller
+   premises; an empty view never offsets or dereferences a null pointer. */
+static void coax_secure_zero(void *data, int64_t count, size_t width, int32_t line) {
+  if(count<0 || (uint64_t)count>SIZE_MAX/width || (count && !data))coax_trap("invalid secure_zero view",line);
+  volatile unsigned char *p=(volatile unsigned char *)data;
+  size_t bytes=(size_t)count*width;
+  for(size_t i=0;i<bytes;i++)p[i]=0;
+}
 /* value_barrier (spec section 9): the value comes back unchanged, and the
    optimizer can't see through it to branch on a secret. Native: an empty asm
    that claims to change the register. wasm32 has no such asm: a call to an
@@ -234,6 +245,9 @@ typedef struct coax_t_N98Lit coax_t_N98Lit;
 typedef struct coax_t_N98Int coax_t_N98Int;
 typedef struct coax_t_N98Esc coax_t_N98Esc;
 typedef struct coax_t_SvPrepared coax_t_SvPrepared;
+typedef struct coax_t_GlvSplit coax_t_GlvSplit;
+typedef struct coax_t_GlvHalf coax_t_GlvHalf;
+typedef struct coax_t_GlvCount coax_t_GlvCount;
 typedef struct coax_t_SmWnaf coax_t_SmWnaf;
 typedef struct coax_t_SgPoint coax_t_SgPoint;
 typedef struct coax_t_SgAffine coax_t_SgAffine;
@@ -280,6 +294,9 @@ typedef struct { uint64_t e[10]; } coax_a10_u64;
 struct coax_t_SecpField { coax_a10_u64 limb; };
 struct coax_t_SgPoint { coax_t_SecpField x; coax_t_SecpField y; coax_t_SecpField z; };
 struct coax_t_SvPrepared { coax_t_ScScalar s; coax_t_ScScalar negative_e; coax_t_SgPoint point; coax_t_SecpField r; _Bool ready; };
+struct coax_t_GlvSplit { coax_t_ScScalar r1; coax_t_ScScalar r2; };
+struct coax_t_GlvHalf { coax_t_ScScalar value; _Bool negative; };
+struct coax_t_GlvCount { coax_t_SgPoint value; int64_t doubles; int64_t additions; };
 typedef struct { int64_t e[257]; } coax_a257_s64;
 struct coax_t_SmWnaf { coax_a257_s64 digits; int64_t length; _Bool ok; };
 struct coax_t_SgAffine { coax_t_SecpField x; coax_t_SecpField y; uint64_t infinity; };
@@ -319,8 +336,8 @@ typedef struct { uint8_t *data; int64_t count; } coax_v_u8;
 #define COAX_coax_v_s64_DEFINED
 typedef struct { int64_t *data; int64_t count; } coax_v_s64;
 #endif
-typedef struct { coax_t_SgPoint e[2]; } coax_a2_t_SgPoint;
 typedef struct { coax_t_SgPoint e[8]; } coax_a8_t_SgPoint;
+typedef struct { coax_t_SgPoint e[2]; } coax_a2_t_SgPoint;
 typedef struct { coax_t_SgPoint *data; int64_t count; } coax_v_t_SgPoint;
 #ifndef COAX_coax_v_u64_DEFINED
 #define COAX_coax_v_u64_DEFINED
@@ -333,17 +350,18 @@ typedef struct { uint32_t *data; int64_t count; } coax_v_u32;
 #endif
 typedef struct { coax_t_SfChainStep e[12]; } coax_a12_t_SfChainStep;
 typedef struct { coax_t_Sg32 e[8]; } coax_a8_t_Sg32;
+typedef struct { coax_string e[20]; } coax_a20_string;
 typedef struct { coax_string e[86]; } coax_a86_string;
 typedef struct { int64_t e[86]; } coax_a86_s64;
 typedef struct { coax_string e[28]; } coax_a28_string;
 typedef struct { coax_string e[7]; } coax_a7_string;
 typedef struct { uint8_t e[20]; } coax_a20_u8;
 typedef struct { uint8_t e[112]; } coax_a112_u8;
+typedef struct { uint32_t e[16]; } coax_a16_u32;
 typedef struct { uint64_t e[20]; } coax_a20_u64;
 typedef struct { uint64_t e[12]; } coax_a12_u64;
 typedef struct { uint32_t e[17]; } coax_a17_u32;
 typedef struct { uint32_t e[64]; } coax_a64_u32;
-typedef struct { uint32_t e[16]; } coax_a16_u32;
 typedef struct { coax_t_Sf32 e[13]; } coax_a13_t_Sf32;
 typedef struct { uint8_t e[103424]; } coax_a103424_u8;
 typedef struct { uint8_t e[1233]; } coax_a1233_u8;
@@ -365,6 +383,18 @@ typedef struct { uint64_t e[23]; } coax_a23_u64;
 typedef struct { uint64_t e[33]; } coax_a33_u64;
 typedef struct { uint8_t e[10]; } coax_a10_u8;
 typedef struct { _Bool e[2]; } coax_a2_bool;
+typedef struct { uint32_t e[3]; } coax_a3_u32;
+typedef struct { uint64_t e[3]; } coax_a3_u64;
+typedef struct { _Bool e[1]; } coax_a1_bool;
+typedef struct { float e[1]; } coax_a1_f32;
+#ifndef COAX_coax_v_bool_DEFINED
+#define COAX_coax_v_bool_DEFINED
+typedef struct { _Bool *data; int64_t count; } coax_v_bool;
+#endif
+#ifndef COAX_coax_v_f32_DEFINED
+#define COAX_coax_v_f32_DEFINED
+typedef struct { float *data; int64_t count; } coax_v_f32;
+#endif
 typedef struct { uint32_t e[5]; } coax_a5_u32;
 typedef struct { uint8_t e[40]; } coax_a40_u8;
 typedef struct { int64_t e[12]; } coax_a12_s64;
@@ -373,6 +403,7 @@ typedef struct { uint8_t e[129]; } coax_a129_u8;
 typedef struct { uint8_t e[113]; } coax_a113_u8;
 typedef struct { uint32_t e[7]; } coax_a7_u32;
 typedef struct { coax_string e[3]; } coax_a3_string;
+typedef struct { uint8_t e[111]; } coax_a111_u8;
 typedef struct { uint8_t e[1025]; } coax_a1025_u8;
 typedef struct { uint8_t e[65]; } coax_a65_u8;
 typedef struct { uint8_t e[55]; } coax_a55_u8;
@@ -434,6 +465,16 @@ COAX_LAYOUT(offsetof(coax_t_SvPrepared, negative_e) == 32, "offset of SvPrepared
 COAX_LAYOUT(offsetof(coax_t_SvPrepared, point) == 64, "offset of SvPrepared.point");
 COAX_LAYOUT(offsetof(coax_t_SvPrepared, r) == 304, "offset of SvPrepared.r");
 COAX_LAYOUT(offsetof(coax_t_SvPrepared, ready) == 384, "offset of SvPrepared.ready");
+COAX_LAYOUT(sizeof(coax_t_GlvSplit) == 64 && _Alignof(coax_t_GlvSplit) == 4, "layout of GlvSplit");
+COAX_LAYOUT(offsetof(coax_t_GlvSplit, r1) == 0, "offset of GlvSplit.r1");
+COAX_LAYOUT(offsetof(coax_t_GlvSplit, r2) == 32, "offset of GlvSplit.r2");
+COAX_LAYOUT(sizeof(coax_t_GlvHalf) == 36 && _Alignof(coax_t_GlvHalf) == 4, "layout of GlvHalf");
+COAX_LAYOUT(offsetof(coax_t_GlvHalf, value) == 0, "offset of GlvHalf.value");
+COAX_LAYOUT(offsetof(coax_t_GlvHalf, negative) == 32, "offset of GlvHalf.negative");
+COAX_LAYOUT(sizeof(coax_t_GlvCount) == 256 && _Alignof(coax_t_GlvCount) == 8, "layout of GlvCount");
+COAX_LAYOUT(offsetof(coax_t_GlvCount, value) == 0, "offset of GlvCount.value");
+COAX_LAYOUT(offsetof(coax_t_GlvCount, doubles) == 240, "offset of GlvCount.doubles");
+COAX_LAYOUT(offsetof(coax_t_GlvCount, additions) == 248, "offset of GlvCount.additions");
 COAX_LAYOUT(sizeof(coax_t_SmWnaf) == 2072 && _Alignof(coax_t_SmWnaf) == 8, "layout of SmWnaf");
 COAX_LAYOUT(offsetof(coax_t_SmWnaf, digits) == 0, "offset of SmWnaf.digits");
 COAX_LAYOUT(offsetof(coax_t_SmWnaf, length) == 2056, "offset of SmWnaf.length");
@@ -582,26 +623,56 @@ static coax_v_u32 coax_reslice_v_u32(coax_v_u32 v, int64_t lo, int64_t hi, int32
   coax_v_u32 r = {v.data + lo, hi - lo};
   return r;
 }
+static _Bool *coax_elem_v_bool(coax_v_bool v, int64_t i, int32_t l) { return &v.data[coax_index(i, v.count, l)]; }
+static coax_v_bool coax_mkview_v_bool(_Bool *data, int64_t n, int64_t lo, int64_t hi, int32_t l) {
+  coax_slice_check(lo, hi, n, l);
+  coax_v_bool r = {data + lo, hi - lo};
+  return r;
+}
+static coax_v_bool coax_reslice_v_bool(coax_v_bool v, int64_t lo, int64_t hi, int32_t l) {
+  coax_slice_check(lo, hi, v.count, l);
+  coax_v_bool r = {v.data + lo, hi - lo};
+  return r;
+}
+static float *coax_elem_v_f32(coax_v_f32 v, int64_t i, int32_t l) { return &v.data[coax_index(i, v.count, l)]; }
+static coax_v_f32 coax_mkview_v_f32(float *data, int64_t n, int64_t lo, int64_t hi, int32_t l) {
+  coax_slice_check(lo, hi, n, l);
+  coax_v_f32 r = {data + lo, hi - lo};
+  return r;
+}
+static coax_v_f32 coax_reslice_v_f32(coax_v_f32 v, int64_t lo, int64_t hi, int32_t l) {
+  coax_slice_check(lo, hi, v.count, l);
+  coax_v_f32 r = {v.data + lo, hi - lo};
+  return r;
+}
 
 /* Values computed at compile time */
 static const coax_a8_t_Sg32 coax_k0 = {{{.x = {.limb = {{((uint32_t)UINT64_C(385357720)), ((uint32_t)UINT64_C(1509065051)), ((uint32_t)UINT64_C(768485593)), ((uint32_t)UINT64_C(43777243)), ((uint32_t)UINT64_C(3464956679)), ((uint32_t)UINT64_C(1436574357)), ((uint32_t)UINT64_C(4191992748)), ((uint32_t)UINT64_C(2042521214))}}}, .y = {.limb = {{((uint32_t)UINT64_C(4212184248)), ((uint32_t)UINT64_C(2621952143)), ((uint32_t)UINT64_C(2793755673)), ((uint32_t)UINT64_C(4246189128)), ((uint32_t)UINT64_C(235997352)), ((uint32_t)UINT64_C(1571093500)), ((uint32_t)UINT64_C(648266853)), ((uint32_t)UINT64_C(1211816567))}}}, .z = {.limb = {{((uint32_t)UINT64_C(1)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}}, {.x = {.limb = {{((uint32_t)UINT64_C(3168810745)), ((uint32_t)UINT64_C(2248274195)), ((uint32_t)UINT64_C(2205129136)), ((uint32_t)UINT64_C(3039938629)), ((uint32_t)UINT64_C(4171059753)), ((uint32_t)UINT64_C(1228164997)), ((uint32_t)UINT64_C(2455290640)), ((uint32_t)UINT64_C(4180707841))}}}, .y = {.limb = {{((uint32_t)UINT64_C(2226710130)), ((uint32_t)UINT64_C(1824128373)), ((uint32_t)UINT64_C(885138203)), ((uint32_t)UINT64_C(1694542233)), ((uint32_t)UINT64_C(708309846)), ((uint32_t)UINT64_C(266549222)), ((uint32_t)UINT64_C(1663952916)), ((uint32_t)UINT64_C(948927247))}}}, .z = {.limb = {{((uint32_t)UINT64_C(1)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}}, {.x = {.limb = {{((uint32_t)UINT64_C(2990600164)), ((uint32_t)UINT64_C(3416839529)), ((uint32_t)UINT64_C(3697384119)), ((uint32_t)UINT64_C(3901457597)), ((uint32_t)UINT64_C(173822248)), ((uint32_t)UINT64_C(1437902629)), ((uint32_t)UINT64_C(436674707)), ((uint32_t)UINT64_C(797695565))}}}, .y = {.limb = {{((uint32_t)UINT64_C(2796315350)), ((uint32_t)UINT64_C(3702029626)), ((uint32_t)UINT64_C(2869782592)), ((uint32_t)UINT64_C(4152895259)), ((uint32_t)UINT64_C(2798240806)), ((uint32_t)UINT64_C(3571165661)), ((uint32_t)UINT64_C(921035734)), ((uint32_t)UINT64_C(3635159590))}}}, .z = {.limb = {{((uint32_t)UINT64_C(1)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}}, {.x = {.limb = {{((uint32_t)UINT64_C(3401906620)), ((uint32_t)UINT64_C(3911966189)), ((uint32_t)UINT64_C(53535644)), ((uint32_t)UINT64_C(1027709822)), ((uint32_t)UINT64_C(4075452942)), ((uint32_t)UINT64_C(2744709989)), ((uint32_t)UINT64_C(1851634922)), ((uint32_t)UINT64_C(1555951716))}}}, .y = {.limb = {{((uint32_t)UINT64_C(141714650)), ((uint32_t)UINT64_C(2768774696)), ((uint32_t)UINT64_C(335407029)), ((uint32_t)UINT64_C(2819870904)), ((uint32_t)UINT64_C(2249872603)), ((uint32_t)UINT64_C(2736229741)), ((uint32_t)UINT64_C(3123009888)), ((uint32_t)UINT64_C(1793837632))}}}, .z = {.limb = {{((uint32_t)UINT64_C(1)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}}, {.x = {.limb = {{((uint32_t)UINT64_C(4230466750)), ((uint32_t)UINT64_C(3277787405)), ((uint32_t)UINT64_C(1280829204)), ((uint32_t)UINT64_C(3768030871)), ((uint32_t)UINT64_C(2673187517)), ((uint32_t)UINT64_C(162338698)), ((uint32_t)UINT64_C(4039636563)), ((uint32_t)UINT64_C(2899608802))}}}, .y = {.limb = {{((uint32_t)UINT64_C(3327106103)), ((uint32_t)UINT64_C(97265194)), ((uint32_t)UINT64_C(929009167)), ((uint32_t)UINT64_C(2916649124)), ((uint32_t)UINT64_C(1983603177)), ((uint32_t)UINT64_C(1681394033)), ((uint32_t)UINT64_C(2963790333)), ((uint32_t)UINT64_C(3425929505))}}}, .z = {.limb = {{((uint32_t)UINT64_C(1)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}}, {.x = {.limb = {{((uint32_t)UINT64_C(1570769099)), ((uint32_t)UINT64_C(3152811913)), ((uint32_t)UINT64_C(3854661777)), ((uint32_t)UINT64_C(1447663627)), ((uint32_t)UINT64_C(1892047532)), ((uint32_t)UINT64_C(1593058411)), ((uint32_t)UINT64_C(1487487262)), ((uint32_t)UINT64_C(2001397752))}}}, .y = {.limb = {{((uint32_t)UINT64_C(3377710619)), ((uint32_t)UINT64_C(807236809)), ((uint32_t)UINT64_C(3757692584)), ((uint32_t)UINT64_C(925741538)), ((uint32_t)UINT64_C(3619140453)), ((uint32_t)UINT64_C(38002006)), ((uint32_t)UINT64_C(3949682201)), ((uint32_t)UINT64_C(3649347634))}}}, .z = {.limb = {{((uint32_t)UINT64_C(1)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}}, {.x = {.limb = {{((uint32_t)UINT64_C(423647912)), ((uint32_t)UINT64_C(3740131215)), ((uint32_t)UINT64_C(1628330189)), ((uint32_t)UINT64_C(2960522182)), ((uint32_t)UINT64_C(3279193681)), ((uint32_t)UINT64_C(3352416773)), ((uint32_t)UINT64_C(3648333963)), ((uint32_t)UINT64_C(4068963266))}}}, .y = {.limb = {{((uint32_t)UINT64_C(3674467713)), ((uint32_t)UINT64_C(699779922)), ((uint32_t)UINT64_C(1377806623)), ((uint32_t)UINT64_C(974784218)), ((uint32_t)UINT64_C(1707978567)), ((uint32_t)UINT64_C(1971458795)), ((uint32_t)UINT64_C(2374503049)), ((uint32_t)UINT64_C(179343406))}}}, .z = {.limb = {{((uint32_t)UINT64_C(1)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}}, {.x = {.limb = {{((uint32_t)UINT64_C(3799910414)), ((uint32_t)UINT64_C(1152236792)), ((uint32_t)UINT64_C(1015412638)), ((uint32_t)UINT64_C(837129327)), ((uint32_t)UINT64_C(157283345)), ((uint32_t)UINT64_C(1514560227)), ((uint32_t)UINT64_C(2101602966)), ((uint32_t)UINT64_C(3616689487))}}}, .y = {.limb = {{((uint32_t)UINT64_C(4137839448)), ((uint32_t)UINT64_C(3305430175)), ((uint32_t)UINT64_C(3633763237)), ((uint32_t)UINT64_C(3930107691)), ((uint32_t)UINT64_C(684486127)), ((uint32_t)UINT64_C(2206478018)), ((uint32_t)UINT64_C(2825679526)), ((uint32_t)UINT64_C(1478371442))}}}, .z = {.limb = {{((uint32_t)UINT64_C(1)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}}}};
 static const coax_t_S_Digest coax_k1 = {.words = {{((uint32_t)UINT64_C(2075471226)), ((uint32_t)UINT64_C(2683263026)), ((uint32_t)UINT64_C(1051836282)), ((uint32_t)UINT64_C(1081979778)), ((uint32_t)UINT64_C(3539202776)), ((uint32_t)UINT64_C(464593487)), ((uint32_t)UINT64_C(1241403791)), ((uint32_t)UINT64_C(1833489276))}}, .error = ((uint32_t)UINT64_C(0))};
-static const coax_a2_t_SgPoint coax_k2 = {{{.x = {.limb = {{UINT64_C(49813400), UINT64_C(10507973), UINT64_C(42833311), UINT64_C(57456440), UINT64_C(50502652), UINT64_C(60932801), UINT64_C(33958236), UINT64_C(49197398), UINT64_C(41875932), UINT64_C(1994649)}}}, .y = {.limb = {{UINT64_C(51434680), UINT64_C(32777214), UINT64_C(21076420), UINT64_C(19044885), UINT64_C(16586676), UINT64_C(58999338), UINT64_C(38780864), UINT64_C(51484022), UINT64_C(41363107), UINT64_C(1183414)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}, {.x = {.limb = {{UINT64_C(49813400), UINT64_C(10507973), UINT64_C(42833311), UINT64_C(57456440), UINT64_C(50502652), UINT64_C(60932801), UINT64_C(33958236), UINT64_C(49197398), UINT64_C(41875932), UINT64_C(1994649)}}}, .y = {.limb = {{UINT64_C(15673207), UINT64_C(34331585), UINT64_C(46032443), UINT64_C(48063978), UINT64_C(50522187), UINT64_C(8109525), UINT64_C(28327999), UINT64_C(15624841), UINT64_C(25745756), UINT64_C(3010889)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}}};
-static const coax_a10_u64 coax_k3 = {{UINT64_C(49813400), UINT64_C(10507973), UINT64_C(42833311), UINT64_C(57456440), UINT64_C(50502652), UINT64_C(60932801), UINT64_C(33958236), UINT64_C(49197398), UINT64_C(41875932), UINT64_C(1994649)}};
-static const coax_a10_u64 coax_k4 = {{UINT64_C(51434680), UINT64_C(32777214), UINT64_C(21076420), UINT64_C(19044885), UINT64_C(16586676), UINT64_C(58999338), UINT64_C(38780864), UINT64_C(51484022), UINT64_C(41363107), UINT64_C(1183414)}};
-static const coax_a10_u64 coax_k5 = {{UINT64_C(67107887), UINT64_C(67108799), UINT64_C(67108863), UINT64_C(67108863), UINT64_C(67108863), UINT64_C(67108863), UINT64_C(67108863), UINT64_C(67108863), UINT64_C(67108863), UINT64_C(4194303)}};
-static const coax_a27_u64 coax_k6 = {{UINT64_C(536870911), UINT64_C(33554431), UINT64_C(134217727), UINT64_C(134217727), UINT64_C(4503599627370495), UINT64_C(72057594037927935), UINT64_C(1073741823), UINT64_C(72057594037927935), UINT64_C(35184372088831), UINT64_C(8388607), UINT64_C(137438953471), UINT64_C(2048), UINT64_C(137438953471), UINT64_C(4), UINT64_C(127), UINT64_C(137438953471), UINT64_C(2048), UINT64_C(137438953471), UINT64_C(2048), UINT64_C(134217727), UINT64_C(1), UINT64_C(134217726), UINT64_C(134217726), UINT64_C(8), UINT64_C(1073741823), UINT64_C(2048), UINT64_C(1073741823)}};
-static const coax_a12_t_SfChainStep coax_k7 = {{{.left = INT64_C(0), .squares = INT64_C(1), .right = INT64_C(0)}, {.left = INT64_C(1), .squares = INT64_C(1), .right = INT64_C(0)}, {.left = INT64_C(2), .squares = INT64_C(3), .right = INT64_C(2)}, {.left = INT64_C(3), .squares = INT64_C(3), .right = INT64_C(2)}, {.left = INT64_C(4), .squares = INT64_C(2), .right = INT64_C(1)}, {.left = INT64_C(5), .squares = INT64_C(11), .right = INT64_C(5)}, {.left = INT64_C(6), .squares = INT64_C(22), .right = INT64_C(6)}, {.left = INT64_C(7), .squares = INT64_C(44), .right = INT64_C(7)}, {.left = INT64_C(8), .squares = INT64_C(88), .right = INT64_C(8)}, {.left = INT64_C(9), .squares = INT64_C(44), .right = INT64_C(7)}, {.left = INT64_C(10), .squares = INT64_C(3), .right = INT64_C(2)}, {.left = INT64_C(11), .squares = INT64_C(23), .right = INT64_C(6)}}};
-static const coax_t_SfExponentState coax_k8 = {.value = {{{.word = {{((uint32_t)UINT64_C(1)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(3)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(7)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(63)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(511)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(2047)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(4194303)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4095)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(16777215)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(65535)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(268435455)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(2147483647)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(4290772991)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4194303))}}}}}};
-static const coax_t_ScScalar coax_k9 = {.limbs = {{((uint32_t)UINT64_C(3493216577)), ((uint32_t)UINT64_C(3218235020)), ((uint32_t)UINT64_C(2940772411)), ((uint32_t)UINT64_C(3132021990)), ((uint32_t)UINT64_C(4294967294)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295))}}};
-static const coax_t_ScScalar coax_k10 = {.limbs = {{((uint32_t)UINT64_C(1742197056)), ((uint32_t)UINT64_C(2305618452)), ((uint32_t)UINT64_C(243071096)), ((uint32_t)UINT64_C(1947506370)), ((uint32_t)UINT64_C(1540163526)), ((uint32_t)UINT64_C(3868718564)), ((uint32_t)UINT64_C(2177276869)), ((uint32_t)UINT64_C(2640780501))}}};
-static const coax_t_ScScalar coax_k11 = {.limbs = {{((uint32_t)UINT64_C(3493216575)), ((uint32_t)UINT64_C(3218235020)), ((uint32_t)UINT64_C(2940772411)), ((uint32_t)UINT64_C(3132021990)), ((uint32_t)UINT64_C(4294967294)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295))}}};
-static const coax_t_S_Digest coax_k12 = {.words = {{((uint32_t)UINT64_C(1779033703)), ((uint32_t)UINT64_C(3144134277)), ((uint32_t)UINT64_C(1013904242)), ((uint32_t)UINT64_C(2773480762)), ((uint32_t)UINT64_C(1359893119)), ((uint32_t)UINT64_C(2600822924)), ((uint32_t)UINT64_C(528734635)), ((uint32_t)UINT64_C(1541459225))}}, .error = ((uint32_t)UINT64_C(0))};
-static const coax_t_Sf32 coax_k13 = {.limb = {{((uint32_t)UINT64_C(4294966319)), ((uint32_t)UINT64_C(4294967294)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295))}}};
-static const coax_a86_string coax_k14 = {{{"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":2}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":2}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}}};
-static const coax_a86_string coax_k15 = {{{"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImE1ZGU2MDRiZjYyYWFkOTYxNmUxMTIzZmI0M2NlNDI5MjdhYmZkM2NkZWVlMDY2OTAxZDg1MGU5NGY4N2MxMTkiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdXSwiY29udGVudCI6IiIsInNpZyI6IjA5ZDMxMTk1NmVjMTI3NTYyOGVkN2FjM2FmNjgyYzE3YjhmOWYwM2M5YTdiZGQ1Y2VlZGZhYWE5M2VhYTJmZDYwNzU3MGZmMmU3YWJhYTQ4ZDk4MWVjYTg1NWRkZDYwYjMzMGRiYzZlNmExYjFkMzYyNDEzMTY1NDAxMDhhM2E4In0=", 562}, {"Nostr eyJpZCI6ImM5NWJjZGE1MjU0ZjljNDc5NjU1OWIyYzA0YmJmODY4YzA5ZTAxNGE1M2IzYTEyMDBlMTM1MGJkN2Y3MzA5ODQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc4OTk5OTk0MCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiIxY2RlMGNhOGEwMWUwOGVkNGQ3NTUxZGViODc5YjcyMDYzM2VlZDBmNzVhZjQwNDY3OTFlZjkwZDliOWNkYjRlODkzODRkNjQzYTljNmY1OTA1MjNhMDlmMGI1NDhkYmFkNjhhMjMzMjUyN2I0OWE2MTkxNTJlNDBkNDBhOWUwNiJ9", 666}, {"Nostr ewogICJpZCI6ICJiNzMxYzkyYTFiZDUwOWVlZjc1MmE0N2QxNzFkOTg3ZmYyMTlhN2M5NDc0MzRlNzQ5OWE0YjhmOWI0MGI4ODZkIiwKICAicHVia2V5IjogIjc5YmU2NjdlZjlkY2JiYWM1NWEwNjI5NWNlODcwYjA3MDI5YmZjZGIyZGNlMjhkOTU5ZjI4MTViMTZmODE3OTgiLAogICJjcmVhdGVkX2F0IjogMTc5MDAwMDAwMCwKICAia2luZCI6IDI3MjM1LAogICJ0YWdzIjogWwogICAgWwogICAgICAidSIsCiAgICAgICJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayIKICAgIF0sCiAgICBbCiAgICAgICJtZXRob2QiLAogICAgICAiUE9TVCIKICAgIF0sCiAgICBbCiAgICAgICJwYXlsb2FkIiwKICAgICAgIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiCiAgICBdCiAgXSwKICAiY29udGVudCI6ICIiLAogICJzaWciOiAiNTE2YWM2OWU1ZTAzYzA0YzgzZDlhYzM4YTkyYTgxOTg5Y2Y4ZjlmMDY1MDU5ZjQ0N2RhZGE0MGUwZDYxNDkwMDdmYzQyNTM5NzA2YWEyYzVhMzhmMWJiMTNjYWVjNGNiYWVlMTVlZDAyODU2Mzc5NWM1MGMyYzg5ZTgzZDY1MWIiCn0=", 806}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6ICsxNzkwMDAwMDAwLCJraW5kIjoyNzIzNSwidGFncyI6W1sidSIsImh0dHBzOi8vb3BlbmFnZW50cy5jb20vYXBpL3BsYXl0ZXN0L2ZlZWRiYWNrIl0sWyJtZXRob2QiLCJQT1NUIl0sWyJwYXlsb2FkIiwiMDE1YWJkN2Y1Y2M1N2EyZGQ5NGI3NTkwZjA0YWQ4MDg0MjczOTA1ZWUzM2VjNWNlYmVhZTYyMjc2YTk3Zjg2MiJdXSwiY29udGVudCI6IiIsInNpZyI6IjUxNmFjNjllNWUwM2MwNGM4M2Q5YWMzOGE5MmE4MTk4OWNmOGY5ZjA2NTA1OWY0NDdkYWRhNDBlMGQ2MTQ5MDA3ZmM0MjUzOTcwNmFhMmM1YTM4ZjFiYjEzY2FlYzRjYmFlZTE1ZWQwMjg1NjM3OTVjNTBjMmM4OWU4M2Q2NTFiIn0=", 670}, {"Nostr eyJpZCI6IjkzYWE2ZGY0YmI4MGI3MGJlMjc1OGRmYTc2YWU5ZDJhMDQ3MjVmZDQ1ZmExYzJhZGRlYmNmNDhiMDk0MmNlYWEiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJ4Il0sWyJ1IiwiaHR0cHM6Ly9vcGVuYWdlbnRzLmNvbS9hcGkvcGxheXRlc3QvZmVlZGJhY2siXSxbIm1ldGhvZCIsIlBPU1QiXV0sImNvbnRlbnQiOiIiLCJzaWciOiIyZTQ1NTlkYjUyYjJlMGNlMzFlYTUyM2VhMjg0MGY4ZDE0YTZmNzNjYTYyY2I3NGNlN2RjOGIxYzA2MTBmYzA0MzkzNzg5ZDk3ODYwNjk1MDg0MGM2OGZlZGYxYzBjMDU5YTAxYTE4YTQ5NWQ3NDhkYTQ4NWQwODFiNzg3NDk1NyJ9", 574}, {"Nostr eyJpZCI6ImMxY2RhMzNmYjQyOThhOGFkNGJkZjZlYTZkMzZkMWUzZWE1MGI4YTFiOTZlYWNhMmNmNDQ3ZWMwY2YwNzBlMmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsieCIsIjAiXSxbIngiLCIxIl0sWyJ4IiwiMiJdLFsieCIsIjMiXSxbIngiLCI0Il0sWyJ4IiwiNSJdLFsieCIsIjYiXSxbIngiLCI3Il0sWyJ4IiwiOCJdLFsieCIsIjkiXSxbIngiLCIxMCJdLFsieCIsIjExIl0sWyJ4IiwiMTIiXSxbIngiLCIxMyJdXSwiY29udGVudCI6IiIsInNpZyI6IjJiOGYxNzk5NTliZmNhMmYxNmRiODcwYmQxYmUwMzE0YzEyMzkyOGNlMjk4YjA4NzkxYzUxMzUyNDk1YjI4NmZhMzQxY2I0OGQyYTc3Mzc1MTQzMmI2MGI2MmRlNjZlMDliYzQ4OGY3MTIwZWFmN2UwMzFmNTU2ZDFkMjgwYTM0In0=", 754}, {"Nostr eyJpZCI6IjY1NmQ5MTA1OWY5MWVmYzhkOTcwMDBkZjJhMDViNzExY2JjNTA2NjlmZmFjNzkwMDc2ZWU4ZDM1NDQ0OWE1M2YiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiJxXCJiXFxzXG5uXHR0IMOpIPCfmIAgLyIsInNpZyI6IjU2Yjg4MDI2Njc5NjQ1OTE1NzM5MDRmMDRhMmJjMGE3YjQ1YzRmOGQxNzRiYzNiOTZhYTNlMmMxNmM5NDg5ZmJkMjU2ODIwZWUyMTdhMGJlYzAzYmQ1MzY4ZGM5MDBhMGQ5NGJjYWI1MzU3YWYxNTk3M2NjMDViNjBjMjYyMmQ4In0=", 698}, {"Nostr eyJpZCI6IjYxNmQzOWZlMThlMTdkNzg1NjMxMDVmMjU5YjRjYzhmYWNiNTExNTVlNzkwZWE2YTE3ZWUwYWM4OWUwOGYyZDgiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsieCIsImFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYSJdXSwiY29udGVudCI6IiIsInNpZyI6Ijg4NzlkODhiNDhjNGM2ODEyMWJhYjliYjgyNzA4MjM1NzhiNTAxNWRhY2QxMTM3Y2UxMTJmNGU1NmI2MjUwMWNmN2RlODY4YjU3OGIyNzNjOTQyZjY2YzY1NzU5MGFkNmJlYjRiYTYwNTNjMzA2NmVlZGZjOWI4MjljZjdiNzk5In0=", 1938}, {"Nostr eyJpZCI6IjUxNDU1MjA5OTE2NzAxMDQzOTI2NmY1MGI4NzU1OTlkMDZkNWQxMzg2Y2FmOTY5NTdmMTBlYTkxMjYwMzMwOTQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiJjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjIiwic2lnIjoiYTAwNjc3NTU5NDg3OTMyYjA4ZGYxYjExODM5MTM0OGM4YTlkMzM2MTM2NjZlMDg3Y2JkNjgxYTc5MmI5MDAwNDhiYmIzYmUxMGM4M2Q5MWJkNTY2ZDc1NjAxMTVkZDg1YjQxOGU3YzY5NWQ3NTViZTU2ZGQyYzlhYzRkMjk2NDYifQ==", 11590}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6IjhmMGU0MjMwN2ZjY2Y3NGIxMWNjMjA5OGE4MzMzMjZkODg5Yzg2N2EwODkyZTkwYmZmNzgxMGE3YmFmYTcyY2UiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc4OTk5OTkzOSwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiJkYTcxMDk0MjM1ZjkyODQ4ODAxYmI5Yzc5MTc2Y2NlY2U3MzA0YmE3YzhiN2E5NDVkYzc1NDMwNWUxOGU1MDM4Y2YxZmFhZWE1MWQzOTBkOWEwYzZhNDViMjE5ZTRhYTM2YWZiNjA2Yjc4ZDY2MmEyYTc2MWVkMDM5ODJiMjU4MCJ9", 666}, {"Nostr eyJpZCI6IjU2ZDkxN2ExOGU0YjE5YmNiODM2MWNkM2QyOTc0OWM4ZjRiNzVjMmMzZTY4MDU5ZDg2Njc4NTYyZDBlZjEyY2YiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDA2MSwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI2NWZhMDg5YjA1NjlkZjRlNDAzN2EzZDMxMjkxMTk4Y2U5YjU0ODBkY2I4ZGRmNjFmNmIzZGYzYjIwNDhhMTZkNDI1ZDcwNDJiZDM0Njk3MWYyMWZlMjIyNTU0OWQ2YjI1ZmU3MDJlZGEzY2U5ZmY4YTA2NGJkZjY5NTMzYmJiOSJ9", 666}, {"Nostr eyJpZCI6ImVkZjRkOWI1N2YyZGEyNmU5YmQ3Yzg2ZDljNTYxMTk4YzlmMzQ0ZGI2YWY4ODE5NmZhODE2NWY3YzlmZWY1YzAiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MSwidGFncyI6W1sidSIsImh0dHBzOi8vb3BlbmFnZW50cy5jb20vYXBpL3BsYXl0ZXN0L2ZlZWRiYWNrIl0sWyJtZXRob2QiLCJQT1NUIl0sWyJwYXlsb2FkIiwiMDE1YWJkN2Y1Y2M1N2EyZGQ5NGI3NTkwZjA0YWQ4MDg0MjczOTA1ZWUzM2VjNWNlYmVhZTYyMjc2YTk3Zjg2MiJdXSwiY29udGVudCI6IiIsInNpZyI6Ijc0OWE2OWMxNTU1MmYzZDc0NDlkZjI5YzRmZTBhOWJkMWM4YjlhZTVjNmMyYmUyOTc0NDc5NmM2ZWQ2YThiYzc2OTVjMjIwNjA5YjZiNDU1NTM4NDlkMGFkMmRiY2Q0ODcwZWNiNDE5MTM0ZDIyODQzZWU2NWZjMjI2ZDk2YjhlIn0=", 662}, {"Nostr eyJpZCI6IjFkZWMyOTM4OTViOTg5ZmM0N2Q5ZGEyOWZlYzI0OTYyZTg5OWM3Njk1MjNjMGQ2ODI4MzI1NmU3YTViOTAyZjYiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVFBPU1RQT1NUUE9TVFBPU1QiXV0sImNvbnRlbnQiOiIiLCJzaWciOiJlYTBhMTQ3ZWNkMzY3ZmUzZTYyN2ZmMDk5MDA5ZTI2ZDQxNTM4ZWI1ODZkNWI1ZTVjZDIzYzdjNjk5ZGE3ZDc0NDg2MWJiN2ZhNWQ4YjIwYzlkNWFjMGE1OThmNmI2Y2QzYjFjMmMyYmJmOWY2NTg3ODZhMTUzNmU5MzJmNjk1NCJ9", 582}, {"Nostr eyJpZCI6ImQwMDUyMGZjZGJkYzcxZDUwYzg3NTRlNjE3Yjk0M2RlZDkwYmUwZTgxNmRiOTA5YjllOWI1YTQ5ZDViNjNhNzciLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsieCIsIjAiXSxbIngiLCIxIl0sWyJ4IiwiMiJdLFsieCIsIjMiXSxbIngiLCI0Il0sWyJ4IiwiNSJdLFsieCIsIjYiXSxbIngiLCI3Il0sWyJ4IiwiOCJdLFsieCIsIjkiXSxbIngiLCIxMCJdLFsieCIsIjExIl0sWyJ4IiwiMTIiXSxbIngiLCIxMyJdLFsieCIsIjE0Il1dLCJjb250ZW50IjoiIiwic2lnIjoiNDM1NDdmYzRkNmVmYzlkODU0MzQyMTM0ZjY1MjE5NTRlYmIxODFiNmVmMjRlNjJjNmRkOTliMjAxZmM1ZGI2OWNjZjlmMzk4MGZjMmM2NzJhZGNlYWM2NTc4ZDM3ZDk2MjM4YjQyOTk1Nzk0MTVlYzZlYzU4ZDdkZjU1OTQwZDMifQ==", 770}, {"Nostr eyJpZCI6IjM2Y2RmNmI1YjViMzE0YjVmYmY3M2QxYWU5ZDBhYjNhOWQzM2E0MDNhYTIwYjQ0NDI3NmM3YmFiYTQ3YTE5MjAiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayIsImEiLCJiIiwiYyJdXSwiY29udGVudCI6IiIsInNpZyI6IjFkNDlkZmI5NDU4NWFmZjI3ZThhOGU5NzMwYTk3ZTA3ZmNiNTk1ZDY3ZmZiM2QwZTZkMTg4NmI4Y2IwNjA1NDhkNGMzYjJjNDUxODE2NzkwMmE1NzhjY2E5OTBiODYzNzI4ZTI2NzE1OWY1NDhhY2EzNWQ5YTE4NzMzYzJlZjA3In0=", 554}, {"Nostr eyJpZCI6IjE0OWZiODA1YjdlYWExODNkODFiOGQ4MTcxMjYyZTUwODJmYjM3YjFjODIxYzI4ZjBlOTEzZjgyMGZjY2IzMjUiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbIngiLCJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIl1dLCJjb250ZW50IjoiIiwic2lnIjoiNjQ4MWNkOGI2OTY5NzI2OWQ5NGJiZjRiNGNlMWMzZWExZWRlMDEzMTg5ZTBjNjg1MjliMmFiYjczNDViNTdmOWFhODM5NzA5YTA5ZjgwN2ZmMTMxOTZmOWQ0YTNkYjg4YWEyYWY5NTA5NDRhODc1NDRjYzZjYWU0ZTg4MDUxOGYifQ==", 1846}, {"Nostr eyJpZCI6IjJjMDE2OWNmMzY0YTIxNGFmMWU1MzczYzA3ODQyZjBmYWNkM2YxYmZiOGQ0MDBjZjdmNmU3ZmVkYjExMDNlMTciLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiJjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjYyIsInNpZyI6IjQ2YmFkZDJlZmZlMTkxNjIyNWI3YzM1NDg5OWQ0MmNjZGJhNTJmMjNlYWFiM2NhZTQ1NTRmODFiODQ1MTQyMzdmMGQ1NTEyZmJhNGMwNzE1ODEzNDkyMDlhODE4NGY4Yjg5NDIxM2QxMTg3ZDhiMzU4OWZlZGFmNTFjMDM3MDE3In0=", 11590}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiIwMTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZiJ9", 666}, {"Nostr eyJpZCI6IjdkMmE1MmY5ZDQ5ZDUwMzg5Y2IwMzYzNWMxNmEwMThkYzM5OGUwNTQ3OWViNDgxNmQzMjlmZmYyNjViYzI1YWIiLCJwdWJrZXkiOiJmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmIiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6IjAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6IkI3MzFDOTJBMUJENTA5RUVGNzUyQTQ3RDE3MUQ5ODdGRjIxOUE3Qzk0NzQzNEU3NDk5QTRCOEY5QjQwQjg4NkQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJleHRyYSI6MSwiaWQiOiJiNzMxYzkyYTFiZDUwOWVlZjc1MmE0N2QxNzFkOTg3ZmYyMTlhN2M5NDc0MzRlNzQ5OWE0YjhmOWI0MGI4ODZkIiwicHVia2V5IjoiNzliZTY2N2VmOWRjYmJhYzU1YTA2Mjk1Y2U4NzBiMDcwMjliZmNkYjJkY2UyOGQ5NTlmMjgxNWIxNmY4MTc5OCIsImNyZWF0ZWRfYXQiOjE3OTAwMDAwMDAsImtpbmQiOjI3MjM1LCJ0YWdzIjpbWyJ1IiwiaHR0cHM6Ly9vcGVuYWdlbnRzLmNvbS9hcGkvcGxheXRlc3QvZmVlZGJhY2siXSxbIm1ldGhvZCIsIlBPU1QiXSxbInBheWxvYWQiLCIwMTVhYmQ3ZjVjYzU3YTJkZDk0Yjc1OTBmMDRhZDgwODQyNzM5MDVlZTMzZWM1Y2ViZWFlNjIyNzZhOTdmODYyIl1dLCJjb250ZW50IjoiIiwic2lnIjoiNTE2YWM2OWU1ZTAzYzA0YzgzZDlhYzM4YTkyYTgxOTg5Y2Y4ZjlmMDY1MDU5ZjQ0N2RhZGE0MGUwZDYxNDkwMDdmYzQyNTM5NzA2YWEyYzVhMzhmMWJiMTNjYWVjNGNiYWVlMTVlZDAyODU2Mzc5NWM1MGMyYzg5ZTgzZDY1MWIifQ==", 682}, {"Nostr eyJleHRyYSI6IngiLCJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 682}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sInNpZyI6IjUxNmFjNjllNWUwM2MwNGM4M2Q5YWMzOGE5MmE4MTk4OWNmOGY5ZjA2NTA1OWY0NDdkYWRhNDBlMGQ2MTQ5MDA3ZmM0MjUzOTcwNmFhMmM1YTM4ZjFiYjEzY2FlYzRjYmFlZTE1ZWQwMjg1NjM3OTVjNTBjMmM4OWU4M2Q2NTFiIn0=", 650}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9IHg=", 670}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMC4wLCJraW5kIjoyNzIzNSwidGFncyI6W1sidSIsImh0dHBzOi8vb3BlbmFnZW50cy5jb20vYXBpL3BsYXl0ZXN0L2ZlZWRiYWNrIl0sWyJtZXRob2QiLCJQT1NUIl0sWyJwYXlsb2FkIiwiMDE1YWJkN2Y1Y2M1N2EyZGQ5NGI3NTkwZjA0YWQ4MDg0MjczOTA1ZWUzM2VjNWNlYmVhZTYyMjc2YTk3Zjg2MiJdXSwiY29udGVudCI6IiIsInNpZyI6IjUxNmFjNjllNWUwM2MwNGM4M2Q5YWMzOGE5MmE4MTk4OWNmOGY5ZjA2NTA1OWY0NDdkYWRhNDBlMGQ2MTQ5MDA3ZmM0MjUzOTcwNmFhMmM1YTM4ZjFiYjEzY2FlYzRjYmFlZTE1ZWQwMjg1NjM3OTVjNTBjMmM4OWU4M2Q2NTFiIn0=", 670}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6NjU1MzYsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6OTk5OTk5OTk5OTk5OTk5OTk5OTksImtpbmQiOjI3MjM1LCJ0YWdzIjpbWyJ1IiwiaHR0cHM6Ly9vcGVuYWdlbnRzLmNvbS9hcGkvcGxheXRlc3QvZmVlZGJhY2siXSxbIm1ldGhvZCIsIlBPU1QiXSxbInBheWxvYWQiLCIwMTVhYmQ3ZjVjYzU3YTJkZDk0Yjc1OTBmMDRhZDgwODQyNzM5MDVlZTMzZWM1Y2ViZWFlNjIyNzZhOTdmODYyIl1dLCJjb250ZW50IjoiIiwic2lnIjoiNTE2YWM2OWU1ZTAzYzA0YzgzZDlhYzM4YTkyYTgxOTg5Y2Y4ZjlmMDY1MDU5ZjQ0N2RhZGE0MGUwZDYxNDkwMDdmYzQyNTM5NzA2YWEyYzVhMzhmMWJiMTNjYWVjNGNiYWVlMTVlZDAyODU2Mzc5NWM1MGMyYzg5ZTgzZDY1MWIifQ==", 682}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiJhXHUwMDAwYiIsInNpZyI6IjUxNmFjNjllNWUwM2MwNGM4M2Q5YWMzOGE5MmE4MTk4OWNmOGY5ZjA2NTA1OWY0NDdkYWRhNDBlMGQ2MTQ5MDA3ZmM0MjUzOTcwNmFhMmM1YTM4ZjFiYjEzY2FlYzRjYmFlZTE1ZWQwMjg1NjM3OTVjNTBjMmM4OWU4M2Q2NTFiIn0=", 678}, {"Nostr eyJpZCI6IjAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAiLCJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 762}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiJcdWRjMDAiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 674}, {"Bearer x", 8}, {"Nostr ", 6}, {"Nostr ab*c", 10}, {"Nostr W10=", 10}, {"Nostr e30=", 10}, {"Nostr eyAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIH0=", 16390}, {"Nostr eyAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB9", 16390}, {"Nostr ew==", 10}, {"Nostr ezE6Mn0=", 14}, {"Nostr eyJpZCIgMX0=", 18}, {"Nostr eyJra2tra2tra2tra2tra2tra2tra2tra2tra2tra2trIjoxfQ==", 58}, {"Nostr eyJra2tra2tra2tra2tra2tra2tra2tra2tra2tra2trayI6MX0=", 58}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OUJFNjY3RUY5RENCQkFDNTVBMDYyOTVDRTg3MEIwNzAyOUJGQ0RCMkRDRTI4RDk1OUYyODE1QjE2RjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxIn0=", 666}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmRcdTAwMDB4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eCIsInB1YmtleSI6Ijc5YmU2NjdlZjlkY2JiYWM1NWEwNjI5NWNlODcwYjA3MDI5YmZjZGIyZGNlMjhkOTU5ZjI4MTViMTZmODE3OTgiLCJjcmVhdGVkX2F0IjoxNzkwMDAwMDAwLCJraW5kIjoyNzIzNSwidGFncyI6W1sidSIsImh0dHBzOi8vb3BlbmFnZW50cy5jb20vYXBpL3BsYXl0ZXN0L2ZlZWRiYWNrIl0sWyJtZXRob2QiLCJQT1NUIl0sWyJwYXlsb2FkIiwiMDE1YWJkN2Y1Y2M1N2EyZGQ5NGI3NTkwZjA0YWQ4MDg0MjczOTA1ZWUzM2VjNWNlYmVhZTYyMjc2YTk3Zjg2MiJdXSwiY29udGVudCI6IiIsInNpZyI6IjUxNmFjNjllNWUwM2MwNGM4M2Q5YWMzOGE5MmE4MTk4OWNmOGY5ZjA2NTA1OWY0NDdkYWRhNDBlMGQ2MTQ5MDA3ZmM0MjUzOTcwNmFhMmM1YTM4ZjFiYjEzY2FlYzRjYmFlZTE1ZWQwMjg1NjM3OTVjNTBjMmM4OWU4M2Q2NTFiIn0=", 1954}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmRcdTAwMDB4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4IiwicHVia2V5IjoiNzliZTY2N2VmOWRjYmJhYzU1YTA2Mjk1Y2U4NzBiMDcwMjliZmNkYjJkY2UyOGQ5NTlmMjgxNWIxNmY4MTc5OCIsImNyZWF0ZWRfYXQiOjE3OTAwMDAwMDAsImtpbmQiOjI3MjM1LCJ0YWdzIjpbWyJ1IiwiaHR0cHM6Ly9vcGVuYWdlbnRzLmNvbS9hcGkvcGxheXRlc3QvZmVlZGJhY2siXSxbIm1ldGhvZCIsIlBPU1QiXSxbInBheWxvYWQiLCIwMTVhYmQ3ZjVjYzU3YTJkZDk0Yjc1OTBmMDRhZDgwODQyNzM5MDVlZTMzZWM1Y2ViZWFlNjIyNzZhOTdmODYyIl1dLCJjb250ZW50IjoiIiwic2lnIjoiNTE2YWM2OWU1ZTAzYzA0YzgzZDlhYzM4YTkyYTgxOTg5Y2Y4ZjlmMDY1MDU5ZjQ0N2RhZGE0MGUwZDYxNDkwMDdmYzQyNTM5NzA2YWEyYzVhMzhmMWJiMTNjYWVjNGNiYWVlMTVlZDAyODU2Mzc5NWM1MGMyYzg5ZTgzZDY1MWIifQ==", 1954}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MCwidGFncyI6W1sidSIsImh0dHBzOi8vb3BlbmFnZW50cy5jb20vYXBpL3BsYXl0ZXN0L2ZlZWRiYWNrIl0sWyJtZXRob2QiLCJQT1NUIl0sWyJwYXlsb2FkIiwiMDE1YWJkN2Y1Y2M1N2EyZGQ5NGI3NTkwZjA0YWQ4MDg0MjczOTA1ZWUzM2VjNWNlYmVhZTYyMjc2YTk3Zjg2MiJdXSwiY29udGVudCI6IiIsInNpZyI6IjUxNmFjNjllNWUwM2MwNGM4M2Q5YWMzOGE5MmE4MTk4OWNmOGY5ZjA2NTA1OWY0NDdkYWRhNDBlMGQ2MTQ5MDA3ZmM0MjUzOTcwNmFhMmM1YTM4ZjFiYjEzY2FlYzRjYmFlZTE1ZWQwMjg1NjM3OTVjNTBjMmM4OWU4M2Q2NTFiIn0=", 662}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6NjU1MzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6LTEsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 662}, {"Nostr eyJ0YWdzIjoxfQ==", 22}, {"Nostr eyJ0YWdzIjpbXX0=", 22}, {"Nostr eyJ0YWdzIjpbW11dfQ==", 26}, {"Nostr eyJ0YWdzIjpbWyJhIl0sW10sWyJiIiwiYyJdXX0=", 46}, {"Nostr eyJ0YWdzIjpbMV19", 22}, {"Nostr eyJ0YWdzIjpbWyJhIiAiYiJdXX0=", 34}, {"Nostr eyJ0YWdzIjpbWyJhIiwxXV19", 30}, {"Nostr eyJ0YWdzIjpbWyJhIl0gWyJiIl1dfQ==", 38}, {"Nostr eyJjb250ZW50IjoiIiAia2luZCI6MX0=", 38}, {"Nostr e30gIAoJ", 14}, {"Nostr ewkiY29udGVudCIJOgkiIgl9", 30}, {"Nostr eyJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 570}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIifQ==", 486}, {"Nostr eyJpZCI6ImQ5MjA3YzRkZWRmZTQ5ODRlYjU1MjQ1NDNjNjk4NzI0MjAyYWI3N2JmOTI3NzQ2MWM3NzRkNDBlNTc2YjRmM2QiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbIm1ldGhvZCIsIlBPU1QiXSxbInBheWxvYWQiLCIwMTVhYmQ3ZjVjYzU3YTJkZDk0Yjc1OTBmMDRhZDgwODQyNzM5MDVlZTMzZWM1Y2ViZWFlNjIyNzZhOTdmODYyIl1dLCJjb250ZW50IjoiIiwic2lnIjoiYWY1MWE2MTU4NGZhNTdmYjlhYjIzM2MxNmJlYmMzZTExNjMwMjE1NjllY2FhZGYwODc1OWM2ZjQ2ODA1OWE3M2RiYTMwNmJjOTgxN2NiYjczZTM1Y2UxZTBmMDhlNjZkMjY0ZTg4MmFmOTA4YzY5M2EwMThiN2JlOWI5MmQ3YWMifQ==", 598}, {"Nostr eyJpZCI6IjEzNjZiNTZhMTc2YTlkZTRlOGQwYjBhNWY0Y2IwZDdjYzJlMDY3YTU2NGQ0MTNmYTFhMTgxZWUyMmQzOTIyMmIiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI3MDc4ZmE1YWM0Njg1MTJlNmZhOTJiMTVmNDQxYzBlOGM3ZmM1NzliYjI3N2FhYWEwYmYwMTJjNjQ1NTk2N2YzNmZmYTJlZjNmN2JiYTVkOWJkZmQyZjMyNTUxODRmNjIwNDkxM2UwZTgyZTM0YzIxYjY2MTkyZTExMzJjNDJiNCJ9", 642}, {"Nostr eyJpZCI6IjBjYWQ0MmJlNDRjZGNjNzIwMWFlZGNhOWE1NTA0MWFmNzBjZjMzNThiZTBlNTQ0ZGQyNTBiZTczNjZlYWI1NmIiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayIsIngiXSxbIm1ldGhvZCIsIlBPU1QiLCJ5Il0sWyJwYXlsb2FkIiwiMDE1YWJkN2Y1Y2M1N2EyZGQ5NGI3NTkwZjA0YWQ4MDg0MjczOTA1ZWUzM2VjNWNlYmVhZTYyMjc2YTk3Zjg2MiIsInoiXV0sImNvbnRlbnQiOiIiLCJzaWciOiIxMjlmNGQ2ZTIzZGI3OGEwY2Q1MGVkYzcwNjc3NTRhYzRlZjc4Y2E0NDBjMzc5MmQ4ZDUwOTJmOGFkZThkOTlmYmM2Y2FlM2FkNzdjZDgzODM5NTg2ZGU0ODYxM2NiMzI4ZDkyYmZhODdjYzNjZTI1ZTg3OTAyZDgzYjUwZGU4MCJ9", 682}, {"Nostr eyJpZCI6IjUxNDY0YWM4YWI4MzgzMGZhNDI3MjJlZjJkMGY3MTM2MzRlYzg4YTExNDcxZjYyYmJlMTY3ZDcyOTg2NDE2OWEiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiXSxbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIl0sWyJtZXRob2QiLCJQT1NUIl0sWyJwYXlsb2FkIl1dLCJjb250ZW50IjoiIiwic2lnIjoiNDkyMWY2MDY4MzE3MDhiODFhOGYyOGFmZTg3MTJkZWQ0ZmQ5MWYzY2I5YTUyZTYzYmE5MDFmN2YwMjE3NmJjYTBkODkzYzBlOWJkYjgwY2RlNjE4Nzg1NGIyOWVmMDRmMDA1MWE2MmVlNmRhNThjYjgxYzI5ZWY4OTExNmI5ZWYifQ==", 602}, {"Nostr eyJpZCI6ImY0OTRjODJhM2MxODFkNzkyNDQ5NTlkOTMzNzEzZmNjZTNkZjBmYWI4YWYzZTA4MzA1NzUzNDhmYzI2MTQ1ZWQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVFBPU1RQT1NUUE9TWCJdXSwiY29udGVudCI6IiIsInNpZyI6ImVhNzEyMDJjMmE2NjhiNjNkZDJjMTUwZmVjMGVkODUwNWIyYzUzYjAzZTA0OTM1NWUyNWUyOTlmZjU2MWY5Mzc1MGJjMTlhNDYwMWJhOTVmNGNjOTA5Yjg0NmI3OGIxNjZkNmZjOWEzMjFiMTM4OTllNDM0ODNhM2NmZDZkZTZhIn0=", 578}, {"Nostr eyJpZCI6IjFlMjM5MTQ0ZWFhMmZlZmUxMDU5MWQ2OTJhMGM1ZmMzNWM1MzRiZTI4NjJkYThhZDBlN2M1NjliMTFlYTM5OGYiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVFBPU1RQT1NUUE9TIl1dLCJjb250ZW50IjoiIiwic2lnIjoiYzMwZTU4NGRkNWEyYjJhMTZmZjQ4ZGZiZGM3ZTU1NGUxOWU3NzZjZTAxZmJiZTU5ZWYyM2UyZTU0ZmY1ODdmMTYyNWM2NjU5MTdiMDhlMGEwNTkxOTY2YmYxOTAzOTcyYzJjMjE4MmNkYWUyNTY3ZjM5NjA4N2QxZWZhZjA1ZmIifQ==", 578}, {"Nostr eyJpZCI6IjNlZTI0ZjQwNDk5MjNjZjUxZDNlMzlkN2NkYTMyN2IwZDkxMzI1MmE2MWE3NjA0ZTAzZWNlMjVjMzk1YmRiYTEiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjJ4Il1dLCJjb250ZW50IjoiIiwic2lnIjoiYzk3MzNkMGQ5Yjk3NzM1ZmJjYzc1Yzc1YmRkMDdkZjI5ZTc2YmUyZDU1YzdlNWJlNGM0NzE1ODgyZjAyMzAxZWZkNzMwNWE2YzUwMmRkZmQ0ODkxYjVlZGNkMTFjOTI2Njg2YWFmMzQyYmZjMTIyYTkyZGY1NjU1MmI0OTE1YTAifQ==", 670}, {"Nostr eyJpZCI6IjViYjNhZDYxMTMzMmE4OTI0OWQ5NDBlZTcxOTAyYzdlNTBhMjY4YjZiMWE4ZmFiMjk2MWI1OGQyNzkxODY4ODEiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsImEiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI2YzIxNDAyOTczNjVmNTAyNzA4N2Y0MzFhNGYyNGU3MmRmMzc0ZjQ0ZjU4NTRiZWIwMWQxOWI0ZmFmNTkzNWFmNjU3ZDUwMzRkNWM1OTlmODg3OTJlMmYzY2Q0YTI3NDA1NjNlZDg3N2Q3MzEzMGIzMGNjYmM3NjY5MWNiMDEyOSJ9", 582}, {"Nostr eyJpZCI6Ijk3YWU1YmU4NTYxNmY2MzJiNTk3NTQ2YWJkNjM2MGQyZTA5NzYyNDFmOTc3YTUwMjVmZGY0MmFkMWE5NzkzYmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NiJdXSwiY29udGVudCI6IiIsInNpZyI6ImYzMmJlMmMxYjYyYWYzNGZkNDQ1OGQxODYzOGIyMTA4OGIxOTg5NjVmMzYwOWY4MmRmZjFlYjJiY2U5YmU3NzQ4NjZkODI5OTY2YzIxNmZmMGRlN2YwZTg0OGJkZThlNDBhOTkwMmUxMjE3YzE0MTcxNTRmNGVlZGM3MDkwN2Q1In0=", 666}, {"Nostr eyJpZCI6IjQ1ODhlNjE1NDc5MTgyZDhiZmVlZGUzMjdiYjE4YTExYzgyMDFlOTI1YjI3ZTk1NjU5ODBkYWU4ZTQyODM5ZjEiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiWE9TVCJdXSwiY29udGVudCI6IiIsInNpZyI6IjJmNmIxYmQ4MDcxMDZlOTUxM2M3ZTE1NmI0Yjk2OTQyODU2YTk0N2UzMTdiZWJmZjRkNGE4NzY4MTc1ZGE0MDlkYzczZWE5ZjMzYzgyMGYwMGNmYjQ0ZTJmOWZjYjlkOGFhOTdjZTgyNDdlNDg5MDhkYTM2MmU2ZGY1YTdmMTJmIn0=", 562}, {"Nostr eyJpZCI6IjNhYjVhNzcxYWNhOGI5NTgyZWQyNTk5NmQzMDg4MjI0N2VjMmY3NDJlOWExMGFiOWI1YjQ2N2VlZjFlMzdkODIiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TWCJdXSwiY29udGVudCI6IiIsInNpZyI6Ijg1NjA4YjNlMTE5ZWVmZTJmNGVhMWZjNjU2ZWQ5OTQ5YzA3OWZkMWM0ODJhMDQzNzliMzViZjFlYjM3YjVkOGI3ZWRmZTdkZDc3NzMyOTJlYWFkY2M2NGY5YmM5NjMwZGM1ZmVhNmEwNDM4YmY4MjdjNDc1NjhhZTk0YTMyNTZmIn0=", 562}, {"Nostr eyJpZCI6Ijc0ZGY2ODhiYmMzNjM1ODdlMWYwODI5YWE1ZDcxMGM3NDQ5OWU4OTg3MmExMWYzYjJmODFmNDNhZTUxYzUyNmUiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDA2MCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiJkNjgxZWU2NTNkODNlZTI4MGRlY2E5ZThhNTcwMWIzMjY5ZjhmZjU2ZTc3MjQ3NDQ5ZmIyZTk0YzQyZGU0MzFiNTVmNTA1MjZjZDFjMjM5NTU1NDRhZDYyOTQxMjRiMjM1N2ExZjUyMzJjNGVkMWQxOGVlOTlhZWQ3ZmFjYjc5ZiJ9", 666}, {"Nostr eyJpZCI6Ijc1NTZlMTI3YTA2ZGM0ODE5YmExZGEyZGJjNTM5Y2Q4MGJjMDhiOTRiZGM1NDNiY2QxNjIzNTA2YWUxYjE4ODciLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUG9TdCJdXSwiY29udGVudCI6IiIsInNpZyI6ImU0NWQ2Y2Y5YjVlMWZjYzc1NzVlZDNjN2VlMGRhMDI2OThlYjk3ZmZhMzRjYjIzMTFkOTJiM2JjYjM2MWU5NTk1NzZkNzI2NWQxMGY3MzNjMzUwNGIyN2M5YTE1MmMwNzc4NjJlZDZhMjY0OTcxYTI1OTQxNjIwNTg4OTMyNzQ5In0=", 562}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImE1ZGU2MDRiZjYyYWFkOTYxNmUxMTIzZmI0M2NlNDI5MjdhYmZkM2NkZWVlMDY2OTAxZDg1MGU5NGY4N2MxMTkiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFja1x1MDAwMGp1bmsiXSxbIm1ldGhvZCIsIlBPU1QiXV0sImNvbnRlbnQiOiIiLCJzaWciOiIwOWQzMTE5NTZlYzEyNzU2MjhlZDdhYzNhZjY4MmMxN2I4ZjlmMDNjOWE3YmRkNWNlZWRmYWFhOTNlYWEyZmQ2MDc1NzBmZjJlN2FiYWE0OGQ5ODFlY2E4NTVkZGQ2MGIzMzBkYmM2ZTZhMWIxZDM2MjQxMzE2NTQwMTA4YTNhOCJ9", 574}, {"Nostr eyJpZCI6ImVmYjYzNmUxNTlhZDEwYjczYzNiNjdhOGI0OWZiYzI2MDYyYjdjN2U0NmMwMzJlYzE4N2VlNDFiZGY2YTJjZjEiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInVcdTAwMDB4Iiwibm9wZSJdLFsidSIsImh0dHBzOi8vb3BlbmFnZW50cy5jb20vYXBpL3BsYXl0ZXN0L2ZlZWRiYWNrIl0sWyJtZXRob2QiLCJQT1NUIl1dLCJjb250ZW50IjoiIiwic2lnIjoiNzJkODhhOWUzYjBhNmFlY2E3ZjBmYTBmNWE2MjZkYzRmMmMyNjIwMDU2NjVlOTdkMDNjMzA2OWUzNzcwNGQ4YzVhYWJmZmE3ODIwMjQ1OWZiYTRlNDcyMDExMWZjYjAyNzc5MmUyNmM2ZGU4NDZhOTBmZDAxYTgwMjEzM2UwZTgifQ==", 590}}};
-static const coax_a86_string coax_k16 = {{{"POST", 4}, {"post", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"GET", 3}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"", 0}, {"POST", 4}, {"POST", 4}, {"POSTPOSTPOSTPOS", 15}, {"POSTPOSTPOSTPO", 14}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"pOsT", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}}};
-static const coax_a86_string coax_k17 = {{{"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback/", 45}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"", 0}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedbac", 43}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}}};
+static const coax_t_ScScalar coax_k2 = {.limbs = {{((uint32_t)UINT64_C(1172025393)), ((uint32_t)UINT64_C(3901956250)), ((uint32_t)UINT64_C(1911081599)), ((uint32_t)UINT64_C(1034586644)), ((uint32_t)UINT64_C(2458184469)), ((uint32_t)UINT64_C(3899429092)), ((uint32_t)UINT64_C(2815716301)), ((uint32_t)UINT64_C(814141985))}}};
+static const coax_t_ScScalar coax_k3 = {.limbs = {{((uint32_t)UINT64_C(180348099)), ((uint32_t)UINT64_C(1867808681)), ((uint32_t)UINT64_C(17729576)), ((uint32_t)UINT64_C(3829628630)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}};
+static const coax_t_ScScalar coax_k4 = {.limbs = {{((uint32_t)UINT64_C(2328133489)), ((uint32_t)UINT64_C(359773358)), ((uint32_t)UINT64_C(2650080966)), ((uint32_t)UINT64_C(571607212)), ((uint32_t)UINT64_C(180348100)), ((uint32_t)UINT64_C(1867808681)), ((uint32_t)UINT64_C(17729576)), ((uint32_t)UINT64_C(3829628630))}}};
+static const coax_t_ScScalar coax_k5 = {.limbs = {{((uint32_t)UINT64_C(1035032108)), ((uint32_t)UINT64_C(3613773224)), ((uint32_t)UINT64_C(125056109)), ((uint32_t)UINT64_C(2317880005)), ((uint32_t)UINT64_C(4294967294)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295))}}};
+static const coax_t_ScScalar coax_k6 = {.limbs = {{((uint32_t)UINT64_C(455327090)), ((uint32_t)UINT64_C(3741488764)), ((uint32_t)UINT64_C(545351288)), ((uint32_t)UINT64_C(305013482)), ((uint32_t)UINT64_C(2282906714)), ((uint32_t)UINT64_C(2770738178)), ((uint32_t)UINT64_C(3227267296)), ((uint32_t)UINT64_C(1399041356))}}};
+static const coax_t_SecpField coax_k7 = {.limb = {{UINT64_C(26542574), UINT64_C(39520796), UINT64_C(10050579), UINT64_C(30690262), UINT64_C(27062345), UINT64_C(51187002), UINT64_C(38042090), UINT64_C(1851833), UINT64_C(36398460), UINT64_C(2013786)}}};
+static const coax_a8_t_SgPoint coax_k8 = {{{.x = {.limb = {{UINT64_C(49813400), UINT64_C(10507973), UINT64_C(42833311), UINT64_C(57456440), UINT64_C(50502652), UINT64_C(60932801), UINT64_C(33958236), UINT64_C(49197398), UINT64_C(41875932), UINT64_C(1994649)}}}, .y = {.limb = {{UINT64_C(51434680), UINT64_C(32777214), UINT64_C(21076420), UINT64_C(19044885), UINT64_C(16586676), UINT64_C(58999338), UINT64_C(38780864), UINT64_C(51484022), UINT64_C(41363107), UINT64_C(1183414)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}, {.x = {.limb = {{UINT64_C(14694137), UINT64_C(8144111), UINT64_C(26937440), UINT64_C(18222526), UINT64_C(28651976), UINT64_C(36131978), UINT64_C(54851679), UINT64_C(51134756), UINT64_C(33657432), UINT64_C(4082722)}}}, .y = {.limb = {{UINT64_C(12117618), UINT64_C(41901409), UINT64_C(36812491), UINT64_C(40162056), UINT64_C(40173737), UINT64_C(42859733), UINT64_C(36929122), UINT64_C(60837951), UINT64_C(51340077), UINT64_C(926686)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}, {.x = {.limb = {{UINT64_C(37810148), UINT64_C(37050988), UINT64_C(28015802), UINT64_C(49770886), UINT64_C(15240068), UINT64_C(43455562), UINT64_C(55210576), UINT64_C(8539478), UINT64_C(38607367), UINT64_C(778999)}}}, .y = {.limb = {{UINT64_C(44851926), UINT64_C(35606185), UINT64_C(42208714), UINT64_C(7253045), UINT64_C(49776679), UINT64_C(28471561), UINT64_C(29007322), UINT64_C(59726675), UINT64_C(36058853), UINT64_C(3549960)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}, {.x = {.limb = {{UINT64_C(46463420), UINT64_C(49773426), UINT64_C(37342866), UINT64_C(33033411), UINT64_C(37568923), UINT64_C(12230275), UINT64_C(26162783), UINT64_C(47426190), UINT64_C(6581853), UINT64_C(1519484)}}}, .y = {.limb = {{UINT64_C(7496922), UINT64_C(34179586), UINT64_C(41638480), UINT64_C(48254967), UINT64_C(61346768), UINT64_C(25597238), UINT64_C(24696536), UINT64_C(23429772), UINT64_C(37796389), UINT64_C(1751794)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}, {.x = {.limb = {{UINT64_C(2608318), UINT64_C(63193983), UINT64_C(40979509), UINT64_C(39661919), UINT64_C(31496086), UINT64_C(64317103), UINT64_C(47282345), UINT64_C(64572454), UINT64_C(14872775), UINT64_C(2831649)}}}, .y = {.limb = {{UINT64_C(38771767), UINT64_C(50956977), UINT64_C(14741596), UINT64_C(43048318), UINT64_C(28170376), UINT64_C(26138746), UINT64_C(58758935), UINT64_C(57144720), UINT64_C(18985127), UINT64_C(3345634)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}, {.x = {.limb = {{UINT64_C(27265227), UINT64_C(50717271), UINT64_C(59317182), UINT64_C(3118853), UINT64_C(5654936), UINT64_C(3249835), UINT64_C(54675127), UINT64_C(17070459), UINT64_C(66607273), UINT64_C(1954489)}}}, .y = {.limb = {{UINT64_C(22267419), UINT64_C(56439410), UINT64_C(23757569), UINT64_C(59473895), UINT64_C(20393393), UINT64_C(32369881), UINT64_C(4052333), UINT64_C(24667145), UINT64_C(3337067), UINT64_C(3563816)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}, {.x = {.limb = {{UINT64_C(20994728), UINT64_C(58188742), UINT64_C(26009070), UINT64_C(52003897), UINT64_C(28341755), UINT64_C(14492052), UINT64_C(18686044), UINT64_C(10628895), UINT64_C(63101301), UINT64_C(3973596)}}}, .y = {.limb = {{UINT64_C(50589057), UINT64_C(24302774), UINT64_C(43119259), UINT64_C(57231486), UINT64_C(54139398), UINT64_C(24341457), UINT64_C(2174646), UINT64_C(2762198), UINT64_C(3050888), UINT64_C(175140)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}, {.x = {.limb = {{UINT64_C(41814030), UINT64_C(57622072), UINT64_C(58319946), UINT64_C(29159959), UINT64_C(20047252), UINT64_C(39320836), UINT64_C(6663728), UINT64_C(61495657), UINT64_C(21986627), UINT64_C(3531923)}}}, .y = {.limb = {{UINT64_C(44198744), UINT64_C(20391933), UINT64_C(20601936), UINT64_C(11493979), UINT64_C(65683631), UINT64_C(36903803), UINT64_C(4385826), UINT64_C(30054926), UINT64_C(7514220), UINT64_C(1443722)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}}};
+static const coax_a8_t_SgPoint coax_k9 = {{{.x = {.limb = {{UINT64_C(12095435), UINT64_C(48763136), UINT64_C(43571835), UINT64_C(1702999), UINT64_C(25634884), UINT64_C(27527369), UINT64_C(1059689), UINT64_C(6430380), UINT64_C(48864672), UINT64_C(3091256)}}}, .y = {.limb = {{UINT64_C(51434680), UINT64_C(32777214), UINT64_C(21076420), UINT64_C(19044885), UINT64_C(16586676), UINT64_C(58999338), UINT64_C(38780864), UINT64_C(51484022), UINT64_C(41363107), UINT64_C(1183414)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}, {.x = {.limb = {{UINT64_C(52456239), UINT64_C(1876765), UINT64_C(14798719), UINT64_C(9116530), UINT64_C(59437536), UINT64_C(42614411), UINT64_C(14212338), UINT64_C(40709687), UINT64_C(50557727), UINT64_C(3660727)}}}, .y = {.limb = {{UINT64_C(12117618), UINT64_C(41901409), UINT64_C(36812491), UINT64_C(40162056), UINT64_C(40173737), UINT64_C(42859733), UINT64_C(36929122), UINT64_C(60837951), UINT64_C(51340077), UINT64_C(926686)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}, {.x = {.limb = {{UINT64_C(27801192), UINT64_C(52056485), UINT64_C(24953144), UINT64_C(16483138), UINT64_C(27280745), UINT64_C(53367196), UINT64_C(32853948), UINT64_C(19365854), UINT64_C(48475354), UINT64_C(843476)}}}, .y = {.limb = {{UINT64_C(44851926), UINT64_C(35606185), UINT64_C(42208714), UINT64_C(7253045), UINT64_C(49776679), UINT64_C(28471561), UINT64_C(29007322), UINT64_C(59726675), UINT64_C(36058853), UINT64_C(3549960)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}, {.x = {.limb = {{UINT64_C(39042196), UINT64_C(18488211), UINT64_C(61514684), UINT64_C(59260605), UINT64_C(34421536), UINT64_C(2453531), UINT64_C(65817884), UINT64_C(3006099), UINT64_C(41241578), UINT64_C(326811)}}}, .y = {.limb = {{UINT64_C(7496922), UINT64_C(34179586), UINT64_C(41638480), UINT64_C(48254967), UINT64_C(61346768), UINT64_C(25597238), UINT64_C(24696536), UINT64_C(23429772), UINT64_C(37796389), UINT64_C(1751794)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}, {.x = {.limb = {{UINT64_C(26557010), UINT64_C(56904601), UINT64_C(5116428), UINT64_C(64470453), UINT64_C(11888077), UINT64_C(51784392), UINT64_C(39160574), UINT64_C(60843501), UINT64_C(228932), UINT64_C(2223361)}}}, .y = {.limb = {{UINT64_C(38771767), UINT64_C(50956977), UINT64_C(14741596), UINT64_C(43048318), UINT64_C(28170376), UINT64_C(26138746), UINT64_C(58758935), UINT64_C(57144720), UINT64_C(18985127), UINT64_C(3345634)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}, {.x = {.limb = {{UINT64_C(52468967), UINT64_C(64015662), UINT64_C(56757343), UINT64_C(47983999), UINT64_C(41518491), UINT64_C(61851273), UINT64_C(9946139), UINT64_C(45119030), UINT64_C(64034589), UINT64_C(1342772)}}}, .y = {.limb = {{UINT64_C(22267419), UINT64_C(56439410), UINT64_C(23757569), UINT64_C(59473895), UINT64_C(20393393), UINT64_C(32369881), UINT64_C(4052333), UINT64_C(24667145), UINT64_C(3337067), UINT64_C(3563816)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}, {.x = {.limb = {{UINT64_C(56604280), UINT64_C(45849233), UINT64_C(5645834), UINT64_C(56436980), UINT64_C(53645438), UINT64_C(37690894), UINT64_C(4637783), UINT64_C(37914652), UINT64_C(3623864), UINT64_C(3953494)}}}, .y = {.limb = {{UINT64_C(50589057), UINT64_C(24302774), UINT64_C(43119259), UINT64_C(57231486), UINT64_C(54139398), UINT64_C(24341457), UINT64_C(2174646), UINT64_C(2762198), UINT64_C(3050888), UINT64_C(175140)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}, {.x = {.limb = {{UINT64_C(28423092), UINT64_C(2687772), UINT64_C(40080300), UINT64_C(52889346), UINT64_C(379963), UINT64_C(4905554), UINT64_C(28607061), UINT64_C(18163768), UINT64_C(17167865), UINT64_C(2103236)}}}, .y = {.limb = {{UINT64_C(44198744), UINT64_C(20391933), UINT64_C(20601936), UINT64_C(11493979), UINT64_C(65683631), UINT64_C(36903803), UINT64_C(4385826), UINT64_C(30054926), UINT64_C(7514220), UINT64_C(1443722)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}}};
+static const coax_a2_t_SgPoint coax_k10 = {{{.x = {.limb = {{UINT64_C(49813400), UINT64_C(10507973), UINT64_C(42833311), UINT64_C(57456440), UINT64_C(50502652), UINT64_C(60932801), UINT64_C(33958236), UINT64_C(49197398), UINT64_C(41875932), UINT64_C(1994649)}}}, .y = {.limb = {{UINT64_C(51434680), UINT64_C(32777214), UINT64_C(21076420), UINT64_C(19044885), UINT64_C(16586676), UINT64_C(58999338), UINT64_C(38780864), UINT64_C(51484022), UINT64_C(41363107), UINT64_C(1183414)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}, {.x = {.limb = {{UINT64_C(49813400), UINT64_C(10507973), UINT64_C(42833311), UINT64_C(57456440), UINT64_C(50502652), UINT64_C(60932801), UINT64_C(33958236), UINT64_C(49197398), UINT64_C(41875932), UINT64_C(1994649)}}}, .y = {.limb = {{UINT64_C(15673207), UINT64_C(34331585), UINT64_C(46032443), UINT64_C(48063978), UINT64_C(50522187), UINT64_C(8109525), UINT64_C(28327999), UINT64_C(15624841), UINT64_C(25745756), UINT64_C(3010889)}}}, .z = {.limb = {{UINT64_C(1), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0)}}}}}};
+static const coax_a10_u64 coax_k11 = {{UINT64_C(49813400), UINT64_C(10507973), UINT64_C(42833311), UINT64_C(57456440), UINT64_C(50502652), UINT64_C(60932801), UINT64_C(33958236), UINT64_C(49197398), UINT64_C(41875932), UINT64_C(1994649)}};
+static const coax_a10_u64 coax_k12 = {{UINT64_C(51434680), UINT64_C(32777214), UINT64_C(21076420), UINT64_C(19044885), UINT64_C(16586676), UINT64_C(58999338), UINT64_C(38780864), UINT64_C(51484022), UINT64_C(41363107), UINT64_C(1183414)}};
+static const coax_a10_u64 coax_k13 = {{UINT64_C(67107887), UINT64_C(67108799), UINT64_C(67108863), UINT64_C(67108863), UINT64_C(67108863), UINT64_C(67108863), UINT64_C(67108863), UINT64_C(67108863), UINT64_C(67108863), UINT64_C(4194303)}};
+static const coax_a27_u64 coax_k14 = {{UINT64_C(536870911), UINT64_C(33554431), UINT64_C(134217727), UINT64_C(134217727), UINT64_C(4503599627370495), UINT64_C(72057594037927935), UINT64_C(1073741823), UINT64_C(72057594037927935), UINT64_C(35184372088831), UINT64_C(8388607), UINT64_C(137438953471), UINT64_C(2048), UINT64_C(137438953471), UINT64_C(4), UINT64_C(127), UINT64_C(137438953471), UINT64_C(2048), UINT64_C(137438953471), UINT64_C(2048), UINT64_C(134217727), UINT64_C(1), UINT64_C(134217726), UINT64_C(134217726), UINT64_C(8), UINT64_C(1073741823), UINT64_C(2048), UINT64_C(1073741823)}};
+static const coax_a12_t_SfChainStep coax_k15 = {{{.left = INT64_C(0), .squares = INT64_C(1), .right = INT64_C(0)}, {.left = INT64_C(1), .squares = INT64_C(1), .right = INT64_C(0)}, {.left = INT64_C(2), .squares = INT64_C(3), .right = INT64_C(2)}, {.left = INT64_C(3), .squares = INT64_C(3), .right = INT64_C(2)}, {.left = INT64_C(4), .squares = INT64_C(2), .right = INT64_C(1)}, {.left = INT64_C(5), .squares = INT64_C(11), .right = INT64_C(5)}, {.left = INT64_C(6), .squares = INT64_C(22), .right = INT64_C(6)}, {.left = INT64_C(7), .squares = INT64_C(44), .right = INT64_C(7)}, {.left = INT64_C(8), .squares = INT64_C(88), .right = INT64_C(8)}, {.left = INT64_C(9), .squares = INT64_C(44), .right = INT64_C(7)}, {.left = INT64_C(10), .squares = INT64_C(3), .right = INT64_C(2)}, {.left = INT64_C(11), .squares = INT64_C(23), .right = INT64_C(6)}}};
+static const coax_t_SfExponentState coax_k16 = {.value = {{{.word = {{((uint32_t)UINT64_C(1)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(3)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(7)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(63)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(511)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(2047)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(4194303)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4095)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(16777215)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(65535)), ((uint32_t)UINT64_C(0)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(268435455)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(2147483647)), ((uint32_t)UINT64_C(0))}}}, {.word = {{((uint32_t)UINT64_C(4290772991)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4194303))}}}}}};
+static const coax_t_ScScalar coax_k17 = {.limbs = {{((uint32_t)UINT64_C(3493216577)), ((uint32_t)UINT64_C(3218235020)), ((uint32_t)UINT64_C(2940772411)), ((uint32_t)UINT64_C(3132021990)), ((uint32_t)UINT64_C(4294967294)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295))}}};
+static const coax_t_ScScalar coax_k18 = {.limbs = {{((uint32_t)UINT64_C(1742197056)), ((uint32_t)UINT64_C(2305618452)), ((uint32_t)UINT64_C(243071096)), ((uint32_t)UINT64_C(1947506370)), ((uint32_t)UINT64_C(1540163526)), ((uint32_t)UINT64_C(3868718564)), ((uint32_t)UINT64_C(2177276869)), ((uint32_t)UINT64_C(2640780501))}}};
+static const coax_t_ScScalar coax_k19 = {.limbs = {{((uint32_t)UINT64_C(3493216575)), ((uint32_t)UINT64_C(3218235020)), ((uint32_t)UINT64_C(2940772411)), ((uint32_t)UINT64_C(3132021990)), ((uint32_t)UINT64_C(4294967294)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295))}}};
+static const coax_t_S_Digest coax_k20 = {.words = {{((uint32_t)UINT64_C(1779033703)), ((uint32_t)UINT64_C(3144134277)), ((uint32_t)UINT64_C(1013904242)), ((uint32_t)UINT64_C(2773480762)), ((uint32_t)UINT64_C(1359893119)), ((uint32_t)UINT64_C(2600822924)), ((uint32_t)UINT64_C(528734635)), ((uint32_t)UINT64_C(1541459225))}}, .error = ((uint32_t)UINT64_C(0))};
+static const coax_t_Sf32 coax_k21 = {.limb = {{((uint32_t)UINT64_C(4294966319)), ((uint32_t)UINT64_C(4294967294)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295)), ((uint32_t)UINT64_C(4294967295))}}};
+static const coax_a86_string coax_k22 = {{{"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":2}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":2}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}, {"{\"a\":1}", 7}}};
+static const coax_a86_string coax_k23 = {{{"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImE1ZGU2MDRiZjYyYWFkOTYxNmUxMTIzZmI0M2NlNDI5MjdhYmZkM2NkZWVlMDY2OTAxZDg1MGU5NGY4N2MxMTkiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdXSwiY29udGVudCI6IiIsInNpZyI6IjA5ZDMxMTk1NmVjMTI3NTYyOGVkN2FjM2FmNjgyYzE3YjhmOWYwM2M5YTdiZGQ1Y2VlZGZhYWE5M2VhYTJmZDYwNzU3MGZmMmU3YWJhYTQ4ZDk4MWVjYTg1NWRkZDYwYjMzMGRiYzZlNmExYjFkMzYyNDEzMTY1NDAxMDhhM2E4In0=", 562}, {"Nostr eyJpZCI6ImM5NWJjZGE1MjU0ZjljNDc5NjU1OWIyYzA0YmJmODY4YzA5ZTAxNGE1M2IzYTEyMDBlMTM1MGJkN2Y3MzA5ODQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc4OTk5OTk0MCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiIxY2RlMGNhOGEwMWUwOGVkNGQ3NTUxZGViODc5YjcyMDYzM2VlZDBmNzVhZjQwNDY3OTFlZjkwZDliOWNkYjRlODkzODRkNjQzYTljNmY1OTA1MjNhMDlmMGI1NDhkYmFkNjhhMjMzMjUyN2I0OWE2MTkxNTJlNDBkNDBhOWUwNiJ9", 666}, {"Nostr ewogICJpZCI6ICJiNzMxYzkyYTFiZDUwOWVlZjc1MmE0N2QxNzFkOTg3ZmYyMTlhN2M5NDc0MzRlNzQ5OWE0YjhmOWI0MGI4ODZkIiwKICAicHVia2V5IjogIjc5YmU2NjdlZjlkY2JiYWM1NWEwNjI5NWNlODcwYjA3MDI5YmZjZGIyZGNlMjhkOTU5ZjI4MTViMTZmODE3OTgiLAogICJjcmVhdGVkX2F0IjogMTc5MDAwMDAwMCwKICAia2luZCI6IDI3MjM1LAogICJ0YWdzIjogWwogICAgWwogICAgICAidSIsCiAgICAgICJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayIKICAgIF0sCiAgICBbCiAgICAgICJtZXRob2QiLAogICAgICAiUE9TVCIKICAgIF0sCiAgICBbCiAgICAgICJwYXlsb2FkIiwKICAgICAgIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiCiAgICBdCiAgXSwKICAiY29udGVudCI6ICIiLAogICJzaWciOiAiNTE2YWM2OWU1ZTAzYzA0YzgzZDlhYzM4YTkyYTgxOTg5Y2Y4ZjlmMDY1MDU5ZjQ0N2RhZGE0MGUwZDYxNDkwMDdmYzQyNTM5NzA2YWEyYzVhMzhmMWJiMTNjYWVjNGNiYWVlMTVlZDAyODU2Mzc5NWM1MGMyYzg5ZTgzZDY1MWIiCn0=", 806}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6ICsxNzkwMDAwMDAwLCJraW5kIjoyNzIzNSwidGFncyI6W1sidSIsImh0dHBzOi8vb3BlbmFnZW50cy5jb20vYXBpL3BsYXl0ZXN0L2ZlZWRiYWNrIl0sWyJtZXRob2QiLCJQT1NUIl0sWyJwYXlsb2FkIiwiMDE1YWJkN2Y1Y2M1N2EyZGQ5NGI3NTkwZjA0YWQ4MDg0MjczOTA1ZWUzM2VjNWNlYmVhZTYyMjc2YTk3Zjg2MiJdXSwiY29udGVudCI6IiIsInNpZyI6IjUxNmFjNjllNWUwM2MwNGM4M2Q5YWMzOGE5MmE4MTk4OWNmOGY5ZjA2NTA1OWY0NDdkYWRhNDBlMGQ2MTQ5MDA3ZmM0MjUzOTcwNmFhMmM1YTM4ZjFiYjEzY2FlYzRjYmFlZTE1ZWQwMjg1NjM3OTVjNTBjMmM4OWU4M2Q2NTFiIn0=", 670}, {"Nostr eyJpZCI6IjkzYWE2ZGY0YmI4MGI3MGJlMjc1OGRmYTc2YWU5ZDJhMDQ3MjVmZDQ1ZmExYzJhZGRlYmNmNDhiMDk0MmNlYWEiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJ4Il0sWyJ1IiwiaHR0cHM6Ly9vcGVuYWdlbnRzLmNvbS9hcGkvcGxheXRlc3QvZmVlZGJhY2siXSxbIm1ldGhvZCIsIlBPU1QiXV0sImNvbnRlbnQiOiIiLCJzaWciOiIyZTQ1NTlkYjUyYjJlMGNlMzFlYTUyM2VhMjg0MGY4ZDE0YTZmNzNjYTYyY2I3NGNlN2RjOGIxYzA2MTBmYzA0MzkzNzg5ZDk3ODYwNjk1MDg0MGM2OGZlZGYxYzBjMDU5YTAxYTE4YTQ5NWQ3NDhkYTQ4NWQwODFiNzg3NDk1NyJ9", 574}, {"Nostr eyJpZCI6ImMxY2RhMzNmYjQyOThhOGFkNGJkZjZlYTZkMzZkMWUzZWE1MGI4YTFiOTZlYWNhMmNmNDQ3ZWMwY2YwNzBlMmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsieCIsIjAiXSxbIngiLCIxIl0sWyJ4IiwiMiJdLFsieCIsIjMiXSxbIngiLCI0Il0sWyJ4IiwiNSJdLFsieCIsIjYiXSxbIngiLCI3Il0sWyJ4IiwiOCJdLFsieCIsIjkiXSxbIngiLCIxMCJdLFsieCIsIjExIl0sWyJ4IiwiMTIiXSxbIngiLCIxMyJdXSwiY29udGVudCI6IiIsInNpZyI6IjJiOGYxNzk5NTliZmNhMmYxNmRiODcwYmQxYmUwMzE0YzEyMzkyOGNlMjk4YjA4NzkxYzUxMzUyNDk1YjI4NmZhMzQxY2I0OGQyYTc3Mzc1MTQzMmI2MGI2MmRlNjZlMDliYzQ4OGY3MTIwZWFmN2UwMzFmNTU2ZDFkMjgwYTM0In0=", 754}, {"Nostr eyJpZCI6IjY1NmQ5MTA1OWY5MWVmYzhkOTcwMDBkZjJhMDViNzExY2JjNTA2NjlmZmFjNzkwMDc2ZWU4ZDM1NDQ0OWE1M2YiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiJxXCJiXFxzXG5uXHR0IMOpIPCfmIAgLyIsInNpZyI6IjU2Yjg4MDI2Njc5NjQ1OTE1NzM5MDRmMDRhMmJjMGE3YjQ1YzRmOGQxNzRiYzNiOTZhYTNlMmMxNmM5NDg5ZmJkMjU2ODIwZWUyMTdhMGJlYzAzYmQ1MzY4ZGM5MDBhMGQ5NGJjYWI1MzU3YWYxNTk3M2NjMDViNjBjMjYyMmQ4In0=", 698}, {"Nostr eyJpZCI6IjYxNmQzOWZlMThlMTdkNzg1NjMxMDVmMjU5YjRjYzhmYWNiNTExNTVlNzkwZWE2YTE3ZWUwYWM4OWUwOGYyZDgiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsieCIsImFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYSJdXSwiY29udGVudCI6IiIsInNpZyI6Ijg4NzlkODhiNDhjNGM2ODEyMWJhYjliYjgyNzA4MjM1NzhiNTAxNWRhY2QxMTM3Y2UxMTJmNGU1NmI2MjUwMWNmN2RlODY4YjU3OGIyNzNjOTQyZjY2YzY1NzU5MGFkNmJlYjRiYTYwNTNjMzA2NmVlZGZjOWI4MjljZjdiNzk5In0=", 1938}, {"Nostr eyJpZCI6IjUxNDU1MjA5OTE2NzAxMDQzOTI2NmY1MGI4NzU1OTlkMDZkNWQxMzg2Y2FmOTY5NTdmMTBlYTkxMjYwMzMwOTQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiJjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjIiwic2lnIjoiYTAwNjc3NTU5NDg3OTMyYjA4ZGYxYjExODM5MTM0OGM4YTlkMzM2MTM2NjZlMDg3Y2JkNjgxYTc5MmI5MDAwNDhiYmIzYmUxMGM4M2Q5MWJkNTY2ZDc1NjAxMTVkZDg1YjQxOGU3YzY5NWQ3NTViZTU2ZGQyYzlhYzRkMjk2NDYifQ==", 11590}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6IjhmMGU0MjMwN2ZjY2Y3NGIxMWNjMjA5OGE4MzMzMjZkODg5Yzg2N2EwODkyZTkwYmZmNzgxMGE3YmFmYTcyY2UiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc4OTk5OTkzOSwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiJkYTcxMDk0MjM1ZjkyODQ4ODAxYmI5Yzc5MTc2Y2NlY2U3MzA0YmE3YzhiN2E5NDVkYzc1NDMwNWUxOGU1MDM4Y2YxZmFhZWE1MWQzOTBkOWEwYzZhNDViMjE5ZTRhYTM2YWZiNjA2Yjc4ZDY2MmEyYTc2MWVkMDM5ODJiMjU4MCJ9", 666}, {"Nostr eyJpZCI6IjU2ZDkxN2ExOGU0YjE5YmNiODM2MWNkM2QyOTc0OWM4ZjRiNzVjMmMzZTY4MDU5ZDg2Njc4NTYyZDBlZjEyY2YiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDA2MSwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI2NWZhMDg5YjA1NjlkZjRlNDAzN2EzZDMxMjkxMTk4Y2U5YjU0ODBkY2I4ZGRmNjFmNmIzZGYzYjIwNDhhMTZkNDI1ZDcwNDJiZDM0Njk3MWYyMWZlMjIyNTU0OWQ2YjI1ZmU3MDJlZGEzY2U5ZmY4YTA2NGJkZjY5NTMzYmJiOSJ9", 666}, {"Nostr eyJpZCI6ImVkZjRkOWI1N2YyZGEyNmU5YmQ3Yzg2ZDljNTYxMTk4YzlmMzQ0ZGI2YWY4ODE5NmZhODE2NWY3YzlmZWY1YzAiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MSwidGFncyI6W1sidSIsImh0dHBzOi8vb3BlbmFnZW50cy5jb20vYXBpL3BsYXl0ZXN0L2ZlZWRiYWNrIl0sWyJtZXRob2QiLCJQT1NUIl0sWyJwYXlsb2FkIiwiMDE1YWJkN2Y1Y2M1N2EyZGQ5NGI3NTkwZjA0YWQ4MDg0MjczOTA1ZWUzM2VjNWNlYmVhZTYyMjc2YTk3Zjg2MiJdXSwiY29udGVudCI6IiIsInNpZyI6Ijc0OWE2OWMxNTU1MmYzZDc0NDlkZjI5YzRmZTBhOWJkMWM4YjlhZTVjNmMyYmUyOTc0NDc5NmM2ZWQ2YThiYzc2OTVjMjIwNjA5YjZiNDU1NTM4NDlkMGFkMmRiY2Q0ODcwZWNiNDE5MTM0ZDIyODQzZWU2NWZjMjI2ZDk2YjhlIn0=", 662}, {"Nostr eyJpZCI6IjFkZWMyOTM4OTViOTg5ZmM0N2Q5ZGEyOWZlYzI0OTYyZTg5OWM3Njk1MjNjMGQ2ODI4MzI1NmU3YTViOTAyZjYiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVFBPU1RQT1NUUE9TVFBPU1QiXV0sImNvbnRlbnQiOiIiLCJzaWciOiJlYTBhMTQ3ZWNkMzY3ZmUzZTYyN2ZmMDk5MDA5ZTI2ZDQxNTM4ZWI1ODZkNWI1ZTVjZDIzYzdjNjk5ZGE3ZDc0NDg2MWJiN2ZhNWQ4YjIwYzlkNWFjMGE1OThmNmI2Y2QzYjFjMmMyYmJmOWY2NTg3ODZhMTUzNmU5MzJmNjk1NCJ9", 582}, {"Nostr eyJpZCI6ImQwMDUyMGZjZGJkYzcxZDUwYzg3NTRlNjE3Yjk0M2RlZDkwYmUwZTgxNmRiOTA5YjllOWI1YTQ5ZDViNjNhNzciLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsieCIsIjAiXSxbIngiLCIxIl0sWyJ4IiwiMiJdLFsieCIsIjMiXSxbIngiLCI0Il0sWyJ4IiwiNSJdLFsieCIsIjYiXSxbIngiLCI3Il0sWyJ4IiwiOCJdLFsieCIsIjkiXSxbIngiLCIxMCJdLFsieCIsIjExIl0sWyJ4IiwiMTIiXSxbIngiLCIxMyJdLFsieCIsIjE0Il1dLCJjb250ZW50IjoiIiwic2lnIjoiNDM1NDdmYzRkNmVmYzlkODU0MzQyMTM0ZjY1MjE5NTRlYmIxODFiNmVmMjRlNjJjNmRkOTliMjAxZmM1ZGI2OWNjZjlmMzk4MGZjMmM2NzJhZGNlYWM2NTc4ZDM3ZDk2MjM4YjQyOTk1Nzk0MTVlYzZlYzU4ZDdkZjU1OTQwZDMifQ==", 770}, {"Nostr eyJpZCI6IjM2Y2RmNmI1YjViMzE0YjVmYmY3M2QxYWU5ZDBhYjNhOWQzM2E0MDNhYTIwYjQ0NDI3NmM3YmFiYTQ3YTE5MjAiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayIsImEiLCJiIiwiYyJdXSwiY29udGVudCI6IiIsInNpZyI6IjFkNDlkZmI5NDU4NWFmZjI3ZThhOGU5NzMwYTk3ZTA3ZmNiNTk1ZDY3ZmZiM2QwZTZkMTg4NmI4Y2IwNjA1NDhkNGMzYjJjNDUxODE2NzkwMmE1NzhjY2E5OTBiODYzNzI4ZTI2NzE1OWY1NDhhY2EzNWQ5YTE4NzMzYzJlZjA3In0=", 554}, {"Nostr eyJpZCI6IjE0OWZiODA1YjdlYWExODNkODFiOGQ4MTcxMjYyZTUwODJmYjM3YjFjODIxYzI4ZjBlOTEzZjgyMGZjY2IzMjUiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbIngiLCJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIl1dLCJjb250ZW50IjoiIiwic2lnIjoiNjQ4MWNkOGI2OTY5NzI2OWQ5NGJiZjRiNGNlMWMzZWExZWRlMDEzMTg5ZTBjNjg1MjliMmFiYjczNDViNTdmOWFhODM5NzA5YTA5ZjgwN2ZmMTMxOTZmOWQ0YTNkYjg4YWEyYWY5NTA5NDRhODc1NDRjYzZjYWU0ZTg4MDUxOGYifQ==", 1846}, {"Nostr eyJpZCI6IjJjMDE2OWNmMzY0YTIxNGFmMWU1MzczYzA3ODQyZjBmYWNkM2YxYmZiOGQ0MDBjZjdmNmU3ZmVkYjExMDNlMTciLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiJjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjYyIsInNpZyI6IjQ2YmFkZDJlZmZlMTkxNjIyNWI3YzM1NDg5OWQ0MmNjZGJhNTJmMjNlYWFiM2NhZTQ1NTRmODFiODQ1MTQyMzdmMGQ1NTEyZmJhNGMwNzE1ODEzNDkyMDlhODE4NGY4Yjg5NDIxM2QxMTg3ZDhiMzU4OWZlZGFmNTFjMDM3MDE3In0=", 11590}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiIwMTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZiJ9", 666}, {"Nostr eyJpZCI6IjdkMmE1MmY5ZDQ5ZDUwMzg5Y2IwMzYzNWMxNmEwMThkYzM5OGUwNTQ3OWViNDgxNmQzMjlmZmYyNjViYzI1YWIiLCJwdWJrZXkiOiJmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmIiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6IjAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6IkI3MzFDOTJBMUJENTA5RUVGNzUyQTQ3RDE3MUQ5ODdGRjIxOUE3Qzk0NzQzNEU3NDk5QTRCOEY5QjQwQjg4NkQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJleHRyYSI6MSwiaWQiOiJiNzMxYzkyYTFiZDUwOWVlZjc1MmE0N2QxNzFkOTg3ZmYyMTlhN2M5NDc0MzRlNzQ5OWE0YjhmOWI0MGI4ODZkIiwicHVia2V5IjoiNzliZTY2N2VmOWRjYmJhYzU1YTA2Mjk1Y2U4NzBiMDcwMjliZmNkYjJkY2UyOGQ5NTlmMjgxNWIxNmY4MTc5OCIsImNyZWF0ZWRfYXQiOjE3OTAwMDAwMDAsImtpbmQiOjI3MjM1LCJ0YWdzIjpbWyJ1IiwiaHR0cHM6Ly9vcGVuYWdlbnRzLmNvbS9hcGkvcGxheXRlc3QvZmVlZGJhY2siXSxbIm1ldGhvZCIsIlBPU1QiXSxbInBheWxvYWQiLCIwMTVhYmQ3ZjVjYzU3YTJkZDk0Yjc1OTBmMDRhZDgwODQyNzM5MDVlZTMzZWM1Y2ViZWFlNjIyNzZhOTdmODYyIl1dLCJjb250ZW50IjoiIiwic2lnIjoiNTE2YWM2OWU1ZTAzYzA0YzgzZDlhYzM4YTkyYTgxOTg5Y2Y4ZjlmMDY1MDU5ZjQ0N2RhZGE0MGUwZDYxNDkwMDdmYzQyNTM5NzA2YWEyYzVhMzhmMWJiMTNjYWVjNGNiYWVlMTVlZDAyODU2Mzc5NWM1MGMyYzg5ZTgzZDY1MWIifQ==", 682}, {"Nostr eyJleHRyYSI6IngiLCJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 682}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sInNpZyI6IjUxNmFjNjllNWUwM2MwNGM4M2Q5YWMzOGE5MmE4MTk4OWNmOGY5ZjA2NTA1OWY0NDdkYWRhNDBlMGQ2MTQ5MDA3ZmM0MjUzOTcwNmFhMmM1YTM4ZjFiYjEzY2FlYzRjYmFlZTE1ZWQwMjg1NjM3OTVjNTBjMmM4OWU4M2Q2NTFiIn0=", 650}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9IHg=", 670}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMC4wLCJraW5kIjoyNzIzNSwidGFncyI6W1sidSIsImh0dHBzOi8vb3BlbmFnZW50cy5jb20vYXBpL3BsYXl0ZXN0L2ZlZWRiYWNrIl0sWyJtZXRob2QiLCJQT1NUIl0sWyJwYXlsb2FkIiwiMDE1YWJkN2Y1Y2M1N2EyZGQ5NGI3NTkwZjA0YWQ4MDg0MjczOTA1ZWUzM2VjNWNlYmVhZTYyMjc2YTk3Zjg2MiJdXSwiY29udGVudCI6IiIsInNpZyI6IjUxNmFjNjllNWUwM2MwNGM4M2Q5YWMzOGE5MmE4MTk4OWNmOGY5ZjA2NTA1OWY0NDdkYWRhNDBlMGQ2MTQ5MDA3ZmM0MjUzOTcwNmFhMmM1YTM4ZjFiYjEzY2FlYzRjYmFlZTE1ZWQwMjg1NjM3OTVjNTBjMmM4OWU4M2Q2NTFiIn0=", 670}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6NjU1MzYsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6OTk5OTk5OTk5OTk5OTk5OTk5OTksImtpbmQiOjI3MjM1LCJ0YWdzIjpbWyJ1IiwiaHR0cHM6Ly9vcGVuYWdlbnRzLmNvbS9hcGkvcGxheXRlc3QvZmVlZGJhY2siXSxbIm1ldGhvZCIsIlBPU1QiXSxbInBheWxvYWQiLCIwMTVhYmQ3ZjVjYzU3YTJkZDk0Yjc1OTBmMDRhZDgwODQyNzM5MDVlZTMzZWM1Y2ViZWFlNjIyNzZhOTdmODYyIl1dLCJjb250ZW50IjoiIiwic2lnIjoiNTE2YWM2OWU1ZTAzYzA0YzgzZDlhYzM4YTkyYTgxOTg5Y2Y4ZjlmMDY1MDU5ZjQ0N2RhZGE0MGUwZDYxNDkwMDdmYzQyNTM5NzA2YWEyYzVhMzhmMWJiMTNjYWVjNGNiYWVlMTVlZDAyODU2Mzc5NWM1MGMyYzg5ZTgzZDY1MWIifQ==", 682}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiJhXHUwMDAwYiIsInNpZyI6IjUxNmFjNjllNWUwM2MwNGM4M2Q5YWMzOGE5MmE4MTk4OWNmOGY5ZjA2NTA1OWY0NDdkYWRhNDBlMGQ2MTQ5MDA3ZmM0MjUzOTcwNmFhMmM1YTM4ZjFiYjEzY2FlYzRjYmFlZTE1ZWQwMjg1NjM3OTVjNTBjMmM4OWU4M2Q2NTFiIn0=", 678}, {"Nostr eyJpZCI6IjAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAiLCJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 762}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiJcdWRjMDAiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 674}, {"Bearer x", 8}, {"Nostr ", 6}, {"Nostr ab*c", 10}, {"Nostr W10=", 10}, {"Nostr e30=", 10}, {"Nostr eyAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIH0=", 16390}, {"Nostr eyAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB9", 16390}, {"Nostr ew==", 10}, {"Nostr ezE6Mn0=", 14}, {"Nostr eyJpZCIgMX0=", 18}, {"Nostr eyJra2tra2tra2tra2tra2tra2tra2tra2tra2tra2trIjoxfQ==", 58}, {"Nostr eyJra2tra2tra2tra2tra2tra2tra2tra2tra2tra2trayI6MX0=", 58}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OUJFNjY3RUY5RENCQkFDNTVBMDYyOTVDRTg3MEIwNzAyOUJGQ0RCMkRDRTI4RDk1OUYyODE1QjE2RjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxIn0=", 666}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmRcdTAwMDB4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eCIsInB1YmtleSI6Ijc5YmU2NjdlZjlkY2JiYWM1NWEwNjI5NWNlODcwYjA3MDI5YmZjZGIyZGNlMjhkOTU5ZjI4MTViMTZmODE3OTgiLCJjcmVhdGVkX2F0IjoxNzkwMDAwMDAwLCJraW5kIjoyNzIzNSwidGFncyI6W1sidSIsImh0dHBzOi8vb3BlbmFnZW50cy5jb20vYXBpL3BsYXl0ZXN0L2ZlZWRiYWNrIl0sWyJtZXRob2QiLCJQT1NUIl0sWyJwYXlsb2FkIiwiMDE1YWJkN2Y1Y2M1N2EyZGQ5NGI3NTkwZjA0YWQ4MDg0MjczOTA1ZWUzM2VjNWNlYmVhZTYyMjc2YTk3Zjg2MiJdXSwiY29udGVudCI6IiIsInNpZyI6IjUxNmFjNjllNWUwM2MwNGM4M2Q5YWMzOGE5MmE4MTk4OWNmOGY5ZjA2NTA1OWY0NDdkYWRhNDBlMGQ2MTQ5MDA3ZmM0MjUzOTcwNmFhMmM1YTM4ZjFiYjEzY2FlYzRjYmFlZTE1ZWQwMjg1NjM3OTVjNTBjMmM4OWU4M2Q2NTFiIn0=", 1954}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmRcdTAwMDB4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4IiwicHVia2V5IjoiNzliZTY2N2VmOWRjYmJhYzU1YTA2Mjk1Y2U4NzBiMDcwMjliZmNkYjJkY2UyOGQ5NTlmMjgxNWIxNmY4MTc5OCIsImNyZWF0ZWRfYXQiOjE3OTAwMDAwMDAsImtpbmQiOjI3MjM1LCJ0YWdzIjpbWyJ1IiwiaHR0cHM6Ly9vcGVuYWdlbnRzLmNvbS9hcGkvcGxheXRlc3QvZmVlZGJhY2siXSxbIm1ldGhvZCIsIlBPU1QiXSxbInBheWxvYWQiLCIwMTVhYmQ3ZjVjYzU3YTJkZDk0Yjc1OTBmMDRhZDgwODQyNzM5MDVlZTMzZWM1Y2ViZWFlNjIyNzZhOTdmODYyIl1dLCJjb250ZW50IjoiIiwic2lnIjoiNTE2YWM2OWU1ZTAzYzA0YzgzZDlhYzM4YTkyYTgxOTg5Y2Y4ZjlmMDY1MDU5ZjQ0N2RhZGE0MGUwZDYxNDkwMDdmYzQyNTM5NzA2YWEyYzVhMzhmMWJiMTNjYWVjNGNiYWVlMTVlZDAyODU2Mzc5NWM1MGMyYzg5ZTgzZDY1MWIifQ==", 1954}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MCwidGFncyI6W1sidSIsImh0dHBzOi8vb3BlbmFnZW50cy5jb20vYXBpL3BsYXl0ZXN0L2ZlZWRiYWNrIl0sWyJtZXRob2QiLCJQT1NUIl0sWyJwYXlsb2FkIiwiMDE1YWJkN2Y1Y2M1N2EyZGQ5NGI3NTkwZjA0YWQ4MDg0MjczOTA1ZWUzM2VjNWNlYmVhZTYyMjc2YTk3Zjg2MiJdXSwiY29udGVudCI6IiIsInNpZyI6IjUxNmFjNjllNWUwM2MwNGM4M2Q5YWMzOGE5MmE4MTk4OWNmOGY5ZjA2NTA1OWY0NDdkYWRhNDBlMGQ2MTQ5MDA3ZmM0MjUzOTcwNmFhMmM1YTM4ZjFiYjEzY2FlYzRjYmFlZTE1ZWQwMjg1NjM3OTVjNTBjMmM4OWU4M2Q2NTFiIn0=", 662}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6NjU1MzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6LTEsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 662}, {"Nostr eyJ0YWdzIjoxfQ==", 22}, {"Nostr eyJ0YWdzIjpbXX0=", 22}, {"Nostr eyJ0YWdzIjpbW11dfQ==", 26}, {"Nostr eyJ0YWdzIjpbWyJhIl0sW10sWyJiIiwiYyJdXX0=", 46}, {"Nostr eyJ0YWdzIjpbMV19", 22}, {"Nostr eyJ0YWdzIjpbWyJhIiAiYiJdXX0=", 34}, {"Nostr eyJ0YWdzIjpbWyJhIiwxXV19", 30}, {"Nostr eyJ0YWdzIjpbWyJhIl0gWyJiIl1dfQ==", 38}, {"Nostr eyJjb250ZW50IjoiIiAia2luZCI6MX0=", 38}, {"Nostr e30gIAoJ", 14}, {"Nostr ewkiY29udGVudCIJOgkiIgl9", 30}, {"Nostr eyJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 570}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIifQ==", 486}, {"Nostr eyJpZCI6ImQ5MjA3YzRkZWRmZTQ5ODRlYjU1MjQ1NDNjNjk4NzI0MjAyYWI3N2JmOTI3NzQ2MWM3NzRkNDBlNTc2YjRmM2QiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbIm1ldGhvZCIsIlBPU1QiXSxbInBheWxvYWQiLCIwMTVhYmQ3ZjVjYzU3YTJkZDk0Yjc1OTBmMDRhZDgwODQyNzM5MDVlZTMzZWM1Y2ViZWFlNjIyNzZhOTdmODYyIl1dLCJjb250ZW50IjoiIiwic2lnIjoiYWY1MWE2MTU4NGZhNTdmYjlhYjIzM2MxNmJlYmMzZTExNjMwMjE1NjllY2FhZGYwODc1OWM2ZjQ2ODA1OWE3M2RiYTMwNmJjOTgxN2NiYjczZTM1Y2UxZTBmMDhlNjZkMjY0ZTg4MmFmOTA4YzY5M2EwMThiN2JlOWI5MmQ3YWMifQ==", 598}, {"Nostr eyJpZCI6IjEzNjZiNTZhMTc2YTlkZTRlOGQwYjBhNWY0Y2IwZDdjYzJlMDY3YTU2NGQ0MTNmYTFhMTgxZWUyMmQzOTIyMmIiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI3MDc4ZmE1YWM0Njg1MTJlNmZhOTJiMTVmNDQxYzBlOGM3ZmM1NzliYjI3N2FhYWEwYmYwMTJjNjQ1NTk2N2YzNmZmYTJlZjNmN2JiYTVkOWJkZmQyZjMyNTUxODRmNjIwNDkxM2UwZTgyZTM0YzIxYjY2MTkyZTExMzJjNDJiNCJ9", 642}, {"Nostr eyJpZCI6IjBjYWQ0MmJlNDRjZGNjNzIwMWFlZGNhOWE1NTA0MWFmNzBjZjMzNThiZTBlNTQ0ZGQyNTBiZTczNjZlYWI1NmIiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayIsIngiXSxbIm1ldGhvZCIsIlBPU1QiLCJ5Il0sWyJwYXlsb2FkIiwiMDE1YWJkN2Y1Y2M1N2EyZGQ5NGI3NTkwZjA0YWQ4MDg0MjczOTA1ZWUzM2VjNWNlYmVhZTYyMjc2YTk3Zjg2MiIsInoiXV0sImNvbnRlbnQiOiIiLCJzaWciOiIxMjlmNGQ2ZTIzZGI3OGEwY2Q1MGVkYzcwNjc3NTRhYzRlZjc4Y2E0NDBjMzc5MmQ4ZDUwOTJmOGFkZThkOTlmYmM2Y2FlM2FkNzdjZDgzODM5NTg2ZGU0ODYxM2NiMzI4ZDkyYmZhODdjYzNjZTI1ZTg3OTAyZDgzYjUwZGU4MCJ9", 682}, {"Nostr eyJpZCI6IjUxNDY0YWM4YWI4MzgzMGZhNDI3MjJlZjJkMGY3MTM2MzRlYzg4YTExNDcxZjYyYmJlMTY3ZDcyOTg2NDE2OWEiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiXSxbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIl0sWyJtZXRob2QiLCJQT1NUIl0sWyJwYXlsb2FkIl1dLCJjb250ZW50IjoiIiwic2lnIjoiNDkyMWY2MDY4MzE3MDhiODFhOGYyOGFmZTg3MTJkZWQ0ZmQ5MWYzY2I5YTUyZTYzYmE5MDFmN2YwMjE3NmJjYTBkODkzYzBlOWJkYjgwY2RlNjE4Nzg1NGIyOWVmMDRmMDA1MWE2MmVlNmRhNThjYjgxYzI5ZWY4OTExNmI5ZWYifQ==", 602}, {"Nostr eyJpZCI6ImY0OTRjODJhM2MxODFkNzkyNDQ5NTlkOTMzNzEzZmNjZTNkZjBmYWI4YWYzZTA4MzA1NzUzNDhmYzI2MTQ1ZWQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVFBPU1RQT1NUUE9TWCJdXSwiY29udGVudCI6IiIsInNpZyI6ImVhNzEyMDJjMmE2NjhiNjNkZDJjMTUwZmVjMGVkODUwNWIyYzUzYjAzZTA0OTM1NWUyNWUyOTlmZjU2MWY5Mzc1MGJjMTlhNDYwMWJhOTVmNGNjOTA5Yjg0NmI3OGIxNjZkNmZjOWEzMjFiMTM4OTllNDM0ODNhM2NmZDZkZTZhIn0=", 578}, {"Nostr eyJpZCI6IjFlMjM5MTQ0ZWFhMmZlZmUxMDU5MWQ2OTJhMGM1ZmMzNWM1MzRiZTI4NjJkYThhZDBlN2M1NjliMTFlYTM5OGYiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVFBPU1RQT1NUUE9TIl1dLCJjb250ZW50IjoiIiwic2lnIjoiYzMwZTU4NGRkNWEyYjJhMTZmZjQ4ZGZiZGM3ZTU1NGUxOWU3NzZjZTAxZmJiZTU5ZWYyM2UyZTU0ZmY1ODdmMTYyNWM2NjU5MTdiMDhlMGEwNTkxOTY2YmYxOTAzOTcyYzJjMjE4MmNkYWUyNTY3ZjM5NjA4N2QxZWZhZjA1ZmIifQ==", 578}, {"Nostr eyJpZCI6IjNlZTI0ZjQwNDk5MjNjZjUxZDNlMzlkN2NkYTMyN2IwZDkxMzI1MmE2MWE3NjA0ZTAzZWNlMjVjMzk1YmRiYTEiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjJ4Il1dLCJjb250ZW50IjoiIiwic2lnIjoiYzk3MzNkMGQ5Yjk3NzM1ZmJjYzc1Yzc1YmRkMDdkZjI5ZTc2YmUyZDU1YzdlNWJlNGM0NzE1ODgyZjAyMzAxZWZkNzMwNWE2YzUwMmRkZmQ0ODkxYjVlZGNkMTFjOTI2Njg2YWFmMzQyYmZjMTIyYTkyZGY1NjU1MmI0OTE1YTAifQ==", 670}, {"Nostr eyJpZCI6IjViYjNhZDYxMTMzMmE4OTI0OWQ5NDBlZTcxOTAyYzdlNTBhMjY4YjZiMWE4ZmFiMjk2MWI1OGQyNzkxODY4ODEiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsImEiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI2YzIxNDAyOTczNjVmNTAyNzA4N2Y0MzFhNGYyNGU3MmRmMzc0ZjQ0ZjU4NTRiZWIwMWQxOWI0ZmFmNTkzNWFmNjU3ZDUwMzRkNWM1OTlmODg3OTJlMmYzY2Q0YTI3NDA1NjNlZDg3N2Q3MzEzMGIzMGNjYmM3NjY5MWNiMDEyOSJ9", 582}, {"Nostr eyJpZCI6Ijk3YWU1YmU4NTYxNmY2MzJiNTk3NTQ2YWJkNjM2MGQyZTA5NzYyNDFmOTc3YTUwMjVmZGY0MmFkMWE5NzkzYmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NiJdXSwiY29udGVudCI6IiIsInNpZyI6ImYzMmJlMmMxYjYyYWYzNGZkNDQ1OGQxODYzOGIyMTA4OGIxOTg5NjVmMzYwOWY4MmRmZjFlYjJiY2U5YmU3NzQ4NjZkODI5OTY2YzIxNmZmMGRlN2YwZTg0OGJkZThlNDBhOTkwMmUxMjE3YzE0MTcxNTRmNGVlZGM3MDkwN2Q1In0=", 666}, {"Nostr eyJpZCI6IjQ1ODhlNjE1NDc5MTgyZDhiZmVlZGUzMjdiYjE4YTExYzgyMDFlOTI1YjI3ZTk1NjU5ODBkYWU4ZTQyODM5ZjEiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiWE9TVCJdXSwiY29udGVudCI6IiIsInNpZyI6IjJmNmIxYmQ4MDcxMDZlOTUxM2M3ZTE1NmI0Yjk2OTQyODU2YTk0N2UzMTdiZWJmZjRkNGE4NzY4MTc1ZGE0MDlkYzczZWE5ZjMzYzgyMGYwMGNmYjQ0ZTJmOWZjYjlkOGFhOTdjZTgyNDdlNDg5MDhkYTM2MmU2ZGY1YTdmMTJmIn0=", 562}, {"Nostr eyJpZCI6IjNhYjVhNzcxYWNhOGI5NTgyZWQyNTk5NmQzMDg4MjI0N2VjMmY3NDJlOWExMGFiOWI1YjQ2N2VlZjFlMzdkODIiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TWCJdXSwiY29udGVudCI6IiIsInNpZyI6Ijg1NjA4YjNlMTE5ZWVmZTJmNGVhMWZjNjU2ZWQ5OTQ5YzA3OWZkMWM0ODJhMDQzNzliMzViZjFlYjM3YjVkOGI3ZWRmZTdkZDc3NzMyOTJlYWFkY2M2NGY5YmM5NjMwZGM1ZmVhNmEwNDM4YmY4MjdjNDc1NjhhZTk0YTMyNTZmIn0=", 562}, {"Nostr eyJpZCI6Ijc0ZGY2ODhiYmMzNjM1ODdlMWYwODI5YWE1ZDcxMGM3NDQ5OWU4OTg3MmExMWYzYjJmODFmNDNhZTUxYzUyNmUiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDA2MCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiJkNjgxZWU2NTNkODNlZTI4MGRlY2E5ZThhNTcwMWIzMjY5ZjhmZjU2ZTc3MjQ3NDQ5ZmIyZTk0YzQyZGU0MzFiNTVmNTA1MjZjZDFjMjM5NTU1NDRhZDYyOTQxMjRiMjM1N2ExZjUyMzJjNGVkMWQxOGVlOTlhZWQ3ZmFjYjc5ZiJ9", 666}, {"Nostr eyJpZCI6Ijc1NTZlMTI3YTA2ZGM0ODE5YmExZGEyZGJjNTM5Y2Q4MGJjMDhiOTRiZGM1NDNiY2QxNjIzNTA2YWUxYjE4ODciLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUG9TdCJdXSwiY29udGVudCI6IiIsInNpZyI6ImU0NWQ2Y2Y5YjVlMWZjYzc1NzVlZDNjN2VlMGRhMDI2OThlYjk3ZmZhMzRjYjIzMTFkOTJiM2JjYjM2MWU5NTk1NzZkNzI2NWQxMGY3MzNjMzUwNGIyN2M5YTE1MmMwNzc4NjJlZDZhMjY0OTcxYTI1OTQxNjIwNTg4OTMyNzQ5In0=", 562}, {"Nostr eyJpZCI6ImI3MzFjOTJhMWJkNTA5ZWVmNzUyYTQ3ZDE3MWQ5ODdmZjIxOWE3Yzk0NzQzNGU3NDk5YTRiOGY5YjQwYjg4NmQiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFjayJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjAxNWFiZDdmNWNjNTdhMmRkOTRiNzU5MGYwNGFkODA4NDI3MzkwNWVlMzNlYzVjZWJlYWU2MjI3NmE5N2Y4NjIiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI1MTZhYzY5ZTVlMDNjMDRjODNkOWFjMzhhOTJhODE5ODljZjhmOWYwNjUwNTlmNDQ3ZGFkYTQwZTBkNjE0OTAwN2ZjNDI1Mzk3MDZhYTJjNWEzOGYxYmIxM2NhZWM0Y2JhZWUxNWVkMDI4NTYzNzk1YzUwYzJjODllODNkNjUxYiJ9", 666}, {"Nostr eyJpZCI6ImE1ZGU2MDRiZjYyYWFkOTYxNmUxMTIzZmI0M2NlNDI5MjdhYmZkM2NkZWVlMDY2OTAxZDg1MGU5NGY4N2MxMTkiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9wbGF5dGVzdC9mZWVkYmFja1x1MDAwMGp1bmsiXSxbIm1ldGhvZCIsIlBPU1QiXV0sImNvbnRlbnQiOiIiLCJzaWciOiIwOWQzMTE5NTZlYzEyNzU2MjhlZDdhYzNhZjY4MmMxN2I4ZjlmMDNjOWE3YmRkNWNlZWRmYWFhOTNlYWEyZmQ2MDc1NzBmZjJlN2FiYWE0OGQ5ODFlY2E4NTVkZGQ2MGIzMzBkYmM2ZTZhMWIxZDM2MjQxMzE2NTQwMTA4YTNhOCJ9", 574}, {"Nostr eyJpZCI6ImVmYjYzNmUxNTlhZDEwYjczYzNiNjdhOGI0OWZiYzI2MDYyYjdjN2U0NmMwMzJlYzE4N2VlNDFiZGY2YTJjZjEiLCJwdWJrZXkiOiI3OWJlNjY3ZWY5ZGNiYmFjNTVhMDYyOTVjZTg3MGIwNzAyOWJmY2RiMmRjZTI4ZDk1OWYyODE1YjE2ZjgxNzk4IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInVcdTAwMDB4Iiwibm9wZSJdLFsidSIsImh0dHBzOi8vb3BlbmFnZW50cy5jb20vYXBpL3BsYXl0ZXN0L2ZlZWRiYWNrIl0sWyJtZXRob2QiLCJQT1NUIl1dLCJjb250ZW50IjoiIiwic2lnIjoiNzJkODhhOWUzYjBhNmFlY2E3ZjBmYTBmNWE2MjZkYzRmMmMyNjIwMDU2NjVlOTdkMDNjMzA2OWUzNzcwNGQ4YzVhYWJmZmE3ODIwMjQ1OWZiYTRlNDcyMDExMWZjYjAyNzc5MmUyNmM2ZGU4NDZhOTBmZDAxYTgwMjEzM2UwZTgifQ==", 590}}};
+static const coax_a86_string coax_k24 = {{{"POST", 4}, {"post", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"GET", 3}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"", 0}, {"POST", 4}, {"POST", 4}, {"POSTPOSTPOSTPOS", 15}, {"POSTPOSTPOSTPO", 14}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}, {"pOsT", 4}, {"POST", 4}, {"POST", 4}, {"POST", 4}}};
+static const coax_a86_string coax_k25 = {{{"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback/", 45}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"", 0}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedbac", 43}, {"https://openagents.com/api/playtest/feedback", 44}, {"https://openagents.com/api/playtest/feedback", 44}}};
 
 static coax_t_Nip98 coax_init_t_Nip98(void);
 static coax_t_Nip98 coax_init_t_Nip98(void) {
@@ -654,11 +725,24 @@ _Bool nostr_fast_verify_vartime(coax_v_u8 l_event_id, coax_v_u8 l_public_key, co
 static _Bool coax_p_sv_lengths_vartime(int64_t l_message_count, int64_t l_public_count, int64_t l_signature_count);
 static coax_t_ScLoad coax_p_sv_challenge_vartime(coax_v_u8 l_message, coax_v_u8 l_public_key, coax_v_u8 l_r);
 static coax_t_SvPrepared coax_p_sv_prepare_vartime(coax_v_u8 l_message, coax_v_u8 l_public_key, coax_v_u8 l_signature);
-static coax_t_SvPrepared coax_p_sv_prepare_nostr_vartime(coax_v_u8 l_event_id, coax_v_u8 l_public_key, coax_v_u8 l_signature);
+static coax_t_SvPrepared coax_p_sv_prepare_nostr_vartime(coax_v_u8 l_nostr_id, coax_v_u8 l_public_key, coax_v_u8 l_signature);
 static _Bool coax_p_sv_affine_matches_vartime(coax_t_SecpField l_r, coax_t_SgAffine l_affine);
 static _Bool coax_p_sv_prepared_matches_vartime(coax_t_SvPrepared l_prepared);
 _Bool schnorr_verify_vartime(coax_v_u8 l_message, coax_v_u8 l_public_key, coax_v_u8 l_signature);
-_Bool nostr_verify_vartime(coax_v_u8 l_event_id, coax_v_u8 l_public_key, coax_v_u8 l_signature);
+_Bool nostr_verify_vartime(coax_v_u8 l_nostr_id, coax_v_u8 l_public_key, coax_v_u8 l_signature);
+static coax_t_ScScalar coax_p_glv_unhex(coax_string l_text);
+static int64_t coax_p_glv_nibble(uint8_t l_c);
+static _Bool coax_p_glv_small_half(coax_t_GlvHalf l_h);
+static coax_t_ScScalar coax_p_glv_mul_shift_vartime(coax_t_ScScalar l_k, coax_t_ScScalar l_g);
+static coax_t_GlvSplit coax_p_glv_split_vartime(coax_t_ScScalar l_k);
+static coax_t_GlvHalf coax_p_glv_half_vartime(coax_t_ScScalar l_r);
+static coax_t_SgPoint coax_p_glv_lambda_point(coax_t_SgPoint l_point);
+static coax_a8_t_SgPoint coax_p_glv_lambda_table(coax_a8_t_SgPoint l_table);
+static coax_a8_t_SgPoint coax_p_glv_odd_table_vartime(coax_t_SgPoint l_point);
+static coax_t_SgPoint coax_p_glv_add_digit(coax_t_SgPoint l_result, coax_a8_t_SgPoint l_table, int64_t l_digit, _Bool l_negative);
+static coax_t_GlvCount coax_p_glv_ecmult_counted_vartime(coax_t_ScScalar l_a, coax_t_SgPoint l_point, coax_t_ScScalar l_b);
+coax_t_SgResult ecmult_glv_vartime(coax_t_ScScalar l_a, coax_t_SgPoint l_point, coax_t_ScScalar l_b);
+static coax_t_GlvCount coax_p_glv_strauss_count_vartime(coax_t_ScScalar l_a, coax_t_ScScalar l_b);
 coax_t_SmWnaf sm_wnaf_vartime(coax_t_ScScalar l_input, int64_t l_width);
 static coax_a2_t_SgPoint coax_p_sm_generator_table_vartime(void);
 static coax_a8_t_SgPoint coax_p_sm_odd_table_vartime(coax_t_SgPoint l_point);
@@ -779,6 +863,7 @@ coax_t_Sha256Info sha256_info(coax_v_u8 l_state);
 static uint32_t coax_p_sha256_update_checked(coax_v_u8 l_state, coax_v_u8 l_input, _Bool l_overlap);
 static uint32_t coax_p_sha256_final_checked(coax_v_u8 l_state, coax_v_u8 l_out, _Bool l_overlap);
 static uint32_t coax_p_sha256_hash_checked(coax_v_u8 l_input, coax_v_u8 l_out, _Bool l_overlap);
+static uint32_t coax_p_sha256_tagged_init(coax_v_u8 l_state, coax_string l_tag);
 static uint32_t coax_p_sha256_tagged_checked(coax_string l_tag, coax_v_u8 l_input, coax_v_u8 l_out, _Bool l_overlap);
 static coax_string coax_p_sha256_bip340_name(int64_t l_tag);
 static uint32_t coax_p_sha256_bip340_checked(int64_t l_tag, coax_v_u8 l_input, coax_v_u8 l_out, _Bool l_overlap);
@@ -837,6 +922,9 @@ static coax_t_N98Int coax_p_n98ti(coax_string l_lit);
 static _Bool coax_p_n98te(coax_string l_hex, int64_t l_cap, coax_string l_want);
 static _Bool coax_p_n98thex(coax_string l_lit, int64_t l_n, int64_t l_want);
 static int64_t coax_p_n98tkey(coax_string l_lit);
+static _Bool coax_p_crypto_zeroed__3u32(coax_v_u32 l_data);
+static _Bool coax_p_crypto_zeroed__2u8(coax_v_u8 l_data);
+static _Bool coax_p_crypto_zeroed__3u64(coax_v_u64 l_data);
 
 static coax_t_N98Layout coax_p_n98_layout(void) {
   coax_t_N98Layout l_l = ((coax_t_N98Layout){0});
@@ -2085,12 +2173,12 @@ static coax_t_SvPrepared coax_p_sv_prepare_vartime(coax_v_u8 l_message, coax_v_u
   return ((coax_t_SvPrepared){.s = (l_s).value, .negative_e = sc_negate((l_challenge).value), .point = (l_point).value, .r = (l_r).value, .ready = 1});
 }
 
-static coax_t_SvPrepared coax_p_sv_prepare_nostr_vartime(coax_v_u8 l_event_id, coax_v_u8 l_public_key, coax_v_u8 l_signature) {
-  if ((l_event_id).count != INT64_C(32))
+static coax_t_SvPrepared coax_p_sv_prepare_nostr_vartime(coax_v_u8 l_nostr_id, coax_v_u8 l_public_key, coax_v_u8 l_signature) {
+  if ((l_nostr_id).count != INT64_C(32))
   {
     return ((coax_t_SvPrepared){0});
   }
-  return coax_p_sv_prepare_vartime(l_event_id, l_public_key, l_signature);
+  return coax_p_sv_prepare_vartime(l_nostr_id, l_public_key, l_signature);
 }
 
 static _Bool coax_p_sv_affine_matches_vartime(coax_t_SecpField l_r, coax_t_SgAffine l_affine) {
@@ -2102,7 +2190,7 @@ static _Bool coax_p_sv_prepared_matches_vartime(coax_t_SvPrepared l_prepared) {
   {
     return 0;
   }
-  coax_t_SgResult l_result = ecmult_vartime((l_prepared).s, (l_prepared).point, (l_prepared).negative_e);
+  coax_t_SgResult l_result = ecmult_glv_vartime((l_prepared).s, (l_prepared).point, (l_prepared).negative_e);
   coax_t_SgAffineResult l_affine = sg_to_affine((l_result).value);
   return coax_p_sv_affine_matches_vartime((l_prepared).r, (l_affine).value);
 }
@@ -2111,19 +2199,250 @@ _Bool schnorr_verify_vartime(coax_v_u8 l_message, coax_v_u8 l_public_key, coax_v
   return coax_p_sv_prepared_matches_vartime(coax_p_sv_prepare_vartime(l_message, l_public_key, l_signature));
 }
 
-_Bool nostr_verify_vartime(coax_v_u8 l_event_id, coax_v_u8 l_public_key, coax_v_u8 l_signature) {
-  return coax_p_sv_prepared_matches_vartime(coax_p_sv_prepare_nostr_vartime(l_event_id, l_public_key, l_signature));
+_Bool nostr_verify_vartime(coax_v_u8 l_nostr_id, coax_v_u8 l_public_key, coax_v_u8 l_signature) {
+  return coax_p_sv_prepared_matches_vartime(coax_p_sv_prepare_nostr_vartime(l_nostr_id, l_public_key, l_signature));
+}
+
+static coax_t_ScScalar coax_p_glv_unhex(coax_string l_text) {
+  uint8_t * coax_t89;
+  int64_t coax_t90;
+  int64_t coax_t91;
+  coax_a32_u8 l_bytes = ((coax_a32_u8){0});
+  {
+    int64_t coax_lo88 = INT64_C(0);
+    int64_t coax_hi88 = INT64_C(32);
+    for (int64_t l_i = coax_lo88; l_i < coax_hi88; l_i++)
+    {
+      coax_t89 = &((l_bytes).e[coax_index(l_i, 32, 826)]);
+      *coax_t89 = ((uint8_t)coax_cast_su((int64_t)((coax_t90 = coax_mul_s64(coax_p_glv_nibble(coax_byte(l_text, coax_mul_s64(INT64_C(2), l_i, 826), 826)), INT64_C(16), 826), coax_t91 = coax_p_glv_nibble(coax_byte(l_text, coax_add_s64(coax_mul_s64(INT64_C(2), l_i, 826), INT64_C(1), 826), 826)), coax_add_s64(coax_t90, coax_t91, 826))), UINT64_C(255), 826));
+    }
+  }
+  return (sc_reduce_bytes(coax_mkview_v_u8((l_bytes).e, 32, 0, 32, 827))).value;
+}
+
+static int64_t coax_p_glv_nibble(uint8_t l_c) {
+  return ((l_c >= ((uint8_t)UINT64_C(97))) ? coax_add_s64(((int64_t)coax_cast_us((uint64_t)(coax_sub_u8(l_c, ((uint8_t)UINT64_C(97)), 829)), INT64_C(9223372036854775807), 829)), INT64_C(10), 829) : ((int64_t)coax_cast_us((uint64_t)(coax_sub_u8(l_c, ((uint8_t)UINT64_C(48)), 829)), INT64_C(9223372036854775807), 829)));
+}
+
+static _Bool coax_p_glv_small_half(coax_t_GlvHalf l_h) {
+  return (((((((l_h).value).limbs).e[coax_index(INT64_C(4), 8, 831)] == ((uint32_t)UINT64_C(0))) && ((((l_h).value).limbs).e[coax_index(INT64_C(5), 8, 831)] == ((uint32_t)UINT64_C(0)))) && ((((l_h).value).limbs).e[coax_index(INT64_C(6), 8, 831)] == ((uint32_t)UINT64_C(0)))) && ((((l_h).value).limbs).e[coax_index(INT64_C(7), 8, 831)] == ((uint32_t)UINT64_C(0))));
+}
+
+static coax_t_ScScalar coax_p_glv_mul_shift_vartime(coax_t_ScScalar l_k, coax_t_ScScalar l_g) {
+  uint64_t coax_t94;
+  uint64_t coax_t95;
+  uint64_t coax_t96;
+  uint64_t coax_t97;
+  coax_a16_u32 l_wide = ((coax_a16_u32){0});
+  {
+    int64_t coax_lo92 = INT64_C(0);
+    int64_t coax_hi92 = INT64_C(8);
+    for (int64_t l_i = coax_lo92; l_i < coax_hi92; l_i++)
+    {
+      uint64_t l_carry = UINT64_C(0);
+      {
+        int64_t coax_lo93 = INT64_C(0);
+        int64_t coax_hi93 = INT64_C(8);
+        for (int64_t l_j = coax_lo93; l_j < coax_hi93; l_j++)
+        {
+          uint64_t l_t = coax_add_u64((coax_t94 = (coax_t95 = ((uint64_t)coax_cast_uu((uint64_t)(((l_k).limbs).e[coax_index(l_i, 8, 931)]), UINT64_C(18446744073709551615), 931)), coax_t96 = ((uint64_t)coax_cast_uu((uint64_t)(((l_g).limbs).e[coax_index(l_j, 8, 931)]), UINT64_C(18446744073709551615), 931)), coax_mul_wrap_u64(coax_t95, coax_t96)), coax_t97 = ((uint64_t)coax_cast_uu((uint64_t)((l_wide).e[coax_index(coax_add_s64(l_i, l_j, 931), 16, 931)]), UINT64_C(18446744073709551615), 931)), coax_add_u64(coax_t94, coax_t97, 931)), l_carry, 931);
+          (l_wide).e[coax_index(coax_add_s64(l_i, l_j, 932), 16, 932)] = ((uint32_t)(l_t));
+          l_carry = coax_shr_u64(l_t, (int64_t)(UINT64_C(32)), 932);
+        }
+      }
+      (l_wide).e[coax_index(coax_add_s64(l_i, INT64_C(8), 934), 16, 934)] = ((uint32_t)(l_carry));
+    }
+  }
+  coax_t_ScScalar l_result = ((coax_t_ScScalar){0});
+  uint64_t l_carry = ((uint64_t)coax_cast_uu((uint64_t)(coax_shr_u32((l_wide).e[coax_index(INT64_C(11), 16, 936)], (int64_t)(((uint32_t)UINT64_C(31))), 936)), UINT64_C(18446744073709551615), 936));
+  {
+    int64_t coax_lo98 = INT64_C(0);
+    int64_t coax_hi98 = INT64_C(8);
+    for (int64_t l_i = coax_lo98; l_i < coax_hi98; l_i++)
+    {
+      uint64_t l_word = ((l_i < INT64_C(4)) ? ((uint64_t)coax_cast_uu((uint64_t)((l_wide).e[coax_index(coax_add_s64(INT64_C(12), l_i, 938), 16, 938)]), UINT64_C(18446744073709551615), 938)) : UINT64_C(0));
+      uint64_t l_t = coax_add_u64(l_word, l_carry, 939);
+      ((l_result).limbs).e[coax_index(l_i, 8, 939)] = ((uint32_t)(l_t));
+      l_carry = coax_shr_u64(l_t, (int64_t)(UINT64_C(32)), 939);
+    }
+  }
+  return l_result;
+}
+
+static coax_t_GlvSplit coax_p_glv_split_vartime(coax_t_ScScalar l_k) {
+  coax_t_ScScalar l_key = sc_normalize(l_k);
+  coax_t_ScScalar l_c1 = sc_mul(coax_p_glv_mul_shift_vartime(l_key, coax_k2), coax_k3);
+  coax_t_ScScalar l_c2 = sc_mul(coax_p_glv_mul_shift_vartime(l_key, coax_k4), coax_k5);
+  coax_t_ScScalar l_r2 = sc_add(l_c1, l_c2);
+  coax_t_ScScalar l_r1 = sc_add(l_key, sc_negate(sc_mul(l_r2, coax_k6)));
+  return ((coax_t_GlvSplit){.r1 = l_r1, .r2 = l_r2});
+}
+
+static coax_t_GlvHalf coax_p_glv_half_vartime(coax_t_ScScalar l_r) {
+  uint32_t * coax_t100;
+  coax_a9_u32 l_wide = ((coax_a9_u32){0});
+  uint32_t l_carry = ((uint32_t)0);
+  {
+    int64_t coax_lo99 = INT64_C(0);
+    int64_t coax_hi99 = INT64_C(8);
+    for (int64_t l_i = coax_lo99; l_i < coax_hi99; l_i++)
+    {
+      coax_t100 = &((l_wide).e[coax_index(l_i, 9, 960)]);
+      *coax_t100 = ((uint32_t)(coax_shl_u32(((l_r).limbs).e[coax_index(l_i, 8, 960)], (int64_t)(((uint32_t)UINT64_C(1))), 960) | l_carry));
+      l_carry = coax_shr_u32(((l_r).limbs).e[coax_index(l_i, 8, 960)], (int64_t)(((uint32_t)UINT64_C(31))), 960);
+    }
+  }
+  (l_wide).e[coax_index(INT64_C(8), 9, 961)] = l_carry;
+  if ((coax_p_sc_subtract_n(l_wide)).borrow == UINT64_C(0))
+  {
+    return ((coax_t_GlvHalf){.value = sc_negate(l_r), .negative = 1});
+  }
+  return ((coax_t_GlvHalf){.value = l_r, .negative = 0});
+}
+
+static coax_t_SgPoint coax_p_glv_lambda_point(coax_t_SgPoint l_point) {
+  coax_t_SgPoint l_r = coax_p_sg_normalize(l_point);
+  (l_r).x = sf_normalize(sf_multiply((l_r).x, coax_k7));
+  return coax_p_sg_canonical_infinity(l_r);
+}
+
+static coax_a8_t_SgPoint coax_p_glv_lambda_table(coax_a8_t_SgPoint l_table) {
+  coax_t_SgPoint * coax_t102;
+  coax_a8_t_SgPoint l_r = ((coax_a8_t_SgPoint){0});
+  {
+    int64_t coax_lo101 = INT64_C(0);
+    int64_t coax_hi101 = INT64_C(8);
+    for (int64_t l_i = coax_lo101; l_i < coax_hi101; l_i++)
+    {
+      coax_t102 = &((l_r).e[coax_index(l_i, 8, 977)]);
+      *coax_t102 = coax_p_glv_lambda_point((l_table).e[coax_index(l_i, 8, 977)]);
+    }
+  }
+  return l_r;
+}
+
+static coax_a8_t_SgPoint coax_p_glv_odd_table_vartime(coax_t_SgPoint l_point) {
+  coax_t_SgPoint * coax_t104;
+  coax_a8_t_SgPoint l_table = coax_p_sm_odd_table_vartime(l_point);
+  {
+    int64_t coax_lo103 = INT64_C(0);
+    int64_t coax_hi103 = INT64_C(8);
+    for (int64_t l_i = coax_lo103; l_i < coax_hi103; l_i++)
+    {
+      coax_t104 = &((l_table).e[coax_index(l_i, 8, 983)]);
+      *coax_t104 = coax_p_sg_normalize((l_table).e[coax_index(l_i, 8, 983)]);
+    }
+  }
+  return l_table;
+}
+
+static coax_t_SgPoint coax_p_glv_add_digit(coax_t_SgPoint l_result, coax_a8_t_SgPoint l_table, int64_t l_digit, _Bool l_negative) {
+  int64_t l_d = (l_negative ? coax_neg_s64(l_digit, 1011) : l_digit);
+  coax_t_SgPoint l_selected = (l_table).e[coax_index(coax_div_s64(coax_sub_s64(((l_d < INT64_C(0)) ? coax_neg_s64(l_d, 1012) : l_d), INT64_C(1), 1012), INT64_C(2), 1012), 8, 1012)];
+  if (l_d < INT64_C(0))
+  {
+    (l_selected).y = sf_negate((l_selected).y);
+  }
+  return coax_p_sg_add_valid(l_result, l_selected);
+}
+
+static coax_t_GlvCount coax_p_glv_ecmult_counted_vartime(coax_t_ScScalar l_a, coax_t_SgPoint l_point, coax_t_ScScalar l_b) {
+  coax_a8_t_SgPoint l_p_table = coax_p_glv_odd_table_vartime(l_point);
+  coax_a8_t_SgPoint l_l_table = coax_p_glv_lambda_table(l_p_table);
+  coax_t_GlvSplit l_sa = coax_p_glv_split_vartime(l_a);
+  coax_t_GlvSplit l_sb = coax_p_glv_split_vartime(l_b);
+  coax_t_GlvHalf l_a1 = coax_p_glv_half_vartime((l_sa).r1);
+  coax_t_GlvHalf l_a2 = coax_p_glv_half_vartime((l_sa).r2);
+  coax_t_GlvHalf l_b1 = coax_p_glv_half_vartime((l_sb).r1);
+  coax_t_GlvHalf l_b2 = coax_p_glv_half_vartime((l_sb).r2);
+  coax_t_SmWnaf l_w1 = sm_wnaf_vartime((l_a1).value, INT64_C(5));
+  coax_t_SmWnaf l_w2 = sm_wnaf_vartime((l_a2).value, INT64_C(5));
+  coax_t_SmWnaf l_w3 = sm_wnaf_vartime((l_b1).value, INT64_C(5));
+  coax_t_SmWnaf l_w4 = sm_wnaf_vartime((l_b2).value, INT64_C(5));
+  int64_t l_length = coax_p_sm_joint_length_vartime(l_w1, l_w2);
+  int64_t l_other = coax_p_sm_joint_length_vartime(l_w3, l_w4);
+  if (l_other > l_length)
+  {
+    l_length = l_other;
+  }
+  coax_t_GlvCount l_r = ((coax_t_GlvCount){.value = sg_infinity()});
+  {
+    int64_t coax_lo105 = INT64_C(0);
+    int64_t coax_hi105 = l_length;
+    for (int64_t l_round = coax_lo105; l_round < coax_hi105; l_round++)
+    {
+      int64_t l_bit = coax_sub_s64(coax_sub_s64(l_length, INT64_C(1), 1031), l_round, 1031);
+      if (l_round > INT64_C(0))
+      {
+        (l_r).value = coax_p_sg_double_valid((l_r).value);
+        (l_r).doubles = coax_add_s64((l_r).doubles, INT64_C(1), 1032);
+      }
+      if (((l_w1).digits).e[coax_index(l_bit, 257, 1033)] != INT64_C(0))
+      {
+        (l_r).value = coax_p_glv_add_digit((l_r).value, coax_k8, ((l_w1).digits).e[coax_index(l_bit, 257, 1033)], (l_a1).negative);
+        (l_r).additions = coax_add_s64((l_r).additions, INT64_C(1), 1033);
+      }
+      if (((l_w2).digits).e[coax_index(l_bit, 257, 1034)] != INT64_C(0))
+      {
+        (l_r).value = coax_p_glv_add_digit((l_r).value, coax_k9, ((l_w2).digits).e[coax_index(l_bit, 257, 1034)], (l_a2).negative);
+        (l_r).additions = coax_add_s64((l_r).additions, INT64_C(1), 1034);
+      }
+      if (((l_w3).digits).e[coax_index(l_bit, 257, 1035)] != INT64_C(0))
+      {
+        (l_r).value = coax_p_glv_add_digit((l_r).value, l_p_table, ((l_w3).digits).e[coax_index(l_bit, 257, 1035)], (l_b1).negative);
+        (l_r).additions = coax_add_s64((l_r).additions, INT64_C(1), 1035);
+      }
+      if (((l_w4).digits).e[coax_index(l_bit, 257, 1036)] != INT64_C(0))
+      {
+        (l_r).value = coax_p_glv_add_digit((l_r).value, l_l_table, ((l_w4).digits).e[coax_index(l_bit, 257, 1036)], (l_b2).negative);
+        (l_r).additions = coax_add_s64((l_r).additions, INT64_C(1), 1036);
+      }
+    }
+  }
+  return l_r;
+}
+
+coax_t_SgResult ecmult_glv_vartime(coax_t_ScScalar l_a, coax_t_SgPoint l_point, coax_t_ScScalar l_b) {
+  if (sg_valid_mask(l_point) != UINT64_C(18446744073709551615))
+  {
+    return ((coax_t_SgResult){.value = sg_infinity()});
+  }
+  return ((coax_t_SgResult){.value = (coax_p_glv_ecmult_counted_vartime(l_a, l_point, l_b)).value, .ok = 1});
+}
+
+static coax_t_GlvCount coax_p_glv_strauss_count_vartime(coax_t_ScScalar l_a, coax_t_ScScalar l_b) {
+  coax_t_SmWnaf l_g = sm_wnaf_vartime(l_a, INT64_C(2));
+  coax_t_SmWnaf l_p = sm_wnaf_vartime(l_b, INT64_C(5));
+  coax_t_GlvCount l_r = ((coax_t_GlvCount){.value = sg_infinity()});
+  int64_t l_length = coax_p_sm_joint_length_vartime(l_g, l_p);
+  (l_r).doubles = l_length;
+  {
+    int64_t coax_lo106 = INT64_C(0);
+    int64_t coax_hi106 = l_length;
+    for (int64_t l_bit = coax_lo106; l_bit < coax_hi106; l_bit++)
+    {
+      if (((l_g).digits).e[coax_index(l_bit, 257, 1056)] != INT64_C(0))
+      {
+        (l_r).additions = coax_add_s64((l_r).additions, INT64_C(1), 1056);
+      }
+      if (((l_p).digits).e[coax_index(l_bit, 257, 1057)] != INT64_C(0))
+      {
+        (l_r).additions = coax_add_s64((l_r).additions, INT64_C(1), 1057);
+      }
+    }
+  }
+  return l_r;
 }
 
 coax_t_SmWnaf sm_wnaf_vartime(coax_t_ScScalar l_input, int64_t l_width) {
-  uint32_t * coax_t89;
-  uint32_t coax_t91;
-  uint32_t coax_t92;
-  uint32_t * coax_t93;
-  uint32_t * coax_t95;
-  uint32_t * coax_t97;
-  uint32_t coax_t98;
-  uint32_t coax_t99;
+  uint32_t * coax_t108;
+  uint32_t coax_t110;
+  uint32_t coax_t111;
+  uint32_t * coax_t112;
+  uint32_t * coax_t114;
+  uint32_t * coax_t116;
+  uint32_t coax_t117;
+  uint32_t coax_t118;
   coax_t_SmWnaf l_result = ((coax_t_SmWnaf){0});
   if ((l_width < INT64_C(2)) || (l_width > INT64_C(5)))
   {
@@ -2131,57 +2450,57 @@ coax_t_SmWnaf sm_wnaf_vartime(coax_t_ScScalar l_input, int64_t l_width) {
   }
   coax_a9_u32 l_words = ((coax_a9_u32){0});
   {
-    int64_t coax_lo88 = INT64_C(0);
-    int64_t coax_hi88 = INT64_C(8);
-    for (int64_t l_i = coax_lo88; l_i < coax_hi88; l_i++)
+    int64_t coax_lo107 = INT64_C(0);
+    int64_t coax_hi107 = INT64_C(8);
+    for (int64_t l_i = coax_lo107; l_i < coax_hi107; l_i++)
     {
-      coax_t89 = &((l_words).e[coax_index(l_i, 9, 901)]);
-      *coax_t89 = ((l_input).limbs).e[coax_index(l_i, 8, 901)];
+      coax_t108 = &((l_words).e[coax_index(l_i, 9, 1172)]);
+      *coax_t108 = ((l_input).limbs).e[coax_index(l_i, 8, 1172)];
     }
   }
-  int64_t l_radix = coax_shl_s64(INT64_C(1), (int64_t)(l_width), 902);
-  int64_t l_half = coax_div_s64(l_radix, INT64_C(2), 902);
+  int64_t l_radix = coax_shl_s64(INT64_C(1), (int64_t)(l_width), 1173);
+  int64_t l_half = coax_div_s64(l_radix, INT64_C(2), 1173);
   {
-    int64_t coax_lo90 = INT64_C(0);
-    int64_t coax_hi90 = INT64_C(257);
-    for (int64_t l_bit = coax_lo90; l_bit < coax_hi90; l_bit++)
+    int64_t coax_lo109 = INT64_C(0);
+    int64_t coax_hi109 = INT64_C(257);
+    for (int64_t l_bit = coax_lo109; l_bit < coax_hi109; l_bit++)
     {
       int64_t l_digit = INT64_C(0);
-      if (((uint32_t)((l_words).e[coax_index(INT64_C(0), 9, 905)] & ((uint32_t)UINT64_C(1)))) != ((uint32_t)UINT64_C(0)))
+      if (((uint32_t)((l_words).e[coax_index(INT64_C(0), 9, 1176)] & ((uint32_t)UINT64_C(1)))) != ((uint32_t)UINT64_C(0)))
       {
-        l_digit = ((int64_t)coax_cast_us((uint64_t)((coax_t91 = (l_words).e[coax_index(INT64_C(0), 9, 906)], coax_t92 = ((uint32_t)coax_cast_su((int64_t)(coax_sub_s64(l_radix, INT64_C(1), 906)), UINT64_C(4294967295), 906)), ((uint32_t)(coax_t91 & coax_t92)))), INT64_C(9223372036854775807), 906));
+        l_digit = ((int64_t)coax_cast_us((uint64_t)((coax_t110 = (l_words).e[coax_index(INT64_C(0), 9, 1177)], coax_t111 = ((uint32_t)coax_cast_su((int64_t)(coax_sub_s64(l_radix, INT64_C(1), 1177)), UINT64_C(4294967295), 1177)), ((uint32_t)(coax_t110 & coax_t111)))), INT64_C(9223372036854775807), 1177));
         if (((int64_t)(l_digit & l_half)) != INT64_C(0))
         {
-          l_digit = coax_sub_s64(l_digit, l_radix, 907);
+          l_digit = coax_sub_s64(l_digit, l_radix, 1178);
         }
-        uint64_t l_first = ((uint64_t)coax_cast_su((int64_t)(coax_sub_s64(((int64_t)coax_cast_us((uint64_t)((l_words).e[coax_index(INT64_C(0), 9, 910)]), INT64_C(9223372036854775807), 910)), l_digit, 910)), UINT64_C(18446744073709551615), 910));
-        coax_t93 = &((l_words).e[coax_index(INT64_C(0), 9, 911)]);
-        *coax_t93 = ((uint32_t)coax_cast_uu((uint64_t)(((uint64_t)(l_first & UINT64_C(4294967295)))), UINT64_C(4294967295), 911));
-        uint64_t l_carry = coax_shr_u64(l_first, (int64_t)(UINT64_C(32)), 911);
+        uint64_t l_first = ((uint64_t)coax_cast_su((int64_t)(coax_sub_s64(((int64_t)coax_cast_us((uint64_t)((l_words).e[coax_index(INT64_C(0), 9, 1181)]), INT64_C(9223372036854775807), 1181)), l_digit, 1181)), UINT64_C(18446744073709551615), 1181));
+        coax_t112 = &((l_words).e[coax_index(INT64_C(0), 9, 1182)]);
+        *coax_t112 = ((uint32_t)coax_cast_uu((uint64_t)(((uint64_t)(l_first & UINT64_C(4294967295)))), UINT64_C(4294967295), 1182));
+        uint64_t l_carry = coax_shr_u64(l_first, (int64_t)(UINT64_C(32)), 1182);
         {
-          int64_t coax_lo94 = INT64_C(1);
-          int64_t coax_hi94 = INT64_C(9);
-          for (int64_t l_i = coax_lo94; l_i < coax_hi94; l_i++)
+          int64_t coax_lo113 = INT64_C(1);
+          int64_t coax_hi113 = INT64_C(9);
+          for (int64_t l_i = coax_lo113; l_i < coax_hi113; l_i++)
           {
-            uint64_t l_wide = coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)((l_words).e[coax_index(l_i, 9, 913)]), UINT64_C(18446744073709551615), 913)), l_carry, 913);
-            coax_t95 = &((l_words).e[coax_index(l_i, 9, 914)]);
-            *coax_t95 = ((uint32_t)coax_cast_uu((uint64_t)(((uint64_t)(l_wide & UINT64_C(4294967295)))), UINT64_C(4294967295), 914));
-            l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 914);
+            uint64_t l_wide = coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)((l_words).e[coax_index(l_i, 9, 1184)]), UINT64_C(18446744073709551615), 1184)), l_carry, 1184);
+            coax_t114 = &((l_words).e[coax_index(l_i, 9, 1185)]);
+            *coax_t114 = ((uint32_t)coax_cast_uu((uint64_t)(((uint64_t)(l_wide & UINT64_C(4294967295)))), UINT64_C(4294967295), 1185));
+            l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 1185);
           }
         }
-        (l_result).length = coax_add_s64(l_bit, INT64_C(1), 916);
+        (l_result).length = coax_add_s64(l_bit, INT64_C(1), 1187);
       }
-      ((l_result).digits).e[coax_index(l_bit, 257, 918)] = l_digit;
+      ((l_result).digits).e[coax_index(l_bit, 257, 1189)] = l_digit;
       {
-        int64_t coax_lo96 = INT64_C(0);
-        int64_t coax_hi96 = INT64_C(8);
-        for (int64_t l_i = coax_lo96; l_i < coax_hi96; l_i++)
+        int64_t coax_lo115 = INT64_C(0);
+        int64_t coax_hi115 = INT64_C(8);
+        for (int64_t l_i = coax_lo115; l_i < coax_hi115; l_i++)
         {
-          coax_t97 = &((l_words).e[coax_index(l_i, 9, 919)]);
-          *coax_t97 = (coax_t98 = coax_shr_u32((l_words).e[coax_index(l_i, 9, 919)], (int64_t)(((uint32_t)UINT64_C(1))), 919), coax_t99 = coax_shl_u32((l_words).e[coax_index(coax_add_s64(l_i, INT64_C(1), 919), 9, 919)], (int64_t)(((uint32_t)UINT64_C(31))), 919), ((uint32_t)(coax_t98 | coax_t99)));
+          coax_t116 = &((l_words).e[coax_index(l_i, 9, 1190)]);
+          *coax_t116 = (coax_t117 = coax_shr_u32((l_words).e[coax_index(l_i, 9, 1190)], (int64_t)(((uint32_t)UINT64_C(1))), 1190), coax_t118 = coax_shl_u32((l_words).e[coax_index(coax_add_s64(l_i, INT64_C(1), 1190), 9, 1190)], (int64_t)(((uint32_t)UINT64_C(31))), 1190), ((uint32_t)(coax_t117 | coax_t118)));
         }
       }
-      (l_words).e[coax_index(INT64_C(8), 9, 921)] = ((uint32_t)UINT64_C(0));
+      (l_words).e[coax_index(INT64_C(8), 9, 1192)] = ((uint32_t)UINT64_C(0));
     }
   }
   (l_result).ok = 1;
@@ -2189,48 +2508,48 @@ coax_t_SmWnaf sm_wnaf_vartime(coax_t_ScScalar l_input, int64_t l_width) {
 }
 
 static coax_a2_t_SgPoint coax_p_sm_generator_table_vartime(void) {
-  coax_t_SgPoint * coax_t100;
-  coax_t_SgPoint * coax_t101;
-  coax_t_SecpField * coax_t102;
+  coax_t_SgPoint * coax_t119;
+  coax_t_SgPoint * coax_t120;
+  coax_t_SecpField * coax_t121;
   coax_a2_t_SgPoint l_table = ((coax_a2_t_SgPoint){0});
-  coax_t100 = &((l_table).e[coax_index(INT64_C(0), 2, 929)]);
-  *coax_t100 = sg_generator();
-  coax_t101 = &((l_table).e[coax_index(INT64_C(1), 2, 929)]);
-  *coax_t101 = (l_table).e[coax_index(INT64_C(0), 2, 929)];
-  coax_t102 = &(((l_table).e[coax_index(INT64_C(1), 2, 930)]).y);
-  *coax_t102 = sf_negate(((l_table).e[coax_index(INT64_C(1), 2, 930)]).y);
+  coax_t119 = &((l_table).e[coax_index(INT64_C(0), 2, 1200)]);
+  *coax_t119 = sg_generator();
+  coax_t120 = &((l_table).e[coax_index(INT64_C(1), 2, 1200)]);
+  *coax_t120 = (l_table).e[coax_index(INT64_C(0), 2, 1200)];
+  coax_t121 = &(((l_table).e[coax_index(INT64_C(1), 2, 1201)]).y);
+  *coax_t121 = sf_negate(((l_table).e[coax_index(INT64_C(1), 2, 1201)]).y);
   return l_table;
 }
 
 static coax_a8_t_SgPoint coax_p_sm_odd_table_vartime(coax_t_SgPoint l_point) {
-  coax_t_SgPoint * coax_t104;
+  coax_t_SgPoint * coax_t123;
   coax_a8_t_SgPoint l_table = ((coax_a8_t_SgPoint){0});
-  (l_table).e[coax_index(INT64_C(0), 8, 935)] = l_point;
+  (l_table).e[coax_index(INT64_C(0), 8, 1206)] = l_point;
   coax_t_SgPoint l_twice = coax_p_sg_double_valid(l_point);
   {
-    int64_t coax_lo103 = INT64_C(1);
-    int64_t coax_hi103 = INT64_C(8);
-    for (int64_t l_i = coax_lo103; l_i < coax_hi103; l_i++)
+    int64_t coax_lo122 = INT64_C(1);
+    int64_t coax_hi122 = INT64_C(8);
+    for (int64_t l_i = coax_lo122; l_i < coax_hi122; l_i++)
     {
-      coax_t104 = &((l_table).e[coax_index(l_i, 8, 936)]);
-      *coax_t104 = coax_p_sg_add_valid((l_table).e[coax_index(coax_sub_s64(l_i, INT64_C(1), 936), 8, 936)], l_twice);
+      coax_t123 = &((l_table).e[coax_index(l_i, 8, 1207)]);
+      *coax_t123 = coax_p_sg_add_valid((l_table).e[coax_index(coax_sub_s64(l_i, INT64_C(1), 1207), 8, 1207)], l_twice);
     }
   }
   return l_table;
 }
 
 static int64_t coax_p_sm_joint_length_vartime(coax_t_SmWnaf l_g_digits, coax_t_SmWnaf l_p_digits) {
-  int64_t coax_t106;
-  int64_t coax_t107;
+  int64_t coax_t125;
+  int64_t coax_t126;
   int64_t l_length = INT64_C(0);
   {
-    int64_t coax_lo105 = INT64_C(0);
-    int64_t coax_hi105 = INT64_C(257);
-    for (int64_t l_bit = coax_lo105; l_bit < coax_hi105; l_bit++)
+    int64_t coax_lo124 = INT64_C(0);
+    int64_t coax_hi124 = INT64_C(257);
+    for (int64_t l_bit = coax_lo124; l_bit < coax_hi124; l_bit++)
     {
-      if ((coax_t106 = ((l_g_digits).digits).e[coax_index(l_bit, 257, 942)], coax_t107 = ((l_p_digits).digits).e[coax_index(l_bit, 257, 942)], ((int64_t)(coax_t106 | coax_t107))) != INT64_C(0))
+      if ((coax_t125 = ((l_g_digits).digits).e[coax_index(l_bit, 257, 1213)], coax_t126 = ((l_p_digits).digits).e[coax_index(l_bit, 257, 1213)], ((int64_t)(coax_t125 | coax_t126))) != INT64_C(0))
       {
-        l_length = coax_add_s64(l_bit, INT64_C(1), 942);
+        l_length = coax_add_s64(l_bit, INT64_C(1), 1213);
       }
     }
   }
@@ -2248,23 +2567,23 @@ coax_t_SgResult ecmult_vartime(coax_t_ScScalar l_a, coax_t_SgPoint l_point, coax
   int64_t l_length = coax_p_sm_joint_length_vartime(l_g_digits, l_p_digits);
   coax_t_SgPoint l_result = sg_infinity();
   {
-    int64_t coax_lo108 = INT64_C(0);
-    int64_t coax_hi108 = l_length;
-    for (int64_t l_round = coax_lo108; l_round < coax_hi108; l_round++)
+    int64_t coax_lo127 = INT64_C(0);
+    int64_t coax_hi127 = l_length;
+    for (int64_t l_round = coax_lo127; l_round < coax_hi127; l_round++)
     {
-      int64_t l_bit = coax_sub_s64(coax_sub_s64(l_length, INT64_C(1), 953), l_round, 953);
+      int64_t l_bit = coax_sub_s64(coax_sub_s64(l_length, INT64_C(1), 1224), l_round, 1224);
       l_result = coax_p_sg_double_valid(l_result);
-      int64_t l_gd = ((l_g_digits).digits).e[coax_index(l_bit, 257, 954)];
-      int64_t l_pd = ((l_p_digits).digits).e[coax_index(l_bit, 257, 954)];
+      int64_t l_gd = ((l_g_digits).digits).e[coax_index(l_bit, 257, 1225)];
+      int64_t l_pd = ((l_p_digits).digits).e[coax_index(l_bit, 257, 1225)];
       if (l_gd != INT64_C(0))
       {
         int64_t l_index = ((l_gd == INT64_C(-1)) ? INT64_C(1) : INT64_C(0));
-        l_result = coax_p_sg_add_valid(l_result, (coax_k2).e[coax_index(l_index, 2, 955)]);
+        l_result = coax_p_sg_add_valid(l_result, (coax_k10).e[coax_index(l_index, 2, 1226)]);
       }
       if (l_pd != INT64_C(0))
       {
-        int64_t l_absolute = ((l_pd < INT64_C(1)) ? coax_neg_s64(l_pd, 957) : l_pd);
-        coax_t_SgPoint l_selected = (l_table).e[coax_index(coax_div_s64(coax_sub_s64(l_absolute, INT64_C(1), 957), INT64_C(2), 957), 8, 957)];
+        int64_t l_absolute = ((l_pd < INT64_C(1)) ? coax_neg_s64(l_pd, 1228) : l_pd);
+        coax_t_SgPoint l_selected = (l_table).e[coax_index(coax_div_s64(coax_sub_s64(l_absolute, INT64_C(1), 1228), INT64_C(2), 1228), 8, 1228)];
         if (l_pd < INT64_C(1))
         {
           l_selected = (sg_negate(l_selected)).value;
@@ -2278,27 +2597,27 @@ coax_t_SgResult ecmult_vartime(coax_t_ScScalar l_a, coax_t_SgPoint l_point, coax
 
 static uint64_t coax_p_sg_word_equal(uint64_t l_a, uint64_t l_b) {
   uint64_t l_diff = ((uint64_t)(l_a ^ l_b));
-  l_diff = ((uint64_t)(l_diff | coax_shr_u64(l_diff, (int64_t)(UINT64_C(32)), 1107)));
-  l_diff = ((uint64_t)(l_diff | coax_shr_u64(l_diff, (int64_t)(UINT64_C(16)), 1107)));
-  l_diff = ((uint64_t)(l_diff | coax_shr_u64(l_diff, (int64_t)(UINT64_C(8)), 1107)));
-  l_diff = ((uint64_t)(l_diff | coax_shr_u64(l_diff, (int64_t)(UINT64_C(4)), 1108)));
-  l_diff = ((uint64_t)(l_diff | coax_shr_u64(l_diff, (int64_t)(UINT64_C(2)), 1108)));
-  l_diff = ((uint64_t)(l_diff | coax_shr_u64(l_diff, (int64_t)(UINT64_C(1)), 1108)));
+  l_diff = ((uint64_t)(l_diff | coax_shr_u64(l_diff, (int64_t)(UINT64_C(32)), 1378)));
+  l_diff = ((uint64_t)(l_diff | coax_shr_u64(l_diff, (int64_t)(UINT64_C(16)), 1378)));
+  l_diff = ((uint64_t)(l_diff | coax_shr_u64(l_diff, (int64_t)(UINT64_C(8)), 1378)));
+  l_diff = ((uint64_t)(l_diff | coax_shr_u64(l_diff, (int64_t)(UINT64_C(4)), 1379)));
+  l_diff = ((uint64_t)(l_diff | coax_shr_u64(l_diff, (int64_t)(UINT64_C(2)), 1379)));
+  l_diff = ((uint64_t)(l_diff | coax_shr_u64(l_diff, (int64_t)(UINT64_C(1)), 1379)));
   return cb_mask(((uint64_t)(((uint64_t)(l_diff & UINT64_C(1))) ^ UINT64_C(1))));
 }
 
 static coax_t_SecpField coax_p_sg_field_choose(uint64_t l_mask, coax_t_SecpField l_a, coax_t_SecpField l_b) {
-  uint64_t * coax_t110;
-  uint64_t coax_t111;
-  uint64_t coax_t112;
+  uint64_t * coax_t129;
+  uint64_t coax_t130;
+  uint64_t coax_t131;
   coax_t_SecpField l_r = ((coax_t_SecpField){0});
   {
-    int64_t coax_lo109 = INT64_C(0);
-    int64_t coax_hi109 = INT64_C(10);
-    for (int64_t l_i = coax_lo109; l_i < coax_hi109; l_i++)
+    int64_t coax_lo128 = INT64_C(0);
+    int64_t coax_hi128 = INT64_C(10);
+    for (int64_t l_i = coax_lo128; l_i < coax_hi128; l_i++)
     {
-      coax_t110 = &(((l_r).limb).e[coax_index(l_i, 10, 1112)]);
-      *coax_t110 = (coax_t111 = ((l_a).limb).e[coax_index(l_i, 10, 1112)], coax_t112 = ((l_b).limb).e[coax_index(l_i, 10, 1112)], cb_ct_select64(l_mask, coax_t111, coax_t112));
+      coax_t129 = &(((l_r).limb).e[coax_index(l_i, 10, 1383)]);
+      *coax_t129 = (coax_t130 = ((l_a).limb).e[coax_index(l_i, 10, 1383)], coax_t131 = ((l_b).limb).e[coax_index(l_i, 10, 1383)], cb_ct_select64(l_mask, coax_t130, coax_t131));
     }
   }
   return l_r;
@@ -2326,8 +2645,8 @@ static coax_t_SecpField coax_p_sg_twice(coax_t_SecpField l_a) {
 
 coax_t_SgPoint sg_infinity(void) {
   coax_t_SgPoint l_r = ((coax_t_SgPoint){0});
-  (((l_r).x).limb).e[coax_index(INT64_C(0), 10, 1122)] = UINT64_C(1);
-  (((l_r).y).limb).e[coax_index(INT64_C(0), 10, 1122)] = UINT64_C(1);
+  (((l_r).x).limb).e[coax_index(INT64_C(0), 10, 1393)] = UINT64_C(1);
+  (((l_r).y).limb).e[coax_index(INT64_C(0), 10, 1393)] = UINT64_C(1);
   return l_r;
 }
 
@@ -2339,9 +2658,9 @@ static coax_t_SgAffine coax_p_sg_affine_infinity(void) {
 
 coax_t_SgPoint sg_generator(void) {
   coax_t_SgPoint l_r = ((coax_t_SgPoint){0});
-  ((l_r).x).limb = coax_k3;
-  ((l_r).y).limb = coax_k4;
-  (((l_r).z).limb).e[coax_index(INT64_C(0), 10, 1124)] = UINT64_C(1);
+  ((l_r).x).limb = coax_k11;
+  ((l_r).y).limb = coax_k12;
+  (((l_r).z).limb).e[coax_index(INT64_C(0), 10, 1395)] = UINT64_C(1);
   return l_r;
 }
 
@@ -2354,80 +2673,80 @@ static coax_t_SgPoint coax_p_sg_normalize(coax_t_SgPoint l_a) {
 }
 
 static coax_t_SgPoint coax_p_sg_canonical_infinity(coax_t_SgPoint l_a) {
-  uint64_t coax_t113;
-  coax_t_SgPoint coax_t114;
+  uint64_t coax_t132;
+  coax_t_SgPoint coax_t133;
   coax_t_SecpField l_zero = ((coax_t_SecpField){0});
-  return (coax_t113 = sf_equal_mask((l_a).z, l_zero), coax_t114 = sg_infinity(), coax_p_sg_choose(coax_t113, coax_t114, l_a));
+  return (coax_t132 = sf_equal_mask((l_a).z, l_zero), coax_t133 = sg_infinity(), coax_p_sg_choose(coax_t132, coax_t133, l_a));
 }
 
 static coax_t_SgResult coax_p_sg_finish(uint64_t l_valid, coax_t_SgPoint l_a) {
-  coax_t_SgPoint coax_t115;
-  coax_t_SgPoint coax_t116;
+  coax_t_SgPoint coax_t134;
+  coax_t_SgPoint coax_t135;
   coax_t_SgResult l_r = ((coax_t_SgResult){0});
-  (l_r).value = (coax_t115 = coax_p_sg_canonical_infinity(coax_p_sg_normalize(l_a)), coax_t116 = sg_infinity(), coax_p_sg_choose(l_valid, coax_t115, coax_t116));
+  (l_r).value = (coax_t134 = coax_p_sg_canonical_infinity(coax_p_sg_normalize(l_a)), coax_t135 = sg_infinity(), coax_p_sg_choose(l_valid, coax_t134, coax_t135));
   (l_r).ok = (l_valid == UINT64_C(18446744073709551615));
   return l_r;
 }
 
 uint64_t sg_valid_mask(coax_t_SgPoint l_a) {
-  coax_t_SecpField coax_t117;
-  coax_t_SecpField coax_t118;
-  coax_t_SecpField coax_t119;
-  coax_t_SecpField coax_t120;
-  uint64_t coax_t121;
-  uint64_t coax_t122;
+  coax_t_SecpField coax_t136;
+  coax_t_SecpField coax_t137;
+  coax_t_SecpField coax_t138;
+  coax_t_SecpField coax_t139;
+  uint64_t coax_t140;
+  uint64_t coax_t141;
   coax_t_SecpField l_zero = ((coax_t_SecpField){0});
   coax_t_SecpField l_one = ((coax_t_SecpField){0});
-  ((l_one).limb).e[coax_index(INT64_C(0), 10, 1135)] = UINT64_C(1);
+  ((l_one).limb).e[coax_index(INT64_C(0), 10, 1406)] = UINT64_C(1);
   coax_t_SecpField l_seven = ((coax_t_SecpField){0});
-  ((l_seven).limb).e[coax_index(INT64_C(0), 10, 1135)] = UINT64_C(7);
+  ((l_seven).limb).e[coax_index(INT64_C(0), 10, 1406)] = UINT64_C(7);
   coax_t_SecpField l_zz = sf_square((l_a).z);
   coax_t_SecpField l_z6 = sf_multiply(sf_square(l_zz), l_zz);
-  uint64_t l_curve = (coax_t117 = sf_square((l_a).y), coax_t118 = (coax_t119 = sf_multiply(sf_square((l_a).x), (l_a).x), coax_t120 = sf_multiply(l_seven, l_z6), sf_add(coax_t119, coax_t120)), sf_equal_mask(coax_t117, coax_t118));
+  uint64_t l_curve = (coax_t136 = sf_square((l_a).y), coax_t137 = (coax_t138 = sf_multiply(sf_square((l_a).x), (l_a).x), coax_t139 = sf_multiply(l_seven, l_z6), sf_add(coax_t138, coax_t139)), sf_equal_mask(coax_t136, coax_t137));
   uint64_t l_infinity = sf_equal_mask((l_a).z, l_zero);
-  uint64_t l_canonical = (coax_t121 = sf_equal_mask((l_a).x, l_one), coax_t122 = sf_equal_mask((l_a).y, l_one), ((uint64_t)(coax_t121 & coax_t122)));
+  uint64_t l_canonical = (coax_t140 = sf_equal_mask((l_a).x, l_one), coax_t141 = sf_equal_mask((l_a).y, l_one), ((uint64_t)(coax_t140 & coax_t141)));
   return ((uint64_t)(((uint64_t)(((uint64_t)(UINT64_C(18446744073709551615) ^ l_infinity)) & l_curve)) | ((uint64_t)(l_infinity & l_canonical))));
 }
 
 static uint64_t coax_p_sg_affine_valid_mask(coax_t_SgAffine l_a) {
-  coax_t_SecpField coax_t123;
-  coax_t_SecpField coax_t124;
-  uint64_t coax_t125;
-  uint64_t coax_t126;
-  uint64_t coax_t127;
-  uint64_t coax_t128;
-  uint64_t coax_t129;
-  uint64_t coax_t130;
+  coax_t_SecpField coax_t142;
+  coax_t_SecpField coax_t143;
+  uint64_t coax_t144;
+  uint64_t coax_t145;
+  uint64_t coax_t146;
+  uint64_t coax_t147;
+  uint64_t coax_t148;
+  uint64_t coax_t149;
   coax_t_SecpField l_zero = ((coax_t_SecpField){0});
   coax_t_SecpField l_seven = ((coax_t_SecpField){0});
-  ((l_seven).limb).e[coax_index(INT64_C(0), 10, 1143)] = UINT64_C(7);
-  uint64_t l_curve = (coax_t123 = sf_square((l_a).y), coax_t124 = sf_add(sf_multiply(sf_square((l_a).x), (l_a).x), l_seven), sf_equal_mask(coax_t123, coax_t124));
-  return (coax_t125 = ((uint64_t)(coax_p_sg_word_equal((l_a).infinity, UINT64_C(0)) & l_curve)), coax_t126 = (coax_t127 = (coax_t128 = coax_p_sg_word_equal((l_a).infinity, UINT64_C(18446744073709551615)), coax_t129 = sf_equal_mask((l_a).x, l_zero), ((uint64_t)(coax_t128 & coax_t129))), coax_t130 = sf_equal_mask((l_a).y, l_zero), ((uint64_t)(coax_t127 & coax_t130))), ((uint64_t)(coax_t125 | coax_t126)));
+  ((l_seven).limb).e[coax_index(INT64_C(0), 10, 1414)] = UINT64_C(7);
+  uint64_t l_curve = (coax_t142 = sf_square((l_a).y), coax_t143 = sf_add(sf_multiply(sf_square((l_a).x), (l_a).x), l_seven), sf_equal_mask(coax_t142, coax_t143));
+  return (coax_t144 = ((uint64_t)(coax_p_sg_word_equal((l_a).infinity, UINT64_C(0)) & l_curve)), coax_t145 = (coax_t146 = (coax_t147 = coax_p_sg_word_equal((l_a).infinity, UINT64_C(18446744073709551615)), coax_t148 = sf_equal_mask((l_a).x, l_zero), ((uint64_t)(coax_t147 & coax_t148))), coax_t149 = sf_equal_mask((l_a).y, l_zero), ((uint64_t)(coax_t146 & coax_t149))), ((uint64_t)(coax_t144 | coax_t145)));
 }
 
 static uint64_t coax_p_sg_same_valid(coax_t_SgPoint l_a, coax_t_SgPoint l_b) {
-  coax_t_SecpField coax_t131;
-  coax_t_SecpField coax_t132;
-  coax_t_SecpField coax_t133;
-  coax_t_SecpField coax_t134;
+  coax_t_SecpField coax_t150;
+  coax_t_SecpField coax_t151;
+  coax_t_SecpField coax_t152;
+  coax_t_SecpField coax_t153;
   coax_t_SecpField l_azz = sf_square((l_a).z);
   coax_t_SecpField l_bzz = sf_square((l_b).z);
-  uint64_t l_x = (coax_t131 = sf_multiply((l_a).x, l_bzz), coax_t132 = sf_multiply((l_b).x, l_azz), sf_equal_mask(coax_t131, coax_t132));
-  uint64_t l_y = (coax_t133 = sf_multiply((l_a).y, sf_multiply((l_b).z, l_bzz)), coax_t134 = sf_multiply((l_b).y, sf_multiply((l_a).z, l_azz)), sf_equal_mask(coax_t133, coax_t134));
+  uint64_t l_x = (coax_t150 = sf_multiply((l_a).x, l_bzz), coax_t151 = sf_multiply((l_b).x, l_azz), sf_equal_mask(coax_t150, coax_t151));
+  uint64_t l_y = (coax_t152 = sf_multiply((l_a).y, sf_multiply((l_b).z, l_bzz)), coax_t153 = sf_multiply((l_b).y, sf_multiply((l_a).z, l_azz)), sf_equal_mask(coax_t152, coax_t153));
   return ((uint64_t)(l_x & l_y));
 }
 
 uint64_t sg_equal_mask(coax_t_SgPoint l_a, coax_t_SgPoint l_b) {
-  uint64_t coax_t135;
-  uint64_t coax_t136;
-  uint64_t coax_t137;
-  uint64_t coax_t138;
-  return (coax_t135 = (coax_t136 = sg_valid_mask(l_a), coax_t137 = sg_valid_mask(l_b), ((uint64_t)(coax_t136 & coax_t137))), coax_t138 = coax_p_sg_same_valid(l_a, l_b), ((uint64_t)(coax_t135 & coax_t138)));
+  uint64_t coax_t154;
+  uint64_t coax_t155;
+  uint64_t coax_t156;
+  uint64_t coax_t157;
+  return (coax_t154 = (coax_t155 = sg_valid_mask(l_a), coax_t156 = sg_valid_mask(l_b), ((uint64_t)(coax_t155 & coax_t156))), coax_t157 = coax_p_sg_same_valid(l_a, l_b), ((uint64_t)(coax_t154 & coax_t157)));
 }
 
 static coax_t_SgPoint coax_p_sg_double_valid(coax_t_SgPoint l_input) {
-  coax_t_SecpField coax_t139;
-  coax_t_SecpField coax_t140;
+  coax_t_SecpField coax_t158;
+  coax_t_SecpField coax_t159;
   coax_t_SgPoint l_p = coax_p_sg_normalize(l_input);
   coax_t_SecpField l_aa = sf_square((l_p).x);
   coax_t_SecpField l_bb = sf_square((l_p).y);
@@ -2437,18 +2756,18 @@ static coax_t_SgPoint coax_p_sg_double_valid(coax_t_SgPoint l_input) {
   coax_t_SecpField l_ff = sf_square(l_ee);
   coax_t_SgPoint l_r = ((coax_t_SgPoint){0});
   (l_r).x = sf_subtract(l_ff, coax_p_sg_twice(l_dd));
-  (l_r).y = (coax_t139 = sf_multiply(l_ee, sf_subtract(l_dd, (l_r).x)), coax_t140 = coax_p_sg_twice(coax_p_sg_twice(coax_p_sg_twice(l_cc))), sf_subtract(coax_t139, coax_t140));
+  (l_r).y = (coax_t158 = sf_multiply(l_ee, sf_subtract(l_dd, (l_r).x)), coax_t159 = coax_p_sg_twice(coax_p_sg_twice(coax_p_sg_twice(l_cc))), sf_subtract(coax_t158, coax_t159));
   (l_r).z = coax_p_sg_twice(sf_multiply((l_p).y, (l_p).z));
   return coax_p_sg_canonical_infinity(l_r);
 }
 
 static coax_t_SgPoint coax_p_sg_add_valid(coax_t_SgPoint l_input_a, coax_t_SgPoint l_input_b) {
-  coax_t_SecpField coax_t141;
-  coax_t_SecpField coax_t142;
-  coax_t_SecpField coax_t143;
-  coax_t_SecpField coax_t144;
-  uint64_t coax_t145;
-  uint64_t coax_t146;
+  coax_t_SecpField coax_t160;
+  coax_t_SecpField coax_t161;
+  coax_t_SecpField coax_t162;
+  coax_t_SecpField coax_t163;
+  uint64_t coax_t164;
+  uint64_t coax_t165;
   coax_t_SgPoint l_a = coax_p_sg_normalize(l_input_a);
   coax_t_SgPoint l_b = coax_p_sg_normalize(l_input_b);
   coax_t_SecpField l_z1z1 = sf_square((l_a).z);
@@ -2463,11 +2782,11 @@ static coax_t_SgPoint coax_p_sg_add_valid(coax_t_SgPoint l_input_a, coax_t_SgPoi
   coax_t_SecpField l_rr = coax_p_sg_twice(sf_subtract(l_s2, l_s1));
   coax_t_SecpField l_vv = sf_multiply(l_u1, l_ii);
   coax_t_SgPoint l_r = ((coax_t_SgPoint){0});
-  (l_r).x = (coax_t141 = sf_subtract(sf_square(l_rr), l_jj), coax_t142 = coax_p_sg_twice(l_vv), sf_subtract(coax_t141, coax_t142));
-  (l_r).y = (coax_t143 = sf_multiply(l_rr, sf_subtract(l_vv, (l_r).x)), coax_t144 = coax_p_sg_twice(sf_multiply(l_s1, l_jj)), sf_subtract(coax_t143, coax_t144));
+  (l_r).x = (coax_t160 = sf_subtract(sf_square(l_rr), l_jj), coax_t161 = coax_p_sg_twice(l_vv), sf_subtract(coax_t160, coax_t161));
+  (l_r).y = (coax_t162 = sf_multiply(l_rr, sf_subtract(l_vv, (l_r).x)), coax_t163 = coax_p_sg_twice(sf_multiply(l_s1, l_jj)), sf_subtract(coax_t162, coax_t163));
   (l_r).z = sf_multiply(sf_subtract(sf_subtract(sf_square(sf_add((l_a).z, (l_b).z)), l_z1z1), l_z2z2), l_h);
   coax_t_SecpField l_zero = ((coax_t_SecpField){0});
-  uint64_t l_same = (coax_t145 = sf_equal_mask(l_h, l_zero), coax_t146 = sf_equal_mask(l_s1, l_s2), ((uint64_t)(coax_t145 & coax_t146)));
+  uint64_t l_same = (coax_t164 = sf_equal_mask(l_h, l_zero), coax_t165 = sf_equal_mask(l_s1, l_s2), ((uint64_t)(coax_t164 & coax_t165)));
   l_r = coax_p_sg_choose(l_same, coax_p_sg_double_valid(l_a), l_r);
   l_r = coax_p_sg_choose(sf_equal_mask((l_a).z, l_zero), l_b, l_r);
   l_r = coax_p_sg_choose(sf_equal_mask((l_b).z, l_zero), l_a, l_r);
@@ -2475,17 +2794,17 @@ static coax_t_SgPoint coax_p_sg_add_valid(coax_t_SgPoint l_input_a, coax_t_SgPoi
 }
 
 coax_t_SgResult sg_add(coax_t_SgPoint l_a, coax_t_SgPoint l_b) {
-  uint64_t coax_t147;
-  uint64_t coax_t148;
-  uint64_t coax_t149;
-  coax_t_SgPoint coax_t150;
-  return (coax_t147 = (coax_t148 = sg_valid_mask(l_a), coax_t149 = sg_valid_mask(l_b), ((uint64_t)(coax_t148 & coax_t149))), coax_t150 = coax_p_sg_add_valid(l_a, l_b), coax_p_sg_finish(coax_t147, coax_t150));
+  uint64_t coax_t166;
+  uint64_t coax_t167;
+  uint64_t coax_t168;
+  coax_t_SgPoint coax_t169;
+  return (coax_t166 = (coax_t167 = sg_valid_mask(l_a), coax_t168 = sg_valid_mask(l_b), ((uint64_t)(coax_t167 & coax_t168))), coax_t169 = coax_p_sg_add_valid(l_a, l_b), coax_p_sg_finish(coax_t166, coax_t169));
 }
 
 coax_t_SgResult sg_double(coax_t_SgPoint l_a) {
-  uint64_t coax_t151;
-  coax_t_SgPoint coax_t152;
-  return (coax_t151 = sg_valid_mask(l_a), coax_t152 = coax_p_sg_double_valid(l_a), coax_p_sg_finish(coax_t151, coax_t152));
+  uint64_t coax_t170;
+  coax_t_SgPoint coax_t171;
+  return (coax_t170 = sg_valid_mask(l_a), coax_t171 = coax_p_sg_double_valid(l_a), coax_p_sg_finish(coax_t170, coax_t171));
 }
 
 coax_t_SgResult sg_negate(coax_t_SgPoint l_a) {
@@ -2495,19 +2814,19 @@ coax_t_SgResult sg_negate(coax_t_SgPoint l_a) {
 }
 
 static coax_t_SgPoint coax_p_sg_from_affine_valid(coax_t_SgAffine l_a) {
-  uint64_t coax_t153;
-  coax_t_SgPoint coax_t154;
+  uint64_t coax_t172;
+  coax_t_SgPoint coax_t173;
   coax_t_SgPoint l_r = ((coax_t_SgPoint){0});
   (l_r).x = sf_normalize((l_a).x);
   (l_r).y = sf_normalize((l_a).y);
-  (((l_r).z).limb).e[coax_index(INT64_C(0), 10, 1190)] = UINT64_C(1);
-  return (coax_t153 = coax_p_sg_word_equal((l_a).infinity, UINT64_C(18446744073709551615)), coax_t154 = sg_infinity(), coax_p_sg_choose(coax_t153, coax_t154, l_r));
+  (((l_r).z).limb).e[coax_index(INT64_C(0), 10, 1461)] = UINT64_C(1);
+  return (coax_t172 = coax_p_sg_word_equal((l_a).infinity, UINT64_C(18446744073709551615)), coax_t173 = sg_infinity(), coax_p_sg_choose(coax_t172, coax_t173, l_r));
 }
 
 coax_t_SgResult sg_from_affine(coax_t_SgAffine l_a) {
-  uint64_t coax_t155;
-  coax_t_SgPoint coax_t156;
-  return (coax_t155 = coax_p_sg_affine_valid_mask(l_a), coax_t156 = coax_p_sg_from_affine_valid(l_a), coax_p_sg_finish(coax_t155, coax_t156));
+  uint64_t coax_t174;
+  coax_t_SgPoint coax_t175;
+  return (coax_t174 = coax_p_sg_affine_valid_mask(l_a), coax_t175 = coax_p_sg_from_affine_valid(l_a), coax_p_sg_finish(coax_t174, coax_t175));
 }
 
 static coax_t_SgAffine coax_p_sg_to_affine_valid(coax_t_SgPoint l_a) {
@@ -2522,21 +2841,21 @@ static coax_t_SgAffine coax_p_sg_to_affine_valid(coax_t_SgPoint l_a) {
 }
 
 coax_t_SgAffineResult sg_to_affine(coax_t_SgPoint l_a) {
-  coax_t_SgAffine coax_t157;
-  coax_t_SgAffine coax_t158;
+  coax_t_SgAffine coax_t176;
+  coax_t_SgAffine coax_t177;
   uint64_t l_valid = sg_valid_mask(l_a);
   coax_t_SgAffineResult l_r = ((coax_t_SgAffineResult){0});
-  (l_r).value = (coax_t157 = coax_p_sg_to_affine_valid(l_a), coax_t158 = coax_p_sg_affine_infinity(), coax_p_sg_affine_choose(l_valid, coax_t157, coax_t158));
+  (l_r).value = (coax_t176 = coax_p_sg_to_affine_valid(l_a), coax_t177 = coax_p_sg_affine_infinity(), coax_p_sg_affine_choose(l_valid, coax_t176, coax_t177));
   (l_r).ok = (l_valid == UINT64_C(18446744073709551615));
   return l_r;
 }
 
 coax_t_SgResult sg_mixed_add(coax_t_SgPoint l_a, coax_t_SgAffine l_b) {
-  uint64_t coax_t159;
-  uint64_t coax_t160;
-  uint64_t coax_t161;
-  coax_t_SgPoint coax_t162;
-  return (coax_t159 = (coax_t160 = sg_valid_mask(l_a), coax_t161 = coax_p_sg_affine_valid_mask(l_b), ((uint64_t)(coax_t160 & coax_t161))), coax_t162 = coax_p_sg_add_valid(l_a, coax_p_sg_from_affine_valid(l_b)), coax_p_sg_finish(coax_t159, coax_t162));
+  uint64_t coax_t178;
+  uint64_t coax_t179;
+  uint64_t coax_t180;
+  coax_t_SgPoint coax_t181;
+  return (coax_t178 = (coax_t179 = sg_valid_mask(l_a), coax_t180 = coax_p_sg_affine_valid_mask(l_b), ((uint64_t)(coax_t179 & coax_t180))), coax_t181 = coax_p_sg_add_valid(l_a, coax_p_sg_from_affine_valid(l_b)), coax_p_sg_finish(coax_t178, coax_t181));
 }
 
 coax_t_SgResult sg_pick(coax_v_t_SgPoint l_table, uint64_t l_which) {
@@ -2549,12 +2868,12 @@ coax_t_SgResult sg_pick(coax_v_t_SgPoint l_table, uint64_t l_which) {
   coax_t_SgPoint l_chosen = sg_infinity();
   uint64_t l_seen = ((uint64_t)0);
   {
-    int64_t coax_lo163 = INT64_C(0);
-    int64_t coax_hi163 = (l_table).count;
-    for (int64_t l_i = coax_lo163; l_i < coax_hi163; l_i++)
+    int64_t coax_lo182 = INT64_C(0);
+    int64_t coax_hi182 = (l_table).count;
+    for (int64_t l_i = coax_lo182; l_i < coax_hi182; l_i++)
     {
-      uint64_t l_match = coax_p_sg_word_equal(l_which, ((uint64_t)coax_cast_su((int64_t)(l_i), UINT64_C(18446744073709551615), 1214)));
-      l_chosen = coax_p_sg_choose(l_match, (*coax_elem_v_t_SgPoint(l_table, l_i, 1214)), l_chosen);
+      uint64_t l_match = coax_p_sg_word_equal(l_which, ((uint64_t)coax_cast_su((int64_t)(l_i), UINT64_C(18446744073709551615), 1485)));
+      l_chosen = coax_p_sg_choose(l_match, (*coax_elem_v_t_SgPoint(l_table, l_i, 1485)), l_chosen);
       l_seen = ((uint64_t)(l_seen | l_match));
     }
   }
@@ -2570,155 +2889,155 @@ coax_t_SgResult sg_lift_x_public(coax_v_u8 l_bytes) {
   }
   coax_t_SecpField l_x = (sf_load(l_bytes)).value;
   coax_a32_u8 l_canonical = ((coax_a32_u8){0});
-  if (!(sf_store(l_x, coax_mkview_v_u8((l_canonical).e, 32, 0, 32, 1225)))) coax_trap("assertion failed", 1225);
-  uint64_t l_canonical_mask = cb_ct_equal(l_bytes, coax_mkview_v_u8((l_canonical).e, 32, 0, 32, 1226));
+  if (!(sf_store(l_x, coax_mkview_v_u8((l_canonical).e, 32, 0, 32, 1496)))) coax_trap("assertion failed", 1496);
+  uint64_t l_canonical_mask = cb_ct_equal(l_bytes, coax_mkview_v_u8((l_canonical).e, 32, 0, 32, 1497));
   coax_t_SecpField l_seven = ((coax_t_SecpField){0});
-  ((l_seven).limb).e[coax_index(INT64_C(0), 10, 1226)] = UINT64_C(7);
+  ((l_seven).limb).e[coax_index(INT64_C(0), 10, 1497)] = UINT64_C(7);
   coax_t_SecpField l_rhs = sf_add(sf_multiply(sf_square(l_x), l_x), l_seven);
   coax_t_SecpField l_root = (sf_sqrt(l_rhs)).value;
   uint64_t l_valid = ((uint64_t)(l_canonical_mask & sf_equal_mask(sf_square(l_root), l_rhs)));
   coax_t_SgPoint l_candidate = ((coax_t_SgPoint){0});
   (l_candidate).x = l_x;
   (l_candidate).y = l_root;
-  (((l_candidate).z).limb).e[coax_index(INT64_C(0), 10, 1229)] = UINT64_C(1);
+  (((l_candidate).z).limb).e[coax_index(INT64_C(0), 10, 1500)] = UINT64_C(1);
   return coax_p_sg_finish(l_valid, l_candidate);
 }
 
 coax_t_SgResult sg_decode_public(coax_v_u8 l_bytes) {
-  uint64_t coax_t164;
-  coax_t_SecpField coax_t165;
+  uint64_t coax_t183;
+  coax_t_SecpField coax_t184;
   coax_t_SgResult l_r = ((coax_t_SgResult){0});
   (l_r).value = sg_infinity();
   if ((l_bytes).count == INT64_C(1))
   {
-    (l_r).ok = ((*coax_elem_v_u8(l_bytes, INT64_C(0), 1234)) == ((uint8_t)UINT64_C(0)));
+    (l_r).ok = ((*coax_elem_v_u8(l_bytes, INT64_C(0), 1505)) == ((uint8_t)UINT64_C(0)));
     return l_r;
   }
   if ((l_bytes).count != INT64_C(33))
   {
     return l_r;
   }
-  if (((*coax_elem_v_u8(l_bytes, INT64_C(0), 1236)) != ((uint8_t)UINT64_C(2))) && ((*coax_elem_v_u8(l_bytes, INT64_C(0), 1236)) != ((uint8_t)UINT64_C(3))))
+  if (((*coax_elem_v_u8(l_bytes, INT64_C(0), 1507)) != ((uint8_t)UINT64_C(2))) && ((*coax_elem_v_u8(l_bytes, INT64_C(0), 1507)) != ((uint8_t)UINT64_C(3))))
   {
     return l_r;
   }
-  l_r = sg_lift_x_public(coax_reslice_v_u8(l_bytes, (int64_t)(INT64_C(1)), (int64_t)(INT64_C(33)), 1237));
-  ((l_r).value).y = (coax_t164 = cb_mask(((uint64_t)(((uint64_t)coax_cast_uu((uint64_t)((*coax_elem_v_u8(l_bytes, INT64_C(0), 1238))), UINT64_C(18446744073709551615), 1238)) & UINT64_C(1)))), coax_t165 = sf_negate(((l_r).value).y), coax_p_sg_field_choose(coax_t164, coax_t165, ((l_r).value).y));
+  l_r = sg_lift_x_public(coax_reslice_v_u8(l_bytes, (int64_t)(INT64_C(1)), (int64_t)(INT64_C(33)), 1508));
+  ((l_r).value).y = (coax_t183 = cb_mask(((uint64_t)(((uint64_t)coax_cast_uu((uint64_t)((*coax_elem_v_u8(l_bytes, INT64_C(0), 1509))), UINT64_C(18446744073709551615), 1509)) & UINT64_C(1)))), coax_t184 = sf_negate(((l_r).value).y), coax_p_sg_field_choose(coax_t183, coax_t184, ((l_r).value).y));
   (l_r).value = coax_p_sg_canonical_infinity((l_r).value);
   return l_r;
 }
 
 coax_t_SgEncoded sg_encode_public(coax_t_SgPoint l_a) {
-  uint8_t * coax_t166;
-  uint8_t * coax_t168;
+  uint8_t * coax_t185;
+  uint8_t * coax_t187;
   uint64_t l_valid = sg_valid_mask(l_a);
   coax_t_SgAffine l_affine = coax_p_sg_to_affine_valid(l_a);
   coax_t_SgEncoded l_r = ((coax_t_SgEncoded){0});
-  if (!(sf_store((l_affine).x, coax_mkview_v_u8(((l_r).bytes).e, 33, (int64_t)(INT64_C(1)), (int64_t)(INT64_C(33)), 1244)))) coax_trap("assertion failed", 1244);
+  if (!(sf_store((l_affine).x, coax_mkview_v_u8(((l_r).bytes).e, 33, (int64_t)(INT64_C(1)), (int64_t)(INT64_C(33)), 1515)))) coax_trap("assertion failed", 1515);
   uint64_t l_finite = ((uint64_t)(l_valid & ((uint64_t)(UINT64_C(18446744073709551615) ^ (l_affine).infinity))));
-  coax_t166 = &(((l_r).bytes).e[coax_index(INT64_C(0), 33, 1246)]);
-  *coax_t166 = ((uint8_t)coax_cast_uu((uint64_t)(((uint64_t)(((uint64_t)(UINT64_C(2) | ((uint64_t)((((l_affine).y).limb).e[coax_index(INT64_C(0), 10, 1246)] & UINT64_C(1))))) & l_finite))), UINT64_C(255), 1246));
+  coax_t185 = &(((l_r).bytes).e[coax_index(INT64_C(0), 33, 1517)]);
+  *coax_t185 = ((uint8_t)coax_cast_uu((uint64_t)(((uint64_t)(((uint64_t)(UINT64_C(2) | ((uint64_t)((((l_affine).y).limb).e[coax_index(INT64_C(0), 10, 1517)] & UINT64_C(1))))) & l_finite))), UINT64_C(255), 1517));
   {
-    int64_t coax_lo167 = INT64_C(1);
-    int64_t coax_hi167 = INT64_C(33);
-    for (int64_t l_i = coax_lo167; l_i < coax_hi167; l_i++)
+    int64_t coax_lo186 = INT64_C(1);
+    int64_t coax_hi186 = INT64_C(33);
+    for (int64_t l_i = coax_lo186; l_i < coax_hi186; l_i++)
     {
-      coax_t168 = &(((l_r).bytes).e[coax_index(l_i, 33, 1247)]);
-      *coax_t168 = ((uint8_t)coax_cast_uu((uint64_t)(((uint64_t)(((uint64_t)coax_cast_uu((uint64_t)(((l_r).bytes).e[coax_index(l_i, 33, 1247)]), UINT64_C(18446744073709551615), 1247)) & l_finite))), UINT64_C(255), 1247));
+      coax_t187 = &(((l_r).bytes).e[coax_index(l_i, 33, 1518)]);
+      *coax_t187 = ((uint8_t)coax_cast_uu((uint64_t)(((uint64_t)(((uint64_t)coax_cast_uu((uint64_t)(((l_r).bytes).e[coax_index(l_i, 33, 1518)]), UINT64_C(18446744073709551615), 1518)) & l_finite))), UINT64_C(255), 1518));
     }
   }
-  (l_r).length = ((int64_t)coax_cast_us((uint64_t)(((uint64_t)(cb_ct_select64((l_affine).infinity, UINT64_C(1), UINT64_C(33)) & l_valid))), INT64_C(9223372036854775807), 1248));
+  (l_r).length = ((int64_t)coax_cast_us((uint64_t)(((uint64_t)(cb_ct_select64((l_affine).infinity, UINT64_C(1), UINT64_C(33)) & l_valid))), INT64_C(9223372036854775807), 1519));
   (l_r).ok = (l_valid == UINT64_C(18446744073709551615));
   return l_r;
 }
 
 static uint64_t coax_p_sf_carry(coax_v_u64 l_digits) {
-  if (!((l_digits).count == INT64_C(10))) coax_trap("assertion failed", 1469);
+  if (!((l_digits).count == INT64_C(10))) coax_trap("assertion failed", 1740);
   {
-    int64_t coax_lo169 = INT64_C(0);
-    int64_t coax_hi169 = INT64_C(9);
-    for (int64_t l_i = coax_lo169; l_i < coax_hi169; l_i++)
+    int64_t coax_lo188 = INT64_C(0);
+    int64_t coax_hi188 = INT64_C(9);
+    for (int64_t l_i = coax_lo188; l_i < coax_hi188; l_i++)
     {
-      uint64_t l_carry = coax_shr_u64((*coax_elem_v_u64(l_digits, l_i, 1471)), (int64_t)(UINT64_C(26)), 1471);
-      (*coax_elem_v_u64(l_digits, l_i, 1472)) = ((uint64_t)((*coax_elem_v_u64(l_digits, l_i, 1472)) & UINT64_C(67108863)));
-      (*coax_elem_v_u64(l_digits, coax_add_s64(l_i, INT64_C(1), 1473), 1473)) = coax_add_u64((*coax_elem_v_u64(l_digits, coax_add_s64(l_i, INT64_C(1), 1473), 1473)), l_carry, 1473);
+      uint64_t l_carry = coax_shr_u64((*coax_elem_v_u64(l_digits, l_i, 1742)), (int64_t)(UINT64_C(26)), 1742);
+      (*coax_elem_v_u64(l_digits, l_i, 1743)) = ((uint64_t)((*coax_elem_v_u64(l_digits, l_i, 1743)) & UINT64_C(67108863)));
+      (*coax_elem_v_u64(l_digits, coax_add_s64(l_i, INT64_C(1), 1744), 1744)) = coax_add_u64((*coax_elem_v_u64(l_digits, coax_add_s64(l_i, INT64_C(1), 1744), 1744)), l_carry, 1744);
     }
   }
-  uint64_t l_carry = coax_shr_u64((*coax_elem_v_u64(l_digits, INT64_C(9), 1475)), (int64_t)(UINT64_C(22)), 1475);
-  (*coax_elem_v_u64(l_digits, INT64_C(9), 1476)) = ((uint64_t)((*coax_elem_v_u64(l_digits, INT64_C(9), 1476)) & UINT64_C(4194303)));
+  uint64_t l_carry = coax_shr_u64((*coax_elem_v_u64(l_digits, INT64_C(9), 1746)), (int64_t)(UINT64_C(22)), 1746);
+  (*coax_elem_v_u64(l_digits, INT64_C(9), 1747)) = ((uint64_t)((*coax_elem_v_u64(l_digits, INT64_C(9), 1747)) & UINT64_C(4194303)));
   return l_carry;
 }
 
 coax_t_SecpField sf_normalize(coax_t_SecpField l_value) {
-  uint64_t * coax_t170;
-  uint64_t coax_t171;
-  uint64_t * coax_t172;
-  uint64_t coax_t173;
-  uint64_t * coax_t174;
-  uint64_t coax_t175;
-  uint64_t * coax_t176;
-  uint64_t coax_t177;
-  uint64_t * coax_t179;
-  uint64_t coax_t180;
-  uint64_t coax_t181;
+  uint64_t * coax_t189;
+  uint64_t coax_t190;
+  uint64_t * coax_t191;
+  uint64_t coax_t192;
+  uint64_t * coax_t193;
+  uint64_t coax_t194;
+  uint64_t * coax_t195;
+  uint64_t coax_t196;
+  uint64_t * coax_t198;
+  uint64_t coax_t199;
+  uint64_t coax_t200;
   coax_t_SecpField l_r = l_value;
-  uint64_t l_carry = coax_p_sf_carry(coax_mkview_v_u64(((l_r).limb).e, 10, 0, 10, 1484));
-  coax_t170 = &(((l_r).limb).e[coax_index(INT64_C(0), 10, 1485)]);
-  coax_t171 = coax_mul_u64(l_carry, UINT64_C(977), 1485);
-  (*coax_t170) = coax_add_u64((*coax_t170), coax_t171, 1485);
-  coax_t172 = &(((l_r).limb).e[coax_index(INT64_C(1), 10, 1485)]);
-  coax_t173 = coax_mul_u64(l_carry, UINT64_C(64), 1485);
-  (*coax_t172) = coax_add_u64((*coax_t172), coax_t173, 1485);
-  l_carry = coax_p_sf_carry(coax_mkview_v_u64(((l_r).limb).e, 10, 0, 10, 1486));
-  coax_t174 = &(((l_r).limb).e[coax_index(INT64_C(0), 10, 1487)]);
-  coax_t175 = coax_mul_u64(l_carry, UINT64_C(977), 1487);
-  (*coax_t174) = coax_add_u64((*coax_t174), coax_t175, 1487);
-  coax_t176 = &(((l_r).limb).e[coax_index(INT64_C(1), 10, 1487)]);
-  coax_t177 = coax_mul_u64(l_carry, UINT64_C(64), 1487);
-  (*coax_t176) = coax_add_u64((*coax_t176), coax_t177, 1487);
-  l_carry = coax_p_sf_carry(coax_mkview_v_u64(((l_r).limb).e, 10, 0, 10, 1488));
-  if (!(l_carry == UINT64_C(0))) coax_trap("assertion failed", 1489);
+  uint64_t l_carry = coax_p_sf_carry(coax_mkview_v_u64(((l_r).limb).e, 10, 0, 10, 1755));
+  coax_t189 = &(((l_r).limb).e[coax_index(INT64_C(0), 10, 1756)]);
+  coax_t190 = coax_mul_u64(l_carry, UINT64_C(977), 1756);
+  (*coax_t189) = coax_add_u64((*coax_t189), coax_t190, 1756);
+  coax_t191 = &(((l_r).limb).e[coax_index(INT64_C(1), 10, 1756)]);
+  coax_t192 = coax_mul_u64(l_carry, UINT64_C(64), 1756);
+  (*coax_t191) = coax_add_u64((*coax_t191), coax_t192, 1756);
+  l_carry = coax_p_sf_carry(coax_mkview_v_u64(((l_r).limb).e, 10, 0, 10, 1757));
+  coax_t193 = &(((l_r).limb).e[coax_index(INT64_C(0), 10, 1758)]);
+  coax_t194 = coax_mul_u64(l_carry, UINT64_C(977), 1758);
+  (*coax_t193) = coax_add_u64((*coax_t193), coax_t194, 1758);
+  coax_t195 = &(((l_r).limb).e[coax_index(INT64_C(1), 10, 1758)]);
+  coax_t196 = coax_mul_u64(l_carry, UINT64_C(64), 1758);
+  (*coax_t195) = coax_add_u64((*coax_t195), coax_t196, 1758);
+  l_carry = coax_p_sf_carry(coax_mkview_v_u64(((l_r).limb).e, 10, 0, 10, 1759));
+  if (!(l_carry == UINT64_C(0))) coax_trap("assertion failed", 1760);
   coax_t_SecpField l_candidate = l_r;
-  ((l_candidate).limb).e[coax_index(INT64_C(0), 10, 1493)] = coax_add_u64(((l_candidate).limb).e[coax_index(INT64_C(0), 10, 1493)], UINT64_C(977), 1493);
-  ((l_candidate).limb).e[coax_index(INT64_C(1), 10, 1493)] = coax_add_u64(((l_candidate).limb).e[coax_index(INT64_C(1), 10, 1493)], UINT64_C(64), 1493);
-  uint64_t l_choose = cb_mask(coax_p_sf_carry(coax_mkview_v_u64(((l_candidate).limb).e, 10, 0, 10, 1494)));
+  ((l_candidate).limb).e[coax_index(INT64_C(0), 10, 1764)] = coax_add_u64(((l_candidate).limb).e[coax_index(INT64_C(0), 10, 1764)], UINT64_C(977), 1764);
+  ((l_candidate).limb).e[coax_index(INT64_C(1), 10, 1764)] = coax_add_u64(((l_candidate).limb).e[coax_index(INT64_C(1), 10, 1764)], UINT64_C(64), 1764);
+  uint64_t l_choose = cb_mask(coax_p_sf_carry(coax_mkview_v_u64(((l_candidate).limb).e, 10, 0, 10, 1765)));
   {
-    int64_t coax_lo178 = INT64_C(0);
-    int64_t coax_hi178 = INT64_C(10);
-    for (int64_t l_i = coax_lo178; l_i < coax_hi178; l_i++)
+    int64_t coax_lo197 = INT64_C(0);
+    int64_t coax_hi197 = INT64_C(10);
+    for (int64_t l_i = coax_lo197; l_i < coax_hi197; l_i++)
     {
-      coax_t179 = &(((l_r).limb).e[coax_index(l_i, 10, 1495)]);
-      *coax_t179 = (coax_t180 = ((l_candidate).limb).e[coax_index(l_i, 10, 1495)], coax_t181 = ((l_r).limb).e[coax_index(l_i, 10, 1495)], cb_ct_select64(l_choose, coax_t180, coax_t181));
+      coax_t198 = &(((l_r).limb).e[coax_index(l_i, 10, 1766)]);
+      *coax_t198 = (coax_t199 = ((l_candidate).limb).e[coax_index(l_i, 10, 1766)], coax_t200 = ((l_r).limb).e[coax_index(l_i, 10, 1766)], cb_ct_select64(l_choose, coax_t199, coax_t200));
     }
   }
   return l_r;
 }
 
 coax_t_SecpFieldResult sf_load(coax_v_u8 l_bytes) {
-  uint64_t * coax_t183;
-  uint64_t coax_t184;
-  uint64_t * coax_t185;
-  uint64_t coax_t186;
+  uint64_t * coax_t202;
+  uint64_t coax_t203;
+  uint64_t * coax_t204;
+  uint64_t coax_t205;
   coax_t_SecpFieldResult l_r = ((coax_t_SecpFieldResult){0});
   if ((l_bytes).count != INT64_C(32))
   {
     return l_r;
   }
   {
-    int64_t coax_lo182 = INT64_C(0);
-    int64_t coax_hi182 = INT64_C(32);
-    for (int64_t l_i = coax_lo182; l_i < coax_hi182; l_i++)
+    int64_t coax_lo201 = INT64_C(0);
+    int64_t coax_hi201 = INT64_C(32);
+    for (int64_t l_i = coax_lo201; l_i < coax_hi201; l_i++)
     {
-      int64_t l_at = coax_mul_s64(l_i, INT64_C(8), 1502);
-      int64_t l_digit = coax_div_s64(l_at, INT64_C(26), 1502);
-      int64_t l_shift = coax_mod_s64(l_at, INT64_C(26), 1502);
-      uint64_t l_value = ((uint64_t)coax_cast_uu((uint64_t)((*coax_elem_v_u8(l_bytes, coax_sub_s64(INT64_C(31), l_i, 1503), 1503))), UINT64_C(18446744073709551615), 1503));
-      coax_t183 = &((((l_r).value).limb).e[coax_index(l_digit, 10, 1504)]);
-      coax_t184 = ((uint64_t)(coax_shl_u64(l_value, (int64_t)(l_shift), 1504) & UINT64_C(67108863)));
-      (*coax_t183) = ((uint64_t)((*coax_t183) | coax_t184));
-      coax_t185 = &((((l_r).value).limb).e[coax_index(coax_mod_s64(coax_add_s64(l_digit, INT64_C(1), 1507), INT64_C(10), 1507), 10, 1507)]);
-      coax_t186 = coax_shr_u64(l_value, (int64_t)(coax_sub_s64(INT64_C(26), l_shift, 1507)), 1507);
-      (*coax_t185) = ((uint64_t)((*coax_t185) | coax_t186));
+      int64_t l_at = coax_mul_s64(l_i, INT64_C(8), 1773);
+      int64_t l_digit = coax_div_s64(l_at, INT64_C(26), 1773);
+      int64_t l_shift = coax_mod_s64(l_at, INT64_C(26), 1773);
+      uint64_t l_value = ((uint64_t)coax_cast_uu((uint64_t)((*coax_elem_v_u8(l_bytes, coax_sub_s64(INT64_C(31), l_i, 1774), 1774))), UINT64_C(18446744073709551615), 1774));
+      coax_t202 = &((((l_r).value).limb).e[coax_index(l_digit, 10, 1775)]);
+      coax_t203 = ((uint64_t)(coax_shl_u64(l_value, (int64_t)(l_shift), 1775) & UINT64_C(67108863)));
+      (*coax_t202) = ((uint64_t)((*coax_t202) | coax_t203));
+      coax_t204 = &((((l_r).value).limb).e[coax_index(coax_mod_s64(coax_add_s64(l_digit, INT64_C(1), 1778), INT64_C(10), 1778), 10, 1778)]);
+      coax_t205 = coax_shr_u64(l_value, (int64_t)(coax_sub_s64(INT64_C(26), l_shift, 1778)), 1778);
+      (*coax_t204) = ((uint64_t)((*coax_t204) | coax_t205));
     }
   }
   (l_r).value = sf_normalize((l_r).value);
@@ -2727,26 +3046,26 @@ coax_t_SecpFieldResult sf_load(coax_v_u8 l_bytes) {
 }
 
 _Bool sf_store(coax_t_SecpField l_value, coax_v_u8 l_bytes) {
-  uint64_t coax_t188;
-  int64_t coax_t189;
-  uint8_t * coax_t190;
+  uint64_t coax_t207;
+  int64_t coax_t208;
+  uint8_t * coax_t209;
   if ((l_bytes).count != INT64_C(32))
   {
     return 0;
   }
   coax_t_SecpField l_r = sf_normalize(l_value);
   {
-    int64_t coax_lo187 = INT64_C(0);
-    int64_t coax_hi187 = INT64_C(32);
-    for (int64_t l_i = coax_lo187; l_i < coax_hi187; l_i++)
+    int64_t coax_lo206 = INT64_C(0);
+    int64_t coax_hi206 = INT64_C(32);
+    for (int64_t l_i = coax_lo206; l_i < coax_hi206; l_i++)
     {
-      int64_t l_at = coax_mul_s64(l_i, INT64_C(8), 1515);
-      int64_t l_digit = coax_div_s64(l_at, INT64_C(26), 1515);
-      int64_t l_shift = coax_mod_s64(l_at, INT64_C(26), 1515);
-      uint64_t l_word = coax_shr_u64(((l_r).limb).e[coax_index(l_digit, 10, 1516)], (int64_t)(l_shift), 1516);
-      l_word = ((uint64_t)(l_word | (coax_t188 = ((l_r).limb).e[coax_index(coax_mod_s64(coax_add_s64(l_digit, INT64_C(1), 1518), INT64_C(10), 1518), 10, 1518)], coax_t189 = coax_sub_s64(INT64_C(26), l_shift, 1518), coax_shl_u64(coax_t188, (int64_t)(coax_t189), 1518))));
-      coax_t190 = &((*coax_elem_v_u8(l_bytes, coax_sub_s64(INT64_C(31), l_i, 1519), 1519)));
-      *coax_t190 = ((uint8_t)coax_cast_uu((uint64_t)(((uint64_t)(l_word & UINT64_C(255)))), UINT64_C(255), 1519));
+      int64_t l_at = coax_mul_s64(l_i, INT64_C(8), 1786);
+      int64_t l_digit = coax_div_s64(l_at, INT64_C(26), 1786);
+      int64_t l_shift = coax_mod_s64(l_at, INT64_C(26), 1786);
+      uint64_t l_word = coax_shr_u64(((l_r).limb).e[coax_index(l_digit, 10, 1787)], (int64_t)(l_shift), 1787);
+      l_word = ((uint64_t)(l_word | (coax_t207 = ((l_r).limb).e[coax_index(coax_mod_s64(coax_add_s64(l_digit, INT64_C(1), 1789), INT64_C(10), 1789), 10, 1789)], coax_t208 = coax_sub_s64(INT64_C(26), l_shift, 1789), coax_shl_u64(coax_t207, (int64_t)(coax_t208), 1789))));
+      coax_t209 = &((*coax_elem_v_u8(l_bytes, coax_sub_s64(INT64_C(31), l_i, 1790), 1790)));
+      *coax_t209 = ((uint8_t)coax_cast_uu((uint64_t)(((uint64_t)(l_word & UINT64_C(255)))), UINT64_C(255), 1790));
     }
   }
   return 1;
@@ -2759,52 +3078,52 @@ coax_t_SecpFieldResult sf_load_strict(coax_v_u8 l_bytes) {
     return l_r;
   }
   coax_a32_u8 l_canonical = ((coax_a32_u8){0});
-  _Bool l_stored = sf_store((l_r).value, coax_mkview_v_u8((l_canonical).e, 32, 0, 32, 1527));
-  uint64_t l_same = cb_ct_equal(l_bytes, coax_mkview_v_u8((l_canonical).e, 32, 0, 32, 1528));
+  _Bool l_stored = sf_store((l_r).value, coax_mkview_v_u8((l_canonical).e, 32, 0, 32, 1798));
+  uint64_t l_same = cb_ct_equal(l_bytes, coax_mkview_v_u8((l_canonical).e, 32, 0, 32, 1799));
   (l_r).ok = (l_same == UINT64_C(18446744073709551615));
   {
-    int64_t coax_lo191 = INT64_C(0);
-    int64_t coax_hi191 = INT64_C(10);
-    for (int64_t l_i = coax_lo191; l_i < coax_hi191; l_i++)
+    int64_t coax_lo210 = INT64_C(0);
+    int64_t coax_hi210 = INT64_C(10);
+    for (int64_t l_i = coax_lo210; l_i < coax_hi210; l_i++)
     {
-      (((l_r).value).limb).e[coax_index(l_i, 10, 1530)] = ((uint64_t)((((l_r).value).limb).e[coax_index(l_i, 10, 1530)] & l_same));
+      (((l_r).value).limb).e[coax_index(l_i, 10, 1801)] = ((uint64_t)((((l_r).value).limb).e[coax_index(l_i, 10, 1801)] & l_same));
     }
   }
   return l_r;
 }
 
 coax_t_SecpField sf_add(coax_t_SecpField l_a, coax_t_SecpField l_b) {
-  uint64_t * coax_t193;
-  uint64_t coax_t194;
+  uint64_t * coax_t212;
+  uint64_t coax_t213;
   coax_t_SecpField l_x = sf_normalize(l_a);
   coax_t_SecpField l_y = sf_normalize(l_b);
   {
-    int64_t coax_lo192 = INT64_C(0);
-    int64_t coax_hi192 = INT64_C(10);
-    for (int64_t l_i = coax_lo192; l_i < coax_hi192; l_i++)
+    int64_t coax_lo211 = INT64_C(0);
+    int64_t coax_hi211 = INT64_C(10);
+    for (int64_t l_i = coax_lo211; l_i < coax_hi211; l_i++)
     {
-      coax_t193 = &(((l_x).limb).e[coax_index(l_i, 10, 1535)]);
-      coax_t194 = ((l_y).limb).e[coax_index(l_i, 10, 1535)];
-      (*coax_t193) = coax_add_u64((*coax_t193), coax_t194, 1535);
+      coax_t212 = &(((l_x).limb).e[coax_index(l_i, 10, 1806)]);
+      coax_t213 = ((l_y).limb).e[coax_index(l_i, 10, 1806)];
+      (*coax_t212) = coax_add_u64((*coax_t212), coax_t213, 1806);
     }
   }
   return sf_normalize(l_x);
 }
 
 coax_t_SecpField sf_negate(coax_t_SecpField l_a) {
-  uint64_t * coax_t196;
-  uint64_t coax_t197;
-  uint64_t coax_t198;
-  uint64_t coax_t199;
-  uint64_t coax_t200;
+  uint64_t * coax_t215;
+  uint64_t coax_t216;
+  uint64_t coax_t217;
+  uint64_t coax_t218;
+  uint64_t coax_t219;
   coax_t_SecpField l_x = sf_normalize(l_a);
   {
-    int64_t coax_lo195 = INT64_C(0);
-    int64_t coax_hi195 = INT64_C(10);
-    for (int64_t l_i = coax_lo195; l_i < coax_hi195; l_i++)
+    int64_t coax_lo214 = INT64_C(0);
+    int64_t coax_hi214 = INT64_C(10);
+    for (int64_t l_i = coax_lo214; l_i < coax_hi214; l_i++)
     {
-      coax_t196 = &(((l_x).limb).e[coax_index(l_i, 10, 1542)]);
-      *coax_t196 = (coax_t197 = (coax_t198 = (coax_k5).e[coax_index(l_i, 10, 1542)], coax_t199 = (coax_k5).e[coax_index(l_i, 10, 1542)], coax_add_u64(coax_t198, coax_t199, 1542)), coax_t200 = ((l_x).limb).e[coax_index(l_i, 10, 1542)], coax_sub_u64(coax_t197, coax_t200, 1542));
+      coax_t215 = &(((l_x).limb).e[coax_index(l_i, 10, 1813)]);
+      *coax_t215 = (coax_t216 = (coax_t217 = (coax_k13).e[coax_index(l_i, 10, 1813)], coax_t218 = (coax_k13).e[coax_index(l_i, 10, 1813)], coax_add_u64(coax_t217, coax_t218, 1813)), coax_t219 = ((l_x).limb).e[coax_index(l_i, 10, 1813)], coax_sub_u64(coax_t216, coax_t219, 1813));
     }
   }
   return sf_normalize(l_x);
@@ -2815,36 +3134,36 @@ coax_t_SecpField sf_subtract(coax_t_SecpField l_a, coax_t_SecpField l_b) {
 }
 
 uint64_t sf_equal_mask(coax_t_SecpField l_a, coax_t_SecpField l_b) {
-  uint64_t coax_t202;
-  uint64_t coax_t203;
+  uint64_t coax_t221;
+  uint64_t coax_t222;
   coax_t_SecpField l_x = sf_normalize(l_a);
   coax_t_SecpField l_y = sf_normalize(l_b);
   uint64_t l_diff = ((uint64_t)0);
   {
-    int64_t coax_lo201 = INT64_C(0);
-    int64_t coax_hi201 = INT64_C(10);
-    for (int64_t l_i = coax_lo201; l_i < coax_hi201; l_i++)
+    int64_t coax_lo220 = INT64_C(0);
+    int64_t coax_hi220 = INT64_C(10);
+    for (int64_t l_i = coax_lo220; l_i < coax_hi220; l_i++)
     {
-      l_diff = ((uint64_t)(l_diff | (coax_t202 = ((l_x).limb).e[coax_index(l_i, 10, 1548)], coax_t203 = ((l_y).limb).e[coax_index(l_i, 10, 1548)], ((uint64_t)(coax_t202 ^ coax_t203)))));
+      l_diff = ((uint64_t)(l_diff | (coax_t221 = ((l_x).limb).e[coax_index(l_i, 10, 1819)], coax_t222 = ((l_y).limb).e[coax_index(l_i, 10, 1819)], ((uint64_t)(coax_t221 ^ coax_t222)))));
     }
   }
-  return cb_mask(((uint64_t)(coax_shr_u64(coax_add_u64(l_diff, UINT64_C(67108863), 1550), (int64_t)(UINT64_C(26)), 1550) ^ UINT64_C(1))));
+  return cb_mask(((uint64_t)(coax_shr_u64(coax_add_u64(l_diff, UINT64_C(67108863), 1821), (int64_t)(UINT64_C(26)), 1821) ^ UINT64_C(1))));
 }
 
 _Bool sf_debug_valid(coax_t_SecpFieldDebug l_d) {
-  uint64_t coax_t205;
-  uint64_t coax_t206;
+  uint64_t coax_t224;
+  uint64_t coax_t225;
   if (((l_d).magnitude < INT64_C(1)) || ((l_d).magnitude > INT64_C(8)))
   {
     return 0;
   }
   {
-    int64_t coax_lo204 = INT64_C(0);
-    int64_t coax_hi204 = INT64_C(10);
-    for (int64_t l_i = coax_lo204; l_i < coax_hi204; l_i++)
+    int64_t coax_lo223 = INT64_C(0);
+    int64_t coax_hi223 = INT64_C(10);
+    for (int64_t l_i = coax_lo223; l_i < coax_hi223; l_i++)
     {
       uint64_t l_mask = ((l_i == INT64_C(9)) ? UINT64_C(4194303) : UINT64_C(67108863));
-      if (coax_t205 = (((l_d).value).limb).e[coax_index(l_i, 10, 1556)], coax_t206 = coax_mul_u64(((uint64_t)coax_cast_su((int64_t)((l_d).magnitude), UINT64_C(18446744073709551615), 1556)), l_mask, 1556), (coax_t205 > coax_t206))
+      if (coax_t224 = (((l_d).value).limb).e[coax_index(l_i, 10, 1827)], coax_t225 = coax_mul_u64(((uint64_t)coax_cast_su((int64_t)((l_d).magnitude), UINT64_C(18446744073709551615), 1827)), l_mask, 1827), (coax_t224 > coax_t225))
       {
         return 0;
       }
@@ -2857,15 +3176,15 @@ _Bool sf_debug_valid(coax_t_SecpFieldDebug l_d) {
       return 0;
     }
     coax_t_SecpField l_candidate = (l_d).value;
-    ((l_candidate).limb).e[coax_index(INT64_C(0), 10, 1561)] = coax_add_u64(((l_candidate).limb).e[coax_index(INT64_C(0), 10, 1561)], UINT64_C(977), 1561);
-    ((l_candidate).limb).e[coax_index(INT64_C(1), 10, 1561)] = coax_add_u64(((l_candidate).limb).e[coax_index(INT64_C(1), 10, 1561)], UINT64_C(64), 1561);
-    return (coax_p_sf_carry(coax_mkview_v_u64(((l_candidate).limb).e, 10, 0, 10, 1562)) == UINT64_C(0));
+    ((l_candidate).limb).e[coax_index(INT64_C(0), 10, 1832)] = coax_add_u64(((l_candidate).limb).e[coax_index(INT64_C(0), 10, 1832)], UINT64_C(977), 1832);
+    ((l_candidate).limb).e[coax_index(INT64_C(1), 10, 1832)] = coax_add_u64(((l_candidate).limb).e[coax_index(INT64_C(1), 10, 1832)], UINT64_C(64), 1832);
+    return (coax_p_sf_carry(coax_mkview_v_u64(((l_candidate).limb).e, 10, 0, 10, 1833)) == UINT64_C(0));
   }
   return 1;
 }
 
 coax_t_SecpFieldDebug sf_debug_normalize(coax_t_SecpFieldDebug l_d) {
-  if (!(sf_debug_valid(l_d))) coax_trap("assertion failed", 1567);
+  if (!(sf_debug_valid(l_d))) coax_trap("assertion failed", 1838);
   coax_t_SecpFieldDebug l_r = l_d;
   (l_r).value = sf_normalize((l_d).value);
   (l_r).magnitude = INT64_C(1);
@@ -2887,46 +3206,46 @@ coax_t_SecpFieldDebug sf_debug_negate(coax_t_SecpFieldDebug l_a) {
 }
 
 static _Bool coax_p_sf_bound_product_ok(uint64_t l_a, uint64_t l_b) {
-  return ((l_b == UINT64_C(0)) || (l_a <= coax_div_u64(UINT64_C(18446744073709551615), l_b, 1579)));
+  return ((l_b == UINT64_C(0)) || (l_a <= coax_div_u64(UINT64_C(18446744073709551615), l_b, 1850)));
 }
 
 static _Bool coax_p_sf_bound_sum_ok(uint64_t l_a, uint64_t l_b) {
-  return (l_a <= coax_sub_u64(UINT64_C(18446744073709551615), l_b, 1580));
+  return (l_a <= coax_sub_u64(UINT64_C(18446744073709551615), l_b, 1851));
 }
 
 static uint64_t coax_p_sf_bound_product(uint64_t l_a, uint64_t l_b) {
-  if (!(coax_p_sf_bound_product_ok(l_a, l_b))) coax_trap("assertion failed", 1581);
-  return coax_mul_u64(l_a, l_b, 1581);
+  if (!(coax_p_sf_bound_product_ok(l_a, l_b))) coax_trap("assertion failed", 1852);
+  return coax_mul_u64(l_a, l_b, 1852);
 }
 
 static uint64_t coax_p_sf_bound_sum(uint64_t l_a, uint64_t l_b) {
-  if (!(coax_p_sf_bound_sum_ok(l_a, l_b))) coax_trap("assertion failed", 1582);
-  return coax_add_u64(l_a, l_b, 1582);
+  if (!(coax_p_sf_bound_sum_ok(l_a, l_b))) coax_trap("assertion failed", 1853);
+  return coax_add_u64(l_a, l_b, 1853);
 }
 
 static _Bool coax_p_sf_mul_budget(coax_t_SfMulBounds l_bounds) {
-  uint64_t coax_t208;
-  uint64_t coax_t209;
-  uint64_t coax_t210;
-  uint64_t coax_t211;
-  uint64_t coax_t212;
-  uint64_t coax_t213;
+  uint64_t coax_t227;
+  uint64_t coax_t228;
+  uint64_t coax_t229;
+  uint64_t coax_t230;
+  uint64_t coax_t231;
+  uint64_t coax_t232;
   {
-    int64_t coax_lo207 = INT64_C(0);
-    int64_t coax_hi207 = INT64_C(27);
-    for (int64_t l_i = coax_lo207; l_i < coax_hi207; l_i++)
+    int64_t coax_lo226 = INT64_C(0);
+    int64_t coax_hi226 = INT64_C(27);
+    for (int64_t l_i = coax_lo226; l_i < coax_hi226; l_i++)
     {
-      if (coax_t208 = ((l_bounds).facts).e[coax_index(l_i, 27, 1584)], coax_t209 = (coax_k6).e[coax_index(l_i, 27, 1584)], (coax_t208 > coax_t209))
+      if (coax_t227 = ((l_bounds).facts).e[coax_index(l_i, 27, 1855)], coax_t228 = (coax_k14).e[coax_index(l_i, 27, 1855)], (coax_t227 > coax_t228))
       {
         return 0;
       }
     }
   }
-  if (coax_t210 = ((l_bounds).facts).e[coax_index(INT64_C(24), 27, 1585)], coax_t211 = ((l_bounds).facts).e[coax_index(INT64_C(6), 27, 1585)], (coax_t210 > coax_t211))
+  if (coax_t229 = ((l_bounds).facts).e[coax_index(INT64_C(24), 27, 1856)], coax_t230 = ((l_bounds).facts).e[coax_index(INT64_C(6), 27, 1856)], (coax_t229 > coax_t230))
   {
     return 0;
   }
-  if (coax_t212 = ((l_bounds).facts).e[coax_index(INT64_C(25), 27, 1586)], coax_t213 = ((l_bounds).facts).e[coax_index(INT64_C(11), 27, 1586)], (coax_t212 > coax_t213))
+  if (coax_t231 = ((l_bounds).facts).e[coax_index(INT64_C(25), 27, 1857)], coax_t232 = ((l_bounds).facts).e[coax_index(INT64_C(11), 27, 1857)], (coax_t231 > coax_t232))
   {
     return 0;
   }
@@ -2934,243 +3253,243 @@ static _Bool coax_p_sf_mul_budget(coax_t_SfMulBounds l_bounds) {
 }
 
 static coax_t_SfMulBounds coax_p_sf_mul_bounds(int64_t l_magnitude) {
-  uint64_t * coax_t214;
-  uint64_t coax_t215;
-  uint64_t coax_t216;
-  uint64_t * coax_t217;
-  uint64_t coax_t218;
-  uint64_t coax_t219;
-  uint64_t * coax_t220;
-  uint64_t * coax_t221;
-  uint64_t * coax_t222;
-  uint64_t * coax_t223;
-  uint64_t * coax_t224;
-  uint64_t * coax_t225;
-  uint64_t coax_t226;
-  uint64_t coax_t227;
-  uint64_t * coax_t228;
-  uint64_t coax_t229;
-  uint64_t coax_t230;
-  uint64_t * coax_t231;
-  uint64_t coax_t232;
-  uint64_t coax_t233;
-  uint64_t * coax_t234;
+  uint64_t * coax_t233;
+  uint64_t coax_t234;
   uint64_t coax_t235;
-  uint64_t coax_t236;
-  uint64_t * coax_t237;
+  uint64_t * coax_t236;
+  uint64_t coax_t237;
   uint64_t coax_t238;
-  uint64_t coax_t239;
+  uint64_t * coax_t239;
   uint64_t * coax_t240;
-  uint64_t coax_t241;
-  uint64_t coax_t242;
+  uint64_t * coax_t241;
+  uint64_t * coax_t242;
   uint64_t * coax_t243;
   uint64_t * coax_t244;
   uint64_t coax_t245;
   uint64_t coax_t246;
   uint64_t * coax_t247;
-  uint64_t * coax_t248;
-  uint64_t * coax_t249;
-  uint64_t coax_t250;
+  uint64_t coax_t248;
+  uint64_t coax_t249;
+  uint64_t * coax_t250;
   uint64_t coax_t251;
   uint64_t coax_t252;
-  uint64_t coax_t253;
-  uint64_t * coax_t254;
-  uint64_t * coax_t255;
-  uint64_t coax_t256;
+  uint64_t * coax_t253;
+  uint64_t coax_t254;
+  uint64_t coax_t255;
+  uint64_t * coax_t256;
   uint64_t coax_t257;
-  uint64_t * coax_t258;
+  uint64_t coax_t258;
   uint64_t * coax_t259;
-  uint64_t * coax_t260;
-  uint64_t * coax_t261;
+  uint64_t coax_t260;
+  uint64_t coax_t261;
   uint64_t * coax_t262;
+  uint64_t * coax_t263;
+  uint64_t coax_t264;
+  uint64_t coax_t265;
+  uint64_t * coax_t266;
+  uint64_t * coax_t267;
+  uint64_t * coax_t268;
+  uint64_t coax_t269;
+  uint64_t coax_t270;
+  uint64_t coax_t271;
+  uint64_t coax_t272;
+  uint64_t * coax_t273;
+  uint64_t * coax_t274;
+  uint64_t coax_t275;
+  uint64_t coax_t276;
+  uint64_t * coax_t277;
+  uint64_t * coax_t278;
+  uint64_t * coax_t279;
+  uint64_t * coax_t280;
+  uint64_t * coax_t281;
   coax_t_SfMulBounds l_r = ((coax_t_SfMulBounds){0});
   if ((l_magnitude < INT64_C(1)) || (l_magnitude > INT64_C(8)))
   {
     return l_r;
   }
-  uint64_t l_m = ((uint64_t)coax_cast_su((int64_t)(l_magnitude), UINT64_C(18446744073709551615), 1592));
-  coax_t214 = &(((l_r).facts).e[coax_index(INT64_C(0), 27, 1594)]);
-  *coax_t214 = (coax_t215 = coax_p_sf_bound_product(l_m, UINT64_C(67108863)), coax_t216 = coax_sub_u64(l_m, UINT64_C(1), 1594), coax_p_sf_bound_sum(coax_t215, coax_t216));
-  coax_t217 = &(((l_r).facts).e[coax_index(INT64_C(1), 27, 1595)]);
-  *coax_t217 = (coax_t218 = coax_p_sf_bound_product(l_m, UINT64_C(4194303)), coax_t219 = coax_sub_u64(l_m, UINT64_C(1), 1595), coax_p_sf_bound_sum(coax_t218, coax_t219));
-  coax_t220 = &(((l_r).facts).e[coax_index(INT64_C(2), 27, 1596)]);
-  *coax_t220 = coax_p_sf_bound_sum(UINT64_C(67108863), coax_p_sf_bound_product(coax_sub_u64(l_m, UINT64_C(1), 1596), UINT64_C(977)));
-  coax_t221 = &(((l_r).facts).e[coax_index(INT64_C(3), 27, 1597)]);
-  *coax_t221 = coax_p_sf_bound_sum(UINT64_C(67108863), coax_p_sf_bound_product(coax_sub_u64(l_m, UINT64_C(1), 1597), UINT64_C(64)));
-  coax_t222 = &(((l_r).facts).e[coax_index(INT64_C(4), 27, 1599)]);
-  *coax_t222 = coax_p_sf_bound_product(UINT64_C(67108863), UINT64_C(67108863));
-  coax_t223 = &(((l_r).facts).e[coax_index(INT64_C(5), 27, 1600)]);
-  *coax_t223 = coax_p_sf_bound_product(((l_r).facts).e[coax_index(INT64_C(4), 27, 1600)], UINT64_C(10));
-  coax_t224 = &(((l_r).facts).e[coax_index(INT64_C(6), 27, 1601)]);
-  *coax_t224 = coax_p_sf_bound_product(coax_add_u64(UINT64_C(67108863), UINT64_C(1), 1601), UINT64_C(10));
-  coax_t225 = &(((l_r).facts).e[coax_index(INT64_C(7), 27, 1602)]);
-  *coax_t225 = (coax_t226 = ((l_r).facts).e[coax_index(INT64_C(5), 27, 1602)], coax_t227 = ((l_r).facts).e[coax_index(INT64_C(6), 27, 1602)], coax_p_sf_bound_sum(coax_t226, coax_t227));
-  coax_t228 = &(((l_r).facts).e[coax_index(INT64_C(8), 27, 1603)]);
-  *coax_t228 = (coax_t229 = coax_p_sf_bound_product(UINT64_C(4194303), UINT64_C(4194303)), coax_t230 = ((l_r).facts).e[coax_index(INT64_C(6), 27, 1603)], coax_p_sf_bound_sum(coax_t229, coax_t230));
-  coax_t231 = &(((l_r).facts).e[coax_index(INT64_C(9), 27, 1605)]);
-  *coax_t231 = (coax_t232 = coax_shr_u64(UINT64_C(67108863), (int64_t)(UINT64_C(22)), 1605), coax_t233 = coax_shl_u64(coax_shr_u64(((l_r).facts).e[coax_index(INT64_C(8), 27, 1605)], (int64_t)(UINT64_C(26)), 1605), (int64_t)(UINT64_C(4)), 1605), coax_p_sf_bound_sum(coax_t232, coax_t233));
-  coax_t234 = &(((l_r).facts).e[coax_index(INT64_C(10), 27, 1607)]);
-  *coax_t234 = coax_p_sf_bound_sum(UINT64_C(67108863), (coax_t235 = coax_p_sf_bound_product(UINT64_C(67108863), UINT64_C(977)), coax_t236 = coax_p_sf_bound_product(UINT64_C(67108863), UINT64_C(64)), coax_p_sf_bound_sum(coax_t235, coax_t236)));
-  ((l_r).facts).e[coax_index(INT64_C(11), 27, 1608)] = UINT64_C(2048);
-  coax_t237 = &(((l_r).facts).e[coax_index(INT64_C(12), 27, 1609)]);
-  *coax_t237 = (coax_t238 = ((l_r).facts).e[coax_index(INT64_C(10), 27, 1609)], coax_t239 = ((l_r).facts).e[coax_index(INT64_C(11), 27, 1609)], coax_p_sf_bound_sum(coax_t238, coax_t239));
-  coax_t240 = &(((l_r).facts).e[coax_index(INT64_C(26), 27, 1610)]);
-  *coax_t240 = (coax_t241 = coax_p_sf_bound_product(((l_r).facts).e[coax_index(INT64_C(9), 27, 1610)], UINT64_C(64)), coax_t242 = ((l_r).facts).e[coax_index(INT64_C(11), 27, 1610)], coax_p_sf_bound_sum(coax_t241, coax_t242));
-  coax_t243 = &(((l_r).facts).e[coax_index(INT64_C(13), 27, 1611)]);
-  *coax_t243 = coax_shr_u64(((l_r).facts).e[coax_index(INT64_C(26), 27, 1611)], (int64_t)(UINT64_C(26)), 1611);
-  coax_t244 = &(((l_r).facts).e[coax_index(INT64_C(14), 27, 1612)]);
-  *coax_t244 = (coax_t245 = coax_shr_u64(UINT64_C(67108863), (int64_t)(UINT64_C(22)), 1612), coax_t246 = coax_shl_u64(((l_r).facts).e[coax_index(INT64_C(13), 27, 1612)], (int64_t)(UINT64_C(4)), 1612), coax_p_sf_bound_sum(coax_t245, coax_t246));
-  coax_t247 = &(((l_r).facts).e[coax_index(INT64_C(15), 27, 1613)]);
-  *coax_t247 = coax_p_sf_bound_sum(UINT64_C(67108863), coax_p_sf_bound_product(UINT64_C(67108863), UINT64_C(977)));
-  coax_t248 = &(((l_r).facts).e[coax_index(INT64_C(16), 27, 1614)]);
-  *coax_t248 = coax_shr_u64(((l_r).facts).e[coax_index(INT64_C(15), 27, 1614)], (int64_t)(UINT64_C(26)), 1614);
-  coax_t249 = &(((l_r).facts).e[coax_index(INT64_C(17), 27, 1615)]);
-  *coax_t249 = (coax_t250 = coax_p_sf_bound_sum(UINT64_C(67108863), (coax_t251 = coax_p_sf_bound_product(((l_r).facts).e[coax_index(INT64_C(14), 27, 1615)], UINT64_C(977)), coax_t252 = coax_p_sf_bound_product(UINT64_C(67108863), UINT64_C(64)), coax_p_sf_bound_sum(coax_t251, coax_t252))), coax_t253 = ((l_r).facts).e[coax_index(INT64_C(16), 27, 1615)], coax_p_sf_bound_sum(coax_t250, coax_t253));
-  coax_t254 = &(((l_r).facts).e[coax_index(INT64_C(18), 27, 1616)]);
-  *coax_t254 = coax_shr_u64(((l_r).facts).e[coax_index(INT64_C(17), 27, 1616)], (int64_t)(UINT64_C(26)), 1616);
-  coax_t255 = &(((l_r).facts).e[coax_index(INT64_C(19), 27, 1617)]);
-  *coax_t255 = coax_p_sf_bound_sum(UINT64_C(67108863), (coax_t256 = coax_p_sf_bound_product(((l_r).facts).e[coax_index(INT64_C(14), 27, 1617)], UINT64_C(64)), coax_t257 = ((l_r).facts).e[coax_index(INT64_C(18), 27, 1617)], coax_p_sf_bound_sum(coax_t256, coax_t257)));
-  coax_t258 = &(((l_r).facts).e[coax_index(INT64_C(20), 27, 1618)]);
-  *coax_t258 = coax_shr_u64(((l_r).facts).e[coax_index(INT64_C(19), 27, 1618)], (int64_t)(UINT64_C(26)), 1618);
-  coax_t259 = &(((l_r).facts).e[coax_index(INT64_C(21), 27, 1621)]);
-  *coax_t259 = coax_p_sf_bound_sum(UINT64_C(67108863), UINT64_C(977));
-  coax_t260 = &(((l_r).facts).e[coax_index(INT64_C(22), 27, 1622)]);
-  *coax_t260 = coax_p_sf_bound_sum(UINT64_C(67108863), UINT64_C(64));
-  ((l_r).facts).e[coax_index(INT64_C(23), 27, 1623)] = l_m;
-  coax_t261 = &(((l_r).facts).e[coax_index(INT64_C(24), 27, 1624)]);
-  *coax_t261 = coax_shr_u64(((l_r).facts).e[coax_index(INT64_C(7), 27, 1624)], (int64_t)(UINT64_C(26)), 1624);
-  coax_t262 = &(((l_r).facts).e[coax_index(INT64_C(25), 27, 1625)]);
-  *coax_t262 = coax_shr_u64(((l_r).facts).e[coax_index(INT64_C(12), 27, 1625)], (int64_t)(UINT64_C(26)), 1625);
+  uint64_t l_m = ((uint64_t)coax_cast_su((int64_t)(l_magnitude), UINT64_C(18446744073709551615), 1863));
+  coax_t233 = &(((l_r).facts).e[coax_index(INT64_C(0), 27, 1865)]);
+  *coax_t233 = (coax_t234 = coax_p_sf_bound_product(l_m, UINT64_C(67108863)), coax_t235 = coax_sub_u64(l_m, UINT64_C(1), 1865), coax_p_sf_bound_sum(coax_t234, coax_t235));
+  coax_t236 = &(((l_r).facts).e[coax_index(INT64_C(1), 27, 1866)]);
+  *coax_t236 = (coax_t237 = coax_p_sf_bound_product(l_m, UINT64_C(4194303)), coax_t238 = coax_sub_u64(l_m, UINT64_C(1), 1866), coax_p_sf_bound_sum(coax_t237, coax_t238));
+  coax_t239 = &(((l_r).facts).e[coax_index(INT64_C(2), 27, 1867)]);
+  *coax_t239 = coax_p_sf_bound_sum(UINT64_C(67108863), coax_p_sf_bound_product(coax_sub_u64(l_m, UINT64_C(1), 1867), UINT64_C(977)));
+  coax_t240 = &(((l_r).facts).e[coax_index(INT64_C(3), 27, 1868)]);
+  *coax_t240 = coax_p_sf_bound_sum(UINT64_C(67108863), coax_p_sf_bound_product(coax_sub_u64(l_m, UINT64_C(1), 1868), UINT64_C(64)));
+  coax_t241 = &(((l_r).facts).e[coax_index(INT64_C(4), 27, 1870)]);
+  *coax_t241 = coax_p_sf_bound_product(UINT64_C(67108863), UINT64_C(67108863));
+  coax_t242 = &(((l_r).facts).e[coax_index(INT64_C(5), 27, 1871)]);
+  *coax_t242 = coax_p_sf_bound_product(((l_r).facts).e[coax_index(INT64_C(4), 27, 1871)], UINT64_C(10));
+  coax_t243 = &(((l_r).facts).e[coax_index(INT64_C(6), 27, 1872)]);
+  *coax_t243 = coax_p_sf_bound_product(coax_add_u64(UINT64_C(67108863), UINT64_C(1), 1872), UINT64_C(10));
+  coax_t244 = &(((l_r).facts).e[coax_index(INT64_C(7), 27, 1873)]);
+  *coax_t244 = (coax_t245 = ((l_r).facts).e[coax_index(INT64_C(5), 27, 1873)], coax_t246 = ((l_r).facts).e[coax_index(INT64_C(6), 27, 1873)], coax_p_sf_bound_sum(coax_t245, coax_t246));
+  coax_t247 = &(((l_r).facts).e[coax_index(INT64_C(8), 27, 1874)]);
+  *coax_t247 = (coax_t248 = coax_p_sf_bound_product(UINT64_C(4194303), UINT64_C(4194303)), coax_t249 = ((l_r).facts).e[coax_index(INT64_C(6), 27, 1874)], coax_p_sf_bound_sum(coax_t248, coax_t249));
+  coax_t250 = &(((l_r).facts).e[coax_index(INT64_C(9), 27, 1876)]);
+  *coax_t250 = (coax_t251 = coax_shr_u64(UINT64_C(67108863), (int64_t)(UINT64_C(22)), 1876), coax_t252 = coax_shl_u64(coax_shr_u64(((l_r).facts).e[coax_index(INT64_C(8), 27, 1876)], (int64_t)(UINT64_C(26)), 1876), (int64_t)(UINT64_C(4)), 1876), coax_p_sf_bound_sum(coax_t251, coax_t252));
+  coax_t253 = &(((l_r).facts).e[coax_index(INT64_C(10), 27, 1878)]);
+  *coax_t253 = coax_p_sf_bound_sum(UINT64_C(67108863), (coax_t254 = coax_p_sf_bound_product(UINT64_C(67108863), UINT64_C(977)), coax_t255 = coax_p_sf_bound_product(UINT64_C(67108863), UINT64_C(64)), coax_p_sf_bound_sum(coax_t254, coax_t255)));
+  ((l_r).facts).e[coax_index(INT64_C(11), 27, 1879)] = UINT64_C(2048);
+  coax_t256 = &(((l_r).facts).e[coax_index(INT64_C(12), 27, 1880)]);
+  *coax_t256 = (coax_t257 = ((l_r).facts).e[coax_index(INT64_C(10), 27, 1880)], coax_t258 = ((l_r).facts).e[coax_index(INT64_C(11), 27, 1880)], coax_p_sf_bound_sum(coax_t257, coax_t258));
+  coax_t259 = &(((l_r).facts).e[coax_index(INT64_C(26), 27, 1881)]);
+  *coax_t259 = (coax_t260 = coax_p_sf_bound_product(((l_r).facts).e[coax_index(INT64_C(9), 27, 1881)], UINT64_C(64)), coax_t261 = ((l_r).facts).e[coax_index(INT64_C(11), 27, 1881)], coax_p_sf_bound_sum(coax_t260, coax_t261));
+  coax_t262 = &(((l_r).facts).e[coax_index(INT64_C(13), 27, 1882)]);
+  *coax_t262 = coax_shr_u64(((l_r).facts).e[coax_index(INT64_C(26), 27, 1882)], (int64_t)(UINT64_C(26)), 1882);
+  coax_t263 = &(((l_r).facts).e[coax_index(INT64_C(14), 27, 1883)]);
+  *coax_t263 = (coax_t264 = coax_shr_u64(UINT64_C(67108863), (int64_t)(UINT64_C(22)), 1883), coax_t265 = coax_shl_u64(((l_r).facts).e[coax_index(INT64_C(13), 27, 1883)], (int64_t)(UINT64_C(4)), 1883), coax_p_sf_bound_sum(coax_t264, coax_t265));
+  coax_t266 = &(((l_r).facts).e[coax_index(INT64_C(15), 27, 1884)]);
+  *coax_t266 = coax_p_sf_bound_sum(UINT64_C(67108863), coax_p_sf_bound_product(UINT64_C(67108863), UINT64_C(977)));
+  coax_t267 = &(((l_r).facts).e[coax_index(INT64_C(16), 27, 1885)]);
+  *coax_t267 = coax_shr_u64(((l_r).facts).e[coax_index(INT64_C(15), 27, 1885)], (int64_t)(UINT64_C(26)), 1885);
+  coax_t268 = &(((l_r).facts).e[coax_index(INT64_C(17), 27, 1886)]);
+  *coax_t268 = (coax_t269 = coax_p_sf_bound_sum(UINT64_C(67108863), (coax_t270 = coax_p_sf_bound_product(((l_r).facts).e[coax_index(INT64_C(14), 27, 1886)], UINT64_C(977)), coax_t271 = coax_p_sf_bound_product(UINT64_C(67108863), UINT64_C(64)), coax_p_sf_bound_sum(coax_t270, coax_t271))), coax_t272 = ((l_r).facts).e[coax_index(INT64_C(16), 27, 1886)], coax_p_sf_bound_sum(coax_t269, coax_t272));
+  coax_t273 = &(((l_r).facts).e[coax_index(INT64_C(18), 27, 1887)]);
+  *coax_t273 = coax_shr_u64(((l_r).facts).e[coax_index(INT64_C(17), 27, 1887)], (int64_t)(UINT64_C(26)), 1887);
+  coax_t274 = &(((l_r).facts).e[coax_index(INT64_C(19), 27, 1888)]);
+  *coax_t274 = coax_p_sf_bound_sum(UINT64_C(67108863), (coax_t275 = coax_p_sf_bound_product(((l_r).facts).e[coax_index(INT64_C(14), 27, 1888)], UINT64_C(64)), coax_t276 = ((l_r).facts).e[coax_index(INT64_C(18), 27, 1888)], coax_p_sf_bound_sum(coax_t275, coax_t276)));
+  coax_t277 = &(((l_r).facts).e[coax_index(INT64_C(20), 27, 1889)]);
+  *coax_t277 = coax_shr_u64(((l_r).facts).e[coax_index(INT64_C(19), 27, 1889)], (int64_t)(UINT64_C(26)), 1889);
+  coax_t278 = &(((l_r).facts).e[coax_index(INT64_C(21), 27, 1892)]);
+  *coax_t278 = coax_p_sf_bound_sum(UINT64_C(67108863), UINT64_C(977));
+  coax_t279 = &(((l_r).facts).e[coax_index(INT64_C(22), 27, 1893)]);
+  *coax_t279 = coax_p_sf_bound_sum(UINT64_C(67108863), UINT64_C(64));
+  ((l_r).facts).e[coax_index(INT64_C(23), 27, 1894)] = l_m;
+  coax_t280 = &(((l_r).facts).e[coax_index(INT64_C(24), 27, 1895)]);
+  *coax_t280 = coax_shr_u64(((l_r).facts).e[coax_index(INT64_C(7), 27, 1895)], (int64_t)(UINT64_C(26)), 1895);
+  coax_t281 = &(((l_r).facts).e[coax_index(INT64_C(25), 27, 1896)]);
+  *coax_t281 = coax_shr_u64(((l_r).facts).e[coax_index(INT64_C(12), 27, 1896)], (int64_t)(UINT64_C(26)), 1896);
   (l_r).ok = coax_p_sf_mul_budget(l_r);
   return l_r;
 }
 
 static _Bool coax_p_sf_radix_carry(coax_v_u64 l_digits) {
-  uint64_t * coax_t264;
-  uint64_t coax_t265;
+  uint64_t * coax_t283;
+  uint64_t coax_t284;
   if (((l_digits).count < INT64_C(1)) || ((l_digits).count > INT64_C(32)))
   {
     return 0;
   }
   {
-    int64_t coax_lo263 = INT64_C(0);
-    int64_t coax_hi263 = coax_sub_s64((l_digits).count, INT64_C(1), 1633);
-    for (int64_t l_i = coax_lo263; l_i < coax_hi263; l_i++)
+    int64_t coax_lo282 = INT64_C(0);
+    int64_t coax_hi282 = coax_sub_s64((l_digits).count, INT64_C(1), 1904);
+    for (int64_t l_i = coax_lo282; l_i < coax_hi282; l_i++)
     {
-      coax_t264 = &((*coax_elem_v_u64(l_digits, coax_add_s64(l_i, INT64_C(1), 1634), 1634)));
-      coax_t265 = coax_shr_u64((*coax_elem_v_u64(l_digits, l_i, 1634)), (int64_t)(UINT64_C(26)), 1634);
-      (*coax_t264) = coax_add_u64((*coax_t264), coax_t265, 1634);
-      (*coax_elem_v_u64(l_digits, l_i, 1635)) = ((uint64_t)((*coax_elem_v_u64(l_digits, l_i, 1635)) & UINT64_C(67108863)));
+      coax_t283 = &((*coax_elem_v_u64(l_digits, coax_add_s64(l_i, INT64_C(1), 1905), 1905)));
+      coax_t284 = coax_shr_u64((*coax_elem_v_u64(l_digits, l_i, 1905)), (int64_t)(UINT64_C(26)), 1905);
+      (*coax_t283) = coax_add_u64((*coax_t283), coax_t284, 1905);
+      (*coax_elem_v_u64(l_digits, l_i, 1906)) = ((uint64_t)((*coax_elem_v_u64(l_digits, l_i, 1906)) & UINT64_C(67108863)));
     }
   }
   return 1;
 }
 
 coax_t_SecpField sf_multiply(coax_t_SecpField l_a, coax_t_SecpField l_b) {
-  uint64_t * coax_t268;
-  uint64_t coax_t269;
-  uint64_t coax_t270;
-  uint64_t coax_t271;
-  uint64_t * coax_t273;
-  uint64_t coax_t275;
-  uint64_t coax_t276;
-  uint64_t * coax_t277;
-  uint64_t coax_t278;
-  uint64_t * coax_t279;
-  uint64_t coax_t280;
-  uint64_t * coax_t282;
-  uint64_t coax_t283;
-  uint64_t coax_t284;
-  uint64_t coax_t285;
-  uint64_t coax_t286;
   uint64_t * coax_t287;
   uint64_t coax_t288;
-  uint64_t * coax_t289;
+  uint64_t coax_t289;
   uint64_t coax_t290;
-  uint64_t coax_t291;
-  uint64_t coax_t292;
-  uint64_t * coax_t293;
+  uint64_t * coax_t292;
   uint64_t coax_t294;
-  uint64_t * coax_t295;
-  uint64_t coax_t296;
-  uint64_t * coax_t297;
-  uint64_t coax_t298;
+  uint64_t coax_t295;
+  uint64_t * coax_t296;
+  uint64_t coax_t297;
+  uint64_t * coax_t298;
+  uint64_t coax_t299;
+  uint64_t * coax_t301;
+  uint64_t coax_t302;
+  uint64_t coax_t303;
+  uint64_t coax_t304;
+  uint64_t coax_t305;
+  uint64_t * coax_t306;
+  uint64_t coax_t307;
+  uint64_t * coax_t308;
+  uint64_t coax_t309;
+  uint64_t coax_t310;
+  uint64_t coax_t311;
+  uint64_t * coax_t312;
+  uint64_t coax_t313;
+  uint64_t * coax_t314;
+  uint64_t coax_t315;
+  uint64_t * coax_t316;
+  uint64_t coax_t317;
   coax_t_SecpField l_x = sf_normalize(l_a);
   coax_t_SecpField l_y = sf_normalize(l_b);
   coax_a20_u64 l_product = ((coax_a20_u64){0});
   {
-    int64_t coax_lo266 = INT64_C(0);
-    int64_t coax_hi266 = INT64_C(10);
-    for (int64_t l_i = coax_lo266; l_i < coax_hi266; l_i++)
+    int64_t coax_lo285 = INT64_C(0);
+    int64_t coax_hi285 = INT64_C(10);
+    for (int64_t l_i = coax_lo285; l_i < coax_hi285; l_i++)
     {
       {
-        int64_t coax_lo267 = INT64_C(0);
-        int64_t coax_hi267 = INT64_C(10);
-        for (int64_t l_j = coax_lo267; l_j < coax_hi267; l_j++)
+        int64_t coax_lo286 = INT64_C(0);
+        int64_t coax_hi286 = INT64_C(10);
+        for (int64_t l_j = coax_lo286; l_j < coax_hi286; l_j++)
         {
-          coax_t268 = &((l_product).e[coax_index(coax_add_s64(l_i, l_j, 1641), 20, 1641)]);
-          coax_t269 = (coax_t270 = ((l_x).limb).e[coax_index(l_i, 10, 1641)], coax_t271 = ((l_y).limb).e[coax_index(l_j, 10, 1641)], coax_mul_u64(coax_t270, coax_t271, 1641));
-          (*coax_t268) = coax_add_u64((*coax_t268), coax_t269, 1641);
+          coax_t287 = &((l_product).e[coax_index(coax_add_s64(l_i, l_j, 1912), 20, 1912)]);
+          coax_t288 = (coax_t289 = ((l_x).limb).e[coax_index(l_i, 10, 1912)], coax_t290 = ((l_y).limb).e[coax_index(l_j, 10, 1912)], coax_mul_u64(coax_t289, coax_t290, 1912));
+          (*coax_t287) = coax_add_u64((*coax_t287), coax_t288, 1912);
         }
       }
     }
   }
-  if (!(coax_p_sf_radix_carry(coax_mkview_v_u64((l_product).e, 20, 0, 20, 1642)))) coax_trap("assertion failed", 1642);
+  if (!(coax_p_sf_radix_carry(coax_mkview_v_u64((l_product).e, 20, 0, 20, 1913)))) coax_trap("assertion failed", 1913);
   coax_t_SecpField l_r = ((coax_t_SecpField){0});
-  coax_a12_u64 l_fold = ((coax_a12_u64){0});
+  coax_a12_u64 l_reduced = ((coax_a12_u64){0});
   {
-    int64_t coax_lo272 = INT64_C(0);
-    int64_t coax_hi272 = INT64_C(10);
-    for (int64_t l_i = coax_lo272; l_i < coax_hi272; l_i++)
+    int64_t coax_lo291 = INT64_C(0);
+    int64_t coax_hi291 = INT64_C(10);
+    for (int64_t l_i = coax_lo291; l_i < coax_hi291; l_i++)
     {
-      coax_t273 = &((l_fold).e[coax_index(l_i, 12, 1645)]);
-      *coax_t273 = (l_product).e[coax_index(l_i, 20, 1645)];
+      coax_t292 = &((l_reduced).e[coax_index(l_i, 12, 1916)]);
+      *coax_t292 = (l_product).e[coax_index(l_i, 20, 1916)];
     }
   }
-  (l_fold).e[coax_index(INT64_C(9), 12, 1646)] = ((uint64_t)((l_fold).e[coax_index(INT64_C(9), 12, 1646)] & UINT64_C(4194303)));
+  (l_reduced).e[coax_index(INT64_C(9), 12, 1917)] = ((uint64_t)((l_reduced).e[coax_index(INT64_C(9), 12, 1917)] & UINT64_C(4194303)));
   {
-    int64_t coax_lo274 = INT64_C(0);
-    int64_t coax_hi274 = INT64_C(10);
-    for (int64_t l_i = coax_lo274; l_i < coax_hi274; l_i++)
+    int64_t coax_lo293 = INT64_C(0);
+    int64_t coax_hi293 = INT64_C(10);
+    for (int64_t l_i = coax_lo293; l_i < coax_hi293; l_i++)
     {
-      uint64_t l_q = (coax_t275 = coax_shr_u64((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(9), 1648), 20, 1648)], (int64_t)(UINT64_C(22)), 1648), coax_t276 = coax_shl_u64(((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(10), 1648), 20, 1648)] & UINT64_C(4194303))), (int64_t)(UINT64_C(4)), 1648), ((uint64_t)(coax_t275 | coax_t276)));
-      coax_t277 = &((l_fold).e[coax_index(l_i, 12, 1649)]);
-      coax_t278 = coax_mul_u64(l_q, UINT64_C(977), 1649);
-      (*coax_t277) = coax_add_u64((*coax_t277), coax_t278, 1649);
-      coax_t279 = &((l_fold).e[coax_index(coax_add_s64(l_i, INT64_C(1), 1649), 12, 1649)]);
-      coax_t280 = coax_mul_u64(l_q, UINT64_C(64), 1649);
-      (*coax_t279) = coax_add_u64((*coax_t279), coax_t280, 1649);
+      uint64_t l_q = (coax_t294 = coax_shr_u64((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(9), 1919), 20, 1919)], (int64_t)(UINT64_C(22)), 1919), coax_t295 = coax_shl_u64(((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(10), 1919), 20, 1919)] & UINT64_C(4194303))), (int64_t)(UINT64_C(4)), 1919), ((uint64_t)(coax_t294 | coax_t295)));
+      coax_t296 = &((l_reduced).e[coax_index(l_i, 12, 1920)]);
+      coax_t297 = coax_mul_u64(l_q, UINT64_C(977), 1920);
+      (*coax_t296) = coax_add_u64((*coax_t296), coax_t297, 1920);
+      coax_t298 = &((l_reduced).e[coax_index(coax_add_s64(l_i, INT64_C(1), 1920), 12, 1920)]);
+      coax_t299 = coax_mul_u64(l_q, UINT64_C(64), 1920);
+      (*coax_t298) = coax_add_u64((*coax_t298), coax_t299, 1920);
     }
   }
-  if (!(coax_p_sf_radix_carry(coax_mkview_v_u64((l_fold).e, 12, 0, 12, 1651)))) coax_trap("assertion failed", 1651);
+  if (!(coax_p_sf_radix_carry(coax_mkview_v_u64((l_reduced).e, 12, 0, 12, 1922)))) coax_trap("assertion failed", 1922);
   {
-    int64_t coax_lo281 = INT64_C(0);
-    int64_t coax_hi281 = INT64_C(10);
-    for (int64_t l_i = coax_lo281; l_i < coax_hi281; l_i++)
+    int64_t coax_lo300 = INT64_C(0);
+    int64_t coax_hi300 = INT64_C(10);
+    for (int64_t l_i = coax_lo300; l_i < coax_hi300; l_i++)
     {
-      coax_t282 = &(((l_r).limb).e[coax_index(l_i, 10, 1652)]);
-      *coax_t282 = (l_fold).e[coax_index(l_i, 12, 1652)];
+      coax_t301 = &(((l_r).limb).e[coax_index(l_i, 10, 1923)]);
+      *coax_t301 = (l_reduced).e[coax_index(l_i, 12, 1923)];
     }
   }
-  ((l_r).limb).e[coax_index(INT64_C(9), 10, 1653)] = ((uint64_t)(((l_r).limb).e[coax_index(INT64_C(9), 10, 1653)] & UINT64_C(4194303)));
-  uint64_t l_q0 = (coax_t283 = coax_shr_u64((l_fold).e[coax_index(INT64_C(9), 12, 1654)], (int64_t)(UINT64_C(22)), 1654), coax_t284 = coax_shl_u64(((uint64_t)((l_fold).e[coax_index(INT64_C(10), 12, 1654)] & UINT64_C(4194303))), (int64_t)(UINT64_C(4)), 1654), ((uint64_t)(coax_t283 | coax_t284)));
-  uint64_t l_q1 = (coax_t285 = coax_shr_u64((l_fold).e[coax_index(INT64_C(10), 12, 1655)], (int64_t)(UINT64_C(22)), 1655), coax_t286 = coax_shl_u64((l_fold).e[coax_index(INT64_C(11), 12, 1655)], (int64_t)(UINT64_C(4)), 1655), ((uint64_t)(coax_t285 | coax_t286)));
-  coax_t287 = &(((l_r).limb).e[coax_index(INT64_C(0), 10, 1656)]);
-  coax_t288 = coax_mul_u64(l_q0, UINT64_C(977), 1656);
-  (*coax_t287) = coax_add_u64((*coax_t287), coax_t288, 1656);
-  coax_t289 = &(((l_r).limb).e[coax_index(INT64_C(1), 10, 1657)]);
-  coax_t290 = (coax_t291 = coax_mul_u64(l_q1, UINT64_C(977), 1657), coax_t292 = coax_mul_u64(l_q0, UINT64_C(64), 1657), coax_add_u64(coax_t291, coax_t292, 1657));
-  (*coax_t289) = coax_add_u64((*coax_t289), coax_t290, 1657);
-  coax_t293 = &(((l_r).limb).e[coax_index(INT64_C(2), 10, 1658)]);
-  coax_t294 = coax_mul_u64(l_q1, UINT64_C(64), 1658);
-  (*coax_t293) = coax_add_u64((*coax_t293), coax_t294, 1658);
-  uint64_t l_carry = coax_p_sf_carry(coax_mkview_v_u64(((l_r).limb).e, 10, 0, 10, 1659));
-  coax_t295 = &(((l_r).limb).e[coax_index(INT64_C(0), 10, 1660)]);
-  coax_t296 = coax_mul_u64(l_carry, UINT64_C(977), 1660);
-  (*coax_t295) = coax_add_u64((*coax_t295), coax_t296, 1660);
-  coax_t297 = &(((l_r).limb).e[coax_index(INT64_C(1), 10, 1660)]);
-  coax_t298 = coax_mul_u64(l_carry, UINT64_C(64), 1660);
-  (*coax_t297) = coax_add_u64((*coax_t297), coax_t298, 1660);
+  ((l_r).limb).e[coax_index(INT64_C(9), 10, 1924)] = ((uint64_t)(((l_r).limb).e[coax_index(INT64_C(9), 10, 1924)] & UINT64_C(4194303)));
+  uint64_t l_q0 = (coax_t302 = coax_shr_u64((l_reduced).e[coax_index(INT64_C(9), 12, 1925)], (int64_t)(UINT64_C(22)), 1925), coax_t303 = coax_shl_u64(((uint64_t)((l_reduced).e[coax_index(INT64_C(10), 12, 1925)] & UINT64_C(4194303))), (int64_t)(UINT64_C(4)), 1925), ((uint64_t)(coax_t302 | coax_t303)));
+  uint64_t l_q1 = (coax_t304 = coax_shr_u64((l_reduced).e[coax_index(INT64_C(10), 12, 1926)], (int64_t)(UINT64_C(22)), 1926), coax_t305 = coax_shl_u64((l_reduced).e[coax_index(INT64_C(11), 12, 1926)], (int64_t)(UINT64_C(4)), 1926), ((uint64_t)(coax_t304 | coax_t305)));
+  coax_t306 = &(((l_r).limb).e[coax_index(INT64_C(0), 10, 1927)]);
+  coax_t307 = coax_mul_u64(l_q0, UINT64_C(977), 1927);
+  (*coax_t306) = coax_add_u64((*coax_t306), coax_t307, 1927);
+  coax_t308 = &(((l_r).limb).e[coax_index(INT64_C(1), 10, 1928)]);
+  coax_t309 = (coax_t310 = coax_mul_u64(l_q1, UINT64_C(977), 1928), coax_t311 = coax_mul_u64(l_q0, UINT64_C(64), 1928), coax_add_u64(coax_t310, coax_t311, 1928));
+  (*coax_t308) = coax_add_u64((*coax_t308), coax_t309, 1928);
+  coax_t312 = &(((l_r).limb).e[coax_index(INT64_C(2), 10, 1929)]);
+  coax_t313 = coax_mul_u64(l_q1, UINT64_C(64), 1929);
+  (*coax_t312) = coax_add_u64((*coax_t312), coax_t313, 1929);
+  uint64_t l_carry = coax_p_sf_carry(coax_mkview_v_u64(((l_r).limb).e, 10, 0, 10, 1930));
+  coax_t314 = &(((l_r).limb).e[coax_index(INT64_C(0), 10, 1931)]);
+  coax_t315 = coax_mul_u64(l_carry, UINT64_C(977), 1931);
+  (*coax_t314) = coax_add_u64((*coax_t314), coax_t315, 1931);
+  coax_t316 = &(((l_r).limb).e[coax_index(INT64_C(1), 10, 1931)]);
+  coax_t317 = coax_mul_u64(l_carry, UINT64_C(64), 1931);
+  (*coax_t316) = coax_add_u64((*coax_t316), coax_t317, 1931);
   return sf_normalize(l_r);
 }
 
@@ -3187,12 +3506,12 @@ static _Bool coax_p_sf_chain_step_valid(coax_t_SfChainStep l_step, int64_t l_ind
 }
 
 static coax_t_SecpField coax_p_sf_square_n(coax_t_SecpField l_a, int64_t l_count) {
-  if (!(coax_p_sf_square_count_valid(l_count))) coax_trap("assertion failed", 1735);
+  if (!(coax_p_sf_square_count_valid(l_count))) coax_trap("assertion failed", 2006);
   coax_t_SecpField l_r = l_a;
   {
-    int64_t coax_lo299 = INT64_C(0);
-    int64_t coax_hi299 = l_count;
-    for (int64_t l_i = coax_lo299; l_i < coax_hi299; l_i++)
+    int64_t coax_lo318 = INT64_C(0);
+    int64_t coax_hi318 = l_count;
+    for (int64_t l_i = coax_lo318; l_i < coax_hi318; l_i++)
     {
       l_r = sf_square(l_r);
     }
@@ -3201,35 +3520,35 @@ static coax_t_SecpField coax_p_sf_square_n(coax_t_SecpField l_a, int64_t l_count
 }
 
 static coax_t_SfChainState coax_p_sf_chain_prefix(coax_t_SecpField l_a) {
-  coax_t_SecpField * coax_t300;
-  coax_t_SecpField * coax_t302;
-  coax_t_SecpField coax_t303;
-  coax_t_SecpField coax_t304;
+  coax_t_SecpField * coax_t319;
+  coax_t_SecpField * coax_t321;
+  coax_t_SecpField coax_t322;
+  coax_t_SecpField coax_t323;
   coax_t_SfChainState l_cache = ((coax_t_SfChainState){0});
-  coax_t300 = &(((l_cache).value).e[coax_index(INT64_C(0), 13, 1739)]);
-  *coax_t300 = sf_normalize(l_a);
+  coax_t319 = &(((l_cache).value).e[coax_index(INT64_C(0), 13, 2010)]);
+  *coax_t319 = sf_normalize(l_a);
   {
-    int64_t coax_lo301 = INT64_C(0);
-    int64_t coax_hi301 = INT64_C(12);
-    for (int64_t l_i = coax_lo301; l_i < coax_hi301; l_i++)
+    int64_t coax_lo320 = INT64_C(0);
+    int64_t coax_hi320 = INT64_C(12);
+    for (int64_t l_i = coax_lo320; l_i < coax_hi320; l_i++)
     {
-      coax_t_SfChainStep l_step = (coax_k7).e[coax_index(l_i, 12, 1741)];
-      if (!(coax_p_sf_chain_step_valid(l_step, l_i))) coax_trap("assertion failed", 1742);
-      coax_t302 = &(((l_cache).value).e[coax_index(coax_add_s64(l_i, INT64_C(1), 1743), 13, 1743)]);
-      *coax_t302 = (coax_t303 = coax_p_sf_square_n(((l_cache).value).e[coax_index((l_step).left, 13, 1743)], (l_step).squares), coax_t304 = ((l_cache).value).e[coax_index((l_step).right, 13, 1743)], sf_multiply(coax_t303, coax_t304));
+      coax_t_SfChainStep l_step = (coax_k15).e[coax_index(l_i, 12, 2012)];
+      if (!(coax_p_sf_chain_step_valid(l_step, l_i))) coax_trap("assertion failed", 2013);
+      coax_t321 = &(((l_cache).value).e[coax_index(coax_add_s64(l_i, INT64_C(1), 2014), 13, 2014)]);
+      *coax_t321 = (coax_t322 = coax_p_sf_square_n(((l_cache).value).e[coax_index((l_step).left, 13, 2014)], (l_step).squares), coax_t323 = ((l_cache).value).e[coax_index((l_step).right, 13, 2014)], sf_multiply(coax_t322, coax_t323));
     }
   }
   return l_cache;
 }
 
 coax_t_SecpFieldResult sf_inverse(coax_t_SecpField l_a) {
-  coax_t_SecpField coax_t305;
-  coax_t_SecpField coax_t306;
+  coax_t_SecpField coax_t324;
+  coax_t_SecpField coax_t325;
   coax_t_SfChainState l_cache = coax_p_sf_chain_prefix(l_a);
-  coax_t_SecpField l_power9 = (coax_t305 = sf_square(((l_cache).value).e[coax_index(INT64_C(1), 13, 1749)]), coax_t306 = ((l_cache).value).e[coax_index(INT64_C(1), 13, 1749)], sf_multiply(coax_t305, coax_t306));
+  coax_t_SecpField l_power9 = (coax_t324 = sf_square(((l_cache).value).e[coax_index(INT64_C(1), 13, 2020)]), coax_t325 = ((l_cache).value).e[coax_index(INT64_C(1), 13, 2020)], sf_multiply(coax_t324, coax_t325));
   coax_t_SecpField l_power45 = sf_multiply(coax_p_sf_square_n(l_power9, INT64_C(2)), l_power9);
   coax_t_SecpFieldResult l_r = ((coax_t_SecpFieldResult){0});
-  (l_r).value = sf_multiply(coax_p_sf_square_n(((l_cache).value).e[coax_index(INT64_C(12), 13, 1752)], INT64_C(10)), l_power45);
+  (l_r).value = sf_multiply(coax_p_sf_square_n(((l_cache).value).e[coax_index(INT64_C(12), 13, 2023)], INT64_C(10)), l_power45);
   coax_t_SecpField l_zero = ((coax_t_SecpField){0});
   uint64_t l_valid = ((uint64_t)(UINT64_C(18446744073709551615) ^ sf_equal_mask((l_r).value, l_zero)));
   (l_r).ok = (l_valid == UINT64_C(18446744073709551615));
@@ -3241,26 +3560,26 @@ coax_t_SecpFieldResult sf_inverse_vartime(coax_t_SecpField l_a) {
 }
 
 coax_t_SecpFieldResult sf_sqrt(coax_t_SecpField l_a) {
-  coax_t_SecpField coax_t307;
-  coax_t_SecpField coax_t308;
-  coax_t_SecpField coax_t309;
-  coax_t_SecpField coax_t310;
-  uint64_t * coax_t312;
-  uint64_t coax_t313;
-  uint64_t coax_t314;
+  coax_t_SecpField coax_t326;
+  coax_t_SecpField coax_t327;
+  coax_t_SecpField coax_t328;
+  coax_t_SecpField coax_t329;
+  uint64_t * coax_t331;
+  uint64_t coax_t332;
+  uint64_t coax_t333;
   coax_t_SfChainState l_cache = coax_p_sf_chain_prefix(l_a);
-  coax_t_SecpField l_root = coax_p_sf_square_n((coax_t307 = coax_p_sf_square_n(((l_cache).value).e[coax_index(INT64_C(12), 13, 1764)], INT64_C(6)), coax_t308 = ((l_cache).value).e[coax_index(INT64_C(1), 13, 1764)], sf_multiply(coax_t307, coax_t308)), INT64_C(2));
-  uint64_t l_valid = (coax_t309 = sf_square(l_root), coax_t310 = ((l_cache).value).e[coax_index(INT64_C(0), 13, 1765)], sf_equal_mask(coax_t309, coax_t310));
+  coax_t_SecpField l_root = coax_p_sf_square_n((coax_t326 = coax_p_sf_square_n(((l_cache).value).e[coax_index(INT64_C(12), 13, 2035)], INT64_C(6)), coax_t327 = ((l_cache).value).e[coax_index(INT64_C(1), 13, 2035)], sf_multiply(coax_t326, coax_t327)), INT64_C(2));
+  uint64_t l_valid = (coax_t328 = sf_square(l_root), coax_t329 = ((l_cache).value).e[coax_index(INT64_C(0), 13, 2036)], sf_equal_mask(coax_t328, coax_t329));
   coax_t_SecpField l_negative = sf_negate(l_root);
-  uint64_t l_odd = cb_mask(((uint64_t)(((l_root).limb).e[coax_index(INT64_C(0), 10, 1766)] & UINT64_C(1))));
+  uint64_t l_odd = cb_mask(((uint64_t)(((l_root).limb).e[coax_index(INT64_C(0), 10, 2037)] & UINT64_C(1))));
   coax_t_SecpFieldResult l_r = ((coax_t_SecpFieldResult){0});
   {
-    int64_t coax_lo311 = INT64_C(0);
-    int64_t coax_hi311 = INT64_C(10);
-    for (int64_t l_i = coax_lo311; l_i < coax_hi311; l_i++)
+    int64_t coax_lo330 = INT64_C(0);
+    int64_t coax_hi330 = INT64_C(10);
+    for (int64_t l_i = coax_lo330; l_i < coax_hi330; l_i++)
     {
-      coax_t312 = &((((l_r).value).limb).e[coax_index(l_i, 10, 1768)]);
-      *coax_t312 = ((uint64_t)((coax_t313 = ((l_negative).limb).e[coax_index(l_i, 10, 1768)], coax_t314 = ((l_root).limb).e[coax_index(l_i, 10, 1768)], cb_ct_select64(l_odd, coax_t313, coax_t314)) & l_valid));
+      coax_t331 = &((((l_r).value).limb).e[coax_index(l_i, 10, 2039)]);
+      *coax_t331 = ((uint64_t)((coax_t332 = ((l_negative).limb).e[coax_index(l_i, 10, 2039)], coax_t333 = ((l_root).limb).e[coax_index(l_i, 10, 2039)], cb_ct_select64(l_odd, coax_t332, coax_t333)) & l_valid));
     }
   }
   (l_r).ok = (l_valid == UINT64_C(18446744073709551615));
@@ -3268,113 +3587,113 @@ coax_t_SecpFieldResult sf_sqrt(coax_t_SecpField l_a) {
 }
 
 static coax_t_SfExponent coax_p_sf_exponent_step(coax_t_SfExponent l_a, int64_t l_squares, coax_t_SfExponent l_b) {
-  uint32_t * coax_t317;
-  uint64_t coax_t319;
-  uint64_t coax_t320;
-  uint32_t * coax_t321;
-  if (!(coax_p_sf_square_count_valid(l_squares))) coax_trap("assertion failed", 1775);
+  uint32_t * coax_t336;
+  uint64_t coax_t338;
+  uint64_t coax_t339;
+  uint32_t * coax_t340;
+  if (!(coax_p_sf_square_count_valid(l_squares))) coax_trap("assertion failed", 2046);
   coax_t_SfExponent l_r = l_a;
   {
-    int64_t coax_lo315 = INT64_C(0);
-    int64_t coax_hi315 = l_squares;
-    for (int64_t l_i = coax_lo315; l_i < coax_hi315; l_i++)
+    int64_t coax_lo334 = INT64_C(0);
+    int64_t coax_hi334 = l_squares;
+    for (int64_t l_i = coax_lo334; l_i < coax_hi334; l_i++)
     {
       uint64_t l_carry = ((uint64_t)0);
       {
-        int64_t coax_lo316 = INT64_C(0);
-        int64_t coax_hi316 = INT64_C(8);
-        for (int64_t l_j = coax_lo316; l_j < coax_hi316; l_j++)
+        int64_t coax_lo335 = INT64_C(0);
+        int64_t coax_hi335 = INT64_C(8);
+        for (int64_t l_j = coax_lo335; l_j < coax_hi335; l_j++)
         {
-          uint64_t l_word = coax_add_u64(coax_mul_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_r).word).e[coax_index(l_j, 8, 1780)]), UINT64_C(18446744073709551615), 1780)), UINT64_C(2), 1780), l_carry, 1780);
-          coax_t317 = &(((l_r).word).e[coax_index(l_j, 8, 1781)]);
-          *coax_t317 = ((uint32_t)coax_cast_uu((uint64_t)(((uint64_t)(l_word & UINT64_C(4294967295)))), UINT64_C(4294967295), 1781));
-          l_carry = coax_shr_u64(l_word, (int64_t)(UINT64_C(32)), 1781);
+          uint64_t l_word = coax_add_u64(coax_mul_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_r).word).e[coax_index(l_j, 8, 2051)]), UINT64_C(18446744073709551615), 2051)), UINT64_C(2), 2051), l_carry, 2051);
+          coax_t336 = &(((l_r).word).e[coax_index(l_j, 8, 2052)]);
+          *coax_t336 = ((uint32_t)coax_cast_uu((uint64_t)(((uint64_t)(l_word & UINT64_C(4294967295)))), UINT64_C(4294967295), 2052));
+          l_carry = coax_shr_u64(l_word, (int64_t)(UINT64_C(32)), 2052);
         }
       }
-      if (!(l_carry == UINT64_C(0))) coax_trap("assertion failed", 1783);
+      if (!(l_carry == UINT64_C(0))) coax_trap("assertion failed", 2054);
     }
   }
   uint64_t l_carry = ((uint64_t)0);
   {
-    int64_t coax_lo318 = INT64_C(0);
-    int64_t coax_hi318 = INT64_C(8);
-    for (int64_t l_j = coax_lo318; l_j < coax_hi318; l_j++)
+    int64_t coax_lo337 = INT64_C(0);
+    int64_t coax_hi337 = INT64_C(8);
+    for (int64_t l_j = coax_lo337; l_j < coax_hi337; l_j++)
     {
-      uint64_t l_word = coax_add_u64((coax_t319 = ((uint64_t)coax_cast_uu((uint64_t)(((l_r).word).e[coax_index(l_j, 8, 1787)]), UINT64_C(18446744073709551615), 1787)), coax_t320 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).word).e[coax_index(l_j, 8, 1787)]), UINT64_C(18446744073709551615), 1787)), coax_add_u64(coax_t319, coax_t320, 1787)), l_carry, 1787);
-      coax_t321 = &(((l_r).word).e[coax_index(l_j, 8, 1788)]);
-      *coax_t321 = ((uint32_t)coax_cast_uu((uint64_t)(((uint64_t)(l_word & UINT64_C(4294967295)))), UINT64_C(4294967295), 1788));
-      l_carry = coax_shr_u64(l_word, (int64_t)(UINT64_C(32)), 1788);
+      uint64_t l_word = coax_add_u64((coax_t338 = ((uint64_t)coax_cast_uu((uint64_t)(((l_r).word).e[coax_index(l_j, 8, 2058)]), UINT64_C(18446744073709551615), 2058)), coax_t339 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).word).e[coax_index(l_j, 8, 2058)]), UINT64_C(18446744073709551615), 2058)), coax_add_u64(coax_t338, coax_t339, 2058)), l_carry, 2058);
+      coax_t340 = &(((l_r).word).e[coax_index(l_j, 8, 2059)]);
+      *coax_t340 = ((uint32_t)coax_cast_uu((uint64_t)(((uint64_t)(l_word & UINT64_C(4294967295)))), UINT64_C(4294967295), 2059));
+      l_carry = coax_shr_u64(l_word, (int64_t)(UINT64_C(32)), 2059);
     }
   }
-  if (!(l_carry == UINT64_C(0))) coax_trap("assertion failed", 1790);
+  if (!(l_carry == UINT64_C(0))) coax_trap("assertion failed", 2061);
   return l_r;
 }
 
 static coax_t_SfExponentState coax_p_sf_exponent_prefix(void) {
-  coax_t_SfExponent * coax_t323;
-  coax_t_SfExponent coax_t324;
-  coax_t_SfExponent coax_t325;
+  coax_t_SfExponent * coax_t342;
+  coax_t_SfExponent coax_t343;
+  coax_t_SfExponent coax_t344;
   coax_t_SfExponentState l_cache = ((coax_t_SfExponentState){0});
-  ((((l_cache).value).e[coax_index(INT64_C(0), 13, 1793)]).word).e[coax_index(INT64_C(0), 8, 1793)] = ((uint32_t)UINT64_C(1));
+  ((((l_cache).value).e[coax_index(INT64_C(0), 13, 2064)]).word).e[coax_index(INT64_C(0), 8, 2064)] = ((uint32_t)UINT64_C(1));
   {
-    int64_t coax_lo322 = INT64_C(0);
-    int64_t coax_hi322 = INT64_C(12);
-    for (int64_t l_i = coax_lo322; l_i < coax_hi322; l_i++)
+    int64_t coax_lo341 = INT64_C(0);
+    int64_t coax_hi341 = INT64_C(12);
+    for (int64_t l_i = coax_lo341; l_i < coax_hi341; l_i++)
     {
-      coax_t_SfChainStep l_step = (coax_k7).e[coax_index(l_i, 12, 1795)];
-      if (!(coax_p_sf_chain_step_valid(l_step, l_i))) coax_trap("assertion failed", 1796);
-      coax_t323 = &(((l_cache).value).e[coax_index(coax_add_s64(l_i, INT64_C(1), 1797), 13, 1797)]);
-      *coax_t323 = (coax_t324 = ((l_cache).value).e[coax_index((l_step).left, 13, 1797)], coax_t325 = ((l_cache).value).e[coax_index((l_step).right, 13, 1797)], coax_p_sf_exponent_step(coax_t324, (l_step).squares, coax_t325));
+      coax_t_SfChainStep l_step = (coax_k15).e[coax_index(l_i, 12, 2066)];
+      if (!(coax_p_sf_chain_step_valid(l_step, l_i))) coax_trap("assertion failed", 2067);
+      coax_t342 = &(((l_cache).value).e[coax_index(coax_add_s64(l_i, INT64_C(1), 2068), 13, 2068)]);
+      *coax_t342 = (coax_t343 = ((l_cache).value).e[coax_index((l_step).left, 13, 2068)], coax_t344 = ((l_cache).value).e[coax_index((l_step).right, 13, 2068)], coax_p_sf_exponent_step(coax_t343, (l_step).squares, coax_t344));
     }
   }
   return l_cache;
 }
 
 static coax_t_SfExponent coax_p_sf_exponent_inverse(void) {
-  coax_t_SfExponent coax_t326;
-  coax_t_SfExponent coax_t327;
-  coax_t_SfExponentState l_cache = coax_k8;
-  coax_t_SfExponent l_power9 = (coax_t326 = ((l_cache).value).e[coax_index(INT64_C(1), 13, 1803)], coax_t327 = ((l_cache).value).e[coax_index(INT64_C(1), 13, 1803)], coax_p_sf_exponent_step(coax_t326, INT64_C(1), coax_t327));
+  coax_t_SfExponent coax_t345;
+  coax_t_SfExponent coax_t346;
+  coax_t_SfExponentState l_cache = coax_k16;
+  coax_t_SfExponent l_power9 = (coax_t345 = ((l_cache).value).e[coax_index(INT64_C(1), 13, 2074)], coax_t346 = ((l_cache).value).e[coax_index(INT64_C(1), 13, 2074)], coax_p_sf_exponent_step(coax_t345, INT64_C(1), coax_t346));
   coax_t_SfExponent l_power45 = coax_p_sf_exponent_step(l_power9, INT64_C(2), l_power9);
-  return coax_p_sf_exponent_step(((l_cache).value).e[coax_index(INT64_C(12), 13, 1805)], INT64_C(10), l_power45);
+  return coax_p_sf_exponent_step(((l_cache).value).e[coax_index(INT64_C(12), 13, 2076)], INT64_C(10), l_power45);
 }
 
 static coax_t_SfExponent coax_p_sf_exponent_sqrt(void) {
-  coax_t_SfExponent coax_t328;
-  coax_t_SfExponent coax_t329;
-  coax_t_SfExponentState l_cache = coax_k8;
+  coax_t_SfExponent coax_t347;
+  coax_t_SfExponent coax_t348;
+  coax_t_SfExponentState l_cache = coax_k16;
   coax_t_SfExponent l_zero = ((coax_t_SfExponent){0});
-  return coax_p_sf_exponent_step((coax_t328 = ((l_cache).value).e[coax_index(INT64_C(12), 13, 1809)], coax_t329 = ((l_cache).value).e[coax_index(INT64_C(1), 13, 1809)], coax_p_sf_exponent_step(coax_t328, INT64_C(6), coax_t329)), INT64_C(2), l_zero);
+  return coax_p_sf_exponent_step((coax_t347 = ((l_cache).value).e[coax_index(INT64_C(12), 13, 2080)], coax_t348 = ((l_cache).value).e[coax_index(INT64_C(1), 13, 2080)], coax_p_sf_exponent_step(coax_t347, INT64_C(6), coax_t348)), INT64_C(2), l_zero);
 }
 
 static _Bool coax_p_sf_exponent_matches(coax_t_SfExponent l_exponent, _Bool l_root_mode) {
-  uint32_t coax_t332;
-  uint32_t coax_t333;
+  uint32_t coax_t351;
+  uint32_t coax_t352;
   coax_a8_u32 l_expected = ((coax_a8_u32){0});
   {
-    int64_t coax_lo330 = INT64_C(1);
-    int64_t coax_hi330 = INT64_C(8);
-    for (int64_t l_i = coax_lo330; l_i < coax_hi330; l_i++)
+    int64_t coax_lo349 = INT64_C(1);
+    int64_t coax_hi349 = INT64_C(8);
+    for (int64_t l_i = coax_lo349; l_i < coax_hi349; l_i++)
     {
-      (l_expected).e[coax_index(l_i, 8, 1812)] = ((uint32_t)UINT64_C(4294967295));
+      (l_expected).e[coax_index(l_i, 8, 2083)] = ((uint32_t)UINT64_C(4294967295));
     }
   }
   if (l_root_mode)
   {
-    (l_expected).e[coax_index(INT64_C(0), 8, 1813)] = ((uint32_t)UINT64_C(3221225228));
-    (l_expected).e[coax_index(INT64_C(7), 8, 1813)] = ((uint32_t)UINT64_C(1073741823));
+    (l_expected).e[coax_index(INT64_C(0), 8, 2084)] = ((uint32_t)UINT64_C(3221225228));
+    (l_expected).e[coax_index(INT64_C(7), 8, 2084)] = ((uint32_t)UINT64_C(1073741823));
   }
   else
   {
-    (l_expected).e[coax_index(INT64_C(0), 8, 1814)] = ((uint32_t)UINT64_C(4294966317));
-    (l_expected).e[coax_index(INT64_C(1), 8, 1814)] = ((uint32_t)UINT64_C(4294967294));
+    (l_expected).e[coax_index(INT64_C(0), 8, 2085)] = ((uint32_t)UINT64_C(4294966317));
+    (l_expected).e[coax_index(INT64_C(1), 8, 2085)] = ((uint32_t)UINT64_C(4294967294));
   }
   {
-    int64_t coax_lo331 = INT64_C(0);
-    int64_t coax_hi331 = INT64_C(8);
-    for (int64_t l_i = coax_lo331; l_i < coax_hi331; l_i++)
+    int64_t coax_lo350 = INT64_C(0);
+    int64_t coax_hi350 = INT64_C(8);
+    for (int64_t l_i = coax_lo350; l_i < coax_hi350; l_i++)
     {
-      if (coax_t332 = ((l_exponent).word).e[coax_index(l_i, 8, 1815)], coax_t333 = (l_expected).e[coax_index(l_i, 8, 1815)], (coax_t332 != coax_t333))
+      if (coax_t351 = ((l_exponent).word).e[coax_index(l_i, 8, 2086)], coax_t352 = (l_expected).e[coax_index(l_i, 8, 2086)], (coax_t351 != coax_t352))
       {
         return 0;
       }
@@ -3388,12 +3707,12 @@ _Bool cb_span(int64_t l_total, int64_t l_at, int64_t l_n) {
   {
     return 0;
   }
-  return (l_n <= coax_sub_s64(l_total, l_at, 1948));
+  return (l_n <= coax_sub_s64(l_total, l_at, 2220));
 }
 
 static coax_t_CbU64 coax_p_cb_load_word(coax_v_u8 l_data, int64_t l_at, int64_t l_width, _Bool l_big) {
-  uint64_t coax_t335;
-  uint64_t coax_t336;
+  uint64_t coax_t354;
+  uint64_t coax_t355;
   coax_t_CbU64 l_result = ((coax_t_CbU64){0});
   if (((l_width != INT64_C(4)) && (l_width != INT64_C(8))) || (!cb_span((l_data).count, l_at, l_width)))
   {
@@ -3401,12 +3720,12 @@ static coax_t_CbU64 coax_p_cb_load_word(coax_v_u8 l_data, int64_t l_at, int64_t 
   }
   uint64_t l_value = ((uint64_t)0);
   {
-    int64_t coax_lo334 = INT64_C(0);
-    int64_t coax_hi334 = l_width;
-    for (int64_t l_i = coax_lo334; l_i < coax_hi334; l_i++)
+    int64_t coax_lo353 = INT64_C(0);
+    int64_t coax_hi353 = l_width;
+    for (int64_t l_i = coax_lo353; l_i < coax_hi353; l_i++)
     {
-      int64_t l_index = (l_big ? coax_add_s64(l_at, l_i, 1955) : coax_sub_s64(coax_sub_s64(coax_add_s64(l_at, l_width, 1955), INT64_C(1), 1955), l_i, 1955));
-      l_value = (coax_t335 = coax_shl_u64(l_value, (int64_t)(UINT64_C(8)), 1956), coax_t336 = ((uint64_t)coax_cast_uu((uint64_t)((*coax_elem_v_u8(l_data, l_index, 1956))), UINT64_C(18446744073709551615), 1956)), ((uint64_t)(coax_t335 | coax_t336)));
+      int64_t l_index = (l_big ? coax_add_s64(l_at, l_i, 2227) : coax_sub_s64(coax_sub_s64(coax_add_s64(l_at, l_width, 2227), INT64_C(1), 2227), l_i, 2227));
+      l_value = (coax_t354 = coax_shl_u64(l_value, (int64_t)(UINT64_C(8)), 2228), coax_t355 = ((uint64_t)coax_cast_uu((uint64_t)((*coax_elem_v_u8(l_data, l_index, 2228))), UINT64_C(18446744073709551615), 2228)), ((uint64_t)(coax_t354 | coax_t355)));
     }
   }
   (l_result).value = l_value;
@@ -3415,7 +3734,7 @@ static coax_t_CbU64 coax_p_cb_load_word(coax_v_u8 l_data, int64_t l_at, int64_t 
 }
 
 static _Bool coax_p_cb_store_word(coax_v_u8 l_out, int64_t l_at, uint64_t l_value, int64_t l_width, _Bool l_big) {
-  uint8_t * coax_t338;
+  uint8_t * coax_t357;
   if (((l_width != INT64_C(4)) && (l_width != INT64_C(8))) || (!cb_span((l_out).count, l_at, l_width)))
   {
     return 0;
@@ -3425,21 +3744,21 @@ static _Bool coax_p_cb_store_word(coax_v_u8 l_out, int64_t l_at, uint64_t l_valu
     return 0;
   }
   {
-    int64_t coax_lo337 = INT64_C(0);
-    int64_t coax_hi337 = l_width;
-    for (int64_t l_i = coax_lo337; l_i < coax_hi337; l_i++)
+    int64_t coax_lo356 = INT64_C(0);
+    int64_t coax_hi356 = l_width;
+    for (int64_t l_i = coax_lo356; l_i < coax_hi356; l_i++)
     {
-      int64_t l_index = (l_big ? coax_sub_s64(coax_sub_s64(coax_add_s64(l_at, l_width, 1965), INT64_C(1), 1965), l_i, 1965) : coax_add_s64(l_at, l_i, 1965));
-      coax_t338 = &((*coax_elem_v_u8(l_out, l_index, 1966)));
-      *coax_t338 = ((uint8_t)coax_cast_uu((uint64_t)(((uint64_t)(coax_shr_u64(l_value, (int64_t)(coax_mul_s64(l_i, INT64_C(8), 1966)), 1966) & UINT64_C(255)))), UINT64_C(255), 1966));
+      int64_t l_index = (l_big ? coax_sub_s64(coax_sub_s64(coax_add_s64(l_at, l_width, 2237), INT64_C(1), 2237), l_i, 2237) : coax_add_s64(l_at, l_i, 2237));
+      coax_t357 = &((*coax_elem_v_u8(l_out, l_index, 2238)));
+      *coax_t357 = ((uint8_t)coax_cast_uu((uint64_t)(((uint64_t)(coax_shr_u64(l_value, (int64_t)(coax_mul_s64(l_i, INT64_C(8), 2238)), 2238) & UINT64_C(255)))), UINT64_C(255), 2238));
     }
   }
   return 1;
 }
 
 static coax_t_CbU32 coax_p_cb_load_word32(coax_v_u8 l_data, int64_t l_at, _Bool l_big) {
-  uint32_t coax_t340;
-  uint32_t coax_t341;
+  uint32_t coax_t359;
+  uint32_t coax_t360;
   coax_t_CbU32 l_result = ((coax_t_CbU32){0});
   if (!cb_span((l_data).count, l_at, INT64_C(4)))
   {
@@ -3447,12 +3766,12 @@ static coax_t_CbU32 coax_p_cb_load_word32(coax_v_u8 l_data, int64_t l_at, _Bool 
   }
   uint32_t l_value = ((uint32_t)0);
   {
-    int64_t coax_lo339 = INT64_C(0);
-    int64_t coax_hi339 = INT64_C(4);
-    for (int64_t l_i = coax_lo339; l_i < coax_hi339; l_i++)
+    int64_t coax_lo358 = INT64_C(0);
+    int64_t coax_hi358 = INT64_C(4);
+    for (int64_t l_i = coax_lo358; l_i < coax_hi358; l_i++)
     {
-      int64_t l_index = (l_big ? coax_add_s64(l_at, l_i, 1979) : coax_sub_s64(coax_add_s64(l_at, INT64_C(3), 1979), l_i, 1979));
-      l_value = (coax_t340 = coax_shl_u32(l_value, (int64_t)(((uint32_t)UINT64_C(8))), 1980), coax_t341 = ((uint32_t)((*coax_elem_v_u8(l_data, l_index, 1980)))), ((uint32_t)(coax_t340 | coax_t341)));
+      int64_t l_index = (l_big ? coax_add_s64(l_at, l_i, 2251) : coax_sub_s64(coax_add_s64(l_at, INT64_C(3), 2251), l_i, 2251));
+      l_value = (coax_t359 = coax_shl_u32(l_value, (int64_t)(((uint32_t)UINT64_C(8))), 2252), coax_t360 = ((uint32_t)((*coax_elem_v_u8(l_data, l_index, 2252)))), ((uint32_t)(coax_t359 | coax_t360)));
     }
   }
   (l_result).value = l_value;
@@ -3477,11 +3796,11 @@ coax_t_CbU64 cb_load_le64(coax_v_u8 l_data, int64_t l_at) {
 }
 
 _Bool cb_store_be32(coax_v_u8 l_out, int64_t l_at, uint32_t l_value) {
-  return coax_p_cb_store_word(l_out, l_at, ((uint64_t)coax_cast_uu((uint64_t)(l_value), UINT64_C(18446744073709551615), 1989)), INT64_C(4), 1);
+  return coax_p_cb_store_word(l_out, l_at, ((uint64_t)coax_cast_uu((uint64_t)(l_value), UINT64_C(18446744073709551615), 2261)), INT64_C(4), 1);
 }
 
 _Bool cb_store_le32(coax_v_u8 l_out, int64_t l_at, uint32_t l_value) {
-  return coax_p_cb_store_word(l_out, l_at, ((uint64_t)coax_cast_uu((uint64_t)(l_value), UINT64_C(18446744073709551615), 1990)), INT64_C(4), 0);
+  return coax_p_cb_store_word(l_out, l_at, ((uint64_t)coax_cast_uu((uint64_t)(l_value), UINT64_C(18446744073709551615), 2262)), INT64_C(4), 0);
 }
 
 _Bool cb_store_be64(coax_v_u8 l_out, int64_t l_at, uint64_t l_value) {
@@ -3493,44 +3812,44 @@ _Bool cb_store_le64(coax_v_u8 l_out, int64_t l_at, uint64_t l_value) {
 }
 
 uint64_t cb_mask(uint64_t l_bit) {
-  uint64_t coax_t342;
-  uint64_t coax_t343;
-  return coax_value_barrier_u64((coax_t342 = ((uint64_t)(l_bit & UINT64_C(1))), coax_t343 = UINT64_C(18446744073709551615), coax_mul_wrap_u64(coax_t342, coax_t343)));
+  uint64_t coax_t361;
+  uint64_t coax_t362;
+  return coax_value_barrier_u64((coax_t361 = ((uint64_t)(l_bit & UINT64_C(1))), coax_t362 = UINT64_C(18446744073709551615), coax_mul_wrap_u64(coax_t361, coax_t362)));
 }
 
 uint64_t cb_ct_select64(uint64_t l_mask, uint64_t l_a, uint64_t l_b) {
-  uint64_t coax_t344;
-  uint64_t coax_t345;
-  return ((uint64_t)(l_b ^ (coax_t344 = ((uint64_t)(l_a ^ l_b)), coax_t345 = coax_value_barrier_u64(l_mask), ((uint64_t)(coax_t344 & coax_t345)))));
+  uint64_t coax_t363;
+  uint64_t coax_t364;
+  return ((uint64_t)(l_b ^ (coax_t363 = ((uint64_t)(l_a ^ l_b)), coax_t364 = coax_value_barrier_u64(l_mask), ((uint64_t)(coax_t363 & coax_t364)))));
 }
 
 uint32_t cb_ct_select32(uint32_t l_mask, uint32_t l_a, uint32_t l_b) {
-  uint32_t coax_t346;
-  uint32_t coax_t347;
-  return ((uint32_t)(l_b ^ (coax_t346 = ((uint32_t)(l_a ^ l_b)), coax_t347 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t346 & coax_t347)))));
+  uint32_t coax_t365;
+  uint32_t coax_t366;
+  return ((uint32_t)(l_b ^ (coax_t365 = ((uint32_t)(l_a ^ l_b)), coax_t366 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t365 & coax_t366)))));
 }
 
 uint64_t cb_ct_equal(coax_v_u8 l_a, coax_v_u8 l_b) {
-  uint8_t coax_t349;
-  uint8_t coax_t350;
+  uint8_t coax_t368;
+  uint8_t coax_t369;
   if (((l_a).count != (l_b).count) || (!cb_span((l_a).count, INT64_C(0), (l_a).count)))
   {
     return UINT64_C(0);
   }
   uint64_t l_diff = ((uint64_t)0);
   {
-    int64_t coax_lo348 = INT64_C(0);
-    int64_t coax_hi348 = (l_a).count;
-    for (int64_t l_i = coax_lo348; l_i < coax_hi348; l_i++)
+    int64_t coax_lo367 = INT64_C(0);
+    int64_t coax_hi367 = (l_a).count;
+    for (int64_t l_i = coax_lo367; l_i < coax_hi367; l_i++)
     {
-      l_diff = ((uint64_t)(l_diff | ((uint64_t)coax_cast_uu((uint64_t)((coax_t349 = (*coax_elem_v_u8(l_a, l_i, 2005)), coax_t350 = (*coax_elem_v_u8(l_b, l_i, 2005)), ((uint8_t)(coax_t349 ^ coax_t350)))), UINT64_C(18446744073709551615), 2005))));
+      l_diff = ((uint64_t)(l_diff | ((uint64_t)coax_cast_uu((uint64_t)((coax_t368 = (*coax_elem_v_u8(l_a, l_i, 2277)), coax_t369 = (*coax_elem_v_u8(l_b, l_i, 2277)), ((uint8_t)(coax_t368 ^ coax_t369)))), UINT64_C(18446744073709551615), 2277))));
     }
   }
-  return cb_mask(((uint64_t)(coax_shr_u64(coax_add_u64(l_diff, UINT64_C(255), 2008), (int64_t)(UINT64_C(8)), 2008) ^ UINT64_C(1))));
+  return cb_mask(((uint64_t)(coax_shr_u64(coax_add_u64(l_diff, UINT64_C(255), 2280), (int64_t)(UINT64_C(8)), 2280) ^ UINT64_C(1))));
 }
 
 static _Bool coax_p_cb_copy_checked(coax_v_u8 l_source, coax_v_u8 l_out, _Bool l_overlap) {
-  uint8_t * coax_t352;
+  uint8_t * coax_t371;
   if ((!cb_span((l_source).count, INT64_C(0), (l_source).count)) || (!cb_span((l_out).count, INT64_C(0), (l_source).count)))
   {
     return 0;
@@ -3540,21 +3859,21 @@ static _Bool coax_p_cb_copy_checked(coax_v_u8 l_source, coax_v_u8 l_out, _Bool l
     return 0;
   }
   {
-    int64_t coax_lo351 = INT64_C(0);
-    int64_t coax_hi351 = (l_source).count;
-    for (int64_t l_i = coax_lo351; l_i < coax_hi351; l_i++)
+    int64_t coax_lo370 = INT64_C(0);
+    int64_t coax_hi370 = (l_source).count;
+    for (int64_t l_i = coax_lo370; l_i < coax_hi370; l_i++)
     {
-      coax_t352 = &((*coax_elem_v_u8(l_out, l_i, 2013)));
-      *coax_t352 = (*coax_elem_v_u8(l_source, l_i, 2013));
+      coax_t371 = &((*coax_elem_v_u8(l_out, l_i, 2285)));
+      *coax_t371 = (*coax_elem_v_u8(l_source, l_i, 2285));
     }
   }
   return 1;
 }
 
 static _Bool coax_p_cb_select_checked(uint64_t l_mask, coax_v_u8 l_a, coax_v_u8 l_b, coax_v_u8 l_out, _Bool l_overlap_a, _Bool l_overlap_b) {
-  uint8_t * coax_t354;
-  uint64_t coax_t355;
-  uint64_t coax_t356;
+  uint8_t * coax_t373;
+  uint64_t coax_t374;
+  uint64_t coax_t375;
   if ((((l_a).count != (l_b).count) || (!cb_span((l_a).count, INT64_C(0), (l_a).count))) || (!cb_span((l_out).count, INT64_C(0), (l_a).count)))
   {
     return 0;
@@ -3564,12 +3883,12 @@ static _Bool coax_p_cb_select_checked(uint64_t l_mask, coax_v_u8 l_a, coax_v_u8 
     return 0;
   }
   {
-    int64_t coax_lo353 = INT64_C(0);
-    int64_t coax_hi353 = (l_a).count;
-    for (int64_t l_i = coax_lo353; l_i < coax_hi353; l_i++)
+    int64_t coax_lo372 = INT64_C(0);
+    int64_t coax_hi372 = (l_a).count;
+    for (int64_t l_i = coax_lo372; l_i < coax_hi372; l_i++)
     {
-      coax_t354 = &((*coax_elem_v_u8(l_out, l_i, 2019)));
-      *coax_t354 = ((uint8_t)coax_cast_uu((uint64_t)((coax_t355 = ((uint64_t)coax_cast_uu((uint64_t)((*coax_elem_v_u8(l_a, l_i, 2019))), UINT64_C(18446744073709551615), 2019)), coax_t356 = ((uint64_t)coax_cast_uu((uint64_t)((*coax_elem_v_u8(l_b, l_i, 2019))), UINT64_C(18446744073709551615), 2019)), cb_ct_select64(l_mask, coax_t355, coax_t356))), UINT64_C(255), 2019));
+      coax_t373 = &((*coax_elem_v_u8(l_out, l_i, 2291)));
+      *coax_t373 = ((uint8_t)coax_cast_uu((uint64_t)((coax_t374 = ((uint64_t)coax_cast_uu((uint64_t)((*coax_elem_v_u8(l_a, l_i, 2291))), UINT64_C(18446744073709551615), 2291)), coax_t375 = ((uint64_t)coax_cast_uu((uint64_t)((*coax_elem_v_u8(l_b, l_i, 2291))), UINT64_C(18446744073709551615), 2291)), cb_ct_select64(l_mask, coax_t374, coax_t375))), UINT64_C(255), 2291));
     }
   }
   return 1;
@@ -3577,120 +3896,120 @@ static _Bool coax_p_cb_select_checked(uint64_t l_mask, coax_v_u8 l_a, coax_v_u8 
 
 static coax_t_ScScalar coax_p_sc_small(uint32_t l_value) {
   coax_t_ScScalar l_result = ((coax_t_ScScalar){0});
-  ((l_result).limbs).e[coax_index(INT64_C(0), 8, 2109)] = l_value;
+  ((l_result).limbs).e[coax_index(INT64_C(0), 8, 2407)] = l_value;
   return l_result;
 }
 
 static uint64_t coax_p_sc_zero_bit(uint32_t l_word) {
-  return ((uint64_t)(coax_shr_u64(coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)(l_word), UINT64_C(18446744073709551615), 2110)), UINT64_C(4294967295), 2110), (int64_t)(UINT64_C(32)), 2110) ^ UINT64_C(1)));
+  return ((uint64_t)(coax_shr_u64(coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)(l_word), UINT64_C(18446744073709551615), 2408)), UINT64_C(4294967295), 2408), (int64_t)(UINT64_C(32)), 2408) ^ UINT64_C(1)));
 }
 
 _Bool sc_is_zero(coax_t_ScScalar l_a) {
   uint32_t l_bits = ((uint32_t)0);
   {
-    int64_t coax_lo357 = INT64_C(0);
-    int64_t coax_hi357 = INT64_C(8);
-    for (int64_t l_i = coax_lo357; l_i < coax_hi357; l_i++)
+    int64_t coax_lo376 = INT64_C(0);
+    int64_t coax_hi376 = INT64_C(8);
+    for (int64_t l_i = coax_lo376; l_i < coax_hi376; l_i++)
     {
-      l_bits = ((uint32_t)(l_bits | ((l_a).limbs).e[coax_index(l_i, 8, 2111)]));
+      l_bits = ((uint32_t)(l_bits | ((l_a).limbs).e[coax_index(l_i, 8, 2409)]));
     }
   }
   return (coax_p_sc_zero_bit(l_bits) == UINT64_C(1));
 }
 
 _Bool sc_equal(coax_t_ScScalar l_a, coax_t_ScScalar l_b) {
-  uint32_t coax_t359;
-  uint32_t coax_t360;
+  uint32_t coax_t378;
+  uint32_t coax_t379;
   uint32_t l_bits = ((uint32_t)0);
   {
-    int64_t coax_lo358 = INT64_C(0);
-    int64_t coax_hi358 = INT64_C(8);
-    for (int64_t l_i = coax_lo358; l_i < coax_hi358; l_i++)
+    int64_t coax_lo377 = INT64_C(0);
+    int64_t coax_hi377 = INT64_C(8);
+    for (int64_t l_i = coax_lo377; l_i < coax_hi377; l_i++)
     {
-      l_bits = ((uint32_t)(l_bits | (coax_t359 = ((l_a).limbs).e[coax_index(l_i, 8, 2112)], coax_t360 = ((l_b).limbs).e[coax_index(l_i, 8, 2112)], ((uint32_t)(coax_t359 ^ coax_t360)))));
+      l_bits = ((uint32_t)(l_bits | (coax_t378 = ((l_a).limbs).e[coax_index(l_i, 8, 2410)], coax_t379 = ((l_b).limbs).e[coax_index(l_i, 8, 2410)], ((uint32_t)(coax_t378 ^ coax_t379)))));
     }
   }
   return (coax_p_sc_zero_bit(l_bits) == UINT64_C(1));
 }
 
 static coax_t_ScScalar coax_p_sc_select(uint64_t l_bit, coax_t_ScScalar l_a, coax_t_ScScalar l_b) {
-  uint32_t * coax_t362;
-  uint32_t coax_t363;
-  uint32_t coax_t364;
+  uint32_t * coax_t381;
+  uint32_t coax_t382;
+  uint32_t coax_t383;
   uint32_t l_mask = ((uint32_t)(cb_mask(l_bit)));
   coax_t_ScScalar l_result = ((coax_t_ScScalar){0});
   {
-    int64_t coax_lo361 = INT64_C(0);
-    int64_t coax_hi361 = INT64_C(8);
-    for (int64_t l_i = coax_lo361; l_i < coax_hi361; l_i++)
+    int64_t coax_lo380 = INT64_C(0);
+    int64_t coax_hi380 = INT64_C(8);
+    for (int64_t l_i = coax_lo380; l_i < coax_hi380; l_i++)
     {
-      coax_t362 = &(((l_result).limbs).e[coax_index(l_i, 8, 2115)]);
-      *coax_t362 = (coax_t363 = ((l_a).limbs).e[coax_index(l_i, 8, 2115)], coax_t364 = ((l_b).limbs).e[coax_index(l_i, 8, 2115)], cb_ct_select32(l_mask, coax_t363, coax_t364));
+      coax_t381 = &(((l_result).limbs).e[coax_index(l_i, 8, 2413)]);
+      *coax_t381 = (coax_t382 = ((l_a).limbs).e[coax_index(l_i, 8, 2413)], coax_t383 = ((l_b).limbs).e[coax_index(l_i, 8, 2413)], cb_ct_select32(l_mask, coax_t382, coax_t383));
     }
   }
   return l_result;
 }
 
 static coax_t_ScDifference coax_p_sc_subtract_n(coax_a9_u32 l_a) {
-  uint64_t coax_t366;
-  uint64_t coax_t367;
+  uint64_t coax_t385;
+  uint64_t coax_t386;
   coax_t_ScDifference l_result = ((coax_t_ScDifference){0});
   uint64_t l_borrow = UINT64_C(0);
   {
-    int64_t coax_lo365 = INT64_C(0);
-    int64_t coax_hi365 = INT64_C(8);
-    for (int64_t l_i = coax_lo365; l_i < coax_hi365; l_i++)
+    int64_t coax_lo384 = INT64_C(0);
+    int64_t coax_hi384 = INT64_C(8);
+    for (int64_t l_i = coax_lo384; l_i < coax_hi384; l_i++)
     {
-      uint64_t l_wide = coax_sub_u64((coax_t366 = coax_add_u64(UINT64_C(4294967296), ((uint64_t)coax_cast_uu((uint64_t)((l_a).e[coax_index(l_i, 9, 2120)]), UINT64_C(18446744073709551615), 2120)), 2120), coax_t367 = ((uint64_t)coax_cast_uu((uint64_t)(((coax_k9).limbs).e[coax_index(l_i, 8, 2120)]), UINT64_C(18446744073709551615), 2120)), coax_sub_u64(coax_t366, coax_t367, 2120)), l_borrow, 2120);
-      (((l_result).value).limbs).e[coax_index(l_i, 8, 2121)] = ((uint32_t)(l_wide));
-      l_borrow = coax_sub_u64(UINT64_C(1), coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 2121), 2121);
+      uint64_t l_wide = coax_sub_u64((coax_t385 = coax_add_u64(UINT64_C(4294967296), ((uint64_t)coax_cast_uu((uint64_t)((l_a).e[coax_index(l_i, 9, 2418)]), UINT64_C(18446744073709551615), 2418)), 2418), coax_t386 = ((uint64_t)coax_cast_uu((uint64_t)(((coax_k17).limbs).e[coax_index(l_i, 8, 2418)]), UINT64_C(18446744073709551615), 2418)), coax_sub_u64(coax_t385, coax_t386, 2418)), l_borrow, 2418);
+      (((l_result).value).limbs).e[coax_index(l_i, 8, 2419)] = ((uint32_t)(l_wide));
+      l_borrow = coax_sub_u64(UINT64_C(1), coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 2419), 2419);
     }
   }
-  (l_result).borrow = coax_sub_u64(UINT64_C(1), coax_shr_u64(coax_sub_u64(coax_add_u64(UINT64_C(4294967296), ((uint64_t)coax_cast_uu((uint64_t)((l_a).e[coax_index(INT64_C(8), 9, 2123)]), UINT64_C(18446744073709551615), 2123)), 2123), l_borrow, 2123), (int64_t)(UINT64_C(32)), 2123), 2123);
+  (l_result).borrow = coax_sub_u64(UINT64_C(1), coax_shr_u64(coax_sub_u64(coax_add_u64(UINT64_C(4294967296), ((uint64_t)coax_cast_uu((uint64_t)((l_a).e[coax_index(INT64_C(8), 9, 2421)]), UINT64_C(18446744073709551615), 2421)), 2421), l_borrow, 2421), (int64_t)(UINT64_C(32)), 2421), 2421);
   return l_result;
 }
 
 static coax_t_ScScalar coax_p_sc_reduce9(coax_a9_u32 l_a) {
-  uint32_t * coax_t369;
+  uint32_t * coax_t388;
   coax_t_ScDifference l_difference = coax_p_sc_subtract_n(l_a);
   coax_t_ScScalar l_original = ((coax_t_ScScalar){0});
   {
-    int64_t coax_lo368 = INT64_C(0);
-    int64_t coax_hi368 = INT64_C(8);
-    for (int64_t l_i = coax_lo368; l_i < coax_hi368; l_i++)
+    int64_t coax_lo387 = INT64_C(0);
+    int64_t coax_hi387 = INT64_C(8);
+    for (int64_t l_i = coax_lo387; l_i < coax_hi387; l_i++)
     {
-      coax_t369 = &(((l_original).limbs).e[coax_index(l_i, 8, 2126)]);
-      *coax_t369 = (l_a).e[coax_index(l_i, 9, 2126)];
+      coax_t388 = &(((l_original).limbs).e[coax_index(l_i, 8, 2424)]);
+      *coax_t388 = (l_a).e[coax_index(l_i, 9, 2424)];
     }
   }
   return coax_p_sc_select((l_difference).borrow, l_original, (l_difference).value);
 }
 
 coax_t_ScScalar sc_normalize(coax_t_ScScalar l_a) {
-  uint32_t * coax_t371;
+  uint32_t * coax_t390;
   coax_a9_u32 l_wide = ((coax_a9_u32){0});
   {
-    int64_t coax_lo370 = INT64_C(0);
-    int64_t coax_hi370 = INT64_C(8);
-    for (int64_t l_i = coax_lo370; l_i < coax_hi370; l_i++)
+    int64_t coax_lo389 = INT64_C(0);
+    int64_t coax_hi389 = INT64_C(8);
+    for (int64_t l_i = coax_lo389; l_i < coax_hi389; l_i++)
     {
-      coax_t371 = &((l_wide).e[coax_index(l_i, 9, 2129)]);
-      *coax_t371 = ((l_a).limbs).e[coax_index(l_i, 8, 2129)];
+      coax_t390 = &((l_wide).e[coax_index(l_i, 9, 2427)]);
+      *coax_t390 = ((l_a).limbs).e[coax_index(l_i, 8, 2427)];
     }
   }
   return coax_p_sc_reduce9(l_wide);
 }
 
 _Bool sc_overflow(coax_t_ScScalar l_a) {
-  uint32_t * coax_t373;
+  uint32_t * coax_t392;
   coax_a9_u32 l_wide = ((coax_a9_u32){0});
   {
-    int64_t coax_lo372 = INT64_C(0);
-    int64_t coax_hi372 = INT64_C(8);
-    for (int64_t l_i = coax_lo372; l_i < coax_hi372; l_i++)
+    int64_t coax_lo391 = INT64_C(0);
+    int64_t coax_hi391 = INT64_C(8);
+    for (int64_t l_i = coax_lo391; l_i < coax_hi391; l_i++)
     {
-      coax_t373 = &((l_wide).e[coax_index(l_i, 9, 2131)]);
-      *coax_t373 = ((l_a).limbs).e[coax_index(l_i, 8, 2131)];
+      coax_t392 = &((l_wide).e[coax_index(l_i, 9, 2429)]);
+      *coax_t392 = ((l_a).limbs).e[coax_index(l_i, 8, 2429)];
     }
   }
   return ((coax_p_sc_subtract_n(l_wide)).borrow == UINT64_C(0));
@@ -3701,24 +4020,24 @@ _Bool sc_secret_valid(coax_t_ScScalar l_a) {
 }
 
 coax_t_ScLoad sc_reduce_bytes(coax_v_u8 l_bytes) {
-  uint32_t * coax_t375;
-  coax_t_ScScalar coax_t376;
-  _Bool coax_t377;
+  uint32_t * coax_t394;
+  coax_t_ScScalar coax_t395;
+  _Bool coax_t396;
   if ((l_bytes).count != INT64_C(32))
   {
     return ((coax_t_ScLoad){0});
   }
   coax_t_ScScalar l_raw = ((coax_t_ScScalar){0});
   {
-    int64_t coax_lo374 = INT64_C(0);
-    int64_t coax_hi374 = INT64_C(8);
-    for (int64_t l_i = coax_lo374; l_i < coax_hi374; l_i++)
+    int64_t coax_lo393 = INT64_C(0);
+    int64_t coax_hi393 = INT64_C(8);
+    for (int64_t l_i = coax_lo393; l_i < coax_hi393; l_i++)
     {
-      coax_t375 = &(((l_raw).limbs).e[coax_index(l_i, 8, 2136)]);
-      *coax_t375 = (cb_load_be32(l_bytes, coax_mul_s64(coax_sub_s64(INT64_C(7), l_i, 2136), INT64_C(4), 2136))).value;
+      coax_t394 = &(((l_raw).limbs).e[coax_index(l_i, 8, 2434)]);
+      *coax_t394 = (cb_load_be32(l_bytes, coax_mul_s64(coax_sub_s64(INT64_C(7), l_i, 2434), INT64_C(4), 2434))).value;
     }
   }
-  return (coax_t376 = sc_normalize(l_raw), coax_t377 = sc_overflow(l_raw), ((coax_t_ScLoad){.value = coax_t376, .overflow = coax_t377, .ok = 1}));
+  return (coax_t395 = sc_normalize(l_raw), coax_t396 = sc_overflow(l_raw), ((coax_t_ScLoad){.value = coax_t395, .overflow = coax_t396, .ok = 1}));
 }
 
 coax_t_ScLoad sc_load(coax_v_u8 l_bytes) {
@@ -3730,73 +4049,73 @@ coax_t_ScLoad sc_load(coax_v_u8 l_bytes) {
 }
 
 _Bool sc_store(coax_t_ScScalar l_a, coax_v_u8 l_bytes) {
-  int64_t coax_t379;
-  uint32_t coax_t380;
+  int64_t coax_t398;
+  uint32_t coax_t399;
   if ((!cb_span((l_bytes).count, INT64_C(0), INT64_C(32))) || sc_overflow(l_a))
   {
     return 0;
   }
   {
-    int64_t coax_lo378 = INT64_C(0);
-    int64_t coax_hi378 = INT64_C(8);
-    for (int64_t l_i = coax_lo378; l_i < coax_hi378; l_i++)
+    int64_t coax_lo397 = INT64_C(0);
+    int64_t coax_hi397 = INT64_C(8);
+    for (int64_t l_i = coax_lo397; l_i < coax_hi397; l_i++)
     {
-      _Bool l_stored = (coax_t379 = coax_mul_s64(coax_sub_s64(INT64_C(7), l_i, 2146), INT64_C(4), 2146), coax_t380 = ((l_a).limbs).e[coax_index(l_i, 8, 2146)], cb_store_be32(l_bytes, coax_t379, coax_t380));
+      _Bool l_stored = (coax_t398 = coax_mul_s64(coax_sub_s64(INT64_C(7), l_i, 2444), INT64_C(4), 2444), coax_t399 = ((l_a).limbs).e[coax_index(l_i, 8, 2444)], cb_store_be32(l_bytes, coax_t398, coax_t399));
     }
   }
   return 1;
 }
 
 coax_t_ScScalar sc_add(coax_t_ScScalar l_a, coax_t_ScScalar l_b) {
-  uint64_t coax_t382;
-  uint64_t coax_t383;
+  uint64_t coax_t401;
+  uint64_t coax_t402;
   coax_t_ScScalar l_x = sc_normalize(l_a);
   coax_t_ScScalar l_y = sc_normalize(l_b);
   coax_a9_u32 l_sum = ((coax_a9_u32){0});
   uint64_t l_carry = UINT64_C(0);
   {
-    int64_t coax_lo381 = INT64_C(0);
-    int64_t coax_hi381 = INT64_C(8);
-    for (int64_t l_i = coax_lo381; l_i < coax_hi381; l_i++)
+    int64_t coax_lo400 = INT64_C(0);
+    int64_t coax_hi400 = INT64_C(8);
+    for (int64_t l_i = coax_lo400; l_i < coax_hi400; l_i++)
     {
-      uint64_t l_wide = coax_add_u64((coax_t382 = ((uint64_t)coax_cast_uu((uint64_t)(((l_x).limbs).e[coax_index(l_i, 8, 2150)]), UINT64_C(18446744073709551615), 2150)), coax_t383 = ((uint64_t)coax_cast_uu((uint64_t)(((l_y).limbs).e[coax_index(l_i, 8, 2150)]), UINT64_C(18446744073709551615), 2150)), coax_add_u64(coax_t382, coax_t383, 2150)), l_carry, 2150);
-      (l_sum).e[coax_index(l_i, 9, 2150)] = ((uint32_t)(l_wide));
-      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 2150);
+      uint64_t l_wide = coax_add_u64((coax_t401 = ((uint64_t)coax_cast_uu((uint64_t)(((l_x).limbs).e[coax_index(l_i, 8, 2448)]), UINT64_C(18446744073709551615), 2448)), coax_t402 = ((uint64_t)coax_cast_uu((uint64_t)(((l_y).limbs).e[coax_index(l_i, 8, 2448)]), UINT64_C(18446744073709551615), 2448)), coax_add_u64(coax_t401, coax_t402, 2448)), l_carry, 2448);
+      (l_sum).e[coax_index(l_i, 9, 2448)] = ((uint32_t)(l_wide));
+      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 2448);
     }
   }
-  (l_sum).e[coax_index(INT64_C(8), 9, 2151)] = ((uint32_t)(l_carry));
+  (l_sum).e[coax_index(INT64_C(8), 9, 2449)] = ((uint32_t)(l_carry));
   return coax_p_sc_reduce9(l_sum);
 }
 
 coax_t_ScScalar sc_sub(coax_t_ScScalar l_a, coax_t_ScScalar l_b) {
-  uint64_t coax_t385;
-  uint64_t coax_t386;
-  uint64_t coax_t388;
-  uint64_t coax_t389;
+  uint64_t coax_t404;
+  uint64_t coax_t405;
+  uint64_t coax_t407;
+  uint64_t coax_t408;
   coax_t_ScScalar l_x = sc_normalize(l_a);
   coax_t_ScScalar l_y = sc_normalize(l_b);
   coax_t_ScScalar l_result = ((coax_t_ScScalar){0});
   uint64_t l_borrow = UINT64_C(0);
   {
-    int64_t coax_lo384 = INT64_C(0);
-    int64_t coax_hi384 = INT64_C(8);
-    for (int64_t l_i = coax_lo384; l_i < coax_hi384; l_i++)
+    int64_t coax_lo403 = INT64_C(0);
+    int64_t coax_hi403 = INT64_C(8);
+    for (int64_t l_i = coax_lo403; l_i < coax_hi403; l_i++)
     {
-      uint64_t l_wide = coax_sub_u64((coax_t385 = coax_add_u64(UINT64_C(4294967296), ((uint64_t)coax_cast_uu((uint64_t)(((l_x).limbs).e[coax_index(l_i, 8, 2155)]), UINT64_C(18446744073709551615), 2155)), 2155), coax_t386 = ((uint64_t)coax_cast_uu((uint64_t)(((l_y).limbs).e[coax_index(l_i, 8, 2155)]), UINT64_C(18446744073709551615), 2155)), coax_sub_u64(coax_t385, coax_t386, 2155)), l_borrow, 2155);
-      ((l_result).limbs).e[coax_index(l_i, 8, 2155)] = ((uint32_t)(l_wide));
-      l_borrow = coax_sub_u64(UINT64_C(1), coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 2155), 2155);
+      uint64_t l_wide = coax_sub_u64((coax_t404 = coax_add_u64(UINT64_C(4294967296), ((uint64_t)coax_cast_uu((uint64_t)(((l_x).limbs).e[coax_index(l_i, 8, 2453)]), UINT64_C(18446744073709551615), 2453)), 2453), coax_t405 = ((uint64_t)coax_cast_uu((uint64_t)(((l_y).limbs).e[coax_index(l_i, 8, 2453)]), UINT64_C(18446744073709551615), 2453)), coax_sub_u64(coax_t404, coax_t405, 2453)), l_borrow, 2453);
+      ((l_result).limbs).e[coax_index(l_i, 8, 2453)] = ((uint32_t)(l_wide));
+      l_borrow = coax_sub_u64(UINT64_C(1), coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 2453), 2453);
     }
   }
   uint32_t l_mask = ((uint32_t)(cb_mask(l_borrow)));
   uint64_t l_carry = UINT64_C(0);
   {
-    int64_t coax_lo387 = INT64_C(0);
-    int64_t coax_hi387 = INT64_C(8);
-    for (int64_t l_i = coax_lo387; l_i < coax_hi387; l_i++)
+    int64_t coax_lo406 = INT64_C(0);
+    int64_t coax_hi406 = INT64_C(8);
+    for (int64_t l_i = coax_lo406; l_i < coax_hi406; l_i++)
     {
-      uint64_t l_wide = coax_add_u64((coax_t388 = ((uint64_t)coax_cast_uu((uint64_t)(((l_result).limbs).e[coax_index(l_i, 8, 2157)]), UINT64_C(18446744073709551615), 2157)), coax_t389 = ((uint64_t)coax_cast_uu((uint64_t)(((uint32_t)(((coax_k9).limbs).e[coax_index(l_i, 8, 2157)] & l_mask))), UINT64_C(18446744073709551615), 2157)), coax_add_u64(coax_t388, coax_t389, 2157)), l_carry, 2157);
-      ((l_result).limbs).e[coax_index(l_i, 8, 2157)] = ((uint32_t)(l_wide));
-      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 2157);
+      uint64_t l_wide = coax_add_u64((coax_t407 = ((uint64_t)coax_cast_uu((uint64_t)(((l_result).limbs).e[coax_index(l_i, 8, 2455)]), UINT64_C(18446744073709551615), 2455)), coax_t408 = ((uint64_t)coax_cast_uu((uint64_t)(((uint32_t)(((coax_k17).limbs).e[coax_index(l_i, 8, 2455)] & l_mask))), UINT64_C(18446744073709551615), 2455)), coax_add_u64(coax_t407, coax_t408, 2455)), l_carry, 2455);
+      ((l_result).limbs).e[coax_index(l_i, 8, 2455)] = ((uint32_t)(l_wide));
+      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 2455);
     }
   }
   return l_result;
@@ -3807,79 +4126,79 @@ coax_t_ScScalar sc_negate(coax_t_ScScalar l_a) {
 }
 
 static coax_t_ScScalar coax_p_sc_montgomery(coax_t_ScScalar l_a, coax_t_ScScalar l_b) {
-  uint64_t coax_t392;
-  uint64_t coax_t393;
-  uint64_t coax_t394;
-  uint64_t coax_t395;
-  uint64_t coax_t397;
-  uint64_t coax_t398;
-  uint64_t coax_t399;
-  uint64_t coax_t400;
-  uint64_t coax_t401;
-  uint64_t coax_t402;
-  uint64_t coax_t404;
-  uint64_t coax_t405;
-  uint64_t coax_t406;
-  uint64_t coax_t407;
-  uint32_t * coax_t410;
+  uint64_t coax_t411;
+  uint64_t coax_t412;
+  uint64_t coax_t413;
+  uint64_t coax_t414;
+  uint64_t coax_t416;
+  uint64_t coax_t417;
+  uint64_t coax_t418;
+  uint64_t coax_t419;
+  uint64_t coax_t420;
+  uint64_t coax_t421;
+  uint64_t coax_t423;
+  uint64_t coax_t424;
+  uint64_t coax_t425;
+  uint64_t coax_t426;
+  uint32_t * coax_t429;
   coax_a17_u32 l_t = ((coax_a17_u32){0});
   {
-    int64_t coax_lo390 = INT64_C(0);
-    int64_t coax_hi390 = INT64_C(8);
-    for (int64_t l_i = coax_lo390; l_i < coax_hi390; l_i++)
+    int64_t coax_lo409 = INT64_C(0);
+    int64_t coax_hi409 = INT64_C(8);
+    for (int64_t l_i = coax_lo409; l_i < coax_hi409; l_i++)
     {
       uint64_t l_carry = UINT64_C(0);
       {
-        int64_t coax_lo391 = INT64_C(0);
-        int64_t coax_hi391 = INT64_C(8);
-        for (int64_t l_j = coax_lo391; l_j < coax_hi391; l_j++)
+        int64_t coax_lo410 = INT64_C(0);
+        int64_t coax_hi410 = INT64_C(8);
+        for (int64_t l_j = coax_lo410; l_j < coax_hi410; l_j++)
         {
-          uint64_t l_wide = coax_add_u64((coax_t392 = (coax_t393 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limbs).e[coax_index(l_i, 8, 2167)]), UINT64_C(18446744073709551615), 2167)), coax_t394 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limbs).e[coax_index(l_j, 8, 2167)]), UINT64_C(18446744073709551615), 2167)), coax_mul_wrap_u64(coax_t393, coax_t394)), coax_t395 = ((uint64_t)coax_cast_uu((uint64_t)((l_t).e[coax_index(coax_add_s64(l_i, l_j, 2167), 17, 2167)]), UINT64_C(18446744073709551615), 2167)), coax_add_u64(coax_t392, coax_t395, 2167)), l_carry, 2167);
-          (l_t).e[coax_index(coax_add_s64(l_i, l_j, 2167), 17, 2167)] = ((uint32_t)(l_wide));
-          l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 2167);
+          uint64_t l_wide = coax_add_u64((coax_t411 = (coax_t412 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limbs).e[coax_index(l_i, 8, 2465)]), UINT64_C(18446744073709551615), 2465)), coax_t413 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limbs).e[coax_index(l_j, 8, 2465)]), UINT64_C(18446744073709551615), 2465)), coax_mul_wrap_u64(coax_t412, coax_t413)), coax_t414 = ((uint64_t)coax_cast_uu((uint64_t)((l_t).e[coax_index(coax_add_s64(l_i, l_j, 2465), 17, 2465)]), UINT64_C(18446744073709551615), 2465)), coax_add_u64(coax_t411, coax_t414, 2465)), l_carry, 2465);
+          (l_t).e[coax_index(coax_add_s64(l_i, l_j, 2465), 17, 2465)] = ((uint32_t)(l_wide));
+          l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 2465);
         }
       }
-      (l_t).e[coax_index(coax_add_s64(l_i, INT64_C(8), 2168), 17, 2168)] = ((uint32_t)(l_carry));
+      (l_t).e[coax_index(coax_add_s64(l_i, INT64_C(8), 2466), 17, 2466)] = ((uint32_t)(l_carry));
     }
   }
   {
-    int64_t coax_lo396 = INT64_C(0);
-    int64_t coax_hi396 = INT64_C(8);
-    for (int64_t l_i = coax_lo396; l_i < coax_hi396; l_i++)
+    int64_t coax_lo415 = INT64_C(0);
+    int64_t coax_hi415 = INT64_C(8);
+    for (int64_t l_i = coax_lo415; l_i < coax_hi415; l_i++)
     {
-      uint64_t l_factor = ((uint64_t)((coax_t397 = ((uint64_t)coax_cast_uu((uint64_t)((l_t).e[coax_index(l_i, 17, 2173)]), UINT64_C(18446744073709551615), 2173)), coax_t398 = UINT64_C(1435021631), coax_mul_wrap_u64(coax_t397, coax_t398)) & UINT64_C(4294967295)));
-      uint64_t l_first = (coax_t399 = (coax_t400 = l_factor, coax_t401 = ((uint64_t)coax_cast_uu((uint64_t)(((coax_k9).limbs).e[coax_index(INT64_C(0), 8, 2176)]), UINT64_C(18446744073709551615), 2176)), coax_mul_wrap_u64(coax_t400, coax_t401)), coax_t402 = ((uint64_t)coax_cast_uu((uint64_t)((l_t).e[coax_index(l_i, 17, 2176)]), UINT64_C(18446744073709551615), 2176)), coax_add_u64(coax_t399, coax_t402, 2176));
-      uint64_t l_carry = coax_shr_u64(l_first, (int64_t)(UINT64_C(32)), 2176);
+      uint64_t l_factor = ((uint64_t)((coax_t416 = ((uint64_t)coax_cast_uu((uint64_t)((l_t).e[coax_index(l_i, 17, 2471)]), UINT64_C(18446744073709551615), 2471)), coax_t417 = UINT64_C(1435021631), coax_mul_wrap_u64(coax_t416, coax_t417)) & UINT64_C(4294967295)));
+      uint64_t l_first = (coax_t418 = (coax_t419 = l_factor, coax_t420 = ((uint64_t)coax_cast_uu((uint64_t)(((coax_k17).limbs).e[coax_index(INT64_C(0), 8, 2474)]), UINT64_C(18446744073709551615), 2474)), coax_mul_wrap_u64(coax_t419, coax_t420)), coax_t421 = ((uint64_t)coax_cast_uu((uint64_t)((l_t).e[coax_index(l_i, 17, 2474)]), UINT64_C(18446744073709551615), 2474)), coax_add_u64(coax_t418, coax_t421, 2474));
+      uint64_t l_carry = coax_shr_u64(l_first, (int64_t)(UINT64_C(32)), 2474);
       {
-        int64_t coax_lo403 = INT64_C(1);
-        int64_t coax_hi403 = INT64_C(8);
-        for (int64_t l_j = coax_lo403; l_j < coax_hi403; l_j++)
+        int64_t coax_lo422 = INT64_C(1);
+        int64_t coax_hi422 = INT64_C(8);
+        for (int64_t l_j = coax_lo422; l_j < coax_hi422; l_j++)
         {
-          uint64_t l_wide = coax_add_u64((coax_t404 = (coax_t405 = l_factor, coax_t406 = ((uint64_t)coax_cast_uu((uint64_t)(((coax_k9).limbs).e[coax_index(l_j, 8, 2177)]), UINT64_C(18446744073709551615), 2177)), coax_mul_wrap_u64(coax_t405, coax_t406)), coax_t407 = ((uint64_t)coax_cast_uu((uint64_t)((l_t).e[coax_index(coax_add_s64(l_i, l_j, 2177), 17, 2177)]), UINT64_C(18446744073709551615), 2177)), coax_add_u64(coax_t404, coax_t407, 2177)), l_carry, 2177);
-          (l_t).e[coax_index(coax_add_s64(l_i, l_j, 2177), 17, 2177)] = ((uint32_t)(l_wide));
-          l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 2177);
+          uint64_t l_wide = coax_add_u64((coax_t423 = (coax_t424 = l_factor, coax_t425 = ((uint64_t)coax_cast_uu((uint64_t)(((coax_k17).limbs).e[coax_index(l_j, 8, 2475)]), UINT64_C(18446744073709551615), 2475)), coax_mul_wrap_u64(coax_t424, coax_t425)), coax_t426 = ((uint64_t)coax_cast_uu((uint64_t)((l_t).e[coax_index(coax_add_s64(l_i, l_j, 2475), 17, 2475)]), UINT64_C(18446744073709551615), 2475)), coax_add_u64(coax_t423, coax_t426, 2475)), l_carry, 2475);
+          (l_t).e[coax_index(coax_add_s64(l_i, l_j, 2475), 17, 2475)] = ((uint32_t)(l_wide));
+          l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 2475);
         }
       }
       {
-        int64_t coax_lo408 = coax_add_s64(l_i, INT64_C(8), 2178);
-        int64_t coax_hi408 = INT64_C(17);
-        for (int64_t l_k = coax_lo408; l_k < coax_hi408; l_k++)
+        int64_t coax_lo427 = coax_add_s64(l_i, INT64_C(8), 2476);
+        int64_t coax_hi427 = INT64_C(17);
+        for (int64_t l_k = coax_lo427; l_k < coax_hi427; l_k++)
         {
-          uint64_t l_wide = coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)((l_t).e[coax_index(l_k, 17, 2178)]), UINT64_C(18446744073709551615), 2178)), l_carry, 2178);
-          (l_t).e[coax_index(l_k, 17, 2178)] = ((uint32_t)(l_wide));
-          l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 2178);
+          uint64_t l_wide = coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)((l_t).e[coax_index(l_k, 17, 2476)]), UINT64_C(18446744073709551615), 2476)), l_carry, 2476);
+          (l_t).e[coax_index(l_k, 17, 2476)] = ((uint32_t)(l_wide));
+          l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 2476);
         }
       }
     }
   }
   coax_a9_u32 l_reduced = ((coax_a9_u32){0});
   {
-    int64_t coax_lo409 = INT64_C(0);
-    int64_t coax_hi409 = INT64_C(9);
-    for (int64_t l_i = coax_lo409; l_i < coax_hi409; l_i++)
+    int64_t coax_lo428 = INT64_C(0);
+    int64_t coax_hi428 = INT64_C(9);
+    for (int64_t l_i = coax_lo428; l_i < coax_hi428; l_i++)
     {
-      coax_t410 = &((l_reduced).e[coax_index(l_i, 9, 2181)]);
-      *coax_t410 = (l_t).e[coax_index(coax_add_s64(l_i, INT64_C(8), 2181), 17, 2181)];
+      coax_t429 = &((l_reduced).e[coax_index(l_i, 9, 2479)]);
+      *coax_t429 = (l_t).e[coax_index(coax_add_s64(l_i, INT64_C(8), 2479), 17, 2479)];
     }
   }
   return coax_p_sc_reduce9(l_reduced);
@@ -3888,48 +4207,48 @@ static coax_t_ScScalar coax_p_sc_montgomery(coax_t_ScScalar l_a, coax_t_ScScalar
 coax_t_ScScalar sc_mul(coax_t_ScScalar l_a, coax_t_ScScalar l_b) {
   coax_t_ScScalar l_x = sc_normalize(l_a);
   coax_t_ScScalar l_y = sc_normalize(l_b);
-  return coax_p_sc_montgomery(coax_p_sc_montgomery(l_x, coax_k10), l_y);
+  return coax_p_sc_montgomery(coax_p_sc_montgomery(l_x, coax_k18), l_y);
 }
 
 coax_t_ScInverse sc_inverse(coax_t_ScScalar l_a) {
-  uint32_t coax_t412;
-  int64_t coax_t413;
-  coax_t_ScScalar coax_t414;
-  _Bool coax_t415;
+  uint32_t coax_t431;
+  int64_t coax_t432;
+  coax_t_ScScalar coax_t433;
+  _Bool coax_t434;
   coax_t_ScScalar l_x = sc_normalize(l_a);
-  coax_t_ScScalar l_base = coax_p_sc_montgomery(l_x, coax_k10);
+  coax_t_ScScalar l_base = coax_p_sc_montgomery(l_x, coax_k18);
   coax_t_ScScalar l_one = coax_p_sc_small(((uint32_t)UINT64_C(1)));
-  coax_t_ScScalar l_acc = coax_p_sc_montgomery(l_one, coax_k10);
+  coax_t_ScScalar l_acc = coax_p_sc_montgomery(l_one, coax_k18);
   {
-    int64_t coax_lo411 = INT64_C(0);
-    int64_t coax_hi411 = INT64_C(256);
-    for (int64_t l_round = coax_lo411; l_round < coax_hi411; l_round++)
+    int64_t coax_lo430 = INT64_C(0);
+    int64_t coax_hi430 = INT64_C(256);
+    for (int64_t l_round = coax_lo430; l_round < coax_hi430; l_round++)
     {
-      int64_t l_bit = coax_sub_s64(INT64_C(255), l_round, 2191);
+      int64_t l_bit = coax_sub_s64(INT64_C(255), l_round, 2489);
       l_acc = coax_p_sc_montgomery(l_acc, l_acc);
       coax_t_ScScalar l_product = coax_p_sc_montgomery(l_acc, l_base);
-      uint64_t l_choose = ((uint64_t)coax_cast_uu((uint64_t)(((uint32_t)((coax_t412 = ((coax_k11).limbs).e[coax_index(coax_div_s64(l_bit, INT64_C(32), 2192), 8, 2192)], coax_t413 = coax_mod_s64(l_bit, INT64_C(32), 2192), coax_shr_u32(coax_t412, (int64_t)(coax_t413), 2192)) & ((uint32_t)UINT64_C(1))))), UINT64_C(18446744073709551615), 2192));
+      uint64_t l_choose = ((uint64_t)coax_cast_uu((uint64_t)(((uint32_t)((coax_t431 = ((coax_k19).limbs).e[coax_index(coax_div_s64(l_bit, INT64_C(32), 2490), 8, 2490)], coax_t432 = coax_mod_s64(l_bit, INT64_C(32), 2490), coax_shr_u32(coax_t431, (int64_t)(coax_t432), 2490)) & ((uint32_t)UINT64_C(1))))), UINT64_C(18446744073709551615), 2490));
       l_acc = coax_p_sc_select(l_choose, l_product, l_acc);
     }
   }
-  return (coax_t414 = coax_p_sc_montgomery(l_acc, l_one), coax_t415 = (!sc_is_zero(l_x)), ((coax_t_ScInverse){.value = coax_t414, .ok = coax_t415}));
+  return (coax_t433 = coax_p_sc_montgomery(l_acc, l_one), coax_t434 = (!sc_is_zero(l_x)), ((coax_t_ScInverse){.value = coax_t433, .ok = coax_t434}));
 }
 
 coax_t_ScWindow sc_window(coax_t_ScScalar l_a, int64_t l_offset, int64_t l_width) {
-  uint32_t coax_t417;
-  int64_t coax_t418;
-  if ((((l_offset < INT64_C(0)) || (l_width < INT64_C(1))) || (l_width > INT64_C(8))) || (l_width > coax_sub_s64(INT64_C(256), l_offset, 2197)))
+  uint32_t coax_t436;
+  int64_t coax_t437;
+  if ((((l_offset < INT64_C(0)) || (l_width < INT64_C(1))) || (l_width > INT64_C(8))) || (l_width > coax_sub_s64(INT64_C(256), l_offset, 2495)))
   {
     return ((coax_t_ScWindow){0});
   }
   uint32_t l_value = ((uint32_t)0);
   {
-    int64_t coax_lo416 = INT64_C(0);
-    int64_t coax_hi416 = l_width;
-    for (int64_t l_i = coax_lo416; l_i < coax_hi416; l_i++)
+    int64_t coax_lo435 = INT64_C(0);
+    int64_t coax_hi435 = l_width;
+    for (int64_t l_i = coax_lo435; l_i < coax_hi435; l_i++)
     {
-      int64_t l_at = coax_add_s64(l_offset, l_i, 2198);
-      l_value = ((uint32_t)(l_value | coax_shl_u32(((uint32_t)((coax_t417 = ((l_a).limbs).e[coax_index(coax_div_s64(l_at, INT64_C(32), 2198), 8, 2198)], coax_t418 = coax_mod_s64(l_at, INT64_C(32), 2198), coax_shr_u32(coax_t417, (int64_t)(coax_t418), 2198)) & ((uint32_t)UINT64_C(1)))), (int64_t)(l_i), 2198)));
+      int64_t l_at = coax_add_s64(l_offset, l_i, 2496);
+      l_value = ((uint32_t)(l_value | coax_shl_u32(((uint32_t)((coax_t436 = ((l_a).limbs).e[coax_index(coax_div_s64(l_at, INT64_C(32), 2496), 8, 2496)], coax_t437 = coax_mod_s64(l_at, INT64_C(32), 2496), coax_shr_u32(coax_t436, (int64_t)(coax_t437), 2496)) & ((uint32_t)UINT64_C(1)))), (int64_t)(l_i), 2496)));
     }
   }
   return ((coax_t_ScWindow){.value = l_value, .ok = 1});
@@ -4004,8 +4323,8 @@ static uint32_t coax_p_sha256_request(int64_t l_input, int64_t l_output, _Bool l
 }
 
 uint32_t sha256_update_limit(uint64_t l_total, int64_t l_count) {
-  uint64_t coax_t419;
-  uint64_t coax_t420;
+  uint64_t coax_t438;
+  uint64_t coax_t439;
   if (l_total > UINT64_C(2305843009213693951))
   {
     return ((uint32_t)UINT64_C(1));
@@ -4014,7 +4333,7 @@ uint32_t sha256_update_limit(uint64_t l_total, int64_t l_count) {
   {
     return ((uint32_t)UINT64_C(2));
   }
-  if (coax_t419 = ((uint64_t)coax_cast_su((int64_t)(l_count), UINT64_C(18446744073709551615), 2409)), coax_t420 = coax_sub_u64(UINT64_C(2305843009213693951), l_total, 2409), (coax_t419 > coax_t420))
+  if (coax_t438 = ((uint64_t)coax_cast_su((int64_t)(l_count), UINT64_C(18446744073709551615), 2719)), coax_t439 = coax_sub_u64(UINT64_C(2305843009213693951), l_total, 2719), (coax_t438 > coax_t439))
   {
     return ((uint32_t)UINT64_C(6));
   }
@@ -4022,135 +4341,212 @@ uint32_t sha256_update_limit(uint64_t l_total, int64_t l_count) {
 }
 
 static coax_t_Sha256Work coax_p_sha256_unpack(coax_v_u8 l_state) {
-  uint64_t coax_t421;
-  uint64_t coax_t422;
-  uint32_t * coax_t424;
-  uint8_t * coax_t426;
+  coax_t_Sha256Work coax_ret;
+  coax_v_u8 coax_t440;
+  coax_v_u32 coax_t441;
+  coax_v_u8 coax_t442;
+  coax_v_u32 coax_t443;
+  coax_v_u8 coax_t444;
+  coax_v_u32 coax_t445;
+  uint64_t coax_t446;
+  uint64_t coax_t447;
+  coax_v_u8 coax_t448;
+  coax_v_u32 coax_t449;
+  coax_v_u8 coax_t450;
+  coax_v_u32 coax_t451;
+  uint32_t * coax_t453;
+  uint8_t * coax_t455;
+  coax_v_u8 coax_t456;
+  coax_v_u32 coax_t457;
+  coax_v_u8 coax_t458;
+  coax_v_u32 coax_t459;
   coax_t_Sha256Work l_w = ((coax_t_Sha256Work){0});
   if ((l_state).count != INT64_C(112))
   {
-    return l_w;
+    coax_ret = l_w;
+    {
+      (coax_t440 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2724), coax_secure_zero(coax_t440.data, coax_t440.count, sizeof(*coax_t440.data), 2724));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2724)))) coax_trap("assertion failed", 2724);
+    }
+    {
+      (coax_t441 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2724), coax_secure_zero(coax_t441.data, coax_t441.count, sizeof(*coax_t441.data), 2724));
+      if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2724)))) coax_trap("assertion failed", 2724);
+    }
+    return coax_ret;
   }
-  if (((((((*coax_elem_v_u8(l_state, INT64_C(0), 2415)) != ((uint8_t)UINT64_C(83))) || ((*coax_elem_v_u8(l_state, INT64_C(1), 2415)) != ((uint8_t)UINT64_C(50)))) || ((*coax_elem_v_u8(l_state, INT64_C(2), 2415)) != ((uint8_t)UINT64_C(53)))) || ((*coax_elem_v_u8(l_state, INT64_C(3), 2415)) != ((uint8_t)UINT64_C(54)))) || ((*coax_elem_v_u8(l_state, INT64_C(4), 2415)) != ((uint8_t)UINT64_C(1)))) || ((*coax_elem_v_u8(l_state, INT64_C(6), 2415)) != ((uint8_t)UINT64_C(0))))
+  if (((((((*coax_elem_v_u8(l_state, INT64_C(0), 2726)) != ((uint8_t)UINT64_C(83))) || ((*coax_elem_v_u8(l_state, INT64_C(1), 2726)) != ((uint8_t)UINT64_C(50)))) || ((*coax_elem_v_u8(l_state, INT64_C(2), 2726)) != ((uint8_t)UINT64_C(53)))) || ((*coax_elem_v_u8(l_state, INT64_C(3), 2726)) != ((uint8_t)UINT64_C(54)))) || ((*coax_elem_v_u8(l_state, INT64_C(4), 2726)) != ((uint8_t)UINT64_C(1)))) || ((*coax_elem_v_u8(l_state, INT64_C(6), 2726)) != ((uint8_t)UINT64_C(0))))
   {
-    return l_w;
+    coax_ret = l_w;
+    {
+      (coax_t442 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2724), coax_secure_zero(coax_t442.data, coax_t442.count, sizeof(*coax_t442.data), 2724));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2724)))) coax_trap("assertion failed", 2724);
+    }
+    {
+      (coax_t443 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2724), coax_secure_zero(coax_t443.data, coax_t443.count, sizeof(*coax_t443.data), 2724));
+      if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2724)))) coax_trap("assertion failed", 2724);
+    }
+    return coax_ret;
   }
-  (l_w).phase = ((uint32_t)coax_cast_uu((uint64_t)((*coax_elem_v_u8(l_state, INT64_C(5), 2416))), UINT64_C(4294967295), 2416));
-  (l_w).used = ((int64_t)coax_cast_us((uint64_t)((*coax_elem_v_u8(l_state, INT64_C(7), 2416))), INT64_C(9223372036854775807), 2416));
+  (l_w).phase = ((uint32_t)coax_cast_uu((uint64_t)((*coax_elem_v_u8(l_state, INT64_C(5), 2727))), UINT64_C(4294967295), 2727));
+  (l_w).used = ((int64_t)coax_cast_us((uint64_t)((*coax_elem_v_u8(l_state, INT64_C(7), 2727))), INT64_C(9223372036854775807), 2727));
   (l_w).total = (cb_load_be64(l_state, INT64_C(8))).value;
   if ((((l_w).phase != ((uint32_t)UINT64_C(1))) && ((l_w).phase != ((uint32_t)UINT64_C(2)))) || ((l_w).total > UINT64_C(2305843009213693951)))
   {
-    return l_w;
+    coax_ret = l_w;
+    {
+      (coax_t444 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2724), coax_secure_zero(coax_t444.data, coax_t444.count, sizeof(*coax_t444.data), 2724));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2724)))) coax_trap("assertion failed", 2724);
+    }
+    {
+      (coax_t445 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2724), coax_secure_zero(coax_t445.data, coax_t445.count, sizeof(*coax_t445.data), 2724));
+      if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2724)))) coax_trap("assertion failed", 2724);
+    }
+    return coax_ret;
   }
-  if (((l_w).phase == ((uint32_t)UINT64_C(1))) && (coax_t421 = ((uint64_t)coax_cast_su((int64_t)((l_w).used), UINT64_C(18446744073709551615), 2419)), coax_t422 = coax_mod_u64((l_w).total, UINT64_C(64), 2419), (coax_t421 != coax_t422)))
+  if (((l_w).phase == ((uint32_t)UINT64_C(1))) && (coax_t446 = ((uint64_t)coax_cast_su((int64_t)((l_w).used), UINT64_C(18446744073709551615), 2730)), coax_t447 = coax_mod_u64((l_w).total, UINT64_C(64), 2730), (coax_t446 != coax_t447)))
   {
-    return l_w;
+    coax_ret = l_w;
+    {
+      (coax_t448 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2724), coax_secure_zero(coax_t448.data, coax_t448.count, sizeof(*coax_t448.data), 2724));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2724)))) coax_trap("assertion failed", 2724);
+    }
+    {
+      (coax_t449 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2724), coax_secure_zero(coax_t449.data, coax_t449.count, sizeof(*coax_t449.data), 2724));
+      if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2724)))) coax_trap("assertion failed", 2724);
+    }
+    return coax_ret;
   }
   if (((l_w).phase == ((uint32_t)UINT64_C(2))) && ((l_w).used != INT64_C(0)))
   {
-    return l_w;
+    coax_ret = l_w;
+    {
+      (coax_t450 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2724), coax_secure_zero(coax_t450.data, coax_t450.count, sizeof(*coax_t450.data), 2724));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2724)))) coax_trap("assertion failed", 2724);
+    }
+    {
+      (coax_t451 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2724), coax_secure_zero(coax_t451.data, coax_t451.count, sizeof(*coax_t451.data), 2724));
+      if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2724)))) coax_trap("assertion failed", 2724);
+    }
+    return coax_ret;
   }
   {
-    int64_t coax_lo423 = INT64_C(0);
-    int64_t coax_hi423 = INT64_C(8);
-    for (int64_t l_i = coax_lo423; l_i < coax_hi423; l_i++)
+    int64_t coax_lo452 = INT64_C(0);
+    int64_t coax_hi452 = INT64_C(8);
+    for (int64_t l_i = coax_lo452; l_i < coax_hi452; l_i++)
     {
-      coax_t424 = &(((l_w).h).e[coax_index(l_i, 8, 2421)]);
-      *coax_t424 = (cb_load_be32(l_state, coax_add_s64(INT64_C(16), coax_mul_s64(l_i, INT64_C(4), 2421), 2421))).value;
+      coax_t453 = &(((l_w).h).e[coax_index(l_i, 8, 2732)]);
+      *coax_t453 = (cb_load_be32(l_state, coax_add_s64(INT64_C(16), coax_mul_s64(l_i, INT64_C(4), 2732), 2732))).value;
     }
   }
   {
-    int64_t coax_lo425 = INT64_C(0);
-    int64_t coax_hi425 = INT64_C(64);
-    for (int64_t l_i = coax_lo425; l_i < coax_hi425; l_i++)
+    int64_t coax_lo454 = INT64_C(0);
+    int64_t coax_hi454 = INT64_C(64);
+    for (int64_t l_i = coax_lo454; l_i < coax_hi454; l_i++)
     {
-      coax_t426 = &(((l_w).block).e[coax_index(l_i, 64, 2422)]);
-      *coax_t426 = (*coax_elem_v_u8(l_state, coax_add_s64(INT64_C(48), l_i, 2422), 2422));
+      coax_t455 = &(((l_w).block).e[coax_index(l_i, 64, 2733)]);
+      *coax_t455 = (*coax_elem_v_u8(l_state, coax_add_s64(INT64_C(48), l_i, 2733), 2733));
     }
   }
   (l_w).ok = 1;
-  return l_w;
+  coax_ret = l_w;
+  {
+    (coax_t456 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2724), coax_secure_zero(coax_t456.data, coax_t456.count, sizeof(*coax_t456.data), 2724));
+    if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2724)))) coax_trap("assertion failed", 2724);
+  }
+  {
+    (coax_t457 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2724), coax_secure_zero(coax_t457.data, coax_t457.count, sizeof(*coax_t457.data), 2724));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2724)))) coax_trap("assertion failed", 2724);
+  }
+  return coax_ret;
+  {
+    (coax_t458 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2724), coax_secure_zero(coax_t458.data, coax_t458.count, sizeof(*coax_t458.data), 2724));
+    if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2724)))) coax_trap("assertion failed", 2724);
+  }
+  {
+    (coax_t459 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2724), coax_secure_zero(coax_t459.data, coax_t459.count, sizeof(*coax_t459.data), 2724));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2724)))) coax_trap("assertion failed", 2724);
+  }
 }
 
 static uint32_t coax_p_sha256_pack(coax_t_Sha256Work l_w, coax_v_u8 l_state) {
-  uint8_t * coax_t427;
-  uint8_t * coax_t428;
-  uint8_t * coax_t430;
-  uint8_t * coax_t433;
-  uint32_t coax_t434;
-  int64_t coax_t435;
-  uint8_t * coax_t437;
+  uint8_t * coax_t460;
+  uint8_t * coax_t461;
+  uint8_t * coax_t463;
+  uint8_t * coax_t466;
+  uint32_t coax_t467;
+  int64_t coax_t468;
+  uint8_t * coax_t470;
   if ((l_state).count != INT64_C(112))
   {
     return ((uint32_t)UINT64_C(1));
   }
-  (*coax_elem_v_u8(l_state, INT64_C(0), 2427)) = ((uint8_t)UINT64_C(83));
-  (*coax_elem_v_u8(l_state, INT64_C(1), 2427)) = ((uint8_t)UINT64_C(50));
-  (*coax_elem_v_u8(l_state, INT64_C(2), 2427)) = ((uint8_t)UINT64_C(53));
-  (*coax_elem_v_u8(l_state, INT64_C(3), 2427)) = ((uint8_t)UINT64_C(54));
-  (*coax_elem_v_u8(l_state, INT64_C(4), 2427)) = ((uint8_t)UINT64_C(1));
-  coax_t427 = &((*coax_elem_v_u8(l_state, INT64_C(5), 2427)));
-  *coax_t427 = ((uint8_t)coax_cast_uu((uint64_t)((l_w).phase), UINT64_C(255), 2427));
-  (*coax_elem_v_u8(l_state, INT64_C(6), 2427)) = ((uint8_t)UINT64_C(0));
-  coax_t428 = &((*coax_elem_v_u8(l_state, INT64_C(7), 2427)));
-  *coax_t428 = ((uint8_t)coax_cast_su((int64_t)((l_w).used), UINT64_C(255), 2427));
+  (*coax_elem_v_u8(l_state, INT64_C(0), 2738)) = ((uint8_t)UINT64_C(83));
+  (*coax_elem_v_u8(l_state, INT64_C(1), 2738)) = ((uint8_t)UINT64_C(50));
+  (*coax_elem_v_u8(l_state, INT64_C(2), 2738)) = ((uint8_t)UINT64_C(53));
+  (*coax_elem_v_u8(l_state, INT64_C(3), 2738)) = ((uint8_t)UINT64_C(54));
+  (*coax_elem_v_u8(l_state, INT64_C(4), 2738)) = ((uint8_t)UINT64_C(1));
+  coax_t460 = &((*coax_elem_v_u8(l_state, INT64_C(5), 2738)));
+  *coax_t460 = ((uint8_t)coax_cast_uu((uint64_t)((l_w).phase), UINT64_C(255), 2738));
+  (*coax_elem_v_u8(l_state, INT64_C(6), 2738)) = ((uint8_t)UINT64_C(0));
+  coax_t461 = &((*coax_elem_v_u8(l_state, INT64_C(7), 2738)));
+  *coax_t461 = ((uint8_t)coax_cast_su((int64_t)((l_w).used), UINT64_C(255), 2738));
   {
-    int64_t coax_lo429 = INT64_C(0);
-    int64_t coax_hi429 = INT64_C(8);
-    for (int64_t l_i = coax_lo429; l_i < coax_hi429; l_i++)
+    int64_t coax_lo462 = INT64_C(0);
+    int64_t coax_hi462 = INT64_C(8);
+    for (int64_t l_i = coax_lo462; l_i < coax_hi462; l_i++)
     {
-      coax_t430 = &((*coax_elem_v_u8(l_state, coax_add_s64(INT64_C(8), l_i, 2428), 2428)));
-      *coax_t430 = ((uint8_t)coax_cast_uu((uint64_t)(((uint64_t)(coax_shr_u64((l_w).total, (int64_t)(coax_mul_s64(coax_sub_s64(INT64_C(7), l_i, 2428), INT64_C(8), 2428)), 2428) & UINT64_C(255)))), UINT64_C(255), 2428));
+      coax_t463 = &((*coax_elem_v_u8(l_state, coax_add_s64(INT64_C(8), l_i, 2739), 2739)));
+      *coax_t463 = ((uint8_t)coax_cast_uu((uint64_t)(((uint64_t)(coax_shr_u64((l_w).total, (int64_t)(coax_mul_s64(coax_sub_s64(INT64_C(7), l_i, 2739), INT64_C(8), 2739)), 2739) & UINT64_C(255)))), UINT64_C(255), 2739));
     }
   }
   {
-    int64_t coax_lo431 = INT64_C(0);
-    int64_t coax_hi431 = INT64_C(8);
-    for (int64_t l_i = coax_lo431; l_i < coax_hi431; l_i++)
+    int64_t coax_lo464 = INT64_C(0);
+    int64_t coax_hi464 = INT64_C(8);
+    for (int64_t l_i = coax_lo464; l_i < coax_hi464; l_i++)
     {
       {
-        int64_t coax_lo432 = INT64_C(0);
-        int64_t coax_hi432 = INT64_C(4);
-        for (int64_t l_j = coax_lo432; l_j < coax_hi432; l_j++)
+        int64_t coax_lo465 = INT64_C(0);
+        int64_t coax_hi465 = INT64_C(4);
+        for (int64_t l_j = coax_lo465; l_j < coax_hi465; l_j++)
         {
-          coax_t433 = &((*coax_elem_v_u8(l_state, coax_add_s64(coax_add_s64(INT64_C(16), coax_mul_s64(l_i, INT64_C(4), 2429), 2429), l_j, 2429), 2429)));
-          *coax_t433 = ((uint8_t)coax_cast_uu((uint64_t)(((uint32_t)((coax_t434 = ((l_w).h).e[coax_index(l_i, 8, 2429)], coax_t435 = coax_mul_s64(coax_sub_s64(INT64_C(3), l_j, 2429), INT64_C(8), 2429), coax_shr_u32(coax_t434, (int64_t)(coax_t435), 2429)) & ((uint32_t)UINT64_C(255))))), UINT64_C(255), 2429));
+          coax_t466 = &((*coax_elem_v_u8(l_state, coax_add_s64(coax_add_s64(INT64_C(16), coax_mul_s64(l_i, INT64_C(4), 2740), 2740), l_j, 2740), 2740)));
+          *coax_t466 = ((uint8_t)coax_cast_uu((uint64_t)(((uint32_t)((coax_t467 = ((l_w).h).e[coax_index(l_i, 8, 2740)], coax_t468 = coax_mul_s64(coax_sub_s64(INT64_C(3), l_j, 2740), INT64_C(8), 2740), coax_shr_u32(coax_t467, (int64_t)(coax_t468), 2740)) & ((uint32_t)UINT64_C(255))))), UINT64_C(255), 2740));
         }
       }
     }
   }
   {
-    int64_t coax_lo436 = INT64_C(0);
-    int64_t coax_hi436 = INT64_C(64);
-    for (int64_t l_i = coax_lo436; l_i < coax_hi436; l_i++)
+    int64_t coax_lo469 = INT64_C(0);
+    int64_t coax_hi469 = INT64_C(64);
+    for (int64_t l_i = coax_lo469; l_i < coax_hi469; l_i++)
     {
-      coax_t437 = &((*coax_elem_v_u8(l_state, coax_add_s64(INT64_C(48), l_i, 2430), 2430)));
-      *coax_t437 = ((l_w).block).e[coax_index(l_i, 64, 2430)];
+      coax_t470 = &((*coax_elem_v_u8(l_state, coax_add_s64(INT64_C(48), l_i, 2741), 2741)));
+      *coax_t470 = ((l_w).block).e[coax_index(l_i, 64, 2741)];
     }
   }
   return ((uint32_t)UINT64_C(0));
 }
 
 static uint32_t coax_p_sha256_emit(coax_v_u32 l_h, coax_v_u8 l_out) {
-  uint8_t * coax_t440;
-  uint32_t coax_t441;
-  int64_t coax_t442;
+  uint8_t * coax_t473;
+  uint32_t coax_t474;
+  int64_t coax_t475;
   if (((l_h).count != INT64_C(8)) || (!cb_span((l_out).count, INT64_C(0), INT64_C(32))))
   {
     return ((uint32_t)UINT64_C(3));
   }
   {
-    int64_t coax_lo438 = INT64_C(0);
-    int64_t coax_hi438 = INT64_C(8);
-    for (int64_t l_i = coax_lo438; l_i < coax_hi438; l_i++)
+    int64_t coax_lo471 = INT64_C(0);
+    int64_t coax_hi471 = INT64_C(8);
+    for (int64_t l_i = coax_lo471; l_i < coax_hi471; l_i++)
     {
       {
-        int64_t coax_lo439 = INT64_C(0);
-        int64_t coax_hi439 = INT64_C(4);
-        for (int64_t l_j = coax_lo439; l_j < coax_hi439; l_j++)
+        int64_t coax_lo472 = INT64_C(0);
+        int64_t coax_hi472 = INT64_C(4);
+        for (int64_t l_j = coax_lo472; l_j < coax_hi472; l_j++)
         {
-          coax_t440 = &((*coax_elem_v_u8(l_out, coax_add_s64(coax_mul_s64(l_i, INT64_C(4), 2435), l_j, 2435), 2435)));
-          *coax_t440 = ((uint8_t)coax_cast_uu((uint64_t)(((uint32_t)((coax_t441 = (*coax_elem_v_u32(l_h, l_i, 2435)), coax_t442 = coax_mul_s64(coax_sub_s64(INT64_C(3), l_j, 2435), INT64_C(8), 2435), coax_shr_u32(coax_t441, (int64_t)(coax_t442), 2435)) & ((uint32_t)UINT64_C(255))))), UINT64_C(255), 2435));
+          coax_t473 = &((*coax_elem_v_u8(l_out, coax_add_s64(coax_mul_s64(l_i, INT64_C(4), 2746), l_j, 2746), 2746)));
+          *coax_t473 = ((uint8_t)coax_cast_uu((uint64_t)(((uint32_t)((coax_t474 = (*coax_elem_v_u32(l_h, l_i, 2746)), coax_t475 = coax_mul_s64(coax_sub_s64(INT64_C(3), l_j, 2746), INT64_C(8), 2746), coax_shr_u32(coax_t474, (int64_t)(coax_t475), 2746)) & ((uint32_t)UINT64_C(255))))), UINT64_C(255), 2746));
         }
       }
     }
@@ -4159,24 +4555,69 @@ static uint32_t coax_p_sha256_emit(coax_v_u32 l_h, coax_v_u8 l_out) {
 }
 
 uint32_t sha256_init(coax_v_u8 l_state) {
+  uint32_t coax_ret;
+  coax_v_u32 coax_t476;
+  coax_v_u32 coax_t477;
   coax_t_Sha256Work l_w = ((coax_t_Sha256Work){0});
-  (l_w).h = (coax_k12).words;
+  (l_w).h = (coax_k20).words;
   (l_w).phase = ((uint32_t)UINT64_C(1));
-  return coax_p_sha256_pack(l_w, l_state);
+  coax_ret = coax_p_sha256_pack(l_w, l_state);
+  {
+    (coax_t476 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2751), coax_secure_zero(coax_t476.data, coax_t476.count, sizeof(*coax_t476.data), 2751));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2751)))) coax_trap("assertion failed", 2751);
+  }
+  return coax_ret;
+  {
+    (coax_t477 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2751), coax_secure_zero(coax_t477.data, coax_t477.count, sizeof(*coax_t477.data), 2751));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2751)))) coax_trap("assertion failed", 2751);
+  }
 }
 
 coax_t_Sha256Info sha256_info(coax_v_u8 l_state) {
+  coax_t_Sha256Info coax_ret;
+  coax_v_u8 coax_t478;
+  coax_v_u32 coax_t479;
+  coax_v_u8 coax_t480;
+  coax_v_u32 coax_t481;
   coax_t_Sha256Work l_w = coax_p_sha256_unpack(l_state);
   if (!(l_w).ok)
   {
     return ((coax_t_Sha256Info){.error = ((uint32_t)UINT64_C(1))});
   }
-  return ((coax_t_Sha256Info){.phase = (l_w).phase, .total = (l_w).total, .buffered = ((uint32_t)coax_cast_su((int64_t)((l_w).used), UINT64_C(4294967295), 2444))});
+  coax_ret = ((coax_t_Sha256Info){.phase = (l_w).phase, .total = (l_w).total, .buffered = ((uint32_t)coax_cast_su((int64_t)((l_w).used), UINT64_C(4294967295), 2757))});
+  {
+    (coax_t478 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2756), coax_secure_zero(coax_t478.data, coax_t478.count, sizeof(*coax_t478.data), 2756));
+    if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2756)))) coax_trap("assertion failed", 2756);
+  }
+  {
+    (coax_t479 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2756), coax_secure_zero(coax_t479.data, coax_t479.count, sizeof(*coax_t479.data), 2756));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2756)))) coax_trap("assertion failed", 2756);
+  }
+  return coax_ret;
+  {
+    (coax_t480 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2756), coax_secure_zero(coax_t480.data, coax_t480.count, sizeof(*coax_t480.data), 2756));
+    if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2756)))) coax_trap("assertion failed", 2756);
+  }
+  {
+    (coax_t481 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2756), coax_secure_zero(coax_t481.data, coax_t481.count, sizeof(*coax_t481.data), 2756));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2756)))) coax_trap("assertion failed", 2756);
+  }
 }
 
 static uint32_t coax_p_sha256_update_checked(coax_v_u8 l_state, coax_v_u8 l_input, _Bool l_overlap) {
-  coax_v_u32 coax_t444;
-  coax_string coax_t445;
+  uint32_t coax_ret;
+  coax_v_u8 coax_t482;
+  coax_v_u32 coax_t483;
+  coax_v_u8 coax_t484;
+  coax_v_u32 coax_t485;
+  coax_v_u8 coax_t486;
+  coax_v_u32 coax_t487;
+  coax_v_u32 coax_t489;
+  coax_string coax_t490;
+  coax_v_u8 coax_t491;
+  coax_v_u32 coax_t492;
+  coax_v_u8 coax_t493;
+  coax_v_u32 coax_t494;
   coax_t_Sha256Work l_w = coax_p_sha256_unpack(l_state);
   if (!(l_w).ok)
   {
@@ -4184,41 +4625,98 @@ static uint32_t coax_p_sha256_update_checked(coax_v_u8 l_state, coax_v_u8 l_inpu
   }
   if ((l_w).phase != ((uint32_t)UINT64_C(1)))
   {
-    return ((uint32_t)UINT64_C(4));
+    coax_ret = ((uint32_t)UINT64_C(4));
+    {
+      (coax_t482 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2761), coax_secure_zero(coax_t482.data, coax_t482.count, sizeof(*coax_t482.data), 2761));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2761)))) coax_trap("assertion failed", 2761);
+    }
+    {
+      (coax_t483 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2761), coax_secure_zero(coax_t483.data, coax_t483.count, sizeof(*coax_t483.data), 2761));
+      if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2761)))) coax_trap("assertion failed", 2761);
+    }
+    return coax_ret;
   }
   uint32_t l_status = sha256_update_limit((l_w).total, (l_input).count);
   if (l_status != ((uint32_t)UINT64_C(0)))
   {
-    return l_status;
+    coax_ret = l_status;
+    {
+      (coax_t484 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2761), coax_secure_zero(coax_t484.data, coax_t484.count, sizeof(*coax_t484.data), 2761));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2761)))) coax_trap("assertion failed", 2761);
+    }
+    {
+      (coax_t485 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2761), coax_secure_zero(coax_t485.data, coax_t485.count, sizeof(*coax_t485.data), 2761));
+      if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2761)))) coax_trap("assertion failed", 2761);
+    }
+    return coax_ret;
   }
   if (((l_input).count > INT64_C(0)) && l_overlap)
   {
-    return ((uint32_t)UINT64_C(5));
+    coax_ret = ((uint32_t)UINT64_C(5));
+    {
+      (coax_t486 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2761), coax_secure_zero(coax_t486.data, coax_t486.count, sizeof(*coax_t486.data), 2761));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2761)))) coax_trap("assertion failed", 2761);
+    }
+    {
+      (coax_t487 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2761), coax_secure_zero(coax_t487.data, coax_t487.count, sizeof(*coax_t487.data), 2761));
+      if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2761)))) coax_trap("assertion failed", 2761);
+    }
+    return coax_ret;
   }
   {
-    coax_v_u8 coax_c443 = l_input;
-    for (int64_t coax_i443 = 0; coax_i443 < coax_c443.count; coax_i443++)
+    coax_v_u8 coax_c488 = l_input;
+    for (int64_t coax_i488 = 0; coax_i488 < coax_c488.count; coax_i488++)
     {
-      uint8_t l_byte = coax_c443.data[coax_i443];
-      ((l_w).block).e[coax_index((l_w).used, 64, 2452)] = l_byte;
-      (l_w).used = coax_add_s64((l_w).used, INT64_C(1), 2452);
+      uint8_t l_byte = coax_c488.data[coax_i488];
+      ((l_w).block).e[coax_index((l_w).used, 64, 2766)] = l_byte;
+      (l_w).used = coax_add_s64((l_w).used, INT64_C(1), 2766);
       if ((l_w).used == INT64_C(64))
       {
-        (coax_t444 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2453), coax_t445 = coax_string_of_bytes(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2453)), coax_p_S_compress(coax_t444, coax_t445, INT64_C(0), INT64_C(64)));
+        (coax_t489 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2767), coax_t490 = coax_string_of_bytes(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2767)), coax_p_S_compress(coax_t489, coax_t490, INT64_C(0), INT64_C(64)));
         (l_w).used = INT64_C(0);
       }
     }
   }
-  (l_w).total = coax_add_u64((l_w).total, ((uint64_t)coax_cast_su((int64_t)((l_input).count), UINT64_C(18446744073709551615), 2455)), 2455);
-  return coax_p_sha256_pack(l_w, l_state);
+  (l_w).total = coax_add_u64((l_w).total, ((uint64_t)coax_cast_su((int64_t)((l_input).count), UINT64_C(18446744073709551615), 2769)), 2769);
+  coax_ret = coax_p_sha256_pack(l_w, l_state);
+  {
+    (coax_t491 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2761), coax_secure_zero(coax_t491.data, coax_t491.count, sizeof(*coax_t491.data), 2761));
+    if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2761)))) coax_trap("assertion failed", 2761);
+  }
+  {
+    (coax_t492 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2761), coax_secure_zero(coax_t492.data, coax_t492.count, sizeof(*coax_t492.data), 2761));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2761)))) coax_trap("assertion failed", 2761);
+  }
+  return coax_ret;
+  {
+    (coax_t493 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2761), coax_secure_zero(coax_t493.data, coax_t493.count, sizeof(*coax_t493.data), 2761));
+    if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2761)))) coax_trap("assertion failed", 2761);
+  }
+  {
+    (coax_t494 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2761), coax_secure_zero(coax_t494.data, coax_t494.count, sizeof(*coax_t494.data), 2761));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2761)))) coax_trap("assertion failed", 2761);
+  }
 }
 
 static uint32_t coax_p_sha256_final_checked(coax_v_u8 l_state, coax_v_u8 l_out, _Bool l_overlap) {
-  coax_v_u32 coax_t447;
-  coax_string coax_t448;
-  uint8_t * coax_t451;
-  coax_v_u32 coax_t452;
-  coax_string coax_t453;
+  uint32_t coax_ret;
+  coax_v_u8 coax_t495;
+  coax_v_u32 coax_t496;
+  coax_v_u8 coax_t497;
+  coax_v_u32 coax_t498;
+  coax_v_u8 coax_t499;
+  coax_v_u32 coax_t500;
+  coax_v_u32 coax_t502;
+  coax_string coax_t503;
+  uint8_t * coax_t506;
+  coax_v_u32 coax_t507;
+  coax_string coax_t508;
+  coax_v_u8 coax_t509;
+  coax_v_u32 coax_t510;
+  coax_v_u8 coax_t511;
+  coax_v_u32 coax_t512;
+  coax_v_u8 coax_t513;
+  coax_v_u32 coax_t514;
   coax_t_Sha256Work l_w = coax_p_sha256_unpack(l_state);
   if (!(l_w).ok)
   {
@@ -4226,85 +4724,226 @@ static uint32_t coax_p_sha256_final_checked(coax_v_u8 l_state, coax_v_u8 l_out, 
   }
   if (!cb_span((l_out).count, INT64_C(0), INT64_C(32)))
   {
-    return ((uint32_t)UINT64_C(3));
+    coax_ret = ((uint32_t)UINT64_C(3));
+    {
+      (coax_t495 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2774), coax_secure_zero(coax_t495.data, coax_t495.count, sizeof(*coax_t495.data), 2774));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2774)))) coax_trap("assertion failed", 2774);
+    }
+    {
+      (coax_t496 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2774), coax_secure_zero(coax_t496.data, coax_t496.count, sizeof(*coax_t496.data), 2774));
+      if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2774)))) coax_trap("assertion failed", 2774);
+    }
+    return coax_ret;
   }
   if (l_overlap)
   {
-    return ((uint32_t)UINT64_C(5));
+    coax_ret = ((uint32_t)UINT64_C(5));
+    {
+      (coax_t497 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2774), coax_secure_zero(coax_t497.data, coax_t497.count, sizeof(*coax_t497.data), 2774));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2774)))) coax_trap("assertion failed", 2774);
+    }
+    {
+      (coax_t498 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2774), coax_secure_zero(coax_t498.data, coax_t498.count, sizeof(*coax_t498.data), 2774));
+      if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2774)))) coax_trap("assertion failed", 2774);
+    }
+    return coax_ret;
   }
   if ((l_w).phase == ((uint32_t)UINT64_C(2)))
   {
-    return coax_p_sha256_emit(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2462), l_out);
-  }
-  ((l_w).block).e[coax_index((l_w).used, 64, 2463)] = ((uint8_t)UINT64_C(128));
-  {
-    int64_t coax_lo446 = coax_add_s64((l_w).used, INT64_C(1), 2464);
-    int64_t coax_hi446 = INT64_C(64);
-    for (int64_t l_i = coax_lo446; l_i < coax_hi446; l_i++)
+    coax_ret = coax_p_sha256_emit(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2777), l_out);
     {
-      ((l_w).block).e[coax_index(l_i, 64, 2464)] = ((uint8_t)UINT64_C(0));
+      (coax_t499 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2774), coax_secure_zero(coax_t499.data, coax_t499.count, sizeof(*coax_t499.data), 2774));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2774)))) coax_trap("assertion failed", 2774);
+    }
+    {
+      (coax_t500 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2774), coax_secure_zero(coax_t500.data, coax_t500.count, sizeof(*coax_t500.data), 2774));
+      if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2774)))) coax_trap("assertion failed", 2774);
+    }
+    return coax_ret;
+  }
+  ((l_w).block).e[coax_index((l_w).used, 64, 2778)] = ((uint8_t)UINT64_C(128));
+  {
+    int64_t coax_lo501 = coax_add_s64((l_w).used, INT64_C(1), 2779);
+    int64_t coax_hi501 = INT64_C(64);
+    for (int64_t l_i = coax_lo501; l_i < coax_hi501; l_i++)
+    {
+      ((l_w).block).e[coax_index(l_i, 64, 2779)] = ((uint8_t)UINT64_C(0));
     }
   }
   if ((l_w).used >= INT64_C(56))
   {
-    (coax_t447 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2465), coax_t448 = coax_string_of_bytes(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2465)), coax_p_S_compress(coax_t447, coax_t448, INT64_C(0), INT64_C(64)));
+    (coax_t502 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2780), coax_t503 = coax_string_of_bytes(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2780)), coax_p_S_compress(coax_t502, coax_t503, INT64_C(0), INT64_C(64)));
     {
-      int64_t coax_lo449 = INT64_C(0);
-      int64_t coax_hi449 = INT64_C(64);
-      for (int64_t l_i = coax_lo449; l_i < coax_hi449; l_i++)
+      int64_t coax_lo504 = INT64_C(0);
+      int64_t coax_hi504 = INT64_C(64);
+      for (int64_t l_i = coax_lo504; l_i < coax_hi504; l_i++)
       {
-        ((l_w).block).e[coax_index(l_i, 64, 2465)] = ((uint8_t)UINT64_C(0));
+        ((l_w).block).e[coax_index(l_i, 64, 2780)] = ((uint8_t)UINT64_C(0));
       }
     }
   }
-  uint64_t l_bits = coax_mul_u64((l_w).total, UINT64_C(8), 2466);
+  uint64_t l_bits = coax_mul_u64((l_w).total, UINT64_C(8), 2781);
   {
-    int64_t coax_lo450 = INT64_C(0);
-    int64_t coax_hi450 = INT64_C(8);
-    for (int64_t l_i = coax_lo450; l_i < coax_hi450; l_i++)
+    int64_t coax_lo505 = INT64_C(0);
+    int64_t coax_hi505 = INT64_C(8);
+    for (int64_t l_i = coax_lo505; l_i < coax_hi505; l_i++)
     {
-      coax_t451 = &(((l_w).block).e[coax_index(coax_add_s64(INT64_C(56), l_i, 2467), 64, 2467)]);
-      *coax_t451 = ((uint8_t)coax_cast_uu((uint64_t)(((uint64_t)(coax_shr_u64(l_bits, (int64_t)(coax_mul_s64(coax_sub_s64(INT64_C(7), l_i, 2467), INT64_C(8), 2467)), 2467) & UINT64_C(255)))), UINT64_C(255), 2467));
+      coax_t506 = &(((l_w).block).e[coax_index(coax_add_s64(INT64_C(56), l_i, 2782), 64, 2782)]);
+      *coax_t506 = ((uint8_t)coax_cast_uu((uint64_t)(((uint64_t)(coax_shr_u64(l_bits, (int64_t)(coax_mul_s64(coax_sub_s64(INT64_C(7), l_i, 2782), INT64_C(8), 2782)), 2782) & UINT64_C(255)))), UINT64_C(255), 2782));
     }
   }
-  (coax_t452 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2468), coax_t453 = coax_string_of_bytes(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2468)), coax_p_S_compress(coax_t452, coax_t453, INT64_C(0), INT64_C(64)));
+  (coax_t507 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2783), coax_t508 = coax_string_of_bytes(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2783)), coax_p_S_compress(coax_t507, coax_t508, INT64_C(0), INT64_C(64)));
   (l_w).used = INT64_C(0);
   (l_w).phase = ((uint32_t)UINT64_C(2));
-  uint32_t l_status = coax_p_sha256_emit(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2469), l_out);
+  uint32_t l_status = coax_p_sha256_emit(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2784), l_out);
   if (l_status != ((uint32_t)UINT64_C(0)))
   {
-    return l_status;
+    coax_ret = l_status;
+    {
+      (coax_t509 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2774), coax_secure_zero(coax_t509.data, coax_t509.count, sizeof(*coax_t509.data), 2774));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2774)))) coax_trap("assertion failed", 2774);
+    }
+    {
+      (coax_t510 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2774), coax_secure_zero(coax_t510.data, coax_t510.count, sizeof(*coax_t510.data), 2774));
+      if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2774)))) coax_trap("assertion failed", 2774);
+    }
+    return coax_ret;
   }
-  return coax_p_sha256_pack(l_w, l_state);
+  coax_ret = coax_p_sha256_pack(l_w, l_state);
+  {
+    (coax_t511 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2774), coax_secure_zero(coax_t511.data, coax_t511.count, sizeof(*coax_t511.data), 2774));
+    if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2774)))) coax_trap("assertion failed", 2774);
+  }
+  {
+    (coax_t512 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2774), coax_secure_zero(coax_t512.data, coax_t512.count, sizeof(*coax_t512.data), 2774));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2774)))) coax_trap("assertion failed", 2774);
+  }
+  return coax_ret;
+  {
+    (coax_t513 = coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2774), coax_secure_zero(coax_t513.data, coax_t513.count, sizeof(*coax_t513.data), 2774));
+    if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8(((l_w).block).e, 64, 0, 64, 2774)))) coax_trap("assertion failed", 2774);
+  }
+  {
+    (coax_t514 = coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2774), coax_secure_zero(coax_t514.data, coax_t514.count, sizeof(*coax_t514.data), 2774));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_w).h).e, 8, 0, 8, 2774)))) coax_trap("assertion failed", 2774);
+  }
 }
 
 static uint32_t coax_p_sha256_hash_checked(coax_v_u8 l_input, coax_v_u8 l_out, _Bool l_overlap) {
+  uint32_t coax_ret;
+  coax_v_u8 coax_t515;
+  coax_v_u8 coax_t516;
+  coax_v_u8 coax_t517;
+  coax_v_u8 coax_t518;
   uint32_t l_status = coax_p_sha256_request((l_input).count, (l_out).count, l_overlap);
   if (l_status != ((uint32_t)UINT64_C(0)))
   {
     return l_status;
   }
   coax_a112_u8 l_state = ((coax_a112_u8){0});
-  l_status = sha256_init(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2475));
+  l_status = sha256_init(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2791));
   if (l_status != ((uint32_t)UINT64_C(0)))
   {
-    return l_status;
+    coax_ret = l_status;
+    {
+      (coax_t515 = coax_mkview_v_u8((l_state).e, 112, 0, 112, 2790), coax_secure_zero(coax_t515.data, coax_t515.count, sizeof(*coax_t515.data), 2790));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2790)))) coax_trap("assertion failed", 2790);
+    }
+    return coax_ret;
   }
-  l_status = coax_p_sha256_update_checked(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2476), l_input, 0);
+  l_status = coax_p_sha256_update_checked(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2792), l_input, 0);
   if (l_status != ((uint32_t)UINT64_C(0)))
   {
-    return l_status;
+    coax_ret = l_status;
+    {
+      (coax_t516 = coax_mkview_v_u8((l_state).e, 112, 0, 112, 2790), coax_secure_zero(coax_t516.data, coax_t516.count, sizeof(*coax_t516.data), 2790));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2790)))) coax_trap("assertion failed", 2790);
+    }
+    return coax_ret;
   }
-  return coax_p_sha256_final_checked(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2477), l_out, 0);
+  coax_ret = coax_p_sha256_final_checked(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2793), l_out, 0);
+  {
+    (coax_t517 = coax_mkview_v_u8((l_state).e, 112, 0, 112, 2790), coax_secure_zero(coax_t517.data, coax_t517.count, sizeof(*coax_t517.data), 2790));
+    if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2790)))) coax_trap("assertion failed", 2790);
+  }
+  return coax_ret;
+  {
+    (coax_t518 = coax_mkview_v_u8((l_state).e, 112, 0, 112, 2790), coax_secure_zero(coax_t518.data, coax_t518.count, sizeof(*coax_t518.data), 2790));
+    if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2790)))) coax_trap("assertion failed", 2790);
+  }
+}
+
+static uint32_t coax_p_sha256_tagged_init(coax_v_u8 l_state, coax_string l_tag) {
+  uint32_t coax_ret;
+  coax_v_u32 coax_t519;
+  coax_v_u8 coax_t520;
+  coax_v_u8 coax_t521;
+  coax_v_u8 coax_t522;
+  coax_v_u8 coax_t523;
+  coax_v_u8 coax_t524;
+  coax_v_u8 coax_t525;
+  if (!coax_p_sha256_tag_ok((l_tag).count))
+  {
+    return ((uint32_t)UINT64_C(7));
+  }
+  if ((l_state).count != INT64_C(112))
+  {
+    return ((uint32_t)UINT64_C(1));
+  }
+  coax_t_S_Digest l_digest = S_hash(l_tag);
+  if ((l_digest).error != ((uint32_t)UINT64_C(0)))
+  {
+    return (l_digest).error;
+  }
+  coax_a32_u8 l_tag_hash = ((coax_a32_u8){0});
+  uint32_t l_status = (coax_t519 = coax_mkview_v_u32(((l_digest).words).e, 8, 0, 8, 2802), coax_t520 = coax_mkview_v_u8((l_tag_hash).e, 32, 0, 32, 2802), coax_p_sha256_emit(coax_t519, coax_t520));
+  if (l_status != ((uint32_t)UINT64_C(0)))
+  {
+    coax_ret = l_status;
+    {
+      (coax_t521 = coax_mkview_v_u8((l_tag_hash).e, 32, 0, 32, 2802), coax_secure_zero(coax_t521.data, coax_t521.count, sizeof(*coax_t521.data), 2802));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8((l_tag_hash).e, 32, 0, 32, 2802)))) coax_trap("assertion failed", 2802);
+    }
+    return coax_ret;
+  }
+  l_status = sha256_init(l_state);
+  if (l_status != ((uint32_t)UINT64_C(0)))
+  {
+    coax_ret = l_status;
+    {
+      (coax_t522 = coax_mkview_v_u8((l_tag_hash).e, 32, 0, 32, 2802), coax_secure_zero(coax_t522.data, coax_t522.count, sizeof(*coax_t522.data), 2802));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8((l_tag_hash).e, 32, 0, 32, 2802)))) coax_trap("assertion failed", 2802);
+    }
+    return coax_ret;
+  }
+  l_status = coax_p_sha256_update_checked(l_state, coax_mkview_v_u8((l_tag_hash).e, 32, 0, 32, 2804), 0);
+  if (l_status != ((uint32_t)UINT64_C(0)))
+  {
+    coax_ret = l_status;
+    {
+      (coax_t523 = coax_mkview_v_u8((l_tag_hash).e, 32, 0, 32, 2802), coax_secure_zero(coax_t523.data, coax_t523.count, sizeof(*coax_t523.data), 2802));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8((l_tag_hash).e, 32, 0, 32, 2802)))) coax_trap("assertion failed", 2802);
+    }
+    return coax_ret;
+  }
+  coax_ret = coax_p_sha256_update_checked(l_state, coax_mkview_v_u8((l_tag_hash).e, 32, 0, 32, 2805), 0);
+  {
+    (coax_t524 = coax_mkview_v_u8((l_tag_hash).e, 32, 0, 32, 2802), coax_secure_zero(coax_t524.data, coax_t524.count, sizeof(*coax_t524.data), 2802));
+    if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8((l_tag_hash).e, 32, 0, 32, 2802)))) coax_trap("assertion failed", 2802);
+  }
+  return coax_ret;
+  {
+    (coax_t525 = coax_mkview_v_u8((l_tag_hash).e, 32, 0, 32, 2802), coax_secure_zero(coax_t525.data, coax_t525.count, sizeof(*coax_t525.data), 2802));
+    if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8((l_tag_hash).e, 32, 0, 32, 2802)))) coax_trap("assertion failed", 2802);
+  }
 }
 
 static uint32_t coax_p_sha256_tagged_checked(coax_string l_tag, coax_v_u8 l_input, coax_v_u8 l_out, _Bool l_overlap) {
-  coax_v_u32 coax_t454;
-  coax_v_u8 coax_t455;
-  coax_v_u8 coax_t456;
-  coax_v_u8 coax_t457;
-  coax_v_u8 coax_t458;
-  coax_v_u8 coax_t459;
+  uint32_t coax_ret;
+  coax_v_u8 coax_t526;
+  coax_v_u8 coax_t527;
+  coax_v_u8 coax_t528;
+  coax_v_u8 coax_t529;
   if (!coax_p_sha256_tag_ok((l_tag).count))
   {
     return ((uint32_t)UINT64_C(7));
@@ -4314,39 +4953,37 @@ static uint32_t coax_p_sha256_tagged_checked(coax_string l_tag, coax_v_u8 l_inpu
   {
     return l_status;
   }
-  coax_t_S_Digest l_digest = S_hash(l_tag);
-  if ((l_digest).error != ((uint32_t)UINT64_C(0)))
-  {
-    return (l_digest).error;
-  }
-  coax_a32_u8 l_tag_hash = ((coax_a32_u8){0});
-  l_status = (coax_t454 = coax_mkview_v_u32(((l_digest).words).e, 8, 0, 8, 2483), coax_t455 = coax_mkview_v_u8((l_tag_hash).e, 32, 0, 32, 2483), coax_p_sha256_emit(coax_t454, coax_t455));
-  if (l_status != ((uint32_t)UINT64_C(0)))
-  {
-    return l_status;
-  }
   coax_a112_u8 l_state = ((coax_a112_u8){0});
-  l_status = sha256_init(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2484));
+  l_status = coax_p_sha256_tagged_init(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2811), l_tag);
   if (l_status != ((uint32_t)UINT64_C(0)))
   {
-    return l_status;
+    coax_ret = l_status;
+    {
+      (coax_t526 = coax_mkview_v_u8((l_state).e, 112, 0, 112, 2811), coax_secure_zero(coax_t526.data, coax_t526.count, sizeof(*coax_t526.data), 2811));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2811)))) coax_trap("assertion failed", 2811);
+    }
+    return coax_ret;
   }
-  l_status = (coax_t456 = coax_mkview_v_u8((l_state).e, 112, 0, 112, 2485), coax_t457 = coax_mkview_v_u8((l_tag_hash).e, 32, 0, 32, 2485), coax_p_sha256_update_checked(coax_t456, coax_t457, 0));
+  l_status = coax_p_sha256_update_checked(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2812), l_input, 0);
   if (l_status != ((uint32_t)UINT64_C(0)))
   {
-    return l_status;
+    coax_ret = l_status;
+    {
+      (coax_t527 = coax_mkview_v_u8((l_state).e, 112, 0, 112, 2811), coax_secure_zero(coax_t527.data, coax_t527.count, sizeof(*coax_t527.data), 2811));
+      if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2811)))) coax_trap("assertion failed", 2811);
+    }
+    return coax_ret;
   }
-  l_status = (coax_t458 = coax_mkview_v_u8((l_state).e, 112, 0, 112, 2486), coax_t459 = coax_mkview_v_u8((l_tag_hash).e, 32, 0, 32, 2486), coax_p_sha256_update_checked(coax_t458, coax_t459, 0));
-  if (l_status != ((uint32_t)UINT64_C(0)))
+  coax_ret = coax_p_sha256_final_checked(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2813), l_out, 0);
   {
-    return l_status;
+    (coax_t528 = coax_mkview_v_u8((l_state).e, 112, 0, 112, 2811), coax_secure_zero(coax_t528.data, coax_t528.count, sizeof(*coax_t528.data), 2811));
+    if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2811)))) coax_trap("assertion failed", 2811);
   }
-  l_status = coax_p_sha256_update_checked(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2487), l_input, 0);
-  if (l_status != ((uint32_t)UINT64_C(0)))
+  return coax_ret;
   {
-    return l_status;
+    (coax_t529 = coax_mkview_v_u8((l_state).e, 112, 0, 112, 2811), coax_secure_zero(coax_t529.data, coax_t529.count, sizeof(*coax_t529.data), 2811));
+    if (!(coax_p_crypto_zeroed__2u8(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2811)))) coax_trap("assertion failed", 2811);
   }
-  return coax_p_sha256_final_checked(coax_mkview_v_u8((l_state).e, 112, 0, 112, 2488), l_out, 0);
 }
 
 static coax_string coax_p_sha256_bip340_name(int64_t l_tag) {
@@ -4378,24 +5015,24 @@ static _Bool coax_p_S_length(int64_t l_n) {
 }
 
 static int64_t coax_p_S_blocks(int64_t l_n) {
-  int64_t l_blocks = coax_add_s64(coax_div_s64(l_n, INT64_C(64), 2531), INT64_C(1), 2531);
-  if (coax_mod_s64(l_n, INT64_C(64), 2532) >= INT64_C(56))
+  int64_t l_blocks = coax_add_s64(coax_div_s64(l_n, INT64_C(64), 2856), INT64_C(1), 2856);
+  if (coax_mod_s64(l_n, INT64_C(64), 2857) >= INT64_C(56))
   {
-    l_blocks = coax_add_s64(l_blocks, INT64_C(1), 2532);
+    l_blocks = coax_add_s64(l_blocks, INT64_C(1), 2857);
   }
   return l_blocks;
 }
 
 static uint8_t coax_p_S_padding(int64_t l_count, int64_t l_at, int64_t l_total) {
-  uint64_t coax_t460;
-  int64_t coax_t461;
+  uint64_t coax_t530;
+  int64_t coax_t531;
   if (l_at == l_count)
   {
     return ((uint8_t)UINT64_C(128));
   }
-  if (l_at >= coax_sub_s64(l_total, INT64_C(8), 2537))
+  if (l_at >= coax_sub_s64(l_total, INT64_C(8), 2862))
   {
-    return ((uint8_t)((coax_t460 = coax_mul_u64(((uint64_t)coax_cast_su((int64_t)(l_count), UINT64_C(18446744073709551615), 2537)), UINT64_C(8), 2537), coax_t461 = coax_mul_s64(coax_sub_s64(coax_sub_s64(l_total, INT64_C(1), 2537), l_at, 2537), INT64_C(8), 2537), coax_shr_u64(coax_t460, (int64_t)(coax_t461), 2537))));
+    return ((uint8_t)((coax_t530 = coax_mul_u64(((uint64_t)coax_cast_su((int64_t)(l_count), UINT64_C(18446744073709551615), 2862)), UINT64_C(8), 2862), coax_t531 = coax_mul_s64(coax_sub_s64(coax_sub_s64(l_total, INT64_C(1), 2862), l_at, 2862), INT64_C(8), 2862), coax_shr_u64(coax_t530, (int64_t)(coax_t531), 2862))));
   }
   return ((uint8_t)UINT64_C(0));
 }
@@ -4403,128 +5040,129 @@ static uint8_t coax_p_S_padding(int64_t l_count, int64_t l_at, int64_t l_total) 
 static uint8_t coax_p_S_padded(coax_string l_input, int64_t l_at, int64_t l_total) {
   if (l_at < (l_input).count)
   {
-    return coax_byte(l_input, l_at, 2541);
+    return coax_byte(l_input, l_at, 2866);
   }
   return coax_p_S_padding((l_input).count, l_at, l_total);
 }
 
 static uint32_t coax_p_S_rotr(uint32_t l_x, int64_t l_n) {
-  uint32_t coax_t462;
-  uint32_t coax_t463;
+  uint32_t coax_t532;
+  uint32_t coax_t533;
   if (l_n == INT64_C(0))
   {
     return l_x;
   }
-  return (coax_t462 = coax_shr_u32(l_x, (int64_t)(l_n), 2550), coax_t463 = coax_shl_u32(l_x, (int64_t)(coax_sub_s64(INT64_C(32), l_n, 2550)), 2550), ((uint32_t)(coax_t462 | coax_t463)));
+  return (coax_t532 = coax_shr_u32(l_x, (int64_t)(l_n), 2875), coax_t533 = coax_shl_u32(l_x, (int64_t)(coax_sub_s64(INT64_C(32), l_n, 2875)), 2875), ((uint32_t)(coax_t532 | coax_t533)));
 }
 
 static uint32_t coax_p_S_sum2(uint32_t l_a, uint32_t l_b) {
-  uint64_t coax_t464;
-  uint64_t coax_t465;
-  return ((uint32_t)((coax_t464 = ((uint64_t)coax_cast_uu((uint64_t)(l_a), UINT64_C(18446744073709551615), 2552)), coax_t465 = ((uint64_t)coax_cast_uu((uint64_t)(l_b), UINT64_C(18446744073709551615), 2552)), coax_add_u64(coax_t464, coax_t465, 2552))));
+  uint64_t coax_t534;
+  uint64_t coax_t535;
+  return ((uint32_t)((coax_t534 = ((uint64_t)coax_cast_uu((uint64_t)(l_a), UINT64_C(18446744073709551615), 2877)), coax_t535 = ((uint64_t)coax_cast_uu((uint64_t)(l_b), UINT64_C(18446744073709551615), 2877)), coax_add_u64(coax_t534, coax_t535, 2877))));
 }
 
 static uint32_t coax_p_S_sum4(uint32_t l_a, uint32_t l_b, uint32_t l_c, uint32_t l_d) {
-  uint64_t coax_t466;
-  uint64_t coax_t467;
-  uint64_t coax_t468;
-  uint64_t coax_t469;
-  uint64_t coax_t470;
-  uint64_t coax_t471;
-  return ((uint32_t)((coax_t466 = (coax_t467 = (coax_t468 = ((uint64_t)coax_cast_uu((uint64_t)(l_a), UINT64_C(18446744073709551615), 2553)), coax_t469 = ((uint64_t)coax_cast_uu((uint64_t)(l_b), UINT64_C(18446744073709551615), 2553)), coax_add_u64(coax_t468, coax_t469, 2553)), coax_t470 = ((uint64_t)coax_cast_uu((uint64_t)(l_c), UINT64_C(18446744073709551615), 2553)), coax_add_u64(coax_t467, coax_t470, 2553)), coax_t471 = ((uint64_t)coax_cast_uu((uint64_t)(l_d), UINT64_C(18446744073709551615), 2553)), coax_add_u64(coax_t466, coax_t471, 2553))));
+  uint64_t coax_t536;
+  uint64_t coax_t537;
+  uint64_t coax_t538;
+  uint64_t coax_t539;
+  uint64_t coax_t540;
+  uint64_t coax_t541;
+  return ((uint32_t)((coax_t536 = (coax_t537 = (coax_t538 = ((uint64_t)coax_cast_uu((uint64_t)(l_a), UINT64_C(18446744073709551615), 2878)), coax_t539 = ((uint64_t)coax_cast_uu((uint64_t)(l_b), UINT64_C(18446744073709551615), 2878)), coax_add_u64(coax_t538, coax_t539, 2878)), coax_t540 = ((uint64_t)coax_cast_uu((uint64_t)(l_c), UINT64_C(18446744073709551615), 2878)), coax_add_u64(coax_t537, coax_t540, 2878)), coax_t541 = ((uint64_t)coax_cast_uu((uint64_t)(l_d), UINT64_C(18446744073709551615), 2878)), coax_add_u64(coax_t536, coax_t541, 2878))));
 }
 
 static uint32_t coax_p_S_sum5(uint32_t l_a, uint32_t l_b, uint32_t l_c, uint32_t l_d, uint32_t l_e) {
-  uint64_t coax_t472;
-  uint64_t coax_t473;
-  uint64_t coax_t474;
-  uint64_t coax_t475;
-  uint64_t coax_t476;
-  uint64_t coax_t477;
-  uint64_t coax_t478;
-  uint64_t coax_t479;
-  return ((uint32_t)((coax_t472 = (coax_t473 = (coax_t474 = (coax_t475 = ((uint64_t)coax_cast_uu((uint64_t)(l_a), UINT64_C(18446744073709551615), 2554)), coax_t476 = ((uint64_t)coax_cast_uu((uint64_t)(l_b), UINT64_C(18446744073709551615), 2554)), coax_add_u64(coax_t475, coax_t476, 2554)), coax_t477 = ((uint64_t)coax_cast_uu((uint64_t)(l_c), UINT64_C(18446744073709551615), 2554)), coax_add_u64(coax_t474, coax_t477, 2554)), coax_t478 = ((uint64_t)coax_cast_uu((uint64_t)(l_d), UINT64_C(18446744073709551615), 2554)), coax_add_u64(coax_t473, coax_t478, 2554)), coax_t479 = ((uint64_t)coax_cast_uu((uint64_t)(l_e), UINT64_C(18446744073709551615), 2554)), coax_add_u64(coax_t472, coax_t479, 2554))));
+  uint64_t coax_t542;
+  uint64_t coax_t543;
+  uint64_t coax_t544;
+  uint64_t coax_t545;
+  uint64_t coax_t546;
+  uint64_t coax_t547;
+  uint64_t coax_t548;
+  uint64_t coax_t549;
+  return ((uint32_t)((coax_t542 = (coax_t543 = (coax_t544 = (coax_t545 = ((uint64_t)coax_cast_uu((uint64_t)(l_a), UINT64_C(18446744073709551615), 2879)), coax_t546 = ((uint64_t)coax_cast_uu((uint64_t)(l_b), UINT64_C(18446744073709551615), 2879)), coax_add_u64(coax_t545, coax_t546, 2879)), coax_t547 = ((uint64_t)coax_cast_uu((uint64_t)(l_c), UINT64_C(18446744073709551615), 2879)), coax_add_u64(coax_t544, coax_t547, 2879)), coax_t548 = ((uint64_t)coax_cast_uu((uint64_t)(l_d), UINT64_C(18446744073709551615), 2879)), coax_add_u64(coax_t543, coax_t548, 2879)), coax_t549 = ((uint64_t)coax_cast_uu((uint64_t)(l_e), UINT64_C(18446744073709551615), 2879)), coax_add_u64(coax_t542, coax_t549, 2879))));
 }
 
 static void coax_p_S_compress(coax_v_u32 l_h, coax_string l_input, int64_t l_at, int64_t l_total) {
-  uint32_t * coax_t481;
-  uint32_t coax_t482;
-  uint32_t coax_t483;
-  uint32_t coax_t484;
-  uint32_t coax_t485;
-  uint32_t coax_t486;
-  uint32_t coax_t487;
-  uint32_t coax_t489;
-  uint32_t coax_t490;
-  uint32_t coax_t491;
-  uint32_t coax_t492;
-  uint32_t coax_t493;
-  uint32_t coax_t494;
-  uint32_t coax_t495;
-  uint32_t coax_t496;
-  uint32_t * coax_t497;
-  uint32_t coax_t498;
-  uint32_t coax_t499;
-  uint32_t coax_t501;
-  uint32_t coax_t502;
-  uint32_t coax_t503;
-  uint32_t coax_t504;
-  uint32_t coax_t505;
-  uint32_t coax_t506;
-  uint32_t coax_t507;
-  uint32_t coax_t508;
-  uint32_t coax_t509;
-  uint32_t coax_t510;
-  uint32_t * coax_t511;
-  uint32_t * coax_t512;
-  uint32_t * coax_t513;
-  uint32_t * coax_t514;
-  uint32_t * coax_t515;
-  uint32_t * coax_t516;
-  uint32_t * coax_t517;
-  uint32_t * coax_t518;
+  uint32_t * coax_t551;
+  uint32_t coax_t552;
+  uint32_t coax_t553;
+  uint32_t coax_t554;
+  uint32_t coax_t555;
+  uint32_t coax_t556;
+  uint32_t coax_t557;
+  uint32_t coax_t559;
+  uint32_t coax_t560;
+  uint32_t coax_t561;
+  uint32_t coax_t562;
+  uint32_t coax_t563;
+  uint32_t coax_t564;
+  uint32_t coax_t565;
+  uint32_t coax_t566;
+  uint32_t * coax_t567;
+  uint32_t coax_t568;
+  uint32_t coax_t569;
+  uint32_t coax_t571;
+  uint32_t coax_t572;
+  uint32_t coax_t573;
+  uint32_t coax_t574;
+  uint32_t coax_t575;
+  uint32_t coax_t576;
+  uint32_t coax_t577;
+  uint32_t coax_t578;
+  uint32_t coax_t579;
+  uint32_t coax_t580;
+  uint32_t * coax_t581;
+  uint32_t * coax_t582;
+  uint32_t * coax_t583;
+  uint32_t * coax_t584;
+  uint32_t * coax_t585;
+  uint32_t * coax_t586;
+  uint32_t * coax_t587;
+  uint32_t * coax_t588;
+  coax_v_u32 coax_t589;
   coax_a64_u32 l_k = ((coax_a64_u32){{((uint32_t)UINT64_C(1116352408)), ((uint32_t)UINT64_C(1899447441)), ((uint32_t)UINT64_C(3049323471)), ((uint32_t)UINT64_C(3921009573)), ((uint32_t)UINT64_C(961987163)), ((uint32_t)UINT64_C(1508970993)), ((uint32_t)UINT64_C(2453635748)), ((uint32_t)UINT64_C(2870763221)), ((uint32_t)UINT64_C(3624381080)), ((uint32_t)UINT64_C(310598401)), ((uint32_t)UINT64_C(607225278)), ((uint32_t)UINT64_C(1426881987)), ((uint32_t)UINT64_C(1925078388)), ((uint32_t)UINT64_C(2162078206)), ((uint32_t)UINT64_C(2614888103)), ((uint32_t)UINT64_C(3248222580)), ((uint32_t)UINT64_C(3835390401)), ((uint32_t)UINT64_C(4022224774)), ((uint32_t)UINT64_C(264347078)), ((uint32_t)UINT64_C(604807628)), ((uint32_t)UINT64_C(770255983)), ((uint32_t)UINT64_C(1249150122)), ((uint32_t)UINT64_C(1555081692)), ((uint32_t)UINT64_C(1996064986)), ((uint32_t)UINT64_C(2554220882)), ((uint32_t)UINT64_C(2821834349)), ((uint32_t)UINT64_C(2952996808)), ((uint32_t)UINT64_C(3210313671)), ((uint32_t)UINT64_C(3336571891)), ((uint32_t)UINT64_C(3584528711)), ((uint32_t)UINT64_C(113926993)), ((uint32_t)UINT64_C(338241895)), ((uint32_t)UINT64_C(666307205)), ((uint32_t)UINT64_C(773529912)), ((uint32_t)UINT64_C(1294757372)), ((uint32_t)UINT64_C(1396182291)), ((uint32_t)UINT64_C(1695183700)), ((uint32_t)UINT64_C(1986661051)), ((uint32_t)UINT64_C(2177026350)), ((uint32_t)UINT64_C(2456956037)), ((uint32_t)UINT64_C(2730485921)), ((uint32_t)UINT64_C(2820302411)), ((uint32_t)UINT64_C(3259730800)), ((uint32_t)UINT64_C(3345764771)), ((uint32_t)UINT64_C(3516065817)), ((uint32_t)UINT64_C(3600352804)), ((uint32_t)UINT64_C(4094571909)), ((uint32_t)UINT64_C(275423344)), ((uint32_t)UINT64_C(430227734)), ((uint32_t)UINT64_C(506948616)), ((uint32_t)UINT64_C(659060556)), ((uint32_t)UINT64_C(883997877)), ((uint32_t)UINT64_C(958139571)), ((uint32_t)UINT64_C(1322822218)), ((uint32_t)UINT64_C(1537002063)), ((uint32_t)UINT64_C(1747873779)), ((uint32_t)UINT64_C(1955562222)), ((uint32_t)UINT64_C(2024104815)), ((uint32_t)UINT64_C(2227730452)), ((uint32_t)UINT64_C(2361852424)), ((uint32_t)UINT64_C(2428436474)), ((uint32_t)UINT64_C(2756734187)), ((uint32_t)UINT64_C(3204031479)), ((uint32_t)UINT64_C(3329325298))}});
   coax_a64_u32 l_w = ((coax_a64_u32){0});
   {
-    int64_t coax_lo480 = INT64_C(0);
-    int64_t coax_hi480 = INT64_C(16);
-    for (int64_t l_i = coax_lo480; l_i < coax_hi480; l_i++)
+    int64_t coax_lo550 = INT64_C(0);
+    int64_t coax_hi550 = INT64_C(16);
+    for (int64_t l_i = coax_lo550; l_i < coax_hi550; l_i++)
     {
-      int64_t l_p = coax_add_s64(l_at, coax_mul_s64(l_i, INT64_C(4), 2572), 2572);
-      coax_t481 = &((l_w).e[coax_index(l_i, 64, 2573)]);
-      *coax_t481 = (coax_t482 = (coax_t483 = (coax_t484 = coax_shl_u32(((uint32_t)coax_cast_uu((uint64_t)(coax_p_S_padded(l_input, l_p, l_total)), UINT64_C(4294967295), 2573)), (int64_t)(((uint32_t)UINT64_C(24))), 2573), coax_t485 = coax_shl_u32(((uint32_t)coax_cast_uu((uint64_t)(coax_p_S_padded(l_input, coax_add_s64(l_p, INT64_C(1), 2573), l_total)), UINT64_C(4294967295), 2573)), (int64_t)(((uint32_t)UINT64_C(16))), 2573), ((uint32_t)(coax_t484 | coax_t485))), coax_t486 = coax_shl_u32(((uint32_t)coax_cast_uu((uint64_t)(coax_p_S_padded(l_input, coax_add_s64(l_p, INT64_C(2), 2573), l_total)), UINT64_C(4294967295), 2573)), (int64_t)(((uint32_t)UINT64_C(8))), 2573), ((uint32_t)(coax_t483 | coax_t486))), coax_t487 = ((uint32_t)coax_cast_uu((uint64_t)(coax_p_S_padded(l_input, coax_add_s64(l_p, INT64_C(3), 2573), l_total)), UINT64_C(4294967295), 2573)), ((uint32_t)(coax_t482 | coax_t487)));
+      int64_t l_p = coax_add_s64(l_at, coax_mul_s64(l_i, INT64_C(4), 2897), 2897);
+      coax_t551 = &((l_w).e[coax_index(l_i, 64, 2898)]);
+      *coax_t551 = (coax_t552 = (coax_t553 = (coax_t554 = coax_shl_u32(((uint32_t)coax_cast_uu((uint64_t)(coax_p_S_padded(l_input, l_p, l_total)), UINT64_C(4294967295), 2898)), (int64_t)(((uint32_t)UINT64_C(24))), 2898), coax_t555 = coax_shl_u32(((uint32_t)coax_cast_uu((uint64_t)(coax_p_S_padded(l_input, coax_add_s64(l_p, INT64_C(1), 2898), l_total)), UINT64_C(4294967295), 2898)), (int64_t)(((uint32_t)UINT64_C(16))), 2898), ((uint32_t)(coax_t554 | coax_t555))), coax_t556 = coax_shl_u32(((uint32_t)coax_cast_uu((uint64_t)(coax_p_S_padded(l_input, coax_add_s64(l_p, INT64_C(2), 2898), l_total)), UINT64_C(4294967295), 2898)), (int64_t)(((uint32_t)UINT64_C(8))), 2898), ((uint32_t)(coax_t553 | coax_t556))), coax_t557 = ((uint32_t)coax_cast_uu((uint64_t)(coax_p_S_padded(l_input, coax_add_s64(l_p, INT64_C(3), 2898), l_total)), UINT64_C(4294967295), 2898)), ((uint32_t)(coax_t552 | coax_t557)));
     }
   }
   {
-    int64_t coax_lo488 = INT64_C(16);
-    int64_t coax_hi488 = INT64_C(64);
-    for (int64_t l_i = coax_lo488; l_i < coax_hi488; l_i++)
+    int64_t coax_lo558 = INT64_C(16);
+    int64_t coax_hi558 = INT64_C(64);
+    for (int64_t l_i = coax_lo558; l_i < coax_hi558; l_i++)
     {
-      uint32_t l_x = (l_w).e[coax_index(coax_sub_s64(l_i, INT64_C(15), 2576), 64, 2576)];
-      uint32_t l_y = (l_w).e[coax_index(coax_sub_s64(l_i, INT64_C(2), 2576), 64, 2576)];
-      uint32_t l_s0 = (coax_t489 = (coax_t490 = coax_p_S_rotr(l_x, INT64_C(7)), coax_t491 = coax_p_S_rotr(l_x, INT64_C(18)), ((uint32_t)(coax_t490 ^ coax_t491))), coax_t492 = coax_shr_u32(l_x, (int64_t)(((uint32_t)UINT64_C(3))), 2577), ((uint32_t)(coax_t489 ^ coax_t492)));
-      uint32_t l_s1 = (coax_t493 = (coax_t494 = coax_p_S_rotr(l_y, INT64_C(17)), coax_t495 = coax_p_S_rotr(l_y, INT64_C(19)), ((uint32_t)(coax_t494 ^ coax_t495))), coax_t496 = coax_shr_u32(l_y, (int64_t)(((uint32_t)UINT64_C(10))), 2578), ((uint32_t)(coax_t493 ^ coax_t496)));
-      coax_t497 = &((l_w).e[coax_index(l_i, 64, 2579)]);
-      *coax_t497 = (coax_t498 = (l_w).e[coax_index(coax_sub_s64(l_i, INT64_C(16), 2579), 64, 2579)], coax_t499 = (l_w).e[coax_index(coax_sub_s64(l_i, INT64_C(7), 2579), 64, 2579)], coax_p_S_sum4(coax_t498, l_s0, coax_t499, l_s1));
+      uint32_t l_x = (l_w).e[coax_index(coax_sub_s64(l_i, INT64_C(15), 2901), 64, 2901)];
+      uint32_t l_y = (l_w).e[coax_index(coax_sub_s64(l_i, INT64_C(2), 2901), 64, 2901)];
+      uint32_t l_s0 = (coax_t559 = (coax_t560 = coax_p_S_rotr(l_x, INT64_C(7)), coax_t561 = coax_p_S_rotr(l_x, INT64_C(18)), ((uint32_t)(coax_t560 ^ coax_t561))), coax_t562 = coax_shr_u32(l_x, (int64_t)(((uint32_t)UINT64_C(3))), 2902), ((uint32_t)(coax_t559 ^ coax_t562)));
+      uint32_t l_s1 = (coax_t563 = (coax_t564 = coax_p_S_rotr(l_y, INT64_C(17)), coax_t565 = coax_p_S_rotr(l_y, INT64_C(19)), ((uint32_t)(coax_t564 ^ coax_t565))), coax_t566 = coax_shr_u32(l_y, (int64_t)(((uint32_t)UINT64_C(10))), 2903), ((uint32_t)(coax_t563 ^ coax_t566)));
+      coax_t567 = &((l_w).e[coax_index(l_i, 64, 2904)]);
+      *coax_t567 = (coax_t568 = (l_w).e[coax_index(coax_sub_s64(l_i, INT64_C(16), 2904), 64, 2904)], coax_t569 = (l_w).e[coax_index(coax_sub_s64(l_i, INT64_C(7), 2904), 64, 2904)], coax_p_S_sum4(coax_t568, l_s0, coax_t569, l_s1));
     }
   }
-  uint32_t l_a = (*coax_elem_v_u32(l_h, INT64_C(0), 2583));
-  uint32_t l_b = (*coax_elem_v_u32(l_h, INT64_C(1), 2583));
-  uint32_t l_c = (*coax_elem_v_u32(l_h, INT64_C(2), 2583));
-  uint32_t l_d = (*coax_elem_v_u32(l_h, INT64_C(3), 2583));
-  uint32_t l_e = (*coax_elem_v_u32(l_h, INT64_C(4), 2583));
-  uint32_t l_f = (*coax_elem_v_u32(l_h, INT64_C(5), 2583));
-  uint32_t l_g = (*coax_elem_v_u32(l_h, INT64_C(6), 2583));
-  uint32_t l_z = (*coax_elem_v_u32(l_h, INT64_C(7), 2583));
+  uint32_t l_a = (*coax_elem_v_u32(l_h, INT64_C(0), 2908));
+  uint32_t l_b = (*coax_elem_v_u32(l_h, INT64_C(1), 2908));
+  uint32_t l_c = (*coax_elem_v_u32(l_h, INT64_C(2), 2908));
+  uint32_t l_d = (*coax_elem_v_u32(l_h, INT64_C(3), 2908));
+  uint32_t l_e = (*coax_elem_v_u32(l_h, INT64_C(4), 2908));
+  uint32_t l_f = (*coax_elem_v_u32(l_h, INT64_C(5), 2908));
+  uint32_t l_g = (*coax_elem_v_u32(l_h, INT64_C(6), 2908));
+  uint32_t l_z = (*coax_elem_v_u32(l_h, INT64_C(7), 2908));
   {
-    int64_t coax_lo500 = INT64_C(0);
-    int64_t coax_hi500 = INT64_C(64);
-    for (int64_t l_i = coax_lo500; l_i < coax_hi500; l_i++)
+    int64_t coax_lo570 = INT64_C(0);
+    int64_t coax_hi570 = INT64_C(64);
+    for (int64_t l_i = coax_lo570; l_i < coax_hi570; l_i++)
     {
-      uint32_t l_s1 = (coax_t501 = (coax_t502 = coax_p_S_rotr(l_e, INT64_C(6)), coax_t503 = coax_p_S_rotr(l_e, INT64_C(11)), ((uint32_t)(coax_t502 ^ coax_t503))), coax_t504 = coax_p_S_rotr(l_e, INT64_C(25)), ((uint32_t)(coax_t501 ^ coax_t504)));
+      uint32_t l_s1 = (coax_t571 = (coax_t572 = coax_p_S_rotr(l_e, INT64_C(6)), coax_t573 = coax_p_S_rotr(l_e, INT64_C(11)), ((uint32_t)(coax_t572 ^ coax_t573))), coax_t574 = coax_p_S_rotr(l_e, INT64_C(25)), ((uint32_t)(coax_t571 ^ coax_t574)));
       uint32_t l_choose = ((uint32_t)(((uint32_t)(l_e & l_f)) ^ ((uint32_t)(((uint32_t)(l_e ^ ((uint32_t)UINT64_C(4294967295)))) & l_g))));
-      uint32_t l_t1 = (coax_t505 = (l_k).e[coax_index(l_i, 64, 2587)], coax_t506 = (l_w).e[coax_index(l_i, 64, 2587)], coax_p_S_sum5(l_z, l_s1, l_choose, coax_t505, coax_t506));
-      uint32_t l_s0 = (coax_t507 = (coax_t508 = coax_p_S_rotr(l_a, INT64_C(2)), coax_t509 = coax_p_S_rotr(l_a, INT64_C(13)), ((uint32_t)(coax_t508 ^ coax_t509))), coax_t510 = coax_p_S_rotr(l_a, INT64_C(22)), ((uint32_t)(coax_t507 ^ coax_t510)));
+      uint32_t l_t1 = (coax_t575 = (l_k).e[coax_index(l_i, 64, 2912)], coax_t576 = (l_w).e[coax_index(l_i, 64, 2912)], coax_p_S_sum5(l_z, l_s1, l_choose, coax_t575, coax_t576));
+      uint32_t l_s0 = (coax_t577 = (coax_t578 = coax_p_S_rotr(l_a, INT64_C(2)), coax_t579 = coax_p_S_rotr(l_a, INT64_C(13)), ((uint32_t)(coax_t578 ^ coax_t579))), coax_t580 = coax_p_S_rotr(l_a, INT64_C(22)), ((uint32_t)(coax_t577 ^ coax_t580)));
       uint32_t l_majority = ((uint32_t)(((uint32_t)(((uint32_t)(l_a & l_b)) ^ ((uint32_t)(l_a & l_c)))) ^ ((uint32_t)(l_b & l_c))));
       uint32_t l_t2 = coax_p_S_sum2(l_s0, l_majority);
       l_z = l_g;
@@ -4537,22 +5175,33 @@ static void coax_p_S_compress(coax_v_u32 l_h, coax_string l_input, int64_t l_at,
       l_a = coax_p_S_sum2(l_t1, l_t2);
     }
   }
-  coax_t511 = &((*coax_elem_v_u32(l_h, INT64_C(0), 2593)));
-  *coax_t511 = coax_p_S_sum2((*coax_elem_v_u32(l_h, INT64_C(0), 2593)), l_a);
-  coax_t512 = &((*coax_elem_v_u32(l_h, INT64_C(1), 2593)));
-  *coax_t512 = coax_p_S_sum2((*coax_elem_v_u32(l_h, INT64_C(1), 2593)), l_b);
-  coax_t513 = &((*coax_elem_v_u32(l_h, INT64_C(2), 2593)));
-  *coax_t513 = coax_p_S_sum2((*coax_elem_v_u32(l_h, INT64_C(2), 2593)), l_c);
-  coax_t514 = &((*coax_elem_v_u32(l_h, INT64_C(3), 2593)));
-  *coax_t514 = coax_p_S_sum2((*coax_elem_v_u32(l_h, INT64_C(3), 2593)), l_d);
-  coax_t515 = &((*coax_elem_v_u32(l_h, INT64_C(4), 2594)));
-  *coax_t515 = coax_p_S_sum2((*coax_elem_v_u32(l_h, INT64_C(4), 2594)), l_e);
-  coax_t516 = &((*coax_elem_v_u32(l_h, INT64_C(5), 2594)));
-  *coax_t516 = coax_p_S_sum2((*coax_elem_v_u32(l_h, INT64_C(5), 2594)), l_f);
-  coax_t517 = &((*coax_elem_v_u32(l_h, INT64_C(6), 2594)));
-  *coax_t517 = coax_p_S_sum2((*coax_elem_v_u32(l_h, INT64_C(6), 2594)), l_g);
-  coax_t518 = &((*coax_elem_v_u32(l_h, INT64_C(7), 2594)));
-  *coax_t518 = coax_p_S_sum2((*coax_elem_v_u32(l_h, INT64_C(7), 2594)), l_z);
+  coax_t581 = &((*coax_elem_v_u32(l_h, INT64_C(0), 2918)));
+  *coax_t581 = coax_p_S_sum2((*coax_elem_v_u32(l_h, INT64_C(0), 2918)), l_a);
+  coax_t582 = &((*coax_elem_v_u32(l_h, INT64_C(1), 2918)));
+  *coax_t582 = coax_p_S_sum2((*coax_elem_v_u32(l_h, INT64_C(1), 2918)), l_b);
+  coax_t583 = &((*coax_elem_v_u32(l_h, INT64_C(2), 2918)));
+  *coax_t583 = coax_p_S_sum2((*coax_elem_v_u32(l_h, INT64_C(2), 2918)), l_c);
+  coax_t584 = &((*coax_elem_v_u32(l_h, INT64_C(3), 2918)));
+  *coax_t584 = coax_p_S_sum2((*coax_elem_v_u32(l_h, INT64_C(3), 2918)), l_d);
+  coax_t585 = &((*coax_elem_v_u32(l_h, INT64_C(4), 2919)));
+  *coax_t585 = coax_p_S_sum2((*coax_elem_v_u32(l_h, INT64_C(4), 2919)), l_e);
+  coax_t586 = &((*coax_elem_v_u32(l_h, INT64_C(5), 2919)));
+  *coax_t586 = coax_p_S_sum2((*coax_elem_v_u32(l_h, INT64_C(5), 2919)), l_f);
+  coax_t587 = &((*coax_elem_v_u32(l_h, INT64_C(6), 2919)));
+  *coax_t587 = coax_p_S_sum2((*coax_elem_v_u32(l_h, INT64_C(6), 2919)), l_g);
+  coax_t588 = &((*coax_elem_v_u32(l_h, INT64_C(7), 2919)));
+  *coax_t588 = coax_p_S_sum2((*coax_elem_v_u32(l_h, INT64_C(7), 2919)), l_z);
+  {
+    (coax_t589 = coax_mkview_v_u32((l_w).e, 64, 0, 64, 2895), coax_secure_zero(coax_t589.data, coax_t589.count, sizeof(*coax_t589.data), 2895));
+    {
+      coax_v_u32 coax_c590 = coax_mkview_v_u32((l_w).e, 64, 0, 64, 2895);
+      for (int64_t coax_i590 = 0; coax_i590 < coax_c590.count; coax_i590++)
+      {
+        uint32_t l_wiped = coax_c590.data[coax_i590];
+        if (!(l_wiped == ((uint32_t)UINT64_C(0)))) coax_trap("assertion failed", 2895);
+      }
+    }
+  }
 }
 
 static coax_t_S_Digest coax_p_S_seed(int64_t l_count) {
@@ -4565,8 +5214,13 @@ static coax_t_S_Digest coax_p_S_seed(int64_t l_count) {
 }
 
 coax_t_S_Digest S_hash(coax_string l_input) {
-  coax_v_u32 coax_t520;
-  int64_t coax_t521;
+  coax_t_S_Digest coax_ret;
+  coax_v_u32 coax_t592;
+  int64_t coax_t593;
+  coax_v_u32 coax_t594;
+  coax_v_u32 coax_t596;
+  coax_v_u32 coax_t598;
+  coax_v_u32 coax_t600;
   coax_t_S_Digest l_seed = coax_p_S_seed((l_input).count);
   if ((l_seed).error != ((uint32_t)UINT64_C(0)))
   {
@@ -4574,40 +5228,85 @@ coax_t_S_Digest S_hash(coax_string l_input) {
   }
   coax_a8_u32 l_h = (l_seed).words;
   int64_t l_blocks = coax_p_S_blocks((l_input).count);
-  int64_t l_total = coax_mul_s64(l_blocks, INT64_C(64), 2609);
+  int64_t l_total = coax_mul_s64(l_blocks, INT64_C(64), 2935);
   {
-    int64_t coax_lo519 = INT64_C(0);
-    int64_t coax_hi519 = l_blocks;
-    for (int64_t l_i = coax_lo519; l_i < coax_hi519; l_i++)
+    int64_t coax_lo591 = INT64_C(0);
+    int64_t coax_hi591 = l_blocks;
+    for (int64_t l_i = coax_lo591; l_i < coax_hi591; l_i++)
     {
-      (coax_t520 = coax_mkview_v_u32((l_h).e, 8, 0, 8, 2610), coax_t521 = coax_mul_s64(l_i, INT64_C(64), 2610), coax_p_S_compress(coax_t520, l_input, coax_t521, l_total));
+      (coax_t592 = coax_mkview_v_u32((l_h).e, 8, 0, 8, 2936), coax_t593 = coax_mul_s64(l_i, INT64_C(64), 2936), coax_p_S_compress(coax_t592, l_input, coax_t593, l_total));
     }
   }
-  return ((coax_t_S_Digest){.words = l_h});
+  coax_ret = ((coax_t_S_Digest){.words = l_h});
+  {
+    (coax_t594 = coax_mkview_v_u32((l_h).e, 8, 0, 8, 2934), coax_secure_zero(coax_t594.data, coax_t594.count, sizeof(*coax_t594.data), 2934));
+    {
+      coax_v_u32 coax_c595 = coax_mkview_v_u32((l_h).e, 8, 0, 8, 2934);
+      for (int64_t coax_i595 = 0; coax_i595 < coax_c595.count; coax_i595++)
+      {
+        uint32_t l_wiped = coax_c595.data[coax_i595];
+        if (!(l_wiped == ((uint32_t)UINT64_C(0)))) coax_trap("assertion failed", 2934);
+      }
+    }
+  }
+  {
+    (coax_t596 = coax_mkview_v_u32(((l_seed).words).e, 8, 0, 8, 2933), coax_secure_zero(coax_t596.data, coax_t596.count, sizeof(*coax_t596.data), 2933));
+    {
+      coax_v_u32 coax_c597 = coax_mkview_v_u32(((l_seed).words).e, 8, 0, 8, 2933);
+      for (int64_t coax_i597 = 0; coax_i597 < coax_c597.count; coax_i597++)
+      {
+        uint32_t l_wiped = coax_c597.data[coax_i597];
+        if (!(l_wiped == ((uint32_t)UINT64_C(0)))) coax_trap("assertion failed", 2933);
+      }
+    }
+  }
+  return coax_ret;
+  {
+    (coax_t598 = coax_mkview_v_u32((l_h).e, 8, 0, 8, 2934), coax_secure_zero(coax_t598.data, coax_t598.count, sizeof(*coax_t598.data), 2934));
+    {
+      coax_v_u32 coax_c599 = coax_mkview_v_u32((l_h).e, 8, 0, 8, 2934);
+      for (int64_t coax_i599 = 0; coax_i599 < coax_c599.count; coax_i599++)
+      {
+        uint32_t l_wiped = coax_c599.data[coax_i599];
+        if (!(l_wiped == ((uint32_t)UINT64_C(0)))) coax_trap("assertion failed", 2934);
+      }
+    }
+  }
+  {
+    (coax_t600 = coax_mkview_v_u32(((l_seed).words).e, 8, 0, 8, 2933), coax_secure_zero(coax_t600.data, coax_t600.count, sizeof(*coax_t600.data), 2933));
+    {
+      coax_v_u32 coax_c601 = coax_mkview_v_u32(((l_seed).words).e, 8, 0, 8, 2933);
+      for (int64_t coax_i601 = 0; coax_i601 < coax_c601.count; coax_i601++)
+      {
+        uint32_t l_wiped = coax_c601.data[coax_i601];
+        if (!(l_wiped == ((uint32_t)UINT64_C(0)))) coax_trap("assertion failed", 2933);
+      }
+    }
+  }
 }
 
 _Bool S_hex(coax_t_S_Digest l_digest, coax_v_u8 l_out) {
-  uint32_t coax_t524;
-  int64_t coax_t525;
-  uint8_t * coax_t526;
+  uint32_t coax_t604;
+  int64_t coax_t605;
+  uint8_t * coax_t606;
   if (((l_digest).error != ((uint32_t)UINT64_C(0))) || ((l_out).count < INT64_C(64)))
   {
     return 0;
   }
   coax_string l_digits = COAX_STR("0123456789abcdef", 16);
   {
-    int64_t coax_lo522 = INT64_C(0);
-    int64_t coax_hi522 = INT64_C(8);
-    for (int64_t l_i = coax_lo522; l_i < coax_hi522; l_i++)
+    int64_t coax_lo602 = INT64_C(0);
+    int64_t coax_hi602 = INT64_C(8);
+    for (int64_t l_i = coax_lo602; l_i < coax_hi602; l_i++)
     {
       {
-        int64_t coax_lo523 = INT64_C(0);
-        int64_t coax_hi523 = INT64_C(8);
-        for (int64_t l_j = coax_lo523; l_j < coax_hi523; l_j++)
+        int64_t coax_lo603 = INT64_C(0);
+        int64_t coax_hi603 = INT64_C(8);
+        for (int64_t l_j = coax_lo603; l_j < coax_hi603; l_j++)
         {
-          uint32_t l_n = ((uint32_t)((coax_t524 = ((l_digest).words).e[coax_index(l_i, 8, 2617)], coax_t525 = coax_mul_s64(coax_sub_s64(INT64_C(7), l_j, 2617), INT64_C(4), 2617), coax_shr_u32(coax_t524, (int64_t)(coax_t525), 2617)) & ((uint32_t)UINT64_C(15))));
-          coax_t526 = &((*coax_elem_v_u8(l_out, coax_add_s64(coax_mul_s64(l_i, INT64_C(8), 2617), l_j, 2617), 2617)));
-          *coax_t526 = coax_byte(l_digits, l_n, 2617);
+          uint32_t l_n = ((uint32_t)((coax_t604 = ((l_digest).words).e[coax_index(l_i, 8, 2943)], coax_t605 = coax_mul_s64(coax_sub_s64(INT64_C(7), l_j, 2943), INT64_C(4), 2943), coax_shr_u32(coax_t604, (int64_t)(coax_t605), 2943)) & ((uint32_t)UINT64_C(15))));
+          coax_t606 = &((*coax_elem_v_u8(l_out, coax_add_s64(coax_mul_s64(l_i, INT64_C(8), 2943), l_j, 2943), 2943)));
+          *coax_t606 = coax_byte(l_digits, l_n, 2943);
         }
       }
     }
@@ -4616,193 +5315,274 @@ _Bool S_hex(coax_t_S_Digest l_digest, coax_v_u8 l_out) {
 }
 
 static coax_t_Sf32 coax_p_ef_finish(coax_t_Sf32Fold l_folded) {
-  uint32_t * coax_t527;
-  uint32_t coax_t528;
-  uint32_t coax_t529;
-  uint32_t coax_t530;
-  uint32_t coax_t531;
-  uint32_t coax_t532;
-  uint32_t coax_t533;
-  uint32_t * coax_t534;
-  uint32_t coax_t535;
-  uint32_t coax_t536;
-  uint32_t coax_t537;
-  uint32_t coax_t538;
-  uint32_t coax_t539;
-  uint32_t coax_t540;
-  uint32_t * coax_t541;
-  uint32_t coax_t542;
-  uint32_t coax_t543;
-  uint32_t coax_t544;
-  uint32_t coax_t545;
-  uint32_t coax_t546;
-  uint32_t coax_t547;
-  uint32_t * coax_t548;
-  uint32_t coax_t549;
-  uint32_t coax_t550;
-  uint32_t coax_t551;
-  uint32_t coax_t552;
-  uint32_t coax_t553;
-  uint32_t coax_t554;
-  uint32_t * coax_t555;
-  uint32_t coax_t556;
-  uint32_t coax_t557;
-  uint32_t coax_t558;
-  uint32_t coax_t559;
-  uint32_t coax_t560;
-  uint32_t coax_t561;
-  uint32_t * coax_t562;
-  uint32_t coax_t563;
-  uint32_t coax_t564;
-  uint32_t coax_t565;
-  uint32_t coax_t566;
-  uint32_t coax_t567;
-  uint32_t coax_t568;
-  uint32_t * coax_t569;
-  uint32_t coax_t570;
-  uint32_t coax_t571;
-  uint32_t coax_t572;
-  uint32_t coax_t573;
-  uint32_t coax_t574;
-  uint32_t coax_t575;
-  uint32_t * coax_t576;
-  uint32_t coax_t577;
-  uint32_t coax_t578;
-  uint32_t coax_t579;
-  uint32_t coax_t580;
-  uint32_t coax_t581;
-  uint32_t coax_t582;
+  coax_t_Sf32 coax_ret;
+  uint32_t * coax_t607;
+  uint32_t coax_t608;
+  uint32_t coax_t609;
+  uint32_t coax_t610;
+  uint32_t coax_t611;
+  uint32_t coax_t612;
+  uint32_t coax_t613;
+  uint32_t * coax_t614;
+  uint32_t coax_t615;
+  uint32_t coax_t616;
+  uint32_t coax_t617;
+  uint32_t coax_t618;
+  uint32_t coax_t619;
+  uint32_t coax_t620;
+  uint32_t * coax_t621;
+  uint32_t coax_t622;
+  uint32_t coax_t623;
+  uint32_t coax_t624;
+  uint32_t coax_t625;
+  uint32_t coax_t626;
+  uint32_t coax_t627;
+  uint32_t * coax_t628;
+  uint32_t coax_t629;
+  uint32_t coax_t630;
+  uint32_t coax_t631;
+  uint32_t coax_t632;
+  uint32_t coax_t633;
+  uint32_t coax_t634;
+  uint32_t * coax_t635;
+  uint32_t coax_t636;
+  uint32_t coax_t637;
+  uint32_t coax_t638;
+  uint32_t coax_t639;
+  uint32_t coax_t640;
+  uint32_t coax_t641;
+  uint32_t * coax_t642;
+  uint32_t coax_t643;
+  uint32_t coax_t644;
+  uint32_t coax_t645;
+  uint32_t coax_t646;
+  uint32_t coax_t647;
+  uint32_t coax_t648;
+  uint32_t * coax_t649;
+  uint32_t coax_t650;
+  uint32_t coax_t651;
+  uint32_t coax_t652;
+  uint32_t coax_t653;
+  uint32_t coax_t654;
+  uint32_t coax_t655;
+  uint32_t * coax_t656;
+  uint32_t coax_t657;
+  uint32_t coax_t658;
+  uint32_t coax_t659;
+  uint32_t coax_t660;
+  uint32_t coax_t661;
+  uint32_t coax_t662;
+  coax_v_u32 coax_t663;
+  coax_v_u32 coax_t664;
+  coax_v_u32 coax_t665;
+  coax_v_u32 coax_t666;
   coax_t_Sf32Fold l_candidate = coax_p_sf32_fold_total((l_folded).value, UINT64_C(1));
   uint32_t l_mask = ((uint32_t)(cb_mask(((uint64_t)((l_folded).carry | (l_candidate).carry)))));
   coax_t_Sf32 l_r = ((coax_t_Sf32){0});
-  coax_t527 = &(((l_r).limb).e[coax_index(INT64_C(0), 8, 2987)]);
-  *coax_t527 = (coax_t528 = (((l_folded).value).limb).e[coax_index(INT64_C(0), 8, 2987)], coax_t529 = (coax_t530 = (coax_t531 = (((l_folded).value).limb).e[coax_index(INT64_C(0), 8, 2987)], coax_t532 = (((l_candidate).value).limb).e[coax_index(INT64_C(0), 8, 2987)], ((uint32_t)(coax_t531 ^ coax_t532))), coax_t533 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t530 & coax_t533))), ((uint32_t)(coax_t528 ^ coax_t529)));
-  coax_t534 = &(((l_r).limb).e[coax_index(INT64_C(1), 8, 2988)]);
-  *coax_t534 = (coax_t535 = (((l_folded).value).limb).e[coax_index(INT64_C(1), 8, 2988)], coax_t536 = (coax_t537 = (coax_t538 = (((l_folded).value).limb).e[coax_index(INT64_C(1), 8, 2988)], coax_t539 = (((l_candidate).value).limb).e[coax_index(INT64_C(1), 8, 2988)], ((uint32_t)(coax_t538 ^ coax_t539))), coax_t540 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t537 & coax_t540))), ((uint32_t)(coax_t535 ^ coax_t536)));
-  coax_t541 = &(((l_r).limb).e[coax_index(INT64_C(2), 8, 2989)]);
-  *coax_t541 = (coax_t542 = (((l_folded).value).limb).e[coax_index(INT64_C(2), 8, 2989)], coax_t543 = (coax_t544 = (coax_t545 = (((l_folded).value).limb).e[coax_index(INT64_C(2), 8, 2989)], coax_t546 = (((l_candidate).value).limb).e[coax_index(INT64_C(2), 8, 2989)], ((uint32_t)(coax_t545 ^ coax_t546))), coax_t547 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t544 & coax_t547))), ((uint32_t)(coax_t542 ^ coax_t543)));
-  coax_t548 = &(((l_r).limb).e[coax_index(INT64_C(3), 8, 2990)]);
-  *coax_t548 = (coax_t549 = (((l_folded).value).limb).e[coax_index(INT64_C(3), 8, 2990)], coax_t550 = (coax_t551 = (coax_t552 = (((l_folded).value).limb).e[coax_index(INT64_C(3), 8, 2990)], coax_t553 = (((l_candidate).value).limb).e[coax_index(INT64_C(3), 8, 2990)], ((uint32_t)(coax_t552 ^ coax_t553))), coax_t554 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t551 & coax_t554))), ((uint32_t)(coax_t549 ^ coax_t550)));
-  coax_t555 = &(((l_r).limb).e[coax_index(INT64_C(4), 8, 2991)]);
-  *coax_t555 = (coax_t556 = (((l_folded).value).limb).e[coax_index(INT64_C(4), 8, 2991)], coax_t557 = (coax_t558 = (coax_t559 = (((l_folded).value).limb).e[coax_index(INT64_C(4), 8, 2991)], coax_t560 = (((l_candidate).value).limb).e[coax_index(INT64_C(4), 8, 2991)], ((uint32_t)(coax_t559 ^ coax_t560))), coax_t561 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t558 & coax_t561))), ((uint32_t)(coax_t556 ^ coax_t557)));
-  coax_t562 = &(((l_r).limb).e[coax_index(INT64_C(5), 8, 2992)]);
-  *coax_t562 = (coax_t563 = (((l_folded).value).limb).e[coax_index(INT64_C(5), 8, 2992)], coax_t564 = (coax_t565 = (coax_t566 = (((l_folded).value).limb).e[coax_index(INT64_C(5), 8, 2992)], coax_t567 = (((l_candidate).value).limb).e[coax_index(INT64_C(5), 8, 2992)], ((uint32_t)(coax_t566 ^ coax_t567))), coax_t568 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t565 & coax_t568))), ((uint32_t)(coax_t563 ^ coax_t564)));
-  coax_t569 = &(((l_r).limb).e[coax_index(INT64_C(6), 8, 2993)]);
-  *coax_t569 = (coax_t570 = (((l_folded).value).limb).e[coax_index(INT64_C(6), 8, 2993)], coax_t571 = (coax_t572 = (coax_t573 = (((l_folded).value).limb).e[coax_index(INT64_C(6), 8, 2993)], coax_t574 = (((l_candidate).value).limb).e[coax_index(INT64_C(6), 8, 2993)], ((uint32_t)(coax_t573 ^ coax_t574))), coax_t575 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t572 & coax_t575))), ((uint32_t)(coax_t570 ^ coax_t571)));
-  coax_t576 = &(((l_r).limb).e[coax_index(INT64_C(7), 8, 2994)]);
-  *coax_t576 = (coax_t577 = (((l_folded).value).limb).e[coax_index(INT64_C(7), 8, 2994)], coax_t578 = (coax_t579 = (coax_t580 = (((l_folded).value).limb).e[coax_index(INT64_C(7), 8, 2994)], coax_t581 = (((l_candidate).value).limb).e[coax_index(INT64_C(7), 8, 2994)], ((uint32_t)(coax_t580 ^ coax_t581))), coax_t582 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t579 & coax_t582))), ((uint32_t)(coax_t577 ^ coax_t578)));
-  return l_r;
+  coax_t607 = &(((l_r).limb).e[coax_index(INT64_C(0), 8, 3313)]);
+  *coax_t607 = (coax_t608 = (((l_folded).value).limb).e[coax_index(INT64_C(0), 8, 3313)], coax_t609 = (coax_t610 = (coax_t611 = (((l_folded).value).limb).e[coax_index(INT64_C(0), 8, 3313)], coax_t612 = (((l_candidate).value).limb).e[coax_index(INT64_C(0), 8, 3313)], ((uint32_t)(coax_t611 ^ coax_t612))), coax_t613 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t610 & coax_t613))), ((uint32_t)(coax_t608 ^ coax_t609)));
+  coax_t614 = &(((l_r).limb).e[coax_index(INT64_C(1), 8, 3314)]);
+  *coax_t614 = (coax_t615 = (((l_folded).value).limb).e[coax_index(INT64_C(1), 8, 3314)], coax_t616 = (coax_t617 = (coax_t618 = (((l_folded).value).limb).e[coax_index(INT64_C(1), 8, 3314)], coax_t619 = (((l_candidate).value).limb).e[coax_index(INT64_C(1), 8, 3314)], ((uint32_t)(coax_t618 ^ coax_t619))), coax_t620 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t617 & coax_t620))), ((uint32_t)(coax_t615 ^ coax_t616)));
+  coax_t621 = &(((l_r).limb).e[coax_index(INT64_C(2), 8, 3315)]);
+  *coax_t621 = (coax_t622 = (((l_folded).value).limb).e[coax_index(INT64_C(2), 8, 3315)], coax_t623 = (coax_t624 = (coax_t625 = (((l_folded).value).limb).e[coax_index(INT64_C(2), 8, 3315)], coax_t626 = (((l_candidate).value).limb).e[coax_index(INT64_C(2), 8, 3315)], ((uint32_t)(coax_t625 ^ coax_t626))), coax_t627 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t624 & coax_t627))), ((uint32_t)(coax_t622 ^ coax_t623)));
+  coax_t628 = &(((l_r).limb).e[coax_index(INT64_C(3), 8, 3316)]);
+  *coax_t628 = (coax_t629 = (((l_folded).value).limb).e[coax_index(INT64_C(3), 8, 3316)], coax_t630 = (coax_t631 = (coax_t632 = (((l_folded).value).limb).e[coax_index(INT64_C(3), 8, 3316)], coax_t633 = (((l_candidate).value).limb).e[coax_index(INT64_C(3), 8, 3316)], ((uint32_t)(coax_t632 ^ coax_t633))), coax_t634 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t631 & coax_t634))), ((uint32_t)(coax_t629 ^ coax_t630)));
+  coax_t635 = &(((l_r).limb).e[coax_index(INT64_C(4), 8, 3317)]);
+  *coax_t635 = (coax_t636 = (((l_folded).value).limb).e[coax_index(INT64_C(4), 8, 3317)], coax_t637 = (coax_t638 = (coax_t639 = (((l_folded).value).limb).e[coax_index(INT64_C(4), 8, 3317)], coax_t640 = (((l_candidate).value).limb).e[coax_index(INT64_C(4), 8, 3317)], ((uint32_t)(coax_t639 ^ coax_t640))), coax_t641 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t638 & coax_t641))), ((uint32_t)(coax_t636 ^ coax_t637)));
+  coax_t642 = &(((l_r).limb).e[coax_index(INT64_C(5), 8, 3318)]);
+  *coax_t642 = (coax_t643 = (((l_folded).value).limb).e[coax_index(INT64_C(5), 8, 3318)], coax_t644 = (coax_t645 = (coax_t646 = (((l_folded).value).limb).e[coax_index(INT64_C(5), 8, 3318)], coax_t647 = (((l_candidate).value).limb).e[coax_index(INT64_C(5), 8, 3318)], ((uint32_t)(coax_t646 ^ coax_t647))), coax_t648 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t645 & coax_t648))), ((uint32_t)(coax_t643 ^ coax_t644)));
+  coax_t649 = &(((l_r).limb).e[coax_index(INT64_C(6), 8, 3319)]);
+  *coax_t649 = (coax_t650 = (((l_folded).value).limb).e[coax_index(INT64_C(6), 8, 3319)], coax_t651 = (coax_t652 = (coax_t653 = (((l_folded).value).limb).e[coax_index(INT64_C(6), 8, 3319)], coax_t654 = (((l_candidate).value).limb).e[coax_index(INT64_C(6), 8, 3319)], ((uint32_t)(coax_t653 ^ coax_t654))), coax_t655 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t652 & coax_t655))), ((uint32_t)(coax_t650 ^ coax_t651)));
+  coax_t656 = &(((l_r).limb).e[coax_index(INT64_C(7), 8, 3320)]);
+  *coax_t656 = (coax_t657 = (((l_folded).value).limb).e[coax_index(INT64_C(7), 8, 3320)], coax_t658 = (coax_t659 = (coax_t660 = (((l_folded).value).limb).e[coax_index(INT64_C(7), 8, 3320)], coax_t661 = (((l_candidate).value).limb).e[coax_index(INT64_C(7), 8, 3320)], ((uint32_t)(coax_t660 ^ coax_t661))), coax_t662 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t659 & coax_t662))), ((uint32_t)(coax_t657 ^ coax_t658)));
+  coax_ret = l_r;
+  {
+    (coax_t663 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3312), coax_secure_zero(coax_t663.data, coax_t663.count, sizeof(*coax_t663.data), 3312));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3312)))) coax_trap("assertion failed", 3312);
+  }
+  {
+    (coax_t664 = coax_mkview_v_u32((((l_candidate).value).limb).e, 8, 0, 8, 3311), coax_secure_zero(coax_t664.data, coax_t664.count, sizeof(*coax_t664.data), 3311));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_candidate).value).limb).e, 8, 0, 8, 3311)))) coax_trap("assertion failed", 3311);
+  }
+  return coax_ret;
+  {
+    (coax_t665 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3312), coax_secure_zero(coax_t665.data, coax_t665.count, sizeof(*coax_t665.data), 3312));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3312)))) coax_trap("assertion failed", 3312);
+  }
+  {
+    (coax_t666 = coax_mkview_v_u32((((l_candidate).value).limb).e, 8, 0, 8, 3311), coax_secure_zero(coax_t666.data, coax_t666.count, sizeof(*coax_t666.data), 3311));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_candidate).value).limb).e, 8, 0, 8, 3311)))) coax_trap("assertion failed", 3311);
+  }
 }
 
 static coax_t_Sf32 coax_p_ef_field_add(coax_t_Sf32 l_a, coax_t_Sf32 l_b) {
-  uint64_t coax_t584;
-  uint64_t coax_t585;
+  coax_t_Sf32 coax_ret;
+  uint64_t coax_t668;
+  uint64_t coax_t669;
+  coax_v_u32 coax_t670;
+  coax_v_u32 coax_t671;
   coax_t_Sf32 l_r = ((coax_t_Sf32){0});
   uint64_t l_carry = ((uint64_t)0);
   {
-    int64_t coax_lo583 = INT64_C(0);
-    int64_t coax_hi583 = INT64_C(8);
-    for (int64_t l_i = coax_lo583; l_i < coax_hi583; l_i++)
+    int64_t coax_lo667 = INT64_C(0);
+    int64_t coax_hi667 = INT64_C(8);
+    for (int64_t l_i = coax_lo667; l_i < coax_hi667; l_i++)
     {
-      uint64_t l_wide = coax_add_u64((coax_t584 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 2999)]), UINT64_C(18446744073709551615), 2999)), coax_t585 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(l_i, 8, 2999)]), UINT64_C(18446744073709551615), 2999)), coax_add_u64(coax_t584, coax_t585, 2999)), l_carry, 2999);
-      ((l_r).limb).e[coax_index(l_i, 8, 2999)] = ((uint32_t)(l_wide));
-      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 2999);
+      uint64_t l_wide = coax_add_u64((coax_t668 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3325)]), UINT64_C(18446744073709551615), 3325)), coax_t669 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(l_i, 8, 3325)]), UINT64_C(18446744073709551615), 3325)), coax_add_u64(coax_t668, coax_t669, 3325)), l_carry, 3325);
+      ((l_r).limb).e[coax_index(l_i, 8, 3325)] = ((uint32_t)(l_wide));
+      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3325);
     }
   }
-  return coax_p_ef_finish(coax_p_sf32_fold_total(l_r, l_carry));
+  coax_ret = coax_p_ef_finish(coax_p_sf32_fold_total(l_r, l_carry));
+  {
+    (coax_t670 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3324), coax_secure_zero(coax_t670.data, coax_t670.count, sizeof(*coax_t670.data), 3324));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3324)))) coax_trap("assertion failed", 3324);
+  }
+  return coax_ret;
+  {
+    (coax_t671 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3324), coax_secure_zero(coax_t671.data, coax_t671.count, sizeof(*coax_t671.data), 3324));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3324)))) coax_trap("assertion failed", 3324);
+  }
 }
 
 static coax_t_Sf32 coax_p_ef_field_mul(coax_t_Sf32 l_a, coax_t_Sf32 l_b) {
-  uint64_t coax_t587;
-  uint64_t coax_t588;
-  uint64_t coax_t589;
-  uint64_t coax_t590;
-  uint64_t coax_t591;
-  uint64_t coax_t592;
-  uint64_t coax_t593;
-  uint64_t coax_t594;
-  uint64_t coax_t595;
-  uint64_t coax_t596;
-  uint64_t coax_t597;
-  uint64_t coax_t598;
-  uint64_t coax_t599;
-  uint64_t coax_t600;
-  uint64_t coax_t601;
-  uint64_t coax_t602;
-  uint64_t coax_t603;
-  uint64_t coax_t604;
-  uint64_t coax_t605;
-  uint64_t coax_t606;
-  uint64_t coax_t607;
-  uint64_t coax_t608;
-  uint64_t coax_t609;
-  uint64_t coax_t610;
-  uint64_t coax_t611;
-  uint64_t coax_t612;
-  uint64_t coax_t613;
-  uint64_t coax_t614;
-  uint64_t coax_t615;
-  uint64_t coax_t616;
-  uint64_t coax_t617;
-  uint64_t coax_t618;
-  uint64_t coax_t620;
-  uint64_t coax_t621;
-  uint64_t coax_t622;
-  uint64_t coax_t623;
+  coax_t_Sf32 coax_ret;
+  uint64_t coax_t673;
+  uint64_t coax_t674;
+  uint64_t coax_t675;
+  uint64_t coax_t676;
+  uint64_t coax_t677;
+  uint64_t coax_t678;
+  uint64_t coax_t679;
+  uint64_t coax_t680;
+  uint64_t coax_t681;
+  uint64_t coax_t682;
+  uint64_t coax_t683;
+  uint64_t coax_t684;
+  uint64_t coax_t685;
+  uint64_t coax_t686;
+  uint64_t coax_t687;
+  uint64_t coax_t688;
+  uint64_t coax_t689;
+  uint64_t coax_t690;
+  uint64_t coax_t691;
+  uint64_t coax_t692;
+  uint64_t coax_t693;
+  uint64_t coax_t694;
+  uint64_t coax_t695;
+  uint64_t coax_t696;
+  uint64_t coax_t697;
+  uint64_t coax_t698;
+  uint64_t coax_t699;
+  uint64_t coax_t700;
+  uint64_t coax_t701;
+  uint64_t coax_t702;
+  uint64_t coax_t703;
+  uint64_t coax_t704;
+  uint64_t coax_t706;
+  uint64_t coax_t707;
+  uint64_t coax_t708;
+  uint64_t coax_t709;
+  coax_v_u32 coax_t710;
+  coax_v_u32 coax_t711;
+  coax_v_u32 coax_t712;
+  coax_v_u32 coax_t713;
   coax_a16_u32 l_product = ((coax_a16_u32){0});
   {
-    int64_t coax_lo586 = INT64_C(0);
-    int64_t coax_hi586 = INT64_C(8);
-    for (int64_t l_i = coax_lo586; l_i < coax_hi586; l_i++)
+    int64_t coax_lo672 = INT64_C(0);
+    int64_t coax_hi672 = INT64_C(8);
+    for (int64_t l_i = coax_lo672; l_i < coax_hi672; l_i++)
     {
       uint64_t l_carry = ((uint64_t)0);
       uint64_t l_wide = ((uint64_t)0);
-      l_wide = (coax_t587 = (coax_t588 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3006)]), UINT64_C(18446744073709551615), 3006)), coax_t589 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(INT64_C(0), 8, 3006)]), UINT64_C(18446744073709551615), 3006)), coax_mul_wrap_u64(coax_t588, coax_t589)), coax_t590 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(l_i, 16, 3006)]), UINT64_C(18446744073709551615), 3006)), coax_add_u64(coax_t587, coax_t590, 3006));
-      (l_product).e[coax_index(l_i, 16, 3006)] = ((uint32_t)(l_wide));
-      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3006);
-      l_wide = coax_add_u64((coax_t591 = (coax_t592 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3007)]), UINT64_C(18446744073709551615), 3007)), coax_t593 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(INT64_C(1), 8, 3007)]), UINT64_C(18446744073709551615), 3007)), coax_mul_wrap_u64(coax_t592, coax_t593)), coax_t594 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(1), 3007), 16, 3007)]), UINT64_C(18446744073709551615), 3007)), coax_add_u64(coax_t591, coax_t594, 3007)), l_carry, 3007);
-      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(1), 3007), 16, 3007)] = ((uint32_t)(l_wide));
-      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3007);
-      l_wide = coax_add_u64((coax_t595 = (coax_t596 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3008)]), UINT64_C(18446744073709551615), 3008)), coax_t597 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(INT64_C(2), 8, 3008)]), UINT64_C(18446744073709551615), 3008)), coax_mul_wrap_u64(coax_t596, coax_t597)), coax_t598 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(2), 3008), 16, 3008)]), UINT64_C(18446744073709551615), 3008)), coax_add_u64(coax_t595, coax_t598, 3008)), l_carry, 3008);
-      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(2), 3008), 16, 3008)] = ((uint32_t)(l_wide));
-      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3008);
-      l_wide = coax_add_u64((coax_t599 = (coax_t600 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3009)]), UINT64_C(18446744073709551615), 3009)), coax_t601 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(INT64_C(3), 8, 3009)]), UINT64_C(18446744073709551615), 3009)), coax_mul_wrap_u64(coax_t600, coax_t601)), coax_t602 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(3), 3009), 16, 3009)]), UINT64_C(18446744073709551615), 3009)), coax_add_u64(coax_t599, coax_t602, 3009)), l_carry, 3009);
-      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(3), 3009), 16, 3009)] = ((uint32_t)(l_wide));
-      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3009);
-      l_wide = coax_add_u64((coax_t603 = (coax_t604 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3010)]), UINT64_C(18446744073709551615), 3010)), coax_t605 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(INT64_C(4), 8, 3010)]), UINT64_C(18446744073709551615), 3010)), coax_mul_wrap_u64(coax_t604, coax_t605)), coax_t606 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(4), 3010), 16, 3010)]), UINT64_C(18446744073709551615), 3010)), coax_add_u64(coax_t603, coax_t606, 3010)), l_carry, 3010);
-      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(4), 3010), 16, 3010)] = ((uint32_t)(l_wide));
-      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3010);
-      l_wide = coax_add_u64((coax_t607 = (coax_t608 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3011)]), UINT64_C(18446744073709551615), 3011)), coax_t609 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(INT64_C(5), 8, 3011)]), UINT64_C(18446744073709551615), 3011)), coax_mul_wrap_u64(coax_t608, coax_t609)), coax_t610 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(5), 3011), 16, 3011)]), UINT64_C(18446744073709551615), 3011)), coax_add_u64(coax_t607, coax_t610, 3011)), l_carry, 3011);
-      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(5), 3011), 16, 3011)] = ((uint32_t)(l_wide));
-      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3011);
-      l_wide = coax_add_u64((coax_t611 = (coax_t612 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3012)]), UINT64_C(18446744073709551615), 3012)), coax_t613 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(INT64_C(6), 8, 3012)]), UINT64_C(18446744073709551615), 3012)), coax_mul_wrap_u64(coax_t612, coax_t613)), coax_t614 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(6), 3012), 16, 3012)]), UINT64_C(18446744073709551615), 3012)), coax_add_u64(coax_t611, coax_t614, 3012)), l_carry, 3012);
-      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(6), 3012), 16, 3012)] = ((uint32_t)(l_wide));
-      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3012);
-      l_wide = coax_add_u64((coax_t615 = (coax_t616 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3013)]), UINT64_C(18446744073709551615), 3013)), coax_t617 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(INT64_C(7), 8, 3013)]), UINT64_C(18446744073709551615), 3013)), coax_mul_wrap_u64(coax_t616, coax_t617)), coax_t618 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(7), 3013), 16, 3013)]), UINT64_C(18446744073709551615), 3013)), coax_add_u64(coax_t615, coax_t618, 3013)), l_carry, 3013);
-      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(7), 3013), 16, 3013)] = ((uint32_t)(l_wide));
-      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3013);
-      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(8), 3014), 16, 3014)] = ((uint32_t)(l_carry));
+      l_wide = (coax_t673 = (coax_t674 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3332)]), UINT64_C(18446744073709551615), 3332)), coax_t675 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(INT64_C(0), 8, 3332)]), UINT64_C(18446744073709551615), 3332)), coax_mul_wrap_u64(coax_t674, coax_t675)), coax_t676 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(l_i, 16, 3332)]), UINT64_C(18446744073709551615), 3332)), coax_add_u64(coax_t673, coax_t676, 3332));
+      (l_product).e[coax_index(l_i, 16, 3332)] = ((uint32_t)(l_wide));
+      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3332);
+      l_wide = coax_add_u64((coax_t677 = (coax_t678 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3333)]), UINT64_C(18446744073709551615), 3333)), coax_t679 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(INT64_C(1), 8, 3333)]), UINT64_C(18446744073709551615), 3333)), coax_mul_wrap_u64(coax_t678, coax_t679)), coax_t680 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(1), 3333), 16, 3333)]), UINT64_C(18446744073709551615), 3333)), coax_add_u64(coax_t677, coax_t680, 3333)), l_carry, 3333);
+      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(1), 3333), 16, 3333)] = ((uint32_t)(l_wide));
+      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3333);
+      l_wide = coax_add_u64((coax_t681 = (coax_t682 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3334)]), UINT64_C(18446744073709551615), 3334)), coax_t683 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(INT64_C(2), 8, 3334)]), UINT64_C(18446744073709551615), 3334)), coax_mul_wrap_u64(coax_t682, coax_t683)), coax_t684 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(2), 3334), 16, 3334)]), UINT64_C(18446744073709551615), 3334)), coax_add_u64(coax_t681, coax_t684, 3334)), l_carry, 3334);
+      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(2), 3334), 16, 3334)] = ((uint32_t)(l_wide));
+      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3334);
+      l_wide = coax_add_u64((coax_t685 = (coax_t686 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3335)]), UINT64_C(18446744073709551615), 3335)), coax_t687 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(INT64_C(3), 8, 3335)]), UINT64_C(18446744073709551615), 3335)), coax_mul_wrap_u64(coax_t686, coax_t687)), coax_t688 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(3), 3335), 16, 3335)]), UINT64_C(18446744073709551615), 3335)), coax_add_u64(coax_t685, coax_t688, 3335)), l_carry, 3335);
+      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(3), 3335), 16, 3335)] = ((uint32_t)(l_wide));
+      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3335);
+      l_wide = coax_add_u64((coax_t689 = (coax_t690 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3336)]), UINT64_C(18446744073709551615), 3336)), coax_t691 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(INT64_C(4), 8, 3336)]), UINT64_C(18446744073709551615), 3336)), coax_mul_wrap_u64(coax_t690, coax_t691)), coax_t692 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(4), 3336), 16, 3336)]), UINT64_C(18446744073709551615), 3336)), coax_add_u64(coax_t689, coax_t692, 3336)), l_carry, 3336);
+      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(4), 3336), 16, 3336)] = ((uint32_t)(l_wide));
+      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3336);
+      l_wide = coax_add_u64((coax_t693 = (coax_t694 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3337)]), UINT64_C(18446744073709551615), 3337)), coax_t695 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(INT64_C(5), 8, 3337)]), UINT64_C(18446744073709551615), 3337)), coax_mul_wrap_u64(coax_t694, coax_t695)), coax_t696 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(5), 3337), 16, 3337)]), UINT64_C(18446744073709551615), 3337)), coax_add_u64(coax_t693, coax_t696, 3337)), l_carry, 3337);
+      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(5), 3337), 16, 3337)] = ((uint32_t)(l_wide));
+      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3337);
+      l_wide = coax_add_u64((coax_t697 = (coax_t698 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3338)]), UINT64_C(18446744073709551615), 3338)), coax_t699 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(INT64_C(6), 8, 3338)]), UINT64_C(18446744073709551615), 3338)), coax_mul_wrap_u64(coax_t698, coax_t699)), coax_t700 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(6), 3338), 16, 3338)]), UINT64_C(18446744073709551615), 3338)), coax_add_u64(coax_t697, coax_t700, 3338)), l_carry, 3338);
+      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(6), 3338), 16, 3338)] = ((uint32_t)(l_wide));
+      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3338);
+      l_wide = coax_add_u64((coax_t701 = (coax_t702 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3339)]), UINT64_C(18446744073709551615), 3339)), coax_t703 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(INT64_C(7), 8, 3339)]), UINT64_C(18446744073709551615), 3339)), coax_mul_wrap_u64(coax_t702, coax_t703)), coax_t704 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(7), 3339), 16, 3339)]), UINT64_C(18446744073709551615), 3339)), coax_add_u64(coax_t701, coax_t704, 3339)), l_carry, 3339);
+      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(7), 3339), 16, 3339)] = ((uint32_t)(l_wide));
+      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3339);
+      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(8), 3340), 16, 3340)] = ((uint32_t)(l_carry));
     }
   }
   coax_t_Sf32 l_r = ((coax_t_Sf32){0});
   uint64_t l_carry = ((uint64_t)0);
   uint64_t l_previous = ((uint64_t)0);
   {
-    int64_t coax_lo619 = INT64_C(0);
-    int64_t coax_hi619 = INT64_C(8);
-    for (int64_t l_i = coax_lo619; l_i < coax_hi619; l_i++)
+    int64_t coax_lo705 = INT64_C(0);
+    int64_t coax_hi705 = INT64_C(8);
+    for (int64_t l_i = coax_lo705; l_i < coax_hi705; l_i++)
     {
-      uint64_t l_high = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(8), 3017), 16, 3017)]), UINT64_C(18446744073709551615), 3017));
-      uint64_t l_wide = coax_add_u64(coax_add_u64((coax_t620 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(l_i, 16, 3017)]), UINT64_C(18446744073709551615), 3017)), coax_t621 = (coax_t622 = l_high, coax_t623 = UINT64_C(977), coax_mul_wrap_u64(coax_t622, coax_t623)), coax_add_u64(coax_t620, coax_t621, 3017)), l_previous, 3017), l_carry, 3017);
-      ((l_r).limb).e[coax_index(l_i, 8, 3017)] = ((uint32_t)(l_wide));
-      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3017);
+      uint64_t l_high = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(8), 3343), 16, 3343)]), UINT64_C(18446744073709551615), 3343));
+      uint64_t l_wide = coax_add_u64(coax_add_u64((coax_t706 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(l_i, 16, 3343)]), UINT64_C(18446744073709551615), 3343)), coax_t707 = (coax_t708 = l_high, coax_t709 = UINT64_C(977), coax_mul_wrap_u64(coax_t708, coax_t709)), coax_add_u64(coax_t706, coax_t707, 3343)), l_previous, 3343), l_carry, 3343);
+      ((l_r).limb).e[coax_index(l_i, 8, 3343)] = ((uint32_t)(l_wide));
+      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3343);
       l_previous = l_high;
     }
   }
-  return coax_p_ef_finish(coax_p_sf32_fold_total(l_r, coax_add_u64(l_previous, l_carry, 3018)));
+  coax_ret = coax_p_ef_finish(coax_p_sf32_fold_total(l_r, coax_add_u64(l_previous, l_carry, 3344)));
+  {
+    (coax_t710 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3342), coax_secure_zero(coax_t710.data, coax_t710.count, sizeof(*coax_t710.data), 3342));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3342)))) coax_trap("assertion failed", 3342);
+  }
+  {
+    (coax_t711 = coax_mkview_v_u32((l_product).e, 16, 0, 16, 3329), coax_secure_zero(coax_t711.data, coax_t711.count, sizeof(*coax_t711.data), 3329));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((l_product).e, 16, 0, 16, 3329)))) coax_trap("assertion failed", 3329);
+  }
+  return coax_ret;
+  {
+    (coax_t712 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3342), coax_secure_zero(coax_t712.data, coax_t712.count, sizeof(*coax_t712.data), 3342));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3342)))) coax_trap("assertion failed", 3342);
+  }
+  {
+    (coax_t713 = coax_mkview_v_u32((l_product).e, 16, 0, 16, 3329), coax_secure_zero(coax_t713.data, coax_t713.count, sizeof(*coax_t713.data), 3329));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((l_product).e, 16, 0, 16, 3329)))) coax_trap("assertion failed", 3329);
+  }
 }
 
 static coax_t_Sg32 coax_p_ef_double(coax_t_Sg32 l_p) {
+  coax_t_Sg32 coax_ret;
+  coax_v_u32 coax_t714;
+  coax_v_u32 coax_t715;
+  coax_v_u32 coax_t716;
+  coax_v_u32 coax_t717;
+  coax_v_u32 coax_t718;
+  coax_v_u32 coax_t719;
+  coax_v_u32 coax_t720;
+  coax_v_u32 coax_t721;
+  coax_v_u32 coax_t722;
+  coax_v_u32 coax_t723;
+  coax_v_u32 coax_t724;
+  coax_v_u32 coax_t725;
+  coax_v_u32 coax_t726;
+  coax_v_u32 coax_t727;
+  coax_v_u32 coax_t728;
+  coax_v_u32 coax_t729;
+  coax_v_u32 coax_t730;
+  coax_v_u32 coax_t731;
+  coax_v_u32 coax_t732;
+  coax_v_u32 coax_t733;
+  coax_v_u32 coax_t734;
+  coax_v_u32 coax_t735;
+  coax_v_u32 coax_t736;
+  coax_v_u32 coax_t737;
   coax_t_Sf32 l_aa = coax_p_ef_field_mul((l_p).x, (l_p).x);
   coax_t_Sf32 l_bb = coax_p_ef_field_mul((l_p).y, (l_p).y);
   coax_t_Sf32 l_cc = coax_p_ef_field_mul(l_bb, l_bb);
@@ -4819,16 +5599,150 @@ static coax_t_Sg32 coax_p_ef_double(coax_t_Sg32 l_p) {
   (l_r).y = coax_p_sf32_sub(coax_p_ef_field_mul(l_ee, coax_p_sf32_sub(l_dd, (l_r).x)), l_eightcc);
   coax_t_Sf32 l_yz = coax_p_ef_field_mul((l_p).y, (l_p).z);
   (l_r).z = coax_p_ef_field_add(l_yz, l_yz);
-  return coax_p_sg32_canonical_infinity(l_r);
+  coax_ret = coax_p_sg32_canonical_infinity(l_r);
+  {
+    (coax_t714 = coax_mkview_v_u32(((l_yz).limb).e, 8, 0, 8, 3353), coax_secure_zero(coax_t714.data, coax_t714.count, sizeof(*coax_t714.data), 3353));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_yz).limb).e, 8, 0, 8, 3353)))) coax_trap("assertion failed", 3353);
+  }
+  {
+    (coax_t715 = coax_mkview_v_u32(((l_eightcc).limb).e, 8, 0, 8, 3351), coax_secure_zero(coax_t715.data, coax_t715.count, sizeof(*coax_t715.data), 3351));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_eightcc).limb).e, 8, 0, 8, 3351)))) coax_trap("assertion failed", 3351);
+  }
+  {
+    (coax_t716 = coax_mkview_v_u32((((l_r).z).limb).e, 8, 0, 8, 3350), coax_secure_zero(coax_t716.data, coax_t716.count, sizeof(*coax_t716.data), 3350));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_r).z).limb).e, 8, 0, 8, 3350)))) coax_trap("assertion failed", 3350);
+  }
+  {
+    (coax_t717 = coax_mkview_v_u32((((l_r).y).limb).e, 8, 0, 8, 3350), coax_secure_zero(coax_t717.data, coax_t717.count, sizeof(*coax_t717.data), 3350));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_r).y).limb).e, 8, 0, 8, 3350)))) coax_trap("assertion failed", 3350);
+  }
+  {
+    (coax_t718 = coax_mkview_v_u32((((l_r).x).limb).e, 8, 0, 8, 3350), coax_secure_zero(coax_t718.data, coax_t718.count, sizeof(*coax_t718.data), 3350));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_r).x).limb).e, 8, 0, 8, 3350)))) coax_trap("assertion failed", 3350);
+  }
+  {
+    (coax_t719 = coax_mkview_v_u32(((l_ff).limb).e, 8, 0, 8, 3349), coax_secure_zero(coax_t719.data, coax_t719.count, sizeof(*coax_t719.data), 3349));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_ff).limb).e, 8, 0, 8, 3349)))) coax_trap("assertion failed", 3349);
+  }
+  {
+    (coax_t720 = coax_mkview_v_u32(((l_ee).limb).e, 8, 0, 8, 3349), coax_secure_zero(coax_t720.data, coax_t720.count, sizeof(*coax_t720.data), 3349));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_ee).limb).e, 8, 0, 8, 3349)))) coax_trap("assertion failed", 3349);
+  }
+  {
+    (coax_t721 = coax_mkview_v_u32(((l_dd).limb).e, 8, 0, 8, 3348), coax_secure_zero(coax_t721.data, coax_t721.count, sizeof(*coax_t721.data), 3348));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_dd).limb).e, 8, 0, 8, 3348)))) coax_trap("assertion failed", 3348);
+  }
+  {
+    (coax_t722 = coax_mkview_v_u32(((l_q).limb).e, 8, 0, 8, 3348), coax_secure_zero(coax_t722.data, coax_t722.count, sizeof(*coax_t722.data), 3348));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_q).limb).e, 8, 0, 8, 3348)))) coax_trap("assertion failed", 3348);
+  }
+  {
+    (coax_t723 = coax_mkview_v_u32(((l_cc).limb).e, 8, 0, 8, 3347), coax_secure_zero(coax_t723.data, coax_t723.count, sizeof(*coax_t723.data), 3347));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_cc).limb).e, 8, 0, 8, 3347)))) coax_trap("assertion failed", 3347);
+  }
+  {
+    (coax_t724 = coax_mkview_v_u32(((l_bb).limb).e, 8, 0, 8, 3347), coax_secure_zero(coax_t724.data, coax_t724.count, sizeof(*coax_t724.data), 3347));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_bb).limb).e, 8, 0, 8, 3347)))) coax_trap("assertion failed", 3347);
+  }
+  {
+    (coax_t725 = coax_mkview_v_u32(((l_aa).limb).e, 8, 0, 8, 3347), coax_secure_zero(coax_t725.data, coax_t725.count, sizeof(*coax_t725.data), 3347));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_aa).limb).e, 8, 0, 8, 3347)))) coax_trap("assertion failed", 3347);
+  }
+  return coax_ret;
+  {
+    (coax_t726 = coax_mkview_v_u32(((l_yz).limb).e, 8, 0, 8, 3353), coax_secure_zero(coax_t726.data, coax_t726.count, sizeof(*coax_t726.data), 3353));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_yz).limb).e, 8, 0, 8, 3353)))) coax_trap("assertion failed", 3353);
+  }
+  {
+    (coax_t727 = coax_mkview_v_u32(((l_eightcc).limb).e, 8, 0, 8, 3351), coax_secure_zero(coax_t727.data, coax_t727.count, sizeof(*coax_t727.data), 3351));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_eightcc).limb).e, 8, 0, 8, 3351)))) coax_trap("assertion failed", 3351);
+  }
+  {
+    (coax_t728 = coax_mkview_v_u32((((l_r).z).limb).e, 8, 0, 8, 3350), coax_secure_zero(coax_t728.data, coax_t728.count, sizeof(*coax_t728.data), 3350));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_r).z).limb).e, 8, 0, 8, 3350)))) coax_trap("assertion failed", 3350);
+  }
+  {
+    (coax_t729 = coax_mkview_v_u32((((l_r).y).limb).e, 8, 0, 8, 3350), coax_secure_zero(coax_t729.data, coax_t729.count, sizeof(*coax_t729.data), 3350));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_r).y).limb).e, 8, 0, 8, 3350)))) coax_trap("assertion failed", 3350);
+  }
+  {
+    (coax_t730 = coax_mkview_v_u32((((l_r).x).limb).e, 8, 0, 8, 3350), coax_secure_zero(coax_t730.data, coax_t730.count, sizeof(*coax_t730.data), 3350));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_r).x).limb).e, 8, 0, 8, 3350)))) coax_trap("assertion failed", 3350);
+  }
+  {
+    (coax_t731 = coax_mkview_v_u32(((l_ff).limb).e, 8, 0, 8, 3349), coax_secure_zero(coax_t731.data, coax_t731.count, sizeof(*coax_t731.data), 3349));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_ff).limb).e, 8, 0, 8, 3349)))) coax_trap("assertion failed", 3349);
+  }
+  {
+    (coax_t732 = coax_mkview_v_u32(((l_ee).limb).e, 8, 0, 8, 3349), coax_secure_zero(coax_t732.data, coax_t732.count, sizeof(*coax_t732.data), 3349));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_ee).limb).e, 8, 0, 8, 3349)))) coax_trap("assertion failed", 3349);
+  }
+  {
+    (coax_t733 = coax_mkview_v_u32(((l_dd).limb).e, 8, 0, 8, 3348), coax_secure_zero(coax_t733.data, coax_t733.count, sizeof(*coax_t733.data), 3348));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_dd).limb).e, 8, 0, 8, 3348)))) coax_trap("assertion failed", 3348);
+  }
+  {
+    (coax_t734 = coax_mkview_v_u32(((l_q).limb).e, 8, 0, 8, 3348), coax_secure_zero(coax_t734.data, coax_t734.count, sizeof(*coax_t734.data), 3348));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_q).limb).e, 8, 0, 8, 3348)))) coax_trap("assertion failed", 3348);
+  }
+  {
+    (coax_t735 = coax_mkview_v_u32(((l_cc).limb).e, 8, 0, 8, 3347), coax_secure_zero(coax_t735.data, coax_t735.count, sizeof(*coax_t735.data), 3347));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_cc).limb).e, 8, 0, 8, 3347)))) coax_trap("assertion failed", 3347);
+  }
+  {
+    (coax_t736 = coax_mkview_v_u32(((l_bb).limb).e, 8, 0, 8, 3347), coax_secure_zero(coax_t736.data, coax_t736.count, sizeof(*coax_t736.data), 3347));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_bb).limb).e, 8, 0, 8, 3347)))) coax_trap("assertion failed", 3347);
+  }
+  {
+    (coax_t737 = coax_mkview_v_u32(((l_aa).limb).e, 8, 0, 8, 3347), coax_secure_zero(coax_t737.data, coax_t737.count, sizeof(*coax_t737.data), 3347));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_aa).limb).e, 8, 0, 8, 3347)))) coax_trap("assertion failed", 3347);
+  }
 }
 
 static coax_t_Sg32 coax_p_ef_add(coax_t_Sg32 l_a, coax_t_Sg32 l_b) {
-  coax_t_Sf32 coax_t624;
-  coax_t_Sf32 coax_t625;
-  coax_t_Sf32 coax_t626;
-  coax_t_Sf32 coax_t627;
-  uint64_t coax_t628;
-  uint64_t coax_t629;
+  coax_t_Sg32 coax_ret;
+  coax_t_Sf32 coax_t738;
+  coax_t_Sf32 coax_t739;
+  coax_t_Sf32 coax_t740;
+  coax_t_Sf32 coax_t741;
+  uint64_t coax_t742;
+  uint64_t coax_t743;
+  coax_v_u32 coax_t744;
+  coax_v_u32 coax_t745;
+  coax_v_u32 coax_t746;
+  coax_v_u32 coax_t747;
+  coax_v_u32 coax_t748;
+  coax_v_u32 coax_t749;
+  coax_v_u32 coax_t750;
+  coax_v_u32 coax_t751;
+  coax_v_u32 coax_t752;
+  coax_v_u32 coax_t753;
+  coax_v_u32 coax_t754;
+  coax_v_u32 coax_t755;
+  coax_v_u32 coax_t756;
+  coax_v_u32 coax_t757;
+  coax_v_u32 coax_t758;
+  coax_v_u32 coax_t759;
+  coax_v_u32 coax_t760;
+  coax_v_u32 coax_t761;
+  coax_v_u32 coax_t762;
+  coax_v_u32 coax_t763;
+  coax_v_u32 coax_t764;
+  coax_v_u32 coax_t765;
+  coax_v_u32 coax_t766;
+  coax_v_u32 coax_t767;
+  coax_v_u32 coax_t768;
+  coax_v_u32 coax_t769;
+  coax_v_u32 coax_t770;
+  coax_v_u32 coax_t771;
+  coax_v_u32 coax_t772;
+  coax_v_u32 coax_t773;
+  coax_v_u32 coax_t774;
+  coax_v_u32 coax_t775;
+  coax_v_u32 coax_t776;
+  coax_v_u32 coax_t777;
+  coax_v_u32 coax_t778;
+  coax_v_u32 coax_t779;
   coax_t_Sf32 l_z1z1 = coax_p_ef_field_mul((l_a).z, (l_a).z);
   coax_t_Sf32 l_z2z2 = coax_p_ef_field_mul((l_b).z, (l_b).z);
   coax_t_Sf32 l_u1 = coax_p_ef_field_mul((l_a).x, l_z2z2);
@@ -4843,26 +5757,171 @@ static coax_t_Sg32 coax_p_ef_add(coax_t_Sg32 l_a, coax_t_Sg32 l_b) {
   coax_t_Sf32 l_rr = coax_p_ef_field_add(l_diff, l_diff);
   coax_t_Sf32 l_vv = coax_p_ef_field_mul(l_u1, l_ii);
   coax_t_Sg32 l_r = ((coax_t_Sg32){0});
-  (l_r).x = (coax_t624 = coax_p_sf32_sub(coax_p_ef_field_mul(l_rr, l_rr), l_jj), coax_t625 = coax_p_ef_field_add(l_vv, l_vv), coax_p_sf32_sub(coax_t624, coax_t625));
+  (l_r).x = (coax_t738 = coax_p_sf32_sub(coax_p_ef_field_mul(l_rr, l_rr), l_jj), coax_t739 = coax_p_ef_field_add(l_vv, l_vv), coax_p_sf32_sub(coax_t738, coax_t739));
   coax_t_Sf32 l_t = coax_p_ef_field_mul(l_s1, l_jj);
-  (l_r).y = (coax_t626 = coax_p_ef_field_mul(l_rr, coax_p_sf32_sub(l_vv, (l_r).x)), coax_t627 = coax_p_ef_field_add(l_t, l_t), coax_p_sf32_sub(coax_t626, coax_t627));
+  (l_r).y = (coax_t740 = coax_p_ef_field_mul(l_rr, coax_p_sf32_sub(l_vv, (l_r).x)), coax_t741 = coax_p_ef_field_add(l_t, l_t), coax_p_sf32_sub(coax_t740, coax_t741));
   coax_t_Sf32 l_zsum = coax_p_ef_field_add((l_a).z, (l_b).z);
   (l_r).z = coax_p_ef_field_mul(coax_p_sf32_sub(coax_p_sf32_sub(coax_p_ef_field_mul(l_zsum, l_zsum), l_z1z1), l_z2z2), l_h);
   coax_t_Sf32 l_zero = ((coax_t_Sf32){0});
-  uint64_t l_same = (coax_t628 = coax_p_sg32_mask_equal(l_h, l_zero), coax_t629 = coax_p_sg32_mask_equal(l_s1, l_s2), ((uint64_t)(coax_t628 & coax_t629)));
+  uint64_t l_same = (coax_t742 = coax_p_sg32_mask_equal(l_h, l_zero), coax_t743 = coax_p_sg32_mask_equal(l_s1, l_s2), ((uint64_t)(coax_t742 & coax_t743)));
   l_r = coax_p_sg32_choose(l_same, coax_p_ef_double(l_a), l_r);
   l_r = coax_p_sg32_choose(coax_p_sg32_mask_equal((l_a).z, l_zero), l_b, l_r);
   l_r = coax_p_sg32_choose(coax_p_sg32_mask_equal((l_b).z, l_zero), l_a, l_r);
-  return coax_p_sg32_canonical_infinity(l_r);
+  coax_ret = coax_p_sg32_canonical_infinity(l_r);
+  {
+    (coax_t744 = coax_mkview_v_u32(((l_zsum).limb).e, 8, 0, 8, 3363), coax_secure_zero(coax_t744.data, coax_t744.count, sizeof(*coax_t744.data), 3363));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_zsum).limb).e, 8, 0, 8, 3363)))) coax_trap("assertion failed", 3363);
+  }
+  {
+    (coax_t745 = coax_mkview_v_u32(((l_t).limb).e, 8, 0, 8, 3362), coax_secure_zero(coax_t745.data, coax_t745.count, sizeof(*coax_t745.data), 3362));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_t).limb).e, 8, 0, 8, 3362)))) coax_trap("assertion failed", 3362);
+  }
+  {
+    (coax_t746 = coax_mkview_v_u32((((l_r).z).limb).e, 8, 0, 8, 3361), coax_secure_zero(coax_t746.data, coax_t746.count, sizeof(*coax_t746.data), 3361));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_r).z).limb).e, 8, 0, 8, 3361)))) coax_trap("assertion failed", 3361);
+  }
+  {
+    (coax_t747 = coax_mkview_v_u32((((l_r).y).limb).e, 8, 0, 8, 3361), coax_secure_zero(coax_t747.data, coax_t747.count, sizeof(*coax_t747.data), 3361));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_r).y).limb).e, 8, 0, 8, 3361)))) coax_trap("assertion failed", 3361);
+  }
+  {
+    (coax_t748 = coax_mkview_v_u32((((l_r).x).limb).e, 8, 0, 8, 3361), coax_secure_zero(coax_t748.data, coax_t748.count, sizeof(*coax_t748.data), 3361));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_r).x).limb).e, 8, 0, 8, 3361)))) coax_trap("assertion failed", 3361);
+  }
+  {
+    (coax_t749 = coax_mkview_v_u32(((l_vv).limb).e, 8, 0, 8, 3360), coax_secure_zero(coax_t749.data, coax_t749.count, sizeof(*coax_t749.data), 3360));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_vv).limb).e, 8, 0, 8, 3360)))) coax_trap("assertion failed", 3360);
+  }
+  {
+    (coax_t750 = coax_mkview_v_u32(((l_rr).limb).e, 8, 0, 8, 3360), coax_secure_zero(coax_t750.data, coax_t750.count, sizeof(*coax_t750.data), 3360));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_rr).limb).e, 8, 0, 8, 3360)))) coax_trap("assertion failed", 3360);
+  }
+  {
+    (coax_t751 = coax_mkview_v_u32(((l_diff).limb).e, 8, 0, 8, 3360), coax_secure_zero(coax_t751.data, coax_t751.count, sizeof(*coax_t751.data), 3360));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_diff).limb).e, 8, 0, 8, 3360)))) coax_trap("assertion failed", 3360);
+  }
+  {
+    (coax_t752 = coax_mkview_v_u32(((l_jj).limb).e, 8, 0, 8, 3359), coax_secure_zero(coax_t752.data, coax_t752.count, sizeof(*coax_t752.data), 3359));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_jj).limb).e, 8, 0, 8, 3359)))) coax_trap("assertion failed", 3359);
+  }
+  {
+    (coax_t753 = coax_mkview_v_u32(((l_ii).limb).e, 8, 0, 8, 3359), coax_secure_zero(coax_t753.data, coax_t753.count, sizeof(*coax_t753.data), 3359));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_ii).limb).e, 8, 0, 8, 3359)))) coax_trap("assertion failed", 3359);
+  }
+  {
+    (coax_t754 = coax_mkview_v_u32(((l_twoh).limb).e, 8, 0, 8, 3359), coax_secure_zero(coax_t754.data, coax_t754.count, sizeof(*coax_t754.data), 3359));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_twoh).limb).e, 8, 0, 8, 3359)))) coax_trap("assertion failed", 3359);
+  }
+  {
+    (coax_t755 = coax_mkview_v_u32(((l_h).limb).e, 8, 0, 8, 3359), coax_secure_zero(coax_t755.data, coax_t755.count, sizeof(*coax_t755.data), 3359));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_h).limb).e, 8, 0, 8, 3359)))) coax_trap("assertion failed", 3359);
+  }
+  {
+    (coax_t756 = coax_mkview_v_u32(((l_s2).limb).e, 8, 0, 8, 3358), coax_secure_zero(coax_t756.data, coax_t756.count, sizeof(*coax_t756.data), 3358));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_s2).limb).e, 8, 0, 8, 3358)))) coax_trap("assertion failed", 3358);
+  }
+  {
+    (coax_t757 = coax_mkview_v_u32(((l_s1).limb).e, 8, 0, 8, 3358), coax_secure_zero(coax_t757.data, coax_t757.count, sizeof(*coax_t757.data), 3358));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_s1).limb).e, 8, 0, 8, 3358)))) coax_trap("assertion failed", 3358);
+  }
+  {
+    (coax_t758 = coax_mkview_v_u32(((l_u2).limb).e, 8, 0, 8, 3357), coax_secure_zero(coax_t758.data, coax_t758.count, sizeof(*coax_t758.data), 3357));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_u2).limb).e, 8, 0, 8, 3357)))) coax_trap("assertion failed", 3357);
+  }
+  {
+    (coax_t759 = coax_mkview_v_u32(((l_u1).limb).e, 8, 0, 8, 3357), coax_secure_zero(coax_t759.data, coax_t759.count, sizeof(*coax_t759.data), 3357));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_u1).limb).e, 8, 0, 8, 3357)))) coax_trap("assertion failed", 3357);
+  }
+  {
+    (coax_t760 = coax_mkview_v_u32(((l_z2z2).limb).e, 8, 0, 8, 3356), coax_secure_zero(coax_t760.data, coax_t760.count, sizeof(*coax_t760.data), 3356));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_z2z2).limb).e, 8, 0, 8, 3356)))) coax_trap("assertion failed", 3356);
+  }
+  {
+    (coax_t761 = coax_mkview_v_u32(((l_z1z1).limb).e, 8, 0, 8, 3356), coax_secure_zero(coax_t761.data, coax_t761.count, sizeof(*coax_t761.data), 3356));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_z1z1).limb).e, 8, 0, 8, 3356)))) coax_trap("assertion failed", 3356);
+  }
+  return coax_ret;
+  {
+    (coax_t762 = coax_mkview_v_u32(((l_zsum).limb).e, 8, 0, 8, 3363), coax_secure_zero(coax_t762.data, coax_t762.count, sizeof(*coax_t762.data), 3363));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_zsum).limb).e, 8, 0, 8, 3363)))) coax_trap("assertion failed", 3363);
+  }
+  {
+    (coax_t763 = coax_mkview_v_u32(((l_t).limb).e, 8, 0, 8, 3362), coax_secure_zero(coax_t763.data, coax_t763.count, sizeof(*coax_t763.data), 3362));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_t).limb).e, 8, 0, 8, 3362)))) coax_trap("assertion failed", 3362);
+  }
+  {
+    (coax_t764 = coax_mkview_v_u32((((l_r).z).limb).e, 8, 0, 8, 3361), coax_secure_zero(coax_t764.data, coax_t764.count, sizeof(*coax_t764.data), 3361));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_r).z).limb).e, 8, 0, 8, 3361)))) coax_trap("assertion failed", 3361);
+  }
+  {
+    (coax_t765 = coax_mkview_v_u32((((l_r).y).limb).e, 8, 0, 8, 3361), coax_secure_zero(coax_t765.data, coax_t765.count, sizeof(*coax_t765.data), 3361));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_r).y).limb).e, 8, 0, 8, 3361)))) coax_trap("assertion failed", 3361);
+  }
+  {
+    (coax_t766 = coax_mkview_v_u32((((l_r).x).limb).e, 8, 0, 8, 3361), coax_secure_zero(coax_t766.data, coax_t766.count, sizeof(*coax_t766.data), 3361));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_r).x).limb).e, 8, 0, 8, 3361)))) coax_trap("assertion failed", 3361);
+  }
+  {
+    (coax_t767 = coax_mkview_v_u32(((l_vv).limb).e, 8, 0, 8, 3360), coax_secure_zero(coax_t767.data, coax_t767.count, sizeof(*coax_t767.data), 3360));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_vv).limb).e, 8, 0, 8, 3360)))) coax_trap("assertion failed", 3360);
+  }
+  {
+    (coax_t768 = coax_mkview_v_u32(((l_rr).limb).e, 8, 0, 8, 3360), coax_secure_zero(coax_t768.data, coax_t768.count, sizeof(*coax_t768.data), 3360));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_rr).limb).e, 8, 0, 8, 3360)))) coax_trap("assertion failed", 3360);
+  }
+  {
+    (coax_t769 = coax_mkview_v_u32(((l_diff).limb).e, 8, 0, 8, 3360), coax_secure_zero(coax_t769.data, coax_t769.count, sizeof(*coax_t769.data), 3360));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_diff).limb).e, 8, 0, 8, 3360)))) coax_trap("assertion failed", 3360);
+  }
+  {
+    (coax_t770 = coax_mkview_v_u32(((l_jj).limb).e, 8, 0, 8, 3359), coax_secure_zero(coax_t770.data, coax_t770.count, sizeof(*coax_t770.data), 3359));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_jj).limb).e, 8, 0, 8, 3359)))) coax_trap("assertion failed", 3359);
+  }
+  {
+    (coax_t771 = coax_mkview_v_u32(((l_ii).limb).e, 8, 0, 8, 3359), coax_secure_zero(coax_t771.data, coax_t771.count, sizeof(*coax_t771.data), 3359));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_ii).limb).e, 8, 0, 8, 3359)))) coax_trap("assertion failed", 3359);
+  }
+  {
+    (coax_t772 = coax_mkview_v_u32(((l_twoh).limb).e, 8, 0, 8, 3359), coax_secure_zero(coax_t772.data, coax_t772.count, sizeof(*coax_t772.data), 3359));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_twoh).limb).e, 8, 0, 8, 3359)))) coax_trap("assertion failed", 3359);
+  }
+  {
+    (coax_t773 = coax_mkview_v_u32(((l_h).limb).e, 8, 0, 8, 3359), coax_secure_zero(coax_t773.data, coax_t773.count, sizeof(*coax_t773.data), 3359));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_h).limb).e, 8, 0, 8, 3359)))) coax_trap("assertion failed", 3359);
+  }
+  {
+    (coax_t774 = coax_mkview_v_u32(((l_s2).limb).e, 8, 0, 8, 3358), coax_secure_zero(coax_t774.data, coax_t774.count, sizeof(*coax_t774.data), 3358));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_s2).limb).e, 8, 0, 8, 3358)))) coax_trap("assertion failed", 3358);
+  }
+  {
+    (coax_t775 = coax_mkview_v_u32(((l_s1).limb).e, 8, 0, 8, 3358), coax_secure_zero(coax_t775.data, coax_t775.count, sizeof(*coax_t775.data), 3358));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_s1).limb).e, 8, 0, 8, 3358)))) coax_trap("assertion failed", 3358);
+  }
+  {
+    (coax_t776 = coax_mkview_v_u32(((l_u2).limb).e, 8, 0, 8, 3357), coax_secure_zero(coax_t776.data, coax_t776.count, sizeof(*coax_t776.data), 3357));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_u2).limb).e, 8, 0, 8, 3357)))) coax_trap("assertion failed", 3357);
+  }
+  {
+    (coax_t777 = coax_mkview_v_u32(((l_u1).limb).e, 8, 0, 8, 3357), coax_secure_zero(coax_t777.data, coax_t777.count, sizeof(*coax_t777.data), 3357));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_u1).limb).e, 8, 0, 8, 3357)))) coax_trap("assertion failed", 3357);
+  }
+  {
+    (coax_t778 = coax_mkview_v_u32(((l_z2z2).limb).e, 8, 0, 8, 3356), coax_secure_zero(coax_t778.data, coax_t778.count, sizeof(*coax_t778.data), 3356));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_z2z2).limb).e, 8, 0, 8, 3356)))) coax_trap("assertion failed", 3356);
+  }
+  {
+    (coax_t779 = coax_mkview_v_u32(((l_z1z1).limb).e, 8, 0, 8, 3356), coax_secure_zero(coax_t779.data, coax_t779.count, sizeof(*coax_t779.data), 3356));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_z1z1).limb).e, 8, 0, 8, 3356)))) coax_trap("assertion failed", 3356);
+  }
 }
 
 static _Bool coax_p_ef_schedule_valid(coax_a12_t_SfChainStep l_chain) {
   {
-    int64_t coax_lo630 = INT64_C(0);
-    int64_t coax_hi630 = INT64_C(12);
-    for (int64_t l_i = coax_lo630; l_i < coax_hi630; l_i++)
+    int64_t coax_lo780 = INT64_C(0);
+    int64_t coax_hi780 = INT64_C(12);
+    for (int64_t l_i = coax_lo780; l_i < coax_hi780; l_i++)
     {
-      if (!coax_p_sf_chain_step_valid((l_chain).e[coax_index(l_i, 12, 3045)], l_i))
+      if (!coax_p_sf_chain_step_valid((l_chain).e[coax_index(l_i, 12, 3371)], l_i))
       {
         return 0;
       }
@@ -4872,156 +5931,266 @@ static _Bool coax_p_ef_schedule_valid(coax_a12_t_SfChainStep l_chain) {
 }
 
 static coax_t_Sf32 coax_p_ef_square_n(coax_t_Sf32 l_a, int64_t l_count) {
+  coax_t_Sf32 coax_ret;
+  coax_v_u32 coax_t782;
+  coax_v_u32 coax_t783;
   coax_t_Sf32 l_r = l_a;
   {
-    int64_t coax_lo631 = INT64_C(0);
-    int64_t coax_hi631 = l_count;
-    for (int64_t l_i = coax_lo631; l_i < coax_hi631; l_i++)
+    int64_t coax_lo781 = INT64_C(0);
+    int64_t coax_hi781 = l_count;
+    for (int64_t l_i = coax_lo781; l_i < coax_hi781; l_i++)
     {
       l_r = coax_p_ef_field_mul(l_r, l_r);
     }
   }
-  return l_r;
+  coax_ret = l_r;
+  {
+    (coax_t782 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3381), coax_secure_zero(coax_t782.data, coax_t782.count, sizeof(*coax_t782.data), 3381));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3381)))) coax_trap("assertion failed", 3381);
+  }
+  return coax_ret;
+  {
+    (coax_t783 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3381), coax_secure_zero(coax_t783.data, coax_t783.count, sizeof(*coax_t783.data), 3381));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3381)))) coax_trap("assertion failed", 3381);
+  }
 }
 
 static coax_t_Sf32 coax_p_ef_inverse(coax_t_Sf32 l_a) {
-  coax_t_Sf32 * coax_t633;
-  coax_t_Sf32 coax_t634;
-  coax_t_Sf32 coax_t635;
-  coax_t_Sf32 coax_t636;
-  coax_t_Sf32 coax_t637;
-  coax_t_Sf32 coax_t638;
-  coax_t_Sf32 coax_t639;
+  coax_t_Sf32 coax_ret;
+  coax_t_Sf32 * coax_t785;
+  coax_t_Sf32 coax_t786;
+  coax_t_Sf32 coax_t787;
+  coax_t_Sf32 coax_t788;
+  coax_t_Sf32 coax_t789;
+  coax_t_Sf32 coax_t790;
+  coax_t_Sf32 coax_t791;
+  coax_v_u32 coax_t792;
+  coax_v_u32 coax_t793;
+  coax_v_u32 coax_t795;
+  coax_v_u32 coax_t798;
+  coax_v_u32 coax_t799;
+  coax_v_u32 coax_t801;
   coax_a13_t_Sf32 l_cache = ((coax_a13_t_Sf32){0});
-  (l_cache).e[coax_index(INT64_C(0), 13, 3058)] = l_a;
+  (l_cache).e[coax_index(INT64_C(0), 13, 3384)] = l_a;
   {
-    int64_t coax_lo632 = INT64_C(0);
-    int64_t coax_hi632 = INT64_C(12);
-    for (int64_t l_i = coax_lo632; l_i < coax_hi632; l_i++)
+    int64_t coax_lo784 = INT64_C(0);
+    int64_t coax_hi784 = INT64_C(12);
+    for (int64_t l_i = coax_lo784; l_i < coax_hi784; l_i++)
     {
-      coax_t_SfChainStep l_step = (coax_k7).e[coax_index(l_i, 12, 3060)];
-      coax_t633 = &((l_cache).e[coax_index(coax_add_s64(l_i, INT64_C(1), 3061), 13, 3061)]);
-      *coax_t633 = (coax_t634 = coax_p_ef_square_n((l_cache).e[coax_index((l_step).left, 13, 3061)], (l_step).squares), coax_t635 = (l_cache).e[coax_index((l_step).right, 13, 3061)], coax_p_ef_field_mul(coax_t634, coax_t635));
+      coax_t_SfChainStep l_step = (coax_k15).e[coax_index(l_i, 12, 3386)];
+      coax_t785 = &((l_cache).e[coax_index(coax_add_s64(l_i, INT64_C(1), 3387), 13, 3387)]);
+      *coax_t785 = (coax_t786 = coax_p_ef_square_n((l_cache).e[coax_index((l_step).left, 13, 3387)], (l_step).squares), coax_t787 = (l_cache).e[coax_index((l_step).right, 13, 3387)], coax_p_ef_field_mul(coax_t786, coax_t787));
     }
   }
-  coax_t_Sf32 l_power9 = (coax_t636 = (coax_t637 = (l_cache).e[coax_index(INT64_C(1), 13, 3063)], coax_t638 = (l_cache).e[coax_index(INT64_C(1), 13, 3063)], coax_p_ef_field_mul(coax_t637, coax_t638)), coax_t639 = (l_cache).e[coax_index(INT64_C(1), 13, 3063)], coax_p_ef_field_mul(coax_t636, coax_t639));
+  coax_t_Sf32 l_power9 = (coax_t788 = (coax_t789 = (l_cache).e[coax_index(INT64_C(1), 13, 3389)], coax_t790 = (l_cache).e[coax_index(INT64_C(1), 13, 3389)], coax_p_ef_field_mul(coax_t789, coax_t790)), coax_t791 = (l_cache).e[coax_index(INT64_C(1), 13, 3389)], coax_p_ef_field_mul(coax_t788, coax_t791));
   coax_t_Sf32 l_power45 = coax_p_ef_field_mul(coax_p_ef_square_n(l_power9, INT64_C(2)), l_power9);
-  return coax_p_ef_field_mul(coax_p_ef_square_n((l_cache).e[coax_index(INT64_C(12), 13, 3065)], INT64_C(10)), l_power45);
+  coax_ret = coax_p_ef_field_mul(coax_p_ef_square_n((l_cache).e[coax_index(INT64_C(12), 13, 3391)], INT64_C(10)), l_power45);
+  {
+    (coax_t792 = coax_mkview_v_u32(((l_power45).limb).e, 8, 0, 8, 3390), coax_secure_zero(coax_t792.data, coax_t792.count, sizeof(*coax_t792.data), 3390));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_power45).limb).e, 8, 0, 8, 3390)))) coax_trap("assertion failed", 3390);
+  }
+  {
+    (coax_t793 = coax_mkview_v_u32(((l_power9).limb).e, 8, 0, 8, 3389), coax_secure_zero(coax_t793.data, coax_t793.count, sizeof(*coax_t793.data), 3389));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_power9).limb).e, 8, 0, 8, 3389)))) coax_trap("assertion failed", 3389);
+  }
+  {
+    {
+      int64_t coax_lo794 = INT64_C(0);
+      int64_t coax_hi794 = INT64_C(13);
+      for (int64_t l_i = coax_lo794; l_i < coax_hi794; l_i++)
+      {
+        (coax_t795 = coax_mkview_v_u32((((l_cache).e[coax_index(l_i, 13, 3384)]).limb).e, 8, 0, 8, 3384), coax_secure_zero(coax_t795.data, coax_t795.count, sizeof(*coax_t795.data), 3384));
+      }
+    }
+    {
+      coax_a13_t_Sf32 *coax_c796 = &(l_cache);
+      for (int64_t coax_i796 = 0; coax_i796 < 13; coax_i796++)
+      {
+        coax_t_Sf32 l_item = coax_c796->e[coax_i796];
+        {
+          coax_a8_u32 *coax_c797 = &((l_item).limb);
+          for (int64_t coax_i797 = 0; coax_i797 < 8; coax_i797++)
+          {
+            uint32_t l_word = coax_c797->e[coax_i797];
+            if (!(l_word == ((uint32_t)UINT64_C(0)))) coax_trap("assertion failed", 3384);
+          }
+        }
+      }
+    }
+  }
+  return coax_ret;
+  {
+    (coax_t798 = coax_mkview_v_u32(((l_power45).limb).e, 8, 0, 8, 3390), coax_secure_zero(coax_t798.data, coax_t798.count, sizeof(*coax_t798.data), 3390));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_power45).limb).e, 8, 0, 8, 3390)))) coax_trap("assertion failed", 3390);
+  }
+  {
+    (coax_t799 = coax_mkview_v_u32(((l_power9).limb).e, 8, 0, 8, 3389), coax_secure_zero(coax_t799.data, coax_t799.count, sizeof(*coax_t799.data), 3389));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_power9).limb).e, 8, 0, 8, 3389)))) coax_trap("assertion failed", 3389);
+  }
+  {
+    {
+      int64_t coax_lo800 = INT64_C(0);
+      int64_t coax_hi800 = INT64_C(13);
+      for (int64_t l_i = coax_lo800; l_i < coax_hi800; l_i++)
+      {
+        (coax_t801 = coax_mkview_v_u32((((l_cache).e[coax_index(l_i, 13, 3384)]).limb).e, 8, 0, 8, 3384), coax_secure_zero(coax_t801.data, coax_t801.count, sizeof(*coax_t801.data), 3384));
+      }
+    }
+    {
+      coax_a13_t_Sf32 *coax_c802 = &(l_cache);
+      for (int64_t coax_i802 = 0; coax_i802 < 13; coax_i802++)
+      {
+        coax_t_Sf32 l_item = coax_c802->e[coax_i802];
+        {
+          coax_a8_u32 *coax_c803 = &((l_item).limb);
+          for (int64_t coax_i803 = 0; coax_i803 < 8; coax_i803++)
+          {
+            uint32_t l_word = coax_c803->e[coax_i803];
+            if (!(l_word == ((uint32_t)UINT64_C(0)))) coax_trap("assertion failed", 3384);
+          }
+        }
+      }
+    }
+  }
 }
 
 static coax_t_Sf32 coax_p_sg32_from_field(coax_t_SecpField l_a) {
-  uint32_t * coax_t641;
-  uint32_t coax_t642;
-  uint32_t * coax_t643;
-  uint32_t coax_t644;
+  uint32_t * coax_t805;
+  uint32_t coax_t806;
+  uint32_t * coax_t807;
+  uint32_t coax_t808;
   coax_t_Sf32 l_r = ((coax_t_Sf32){0});
   {
-    int64_t coax_lo640 = INT64_C(0);
-    int64_t coax_hi640 = INT64_C(10);
-    for (int64_t l_i = coax_lo640; l_i < coax_hi640; l_i++)
+    int64_t coax_lo804 = INT64_C(0);
+    int64_t coax_hi804 = INT64_C(10);
+    for (int64_t l_i = coax_lo804; l_i < coax_hi804; l_i++)
     {
-      int64_t l_at = coax_mul_s64(l_i, INT64_C(26), 3104);
-      int64_t l_word = coax_div_s64(l_at, INT64_C(32), 3104);
-      int64_t l_shift = coax_mod_s64(l_at, INT64_C(32), 3104);
-      uint64_t l_v = ((uint64_t)(((l_a).limb).e[coax_index(l_i, 10, 3104)] & UINT64_C(67108863)));
-      coax_t641 = &(((l_r).limb).e[coax_index(l_word, 8, 3105)]);
-      coax_t642 = ((uint32_t)(coax_shl_u64(l_v, (int64_t)(l_shift), 3105)));
-      (*coax_t641) = ((uint32_t)((*coax_t641) | coax_t642));
-      coax_t643 = &(((l_r).limb).e[coax_index(coax_mod_s64(coax_add_s64(l_word, INT64_C(1), 3106), INT64_C(8), 3106), 8, 3106)]);
-      coax_t644 = ((uint32_t)coax_cast_uu((uint64_t)(coax_shr_u64(l_v, (int64_t)(coax_sub_s64(INT64_C(32), l_shift, 3106)), 3106)), UINT64_C(4294967295), 3106));
-      (*coax_t643) = ((uint32_t)((*coax_t643) | coax_t644));
+      int64_t l_at = coax_mul_s64(l_i, INT64_C(26), 3430);
+      int64_t l_word = coax_div_s64(l_at, INT64_C(32), 3430);
+      int64_t l_shift = coax_mod_s64(l_at, INT64_C(32), 3430);
+      uint64_t l_v = ((uint64_t)(((l_a).limb).e[coax_index(l_i, 10, 3430)] & UINT64_C(67108863)));
+      coax_t805 = &(((l_r).limb).e[coax_index(l_word, 8, 3431)]);
+      coax_t806 = ((uint32_t)(coax_shl_u64(l_v, (int64_t)(l_shift), 3431)));
+      (*coax_t805) = ((uint32_t)((*coax_t805) | coax_t806));
+      coax_t807 = &(((l_r).limb).e[coax_index(coax_mod_s64(coax_add_s64(l_word, INT64_C(1), 3432), INT64_C(8), 3432), 8, 3432)]);
+      coax_t808 = ((uint32_t)coax_cast_uu((uint64_t)(coax_shr_u64(l_v, (int64_t)(coax_sub_s64(INT64_C(32), l_shift, 3432)), 3432)), UINT64_C(4294967295), 3432));
+      (*coax_t807) = ((uint32_t)((*coax_t807) | coax_t808));
     }
   }
   return l_r;
 }
 
 static coax_t_SecpField coax_p_sg32_to_field(coax_t_Sf32 l_a) {
-  uint64_t coax_t646;
-  uint64_t coax_t647;
-  uint64_t coax_t648;
-  int64_t coax_t649;
+  coax_t_SecpField coax_ret;
+  uint64_t coax_t810;
+  uint64_t coax_t811;
+  uint64_t coax_t812;
+  int64_t coax_t813;
+  coax_v_u64 coax_t814;
+  coax_v_u64 coax_t815;
   coax_t_SecpField l_r = ((coax_t_SecpField){0});
   {
-    int64_t coax_lo645 = INT64_C(0);
-    int64_t coax_hi645 = INT64_C(10);
-    for (int64_t l_i = coax_lo645; l_i < coax_hi645; l_i++)
+    int64_t coax_lo809 = INT64_C(0);
+    int64_t coax_hi809 = INT64_C(10);
+    for (int64_t l_i = coax_lo809; l_i < coax_hi809; l_i++)
     {
-      int64_t l_at = coax_mul_s64(l_i, INT64_C(26), 3113);
-      int64_t l_word = coax_div_s64(l_at, INT64_C(32), 3113);
-      int64_t l_shift = coax_mod_s64(l_at, INT64_C(32), 3113);
-      uint64_t l_v = (coax_t646 = coax_shr_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_word, 8, 3114)]), UINT64_C(18446744073709551615), 3114)), (int64_t)(l_shift), 3114), coax_t647 = (coax_t648 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(coax_mod_s64(coax_add_s64(l_word, INT64_C(1), 3114), INT64_C(8), 3114), 8, 3114)]), UINT64_C(18446744073709551615), 3114)), coax_t649 = coax_sub_s64(INT64_C(32), l_shift, 3114), coax_shl_u64(coax_t648, (int64_t)(coax_t649), 3114)), ((uint64_t)(coax_t646 | coax_t647)));
-      ((l_r).limb).e[coax_index(l_i, 10, 3115)] = ((uint64_t)(l_v & ((l_i == INT64_C(9)) ? UINT64_C(4194303) : UINT64_C(67108863))));
+      int64_t l_at = coax_mul_s64(l_i, INT64_C(26), 3439);
+      int64_t l_word = coax_div_s64(l_at, INT64_C(32), 3439);
+      int64_t l_shift = coax_mod_s64(l_at, INT64_C(32), 3439);
+      uint64_t l_v = (coax_t810 = coax_shr_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_word, 8, 3440)]), UINT64_C(18446744073709551615), 3440)), (int64_t)(l_shift), 3440), coax_t811 = (coax_t812 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(coax_mod_s64(coax_add_s64(l_word, INT64_C(1), 3440), INT64_C(8), 3440), 8, 3440)]), UINT64_C(18446744073709551615), 3440)), coax_t813 = coax_sub_s64(INT64_C(32), l_shift, 3440), coax_shl_u64(coax_t812, (int64_t)(coax_t813), 3440)), ((uint64_t)(coax_t810 | coax_t811)));
+      ((l_r).limb).e[coax_index(l_i, 10, 3441)] = ((uint64_t)(l_v & ((l_i == INT64_C(9)) ? UINT64_C(4194303) : UINT64_C(67108863))));
     }
   }
-  return l_r;
+  coax_ret = l_r;
+  {
+    (coax_t814 = coax_mkview_v_u64(((l_r).limb).e, 10, 0, 10, 3437), coax_secure_zero(coax_t814.data, coax_t814.count, sizeof(*coax_t814.data), 3437));
+    if (!(coax_p_crypto_zeroed__3u64(coax_mkview_v_u64(((l_r).limb).e, 10, 0, 10, 3437)))) coax_trap("assertion failed", 3437);
+  }
+  return coax_ret;
+  {
+    (coax_t815 = coax_mkview_v_u64(((l_r).limb).e, 10, 0, 10, 3437), coax_secure_zero(coax_t815.data, coax_t815.count, sizeof(*coax_t815.data), 3437));
+    if (!(coax_p_crypto_zeroed__3u64(coax_mkview_v_u64(((l_r).limb).e, 10, 0, 10, 3437)))) coax_trap("assertion failed", 3437);
+  }
 }
 
 static coax_t_Sg32 coax_p_sg32_from_point(coax_t_SgPoint l_p) {
-  coax_t_Sf32 coax_t650;
-  coax_t_Sf32 coax_t651;
-  coax_t_Sf32 coax_t652;
-  return (coax_t650 = coax_p_sg32_from_field((l_p).x), coax_t651 = coax_p_sg32_from_field((l_p).y), coax_t652 = coax_p_sg32_from_field((l_p).z), ((coax_t_Sg32){.x = coax_t650, .y = coax_t651, .z = coax_t652}));
+  coax_t_Sf32 coax_t816;
+  coax_t_Sf32 coax_t817;
+  coax_t_Sf32 coax_t818;
+  return (coax_t816 = coax_p_sg32_from_field((l_p).x), coax_t817 = coax_p_sg32_from_field((l_p).y), coax_t818 = coax_p_sg32_from_field((l_p).z), ((coax_t_Sg32){.x = coax_t816, .y = coax_t817, .z = coax_t818}));
 }
 
 static coax_t_SgPoint coax_p_sg32_to_point(coax_t_Sg32 l_p) {
-  coax_t_SecpField coax_t653;
-  coax_t_SecpField coax_t654;
-  coax_t_SecpField coax_t655;
-  return (coax_t653 = coax_p_sg32_to_field((l_p).x), coax_t654 = coax_p_sg32_to_field((l_p).y), coax_t655 = coax_p_sg32_to_field((l_p).z), ((coax_t_SgPoint){.x = coax_t653, .y = coax_t654, .z = coax_t655}));
+  coax_t_SecpField coax_t819;
+  coax_t_SecpField coax_t820;
+  coax_t_SecpField coax_t821;
+  return (coax_t819 = coax_p_sg32_to_field((l_p).x), coax_t820 = coax_p_sg32_to_field((l_p).y), coax_t821 = coax_p_sg32_to_field((l_p).z), ((coax_t_SgPoint){.x = coax_t819, .y = coax_t820, .z = coax_t821}));
 }
 
 static uint64_t coax_p_sg32_mask_equal(coax_t_Sf32 l_a, coax_t_Sf32 l_b) {
-  uint32_t coax_t657;
-  uint32_t coax_t658;
+  uint32_t coax_t823;
+  uint32_t coax_t824;
   uint64_t l_difference = ((uint64_t)0);
   {
-    int64_t coax_lo656 = INT64_C(0);
-    int64_t coax_hi656 = INT64_C(8);
-    for (int64_t l_i = coax_lo656; l_i < coax_hi656; l_i++)
+    int64_t coax_lo822 = INT64_C(0);
+    int64_t coax_hi822 = INT64_C(8);
+    for (int64_t l_i = coax_lo822; l_i < coax_hi822; l_i++)
     {
-      l_difference = ((uint64_t)(l_difference | ((uint64_t)coax_cast_uu((uint64_t)((coax_t657 = ((l_a).limb).e[coax_index(l_i, 8, 3122)], coax_t658 = ((l_b).limb).e[coax_index(l_i, 8, 3122)], ((uint32_t)(coax_t657 ^ coax_t658)))), UINT64_C(18446744073709551615), 3122))));
+      l_difference = ((uint64_t)(l_difference | ((uint64_t)coax_cast_uu((uint64_t)((coax_t823 = ((l_a).limb).e[coax_index(l_i, 8, 3448)], coax_t824 = ((l_b).limb).e[coax_index(l_i, 8, 3448)], ((uint32_t)(coax_t823 ^ coax_t824)))), UINT64_C(18446744073709551615), 3448))));
     }
   }
   return coax_p_sg_word_equal(l_difference, UINT64_C(0));
 }
 
 static coax_t_Sf32 coax_p_sg32_choose_field(uint64_t l_mask, coax_t_Sf32 l_a, coax_t_Sf32 l_b) {
-  uint32_t * coax_t660;
-  uint32_t coax_t661;
-  uint32_t coax_t662;
+  coax_t_Sf32 coax_ret;
+  uint32_t * coax_t826;
+  uint32_t coax_t827;
+  uint32_t coax_t828;
+  coax_v_u32 coax_t829;
+  coax_v_u32 coax_t830;
   coax_t_Sf32 l_r = ((coax_t_Sf32){0});
   uint32_t l_m = ((uint32_t)(l_mask));
   {
-    int64_t coax_lo659 = INT64_C(0);
-    int64_t coax_hi659 = INT64_C(8);
-    for (int64_t l_i = coax_lo659; l_i < coax_hi659; l_i++)
+    int64_t coax_lo825 = INT64_C(0);
+    int64_t coax_hi825 = INT64_C(8);
+    for (int64_t l_i = coax_lo825; l_i < coax_hi825; l_i++)
     {
-      coax_t660 = &(((l_r).limb).e[coax_index(l_i, 8, 3125)]);
-      *coax_t660 = (coax_t661 = ((l_a).limb).e[coax_index(l_i, 8, 3125)], coax_t662 = ((l_b).limb).e[coax_index(l_i, 8, 3125)], cb_ct_select32(l_m, coax_t661, coax_t662));
+      coax_t826 = &(((l_r).limb).e[coax_index(l_i, 8, 3451)]);
+      *coax_t826 = (coax_t827 = ((l_a).limb).e[coax_index(l_i, 8, 3451)], coax_t828 = ((l_b).limb).e[coax_index(l_i, 8, 3451)], cb_ct_select32(l_m, coax_t827, coax_t828));
     }
   }
-  return l_r;
+  coax_ret = l_r;
+  {
+    (coax_t829 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3451), coax_secure_zero(coax_t829.data, coax_t829.count, sizeof(*coax_t829.data), 3451));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3451)))) coax_trap("assertion failed", 3451);
+  }
+  return coax_ret;
+  {
+    (coax_t830 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3451), coax_secure_zero(coax_t830.data, coax_t830.count, sizeof(*coax_t830.data), 3451));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3451)))) coax_trap("assertion failed", 3451);
+  }
 }
 
 static coax_t_Sg32 coax_p_sg32_choose(uint64_t l_mask, coax_t_Sg32 l_a, coax_t_Sg32 l_b) {
-  coax_t_Sf32 coax_t663;
-  coax_t_Sf32 coax_t664;
-  coax_t_Sf32 coax_t665;
-  return (coax_t663 = coax_p_sg32_choose_field(l_mask, (l_a).x, (l_b).x), coax_t664 = coax_p_sg32_choose_field(l_mask, (l_a).y, (l_b).y), coax_t665 = coax_p_sg32_choose_field(l_mask, (l_a).z, (l_b).z), ((coax_t_Sg32){.x = coax_t663, .y = coax_t664, .z = coax_t665}));
+  coax_t_Sf32 coax_t831;
+  coax_t_Sf32 coax_t832;
+  coax_t_Sf32 coax_t833;
+  return (coax_t831 = coax_p_sg32_choose_field(l_mask, (l_a).x, (l_b).x), coax_t832 = coax_p_sg32_choose_field(l_mask, (l_a).y, (l_b).y), coax_t833 = coax_p_sg32_choose_field(l_mask, (l_a).z, (l_b).z), ((coax_t_Sg32){.x = coax_t831, .y = coax_t832, .z = coax_t833}));
 }
 
 static coax_t_Sg32 coax_p_sg32_infinity(void) {
   coax_t_Sg32 l_r = ((coax_t_Sg32){0});
-  (((l_r).x).limb).e[coax_index(INT64_C(0), 8, 3128)] = ((uint32_t)UINT64_C(1));
-  (((l_r).y).limb).e[coax_index(INT64_C(0), 8, 3128)] = ((uint32_t)UINT64_C(1));
+  (((l_r).x).limb).e[coax_index(INT64_C(0), 8, 3454)] = ((uint32_t)UINT64_C(1));
+  (((l_r).y).limb).e[coax_index(INT64_C(0), 8, 3454)] = ((uint32_t)UINT64_C(1));
   return l_r;
 }
 
 static coax_t_Sg32 coax_p_sg32_canonical_infinity(coax_t_Sg32 l_p) {
-  uint64_t coax_t666;
-  coax_t_Sg32 coax_t667;
+  uint64_t coax_t834;
+  coax_t_Sg32 coax_t835;
   coax_t_Sf32 l_zero = ((coax_t_Sf32){0});
-  return (coax_t666 = coax_p_sg32_mask_equal((l_p).z, l_zero), coax_t667 = coax_p_sg32_infinity(), coax_p_sg32_choose(coax_t666, coax_t667, l_p));
+  return (coax_t834 = coax_p_sg32_mask_equal((l_p).z, l_zero), coax_t835 = coax_p_sg32_infinity(), coax_p_sg32_choose(coax_t834, coax_t835, l_p));
 }
 
 static coax_t_Sg32 coax_p_sg32_double(coax_t_Sg32 l_p) {
@@ -5045,12 +6214,12 @@ static coax_t_Sg32 coax_p_sg32_double(coax_t_Sg32 l_p) {
 }
 
 static coax_t_Sg32 coax_p_sg32_add(coax_t_Sg32 l_a, coax_t_Sg32 l_b) {
-  coax_t_Sf32 coax_t668;
-  coax_t_Sf32 coax_t669;
-  coax_t_Sf32 coax_t670;
-  coax_t_Sf32 coax_t671;
-  uint64_t coax_t672;
-  uint64_t coax_t673;
+  coax_t_Sf32 coax_t836;
+  coax_t_Sf32 coax_t837;
+  coax_t_Sf32 coax_t838;
+  coax_t_Sf32 coax_t839;
+  uint64_t coax_t840;
+  uint64_t coax_t841;
   coax_t_Sf32 l_z1z1 = coax_p_sf32_mul_total((l_a).z, (l_a).z);
   coax_t_Sf32 l_z2z2 = coax_p_sf32_mul_total((l_b).z, (l_b).z);
   coax_t_Sf32 l_u1 = coax_p_sf32_mul_total((l_a).x, l_z2z2);
@@ -5065,13 +6234,13 @@ static coax_t_Sg32 coax_p_sg32_add(coax_t_Sg32 l_a, coax_t_Sg32 l_b) {
   coax_t_Sf32 l_rr = coax_p_sf32_add_total(l_diff, l_diff);
   coax_t_Sf32 l_vv = coax_p_sf32_mul_total(l_u1, l_ii);
   coax_t_Sg32 l_r = ((coax_t_Sg32){0});
-  (l_r).x = (coax_t668 = coax_p_sf32_sub(coax_p_sf32_mul_total(l_rr, l_rr), l_jj), coax_t669 = coax_p_sf32_add_total(l_vv, l_vv), coax_p_sf32_sub(coax_t668, coax_t669));
+  (l_r).x = (coax_t836 = coax_p_sf32_sub(coax_p_sf32_mul_total(l_rr, l_rr), l_jj), coax_t837 = coax_p_sf32_add_total(l_vv, l_vv), coax_p_sf32_sub(coax_t836, coax_t837));
   coax_t_Sf32 l_t = coax_p_sf32_mul_total(l_s1, l_jj);
-  (l_r).y = (coax_t670 = coax_p_sf32_mul_total(l_rr, coax_p_sf32_sub(l_vv, (l_r).x)), coax_t671 = coax_p_sf32_add_total(l_t, l_t), coax_p_sf32_sub(coax_t670, coax_t671));
+  (l_r).y = (coax_t838 = coax_p_sf32_mul_total(l_rr, coax_p_sf32_sub(l_vv, (l_r).x)), coax_t839 = coax_p_sf32_add_total(l_t, l_t), coax_p_sf32_sub(coax_t838, coax_t839));
   coax_t_Sf32 l_zsum = coax_p_sf32_add_total((l_a).z, (l_b).z);
   (l_r).z = coax_p_sf32_mul_total(coax_p_sf32_sub(coax_p_sf32_sub(coax_p_sf32_mul_total(l_zsum, l_zsum), l_z1z1), l_z2z2), l_h);
   coax_t_Sf32 l_zero = ((coax_t_Sf32){0});
-  uint64_t l_same = (coax_t672 = coax_p_sg32_mask_equal(l_h, l_zero), coax_t673 = coax_p_sg32_mask_equal(l_s1, l_s2), ((uint64_t)(coax_t672 & coax_t673)));
+  uint64_t l_same = (coax_t840 = coax_p_sg32_mask_equal(l_h, l_zero), coax_t841 = coax_p_sg32_mask_equal(l_s1, l_s2), ((uint64_t)(coax_t840 & coax_t841)));
   l_r = coax_p_sg32_choose(l_same, coax_p_sg32_double(l_a), l_r);
   l_r = coax_p_sg32_choose(coax_p_sg32_mask_equal((l_a).z, l_zero), l_b, l_r);
   l_r = coax_p_sg32_choose(coax_p_sg32_mask_equal((l_b).z, l_zero), l_a, l_r);
@@ -5079,342 +6248,530 @@ static coax_t_Sg32 coax_p_sg32_add(coax_t_Sg32 l_a, coax_t_Sg32 l_b) {
 }
 
 static coax_t_Sf32Fold coax_p_sf32_fold_total(coax_t_Sf32 l_input, uint64_t l_top) {
-  uint64_t coax_t674;
-  uint64_t coax_t675;
-  uint64_t coax_t676;
-  uint64_t coax_t677;
+  coax_t_Sf32Fold coax_ret;
+  uint64_t coax_t842;
+  uint64_t coax_t843;
+  uint64_t coax_t844;
+  uint64_t coax_t845;
+  coax_v_u32 coax_t846;
+  coax_v_u32 coax_t847;
   coax_t_Sf32Fold l_r = ((coax_t_Sf32Fold){0});
-  uint64_t l_wide = (coax_t674 = ((uint64_t)coax_cast_uu((uint64_t)(((l_input).limb).e[coax_index(INT64_C(0), 8, 3199)]), UINT64_C(18446744073709551615), 3199)), coax_t675 = (coax_t676 = l_top, coax_t677 = UINT64_C(977), coax_mul_wrap_u64(coax_t676, coax_t677)), coax_add_u64(coax_t674, coax_t675, 3199));
-  (((l_r).value).limb).e[coax_index(INT64_C(0), 8, 3200)] = ((uint32_t)(l_wide));
-  uint64_t l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3200);
-  l_wide = coax_add_u64(coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_input).limb).e[coax_index(INT64_C(1), 8, 3201)]), UINT64_C(18446744073709551615), 3201)), l_carry, 3201), l_top, 3201);
-  (((l_r).value).limb).e[coax_index(INT64_C(1), 8, 3201)] = ((uint32_t)(l_wide));
-  l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3201);
-  l_wide = coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_input).limb).e[coax_index(INT64_C(2), 8, 3202)]), UINT64_C(18446744073709551615), 3202)), l_carry, 3202);
-  (((l_r).value).limb).e[coax_index(INT64_C(2), 8, 3202)] = ((uint32_t)(l_wide));
-  l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3202);
-  l_wide = coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_input).limb).e[coax_index(INT64_C(3), 8, 3203)]), UINT64_C(18446744073709551615), 3203)), l_carry, 3203);
-  (((l_r).value).limb).e[coax_index(INT64_C(3), 8, 3203)] = ((uint32_t)(l_wide));
-  l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3203);
-  l_wide = coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_input).limb).e[coax_index(INT64_C(4), 8, 3204)]), UINT64_C(18446744073709551615), 3204)), l_carry, 3204);
-  (((l_r).value).limb).e[coax_index(INT64_C(4), 8, 3204)] = ((uint32_t)(l_wide));
-  l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3204);
-  l_wide = coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_input).limb).e[coax_index(INT64_C(5), 8, 3205)]), UINT64_C(18446744073709551615), 3205)), l_carry, 3205);
-  (((l_r).value).limb).e[coax_index(INT64_C(5), 8, 3205)] = ((uint32_t)(l_wide));
-  l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3205);
-  l_wide = coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_input).limb).e[coax_index(INT64_C(6), 8, 3206)]), UINT64_C(18446744073709551615), 3206)), l_carry, 3206);
-  (((l_r).value).limb).e[coax_index(INT64_C(6), 8, 3206)] = ((uint32_t)(l_wide));
-  l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3206);
-  l_wide = coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_input).limb).e[coax_index(INT64_C(7), 8, 3207)]), UINT64_C(18446744073709551615), 3207)), l_carry, 3207);
-  (((l_r).value).limb).e[coax_index(INT64_C(7), 8, 3207)] = ((uint32_t)(l_wide));
-  l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3207);
+  uint64_t l_wide = (coax_t842 = ((uint64_t)coax_cast_uu((uint64_t)(((l_input).limb).e[coax_index(INT64_C(0), 8, 3525)]), UINT64_C(18446744073709551615), 3525)), coax_t843 = (coax_t844 = l_top, coax_t845 = UINT64_C(977), coax_mul_wrap_u64(coax_t844, coax_t845)), coax_add_u64(coax_t842, coax_t843, 3525));
+  (((l_r).value).limb).e[coax_index(INT64_C(0), 8, 3526)] = ((uint32_t)(l_wide));
+  uint64_t l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3526);
+  l_wide = coax_add_u64(coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_input).limb).e[coax_index(INT64_C(1), 8, 3527)]), UINT64_C(18446744073709551615), 3527)), l_carry, 3527), l_top, 3527);
+  (((l_r).value).limb).e[coax_index(INT64_C(1), 8, 3527)] = ((uint32_t)(l_wide));
+  l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3527);
+  l_wide = coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_input).limb).e[coax_index(INT64_C(2), 8, 3528)]), UINT64_C(18446744073709551615), 3528)), l_carry, 3528);
+  (((l_r).value).limb).e[coax_index(INT64_C(2), 8, 3528)] = ((uint32_t)(l_wide));
+  l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3528);
+  l_wide = coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_input).limb).e[coax_index(INT64_C(3), 8, 3529)]), UINT64_C(18446744073709551615), 3529)), l_carry, 3529);
+  (((l_r).value).limb).e[coax_index(INT64_C(3), 8, 3529)] = ((uint32_t)(l_wide));
+  l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3529);
+  l_wide = coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_input).limb).e[coax_index(INT64_C(4), 8, 3530)]), UINT64_C(18446744073709551615), 3530)), l_carry, 3530);
+  (((l_r).value).limb).e[coax_index(INT64_C(4), 8, 3530)] = ((uint32_t)(l_wide));
+  l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3530);
+  l_wide = coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_input).limb).e[coax_index(INT64_C(5), 8, 3531)]), UINT64_C(18446744073709551615), 3531)), l_carry, 3531);
+  (((l_r).value).limb).e[coax_index(INT64_C(5), 8, 3531)] = ((uint32_t)(l_wide));
+  l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3531);
+  l_wide = coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_input).limb).e[coax_index(INT64_C(6), 8, 3532)]), UINT64_C(18446744073709551615), 3532)), l_carry, 3532);
+  (((l_r).value).limb).e[coax_index(INT64_C(6), 8, 3532)] = ((uint32_t)(l_wide));
+  l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3532);
+  l_wide = coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_input).limb).e[coax_index(INT64_C(7), 8, 3533)]), UINT64_C(18446744073709551615), 3533)), l_carry, 3533);
+  (((l_r).value).limb).e[coax_index(INT64_C(7), 8, 3533)] = ((uint32_t)(l_wide));
+  l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3533);
   (l_r).carry = l_carry;
-  return l_r;
+  coax_ret = l_r;
+  {
+    (coax_t846 = coax_mkview_v_u32((((l_r).value).limb).e, 8, 0, 8, 3525), coax_secure_zero(coax_t846.data, coax_t846.count, sizeof(*coax_t846.data), 3525));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_r).value).limb).e, 8, 0, 8, 3525)))) coax_trap("assertion failed", 3525);
+  }
+  return coax_ret;
+  {
+    (coax_t847 = coax_mkview_v_u32((((l_r).value).limb).e, 8, 0, 8, 3525), coax_secure_zero(coax_t847.data, coax_t847.count, sizeof(*coax_t847.data), 3525));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_r).value).limb).e, 8, 0, 8, 3525)))) coax_trap("assertion failed", 3525);
+  }
 }
 
 static coax_t_Sf32 coax_p_sf32_canonical_total(coax_t_Sf32 l_input) {
-  uint32_t * coax_t679;
-  uint32_t coax_t680;
-  uint32_t coax_t681;
-  uint32_t coax_t682;
-  uint32_t coax_t683;
-  uint32_t coax_t684;
-  uint32_t coax_t685;
+  coax_t_Sf32 coax_ret;
+  uint32_t * coax_t849;
+  uint32_t coax_t850;
+  uint32_t coax_t851;
+  uint32_t coax_t852;
+  uint32_t coax_t853;
+  uint32_t coax_t854;
+  uint32_t coax_t855;
+  coax_v_u32 coax_t856;
+  coax_v_u32 coax_t857;
+  coax_v_u32 coax_t858;
+  coax_v_u32 coax_t859;
   coax_t_Sf32Fold l_folded = coax_p_sf32_fold_total(l_input, UINT64_C(1));
   uint32_t l_mask = ((uint32_t)(cb_mask((l_folded).carry)));
   coax_t_Sf32 l_r = ((coax_t_Sf32){0});
   {
-    int64_t coax_lo678 = INT64_C(0);
-    int64_t coax_hi678 = INT64_C(8);
-    for (int64_t l_i = coax_lo678; l_i < coax_hi678; l_i++)
+    int64_t coax_lo848 = INT64_C(0);
+    int64_t coax_hi848 = INT64_C(8);
+    for (int64_t l_i = coax_lo848; l_i < coax_hi848; l_i++)
     {
-      coax_t679 = &(((l_r).limb).e[coax_index(l_i, 8, 3212)]);
-      *coax_t679 = (coax_t680 = ((l_input).limb).e[coax_index(l_i, 8, 3212)], coax_t681 = (coax_t682 = (coax_t683 = ((l_input).limb).e[coax_index(l_i, 8, 3212)], coax_t684 = (((l_folded).value).limb).e[coax_index(l_i, 8, 3212)], ((uint32_t)(coax_t683 ^ coax_t684))), coax_t685 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t682 & coax_t685))), ((uint32_t)(coax_t680 ^ coax_t681)));
+      coax_t849 = &(((l_r).limb).e[coax_index(l_i, 8, 3538)]);
+      *coax_t849 = (coax_t850 = ((l_input).limb).e[coax_index(l_i, 8, 3538)], coax_t851 = (coax_t852 = (coax_t853 = ((l_input).limb).e[coax_index(l_i, 8, 3538)], coax_t854 = (((l_folded).value).limb).e[coax_index(l_i, 8, 3538)], ((uint32_t)(coax_t853 ^ coax_t854))), coax_t855 = coax_value_barrier_u32(l_mask), ((uint32_t)(coax_t852 & coax_t855))), ((uint32_t)(coax_t850 ^ coax_t851)));
     }
   }
-  return l_r;
+  coax_ret = l_r;
+  {
+    (coax_t856 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3537), coax_secure_zero(coax_t856.data, coax_t856.count, sizeof(*coax_t856.data), 3537));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3537)))) coax_trap("assertion failed", 3537);
+  }
+  {
+    (coax_t857 = coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3537), coax_secure_zero(coax_t857.data, coax_t857.count, sizeof(*coax_t857.data), 3537));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3537)))) coax_trap("assertion failed", 3537);
+  }
+  return coax_ret;
+  {
+    (coax_t858 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3537), coax_secure_zero(coax_t858.data, coax_t858.count, sizeof(*coax_t858.data), 3537));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3537)))) coax_trap("assertion failed", 3537);
+  }
+  {
+    (coax_t859 = coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3537), coax_secure_zero(coax_t859.data, coax_t859.count, sizeof(*coax_t859.data), 3537));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3537)))) coax_trap("assertion failed", 3537);
+  }
 }
 
 static coax_t_Sf32 coax_p_sf32_add_total(coax_t_Sf32 l_a, coax_t_Sf32 l_b) {
-  uint64_t coax_t687;
-  uint64_t coax_t688;
+  coax_t_Sf32 coax_ret;
+  uint64_t coax_t861;
+  uint64_t coax_t862;
+  coax_v_u32 coax_t863;
+  coax_v_u32 coax_t864;
+  coax_v_u32 coax_t865;
+  coax_v_u32 coax_t866;
   coax_t_Sf32 l_r = ((coax_t_Sf32){0});
   uint64_t l_carry = ((uint64_t)0);
   {
-    int64_t coax_lo686 = INT64_C(0);
-    int64_t coax_hi686 = INT64_C(8);
-    for (int64_t l_i = coax_lo686; l_i < coax_hi686; l_i++)
+    int64_t coax_lo860 = INT64_C(0);
+    int64_t coax_hi860 = INT64_C(8);
+    for (int64_t l_i = coax_lo860; l_i < coax_hi860; l_i++)
     {
-      uint64_t l_wide = coax_add_u64((coax_t687 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3217)]), UINT64_C(18446744073709551615), 3217)), coax_t688 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(l_i, 8, 3217)]), UINT64_C(18446744073709551615), 3217)), coax_add_u64(coax_t687, coax_t688, 3217)), l_carry, 3217);
-      ((l_r).limb).e[coax_index(l_i, 8, 3217)] = ((uint32_t)(l_wide));
-      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3217);
+      uint64_t l_wide = coax_add_u64((coax_t861 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3543)]), UINT64_C(18446744073709551615), 3543)), coax_t862 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(l_i, 8, 3543)]), UINT64_C(18446744073709551615), 3543)), coax_add_u64(coax_t861, coax_t862, 3543)), l_carry, 3543);
+      ((l_r).limb).e[coax_index(l_i, 8, 3543)] = ((uint32_t)(l_wide));
+      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3543);
     }
   }
   coax_t_Sf32Fold l_folded = coax_p_sf32_fold_total(l_r, l_carry);
   l_folded = coax_p_sf32_fold_total((l_folded).value, ((uint64_t)((l_folded).carry & UINT64_C(1))));
-  return coax_p_sf32_canonical_total((l_folded).value);
+  coax_ret = coax_p_sf32_canonical_total((l_folded).value);
+  {
+    (coax_t863 = coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3546), coax_secure_zero(coax_t863.data, coax_t863.count, sizeof(*coax_t863.data), 3546));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3546)))) coax_trap("assertion failed", 3546);
+  }
+  {
+    (coax_t864 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3542), coax_secure_zero(coax_t864.data, coax_t864.count, sizeof(*coax_t864.data), 3542));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3542)))) coax_trap("assertion failed", 3542);
+  }
+  return coax_ret;
+  {
+    (coax_t865 = coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3546), coax_secure_zero(coax_t865.data, coax_t865.count, sizeof(*coax_t865.data), 3546));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3546)))) coax_trap("assertion failed", 3546);
+  }
+  {
+    (coax_t866 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3542), coax_secure_zero(coax_t866.data, coax_t866.count, sizeof(*coax_t866.data), 3542));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3542)))) coax_trap("assertion failed", 3542);
+  }
 }
 
 static coax_t_Sf32 coax_p_sf32_mul_total(coax_t_Sf32 l_a, coax_t_Sf32 l_b) {
-  uint64_t coax_t691;
-  uint64_t coax_t692;
-  uint64_t coax_t693;
-  uint64_t coax_t694;
-  uint64_t coax_t696;
-  uint64_t coax_t697;
-  uint64_t coax_t698;
-  uint64_t coax_t699;
+  coax_t_Sf32 coax_ret;
+  uint64_t coax_t869;
+  uint64_t coax_t870;
+  uint64_t coax_t871;
+  uint64_t coax_t872;
+  uint64_t coax_t874;
+  uint64_t coax_t875;
+  uint64_t coax_t876;
+  uint64_t coax_t877;
+  coax_v_u32 coax_t878;
+  coax_v_u32 coax_t879;
+  coax_v_u32 coax_t880;
+  coax_v_u32 coax_t881;
+  coax_v_u32 coax_t882;
+  coax_v_u32 coax_t883;
   coax_a16_u32 l_product = ((coax_a16_u32){0});
   {
-    int64_t coax_lo689 = INT64_C(0);
-    int64_t coax_hi689 = INT64_C(8);
-    for (int64_t l_i = coax_lo689; l_i < coax_hi689; l_i++)
+    int64_t coax_lo867 = INT64_C(0);
+    int64_t coax_hi867 = INT64_C(8);
+    for (int64_t l_i = coax_lo867; l_i < coax_hi867; l_i++)
     {
       uint64_t l_carry = ((uint64_t)0);
       {
-        int64_t coax_lo690 = INT64_C(0);
-        int64_t coax_hi690 = INT64_C(8);
-        for (int64_t l_j = coax_lo690; l_j < coax_hi690; l_j++)
+        int64_t coax_lo868 = INT64_C(0);
+        int64_t coax_hi868 = INT64_C(8);
+        for (int64_t l_j = coax_lo868; l_j < coax_hi868; l_j++)
         {
-          uint64_t l_wide = coax_add_u64((coax_t691 = (coax_t692 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3227)]), UINT64_C(18446744073709551615), 3227)), coax_t693 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(l_j, 8, 3227)]), UINT64_C(18446744073709551615), 3227)), coax_mul_wrap_u64(coax_t692, coax_t693)), coax_t694 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, l_j, 3227), 16, 3227)]), UINT64_C(18446744073709551615), 3227)), coax_add_u64(coax_t691, coax_t694, 3227)), l_carry, 3227);
-          (l_product).e[coax_index(coax_add_s64(l_i, l_j, 3227), 16, 3227)] = ((uint32_t)(l_wide));
-          l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3227);
+          uint64_t l_wide = coax_add_u64((coax_t869 = (coax_t870 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3553)]), UINT64_C(18446744073709551615), 3553)), coax_t871 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(l_j, 8, 3553)]), UINT64_C(18446744073709551615), 3553)), coax_mul_wrap_u64(coax_t870, coax_t871)), coax_t872 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, l_j, 3553), 16, 3553)]), UINT64_C(18446744073709551615), 3553)), coax_add_u64(coax_t869, coax_t872, 3553)), l_carry, 3553);
+          (l_product).e[coax_index(coax_add_s64(l_i, l_j, 3553), 16, 3553)] = ((uint32_t)(l_wide));
+          l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3553);
         }
       }
-      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(8), 3228), 16, 3228)] = ((uint32_t)(l_carry));
+      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(8), 3554), 16, 3554)] = ((uint32_t)(l_carry));
     }
   }
   coax_t_Sf32 l_r = ((coax_t_Sf32){0});
   uint64_t l_carry = ((uint64_t)0);
   uint64_t l_previous = ((uint64_t)0);
   {
-    int64_t coax_lo695 = INT64_C(0);
-    int64_t coax_hi695 = INT64_C(8);
-    for (int64_t l_i = coax_lo695; l_i < coax_hi695; l_i++)
+    int64_t coax_lo873 = INT64_C(0);
+    int64_t coax_hi873 = INT64_C(8);
+    for (int64_t l_i = coax_lo873; l_i < coax_hi873; l_i++)
     {
-      uint64_t l_high = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(8), 3232), 16, 3232)]), UINT64_C(18446744073709551615), 3232));
-      uint64_t l_wide = coax_add_u64(coax_add_u64((coax_t696 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(l_i, 16, 3232)]), UINT64_C(18446744073709551615), 3232)), coax_t697 = (coax_t698 = l_high, coax_t699 = UINT64_C(977), coax_mul_wrap_u64(coax_t698, coax_t699)), coax_add_u64(coax_t696, coax_t697, 3232)), l_previous, 3232), l_carry, 3232);
-      ((l_r).limb).e[coax_index(l_i, 8, 3233)] = ((uint32_t)(l_wide));
-      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3233);
+      uint64_t l_high = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(8), 3558), 16, 3558)]), UINT64_C(18446744073709551615), 3558));
+      uint64_t l_wide = coax_add_u64(coax_add_u64((coax_t874 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(l_i, 16, 3558)]), UINT64_C(18446744073709551615), 3558)), coax_t875 = (coax_t876 = l_high, coax_t877 = UINT64_C(977), coax_mul_wrap_u64(coax_t876, coax_t877)), coax_add_u64(coax_t874, coax_t875, 3558)), l_previous, 3558), l_carry, 3558);
+      ((l_r).limb).e[coax_index(l_i, 8, 3559)] = ((uint32_t)(l_wide));
+      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3559);
       l_previous = l_high;
     }
   }
-  uint64_t l_top = coax_add_u64(l_previous, l_carry, 3235);
+  uint64_t l_top = coax_add_u64(l_previous, l_carry, 3561);
   coax_t_Sf32Fold l_folded = coax_p_sf32_fold_total(l_r, l_top);
   l_folded = coax_p_sf32_fold_total((l_folded).value, ((uint64_t)((l_folded).carry & UINT64_C(1))));
-  return coax_p_sf32_canonical_total((l_folded).value);
+  coax_ret = coax_p_sf32_canonical_total((l_folded).value);
+  {
+    (coax_t878 = coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3561), coax_secure_zero(coax_t878.data, coax_t878.count, sizeof(*coax_t878.data), 3561));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3561)))) coax_trap("assertion failed", 3561);
+  }
+  {
+    (coax_t879 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3556), coax_secure_zero(coax_t879.data, coax_t879.count, sizeof(*coax_t879.data), 3556));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3556)))) coax_trap("assertion failed", 3556);
+  }
+  {
+    (coax_t880 = coax_mkview_v_u32((l_product).e, 16, 0, 16, 3550), coax_secure_zero(coax_t880.data, coax_t880.count, sizeof(*coax_t880.data), 3550));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((l_product).e, 16, 0, 16, 3550)))) coax_trap("assertion failed", 3550);
+  }
+  return coax_ret;
+  {
+    (coax_t881 = coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3561), coax_secure_zero(coax_t881.data, coax_t881.count, sizeof(*coax_t881.data), 3561));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3561)))) coax_trap("assertion failed", 3561);
+  }
+  {
+    (coax_t882 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3556), coax_secure_zero(coax_t882.data, coax_t882.count, sizeof(*coax_t882.data), 3556));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3556)))) coax_trap("assertion failed", 3556);
+  }
+  {
+    (coax_t883 = coax_mkview_v_u32((l_product).e, 16, 0, 16, 3550), coax_secure_zero(coax_t883.data, coax_t883.count, sizeof(*coax_t883.data), 3550));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((l_product).e, 16, 0, 16, 3550)))) coax_trap("assertion failed", 3550);
+  }
 }
 
 static _Bool coax_p_sf32_equal(coax_t_Sf32 l_a, coax_t_Sf32 l_b) {
-  uint32_t coax_t701;
-  uint32_t coax_t702;
+  uint32_t coax_t885;
+  uint32_t coax_t886;
   uint64_t l_difference = ((uint64_t)0);
   {
-    int64_t coax_lo700 = INT64_C(0);
-    int64_t coax_hi700 = INT64_C(8);
-    for (int64_t l_i = coax_lo700; l_i < coax_hi700; l_i++)
+    int64_t coax_lo884 = INT64_C(0);
+    int64_t coax_hi884 = INT64_C(8);
+    for (int64_t l_i = coax_lo884; l_i < coax_hi884; l_i++)
     {
-      l_difference = ((uint64_t)(l_difference | ((uint64_t)coax_cast_uu((uint64_t)((coax_t701 = ((l_a).limb).e[coax_index(l_i, 8, 3284)], coax_t702 = ((l_b).limb).e[coax_index(l_i, 8, 3284)], ((uint32_t)(coax_t701 ^ coax_t702)))), UINT64_C(18446744073709551615), 3284))));
+      l_difference = ((uint64_t)(l_difference | ((uint64_t)coax_cast_uu((uint64_t)((coax_t885 = ((l_a).limb).e[coax_index(l_i, 8, 3610)], coax_t886 = ((l_b).limb).e[coax_index(l_i, 8, 3610)], ((uint32_t)(coax_t885 ^ coax_t886)))), UINT64_C(18446744073709551615), 3610))));
     }
   }
   return (l_difference == UINT64_C(0));
 }
 
 static coax_t_Sf32Fold coax_p_sf32_fold_top(coax_t_Sf32 l_input, uint64_t l_top) {
-  uint64_t coax_t703;
-  uint64_t coax_t704;
+  coax_t_Sf32Fold coax_ret;
+  uint64_t coax_t887;
+  uint64_t coax_t888;
+  coax_v_u32 coax_t890;
+  coax_v_u32 coax_t891;
   coax_t_Sf32Fold l_r = ((coax_t_Sf32Fold){0});
-  uint64_t l_carry = (coax_t703 = l_top, coax_t704 = UINT64_C(977), coax_mul_wrap_u64(coax_t703, coax_t704));
+  uint64_t l_carry = (coax_t887 = l_top, coax_t888 = UINT64_C(977), coax_mul_wrap_u64(coax_t887, coax_t888));
   {
-    int64_t coax_lo705 = INT64_C(0);
-    int64_t coax_hi705 = INT64_C(8);
-    for (int64_t l_i = coax_lo705; l_i < coax_hi705; l_i++)
+    int64_t coax_lo889 = INT64_C(0);
+    int64_t coax_hi889 = INT64_C(8);
+    for (int64_t l_i = coax_lo889; l_i < coax_hi889; l_i++)
     {
       uint64_t l_extra = ((l_i == INT64_C(1)) ? l_top : UINT64_C(0));
-      uint64_t l_wide = coax_add_u64(coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_input).limb).e[coax_index(l_i, 8, 3291)]), UINT64_C(18446744073709551615), 3291)), l_carry, 3291), l_extra, 3291);
-      (((l_r).value).limb).e[coax_index(l_i, 8, 3292)] = ((uint32_t)(l_wide));
-      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3292);
+      uint64_t l_wide = coax_add_u64(coax_add_u64(((uint64_t)coax_cast_uu((uint64_t)(((l_input).limb).e[coax_index(l_i, 8, 3617)]), UINT64_C(18446744073709551615), 3617)), l_carry, 3617), l_extra, 3617);
+      (((l_r).value).limb).e[coax_index(l_i, 8, 3618)] = ((uint32_t)(l_wide));
+      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3618);
     }
   }
   (l_r).carry = l_carry;
-  return l_r;
+  coax_ret = l_r;
+  {
+    (coax_t890 = coax_mkview_v_u32((((l_r).value).limb).e, 8, 0, 8, 3613), coax_secure_zero(coax_t890.data, coax_t890.count, sizeof(*coax_t890.data), 3613));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_r).value).limb).e, 8, 0, 8, 3613)))) coax_trap("assertion failed", 3613);
+  }
+  return coax_ret;
+  {
+    (coax_t891 = coax_mkview_v_u32((((l_r).value).limb).e, 8, 0, 8, 3613), coax_secure_zero(coax_t891.data, coax_t891.count, sizeof(*coax_t891.data), 3613));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_r).value).limb).e, 8, 0, 8, 3613)))) coax_trap("assertion failed", 3613);
+  }
 }
 
 static coax_t_Sf32 coax_p_sf32_canonical(coax_t_Sf32 l_input) {
-  uint32_t * coax_t707;
-  uint32_t coax_t708;
-  uint32_t coax_t709;
+  coax_t_Sf32 coax_ret;
+  uint32_t * coax_t893;
+  uint32_t coax_t894;
+  uint32_t coax_t895;
+  coax_v_u32 coax_t896;
+  coax_v_u32 coax_t897;
+  coax_v_u32 coax_t898;
+  coax_v_u32 coax_t899;
   coax_t_Sf32Fold l_folded = coax_p_sf32_fold_top(l_input, UINT64_C(1));
   uint32_t l_mask = ((uint32_t)(cb_mask((l_folded).carry)));
   coax_t_Sf32 l_r = ((coax_t_Sf32){0});
   {
-    int64_t coax_lo706 = INT64_C(0);
-    int64_t coax_hi706 = INT64_C(8);
-    for (int64_t l_i = coax_lo706; l_i < coax_hi706; l_i++)
+    int64_t coax_lo892 = INT64_C(0);
+    int64_t coax_hi892 = INT64_C(8);
+    for (int64_t l_i = coax_lo892; l_i < coax_hi892; l_i++)
     {
-      coax_t707 = &(((l_r).limb).e[coax_index(l_i, 8, 3298)]);
-      *coax_t707 = (coax_t708 = (((l_folded).value).limb).e[coax_index(l_i, 8, 3298)], coax_t709 = ((l_input).limb).e[coax_index(l_i, 8, 3298)], cb_ct_select32(l_mask, coax_t708, coax_t709));
+      coax_t893 = &(((l_r).limb).e[coax_index(l_i, 8, 3624)]);
+      *coax_t893 = (coax_t894 = (((l_folded).value).limb).e[coax_index(l_i, 8, 3624)], coax_t895 = ((l_input).limb).e[coax_index(l_i, 8, 3624)], cb_ct_select32(l_mask, coax_t894, coax_t895));
     }
   }
-  return l_r;
+  coax_ret = l_r;
+  {
+    (coax_t896 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3623), coax_secure_zero(coax_t896.data, coax_t896.count, sizeof(*coax_t896.data), 3623));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3623)))) coax_trap("assertion failed", 3623);
+  }
+  {
+    (coax_t897 = coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3623), coax_secure_zero(coax_t897.data, coax_t897.count, sizeof(*coax_t897.data), 3623));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3623)))) coax_trap("assertion failed", 3623);
+  }
+  return coax_ret;
+  {
+    (coax_t898 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3623), coax_secure_zero(coax_t898.data, coax_t898.count, sizeof(*coax_t898.data), 3623));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3623)))) coax_trap("assertion failed", 3623);
+  }
+  {
+    (coax_t899 = coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3623), coax_secure_zero(coax_t899.data, coax_t899.count, sizeof(*coax_t899.data), 3623));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3623)))) coax_trap("assertion failed", 3623);
+  }
 }
 
 static coax_t_Sf32 coax_p_sf32_add(coax_t_Sf32 l_a, coax_t_Sf32 l_b) {
-  uint64_t coax_t711;
-  uint64_t coax_t712;
+  coax_t_Sf32 coax_ret;
+  uint64_t coax_t901;
+  uint64_t coax_t902;
+  coax_v_u32 coax_t903;
+  coax_v_u32 coax_t904;
+  coax_v_u32 coax_t905;
+  coax_v_u32 coax_t906;
   coax_t_Sf32 l_r = ((coax_t_Sf32){0});
   uint64_t l_carry = ((uint64_t)0);
   {
-    int64_t coax_lo710 = INT64_C(0);
-    int64_t coax_hi710 = INT64_C(8);
-    for (int64_t l_i = coax_lo710; l_i < coax_hi710; l_i++)
+    int64_t coax_lo900 = INT64_C(0);
+    int64_t coax_hi900 = INT64_C(8);
+    for (int64_t l_i = coax_lo900; l_i < coax_hi900; l_i++)
     {
-      uint64_t l_wide = coax_add_u64((coax_t711 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3303)]), UINT64_C(18446744073709551615), 3303)), coax_t712 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(l_i, 8, 3303)]), UINT64_C(18446744073709551615), 3303)), coax_add_u64(coax_t711, coax_t712, 3303)), l_carry, 3303);
-      ((l_r).limb).e[coax_index(l_i, 8, 3303)] = ((uint32_t)(l_wide));
-      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3303);
+      uint64_t l_wide = coax_add_u64((coax_t901 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3629)]), UINT64_C(18446744073709551615), 3629)), coax_t902 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(l_i, 8, 3629)]), UINT64_C(18446744073709551615), 3629)), coax_add_u64(coax_t901, coax_t902, 3629)), l_carry, 3629);
+      ((l_r).limb).e[coax_index(l_i, 8, 3629)] = ((uint32_t)(l_wide));
+      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3629);
     }
   }
   coax_t_Sf32Fold l_folded = coax_p_sf32_fold_top(l_r, l_carry);
-  if (!((l_folded).carry == UINT64_C(0))) coax_trap("assertion failed", 3307);
-  return coax_p_sf32_canonical((l_folded).value);
+  if (!((l_folded).carry == UINT64_C(0))) coax_trap("assertion failed", 3633);
+  coax_ret = coax_p_sf32_canonical((l_folded).value);
+  {
+    (coax_t903 = coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3632), coax_secure_zero(coax_t903.data, coax_t903.count, sizeof(*coax_t903.data), 3632));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3632)))) coax_trap("assertion failed", 3632);
+  }
+  {
+    (coax_t904 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3628), coax_secure_zero(coax_t904.data, coax_t904.count, sizeof(*coax_t904.data), 3628));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3628)))) coax_trap("assertion failed", 3628);
+  }
+  return coax_ret;
+  {
+    (coax_t905 = coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3632), coax_secure_zero(coax_t905.data, coax_t905.count, sizeof(*coax_t905.data), 3632));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3632)))) coax_trap("assertion failed", 3632);
+  }
+  {
+    (coax_t906 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3628), coax_secure_zero(coax_t906.data, coax_t906.count, sizeof(*coax_t906.data), 3628));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3628)))) coax_trap("assertion failed", 3628);
+  }
 }
 
 static coax_t_Sf32 coax_p_sf32_sub(coax_t_Sf32 l_a, coax_t_Sf32 l_b) {
-  uint64_t coax_t714;
-  uint64_t coax_t715;
-  uint64_t coax_t716;
-  uint64_t coax_t717;
-  uint64_t coax_t719;
-  uint64_t coax_t720;
+  coax_t_Sf32 coax_ret;
+  uint64_t coax_t908;
+  uint64_t coax_t909;
+  uint64_t coax_t910;
+  uint64_t coax_t911;
+  uint64_t coax_t913;
+  uint64_t coax_t914;
+  coax_v_u32 coax_t915;
+  coax_v_u32 coax_t916;
   coax_t_Sf32 l_r = ((coax_t_Sf32){0});
   uint64_t l_borrow = ((uint64_t)0);
   {
-    int64_t coax_lo713 = INT64_C(0);
-    int64_t coax_hi713 = INT64_C(8);
-    for (int64_t l_i = coax_lo713; l_i < coax_hi713; l_i++)
+    int64_t coax_lo907 = INT64_C(0);
+    int64_t coax_hi907 = INT64_C(8);
+    for (int64_t l_i = coax_lo907; l_i < coax_hi907; l_i++)
     {
-      uint64_t l_wide = coax_sub_u64((coax_t714 = (coax_t715 = coax_shl_u64(UINT64_C(1), (int64_t)(UINT64_C(32)), 3311), coax_t716 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3311)]), UINT64_C(18446744073709551615), 3311)), coax_add_u64(coax_t715, coax_t716, 3311)), coax_t717 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(l_i, 8, 3311)]), UINT64_C(18446744073709551615), 3311)), coax_sub_u64(coax_t714, coax_t717, 3311)), l_borrow, 3311);
-      ((l_r).limb).e[coax_index(l_i, 8, 3311)] = ((uint32_t)(l_wide));
-      l_borrow = coax_sub_u64(UINT64_C(1), coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3311), 3311);
+      uint64_t l_wide = coax_sub_u64((coax_t908 = (coax_t909 = coax_shl_u64(UINT64_C(1), (int64_t)(UINT64_C(32)), 3637), coax_t910 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3637)]), UINT64_C(18446744073709551615), 3637)), coax_add_u64(coax_t909, coax_t910, 3637)), coax_t911 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(l_i, 8, 3637)]), UINT64_C(18446744073709551615), 3637)), coax_sub_u64(coax_t908, coax_t911, 3637)), l_borrow, 3637);
+      ((l_r).limb).e[coax_index(l_i, 8, 3637)] = ((uint32_t)(l_wide));
+      l_borrow = coax_sub_u64(UINT64_C(1), coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3637), 3637);
     }
   }
   uint32_t l_mask = ((uint32_t)(cb_mask(l_borrow)));
   uint64_t l_carry = ((uint64_t)0);
   {
-    int64_t coax_lo718 = INT64_C(0);
-    int64_t coax_hi718 = INT64_C(8);
-    for (int64_t l_i = coax_lo718; l_i < coax_hi718; l_i++)
+    int64_t coax_lo912 = INT64_C(0);
+    int64_t coax_hi912 = INT64_C(8);
+    for (int64_t l_i = coax_lo912; l_i < coax_hi912; l_i++)
     {
-      uint64_t l_wide = coax_add_u64((coax_t719 = ((uint64_t)coax_cast_uu((uint64_t)(((l_r).limb).e[coax_index(l_i, 8, 3313)]), UINT64_C(18446744073709551615), 3313)), coax_t720 = ((uint64_t)coax_cast_uu((uint64_t)(((uint32_t)(((coax_k13).limb).e[coax_index(l_i, 8, 3313)] & l_mask))), UINT64_C(18446744073709551615), 3313)), coax_add_u64(coax_t719, coax_t720, 3313)), l_carry, 3313);
-      ((l_r).limb).e[coax_index(l_i, 8, 3313)] = ((uint32_t)(l_wide));
-      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3313);
+      uint64_t l_wide = coax_add_u64((coax_t913 = ((uint64_t)coax_cast_uu((uint64_t)(((l_r).limb).e[coax_index(l_i, 8, 3639)]), UINT64_C(18446744073709551615), 3639)), coax_t914 = ((uint64_t)coax_cast_uu((uint64_t)(((uint32_t)(((coax_k21).limb).e[coax_index(l_i, 8, 3639)] & l_mask))), UINT64_C(18446744073709551615), 3639)), coax_add_u64(coax_t913, coax_t914, 3639)), l_carry, 3639);
+      ((l_r).limb).e[coax_index(l_i, 8, 3639)] = ((uint32_t)(l_wide));
+      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3639);
     }
   }
-  return l_r;
+  coax_ret = l_r;
+  {
+    (coax_t915 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3636), coax_secure_zero(coax_t915.data, coax_t915.count, sizeof(*coax_t915.data), 3636));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3636)))) coax_trap("assertion failed", 3636);
+  }
+  return coax_ret;
+  {
+    (coax_t916 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3636), coax_secure_zero(coax_t916.data, coax_t916.count, sizeof(*coax_t916.data), 3636));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3636)))) coax_trap("assertion failed", 3636);
+  }
 }
 
 static coax_t_Sf32 coax_p_sf32_mul(coax_t_Sf32 l_a, coax_t_Sf32 l_b) {
-  uint64_t coax_t723;
-  uint64_t coax_t724;
-  uint64_t coax_t725;
-  uint64_t coax_t726;
-  uint64_t coax_t728;
-  uint64_t coax_t729;
-  uint64_t coax_t730;
-  uint64_t coax_t731;
+  coax_t_Sf32 coax_ret;
+  uint64_t coax_t919;
+  uint64_t coax_t920;
+  uint64_t coax_t921;
+  uint64_t coax_t922;
+  uint64_t coax_t924;
+  uint64_t coax_t925;
+  uint64_t coax_t926;
+  uint64_t coax_t927;
+  coax_v_u32 coax_t928;
+  coax_v_u32 coax_t929;
+  coax_v_u32 coax_t930;
+  coax_v_u32 coax_t931;
+  coax_v_u32 coax_t932;
+  coax_v_u32 coax_t933;
   coax_a16_u32 l_product = ((coax_a16_u32){0});
   {
-    int64_t coax_lo721 = INT64_C(0);
-    int64_t coax_hi721 = INT64_C(8);
-    for (int64_t l_i = coax_lo721; l_i < coax_hi721; l_i++)
+    int64_t coax_lo917 = INT64_C(0);
+    int64_t coax_hi917 = INT64_C(8);
+    for (int64_t l_i = coax_lo917; l_i < coax_hi917; l_i++)
     {
       uint64_t l_carry = ((uint64_t)0);
       {
-        int64_t coax_lo722 = INT64_C(0);
-        int64_t coax_hi722 = INT64_C(8);
-        for (int64_t l_j = coax_lo722; l_j < coax_hi722; l_j++)
+        int64_t coax_lo918 = INT64_C(0);
+        int64_t coax_hi918 = INT64_C(8);
+        for (int64_t l_j = coax_lo918; l_j < coax_hi918; l_j++)
         {
-          uint64_t l_wide = coax_add_u64((coax_t723 = (coax_t724 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3320)]), UINT64_C(18446744073709551615), 3320)), coax_t725 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(l_j, 8, 3320)]), UINT64_C(18446744073709551615), 3320)), coax_mul_wrap_u64(coax_t724, coax_t725)), coax_t726 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, l_j, 3320), 16, 3320)]), UINT64_C(18446744073709551615), 3320)), coax_add_u64(coax_t723, coax_t726, 3320)), l_carry, 3320);
-          (l_product).e[coax_index(coax_add_s64(l_i, l_j, 3320), 16, 3320)] = ((uint32_t)(l_wide));
-          l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3320);
+          uint64_t l_wide = coax_add_u64((coax_t919 = (coax_t920 = ((uint64_t)coax_cast_uu((uint64_t)(((l_a).limb).e[coax_index(l_i, 8, 3646)]), UINT64_C(18446744073709551615), 3646)), coax_t921 = ((uint64_t)coax_cast_uu((uint64_t)(((l_b).limb).e[coax_index(l_j, 8, 3646)]), UINT64_C(18446744073709551615), 3646)), coax_mul_wrap_u64(coax_t920, coax_t921)), coax_t922 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, l_j, 3646), 16, 3646)]), UINT64_C(18446744073709551615), 3646)), coax_add_u64(coax_t919, coax_t922, 3646)), l_carry, 3646);
+          (l_product).e[coax_index(coax_add_s64(l_i, l_j, 3646), 16, 3646)] = ((uint32_t)(l_wide));
+          l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3646);
         }
       }
-      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(8), 3321), 16, 3321)] = ((uint32_t)(l_carry));
+      (l_product).e[coax_index(coax_add_s64(l_i, INT64_C(8), 3647), 16, 3647)] = ((uint32_t)(l_carry));
     }
   }
   coax_t_Sf32 l_r = ((coax_t_Sf32){0});
   uint64_t l_carry = ((uint64_t)0);
   uint64_t l_previous = ((uint64_t)0);
   {
-    int64_t coax_lo727 = INT64_C(0);
-    int64_t coax_hi727 = INT64_C(8);
-    for (int64_t l_i = coax_lo727; l_i < coax_hi727; l_i++)
+    int64_t coax_lo923 = INT64_C(0);
+    int64_t coax_hi923 = INT64_C(8);
+    for (int64_t l_i = coax_lo923; l_i < coax_hi923; l_i++)
     {
-      uint64_t l_high = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(8), 3325), 16, 3325)]), UINT64_C(18446744073709551615), 3325));
-      uint64_t l_wide = coax_add_u64(coax_add_u64((coax_t728 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(l_i, 16, 3325)]), UINT64_C(18446744073709551615), 3325)), coax_t729 = (coax_t730 = l_high, coax_t731 = UINT64_C(977), coax_mul_wrap_u64(coax_t730, coax_t731)), coax_add_u64(coax_t728, coax_t729, 3325)), l_previous, 3325), l_carry, 3325);
-      ((l_r).limb).e[coax_index(l_i, 8, 3326)] = ((uint32_t)(l_wide));
-      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3326);
+      uint64_t l_high = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(coax_add_s64(l_i, INT64_C(8), 3651), 16, 3651)]), UINT64_C(18446744073709551615), 3651));
+      uint64_t l_wide = coax_add_u64(coax_add_u64((coax_t924 = ((uint64_t)coax_cast_uu((uint64_t)((l_product).e[coax_index(l_i, 16, 3651)]), UINT64_C(18446744073709551615), 3651)), coax_t925 = (coax_t926 = l_high, coax_t927 = UINT64_C(977), coax_mul_wrap_u64(coax_t926, coax_t927)), coax_add_u64(coax_t924, coax_t925, 3651)), l_previous, 3651), l_carry, 3651);
+      ((l_r).limb).e[coax_index(l_i, 8, 3652)] = ((uint32_t)(l_wide));
+      l_carry = coax_shr_u64(l_wide, (int64_t)(UINT64_C(32)), 3652);
       l_previous = l_high;
     }
   }
-  uint64_t l_top = coax_add_u64(l_previous, l_carry, 3328);
+  uint64_t l_top = coax_add_u64(l_previous, l_carry, 3654);
   coax_t_Sf32Fold l_folded = coax_p_sf32_fold_top(l_r, l_top);
   l_folded = coax_p_sf32_fold_top((l_folded).value, (l_folded).carry);
-  if (!((l_folded).carry == UINT64_C(0))) coax_trap("assertion failed", 3329);
-  return coax_p_sf32_canonical((l_folded).value);
+  if (!((l_folded).carry == UINT64_C(0))) coax_trap("assertion failed", 3655);
+  coax_ret = coax_p_sf32_canonical((l_folded).value);
+  {
+    (coax_t928 = coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3654), coax_secure_zero(coax_t928.data, coax_t928.count, sizeof(*coax_t928.data), 3654));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3654)))) coax_trap("assertion failed", 3654);
+  }
+  {
+    (coax_t929 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3649), coax_secure_zero(coax_t929.data, coax_t929.count, sizeof(*coax_t929.data), 3649));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3649)))) coax_trap("assertion failed", 3649);
+  }
+  {
+    (coax_t930 = coax_mkview_v_u32((l_product).e, 16, 0, 16, 3643), coax_secure_zero(coax_t930.data, coax_t930.count, sizeof(*coax_t930.data), 3643));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((l_product).e, 16, 0, 16, 3643)))) coax_trap("assertion failed", 3643);
+  }
+  return coax_ret;
+  {
+    (coax_t931 = coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3654), coax_secure_zero(coax_t931.data, coax_t931.count, sizeof(*coax_t931.data), 3654));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((((l_folded).value).limb).e, 8, 0, 8, 3654)))) coax_trap("assertion failed", 3654);
+  }
+  {
+    (coax_t932 = coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3649), coax_secure_zero(coax_t932.data, coax_t932.count, sizeof(*coax_t932.data), 3649));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32(((l_r).limb).e, 8, 0, 8, 3649)))) coax_trap("assertion failed", 3649);
+  }
+  {
+    (coax_t933 = coax_mkview_v_u32((l_product).e, 16, 0, 16, 3643), coax_secure_zero(coax_t933.data, coax_t933.count, sizeof(*coax_t933.data), 3643));
+    if (!(coax_p_crypto_zeroed__3u32(coax_mkview_v_u32((l_product).e, 16, 0, 16, 3643)))) coax_trap("assertion failed", 3643);
+  }
 }
 
 static int64_t coax_p_n98t_run(int64_t l_i, _Bool l_signed) {
-  uint8_t * coax_t733;
-  coax_string coax_t734;
-  coax_string coax_t735;
-  coax_string coax_t736;
-  coax_v_u8 coax_t737;
-  coax_v_u8 coax_t738;
-  coax_string coax_t739;
-  coax_v_u8 coax_t740;
-  coax_v_u8 coax_t741;
-  coax_v_u8 coax_t742;
-  coax_v_u8 coax_t743;
-  coax_v_s64 coax_t744;
-  coax_v_s64 coax_t745;
-  coax_string coax_t746;
-  coax_string coax_t747;
-  coax_v_u8 coax_t748;
-  coax_v_u8 coax_t749;
-  coax_v_u8 coax_t750;
+  uint8_t * coax_t935;
+  coax_string coax_t936;
+  coax_string coax_t937;
+  coax_string coax_t938;
+  coax_v_u8 coax_t939;
+  coax_v_u8 coax_t940;
+  coax_string coax_t941;
+  coax_v_u8 coax_t942;
+  coax_v_u8 coax_t943;
+  coax_v_u8 coax_t944;
+  coax_v_u8 coax_t945;
+  coax_v_s64 coax_t946;
+  coax_v_s64 coax_t947;
+  coax_string coax_t948;
+  coax_string coax_t949;
+  coax_v_u8 coax_t950;
+  coax_v_u8 coax_t951;
+  coax_v_u8 coax_t952;
   coax_a103424_u8 l_work = ((coax_a103424_u8){0});
   coax_a1233_u8 l_out = ((coax_a1233_u8){0});
-  coax_string l_b = (coax_k14).e[coax_index(l_i, 86, 3351)];
+  coax_string l_b = (coax_k22).e[coax_index(l_i, 86, 3677)];
   coax_a64_u8 l_body = ((coax_a64_u8){0});
   {
-    int64_t coax_lo732 = INT64_C(0);
-    int64_t coax_hi732 = (l_b).count;
-    for (int64_t l_k = coax_lo732; l_k < coax_hi732; l_k++)
+    int64_t coax_lo934 = INT64_C(0);
+    int64_t coax_hi934 = (l_b).count;
+    for (int64_t l_k = coax_lo934; l_k < coax_hi934; l_k++)
     {
-      coax_t733 = &((l_body).e[coax_index(l_k, 64, 3351)]);
-      *coax_t733 = coax_byte(l_b, l_k, 3351);
+      coax_t935 = &((l_body).e[coax_index(l_k, 64, 3677)]);
+      *coax_t935 = coax_byte(l_b, l_k, 3677);
     }
   }
-  coax_v_u8 l_bv = coax_mkview_v_u8((l_body).e, 64, (int64_t)(INT64_C(0)), (int64_t)((l_b).count), 3352);
+  coax_v_u8 l_bv = coax_mkview_v_u8((l_body).e, 64, (int64_t)(INT64_C(0)), (int64_t)((l_b).count), 3678);
   int64_t l_now = INT64_C(1790000000);
   if (l_signed)
   {
-    return ((coax_t734 = (coax_k15).e[coax_index(l_i, 86, 3353)], coax_t735 = (coax_k16).e[coax_index(l_i, 86, 3353)], coax_t736 = (coax_k17).e[coax_index(l_i, 86, 3353)], coax_t737 = coax_mkview_v_u8((l_work).e, 103424, 0, 103424, 3353), coax_t738 = coax_mkview_v_u8((l_out).e, 1233, 0, 1233, 3353), nip98_check_coax(coax_t734, coax_t735, coax_t736, l_bv, l_now, coax_t737, coax_t738))).error;
+    return ((coax_t936 = (coax_k23).e[coax_index(l_i, 86, 3679)], coax_t937 = (coax_k24).e[coax_index(l_i, 86, 3679)], coax_t938 = (coax_k25).e[coax_index(l_i, 86, 3679)], coax_t939 = coax_mkview_v_u8((l_work).e, 103424, 0, 103424, 3679), coax_t940 = coax_mkview_v_u8((l_out).e, 1233, 0, 1233, 3679), nip98_check_coax(coax_t936, coax_t937, coax_t938, l_bv, l_now, coax_t939, coax_t940))).error;
   }
-  coax_t_N98Parsed l_e = (coax_t739 = (coax_k15).e[coax_index(l_i, 86, 3354)], coax_t740 = coax_mkview_v_u8((l_work).e, 103424, 0, 103424, 3354), coax_p_n98_parse(coax_t739, coax_t740));
+  coax_t_N98Parsed l_e = (coax_t941 = (coax_k23).e[coax_index(l_i, 86, 3680)], coax_t942 = coax_mkview_v_u8((l_work).e, 103424, 0, 103424, 3680), coax_p_n98_parse(coax_t941, coax_t942));
   if ((l_e).error != INT64_C(0))
   {
     return (l_e).error;
   }
   coax_a32_u8 l_hash = ((coax_a32_u8){0});
-  int64_t l_idc = (coax_t741 = coax_mkview_v_u8((l_work).e, 103424, 0, 103424, 3355), coax_t742 = coax_mkview_v_u8((l_hash).e, 32, 0, 32, 3355), coax_p_n98_id(l_e, coax_t741, coax_t742));
+  int64_t l_idc = (coax_t943 = coax_mkview_v_u8((l_work).e, 103424, 0, 103424, 3681), coax_t944 = coax_mkview_v_u8((l_hash).e, 32, 0, 32, 3681), coax_p_n98_id(l_e, coax_t943, coax_t944));
   if (l_idc != INT64_C(0))
   {
     return l_idc;
   }
   coax_t_N98Layout l_l = coax_p_n98_layout();
-  return ((coax_t743 = coax_mkview_v_u8((l_work).e, 103424, (int64_t)((l_l).tags), (int64_t)((l_l).content), 3357), coax_t744 = coax_mkview_v_s64(((l_e).nf).e, 16, 0, 16, 3357), coax_t745 = coax_mkview_v_s64(((l_e).nl).e, 64, 0, 64, 3357), coax_t746 = (coax_k17).e[coax_index(l_i, 86, 3357)], coax_t747 = (coax_k16).e[coax_index(l_i, 86, 3357)], coax_t748 = coax_mkview_v_u8(((l_e).id).e, 64, 0, 64, 3357), coax_t749 = coax_mkview_v_u8(((l_e).pub).e, 64, 0, 64, 3357), coax_t750 = coax_mkview_v_u8((l_out).e, 1233, 0, 1233, 3357), coax_p_n98_rules(coax_t743, coax_t744, coax_t745, (l_e).ntags, (l_e).kind, (l_e).created, l_now, coax_t746, coax_t747, l_bv, coax_t748, coax_t749, coax_t750))).error;
+  return ((coax_t945 = coax_mkview_v_u8((l_work).e, 103424, (int64_t)((l_l).tags), (int64_t)((l_l).content), 3683), coax_t946 = coax_mkview_v_s64(((l_e).nf).e, 16, 0, 16, 3683), coax_t947 = coax_mkview_v_s64(((l_e).nl).e, 64, 0, 64, 3683), coax_t948 = (coax_k25).e[coax_index(l_i, 86, 3683)], coax_t949 = (coax_k24).e[coax_index(l_i, 86, 3683)], coax_t950 = coax_mkview_v_u8(((l_e).id).e, 64, 0, 64, 3683), coax_t951 = coax_mkview_v_u8(((l_e).pub).e, 64, 0, 64, 3683), coax_t952 = coax_mkview_v_u8((l_out).e, 1233, 0, 1233, 3683), coax_p_n98_rules(coax_t945, coax_t946, coax_t947, (l_e).ntags, (l_e).kind, (l_e).created, l_now, coax_t948, coax_t949, l_bv, coax_t950, coax_t951, coax_t952))).error;
 }
 
 static int64_t coax_p_n98t(int64_t l_i) {
@@ -5434,21 +6791,21 @@ static _Bool coax_p_n98t_heavy(int64_t l_want) {
 }
 
 static uint8_t coax_p_n98tb(coax_string l_hex, int64_t l_i) {
-  int64_t coax_t751;
-  int64_t coax_t752;
-  return ((uint8_t)((coax_t751 = coax_mul_s64(coax_p_n98_hexv(coax_byte(l_hex, coax_mul_s64(INT64_C(2), l_i, 3367), 3367)), INT64_C(16), 3367), coax_t752 = coax_p_n98_hexv(coax_byte(l_hex, coax_add_s64(coax_mul_s64(INT64_C(2), l_i, 3367), INT64_C(1), 3367), 3367)), coax_add_s64(coax_t751, coax_t752, 3367))));
+  int64_t coax_t953;
+  int64_t coax_t954;
+  return ((uint8_t)((coax_t953 = coax_mul_s64(coax_p_n98_hexv(coax_byte(l_hex, coax_mul_s64(INT64_C(2), l_i, 3693), 3693)), INT64_C(16), 3693), coax_t954 = coax_p_n98_hexv(coax_byte(l_hex, coax_add_s64(coax_mul_s64(INT64_C(2), l_i, 3693), INT64_C(1), 3693), 3693)), coax_add_s64(coax_t953, coax_t954, 3693))));
 }
 
 static coax_t_N98TJ coax_p_n98tj(coax_string l_lit) {
-  uint8_t * coax_t754;
+  uint8_t * coax_t956;
   coax_t_N98TJ l_r = ((coax_t_N98TJ){0});
   {
-    int64_t coax_lo753 = INT64_C(0);
-    int64_t coax_hi753 = (l_lit).count;
-    for (int64_t l_i = coax_lo753; l_i < coax_hi753; l_i++)
+    int64_t coax_lo955 = INT64_C(0);
+    int64_t coax_hi955 = (l_lit).count;
+    for (int64_t l_i = coax_lo955; l_i < coax_hi955; l_i++)
     {
-      coax_t754 = &(((l_r).j).e[coax_index(l_i, 96, 3370)]);
-      *coax_t754 = coax_byte(l_lit, l_i, 3370);
+      coax_t956 = &(((l_r).j).e[coax_index(l_i, 96, 3696)]);
+      *coax_t956 = coax_byte(l_lit, l_i, 3696);
     }
   }
   (l_r).n = (l_lit).count;
@@ -5456,24 +6813,24 @@ static coax_t_N98TJ coax_p_n98tj(coax_string l_lit) {
 }
 
 static _Bool coax_p_n98ts(coax_string l_lit, int64_t l_cap, coax_string l_want) {
-  coax_v_u8 coax_t755;
-  coax_t_N98Cursor coax_t756;
-  coax_v_u8 coax_t757;
-  uint8_t coax_t759;
-  uint8_t coax_t760;
+  coax_v_u8 coax_t957;
+  coax_t_N98Cursor coax_t958;
+  coax_v_u8 coax_t959;
+  uint8_t coax_t961;
+  uint8_t coax_t962;
   coax_t_N98TJ l_t = coax_p_n98tj(l_lit);
   coax_a16_u8 l_o = ((coax_a16_u8){{((uint8_t)UINT64_C(255)), ((uint8_t)UINT64_C(255)), ((uint8_t)UINT64_C(255)), ((uint8_t)UINT64_C(255)), ((uint8_t)UINT64_C(255)), ((uint8_t)UINT64_C(255)), ((uint8_t)UINT64_C(255)), ((uint8_t)UINT64_C(255)), ((uint8_t)UINT64_C(255)), ((uint8_t)UINT64_C(255)), ((uint8_t)UINT64_C(255)), ((uint8_t)UINT64_C(255)), ((uint8_t)UINT64_C(255)), ((uint8_t)UINT64_C(255)), ((uint8_t)UINT64_C(255)), ((uint8_t)UINT64_C(255))}});
-  coax_t_N98Str l_r = (coax_t755 = coax_mkview_v_u8(((l_t).j).e, 96, (int64_t)(INT64_C(0)), (int64_t)((l_t).n), 3376), coax_t756 = ((coax_t_N98Cursor){.p = INT64_C(0), .end = (l_t).n}), coax_t757 = coax_mkview_v_u8((l_o).e, 16, 0, 16, 3376), coax_p_n98_str(coax_t755, coax_t756, coax_t757, l_cap));
-  if ((((!(l_r).ok) || (((l_r).c).p != (l_t).n)) || (coax_mul_s64((l_r).n, INT64_C(2), 3377) != (l_want).count)) || ((l_o).e[coax_index((l_r).n, 16, 3377)] != ((uint8_t)UINT64_C(0))))
+  coax_t_N98Str l_r = (coax_t957 = coax_mkview_v_u8(((l_t).j).e, 96, (int64_t)(INT64_C(0)), (int64_t)((l_t).n), 3702), coax_t958 = ((coax_t_N98Cursor){.p = INT64_C(0), .end = (l_t).n}), coax_t959 = coax_mkview_v_u8((l_o).e, 16, 0, 16, 3702), coax_p_n98_str(coax_t957, coax_t958, coax_t959, l_cap));
+  if ((((!(l_r).ok) || (((l_r).c).p != (l_t).n)) || (coax_mul_s64((l_r).n, INT64_C(2), 3703) != (l_want).count)) || ((l_o).e[coax_index((l_r).n, 16, 3703)] != ((uint8_t)UINT64_C(0))))
   {
     return 0;
   }
   {
-    int64_t coax_lo758 = INT64_C(0);
-    int64_t coax_hi758 = (l_r).n;
-    for (int64_t l_i = coax_lo758; l_i < coax_hi758; l_i++)
+    int64_t coax_lo960 = INT64_C(0);
+    int64_t coax_hi960 = (l_r).n;
+    for (int64_t l_i = coax_lo960; l_i < coax_hi960; l_i++)
     {
-      if (coax_t759 = (l_o).e[coax_index(l_i, 16, 3378)], coax_t760 = coax_p_n98tb(l_want, l_i), (coax_t759 != coax_t760))
+      if (coax_t961 = (l_o).e[coax_index(l_i, 16, 3704)], coax_t962 = coax_p_n98tb(l_want, l_i), (coax_t961 != coax_t962))
       {
         return 0;
       }
@@ -5483,68 +6840,110 @@ static _Bool coax_p_n98ts(coax_string l_lit, int64_t l_cap, coax_string l_want) 
 }
 
 static _Bool coax_p_n98ts_refused(coax_string l_lit, int64_t l_cap) {
-  coax_v_u8 coax_t761;
-  coax_t_N98Cursor coax_t762;
-  coax_v_u8 coax_t763;
+  coax_v_u8 coax_t963;
+  coax_t_N98Cursor coax_t964;
+  coax_v_u8 coax_t965;
   coax_t_N98TJ l_t = coax_p_n98tj(l_lit);
   coax_a16_u8 l_o = ((coax_a16_u8){0});
-  return (!((coax_t761 = coax_mkview_v_u8(((l_t).j).e, 96, (int64_t)(INT64_C(0)), (int64_t)((l_t).n), 3383), coax_t762 = ((coax_t_N98Cursor){.p = INT64_C(0), .end = (l_t).n}), coax_t763 = coax_mkview_v_u8((l_o).e, 16, 0, 16, 3383), coax_p_n98_str(coax_t761, coax_t762, coax_t763, l_cap))).ok);
+  return (!((coax_t963 = coax_mkview_v_u8(((l_t).j).e, 96, (int64_t)(INT64_C(0)), (int64_t)((l_t).n), 3709), coax_t964 = ((coax_t_N98Cursor){.p = INT64_C(0), .end = (l_t).n}), coax_t965 = coax_mkview_v_u8((l_o).e, 16, 0, 16, 3709), coax_p_n98_str(coax_t963, coax_t964, coax_t965, l_cap))).ok);
 }
 
 static coax_t_N98Int coax_p_n98tib(uint8_t l_b, coax_string l_lit) {
-  uint8_t * coax_t765;
-  coax_v_u8 coax_t766;
-  coax_t_N98Cursor coax_t767;
+  uint8_t * coax_t967;
+  coax_v_u8 coax_t968;
+  coax_t_N98Cursor coax_t969;
   coax_t_N98TJ l_t = ((coax_t_N98TJ){0});
-  ((l_t).j).e[coax_index(INT64_C(0), 96, 3386)] = l_b;
+  ((l_t).j).e[coax_index(INT64_C(0), 96, 3712)] = l_b;
   {
-    int64_t coax_lo764 = INT64_C(0);
-    int64_t coax_hi764 = (l_lit).count;
-    for (int64_t l_i = coax_lo764; l_i < coax_hi764; l_i++)
+    int64_t coax_lo966 = INT64_C(0);
+    int64_t coax_hi966 = (l_lit).count;
+    for (int64_t l_i = coax_lo966; l_i < coax_hi966; l_i++)
     {
-      coax_t765 = &(((l_t).j).e[coax_index(coax_add_s64(l_i, INT64_C(1), 3386), 96, 3386)]);
-      *coax_t765 = coax_byte(l_lit, l_i, 3386);
+      coax_t967 = &(((l_t).j).e[coax_index(coax_add_s64(l_i, INT64_C(1), 3712), 96, 3712)]);
+      *coax_t967 = coax_byte(l_lit, l_i, 3712);
     }
   }
-  return (coax_t766 = coax_mkview_v_u8(((l_t).j).e, 96, (int64_t)(INT64_C(0)), (int64_t)(coax_add_s64((l_lit).count, INT64_C(1), 3386)), 3386), coax_t767 = ((coax_t_N98Cursor){.p = INT64_C(0), .end = coax_add_s64((l_lit).count, INT64_C(1), 3386)}), coax_p_n98_int(coax_t766, coax_t767));
+  return (coax_t968 = coax_mkview_v_u8(((l_t).j).e, 96, (int64_t)(INT64_C(0)), (int64_t)(coax_add_s64((l_lit).count, INT64_C(1), 3712)), 3712), coax_t969 = ((coax_t_N98Cursor){.p = INT64_C(0), .end = coax_add_s64((l_lit).count, INT64_C(1), 3712)}), coax_p_n98_int(coax_t968, coax_t969));
 }
 
 static coax_t_N98Int coax_p_n98ti(coax_string l_lit) {
   coax_t_N98TJ l_t = coax_p_n98tj(l_lit);
-  return coax_p_n98_int(coax_mkview_v_u8(((l_t).j).e, 96, (int64_t)(INT64_C(0)), (int64_t)((l_t).n), 3387), ((coax_t_N98Cursor){.p = INT64_C(0), .end = (l_t).n}));
+  return coax_p_n98_int(coax_mkview_v_u8(((l_t).j).e, 96, (int64_t)(INT64_C(0)), (int64_t)((l_t).n), 3713), ((coax_t_N98Cursor){.p = INT64_C(0), .end = (l_t).n}));
 }
 
 static _Bool coax_p_n98te(coax_string l_hex, int64_t l_cap, coax_string l_want) {
-  uint8_t * coax_t769;
-  coax_v_u8 coax_t770;
-  coax_v_u8 coax_t771;
+  uint8_t * coax_t971;
+  coax_v_u8 coax_t972;
+  coax_v_u8 coax_t973;
   coax_a16_u8 l_raw = ((coax_a16_u8){0});
   {
-    int64_t coax_lo768 = INT64_C(0);
-    int64_t coax_hi768 = coax_div_s64((l_hex).count, INT64_C(2), 3391);
-    for (int64_t l_i = coax_lo768; l_i < coax_hi768; l_i++)
+    int64_t coax_lo970 = INT64_C(0);
+    int64_t coax_hi970 = coax_div_s64((l_hex).count, INT64_C(2), 3717);
+    for (int64_t l_i = coax_lo970; l_i < coax_hi970; l_i++)
     {
-      coax_t769 = &((l_raw).e[coax_index(l_i, 16, 3391)]);
-      *coax_t769 = coax_p_n98tb(l_hex, l_i);
+      coax_t971 = &((l_raw).e[coax_index(l_i, 16, 3717)]);
+      *coax_t971 = coax_p_n98tb(l_hex, l_i);
     }
   }
   coax_a32_u8 l_ser = ((coax_a32_u8){0});
-  coax_t_N98Esc l_e = (coax_t770 = coax_mkview_v_u8((l_raw).e, 16, (int64_t)(INT64_C(0)), (int64_t)(coax_div_s64((l_hex).count, INT64_C(2), 3392)), 3392), coax_t771 = coax_mkview_v_u8((l_ser).e, 32, 0, 32, 3392), coax_p_n98_esc(coax_t770, coax_t771, INT64_C(1), l_cap));
+  coax_t_N98Esc l_e = (coax_t972 = coax_mkview_v_u8((l_raw).e, 16, (int64_t)(INT64_C(0)), (int64_t)(coax_div_s64((l_hex).count, INT64_C(2), 3718)), 3718), coax_t973 = coax_mkview_v_u8((l_ser).e, 32, 0, 32, 3718), coax_p_n98_esc(coax_t972, coax_t973, INT64_C(1), l_cap));
   if (coax_string_eq(l_want, COAX_STR("REFUSED", 7)))
   {
     return (!(l_e).ok);
   }
-  return ((l_e).ok && (coax_string_eq(coax_string_of_bytes(coax_mkview_v_u8((l_ser).e, 32, (int64_t)(INT64_C(1)), (int64_t)((l_e).o), 3394)), l_want)));
+  return ((l_e).ok && (coax_string_eq(coax_string_of_bytes(coax_mkview_v_u8((l_ser).e, 32, (int64_t)(INT64_C(1)), (int64_t)((l_e).o), 3720)), l_want)));
 }
 
 static _Bool coax_p_n98thex(coax_string l_lit, int64_t l_n, int64_t l_want) {
   coax_t_N98TJ l_t = coax_p_n98tj(l_lit);
-  return coax_p_n98_is_hex(coax_mkview_v_u8(((l_t).j).e, 96, 0, 96, 3397), l_n, l_want);
+  return coax_p_n98_is_hex(coax_mkview_v_u8(((l_t).j).e, 96, 0, 96, 3723), l_n, l_want);
 }
 
 static int64_t coax_p_n98tkey(coax_string l_lit) {
   coax_t_N98TJ l_t = coax_p_n98tj(l_lit);
-  return coax_p_n98_key(coax_mkview_v_u8(((l_t).j).e, 96, 0, 96, 3398), (l_t).n);
+  return coax_p_n98_key(coax_mkview_v_u8(((l_t).j).e, 96, 0, 96, 3724), (l_t).n);
+}
+
+static _Bool coax_p_crypto_zeroed__3u32(coax_v_u32 l_data) {
+  uint32_t l_zero = ((uint32_t)0);
+  _Bool l_clean = 1;
+  {
+    coax_v_u32 coax_c974 = l_data;
+    for (int64_t coax_i974 = 0; coax_i974 < coax_c974.count; coax_i974++)
+    {
+      uint32_t l_word = coax_c974.data[coax_i974];
+      l_clean = ((l_word == l_zero) && l_clean);
+    }
+  }
+  return l_clean;
+}
+
+static _Bool coax_p_crypto_zeroed__2u8(coax_v_u8 l_data) {
+  uint8_t l_zero = ((uint8_t)0);
+  _Bool l_clean = 1;
+  {
+    coax_v_u8 coax_c975 = l_data;
+    for (int64_t coax_i975 = 0; coax_i975 < coax_c975.count; coax_i975++)
+    {
+      uint8_t l_word = coax_c975.data[coax_i975];
+      l_clean = ((l_word == l_zero) && l_clean);
+    }
+  }
+  return l_clean;
+}
+
+static _Bool coax_p_crypto_zeroed__3u64(coax_v_u64 l_data) {
+  uint64_t l_zero = ((uint64_t)0);
+  _Bool l_clean = 1;
+  {
+    coax_v_u64 coax_c976 = l_data;
+    for (int64_t coax_i976 = 0; coax_i976 < coax_c976.count; coax_i976++)
+    {
+      uint64_t l_word = coax_c976.data[coax_i976];
+      l_clean = ((l_word == l_zero) && l_clean);
+    }
+  }
+  return l_clean;
 }
 
 /* Struct defaults for hosts: coax_default_T writes T's declared defaults in place. */

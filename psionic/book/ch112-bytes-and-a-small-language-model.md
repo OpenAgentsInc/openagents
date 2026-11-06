@@ -49,7 +49,7 @@ validation and test data never enter an update or a fitted preprocessing step.
 
 <!-- source: psionic/lib/byte-lm.coax train -->
 ```jai
-bg_fit :: (train:[]u8,steps:int,rate:f64,weights:[]f64,stage:[]f64,trace:[]f64,overlap:bool)->BgFit #export_c {
+bg_fit :: (train:[]u8,steps:int,rate:f64,weights:[]f64,stage:[]f64,trace:[]f64,overlap:bool)->BgFit #export_c #effects(all) {
  if overlap {return BgFit.{status=BgStatus.alias};}if !bg_data(train.count) || !bg_weights(weights.count) || !bg_weights(stage.count) {return BgFit.{status=BgStatus.shape};}if !bg_steps(steps) {return BgFit.{status=BgStatus.steps};}if !bg_rate(rate) {return BgFit.{status=BgStatus.number};}if trace.count<steps+1 {return BgFit.{status=BgStatus.capacity};}
  counts:[65536]int;bg_counts(train,counts[..]);for i:0..<65536 {stage[i]=0;}losses:[65]f64;total:=train.count-1;losses[0]=bg_count_loss(counts[..],stage,total);
  for step:0..<steps {bg_update(counts[..],stage,total,rate);losses[step+1]=bg_count_loss(counts[..],stage,total);}

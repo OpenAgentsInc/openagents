@@ -36,7 +36,7 @@ N22Comment :: struct {
 }
 
 // names: the scope letters E, A, I, then the kind and author letters K and P.
-n22_scope :: (e:NtEvent,names:string)->N22Scope {
+n22_scope :: (e:NtEvent,names:string)->N22Scope #effects(all) {
  s:N22Scope;
  for i:0..<3 {
   s.at=names[i];s.ref=nt_tag(e,names[i..<i+1],0);
@@ -59,13 +59,13 @@ n22_scope :: (e:NtEvent,names:string)->N22Scope {
 // A comment's parent is the root item (a top-level comment) or another
 // comment under it (kind 1111). Any other parent kind must be the root's
 // kind, as spelled in K, or the comment refuses.
-n22_kinds :: (e:NtEvent,c:N22Comment)->int {
+n22_kinds :: (e:NtEvent,c:N22Comment)->int #effects(all) {
  if c.parent.kind_value==N34_KIND_COMMENT {return N34_OK;}
  if nt_raw(e,c.parent.kind.v[0])!=nt_raw(e,c.root.kind.v[0]) {return N22_KINDS;}
  return N34_OK;
 }
 // book:end kinds
-n22_comment :: (e:NtEvent)->N22Comment #export_c {
+n22_comment :: (e:NtEvent)->N22Comment #export_c #effects(all) {
  c:N22Comment;c.status=n34_start(e,N34_KIND_COMMENT);if c.status!=N34_OK {return c;}
  c.root=n22_scope(e,"EAIKP");c.parent=n22_scope(e,"eaikp");
  c.revision=nt_tag(e,"revision",0);c.claim=nt_tag(e,"claim",0);c.by=nt_tag(e,"by",0);
@@ -82,7 +82,7 @@ n22_comment :: (e:NtEvent)->N22Comment #export_c {
 
 N22_HEX :: "09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af";
 // An issue comment's scope tags, as the project CLI writes them, then extra.
-n22_event :: (out:[]u8,extra:string)->NtEvent {
+n22_event :: (out:[]u8,extra:string)->NtEvent #effects(all) {
  n:=json_raw(out,0,"[[\"E\",\"");n=json_raw(out,n,N22_HEX);n=json_raw(out,n,"\",\"wss://r\",\"");n=json_raw(out,n,N22_HEX);
  n=json_raw(out,n,"\"],[\"K\",\"1621\"],[\"P\",\"");n=json_raw(out,n,N22_HEX);n=json_raw(out,n,"\"],[\"e\",\"");n=json_raw(out,n,N22_HEX);
  n=json_raw(out,n,"\",\"wss://r\",\"");n=json_raw(out,n,N22_HEX);n=json_raw(out,n,"\"],[\"k\",\"1621\"],[\"p\",\"");n=json_raw(out,n,N22_HEX);

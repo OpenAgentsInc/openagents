@@ -23,7 +23,7 @@
   #assert !pr_full_hash("/123456789abcdef0123456789abcdef01234567") && !pr_full_hash(":123456789abcdef0123456789abcdef01234567");
   #assert !pr_full_hash("`123456789abcdef0123456789abcdef01234567");
 }
-pr_full_hash :: (h: string) -> bool {
+pr_full_hash :: (h: string) -> bool #effects(all) {
   if h.count != 40 { return false; }
   for c: h { if !(pr_is_digit(c) || (c >= 'a' && c <= 'f')) { return false; } }
   return true;
@@ -39,7 +39,7 @@ pr_full_hash :: (h: string) -> bool {
   #assert !pr_slug_ok("") && !pr_slug_ok("-a") && !pr_slug_ok("A") && !pr_slug_ok("a_b") && !pr_slug_ok("a b") && !pr_slug_ok("a:b");
   #assert !pr_slug_ok("a/") && !pr_slug_ok("a`") && !pr_slug_ok("a{") && !pr_slug_ok("a,") && !pr_slug_ok("a.");
 }
-pr_slug_ok :: (s: string) -> bool {
+pr_slug_ok :: (s: string) -> bool #effects(all) {
   if s.count < 1 || s.count > 64 { return false; }
   first := true;
   for c: s {
@@ -49,11 +49,11 @@ pr_slug_ok :: (s: string) -> bool {
   }
   return true;
 }
-pr_lower :: (c: u8) -> bool { return c >= 'a' && c <= 'z'; }
-pr_is_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
-pr_word_byte :: (c: u8) -> bool { return pr_lower(c) || (c >= 'A' && c <= 'Z') || pr_is_digit(c) || c == '_'; }
+pr_lower :: (c: u8) -> bool #effects(all) { return c >= 'a' && c <= 'z'; }
+pr_is_digit :: (c: u8) -> bool #effects(all) { return c >= '0' && c <= '9'; }
+pr_word_byte :: (c: u8) -> bool #effects(all) { return pr_lower(c) || (c >= 'A' && c <= 'Z') || pr_is_digit(c) || c == '_'; }
 // The byte at k, or 0 outside the text.
-pr_at :: (t: string, k: int) -> u8 { return ifx k >= 0 && k < t.count then t[k] else 0; }
+pr_at :: (t: string, k: int) -> u8 #effects(all) { return ifx k >= 0 && k < t.count then t[k] else 0; }
 #test "letters, digits and bytes" {
   #assert pr_lower('a') && pr_lower('z') && !pr_lower('`') && !pr_lower('{') && !pr_lower('A');
   #assert pr_is_digit('0') && pr_is_digit('9') && !pr_is_digit('/') && !pr_is_digit(':');
@@ -68,7 +68,7 @@ pr_at :: (t: string, k: int) -> u8 { return ifx k >= 0 && k < t.count then t[k] 
   #assert pr_need_ok("coax:cli-relay") && pr_need_ok("a:b") && pr_need_ok("ab:cd");
   #assert !pr_need_ok("coax") && !pr_need_ok(":a") && !pr_need_ok("a:") && !pr_need_ok("a:b:c") && !pr_need_ok("A:b") && !pr_need_ok("a:B") && !pr_need_ok("");
 }
-pr_need_ok :: (s: string) -> bool {
+pr_need_ok :: (s: string) -> bool #effects(all) {
   i := 0;
   for c: s {
     if c == ':' { return pr_slug_ok(s[0..<i]) && pr_slug_ok(s[i + 1..<s.count]); }
@@ -95,12 +95,12 @@ pr_need_ok :: (s: string) -> bool {
   odd := [3] u8.[0x80, 0xbf, 0xc0];
   #assert pr_code_points(cast(string) odd[..]) == 1;
 }
-pr_code_points :: (s: string) -> int {
+pr_code_points :: (s: string) -> int #effects(all) {
   n := 0;
   for c: s { if (c & 0xc0) != 0x80 { n += 1; } }
   return n;
 }
-pr_title_ok :: (t: string) -> bool {
+pr_title_ok :: (t: string) -> bool #effects(all) {
   n := pr_code_points(t);
   if n < 1 || n > 200 { return false; }
   // a word that starts CX or M, then an optional '-', then digits to the word's end
@@ -131,9 +131,9 @@ PR_READY :: 0; PR_WAITING :: 1; PR_DONE :: 2; PR_NOT_TASK :: 3;
   #assert pr_standing(true, "open", false, true) == PR_WAITING && pr_standing(true, "open", false, false) == PR_READY;
   #assert pr_finished("resolved") && pr_finished("closed") && !pr_finished("open") && !pr_finished("draft");
 }
-pr_finished :: (status: string) -> bool { return status == "resolved" || status == "closed"; }
+pr_finished :: (status: string) -> bool #effects(all) { return status == "resolved" || status == "closed"; }
 // outside: another project's issue it needs is not done; blocked: one of its blockers is not finished.
-pr_standing :: (task: bool, status: string, outside: bool, blocked: bool) -> int {
+pr_standing :: (task: bool, status: string, outside: bool, blocked: bool) -> int #effects(all) {
   if !task { return PR_NOT_TASK; }
   if pr_finished(status) { return PR_DONE; }
   if status == "draft" || outside || blocked { return PR_WAITING; }
@@ -148,7 +148,7 @@ PR_CLAIM :: 0; PR_CLAIM_NOT_TASK :: 1; PR_CLAIM_FINISHED :: 2; PR_CLAIM_TAKEN ::
   #assert pr_claim(true, "closed", "a", "a") == PR_CLAIM_FINISHED && pr_claim(true, "open", "b", "a") == PR_CLAIM_TAKEN;
   #assert pr_claim(true, "open", "a", "a") == PR_CLAIM_MINE;
 }
-pr_claim :: (task: bool, status: string, holder: string, by: string) -> int {
+pr_claim :: (task: bool, status: string, holder: string, by: string) -> int #effects(all) {
   if !task { return PR_CLAIM_NOT_TASK; }
   if pr_finished(status) { return PR_CLAIM_FINISHED; }
   if holder.count > 0 && holder != by { return PR_CLAIM_TAKEN; }
@@ -167,7 +167,7 @@ pr_claim :: (task: bool, status: string, holder: string, by: string) -> int {
   for i: 0..<65 { long[i] = 'n'; }
   #assert !pr_name_ok(cast(string) long[..]) && pr_name_ok(cast(string) long[0..<64]);
 }
-pr_name_ok :: (s: string) -> bool {
+pr_name_ok :: (s: string) -> bool #effects(all) {
   if s.count < 1 || s.count > 64 || s[0] == ' ' || s[s.count - 1] == ' ' { return false; }
   for c: s { if c < 32 || c > 126 { return false; } }
   return true;
@@ -181,7 +181,7 @@ pr_name_ok :: (s: string) -> bool {
 #test "signing times only go up" {
   #assert pr_next_at(100, 50) == 100 && pr_next_at(100, 100) == 101 && pr_next_at(100, 200) == 201 && pr_next_at(100, 99) == 100;
 }
-pr_next_at :: (now: int, last: int) -> int { return ifx now > last then now else last + 1; }
+pr_next_at :: (now: int, last: int) -> int #effects(all) { return ifx now > last then now else last + 1; }
 
 // ---- plans -------------------------------------------------------------------
 
@@ -189,16 +189,16 @@ pr_next_at :: (now: int, last: int) -> int { return ifx now > last then now else
 // publishes the whole list again (model.ts planText).
 PR_STEPS :: 64; PR_PLAN_BYTES :: 16384;
 PrPlan :: struct { n: int; mark: [PR_STEPS] u8; from: [PR_STEPS] int; len: [PR_STEPS] int; bytes: [PR_PLAN_BYTES] u8; used: int; bad: bool; }
-pr_step :: (p: [] PrPlan, k: int) -> string { return cast(string) p[0].bytes[p[0].from[k]..<p[0].from[k] + p[0].len[k]]; }
-pr_space :: (c: u8) -> bool { return c == ' ' || (c >= 9 && c <= 13); }
-pr_plan_trim :: (s: string) -> string {
+pr_step :: (p: [] PrPlan, k: int) -> string #effects(all) { return cast(string) p[0].bytes[p[0].from[k]..<p[0].from[k] + p[0].len[k]]; }
+pr_space :: (c: u8) -> bool #effects(all) { return c == ' ' || (c >= 9 && c <= 13); }
+pr_plan_trim :: (s: string) -> string #effects(all) {
   a := 0; b := s.count;
   while a < b && pr_space(s[a]) { a += 1; }
   while b > a && pr_space(s[b - 1]) { b -= 1; }
   return s[a..<b];
 }
 // Adds a step (trimmed); an empty one is skipped, as model.ts drops them.
-pr_plan_add :: (p: [] PrPlan, mark: u8, text: string) {
+pr_plan_add :: (p: [] PrPlan, mark: u8, text: string) #effects(all) {
   t := pr_plan_trim(text);
   if t.count == 0 { return; }
   if p[0].n >= PR_STEPS || p[0].used + t.count > PR_PLAN_BYTES { p[0].bad = true; return; }
@@ -250,7 +250,7 @@ pr_plan_add :: (p: [] PrPlan, mark: u8, text: string) {
 PR_START :: 1; PR_CHECK :: 2; PR_UNCHECK :: 3;
 // Marks step k (from 1): start makes it the one being done (one at a time),
 // check marks it done, uncheck to do. False when there is no step k.
-pr_plan_mark :: (p: [] PrPlan, op: int, k: int) -> bool {
+pr_plan_mark :: (p: [] PrPlan, op: int, k: int) -> bool #effects(all) {
   if k < 1 || k > p[0].n { return false; }
   if op == PR_START {
     for i: 0..<p[0].n { if p[0].mark[i] == '>' { p[0].mark[i] = ' '; } }
@@ -261,19 +261,19 @@ pr_plan_mark :: (p: [] PrPlan, op: int, k: int) -> bool {
   if op == PR_UNCHECK { p[0].mark[k - 1] = ' '; return true; }
   return false;
 }
-pr_plan_drop :: (p: [] PrPlan, k: int) -> bool {
+pr_plan_drop :: (p: [] PrPlan, k: int) -> bool #effects(all) {
   if k < 1 || k > p[0].n { return false; }
   for i: k..<p[0].n { p[0].mark[i - 1] = p[0].mark[i]; p[0].from[i - 1] = p[0].from[i]; p[0].len[i - 1] = p[0].len[i]; }
   p[0].n -= 1;
   return true;
 }
-pr_plan_done :: (p: [] PrPlan) -> int {
+pr_plan_done :: (p: [] PrPlan) -> int #effects(all) {
   n := 0;
   for i: 0..<p[0].n { if p[0].mark[i] == 'x' { n += 1; } }
   return n;
 }
 // "- [m] text" a line; "" when out is too small.
-pr_plan_text :: (p: [] PrPlan, out: [] u8) -> string {
+pr_plan_text :: (p: [] PrPlan, out: [] u8) -> string #effects(all) {
   n := 0;
   for i: 0..<p[0].n {
     t := pr_step(p, i);
@@ -306,19 +306,19 @@ PR_ORDER_FIXED_TAGS :: 3;    // an order's d, a and alt tags
   #assert pr_before("1", "2") && pr_before("1", "11") && !pr_before("11", "1") && !pr_before("1", "1") && pr_before("", "1") && !pr_before("a", "Z");
   #assert pr_before("11", "12") && !pr_before("12", "11") && !pr_before("", "") && pr_before("1a", "1b");
 }
-pr_digit :: (c: u8) -> int {
+pr_digit :: (c: u8) -> int #effects(all) {
   if pr_is_digit(c) { return cast(int) (c - '0'); }
   if c >= 'A' && c <= 'Z' { return cast(int) (c - 'A') + 10; }
   if pr_lower(c) { return cast(int) (c - 'a') + 36; }
   return -1;
 }
-pr_rank_ok :: (r: string) -> bool {
+pr_rank_ok :: (r: string) -> bool #effects(all) {
   if r.count == 0 || r[r.count - 1] == '0' { return false; }
   for c: r { if pr_digit(c) == -1 { return false; } }
   return true;
 }
 // Bytewise a < b.
-pr_before :: (a: string, b: string) -> bool {
+pr_before :: (a: string, b: string) -> bool #effects(all) {
   for i: 0..<a.count {
     if i >= b.count { return false; }
     if a[i] < b[i] { return true; }
@@ -358,21 +358,21 @@ pr_before :: (a: string, b: string) -> bool {
   #assert pr_pad("1", 0) == '1' && pr_pad("1", 1) == '0' && pr_pad("", 0) == '0';
   #assert pr_put(out[0..<1], 0, 'z') && out[0] == 'z' && !pr_put(out[0..<1], 1, 'z');
 }
-pr_between :: (a: string, b: string, has_b: bool, out: [] u8, at: int) -> int {
+pr_between :: (a: string, b: string, has_b: bool, out: [] u8, at: int) -> int #effects(all) {
   if a.count > 0 && !pr_rank_ok(a) { return -1; }
   if has_b && (!pr_rank_ok(b) || !pr_before(a, b)) { return -1; }
   if at < 0 { return -1; }
   return pr_mid(a, 0, b, 0, has_b, out, at);
 }
 // a's digit k, reading a as padded with zeros.
-pr_pad :: (a: string, k: int) -> u8 { return ifx k < a.count then a[k] else cast(u8) '0'; }
-pr_put :: (out: [] u8, at: int, c: u8) -> bool {
+pr_pad :: (a: string, k: int) -> u8 #effects(all) { return ifx k < a.count then a[k] else cast(u8) '0'; }
+pr_put :: (out: [] u8, at: int, c: u8) -> bool #effects(all) {
   if at >= out.count { return false; }
   out[at] = c;
   return true;
 }
 // The midpoint of a[ai..] and b[bi..] (a < b); positions, not slices.
-pr_mid :: (a: string, ai: int, b: string, bi: int, has_b: bool, out: [] u8, at: int) -> int {
+pr_mid :: (a: string, ai: int, b: string, bi: int, has_b: bool, out: [] u8, at: int) -> int #effects(all) {
   if has_b {
     // the common prefix (it ends before b does: a < b)
     n := 0;
@@ -394,9 +394,9 @@ pr_mid :: (a: string, ai: int, b: string, bi: int, has_b: bool, out: [] u8, at: 
 // Ranks in order, in one buffer.
 PR_RANKS :: 1024; PR_RANK_BYTES :: 16384;
 PrRanks :: struct { n: int; from: [PR_RANKS] int; len: [PR_RANKS] int; bytes: [PR_RANK_BYTES] u8; used: int; bad: bool; }
-pr_rank :: (rs: [] PrRanks, i: int) -> string { return cast(string) rs[0].bytes[rs[0].from[i]..<rs[0].from[i] + rs[0].len[i]]; }
-pr_ranks_clear :: (rs: [] PrRanks) { rs[0].n = 0; rs[0].used = 0; rs[0].bad = false; }
-pr_ranks_push :: (rs: [] PrRanks, r: string) {
+pr_rank :: (rs: [] PrRanks, i: int) -> string #effects(all) { return cast(string) rs[0].bytes[rs[0].from[i]..<rs[0].from[i] + rs[0].len[i]]; }
+pr_ranks_clear :: (rs: [] PrRanks) #effects(all) { rs[0].n = 0; rs[0].used = 0; rs[0].bad = false; }
+pr_ranks_push :: (rs: [] PrRanks, r: string) #effects(all) {
   if rs[0].n >= PR_RANKS || rs[0].used + r.count > PR_RANK_BYTES { rs[0].bad = true; return; }
   for i: 0..<r.count { rs[0].bytes[rs[0].used + i] = r[i]; }
   rs[0].from[rs[0].n] = rs[0].used; rs[0].len[rs[0].n] = r.count; rs[0].used += r.count; rs[0].n += 1;
@@ -446,12 +446,12 @@ pr_ranks_push :: (rs: [] PrRanks, r: string) {
   #assert pr_spread_at(1000000, 1, out[..]) == 4 && pr_spread_at(1000001, 1, out[..]) == -1;
 }
 // The narrowest width that leaves room between neighbours: 62^width at least 4 (n + 1).
-pr_spread_width :: (n: int) -> int {
+pr_spread_width :: (n: int) -> int #effects(all) {
   width := 1; p := PR_BASE;
   while p < 4 * (n + 1) { width += 1; p *= PR_BASE; }
   return width;
 }
-pr_spread_at :: (n: int, i: int, out: [] u8) -> int {
+pr_spread_at :: (n: int, i: int, out: [] u8) -> int #effects(all) {
   if n < 1 || n > 1000000 || i < 1 || i > n { return -1; }
   width := pr_spread_width(n);
   if out.count < width { return -1; }
@@ -465,7 +465,7 @@ pr_spread_at :: (n: int, i: int, out: [] u8) -> int {
   return m;
 }
 // n spread ranks into rs.
-pr_spread :: (n: int, rs: [] PrRanks) {
+pr_spread :: (n: int, rs: [] PrRanks) #effects(all) {
   pr_ranks_clear(rs);
   out: [16] u8;
   for i: 1..<n + 1 {
@@ -499,7 +499,7 @@ pr_spread :: (n: int, rs: [] PrRanks) {
   pr_spread_between("2", "1", true, 1, bad[..]);
   #assert bad[0].bad;
 }
-pr_spread_between :: (a: string, b: string, has_b: bool, k: int, rs: [] PrRanks) {
+pr_spread_between :: (a: string, b: string, has_b: bool, k: int, rs: [] PrRanks) #effects(all) {
   if k <= 0 { return; }
   mid: [PR_RANK] u8;
   n := pr_between(a, b, has_b, mid[..], 0);
@@ -528,11 +528,11 @@ pr_spread_between :: (a: string, b: string, has_b: bool, k: int, rs: [] PrRanks)
   pr_rebalance(s[..]);
   #assert pr_rank(s[..], 0) == "5" && s[0].n == 10;
 }
-pr_long :: (rs: [] PrRanks) -> bool {
+pr_long :: (rs: [] PrRanks) -> bool #effects(all) {
   for i: 0..<rs[0].n { if rs[0].len[i] > PR_LONG { return true; } }
   return false;
 }
-pr_rebalance :: (rs: [] PrRanks) {
+pr_rebalance :: (rs: [] PrRanks) #effects(all) {
   if pr_long(rs) { pr_spread(rs[0].n, rs); }
 }
 
@@ -552,7 +552,7 @@ pr_rebalance :: (rs: [] PrRanks) {
   #assert cast(string) out[0..<n] == "s";
   #assert pr_placed(rs[..], 3, false, out[..]) == -1 && pr_placed(rs[..], -1, true, out[..]) == -1;
 }
-pr_placed :: (rs: [] PrRanks, k: int, before: bool, out: [] u8) -> int {
+pr_placed :: (rs: [] PrRanks, k: int, before: bool, out: [] u8) -> int #effects(all) {
   if k < 0 || k >= rs[0].n { return -1; }
   if before { return pr_between(ifx k > 0 then pr_rank(rs, k - 1) else "", pr_rank(rs, k), true, out, 0); }
   more := k + 1 < rs[0].n;
@@ -606,7 +606,7 @@ pr_placed :: (rs: [] PrRanks, k: int, before: bool, out: [] u8) -> int {
   // the order event's size against the relay's tag limit
   #assert pr_order_fits(253) && !pr_order_fits(254) && pr_order_fits(0);
 }
-pr_queue_order :: (ranks: [] string, status: [] string, pos: [] int, idx: [] int, rs: [] PrRanks) -> int {
+pr_queue_order :: (ranks: [] string, status: [] string, pos: [] int, idx: [] int, rs: [] PrRanks) -> int #effects(all) {
   pr_ranks_clear(rs);
   n := 0;
   // ranked, by rank (stable)
@@ -632,7 +632,7 @@ pr_queue_order :: (ranks: [] string, status: [] string, pos: [] int, idx: [] int
   pr_rebalance(rs);
   return ifx rs[0].bad then -1 else n;
 }
-pr_order_fits :: (items: int) -> bool { return items + PR_ORDER_FIXED_TAGS <= PR_RELAY_MAX_TAGS; }
+pr_order_fits :: (items: int) -> bool #effects(all) { return items + PR_ORDER_FIXED_TAGS <= PR_RELAY_MAX_TAGS; }
 
 // ---- reading a relay in pages ---------------------------------------------------
 
@@ -658,7 +658,7 @@ PrPage :: struct { state: int; until: int; }
   #assert pr_page(1, 1001, 1000, true, false).state == PR_PAGE_BAD && pr_page(1, -1, 0, false, false).state == PR_PAGE_BAD;
   #assert pr_page(3, 0, 0, false, false).state == PR_PAGE_MORE && pr_page(3, 0, 5, true, false).until == 0;
 }
-pr_page :: (got: int, oldest: int, until: int, has_until: bool, finish: bool) -> PrPage {
+pr_page :: (got: int, oldest: int, until: int, has_until: bool, finish: bool) -> PrPage #effects(all) {
   p := PrPage.{state = PR_PAGE_END, until = until};
   if got == 0 || finish { return p; }
   if oldest < 0 || (has_until && oldest > until) { p.state = PR_PAGE_BAD; return p; }

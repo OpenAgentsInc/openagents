@@ -69,7 +69,7 @@ RTX 4080. Asked twice, the engine gave identical answers.
 // The set is lines: the version, "identity ID", "tolerance BILLIONTHS", then
 // for each case "case QUESTION", "request JSON" and "expect noul N" or
 // "expect choice CHOICE OPTION=N ...". The first bad line refuses the set.
-ps_read_set :: (text:string,cases:[]PsCase)->PsSet #export_c {
+ps_read_set :: (text:string,cases:[]PsCase)->PsSet #export_c #effects(all) {
     s:PsSet;at:=0;n:=0;
     while true {
         end:=at;while end<text.count && text[end]!='\n' {end+=1;}
@@ -118,7 +118,7 @@ The first bad line refuses the whole set, and the refusal names its line.
 ```jai
 // An answer's probability as billionths, exactly from its decimal text: 0 to
 // 1 with at most nine places; anything else is -1.
-ps_nanos :: (s:string)->int #export_c {
+ps_nanos :: (s:string)->int #export_c #effects(all) {
     if s.count==0 || (s[0]!='0' && s[0]!='1') {return -1;}
     whole:=cast(int)(s[0]-'0');
     if s.count==1 {return whole*PS_NANO;}
@@ -143,7 +143,7 @@ with at most nine places is malformed.
 ```jai
 // The one question's answer and the engine's identity, from the JSON answer.
 // Anything malformed returns at once, still marked shape.
-ps_answer :: (body:string,question:string)->PsAnswer #export_c {
+ps_answer :: (body:string,question:string)->PsAnswer #export_c #effects(all) {
     a:PsAnswer;a.status=PsCode.shape;got:PsAnswer;found:=false;identity:="";
     j:[1]Json;json_start(j[..],body);
     if json_next(j[..])!=JSON_OBJECT {return a;}
@@ -193,7 +193,7 @@ returns at once.
 ```jai
 // Same kind, same choice, the same options, and each value within the
 // tolerance. A pass carries the largest error; a failure names its option.
-ps_compare :: (c:PsCase,a:PsAnswer,tolerance:int)->PsItem #export_c {
+ps_compare :: (c:PsCase,a:PsAnswer,tolerance:int)->PsItem #export_c #effects(all) {
     r:PsItem;r.option=-1;
     if a.status!=PsCode.pass {r.code=a.status;return r;}
     if a.kind!=c.kind {r.code=PsCode.kind;return r;}
@@ -221,7 +221,7 @@ ps_compare :: (c:PsCase,a:PsAnswer,tolerance:int)->PsItem #export_c {
 ```jai
 // Every case against the engine's answer to its request, in order. The set
 // must be for the engine's identity, and each answer must name no other.
-ps_check :: (s:PsSet,cases:[]PsCase,identity:string,answers:[]string)->PsCheck #export_c {
+ps_check :: (s:PsSet,cases:[]PsCase,identity:string,answers:[]string)->PsCheck #export_c #effects(all) {
     r:PsCheck;
     if s.status!=PsStatus.ok || s.count==0 {r.verdict=PsVerdict.no_references;return r;}
     if s.identity!=identity {r.verdict=PsVerdict.other_model;return r;}
@@ -263,7 +263,7 @@ tolerance can be much tighter.
 ```jai
 // last: the identity this Pylon served before ("" on its first start);
 // declared: the identity named on the command line ("" when none).
-ps_gate :: (last:string,declared:string,engine:string)->PsGate #export_c {
+ps_gate :: (last:string,declared:string,engine:string)->PsGate #export_c #effects(all) {
     if engine.count==0 {return PsGate.unnamed;}
     if declared.count>0 && declared!=engine {return PsGate.other;}
     if last.count==0 {return PsGate.first;}
@@ -271,7 +271,7 @@ ps_gate :: (last:string,declared:string,engine:string)->PsGate #export_c {
     if declared.count>0 {return PsGate.declared;}
     return PsGate.undeclared;
 }
-ps_gate_ok :: (g:PsGate)->bool #export_c {return g==PsGate.first || g==PsGate.same || g==PsGate.declared;}
+ps_gate_ok :: (g:PsGate)->bool #export_c #effects(all) {return g==PsGate.first || g==PsGate.same || g==PsGate.declared;}
 ```
 
 The Pylon keeps the identity it last served in a one-line state file. A
@@ -284,7 +284,7 @@ identity that differs from the engine's refuses too.
 
 <!-- source: psionic/lib/pylon/selfcheck.coax doctor -->
 ```jai
-ps_doctor :: (f:PsFacts)->PsStep #export_c {
+ps_doctor :: (f:PsFacts)->PsStep #export_c #effects(all) {
     if !f.config {return PsStep.config;}
     if !f.engine {return PsStep.engine;}
     if !ps_gate_ok(f.gate) {return PsStep.identity;}
@@ -292,7 +292,7 @@ ps_doctor :: (f:PsFacts)->PsStep #export_c {
     if f.verdict!=PsVerdict.passed {return PsStep.check;}
     return PsStep.healthy;
 }
-ps_may_serve :: (f:PsFacts)->bool #export_c {return ps_doctor(f)==PsStep.healthy;}
+ps_may_serve :: (f:PsFacts)->bool #export_c #effects(all) {return ps_doctor(f)==PsStep.healthy;}
 ```
 
 `pylon --doctor` runs only the read-only steps:

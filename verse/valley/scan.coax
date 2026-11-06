@@ -11,13 +11,13 @@ Scan :: struct {p:[SCAN_VERTICES]Point;n:[SCAN_VERTICES]Point;c:[SCAN_VERTICES]P
   b:[4]u8;scan_put(b[..],0,0x40302010);#assert b[0]==16 && b[1]==32 && b[2]==48 && b[3]==64 && scan_u32(b[..],0)==0x40302010;
   scan_put(b[..],0,f32_bits(-1.5));#assert scan_float(b[..],0)== -1.5;
 }
-scan_u32 :: (b:[]u8,k:int)->u32 {return cast(u32)b[k] | (cast(u32)b[k+1]<<8) | (cast(u32)b[k+2]<<16) | (cast(u32)b[k+3]<<24);}
-scan_float :: (b:[]u8,k:int)->f32 {return f32_from_bits(scan_u32(b,k));}
-scan_put :: (b:[]u8,k:int,v:u32) {for j:0..<4 {b[k+j]=cast,trunc(u8)(v>>(j*8));}}
-scan_point :: (b:[]u8,k:int)->Point {return v3(scan_float(b,k),scan_float(b,k+4),scan_float(b,k+8));}
-scan_write_point :: (b:[]u8,k:int,p:Point) {scan_put(b,k,f32_bits(p.x));scan_put(b,k+4,f32_bits(p.y));scan_put(b,k+8,f32_bits(p.z));}
+scan_u32 :: (b:[]u8,k:int)->u32 #effects(all) {return cast(u32)b[k] | (cast(u32)b[k+1]<<8) | (cast(u32)b[k+2]<<16) | (cast(u32)b[k+3]<<24);}
+scan_float :: (b:[]u8,k:int)->f32 #effects(all) {return f32_from_bits(scan_u32(b,k));}
+scan_put :: (b:[]u8,k:int,v:u32) #effects(all) {for j:0..<4 {b[k+j]=cast,trunc(u8)(v>>(j*8));}}
+scan_point :: (b:[]u8,k:int)->Point #effects(all) {return v3(scan_float(b,k),scan_float(b,k+4),scan_float(b,k+8));}
+scan_write_point :: (b:[]u8,k:int,p:Point) #effects(all) {scan_put(b,k,f32_bits(p.x));scan_put(b,k+4,f32_bits(p.y));scan_put(b,k+8,f32_bits(p.z));}
 // Used only after the shared hash/shape/value/index admission gate succeeds.
-scan_decode :: (s:[]Scan,b:[]u8) {
+scan_decode :: (s:[]Scan,b:[]u8) #effects(all) {
   s[0].vertices=cast(int)scan_u32(b,4);s[0].indices=cast(int)scan_u32(b,8);
   for k:0..<s[0].vertices {s[0].p[k]=scan_point(b,16+k*36);s[0].n[k]=scan_point(b,28+k*36);s[0].c[k]=scan_point(b,40+k*36);}
   for k:0..<s[0].indices {s[0].i[k]=scan_u32(b,16+s[0].vertices*36+k*4);}
@@ -38,7 +38,7 @@ scan_decode :: (s:[]Scan,b:[]u8) {
 }
 // Structural parsing is separate from content identity/admission (aethyr/assets.coax).
 // The caller supplies scratch, never the retained live mesh.
-scan_read :: (candidate:[]Scan,b:[]u8)->bool {
+scan_read :: (candidate:[]Scan,b:[]u8)->bool #effects(all) {
   if !scan_header(b) {return false;}
   nv:=cast(int)scan_u32(b,4);ni:=cast(int)scan_u32(b,8);
   if !scan_counts(nv,ni) || b.count!=16+nv*36+ni*4 {return false;}
@@ -46,10 +46,10 @@ scan_read :: (candidate:[]Scan,b:[]u8)->bool {
   for k:0..<nv {if !scan_rgb(scan_point(b,40+k*36)) {return false;}}
   scan_decode(candidate,b);return candidate[0].measured.status==IndexedStatus.ok;
 }
-scan_header :: (b:[]u8)->bool {return b.count>=16 && scan_u32(b,0)==0x314d5356 && scan_u32(b,12)==1;}
-scan_counts :: (nv:int,ni:int)->bool {return nv>=3 && nv<=SCAN_VERTICES && ni>=3 && ni%3==0 && ni/3<=SCAN_INDICES/3;}
-scan_floats :: (b:[]u8)->bool {if b.count%4!=0 {return false;}for k:0..<b.count/4 {if (scan_u32(b,k*4)&0x7f800000)==0x7f800000 {return false;}}return true;}
-scan_rgb :: (c:Point)->bool {return c.x>=0 && c.x<=1 && c.y>=0 && c.y<=1 && c.z>=0 && c.z<=1;}
+scan_header :: (b:[]u8)->bool #effects(all) {return b.count>=16 && scan_u32(b,0)==0x314d5356 && scan_u32(b,12)==1;}
+scan_counts :: (nv:int,ni:int)->bool #effects(all) {return nv>=3 && nv<=SCAN_VERTICES && ni>=3 && ni%3==0 && ni/3<=SCAN_INDICES/3;}
+scan_floats :: (b:[]u8)->bool #effects(all) {if b.count%4!=0 {return false;}for k:0..<b.count/4 {if (scan_u32(b,k*4)&0x7f800000)==0x7f800000 {return false;}}return true;}
+scan_rgb :: (c:Point)->bool #effects(all) {return c.x>=0 && c.x<=1 && c.y>=0 && c.y<=1 && c.z>=0 && c.z<=1;}
 #test "scan helpers pin exact header counts float lanes and color endpoints" {
   h:[16]u8;scan_put(h[..],0,0x314d5356);scan_put(h[..],12,1);#assert scan_header(h[..]) && !scan_header(h[0..<15]);
   scan_put(h[..],0,1);#assert !scan_header(h[..]);scan_put(h[..],0,0x314d5356);scan_put(h[..],12,0);#assert !scan_header(h[..]);

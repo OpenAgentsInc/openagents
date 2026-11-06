@@ -74,7 +74,7 @@ fk_rule_of :: (id: string) -> int { for r: 0..<FK_RULES { if FK_RULE_ID[r] == id
 
 // The fork's state lives in the face (everglade_attach_fork), so two cities in a check cost nothing more.
 fk_has :: (s: [] Everglade) -> bool { return s[0].fk.count > 0; }
-everglade_attach_fork :: (s: [] Everglade, f: [] EgFork) #export_c { if f.count > 0 { s[0].fk = f; s[0].fk[0].req_id = -1; s[0].fk[0].finger = -1; } }
+everglade_attach_fork :: (s: [] Everglade, f: [] EgFork) #export_c #effects(all) { if f.count > 0 { s[0].fk = f; s[0].fk[0].req_id = -1; s[0].fk[0].finger = -1; } }
 fk_is_fork :: (s: [] Everglade) -> bool { return fk_has(s) && s[0].fk[0].slug_n > 0; }
 // The title plate's name: a fork's own once the server says it.
 fork_title :: (s: [] Everglade) -> string {
@@ -125,7 +125,7 @@ fork_rule :: (s: [] Everglade, r: int) -> bool {
 
 // The face's world paths: Everglade's, or the fork's own world.
 //   what 0 the world, 1 its reset, 2 the voice edit, 3 a look (a question about the screen)
-everglade_world_path :: (s: [] Everglade, out: [] u8, what: int) -> int #export_c {
+everglade_world_path :: (s: [] Everglade, out: [] u8, what: int) -> int #export_c #effects(all) {
   n := 0;
   if what == 2 || what == 3 { n = fk_put(out, 0, "/api/playtest/realm/"); n = fk_put(out, n, fk_slug(s)); return fk_put(out, n, ifx what == 3 then "/look" else "/edit"); }
   n = fk_put(out, 0, "/api/playtest/world/");
@@ -135,7 +135,7 @@ everglade_world_path :: (s: [] Everglade, out: [] u8, what: int) -> int #export_
   return n;
 }
 // Low gravity: what the face adds back to your upward speed, m/s² while you're in the air.
-everglade_gravity_lift :: (s: [] Everglade) -> f32 #export_c { return ifx fork_rule(s, FK_LOWGRAV) then f32(FK_GRAVITY * (1 - FK_LOW)) else 0.0f32; }
+everglade_gravity_lift :: (s: [] Everglade) -> f32 #export_c #effects(all) { return ifx fork_rule(s, FK_LOWGRAV) then f32(FK_GRAVITY * (1 - FK_LOW)) else 0.0f32; }
 
 // ---- the one request (the face sends it: everglade-face.c fork_out)
 fk_ask :: (s: [] Everglade, what: int, tail: string, body: string, post: bool) {
@@ -147,8 +147,8 @@ fk_ask :: (s: [] Everglade, what: int, tail: string, body: string, post: bool) {
   s[0].fk[0].req_flags = (ifx post then HTTP_POST else 0) | HTTP_ANSWER | TRACK_KEY;
   s[0].fk[0].req_what = what; s[0].fk[0].req_ready = true;
 }
-everglade_fork_ready :: (s: [] Everglade) -> bool #export_c { return fk_has(s) && s[0].fk[0].req_ready; }
-everglade_fork_requested :: (s: [] Everglade, id: int) #export_c {
+everglade_fork_ready :: (s: [] Everglade) -> bool #export_c #effects(all) { return fk_has(s) && s[0].fk[0].req_ready; }
+everglade_fork_requested :: (s: [] Everglade, id: int) #export_c #effects(all) {
   if !fk_has(s) { return; }
   s[0].fk[0].req_ready = false; s[0].fk[0].req_id = id;
   if id < 0 { s[0].fk[0].req_what = FK_ASK_NONE; s[0].fk[0].going = false; fk_say(s, "NOT SENT: TRY AGAIN"); }

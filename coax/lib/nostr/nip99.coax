@@ -54,8 +54,8 @@ N99Due :: struct {status:int=N99_DUE_LISTING; sats:int=-1;}
 // A tag value past the second, which n32_tag counts but does not read.
 N99Value :: struct {error:int=NT_EVENT; v:N32Text;}
 
-n99_ev :: (kind:int,tags:string,out:[]u8)->NostrEvent {return n32_event_in(kind,tags,out);}
-n99_text :: (s:string)->N32Text {t:N32Text;for i:0..<s.count {t.b[i]=s[i];}t.n=s.count;return t;}
+n99_ev :: (kind:int,tags:string,out:[]u8)->NostrEvent #effects(all) {return n32_event_in(kind,tags,out);}
+n99_text :: (s:string)->N32Text #effects(all) {t:N32Text;for i:0..<s.count {t.b[i]=s[i];}t.n=s.count;return t;}
 
 #test "decimal strings: digits, an optional point and digits" {
   d:=n99_decimal("50");#assert d.ok && d.whole==50 && d.frac==0 && d.frac_digits==0;
@@ -180,13 +180,13 @@ n99_text :: (s:string)->N32Text {t:N32Text;for i:0..<s.count {t.b[i]=s[i];}t.n=s
   none:NostrEvent;#assert n99_listing(none).status==N99_EVENT;
 }
 
-n99_refuse :: (r:N99Listing,status:int,at:int)->N99Listing {o:=r;o.status=status;o.at=at;return o;}
-n99_digit :: (c:u8)->bool {return c>='0' && c<='9';}
+n99_refuse :: (r:N99Listing,status:int,at:int)->N99Listing #effects(all) {o:=r;o.status=status;o.at=at;return o;}
+n99_digit :: (c:u8)->bool #effects(all) {return c>='0' && c<='9';}
 
 // book:begin price
 // A decimal string: one to 16 digits, then optionally a point and one to
 // 16 more. Anything else is refused.
-n99_decimal :: (s:string)->N99Decimal {
+n99_decimal :: (s:string)->N99Decimal #effects(all) {
   d:N99Decimal;i:=0;
   while i<s.count && n99_digit(s[i]) {
     if i==N99_MAX_DIGITS {return d;}
@@ -206,7 +206,7 @@ n99_decimal :: (s:string)->N99Decimal {
 }
 // A currency code: three or four ASCII letters, any case. BTC and SAT or
 // SATS are bitcoin; any other code is shown as data.
-n99_unit :: (t:N32Text)->int {
+n99_unit :: (t:N32Text)->int #effects(all) {
   own:=t;lower:[4]u8;
   if own.n<3 || own.n>4 {return N99_UNIT_BAD;}
   for i:0..<own.n {
@@ -221,7 +221,7 @@ n99_unit :: (t:N32Text)->int {
 }
 // The amount in satoshis, or -1: not bitcoin, not whole sats, or over 21
 // million bitcoin.
-n99_sats :: (d:N99Decimal,unit:int)->int {
+n99_sats :: (d:N99Decimal,unit:int)->int #effects(all) {
   if !d.ok {return -1;}
   if unit==N99_UNIT_SAT {
     if d.frac!=0 || d.whole>N99_MAX_SATS {return -1;}
@@ -233,7 +233,7 @@ n99_sats :: (d:N99Decimal,unit:int)->int {
   return d.whole*N99_SATS_PER_BTC+f;
 }
 // The k'th value of the index'th tag (0 is its name).
-n99_value :: (e:NostrEvent,index:int,k:int)->N99Value {
+n99_value :: (e:NostrEvent,index:int,k:int)->N99Value #effects(all) {
   r:N99Value;j:[1]Json;if !nt_start(j[..],e) {return r;}
   i:=0;tok:=json_next(j[..]);
   while tok==JSON_ARRAY && i<index {skipped:=json_skip(j[..]);i+=1;tok=json_next(j[..]);}
@@ -253,7 +253,7 @@ n99_value :: (e:NostrEvent,index:int,k:int)->N99Value {
 }
 // The index'th tag as a price: ["price", amount, currency] or with a
 // fourth value, the frequency. A bitcoin price must be whole sats.
-n99_price :: (e:NostrEvent,index:int)->N99Price {
+n99_price :: (e:NostrEvent,index:int)->N99Price #effects(all) {
   p:N99Price;t:=n32_tag(e,index);
   if t.error!=NT_OK || !n32_is(t.v[0],"price") || t.values<3 || t.values>4 {return p;}
   p.amount=t.v[1];p.currency=t.v[2];
@@ -273,7 +273,7 @@ n99_price :: (e:NostrEvent,index:int)->N99Price {
 // book:begin listing
 // A classified listing. The first d, title, summary, location, status,
 // published_at and price tags are read; later ones are counted or ignored.
-n99_listing :: (e:NostrEvent)->N99Listing {
+n99_listing :: (e:NostrEvent)->N99Listing #effects(all) {
   l:N99Listing;if e.error!=NE_OK {return l;}
   if e.kind!=N99_KIND_LISTING && e.kind!=N99_KIND_DRAFT {return n99_refuse(l,N99_KIND,-1);}
   l.draft=e.kind==N99_KIND_DRAFT;
@@ -319,7 +319,7 @@ n99_listing :: (e:NostrEvent)->N99Listing {
 // What a buyer could be asked to pay for a listing, in sats. A price in
 // another currency is shown as written and never converted; a recurring
 // price is shown and not settled here.
-n99_due :: (l:N99Listing)->N99Due {
+n99_due :: (l:N99Listing)->N99Due #effects(all) {
   d:N99Due;
   if l.status!=N99_OK {return d;}
   d.status=N99_DUE_DRAFT;if l.draft {return d;}

@@ -53,8 +53,8 @@
 }
 
 CP_MAX_VERTICES :: 120000;
-cp_max_vertices :: ()->int #export_c {return CP_MAX_VERTICES;}
-cp_revision :: ()->int #export_c {return CP_REVISION;}
+cp_max_vertices :: ()->int #export_c #effects(all) {return CP_MAX_VERTICES;}
+cp_revision :: ()->int #export_c #effects(all) {return CP_REVISION;}
 Cp :: struct {
   ready:bool;w:f32;h:f32;dpr:f32;time:f32;scroll:f32;limit:f32;body:Box;markdown:Box;command:Box;home:Box;
   tops:[CP_BLOCKS]f32;heights:[CP_BLOCKS]f32;links:[CP_BLOCKS]Box;
@@ -105,13 +105,13 @@ cp_go :: (s:[]Cp,id:int) {
   text:="/";if id>=3 && id<CP_BLOCKS+3 {if CP_KINDS[id-3]!=4 {return;}text=CP_LINKS[id-3];}
   if text.count>s[0].outbox.count {return;}for i:0..<text.count {s[0].outbox[i]=text[i];}s[0].out_n=text.count;s[0].action=1;
 }
-cp_done :: (s:[]Cp) #export_c {s[0].action=0;s[0].out_n=0;}
-cp_hit :: (s:[]Cp,x:f32,y:f32)->int #export_c {
+cp_done :: (s:[]Cp) #export_c #effects(all) {s[0].action=0;s[0].out_n=0;}
+cp_hit :: (s:[]Cp,x:f32,y:f32)->int #export_c #effects(all) {
   if inside(s[0].markdown,x,y) {return 0;}if inside(s[0].command,x,y) {return 1;}if inside(s[0].home,x,y) {return 2;}
   if inside(s[0].body,x,y) {for i:0..<CP_BLOCKS {if CP_KINDS[i]==4 && s[0].links[i].y1>s[0].links[i].y0 && inside(s[0].links[i],x,y) {return i+3;}}}return -1;
 }
-cp_wheel :: (s:[]Cp,dy:f32) #export_c {s[0].scroll=clamp(s[0].scroll+dy,0,s[0].limit);}
-cp_pointer :: (s:[]Cp,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c {
+cp_wheel :: (s:[]Cp,dy:f32) #export_c #effects(all) {s[0].scroll=clamp(s[0].scroll+dy,0,s[0].limit);}
+cp_pointer :: (s:[]Cp,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c #effects(all) {
   d:=hi(1,s[0].dpr);px:=x/d;py:=y/d;s[0].px=px;s[0].py=py;
   if phase==0 {
     if s[0].down {s[0].dragged=true;return true;}
@@ -126,7 +126,7 @@ cp_pointer :: (s:[]Cp,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c {
     s[0].down=false;if phase==2 && !s[0].dragged && abs(py-s[0].down_y)<=6 && abs(px-s[0].down_x)<=6 && s[0].pressed>=0 && cp_hit(s,px,py)==s[0].pressed {cp_go(s,s[0].pressed);}return true;
   }return false;
 }
-cp_key :: (s:[]Cp,key:int)->bool #export_c {
+cp_key :: (s:[]Cp,key:int)->bool #export_c #effects(all) {
   if key==-7 || key==-11 {cp_wheel(s,ifx key==-7 then 36.0f32 else s[0].body.y1-s[0].body.y0-50);return true;}
   if key==-6 || key==-10 {cp_wheel(s,ifx key==-6 then -36.0f32 else 50-(s[0].body.y1-s[0].body.y0));return true;}
   if key==-8 {s[0].scroll=0;return true;}if key==-9 {s[0].scroll=s[0].limit;return true;}
@@ -134,7 +134,7 @@ cp_key :: (s:[]Cp,key:int)->bool #export_c {
   if key==-2 && s[0].focus>=0 {cp_go(s,s[0].focus);return true;}return false;
 }
 cp_box :: (b:Box,d:f32)->Box {return Box.{x0=b.x0*d,y0=b.y0*d,x1=b.x1*d,y1=b.y1*d};}
-cp_frame :: (s:[]Cp,world:[]LandState,out:[]f32,u:[]f32,width:f32,height:f32,dpr:f32,dt:f32,still:bool)->int #export_c {
+cp_frame :: (s:[]Cp,world:[]LandState,out:[]f32,u:[]f32,width:f32,height:f32,dpr:f32,dt:f32,still:bool)->int #export_c #effects(all) {
   if s.count<1 || u.count<UNIFORM_FLOATS || width<1 || height<1 {return 0;}
   d:=hi(1,dpr);w:=width/d;h:=height/d;
   if !s[0].ready {s[0].ready=true;s[0].focus=-1;}

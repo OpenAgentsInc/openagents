@@ -251,7 +251,7 @@ ega_row_hint :: (s: [] Everglade) -> string {
 
 // Once a frame (host.js padPoll): the first pad's left stick (x right, y forward) and its buttons,
 // bit b for button b. While a row waits, the first button pressed binds. While you type, it does nothing.
-everglade_pad :: (s: [] Everglade, x: f32, y: f32, buttons: int) #export_c {
+everglade_pad :: (s: [] Everglade, x: f32, y: f32, buttons: int) #export_c #effects(all) {
   a := ega(s);
   sx := ifx finite(x) then clamp(x, -1, 1) else 0.0f32;
   sy := ifx finite(y) then clamp(y, -1, 1) else 0.0f32;
@@ -285,8 +285,8 @@ everglade_pad :: (s: [] Everglade, x: f32, y: f32, buttons: int) #export_c {
   a[0].pad_bits = hold;
 }
 // The stick's walk, for the face to add to the thumbs' (everglade-face.c).
-everglade_pad_x :: (s: [] Everglade) -> f32 #export_c { return ega(s)[0].stick_x; }
-everglade_pad_y :: (s: [] Everglade) -> f32 #export_c { return ega(s)[0].stick_y; }
+everglade_pad_x :: (s: [] Everglade) -> f32 #export_c #effects(all) { return ega(s)[0].stick_x; }
+everglade_pad_y :: (s: [] Everglade) -> f32 #export_c #effects(all) { return ega(s)[0].stick_y; }
 
 // ---- captions
 
@@ -426,7 +426,7 @@ ega_focus_ring :: (s: [] Everglade, out: [] f32, at: int) -> int {
   return jn_ring(out, at, Box.{x0 = b.x0 - 3 * k, y0 = b.y0 - 3 * k, x1 = b.x1 + 3 * k, y1 = b.y1 + 3 * k}, k);
 }
 // Focus moved in the accessible layer (host.js focusin and focusout): -1 none.
-everglade_a11y_focus :: (s: [] Everglade, id: int) #export_c { ega(s)[0].focus = ifx id > 0 then id else 0; }
+everglade_a11y_focus :: (s: [] Everglade, id: int) #export_c #effects(all) { ega(s)[0].focus = ifx id > 0 then id else 0; }
 
 // The pane's size at scale k: its width, its height, whether its rows stack (a label over its
 // control), and the KEYS page's columns.
@@ -639,7 +639,7 @@ ega_box :: (s: [] Everglade, id: int) -> Box {
   return Box.{};
 }
 // The page's controls now, a line each, as the last frame laid them out.
-everglade_a11y :: (s: [] Everglade, buf: [] u8) -> int #export_c {
+everglade_a11y :: (s: [] Everglade, buf: [] u8) -> int #export_c #effects(all) {
   a := ega(s); r := a[0].rec[0];
   n := 0; w: [96] u8; v: [96] u8;
   if a[0].say_n > 0 && s[0].time - a[0].say_t < f64(EGA_SAY_S) { n = ega_line(buf, n, EGA_ID_STATUS, "status", "-", ega_sentence(cast(string) a[0].say[0..<a[0].say_n], w[..])); }
@@ -685,7 +685,7 @@ everglade_a11y :: (s: [] Everglade, buf: [] u8) -> int #export_c {
 }
 // A control pressed from the layer: the pane's own do what a press on them does; the rest are
 // pressed on the canvas where they are drawn, so the same rules decide. False when it isn't shown.
-everglade_a11y_do :: (s: [] Everglade, id: int) -> bool #export_c {
+everglade_a11y_do :: (s: [] Everglade, id: int) -> bool #export_c #effects(all) {
   b := ega_box(s, id);
   if !ega_shown(b) { return false; }
   if id >= EGA_ID_PANE && id < EGA_ID_PANE + EGA_BOXES { ega_do(s, id - EGA_ID_PANE); return true; }

@@ -72,7 +72,7 @@ td_in_cube :: (d: [] Tide, x: f32, z: f32) -> bool {
   return abs(along) <= f32(TD_HALF) && abs(across) <= f32(TD_HALF);
 }
 // Whether (x, z) is in the open trench: its water stands aside (everglade-face.c: you walk its bed).
-everglade_parted :: (s: [] Everglade, x: f32, z: f32) -> bool #export_c {
+everglade_parted :: (s: [] Everglade, x: f32, z: f32) -> bool #export_c #effects(all) {
   if !sp_on(s) { return false; }
   return td_parted_in(td_of(s), x, z) || eg_ra_parted(s, x, z);   // (and every seat's in a room)
 }
@@ -106,7 +106,7 @@ td_crest :: (d: [] Tide, along: f32) -> Point { return add(d[0].at, times(d[0].d
 
 // What the water spells do to you afloat (everglade-face.c adds it to where the current carries
 // you), m/s: the wave carries you, the redirected current runs you its way, the whirlpool pulls.
-everglade_tide_flow :: (s: [] Everglade, x: f32, z: f32, medium: int) -> Point #export_c {
+everglade_tide_flow :: (s: [] Everglade, x: f32, z: f32, medium: int) -> Point #export_c #effects(all) {
   if !sp_on(s) || medium < WATER_SWIMMING || medium > WATER_DIVING { return v3(0, 0, 0); }
   d := td_of(s);
   if !d[0].on { return v3(0, 0, 0); }
@@ -125,7 +125,7 @@ everglade_tide_flow :: (s: [] Everglade, x: f32, z: f32, medium: int) -> Point #
   return v3(0, 0, 0);
 }
 // Your water breathing for the river's breath (everglade-face.c: river.coax everglade_river_gills).
-everglade_water_breathing :: (s: [] Everglade) -> bool #export_c { return sp_on(s) && td_of(s)[0].breathe; }
+everglade_water_breathing :: (s: [] Everglade) -> bool #export_c #effects(all) { return sp_on(s) && td_of(s)[0].breathe; }
 // Water Walk's floor at (x, z): the water's top, else far down (everglade-frost.coax fr_floor takes it).
 td_floor :: (s: [] Everglade, x: f32, z: f32) -> f32 {
   d := td_of(s);

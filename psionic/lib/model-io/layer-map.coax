@@ -29,15 +29,15 @@ PmResult :: struct {status:PwStatus;layer:QeLayer;written:int;}
     #assert pm_layer(shape,0,inv[0..<0],files[..],out[..],work[..],true).status==PwStatus.manifest;
     #assert pm_layer(shape,0,inv[..],files[0..<0],out[..],work[..],false).status==PwStatus.manifest;
 }
-pm_s1 :: (a:int)->P5Shape {return P5Shape.{rank=1,dims=[5]int.[a,0,0,0,0]};}
-pm_s2 :: (a:int,b:int)->P5Shape {return P5Shape.{rank=2,dims=[5]int.[a,b,0,0,0]};}
-pm_s3 :: (a:int,b:int,c:int)->P5Shape {return P5Shape.{rank=3,dims=[5]int.[a,b,c,0,0]};}
-pm_full :: (layer:int)->bool {return (layer+1)%4==0;}
-pm_name :: (layer:int,suffix:string,out:[]u8)->int {
+pm_s1 :: (a:int)->P5Shape #effects(all) {return P5Shape.{rank=1,dims=[5]int.[a,0,0,0,0]};}
+pm_s2 :: (a:int,b:int)->P5Shape #effects(all) {return P5Shape.{rank=2,dims=[5]int.[a,b,0,0,0]};}
+pm_s3 :: (a:int,b:int,c:int)->P5Shape #effects(all) {return P5Shape.{rank=3,dims=[5]int.[a,b,c,0,0]};}
+pm_full :: (layer:int)->bool #effects(all) {return (layer+1)%4==0;}
+pm_name :: (layer:int,suffix:string,out:[]u8)->int #effects(all) {
     if layer<0 || layer>=64 || !pw_name(suffix) {return -1;}
     n:=json_raw(out,0,"model.language_model.layers.");n=json_write_int(out,n,layer);n=json_raw(out,n,".");return json_raw(out,n,suffix);
 }
-pm_needs :: (s:QeShape,full:bool,needs:[]PmNeed)->int {
+pm_needs :: (s:QeShape,full:bool,needs:[]PmNeed)->int #effects(all) {
     d:=s.linear.width;f:=s.linear.hidden;
     needs[0]=PmNeed.{suffix="input_layernorm.weight",shape=pm_s1(d),parameter=true};
     needs[1]=PmNeed.{suffix="post_attention_layernorm.weight",shape=pm_s1(d),parameter=true};
@@ -67,13 +67,13 @@ pm_needs :: (s:QeShape,full:bool,needs:[]PmNeed)->int {
     needs[9]=PmNeed.{suffix="mlp.up_proj.weight",shape=pm_s2(f,d)};
     needs[10]=PmNeed.{suffix="mlp.down_proj.weight",shape=pm_s2(d,f)};return 11;
 }
-pm_prepare :: (view:PaView,target:[]f32)->PwStatus {
+pm_prepare :: (view:PaView,target:[]f32)->PwStatus #effects(all) {
     if view.status!=PwStatus.ok {return view.status;}
     if view.dtype!=PwDtype.bf16 || target.count!=view.elements {return PwStatus.capacity;}
     for i:0..<view.elements {if !psionic_tensor_finite_bits(qm_bits(QmDtype.bf16,view.data,i)) {return PwStatus.number;}}
     for i:0..<view.elements {target[i]=f32_from_bits(qm_bits(QmDtype.bf16,view.data,i));}return PwStatus.ok;
 }
-pm_layer :: (shape:QeShape,layer:int,inventory:[]P5Tensor,files:[]PaFile,out:[]f32,work:[]f32,overlap:bool)->PmResult #export_c {
+pm_layer :: (shape:QeShape,layer:int,inventory:[]P5Tensor,files:[]PaFile,out:[]f32,work:[]f32,overlap:bool)->PmResult #export_c #effects(all) {
     if !qe_valid(shape) || shape.linear.dtype!=QmDtype.bf16 || shape.state.linear_layers!=3*shape.state.full_layers || layer<0 || layer>=shape.state.linear_layers+shape.state.full_layers {return PmResult.{status=PwStatus.shape};}
     full:=pm_full(layer);needs:[14]PmNeed;n:=pm_needs(shape,full,needs[..]);params:=0;offset:[6]int;
     for i:0..<n {if needs[i].parameter {offset[i]=params;z:=p5_shape_size(needs[i].shape,PwDtype.bf16);if z.status!=PwStatus.ok {return PmResult.{status=z.status};}params+=z.elements;}}

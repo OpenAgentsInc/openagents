@@ -11,7 +11,7 @@
 GL_SERVING_PERCENT :: 70;
 
 // The limit to set, in whole watts, or 0 to leave the card alone.
-gl_limit :: (serving: bool, default_w: int, min_w: int, max_w: int) -> int {
+gl_limit :: (serving: bool, default_w: int, min_w: int, max_w: int) -> int #effects(all) {
   if min_w <= 0 || max_w < min_w || default_w < min_w || default_w > max_w { return 0; }
   w := ifx serving then (default_w * GL_SERVING_PERCENT) / 100 else default_w;
   if w < min_w { return 0; }

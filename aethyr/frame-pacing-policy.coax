@@ -5,4 +5,4 @@
   #assert afp_submit_allowed(0) && afp_submit_allowed(1);
   #assert !afp_submit_allowed(2) && !afp_submit_allowed(3) && !afp_submit_allowed(-1) && !afp_submit_allowed(1000000);
 }
-afp_submit_allowed :: (pending:int)->bool {return pending>=0 && pending<2;}
+afp_submit_allowed :: (pending:int)->bool #effects(all) {return pending>=0 && pending<2;}

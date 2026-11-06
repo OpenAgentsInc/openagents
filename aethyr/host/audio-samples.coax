@@ -9,4 +9,4 @@
   for at:0..<6 {old:=hpo_u32(values[..],at*4);hpo_word(values[..],at*4,bits);#assert !hdo_finite(values[..]);hpo_word(values[..],at*4,old);}
  }
 }
-hdo_finite :: (samples:[]u8)->bool #export_c {return samples.count%4==0&&hpc_finite(samples);}
+hdo_finite :: (samples:[]u8)->bool #export_c #effects(all) {return samples.count%4==0&&hpc_finite(samples);}

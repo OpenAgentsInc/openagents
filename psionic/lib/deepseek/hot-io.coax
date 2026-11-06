@@ -22,18 +22,18 @@
     #assert dc_fetch_commit(input[..],output[0..<3],false).status==DsStatus.ok;
 }
 
-dc_prefetch :: (c:DcConfig,state:DcState,layer:int,ids:[]int,out:[]int,stage:[]int,overlap:bool)->DcResult #export_c {
+dc_prefetch :: (c:DcConfig,state:DcState,layer:int,ids:[]int,out:[]int,stage:[]int,overlap:bool)->DcResult #export_c #effects(all) {
     lanes:[8]DcLane;draft:[8]DcLane;r:=dc_dispatch(c,state,layer,ids,lanes[..],draft[..],false);if r.status!=DsStatus.ok {return r;}
     if out.count<ids.count || stage.count<ids.count {return DcResult.{status=DsStatus.capacity};}if overlap {return DcResult.{status=DsStatus.alias};}
     n:=0;for i:0..<ids.count {if lanes[i].slot<0 {stage[n]=lanes[i].key;n+=1;}}
     for i:0..<n {out[i]=stage[i];}return DcResult.{written=n,head=state.head};
 }
-dc_fetch_ready :: (count:int,stride:int,out:int,work:int,offsets:int,overlap:bool)->DcResult #export_c {
+dc_fetch_ready :: (count:int,stride:int,out:int,work:int,offsets:int,overlap:bool)->DcResult #export_c #effects(all) {
     if count<0 || count>16512 || !dc_stride(stride) {return DcResult.{status=DsStatus.shape};}n:=count*stride;
     if out<n || work<n || offsets<count {return DcResult.{status=DsStatus.capacity};}if overlap {return DcResult.{status=DsStatus.alias};}return DcResult.{written=n};
 }
-dc_observed :: (expected:int,actual:int)->DsStatus #export_c {return ifx expected==actual then DsStatus.ok else DsStatus.weights;}
-dc_fetch_commit :: (stage:[]u8,out:[]u8,overlap:bool)->DcResult #export_c {
+dc_observed :: (expected:int,actual:int)->DsStatus #export_c #effects(all) {return ifx expected==actual then DsStatus.ok else DsStatus.weights;}
+dc_fetch_commit :: (stage:[]u8,out:[]u8,overlap:bool)->DcResult #export_c #effects(all) {
     if out.count<stage.count {return DcResult.{status=DsStatus.capacity};}if overlap {return DcResult.{status=DsStatus.alias};}
     for i:0..<stage.count {out[i]=stage[i];}return DcResult.{written=stage.count};
 }

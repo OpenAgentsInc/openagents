@@ -175,7 +175,7 @@ absorbed form, and its expanded mode is the expanded form:
 
 <!-- source: psionic/lib/deepseek/mla.coax attention -->
 ```jai
-ml_attention :: (s:MlShape,mode:MlMode,w:[]u8,q:[]f32,z:[]f32,key_rope:[]f32,history:[]f32,position:int,scale:f64,out:[]f32,row:[]f32,work:[]f32,scores:[]f64,overlap:bool)->MlResult #export_c {
+ml_attention :: (s:MlShape,mode:MlMode,w:[]u8,q:[]f32,z:[]f32,key_rope:[]f32,history:[]f32,position:int,scale:f64,out:[]f32,row:[]f32,work:[]f32,scores:[]f64,overlap:bool)->MlResult #export_c #effects(all) {
     p:=ml_plan(s,mode);if p.status!=DsStatus.ok {return MlResult.{status=p.status};}
     if position<0 || position>=s.capacity {return MlResult.{status=DsStatus.state};}
     if w.count!=2*s.heads*(s.nope+s.value)*s.latent {return MlResult.{status=DsStatus.weights};}

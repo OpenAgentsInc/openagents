@@ -62,7 +62,7 @@ cb_bench :: () {
     }
     print("preprocess_map,repeats,milliseconds,checksum\n");for map:0..<4 {sum:=0;start:=proc_now_ms();for i:0..<1000 {d:=cs_distances(cs_map(map));sum+=d[cs_map(map).start];}print("%,1000,%,%\n",map,proc_now_ms()-start,sum);}
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}mode:=args_at(a[..],0);
     if mode=="grid" {cb_grid();return 0;}if mode=="bench" {cb_bench();return 0;}
     if mode!="arithmetic" {return 2;}

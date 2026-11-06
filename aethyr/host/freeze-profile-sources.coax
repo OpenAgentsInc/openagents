@@ -11,7 +11,7 @@ fps_relative :: (root:string,path:string)->string {
  #assert fps_relative("/root","/root/a/b.coax")=="a/b.coax";
  for path:[6]string.["/root","/root-other/a","/root/../a","/root//a","/root/./a","a.coax"] {#assert fps_relative("/root",path)=="";}
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {tool_errln("usage: freeze-profile-sources ROOT PROFILE NEW_OUT");return 2;}
  root:=args_at(a[..],0);profile:=args_at(a[..],1);out:=args_at(a[..],2);if !fs_mkdir(out) {return 1;}bytes:[2097152]u8;nodes:[32768]JvNode;doc:[1]Jv;if !rtq_json_file(profile,bytes[..],nodes[..],doc[..]) {return 1;}
  d:=doc[0];if jv_kind(d,jv_get(d,0,"success"))!=JV_TRUE {return 1;}rows:=jv_get(d,0,"sources");if jv_kind(d,rows)!=JV_ARRAY||jv_len(d,rows)<1 {return 1;}

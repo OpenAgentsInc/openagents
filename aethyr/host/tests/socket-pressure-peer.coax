@@ -7,7 +7,7 @@
 #load "../../../coax/lib/json/json.coax";
 #load "socket-pressure-payload.coax";
 hspp_write :: (h:int,bytes:string,timeout:int)->int {for byte:bytes {if cxsock_write(h,int(byte))!=0 {return -9;}}return cxsock_flush(h,timeout);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {return 2;}port:=args_whole(args_at(a[..],0));if port<1024||port>65535 {return 2;}listener:=cxsock_listen(port);if listener<0 {return 1;}defer {done:=cxsock_close(listener);}if !fs_write(args_at(a[..],2),"ready") {return 1;}
  h:=cxsock_accept(listener,10000);if h<0 {return 1;}defer {done:=cxsock_close(h);}raw:[4096]u8;used:=0;deadline:=cxsock_now_ms()+5000;
  while ws_find_end(cast(string)raw[0..<used])==0&&cxsock_now_ms()<deadline {n:=cxsock_read(h,100);if n< -2||n== -1||n>raw.count-used {return 1;}if n>0 {for i:0..<n {raw[used+i]=u8(cxsock_byte(h,i));}used+=n;}}

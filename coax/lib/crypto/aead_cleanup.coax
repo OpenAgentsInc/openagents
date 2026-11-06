@@ -49,8 +49,8 @@ AC_RUN :: 1; AC_CLEAN :: 2; AC_FINISHED :: 3; AC_PUBLISH :: 4;
 AC_SUCCESS :: 1; AC_FAILURE :: 2; AC_CANCEL :: 3;
 AC_WORK :: 1; AC_STAGE :: 2; AC_INVALID :: -1; AC_RUNNING :: -2; AC_READY :: 0; AC_PUBLISHED :: -3;
 AeadCleanup :: struct {phase:int;reason:int;pending:int;}
-ac_begin :: ()->AeadCleanup #export_c {return AeadCleanup.{phase=AC_RUN};}
-ac_valid :: (s:AeadCleanup)->bool #export_c {
+ac_begin :: ()->AeadCleanup #export_c #effects(all) {return AeadCleanup.{phase=AC_RUN};}
+ac_valid :: (s:AeadCleanup)->bool #export_c #effects(all) {
   if s.phase==AC_RUN {return s.reason==0 && s.pending==0;}
   if s.reason<AC_SUCCESS || s.reason>AC_CANCEL {return false;}
   if s.phase==AC_CLEAN {
@@ -60,7 +60,7 @@ ac_valid :: (s:AeadCleanup)->bool #export_c {
   if s.phase==AC_FINISHED {return s.pending==0;}
   return s.phase==AC_PUBLISH && s.pending==0 && s.reason==AC_SUCCESS;
 }
-ac_stop :: (s:AeadCleanup,reason:int)->AeadCleanup #export_c {
+ac_stop :: (s:AeadCleanup,reason:int)->AeadCleanup #export_c #effects(all) {
   if !ac_valid(s) || reason<AC_SUCCESS || reason>AC_CANCEL {return s;}
   if s.phase==AC_RUN {return AeadCleanup.{phase=AC_CLEAN,reason=reason,pending=ifx reason==AC_SUCCESS then 1 else 3};}
   if (s.phase==AC_CLEAN || s.phase==AC_FINISHED) && s.reason==AC_SUCCESS && reason!=AC_SUCCESS {
@@ -68,20 +68,20 @@ ac_stop :: (s:AeadCleanup,reason:int)->AeadCleanup #export_c {
   }
   return s;
 }
-ac_next :: (s:AeadCleanup)->int #export_c {
+ac_next :: (s:AeadCleanup)->int #export_c #effects(all) {
   if !ac_valid(s) {return AC_INVALID;}
   if s.phase==AC_RUN {return AC_RUNNING;}
   if s.phase==AC_PUBLISH {return AC_PUBLISHED;}
   if s.phase==AC_FINISHED {return AC_READY;}
   if (s.pending & AC_WORK)!=0 {return AC_WORK;}return AC_STAGE;
 }
-ac_ack :: (s:AeadCleanup,region:int,erased:bool)->AeadCleanup #export_c {
+ac_ack :: (s:AeadCleanup,region:int,erased:bool)->AeadCleanup #export_c #effects(all) {
   if !ac_valid(s) || s.phase!=AC_CLEAN {return s;}
   if !erased || region!=ac_next(s) {return s;}
   next:=s;next.pending-=region;if next.pending==0 {next.phase=AC_FINISHED;}return next;
 }
-ac_publish :: (s:AeadCleanup)->AeadCleanup #export_c {
+ac_publish :: (s:AeadCleanup)->AeadCleanup #export_c #effects(all) {
   if !ac_valid(s) || s.phase!=AC_FINISHED || s.reason!=AC_SUCCESS {return s;}
   next:=s;next.phase=AC_PUBLISH;return next;
 }
-ac_visible :: (s:AeadCleanup)->bool #export_c {return ac_valid(s) && s.phase==AC_PUBLISH;}
+ac_visible :: (s:AeadCleanup)->bool #export_c #effects(all) {return ac_valid(s) && s.phase==AC_PUBLISH;}

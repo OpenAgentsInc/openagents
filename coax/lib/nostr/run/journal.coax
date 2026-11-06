@@ -77,16 +77,16 @@ RunHead :: struct {error:u32;at:int;seq:int;digest:[71]u8;controller:string;gene
 
 RN_NAMES :: [10]string.["created","admitted","dispatched","observed","resolved","cancel_requested","unknown","reconciled","handoff","settled"];
 
-rn_null_or_string :: (out:[]u8,at:int,s:string)->int {
+rn_null_or_string :: (out:[]u8,at:int,s:string)->int #effects(all) {
   return ifx s.count==0 then json_raw(out,at,"null") else json_write_string(out,at,s);
 }
-rn_null_or_int :: (out:[]u8,at:int,v:int,null_at:int)->int {
+rn_null_or_int :: (out:[]u8,at:int,v:int,null_at:int)->int #effects(all) {
   return ifx v==null_at then json_raw(out,at,"null") else json_write_int(out,at,v);
 }
 
 // book:begin write
 // Writes the record's JSON in NIP-RUN field order; -1 when out is too small.
-run_record_write :: (r:RunRecord,out:[]u8)->int {
+run_record_write :: (r:RunRecord,out:[]u8)->int #effects(all) {
   if r.type<0 || r.type>=RN_TYPES {return -1;}
   at:=json_raw(out,0,"{\"run\":");at=json_write_string(out,at,r.run);
   at=json_raw(out,at,",\"seq\":");at=json_write_int(out,at,r.seq);
@@ -111,7 +111,7 @@ run_record_write :: (r:RunRecord,out:[]u8)->int {
 // book:begin digest
 // The record's Digest into out (71 bytes). work holds the record's JSON,
 // then the schema line and the JCS form: twice the JSON plus 25 bytes.
-run_digest :: (r:RunRecord,work:[]u8,out:[]u8)->u32 {
+run_digest :: (r:RunRecord,work:[]u8,out:[]u8)->u32 #effects(all) {
   if r.type<0 || r.type>=RN_TYPES {return RN_MALFORMED;}
   n:=run_record_write(r,work);if n==-1 {return RN_LIMIT;}
   hashed:=work[n..<work.count];
@@ -124,11 +124,11 @@ run_digest :: (r:RunRecord,work:[]u8,out:[]u8)->u32 {
 }
 // book:end digest
 
-rn_fail :: (h:RunHead,error:u32,at:int)->RunHead {r:=h;r.error=error;r.at=at;return r;}
-rn_same_subject :: (s:RunSubject,r:RunRecord)->bool {return s.step==r.step && s.iteration==r.iteration && s.attempt==r.attempt;}
+rn_fail :: (h:RunHead,error:u32,at:int)->RunHead #effects(all) {r:=h;r.error=error;r.at=at;return r;}
+rn_same_subject :: (s:RunSubject,r:RunRecord)->bool #effects(all) {return s.step==r.step && s.iteration==r.iteration && s.attempt==r.attempt;}
 
 // The subject's slot in table, adding it at state 0 when new; -1 when full.
-rn_subject :: (table:[]RunSubject,used:[]int,r:RunRecord)->int {
+rn_subject :: (table:[]RunSubject,used:[]int,r:RunRecord)->int #effects(all) {
   for i:0..<used[0] {if rn_same_subject(table[i],r) {return i;}}
   if used[0]>=table.count {return -1;}
   table[used[0]]=RunSubject.{step=r.step,iteration=r.iteration,attempt=r.attempt,state=-1};
@@ -138,7 +138,7 @@ rn_subject :: (table:[]RunSubject,used:[]int,r:RunRecord)->int {
 // book:begin transition
 // The state machine for one record, after its chain and signer checked.
 // admitted[0] is whether the run was admitted.
-rn_transition :: (r:RunRecord,admitted:[]bool,table:[]RunSubject,used:[]int,unknowns:[]int)->u32 {
+rn_transition :: (r:RunRecord,admitted:[]bool,table:[]RunSubject,used:[]int,unknowns:[]int)->u32 #effects(all) {
   if r.seq==0 {return ifx r.type==RN_CREATED then RN_OK else RN_ORDER;}
   if r.type==RN_CREATED {return RN_ORDER;}
   if r.type==RN_ADMITTED {if admitted[0] {return RN_ORDER;} admitted[0]=true;return RN_OK;}
@@ -168,7 +168,7 @@ rn_transition :: (r:RunRecord,admitted:[]bool,table:[]RunSubject,used:[]int,unkn
 // controller the caller admitted for the created record. subjects is the
 // work table; work is digest scratch. The head is the last applied record;
 // error and at say where replay stopped.
-run_replay :: (records:[]RunRecord,first:string,subjects:[]RunSubject,work:[]u8)->RunHead {
+run_replay :: (records:[]RunRecord,first:string,subjects:[]RunSubject,work:[]u8)->RunHead #effects(all) {
   h:RunHead;h.seq=-1;h.controller=first;
   used:=[1]int.[0];admitted:=[1]bool.[false];unknowns:=[1]int.[0];
   run_id:="";
@@ -219,7 +219,7 @@ run_replay :: (records:[]RunRecord,first:string,subjects:[]RunSubject,work:[]u8)
 // retrieval hint, never the journal: one behind (lower sequence or older
 // generation) is stale and erases nothing; one ahead means records are
 // missing (incomplete); the same sequence with another Digest is a fork.
-run_head_check :: (h:RunHead,seq:int,digest:string,generation:int)->u32 {
+run_head_check :: (h:RunHead,seq:int,digest:string,generation:int)->u32 #effects(all) {
   if h.error!=RN_OK {return h.error;}
   mine:=h.digest;
   if seq>h.seq {return RN_GAP;}
@@ -238,14 +238,14 @@ RN_RUN :: "9999999999999999999999999999999999999999999999999999999999999999";
 RN_FENCE :: "sha256:8888888888888888888888888888888888888888888888888888888888888888";
 RN_T0 :: 1790000000;
 
-rn_make :: (seq:int,type:int,key:string,generation:int)->RunRecord {
+rn_make :: (seq:int,type:int,key:string,generation:int)->RunRecord #effects(all) {
   r:RunRecord;r.run=RN_RUN;r.seq=seq;r.controller=key;r.signer=key;r.generation=generation;r.type=type;
   r.iteration=-1;r.time=RN_T0;r.data="{}";return r;
 }
-rn_step :: (r:RunRecord,step:string,attempt:int)->RunRecord {s:=r;s.step=step;s.attempt=attempt;return s;}
+rn_step :: (r:RunRecord,step:string,attempt:int)->RunRecord #effects(all) {s:=r;s.step=step;s.attempt=attempt;return s;}
 // Seals a chain: previous and digest from the record before.
 // store keeps the digests: 71 bytes per record, owned by the caller.
-rn_chain :: (rs:[]RunRecord,store:[]u8) {
+rn_chain :: (rs:[]RunRecord,store:[]u8) #effects(all) {
   work:[4096]u8;prev:="";
   for i:0..<rs.count {
     rs[i].previous=prev;d:=store[i*71..<i*71+71];
@@ -254,7 +254,7 @@ rn_chain :: (rs:[]RunRecord,store:[]u8) {
   }
 }
 // created, admitted, dispatched build#1, handoff 1 -> 2, unknown, reconciled, settled.
-rn_journal :: (rs:[]RunRecord,store:[]u8) {
+rn_journal :: (rs:[]RunRecord,store:[]u8) #effects(all) {
   rs[0]=rn_make(0,RN_CREATED,RN_K1,0);rs[1]=rn_make(1,RN_ADMITTED,RN_K1,0);
   rs[2]=rn_step(rn_make(2,RN_DISPATCHED,RN_K1,0),"build",1);
   rs[3]=rn_make(3,RN_HANDOFF,RN_K1,0);rs[3].next=RN_K2;rs[3].fence=RN_FENCE;
@@ -263,7 +263,7 @@ rn_journal :: (rs:[]RunRecord,store:[]u8) {
   rs[6]=rn_make(6,RN_SETTLED,RN_K2,1);
   rn_chain(rs,store);
 }
-rn_run :: (rs:[]RunRecord)->RunHead {t:[8]RunSubject;w:[4096]u8;return run_replay(rs,RN_K1,t[..],w[..]);}
+rn_run :: (rs:[]RunRecord)->RunHead #effects(all) {t:[8]RunSubject;w:[4096]u8;return run_replay(rs,RN_K1,t[..],w[..]);}
 
 #test "the codes and type numbers are fixed" {
   #assert RN_OK==0 && RN_GAP==1 && RN_CONFLICT==2 && RN_BROKEN==3 && RN_DIGEST==4 && RN_NOT_ADMITTED==5;

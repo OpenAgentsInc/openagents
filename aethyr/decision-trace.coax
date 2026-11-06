@@ -12,13 +12,13 @@ DecisionTraceV1 :: struct {
 }
 DrBegin :: struct {result:GdBegin;live:bool;}
 DrTracked :: struct {ok:bool;live:bool;}
-dr_session :: (trace:[]DecisionTraceV1)->ReplaySession {
+dr_session :: (trace:[]DecisionTraceV1)->ReplaySession #effects(all) {
   return ReplaySession.{events=trace[0].events[..],marks=trace[0].marks[..],channels=trace[0].channels[..],n=trace[0].n[..]};
 }
-dr_context :: (c:GdContext)->int {
+dr_context :: (c:GdContext)->int #effects(all) {
   h:=2166136261;for v:[6]int.[c.epoch,c.actor,c.generation,c.revision,c.policy,c.options] {h=replay_mix_wide(h,v);}return h;
 }
-dr_begin :: (trace:[]DecisionTraceV1,state:[]GdState,c:GdContext,now:int,timeout:int)->DrBegin {
+dr_begin :: (trace:[]DecisionTraceV1,state:[]GdState,c:GdContext,now:int,timeout:int)->DrBegin #effects(all) {
   if trace[0].initialized && trace[0].n[REPLAY_EVENTS]>=64 {return DrBegin.{result=GdBegin.{code=GdCode.bounds}};}
   b:=gd_begin(state,c,now,timeout);if b.code!=GdCode.ok {return DrBegin.{result=b};}
   tracked:=dr_started(trace,b.ticket);#assert tracked.ok;
@@ -26,7 +26,7 @@ dr_begin :: (trace:[]DecisionTraceV1,state:[]GdState,c:GdContext,now:int,timeout
 }
 // A pure consumer can first run its existing admission on a private copy,
 // then bind the concrete lease here before publishing that copy's send flag.
-dr_started :: (trace:[]DecisionTraceV1,ticket:GdTicket)->DrTracked {
+dr_started :: (trace:[]DecisionTraceV1,ticket:GdTicket)->DrTracked #effects(all) {
   if trace[0].initialized && trace[0].n[REPLAY_EVENTS]>=64 {return DrTracked.{};}
   s:=dr_session(trace);
   if !trace[0].initialized {replay_record(s,dr_context(ticket.context),0);trace[0].initialized=true;}
@@ -34,14 +34,14 @@ dr_started :: (trace:[]DecisionTraceV1,ticket:GdTicket)->DrTracked {
   trace[0].local=ticket.sequence;trace[0].request=ask.request;trace[0].epoch=ask.epoch;
   return DrTracked.{ok=true,live=ask.live};
 }
-dr_words :: (ticket:GdTicket,action:int,now:int)->[10]int {
+dr_words :: (ticket:GdTicket,action:int,now:int)->[10]int #effects(all) {
   c:=ticket.context;
   return [10]int.[c.epoch,c.actor,c.generation,c.revision,c.policy,c.options,action,ticket.expires_ms,now,ticket.sequence];
 }
-dr_mark :: (event:ReplayEvent)->int {h:=2166136261;for word:event.words {h=replay_mix_wide(h,word);}return h;}
+dr_mark :: (event:ReplayEvent)->int #effects(all) {h:=2166136261;for word:event.words {h=replay_mix_wide(h,word);}return h;}
 // Stage only the current recorded answer. The consumer still runs all of
 // its ordinary eligibility/revocation checks before dr_take can publish it.
-dr_stage :: (trace:[]DecisionTraceV1,state:[]GdState,now:int) {
+dr_stage :: (trace:[]DecisionTraceV1,state:[]GdState,now:int) #effects(all) {
   if !trace[0].initialized {return;}s:=dr_session(trace);
   if !replay_playing(s) || state[0].phase!=GD_WAITING {return;}
   cursor:=s.n[REPLAY_CURSOR];if cursor>=s.n[REPLAY_EVENTS] {return;}
@@ -49,7 +49,7 @@ dr_stage :: (trace:[]DecisionTraceV1,state:[]GdState,now:int) {
   if event.words[8]!=now || event.words[9]!=state[0].sequence {return;}
   staged:=gd_offer(state,state[0].sequence,now,event.words[6]);
 }
-dr_take :: (trace:[]DecisionTraceV1,state:[]GdState,c:GdContext,now:int,legal:int)->GdChoice {
+dr_take :: (trace:[]DecisionTraceV1,state:[]GdState,c:GdContext,now:int,legal:int)->GdChoice #effects(all) {
   if !trace[0].initialized || trace[0].local!=state[0].sequence {return GdChoice.{code=GdCode.stale};}
   s:=dr_session(trace);copy:=[1]GdState.[state[0]];event:ReplayEvent;
   if replay_playing(s) {
@@ -75,11 +75,11 @@ dr_take :: (trace:[]DecisionTraceV1,state:[]GdState,c:GdContext,now:int,legal:in
   // its concrete local lease. Replay executes no inference or transport.
   state[0]=copy[0];replay_stepped(s,dr_mark(taken.event));return candidate;
 }
-dr_save :: (trace:[]DecisionTraceV1,out:[]u8,overlap:bool)->int {
+dr_save :: (trace:[]DecisionTraceV1,out:[]u8,overlap:bool)->int #effects(all) {
   if !trace[0].initialized {return 0;}
   return arc_encode(dr_session(trace),DECISION_TRACE_PROFILE,out,overlap);
 }
-dr_load :: (trace:[]DecisionTraceV1,bytes:[]u8,c:GdContext,overlap:bool)->bool {
+dr_load :: (trace:[]DecisionTraceV1,bytes:[]u8,c:GdContext,overlap:bool)->bool #effects(all) {
   if trace[0].initialized {return false;}
   r:=arc_read(bytes,DECISION_TRACE_PROFILE);
   if !r.ok || r.initial!=dr_context(c) {return false;}

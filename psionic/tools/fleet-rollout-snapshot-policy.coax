@@ -15,16 +15,16 @@ FrFacts :: struct {
     security_before:[3]string;security_after:[3]string;security_kind_before:[3]int;security_kind_after:[3]int;
     iam_before:string;iam_after:string;iam_version_before:int;iam_version_after:int;iam_private:bool;
 }
-fr_text :: (d:Jv,path:string)->string {return jv_raw(d,jv_path(d,0,path));}
-fr_ready :: (d:Jv)->bool {
+fr_text :: (d:Jv,path:string)->string #effects(all) {return jv_raw(d,jv_path(d,0,path));}
+fr_ready :: (d:Jv)->bool #effects(all) {
     list:=jv_path(d,0,"status.conditions");for i:0..<jv_len(d,list) {entry:=jv_at(d,list,i);if jv_raw(d,jv_get(d,entry,"type"))=="Ready" && jv_raw(d,jv_get(d,entry,"status"))=="True" {return true;}}return false;
 }
-fr_env :: (d:Jv,name:string)->string {
+fr_env :: (d:Jv,name:string)->string #effects(all) {
     list:=jv_path(d,0,"spec.template.spec.containers[0].env");value:="";found:=0;
     for i:0..<jv_len(d,list) {entry:=jv_at(d,list,i);if jv_raw(d,jv_get(d,entry,"name"))==name {value=jv_raw(d,jv_get(d,entry,"value"));found+=1;}}
     return ifx found==1 then value else "";
 }
-fr_private :: (d:Jv)->bool {
+fr_private :: (d:Jv)->bool #effects(all) {
     bindings:=jv_get(d,0,"bindings");if jv_kind(d,bindings)!=JV_ARRAY {return false;}
     if jv_len(d,bindings)==0 {return false;}
     for i:0..<jv_len(d,bindings) {
@@ -36,11 +36,11 @@ fr_private :: (d:Jv)->bool {
         }
     }return true;
 }
-fr_pins :: (service:string,identity:string,provider:string)->bool {
+fr_pins :: (service:string,identity:string,provider:string)->bool #effects(all) {
     if service=="oa-mesh-elephant" {return identity=="elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba" && provider=="59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7";}
     if service=="oa-mesh-mammoth" {return identity=="mammoth-1@sha256:4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019" && provider=="d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829";}return false;
 }
-fr_admit :: (f:FrFacts,target:string,old:string,image:string)->bool {
+fr_admit :: (f:FrFacts,target:string,old:string,image:string)->bool #effects(all) {
     if !f.service_spec || !f.revision_spec || !f.traffic || !f.image_valid || !f.service_ready || !f.revision_ready || !f.iam_private {return false;}
     if f.before_service!=f.requested_service || f.after_service!=f.requested_service || f.revision_service!=f.requested_service || f.old_service!=f.requested_service {return false;}
     if f.before_namespace!=FR_NAMESPACE || f.after_namespace!=FR_NAMESPACE || f.revision_namespace!=FR_NAMESPACE || f.old_namespace!=FR_NAMESPACE {return false;}

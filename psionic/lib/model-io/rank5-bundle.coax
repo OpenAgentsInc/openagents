@@ -39,15 +39,15 @@ P5Spec :: struct { name:string; shape:P5Shape; dtype:PwDtype; shard:int; }
     for i:0..<5 {b=a;b.dims[i]+=1;#assert !p5_same_shape(a,b);}b=a;b.rank=4;#assert !p5_same_shape(a,b);
 }
 
-p5_find :: (inventory:[]P5Tensor,name:string)->int {
+p5_find :: (inventory:[]P5Tensor,name:string)->int #effects(all) {
     for i:0..<inventory.count {if inventory[i].name==name {return i;}}return -1;
 }
-p5_same_shape :: (a:P5Shape,b:P5Shape)->bool {
+p5_same_shape :: (a:P5Shape,b:P5Shape)->bool #effects(all) {
     if a.rank!=b.rank {return false;}
     for i:0..<5 {if a.dims[i]!=b.dims[i] {return false;}}return true;
 }
 // A bounded HF weight_map must cover the entire admitted inventory exactly once.
-p5_index :: (text:string,shards:[]PwShard,inventory:[]P5Tensor,payload:int)->PwStatus {
+p5_index :: (text:string,shards:[]PwShard,inventory:[]P5Tensor,payload:int)->PwStatus #effects(all) {
     j:[1]Json;json_start_bounded(j[..],text,text.count,text.count);
     if json_next(j[..])!=JSON_OBJECT {return PwStatus.json;}
     map:=false;meta:=false;total:=payload;mapped:=0;t:=json_next(j[..]);
@@ -90,7 +90,7 @@ p5_index :: (text:string,shards:[]PwShard,inventory:[]P5Tensor,payload:int)->PwS
     if json_next(j[..])!=JSON_END {return PwStatus.json;}
     if !map || mapped!=inventory.count || total!=payload {return PwStatus.manifest;}return PwStatus.ok;
 }
-p5_bundle_checked :: (id:PwIdentity,config:[]u8,tokenizer:[]u8,index:[]u8,shards:[]PwShard,specs:[]P5Spec,output:[]P5Tensor,draft:[]P5Tensor,overlap:bool)->PwResult #export_c {
+p5_bundle_checked :: (id:PwIdentity,config:[]u8,tokenizer:[]u8,index:[]u8,shards:[]PwShard,specs:[]P5Spec,output:[]P5Tensor,draft:[]P5Tensor,overlap:bool)->PwResult #export_c #effects(all) {
     if !pw_bundle_counts(shards.count,specs.count,output.count,draft.count,config.count,tokenizer.count,index.count) {return PwResult.{status=PwStatus.size};}
     if overlap {return PwResult.{status=PwStatus.alias};}
     if !pw_name(id.origin) || !pw_name(id.revision) {return PwResult.{status=PwStatus.manifest};}
@@ -202,7 +202,7 @@ p5_bundle_checked :: (id:PwIdentity,config:[]u8,tokenizer:[]u8,index:[]u8,shards
     inv[0].elements=PW_BUNDLE_MAX+1;inv[1].elements=0;#assert p5_parameters(inv[..]).status==PwStatus.size;
 }
 
-p5_parameters :: (inventory:[]P5Tensor)->PwResult {
+p5_parameters :: (inventory:[]P5Tensor)->PwResult #effects(all) {
     parameters:=0;for tensor:inventory {if tensor.elements<0 || tensor.elements>PW_BUNDLE_MAX-parameters {return PwResult.{status=PwStatus.size};}parameters+=tensor.elements;}
     return PwResult.{bytes=parameters};
 }

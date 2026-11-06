@@ -37,20 +37,20 @@
  zero:[9]f64;r=pms_solve_raw(m,zero);#assert r.status==PmsStatus.ok;for x:r.acceleration {#assert x==0;}
 }
 
-pms_forces_admit :: (words:[9]u64)->PmsStatus {for bits:words {if !pfk_finite(bits) {return PmsStatus.number;}if abs(f64_from_bits(bits))>10000 {return PmsStatus.range;}}return PmsStatus.ok;}
-pms_matrix_admit :: (matrix:[81]u64)->PmsStatus {for bits:matrix {if !pfk_finite(bits) {return PmsStatus.number;}if abs(f64_from_bits(bits))>100000000 {return PmsStatus.range;}}return PmsStatus.ok;}
-pms_admit_bits :: (matrix:[81]u64,force:[9]u64)->PmsStatus {status:=pms_matrix_admit(matrix);if status!=PmsStatus.ok {return status;}return pms_forces_admit(force);}
-pms_solve_raw :: (matrix:[81]f64,force:[9]f64)->PmsRaw {
+pms_forces_admit :: (words:[9]u64)->PmsStatus #effects(all) {for bits:words {if !pfk_finite(bits) {return PmsStatus.number;}if abs(f64_from_bits(bits))>10000 {return PmsStatus.range;}}return PmsStatus.ok;}
+pms_matrix_admit :: (matrix:[81]u64)->PmsStatus #effects(all) {for bits:matrix {if !pfk_finite(bits) {return PmsStatus.number;}if abs(f64_from_bits(bits))>100000000 {return PmsStatus.range;}}return PmsStatus.ok;}
+pms_admit_bits :: (matrix:[81]u64,force:[9]u64)->PmsStatus #effects(all) {status:=pms_matrix_admit(matrix);if status!=PmsStatus.ok {return status;}return pms_forces_admit(force);}
+pms_solve_raw :: (matrix:[81]f64,force:[9]f64)->PmsRaw #effects(all) {
  mb:[81]u64;fb:[9]u64;for i:0..<81 {mb[i]=f64_bits(matrix[i]);}for i:0..<9 {fb[i]=f64_bits(force[i]);}status:=pms_admit_bits(mb,fb);if status!=PmsStatus.ok {return PmsRaw.{status=status};}
  return pms_factor(matrix,force);
 }
 // Trusted precondition: force was already admitted in this explicit basis.
 // Keep one force admission on the public path, before quantity arithmetic.
-pms_solve_force_admitted :: (matrix:[81]f64,force:[9]f64)->PmsRaw {
+pms_solve_force_admitted :: (matrix:[81]f64,force:[9]f64)->PmsRaw #effects(all) {
  bits:[81]u64;for i:0..<81 {bits[i]=f64_bits(matrix[i]);}status:=pms_matrix_admit(bits);if status!=PmsStatus.ok {return PmsRaw.{status=status};}return pms_factor(matrix,force);
 }
 // Trusted finite/range preconditions are established by either wrapper above.
-pms_factor :: (matrix:[81]f64,force:[9]f64)->PmsRaw {
+pms_factor :: (matrix:[81]f64,force:[9]f64)->PmsRaw #effects(all) {
  for i:1..<9 {for j:0..<i {if matrix[i*9+j]!=matrix[j*9+i] {return PmsRaw.{status=PmsStatus.factor};}}}
  l:[81]f64;for i:0..<9 {for j:0..<i+1 {value:=matrix[i*9+j];for k:0..<j {value-=l[i*9+k]*l[j*9+k];}if i==j {if value<0.25 {return PmsRaw.{status=PmsStatus.factor};}l[i*9+j]=sqrt(value);}else {l[i*9+j]=value/l[j*9+j];}}}
  y:[9]f64;for i:0..<9 {value:=force[i];for j:0..<i {value-=l[i*9+j]*y[j];}y[i]=value/l[i*9+i];}

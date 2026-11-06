@@ -113,7 +113,7 @@ clock. `pb_fresh` applies NIP-PYLON's rules in order:
 
 <!-- source: psionic/lib/pylon/beacon.coax fresh -->
 ```jai
-pb_fresh :: (r:PbRead,received:int,held:PbHeld)->PbFresh #export_c {
+pb_fresh :: (r:PbRead,received:int,held:PbHeld)->PbFresh #export_c #effects(all) {
     if r.observed_at>received+PB_FUTURE {return PbFresh.future;}
     if held.present {
         if r.generation<held.generation {return PbFresh.rollback;}
@@ -122,11 +122,11 @@ pb_fresh :: (r:PbRead,received:int,held:PbHeld)->PbFresh #export_c {
     if received>r.valid_until || received>r.observed_at+PB_WINDOW {return PbFresh.stale;}
     return PbFresh.fresh;
 }
-pb_show :: (r:PbRead,f:PbFresh)->PbShow {
+pb_show :: (r:PbRead,f:PbFresh)->PbShow #effects(all) {
     if f!=PbFresh.fresh {return PbShow.unknown;}return cast(PbShow)cast(int)r.status;
 }
 // Whether a buyer may send this pylon a decision job now.
-pb_routable :: (r:PbRead,f:PbFresh)->bool #export_c {
+pb_routable :: (r:PbRead,f:PbFresh)->bool #export_c #effects(all) {
     return r.code==PbCode.ok && f==PbFresh.fresh && r.status==PbStatus.online && r.free>0 && r.decision;
 }
 ```
@@ -206,7 +206,7 @@ unless every check holds:
 
 <!-- source: psionic/lib/mesh/receipt.coax read -->
 ```jai
-mr_read :: (kind:int,signer:string,created_at:int,tags:string,content:string)->MrReceipt #export_c {
+mr_read :: (kind:int,signer:string,created_at:int,tags:string,content:string)->MrReceipt #export_c #effects(all) {
     bad:MrReceipt;if kind!=MR_KIND {return bad;}r:=mr_body_read(content,created_at);if !r.ok || r.buyer!=signer {return bad;}
     p:=pt_tag(tags,"p");a:=pt_tag(tags,"a");t:=pt_tag(tags,"t");x:=pt_tag(tags,"x");
     if mr_array_count(tags)!=4 || p.size!=2 || a.size!=2 || t.size!=2 || x.size!=2 {return bad;}

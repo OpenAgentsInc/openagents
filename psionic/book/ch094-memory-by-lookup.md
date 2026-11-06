@@ -77,7 +77,7 @@ and irregular chunks give identical IDs and history.
 
 <!-- source: psionic/lib/deepseek/engram-hash.coax hash -->
 ```jai
-eg_hash :: (m:EgMap,state:EgHistory,tokens:[]int,mask:[]u8,out:[]int,stage:[]int,overlap:bool)->EgHash #export_c {
+eg_hash :: (m:EgMap,state:EgHistory,tokens:[]int,mask:[]u8,out:[]int,stage:[]int,overlap:bool)->EgHash #export_c #effects(all) {
     if !eg_hash_size(tokens.count) {return EgHash.{status=EgStatus.shape};}
     if !eg_raw_size(m.raw) || m.data.count!=m.raw*4 || m.compressed!=99092 || m.pad!=2 {return EgHash.{status=EgStatus.identity};}
     if !eg_history_valid(state) || !eg_advance(state.next,tokens.count) {return EgHash.{status=EgStatus.state};}

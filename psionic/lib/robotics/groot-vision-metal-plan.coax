@@ -49,11 +49,11 @@ GVP_MS :: [6]string.["norm.weight","norm.bias","linear_fc1.weight","linear_fc1.b
  #assert !gvp_complete(s[0]);s[0]=GvpCursor.{stage=29};#assert gvp_complete(s[0]);s[0].node=1;#assert !gvp_complete(s[0]);
 }
 
-gvp_weight_count :: ()->int #export_c {return 315;}
-gvp_buffer_count :: ()->int #export_c {return 336;}
-gvp_kernel_count :: ()->int #export_c {return 9;}
-gvp_stage_count :: ()->int #export_c {return 29;}
-gvp_spec :: (part:int)->GvpSpec #export_c {
+gvp_weight_count :: ()->int #export_c #effects(all) {return 315;}
+gvp_buffer_count :: ()->int #export_c #effects(all) {return 336;}
+gvp_kernel_count :: ()->int #export_c #effects(all) {return 9;}
+gvp_stage_count :: ()->int #export_c #effects(all) {return 29;}
+gvp_spec :: (part:int)->GvpSpec #export_c #effects(all) {
  if part<0 || part>=315 {return GvpSpec.{};}s:GvpSpec;s.ok=true;s.prefix="backbone.model.model.visual.";
  if part==0 {s.suffix="patch_embed.proj.weight";s.rank=5;s.dims=[5]int.[1024,3,2,16,16];s.rows=1024;s.cols=1536;}
  else if part==1 {s.suffix="patch_embed.proj.bias";s.decode=true;s.cols=1024;}
@@ -65,8 +65,8 @@ gvp_spec :: (part:int)->GvpSpec #export_c {
  else {if s.rank==2 {s.dims[0]=s.rows;s.dims[1]=s.cols;}s.bytes=2*s.rows*s.cols;s.target_bytes=s.bytes;}
  return s;
 }
-gvp_match :: (name:string,prefix:string,suffix:string)->bool {return name.count==prefix.count+suffix.count && name[0..<prefix.count]==prefix && name[prefix.count..<name.count]==suffix;}
-gvp_bind :: (part:int,inventory:[]P5Tensor,sizes:[]int)->GvpBind #export_c {
+gvp_match :: (name:string,prefix:string,suffix:string)->bool #effects(all) {return name.count==prefix.count+suffix.count && name[0..<prefix.count]==prefix && name[prefix.count..<name.count]==suffix;}
+gvp_bind :: (part:int,inventory:[]P5Tensor,sizes:[]int)->GvpBind #export_c #effects(all) {
  s:=gvp_spec(part);if !s.ok || sizes.count!=2 {return GvpBind.{status=GvpStatus.shape};}if !gvp_inventory_valid(inventory.count) {return GvpBind.{status=GvpStatus.capacity};}
  found:=-1;for i:0..<inventory.count {if gvp_match(inventory[i].name,s.prefix,s.suffix) {if found>=0 {return GvpBind.{status=GvpStatus.manifest};}found=i;}}
  if found<0 {return GvpBind.{status=GvpStatus.manifest};}t:=inventory[found];if t.dtype!=PwDtype.bf16 || t.shard<0 || t.shard>=2 || t.shape.rank!=s.rank || t.elements!=s.bytes/2 {return GvpBind.{status=GvpStatus.manifest};}
@@ -74,27 +74,27 @@ gvp_bind :: (part:int,inventory:[]P5Tensor,sizes:[]int)->GvpBind #export_c {
  if !gvp_span(t.begin,t.end,s.bytes,sizes[t.shard]) {return GvpBind.{status=GvpStatus.manifest};}
  return GvpBind.{shard=t.shard,begin=t.begin,bytes=s.bytes,target_bytes=s.target_bytes,decode=s.decode,count=s.cols};
 }
-gvp_buffer_bytes :: (buffer:int)->int #export_c {
+gvp_buffer_bytes :: (buffer:int)->int #export_c #effects(all) {
  if buffer<0 || buffer>=336 {return 0;}if buffer<315 {return gvp_spec(buffer).target_bytes;}
  sizes:=[21]int.[2097152,2097152,6291456,2097152,2097152,2097152,2097152,8388608,8388608,16777216,4194304,16777216,4096,1,10494976,3145728,1048576,1048576,1048576,1048576,4096];return sizes[buffer-315];
 }
-gvp_kernel :: (index:int)->GvpKernel #export_c {
+gvp_kernel :: (index:int)->GvpKernel #export_c #effects(all) {
  names:=[9]string.["dt_project_16x64","gaw_norm","gvi_qkv","gdk_scores","gdk_softmax","gdk_context","gvi_element","gdk_activate","gvi_posadd"];
  if index<0 || index>=9 {return GvpKernel.{library=-1};}return GvpKernel.{library=ifx index==0 then 0 else ifx index==1 then 3 else ifx index==2 || index==6 || index==8 then 2 else 1,name=names[index]};
 }
-gvp_stage :: (sequence:int)->GvpStage #export_c {
+gvp_stage :: (sequence:int)->GvpStage #export_c #effects(all) {
  if sequence<0 || sequence>=29 {return GvpStage.{status=GvpStatus.shape};}if sequence==0 {return GvpStage.{nodes=3,flags=1048576};}
  if sequence==7 || sequence==14 || sequence==21 || sequence==28 {m:=ifx sequence==28 then 0 else sequence/7;return GvpStage.{kind=2,merger=m,nodes=5,flags=ifx m==0 then 786944 else 786560};}
  layer:=sequence-1-sequence/7;return GvpStage.{kind=1,layer=layer,nodes=14,flags=10494976};
 }
-gvp_i :: (v:int)->GvpArg {return GvpArg.{integer=v};}
-gvp_f :: (v:f32)->GvpArg {return GvpArg.{kind=2,real=v};}
-gvp_v :: (buffer:int,count:int)->GvpArg {return GvpArg.{kind=4,buffer=buffer,count=count};}
-gvp_new :: (kernel:int,items:int,argc:int,flags:int)->GvpNode {return GvpNode.{kernel=kernel,items=items,lanes=1,block=128,argc=argc,flag_count=flags};}
-gvp_norm :: (width:int,scale:int,bias:int)->GvpNode {total:=524288;rows:=total/width;n:=gvp_new(1,rows,8,rows);n.args[0]=gvp_i(width);n.args[1]=gvp_i(1);n.args[2]=gvp_f(0.000001f32);n.args[3]=gvp_v(315,total);n.args[4]=gvp_v(scale,width);n.args[5]=gvp_v(bias,width);n.args[6]=gvp_v(316,total);return n;}
-gvp_project :: (rows:int,cols:int,tokens:int,weight:int,input:int,output:int)->GvpNode {n:=gvp_new(0,(rows/64)*((tokens+15)/16),6,0);n.lanes=128;n.args[0]=gvp_i(rows);n.args[1]=gvp_i(cols);n.args[2]=gvp_i(tokens);n.args[3]=gvp_v(weight,rows*cols/2);n.args[4]=gvp_v(input,tokens*cols);n.args[5]=gvp_v(output,tokens*rows);return n;}
-gvp_element :: (width:int,kind:int,count:int,input:int,bias:int,output:int)->GvpNode {n:=gvp_new(6,count,7,count);n.args[0]=gvp_i(width);n.args[1]=gvp_i(kind);n.args[2]=gvp_v(input,count);n.args[3]=gvp_v(bias,width);n.args[4]=gvp_v(ifx kind==1 then 315 else 328,ifx kind==1 then count else 0);n.args[5]=gvp_v(output,count);return n;}
-gvp_raw :: (sequence:int,at:int)->GvpNode {
+gvp_i :: (v:int)->GvpArg #effects(all) {return GvpArg.{integer=v};}
+gvp_f :: (v:f32)->GvpArg #effects(all) {return GvpArg.{kind=2,real=v};}
+gvp_v :: (buffer:int,count:int)->GvpArg #effects(all) {return GvpArg.{kind=4,buffer=buffer,count=count};}
+gvp_new :: (kernel:int,items:int,argc:int,flags:int)->GvpNode #effects(all) {return GvpNode.{kernel=kernel,items=items,lanes=1,block=128,argc=argc,flag_count=flags};}
+gvp_norm :: (width:int,scale:int,bias:int)->GvpNode #effects(all) {total:=524288;rows:=total/width;n:=gvp_new(1,rows,8,rows);n.args[0]=gvp_i(width);n.args[1]=gvp_i(1);n.args[2]=gvp_f(0.000001f32);n.args[3]=gvp_v(315,total);n.args[4]=gvp_v(scale,width);n.args[5]=gvp_v(bias,width);n.args[6]=gvp_v(316,total);return n;}
+gvp_project :: (rows:int,cols:int,tokens:int,weight:int,input:int,output:int)->GvpNode #effects(all) {n:=gvp_new(0,(rows/64)*((tokens+15)/16),6,0);n.lanes=128;n.args[0]=gvp_i(rows);n.args[1]=gvp_i(cols);n.args[2]=gvp_i(tokens);n.args[3]=gvp_v(weight,rows*cols/2);n.args[4]=gvp_v(input,tokens*cols);n.args[5]=gvp_v(output,tokens*rows);return n;}
+gvp_element :: (width:int,kind:int,count:int,input:int,bias:int,output:int)->GvpNode #effects(all) {n:=gvp_new(6,count,7,count);n.args[0]=gvp_i(width);n.args[1]=gvp_i(kind);n.args[2]=gvp_v(input,count);n.args[3]=gvp_v(bias,width);n.args[4]=gvp_v(ifx kind==1 then 315 else 328,ifx kind==1 then count else 0);n.args[5]=gvp_v(output,count);return n;}
+gvp_raw :: (sequence:int,at:int)->GvpNode #effects(all) {
  s:=gvp_stage(sequence);if s.status!=GvpStatus.ok || at<0 || at>=s.nodes {return GvpNode.{status=GvpStatus.shape};}
  if s.kind==0 {
   if at==0 {return gvp_project(1024,1536,512,0,330,322);}
@@ -120,10 +120,10 @@ gvp_raw :: (sequence:int,at:int)->GvpNode {
  if at==11 {n:=gvp_new(7,2097152,4,2097152);n.args[0]=gvp_i(1);n.args[1]=gvp_v(322,2097152);n.args[2]=gvp_v(323,2097152);return n;}
  if at==12 {return gvp_project(1024,4096,512,base+10,323,321);}return gvp_element(1024,1,524288,321,base+11,315);
 }
-gvp_node :: (sequence:int,at:int)->GvpNode #export_c {n:=gvp_raw(sequence,at);if n.status!=GvpStatus.ok {return n;}offset:=0;for i:0..<at {offset+=gvp_raw(sequence,i).flag_count;}n.flag_offset=offset;if n.flag_count!=0 {n.args[n.argc-1]=gvp_v(329,n.flag_count);n.args[n.argc-1].offset=offset;}return n;}
-gvp_sent :: (s:[]GvpCursor,sequence:int,node:int,status:int)->GvpStatus #export_c {if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}stage:=gvp_stage(sequence);if stage.status!=GvpStatus.ok || sequence!=s[0].stage || node!=s[0].node || node<0 || node>=stage.nodes {s[0].status=GvpStatus.order;}else if status!=0 {s[0].status=ifx status==7 then GvpStatus.check else GvpStatus.device;}else {s[0].node+=1;}return s[0].status;}
-gvp_done :: (s:[]GvpCursor,sequence:int,status:int,flags:[]u8)->GvpStatus #export_c {if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}stage:=gvp_stage(sequence);if stage.status!=GvpStatus.ok || sequence!=s[0].stage || s[0].node!=stage.nodes {s[0].status=GvpStatus.order;return s[0].status;}if status!=0 {s[0].status=ifx status==7 then GvpStatus.check else GvpStatus.device;return s[0].status;}checked:=gvp_flags(flags,stage.flags);if checked!=GvpStatus.ok {s[0].status=checked;return checked;}s[0].stage+=1;s[0].node=0;return GvpStatus.ok;}
-gvp_complete :: (s:GvpCursor)->bool #export_c {return s.status==GvpStatus.ok && s.stage==29 && s.node==0;}
+gvp_node :: (sequence:int,at:int)->GvpNode #export_c #effects(all) {n:=gvp_raw(sequence,at);if n.status!=GvpStatus.ok {return n;}offset:=0;for i:0..<at {offset+=gvp_raw(sequence,i).flag_count;}n.flag_offset=offset;if n.flag_count!=0 {n.args[n.argc-1]=gvp_v(329,n.flag_count);n.args[n.argc-1].offset=offset;}return n;}
+gvp_sent :: (s:[]GvpCursor,sequence:int,node:int,status:int)->GvpStatus #export_c #effects(all) {if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}stage:=gvp_stage(sequence);if stage.status!=GvpStatus.ok || sequence!=s[0].stage || node!=s[0].node || node<0 || node>=stage.nodes {s[0].status=GvpStatus.order;}else if status!=0 {s[0].status=ifx status==7 then GvpStatus.check else GvpStatus.device;}else {s[0].node+=1;}return s[0].status;}
+gvp_done :: (s:[]GvpCursor,sequence:int,status:int,flags:[]u8)->GvpStatus #export_c #effects(all) {if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}stage:=gvp_stage(sequence);if stage.status!=GvpStatus.ok || sequence!=s[0].stage || s[0].node!=stage.nodes {s[0].status=GvpStatus.order;return s[0].status;}if status!=0 {s[0].status=ifx status==7 then GvpStatus.check else GvpStatus.device;return s[0].status;}checked:=gvp_flags(flags,stage.flags);if checked!=GvpStatus.ok {s[0].status=checked;return checked;}s[0].stage+=1;s[0].node=0;return GvpStatus.ok;}
+gvp_complete :: (s:GvpCursor)->bool #export_c #effects(all) {return s.status==GvpStatus.ok && s.stage==29 && s.node==0;}
 
 #test "vision input preparation and named capture publication are Coax decisions" {
  camera:[512]int;for i:0..<512 {camera[i]=7;}zero:[1024]u32;for i:0..<1024 {zero[i]=7;}#assert gvp_prepare(camera[..],zero[..])==GvpStatus.ok;for i:0..<512 {#assert camera[i]==i/256;}for z:zero {#assert z==0;}
@@ -138,15 +138,15 @@ gvp_complete :: (s:GvpCursor)->bool #export_c {return s.status==GvpStatus.ok && 
  out=[4]f32.[7,7,7,7];bits[2]=0x7fc00000;#assert gvp_copy(bits[..],out[..],false).status==GvpStatus.number;for f:out {#assert f==7;}
  bits[2]=0;#assert gvp_copy(bits[..],out[0..<2],false).status==GvpStatus.capacity && gvp_copy(bits[..],out[..],true).status==GvpStatus.alias;
 }
-gvp_prepare :: (camera:[]int,zero:[]u32)->GvpStatus #export_c {if camera.count!=512 || zero.count!=1024 {return GvpStatus.capacity;}for i:0..<512 {camera[i]=i/256;}for i:0..<1024 {zero[i]=0;}return GvpStatus.ok;}
-gvp_capture :: (sequence:int,slot:int)->GvpCapture #export_c {
+gvp_prepare :: (camera:[]int,zero:[]u32)->GvpStatus #export_c #effects(all) {if camera.count!=512 || zero.count!=1024 {return GvpStatus.capacity;}for i:0..<512 {camera[i]=i/256;}for i:0..<1024 {zero[i]=0;}return GvpStatus.ok;}
+gvp_capture :: (sequence:int,slot:int)->GvpCapture #export_c #effects(all) {
  s:=gvp_stage(sequence);if s.status!=GvpStatus.ok || slot<0 || slot>1 {return GvpCapture.{};}
  if s.kind==0 {return GvpCapture.{ok=true,prefix=ifx slot==0 then "vision-patch-projection" else "vision-preblocks",number=-1,buffer=ifx slot==0 then 321 else 315,count=524288};}
  if s.kind==1 {if slot!=0 {return GvpCapture.{};}return GvpCapture.{ok=true,prefix="vision-block",number=s.layer,buffer=315,count=524288};}
  if s.merger==0 {return GvpCapture.{ok=true,prefix=ifx slot==0 then "vision-merger-input" else "vision-merged",number=-1,buffer=ifx slot==0 then 315 else 331,count=ifx slot==0 then 524288 else 262144};}
  return GvpCapture.{ok=true,prefix="vision-deepstack",number=s.merger-1,suffix=ifx slot==0 then "-input" else "",buffer=ifx slot==0 then 315 else 331+s.merger,count=ifx slot==0 then 524288 else 262144};
 }
-gvp_copy :: (bits:[]u32,out:[]f32,overlap:bool)->GvpRead #export_c {if out.count<bits.count {return GvpRead.{status=GvpStatus.capacity};}if overlap {return GvpRead.{status=GvpStatus.alias};}for word:bits {if !psionic_tensor_finite_bits(word) {return GvpRead.{status=GvpStatus.number};}}for i:0..<bits.count {out[i]=f32_from_bits(bits[i]);}return GvpRead.{written=bits.count};}
+gvp_copy :: (bits:[]u32,out:[]f32,overlap:bool)->GvpRead #export_c #effects(all) {if out.count<bits.count {return GvpRead.{status=GvpStatus.capacity};}if overlap {return GvpRead.{status=GvpStatus.alias};}for word:bits {if !psionic_tensor_finite_bits(word) {return GvpRead.{status=GvpStatus.number};}}for i:0..<bits.count {out[i]=f32_from_bits(bits[i]);}return GvpRead.{written=bits.count};}
 
 #test "vision bounded inventory spans and numeric receipts have explicit boundaries" {
  #assert gvp_inventory_valid(1) && gvp_inventory_valid(4096) && !gvp_inventory_valid(0) && !gvp_inventory_valid(4097);
@@ -156,9 +156,9 @@ gvp_copy :: (bits:[]u32,out:[]f32,overlap:bool)->GvpRead #export_c {if out.count
  for mode:0..<12 {s:=[1]GvpCursor.[GvpCursor.{}];if mode==0 {#assert gvp_sent(s[0..<0],0,0,0)==GvpStatus.shape;}if mode==1 {s[0].status=GvpStatus.device;#assert gvp_sent(s[..],0,0,0)==GvpStatus.device;}if mode==2 {#assert gvp_sent(s[..],-1,0,0)==GvpStatus.order;}if mode==3 {s[0].node=-1;#assert gvp_sent(s[..],0,-1,0)==GvpStatus.order;}if mode==4 {s[0].node=3;#assert gvp_sent(s[..],0,3,0)==GvpStatus.order;}if mode==5 {#assert gvp_sent(s[..],0,0,7)==GvpStatus.check;}if mode==6 {#assert gvp_sent(s[..],0,0,4)==GvpStatus.device;}if mode==7 {#assert gvp_done(s[0..<0],0,0,f[..])==GvpStatus.shape;}if mode==8 {s[0].status=GvpStatus.device;#assert gvp_done(s[..],0,0,f[..])==GvpStatus.device;}if mode==9 {s[0].node=3;#assert gvp_done(s[..],0,7,f[..])==GvpStatus.check;}if mode==10 {s[0].node=3;#assert gvp_done(s[..],0,4,f[..])==GvpStatus.device;}if mode==11 {s[0].node=3;#assert gvp_done(s[..],0,0,f[..])==GvpStatus.capacity && s[0].status==GvpStatus.capacity;}}
  s:=GvpCursor.{stage=29,status=GvpStatus.device};#assert !gvp_complete(s);
 }
-gvp_inventory_valid :: (n:int)->bool {return n>=1 && n<=4096;}
-gvp_span :: (begin:int,end:int,bytes:int,total:int)->bool {return begin>=8 && end>=begin && end<=total && end-begin==bytes;}
-gvp_flags :: (flags:[]u8,expected:int)->GvpStatus {if flags.count!=expected {return GvpStatus.capacity;}for f:flags {if f!=0 {return GvpStatus.number;}}return GvpStatus.ok;}
+gvp_inventory_valid :: (n:int)->bool #effects(all) {return n>=1 && n<=4096;}
+gvp_span :: (begin:int,end:int,bytes:int,total:int)->bool #effects(all) {return begin>=8 && end>=begin && end<=total && end-begin==bytes;}
+gvp_flags :: (flags:[]u8,expected:int)->GvpStatus #effects(all) {if flags.count!=expected {return GvpStatus.capacity;}for f:flags {if f!=0 {return GvpStatus.number;}}return GvpStatus.ok;}
 
 #test "vision receipts distinguish a different valid stage and preserve sticky numeric failure" {
  s:[1]GvpCursor;f:[1]u8;#assert gvp_sent(s[..],1,0,0)==GvpStatus.order;

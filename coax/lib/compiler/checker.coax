@@ -3,12 +3,16 @@
 // then the policy modules, so the declaration graph keeps that order. A part
 // uses names from the others: none of them checks on its own.
 #authority;
+#load "effect-contract.coax";
+#load "transaction-runtime.coax";
+#load "compatibility.coax";
 #load "checker/numeric.coax";
 #load "checker/records.coax";
 #load "checker/names.coax";
 #load "checker/types.coax";
 #load "checker/readonly.coax";
 #load "checker/ids.coax";
+#load "checker/persisted.coax";
 #load "checker/expressions.coax";
 #load "checker/generics.coax";
 #load "checker/statements.coax";

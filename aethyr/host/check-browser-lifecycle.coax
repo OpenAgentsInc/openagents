@@ -3,7 +3,7 @@
 #load "../../coax/web/wasm-chrome.coax";
 #load "receipt-lifecycle.coax";
 hbl_copy :: (source:string,target:string)->bool {bytes:[8388608]u8;n:=fs_read(source,bytes[..]);return n>=0&&fs_write(target,cast(string)bytes[0..<n]);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..])||args_count(a[..])!=1 {tool_errln("usage: check-browser-lifecycle PREPARED_DIR");return 2;}
   paths:[7][4096]u8;dir:=fs_realpath(args_at(a[..],0),paths[0][..]);site:=fs_join(dir,"browser-site",paths[1][..]);root:=fs_cwd(paths[2][..]);if dir==""||!fs_mkdir(site) {return 1;}
   for file:[2]string.["fixture.wasm","fixture.wgsl"] {if !hbl_copy(fs_join(dir,file,paths[3][..]),fs_join(site,file,paths[4][..])) {return 1;}}

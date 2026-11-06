@@ -3,10 +3,10 @@
 #load "../fleet/runtime.coax";
 #load "binding.coax";
 #load "compare.coax";
-mw_stdin_kind :: ()->int #foreign;
-mw_stdin_read :: (timeout_ms:int)->int #foreign;
-mw_stdin_byte :: (i:int)->int #foreign;
-mw_stdin_clear :: ()->int #foreign;
+mw_stdin_kind :: ()->int #foreign #effects(all);
+mw_stdin_read :: (timeout_ms:int)->int #foreign #effects(all);
+mw_stdin_byte :: (i:int)->int #foreign #effects(all);
+mw_stdin_clear :: ()->int #foreign #effects(all);
 MchOptions :: struct {input:bool;profile:string;distance:int=-1;backend:string;}
 MchVerified :: struct {ok:bool;receipt:MrReceipt;receipt_id:[64]u8;original:string;body_n:int;}
 

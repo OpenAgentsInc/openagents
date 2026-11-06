@@ -27,7 +27,7 @@ CrResult :: struct {
 // witness-malleation, signet preflight, context or resource failures into a
 // cached invalid header. These families correspond to contextual/ConnectBlock
 // consensus failures in pinned Core; unknown errors remain retryable.
-cr_cacheable :: (r: CsResult) -> bool {
+cr_cacheable :: (r: CsResult) -> bool #effects(all) {
   if r.code != CS_CONSENSUS { return false; }
   if r.vcode == VALIDATE_BLOCK { return r.detail == BLOCK_WEIGHT || r.detail == BLOCK_SIGOPS; }
   if r.vcode == VALIDATE_TX {
@@ -39,20 +39,20 @@ cr_cacheable :: (r: CsResult) -> bool {
   }
   return r.vcode == VALIDATE_BIP30 || r.vcode == VALIDATE_SCRIPT;
 }
-cr_refused :: (code: int) -> CrResult { return CrResult.{code=code, block=-1}; }
-cr_from_cs :: (r: CsResult, block: int) -> CrResult {
+cr_refused :: (code: int) -> CrResult #effects(all) { return CrResult.{code=code, block=-1}; }
+cr_from_cs :: (r: CsResult, block: int) -> CrResult #effects(all) {
   return CrResult.{code=r.code, vcode=r.vcode, detail=r.detail, tx=r.tx, input=r.input, block=block};
 }
 // Validity is a cache of completed checks, independent of active membership.
 // Data/undo ownership flags remain the archive adapter's responsibility.
-cr_good :: (tree: [] BlockTree, i: int) {
+cr_good :: (tree: [] BlockTree, i: int) #effects(all) {
   status := [1] u32.[tree[0].e[i].status];
   raised := bi_raise_validity(status[..], BLOCK_VALID_SCRIPTS);
   tree[0].e[i].status = status[0];
 }
 // Call only after the accepted state frame is durable, under exclusive index
 // ownership. A loaded validated V cursor certifies its complete active ancestry.
-cr_publish_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int) -> bool #export_c {
+cr_publish_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int) -> bool #export_c #effects(all) {
   tip := cs_tip_vartime(table, used);
   if tip.code != CS_OK || tree.count != 1 { return false; }
   if tip.chain != tree[0].p.chain || !lc_index_extent(target, tree[0].count) { return false; }
@@ -66,7 +66,7 @@ cr_publish_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int)
 // progress toward a distant best candidate; serving/admission waits for the
 // node's complete selection cycle. A failed active branch may rewind to a valid
 // ancestor. The supplied bodies are exactly fork's child through target.
-cr_reorg_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int, blocks: [] CrBlock, stage: [] u8, scratch: [] u8, aggregate: [] u8, temp: [] u8, w: CrWork, undo: [] u8) -> CrResult #export_c {
+cr_reorg_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int, blocks: [] CrBlock, stage: [] u8, scratch: [] u8, aggregate: [] u8, temp: [] u8, w: CrWork, undo: [] u8) -> CrResult #export_c #effects(all) {
   tip := cs_tip_vartime(table, used);
   if tip.code != CS_OK || tree.count != 1 { return cr_refused(CS_CONTEXT); }
   if tip.chain != tree[0].p.chain || !lc_index_extent(target, tree[0].count) { return cr_refused(CS_CONTEXT); }

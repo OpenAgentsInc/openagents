@@ -66,7 +66,7 @@ TgGate :: struct {verdict:TgVerdict;reason:TgReason;prefill:TgGoal;decode:TgGoal
 // Pass when the mean plus two standard errors is within the limit; fail when
 // the mean minus two standard errors is beyond it; otherwise too close to
 // call. A spread over a tenth of the mean decides nothing (chapter 34's rule).
-tg_goal :: (runs:[]int,limit:int)->TgGoal #export_c {
+tg_goal :: (runs:[]int,limit:int)->TgGoal #export_c #effects(all) {
     g:=TgGoal.{verdict=TgVerdict.refused,reason=TgReason.stats,stats=cm_welford(runs),limit=limit};
     if g.stats.status!=CmStatus.ok {return g;}
     g.se=g.stats.sd/sqrt(cast(f64)g.stats.n);
@@ -126,7 +126,7 @@ tg_goal :: (runs:[]int,limit:int)->TgGoal #export_c {
 // book:begin decide
 // The whole gate. Refusals come first, in this order; then both goals.
 // A goal that fails decides the gate even when the other is too noisy.
-tg_decide :: (work:TgWork,bind:TgBind,same_outputs:bool,prefill:[]int,decode:[]int)->TgGate #export_c {
+tg_decide :: (work:TgWork,bind:TgBind,same_outputs:bool,prefill:[]int,decode:[]int)->TgGate #export_c #effects(all) {
     gate:=TgGate.{verdict=TgVerdict.refused};f:=tg_work();
     if work.model!=f.model || work.corpus!=f.corpus || work.input!=f.input || work.output!=f.output || work.context!=f.context {gate.reason=TgReason.workload;return gate;}
     c:=tg_concurrency(work,bind);if c!=TgReason.none {gate.reason=c;return gate;}
@@ -149,7 +149,7 @@ tg_decide :: (work:TgWork,bind:TgBind,same_outputs:bool,prefill:[]int,decode:[]i
 // only with chapter 175's evidence at that concurrency: at least that many
 // requests, at least 5 timed runs, every request's IDs equal to its IDs
 // alone, on the build and machine this gate is bound to.
-tg_concurrency :: (work:TgWork,bind:TgBind)->TgReason #export_c {
+tg_concurrency :: (work:TgWork,bind:TgBind)->TgReason #export_c #effects(all) {
     if work.concurrency<1 || work.concurrency>8 {return TgReason.workload;}
     if work.concurrency==1 {return TgReason.none;}
     b:=bind.batch;
@@ -234,34 +234,34 @@ tg_concurrency :: (work:TgWork,bind:TgBind)->TgReason #export_c {
 // book:begin workload
 // Input ID i is 1000 + (i * 7919) mod 190000; the 128 forced output IDs
 // repeat inputs 0 to 127. Any other index has no ID.
-tg_id :: (i:int)->int #export_c {
+tg_id :: (i:int)->int #export_c #effects(all) {
     if i<0 || i>=TG_INPUT+TG_OUTPUT {return -1;}
     j:=i;if j>=TG_INPUT {j-=TG_INPUT;}
     return 1000+(j*7919)%190000;
 }
 TG_FNV_BASIS :: cast(u64)0xcbf29ce484222325;
 // FNV-1a over bytes, and over the IDs first..<last as 8 little-endian bytes each.
-tg_word :: (s:string)->u64 #export_c {
+tg_word :: (s:string)->u64 #export_c #effects(all) {
     h:=TG_FNV_BASIS;
     for i:0..<s.count {h=mul_wrap(h^cast(u64)s[i],cast(u64)0x100000001b3);}
     return h;
 }
-tg_ids_word :: (first:int,last:int)->u64 {
+tg_ids_word :: (first:int,last:int)->u64 #effects(all) {
     h:=TG_FNV_BASIS;
     for i:first..<last {v:=cast(u64)tg_id(i);for b:0..<8 {h=mul_wrap(h^((v>>cast(u64)(8*b))&255),cast(u64)0x100000001b3);}}
     return h;
 }
-tg_corpus_word :: ()->u64 #export_c {return tg_ids_word(0,TG_INPUT+TG_OUTPUT);}
-tg_work :: ()->TgWork #export_c {
+tg_corpus_word :: ()->u64 #export_c #effects(all) {return tg_ids_word(0,TG_INPUT+TG_OUTPUT);}
+tg_work :: ()->TgWork #export_c #effects(all) {
     return TgWork.{model=tg_word(TG_MODEL),corpus=tg_corpus_word(),input=TG_INPUT,output=TG_OUTPUT,context=TG_CONTEXT,concurrency=1};
 }
 // book:end workload
 
-tg_verdict_name :: (v:TgVerdict)->string #export_c {
+tg_verdict_name :: (v:TgVerdict)->string #export_c #effects(all) {
     names:=[4]string.["refused","pass","fail","too noisy"];
     return names[cast(int)v];
 }
-tg_reason_name :: (r:TgReason)->string #export_c {
+tg_reason_name :: (r:TgReason)->string #export_c #effects(all) {
     names:=[10]string.["none","not the frozen workload","a build, commit, machine or device is not recorded","no warm-up run",
         "greedy outputs differ from the reference path","prefill and decode run counts differ","the timings were refused",
         "a spread over a tenth of the mean","within two standard errors of the limit","a concurrency above 1 without chapter 175's batch evidence"];

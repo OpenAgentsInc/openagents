@@ -1,6 +1,6 @@
 // Build the complete native node with Coax and the platform C compiler.
 #load "../platform/native-build.coax";
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) || args_count(a[..]) > 1 { return 2; }
   option := ifx args_count(a[..]) == 1 then args_at(a[..],0) else "";
   if option != "" && option != "--checked" && option != "--sanitize" && option != "--emit-only" { return 2; }

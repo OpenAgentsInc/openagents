@@ -129,11 +129,11 @@
   #assert at == b.count;
 }
 
-txi_demo_init :: (d: [] LcDemo) {
+txi_demo_init :: (d: [] LcDemo) #effects(all) {
   g := d[0].entries[0].hash;
   lc_demo_publish(d, txi_init_vartime(5, g[..], d[0].live[..], 0, d[0].stage[..], d[0].batch[..]));
 }
-txi_init_vartime :: (chain: int, genesis: [] u8, table: [] u8, used: int, stage: [] u8, batch: [] u8) -> LcResult #export_c {
+txi_init_vartime :: (chain: int, genesis: [] u8, table: [] u8, used: int, stage: [] u8, batch: [] u8) -> LcResult #export_c #effects(all) {
   r := lc_init_vartime(chain, genesis, table, used, stage, batch);
   if r.code != LC_OK { return r; }
   c := [1] LcCursor.[LcCursor.{used=r.used,n=r.n}];
@@ -144,7 +144,7 @@ txi_init_vartime :: (chain: int, genesis: [] u8, table: [] u8, used: int, stage:
 // Bodies were completely checked by lc_reorg_vartime in the same immutable
 // views. Offsets include the 80-byte header and CompactSize count. Existing
 // block receipts keep their sequence and immutable original file location.
-txi_stage_block_vartime :: (tree: [] BlockTree, table: [] u8, c: [] LcCursor, batch: [] u8, block: LcBlock, loc: TxiLoc, next_seq: int, w: LcWork) -> TxiMeta {
+txi_stage_block_vartime :: (tree: [] BlockTree, table: [] u8, c: [] LcCursor, batch: [] u8, block: LcBlock, loc: TxiLoc, next_seq: int, w: LcWork) -> TxiMeta #effects(all) {
   next := next_seq;
   bytes := block.bytes; height := tree[0].l[block.index].height; hash := tree[0].e[block.index].hash;
   if !txi_location_ok(loc.file, loc.pos, bytes.count) { return TxiMeta.{code=TXI_LOCATION}; }
@@ -170,7 +170,7 @@ txi_stage_block_vartime :: (tree: [] BlockTree, table: [] u8, c: [] LcCursor, ba
   if fresh && !txi_put_block_vartime(table, c, batch, hash[..], b) { return TxiMeta.{code=LC_CAPACITY}; }
   return TxiMeta.{next=next};
 }
-txi_reorg_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int, blocks: [] LcBlock, locs: [] TxiLoc, stage: [] u8, batch: [] u8, w: LcWork) -> LcResult #export_c {
+txi_reorg_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int, blocks: [] LcBlock, locs: [] TxiLoc, stage: [] u8, batch: [] u8, w: LcWork) -> LcResult #export_c #effects(all) {
   meta := txi_context_vartime(table, used);
   if meta.code != LC_OK || locs.count != blocks.count { return LcResult.{code=LC_CONTEXT}; }
   r := lc_reorg_vartime(tree, table, used, target, blocks, stage, batch, w);
@@ -183,7 +183,7 @@ txi_reorg_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int, 
   if !txi_sync_vartime(stage, c[..], batch, meta.next) || c[0].used > table.count { return LcResult.{code=LC_CAPACITY}; }
   r.used = c[0].used; r.n = c[0].n; return r;
 }
-txi_disconnect_vartime :: (table: [] u8, used: int, stage: [] u8, batch: [] u8) -> LcResult #export_c {
+txi_disconnect_vartime :: (table: [] u8, used: int, stage: [] u8, batch: [] u8) -> LcResult #export_c #effects(all) {
   meta := txi_context_vartime(table, used);
   if meta.code != LC_OK { return LcResult.{code=LC_CONTEXT}; }
   r := lc_disconnect_vartime(table, used, stage, batch);

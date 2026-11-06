@@ -23,12 +23,12 @@
 }
 
 // Shared predicates only interpret raw numeric observations; no provenance seal.
-rgp_finite :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
-rgp_finite2 :: (a:u64,b:u64)->bool {return rgp_finite(a) && rgp_finite(b);}
-rgp_finite3 :: (a:u64,b:u64,c:u64)->bool {return rgp_finite(a) && rgp_finite(b) && rgp_finite(c);}
-rgp_parameters :: (mean:f64,logstd:f64)->bool {return mean>= -16 && mean<=16 && logstd>= -4 && logstd<=2;}
-rgp_density :: (mean:RgpAction,log_std:rlu.Quantity(UnitOne,f64),action:RgpAction,output:[]RgpDensity)->RgpStatus #export_c {
+rgp_finite :: (bits:u64)->bool #effects(all) {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+rgp_finite2 :: (a:u64,b:u64)->bool #effects(all) {return rgp_finite(a) && rgp_finite(b);}
+rgp_finite3 :: (a:u64,b:u64,c:u64)->bool #effects(all) {return rgp_finite(a) && rgp_finite(b) && rgp_finite(c);}
+rgp_parameters :: (mean:f64,logstd:f64)->bool #effects(all) {return mean>= -16 && mean<=16 && logstd>= -4 && logstd<=2;}
+rgp_density :: (mean:RgpAction,log_std:rlu.Quantity(UnitOne,f64),action:RgpAction,output:[]RgpDensity)->RgpStatus #export_c #effects(all) {
  if output.count!=1 {return RgpStatus.shape;}if !rgp_finite3(f64_bits(mean.value),f64_bits(log_std.value),f64_bits(action.value)) {return RgpStatus.number;}if !rgp_parameters(mean.value,log_std.value) || abs(action.value)>128 {return RgpStatus.range;}
  inv_sigma:=exp(-log_std.value);d:f64=0;if action.value!=mean.value {d=action.value-mean.value;}z:=d*inv_sigma;z2:=z*z;fresh:RgpDensity;fresh.logp.value=((-0.5*z2)-log_std.value)-0.9189385332046728;fresh.score_mean.value=z*inv_sigma;fresh.score_logstd.value=z2-1;fresh.entropy.value=log_std.value+(0.5+0.9189385332046728);output[0]=fresh;return RgpStatus.ok;
 }
-rgp_density_raw :: (mean:f64,log_std:f64,action:f64,output:[]RgpDensity)->RgpStatus #export_c {m:RgpAction;a:RgpAction;l:rlu.Quantity(UnitOne,f64);m.value=mean;a.value=action;l.value=log_std;return rgp_density(m,l,a,output);}
+rgp_density_raw :: (mean:f64,log_std:f64,action:f64,output:[]RgpDensity)->RgpStatus #export_c #effects(all) {m:RgpAction;a:RgpAction;l:rlu.Quantity(UnitOne,f64);m.value=mean;a.value=action;l.value=log_std;return rgp_density(m,l,a,output);}

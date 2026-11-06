@@ -150,7 +150,7 @@ up_copy :: (from: string, to: string) -> bool {
   return true;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("upload_packs: an argument is too long"); return 2; }
   u: [1] Up;

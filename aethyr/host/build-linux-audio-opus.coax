@@ -2,7 +2,7 @@
 #import "Basic";
 #load "../render/tests/qualification-files.coax";
 #load "../../coax/lib/sys/args.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<4||args_count(a[..])>6 {tool_errln("usage: build-linux-audio-opus ROOT EMISSION NEW_OUT OPUSFILE.so [--sanitize] [--demand]");return 2;}
  for i:4..<args_count(a[..]) {if args_at(a[..],i)!="--sanitize"&&args_at(a[..],i)!="--demand" {return 2;}}
  if cxtool_os()!=2 {return 2;}root:=args_at(a[..],0);emission:=args_at(a[..],1);out:=args_at(a[..],2);sdk:=args_at(a[..],3);sanitize:=args_has(a[..],"--sanitize");demand:=args_has(a[..],"--demand");

@@ -9,7 +9,7 @@
   }}}
   #assert !outcome_slot_record(0,0,0,false)&&!outcome_slot_record(0,0,-1,false);
 }
-outcome_slot_record::(q:int,count:int,capacity:int,pending:bool)->bool #export_c{
+outcome_slot_record::(q:int,count:int,capacity:int,pending:bool)->bool #export_c #effects(all) {
   return q>=0&&q<capacity&&count>=0&&count<capacity&&!pending;
 }
 #test "outcome slots: pending results fence reuse independently of the old body's liveness" {
@@ -18,4 +18,4 @@ outcome_slot_record::(q:int,count:int,capacity:int,pending:bool)->bool #export_c
     #assert !outcome_slot_reusable(id,true);
   }
 }
-outcome_slot_reusable::(id:int,pending:bool)->bool #export_c{return id==0&&!pending;}
+outcome_slot_reusable::(id:int,pending:bool)->bool #export_c #effects(all) {return id==0&&!pending;}

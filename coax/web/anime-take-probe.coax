@@ -85,7 +85,7 @@ ATP_WITHOUT_MAKE :: "{\"schema\":\"anime.v1\",\"stage\":\"courtyard\",\"auto\":f
 ATP_SUFFIX :: "&t=5.5&card=1&clock=0.78";
 ATP_EVAL :: "JSON.stringify({ready:coaxial.ready,sceneReady:coaxial.sceneReady,probe:coaxial.probe(),fields:[0,1,2,3,4,5,6,7].map(i=>coaxial.guardProbe(i)),width:document.querySelector('canvas').width,height:document.querySelector('canvas').height})";
 Atp :: struct { cli: string; base: string; dir: string; pass: int; fail: int; end_ms: int; }
-cxproc_self_path :: (out: [] u8) -> int #foreign;
+cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
 atp_timeout :: (t: [] Atp, wanted: int) -> int { left := t[0].end_ms-proc_now_ms(); return ifx left < 1 then 1 else ifx left < wanted then left else wanted; }
 atp_path :: (t: [] Atp, name: string, out: [] u8) -> string { return fs_join(t[0].dir,name,out); }
 atp_check :: (t: [] Atp, name: string, ok: bool) {
@@ -198,7 +198,7 @@ atp_input_refusal :: (t: [] Atp, url: string) {
   atp_check(t,"oversized URL plus eval refuses usage2 before Chrome and output",written && started && status == 2 && refused && !fs_exists(atp_path(t,"refused.png",path[..])) && !fs_exists(atp_path(t,"unexpected-chrome-launch.txt",marker[..])));
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   marker: [4096] u8; sentinel := proc_getenv("ANIME_TAKE_CHROME_SENTINEL",marker[..]);
   if sentinel != "" { wrote := fs_write(sentinel,"The CLI started Chrome before refusing its oversized input.\n"); return 99; }
   t: [1] Atp; cli: [4096] u8; base: [512] u8; dir: [4096] u8; t[0].end_ms = proc_now_ms()+780000;

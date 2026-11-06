@@ -93,7 +93,7 @@ save_varint :: (out: [] u8, at: int, v: int) -> int {
 
 // book:begin pack
 // payload packed into out as a progress container; its length, or -1 when it doesn't fit.
-save_pack :: (world: string, schema: int, payload: [] u8, n: int, out: [] u8) -> int #export_c {
+save_pack :: (world: string, schema: int, payload: [] u8, n: int, out: [] u8) -> int #export_c #effects(all) {
   if out.count < 16 + world.count + n || n < 0 || n > payload.count { return -1; }
   out[0] = 65; out[1] = 69; out[2] = 83; out[3] = 86;
   out[4] = SAVE_VERSION; out[5] = SAVE_PROGRESS; out[6] = 0; out[7] = 0;
@@ -127,7 +127,7 @@ save_read_varint :: (b: [] u8, n: int, at: [] int) -> int {
 // book:begin open
 // A container's payload, when its magic, version, layer, CRC and world are
 // right and its schema is one this build knows (at most max_schema).
-save_open :: (b: [] u8, n: int, world: string, max_schema: int) -> SaveOpened #export_c {
+save_open :: (b: [] u8, n: int, world: string, max_schema: int) -> SaveOpened #export_c #effects(all) {
   no: SaveOpened;
   if n < 18 || n > b.count || b[0] != 65 || b[1] != 69 || b[2] != 83 || b[3] != 86 { return no; }
   if (b[4] != 1 && b[4] != 2) || b[5] != SAVE_PROGRESS { return no; }
@@ -217,7 +217,7 @@ save_hex :: (c: u8) -> int { return ifx c >= 48 && c <= 57 then cast(int) c - 48
 
 // The record the browser kept, decoded into bytes: the current save first,
 // the previous after it. A part that doesn't decode is left out (n 0).
-save_read :: (text: string, bytes: [] u8) -> SaveSlots #export_c {
+save_read :: (text: string, bytes: [] u8) -> SaveSlots #export_c #effects(all) {
   s: SaveSlots;
   if text.count >= SAVE_HEAD.count && text[0..<SAVE_HEAD.count] == SAVE_HEAD {
     at: [1] int; at[0] = SAVE_HEAD.count;
@@ -244,7 +244,7 @@ save_read :: (text: string, bytes: [] u8) -> SaveSlots #export_c {
 // The record for a new current save `cur`: the old current becomes the
 // previous one when it was a good container, else the old previous stays.
 // old: the slots' bytes; its length into out, or -1 when it doesn't fit.
-save_record :: (cur: [] u8, n: int, at: f64, old: [] u8, s: SaveSlots, world: string, max_schema: int, out: [] u8) -> int #export_c {
+save_record :: (cur: [] u8, n: int, at: f64, old: [] u8, s: SaveSlots, world: string, max_schema: int, out: [] u8) -> int #export_c #effects(all) {
   o := 0;
   head := SAVE_HEAD;
   if out.count < head.count + 64 { return -1; }
@@ -284,7 +284,7 @@ save_put_number :: (out: [] u8, at: int, v: f64) -> int {
 SavePick :: struct { which: int; at: int; count: int; schema: int; time: f64; }   // which: 0 none, 1 current, 2 previous
 // The save to load, trying the current one first (from `from`: 1, or 2 when
 // the current one opened but its house didn't), then the last good one.
-save_pick :: (bytes: [] u8, s: SaveSlots, world: string, max_schema: int, from: int) -> SavePick #export_c {
+save_pick :: (bytes: [] u8, s: SaveSlots, world: string, max_schema: int, from: int) -> SavePick #export_c #effects(all) {
   none: SavePick;
   if from <= 1 && s.cur_n > 0 {
     if s.legacy { return SavePick.{which = 1, at = s.cur, count = s.cur_n, schema = 0, time = 0}; }
@@ -329,13 +329,13 @@ save_server_part :: (text: string, key: string, bytes: [] u8, at: int, time: [] 
   return ifx n > 0 then n else 0;
 }
 // The server's answer ("STATUS\n" then the body) as slots; none when it isn't a 200.
-save_from_server :: (answer: string, bytes: [] u8) -> SaveSlots #export_c {
+save_from_server :: (answer: string, bytes: [] u8) -> SaveSlots #export_c #effects(all) {
   s: SaveSlots;
   if answer.count < 4 || answer[0..<4] != "200\n" { return s; }
   return save_slots_of(answer[4..<answer.count], bytes);
 }
 // A 409's saves (what is on the server now), as slots; none when it isn't a 409.
-save_from_conflict :: (answer: string, bytes: [] u8) -> SaveSlots #export_c {
+save_from_conflict :: (answer: string, bytes: [] u8) -> SaveSlots #export_c #effects(all) {
   s: SaveSlots;
   if answer.count < 4 || answer[0..<4] != "409\n" { return s; }
   return save_slots_of(answer[4..<answer.count], bytes);
@@ -354,7 +354,7 @@ save_slots_of :: (body: string, bytes: [] u8) -> SaveSlots {
 }
 
 // The body that saves a container on the server: {"bytes": base64, "at": ms}.
-save_post_body :: (c: [] u8, n: int, at: f64, out: [] u8) -> int #export_c {
+save_post_body :: (c: [] u8, n: int, at: f64, out: [] u8) -> int #export_c #effects(all) {
   head := "{\"bytes\":\"";
   if out.count < head.count + 40 { return -1; }
   for k: 0..<head.count { out[k] = head[k]; }
@@ -397,7 +397,7 @@ save_status :: (answer: string) -> int {
   return ifx i > 0 && i < answer.count && answer[i] == 10 then v else 0;
 }
 // The revision in a 200 or 409 answer's body ("rev": N); -1 when it names none.
-save_rev :: (answer: string) -> int #export_c {
+save_rev :: (answer: string) -> int #export_c #effects(all) {
   st := save_status(answer);
   if st != 200 && st != 409 { return -1; }
   k := save_find(answer, 4, "\"rev\": ");
@@ -408,9 +408,9 @@ save_rev :: (answer: string) -> int #export_c {
   return v;
 }
 // The server's copy was asked for: saves wait for it.
-save_sync_ask :: (s: [] SaveSync) #export_c { s[0].asked = true; }
+save_sync_ask :: (s: [] SaveSync) #export_c #effects(all) { s[0].asked = true; }
 // The server's copy came (its answer, any status). SAVE_MINE when a save waited for it.
-save_sync_read :: (s: [] SaveSync, answer: string) -> int #export_c {
+save_sync_read :: (s: [] SaveSync, answer: string) -> int #export_c #effects(all) {
   r := save_rev(answer);
   if !s[0].has && r >= 0 { s[0].rev = r; s[0].has = true; }
   s[0].known = true;
@@ -419,17 +419,17 @@ save_sync_read :: (s: [] SaveSync, answer: string) -> int #export_c {
 }
 // A save is to go: the revision to name (-1 none), or SAVE_WAIT. leaving: the page is being left
 // (sent at once, nothing comes back).
-save_sync_send :: (s: [] SaveSync, leaving: bool) -> int #export_c {
+save_sync_send :: (s: [] SaveSync, leaving: bool) -> int #export_c #effects(all) {
   if leaving { return ifx !s[0].has then -1 else ifx s[0].busy then s[0].rev + 1 else s[0].rev; }
   if s[0].busy || (s[0].asked && !s[0].known) { s[0].again = true; return SAVE_WAIT; }
   s[0].busy = true;
   return ifx s[0].has then s[0].rev else -1;
 }
 // The save in flight was never sent (the host had no room for it).
-save_sync_unsent :: (s: [] SaveSync) #export_c { s[0].busy = false; s[0].again = true; }
+save_sync_unsent :: (s: [] SaveSync) #export_c #effects(all) { s[0].busy = false; s[0].again = true; }
 // The answer to the save in flight. mine: what a 409 means for this page (SAVE_THEIRS, SAVE_MINE).
 // SAVE_DONE, SAVE_THEIRS (open the 409's saves) or SAVE_MINE (send again now).
-save_sync_heard :: (s: [] SaveSync, answer: string, mine: int) -> int #export_c {
+save_sync_heard :: (s: [] SaveSync, answer: string, mine: int) -> int #export_c #effects(all) {
   s[0].busy = false;
   r := save_rev(answer);
   if r >= 0 { s[0].rev = r; s[0].has = true; }
@@ -442,16 +442,16 @@ save_sync_heard :: (s: [] SaveSync, answer: string, mine: int) -> int #export_c 
 }
 // Whether the server answered with revisions: then its copy is the account's, newer than this
 // browser's whatever the clocks say.
-save_sync_revised :: (s: [] SaveSync) -> bool #export_c { return s[0].has; }
+save_sync_revised :: (s: [] SaveSync) -> bool #export_c #effects(all) { return s[0].has; }
 // Whether two slots' current saves are the same bytes (the server's copy is what this browser has).
-save_same :: (a: [] u8, sa: SaveSlots, b: [] u8, sb: SaveSlots) -> bool #export_c {
+save_same :: (a: [] u8, sa: SaveSlots, b: [] u8, sb: SaveSlots) -> bool #export_c #effects(all) {
   if sa.cur_n == 0 || sa.cur_n != sb.cur_n { return false; }
   for i: 0..<sa.cur_n { if a[sa.cur + i] != b[sb.cur + i] { return false; } }
   return true;
 }
 // The body that saves a container on the server from revision rev: {"bytes", "at", "rev"} ("rev"
 // left out when rev < 0: an old server reads "at", a new one the revision).
-save_post_rev :: (c: [] u8, n: int, at: f64, rev: int, out: [] u8) -> int #export_c {
+save_post_rev :: (c: [] u8, n: int, at: f64, rev: int, out: [] u8) -> int #export_c #effects(all) {
   o := save_post_body(c, n, at, out);
   if o < 0 || rev < 0 { return o; }
   tail := ",\"rev\":";

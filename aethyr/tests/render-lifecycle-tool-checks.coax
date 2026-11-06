@@ -12,7 +12,7 @@ rlt_family :: (old:string,current:string)->int {
   if old=="aethyr.render.engine-generations.v1" && current=="aethyr.render.engine-generations.v2" {return 0;}
   if old=="aethyr.render.media-retirement.v1" && current=="aethyr.render.media-retirement.v2" {return 1;}return -1;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: render-lifecycle-tool-checks LEGACY.json COAX.json LEGACY_SOURCE.ts OUT.json");return 2;}
   old_bytes:[4194304]u8;new_bytes:[4194304]u8;old_nodes:[32768]JvNode;new_nodes:[32768]JvNode;old:[1]Jv;current:[1]Jv;
   if !rtq_json_file(args_at(a[..],0),old_bytes[..],old_nodes[..],old[..]) || !rtq_json_file(args_at(a[..],1),new_bytes[..],new_nodes[..],current[..]) {return 2;}

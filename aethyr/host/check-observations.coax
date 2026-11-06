@@ -5,7 +5,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/args.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 {tool_errln("usage: check-observations CORE_OR_TRANSPORT.json [...]");return 2;}
   text:[65536]u8;nodes:[4096]JvNode;d:[1]Jv;
   for i:0..<args_count(a[..]) {

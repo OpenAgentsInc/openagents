@@ -1,6 +1,6 @@
 // Native verification bridge for actual bounded file replay.
 #load "../../../bitcoin/platform/kvstream-file.coax";
-kvs_file_c :: (path: [] u8, table: [] u8, frame: [] u8, scratch: [] u8, fields: [] u64, snapshot: [] u8) -> int #export_c {
+kvs_file_c :: (path: [] u8, table: [] u8, frame: [] u8, scratch: [] u8, fields: [] u64, snapshot: [] u8) -> int #export_c #effects(all) {
   seed: [16] u8; for i: 0..<16 { seed[i] = cast(u8)i; }
   initial := ks_init(table,seed[..]);
   slice := kvs_open_file_slice(cast(string)path,table,initial,frame,scratch,0,false,0,1);

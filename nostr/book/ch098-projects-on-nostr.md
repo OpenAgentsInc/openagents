@@ -277,7 +277,7 @@ the whole capture failed, when the bit is false or the store drops it:
 
 <!-- source: coax/web/project/landing-fold.coax feed -->
 ```jai
-lf_feed :: (s:[]LfState,text:string,verified:bool)->bool #export_c {
+lf_feed :: (s:[]LfState,text:string,verified:bool)->bool #export_c #effects(all) {
   if !s[0].active || s[0].failed {return false;}
   if !json_valid(text) {s[0].failed=true;return false;}
   if !verified {s[0].failed=true;return false;}

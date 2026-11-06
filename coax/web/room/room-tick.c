@@ -25,7 +25,6 @@ static const char *part_name[PARTS] = {"move", "abilities", "town", "spells", "p
 static void everglade_town(int k) {
   float hp[4], cr[3], seats[WORLD_SEATS * WORLD_SEAT_TOWN], took[2 * WORLD_SEATS], people[WORLD_FOLK * WORLD_PEOPLE], fv[WORLD_VIEW];
   coax_v_f32 hpv = {hp, 4}, crv = {cr, 3}, fvv = {fv, WORLD_VIEW};
-  if (rm_eg_fresh(view(), k)) world_fresh(k);
   for (int j = 0; j < WORLD_FOLK; j++)
     if (rm_eg_folk_hp(view(), k, j, hpv)) world_folk_hp(k, j, (int)hp[0], (int)hp[1], (int)hp[2], (int)hp[3]);
   int64_t cn = rm_eg_crimes(view(), k);
@@ -72,7 +71,7 @@ static void everglade_town(int k) {
   float sk[10], ev[WORLD_EVENT]; coax_v_f32 skv = {sk, 10};
   int64_t sn = rm_eg_strikes(view(), k);
   int64_t taken=0;
-  for (;taken<sn;taken++) { rm_eg_strike(view(),k,taken,skv);if(!world_strike(k,(int)sk[9],(int)sk[0],(int)sk[1],sk+2,sk+5,(int)sk[8]))break; }
+  for (;taken<sn;taken++) { if(!rm_eg_strike_current(view(),k,taken))continue;rm_eg_strike(view(),k,taken,skv);if(!world_strike(k,(int)sk[9],(int)sk[0],(int)sk[1],sk+2,sk+5,(int)sk[8]))break; }
   rm_eg_strikes_taken(view(),k,taken);
   int64_t t2 = now_us();
   int en = world_spells(k, 1.0f / WORLD_HZ);
@@ -104,7 +103,7 @@ static void everglade_town(int k) {
 static void everglade_ability_casts(int k) {
   float c[WORLD_CAST]; coax_v_f32 cv = {c, WORLD_CAST};
   int64_t n = rm_ra_casts(view(), k);
-  for (int64_t q = 0; q < n; q++) { rm_ra_cast(view(), k, q, cv); world_ability(k, c); }
+  for (int64_t q = 0; q < n; q++) { if(!rm_ra_cast_current(view(),k,q))continue;rm_ra_cast(view(), k, q, cv); world_ability(k, c); }
   rm_ra_heard(view(), k);
 }
 // Room k's hotbar abilities the world runs (room-abilities.coax, everglade-room-abilities.coax; #12718):
@@ -159,6 +158,8 @@ static bool everglade_room_tick(int k) {
     return false;
   }
   if (!everglade_prepare(k)) { rm_work_done(view(), k, now_us() - room_work_start); return false; }
+  if (rm_eg_fresh(view(), k)) world_fresh(k);
+  for (int s=0;s<WORLD_SEATS;s++) world_seat_owner(k,s,rm_eg_seat_owner(view(),k,(coax_t_SeatId){s}));
   world_dice(k, rm_eg_dice_fixed(view(), k));   /* a local room told "dice fixed": the world's too (room-control.coax) */
   everglade_ability_casts(k);
   int64_t tm = now_us();

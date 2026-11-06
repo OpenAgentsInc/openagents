@@ -35,14 +35,14 @@ QeLayout :: struct {state:int;first:int;second:int;layer:int;total:int;}
     r:=qe_block(shape,layers[..],input[..],rope[..],0,2,state[..],out[..],work[..],false);
     #assert r.status==QeStatus.number && r.written==0;for i:0..<22 {#assert state[i]==before[i];}for v:out {#assert v==-7;}
 }
-qe_valid :: (s:QeShape)->bool {
+qe_valid :: (s:QeShape)->bool #effects(all) {
     if !qp_valid(s.state) {return false;}
     if !qb_valid(cast(u8)s.full.dtype,s.full.width,s.full.hidden,s.full.attention.epsilon) {return false;}
     if s.linear.width!=s.full.width || s.linear.hidden!=s.full.hidden || s.linear.dtype!=s.full.dtype || s.full.capacity!=s.state.capacity {return false;}
     expected:=QpShape.{linear_layers=s.state.linear_layers,full_layers=s.state.full_layers,capacity=s.full.capacity,delta=s.linear.delta,attention=s.full.attention};
     return qp_same_shape(s.state,expected);
 }
-qe_layers_valid :: (s:QeShape,layers:[]QeLayer)->bool {
+qe_layers_valid :: (s:QeShape,layers:[]QeLayer)->bool #effects(all) {
     if layers.count!=s.state.linear_layers+s.state.full_layers {return false;}
     nl:=0;
     for layer:layers {
@@ -52,11 +52,11 @@ qe_layers_valid :: (s:QeShape,layers:[]QeLayer)->bool {
     }
     return nl==s.state.linear_layers;
 }
-qe_layout :: (s:QeShape,start:int,count:int)->QeLayout {
+qe_layout :: (s:QeShape,start:int,count:int)->QeLayout #effects(all) {
     p:QeLayout;p.first=qp_total(s.state);p.second=p.first+count*s.linear.width;p.layer=p.second+count*s.linear.width;
     p.total=p.layer+ql_work_count(s.linear)+qd_layout(s.full,start,count).total;return p;
 }
-qe_block :: (s:QeShape,layers:[]QeLayer,input:[]f32,rope:[]f32,start:int,count:int,state:[]f32,out:[]f32,work:[]f32,overlap:bool)->QeResult #export_c {
+qe_block :: (s:QeShape,layers:[]QeLayer,input:[]f32,rope:[]f32,start:int,count:int,state:[]f32,out:[]f32,work:[]f32,overlap:bool)->QeResult #export_c #effects(all) {
     if !qe_valid(s) {return QeResult.{status=QeStatus.shape};}
     if !qd_block_valid(start,count,s.state.capacity) {return QeResult.{status=QeStatus.capacity};}
     p:=qe_layout(s,start,count);d:=s.linear.width;

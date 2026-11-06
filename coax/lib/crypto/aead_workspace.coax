@@ -78,7 +78,7 @@ AeadScratch :: struct {zero:[32]u8;polykey:[32]u8;mac:[5168]u8;cipher:[4096]u8;t
 AeadOperation :: struct {policy:AeadCleanup;staged:[4112]u8;count:int;active:bool;}
 // Host validates all extents, addresses and alias facts and maintains stable,
 // serialized ownership. The normalization/wipe/publish effects are not here.
-aw_tag :: (scratch:[]AeadScratch,key:[]u8,nonce:[]u8,aad:[]u8,cipher:[]u8)->bool {
+aw_tag :: (scratch:[]AeadScratch,key:[]u8,nonce:[]u8,aad:[]u8,cipher:[]u8)->bool #effects(all) {
   stream:=xc_xor(key,nonce,0,scratch[0].zero[..],scratch[0].xc[..],scratch[0].polykey[..],false);
   at:=0;for b:aad {scratch[0].mac[at]=b;at+=1;}
   while at%16!=0 {at+=1;}
@@ -89,7 +89,7 @@ aw_tag :: (scratch:[]AeadScratch,key:[]u8,nonce:[]u8,aad:[]u8,cipher:[]u8)->bool
   ok:=poly_workspace(scratch[0].polykey[..],scratch[0].mac[0..<at],scratch[0].poly[..],scratch[0].tag[..],false);
   return stream.error==CC_OK && ok;
 }
-aw_start :: (state:[]AeadOperation,scratch:[]AeadScratch,key:[]u8,nonce:[]u8,aad:[]u8,text:[]u8,seal:bool,overlap:bool)->bool #export_c {
+aw_start :: (state:[]AeadOperation,scratch:[]AeadScratch,key:[]u8,nonce:[]u8,aad:[]u8,text:[]u8,seal:bool,overlap:bool)->bool #export_c #effects(all) {
   if state.count!=1 || scratch.count!=1 {return false;}
   if state[0].active || !xcp_admit(key.count,nonce.count,aad.count,text.count,state[0].staged[..].count,overlap,seal) {return false;}
   state[0]=AeadOperation.{policy=ac_begin(),active=true};scratch[0]=AeadScratch.{};
@@ -108,21 +108,21 @@ aw_start :: (state:[]AeadOperation,scratch:[]AeadScratch,key:[]u8,nonce:[]u8,aad
   }
   state[0].policy=ac_stop(state[0].policy,ifx ok then AC_SUCCESS else AC_FAILURE);return ok;
 }
-aw_next :: (state:[]AeadOperation)->int #export_c {
+aw_next :: (state:[]AeadOperation)->int #export_c #effects(all) {
   if state.count!=1 {return AC_INVALID;}if !state[0].active {return AC_INVALID;}
   return ac_next(state[0].policy);
 }
-aw_ack :: (state:[]AeadOperation,region:int,erased:bool)->bool #export_c {
+aw_ack :: (state:[]AeadOperation,region:int,erased:bool)->bool #export_c #effects(all) {
   if region<=0 || region!=aw_next(state) || !erased {return false;}
   state[0].policy=ac_ack(state[0].policy,region,true);return true;
 }
-aw_cancel :: (state:[]AeadOperation)->bool #export_c {
+aw_cancel :: (state:[]AeadOperation)->bool #export_c #effects(all) {
   if state.count!=1 {return false;}if !state[0].active {return false;}
   if !ac_valid(state[0].policy) {return false;}if state[0].policy.phase==AC_PUBLISH {return false;}
   state[0].policy=ac_stop(state[0].policy,AC_CANCEL);return true;
 }
-aw_output_admit :: (count:int,capacity:int,overlap:bool)->bool {return !overlap && count>=0 && count<=4112 && capacity>=count && capacity<=CB_MAX_BYTES;}
-aw_publish :: (state:[]AeadOperation,out:[]u8,overlap:bool)->bool #export_c {
+aw_output_admit :: (count:int,capacity:int,overlap:bool)->bool #effects(all) {return !overlap && count>=0 && count<=4112 && capacity>=count && capacity<=CB_MAX_BYTES;}
+aw_publish :: (state:[]AeadOperation,out:[]u8,overlap:bool)->bool #export_c #effects(all) {
   if state.count!=1 {return false;}if !state[0].active {return false;}
   n:=state[0].count;if !aw_output_admit(n,out.count,overlap) {return false;}
   next:=ac_publish(state[0].policy);if !ac_visible(next) || ac_visible(state[0].policy) {return false;}

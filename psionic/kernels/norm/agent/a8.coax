@@ -22,16 +22,16 @@ a8_narrow :: (y:f64)->f32 {
     return f32_from_bits(cast,trunc(u32)(((B>>63)<<31)|w));
 }
 
-a8_knobs :: (item:int,knobs:[]int) #export_c {
+a8_knobs :: (item:int,knobs:[]int) #export_c #effects(all) {
     knobs[0]=32128;knobs[1]=32160;knobs[2]=64128;knobs[3]=64160;
     knobs[4]=128128;knobs[5]=128160;knobs[6]=48160;knobs[7]=96128;knobs[8]=-1;
 }
-a8_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c {
+a8_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c #effects(all) {
     c:=a8_c(knob,width);m:=a8_m(knob,width);
     plan[0]=rows*c;plan[1]=rows*m;plan[2]=rows*c;
     if a8_pre(rows,width,c) {plan[2]=rows*c+width;}
 }
-a8_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+a8_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c #effects(all) {
     c:=a8_c(knob,width);r:=item/c;j:=item-r*c;
     per:=(width+c-1)/c;lo:=a8_min(j*per,width);n:=a8_min(per,width-lo);p:=r*width+lo;
     s0:f64=0;s1:f64=0;
@@ -43,7 +43,7 @@ a8_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f3
         for t:0..<(width-item+G-1)/G {i:=item+t*G;work[G+i]=1+f64(scale[i]);}
     }
 }
-a8_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+a8_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c #effects(all) {
     c:=a8_c(knob,width);m:=a8_m(knob,width);r:=item/m;k:=item-r*m;
     s0:f64=0;s1:f64=0;w:=r*c;
     for j:0..<c/4 {a:=work[w];b:=work[w+1];d:=work[w+2];e:=work[w+3];s0+=a;s1+=b;s0+=d;s1+=e;w+=4;}

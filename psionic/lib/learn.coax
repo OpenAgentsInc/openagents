@@ -155,21 +155,21 @@ PsionicPrediction :: struct { status: PsionicStatus; value: f32; }
 }
 
 // Admission and arithmetic are Coax; C observes only real storage overlap.
-psionic_admit :: (xs: int, ys: int, steps: int, trace: int, scratch: int, overlap: bool) -> PsionicStatus {
+psionic_admit :: (xs: int, ys: int, steps: int, trace: int, scratch: int, overlap: bool) -> PsionicStatus #effects(all) {
     if xs < 1 || xs > 16 || ys != xs { return PsionicStatus.shape; }
     if steps < 1 || steps > 64 { return PsionicStatus.steps; }
     if trace < steps + 1 || scratch < steps + 1 { return PsionicStatus.capacity; }
     if overlap { return PsionicStatus.alias; }
     return PsionicStatus.ok;
 }
-psionic_number_bits :: (bits: u32) -> bool {
+psionic_number_bits :: (bits: u32) -> bool #effects(all) {
     return (bits & 0x7fffffff) <= 0x41800000;
 }
-psionic_number :: (value: f32) -> bool { return psionic_number_bits(f32_bits(value)); }
+psionic_number :: (value: f32) -> bool #effects(all) { return psionic_number_bits(f32_bits(value)); }
 
 // Internal: caller has admitted equal nonempty spans and bounded values.
 // book:begin moments
-psionic_moments :: (xs: [] f32, ys: [] f32, weight: f32) -> PsionicStats {
+psionic_moments :: (xs: [] f32, ys: [] f32, weight: f32) -> PsionicStats #effects(all) {
     loss: f32 = 0; gradient: f32 = 0;
     for i: 0..<xs.count {
         error := weight * xs[i] - ys[i];
@@ -182,7 +182,7 @@ psionic_moments :: (xs: [] f32, ys: [] f32, weight: f32) -> PsionicStats {
 
 // book:begin trainer
 psionic_train_checked :: (xs: [] f32, ys: [] f32, initial_weight: f32, steps: int,
-        trace: [] f32, scratch: [] f32, overlap: bool) -> PsionicTraining #export_c {
+        trace: [] f32, scratch: [] f32, overlap: bool) -> PsionicTraining #export_c #effects(all) {
     status := psionic_admit(xs.count, ys.count, steps, trace.count, scratch.count, overlap);
     if status != PsionicStatus.ok { return PsionicTraining.{status = status}; }
     if !psionic_number(initial_weight) { return PsionicTraining.{status = PsionicStatus.number}; }
@@ -205,7 +205,7 @@ psionic_train_checked :: (xs: [] f32, ys: [] f32, initial_weight: f32, steps: in
     return PsionicTraining.{status = PsionicStatus.ok, weight = weight, loss = stats.loss, written = steps + 1};
 }
 // book:end trainer
-psionic_predict :: (weight: f32, x: f32) -> PsionicPrediction #export_c {
+psionic_predict :: (weight: f32, x: f32) -> PsionicPrediction #export_c #effects(all) {
     if !psionic_number(weight) || !psionic_number(x) {
         return PsionicPrediction.{status = PsionicStatus.number};
     }

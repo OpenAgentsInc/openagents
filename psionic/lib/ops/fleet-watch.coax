@@ -58,7 +58,7 @@
 }
 
 // Window results: -1 malformed, 0 active, 1 not started, 2 expired.
-fw_window :: (now:int,start:int,end:int)->int #export_c {
+fw_window :: (now:int,start:int,end:int)->int #export_c #effects(all) {
   if now<0 || start<=0 || start>4102423200 {return -1;}
   if end!=start+21600 {return -1;}
   if now<start {return 1;}
@@ -66,7 +66,7 @@ fw_window :: (now:int,start:int,end:int)->int #export_c {
   return 0;
 }
 // Target 0 delegates to the standing RTX controller; target 1 may start TDX.
-fw_target :: (project:string,zone:string,vm:string)->int #export_c {
+fw_target :: (project:string,zone:string,vm:string)->int #export_c #effects(all) {
   if project!="openagentsgemini" {return -1;}
   if zone=="us-central1-b" && vm=="psionic-rtx6000-pylon" {return 0;}
   if zone=="us-central1-a" && vm=="oct30-att-tdx-clef" {return 1;}
@@ -74,7 +74,7 @@ fw_target :: (project:string,zone:string,vm:string)->int #export_c {
 }
 // Actions: -1 refuse, 0 healthy/no-op, 1 wait, 2 dry, 3 start TDX,
 // 4 dispatch the existing fixed RTX recovery job. Never stop/create a VM.
-fw_recover :: (target:int,status:string,dry:string)->int #export_c {
+fw_recover :: (target:int,status:string,dry:string)->int #export_c #effects(all) {
   if target<0 || target>1 || (dry!="0" && dry!="1") {return -1;}
   if status=="RUNNING" {return 0;}
   if status=="TERMINATED" {
@@ -84,7 +84,7 @@ fw_recover :: (target:int,status:string,dry:string)->int #export_c {
   if status=="PROVISIONING" || status=="STAGING" || status=="STOPPING" || status=="SUSPENDING" || status=="SUSPENDED" || status=="REPAIRING" {return 1;}
   return -1;
 }
-fw_plan :: (project:string,zone:string,vm:string,status:string,now:int,start:int,end:int,dry:string)->int #export_c {
+fw_plan :: (project:string,zone:string,vm:string,status:string,now:int,start:int,end:int,dry:string)->int #export_c #effects(all) {
   window:=fw_window(now,start,end);
   if window<0 {return -1;}
   if window==1 {return -2;}

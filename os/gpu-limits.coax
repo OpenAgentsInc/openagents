@@ -38,7 +38,7 @@ gl_text :: (n: int, out: [] u8) -> string {
   return cast(string) out[0..<k];
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("usage: gpu-limits [--serving] [--dry-run] [--smi PATH]"); return 2; }
   smi := args_value(a[..], "--smi", "nvidia-smi");

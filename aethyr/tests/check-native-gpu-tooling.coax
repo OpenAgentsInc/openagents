@@ -4,7 +4,7 @@
 #load "native-gpu-parity-policy.coax";
 ngt_copy :: (source:string,dest:string)->bool {b:[1048576]u8;n:=fs_read(source,b[..]);return n>=0 && fs_write(dest,cast(string)b[0..<n]);}
 ngt_name :: (prefix:string,i:int,suffix:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],prefix);jo_int(o[..],i);jo_put(o[..],suffix);return jo_text(o[..]);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}base:=args_value(a[..],"--base","");work:=args_value(a[..],"--work-dir","");native:=args_value(a[..],"--native-tool","");parity:=args_value(a[..],"--parity-tool","");compiler:=args_value(a[..],"--coax","");receipt:=args_value(a[..],"--receipt","");
   if base=="" || work=="" || native=="" || parity=="" || compiler=="" || receipt=="" || fs_exists(work) || fs_exists(receipt) || !fs_mkdir(work) {return 2;}
   deadline:=proc_deadline(810000,proc_now_ms());out:[1048576]u8;err:[65536]u8;env:[]string;paths:[12][4096]u8;inputs:[1]RtqInputs;

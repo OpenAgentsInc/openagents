@@ -315,7 +315,7 @@ on its stack, and that bound sizes it.
 // and of values, kv_heads * head_dim each. Position p of layer l starts at
 // (l * capacity + p) * kv_heads * head_dim. The caller keeps the length.
 LmCache :: struct {keys:[]f32;values:[]f32;capacity:int;}
-lm_cache_size :: (s:MsShape,capacity:int)->int #export_c {return s.layers*capacity*s.kv_heads*s.head_dim;}
+lm_cache_size :: (s:MsShape,capacity:int)->int #export_c #effects(all) {return s.layers*capacity*s.kv_heads*s.head_dim;}
 lm_cache_fits :: (s:MsShape,c:LmCache)->bool {
     n:=lm_cache_size(s,c.capacity);
     return c.capacity>=1 && c.capacity<=LM_POSITIONS_MAX && c.keys.count==n && c.values.count==n;
@@ -342,13 +342,13 @@ over every cached position up to its own:
 // The rotation is Llama 3's here; chapter 81's Ministral runs the same step
 // with its YaRN frequencies and adjacent pairs (LmRope.yarn).
 LmRope :: enum u8 {llama3;yarn;}
-lm_layer_step :: (s:MsShape,w:MsLayer,c:LmCache,layer:int,start:int,x:[]f32,n:int,out:[]f32,work:[]f32)->MsResult #export_c {
+lm_layer_step :: (s:MsShape,w:MsLayer,c:LmCache,layer:int,start:int,x:[]f32,n:int,out:[]f32,work:[]f32)->MsResult #export_c #effects(all) {
     return lm_layer_rope(s,w,c,layer,start,x,n,out,work,LmRope.llama3);
 }
 lm_turn :: (rope:LmRope,v:[]f32,heads:int,d:int,position:int,freqs:[]f64) {
     if rope==LmRope.yarn {ms_rotate(v,heads,d,position,freqs);} else {lm_rotate(v,heads,d,position,freqs);}
 }
-lm_layer_rope :: (s:MsShape,w:MsLayer,c:LmCache,layer:int,start:int,x:[]f32,n:int,out:[]f32,work:[]f32,rope:LmRope)->MsResult #export_c {
+lm_layer_rope :: (s:MsShape,w:MsLayer,c:LmCache,layer:int,start:int,x:[]f32,n:int,out:[]f32,work:[]f32,rope:LmRope)->MsResult #export_c #effects(all) {
     if !ms_shape_valid(s) || !ms_layer_sizes(s,w) || !lm_cache_fits(s,c) || layer<0 || layer>=s.layers || n<1 || start<0 || start+n>c.capacity {return MsResult.{status=MsStatus.shape};}
     d:=s.width;hd:=s.head_dim;q:=s.heads*hd;kv:=s.kv_heads*hd;group:=s.heads/s.kv_heads;base:=layer*c.capacity*kv;
     if x.count!=n*d || out.count<n*d || work.count<n*q {return MsResult.{status=MsStatus.capacity};}
@@ -420,7 +420,7 @@ showed here, when the first whole-model run refused at the readout:
 // is read in chunks of `rows`, at most that limit: three of 32,768 and one
 // of 29,952. cause names the first row of a refused chunk.
 LM_READOUT_ROWS :: 32768;
-lm_readout :: (s:MsShape,head:[]u8,norm:[]u8,hidden:[]f32,logits:[]f32,work:[]f32,rows:int)->MsResult #export_c {
+lm_readout :: (s:MsShape,head:[]u8,norm:[]u8,hidden:[]f32,logits:[]f32,work:[]f32,rows:int)->MsResult #export_c #effects(all) {
     if !qm_valid(1,rows,s.width) || head.count!=2*s.vocab*s.width || logits.count<s.vocab {return MsResult.{status=MsStatus.shape};}
     first:=0;
     while first<s.vocab {
@@ -446,10 +446,10 @@ through the final norm and the separate head:
 // hidden holds two residual buffers of count x width; work is lm_work. rope
 // picks the layers' rotation (Llama 3's unless set).
 LmModel :: struct {embed:[]u8;norm:[]u8;head:[]u8;layers:[]MsLayer;rope:LmRope;}
-lm_work :: (s:MsShape,count:int)->int #export_c {
+lm_work :: (s:MsShape,count:int)->int #export_c #effects(all) {
     a:=count*s.heads*s.head_dim;b:=s.width+s.vocab;return a+b-nx_min(a,b);
 }
-lm_decode :: (s:MsShape,m:LmModel,c:LmCache,start:int,tokens:[]int,hidden:[]f32,logits:[]f32,work:[]f32)->MsResult #export_c {
+lm_decode :: (s:MsShape,m:LmModel,c:LmCache,start:int,tokens:[]int,hidden:[]f32,logits:[]f32,work:[]f32)->MsResult #export_c #effects(all) {
     n:=tokens.count*s.width;
     if m.layers.count!=s.layers {return MsResult.{status=MsStatus.shape};}
     if hidden.count<2*n || work.count<lm_work(s,tokens.count) {return MsResult.{status=MsStatus.capacity};}
@@ -482,7 +482,7 @@ decoded, so a prompt of p tokens needs p + steps - 1 cache positions.
 // the run has stopped. out receives the emitted ids; written is their count
 // and cause the final cache length.
 LmSampler :: struct {options:NxOptions;seed:CrSeed;stops:[]int;probabilities:[]f64;work:NxWork;}
-lm_continue :: (s:MsShape,m:LmModel,c:LmCache,prompt:[]int,steps:int,k:LmSampler,out:[]int,hidden:[]f32,logits:[]f32,work:[]f32)->MsResult #export_c {
+lm_continue :: (s:MsShape,m:LmModel,c:LmCache,prompt:[]int,steps:int,k:LmSampler,out:[]int,hidden:[]f32,logits:[]f32,work:[]f32)->MsResult #export_c #effects(all) {
     if steps<1 || out.count<steps || prompt.count+steps-1>c.capacity {return MsResult.{status=MsStatus.capacity,cause=prompt.count+steps-1};}
     r:=lm_decode(s,m,c,0,prompt,hidden,logits,work);if r.status!=MsStatus.ok {return r;}
     length:=r.written;run:=NxRun.{random=k.seed,limit=steps};

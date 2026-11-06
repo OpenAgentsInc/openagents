@@ -3,17 +3,17 @@
 #load "qualification-files.coax";
 #load "image-cache-conformance.coax";
 #load "../../../coax/lib/image/png.coax";
-icn_open :: ()->int #foreign;
-icn_source :: (bytes:[]u8,fault:int) #foreign;
-icn_get :: (url:[]u8) #foreign;
-icn_info :: (field:int)->int #foreign;
-icn_copy :: (out:[]u8)->int #foreign;
-icn_notice :: (out:[]u8)->int #foreign;
-icn_close :: () #foreign;
+icn_open :: ()->int #foreign #effects(all);
+icn_source :: (bytes:[]u8,fault:int) #foreign #effects(all);
+icn_get :: (url:[]u8) #foreign #effects(all);
+icn_info :: (field:int)->int #foreign #effects(all);
+icn_copy :: (out:[]u8)->int #foreign #effects(all);
+icn_notice :: (out:[]u8)->int #foreign #effects(all);
+icn_close :: () #foreign #effects(all);
 icc_name :: (i:int,out:[]u8)->string{o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"/owned-");jo_int(o[..],i);return jo_text(o[..]);}
 icc_failed :: ()->bool{return icn_info(1)==0&&icn_info(2)==1&&icn_info(3)==0&&icn_info(4)==0&&icn_info(5)==0;}
 icc_get :: (url:string){bytes:[65536]u8;for b,i:url{bytes[i]=b;}icn_get(bytes[0..<url.count]);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4{tool_errln("usage: check-image-cache REPO CANONICAL_BANK PRESSURE_2048_JPEG NEW_OUT");return 2;}
  root:=args_at(a[..],0);bank:=args_at(a[..],1);pressure:=args_at(a[..],2);dir:=args_at(a[..],3);if !fs_mkdir(dir){return 1;}paths:[8][4096]u8;inputs:[1]RtqInputs;
  for name:[5]string.["verse/native/render-images.c","verse/native/render-images.h","aethyr/render/host-image-cache.coax","aethyr/render/tests/image-cache-effects.c","aethyr/render/tests/check-image-cache.coax"]{if !rtq_input_add(inputs[..],fs_join(root,name,paths[0][..])){return 1;}}

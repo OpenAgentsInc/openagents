@@ -16,7 +16,7 @@ HCLC_FIELDS::[32]int.[1,2,26,3200,4800,8192,8192,8192,2,0,64,1,8,8,0,8,0,8,0,0,0
  #assert hclc_pulse(897,0)==2048&&hclc_pulse(899,0)==2048&&hclc_pulse(901,0)== -2048;
  #assert hclc_pulse(1921,1)==1024&&hclc_pulse(1923,1)==1024&&hclc_pulse(1925,1)== -1024;
 }
-hclc_accept::(rows:[]int)->bool #export_c{if rows.count!=32{return false;}for value,i:HCLC_FIELDS{if rows[i]!=value{return false;}}return true;}
+hclc_accept::(rows:[]int)->bool #export_c #effects(all) {if rows.count!=32{return false;}for value,i:HCLC_FIELDS{if rows[i]!=value{return false;}}return true;}
 #test "clip refusal receipts distinguish event line and PCM limits and require complete cleanup" {
  count:=[17]int.[1,1,1,8192,106496,1,0,0,0,0,0,1,0,0,0,0,0];line:=[17]int.[1,1,1,0,0,1,0,0,0,0,0,1,0,0,0,0,0];pcm:=[17]int.[1,1,1,2,26,0,1,0,0,0,0,1,0,0,0,0,0];
  missing:=[17]int.[1,1,1,1,15,0,1,0,0,0,0,1,0,0,0,0,0];#assert hclc_refused(4,missing[..]);
@@ -27,7 +27,7 @@ hclc_accept::(rows:[]int)->bool #export_c{if rows.count!=32{return false;}for va
  for i:3..<7{pcm[i]+=1;#assert !hclc_refused(3,pcm[..]);pcm[i]-=1;}
  for i:3..<7{missing[i]+=1;#assert !hclc_refused(4,missing[..]);missing[i]-=1;}
 }
-hclc_refused::(kind:int,rows:[]int)->bool #export_c{
+hclc_refused::(kind:int,rows:[]int)->bool #export_c #effects(all) {
  if kind<1||kind>4||rows.count!=17{return false;}
  expected:=[17]int.[1,1,1,0,0,1,0,0,0,0,0,1,0,0,0,0,0];
  if kind==1{expected[3]=8192;expected[4]=106496;}
@@ -39,14 +39,14 @@ hclc_refused::(kind:int,rows:[]int)->bool #export_c{
  rows:=[15]int.[19840,19840,1,13,0,0,1,0,0,0,1,1,13,0,1];#assert hclc_cancel(rows[..])&&!hclc_cancel(rows[0..<14]);extra:[16]int;#assert !hclc_cancel(extra[..]);
  for i:0..<15{rows[i]+=1;#assert !hclc_cancel(rows[..]);rows[i]-=1;}
 }
-hclc_cancel::(rows:[]int)->bool #export_c{
+hclc_cancel::(rows:[]int)->bool #export_c #effects(all) {
  if rows.count!=15{return false;}expected:=[15]int.[19840,19840,1,13,0,0,1,0,0,0,1,1,13,0,1];for value,i:expected{if rows[i]!=value{return false;}}return true;
 }
-hclc_pulse::(frame:int,channel:int)->int{
+hclc_pulse::(frame:int,channel:int)->int #effects(all) {
  p:=frame-(ifx channel==0 then 896 else 1920);if p<1||p>=8{return 0;}
  wave:=[7]int.[2048,4096,2048,0,-2048,-4096,-2048];return wave[p-1]/(ifx channel==0 then 1 else 2);
 }
-hclc_wave::(bytes:[]u8)->bool #export_c{
+hclc_wave::(bytes:[]u8)->bool #export_c #effects(all) {
  if bytes.count!=19244{return false;}
  header:=[44]u8.[82,73,70,70,36,75,0,0,87,65,86,69,102,109,116,32,16,0,0,0,1,0,2,0,128,187,0,0,0,238,2,0,4,0,16,0,100,97,116,97,0,75,0,0];
  for b,i:header{if bytes[i]!=b{return false;}}

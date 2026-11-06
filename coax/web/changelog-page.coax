@@ -215,7 +215,7 @@ cg_output :: (path:string,text:string,write:bool,old:[]u8)->bool {
   if !write {tool_err("changelog: stale or missing output ");tool_errln(path);return false;}
   if !fs_write(path,text) {tool_err("changelog: cannot write ");tool_errln(path);return false;}return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;
   if !args_load(args[..]) || args_count(args[..])!=1 {tool_errln("usage: changelog-page --write|--check (from repository root)");return 2;}
   mode:=args_at(args[..],0);write:=mode=="--write";

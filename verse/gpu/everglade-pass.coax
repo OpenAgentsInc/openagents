@@ -68,7 +68,7 @@ ep_find :: (name: string) -> int {
 }
 #test "the passes by name" { #assert ep_find("bg") == 0 && ep_find("scene") == 1 && ep_find("grass") == 2 && ep_find("water") == 3 && ep_find("fx") == 4 && ep_find("post") == 5 && ep_find("bloom") == -1 && ep_find("") == -1; }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 2 { tool_errln("usage: everglade-pass HOST PASS [--live] [--keep DIR] [--native-layers] [--emit DIR]"); return 2; }
   host := args_at(a[..], 0);

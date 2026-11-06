@@ -149,21 +149,21 @@
   #assert indexed.code==LC_CAPACITY;
 }
 
-vxi_init :: (network:int,table:[]u8,used:int,stage:[]u8,batch:[]u8)->CsResult #export_c {
+vxi_init :: (network:int,table:[]u8,used:int,stage:[]u8,batch:[]u8)->CsResult #export_c #effects(all) {
   r:=cs_init_vartime(network,table,used,stage,batch);if r.code!=CS_OK {return r;}
   c:=[1]LcCursor.[LcCursor.{used=r.used,n=r.n}];
   if !vxi_sync(stage,c[..],batch,0) || c[0].used>table.count {return CsResult.{code=CS_CAPACITY};}
   return CsResult.{used=c[0].used,n=c[0].n};
 }
-vxi_lwork :: (w:ValidationWork)->LcWork {return LcWork.{ins=w.ins,outs=w.outs,items=w.items};}
-vxi_archive :: (tree:[]BlockTree,stage:[]u8,c:[]LcCursor,batch:[]u8,block:CrBlock,loc:TxiLoc,next:int,w:ValidationWork)->TxiMeta {
+vxi_lwork :: (w:ValidationWork)->LcWork #effects(all) {return LcWork.{ins=w.ins,outs=w.outs,items=w.items};}
+vxi_archive :: (tree:[]BlockTree,stage:[]u8,c:[]LcCursor,batch:[]u8,block:CrBlock,loc:TxiLoc,next:int,w:ValidationWork)->TxiMeta #effects(all) {
   meta:=txi_stage_block_vartime(tree,stage,c,batch,LcBlock.{index=block.index,bytes=block.bytes},loc,next,vxi_lwork(w));
   if meta.code!=LC_OK {return meta;}
   hash:=tree[0].e[block.index].hash;
   code:=axi_stage_block_vartime(stage,c,batch,block.bytes,hash[..],tree[0].l[block.index].height,w.ins,w.outs,w.items);
   return TxiMeta.{code=code,next=meta.next};
 }
-vxi_connect :: (tree:[]BlockTree,i:int,body:[]u8,loc:TxiLoc,table:[]u8,used:int,stage:[]u8,batch:[]u8,w:ValidationWork,undo:[]u8)->CsResult #export_c {
+vxi_connect :: (tree:[]BlockTree,i:int,body:[]u8,loc:TxiLoc,table:[]u8,used:int,stage:[]u8,batch:[]u8,w:ValidationWork,undo:[]u8)->CsResult #export_c #effects(all) {
   meta:=vxi_context(table,used);if meta.code!=CS_OK {return CsResult.{code=CS_CONTEXT};}
   r:=cs_connect_vartime(tree,i,body,table,used,stage,batch,w,undo);if r.code!=CS_OK {return r;}
   c:=[1]LcCursor.[LcCursor.{used=r.used,n=r.n}];
@@ -172,7 +172,7 @@ vxi_connect :: (tree:[]BlockTree,i:int,body:[]u8,loc:TxiLoc,table:[]u8,used:int,
   if !vxi_sync(stage,c[..],batch,indexed.next) || c[0].used>table.count {return CsResult.{code=CS_CAPACITY};}
   return CsResult.{used=c[0].used,n=c[0].n,undo_n=r.undo_n};
 }
-vxi_reorg :: (tree:[]BlockTree,table:[]u8,used:int,target:int,blocks:[]CrBlock,locs:[]TxiLoc,stage:[]u8,scratch:[]u8,batch:[]u8,temp:[]u8,w:CrWork,undo:[]u8)->CrResult #export_c {
+vxi_reorg :: (tree:[]BlockTree,table:[]u8,used:int,target:int,blocks:[]CrBlock,locs:[]TxiLoc,stage:[]u8,scratch:[]u8,batch:[]u8,temp:[]u8,w:CrWork,undo:[]u8)->CrResult #export_c #effects(all) {
   meta:=vxi_context(table,used);if meta.code!=CS_OK || blocks.count!=locs.count {return cr_refused(CS_CONTEXT);}
   r:=cr_reorg_vartime(tree,table,used,target,blocks,stage,scratch,batch,temp,w,undo);if r.code!=CS_OK {return r;}
   c:=[1]LcCursor.[LcCursor.{used=r.used,n=r.n}];next:=meta.next;

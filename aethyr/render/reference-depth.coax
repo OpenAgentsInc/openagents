@@ -46,7 +46,7 @@ RRDepthBias :: struct {status:RQStatus;offset:f64;resolution:f64;slope:f64;}
  #assert q.resolution==0.00000011920928955078125 && q.offset==0.00000011920928955078125;
 }
 
-rr_depth_resolution :: (value:f32)->RRScalar {
+rr_depth_resolution :: (value:f32)->RRScalar #effects(all) {
  if !rq_finite(value) || value<0 || value>1 {return RRScalar.{status=RQStatus.resource};}
  exponent:=(f32_bits(value)>>23)&255;
  // A depth32 attachment cannot distinguish less than its least subnormal.
@@ -54,7 +54,7 @@ rr_depth_resolution :: (value:f32)->RRScalar {
  resolution:=f64_from_bits((cast(u64)exponent+873)<<52);
  return RRScalar.{value=cast(f32)resolution};
 }
-rr_depth_bias :: (s:RRTriangle,state:RenderPassState)->RRDepthBias {
+rr_depth_bias :: (s:RRTriangle,state:RenderPassState)->RRDepthBias #effects(all) {
  if s.status!=RQStatus.ok {return RRDepthBias.{status=s.status};}
  if s.empty || !state.valid || (state.depth==RenderDepth.none && (state.bias!=0 || state.slope!=0)) {return RRDepthBias.{status=RQStatus.resource};}
  a:=s.vertices[0];b:=s.vertices[1];c:=s.vertices[2];

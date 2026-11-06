@@ -49,7 +49,7 @@ METAL_PACKAGE_TEST :: "{\"schema\":\"aethyr.render.metal.v1\",\"render_sha256\":
  #assert metal_package_parse(cast(string)padded[0..<RENDER_PACKAGE_JSON],base,abc[..]).status==RenderPackageStatus.ok;
  #assert metal_package_parse(cast(string)padded[..],base,abc[..]).status==RenderPackageStatus.invalid;
 }
-metal_package_parse :: (json:string,base:RenderPackage,base_bytes:[]u8)->MetalPackage #export_c {
+metal_package_parse :: (json:string,base:RenderPackage,base_bytes:[]u8)->MetalPackage #export_c #effects(all) {
  q:MetalPackage;
  if base.status!=RenderPackageStatus.ok || base.entries.count!=14 || json.count>RENDER_PACKAGE_JSON {return q;}
  doc:[1]Jv;nodes:[1024]JvNode;if !jv_parse(doc[..],json,nodes[..]) {return q;}d:=doc[0];
@@ -69,7 +69,7 @@ metal_package_parse :: (json:string,base:RenderPackage,base_bytes:[]u8)->MetalPa
  for i:0..<14 {if q.entries[i].present!=base.entries[i].present {return q;}}
  q.status=RenderPackageStatus.ok;return q;
 }
-metal_package_product :: (q:MetalPackage,index:int,kind:int,bytes:[]u8)->RenderPackageStatus #export_c {
+metal_package_product :: (q:MetalPackage,index:int,kind:int,bytes:[]u8)->RenderPackageStatus #export_c #effects(all) {
  if q.status!=RenderPackageStatus.ok || index<0 || index>=14 || !q.entries[index].present || kind<0 || kind>1 {return RenderPackageStatus.invalid;}
  return rpkg_bytes(ifx kind==0 then q.entries[index].hash else q.entries[index].reflection_hash,bytes);
 }

@@ -45,12 +45,12 @@ ArEnvelope :: struct {
   d:ArText; h:ArText; type:ArText; op:int;
   has_root:bool; root:[32]u8; has_prev:bool; prev:[32]u8;
 }
-ar_text :: (v:N32Text)->ArText {c:=v;t:ArText;for i:0..<c.n {t.b[i]=c.b[i];}t.n=c.n;return t;}
-ar_same :: (a:ArText,b:ArText)->bool {x:=a;y:=b;return cast(string)x.b[0..<x.n]==cast(string)y.b[0..<y.n];}
-ar_fail :: (r:ArEnvelope,status:int)->ArEnvelope {o:=r;o.status=status;return o;}
-ar_lowhex :: (c:u8)->bool {return (c>='0' && c<='9') || (c>='a' && c<='f');}
+ar_text :: (v:N32Text)->ArText #effects(all) {c:=v;t:ArText;for i:0..<c.n {t.b[i]=c.b[i];}t.n=c.n;return t;}
+ar_same :: (a:ArText,b:ArText)->bool #effects(all) {x:=a;y:=b;return cast(string)x.b[0..<x.n]==cast(string)y.b[0..<y.n];}
+ar_fail :: (r:ArEnvelope,status:int)->ArEnvelope #effects(all) {o:=r;o.status=status;return o;}
+ar_lowhex :: (c:u8)->bool #effects(all) {return (c>='0' && c<='9') || (c>='a' && c<='f');}
 // A lowercase hyphenated UUID other than the nil UUID.
-ar_uuid :: (v:N32Text)->bool {
+ar_uuid :: (v:N32Text)->bool #effects(all) {
   c:=v;if c.n!=36 {return false;}
   nonzero:=false;
   for i:0..<36 {
@@ -63,7 +63,7 @@ ar_uuid :: (v:N32Text)->bool {
 }
 // Dot-separated components, each a lowercase letter then letters, digits,
 // _ or -, at most 128 bytes in all.
-ar_type :: (v:N32Text)->bool {
+ar_type :: (v:N32Text)->bool #effects(all) {
   c:=v;if c.n==0 || c.n>AR_MAX_TYPE {return false;}
   start:=true;
   for i:0..<c.n {
@@ -76,11 +76,11 @@ ar_type :: (v:N32Text)->bool {
   }
   return !start;
 }
-ar_blank :: (v:N32Text)->bool {c:=v;for i:0..<c.n {b:=c.b[i];if b!=' ' && b!='\t' && b!='\n' && b!='\r' {return false;}}return true;}
+ar_blank :: (v:N32Text)->bool #effects(all) {c:=v;for i:0..<c.n {b:=c.b[i];if b!=' ' && b!='\t' && b!='\n' && b!='\r' {return false;}}return true;}
 // book:end envelope
 
 // book:begin read
-ar_envelope :: (e:NostrEvent)->ArEnvelope {
+ar_envelope :: (e:NostrEvent)->ArEnvelope #effects(all) {
   r:ArEnvelope;seen:[8]int;k:=0;others:=false;
   while true {
     t:=g29_tag(e,k);
@@ -124,12 +124,12 @@ ArArtifact :: struct {
 // What a submission did. A move also names the source channel and the
 // revision it replaced, for the relay's removal notice there.
 ArResult :: struct {status:int; index:int=-1; moved:bool; from:ArText; replaced:[32]u8;}
-ar_can :: (channels:[]ArText,h:ArText)->bool {for c:channels {if ar_same(c,h) {return true;}}return false;}
-ar_result :: (status:int,index:int)->ArResult {return ArResult.{status=status,index=index};}
+ar_can :: (channels:[]ArText,h:ArText)->bool #effects(all) {for c:channels {if ar_same(c,h) {return true;}}return false;}
+ar_result :: (status:int,index:int)->ArResult #effects(all) {return ArResult.{status=status,index=index};}
 // book:end state
 
 // book:begin submit
-ar_submit :: (arts:[]ArArtifact,n:[]int,e:NostrEvent,writable:[]ArText)->ArResult {
+ar_submit :: (arts:[]ArArtifact,n:[]int,e:NostrEvent,writable:[]ArText)->ArResult #effects(all) {
   if e.error!=NE_OK || !e.verified {return ar_result(AR_EVENT,-1);}
   if e.kind!=AR_KIND_ARTIFACT {return ar_result(AR_KIND,-1);}
   env:=ar_envelope(e);
@@ -164,11 +164,11 @@ ar_submit :: (arts:[]ArArtifact,n:[]int,e:NostrEvent,writable:[]ArText)->ArResul
 
 // book:begin access
 // In current-state queries: not deleted, and the reader can read its home.
-ar_current :: (a:ArArtifact,readable:[]ArText)->bool {return !a.deleted && ar_can(readable,a.h);}
+ar_current :: (a:ArArtifact,readable:[]ArText)->bool #effects(all) {return !a.deleted && ar_can(readable,a.h);}
 // A lookup by d: the current revision, a deletion included.
-ar_lookup :: (a:ArArtifact,readable:[]ArText)->bool {return ar_can(readable,a.h);}
+ar_lookup :: (a:ArArtifact,readable:[]ArText)->bool #effects(all) {return ar_can(readable,a.h);}
 // The k'th accepted revision, under the access of the channel it was in.
-ar_revision_visible :: (a:ArArtifact,k:int,readable:[]ArText)->bool {return k>=0 && k<a.ids_n && ar_can(readable,a.homes[k]);}
+ar_revision_visible :: (a:ArArtifact,k:int,readable:[]ArText)->bool #effects(all) {return k>=0 && k<a.ids_n && ar_can(readable,a.homes[k]);}
 // book:end access
 
 // ---- checks (helpers in coax/tests/nostr/nipar_fixtures.coax)

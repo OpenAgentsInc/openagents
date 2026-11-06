@@ -98,11 +98,11 @@ PwSpec :: struct { name:string; shape:PsionicShape; dtype:PwDtype; shard:int; }
     for i:0..<4 {b.dims[i]+=1;#assert !pw_same_shape(a,b);b=a;}
 }
 
-pw_bundle_counts :: (files:int,tensors:int,output:int,draft:int,config:int,tokenizer:int,index:int)->bool #export_c {
+pw_bundle_counts :: (files:int,tensors:int,output:int,draft:int,config:int,tokenizer:int,index:int)->bool #export_c #effects(all) {
     return files>=1 && files<=PW_SHARDS_MAX && tensors>=1 && tensors<=PW_TENSORS_MAX && output>=tensors && draft>=tensors && config>=1 && config<=PW_HEADER_MAX && tokenizer>=1 && tokenizer<=67108864 && index>=0 && index<=PW_HEADER_MAX;
 }
-pw_has_index :: (n:int)->bool {return n>0;}
-pw_sizes :: (sizes:[]PwShard)->PwResult {
+pw_has_index :: (n:int)->bool #effects(all) {return n>0;}
+pw_sizes :: (sizes:[]PwShard)->PwResult #effects(all) {
     total:=0;
     for shard:sizes {
         size:=shard.size;
@@ -111,25 +111,25 @@ pw_sizes :: (sizes:[]PwShard)->PwResult {
     }
     return PwResult.{bytes=total};
 }
-pw_ends :: (s:string,suffix:string)->bool {
+pw_ends :: (s:string,suffix:string)->bool #effects(all) {
     if s.count<suffix.count {return false;}
     return s[s.count-suffix.count..<s.count]==suffix;
 }
-pw_basename :: (s:string)->bool {
+pw_basename :: (s:string)->bool #effects(all) {
     if !pw_name(s) {return false;}
     if s[0]=='.' {return false;}
     for c:s {if c=='/' || c==':' {return false;}}
     return pw_ends(s,".safetensors");
 }
-pw_find :: (inventory:[]PwTensor,name:string)->int {
+pw_find :: (inventory:[]PwTensor,name:string)->int #effects(all) {
     for i:0..<inventory.count {if inventory[i].name==name {return i;}}return -1;
 }
-pw_same_shape :: (a:PsionicShape,b:PsionicShape)->bool {
+pw_same_shape :: (a:PsionicShape,b:PsionicShape)->bool #effects(all) {
     if a.rank!=b.rank {return false;}
     for i:0..<4 {if a.dims[i]!=b.dims[i] {return false;}}return true;
 }
 // A bounded HF weight_map must cover the entire admitted inventory exactly once.
-pw_index :: (text:string,shards:[]PwShard,inventory:[]PwTensor,payload:int)->PwStatus {
+pw_index :: (text:string,shards:[]PwShard,inventory:[]PwTensor,payload:int)->PwStatus #effects(all) {
     j:[1]Json;json_start_bounded(j[..],text,text.count,text.count);
     if json_next(j[..])!=JSON_OBJECT {return PwStatus.json;}
     map:=false;meta:=false;total:=payload;mapped:=0;t:=json_next(j[..]);
@@ -161,7 +161,7 @@ pw_index :: (text:string,shards:[]PwShard,inventory:[]PwTensor,payload:int)->PwS
     if !map || mapped!=inventory.count || total!=payload {return PwStatus.manifest;}return PwStatus.ok;
 }
 // book:begin bundle
-pw_bundle_checked :: (id:PwIdentity,config:[]u8,tokenizer:[]u8,index:[]u8,shards:[]PwShard,specs:[]PwSpec,output:[]PwTensor,draft:[]PwTensor,overlap:bool)->PwResult #export_c {
+pw_bundle_checked :: (id:PwIdentity,config:[]u8,tokenizer:[]u8,index:[]u8,shards:[]PwShard,specs:[]PwSpec,output:[]PwTensor,draft:[]PwTensor,overlap:bool)->PwResult #export_c #effects(all) {
     if !pw_bundle_counts(shards.count,specs.count,output.count,draft.count,config.count,tokenizer.count,index.count) {return PwResult.{status=PwStatus.size};}
     if overlap {return PwResult.{status=PwStatus.alias};}
     if !pw_name(id.origin) || !pw_name(id.revision) {return PwResult.{status=PwStatus.manifest};}

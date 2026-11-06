@@ -476,16 +476,16 @@ AdCall :: struct {node:int;backward:bool;kind:AdKind;items:int;gain:f32;meta:[64
 AdCursor :: struct {next:int;pending:bool;}
 AdRun :: struct {status:AdStatus;cursor:AdCursor;external:bool;call:AdCall;}
 
-ad_material :: (op:TiOp)->bool {return op!=TiOp.input && op!=TiOp.view && op!=TiOp.reshape;}
-ad_count :: (s:TvShape)->int {return tv_elements(s).elements;}
+ad_material :: (op:TiOp)->bool #effects(all) {return op!=TiOp.input && op!=TiOp.view && op!=TiOp.reshape;}
+ad_count :: (s:TvShape)->int #effects(all) {return tv_elements(s).elements;}
 // A registered operator's second operand only carries its shape; a custom
 // derivative may differentiate both operands.
-ad_both :: (n:TiNode,custom:bool)->bool {return ti_binary(n.op) && (custom || n.op!=TiOp.registered);}
+ad_both :: (n:TiNode,custom:bool)->bool #effects(all) {return ti_binary(n.op) && (custom || n.op!=TiOp.registered);}
 
 // book:begin needs
 // Which operand values a node's rule reads in backward, given which of its
 // operands need a gradient.
-ad_reads :: (n:TiNode,custom:bool,need_a:bool,need_b:bool)->[2]bool {
+ad_reads :: (n:TiNode,custom:bool,need_a:bool,need_b:bool)->[2]bool #effects(all) {
     r:[2]bool;
     if custom {r[0]=true;r[1]=ti_binary(n.op);}
     else if n.op==TiOp.registered || n.op==TiOp.relu || n.op==TiOp.layernorm || n.op==TiOp.maxpool2d {r[0]=true;}
@@ -497,7 +497,7 @@ ad_reads :: (n:TiNode,custom:bool,need_a:bool,need_b:bool)->[2]bool {
 // book:begin place
 // First fit: the lowest offset that overlaps no block live at any of the
 // same steps. Lifetimes are inclusive, so a step never writes what it reads.
-ad_place :: (arena:AdArena,size:int,first:int,last:int)->AdArena {
+ad_place :: (arena:AdArena,size:int,first:int,last:int)->AdArena #effects(all) {
     a:=arena;best:=0;moved:=true;
     while moved {
         moved=false;
@@ -511,10 +511,10 @@ ad_place :: (arena:AdArena,size:int,first:int,last:int)->AdArena {
     return a;
 }
 // book:end place
-ad_last :: (a:AdArena)->int {return a.at[a.count-1];}
+ad_last :: (a:AdArena)->int #effects(all) {return a.at[a.count-1];}
 
 // book:begin tape
-ad_tape :: (p:TiProgram,mode:AdMode,registry:OrRegistry)->AdTape {
+ad_tape :: (p:TiProgram,mode:AdMode,registry:OrRegistry)->AdTape #effects(all) {
     t:AdTape;t.program=p;t.mode=mode;
     t.plan=ti_compile(p,TiTarget.{},false);
     if t.plan.status!=TiStatus.ok {t.status=AdStatus.program;return t;}
@@ -585,7 +585,7 @@ ad_tape :: (p:TiProgram,mode:AdMode,registry:OrRegistry)->AdTape {
 // book:end tape
 
 // Place values and staging buffers in step order, then gradients.
-ad_layout :: (tape:AdTape)->AdTape {
+ad_layout :: (tape:AdTape)->AdTape #effects(all) {
     t:=tape;p:=t.program;
     for s:0..<t.count {
         st:=t.steps[s];i:=st.node;n:=p.nodes[i];
@@ -607,13 +607,13 @@ ad_layout :: (tape:AdTape)->AdTape {
 
 // An operand as chapter 40's kernels read it: inputs from the caller's
 // input buffer, everything else from the value arena.
-ad_describe :: (t:AdTape,x:int,at:int,meta:[]int) {
+ad_describe :: (t:AdTape,x:int,at:int,meta:[]int) #effects(all) {
     v:=t.plan.values[x].view;r:=t.root[x];base:=t.value_at[r];meta[at]=1;
     if t.program.nodes[r].op==TiOp.input {base=t.program.nodes[r].input_base;meta[at]=0;}
     meta[at+1]=base+v.offset;meta[at+2]=v.shape.rank;
     for j:0..<4 {meta[at+3+j]=v.shape.dims[j];meta[at+7+j]=v.strides[j];}
 }
-ad_meta :: (t:AdTape,i:int)->[64]int {
+ad_meta :: (t:AdTape,i:int)->[64]int #effects(all) {
     n:=t.program.nodes[i];s:=t.plan.values[i].view.shape;a:=t.plan.values[n.a].view.shape;m:[64]int;
     m[0]=int(cast(u8)n.op);m[1]=t.value_at[i];m[3]=s.rank;
     for j:0..<4 {m[4+j]=s.dims[j];}
@@ -623,19 +623,19 @@ ad_meta :: (t:AdTape,i:int)->[64]int {
     m[49]=n.window[0];m[50]=n.window[1];m[51]=n.stride;
     return m;
 }
-ad_read :: (t:AdTape,x:int,j:int,inputs:[]f32,values:[]f32)->f64 {
+ad_read :: (t:AdTape,x:int,j:int,inputs:[]f32,values:[]f32)->f64 #effects(all) {
     v:=t.plan.values[x].view;r:=t.root[x];
     if t.program.nodes[r].op==TiOp.input {return f64(inputs[t.program.nodes[r].input_base+tv_offset(v,j)]);}
     return f64(values[t.value_at[r]+tv_offset(v,j)]);
 }
 // A gradient lands in its root's storage, through the operand's view.
-ad_add :: (t:AdTape,x:int,j:int,g:f64,grads:[]f64) {
+ad_add :: (t:AdTape,x:int,j:int,g:f64,grads:[]f64) #effects(all) {
     k:=t.grad_at[t.root[x]]+tv_offset(t.plan.values[x].view,j);grads[k]+=g;
 }
 // book:begin rules
 // The vector-Jacobian product of one built-in node, added into its
 // operands' gradients. dy is the node's own gradient, contiguous.
-ad_rule :: (t:AdTape,i:int,inputs:[]f32,values:[]f32,grads:[]f64) {
+ad_rule :: (t:AdTape,i:int,inputs:[]f32,values:[]f32,grads:[]f64) #effects(all) {
     n:=t.program.nodes[i];s:=t.plan.values[i].view.shape;dy:=t.grad_at[i];
     a:=t.plan.values[n.a].view.shape;need_a:=t.wants[n.a];need_b:=ti_binary(n.op) && t.wants[n.b];
     for j:0..<ad_count(s) {
@@ -687,7 +687,7 @@ ad_rule :: (t:AdTape,i:int,inputs:[]f32,values:[]f32,grads:[]f64) {
 }
 // Layer norm over the last axis, recomputed from x in f64:
 // dx = (dy - mean(dy) - xhat * mean(dy * xhat)) / sigma.
-ad_layernorm :: (t:AdTape,i:int,inputs:[]f32,values:[]f32,grads:[]f64) {
+ad_layernorm :: (t:AdTape,i:int,inputs:[]f32,values:[]f32,grads:[]f64) #effects(all) {
     n:=t.program.nodes[i];a:=t.plan.values[n.a].view.shape;width:=a.dims[a.rank-1];dy:=t.grad_at[i];
     for row:0..<ad_count(a)/width {
         base:=row*width;mean:f64=0;
@@ -709,7 +709,7 @@ ad_layernorm :: (t:AdTape,i:int,inputs:[]f32,values:[]f32,grads:[]f64) {
 // Run steps until the tape ends or a step needs the caller. Gradients born
 // at a step are cleared first; the output's gradient is seeded with ones, so
 // the result is the gradient of the sum of the output's elements.
-ad_run :: (t:AdTape,cursor:AdCursor,inputs:[]f32,values:[]f32,grads:[]f64,flags:[]u8)->AdRun {
+ad_run :: (t:AdTape,cursor:AdCursor,inputs:[]f32,values:[]f32,grads:[]f64,flags:[]u8)->AdRun #effects(all) {
     run:=AdRun.{cursor=cursor};
     if t.status!=AdStatus.ok || cursor.pending {run.status=AdStatus.state;return run;}
     if inputs.count<t.plan.input_elements || values.count<t.values.top || grads.count<t.grads.top {run.status=AdStatus.capacity;return run;}
@@ -749,7 +749,7 @@ ad_run :: (t:AdTape,cursor:AdCursor,inputs:[]f32,values:[]f32,grads:[]f64,flags:
     return run;
 }
 // The caller ran the call; fold its result in and move past the step.
-ad_finish :: (t:AdTape,cursor:AdCursor,values:[]f32,grads:[]f64,flags:[]u8)->AdRun {
+ad_finish :: (t:AdTape,cursor:AdCursor,values:[]f32,grads:[]f64,flags:[]u8)->AdRun #effects(all) {
     run:=AdRun.{cursor=cursor};
     if !cursor.pending {run.status=AdStatus.state;return run;}
     st:=t.steps[cursor.next];n:=t.program.nodes[st.node];
@@ -775,14 +775,14 @@ ad_finish :: (t:AdTape,cursor:AdCursor,values:[]f32,grads:[]f64,flags:[]u8)->AdR
 
 // book:begin publish
 // A node's value, after its forward step has run.
-ad_value :: (t:AdTape,cursor:AdCursor,x:int,inputs:[]f32,values:[]f32,out:[]f32)->AdStatus {
+ad_value :: (t:AdTape,cursor:AdCursor,x:int,inputs:[]f32,values:[]f32,out:[]f32)->AdStatus #effects(all) {
     if x<0 || x>=t.program.count {return AdStatus.state;}
     if t.program.nodes[t.root[x]].op!=TiOp.input && (cursor.next<=t.value_born[t.root[x]] || cursor.next>t.value_dies[t.root[x]]+1) {return AdStatus.state;}
     for j:0..<ad_count(t.plan.values[x].view.shape) {out[j]=f32(ad_read(t,x,j,inputs,values));}
     return AdStatus.ok;
 }
 // An input's gradient, rounded once to f32, after the whole tape has run.
-ad_gradient :: (t:AdTape,cursor:AdCursor,x:int,grads:[]f64,out:[]f32)->AdStatus {
+ad_gradient :: (t:AdTape,cursor:AdCursor,x:int,grads:[]f64,out:[]f32)->AdStatus #effects(all) {
     if x<0 || x>=t.program.count || t.program.nodes[x].op!=TiOp.input || !t.mode.grad[x] {return AdStatus.state;}
     if !t.mode.enabled {return AdStatus.mode;}
     if cursor.next<t.count || cursor.pending {return AdStatus.state;}

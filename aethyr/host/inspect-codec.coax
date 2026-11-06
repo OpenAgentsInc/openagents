@@ -3,7 +3,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/json/json.coax";
 #load "pcm-compare.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {return 2;}left:[8388608]u8;right:[8388608]u8;n:=fs_read(args_at(a[..],0),left[..]);rn:=fs_read(args_at(a[..],1),right[..]);if n<1||n!=rn||n%4!=0 {return 1;}
  out:[262144]u8;o:[1]Jo;jo_start(o[..],out[..]);jo_obj(o[..]);jo_key(o[..],"words");jo_int(o[..],n/4);jo_key(o[..],"windows_120_words");jo_arr(o[..]);first:= -1;last:= -1;total:=0;
  for at:0..<(n/4+119)/120 {start:=at*120;end:=ifx start+120<n/4 then start+120 else n/4;q:=hpcm_compare_words(left[start*4..<end*4],right[start*4..<end*4]);if q.over==0 {continue;}total+=q.over;

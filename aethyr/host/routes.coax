@@ -20,14 +20,14 @@
   for origin:[12]string.["ws://127.0.0.1:0","ws://127.0.0.1:65536","ws://127.0.0.1:100000","ws://127.0.0.1:","ws://localhost:1234","ws://127.0.0.2:1234","wss://127.0.0.1:1234","ws://0.0.0.0:1234","ws://127.0.0.1:01234","ws://127.0.0.1:1234/x","ws://127.0.0.1:1234?x","ws://127.0.0.1:12x4"] {#assert !htr_local_origin(origin);}
   #assert !htr_local_origin("ws://127.0.0.1:12:4");
 }
-htr_http_path :: (url:string)->bool #export_c {
+htr_http_path :: (url:string)->bool #export_c #effects(all) {
   if url.count<1 || url.count>4096 || url[0]!='/' {return false;}
   if url.count>1 && url[1]=='/' {return false;}
   for c:url {if c<32 || c==127 || c=='\\' {return false;}}
   return true;
 }
-htr_local_uri :: (url:string)->bool #export_c {return url=="local:/api/room/relay/everglade/local-1"||url=="local:/api/room/relay/everglade/local-1?re=1";}
-htr_local_origin :: (origin:string)->bool #export_c {
+htr_local_uri :: (url:string)->bool #export_c #effects(all) {return url=="local:/api/room/relay/everglade/local-1"||url=="local:/api/room/relay/everglade/local-1?re=1";}
+htr_local_origin :: (origin:string)->bool #export_c #effects(all) {
   prefix:="ws://127.0.0.1:";
   if origin.count<prefix.count+1 || origin[0..<prefix.count]!=prefix || origin[prefix.count]=='0' {return false;}
   port:=0;for c:origin[prefix.count..<origin.count] {if c<'0' || c>'9' {return false;}port=port*10+cast(int)c-'0';if port>65535 {return false;}}

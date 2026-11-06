@@ -14,19 +14,19 @@
 #load "../../../coax/lib/nostr/nip42.coax";
 #load "../../../coax/lib/nostr/relay_read.coax";
 
-fh_argc :: ()->int #foreign;
-fh_arg_len :: (i:int)->int #foreign;
-fh_arg_byte :: (i:int,k:int)->int #foreign;
-fh_now_s :: ()->int #foreign;
-fh_stop :: ()->int #foreign;
-fh_status :: (code:int)->int #foreign;
-fh_listen :: (port:int)->int #foreign;
-fh_accept :: (listener:int,timeout_ms:int)->int #foreign;
-fh_read :: (fd:int,timeout_ms:int)->int #foreign;
-fh_byte :: (i:int)->int #foreign;
-fh_write :: (fd:int,byte:int)->int #foreign;
-fh_flush :: (fd:int,timeout_ms:int)->int #foreign;
-fh_close :: (fd:int)->int #foreign;
+fh_argc :: ()->int #foreign #effects(all);
+fh_arg_len :: (i:int)->int #foreign #effects(all);
+fh_arg_byte :: (i:int,k:int)->int #foreign #effects(all);
+fh_now_s :: ()->int #foreign #effects(all);
+fh_stop :: ()->int #foreign #effects(all);
+fh_status :: (code:int)->int #foreign #effects(all);
+fh_listen :: (port:int)->int #foreign #effects(all);
+fh_accept :: (listener:int,timeout_ms:int)->int #foreign #effects(all);
+fh_read :: (fd:int,timeout_ms:int)->int #foreign #effects(all);
+fh_byte :: (i:int)->int #foreign #effects(all);
+fh_write :: (fd:int,byte:int)->int #foreign #effects(all);
+fh_flush :: (fd:int,timeout_ms:int)->int #foreign #effects(all);
+fh_close :: (fd:int)->int #foreign #effects(all);
 
 FM_BUFFER :: 131072;
 FM_BODY :: 16384;

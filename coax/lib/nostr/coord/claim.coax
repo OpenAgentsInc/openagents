@@ -66,19 +66,19 @@ CO_P :: "proposal-1";
 CO_SNAP :: "sha256:5555555555555555555555555555555555555555555555555555555555555555";
 CO_T0 :: 1790000000;
 
-co_state :: ()->CoordState {
+co_state :: ()->CoordState #effects(all) {
   s:CoordState;s.owner=CO_OWNER;s.epoch=2;s.revision=10;s.max_lease=600;return s;
 }
-co_request :: (worker:string,revision:int,until:int)->CoordRequest {
+co_request :: (worker:string,revision:int,until:int)->CoordRequest #effects(all) {
   q:CoordRequest;q.proposal=CO_P;q.worker=worker;q.expected_revision=revision;q.requested_until=until;return q;
 }
-co_want :: (resource:string,write:bool,snapshot:string)->CoordWant {
+co_want :: (resource:string,write:bool,snapshot:string)->CoordWant #effects(all) {
   w:CoordWant;w.resource=resource;w.write=write;w.snapshot=snapshot;return w;
 }
 
 // Write s into out, as a coordinator reading a request into a reused
 // buffer does, and return the borrowed bytes.
-co_put :: (out:[]u8,s:string)->string {
+co_put :: (out:[]u8,s:string)->string #effects(all) {
   for i:0..<s.count {out[i]=s[i];}
   return cast(string)out[0..<s.count];
 }
@@ -279,7 +279,7 @@ co_put :: (out:[]u8,s:string)->string {
 // book:begin conflict
 // Two entries on one resource conflict unless both read, or the reader holds
 // an immutable snapshot.
-coord_overlap :: (resource:string,write:bool,snapshot:string,h:CoordHold)->bool {
+coord_overlap :: (resource:string,write:bool,snapshot:string,h:CoordHold)->bool #effects(all) {
   if !kept_is(h.resource,resource) {return false;}
   if write && h.write {return true;}
   if write {return h.snapshot.n==0;}
@@ -288,7 +288,7 @@ coord_overlap :: (resource:string,write:bool,snapshot:string,h:CoordHold)->bool 
 // book:end conflict
 
 // book:begin claim
-coord_claim :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,q:CoordRequest,want:[]CoordWant,now:int)->u32 {
+coord_claim :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,q:CoordRequest,want:[]CoordWant,now:int)->u32 #effects(all) {
   st:=s[0];
   // 1. The request: some resources, each once, and a lease that ends after now.
   if want.count==0 {return CO_MALFORMED;}
@@ -317,7 +317,7 @@ coord_claim :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,q:CoordRequ
   return CO_OK;
 }
 // book:end claim
-coord_find :: (claims:[]CoordClaim,count:int,token:int)->int {
+coord_find :: (claims:[]CoordClaim,count:int,token:int)->int #effects(all) {
   for i:0..<count {if claims[i].token==token {return i;}}
   return -1;
 }
@@ -326,7 +326,7 @@ coord_find :: (claims:[]CoordClaim,count:int,token:int)->int {
 // Renew moves the lease end to requested_until; release frees the holds
 // (the caller has fenced the old dispatchers); cancel, by the owner only,
 // stops dispatch and keeps the holds until a release.
-coord_control :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,token:int,action:int,actor:string,expected_revision:int,requested_until:int,now:int)->u32 {
+coord_control :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,token:int,action:int,actor:string,expected_revision:int,requested_until:int,now:int)->u32 #effects(all) {
   st:=s[0];
   k:=coord_find(claims,st.claims,token);
   if k<0 {return CO_NOT_ADMITTED;}
@@ -353,7 +353,7 @@ coord_control :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,token:int
 
 // book:begin fence
 // The dispatcher's check before one write on resource under (epoch, token).
-coord_fence :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,worker:string,resource:string,epoch:int,token:int,now:int)->u32 {
+coord_fence :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,worker:string,resource:string,epoch:int,token:int,now:int)->u32 #effects(all) {
   st:=s[0];
   k:=coord_find(claims,st.claims,token);
   if k<0 || !kept_is(claims[k].worker,worker) {return CO_NOT_ADMITTED;}

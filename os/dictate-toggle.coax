@@ -18,12 +18,12 @@
 #load "../coax/lib/sys/args.coax";
 #load "../coax/lib/sys/proc.coax";
 
-cxproc_wall_us :: () -> int #foreign;
-cxproc_pid_alive :: (pid: int) -> int #foreign;
-cxproc_pid_signal :: (pid: int, sig: int) -> int #foreign;
-cxproc_self_path :: (out: [] u8) -> int #foreign;
-cxproc_local_stamp :: (out: [] u8) -> int #foreign;
-cxproc_self_pid :: () -> int #foreign;
+cxproc_wall_us :: () -> int #foreign #effects(all);
+cxproc_pid_alive :: (pid: int) -> int #foreign #effects(all);
+cxproc_pid_signal :: (pid: int, sig: int) -> int #foreign #effects(all);
+cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
+cxproc_local_stamp :: (out: [] u8) -> int #foreign #effects(all);
+cxproc_self_pid :: () -> int #foreign #effects(all);
 
 MODEL_URL :: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin";
 
@@ -286,7 +286,7 @@ dt_status :: (d: Dict) -> int {
   return 1;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   e: [5] [4096] u8;

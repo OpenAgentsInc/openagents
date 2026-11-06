@@ -64,23 +64,23 @@ BW_INV :: "0123456789abcdef0123456789abcdef";
  for bad:[8]string.["","x","g123456789abcdef0123456789abcdef","/123456789abcdef0123456789abcdef",":123456789abcdef0123456789abcdef","`123456789abcdef0123456789abcdef","0123456789abcdef0123456789abcde","0123456789abcdef0123456789abcdef0"] {#assert !bw_mark(bad,false);}
  #assert !bw_mark("11111111_2222-3333-4444-555555555555",true);
 }
-bw_unit :: (unit:int)->string #export_c {
+bw_unit :: (unit:int)->string #export_c #effects(all) {
  if unit==0 {return "psionic-elephant-rtx.service";}if unit==1 {return "psionic-mammoth.service";}if unit==2 {return "psionic-gptoss20b.service";}return "";
 }
-bw_port :: (unit:int)->int #export_c {if unit==0 {return 8796;}if unit==1 {return 8797;}if unit==2 {return 8795;}return 0;}
-bw_mark :: (s:string,uuid:bool)->bool {
+bw_port :: (unit:int)->int #export_c #effects(all) {if unit==0 {return 8796;}if unit==1 {return 8797;}if unit==2 {return 8795;}return 0;}
+bw_mark :: (s:string,uuid:bool)->bool #effects(all) {
  if s.count!=(ifx uuid then 36 else 32) {return false;}
  for i:0..<s.count {c:=s[i];if uuid && (i==8 || i==13 || i==18 || i==23) {if c!='-' {return false;}}else if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
  return true;
 }
 // 0 explicit unready/unreachable, 1 ready, 2 busy, 3 indeterminate.
-bw_health :: (unit:int,http:string,body:string)->int #export_c {
+bw_health :: (unit:int,http:string,body:string)->int #export_c #effects(all) {
  if unit<0 || unit>2 {return 3;}if http=="429" {return 2;}if http=="000" || http=="503" {return 0;}if http!="200" || body.count>4096 {return 3;}
  if unit==2 {f:=bw_field(body,"status");return ifx f.kind==JSON_STRING && json_is(f.value,"ok") then 1 else 3;}
  schema:=bw_field(body,"schema");ready:=bw_field(body,"ready");
  return ifx schema.kind==JSON_STRING && json_is(schema.value,"psionic-health-v1") && ready.kind==JSON_TRUE then 1 else 3;
 }
-bw_field :: (text:string,name:string)->BwField {
+bw_field :: (text:string,name:string)->BwField #effects(all) {
  if text.count>8192 || !json_valid(text) {return BwField.{};}
  j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return BwField.{};}f:BwField;
  while true {t:=json_next(j[..]);if t==JSON_OBJECT_END {return f;}
@@ -89,7 +89,7 @@ bw_field :: (text:string,name:string)->BwField {
  }
  return BwField.{};
 }
-bw_step :: (o:BwObs,s:BwState)->BwDecision {
+bw_step :: (o:BwObs,s:BwState)->BwDecision #effects(all) {
  bad:=BwDecision.{};
  if o.unit<0 || o.unit>2 || fw_window(o.now,o.start,o.end)!=0 || o.mono<0 || o.started<0 || o.started/1000000>o.mono || o.loaded!="loaded" || o.health<0 || o.health>3 || !bw_mark(o.boot,true) || (o.invocation!="" && !bw_mark(o.invocation,false)) {return bad;}
  if s.present && (s.unit!=o.unit || !bw_mark(s.boot,true) || (s.invocation!="" && !bw_mark(s.invocation,false)) || s.started<0 || s.seen<0 || s.last<0 || s.seen>s.last || s.failures<0 || s.failures>2) {return bad;}
@@ -124,28 +124,28 @@ bw_step :: (o:BwObs,s:BwState)->BwDecision {
  #assert bw_state_write(s,out[0..<1])==-1 && !bw_read_state("{}",held[..]) && !bw_read_state("null",held[..]);
  #assert bw_read_state("",held[..]) && !held[0].present;
 }
-bw_window_raw :: (now:string,start:string,end:string)->bool #export_c {
+bw_window_raw :: (now:string,start:string,end:string)->bool #export_c #effects(all) {
  a:=json_int(now);b:=json_int(start);c:=json_int(end);return fw_window(a.value,b.value,c.value)==0;
 }
-bw_describe :: (raw:string,out:[]u8)->int #export_c {
+bw_describe :: (raw:string,out:[]u8)->int #export_c #effects(all) {
  u:=json_int(raw);if !u.ok || bw_unit(u.value)=="" {return -1;}
  n:=json_raw(out,0,"{\"unit\":");n=json_write_string(out,n,bw_unit(u.value));n=json_raw(out,n,",\"port\":");n=json_write_int(out,n,bw_port(u.value));return json_raw(out,n,"}");
 }
-bw_num :: (text:string,name:string)->JsonInt {f:=bw_field(text,name);if f.kind!=JSON_NUMBER {return JsonInt.{};}return json_int(f.value);}
-bw_read_state :: (text:string,out:[]BwState)->bool {
+bw_num :: (text:string,name:string)->JsonInt #effects(all) {f:=bw_field(text,name);if f.kind!=JSON_NUMBER {return JsonInt.{};}return json_int(f.value);}
+bw_read_state :: (text:string,out:[]BwState)->bool #effects(all) {
  if out.count<1 {return false;}out[0]=BwState.{};if text=="" {return true;}
  v:=bw_num(text,"v");u:=bw_num(text,"unit");a:=bw_num(text,"started");b:=bw_num(text,"seen");c:=bw_num(text,"last");d:=bw_num(text,"failures");boot:=bw_field(text,"boot");inv:=bw_field(text,"invocation");
  if v.value!=1 || !u.ok || !a.ok || !b.ok || !c.ok || !d.ok || boot.kind!=JSON_STRING || inv.kind!=JSON_STRING {return false;}
  out[0]=BwState.{present=true,unit=u.value,boot=boot.value,invocation=inv.value,started=a.value,seen=b.value,last=c.value,failures=d.value};return true;
 }
-bw_state_write :: (s:BwState,out:[]u8)->int {
+bw_state_write :: (s:BwState,out:[]u8)->int #effects(all) {
  n:=json_raw(out,0,"{\"v\":1,\"unit\":");n=json_write_int(out,n,s.unit);n=json_raw(out,n,",\"boot\":");n=json_write_string(out,n,s.boot);
  n=json_raw(out,n,",\"invocation\":");n=json_write_string(out,n,s.invocation);n=json_raw(out,n,",\"started\":");n=json_write_int(out,n,s.started);
  n=json_raw(out,n,",\"seen\":");n=json_write_int(out,n,s.seen);n=json_raw(out,n,",\"last\":");n=json_write_int(out,n,s.last);n=json_raw(out,n,",\"failures\":");n=json_write_int(out,n,s.failures);return json_raw(out,n,"}");
 }
 // args: unit, wall seconds, monotonic seconds, start, end, boot ID,
 // invocation ID, process start monotonic microseconds, LoadState, HTTP status.
-bw_run :: (args:[]string,body:string,prior:string,out:[]u8)->int #export_c {
+bw_run :: (args:[]string,body:string,prior:string,out:[]u8)->int #export_c #effects(all) {
  if args.count!=10 {return -1;}unit:=json_int(args[0]);wall:=json_int(args[1]);mono:=json_int(args[2]);start:=json_int(args[3]);end:=json_int(args[4]);started:=json_int(args[7]);
  if !unit.ok || !wall.ok || !mono.ok || !start.ok || !end.ok || !started.ok {return -1;}
  held:[1]BwState;if !bw_read_state(prior,held[..]) {return -1;}

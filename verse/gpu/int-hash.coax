@@ -30,7 +30,7 @@ IH_INT3 :: " qx:=cast,trunc(u32)(cast(s32)(floor(p.x*64.0f32)));qy:=cast,trunc(u
 IH_STARS :: "stars_hash :: (x:f32,y:f32)->f32 { return stars_fract(sin(x*127.1f32+y*311.7f32)*43758.5453f32); }\n";
 IH_STYLE_INT :: " qx:=cast,trunc(u32)(cast(s32)(floor(x*64.0f32)));qy:=cast,trunc(u32)(cast(s32)(floor(y*64.0f32)));\n h:=mul_wrap(qx,1597334677) ^ mul_wrap(qy,3812015801);h=mul_wrap(h,747796405);h=mul_wrap(h ^ (h>>16),2246822519);h=h ^ (h>>13);\n return cast(f32)(h>>8)/16777216.0f32;\n";
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || (args_count(a[..]) != 1 && args_count(a[..]) != 3) { tool_errln("usage: int-hash OUT_DIR [--page NAME]"); return 2; }
   out := args_at(a[..], 0);

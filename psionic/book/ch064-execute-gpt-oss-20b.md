@@ -67,7 +67,7 @@ outside the packed expert weights are BF16, including norm scales and biases.
 
 <!-- source: psionic/lib/gptoss/math.coax project -->
 ```jai
-g_project :: (m:GMatrix,x:[]f32,bias:[]u8,out:[]f32,stage:[]f32,scratch:[]f32,overlap:bool)->GResult #export_c {
+g_project :: (m:GMatrix,x:[]f32,bias:[]u8,out:[]f32,stage:[]f32,scratch:[]f32,overlap:bool)->GResult #export_c #effects(all) {
     p:=g_projection(cast(u8)m.encoding,m.rows,m.columns);if p.status!=GStatus.ok {return GResult.{status=p.status};}
     if m.data.count!=p.bytes || m.scales.count!=p.scales || x.count!=m.columns || (bias.count!=0 && bias.count!=2*m.rows) || out.count<m.rows || stage.count<m.rows || scratch.count<m.rows {return GResult.{status=GStatus.capacity};}
     if overlap {return GResult.{status=GStatus.alias};}
@@ -139,7 +139,7 @@ a successfully parsed complete answer.
 
 <!-- source: psionic/lib/gptoss/generation.coax emit -->
 ```jai
-gg_emit :: (logits:[]f32,mask:[]u8,options:GSampling,state:GGeneration,cancel:bool,probabilities:[]f64,work:GSampleWork,overlap:bool)->GEmission #export_c {
+gg_emit :: (logits:[]f32,mask:[]u8,options:GSampling,state:GGeneration,cancel:bool,probabilities:[]f64,work:GSampleWork,overlap:bool)->GEmission #export_c #effects(all) {
     if state.stop!=GStop.running || state.remaining<1 || state.remaining>131072 {return GEmission.{status=GStatus.state};}
     if cancel {next:=state;next.stop=GStop.cancelled;return GEmission.{state=next};}
     draw:=gs_draw(state.random);if draw.status!=GStatus.ok {return GEmission.{status=draw.status};}

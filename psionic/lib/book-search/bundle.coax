@@ -20,7 +20,7 @@ BbSeen :: struct {
   index_ok: bool; index_encoder: [32] u8; index_corpus: [32] u8; listed_corpus: [32] u8;
 }
 
-bb_same :: (a: [32] u8, b: [32] u8) -> bool {
+bb_same :: (a: [32] u8, b: [32] u8) -> bool #effects(all) {
   for i: 0..<32 { if a[i] != b[i] { return false; } }
   return true;
 }
@@ -33,7 +33,7 @@ bb_same :: (a: [32] u8, b: [32] u8) -> bool {
 // embeddings were made by that same encoder; the index's recorded corpus
 // digest is the digest of the files it lists; and that corpus is the books
 // the manifest says are current.
-bb_admit :: (m: BbManifest, s: BbSeen) -> BbVerdict {
+bb_admit :: (m: BbManifest, s: BbSeen) -> BbVerdict #effects(all) {
   if !m.ok { return BbVerdict.malformed; }
   if m.profile != BB_PROFILE { return BbVerdict.wrong_profile; }
   if s.encoder_bytes != m.encoder_bytes || !bb_same(s.encoder, m.encoder) { return BbVerdict.encoder_changed; }
@@ -46,7 +46,7 @@ bb_admit :: (m: BbManifest, s: BbSeen) -> BbVerdict {
 }
 // book:end admit
 
-bb_verdict_text :: (v: BbVerdict) -> string {
+bb_verdict_text :: (v: BbVerdict) -> string #effects(all) {
   if v == BbVerdict.admitted { return "admitted"; }
   if v == BbVerdict.malformed { return "refused: the manifest does not parse"; }
   if v == BbVerdict.wrong_profile { return "refused: the bundle is not for encoder profile bs-attnpool-d64-v1"; }
@@ -57,11 +57,11 @@ bb_verdict_text :: (v: BbVerdict) -> string {
   return "refused: stale index: it holds other books than the manifest's current corpus";
 }
 
-bb_digest :: (x: u8) -> [32] u8 { d: [32] u8; for i: 0..<32 { d[i] = x; } return d; }
-bb_good :: () -> BbManifest {
+bb_digest :: (x: u8) -> [32] u8 #effects(all) { d: [32] u8; for i: 0..<32 { d[i] = x; } return d; }
+bb_good :: () -> BbManifest #effects(all) {
   return BbManifest.{ok = true, profile = BB_PROFILE, encoder = bb_digest(1), encoder_bytes = 100, index = bb_digest(2), index_bytes = 200, corpus = bb_digest(3)};
 }
-bb_seen :: () -> BbSeen {
+bb_seen :: () -> BbSeen #effects(all) {
   return BbSeen.{profile = BB_PROFILE, encoder = bb_digest(1), encoder_bytes = 100, index = bb_digest(2), index_bytes = 200,
                  index_ok = true, index_encoder = bb_digest(1), index_corpus = bb_digest(3), listed_corpus = bb_digest(3)};
 }

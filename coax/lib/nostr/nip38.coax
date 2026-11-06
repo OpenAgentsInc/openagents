@@ -40,7 +40,7 @@ N38Current :: struct {
 
 // ---- test events: the tags and the content (already JSON-escaped) in one
 // buffer, with the spans a parsed event has, by author and id byte.
-n38_ev :: (tags:string,content:string,created:int,author:u8,id:u8,out:[]u8)->NostrEvent {
+n38_ev :: (tags:string,content:string,created:int,author:u8,id:u8,out:[]u8)->NostrEvent #effects(all) {
   n:=json_raw(out,0,tags);n=json_raw(out,n,"\"");n=json_raw(out,n,content);n=json_raw(out,n,"\"");
   e:=nt_event(cast(string)out[0..<n]);e.tags_to=tags.count;e.content_from=tags.count+1;e.content_to=n-1;
   e.kind=N38_KIND_STATUS;e.created_at=created;return n32_at(e,author,id);
@@ -142,11 +142,11 @@ n38_ev :: (tags:string,content:string,created:int,author:u8,id:u8,out:[]u8)->Nos
   tie[1].error=NE_ID;c=n38_current(tie[..],alice,"general",0);#assert c.index== -1;
 }
 
-n38_refuse :: (r:N38Status,status:int,at:int)->N38Status {o:=r;o.status=status;o.at=at;return o;}
+n38_refuse :: (r:N38Status,status:int,at:int)->N38Status #effects(all) {o:=r;o.status=status;o.at=at;return o;}
 
 // book:begin read
 // A NIP-40 time: one to 16 decimal digits, or -1.
-n38_time :: (t:N32Text)->int {
+n38_time :: (t:N32Text)->int #effects(all) {
   if t.n<1 || t.n>N38_MAX_DIGITS {return -1;}
   v:=0;
   for i:0..<t.n {
@@ -157,7 +157,7 @@ n38_time :: (t:N32Text)->int {
 }
 // A user status at time now. An expired status reads in full with status
 // N38_EXPIRED, so a caller can tell it from a refused one.
-n38_status :: (e:NostrEvent,now:int)->N38Status {
+n38_status :: (e:NostrEvent,now:int)->N38Status #effects(all) {
   r:N38Status;if e.error!=NE_OK {return r;}
   if e.kind!=N38_KIND_STATUS {return n38_refuse(r,N38_KIND,-1);}
   d:=nostr_tag_d(e);if d.error!=NT_OK {return r;}
@@ -197,7 +197,7 @@ n38_status :: (e:NostrEvent,now:int)->N38Status {
 // event of that type (later created_at, then the lower id, as NIP-01
 // replaces), read at now. The newest wins even when it has expired or is
 // empty; an older status never comes back.
-n38_current :: (set:[]NostrEvent,author:[32]u8,d:string,now:int)->N38Current {
+n38_current :: (set:[]NostrEvent,author:[32]u8,d:string,now:int)->N38Current #effects(all) {
   c:N38Current;
   for k:0..<set.count {
     e:=set[k];
@@ -215,7 +215,7 @@ n38_current :: (set:[]NostrEvent,author:[32]u8,d:string,now:int)->N38Current {
 }
 // Whether a client shows it: a status that reads, is not expired and is
 // not cleared.
-n38_shown :: (c:N38Current)->bool {
+n38_shown :: (c:N38Current)->bool #effects(all) {
   return c.index>=0 && c.status.status==N38_OK && !c.status.cleared;
 }
 // book:end current

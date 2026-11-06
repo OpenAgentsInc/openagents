@@ -22,6 +22,52 @@ namespace coax {
 static const char *STRICT_MATH_SEED =
 #include "../bootstrap/strict-math.inc"
 ;
+static const char *TRANSACTION_SEED =
+#include "../bootstrap/transaction-runtime.inc"
+;
+
+static std::string transaction_runtime() {
+  std::string s=TRANSACTION_SEED;
+  for(const auto &[from,to]:{std::pair{"coax_","coax_txr_"},{"TX_","coax_txr_"},{"COAX_","COAX_TXR_"}}){
+    size_t at=0;while((at=s.find(from,at))!=std::string::npos){s.replace(at,strlen(from),to);at+=strlen(to);}
+  }
+  for(const char *signature:{"_Bool coax_txr_abort(","int64_t coax_txr_bytes(","uint32_t coax_txr_effects(","_Bool coax_txr_copy(","_Bool coax_txr_covers(","_Bool coax_txr_depth("}){
+    size_t at=0;std::string needle="\n"+std::string(signature);
+    while((at=s.find(needle,at))!=std::string::npos){s.insert(at+1,"static ");at+=8;}
+  }
+  s+=R"COAXUNDO(
+/* The envelope owns allocations and observed addresses. Coax supplies the
+   extent checks, before-image copies, restoration and return decision. */
+typedef struct coax_tx_before {
+  struct coax_tx_before *next; void *address; int64_t bytes; const void *type; _Bool saved;
+  unsigned char before[];
+} coax_tx_before;
+typedef struct { coax_tx_before *head; unsigned depth; } coax_tx_context;
+static _Bool coax_tx_save(coax_tx_context *tx, void *address, int64_t count, int64_t width, int line, const void *type) {
+  int64_t bytes=coax_txr_bytes(count,width);
+  if(bytes<0 || (uint64_t)bytes>SIZE_MAX-sizeof(coax_tx_before))coax_trap("transaction span overflow",line);
+  if(!bytes)return 0;
+  _Bool covered=0;
+  for(coax_tx_before *at=tx->head;at;at=at->next){
+    if(type && at->type==type && at->address==address && at->bytes==bytes)return 0;
+    if(at->saved && coax_txr_covers((uint64_t)(uintptr_t)at->address,at->bytes,(uint64_t)(uintptr_t)address,bytes))covered=1;
+  }
+  if(!type && covered)return 0;
+  coax_tx_before *entry=(coax_tx_before *)malloc(sizeof(*entry)+(covered?0:(size_t)bytes));
+  if(!entry)coax_trap("transaction memory exhausted",line);
+  entry->address=address;entry->bytes=bytes;entry->next=tx->head;entry->type=type;entry->saved=!covered;
+  if(!covered && !coax_txr_copy((coax_txr_rv_u8){(const uint8_t *)address,bytes},(coax_txr_v_u8){entry->before,bytes}))coax_trap("transaction copy refused",line);
+  tx->head=entry;return 1;
+}
+static void coax_tx_close(coax_tx_context *tx, _Bool rollback) {
+  while(tx->head){coax_tx_before *entry=tx->head;tx->head=entry->next;
+    if(rollback && entry->saved && !coax_txr_copy((coax_txr_rv_u8){entry->before,entry->bytes},(coax_txr_v_u8){(uint8_t *)entry->address,entry->bytes}))coax_trap("transaction restore refused",0);
+    free(entry);
+  }
+}
+)COAXUNDO";
+  return s;
+}
 
 // Isolate the seed's complete generated runtime from the caller's symbols.
 // Every definition is private to this translation unit, including exports.
@@ -1131,6 +1177,8 @@ std::string debug_line(const File *file, Loc loc) {
   return "#line "+std::to_string(point.loc.line)+" \""+escape_path(debug_path(file->src,loc))+"\"\n";
 }
 
+static std::string transaction_capture_name(Type t){return "coax_tx_capture_"+tag(t);}
+
 struct Emitter {
   const File *file;
   EmitOptions opts;
@@ -1157,6 +1205,10 @@ struct Emitter {
   bool wide = false;
   bool barrier = false;                       // value_barrier is used: emit its helpers
   bool strict_math = false;
+  bool transactions = false;
+  std::map<size_t,std::string> transaction_scopes;
+  struct TxLocal { Str name; Type type; bool writable; bool initialized; };
+  std::vector<TxLocal> transaction_locals;
   std::vector<std::vector<const Stmt *>> defers;  // per open block
   std::vector<size_t> loop_scopes;          // defers.size() when each open loop began
   const ProcDecl *current = nullptr;
@@ -1456,7 +1508,7 @@ struct Emitter {
         std::string error=sum_payload(e->lhs->type,1-success)==&T_VOID ? "" : "("+value+").payload."+sum_member(1-success);
         std::string returned=new_temp(c_type(e->propagate_type));
         line(returned+" = "+sum_construct(e->propagate_type,e->sum_variant,error)+";");
-        emit_defers_from(0);line("return "+returned+";");indent--;line("}");
+        emit_defers_from(0,transaction_failure(e->propagate_type,returned));line("return "+returned+";");indent--;line("}");
         return e->type==&T_VOID ? "((void)0)" : payload;
       }
       std::string result=e->type==&T_VOID ? "" : new_temp(c_type(e->type));
@@ -1890,18 +1942,25 @@ struct Emitter {
 
   // ---- statements ----
 
-  void emit_defers_from(size_t depth) {
-    for (size_t s = defers.size(); s-- > depth;)
+  std::string transaction_failure(Type type,const std::string &value) {
+    if(type->kind!=TypeKind::result&&type->kind!=TypeKind::optional)return "0";
+    return "coax_txr_abort("+std::string(type->kind==TypeKind::result?"1":"2")+", "+value+".tag, 1)";
+  }
+  void emit_defers_from(size_t depth,const std::string &failure="0") {
+    for (size_t s = defers.size(); s-- > depth;){
       for (size_t i = defers[s].size(); i-- > 0;) stmt(defers[s][i]);
+      auto tx=transaction_scopes.find(s);if(tx!=transaction_scopes.end())line("coax_tx_close(&"+tx->second+", "+failure+");");
+    }
   }
 
   bool any_defers_from(size_t depth) {
     for (size_t s = depth; s < defers.size(); s++)
-      if (!defers[s].empty()) return true;
+      if (!defers[s].empty()||transaction_scopes.count(s)) return true;
     return false;
   }
 
   void block_body(const Stmt *s, const std::vector<std::string> &prelude = {}) {
+    const size_t local_mark=transaction_locals.size();
     line("{");
     indent++;
     for (const std::string &p : prelude) line(p);
@@ -1914,6 +1973,7 @@ struct Emitter {
     std::vector<const Stmt *> mine = defers.back();
     defers.pop_back();
     for (size_t i = mine.size(); i-- > 0;) stmt(mine[i]);
+    transaction_locals.resize(local_mark);
     indent--;
     line("}");
   }
@@ -1998,12 +2058,30 @@ struct Emitter {
     struct Restore {Loc &target;Loc old;~Restore(){target=old;}} restore{debug_location,debug_location};
     debug_location=s->loc;
     switch (s->kind) {
+      case StmtKind::transaction_: {
+        transactions=true;
+        std::string context="coax_tx_"+std::to_string(temp_count++);
+        line("{");indent++;line("coax_tx_context "+context+" = {0};");
+        std::set<std::string> captured;
+        for(size_t i=transaction_locals.size();i-->0;){
+          const auto &local=transaction_locals[i];
+          const std::string name=local_name(local.name),where=std::to_string(s->loc.line);
+          if(!captured.insert(name).second||!local.initialized)continue;
+          if(local.writable)line("coax_tx_save(&"+context+", &"+name+", 1, sizeof("+name+"), "+where+", NULL);");
+          if(transaction_views(local.type))line(transaction_capture_name(local.type)+"(&"+context+", &"+name+", "+where+");");
+        }
+        const size_t scope=defers.size();defers.push_back({});transaction_scopes.emplace(scope,context);
+        stmt(s->then_);
+        line("coax_tx_close(&"+context+", 0);");
+        transaction_scopes.erase(scope);defers.pop_back();indent--;line("}");break;
+      }
       case StmtKind::block: block_body(s); break;
       case StmtKind::expr:
         if (s->expr->kind == ExprKind::call && s->expr->builtin_print) print(s->expr);
         else line(ex(s->expr) + ";");
         break;
       case StmtKind::var: {
+        transaction_locals.push_back({s->name,s->type,true,!s->uninit});
         if (device() && g_warp.lane_arrays.count(s)) {
           // Lane l keeps elements l*k .. l*k+k-1: this lane's k values.
           line(c_type(s->type->elem) + " " + local_name(s->name) + "[" + std::to_string(s->type->length / 32) + "] = {};");
@@ -2050,7 +2128,7 @@ struct Emitter {
         // The value first, then cleanup, then the return.
         if (s->expr) line("coax_ret = " + ex(s->expr) + ";");
         ret_temp = ret_temp || s->expr;
-        emit_defers_from(0);
+        emit_defers_from(0,s->expr?transaction_failure(current->ret,"coax_ret"):"0");
         if (opts.debug_info) out+=debug_line(file,s->loc);
         line(s->expr ? "return coax_ret;" : "return;");
         break;
@@ -2081,7 +2159,9 @@ struct Emitter {
           std::string alternative=is_sum(s->expr->type) ? "UINT32_C("+std::to_string(arm->tag_value)+")" : int_text(s->expr->type,arm->tag_value);
           line(std::string(i?"else if (":"if (")+tag+" == "+alternative+") {");indent++;
           if(arm->binding)line("const "+c_type(arm->binding->type)+" "+local_name(arm->binding->name)+" = "+value+".payload."+sum_member((int32_t)arm->tag_value)+";");
-          stmt(arm->body);indent--;line("}");
+          const size_t mark=transaction_locals.size();
+          if(arm->binding)transaction_locals.push_back({arm->binding->name,arm->binding->type,false,true});
+          stmt(arm->body);transaction_locals.resize(mark);indent--;line("}");
         }
         if(s->cases.count)line("else coax_trap(\"invalid switch tag\", "+std::to_string(s->loc.line)+");");
         indent--;line("}");break;
@@ -2124,10 +2204,12 @@ struct Emitter {
         const Expr *lo = literal(s->expr), *hi = literal(s->expr2);
         if (device() && lo && hi && (int64_t)hi->int_value - (int64_t)lo->int_value <= 128) line("#pragma unroll");
         std::string head = "for (" + t + " " + i + " = coax_lo" + n + "; " + i + " < coax_hi" + n + "; " + i + "++)";
+        const size_t local_mark=transaction_locals.size();transaction_locals.push_back({s->name,s->type,true,true});
         if (!versioned_for(s, n, head)) {
           line(head);
           loop(s->then_);
         }
+        transaction_locals.resize(local_mark);
         indent--;
         line("}");
         break;
@@ -2155,7 +2237,10 @@ struct Emitter {
         line("for (int64_t " + i + " = 0; " + i + " < " + count + "; " + i + "++)");
         std::vector<std::string> prelude = {c_type(s->type) + " " + local_name(s->name) + " = " + element + ";"};
         if (s->name2.count) prelude.push_back("int64_t " + local_name(s->name2) + " = " + i + ";");
+        const size_t local_mark=transaction_locals.size();transaction_locals.push_back({s->name,s->type,true,true});
+        if(s->name2.count)transaction_locals.push_back({s->name2,T_INT,true,true});
         loop(s->then_, prelude);
+        transaction_locals.resize(local_mark);
         indent--;
         line("}");
         break;
@@ -2393,6 +2478,8 @@ struct Emitter {
   std::string function(const ProcDecl *p) {
     if (p->foreign) return "";
     current = p;
+    transaction_locals.clear();
+    for(const auto &param:p->params)transaction_locals.push_back({param.name,param.type,true,true});
     mapping_active=true;debug_location=p->loc;
     out.clear();
     temps.clear();
@@ -2602,6 +2689,35 @@ struct TypeWriter {
     }
   }
 };
+
+static std::string transaction_captures(const std::vector<Type> &types) {
+  std::map<std::string,Type> needed;
+  for(Type type:types)if(transaction_views(type))needed.emplace(transaction_capture_name(type),type);
+  std::string out;
+  for(const auto &[name,type]:needed)out+="static void "+name+"(coax_tx_context *, const "+c_type(type)+" *, int);\n";
+  for(const auto &[name,type]:needed){
+    out+="static void "+name+"(coax_tx_context *tx, const "+c_type(type)+" *value, int line) {\n";
+    out+="  if (!coax_txr_depth(++tx->depth)) coax_trap(\"transaction traversal limit\",line);\n";
+    if(type->kind==TypeKind::view){
+      out+="  static char type_tag;\n";
+      out+="  if (coax_tx_save(tx,value->data,value->count,(int64_t)sizeof(*value->data),line,&type_tag)) {\n";
+      if(transaction_views(type->elem))out+="    for (int64_t i=0;i<value->count;i++) "+transaction_capture_name(type->elem)+"(tx,&value->data[i],line);\n";
+      out+="  }\n";
+    }else if(type->kind==TypeKind::array){
+      out+="  for (int64_t i=0;i<"+std::to_string(type->length)+";i++) "+transaction_capture_name(type->elem)+"(tx,&value->e[i],line);\n";
+    }else if(type->kind==TypeKind::struct_){
+      for(const auto &field:type->struct_decl->fields)if(transaction_views(field.type))
+        out+="  "+transaction_capture_name(field.type)+"(tx,&value->"+to_std(field.name)+",line);\n";
+    }else if(is_sum(type)){
+      out+="  if (value->tag >= "+std::to_string(sum_count(type))+") coax_trap(\"invalid sum tag\",line);\n  switch (value->tag) {\n";
+      for(int32_t i=0;i<sum_count(type);i++)if(transaction_views(sum_payload(type,i)))
+        out+="    case "+std::to_string(i)+": "+transaction_capture_name(sum_payload(type,i))+"(tx,&value->payload."+sum_member(i)+",line); break;\n";
+      out+="    default: break;\n  }\n";
+    }
+    out+="  tx->depth--;\n}\n";
+  }
+  return out;
+}
 
 void collect_types(const File *file, std::vector<Type> *types) {
   auto add = [&](Type t) {
@@ -3683,6 +3799,7 @@ static std::string emit_c_split(const File *file, const EmitOptions &opts, uint6
   s += "static const char *coax_source_path = \"" + escape_path(file->src->path) + "\";\n";
   s += source_runtime(file);
   if (em.strict_math) s += strict_math_runtime();
+  if (em.transactions) s += transaction_runtime();
   if (em.erasure) s += ZERO_RUNTIME;
   if (em.barrier) s += BARRIER_RUNTIME;
   if (em.wrapping) s += WRAP_RUNTIME;
@@ -3692,6 +3809,7 @@ static std::string emit_c_split(const File *file, const EmitOptions &opts, uint6
   s += "\n/* Types */\n" + types.out;
   if (em.wide) s += WIDE_RUNTIME;
   s += view_helpers();
+  if (em.transactions) s += transaction_captures(types.done);
   s += "\n" + init_protos + show_protos + "\n";
   for (const ProcDecl *p : file->procs) if (emitted(p)) s += em.prototype(p) + ";\n";
   for (uint64_t u = 0; u <= units; u++) {
@@ -3768,6 +3886,7 @@ std::string emit_c(const File *file, const EmitOptions &opts) {
   s += "static const char *coax_source_path = \"" + escape_path(file->src->path) + "\";\n";
   s += source_runtime(file);
   if (em.strict_math) s += strict_math_runtime();
+  if (em.transactions) s += transaction_runtime();
   if (em.erasure) s += ZERO_RUNTIME;
   if (em.barrier) s += BARRIER_RUNTIME;
   if (em.wrapping) s += WRAP_RUNTIME;
@@ -3777,6 +3896,7 @@ std::string emit_c(const File *file, const EmitOptions &opts) {
   s += "\n/* Types */\n" + types.out;
   if (em.wide) s += WIDE_RUNTIME;
   s += view_helpers();
+  if (em.transactions) s += transaction_captures(types.done);
   if (!em.ct_values.empty()) {
     s += "\n/* Values computed at compile time */\n";
     for (size_t i = 0; i < em.ct_values.size(); i++) {
@@ -3905,6 +4025,7 @@ std::string emit_native_checks_c_plan(const File *file, const EmitOptions &opts,
   s += "static const char *coax_source_path = \"" + escape_path(file->src->path) + "\";\n";
   s += source_runtime(file, true);
   if (em.strict_math) s += strict_math_runtime();
+  if (em.transactions) s += transaction_runtime();
   if (em.erasure) s += ZERO_RUNTIME;
   if (em.barrier) s += BARRIER_RUNTIME;
   if (em.wrapping) s += WRAP_RUNTIME;
@@ -3913,6 +4034,7 @@ std::string emit_native_checks_c_plan(const File *file, const EmitOptions &opts,
   s += "\n/* Types */\n" + types.out;
   if (em.wide) s += WIDE_RUNTIME;
   s += view_helpers();
+  if (em.transactions) s += transaction_captures(types.done);
   if (!em.ct_values.empty()) {
     s += "\n/* Values computed at compile time */\n";
     for (size_t i = 0; i < em.ct_values.size(); ++i) {

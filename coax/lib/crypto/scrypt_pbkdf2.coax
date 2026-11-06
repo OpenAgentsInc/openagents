@@ -50,21 +50,21 @@
 
 // This internal composition requires valid stable views and a truthful alias
 // observation. Neither its password nor temporary HMAC state is proven erased.
-pb1_admit :: (password:int,salt:int,length:int,capacity:int,overlap:bool)->bool {
+pb1_admit :: (password:int,salt:int,length:int,capacity:int,overlap:bool)->bool #effects(all) {
   return password>=0 && password<=1024 && salt>=0 && salt<=1024 && length>=1 && length<=1024 && capacity>=length && capacity<=CB_MAX_BYTES && !overlap;
 }
 
-pb1_commit :: (value:[]u8,out:[]u8,status:u32)->bool {
+pb1_commit :: (value:[]u8,out:[]u8,status:u32)->bool #effects(all) {
   if status!=SHA_OK {return false;}
   for i:0..<value.count {out[i]=value[i];}
   return true;
 }
-pb1_blocks :: (length:int)->int {return (length-1)/32+1;}
-pb1_copy_block :: (staged:[]u8,digest:[]u8,base:int,length:int) {
+pb1_blocks :: (length:int)->int #effects(all) {return (length-1)/32+1;}
+pb1_copy_block :: (staged:[]u8,digest:[]u8,base:int,length:int) #effects(all) {
   for j:0..<32 {at:=base+j;if at>=length {break;}staged[at]=digest[j];}
 }
 
-scrypt_pbkdf2_one :: (password:[]u8,salt:[]u8,length:int,out:[]u8,overlap:bool)->bool #export_c {
+scrypt_pbkdf2_one :: (password:[]u8,salt:[]u8,length:int,out:[]u8,overlap:bool)->bool #export_c #effects(all) {
   if !pb1_admit(password.count,salt.count,length,out.count,overlap) {return false;}
   input:[1028]u8;for i:0..<salt.count {input[i]=salt[i];}
   staged:[1024]u8;digest:[32]u8;status:=SHA_OK;

@@ -69,15 +69,15 @@ ExHttp :: struct { status: int; complete: bool; method: string; path: string; bo
   for i: 0..<prefix.count { huge[i] = prefix[i]; }
   #assert ex_http(cast(string)huge[0..<prefix.count+16384]).status == 200;
 }
-ex_decimal :: (s: string) -> int {
+ex_decimal :: (s: string) -> int #effects(all) {
   if s.count == 0 || s.count > 10 { return -1; } n := 0;
   for c: s { if c < '0' || c > '9' { return -1; } d := cast(int)(c-'0'); if n > (2147483647-d)/10 { return -1; } n = 10*n+d; } return n;
 }
-ex_key_ok :: (key: string) -> bool {
+ex_key_ok :: (key: string) -> bool #effects(all) {
   if key.count < 1 || key.count > 140 { return false; }
   for c: key { if c <= 32 || c >= 127 || c == '%' || c == '?' || c == '/' || c == '#' { return false; } } return true;
 }
-ex_route :: (method: string, path: string) -> ExRoute #export_c {
+ex_route :: (method: string, path: string) -> ExRoute #export_c #effects(all) {
   if path == "/api/v1/rpc" { return ifx method == "POST" then ExRoute.{kind=EX_RPC} else ExRoute.{status=405}; }
   if method != "GET" { return ExRoute.{status=405}; }
   if path == "/api/v1/tip" { return ExRoute.{kind=EX_TIP}; }
@@ -91,15 +91,15 @@ ex_route :: (method: string, path: string) -> ExRoute #export_c {
   }
   return ExRoute.{status=404};
 }
-ex_lower_equal :: (a: string, b: string) -> bool {
+ex_lower_equal :: (a: string, b: string) -> bool #effects(all) {
   if a.count != b.count { return false; }
   for i: 0..<a.count { c := a[i]; if c >= 'A' && c <= 'Z' { c += 32; } if c != b[i] { return false; } } return true;
 }
-ex_find_text :: (s: string, from: int, what: string) -> int {
+ex_find_text :: (s: string, from: int, what: string) -> int #effects(all) {
   for i: from..<s.count-what.count+1 { if s[i..<i+what.count] == what { return i; } } return -1;
 }
-ex_trim :: (s: string) -> string { a := 0; b := s.count; while a < b && s[a] == ' ' { a += 1; } while b > a && s[b-1] == ' ' { b -= 1; } return s[a..<b]; }
-ex_http :: (s: string) -> ExHttp #export_c {
+ex_trim :: (s: string) -> string #effects(all) { a := 0; b := s.count; while a < b && s[a] == ' ' { a += 1; } while b > a && s[b-1] == ' ' { b -= 1; } return s[a..<b]; }
+ex_http :: (s: string) -> ExHttp #export_c #effects(all) {
   if s.count > 32768 { return ExHttp.{status=413}; }
   end := ex_find_text(s,0,"\r\n\r\n"); if end < 0 { return ExHttp.{}; }
   first := ex_find_text(s,0,"\r\n"); line := s[0..<first]; a := ex_find_text(line,0," ");

@@ -160,7 +160,7 @@ es_text :: (c: [] Cdp, raw: string, out: [] u8) -> string {
 }
 es_true :: (c: [] Cdp, expr: string) -> bool { at := cdp_evaluate(c, expr); return at >= 0 && jv_raw(c[0].doc[0], at) == "true"; }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   url := args_at(a[..], 0);

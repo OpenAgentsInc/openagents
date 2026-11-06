@@ -6,21 +6,21 @@
 #load "../../lib/net/relay_uri.coax";
 #load "../../lib/net/ws.coax";
 
-cxsock_host_push :: (byte: int) -> int #foreign;
-cxsock_connect :: (port: int, timeout_ms: int) -> int #foreign;
-cxsock_write :: (h: int, byte: int) -> int #foreign;
-cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
-cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
-cxsock_byte :: (h: int, i: int) -> int #foreign;
-cxsock_close :: (h: int) -> int #foreign;
-cxtls_host_push :: (byte: int) -> int #foreign;
-cxtls_connect :: (port: int, timeout_ms: int) -> int #foreign;
-cxtls_write :: (h: int, byte: int) -> int #foreign;
-cxtls_flush :: (h: int, timeout_ms: int) -> int #foreign;
-cxtls_read :: (h: int, timeout_ms: int) -> int #foreign;
-cxtls_byte :: (h: int, i: int) -> int #foreign;
-cxtls_version :: (h: int) -> int #foreign;
-cxtls_close :: (h: int) -> int #foreign;
+cxsock_host_push :: (byte: int) -> int #foreign #effects(all);
+cxsock_connect :: (port: int, timeout_ms: int) -> int #foreign #effects(all);
+cxsock_write :: (h: int, byte: int) -> int #foreign #effects(all);
+cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
+cxsock_read :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
+cxsock_byte :: (h: int, i: int) -> int #foreign #effects(all);
+cxsock_close :: (h: int) -> int #foreign #effects(all);
+cxtls_host_push :: (byte: int) -> int #foreign #effects(all);
+cxtls_connect :: (port: int, timeout_ms: int) -> int #foreign #effects(all);
+cxtls_write :: (h: int, byte: int) -> int #foreign #effects(all);
+cxtls_flush :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
+cxtls_read :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
+cxtls_byte :: (h: int, i: int) -> int #foreign #effects(all);
+cxtls_version :: (h: int) -> int #foreign #effects(all);
+cxtls_close :: (h: int) -> int #foreign #effects(all);
 
 // Driver failures, below the effects' codes (-1 .. -11).
 TW_URL :: -20; TW_REQUEST :: -21; TW_HELLO :: -22; TW_FRAME :: -23; TW_ECHO :: -24; TW_BUFFER :: -25; TW_CLOSED :: -26;
@@ -135,7 +135,7 @@ tw_bye :: (c: Conn, acc: [] u8, used: [] int) -> int {
 
 // TCP and, for wss://, the TLS handshake only: the negotiated TLS version
 // (0x0303, 0x0304), 1 for plain ws://, or the effect's error code.
-tlsws_connect :: (url: string) -> int #export_c {
+tlsws_connect :: (url: string) -> int #export_c #effects(all) {
   c := tw_open(url);
   if c.h < 0 { return c.h; }
   v := ifx c.tls then cxtls_version(c.h) else 1;
@@ -144,7 +144,7 @@ tlsws_connect :: (url: string) -> int #export_c {
 
 // WebSocket upgrade, one text message out and its echo back, then close.
 // The TLS version (or 1 for ws://) on success, else an error code.
-tlsws_echo :: (url: string, message: string) -> int #export_c {
+tlsws_echo :: (url: string, message: string) -> int #export_c #effects(all) {
   acc: [65536] u8; used: [1] int;
   c := tw_hello(url, acc[..], used[..]);
   if c.h < 0 { return c.h; }
@@ -164,7 +164,7 @@ tlsws_echo :: (url: string, message: string) -> int #export_c {
 
 // A read-only NIP-01 query: send req (a REQ for subscription "coax-tls"),
 // read messages until EOSE for it. The count of EVENT messages, or an error.
-tlsws_req_eose :: (url: string, req: string) -> int #export_c {
+tlsws_req_eose :: (url: string, req: string) -> int #export_c #effects(all) {
   acc: [65536] u8; used: [1] int;
   c := tw_hello(url, acc[..], used[..]);
   if c.h < 0 { return c.h; }

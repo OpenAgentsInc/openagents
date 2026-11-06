@@ -67,7 +67,7 @@ cx_prompt :: (task:int,mode:int,variant:int,t:[]CxText) {
     if variant==1 {cx_add(t,"Prefer a sparse construction with small coefficients. ");}
     cx_add(t,"Give the final JSON immediately.");
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {tool_errln("usage: construction-run live|replay TASK");return 2;}
     modearg:=args_at(args[..],0);task:=args_whole(args_at(args[..],1));if (modearg!="live" && modearg!="replay") || task<0 || task>3 {return 2;}
     replay:=modearg=="replay";#assert fs_mkdir("psionic/fixtures/construction/llm");

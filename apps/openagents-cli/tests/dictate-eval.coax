@@ -23,13 +23,13 @@
 #load "../dictate-launch.coax";
 #load "../dictate.coax";
 
-cxcli_isatty :: (fd: int) -> int #foreign;
-cxcli_exe_path :: (out: [] u8) -> int #foreign;
-cxproc_exec :: (h: int) -> int #foreign;
-cxeval_now_us :: () -> int #foreign;
-cxeval_take :: (out: [] int, text: [] u8) -> int #foreign;
-cxeval_open_split :: (out: [] int) -> int #foreign;
-cxeval_direct :: (x: [] f32, out: [] u8) -> int #foreign;
+cxcli_isatty :: (fd: int) -> int #foreign #effects(all);
+cxcli_exe_path :: (out: [] u8) -> int #foreign #effects(all);
+cxproc_exec :: (h: int) -> int #foreign #effects(all);
+cxeval_now_us :: () -> int #foreign #effects(all);
+cxeval_take :: (out: [] int, text: [] u8) -> int #foreign #effects(all);
+cxeval_open_split :: (out: [] int) -> int #foreign #effects(all);
+cxeval_direct :: (x: [] f32, out: [] u8) -> int #foreign #effects(all);
 
 EV_LEAD :: 16000;          // one second of silence before every clip, so a press 300 ms before speech has audio
 EV_CLIP :: 1400000;        // the longest replay: 87.5 s at 16 kHz
@@ -316,4 +316,4 @@ eval_main :: () -> int {
   if !fs_write(out_path, cast(string) o[0].b[0..<o[0].n]) { tool_errln("cannot write the results"); return 3; }
   return 0;
 }
-tool_main :: () -> int #export_c { return eval_main(); }
+tool_main :: () -> int #export_c #effects(all) { return eval_main(); }

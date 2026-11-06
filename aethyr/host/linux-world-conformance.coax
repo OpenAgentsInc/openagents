@@ -11,7 +11,7 @@
 // display/no intervening producer/full re-upload/old handle retirement;
 // resumed producer/validation/errors/warnings/closed GPU live/words/CPU bytes;
 // actual source fence.
-hlwc_accept :: (q:[]int)->bool #export_c {
+hlwc_accept :: (q:[]int)->bool #export_c #effects(all) {
  want:=[23]int.[1,64,90,7,64512,1,0,7,64512,1,1,1,1,1,1,1,1,0,0,0,0,0,1];
  if q.count!=want.count {return false;}for value,i:want {if q[i]!=value {return false;}}return true;
 }

@@ -136,11 +136,11 @@ current version, rather than copying all the values:
 
 <!-- source: psionic/lib/tensor-view.coax versions -->
 ```jai
-tv_save :: (s:TvStorage,v:TvView)->TvSaved #export_c {
+tv_save :: (s:TvStorage,v:TvView)->TvSaved #export_c #effects(all) {
     r:=tv_layout(s,v);if r.status!=TvStatus.ok {return TvSaved.{status=r.status};}
     return TvSaved.{identity=s.identity,epoch=s.epoch,version=s.version};
 }
-tv_saved_status :: (s:TvStorage,saved:TvSaved)->TvStatus #export_c {
+tv_saved_status :: (s:TvStorage,saved:TvSaved)->TvStatus #export_c #effects(all) {
     if saved.status!=TvStatus.ok || !tv_storage_valid(s) || saved.identity!=s.identity || saved.epoch!=s.epoch {return TvStatus.state;}
     if saved.version!=s.version {return TvStatus.modified;}return TvStatus.ok;
 }

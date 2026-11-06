@@ -87,7 +87,7 @@ The four stages work like this:
 // The language model stand-in: a fixed reply for each input. h hashes
 // the words; 1 to 3 sentences of 1 to 5 words, each ending in a period,
 // token 0, which the zeroed reply already holds.
-vp_reply :: (word:[16]int,m:int)->VpReply {
+vp_reply :: (word:[16]int,m:int)->VpReply #effects(all) {
     h:=0;for i:0..<m {h=(h*31+word[i])%1009;}
     r:VpReply;r.sentences=1+h%3;
     for s:0..<r.sentences {
@@ -97,13 +97,13 @@ vp_reply :: (word:[16]int,m:int)->VpReply {
     return r;
 }
 // Ticks of audio a sentence plays: its words and its period.
-vp_duration :: (c:VpConfig,rep:VpReply,s:int)->int {
+vp_duration :: (c:VpConfig,rep:VpReply,s:int)->int #effects(all) {
     from:=0;if s>0 {from=rep.ends[s-1];}
     return (rep.ends[s]-from-1)*c.word_ticks+c.pause;
 }
 // The tick the recognizer emits word i, after its audio. vp_check makes
 // sure that is never after the final transcript.
-vp_asr :: (r:VpRun,i:int)->int {return r.turn.heard[i]+r.cfg.asr_lag;}
+vp_asr :: (r:VpRun,i:int)->int #effects(all) {return r.turn.heard[i]+r.cfg.asr_lag;}
 ```
 
 ## The handoffs
@@ -144,7 +144,7 @@ A stage that starts on a tick does its first work on the next tick.
 <!-- source: psionic/lib/voice-pipeline.coax tick -->
 ```jai
 // The language model starts on words: no token before the next tick.
-vp_start :: (rv:[]VpRun,words:int,spec:bool) {
+vp_start :: (rv:[]VpRun,words:int,spec:bool) #effects(all) {
     c:=rv[0].cfg;
     rv[0].started=true;rv[0].spec=spec;rv[0].ok=!spec;rv[0].words=words;rv[0].began=rv[0].t;
     rv[0].left=c.prefill+c.per_word*words+c.step;rv[0].made=0;rv[0].sentences=0;
@@ -157,7 +157,7 @@ vp_start :: (rv:[]VpRun,words:int,spec:bool) {
 // Then the model makes a token if its time has come and the buffer has
 // room. Then the speaker takes the next sentence if its period has crossed
 // the hop and the sentence before it is about to end.
-vp_tick :: (rv:[]VpRun) {
+vp_tick :: (rv:[]VpRun) #effects(all) {
     c:=rv[0].cfg;t:=rv[0].t;
     while rv[0].seen<rv[0].turn.n && vp_asr(rv[0],rv[0].seen)+c.hop[0]<=t {rv[0].seen+=1;rv[0].changed=t;}
     if t==rv[0].confirm {
@@ -183,9 +183,9 @@ vp_tick :: (rv:[]VpRun) {
     }
     rv[0].t=t+1;
 }
-vp_done :: (r:VpRun)->bool {return r.taken>0 && r.taken==r.reply.sentences;}
+vp_done :: (r:VpRun)->bool #effects(all) {return r.taken>0 && r.taken==r.reply.sentences;}
 // Run every tick before b, or until the speaker has taken the last sentence.
-vp_until :: (rv:[]VpRun,b:int) {while rv[0].t<b && !vp_done(rv[0]) {vp_tick(rv);}}
+vp_until :: (rv:[]VpRun,b:int) #effects(all) {while rv[0].t<b && !vp_done(rv[0]) {vp_tick(rv);}}
 ```
 
 `vp_check` refuses a turn or configuration before anything runs. A refused
@@ -193,7 +193,7 @@ pipeline runs no stage.
 
 <!-- source: psionic/lib/voice-pipeline.coax open -->
 ```jai
-vp_check :: (c:VpConfig,u:VpTurn)->VpWhy #export_c {
+vp_check :: (c:VpConfig,u:VpTurn)->VpWhy #export_c #effects(all) {
     if u.n<1 || u.n>VP_WORDS {return VpWhy.words;}
     for i:0..<u.n {if u.word[i]<1 || u.word[i]>999 {return VpWhy.words;}}
     if u.heard[0]<0 || u.end<u.heard[u.n-1] || u.end>VP_TIME {return VpWhy.order;}
@@ -208,7 +208,7 @@ vp_check :: (c:VpConfig,u:VpTurn)->VpWhy #export_c {
     if c.cap<VP_SENTENCE || c.cap>VP_CAP {return VpWhy.buffer;}
     return VpWhy.none;
 }
-vp_open :: (c:VpConfig,u:VpTurn)->VpRun {
+vp_open :: (c:VpConfig,u:VpTurn)->VpRun #effects(all) {
     r:VpRun;r.why=vp_check(c,u);if r.why!=VpWhy.none {return r;}
     r.cfg=c;r.turn=u;r.eot=u.end+c.hangover;r.fin=r.eot+c.asr_final;r.confirm=r.fin+c.hop[0];
     return r;
@@ -249,7 +249,7 @@ VpLatency :: struct {first:int;share:[7]int;}
 // Barge-in at tick b: every stage stops, and the report counts what each
 // had done in the ticks before b. Audio the speaker took is made in full
 // once its first tick is due; a word is heard if its last tick was.
-vp_stop :: (rv:[]VpRun,b:int)->VpStop {
+vp_stop :: (rv:[]VpRun,b:int)->VpStop #effects(all) {
     if rv[0].why!=VpWhy.none {return VpStop.{why=rv[0].why};}
     if b<=rv[0].turn.end || b<rv[0].t {return VpStop.{why=VpWhy.barge};}
     vp_until(rv,b);
@@ -280,7 +280,7 @@ vp_stop :: (rv:[]VpRun,b:int)->VpStop {
     return s;
 }
 // No barge-in: run to the end, and report at the tick the last audio is heard.
-vp_finish :: (rv:[]VpRun)->VpStop {
+vp_finish :: (rv:[]VpRun)->VpStop #effects(all) {
     if rv[0].why!=VpWhy.none {return VpStop.{why=rv[0].why};}
     // vp_check refused every configuration that could stall for ever.
     while !vp_done(rv[0]) {vp_tick(rv);}
@@ -317,13 +317,13 @@ each share that runs over, so the report names the stage that ran over.
 // its hop, the model until the sentence was made with its input
 // confirmed, the sentence's hop past that, the speaker's first audio and
 // the last hop.
-vp_latency :: (rv:[]VpRun)->VpLatency {
+vp_latency :: (rv:[]VpRun)->VpLatency #effects(all) {
     r:=rv[0];c:=r.cfg;l:VpLatency;
     l.share=[7]int.[r.eot-r.turn.end,c.asr_final,c.hop[0],r.ready_at-r.confirm,r.take[0]-r.ready_at,c.tts_first,c.hop[2]];
     l.first=r.audio[0]+c.hop[2]-r.turn.end;
     return l;
 }
-vp_over :: (l:VpLatency,budget:[7]int)->int {
+vp_over :: (l:VpLatency,budget:[7]int)->int #effects(all) {
     m:=0;for k:0..<7 {if l.share[k]>budget[k] {m+=1<<k;}}
     return m;
 }

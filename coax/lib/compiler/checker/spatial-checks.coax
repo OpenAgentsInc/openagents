@@ -2,7 +2,7 @@
 // checker: lib/compiler/checker.coax loads it (#12646).
 #authority;
 // M3 integration checks precede the implementation.
-CK_spatial_fixture :: (c:CK_Context) {
+CK_spatial_fixture :: (c:CK_Context) #effects(all) {
  CK_quantity_fixture(c);c.state[0].used=21;c.state[0].type_count=24;
  c.nodes[3].next=21;c.nodes[21]=CK_Node.{kind=CK_Tag.struct_,name="World",type=23,frame_decl=true,frame=SP_Frame.{handedness=1,convention=SP_Convention.cartesian,continuity=SP_Continuity.continuous,min_rep=32}};
  c.types[23]=CK_Type.{kind=CK_Kind.struct_,name="World",decl=21,size=1,alignment=1};

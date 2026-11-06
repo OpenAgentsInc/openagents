@@ -45,42 +45,42 @@
   huge:f64=1e308;inf:=huge*huge;#assert !sc_sdk_time(inf-inf,0.002,at) && !sc_sdk_time(0,inf,at);
 }
 
-sc_profile :: ()->string #export_c {return "step-clock-500-20-v1";}
-sc_id :: (n:int)->bool {return n>=1 && n<=SC_ID_MAX;}
-sc_sim_valid :: (at:ScSimInstant)->bool #export_c {return sc_id(at.epoch) && at.step>=0 && at.step<=SC_STEP_MAX;}
-sc_steady_valid :: (at:ScSteadyInstant)->bool #export_c {return sc_id(at.session) && at.ns>=0 && at.ns<=SC_NS_MAX;}
-sc_finite_bits :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
-sc_finite :: (x:f64)->bool {return sc_finite_bits(f64_bits(x));}
-sc_civil_valid :: (at:ScCivilInstant)->bool #export_c {return sc_id(at.source) && sc_finite(at.seconds);}
-sc_sim_add :: (at:ScSimInstant,delta:ScSimDelta)->ScSimResult #export_c {
+sc_profile :: ()->string #export_c #effects(all) {return "step-clock-500-20-v1";}
+sc_id :: (n:int)->bool #effects(all) {return n>=1 && n<=SC_ID_MAX;}
+sc_sim_valid :: (at:ScSimInstant)->bool #export_c #effects(all) {return sc_id(at.epoch) && at.step>=0 && at.step<=SC_STEP_MAX;}
+sc_steady_valid :: (at:ScSteadyInstant)->bool #export_c #effects(all) {return sc_id(at.session) && at.ns>=0 && at.ns<=SC_NS_MAX;}
+sc_finite_bits :: (bits:u64)->bool #effects(all) {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+sc_finite :: (x:f64)->bool #effects(all) {return sc_finite_bits(f64_bits(x));}
+sc_civil_valid :: (at:ScCivilInstant)->bool #export_c #effects(all) {return sc_id(at.source) && sc_finite(at.seconds);}
+sc_sim_add :: (at:ScSimInstant,delta:ScSimDelta)->ScSimResult #export_c #effects(all) {
   if !sc_sim_valid(at) || delta.steps<0 || delta.steps>SC_STEP_MAX-at.step {return ScSimResult.{status=ScStatus.range,instant=at};}
   return ScSimResult.{instant=ScSimInstant.{epoch=at.epoch,step=at.step+delta.steps}};
 }
-sc_sim_age :: (earlier:ScSimInstant,later:ScSimInstant)->ScAge #export_c {
+sc_sim_age :: (earlier:ScSimInstant,later:ScSimInstant)->ScAge #export_c #effects(all) {
   if !sc_sim_valid(earlier) || !sc_sim_valid(later) {return ScAge.{status=ScStatus.range};}
   if earlier.epoch!=later.epoch {return ScAge.{status=ScStatus.domain};}if later.step<earlier.step {return ScAge.{status=ScStatus.order};}
   return ScAge.{delta=ScSimDelta.{steps=later.step-earlier.step}};
 }
-sc_steady_elapsed :: (earlier:ScSteadyInstant,later:ScSteadyInstant)->ScElapsed #export_c {
+sc_steady_elapsed :: (earlier:ScSteadyInstant,later:ScSteadyInstant)->ScElapsed #export_c #effects(all) {
   if !sc_steady_valid(earlier) || !sc_steady_valid(later) {return ScElapsed.{status=ScStatus.range};}
   if earlier.session!=later.session {return ScElapsed.{status=ScStatus.domain};}if later.ns<earlier.ns {return ScElapsed.{status=ScStatus.order};}
   return ScElapsed.{delta=ScSteadyDelta.{ns=later.ns-earlier.ns}};
 }
-sc_steady_deadline :: (at:ScSteadyInstant,delta:ScSteadyDelta)->ScSteadyResult #export_c {
+sc_steady_deadline :: (at:ScSteadyInstant,delta:ScSteadyDelta)->ScSteadyResult #export_c #effects(all) {
   if !sc_steady_valid(at) || delta.ns<0 || delta.ns>SC_NS_MAX-at.ns {return ScSteadyResult.{status=ScStatus.range,instant=at};}
   return ScSteadyResult.{instant=ScSteadyInstant.{session=at.session,ns=at.ns+delta.ns}};
 }
-sc_steady_expiry :: (deadline:ScSteadyInstant,now:ScSteadyInstant)->ScExpiry #export_c {
+sc_steady_expiry :: (deadline:ScSteadyInstant,now:ScSteadyInstant)->ScExpiry #export_c #effects(all) {
   if !sc_steady_valid(deadline) || !sc_steady_valid(now) {return ScExpiry.{status=ScStatus.range};}
   if deadline.session!=now.session {return ScExpiry.{status=ScStatus.domain};}
   if now.ns>=deadline.ns {return ScExpiry.{expired=true};}return ScExpiry.{remaining=ScSteadyDelta.{ns=deadline.ns-now.ns}};
 }
 // Exact period is one step / 500 seconds; this boundary returns rounded F64.
-sc_seconds :: (delta:ScSimDelta)->ScSeconds #export_c {
+sc_seconds :: (delta:ScSimDelta)->ScSeconds #export_c #effects(all) {
   if delta.steps<0 || delta.steps>SC_STEP_MAX {return ScSeconds.{status=ScStatus.range};}return ScSeconds.{seconds=f64(delta.steps)/500.0};
 }
 // Keep the historical SDK operation order separate from rational tick arithmetic.
-sc_sdk_time :: (initial:f64,current:f64,at:ScSimInstant)->bool #export_c {
+sc_sdk_time :: (initial:f64,current:f64,at:ScSimInstant)->bool #export_c #effects(all) {
   if !sc_sim_valid(at) || !sc_finite(initial) || !sc_finite(current) || initial<0 || initial>100 {return false;}
   return abs(current-(initial+f64(at.step)*0.002))<=0.00000001490116119384765625;
 }

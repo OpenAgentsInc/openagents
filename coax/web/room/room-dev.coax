@@ -51,12 +51,12 @@ RmDev :: struct {
 }
 
 // --dev: the stand-in's key signs and checks every seat ticket, and a join needs one, as in production.
-rm_dev_start :: (v: [] RmServer) #export_c {
+rm_dev_start :: (v: [] RmServer) #export_c #effects(all) {
   v[0].dev.on = true; v[0].dev.admin = true;
   rm_ticket_key(v, DEV_KEY, true);
 }
 // OA_ROOM_DEV_ADMIN=0 (room-host.c): the local player is a visitor, to try what a visitor sees.
-rm_dev_admin :: (v: [] RmServer, on: bool) #export_c { v[0].dev.admin = on; }
+rm_dev_admin :: (v: [] RmServer, on: bool) #export_c #effects(all) { v[0].dev.admin = on; }
 
 dv_put :: (o: [] u8, n: int, s: string) -> int { return tk_add(o, n, s); }
 dv_hex :: (o: [] u8, n: int, mac: [] u8, digits: int) -> int {
@@ -115,7 +115,7 @@ dv_path :: (req: string, method: string, path: string) -> bool {
 
 // The answer to an /api/ request (dev.out: "STATUS\nBODY"), its count; -1 when it isn't the stand-in's
 // to answer (the host answers the world and the rooms list itself).
-rm_dev_api :: (v: [] RmServer, req: string) -> int #export_c {
+rm_dev_api :: (v: [] RmServer, req: string) -> int #export_c #effects(all) {
   if !v[0].dev.on { return -1; }
   if dv_path(req, "POST", "/api/playtest/player ") || dv_path(req, "POST", "/api/playtest/player?") {
     v[0].dev.minted += 1;

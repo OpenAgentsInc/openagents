@@ -104,13 +104,13 @@ GdChoice :: struct {code:GdCode;action:int=-1;}
     #assert gd_expire(s[..],GD_TIME_MAX);
 }
 
-gd_context_ok :: (c:GdContext)->bool {
+gd_context_ok :: (c:GdContext)->bool #effects(all) {
     return c.epoch>0 && c.actor>=0 && c.generation>=0 && c.revision>=0 && c.policy>0 && c.options>0;
 }
-gd_same_context :: (a:GdContext,b:GdContext)->bool {
+gd_same_context :: (a:GdContext,b:GdContext)->bool #effects(all) {
     return a.epoch==b.epoch && a.actor==b.actor && a.generation==b.generation && a.revision==b.revision && a.policy==b.policy && a.options==b.options;
 }
-gd_begin :: (s:[]GdState,context:GdContext,now_ms:int,timeout_ms:int)->GdBegin #export_c {
+gd_begin :: (s:[]GdState,context:GdContext,now_ms:int,timeout_ms:int)->GdBegin #export_c #effects(all) {
     if s.count!=1 {return GdBegin.{code=GdCode.state};}
     if s[0].phase!=0 {return GdBegin.{code=GdCode.busy};}
     if !gd_context_ok(context) || s[0].sequence<0 || s[0].sequence>=GD_SEQUENCE_MAX || now_ms<0 || timeout_ms<1 || timeout_ms>GD_TIMEOUT_MAX || now_ms>GD_TIME_MAX-timeout_ms {return GdBegin.{code=GdCode.bounds};}
@@ -119,7 +119,7 @@ gd_begin :: (s:[]GdState,context:GdContext,now_ms:int,timeout_ms:int)->GdBegin #
     return GdBegin.{code=GdCode.ok,ticket=ticket};
 }
 // Offer stages a fully decoded enum; a failed offer never revokes newer work.
-gd_offer :: (s:[]GdState,sequence:int,now_ms:int,action:int)->GdCode #export_c {
+gd_offer :: (s:[]GdState,sequence:int,now_ms:int,action:int)->GdCode #export_c #effects(all) {
     if s.count!=1 {return GdCode.state;}
     if s[0].phase!=GD_WAITING || sequence!=s[0].ticket.sequence {return GdCode.stale;}
     if now_ms<0 || now_ms>GD_TIME_MAX || action<0 || action>30 {return GdCode.bounds;}
@@ -129,7 +129,7 @@ gd_offer :: (s:[]GdState,sequence:int,now_ms:int,action:int)->GdCode #export_c {
 // The only application entry: recheck current semantics and consume once.
 // The returned action is -1 on refusal; callers retain their local behavior.
 // book:begin take
-gd_take :: (s:[]GdState,sequence:int,current:GdContext,now_ms:int,legal_mask:int)->GdChoice #export_c {
+gd_take :: (s:[]GdState,sequence:int,current:GdContext,now_ms:int,legal_mask:int)->GdChoice #export_c #effects(all) {
     if s.count!=1 {return GdChoice.{code=GdCode.state};}
     if s[0].phase==0 || sequence!=s[0].ticket.sequence || !gd_same_context(current,s[0].ticket.context) {return GdChoice.{code=GdCode.stale};}
     if now_ms<0 || now_ms>GD_TIME_MAX || legal_mask<0 || legal_mask>2147483647 {return GdChoice.{code=GdCode.bounds};}
@@ -139,11 +139,11 @@ gd_take :: (s:[]GdState,sequence:int,current:GdContext,now_ms:int,legal_mask:int
     action:=s[0].action;s[0].phase=0;return GdChoice.{code=GdCode.ok,action=action};
 }
 // book:end take
-gd_cancel :: (s:[]GdState,sequence:int)->bool #export_c {
+gd_cancel :: (s:[]GdState,sequence:int)->bool #export_c #effects(all) {
     if s.count!=1 || s[0].phase==0 || sequence!=s[0].ticket.sequence {return false;}
     s[0].phase=0;return true;
 }
-gd_expire :: (s:[]GdState,now_ms:int)->bool #export_c {
+gd_expire :: (s:[]GdState,now_ms:int)->bool #export_c #effects(all) {
     if s.count!=1 || s[0].phase==0 || now_ms>GD_TIME_MAX || now_ms<s[0].ticket.expires_ms {return false;}
     s[0].phase=0;return true;
 }

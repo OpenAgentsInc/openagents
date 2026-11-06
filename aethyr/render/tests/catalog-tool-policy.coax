@@ -6,14 +6,14 @@ RTC_PASSES :: [13]string.["background","shadow","caster","grass","surface","scen
 RTC_KINDS :: [7]string.["uniform","storage","image2d","image_array","depth","sampler","comparison"];
 RtcConsumers :: struct {ok:bool;count:int;shared:int;legacy:int;bytes:int;}
 #load "catalog-tool-checks.coax";
-rtc_kind :: (name:string)->int {for value,i:RTC_KINDS {if value==name {return i;}}return -1;}
-rtc_literal :: (d:Jv,node:int,value:string)->bool {
+rtc_kind :: (name:string)->int #effects(all) {for value,i:RTC_KINDS {if value==name {return i;}}return -1;}
+rtc_literal :: (d:Jv,node:int,value:string)->bool #effects(all) {
   bytes:[16384]u8;n:=jv_str(d,node,bytes[..]);if n!=value.count {return false;}return cast(string)bytes[0..<n]==value;
 }
-rtc_profile_count :: (n:int)->bool {return n>=0 && n<=18;}
-rtc_range :: (first:int,count:int,limit:int)->bool {return first>=0 && first<=limit && count>=0 && count<=limit-first;}
-rtc_decode_size :: (n:int,capacity:int)->bool {return n>=0 && n<=capacity;}
-rtc_pass :: (snapshot:Jv,profile:int,name:string)->int {
+rtc_profile_count :: (n:int)->bool #effects(all) {return n>=0 && n<=18;}
+rtc_range :: (first:int,count:int,limit:int)->bool #effects(all) {return first>=0 && first<=limit && count>=0 && count<=limit-first;}
+rtc_decode_size :: (n:int,capacity:int)->bool #effects(all) {return n>=0 && n<=capacity;}
+rtc_pass :: (snapshot:Jv,profile:int,name:string)->int #effects(all) {
   found:=-1;passes:=jv_get(snapshot,0,"passes");
   for prefix:[2]string.["","particle_"] {
     first_key:=ifx prefix=="" then "pass_first" else "particle_pass_first";count_key:=ifx prefix=="" then "pass_count" else "particle_pass_count";
@@ -22,7 +22,7 @@ rtc_pass :: (snapshot:Jv,profile:int,name:string)->int {
     for i:first..<first+count {row:=jv_at(snapshot,passes,i);if rtc_literal(snapshot,jv_get(snapshot,row,"pass_id"),name) {if found!=-1 {return -2;}found=i;}}
   }return found;
 }
-rtc_expected :: (snapshot:Jv,out:[]u8)->string {
+rtc_expected :: (snapshot:Jv,out:[]u8)->string #effects(all) {
   profiles:=jv_get(snapshot,0,"profiles");bindings:=jv_get(snapshot,0,"bindings");passes:=jv_get(snapshot,0,"passes");
   if jv_kind(snapshot,profiles)!=JV_ARRAY || !rtc_profile_count(jv_len(snapshot,profiles)) {return "";}
   o:[1]Jo;jo_start(o[..],out);jo_arr(o[..]);
@@ -57,7 +57,7 @@ rtc_expected :: (snapshot:Jv,out:[]u8)->string {
     }jo_end(o[..]);jo_end(o[..]);
   }jo_end(o[..]);return ifx o[0].bad then "" else jo_text(o[..]);
 }
-rtc_assets :: (manifest:Jv,realm:int,out:[]u8)->int {
+rtc_assets :: (manifest:Jv,realm:int,out:[]u8)->int #effects(all) {
   assets:=jv_get(manifest,realm,"assets");o:[1]Jo;jo_start(o[..],out);
   if assets!=-1 {
     if jv_kind(manifest,assets)!=JV_ARRAY {return -1;}
@@ -67,7 +67,7 @@ rtc_assets :: (manifest:Jv,realm:int,out:[]u8)->int {
     }
   }return ifx o[0].bad then -1 else o[0].n;
 }
-rtc_consumers :: (snapshot:Jv,manifest:Jv,out:[]u8)->RtcConsumers {
+rtc_consumers :: (snapshot:Jv,manifest:Jv,out:[]u8)->RtcConsumers #effects(all) {
   r:RtcConsumers;profiles:=jv_get(snapshot,0,"profiles");worlds:=jv_get(manifest,0,"worlds");
   if !rtc_profile_count(jv_len(snapshot,profiles)) || jv_kind(manifest,worlds)!=JV_ARRAY {return r;}
   seen:[18]bool;o:[1]Jo;jo_start(o[..],out);jo_arr(o[..]);

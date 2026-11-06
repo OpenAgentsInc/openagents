@@ -48,7 +48,7 @@ FILE_OWN :: "error[E0400]: compile-time evaluation exceeded 20000000 steps, the 
 FILE_OK :: "ok   #test a long loop under the file's budget (1 case, 24000014 steps";
 RANGE :: "ok   #forall a range check with its own budget (4 cases, 94 steps";
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: steps.coax COMPILER"); return 2; }
   compiler := args_at(a[..], 0);

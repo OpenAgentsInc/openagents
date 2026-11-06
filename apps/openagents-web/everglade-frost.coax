@@ -164,7 +164,7 @@ fr_floes_in :: (s: [] Everglade, f: [] Frost, x: f32, z: f32) -> bool {
 }
 // How far the ice holds you over the ground under it there (everglade-face.c: your height over the
 // bed, for the river's swim).
-everglade_ice_lift :: (s: [] Everglade, x: f32, z: f32) -> f32 #export_c {
+everglade_ice_lift :: (s: [] Everglade, x: f32, z: f32) -> f32 #export_c #effects(all) {
   top := fr_floor(s, x, z);
   if top < -999 { return 0; }
   return hi(top - everglade_walk_height(s[0].heights[..], s[0].deck, x, z), 0);
@@ -201,7 +201,7 @@ fr_foot_in :: (s: [] Everglade, f: [] Frost, x: f32, z: f32) -> FrFoot {
 // Your footing for the controller (everglade-face.c, before it steps you): the share of your feet's
 // grip, of your pace, and whether you can't move (Prone, or caught in the ice).
 FrFooting :: struct { grip: f32; pace: f32; still: bool; }
-everglade_footing :: (s: [] Everglade, x: f32, z: f32, y: f32) -> FrFooting #export_c {
+everglade_footing :: (s: [] Everglade, x: f32, z: f32, y: f32) -> FrFooting #export_c #effects(all) {
   out := FrFooting.{grip = 1, pace = 1, still = false};
   if !sp_on(s) || !finite(x) || !finite(z) { return out; }
   f := fr_of(s);

@@ -44,9 +44,9 @@
   p.nodes[0]=tp_c(3);g:=oi_grid(p,2);#assert g.status==OsStatus.state && g.forward==1;
 }
 
-oi_clamp :: (x:f64,lo:f64,hi:f64)->f64 {if x<lo {return lo;}if x>hi {return hi;}return x;}
+oi_clamp :: (x:f64,lo:f64,hi:f64)->f64 #effects(all) {if x<lo {return lo;}if x>hi {return hi;}return x;}
 // book:begin fit
-oi_fit :: (program:OiProgram,initial:OsParams,updates:int)->OiFit #export_c {
+oi_fit :: (program:OiProgram,initial:OsParams,updates:int)->OiFit #export_c #effects(all) {
   if !oi_fit_count_ok(updates) || !oi_program_ok(program) {return OiFit.{status=OsStatus.shape,params=initial};}
   if initial.mass!=1 {return OiFit.{status=OsStatus.parameters,params=initial};}
   fit:=OiFit.{params=initial};
@@ -64,7 +64,7 @@ oi_fit :: (program:OiProgram,initial:OsParams,updates:int)->OiFit #export_c {
 }
 // book:end fit
 // book:begin grid
-oi_grid :: (program:OiProgram,side:int)->OiFit #export_c {
+oi_grid :: (program:OiProgram,side:int)->OiFit #export_c #effects(all) {
   if !oi_grid_side_ok(side) || !oi_program_ok(program) {return OiFit.{status=OsStatus.shape};}
   fit:OiFit;best:f64;
   for row:0..<side {for column:0..<side {
@@ -76,10 +76,10 @@ oi_grid :: (program:OiProgram,side:int)->OiFit #export_c {
   fit.loss=best;return fit;
 }
 // book:end grid
-oi_constant_program :: ()->OiProgram {p:=OiProgram.{count=1,states=1,observations=1};p.nodes[0]=tp_c(0);return p;}
+oi_constant_program :: ()->OiProgram #effects(all) {p:=OiProgram.{count=1,states=1,observations=1};p.nodes[0]=tp_c(0);return p;}
 
-oi_fit_count_ok :: (updates:int)->bool {return updates>=0 && updates<=255;}
-oi_grid_side_ok :: (side:int)->bool {return side>=2 && side<=16;}
+oi_fit_count_ok :: (updates:int)->bool #effects(all) {return updates>=0 && updates<=255;}
+oi_grid_side_ok :: (side:int)->bool #effects(all) {return side>=2 && side<=16;}
 // Divide the integer coordinate first so the last coordinate is exactly1.
-oi_grid_k :: (index:int,side:int)->f64 {return 0.5+3.5*(f64(index)/f64(side-1));}
-oi_grid_c :: (index:int,side:int)->f64 {return 0.1+0.9*(f64(index)/f64(side-1));}
+oi_grid_k :: (index:int,side:int)->f64 #effects(all) {return 0.5+3.5*(f64(index)/f64(side-1));}
+oi_grid_c :: (index:int,side:int)->f64 #effects(all) {return 0.1+0.9*(f64(index)/f64(side-1));}

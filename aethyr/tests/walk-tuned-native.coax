@@ -2,7 +2,7 @@
 #load "../player.coax";
 #load "../walk.coax" as native_scheduler;
 
-walk_tuned_assertions :: () #export_c {
+walk_tuned_assertions :: () #export_c #effects(all) {
   native_world: World;
   native_world.locomotion.acceleration = 32;
   native_world.locomotion.gravity = 8;

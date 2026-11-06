@@ -15,7 +15,7 @@
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
 
-cxproc_self_path :: (out: [] u8) -> int #foreign;
+cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
 
 GT_FIXTURE :: 262144;
 GT_OUT :: 4194304;
@@ -464,7 +464,7 @@ gt_model :: (model: string, gguf: string) -> int {
   return 0;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   sb: [4096] u8; sn := cxproc_self_path(sb[..]);

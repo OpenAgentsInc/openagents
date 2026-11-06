@@ -105,27 +105,27 @@ VALIDATION_COIN_HEAD :: 13;
 }
 #load "../../tests/bitcoin/validation_checks.coax";
 
-validation_coin_valid :: (v: [] u8, height: int) -> bool {
+validation_coin_valid :: (v: [] u8, height: int) -> bool #effects(all) {
   return v.count >= VALIDATION_COIN_HEAD && v.count <= VALIDATION_COIN_HEAD + SCRIPT_MAX_SIZE && v[12] <= 1 && kv_get32(v, 8) <= height;
 }
-validation_coin_vartime :: (v: [] u8, height: int) -> TxcCoin {
+validation_coin_vartime :: (v: [] u8, height: int) -> TxcCoin #effects(all) {
   if !validation_coin_valid(v, height) { return TxcCoin.{}; }
   return TxcCoin.{found=true, value=tx_le_vartime(v, 0, 8), height=kv_get32(v, 8), coinbase=v[12] == 1};
 }
-validation_work_fits :: (w: ValidationWork, n: int) -> bool {
+validation_work_fits :: (w: ValidationWork, n: int) -> bool #effects(all) {
   return n >= 0 && w.script.count >= 1 && w.coins.count >= n && w.spent.count >= n && w.sigops.count >= n && w.heights.count >= n && w.times.count >= n;
 }
-validation_value_vartime :: (table: [] u8, used: int, key: [] u8) -> [] u8 {
+validation_value_vartime :: (table: [] u8, used: int, key: [] u8) -> [] u8 #effects(all) {
   f := kv_find_vartime(table, used, key);
   if !f.found { return table[0..<0]; }
   at := f.at + KV_ENTRY_HEAD + kv_get16(table, f.at);
   return table[at..<at+kv_get32(table, f.at+2)];
 }
-validation_key :: (key: [] u8, id: [] u8, n: int) {
+validation_key :: (key: [] u8, id: [] u8, n: int) #effects(all) {
   // Consume the first 32 bytes; callers may pass the remaining txid arena.
   key[0] = 'C'; for k: 0..<32 { key[1+k] = id[k]; } kv_put32(key, 33, n);
 }
-validation_reason :: (r: ValidationResult) -> string {
+validation_reason :: (r: ValidationResult) -> string #effects(all) {
   if r.code == VALIDATE_OK { return "ok"; }
   if r.code == VALIDATE_BLOCK { return BLOCK_REASONS[r.detail]; }
   if r.code == VALIDATE_TX { return TXC_REASONS[r.detail]; }
@@ -148,7 +148,7 @@ validation_reason :: (r: ValidationResult) -> string {
 // disposable on refusal (including capacity/context refusals). All views
 // are live and disjoint. The caller alone commits a successful result.
 // This function neither upgrades the block index nor publishes a tip.
-validation_block_vartime :: (tree: [] BlockTree, i: int, b: [] u8, table: [] u8, used: int, w: ValidationWork) -> ValidationResult {
+validation_block_vartime :: (tree: [] BlockTree, i: int, b: [] u8, table: [] u8, used: int, w: ValidationWork) -> ValidationResult #effects(all) {
   r := ValidationResult.{tx=-1, input=-1, used=used};
   if tree.count != 1 || i < 0 || i >= tree[0].count || b.count < 81 || used < 0 || used > table.count { r.code = VALIDATE_CONTEXT; return r; }
   if !validation_work_fits(w, 0) { r.code = VALIDATE_CAPACITY; return r; }
@@ -186,7 +186,7 @@ validation_block_vartime :: (tree: [] BlockTree, i: int, b: [] u8, table: [] u8,
 // Keeping the measured BlockCheck explicit lets the boundary checks model
 // 4,000,000 and 4,000,001 without building a multi-megabyte compile-time
 // fixture. A node always enters through validation_block_vartime above.
-validation_contextual_vartime :: (tree: [] BlockTree, i: int, b: [] u8, table: [] u8, used: int, w: ValidationWork, check: BlockCheck) -> ValidationResult {
+validation_contextual_vartime :: (tree: [] BlockTree, i: int, b: [] u8, table: [] u8, used: int, w: ValidationWork, check: BlockCheck) -> ValidationResult #effects(all) {
   r := ValidationResult.{tx=-1, input=-1, used=used};
   e := tree[0].e; l := tree[0].l; p := tree[0].p; height := l[i].height;
   hash := e[i].hash[..];

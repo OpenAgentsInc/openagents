@@ -28,7 +28,7 @@ hfo_media :: (c:[]Cdp,dir:string,name:string,bad:bool)->bool {
 }
 hfo_wait :: (c:[]Cdp,text:string)->bool {until:=proc_now_ms()+60000;while proc_now_ms()<until {if wc_eval(c,text)=="true" {return true;}proc_sleep(50);}tool_errln(text);tool_errln(cdp_error(c));tool_errln(wc_eval(c,"JSON.stringify({ready:coaxial?.ready,status:coaxial?.renderStatus,phase:coaxial?.renderLifecyclePhase,note:document.querySelector('pre[role=status]')?.textContent,errors:globalThis.ownershipErrors})"));return false;}
 hfo_eval :: (c:[]Cdp,text:string)->bool {if wc_eval(c,text)=="true" {return true;}tool_errln(text);tool_errln(cdp_error(c));return false;}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}child:=rto_child(a[..]);if child>=0 {return child;}services:=args_value(a[..],"--services","");ordinary:=args_has(a[..],"--ordinary-v1");argc:=args_count(a[..])-(ifx services=="" then 0 else 2)-(ifx ordinary then 1 else 0);media:=argc==5;bad_media:=media&&args_at(a[..],3)=="bad-media";
   if (argc!=2&&argc!=3&&argc!=5)||(argc>=3&&args_at(a[..],2)!="bgra8unorm")||(media&&args_at(a[..],3)!="media"&&!bad_media) {tool_errln("usage: check-browser-frame-ownership PREVIOUS_CAPTURE NEW_OUT [bgra8unorm [media|bad-media REACTOR.wasm]] [--services REACTOR.wasm] [--ordinary-v1]");return 2;}
   paths:[8][4096]u8;previous:=args_at(a[..],0);dir:=args_at(a[..],1);if !fs_mkdir(dir) {return 1;}dir=fs_realpath(dir,paths[0][..]);config:=fs_join(dir,"origin-config.json",paths[1][..]);portfile:=fs_join(dir,"port",paths[2][..]);ledger:=fs_join(dir,"origin",paths[3][..]);

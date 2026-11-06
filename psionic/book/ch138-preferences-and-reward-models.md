@@ -63,7 +63,7 @@ problem's question and the assistant answered in exactly the form chapter
 // The ground truth for a reply to problem p: the user asked p's question,
 // and the assistant answered in exactly the form chapter 136 trains, the
 // exact call, the calculator's output and that number.
-pf_correct :: (p:SfProblem,messages:[]NcMessage,parts:[]NcPart)->bool {
+pf_correct :: (p:SfProblem,messages:[]NcMessage,parts:[]NcPart)->bool #effects(all) {
     if messages.count!=2 || messages[0].role!=NcRole.user || messages[1].role!=NcRole.assistant || !messages[1].list || messages[1].parts!=3 {return false;}
     q:[24]u8;e:[12]u8;v:[12]u8;at:=messages[1].first;want:=sf_text(v[..],sf_itoa(sf_value(p),v[..]));
     return messages[0].text==sf_text(q[..],sf_question(p,q[..])) && parts[at].kind==NcPartKind.python && parts[at].text==sf_text(e[..],sf_expr(p,e[..]))
@@ -87,7 +87,7 @@ rejected reply that is right is caught as the same reply.
 // the <|assistant_start|> before the first supervised target; they differ;
 // and the ground truth says the chosen reply is right, which makes the
 // rejected one wrong.
-pf_admit :: (table:[]u8,specials:[]int,vocab:int,context:int,p:SfProblem,cm:[]NcMessage,cp:[]NcPart,rm:[]NcMessage,rp:[]NcPart,tok:[]int,tgt:[]int)->PfPair {
+pf_admit :: (table:[]u8,specials:[]int,vocab:int,context:int,p:SfProblem,cm:[]NcMessage,cp:[]NcPart,rm:[]NcMessage,rp:[]NcPart,tok:[]int,tgt:[]int)->PfPair #effects(all) {
     ct:[NC_MAX_TOKENS]int;cg:[NC_MAX_TOKENS]int;rt:[NC_MAX_TOKENS]int;rg:[NC_MAX_TOKENS]int;
     a:=sf_admit(table,specials,vocab,context,cm,cp,ct[..],cg[..]);if a.status!=SfStatus.ok {return PfPair.{status=PfStatus.reply,reply=a.status};}
     b:=sf_admit(table,specials,vocab,context,rm,rp,rt[..],rg[..]);if b.status!=SfStatus.ok {return PfPair.{status=PfStatus.reply,reply=b.status};}
@@ -112,7 +112,7 @@ pf_admit :: (table:[]u8,specials:[]int,vocab:int,context:int,p:SfProblem,cm:[]Nc
 // output (kind 0), answers the next number with no tool (kind 1), or calls
 // the calculator with the second operand one larger and answers its output
 // (kind 2).
-pf_example :: (table:[]u8,specials:[]int,vocab:int,context:int,p:SfProblem,kind:int,tok:[]int,tgt:[]int)->PfPair {
+pf_example :: (table:[]u8,specials:[]int,vocab:int,context:int,p:SfProblem,kind:int,tok:[]int,tgt:[]int)->PfPair #effects(all) {
     if kind<0 || kind>2 {return PfPair.{status=PfStatus.kind};}
     q:[24]u8;e:[12]u8;v:[12]u8;x:[12]u8;y:[12]u8;z:[12]u8;o:=p;o.b+=1;
     expr:=sf_text(e[..],sf_expr(p,e[..]));want:=sf_text(v[..],sf_itoa(sf_value(p),v[..]));wrong:=sf_text(x[..],sf_itoa(sf_value(p)+1,x[..]));
@@ -127,7 +127,7 @@ pf_example :: (table:[]u8,specials:[]int,vocab:int,context:int,p:SfProblem,kind:
 // Every problem's pair, back to back, kinds taken in turn: pair j's chosen
 // reply holds tok[start[2j]..<start[2j+1]] and its rejected reply
 // tok[start[2j+1]..<start[2j+2]], with targets at the same positions of tgt.
-pf_encode :: (table:[]u8,specials:[]int,vocab:int,context:int,problems:[]SfProblem,kinds:[]int,tok:[]int,tgt:[]int,start:[]int)->PfSet {
+pf_encode :: (table:[]u8,specials:[]int,vocab:int,context:int,problems:[]SfProblem,kinds:[]int,tok:[]int,tgt:[]int,start:[]int)->PfSet #effects(all) {
     r:=PfSet.{};if kinds.count==0 || start.count<2*problems.count+1 {r.status=PfStatus.data;return r;}
     start[0]=0;
     for j:0..<problems.count {at:=r.tokens;if at+2*context>tok.count || at+2*context>tgt.count {r.status=PfStatus.data;return r;}
@@ -217,7 +217,7 @@ step.
 // DPO: the reply's summed log-probability over its supervised targets. Both
 // come from chapter 125's forward pass; tgt has one target per token, the
 // last always -1.
-pf_value :: (c:NcConfig,w:[]f64,mode:PfMode,verdict:int,tok:[]int,tgt:[]int,k:PfWork)->PfValue {
+pf_value :: (c:NcConfig,w:[]f64,mode:PfMode,verdict:int,tok:[]int,tgt:[]int,k:PfWork)->PfValue #effects(all) {
     s:=pf_sequence(c,mode,verdict,tok,tgt,k);if s.status!=PfStatus.ok {return s;}
     n:=cast(int)s.value;seq:=k.seq[0..<n];none:[1]f64;
     f:=nc_forward(c,w,seq,k.cache,k.work,k.logits,none[0..<0],false);if f.status!=NcStatus.ok {return PfValue.{status=PfStatus.model};}
@@ -228,7 +228,7 @@ pf_value :: (c:NcConfig,w:[]f64,mode:PfMode,verdict:int,tok:[]int,tgt:[]int,k:Pf
 }
 // The same value through chapter 127's masked pass, and its gradient in grad:
 // minus the targets kept times the gradient of their mean loss.
-pf_grad :: (c:NcConfig,w:[]f64,mode:PfMode,verdict:int,tok:[]int,tgt:[]int,grad:[]f64,k:PfWork)->PfValue {
+pf_grad :: (c:NcConfig,w:[]f64,mode:PfMode,verdict:int,tok:[]int,tgt:[]int,grad:[]f64,k:PfWork)->PfValue #effects(all) {
     s:=pf_sequence(c,mode,verdict,tok,tgt,k);if s.status!=PfStatus.ok {return s;}
     n:=cast(int)s.value;t:=k.target[0..<n-1];
     r:=nb_masked(c,w,k.seq[0..<n],t,grad,k.tape,k.logits,false);if r.status!=NcStatus.ok {return PfValue.{status=PfStatus.model};}
@@ -243,13 +243,13 @@ pf_grad :: (c:NcConfig,w:[]f64,mode:PfMode,verdict:int,tok:[]int,tgt:[]int,grad:
 // DPO: beta times the chosen reply's gain over the reference minus the
 // rejected reply's, with the reference's values in refs[2q] and refs[2q+1].
 // The loss is softplus(-margin), Bradley-Terry's -log sigma(margin).
-pf_margin :: (c:NcConfig,w:[]f64,mode:PfMode,beta:f64,verdict:int,tok:[]int,tgt:[]int,start:[]int,refs:[]f64,q:int,k:PfWork)->f64 {
+pf_margin :: (c:NcConfig,w:[]f64,mode:PfMode,beta:f64,verdict:int,tok:[]int,tgt:[]int,start:[]int,refs:[]f64,q:int,k:PfWork)->f64 #effects(all) {
     a:=start[2*q];b:=start[2*q+1];e:=start[2*q+2];
     x:=pf_value(c,w,mode,verdict,tok[a..<b],tgt[a..<b],k);y:=pf_value(c,w,mode,verdict,tok[b..<e],tgt[b..<e],k);
     if x.status!=PfStatus.ok || y.status!=PfStatus.ok {return 0.0/0.0;}
     return pf_combine(mode,beta,x.value,y.value,refs,q);
 }
-pf_combine :: (mode:PfMode,beta:f64,chosen:f64,rejected:f64,refs:[]f64,q:int)->f64 {
+pf_combine :: (mode:PfMode,beta:f64,chosen:f64,rejected:f64,refs:[]f64,q:int)->f64 #effects(all) {
     if mode==PfMode.reward {return chosen-rejected;}
     return beta*((chosen-refs[2*q])-(rejected-refs[2*q+1]));
 }
@@ -266,7 +266,7 @@ order, then clips, schedules and applies AdamW as chapter 128 does:
 // and beta for DPO, averaged over the batch; then clipping, the schedule and
 // AdamW as in chapter 128. The reference never enters: DPO reads its values
 // from refs, computed once before training.
-pf_step :: (p:NpPlan,run:NpRun,mode:PfMode,beta:f64,verdict:int,tok:[]int,tgt:[]int,start:[]int,refs:[]f64,order:[]int,w:[]f64,m:[]f64,v:[]f64,total:[]f64,k:PfWork)->NpStep {
+pf_step :: (p:NpPlan,run:NpRun,mode:PfMode,beta:f64,verdict:int,tok:[]int,tgt:[]int,start:[]int,refs:[]f64,order:[]int,w:[]f64,m:[]f64,v:[]f64,total:[]f64,k:PfWork)->NpStep #effects(all) {
     c:=p.model;pairs:=(start.count-1)/2;n:=w.count;fail:=NpStep.{run=run};
     if run.step>=p.steps || !(beta>0) {fail.status=NpStatus.config;return fail;}
     if pairs<p.batch || start.count!=2*pairs+1 || tgt.count!=tok.count || (mode==PfMode.dpo && refs.count<2*pairs) {fail.status=NpStatus.data;return fail;}
@@ -305,8 +305,8 @@ interval: 0.4902 to 0.9433
 ```jai
 // log(1 + e^x) without overflow, and the 95% Wilson score interval for
 // right successes in n trials.
-pf_softplus :: (x:f64)->f64 {return (x+abs(x))/2+log(1+exp(-abs(x)));}
-pf_wilson :: (right:int,n:int)->PfInterval {
+pf_softplus :: (x:f64)->f64 #effects(all) {return (x+abs(x))/2+log(1+exp(-abs(x)));}
+pf_wilson :: (right:int,n:int)->PfInterval #effects(all) {
     if n<1 {return PfInterval.{lo=0,hi=1};}
     z:=1.96;k:=f64(n);p:=f64(right)/k;d:=1+z*z/k;
     centre:=(p+z*z/(2*k))/d;half:=z*sqrt(p*(1-p)/k+z*z/(4*k*k))/d;
@@ -318,7 +318,7 @@ pf_wilson :: (right:int,n:int)->PfInterval {
 ```jai
 // Held-out pairwise accuracy: a pair counts when its margin is above 0, so a
 // tie counts against; mean is the mean margin.
-pf_score :: (c:NcConfig,w:[]f64,mode:PfMode,beta:f64,verdict:int,tok:[]int,tgt:[]int,start:[]int,refs:[]f64,k:PfWork)->PfScore {
+pf_score :: (c:NcConfig,w:[]f64,mode:PfMode,beta:f64,verdict:int,tok:[]int,tgt:[]int,start:[]int,refs:[]f64,k:PfWork)->PfScore #effects(all) {
     pairs:=(start.count-1)/2;r:=PfScore.{};
     if pairs<1 || start.count!=2*pairs+1 || tgt.count!=tok.count || (mode==PfMode.dpo && refs.count<2*pairs) {r.status=PfStatus.data;return r;}
     for q:0..<pairs {x:=pf_margin(c,w,mode,beta,verdict,tok,tgt,start,refs,q,k);if !(x==x) {r.status=PfStatus.model;return r;}
@@ -344,14 +344,14 @@ its skill with the tool.
 PF_RM_LOW :: 0.75;
 PF_DPO_LOW :: 0.75;
 PF_DROP_TENTHS :: 1;
-pf_accept_reward :: (s:PfScore)->bool {return pf_clears(s,PF_RM_LOW);}
-pf_accept_dpo :: (s:PfScore,before:SfRates,after:SfRates)->bool {
+pf_accept_reward :: (s:PfScore)->bool #effects(all) {return pf_clears(s,PF_RM_LOW);}
+pf_accept_dpo :: (s:PfScore,before:SfRates,after:SfRates)->bool #effects(all) {
     if before.status!=SfStatus.ok || after.status!=SfStatus.ok || after.asked!=before.asked {return false;}
     n:=before.asked;
     return pf_clears(s,PF_DPO_LOW) && 10*(before.called-after.called)<=PF_DROP_TENTHS*n && 10*(before.answered-after.answered)<=PF_DROP_TENTHS*n;
 }
 // The score was measured, and the lower end of its interval reaches low.
-pf_clears :: (s:PfScore,low:f64)->bool {return s.status==PfStatus.ok && pf_wilson(s.right,s.count).lo>=low;}
+pf_clears :: (s:PfScore,low:f64)->bool #effects(all) {return s.status==PfStatus.ok && pf_wilson(s.right,s.count).lo>=low;}
 ```
 
 ## Run it

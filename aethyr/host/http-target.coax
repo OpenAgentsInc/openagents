@@ -82,7 +82,7 @@ HttCase :: struct {input:string;target:string;}
   }
 }
 
-htr_http_dot :: (s:string)->int {
+htr_http_dot :: (s:string)->int #effects(all) {
   dots:=0;i:=0;
   while i<s.count {
     if s[i]=='.' {i+=1;}
@@ -92,14 +92,14 @@ htr_http_dot :: (s:string)->int {
   }
   return dots;
 }
-htr_http_encode :: (out:[]u8,at:int,c:u8,query:bool)->int {
+htr_http_encode :: (out:[]u8,at:int,c:u8,query:bool)->int #effects(all) {
   encode:=c<=32 || c>126 || c=='"' || c=='<' || c=='>';
   if query {encode=encode || c==39;}
   else {encode=encode || c=='`' || c=='{' || c=='}' || c=='^' || c=='|';}
   if encode {out[at]='%';out[at+1]="0123456789ABCDEF"[cast(int)c/16];out[at+2]="0123456789ABCDEF"[cast(int)c%16];return at+3;}
   out[at]=c;return at+1;
 }
-htr_http_target :: (url:string,out:[]u8)->int #export_c {
+htr_http_target :: (url:string,out:[]u8)->int #export_c #effects(all) {
   if !htr_http_path(url) {return -1;}
   utf:=1;while utf<url.count {bytes:=json_utf8(url,utf);if bytes==0 {return -1;}utf+=bytes;}
   end:=url.count;while url[end-1]==' ' {end-=1;}

@@ -110,7 +110,7 @@
 // writable/writable overlap. All typed spans have valid immutable extents and
 // exclusive caller ownership; a false flag cannot make forged pointers safe.
 // Pack once per selected immutable category, outside the inference loop.
-gl_pack :: (dtype:QmDtype,inputs:int,outputs:int,source:[]u8,packed:[]u8,overlap:bool)->QmResult #export_c {
+gl_pack :: (dtype:QmDtype,inputs:int,outputs:int,source:[]u8,packed:[]u8,overlap:bool)->QmResult #export_c #effects(all) {
   if !qm_valid(cast(u8)dtype,outputs,inputs) {return QmResult.{status=QmStatus.shape};}
   bytes:=qm_bytes(dtype,outputs,inputs);
   if source.count!=bytes || packed.count<bytes {return QmResult.{status=QmStatus.capacity};}
@@ -122,7 +122,7 @@ gl_pack :: (dtype:QmDtype,inputs:int,outputs:int,source:[]u8,packed:[]u8,overlap
   }}}
   return QmResult.{written=bytes};
 }
-gl_bias :: (dtype:QmDtype,count:int,source:[]u8,out:[]f32,overlap:bool)->QmResult #export_c {
+gl_bias :: (dtype:QmDtype,count:int,source:[]u8,out:[]f32,overlap:bool)->QmResult #export_c #effects(all) {
   // Both matrix axes share the same positive count bound; no allocation here.
   if !qm_valid(cast(u8)dtype,count,count) {return QmResult.{status=QmStatus.shape};}
   if source.count!=qm_bytes(dtype,1,count) || out.count<count {return QmResult.{status=QmStatus.capacity};}
@@ -133,7 +133,7 @@ gl_bias :: (dtype:QmDtype,count:int,source:[]u8,out:[]f32,overlap:bool)->QmResul
 }
 
 // book:begin linear
-gl_linear :: (dtype:QmDtype,inputs:int,outputs:int,packed:[]u8,bias:[]f32,x:[]f32,out:[]f32,work:[]f32,overlap:bool)->QmResult #export_c {
+gl_linear :: (dtype:QmDtype,inputs:int,outputs:int,packed:[]u8,bias:[]f32,x:[]f32,out:[]f32,work:[]f32,overlap:bool)->QmResult #export_c #effects(all) {
   if !qm_valid(cast(u8)dtype,outputs,inputs) {return QmResult.{status=QmStatus.shape};}
   if packed.count!=qm_bytes(dtype,outputs,inputs) || bias.count!=outputs || x.count!=inputs || out.count<outputs || work.count<2*outputs {return QmResult.{status=QmStatus.capacity};}
   if overlap {return QmResult.{status=QmStatus.alias};}
@@ -150,7 +150,7 @@ gl_linear :: (dtype:QmDtype,inputs:int,outputs:int,packed:[]u8,bias:[]f32,x:[]f3
 }
 // book:end linear
 // book:begin state
-gl_state :: (dtype:QmDtype,inputs:int,hidden:int,outputs:int,w1:[]u8,b1:[]f32,w2:[]u8,b2:[]f32,x:[]f32,out:[]f32,work:[]f32,overlap:bool)->QmResult #export_c {
+gl_state :: (dtype:QmDtype,inputs:int,hidden:int,outputs:int,w1:[]u8,b1:[]f32,w2:[]u8,b2:[]f32,x:[]f32,out:[]f32,work:[]f32,overlap:bool)->QmResult #export_c #effects(all) {
   admitted:=gl_state_admit(dtype,inputs,hidden,outputs,w1.count,b1.count,w2.count,b2.count,x.count,out.count,work.count,overlap);
   if admitted!=QmStatus.ok {return QmResult.{status=admitted};}layout:=gl_state_layout(hidden,outputs);
   first:=gl_linear(dtype,inputs,hidden,w1,b1,x,work[0..<layout.first],work[layout.first..<layout.stage],false);
@@ -161,12 +161,12 @@ gl_state :: (dtype:QmDtype,inputs:int,hidden:int,outputs:int,w1:[]u8,b1:[]f32,w2
   for i:0..<outputs {out[i]=work[layout.stage+i];}return QmResult.{written=outputs};
 }
 // book:end state
-gl_relu :: (value:f32)->f32 {if value<0 {return 0;}return value;}
-gl_state_layout :: (hidden:int,outputs:int)->GlLayout #export_c {
+gl_relu :: (value:f32)->f32 #effects(all) {if value<0 {return 0;}return value;}
+gl_state_layout :: (hidden:int,outputs:int)->GlLayout #export_c #effects(all) {
   if !qm_valid(cast(u8)QmDtype.f32,outputs,hidden) {return GlLayout.{status=QmStatus.shape};}
   return GlLayout.{first=hidden,stage=3*hidden,second=3*hidden+outputs,total=3*(hidden+outputs)};
 }
-gl_state_admit :: (dtype:QmDtype,inputs:int,hidden:int,outputs:int,w1:int,b1:int,w2:int,b2:int,x:int,out:int,work:int,overlap:bool)->QmStatus #export_c {
+gl_state_admit :: (dtype:QmDtype,inputs:int,hidden:int,outputs:int,w1:int,b1:int,w2:int,b2:int,x:int,out:int,work:int,overlap:bool)->QmStatus #export_c #effects(all) {
   if !qm_valid(cast(u8)dtype,hidden,inputs) || !qm_valid(cast(u8)dtype,outputs,hidden) {return QmStatus.shape;}
   if w1!=qm_bytes(dtype,hidden,inputs) || b1!=hidden || w2!=qm_bytes(dtype,outputs,hidden) || b2!=outputs || x!=inputs || out<outputs || work<gl_state_layout(hidden,outputs).total {return QmStatus.capacity;}
   if overlap {return QmStatus.alias;}return QmStatus.ok;

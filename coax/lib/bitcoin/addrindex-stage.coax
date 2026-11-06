@@ -106,10 +106,10 @@
   }
   #assert multi;
 }
-axi_copy_exact :: (src: [] u8, dst: [] u8) -> bool {
+axi_copy_exact :: (src: [] u8, dst: [] u8) -> bool #effects(all) {
   if src.count != dst.count { return false; } for k: 0..<src.count { dst[k] = src[k]; } return true;
 }
-axi_stage_block_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, b: [] u8, hash: [] u8, height: int, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> int {
+axi_stage_block_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, b: [] u8, hash: [] u8, height: int, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> int #effects(all) {
   count := tx_compact_read_vartime(b,80); at := count.next; ordinal := 0;
   for n: 0..<count.value {
     raw := b[at..<b.count]; t := tx_parse_vartime(raw,true,ins,outs,items); id: [32] u8;

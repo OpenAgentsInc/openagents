@@ -33,7 +33,7 @@
 SignMath :: struct {key:[1]SignScalar;nonce:ScScalar;challenge:ScScalar;adjusted_key:ScScalar;adjusted_nonce:ScScalar;result:ScScalar;valid:u64;}
 // Views and caller-managed scratch are stable and mutually disjoint. Parities
 // refer to the corresponding key/nonce points; no point relation is verified.
-sm_equation :: (key:[]u8,nonce_hash:[]u8,challenge_hash:[]u8,key_odd:u64,nonce_odd:u64,work:[]SignMath,overlap:bool)->bool #export_c {
+sm_equation :: (key:[]u8,nonce_hash:[]u8,challenge_hash:[]u8,key_odd:u64,nonce_odd:u64,work:[]SignMath,overlap:bool)->bool #export_c #effects(all) {
   if work.count!=1 || key.count!=32 || nonce_hash.count!=32 || challenge_hash.count!=32 || key_odd>1 || nonce_odd>1 || overlap {return false;}
   ok:=ss_key(key,work[0].key[..],false);if !ok {return ok;}
   loaded:=sc_reduce_bytes(nonce_hash);challenged:=sc_reduce_bytes(challenge_hash);

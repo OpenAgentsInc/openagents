@@ -10,7 +10,7 @@ fgnt_turn :: (s:[]ForgeNative,text:string)->bool {
   used:=fgn_key(s,-2,true,0);used=fgn_key(s,-2,false,0);fgl_text(s[0].hud[..],text);
   used=fgn_key(s,-2,true,0);used=fgn_key(s,-2,false,0);fgn_tick(s);return fgnt_wait(s);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   s:[1]ForgeNative;fgn_boot(s[..]);
   if cast(string)s[0].engine[0..<s[0].en]!="echo" || !proc_has_env("CODER_HOME") {tool_errln("Use AETHYRFORGE_ENGINE=echo and an isolated CODER_HOME.");return 2;}
   out:[FGN_VERTICES*12]f32;u:[88]f32;

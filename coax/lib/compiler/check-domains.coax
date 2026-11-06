@@ -129,8 +129,8 @@ FD_Cursor :: struct {reason:u32;index:u64;total:u64;ready:bool;}
 
 // Streaming admission: evaluate one binding, describe it, combine it, then
 // evaluate the next binding. No callback or later-bound evaluation lives here.
-FD_limit :: ()->u64 #export_c {return FD_CAP;}
-FD_domain :: (kind:u32,bits:u32,is_signed:bool,lo:int,hi:int,enum_count:int)->FD_Result #export_c {
+FD_limit :: ()->u64 #export_c #effects(all) {return FD_CAP;}
+FD_domain :: (kind:u32,bits:u32,is_signed:bool,lo:int,hi:int,enum_count:int)->FD_Result #export_c #effects(all) {
  d:=FD_Domain.{kind=kind,bits=bits,is_signed=is_signed};
  if kind==1 {d.bits=8;d.is_signed=false;d.count=2;return FD_Result.{domain=d};}
  if kind==2 || kind==3 {
@@ -151,12 +151,12 @@ FD_domain :: (kind:u32,bits:u32,is_signed:bool,lo:int,hi:int,enum_count:int)->FD
  }
  return FD_Result.{reason=1};
 }
-FD_combine :: (total:u64,count:u64)->FD_Product #export_c {
+FD_combine :: (total:u64,count:u64)->FD_Product #export_c #effects(all) {
  if !fd_total(total) || count==0 {return FD_Product.{reason=6};}
  if count>FD_CAP/total {return FD_Product.{reason=5};}
  return FD_Product.{total=total*count};
 }
-FD_tuple :: (domains:[]FD_Domain,ordinal:u64,out:[]u64)->u32 #export_c {
+FD_tuple :: (domains:[]FD_Domain,ordinal:u64,out:[]u64)->u32 #export_c #effects(all) {
  if out.count!=domains.count {return 7;}
  total:u64=1;for d:domains {
   p:=FD_combine(total,d.count);if p.reason!=0 {return p.reason;}
@@ -172,30 +172,30 @@ FD_tuple :: (domains:[]FD_Domain,ordinal:u64,out:[]u64)->u32 #export_c {
  }
  return 0;
 }
-FD_begin :: (total:u64)->FD_Cursor #export_c {
+FD_begin :: (total:u64)->FD_Cursor #export_c #effects(all) {
  if !fd_total(total) {return FD_Cursor.{reason=6};}
  return FD_Cursor.{total=total,ready=true};
 }
-FD_advance :: (cursor:FD_Cursor)->FD_Cursor #export_c {
+FD_advance :: (cursor:FD_Cursor)->FD_Cursor #export_c #effects(all) {
  if cursor.reason!=0 || !cursor.ready || !fd_total(cursor.total) || cursor.index>=cursor.total {return FD_Cursor.{reason=6};}
  next:=cursor.index+1;return FD_Cursor.{index=next,total=cursor.total,ready=next<cursor.total};
 }
-fd_width :: (bits:u32)->bool {return bits==8 || bits==16 || bits==32 || bits==64;}
-fd_total :: (count:u64)->bool {return count>0 && count<=FD_CAP;}
-fd_rank :: (value:int)->u64 {return cast,trunc(u64)value ^ FD_SIGN;}
-fd_shape :: (d:FD_Domain)->bool {
+fd_width :: (bits:u32)->bool #effects(all) {return bits==8 || bits==16 || bits==32 || bits==64;}
+fd_total :: (count:u64)->bool #effects(all) {return count>0 && count<=FD_CAP;}
+fd_rank :: (value:int)->u64 #effects(all) {return cast,trunc(u64)value ^ FD_SIGN;}
+fd_shape :: (d:FD_Domain)->bool #effects(all) {
  if d.kind==4 {return fd_width(d.bits) && d.first==0 && cast(u64)d.values.count==d.count;}
  if d.values.count!=0 {return false;}
  if d.kind==5 {return d.bits==64 && d.is_signed && d.count<=FD_LAST-fd_rank(d.first);}
  normal:=FD_domain(d.kind,d.bits,d.is_signed,d.first,d.first,cast(int)d.count);
  return normal.reason==0 && normal.domain.first==d.first && normal.domain.count==d.count && normal.domain.bits==d.bits && normal.domain.is_signed==d.is_signed;
 }
-fd_word :: (d:FD_Domain,at:u64)->u64 {
+fd_word :: (d:FD_Domain,at:u64)->u64 #effects(all) {
  if d.kind==4 {return d.values[cast(int)at];}
  if d.kind==2 || d.kind==5 {return (fd_rank(d.first)+at)^FD_SIGN;}
  return at;
 }
-fd_canonical :: (word:u64,bits:u32,is_signed:bool)->bool {
+fd_canonical :: (word:u64,bits:u32,is_signed:bool)->bool #effects(all) {
  if bits==64 {return true;}
  mask:=(cast(u64)1 << cast(int)bits)-1;expected:=word&mask;
  if is_signed && (expected & (cast(u64)1 << (cast(int)bits-1)))!=0 {expected|=FD_LAST^mask;}

@@ -94,7 +94,7 @@ L4Config :: struct {
     index_heads:int;index_dim:int;index_topk:int;block:int;
     vision_dim:int;vision_mlp:int;vision_layers:int;patch:int;channels:int;merge:int;
 }
-l4_large4 :: ()->L4Config {
+l4_large4 :: ()->L4Config #effects(all) {
     return L4Config.{dim=6144,layers=72,heads=64,nope=64,rope=64,value=128,kv_rank=512,vocab=204800,
         experts=128,top_k=4,expert_mlp=6144,dense_mlp=24576,dense_layers=1,index_heads=32,index_dim=128,index_topk=2048,block=128,
         vision_dim=2048,vision_mlp=6144,vision_layers=30,patch=14,channels=3,merge=2};
@@ -117,14 +117,14 @@ L4Line :: struct {tensors:int;bytes:int;draft:bool;}
 // A decimal number at s[at..]: its value, where it ends, and whether it
 // has a digit at all.
 L4Num :: struct {value:int;end:int;ok:bool;}
-l4_digit :: (c:u8)->bool {return c>='0' && c<='9';}
-l4_num :: (s:string,at:int)->L4Num {
+l4_digit :: (c:u8)->bool #effects(all) {return c>='0' && c<='9';}
+l4_num :: (s:string,at:int)->L4Num #effects(all) {
     r:=L4Num.{end=at};
     while r.end<s.count && l4_digit(s[r.end]) {r.value=r.value*10+cast(int)(s[r.end]-'0');r.end+=1;r.ok=true;}
     return r;
 }
 // The numbers in ranges such as "0-16,19-20,23": 0 when it does not parse.
-l4_count :: (s:string)->int {
+l4_count :: (s:string)->int #effects(all) {
     n:=0;at:=0;
     while true {
         a:=l4_num(s,at);
@@ -137,7 +137,7 @@ l4_count :: (s:string)->int {
     }
     return n;
 }
-l4_parse :: (line:string)->L4Line {
+l4_parse :: (line:string)->L4Line #effects(all) {
     r:=L4Line.{tensors=-1};sp:[2]int;spaces:=0;
     for i:0..<line.count {if line[i]==' ' {if spaces<2 {sp[spaces]=i;}spaces+=1;}}
     if spaces!=2 {return r;}
@@ -168,7 +168,7 @@ l4_parse :: (line:string)->L4Line {
 // or repeated (-1: none), line the first line that does not parse.
 L4Inventory :: struct {status:L4Status;lines:int;tensors:int;bytes:int;draft:int;bad:int=-1;line:int=-1;}
 L4_LINES_MAX :: 128;
-l4_inventory :: (c:L4Config,manifest:string)->L4Inventory {
+l4_inventory :: (c:L4Config,manifest:string)->L4Inventory #effects(all) {
     r:L4Inventory;ends:[129]int;ends[0]=-1;
     for i:0..<manifest.count {if manifest[i]=='\n' {
         if r.lines==L4_LINES_MAX {r.status=L4Status.manifest;return r;}
@@ -243,18 +243,18 @@ L4Mesh :: struct {stages:int;width:int;budget:int;read:int;lat_in:int;bw_in:int;
 L4Stage :: struct {leader:int;peer:int;read:int;imported:int;mixture:int;}
 // The latent row a position of layer l keeps: rotary layers the latent and
 // the rotary key, NoPE layers the latent; 0 for a layer reading another's.
-l4_min :: (a:int,b:int)->int {return a+b-stg_max(a,b);}
-l4_row :: (c:L4Config,l:int)->int {
+l4_min :: (a:int,b:int)->int #effects(all) {return a+b-stg_max(a,b);}
+l4_row :: (c:L4Config,l:int)->int #effects(all) {
     if ML4_KV_SOURCE[l]!=l {return 0;}
     return ifx ML4_ROTARY[l]==1 then c.kv_rank+c.rope else c.kv_rank;
 }
 // The nearest full indexer layer at or before l.
-l4_indexer :: (l:int)->int {j:=l;while ML4_INDEXER_FULL[j]==0 {j-=1;}return j;}
+l4_indexer :: (l:int)->int #effects(all) {j:=l;while ML4_INDEXER_FULL[j]==0 {j-=1;}return j;}
 // y: every layer's bytes (l4_layer), t: the top level's (l4_top).
 // Layer l added to a stage whose first layer is a. A layer reading a
 // cache from before a imports it, once per stage: only its first reader in
 // the stage counts it.
-l4_add :: (c:L4Config,m:L4Mesh,y:[]L4Layer,given:L4Stage,a:int,l:int)->L4Stage {
+l4_add :: (c:L4Config,m:L4Mesh,y:[]L4Layer,given:L4Stage,a:int,l:int)->L4Stage #effects(all) {
     s:=given;share:=c.experts/m.width;active:=(c.top_k+m.width-1)/m.width;
     sel:=l4_min(m.context,c.index_topk);
     base:=0;for p:0..<L4_PARTS {if p!=L4_EXPERT {base+=y[l].part[p];}}
@@ -269,23 +269,23 @@ l4_add :: (c:L4Config,m:L4Mesh,y:[]L4Layer,given:L4Stage,a:int,l:int)->L4Stage {
 }
 // The top level's share: the embedding on the first stage (and one row of
 // it read a token), the readout and final norm on the last.
-l4_ends :: (c:L4Config,t:L4Top,given:L4Stage,i:int,n:int)->L4Stage {
+l4_ends :: (c:L4Config,t:L4Top,given:L4Stage,i:int,n:int)->L4Stage #effects(all) {
     s:=given;
     if i==0 {s.leader+=t.embed+t.rope;s.read+=2*c.dim;}
     if i==n-1 {s.leader+=t.head;s.read+=t.head;}
     return s;
 }
-l4_stage :: (c:L4Config,m:L4Mesh,y:[]L4Layer,t:L4Top,a:int,b:int,i:int,n:int)->L4Stage {
+l4_stage :: (c:L4Config,m:L4Mesh,y:[]L4Layer,t:L4Top,a:int,b:int,i:int,n:int)->L4Stage #effects(all) {
     s:L4Stage;for l:a..<b {s=l4_add(c,m,y,s,a,l);}
     return l4_ends(c,t,s,i,n);
 }
 // Every layer's bytes, once.
-l4_all :: (c:L4Config,y:[]L4Layer) {for l:0..<c.layers {y[l]=l4_layer(c,l);}}
+l4_all :: (c:L4Config,y:[]L4Layer) #effects(all) {for l:0..<c.layers {y[l]=l4_layer(c,l);}}
 // The bytes stage i sends stage i + 1 for one decode token, as chapter
 // 186's f32 messages: the hidden row, each cache row a later stage reads
 // from a layer at or before this cut, and each indexer selection (32-bit
 // ids) a later shared-indexer layer reuses from this side of the cut.
-l4_boundary :: (c:L4Config,m:L4Mesh,cut:int)->int {
+l4_boundary :: (c:L4Config,m:L4Mesh,cut:int)->int #effects(all) {
     bytes:=stg_message_bytes(1,c.dim);
     sel:=l4_min(m.context,c.index_topk);
     rows:[128]bool;ids:[128]bool;
@@ -300,7 +300,7 @@ l4_boundary :: (c:L4Config,m:L4Mesh,cut:int)->int {
 // One mixture layer's expert exchange for a decode token on the leader: the
 // token's top_k experts on distinct peers other than the leader where there
 // are enough (the spread the plan assumes), priced by chapter 191.
-l4_exchange :: (c:L4Config,m:L4Mesh)->int {
+l4_exchange :: (c:L4Config,m:L4Mesh)->int #effects(all) {
     if m.width==1 {return 0;}
     // Chapter 191's contiguous split; -1 when it refuses the width.
     owner:[256]int;o:=owner[0..<c.experts];
@@ -366,12 +366,12 @@ token.
 // and its excess (gap); on split: no cut fits every stage.
 L4Plan :: struct {status:L4Status;stages:int;width:int;cut:[9]int;stage:[8]L4Stage;send:[8]int;time:[8]int;exchange:[8]int;latency:int;period:int;layer:int=-1;gap:int;placed:PlcPlacement;}
 L4_STAGES_MAX :: 8;
-l4_valid :: (c:L4Config,m:L4Mesh)->bool {
+l4_valid :: (c:L4Config,m:L4Mesh)->bool #effects(all) {
     if !plc_in(m.stages,1,L4_STAGES_MAX) || !plc_in(m.budget,1,PLC_AMOUNT_MAX) || !plc_in(m.read,1,PLC_RATE_MAX) || !plc_in(m.context,1,STG_CONTEXT_MAX) || !plc_in(m.kv,1,4) || c.experts%8!=0 {return false;}
     return plc_in(m.lat_in,0,PLC_AMOUNT_MAX) && plc_in(m.bw_in,1,PLC_RATE_MAX) && plc_in(m.lat_out,0,PLC_AMOUNT_MAX) && plc_in(m.bw_out,0,PLC_RATE_MAX) && c.layers==ML4_LAYERS;
 }
-l4_cost :: (c:L4Config,m:L4Mesh,s:L4Stage,exchange:int)->int {return plc_ns(s.read,m.read)+s.mixture*exchange;}
-l4_plan :: (c:L4Config,m:L4Mesh)->L4Plan {
+l4_cost :: (c:L4Config,m:L4Mesh,s:L4Stage,exchange:int)->int #effects(all) {return plc_ns(s.read,m.read)+s.mixture*exchange;}
+l4_plan :: (c:L4Config,m:L4Mesh)->L4Plan #effects(all) {
     p:=L4Plan.{stages=m.stages,width=m.width};n:=m.stages;L:=c.layers;
     if !l4_valid(c,m) {p.status=L4Status.input;return p;}
     if m.width!=1 && m.width!=2 && m.width!=4 && m.width!=8 {p.status=L4Status.width;return p;}
@@ -423,7 +423,7 @@ l4_plan :: (c:L4Config,m:L4Mesh)->L4Plan {
 // peers (stages x width), and among as many peers the widest expert split
 // (which reads the fewest experts a token), then the fewest stages. status
 // split when no mesh up to 8 x 8 does.
-l4_smallest :: (c:L4Config,m:L4Mesh)->L4Plan {
+l4_smallest :: (c:L4Config,m:L4Mesh)->L4Plan #effects(all) {
     best:=L4Plan.{status=L4Status.split};
     for w:[4]int.[8,4,2,1] {
         // One stage more each time, until the plan refuses the count.
@@ -563,11 +563,11 @@ attention but reads the source's rows and writes none.
 // mixture's 61) and c[646 l ..] (214 codes, then 432).
 L4Toy :: struct {layers:int;src:[8]int;f:[]f32;c:[]u8;}
 L4_F :: 81;L4_C :: 646;
-l4_attn :: (t:L4Toy,l:int)->M4Attn {return m4_attn_view(t.f[l*L4_F..<t.f.count],t.c[l*L4_C..<t.c.count]);}
-l4_moe :: (t:L4Toy,l:int)->M4Moe {return m4_moe_view(t.f[l*L4_F+20..<(l+1)*L4_F],t.c[l*L4_C+214..<(l+1)*L4_C]);}
+l4_attn :: (t:L4Toy,l:int)->M4Attn #effects(all) {return m4_attn_view(t.f[l*L4_F..<t.f.count],t.c[l*L4_C..<t.c.count]);}
+l4_moe :: (t:L4Toy,l:int)->M4Moe #effects(all) {return m4_moe_view(t.f[l*L4_F+20..<(l+1)*L4_F],t.c[l*L4_C+214..<(l+1)*L4_C]);}
 // A reader's attention: chapter 85's m4_attention for one token at position
 // p, except the cache is the source layer's, read and never written.
-l4_read :: (s:M4Shape,w:M4Attn,p:int,x:[]f32,cache:[]f32,work:[]f32,fwork:[]f64)->bool {
+l4_read :: (s:M4Shape,w:M4Attn,p:int,x:[]f32,cache:[]f32,work:[]f32,fwork:[]f64)->bool #effects(all) {
     at:=m4_layout(s);kv:=work[0..<s.rope];normed:=work[at[1]..<at[2]];qa:=work[at[2]..<at[3]];q:=work[at[3]..<at[4]];
     latent:=work[at[4]..<at[5]];attended:=work[at[5]..<at[6]];out:=work[at[6]..<at[7]];
     ok:=m4_norm(x,w.norm,normed) && m4_linear(w.q_a,normed,qa) && m4_norm(qa,w.q_norm,qa) && m4_linear(w.q_b,qa,q);
@@ -582,7 +582,7 @@ l4_read :: (s:M4Shape,w:M4Attn,p:int,x:[]f32,cache:[]f32,work:[]f32,fwork:[]f64)
 // One token through layers a..<b at position p. caches[l] is layer l's
 // cache (a reader's source cache may be a stage's copy); peers and owner
 // split each layer's experts (one peer: chapter 85's m4_moe).
-l4_layers :: (s:M4Shape,t:L4Toy,a:int,b:int,p:int,x:[]f32,caches:[][]f32,peers:[][]XmPeer,owner:[][]int,work:[]f32,fwork:[]f64)->bool {
+l4_layers :: (s:M4Shape,t:L4Toy,a:int,b:int,p:int,x:[]f32,caches:[][]f32,peers:[][]XmPeer,owner:[][]int,work:[]f32,fwork:[]f64)->bool #effects(all) {
     for l:a..<b {
         if t.src[l]==l {if m4_attention(s,l4_attn(t,l),1,p,x,caches[l],work,fwork).status!=M4Status.ok {return false;}}
         else if !l4_read(s,l4_attn(t,l),p,x,caches[t.src[l]],work,fwork) {return false;}
@@ -601,8 +601,8 @@ l4_layers :: (s:M4Shape,t:L4Toy,a:int,b:int,p:int,x:[]f32,caches:[][]f32,peers:[
 // tamper / 64, counting from 0 in the order sent.
 L4Run :: struct {ok:bool;sent:int;refusal:StgRefusal;}
 L4_TOY_DIGEST :: 0x4c34;
-l4_tamper :: (wire:[]u32,tamper:int,sent:int) {if tamper>=0 && tamper/64==sent {wire[tamper%64]^=1;}}
-l4_split :: (s:M4Shape,t:L4Toy,cut:[]int,tokens:int,hidden:[]f32,caches:[][]f32,copies:[][]f32,peers:[][]XmPeer,owner:[][]int,work:[]f32,fwork:[]f64,wire:[]u32,tamper:int)->L4Run {
+l4_tamper :: (wire:[]u32,tamper:int,sent:int) #effects(all) {if tamper>=0 && tamper/64==sent {wire[tamper%64]^=1;}}
+l4_split :: (s:M4Shape,t:L4Toy,cut:[]int,tokens:int,hidden:[]f32,caches:[][]f32,copies:[][]f32,peers:[][]XmPeer,owner:[][]int,work:[]f32,fwork:[]f64,wire:[]u32,tamper:int)->L4Run #effects(all) {
     r:=L4Run.{ok=true};h:=s.hidden;row:=m4_row(s);n:=cut.count-1;sent:=0;
     for p:0..<tokens {
         x:=hidden[p*h..<(p+1)*h];

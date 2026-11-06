@@ -68,30 +68,30 @@ PdResult :: struct { status:PdStatus; written:int; }
     #assert !same;
 }
 // book:begin layout
-pd_valid :: (s:PdShape)->bool {
+pd_valid :: (s:PdShape)->bool #effects(all) {
     if s.key_heads<1 || s.key_heads>16 || s.value_heads<1 || s.value_heads>48 {return false;}
     if s.key_dim<1 || s.key_dim>128 || s.value_dim<1 || s.value_dim>128 {return false;}
     if s.value_heads%s.key_heads!=0 {return false;}
     return psionic_tensor_finite_bits(f32_bits(s.epsilon)) && s.epsilon>0;
 }
-pd_key_base :: (heads:int,dim:int,base:int)->int {return heads*dim+base;}
-pd_channels :: (s:PdShape)->int {return 2*s.key_heads*s.key_dim+s.value_heads*s.value_dim;}
-pd_states :: (s:PdShape)->int {return s.value_heads*s.key_dim*s.value_dim;}
-pd_input_count :: (s:PdShape)->int {return 5*pd_channels(s)+4*s.value_heads+s.value_heads*s.value_dim+s.value_dim;}
-pd_work_count :: (s:PdShape)->int {return 4*pd_channels(s)+pd_states(s)+s.value_heads*s.value_dim;}
+pd_key_base :: (heads:int,dim:int,base:int)->int #effects(all) {return heads*dim+base;}
+pd_channels :: (s:PdShape)->int #effects(all) {return 2*s.key_heads*s.key_dim+s.value_heads*s.value_dim;}
+pd_states :: (s:PdShape)->int #effects(all) {return s.value_heads*s.key_dim*s.value_dim;}
+pd_input_count :: (s:PdShape)->int #effects(all) {return 5*pd_channels(s)+4*s.value_heads+s.value_heads*s.value_dim+s.value_dim;}
+pd_work_count :: (s:PdShape)->int #effects(all) {return 4*pd_channels(s)+pd_states(s)+s.value_heads*s.value_dim;}
 // book:end layout
-pd_data_status :: (a:[]f32)->PdStatus {for x:a {if !psionic_tensor_finite_bits(f32_bits(x)) {return PdStatus.number;}}return PdStatus.ok;}
-pd_put :: (value:f64,a:[]f32,i:int)->bool {
+pd_data_status :: (a:[]f32)->PdStatus #effects(all) {for x:a {if !psionic_tensor_finite_bits(f32_bits(x)) {return PdStatus.number;}}return PdStatus.ok;}
+pd_put :: (value:f64,a:[]f32,i:int)->bool #effects(all) {
     if !psionic_ops_fits_f32(value) {return false;}
     a[i]=f32(value);return true;
 }
-pd_sigmoid :: (x:f64)->f64 {e:=exp(-abs(x));return exp((x-abs(x))/2)/(1+e);}
-pd_silu :: (x:f64)->f64 {return x*pd_sigmoid(x);}
-pd_softplus :: (x:f64)->f64 {
+pd_sigmoid :: (x:f64)->f64 #effects(all) {e:=exp(-abs(x));return exp((x-abs(x))/2)/(1+e);}
+pd_silu :: (x:f64)->f64 #effects(all) {return x*pd_sigmoid(x);}
+pd_softplus :: (x:f64)->f64 #effects(all) {
     return (x+abs(x))/2+log(1+exp(-abs(x)));
 }
 // book:begin step
-pd_step :: (s:PdShape,input:[]f32,history:[]f32,state:[]f32,out:[]f32,work:[]f32,overlap:bool)->PdResult #export_c {
+pd_step :: (s:PdShape,input:[]f32,history:[]f32,state:[]f32,out:[]f32,work:[]f32,overlap:bool)->PdResult #export_c #effects(all) {
     if !pd_valid(s) {return PdResult.{status=PdStatus.shape};}
     c:=pd_channels(s);n:=pd_states(s);v:=s.value_heads*s.value_dim;h:=s.value_heads;
     if input.count!=pd_input_count(s) || history.count!=3*c || state.count!=n || out.count<v || work.count<pd_work_count(s) {return PdResult.{status=PdStatus.capacity};}

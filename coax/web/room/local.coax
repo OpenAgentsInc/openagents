@@ -14,8 +14,8 @@
 #load "../../lib/sys/args.coax";
 #load "../../lib/sys/proc.coax";
 
-cxproc_self_path :: (out: [] u8) -> int #foreign;
-cxtool_out_flush :: () -> int #foreign;
+cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
+cxtool_out_flush :: () -> int #foreign #effects(all);
 
 LC_KEY :: "local-development-room-ticket-key-not-a-secret";   // room-dev.coax DEV_KEY
 
@@ -88,7 +88,7 @@ lc_pass :: (h: int, wait_ms: int) -> bool {
   return true;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { return lc_usage(); }
   room_port := 8841; page_port := 8875; static := false; build := true; levels := "";

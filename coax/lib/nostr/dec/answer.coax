@@ -56,14 +56,14 @@ DEC_NOUL :: 1; DEC_CHOICE_KIND :: 2; DEC_SCORE_KIND :: 3;
 // book:end codes
 
 DecCheck :: struct {code:u32;question:int=-1;}
-dec_at :: (code:u32,question:int)->DecCheck {return DecCheck.{code=code,question=question};}
+dec_at :: (code:u32,question:int)->DecCheck #effects(all) {return DecCheck.{code=code,question=question};}
 
 // book:begin helpers
 // Within DEC_SLACK of b.
-dec_near :: (a:f64,b:f64)->bool {return a>=b-DEC_SLACK && a<=b+DEC_SLACK;}
-dec_unit :: (p:JsonF64)->bool {return p.ok && p.value>=0.0 && p.value<=1.0;}
+dec_near :: (a:f64,b:f64)->bool #effects(all) {return a>=b-DEC_SLACK && a<=b+DEC_SLACK;}
+dec_unit :: (p:JsonF64)->bool #effects(all) {return p.ok && p.value>=0.0 && p.value<=1.0;}
 // a before b in byte order.
-dec_less :: (a:string,b:string)->bool {
+dec_less :: (a:string,b:string)->bool #effects(all) {
   for i:0..<a.count {
     if i==b.count {return false;}
     if a[i]<b[i] {return true;}
@@ -73,7 +73,7 @@ dec_less :: (a:string,b:string)->bool {
 }
 // Whether v nests at most most levels: a string or null 0, each object or
 // array one more.
-dec_within :: (text:string,v:ClSlice,most:int)->bool {
+dec_within :: (text:string,v:ClSlice,most:int)->bool #effects(all) {
   j:[1]Json;cl_parse(j[..],cl_json(text,v));
   while json_next(j[..])>JSON_END {
     if j[0].depth>most {return false;}
@@ -81,17 +81,17 @@ dec_within :: (text:string,v:ClSlice,most:int)->bool {
   return true;
 }
 // An EntryType within its depth: a string, an object, an array or null.
-dec_entry :: (text:string,v:ClSlice)->bool {
+dec_entry :: (text:string,v:ClSlice)->bool #effects(all) {
   if v.tok!=JSON_STRING && v.tok!=JSON_OBJECT && v.tok!=JSON_ARRAY && v.tok!=JSON_NULL {return false;}
   return dec_within(text,v,DEC_ENTRY_DEPTH);
 }
 // Member i's key of the object v, decoded into buf (borrowed when plain).
-dec_key :: (text:string,v:ClSlice,i:int,buf:[]u8)->string {
+dec_key :: (text:string,v:ClSlice,i:int,buf:[]u8)->string #effects(all) {
   inner:=text[v.from..<v.to];ar:[1]ClArena;ar[0].buf=buf;
   return cl_text(ar[..],inner,cl_key(inner,i));
 }
-dec_count :: (text:string,v:ClSlice)->int {return cl_count(text[v.from..<v.to]);}
-dec_kind :: (text:string,q:ClSlice)->int {
+dec_count :: (text:string,v:ClSlice)->int #effects(all) {return cl_count(text[v.from..<v.to]);}
+dec_kind :: (text:string,q:ClSlice)->int #effects(all) {
   t:=cl_member(text,q,"type");
   if cl_eq(text,t,"noul") {return DEC_NOUL;}
   if cl_eq(text,t,"choice") {return DEC_CHOICE_KIND;}
@@ -100,7 +100,7 @@ dec_kind :: (text:string,q:ClSlice)->int {
 }
 // Whether the object v's keys, at most DEC_MAX_OPTIONS of them, are
 // distinct and each 1 to most bytes: one pass, the keys decoded side by side.
-dec_keys :: (text:string,v:ClSlice,most:int)->bool {
+dec_keys :: (text:string,v:ClSlice,most:int)->bool #effects(all) {
   inner:=text[v.from..<v.to];j:[1]Json;cl_parse(j[..],inner);
   arena:[40000]u8;ar:[1]ClArena;ar[0].buf=arena[..];
   keys:[DEC_MAX_OPTIONS]string;n:=0;
@@ -118,7 +118,7 @@ dec_keys :: (text:string,v:ClSlice,most:int)->bool {
 
 // book:begin question
 // What is wrong with question q, or DEC_OK.
-dec_question :: (text:string,q:ClSlice)->u32 {
+dec_question :: (text:string,q:ClSlice)->u32 #effects(all) {
   if q.to-q.from>DEC_QUESTION_BYTES {return DEC_INVALID;}
   kind:=dec_kind(text,q);
   if kind==0 {return DEC_INVALID;}
@@ -155,7 +155,7 @@ dec_question :: (text:string,q:ClSlice)->u32 {
 
 // What is wrong with the decision body, or DEC_OK; question is the index
 // of the question at fault.
-dec_body :: (text:string)->DecCheck {
+dec_body :: (text:string)->DecCheck #effects(all) {
   root:=cl_root(text);
   if !root.ok || root.tok!=JSON_OBJECT {return dec_at(DEC_MALFORMED,-1);}
   model:=cl_member(text,root,"model");
@@ -177,7 +177,7 @@ dec_body :: (text:string)->DecCheck {
 
 // book:begin answer
 // What is wrong with answer a (in at) to question q (in qt), or DEC_OK.
-dec_one :: (qt:string,q:ClSlice,at:string,a:ClSlice)->u32 {
+dec_one :: (qt:string,q:ClSlice,at:string,a:ClSlice)->u32 #effects(all) {
   kind:=dec_kind(qt,q);
   type:=cl_member(at,a,"type");
   if kind==DEC_NOUL {
@@ -220,7 +220,7 @@ dec_one :: (qt:string,q:ClSlice,at:string,a:ClSlice)->u32 {
 
 // What is wrong with response as the answer to body, or DEC_OK. A body
 // that dec_body refuses refuses here with the same code.
-dec_answer :: (body:string,response:string)->DecCheck {
+dec_answer :: (body:string,response:string)->DecCheck #effects(all) {
   check:=dec_body(body);
   if check.code!=DEC_OK {return check;}
   root:=cl_root(response);
@@ -242,9 +242,9 @@ dec_answer :: (body:string,response:string)->DecCheck {
 
 DEC_T_BODY :: "{\"model\":\"jev-1.13.0\",\"state\":\"cargo test ran 3 tests: 3 passed, 0 failed.\",\"questions\":{\"passed\":{\"type\":\"noul\",\"instructions\":\"Did every test pass?\"},\"next\":{\"type\":\"choice\",\"instructions\":\"What should happen next?\",\"criteria\":{\"ship\":\"Merge the change.\",\"fix\":\"Change the code first.\"}},\"risk\":{\"type\":\"score\",\"instructions\":\"How risky is merging now?\",\"criteria\":[\"No risk.\",\"Some risk.\",\"High risk.\"]}}}";
 DEC_T_ANSWER :: "{\"model\":\"jev-1.13.0\",\"answers\":{\"passed\":{\"type\":\"noul\",\"noul\":0.97},\"next\":{\"type\":\"choice\",\"choice\":\"ship\",\"confidence\":0.8,\"probabilities\":{\"ship\":0.8,\"fix\":0.2}},\"risk\":{\"type\":\"score\",\"score\":0.5,\"confidence\":0.6,\"legend\":{\"0\":\"No risk.\",\"1\":\"Some risk.\",\"2\":\"High risk.\"},\"probabilities\":{\"0\":0.6,\"1\":0.3,\"2\":0.1}}},\"usage\":null}";
-dec_t :: (from:string,to:string)->DecCheck {o:[2048]u8;return dec_answer(DEC_T_BODY,ts_swap(DEC_T_ANSWER,from,to,o[..]));}
-dec_tb :: (from:string,to:string)->DecCheck {o:[70000]u8;return dec_body(ts_swap(DEC_T_BODY,from,to,o[..]));}
-dec_is :: (c:DecCheck,code:u32,q:int)->bool {return c.code==code && c.question==q;}
+dec_t :: (from:string,to:string)->DecCheck #effects(all) {o:[2048]u8;return dec_answer(DEC_T_BODY,ts_swap(DEC_T_ANSWER,from,to,o[..]));}
+dec_tb :: (from:string,to:string)->DecCheck #effects(all) {o:[70000]u8;return dec_body(ts_swap(DEC_T_BODY,from,to,o[..]));}
+dec_is :: (c:DecCheck,code:u32,q:int)->bool #effects(all) {return c.code==code && c.question==q;}
 
 #test "the codes are distinct and in order" {
   #assert DEC_OK==0 && DEC_MALFORMED==1 && DEC_INVALID==2 && DEC_TOO_MANY_QUESTIONS==3 && DEC_TOO_MANY_OPTIONS==4;
@@ -385,7 +385,7 @@ dec_is :: (c:DecCheck,code:u32,q:int)->bool {return c.code==code && c.question==
 }
 
 // Edits to the body and to the answer together.
-dec_tab :: (bfrom:string,bto:string,afrom:string,ato:string)->DecCheck {
+dec_tab :: (bfrom:string,bto:string,afrom:string,ato:string)->DecCheck #effects(all) {
   o:[2048]u8;p:[2048]u8;
   return dec_answer(ts_swap(DEC_T_BODY,bfrom,bto,o[..]),ts_swap(DEC_T_ANSWER,afrom,ato,p[..]));
 }
@@ -433,7 +433,7 @@ dec_tab :: (bfrom:string,bto:string,afrom:string,ato:string)->DecCheck {
   #assert dec_is(dec_tb("\"ship\":\"Merge",ts_wrap("\"",'o',129,"\":\"Merge",big[..])),DEC_INVALID,1);
 }
 // A body of n noul questions q0, q1, ... and a choice of n options o0, o1, ...
-dec_many :: (questions:int,options:int,out:[]u8)->string {
+dec_many :: (questions:int,options:int,out:[]u8)->string #effects(all) {
   k:=0;
   k=ts_put("{\"state\":\"x\",\"questions\":{\"c\":{\"type\":\"choice\",\"criteria\":{",out,k);
   for i:0..<options {if i>0 {k=ts_put(",",out,k);} k=ts_put("\"o",out,k);k=ts_num(i,out,k);k=ts_put("\":null",out,k);}

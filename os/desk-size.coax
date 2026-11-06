@@ -11,7 +11,7 @@ DeskSize :: struct { width: int; height: int; }
     #assert desk_size(bad).width == 0 && desk_size(bad).height == 0;
   }
 }
-desk_size :: (s: string) -> DeskSize {
+desk_size :: (s: string) -> DeskSize #effects(all) {
   for i: 2..<s.count {
     if s[i] == 'x' {
       w := desk_dimension(s[0..<i]); h := desk_dimension(s[i + 1..<s.count]);
@@ -21,7 +21,7 @@ desk_size :: (s: string) -> DeskSize {
   }
   return DeskSize.{};
 }
-desk_dimension :: (s: string) -> int {
+desk_dimension :: (s: string) -> int #effects(all) {
   if s.count == 0 || s[0] == '0' { return 0; }
   value := 0;
   for c: s { if c < '0' || c > '9' { return 0; } value = value * 10 + cast(int) (c - '0'); if value > 4096 { return 0; } }

@@ -12,7 +12,7 @@ SR_Room :: struct { ins: [SR_INS] TxIn; outs: [SR_INS] TxOut; items: [SR_ITEMS] 
 // spends spk holding amount satoshis, under flags.
 // Returns Core's error number or SCRIPT_BAD_FLAGS;
 // -1 when the transaction does not read or index is out of range.
-script_report_vartime :: (tx: [] u8, spk: [] u8, index: int, amount: int, flags: int) -> int #export_c {
+script_report_vartime :: (tx: [] u8, spk: [] u8, index: int, amount: int, flags: int) -> int #export_c #effects(all) {
   room: [1] SR_Room;
   sp: [1] ScriptSpend;
   if !sr_spend(tx, spk, index, amount, room[..], sp[..]) { return -1; }
@@ -22,7 +22,7 @@ script_report_vartime :: (tx: [] u8, spk: [] u8, index: int, amount: int, flags:
 // for scriptCode code and hashtype, in hash order, into out (32 bytes).
 // Returns 32, or -1 when the transaction does not read, index is out of
 // range or out is short.
-script_sighash_report_vartime :: (tx: [] u8, code: [] u8, index: int, amount: int, hashtype: int, v0: int, out: [] u8) -> int #export_c {
+script_sighash_report_vartime :: (tx: [] u8, code: [] u8, index: int, amount: int, hashtype: int, v0: int, out: [] u8) -> int #export_c #effects(all) {
   room: [1] SR_Room;
   sp: [1] ScriptSpend;
   if out.count < 32 || !sr_spend(tx, code[0..<0], index, amount, room[..], sp[..]) { return -1; }

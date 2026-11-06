@@ -5,15 +5,15 @@
 #load "../../verse/characters/veyr-v2.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/proc.coax";
-oe_open :: (root:[]u8,model:int,capacity:int,budget:int,source:[]u8)->int #foreign;
-oe_original :: (file:int,offset:int,out:[]u8)->int #foreign;
-oe_reset :: ()->int #foreign;
-oe_prefill :: (tokens:[]int,control:[]int)->int #foreign;
-oe_step :: (token:int,position:int,control:[]int)->int #foreign;
-oe_read :: (slot:int,values:[]f32)->int #foreign;
-oe_patch :: (offset:int,bytes:[]u8)->int #foreign;
-oe_close :: ()->int #foreign;
-oe_bytes :: (values:[]f32,out:[]u8)->int #foreign;
+oe_open :: (root:[]u8,model:int,capacity:int,budget:int,source:[]u8)->int #foreign #effects(all);
+oe_original :: (file:int,offset:int,out:[]u8)->int #foreign #effects(all);
+oe_reset :: ()->int #foreign #effects(all);
+oe_prefill :: (tokens:[]int,control:[]int)->int #foreign #effects(all);
+oe_step :: (token:int,position:int,control:[]int)->int #foreign #effects(all);
+oe_read :: (slot:int,values:[]f32)->int #foreign #effects(all);
+oe_patch :: (offset:int,bytes:[]u8)->int #foreign #effects(all);
+oe_close :: ()->int #foreign #effects(all);
+oe_bytes :: (values:[]f32,out:[]u8)->int #foreign #effects(all);
 vw_join :: (parts:[]string,out:[]u8)->string {n:=0;for s:parts {for c:s {#assert n<out.count;out[n]=c;n+=1;}}return cast(string)out[0..<n];}
 vw_prompt :: (table:[]u8,which:int,style:int,out:[]int)->int {
     c:=VW_CASES[which];card:=ifx style>=4 then VEYR_V2 else VEYR;base:[1024]u8;work:[1024]u8;sys:=hm_system_checked(0,base[..],work[..],false);#assert sys.status==PtStatus.ok;
@@ -54,7 +54,7 @@ vw_generate :: (table:[]u8,id:int,which:int,digest:[32]u8) {
     text:=cast(string)final[0..<k];control_ok:=false;if complete {if which==14 {control_ok=text=="391";}if which==15 {control_ok=text=="Paris";}if which==16 {control_ok=text=="TORCH";}if which==17 {control_ok=text=="north stairs forest";}}
     out:[49152]u8;j:[1]Jo;hex:[64]u8;jo_start(j[..],out[..]);jo_obj(j[..]);jo_key(j[..],"id");jo_int(j[..],id);jo_key(j[..],"case");jo_int(j[..],which);jo_key(j[..],"overlay");jo_str(j[..],vw_hex(digest,hex[..]));jo_key(j[..],"style");jo_int(j[..],style);jo_key(j[..],"budget");jo_int(j[..],budget);jo_key(j[..],"prefix");jo_arr(j[..]);for i:0..<prefix {jo_int(j[..],prompt[i]);}jo_end(j[..]);jo_key(j[..],"generated");jo_arr(j[..]);for i:0..<count {jo_int(j[..],ids[i]);}jo_end(j[..]);jo_key(j[..],"complete");jo_bool(j[..],complete);jo_key(j[..],"parse");jo_int(j[..],cast(int)r.status);jo_key(j[..],"final");jo_str(j[..],text);jo_key(j[..],"words");jo_int(j[..],vw_words(text));jo_key(j[..],"repeat_span");jo_int(j[..],os_repeat(ids[0..<count]));jo_key(j[..],"control_ok");jo_bool(j[..],control_ok);jo_key(j[..],"milliseconds");jo_int(j[..],elapsed);raw:[8192]u8;scratch:[8192]u8;shown:=hs_decode_checked(table,ids[0..<count],raw[..],scratch[..],false);jo_key(j[..],"raw_status");jo_int(j[..],cast(int)shown.status);jo_key(j[..],"raw");jo_str(j[..],cast(string)raw[0..<shown.written]);jo_end(j[..]);#assert !j[0].bad && fs_write(name,jo_text(j[..]));print("%,%,%,%,%,%,%\n",id,which,complete,k,count,vw_words(text),elapsed);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {return 2;}mode:=args_at(a[..],2);pilot:=mode=="pilot";calibrate:=mode=="calibrate";held:=mode=="held0" || mode=="held3" || mode=="held6" || mode=="held11" || mode=="held16";#assert pilot || calibrate || held || mode=="dev3" || mode=="dev6" || mode=="dev16";
     lo:=0;hi:=3;if calibrate {lo=11;hi=13;}if mode=="held11" {lo=11;hi=16;}if mode=="dev3" || mode=="held3" {lo=3;}if mode=="dev6" || mode=="held6" {lo=6;}if lo<11 {hi=lo+3;}if mode=="dev16" || mode=="held16" {lo=16;hi=18;}if held {#assert fs_exists("psionic/fixtures/verse-villain/selection.json");}
     for part:[4]string.["runs","capture","equivalence","candidates"] {b:[1024]u8;pieces:=[2]string.[VW_ROOT,part];#assert fs_mkdir(vw_join(pieces[..],b[..]));}

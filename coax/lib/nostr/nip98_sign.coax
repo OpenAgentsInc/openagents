@@ -126,34 +126,34 @@ N98S_HEADER :: 5500;    // "Nostr " and the event's base64
 #test "the test helper finds a part anywhere, and nothing longer than the text" {
   #assert n98s_has("ab", "ab") && n98s_has("ab", "a") && n98s_has("ab", "b") && n98s_has("ab", "") && !n98s_has("a", "ab") && !n98s_has("ab", "c");
 }
-n98s_has :: (s: string, part: string) -> bool {
+n98s_has :: (s: string, part: string) -> bool #effects(all) {
   if part.count > s.count { return false; }
   for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
   return false;
 }
-n98s_url_ok :: (url: string) -> bool {
+n98s_url_ok :: (url: string) -> bool #effects(all) {
   web := (url.count > 7 && url[0..<7] == "http://") || (url.count > 8 && url[0..<8] == "https://");
   if !web || url.count > N98S_URL_MAX { return false; }
   for c: url { if c < 33 || c > 126 || c == '"' || c == '\\' { return false; } }
   return true;
 }
-n98s_method_ok :: (m: string) -> bool {
+n98s_method_ok :: (m: string) -> bool #effects(all) {
   if m.count < 1 || m.count > 10 { return false; }
   for c: m { if c < 'A' || c > 'Z' { return false; } }
   return true;
 }
-n98s_hex_ok :: (h: string, n: int) -> bool {
+n98s_hex_ok :: (h: string, n: int) -> bool #effects(all) {
   if h.count != n { return false; }
   for c: h { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
   return true;
 }
-n98s_put :: (out: [] u8, at: int, s: string) -> int {
+n98s_put :: (out: [] u8, at: int, s: string) -> int #effects(all) {
   if at < 0 || at + s.count > out.count { return -1; }
   for i: 0..<s.count { out[at + i] = s[i]; }
   return at + s.count;
 }
 // The tags JSON: payload_hex is "" (unbound) or 64 lowercase hex; nonce_hex is 32. Its length, or -1.
-n98s_tags :: (url: string, method: string, payload_hex: string, nonce_hex: string, out: [] u8) -> int {
+n98s_tags :: (url: string, method: string, payload_hex: string, nonce_hex: string, out: [] u8) -> int #effects(all) {
   bound := payload_hex.count > 0;
   if !n98s_url_ok(url) || !n98s_method_ok(method) || (bound && !n98s_hex_ok(payload_hex, 64)) || !n98s_hex_ok(nonce_hex, 32) { return -1; }
   t := n98s_put(out, 0, "[[\"u\",\"");
@@ -171,7 +171,7 @@ n98s_tags :: (url: string, method: string, payload_hex: string, nonce_hex: strin
   return n98s_put(out, t, "\"]]");
 }
 // The Authorization header's value for one request. Its length, or -1.
-n98s_header :: (key: [] u8, aux: [] u8, nonce: [] u8, created_at: int, url: string, method: string, body: [] u8, bind: bool, out: [] u8) -> int {
+n98s_header :: (key: [] u8, aux: [] u8, nonce: [] u8, created_at: int, url: string, method: string, body: [] u8, bind: bool, out: [] u8) -> int #effects(all) {
   hx: [64] u8; hn := 0; nx: [32] u8;
   digits := "0123456789abcdef";
   if nonce.count != 16 { return -1; }

@@ -5,4 +5,4 @@
   #assert guard_token_input_size(8277996);
   #assert !guard_token_input_size(-1) && !guard_token_input_size(0) && !guard_token_input_size(8277995) && !guard_token_input_size(8277997);
 }
-guard_token_input_size :: (bytes:int)->bool #export_c {return bytes==8277996;}
+guard_token_input_size :: (bytes:int)->bool #export_c #effects(all) {return bytes==8277996;}

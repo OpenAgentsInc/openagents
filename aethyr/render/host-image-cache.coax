@@ -41,20 +41,20 @@ HostImageMemory :: struct {bytes:[RENDER_MEDIA_ITEMS]int;total:int;}
  m[0].total=HOST_IMAGE_CACHE_BYTES-4;m[0].bytes[0]=0;#assert hic_reserve(m[..],0,4)&&m[0].total==HOST_IMAGE_CACHE_BYTES;
  m[0].total=HOST_IMAGE_CACHE_BYTES-3;m[0].bytes[0]=0;#assert !hic_reserve(m[..],0,4)&&m[0].total==HOST_IMAGE_CACHE_BYTES-3;
 }
-hic_capacity :: ()->int #export_c {return RENDER_MEDIA_ITEMS;}
-hic_source :: (bytes:int)->bool #export_c {return bytes>=1&&bytes<=HOST_MEDIA_SOURCE_BYTES;}
-hic_offer :: (kind:int,url:string,used:int)->bool #export_c {
+hic_capacity :: ()->int #export_c #effects(all) {return RENDER_MEDIA_ITEMS;}
+hic_source :: (bytes:int)->bool #export_c #effects(all) {return bytes>=1&&bytes<=HOST_MEDIA_SOURCE_BYTES;}
+hic_offer :: (kind:int,url:string,used:int)->bool #export_c #effects(all) {
  if kind!=1||used<0||used>=RENDER_MEDIA_ITEMS||url.count<1||url.count>65536||url[0]!='/'||(url.count>1&&url[1]=='/'){return false;}
  for c:url{if c<=32||c==127{return false;}}return true;
 }
-hic_reserve :: (s:[]HostImageMemory,slot:int,bytes:int)->bool #export_c {
+hic_reserve :: (s:[]HostImageMemory,slot:int,bytes:int)->bool #export_c #effects(all) {
  if s.count!=1||slot<0||slot>=RENDER_MEDIA_ITEMS||bytes<=0||bytes>HOST_MEDIA_SIDE*HOST_MEDIA_SIDE*4{return false;}
  if s[0].bytes[slot]!=0||s[0].total<0||bytes>HOST_IMAGE_CACHE_BYTES-s[0].total{return false;}
  s[0].bytes[slot]=bytes;s[0].total+=bytes;return true;
 }
-hic_release :: (s:[]HostImageMemory,slot:int)->bool #export_c {
+hic_release :: (s:[]HostImageMemory,slot:int)->bool #export_c #effects(all) {
  if s.count!=1||slot<0||slot>=RENDER_MEDIA_ITEMS{return false;}bytes:=s[0].bytes[slot];
  if bytes<=0||s[0].total<bytes||s[0].total>HOST_IMAGE_CACHE_BYTES{return false;}
  s[0].total-=bytes;s[0].bytes[slot]=0;return true;
 }
-hic_total :: (s:[]HostImageMemory)->int #export_c {if s.count!=1{return -1;}return s[0].total;}
+hic_total :: (s:[]HostImageMemory)->int #export_c #effects(all) {if s.count!=1{return -1;}return s[0].total;}

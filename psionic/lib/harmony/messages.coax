@@ -53,9 +53,9 @@ HM_SYSTEM_TAIL :: "\n\n# Valid channels: analysis, commentary, final. Channel mu
     #assert !hm_metadata(5,0,0,"","") && !hm_metadata(0,4,0,"","") && !hm_metadata(0,0,3,"","") && !hm_metadata(0,0,0,"name","");
 }
 
-hm_message_count :: (n:int)->bool #export_c {return n>=0 && n<=64;}
+hm_message_count :: (n:int)->bool #export_c #effects(all) {return n>=0 && n<=64;}
 // book:begin metadata
-hm_metadata :: (role:u8,channel:u8,ending:u8,name:string,recipient:string)->bool {
+hm_metadata :: (role:u8,channel:u8,ending:u8,name:string,recipient:string)->bool #effects(all) {
     if role>4 || channel>3 || ending>2 {return false;}
     if role==4 {if !hm_ident(name) || hm_role(name)!=4 {return false;}}else if name.count!=0 {return false;}
     if recipient.count!=0 {if !hm_ident(recipient) || recipient=="all" {return false;}}
@@ -64,16 +64,16 @@ hm_metadata :: (role:u8,channel:u8,ending:u8,name:string,recipient:string)->bool
     return role!=3 || recipient.count==0;
 }// book:end metadata
 // book:begin system
-hm_system_checked :: (effort:int,out:[]u8,work:[]u8,overlap:bool)->PtResult #export_c {
+hm_system_checked :: (effort:int,out:[]u8,work:[]u8,overlap:bool)->PtResult #export_c #effects(all) {
     if effort<0 || effort>2 {return PtResult.{status=PtStatus.range};}if overlap {return PtResult.{status=PtStatus.alias};}
     efforts:=[3]string.["low","medium","high"];parts:=[3]string.[HM_SYSTEM_HEAD,efforts[effort],HM_SYSTEM_TAIL];n:=HM_SYSTEM_HEAD.count+efforts[effort].count+HM_SYSTEM_TAIL.count;
     if out.count<n || work.count<n {return PtResult.{status=PtStatus.capacity};}p:=0;
     for part:parts {for c:part {work[p]=c;p+=1;}}
     for i:0..<n {out[i]=work[i];}return PtResult.{written=n};
 }// book:end system
-hm_push :: (stage:[]int,n:int,id:int)->HmStatus {if !pt_token_count(n+1) {return HmStatus.size;}if n>=stage.count {return HmStatus.capacity;}stage[n]=id;return HmStatus.ok;}
+hm_push :: (stage:[]int,n:int,id:int)->HmStatus #effects(all) {if !pt_token_count(n+1) {return HmStatus.size;}if n>=stage.count {return HmStatus.capacity;}stage[n]=id;return HmStatus.ok;}
 // book:begin preflight
-hm_preflight :: (messages:[]HmMessage,completion:bool)->HmResult {
+hm_preflight :: (messages:[]HmMessage,completion:bool)->HmResult #effects(all) {
     total:=0;
     for m:messages {
         if !hm_metadata(cast(u8)m.role,cast(u8)m.channel,cast(u8)m.ending,m.name,m.recipient) {return HmResult.{status=HmStatus.syntax};}
@@ -88,7 +88,7 @@ hm_preflight :: (messages:[]HmMessage,completion:bool)->HmResult {
 }
 // book:end preflight
 // book:begin render
-hm_render_checked :: (table:[]u8,messages:[]HmMessage,completion:bool,out:[]int,stage:[]int,symbols:[]int,overlap:bool)->HmResult #export_c {
+hm_render_checked :: (table:[]u8,messages:[]HmMessage,completion:bool,out:[]int,stage:[]int,symbols:[]int,overlap:bool)->HmResult #export_c #effects(all) {
     if !hm_message_count(messages.count) {return HmResult.{status=HmStatus.size};}if overlap {return HmResult.{status=HmStatus.alias};}
     input:=hm_preflight(messages,completion);if input.status!=HmStatus.ok {return input;}
     t:=hs_layout(table);if t.status!=PtStatus.ok {return HmResult.{status=HmStatus.tokenizer,cause=t.status};}
@@ -114,8 +114,8 @@ hm_render_checked :: (table:[]u8,messages:[]HmMessage,completion:bool,out:[]int,
     for i:0..<n {out[i]=stage[i];}return HmResult.{written=n,bytes=input.bytes,work=used};
 }
 // book:end render
-hm_space :: (s:string)->int {p:=0;while p<s.count {if s[p]==' ' {return p;}p+=1;}return p;}
-hm_header :: (bytes:string,begin:int,channel:int,end:int)->HmHeader {
+hm_space :: (s:string)->int #effects(all) {p:=0;while p<s.count {if s[p]==' ' {return p;}p+=1;}return p;}
+hm_header :: (bytes:string,begin:int,channel:int,end:int)->HmHeader #effects(all) {
     head:=bytes[begin..<channel];role_end:=hm_space(head);role:=hm_role(head[0..<role_end]);record:=HmRecord.{role=cast(HmRole)role};
     if role==4 {if !hm_ident(head[0..<role_end]) {return HmHeader.{status=HmStatus.syntax};}record.name_begin=begin;record.name_end=begin+role_end;}
     tail:=head[role_end..<head.count];
@@ -127,13 +127,13 @@ hm_header :: (bytes:string,begin:int,channel:int,end:int)->HmHeader {
     }
     return HmHeader.{record=record};
 }
-hm_copy_token :: (table:[]u8,t:PtLayout,id:int,work:[]u8,n:int)->PtResult {
+hm_copy_token :: (table:[]u8,t:PtLayout,id:int,work:[]u8,n:int)->PtResult #effects(all) {
     span:=pt_span(table,t,id);if span.status!=PtStatus.ok {return PtResult.{status=span.status};}width:=span.end-span.begin;
     if width>work.count-n {return PtResult.{status=PtStatus.capacity};}if !pt_text_count(n+width) {return PtResult.{status=PtStatus.size};}
     for i:0..<width {work[n+i]=table[span.begin+i];}return PtResult.{written=width};
 }
 // book:begin parse
-hm_parse_checked :: (table:[]u8,tokens:[]int,completion:bool,out:[]HmRecord,draft:[]HmRecord,bytes:[]u8,work:[]u8,overlap:bool)->HmResult #export_c {
+hm_parse_checked :: (table:[]u8,tokens:[]int,completion:bool,out:[]HmRecord,draft:[]HmRecord,bytes:[]u8,work:[]u8,overlap:bool)->HmResult #export_c #effects(all) {
     if !pt_token_count(tokens.count) {return HmResult.{status=HmStatus.size};}if overlap {return HmResult.{status=HmStatus.alias};}
     t:=hs_layout(table);if t.status!=PtStatus.ok {return HmResult.{status=HmStatus.tokenizer,cause=t.status};}
     at:=0;n:=0;count:=0;stop:=HmEnd.message;

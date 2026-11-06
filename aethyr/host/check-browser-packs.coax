@@ -4,7 +4,7 @@
 #load "pack-physical-conformance.coax";
 #load "../forge/pack.coax";
 #load "../render/tests/qualification-files.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<3||args_count(a[..])>4{tool_errln("usage: check-browser-packs ROOT REACTOR NEW_OUTPUT [--physical]");return 2;}physical:=args_has(a[..],"--physical");root:=args_at(a[..],0);reactor:=args_at(a[..],1);dir:=args_at(a[..],2);paths:[6][4096]u8;if fs_exists(dir)||!fs_mkdir(dir){return 2;}site:=fs_join(dir,"site",paths[0][..]);build:=fs_join(site,"build",paths[1][..]);if !fs_mkdir(build){return 1;}
  held:[1]RtqInputs;if !rtq_input_add(held[..],reactor){return 1;}for file:[4]string.["coax/web/pack-host.js","coax/web/tests/pack-fixture.js","aethyr/host/pack-browser-conformance.coax","aethyr/host/check-browser-packs.coax"]{if !rtq_input_add(held[..],fs_join(root,file,paths[2][..])){return 1;}}
  raw:[1048576]u8;n:=fs_read(reactor,raw[..]);if n<1||!fs_write(fs_join(build,"host-packs.wasm",paths[2][..]),cast(string)raw[0..<n]){return 1;}pack_bytes:[512]u8;fixture:=pack_test(600,pack_bytes[..]);if !fs_write(fs_join(site,"fixture.pack",paths[2][..]),fixture)||!fs_write(fs_join(site,"index.html",paths[2][..]),"<!doctype html><meta charset=utf-8><title>Pack stream observations</title>"){return 1;}

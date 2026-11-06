@@ -114,7 +114,7 @@ square of the length.
 // Base58 of data into out: one '1' for each leading zero byte, then the
 // rest of data as a base-58 number, most significant digit first. Returns
 // the number of characters written.
-base58_encode_vartime :: (data: [] u8, out: [] u8) -> int #export_c {
+base58_encode_vartime :: (data: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if data.count > B58_MAX_BYTES { return B58_TOO_LONG; }
   zeros := 0;
   while zeros < data.count && data[zeros] == 0 { zeros += 1; }
@@ -149,7 +149,7 @@ reaches one, and stops as soon as the value passes 1,024 bytes.
 // as it needs. Every text has exactly one decoding and re-encodes to itself.
 // Returns the number of bytes written. Work stops once the value passes
 // B58_MAX_BYTES, so a long text costs no more than a short one.
-base58_decode_vartime :: (text: string, out: [] u8) -> int #export_c {
+base58_decode_vartime :: (text: string, out: [] u8) -> int #export_c #effects(all) {
   ones := 0;
   while ones < text.count && text[ones] == '1' { ones += 1; }
   bytes: [B58_MAX_BYTES] u8; used := 0;           // the value, least significant byte first
@@ -196,7 +196,7 @@ refuses as `B58_BAD_LENGTH`.
 <!-- source: coax/lib/bitcoin/base58.coax check -->
 ```jai
 // Base58Check: payload, then the first 4 bytes of its SHA-256d, in Base58.
-base58check_encode_vartime :: (payload: [] u8, out: [] u8) -> int #export_c {
+base58check_encode_vartime :: (payload: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if payload.count > B58_MAX_BYTES - 4 { return B58_TOO_LONG; }
   data: [B58_MAX_BYTES] u8;
   for i: 0..<payload.count { data[i] = payload[i]; }
@@ -205,7 +205,7 @@ base58check_encode_vartime :: (payload: [] u8, out: [] u8) -> int #export_c {
 }
 // The payload of a Base58Check text into out, after the checksum matches.
 // Returns the payload's length.
-base58check_decode_vartime :: (text: string, out: [] u8) -> int #export_c {
+base58check_decode_vartime :: (text: string, out: [] u8) -> int #export_c #effects(all) {
   data: [B58_MAX_BYTES] u8;
   n := base58_decode_vartime(text, data[..]);
   if n < 0 { return n; }
@@ -276,7 +276,7 @@ B58_MAIN_WIF :: 5; B58_MAIN_WIF_COMPRESSED :: 6; B58_TEST_WIF :: 7; B58_TEST_WIF
 B58_VERSIONS :: [9] int.[-1, 0x00, 0x05, 0x6f, 0xc4, 0x80, 0x80, 0xef, 0xef];
 B58_SIZES :: [9] int.[0, 21, 21, 21, 21, 33, 34, 33, 34];
 // The address kind (1 to 4) for a version byte, or B58_UNKNOWN_VERSION.
-b58_address_kind :: (version: int) -> int {
+b58_address_kind :: (version: int) -> int #effects(all) {
   for kind: B58_MAIN_P2PKH..<B58_MAIN_WIF { if B58_VERSIONS[kind] == version { return kind; } }
   return B58_UNKNOWN_VERSION;
 }
@@ -291,7 +291,7 @@ no version byte and refuses as an unknown version.
 ```jai
 // A P2PKH or P2SH address of kind 1 to 4 for a 20-byte hash. Returns the
 // number of characters written.
-base58_address_encode_vartime :: (kind: int, hash: [] u8, out: [] u8) -> int #export_c {
+base58_address_encode_vartime :: (kind: int, hash: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if kind < B58_MAIN_P2PKH || kind > B58_TEST_P2SH { return B58_UNKNOWN_VERSION; }
   if hash.count != 20 { return B58_BAD_LENGTH; }
   payload: [21] u8;
@@ -302,7 +302,7 @@ base58_address_encode_vartime :: (kind: int, hash: [] u8, out: [] u8) -> int #ex
 // The 20-byte hash of a P2PKH or P2SH address into hash_out. Returns its
 // kind, 1 to 4. The version byte decides the kind; the payload must then be
 // 21 bytes.
-base58_address_decode_vartime :: (text: string, hash_out: [] u8) -> int #export_c {
+base58_address_decode_vartime :: (text: string, hash_out: [] u8) -> int #export_c #effects(all) {
   if hash_out.count != 20 { return B58_CAPACITY; }
   payload: [B58_MAX_BYTES] u8;
   n := base58check_decode_vartime(text, payload[..]);
@@ -340,13 +340,13 @@ The building blocks compare without branching, as chapter 3's
 ```jai
 // All ones when a == b, else 0. a and b are below 256, so a ^ b is at most
 // 255 and (x + 255) >> 8 is 1 exactly when x is not 0.
-b58_eq_mask :: (a: u64, b: u64) -> u64 {
+b58_eq_mask :: (a: u64, b: u64) -> u64 #effects(all) {
   x := a ^ b;
   return value_barrier(sub_wrap(cast(u64) 0, ((x + 255) >> 8) ^ 1));
 }
 // The digit of c in the low 8 bits, and bit 8 set when c is not in the
 // alphabet. It reads all 58 entries and never branches on c.
-b58_digit_ct :: (c: u8) -> u64 {
+b58_digit_ct :: (c: u8) -> u64 #effects(all) {
   digit: u64 = 0; found: u64 = 0;
   for k: 0..<58 {
     m := b58_eq_mask(cast(u64) c, cast(u64) B58_ALPHABET[k]);
@@ -355,7 +355,7 @@ b58_digit_ct :: (c: u8) -> u64 {
   return digit | (((found & 1) ^ 1) << 8);
 }
 // The character of a digit below 58, reading all 58 entries.
-b58_char_ct :: (digit: u64) -> u8 {
+b58_char_ct :: (digit: u64) -> u8 #effects(all) {
   c: u64 = 0;
   for k: 0..<58 { c |= b58_eq_mask(digit, cast(u64) k) & cast(u64) B58_ALPHABET[k]; }
   return cast(u8) c;
@@ -383,7 +383,7 @@ branches once, at the end, on the result.
 // public, choose a path. The secret intermediates live in work, which the
 // caller owns, can register for erasure, and gets back as zeros.
 WIF_WORK_BYTES :: 42;
-wif_encode_ct :: (key: [] u8, compressed: bool, testnet: bool, work: [] u8, out: [] u8) -> int #export_c {
+wif_encode_ct :: (key: [] u8, compressed: bool, testnet: bool, work: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if key.count != 32 { return B58_BAD_LENGTH; }
   size := ifx compressed then 38 else 37;         // payload and checksum
   chars := size + 14;                             // 51 or 52
@@ -414,7 +414,7 @@ wif_encode_ct :: (key: [] u8, compressed: bool, testnet: bool, work: [] u8, out:
 // B58_TEST_WIF_COMPRESSED. The text's length (51 or 52) is public and
 // decides the payload size. Each check becomes a mask; the procedure
 // branches once, at the end, on the result.
-wif_decode_ct :: (text: string, work: [] u8, key_out: [] u8) -> int #export_c {
+wif_decode_ct :: (text: string, work: [] u8, key_out: [] u8) -> int #export_c #effects(all) {
   if key_out.count != 32 || work.count < WIF_WORK_BYTES { return B58_CAPACITY; }
   if text.count != 51 && text.count != 52 { return B58_BAD_LENGTH; }
   size := text.count - 14;

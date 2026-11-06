@@ -5,7 +5,7 @@
 #load "../render/tests/qualification-files.coax";
 bsp_run :: (argv:[]string)->int {h:=proc_new();if h<0{return -1;}for arg:argv{if !proc_arg(h,arg){done:=proc_release(h);return -1;}}if proc_start(h)!=0{done:=proc_release(h);return -1;}return h;}
 bsp_copy :: (src:string,dst:string)->bool {b:[1048576]u8;n:=fs_read(src,b[..]);return n>0&&fs_write(dst,cast(string)b[0..<n]);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<3||args_count(a[..])>4{tool_errln("usage: check-browser-socket-pressure ROOT PREPARED_FIXTURE NEW_OUTPUT [--local-room]");return 2;}root:=args_at(a[..],0);prepared:=args_at(a[..],1);dir:=args_at(a[..],2);paths:[8][4096]u8;local_room:=args_has(a[..],"--local-room");
  if fs_exists(dir)||!fs_mkdir(dir){return 2;}site:=fs_join(dir,"site",paths[0][..]);build:=fs_join(site,"build",paths[1][..]);if !fs_mkdir(build){return 1;}held:[1]RtqInputs;
  for file:[2]string.["fixture.wasm","fixture.wgsl"]{src:=fs_join(prepared,file,paths[2][..]);if !rtq_input_add(held[..],src)||!bsp_copy(src,fs_join(site,file,paths[3][..])){return 1;}}

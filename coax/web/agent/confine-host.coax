@@ -6,11 +6,11 @@
 // (coax/web/agent/test_confine.sh, under ASan and UBSan).
 #load "confine.coax";
 
-cfn_root :: (path: [] u8) -> int #foreign;
-cfn_close :: (fd: int) -> int #foreign;
-cfn_facts :: (root: int, rel: [] u8, out: [] int) -> int #foreign;
-cfn_sweep :: (root: int, counts: [] int) -> int #foreign;
-cfn_force_walk :: (on: int) -> int #foreign;
+cfn_root :: (path: [] u8) -> int #foreign #effects(all);
+cfn_close :: (fd: int) -> int #foreign #effects(all);
+cfn_facts :: (root: int, rel: [] u8, out: [] int) -> int #foreign #effects(all);
+cfn_sweep :: (root: int, counts: [] int) -> int #foreign #effects(all);
+cfn_force_walk :: (on: int) -> int #foreign #effects(all);
 
 CF_STEPS :: 80;   // a path and its ancestors looked at, at most
 

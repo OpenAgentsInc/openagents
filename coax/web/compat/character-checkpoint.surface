@@ -1,0 +1,73 @@
+coax.compat.v1
+0		CharacterCapture	0	struct;c=coax_t_CharacterCapture:id=0;quantity=0,0,0,0,0,0,0;frame=0,0,0,0,0	448	8	0	1	0	0
+1	CharacterCapture	ok	0	bool;counter=0	0	1	0	1	0	0
+1	CharacterCapture	n	1	[17]int;counter=0	8	136	0	1	0	0
+1	CharacterCapture	pid	2	[40]u8;counter=0	144	40	0	1	0	0
+1	CharacterCapture	pid_n	3	int;counter=0	184	8	0	1	0	0
+1	CharacterCapture	room	4	[24]u8;counter=0	192	24	0	1	0	0
+1	CharacterCapture	room_n	5	int;counter=0	216	8	0	1	0	0
+1	CharacterCapture	dead	6	bool;counter=0	224	1	0	1	0	0
+1	CharacterCapture	state	7	[27]int;counter=0	232	216	0	1	0	0
+4	cc_number	argument	0	int	0	0	0	0	0	0
+4	cc_number	argument	1	int	0	0	0	0	0	0
+5	cc_number	return	0	bool	0	0	0	0	0	0
+2		cc_number	0	Coax	2	0	0	0	0	8
+4	cc_resource_max	argument	0	int	0	0	0	0	0	0
+5	cc_resource_max	return	0	int	0	0	0	0	0	0
+2		cc_resource_max	0	Coax	1	0	0	0	0	0
+4	cc_resource	argument	0	int	0	0	0	0	0	0
+4	cc_resource	argument	1	int	0	0	0	0	0	0
+5	cc_resource	return	0	bool	0	0	0	0	0	0
+2		cc_resource	0	Coax	2	0	0	0	0	0
+4	cc_id	argument	0	string	0	0	0	0	0	0
+5	cc_id	return	0	bool	0	0	0	0	0	0
+2		cc_id	0	Coax	1	0	0	0	0	16
+4	cc_present	argument	0	int	0	0	0	0	0	0
+5	cc_present	return	0	bool	0	0	0	0	0	0
+2		cc_present	0	Coax	1	0	0	0	0	0
+4	cc_integer	argument	0	coax.json::Jv	0	0	0	0	0	0
+0		coax.json::Jv	0	struct;c=coax_t_Jv:id=0;quantity=0,0,0,0,0,0,0;frame=0,0,0,0,0	56	8	0	0	0	0
+1	coax.json::Jv	text	0	string;counter=0	0	16	0	0	0	0
+1	coax.json::Jv	nodes	1	[]coax.json::JvNode;counter=0	16	16	0	0	0	0
+1	coax.json::Jv	count	2	int;counter=0	32	8	0	0	0	0
+1	coax.json::Jv	ok	3	bool;counter=0	40	1	0	0	0	0
+1	coax.json::Jv	err	4	int;counter=0	48	8	0	0	0	0
+0		coax.json::JvNode	0	struct;c=coax_t_JvNode:id=0;quantity=0,0,0,0,0,0,0;frame=0,0,0,0,0	64	8	0	0	0	0
+1	coax.json::JvNode	kind	0	int;counter=0	0	8	0	0	0	0
+1	coax.json::JvNode	from	1	int;counter=0	8	8	0	0	0	0
+1	coax.json::JvNode	to	2	int;counter=0	16	8	0	0	0	0
+1	coax.json::JvNode	key_from	3	int;counter=0	24	8	0	0	0	0
+1	coax.json::JvNode	key_to	4	int;counter=0	32	8	0	0	0	0
+1	coax.json::JvNode	first	5	int;counter=0	40	8	1	0	0	0
+3	coax.json::JvNode	first	0	integer:64:2cdb26265b4dc65e3b44d694f121fd6de99b9e4b8ae7f08d84bfa9537635ae43	0	0	0	0	0	0
+1	coax.json::JvNode	next	6	int;counter=0	48	8	1	0	0	0
+3	coax.json::JvNode	next	0	integer:64:2cdb26265b4dc65e3b44d694f121fd6de99b9e4b8ae7f08d84bfa9537635ae43	0	0	0	0	0	0
+1	coax.json::JvNode	count	7	int;counter=0	56	8	0	0	0	0
+4	cc_integer	argument	1	int	0	0	0	0	0	0
+5	cc_integer	return	0	int	0	0	0	0	0	0
+2		cc_integer	0	Coax	2	0	0	0	0	24
+4	cc_array	argument	0	coax.json::Jv	0	0	0	0	0	0
+4	cc_array	argument	1	int	0	0	0	0	0	0
+5	cc_array	return	0	bool	0	0	0	0	0	0
+2		cc_array	0	Coax	2	0	0	0	0	24
+4	cc_read	argument	0	string	0	0	0	0	0	0
+4	cc_read	argument	1	bool	0	0	0	0	0	0
+5	cc_read	return	0	CharacterCapture	0	0	0	0	0	0
+2		cc_read	0	Coax	2	0	0	0	0	56
+4	cc_encode	argument	0	CharacterCapture	0	0	0	0	0	0
+4	cc_encode	argument	1	[]u8	0	0	0	0	0	0
+4	cc_encode	argument	2	bool	0	0	0	0	0	0
+5	cc_encode	return	0	string	0	0	0	0	0	0
+2		cc_encode	0	Coax	3	0	0	0	0	56
+4	cc_write	argument	0	CharacterCapture	0	0	0	0	0	0
+4	cc_write	argument	1	[]u8	0	0	0	0	0	0
+5	cc_write	return	0	string	0	0	0	0	0	0
+2		cc_write	0	Coax	2	0	0	0	0	56
+4	cc_stored	argument	0	CharacterCapture	0	0	0	0	0	0
+4	cc_stored	argument	1	[]u8	0	0	0	0	0	0
+5	cc_stored	return	0	string	0	0	0	0	0	0
+2		cc_stored	0	Coax	2	0	0	0	0	56
+4	checkpoint2_input	argument	0	string	0	0	0	0	0	0
+4	checkpoint2_input	argument	1	int	0	0	0	0	0	0
+5	checkpoint2_input	return	0	bool	0	0	0	0	0	0
+2		checkpoint2_input	0	C	2	0	0	0	0	56

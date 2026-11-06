@@ -1,0 +1,9 @@
+#import "Basic";
+
+identity :: (x: int) -> int #effects(computes) { return x; }
+keep :: (x: $T) -> $T #effects(computes) { return x; }
+touch :: (out: [] int) #effects(reads, writes, traps) { out[0] = identity(out[0]); }
+main :: () {
+  out := [1] int.[7]; touch(out[..]); #assert out[0] == keep(7);
+  print("effect contracts: ok\n");
+}

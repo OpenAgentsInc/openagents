@@ -23,18 +23,19 @@ proto-import = "#import_proto", string, "as", identifier, ";" ;
 (* Proto imports generate ordinary declarations; see proto.md for supported
    descriptors, naming, budgets, borrowed lifetimes and strict wire policy. *)
 procedure = identifier, "::", "(", [ parameters ], ")",
-            [ "->", type ], { procedure-directive }, ( block | "#foreign", ";" ) ;
-procedure-directive = "#export_c" | "#pure" | "#effects", "(", [ identifier, { ",", identifier } ], ")" ;
-(* Effect metadata parses without admission in R2: #pure/#effects are refused
-   by the checker until the versioned R11 admission implementation. At most
-   one effect declaration and each listed capability name occurs once. *)
+            [ "->", type ], { procedure-directive }, ( block | ";" ) ;
+procedure-directive = "#foreign" | "#export_c" | "#pure" | "#effects", "(", [ identifier, { ",", identifier } ], ")" ;
+(* Foreign procedures end in a semicolon; other procedures have a body.
+   At most one #effects/#pure declaration; each capability occurs once.
+   Enforced capabilities and required declarations: checked-state.md. *)
 parameters = parameter, { ",", parameter }, [ "," ] ;
 parameter = identifier, ":", type ;
 constant = identifier, "::", expression, ";" ;
-struct = identifier, "::", "struct", [ struct-parameters ], [ physical-annotation ], field-block ;
+struct = identifier, "::", "struct", [ "#persisted" ], [ struct-parameters ], [ "#persisted" ], [ physical-annotation ], field-block ;
 physical-annotation = quantity-annotation | frame-annotation | id-annotation ;
 id-annotation = "@id", [ "(", "ordered", ")" ] ;
-(* An ID is a nongeneric struct with exactly one integer field named value,
+(* An ID has exactly one concrete integer field named value; phantom generic
+   parameters are admitted.
    no initializer. It has equality; ordering requires the explicit opt-in. *)
 quantity-annotation = "@builtin_quantity" | "@unit", "(", unit-argument, { ",", unit-argument }, ")" ;
 unit-argument = identifier, "=", [ "-" ], integer ;
@@ -98,7 +99,8 @@ type-parameter = "$", identifier ;       (* one token: no space after '$' *)
 
 block = "{", { statement }, "}" ;
 statement = block | declaration | assignment, ";" | return | if | while | for |
-            "break", ";" | "continue", ";" | defer | switch | assertion | profile-statements | expression, ";" ;
+            "break", ";" | "continue", ";" | defer | transaction | switch | assertion | profile-statements | expression, ";" ;
+transaction = "#transaction", block ;
 profile-statements = "#if", "BUILD_DEBUG", block, [ "else", block ] ;
 (* BUILD_DEBUG is a fixed per-graph selector resolved by the build profile.
    The legacy defaults are development=true and --release=false; an explicit

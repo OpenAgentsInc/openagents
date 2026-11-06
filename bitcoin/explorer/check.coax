@@ -47,7 +47,7 @@ xb_journey :: (c: [] Cdp, a: [] Args) -> bool {
   if !xb_eval(c,"new Promise(r=>setTimeout(()=>r(true),500))") { return false; }
   tool_errln("Explorer browser: typed height, hash, txid, address, desktop/mobile, both reorgs, storage failure/recovery and invalid/missing queries pass."); return true;
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 9 { tool_errln("usage: check URL FIXTURE_DIR INDEX_BINARY ADDRESS TXID HASH BALANCE_A BALANCE_B BALANCE_C"); return 2; }
   c: [1] Cdp; if !cdp_launch(c[..],1440,1000,"bitcoin-explorer-") { tool_errln(cdp_error(c[..])); return 1; }
   ok := xb_journey(c[..],a[..]); cdp_close(c[..]); return ifx ok then 0 else 1;

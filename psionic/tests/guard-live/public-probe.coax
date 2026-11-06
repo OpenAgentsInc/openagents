@@ -2,32 +2,32 @@
 // is reused for every case; the published helper owns NIP-98/network effects.
 #import "Basic";
 #load "public-probe-policy.coax";
-gp_argc :: ()->int #foreign;
-gp_arg_len :: (i:int)->int #foreign;
-gp_arg_byte :: (i:int,j:int)->int #foreign;
-gp_clock_ns :: ()->int #foreign;
-gp_pause :: ()->int #foreign;
-gp_store_path :: ()->int #foreign;
-gp_exit :: (code:int)->int #foreign;
-cxstore_load :: ()->int #foreign;
-cxstore_put :: (byte:int)->int #foreign;
-cxstore_truncate :: (size:int)->int #foreign;
-cxstore_commit :: ()->int #foreign;
-cxproc_new :: ()->int #foreign;
-cxproc_push :: (h:int,field:int,byte:int)->int #foreign;
-cxproc_end :: (h:int,field:int)->int #foreign;
-cxproc_spawn :: (h:int)->int #foreign;
-cxproc_close_stdin :: (h:int)->int #foreign;
-cxproc_read_line :: (h:int,wait:int)->int #foreign;
-cxproc_line_byte :: (h:int,i:int)->int #foreign;
-cxproc_stderr_count :: (h:int)->int #foreign;
-cxproc_stderr_byte :: (h:int,i:int)->int #foreign;
-cxproc_wait :: (h:int,wait:int)->int #foreign;
-cxproc_release :: (h:int)->int #foreign;
+gp_argc :: ()->int #foreign #effects(all);
+gp_arg_len :: (i:int)->int #foreign #effects(all);
+gp_arg_byte :: (i:int,j:int)->int #foreign #effects(all);
+gp_clock_ns :: ()->int #foreign #effects(all);
+gp_pause :: ()->int #foreign #effects(all);
+gp_store_path :: ()->int #foreign #effects(all);
+gp_exit :: (code:int)->int #foreign #effects(all);
+cxstore_load :: ()->int #foreign #effects(all);
+cxstore_put :: (byte:int)->int #foreign #effects(all);
+cxstore_truncate :: (size:int)->int #foreign #effects(all);
+cxstore_commit :: ()->int #foreign #effects(all);
+cxproc_new :: ()->int #foreign #effects(all);
+cxproc_push :: (h:int,field:int,byte:int)->int #foreign #effects(all);
+cxproc_end :: (h:int,field:int)->int #foreign #effects(all);
+cxproc_spawn :: (h:int)->int #foreign #effects(all);
+cxproc_close_stdin :: (h:int)->int #foreign #effects(all);
+cxproc_read_line :: (h:int,wait:int)->int #foreign #effects(all);
+cxproc_line_byte :: (h:int,i:int)->int #foreign #effects(all);
+cxproc_stderr_count :: (h:int)->int #foreign #effects(all);
+cxproc_stderr_byte :: (h:int,i:int)->int #foreign #effects(all);
+cxproc_wait :: (h:int,wait:int)->int #foreign #effects(all);
+cxproc_release :: (h:int)->int #foreign #effects(all);
 gp_arg :: (index:int,out:[]u8)->string {n:=gp_arg_len(index);if n<0 || n>out.count {return "";}for i:0..<n {out[i]=cast(u8)gp_arg_byte(index,i);}return cast(string)out[0..<n];}
 gp_push :: (h:int,field:int,value:string)->bool {for b:value {if cxproc_push(h,field,cast(int)b)!=0 {return false;}}return cxproc_end(h,field)==0;}
 gp_environment :: (h:int,name:string,value:string)->bool {for b:name {if cxproc_push(h,1,cast(int)b)!=0 {return false;}}if cxproc_push(h,1,'=')!=0 {return false;}return gp_push(h,1,value);}
-gp_run :: () #export_c {
+gp_run :: () #export_c #effects(all) {
     ignored:=0;
     if gp_argc()!=6 {print("usage: guard-public KEY REQUEST_FILE START COUNT SIGNER\n");ignored=gp_exit(2);return;}
     a:[4096]u8;b:[4096]u8;c:[32]u8;d:[32]u8;e:[4096]u8;

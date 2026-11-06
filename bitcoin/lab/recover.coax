@@ -5,7 +5,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/bitcoin/kvstream.coax";
 #load "../../coax/lib/bitcoin/validated-index-view.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {return 2;}
   raw:[2097152]u8;read:[2097152]u8;table:[262144]u8;view:[262144]u8;
   n:=fs_read(args_at(args[..],0),raw[..]);if n<20 {return 1;}

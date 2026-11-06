@@ -26,7 +26,7 @@ ss_light_channel :: (g:[]EpJson,binding:string,parent_name:string,track:string,c
  }#assert found;
 }
 ss_channel :: (g:[]EpJson,binding:string,track:string,channel:string,out:[]f32,stride:int,field:int) {ss_light_channel(g,binding,"",track,channel,out,stride,field);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=3 {return 2;}source:=args_at(args[..],0);sdk:=args_at(args[..],1);dest:=args_at(args[..],2);
  g:[1]EpJson;j:[1]EpJson;names:[135]SfName;parent:[135]int;node_parent:[2048]int;node_bone:[2048]int;
  ep_load(g[..],source,"Echo.gltf");nodes:=ep_get(g[..],0,"nodes");joints:=ep_get(g[..],ep_top(g[..],"skins",0),"joints");#assert ep_len(g[..],joints)==134;

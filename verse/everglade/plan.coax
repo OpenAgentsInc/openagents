@@ -388,7 +388,7 @@ everglade_river_levels_of :: (heights: [] f32, levels: [] f32) {
 }
 
 // The level over each row of the carved ground: the middle's bed and the depth.
-everglade_river_levels :: (heights: [] f32, levels: [] f32) #export_c {
+everglade_river_levels :: (heights: [] f32, levels: [] f32) #export_c #effects(all) {
   w := EG_CELLS + 1;
   if levels.count < w || heights.count < EG_GROUND_POINTS { return; }
   for j: 0..<w { levels[j] = heights[j * w + EG_RIVER_COL] + f32(EG_RIVER_DEPTH) + everglade_pool_deepen(f32(EG_RIVER_X), f32(EG_EDGE) + f32(j) * f32(EG_CELL)); }
@@ -396,7 +396,7 @@ everglade_river_levels :: (heights: [] f32, levels: [] f32) #export_c {
 
 // How much deeper than the channel the plunge pool is at (x, z): a bowl,
 // EG_POOL_DEEP at its middle and none at its edge.
-everglade_pool_deepen :: (x: f32, z: f32) -> f32 #export_c {
+everglade_pool_deepen :: (x: f32, z: f32) -> f32 #export_c #effects(all) {
   dx := x - f32(EG_RIVER_X); dz := z - f32(EG_POOL_Z);
   t := (dx * dx + dz * dz) / (f32(EG_POOL_R) * f32(EG_POOL_R));
   return ifx t < 1 then f32(EG_POOL_DEEP) * (1 - t) else 0.0f32;

@@ -87,7 +87,7 @@ original shape and group alignment must have been checked by its caller.
 
 <!-- source: psionic/lib/mxfp4.coax plan -->
 ```jai
-mx_plan :: (rows:int,columns:int)->MxPlan #export_c {
+mx_plan :: (rows:int,columns:int)->MxPlan #export_c #effects(all) {
     if rows<1 || columns<32 || columns%32!=0 {return MxPlan.{status=MxStatus.shape};}
     per_row:=columns/32;
     if rows>32768/per_row {return MxPlan.{status=MxStatus.limit};}
@@ -121,7 +121,7 @@ binary32 exact as well. We restore the sign bit explicitly, including for zero.
 
 <!-- source: psionic/lib/mxfp4.coax bits -->
 ```jai
-mx_bits :: (code:u8,scale:u8)->u32 {
+mx_bits :: (code:u8,scale:u8)->u32 #effects(all) {
     power:=f64_from_bits((cast(u64)scale+896)<<52);
     magnitude:=f32(MX_E2M1[cast(int)(code&7)]*power);
     return ((cast(u32)code&8)<<28)|f32_bits(magnitude);
@@ -134,7 +134,7 @@ window, including every scale. Only then can it publish any output:
 
 <!-- source: psionic/lib/mxfp4.coax decode -->
 ```jai
-mx_decode :: (rows:int,columns:int,packed:[]u8,scales:[]u8,out:[]f32,overlap:bool)->MxResult #export_c {
+mx_decode :: (rows:int,columns:int,packed:[]u8,scales:[]u8,out:[]f32,overlap:bool)->MxResult #export_c #effects(all) {
     p:=mx_plan(rows,columns);if p.status!=MxStatus.ok {return MxResult.{status=p.status};}
     if packed.count!=p.packed_bytes || scales.count!=p.blocks {return MxResult.{status=MxStatus.storage};}
     if out.count<p.values {return MxResult.{status=MxStatus.capacity};}

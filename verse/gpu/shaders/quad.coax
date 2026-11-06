@@ -18,7 +18,7 @@ band_of :: (u:f32)->s32 {
   }
   return b;
 }
-quad_fs :: (in:QuadOut,front:bool,colors:[]V4,uniforms:[]f32,image:Tex2D,smooth:Sampler)->V4 #export_c {
+quad_fs :: (in:QuadOut,front:bool,colors:[]V4,uniforms:[]f32,image:Tex2D,smooth:Sampler)->V4 #export_c #effects(all) {
   b:=band_of(in.uv.x);
   c:=colors[cast(int)b];
   t:=gpu_sample(image,smooth,in.uv);

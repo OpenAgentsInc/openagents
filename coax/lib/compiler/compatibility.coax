@@ -1,0 +1,337 @@
+// Published-surface compatibility policy. The host transports checked layouts
+// and signatures; this unit decides which changes a release may introduce.
+#authority;
+KC_Row :: struct {
+  kind: int; // 0 type, 1 ordered field, 2 procedure, 3 default value, 4 argument, 5 result
+  owner: string; name: string; ordinal: int;
+  shape: string; size: int; alignment: int;
+  defaulted: bool; persisted: bool; abi: bool; effects: u32;
+}
+KC_Diff :: struct { code: int; old: int; fresh: int = -1; }
+
+#test "compatibility refuses removal, renaming, ABI changes and new effects" {
+  old := KC_Row.{kind=2,name="move",shape="int->bool",effects=16};
+  fresh:=old;
+  #assert KC_change(old,fresh)==0;
+  fresh.shape="int->int";#assert KC_change(old,fresh)==2;
+  fresh=old;fresh.effects=48;#assert KC_change(old,fresh)==4;
+  old.kind=0;old.shape="struct";old.abi=true;old.size=8;old.alignment=8;
+  fresh=old;fresh.size=16;#assert KC_change(old,fresh)==2;
+  fresh=old;fresh.alignment=4;#assert KC_change(old,fresh)==2;
+  fresh=old;fresh.shape="enum";#assert KC_change(old,fresh)==2;
+  old.kind=1;fresh=old;fresh.name="renamed";#assert KC_change(old,fresh)==2;
+  fresh=old;fresh.ordinal=1;#assert KC_change(old,fresh)==2;
+  fresh=old;fresh.shape="u32";#assert KC_change(old,fresh)==2;
+}
+#test "persisted layouts allow only defaulted trailing fields" {
+  old: [3] KC_Row;
+  old[0]=KC_Row.{kind=0,name="Character",shape="struct",persisted=true,size=8};
+  old[1]=KC_Row.{kind=1,owner="Character",name="hp",shape="int",ordinal=0};
+  fresh: [3] KC_Row;fresh[0]=old[0];fresh[0].size=16;fresh[1]=old[1];
+  fresh[2]=KC_Row.{kind=1,owner="Character",name="level",shape="int",ordinal=1,defaulted=true};
+  #assert KC_problem(old[0..<2],fresh[..],0)==0 && KC_problem(old[0..<2],fresh[..],1)==0;
+  #assert KC_added(old[0..<2],fresh[..],2)==0;
+  fresh[2].defaulted=false;#assert KC_added(old[0..<2],fresh[..],2)==3;
+  fresh[2].defaulted=true;fresh[2].ordinal=0;fresh[1].ordinal=1;
+  #assert KC_problem(old[0..<2],fresh[..],1)==2;
+  #assert KC_problem(old[0..<2],fresh[0..<1],1)==1;
+  fresh[0].abi=true;#assert KC_problem(old[0..<2],fresh[..],0)==0;
+  old[0].abi=true;#assert KC_problem(old[0..<2],fresh[..],0)==2;
+}
+#test "the release gate suppresses only the same pre-existing incompatibility" {
+  old := [1] KC_Row.[KC_Row.{kind=2,name="f",shape="int->int"}];
+  base := [1] KC_Row.[KC_Row.{kind=2,name="f",shape="u32->int"}];
+  fresh:=base;
+  #assert !KC_regression(old[..],base[..],fresh[..],0);
+  fresh[0].shape="bool->int";#assert KC_regression(old[..],base[..],fresh[..],0);
+  #assert !KC_regression(old[..],base[0..<0],fresh[0..<0],0);
+  #assert KC_regression(old[..],base[..],fresh[0..<0],0);
+  base[0]=old[0];fresh[0]=old[0];#assert !KC_regression(old[..],base[..],fresh[..],0);
+}
+#forall "surface identities distinguish declaration kinds, owners and ordered field positions" kind:0..<3, other:0..<3, owner:bool, name:bool, ordinal:bool {
+  a:=KC_Row.{kind=kind,owner="A",name="x",ordinal=0};
+  b:=KC_Row.{kind=other,owner=ifx owner then "A" else "B",name=ifx name then "x" else "y",ordinal=ifx ordinal then 0 else 1};
+  #assert KC_key(a,b)==(kind==other && owner && (ifx kind==1 then ordinal else name));
+}
+#test "new types and ordinary source fields do not require a saved default, ABI additions refuse" {
+  old:=[1]KC_Row.[KC_Row.{kind=0,name="A",shape="struct"}];
+  fresh:=[2]KC_Row.[old[0],KC_Row.{kind=1,owner="A",name="x",shape="int"}];
+  #assert KC_added(old[..],fresh[..],0)==0 && KC_added(old[..],fresh[..],1)==0;
+  #assert KC_added(old[0..<0],fresh[..],1)==0;
+  fresh[0].abi=true;#assert KC_added(old[..],fresh[..],1)==0;
+  fresh[0].abi=false;old[0].abi=true;#assert KC_added(old[..],fresh[..],1)==2;
+  fresh[0].abi=false;old[0].abi=false;old[0].persisted=true;
+  #assert KC_added(old[..],fresh[..],1)==3;
+  fresh[1].defaulted=true;#assert KC_added(old[..],fresh[..],1)==0;
+  old[0]=fresh[1];#assert KC_added(old[..],fresh[..],1)==0;
+}
+#test "new incompatible fields are compared with the release baseline" {
+  old:=[1]KC_Row.[KC_Row.{kind=0,name="A",shape="struct",persisted=true}];
+  fresh:=[2]KC_Row.[old[0],KC_Row.{kind=1,owner="A",name="x",shape="int"}];base:=fresh;
+  #assert !KC_added_regression(old[..],base[..],fresh[..],1);
+  #assert KC_added_regression(old[..],old[..],fresh[..],1);
+  base[1].defaulted=true;#assert KC_added_regression(old[..],base[..],fresh[..],1);
+  base=fresh;base[1].shape="u32";#assert KC_added_regression(old[..],base[..],fresh[..],1);
+  fresh[1].defaulted=true;#assert !KC_added_regression(old[..],base[..],fresh[..],1);
+}
+#test "surface rows compare every published property for regression identity" {
+  a:=KC_Row.{kind=1,owner="A",name="x",shape="int"};b:=a;
+  #assert KC_same(a,b);b.name="y";#assert !KC_same(a,b);b=a;b.shape="u32";#assert !KC_same(a,b);
+  b=a;b.size=1;#assert !KC_same(a,b);b=a;b.alignment=1;#assert !KC_same(a,b);
+  b=a;b.defaulted=true;#assert !KC_same(a,b);b=a;b.persisted=true;#assert !KC_same(a,b);
+  b=a;b.abi=true;#assert !KC_same(a,b);b=a;b.effects=1;#assert !KC_same(a,b);
+  a.kind=0;b=a;#assert KC_change(a,b)==0;b.abi=true;b.size=1;#assert KC_change(a,b)==0;a.abi=true;#assert KC_change(a,b)==2;
+  a.kind=1;b=a;b.name="y";#assert KC_change(a,b)==2;
+}
+#test "surface order does not change lookup or the treatment of an existing first field" {
+  field:=KC_Row.{kind=1,owner="A",name="A",ordinal=0,shape="int"};
+  owner:=KC_Row.{kind=0,name="A",shape="struct",persisted=true};
+  old:=[3]KC_Row.[field,KC_Row.{kind=0,name="Other"},owner];fresh:=old;
+  #assert KC_type(old[..],"A").persisted && KC_type(old[..],"missing").name=="";
+  #assert KC_added(old[..],fresh[..],0)==0;
+  #assert !KC_added_regression(old[2..<3],old[..],fresh[..],0);
+  a:=KC_Row.{kind=2,shape="void->void"};b:=a;b.effects=1;
+  #assert KC_change(a,b)==4;
+}
+
+KC_key :: (a: KC_Row, b: KC_Row) -> bool #effects(all) {
+  if a.kind!=b.kind || a.owner!=b.owner {return false;}
+  if a.kind==1 || a.kind==4 {return a.ordinal==b.ordinal;}
+  return a.name==b.name;
+}
+KC_find :: (rows: [] const KC_Row, key: KC_Row) -> int #effects(all) {
+  for row,i: rows {if KC_key(row,key) {return i;}}return -1;
+}
+KC_type :: (rows: [] const KC_Row, name: string) -> KC_Row #effects(all) {
+  for row: rows {if row.kind==0 && row.name==name {return row;}}return KC_Row.{};
+}
+KC_change :: (old: KC_Row, fresh: KC_Row) -> int #effects(all) {
+  if old.kind==4 {return ifx KC_accepts(fresh.shape,old.shape) then 0 else 2;}
+  if old.kind==5 {return ifx KC_accepts(old.shape,fresh.shape) then 0 else 2;}
+  if old.kind==2 {
+    if old.size!=fresh.size {return 2;}
+    if old.shape!=fresh.shape {return 2;}
+    if (fresh.effects & (old.effects ^ 4294967295))!=0 {return 4;}
+    return 0;
+  }
+  if old.shape!=fresh.shape {return 2;}
+  if old.kind==0 && old.persisted && !fresh.persisted {return 2;}
+  if old.kind==1 && (old.name!=fresh.name || old.ordinal!=fresh.ordinal) {return 2;}
+  if old.abi && (old.size!=fresh.size || old.alignment!=fresh.alignment) {return 2;}
+  return 0;
+}
+KC_problem :: (old: [] const KC_Row, fresh: [] const KC_Row, at: int) -> int #export_c #effects(all) {
+  row:=old[at];durable:=row.persisted || KC_type(old,row.owner).persisted || KC_type(fresh,row.owner).persisted;
+  if row.kind==3 && !durable {return 0;}
+  found:=KC_find(fresh,old[at]);if found<0 {return 1;}
+  if row.kind==1 && durable && row.defaulted!=fresh[found].defaulted {return 2;}
+  return KC_change(old[at],fresh[found]);
+}
+KC_added :: (old: [] const KC_Row, fresh: [] const KC_Row, at: int) -> int #export_c #effects(all) {
+  row:=fresh[at];
+  if row.kind!=1 || KC_find(old,row)>=0 {return 0;}
+  owner:=KC_type(old,row.owner);next:=KC_type(fresh,row.owner);
+  // An entirely new type has no previously saved instances.
+  if owner.name=="" {return 0;}
+  if owner.abi {return 2;}
+  if (owner.persisted || next.persisted) && !row.defaulted {return 3;}
+  return 0;
+}
+KC_same :: (a: KC_Row, b: KC_Row) -> bool #effects(all) {
+  return KC_key(a,b) && a.name==b.name && a.shape==b.shape && a.size==b.size && a.alignment==b.alignment && a.defaulted==b.defaulted && a.persisted==b.persisted && a.abi==b.abi && a.effects==b.effects;
+}
+KC_regression :: (old: [] const KC_Row, base: [] const KC_Row, fresh: [] const KC_Row, at: int) -> bool #export_c #effects(all) {
+  if KC_problem(old,fresh,at)==0 {return false;}
+  b:=KC_find(base,old[at]);n:=KC_find(fresh,old[at]);
+  if n<0 {return b>=0;}
+  if b<0 {return true;}
+  row:=old[at];before:=base[b];now:=fresh[n];
+  // Compare only properties that still violate the published contract. Fixing
+  // one old fault must not make a different, unchanged fault block a release.
+  if now.shape!=row.shape && now.shape!=before.shape {return true;}
+  if row.kind==2 {if now.size!=row.size && now.size!=before.size {return true;}return (now.effects & (row.effects ^ 4294967295) & (before.effects ^ 4294967295))!=0;}
+  if row.kind==0 && row.persisted && !now.persisted && before.persisted {return true;}
+  if row.kind==1 {
+    if now.name!=row.name && now.name!=before.name {return true;}
+    durable:=row.persisted || KC_type(old,row.owner).persisted || KC_type(fresh,row.owner).persisted;
+    if durable && now.defaulted!=row.defaulted && now.defaulted!=before.defaulted {return true;}
+  }
+  if row.abi {
+    if now.size!=row.size && now.size!=before.size {return true;}
+    if now.alignment!=row.alignment && now.alignment!=before.alignment {return true;}
+  }
+  return false;
+}
+KC_added_regression :: (old: [] const KC_Row, base: [] const KC_Row, fresh: [] const KC_Row, at: int) -> bool #export_c #effects(all) {
+  problem:=KC_added(old,fresh,at);if problem==0 {return false;}
+  b:=KC_find(base,fresh[at]);if b<0 {return true;}
+  return KC_added(old,base,b)!=problem || !KC_same(base[b],fresh[at]);
+}
+#test "surface validation refuses incomplete, duplicate or unordered field identities" {
+  rows:=[3]KC_Row.[KC_Row.{kind=0,name="A",shape="struct",size=8,alignment=8},KC_Row.{kind=1,owner="A",name="x",shape="int"},KC_Row.{kind=1,owner="A",name="y",ordinal=1,shape="int"}];
+  #assert KC_valid(rows[..]);a:=rows;
+  rows[2].ordinal=0;#assert !KC_valid(rows[..]);rows=a;rows[2].ordinal=2;#assert !KC_valid(rows[..]);
+  rows=a;rows[2].name="x";#assert !KC_valid(rows[..]);rows=a;rows[1].owner="missing";#assert !KC_valid(rows[..]);
+  rows=a;rows[0].name="";#assert !KC_valid(rows[..]);rows=a;rows[0].shape="";#assert !KC_valid(rows[..]);
+  rows=a;rows[0].size= -1;#assert !KC_valid(rows[..]);rows=a;rows[0].alignment= -1;#assert !KC_valid(rows[..]);
+  rows=a;rows[1].kind= -1;#assert !KC_valid(rows[..]);rows=a;rows[1].kind=4;#assert !KC_valid(rows[..]);
+  rows=a;rows[1].ordinal= -1;#assert !KC_valid(rows[..]);rows=a;rows[0].owner="A";#assert !KC_valid(rows[..]);
+  rows=a;rows[1].owner="";#assert !KC_valid(rows[..]);rows=a;rows[2]=rows[0];#assert !KC_valid(rows[..]);
+  #assert KC_valid(rows[0..<0]);
+  proc:=[2]KC_Row.[KC_Row.{kind=2,name="f",shape="Coax"},KC_Row.{kind=5,owner="f",name="return",shape="void"}];
+  #assert KC_valid(proc[..]);proc[0].kind=4;#assert !KC_valid(proc[..]);proc[0].kind= -1;#assert !KC_valid(proc[..]);
+  separate:=[6]KC_Row.[a[0],KC_Row.{kind=0,name="B",shape="struct"},a[1],KC_Row.{kind=1,owner="B",name="x",shape="int"},KC_Row.{kind=2,name="A",shape="Coax"},KC_Row.{kind=5,owner="A",name="return",shape="void"}];
+  #assert KC_valid(separate[..]);separate[2].ordinal=1;#assert !KC_valid(separate[..]);
+}
+KC_valid :: (rows: [] const KC_Row) -> bool #export_c #effects(all) {
+  for row,i:rows {
+    if row.kind<0 || row.kind>5 || row.name=="" || row.shape=="" || row.size<0 || row.alignment<0 {return false;}
+    if row.kind==4 || row.kind==5 {
+      proc:=KC_find(rows,KC_Row.{kind=2,name=row.owner});if proc<0 {return false;}
+      if row.kind==4 {if row.ordinal<0 || row.ordinal>=rows[proc].size {return false;}}
+      else if row.name!="return" {return false;}
+    } else if row.kind==1 || row.kind==3 {
+      if row.owner=="" || KC_type(rows,row.owner).name=="" {return false;}
+      if row.kind==1 {
+        if row.ordinal<0 {return false;}
+        count:=0;for other:rows {if other.kind==1 && other.owner==row.owner {count+=1;}}
+        if row.ordinal>=count {return false;}
+        if row.defaulted && KC_find(rows,KC_Row.{kind=3,owner=row.owner,name=row.name})<0 {return false;}
+      }
+    } else if row.owner!="" {return false;}
+    if row.kind==2 {
+      arguments:=0;results:=0;for other:rows {if other.owner==row.name {if other.kind==4 {arguments+=1;}if other.kind==5 {results+=1;}}}
+      if arguments!=row.size || results!=1 {return false;}
+    }
+    for j:0..<i {
+      if KC_key(row,rows[j]) {return false;}
+      if row.kind==1 && rows[j].kind==1 && row.owner==rows[j].owner && row.name==rows[j].name {return false;}
+    }
+  }
+  return true;
+}
+#test "saved defaults are compared by owned value paths and persistence cannot be withdrawn" {
+  old:=[4]KC_Row.[KC_Row.{kind=0,name="A",shape="struct",persisted=true},KC_Row.{kind=1,owner="A",name="x",shape="int",defaulted=true,persisted=true},KC_Row.{kind=3,owner="A",name="x",shape="int:1",persisted=true},KC_Row.{}];
+  fresh:=old;
+  #assert KC_valid(old[0..<3]) && !KC_valid(old[0..<2]);
+  #assert KC_problem(old[0..<3],fresh[0..<3],2)==0;
+  fresh[2].shape="int:2";#assert KC_problem(old[0..<3],fresh[0..<3],2)==2;
+  fresh=old;fresh[1].defaulted=false;#assert KC_problem(old[0..<3],fresh[0..<3],1)==2;
+  fresh=old;fresh[0].persisted=false;#assert KC_problem(old[0..<3],fresh[0..<3],0)==2;
+  old[2].persisted=false;fresh=old;#assert KC_problem(old[0..<3],fresh[0..<3],2)==0;
+  old[0].persisted=false;fresh=old;fresh[2].shape="int:2";#assert KC_problem(old[0..<3],fresh[0..<3],2)==0;
+  fresh[0].persisted=true;#assert KC_problem(old[0..<3],fresh[0..<3],2)==2;
+  fresh[2].owner="";#assert !KC_valid(fresh[0..<3]);
+  fresh[2].owner="missing";#assert !KC_valid(fresh[0..<3]);
+}
+
+#test "fixing one pre-existing ABI fault does not turn another into a regression" {
+  old:=[1]KC_Row.[KC_Row.{kind=0,name="A",shape="struct",abi=true,size=8,alignment=8}];
+  base:=old;base[0].size=16;base[0].alignment=4;fresh:=base;fresh[0].alignment=8;
+  #assert !KC_regression(old[..],base[..],fresh[..],0);
+  fresh[0].size=24;#assert KC_regression(old[..],base[..],fresh[..],0);
+  old[0]=KC_Row.{kind=2,name="f",shape="int->int",effects=16};base=old;base[0].effects=49;fresh=base;fresh[0].effects=17;
+  #assert !KC_regression(old[..],base[..],fresh[..],0);
+  fresh[0].effects=25;#assert KC_regression(old[..],base[..],fresh[..],0);
+}
+
+#forall "three-version contracts compare each property against the published value" property:0..<8, b:0..<3, n:0..<3 {
+  old:=[1]KC_Row.[KC_Row.{kind=0,name="A",shape="zero",abi=true,persisted=true,size=8,alignment=8}];
+  if property==4 {old[0].kind=2;old[0].effects=16;}
+  base:=old;fresh:=old;
+  if property==0 {base[0].shape=ifx b==0 then "zero" else ifx b==1 then "one" else "two";fresh[0].shape=ifx n==0 then "zero" else ifx n==1 then "one" else "two";}
+  if property==1 {base[0].size=8+b;fresh[0].size=8+n;}
+  if property==2 {base[0].alignment=8+b;fresh[0].alignment=8+n;}
+  if property==3 {base[0].persisted=b==0;fresh[0].persisted=n==0;}
+  if property==4 {base[0].effects=16 | (ifx b==0 then 0 else ifx b==1 then 1 else 8);fresh[0].effects=16 | (ifx n==0 then 0 else ifx n==1 then 1 else 8);}
+  if property>=5 {
+    old[0].kind=1;old[0].owner="B";base=old;fresh=old;
+    if property==5 {base[0].name=ifx b==0 then "A" else ifx b==1 then "B" else "C";fresh[0].name=ifx n==0 then "A" else ifx n==1 then "B" else "C";}
+    if property==6 {base[0].defaulted=b!=0;fresh[0].defaulted=n!=0;}
+    if property==7 {base[0].shape=ifx b==0 then "zero" else ifx b==1 then "one" else "two";fresh[0].shape=ifx n==0 then "zero" else ifx n==1 then "one" else "two";}
+  }
+  expected:=ifx property==3 || property==6 then n!=0 && b==0 else n!=0 && n!=b;
+  #assert KC_regression(old[..],base[..],fresh[..],0)==expected;
+}
+#forall "field default compatibility follows either owner's persisted contract" row_saved:bool, old_saved:bool, new_saved:bool {
+  old:=[2]KC_Row.[KC_Row.{kind=0,name="A",shape="struct",persisted=old_saved},KC_Row.{kind=1,owner="A",name="x",shape="int",persisted=row_saved}];
+  base:=old;fresh:=old;fresh[0].persisted=new_saved;fresh[1].defaulted=true;
+  expected:=row_saved || old_saved || new_saved;
+  #assert KC_problem(old[..],fresh[..],1)==(ifx expected then 2 else 0);
+  #assert KC_regression(old[..],base[..],fresh[..],1)==expected;
+  base=fresh;#assert !KC_regression(old[..],base[..],fresh[..],1);
+  old[1].kind=3;old[1].defaulted=false;base=old;fresh=old;fresh[0].persisted=new_saved;fresh[1].shape="bool";
+  #assert KC_problem(old[..],fresh[..],1)==(ifx expected then 2 else 0);
+}
+#test "default facts may precede their owner and fields in a manifest" {
+  rows:=[3]KC_Row.[KC_Row.{kind=3,owner="A",name="x",shape="int:0"},KC_Row.{kind=0,name="A",shape="struct"},KC_Row.{kind=1,owner="A",name="x",shape="int",defaulted=true}];
+  #assert KC_valid(rows[..]);rows[0].owner="";#assert !KC_valid(rows[..]);
+  rows[0].owner="missing";#assert !KC_valid(rows[..]);
+}
+
+#test "reintroduced declarations and malformed standalone default facts are checked" {
+  old:=[1]KC_Row.[KC_Row.{kind=0,name="A",shape="struct",persisted=true}];fresh:=old;
+  fresh[0].shape="enum";#assert KC_regression(old[..],old[0..<0],fresh[..],0);
+  malformed:=[2]KC_Row.[old[0],KC_Row.{kind=3,owner="missing",name="x",shape="int:0"}];
+  #assert !KC_valid(malformed[..]);
+}
+#test "irrelevant field metadata cannot worsen an unchanged ordinary type mismatch" {
+  old:=[1]KC_Row.[KC_Row.{kind=1,owner="A",name="x",shape="int",persisted=true}];base:=old;base[0].shape="bool";fresh:=base;fresh[0].persisted=false;
+  #assert !KC_regression(old[..],base[..],fresh[..],0);
+  old[0].persisted=false;base=old;base[0].shape="bool";fresh=base;fresh[0].defaulted=true;
+  #assert !KC_regression(old[..],base[..],fresh[..],0);
+}
+#test "view assignability keeps writable arguments and read-only results compatible" {
+  #assert KC_accepts("[]const int","[]int") && KC_accepts("[]int","[]int");
+  #assert !KC_accepts("[]int","[]const int") && !KC_accepts("[]const A","[]B");
+  #assert !KC_accepts("[]const int","x") && !KC_accepts("[]const","[]int");
+  #assert !KC_accepts("[]const int","[]const bool") && !KC_accepts("[]const bool","[]int");
+  #assert !KC_accepts("[]xxxxx int","[]int") && !KC_accepts("[]const int","xxint");
+  #assert !KC_accepts("[]const int","int") && !KC_accepts("int","bool");
+  p:=KC_Row.{kind=4,shape="[]int"};n:=p;n.shape="[]const int";#assert KC_change(p,n)==0 && KC_change(n,p)==2;
+  p.kind=5;n.kind=5;#assert KC_change(n,p)==0 && KC_change(p,n)==2;
+}
+KC_drop :: (text:string,prefix:string)->string? #effects(all) {
+  for ch,i:prefix {if i>=text.count || text[i]!=ch {return null;}}
+  return some(text[prefix.count..<text.count]);
+}
+KC_accepts :: (wanted:string,offered:string)->bool #effects(all) {
+  if wanted==offered {return true;}
+  switch KC_drop(wanted,"[]const ") {
+    case none {return false;}
+    case some(value) {
+      switch KC_drop(offered,"[]") {case none {return false;}case some(actual) {return value!="" && value==actual;}}
+    }
+  }
+}
+#test "view prefixes refuse truncation and preserve exact suffixes" {
+  for text:[4]string.["","[","[]const","[]const "] {
+    #assert !KC_accepts(text,"[]");
+  }
+  #assert KC_accepts("[]const T","[]T") && !KC_accepts("[]const T","[]");
+  #assert KC_accepts("same","same");
+  switch KC_drop("abc","") {case none {#assert false;}case some(value) {#assert value=="abc";}}
+  switch KC_drop("abc","abc") {case none {#assert false;}case some(value) {#assert value=="";}}
+  switch KC_drop("abc","abcd") {case none {}case some(wrong) {#assert false;}}
+  switch KC_drop("abc","abd") {case none {}case some(wrong) {#assert false;}}
+}
+#test "procedure manifests retain every argument and one checked result" {
+ rows:=[3]KC_Row.[KC_Row.{kind=2,name="f",shape="Coax",size=1},KC_Row.{kind=4,owner="f",name="argument",shape="[]int"},KC_Row.{kind=5,owner="f",name="return",shape="[]const int"}];
+ #assert KC_valid(rows[..]);saved:=rows;
+ rows[1].ordinal=1;#assert !KC_valid(rows[..]);rows=saved;rows[1].ordinal= -1;#assert !KC_valid(rows[..]);
+ rows=saved;rows[1].owner="missing";#assert !KC_valid(rows[..]);rows=saved;rows[2].name="wrong";#assert !KC_valid(rows[..]);
+ rows=saved;rows[2].owner="missing";#assert !KC_valid(rows[..]);rows=saved;rows[0].size=2;#assert !KC_valid(rows[..]);
+ #assert !KC_valid(saved[0..<2]);rows=saved;rows[1].kind=6;#assert !KC_valid(rows[..]);
+}
+
+#test "manifest kinds and argument positions have distinct stable keys" {
+  row:=[1]KC_Row.[KC_Row.{kind=6,name="outside",shape="scalar"}];#assert !KC_valid(row[..]);row[0].kind= -1;#assert !KC_valid(row[..]);
+  a:=KC_Row.{kind=4,owner="f",name="argument",ordinal=0};b:=a;b.ordinal=1;#assert !KC_key(a,b);b=a;b.name="different";#assert KC_key(a,b);
+  a.kind=5;b=a;b.ordinal=1;#assert KC_key(a,b);b.name="other";#assert !KC_key(a,b);
+}
+
+#forall "procedure arity regressions compare the failing count with production" b:0..<3, n:0..<3 {
+ old:=[1]KC_Row.[KC_Row.{kind=2,name="f",shape="Coax",size=1}];base:=old;fresh:=old;base[0].size=1+b;fresh[0].size=1+n;
+ #assert KC_change(old[0],fresh[0])==(ifx n==0 then 0 else 2);
+ #assert KC_regression(old[..],base[..],fresh[..],0)==(n!=0 && n!=b);
+}

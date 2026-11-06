@@ -43,15 +43,15 @@ FglRequest :: struct {ok:bool;ticket:int;op:int;text:[16384]u8;n:int;}
   #assert !fgl_request("{\"schema\":\"wrong\",\"epoch\":\"00000000000000000000000000000000\",\"ticket\":1,\"op\":\"quit\",\"text\":\"\"}",epoch,0,false).ok;
   #assert !fgl_request("{\"schema\":\"aethyrforge.linux.control.v1\",\"epoch\":\"00000000000000000000000000000000\",\"ticket\":\"1\",\"op\":\"quit\",\"text\":\"\"}",epoch,0,false).ok;
 }
-fgl_page :: (actual:string,expected:string)->bool {return expected.count>0 && actual==expected;}
-fgl_epoch :: (s:string)->bool {if s.count!=32 {return false;}for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;}
-fgl_ticket :: (ticket:int,last:int)->bool {return ticket>=1 && ticket<=2147483647 && ticket>last;}
-fgl_op :: (op:string)->int {for s,i:[5]string.["send","stop","new","reload","quit"] {if op==s {return i+1;}}return 0;}
-fgl_allowed :: (op:int,busy:bool,text:string)->bool {
+fgl_page :: (actual:string,expected:string)->bool #effects(all) {return expected.count>0 && actual==expected;}
+fgl_epoch :: (s:string)->bool #effects(all) {if s.count!=32 {return false;}for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;}
+fgl_ticket :: (ticket:int,last:int)->bool #effects(all) {return ticket>=1 && ticket<=2147483647 && ticket>last;}
+fgl_op :: (op:string)->int #effects(all) {for s,i:[5]string.["send","stop","new","reload","quit"] {if op==s {return i+1;}}return 0;}
+fgl_allowed :: (op:int,busy:bool,text:string)->bool #effects(all) {
   if op==1 {return fc_can_send(busy,text);}if text.count!=0 {return false;}
   if op==2 {return busy;}if op==3 {return !busy;}return op==4 || op==5;
 }
-fgl_request :: (line:string,epoch:string,last:int,busy:bool)->FglRequest {
+fgl_request :: (line:string,epoch:string,last:int,busy:bool)->FglRequest #effects(all) {
   r:FglRequest;if line.count>32768 {return r;}nodes:[32]JvNode;d:[1]Jv;
   // Public JSON readers already refuse failed parses/nonobjects. Exactly five
   // children plus the five required named fields also refuse duplicate keys.

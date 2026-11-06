@@ -140,7 +140,7 @@ cc_start :: (s:[]ChangelogState) {
   for i:0..<CC_BLOCKS {if CC_KIND[i]==1 {s[0].scroll=clamp(s[0].tops[i]-12,0,s[0].limit);return;}}
   s[0].scroll=0;
 }
-cc_control :: (s:[]ChangelogState,id:int)->CcBox #export_c {
+cc_control :: (s:[]ChangelogState,id:int)->CcBox #export_c #effects(all) {
   b:CcBox;if id<0 || id>3 {return b;}
   left:=s[0].body.x0;right:=s[0].body.x1;cols:=ifx s[0].w<700 then 2 else 4;
   width:=(right-left-8*cast(f32)(cols-1))/cast(f32)cols;
@@ -155,13 +155,13 @@ cc_link_box :: (s:[]ChangelogState,i:int)->CcBox {
   if end<=first {return empty;}
   return CcBox.{x0=s[0].body.x0+12,y0=row+first*step,x1=s[0].body.x1-16,y1=row+end*step};
 }
-cc_hit :: (s:[]ChangelogState,x:f32,y:f32)->int #export_c {
+cc_hit :: (s:[]ChangelogState,x:f32,y:f32)->int #export_c #effects(all) {
   for i:0..<4 {if cc_inside(cc_control(s,i),x,y) {return i;}}
   if cc_inside(s[0].body,x,y) {for i:0..<CC_BLOCKS {if CC_KIND[i]==3 && cc_inside(cc_link_box(s,i),x,y) {return i+4;}}}
   return -1;
 }
-cc_wheel :: (s:[]ChangelogState,dy:f32) #export_c {if dy==dy {s[0].scroll=clamp(s[0].scroll+dy,0,s[0].limit);}}
-cc_key :: (s:[]ChangelogState,key:int,mods:int)->bool #export_c {
+cc_wheel :: (s:[]ChangelogState,dy:f32) #export_c #effects(all) {if dy==dy {s[0].scroll=clamp(s[0].scroll+dy,0,s[0].limit);}}
+cc_key :: (s:[]ChangelogState,key:int,mods:int)->bool #export_c #effects(all) {
   if key==-8 {s[0].scroll=0;return true;}if key==-9 {s[0].scroll=s[0].limit;return true;}
   if key==-6 || key==-7 {cc_wheel(s,ifx key==-6 then -36.0f32 else 36.0f32);return true;}
   if key==-10 || key==-11 || (key==32 && s[0].focus<0) {by:=hi(24,s[0].body.y1-s[0].body.y0-40);cc_wheel(s,ifx key==-10 then -by else by);return true;}
@@ -184,15 +184,15 @@ cc_emit :: (s:[]ChangelogState,text:string,action:int)->bool {
   if (action!=1 && action!=2) || text.count==0 || text.count>s[0].outbox.count {return false;}
   for i:0..<text.count {s[0].outbox[i]=text[i];}s[0].out_n=text.count;s[0].action=action;return true;
 }
-cc_done :: (s:[]ChangelogState) #export_c {s[0].action=0;s[0].out_n=0;}
-cc_blur :: (s:[]ChangelogState) #export_c {s[0].down=false;s[0].dragged=true;s[0].press= -1;}
+cc_done :: (s:[]ChangelogState) #export_c #effects(all) {s[0].action=0;s[0].out_n=0;}
+cc_blur :: (s:[]ChangelogState) #export_c #effects(all) {s[0].down=false;s[0].dragged=true;s[0].press= -1;}
 cc_go :: (s:[]ChangelogState,id:int)->bool {
   if id==0 {return cc_emit(s,CC_PROJECT,1);}if id==1 {return cc_emit(s,CC_SOURCE_URL,1);}
   if id==2 {return cc_emit(s,CC_RAW,1);}if id==3 {ok:=cc_emit(s,CC_MARKDOWN,2);if ok {s[0].copied=2.5;}return ok;}
   if id>=4 && id<CC_BLOCKS+4 && CC_KIND[id-4]==3 {return cc_emit(s,CC_LINK[id-4],1);}
   cc_done(s);return false;
 }
-cc_pointer :: (s:[]ChangelogState,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c {
+cc_pointer :: (s:[]ChangelogState,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c #effects(all) {
   d:=hi(0.5,s[0].d);px:=x/d;py:=y/d;s[0].px=px;s[0].py=py;
   if phase==0 {
     if s[0].down {s[0].dragged=true;return true;}
@@ -209,14 +209,14 @@ cc_pointer :: (s:[]ChangelogState,x:f32,y:f32,phase:int,kind:int,id:int)->bool #
     return true;
   }return false;
 }
-cc_revision :: ()->int #export_c {
+cc_revision :: ()->int #export_c #effects(all) {
   h:u32=2166136261;for c:CC_MARKDOWN {h=mul_wrap(h^cast(u32)c,cast(u32)16777619);}return cast(int)h;
 }
 cc_text :: (out:[]f32,v:int,text:string,x:f32,y:f32,cap:f32,k:Ink)->int {return draw_text(out,v,text,x,y,cap,0.34,0.95,k,false,false);}
 cc_rule :: (out:[]f32,v:int,x0:f32,y0:f32,x1:f32,y1:f32,k:Ink)->int {
   return ifx lit(out,v,x0,y0,x1,y1,k.core,k.light,k.glow,k.red,k.green,k.blue,0) then v+6 else v;
 }
-cc_frame :: (s:[]ChangelogState,out:[]f32,u:[]f32,width:f32,height:f32,d:f32,dt:f32,still:bool)->int #export_c {
+cc_frame :: (s:[]ChangelogState,out:[]f32,u:[]f32,width:f32,height:f32,d:f32,dt:f32,still:bool)->int #export_c #effects(all) {
   if s.count<1 || u.count<CC_UNIFORMS || !(d>=0.5 && d<=4) || !(width>=240*d && width<=32768) || !(height>=320*d && height<=32768) {return 0;}
   w:=width/d;h:=height/d;
   fresh:=!s[0].ready;if fresh {s[0].ready=true;s[0].focus=-1;}

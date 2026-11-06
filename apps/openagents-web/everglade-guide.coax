@@ -18,7 +18,7 @@ EgGuide :: struct {
   quiet:bool;   // a realm with no quests and no guidance (Everglade 5E sets it): no tracker, first goal, board, guide's button or lines
 }
 
-everglade_guide_begin :: (s:[]Everglade,golden:bool) #export_c {s[0].guide.defer_hud=true;s[0].guide.golden=golden;}
+everglade_guide_begin :: (s:[]Everglade,golden:bool) #export_c #effects(all) {s[0].guide.defer_hud=true;s[0].guide.golden=golden;}
 everglade_guide_ask :: (s:[]Everglade) {
   // This is an input edge, not permission. Current facts are checked at the
   // following simulation boundary, even if this previously drawn button aged.
@@ -86,7 +86,7 @@ everglade_guide_observe :: (s:[]Everglade,you:Point,still:bool) {
   s[0].guide.you=you;s[0].guide.still=still;s[0].guide.prepared=true;
 }
 
-everglade_guide_take :: (s:[]Everglade)->EgGuideInput #export_c {
+everglade_guide_take :: (s:[]Everglade)->EgGuideInput #export_c #effects(all) {
   input:=EgGuideInput.{facts=s[0].guide.facts,epoch=s[0].guard_ai.input.epoch,
     generation=s[0].guard_ai.generation,world_revision=s[0].ev.ed[0].version,
     configured=s[0].guard_ai.input.configured,suspended=s[0].guard_ai.input.suspended,
@@ -96,7 +96,7 @@ everglade_guide_take :: (s:[]Everglade)->EgGuideInput #export_c {
     url=cast(string)s[0].guard_ai.url[0..<s[0].guard_ai.url_n]};
   if s[0].guide.prepared {s[0].guide.asked=false;}return input;
 }
-everglade_guide_view :: (s:[]Everglade,shown_view:GgsView,observation:GgObservation,offered:int,now_ms:int) #export_c {
+everglade_guide_view :: (s:[]Everglade,shown_view:GgsView,observation:GgObservation,offered:int,now_ms:int) #export_c #effects(all) {
   s[0].guide.view=shown_view;s[0].guide.observation=observation;
   s[0].guide.offered=offered;s[0].guide.now_ms=now_ms;
 }
@@ -128,14 +128,14 @@ everglade_guide_hud :: (s:[]Everglade,out:[]f32,u:[]f32,n0:int,bottom:f32)->int 
   s[0].guide.drawn=a;return n;
 }
 
-everglade_finish_frame :: (s:[]Everglade,out:[]f32,u:[]f32)->int #export_c {
+everglade_finish_frame :: (s:[]Everglade,out:[]f32,u:[]f32)->int #export_c #effects(all) {
   if !s[0].guide.prepared {return 0;}
   s[0].guide.prepared=false;
   n:=hud(s,out,u,s[0].guide.hud_move,s[0].guide.ox,s[0].guide.oy,s[0].guide.pad_x,s[0].guide.pad_y,s[0].guide.you);
   n=watch_overlay(s,out,u,n);u[5]=f32(s[0].plate_n);
   everglade_guard_tick(s,s[0].guide.you,folk_clock(s,s[0].guide.still));return n;
 }
-everglade_guide_probe :: (s:[]Everglade,field:int)->int #export_c {
+everglade_guide_probe :: (s:[]Everglade,field:int)->int #export_c #effects(all) {
   if field==240 {return cast(int)s[0].guide.button.x0;}if field==241 {return cast(int)s[0].guide.button.y0;}
   if field==242 {return cast(int)s[0].guide.button.x1;}if field==243 {return cast(int)s[0].guide.button.y1;}
   if field==244 {return s[0].guide.offered;}if field==245 {return s[0].guide.drawn;}

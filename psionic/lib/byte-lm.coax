@@ -41,25 +41,25 @@ BgGeneration :: struct {status:BgStatus;written:int;next:CrSeed;}
  #assert bg_generate(w[..],CrSeed.{counter=18446744073709551615},0,1,out[..],false).status==BgStatus.state;
  w[65535]=4097;#assert bg_evaluate(w[..],bytes[..]).status==BgStatus.number && bg_generate(w[..],CrSeed.{},0,1,out[..],false).status==BgStatus.number;
 }
-bg_data :: (n:int)->bool {return n>=2 && n<=4096;}
-bg_steps :: (n:int)->bool {return n>=1 && n<=64;}
-bg_weights :: (n:int)->bool {return n==65536;}
-bg_rate :: (x:f64)->bool {return x>0 && x<=64;}
-bg_number :: (x:f64)->bool {return x>=-4096 && x<=4096;}
-bg_length :: (n:int)->bool {return n>=0 && n<=256;}
-bg_counter :: (counter:u64,n:int)->bool {return cast(u64)n<=(cast(u64)18446744073709551615)-counter;}
+bg_data :: (n:int)->bool #effects(all) {return n>=2 && n<=4096;}
+bg_steps :: (n:int)->bool #effects(all) {return n>=1 && n<=64;}
+bg_weights :: (n:int)->bool #effects(all) {return n==65536;}
+bg_rate :: (x:f64)->bool #effects(all) {return x>0 && x<=64;}
+bg_number :: (x:f64)->bool #effects(all) {return x>=-4096 && x<=4096;}
+bg_length :: (n:int)->bool #effects(all) {return n>=0 && n<=256;}
+bg_counter :: (counter:u64,n:int)->bool #effects(all) {return cast(u64)n<=(cast(u64)18446744073709551615)-counter;}
 // book:begin train
-bg_fit :: (train:[]u8,steps:int,rate:f64,weights:[]f64,stage:[]f64,trace:[]f64,overlap:bool)->BgFit #export_c {
+bg_fit :: (train:[]u8,steps:int,rate:f64,weights:[]f64,stage:[]f64,trace:[]f64,overlap:bool)->BgFit #export_c #effects(all) {
  if overlap {return BgFit.{status=BgStatus.alias};}if !bg_data(train.count) || !bg_weights(weights.count) || !bg_weights(stage.count) {return BgFit.{status=BgStatus.shape};}if !bg_steps(steps) {return BgFit.{status=BgStatus.steps};}if !bg_rate(rate) {return BgFit.{status=BgStatus.number};}if trace.count<steps+1 {return BgFit.{status=BgStatus.capacity};}
  counts:[65536]int;bg_counts(train,counts[..]);for i:0..<65536 {stage[i]=0;}losses:[65]f64;total:=train.count-1;losses[0]=bg_count_loss(counts[..],stage,total);
  for step:0..<steps {bg_update(counts[..],stage,total,rate);losses[step+1]=bg_count_loss(counts[..],stage,total);}
  for i:0..<65536 {weights[i]=stage[i];}for i:0..<steps+1 {trace[i]=losses[i];}return BgFit.{initial=losses[0],final=losses[steps],updates=steps,transitions=total};
 }
 // book:end train
-bg_evaluate :: (weights:[]f64,bytes:[]u8)->BgMetric #export_c {
+bg_evaluate :: (weights:[]f64,bytes:[]u8)->BgMetric #export_c #effects(all) {
  if !bg_weights(weights.count) || !bg_data(bytes.count) {return BgMetric.{status=BgStatus.shape};}for w:weights {if !bg_number(w) {return BgMetric.{status=BgStatus.number};}}counts:[65536]int;bg_counts(bytes,counts[..]);nats:=bg_count_loss(counts[..],weights,bytes.count-1);return BgMetric.{nats=nats,bits=nats/log(2.0),transitions=bytes.count-1};
 }
-bg_generate :: (weights:[]f64,seed:CrSeed,start:u8,length:int,out:[]u8,overlap:bool)->BgGeneration #export_c {
+bg_generate :: (weights:[]f64,seed:CrSeed,start:u8,length:int,out:[]u8,overlap:bool)->BgGeneration #export_c #effects(all) {
  if overlap {return BgGeneration.{status=BgStatus.alias};}if !bg_weights(weights.count) || !bg_length(length) {return BgGeneration.{status=BgStatus.shape};}if out.count<length {return BgGeneration.{status=BgStatus.capacity};}if !bg_counter(seed.counter,length) {return BgGeneration.{status=BgStatus.state};}for w:weights {if !bg_number(w) {return BgGeneration.{status=BgStatus.number};}}
  stage:[256]u8;state:=seed;current:=start;for i:0..<length {draw:=cr_draw(state);current=bg_sample(weights,current,draw.value).token;stage[i]=current;state=draw.next;}for i:0..<length {out[i]=stage[i];}return BgGeneration.{written=length,next=state};
 }

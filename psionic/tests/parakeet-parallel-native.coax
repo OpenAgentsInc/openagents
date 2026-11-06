@@ -1,7 +1,7 @@
 // Native oracle: the original serial decoder is independent of the new row
 // dispatch. Compare every published token/frame and every workspace f32 bit.
 #load "../lib/parakeet/parallel.coax";
-pkp_native_check :: (seed:u64)->int #export_c {
+pkp_native_check :: (seed:u64)->int #export_c #effects(all) {
  s:=tdt_durations(TdtShape.{vocab=257,enc=65,pred=64,layers=2,joint=128,max_symbols=3},3);p:=tdt_plan(s,7);
  w:[200000]f32;x:[455]f32;a:[4096]f32;b:[4096]f32;ta:[70]int;tb:[70]int;fa:[70]int;fb:[70]int;
  if p.weights>w.count || p.work>a.count {return 1;}
@@ -18,7 +18,7 @@ pkp_native_check :: (seed:u64)->int #export_c {
  for i:0..<a.count {if f32_bits(a[i])!=f32_bits(b[i]) {return 5;}}
  return 0;
 }
-pkp_native_rows :: ()->int #export_c {
+pkp_native_rows :: ()->int #export_c #effects(all) {
  w:[16705]f32;x:[65]f32;bias:[257]f32;a:[260]f32;b:[260]f32;
  for i:0..<w.count {w[i]=f32(f64(cr_bits(71,cast(u64)i)%1000)/1000-0.5);}
  for i:0..<x.count {x[i]=f32(f64(i%7)-3);}for i:0..<bias.count {bias[i]=f32(i%13);}

@@ -112,10 +112,10 @@ animelab_load :: (s: [] Animelab, body: string) -> bool {
   s[0].time = 0; s[0].pinned = -1;
   return true;
 }
-animelab_take_status :: (s: [] Animelab) -> int #export_c { return s[0].take_status; }
+animelab_take_status :: (s: [] Animelab) -> int #export_c #effects(all) { return s[0].take_status; }
 // Bounded integer facts for the page's media/capture probe; no source or words
 // cross this surface. A refused initial request reports zero take counts.
-animelab_take_probe :: (s: [] Animelab, field: int) -> int #export_c {
+animelab_take_probe :: (s: [] Animelab, field: int) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   if field == 0 { return s[0].take_status; }
   if field == 1 { return animelab_line_count(s); }
@@ -199,7 +199,7 @@ shadow_rows :: (u: [] f32, l: Point) {
 // ---- The frame
 // style: the anime block for this frame (animelab-style.coax, from the face; zeros draw it unlit).
 animelab_frame :: (s: [] Animelab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
-                   world: [] u32, live: [] u32, style: [] f32) -> int #export_c {
+                   world: [] u32, live: [] u32, style: [] f32) -> int #export_c #effects(all) {
   if s.count < 1 || u.count < UNIFORM_FLOATS || !(width >= 1) || !(height >= 1) { return 0; }
   if !s[0].started { animelab_reset(s); }
   if !s[0].world_built {
@@ -255,9 +255,9 @@ animelab_frame :: (s: [] Animelab, out: [] f32, u: [] f32, width: f32, height: f
   return animelab_overlay(s, out, u, width, height, dpr, st, t, din);
 }
 // A phone's screen (the style's phone tier): under 600 CSS pixels across.
-animelab_phone :: (width: f32, dpr: f32) -> bool #export_c { return width / hi(dpr, 0.5) < 600; }
-animelab_variant :: (s: [] Animelab) -> int #export_c { return s[0].variant; }
-animelab_clock :: (s: [] Animelab) -> f32 #export_c { return s[0].clock; }
+animelab_phone :: (width: f32, dpr: f32) -> bool #export_c #effects(all) { return width / hi(dpr, 0.5) < 600; }
+animelab_variant :: (s: [] Animelab) -> int #export_c #effects(all) { return s[0].variant; }
+animelab_clock :: (s: [] Animelab) -> f32 #export_c #effects(all) { return s[0].clock; }
 
 // Everyone on the stage, posed; whoever appears grows out of their smoke.
 draw_cast :: (buf: [] u32, p: [] Pen, st: Stage, t: f32, view: Point) {
@@ -619,7 +619,7 @@ film_bars :: (s: [] Animelab, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
 }
 
 // ---- Input and the page
-animelab_key :: (s: [] Animelab, key: int, down: bool) -> bool #export_c {
+animelab_key :: (s: [] Animelab, key: int, down: bool) -> bool #export_c #effects(all) {
   if !s[0].started { animelab_reset(s); }
   if !down { return false; }
   if key == ' ' { s[0].time = 0; return true; }     // the take again from the top
@@ -630,11 +630,11 @@ animelab_key :: (s: [] Animelab, key: int, down: bool) -> bool #export_c {
   if key == 'h' || key == 'H' { s[0].card = !s[0].card; return true; }
   return false;
 }
-animelab_pointer :: (s: [] Animelab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+animelab_pointer :: (s: [] Animelab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if !s[0].started { animelab_reset(s); }
   return false;
 }
-animelab_golden :: (s: [] Animelab, on: bool) #export_c { if !s[0].started { animelab_reset(s); } s[0].golden = on; }
+animelab_golden :: (s: [] Animelab, on: bool) #export_c #effects(all) { if !s[0].started { animelab_reset(s); } s[0].golden = on; }
 
 fact :: (facts: string, key: string) -> string {
   i := 0;
@@ -681,7 +681,7 @@ decimal :: (t: string) -> f32 {
   }
   return ifx any then v else -1.0f32;
 }
-animelab_message :: (s: [] Animelab, kind: int, body: string) #export_c {
+animelab_message :: (s: [] Animelab, kind: int, body: string) #export_c #effects(all) {
   if !s[0].started { animelab_reset(s); }
   if kind == START_AT { k := decimal(body); if k >= 0 { s[0].pinned = -1; s[0].time = k; } return; }
   if kind == PIN_MOMENT { k := decimal(body); s[0].pinned = k; if k < 0 { s[0].time = 0; } return; }
@@ -707,14 +707,14 @@ animelab_message :: (s: [] Animelab, kind: int, body: string) #export_c {
   s[0].time = 0;
 }
 
-coaxial_animelab_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_animelab_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_animelab_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
-animelab_world_vertices :: () -> int #export_c { return WORLD_VERTICES; }
-animelab_live_vertices :: () -> int #export_c { return LIVE_VERTICES; }
-animelab_world_n :: (s: [] Animelab) -> int #export_c { return s[0].world_n; }
-animelab_live_n :: (s: [] Animelab) -> int #export_c { return s[0].live_n; }
-animelab_draw_count :: (s: [] Animelab) -> int #export_c { return ifx s[0].world_built then DRAWS else 0; }
+coaxial_animelab_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_animelab_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_animelab_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
+animelab_world_vertices :: () -> int #export_c #effects(all) { return WORLD_VERTICES; }
+animelab_live_vertices :: () -> int #export_c #effects(all) { return LIVE_VERTICES; }
+animelab_world_n :: (s: [] Animelab) -> int #export_c #effects(all) { return s[0].world_n; }
+animelab_live_n :: (s: [] Animelab) -> int #export_c #effects(all) { return s[0].live_n; }
+animelab_draw_count :: (s: [] Animelab) -> int #export_c #effects(all) { return ifx s[0].world_built then DRAWS else 0; }
 
 // ---------------------------------------------------------------------------------------------
 // The frame budget (aethyr/budget.coax): what one frame of Anime Lab may use.

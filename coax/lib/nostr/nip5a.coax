@@ -56,7 +56,7 @@ N5A_ROOT_AGGREGATE :: "89acc6381f045bae6f7985b8ff8e70ca50bb20f693d938dc59e0f8d2e
 // NIP-5A's two-line example input: sorted, then hashed (hashlib).
 N5A_NIP_LINES_AGGREGATE :: "c2ff582b672a4c689c5e1753528f03dd31b95ec1fdcc3d82d25e7d91e8769638";
 
-n5a_hex :: (s:string)->[32]u8 {k:[32]u8;ok:=hex_decode_checked(s,k[..],false);return k;}
+n5a_hex :: (s:string)->[32]u8 #effects(all) {k:[32]u8;ok:=hex_decode_checked(s,k[..],false);return k;}
 
 #test "NIP-5A's root site example reads; its aggregate is hashlib's" {
   s:=n5a_read(n32_event(N5A_ROOT,N5A_T_ROOT));
@@ -222,11 +222,11 @@ n5a_hex :: (s:string)->[32]u8 {k:[32]u8;ok:=hex_decode_checked(s,k[..],false);re
 
 // ---- the implementation
 
-n5a_fail :: (s:N5aSite,error:int,at:int)->N5aSite {r:=s;r.error=error;r.at=at;return r;}
+n5a_fail :: (s:N5aSite,error:int,at:int)->N5aSite #effects(all) {r:=s;r.error=error;r.at=at;return r;}
 
 // book:begin rules
 // A named site's d: 1 to 13 of a-z, 0-9 and -, not ending in -.
-n5a_d_ok :: (d:string)->bool {
+n5a_d_ok :: (d:string)->bool #effects(all) {
   if d.count<1 || d.count>13 || d[d.count-1]=='-' {return false;}
   for c:d {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}
   return true;
@@ -234,7 +234,7 @@ n5a_d_ok :: (d:string)->bool {
 // An absolute path ending in a file name with an extension: it starts
 // with /, doesn't end in / or ., has no control bytes, and its last
 // segment has a . in it (a dot file such as /.htaccess counts).
-n5a_path_ok :: (p:string)->bool {
+n5a_path_ok :: (p:string)->bool #effects(all) {
   if p.count==0 || p.count>NT_MAX_VALUE || p[0]!='/' || p[p.count-1]=='/' || p[p.count-1]=='.' {return false;}
   for c:p {if c<' ' || c==127 {return false;}}
   last:=p.count-1;
@@ -244,7 +244,7 @@ n5a_path_ok :: (p:string)->bool {
 }
 // Whether file a's line "<hash> <path>\n" sorts before b's. Lowercase hex
 // sorts as the bytes it encodes, so the hashes compare as bytes.
-n5a_before :: (a:N5aFile,b:N5aFile)->bool {
+n5a_before :: (a:N5aFile,b:N5aFile)->bool #effects(all) {
   for i:0..<32 {
     if a.hash[i]<b.hash[i] {return true;}
     if a.hash[i]>b.hash[i] {return false;}
@@ -260,7 +260,7 @@ n5a_before :: (a:N5aFile,b:N5aFile)->bool {
 
 // book:begin aggregate
 // SHA-256 of the sorted lines "<hash> <path>\n" of files[0..<n].
-n5a_aggregate :: (files:[]N5aFile,n:int)->[32]u8 {
+n5a_aggregate :: (files:[]N5aFile,n:int)->[32]u8 #effects(all) {
   state:[SHA_STATE_BYTES]u8;ok:=sha256_init(state[..]);
   line:[64+1+NT_MAX_VALUE+1]u8;used:[N5A_MAX_PATHS]bool;
   for k:0..<n {
@@ -279,7 +279,7 @@ n5a_aggregate :: (files:[]N5aFile,n:int)->[32]u8 {
 
 // book:begin read
 // A kind 15128, 35128 or 5128 manifest: its files and aggregate hash.
-n5a_read :: (e:NostrEvent)->N5aSite {
+n5a_read :: (e:NostrEvent)->N5aSite #effects(all) {
   s:N5aSite;if e.error!=NE_OK {return s;}
   if e.kind!=N5A_ROOT && e.kind!=N5A_NAMED && e.kind!=N5A_SNAPSHOT {return n5a_fail(s,N5A_KIND,-1);}
   s.kind=e.kind;has_d:=false;i:=0;
@@ -321,7 +321,7 @@ n5a_read :: (e:NostrEvent)->N5aSite {
 // book:end read
 
 // book:begin serve
-n5a_find :: (s:N5aSite,path:string)->int {
+n5a_find :: (s:N5aSite,path:string)->int #effects(all) {
   for k:0..<s.n {
     p:=s.files[k].path;
     if cast(string)p.b[0..<p.n]==path {return k;}
@@ -330,7 +330,7 @@ n5a_find :: (s:N5aSite,path:string)->int {
 }
 // The file a request path names: the path itself, or its index.html when
 // it ends in /, else /404.html with fallback set.
-n5a_lookup :: (s:N5aSite,request:string)->N5aHit {
+n5a_lookup :: (s:N5aSite,request:string)->N5aHit #effects(all) {
   h:N5aHit;if s.error!=N5A_OK {h.error=N5A_EVENT;return h;}
   want:[NT_MAX_VALUE]u8;n:=json_raw(want[..],0,request);
   if request.count>0 && request[request.count-1]=='/' {n=json_raw(want[..],n,"index.html");}
@@ -341,7 +341,7 @@ n5a_lookup :: (s:N5aSite,request:string)->N5aHit {
 }
 // Whether blob, fetched for file index, may be served: N5A_OK when its
 // SHA-256 is the manifest's hash for that file, else N5A_HASH.
-n5a_check :: (s:N5aSite,file:int,blob:[]u8)->int {
+n5a_check :: (s:N5aSite,file:int,blob:[]u8)->int #effects(all) {
   if s.error!=N5A_OK {return N5A_EVENT;}
   if file<0 || file>=s.n {return N5A_NOT_FOUND;}
   digest:[32]u8;ok:=sha256_hash_checked(blob,digest[..],false);
@@ -354,7 +354,7 @@ n5a_check :: (s:N5aSite,file:int,blob:[]u8)->int {
 // A kind 15128 or 35128 manifest's tags into out: d for a named site, a
 // path tag per file, and the aggregate x tag. Its length, or minus the
 // refusal.
-n5a_tags :: (kind:int,d:string,files:[]N5aEntry,out:[]u8)->int {
+n5a_tags :: (kind:int,d:string,files:[]N5aEntry,out:[]u8)->int #effects(all) {
   if kind!=N5A_ROOT && kind!=N5A_NAMED {return -N5A_KIND;}
   if (kind==N5A_ROOT && d.count>0) || (kind==N5A_NAMED && !n5a_d_ok(d)) {return -N5A_D;}
   if files.count==0 {return -N5A_NO_PATH;}

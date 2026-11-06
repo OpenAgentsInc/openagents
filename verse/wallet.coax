@@ -14,7 +14,7 @@ MAX_SAT :: 2_100_000_000_000_000;
 // ---- Amounts ----
 
 // The SDK counts satoshis; payment.v1 counts millisatoshis.
-verse_wallet_sat_to_msat :: (sat: int) -> int #export_c {
+verse_wallet_sat_to_msat :: (sat: int) -> int #export_c #effects(all) {
   if sat < 0 || sat > MAX_SAT { return -1; }
   return sat * 1000;
 }
@@ -33,11 +33,11 @@ verse_wallet_sat_to_msat :: (sat: int) -> int #export_c {
 // The fewest whole sats at or above a millisatoshi bound (an LNURL's
 // minSendable), and the most at or below one (its maxSendable); -1 for a
 // bound that is negative or past all the bitcoin there is.
-verse_wallet_msat_up :: (msat: int) -> int #export_c {
+verse_wallet_msat_up :: (msat: int) -> int #export_c #effects(all) {
   if msat < 0 || msat > MAX_SAT * 1000 { return -1; }
   return (msat + 999) / 1000;
 }
-verse_wallet_msat_down :: (msat: int) -> int #export_c {
+verse_wallet_msat_down :: (msat: int) -> int #export_c #effects(all) {
   if msat < 0 || msat > MAX_SAT * 1000 { return -1; }
   return msat / 1000;
 }
@@ -61,7 +61,7 @@ verse_wallet_msat_down :: (msat: int) -> int #export_c {
 
 // Whether an amount is one the recipient takes: at least one sat, within
 // what it says it accepts (0 for no bound), and within what is spendable.
-verse_wallet_amount_ok :: (amount: int, low: int, high: int, spendable: int) -> bool #export_c {
+verse_wallet_amount_ok :: (amount: int, low: int, high: int, spendable: int) -> bool #export_c #effects(all) {
   if amount <= 0 || amount > MAX_SAT { return false; }
   if amount < low { return false; }
   if high > 0 && amount > high { return false; }
@@ -82,12 +82,12 @@ verse_wallet_amount_ok :: (amount: int, low: int, high: int, spendable: int) -> 
 
 // A digit typed after `sats`; -1 if it would pass all the bitcoin there is
 // or isn't a digit. A leading zero stays zero.
-verse_wallet_digit :: (sats: int, digit: int) -> int #export_c {
+verse_wallet_digit :: (sats: int, digit: int) -> int #export_c #effects(all) {
   if digit < 0 || digit > 9 || sats < 0 { return -1; }
   if sats > (MAX_SAT - digit) / 10 { return -1; }
   return sats * 10 + digit;
 }
-verse_wallet_backspace :: (sats: int) -> int #export_c {
+verse_wallet_backspace :: (sats: int) -> int #export_c #effects(all) {
   if sats < 0 { return -1; }
   return sats / 10;
 }
@@ -111,7 +111,7 @@ verse_wallet_backspace :: (sats: int) -> int #export_c {
 
 // A fee above a tenth of the amount is shown as high on the review screen.
 // (fee > amount / 10 is fee * 10 > amount in whole sats, without overflow.)
-verse_wallet_fee_high :: (amount: int, fee: int) -> bool #export_c {
+verse_wallet_fee_high :: (amount: int, fee: int) -> bool #export_c #effects(all) {
   return fee > amount / 10;
 }
 
@@ -126,7 +126,7 @@ verse_wallet_fee_high :: (amount: int, fee: int) -> bool #export_c {
 }
 
 // An invoice about to lapse: less than a minute left, or already gone.
-verse_wallet_expiring :: (now: int, expires: int) -> bool #export_c {
+verse_wallet_expiring :: (now: int, expires: int) -> bool #export_c #effects(all) {
   return expires - now < 60;
 }
 
@@ -143,7 +143,7 @@ Verdict :: enum u8 { send; over_cap; over_limit; expired; bad_amount; busy; }
 // the fee may not pass `cap` (what the review screen showed), and the
 // amount and fee together may not pass `left` (what is spendable).
 verse_wallet_may_send :: (state: Pay, amount: int, fee: int, cap: int, left: int,
-                             now: int, expires: int) -> Verdict #export_c {
+                             now: int, expires: int) -> Verdict #export_c #effects(all) {
   if state != Pay.quoted { return Verdict.busy; }
   if amount <= 0 || fee < 0 || amount > MAX_SAT { return Verdict.bad_amount; }
   if now >= expires { return Verdict.expired; }
@@ -184,12 +184,12 @@ Event :: enum u8 {
 // sendPayment was called for that quote.
 Flow :: struct { state: Pay; quote: int; sends: int; }
 
-verse_wallet_start :: () -> Flow #export_c { return Flow.{state = Pay.idle, quote = 0, sends = 0}; }
+verse_wallet_start :: () -> Flow #export_c #effects(all) { return Flow.{state = Pay.idle, quote = 0, sends = 0}; }
 
 // How the payment moves. One send per quote; an unknown outcome waits for
 // the SDK, never becoming a failure or a second send; a finished payment
 // stays finished until the person closes it.
-verse_wallet_step :: (f: Flow, e: Event) -> Flow #export_c {
+verse_wallet_step :: (f: Flow, e: Event) -> Flow #export_c #effects(all) {
   next := f;
   if e == Event.quote {
     if f.state == Pay.idle || f.state == Pay.quoted || f.state == Pay.not_sent {
@@ -270,7 +270,7 @@ RATE_TOP :: 100_000;
 
 // The most adding an on-chain deposit to the balance costs at the SDK's
 // fastest recommended rate; -1 for a rate that isn't one.
-verse_wallet_claim_fee_max :: (fastest: int) -> int #export_c {
+verse_wallet_claim_fee_max :: (fastest: int) -> int #export_c #effects(all) {
   if fastest < 0 || fastest > RATE_TOP { return -1; }
   return (fastest + CLAIM_LEEWAY) * CLAIM_VBYTES;
 }
@@ -292,7 +292,7 @@ BuyCheck :: enum u8 { ok; no_provider; no_amount; too_small; too_large; no_fee; 
 // arrives on-chain and pays the claim from itself, so it must be more than
 // `claim_max`. When the SDK couldn't say (`claim_max` -1), a MoonPay
 // purchase is refused, since nothing shows it covers its claim.
-verse_wallet_buy_amount :: (provider: int, amount: int, claim_max: int) -> BuyCheck #export_c {
+verse_wallet_buy_amount :: (provider: int, amount: int, claim_max: int) -> BuyCheck #export_c #effects(all) {
   if provider != BUY_MOONPAY && provider != BUY_CASHAPP { return BuyCheck.no_provider; }
   if amount <= 0 { return BuyCheck.no_amount; }
   if amount > MAX_SAT { return BuyCheck.too_large; }
@@ -322,11 +322,11 @@ verse_wallet_buy_amount :: (provider: int, amount: int, claim_max: int) -> BuyCh
   #assert verse_wallet_buy_amount(BUY_MOONPAY, 99, 99) == BuyCheck.too_small;
 }
 
-bw_alnum :: (c: u8) -> bool { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+bw_alnum :: (c: u8) -> bool #effects(all) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
 // A byte a page URL may hold: printable ASCII, no space, quote, angle bracket or backslash.
-bw_urlchar :: (c: u8) -> bool { return c > 32 && c < 127 && c != '"' && c != '\\' && c != '<' && c != '>'; }
+bw_urlchar :: (c: u8) -> bool #effects(all) { return c > 32 && c < 127 && c != '"' && c != '\\' && c != '<' && c != '>'; }
 
-bw_starts :: (text: string, at: int, word: string) -> bool {
+bw_starts :: (text: string, at: int, word: string) -> bool #effects(all) {
   if at < 0 || at + word.count > text.count { return false; }
   return text[at..<at + word.count] == word;
 }
@@ -334,7 +334,7 @@ bw_starts :: (text: string, at: int, word: string) -> bool {
 // Whether every query parameter name (after ? or &, up to =) is letters and
 // digits, so no name is percent-encoded and none hides behind a fragment or
 // a ';'. Breez's form-encoded query never has a raw '#' or ';'.
-bw_names_plain :: (url: string) -> bool {
+bw_names_plain :: (url: string) -> bool #effects(all) {
   for c: url { if c == '#' || c == ';' { return false; } }
   for k: 1..<url.count {
     if url[k - 1] == '?' || url[k - 1] == '&' {
@@ -348,7 +348,7 @@ bw_names_plain :: (url: string) -> bool {
 
 // Whether the URL has exactly one query parameter `name` (after ? or &),
 // and it is exactly `value`.
-bw_param_is :: (url: string, name: string, value: string) -> bool {
+bw_param_is :: (url: string, name: string, value: string) -> bool #effects(all) {
   n := 0; at: int;
   for k: 1..<url.count {
     if (url[k - 1] == '?' || url[k - 1] == '&') && bw_starts(url, k, name) && bw_starts(url, k + name.count, "=") {
@@ -365,7 +365,7 @@ CASHAPP_PAGE :: "https://cash.app/launch/lightning/";
 // Whether a MoonPay page the SDK returned may open: Breez's page for
 // bitcoin (currencyCode btc) to `address`, the deposit address the wallet
 // itself reports, and nothing else.
-verse_wallet_moonpay_page :: (raw: [] u8, address: [] u8) -> bool #export_c {
+verse_wallet_moonpay_page :: (raw: [] u8, address: [] u8) -> bool #export_c #effects(all) {
   url := cast(string) raw;
   to := cast(string) address;
   for c: url { if !bw_urlchar(c) { return false; } }
@@ -382,7 +382,7 @@ verse_wallet_moonpay_page :: (raw: [] u8, address: [] u8) -> bool #export_c {
 BTC_MSAT :: 100_000_000_000;
 
 // Where `c` last appears in `text`; -1 when it doesn't.
-bw_last :: (text: string, c: u8) -> int {
+bw_last :: (text: string, c: u8) -> int #effects(all) {
   at := -1;
   for k: 0..<text.count { if text[k] == c { at = k; } }
   return at;
@@ -392,7 +392,7 @@ bw_last :: (text: string, c: u8) -> int {
 // part: "lnbc", then the amount's digits (no leading zero) and multiplier,
 // up to the separator, the invoice's last "1" (BOLT 11). Another network
 // (lntb, lntbs, lnbcrt), no amount, or any other amount is refused.
-bw_invoice_is :: (inv: string, msat: int) -> bool {
+bw_invoice_is :: (inv: string, msat: int) -> bool #effects(all) {
   if !bw_starts(inv, 0, "lnbc") { return false; }
   sep := bw_last(inv, '1');
   if sep < 5 || sep + 1 >= inv.count { return false; }
@@ -415,7 +415,7 @@ bw_invoice_is :: (inv: string, msat: int) -> bool {
 // Whether a Cash App page may open: a mainnet Lightning invoice the wallet
 // made, for exactly the amount asked. Both the invoice's own stated amount
 // and `invoice_sats` (what the SDK read from it) must be that amount.
-verse_wallet_cashapp_page :: (raw: [] u8, amount: int, invoice_sats: int) -> bool #export_c {
+verse_wallet_cashapp_page :: (raw: [] u8, amount: int, invoice_sats: int) -> bool #export_c #effects(all) {
   url := cast(string) raw;
   if !bw_starts(url, 0, CASHAPP_PAGE) { return false; }
   for k: CASHAPP_PAGE.count..<url.count { if !bw_alnum(url[k]) { return false; } }
@@ -425,7 +425,7 @@ verse_wallet_cashapp_page :: (raw: [] u8, amount: int, invoice_sats: int) -> boo
 
 // Test text: up to three pieces joined.
 BwText :: struct { b: [600] u8; n: int; }
-bw_text :: (a: string, b: string, c: string) -> BwText {
+bw_text :: (a: string, b: string, c: string) -> BwText #effects(all) {
   r: BwText;
   for x: a { r.b[r.n] = x; r.n += 1; }
   for x: b { r.b[r.n] = x; r.n += 1; }
@@ -433,11 +433,11 @@ bw_text :: (a: string, b: string, c: string) -> BwText {
   return r;
 }
 ADDR :: "bc1pqqqsyqcyq5rqwzqfpg9scrgwpugpzysnzs23v9ccrydpk8qarc0sjr0ud9";
-moonpay_ok :: (url: string, address: string) -> bool {
+moonpay_ok :: (url: string, address: string) -> bool #effects(all) {
   u := bw_text(url, "", ""); a := bw_text(address, "", "");
   return verse_wallet_moonpay_page(u.b[0..<u.n], a.b[0..<a.n]);
 }
-cashapp_ok :: (url: string, amount: int, invoice: int) -> bool {
+cashapp_ok :: (url: string, amount: int, invoice: int) -> bool #effects(all) {
   u := bw_text(url, "", "");
   return verse_wallet_cashapp_page(u.b[0..<u.n], amount, invoice);
 }
@@ -580,7 +580,7 @@ BuyEvent :: enum u8 {
 
 // How a purchase moves. The host opens the provider's page only on the step
 // from asking to open, so one answer from the SDK opens one page.
-verse_wallet_buy_step :: (b: Buy, e: BuyEvent) -> Buy #export_c {
+verse_wallet_buy_step :: (b: Buy, e: BuyEvent) -> Buy #export_c #effects(all) {
   if e == BuyEvent.ask { return ifx b == Buy.asking then b else Buy.asking; }
   if e == BuyEvent.page { return ifx b == Buy.asking then Buy.open else b; }
   if e == BuyEvent.refused { return ifx b == Buy.asking then Buy.failed else b; }
@@ -594,8 +594,8 @@ verse_wallet_buy_step :: (b: Buy, e: BuyEvent) -> Buy #export_c {
 // a page only when a purchase isn't already asking (a second tap, on either
 // provider, starts nothing), and open a page only on the step from asking to
 // open. A second answer, or one that comes after the page opened, opens none.
-verse_wallet_buy_starts :: (b: Buy, e: BuyEvent) -> bool #export_c { return e == BuyEvent.ask && b != Buy.asking; }
-verse_wallet_buy_opens :: (b: Buy, e: BuyEvent) -> bool #export_c { return e == BuyEvent.page && b == Buy.asking; }
+verse_wallet_buy_starts :: (b: Buy, e: BuyEvent) -> bool #export_c #effects(all) { return e == BuyEvent.ask && b != Buy.asking; }
+verse_wallet_buy_opens :: (b: Buy, e: BuyEvent) -> bool #export_c #effects(all) { return e == BuyEvent.page && b == Buy.asking; }
 
 #forall "what each step does" b: Buy, e: BuyEvent {
   n := verse_wallet_buy_step(b, e);

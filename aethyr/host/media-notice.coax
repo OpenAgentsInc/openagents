@@ -3,7 +3,7 @@
 // or truncated message is published; pending rows are omitted.
 #authority;
 HostMediaNotice :: struct {url:string;ready:bool;failed:bool;width:int;height:int;}
-htn_kind :: ()->int #export_c {return 607;}
+htn_kind :: ()->int #export_c #effects(all) {return 607;}
 #test "media notices preserve exact ready dimensions failed zeros and pending omission" {
  rows:=[4]HostMediaNotice.[HostMediaNotice.{url="/first",ready=true,width=48,height=13},HostMediaNotice.{url="/pending"},HostMediaNotice.{url="/bad",failed=true,width=81,height=82},HostMediaNotice.{url="/last",ready=true,width=2048,height=1}];out:[128]u8;
  n:=htn_format(rows[..],out[..]);#assert htn_kind()==607&&n==34&&cast(string)out[0..<n]=="/first 48 13\n/bad 0 0\n/last 2048 1";
@@ -32,9 +32,9 @@ htn_kind :: ()->int #export_c {return 607;}
  del:=[2]u8.[47,127];rows[0].url=cast(string)del[..];#assert htn_format(rows[..],out[..])== -1;
  rows[0].url="//";#assert htn_format(rows[..],out[..])== -1;
 }
-htn_digits :: (value:int)->int {v:=value;n:=1;while v>=10 {v/=10;n+=1;}return n;}
-htn_number :: (out:[]u8,at:int,value:int)->int {digits:[4]u8;n:=0;v:=value;while true {digits[n]=cast(u8)('0'+v%10);n+=1;v/=10;if v==0 {break;}}for i:0..<n {out[at+i]=digits[n-1-i];}return at+n;}
-htn_format :: (rows:[]HostMediaNotice,out:[]u8)->int #export_c {
+htn_digits :: (value:int)->int #effects(all) {v:=value;n:=1;while v>=10 {v/=10;n+=1;}return n;}
+htn_number :: (out:[]u8,at:int,value:int)->int #effects(all) {digits:[4]u8;n:=0;v:=value;while true {digits[n]=cast(u8)('0'+v%10);n+=1;v/=10;if v==0 {break;}}for i:0..<n {out[at+i]=digits[n-1-i];}return at+n;}
+htn_format :: (rows:[]HostMediaNotice,out:[]u8)->int #export_c #effects(all) {
  if rows.count>112 {return -1;}need:=0;first:=true;
  for row,i:rows {
   if row.url.count<1||row.url[0]!='/'||(row.url.count>1&&row.url[1]=='/')||(row.ready&&row.failed) {return -1;}

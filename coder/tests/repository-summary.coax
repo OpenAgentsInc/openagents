@@ -5,7 +5,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/nostr/json.coax";
-cxterm_write :: (s: [] u8) -> int #foreign;
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 PS_NAMES :: [5]string.["claude","codex","micro","auto","psionic"];
 PsRow :: struct {seen:bool;passed:bool;provider:bool;harness:bool;ms:int;tools:int;errors:int;route:bool;}
 PsData :: struct {rows:[50]PsRow;suite:[64]u8;ns:int;compiler:[64]u8;nc:int;harness:[64]u8;nh:int;prompts:[10][64]u8;np:[10]int;}
@@ -77,7 +77,7 @@ ps_summary :: (input:PsData,b:[]u8)->int {
  n=json_write_int(b,n,paired);n=json_raw(b,n,",\"automatic_opportunity_misses\":");n=json_write_int(b,n,misses);n=json_raw(b,n,",\"automatic_quality_misses\":");n=json_write_int(b,n,quality);
  return json_raw(b,n,",\"tokens\":null,\"cached_tokens\":null,\"price\":null,\"inference_repeated\":false}\n");
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])==0 {tool_errln("usage: repository-summary.coax FILE.jsonl [FILE...]");return 2;}p:[1]PsData;
  for i:0..<args_count(a[..]) {data:[1048576]u8;n:=fs_read(args_at(a[..],i),data[..]);if n<0 {return 2;}at:=0;while at<n {end:=at;while end<n && data[end]!=10 {end+=1;}if end>at && !ps_read(cast(string)data[at..<end],p[..]) {tool_errln("invalid, duplicate or incompatible receipt; no summary published");return 2;}at=end+1;}}
  if p[0].ns==0 {return 2;}b:[16384]u8;n:=ps_summary(p[0],b[..]);if n<0 {return 2;}r:=cxterm_write(b[0..<n]);return ifx r==n then 0 else 2;

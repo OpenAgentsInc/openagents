@@ -15,10 +15,10 @@
 #import "Basic";
 #load "../../lib/media/realm_seat.coax";
 
-eio_read_line :: (timeout_ms: int) -> int #foreign;
-eio_line_byte :: (i: int) -> int #foreign;
-eio_put :: (byte: int) -> int #foreign;
-eio_flush :: () -> int #foreign;
+eio_read_line :: (timeout_ms: int) -> int #foreign #effects(all);
+eio_line_byte :: (i: int) -> int #foreign #effects(all);
+eio_put :: (byte: int) -> int #foreign #effects(all);
+eio_flush :: () -> int #foreign #effects(all);
 
 HOST_IDLE_MS :: 600000;   // seat-policy.coax SP_IDLE_MS
 HOST_LINE :: 65536;
@@ -76,7 +76,7 @@ host_line :: (n: int, out: [] u8) -> string {
   return cast(string) out[0..<n];
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   buf: [HOST_LINE] u8;
   first := eio_read_line(30000);
   h: [1] HostOpen;

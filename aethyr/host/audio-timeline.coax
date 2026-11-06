@@ -51,15 +51,15 @@
 }
 HostAudioTimeline::struct{count:int=0;bytes:int;last_us:int;failed:bool;sealed:bool;}
 HostAudioClipPlan::struct{valid:bool=false;start:int;frames:int;total:int;}
-hcl_offer::(t:[]HostAudioTimeline,us:int,bytes:int)->bool #export_c{
+hcl_offer::(t:[]HostAudioTimeline,us:int,bytes:int)->bool #export_c #effects(all) {
  if t.count!=1{return false;}if t[0].sealed{return false;}
  q:=t[0];if q.failed||q.count<0||q.count>=8192||q.bytes<0||bytes<1||bytes>1024||bytes>8388608-q.bytes||us<q.last_us||us<0||us>2147483647{t[0].failed=true;return false;}
  t[0].count+=1;t[0].bytes+=bytes;t[0].last_us=us;return true;
 }
-hcl_seal::(t:[]HostAudioTimeline)->bool #export_c{if t.count!=1{return false;}if t[0].failed||t[0].sealed{return false;}t[0].sealed=true;return true;}
-hcl_sample::(us:int)->int #export_c{if us<0||us>2147483647{return -1;}return (us*6+62)/125;}
-hcl_boundary::(us:int)->int #export_c{n:=hcl_sample(us);return ifx n<0 then -1 else ((n+1023)/1024)*1024;}
-hcl_plan::(start_us:int,duration_us:int)->HostAudioClipPlan #export_c{
+hcl_seal::(t:[]HostAudioTimeline)->bool #export_c #effects(all) {if t.count!=1{return false;}if t[0].failed||t[0].sealed{return false;}t[0].sealed=true;return true;}
+hcl_sample::(us:int)->int #export_c #effects(all) {if us<0||us>2147483647{return -1;}return (us*6+62)/125;}
+hcl_boundary::(us:int)->int #export_c #effects(all) {n:=hcl_sample(us);return ifx n<0 then -1 else ((n+1023)/1024)*1024;}
+hcl_plan::(start_us:int,duration_us:int)->HostAudioClipPlan #export_c #effects(all) {
  start:=hcl_sample(start_us);frames:=hcl_sample(duration_us);
  if start<0||frames<1||start_us>2147483647-duration_us{return HostAudioClipPlan.{};}
  return HostAudioClipPlan.{valid=true,start=start,frames=frames,total=((start+frames+1023)/1024)*1024};

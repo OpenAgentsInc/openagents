@@ -87,7 +87,7 @@ N78Data :: struct {
 <!-- source: coax/lib/nostr/nip78.coax read -->
 ```jai
 // A kind 30078 or 78 event's d tag.
-n78_read :: (e:NostrEvent)->N78Data {
+n78_read :: (e:NostrEvent)->N78Data #effects(all) {
   r:N78Data;if e.error!=NE_OK {return r;}
   t:=n10_text(e,"d",r.d.b[..]);
   if t.status==N10_LIMIT {r.error=N78_LIMIT;return r;}
@@ -100,7 +100,7 @@ n78_read :: (e:NostrEvent)->N78Data {
 }
 // Whether a relay serves e to a client that authenticated (NIP-42) as who:
 // app data only to its author, everything else to anyone.
-n78_serve :: (e:NostrEvent,authenticated:bool,who:[32]u8)->bool {
+n78_serve :: (e:NostrEvent,authenticated:bool,who:[32]u8)->bool #effects(all) {
   if e.kind!=N78_APP && e.kind!=N78_REGULAR {return true;}
   return authenticated && ns_equal32(e.public_key,who);
 }
@@ -177,7 +177,7 @@ can't both name the same kind.
 ```jai
 // A kind written in decimal, as a d or k tag holds it: 0..65535 with no
 // sign and no leading zero, or -1.
-n89_kind_of :: (s:string)->int {
+n89_kind_of :: (s:string)->int #effects(all) {
   if s.count==0 || (s[0]=='0' && s.count>1) {return -1;}
   v:=0;
   for c:s {
@@ -197,7 +197,7 @@ else is refused at its tag.
 <!-- source: coax/lib/nostr/nip89.coax read -->
 ```jai
 // A kind 31990 handler: its d and the kinds its k tags list.
-n89_handler :: (e:NostrEvent)->N89Handler {
+n89_handler :: (e:NostrEvent)->N89Handler #effects(all) {
   h:N89Handler;if e.error!=NE_OK {return h;}
   if e.kind!=N89_HANDLER {return n89_h_fail(h,N89_KIND,-1);}
   i:=0;has_d:=false;
@@ -219,13 +219,13 @@ n89_handler :: (e:NostrEvent)->N89Handler {
   if h.nk==0 {return n89_h_fail(h,N89_K,-1);}
   return n89_h_fail(h,N89_OK,-1);
 }
-n89_handles :: (h:N89Handler,kind:int)->bool {
+n89_handles :: (h:N89Handler,kind:int)->bool #effects(all) {
   for i:0..<h.nk {if h.k[i]==kind {return true;}}
   return false;
 }
 // A kind 31989 recommendation: the kind its d names and the 31990
 // handlers its a tags name, each with a relay hint and a platform.
-n89_recommend :: (e:NostrEvent)->N89Recommend {
+n89_recommend :: (e:NostrEvent)->N89Recommend #effects(all) {
   r:N89Recommend;if e.error!=NE_OK {return r;}
   if e.kind!=N89_RECOMMEND {return n89_r_fail(r,N89_KIND,-1);}
   i:=0;d:N32Text;has_d:=false;
@@ -253,7 +253,7 @@ n89_recommend :: (e:NostrEvent)->N89Recommend {
 }
 // The first client tag: a name, then optionally a 31990 address and a
 // relay hint. No client tag reads as not present.
-n89_client :: (e:NostrEvent)->N89Client {
+n89_client :: (e:NostrEvent)->N89Client #effects(all) {
   c:N89Client;if e.error!=NE_OK {return c;}
   i:=0;
   while true {
@@ -307,21 +307,21 @@ handler doesn't list the kind in `not_handled`.
 
 <!-- source: coax/lib/nostr/nip89.coax resolve -->
 ```jai
-n89_follows :: (follows:[][32]u8,key:[32]u8)->bool {
+n89_follows :: (follows:[][32]u8,key:[32]u8)->bool #effects(all) {
   for f:follows {if ns_equal32(f,key) {return true;}}
   return false;
 }
 // Whether handler event e reads and lists kind in a k tag.
-n89_lists :: (e:NostrEvent,kind:int)->bool {h:=n89_handler(e);return h.error==N89_OK && n89_handles(h,kind);}
+n89_lists :: (e:NostrEvent,kind:int)->bool #effects(all) {h:=n89_handler(e);return h.error==N89_OK && n89_handles(h,kind);}
 // Whether e is the current version of its own address among set.
-n89_current :: (set:[]NostrEvent,i:int)->bool {
+n89_current :: (set:[]NostrEvent,i:int)->bool #effects(all) {
   e:=set[i];t:=nostr_tag_d(e);
   if t.error!=NT_OK {return false;}
   return nip23_current(set,e.kind,e.public_key,cast(string)t.d[0..<t.d_n])==i;
 }
 // The choice for handler index h in out[0..<n], adding it at out[n] when
 // new: its position, or -1 when out is full.
-n89_choice :: (out:[]N89Choice,n:int,h:int,rank:int)->int {
+n89_choice :: (out:[]N89Choice,n:int,h:int,rank:int)->int #effects(all) {
   for c:0..<n {if out[c].handler==h {return c;}}
   if n==out.count {return -1;}
   out[n]=N89Choice.{handler=h,rank=rank,last=-1};return n;
@@ -330,7 +330,7 @@ n89_choice :: (out:[]N89Choice,n:int,h:int,rank:int)->int {
 // caller fetched and verified, best first, into out. A follow's
 // recommendation that doesn't read is skipped and counted in broken, so
 // one bad event can't hide every handler.
-n89_resolve :: (kind:int,follows:[][32]u8,recs:[]NostrEvent,handlers:[]NostrEvent,out:[]N89Choice)->N89Found {
+n89_resolve :: (kind:int,follows:[][32]u8,recs:[]NostrEvent,handlers:[]NostrEvent,out:[]N89Choice)->N89Found #effects(all) {
   f:N89Found;
   if kind<0 || kind>65535 {f.error=N89_K;return f;}
   // 1. Each follow's current recommendation for kind votes once for each
@@ -416,7 +416,7 @@ author (type 2) and the kind as 4 big-endian bytes (type 3).
 // kind) for an addressable kind, else nevent (id, relay, author, kind).
 // An empty relay is left out; the kind is 4 bytes big-endian, and NIP-01
 // kinds fit in the low two. Its length in out, or -1.
-n89_entity :: (e:NostrEvent,relay:string,out:[]u8)->int {
+n89_entity :: (e:NostrEvent,relay:string,out:[]u8)->int #effects(all) {
   if e.error!=NE_OK || relay.count>255 || e.kind<0 || e.kind>65535 {return -1;}
   tlv:[2+NT_MAX_VALUE+2+255+2+32+2+4]u8;n:=34;
   addressable:=ns_class(e.kind)==NS_ADDRESSABLE;
@@ -497,7 +497,7 @@ N89_SCHEME_CHARS :: "abcdefghijklmnopqrstuvwxyz0123456789+-.";
 // The scheme is a lowercase letter, then letters, digits, + - or ., up to
 // the first ':'; after it, printable ASCII without " < > \ ` except in the
 // placeholder.
-n89_template :: (url:string,platform:string)->int {
+n89_template :: (url:string,platform:string)->int #effects(all) {
   scheme_part:=true;scheme:="";found:=false;i:=0;
   while i<url.count {
     c:=url[i];
@@ -525,7 +525,7 @@ n89_template :: (url:string,platform:string)->int {
   return N89_OK;
 }
 // The template with every <bech32> replaced by entity, into out.
-n89_fill :: (url:string,platform:string,entity:string,out:[]u8)->N89Url {
+n89_fill :: (url:string,platform:string,entity:string,out:[]u8)->N89Url #effects(all) {
   u:N89Url;u.error=n89_template(url,platform);
   if u.error!=N89_OK {return u;}
   n:=0;i:=0;
@@ -537,7 +537,7 @@ n89_fill :: (url:string,platform:string,entity:string,out:[]u8)->N89Url {
   u.n=n;return u;
 }
 // The URL a handler event gives for platform and a NIP-19 entity, into out.
-n89_url :: (h:NostrEvent,platform:string,entity:string,out:[]u8)->N89Url {
+n89_url :: (h:NostrEvent,platform:string,entity:string,out:[]u8)->N89Url #effects(all) {
   u:N89Url;if h.error!=NE_OK {return u;}
   dec:[N19_MAX_BYTES]u8;r:=n19_decode(entity,dec[..],false,false);
   if r.error!=NC_OK {return n89_u_fail(u,N89_ENTITY,-1);}
@@ -604,7 +604,7 @@ site; it doesn't follow them.
 <!-- source: coax/lib/nostr/nip5a.coax rules -->
 ```jai
 // A named site's d: 1 to 13 of a-z, 0-9 and -, not ending in -.
-n5a_d_ok :: (d:string)->bool {
+n5a_d_ok :: (d:string)->bool #effects(all) {
   if d.count<1 || d.count>13 || d[d.count-1]=='-' {return false;}
   for c:d {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}
   return true;
@@ -612,7 +612,7 @@ n5a_d_ok :: (d:string)->bool {
 // An absolute path ending in a file name with an extension: it starts
 // with /, doesn't end in / or ., has no control bytes, and its last
 // segment has a . in it (a dot file such as /.htaccess counts).
-n5a_path_ok :: (p:string)->bool {
+n5a_path_ok :: (p:string)->bool #effects(all) {
   if p.count==0 || p.count>NT_MAX_VALUE || p[0]!='/' || p[p.count-1]=='/' || p[p.count-1]=='.' {return false;}
   for c:p {if c<' ' || c==127 {return false;}}
   last:=p.count-1;
@@ -622,7 +622,7 @@ n5a_path_ok :: (p:string)->bool {
 }
 // Whether file a's line "<hash> <path>\n" sorts before b's. Lowercase hex
 // sorts as the bytes it encodes, so the hashes compare as bytes.
-n5a_before :: (a:N5aFile,b:N5aFile)->bool {
+n5a_before :: (a:N5aFile,b:N5aFile)->bool #effects(all) {
   for i:0..<32 {
     if a.hash[i]<b.hash[i] {return true;}
     if a.hash[i]>b.hash[i] {return false;}
@@ -651,7 +651,7 @@ followed by its `\n`.
 <!-- source: coax/lib/nostr/nip5a.coax aggregate -->
 ```jai
 // SHA-256 of the sorted lines "<hash> <path>\n" of files[0..<n].
-n5a_aggregate :: (files:[]N5aFile,n:int)->[32]u8 {
+n5a_aggregate :: (files:[]N5aFile,n:int)->[32]u8 #effects(all) {
   state:[SHA_STATE_BYTES]u8;ok:=sha256_init(state[..]);
   line:[64+1+NT_MAX_VALUE+1]u8;used:[N5A_MAX_PATHS]bool;
   for k:0..<n {
@@ -671,7 +671,7 @@ n5a_aggregate :: (files:[]N5aFile,n:int)->[32]u8 {
 <!-- source: coax/lib/nostr/nip5a.coax read -->
 ```jai
 // A kind 15128, 35128 or 5128 manifest: its files and aggregate hash.
-n5a_read :: (e:NostrEvent)->N5aSite {
+n5a_read :: (e:NostrEvent)->N5aSite #effects(all) {
   s:N5aSite;if e.error!=NE_OK {return s;}
   if e.kind!=N5A_ROOT && e.kind!=N5A_NAMED && e.kind!=N5A_SNAPSHOT {return n5a_fail(s,N5A_KIND,-1);}
   s.kind=e.kind;has_d:=false;i:=0;
@@ -740,7 +740,7 @@ host serves nothing.
 
 <!-- source: coax/lib/nostr/nip5a.coax serve -->
 ```jai
-n5a_find :: (s:N5aSite,path:string)->int {
+n5a_find :: (s:N5aSite,path:string)->int #effects(all) {
   for k:0..<s.n {
     p:=s.files[k].path;
     if cast(string)p.b[0..<p.n]==path {return k;}
@@ -749,7 +749,7 @@ n5a_find :: (s:N5aSite,path:string)->int {
 }
 // The file a request path names: the path itself, or its index.html when
 // it ends in /, else /404.html with fallback set.
-n5a_lookup :: (s:N5aSite,request:string)->N5aHit {
+n5a_lookup :: (s:N5aSite,request:string)->N5aHit #effects(all) {
   h:N5aHit;if s.error!=N5A_OK {h.error=N5A_EVENT;return h;}
   want:[NT_MAX_VALUE]u8;n:=json_raw(want[..],0,request);
   if request.count>0 && request[request.count-1]=='/' {n=json_raw(want[..],n,"index.html");}
@@ -760,7 +760,7 @@ n5a_lookup :: (s:N5aSite,request:string)->N5aHit {
 }
 // Whether blob, fetched for file index, may be served: N5A_OK when its
 // SHA-256 is the manifest's hash for that file, else N5A_HASH.
-n5a_check :: (s:N5aSite,file:int,blob:[]u8)->int {
+n5a_check :: (s:N5aSite,file:int,blob:[]u8)->int #effects(all) {
   if s.error!=N5A_OK {return N5A_EVENT;}
   if file<0 || file>=s.n {return N5A_NOT_FOUND;}
   digest:[32]u8;ok:=sha256_hash_checked(blob,digest[..],false);

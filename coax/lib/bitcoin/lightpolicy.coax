@@ -26,16 +26,16 @@
   script[0] = 0x6a; #assert lc_unspendable(script[0..<1]);
 }
 
-lc_body_extent :: (n: int) -> bool { return n >= 81 && n <= 4000000; }
-lc_index_extent :: (index: int, count: int) -> bool { return index >= 0 && index < count; }
-lc_child_context :: (height: int, prev: int, parent_height: int) -> bool {
+lc_body_extent :: (n: int) -> bool #effects(all) { return n >= 81 && n <= 4000000; }
+lc_index_extent :: (index: int, count: int) -> bool #effects(all) { return index >= 0 && index < count; }
+lc_child_context :: (height: int, prev: int, parent_height: int) -> bool #effects(all) {
   return height >= 1 && height <= 2147483647 && prev >= 0 && height == parent_height + 1;
 }
-lc_tx_shape :: (coinbase: bool, first: bool, inputs: int, outputs: int) -> bool {
+lc_tx_shape :: (coinbase: bool, first: bool, inputs: int, outputs: int) -> bool #effects(all) {
   return coinbase == first && inputs >= 1 && outputs >= 1;
 }
-lc_amount_ok :: (amount: int) -> bool { return amount >= 0 && amount <= 2100000000000000; }
-lc_weight_check :: (weight: int) -> int { return ifx weight <= 4000000 then LC_OK else LC_BLOCK; }
-lc_unspendable :: (script: [] u8) -> bool {
+lc_amount_ok :: (amount: int) -> bool #effects(all) { return amount >= 0 && amount <= 2100000000000000; }
+lc_weight_check :: (weight: int) -> int #effects(all) { return ifx weight <= 4000000 then LC_OK else LC_BLOCK; }
+lc_unspendable :: (script: [] u8) -> bool #effects(all) {
   return script.count > LC_SCRIPT_MAX || (script.count != 0 && script[0] == 0x6a);
 }

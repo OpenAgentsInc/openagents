@@ -39,13 +39,13 @@ IAS_PUSH_MAX :: 16384;
  for n:[5]int.[-1,0,2472413603,2472413604,2472413605] {#assert ias_sizes(n,400216)==(n==2472413604);}
  for n:[5]int.[-1,0,400215,400216,400217] {#assert ias_sizes(2472413604,n)==(n==400216);}
 }
-ias_begin :: (g:IasGate,epoch:u64)->IasGate {if epoch==0 || epoch<=g.epoch {return g;}return IasGate.{epoch=epoch,phase=1};}
-ias_admit :: (g:IasGate,epoch:u64,sequence:u64,count:int,final:bool)->bool {
+ias_begin :: (g:IasGate,epoch:u64)->IasGate #effects(all) {if epoch==0 || epoch<=g.epoch {return g;}return IasGate.{epoch=epoch,phase=1};}
+ias_admit :: (g:IasGate,epoch:u64,sequence:u64,count:int,final:bool)->bool #effects(all) {
  return g.phase==1 && epoch==g.epoch && sequence==g.sequence && sequence<18446744073709551615 && count>=0 && count<=IAS_PUSH_MAX && (count>0 || final) && count<=IAS_SAMPLES_MAX-g.samples;
 }
-ias_commit :: (g:IasGate,count:int,final:bool)->IasGate {r:=g;r.sequence+=1;r.samples+=count;if final {r.phase=2;}return r;}
-ias_cancel :: (g:IasGate,epoch:u64)->IasGate {r:=g;if epoch==g.epoch {r.phase=3;}return r;}
-ias_fault :: (g:IasGate)->IasGate {r:=g;r.phase=4;return r;}
-ias_can_publish :: (g:IasGate,epoch:u64)->bool {return epoch==g.epoch && (g.phase==1 || g.phase==2);}
-ias_identity :: (file_size:bool,token_size:bool,model_digest:bool,token_digest:bool)->bool {return file_size && token_size && model_digest && token_digest;}
-ias_sizes :: (file:int,json:int)->bool {return file==2472413604 && json==400216;}
+ias_commit :: (g:IasGate,count:int,final:bool)->IasGate #effects(all) {r:=g;r.sequence+=1;r.samples+=count;if final {r.phase=2;}return r;}
+ias_cancel :: (g:IasGate,epoch:u64)->IasGate #effects(all) {r:=g;if epoch==g.epoch {r.phase=3;}return r;}
+ias_fault :: (g:IasGate)->IasGate #effects(all) {r:=g;r.phase=4;return r;}
+ias_can_publish :: (g:IasGate,epoch:u64)->bool #effects(all) {return epoch==g.epoch && (g.phase==1 || g.phase==2);}
+ias_identity :: (file_size:bool,token_size:bool,model_digest:bool,token_digest:bool)->bool #effects(all) {return file_size && token_size && model_digest && token_digest;}
+ias_sizes :: (file:int,json:int)->bool #effects(all) {return file==2472413604 && json==400216;}

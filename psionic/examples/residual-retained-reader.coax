@@ -45,7 +45,7 @@ retained_saved_logits :: (kind:int,file:[]u8,features:[]f32,scores:[]f32)->bool 
     for j:0..<10 {scores[j]=staged[j];}
     return true;
 }
-retained_saved_row0 :: (kind:int,state:[]u8,images:[]u8,labels:[]u8,scores:[]f32)->bool #export_c {
+retained_saved_row0 :: (kind:int,state:[]u8,images:[]u8,labels:[]u8,scores:[]f32)->bool #export_c #effects(all) {
     d:=mn_admit(images,labels);if d.status!=MnStatus.ok {return false;}
     features:[196]f32;
     if mn_pool(d,images,0,features[..])!=MnStatus.ok {return false;}

@@ -254,29 +254,29 @@ we_whole :: (f: [] WeFind, name: string, elements: int) -> int {
 // range. Every output element is computed by exactly one part, in the same
 // order whatever the split, so the result does not depend on the thread
 // count. A host without threads calls the part once over the whole range.
-cxwh_linear :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32, act: int) -> int #foreign;
-cxwh_attend :: (q: [] f32, nq: int, k: [] f32, v: [] f32, nk: int, d: int, heads: int, first: int, causal: bool, out: [] f32) -> int #foreign;
-cxwh_mel :: (x: [] f32, window: [] f64, bank: [] f64, mels: int, cache: [] f32, frames: int) -> int #foreign;
+cxwh_linear :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32, act: int) -> int #foreign #effects(all);
+cxwh_attend :: (q: [] f32, nq: int, k: [] f32, v: [] f32, nk: int, d: int, heads: int, first: int, causal: bool, out: [] f32) -> int #foreign #effects(all);
+cxwh_mel :: (x: [] f32, window: [] f64, bank: [] f64, mels: int, cache: [] f32, frames: int) -> int #foreign #effects(all);
 // A decoder step's batch on a GPU host: cxwh_step(1) opens it (1 when the
 // host has one), cxwh_step(0) runs it; cxwh_step(2) opens one for the
 // encoder's layers. While it is open the host takes the calls into it, and
 // these return 1 when it took the call; 0 means the engine does it here.
-cxwh_step :: (begin: int) -> int #foreign;
-cxwh_norm :: (x: [] f32, rows: int, d: int, g: [] f32, b: [] f32, y: [] f32) -> int #foreign;
-cxwh_store :: (ka: [] f32, va: [] f32, kb: [] f32, vb: [] f32) -> int #foreign;
+cxwh_step :: (begin: int) -> int #foreign #effects(all);
+cxwh_norm :: (x: [] f32, rows: int, d: int, g: [] f32, b: [] f32, y: [] f32) -> int #foreign #effects(all);
+cxwh_store :: (ka: [] f32, va: [] f32, kb: [] f32, vb: [] f32) -> int #foreign #effects(all);
 // Self-attention of rows decoders at once: row r is query q[r] in cache
 // slot s at position p, sp holding 512 s + p in its bits 12 r..12 r + 11;
 // ks and vs are a layer's slots of ctx rows each, nk is above every p.
-cxwh_slots :: (q: [] f32, rows: int, ks: [] f32, vs: [] f32, ctx: int, d: int, heads: int, sp: int, nk: int, out: [] f32) -> int #foreign;
+cxwh_slots :: (q: [] f32, rows: int, ks: [] f32, vs: [] f32, ctx: int, d: int, heads: int, sp: int, nk: int, out: [] f32) -> int #foreign #effects(all);
 // A block's query, key and value of rows decoders in one product: w and b
 // are the three weights and biases together (we_layout), the queries go to
 // q and row r's key and value into the layer's cache kv (its key slots,
 // then its value slots vstride later) at slot and position sp as above.
-cxwh_qkv :: (x: [] f32, rows: int, d: int, w: [] f32, b: [] f32, q: [] f32, kv: [] f32, vstride: int, ctx: int, sp: int) -> int #foreign;
+cxwh_qkv :: (x: [] f32, rows: int, d: int, w: [] f32, b: [] f32, q: [] f32, kv: [] f32, vstride: int, ctx: int, sp: int) -> int #foreign #effects(all);
 // The token rules, log-softmax and top k of each row's logits
 // (device.coax's wd_rules): rules prm (WE_PRM a row), scratch lp, results
 // top (WE_TOP a row: the count, then token and log-probability pairs).
-cxwh_rules :: (logits: [] f32, rows: int, V: int, beg: int, k: int, prm: [] f32, lp: [] f32, top: [] f32) -> int #foreign;
+cxwh_rules :: (logits: [] f32, rows: int, V: int, beg: int, k: int, prm: [] f32, lp: [] f32, top: [] f32) -> int #foreign #effects(all);
 WE_PRM :: 64;
 WE_TOP :: 16;
 
@@ -689,19 +689,19 @@ we_forward :: (net: WeNet, W: [] f32, work: [] f32, toks: [] int, rows: int, pos
 
 // ---- the host's entry points ----------------------------------------------------
 
-psionic_whisper_read :: (b: [] u8, tensors: [] WgTensor) -> WgModel #export_c { return wg_read(b, tensors); }
-psionic_whisper_net :: (b: [] u8, m: WgModel, tensors: [] WgTensor, offsets: [] int, ctx: int) -> WeNet #export_c {
+psionic_whisper_read :: (b: [] u8, tensors: [] WgTensor) -> WgModel #export_c #effects(all) { return wg_read(b, tensors); }
+psionic_whisper_net :: (b: [] u8, m: WgModel, tensors: [] WgTensor, offsets: [] int, ctx: int) -> WeNet #export_c #effects(all) {
   return we_net(b, m, tensors, offsets, ctx);
 }
-psionic_whisper_load :: (b: [] u8, tensors: [] WgTensor, count: int, offsets: [] int, w: [] f32) -> WeStatus #export_c {
+psionic_whisper_load :: (b: [] u8, tensors: [] WgTensor, count: int, offsets: [] int, w: [] f32) -> WeStatus #export_c #effects(all) {
   return we_load(b, tensors, count, offsets, w);
 }
-psionic_whisper_load_slice :: (b: [] u8, t: WgTensor, at: int, j0: int, j1: int, w: [] f32) -> WeStatus #export_c {
+psionic_whisper_load_slice :: (b: [] u8, t: WgTensor, at: int, j0: int, j1: int, w: [] f32) -> WeStatus #export_c #effects(all) {
   return we_load_slice(b, t, at, j0, j1, w);
 }
-psionic_whisper_bank :: (mels: int, bank: [] f64) -> int #export_c { return cast(int) sf_mel_bank(wf_spec(mels), bank).status; }
+psionic_whisper_bank :: (mels: int, bank: [] f64) -> int #export_c #effects(all) { return cast(int) sf_mel_bank(wf_spec(mels), bank).status; }
 // The largest difference between our mel filters and the file's.
-psionic_whisper_filter_diff :: (b: [] u8, m: WgModel, bank: [] f64) -> f64 #export_c {
+psionic_whisper_filter_diff :: (b: [] u8, m: WgModel, bank: [] f64) -> f64 #export_c #effects(all) {
   worst := 0.0;
   for i: 0..<m.filter_mels { for j: 0..<m.filter_bins {
     e := abs(bank[i * m.filter_bins + j] - cast(f64) wg_filter(b, m, i, j));
@@ -710,7 +710,7 @@ psionic_whisper_filter_diff :: (b: [] u8, m: WgModel, bank: [] f64) -> f64 #expo
   return worst;
 }
 // segs written as text (0), SRT (1), WebVTT (2) or JSON (3); the byte count, or -1 when out is too small.
-psionic_whisper_format :: (segs: [] WsSegment, format: int, model: string, language: string, out: [] u8) -> int #export_c {
+psionic_whisper_format :: (segs: [] WsSegment, format: int, model: string, language: string, out: [] u8) -> int #export_c #effects(all) {
   w: [1] WsOut; w[0].buf = out;
   if format == 1 { wsg_srt(segs, w[..]); }
   else if format == 2 { wsg_vtt(segs, w[..]); }
@@ -722,10 +722,10 @@ psionic_whisper_format :: (segs: [] WsSegment, format: int, model: string, langu
 // 16-bit little-endian PCM samples at b[at..] as f32 in [-1, 1).
 // WAV input (wav.coax): the format and data chunk, every frame as mono at
 // the file's rate, and those resampled to 16 kHz.
-psionic_whisper_wav_info :: (b: [] u8) -> WvInfo #export_c { return wv_info(b); }
-psionic_whisper_wav_mono :: (b: [] u8, info: WvInfo, mono: [] f32) -> int #export_c { return wv_mono(b, info, mono); }
-psionic_whisper_wav_length :: (frames: int, rate: int) -> int #export_c { return wv_length(frames, rate); }
-psionic_whisper_resample :: (mono: [] f32, rate: int, out: [] f32) -> int #export_c {
+psionic_whisper_wav_info :: (b: [] u8) -> WvInfo #export_c #effects(all) { return wv_info(b); }
+psionic_whisper_wav_mono :: (b: [] u8, info: WvInfo, mono: [] f32) -> int #export_c #effects(all) { return wv_mono(b, info, mono); }
+psionic_whisper_wav_length :: (frames: int, rate: int) -> int #export_c #effects(all) { return wv_length(frames, rate); }
+psionic_whisper_resample :: (mono: [] f32, rate: int, out: [] f32) -> int #export_c #effects(all) {
   table: [WV_TABLE] f64; wv_table(table[..]);
   return wv_resample(mono, rate, table[..], out);
 }
@@ -873,17 +873,17 @@ psionic_whisper_resample :: (mono: [] f32, rate: int, out: [] f32) -> int #expor
   we_linear_part(col2[..], 4, 12, w2[..], b[..], 4, y2[..], 0, 4, 1);
   for i: 0..<16 { #assert abs(d2[i] - y2[i]) < 0.00001; }
 }
-psionic_whisper_linear_part :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32, o0: int, o1: int, act: int) #export_c {
+psionic_whisper_linear_part :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32, o0: int, o1: int, act: int) #export_c #effects(all) {
   we_linear_part(x, rows, n_in, w, b, n_out, y, o0, o1, act);
 }
-psionic_whisper_attend_part :: (q: [] f32, nq: int, k: [] f32, v: [] f32, nk: int, d: int, heads: int, first: int, causal: bool, out: [] f32, j0: int, j1: int) #export_c {
+psionic_whisper_attend_part :: (q: [] f32, nq: int, k: [] f32, v: [] f32, nk: int, d: int, heads: int, first: int, causal: bool, out: [] f32, j0: int, j1: int) #export_c #effects(all) {
   we_attend_part(q, nq, k, v, nk, d, heads, first, causal, out, j0, j1);
 }
-psionic_whisper_mel_part :: (x: [] f32, window: [] f64, bank: [] f64, mels: int, cache: [] f32, t0: int, t1: int) #export_c {
+psionic_whisper_mel_part :: (x: [] f32, window: [] f64, bank: [] f64, mels: int, cache: [] f32, t0: int, t1: int) #export_c #effects(all) {
   wf_frames_part(x, window, bank, mels, cache, t0, t1);
 }
 // The cache size in floats for n samples: every frame's mels.
-psionic_whisper_cache_size :: (n: int, mels: int) -> int #export_c { return wf_frames(n) * mels; }
+psionic_whisper_cache_size :: (n: int, mels: int) -> int #export_c #effects(all) { return wf_frames(n) * mels; }
 // The language token for a code on this model, or -1 (English-only models
 // have none; "auto" is not detected yet and also gives -1).
-psionic_whisper_language :: (net: WeNet, code: string) -> int #export_c { return wt_language(net.sp, code); }
+psionic_whisper_language :: (net: WeNet, code: string) -> int #export_c #effects(all) { return wt_language(net.sp, code); }

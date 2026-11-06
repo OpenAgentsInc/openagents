@@ -37,10 +37,10 @@
  for bad:[3]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001] {#assert !rga_finite_pair(bad,0) && !rga_finite_pair(0,bad) && !rga_finite_step(bad,0,0) && !rga_finite_step(0,bad,0) && !rga_finite_step(0,0,bad);}
 }
 
-rga_finite :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
-rga_finite_pair :: (a:u64,b:u64)->bool {return rga_finite(a) && rga_finite(b);}
-rga_finite_step :: (a:u64,b:u64,c:u64)->bool {return rga_finite(a) && rga_finite(b) && rga_finite(c);}
-rga_returns :: (worlds:int,horizon:int,gamma:rlu.Quantity(UnitOne,f64),trace_lambda:rlu.Quantity(UnitOne,f64),steps:[]RgaStep,output:[]RgaOutput)->RgaStatus #export_c {
+rga_finite :: (bits:u64)->bool #effects(all) {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+rga_finite_pair :: (a:u64,b:u64)->bool #effects(all) {return rga_finite(a) && rga_finite(b);}
+rga_finite_step :: (a:u64,b:u64,c:u64)->bool #effects(all) {return rga_finite(a) && rga_finite(b) && rga_finite(c);}
+rga_returns :: (worlds:int,horizon:int,gamma:rlu.Quantity(UnitOne,f64),trace_lambda:rlu.Quantity(UnitOne,f64),steps:[]RgaStep,output:[]RgaOutput)->RgaStatus #export_c #effects(all) {
  if worlds<1 || worlds>16 || horizon<1 || horizon>128 {return RgaStatus.shape;}count:=worlds*horizon;if steps.count!=count || output.count!=count {return RgaStatus.shape;}
  if !rga_finite_pair(f64_bits(gamma.value),f64_bits(trace_lambda.value)) {return RgaStatus.number;}if gamma.value<0 || gamma.value>1 || trace_lambda.value<0 || trace_lambda.value>1 {return RgaStatus.range;}
  for s:steps {if !rga_finite_step(f64_bits(s.reward.value),f64_bits(s.current_value.value),f64_bits(s.next_value.value)) {return RgaStatus.number;}}
@@ -49,4 +49,4 @@ rga_returns :: (worlds:int,horizon:int,gamma:rlu.Quantity(UnitOne,f64),trace_lam
  for world:0..<worlds {next_advantage:f64=0;for reverse:0..<horizon {local:=horizon-1-reverse;index:=world*horizon+local;s:=steps[index];bootstrap:=ifx s.terminated==0 then 1 else 0;trace:=ifx s.terminated==0 && s.truncated==0 && local!=horizon-1 then 1 else 0;future:f64=0;if bootstrap==1 {future=gamma.value*s.next_value.value;}delta:=(s.reward.value+future)-s.current_value.value;advantage:=delta;if trace==1 {advantage=delta+discount*next_advantage;}fresh:RgaOutput;fresh.delta.value=delta;fresh.advantage.value=advantage;fresh.lambda_return.value=advantage+s.current_value.value;fresh.bootstrap=bootstrap;fresh.trace=trace;stage[index]=fresh;next_advantage=advantage;}}
  for i:0..<count {output[i]=stage[i];}return RgaStatus.ok;
 }
-rga_returns_raw :: (worlds:int,horizon:int,gamma:f64,trace_lambda:f64,steps:[]RgaStep,output:[]RgaOutput)->RgaStatus #export_c {g:rlu.Quantity(UnitOne,f64);l:rlu.Quantity(UnitOne,f64);g.value=gamma;l.value=trace_lambda;return rga_returns(worlds,horizon,g,l,steps,output);}
+rga_returns_raw :: (worlds:int,horizon:int,gamma:f64,trace_lambda:f64,steps:[]RgaStep,output:[]RgaOutput)->RgaStatus #export_c #effects(all) {g:rlu.Quantity(UnitOne,f64);l:rlu.Quantity(UnitOne,f64);g.value=gamma;l.value=trace_lambda;return rga_returns(worlds,horizon,g,l,steps,output);}

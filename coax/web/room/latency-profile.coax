@@ -8,7 +8,7 @@
 lp_number::(d:Jv,path:string,want:int)->bool {
   at:=jv_path(d,0,path);if jv_kind(d,at)!=JV_NUMBER{return false;}r:[1]WireRd;v:=wire_num(jv_raw(d,at),r[..]);return r[0].ok&&v==want;
 }
-tool_main::()->int #export_c {
+tool_main::()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..])||args_count(a[..])!=1{return 2;}
   text:[32768]u8;n:=fs_read(args_at(a[..],0),text[..]);nodes:[1024]JvNode;d:[1]Jv;
   if n<1||!jv_parse(d[..],cast(string)text[0..<n],nodes[..]){return 1;}

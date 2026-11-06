@@ -42,25 +42,25 @@
  #assert hwi_mod_event(-1,1,true,false)==0&&hwi_mod_event(16,1,true,false)==0;
  #assert hwi_mod_event(15,0,false,false)==15;
 }
-hwi_key::(symbol:int,unicode:int)->int #export_c {
+hwi_key::(symbol:int,unicode:int)->int #export_c #effects(all) {
  if symbol==0xff1b{return -1;}if symbol==0xff0d||symbol==0xff8d{return -2;}if symbol==0xff08{return -3;}
  if symbol==0xff51{return -4;}if symbol==0xff53{return -5;}if symbol==0xff52{return -6;}if symbol==0xff54{return -7;}
  if symbol==0xff50{return -8;}if symbol==0xff57{return -9;}if symbol==0xff55{return -10;}if symbol==0xff56{return -11;}if symbol==0xffff{return -12;}
  if symbol==0xffe1||symbol==0xffe2{return -13;}if symbol==0xffe3||symbol==0xffe4{return -14;}if symbol==0xff09||symbol==0xfe20{return -15;}
  if unicode<1||unicode>0x10ffff||(unicode>=0xd800&&unicode<=0xdfff){return 0;}return unicode;
 }
-hwi_mods::(shift:bool,control:bool,alt:bool,meta:bool)->int #export_c {return (ifx shift then 1 else 0)|(ifx control then 2 else 0)|(ifx alt then 4 else 0)|(ifx meta then 8 else 0);}
-hwi_text::(wants:bool,mods:int,key:int)->bool #export_c {return wants&&(mods==0||mods==1||mods==4||mods==5)&&key>=32&&key!=127;}
-hwi_keymap::(bytes:int)->bool #export_c {return bytes>=1&&bytes<=1048576;}
-hwi_commit::(bytes:int)->bool #export_c {return bytes>=1&&bytes<=1024;}
-hwi_wheel::(value:f64,discrete:int,has_discrete:bool,value120:int,has120:bool,source:int)->f64 #export_c {
+hwi_mods::(shift:bool,control:bool,alt:bool,meta:bool)->int #export_c #effects(all) {return (ifx shift then 1 else 0)|(ifx control then 2 else 0)|(ifx alt then 4 else 0)|(ifx meta then 8 else 0);}
+hwi_text::(wants:bool,mods:int,key:int)->bool #export_c #effects(all) {return wants&&(mods==0||mods==1||mods==4||mods==5)&&key>=32&&key!=127;}
+hwi_keymap::(bytes:int)->bool #export_c #effects(all) {return bytes>=1&&bytes<=1048576;}
+hwi_commit::(bytes:int)->bool #export_c #effects(all) {return bytes>=1&&bytes<=1024;}
+hwi_wheel::(value:f64,discrete:int,has_discrete:bool,value120:int,has120:bool,source:int)->f64 #export_c #effects(all) {
  if source<0||source>3{return 0;}if source==1||source==2{return value;}
  if has120{return f64(value120)*(100.0/120.0);}if has_discrete{return f64(discrete)*100.0;}return value*10.0;
 }
-hwi_role::(symbol:int)->int #export_c {
+hwi_role::(symbol:int)->int #export_c #effects(all) {
  if symbol==0xffe1||symbol==0xffe2{return 1;}if symbol==0xffe3||symbol==0xffe4{return 2;}if symbol==0xffe9||symbol==0xffea{return 4;}if symbol==0xffe7||symbol==0xffe8||symbol==0xffeb||symbol==0xffec{return 8;}return 0;
 }
-hwi_mod_event::(current:int,role:int,down:bool,other:bool)->int #export_c {
+hwi_mod_event::(current:int,role:int,down:bool,other:bool)->int #export_c #effects(all) {
  if current<0||current>15{return 0;}if role!=1&&role!=2&&role!=4&&role!=8{return current;}
  return (current&(15^role))|(ifx down||other then role else 0);
 }

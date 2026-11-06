@@ -1,7 +1,9 @@
 # What Coax takes from Epic's Verse (proposal)
 
-Written 2026-11-05. Status: proposal. Nothing here is implemented. Syntax in
-this doc is proposed, not accepted by the bootstrap grammar.
+Written 2026-11-05. The roadmap remains a proposal. Coax 0.52 implements the
+initial handle, effect, transaction and compatibility slices used by Everglade;
+[`checked-state.md`](checked-state.md) records their accepted syntax and limits.
+Other syntax here remains proposed.
 
 "Verse" in this doc means **Epic's Verse language** for Unreal Engine 6 and
 UEFN, not our Verse world. Sources: the
@@ -160,6 +162,9 @@ handles to `Handle(Entity)`. The entity oracle (`aethyr/tests/entity-oracle.coax
 checks both versions agree over the same spawn and despawn sequences before
 the old one is removed.
 
+The accepted handle library and entity/seat migrations are described in
+[checked-state.md](checked-state.md#handles).
+
 ## A3. Effects in signatures
 
 **In Epic's Verse.** Effects are part of a function's type and checked
@@ -176,7 +181,7 @@ computes may-effects for every procedure. A3 makes a declared set a contract.
 
   | Effect | Meaning | Inventory bit |
   | --- | --- | --- |
-  | `computes` | None of the below. Pure apart from traps | 0 |
+  | `computes` | None of the below; traps require their own capability | 0 |
   | `reads` | Reads storage through a borrowed view | 16 |
   | `writes` | Writes storage through a borrowed view | 32 |
   | `allocates` | Allocates (when Coax allocation ships) | new |
@@ -209,6 +214,10 @@ computes may-effects for every procedure. A3 makes a declared set a contract.
   compiler checks both: the effect subset and that no view outlives its
   region. A host buffer whose lifetime the boundary can't state stays
   `#unsafe`.
+
+The initial admitted subset requires declarations on exports, authority units
+and foreign procedures. Public ordinary Coax procedures are inferred; procedure
+values and callback types remain planned. See [checked-state.md](checked-state.md#effects).
 
 ## A4. Structured lifetimes
 
@@ -288,6 +297,11 @@ authority, where a half-applied update is the worst outcome.
 - **First consumers.** The signer's policy and the wallet (`verse/wallet.coax`)
   in the [Verse OS isolation proposal](../docs/os/2026-11-05-verse-os-isolation.md).
 
+Coax 0.52 uses coarse before-images of reachable state, rather than a store-by-store
+log. Everglade actions and the in-memory ledger are its first consumers. The exact
+commit, refusal, cleanup and payload rules are in
+[checked-state.md](checked-state.md#transactions).
+
 ## A6. Compatibility of published code and data
 
 **In Epic's Verse.** Published definitions can't be removed. A new version may
@@ -308,12 +322,16 @@ state, snapshots (R16) and state kept across hot reload (R26, R27).
   - persisted record changes other than appended fields with defaults.
 - **`#persisted` records.** Records that reach saved state, snapshots or the
   wire are marked. They can hold only values, fixed arrays, optionals and
-  handles: no views, since a view can't outlive the process.
+  stable IDs: no views or process-local handles.
 - **Handles across saves.** A persisted handle is saved as a stable ID, not a
   slot and generation, and resolved on load (the entity store already keeps
   ids beside handles).
 - **Release gate.** `coax/RELEASE.md`'s release checks run `coax compat`
   against the last published build of each exported surface.
+
+The initial native LP64 comparison and production regression gates are in
+[checked-state.md](checked-state.md#persisted-values-and-compatibility). Published
+generic templates need concrete facades; serializers retain separate checks.
 
 ## A7. Owned lifetimes for world objects
 

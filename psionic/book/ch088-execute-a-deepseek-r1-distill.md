@@ -112,11 +112,11 @@ does not reserve physical RAM or establish a peak-RSS limit.
 
 <!-- source: psionic/lib/deepseek/plan.coax plan -->
 ```jai
-ds_shape :: (s:DsShape)->bool {
+ds_shape :: (s:DsShape)->bool #effects(all) {
     if s.layers<1 || s.layers>28 || s.hidden<1 || s.hidden>8960 || s.heads<1 || s.heads>12 || s.kv_heads<1 || s.kv_heads>2 || s.head<2 || s.head/2>64 || s.head%2!=0 || s.vocab<1 || s.vocab>151936 || s.capacity<1 || s.capacity>16384 {return false;}
     return s.width==s.heads*s.head && s.heads%s.kv_heads==0;
 }
-ds_plan :: (s:DsShape)->DsPlan #export_c {
+ds_plan :: (s:DsShape)->DsPlan #export_c #effects(all) {
     if !ds_shape(s) {return DsPlan.{status=DsStatus.shape};}
     d:=s.width;h:=s.hidden;k:=s.kv_heads*s.head;mx:=s.vocab+h+d;
     sizes:=[17]int.[d,d,d,k,k,d,d,h,h,h,mx,mx,2*s.layers*k,2*s.layers*d,s.vocab,s.head,d];p:DsPlan;
@@ -177,7 +177,7 @@ mix private reasoning into final display.
 
 <!-- source: psionic/lib/deepseek/text.coax parts -->
 ```jai
-ds_parts :: (ids:[]int)->DsParts #export_c {
+ds_parts :: (ids:[]int)->DsParts #export_c #effects(all) {
     if ids.count>16384 {return DsParts.{status=DsStatus.budget};}p:=DsParts.{reasoning_end=ids.count,final_begin=ids.count,final_end=ids.count};closed:=false;
     for i:0..<ids.count {id:=ids[i];if id<0 || id>=151936 {return DsParts.{status=DsStatus.token};}
         if id==DS_THINK {if i!=0 {return DsParts.{status=DsStatus.format};}p.reasoning_begin=1;}

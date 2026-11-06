@@ -68,41 +68,41 @@
 }
 
 LR_EVENTS :: 8192;
-lr_capture_budget :: (events:int,bytes:int)->bool #export_c {return events>=0 && events<=LR_EVENTS && bytes>=0 && bytes<=8388608;}
+lr_capture_budget :: (events:int,bytes:int)->bool #export_c #effects(all) {return events>=0 && events<=LR_EVENTS && bytes>=0 && bytes<=8388608;}
 LrQuery :: struct {
   filter:[8192]u8;filter_n:int;serial:int;pages:int;until:int=-1;
   count:int;oldest:int=-1;peak:int;state:int;seen:int;ids:[LR_EVENTS*32]u8;
 }
-lr_page_end :: (until:int,oldest:int,count:int,finished:bool,pages:int,peak:int)->int {
+lr_page_end :: (until:int,oldest:int,count:int,finished:bool,pages:int,peak:int)->int #effects(all) {
   if finished || count==0 {return -1;}
   if oldest<0 || (until>=0 && oldest>until) || pages>=100 {return -2;}
   if oldest==until {if count>1 || peak<2 {return -2;}return ifx oldest==0 then -1 else oldest-1;}
   return oldest;
 }
-lr_newer :: (generation:int,observed:int,held_generation:int,held_observed:int)->bool #export_c {
+lr_newer :: (generation:int,observed:int,held_generation:int,held_observed:int)->bool #export_c #effects(all) {
   return generation>held_generation || (generation==held_generation && observed>held_observed);
 }
-lr_event :: (text:string,scratch:[]u8)->NostrEvent {
+lr_event :: (text:string,scratch:[]u8)->NostrEvent #effects(all) {
   e:=nostr_event_read(text,scratch,false);
   if e.error==NE_OK {
     if nostr_fast_verify_vartime(e.id[..],e.public_key[..],e.signature[..]) {e.verified=true;}
     else {e.error=NE_SIGNATURE;}
   }return e;
 }
-lr_verify_public :: (text:string)->bool #export_c {
+lr_verify_public :: (text:string)->bool #export_c #effects(all) {
   scratch:[NE_MAX_OUTPUT]u8;e:=lr_event(text,scratch[..]);return e.error==NE_OK && e.verified;
 }
-lr_npub :: (key:string,out:[]u8)->int #export_c {
+lr_npub :: (key:string,out:[]u8)->int #export_c #effects(all) {
   if !nf_hex(key) {return -1;}bytes:[32]u8;
   for i:0..<32 {bytes[i]=cast(u8)(lr_hex(key[2*i])*16+lr_hex(key[2*i+1]));}
   r:=nip19_encode_checked(N19_NPUB,cast(string)bytes[..],out,false);
   return ifx r.error==NC_OK then r.written else -1;
 }
-lr_hex :: (c:u8)->int {return ifx c<='9' then cast(int)c-48 else cast(int)c-87;}
-lr_parse_filter :: (text:string,f:[]NostrFilter,sp:[]FrSpace)->bool {
+lr_hex :: (c:u8)->int #effects(all) {return ifx c<='9' then cast(int)c-48 else cast(int)c-87;}
+lr_parse_filter :: (text:string,f:[]NostrFilter,sp:[]FrSpace)->bool #effects(all) {
   return text.count<=8192 && filter_read(text,f,sp)==FR_OK;
 }
-lr_begin :: (s:[]LrQuery,text:string)->bool #export_c {
+lr_begin :: (s:[]LrQuery,text:string)->bool #export_c #effects(all) {
   strs:[1024]string;ints:[1024]int;tags:[64]NostrTagFilter;bytes:[8192]u8;
   sp:=[1]FrSpace.[FrSpace.{strs=strs[..],ints=ints[..],tags=tags[..],bytes=bytes[..]}];f:[1]NostrFilter;
   if !lr_parse_filter(text,f[..],sp[..]) {return false;}
@@ -110,8 +110,8 @@ lr_begin :: (s:[]LrQuery,text:string)->bool #export_c {
   for i:0..<text.count {s[0].filter[i]=text[i];}s[0].filter_n=text.count;
   s[0].until=ifx f[0].has_until then f[0].until else -1;s[0].state=1;return true;
 }
-lr_sub :: (s:[]LrQuery,out:[]u8)->int {n:=json_raw(out,0,"land-");return json_write_int(out,n,s[0].serial);}
-lr_request :: (s:[]LrQuery,out:[]u8)->int #export_c {
+lr_sub :: (s:[]LrQuery,out:[]u8)->int #effects(all) {n:=json_raw(out,0,"land-");return json_write_int(out,n,s[0].serial);}
+lr_request :: (s:[]LrQuery,out:[]u8)->int #export_c #effects(all) {
   if s[0].state!=1 || s[0].pages>=100 || s[0].serial>=NF_SAFE {return -1;}
   strs:[1024]string;ints:[1024]int;tags:[64]NostrTagFilter;bytes:[8192]u8;
   sp:=[1]FrSpace.[FrSpace.{strs=strs[..],ints=ints[..],tags=tags[..],bytes=bytes[..]}];f:[1]NostrFilter;
@@ -121,21 +121,21 @@ lr_request :: (s:[]LrQuery,out:[]u8)->int #export_c {
   s[0].serial+=1;s[0].pages+=1;s[0].count=0;s[0].oldest= -1;s[0].state=2;
   sub:[64]u8;n:=lr_sub(s,sub[..]);return nostr_message_write_req(cast(string)sub[0..<n],f[..],out,false);
 }
-lr_close :: (s:[]LrQuery,out:[]u8)->int #export_c {sub:[64]u8;n:=lr_sub(s,sub[..]);return nostr_message_write_close(cast(string)sub[0..<n],out,false);}
-lr_finish :: (text:string)->bool {
+lr_close :: (s:[]LrQuery,out:[]u8)->int #export_c #effects(all) {sub:[64]u8;n:=lr_sub(s,sub[..]);return nostr_message_write_close(cast(string)sub[0..<n],out,false);}
+lr_finish :: (text:string)->bool #effects(all) {
   j:[1]Json;json_start(j[..],text);
   if json_next(j[..])!=JSON_ARRAY || json_next(j[..])!=JSON_STRING || !json_is(json_text(j[..]),"EOSE") || json_next(j[..])!=JSON_STRING || json_next(j[..])!=JSON_ARRAY {return false;}
   found:=false;
   while true {t:=json_next(j[..]);if t==JSON_ARRAY_END {break;}if t!=JSON_STRING {return false;}if json_is(json_text(j[..]),"finish") {found=true;}}
   return found;
 }
-lr_auth :: (text:string)->bool {
+lr_auth :: (text:string)->bool #effects(all) {
   j:[1]Json;json_start(j[..],text);
   return json_next(j[..])==JSON_ARRAY && json_next(j[..])==JSON_STRING && json_is(json_text(j[..]),"AUTH") && json_next(j[..])==JSON_STRING && json_text(j[..]).count<=256 && json_next(j[..])==JSON_ARRAY_END && json_next(j[..])==JSON_END;
 }
 // 0 ignored/duplicate, original byte count + 10 when copied, 2 page ended.
 // Negative refuses the capture. state 1 means next page; 3 means complete.
-lr_frame :: (s:[]LrQuery,text:string,out:[]u8)->int #export_c {
+lr_frame :: (s:[]LrQuery,text:string,out:[]u8)->int #export_c #effects(all) {
   if s[0].state!=2 {return -1;}
   m:=nostr_message_read(text);
   if m.error!=NM_OK {return ifx lr_auth(text) then 0 else -2;}
@@ -163,7 +163,7 @@ lr_frame :: (s:[]LrQuery,text:string,out:[]u8)->int #export_c {
 }
 // The supplied event is independently verified again at this projection
 // boundary. The content digest is calculated from its actual decoded bytes.
-lr_beacon :: (text:string,now:int,out:[]u8)->int #export_c {
+lr_beacon :: (text:string,now:int,out:[]u8)->int #export_c #effects(all) {
   scratch:[NE_MAX_OUTPUT]u8;e:=lr_event(text,scratch[..]);if e.error!=NE_OK || !e.verified {return -1;}
   content:[NE_MAX_OUTPUT]u8;size:=json_unescape(e.original[e.content_from..<e.content_to],content[..]);if size<0 {return -1;}
   hash:[32]u8;if sha256_hash_checked(content[0..<size],hash[..],false)!=SHA_OK {return -1;}
@@ -176,7 +176,7 @@ lr_beacon :: (text:string,now:int,out:[]u8)->int #export_c {
   return json_raw(out,0,cast(string)content[0..<size]);
 }
 
-lr_ids :: (text:string,ids:[]string)->int {
+lr_ids :: (text:string,ids:[]string)->int #effects(all) {
   if !json_valid(text) {return -1;}j:[1]Json;json_start(j[..],text);
   if json_next(j[..])!=JSON_ARRAY {return -1;}n:=0;
   while true {t:=json_next(j[..]);if t==JSON_ARRAY_END {break;}
@@ -188,7 +188,7 @@ lr_ids :: (text:string,ids:[]string)->int {
 // receipt time; future activity is excluded. mode 7 is exact public ids.
 // mode 8 is everything a project's key signs that the fold reads, since a
 // time (a page that already holds what came before: landing-cache.coax).
-lr_filter :: (mode:int,key:string,value:string,out:[]u8)->int #export_c {
+lr_filter :: (mode:int,key:string,value:string,out:[]u8)->int #export_c #effects(all) {
   if mode<0 || mode>8 || (mode!=5 && mode!=7 && !nf_hex(key)) {return -1;}
   f:NostrFilter;authors:=[1]string.[key];kinds:[4]int;values:[50]string;tag:[1]NostrTagFilter;coord:[160]u8;
   if mode!=5 && mode!=7 {f.has_authors=true;f.authors=authors[..];}
@@ -219,14 +219,14 @@ lr_filter :: (mode:int,key:string,value:string,out:[]u8)->int #export_c {
 
 LR_ACTIVITY :: 512;
 LrAnswer :: struct {id:[32]u8;at:int;request:string;}
-lr_public_key :: (e:NostrEvent,key:string)->bool {
+lr_public_key :: (e:NostrEvent,key:string)->bool #effects(all) {
   if !nf_hex(key) {return false;}for i:0..<32 {if e.public_key[i]!=cast(u8)(lr_hex(key[2*i])*16+lr_hex(key[2*i+1])) {return false;}}return true;
 }
-lr_equal_id :: (a:[]u8,b:[]u8)->bool {if a.count!=32 || b.count!=32 {return false;}for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+lr_equal_id :: (a:[]u8,b:[]u8)->bool #effects(all) {if a.count!=32 || b.count!=32 {return false;}for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
 // Signed public answer/status counts are provider-wide, not per-machine
 // failures. 27010 includes progress and encrypted statuses. Reply delay
 // uses only a verified kind-25910 request explicitly addressed to provider.
-lr_stats :: (work:string,requests:string,provider:string,now:int,out:[]u8)->int #export_c {
+lr_stats :: (work:string,requests:string,provider:string,now:int,out:[]u8)->int #export_c #effects(all) {
   if !nf_hex(provider) || now<0 || !json_valid(work) || !json_valid(requests) {return -1;}
   answers:[LR_ACTIVITY]LrAnswer;seen:[LR_ACTIVITY*32]u8;sn:=0;an:=0;statuses:=0;latest:=0;
   scratch:[NE_MAX_OUTPUT]u8;j:[1]Json;json_start(j[..],work);if json_next(j[..])!=JSON_ARRAY {return -1;}

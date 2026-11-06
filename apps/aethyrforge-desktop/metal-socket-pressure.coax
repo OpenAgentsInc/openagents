@@ -30,7 +30,7 @@ msp_check :: (report:string,peer:string)->bool {
  peer_text:[4096]u8;pn:=fs_read(peer,peer_text[..]);pd:[1]Jv;peer_nodes:[64]JvNode;if pn<1||!jv_parse(pd[..],cast(string)peer_text[0..<pn],peer_nodes[..]) {return false;}p:=pd[0];if !hspc_peer(jv_int(p,jv_get(p,0,"frames"),0),jv_int(p,jv_get(p,0,"failure"),0),jv_int(p,jv_get(p,0,"elapsed_ms"),0)) {tool_errln("Physical peer did not report the required flush backpressure");return false;}
  print("Native raw SDK: held512payload bytes,64command/fullerror+close,FIFO%frames,1000replacements,fourworkers andzero finalowners; physicalpeer flush timeout observed\n",count-3);return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<3 {tool_errln("usage: metal-socket-pressure ROOT SDK OUTPUT [--existing] [--peer EXECUTABLE] [--echo EXECUTABLE]");return 2;}root:=args_at(a[..],0);sdk:=args_at(a[..],1);dir:=args_at(a[..],2);if !fs_mkdir(dir) {return 1;}paths:[10][4096]u8;plan:=fs_join(dir,"plan.json",paths[0][..]);report:=fs_join(dir,"receipt.json",paths[1][..]);peer_report:=fs_join(dir,"peer.json",paths[2][..]);ready:=fs_join(dir,"peer.ready",paths[3][..]);
  if !args_has(a[..],"--existing") {if fs_exists(report)||fs_exists(ready) {tool_errln("Fresh physical workload requires a new output directory");return 2;}
   bytes:[16384]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"operations");jo_arr(o[..]);

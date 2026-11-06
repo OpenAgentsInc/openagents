@@ -56,26 +56,26 @@ GaResult :: struct {status:GoStatus;written:int;next:int;}
 }
 
 // book:begin plan
-ga_plan :: (s:GaShape)->GaPlan #export_c {
+ga_plan :: (s:GaShape)->GaPlan #export_c #effects(all) {
     if s.heads<1 || s.heads>64 || s.kv_heads<1 || s.kv_heads>8 || s.heads%s.kv_heads!=0 || s.capacity<1 || s.capacity>128 || s.window<0 {return GaPlan.{status=GoStatus.shape};}
     if s.window!=0 && s.capacity!=s.window {return GaPlan.{status=GoStatus.shape};}
     q:=s.heads*64;kv:=s.kv_heads*64;
     return GaPlan.{q=q,kv=kv,cache=2*s.capacity*kv,work=3*q+kv};
 }
 // book:end plan
-ga_position :: (s:GaShape,p:int)->bool {return p>=0 && p<131072 && (s.window!=0 || p<s.capacity);}
-ga_first :: (s:GaShape,p:int)->int {return ifx s.window!=0 && p>=s.window then p+1-s.window else 0;}
+ga_position :: (s:GaShape,p:int)->bool #effects(all) {return p>=0 && p<131072 && (s.window!=0 || p<s.capacity);}
+ga_first :: (s:GaShape,p:int)->int #effects(all) {return ifx s.window!=0 && p>=s.window then p+1-s.window else 0;}
 
-ga_slot :: (capacity:int,kv:int,t:int,cache:[]f32)->[]f32 {
+ga_slot :: (capacity:int,kv:int,t:int,cache:[]f32)->[]f32 #effects(all) {
     base:=(t%capacity)*2*kv;return cache[base..<base+2*kv];
 }
-ga_max_index :: (scores:[]f64,sink:f64)->int {
+ga_max_index :: (scores:[]f64,sink:f64)->int #effects(all) {
     best:=-1;maximum:=sink;
     for i:0..<scores.count {if scores[i]>maximum {best=i;maximum=scores[i];}}
     return best;
 }
 
-ga_step :: (s:GaShape,position:int,q:[]f32,k:[]f32,v:[]f32,sinks:[]f32,cache:[]f32,out:[]f32,work:[]f32,overlap:bool)->GaResult #export_c {
+ga_step :: (s:GaShape,position:int,q:[]f32,k:[]f32,v:[]f32,sinks:[]f32,cache:[]f32,out:[]f32,work:[]f32,overlap:bool)->GaResult #export_c #effects(all) {
     plan:=ga_plan(s);if plan.status!=GoStatus.ok {return GaResult.{status=plan.status};}
     if !ga_position(s,position) {return GaResult.{status=GoStatus.range};}
     if q.count!=plan.q {return GaResult.{status=GoStatus.capacity};}

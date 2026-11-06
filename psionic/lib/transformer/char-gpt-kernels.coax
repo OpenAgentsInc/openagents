@@ -90,7 +90,7 @@ ck_at_b :: (rowmajor:bool,kk:int,jj:int)->int {if rowmajor {return kk*CK_TILE+jj
 // row-major), nt (B column-major), tn (A column-major).
 ck_mm_nn :: (item:int,m:int,n:int,k:int,heads:int,mode:int,alpha:f32,acc:int,
     a:[]f32,ao:int,ar:int,ah:int,ai:int,ak:int,b:[]f32,bo:int,br:int,bh:int,bk:int,bj:int,
-    c:[]f32,co:int,cr:int,ch:int,ci:int,cj:int) #export_c {
+    c:[]f32,co:int,cr:int,ch:int,ci:int,cj:int) #export_c #effects(all) {
     tm:=(m+CK_TILE-1)/CK_TILE;tn:=(n+CK_TILE-1)/CK_TILE;per:=tm*tn;bt:=item/per;t:=item%per;
     i0:=t/tn*CK_TILE;j0:=t%tn*CK_TILE;r:=bt/heads;h:=bt%heads;
     abase:=ao+r*ar+h*ah;bbase:=bo+r*br+h*bh;cbase:=co+r*cr+h*ch;
@@ -120,7 +120,7 @@ ck_mm_nn :: (item:int,m:int,n:int,k:int,heads:int,mode:int,alpha:f32,acc:int,
 }
 ck_mm_nt :: (item:int,m:int,n:int,k:int,heads:int,mode:int,alpha:f32,acc:int,
     a:[]f32,ao:int,ar:int,ah:int,ai:int,ak:int,b:[]f32,bo:int,br:int,bh:int,bk:int,bj:int,
-    c:[]f32,co:int,cr:int,ch:int,ci:int,cj:int) #export_c {
+    c:[]f32,co:int,cr:int,ch:int,ci:int,cj:int) #export_c #effects(all) {
     tm:=(m+CK_TILE-1)/CK_TILE;tn:=(n+CK_TILE-1)/CK_TILE;per:=tm*tn;bt:=item/per;t:=item%per;
     i0:=t/tn*CK_TILE;j0:=t%tn*CK_TILE;r:=bt/heads;h:=bt%heads;
     abase:=ao+r*ar+h*ah;bbase:=bo+r*br+h*bh;cbase:=co+r*cr+h*ch;
@@ -150,7 +150,7 @@ ck_mm_nt :: (item:int,m:int,n:int,k:int,heads:int,mode:int,alpha:f32,acc:int,
 }
 ck_mm_tn :: (item:int,m:int,n:int,k:int,heads:int,mode:int,alpha:f32,acc:int,
     a:[]f32,ao:int,ar:int,ah:int,ai:int,ak:int,b:[]f32,bo:int,br:int,bh:int,bk:int,bj:int,
-    c:[]f32,co:int,cr:int,ch:int,ci:int,cj:int) #export_c {
+    c:[]f32,co:int,cr:int,ch:int,ci:int,cj:int) #export_c #effects(all) {
     tm:=(m+CK_TILE-1)/CK_TILE;tn:=(n+CK_TILE-1)/CK_TILE;per:=tm*tn;bt:=item/per;t:=item%per;
     i0:=t/tn*CK_TILE;j0:=t%tn*CK_TILE;r:=bt/heads;h:=bt%heads;
     abase:=ao+r*ar+h*ah;bbase:=bo+r*br+h*bh;cbase:=co+r*cr+h*ch;
@@ -203,17 +203,17 @@ ck_lo :: (w:u64)->u32 {return cast(u32)(w&0xffffffff);}
 ck_hi :: (w:u64)->u32 {return cast(u32)(w>>32);}
 // y = bf16(x) for values 4 item ..< 4 item + 4 inside count (zero past it).
 ck_x :: (x:[]f32,e:int,count:int)->f32 {v:f32=0;if e<count {v=x[e];}return v;}
-ck_half :: (item:int,count:int,x:[]f32,y:[]u64) #export_c {
+ck_half :: (item:int,count:int,x:[]f32,y:[]u64) #export_c #effects(all) {
     e:=4*item;y[item]=ck_quad(ck_x(x,e,count),ck_x(x,e+1,count),ck_x(x,e+2,count),ck_x(x,e+3,count));
 }
 // a = bf16(relu(u)^2), ck_relu2's FP32 arithmetic stored in BF16.
 ck_r2 :: (u:[]f32,e:int,count:int)->f32 {v:=ck_x(u,e,count);if !(v>0) {v=0;}return v*v;}
-ck_relu2_half :: (item:int,count:int,u:[]f32,a:[]u64) #export_c {
+ck_relu2_half :: (item:int,count:int,u:[]f32,a:[]u64) #export_c #effects(all) {
     e:=4*item;a[item]=ck_quad(ck_r2(u,e,count),ck_r2(u,e+1,count),ck_r2(u,e+2,count),ck_r2(u,e+3,count));
 }
 // out = (acc ? out : 0) + the sum of split partial products in slice
 // order, one item per value: the end of a product split along k.
-ck_ksum :: (item:int,count:int,split:int,acc:int,part:[]f32,out:[]f32) #export_c {
+ck_ksum :: (item:int,count:int,split:int,acc:int,part:[]f32,out:[]f32) #export_c #effects(all) {
     s:f32=0;for sl:0..<split {s+=part[sl*count+item];}
     if acc==1 {s=out[item]+s;}
     out[item]=s;
@@ -249,7 +249,7 @@ ck_row :: (f:int,g:int,hi:int)->int {return 32*(f/2)+4*g+2*(f%2)+hi;}
 ck_col :: (e:int,c:int)->int {return 32*(e/4)+4*c+e%4;}
 ck_mma :: (item:int,m:int,n:int,k:int,heads:int,mode:int,alpha:f32,acc:int,split:int,
     a:[]u64,ao:int,ar:int,ah:int,ai:int,ak:int,b:[]u64,bo:int,br:int,bh:int,bk:int,bj:int,
-    c:[]f32,c16:[]u64,co:int,cr:int,ch:int,ci:int,cj:int) #export_c {
+    c:[]f32,c16:[]u64,co:int,cr:int,ch:int,ci:int,cj:int) #export_c #effects(all) {
     sl:=item%split;tile:=item/split;
     tm:=(m+CK_TILE-1)/CK_TILE;tn:=(n+CK_TILE-1)/CK_TILE;per:=tm*tn;bt:=tile/per;t:=tile%per;
     i0:=t/tn*CK_TILE;j0:=t%tn*CK_TILE;r:=bt/heads;h:=bt%heads;
@@ -373,7 +373,7 @@ CK_ROW_MAX :: 512;
 // The causal softmax of score row `item` (row i = item % t of a t x t
 // block), in place: p[j] = exp(s[j] - max) / sum for j <= i, 0 after.
 // max is over j <= i; sum adds the exponentials in the row order above.
-ck_softmax :: (item:int,t:int,s:[]f32) #export_c {
+ck_softmax :: (item:int,t:int,s:[]f32) #export_c #effects(all) {
     i:=item%t;base:=item*t;top:[32]f32;part:[32]f32;ev:[512]f32;
     for thread:0..<CK_ROW {
         best:f32= -3.0e38;
@@ -393,7 +393,7 @@ ck_softmax :: (item:int,t:int,s:[]f32) #export_c {
 }
 // Its backward, in place on dp: ds[j] = p[j] * (dp[j] - dot) for j <= i and
 // 0 after, dot = sum over j <= i of p[j] dp[j] in the row order above.
-ck_softmax_back :: (item:int,t:int,p:[]f32,dp:[]f32) #export_c {
+ck_softmax_back :: (item:int,t:int,p:[]f32,dp:[]f32) #export_c #effects(all) {
     i:=item%t;base:=item*t;part:[32]f32;
     for thread:0..<CK_ROW {
         sum:f32=0;
@@ -407,7 +407,7 @@ ck_softmax_back :: (item:int,t:int,p:[]f32,dp:[]f32) #export_c {
 }
 CK_EPS :: 0.00001f32;
 // rms of row `item` of width d: r = sqrt(sum(x^2)/d + 1e-5), h = x / r.
-ck_rms :: (item:int,d:int,x:[]f32,h:[]f32,r:[]f32) #export_c {
+ck_rms :: (item:int,d:int,x:[]f32,h:[]f32,r:[]f32) #export_c #effects(all) {
     base:=item*d;part:[32]f32;
     for thread:0..<CK_ROW {
         sum:f32=0;
@@ -423,7 +423,7 @@ ck_rms :: (item:int,d:int,x:[]f32,h:[]f32,r:[]f32) #export_c {
 }
 // Its backward into the residual gradient g: g = (acc ? g : 0) +
 // (dh - h * dot/d) / r, dot = sum of dh*h in the row order above.
-ck_rms_back :: (item:int,d:int,acc:int,h:[]f32,r:[]f32,dh:[]f32,g:[]f32) #export_c {
+ck_rms_back :: (item:int,d:int,acc:int,h:[]f32,r:[]f32,dh:[]f32,g:[]f32) #export_c #effects(all) {
     base:=item*d;part:[32]f32;
     for thread:0..<CK_ROW {
         sum:f32=0;
@@ -439,17 +439,17 @@ ck_rms_back :: (item:int,d:int,acc:int,h:[]f32,r:[]f32,dh:[]f32,g:[]f32) #export
 
 // One item per token n of a micro-batch: input and target ids of row
 // n / t, starting at offs[first + n/t] in the data.
-ck_ids :: (item:int,t:int,first:int,offs:[]int,data:[]u8,ids:[]u8,tg:[]u8) #export_c {
+ck_ids :: (item:int,t:int,first:int,offs:[]int,data:[]u8,ids:[]u8,tg:[]u8) #export_c #effects(all) {
     at:=offs[first+item/t]+item%t;ids[item]=data[at];tg[item]=data[at+1];
 }
 // x[n][c] = tok[id][c] + pos[n % t][c], one item per value.
-ck_embed :: (item:int,d:int,t:int,ids:[]u8,tok:[]f32,pos:[]f32,x:[]f32) #export_c {
+ck_embed :: (item:int,d:int,t:int,ids:[]u8,tok:[]f32,pos:[]f32,x:[]f32) #export_c #effects(all) {
     n:=item/d;c:=item%d;x[item]=tok[cast(int)ids[n]*d+c]+pos[(n%t)*d+c];
 }
 // Token-table gradient, one item per value (v, c): the sum over tokens n in
 // increasing order of g[n][c] where ids[n] == v, added to the old value
 // when acc is 1.
-ck_embed_back :: (item:int,d:int,count:int,acc:int,ids:[]u8,g:[]f32,out:[]f32) #export_c {
+ck_embed_back :: (item:int,d:int,count:int,acc:int,ids:[]u8,g:[]f32,out:[]f32) #export_c #effects(all) {
     v:=item/d;c:=item%d;s:f32=0;
     for n:0..<count {if cast(int)ids[n]==v {s+=g[n*d+c];}}
     if acc==1 {s=out[item]+s;}
@@ -457,19 +457,19 @@ ck_embed_back :: (item:int,d:int,count:int,acc:int,ids:[]u8,g:[]f32,out:[]f32) #
 }
 // Position-table gradient, one item per value (p, c): the sum over rows in
 // increasing order of g[row*t + p][c].
-ck_pos_back :: (item:int,d:int,t:int,rows:int,acc:int,g:[]f32,out:[]f32) #export_c {
+ck_pos_back :: (item:int,d:int,t:int,rows:int,acc:int,g:[]f32,out:[]f32) #export_c #effects(all) {
     p:=item/d;c:=item%d;s:f32=0;
     for row:0..<rows {s+=g[(row*t+p)*d+c];}
     if acc==1 {s=out[item]+s;}
     out[item]=s;
 }
 // a = relu(u)^2, and its backward du = da * (2 relu(u)) where u > 0, else 0.
-ck_relu2 :: (item:int,u:[]f32,a:[]f32) #export_c {v:=u[item];if !(v>0) {v=0;}a[item]=v*v;}
-ck_relu2_back :: (item:int,u:[]f32,da:[]f32) #export_c {v:=u[item];g:f32=0;if v>0 {g=da[item]*(2*v);}da[item]=g;}
+ck_relu2 :: (item:int,u:[]f32,a:[]f32) #export_c #effects(all) {v:=u[item];if !(v>0) {v=0;}a[item]=v*v;}
+ck_relu2_back :: (item:int,u:[]f32,da:[]f32) #export_c #effects(all) {v:=u[item];g:f32=0;if v>0 {g=da[item]*(2*v);}da[item]=g;}
 // Cross-entropy of token `item` over v logits: loss = log(sum exp(l - max))
 // - (l[target] - max), sum in index order; dl = (exp(l - max)/sum -
 // [j == target]) * scale.
-ck_ce :: (item:int,v:int,scale:f32,logits:[]f32,tg:[]u8,loss:[]f32,dl:[]f32) #export_c {
+ck_ce :: (item:int,v:int,scale:f32,logits:[]f32,tg:[]u8,loss:[]f32,dl:[]f32) #export_c #effects(all) {
     base:=item*v;y:=cast(int)tg[item];mx:=logits[base];
     for j:1..<v {if logits[base+j]>mx {mx=logits[base+j];}}
     sum:f32=0;for j:0..<v {sum+=exp(logits[base+j]-mx);}
@@ -480,7 +480,7 @@ ck_ce :: (item:int,v:int,scale:f32,logits:[]f32,tg:[]u8,loss:[]f32,dl:[]f32) #ex
 // is 1) over x[item*4096 ..< item*4096+4096] inside count. Thread t adds
 // t, t+256, ... in order; the item adds the 256 partials in thread order.
 CK_CHUNK :: 4096;
-ck_sum :: (item:int,count:int,square:int,x:[]f32,out:[]f32) #export_c {
+ck_sum :: (item:int,count:int,square:int,x:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;
     for thread:0..<CK_T {
         s:f32=0;
@@ -493,7 +493,7 @@ ck_sum :: (item:int,count:int,square:int,x:[]f32,out:[]f32) #export_c {
 // AdamW on one value, in PyTorch's single-tensor order: the gradient times
 // the clip scale; p *= 1 - lr*decay; m += (1-b1)(g - m); v = v*b2 +
 // (1-b2)*g*g; p += -(lr/c1) * m / (sqrt(v)/sqrt(c2) + eps).
-ck_adamw :: (item:int,keep:f32,b2:f32,wb1:f32,wb2:f32,step:f32,root2:f32,eps:f32,scale:f32,p:[]f32,g:[]f32,m:[]f32,v:[]f32) #export_c {
+ck_adamw :: (item:int,keep:f32,b2:f32,wb1:f32,wb2:f32,step:f32,root2:f32,eps:f32,scale:f32,p:[]f32,g:[]f32,m:[]f32,v:[]f32) #export_c #effects(all) {
     gr:=g[item]*scale;pv:=p[item]*keep;
     mv:=m[item]+wb1*(gr-m[item]);
     vv:=v[item]*b2+wb2*gr*gr;

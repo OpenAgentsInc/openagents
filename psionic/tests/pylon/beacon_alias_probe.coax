@@ -5,7 +5,7 @@ PylonBeaconAliasProbe :: struct {
     before_code:int;borrowed_code:int;stable_code:int;
     borrowed_count:int;stable_count:int;borrowed_tail:int;stable_tail:int;
 }
-pylon_beacon_alias_probe :: ()->PylonBeaconAliasProbe #export_c {
+pylon_beacon_alias_probe :: ()->PylonBeaconAliasProbe #export_c #effects(all) {
     scratch:[512]u8;stable_tags:[512]u8;
     borrowed := pb_tags_for(scratch[..],PB_CONTENT,"1791400300","");
     stable := pb_tags_for(stable_tags[..],PB_CONTENT,"1791400300","");

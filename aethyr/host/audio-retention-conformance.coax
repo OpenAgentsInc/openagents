@@ -5,4 +5,4 @@ HostAudioRetention :: struct {created:int;retired:int;held:int;released:int;}
  q:=HostAudioRetention.{created=6,retired=6,held=6};#assert harr_accept(q);
  q.created=5;#assert !harr_accept(q);q.created=6;q.retired=5;#assert !harr_accept(q);q.retired=6;q.held=5;#assert !harr_accept(q);q.held=6;q.released=1;#assert !harr_accept(q);
 }
-harr_accept :: (q:HostAudioRetention)->bool #export_c {return q.created==6&&q.retired==6&&q.held==6&&q.released==0;}
+harr_accept :: (q:HostAudioRetention)->bool #export_c #effects(all) {return q.created==6&&q.retired==6&&q.held==6&&q.released==0;}

@@ -257,7 +257,7 @@ pi_gaussian :: (im: PiImg, radius_in: f64, lo: []int) {
 // coordinates cut to ints, an edge list, polygon_generic's scan lines). Its float arithmetic is
 // the wheel's: float32, and x = (y - y0) * dx + x0 one fused multiply-add (clang contracts it).
 // At most 64 points (false past them).
-fmaf :: (a: f32, b: f32, c: f32) -> f32 #foreign;
+fmaf :: (a: f32, b: f32, c: f32) -> f32 #foreign #effects(all);
 PiEdge :: struct { x0: int; y0: int; xmin: int; ymin: int; xmax: int; ymax: int; dx: f32; }
 pi_roundf :: (x: f32) -> f32 {
   d := cast(f64) x; t := ifx d < 0.0 then 0.0 - floor(0.0 - d) else floor(d);

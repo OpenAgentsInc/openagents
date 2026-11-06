@@ -69,10 +69,10 @@ StgModel :: struct {
     layers:int;weight:[128]int;kv:[128]int;macs:[128]int;attend:[128]int;
     embed:int;head:int;norm:int;head_macs:int;act:int;out:int;tied:bool;
 }
-stg_in :: (x:int,lo:int,hi:int)->bool {return x>=lo && x<=hi;}
+stg_in :: (x:int,lo:int,hi:int)->bool #effects(all) {return x>=lo && x<=hi;}
 // The larger of two counts below 2^53, without a comparison.
-stg_max :: (a:int,b:int)->int {return (a+b+cast(int)abs(f64(a-b)))/2;}
-stg_valid :: (m:StgModel)->bool {
+stg_max :: (a:int,b:int)->int #effects(all) {return (a+b+cast(int)abs(f64(a-b)))/2;}
+stg_valid :: (m:StgModel)->bool #effects(all) {
     if !stg_in(m.layers,1,STG_LAYERS_MAX) {return false;}
     for j:0..<m.layers {
         if !stg_in(m.weight[j],1,STG_BIG) || !stg_in(m.macs[j],0,STG_BIG) || !stg_in(m.kv[j],0,STG_RATE) || !stg_in(m.attend[j],0,STG_RATE) {return false;}
@@ -81,7 +81,7 @@ stg_valid :: (m:StgModel)->bool {
         stg_in(m.act,0,STG_RATE) && stg_in(m.out,0,STG_BIG);
 }
 // The bytes of a stage running layers from..<to over `context` positions.
-stg_bytes :: (m:StgModel,from:int,to:int,first:bool,last:bool,context:int)->int {
+stg_bytes :: (m:StgModel,from:int,to:int,first:bool,last:bool,context:int)->int #effects(all) {
     b:=m.act*context;
     for j:from..<to {b+=m.weight[j]+m.kv[j]*context;}
     if first {b+=m.embed;}
@@ -89,7 +89,7 @@ stg_bytes :: (m:StgModel,from:int,to:int,first:bool,last:bool,context:int)->int 
     return b;
 }
 // Its multiply-adds for one token at the end of the context.
-stg_macs :: (m:StgModel,from:int,to:int,last:bool,context:int)->int {
+stg_macs :: (m:StgModel,from:int,to:int,last:bool,context:int)->int #effects(all) {
     c:=0;for j:from..<to {c+=m.macs[j]+m.attend[j]*context;}
     if last {c+=m.head_macs;}
     return c;
@@ -217,7 +217,7 @@ slowest stage as a brute force that tries every split.
 // those multiply-adds. cause: the bytes the refused stage or total needed
 // beyond its budget.
 StgPlan :: struct {status:StgStatus;stages:int;cause:int;slowest:int;cut:[17]int;bytes:[16]int;kv:[16]int;macs:[16]int;}
-stg_plan :: (m:StgModel,budget:[]int,context:int)->StgPlan {
+stg_plan :: (m:StgModel,budget:[]int,context:int)->StgPlan #effects(all) {
     n:=budget.count;p:=StgPlan.{stages=n};
     if !stg_valid(m) {p.status=StgStatus.model;return p;}
     if n<1 || n>STG_STAGES_MAX || n>m.layers {p.status=StgStatus.stages;return p;}
@@ -306,9 +306,9 @@ order and writes nothing when it refuses. It refuses a message that:
 StgRefusal :: enum u8 {none;partial;version;model;layer;position;geometry;count;excess;checksum;room;}
 StgExpect :: struct {model:u64;layer:int;start:int;width:int;}
 StgReceived :: struct {refusal:StgRefusal;count:int;}
-stg_message_bytes :: (count:int,width:int)->int #export_c {return 4*(STG_HEAD+count*width);}
+stg_message_bytes :: (count:int,width:int)->int #export_c #effects(all) {return 4*(STG_HEAD+count*width);}
 // A chained hash over every word but word 8, which holds it.
-stg_sum :: (w:[]u32)->u32 {
+stg_sum :: (w:[]u32)->u32 #effects(all) {
     h:=0;for k:0..<w.count {if k!=8 {h=(h*31+cast(int)w[k]+1)%STG_HASH;}}
     return cast(u32)h;
 }
@@ -316,7 +316,7 @@ stg_sum :: (w:[]u32)->u32 {
 // written, or -1 when the rows are not whole rows of 1 to 64 positions of a
 // width up to 8,192, the layer is not after a first stage, start is
 // negative, or out is too small.
-stg_pack :: (model:u64,layer:int,start:int,width:int,rows:[]f32,out:[]u32)->int {
+stg_pack :: (model:u64,layer:int,start:int,width:int,rows:[]f32,out:[]u32)->int #effects(all) {
     if !stg_in(width,1,STG_WIDTH_MAX) || layer<1 || start<0 {return -1;}
     count:=rows.count/width;n:=STG_HEAD+rows.count;
     if !stg_in(count,1,STG_TOKENS_MAX) || count*width!=rows.count || out.count<n {return -1;}
@@ -329,7 +329,7 @@ stg_pack :: (model:u64,layer:int,start:int,width:int,rows:[]f32,out:[]u32)->int 
 // The receiver's checks, in order: a whole header, the version, the model,
 // its own first layer, the next position it expects, its width and f32, a
 // count of 1 to 64 rows, exactly that many values, the checksum.
-stg_check :: (want:StgExpect,wire:[]u32)->StgRefusal {
+stg_check :: (want:StgExpect,wire:[]u32)->StgRefusal #effects(all) {
     if wire.count<STG_HEAD {return StgRefusal.partial;}
     if wire[0]!=STG_VERSION {return StgRefusal.version;}
     if wire[1]!=cast(u32)(want.model&4294967295) || wire[2]!=cast(u32)(want.model>>32) {return StgRefusal.model;}
@@ -346,7 +346,7 @@ stg_check :: (want:StgExpect,wire:[]u32)->StgRefusal {
 }
 // Check, then write the rows back bit for bit. Nothing is written on a
 // refusal.
-stg_receive :: (want:StgExpect,wire:[]u32,out:[]f32)->StgReceived {
+stg_receive :: (want:StgExpect,wire:[]u32,out:[]f32)->StgReceived #effects(all) {
     r:=StgReceived.{refusal=stg_check(want,wire)};
     if r.refusal!=StgRefusal.none {return r;}
     count:=cast(int)wire[5];
@@ -383,11 +383,11 @@ StgRun :: struct {
 // Floats each stage owns for requests of up to `tokens` tokens: two
 // residual buffers, and work for a layer or the readout. Words of one
 // boundary mailbox.
-stg_stage_floats :: (s:MsShape,tokens:int)->int #export_c {
+stg_stage_floats :: (s:MsShape,tokens:int)->int #export_c #effects(all) {
     w:=ms_layer_work(s,tokens);r:=s.width+s.vocab;
     return 2*tokens*s.width+stg_max(w,r);
 }
-stg_mailbox_words :: (s:MsShape,tokens:int)->int #export_c {return STG_HEAD+tokens*s.width;}
+stg_mailbox_words :: (s:MsShape,tokens:int)->int #export_c #effects(all) {return STG_HEAD+tokens*s.width;}
 // Run requests (tokens[starts[r]..<starts[r+1]]) through stages cut[k]..<cut[k+1].
 // digests[k] is the artifact stage k loaded; the sender stamps its own.
 // logits[r*vocab..] receives request r's last-position logits.

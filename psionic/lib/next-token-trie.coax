@@ -28,7 +28,7 @@ NT_TEKKEN :: 417+166+1;
 NT_END_ID :: 2;
 // store holds the fixture's bytes and then every byte value once, NT_STORE in all.
 NT_STORE :: MS_TEKKEN_DATA_BYTES+256;
-nt_tekken :: (pieces:[]string,ids:[]int,store:[]u8)->int {
+nt_tekken :: (pieces:[]string,ids:[]int,store:[]u8)->int #effects(all) {
     n:=0;have:[256]bool;
     for i:0..<MS_TEKKEN_DATA_BYTES {store[i]=MS_TEKKEN_DATA[i];}
     for c:0..<256 {store[MS_TEKKEN_DATA_BYTES+255-c]=cast(u8)(255-c);}
@@ -169,7 +169,7 @@ NT_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"
 }
 
 // book:begin trie
-nt_build :: (pieces:[]string,byte:[]u8,child:[]int,sibling:[]int,first:[]int,after:[]int)->NtBuilt #export_c {
+nt_build :: (pieces:[]string,byte:[]u8,child:[]int,sibling:[]int,first:[]int,after:[]int)->NtBuilt #export_c #effects(all) {
     if !nx_vocab(pieces.count) {return NtBuilt.{status=NxStatus.shape};}
     room:=nx_min(nx_min(byte.count,child.count),nx_min(sibling.count,first.count));
     if room<1 || after.count<pieces.count {return NtBuilt.{status=NxStatus.capacity};}
@@ -196,7 +196,7 @@ nt_build :: (pieces:[]string,byte:[]u8,child:[]int,sibling:[]int,first:[]int,aft
 // (node, the state before its byte); a node whose byte leaves the grammar or
 // reaches a dead state is skipped with all its descendants. passes counts the
 // nodes visited.
-nt_mask :: (t:NtTrie,g:NxGrammar,state:int,end_token:int,out:[]u8,stack:[]int,overlap:bool)->NxResult #export_c {
+nt_mask :: (t:NtTrie,g:NxGrammar,state:int,end_token:int,out:[]u8,stack:[]int,overlap:bool)->NxResult #export_c #effects(all) {
     v:=t.after.count;
     if !nx_vocab(v) || end_token<0 || end_token>=v {return NxResult.{status=NxStatus.shape};}
     if g.next.count<g.states*256 || g.accepting.count<g.states || g.live.count<g.states || out.count<v || stack.count<2 {return NxResult.{status=NxStatus.capacity};}
@@ -221,7 +221,7 @@ nt_mask :: (t:NtTrie,g:NxGrammar,state:int,end_token:int,out:[]u8,stack:[]int,ov
     return NxResult.{written=v,kept=allowed,passes=visited};
 }
 // One row per state: masks[s*V..<(s+1)*V]. Dead states get an empty row.
-nt_table :: (t:NtTrie,g:NxGrammar,end_token:int,masks:[]u8,stack:[]int)->NxResult #export_c {
+nt_table :: (t:NtTrie,g:NxGrammar,end_token:int,masks:[]u8,stack:[]int)->NxResult #export_c #effects(all) {
     v:=t.after.count;total:=NxResult.{};
     if masks.count<g.states*v {return NxResult.{status=NxStatus.capacity};}
     for s:0..<g.states {
@@ -237,7 +237,7 @@ nt_table :: (t:NtTrie,g:NxGrammar,end_token:int,masks:[]u8,stack:[]int)->NxResul
 
 // book:begin guided
 // nx_guided with the mask read from the table instead of walked per token.
-nt_guided :: (logits:[]f32,g:NxGrammar,state:int,pieces:[]string,end_token:int,masks:[]u8,options:NxOptions,run:NxRun,cancel:bool,out:[]f64,work:NxWork,overlap:bool)->NxGuided #export_c {
+nt_guided :: (logits:[]f32,g:NxGrammar,state:int,pieces:[]string,end_token:int,masks:[]u8,options:NxOptions,run:NxRun,cancel:bool,out:[]f64,work:NxWork,overlap:bool)->NxGuided #export_c #effects(all) {
     v:=pieces.count;
     if logits.count!=v || state<0 || state>=g.states || masks.count<g.states*v {return NxGuided.{status=NxStatus.shape,state=state};}
     stops:=[1]int.[end_token];

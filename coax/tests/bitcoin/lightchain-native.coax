@@ -8,8 +8,8 @@ LcNative :: struct {
   ins: [8192] TxIn; outs: [8192] TxOut; items: [8192] TxItem;
   ids: [4096] u8; wids: [4096] u8; merkle: [4096] u8;
 }
-lc_native_size :: () -> int #export_c { return size_of(LcNative); }
-lc_native_headers :: (d: [] LcNative, raw: [] u8) -> int #export_c {
+lc_native_size :: () -> int #export_c #effects(all) { return size_of(LcNative); }
+lc_native_headers :: (d: [] LcNative, raw: [] u8) -> int #export_c #effects(all) {
   if raw.count % 80 != 0 { return -1; }
   if !bi_init(d[0].tree[..], CHAIN_REGTEST_PARAMS, d[0].links[..], d[0].entries[..], d[0].slots[..], d[0].chain[..]) { return -1; }
   for i: 0..<raw.count / 80 {
@@ -18,7 +18,7 @@ lc_native_headers :: (d: [] LcNative, raw: [] u8) -> int #export_c {
   }
   return d[0].tree[0].count;
 }
-lc_native_reorg :: (d: [] LcNative, table: [] u8, used: int, target: int, indices: [] int, raw: [] u8, offsets: [] int, stage: [] u8, batch: [] u8, small: int) -> LcResult #export_c {
+lc_native_reorg :: (d: [] LcNative, table: [] u8, used: int, target: int, indices: [] int, raw: [] u8, offsets: [] int, stage: [] u8, batch: [] u8, small: int) -> LcResult #export_c #effects(all) {
   blocks: [128] LcBlock;
   if indices.count > blocks.count || offsets.count != indices.count + 1 { return LcResult.{code=LC_CONTEXT}; }
   for i: 0..<indices.count {
@@ -30,14 +30,14 @@ lc_native_reorg :: (d: [] LcNative, table: [] u8, used: int, target: int, indice
   if small == 2 { w.path = d[0].path[0..<0]; }
   return lc_reorg_vartime(d[0].tree[..], table, used, target, blocks[0..<indices.count], stage, batch, w);
 }
-lc_native_status :: (d: [] LcNative, i: int) -> int #export_c { return cast(int) d[0].entries[i].status; }
-lc_native_frame :: (batch: [] u8, seq: u64, frame: [] u8) -> int #export_c {
+lc_native_status :: (d: [] LcNative, i: int) -> int #export_c #effects(all) { return cast(int) d[0].entries[i].status; }
+lc_native_frame :: (batch: [] u8, seq: u64, frame: [] u8) -> int #export_c #effects(all) {
   if kv_batch_check_vartime(batch).code != KV_OK || frame.count < batch.count + 8 { return -1; }
   for i: 0..<batch.count { frame[8+i] = batch[i]; }
   kv_seal_vartime(frame, batch.count, seq, 0); return batch.count + 8;
 }
-lc_native_open :: (file: [] u8, table: [] u8) -> KvOpen #export_c { return kv_open_vartime(file, table); }
-lc_native_muhash :: (table: [] u8, used: int, out: [] u8) -> int #export_c {
+lc_native_open :: (file: [] u8, table: [] u8) -> KvOpen #export_c #effects(all) { return kv_open_vartime(file, table); }
+lc_native_muhash :: (table: [] u8, used: int, out: [] u8) -> int #export_c #effects(all) {
   m := muhash_new(); at := 0; record: [10100] u8;
   while at < used {
     e := kv_entry_vartime(table, used, at); at = e.next;

@@ -67,7 +67,7 @@ The final assembly stays in Coax:
 
 <!-- source: psionic/lib/decision-answer.coax answer -->
 ```jai
-ps_answer :: (session:PsSession,prepared:PrResult,tokens:[]int,options:[]PtOption,temperature:f32,state:[]f32,out:[]f64,prob:[]f64,work:[]f32,overlap:bool)->PsAnswer #export_c {
+ps_answer :: (session:PsSession,prepared:PrResult,tokens:[]int,options:[]PtOption,temperature:f32,state:[]f32,out:[]f64,prob:[]f64,work:[]f32,overlap:bool)->PsAnswer #export_c #effects(all) {
     tag:=cast(u8)prepared.kind;
     if session.status!=PsOpenStatus.ok || prepared.status!=PrStatus.ok || !pt_question_count(tag,options.count) || !qr_valid(tag,prepared.slots,temperature) {return PsAnswer.{status=QxStatus.shape};}
     if tokens.count!=prepared.written {return PsAnswer.{status=QxStatus.capacity};}

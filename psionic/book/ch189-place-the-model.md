@@ -59,7 +59,7 @@ PlcPeer :: struct {live:bool;budget:int;macs:int;read:int;fetch:int;verify:int;h
 PlcFleet :: struct {peers:int;peer:[8]PlcPeer;lat:[8][8]int;bw:[8][8]int;deadline:int;}
 // Build the job for plan p of model m at `context` positions, with
 // boundary rows of `width` values and token ids of 4 bytes.
-plc_job :: (m:StgModel,p:StgPlan,context:int,width:int)->PlcJob {
+plc_job :: (m:StgModel,p:StgPlan,context:int,width:int)->PlcJob #effects(all) {
     j:=PlcJob.{stages=p.stages,entry=4};
     for i:0..<p.stages {
         a:=p.cut[i];b:=p.cut[i+1];last:=i==p.stages-1;
@@ -105,20 +105,20 @@ nanoseconds, rounded up. The time for `x` units at `rate` is
 <!-- source: psionic/lib/place.coax cost -->
 ```jai
 // x units at `rate` millions a second, in nanoseconds rounded up.
-plc_ns :: (x:int,rate:int)->int {return (x*1000+rate-1)/rate;}
+plc_ns :: (x:int,rate:int)->int #effects(all) {return (x*1000+rate-1)/rate;}
 // A stage's time for one token on a peer: the slower of its arithmetic and
 // its memory traffic (chapter 33's roofline).
-plc_compute :: (s:PlcStage,p:PlcPeer)->int {return stg_max(plc_ns(s.macs,p.macs),plc_ns(s.read,p.read));}
+plc_compute :: (s:PlcStage,p:PlcPeer)->int #effects(all) {return stg_max(plc_ns(s.macs,p.macs),plc_ns(s.read,p.read));}
 // Sending b bytes over a link, or from peer a to peer c: nothing on one
 // peer, -1 with no link.
-plc_send :: (lat:int,bw:int,b:int)->int {
+plc_send :: (lat:int,bw:int,b:int)->int #effects(all) {
     if bw==0 {return -1;}
     return lat+plc_ns(b,bw);
 }
-plc_hop :: (f:PlcFleet,a:int,c:int,b:int)->int {return ifx a==c then 0 else plc_send(f.lat[a][c],f.bw[a][c],b);}
+plc_hop :: (f:PlcFleet,a:int,c:int,b:int)->int #effects(all) {return ifx a==c then 0 else plc_send(f.lat[a][c],f.bw[a][c],b);}
 // Time until stage `index` is ready on a peer: fetch its package unless the
 // peer holds it, then hash every byte.
-plc_ready :: (s:PlcStage,p:PlcPeer,index:int)->int {
+plc_ready :: (s:PlcStage,p:PlcPeer,index:int)->int #effects(all) {
     t:=plc_ns(s.package,p.verify);
     if (p.holds>>index)&1==0 {t+=plc_ns(s.package,p.fetch);}
     return t;
@@ -127,7 +127,7 @@ plc_ready :: (s:PlcStage,p:PlcPeer,index:int)->int {
 // every stage and every hop, back out. The period: the busiest step, where
 // a stage's step is its compute and its send.
 PlcCost :: struct {latency:int;period:int;ready:int;compute:[8]int;hop:[9]int;}
-plc_eval :: (j:PlcJob,f:PlcFleet,peer:[]int)->PlcCost {
+plc_eval :: (j:PlcJob,f:PlcFleet,peer:[]int)->PlcCost #effects(all) {
     e:PlcCost;e.hop[0]=plc_hop(f,0,peer[0],j.entry);e.latency=e.hop[0];e.period=e.hop[0];
     for s:0..<j.stages {
         next:=ifx s==j.stages-1 then 0 else peer[s+1];
@@ -256,19 +256,19 @@ PlcPlacement :: struct {
     latency:int;period:int;ready:int;compute:[8]int;hop:[9]int;
     stage:int;who:int;gap:int;set:int;
 }
-plc_count :: (mask:int)->int {n:=0;m:=mask;while m!=0 {n+=m&1;m=m>>1;}return n;}
+plc_count :: (mask:int)->int #effects(all) {n:=0;m:=mask;while m!=0 {n+=m&1;m=m>>1;}return n;}
 // May stage s run on peer a? It must be live and allowed; it must fit and,
 // unless it stays where it was, be ready by the deadline.
-plc_allowed :: (j:PlcJob,f:PlcFleet,s:int,a:int)->bool {return f.peer[a].live && (j.deny[s]>>a)&1==0;}
-plc_fits :: (j:PlcJob,f:PlcFleet,old:[]int,s:int,a:int)->bool {
+plc_allowed :: (j:PlcJob,f:PlcFleet,s:int,a:int)->bool #effects(all) {return f.peer[a].live && (j.deny[s]>>a)&1==0;}
+plc_fits :: (j:PlcJob,f:PlcFleet,old:[]int,s:int,a:int)->bool #effects(all) {
     p:=f.peer[a];
     if !plc_allowed(j,f,s,a) || j.stage[s].bytes>p.budget {return false;}
     return (old.count>0 && old[s]==a) || plc_ready(j.stage[s],p,s)<=f.deadline;
 }
 // Is (m, c) better than the best so far (bm, bc)? Fewer moves, then lower
 // cost; an empty best (bc < 0) loses to anything.
-plc_better :: (m:int,c:int,bm:int,bc:int)->bool {return bc<0 || m<bm || (m==bm && c<bc);}
-plc_place :: (j:PlcJob,f:PlcFleet,goal:PlcGoal,old:[]int)->PlcPlacement {
+plc_better :: (m:int,c:int,bm:int,bc:int)->bool #effects(all) {return bc<0 || m<bm || (m==bm && c<bc);}
+plc_place :: (j:PlcJob,f:PlcFleet,goal:PlcGoal,old:[]int)->PlcPlacement #effects(all) {
     r:=PlcPlacement.{goal=goal,stages=j.stages};n:=j.stages;P:=f.peers;
     if !plc_valid(j,f,old) {r.status=PlcStatus.input;return r;}
     // Each stage needs a peer it fits on; else name the closest miss.
@@ -402,7 +402,7 @@ In the example's fleet, with stages on (1, 2):
 // it has one stage; later jobs split it into more. The first that places
 // wins; when none does, the last job's refusal says what to change.
 PlcChoice :: struct {status:PlcStatus;which:int;placed:PlcPlacement;}
-plc_choose :: (jobs:[]PlcJob,f:PlcFleet,goal:PlcGoal)->PlcChoice {
+plc_choose :: (jobs:[]PlcJob,f:PlcFleet,goal:PlcGoal)->PlcChoice #effects(all) {
     c:=PlcChoice.{status=PlcStatus.input};zero:[1]int;none:=zero[0..<0];
     for k:0..<jobs.count {
         j:=jobs[k];c.which=k;

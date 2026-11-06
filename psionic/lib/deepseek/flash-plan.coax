@@ -23,13 +23,13 @@ DV_EXPERTS :: 15360;DV_ACTIVE :: 240;   // 40 layers x 384 routed experts; 40 x 
 // of RAM with 8 GiB kept for the system, 37.6 GB free on the NVMe disk. Disk
 // reads are measured: 4 GiB of 16 MiB direct reads in 0.666 s. The PCIe 4.0
 // x16 host-to-GPU rate is modeled, not measured.
-dv_this_host :: ()->DvHost #export_c {
+dv_this_host :: ()->DvHost #export_c #effects(all) {
     return DvHost.{gpu=17171480576,ram=134828441600,reserve=8589934592,disk_free=37567934464,gpu_bw=716800000000,link_bw=25000000000,disk_bw=6447000000};
 }
 // book:end host
 
 // book:begin plan
-dv_plan :: (b:DvBytes,h:DvHost,context:int)->DvPlan #export_c {
+dv_plan :: (b:DvBytes,h:DvHost,context:int)->DvPlan #export_c #effects(all) {
     if b.routed<DV_EXPERTS || b.routed%DV_EXPERTS!=0 || b.shared<1 || b.engram<1 || b.dense<1 || b.embed<1 {return DvPlan.{status=DvVerdict.bytes};}
     if h.gpu<1 || h.ram<1 || h.reserve<0 || h.disk_free<0 || h.gpu_bw<1 || h.link_bw<1 || h.disk_bw<1 {return DvPlan.{status=DvVerdict.bytes};}
     kv:=dk_flash_cache_budget(context,1,0,h.gpu,h.gpu);if kv.status!=DkStatus.ok {return DvPlan.{status=DvVerdict.cache};}
@@ -55,7 +55,7 @@ dv_plan :: (b:DvBytes,h:DvHost,context:int)->DvPlan #export_c {
     return p;
 }
 // book:end plan
-dv_verdict_name :: (v:DvVerdict)->string {
+dv_verdict_name :: (v:DvVerdict)->string #effects(all) {
     names:=[6]string.["ok","bytes: a byte count or host rate is not positive","cache: the KV cache plan refused the context",
         "gpu: the never-streamed weights, cache and two expert slots exceed the GPU","ram: host memory cannot hold one expert per layer",
         "disk: the text checkpoint does not fit on the free disk"];

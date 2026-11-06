@@ -82,7 +82,7 @@ net_label :: (s: [] Belt, buf: [] u8) -> int {
   for i: 0..<L[0].code_n { c := L[0].code[i]; if c >= 'a' && c <= 'z' { c -= 32; } if n < buf.count { buf[n] = c; n += 1; } }
   return n;
 }
-belt_socket_opened :: (s: [] Belt, id: int) #export_c { lr_opened(s[0].lock[..], id); }
+belt_socket_opened :: (s: [] Belt, id: int) #export_c #effects(all) { lr_opened(s[0].lock[..], id); }
 
 // Both hold the same game: what the save keeps, loaded into a fresh start (the view stays).
 net_rebase :: (s: [] Belt, text: string) -> bool {

@@ -95,7 +95,7 @@ RrAuth :: struct { keys: [256] u8; n: int; }    // RR_KEYS x 32 bytes
 }
 // One message read by ms_read: error and type are its codes, has_sub whether
 // a subscription id was read (a refusal then names it in CLOSED).
-rr_message :: (error: int, type: int, has_sub: bool) -> RrRoute {
+rr_message :: (error: int, type: int, has_sub: bool) -> RrRoute #effects(all) {
   if error != RR_MS_OK {
     if error == RR_MS_TOO_MANY { return RrRoute.{action = RR_CLOSED, reason = RR_RS_FILTERS}; }
     if error == RR_MS_SUB { return RrRoute.{action = RR_NOTICE, reason = RR_RS_SUBID}; }
@@ -118,7 +118,7 @@ rr_message :: (error: int, type: int, has_sub: bool) -> RrRoute {
 // A REQ read with `filters` filters: none is refused (CLOSED "invalid: malformed
 // filter"), as the Rust relay refuses ["REQ", sub] (2026-10-30 differential).
 // message_server.coax already caps the count at 16.
-rr_req_filters :: (filters: int) -> int {
+rr_req_filters :: (filters: int) -> int #effects(all) {
   if filters < 1 { return RR_RS_FILTER; }
   return RR_RS_ACCEPT;
 }
@@ -129,7 +129,7 @@ rr_req_filters :: (filters: int) -> int {
   #assert rr_http(RR_WSS_MORE) == RR_H_WAIT && rr_http(RR_WSS_OK) == RR_H_UPGRADE && rr_http(RR_WSS_NIP11) == RR_H_NIP11;
   #assert rr_http(2) == RR_H_BAD && rr_http(8) == RR_H_BAD && rr_http(10) == RR_H_BAD;
 }
-rr_http :: (status: int) -> int {
+rr_http :: (status: int) -> int #effects(all) {
   if status == RR_WSS_MORE { return RR_H_WAIT; }
   if status == RR_WSS_OK { return RR_H_UPGRADE; }
   if status == RR_WSS_NIP11 { return RR_H_NIP11; }
@@ -144,7 +144,7 @@ rr_http :: (status: int) -> int {
   #assert rr_frame_read(RR_WS_FRAME_OK).action == RR_F_NEXT;
 }
 // wss_frame_read's status.
-rr_frame_read :: (status: int) -> RrFrame {
+rr_frame_read :: (status: int) -> RrFrame #effects(all) {
   if status == RR_WS_FRAME_MORE { return RrFrame.{action = RR_F_WAIT}; }
   if status == RR_WS_FRAME_TOO_BIG { return RrFrame.{action = RR_F_CLOSE, code = RR_WS_CLOSE_TOO_BIG}; }
   if status != RR_WS_FRAME_OK { return RrFrame.{action = RR_F_CLOSE, code = RR_WS_CLOSE_PROTOCOL}; }
@@ -159,7 +159,7 @@ rr_frame_read :: (status: int) -> RrFrame {
   #assert rr_frame_event(5, 1).action == RR_F_ERROR && rr_frame_event(9, 1).action == RR_F_ERROR;
 }
 // ws_take's event, and the assembled message's opcode.
-rr_frame_event :: (ev: int, op: int) -> RrFrame {
+rr_frame_event :: (ev: int, op: int) -> RrFrame #effects(all) {
   if ev == RR_WS_EV_MESSAGE { return RrFrame.{action = ifx op == RR_WS_OP_TEXT then RR_F_TEXT else RR_F_BINARY}; }
   if ev == RR_WS_EV_PING { return RrFrame.{action = RR_F_PONG}; }
   if ev == RR_WS_EV_CLOSE { return RrFrame.{action = RR_F_CLOSE, code = RR_WS_CLOSE_NORMAL}; }
@@ -178,13 +178,13 @@ rr_frame_event :: (ev: int, op: int) -> RrFrame {
   #assert rr_next_gen(0) == 1 && rr_next_gen(41) == 42;
 }
 // handles[i] < 0 marks a free slot.
-rr_free_slot :: (handles: [] int) -> int {
+rr_free_slot :: (handles: [] int) -> int #effects(all) {
   for i: 0..<handles.count { if handles[i] < 0 { return i; } }
   return -1;
 }
 // Every accepted connection gets its own generation: a NIP-42 answer is
 // bound to it, so a reconnect needs a new challenge.
-rr_next_gen :: (gen: int) -> int { return gen + 1; }
+rr_next_gen :: (gen: int) -> int #effects(all) { return gen + 1; }
 
 #test "deadlines: a slow HTTP head is dropped, a stalled frame closed, an idle WebSocket kept" {
   // The head: 10 s from accept, as the Rust relay's HANDSHAKE_TIMEOUT.
@@ -208,7 +208,7 @@ rr_next_gen :: (gen: int) -> int { return gen + 1; }
 // buffered is kept: a Pylon waits for jobs that way.
 RR_HEAD_S :: 10; RR_FRAME_S :: 30; RR_CLOSE_SLOW :: 1008;
 RR_T_KEEP :: 0; RR_T_DROP :: 1; RR_T_CLOSE :: 2;
-rr_deadline :: (ws: bool, used: int, since: int, now: int) -> int {
+rr_deadline :: (ws: bool, used: int, since: int, now: int) -> int #effects(all) {
   waited := now - since;
   if !ws {
     if waited >= RR_HEAD_S { return RR_T_DROP; }
@@ -225,8 +225,8 @@ rr_deadline :: (ws: bool, used: int, since: int, now: int) -> int {
 }
 // After admission and the store: duplicates and superseded versions (OK
 // true) are not new, so they are not sent again.
-rr_fanout :: (reason: int) -> bool { return reason == RR_RS_ACCEPT; }
-rr_deliver :: (open: bool, ws: bool, matches: bool) -> bool { return open && ws && matches; }
+rr_fanout :: (reason: int) -> bool #effects(all) { return reason == RR_RS_ACCEPT; }
+rr_deliver :: (open: bool, ws: bool, matches: bool) -> bool #effects(all) { return open && ws && matches; }
 
 #test "a REQ sends each stored event once across its filters" {
   sent: [3] int;
@@ -240,7 +240,7 @@ rr_deliver :: (open: bool, ws: bool, matches: bool) -> bool { return open && ws 
 }
 // Records store index idx as sent: the new count, -1 when it was already
 // sent (skip it), -2 when the list is full (stop).
-rr_take :: (sent: [] int, n: int, idx: int) -> int {
+rr_take :: (sent: [] int, n: int, idx: int) -> int #effects(all) {
   for s: 0..<n { if sent[s] == idx { return -1; } }
   if n >= sent.count { return -2; }
   sent[n] = idx;
@@ -260,10 +260,10 @@ rr_take :: (sent: [] int, n: int, idx: int) -> int {
   #assert rr_challenge(b[0..<31], out[..]) == -1;
   #assert rr_hex(9) == '9' && rr_hex(10) == 'a' && rr_hex(0) == '0' && rr_hex(15) == 'f';
 }
-rr_hex :: (v: int) -> u8 { return ifx v < 10 then cast(u8) ('0' + v) else cast(u8) ('a' + v - 10); }
+rr_hex :: (v: int) -> u8 #effects(all) { return ifx v < 10 then cast(u8) ('0' + v) else cast(u8) ('a' + v - 10); }
 // Writes the challenge for bytes (RR_CHALLENGE_BYTES of host entropy) into
 // out: its length, or -1.
-rr_challenge :: (bytes: [] u8, out: [] u8) -> int {
+rr_challenge :: (bytes: [] u8, out: [] u8) -> int #effects(all) {
   if bytes.count != RR_CHALLENGE_BYTES || out.count < 2 * RR_CHALLENGE_BYTES { return -1; }
   for i: 0..<RR_CHALLENGE_BYTES {
     out[2 * i] = rr_hex(cast(int) bytes[i] / 16);
@@ -290,12 +290,12 @@ rr_challenge :: (bytes: [] u8, out: [] u8) -> int {
   #assert rr_auth_answer(RR_N42_STALE) == RR_A_CHALLENGE && rr_auth_answer(RR_N42_NO_CHALLENGE) == RR_A_CHALLENGE;
   #assert rr_auth_answer(RR_N42_OK) == RR_A_OK && rr_auth_answer(1) == RR_A_UNKNOWN && rr_auth_answer(11) == RR_A_UNKNOWN;
 }
-rr_auth_prefix :: (k: int) -> string {
+rr_auth_prefix :: (k: int) -> string #effects(all) {
   p := [9] string.["", "invalid", "invalid", "invalid", "invalid", "invalid", "invalid", "restricted", "error"];
   if k < 0 || k >= RR_A_REASONS { return "error"; }
   return p[k];
 }
-rr_auth_text :: (k: int) -> string {
+rr_auth_text :: (k: int) -> string #effects(all) {
   t := [9] string.["", "bad signature", "authentication event must have kind 22242",
     "the authentication event's timestamp is more than 10 minutes from the relay's clock",
     "authentication challenge does not match", "authentication relay URL does not match",
@@ -307,7 +307,7 @@ rr_auth_text :: (k: int) -> string {
 // nip42_admit's error, as an answer. A stale generation or a missing
 // challenge reads as a challenge that does not match, as the Rust relay
 // says for an answer to anything but the current challenge.
-rr_auth_answer :: (n42: int) -> int {
+rr_auth_answer :: (n42: int) -> int #effects(all) {
   if n42 == RR_N42_OK { return RR_A_OK; }
   if n42 == RR_N42_EVENT { return RR_A_SIG; }
   if n42 == RR_N42_KIND { return RR_A_KIND; }
@@ -334,9 +334,9 @@ rr_auth_answer :: (n42: int) -> int {
   rr_auth_reset(a[..]); #assert !rr_authed(a[..]) && a[0].n == 0 && !rr_authed_as(a[..], k[..]);
   #assert rr_writes_need_auth(true) && !rr_writes_need_auth(false);
 }
-rr_auth_reset :: (a: [] RrAuth) { a[0].n = 0; }
-rr_authed :: (a: [] RrAuth) -> bool { return a[0].n > 0; }
-rr_authed_as :: (a: [] RrAuth, key: [] u8) -> bool {
+rr_auth_reset :: (a: [] RrAuth) #effects(all) { a[0].n = 0; }
+rr_authed :: (a: [] RrAuth) -> bool #effects(all) { return a[0].n > 0; }
+rr_authed_as :: (a: [] RrAuth, key: [] u8) -> bool #effects(all) {
   if key.count != 32 { return false; }
   for i: 0..<a[0].n {
     same := true;
@@ -348,7 +348,7 @@ rr_authed_as :: (a: [] RrAuth, key: [] u8) -> bool {
 // One AUTH event's outcome: n42 is nip42_admit's error and key its public
 // key (only meaningful on N42_OK). Remembers an admitted key and returns the
 // answer (RR_A_OK is OK true).
-rr_auth :: (a: [] RrAuth, n42: int, key: [] u8) -> int {
+rr_auth :: (a: [] RrAuth, n42: int, key: [] u8) -> int #effects(all) {
   k := rr_auth_answer(n42);
   if k != RR_A_OK { return k; }
   if key.count != 32 { return RR_A_UNKNOWN; }
@@ -360,7 +360,7 @@ rr_auth :: (a: [] RrAuth, n42: int, key: [] u8) -> int {
 }
 // Whether an EVENT on this connection must wait for AUTH: rs_admit_read's
 // auth_required. authed is rr_authed's answer.
-rr_writes_need_auth :: (configured: bool) -> bool { return configured && RR_AUTH_WRITES; }
+rr_writes_need_auth :: (configured: bool) -> bool #effects(all) { return configured && RR_AUTH_WRITES; }
 
 // ---- the store's index (chapter 36) -----------------------------------------
 //
@@ -381,10 +381,10 @@ RR_IX_KEEP :: 0; RR_IX_ADD :: 1; RR_IX_STALE :: 2;
 }
 // Whether storing an event of need bytes may compact a store holding n of
 // cap records with free arena bytes.
-rr_may_compact :: (n: int, cap: int, need: int, free: int) -> bool { return n >= cap || need > free; }
+rr_may_compact :: (n: int, cap: int, need: int, free: int) -> bool #effects(all) { return n >= cap || need > free; }
 // What the index needs after one admission: before and after are the
 // store's record counts around it.
-rr_index_step :: (may_compact: bool, before: int, after: int) -> int {
+rr_index_step :: (may_compact: bool, before: int, after: int) -> int #effects(all) {
   if may_compact { return RR_IX_STALE; }
   if after == before { return RR_IX_KEEP; }
   if after == before + 1 { return RR_IX_ADD; }
@@ -407,12 +407,12 @@ RR_NSD_DELETED :: 30; RR_NSD_NO_ROOM :: 31;
   #assert rr_store_prefix(5) == "error" && rr_store_text(5) == "unknown";
 }
 // Whether reason is one of these (else it is a relay_server.coax reason).
-rr_store_extra :: (reason: int) -> bool { return reason == RR_NSD_DELETED || reason == RR_NSD_NO_ROOM; }
-rr_store_prefix :: (reason: int) -> string {
+rr_store_extra :: (reason: int) -> bool #effects(all) { return reason == RR_NSD_DELETED || reason == RR_NSD_NO_ROOM; }
+rr_store_prefix :: (reason: int) -> string #effects(all) {
   if reason == RR_NSD_DELETED { return "blocked"; }
   return "error";
 }
-rr_store_text :: (reason: int) -> string {
+rr_store_text :: (reason: int) -> string #effects(all) {
   if reason == RR_NSD_DELETED { return "a deletion request covers this event"; }
   if reason == RR_NSD_NO_ROOM { return "no room for this request's deletions"; }
   return "unknown";
@@ -431,7 +431,7 @@ RR_POW_MAX :: 256;
   #assert rr_pow(257) == -1 && rr_pow(-2) == -1;
 }
 // --pow's value (-1 when absent): the difficulty to ask for, or -1 to refuse.
-rr_pow :: (flag: int) -> int {
+rr_pow :: (flag: int) -> int #effects(all) {
   if flag == -1 { return 0; }
   if flag < 0 || flag > RR_POW_MAX { return -1; }
   return flag;
@@ -480,11 +480,11 @@ rr_pow :: (flag: int) -> int {
   #assert rr_nip13_at("\"supported_nips\":[12,13]") == -1 && rr_nip13_at("\"supported_nips\":[0,14]") == 20;
 }
 // Where "13," goes in doc's supported_nips (rr_nip_at).
-rr_nip13_at :: (doc: string) -> int { return rr_nip_at(doc, 13); }
+rr_nip13_at :: (doc: string) -> int #effects(all) { return rr_nip_at(doc, 13); }
 // Where "nip," goes in doc's supported_nips: the offset of its first entry
 // above nip. -1 when there is no such list, an entry isn't a decimal
 // integer, nip is already listed, or no entry is above nip.
-rr_nip_at :: (doc: string, nip: int) -> int {
+rr_nip_at :: (doc: string, nip: int) -> int #effects(all) {
   key := "\"supported_nips\":[";
   p := doc.count;
   for i: 0..<doc.count - key.count { if doc[i..<i + key.count] == key { p = i + key.count; } }
@@ -504,7 +504,7 @@ rr_nip_at :: (doc: string, nip: int) -> int {
 // doc (ending in its limitation object) with min_pow_difficulty added when
 // bits is above 0, and 13 in supported_nips (rr_nip13_at), into out: the
 // length, or -1.
-rr_nip11_pow :: (doc: string, bits: int, out: [] u8) -> int {
+rr_nip11_pow :: (doc: string, bits: int, out: [] u8) -> int #effects(all) {
   if doc.count < 2 || doc[doc.count - 2] != '}' || doc[doc.count - 1] != '}' { return -1; }
   at := ifx bits > 0 then rr_nip13_at(doc) else doc.count;
   if at == -1 { return -1; }
@@ -543,13 +543,13 @@ RR_CAP_DEFAULT :: 2048; RR_CAP_MIN :: 128; RR_CAP_MAX :: 1048576; RR_ARENA_PER :
   #assert rr_arena(2048) == 4194304 && rr_arena(128) == 262144 && rr_arena(50000) == 102400000 && rr_arena(1048576) == 2147483648;
 }
 // --store-capacity's value (-1 when absent): the records, or -1 to refuse.
-rr_capacity :: (flag: int) -> int {
+rr_capacity :: (flag: int) -> int #effects(all) {
   if flag == -1 { return RR_CAP_DEFAULT; }
   if flag < RR_CAP_MIN || flag > RR_CAP_MAX { return -1; }
   return flag;
 }
 // The arena bytes for a store of events records.
-rr_arena :: (events: int) -> int { return events * RR_ARENA_PER; }
+rr_arena :: (events: int) -> int #effects(all) { return events * RR_ARENA_PER; }
 
 // ---- NIP-77 Negentropy sessions (chapter 43) ---------------------------------
 //
@@ -610,7 +610,7 @@ RrNeg :: struct { live: bool; sub: [256] u8; sub_n: int; filter: [RR_NEG_FILTER]
   r = rr_neg_route(2, RR_N77_CLOSE, 1); #assert r.action == RR_NEG_ERR && r.reason == RR_NE_INVALID;
 }
 // n77_read's error and verb, and the length of the id it read.
-rr_neg_route :: (error: int, verb: int, sub_n: int) -> RrRoute {
+rr_neg_route :: (error: int, verb: int, sub_n: int) -> RrRoute #effects(all) {
   if error == RR_N77_VERB { return RrRoute.{action = RR_NOTICE, reason = RR_RS_VERB}; }
   if verb == RR_N77_ERR || sub_n < 1 || error == RR_N77_SUB { return RrRoute.{action = RR_NOTICE, reason = RR_RS_FRAME}; }
   if error == RR_N77_FRAME { return RrRoute.{action = RR_NEG_ERR, reason = RR_NE_FRAME}; }
@@ -649,20 +649,20 @@ rr_neg_route :: (error: int, verb: int, sub_n: int) -> RrRoute {
   #assert rr_neg_open(s[..], cast(string) big[0..<256], "{}", 1) == 1 && s[1].sub_n == 256;
   rr_neg_reset(s[..]); for i: 0..<RR_NEG_SESSIONS { #assert !s[i].live; }
 }
-rr_neg_same :: (s: RrNeg, sub: string) -> bool {
+rr_neg_same :: (s: RrNeg, sub: string) -> bool #effects(all) {
   if !s.live || s.sub_n != sub.count { return false; }
   for i: 0..<sub.count { if s.sub[i] != sub[i] { return false; } }
   return true;
 }
 // The open session with this id, or -1.
-rr_neg_find :: (s: [] RrNeg, sub: string) -> int {
+rr_neg_find :: (s: [] RrNeg, sub: string) -> int #effects(all) {
   for i: 0..<s.count { if rr_neg_same(s[i], sub) { return i; } }
   return -1;
 }
 // NEG-OPEN: closes an open session with this id, then opens one with the
 // filter at now, in the slot it had or else the first free one: the slot,
 // or -reason.
-rr_neg_open :: (s: [] RrNeg, sub: string, filter: string, now: int) -> int {
+rr_neg_open :: (s: [] RrNeg, sub: string, filter: string, now: int) -> int #effects(all) {
   k := rr_neg_find(s, sub);
   if k >= 0 { s[k].live = false; }
   if sub.count > 256 { return -RR_NE_INVALID; }
@@ -675,13 +675,13 @@ rr_neg_open :: (s: [] RrNeg, sub: string, filter: string, now: int) -> int {
   return k;
 }
 // NEG-CLOSE: whether a session with this id was open.
-rr_neg_close :: (s: [] RrNeg, sub: string) -> bool {
+rr_neg_close :: (s: [] RrNeg, sub: string) -> bool #effects(all) {
   k := rr_neg_find(s, sub);
   if k < 0 { return false; }
   s[k].live = false;
   return true;
 }
-rr_neg_reset :: (s: [] RrNeg) { for i: 0..<s.count { s[i].live = false; } }
+rr_neg_reset :: (s: [] RrNeg) #effects(all) { for i: 0..<s.count { s[i].live = false; } }
 
 #test "an idle session: none until RR_NEG_IDLE_S seconds pass with no message" {
   s: [RR_NEG_SESSIONS] RrNeg;
@@ -693,11 +693,11 @@ rr_neg_reset :: (s: [] RrNeg) { for i: 0..<s.count { s[i].live = false; } }
   #assert rr_neg_close(s[..], "a") && rr_neg_idle(s[..], 1000) == 1;
 }
 // The first open session with no message for RR_NEG_IDLE_S seconds at now, or -1.
-rr_neg_idle :: (s: [] RrNeg, now: int) -> int {
+rr_neg_idle :: (s: [] RrNeg, now: int) -> int #effects(all) {
   for i: 0..<s.count { if s[i].live && now - s[i].since >= RR_NEG_IDLE_S { return i; } }
   return -1;
 }
-rr_neg_touch :: (s: [] RrNeg, k: int, now: int) { s[k].since = now; }
+rr_neg_touch :: (s: [] RrNeg, k: int, now: int) #effects(all) { s[k].since = now; }
 
 #test "the items a session is answered over: a count, too many, or a filter that doesn't read" {
   #assert rr_neg_items(0) == RR_NE_OK && rr_neg_items(RR_NEG_MAX) == RR_NE_OK;
@@ -705,7 +705,7 @@ rr_neg_touch :: (s: [] RrNeg, k: int, now: int) { s[k].since = now; }
 }
 // relay_store.coax's rd_neg_items: a count, -1 over its RR_NEG_MAX items, -2
 // for a filter that does not read.
-rr_neg_items :: (n: int) -> int {
+rr_neg_items :: (n: int) -> int #effects(all) {
   if n == -1 { return RR_NE_BIG; }
   if n < 0 { return RR_NE_FILTER; }
   return RR_NE_OK;
@@ -729,12 +729,12 @@ rr_neg_items :: (n: int) -> int {
   #assert rr_neg_text(-1) == "sync failed" && rr_neg_text(RR_NE_REASONS) == "sync failed";
   #assert RR_NEG_IN == 32768 && RR_NEG_FRAME == 32768 && RR_NEG_FILTER == 4096 && RR_NEG_SESSIONS == 4 && RR_NEG_MAX == 100000 && RR_NEG_IDLE_S == 60;
 }
-rr_neg_prefix :: (k: int) -> string {
+rr_neg_prefix :: (k: int) -> string #effects(all) {
   p := [10] string.["", "invalid", "blocked", "blocked", "blocked", "closed", "closed", "invalid", "invalid", "blocked"];
   if k < 0 || k >= RR_NE_REASONS { return "error"; }
   return p[k];
 }
-rr_neg_text :: (k: int) -> string {
+rr_neg_text :: (k: int) -> string #effects(all) {
   t := [10] string.["", "the NEG frame does not read", "the Negentropy message is over 32768 bytes",
     "4 syncs are already open on this connection", "this query matches more than 100000 events",
     "no message for 60 seconds", "no sync is open with this id", "malformed filter",
@@ -743,7 +743,7 @@ rr_neg_text :: (k: int) -> string {
   return t[k];
 }
 // The NEG-ERR's fourth element (NIP-77's record limit), or -1 for none.
-rr_neg_records :: (k: int) -> int { return ifx k == RR_NE_BIG then RR_NEG_MAX else -1; }
+rr_neg_records :: (k: int) -> int #effects(all) { return ifx k == RR_NE_BIG then RR_NEG_MAX else -1; }
 
 // ---- NIP-86 management (chapter 67) -------------------------------------------
 //
@@ -823,7 +823,7 @@ RrPost :: struct { status: int; type_from: int; type_to: int; auth_from: int; au
   #assert rr_same_fold("AZ", "az") && !rr_same_fold("@", "`") && !rr_same_fold("[", "{") && rr_same_fold("", "") && !rr_same_fold("az", "AZ");
 }
 // a, ASCII case folded, is b (lowercase).
-rr_same_fold :: (a: string, b: string) -> bool {
+rr_same_fold :: (a: string, b: string) -> bool #effects(all) {
   if a.count != b.count { return false; }
   for i: 0..<a.count {
     x := a[i];
@@ -833,7 +833,7 @@ rr_same_fold :: (a: string, b: string) -> bool {
   return true;
 }
 // The request line POST TARGET HTTP/1.1, TARGET without spaces.
-rr_post_line :: (line: string) -> bool {
+rr_post_line :: (line: string) -> bool #effects(all) {
   pre := "POST "; tail := " HTTP/1.1";
   if line.count < pre.count + 1 + tail.count || line[line.count - tail.count..<line.count] != tail { return false; }
   for k: pre.count..<line.count - tail.count { if line[k] == ' ' { return false; } }
@@ -847,7 +847,7 @@ rr_post_line :: (line: string) -> bool {
 // name and a colon, a missing, repeated or non-digit Content-Length, or a
 // repeated Content-Type or Authorization; RR_P_BIG; and RR_P_NOT for
 // anything that isn't a POST.
-rr_post :: (b: string) -> RrPost {
+rr_post :: (b: string) -> RrPost #effects(all) {
   p: RrPost;
   pre := "POST ";
   for i: 0..<pre.count { if i < b.count && b[i] != pre[i] { p.status = RR_P_NOT; return p; } }
@@ -911,14 +911,14 @@ rr_post :: (b: string) -> RrPost {
   #assert rr_nibble('0') == 0 && rr_nibble('9') == 9 && rr_nibble('a') == 10 && rr_nibble('f') == 15 && rr_nibble('A') == 10 && rr_nibble('F') == 15;
   #assert rr_nibble('g') == -1 && rr_nibble('G') == -1 && rr_nibble('/') == -1 && rr_nibble(':') == -1 && rr_nibble('@') == -1 && rr_nibble('`') == -1;
 }
-rr_nibble :: (c: u8) -> int {
+rr_nibble :: (c: u8) -> int #effects(all) {
   if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
   if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
   if c >= 'A' && c <= 'F' { return cast(int) (c - 'A') + 10; }
   return -1;
 }
 // --admin's value as 32 bytes into out: whether it is 64 hex digits.
-rr_admin_key :: (hex: string, out: [] u8) -> bool {
+rr_admin_key :: (hex: string, out: [] u8) -> bool #effects(all) {
   if hex.count != 64 || out.count != 32 { return false; }
   for i: 0..<32 {
     hi := rr_nibble(hex[2 * i]); lo := rr_nibble(hex[2 * i + 1]);
@@ -934,7 +934,7 @@ rr_admin_key :: (hex: string, out: [] u8) -> bool {
   #assert !rr_admin_forget(8, 1000, 1000) && !rr_admin_forget(8, 1000, 900);
 }
 // Whether the n used ids, the last added at last, may all be forgotten at now.
-rr_admin_forget :: (n: int, last: int, now: int) -> bool { return n > 0 && now - last > RR_ADMIN_FORGET_S; }
+rr_admin_forget :: (n: int, last: int, now: int) -> bool #effects(all) { return n > 0 && now - last > RR_ADMIN_FORGET_S; }
 
 // With --store the policy survives a restart: every management request that
 // changes it (n86_serve answered N86_OK, and its method takes params:
@@ -960,7 +960,7 @@ rr_admin_forget :: (n: int, last: int, now: int) -> bool { return n > 0 && now -
 // Whether a management request with params of shape (N86_SHAPES of its
 // method), answered code, and body is saved; on replay, whether a frame
 // continues.
-rr_admin_saves :: (shape: int, code: int, body: string) -> bool {
+rr_admin_saves :: (shape: int, code: int, body: string) -> bool #effects(all) {
   if code != RR_N86_OK || shape <= 0 || body.count == 0 || body.count > RR_POST_BODY { return false; }
   for b: body { if b == 0 { return false; } }
   return true;
@@ -980,19 +980,19 @@ rr_admin_saves :: (shape: int, code: int, body: string) -> bool {
   #assert rr_admin_prefix(-1) == "error" && rr_admin_prefix(RR_N86_ANSWERS) == "error";
   #assert rr_admin_text(-1) == "refused by this relay's policy" && rr_admin_text(RR_N86_ANSWERS) == "refused by this relay's policy";
 }
-rr_http_status :: (code: int) -> string {
+rr_http_status :: (code: int) -> string #effects(all) {
   codes := [8] int.[200, 400, 401, 403, 405, 413, 415, 503];
   lines := [8] string.["200 OK", "400 Bad Request", "401 Unauthorized", "403 Forbidden", "405 Method Not Allowed",
     "413 Content Too Large", "415 Unsupported Media Type", "503 Service Unavailable"];
   for i: 0..<8 { if codes[i] == code { return lines[i]; } }
   return "500 Internal Server Error";
 }
-rr_admin_prefix :: (k: int) -> string {
+rr_admin_prefix :: (k: int) -> string #effects(all) {
   p := [6] string.["", "blocked", "restricted", "blocked", "blocked", "restricted"];
   if k < 0 || k >= RR_N86_ANSWERS { return "error"; }
   return p[k];
 }
-rr_admin_text :: (k: int) -> string {
+rr_admin_text :: (k: int) -> string #effects(all) {
   t := [6] string.["", "this key is banned on this relay", "this key is not on this relay's allow list",
     "this event is banned on this relay", "this relay does not accept this kind", "this kind is not on this relay's allowed list"];
   if k < 0 || k >= RR_N86_ANSWERS { return "refused by this relay's policy"; }
@@ -1008,7 +1008,7 @@ RR_NIP11_ADMIN :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A 
   #assert RR_NIP11_ADMIN[at + 3..<at + 6] == ",86" && RR_NIP11_ADMIN[at + 6..<RR_NIP11_ADMIN.count] == RR_NIP11[at + 3..<RR_NIP11.count];
 }
 // The document before rt_nip11 and rr_nip11_pow: with 86 when admin keys are set.
-rr_nip11_base :: (admin: bool) -> string { return ifx admin then RR_NIP11_ADMIN else RR_NIP11; }
+rr_nip11_base :: (admin: bool) -> string #effects(all) { return ifx admin then RR_NIP11_ADMIN else RR_NIP11; }
 
 // ---- NIP-29 groups (chapter 59) ------------------------------------------------
 //
@@ -1045,7 +1045,7 @@ RR_G29_OK :: 0; RR_G29_PASS :: 4; RR_G29_FULL :: 15; RR_G29_REASONS :: 16;
 // else for a create the first free one; -1 when there is none (the event
 // is then put to an empty group, which refuses it), -2 when a create finds
 // no free slot.
-rr_group_slot :: (live: [] bool, same: [] bool, create: bool) -> int {
+rr_group_slot :: (live: [] bool, same: [] bool, create: bool) -> int #effects(all) {
   for i: 0..<live.count { if live[i] && same[i] { return i; } }
   if !create { return -1; }
   for i: 0..<live.count { if !live[i] { return i; } }
@@ -1063,7 +1063,7 @@ rr_group_slot :: (live: [] bool, same: [] bool, create: bool) -> int {
   #assert !rr_group_keep(RR_G29_OK, 0, false) && !rr_group_keep(RR_G29_OK, -1, true) && !rr_group_keep(RR_G29_OK, -2, true);
   #assert !rr_group_keep(RR_G29_PASS, 0, true) && !rr_group_keep(RR_G29_FULL, 0, true) && !rr_group_keep(5, 3, true) && !rr_group_keep(1, 0, true);
 }
-rr_group_keep :: (g: int, slot: int, stored: bool) -> bool { return stored && slot >= 0 && g == RR_G29_OK; }
+rr_group_keep :: (g: int, slot: int, stored: bool) -> bool #effects(all) { return stored && slot >= 0 && g == RR_G29_OK; }
 
 #test "group refusals: a NIP-01 prefix and a text for each" {
   #assert rr_group_prefix(RR_G29_OK) == "" && rr_group_text(RR_G29_OK) == "" && rr_group_prefix(RR_G29_PASS) == "" && rr_group_text(RR_G29_PASS) == "";
@@ -1087,13 +1087,13 @@ rr_group_keep :: (g: int, slot: int, stored: bool) -> bool { return stored && sl
   #assert rr_group_prefix(-1) == "error" && rr_group_prefix(RR_G29_REASONS) == "error";
   #assert rr_group_text(-1) == "refused by the group" && rr_group_text(RR_G29_REASONS) == "refused by the group";
 }
-rr_group_prefix :: (k: int) -> string {
+rr_group_prefix :: (k: int) -> string #effects(all) {
   p := [16] string.["", "invalid", "invalid", "invalid", "", "invalid", "duplicate", "invalid", "restricted",
     "restricted", "restricted", "restricted", "duplicate", "invalid", "restricted", "restricted"];
   if k < 0 || k >= RR_G29_REASONS { return "error"; }
   return p[k];
 }
-rr_group_text :: (k: int) -> string {
+rr_group_text :: (k: int) -> string #effects(all) {
   t := [16] string.["", "the event does not read", "malformed group tags", "too many group tags or values", "",
     "no such group", "the group already exists", "a previous tag names an event this group doesn't have",
     "only members may post to this group", "your roles in this group don't allow this", "the invite code does not match",
@@ -1118,7 +1118,7 @@ rr_group_text :: (k: int) -> string {
 }
 // doc with nip (above 0) in its supported_nips before the first larger
 // entry (rr_nip_at), into out: the length, or -1.
-rr_nip11_nip :: (doc: string, nip: int, out: [] u8) -> int {
+rr_nip11_nip :: (doc: string, nip: int, out: [] u8) -> int #effects(all) {
   at := rr_nip_at(doc, nip);
   if at == -1 { return -1; }
   digits: [8] u8; d := 0; q := nip;

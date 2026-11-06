@@ -82,11 +82,11 @@ The example below prints this trace from the kernels themselves.
 <!-- source: psionic/lib/gptoss/device-sample.coax order -->
 ```jai
 // Chapter 53's order: higher logit first; equal logits go to the lower ID.
-gs_before :: (logits:[]f32,a:int,b:int)->bool {return logits[a]>logits[b] || (logits[a]==logits[b] && a<b);}
+gs_before :: (logits:[]f32,a:int,b:int)->bool #effects(all) {return logits[a]>logits[b] || (logits[a]==logits[b] && a<b);}
 // Insert an ID into a list kept in that order, at most list.count long.
 // Returns the new length. A full list drops its last entry when the new ID
 // goes before it.
-gs_insert :: (logits:[]f32,id:int,list:[]int,count:int)->int {
+gs_insert :: (logits:[]f32,id:int,list:[]int,count:int)->int #effects(all) {
     k:=list.count;
     if count==k && !gs_before(logits,id,list[k-1]) {return count;}
     at:=count;if count==k {at=k-1;}
@@ -96,15 +96,15 @@ gs_insert :: (logits:[]f32,id:int,list:[]int,count:int)->int {
 // Lists live in one buffer: list L holds ids[L*k ..< L*k+k] and counts[L].
 // One item keeps the first k IDs of its `part` logits in order and flags a
 // logit chapter 53 would refuse.
-gs_top_part :: (item:int,part:int,k:int,logits:[]f32,ids:[]int,counts:[]int,flags:[]u8) #export_c {
+gs_top_part :: (item:int,part:int,k:int,logits:[]f32,ids:[]int,counts:[]int,flags:[]u8) #export_c #effects(all) {
     count:=0;bad:u8=0;first:=item*part;
     for j:0..<part {i:=first+j;if i<logits.count {if (f32_bits(logits[i])&0x7fffffff)>GS_LOGIT_LAST {bad=1;}count=gs_insert(logits,i,ids[item*k..<item*k+k],count);}}
     counts[item]=count;flags[item]=bad;
 }
-gs_min :: (a:int,b:int)->int {return (a+b-cast(int)abs(f64(a-b)))/2;}
+gs_min :: (a:int,b:int)->int #effects(all) {return (a+b-cast(int)abs(f64(a-b)))/2;}
 // One item merges up to GS_FAN of the `lists` lists that start at list
 // `from` into the first k of their union, written as list `to` + item.
-gs_top_merge :: (item:int,from:int,lists:int,to:int,k:int,logits:[]f32,ids:[]int,counts:[]int,flags:[]u8) #export_c {
+gs_top_merge :: (item:int,from:int,lists:int,to:int,k:int,logits:[]f32,ids:[]int,counts:[]int,flags:[]u8) #export_c #effects(all) {
     heads:[GS_FAN]int;base:=from+item*GS_FAN;n:=gs_min(lists-item*GS_FAN,GS_FAN);bad:u8=0;
     for j:0..<n {bad|=flags[base+j];}
     count:=0;
@@ -134,13 +134,13 @@ infinities. Chapter 53 refuses the same logits.
 <!-- source: psionic/lib/gptoss/device-sample.coax pick -->
 ```jai
 // splitmix64-top53-v1 (chapter 64), the same words as cr_bits.
-gs_bits :: (seed:u64,counter:u64)->u64 {
+gs_bits :: (seed:u64,counter:u64)->u64 #effects(all) {
     z:=add_wrap(seed,mul_wrap((cast(u64)0x9e3779b97f4a7c15),add_wrap(counter,(cast(u64)1))));
     z=mul_wrap(z^(z>>30),(cast(u64)0xbf58476d1ce4e5b9));z=mul_wrap(z^(z>>27),(cast(u64)0x94d049bb133111eb));return z^(z>>31);
 }
 // nx_pick on the kept IDs in ascending ID order: the first whose running
 // mass exceeds the uniform, else the last with positive mass.
-gs_choose :: (uniform:f64,ids:[]int,mass:[]f64,take:int)->int {
+gs_choose :: (uniform:f64,ids:[]int,mass:[]f64,take:int)->int #effects(all) {
     running:=0.0;
     for i:0..<take {running+=mass[i];if uniform<running {return ids[i];}}
     for step:0..<take {i:=take-1-step;if mass[i]>0 {return ids[i];}}
@@ -148,7 +148,7 @@ gs_choose :: (uniform:f64,ids:[]int,mass:[]f64,take:int)->int {
 }
 // One item: weights, top-p, the draw, then the control words. The final
 // list is list `from`. The draw's counter is the emitted count, control[3].
-gs_pick :: (item:int,from:int,k:int,temperature_bits:int,top_p_bits:int,seed:int,limit:int,logits:[]f32,ids:[]int,counts:[]int,flags:[]u8,weights:[]f64,sorted:[]int,by_id:[]f64,control:[]int,emitted_ids:[]int) #export_c {
+gs_pick :: (item:int,from:int,k:int,temperature_bits:int,top_p_bits:int,seed:int,limit:int,logits:[]f32,ids:[]int,counts:[]int,flags:[]u8,weights:[]f64,sorted:[]int,by_id:[]f64,control:[]int,emitted_ids:[]int) #export_c #effects(all) {
     // One item decides; any other item of the launch does nothing.
     if item!=0 || control[0]!=0 {return;}
     if flags[from]!=0 {control[0]=GS_NUMBER;return;}
@@ -189,30 +189,30 @@ fail the check.
 ```jai
 // A step after a stop, or after a refused step, keeps the refusal and runs
 // nothing that reads the position.
-gs_begin :: (item:int,vocab:int,capacity:int,control:[]int) #export_c {
+gs_begin :: (item:int,vocab:int,capacity:int,control:[]int) #export_c #effects(all) {
     if control[0]!=0 {return;}
     if control[4]!=0 {control[0]=GS_STOPPED;return;}
     if control[2]<0 || control[2]>=capacity {control[0]=9;}
     if control[1]<0 || control[1]>=vocab {control[0]=7;control[1]=0;}
 }
 // Sliding layers pass their window; full layers pass 0.
-gs_first :: (position:int,window:int)->int {if window>0 && position>=window {return position+1-window;}return 0;}
-gs_rotate :: (item:int,heads:int,kv_heads:int,qkv:[]f32,rope:[]f32,pending:[]f32,flags:[]u8,control:[]int) #export_c {
+gs_first :: (position:int,window:int)->int #effects(all) {if window>0 && position>=window {return position+1-window;}return 0;}
+gs_rotate :: (item:int,heads:int,kv_heads:int,qkv:[]f32,rope:[]f32,pending:[]f32,flags:[]u8,control:[]int) #export_c #effects(all) {
     if control[0]!=0 {return;}gk_rotate(item,heads,kv_heads,control[2],qkv,rope,pending,flags);
 }
 // Launched over heads × the largest visible span; items past the span return.
-gs_scores :: (item:int,heads:int,kv_heads:int,window:int,capacity:int,stride:int,qkv:[]f32,cache:[]f32,pending:[]f32,scores:[]f32,control:[]int) #export_c {
+gs_scores :: (item:int,heads:int,kv_heads:int,window:int,capacity:int,stride:int,qkv:[]f32,cache:[]f32,pending:[]f32,scores:[]f32,control:[]int) #export_c #effects(all) {
     if control[0]!=0 {return;}position:=control[2];first:=gs_first(position,window);
     if item>=heads*(position-first+1) {return;}gk_scores(item,heads,kv_heads,position,first,capacity,stride,qkv,cache,pending,scores);
 }
-gs_prepare :: (item:int,window:int,stride:int,sinks:[]u16,scores:[]f32,denominators:[]f64,flags:[]u8,control:[]int) #export_c {
+gs_prepare :: (item:int,window:int,stride:int,sinks:[]u16,scores:[]f32,denominators:[]f64,flags:[]u8,control:[]int) #export_c #effects(all) {
     if control[0]!=0 {return;}position:=control[2];gk_softmax_prepare(item,position-gs_first(position,window)+1,stride,sinks,scores,denominators,flags);
 }
-gs_divide :: (item:int,heads:int,window:int,stride:int,denominators:[]f64,scores:[]f32,control:[]int) #export_c {
+gs_divide :: (item:int,heads:int,window:int,stride:int,denominators:[]f64,scores:[]f32,control:[]int) #export_c #effects(all) {
     if control[0]!=0 {return;}position:=control[2];visible:=position-gs_first(position,window)+1;
     if item>=heads*visible {return;}gk_softmax_divide(item,visible,stride,denominators,scores);
 }
-gs_context :: (item:int,heads:int,kv_heads:int,window:int,capacity:int,stride:int,lanes:int,scores:[]f32,cache:[]f32,pending:[]f32,partial:[]f32,control:[]int) #export_c {
+gs_context :: (item:int,heads:int,kv_heads:int,window:int,capacity:int,stride:int,lanes:int,scores:[]f32,cache:[]f32,pending:[]f32,partial:[]f32,control:[]int) #export_c #effects(all) {
     if control[0]!=0 {return;}position:=control[2];
     gk_context_part(item,heads,kv_heads,position,gs_first(position,window),capacity,stride,lanes,scores,cache,pending,partial);
 }
@@ -233,12 +233,12 @@ sixteen steps without looking.
 ```jai
 // Chapter 53's options, with top-k bounded so one item can rank the kept IDs.
 // Temperature 0 is greedy and needs a list of one.
-gs_options :: (o:NxOptions,seed:u64,vocab:int)->GStatus #export_c {
+gs_options :: (o:NxOptions,seed:u64,vocab:int)->GStatus #export_c #effects(all) {
     if !nx_options(o,vocab) || (o.temperature!=0 && (o.top_k<1 || o.top_k>GS_TOPK)) || seed>>63!=0 {return GStatus.shape;}
     return GStatus.ok;
 }
-gs_k :: (o:NxOptions)->int {if o.temperature==0 {return 1;}return o.top_k;}
-gs_layout :: (p:GDPlan,vocab:int,k:int)->GSLayout #export_c {
+gs_k :: (o:NxOptions)->int #effects(all) {if o.temperature==0 {return 1;}return o.top_k;}
+gs_layout :: (p:GDPlan,vocab:int,k:int)->GSLayout #export_c #effects(all) {
     n:=gs_lists(vocab,GS_PART);total:=n;m:=n;
     while m>1 {m=gs_up(m);total+=m;}
     b:=16+GS_SCRATCH;r:=GSLayout.{lists=total,final=total-1};
@@ -250,7 +250,7 @@ gs_layout :: (p:GDPlan,vocab:int,k:int)->GSLayout #export_c {
 }
 // The control words a sampled request starts from: the last prompt ID at
 // its position, nothing emitted. Written once, before the first step.
-gs_control :: (s:GShape,token:int,position:int,out:[]int)->GResult #export_c {
+gs_control :: (s:GShape,token:int,position:int,out:[]int)->GResult #export_c #effects(all) {
     if token<0 || token>=s.vocab || position<0 || position>=s.capacity {return GResult.{status=GStatus.state};}
     if out.count<8 {return GResult.{status=GStatus.capacity};}
     for i:0..<8 {out[i]=0;}out[1]=token;out[2]=position;return GResult.{written=8};
@@ -268,7 +268,7 @@ ID at its position, nothing emitted.
 // gd_program's step with every position-dependent launch replaced: the same
 // kernels run through gs_* wrappers that read control[2], launched over the
 // largest span, and gk_argmax_part/gk_choose replaced by the sampler.
-gs_program :: (s:GShape,p:GDPlan,params:[]GDParam,o:NxOptions,seed:u64,limit:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+gs_program :: (s:GShape,p:GDPlan,params:[]GDParam,o:NxOptions,seed:u64,limit:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c #effects(all) {
     if p.status!=GStatus.ok || !g_shape(s) || s.capacity>4096 || gs_options(o,seed,s.vocab)!=GStatus.ok {return GDProgram.{status=GStatus.shape};}
     if limit<1 || limit>s.capacity {return GDProgram.{status=GStatus.state};}
     k:=gs_k(o);lay:=gs_layout(p,s.vocab,k);

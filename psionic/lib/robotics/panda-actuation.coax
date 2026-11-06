@@ -30,7 +30,7 @@
  #assert pa_forward_raw(qs,vs,us,os)==PfkStatus.shape;pa_same(out[0],old);
 }
 
-pa_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),hinge_rates:[]pfku.Quantity(PidAngularRate,f64),slide_rates:[]pfku.Quantity(PidLinearRate,f64),arm_control:[]pfku.Quantity(PmHingeGravity,f64),finger_target:[]pfku.Quantity(pfku.Metre,f64),output:[]PaOutput)->PfkStatus #export_c {
+pa_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),hinge_rates:[]pfku.Quantity(PidAngularRate,f64),slide_rates:[]pfku.Quantity(PidLinearRate,f64),arm_control:[]pfku.Quantity(PmHingeGravity,f64),finger_target:[]pfku.Quantity(pfku.Metre,f64),output:[]PaOutput)->PfkStatus #export_c #effects(all) {
  if angles.count!=7 || slides.count!=2 || hinge_rates.count!=7 || slide_rates.count!=2 || arm_control.count!=7 || finger_target.count!=2 || output.count!=1 {return PfkStatus.shape;}
  q:[9]u64;v:[9]u64;u:[9]u64;for i:0..<7 {q[i]=f64_bits(angles[i].value);v[i]=f64_bits(hinge_rates[i].value);u[i]=f64_bits(arm_control[i].value);}for i:0..<2 {q[7+i]=f64_bits(slides[i].value);v[7+i]=f64_bits(slide_rates[i].value);u[7+i]=f64_bits(finger_target[i].value);}
  status:=pid_admit(q,100,1);if status!=PfkStatus.ok {return status;}status=pid_admit(v,20,2);if status!=PfkStatus.ok {return status;}status=pid_admit(u,10000,1);if status!=PfkStatus.ok {return status;}
@@ -40,7 +40,7 @@ pa_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pf
   force:=pa_finger(slides[i],target);clamped:=pa_clip(force.value,-20,20);fresh.actuator.slide[i].value=clamped.value;if clamped.clipped {fresh.force_clipped+=1;}srates[i]=slide_rates[i];
  }fresh.joint_passive=pa_damping(rates,srates);output[0]=fresh;return PfkStatus.ok;
 }
-pa_forward_raw :: (coordinates:[]f64,rates:[]f64,controls:[]f64,output:[]PaOutput)->PfkStatus #export_c {
+pa_forward_raw :: (coordinates:[]f64,rates:[]f64,controls:[]f64,output:[]PaOutput)->PfkStatus #export_c #effects(all) {
  if coordinates.count!=9 || rates.count!=9 || controls.count!=9 {return PfkStatus.shape;}
  q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);u:[7]pfku.Quantity(PmHingeGravity,f64);t:[2]pfku.Quantity(pfku.Metre,f64);
  for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];u[i].value=controls[i];}for i:0..<2 {s[i].value=coordinates[7+i];sv[i].value=rates[7+i];t[i].value=controls[7+i];}return pa_forward(q[..],s[..],v[..],sv[..],u[..],t[..],output);

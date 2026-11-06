@@ -15,9 +15,9 @@
 // touch controls are aethyr/sticks.coax's; this draws the move stick and the
 // hotbar's dance slot, which stays lit while you dance.
 
-host_line :: (h: int, ax: f64, ay: f64, bx: f64, by: f64, light_a: f64, light_b: f64, width: f64) #foreign;
-host_dot :: (h: int, x: f64, y: f64, size: f64, light: f64, soft: f64, crisp: f64) #foreign;
-host_slot :: (h: int, x: f64, y: f64, width: f64, height: f64, press: f64, flash: f64, selected: f64, icon: f64) #foreign;
+host_line :: (h: int, ax: f64, ay: f64, bx: f64, by: f64, light_a: f64, light_b: f64, width: f64) #foreign #effects(all);
+host_dot :: (h: int, x: f64, y: f64, size: f64, light: f64, soft: f64, crisp: f64) #foreign #effects(all);
+host_slot :: (h: int, x: f64, y: f64, width: f64, height: f64, press: f64, flash: f64, selected: f64, icon: f64) #foreign #effects(all);
 
 PI :: 3.14159265;
 EDGE :: 264.0;          // the grid's edge, metres from the centre
@@ -201,7 +201,7 @@ ring :: (h: int, c: Camera, center: Vec3, radius: f32, count: int, light: f32, w
 // space: the same screen position as `project`, and depth 0 at NEAR to 1 at
 // FAR, so the host's depth-tested meshes line up with the lines drawn here.
 verse_grid_view :: (eye_x: f32, eye_y: f32, eye_z: f32, at_x: f32, at_y: f32, at_z: f32,
-                       width: f32, height: f32, out: [] f32) -> bool #export_c {
+                       width: f32, height: f32, out: [] f32) -> bool #export_c #effects(all) {
   if !grid_render_view_allowed(width,height,out.count) {return false;}
   c := camera(v3(eye_x, eye_y, eye_z), v3(at_x, at_y, at_z), width, height);
   // x and y: the view's right and up, scaled so x / z * focal pixels from
@@ -268,13 +268,13 @@ prop_vertex :: (b: [] u8, i: int, p: Vec3, tone: int) {
   b[at + 55] = 255;                                        // flat, no texture
 }
 
-verse_grid_prop_vertices :: () -> int #export_c { return PROP_VERTICES; }
-verse_grid_prop_faces :: () -> int #export_c { return PROP_FACES; }
-verse_grid_prop_lines :: () -> int #export_c { return PROP_LINES; }
+verse_grid_prop_vertices :: () -> int #export_c #effects(all) { return PROP_VERTICES; }
+verse_grid_prop_faces :: () -> int #export_c #effects(all) { return PROP_FACES; }
+verse_grid_prop_lines :: () -> int #export_c #effects(all) { return PROP_LINES; }
 
 // The terminal's vertices (64 bytes each), triangles and edge pairs, into
 // buffers of at least those sizes. Their joint is the identity.
-verse_grid_props :: (vertices: [] u8, faces: [] u32, lines: [] u32) -> bool #export_c {
+verse_grid_props :: (vertices: [] u8, faces: [] u32, lines: [] u32) -> bool #export_c #effects(all) {
   if vertices.count < PROP_VERTICES * 64 || faces.count < PROP_FACES || lines.count < PROP_LINES { return false; }
   quads: [24] int;
   q := 0;
@@ -310,7 +310,7 @@ verse_grid_props :: (vertices: [] u8, faces: [] u32, lines: [] u32) -> bool #exp
 }
 
 // The terminal's boxes as walls for player.coax: WALL numbers each.
-verse_grid_walls :: (out: [] f32) -> int #export_c {
+verse_grid_walls :: (out: [] f32) -> int #export_c #effects(all) {
   if out.count < PROPS * WALL { return 0; }
   for i: 0..<PROPS {
     b := prop(i);
@@ -360,7 +360,7 @@ reach :: (eye: Vec3, feet: Vec3) -> f32 { return hi(0, length(sub(eye, feet)) - 
 // sticks and the hotbar, lit if you are dancing, at `now` seconds.
 verse_grid_frame :: (h: int, s: Sticks, eye_x: f32, eye_y: f32, eye_z: f32, at_x: f32, at_y: f32, at_z: f32,
                         feet_x: f32, feet_y: f32, feet_z: f32,
-                        width: f32, height: f32, scale: f32, dancing: bool, now: f64, controls: bool) #export_c {
+                        width: f32, height: f32, scale: f32, dancing: bool, now: f64, controls: bool) #export_c #effects(all) {
   if !(width > 0) || !(height > 0) { return; }
   k := hi(scale, 0.5);
   c := camera(v3(eye_x, eye_y, eye_z), v3(at_x, at_y, at_z), width, height);
@@ -609,7 +609,7 @@ clip :: (m: [] f32, p: Vec3, width: f32, height: f32) -> Vec3 {
 
 // The Haunted House portal is geometry in the Grid. Its screen projection
 // also supplies the platform's accessible hit target and floating name.
-verse_grid_portal :: (h:int,ex:f32,ey:f32,ez:f32,ax:f32,ay:f32,az:f32,width:f32,height:f32,scale:f32) -> Screen #export_c {
+verse_grid_portal :: (h:int,ex:f32,ey:f32,ez:f32,ax:f32,ay:f32,az:f32,width:f32,height:f32,scale:f32) -> Screen #export_c #effects(all) {
  c:=camera(v3(ex,ey,ez),v3(ax,ay,az),width,height);
  for i:0..<32 {
   a:=f32(i)*f32(PI)/32;b:=f32(i+1)*f32(PI)/32;
@@ -621,6 +621,6 @@ verse_grid_portal :: (h:int,ex:f32,ey:f32,ez:f32,ax:f32,ay:f32,az:f32,width:f32,
  marker:=view(c,v3(-1.5,3.2,10));if marker.z<0.05{return Screen.{x= -10000,y= -10000};}
  return project(c,marker);
 }
-verse_grid_controls :: (h:int,s:Sticks,width:f32,height:f32,scale:f32) #export_c {sticks_out(h,s,width,height,hi(scale,0.5));}
+verse_grid_controls :: (h:int,s:Sticks,width:f32,height:f32,scale:f32) #export_c #effects(all) {sticks_out(h,s,width,height,hi(scale,0.5));}
 
 

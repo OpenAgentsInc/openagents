@@ -25,8 +25,8 @@
 #load "../../coax/lib/tui/vt.coax";
 #load "../../aethyr/audio/wav.coax";
 
-cxproc_pty :: (h: int, cols: int, rows: int) -> int #foreign;
-cxproc_read_bytes :: (h: int, timeout_ms: int, out: [] u8) -> int #foreign;
+cxproc_pty :: (h: int, cols: int, rows: int) -> int #foreign #effects(all);
+cxproc_read_bytes :: (h: int, timeout_ms: int, out: [] u8) -> int #foreign #effects(all);
 
 DC_COLS :: 100; DC_ROWS :: 30;
 DC_ENVS :: 12;
@@ -149,7 +149,7 @@ listen :: (d: [] Dc, draft: string, gesture: string) -> bool {
   return wait_screen(d, "● Listening", 15000);
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   args_b: [1] Args; args := args_b[..];
   if !args_load(args) { return 2; }
   d_b: [1] Dc; d := d_b[..];

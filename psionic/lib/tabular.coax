@@ -15,8 +15,8 @@ TbValue :: struct {status:TbStatus;value:f64;}
 TbClass :: struct {status:TbStatus;accuracy:f64;cost:f64;late:int;caught:int;}
 TbChoice :: struct {status:TbStatus;threshold:f64;cost:f64;}
 
-TB_GOLDEN :: (cast(u64)0x9e3779b97f4a7c15);
-TB_SESSION_COUNTER :: (cast(u64)1048576);
+TB_GOLDEN :: (cast(u64)0x9e3779b97f4a7c15) #effects(all);
+TB_SESSION_COUNTER :: (cast(u64)1048576) #effects(all);
 TB_SESSIONS_MAX :: 512;
 TB_PER_SESSION :: 8;
 TB_ROWS_MAX :: 4096;
@@ -364,18 +364,18 @@ TB_COST_MAX :: 1000000.0;
 
 // book:begin random
 // SplitMix64 at a counter, the same generator as chapter 64's sampler.
-tb_bits :: (seed:u64,counter:u64)->u64 {
+tb_bits :: (seed:u64,counter:u64)->u64 #effects(all) {
     z:=add_wrap(seed,mul_wrap(TB_GOLDEN,add_wrap(counter,(cast(u64)1))));
     z=mul_wrap(z^(z>>30),(cast(u64)0xbf58476d1ce4e5b9));z=mul_wrap(z^(z>>27),(cast(u64)0x94d049bb133111eb));return z^(z>>31);
 }
-tb_uniform :: (seed:u64,counter:u64)->f64 {return f64(tb_bits(seed,counter)>>11)/9007199254740992.0;}
+tb_uniform :: (seed:u64,counter:u64)->f64 #effects(all) {return f64(tb_bits(seed,counter)>>11)/9007199254740992.0;}
 // book:end random
 
 // book:begin simulate
-tb_on_time :: (seconds:f64)->bool {return seconds<=TB_DEADLINE;}
+tb_on_time :: (seconds:f64)->bool #effects(all) {return seconds<=TB_DEADLINE;}
 // deadline-sim-v1. Session g draws its memory headroom and machine slowness;
 // request i draws its prompt length, queue depth, model and noise.
-tb_simulate :: (seed:u64,sessions:int,x:[]f64,y:[]f64,latency:[]f64,groups:[]int,overlap:bool)->TbSim #export_c {
+tb_simulate :: (seed:u64,sessions:int,x:[]f64,y:[]f64,latency:[]f64,groups:[]int,overlap:bool)->TbSim #export_c #effects(all) {
     if sessions<1 || sessions>TB_SESSIONS_MAX {return TbSim.{status=TbStatus.shape};}
     n:=sessions*TB_PER_SESSION;
     if x.count<4*n || y.count<n || latency.count<n || groups.count<n {return TbSim.{status=TbStatus.capacity};}
@@ -402,14 +402,14 @@ tb_simulate :: (seed:u64,sessions:int,x:[]f64,y:[]f64,latency:[]f64,groups:[]int
 
 // book:begin split
 // Whole sessions go to one part: 0 training (three in five), 1 validation, 2 test.
-tb_part :: (group:int)->int {
+tb_part :: (group:int)->int #effects(all) {
     k:=group%5;
     if k<3 {return 0;}
     if k==3 {return 1;}
     return 2;
 }
 // The rows of one part, in row order. -1 for a bad part, group, short or overlapping output.
-tb_rows :: (groups:[]int,part:int,out:[]int,overlap:bool)->int #export_c {
+tb_rows :: (groups:[]int,part:int,out:[]int,overlap:bool)->int #export_c #effects(all) {
     if part<0 || part>2 || overlap {return -1;}
     n:=0;
     for g:groups {
@@ -423,24 +423,24 @@ tb_rows :: (groups:[]int,part:int,out:[]int,overlap:bool)->int #export_c {
 }
 // book:end split
 
-tb_in :: (v:f64,lo:f64,hi:f64)->bool {return v>=lo && v<=hi;}
+tb_in :: (v:f64,lo:f64,hi:f64)->bool #effects(all) {return v>=lo && v<=hi;}
 // One to 4096 row indices, each naming a row below `limit`.
-tb_row_ok :: (rows:[]int,limit:int)->bool {
+tb_row_ok :: (rows:[]int,limit:int)->bool #effects(all) {
     if rows.count<1 || rows.count>TB_ROWS_MAX {return false;}
     for r:rows {if r<0 || r>=limit {return false;}}
     return true;
 }
 // A row-major table of at most 4096 rows of d features.
-tb_table_ok :: (x:[]f64,d:int)->bool {
+tb_table_ok :: (x:[]f64,d:int)->bool #effects(all) {
     return d>=1 && d<=TB_FEATURES_MAX && x.count%d==0 && x.count/d<=TB_ROWS_MAX;
 }
-tb_model_ok :: (m:TbModel)->bool {
+tb_model_ok :: (m:TbModel)->bool #effects(all) {
     return m.features>=1 && m.features<=TB_FEATURES_MAX && m.hidden>=0 && m.hidden<=TB_HIDDEN_MAX;
 }
 
 // book:begin scale
 // Mean and population standard deviation of each feature over the training rows only.
-tb_fit_scale :: (x:[]f64,d:int,rows:[]int,mean:[]f64,sd:[]f64,overlap:bool)->TbStatus #export_c {
+tb_fit_scale :: (x:[]f64,d:int,rows:[]int,mean:[]f64,sd:[]f64,overlap:bool)->TbStatus #export_c #effects(all) {
     if !tb_table_ok(x,d) || !tb_row_ok(rows,x.count/d) {return TbStatus.shape;}
     if mean.count<d || sd.count<d {return TbStatus.capacity;}
     if overlap {return TbStatus.alias;}
@@ -458,7 +458,7 @@ tb_fit_scale :: (x:[]f64,d:int,rows:[]int,mean:[]f64,sd:[]f64,overlap:bool)->TbS
     for j:0..<d {mean[j]=m[j];sd[j]=s[j];}
     return TbStatus.ok;
 }
-tb_apply_scale :: (x:[]f64,d:int,mean:[]f64,sd:[]f64,out:[]f64,overlap:bool)->TbStatus #export_c {
+tb_apply_scale :: (x:[]f64,d:int,mean:[]f64,sd:[]f64,out:[]f64,overlap:bool)->TbStatus #export_c #effects(all) {
     if !tb_table_ok(x,d) || mean.count<d || sd.count<d {return TbStatus.shape;}
     if out.count<x.count {return TbStatus.capacity;}
     if overlap {return TbStatus.alias;}
@@ -471,20 +471,20 @@ tb_apply_scale :: (x:[]f64,d:int,mean:[]f64,sd:[]f64,out:[]f64,overlap:bool)->Tb
 
 // book:begin model
 // hidden 0: output = b + sum w_j x_j. hidden h: W1 [h,d], b1 [h], w2 [h], b2.
-tb_param_count :: (m:TbModel)->int #export_c {
+tb_param_count :: (m:TbModel)->int #export_c #effects(all) {
     if !tb_model_ok(m) {return 0;}
     if m.hidden==0 {return m.features+1;}
     return m.hidden*m.features+2*m.hidden+1;
 }
-tb_tanh :: (a:f64)->f64 {
+tb_tanh :: (a:f64)->f64 #effects(all) {
     t:=exp(-2*abs(a));v:=(1-t)/(1+t);
     if a<0 {return -v;}
     return v;
 }
 // exp(min(z, 0)) / (1 + exp(-|z|)): no exponential of a large positive number.
-tb_sigmoid :: (z:f64)->f64 {return exp((z-abs(z))/2)/(1+exp(-abs(z)));}
-tb_softplus :: (z:f64)->f64 {return (z+abs(z))/2+log(1+exp(-abs(z)));}
-tb_hidden :: (m:TbModel,p:[]f64,v:[]f64,h:[]f64) {
+tb_sigmoid :: (z:f64)->f64 #effects(all) {return exp((z-abs(z))/2)/(1+exp(-abs(z)));}
+tb_softplus :: (z:f64)->f64 #effects(all) {return (z+abs(z))/2+log(1+exp(-abs(z)));}
+tb_hidden :: (m:TbModel,p:[]f64,v:[]f64,h:[]f64) #effects(all) {
     d:=m.features;
     for k:0..<m.hidden {
         a:PsionicAccumulator;a=psionic_ops_accumulate(a,p[m.hidden*d+k]);
@@ -492,7 +492,7 @@ tb_hidden :: (m:TbModel,p:[]f64,v:[]f64,h:[]f64) {
         h[k]=tb_tanh(psionic_ops_total(a));
     }
 }
-tb_output :: (m:TbModel,p:[]f64,v:[]f64)->f64 {
+tb_output :: (m:TbModel,p:[]f64,v:[]f64)->f64 #effects(all) {
     d:=m.features;a:PsionicAccumulator;
     if m.hidden==0 {
         a=psionic_ops_accumulate(a,p[d]);
@@ -507,7 +507,7 @@ tb_output :: (m:TbModel,p:[]f64,v:[]f64)->f64 {
 // book:end model
 
 // Weights draw U(-1/sqrt(fan_in), 1/sqrt(fan_in)) at counter = their slot; biases start at zero.
-tb_initialize :: (m:TbModel,seed:u64,p:[]f64) {
+tb_initialize :: (m:TbModel,seed:u64,p:[]f64) #effects(all) {
     for s:0..<tb_param_count(m) {p[s]=0;}
     if m.hidden==0 {return;}
     d:=m.features;
@@ -516,7 +516,7 @@ tb_initialize :: (m:TbModel,seed:u64,p:[]f64) {
     for k:0..<m.hidden {p[base+k]=(2*tb_uniform(seed,cast(u64)(base+k))-1)/sqrt(f64(m.hidden));}
 }
 // Weight decay applies to W1 and w2 (or w), never to a bias.
-tb_is_weight :: (m:TbModel,s:int)->bool {
+tb_is_weight :: (m:TbModel,s:int)->bool #effects(all) {
     if m.hidden==0 {return s<m.features;}
     hd:=m.hidden*m.features;
     return s<hd || (s>=hd+m.hidden && s<hd+2*m.hidden);
@@ -525,7 +525,7 @@ tb_is_weight :: (m:TbModel,s:int)->bool {
 // book:begin gradient
 // Mean gradient of the per-row loss over `rows`: log loss on a logit, or
 // half the squared error of a value. Both give d loss / d output = residual.
-tb_gradient :: (m:TbModel,p:[]f64,x:[]f64,y:[]f64,rows:[]int,g:[]f64) {
+tb_gradient :: (m:TbModel,p:[]f64,x:[]f64,y:[]f64,rows:[]int,g:[]f64) #effects(all) {
     d:=m.features;n:=tb_param_count(m);acc:[161]PsionicAccumulator;h:[16]f64;
     for r:rows {
         v:=x[r*d..<r*d+d];z:=tb_output(m,p,v);
@@ -548,7 +548,7 @@ tb_gradient :: (m:TbModel,p:[]f64,x:[]f64,y:[]f64,rows:[]int,g:[]f64) {
 }
 // book:end gradient
 
-tb_loss :: (m:TbModel,p:[]f64,x:[]f64,y:[]f64,rows:[]int)->f64 {
+tb_loss :: (m:TbModel,p:[]f64,x:[]f64,y:[]f64,rows:[]int)->f64 #effects(all) {
     d:=m.features;a:PsionicAccumulator;
     for r:rows {
         z:=tb_output(m,p,x[r*d..<r*d+d]);
@@ -559,7 +559,7 @@ tb_loss :: (m:TbModel,p:[]f64,x:[]f64,y:[]f64,rows:[]int)->f64 {
 }
 
 // Fisher-Yates from the last position down; returns the next unused counter.
-tb_shuffle :: (order:[]int,seed:u64,counter:u64)->u64 {
+tb_shuffle :: (order:[]int,seed:u64,counter:u64)->u64 #effects(all) {
     c:=counter;i:=order.count-1;
     while i>0 {
         j:=cast(int)(tb_bits(seed,c)%cast(u64)(i+1));c+=1;
@@ -568,14 +568,14 @@ tb_shuffle :: (order:[]int,seed:u64,counter:u64)->u64 {
     return c;
 }
 // Rows times parameters, summed over every epoch, within the trainer's budget.
-tb_budget :: (m:TbModel,c:TbConfig,rows:int)->bool {
+tb_budget :: (m:TbModel,c:TbConfig,rows:int)->bool #effects(all) {
     if !tb_model_ok(m) || c.epochs<1 || c.epochs>TB_EPOCHS_MAX || rows<1 || rows>TB_ROWS_MAX {return false;}
     return c.epochs*rows<=TB_WORK_MAX/tb_param_count(m);
 }
 
 // book:begin train
 // Every refusal, before any work. Chapter 104's trainer shares it.
-tb_admit_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,order:[]int,overlap:bool)->TbStatus {
+tb_admit_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,order:[]int,overlap:bool)->TbStatus #effects(all) {
     n:=tb_param_count(m);d:=m.features;
     if !tb_budget(m,c,rows.count) || c.batch<1 || c.batch>TB_BATCH_MAX || !(c.rate>0 && c.rate<=16) || !tb_in(c.decay,0,1) {return TbStatus.shape;}
     if x.count!=y.count*d || !tb_row_ok(rows,y.count) {return TbStatus.shape;}
@@ -588,7 +588,7 @@ tb_admit_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,
     }
     return TbStatus.ok;
 }
-tb_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,order:[]int,overlap:bool)->TbTrain #export_c {
+tb_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,order:[]int,overlap:bool)->TbTrain #export_c #effects(all) {
     admitted:=tb_admit_train(m,c,x,y,rows,params,order,overlap);
     if admitted!=TbStatus.ok {return TbTrain.{status=admitted};}
     n:=tb_param_count(m);
@@ -619,7 +619,7 @@ tb_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,order:
 // book:end train
 
 // Outputs (logits or values) for every row; caller output and parameters must not overlap.
-tb_predict :: (m:TbModel,params:[]f64,x:[]f64,out:[]f64,overlap:bool)->TbStatus #export_c {
+tb_predict :: (m:TbModel,params:[]f64,x:[]f64,out:[]f64,overlap:bool)->TbStatus #export_c #effects(all) {
     n:=tb_param_count(m);d:=m.features;
     if !tb_model_ok(m) || params.count<n || !tb_table_ok(x,d) {return TbStatus.shape;}
     if out.count<x.count/d {return TbStatus.capacity;}
@@ -631,26 +631,26 @@ tb_predict :: (m:TbModel,params:[]f64,x:[]f64,out:[]f64,overlap:bool)->TbStatus 
 }
 
 // Paired outputs and targets, one to 4096 named rows, every named value finite.
-tb_pairs_ok :: (a:[]f64,b:[]f64,rows:[]int)->bool {
+tb_pairs_ok :: (a:[]f64,b:[]f64,rows:[]int)->bool #effects(all) {
     if a.count!=b.count || !tb_row_ok(rows,a.count) {return false;}
     for r:rows {if !tb_in(a[r],-1e300,1e300) || !tb_in(b[r],-1e300,1e300) {return false;}}
     return true;
 }
 // book:begin metrics
-tb_log_loss :: (z:[]f64,y:[]f64,rows:[]int)->TbValue #export_c {
+tb_log_loss :: (z:[]f64,y:[]f64,rows:[]int)->TbValue #export_c #effects(all) {
     if !tb_pairs_ok(z,y,rows) {return TbValue.{status=TbStatus.shape};}
     a:PsionicAccumulator;
     for r:rows {a=psionic_ops_accumulate(a,tb_softplus(z[r])-y[r]*z[r]);}
     return TbValue.{value=psionic_ops_total(a)/f64(rows.count)};
 }
-tb_mse :: (z:[]f64,target:[]f64,rows:[]int)->TbValue #export_c {
+tb_mse :: (z:[]f64,target:[]f64,rows:[]int)->TbValue #export_c #effects(all) {
     if !tb_pairs_ok(z,target,rows) {return TbValue.{status=TbStatus.shape};}
     a:PsionicAccumulator;
     for r:rows {e:=z[r]-target[r];a=psionic_ops_accumulate(a,e*e);}
     return TbValue.{value=psionic_ops_total(a)/f64(rows.count)};
 }
 // The constant predictor: the training on-time rate as a logit.
-tb_base_logit :: (y:[]f64,rows:[]int)->TbValue #export_c {
+tb_base_logit :: (y:[]f64,rows:[]int)->TbValue #export_c #effects(all) {
     if !tb_row_ok(rows,y.count) {return TbValue.{status=TbStatus.shape};}
     on:=0;
     for r:rows {if y[r]==1 {on+=1;}}
@@ -659,7 +659,7 @@ tb_base_logit :: (y:[]f64,rows:[]int)->TbValue #export_c {
 }
 // A request is flagged as late when its on-time probability is below the threshold.
 // A missed late request costs `miss`; a needlessly flagged one costs `alarm`.
-tb_classify :: (on_time:[]f64,y:[]f64,rows:[]int,threshold:f64,miss:f64,alarm:f64)->TbClass #export_c {
+tb_classify :: (on_time:[]f64,y:[]f64,rows:[]int,threshold:f64,miss:f64,alarm:f64)->TbClass #export_c #effects(all) {
     if !tb_pairs_ok(on_time,y,rows) || !(threshold>0 && threshold<=1) || !tb_in(miss,0,TB_COST_MAX) || !tb_in(alarm,0,TB_COST_MAX) {return TbClass.{status=TbStatus.shape};}
     right:=0;late:=0;caught:=0;alarms:=0;
     for r:rows {
@@ -672,7 +672,7 @@ tb_classify :: (on_time:[]f64,y:[]f64,rows:[]int,threshold:f64,miss:f64,alarm:f6
     return TbClass.{accuracy=f64(right)/f64(rows.count),cost=cost,late=late,caught=caught};
 }
 // The cheapest threshold among 0.05, 0.10, ..., 0.95; ties keep the smaller one.
-tb_choose :: (on_time:[]f64,y:[]f64,rows:[]int,miss:f64,alarm:f64)->TbChoice #export_c {
+tb_choose :: (on_time:[]f64,y:[]f64,rows:[]int,miss:f64,alarm:f64)->TbChoice #export_c #effects(all) {
     best:=TbChoice.{status=TbStatus.shape};
     for k:1..<20 {
         c:=tb_classify(on_time,y,rows,f64(k)/20,miss,alarm);
@@ -686,11 +686,11 @@ tb_choose :: (on_time:[]f64,y:[]f64,rows:[]int,miss:f64,alarm:f64)->TbChoice #ex
 // book:begin rule
 // An operator's rule: the documented per-token and queue costs, doubled for
 // safety, and nothing about memory. 1 means "on time", 0 means "flag it".
-tb_rule_seconds :: (prompt:f64,queue:f64,large:f64)->f64 {
+tb_rule_seconds :: (prompt:f64,queue:f64,large:f64)->f64 #effects(all) {
     cost:=0.0003;if large==1 {cost=0.0009;}
     return 2*(0.2+0.15*queue+prompt*cost);
 }
-tb_rule :: (x:[]f64,out:[]f64,overlap:bool)->TbStatus #export_c {
+tb_rule :: (x:[]f64,out:[]f64,overlap:bool)->TbStatus #export_c #effects(all) {
     if !tb_table_ok(x,4) {return TbStatus.shape;}
     if out.count<x.count/4 {return TbStatus.capacity;}
     if overlap {return TbStatus.alias;}

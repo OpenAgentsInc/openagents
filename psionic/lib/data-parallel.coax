@@ -20,7 +20,7 @@
 DpStatus :: enum u8 {ok;ranks;micro;bucket;batch;shape;missing;twice;stale;boundary;failed;}
 DP_RANKS :: 64;
 
-dp_status :: (s:DpStatus)->string {
+dp_status :: (s:DpStatus)->string #effects(all) {
     if s==DpStatus.ok {return "admitted";}
     if s==DpStatus.ranks {return "refused: from 1 to 64 ranks";}
     if s==DpStatus.micro {return "refused: from 1 to 64 micro-batches a step, at least one a rank";}
@@ -208,16 +208,16 @@ dp_status :: (s:DpStatus)->string {
 // The gradient's n values are cut into buckets of `bucket` values, the last
 // one shorter when bucket does not divide n.
 DpPlan :: struct {status:DpStatus;ranks:int;micro:int;n:int;bucket:int;}
-dp_plan :: (ranks:int,micro:int,n:int,bucket:int)->DpPlan {
+dp_plan :: (ranks:int,micro:int,n:int,bucket:int)->DpPlan #effects(all) {
     p:=DpPlan.{ranks=ranks,micro=micro,n=n,bucket=bucket};
     if ranks<1 || ranks>DP_RANKS {p.status=DpStatus.ranks;return p;}
     if micro<ranks || micro>TR_ACCUMULATE {p.status=DpStatus.micro;return p;}
     if n<1 || n>CK_VALUES || bucket<1 || bucket>n {p.status=DpStatus.bucket;}
     return p;
 }
-dp_first :: (p:DpPlan,r:int)->int {return r*p.micro/p.ranks;}
-dp_buckets :: (p:DpPlan)->int {return tr_ceil(p.n,p.bucket);}
-dp_span :: (p:DpPlan,k:int)->TrSpan {first:=k*p.bucket;return TrSpan.{first=first,count=tr_min(p.bucket,p.n-first)};}
+dp_first :: (p:DpPlan,r:int)->int #effects(all) {return r*p.micro/p.ranks;}
+dp_buckets :: (p:DpPlan)->int #effects(all) {return tr_ceil(p.n,p.bucket);}
+dp_span :: (p:DpPlan,k:int)->TrSpan #effects(all) {first:=k*p.bucket;return TrSpan.{first=first,count=tr_min(p.bucket,p.n-first)};}
 // book:end plan
 
 // book:begin gather
@@ -228,7 +228,7 @@ DpGather :: struct {status:DpStatus;rank:int=-1;}
 // Admits a step's reports, in any arrival order. Every rank must report
 // exactly once, for this step, with all its micro-batches done and no
 // failure. A refusal names the lowest rank at fault.
-dp_gather :: (p:DpPlan,b:TrBatch,reports:[]DpReport)->DpGather {
+dp_gather :: (p:DpPlan,b:TrBatch,reports:[]DpReport)->DpGather #effects(all) {
     if p.status!=DpStatus.ok {return DpGather.{status=p.status};}
     if b.status!=TrStatus.ok {return DpGather.{status=DpStatus.batch};}
     if b.micro!=p.micro {return DpGather.{status=DpStatus.micro};}
@@ -252,7 +252,7 @@ dp_gather :: (p:DpPlan,b:TrBatch,reports:[]DpReport)->DpGather {
 // starts at zero), add this rank's micro-batch gradients divided by the
 // step's micro-batch count, in order, and pass the sum on in rank r's slot
 // of msgs. grads holds micro-batch m's gradient at m*n.
-dp_chain :: (p:DpPlan,r:int,k:int,grads:[]f64,msgs:[]f64) {
+dp_chain :: (p:DpPlan,r:int,k:int,grads:[]f64,msgs:[]f64) #effects(all) {
     s:=dp_span(p,k);count:=f64(p.micro);
     for i:s.first..<s.first+s.count {
         acc:=0.0;if r>0 {acc=msgs[(r-1)*p.n+i];}
@@ -266,7 +266,7 @@ DpSum :: struct {status:DpStatus;rank:int=-1;sum:TrSum;}
 // order. The result is chapter 118's tr_add sum, bit for bit, for any rank
 // count and bucket size, and goes to tr_apply unchanged. A refusal writes
 // nothing and returns a sum tr_apply refuses.
-dp_sum :: (p:DpPlan,b:TrBatch,reports:[]DpReport,grads:[]f64,losses:[]f64,msgs:[]f64,total:[]f64)->DpSum {
+dp_sum :: (p:DpPlan,b:TrBatch,reports:[]DpReport,grads:[]f64,losses:[]f64,msgs:[]f64,total:[]f64)->DpSum #effects(all) {
     g:=dp_gather(p,b,reports);if g.status!=DpStatus.ok {return DpSum.{status=g.status,rank=g.rank,sum=TrSum.{status=TrStatus.order}};}
     if grads.count!=p.micro*p.n || losses.count!=p.micro || msgs.count!=p.ranks*p.n || total.count!=p.n {return DpSum.{status=DpStatus.shape,sum=TrSum.{status=TrStatus.order}};}
     nb:=dp_buckets(p);
@@ -288,14 +288,14 @@ dp_sum :: (p:DpPlan,b:TrBatch,reports:[]DpReport,grads:[]f64,losses:[]f64,msgs:[
 // `bandwidth` bytes a microsecond. One link: a bucket starts when backward
 // has produced it and the bucket before it has finished.
 DpTime :: struct {status:DpStatus;backward:int;serial:int;overlap:int;}
-dp_max :: (a:int,b:int)->int {return (a+b+cast(int)abs(f64(a-b)))/2;}
-dp_comm :: (p:DpPlan,k:int,latency:int,bandwidth:int)->int {
+dp_max :: (a:int,b:int)->int #effects(all) {return (a+b+cast(int)abs(f64(a-b)))/2;}
+dp_comm :: (p:DpPlan,k:int,latency:int,bandwidth:int)->int #effects(all) {
     hops:=2*(p.ranks-1);return hops*latency+hops*dp_span(p,k).count*8*1000/bandwidth;
 }
 // start and end receive each bucket's all-reduce times. serial is the step
 // when every all-reduce waits for the whole backward; overlap when each
 // starts as soon as it can.
-dp_schedule :: (p:DpPlan,per:int,latency:int,bandwidth:int,start:[]int,end:[]int)->DpTime {
+dp_schedule :: (p:DpPlan,per:int,latency:int,bandwidth:int,start:[]int,end:[]int)->DpTime #effects(all) {
     t:=DpTime.{status=p.status};if p.status!=DpStatus.ok {return t;}
     nb:=dp_buckets(p);
     if per<0 || latency<0 || bandwidth<1 || start.count!=nb || end.count!=nb {t.status=DpStatus.shape;return t;}

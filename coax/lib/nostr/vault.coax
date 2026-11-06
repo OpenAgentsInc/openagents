@@ -289,18 +289,18 @@ VT_SECRET_MAX :: 1024;   // method secret bytes at most: the spec asks for at le
 }
 
 // ---- small readers
-vt_hex64 :: (s:string)->bool {return vt_hex(s,64);}
-vt_hex :: (s:string,n:int)->bool {
+vt_hex64 :: (s:string)->bool #effects(all) {return vt_hex(s,64);}
+vt_hex :: (s:string,n:int)->bool #effects(all) {
   if s.count!=n {return false;}
   for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
   return true;
 }
-vt_bytes :: (hex:string,out:[]u8) {
+vt_bytes :: (hex:string,out:[]u8) #effects(all) {
   for i:0..<hex.count/2 {out[i]=cast(u8)(vt_nibble(hex[2*i])*16+vt_nibble(hex[2*i+1]));}
 }
-vt_nibble :: (c:u8)->int {return ifx c>='a' then cast(int)(c-'a')+10 else cast(int)(c-'0');}
+vt_nibble :: (c:u8)->int #effects(all) {return ifx c>='a' then cast(int)(c-'a')+10 else cast(int)(c-'0');}
 // A base64 value of exactly n bytes into out; false otherwise.
-vt_b64 :: (text:string,out:[]u8,n:int)->bool {
+vt_b64 :: (text:string,out:[]u8,n:int)->bool #effects(all) {
   if base64_decode_size(text)!=n {return false;}
   return base64_decode_checked(text,out,false).written==n;
 }
@@ -308,17 +308,17 @@ vt_b64 :: (text:string,out:[]u8,n:int)->bool {
 // already checked the text is canonical, and canonical numbers are safe
 // integers, so json_int reads every one. Every caller refuses a negative
 // result, so a negative integer refuses as it is.
-vt_uint :: (j:[]Json,t:int)->int {
+vt_uint :: (j:[]Json,t:int)->int #effects(all) {
   if t!=JSON_NUMBER {return -1;}return json_int(json_text(j)).value;
 }
 // A string or number member's raw bytes (the slot reader takes objects and
 // arrays from the text itself).
-vt_raw :: (j:[]Json,t:int)->string {
+vt_raw :: (j:[]Json,t:int)->string #effects(all) {
   if t==JSON_STRING {return j[0].text[j[0].from-1..<j[0].to+1];}
   return json_text(j);
 }
 // Whether text is exactly its own RFC 8785 form.
-vt_canonical :: (text:string)->bool {
+vt_canonical :: (text:string)->bool #effects(all) {
   out:[VT_HEADER_MAX]u8;r:=jcs_canonicalize_checked(text,out[..],false);
   return r.error==JCS_OK && cast(string)out[0..<r.written]==text;
 }
@@ -326,7 +326,7 @@ vt_canonical :: (text:string)->bool {
 // ---- key slots
 // device: {key_ref, platform}; nostr: {pubkey, sealed}. Exactly those, in
 // that order, which is the canonical order the slot already has.
-vt_params :: (j:[]Json,s:[]VtSlot)->bool {
+vt_params :: (j:[]Json,s:[]VtSlot)->bool #effects(all) {
   nostr:=s[0].method=="nostr";
   names:=ifx nostr then [2]string.["pubkey","sealed"] else [2]string.["key_ref","platform"];k:=0;
   while true {
@@ -346,7 +346,7 @@ vt_params :: (j:[]Json,s:[]VtSlot)->bool {
 // The slot's fields, and in aad its associated data: the slot's JCS bytes
 // with the nonce and vmk members left out. The slot must be exactly its JCS
 // form, so those are its own bytes in order.
-vt_slot_read :: (text:string,aad:[]u8)->VtSlot {
+vt_slot_read :: (text:string,aad:[]u8)->VtSlot #effects(all) {
   s:=[1]VtSlot.[VtSlot.{}];
   if !vt_canonical(text) {return VtSlot.{code=VtCode.canonical};}
   j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return VtSlot.{code=VtCode.json};}
@@ -392,10 +392,10 @@ vt_slot_read :: (text:string,aad:[]u8)->VtSlot {
 // the 32 bytes of the slot id, info = "openagents.vault.v1/slot" 0 method);
 // vmk is AES-256-GCM of the VMK under it with the slot's associated data.
 // A wrong secret, or any changed byte of the slot, fails the tag.
-vt_slot_open :: (text:string,secret:[]u8,vmk:[]u8)->VtCode {
+vt_slot_open :: (text:string,secret:[]u8,vmk:[]u8)->VtCode #effects(all) {
   kdf:[1]VtKdf;return vt_slot_open_work(text,secret,vmk,kdf[..]);
 }
-vt_slot_open_work :: (text:string,secret:[]u8,vmk:[]u8,kdf:[]VtKdf)->VtCode {
+vt_slot_open_work :: (text:string,secret:[]u8,vmk:[]u8,kdf:[]VtKdf)->VtCode #effects(all) {
   aad:[VT_AAD_MAX]u8;s:=vt_slot_read(text,aad[..]);
   if s.code!=VtCode.ok {return s.code;}
   if secret.count<32 || secret.count>VT_SECRET_MAX {return VtCode.secret;}
@@ -414,10 +414,10 @@ vt_slot_open_work :: (text:string,secret:[]u8,vmk:[]u8,kdf:[]VtKdf)->VtCode {
 // The nostr method: sealed is NIP-44 v2 to the person's own key, of the
 // secret as 64 lowercase hex digits. ck is the conversation key of the
 // person's key with itself (nip44-key.coax computes it from the secret key).
-vt_nostr_secret :: (sealed:string,ck:[]u8,out:[]u8)->bool {
+vt_nostr_secret :: (sealed:string,ck:[]u8,out:[]u8)->bool #effects(all) {
   p:[1]VtPlain;return vt_nostr_secret_work(sealed,ck,out,p[..]);
 }
-vt_nostr_secret_work :: (sealed:string,ck:[]u8,out:[]u8,p:[]VtPlain)->bool {
+vt_nostr_secret_work :: (sealed:string,ck:[]u8,out:[]u8,p:[]VtPlain)->bool #effects(all) {
   if out.count<32 {return false;}
   r:=nip44_decrypt_checked(NIP44_COMPAT,ck,sealed,p[0].work[..],p[0].plain[..],false);
   ok:=r.error==NIP44_OK && vt_hex64(cast(string)p[0].plain[0..<r.written]);
@@ -430,10 +430,10 @@ vt_nostr_secret_work :: (sealed:string,ck:[]u8,out:[]u8,p:[]VtPlain)->bool {
 // K_user_wrap = HKDF-SHA256(ikm = VMK, salt = empty, info =
 // "openagents.vault.v1/user-wrap"); user_key_id = the first 16 bytes of
 // SHA-256("openagents.vault.v1/key-id" 0 K_user_wrap), as 32 hex digits.
-vt_user_keys :: (vmk:[]u8,kwrap:[]u8,key_id:[]u8)->bool {
+vt_user_keys :: (vmk:[]u8,kwrap:[]u8,key_id:[]u8)->bool #effects(all) {
   kdf:[1]VtKdf;return vt_user_keys_work(vmk,kwrap,key_id,kdf[..]);
 }
-vt_user_keys_work :: (vmk:[]u8,kwrap:[]u8,key_id:[]u8,kdf:[]VtKdf)->bool {
+vt_user_keys_work :: (vmk:[]u8,kwrap:[]u8,key_id:[]u8,kdf:[]VtKdf)->bool #effects(all) {
   info:[29]u8;i0:=json_raw(info[..],0,"openagents.vault.v1/user-wrap");
   ok:=hkdf_extract_checked(vmk[0..<0],vmk,kdf[0].prk[..],false)==SHA_OK && hkdf_expand_checked(kdf[0].prk[..],info[0..<i0],kwrap,32,false)==SHA_OK;
   msg:[59]u8;n:=json_raw(msg[..],0,"openagents.vault.v1/key-id");   // msg[26] stays 0
@@ -448,7 +448,7 @@ vt_user_keys_work :: (vmk:[]u8,kwrap:[]u8,key_id:[]u8,kdf:[]VtKdf)->bool {
 
 // ---- objects
 // content: {alg, chunk_bytes, chunks, nonce_prefix}, in that order.
-vt_content :: (j:[]Json,o:[]VtObject)->bool {
+vt_content :: (j:[]Json,o:[]VtObject)->bool #effects(all) {
   names:=[4]string.["alg","chunk_bytes","chunks","nonce_prefix"];k:=0;
   while true {
     t:=json_next(j);if t==JSON_OBJECT_END {break;}
@@ -464,7 +464,7 @@ vt_content :: (j:[]Json,o:[]VtObject)->bool {
 }
 // core: {content, created_at, media?, object, tier, vault}; its raw bytes
 // (canonical, since the header is) are what core_digest hashes.
-vt_core :: (j:[]Json,o:[]VtObject)->VtCode {
+vt_core :: (j:[]Json,o:[]VtObject)->VtCode #effects(all) {
   names:=[6]string.["content","created_at","media","object","tier","vault"];k:=0;
   while true {
     t:=json_next(j);if t==JSON_OBJECT_END {break;}
@@ -482,7 +482,7 @@ vt_core :: (j:[]Json,o:[]VtObject)->VtCode {
   return ifx k==6 then VtCode.ok else VtCode.field;
 }
 // wraps: up to VT_WRAPS user wraps {dek, key, mode, nonce}, in that order.
-vt_wraps :: (j:[]Json,o:[]VtObject)->bool {
+vt_wraps :: (j:[]Json,o:[]VtObject)->bool #effects(all) {
   v:=json_next(j);
   while v!=JSON_ARRAY_END {
     if v!=JSON_OBJECT || o[0].count==VT_WRAPS {return false;}
@@ -506,14 +506,14 @@ vt_wraps :: (j:[]Json,o:[]VtObject)->bool {
 // book:begin spans
 // Every chunk but the last is chunk_bytes + 16 bytes; the last is 16 to
 // chunk_bytes + 16, and more than 16 unless it is the only chunk.
-vt_spans_ok :: (n:int,chunk_bytes:int,chunks:int)->bool {
+vt_spans_ok :: (n:int,chunk_bytes:int,chunks:int)->bool #effects(all) {
   last:=n-(chunks-1)*(chunk_bytes+16);
   return last>=16 && last<=chunk_bytes+16 && (chunks==1 || last>16);
 }
 // book:end spans
 // book:begin object_read
 // magic || be32(header length) || header (exactly its JCS form) || chunks.
-vt_object_read :: (blob:[]u8)->VtObject {
+vt_object_read :: (blob:[]u8)->VtObject #effects(all) {
   o:=[1]VtObject.[VtObject.{}];
   if blob.count<12 || cast(string)blob[0..<8]!=VT_MAGIC {return VtObject.{code=VtCode.magic};}
   hlen:=0;for k:8..<12 {hlen=hlen*256+cast(int)blob[k];}
@@ -545,10 +545,10 @@ vt_object_read :: (blob:[]u8)->VtObject {
 // book:begin open
 // Slot -> VMK -> K_user_wrap -> the user wrap whose key is user_key_id ->
 // DEK -> every chunk. Nothing is left in out unless every link holds.
-vt_open :: (blob:[]u8,slot:string,secret:[]u8,out:[]u8)->VtResult {
+vt_open :: (blob:[]u8,slot:string,secret:[]u8,out:[]u8)->VtResult #effects(all) {
   work:[1]VtWork;return vt_open_work(blob,slot,secret,out,work[..]);
 }
-vt_open_work :: (blob:[]u8,slot:string,secret:[]u8,out:[]u8,work:[]VtWork)->VtResult {
+vt_open_work :: (blob:[]u8,slot:string,secret:[]u8,out:[]u8,work:[]VtWork)->VtResult #effects(all) {
   o:=vt_object_read(blob);if o.code!=VtCode.ok {return VtResult.{code=o.code};}
   aad:[VT_AAD_MAX]u8;s:=vt_slot_read(slot,aad[..]);if s.code!=VtCode.ok {return VtResult.{code=s.code};}
   if s.vault!=o.vault {return VtResult.{code=VtCode.vault};}
@@ -568,7 +568,7 @@ vt_open_work :: (blob:[]u8,slot:string,secret:[]u8,out:[]u8,work:[]VtWork)->VtRe
   return VtResult.{code=VtCode.ok,written=written};
 }
 // VMK -> K_user_wrap and user_key_id -> the DEK from the wrap with that key.
-vt_unwrap :: (o:VtObject,work:[]VtWork)->VtCode {
+vt_unwrap :: (o:VtObject,work:[]VtWork)->VtCode #effects(all) {
   id:[32]u8;
   if !vt_user_keys_work(work[0].vmk[..],work[0].kwrap[..],id[..],work[0].kdf[..]) {return VtCode.wrap;}
   wad:[62]u8;n:=json_raw(wad[..],0,"openagents.vault.v1/wrap-user");for i:0..<32 {wad[n+1+i]=o.digest[i];}
@@ -581,7 +581,7 @@ vt_unwrap :: (o:VtObject,work:[]VtWork)->VtCode {
   return VtCode.wrap;
 }
 // Chunk i's nonce: nonce_prefix (7 bytes) || be32(i) || 1 for the last chunk, else 0.
-vt_chunk_nonce :: (prefix:[7]u8,i:int,last:bool,nonce:[]u8) {
+vt_chunk_nonce :: (prefix:[7]u8,i:int,last:bool,nonce:[]u8) #effects(all) {
   for k:0..<7 {nonce[k]=prefix[k];}
   for k:0..<4 {nonce[7+k]=cast(u8)((i>>(8*(3-k)))&255);}
   nonce[11]=ifx last then cast(u8)1 else cast(u8)0;

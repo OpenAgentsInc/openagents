@@ -16,14 +16,14 @@
   for n:0..<20 {everglade_room_strike(s[..],-1,500,piece.cx-1,piece.cy,piece.cz,piece.cx,piece.cy,piece.cz,10);}
   #assert w[0].pieces[q].state!=DP_STANDING;
 }
-everglade_forge_prepare :: (s:[]Everglade) #export_c {
+everglade_forge_prepare :: (s:[]Everglade) #export_c #effects(all) {
   if !s[0].wv.started {watch_page_start(s);}
   s[0].wt[0].on=true;ab_stone_folk(s);
 }
-everglade_forge_open :: (s:[]Everglade,x:f32,z:f32)->bool #export_c {
+everglade_forge_open :: (s:[]Everglade,x:f32,z:f32)->bool #export_c #effects(all) {
   return watch_open(watch_w(s),x,z) && !everglade_in_woods(x,z) && abs(x-f32(EG_RIVER_X))>3;
 }
-everglade_forge_step :: (s:[]Everglade,input:[]f32,out:[]f32) #export_c {
+everglade_forge_step :: (s:[]Everglade,input:[]f32,out:[]f32) #export_c #effects(all) {
   a:[1]Actor;a[0].x=input[0];a[0].z=input[1];a[0].yaw=input[2];
   w:=watch_w(s);moved:=false;
   for k:0..<w[0].fence_n {if watch_fence_gap(w,k,a[0].x,a[0].z)<f32(EG_RADIUS) {p:=watch_fence_out(w,k,a[0].x,a[0].z,a[0].x,a[0].z);a[0].x=p.x;a[0].z=p.z;moved=true;}}

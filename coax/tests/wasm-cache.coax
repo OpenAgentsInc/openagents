@@ -70,7 +70,7 @@ SETUP :: "mkdir -p \"$D/app\" \"$D/out\" && printf '#import \"Basic\";\\nSCALE :
 // their runs fall in two parts (split-b.coax's procedure in one of them).
 SPLIT_SETUP :: "printf '#import \"Basic\";\\n#load \"split-a.coax\";\\n#load \"split-b.coax\";\\n#load \"split-c.coax\";\\nsplit_all :: (x: s32) -> s32 #export_c { return split_a(x) + split_b(x) + split_c(x); }\\n' > \"$D/app/split.coax\" && for f in a b c; do printf 'SPLIT_%s :: 3;\\nsplit_%s :: (x: s32) -> s32 { return add_sat(x * SPLIT_%s, 0); }\\n' $f $f $f > \"$D/app/split-$f.coax\"; done && printf '#include \"split.h\"\\n__attribute__((export_name(\\\"split_face\\\"))) int split_face(int x) { return split_all(x); }\\n' > \"$D/app/split-face.c\"";
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: wasm-cache.coax COMPILER"); return 2; }
   compiler := args_at(a[..], 0);

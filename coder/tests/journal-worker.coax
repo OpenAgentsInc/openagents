@@ -11,7 +11,7 @@ jw_reply :: (path:string,action:string) {
   n=json_write_string(b[..],n,action);n=json_raw(b[..],n,"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n");
   #assert n>0 && fs_write(path,cast(string)b[0..<n]);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   wb:[1024]u8;dir:=fs_temp("journal-worker-",wb[..]);#assert dir.count>0;defer {r:=fs_remove(dir);}
   hb:[1024]u8;home:=fs_temp("journal-home-",hb[..]);#assert home.count>0;defer {r:=fs_remove(home);}
   pb:[1200]u8;p:=fs_join(dir,"1.http",pb[..]);

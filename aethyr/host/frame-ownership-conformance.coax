@@ -9,7 +9,7 @@
 // unchanged; released pending; recovery drew; new pending; old release kept
 // new pending; old release kept new upload prefixes; final pending; resumed
 // producer changed; old ledger handles retired; observed nonempty uploads.
-hfo_pass :: (v:[]int)->bool #export_c {
+hfo_pass :: (v:[]int)->bool #export_c #effects(all) {
   expected:=[13]int.[1,1,1,1,0,1,1,1,1,0,1,1,1];
   if v.count!=13 {return false;}for x,i:expected {if v[i]!=x {return false;}}return true;
 }

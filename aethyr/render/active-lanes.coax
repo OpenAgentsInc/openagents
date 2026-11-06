@@ -3,7 +3,7 @@
 #authority;
 RQActiveLanes :: struct {count:int;lanes:[4]int;}
 #load "tests/active-lanes-checks.coax";
-rq_active_lanes :: (mask:u32)->RQActiveLanes {
+rq_active_lanes :: (mask:u32)->RQActiveLanes #effects(all) {
  r:RQActiveLanes;bits:=mask&15;lane:=0;
  while bits!=0 {
   if (bits&1)!=0 {r.lanes[r.count]=lane;r.count+=1;}

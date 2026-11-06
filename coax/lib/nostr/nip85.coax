@@ -130,12 +130,12 @@ N85_T_LIST :: "[[\"30382:rank\",\"4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00
 }
 
 // An event signed, for the checks, by this hex key.
-n85_signed :: (e:NostrEvent,key:string)->NostrEvent {r:=e;ok:=ne_lower_hex(key,r.public_key[..]);return r;}
+n85_signed :: (e:NostrEvent,key:string)->NostrEvent #effects(all) {r:=e;ok:=ne_lower_hex(key,r.public_key[..]);return r;}
 
 // book:begin providers
 // The providers a user names in kind 10040: each "kind:result" tag gives
 // the provider's key and a relay hint. Tags of other names are passed over.
-n85_providers :: (e:NostrEvent)->N85Providers {
+n85_providers :: (e:NostrEvent)->N85Providers #effects(all) {
   p:N85Providers;if e.error!=NE_OK {return p;}
   if e.kind!=N85_KIND_PROVIDERS {p.status=N85_KIND;return p;}
   i:=0;
@@ -164,13 +164,13 @@ n85_providers :: (e:NostrEvent)->N85Providers {
 }
 // book:end providers
 
-n85_refuse :: (a:N85Assertion,status:int,at:int)->N85Assertion {o:=a;o.status=status;o.at=at;return o;}
+n85_refuse :: (a:N85Assertion,status:int,at:int)->N85Assertion #effects(all) {o:=a;o.status=status;o.at=at;return o;}
 
 // book:begin assertion
 // An assertion's kind, subject and provider. The subject is the first d
 // tag's value, read by the kind: a pubkey, an event id, an address, or any
 // NIP-73 identifier.
-n85_assertion :: (e:NostrEvent)->N85Assertion {
+n85_assertion :: (e:NostrEvent)->N85Assertion #effects(all) {
   a:N85Assertion;if e.error!=NE_OK {return a;}
   if e.kind<N85_USER || e.kind>N85_EXTERNAL {return n85_refuse(a,N85_KIND,-1);}
   a.kind=e.kind;a.provider=e.public_key;
@@ -197,7 +197,7 @@ n85_assertion :: (e:NostrEvent)->N85Assertion {
 // The result named name in an assertion, and whether the user's providers
 // name its signer for this kind and result. A provider list that doesn't
 // read trusts nobody.
-n85_result :: (e:NostrEvent,providers:N85Providers,name:string)->N85Result {
+n85_result :: (e:NostrEvent,providers:N85Providers,name:string)->N85Result #effects(all) {
   r:N85Result;a:=n85_assertion(e);r.status=a.status;
   if a.status!=N85_OK || name=="d" {return r;}
   i:=0;

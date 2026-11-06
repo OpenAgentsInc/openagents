@@ -18,7 +18,7 @@
  #assert dcs_copy(s[..],1,5,out[..])==0 && dcs_copy(s[..],1,6,out[..])== -1 && dcs_copy(s[..],1,-1,out[..])== -1;
  #assert dcs_copy(s[..],1,0,out[0..<0])==0;
 }
-dcs_copy :: (s:[]DctState,ticket:u64,offset:int,out:[]f32)->int #export_c {
+dcs_copy :: (s:[]DctState,ticket:u64,offset:int,out:[]f32)->int #export_c #effects(all) {
  g:=s[0].gate;if !dgp_capture(g) || ticket!=g.ticket || g.phase<DCT_HELD || g.phase>DCT_CLIP || offset<0 || offset>s[0].n {return -1;}
  for i:0..<out.count {if offset+i>=s[0].n {return i;}out[i]=s[0].clip[offset+i];}return out.count;
 }

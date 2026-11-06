@@ -7,17 +7,17 @@
 #load "../render/tests/qualification-files.coax";
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/image/png.coax";
-hlmi_open_bytes :: (root:[]u8)->bool #foreign;
-hlmi_prepare_bytes :: (packet:[]u8)->int #foreign;
-hlmi_info_bytes :: (url:[]u8,field:int)->int #foreign;
-hlmi_copy_bytes :: (url:[]u8,out:[]u8)->int #foreign;
-hlmi_notice :: (out:[]u8)->int #foreign;
-hlmi_done :: () #foreign;
-hlmi_drop :: ()->int #foreign;
-hlmi_recover :: () #foreign;
-hlmi_close :: ()->int #foreign;
-hlmi_device :: (field:int)->int #foreign;
-hlmi_link_bytes :: (target:[]u8,path:[]u8)->bool #foreign;
+hlmi_open_bytes :: (root:[]u8)->bool #foreign #effects(all);
+hlmi_prepare_bytes :: (packet:[]u8)->int #foreign #effects(all);
+hlmi_info_bytes :: (url:[]u8,field:int)->int #foreign #effects(all);
+hlmi_copy_bytes :: (url:[]u8,out:[]u8)->int #foreign #effects(all);
+hlmi_notice :: (out:[]u8)->int #foreign #effects(all);
+hlmi_done :: () #foreign #effects(all);
+hlmi_drop :: ()->int #foreign #effects(all);
+hlmi_recover :: () #foreign #effects(all);
+hlmi_close :: ()->int #foreign #effects(all);
+hlmi_device :: (field:int)->int #foreign #effects(all);
+hlmi_link_bytes :: (target:[]u8,path:[]u8)->bool #foreign #effects(all);
 hlmi_bytes :: (text:string,out:[]u8)->int {if text.count>out.count {return -1;}for byte,i:text {out[i]=byte;}return text.count;}
 hlmi_open :: (text:string)->bool {bytes:[4096]u8;n:=hlmi_bytes(text,bytes[..]);return n>=0&&hlmi_open_bytes(bytes[0..<n]);}
 hlmi_prepare :: (text:string)->int {bytes:[16384]u8;n:=hlmi_bytes(text,bytes[..]);return ifx n<0 then -1 else hlmi_prepare_bytes(bytes[0..<n]);}
@@ -25,7 +25,7 @@ hlmi_info :: (text:string,field:int)->int {bytes:[4096]u8;n:=hlmi_bytes(text,byt
 hlmi_copy :: (text:string,out:[]u8)->int {bytes:[4096]u8;n:=hlmi_bytes(text,bytes[..]);return ifx n<0 then -1 else hlmi_copy_bytes(bytes[0..<n],out);}
 hlmi_link :: (target:string,path:string)->bool {a:[4096]u8;b:[4096]u8;an:=hlmi_bytes(target,a[..]);bn:=hlmi_bytes(path,b[..]);return an>=0&&bn>=0&&hlmi_link_bytes(a[0..<an],b[0..<bn]);}
 hlmi_line :: (text:string,row:int)->string {start:=0;at:=0;for c,i:text {if c=='\n' {if at==row {return text[start..<i];}start=i+1;at+=1;}}return ifx at==row then text[start..<text.count] else "";}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {tool_errln("usage: check-linux-live-media BUNDLED_WEB_ROOT CANONICAL_BANK NEW_OUT");return 2;}
  bank:=args_at(a[..],1);out:=args_at(a[..],2);if !fs_mkdir(out) {return 1;}listing:[1]FsList;if fs_list(out,listing[..])!=0 {return 2;}paths:[4][4096]u8;names_bytes:[4096]u8;urls_bytes:[4096]u8;
  names_n:=fs_read(fs_join(bank,"media.list",paths[0][..]),names_bytes[..]);urls_n:=fs_read(fs_join(bank,"media.urls",paths[1][..]),urls_bytes[..]);if names_n<1||urls_n<1 {return 1;}

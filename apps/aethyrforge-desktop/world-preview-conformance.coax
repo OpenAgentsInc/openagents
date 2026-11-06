@@ -9,7 +9,7 @@
  q[1]=1;q[16]=1;q[3]=3;q[13]=3;q[18]=3;#assert fwp_accept(q[..],"Check as Players See It","Return to Native World");
  q[3]=-1;q[13]=-1;q[18]=-1;#assert !fwp_accept(q[..],"Check as Players See It","Return to Native World");
 }
-fwp_accept :: (q:[]int,menu:string,back:string)->bool #export_c {
+fwp_accept :: (q:[]int,menu:string,back:string)->bool #export_c #effects(all) {
  return q.count==26 && menu=="Check as Players See It" && back=="Return to Native World"
  && q[0]==1 && q[1]>0 && q[2]==2 && q[3]>=0 && q[4]==1 && q[5]==1
  && q[6]==0 && q[7]==0 && q[8]==0 && q[9]==1 && q[10]==1 && q[11]==1

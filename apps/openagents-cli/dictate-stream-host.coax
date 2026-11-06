@@ -8,10 +8,10 @@
 #load "out.coax";
 #load "dictate-launch.coax";
 #load "dictate-stream.coax";
-cxcli_isatty :: (fd:int)->int #foreign;
-cxcli_exe_path :: (out:[]u8)->int #foreign;
-cxproc_exec :: (h:int)->int #foreign;
-tool_main :: ()->int #export_c {
+cxcli_isatty :: (fd:int)->int #foreign #effects(all);
+cxcli_exe_path :: (out:[]u8)->int #foreign #effects(all);
+cxproc_exec :: (h:int)->int #foreign #effects(all);
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;r:[1]Rep;if !args_load(a[..]) {return EXIT_USAGE;}
  r[0].json=args_has(a[..],"--json");
  if args_has(a[..],"--help") || args_has(a[..],"-h") {dictate_usage();return 0;}

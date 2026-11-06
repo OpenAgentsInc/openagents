@@ -14,7 +14,7 @@ FD_INPUT :: 33554432;
 fd_ref :: (s: [] Store, r: Ref) -> string { return ifx r.len <= 0 then "" else str(s, r); }
 fd_ev :: (s: [] Store, e: int) -> string { return ifx e < 0 then "-" else stored_id(s, e); }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) != 3 { tool_errln("usage: fold-dump FRAMES.jsonl PUBKEY SLUG"); return 2; }
   text: [FD_INPUT] u8;

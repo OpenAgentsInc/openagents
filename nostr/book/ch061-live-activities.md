@@ -102,17 +102,17 @@ are decimal unix seconds.
 N53_STATUS_NAMES :: [7] string.["none", "planned", "live", "ended", "open", "private", "closed"];
 // The status a string names for this kind, or N53_NONE: planned, live and
 // ended for a live stream or a meeting; open, private and closed for a space.
-n53_status :: (kind:int,s:N32Text)->int {
+n53_status :: (kind:int,s:N32Text)->int #effects(all) {
   first:=ifx kind==N53_SPACE then N53_OPEN else N53_PLANNED;
   for k:first..<first+3 {if n32_is(s,N53_STATUS_NAMES[k]) {return k;}}
   return N53_NONE;
 }
-n53_status_name :: (status:int)->string {
+n53_status_name :: (status:int)->string #effects(all) {
   if status<N53_NONE || status>N53_CLOSED {return "unknown";}
   return N53_STATUS_NAMES[status];
 }
 // Decimal unix seconds, or -1.
-n53_time :: (s:N32Text)->int {
+n53_time :: (s:N32Text)->int #effects(all) {
   t:=s;v:=json_int(cast(string)t.b[0..<t.n]);
   if !v.ok || v.value<0 {return -1;}
   return v.value;
@@ -129,7 +129,7 @@ addresses get the same checks as everywhere else.
 <!-- source: coax/lib/nostr/nip53.coax read -->
 ```jai
 // A kind 30311, 30312 or 30313 activity: its fields and participants.
-n53_read :: (e:NostrEvent)->N53Activity {
+n53_read :: (e:NostrEvent)->N53Activity #effects(all) {
   a:N53Activity;if e.error!=NE_OK {return a;}
   if e.kind!=N53_LIVE_EVENT && e.kind!=N53_SPACE && e.kind!=N53_MEETING {return n53_refuse(a,N53_KIND,-1);}
   a.kind=e.kind;seen:[8]bool;i:=0;
@@ -237,13 +237,13 @@ that the caller passes:
 ```jai
 // The status to show at time now for an activity last updated at updated:
 // a live one with no update for more than N53_STALE seconds is ended.
-n53_state :: (a:N53Activity,updated:int,now:int)->int {
+n53_state :: (a:N53Activity,updated:int,now:int)->int #effects(all) {
   if a.status==N53_LIVE && now-updated>N53_STALE {return N53_ENDED;}
   return a.status;
 }
 // Whether an event created at created is within window seconds of now, as
 // a client filters kind 10312 presence.
-n53_fresh :: (created:int,now:int,window:int)->bool {return now-created<=window;}
+n53_fresh :: (created:int,now:int,window:int)->bool #effects(all) {return now-created<=window;}
 ```
 
 "After an hour" is read as strictly more than 3,600 seconds: an event
@@ -298,7 +298,7 @@ message it replies to.
 // second may be the first): its kind, author and d, or the refusal and
 // the refusing tag.
 N53Room :: struct {error:int=N53_NO_A; at:int=-1; kind:int; author:[32]u8; d:N32Text;}
-n53_room :: (e:NostrEvent,kind:int,other:int)->N53Room {
+n53_room :: (e:NostrEvent,kind:int,other:int)->N53Room #effects(all) {
   r:N53Room;i:=0;t:=n32_tag(e,0);
   while t.error!=NT_INDEX {
     r.at=i;
@@ -316,7 +316,7 @@ n53_room :: (e:NostrEvent,kind:int,other:int)->N53Room {
 }
 // A kind 1311 chat message: the activity its a tag names, and the message
 // its first e tag replies to.
-n53_chat :: (e:NostrEvent)->N53Chat {
+n53_chat :: (e:NostrEvent)->N53Chat #effects(all) {
   c:N53Chat;if e.error!=NE_OK {return c;}
   if e.kind!=N53_CHAT {return n53_chat_fail(c,N53_KIND,-1);}
   r:=n53_room(e,N53_LIVE_EVENT,N53_LIVE_EVENT);
@@ -337,7 +337,7 @@ n53_chat :: (e:NostrEvent)->N53Chat {
 }
 // Whether chat belongs to activity, a kind 30311 event: N53_OK when the
 // chat's a tag names the activity's author and d, else the refusal.
-n53_chat_in :: (chat:NostrEvent,activity:NostrEvent)->int {
+n53_chat_in :: (chat:NostrEvent,activity:NostrEvent)->int #effects(all) {
   a:=n53_read(activity);if a.error!=N53_OK {return a.error;}
   if a.kind!=N53_LIVE_EVENT {return N53_KIND;}
   c:=n53_chat(chat);if c.error!=N53_OK {return c.error;}
@@ -376,7 +376,7 @@ meeting, and `["hand", "1"]` raises a hand.
 ```jai
 // A kind 10312 presence: the room its first a tag names (a space or a
 // meeting) and whether the first hand tag is "1".
-n53_presence :: (e:NostrEvent)->N53Presence {
+n53_presence :: (e:NostrEvent)->N53Presence #effects(all) {
   p:N53Presence;if e.error!=NE_OK {return p;}
   if e.kind!=N53_PRESENCE {return n53_presence_fail(p,N53_KIND,-1);}
   r:=n53_room(e,N53_SPACE,N53_MEETING);
@@ -406,7 +406,7 @@ optional `e` tag for the parent.
 ```jai
 // A kind 30311's tags as a JSON array into out: its length, or minus the
 // refusal (N53_NO_D, N53_STATUS, N53_TIME, N53_OUTPUT).
-n53_tags :: (m:N53Meta,roles:[]N53Role,out:[]u8)->int {
+n53_tags :: (m:N53Meta,roles:[]N53Role,out:[]u8)->int #effects(all) {
   if m.d.count==0 {return -N53_NO_D;}
   if m.status<N53_NONE || m.status>N53_ENDED {return -N53_STATUS;}
   if m.ends>=0 && m.ends<m.starts {return -N53_TIME;}
@@ -427,7 +427,7 @@ n53_tags :: (m:N53Meta,roles:[]N53Role,out:[]u8)->int {
 // A kind 1311's tags into out: the a tag of the activity 30311:author:d
 // with a relay hint (may be empty), then an e tag for the parent when
 // has_parent. Its length, or -1 for an empty d or a short out.
-n53_chat_tags :: (author:[32]u8,d:string,relay:string,has_parent:bool,parent:[32]u8,out:[]u8)->int {
+n53_chat_tags :: (author:[32]u8,d:string,relay:string,has_parent:bool,parent:[32]u8,out:[]u8)->int #effects(all) {
   if d.count==0 {return -1;}
   addr:[NT_MAX_VALUE+80]u8;an:=nip23_address(N53_LIVE_EVENT,author,d,addr[..]);
   if an== -1 {return -1;}

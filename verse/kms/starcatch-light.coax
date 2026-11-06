@@ -64,14 +64,14 @@ starcatch_sky :: (px: f32, py: f32, w: f32, h: f32, time: f32, ground_top: f32, 
   }
   return c;
 }
-starcatch_sky_r :: (px: f32, py: f32, w: f32, h: f32, time: f32, ground_top: f32, flash: f32) -> f32 #export_c { return starcatch_sky(px, py, w, h, time, ground_top, flash, 0); }
-starcatch_sky_g :: (px: f32, py: f32, w: f32, h: f32, time: f32, ground_top: f32, flash: f32) -> f32 #export_c { return starcatch_sky(px, py, w, h, time, ground_top, flash, 1); }
-starcatch_sky_b :: (px: f32, py: f32, w: f32, h: f32, time: f32, ground_top: f32, flash: f32) -> f32 #export_c { return starcatch_sky(px, py, w, h, time, ground_top, flash, 2); }
+starcatch_sky_r :: (px: f32, py: f32, w: f32, h: f32, time: f32, ground_top: f32, flash: f32) -> f32 #export_c #effects(all) { return starcatch_sky(px, py, w, h, time, ground_top, flash, 0); }
+starcatch_sky_g :: (px: f32, py: f32, w: f32, h: f32, time: f32, ground_top: f32, flash: f32) -> f32 #export_c #effects(all) { return starcatch_sky(px, py, w, h, time, ground_top, flash, 1); }
+starcatch_sky_b :: (px: f32, py: f32, w: f32, h: f32, time: f32, ground_top: f32, flash: f32) -> f32 #export_c #effects(all) { return starcatch_sky(px, py, w, h, time, ground_top, flash, 2); }
 
 // A stroke's light at (x, y) in its own frame: a capsule from 0 to length
 // along x, a core of half width `core`, `light` bright, with a glow that
 // reaches `glow`. The host multiplies it by the stroke's tint and adds it.
-starcatch_fx :: (x: f32, y: f32, length: f32, core: f32, light: f32, glow: f32, fade: f32) -> f32 #export_c {
+starcatch_fx :: (x: f32, y: f32, length: f32, core: f32, light: f32, glow: f32, fade: f32) -> f32 #export_c #effects(all) {
   along := sl_hi(sl_hi(-x, x - length), 0);
   d := sqrt(along * along + y * y);
   body := 1 - sl_smooth(core - 0.5, core + 0.6, d);

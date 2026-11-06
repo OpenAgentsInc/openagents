@@ -1,7 +1,7 @@
 // Actual ordinary-host clip selection, owned timeline and muted PCM readback.
 #load "../../coax/web/wasm-chrome.coax";
 #load "audio-timeline-conformance.coax";
-tool_main::()->int #export_c{
+tool_main::()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||(args_count(a[..])!=3&&args_count(a[..])!=4){return 2;}
  mode:=args_at(a[..],3);kind:=ifx mode=="count" then 1 else ifx mode=="line" then 2 else ifx mode=="pcm" then 3 else ifx mode=="retire" then 4 else ifx mode=="missing" then 5 else 0;if mode!=""&&kind==0{return 2;}
  page:="<!doctype html><meta charset=utf-8><style>canvas{width:160px;height:90px}</style><canvas id=coaxial></canvas><script>globalThis.coaxialClip=true;globalThis.coaxialClipAudio=true;</script><script type=module src=/coaxial/host.js data-app=host-contract data-wasm=/fixture.wasm data-wgsl=/fixture.wgsl></script>";

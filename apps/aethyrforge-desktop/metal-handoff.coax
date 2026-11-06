@@ -31,7 +31,7 @@ mhp_make :: (reference:string,dump:string,assets:string,dir:string)->bool {
  if buf!=7 {return false;}out:[1048576]u8;o:[1]Jo;jo_start(o[..],out[..]);for r:0..<p[0].row_count {row:=p[0].rows[r];for k:0..<row.count {if k>0 {jo_put(o[..]," ");}jo_put(o[..],p[0].tokens[row.first+k]);}jo_put(o[..],"\n");}
  config:[4096]u8;return !o[0].bad && fs_write(fs_join(dir,"frame.config",config[..]),jo_text(o[..]));
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: metal-handoff REFERENCE.CONFIG WASM_DUMP NATIVE_DUMP OUTPUT");return 2;}
  dir:=args_at(a[..],3);if !fs_mkdir(dir) {return 1;}paths:[2][4096]u8;web:=fs_join(dir,"wasm",paths[0][..]);native:=fs_join(dir,"native",paths[1][..]);
  return ifx mhp_make(args_at(a[..],0),args_at(a[..],1),args_at(a[..],1),web) && mhp_make(args_at(a[..],0),args_at(a[..],2),args_at(a[..],1),native) then 0 else 1;

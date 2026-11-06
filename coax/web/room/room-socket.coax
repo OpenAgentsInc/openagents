@@ -14,7 +14,7 @@
 #load "room-ticket.coax";
 #load "../../../apps/openagents-web/everglade-wire.coax";   // an everglade check reads D as the page does (WireMirror)
 
-cxproc_wall_us :: () -> int #foreign;
+cxproc_wall_us :: () -> int #foreign #effects(all);
 
 #test "text and numbers into a buffer" {
   b: [64] u8;

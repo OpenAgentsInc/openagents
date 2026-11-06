@@ -28,7 +28,7 @@ ppp_numeric_oracle :: (observation:string,receipt:string)->bool {
   argv:=[6]string.["python3","aethyr/tests/raw_float_oracle.py","--observation",observation,"--receipt",receipt];out:[4096]u8;err:[4096]u8;
   r:=proc_run(argv[..],10000,out[..],err[..]);if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);return false;}return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {return 2;}
   mode:=args_at(a[..],0);old_path:=args_at(a[..],1);new_path:=args_at(a[..],2);output:=args_at(a[..],3);
   index:=-1;names:=[7]string.["filter-format","ring8","sans-filter","sampling","session-raster","clip-output","deadgears-vs"];for i:0..<7 {if mode==names[i] {index=i;}}if index<0 {return 2;}

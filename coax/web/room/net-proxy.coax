@@ -143,7 +143,7 @@ np_shut :: (p: [] NpPair) {
   p[0].live = false; p[0].down = -1; p[0].up = -1;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   listen := args_whole(args_at(a[..], 0)); room := args_whole(args_at(a[..], 1));

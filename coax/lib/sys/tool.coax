@@ -5,12 +5,12 @@
 // coax/web/tool.sh (it links tool-native.c and the other platform effects).
 #load "args.coax";
 
-cxargs_count :: () -> int #foreign;
-cxargs_len :: (i: int) -> int #foreign;
-cxargs_byte :: (i: int, j: int) -> int #foreign;
-cxtool_err :: (byte: int) -> int #foreign;
-cxtool_err_flush :: () -> int #foreign;
-cxtool_os :: () -> int #foreign;
+cxargs_count :: () -> int #foreign #effects(all);
+cxargs_len :: (i: int) -> int #foreign #effects(all);
+cxargs_byte :: (i: int, j: int) -> int #foreign #effects(all);
+cxtool_err :: (byte: int) -> int #foreign #effects(all);
+cxtool_err_flush :: () -> int #foreign #effects(all);
+cxtool_os :: () -> int #foreign #effects(all);
 
 TOOL_MAC :: 1; TOOL_LINUX :: 2;
 

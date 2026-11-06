@@ -227,7 +227,7 @@ level_from :: (r: [] River, levels: [] f32, z: f64) -> f64 {
 // Builds the river: its course and level profile, its waves, its current,
 // its set, the baked nodes the shader reads, the floats.
 // levels: the river's level over each of the n + 1 ground rows, then the ponds' rows (x, z, rim, level).
-everglade_river_start :: (r: [] River, heights: [] f32, all: [] f32, n: int, cell: f32, west: f32, south: f32) #export_c {
+everglade_river_start :: (r: [] River, heights: [] f32, all: [] f32, n: int, cell: f32, west: f32, south: f32) #export_c #effects(all) {
   levels := all[0..<(ifx n + 1 < all.count then n + 1 else all.count)];
   r[0].n = n; r[0].cell = cell; r[0].west = west; r[0].south = south;
   span := RIVER_NORTH - RIVER_SOUTH;
@@ -326,11 +326,11 @@ river_bake :: (r: [] River, heights: [] f32) {
   for k: 0..<RIVER_COLS * RIVER_ROWS { r[0].nodes[k * WATER_NODE + 4] = shore[k]; }
 }
 
-everglade_river_node_bytes :: () -> int #export_c { return RIVER_NODES * 4; }
+everglade_river_node_bytes :: () -> int #export_c #effects(all) { return RIVER_NODES * 4; }
 
 // The river's uniform block (everglade.wgsl WaterU) for this frame at
 // `time` s: the waves on the water clock, the look, the tier, the mesh.
-everglade_river_frame :: (r: [] River, u: [] f32, time: f64, phone: bool, ex: f32, ey: f32, ez: f32, pixel_angle: f32) #export_c {
+everglade_river_frame :: (r: [] River, u: [] f32, time: f64, phone: bool, ex: f32, ey: f32, ez: f32, pixel_angle: f32) #export_c #effects(all) {
   if !r[0].ready || u.count < WATER_FLOATS { return; }
   b := r[0].bodies[0];
   inside := false;
@@ -360,7 +360,7 @@ everglade_river_frame :: (r: [] River, u: [] f32, time: f64, phone: bool, ex: f3
 
 // The rain's rise on the river (m, held to 0.15) and the current's gain for it (1 to 1.6), from
 // Everglade's weather each frame (verse/water-weather.coax weather_rise and weather_flow_gain).
-everglade_river_weather :: (r: [] River, rise: f32, gain: f32) #export_c {
+everglade_river_weather :: (r: [] River, rise: f32, gain: f32) #export_c #effects(all) {
   r[0].rise = ifx rise == rise then clamp_f(rise, 0, 0.15) else 0.0f32;
   r[0].flow_boost = ifx gain == gain then clamp_f(gain - 1, 0, 0.6) else 0.0f32;
 }
@@ -369,11 +369,11 @@ everglade_river_weather :: (r: [] River, rise: f32, gain: f32) #export_c {
 river_tick :: (time: f64) -> u64 { return cast(u64) floor(fmax(time, 0.0) * 120.0); }
 
 // The draw: vertices a patch, and patches.
-everglade_river_vertices :: (phone: bool) -> int #export_c { return ifx phone then 6 * 4 * 6 else 12 * 8 * 6; }
-everglade_river_patches :: () -> int #export_c { return RIVER_PATCHES; }
+everglade_river_vertices :: (phone: bool) -> int #export_c #effects(all) { return ifx phone then 6 * 4 * 6 else 12 * 8 * 6; }
+everglade_river_patches :: () -> int #export_c #effects(all) { return RIVER_PATCHES; }
 
 // The gameplay surface over (x, z) at `time`, or none.
-everglade_river_surface :: (r: [] River, x: f32, z: f32, time: f64) -> f32 #export_c {
+everglade_river_surface :: (r: [] River, x: f32, z: f32, time: f64) -> f32 #export_c #effects(all) {
   if !r[0].ready { return -1000; }
   s := water_sample(r[0].set, f64(x), f64(z), river_tick(time));
   if !s.found { return -1000; }
@@ -445,13 +445,13 @@ breath_tick :: (r: [] River, dt: f64, under: bool) -> int {
 
 // One frame of you in the river: your feet at (x, z) over the carved
 // ground, `dive` held, `dt` s, at `time` on the water clock.
-everglade_river_swim :: (r: [] River, heights: [] f32, x: f32, z: f32, dive: bool, dt: f32, time: f64) -> Swim #export_c {
+everglade_river_swim :: (r: [] River, heights: [] f32, x: f32, z: f32, dive: bool, dt: f32, time: f64) -> Swim #export_c #effects(all) {
   return everglade_river_swim_over(r, heights, x, z, 0, dive, dt, time);
 }
 // The same with your feet `over` m above the bed under you (the controller's height over its floor): feet
 // above the water's surface are out of it, whatever is under them (you levitate over a pond, you fall
 // toward it), and you go into it only when they come down to it.
-everglade_river_swim_over :: (r: [] River, heights: [] f32, x: f32, z: f32, over: f32, dive: bool, dt: f32, time: f64) -> Swim #export_c {
+everglade_river_swim_over :: (r: [] River, heights: [] f32, x: f32, z: f32, over: f32, dive: bool, dt: f32, time: f64) -> Swim #export_c #effects(all) {
   out: Swim;
   out.surface = -1000; out.pace = 1; out.breath = 1; out.medium = MEDIUM_GROUND;
   bed := river_bed(r, heights, x, z);
@@ -516,10 +516,10 @@ everglade_river_swim_over :: (r: [] River, heights: [] f32, x: f32, z: f32, over
 }
 
 // Whether you breathe under water (the page's Water Breathing), from now.
-everglade_river_gills :: (r: [] River, on: bool) #export_c { r[0].gills = on; }
+everglade_river_gills :: (r: [] River, on: bool) #export_c #effects(all) { r[0].gills = on; }
 
 // You stand again whole (a death, a warp): out of the water and out of any rowboat, breath full.
-everglade_river_reset :: (r: [] River) #export_c {
+everglade_river_reset :: (r: [] River) #export_c #effects(all) {
   if r[0].aboard >= 0 { i := r[0].aboard; b := r[0].floats[i]; r[0].homes[i * 3] = b.pos.x; r[0].homes[i * 3 + 1] = b.pos.z; r[0].homes[i * 3 + 2] = yaw_of_q(b.orientation); }
   r[0].aboard = -1; r[0].row_ahead = 0; r[0].row_turn = 0;
   r[0].medium = MEDIUM_GROUND; r[0].afloat = false; r[0].feet = 0;
@@ -622,7 +622,7 @@ floats_start :: (r: [] River) {
 // a duck's paddling home and a lily pad's stem; writes each one's x, y, z,
 // its yaw, its tip and the way it tips, 0, and its kind (0 a duck, 1 a pad)
 // into `out`.
-everglade_river_floats :: (r: [] River, dt: f32, out: [] f32) -> int #export_c {
+everglade_river_floats :: (r: [] River, dt: f32, out: [] f32) -> int #export_c #effects(all) {
   if !r[0].ready { return 0; }
   c := loop_accept(r[0].float_clock, f64(dt));   // a time that is none steps nothing
   every: [1] bool;
@@ -740,7 +740,7 @@ boat_gap :: (b: RigidBody, x: f64, z: f64) -> f64 {
 }
 
 // The rowboat you may board from (x, z): within BOAT_REACH of its hull; -1 none, or you are in one.
-everglade_river_boat_near :: (r: [] River, x: f32, z: f32) -> int #export_c {
+everglade_river_boat_near :: (r: [] River, x: f32, z: f32) -> int #export_c #effects(all) {
   if !r[0].ready || r[0].aboard >= 0 { return -1; }
   best := -1; near := BOAT_REACH;
   for i: 0..<r[0].float_n {
@@ -752,12 +752,12 @@ everglade_river_boat_near :: (r: [] River, x: f32, z: f32) -> int #export_c {
 }
 
 // The first rowboat (the Lantern Pond's), -1 none.
-everglade_river_first_boat :: (r: [] River) -> int #export_c {
+everglade_river_first_boat :: (r: [] River) -> int #export_c #effects(all) {
   for i: 0..<r[0].float_n { if r[0].kinds[i] == FLOAT_BOAT { return i; } }
   return -1;
 }
 // Into rowboat i: you sit at its middle thwart, out of the water.
-everglade_river_board :: (r: [] River, i: int) -> bool #export_c {
+everglade_river_board :: (r: [] River, i: int) -> bool #export_c #effects(all) {
   if !r[0].ready || i < 0 || i >= r[0].float_n || r[0].kinds[i] != FLOAT_BOAT { return false; }
   r[0].aboard = i; r[0].oar_t = 0; r[0].row_ahead = 0; r[0].row_turn = 0; r[0].oar_wet = false;
   r[0].afloat = false; r[0].medium = MEDIUM_BOAT; r[0].splashed = true; r[0].levels = 0; r[0].out = 0.0;
@@ -765,7 +765,7 @@ everglade_river_board :: (r: [] River, i: int) -> bool #export_c {
 }
 
 // Your seat in the boat you are in (on false: none).
-everglade_river_seat :: (r: [] River) -> Seat #export_c {
+everglade_river_seat :: (r: [] River) -> Seat #export_c #effects(all) {
   out: Seat; out.boat = -1;
   i := r[0].aboard;
   if !r[0].ready || i < 0 { return out; }
@@ -780,14 +780,14 @@ everglade_river_seat :: (r: [] River) -> Seat #export_c {
 }
 
 // What you ask of the oars this frame: ahead (1 forward, -1 back) and turn (1 to starboard).
-everglade_river_row :: (r: [] River, ahead: f32, turn: f32) #export_c {
+everglade_river_row :: (r: [] River, ahead: f32, turn: f32) #export_c #effects(all) {
   r[0].row_ahead = ifx ahead == ahead then clamp_f(ahead, -1, 1) else 0.0f32;
   r[0].row_turn = ifx turn == turn then clamp_f(turn, -1, 1) else 0.0f32;
 }
 
 // Out of the boat: onto the bank or the shallows within 2.5 m of its hull, else into the water beside
 // it (swimming). The boat is tied up where it is. Returns where your feet go.
-everglade_river_leave :: (r: [] River, heights: [] f32, time: f64) -> Seat #export_c {
+everglade_river_leave :: (r: [] River, heights: [] f32, time: f64) -> Seat #export_c #effects(all) {
   out: Seat; out.boat = -1;
   i := r[0].aboard;
   if !r[0].ready || i < 0 { return out; }
@@ -831,7 +831,7 @@ boat_off :: (r: [] River, heights: [] f32, time: f64, i: int) -> Seat {
 // A place within reach of boat i to board it from (0.7 m off its hull, on the bank or in the shallows,
 // the nearest round it; else where its rower would step out): a room's place line puts a seat there
 // (coax/web/room/room-control.coax "place", #12861). Its mooring is left as it was.
-everglade_river_beside :: (r: [] River, heights: [] f32, time: f64, i: int) -> Seat #export_c {
+everglade_river_beside :: (r: [] River, heights: [] f32, time: f64, i: int) -> Seat #export_c #effects(all) {
   out: Seat; out.boat = -1;
   if !r[0].ready || i < 0 || i >= r[0].float_n || r[0].kinds[i] != FLOAT_BOAT { return out; }
   b := r[0].floats[i];
@@ -862,7 +862,7 @@ everglade_river_beside :: (r: [] River, heights: [] f32, time: f64, i: int) -> S
 }
 
 // The free rowboat (no one rows it) within BOAT_REACH of (x, z), -1 none.
-everglade_river_crew_near :: (r: [] River, x: f32, z: f32) -> int #export_c {
+everglade_river_crew_near :: (r: [] River, x: f32, z: f32) -> int #export_c #effects(all) {
   if !r[0].ready { return -1; }
   best := -1; near := BOAT_REACH;
   for i: 0..<r[0].float_n {
@@ -873,21 +873,21 @@ everglade_river_crew_near :: (r: [] River, x: f32, z: f32) -> int #export_c {
   return best;
 }
 // Who rows float i (a seat + 1, 0 none).
-everglade_river_crew_of :: (r: [] River, i: int) -> int #export_c { return ifx i >= 0 && i < r[0].float_n then r[0].crew[i] else 0; }
+everglade_river_crew_of :: (r: [] River, i: int) -> int #export_c #effects(all) { return ifx i >= 0 && i < r[0].float_n then r[0].crew[i] else 0; }
 // Rower WHO (a seat + 1) into rowboat i, when no one rows it.
-everglade_river_crew_board :: (r: [] River, i: int, who: int) -> bool #export_c {
+everglade_river_crew_board :: (r: [] River, i: int, who: int) -> bool #export_c #effects(all) {
   if !r[0].ready || who <= 0 || i < 0 || i >= r[0].float_n || r[0].kinds[i] != FLOAT_BOAT || r[0].crew[i] > 0 { return false; }
   r[0].crew[i] = who; r[0].crew_t[i] = 0; r[0].crew_a[i] = 0; r[0].crew_r[i] = 0;
   return true;
 }
 // What boat i's rower asks of the oars this step (as everglade_river_row).
-everglade_river_crew_row :: (r: [] River, i: int, ahead: f32, turn: f32) #export_c {
+everglade_river_crew_row :: (r: [] River, i: int, ahead: f32, turn: f32) #export_c #effects(all) {
   if i < 0 || i >= r[0].float_n || r[0].crew[i] <= 0 { return; }
   r[0].crew_a[i] = ifx ahead == ahead then clamp_f(ahead, -1, 1) else 0.0f32;
   r[0].crew_r[i] = ifx turn == turn then clamp_f(turn, -1, 1) else 0.0f32;
 }
 // Boat i's rower's seat (as everglade_river_seat).
-everglade_river_crew_seat :: (r: [] River, i: int) -> Seat #export_c {
+everglade_river_crew_seat :: (r: [] River, i: int) -> Seat #export_c #effects(all) {
   out: Seat; out.boat = -1;
   if !r[0].ready || i < 0 || i >= r[0].float_n || r[0].crew[i] <= 0 { return out; }
   b := r[0].floats[i];
@@ -898,7 +898,7 @@ everglade_river_crew_seat :: (r: [] River, i: int) -> Seat #export_c {
   return out;
 }
 // Boat i's rower out of it (as everglade_river_leave): where their feet go; the boat is free.
-everglade_river_crew_leave :: (r: [] River, heights: [] f32, time: f64, i: int) -> Seat #export_c {
+everglade_river_crew_leave :: (r: [] River, heights: [] f32, time: f64, i: int) -> Seat #export_c #effects(all) {
   out: Seat; out.boat = -1;
   if !r[0].ready || i < 0 || i >= r[0].float_n || r[0].crew[i] <= 0 { return out; }
   out = boat_off(r, heights, time, i);
@@ -906,7 +906,7 @@ everglade_river_crew_leave :: (r: [] River, heights: [] f32, time: f64, i: int) 
   return out;
 }
 // Boat i, its rower gone (a seat that left the room): tied up where it is, free.
-everglade_river_crew_free :: (r: [] River, i: int) #export_c {
+everglade_river_crew_free :: (r: [] River, i: int) #export_c #effects(all) {
   if i < 0 || i >= r[0].float_n || r[0].crew[i] <= 0 { return; }
   b := r[0].floats[i];
   r[0].homes[i * 3] = b.pos.x; r[0].homes[i * 3 + 1] = b.pos.z; r[0].homes[i * 3 + 2] = yaw_of_q(b.orientation);
@@ -914,7 +914,7 @@ everglade_river_crew_free :: (r: [] River, i: int) #export_c {
 }
 // A page in a room: rowboat i where the room has it, rowed by another seat (stroke: the oars' share,
 // -1 shipped) or moored (who 0): put there, tied up there, and not yours to board while rowed.
-everglade_river_pin :: (r: [] River, i: int, who: int, x: f32, y: f32, z: f32, yaw: f32, stroke: f32) #export_c {
+everglade_river_pin :: (r: [] River, i: int, who: int, x: f32, y: f32, z: f32, yaw: f32, stroke: f32) #export_c #effects(all) {
   if !r[0].ready || i < 0 || i >= r[0].float_n || r[0].kinds[i] != FLOAT_BOAT || i == r[0].aboard { return; }
   if !(x == x) || !(z == z) || !(yaw == yaw) { return; }
   r[0].homes[i * 3] = f64(x); r[0].homes[i * 3 + 1] = f64(z); r[0].homes[i * 3 + 2] = f64(yaw);
@@ -1092,7 +1092,7 @@ fx_live :: (r: [] River) -> int {
 // steam, 1 a bolt's flash of steam and spray, 2 a water orb bursting, 3 debris falling in. Rings run
 // out from it and floats within reach are thrown back.
 SPLASH_CROWN :: 0; SPLASH_BOLT :: 1; SPLASH_ORB :: 2; SPLASH_DEBRIS :: 3;
-everglade_river_splash :: (r: [] River, x: f32, z: f32, kind: int, size: f32, time: f64) -> bool #export_c {
+everglade_river_splash :: (r: [] River, x: f32, z: f32, kind: int, size: f32, time: f64) -> bool #export_c #effects(all) {
   if !r[0].ready { return false; }
   s := water_sample(r[0].set, f64(x), f64(z), river_tick(time));
   if !s.found { return false; }
@@ -1139,7 +1139,7 @@ everglade_river_splash :: (r: [] River, x: f32, z: f32, kind: int, size: f32, ti
 // much of its water it meets (its face to the splash: a duck's ball, a pad's rim and the sheet over
 // it, a rowboat's side); nothing holds a float but the water, so it rides off at that over its mass,
 // never faster than the sheet itself (`sheet` m/s at the middle). Returns how many it moved.
-everglade_river_shove :: (r: [] River, x: f32, z: f32, reach: f32, impulse: f32, sheet: f32) -> int #export_c {
+everglade_river_shove :: (r: [] River, x: f32, z: f32, reach: f32, impulse: f32, sheet: f32) -> int #export_c #effects(all) {
   if !r[0].ready || !(reach > 0.0) { return 0; }
   n := 0;
   wide := f64(reach);
@@ -1165,7 +1165,7 @@ everglade_river_shove :: (r: [] River, x: f32, z: f32, reach: f32, impulse: f32,
 
 // The spells' fields over the floats (the page's everglade_spell_fields, laid out as verse/
 // demolish.coax DemoField: kind, ax, az, bx, bz, base, top, r, wide, force), till the next call.
-everglade_river_fields :: (r: [] River, fields: [] f32, n: int) #export_c {
+everglade_river_fields :: (r: [] River, fields: [] f32, n: int) #export_c #effects(all) {
   r[0].field_n = n; if n < 0 { r[0].field_n = 0; } if n > RIVER_FIELDS { r[0].field_n = RIVER_FIELDS; }
   if fields.count < r[0].field_n * RIVER_FIELD_FLOATS { r[0].field_n = fields.count / RIVER_FIELD_FLOATS; }
   for k: 0..<r[0].field_n * RIVER_FIELD_FLOATS { r[0].fields[k] = fields[k]; }
@@ -1310,7 +1310,7 @@ wake_follow :: (r: [] River, m: int, x: f32, z: f32, t: f32, wet: bool) {
 
 // Steps the wakes and the particles by dt and writes FX_ROWS rows into out: you at (you_x, you_z) in
 // `medium` (or the boat you sit in), the eye at (ex, ey, ez).
-everglade_river_fx :: (r: [] River, out: [] f32, dt: f32, time: f64, you_x: f32, you_z: f32, medium: int, ex: f32, ey: f32, ez: f32) #export_c {
+everglade_river_fx :: (r: [] River, out: [] f32, dt: f32, time: f64, you_x: f32, you_z: f32, medium: int, ex: f32, ey: f32, ez: f32) #export_c #effects(all) {
   if !r[0].ready || out.count < FX_ROWS * 4 { return; }
   h := ifx dt == dt && dt > 0 then lo_f(dt, 0.1) else 0.0f32;
   t := river_clock(time);

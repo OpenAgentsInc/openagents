@@ -3,7 +3,7 @@
 #authority;
 // Small checked-graph oracle for generic write-to-return composition. Distinct
 // fields and unrelated local backing prevent an all-arguments approximation.
-CB2_fixture :: (c:CK_Context) {
+CB2_fixture :: (c:CK_Context) #effects(all) {
  c.state[0]=CK_State.{used=95,type_count=21};
  c.types[16]=CK_Type.{kind=CK_Kind.view,elem=12};c.types[17]=CK_Type.{kind=CK_Kind.struct_,decl=34};c.types[18]=CK_Type.{kind=CK_Kind.array,elem=17,length=1};c.types[19]=CK_Type.{kind=CK_Kind.view,elem=17};c.types[20]=CK_Type.{kind=CK_Kind.array,elem=12,length=4};
  // The builtins go in after the program types, so a loop past them would show.
@@ -47,7 +47,7 @@ CB2_fixture :: (c:CK_Context) {
 
 // Node numbering is not a proof of AST kind. These admitted permutations
 // exercise both ends of the same frozen prefix, independently of parser order.
-CB2_reowner :: (c:CK_Context,owner:int) {c.nodes[owner]=c.nodes[2];c.nodes[1].head=owner;c.nodes[22].borrow_owner=owner;for id:[4]int.[3,4,8,9] {c.nodes[id].borrow_owner=owner;}}
+CB2_reowner :: (c:CK_Context,owner:int) #effects(all) {c.nodes[owner]=c.nodes[2];c.nodes[1].head=owner;c.nodes[22].borrow_owner=owner;for id:[4]int.[3,4,8,9] {c.nodes[id].borrow_owner=owner;}}
 #forall "B2 collector preserves exact paths disjoint owners prefix bounds and first failures" sample:0..<25 {
  nodes:[96]CK_Node;types:[24]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[4096]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;
  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CB2_fixture(c);b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};path:=BS_Path.{count=2};path.steps[0]=BS_Step.{kind=BS_ELEMENT};path.steps[1]=BS_Step.{kind=BS_FIELD};decl:=8;
@@ -188,10 +188,18 @@ CB2_reowner :: (c:CK_Context,owner:int) {c.nodes[owner]=c.nodes[2];c.nodes[1].he
 #forall "R2 startup scratch counts are admitted only for valid input capacities" nodes:1..<4 {
  caps:=CK_caps(nodes,0);if nodes==1 {#assert caps.result_work==0;}else {#assert caps.result_work==nodes*8+32;}
 }
-#forall "R2 startup rejects every effect declaration until R11 enforcement" annotated_pure:bool {
+#forall "transaction bodies preserve statement typing and return analysis" returns:bool {
+ nodes:[10]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=16}];
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1};nodes[3]=CK_Node.{kind=CK_Tag.stmt_transaction,c=4};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block};
+ if returns {nodes[4].head=5;nodes[5]=CK_Node.{kind=CK_Tag.stmt_return};}
+ CK_stmt(c,3);#assert state[0].error_count==0 && state[0].depth==0 && CK_always_returns(c,3)==returns;
+}
+#forall "effect declarations survive type checking for resolved graph enforcement" annotated_pure:bool {
  nodes:[12]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[8]CK_Error;bytes:[1024]u8;state:[1]CK_State;
  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="f",b=3,effect_present=true,pure_decl=annotated_pure,effect_loc=CK_Loc.{line=9,column=7}};nodes[3]=CK_Node.{kind=CK_Tag.stmt_block};
- #assert !CK_run(c,3,CK_Options.{library=true}) && state[0].error_count==1 && errors[0].code=="E0940" && errors[0].loc.line==9 && errors[0].loc.column==7;
+ #assert CK_run(c,3,CK_Options.{library=true}) && state[0].error_count==0 && nodes[2].effect_present && nodes[2].pure_decl==annotated_pure && nodes[2].effect_loc.line==9 && nodes[2].effect_loc.column==7;
 }
 #forall "R2 switch is exhaustive and binds immutable case-local payloads" mode:0..<5 {
  nodes:[32]CK_Node;types:[24]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[2048]u8;state:=[1]CK_State.[CK_State.{used=25,type_count=17,current=2}];
@@ -682,4 +690,26 @@ CB2_reowner :: (c:CK_Context,owner:int) {c.nodes[owner]=c.nodes[2];c.nodes[1].he
  b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};path:=BS_Path.{count=2};path.steps[0]=BS_Step.{kind=BS_ELEMENT};path.steps[1]=BS_Step.{kind=BS_FIELD};out:[64]BS_Origin;out[0]=BS_Origin.{kind=BS_LOCAL,root=9,type=12,role=BS_DESCRIPTOR};
  got:=CB_call_writes(b,8,path,out[..],CB_Result.{count=1});#assert !state[0].fatal && state[0].error_count==0 && got.count==1 && got.incomplete && out[0].kind==BS_LOCAL && out[0].root==9;
  #assert CB_opaque(b,8,path) && !state[0].fatal && state[0].error_count==0;
+}
+
+#test "a transaction checks every statement in its body" {
+ nodes:[10]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=16}];
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1};nodes[3]=CK_Node.{kind=CK_Tag.stmt_transaction,c=4};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block,head=5};nodes[5]=CK_Node.{kind=CK_Tag.stmt_assert,a=6};nodes[6]=CK_Node.{kind=CK_Tag.expr_int,value=1};
+ CK_stmt(c,3);#assert state[0].error_count==1 && errors[0].code=="E0346" && state[0].depth==0;
+}
+#forall "persisted validation waits for earlier typing errors before reporting durable shape" earlier_error:bool {
+ nodes:[16]CK_Node;types:[32]CK_Type;locals:[2]CK_Local;errors:[8]CK_Error;bytes:[1024]u8;state:[1]CK_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="Saved",flag=true,head=3,next=5};nodes[3]=CK_Node.{kind=CK_Tag.field,name="text",a=4};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="string"};nodes[5]=CK_Node.{kind=CK_Tag.assert_,a=6};nodes[6]=CK_Node.{kind=ifx earlier_error then CK_Tag.expr_int else CK_Tag.expr_bool,value=1};
+ #assert !CK_run(c,6,CK_Options.{library=true}) && state[0].error_count==1 && errors[0].code==(ifx earlier_error then "E0346" else "E0970");
+}
+
+#forall "transaction admission checks concrete Result refusal channels" result:bool, bad:bool, generic:bool {
+ nodes:[8]CK_Node;types:[17]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=17}];for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.result,elem=1,sum_error=ifx bad then 5 else 11};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=ifx result then 16 else 1,generic=generic};nodes[3]=CK_Node.{kind=CK_Tag.stmt_transaction,c=4};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block};
+ CK_stmt(c,3);#assert state[0].error_count==(ifx result && bad && !generic then 1 else 0) && state[0].depth==0;
+ if state[0].error_count>0 {#assert errors[0].code=="E0974";}
 }

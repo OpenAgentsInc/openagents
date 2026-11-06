@@ -21,14 +21,14 @@ CfTiming::struct{seq:[CF_RING]int;at:[CF_RING]int;hist:[CF_HIST]int;ack:int;miss
   h[0]=1000;h[10]=0;h[20]=0;h[2000]=1;#assert cf_quantile(h[..],999)==0&&cf_quantile(h[..],1000)==2000;
   odd:[3]int;odd[1]=1;#assert cf_quantile(odd[..],500)==1;
 }
-cf_input::(t:[]CfTiming,seq:int,at:int){if seq<=0||at<0{return;}t[0].seq[seq%CF_RING]=seq;t[0].at[seq%CF_RING]=at;}
-cf_ack::(t:[]CfTiming,ack:int,now:int){
+cf_input::(t:[]CfTiming,seq:int,at:int) #effects(all) {if seq<=0||at<0{return;}t[0].seq[seq%CF_RING]=seq;t[0].at[seq%CF_RING]=at;}
+cf_ack::(t:[]CfTiming,ack:int,now:int) #effects(all) {
   if ack<=t[0].ack{return;}t[0].ack=ack;k:=ack%CF_RING;
   if t[0].seq[k]!=ack{t[0].missing+=1;return;}
   ms:=now-t[0].at[k];if ms<0{t[0].backwards+=1;return;}
   bucket:=ifx ms>=CF_HIST then CF_HIST-1 else ms;t[0].hist[bucket]+=1;
 }
-cf_quantile::(h:[]int,q:int)->int{
+cf_quantile::(h:[]int,q:int)->int #effects(all) {
   if q<1||q>1000{return -1;}n:=0;for count:h{n+=count;}if n==0{return -1;}
   want:=(n*q+999)/1000;i:=0;got:=h[0];while got<want{i+=1;got+=h[i];}return i;
 }

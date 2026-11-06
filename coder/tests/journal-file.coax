@@ -12,7 +12,7 @@ jf_run :: (argv:[]string)->bool {
   }
   print("%",cast(string)out[0..<result.out_n]);return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   temp:[1024]u8;dir:=fs_temp("agent-journal-",temp[..]);
   if dir.count==0 {return 1;}
   defer {removed:=fs_remove(dir);}

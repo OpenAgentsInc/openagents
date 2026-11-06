@@ -22,11 +22,11 @@ HbBatch::struct{hit:[HB_SEATS]HbHit;}
   a:=hb_take(b[..],15);#assert a.amount==8&&a.by== -1;
 }
 
-hb_put::(b:[]HbBatch,seat:int,amount:int,by:int)->bool #export_c{
+hb_put::(b:[]HbBatch,seat:int,amount:int,by:int)->bool #export_c #effects(all) {
   if seat<0||seat>=HB_SEATS||amount<=0{return false;}
   b[0].hit[seat]=HbHit.{amount=amount,by=by};return true;
 }
-hb_take::(b:[]HbBatch,seat:int)->HbHit #export_c{
+hb_take::(b:[]HbBatch,seat:int)->HbHit #export_c #effects(all) {
   if seat<0||seat>=HB_SEATS{return HbHit.{};}
   a:=b[0].hit[seat];b[0].hit[seat]=HbHit.{};return a;
 }

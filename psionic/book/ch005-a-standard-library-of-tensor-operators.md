@@ -167,7 +167,7 @@ contract and is outside this interface.
 
 <!-- source: psionic/lib/tensor-ops.coax forward -->
 ```jai
-to_forward_checked :: (r:ToRequest,owners:[]TvStorage,views:[]TvView,a:[]f32,b:[]f32,indices:[]int,out:[]f32,scratch:[]f32,aux:[]int,aux_stage:[]int,overlap:bool)->ToResult #export_c {
+to_forward_checked :: (r:ToRequest,owners:[]TvStorage,views:[]TvView,a:[]f32,b:[]f32,indices:[]int,out:[]f32,scratch:[]f32,aux:[]int,aux_stage:[]int,overlap:bool)->ToResult #export_c #effects(all) {
     p:=to_admit(r,owners,views,a,b,indices);if p.status!=ToStatus.ok {return ToResult.{status=p.status};}
     if out.count<p.n || scratch.count<p.n || aux.count<p.aux || aux_stage.count<p.aux {return ToResult.{status=ToStatus.capacity};}
     if overlap {return ToResult.{status=ToStatus.alias};}

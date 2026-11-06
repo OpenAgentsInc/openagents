@@ -109,7 +109,7 @@ client :: (argv: [] string, r: [] Run, host: int) -> string {
   return cast(string) r[0].out[0..<p.out_n];
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) > 2 { tool_errln("usage: parakeet-check [MODEL_DIR [fixtures|long|silence|cancel|realm]]"); return 2; }
   only := ifx args_count(a[..]) == 2 then args_at(a[..], 1) else "";

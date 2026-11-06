@@ -53,10 +53,10 @@
   #assert cb_join_vartime(out[0..<21], n, body[0..<m]) == 21;
 }
 
-cb_size_ok :: (n: int, capacity: int) -> bool {
+cb_size_ok :: (n: int, capacity: int) -> bool #effects(all) {
   return n <= capacity && kv_frame_size_ok(n);
 }
-cb_join_vartime :: (out: [] u8, n: int, body: [] u8) -> int #export_c {
+cb_join_vartime :: (out: [] u8, n: int, body: [] u8) -> int #export_c #effects(all) {
   if !cb_size_ok(n, out.count) || !kv_frame_size_ok(body.count) { return -KV_BAD_BATCH; }
   a := kv_batch_check_vartime(out[0..<n]); b := kv_batch_check_vartime(body);
   if a.code != KV_OK || b.code != KV_OK || a.seq != 0 || b.seq != 0 { return -KV_BAD_BATCH; }

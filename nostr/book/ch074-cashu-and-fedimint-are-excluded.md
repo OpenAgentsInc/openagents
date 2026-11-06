@@ -152,14 +152,14 @@ on it. There are four answers:
 <!-- source: coax/lib/nostr/ecash.coax classify -->
 ```jai
 // The row of an excluded kind, or EC_NONE.
-ec_kind :: (kind:int)->int {
+ec_kind :: (kind:int)->int #effects(all) {
   for i:0..<EC_N {if EC_KIND[i]==kind {return i;}}
   return EC_NONE;
 }
 // A received event: EC_EXCLUDED for an excluded kind, EC_REFERS when a k, K,
 // a or A tag names one (the first such tag), EC_OK otherwise, or EC_EVENT
 // when its tags don't read.
-ec_event :: (e:NostrEvent)->EcVerdict {
+ec_event :: (e:NostrEvent)->EcVerdict #effects(all) {
   v:EcVerdict;if e.error!=NE_OK {return v;}
   v.row=ec_kind(e.kind);
   if v.row!=EC_NONE {v.status=EC_EXCLUDED;return v;}
@@ -178,16 +178,16 @@ ec_event :: (e:NostrEvent)->EcVerdict {
   v.status=EC_OK;return v;
 }
 // The publishing check: an event of an excluded kind is never built.
-ec_build :: (kind:int)->int {return ifx ec_kind(kind)==EC_NONE then EC_OK else EC_EXCLUDED;}
+ec_build :: (kind:int)->int #effects(all) {return ifx ec_kind(kind)==EC_NONE then EC_OK else EC_EXCLUDED;}
 // A payment option's type: EC_EXCLUDED when it contains an ecash word in
 // any case.
-ec_option :: (type:string)->int {
+ec_option :: (type:string)->int #effects(all) {
   for w:EC_WORDS {if ec_holds_ci(type,w) {return EC_EXCLUDED;}}
   return EC_OK;
 }
 // A payment value: EC_EXCLUDED for a Cashu token (cashuA..., cashuB...,
 // any case) or a Fedimint invite code (fed11...).
-ec_value :: (text:string)->int {
+ec_value :: (text:string)->int #effects(all) {
   if ec_starts_ci(text,"cashu") || ec_starts_ci(text,"fed11") {return EC_EXCLUDED;}
   return EC_OK;
 }

@@ -14,6 +14,6 @@
   #assert !htb_copy_span(top-3,4,0,top) && !htb_copy_span(top,1,1,top);
   #assert !htb_copy_span(1,top,0,top) && !htb_copy_span(1,0,top,top);
 }
-htb_copy_span :: (address:u64,capacity:u64,bytes:u64,memory_bytes:u64)->bool #export_c {
+htb_copy_span :: (address:u64,capacity:u64,bytes:u64,memory_bytes:u64)->bool #export_c #effects(all) {
   return address!=0 && address<=memory_bytes && capacity<=memory_bytes-address && bytes<=capacity;
 }

@@ -215,7 +215,7 @@ enc_decision :: (w: WDecision, a: [] u8, b: [] u8) -> V_FrameDecision {
 
 // Encode one Frame into out. Bytes written, or 0 (unknown kind, a bound
 // broken, invalid UTF-8, or not enough room).
-verse_voice_wire_encode :: (msgs: [] WMsg, out: [] u8) -> int #export_c {
+verse_voice_wire_encode :: (msgs: [] WMsg, out: [] u8) -> int #export_c #effects(all) {
   if msgs.count < 1 { return 0; }
   w := msgs[0];
   a: [MAX_FRAME] u8;
@@ -421,7 +421,7 @@ dec_body :: (ok: [] Ok, fr: V_Frame, k: u32, w: [] WMsg) {
 
 // Decode one Frame. Strings and bytes borrow from `input`. False when the
 // frame is malformed, over a bound, or has no body.
-verse_voice_wire_decode :: (input: [] u8, msgs: [] WMsg) -> bool #export_c {
+verse_voice_wire_decode :: (input: [] u8, msgs: [] WMsg) -> bool #export_c #effects(all) {
   if msgs.count < 1 || input.count > MAX_FRAME { return false; }
   empty: WMsg;
   msgs[0] = empty;

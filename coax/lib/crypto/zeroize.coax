@@ -118,15 +118,15 @@ ZeroChange :: struct {scope:ZeroScope;error:u32;slot:int;}
   bad=zero_scope_register(ZeroScope.{},1,1,1,true,false).scope;bad=zero_scope_register(bad,2,1,1,true,false).scope;bad.records[1].id=1;#assert !zero_scope_valid(bad);
 }
 
-zero_limit :: ()->int #export_c {return ZERO_LIMIT;}
-zero_admit :: (capacity:int,offset:int,length:int,present:bool)->u32 #export_c {
+zero_limit :: ()->int #export_c #effects(all) {return ZERO_LIMIT;}
+zero_admit :: (capacity:int,offset:int,length:int,present:bool)->u32 #export_c #effects(all) {
   if capacity<0 || capacity>ZERO_LIMIT {return ZERO_CAPACITY;}
   if offset<0 || length<0 || offset>capacity {return ZERO_RANGE;}
   if length>capacity-offset {return ZERO_RANGE;}
   if length>0 && !present {return ZERO_ADDRESS;}
   return ZERO_OK;
 }
-zero_scope_valid :: (s:ZeroScope)->bool #export_c {
+zero_scope_valid :: (s:ZeroScope)->bool #export_c #effects(all) {
   if s.count<0 || s.count>ZERO_SLOTS || s.phase>ZERO_CLOSED || s.reason>2 {return false;}
   if s.error!=0 && s.error!=ZERO_EFFECT {return false;}
   allowed:=(cast(u32)1<<s.count)-1;
@@ -140,10 +140,10 @@ zero_scope_valid :: (s:ZeroScope)->bool #export_c {
   }
   return true;
 }
-zero_reject :: (s:ZeroScope,error:u32)->ZeroChange {return ZeroChange.{scope=s,error=error,slot=-1};}
-zero_find :: (s:ZeroScope,id:u64)->int {for i:0..<s.count {if s.records[i].id==id {return i;}}return -1;}
-zero_scope_slot :: (s:ZeroScope,id:u64)->int #export_c {if !zero_scope_valid(s) {return -1;}return zero_find(s,id);}
-zero_scope_register :: (s:ZeroScope,id:u64,capacity:int,secret:int,present:bool,overlap:bool)->ZeroChange #export_c {
+zero_reject :: (s:ZeroScope,error:u32)->ZeroChange #effects(all) {return ZeroChange.{scope=s,error=error,slot=-1};}
+zero_find :: (s:ZeroScope,id:u64)->int #effects(all) {for i:0..<s.count {if s.records[i].id==id {return i;}}return -1;}
+zero_scope_slot :: (s:ZeroScope,id:u64)->int #export_c #effects(all) {if !zero_scope_valid(s) {return -1;}return zero_find(s,id);}
+zero_scope_register :: (s:ZeroScope,id:u64,capacity:int,secret:int,present:bool,overlap:bool)->ZeroChange #export_c #effects(all) {
   if !zero_scope_valid(s) || s.phase!=ZERO_OPEN {return zero_reject(s,ZERO_STATE);}
   if s.count==ZERO_SLOTS {return zero_reject(s,ZERO_CAPACITY);}
   if id==0 || zero_find(s,id)>=0 {return zero_reject(s,ZERO_UNKNOWN);}
@@ -153,7 +153,7 @@ zero_scope_register :: (s:ZeroScope,id:u64,capacity:int,secret:int,present:bool,
   next:=s;next.records[s.count]=ZeroRecord.{id=id,capacity=capacity,secret=secret};next.count=s.count+1;
   return ZeroChange.{scope=next,slot=s.count};
 }
-zero_scope_copy :: (s:ZeroScope,source:u64,destination:u64,length:int,overlap:bool)->ZeroChange #export_c {
+zero_scope_copy :: (s:ZeroScope,source:u64,destination:u64,length:int,overlap:bool)->ZeroChange #export_c #effects(all) {
   if !zero_scope_valid(s) || s.phase!=ZERO_OPEN {return zero_reject(s,ZERO_STATE);}
   from:=zero_find(s,source);to:=zero_find(s,destination);
   if from<0 || to<0 {return zero_reject(s,ZERO_UNKNOWN);}
@@ -164,7 +164,7 @@ zero_scope_copy :: (s:ZeroScope,source:u64,destination:u64,length:int,overlap:bo
   next:=s;if length>0 {next.records[to].secret=next.records[to].capacity;}
   return ZeroChange.{scope=next,slot=to};
 }
-zero_scope_begin :: (s:ZeroScope,reason:u32)->ZeroChange #export_c {
+zero_scope_begin :: (s:ZeroScope,reason:u32)->ZeroChange #export_c #effects(all) {
   if !zero_scope_valid(s) {return zero_reject(s,ZERO_STATE);}
   if reason>2 {return zero_reject(s,ZERO_REASON);}
   next:=s;next.error=0;
@@ -174,7 +174,7 @@ zero_scope_begin :: (s:ZeroScope,reason:u32)->ZeroChange #export_c {
   }
   return ZeroChange.{scope=next};
 }
-zero_scope_ack :: (s:ZeroScope,id:u64,status:u32)->ZeroChange #export_c {
+zero_scope_ack :: (s:ZeroScope,id:u64,status:u32)->ZeroChange #export_c #effects(all) {
   if !zero_scope_valid(s) || s.phase!=ZERO_CLOSING {return zero_reject(s,ZERO_STATE);}
   slot:=zero_find(s,id);if slot<0 {return zero_reject(s,ZERO_UNKNOWN);}
   bit:=cast(u32)1<<slot;if (s.pending&bit)==0 {return zero_reject(s,ZERO_STATE);}
@@ -183,16 +183,16 @@ zero_scope_ack :: (s:ZeroScope,id:u64,status:u32)->ZeroChange #export_c {
   next.pending=next.pending&(cast(u32)4294967295^bit);if next.pending==0 {next.phase=ZERO_CLOSED;next.error=0;}
   return ZeroChange.{scope=next,slot=slot};
 }
-zero_scope_pending :: (s:ZeroScope,slot:int)->int #export_c {
+zero_scope_pending :: (s:ZeroScope,slot:int)->int #export_c #effects(all) {
   if !zero_scope_valid(s) || slot<0 || slot>=32 {return 0;}
   if (s.pending&(cast(u32)1<<slot))==0 {return 0;}return s.records[slot].secret;
 }
-zero_scope_status :: (s:ZeroScope)->u32 #export_c {
+zero_scope_status :: (s:ZeroScope)->u32 #export_c #effects(all) {
   if !zero_scope_valid(s) {return ZERO_STATE;}
   if s.error!=0 {return ZERO_EFFECT;}
   return ifx s.phase==ZERO_CLOSED then ZERO_OK else ZERO_PENDING;
 }
-zero_scope_complete :: (s:ZeroScope)->bool #export_c {return zero_scope_status(s)==ZERO_OK;}
-zero_scope_reset :: (s:ZeroScope)->ZeroChange #export_c {
+zero_scope_complete :: (s:ZeroScope)->bool #export_c #effects(all) {return zero_scope_status(s)==ZERO_OK;}
+zero_scope_reset :: (s:ZeroScope)->ZeroChange #export_c #effects(all) {
   if !zero_scope_complete(s) {return zero_reject(s,ZERO_STATE);}return ZeroChange.{};
 }

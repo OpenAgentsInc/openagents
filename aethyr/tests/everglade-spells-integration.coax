@@ -4,7 +4,7 @@
 #load "../../apps/openagents-web/everglade.coax";
 
 // spells: 1 picks Meteor Swarm, a click casts it at the inn, and the inn breaks; R stands it again
-aethyr_native_everglade_0 :: () #export_c {
+aethyr_native_everglade_0 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -80,7 +80,7 @@ aethyr_native_everglade_0 :: () #export_c {
 }
 
 // spells: casting leaves the camera where the player has it: no lift, no pull, no pan; a blast only shakes it, and it settles back
-aethyr_native_everglade_1 :: () #export_c {
+aethyr_native_everglade_1 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -117,7 +117,7 @@ aethyr_native_everglade_1 :: () #export_c {
 }
 
 // from the road in past the boulder by it: round the rock and on into the trees
-aethyr_native_everglade_2 :: () #export_c {
+aethyr_native_everglade_2 :: () #export_c #effects(all) {
   g: [1] Everglade;
   everglade_start(g[..]);
   everglade_catalog(g[..], CATALOG);
@@ -153,7 +153,7 @@ aethyr_native_everglade_2 :: () #export_c {
 }
 
 // watch: a meteor on the inn is a crime the watch hear and hunt you for; R stands the fallen up
-aethyr_native_everglade_3 :: () #export_c {
+aethyr_native_everglade_3 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -188,7 +188,7 @@ aethyr_native_everglade_3 :: () #export_c {
 }
 
 // watch: your own Thunderbolt at your feet hurts you and throws you; a Meteor Swarm on you kills you and you fall
-aethyr_native_everglade_4 :: () #export_c {
+aethyr_native_everglade_4 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -223,7 +223,7 @@ aethyr_native_everglade_4 :: () #export_c {
 }
 
 // no C line, no Ranger: nothing drawn for it, the rest draws
-aethyr_native_everglade_5 :: () #export_c {
+aethyr_native_everglade_5 :: () #export_c #effects(all) {
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
   d := RANGER_DRAW * 4;
@@ -235,7 +235,7 @@ aethyr_native_everglade_5 :: () #export_c {
 }
 
 // a quest save comes back for its player only
-aethyr_native_everglade_6 :: () #export_c {
+aethyr_native_everglade_6 :: () #export_c #effects(all) {
   // a save given back before the facts; then the facts say whose browser it is
   h: [1] Everglade;
   everglade_message(h[..], MSG_KEPT, "eg-quests 1\nplayer=p-1\nq=9,2,9\n");
@@ -249,7 +249,7 @@ aethyr_native_everglade_6 :: () #export_c {
 }
 
 // the painterly day: a cycling clock on a still page shows noon
-aethyr_native_everglade_7 :: () #export_c {
+aethyr_native_everglade_7 :: () #export_c #effects(all) {
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
   c: [1] Everglade;
@@ -260,7 +260,7 @@ aethyr_native_everglade_7 :: () #export_c {
 }
 
 // Everglade's frames fit its declared budget
-aethyr_native_everglade_8 :: () #export_c {
+aethyr_native_everglade_8 :: () #export_c #effects(all) {
   #assert budget_declared(EVERGLADE_BUDGET, MAX_VERTICES) == BUDGET_NONE;
   frames := 3;
   m := [1] BudgetMeter.[budget_meter(EVERGLADE_BUDGET)];
@@ -279,7 +279,7 @@ aethyr_native_everglade_8 :: () #export_c {
 }
 
 // voice edits: the heard words go to the server as they are; its typed answer places, removes and undoes
-aethyr_native_everglade_9 :: () #export_c {
+aethyr_native_everglade_9 :: () #export_c #effects(all) {
   s: [1] Everglade;
   everglade_start(s[..]);
   everglade_message(s[..], MSG_FACTS, "voice=haunted-house");
@@ -326,7 +326,7 @@ aethyr_native_everglade_9 :: () #export_c {
 }
 
 // the shared layer: a realm admin's EDIT opens edit mode and the board; an accepted card is placed; DONE closes it
-aethyr_native_everglade_10 :: () #export_c {
+aethyr_native_everglade_10 :: () #export_c #effects(all) {
   u: [UNIFORM_FLOATS] f32;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   // a realm admin: the layer's EDIT stands where Everglade's was, and opens edit mode with the board
@@ -361,7 +361,7 @@ aethyr_native_everglade_10 :: () #export_c {
 }
 
 // spells: no ruleset, no bar; srd5 gives the four spells, and the town's pieces their SRD stats
-aethyr_native_everglade_11 :: () #export_c {
+aethyr_native_everglade_11 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -391,7 +391,7 @@ aethyr_native_everglade_11 :: () #export_c {
 }
 
 // spells: the Thunderbolt's bolt comes down and blasts a hole; a phone taps a slot, then the target
-aethyr_native_everglade_12 :: () #export_c {
+aethyr_native_everglade_12 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -413,7 +413,7 @@ aethyr_native_everglade_12 :: () #export_c {
 }
 
 // spells: a broken building stays broken, however long you are away, until R or a long rest
-aethyr_native_everglade_13 :: () #export_c {
+aethyr_native_everglade_13 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -434,7 +434,7 @@ aethyr_native_everglade_13 :: () #export_c {
 }
 
 // spells: aimed at a wall the aim takes the wall's face and the meteors burst on it; on the ground they fall from all but straight above
-aethyr_native_everglade_14 :: () #export_c {
+aethyr_native_everglade_14 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -484,7 +484,7 @@ aethyr_native_everglade_14 :: () #export_c {
 }
 
 // spells: nothing a spell leaves stays up in the air: the observatory's dome falls when its tower breaks, lies still, and stands again with it
-aethyr_native_everglade_15 :: () #export_c {
+aethyr_native_everglade_15 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -521,7 +521,7 @@ aethyr_native_everglade_15 :: () #export_c {
 }
 
 // spells: the Water Orb is water: cast at the inn every piece stands whole, and by a barrel the splash sends it rolling
-aethyr_native_everglade_16 :: () #export_c {
+aethyr_native_everglade_16 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -574,7 +574,7 @@ aethyr_native_everglade_16 :: () #export_c {
 }
 
 // spells: the bar is a compact tray: 26-unit icons 29 apart, 8 over the bottom, each slot's picture; a held finger shows its card and doesn't cast
-aethyr_native_everglade_17 :: () #export_c {
+aethyr_native_everglade_17 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -616,7 +616,7 @@ aethyr_native_everglade_17 :: () #export_c {
 }
 
 // spells: the bar's rows: Shift reaches the second, over the first on a wide screen, Ctrl's beside them; a phone shows one row and a switcher
-aethyr_native_everglade_18 :: () #export_c {
+aethyr_native_everglade_18 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -652,7 +652,7 @@ aethyr_native_everglade_18 :: () #export_c {
 }
 
 // spells: on a phone the bar is one row low on the screen, the rest a tap away in the tray, every slot reachable
-aethyr_native_everglade_19 :: () #export_c {
+aethyr_native_everglade_19 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -694,7 +694,7 @@ aethyr_native_everglade_19 :: () #export_c {
 }
 
 // the bar: a swap moves the spells, not the keys; its text round-trips; a bad or older text is refused
-aethyr_native_everglade_20 :: () #export_c {
+aethyr_native_everglade_20 :: () #export_c #effects(all) {
   g: [1] Everglade;
   #assert sp_place(g[..], SP_METEOR) == 0 && sp_place(g[..], SP_SLOTS + AB_STONE) == 12 && sp_at_place(g[..], 10) == SP_REBUILD;
   g[0].now_s = 1793000000; g[0].sp.ar.account = true;
@@ -721,7 +721,7 @@ aethyr_native_everglade_20 :: () #export_c {
 }
 
 // the bar: Shift and a drag swaps two slots and casts nothing; let go off the bar, nothing moves; a phone holds and drags
-aethyr_native_everglade_21 :: () #export_c {
+aethyr_native_everglade_21 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -757,7 +757,7 @@ aethyr_native_everglade_21 :: () #export_c {
 }
 
 // abilities: Black Tentacles rise in a 20-foot square, seize the props in reach and hold them up, and restrain who fails
-aethyr_native_everglade_22 :: () #export_c {
+aethyr_native_everglade_22 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -809,7 +809,7 @@ aethyr_native_everglade_22 :: () #export_c {
 }
 
 // abilities: a guard hunting you on a Wall of Stone's far side runs round it, never through it; when it falls, straight on
-aethyr_native_everglade_23 :: () #export_c {
+aethyr_native_everglade_23 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -841,7 +841,7 @@ aethyr_native_everglade_23 :: () #export_c {
 }
 
 // frost: an Ice Storm hurts who stands in it (you too), leaves walkable ice on a pond that holds you over it, then thin ice that breaks
-aethyr_native_everglade_24 :: () #export_c {
+aethyr_native_everglade_24 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -897,7 +897,7 @@ aethyr_native_everglade_24 :: () #export_c {
 }
 
 // frost: a Sleet Storm knocks down who fails its save, puts out a fire, hides what is behind it, and Shift+6 ends it
-aethyr_native_everglade_25 :: () #export_c {
+aethyr_native_everglade_25 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -938,7 +938,7 @@ aethyr_native_everglade_25 :: () #export_c {
 }
 
 // frost: you slip on the ice and lie Prone for a moment, unable to move; in the sleet a fall ends your Concentration
-aethyr_native_everglade_26 :: () #export_c {
+aethyr_native_everglade_26 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -969,7 +969,7 @@ aethyr_native_everglade_26 :: () #export_c {
 }
 
 // tide: Control Water floods, parts a dry trench to walk, turns the current and whirls; Shift+8 steps through them and ends it
-aethyr_native_everglade_27 :: () #export_c {
+aethyr_native_everglade_27 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1022,7 +1022,7 @@ aethyr_native_everglade_27 :: () #export_c {
 }
 
 // grove: Moonbeam shines where you click, its radiance falls on who stands in it (you too), a click moves it, and Shift+- ends it
-aethyr_native_everglade_28 :: () #export_c {
+aethyr_native_everglade_28 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1059,7 +1059,7 @@ aethyr_native_everglade_28 :: () #export_c {
 }
 
 // grove: Ctrl+1 lights Produce Flame in your hand (a light on the town); hurled, it strikes, scorches and sets debris burning; Starry Wisp leaves its mark starlit; Poison Spray's mist hangs
-aethyr_native_everglade_29 :: () #export_c {
+aethyr_native_everglade_29 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1124,7 +1124,7 @@ aethyr_native_everglade_29 :: () #export_c {
 }
 
 // grove: Shillelagh's staff strikes in reach for 1d10 + 3 force; Elementalism beckons each element in turn; Entangle restrains who fails, slows you in it, and a lost Concentration ends it
-aethyr_native_everglade_30 :: () #export_c {
+aethyr_native_everglade_30 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1187,7 +1187,7 @@ aethyr_native_everglade_30 :: () #export_c {
 }
 
 // wild: Ctrl+7 Faerie Fire outlines who fails in its cube (attacks at them have Advantage; outlined, the town's at you have it), Ctrl+8 Healing Word heals them or you, never the dead
-aethyr_native_everglade_31 :: () #export_c {
+aethyr_native_everglade_31 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1238,7 +1238,7 @@ aethyr_native_everglade_31 :: () #export_c {
 }
 
 // wild: Spike Growth's thorns tear whoever walks in them (you too) 2d4 a 5 feet; Call Lightning's cloud gathers over you and its bolt strikes 3d10 where you click under it
-aethyr_native_everglade_32 :: () #export_c {
+aethyr_native_everglade_32 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1297,7 +1297,7 @@ aethyr_native_everglade_32 :: () #export_c {
 }
 
 // wild: Wall of Fire rises across your view (5d8 to who is in it, its far side burns), the town walks round it; fire on the grass spreads, burns who stands in it, and water puts it out
-aethyr_native_everglade_33 :: () #export_c {
+aethyr_native_everglade_33 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1357,7 +1357,7 @@ aethyr_native_everglade_33 :: () #export_c {
 }
 
 // fire: Fire Storm sets a house burning; a bolt catches wood about half the time; fire spreads along a fence, burns it to collapse, and frost puts it out
-aethyr_native_everglade_34 :: () #export_c {
+aethyr_native_everglade_34 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1409,7 +1409,7 @@ aethyr_native_everglade_34 :: () #export_c {
 }
 
 // fire: the observatory's dome breaks under a Meteor Swarm into slabs that fall to the ground; R stands it again
-aethyr_native_everglade_35 :: () #export_c {
+aethyr_native_everglade_35 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1438,7 +1438,7 @@ aethyr_native_everglade_35 :: () #export_c {
 }
 
 // trees: a meteor beside the tree line fells the trees away from the blast; they lie where they fell, near and far; R stands them again
-aethyr_native_everglade_36 :: () #export_c {
+aethyr_native_everglade_36 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1504,7 +1504,7 @@ aethyr_native_everglade_36 :: () #export_c {
 }
 
 // trees: flame lights a tree; it burns black, its leaves go, it spreads to the crowns by it; water puts it out; nothing grows back
-aethyr_native_everglade_37 :: () #export_c {
+aethyr_native_everglade_37 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1560,7 +1560,7 @@ aethyr_native_everglade_37 :: () #export_c {
 }
 
 // trees: a bolt by a tree strikes it and splits it; fire deep in the woods is no crime, by the palisade the watch hears it
-aethyr_native_everglade_38 :: () #export_c {
+aethyr_native_everglade_38 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1589,7 +1589,7 @@ aethyr_native_everglade_38 :: () #export_c {
 }
 
 // circle: Conjure Animals' pack tears whoever comes within 10 feet (you too), Polymorph makes a frog of them or a bear of you, Mass Cure Wounds heals six
-aethyr_native_everglade_39 :: () #export_c {
+aethyr_native_everglade_39 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1660,7 +1660,7 @@ aethyr_native_everglade_39 :: () #export_c {
 }
 
 // circle: Sunbeam blinds or burns down its line (Blinded, their blows at you have Disadvantage), Wall of Thorns tears who is in it (you too) and the town walks round it, Fire Storm's ten cubes burn and catch the grass
-aethyr_native_everglade_40 :: () #export_c {
+aethyr_native_everglade_40 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1723,7 +1723,7 @@ aethyr_native_everglade_40 :: () #export_c {
 }
 
 // storm: Sunburst burns and blinds in 60 feet (you too, your attacks then at Disadvantage), Storm of Vengeance's rounds fall on whoever is under it (you too)
-aethyr_native_everglade_41 :: () #export_c {
+aethyr_native_everglade_41 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1767,7 +1767,7 @@ aethyr_native_everglade_41 :: () #export_c {
 }
 
 // storm: Shapechange's mammoth (126 Temporary Hit Points, gores, no spells) turns bear, wolf, then you; Wild Resurgence makes a wolf of you; Speak with Animals; R is a Long Rest
-aethyr_native_everglade_42 :: () #export_c {
+aethyr_native_everglade_42 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1809,7 +1809,7 @@ aethyr_native_everglade_42 :: () #export_c {
 }
 
 // polar: Ray of Frost hits for 2d8 and slows, Fog Cloud hides who is in it, Hold Person paralyzes (your blows at Advantage) until a save, Cone of Cold freezes the 60-foot cone and never you
-aethyr_native_everglade_43 :: () #export_c {
+aethyr_native_everglade_43 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1865,7 +1865,7 @@ aethyr_native_everglade_43 :: () #export_c {
 }
 
 // rubble: a falling chunk strikes the guard under it, a slow one doesn't; the blocks of a crumbled panel never strike you
-aethyr_native_everglade_44 :: () #export_c {
+aethyr_native_everglade_44 :: () #export_c #effects(all) {
   g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
   who := au_ready(g[..], dm[..], out[..], u[..]);
   #assert who >= 0;
@@ -1904,7 +1904,7 @@ aethyr_native_everglade_44 :: () #export_c {
 }
 
 // audit: Meteor Swarm, the Thunderbolt and the Mega Thunderbolt blast the guard they strike; the Water Orb's splash too
-aethyr_native_everglade_45 :: () #export_c {
+aethyr_native_everglade_45 :: () #export_c #effects(all) {
   g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
   i := au_ready(g[..], dm[..], out[..], u[..]);
   #assert i >= 0;
@@ -1918,7 +1918,7 @@ aethyr_native_everglade_45 :: () #export_c {
 }
 
 // audit: Wind Wall's rising, Gust of Wind's push and Thunderwave's boom reach the guard in front of you
-aethyr_native_everglade_46 :: () #export_c {
+aethyr_native_everglade_46 :: () #export_c #effects(all) {
   g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
   i := au_ready(g[..], dm[..], out[..], u[..]);
   #assert i >= 0;
@@ -1944,7 +1944,7 @@ aethyr_native_everglade_46 :: () #export_c {
 }
 
 // audit: Black Tentacles crush and restrain the guard in their square, and the one who walks in
-aethyr_native_everglade_47 :: () #export_c {
+aethyr_native_everglade_47 :: () #export_c #effects(all) {
   g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
   i := au_ready(g[..], dm[..], out[..], u[..]);
   #assert i >= 0;
@@ -1961,7 +1961,7 @@ aethyr_native_everglade_47 :: () #export_c {
 }
 
 // audit: Ice Storm's hail hurts the guard under it; Sleet Storm knocks down the one who walks in
-aethyr_native_everglade_48 :: () #export_c {
+aethyr_native_everglade_48 :: () #export_c #effects(all) {
   g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
   i := au_ready(g[..], dm[..], out[..], u[..]);
   #assert i >= 0;
@@ -1985,7 +1985,7 @@ aethyr_native_everglade_48 :: () #export_c {
 }
 
 // audit: Moonbeam sears the guard who walks into it; Produce Flame, Starry Wisp and Poison Spray strike a guard
-aethyr_native_everglade_49 :: () #export_c {
+aethyr_native_everglade_49 :: () #export_c #effects(all) {
   g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
   i := au_ready(g[..], dm[..], out[..], u[..]);
   #assert i >= 0;
@@ -2014,7 +2014,7 @@ aethyr_native_everglade_49 :: () #export_c {
 }
 
 // audit: Shillelagh's staff and Ray of Frost strike a guard; Hold Person paralyzes one; Entangle restrains one
-aethyr_native_everglade_50 :: () #export_c {
+aethyr_native_everglade_50 :: () #export_c #effects(all) {
   g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
   i := au_ready(g[..], dm[..], out[..], u[..]);
   #assert i >= 0;
@@ -2043,7 +2043,7 @@ aethyr_native_everglade_50 :: () #export_c {
 }
 
 // audit: Faerie Fire outlines a guard; Spike Growth tears the one who walks in it; Call Lightning's bolt strikes one
-aethyr_native_everglade_51 :: () #export_c {
+aethyr_native_everglade_51 :: () #export_c #effects(all) {
   g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
   i := au_ready(g[..], dm[..], out[..], u[..]);
   #assert i >= 0;
@@ -2065,7 +2065,7 @@ aethyr_native_everglade_51 :: () #export_c {
 }
 
 // audit: Wall of Fire and Wall of Thorns burn and tear the guard who walks into them after they rise
-aethyr_native_everglade_52 :: () #export_c {
+aethyr_native_everglade_52 :: () #export_c #effects(all) {
   g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
   i := au_ready(g[..], dm[..], out[..], u[..]);
   #assert i >= 0;
@@ -2092,7 +2092,7 @@ aethyr_native_everglade_52 :: () #export_c {
 }
 
 // audit: Fire Storm burns the guard in its cubes and the one who runs into them while they roar; each shows its number
-aethyr_native_everglade_53 :: () #export_c {
+aethyr_native_everglade_53 :: () #export_c #effects(all) {
   g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
   i := au_ready(g[..], dm[..], out[..], u[..]);
   #assert i >= 0;
@@ -2126,7 +2126,7 @@ aethyr_native_everglade_53 :: () #export_c {
 }
 
 // audit: Conjure Animals' pack, Sunbeam, Sunburst, Storm of Vengeance and Cone of Cold hurt a guard; Polymorph makes one a frog
-aethyr_native_everglade_54 :: () #export_c {
+aethyr_native_everglade_54 :: () #export_c #effects(all) {
   g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
   i := au_ready(g[..], dm[..], out[..], u[..]);
   #assert i >= 0;
@@ -2157,7 +2157,7 @@ aethyr_native_everglade_54 :: () #export_c {
 }
 
 // audit: an Ice Knife bursts on a guard, Polymorph makes one a frog, Reverse Gravity lifts one or makes them hold on
-aethyr_native_everglade_55 :: () #export_c {
+aethyr_native_everglade_55 :: () #export_c #effects(all) {
   g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
   i := au_ready(g[..], dm[..], out[..], u[..]);
   #assert i >= 0;
@@ -2184,7 +2184,7 @@ aethyr_native_everglade_55 :: () #export_c {
 }
 
 // audit: the grass afire burns the guard who walks into it
-aethyr_native_everglade_56 :: () #export_c {
+aethyr_native_everglade_56 :: () #export_c #effects(all) {
   g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
   i := au_ready(g[..], dm[..], out[..], u[..]);
   #assert i >= 0;
@@ -2202,7 +2202,7 @@ aethyr_native_everglade_56 :: () #export_c {
 }
 
 // audit: Produce Flame hurled at a guard turns them on you, hit or miss
-aethyr_native_everglade_57 :: () #export_c {
+aethyr_native_everglade_57 :: () #export_c #effects(all) {
   g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
   i := au_ready(g[..], dm[..], out[..], u[..]);
   #assert i >= 0;
@@ -2219,7 +2219,7 @@ aethyr_native_everglade_57 :: () #export_c {
 }
 
 // audit: Produce Flame hurled at a building turns the guard who sees or hears it
-aethyr_native_everglade_58 :: () #export_c {
+aethyr_native_everglade_58 :: () #export_c #effects(all) {
   g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
   i := au_ready(g[..], dm[..], out[..], u[..]);
   #assert i >= 0;
@@ -2244,7 +2244,7 @@ aethyr_native_everglade_58 :: () #export_c {
 }
 
 // audit: a Produce Flame landing beside a guard turns them
-aethyr_native_everglade_59 :: () #export_c {
+aethyr_native_everglade_59 :: () #export_c #effects(all) {
   g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
   i := au_ready(g[..], dm[..], out[..], u[..]);
   #assert i >= 0;
@@ -2259,7 +2259,7 @@ aethyr_native_everglade_59 :: () #export_c {
 }
 
 // watch: you die levitating 10 m up and stand again at the Road In on the ground, Levitate ended
-aethyr_native_everglade_60 :: () #export_c {
+aethyr_native_everglade_60 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -2289,7 +2289,7 @@ aethyr_native_everglade_60 :: () #export_c {
 }
 
 // watch: WANTED 5 calls the company in at the gate; they are drawn in their ranks' colours, casters bare-handed, with five stars lit
-aethyr_native_everglade_61 :: () #export_c {
+aethyr_native_everglade_61 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -2319,7 +2319,7 @@ aethyr_native_everglade_61 :: () #export_c {
 }
 
 // first goal: a fresh save draws its goal line in the first frame, Bram marked; each step done moves it on, and a quest taken ends it
-aethyr_native_everglade_62 :: () #export_c {
+aethyr_native_everglade_62 :: () #export_c #effects(all) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -2370,4 +2370,4 @@ aethyr_native_everglade_62 :: () #export_c {
 }
 
 // Negative control: an ordinary #assert must trap in every native build.
-aethyr_native_assert_probe :: () #export_c { #assert false; }
+aethyr_native_assert_probe :: () #export_c #effects(all) { #assert false; }

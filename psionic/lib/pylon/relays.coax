@@ -64,13 +64,13 @@ PR_KEY :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
     #assert pr_url(cast(string)long[0..<256]) && !pr_url(cast(string)long[..]);
 }
 
-pr_url :: (url:string)->bool {
+pr_url :: (url:string)->bool #effects(all) {
     if url.count>PR_URL_MOST {return false;}
     if !(url.count>6 && url[0..<6]=="wss://") && !(url.count>5 && url[0..<5]=="ws://") {return false;}
     for c:url {if c<33 || c>126 || c=='"' || c=='\\' {return false;}}
     return true;
 }
-pr_write :: (out:[]u8,pubkey:string,created_at:int,relays:[]PrRelay)->int #export_c {
+pr_write :: (out:[]u8,pubkey:string,created_at:int,relays:[]PrRelay)->int #export_c #effects(all) {
     if relays.count<1 || relays.count>PR_MOST {return -1;}
     tags:[4608]u8;n:=json_raw(tags[..],0,"[");
     for i:0..<relays.count {
@@ -85,7 +85,7 @@ pr_write :: (out:[]u8,pubkey:string,created_at:int,relays:[]PrRelay)->int #expor
     return pt_template(out,pubkey,created_at,PR_KIND,cast(string)tags[0..<n],"");
 }
 // The read relays (unmarked or read) go into reads, in list order.
-pr_read :: (kind:int,tags:string,content:string,reads:[]string)->PrList #export_c {
+pr_read :: (kind:int,tags:string,content:string,reads:[]string)->PrList #export_c #effects(all) {
     if kind!=PR_KIND {return PrList.{code=PrCode.kind};}
     if content.count!=0 {return PrList.{code=PrCode.content};}
     l:PrList;seen:[16]string;j:[1]Json;json_start(j[..],tags);

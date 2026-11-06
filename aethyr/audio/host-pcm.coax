@@ -10,11 +10,11 @@ AudioPcmHost :: struct {
  ids:[128][1024]u8;id_n:[128]int;level:f64=1;target:f64=1;
  room:[1]AudioConvolution;dynamics:[2]AudioDynamics;frames:int;accepted:int;refused:int;
 }
-ap_view :: (s:[]AudioPcmHost,index:int)->[]AudioPcmVoice {return s[0].voices[index..<index+1];}
-ap_name :: (s:[]AudioPcmHost,index:int)->string {return cast(string)s[0].names[index][0..<s[0].name_n[index]];}
-ap_id :: (s:[]AudioPcmHost,index:int)->string {return cast(string)s[0].ids[index][0..<s[0].id_n[index]];}
-ap_copy :: (source:string,dest:[]u8) {for c,i:source {dest[i]=c;}}
-ap_result :: (s:[]AudioPcmHost,value:int)->int {if value<0 {s[0].refused+=1;}else {s[0].accepted+=1;}return value;}
+ap_view :: (s:[]AudioPcmHost,index:int)->[]AudioPcmVoice #effects(all) {return s[0].voices[index..<index+1];}
+ap_name :: (s:[]AudioPcmHost,index:int)->string #effects(all) {return cast(string)s[0].names[index][0..<s[0].name_n[index]];}
+ap_id :: (s:[]AudioPcmHost,index:int)->string #effects(all) {return cast(string)s[0].ids[index][0..<s[0].id_n[index]];}
+ap_copy :: (source:string,dest:[]u8) #effects(all) {for c,i:source {dest[i]=c;}}
+ap_result :: (s:[]AudioPcmHost,value:int)->int #effects(all) {if value<0 {s[0].refused+=1;}else {s[0].accepted+=1;}return value;}
 #test "a suspended native context retains controls and beds without replaying old one-shot cues" {
  s:[1]AudioPcmHost;pcm:=[2]f32.[1,0];w:[1]f64;
  #assert ap_context_command(s[..],w[..],"tap 1 0",pcm[..],1,false)== -2;
@@ -25,7 +25,7 @@ ap_result :: (s:[]AudioPcmHost,value:int)->int {if value<0 {s[0].refused+=1;}els
  #assert ap_context_command(s[..],w[..],"-id",pcm[..],1,false)== -2;
  #assert ap_context_command(s[..],w[..],"tap 1 0",pcm[..],1,true)==1;
 }
-ap_context_command :: (s:[]AudioPcmHost,w:[]f64,line:string,pcm:[]f32,channels:int,started:bool)->int #export_c {
+ap_context_command :: (s:[]AudioPcmHost,w:[]f64,line:string,pcm:[]f32,channels:int,started:bool)->int #export_c #effects(all) {
  e:=audio_host_parse(line);if !started && e.kind!=2 && e.kind!=4 && e.kind!=5 && e.kind!=6 {return -2;}
  return ap_command(s,w,line,pcm,channels);
 }
@@ -111,7 +111,7 @@ ap_context_command :: (s:[]AudioPcmHost,w:[]f64,line:string,pcm:[]f32,channels:i
  #assert s[0].voices[0].position==1024 && s[0].voices[1].position==1024 && abs(s[0].level-(0.5+0.5*exp(-1024.0/1440)))<0.00000001;
  #assert output[2046]>0 && output[2047]<0;
 }
-ap_command :: (s:[]AudioPcmHost,w:[]f64,line:string,pcm:[]f32,channels:int)->int #export_c {
+ap_command :: (s:[]AudioPcmHost,w:[]f64,line:string,pcm:[]f32,channels:int)->int #export_c #effects(all) {
  if s.count!=1 {return -1;}e:=audio_host_parse(line);
  if e.kind==3 {for i:0..<128 {if s[0].voices[i].active && ap_id(s,i)==e.id {apv_stop(ap_view(s,i));s[0].id_n[i]=0;return ap_result(s,128);}}return ap_result(s,-1);}
  if e.kind==4 {s[0].target=f64(e.gain);return ap_result(s,128);}
@@ -126,7 +126,7 @@ ap_command :: (s:[]AudioPcmHost,w:[]f64,line:string,pcm:[]f32,channels:int)->int
  for i:0..<128 {if ap_id(s,i)==e.id {s[0].id_n[i]=0;}}
  s[0].voices[slot]=voice;s[0].name_n[slot]=e.name.count;ap_copy(e.name,s[0].names[slot][..]);s[0].id_n[slot]=e.id.count;ap_copy(e.id,s[0].ids[slot][..]);return ap_result(s,slot);
 }
-ap_block :: (s:[]AudioPcmHost,w:[]f64,output:[]f32)->bool #export_c {
+ap_block :: (s:[]AudioPcmHost,w:[]f64,output:[]f32)->bool #export_c #effects(all) {
  if s.count!=1 || output.count!=2048 {return false;}
  dry:[2048]f64;direct:[2048]f64;room:[2048]f32;wet:[2048]f32;
  for i:0..<128 {v:=s[0].voices[i];if !v.active {continue;}for frame:0..<1024 {if !s[0].voices[i].active {break;}q:=apv_frame(ap_view(s,i));

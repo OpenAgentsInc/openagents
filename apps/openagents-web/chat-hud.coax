@@ -102,7 +102,7 @@ ChatHost :: struct {
   inbox: [CH_INBOX] u8;
 }
 // Before every call: the state sees the host's buffers (they move with it).
-coaxial_chat_bind :: (h: [] ChatHost) #export_c {
+coaxial_chat_bind :: (h: [] ChatHost) #export_c #effects(all) {
   if h.count < 1 { return; }
   h[0].s[0].data = h[0].data[..];
   h[0].s[0].inbox = h[0].inbox[..];
@@ -284,8 +284,8 @@ ch_pushed_for :: (text: string) -> int {
   return v;
 }
 // The face sent them. A post's body is wiped once sent: a credential stays in the page no longer than that.
-coaxial_chat_asked :: (s: [] ChatState, id: int) #export_c { if s.count > 0 { s[0].ask_n = 0; s[0].ask_id = id; } }
-coaxial_chat_posted :: (s: [] ChatState, id: int) #export_c {
+coaxial_chat_asked :: (s: [] ChatState, id: int) #export_c #effects(all) { if s.count > 0 { s[0].ask_n = 0; s[0].ask_id = id; } }
+coaxial_chat_posted :: (s: [] ChatState, id: int) #export_c #effects(all) {
   if s.count < 1 { return; }
   for i: 0..<s[0].body_n { s[0].body[i] = 0; }
   s[0].post_n = 0; s[0].body_n = 0; s[0].post_id = id;
@@ -845,7 +845,7 @@ ch_locked :: (s: [] ChatState, out: [] f32, p: Pen) -> int {
 
 ch_signed_out :: (s: [] ChatState) -> bool { return s[0].status == 401 || s[0].status == 403 || s[0].status == 404; }
 
-coaxial_chat_frame :: (s: [] ChatState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+coaxial_chat_frame :: (s: [] ChatState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   if !s[0].ready { s[0].ready = true; s[0].hot = -1; s[0].press = -1; s[0].status = -1; s[0].ask_id = -1; s[0].post_id = -1; s[0].shown = -1; s[0].model = -1; }
   s[0].time += clamp(dt, 0, 0.1);
@@ -1032,7 +1032,7 @@ ch_act :: (s: [] ChatState, target: int) {
   }
 }
 
-coaxial_chat_pointer :: (s: [] ChatState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
+coaxial_chat_pointer :: (s: [] ChatState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   d := hi(s[0].d, 1);
   if phase == P_DOWN {
@@ -1085,7 +1085,7 @@ ch_set_n :: (s: [] ChatState, n: int) {
   if s[0].focus == 1 { for i: n..<s[0].key_n { s[0].key[i] = 0; } s[0].key_n = n; } else { s[0].text_n = n; }
   s[0].all = 0;
 }
-coaxial_chat_key :: (s: [] ChatState, key: int, mods: int) -> bool #export_c {
+coaxial_chat_key :: (s: [] ChatState, key: int, mods: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   d := hi(s[0].d, 1);
   cmd := tk_command(key, mods);
@@ -1120,8 +1120,8 @@ coaxial_chat_key :: (s: [] ChatState, key: int, mods: int) -> bool #export_c {
   if key == K_END { s[0].back = 0; return true; }
   return false;
 }
-coaxial_chat_wheel :: (s: [] ChatState, dy: f32) #export_c { if s.count > 0 { s[0].back -= dy * hi(s[0].d, 1); } }
-coaxial_chat_message :: (s: [] ChatState, kind: int, length: int) #export_c {
+coaxial_chat_wheel :: (s: [] ChatState, dy: f32) #export_c #effects(all) { if s.count > 0 { s[0].back -= dy * hi(s[0].d, 1); } }
+coaxial_chat_message :: (s: [] ChatState, kind: int, length: int) #export_c #effects(all) {
   if s.count < 1 || length < 0 || length > s[0].inbox.count { return; }
   text := cast(string) s[0].inbox[0..<length];
   if kind >= CH_HTTP && kind < CH_HTTP + 8 { ch_answer(s, kind - CH_HTTP, text); return; }
@@ -1132,14 +1132,14 @@ coaxial_chat_message :: (s: [] ChatState, kind: int, length: int) #export_c {
   }
   if kind == CH_SHOWN && s[0].status == 200 { s[0].asked_at = -1000; }   // shown again: read the state now
 }
-coaxial_chat_hash :: (s: [] ChatState, length: int) #export_c { }
-coaxial_chat_page :: (s: [] ChatState, page: int) #export_c { }
-coaxial_chat_wants_text :: (s: [] ChatState) -> bool #export_c { return s.count > 0 && s[0].typing && s[0].status == 200; }
-coaxial_chat_cursor :: (s: [] ChatState) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].hot != -1 then 1 else 0; }
-coaxial_chat_action :: (s: [] ChatState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
-coaxial_chat_action_done :: (s: [] ChatState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
-coaxial_chat_inbox_cap :: () -> int #export_c { return CH_INBOX; }
-coaxial_chat_max_vertices :: () -> int #export_c { return CH_MAX_VERTICES; }
+coaxial_chat_hash :: (s: [] ChatState, length: int) #export_c #effects(all) { }
+coaxial_chat_page :: (s: [] ChatState, page: int) #export_c #effects(all) { }
+coaxial_chat_wants_text :: (s: [] ChatState) -> bool #export_c #effects(all) { return s.count > 0 && s[0].typing && s[0].status == 200; }
+coaxial_chat_cursor :: (s: [] ChatState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return ifx s[0].hot != -1 then 1 else 0; }
+coaxial_chat_action :: (s: [] ChatState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_chat_action_done :: (s: [] ChatState) #export_c #effects(all) { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_chat_inbox_cap :: () -> int #export_c #effects(all) { return CH_INBOX; }
+coaxial_chat_max_vertices :: () -> int #export_c #effects(all) { return CH_MAX_VERTICES; }
 
 // ---------------------------------------------------------------- checks
 

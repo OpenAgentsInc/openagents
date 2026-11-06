@@ -1,0 +1,6 @@
+// expect: trap transaction traversal limit
+#load "../transaction-graph-lib.coax";
+main :: () {
+  nodes:[128]GraphNode;tx_graph_make(nodes[..]);
+  switch tx_graph_run(nodes[0..<1]) {case none {} case some(wrong) {#assert false;}}
+}

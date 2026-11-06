@@ -228,7 +228,7 @@ GroundNormal :: struct { x: f32; y: f32 = 1; z: f32; }
 
 // The binary search ground_axis walked before (until November 4): the reference its guess-and-walk
 // must equal, cell for cell.
-ground_axis_searched :: (origin: f32, cell: f32, n: int, at: f32) -> int {
+ground_axis_searched :: (origin: f32, cell: f32, n: int, at: f32) -> int #effects(all) {
   low := 0; high := n;
   while high - low > 1 {
     middle := (low + high) / 2;
@@ -263,13 +263,13 @@ ground_axis_searched :: (origin: f32, cell: f32, n: int, at: f32) -> int {
 
 // ---- implementation
 
-ground_rows :: (g: Ground) -> int { return ifx g.rows > 0 then g.rows else g.n; }
-ground_finite :: (v: f32) -> bool { return v > -GROUND_LIMIT && v < GROUND_LIMIT; }
-ground_larger :: (a: f64, b: f64) -> f64 { return (a + b + abs(a - b)) / 2; }
+ground_rows :: (g: Ground) -> int #effects(all) { return ifx g.rows > 0 then g.rows else g.n; }
+ground_finite :: (v: f32) -> bool #effects(all) { return v > -GROUND_LIMIT && v < GROUND_LIMIT; }
+ground_larger :: (a: f64, b: f64) -> f64 #effects(all) { return (a + b + abs(a - b)) / 2; }
 
 // A finite, nonempty mesh with representable boundary cells. Integer bounds precede the
 // point-count product, and the bounded axes keep f32 extent arithmetic below overflow.
-ground_valid :: (g: Ground) -> bool {
+ground_valid :: (g: Ground) -> bool #effects(all) {
   if g.n < 1 || g.n > GROUND_MAX_AXIS || g.rows < 0 || g.rows > GROUND_MAX_AXIS { return false; }
   if !ground_finite(g.west) || !ground_finite(g.south) { return false; }
   east := g.west + f32(g.n) * g.cell;
@@ -285,7 +285,7 @@ ground_valid :: (g: Ground) -> bool {
   ulp := f32_from_bits(f32_bits(magnitude) + 1) - magnitude;
   return g.cell >= 4 * ulp;
 }
-ground_points :: (g: Ground) -> int {
+ground_points :: (g: Ground) -> int #effects(all) {
   if !ground_valid(g) { return 0; }
   return (g.n + 1) * (ground_rows(g) + 1);
 }
@@ -298,7 +298,7 @@ ground_points :: (g: Ground) -> int {
 // The admitted precision profile keeps each selected cell's width positive, including both
 // boundary cells.
 GroundAxis :: struct { i: int; fraction: f64; width: f64; clamped: bool; }
-ground_axis :: (origin: f32, cell: f32, n: int, coordinate: f32) -> GroundAxis {
+ground_axis :: (origin: f32, cell: f32, n: int, coordinate: f32) -> GroundAxis #effects(all) {
   at := coordinate; clamped := false;
   last := origin + f32(n) * cell;
   if at < origin { at = origin; clamped = true; }
@@ -317,7 +317,7 @@ ground_axis :: (origin: f32, cell: f32, n: int, coordinate: f32) -> GroundAxis {
 // A point beyond the rectangle reads its nearest edge. At the exact north/east edge the
 // last cell has fraction 1, not an epsilon below it, so every stored vertex is exact.
 ground_sample :: (g: Ground, heights: [] f32,
-    x: units.Quantity(units.Metre, f32), z: units.Quantity(units.Metre, f32)) -> GroundSample {
+    x: units.Quantity(units.Metre, f32), z: units.Quantity(units.Metre, f32)) -> GroundSample #effects(all) {
   out: GroundSample;
   count := ground_points(g);
   if count == 0 || heights.count < count || !ground_finite(x.value) || !ground_finite(z.value) { return out; }
@@ -348,7 +348,7 @@ ground_sample :: (g: Ground, heights: [] f32,
 }
 // book:end sample
 
-ground_normal :: (q: GroundSample) -> GroundNormal {
+ground_normal :: (q: GroundSample) -> GroundNormal #effects(all) {
   if !q.ok || !ground_finite(q.gx) || !ground_finite(q.gz) { return GroundNormal.{}; }
   magnitude := sqrt(q.gx * q.gx + 1 + q.gz * q.gz);
   return GroundNormal.{x = -q.gx / magnitude, y = 1 / magnitude, z = -q.gz / magnitude};

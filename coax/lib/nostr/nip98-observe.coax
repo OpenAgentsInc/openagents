@@ -64,7 +64,7 @@
  #assert !n98_hex_digest(cast(string)digits[0..<63]);
 }
 
-n98_method_equal :: (a:string,b:string)->bool {
+n98_method_equal :: (a:string,b:string)->bool #effects(all) {
  if a.count!=b.count {return false;}
  for i:0..<a.count {
   x:=cast(int)a[i];y:=cast(int)b[i];
@@ -74,7 +74,7 @@ n98_method_equal :: (a:string,b:string)->bool {
  }
  return true;
 }
-n98_hex_digest :: (s:string)->bool {
+n98_hex_digest :: (s:string)->bool #effects(all) {
  if s.count!=64 {return false;}
  for c:s {if !((c>=48 && c<=57) || (c>=97 && c<=102)) {return false;}}
  return true;
@@ -82,7 +82,7 @@ n98_hex_digest :: (s:string)->bool {
 // `matches` is only a field observation. Never use it as authorization: the
 // caller must separately bind these fields to verified original bytes, hash
 // the real body, validate the HTTP request, and apply replay/session policy.
-n98_observe :: (kind:int,created:int,now:int,u:string,method:string,payload:string,url:string,request_method:string,body_hash:string,uc:int,mc:int,pc:int,malformed:bool)->bool #export_c {
+n98_observe :: (kind:int,created:int,now:int,u:string,method:string,payload:string,url:string,request_method:string,body_hash:string,uc:int,mc:int,pc:int,malformed:bool)->bool #export_c #effects(all) {
  if malformed || uc!=1 || mc!=1 || pc<0 || pc>1 {return false;}
  if kind!=27235 || created<0 || now<0 {return false;}
  if created-now>60 || now-created>60 {return false;}

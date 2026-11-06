@@ -10,7 +10,7 @@
 // Chapter 11's packed inputs for `tokens` tokens into the device layouts:
 // mixed[t*c + i], the convolution weights (4 per channel), a and b [t*h + i],
 // A_log and dt_bias per head (from token 0), z [t*v + i] and gamma.
-dkr_unpack :: (key_heads:int,heads:int,tokens:int,rows:[]f32,mixed:[]f32,weight:[]f32,a:[]f32,b:[]f32,a_log:[]f32,dt:[]f32,z:[]f32,gamma:[]f32) #export_c {
+dkr_unpack :: (key_heads:int,heads:int,tokens:int,rows:[]f32,mixed:[]f32,weight:[]f32,a:[]f32,b:[]f32,a_log:[]f32,dt:[]f32,z:[]f32,gamma:[]f32) #export_c #effects(all) {
     s:=PdShape.{key_heads=key_heads,value_heads=heads,key_dim=128,value_dim=128,epsilon=0.000001f32};
     c:=pd_channels(s);m:=pd_input_count(s);v:=heads*128;
     aoff:=5*c;boff:=aoff+heads;logoff:=boff+heads;dtoff:=logoff+heads;zoff:=dtoff+heads;gammaoff:=zoff+v;
@@ -25,12 +25,12 @@ dkr_unpack :: (key_heads:int,heads:int,tokens:int,rows:[]f32,mixed:[]f32,weight:
     }
 }
 dkr_shape :: (key_heads:int,heads:int)->PdShape {return PdShape.{key_heads=key_heads,value_heads=heads,key_dim=128,value_dim=128,epsilon=0.000001f32};}
-dkr_input_count :: (key_heads:int,heads:int)->int #export_c {return pd_input_count(dkr_shape(key_heads,heads));}
-dkr_work_count :: (key_heads:int,heads:int,chunk:int)->int #export_c {return dk_work_count(dkr_shape(key_heads,heads),chunk);}
+dkr_input_count :: (key_heads:int,heads:int)->int #export_c #effects(all) {return pd_input_count(dkr_shape(key_heads,heads));}
+dkr_work_count :: (key_heads:int,heads:int,chunk:int)->int #export_c #effects(all) {return dk_work_count(dkr_shape(key_heads,heads),chunk);}
 // Chapter 11's recurrence from the zero state over every token: outputs
 // [t*v + i] and the final state in chapter 11's layout. The status.
-dkr_step_work :: (key_heads:int,heads:int)->int #export_c {return pd_work_count(dkr_shape(key_heads,heads));}
-dkr_recurrence :: (key_heads:int,heads:int,tokens:int,rows:[]f32,out:[]f32,history:[]f32,state:[]f32,work:[]f32)->int #export_c {
+dkr_step_work :: (key_heads:int,heads:int)->int #export_c #effects(all) {return pd_work_count(dkr_shape(key_heads,heads));}
+dkr_recurrence :: (key_heads:int,heads:int,tokens:int,rows:[]f32,out:[]f32,history:[]f32,state:[]f32,work:[]f32)->int #export_c #effects(all) {
     s:=dkr_shape(key_heads,heads);m:=pd_input_count(s);v:=heads*128;
     for i:0..<history.count {history[i]=0;}for i:0..<state.count {state[i]=0;}
     for t:0..<tokens {
@@ -40,7 +40,7 @@ dkr_recurrence :: (key_heads:int,heads:int,tokens:int,rows:[]f32,out:[]f32,histo
     return 0;
 }
 // Chapter 42's CPU chunked profile from the zero state. The status.
-dkr_chunked :: (key_heads:int,heads:int,tokens:int,chunk:int,rows:[]f32,out:[]f32,history:[]f32,state:[]f32,work:[]f64)->int #export_c {
+dkr_chunked :: (key_heads:int,heads:int,tokens:int,chunk:int,rows:[]f32,out:[]f32,history:[]f32,state:[]f32,work:[]f64)->int #export_c #effects(all) {
     s:=dkr_shape(key_heads,heads);
     for i:0..<history.count {history[i]=0;}for i:0..<state.count {state[i]=0;}
     r:=dk_prefill(s,tokens,chunk,rows,history,state,out,state[0..<0],work[0..<dk_work_count(s,chunk)],false);
@@ -50,8 +50,8 @@ dkr_chunked :: (key_heads:int,heads:int,tokens:int,chunk:int,rows:[]f32,out:[]f3
 // One linear layer's input norm and projections of `tokens` hidden rows
 // x[t*d ...], packed as chapter 11's inputs exactly as ql_step packs them.
 // work: d + c + d f32. The first refusing projection's status, else 0.
-dkr_pack_work :: (s:QlShape)->int #export_c {return 2*s.width+pd_channels(s.delta);}
-dkr_pack :: (s:QlShape,w:QlWeights,x:[]f32,tokens:int,rows:[]f32,work:[]f32)->int #export_c {
+dkr_pack_work :: (s:QlShape)->int #export_c #effects(all) {return 2*s.width+pd_channels(s.delta);}
+dkr_pack :: (s:QlShape,w:QlWeights,x:[]f32,tokens:int,rows:[]f32,work:[]f32)->int #export_c #effects(all) {
     d:=s.width;c:=pd_channels(s.delta);m:=pd_input_count(s.delta);v:=s.delta.value_heads*s.delta.value_dim;h:=s.delta.value_heads;
     aoff:=5*c;boff:=aoff+h;logoff:=boff+h;dtoff:=logoff+h;zoff:=dtoff+h;gammaoff:=zoff+v;
     norm:=work[0..<d];temp:=work[d..<2*d+c];

@@ -168,14 +168,14 @@ BfRecovery :: struct { code: int; keep: int; records: int; cut: bool; }
 }
 
 // One byte of Core's position-dependent XOR (xor.dat is a little-endian u64).
-bf_byte :: (data: [] u8, i: int, key: u64, offset: int) -> u8 {
+bf_byte :: (data: [] u8, i: int, key: u64, offset: int) -> u8 #effects(all) {
   return data[i] ^ cast,trunc(u8) (key >> (8 * ((offset + i) & 7)));
 }
 // book:begin next
 // head contains at least the header, or exactly the remaining bytes at a
 // short EOF. It may include the body. Never substitute an I/O short read.
 // Position is the record header; Core's data position is at+8.
-bf_next_vartime :: (head: [] u8, at: int, total: int, kind: int, magic: u32, key: u64) -> BfFrame #export_c {
+bf_next_vartime :: (head: [] u8, at: int, total: int, kind: int, magic: u32, key: u64) -> BfFrame #export_c #effects(all) {
   if kind < 0 || kind > 1 || at < 0 || total < at || total > 4294967295 { return BfFrame.{code = BF_ARGUMENT}; }
   remain := total - at;
   if head.count > remain || (head.count < 8 && head.count != remain) { return BfFrame.{code = BF_ARGUMENT}; }
@@ -193,13 +193,13 @@ bf_next_vartime :: (head: [] u8, at: int, total: int, kind: int, magic: u32, key
   return BfFrame.{size = size, n = n};
 }
 // book:end next
-bf_size_vartime :: (kind: int, n: int) -> bool {
+bf_size_vartime :: (kind: int, n: int) -> bool #effects(all) {
   return n >= (ifx kind == BF_BLOCK then 81 else 1) && n <= BF_MAX_BODY;
 }
 
 // SHA256d(previous_hash || decoded_undo), streaming past the one-shot
 // hash's 1 MiB input limit. The private helper receives admitted views.
-bf_digest :: (body: [] u8, previous: [] u8, key: u64, offset: int, out: [] u8) {
+bf_digest :: (body: [] u8, previous: [] u8, key: u64, offset: int, out: [] u8) #effects(all) {
   state: [112] u8; first: [32] u8;
   s := sha256_init(state[..]);
   s = sha256_update_checked(state[..], previous, false);
@@ -216,7 +216,7 @@ bf_digest :: (body: [] u8, previous: [] u8, key: u64, offset: int, out: [] u8) {
 // book:begin write
 // Returns frame length or -BF_*. Disjoint input/output views are required.
 // No output byte changes on refusal. Publish at+8 only after durable append.
-bf_write_vartime :: (kind: int, magic: u32, key: u64, at: int, body: [] u8, previous: [] u8, out: [] u8) -> int #export_c {
+bf_write_vartime :: (kind: int, magic: u32, key: u64, at: int, body: [] u8, previous: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if kind < 0 || kind > 1 || at < 0 { return -BF_ARGUMENT; }
   if !bf_size_vartime(kind, body.count) { return -BF_SIZE; }
   if kind == BF_UNDO && previous.count != 32 { return -BF_ARGUMENT; }
@@ -238,7 +238,7 @@ bf_write_vartime :: (kind: int, magic: u32, key: u64, at: int, body: [] u8, prev
 // book:begin read
 // record starts at the header. It may include later records. A read by
 // Core data position p supplies file[p-8..] and at=p-8, after checking p>=8.
-bf_read_vartime :: (record: [] u8, at: int, kind: int, magic: u32, key: u64, previous: [] u8, out: [] u8) -> int #export_c {
+bf_read_vartime :: (record: [] u8, at: int, kind: int, magic: u32, key: u64, previous: [] u8, out: [] u8) -> int #export_c #effects(all) {
   // Wrapped signed overflow makes total < at, which the shared extent
   // boundary refuses, as it does negatives and totals above uint32_t.
   total := cast,trunc(int) add_wrap(cast,trunc(u64) at, cast(u64) record.count);
@@ -260,7 +260,7 @@ bf_read_vartime :: (record: [] u8, at: int, kind: int, magic: u32, key: u64, pre
 // Recovery checks record extents, NOT block contents or undo checksums
 // (those require the block index's previous hashes). Only an EOF inside a
 // valid record or entirely zero physical preallocation may be discarded.
-bf_recover_vartime :: (file: [] u8, kind: int, magic: u32, key: u64) -> BfRecovery #export_c {
+bf_recover_vartime :: (file: [] u8, kind: int, magic: u32, key: u64) -> BfRecovery #export_c #effects(all) {
   r: BfRecovery;
   while true {
     f := bf_next_vartime(file[r.keep..<file.count], r.keep, file.count, kind, magic, key);

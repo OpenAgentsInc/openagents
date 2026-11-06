@@ -205,7 +205,7 @@ does nothing.
 <!-- source: psionic/lib/observe.coax scene -->
 ```jai
 // One step of the Park-Miller generator: s * 48271 mod (2^31 - 1).
-ob_draw :: (s:int)->int #export_c {return (s*48271)%2147483647;}
+ob_draw :: (s:int)->int #export_c #effects(all) {return (s*48271)%2147483647;}
 // Action a moves the square's corner (x, y) one pixel: 0 stays, 1 right,
 // 2 left, 3 down, 4 up. A move that would leave the image does nothing.
 ob_move :: (x:int,y:int,a:int)->[2]int {

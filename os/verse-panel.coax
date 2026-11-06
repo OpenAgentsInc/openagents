@@ -28,25 +28,25 @@ PANEL_TO_REALM :: 0; PANEL_TO_DESK :: 1; PANEL_TOGGLE :: 2; PANEL_VOICE :: 3;
   #assert verse_panel_sample_keep(63, 64) == 63 && verse_panel_sample_keep(64, 64) == 32;
   #assert verse_panel_sample_keep(100000, 100000) == 50000;
 }
-verse_panel_sample_capacity :: (given: int) -> int #export_c { return ifx given >= 64 && given <= 100000 then given else 0; }
-verse_panel_sample_keep :: (samples: int, capacity: int) -> int #export_c { return ifx samples >= capacity then capacity / 2 else samples; }
+verse_panel_sample_capacity :: (given: int) -> int #export_c #effects(all) { return ifx given >= 64 && given <= 100000 then given else 0; }
+verse_panel_sample_keep :: (samples: int, capacity: int) -> int #export_c #effects(all) { return ifx samples >= capacity then capacity / 2 else samples; }
 // the constants, for the host (a header carries procedures, not constants)
-verse_panel_closed :: () -> int #export_c { return PANEL_CLOSED; }
-verse_panel_flat :: () -> int #export_c { return PANEL_FLAT; }
-verse_panel_world :: () -> int #export_c { return PANEL_WORLD; }
-verse_panel_toggle :: () -> int #export_c { return PANEL_TOGGLE; }
-verse_panel_to_desk :: () -> int #export_c { return PANEL_TO_DESK; }
-verse_panel_voice :: () -> int #export_c { return PANEL_VOICE; }
+verse_panel_closed :: () -> int #export_c #effects(all) { return PANEL_CLOSED; }
+verse_panel_flat :: () -> int #export_c #effects(all) { return PANEL_FLAT; }
+verse_panel_world :: () -> int #export_c #effects(all) { return PANEL_WORLD; }
+verse_panel_toggle :: () -> int #export_c #effects(all) { return PANEL_TOGGLE; }
+verse_panel_to_desk :: () -> int #export_c #effects(all) { return PANEL_TO_DESK; }
+verse_panel_voice :: () -> int #export_c #effects(all) { return PANEL_VOICE; }
 
 // The mode after a key press (evdev code), and whether that key was a toggle.
-verse_panel_next :: (mode: int, code: int) -> int #export_c {
+verse_panel_next :: (mode: int, code: int) -> int #export_c #effects(all) {
   if code == PANEL_KEY_DOCK { return ifx mode == PANEL_CLOSED then PANEL_DOCKED else PANEL_CLOSED; }
   if code == PANEL_KEY_FLAT { return ifx mode == PANEL_FLAT then PANEL_CLOSED else PANEL_FLAT; }
   if code == PANEL_KEY_WORLD { return ifx mode == PANEL_WORLD then PANEL_CLOSED else PANEL_WORLD; }
   return mode;
 }
 // Where a key goes: the toggles are the panel's own, the rest the desk's while it shows.
-verse_panel_key_to :: (mode: int, code: int) -> int #export_c {
+verse_panel_key_to :: (mode: int, code: int) -> int #export_c #effects(all) {
   if code == PANEL_KEY_VOICE { return PANEL_VOICE; }   // in every mode: your voice to the desk
   if code == PANEL_KEY_DOCK || code == PANEL_KEY_FLAT || code == PANEL_KEY_WORLD { return PANEL_TOGGLE; }
   return ifx mode == PANEL_CLOSED || mode == PANEL_WORLD then PANEL_TO_REALM else PANEL_TO_DESK;
@@ -72,7 +72,7 @@ verse_panel_key_to :: (mode: int, code: int) -> int #export_c {
 // The panel's rectangle on a W x H screen for a DW x DH desk, in whole pixels, as x0 y0 x1 y1 (k 0..3):
 // flat, the desk fitted to the whole screen; docked, fitted to the right 62% with a 24-pixel margin.
 // The desk's aspect is kept; the rest of its area is the realm's.
-verse_panel_rect :: (mode: int, w: int, h: int, dw: int, dh: int, k: int) -> int #export_c {
+verse_panel_rect :: (mode: int, w: int, h: int, dw: int, dh: int, k: int) -> int #export_c #effects(all) {
   if mode == PANEL_WORLD { return 0; }   // the realm's to say: verse_panel_point_in
   if mode == PANEL_CLOSED || w < 1 || h < 1 || dw < 1 || dh < 1 || k < 0 || k > 3 { return 0; }
   m := ifx mode == PANEL_FLAT then 0 else 24;
@@ -97,7 +97,7 @@ verse_panel_rect :: (mode: int, w: int, h: int, dw: int, dh: int, k: int) -> int
 }
 
 // A screen point in the desk's pixels (k 0 x, 1 y), or -1 when it is not over the panel.
-verse_panel_point :: (mode: int, w: int, h: int, dw: int, dh: int, x: int, y: int, k: int) -> int #export_c {
+verse_panel_point :: (mode: int, w: int, h: int, dw: int, dh: int, x: int, y: int, k: int) -> int #export_c #effects(all) {
   x0 := verse_panel_rect(mode, w, h, dw, dh, 0); y0 := verse_panel_rect(mode, w, h, dw, dh, 1);
   x1 := verse_panel_rect(mode, w, h, dw, dh, 2); y1 := verse_panel_rect(mode, w, h, dw, dh, 3);
   if x1 <= x0 || y1 <= y0 || x < x0 || x >= x1 || y < y0 || y >= y1 { return -1; }
@@ -105,7 +105,7 @@ verse_panel_point :: (mode: int, w: int, h: int, dw: int, dh: int, x: int, y: in
 }
 // A screen point in the desk's pixels through the rectangle x0 y0 x1 y1 (k 0 x, 1 y), or -1 off it:
 // the world's panel, wherever the realm draws it.
-verse_panel_point_in :: (x0: int, y0: int, x1: int, y1: int, dw: int, dh: int, x: int, y: int, k: int) -> int #export_c {
+verse_panel_point_in :: (x0: int, y0: int, x1: int, y1: int, dw: int, dh: int, x: int, y: int, k: int) -> int #export_c #effects(all) {
   if x1 <= x0 || y1 <= y0 || dw < 1 || dh < 1 || x < x0 || x >= x1 || y < y0 || y >= y1 { return -1; }
   return ifx k == 0 then ((x - x0) * dw) / (x1 - x0) else ((y - y0) * dh) / (y1 - y0);
 }
@@ -127,7 +127,7 @@ verse_panel_point_in :: (x0: int, y0: int, x1: int, y1: int, dw: int, dh: int, x
 // (k 0..3: x0 y0 x1 y1) of the display, its source the desk's columns i/n to (i+1)/n: each fitted
 // between the screen's top and bottom edges where it stands, so the far side is shorter.
 panel_lerp :: (a: int, b: int, t_num: int, t_den: int) -> int { return a + ((b - a) * t_num) / t_den; }
-verse_panel_strip :: (blx: int, bly: int, brx: int, bry: int, trx: int, tyr: int, tlx: int, tly: int, i: int, n: int, k: int) -> int #export_c {
+verse_panel_strip :: (blx: int, bly: int, brx: int, bry: int, trx: int, tyr: int, tlx: int, tly: int, i: int, n: int, k: int) -> int #export_c #effects(all) {
   if n < 1 || i < 0 || i >= n || k < 0 || k > 3 { return 0; }
   // the top and bottom edges at the strip's two sides
   tx0 := panel_lerp(tlx, trx, i, n); ty0 := panel_lerp(tly, tyr, i, n); tx1 := panel_lerp(tlx, trx, i + 1, n); ty1 := panel_lerp(tly, tyr, i + 1, n);
@@ -149,7 +149,7 @@ verse_panel_strip :: (blx: int, bly: int, brx: int, bry: int, trx: int, tyr: int
 }
 // A display point on the slanted screen in the desk's pixels (k 0 x, 1 y), or -1 off it: the strip it
 // falls in gives x, its place between that strip's top and bottom gives y.
-verse_panel_point_quad :: (blx: int, bly: int, brx: int, bry: int, trx: int, tyr: int, tlx: int, tly: int, n: int, dw: int, dh: int, x: int, y: int, k: int) -> int #export_c {
+verse_panel_point_quad :: (blx: int, bly: int, brx: int, bry: int, trx: int, tyr: int, tlx: int, tly: int, n: int, dw: int, dh: int, x: int, y: int, k: int) -> int #export_c #effects(all) {
   if n < 1 || dw < 1 || dh < 1 { return -1; }
   for i: 0..<n {
     x0 := verse_panel_strip(blx, bly, brx, bry, trx, tyr, tlx, tly, i, n, 0); x1 := verse_panel_strip(blx, bly, brx, bry, trx, tyr, tlx, tly, i, n, 2);

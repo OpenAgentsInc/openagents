@@ -4,7 +4,7 @@
 nfp_load :: (root:string,prepared:string,compiler:string,digest:string,work:string)->bool {
  p:[1]NfmPrepared;held:[1]RtqInputs;files:[1]NfmFiles;return fs_mkdir(work) && nfm_load_prepared(root,prepared,compiler,digest,work,p[..],held[..],files[..]);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) {return 2;}prepared_arg:=args_value(a[..],"--prepared","");work_arg:=args_value(a[..],"--work-dir","");compiler_arg:=args_value(a[..],"--coax","");digest_arg:=args_value(a[..],"--compiler-source-digest","");if prepared_arg=="" || work_arg=="" || compiler_arg=="" || digest_arg=="" || !fs_mkdir(work_arg) {return 2;}
  paths:[12][4096]u8;work:=fs_realpath(work_arg,paths[0][..]);prepared:=fs_realpath(prepared_arg,paths[1][..]);compiler:=fs_realpath(compiler_arg,paths[2][..]);digest:=fs_realpath(digest_arg,paths[3][..]);root:=fs_realpath(".",paths[4][..]);list:[1]FsList;if work=="" || prepared=="" || compiler=="" || digest=="" || fs_list(work,list[..])!=0 {return 2;}held:[1]RtqInputs;for file:[3]string.[compiler,digest,fs_join(prepared,"prepared.json",paths[5][..])] {if !rtq_input_add(held[..],file) {return 1;}}
  if !rtn_tool_sources(held[..],compiler,"aethyr/render/tests/check-native-frame-prepared.coax",work,proc_now_ms()+30000) {return 1;}self:[4096]u8;sn:=cxproc_self_path(self[..]);if sn<1 || !rtq_input_add(held[..],cast(string)self[0..<sn]) {return 1;}

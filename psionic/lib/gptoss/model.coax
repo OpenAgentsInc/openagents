@@ -15,7 +15,7 @@ GWork :: struct {floats:[]f32;scores:[]f64;sums:[]PsionicAccumulator;routes:[]in
     #assert g_attention(s,1,257,q[..],k[..],v[..],sinks[..],cache[..],pending[..],out[..],work[..],scores[..],false).status==GStatus.state;
 }
 
-g_attention :: (s:GShape,layer:int,position:int,q:[]f32,k:[]f32,v:[]f32,sinks:[]u8,cache:[]f32,pending:[]f32,out:[]f32,work:[]f32,scores:[]f64,overlap:bool)->GResult #export_c {
+g_attention :: (s:GShape,layer:int,position:int,q:[]f32,k:[]f32,v:[]f32,sinks:[]u8,cache:[]f32,pending:[]f32,out:[]f32,work:[]f32,scores:[]f64,overlap:bool)->GResult #export_c #effects(all) {
     if !g_shape(s) || layer<0 || layer>=s.layers {return GResult.{status=GStatus.shape};}
     if position<0 || position>=s.capacity {return GResult.{status=GStatus.state};}
     qn:=s.heads*64;kn:=s.kv_heads*64;cap:=g_layer_capacity(s,layer);first:=0;
@@ -42,9 +42,9 @@ g_attention :: (s:GShape,layer:int,position:int,q:[]f32,k:[]f32,v:[]f32,sinks:[]
     }
     for i:0..<kn {pending[i]=kr[i];pending[kn+i]=v[i];}for i:0..<qn {out[i]=stage[i];}return GResult.{written=qn};
 }
-g_mat :: (rows:int,columns:int,data:[]u8)->GMatrix {return GMatrix.{rows=rows,columns=columns,data=data};}
+g_mat :: (rows:int,columns:int,data:[]u8)->GMatrix #effects(all) {return GMatrix.{rows=rows,columns=columns,data=data};}
 // book:begin forward
-g_forward :: (m:GModel,token:int,position:int,budget:int,cache:[]f32,out:GOutput,work:GWork,overlap:bool)->GStep #export_c {
+g_forward :: (m:GModel,token:int,position:int,budget:int,cache:[]f32,out:GOutput,work:GWork,overlap:bool)->GStep #export_c #effects(all) {
     s:=m.shape;p:=g_plan(s);if p.status!=GStatus.ok {return GStep.{status=p.status};}
     if token<0 || token>=s.vocab {return GStep.{status=GStatus.token};}if position<0 || position>=s.capacity {return GStep.{status=GStatus.state};}
     if g_model_valid(m)!=GStatus.ok {return GStep.{status=GStatus.weights};}
@@ -90,7 +90,7 @@ g_forward :: (m:GModel,token:int,position:int,budget:int,cache:[]f32,out:GOutput
 #load "../../fixtures/gptoss/tiny/model.coax";
 
 GViews :: struct {x:[]f32;normal:[]f32;qkv:[]f32;attention:[]f32;projected:[]f32;router:[]f32;up:[]f32;activated:[]f32;expert:[]f32;rms:[]f32;awork:[]f32;pending:[]f32;traces:[]f32;weights:[]f32;logits:[]f32;stage:[]f32;scratch:[]f32;}
-g_views :: (f:[]f32,p:GPlan)->GViews {b:=p.begin;return GViews.{x=f[b[0]..<b[1]],normal=f[b[1]..<b[2]],qkv=f[b[2]..<b[3]],attention=f[b[3]..<b[4]],projected=f[b[4]..<b[5]],router=f[b[5]..<b[6]],up=f[b[6]..<b[7]],activated=f[b[7]..<b[8]],expert=f[b[8]..<b[9]],rms=f[b[9]..<b[10]],awork=f[b[10]..<b[11]],pending=f[b[11]..<b[12]],traces=f[b[12]..<b[13]],weights=f[b[13]..<b[14]],logits=f[b[14]..<b[15]],stage=f[b[15]..<b[16]],scratch=f[b[16]..<b[17]]};}
+g_views :: (f:[]f32,p:GPlan)->GViews #effects(all) {b:=p.begin;return GViews.{x=f[b[0]..<b[1]],normal=f[b[1]..<b[2]],qkv=f[b[2]..<b[3]],attention=f[b[3]..<b[4]],projected=f[b[4]..<b[5]],router=f[b[5]..<b[6]],up=f[b[6]..<b[7]],activated=f[b[7]..<b[8]],expert=f[b[8]..<b[9]],rms=f[b[9]..<b[10]],awork=f[b[10]..<b[11]],pending=f[b[11]..<b[12]],traces=f[b[12]..<b[13]],weights=f[b[13]..<b[14]],logits=f[b[14]..<b[15]],stage=f[b[15]..<b[16]],scratch=f[b[16]..<b[17]]};}
 #test "every private model span has its own exact interval" {
     f:[1792]f32;for i:0..<1792 {f[i]=f32(i);}p:=g_plan(GT_SHAPE);v:=g_views(f[..],p);
     parts:=[17][]f32.[v.x,v.normal,v.qkv,v.attention,v.projected,v.router,v.up,v.activated,v.expert,v.rms,v.awork,v.pending,v.traces,v.weights,v.logits,v.stage,v.scratch];
@@ -145,8 +145,8 @@ g_views :: (f:[]f32,p:GPlan)->GViews {b:=p.begin;return GViews.{x=f[b[0]..<b[1]]
     #assert g_attention(s,0,0,q[..],k[..],v[..],sinks[..],cache[..],pending[..],out[..],work[..],scores[..],true).status==GStatus.alias;
 }
 
-g_trace_count :: (layers:int,width:int)->int {return 2*layers*width;}
-g_embedding :: (m:GModel,token:int)->[]u8 {d:=m.shape.width;return m.p[0][2*token*d..<2*(token+1)*d];}
+g_trace_count :: (layers:int,width:int)->int #effects(all) {return 2*layers*width;}
+g_embedding :: (m:GModel,token:int)->[]u8 #effects(all) {d:=m.shape.width;return m.p[0][2*token*d..<2*(token+1)*d];}
 #test "embedding rows have exact byte lengths and trace counts include odd stacks" {
     data:=GT_FILE;blocks:[2]GBlock;m:=gt_model(data[..],blocks[..]);for t:0..<16 {row:=g_embedding(m,t);#assert row.count==64;for i:0..<64 {#assert row[i]==m.p[0][t*64+i];}}
     #assert g_trace_count(3,32)==192 && g_trace_count(1,64)==128;

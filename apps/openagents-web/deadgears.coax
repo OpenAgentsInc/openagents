@@ -111,7 +111,7 @@ Fx :: struct { kind: int; at: Point; to: Point; t: f32; life: f32; size: f32; }
 
 DeadGears :: struct {
   started: bool;
-  store: [1] Store;
+  store: [1] DgStore;
   track: [1] Track;
   time: f64;
   clock: f32;               // the render clock: stops while paused
@@ -145,7 +145,7 @@ DeadGears :: struct {
   paused: bool;             // Escape or PAUSE, or the tab hidden
   fire_flash: f32; shots: int; hits: int; hit_flash: f32; hurt: f32;
   kill_flash: f32;          // your shot just killed (#55e7): the crosshair's ticks go red
-  shot_who: int;            // what your last shot hit
+  shot_who: Handle(Entity);            // what your last shot hit
   hitstop: f32;             // a kill holds the action this long (#3f12)
   kick: f32;                // the camera's kick from the last shot, radians
   toast: [64] u8; toast_n: int; toast_t: f32;
@@ -460,7 +460,7 @@ restore :: (s: [] DeadGears, text: string) -> bool {
 
 // ---- in from the host
 
-deadgears_message :: (s: [] DeadGears, kind: int, text: string) #export_c {
+deadgears_message :: (s: [] DeadGears, kind: int, text: string) #export_c #effects(all) {
   started(s);
   if redit_message(s[0].ed[..], kind, text) { return; }
   if kind == MSG_KEPT { ok := restore(s, text); return; }
@@ -484,19 +484,19 @@ deadgears_message :: (s: [] DeadGears, kind: int, text: string) #export_c {
   }
 }
 
-deadgears_golden :: (s: [] DeadGears, on: bool) #export_c { s[0].golden = on; }
+deadgears_golden :: (s: [] DeadGears, on: bool) #export_c #effects(all) { s[0].golden = on; }
 
 leave_to :: (s: [] DeadGears, url: string) {
   if s[0].action != 0 { return; }
   s[0].out_n = put(s[0].outbox[..], 0, url);
   s[0].action = ACT_NAVIGATE;
 }
-deadgears_action :: (s: [] DeadGears) -> int #export_c {
+deadgears_action :: (s: [] DeadGears) -> int #export_c #effects(all) {
   if s[0].action == 0 { e := redit_take_action(s[0].ed[..], s[0].outbox[..]); if e.kind != 0 { s[0].out_n = e.n; return e.kind; } }
   a := s[0].action; s[0].action = 0; return a;
 }
-deadgears_wants_text :: (s: [] DeadGears) -> bool #export_c { return redit_typing(s[0].ed[..]); }
-deadgears_action_done :: (s: [] DeadGears) #export_c { s[0].out_n = 0; }
+deadgears_wants_text :: (s: [] DeadGears) -> bool #export_c #effects(all) { return redit_typing(s[0].ed[..]); }
+deadgears_action_done :: (s: [] DeadGears) #export_c #effects(all) { s[0].out_n = 0; }
 
 // ---- the controls
 
@@ -559,7 +559,7 @@ release_fingers :: (s: [] DeadGears) {
   s[0].fire_touch = -1; s[0].repair_touch = -1; s[0].press = -1;
 }
 
-deadgears_key :: (s: [] DeadGears, key: int, mods: int) -> bool #export_c {
+deadgears_key :: (s: [] DeadGears, key: int, mods: int) -> bool #export_c #effects(all) {
   started(s);
   track_key(s[0].track[..], key, redit_typing(s[0].ed[..]));
   used := redit_key(s[0].ed[..], key, true);
@@ -587,7 +587,7 @@ deadgears_key :: (s: [] DeadGears, key: int, mods: int) -> bool #export_c {
   return true;
 }
 
-deadgears_key_up :: (s: [] DeadGears, key: int, mods: int) -> bool #export_c {
+deadgears_key_up :: (s: [] DeadGears, key: int, mods: int) -> bool #export_c #effects(all) {
   track_key_up(s[0].track[..], key);
   if redit_key(s[0].ed[..], key, false) == 1 { return true; }
   if redit_typing(s[0].ed[..]) { return false; }
@@ -597,7 +597,7 @@ deadgears_key_up :: (s: [] DeadGears, key: int, mods: int) -> bool #export_c {
   return true;
 }
 
-deadgears_blur :: (s: [] DeadGears) #export_c { s[0].held = 0; release_fingers(s); track_blur(s[0].track[..]); }
+deadgears_blur :: (s: [] DeadGears) #export_c #effects(all) { s[0].held = 0; release_fingers(s); track_blur(s[0].track[..]); }
 
 button_at :: (s: [] DeadGears, x: f32, y: f32) -> int {
   for i: 0..<BUTTONS { if s[0].shown[i] && in_rect(s[0].boxes[i], x, y) { return i; } }
@@ -615,7 +615,7 @@ press :: (s: [] DeadGears, b: int) {
 // A finger or the mouse: the buttons first (FIRE and REPAIR are held, the
 // rest press on letting go over them); then a mouse drag turns the camera,
 // the left half of the screen is the move stick and the right half looks.
-deadgears_pointer :: (s: [] DeadGears, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+deadgears_pointer :: (s: [] DeadGears, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   started(s);
   if redit_pointer(s[0].ed[..], x, y, phase, id) { return true; }
   k := hi(s[0].dpr, 0.5);
@@ -679,7 +679,7 @@ deadgears_pointer :: (s: [] DeadGears, x: f32, y: f32, phase: int, kind: int, id
   }
   return false;
 }
-deadgears_cursor :: (s: [] DeadGears) -> int #export_c { return ifx s[0].hover >= 0 then 1 else 0; }
+deadgears_cursor :: (s: [] DeadGears) -> int #export_c #effects(all) { return ifx s[0].hover >= 0 then 1 else 0; }
 
 fire_is_repair :: (s: [] DeadGears) -> bool { return game(s).st[0].phase == REPAIR; }
 
@@ -2009,9 +2009,9 @@ hud :: (s: [] DeadGears, u: [] f32, out: [] f32) -> int {
 
 // ---- the frame
 
-coaxial_deadgears_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_deadgears_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_deadgears_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_deadgears_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_deadgears_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_deadgears_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // The fight's part of a frame: the crowd ?spawn= asked for, you walking and
 // looking, the rules' step, their events, the clocks and the hour.
@@ -2075,7 +2075,7 @@ step_fight :: (s: [] DeadGears, t: f32) {
 // the rules run at most three steps of 1/60 s.
 DG_FRAME_DT :: 0.05;
 
-deadgears_frame :: (s: [] DeadGears, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+deadgears_frame :: (s: [] DeadGears, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   started(s);
   if u.count < UNIFORM_FLOATS || out.count < MAX_VERTICES * VERTEX_FLOATS || width < 1 || height < 1 { return 0; }
   t := ecs_counts(DG_FRAME_DT, dt);
@@ -2103,8 +2103,8 @@ deadgears_frame :: (s: [] DeadGears, out: [] f32, u: [] f32, width: f32, height:
   return n;
 }
 
-deadgears_objects :: (s: [] DeadGears) -> int #export_c { return s[0].obj_n; }
-deadgears_store_cap :: () -> int #export_c { return OBJECTS * OBJECT_FLOATS * 4; }
+deadgears_objects :: (s: [] DeadGears) -> int #export_c #effects(all) { return s[0].obj_n; }
+deadgears_store_cap :: () -> int #export_c #effects(all) { return OBJECTS * OBJECT_FLOATS * 4; }
 
 // ---- checks
 

@@ -586,14 +586,14 @@ we_transcribe :: (net: WeNet, W: [] f32, work: [] f32, b: [] u8, m: WgModel, voc
 
 // ---- the host's entry points ----------------------------------------------------
 
-psionic_whisper_vocab :: (b: [] u8, m: WgModel, offs: [] int) -> int #export_c { return we_vocab(b, m, offs); }
-psionic_whisper_options :: () -> WeOptions #export_c { o: WeOptions; return o; }
+psionic_whisper_vocab :: (b: [] u8, m: WgModel, offs: [] int) -> int #export_c #effects(all) { return we_vocab(b, m, offs); }
+psionic_whisper_options :: () -> WeOptions #export_c #effects(all) { o: WeOptions; return o; }
 psionic_whisper_transcribe :: (net: WeNet, W: [] f32, work: [] f32, b: [] u8, m: WgModel, vocab: [] int, bank: [] f64, audio: [] f32, cache: [] f32,
-                               o: WeOptions, segs: [] WsSegment, text: [] u8) -> WeRun #export_c {
+                               o: WeOptions, segs: [] WsSegment, text: [] u8) -> WeRun #export_c #effects(all) {
   return we_transcribe(net, W, work, b, m, vocab, bank, audio, cache, o, segs, text);
 }
 // The code of a language token ("" for none).
-psionic_whisper_language_code :: (net: WeNet, token: int) -> string #export_c { return wt_language_code(net.sp, token); }
+psionic_whisper_language_code :: (net: WeNet, token: int) -> string #export_c #effects(all) { return wt_language_code(net.sp, token); }
 
 #test "the tokenizer's pieces" {
   s := "Hello, world's  big 2024 test!? ok";

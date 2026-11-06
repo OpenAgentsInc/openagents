@@ -78,8 +78,8 @@ is not in either digest.
 ```jai
 // Integers as two's-complement little-endian u64s; a content digest covers
 // the token count and every token.
-lg_word :: (x:int)->u64 {return ifx x<0 then (cast(u64)18446744073709551615)-cast(u64)(-1-x) else cast(u64)x;}
-lg_content :: (tokens:[]int)->[32]u8 {
+lg_word :: (x:int)->u64 #effects(all) {return ifx x<0 then (cast(u64)18446744073709551615)-cast(u64)(-1-x) else cast(u64)x;}
+lg_content :: (tokens:[]int)->[32]u8 #effects(all) {
     s:[112]u8;b:[64]u8;out:[32]u8;#assert sha256_init(s[..])==SHA_OK;
     at:=su_u64(b[..],su_text(b[..],0,"psionic.harness.log.content.v1"),cast(u64)tokens.count);
     #assert sha256_update_checked(s[..],b[0..<at],false)==SHA_OK;
@@ -89,7 +89,7 @@ lg_content :: (tokens:[]int)->[32]u8 {
 // An event digest covers its sequence, the previous digest, its kind, its
 // token count and content digest, its seed and its seven fields, and not
 // whether it was redacted.
-lg_digest :: (e:LgEvent)->[32]u8 {
+lg_digest :: (e:LgEvent)->[32]u8 #effects(all) {
     b:[256]u8;at:=su_u64(b[..],su_text(b[..],0,"psionic.harness.log.event.v1"),cast(u64)e.sequence);
     for i:0..<32 {b[at+i]=e.previous[i];}at+=32;b[at]=cast(u8)e.kind;at=su_u64(b[..],at+1,cast(u64)e.count);
     for i:0..<32 {b[at+i]=e.content[i];}at=su_u64(b[..],at+32,e.seed);
@@ -107,10 +107,10 @@ after checking that the event fits.
 
 <!-- source: psionic/lib/harness/log.coax append -->
 ```jai
-lg_text :: (k:LgKind)->bool {return k==LgKind.system || k==LgKind.user || k==LgKind.context;}
+lg_text :: (k:LgKind)->bool #effects(all) {return k==LgKind.system || k==LgKind.user || k==LgKind.context;}
 // Append the kind's event over the count tokens already at the store's end.
 // Only the log's own functions call this; they check room first.
-lg_put :: (l:[]LgLog,kind:LgKind,count:int,seed:u64,f:[7]int) {
+lg_put :: (l:[]LgLog,kind:LgKind,count:int,seed:u64,f:[7]int) #effects(all) {
     g:=l[0];e:=LgEvent.{sequence=g.count,kind=kind,count=count,seed=seed,f=f};
     if g.count>0 {e.previous=g.events[g.count-1].digest;}
     e.content=lg_content(g.tokens[g.used..<g.used+count]);e.digest=lg_digest(e);
@@ -118,7 +118,7 @@ lg_put :: (l:[]LgLog,kind:LgKind,count:int,seed:u64,f:[7]int) {
 }
 // Text the model will see before the next turn: system, user or injected
 // context. It is refused inside an open turn, where only the loop appends.
-lg_say :: (l:[]LgLog,kind:LgKind,text:[]int)->LgStatus {
+lg_say :: (l:[]LgLog,kind:LgKind,text:[]int)->LgStatus #effects(all) {
     g:=l[0];
     if !lg_text(kind) {return LgStatus.shape;}
     if lg_fold_log(g,g.count).open {return LgStatus.order;}
@@ -148,7 +148,7 @@ placeholder tokens.
 // is visible until the reply event takes it; the tool's output is taken the
 // same way. Every turn the log opens it also closes with a stop event, so a
 // log is refused before the start when it could not hold the whole turn.
-lg_run :: (m:HlModel,b:HlBudget,seed:u64,l:[]LgLog)->LgTurn {
+lg_run :: (m:HlModel,b:HlBudget,seed:u64,l:[]LgLog)->LgTurn #effects(all) {
     g:=l[0];context:=m.c.context;
     r:=LgTurn.{start=g.count,seed=seed,budget=b,prompt=g.used,turn=HlTurn.{at=g.used,reply=g.used}};
     if g.used<1 || g.tokens.count<context || b.steps<0 || b.reply<1 || b.tool<0 {r.status=LgStatus.shape;return r;}
@@ -161,7 +161,7 @@ lg_run :: (m:HlModel,b:HlBudget,seed:u64,l:[]LgLog)->LgTurn {
     lg_put(l,LgKind.stop,0,0,[7]int.[cast(int)cast(u8)t.stop,t.steps,t.at,t.reply,t.tokens,t.ticks,t.tools]);
     r.end=l[0].count-1;r.turn=t;return r;
 }
-lg_loop :: (m:HlModel,b:HlBudget,seed:u64,l:[]LgLog,prompt:int)->HlTurn {
+lg_loop :: (m:HlModel,b:HlBudget,seed:u64,l:[]LgLog,prompt:int)->HlTurn #effects(all) {
     t:=HlTurn.{at=prompt,reply=prompt};context:=m.c.context;tokens:=l[0].tokens;
     while true {
         k:=t.steps;
@@ -269,7 +269,7 @@ even a consistent rewrite, because a rewritten chain has a new head.
 ```jai
 // The first event whose sequence, link, digest, tokens or place does not
 // hold. A redacted event's tokens are not checked; its digest still is.
-lg_verify :: (g:LgLog)->LgCheck {
+lg_verify :: (g:LgLog)->LgCheck #effects(all) {
     if g.count<0 || g.count>g.events.count || g.used<0 || g.used>g.tokens.count {return LgCheck.{status=LgStatus.shape};}
     v:=LgFold.{};c:=LgCheck.{};
     for e,i:g.events[0..<g.count] {
@@ -307,7 +307,7 @@ loop's decision; replay is what checks it against the model.
 // exactly the tokens before it and carry the step's seed; each reply's draws
 // follow chapter 200's rule; the stop must equal the turn rebuilt from them.
 // step is the step being rebuilt.
-lg_fold :: (s:LgFold,e:LgEvent)->LgFold {
+lg_fold :: (s:LgFold,e:LgEvent)->LgFold #effects(all) {
     v:=s;k:=v.r.turn.steps;f:=e.f;
     if lg_text(e.kind) {
         if v.open {v.status=LgStatus.order;return v;}
@@ -346,7 +346,7 @@ lg_fold :: (s:LgFold,e:LgEvent)->LgFold {
     v.at+=e.count;v.last=e.kind;return v;
 }
 // The state after events 0..<n, folded without checking digests.
-lg_fold_log :: (g:LgLog,n:int)->LgFold {
+lg_fold_log :: (g:LgLog,n:int)->LgFold #effects(all) {
     v:=LgFold.{};
     for e:g.events[0..<n] {v=lg_fold(v,e);}
     return v;
@@ -373,7 +373,7 @@ whose text has been redacted.
 // The turn whose start event is at start, rebuilt from a verified log: each
 // step goes to steps once its reply, and then its output, is folded, while
 // steps has room. A turn without a stop event is open.
-lg_turn :: (g:LgLog,start:int,steps:[]HlStep)->LgTurn {
+lg_turn :: (g:LgLog,start:int,steps:[]HlStep)->LgTurn #effects(all) {
     c:=lg_verify(g);if c.status!=LgStatus.ok {return LgTurn.{status=c.status,start=start};}
     if lg_kind(g,start)!=LgKind.start {return LgTurn.{status=LgStatus.shape,start=start};}
     v:=LgFold.{at=lg_offset(g,start)};
@@ -387,7 +387,7 @@ lg_turn :: (g:LgLog,start:int,steps:[]HlStep)->LgTurn {
 // The request a step's model was sent, checked against the log: request
 // must be exactly the tokens of the events before that step's request event,
 // token for token, or for a redacted event, digest for digest.
-lg_admit :: (g:LgLog,index:int,request:[]int)->LgCheck {
+lg_admit :: (g:LgLog,index:int,request:[]int)->LgCheck #effects(all) {
     c:=lg_verify(g);if c.status!=LgStatus.ok {return c;}
     c.index=index;
     if lg_kind(g,index)!=LgKind.request {c.status=LgStatus.shape;return c;}
@@ -416,15 +416,15 @@ runs no new turn.
 ```jai
 // Redaction overwrites a text event's tokens and keeps its content digest,
 // so the chain, and every check that needs only digests, still holds.
-lg_redact :: (l:[]LgLog,index:int)->LgStatus {
+lg_redact :: (l:[]LgLog,index:int)->LgStatus #effects(all) {
     g:=l[0];k:=lg_kind(g,index);
     if !lg_text(k) && k!=LgKind.reply && k!=LgKind.output {return LgStatus.shape;}
     at:=lg_offset(g,index);for i:at..<at+g.events[index].count {g.tokens[i]=LG_HIDDEN;}
     g.events[index].redacted=true;return LgStatus.ok;
 }
 // The kind of event index, or none past either end.
-lg_kind :: (g:LgLog,index:int)->LgKind {if index<0 || index>=g.count {return LgKind.none;}return g.events[index].kind;}
-lg_offset :: (g:LgLog,index:int)->int {at:=0;for e:g.events[0..<index] {at+=e.count;}return at;}
+lg_kind :: (g:LgLog,index:int)->LgKind #effects(all) {if index<0 || index>=g.count {return LgKind.none;}return g.events[index].kind;}
+lg_offset :: (g:LgLog,index:int)->int #effects(all) {at:=0;for e:g.events[0..<index] {at+=e.count;}return at;}
 ```
 
 ## Replay
@@ -439,7 +439,7 @@ for token, and every tool output is recomputed.
 ```jai
 // A turn replays when its rebuilt record passes chapter 200's hl_replay over
 // the log's own tokens. A turn whose text was redacted cannot be resent.
-lg_replay :: (m:HlModel,g:LgLog,start:int,steps:[]HlStep,scratch:[]int)->LgStatus {
+lg_replay :: (m:HlModel,g:LgLog,start:int,steps:[]HlStep,scratch:[]int)->LgStatus #effects(all) {
     r:=lg_turn(g,start,steps);if r.status!=LgStatus.ok {return r.status;}
     if steps.count<r.turn.steps {return LgStatus.shape;}
     for e:g.events[0..<r.end] {if e.redacted {return LgStatus.redacted;}}

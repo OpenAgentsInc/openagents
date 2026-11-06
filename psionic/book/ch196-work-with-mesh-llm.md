@@ -99,8 +99,8 @@ that cannot support one:
 // repeats, that is ready, that states System One support (likely is a guess)
 // and that lists no GPU, maps. A node with GPUs does not say whether this
 // model runs on one, so its backend is unknown and it is refused.
-ml_asked :: ()->CpLimits {return CpLimits.{questions=SV_QUESTIONS_MAX,options=SV_OPTIONS_MAX,state=sv_nip().state,deadline_ms=1};}
-ml_claim :: (p:MlPeer)->MlClaim #export_c {
+ml_asked :: ()->CpLimits #effects(all) {return CpLimits.{questions=SV_QUESTIONS_MAX,options=SV_OPTIONS_MAX,state=sv_nip().state,deadline_ms=1};}
+ml_claim :: (p:MlPeer)->MlClaim #export_c #effects(all) {
     r:=MlClaim.{refuse=MlRefuse.endpoint};
     if !cp_hex64(p.endpoint) {return r;}
     r.refuse=MlRefuse.role;
@@ -185,11 +185,11 @@ trusts it, at most 300 s, chapter 24's window.
 // name, keyed and owned by its endpoint, its generation the gossip's. The
 // buyer stamps when it read the gossip and how long it trusts it.
 MlRoute :: struct {refuse:MlRefuse;route:PgRoute;}
-ml_beacon :: (p:MlPeer,observed:int,ttl:int,role:PgRole)->PgBeacon {
+ml_beacon :: (p:MlPeer,observed:int,ttl:int,role:PgRole)->PgBeacon #effects(all) {
     return PgBeacon.{key=p.endpoint,owner=p.endpoint,status=PbStatus.online,observed_at=observed,valid_until=observed+ttl,beacon_generation=p.gen,
         id=p.mesh,role=role,generation=p.gen,artifact=p.model.identity,readiness=PgReady.ready,free=1,from=0,to=p.model.layers};
 }
-ml_route :: (p:MlPeer,now:int,observed:int,ttl:int,order:[]int)->MlRoute #export_c {
+ml_route :: (p:MlPeer,now:int,observed:int,ttl:int,order:[]int)->MlRoute #export_c #effects(all) {
     r:=MlRoute.{refuse=ml_claim(p).refuse,route=PgRoute.{code=PgCode.stages}};
     if r.refuse!=MlRefuse.none {return r;}
     r.refuse=MlRefuse.mesh;
@@ -236,14 +236,14 @@ buyers refuse them.
 // bill less the deposit, exact to the msat, with a positive remainder below
 // the floor raised to it. A paid offer needs protocol 3 and positive rates.
 MlBill :: struct {refuse:MlRefuse;msat:int;}
-ml_offer :: (o:MlOffer,model:string)->MlRefuse {
+ml_offer :: (o:MlOffer,model:string)->MlRefuse #effects(all) {
     if o.model!=model {return MlRefuse.offer;}
     if o.protocol!=3 {return MlRefuse.protocol;}
     if !bl_in(o.input-1,ML_RATE_MOST-1) || !bl_in(o.output-1,ML_RATE_MOST-1) {return MlRefuse.rate;}
     if !bl_in(o.cache,100) {return MlRefuse.discount;}
     return MlRefuse.none;
 }
-ml_bill :: (o:MlOffer,model:string,prompt:int,cached:int,completion:int)->MlBill #export_c {
+ml_bill :: (o:MlOffer,model:string,prompt:int,cached:int,completion:int)->MlBill #export_c #effects(all) {
     r:=MlBill.{refuse=ml_offer(o,model)};
     if r.refuse!=MlRefuse.none {return r;}
     r.refuse=MlRefuse.usage;
@@ -253,7 +253,7 @@ ml_bill :: (o:MlOffer,model:string,prompt:int,cached:int,completion:int)->MlBill
 }
 // -1 for a floor outside 1..1000000 msat, a deposit above 1000000 msat or a
 // bill past 2^53 msat, the largest integer a wire report carries here.
-ml_final :: (bill:int,deposit:int,least:int)->int #export_c {
+ml_final :: (bill:int,deposit:int,least:int)->int #export_c #effects(all) {
     if !bl_in(least-1,ML_FLOOR_MOST-1) || !bl_in(bill,JSON_INT_MOST) || !bl_in(deposit,ML_FLOOR_MOST) {return -1;}
     rest:=bill-deposit;
     if rest<=0 {return 0;}
@@ -263,7 +263,7 @@ ml_final :: (bill:int,deposit:int,least:int)->int #export_c {
 // trusts it), which is kept even when it exceeds the bill, plus the final
 // invoice at the default 1 sat floor.
 MlCost :: struct {refuse:MlRefuse;bill:int;deposit:int;final:int;msat:int;}
-ml_cost :: (o:MlOffer,model:string,prompt:int,completion:int,deposit:int)->MlCost #export_c {
+ml_cost :: (o:MlOffer,model:string,prompt:int,completion:int,deposit:int)->MlCost #export_c #effects(all) {
     b:=ml_bill(o,model,prompt,0,completion);
     if b.refuse!=MlRefuse.none {return MlCost.{refuse=b.refuse};}
     f:=ml_final(b.msat,deposit,ML_FLOOR);
@@ -372,7 +372,7 @@ both sides compute the same commitment:
 ```jai
 // Mesh-LLM's wire_bytes commitment: SHA-256 over the HTTP entity bytes, in
 // lowercase hex. The buyer keys a job by its request's commitment.
-ml_commit :: (entity:string,out:[]u8)->string {
+ml_commit :: (entity:string,out:[]u8)->string #effects(all) {
     sha:[112]u8;d:[32]u8;chunk:[64]u8;#assert sha256_init(sha[..])==SHA_OK;
     at:=0;
     while at<entity.count {
@@ -389,7 +389,7 @@ ml_commit :: (entity:string,out:[]u8)->string {
 // on Mesh-LLM's path. The body's bytes go out unchanged, so the request
 // commitment both sides compute is the same.
 ML_HEAD :: "POST /systemone HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: ";
-ml_request :: (body:string,model:string,pools:SvPools,out:[]u8)->int #export_c {
+ml_request :: (body:string,model:string,pools:SvPools,out:[]u8)->int #export_c #effects(all) {
     r:=sv_decode(body,pools);
     if r.code!=SvCode.none || r.model!=model {return -1;}
     n:=json_raw(out,0,ML_HEAD);n=json_write_int(out,n,body.count);n=json_raw(out,n,"\r\n\r\n");
@@ -408,7 +408,7 @@ strictly:
 // answers an object; usage two integers inside chapter 180's token bound.
 // Missing or unreadable usage is unknown, never zero.
 MlAnswer :: struct {refuse:MlRefuse;status:int;answers:string;tokens_in:int;tokens_out:int;}
-ml_status :: (text:string)->int {
+ml_status :: (text:string)->int #effects(all) {
     if text.count<13 || text[0..<9]!="HTTP/1.1 " || text[12]!=' ' {return -1;}
     v:=0;
     for i:9..<12 {c:=text[i];if c<'0' || c>'9' {return -1;}v=v*10+cast(int)(c-'0');}
@@ -416,7 +416,7 @@ ml_status :: (text:string)->int {
 }
 // A header's value, or "!" when the head has no such line.
 // A header's value from the lines that end by stop, or "!" when none is it.
-ml_header :: (text:string,stop:int,name:string)->string {
+ml_header :: (text:string,stop:int,name:string)->string #effects(all) {
     at:=0;
     while true {
         end:=sv_find(text,at,"\r\n");
@@ -427,7 +427,7 @@ ml_header :: (text:string,stop:int,name:string)->string {
     }
     return "!";
 }
-ml_usage :: (j:[]Json,a:[]MlAnswer)->bool {
+ml_usage :: (j:[]Json,a:[]MlAnswer)->bool #effects(all) {
     seen:=[2]bool.[false,false];
     while true {
         t:=json_next(j);if t==JSON_OBJECT_END {break;}
@@ -442,7 +442,7 @@ ml_usage :: (j:[]Json,a:[]MlAnswer)->bool {
     }
     return seen[0] && seen[1];
 }
-ml_answer :: (text:string,model:string)->MlAnswer #export_c {
+ml_answer :: (text:string,model:string)->MlAnswer #export_c #effects(all) {
     a:=[1]MlAnswer.[MlAnswer.{refuse=MlRefuse.status,status=ml_status(text)}];
     if a[0].status!=200 {return a[0];}
     a[0].refuse=MlRefuse.length;
@@ -521,7 +521,7 @@ parsed back to numbers, which is not built.
 // the checker lists for Mesh-LLM peers, and only an exact one, can give a
 // verdict: equal bytes agree, any other bytes disagree. Comparing within a
 // tolerance would need the probabilities parsed, which is not built.
-ml_check :: (profiles:[]PkProfile,answers:string,reference:string,ref_ok:bool)->PkCompare #export_c {
+ml_check :: (profiles:[]PkProfile,answers:string,reference:string,ref_ok:bool)->PkCompare #export_c #effects(all) {
     k:=-1;
     for i:0..<profiles.count {if profiles[i].name==ML_PROFILE {k=i;}}
     r:=PkCompare.{verdict=PkVerdict.unverifiable,reason=PkReason.profile};
@@ -535,12 +535,12 @@ ml_check :: (profiles:[]PkProfile,answers:string,reference:string,ref_ok:bool)->
 // checker agreed, covering exactly the probe's size: its questions, the
 // most options any one lists (at least one), its state bytes and the
 // deadline it ran under.
-ml_evidence :: (c:CpClaim,cmp:PkCompare,record:string,covered:CpLimits)->CpEvidence #export_c {
+ml_evidence :: (c:CpClaim,cmp:PkCompare,record:string,covered:CpLimits)->CpEvidence #export_c #effects(all) {
     v:=QyVerdict.failed;
     if cmp.verdict==PkVerdict.agree {v=QyVerdict.qualified;}
     return CpEvidence.{digest=c.digest,backend=c.backend,profile=c.profile,record=record,verdict=v,covered=covered};
 }
-ml_size :: (r:SvRequest,pools:SvPools,deadline_ms:int)->CpLimits {
+ml_size :: (r:SvRequest,pools:SvPools,deadline_ms:int)->CpLimits #effects(all) {
     most:=1;
     for q:pools.questions[0..<r.questions] {most=cp_max(most,q.count);}
     return CpLimits.{questions=r.questions,options=most,state=r.state.value.count,deadline_ms=deadline_ms};

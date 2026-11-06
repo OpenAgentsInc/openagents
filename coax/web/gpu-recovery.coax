@@ -166,7 +166,7 @@ gr_run :: (c: [] Cdp, url: string, r: [] GpuRecovery) -> bool {
     cast(string) r[0].digest_trap[0..<r[0].trap_n]);
   return true;
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   url := args_at(a[..], 0);

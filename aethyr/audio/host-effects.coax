@@ -36,7 +36,7 @@ AudioHostWords :: struct {ok:bool;count:int;words:[8]string;}
  #assert audio_host_parse("!x 1 0").kind==0 && audio_host_parse("~ 1 0").kind==0;
  #assert audio_host_parse("x 16777216 0").gain==16777216 && audio_host_parse("x 16777217 0").kind==0;
 }
-audio_host_words :: (line:string)->AudioHostWords {
+audio_host_words :: (line:string)->AudioHostWords #effects(all) {
  q:AudioHostWords;if line.count>1024 {return q;}at:=0;
  while at!=line.count {
   while at!=line.count && (line[at]==' ' || line[at]=='\t' || line[at]=='\r') {at+=1;}
@@ -46,7 +46,7 @@ audio_host_words :: (line:string)->AudioHostWords {
  }
  q.ok=q.count>0;return q;
 }
-audio_host_parse :: (line:string)->AudioHostEffect #export_c {
+audio_host_parse :: (line:string)->AudioHostEffect #export_c #effects(all) {
  w:=audio_host_words(line);if !w.ok {return AudioHostEffect.{};}name:=w.words[0];q:AudioHostEffect;
  if name[0]=='-' {if name.count==1 || w.count!=1 {return q;}return AudioHostEffect.{kind=3,id=name[1..<name.count]};}
  if name=="!room" || name=="!fetch" {if w.count!=2 {return q;}return AudioHostEffect.{kind=ifx name=="!room" then 5 else 6,name=w.words[1]};}

@@ -17,7 +17,7 @@ MG_PAIRS :: [11]MgPair.[
 }
 mg_base :: (s:string)->string {return s[(ifx s.count>5&&s[0..<5]=="egfx_" then 5 else 3)..<s.count];}
 mg_suffix :: (a:string,b:string,buf:[]u8)->string {#assert a.count+b.count<=buf.count;for c,i:a{buf[i]=c;}for c,i:b{buf[a.count+i]=c;}return cast(string)buf[0..<a.count+b.count];}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..])||(args_count(a[..])!=2&&!(args_count(a[..])==4&&args_at(a[..],2)=="--compare")) {tool_errln("usage: metal-graphics.coax COMPILER ABS_OUT [--compare SDK_QUALIFIED_DIR]");return 2;}
   compiler:=args_at(a[..],0);dir:=args_at(a[..],1);if !fs_mkdir(dir){return 1;}out:[65536]u8;err:[65536]u8;
   for pair:MG_PAIRS {

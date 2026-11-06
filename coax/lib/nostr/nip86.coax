@@ -75,16 +75,16 @@ N86Request :: struct {error:int=N86_JSON; method:int=-1; n:int; p:[N86_MOST_PARA
 // N86_AUTH; n: the reply body's length in out.
 N86Reply :: struct {http:int; code:int; detail:int; n:int;}
 
-n86_rfail :: (r:N86Request,error:int)->N86Request {o:=r;o.error=error;return o;}
+n86_rfail :: (r:N86Request,error:int)->N86Request #effects(all) {o:=r;o.error=error;return o;}
 // A 64-digit lowercase hex key or id from a param, into out.
-n86_key :: (t:N86Text,out:[]u8)->bool {c:=t;return ne_lower_hex(cast(string)c.b[0..<c.n],out);}
-n86_hex :: (b:[32]u8,out:[]u8)->string {
+n86_key :: (t:N86Text,out:[]u8)->bool #effects(all) {c:=t;return ne_lower_hex(cast(string)c.b[0..<c.n],out);}
+n86_hex :: (b:[32]u8,out:[]u8)->string #effects(all) {
   d:="0123456789abcdef";
   for i:0..<32 {out[2*i]=d[b[i]>>4];out[2*i+1]=d[b[i]&15];}
   return cast(string)out[0..<64];
 }
 // ASCII letters compared without case, for the Content-Type's media type.
-n86_same_fold :: (a:string,b:string)->bool {
+n86_same_fold :: (a:string,b:string)->bool #effects(all) {
   if a.count!=b.count {return false;}
   for i:0..<a.count {
     x:=a[i];if x>='A' && x<='Z' {x+=32;}
@@ -96,7 +96,7 @@ n86_same_fold :: (a:string,b:string)->bool {
 // book:begin request
 // The body as one request: the method's index and its params, checked
 // against the method's shape. Other keys are skipped.
-n86_request :: (body:string)->N86Request {
+n86_request :: (body:string)->N86Request #effects(all) {
   r:N86Request;j:[1]Json;json_start(j[..],body);has_method:=false;has_params:=false;
   if json_next(j[..])!=JSON_OBJECT {return r;}
   t:=json_next(j[..]);
@@ -132,7 +132,7 @@ n86_request :: (body:string)->N86Request {
   return n86_rfail(r,N86_OK);
 }
 // book:end request
-n86_shape_ok :: (r:N86Request)->bool {
+n86_shape_ok :: (r:N86Request)->bool #effects(all) {
   s:=N86_SHAPES[r.method];
   if s==0 {return r.n==0;}
   if s==2 {return r.n==1 && !r.p[0].is_text && r.p[0].number>=0 && r.p[0].number<=65535;}
@@ -142,32 +142,32 @@ n86_shape_ok :: (r:N86Request)->bool {
 }
 
 // ---- the lists
-n86_find :: (l:N86List,key:[32]u8)->int {
+n86_find :: (l:N86List,key:[32]u8)->int #effects(all) {
   c:=l;
   k:=key;for i:0..<c.n {if cast(string)c.e[i].key[..]==cast(string)k[..] {return i;}}
   return -1;
 }
 // Full: key is not listed and there is no room for it.
-n86_full :: (l:N86List,key:[32]u8)->bool {return n86_find(l,key)<0 && l.n==N86_MAX_LIST;}
+n86_full :: (l:N86List,key:[32]u8)->bool #effects(all) {return n86_find(l,key)<0 && l.n==N86_MAX_LIST;}
 // l with key added with reason, or with the reason of a key already listed
 // replaced; l itself when it is full.
-n86_add :: (l:N86List,key:[32]u8,reason:N86Text)->N86List {
+n86_add :: (l:N86List,key:[32]u8,reason:N86Text)->N86List #effects(all) {
   r:=l;i:=n86_find(r,key);
   if i<0 {if n86_full(r,key) {return r;}i=r.n;r.n+=1;r.e[i].key=key;}
   r.e[i].reason=reason;return r;
 }
 // l without key; the order of the others is kept.
-n86_remove :: (l:N86List,key:[32]u8)->N86List {
+n86_remove :: (l:N86List,key:[32]u8)->N86List #effects(all) {
   r:=l;i:=n86_find(r,key);if i<0 {return r;}
   for k:i..<r.n-1 {r.e[k]=r.e[k+1];}
   r.n-=1;r.e[r.n]=N86Entry.{};return r;
 }
-n86_kind_at :: (l:N86Kinds,kind:int)->int {c:=l;for i:0..<c.n {if c.k[i]==kind {return i;}}return -1;}
-n86_kind_full :: (l:N86Kinds,kind:int)->bool {return n86_kind_at(l,kind)<0 && l.n==N86_MAX_LIST;}
-n86_kind_add :: (l:N86Kinds,kind:int)->N86Kinds {
+n86_kind_at :: (l:N86Kinds,kind:int)->int #effects(all) {c:=l;for i:0..<c.n {if c.k[i]==kind {return i;}}return -1;}
+n86_kind_full :: (l:N86Kinds,kind:int)->bool #effects(all) {return n86_kind_at(l,kind)<0 && l.n==N86_MAX_LIST;}
+n86_kind_add :: (l:N86Kinds,kind:int)->N86Kinds #effects(all) {
   r:=l;if !n86_kind_full(r,kind) && n86_kind_at(r,kind)<0 {r.k[r.n]=kind;r.n+=1;}return r;
 }
-n86_kind_remove :: (l:N86Kinds,kind:int)->N86Kinds {
+n86_kind_remove :: (l:N86Kinds,kind:int)->N86Kinds #effects(all) {
   r:=l;i:=n86_kind_at(r,kind);if i<0 {return r;}
   for k:i..<r.n-1 {r.k[k]=r.k[k+1];}
   r.n-=1;r.k[r.n]=0;return r;
@@ -175,16 +175,16 @@ n86_kind_remove :: (l:N86Kinds,kind:int)->N86Kinds {
 
 // ---- the replies
 // {"result":null,"error":"<text>"}.
-n86_fail :: (code:int,out:[]u8)->N86Reply {
+n86_fail :: (code:int,out:[]u8)->N86Reply #effects(all) {
   n:=json_raw(out,0,"{\"result\":null,\"error\":\"");n=json_raw(out,n,N86_TEXT[code]);
   return N86Reply.{http=N86_STATUS[code],code=code,n=json_raw(out,n,"\"}")};
 }
 // A NIP-98 refusal, with the check that refused after a colon.
-n86_unauthorized :: (detail:int,out:[]u8)->N86Reply {
+n86_unauthorized :: (detail:int,out:[]u8)->N86Reply #effects(all) {
   n:=json_raw(out,0,"{\"result\":null,\"error\":\"unauthorized: ");n=json_raw(out,n,nip98_error_text(detail));
   return N86Reply.{http=401,code=N86_AUTH,detail=detail,n=json_raw(out,n,"\"}")};
 }
-n86_write_list :: (out:[]u8,at:int,l:N86List,field:string)->int {
+n86_write_list :: (out:[]u8,at:int,l:N86List,field:string)->int #effects(all) {
   c:=l;n:=json_raw(out,at,"[");hex:[64]u8;
   for i:0..<c.n {
     if i>0 {n=json_raw(out,n,",");}
@@ -195,7 +195,7 @@ n86_write_list :: (out:[]u8,at:int,l:N86List,field:string)->int {
   }
   return json_raw(out,n,"]");
 }
-n86_write_kinds :: (out:[]u8,at:int,l:N86Kinds)->int {
+n86_write_kinds :: (out:[]u8,at:int,l:N86Kinds)->int #effects(all) {
   c:=l;n:=json_raw(out,at,"[");
   for i:0..<c.n {if i>0 {n=json_raw(out,n,",");}n=json_write_int(out,n,c.k[i]);}
   return json_raw(out,n,"]");
@@ -204,7 +204,7 @@ n86_write_kinds :: (out:[]u8,at:int,l:N86Kinds)->int {
 // book:begin dispatch
 // Apply one read request to the policy and write its reply. A refused
 // request changes nothing.
-n86_dispatch :: (p:[]N86Policy,r:N86Request,out:[]u8)->N86Reply {
+n86_dispatch :: (p:[]N86Policy,r:N86Request,out:[]u8)->N86Reply #effects(all) {
   if r.error!=N86_OK {return n86_fail(r.error,out);}
   m:=r.method;key:[32]u8;
   if N86_SHAPES[m]==1 {decoded:=n86_key(r.p[0].text,key[..]);}
@@ -243,7 +243,7 @@ n86_dispatch :: (p:[]N86Policy,r:N86Request,out:[]u8)->N86Reply {
 // book:begin serve
 // The whole management endpoint for one HTTP request.
 n86_serve :: (p:[]N86Policy,http_method:string,content_type:string,authorization:string,
-              url:string,body:[]u8,now:int,out:[]u8)->N86Reply {
+              url:string,body:[]u8,now:int,out:[]u8)->N86Reply #effects(all) {
   if !n86_same_fold(content_type,N86_TYPE) {return n86_fail(N86_CONTENT_TYPE,out);}
   if http_method!="POST" {return n86_fail(N86_HTTP_METHOD,out);}
   work:[N98_WORK]u8;a:[N98_OUT]u8;
@@ -269,7 +269,7 @@ n86_serve :: (p:[]N86Policy,http_method:string,content_type:string,authorization
 // keys; a non-empty allowed-kinds list admits only its kinds.
 N86_ADMIT_OK :: 0; N86_ADMIT_BANNED :: 1; N86_ADMIT_NOT_ALLOWED :: 2;
 N86_ADMIT_EVENT :: 3; N86_ADMIT_KIND :: 4; N86_ADMIT_KIND_NOT_ALLOWED :: 5;
-n86_admit :: (p:N86Policy,pubkey:[32]u8,id:[32]u8,kind:int)->int {
+n86_admit :: (p:N86Policy,pubkey:[32]u8,id:[32]u8,kind:int)->int #effects(all) {
   if n86_find(p.banned,pubkey)>=0 {return N86_ADMIT_BANNED;}
   if p.allowed.n>0 && n86_find(p.allowed,pubkey)<0 {return N86_ADMIT_NOT_ALLOWED;}
   if n86_find(p.banned_events,id)>=0 {return N86_ADMIT_EVENT;}

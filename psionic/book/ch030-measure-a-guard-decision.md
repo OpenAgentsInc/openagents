@@ -72,7 +72,7 @@ the aggregate instead of improving its denominator.
 
 <!-- source: verse/everglade/guard-evaluation.coax score -->
 ```jai
-gev_evaluate :: (index:int,status:string,body:string,elapsed_ms:int)->GeResult #export_c {
+gev_evaluate :: (index:int,status:string,body:string,elapsed_ms:int)->GeResult #export_c #effects(all) {
     c:=gev_case(index);if !c.valid {return GeResult.{};}
     r:=GeResult.{valid=true,index=index,deadline=elapsed_ms>=0 && elapsed_ms<GA_TIMEOUT,forbidden=c.remote_mask==0};
     if status!="200\n" {return r;}a:=ga_decode(body);r.contract=a.ok;if !a.ok {return r;}r.action=a.action;

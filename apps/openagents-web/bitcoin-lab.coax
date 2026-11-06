@@ -140,7 +140,7 @@ lab_send :: (s:[]BitcoinLab,text:string) {
   s[0].action=1;
 }
 lab_stop :: (s:[]BitcoinLab) {s[0].keys=0;s[0].look=0;gw.gridwalk_blur(s[0].session[..]);}
-lab_blur :: (s:[]BitcoinLab) #export_c {
+lab_blur :: (s:[]BitcoinLab) #export_c #effects(all) {
   lab_stop(s);for i:0..<4 {s[0].active[i]=false;}
 }
 lab_do :: (s:[]BitcoinLab,action:int) {
@@ -229,7 +229,7 @@ lab_layout :: (s:[]BitcoinLab,w:f32,h:f32,d:f32) {
     if s[0].explorer[0].tx>=0 {for i:0..<4 {lab_node(s,HudBox.{x=16+cast(f32)i*(w-32)/4,y=h-172,width=(w-32)/4-4,height=44},[4]int.[210,211,212,213][i]);}}
   }
 }
-lab_key :: (s:[]BitcoinLab,key:int,down:bool,mods:int)->bool #export_c {
+lab_key :: (s:[]BitcoinLab,key:int,down:bool,mods:int)->bool #export_c #effects(all) {
   lab_start(s);bit:=0;
   if s[0].remote[0].active && s[0].remote[0].search {
     r:=s[0].remote[..];if !down {return true;}if key== -1 {r[0].search=false;return true;}
@@ -273,7 +273,7 @@ lab_key :: (s:[]BitcoinLab,key:int,down:bool,mods:int)->bool #export_c {
   if key== -4 {s[0].look+=0.12;return true;}if key== -5 {s[0].look-=0.12;return true;}
   return false;
 }
-lab_pointer :: (s:[]BitcoinLab,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c {
+lab_pointer :: (s:[]BitcoinLab,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c #effects(all) {
   lab_start(s);cx:=x/s[0].d;cy:=y/s[0].d;slot:=-1;
   for i:0..<4 {if s[0].active[i] && s[0].pointers[i]==id {slot=i;}}
   if phase==0 {
@@ -449,7 +449,7 @@ lab_inspector :: (s:[]BitcoinLab,out:[]f32,n:int,pen:HdPen)->int {
   if e[0].miss {at=hd_text_fit(out,at,"Identifier unavailable in this bounded recording.",16,s[0].h-168,11,s[0].w-32,pen,2);}
   return at;
 }
-lab_frame :: (s:[]BitcoinLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bool)->int #export_c {
+lab_frame :: (s:[]BitcoinLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bool)->int #export_c #effects(all) {
   lab_start(s);if !(d>0) || !(w>0) || !(h>0) || u.count<LAB_UNIFORMS {return 0;}
   e:=s[0].explorer[..];
   lr_frame(s[0].remote[..],dt);
@@ -574,7 +574,7 @@ lab_label :: (action:int)->string {
 lab_text :: (out:[]u8,at:int,text:string)->int {
   n:=at;for c:text {if n>=out.count {return n;}out[n]=c;n+=1;}return n;
 }
-lab_a11y :: (s:[]BitcoinLab,out:[]u8)->int #export_c {
+lab_a11y :: (s:[]BitcoinLab,out:[]u8)->int #export_c #effects(all) {
   lab_start(s);n:=0;number:[16]u8;
   if s[0].remote[0].active {return lab_remote_a11y(s,out);}
   for action:220..<223 {digits:=lab_decimal(number[..],action);n=lab_text(out,n,cast(string)number[0..<digits]);n=lab_text(out,n," button - ");n=lab_text(out,n,lab_label(action));n=lab_text(out,n,"\n");}
@@ -608,12 +608,12 @@ lab_a11y :: (s:[]BitcoinLab,out:[]u8)->int #export_c {
   }
   return lab_text(out,n,"\n");
 }
-lab_access :: (s:[]BitcoinLab,action:int,activate:bool) #export_c {
+lab_access :: (s:[]BitcoinLab,action:int,activate:bool) #export_c #effects(all) {
   lab_stop(s);s[0].focus=-1;
   for i:0..<s[0].count {if s[0].nodes[i].action==action {s[0].focus=i;break;}}
   if activate && ((action>=1 && action<=12) || (action>=200 && action<=244) || action>=1000) {lab_do(s,action);}
 }
-lab_guard :: (s:[]BitcoinLab,field:int)->int #export_c {
+lab_guard :: (s:[]BitcoinLab,field:int)->int #export_c #effects(all) {
   if field==40 {return ifx s[0].remote[0].replay[0].reduced then 1 else 0;}if field==41 {return cast(int)(s[0].remote[0].replay[0].anim*1000);}
   if field>=30 && field<=39 {r:=s[0].remote[..];return [10]int.[ifx r[0].table then 1 else 0,r[0].table_page,s[0].table_lines,r[0].offset,r[0].returned,r[0].total,r[0].notice,r[0].replay[0].detached,r[0].replay[0].attached,r[0].history_n][field-30];}
   if field>=20 && field<=29 {r:=s[0].remote[..];return [10]int.[ifx r[0].active then 1 else 0,ifx r[0].model[0].ready then 1 else 0,r[0].kind,r[0].model[0].error,r[0].model[0].identity.height,r[0].wn,r[0].model[0].base[0].serial,r[0].selected,r[0].model[0].source,r[0].model[0].phase][field-20];}
@@ -634,8 +634,8 @@ lab_guard :: (s:[]BitcoinLab,field:int)->int #export_c {
   }
   return -1;
 }
-lab_scene_ready :: (s:[]BitcoinLab)->bool #export_c {return s[0].used>0 && (s[0].remote[0].table || (s[0].world_vertices>0 && s[0].world_vertices<=s[0].used));}
-lab_message :: (s:[]BitcoinLab,kind:int,n:int) #export_c {
+lab_scene_ready :: (s:[]BitcoinLab)->bool #export_c #effects(all) {return s[0].used>0 && (s[0].remote[0].table || (s[0].world_vertices>0 && s[0].world_vertices<=s[0].used));}
+lab_message :: (s:[]BitcoinLab,kind:int,n:int) #export_c #effects(all) {
   if kind==600 {lr_rebind(s[0].remote[..]);return;}
   if kind>=512 && kind<520 && n>=0 && n<=LAB_REPLY_MAX {lr_receive(s[0].remote[..],kind-512,cast(string)s[0].inbox[0..<n]);return;}
   if kind==1 && s[0].remote[0].active && s[0].remote[0].search && n>=0 && n<=256-s[0].remote[0].qn {
@@ -646,7 +646,7 @@ lab_message :: (s:[]BitcoinLab,kind:int,n:int) #export_c {
   if n>128-e[0].n {return;}for c:s[0].inbox[0..<n] {if c<33 || c>126 {return;}}
   for c:s[0].inbox[0..<n] {e[0].query[e[0].n]=c;e[0].n+=1;}
 }
-lab_hash :: (s:[]BitcoinLab,n:int) #export_c {
+lab_hash :: (s:[]BitcoinLab,n:int) #export_c #effects(all) {
   lab_start(s);if n<0 || n>1024 {return;}text:=cast(string)s[0].inbox[0..<n];
   if n>=5 && text[0..<5]=="lab1/" {p:=lsp_read(text);if p.ok {lr_restore(s[0].remote[..],p);s[0].map=false;}return;}
   if n!=74 && n!=139 {return;}

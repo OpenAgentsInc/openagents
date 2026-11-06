@@ -13,7 +13,7 @@ hps_page :: (source:string,out:[]u8)->int {
   if at<0 || source.count+extra.count>out.count {return -1;}for i:0..<at {out[i]=source[i];}for c,i:extra {out[at+i]=c;}for i:at..<source.count {out[i+extra.count]=source[i];}return source.count+extra.count;
 }
 hps_run :: (argv:[]string)->bool {out:[65536]u8;err:[65536]u8;r:=proc_run(argv,60000,out[..],err[..]);if r.started!=0||r.status!=0||r.cut||r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return false;}return true;}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: prepare-shared-surface PINNED_ROOT NEW_SURFACE");return 2;}
   root:=args_at(a[..],0);surface:=args_at(a[..],1);files:[1]FsList;if !fs_mkdir(surface)||fs_list(surface,files[..])!=0 {return 2;}
   paths:[7][4096]u8;source:=fs_join(root,"apps/openagents-web/",paths[0][..]);dest:=fs_join(surface,"apps/openagents-web/",paths[1][..]);if !fs_mkdir(dest) {return 1;}

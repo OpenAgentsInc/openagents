@@ -546,21 +546,21 @@ memorial_message :: (s: [] Memorial, kind: int, length: int) {
 
 // ---- the face's exports
 
-coaxial_memorial_frame :: (s: [] Memorial, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+coaxial_memorial_frame :: (s: [] Memorial, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   return memorial_frame(s, out, u, width, height, dpr, dt, still);
 }
-coaxial_memorial_pointer :: (s: [] Memorial, x: f32, y: f32, phase: int, kind: int) -> bool #export_c { return memorial_pointer(s, x, y, phase, kind); }
-coaxial_memorial_key :: (s: [] Memorial, key: int) -> bool #export_c { return memorial_key(s, key); }
-coaxial_memorial_wheel :: (s: [] Memorial, dy: f32) #export_c { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
-coaxial_memorial_message :: (s: [] Memorial, kind: int, length: int) #export_c { memorial_message(s, kind, length); }
-coaxial_memorial_page :: (s: [] Memorial, page: int) #export_c { if s.count > 0 { s[0].page = page; } }
-coaxial_memorial_cursor :: (s: [] Memorial) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].hot >= 0 then 1 else 0; }
-coaxial_memorial_action :: (s: [] Memorial) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
-coaxial_memorial_action_done :: (s: [] Memorial) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
-coaxial_memorial_inbox_cap :: () -> int #export_c { return INBOX; }
-coaxial_memorial_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_memorial_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_memorial_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_memorial_pointer :: (s: [] Memorial, x: f32, y: f32, phase: int, kind: int) -> bool #export_c #effects(all) { return memorial_pointer(s, x, y, phase, kind); }
+coaxial_memorial_key :: (s: [] Memorial, key: int) -> bool #export_c #effects(all) { return memorial_key(s, key); }
+coaxial_memorial_wheel :: (s: [] Memorial, dy: f32) #export_c #effects(all) { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
+coaxial_memorial_message :: (s: [] Memorial, kind: int, length: int) #export_c #effects(all) { memorial_message(s, kind, length); }
+coaxial_memorial_page :: (s: [] Memorial, page: int) #export_c #effects(all) { if s.count > 0 { s[0].page = page; } }
+coaxial_memorial_cursor :: (s: [] Memorial) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return ifx s[0].hot >= 0 then 1 else 0; }
+coaxial_memorial_action :: (s: [] Memorial) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_memorial_action_done :: (s: [] Memorial) #export_c #effects(all) { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_memorial_inbox_cap :: () -> int #export_c #effects(all) { return INBOX; }
+coaxial_memorial_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_memorial_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_memorial_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // ---- checks
 

@@ -58,7 +58,7 @@ F32 stores the F32 conversion's own bits.
 
 <!-- source: psionic/lib/original-window.coax apply -->
 ```jai
-ow_apply :: (w:OwWindow,source:[]u8,pin:[32]u8,proposed:[]f64)->OwResult {
+ow_apply :: (w:OwWindow,source:[]u8,pin:[32]u8,proposed:[]f64)->OwResult #effects(all) {
     r:OwResult;id:=ow_identity(w,source);if id.status!=OwStatus.ok {r.status=id.status;return r;}
     if !we_same(pin,id.digest) {r.status=OwStatus.identity;return r;}
     if proposed.count!=w.count {r.status=OwStatus.layout;return r;}

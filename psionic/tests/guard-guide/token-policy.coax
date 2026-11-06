@@ -4,4 +4,4 @@
   #assert guide_tokens_fit(1) && guide_tokens_fit(512);
   #assert !guide_tokens_fit(0) && !guide_tokens_fit(-1) && !guide_tokens_fit(513) && !guide_tokens_fit(9223372036854775807);
 }
-guide_tokens_fit :: (tokens:int)->bool #export_c {return tokens>=1 && tokens<=512;}
+guide_tokens_fit :: (tokens:int)->bool #export_c #effects(all) {return tokens>=1 && tokens<=512;}

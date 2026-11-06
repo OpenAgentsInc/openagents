@@ -62,7 +62,7 @@ NlItem :: struct {
 // book:begin table
 // The tag names each kind holds: NIP-51's tables of standard lists and sets,
 // and NIP-B0. 0 is not a list kind.
-nl_allowed :: (kind: int) -> int {
+nl_allowed :: (kind: int) -> int #effects(all) {
   if kind == 10000 { return NL_P | NL_T | NL_WORD | NL_E; }      // mutes
   if kind == 10001 || kind == 10005 { return NL_E; }             // pins, public chats
   if kind == 10003 { return NL_E | NL_A; }                       // bookmarks
@@ -109,12 +109,12 @@ nl_allowed :: (kind: int) -> int {
 
 // The bit of the tag name in name[0..<n], or 0 (n is -1 for a name too
 // long to read).
-nl_bit :: (name: [] u8, n: int) -> int {
+nl_bit :: (name: [] u8, n: int) -> int #effects(all) {
   names := [16] string.["p", "e", "a", "t", "word", "relay", "group", "r", "emoji", "server", "url", "d", "title", "image", "description", "published_at"];
   for i: 0..<names.count { if n == names[i].count && cast(string) name[0..<n] == names[i] { return 1 << i; } }
   return 0;
 }
-nl_bit_of :: (s: string) -> int { b: [NL_MAX_NAME] u8; for i: 0..<s.count { b[i] = s[i]; } return nl_bit(b[..], s.count); }
+nl_bit_of :: (s: string) -> int #effects(all) { b: [NL_MAX_NAME] u8; for i: 0..<s.count { b[i] = s[i]; } return nl_bit(b[..], s.count); }
 #test "every name has its bit, in order; others have none" {
   #assert nl_bit_of("p") == NL_P && nl_bit_of("e") == NL_E && nl_bit_of("a") == NL_A && nl_bit_of("t") == NL_T && nl_bit_of("word") == NL_WORD;
   #assert nl_bit_of("relay") == NL_RELAY && nl_bit_of("group") == NL_GROUP && nl_bit_of("r") == NL_R && nl_bit_of("emoji") == NL_EMOJI;
@@ -126,7 +126,7 @@ nl_bit_of :: (s: string) -> int { b: [NL_MAX_NAME] u8; for i: 0..<s.count { b[i]
 
 // The decoded string at position `at` of tag `index` into out: its length,
 // or -1 when absent or it doesn't fit. nostr_tag has read the tag already.
-nl_text :: (e: NostrEvent, index: int, at: int, out: [] u8) -> int {
+nl_text :: (e: NostrEvent, index: int, at: int, out: [] u8) -> int #effects(all) {
   j: [1] Json; started := nt_start(j[..], e);
   tok := json_next(j[..]);
   for k: 0..<index { skipped := json_skip(j[..]); tok = json_next(j[..]); }
@@ -137,7 +137,7 @@ nl_text :: (e: NostrEvent, index: int, at: int, out: [] u8) -> int {
   }
   return -1;
 }
-nl_has_upper :: (s: string) -> bool {
+nl_has_upper :: (s: string) -> bool #effects(all) {
   for i: 0..<s.count { if s[i] >= 'A' && s[i] <= 'Z' { return true; } }
   return false;
 }
@@ -145,7 +145,7 @@ nl_has_upper :: (s: string) -> bool {
 // book:begin check
 // Every tag of a tags array (e's) against the kind's names. Private items
 // may not hold a d tag: the address must stay readable by everyone.
-nl_check :: (e: NostrEvent, allowed: int, is_private: bool) -> NlCheck {
+nl_check :: (e: NostrEvent, allowed: int, is_private: bool) -> NlCheck #effects(all) {
   c: NlCheck; name: [NL_MAX_NAME] u8; value: [NT_MAX_VALUE] u8;
   k := 0;
   while true {
@@ -171,7 +171,7 @@ nl_check :: (e: NostrEvent, allowed: int, is_private: bool) -> NlCheck {
 
 // The d tag a set's kind requires: 30007's is the muted kind as a decimal
 // string; NIP-B0's is the URI with "https://" left off.
-nl_d_ok :: (kind: int, d: string) -> bool {
+nl_d_ok :: (kind: int, d: string) -> bool #effects(all) {
   if kind == 30007 {
     if d.count > 5 { return false; }
     for i: 0..<d.count { if d[i] < '0' || d[i] > '9' { return false; } }
@@ -188,7 +188,7 @@ nl_d_ok :: (kind: int, d: string) -> bool {
 }
 
 // The content's encryption, from its raw text.
-nl_cipher :: (content: string) -> int {
+nl_cipher :: (content: string) -> int #effects(all) {
   if content.count == 0 { return NL_C_NONE; }
   for i: 0..<content.count - 3 { if content[i..<i + 4] == "?iv=" { return NL_C_NIP04; } }
   return NL_C_NIP44;
@@ -199,15 +199,15 @@ nl_cipher :: (content: string) -> int {
   #assert nl_cipher("x?iv=") == NL_C_NIP04 && nl_cipher("?ivx") == NL_C_NIP44 && nl_cipher("?xv=") == NL_C_NIP44 && nl_cipher("?ix=") == NL_C_NIP44;
 }
 
-nl_fail :: (l: NlList, error: int) -> NlList { r := l; r.error = error; return r; }
-nl_checked :: (l: NlList, c: NlCheck, offset: int, is_private: bool) -> NlList {
+nl_fail :: (l: NlList, error: int) -> NlList #effects(all) { r := l; r.error = error; return r; }
+nl_checked :: (l: NlList, c: NlCheck, offset: int, is_private: bool) -> NlList #effects(all) {
   r := l; r.error = c.error; r.bad = offset + c.bad; r.bad_private = is_private; r.tag_error = c.tag_error;
   return r;
 }
 // book:begin read
 // A list event's public items, checked against its kind, and how its
 // private items are encrypted. nl_open (nip51-private.coax) reads those.
-nl_read :: (e: NostrEvent) -> NlList {
+nl_read :: (e: NostrEvent) -> NlList #effects(all) {
   l: NlList;
   if e.error != NE_OK || e.content_from < 0 || e.content_to > e.original.count || e.content_from > e.content_to { return l; }
   l.kind = e.kind; l.allowed = nl_allowed(e.kind); l.set = e.kind >= 30000;
@@ -226,7 +226,7 @@ nl_read :: (e: NostrEvent) -> NlList {
 
 // Item index of a read list: public ones first, then the opened private
 // ones (in the buffer nl_open filled).
-nl_item :: (l: NlList, e: NostrEvent, index: int) -> NlItem {
+nl_item :: (l: NlList, e: NostrEvent, index: int) -> NlItem #effects(all) {
   item_: NlItem;
   if l.error != NL_OK || index < 0 || index >= l.public_n + l.private_n { return item_; }
   src := e; at := index;
@@ -238,14 +238,14 @@ nl_item :: (l: NlList, e: NostrEvent, index: int) -> NlItem {
   return item_;
 }
 
-nl_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
-nl_same_folded :: (a: string, b: string) -> bool {
+nl_lower :: (c: u8) -> u8 #effects(all) { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+nl_same_folded :: (a: string, b: string) -> bool #effects(all) {
   if a.count != b.count { return false; }
   for i: 0..<a.count { if nl_lower(a[i]) != nl_lower(b[i]) { return false; } }
   return true;
 }
 // Whether text contains word, ASCII letters folded.
-nl_contains_folded :: (text: string, word: string) -> bool {
+nl_contains_folded :: (text: string, word: string) -> bool #effects(all) {
   for i: 0..<text.count - word.count + 1 { if nl_same_folded(text[i..<i + word.count], word) { return true; } }
   return false;
 }
@@ -254,7 +254,7 @@ nl_contains_folded :: (text: string, word: string) -> bool {
 // event id is its lowercase hex and must match exactly; a hashtag (without
 // '#') matches a t item with ASCII case folded; a note's text is muted when
 // it contains a word item, folded the same way.
-nl_muted :: (l: NlList, e: NostrEvent, what: int, value: string) -> int {
+nl_muted :: (l: NlList, e: NostrEvent, what: int, value: string) -> int #effects(all) {
   if l.error != NL_OK || l.kind != NL_KIND_MUTE || !l.opened { return NL_NOT_MUTE_LIST; }
   name := ifx what == NL_MUTE_PUBKEY then "p" else ifx what == NL_MUTE_EVENT then "e" else ifx what == NL_MUTE_HASHTAG then "t" else "word";
   for i: 0..<l.public_n + l.private_n {
@@ -272,7 +272,7 @@ nl_muted :: (l: NlList, e: NostrEvent, what: int, value: string) -> int {
 // ---- checks
 
 // A parsed event (zero id and signature) with these fields, for checks.
-nl_event :: (kind: int, tags: string, content: string, buf: [] u8) -> NostrEvent {
+nl_event :: (kind: int, tags: string, content: string, buf: [] u8) -> NostrEvent #effects(all) {
   n := json_raw(buf, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1,\"kind\":");
   n = json_write_int(buf, n, kind); n = json_raw(buf, n, ",\"tags\":"); n = json_raw(buf, n, tags);
   n = json_raw(buf, n, ",\"content\":"); n = json_write_string(buf, n, content);

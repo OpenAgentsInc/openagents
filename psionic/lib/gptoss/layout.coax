@@ -20,13 +20,13 @@ G_SLOT_NAMES :: [15]string.["attn.norm.scale","attn.out.bias","attn.out.weight",
     #assert g_slot(s,11).bytes==1061683200;
     s.width=31;#assert g_plan(s).status==GStatus.shape;
 }
-g_shape :: (s:GShape)->bool {
+g_shape :: (s:GShape)->bool #effects(all) {
     return g_range(s.layers,1,36) && g_range(s.experts,1,128) && g_range(s.selected,1,4) && s.selected<=s.experts && g_range(s.vocab,1,201088) && g_multiple(s.width,256) && g_multiple(s.hidden,512) && g_range(s.heads,1,64) && g_range(s.kv_heads,1,8) && s.heads%s.kv_heads==0 && g_range(s.window,1,128) && g_range(s.capacity,1,131072);
 }
-g_layer_capacity :: (s:GShape,layer:int)->int {return ifx layer%2==0 then s.window else s.capacity;}
-g_cache_base :: (s:GShape,layer:int)->int {return (layer/2*(s.window+s.capacity)+layer%2*s.window)*2*s.kv_heads*64;}
+g_layer_capacity :: (s:GShape,layer:int)->int #effects(all) {return ifx layer%2==0 then s.window else s.capacity;}
+g_cache_base :: (s:GShape,layer:int)->int #effects(all) {return (layer/2*(s.window+s.capacity)+layer%2*s.window)*2*s.kv_heads*64;}
 // book:begin plan
-g_plan :: (s:GShape)->GPlan #export_c {
+g_plan :: (s:GShape)->GPlan #export_c #effects(all) {
     if !g_shape(s) {return GPlan.{status=GStatus.shape};}if !g_mac_fits(s.vocab,s.width) {return GPlan.{status=GStatus.budget};}
     d:=s.width;q:=s.heads*64;k:=s.kv_heads*64;h:=s.hidden;l:=s.layers;r:=s.vocab+2*h+q+2*k+d+s.experts;
     lengths:=[17]int.[d,d,q+2*k,q,d,s.experts,2*h,h,d,d,3*q+k,2*k*l,2*d*l,l*s.selected,s.vocab,r,r];
@@ -34,7 +34,7 @@ g_plan :: (s:GShape)->GPlan #export_c {
     for i:0..<17 {p.begin[i+1]=p.begin[i]+lengths[i];}p.floats=p.begin[17];return p;
 }
 // book:end plan
-g_slot :: (s:GShape,slot:int)->GSlot {
+g_slot :: (s:GShape,slot:int)->GSlot #effects(all) {
     d:=s.width;h:=s.hidden;e:=s.experts;q:=s.heads*64;k:=s.kv_heads*64;result:GSlot;
     if slot==0 || slot==1 || slot==10 {result.rank=1;result.dims[0]=d;}
     else if slot==2 {result.rank=2;result.dims=[4]int.[d,q,0,0];}
@@ -48,11 +48,11 @@ g_slot :: (s:GShape,slot:int)->GSlot {
     else {result.dtype=1;result.rank=ifx slot%2==1 then 4 else 3;result.dims=[4]int.[e,ifx slot<13 then 2*h else d,ifx slot<13 then d/32 else h/32,ifx slot%2==1 then 16 else 0];}
     n:=1;for i:0..<result.rank {n*=result.dims[i];}result.bytes=n*(ifx result.dtype==0 then 2 else 1);return result;
 }
-g_model_valid :: (m:GModel)->GStatus {
+g_model_valid :: (m:GModel)->GStatus #effects(all) {
     s:=m.shape;if m.blocks.count!=s.layers || m.p[0].count!=s.vocab*s.width*2 || m.p[1].count!=s.width*2 || m.p[2].count!=s.vocab*s.width*2 {return GStatus.weights;}
     for l:0..<s.layers {for slot:0..<15 {if m.blocks[l].p[slot].count!=g_slot(s,slot).bytes {return GStatus.weights;}}}return GStatus.ok;
 }
-g_macs :: (s:GShape,position:int)->int #export_c {
+g_macs :: (s:GShape,position:int)->int #export_c #effects(all) {
     if !g_shape(s) || position<0 || position>=s.capacity {return -1;}
     q:=s.heads*64;k:=s.kv_heads*64;d:=s.width;h:=s.hidden;visible:=position+1;visible=gs_window(visible,s.window);
     layers:=s.layers*((q+2*k)*d+d*q+s.experts*d+3*s.selected*d*h);
@@ -69,10 +69,10 @@ g_macs :: (s:GShape,position:int)->int #export_c {
     #assert g_macs(m.shape,0)>0 && g_macs(m.shape,-1)== -1 && g_macs(m.shape,8)== -1 && g_macs(GShape.{},0)== -1;
 }
 
-g_range :: (n:int,lo:int,hi:int)->bool {return n>=lo && n<=hi;}
-g_multiple :: (n:int,blocks:int)->bool {return g_range(n/32,1,blocks) && n%32==0;}
-g_mac_fits :: (rows:int,columns:int)->bool {return rows<=G_MAC_LIMIT/columns;}
-gs_window :: (n:int,cap:int)->int {return (n+cap-cast(int)abs(f64(n-cap)))/2;}
+g_range :: (n:int,lo:int,hi:int)->bool #effects(all) {return n>=lo && n<=hi;}
+g_multiple :: (n:int,blocks:int)->bool #effects(all) {return g_range(n/32,1,blocks) && n%32==0;}
+g_mac_fits :: (rows:int,columns:int)->bool #effects(all) {return rows<=G_MAC_LIMIT/columns;}
+gs_window :: (n:int,cap:int)->int #effects(all) {return (n+cap-cast(int)abs(f64(n-cap)))/2;}
 #test "shape helpers exercise all closed endpoints" {
     #assert g_range(1,1,36) && g_range(36,1,36) && !g_range(0,1,36) && !g_range(37,1,36);
     #assert g_multiple(32,256) && g_multiple(8192,256) && !g_multiple(31,256) && !g_multiple(8193,256) && !g_multiple(8224,256);

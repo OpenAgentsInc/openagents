@@ -79,15 +79,15 @@
   mat[0]=1.00000095367431640625;size[0]=0;#assert pe_success(pos[0..<3],mat[0..<9],size[0..<3],book[0..<3]).status==PeStatus.ok;
 }
 
-pe_profile :: (nq:int,nv:int,nu:int,na:int,state_count:int,dt:f64)->bool #export_c {return nq==23 && nv==21 && nu==9 && na==0 && state_count==45 && dt==0.002;}
-pe_ranges :: (lower:[]f64,upper:[]f64,finger_lower:[]f64,finger_upper:[]f64)->bool #export_c {
+pe_profile :: (nq:int,nv:int,nu:int,na:int,state_count:int,dt:f64)->bool #export_c #effects(all) {return nq==23 && nv==21 && nu==9 && na==0 && state_count==45 && dt==0.002;}
+pe_ranges :: (lower:[]f64,upper:[]f64,finger_lower:[]f64,finger_upper:[]f64)->bool #export_c #effects(all) {
   if lower.count!=7 || upper.count!=7 || finger_lower.count!=2 || finger_upper.count!=2 {return false;}
   for i:0..<7 {limit:f64=ifx i<5 then 80.0 else 12.0;if lower[i]!= -limit || upper[i]!=limit {return false;}}
   return finger_lower[0]==0 && finger_lower[1]== -0.04 && finger_upper[0]==0.04 && finger_upper[1]==0;
 }
-pe_finite_bits :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
-pe_finite :: (v:f64)->bool {return pe_finite_bits(f64_bits(v));}
-pe_binding :: (index:int)->string #export_c {
+pe_finite_bits :: (bits:u64)->bool #effects(all) {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+pe_finite :: (v:f64)->bool #effects(all) {return pe_finite_bits(f64_bits(v));}
+pe_binding :: (index:int)->string #export_c #effects(all) {
   if index<0 || index>=24 {return "";}
   names:=[24]string.["robot0_joint1","robot0_joint2","robot0_joint3","robot0_joint4","robot0_joint5","robot0_joint6","robot0_joint7","robot0_torq_j1","robot0_torq_j2","robot0_torq_j3","robot0_torq_j4","robot0_torq_j5","robot0_torq_j6","robot0_torq_j7","gripper0_finger_joint1","gripper0_finger_joint2","gripper0_grip_site","robot0_right_hand","desk_caddy_1_back_contain_region","black_book_1_main","agentview","robot0_eye_in_hand","gripper0_gripper_finger_joint1","gripper0_gripper_finger_joint2"];return names[index];
 }
@@ -97,17 +97,17 @@ pe_binding :: (index:int)->string #export_c {
 // Developed at SunSoft, a Sun Microsystems, Inc. business. Permission to use,
 // copy, modify, and distribute this software is freely granted, provided
 // that this notice is preserved. Quarter-angle reduction below is Coax.
-pe_asin_ratio :: (z:f64)->f64 {
+pe_asin_ratio :: (z:f64)->f64 #effects(all) {
   p:=z*(0.166666666666666657415+z*(-0.325565818622400915405+z*(0.201212532134862925881+z*(-0.0400555345006794114027+z*(0.000791534994289814532176+z*0.0000347933107596021167570)))));
   q:=1+z*(-2.40339491173441421878+z*(2.02094576023350569471+z*(-0.688283971605453293030+z*0.0770381505559019352791)));return p/q;
 }
 // Domain[-1,1], supplied after source clamp. Stable double half-angle keeps
 // rational argument<=sin(pi/8)^2 without subtracting nearly equal square roots.
-pe_acos :: (w:f64)->f64 {
+pe_acos :: (w:f64)->f64 #effects(all) {
   a:=abs(w);c:=sqrt((1+a)/2);z:=(1-a)/(4*(1+c));s:=sqrt(z);angle:=4*(s+s*pe_asin_ratio(z));
   return ifx (f64_bits(w)&0x8000000000000000)!=0 then 3.141592653589793-angle else angle;
 }
-pe_observation :: (position:[]f64,body_quat_wxyz:[]f64,fingers:[]f64,out:[]f32,after_step:bool,overlap:bool)->PeRead #export_c {
+pe_observation :: (position:[]f64,body_quat_wxyz:[]f64,fingers:[]f64,out:[]f32,after_step:bool,overlap:bool)->PeRead #export_c #effects(all) {
   if position.count!=3 || body_quat_wxyz.count!=4 || fingers.count!=2 || out.count<8 {return PeRead.{status=PeStatus.shape};}
   if overlap {return PeRead.{status=PeStatus.overlap};}
   for v:position {if !pe_finite(v) {return PeRead.{status=PeStatus.number};}if abs(v)>f64(f32_from_bits(0x7f7fffff)) {return PeRead.{status=PeStatus.range};}}
@@ -119,7 +119,7 @@ pe_observation :: (position:[]f64,body_quat_wxyz:[]f64,fingers:[]f64,out:[]f32,a
   staged[6]=f32(fingers[0]);staged[7]=f32(fingers[1]);for i:0..<8 {out[i]=staged[i];}
   return PeRead.{written=8,derived_lag=ifx after_step then 0.002 else 0.0,quaternion_clamped=clamped};
 }
-pe_success :: (position:[]f64,matrix:[]f64,size:[]f64,object:[]f64)->PeSuccess #export_c {
+pe_success :: (position:[]f64,matrix:[]f64,size:[]f64,object:[]f64)->PeSuccess #export_c #effects(all) {
   if position.count!=3 || matrix.count!=9 || size.count!=3 || object.count!=3 {return PeSuccess.{status=PeStatus.shape};}
   for v:position {if !pe_finite(v) {return PeSuccess.{status=PeStatus.number};}if abs(v)>1000 {return PeSuccess.{status=PeStatus.range};}}
   for v:object {if !pe_finite(v) {return PeSuccess.{status=PeStatus.number};}if abs(v)>1000 {return PeSuccess.{status=PeStatus.range};}}

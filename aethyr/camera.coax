@@ -50,7 +50,7 @@ bezier :: (a: Point, b: Point, c: Point, d: Point, t: f32) -> Point {
 
 // The home screen's camera at `now` seconds: circling high above the spawn,
 // rising and falling a little, looking down at it.
-verse_camera_overview :: (now: f64) -> Shot #export_c {
+verse_camera_overview :: (now: f64) -> Shot #export_c #effects(all) {
   t := f32(now);
   if !finite(t) { t = 0; }
   // Wrapped, so a long-running home loses no float precision.
@@ -67,7 +67,7 @@ verse_camera_overview :: (now: f64) -> Shot #export_c {
 
 // Start pressed at `now`, the camera showing `from`. With reduced motion,
 // it cuts.
-verse_camera_dolly_start :: (from: Shot, now: f64, reduced: bool) -> Dolly #export_c {
+verse_camera_dolly_start :: (from: Shot, now: f64, reduced: bool) -> Dolly #export_c #effects(all) {
   return Dolly.{from = from, start = now, length = ifx reduced then 0.0f32 else f32(DOLLY)};
 }
 
@@ -77,13 +77,13 @@ progress :: (d: Dolly, now: f64) -> f32 {
   return clamp01(f32((now - d.start) / f64(d.length)));
 }
 
-verse_camera_dolly_done :: (d: Dolly, now: f64) -> bool #export_c { return progress(d, now) >= 1; }
+verse_camera_dolly_done :: (d: Dolly, now: f64) -> bool #export_c #effects(all) { return progress(d, now) >= 1; }
 
 // The shot at `now`, ending on `to`. The eye leaves along the line toward
 // `to` at the height it had, then comes down and in from behind `to`; the
 // look-at turns to `to` sooner, so the character is in view before the
 // camera settles behind it.
-verse_camera_dolly :: (d: Dolly, now: f64, to: Shot) -> Shot #export_c {
+verse_camera_dolly :: (d: Dolly, now: f64, to: Shot) -> Shot #export_c #effects(all) {
   t := progress(d, now);
   if t >= 1 || !finite3(d.from.eye) || !finite3(d.from.at) { return to; }
   a := d.from.eye; z := to.eye;
@@ -101,7 +101,7 @@ verse_camera_dolly :: (d: Dolly, now: f64, to: Shot) -> Shot #export_c {
 
 // A touch during the dolly: what is left of it now takes HURRY seconds,
 // from where the camera is.
-verse_camera_dolly_hurry :: (d: Dolly, now: f64, to: Shot) -> Dolly #export_c {
+verse_camera_dolly_hurry :: (d: Dolly, now: f64, to: Shot) -> Dolly #export_c #effects(all) {
   if verse_camera_dolly_done(d, now) { return d; }
   if f32(now - d.start) + f32(HURRY) >= d.length { return d; }
   return Dolly.{from = verse_camera_dolly(d, now, to), start = now, length = f32(HURRY)};
@@ -161,7 +161,7 @@ Orbit :: struct {
 OrbitRay :: struct { from: Point; dir: Point; far: f32; }
 
 // Behind your feet, facing as you do.
-verse_orbit_start :: (feet: Point, facing: f32) -> Orbit #export_c {
+verse_orbit_start :: (feet: Point, facing: f32) -> Orbit #export_c #effects(all) {
   o: Orbit;
   o.yaw = ifx finite(facing) then wrap_angle(facing) else 0.0f32;
   o.pivot = ifx finite3(feet) then add(feet, v3(0, f32(FREE_HEIGHT), 0)) else v3(0, f32(FREE_HEIGHT), 0);
@@ -170,21 +170,21 @@ verse_orbit_start :: (feet: Point, facing: f32) -> Orbit #export_c {
 }
 
 // Where it looks, and its right hand (level).
-verse_orbit_forward :: (o: Orbit) -> Point #export_c { return orbit_pt(ash.shot_orbit_forward(o.yaw, o.pitch)); }
-verse_orbit_right :: (o: Orbit) -> Point #export_c { return orbit_pt(ash.shot_orbit_right(o.yaw)); }
+verse_orbit_forward :: (o: Orbit) -> Point #export_c #effects(all) { return orbit_pt(ash.shot_orbit_forward(o.yaw, o.pitch)); }
+verse_orbit_right :: (o: Orbit) -> Point #export_c #effects(all) { return orbit_pt(ash.shot_orbit_right(o.yaw)); }
 // Between this file's points and Aethyr's world points: the same metres.
 orbit_pt :: (w: asp.WorldPoint) -> Point { return v3(w.x, w.y, w.z); }
 orbit_wpt :: (p: Point) -> asp.WorldPoint { return asp.world_point(p.x, p.y, p.z); }
 
 // How far into first person it is: 0 out at FREE_NEAR or further, 1 with
 // the eye in your head. It follows the eased zoom, so it changes smoothly.
-verse_orbit_first :: (o: Orbit) -> f32 #export_c {
+verse_orbit_first :: (o: Orbit) -> f32 #export_c #effects(all) {
   if !finite(o.zoom) { return 0; }
   return clamp01(1 - o.zoom / f32(FREE_NEAR));
 }
 
 // The eye is in your head (or nearly): the host leaves your body out.
-verse_orbit_inside :: (o: Orbit) -> bool #export_c { return verse_orbit_first(o) >= f32(FREE_INSIDE); }
+verse_orbit_inside :: (o: Orbit) -> bool #export_c #effects(all) { return verse_orbit_first(o) >= f32(FREE_INSIDE); }
 
 // How far up and down it may look, widening in first person.
 pitch_low :: (o: Orbit) -> f32 { return lerp(f32(FREE_PITCH_MIN), -f32(FREE_FIRST_PITCH), verse_orbit_first(o)); }
@@ -192,7 +192,7 @@ pitch_high :: (o: Orbit) -> f32 { return lerp(f32(FREE_PITCH_MAX), f32(FREE_FIRS
 
 // A drag or a thumb: positive dyaw turns left, positive dpitch looks up,
 // in radians.
-verse_orbit_look :: (o: Orbit, dyaw: f32, dpitch: f32) -> Orbit #export_c {
+verse_orbit_look :: (o: Orbit, dyaw: f32, dpitch: f32) -> Orbit #export_c #effects(all) {
   next := o;
   moved := false;
   if finite(dyaw) && dyaw != 0 { next.yaw = wrap_angle(o.yaw + dyaw); moved = true; }
@@ -202,7 +202,7 @@ verse_orbit_look :: (o: Orbit, dyaw: f32, dpitch: f32) -> Orbit #export_c {
 }
 
 // The arrow keys held: turn (1 left, -1 right) and tilt (1 up, -1 down).
-verse_orbit_keys :: (o: Orbit, turn: f32, tilt: f32, dt: f32) -> Orbit #export_c {
+verse_orbit_keys :: (o: Orbit, turn: f32, tilt: f32, dt: f32) -> Orbit #export_c #effects(all) {
   if !finite(dt) || dt <= 0 { return o; }
   t := lo(dt, 0.25);
   return verse_orbit_look(o, clamp(turn, -1, 1) * f32(FREE_KEY_TURN) * t, clamp(tilt, -1, 1) * f32(FREE_KEY_TURN) * 0.6 * t);
@@ -211,7 +211,7 @@ verse_orbit_keys :: (o: Orbit, turn: f32, tilt: f32, dt: f32) -> Orbit #export_c
 // The wheel or a pinch: positive is further out. Coming in, it stops at
 // FREE_NEAR; FREE_PUSH more goes into your head (want 0, first person). Out
 // of your head, any zoom out comes back to FREE_NEAR.
-verse_orbit_zoom :: (o: Orbit, delta: f32) -> Orbit #export_c {
+verse_orbit_zoom :: (o: Orbit, delta: f32) -> Orbit #export_c #effects(all) {
   next := o;
   if !finite(delta) || delta == 0 { return next; }
   if o.want < f32(FREE_NEAR) {
@@ -231,7 +231,7 @@ verse_orbit_zoom :: (o: Orbit, delta: f32) -> Orbit #export_c {
 // camera that swung toward where you walk turned that way with it, and held
 // W and D (or any heading off straight ahead) circled it about a radian a
 // second with no look at all (#12718). heading is kept for the callers.
-verse_orbit_follow :: (o: Orbit, feet: Point, heading: f32, moving: bool, dt: f32) -> Orbit #export_c {
+verse_orbit_follow :: (o: Orbit, feet: Point, heading: f32, moving: bool, dt: f32) -> Orbit #export_c #effects(all) {
   next := o;
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
   if !finite3(feet) { return next; }
@@ -257,7 +257,7 @@ verse_orbit_follow :: (o: Orbit, feet: Point, heading: f32, moving: bool, dt: f3
 
 // Going in, the shoulder offset closes and the line's start rises from the
 // pivot to your eyes, a little in front of your face (aethyr/follow.coax).
-verse_orbit_ray :: (o: Orbit) -> OrbitRay #export_c {
+verse_orbit_ray :: (o: Orbit) -> OrbitRay #export_c #effects(all) {
   a := ash.shot_orbit_ray(orbit_wpt(o.pivot), o.yaw, o.pitch, o.zoom, verse_orbit_first(o));
   return OrbitRay.{from = orbit_pt(a.from), dir = orbit_pt(a.dir), far = a.far};
 }
@@ -265,7 +265,7 @@ verse_orbit_ray :: (o: Orbit) -> OrbitRay #export_c {
 // How far along the ray the eye may go before scenery, keeping
 // FREE_CLEAR from it: spheres (SPHERE numbers each) and boxes (BOX
 // numbers each). Scenery the pivot is inside doesn't count.
-verse_orbit_room :: (o: Orbit, spheres: [] f32, boxes: [] f32) -> f32 #export_c {
+verse_orbit_room :: (o: Orbit, spheres: [] f32, boxes: [] f32) -> f32 #export_c #effects(all) {
   r := verse_orbit_ray(o);
   room := r.far;
   for i: 0..<spheres.count / SPHERE {
@@ -306,7 +306,7 @@ verse_orbit_room :: (o: Orbit, spheres: [] f32, boxes: [] f32) -> f32 #export_c 
 // Scenery left `room` along the ray this frame (the least of
 // verse_orbit_room and the host's ground): the eye comes in at once and
 // backs out gently, never past where it wants to be.
-verse_orbit_limit :: (o: Orbit, room: f32, dt: f32) -> Orbit #export_c {
+verse_orbit_limit :: (o: Orbit, room: f32, dt: f32) -> Orbit #export_c #effects(all) {
   next := o;
   far := verse_orbit_ray(o).far;
   free := ifx finite(room) then clamp(room, lo(f32(FREE_MIN_ROOM), far), far) else far;
@@ -318,14 +318,14 @@ verse_orbit_limit :: (o: Orbit, room: f32, dt: f32) -> Orbit #export_c {
 }
 
 // What to draw: the eye on the ray, looking forward.
-verse_orbit_shot :: (o: Orbit) -> Shot #export_c {
+verse_orbit_shot :: (o: Orbit) -> Shot #export_c #effects(all) {
   a := ash.shot_orbit(ash.shot_orbit_ray(orbit_wpt(o.pivot), o.yaw, o.pitch, o.zoom, verse_orbit_first(o)), o.shown, o.yaw, o.pitch);
   return Shot.{eye = orbit_pt(a.eye), at = orbit_pt(a.at)};
 }
 
 // Turns to look the way a shot does: how another camera (a cinematic, a
 // close-up) hands control back without a jump in direction.
-verse_orbit_toward :: (o: Orbit, s: Shot) -> Orbit #export_c {
+verse_orbit_toward :: (o: Orbit, s: Shot) -> Orbit #export_c #effects(all) {
   d := sub(s.at, s.eye);
   if !finite3(d) || length(d) < 0.0001 { return o; }
   next := o;
@@ -337,7 +337,7 @@ verse_orbit_toward :: (o: Orbit, s: Shot) -> Orbit #export_c {
 
 // Partway from one shot to another (eased): how a host blends into a
 // close-up and back out to its live camera without a jump.
-verse_shot_mix :: (a: Shot, b: Shot, t: f32) -> Shot #export_c {
+verse_shot_mix :: (a: Shot, b: Shot, t: f32) -> Shot #export_c #effects(all) {
   k := ease(t);
   return Shot.{eye = mix(a.eye, b.eye, k), at = mix(a.at, b.at, k)};
 }
@@ -345,7 +345,7 @@ verse_shot_mix :: (a: Shot, b: Shot, t: f32) -> Shot #export_c {
 // The ray from the eye through a point on the screen: nx, ny from -1 to 1
 // (right, up), with the projection's horizontal and vertical scales fx, fy
 // (a point d ahead and x across lands at x * fx / d). What a click points at.
-verse_shot_ray :: (s: Shot, fx: f32, fy: f32, nx: f32, ny: f32) -> OrbitRay #export_c {
+verse_shot_ray :: (s: Shot, fx: f32, fy: f32, nx: f32, ny: f32) -> OrbitRay #export_c #effects(all) {
   f := unit_or(sub(s.at, s.eye), v3(0, 0, 1));
   r := unit_or(cross(f, v3(0, 1, 0)), v3(1, 0, 0));
   up := cross(r, f);

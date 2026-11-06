@@ -27,12 +27,12 @@ SHACHAIN_MAX_INDEX :: cast(u64) 281474976710655;  // 2^48 - 1, the first secret 
 SHACHAIN_SLOTS :: 49;                             // one per count of trailing zero bits, 0 to 48
 // book:end codes
 
-shachain_wipe :: (b: [] u8) { for i: 0..<b.count { b[i] = 0; } }
+shachain_wipe :: (b: [] u8) #effects(all) { for i: 0..<b.count { b[i] = 0; } }
 
 // book:begin generate
 // derive(base, bits, I): for each bit B of I below `bits`, from the top,
 // flip bit B of P and hash. Bit B is bit B mod 8 of byte B div 8.
-shachain_derive :: (base: [] u8, bits: int, index: u64, out: [] u8) {
+shachain_derive :: (base: [] u8, bits: int, index: u64, out: [] u8) #effects(all) {
   p: [32] u8; next: [32] u8;
   for i: 0..<32 { p[i] = base[i]; }
   for k: 0..<bits {
@@ -47,7 +47,7 @@ shachain_derive :: (base: [] u8, bits: int, index: u64, out: [] u8) {
   shachain_wipe(p[..]); shachain_wipe(next[..]);
 }
 // generate_from_seed(seed, I): every one of the 48 bits.
-shachain_generate :: (seed: [] u8, index: u64, out: [] u8) -> int {
+shachain_generate :: (seed: [] u8, index: u64, out: [] u8) -> int #effects(all) {
   if index > SHACHAIN_MAX_INDEX { return SHACHAIN_RANGE; }
   shachain_derive(seed, SHACHAIN_BITS, index, out);
   return SHACHAIN_OK;
@@ -60,16 +60,16 @@ shachain_generate :: (seed: [] u8, index: u64, out: [] u8) -> int {
 // top 48 - b bits can be derived.
 ShachainSlot :: struct { index: u64; secret: [32] u8; }
 Shachain :: struct { slots: [49] ShachainSlot; next: u64; received: u64; }
-shachain_new :: () -> Shachain { return Shachain.{next = SHACHAIN_MAX_INDEX}; }
+shachain_new :: () -> Shachain #effects(all) { return Shachain.{next = SHACHAIN_MAX_INDEX}; }
 
 // The slot an index goes in: its count of trailing zero bits, 48 for 0.
-shachain_slot :: (index: u64) -> int {
+shachain_slot :: (index: u64) -> int #effects(all) {
   for b: 0..<SHACHAIN_BITS { if ((index >> cast(u64) b) & 1) == 1 { return b; } }
   return SHACHAIN_BITS;
 }
 // Whether slot b holds a secret. An empty slot's index is 0, which
 // belongs in slot 48, so only slot 48 needs the count.
-shachain_used :: (store: [] Shachain, b: int) -> bool {
+shachain_used :: (store: [] Shachain, b: int) -> bool #effects(all) {
   if b == SHACHAIN_BITS { return store[0].received == SHACHAIN_MAX_INDEX + 1; }
   return shachain_slot(store[0].slots[b].index) == b;
 }
@@ -79,7 +79,7 @@ shachain_used :: (store: [] Shachain, b: int) -> bool {
 // insert_secret: the new secret must derive every secret in the slots
 // below its own. If one does not, the peer's secrets do not come from one
 // seed, and the peer is cheating or broken.
-shachain_insert :: (store: [] Shachain, index: u64, secret: [] u8) -> int {
+shachain_insert :: (store: [] Shachain, index: u64, secret: [] u8) -> int #effects(all) {
   if index > SHACHAIN_MAX_INDEX { return SHACHAIN_RANGE; }
   if store[0].received == SHACHAIN_MAX_INDEX + 1 || index != store[0].next { return SHACHAIN_ORDER; }
   slot := shachain_slot(index);
@@ -102,7 +102,7 @@ shachain_insert :: (store: [] Shachain, index: u64, secret: [] u8) -> int {
 // derive_old_secret: the slot whose index is the top bits of I, then the
 // remaining low bits from there. Secrets from the next index up to the
 // first received have arrived; lower ones have not.
-shachain_lookup :: (store: [] Shachain, index: u64, out: [] u8) -> int {
+shachain_lookup :: (store: [] Shachain, index: u64, out: [] u8) -> int #effects(all) {
   if index > SHACHAIN_MAX_INDEX { return SHACHAIN_RANGE; }
   if store[0].received == 0 || index <= SHACHAIN_MAX_INDEX - store[0].received { return SHACHAIN_UNKNOWN; }
   for b: 0..<SHACHAIN_SLOTS {
@@ -115,16 +115,16 @@ shachain_lookup :: (store: [] Shachain, index: u64, out: [] u8) -> int {
   return SHACHAIN_UNKNOWN;
 }
 // The commitment number n uses index 2^48 - 1 - n.
-shachain_index :: (commitment: u64) -> u64 { return SHACHAIN_MAX_INDEX - commitment; }
+shachain_index :: (commitment: u64) -> u64 #effects(all) { return SHACHAIN_MAX_INDEX - commitment; }
 // book:end lookup
 
 // ---- test helpers
-shc_nibble :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
-shc_fill :: (text: string, out: [] u8) {
+shc_nibble :: (c: u8) -> int #effects(all) { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+shc_fill :: (text: string, out: [] u8) #effects(all) {
   for i: 0..<text.count / 2 { out[i] = cast(u8) (shc_nibble(text[2 * i]) * 16 + shc_nibble(text[2 * i + 1])); }
 }
 SHC_DIGITS :: "0123456789abcdef";
-shc_hex_is :: (a: [] u8, text: string) -> bool {
+shc_hex_is :: (a: [] u8, text: string) -> bool #effects(all) {
   if text.count != 2 * a.count { return false; }
   for i: 0..<a.count {
     if text[2 * i] != SHC_DIGITS[cast(int) (a[i] >> 4)] || text[2 * i + 1] != SHC_DIGITS[cast(int) (a[i] & 15)] { return false; }
@@ -133,7 +133,7 @@ shc_hex_is :: (a: [] u8, text: string) -> bool {
 }
 // One storage test from a fresh store: the position of the first refused
 // insert, or -1 when every insert succeeds.
-shachain_run_storage :: (test: int) -> int {
+shachain_run_storage :: (test: int) -> int #effects(all) {
   store: [1] Shachain; store[0] = shachain_new(); secret: [32] u8; at := 0;
   for row: SHACHAIN_STORAGE {
     if row.test == test {
@@ -145,7 +145,7 @@ shachain_run_storage :: (test: int) -> int {
   return -1;
 }
 // Where BOLT 3 says that test's first refusal is, or -1.
-shachain_expected :: (test: int) -> int {
+shachain_expected :: (test: int) -> int #effects(all) {
   at := 0;
   for row: SHACHAIN_STORAGE {
     if row.test == test { if !row.ok { return at; } at += 1; }

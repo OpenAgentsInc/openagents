@@ -2,7 +2,7 @@
 // existing Bun Buffer UTF-8 codec is invoked only as an independent oracle.
 #load "producer-facts-text-policy.coax";
 #load "../render/tests/qualification-files.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}work:=args_value(a[..],"--work-dir","");receipt:=args_value(a[..],"--receipt","");bun:=args_value(a[..],"--bun","");
   if work=="" || receipt=="" || bun=="" || fs_exists(work) || fs_exists(receipt) || !fs_mkdir(work) {return 2;}
   inputs:[1]RtqInputs;for file:[3]string.[bun,"aethyr/tests/producer-facts-text-policy.coax","aethyr/tests/producer-facts-text-checks.coax"] {if !rtq_input_add(inputs[..],file) {return 1;}}

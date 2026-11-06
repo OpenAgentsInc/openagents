@@ -3,7 +3,7 @@
 #load "../../coax/web/wasm-chrome.coax";
 #load "socket-retention-conformance.coax";
 #load "../render/tests/qualification-files.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3{tool_errln("usage: check-browser-socket-queue ROOT REACTOR NEW_OUTPUT");return 2;}
  held:[1]RtqInputs;if !rtq_input_add(held[..],args_at(a[..],1)){return 1;}
  root:=args_at(a[..],0);dir:=args_at(a[..],2);paths:[6][4096]u8;if !fs_mkdir(dir){return 1;}site:=fs_join(dir,"site",paths[0][..]);build:=fs_join(site,"build",paths[1][..]);if !fs_mkdir(build)||!fs_write(fs_join(site,"index.html",paths[2][..]),"<!doctype html><meta charset=utf-8><title>Socket copy observations</title>"){return 1;}

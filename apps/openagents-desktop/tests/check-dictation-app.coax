@@ -71,7 +71,7 @@ dapp_script :: (pcm:string,silence:string,out:[]u8)->string {
  at=dapp_put(out,at,silence);at=dapp_put(out,at," ; dictation mousedown ; dictation feed ");at=dapp_put(out,at,pcm);
  at=dapp_put(out,at," ; dictation mouseup ; waitdictation 15 ; draft");return ifx at<0 then "" else cast(string)out[0..<at];
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=3 {tool_errln("usage: check-dictation-app APP_OR_EXECUTABLE ROOT OUTPUT_DIR");return 2;}
  input:=args_at(args[..],0);root:=args_at(args[..],1);dir:=args_at(args[..],2);
  if !dapp_path(input) || !dapp_path(root) || !dapp_path(dir) {tool_errln("paths must be nonempty and contain no semicolon or newline");return 2;}

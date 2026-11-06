@@ -9,11 +9,11 @@
 #load "../lib/sys/fs.coax";
 #load "../lib/sys/proc.coax";
 #load "../lib/crypto/sha256_workspace.coax";
-cxproc_self_path :: (out: []u8) -> int #foreign;
-cxproc_self_pid :: () -> int #foreign;
-cxproc_pid_signal :: (pid: int, signal: int) -> int #foreign;
-cxproc_pid_alive :: (pid: int) -> int #foreign;
-cxproc_cmdline :: (pid: int, out: []u8) -> int #foreign;
+cxproc_self_path :: (out: []u8) -> int #foreign #effects(all);
+cxproc_self_pid :: () -> int #foreign #effects(all);
+cxproc_pid_signal :: (pid: int, signal: int) -> int #foreign #effects(all);
+cxproc_pid_alive :: (pid: int) -> int #foreign #effects(all);
+cxproc_cmdline :: (pid: int, out: []u8) -> int #foreign #effects(all);
 
 FE_SOURCE :: "apps/openagents-web/everglade-doors.coax";
 FE_NAME :: "door_ease";
@@ -318,7 +318,7 @@ ft_stop :: (dir: string) -> int {
   }
   return 0;
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}cmd:=args_at(a[..],0);dir:=args_at(a[..],1);
   if dir.count==0 || dir[0]!='/' {tool_errln("usage: fast-edit prepare|candidate|apply|verify|gate ABSOLUTE_SESSION | instrument ABSOLUTE_SESSION FILE.c");return 2;}
   if cmd=="prepare" {return ft_prepare(dir);}

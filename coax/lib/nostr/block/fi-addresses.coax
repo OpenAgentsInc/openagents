@@ -606,11 +606,11 @@ FI_PUBLIC6_DENY :: [5]FiPrefix.[
  p.bits=7;a[0]=0;#assert fi_ip_prefix(a[..],p);a[0]=2;#assert !fi_ip_prefix(a[..],p);
  p.bits=0;#assert fi_ip_prefix(a[..],p);
 }
-fi_ip_prefix :: (address:[]u8,p:FiPrefix)->bool {
+fi_ip_prefix :: (address:[]u8,p:FiPrefix)->bool #effects(all) {
  for i:0..<p.bits {shift:=7-i%8;if ((address[i/8]>>shift)&1)!=((p.bytes[i/8]>>shift)&1) {return false;}}
  return true;
 }
-fi_address_allowed :: (address:[]u8,transport:int)->bool #export_c {
+fi_address_allowed :: (address:[]u8,transport:int)->bool #export_c #effects(all) {
  if address.count!=4 && address.count!=16 {return false;}
  if transport==FI_PUBLIC_HTTPS {
   if address.count==4 {for p:FI_PUBLIC4_DENY {if fi_ip_prefix(address,p) {return false;}}return true;}

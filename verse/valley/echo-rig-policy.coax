@@ -7,17 +7,17 @@ ECHO_RIG_CAP :: 12582912;
 ECHO_JOINTS :: 334;
 ECHO_CLIPS :: 24;
 ECHO_CATALOG_CAP :: 31457280;
-echo_rig_finite :: (b:[]u8,at:int)->bool {return (scan_u32(b,at)&0x7f800000)!=0x7f800000;}
-echo_rig_size_ok :: (n:int)->bool {return n>=416 && n<=ECHO_RIG_CAP;}
-echo_rig_frames_ok :: (n:int)->bool {return n>=2 && n<=1000;}
-echo_rig_rotation_ok :: (length:f32)->bool {return length>0.99 && length<1.01;}
-echo_rig_close :: (a:f32,b:f32)->bool {return abs(a-b)<0.0001;}
-echo_rig_counts_ok :: (joints:int,tracks:int)->bool {return joints>=1 && joints<=ECHO_JOINTS && tracks>=1 && tracks<=joints;}
-echo_rig_bones_fit :: (n:int,joints:int)->bool {return joints<=(n-416)/80;}
-echo_rig_poses_fit :: (total:int,cursor:int,frames:int,tracks:int)->bool {return frames<=(total-cursor)/(tracks*28);}
-echo_rig_float_bytes :: (b:[]u8)->bool {if b.count%4!=0 {return false;}for word:0..<b.count/4 {if !echo_rig_finite(b,word*4) {return false;}}return true;}
-echo_rig_quat_ok :: (b:[]u8)->bool {if b.count!=16 || !echo_rig_float_bytes(b) {return false;}length:f32=0;for word:0..<4 {v:=f32_from_bits(scan_u32(b,word*4));length+=v*v;}return echo_rig_rotation_ok(length);}
-echo_rig_valid :: (b:[]u8)->bool {
+echo_rig_finite :: (b:[]u8,at:int)->bool #effects(all) {return (scan_u32(b,at)&0x7f800000)!=0x7f800000;}
+echo_rig_size_ok :: (n:int)->bool #effects(all) {return n>=416 && n<=ECHO_RIG_CAP;}
+echo_rig_frames_ok :: (n:int)->bool #effects(all) {return n>=2 && n<=1000;}
+echo_rig_rotation_ok :: (length:f32)->bool #effects(all) {return length>0.99 && length<1.01;}
+echo_rig_close :: (a:f32,b:f32)->bool #effects(all) {return abs(a-b)<0.0001;}
+echo_rig_counts_ok :: (joints:int,tracks:int)->bool #effects(all) {return joints>=1 && joints<=ECHO_JOINTS && tracks>=1 && tracks<=joints;}
+echo_rig_bones_fit :: (n:int,joints:int)->bool #effects(all) {return joints<=(n-416)/80;}
+echo_rig_poses_fit :: (total:int,cursor:int,frames:int,tracks:int)->bool #effects(all) {return frames<=(total-cursor)/(tracks*28);}
+echo_rig_float_bytes :: (b:[]u8)->bool #effects(all) {if b.count%4!=0 {return false;}for word:0..<b.count/4 {if !echo_rig_finite(b,word*4) {return false;}}return true;}
+echo_rig_quat_ok :: (b:[]u8)->bool #effects(all) {if b.count!=16 || !echo_rig_float_bytes(b) {return false;}length:f32=0;for word:0..<4 {v:=f32_from_bits(scan_u32(b,word*4));length+=v*v;}return echo_rig_rotation_ok(length);}
+echo_rig_valid :: (b:[]u8)->bool #effects(all) {
  if !echo_rig_size_ok(b.count) {return false;}
  if scan_u32(b,0)!=0x31484345 || scan_u32(b,4)!=1 || scan_u32(b,12)!=24 || scan_u32(b,16)!=416 || cast(int)scan_u32(b,20)!=b.count {return false;}
  joints:=cast(int)scan_u32(b,8);tracks:=cast(int)scan_u32(b,24);if !echo_rig_counts_ok(joints,tracks) || !echo_rig_bones_fit(b.count,joints) {return false;}
@@ -29,9 +29,9 @@ echo_rig_valid :: (b:[]u8)->bool {
  }return cursor==b.count;
 }
 #load "../../aethyr/tests/echo-rig-policy-checks.coax";
-echo_catalog_size_ok :: (n:int)->bool {return n>=16 && n<=ECHO_CATALOG_CAP;}
-echo_catalog_parts_ok :: (n:int,rig:int,face:int)->bool {return rig>=416 && rig<=ECHO_RIG_CAP && face>=80 && face<=FACE_PACK_CAP && rig+face==n-16;}
-echo_catalog_header :: (b:[]u8)->int {return ifx scan_u32(b,0)==0x33504345 then 20 else 16;}
+echo_catalog_size_ok :: (n:int)->bool #effects(all) {return n>=16 && n<=ECHO_CATALOG_CAP;}
+echo_catalog_parts_ok :: (n:int,rig:int,face:int)->bool #effects(all) {return rig>=416 && rig<=ECHO_RIG_CAP && face>=80 && face<=FACE_PACK_CAP && rig+face==n-16;}
+echo_catalog_header :: (b:[]u8)->int #effects(all) {return ifx scan_u32(b,0)==0x33504345 then 20 else 16;}
 #test "ECP3 binds the source shot to the same rig and face before publication" #steps 1000000000 {
  b:[8192]u8;rig:=echo_rig_fixture(b[20..<b.count],1);face_fixture(b[20+rig..<20+rig+536]);at:=20+rig+536;names:[64]u8;shot_fixture(b[at..<at+540],names[..]);total:=at+540;
  scan_put(b[..],0,0x33504345);scan_put(b[..],4,cast(u32)rig);scan_put(b[..],8,536);scan_put(b[..],12,540);scan_put(b[..],16,cast(u32)total);
@@ -39,7 +39,7 @@ echo_catalog_header :: (b:[]u8)->int {return ifx scan_u32(b,0)==0x33504345 then 
  for offset:[8]int.[0,4,8,12,16,at,at+40,at+64] {b=original;scan_put(b[..],offset,0xffffffff);#assert !echo_catalog_valid(b[0..<total]);}
  b=original;#assert !echo_catalog_valid(b[0..<19]) && !echo_catalog_valid(b[0..<total-1]) && !echo_catalog_valid(b[0..<total+1]);
 }
-echo_catalog_valid :: (b:[]u8)->bool {
+echo_catalog_valid :: (b:[]u8)->bool #effects(all) {
  if !echo_catalog_size_ok(b.count) {return false;}
  if scan_u32(b,0)==0x31484345 {return echo_rig_valid(b);}
  magic:=scan_u32(b,0);if magic!=0x32504345 && magic!=0x33504345 {return false;}header:=echo_catalog_header(b);if !face_prefix_ok(b.count,header) || cast(int)scan_u32(b,header-4)!=b.count {return false;}

@@ -14,11 +14,11 @@ PNG_MAX :: 16384;       // the largest width or height taken
 // What png_decode needs: work bytes (the image data, then it inflated), and w*h*4 out.
 PngInfo :: struct { status: int; w: int; h: int; channels: int; work: int; idat: int; }
 
-png_be :: (b: []u8, at: int) -> int {
+png_be :: (b: []u8, at: int) -> int #effects(all) {
   return (cast(int) b[at] << 24) | (cast(int) b[at + 1] << 16) | (cast(int) b[at + 2] << 8) | cast(int) b[at + 3];
 }
 // CRC-32 (ISO 3309), as zlib's crc32.
-png_crc :: (b: []u8) -> int {
+png_crc :: (b: []u8) -> int #effects(all) {
   c: u32 = 4294967295;
   for x: b {
     c = c ^ cast(u32) x;
@@ -27,7 +27,7 @@ png_crc :: (b: []u8) -> int {
   return cast(int) (c ^ 4294967295);
 }
 // The chunks, checked; with copy, the image data gathered into work.
-png_walk :: (src: []u8, work: []u8, copy: bool) -> PngInfo {
+png_walk :: (src: []u8, work: []u8, copy: bool) -> PngInfo #effects(all) {
   r: PngInfo; r.status = PNG_NOT;
   sig := [8] u8.[137, 80, 78, 71, 13, 10, 26, 10];
   if src.count < 8 { return r; }
@@ -63,10 +63,10 @@ png_walk :: (src: []u8, work: []u8, copy: bool) -> PngInfo {
   }
   return r; // mutant: equivalent (the loop above only returns)
 }
-png_info :: (src: []u8) -> PngInfo { none: [1] u8; return png_walk(src, none[0..<0], false); } // mutant: equivalent (without copy the view is not read)
-png_abs :: (x: int) -> int { return ifx x < 0 then -x else x; } // mutant: equivalent (0 and -0 are one int)
+png_info :: (src: []u8) -> PngInfo #effects(all) { none: [1] u8; return png_walk(src, none[0..<0], false); } // mutant: equivalent (without copy the view is not read)
+png_abs :: (x: int) -> int #effects(all) { return ifx x < 0 then -x else x; } // mutant: equivalent (0 and -0 are one int)
 // A filter's prediction from the byte to the left, the one above and the one above-left.
-png_pred :: (f: int, a: int, b: int, c: int) -> int {
+png_pred :: (f: int, a: int, b: int, c: int) -> int #effects(all) {
   if f == 1 { return a; }
   if f == 2 { return b; }
   if f == 3 { return (a + b) / 2; }
@@ -77,7 +77,7 @@ png_pred :: (f: int, a: int, b: int, c: int) -> int {
   return c;
 }
 // The image as RGBA8 into out (w*h*4 bytes), work at least png_info's: PNG_OK or why not.
-png_decode :: (src: []u8, work: []u8, out: []u8) -> int {
+png_decode :: (src: []u8, work: []u8, out: []u8) -> int #effects(all) {
   r := png_info(src);
   if r.status != PNG_OK { return r.status; }
   if work.count < r.work || out.count < r.w * r.h * 4 { return PNG_SMALL; }
@@ -140,7 +140,7 @@ PNG_BAD_W16384 :: [66] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,64,
 PNG_BAD_W16385 :: [66] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,64,1,0,0,0,1,8,2,0,0,0,70,63,74,49,0,0,0,9,73,68,65,84,120,156,99,0,0,0,1,0,1,94,255,125,249,0,0,0,0,73,69,78,68,174,66,96,130];
 PNG_BAD_H16384 :: [66] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,1,0,0,64,0,8,2,0,0,0,31,32,245,2,0,0,0,9,73,68,65,84,120,156,99,0,0,0,1,0,1,94,255,125,249,0,0,0,0,73,69,78,68,174,66,96,130];
 PNG_BAD_H16385 :: [66] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,1,0,0,64,1,8,2,0,0,0,212,124,38,167,0,0,0,9,73,68,65,84,120,156,99,0,0,0,1,0,1,94,255,125,249,0,0,0,0,73,69,78,68,174,66,96,130];
-png_digest :: (b: []u8) -> u64 {
+png_digest :: (b: []u8) -> u64 #effects(all) {
   h: u64 = 17;
   for x: b { h = (h * 31 + cast(u64) x) % 4294967291; }
   return h;
@@ -148,7 +148,7 @@ png_digest :: (b: []u8) -> u64 {
 // A file decoded: what png_info says, png_decode's answers with one byte less of work and of
 // out, its answer with enough, and the digest of the RGBA it gives.
 PngRun :: struct { info: PngInfo; short_work: int; short_out: int; status: int; digest: u64; }
-png_run :: (src: []u8, c: PngCase) -> PngRun {
+png_run :: (src: []u8, c: PngCase) -> PngRun #effects(all) {
   work: [512] u8; out: [256] u8; p: PngRun;
   p.info = png_info(src);
   n := c.w * c.h * 4;
@@ -168,7 +168,7 @@ png_run :: (src: []u8, c: PngCase) -> PngRun {
     #assert p.short_work == PNG_SMALL && p.short_out == PNG_SMALL && p.status == PNG_OK && p.digest == c.digest;
   }
 }
-png_refused :: (src: []u8) -> int { work: [512] u8; out: [64] u8; return png_decode(src, work[..], out[..]); }
+png_refused :: (src: []u8) -> int #effects(all) { work: [512] u8; out: [64] u8; return png_decode(src, work[..], out[..]); }
 #test "what is not a PNG, not one taken, or malformed" {
   { b := PNG_BAD_SIGNATURE; #assert png_refused(b[..]) == PNG_NOT && png_refused(b[0..<7]) == PNG_NOT; }
   { b := PNG_BAD_FIRST_BYTE; #assert png_refused(b[..]) == PNG_NOT; }

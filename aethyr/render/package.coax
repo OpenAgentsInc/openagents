@@ -26,12 +26,12 @@ RenderPackageText :: struct {ok:bool;value:string;}
 
 // Canonical package keys/names are plain JSON strings. Escaped spellings are
 // refused rather than returned as incorrectly decoded borrowed names.
-rpkg_text :: (d:Jv,node:int,key:string)->RenderPackageText {
+rpkg_text :: (d:Jv,node:int,key:string)->RenderPackageText #effects(all) {
   value:=jv_get(d,node,key);if jv_kind(d,value)!=JV_STRING {return RenderPackageText.{};}
   text:=jv_raw(d,value);for c:text {if c=='\\' {return RenderPackageText.{};}}return RenderPackageText.{ok=true,value=text};
 }
-rpkg_string :: (d:Jv,node:int,key:string)->string {return rpkg_text(d,node,key).value;}
-rpkg_object :: (d:Jv,node:int,keys:[]string,required:int)->bool {
+rpkg_string :: (d:Jv,node:int,key:string)->string #effects(all) {return rpkg_text(d,node,key).value;}
+rpkg_object :: (d:Jv,node:int,keys:[]string,required:int)->bool #effects(all) {
   if jv_kind(d,node)!=JV_OBJECT || keys.count>31 || required<0 || required>keys.count {return false;}
   rpkg_seen:u32=0;child:=d.nodes[node].first;
   while child!=-1 {
@@ -43,20 +43,20 @@ rpkg_object :: (d:Jv,node:int,keys:[]string,required:int)->bool {
   }
   needed:=(cast(u32)1<<cast(u32)required)-1;return (rpkg_seen&needed)==needed;
 }
-rpkg_hash :: (text:string)->bool {
+rpkg_hash :: (text:string)->bool #effects(all) {
   if text.count!=64 {return false;}
   for c:text {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;
 }
-rpkg_file :: (text:string,extension:string)->bool {
+rpkg_file :: (text:string,extension:string)->bool #effects(all) {
   prefix:=text.count-extension.count;
   if prefix<1 || text.count>128 || text[prefix..<text.count]!=extension {return false;}
   for c:text {if !((c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='-' || c=='_' || c=='.') {return false;}}
   // Empty/dot path segments never name a product, even on permissive hosts.
   return text[0]!='.';
 }
-rpkg_int :: (d:Jv,node:int,key:string)->int {return jv_int(d,jv_get(d,node,key),-1);}
-rpkg_boolean :: (d:Jv,node:int,key:string)->bool {kind:=jv_kind(d,jv_get(d,node,key));return kind==JV_TRUE || kind==JV_FALSE;}
-rpkg_entry :: (d:Jv,node:int)->RenderPackageEntry {
+rpkg_int :: (d:Jv,node:int,key:string)->int #effects(all) {return jv_int(d,jv_get(d,node,key),-1);}
+rpkg_boolean :: (d:Jv,node:int,key:string)->bool #effects(all) {kind:=jv_kind(d,jv_get(d,node,key));return kind==JV_TRUE || kind==JV_FALSE;}
+rpkg_entry :: (d:Jv,node:int)->RenderPackageEntry #effects(all) {
   e:RenderPackageEntry;
   keys:=[20]string.["entry_index","binding_set","vertex","fragment","wgsl_vertex","wgsl_fragment","spirv_file","spirv_sha256","tree_file","tree_sha256",
     "reflection_schema","tree_version","derivatives","control","native_int64","uses","vertex_stride","attributes","fragment_targets","fragment_depth"];
@@ -95,7 +95,7 @@ rpkg_entry :: (d:Jv,node:int)->RenderPackageEntry {
   }
   r.ok=true;e.reflection=r;e.present=true;return e;
 }
-render_package_parse :: (json:string,entries:[]RenderPackageEntry)->RenderPackage {
+render_package_parse :: (json:string,entries:[]RenderPackageEntry)->RenderPackage #effects(all) {
   p:RenderPackage;
   if json.count>RENDER_PACKAGE_JSON || entries.count<14 {p.status=RenderPackageStatus.capacity;return p;}
   doc:[1]Jv;nodes:[16384]JvNode;
@@ -127,7 +127,7 @@ render_package_parse :: (json:string,entries:[]RenderPackageEntry)->RenderPackag
   }
   p.entries=entries[0..<14];p.status=RenderPackageStatus.ok;return p;
 }
-render_package_admit :: (package:RenderPackage,expected_profile:int,device:RenderDeviceCapabilities)->RenderPackageStatus {
+render_package_admit :: (package:RenderPackage,expected_profile:int,device:RenderDeviceCapabilities)->RenderPackageStatus #effects(all) {
   p:=package;if p.status!=RenderPackageStatus.ok {return p.status;}
   a:=render_catalog(expected_profile);
   if !a.valid || p.profile_index!=expected_profile || p.slug!=a.slug || p.app!=a.app || p.entries.count!=14 {return RenderPackageStatus.mismatch;}
@@ -159,23 +159,23 @@ render_package_admit :: (package:RenderPackage,expected_profile:int,device:Rende
   if p.module_count!=modules || p.entry_count!=entries {return RenderPackageStatus.mismatch;}
   return RenderPackageStatus.ok;
 }
-rpkg_bytes :: (expected:string,bytes:[]u8)->RenderPackageStatus {
+rpkg_bytes :: (expected:string,bytes:[]u8)->RenderPackageStatus #effects(all) {
   if !render_package_shader_size(bytes.count) {return RenderPackageStatus.capacity;}
   hash:[64]u8;
   if !S_hex(S_hash(cast(string)bytes),hash[..]) || cast(string)hash[..]!=expected {return RenderPackageStatus.hash;}
   return RenderPackageStatus.ok;
 }
 // Hosts can refuse a measured file size before borrowing/copying its payload.
-render_package_shader_size :: (count:int)->bool {return count>=1 && count<=RENDER_PACKAGE_SHADER;}
-render_package_module_bytes :: (package:RenderPackage,binding_set:int,bytes:[]u8)->RenderPackageStatus {
+render_package_shader_size :: (count:int)->bool #effects(all) {return count>=1 && count<=RENDER_PACKAGE_SHADER;}
+render_package_module_bytes :: (package:RenderPackage,binding_set:int,bytes:[]u8)->RenderPackageStatus #effects(all) {
   if package.status!=RenderPackageStatus.ok || binding_set<0 || binding_set>2 || !package.modules[binding_set].present {return RenderPackageStatus.invalid;}
   return rpkg_bytes(package.modules[binding_set].wgsl_sha256,bytes);
 }
-render_package_tree_bytes :: (package:RenderPackage,index:int,bytes:[]u8)->RenderPackageStatus {
+render_package_tree_bytes :: (package:RenderPackage,index:int,bytes:[]u8)->RenderPackageStatus #effects(all) {
   if package.status!=RenderPackageStatus.ok || package.entries.count!=14 || index<0 || index>13 || !package.entries[index].present {return RenderPackageStatus.invalid;}
   return rpkg_bytes(package.entries[index].tree_sha256,bytes);
 }
-render_package_spirv_bytes :: (package:RenderPackage,index:int,bytes:[]u8)->RenderPackageStatus {
+render_package_spirv_bytes :: (package:RenderPackage,index:int,bytes:[]u8)->RenderPackageStatus #effects(all) {
   if package.status!=RenderPackageStatus.ok || package.entries.count!=14 || index<0 || index>13 || !package.entries[index].present {return RenderPackageStatus.invalid;}
   e:=package.entries[index];status:=rpkg_bytes(e.spirv_sha256,bytes);if status!=RenderPackageStatus.ok {return status;}
   if bytes.count%4!=0 {return RenderPackageStatus.invalid;}

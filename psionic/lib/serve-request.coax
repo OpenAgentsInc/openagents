@@ -130,57 +130,57 @@ SV_RETRY_SECONDS :: 1;
     }
 }
 
-sv_status :: (code:SvCode)->int #export_c {
+sv_status :: (code:SvCode)->int #export_c #effects(all) {
     if code==SvCode.none {return 200;}
     if code==SvCode.not_admitted {return 403;}if code==SvCode.not_found {return 404;}if code==SvCode.method_not_allowed {return 405;}
     if code==SvCode.request_timeout {return 408;}if code==SvCode.limit_exceeded {return 413;}if code==SvCode.unsupported_input {return 422;}
     if code==SvCode.internal {return 500;}if code==SvCode.busy {return 503;}if code==SvCode.timeout {return 524;}
     return 400;
 }
-sv_code_name :: (code:SvCode)->string #export_c {
+sv_code_name :: (code:SvCode)->string #export_c #effects(all) {
     names:=[14]string.["","malformed","invalid_request","too_many_questions","too_many_options","not_admitted","not_found","method_not_allowed","limit_exceeded","unsupported_input","request_timeout","busy","timeout","internal"];
     return names[cast(int)code];
 }
-sv_message :: (code:SvCode)->string {
+sv_message :: (code:SvCode)->string #effects(all) {
     messages:=[14]string.["","the request is not HTTP/1.1 with a JSON body of declared length","the body is not a NIP-DEC decision request","a request has 1 to 64 questions","a choice has 1 to 255 options and a score 2 to 10 levels",
         "this server does not serve that model","the only route is POST /v1/systemone","use POST","the request exceeds a size or token bound","the request is valid but outside this model's text profile",
         "the request did not arrive in time","the server is answering another decision; retry later","the decision did not finish before its deadline","the decision failed"];
     return messages[cast(int)code];
 }
-sv_reason :: (status:int)->string {
+sv_reason :: (status:int)->string #effects(all) {
     if status==200 {return "OK";}if status==400 {return "Bad Request";}if status==403 {return "Forbidden";}if status==404 {return "Not Found";}
     if status==405 {return "Method Not Allowed";}if status==408 {return "Request Timeout";}if status==413 {return "Content Too Large";}
     if status==422 {return "Unprocessable Content";}if status==500 {return "Internal Server Error";}if status==503 {return "Service Unavailable";}
     if status==524 {return "A Timeout Occurred";}return "Error";
 }
-sv_lower :: (c:u8)->u8 {if c>='A' && c<='Z' {return c+32;}return c;}
-sv_same :: (a:string,b:string)->bool {
+sv_lower :: (c:u8)->u8 #effects(all) {if c>='A' && c<='Z' {return c+32;}return c;}
+sv_same :: (a:string,b:string)->bool #effects(all) {
     if a.count!=b.count {return false;}for i:0..<a.count {if sv_lower(a[i])!=sv_lower(b[i]) {return false;}}return true;
 }
-sv_tchar :: (c:u8)->bool {
+sv_tchar :: (c:u8)->bool #effects(all) {
     if (c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') {return true;}
     marks:="!#$%&'*+-.^_`|~";for m:marks {if c==m {return true;}}return false;
 }
-sv_token :: (s:string)->bool {if s.count==0 {return false;}for c:s {if !sv_tchar(c) {return false;}}return true;}
-sv_find :: (text:string,from:int,needle:string)->int {
+sv_token :: (s:string)->bool #effects(all) {if s.count==0 {return false;}for c:s {if !sv_tchar(c) {return false;}}return true;}
+sv_find :: (text:string,from:int,needle:string)->int #effects(all) {
     i:=from;while i+needle.count<=text.count {if text[i..<i+needle.count]==needle {return i;}i+=1;}return -1;
 }
-sv_index :: (text:string,needle:string)->int {return sv_find(text,0,needle);}
-sv_trim :: (s:string)->string {
+sv_index :: (text:string,needle:string)->int #effects(all) {return sv_find(text,0,needle);}
+sv_trim :: (s:string)->string #effects(all) {
     a:=0;b:=s.count;while a<b && (s[a]==' ' || s[a]==9) {a+=1;}while b>a && (s[b-1]==' ' || s[b-1]==9) {b-=1;}return s[a..<b];
 }
-sv_digits :: (s:string)->bool {if s.count==0 {return false;}for c:s {if c<'0' || c>'9' {return false;}}return true;}
+sv_digits :: (s:string)->bool #effects(all) {if s.count==0 {return false;}for c:s {if c<'0' || c>'9' {return false;}}return true;}
 // A Content-Length value: -1 when it is not decimal digits; past ten digits it is over every bound.
-sv_length :: (s:string)->int {
+sv_length :: (s:string)->int #effects(all) {
     if !sv_digits(s) {return -1;}if s.count>10 {return SV_BODY_MAX+1;}
     v:=0;for c:s {v=v*10+cast(int)(c-'0');}return v;
 }
 // The request target's path, before any query.
-sv_path :: (target:string)->string {n:=0;while n<target.count && target[n]!='?' {n+=1;}return target[0..<n];}
-sv_visible :: (s:string)->bool {for c:s {if c<33 || c>126 {return false;}}return true;}
-sv_refuse :: (code:SvCode)->SvHead {return SvHead.{status=SvHeadStatus.refused,code=code};}
+sv_path :: (target:string)->string #effects(all) {n:=0;while n<target.count && target[n]!='?' {n+=1;}return target[0..<n];}
+sv_visible :: (s:string)->bool #effects(all) {for c:s {if c<33 || c>126 {return false;}}return true;}
+sv_refuse :: (code:SvCode)->SvHead #effects(all) {return SvHead.{status=SvHeadStatus.refused,code=code};}
 // book:begin head
-sv_head :: (text:string)->SvHead #export_c {
+sv_head :: (text:string)->SvHead #export_c #effects(all) {
     end:=sv_index(text,"\r\n\r\n");
     if end+4>SV_HEAD_MAX || (end<0 && text.count>=SV_HEAD_MAX) {return sv_refuse(SvCode.limit_exceeded);}
     if end<0 {return SvHead.{};}
@@ -208,24 +208,24 @@ sv_head :: (text:string)->SvHead #export_c {
     return SvHead.{status=SvHeadStatus.ready,head=end+4,body=length,expect=expect};
 }
 // book:end head
-sv_body_start :: (response:string)->int {at:=sv_index(response,"\r\n\r\n");if at<0 {return -1;}return at+4;}
+sv_body_start :: (response:string)->int #effects(all) {at:=sv_index(response,"\r\n\r\n");if at<0 {return -1;}return at+4;}
 // A complete response: head and body, Connection: close. -1 when out is too small.
-sv_response_head :: (out:[]u8,status:int,length:int,retry:bool)->int {
+sv_response_head :: (out:[]u8,status:int,length:int,retry:bool)->int #effects(all) {
     at:=json_raw(out,0,"HTTP/1.1 ");at=json_write_int(out,at,status);at=json_raw(out,at," ");at=json_raw(out,at,sv_reason(status));
     at=json_raw(out,at,"\r\nContent-Type: application/json\r\nContent-Length: ");at=json_write_int(out,at,length);at=json_raw(out,at,"\r\nConnection: close\r\n");
     if retry {at=json_raw(out,at,"Retry-After: ");at=json_write_int(out,at,SV_RETRY_SECONDS);at=json_raw(out,at,"\r\n");}
     return json_raw(out,at,"\r\n");
 }
-sv_response :: (out:[]u8,status:int,body:string)->int {
+sv_response :: (out:[]u8,status:int,body:string)->int #effects(all) {
     at:=sv_response_head(out,status,body.count,false);return json_raw(out,at,body);
 }
-sv_refusal :: (out:[]u8,code:SvCode)->int #export_c {
+sv_refusal :: (out:[]u8,code:SvCode)->int #export_c #effects(all) {
     if code==SvCode.none {return -1;}
     body:[256]u8;n:=json_raw(body[..],0,"{\"error\":{\"code\":\"");n=json_raw(body[..],n,sv_code_name(code));
     n=json_raw(body[..],n,"\",\"message\":");n=json_write_string(body[..],n,sv_message(code));n=json_raw(body[..],n,"}}");
     at:=sv_response_head(out,sv_status(code),n,code==SvCode.busy);return json_raw(out,at,cast(string)body[0..<n]);
 }
-sv_continue :: (out:[]u8)->int #export_c {return json_raw(out,0,SV_CONTINUE);}
+sv_continue :: (out:[]u8)->int #export_c #effects(all) {return json_raw(out,0,SV_CONTINUE);}
 
 // ---- the NIP-DEC body
 // book:begin request
@@ -241,12 +241,12 @@ SvBounds :: struct {model:int;state:int;questions:int;id:int;question:int;depth:
 SV_QUESTIONS_MAX :: 64;
 SV_OPTIONS_MAX :: 255;
 SV_OPTION_POOL :: 16320;       // 64 questions of 255 options
-sv_nip :: ()->SvBounds {
+sv_nip :: ()->SvBounds #effects(all) {
     return SvBounds.{model=128,state=131072,questions=SV_QUESTIONS_MAX,id=64,question=65536,depth=8,options=SV_OPTIONS_MAX,option_id=128,levels_min=2,levels_max=10};
 }
 
 SvTestPools :: struct {questions:[64]SvQuestion;options:[16320]PtOption;raw:[16320]string;arena:[262144]u8;}
-sv_test_pools :: (p:[]SvTestPools)->SvPools {return SvPools.{questions=p[0].questions[..],options=p[0].options[..],raw=p[0].raw[..],arena=p[0].arena[..]};}
+sv_test_pools :: (p:[]SvTestPools)->SvPools #effects(all) {return SvPools.{questions=p[0].questions[..],options=p[0].options[..],raw=p[0].raw[..],arena=p[0].arena[..]};}
 SV_Q :: "{\"model\":\"m\",\"state\":\"s\",\"questions\":";
 #test "NIP-DEC's bounds are the published values" {
     b:=sv_nip();
@@ -417,27 +417,27 @@ SV_Q :: "{\"model\":\"m\",\"state\":\"s\",\"questions\":";
 
 // The whole body is one JSON value before any field is read. A document
 // that reaches the reader's depth is refused as unsupported, not malformed.
-sv_valid :: (text:string)->SvCode {
+sv_valid :: (text:string)->SvCode #effects(all) {
     j:[1]Json;json_start_bounded(j[..],text,text.count,text.count);t:=json_next(j[..]);
     while t!=JSON_END {if t==JSON_ERROR {if j[0].depth==JSON_DEPTH {return SvCode.unsupported_input;}return SvCode.malformed;}t=json_next(j[..]);}
     return SvCode.none;
 }
 // The string token just read, unescaped into the arena.
-sv_text :: (j:[]Json,d:[]SvDec,arena:[]u8)->SvText {
+sv_text :: (j:[]Json,d:[]SvDec,arena:[]u8)->SvText #effects(all) {
     n:=json_unescape(json_text(j),arena[d[0].at..<arena.count]);if n<0 {return SvText.{};}
     value:=cast(string)arena[d[0].at..<d[0].at+n];d[0].at+=n;return SvText.{ok=true,value=value};
 }
 // Skip the container whose opening token was just read; false when it nests past limit.
-sv_within :: (j:[]Json,limit:int)->bool {
+sv_within :: (j:[]Json,limit:int)->bool #effects(all) {
     base:=j[0].depth-1;ok:=j[0].depth-base<=limit;
     while j[0].depth>base {t:=json_next(j);if j[0].depth-base>limit {ok=false;}}
     return ok;
 }
-sv_kind :: (raw:string)->int {
+sv_kind :: (raw:string)->int #effects(all) {
     if json_is(raw,"choice") {return 0;}if json_is(raw,"noul") {return 1;}if json_is(raw,"score") {return 2;}return -1;
 }
 // An EntryType value whose first token was just read: a string, null, an object or an array.
-sv_entry :: (j:[]Json,d:[]SvDec,arena:[]u8,b:SvBounds)->SvValue {
+sv_entry :: (j:[]Json,d:[]SvDec,arena:[]u8,b:SvBounds)->SvValue #effects(all) {
     t:=j[0].tok;start:=j[0].from;
     if t==JSON_STRING {
         raw:=j[0].text[start-1..<j[0].to+1];text:=sv_text(j,d,arena);if !text.ok {return SvValue.{code=SvCode.malformed};}
@@ -448,11 +448,11 @@ sv_entry :: (j:[]Json,d:[]SvDec,arena:[]u8,b:SvBounds)->SvValue {
     if !sv_within(j,b.depth) {return SvValue.{code=SvCode.invalid_request};}
     raw:=j[0].text[start..<j[0].at];return SvValue.{entry=PtEntry.{kind=PtEntryKind.json,value=raw},raw=raw};
 }
-sv_option :: (pools:SvPools,d:[]SvDec,name:string,v:SvValue) {
+sv_option :: (pools:SvPools,d:[]SvDec,name:string,v:SvValue) #effects(all) {
     pools.options[d[0].options]=PtOption.{name=name,description=v.entry};pools.raw[d[0].options]=v.raw;d[0].options+=1;
 }
 // The criteria of one question, re-read from their own bytes once the type is known.
-sv_criteria :: (kind:PtQuestionKind,criteria:string,pools:SvPools,d:[]SvDec,b:SvBounds)->SvCode {
+sv_criteria :: (kind:PtQuestionKind,criteria:string,pools:SvPools,d:[]SvDec,b:SvBounds)->SvCode #effects(all) {
     j:[1]Json;
     if criteria.count==0 {if kind==PtQuestionKind.noul {return SvCode.none;}return SvCode.invalid_request;}
     json_start_bounded(j[..],criteria,criteria.count,criteria.count);t:=json_next(j[..]);first:=d[0].options;
@@ -493,7 +493,7 @@ sv_criteria :: (kind:PtQuestionKind,criteria:string,pools:SvPools,d:[]SvDec,b:Sv
     return SvCode.none;
 }
 // One question object whose opening token was just read.
-sv_question :: (j:[]Json,d:[]SvDec,pools:SvPools,q:[]SvQuestion,b:SvBounds)->SvCode {
+sv_question :: (j:[]Json,d:[]SvDec,pools:SvPools,q:[]SvQuestion,b:SvBounds)->SvCode #effects(all) {
     start:=j[0].from;kind:=-1;described:=false;criteried:=false;criteria:="";
     while true {
         t:=json_next(j);if t==JSON_OBJECT_END {break;}
@@ -514,7 +514,7 @@ sv_question :: (j:[]Json,d:[]SvDec,pools:SvPools,q:[]SvQuestion,b:SvBounds)->SvC
     q[0].kind=cast(PtQuestionKind)kind;q[0].first=d[0].options;code:=sv_criteria(q[0].kind,criteria,pools,d,b);q[0].count=d[0].options-q[0].first;
     return code;
 }
-sv_decode_core :: (body:string,pools:SvPools,b:SvBounds,r:[]SvRequest)->SvCode {
+sv_decode_core :: (body:string,pools:SvPools,b:SvBounds,r:[]SvRequest)->SvCode #effects(all) {
     if pools.questions.count<SV_QUESTIONS_MAX || pools.options.count<SV_OPTION_POOL || pools.raw.count<SV_OPTION_POOL || pools.arena.count<body.count {return SvCode.internal;}
     if body.count>SV_BODY_MAX {return SvCode.limit_exceeded;}
     valid:=sv_valid(body);if valid!=SvCode.none {return valid;}
@@ -555,11 +555,11 @@ sv_decode_core :: (body:string,pools:SvPools,b:SvBounds,r:[]SvRequest)->SvCode {
     if !modeled || !stated || r[0].questions==0 {return SvCode.invalid_request;}
     r[0].options=d[0].options;return SvCode.none;
 }
-sv_decode_with :: (body:string,pools:SvPools,b:SvBounds)->SvRequest {
+sv_decode_with :: (body:string,pools:SvPools,b:SvBounds)->SvRequest #effects(all) {
     r:=[1]SvRequest.[SvRequest.{}];code:=sv_decode_core(body,pools,b,r[..]);
     if code!=SvCode.none {return SvRequest.{code=code};}
     return r[0];
 }
 // book:begin decode
-sv_decode :: (body:string,pools:SvPools)->SvRequest #export_c {return sv_decode_with(body,pools,sv_nip());}
+sv_decode :: (body:string,pools:SvPools)->SvRequest #export_c #effects(all) {return sv_decode_with(body,pools,sv_nip());}
 // book:end decode

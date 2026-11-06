@@ -57,15 +57,15 @@ HostPackStorageOffer :: struct {count:int;bytes:int;capacity:int;per_allocation:
  for row:[7][2]int.[[2]int.[-1,1],[2]int.[0,-1],[2]int.[67108849,16],[2]int.[67108864,1],[2]int.[9223372036854775807,1],[2]int.[1,67108864],[2]int.[0,67108865]]{#assert !hpk_allocation(row[0],row[1]).valid;}
  r=hpk_allocation(67108864,0);#assert r.valid&&r.address==67108864&&r.pages==1024;
 }
-hpk_storage_open :: ()->HostInboxQueue #export_c {return hiq_open(1024);}
-hpk_storage_reserve :: (q:[]HostInboxQueue,bytes:int)->HostInboxGrant #export_c {if bytes<0{return HostInboxGrant.{};}pages:=bytes/HOST_PACK_PAGE;if bytes%HOST_PACK_PAGE!=0{pages+=1;}return hiq_reserve(q,pages);}
-hpk_storage_offer :: (q:[]HostInboxQueue)->HostPackStorageOffer #export_c {return HostPackStorageOffer.{count=q[0].count,bytes=q[0].bytes*HOST_PACK_PAGE,capacity=q[0].limit*HOST_PACK_PAGE,per_allocation=q[0].capacity*HOST_PACK_PAGE};}
-hpk_stream_open :: (expected:int,encoded:bool)->HostPackStream #export_c {
+hpk_storage_open :: ()->HostInboxQueue #export_c #effects(all) {return hiq_open(1024);}
+hpk_storage_reserve :: (q:[]HostInboxQueue,bytes:int)->HostInboxGrant #export_c #effects(all) {if bytes<0{return HostInboxGrant.{};}pages:=bytes/HOST_PACK_PAGE;if bytes%HOST_PACK_PAGE!=0{pages+=1;}return hiq_reserve(q,pages);}
+hpk_storage_offer :: (q:[]HostInboxQueue)->HostPackStorageOffer #export_c #effects(all) {return HostPackStorageOffer.{count=q[0].count,bytes=q[0].bytes*HOST_PACK_PAGE,capacity=q[0].limit*HOST_PACK_PAGE,per_allocation=q[0].capacity*HOST_PACK_PAGE};}
+hpk_stream_open :: (expected:int,encoded:bool)->HostPackStream #export_c #effects(all) {
  if expected<0||expected>HOST_PACK_BYTES{return HostPackStream.{};}
  if encoded {if expected==0{return HostPackStream.{};}}else if expected!=0&&expected<PACK_HEADER{return HostPackStream.{};}
  return HostPackStream.{valid=true,encoded=encoded,expected=expected};
 }
-hpk_stream_offer :: (s:[]HostPackStream,prefix:string,bytes:int)->HostPackChunk #export_c {
+hpk_stream_offer :: (s:[]HostPackStream,prefix:string,bytes:int)->HostPackChunk #export_c #effects(all) {
  r:=HostPackChunk.{};if !s[0].valid||s[0].failed||s[0].done{return r;}
  if bytes<0{s[0].failed=true;return r;}
  next:=s[0];
@@ -79,8 +79,8 @@ hpk_stream_offer :: (s:[]HostPackStream,prefix:string,bytes:int)->HostPackChunk 
  if next.expected>0&&bytes>next.expected-next.loaded{s[0].failed=true;return r;}
  r=HostPackChunk.{accepted=true,at=next.loaded,bytes=bytes,total=next.expected};next.loaded+=bytes;s[0]=next;return r;
 }
-hpk_stream_finish :: (s:[]HostPackStream)->bool #export_c {if !s[0].valid||s[0].failed{return false;}if s[0].expected==0||s[0].loaded!=s[0].expected{s[0].failed=true;return false;}s[0].done=true;return true;}
-hpk_allocation :: (base:int,bytes:int)->HostPackAllocation #export_c {
+hpk_stream_finish :: (s:[]HostPackStream)->bool #export_c #effects(all) {if !s[0].valid||s[0].failed{return false;}if s[0].expected==0||s[0].loaded!=s[0].expected{s[0].failed=true;return false;}s[0].done=true;return true;}
+hpk_allocation :: (base:int,bytes:int)->HostPackAllocation #export_c #effects(all) {
  if base<0||bytes<0{return HostPackAllocation.{};}
  address:=u64(base)+u64((16-base%16)%16);if !render_span_fits(address,u64(bytes),0,u64(HOST_PACK_BYTES)){return HostPackAllocation.{};}
  end:=int(address)+bytes;pages:=(end+HOST_PACK_PAGE-1)/HOST_PACK_PAGE;

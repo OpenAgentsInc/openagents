@@ -277,7 +277,7 @@ ads_send :: (h: int, code: int, body: string) -> bool {
   for c: body { if cxsock_write(h,cast(int)c) != 0 { return false; } }
   return cxsock_flush(h,2000) == 0;
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) { return 2; }
   dir := args_value(a[..],"--control",""); port := args_whole(args_value(a[..],"--port",""));
   if dir == "" || port < 1 || port > 65535 { tool_errln("anime selector fixture: --control DIR --port PORT (owned loopback only)"); return 2; }

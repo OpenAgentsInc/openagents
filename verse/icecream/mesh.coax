@@ -1093,17 +1093,17 @@ tn_part :: (p: Part, v: [] Vtx, n: int) -> int {
 
 // ---- the C face for native checks (test-mesh.sh) ----
 
-icecream_mesh_house :: (g: [] Game, seed: u64, difficulty: s32, yellow: f32, v: [] Vtx, first: [] int) -> int #export_c {
+icecream_mesh_house :: (g: [] Game, seed: u64, difficulty: s32, yellow: f32, v: [] Vtx, first: [] int) -> int #export_c #effects(all) {
   t := icecream_tuning(difficulty);
   house_of(g, seed, t);
   return tn_house(g, yellow, v, first);
 }
-icecream_mesh_part :: (part: s32, v: [] Vtx) -> int #export_c { return tn_part(cast(Part) cast(u8) part, v, 0); }
-icecream_mesh_tool :: (tool: s32, v: [] Vtx) -> int #export_c { return tn_tool(cast(Tool) cast(u8) tool, v, 0); }
-icecream_mesh_button :: (i: s32, v: [] Vtx) -> int #export_c { return tn_button(BUTTON_COLOURS[i], v, 0); }
-icecream_mesh_sprinkle :: (i: s32, v: [] Vtx) -> int #export_c { return tn_sprinkle(SPRINKLES[i], v, 0); }
-icecream_mesh_duck :: (g: [] Game, x: f32, z: f32) -> f32 #export_c { return duck(g, v2(x, z)); }
-icecream_mesh_man_top :: (d: f32) -> f32 #export_c { return man_top(d); }
+icecream_mesh_part :: (part: s32, v: [] Vtx) -> int #export_c #effects(all) { return tn_part(cast(Part) cast(u8) part, v, 0); }
+icecream_mesh_tool :: (tool: s32, v: [] Vtx) -> int #export_c #effects(all) { return tn_tool(cast(Tool) cast(u8) tool, v, 0); }
+icecream_mesh_button :: (i: s32, v: [] Vtx) -> int #export_c #effects(all) { return tn_button(BUTTON_COLOURS[i], v, 0); }
+icecream_mesh_sprinkle :: (i: s32, v: [] Vtx) -> int #export_c #effects(all) { return tn_sprinkle(SPRINKLES[i], v, 0); }
+icecream_mesh_duck :: (g: [] Game, x: f32, z: f32) -> f32 #export_c #effects(all) { return duck(g, v2(x, z)); }
+icecream_mesh_man_top :: (d: f32) -> f32 #export_c #effects(all) { return man_top(d); }
 
 // ---- checks ----
 

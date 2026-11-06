@@ -66,7 +66,7 @@ SvVal :: struct {id:u32; ty:u32;}
   #assert SV_reason_text(9)=="a draw whose procedures are not f32 parameters, at least its own, returning f32";
   #assert SV_reason_text(10)=="this reason" && SV_reason_text(4000000000)=="this reason";
 }
-SV_reason_text :: (reason:u32)->string #export_c {
+SV_reason_text :: (reason:u32)->string #export_c #effects(all) {
   texts:=[10] string.["","a malformed tree","a module larger than its buffer","more than 256 procedures",
     "more than 1024 locals in one procedure","more than 512 constants",
     "a kernel that is not a procedure of f32 parameters returning f32 or bool","an operation on these types",
@@ -89,14 +89,14 @@ SV_OP_SELECTION_MERGE :: 247; SV_OP_LABEL :: 248; SV_OP_BRANCH :: 249; SV_OP_BRA
 SV_OP_RETURN :: 253; SV_OP_RETURN_VALUE :: 254; SV_OP_UNREACHABLE :: 255;
 SV_SC_INPUT :: 1; SV_SC_OUTPUT :: 3; SV_SC_PUSH_CONSTANT :: 9; SV_SC_STORAGE_BUFFER :: 12; SV_SC_FUNCTION :: 7;
 
-sv_fail :: (s:[]SvState,reason:u32) {if s[0].ok {s[0].ok=false;s[0].reason=reason;}}
+sv_fail :: (s:[]SvState,reason:u32) #effects(all) {if s[0].ok {s[0].ok=false;s[0].reason=reason;}}
 // What a refused step hands back: nothing reads it, since the first refusal is the result.
-sv_refused :: ()->SvVal {return SvVal.{id=0,ty=0};} // mutant: equivalent (no value is read after a refusal)
-sv_nothing :: ()->u32 {return 0;} // mutant: equivalent (no value is read after a refusal)
-sv_id :: (s:[]SvState)->u32 {id:=s[0].next;s[0].next+=1;return id;}
+sv_refused :: ()->SvVal #effects(all) {return SvVal.{id=0,ty=0};} // mutant: equivalent (no value is read after a refusal)
+sv_nothing :: ()->u32 #effects(all) {return 0;} // mutant: equivalent (no value is read after a refusal)
+sv_id :: (s:[]SvState)->u32 #effects(all) {id:=s[0].next;s[0].next+=1;return id;}
 // A word to the module (the header, types and constants) or to the code,
 // which follows them; code is dropped while muted (after a return).
-sv_word :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,word:u32) {
+sv_word :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,word:u32) #effects(all) {
   if code {
     if s[0].mute>0 {return;}
     at:=SV_W_CODE+s[0].c;
@@ -106,20 +106,20 @@ sv_word :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,word:u32) {
   if s[0].n>=out.count {sv_fail(s,2);return;}
   out[s[0].n]=word;s[0].n+=1;
 }
-sv_op :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,op:u32,words:int) {sv_word(s,out,w,code,(cast(u32)words<<16)|op);}
-sv1 :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,op:u32,a:u32) {sv_op(s,out,w,code,op,2);sv_word(s,out,w,code,a);}
-sv2 :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,op:u32,a:u32,b:u32) {sv_op(s,out,w,code,op,3);sv_word(s,out,w,code,a);sv_word(s,out,w,code,b);}
-sv3 :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,op:u32,a:u32,b:u32,c:u32) {
+sv_op :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,op:u32,words:int) #effects(all) {sv_word(s,out,w,code,(cast(u32)words<<16)|op);}
+sv1 :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,op:u32,a:u32) #effects(all) {sv_op(s,out,w,code,op,2);sv_word(s,out,w,code,a);}
+sv2 :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,op:u32,a:u32,b:u32) #effects(all) {sv_op(s,out,w,code,op,3);sv_word(s,out,w,code,a);sv_word(s,out,w,code,b);}
+sv3 :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,op:u32,a:u32,b:u32,c:u32) #effects(all) {
   sv_op(s,out,w,code,op,4);sv_word(s,out,w,code,a);sv_word(s,out,w,code,b);sv_word(s,out,w,code,c);
 }
-sv4 :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,op:u32,a:u32,b:u32,c:u32,d:u32) {
+sv4 :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,op:u32,a:u32,b:u32,c:u32,d:u32) #effects(all) {
   sv_op(s,out,w,code,op,5);sv_word(s,out,w,code,a);sv_word(s,out,w,code,b);sv_word(s,out,w,code,c);sv_word(s,out,w,code,d);
 }
-sv_r1 :: (s:[]SvState,out:[]u32,w:[]u32,op:u32,ty:u32,a:u32)->u32 {r:=sv_id(s);sv3(s,out,w,true,op,ty,r,a);return r;}
-sv_r2 :: (s:[]SvState,out:[]u32,w:[]u32,op:u32,ty:u32,a:u32,b:u32)->u32 {r:=sv_id(s);sv4(s,out,w,true,op,ty,r,a,b);return r;}
-sv_label :: (s:[]SvState,out:[]u32,w:[]u32,id:u32) {sv1(s,out,w,true,SV_OP_LABEL,id);s[0].open=true;}
-sv_end_block :: (s:[]SvState,out:[]u32,w:[]u32,op:u32) {sv_op(s,out,w,true,op,1);s[0].open=false;}
-sv_name :: (s:[]SvState,out:[]u32,w:[]u32,text:string) {
+sv_r1 :: (s:[]SvState,out:[]u32,w:[]u32,op:u32,ty:u32,a:u32)->u32 #effects(all) {r:=sv_id(s);sv3(s,out,w,true,op,ty,r,a);return r;}
+sv_r2 :: (s:[]SvState,out:[]u32,w:[]u32,op:u32,ty:u32,a:u32,b:u32)->u32 #effects(all) {r:=sv_id(s);sv4(s,out,w,true,op,ty,r,a,b);return r;}
+sv_label :: (s:[]SvState,out:[]u32,w:[]u32,id:u32) #effects(all) {sv1(s,out,w,true,SV_OP_LABEL,id);s[0].open=true;}
+sv_end_block :: (s:[]SvState,out:[]u32,w:[]u32,op:u32) #effects(all) {sv_op(s,out,w,true,op,1);s[0].open=false;}
+sv_name :: (s:[]SvState,out:[]u32,w:[]u32,text:string) #effects(all) {
   for i:0..<text.count/4+1 {
     word:u32=0;
     for b:0..<4 {at:=i*4+b;if at<text.count {word|=cast(u32)text[at]<<cast(u32)(8*b);}}
@@ -127,23 +127,23 @@ sv_name :: (s:[]SvState,out:[]u32,w:[]u32,text:string) {
   }
 }
 
-sv_next :: (s:[]SvState,tree:[]u32)->u32 {
+sv_next :: (s:[]SvState,tree:[]u32)->u32 #effects(all) {
   if s[0].at>=tree.count {sv_fail(s,1);return sv_nothing();}
   v:=tree[s[0].at];s[0].at+=1;return v;
 }
-sv_type :: (s:[]SvState,code:u32)->u32 {
+sv_type :: (s:[]SvState,code:u32)->u32 #effects(all) {
   if code==SV_T_VOID {return s[0].t_void;}
   if code==SV_T_BOOL {return s[0].t_bool;}
   if code==SV_T_F32 {return s[0].t_f32;}
   sv_fail(s,1);return sv_nothing();
 }
-sv_pointer :: (s:[]SvState,code:u32)->u32 {
+sv_pointer :: (s:[]SvState,code:u32)->u32 #effects(all) {
   if code==SV_T_BOOL {return s[0].p_bool;}
   if code==SV_T_F32 {return s[0].p_f32;}
   sv_fail(s,1);return sv_nothing();
 }
 // One constant per (type, bits), kept with the types.
-sv_const :: (s:[]SvState,out:[]u32,w:[]u32,ty:u32,bits:u32)->u32 {
+sv_const :: (s:[]SvState,out:[]u32,w:[]u32,ty:u32,bits:u32)->u32 #effects(all) {
   for k:0..<s[0].consts {at:=SV_W_CONST+3*k;if w[at]==ty && w[at+1]==bits {return w[at+2];}}
   if s[0].consts>=SV_CONSTS {sv_fail(s,5);return sv_nothing();}
   id:=sv_id(s);
@@ -153,7 +153,7 @@ sv_const :: (s:[]SvState,out:[]u32,w:[]u32,ty:u32,bits:u32)->u32 {
 }
 
 // Two values combined: arithmetic and order on f32, logic on bool, equality on both.
-sv_binary :: (s:[]SvState,out:[]u32,w:[]u32,op:u32,a:SvVal,b:SvVal)->SvVal {
+sv_binary :: (s:[]SvState,out:[]u32,w:[]u32,op:u32,a:SvVal,b:SvVal)->SvVal #effects(all) {
   // FAdd FSub FMul FDiv FRem; FOrdLessThan ...LessThanEqual ...GreaterThan ...GreaterThanEqual FOrdEqual FUnordNotEqual
   float_ops:=[13] u32.[129,131,133,136,140,184,188,186,190,180,183,0,0];
   // LogicalEqual LogicalNotEqual LogicalAnd LogicalOr
@@ -165,19 +165,19 @@ sv_binary :: (s:[]SvState,out:[]u32,w:[]u32,op:u32,a:SvVal,b:SvVal)->SvVal {
   return SvVal.{id=sv_r2(s,out,w,code,sv_type(s,ty),a.id,b.id),ty=ty};
 }
 // A GLSL.std.450 instruction on f32, with one operand or two.
-sv_ext1 :: (s:[]SvState,out:[]u32,w:[]u32,inst:u32,a:u32)->u32 {
+sv_ext1 :: (s:[]SvState,out:[]u32,w:[]u32,inst:u32,a:u32)->u32 #effects(all) {
   r:=sv_id(s);
   sv_op(s,out,w,true,SV_OP_EXT_INST,6);sv_word(s,out,w,true,s[0].t_f32);sv_word(s,out,w,true,r);
   sv_word(s,out,w,true,s[0].glsl);sv_word(s,out,w,true,inst);sv_word(s,out,w,true,a);
   return r;
 }
-sv_ext2 :: (s:[]SvState,out:[]u32,w:[]u32,inst:u32,a:u32,b:u32)->u32 {
+sv_ext2 :: (s:[]SvState,out:[]u32,w:[]u32,inst:u32,a:u32,b:u32)->u32 #effects(all) {
   r:=sv_id(s);
   sv_op(s,out,w,true,SV_OP_EXT_INST,7);sv_word(s,out,w,true,s[0].t_f32);sv_word(s,out,w,true,r);
   sv_word(s,out,w,true,s[0].glsl);sv_word(s,out,w,true,inst);sv_word(s,out,w,true,a);sv_word(s,out,w,true,b);
   return r;
 }
-sv_select :: (s:[]SvState,out:[]u32,w:[]u32,c:u32,a:u32,b:u32)->u32 {
+sv_select :: (s:[]SvState,out:[]u32,w:[]u32,c:u32,a:u32,b:u32)->u32 #effects(all) {
   r:=sv_id(s);
   sv_op(s,out,w,true,SV_OP_SELECT,6);sv_word(s,out,w,true,s[0].t_f32);sv_word(s,out,w,true,r);
   sv_word(s,out,w,true,c);sv_word(s,out,w,true,a);sv_word(s,out,w,true,b);
@@ -186,7 +186,7 @@ sv_select :: (s:[]SvState,out:[]u32,w:[]u32,c:u32,a:u32,b:u32)->u32 {
 // pow as C's powf, where GLSL's Pow leaves x<0 and x==0 undefined:
 // |x|^y, negated for x<0 and an odd whole y, NaN for x<0 and a fractional y;
 // 0 or infinity for x==0 as y is above or below 0; and 1 whenever y==0.
-sv_pow :: (s:[]SvState,out:[]u32,w:[]u32,x:u32,y:u32)->u32 {
+sv_pow :: (s:[]SvState,out:[]u32,w:[]u32,x:u32,y:u32)->u32 #effects(all) {
   f:=s[0].t_f32;b:=s[0].t_bool;
   zero:=sv_const(s,out,w,SV_T_F32,0);one:=sv_const(s,out,w,SV_T_F32,0x3F800000);half:=sv_const(s,out,w,SV_T_F32,0x3F000000);
   nan:=sv_const(s,out,w,SV_T_F32,0x7FC00000);inf:=sv_const(s,out,w,SV_T_F32,0x7F800000);
@@ -198,13 +198,13 @@ sv_pow :: (s:[]SvState,out:[]u32,w:[]u32,x:u32,y:u32)->u32 {
   r=sv_select(s,out,w,sv_r2(s,out,w,180,b,x,zero),sv_select(s,out,w,sv_r2(s,out,w,186,b,y,zero),zero,inf),r);
   return sv_select(s,out,w,sv_r2(s,out,w,180,b,y,zero),one,r);
 }
-sv_local :: (s:[]SvState,tree:[]u32)->int {
+sv_local :: (s:[]SvState,tree:[]u32)->int #effects(all) {
   id:=cast(int)sv_next(s,tree);
   if id>=s[0].locals {sv_fail(s,1);return cast(int)sv_nothing();}
   return id;
 }
 
-sv_expr :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32)->SvVal {
+sv_expr :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32)->SvVal #effects(all) {
   k:=sv_next(s,tree);
   if !s[0].ok {return sv_refused();}
   if k==16 {return SvVal.{id=sv_const(s,out,w,SV_T_F32,sv_next(s,tree)),ty=SV_T_F32};}
@@ -262,13 +262,13 @@ sv_expr :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32)->SvVal {
 }
 
 // A statement after a return is checked like any other and writes no code.
-sv_stmt :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,ret:u32) {
+sv_stmt :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,ret:u32) #effects(all) {
   dead:=!s[0].open;
   if dead {s[0].mute+=1;}
   sv_live_stmt(s,tree,out,w,ret);
   if dead {s[0].mute-=1;s[0].open=false;}
 }
-sv_live_stmt :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,ret:u32) {
+sv_live_stmt :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,ret:u32) #effects(all) {
   k:=sv_next(s,tree);
   if !s[0].ok {return;}
   if k==1 {n:=sv_next(s,tree);for i:0..<cast(int)n {if !s[0].ok {return;}sv_stmt(s,tree,out,w,ret);}return;}
@@ -305,7 +305,7 @@ sv_live_stmt :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,ret:u32) {
   sv_fail(s,1);
 }
 
-sv_proc :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,p:int) {
+sv_proc :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,p:int) #effects(all) {
   locals:=cast(int)sv_next(s,tree);
   if locals>SV_LOCALS {sv_fail(s,4);return;}
   for i:0..<locals {w[SV_W_LTYPE+i]=sv_next(s,tree);}
@@ -328,20 +328,20 @@ sv_proc :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,p:int) {
 }
 
 // A pointer to element `at` of a storage buffer's array.
-sv_element :: (s:[]SvState,out:[]u32,w:[]u32,buffer:u32,u0:u32,at:u32)->u32 {
+sv_element :: (s:[]SvState,out:[]u32,w:[]u32,buffer:u32,u0:u32,at:u32)->u32 #effects(all) {
   r:=sv_id(s);
   sv_op(s,out,w,true,SV_OP_ACCESS_CHAIN,6);sv_word(s,out,w,true,s[0].k_pf);sv_word(s,out,w,true,r);
   sv_word(s,out,w,true,buffer);sv_word(s,out,w,true,u0);sv_word(s,out,w,true,at);
   return r;
 }
-sv_call :: (s:[]SvState,out:[]u32,w:[]u32,ty:u32,fn:u32,args:[]u32)->u32 {
+sv_call :: (s:[]SvState,out:[]u32,w:[]u32,ty:u32,fn:u32,args:[]u32)->u32 #effects(all) {
   v:=sv_id(s);
   sv_op(s,out,w,true,SV_OP_FUNCTION_CALL,4+args.count);sv_word(s,out,w,true,ty);sv_word(s,out,w,true,v);sv_word(s,out,w,true,fn);
   for i:0..<args.count {sv_word(s,out,w,true,args[i]);}
   return v;
 }
 // The kernel's entry point: one invocation per argument row.
-sv_kernel :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,p:int) {
+sv_kernel :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,p:int) #effects(all) {
   sig:=cast(int)w[SV_W_SIG+p];ret:=tree[sig];params:=cast(int)tree[sig+1];
   u0:=sv_const(s,out,w,SV_T_U32,0);
   sv4(s,out,w,true,SV_OP_FUNCTION,s[0].t_void,s[0].k_main,0,s[0].k_fn);
@@ -370,7 +370,7 @@ sv_kernel :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,p:int) {
 }
 
 // The kernel's interface: ids, then decorations, before any type.
-sv_kernel_interface :: (s:[]SvState,out:[]u32,w:[]u32) {
+sv_kernel_interface :: (s:[]SvState,out:[]u32,w:[]u32) #effects(all) {
   s[0].k_main=sv_id(s);s[0].k_fn=sv_id(s);s[0].k_v3=sv_id(s);s[0].k_pv3=sv_id(s);s[0].k_gid=sv_id(s);
   s[0].k_rt=sv_id(s);s[0].k_buf=sv_id(s);s[0].k_pbuf=sv_id(s);s[0].k_in=sv_id(s);s[0].k_out=sv_id(s);
   s[0].k_pf=sv_id(s);s[0].k_pcs=sv_id(s);s[0].k_ppc=sv_id(s);s[0].k_pc=sv_id(s);s[0].k_ppu=sv_id(s);
@@ -389,7 +389,7 @@ sv_kernel_interface :: (s:[]SvState,out:[]u32,w:[]u32) {
   sv3(s,out,w,false,SV_OP_DECORATE,s[0].k_in,34,0);sv3(s,out,w,false,SV_OP_DECORATE,s[0].k_in,33,0);
   sv3(s,out,w,false,SV_OP_DECORATE,s[0].k_out,34,0);sv3(s,out,w,false,SV_OP_DECORATE,s[0].k_out,33,1);
 }
-sv_kernel_types :: (s:[]SvState,out:[]u32,w:[]u32) {
+sv_kernel_types :: (s:[]SvState,out:[]u32,w:[]u32) #effects(all) {
   sv2(s,out,w,false,SV_OP_TYPE_FUNCTION,s[0].k_fn,s[0].t_void);
   sv3(s,out,w,false,SV_OP_TYPE_VECTOR,s[0].k_v3,s[0].t_u32,3);
   sv3(s,out,w,false,SV_OP_TYPE_POINTER,s[0].k_pv3,SV_SC_INPUT,s[0].k_v3);
@@ -409,24 +409,24 @@ sv_kernel_types :: (s:[]SvState,out:[]u32,w:[]u32) {
 // ---- draws: a vertex and a fragment entry point
 //
 // Whether procedure p can serve a draw: f32 parameters, at least `least` of them, returning f32.
-sv_draws :: (tree:[]u32,w:[]u32,procs:int,p:u32,least:int)->bool {
+sv_draws :: (tree:[]u32,w:[]u32,procs:int,p:u32,least:int)->bool #effects(all) {
   if cast(int)p>=procs {return false;}
   sig:=cast(int)w[SV_W_SIG+cast(int)p];
   if tree[sig]!=SV_T_F32 || cast(int)tree[sig+1]<least {return false;}
   for i:0..<cast(int)tree[sig+1] {if tree[sig+2+i]!=SV_T_F32 {return false;}}
   return true;
 }
-sv_entry :: (s:[]SvState,out:[]u32,w:[]u32,model:u32,id:u32,name:string,vars:[]u32) {
+sv_entry :: (s:[]SvState,out:[]u32,w:[]u32,model:u32,id:u32,name:string,vars:[]u32) #effects(all) {
   sv_op(s,out,w,false,SV_OP_ENTRY_POINT,4+vars.count);sv_word(s,out,w,false,model);sv_word(s,out,w,false,id);sv_name(s,out,w,name);
   for i:0..<vars.count {sv_word(s,out,w,false,vars[i]);}
 }
-sv_located :: (s:[]SvState,out:[]u32,w:[]u32,v:u32,at:u32,flat:bool) {
+sv_located :: (s:[]SvState,out:[]u32,w:[]u32,v:u32,at:u32,flat:bool) #effects(all) {
   sv3(s,out,w,false,SV_OP_DECORATE,v,30,at);
   if flat {sv2(s,out,w,false,SV_OP_DECORATE,v,14);}
 }
 // The draw's interface: ids, entry points, modes and decorations, before any
 // type; m f32 push constants.
-sv_draw_interface :: (s:[]SvState,out:[]u32,w:[]u32,stroke:bool,m:int) {
+sv_draw_interface :: (s:[]SvState,out:[]u32,w:[]u32,stroke:bool,m:int) #effects(all) {
   s[0].g_vs=sv_id(s);s[0].g_fs=sv_id(s);s[0].k_fn=sv_id(s);s[0].k_pcs=sv_id(s);s[0].k_ppc=sv_id(s);s[0].k_pc=sv_id(s);
   s[0].g_v2=sv_id(s);s[0].g_v4=sv_id(s);s[0].g_iu=sv_id(s);s[0].g_iv2=sv_id(s);s[0].g_iv4=sv_id(s);s[0].g_ov2=sv_id(s);
   s[0].g_ov4=sv_id(s);s[0].g_ppf=sv_id(s);s[0].g_vid=sv_id(s);s[0].g_pos=sv_id(s);s[0].g_fc=sv_id(s);s[0].g_col=sv_id(s);
@@ -459,7 +459,7 @@ sv_draw_interface :: (s:[]SvState,out:[]u32,w:[]u32,stroke:bool,m:int) {
     sv3(s,out,w,false,SV_OP_DECORATE,s[0].g_vid,11,42);sv3(s,out,w,false,SV_OP_DECORATE,s[0].g_fc,11,15);
   }
 }
-sv_draw_types :: (s:[]SvState,out:[]u32,w:[]u32,stroke:bool,m:int) {
+sv_draw_types :: (s:[]SvState,out:[]u32,w:[]u32,stroke:bool,m:int) #effects(all) {
   sv2(s,out,w,false,SV_OP_TYPE_FUNCTION,s[0].k_fn,s[0].t_void);
   sv3(s,out,w,false,SV_OP_TYPE_VECTOR,s[0].g_v4,s[0].t_f32,4);
   sv3(s,out,w,false,SV_OP_TYPE_POINTER,s[0].g_iv4,SV_SC_INPUT,s[0].g_v4);
@@ -491,21 +491,21 @@ sv_draw_types :: (s:[]SvState,out:[]u32,w:[]u32,stroke:bool,m:int) {
     sv3(s,out,w,false,SV_OP_VARIABLE,s[0].g_iv4,s[0].g_fc,SV_SC_INPUT);
   }
 }
-sv_begin :: (s:[]SvState,out:[]u32,w:[]u32,id:u32) {sv4(s,out,w,true,SV_OP_FUNCTION,s[0].t_void,id,0,s[0].k_fn);sv_label(s,out,w,sv_id(s));}
-sv_finish :: (s:[]SvState,out:[]u32,w:[]u32) {sv_end_block(s,out,w,SV_OP_RETURN);sv_op(s,out,w,true,SV_OP_FUNCTION_END,1);}
-sv_part :: (s:[]SvState,out:[]u32,w:[]u32,v:u32,i:u32)->u32 {return sv_r2(s,out,w,SV_OP_COMPOSITE_EXTRACT,s[0].t_f32,v,i);}
-sv_push :: (s:[]SvState,out:[]u32,w:[]u32,i:int)->u32 {
+sv_begin :: (s:[]SvState,out:[]u32,w:[]u32,id:u32) #effects(all) {sv4(s,out,w,true,SV_OP_FUNCTION,s[0].t_void,id,0,s[0].k_fn);sv_label(s,out,w,sv_id(s));}
+sv_finish :: (s:[]SvState,out:[]u32,w:[]u32) #effects(all) {sv_end_block(s,out,w,SV_OP_RETURN);sv_op(s,out,w,true,SV_OP_FUNCTION_END,1);}
+sv_part :: (s:[]SvState,out:[]u32,w:[]u32,v:u32,i:u32)->u32 #effects(all) {return sv_r2(s,out,w,SV_OP_COMPOSITE_EXTRACT,s[0].t_f32,v,i);}
+sv_push :: (s:[]SvState,out:[]u32,w:[]u32,i:int)->u32 #effects(all) {
   return sv_r1(s,out,w,SV_OP_LOAD,s[0].t_f32,sv_r2(s,out,w,SV_OP_ACCESS_CHAIN,s[0].g_ppf,s[0].k_pc,sv_const(s,out,w,SV_T_U32,cast(u32)i)));
 }
-sv_v4 :: (s:[]SvState,out:[]u32,w:[]u32,a:u32,b:u32,c:u32,d:u32)->u32 {
+sv_v4 :: (s:[]SvState,out:[]u32,w:[]u32,a:u32,b:u32,c:u32,d:u32)->u32 #effects(all) {
   r:=sv_id(s);
   sv_op(s,out,w,true,SV_OP_COMPOSITE_CONSTRUCT,7);sv_word(s,out,w,true,s[0].g_v4);sv_word(s,out,w,true,r);
   sv_word(s,out,w,true,a);sv_word(s,out,w,true,b);sv_word(s,out,w,true,c);sv_word(s,out,w,true,d);
   return r;
 }
-sv_params :: (tree:[]u32,w:[]u32,p:int)->int {return cast(int)tree[cast(int)w[SV_W_SIG+p]+1];}
+sv_params :: (tree:[]u32,w:[]u32,p:int)->int #effects(all) {return cast(int)tree[cast(int)w[SV_W_SIG+p]+1];}
 // A full-screen pass: the triangle (-1,-1) (3,-1) (-1,3), then a call per channel.
-sv_fill :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,draw:[]u32) {
+sv_fill :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,draw:[]u32) #effects(all) {
   f0:=sv_const(s,out,w,SV_T_F32,0);f1:=sv_const(s,out,w,SV_T_F32,0x3F800000);
   far:=sv_const(s,out,w,SV_T_F32,0x40400000);near:=sv_const(s,out,w,SV_T_F32,0xBF800000);
   sv_begin(s,out,w,s[0].g_vs);
@@ -527,7 +527,7 @@ sv_fill :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,draw:[]u32) {
   sv_finish(s,out,w);
 }
 // Strokes: pixels to clip space by the push constant size; shape and tint flat.
-sv_stroke :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,p:int) {
+sv_stroke :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,p:int) #effects(all) {
   f0:=sv_const(s,out,w,SV_T_F32,0);f1:=sv_const(s,out,w,SV_T_F32,0x3F800000);f2:=sv_const(s,out,w,SV_T_F32,0x40000000);
   sv_begin(s,out,w,s[0].g_vs);
   pos:=sv_r1(s,out,w,SV_OP_LOAD,s[0].g_v2,s[0].g_ipos);
@@ -557,7 +557,7 @@ sv_stroke :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,p:int) {
 }
 
 // Whether procedures a and b have the same signature (one function type serves both).
-sv_same_sig :: (tree:[]u32,a:int,b:int)->bool {
+sv_same_sig :: (tree:[]u32,a:int,b:int)->bool #effects(all) {
   if tree[a]!=tree[b] || tree[a+1]!=tree[b+1] {return false;}
   for i:0..<cast(int)tree[a+1] {if tree[a+2+i]!=tree[b+2+i] {return false;}}
   return true;
@@ -565,7 +565,7 @@ sv_same_sig :: (tree:[]u32,a:int,b:int)->bool {
 
 // The module's word count, or minus the reason it was refused. The work
 // view holds the tables and the code: at least SV_W_CODE words, plus the code.
-SV_lower :: (tree:[]u32,out:[]u32,work:[]u32)->int #export_c {
+SV_lower :: (tree:[]u32,out:[]u32,work:[]u32)->int #export_c #effects(all) {
   st:[1] SvState;s:=st[..];w:=work;
   s[0].next=1;s[0].ok=true;
   if w.count<SV_W_CODE {return -2;}
@@ -652,7 +652,7 @@ SV_lower :: (tree:[]u32,out:[]u32,work:[]u32)->int #export_c {
 // ---- checks
 //
 // A tree as text: decimal words with one space between, K for SV_NO_KERNEL.
-sv_parse :: (text:string,into:[]u32)->int {
+sv_parse :: (text:string,into:[]u32)->int #effects(all) {
   n:=0;at:=0;
   while at<text.count {
     end:=at;
@@ -667,10 +667,10 @@ sv_parse :: (text:string,into:[]u32)->int {
   t:[8] u32;
   #assert sv_parse("",t[..])==0 && sv_parse("12 K 0",t[..])==3 && t[0]==12 && t[1]==SV_NO_KERNEL && t[2]==0;
 }
-sv_try :: (tree:[]u32)->int {out:[16384] u32;work:[24576] u32;return SV_lower(tree,out[..],work[..]);}
-sv_text :: (text:string)->int {t:[4096] u32;return sv_try(t[0..<sv_parse(text,t[..])]);}
+sv_try :: (tree:[]u32)->int #effects(all) {out:[16384] u32;work:[24576] u32;return SV_lower(tree,out[..],work[..]);}
+sv_text :: (text:string)->int #effects(all) {t:[4096] u32;return sv_try(t[0..<sv_parse(text,t[..])]);}
 // A digest of a module's words, so a check can pin all of them.
-sv_digest :: (words:[]u32,n:int)->u64 {
+sv_digest :: (words:[]u32,n:int)->u64 #effects(all) {
   h:u64=17;
   for i:0..<n {h=(h*31+cast(u64)words[i])%4294967291;}
   return h;
@@ -689,7 +689,7 @@ sv_digest :: (words:[]u32,n:int)->u64 {
 //   9 f2(x:f32,b:bool)->f32 {return x;}   (f's signature)
 //  10 u() {}
 SV_SAMPLE :: "11 K 2 2 2 1 0 0 1 1 2 2 1 2 1 1 2 2 2 1 1 2 2 1 2 0 0 2 0 2 2 2 1 0 0 3 2 1 2 1 4 3 2 0 19 3 18 0 16 1073741824 3 2 1 16 1065353216 6 1 19 12 18 1 21 19 6 20 18 2 16 1056964608 1 1 4 23 6 1 18 2 3 2 0 23 9 2 18 2 16 1073741824 4 24 18 1 18 2 23 7 1 18 0 1 2 1 5 3 0 0 22 0 2 16 1065353216 17 1 2 22 0 2 16 0 17 0 5 6 0 17 1 1 2 5 3 0 0 16 1077936128 3 0 0 16 1082130432 1 2 1 1 4 19 13 19 10 18 0 18 0 19 11 18 0 16 1065353216 1 2 1 1 4 19 5 19 4 19 2 23 1 1 23 2 1 23 3 1 23 4 1 23 5 1 23 8 1 18 0 18 0 18 0 18 0 1 2 1 1 4 19 11 19 10 19 7 18 0 18 0 19 8 18 0 18 0 19 9 18 0 18 0 3 1 1 2 1 2 6 0 18 0 1 1 3 2 0 16 1065353216 6 1 18 1 4 16 1073741824 4 16 1077936128 2 1 2 1 2 6 0 18 0 4 18 1 3 1 0 16 1065353216 0 1 2 2 22 1 0 6 1 17 1 5 5 0 4 24 22 2 1 16 1065353216 16 1065353216 16 0 2 2 1 4 18 0 0 1 0";
-sv_lower_sample :: (kernel:u32,out:[]u32)->int {
+sv_lower_sample :: (kernel:u32,out:[]u32)->int #effects(all) {
   t:[512] u32;work:[8192] u32;
   n:=sv_parse(SV_SAMPLE,t[..]);t[1]=kernel;
   return SV_lower(t[0..<n],out,work[..]);
@@ -726,7 +726,7 @@ sv_lower_sample :: (kernel:u32,out:[]u32)->int {
 //   7 h(x:bool,y:f32,z:f32)->f32 {return y;}   8 k(x:f32,y:f32,z:bool)->f32 {return x;}
 // The tree after its head (the procedure count and the draw).
 SV_DRAWS :: "2 3 2 2 2 2 7 2 2 2 2 2 2 2 2 2 2 2 2 6 2 2 2 2 2 2 2 2 2 1 1 2 2 2 2 1 2 2 3 1 2 2 2 3 2 2 1 3 2 2 2 4 19 1 18 0 18 2 7 2 2 2 2 2 2 2 4 19 3 18 1 18 6 2 2 2 4 18 0 6 2 2 2 2 2 2 4 18 5 2 2 1 4 18 0 2 2 2 4 17 1 1 2 4 18 0 3 1 2 2 4 18 1 3 2 2 1 4 18 0";
-sv_draw_text :: (head:string,out:[]u32)->int {
+sv_draw_text :: (head:string,out:[]u32)->int #effects(all) {
   t:[256] u32;work:[8192] u32;
   hn:=sv_parse(head,t[..]);n:=sv_parse(SV_DRAWS,t[hn..<256]);
   return SV_lower(t[0..<hn+n],out,work[..]);

@@ -118,7 +118,7 @@ CnMemory :: struct {
 }
 
 // These extents belong to the frozen application, not the general trainer.
-cn_memory :: (m:CnMemory)->bool {
+cn_memory :: (m:CnMemory)->bool #effects(all) {
     return m.manifest>=1 && m.manifest<=1048576 && m.trace==52
         && m.checkpoint==70180 && m.final_checkpoint==70180
         && m.pointer==80 && m.final_pointer==80 && m.export_file>=32768
@@ -127,14 +127,14 @@ cn_memory :: (m:CnMemory)->bool {
 }
 // Counts come from an unchanged valid MtrPlan and are nonnegative. This rule
 // admits its required arenas against this application's fixed capacities.
-cn_workspace :: (ok:bool,parameters:int,inputs:int,values:int,adjoints:int,flags:int,largest:int)->bool {
+cn_workspace :: (ok:bool,parameters:int,inputs:int,values:int,adjoints:int,flags:int,largest:int)->bool #effects(all) {
     return ok && parameters==CN_PARAMS && inputs==CN_INPUTS
         && values<=16384 && adjoints<=16384 && flags<=4096 && largest<=2910;
 }
-cn_capture :: (params:int,gradient:int,scores:int,features:int)->bool {
+cn_capture :: (params:int,gradient:int,scores:int,features:int)->bool #effects(all) {
     return params==2910 && gradient==2910 && scores==10 && features==196;
 }
-cn_artifacts :: (a:[32]u8,b:[32]u8,c:[32]u8,d:[32]u8)->bool {
+cn_artifacts :: (a:[32]u8,b:[32]u8,c:[32]u8,d:[32]u8)->bool #effects(all) {
     for j:0..<32 {
         if a[j]!=MC_TRAIN_IMAGES_SHA[j] || b[j]!=MC_TRAIN_LABELS_SHA[j]
             || c[j]!=MC_TEST_IMAGES_SHA[j] || d[j]!=MC_TEST_LABELS_SHA[j] {return false;}
@@ -142,12 +142,12 @@ cn_artifacts :: (a:[32]u8,b:[32]u8,c:[32]u8,d:[32]u8)->bool {
     return true;
 }
 
-cn_profile :: (train_count:int,test_count:int,params:int,inputs:int)->bool {
+cn_profile :: (train_count:int,test_count:int,params:int,inputs:int)->bool #effects(all) {
     return train_count==60000 && test_count==10000 && params==CN_PARAMS && inputs==CN_INPUTS;
 }
 // The baseline is the TRAINING split's majority class, scored on this test
 // split. The held-out data never selects the class, settings or checkpoint.
-cn_accept :: (count:int,correct:int,baseline:int,initial_loss:f64,final_loss:f64,replayed:bool,exported:bool)->bool {
+cn_accept :: (count:int,correct:int,baseline:int,initial_loss:f64,final_loss:f64,replayed:bool,exported:bool)->bool #effects(all) {
     if count!=CN_TEST || correct>count || baseline<0 {return false;}
     if !(initial_loss<=1000000 && final_loss>=0 && final_loss<initial_loss) {return false;}
     // ceil(2048 * 0.80) = 1639. Integer thresholds have observable endpoints;

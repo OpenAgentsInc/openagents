@@ -30,8 +30,8 @@
  #assert coaxial_dictation_focus(true,true);
  #assert !coaxial_dictation_focus(false,true) && !coaxial_dictation_focus(true,false) && !coaxial_dictation_focus(false,false);
 }
-coaxial_dictation_focus :: (active:bool,key:bool)->bool #export_c {return active && key;}
-zdu_key :: (key:int,mods:int,down:bool,repeated:bool,marked:bool,enabled:bool,focused:bool,room:bool,holding:bool)->int {
+coaxial_dictation_focus :: (active:bool,key:bool)->bool #export_c #effects(all) {return active && key;}
+zdu_key :: (key:int,mods:int,down:bool,repeated:bool,marked:bool,enabled:bool,focused:bool,room:bool,holding:bool)->int #effects(all) {
  // Hardware D is keyCode2 and Escape53 on AppKit. Return1 begin,2 end,
  // 3 cancel,4 consume repeat,0 ordinary input. Key-up needn't retain Cmd.
  if !down {return ifx key==2 && holding then 2 else 0;}
@@ -39,7 +39,7 @@ zdu_key :: (key:int,mods:int,down:bool,repeated:bool,marked:bool,enabled:bool,fo
  if key!=2 || mods!=8 || marked || !enabled || !focused || room {return 0;}
  return ifx repeated then 4 else 1;
 }
-zdu_hit :: (enabled:bool,x:f32,y:f32,w:f32,h:f32,px:f32,py:f32)->bool {
+zdu_hit :: (enabled:bool,x:f32,y:f32,w:f32,h:f32,px:f32,py:f32)->bool #effects(all) {
  return enabled && px>=x+w-28 && px<x+w && py>=y+h+4 && py<y+h+32;
 }
-zdu_consent :: (present:bool,value:bool)->bool {return present && value;}
+zdu_consent :: (present:bool,value:bool)->bool #effects(all) {return present && value;}

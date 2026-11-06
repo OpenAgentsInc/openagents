@@ -1,7 +1,7 @@
 // tool.sh: run-steps 100000000
 // Thin CLI for the checked, bounded full-validation recorder.
 #load "recorder.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 || args_count(a[..])>2 || (args_count(a[..])==2 && args_at(a[..],1)!="--same-height") {tool_errln("usage: record OUT_DIRECTORY [--same-height] (new directory only)");return 2;}
   s:[1]LabRecorder;return lab_record_run(s[..],args_at(a[..],0),args_count(a[..])==2);
 }

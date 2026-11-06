@@ -10,8 +10,8 @@
 // skill.coax writes the same table as a Claude skill.
 // Not here: Anime Lab tools (#12634), resources, prompts and paging.
 
-cxterm_byte :: (timeout_ms: int) -> int #foreign;
-cxterm_write :: (s: [] u8) -> int #foreign;
+cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 
 MCP_LINE :: 1048576;
 MCP_OUT :: 8388608;

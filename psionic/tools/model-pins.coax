@@ -7,7 +7,7 @@
 #load "../lib/model-pins.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     args:[2]Args;
     if !args_load(args[..]) || args[0].n!=2 {tool_errln("usage: model-pins write|check DIR");return 2;}
     mode:=args_at(args[..],0);dir:=args_at(args[..],1);

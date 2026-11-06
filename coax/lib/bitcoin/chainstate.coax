@@ -9,7 +9,7 @@
 #load "../../tests/bitcoin/chainstate_checks.coax";
 
 // Production initialization accepts only an empty table at the actual genesis.
-cs_init_vartime :: (network: int, table: [] u8, used: int, stage: [] u8, batch: [] u8) -> CsResult #export_c {
+cs_init_vartime :: (network: int, table: [] u8, used: int, stage: [] u8, batch: [] u8) -> CsResult #export_c #effects(all) {
   if network < 1 || network > 5 || used != 0 { return CsResult.{code=CS_CONTEXT}; }
   c: [1] LcCursor;
   if !lc_begin_vartime(table, used, stage, batch, c[..]) { return CsResult.{code=CS_CAPACITY}; }
@@ -21,14 +21,14 @@ cs_init_vartime :: (network: int, table: [] u8, used: int, stage: [] u8, batch: 
 }
 // CompactSize vector counts, with capacity checked before chapter 34 writes.
 // The admitted caller supplies a nonnegative count and an offset within out.
-cs_undo_count_vartime :: (out: [] u8, at: int, count: int) -> int {
+cs_undo_count_vartime :: (out: [] u8, at: int, count: int) -> int #effects(all) {
   if tx_compact_size_vartime(count) > out.count-at { return -CS_CAPACITY; }
   return tx_compact_write_vartime(out, at, count);
 }
 // Replay only a body just accepted by validation_block_vartime. It constructs
 // inverses and Core undo from the ORIGINAL view, in transaction/input order.
 // No status, tip or batch can be published until the entire caller succeeds.
-cs_changes_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, b: [] u8, height: int, hash: [] u8, w: ValidationWork, undo: [] u8) -> CsResult {
+cs_changes_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, b: [] u8, height: int, hash: [] u8, w: ValidationWork, undo: [] u8) -> CsResult #effects(all) {
   count := tx_compact_read_vartime(b, 80); at := count.next; ordinal := 0;
   un := cs_undo_count_vartime(undo, 0, count.value-1);
   if un == -CS_CAPACITY { return CsResult.{code=CS_CAPACITY}; }
@@ -71,7 +71,7 @@ cs_changes_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, b: [] u8, hei
 }
 // One validated child of the published tip. Capacity failures are local and
 // carry no consensus-invalid conclusion. Index validity is unchanged here.
-cs_connect_vartime :: (tree: [] BlockTree, i: int, b: [] u8, table: [] u8, used: int, stage: [] u8, batch: [] u8, w: ValidationWork, undo: [] u8) -> CsResult #export_c {
+cs_connect_vartime :: (tree: [] BlockTree, i: int, b: [] u8, table: [] u8, used: int, stage: [] u8, batch: [] u8, w: ValidationWork, undo: [] u8) -> CsResult #export_c #effects(all) {
   tip := cs_tip_vartime(table, used);
   if tip.code != CS_OK || tree.count != 1 { return CsResult.{code=CS_CONTEXT}; }
   if tip.chain != tree[0].p.chain || !lc_index_extent(i, tree[0].count) { return CsResult.{code=CS_CONTEXT}; }

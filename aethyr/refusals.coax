@@ -42,7 +42,7 @@ rf_holds :: (expect: string, status: int, err: string) -> bool {
   #assert !rf_holds("", 1, "anything") && !rf_holds("E08", 1, "E08") && rf_has("abc", "c") && !rf_has("abc", "");
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { return 2; }
   dirs: [16] string; nd := 0;

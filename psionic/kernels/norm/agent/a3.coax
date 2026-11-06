@@ -12,24 +12,24 @@ a3_c :: (knob:int,width:int)->int {return a3_min(knob/10000,width);}
 a3_m :: (knob:int,width:int)->int {return a3_min((knob/10)%1000,width);}
 a3_r :: (knob:int)->int {return knob%10;}
 
-a3_knobs :: (item:int,knobs:[]int) #export_c {
+a3_knobs :: (item:int,knobs:[]int) #export_c #effects(all) {
     n:=0;
     for mi:0..<3 {for ri:0..<3 {knobs[n]=1280000+(32<<mi)*10+(1<<ri);n+=1;}}
     knobs[n]=2560322;n+=1;
     knobs[n]=640642;n+=1;
     knobs[n]=-1;
 }
-a3_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c {
+a3_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c #effects(all) {
     c:=a3_c(knob,width);m:=a3_m(knob,width);R:=a3_r(knob);
     plan[0]=rows*c;plan[1]=((rows+R-1)/R)*m;plan[2]=rows*c;
 }
-a3_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+a3_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c #effects(all) {
     c:=a3_c(knob,width);r:=item/c;j:=item-r*c;at:=r*width+j;
     sum:f64=0;
     for k:0..<(width-j+c-1)/c {v:=f64(x[at+k*c]);sum+=v*v;}
     work[item]=sum;
 }
-a3_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+a3_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c #effects(all) {
     c:=a3_c(knob,width);m:=a3_m(knob,width);R:=a3_r(knob);
     g:=item/m;k:=item-g*m;r0:=g*R;nr:=a3_min(R,rows-r0);
     inv:[4]f64;

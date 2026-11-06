@@ -15,11 +15,11 @@ VERSE_AREA_FLOATS :: 6;
 pe_lo :: (a:f32,b:f32)->f32 { if a<b { return a; } return b; }
 pe_hi :: (a:f32,b:f32)->f32 { if a>b { return a; } return b; }
 
-verse_emitter_cap :: ()->int #export_c { return VERSE_EMITTERS; }
-verse_particles_per :: ()->int #export_c { return VERSE_PARTICLES_PER; }
+verse_emitter_cap :: ()->int #export_c #effects(all) { return VERSE_EMITTERS; }
+verse_particles_per :: ()->int #export_c #effects(all) { return VERSE_PARTICLES_PER; }
 
 // Writes emitter k (if it fits); the count is clamped to the per-emitter bound.
-verse_emitter_put :: (out:[]f32,k:int,x:f32,y:f32,z:f32,radius:f32,r:f32,g:f32,b:f32,flicker:f32,kind:f32,count:f32,size:f32,speed:f32,seed:f32)->bool #export_c {
+verse_emitter_put :: (out:[]f32,k:int,x:f32,y:f32,z:f32,radius:f32,r:f32,g:f32,b:f32,flicker:f32,kind:f32,count:f32,size:f32,speed:f32,seed:f32)->bool #export_c #effects(all) {
   if k<0 || k>=VERSE_EMITTERS || out.count<(k+1)*VERSE_EMITTER_FLOATS { return false; }
   o:=k*VERSE_EMITTER_FLOATS;
   out[o]=x;out[o+1]=y;out[o+2]=z;out[o+3]=radius;
@@ -32,7 +32,7 @@ verse_emitter_put :: (out:[]f32,k:int,x:f32,y:f32,z:f32,radius:f32,r:f32,g:f32,b
 // The house's emitters for an eye at (ex, ey, ez). lamps: per light x y z
 // radius r g b flicker; areas: per area x0 z0 x1 z1 outdoor dark. Returns
 // how many it wrote.
-verse_particles_haunt :: (lamps:[]f32,lamp_n:int,areas:[]f32,area_n:int,ex:f32,ey:f32,ez:f32,out:[]f32)->int #export_c {
+verse_particles_haunt :: (lamps:[]f32,lamp_n:int,areas:[]f32,area_n:int,ex:f32,ey:f32,ez:f32,out:[]f32)->int #export_c #effects(all) {
   n:=0;
   ln:=lamp_n;if ln*VERSE_LAMP_FLOATS>lamps.count { ln=lamps.count/VERSE_LAMP_FLOATS; }
   an:=area_n;if an*VERSE_AREA_FLOATS>areas.count { an=areas.count/VERSE_AREA_FLOATS; }

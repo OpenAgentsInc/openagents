@@ -511,7 +511,7 @@ open_page :: (r: [] Run, c: [] Cdp, url: string) -> bool {
   return !o[0].bad && cdp_call(c, "Page.navigate", jo_text(o[..]), CDP_CALL_MS) >= 0;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   base := args_at(a[..], 0);

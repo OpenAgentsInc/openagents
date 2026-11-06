@@ -62,9 +62,9 @@
     r:=dv_step(m,MlMode.compressed,1,0,cache[..],DvOutput.{logits=out[..],trace=trace[..],routes=routes[..]},DvWork.{floats=f[..],scores=sc[..],accumulators=acc[..],routes=draft[..]},false);#assert r.status==DsStatus.capacity;
 }
 
-dv_expert_valid :: (e:DvExpert,d:int,hidden:int)->bool {return e.p[0].count==2*hidden*d && e.p[1].count==2*hidden*d && e.p[2].count==2*d*hidden;}
-dv_expert_empty :: (e:DvExpert)->bool {return e.p[0].count==0 && e.p[1].count==0 && e.p[2].count==0;}
-dv_model_valid :: (m:DvModel)->bool {
+dv_expert_valid :: (e:DvExpert,d:int,hidden:int)->bool #effects(all) {return e.p[0].count==2*hidden*d && e.p[1].count==2*hidden*d && e.p[2].count==2*d*hidden;}
+dv_expert_empty :: (e:DvExpert)->bool #effects(all) {return e.p[0].count==0 && e.p[1].count==0 && e.p[2].count==0;}
+dv_model_valid :: (m:DvModel)->bool #effects(all) {
     s:=m.shape;if !dv_shape(s) || m.blocks.count!=s.layers {return false;}d:=s.width;a:=s.attention;
     if m.p[0].count!=2*s.vocab*d || m.p[1].count!=2*d || m.p[2].count!=2*s.vocab*d {return false;}
     sizes:=[7]int.[d,d,a.heads*(a.nope+a.rope)*d,(a.latent+a.rope)*d,a.latent,a.heads*(a.nope+a.value)*a.latent,d*a.heads*a.value];
@@ -74,14 +74,14 @@ dv_model_valid :: (m:DvModel)->bool {
             for expert:b.experts {if !dv_expert_valid(expert,d,s.expert_hidden) {return false;}}}
     }return true;
 }
-dv_ffn :: (e:DvExpert,d:int,hidden:int,x:[]f32,out:[]f32,v:DvViews)->DsStatus {
+dv_ffn :: (e:DvExpert,d:int,hidden:int,x:[]f32,out:[]f32,v:DvViews)->DsStatus #effects(all) {
     empty:[1]u8;gate:=v.gate[0..<hidden];up:=v.up[0..<hidden];act:=v.activation[0..<hidden];
     status:=ds_project(hidden,d,e.p[0],x,empty[0..<0],gate,v.stage,v.scratch);if status!=DsStatus.ok {return status;}
     status=ds_project(hidden,d,e.p[1],x,empty[0..<0],up,v.stage,v.scratch);if status!=DsStatus.ok {return status;}
     for j:0..<hidden {r:=ds_silu(gate[j],up[j]);if r.status!=DsStatus.ok {return r.status;}act[j]=r.value;}
     return ds_project(d,hidden,e.p[2],act,empty[0..<0],out,v.stage,v.scratch);
 }
-dv_mixture :: (s:DvShape,b:DvBlock,x:[]f32,v:DvViews,scores:[]f64,ranked:[]f64,acc:[]PsionicAccumulator)->DvMixture {
+dv_mixture :: (s:DvShape,b:DvBlock,x:[]f32,v:DvViews,scores:[]f64,ranked:[]f64,acc:[]PsionicAccumulator)->DvMixture #effects(all) {
     empty:[1]u8;status:=ds_project(s.experts,s.width,b.p[7],x,empty[0..<0],v.gate[0..<s.experts],v.stage,v.scratch);
     if status!=DsStatus.ok {return DvMixture.{status=status};}
     route:=dr_route(DrConfig.{profile=DrProfile.v2,k=s.selected},v.gate[0..<s.experts],v.up[0..<0],scores,ranked,false);if route.status!=DrStatus.ok {return DvMixture.{status=DsStatus.arithmetic};}
@@ -93,7 +93,7 @@ dv_mixture :: (s:DvShape,b:DvBlock,x:[]f32,v:DvViews,scores:[]f64,ranked:[]f64,a
     status=ds_add(v.combined,v.down);if status!=DsStatus.ok {return DvMixture.{status=status};}return DvMixture.{route=route};
 }
 // book:begin step
-dv_step :: (m:DvModel,mode:MlMode,token:int,position:int,cache:[]f32,out:DvOutput,work:DvWork,overlap:bool)->DsResult #export_c {
+dv_step :: (m:DvModel,mode:MlMode,token:int,position:int,cache:[]f32,out:DvOutput,work:DvWork,overlap:bool)->DsResult #export_c #effects(all) {
     s:=m.shape;p:=dv_plan(s,mode);if p.status!=DsStatus.ok {return DsResult.{status=p.status};}
     if token<0 || token>=s.vocab {return DsResult.{status=DsStatus.token};}if !dv_model_position(position,s.attention.capacity) {return DsResult.{status=DsStatus.state};}
     if !dv_model_valid(m) {return DsResult.{status=DsStatus.weights};}

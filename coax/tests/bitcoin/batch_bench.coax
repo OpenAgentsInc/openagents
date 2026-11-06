@@ -6,7 +6,7 @@
 
 // u signatures over 32-byte messages: keys, messages and signatures are
 // the concatenations BIP-340 hashes for the seed.
-batch_bench_verify :: (keys: [] u8, messages: [] u8, signatures: [] u8) -> bool #export_c {
+batch_bench_verify :: (keys: [] u8, messages: [] u8, signatures: [] u8) -> bool #export_c #effects(all) {
   u := keys.count / 32;
   if u > SB_MAX || messages.count != 32 * u { return false; }
   lengths: [SB_MAX] int;

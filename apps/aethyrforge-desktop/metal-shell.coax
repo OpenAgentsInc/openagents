@@ -5,7 +5,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 ms_run :: (argv:[]string)->bool {out:[1048576]u8;err:[1048576]u8;r:=proc_run(argv,840000,out[..],err[..]);if r.started!=0 || r.status!=0 || r.cut || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return false;}return true;}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<2 {tool_errln("usage: metal-shell ROOT STAGED_APP [--sdk DIRECTORY]");return 2;}
  root:=args_at(a[..],0);app:=args_at(a[..],1);paths:[64][4096]u8;p:=0;argv:[96]string;n:=0;
  sdk_path:[4096]u8;sdk:=args_value(a[..],"--sdk",fs_join(root,"apps/aethyrforge-desktop/build/metal",sdk_path[..]));

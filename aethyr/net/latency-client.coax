@@ -138,10 +138,10 @@ LatClient :: struct {
   ltc_complete(c[..],1,1);#assert c[0].count==1&&c[0].p.id==0;
 }
 
-ltc_expire::(c:[]LatClient,now:int) {
+ltc_expire::(c:[]LatClient,now:int) #effects(all) {
   if c[0].p.id>0&&now-c[0].p.t[3]>=LAT_DEADLINE_US{c[0].p=LatSample.{};c[0].expired+=1;}
 }
-ltc_before::(c:[]LatClient,text:string,now:int,out:[]u8)->int #export_c {
+ltc_before::(c:[]LatClient,text:string,now:int,out:[]u8)->int #export_c #effects(all) {
   if !c[0].live||now<1||now>LAT_MAX||!wire_is(text,"I"){return 0;}ltc_expire(c,now);
   r:[1]WireRd;r[0]=wire_rd(text,1);seq:=wire_num(text,r[..]);if !r[0].ok||seq<=0||seq>LAT_MAX{return 0;}
   if c[0].nonce>=LAT_MAX{ltc_retire(c);return 0;}
@@ -153,7 +153,7 @@ ltc_before::(c:[]LatClient,text:string,now:int,out:[]u8)->int #export_c {
   m.kind=2;m.count=3;m.v[1]=seq;m.v[2]=now;n:=lat_encode(m,out);
   if n!=0{c[0].nonce=m.v[0];c[0].last_input=now;c[0].p=LatSample.{id=m.v[0],seq=seq,clock=c[0].clock};c[0].p.t[0]=m.v[0];c[0].p.t[1]=seq;c[0].p.t[3]=now;}return n;
 }
-ltc_receive::(c:[]LatClient,text:string,now:int) #export_c {
+ltc_receive::(c:[]LatClient,text:string,now:int) #export_c #effects(all) {
   if !c[0].live{return;}ltc_expire(c,now);
   if wire_is(text,"D")&&c[0].p.id>0&&!c[0].p.report {
     r:[1]WireRd;r[0]=wire_rd(text,1);d:=wire_read_d(text,r[..]);
@@ -171,18 +171,18 @@ ltc_receive::(c:[]LatClient,text:string,now:int) #export_c {
   for i:5..<11{if m.v[i]<m.v[i-1]{c[0].refused+=1;return;}}
   for i:4..<11{c[0].p.t[i]=m.v[i];}c[0].p.report=true;
 }
-ltc_applied::(c:[]LatClient,ack:int,tick:int,now:int,lag:int) #export_c {
+ltc_applied::(c:[]LatClient,ack:int,tick:int,now:int,lag:int) #export_c #effects(all) {
   ltc_expire(c,now);p:=c[0].p;
   // Receipt is the active marker; both expiry and retirement clear it.
   if p.t[11]==0||p.t[12]!=0{return;}
   if ack>=p.seq&&tick>=p.tick&&now>=p.t[11]{c[0].p.t[12]=now;c[0].p.t[15]=lag;}
 }
-ltc_submit::(c:[]LatClient,now:int,lag:int)->int #export_c {
+ltc_submit::(c:[]LatClient,now:int,lag:int)->int #export_c #effects(all) {
   ltc_expire(c,now);p:=c[0].p;
   if !c[0].live||!p.report||p.t[12]==0||p.t[13]>0||now<p.t[12]{return 0;}
   c[0].p.t[13]=now;c[0].p.t[15]=lag;return p.id;
 }
-ltc_complete::(c:[]LatClient,id:int,now:int) #export_c {
+ltc_complete::(c:[]LatClient,id:int,now:int) #export_c #effects(all) {
   ltc_expire(c,now);p:=c[0].p;
   if id==0||id!=p.id||p.t[13]==0||now<p.t[13]{return;}
   p.t[14]=now;b:[2]int;up:[2]int;down:[2]int;
@@ -192,8 +192,8 @@ ltc_complete::(c:[]LatClient,id:int,now:int) #export_c {
   }
   c[0].rows[c[0].head]=p;c[0].head=(c[0].head+1)%LTC_ROWS;c[0].count=ifx c[0].count<LTC_ROWS then c[0].count+1 else LTC_ROWS;c[0].p=LatSample.{};
 }
-ltc_retire::(c:[]LatClient) #export_c {if c[0].p.id>0{c[0].missing+=1;}c[0].p=LatSample.{};c[0].live=false;}
-ltc_value::(c:[]LatClient,row:int,field:int)->int #export_c {
+ltc_retire::(c:[]LatClient) #export_c #effects(all) {if c[0].p.id>0{c[0].missing+=1;}c[0].p=LatSample.{};c[0].live=false;}
+ltc_value::(c:[]LatClient,row:int,field:int)->int #export_c #effects(all) {
   if row<0||row>=c[0].count||field<0||field>=LTC_FIELDS{return -1;}
   return c[0].rows[(c[0].head-1-row+LTC_ROWS)%LTC_ROWS].t[field];
 }

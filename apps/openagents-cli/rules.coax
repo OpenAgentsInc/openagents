@@ -15,7 +15,7 @@ EXIT_CONFLICT :: 5; EXIT_NOT_FOUND :: 6; EXIT_SLOW :: 7;
   #assert cli_exit_of(409) == EXIT_CONFLICT && cli_exit_of(429) == EXIT_SLOW;
   #assert cli_exit_of(500) == EXIT_FAIL && cli_exit_of(400) == EXIT_FAIL && cli_exit_of(199) == EXIT_FAIL && cli_exit_of(300) == EXIT_FAIL;
 }
-cli_exit_of :: (status: int) -> int {
+cli_exit_of :: (status: int) -> int #effects(all) {
   if status >= 200 && status < 300 { return EXIT_OK; }
   if status == 401 { return EXIT_AUTH; }
   if status == 403 { return EXIT_FORBIDDEN; }
@@ -35,7 +35,7 @@ cli_exit_of :: (status: int) -> int {
   #assert !cli_profile_ok("a.b") && !cli_profile_ok("..") && !cli_profile_ok("a b") && !cli_profile_ok("a`");
   #assert !cli_profile_ok("a{") && !cli_profile_ok("a:") && !cli_profile_ok("a@");
 }
-cli_profile_ok :: (name: string) -> bool {
+cli_profile_ok :: (name: string) -> bool #effects(all) {
   if name.count < 1 || name.count > 32 { return false; }
   for i: 0..<name.count {
     c := name[i];
@@ -59,7 +59,7 @@ cli_profile_ok :: (name: string) -> bool {
   #assert cli_hex_digit('0') == 0 && cli_hex_digit('9') == 9 && cli_hex_digit('a') == 10 && cli_hex_digit('f') == 15 && cli_hex_digit('A') == 10 && cli_hex_digit('F') == 15;
   #assert cli_hex_digit('g') == -1 && cli_hex_digit('G') == -1 && cli_hex_digit(' ') == -1;
 }
-cli_hex :: (bytes: [] u8, out: [] u8) -> bool {
+cli_hex :: (bytes: [] u8, out: [] u8) -> bool #effects(all) {
   if out.count != bytes.count * 2 { return false; }
   digits := "0123456789abcdef";
   for i: 0..<bytes.count {
@@ -68,13 +68,13 @@ cli_hex :: (bytes: [] u8, out: [] u8) -> bool {
   }
   return true;
 }
-cli_hex_digit :: (c: u8) -> int {
+cli_hex_digit :: (c: u8) -> int #effects(all) {
   if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
   if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
   if c >= 'A' && c <= 'F' { return cast(int) (c - 'A') + 10; }
   return -1;
 }
-cli_unhex :: (hex: string, out: [] u8) -> bool {
+cli_unhex :: (hex: string, out: [] u8) -> bool #effects(all) {
   if hex.count != out.count * 2 { return false; }
   for i: 0..<out.count {
     hi := cli_hex_digit(hex[2 * i]);
@@ -119,7 +119,7 @@ CLI_KEY_TEXT :: 81;   // tag, 64 hex, newline
   one: [32] u8; one[0] = 1; onet: [CLI_KEY_TEXT] u8;
   #assert cli_key_text(one[..], onet[..]) == CLI_KEY_TEXT && cli_key_parse(cast(string) onet[..], back[..]) && back[0] == 1;
 }
-cli_key_text :: (key: [] u8, out: [] u8) -> int {
+cli_key_text :: (key: [] u8, out: [] u8) -> int #effects(all) {
   if key.count != 32 || out.count < CLI_KEY_TEXT { return -1; }
   for i: 0..<16 { out[i] = CLI_KEY_TAG[i]; }
   hexed := cli_hex(key, out[16..<80]);   // 32 bytes into 64: cannot fail here
@@ -127,7 +127,7 @@ cli_key_text :: (key: [] u8, out: [] u8) -> int {
   return CLI_KEY_TEXT;
 }
 // False for anything else, and for the all-zero key (never a valid secret).
-cli_key_parse :: (text: string, key: [] u8) -> bool {
+cli_key_parse :: (text: string, key: [] u8) -> bool #effects(all) {
   if key.count != 32 || text.count < 80 || text.count > CLI_KEY_TEXT { return false; }
   if text.count == CLI_KEY_TEXT && text[80] != '\n' { return false; }
   if text[0..<16] != CLI_KEY_TAG { return false; }
@@ -152,12 +152,12 @@ cli_key_parse :: (text: string, key: [] u8) -> bool {
   #assert cli_words("A@", out[..]) == -1 && cli_words("Z", out[..]) == 1001 && out[0] == 'z';
 }
 // A letter in lowercase, or -1.
-cli_lower :: (c: u8) -> int {
+cli_lower :: (c: u8) -> int #effects(all) {
   if c >= 'a' && c <= 'z' { return cast(int) c; }
   if c >= 'A' && c <= 'Z' { return cast(int) c + 32; }
   return -1;
 }
-cli_words :: (typed: string, out: [] u8) -> int {
+cli_words :: (typed: string, out: [] u8) -> int #effects(all) {
   n := 0; words := 0; gap := false;
   for c: typed {
     space := c == ' ' || c == '\t' || c == '\n' || c == '\r';
@@ -193,10 +193,10 @@ PylonLog :: struct { online: bool; npub_at: int; npub_n: int; key_at: int; key_n
   #assert !cli_pylon_log("a pylon: online, waiting for jobs\n").online && cli_pylon_log("x\npylon: online, waiting for jobs").online;
   #assert cli_starts("abc", 0, "ab") && !cli_starts("abc", 2, "cd") && !cli_starts("abc", 0, "b") && cli_starts("abc", 3, "");
 }
-cli_starts :: (s: string, at: int, part: string) -> bool {
+cli_starts :: (s: string, at: int, part: string) -> bool #effects(all) {
   return at + part.count <= s.count && s[at..<at + part.count] == part;
 }
-cli_pylon_log :: (text: string) -> PylonLog {
+cli_pylon_log :: (text: string) -> PylonLog #effects(all) {
   p: PylonLog;
   online := "pylon: online, waiting for jobs";
   npub := "pylon: npub ";

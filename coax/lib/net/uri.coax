@@ -66,19 +66,19 @@ UriParts :: struct {ok:bool;scheme:int;host_from:int;host_to:int;port:int;path_f
  #assert uri_hex(cast(u8)value)==expected;
 }
 
-uri_alpha :: (b:u8)->bool {return (b>=65 && b<=90)||(b>=97 && b<=122);}
-uri_digit :: (b:u8)->bool {return b>=48 && b<=57;}
-uri_prefix :: (text:string,prefix:string)->bool {
+uri_alpha :: (b:u8)->bool #effects(all) {return (b>=65 && b<=90)||(b>=97 && b<=122);}
+uri_digit :: (b:u8)->bool #effects(all) {return b>=48 && b<=57;}
+uri_prefix :: (text:string,prefix:string)->bool #effects(all) {
  if text.count<prefix.count {return false;}for i:0..<prefix.count {if text[i]!=prefix[i] {return false;}}return true;
 }
-uri_hex :: (b:u8)->int {
+uri_hex :: (b:u8)->int #effects(all) {
  if uri_digit(b) {return cast(int)b-48;}if b>=65 && b<=70 {return cast(int)b-55;}if b>=97 && b<=102 {return cast(int)b-87;}return -1;
 }
-uri_path_byte :: (b:u8)->bool {
+uri_path_byte :: (b:u8)->bool #effects(all) {
  if uri_alpha(b)||uri_digit(b) {return true;}
  for allowed:":/?@!$&'()*+,;=-._~" {if b==allowed {return true;}}return false;
 }
-uri_dns :: (host:string)->bool {
+uri_dns :: (host:string)->bool #effects(all) {
  if host.count<1 || host.count>253 {return false;}
  start:=0;
  for i:0..<host.count {
@@ -90,7 +90,7 @@ uri_dns :: (host:string)->bool {
  if start==host.count || host.count-start>63 {return false;}
  return uri_alpha(host[start]) && host[host.count-1]!=45;
 }
-uri_parse :: (text:string)->UriParts #export_c {
+uri_parse :: (text:string)->UriParts #export_c #effects(all) {
  bad:UriParts;if text.count>2048 {return bad;}
  p:UriParts;
  if uri_prefix(text,"https://") {p.scheme=URI_HTTPS;p.host_from=8;p.port=443;}

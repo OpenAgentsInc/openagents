@@ -180,25 +180,25 @@ FiClaims :: struct {
  aud[1]=cast(string)data[0..<2048];#assert fi_claims_candidate(p,a,c,0);aud[1]=cast(string)data[..];#assert !fi_claims_candidate(p,a,c,0);
 }
 
-fi_visible :: (value:string,max:int)->bool {
+fi_visible :: (value:string,max:int)->bool #effects(all) {
  if value.count<1 || value.count>max {return false;}for b:value {if b<33 || b>126 {return false;}}return true;
 }
-fi_key :: (key:string)->bool {
+fi_key :: (key:string)->bool #effects(all) {
  if key.count!=64 {return false;}for b:key {if !((b>=48 && b<=57)||(b>=97 && b<=102)) {return false;}}return true;
 }
-fi_contains :: (values:[]string,wanted:string)->bool {
+fi_contains :: (values:[]string,wanted:string)->bool #effects(all) {
  for value:values {if value==wanted {return true;}}return false;
 }
-fi_set :: (values:[]string,max:int,bytes:int)->bool {
+fi_set :: (values:[]string,max:int,bytes:int)->bool #effects(all) {
  if values.count<1 || values.count>max {return false;}
  for i:0..<values.count {if !fi_visible(values[i],bytes) {return false;}for j:0..<i {if values[i]==values[j] {return false;}}}return true;
 }
-fi_source_uri :: (uri:string,transport:int)->bool #export_c {
+fi_source_uri :: (uri:string,transport:int)->bool #export_c #effects(all) {
  p:=uri_parse(uri);if !p.ok {return false;}
  if transport==1 {return p.scheme==URI_HTTPS;}
  return transport==2 && p.scheme==URI_HTTP && !p.has_query;
 }
-fi_issuer_config :: (p:FiIssuer)->bool #export_c {
+fi_issuer_config :: (p:FiIssuer)->bool #export_c #effects(all) {
  u:=uri_parse(p.issuer);if !u.ok || u.scheme!=URI_HTTPS || u.has_query || !fi_source_uri(p.jwks_uri,p.transport) {return false;}
  if p.maximum_age<1 || p.maximum_age>31536000 || p.skew<0 || p.skew>300 || p.connection_lifetime<1 || p.connection_lifetime>31536000 {return false;}
  if p.refresh<1 || p.hard_deadline<=p.refresh || p.hard_deadline>31536000 {return false;}
@@ -207,7 +207,7 @@ fi_issuer_config :: (p:FiIssuer)->bool #export_c {
  for v:p.owner_values {if fi_contains(p.client_values,v) {return false;}}
  return !p.allow_client || p.noncollision;
 }
-fi_select :: (communities:[]FiCommunity,issuers:[]FiIssuer,host:string,issuer:string)->FiSelection #export_c {
+fi_select :: (communities:[]FiCommunity,issuers:[]FiIssuer,host:string,issuer:string)->FiSelection #export_c #effects(all) {
  bad:=FiSelection.{status=FI_UNAVAILABLE};
  if communities.count<1 || communities.count>16 {return bad;}
  selected:=-1;
@@ -226,7 +226,7 @@ fi_select :: (communities:[]FiCommunity,issuers:[]FiIssuer,host:string,issuer:st
  if !fi_issuer_config(issuers[at]) {return bad;}
  return FiSelection.{community=selected,issuer=at};
 }
-fi_token_class :: (p:FiIssuer,h:FiHeader,c:FiClaims)->bool #export_c {
+fi_token_class :: (p:FiIssuer,h:FiHeader,c:FiClaims)->bool #export_c #effects(all) {
  if h.algorithm!="RS256" || !fi_visible(h.kid,128) {return false;}
  if p.token_class==FI_DEDICATED {
   if h.typ=="nip-fi-agent+jwt" {return c.has_owner && fi_key(c.owner) && c.owner!=c.key;}
@@ -236,13 +236,13 @@ fi_token_class :: (p:FiIssuer,h:FiHeader,c:FiClaims)->bool #export_c {
  owner:=fi_contains(p.owner_values,c.marker);client:=fi_contains(p.client_values,c.marker);
  if owner==client {return false;}if owner {return true;}return p.allow_client && p.noncollision;
 }
-fi_time_value :: (n:int)->bool {return n>=0 && n<=FI_SAFE_TIME;}
-fi_time_bounds :: (now:int,iat:int,expires:int,has_nbf:bool,nbf:int,maximum_age:int,skew:int)->bool #export_c {
+fi_time_value :: (n:int)->bool #effects(all) {return n>=0 && n<=FI_SAFE_TIME;}
+fi_time_bounds :: (now:int,iat:int,expires:int,has_nbf:bool,nbf:int,maximum_age:int,skew:int)->bool #export_c #effects(all) {
  if !fi_time_value(now) || !fi_time_value(iat) || !fi_time_value(expires) || maximum_age<1 || maximum_age>31536000 || skew<0 || skew>300 {return false;}
  if now>=expires || iat>now+skew || now>=iat+maximum_age {return false;}
  return !has_nbf || (fi_time_value(nbf) && nbf<=now+skew);
 }
-fi_claims_candidate :: (p:FiIssuer,community:FiCommunity,c:FiClaims,now:int)->bool #export_c {
+fi_claims_candidate :: (p:FiIssuer,community:FiCommunity,c:FiClaims,now:int)->bool #export_c #effects(all) {
  if c.issuer!=p.issuer || !fi_visible(c.subject,256) || !fi_set(c.audiences,16,2048) || !fi_contains(c.audiences,community.audience) || !fi_key(c.key) {return false;}
  return c.has_iat && c.has_exp && fi_time_bounds(now,c.iat,c.exp,c.has_nbf,c.nbf,p.maximum_age,p.skew);
 }

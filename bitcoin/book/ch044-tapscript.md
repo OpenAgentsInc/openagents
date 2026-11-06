@@ -77,7 +77,7 @@ sends such a program, outside P2SH, to `si_taproot`.
 // to the output key. Leaf version 0xc0 runs the script as tapscript on
 // the items before it, with a budget of 50 plus the witness's serialized
 // size; any other leaf version passes unrun, for future soft forks.
-si_taproot :: (sp: ScriptSpend, w: [] ScriptWork, program: [] u8, flags: int) -> int {
+si_taproot :: (sp: ScriptSpend, w: [] ScriptWork, program: [] u8, flags: int) -> int #effects(all) {
   count := sp.ins[sp.index].count;
   if count == 0 { return SCRIPT_ERR_WITNESS_PROGRAM_WITNESS_EMPTY; }
   last := si_witness(sp, count - 1);
@@ -98,7 +98,7 @@ si_taproot :: (sp: ScriptSpend, w: [] ScriptWork, program: [] u8, flags: int) ->
 }
 // The witness's serialized size: its item count and each item with its
 // length, all as compact sizes.
-si_witness_size :: (sp: ScriptSpend) -> int {
+si_witness_size :: (sp: ScriptSpend) -> int #effects(all) {
   c: [9] u8;
   count := sp.ins[sp.index].count;
   size := tx_compact_write_vartime(c[..], 0, count);
@@ -145,7 +145,7 @@ stack may then start with at most 1,000 elements, each at most 520 bytes.
 // (chapter 44), and a push that runs past the end fails. Its stack may
 // start with at most 1,000 elements. A witness v0 stack larger than
 // SCRIPT_ROOM keeps its top SCRIPT_ROOM elements and counts the rest.
-si_execute_witness :: (sp: ScriptSpend, w: [] ScriptWork, count: int, script: ScriptItem, flags: int, version: int) -> int {
+si_execute_witness :: (sp: ScriptSpend, w: [] ScriptWork, count: int, script: ScriptItem, flags: int, version: int) -> int #effects(all) {
   if version == SCRIPT_TAPSCRIPT {
     s := si_bytes(sp, w, script); pc := 0;
     while pc < s.count {
@@ -175,7 +175,7 @@ si_execute_witness :: (sp: ScriptSpend, w: [] ScriptWork, count: int, script: Sc
 // refuses. Version 1 with 32 bytes outside P2SH is Taproot (chapter 44,
 // si_taproot) when its flag is set; the 2-byte anchor 4e73 (P2A) and
 // every other version and length succeed, unless policy discourages them.
-si_witness_program :: (sp: ScriptSpend, w: [] ScriptWork, version: int, program: ScriptItem, flags: int, p2sh: bool) -> int {
+si_witness_program :: (sp: ScriptSpend, w: [] ScriptWork, version: int, program: ScriptItem, flags: int, p2sh: bool) -> int #effects(all) {
   prog := si_bytes(sp, w, program);
   count := sp.ins[sp.index].count;
   if version == 0 && prog.count == 32 {
@@ -214,7 +214,7 @@ that uses one is valid today whatever follows.
 // opcodes that were disabled or unassigned: OP_RESERVED (80), OP_VER
 // (98), OP_CAT to OP_RIGHT, OP_INVERT to OP_XOR, OP_RESERVED1 and 2,
 // OP_2MUL and OP_2DIV, OP_MUL to OP_RSHIFT, and 187 to 254.
-script_op_success_vartime :: (op: int) -> bool #export_c {
+script_op_success_vartime :: (op: int) -> bool #export_c #effects(all) {
   return op == 80 || op == 98 || (op >= 126 && op <= 129) || (op >= 131 && op <= 134) || (op >= 137 && op <= 138)
     || (op >= 141 && op <= 142) || (op >= 149 && op <= 153) || (op >= 187 && op <= 254);
 }
@@ -239,7 +239,7 @@ the script after it as in legacy script.
 // IF, NOTIF, ELSE and ENDIF always run, and so do VERIF and VERNOTIF,
 // which sit between them and fail. After each opcode the two stacks
 // together may hold 1,000 elements.
-si_eval :: (sp: ScriptSpend, w: [] ScriptWork, script: ScriptItem, flags: int, version: int) -> int {
+si_eval :: (sp: ScriptSpend, w: [] ScriptWork, script: ScriptItem, flags: int, version: int) -> int #effects(all) {
   s := si_bytes(sp, w, script);
   tapscript := version == SCRIPT_TAPSCRIPT;
   if !tapscript && s.count > SCRIPT_MAX_SIZE { return SCRIPT_ERR_SCRIPT_SIZE; }
@@ -312,7 +312,7 @@ OP_NUMEQUAL`, with an empty signature for each key that doesn't sign.
 // empty one fails, and any other length is a key type for a future soft
 // fork, which passes unchecked. OP_CHECKSIGADD (sig n key -- n+success)
 // counts signatures in place of CHECKMULTISIG.
-si_checksig_tapscript :: (sp: ScriptSpend, w: [] ScriptWork, op: int, flags: int) -> int {
+si_checksig_tapscript :: (sp: ScriptSpend, w: [] ScriptWork, op: int, flags: int) -> int #effects(all) {
   args := ifx op == OP_CHECKSIGADD then 3 else 2;
   if si_size(w) < args { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
   count := 0;
@@ -365,7 +365,7 @@ a second encoding of the same signature.
 // SIGHASH_DEFAULT, one of 65 carries its hash type last, which must not
 // be 0; then BIP-340's verification (chapter 23) against the 32-byte key.
 // Each failure is its own error, and every one ends the script.
-si_schnorr :: (sp: ScriptSpend, w: [] ScriptWork, sig: [] u8, key: [] u8, version: int) -> int {
+si_schnorr :: (sp: ScriptSpend, w: [] ScriptWork, sig: [] u8, key: [] u8, version: int) -> int #effects(all) {
   if sig.count != 64 && sig.count != 65 { return SCRIPT_ERR_SCHNORR_SIG_SIZE; }
   hashtype := BT_DEFAULT;
   if sig.count == 65 {
@@ -398,7 +398,7 @@ transaction of one input may leave it empty and use `amount` and `spk`.
 // VerifyScript into w.tap: the outpoints, the spent amounts, the spent
 // scriptPubKeys with their lengths, the sequences and the outputs. False
 // when the spent outputs are not all known.
-si_tap_hashes :: (sp: ScriptSpend, w: [] ScriptWork) -> bool {
+si_tap_hashes :: (sp: ScriptSpend, w: [] ScriptWork) -> bool #effects(all) {
   if w[0].tap_ready { return true; }
   b := sp.b; t := sp.t;
   if sp.spent.count != t.nin && !(sp.spent.count == 0 && t.nin == 1) { return false; }
@@ -418,7 +418,7 @@ si_tap_hashes :: (sp: ScriptSpend, w: [] ScriptWork) -> bool {
   return true;
 }
 // The output input k spends.
-si_spent :: (sp: ScriptSpend, k: int) -> ScriptSpent {
+si_spent :: (sp: ScriptSpend, k: int) -> ScriptSpent #effects(all) {
   if sp.spent.count == 0 { return ScriptSpent.{amount=sp.amount, spk=sp.spk}; }
   return sp.spent[k];
 }
@@ -426,7 +426,7 @@ si_spent :: (sp: ScriptSpend, k: int) -> ScriptSpent {
 // hashes, with the annex, and for tapscript the leaf hash and codesep_pos,
 // then hash_TapSighash. False when the hash type is not one of the seven,
 // SINGLE has no output at this index, or a spent output is unknown.
-si_sighash_schnorr :: (sp: ScriptSpend, w: [] ScriptWork, hashtype: int, version: int, out: [] u8) -> bool {
+si_sighash_schnorr :: (sp: ScriptSpend, w: [] ScriptWork, hashtype: int, version: int, out: [] u8) -> bool #effects(all) {
   if !si_tap_hashes(sp, w) { return false; }
   b := sp.b; t := sp.t; i := sp.ins[sp.index];
   single := b[0..<0];

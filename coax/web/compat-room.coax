@@ -1,0 +1,64 @@
+// Cloud Run transport for the same compatibility gate used by the page release.
+// Called only by room/deploy.sh, before secrets, drains, builds or routing.
+// coax/web/tool.sh compat-room COMPILER PROJECT REGION SERVICE SHARDS OUTPUT_DIR
+// tool.sh: stack-gib 1
+#import "Basic";
+#load "compat-process.coax";
+#load "../lib/json/json.coax";
+
+#test "room production references use the revision label or the existing image tag" {
+  #assert cgr_image("us-docker.pkg.dev/p/r/room:abcdef1234-20261105-210000")=="abcdef1234";
+  #assert cgr_image("room:abcdef1-stamp")=="abcdef1";
+  #assert cgr_image("room@sha256:abcdef123456")=="" && cgr_image("room:latest")=="";
+  #assert cgr_image("room:ABCDEF123-stamp")=="";
+  #assert cgr_image("room:abc-stamp")=="" && cgr_image("")=="";
+}
+cgr_image :: (image:string)->string {
+  colon:= -1;for ch,i:image {if ch=='@' {return "";}if ch==':' {colon=i;}}
+  if colon<0 {return "";}
+  end:=colon+1;while end<image.count && image[end]!='-' {end+=1;}
+  value:=image[colon+1..<end];return ifx cg_revision(value) then value else "";
+}
+cgr_decimal :: (n:int,out:[]u8)->string {
+  out[0]=cast(u8)('0'+n/10);out[1]=cast(u8)('0'+n%10);return cast(string)out[(ifx n<10 then 1 else 0)..<2];
+}
+CgrRef :: struct {word:[64]u8;n:int;}
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=6 {tool_errln("usage: compat-room COMPILER PROJECT REGION SERVICE SHARDS OUTPUT_DIR");return 2;}
+  compiler:=args_at(args[..],0);project:=args_at(args[..],1);region:=args_at(args[..],2);service:=args_at(args[..],3);shards:=args_whole(args_at(args[..],4));destination:=args_at(args[..],5);
+  if shards<1 || shards>64 || (!fs_mkdir(destination) && !fs_exists(destination)) {return 2;}
+  seen:[256]CgrRef;count:=0;
+  for k:1..<shards+1 {
+    namebuf:[256]u8;num:[16]u8;name:=service;
+    if k>1 {name=fs_join(service,cgr_decimal(k,num[..]),namebuf[..]);namebuf[service.count]='-';}
+    describe:=[10]string.["gcloud","run","services","describe",name,"--project",project,"--region",region,"--format=json"];
+    output:[1048576]u8;n:=cg_run(describe[..],output[..]);if n<0 {return 1;}
+    nodes:[16384]JvNode;doc:[1]Jv;if !jv_parse(doc[..],cast(string)output[0..<n],nodes[..]) {return 1;}
+    traffic:=jv_path(doc[0],0,"status.traffic");if jv_kind(doc[0],traffic)!=JV_ARRAY {tool_errln("compat room: missing production traffic");return 1;}
+    active:=0;
+    for i:0..<jv_len(doc[0],traffic) {
+      item:=jv_at(doc[0],traffic,i);percent:=jv_int(doc[0],jv_get(doc[0],item,"percent"),0);if percent<=0 {continue;}
+      active+=1;revbuf:[256]u8;revn:=jv_str(doc[0],jv_get(doc[0],item,"revisionName"),revbuf[..]);if revn<=0 {return 1;}
+      revision:=cast(string)revbuf[0..<revn];
+      read_revision:=[10]string.["gcloud","run","revisions","describe",revision,"--project",project,"--region",region,"--format=json"];
+      raw:[1048576]u8;rn:=cg_run(read_revision[..],raw[..]);if rn<0 {return 1;}
+      rnodes:[16384]JvNode;r:[1]Jv;if !jv_parse(r[..],cast(string)raw[0..<rn],rnodes[..]) {return 1;}
+      hash:[4096]u8;hn:=jv_str(r[0],jv_get(r[0],jv_path(r[0],0,"metadata.labels"),"coax-commit"),hash[..]);commit:=ifx hn>0 then cast(string)hash[0..<hn] else "";
+      imagebuf:[4096]u8;
+      if !cg_revision(commit) {length:=jv_str(r[0],jv_path(r[0],0,"spec.containers[0].image"),imagebuf[..]);if length<=0 {return 1;}commit=cgr_image(cast(string)imagebuf[0..<length]);}
+      // Cloud Run may replace spec.image with its immutable digest. The client
+      // annotation retains the user-supplied tag on older gcloud revisions.
+      annotationbuf:[4096]u8;
+      if !cg_revision(commit) {length:=jv_str(r[0],jv_get(r[0],jv_path(r[0],0,"metadata.annotations"),"client.knative.dev/user-image"),annotationbuf[..]);if length>0 {commit=cgr_image(cast(string)annotationbuf[0..<length]);}}
+      if !cg_revision(commit) {tool_errln("compat room: serving revision has no retained source commit");return 1;}
+      known:=false;for j:0..<count {if cast(string)seen[j].word[0..<seen[j].n]==commit {known=true;}}
+      if known {continue;}if count>=seen.count {return 1;}
+      seen[count].n=commit.count;for ch,j:commit {seen[count].word[j]=ch;}count+=1;
+      destbuf:[4096]u8;dest:=fs_join(destination,commit,destbuf[..]);
+      gate:=[6]string.["coax/web/tool.sh","compat-gate",compiler,commit,dest,""];
+      if cg_run(gate[0..<5],output[..])<0 {return 1;}print("compat room: serving revision % (%) checked\n",revision,commit);
+    }
+    if active==0 {tool_errln("compat room: no active production revision");return 1;}
+  }
+  return 0;
+}

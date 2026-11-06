@@ -3,7 +3,7 @@
 #load "a.coax";
 #load "b.coax";
 #authority;
-fee :: (amount: int) -> int { return amount / 100 + base(); }
+fee :: (amount: int) -> int #effects(all) { return amount / 100 + base(); }
 #test "fee adds the base" { #assert fee(1000) == 13 && fee(0) == 3; }
 #test "rate uses its constant" { #assert rate(10) == 10 * RATE; }
 #test "a named procedure that never runs" {

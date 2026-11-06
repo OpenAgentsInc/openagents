@@ -86,48 +86,48 @@
   for i:0..<2 {#assert out[i]==7 && flags[i]==9;}
 }
 
-gtk_numeric :: (bits:u32)->u8 {return ifx (bits&0x7f800000)==0x7f800000 then 1 else 0;}
-gtk_count :: (count:int,bits:u32)->int {if gtk_numeric(bits)==0 {return count+1;}return count;}
-gtk_receipt :: (count:int,expected:int)->u8 {return ifx count==expected then 0 else 1;}
-gtk_item :: (item:int,n:int,out:int,flags:int)->bool {return n>=1 && n<=16777216 && item>=0 && item<n && out>=n && flags>=n;}
-gtk_tokens :: (n:int)->bool {return n>=1 && n<=512;}
-gtk_embed_bounds :: (item:int,width:int,vocab:int,tokens:int,embedding:int,map:int,visual:int,out:int,flags:int)->bool {
+gtk_numeric :: (bits:u32)->u8 #effects(all) {return ifx (bits&0x7f800000)==0x7f800000 then 1 else 0;}
+gtk_count :: (count:int,bits:u32)->int #effects(all) {if gtk_numeric(bits)==0 {return count+1;}return count;}
+gtk_receipt :: (count:int,expected:int)->u8 #effects(all) {return ifx count==expected then 0 else 1;}
+gtk_item :: (item:int,n:int,out:int,flags:int)->bool #effects(all) {return n>=1 && n<=16777216 && item>=0 && item<n && out>=n && flags>=n;}
+gtk_tokens :: (n:int)->bool #effects(all) {return n>=1 && n<=512;}
+gtk_embed_bounds :: (item:int,width:int,vocab:int,tokens:int,embedding:int,map:int,visual:int,out:int,flags:int)->bool #effects(all) {
   return width>=1 && width<=2048 && vocab>=1 && vocab<=151936 && gtk_tokens(tokens) && embedding==width*vocab && map==tokens && visual==128*width && gtk_item(item,tokens*width,out,flags);
 }
-gtk_inject_bounds :: (item:int,width:int,n:int,tokens:int,visual:int,out:int,flags:int)->bool {
+gtk_inject_bounds :: (item:int,width:int,n:int,tokens:int,visual:int,out:int,flags:int)->bool #effects(all) {
   return width>=1 && width<=2048 && gtk_tokens(tokens) && n==tokens*width && visual==128*width && gtk_item(item,n,out,flags);
 }
-gtk_rotate_bounds :: (item:int,heads:int,dim:int,n:int,rope:int,out:int,flags:int)->bool {
+gtk_rotate_bounds :: (item:int,heads:int,dim:int,n:int,rope:int,out:int,flags:int)->bool #effects(all) {
   return heads>=1 && heads<=16 && dim>=2 && dim/2<=64 && dim%2==0 && n%(heads*dim)==0 && gtk_tokens(n/(heads*dim)) && rope==n/heads && gtk_item(item,n,out,flags);
 }
-gtk_map :: (image:int)->bool {return image>=-1 && image<=127;}
-gtk_token :: (id:int,vocab:int,image:int)->bool {return id>=0 && id<vocab && gtk_map(image);}
+gtk_map :: (image:int)->bool #effects(all) {return image>=-1 && image<=127;}
+gtk_token :: (id:int,vocab:int,image:int)->bool #effects(all) {return id>=0 && id<vocab && gtk_map(image);}
 // Each output is private until the caller verifies all expected flags.
-gtk_embed :: (item:int,width:int,vocab:int,ids:[]int,embedding:[]u16,image_map:[]int,visual:[]f32,out:[]f32,flags:[]u8) #export_c {
+gtk_embed :: (item:int,width:int,vocab:int,ids:[]int,embedding:[]u16,image_map:[]int,visual:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
   if !gtk_embed_bounds(item,width,vocab,ids.count,embedding.count,image_map.count,visual.count,out.count,flags.count) {return;}
   token:=item/width;axis:=item%width;id:=ids[token];image:=image_map[token];if !gtk_token(id,vocab,image) {return;}value:f32;
   if image>=0 {value=visual[image*width+axis];}
   else {bits:=cast(u32)embedding[id*width+axis]<<16;if gtk_numeric(bits)!=0 {flags[item]=1;return;}value=f32_from_bits(bits);}
   bad:=gtk_numeric(f32_bits(value));flags[item]=bad;if bad!=0 {return;}out[item]=value;
 }
-gtk_rotate :: (item:int,heads:int,dim:int,x:[]f32,rope:[]f32,out:[]f32,flags:[]u8) #export_c {
+gtk_rotate :: (item:int,heads:int,dim:int,x:[]f32,rope:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
   if !gtk_rotate_bounds(item,heads,dim,x.count,rope.count,out.count,flags.count) {return;}
   half:=dim/2;axis:=item%dim;pair:=axis%half;base:=(item/dim)*dim;token:=item/(heads*dim);
   a:=x[base+pair];b:=x[base+pair+half];c:=rope[token*dim+2*pair];s:=rope[token*dim+2*pair+1];first:f32;second:f32;
   if axis<half {first=a*c;second=(-b)*s;}else {first=b*c;second=a*s;}value:=first+second;
   checked:=gtk_count(0,f32_bits(a));checked=gtk_count(checked,f32_bits(b));checked=gtk_count(checked,f32_bits(c));checked=gtk_count(checked,f32_bits(s));checked=gtk_count(checked,f32_bits(value));bad:=gtk_receipt(checked,5);flags[item]=bad;if bad!=0 {return;}out[item]=value;
 }
-gtk_inject :: (item:int,width:int,x:[]f32,image_map:[]int,visual:[]f32,out:[]f32,flags:[]u8) #export_c {
+gtk_inject :: (item:int,width:int,x:[]f32,image_map:[]int,visual:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
   if !gtk_inject_bounds(item,width,x.count,image_map.count,visual.count,out.count,flags.count) {return;}
   image:=image_map[item/width];if !gtk_map(image) {return;}value:=x[item];checked:=gtk_count(0,f32_bits(value));expected:=2;
   if image>=0 {feature:=visual[image*width+item%width];checked=gtk_count(checked,f32_bits(feature));expected+=1;value+=feature;}
   checked=gtk_count(checked,f32_bits(value));bad:=gtk_receipt(checked,expected);flags[item]=bad;if bad!=0 {return;}out[item]=value;
 }
-gtk_multiply :: (item:int,a:[]f32,b:[]f32,out:[]f32,flags:[]u8) #export_c {
+gtk_multiply :: (item:int,a:[]f32,b:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
   if a.count!=b.count || !gtk_item(item,a.count,out.count,flags.count) {return;}
   x:=a[item];y:=b[item];value:=x*y;checked:=gtk_count(0,f32_bits(x));checked=gtk_count(checked,f32_bits(y));checked=gtk_count(checked,f32_bits(value));bad:=gtk_receipt(checked,3);flags[item]=bad;if bad!=0 {return;}out[item]=value;
 }
-gtk_add :: (item:int,a:[]f32,b:[]f32,out:[]f32,flags:[]u8) #export_c {
+gtk_add :: (item:int,a:[]f32,b:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
   if a.count!=b.count || !gtk_item(item,a.count,out.count,flags.count) {return;}
   x:=a[item];y:=b[item];value:=x+y;checked:=gtk_count(0,f32_bits(x));checked=gtk_count(checked,f32_bits(y));checked=gtk_count(checked,f32_bits(value));bad:=gtk_receipt(checked,3);flags[item]=bad;if bad!=0 {return;}out[item]=value;
 }

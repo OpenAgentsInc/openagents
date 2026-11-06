@@ -117,7 +117,7 @@ first, so an escaped `#[0]` is still `#[0]`.
 <!-- source: coax/lib/nostr/retired.coax classify -->
 ```jai
 // The row whose kinds include kind, or RT_ALLOWED.
-rt_kind :: (kind:int)->int {
+rt_kind :: (kind:int)->int #effects(all) {
   if kind==1040 {return RT_03;}
   if kind==4 {return RT_04;}
   if kind==1021 || kind==1022 || (kind>=30017 && kind<=30020) {return RT_15;}
@@ -129,7 +129,7 @@ rt_kind :: (kind:int)->int {
   return RT_ALLOWED;
 }
 // Whether content holds a NIP-08 position "#[i]" naming a p or e tag.
-rt_mention :: (e:NostrEvent,content:string)->bool {
+rt_mention :: (e:NostrEvent,content:string)->bool #effects(all) {
   i:=0;t:=nostr_tag(e,i);
   while t.error!=NT_INDEX && t.error!=NT_EVENT {
     if t.error==NT_OK && (t.type==NT_E || t.type==NT_P) {
@@ -140,14 +140,14 @@ rt_mention :: (e:NostrEvent,content:string)->bool {
   }
   return false;
 }
-rt_holds :: (text:string,part:string)->bool {
+rt_holds :: (text:string,part:string)->bool #effects(all) {
   for i:0..<text.count-part.count+1 {if text[i..<i+part.count]==part {return true;}}
   return false;
 }
 // The rows of the retired forms an event with these tags and this decoded
 // content uses, into out in table order: their count (at most out.count),
 // or RT_EVENT.
-rt_scan :: (e:NostrEvent,content:string,out:[]int)->int {
+rt_scan :: (e:NostrEvent,content:string,out:[]int)->int #effects(all) {
   ev:=nt_event_of(e);
   delegations:=nt_tags(ev,"delegation");
   if delegations<0 {return RT_EVENT;}
@@ -160,7 +160,7 @@ rt_scan :: (e:NostrEvent,content:string,out:[]int)->int {
   return n;
 }
 // The retired forms a received event uses.
-rt_forms :: (e:NostrEvent,out:[]int)->int {
+rt_forms :: (e:NostrEvent,out:[]int)->int #effects(all) {
   if e.error!=NE_OK {return RT_EVENT;}
   decoded:[65536]u8;
   n:=json_unescape(e.original[e.content_from..<e.content_to],decoded[..]);
@@ -169,7 +169,7 @@ rt_forms :: (e:NostrEvent,out:[]int)->int {
 }
 // Before signing: RT_ALLOWED, the first retired row the event would use,
 // or RT_EVENT when the tags don't read.
-rt_write :: (kind:int,tags:string,content:string)->int {
+rt_write :: (kind:int,tags:string,content:string)->int #effects(all) {
   e:=nt_event(tags);e.kind=kind;out:[1]int;
   n:=rt_scan(e,content,out[..]);
   if n<0 {return n;}
@@ -249,14 +249,14 @@ here, not permission for everything.
 ```jai
 // A decimal number of at most ten digits, no sign and no leading zero, or
 // -1.
-n26_number :: (s:string)->int {
+n26_number :: (s:string)->int #effects(all) {
   if s.count==0 || s.count>10 || (s[0]=='0' && s.count>1) {return -1;}
   v:=0;for c:s {if c<'0' || c>'9' {return -1;}v=v*10+cast(int)(c-'0');}
   return v;
 }
 // N26_OK when an event of this kind and time meets the conditions,
 // N26_OUTSIDE when it doesn't, N26_CONDITIONS when they don't read.
-n26_conditions :: (text:string,kind:int,created_at:int)->int {
+n26_conditions :: (text:string,kind:int,created_at:int)->int #effects(all) {
   has_kind:=false;kind_ok:=false;times_ok:=true;from:=0;
   while from<=text.count {
     i:=from;while i<text.count && text[i]!='&' {i+=1;}
@@ -294,7 +294,7 @@ applied to the event's kind and `created_at`.
 <!-- source: coax/lib/nostr/nip26.coax claim -->
 ```jai
 // "nostr:delegation:<signer hex>:<conditions>" into out: its length, or -1.
-n26_string :: (signer:[32]u8,conditions:string,out:[]u8)->int {
+n26_string :: (signer:[32]u8,conditions:string,out:[]u8)->int #effects(all) {
   if out.count<N26_PREFIX.count+65+conditions.count {return -1;}
   key:=signer;hex:[64]u8;h:=hex_encode_checked(cast(string)key[..],hex[..],false);
   #assert h.error==NC_OK;
@@ -305,10 +305,10 @@ n26_string :: (signer:[32]u8,conditions:string,out:[]u8)->int {
   for i:0..<conditions.count {out[n+i]=conditions[i];}
   return n+conditions.count;
 }
-n26_status :: (c:N26Claim,status:int)->N26Claim {r:=c;r.status=status;return r;}
+n26_status :: (c:N26Claim,status:int)->N26Claim #effects(all) {r:=c;r.status=status;return r;}
 // What the event's delegation tag claims, checked against its signer, kind
 // and created_at. A claim that reads OK is still only a claim.
-n26_claim :: (e:NostrEvent)->N26Claim {
+n26_claim :: (e:NostrEvent)->N26Claim #effects(all) {
   c:N26Claim;ev:=nt_event_of(e);
   count:=nt_tags(ev,"delegation");
   if count<0 {return c;}
@@ -329,7 +329,7 @@ n26_claim :: (e:NostrEvent)->N26Claim {
   return n26_status(c,held);
 }
 // The event's author is its signer, whatever its tags claim.
-n26_attribute :: (e:NostrEvent)->N26Attribution {
+n26_attribute :: (e:NostrEvent)->N26Attribution #effects(all) {
   return N26Attribution.{author=e.public_key,claim=n26_claim(e)};
 }
 ```

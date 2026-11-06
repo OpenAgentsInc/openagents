@@ -31,16 +31,16 @@ ias_text :: (pieces:[]string,tokens:[]int,out:[]u8)->int {
  #assert s[0].gate.epoch==7 && s[0].gate.phase==4 && s[0].gate.sequence==3 && s[0].gate.samples==480;
  #assert s[0].chunks==0 && s[0].count==0 && s[0].text_n==0 && s[0].text[0]==0 && ias_stream_text(s[..],7,out[..])== -1;
 }
-ias_stream_backend_failure :: (s:[]IasStream) #export_c {
+ias_stream_backend_failure :: (s:[]IasStream) #export_c #effects(all) {
  if s.count!=1 {return;}g:=ias_fault(s[0].gate);s[0]=IasStream.{};s[0].gate=g;
 }
-ias_stream_reset :: (s:[]IasStream,epoch:u64,work:[]f32,state:[]f32)->bool #export_c {
+ias_stream_reset :: (s:[]IasStream,epoch:u64,work:[]f32,state:[]f32)->bool #export_c #effects(all) {
  if s.count!=1 || epoch==0 || epoch<=s[0].gate.epoch {return false;}
  if !ias_device_reset(state) || !ias_zero(work) {ias_stream_backend_failure(s);return false;}
  for i:0..<work.count {work[i]=0;}
  g:=ias_begin(s[0].gate,epoch);s[0]=IasStream.{};s[0].gate=g;return true;
 }
-ias_stream_cancel :: (s:[]IasStream,epoch:u64,work:[]f32,state:[]f32)->bool #export_c {
+ias_stream_cancel :: (s:[]IasStream,epoch:u64,work:[]f32,state:[]f32)->bool #export_c #effects(all) {
  if s.count!=1 || epoch!=s[0].gate.epoch {return false;}
  g:=ias_cancel(s[0].gate,epoch);s[0]=IasStream.{};s[0].gate=g;for i:0..<work.count {work[i]=0;}return ias_device_reset(state) && ias_zero(work);
 }
@@ -60,7 +60,7 @@ ias_stream_frames :: (s:[]IasStream,final:bool,w:[]f32,work:[]f32,state:[]f32,ba
 // Status: 0 admitted, 1 epoch/order/extent refusal, 2 nonfinite/audio refusal,
 // 3 backend/capacity failure (terminal until reset). Validate the whole push
 // before changing state. Final-only zero mel padding never becomes PCM.
-ias_stream_push :: (s:[]IasStream,epoch:u64,sequence:u64,source:[]f32,final:bool,w:[]f32,work:[]f32,state:[]f32,bank:[]f64,window:[]f64,pieces:[]string)->int #export_c {
+ias_stream_push :: (s:[]IasStream,epoch:u64,sequence:u64,source:[]f32,final:bool,w:[]f32,work:[]f32,state:[]f32,bank:[]f64,window:[]f64,pieces:[]string)->int #export_c #effects(all) {
  if s.count!=1 || !ias_admit(s[0].gate,epoch,sequence,source.count,final) {return 1;}
  for value:source {if !(value>= -1 && value<=1) {return 2;}}
  ok:=true;
@@ -73,11 +73,11 @@ ias_stream_push :: (s:[]IasStream,epoch:u64,sequence:u64,source:[]f32,final:bool
  if !ok {ias_stream_backend_failure(s);return 3;}
  s[0].gate=ias_commit(s[0].gate,source.count,final);return 0;
 }
-ias_stream_text :: (s:[]IasStream,epoch:u64,out:[]u8)->int #export_c {
+ias_stream_text :: (s:[]IasStream,epoch:u64,out:[]u8)->int #export_c #effects(all) {
  if s.count!=1 || !ias_can_publish(s[0].gate,epoch) || out.count<s[0].text_n {return -1;}
  n:=s[0].text_n;for i:0..<n {out[i]=s[0].text[i];}return n;
 }
-ias_feature_snapshot :: (s:[]IasStream,work:[]f32,out:[]f32)->int #export_c {
+ias_feature_snapshot :: (s:[]IasStream,work:[]f32,out:[]f32)->int #export_c #effects(all) {
  if s.count!=1 || s[0].chunks<1 {return 0;}n:=ifx s[0].chunks==1 then 9 else 16;
  if work.count<IAS_FEATURES+n*128 || out.count<n*128 {return -1;}for i:0..<n*128 {out[i]=work[IAS_FEATURES+i];}return n;
 }

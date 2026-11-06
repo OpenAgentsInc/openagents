@@ -5,7 +5,7 @@
 #load "media-conformance.coax";
 hmr_line :: (text:string,wanted:int)->string {start:=0;line:=0;for byte,i:text {if byte=='\n' {if line==wanted {return rtq_trim(text[start..<i]);}line+=1;start=i+1;}}return ifx line==wanted then rtq_trim(text[start..<text.count]) else "";}
 hmr_name :: (name:string)->bool {if name==""||name=="."||name==".." {return false;}for byte:name {if byte=='/'||byte=='\\' {return false;}}return true;}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {tool_errln("usage: check-media-readback CAPTURE_DIR NATIVE_FIXTURE_DIR REPORT.json");return 2;}
  capture:=args_at(a[..],0);fixture:=args_at(a[..],1);report:=args_at(a[..],2);paths:[8][4096]u8;
  receipt:=fs_join(capture,"receipt.json",paths[0][..]);listpath:=fs_join(fixture,"media.list",paths[1][..]);urlspath:=fs_join(fixture,"media.urls",paths[2][..]);inputs:[1]RtqInputs;

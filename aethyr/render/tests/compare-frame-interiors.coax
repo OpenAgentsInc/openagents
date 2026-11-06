@@ -25,7 +25,7 @@ ci_inventory :: (inputs:[]RtqInputs,compiler:string,deadline:int)->bool {
 // follows symlinks. Repeated immediately before publication, not atomic O_EXCL.
 ci_fresh :: (path:string)->bool {if !fs_path_ok(path) || fs_kind(path)!=FS_NONE {return false;}base:=fs_base(path);if base=="" || base=="." || base==".." {return false;}list:[1]FsList;n:=fs_list(fs_dir(path),list[..]);if n<0 || list[0].full {return false;}for i:0..<n {if fs_entry(list[..],i)==base {return false;}}return true;}
 ci_rows :: (path:string,expected:string,deadline:int)->int {n:=fs_size(path);if n<0 || n>67108864 {return -1;}state:[112]u8;if sha256_init(state[..])!=SHA_OK {return -1;}bytes:[65536]u8;at:=0;rows:=0;last:u8=0;while at<n {if proc_now_ms()>deadline {return -1;}count:=ifx n-at<bytes.count then n-at else bytes.count;if fs_read_at(path,at,bytes[0..<count])!=count || sha256_update_checked(state[..],bytes[0..<count],false)!=SHA_OK {return -1;}for byte:bytes[0..<count] {if byte==10 {rows+=1;}last=byte;}at+=count;}hash:[64]u8;if (n>0 && last!=10) || !ci_final_hash(state[..],hash[..]) || cast(string)hash[..]!=expected {return -1;}return rows;}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  args:[1]Args;if !args_load(args[..]) {return 2;}options:=cip_parse(args[0].v[0..<args[0].n]);if !options.valid {tool_errln("interiors: require each of15 closed options once, with a nonempty bounded value");return 2;}v:=options.values;
  // Receipt admission precedes writes and image ingress.
  parent:[4096]u8;receipt:[4096]u8;dir:=fs_realpath(fs_dir(v[14]),parent[..]);if dir=="" {return 2;}receipt_path:=fs_join(dir,fs_base(v[14]),receipt[..]);if !ci_fresh(receipt_path) {tool_errln("interiors: receipt must be a new directory entry");return 2;}

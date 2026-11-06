@@ -11,7 +11,7 @@
   v[0].eg[k].live=false;rm_st_inputs(v[..],o[..]);for q:0..<5{#assert o[q]==0;}
   o[0]=99;rm_st_inputs(v[..],o[0..<4]);#assert o[0]==99;
 }
-rm_st_inputs::(v:[]RmServer,out:[]int) #export_c {
+rm_st_inputs::(v:[]RmServer,out:[]int) #export_c #effects(all) {
   if out.count<5{return;}for q:0..<5{out[q]=0;}
   for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}
     for s:0..<EG_SEATS{st:=v[0].eg[k].seat[s..<s+1];if !st[0].live{continue;}
@@ -83,14 +83,14 @@ rm_st_inputs::(v:[]RmServer,out:[]int) #export_c {
 // The native SDK calls this only after the addressed final D was accepted by
 // its socket buffer. Multipart prefixes, stale sequence and generations do not
 // consume the sample. This is not network transit or client presentation.
-rm_st_sent_ack::(v:[]RmServer,conn:int,text:string)->int #export_c{
+rm_st_sent_ack::(v:[]RmServer,conn:int,text:string)->int #export_c #effects(all) {
   ks:[2]int;if !rm_st_conn(v,conn,ks[..])||text.count<2||text[0]!='D'{return -1;}
   r:[1]WireRd;r[0]=wire_rd(text,1);d:=wire_read_d(text,r[..]);if !r[0].ok||(d.f&2)!=0{return -1;}
   st:=v[0].eg[ks[0]].seat[ks[1]..<ks[1]+1];
   if d.ack!=st[0].ack||d.ack<=st[0].ack_sent_told||st[0].ack_at<=0{return -1;}
   st[0].ack_sent_told=d.ack;return st[0].ack_at;
 }
-rm_st_saved::(v:[]RmServer,k:int, s_id: SeatId,out:[]int)->bool #export_c{ s := s_id.value;
+rm_st_saved::(v:[]RmServer,k:int, s_id: SeatId,out:[]int)->bool #export_c #effects(all) { s := s_id.value;
   if out.count<12||!rm_eg_live(v,k)||s<0||s>=EG_SEATS||!v[0].eg[k].seat[s].live{return false;}
   for q:0..<12{out[q]=0;}out[4]= -1;out[5]= -1;tk:=eg_ticket(v,k, s_id);out[1]=tk.owner;
   if tk.schema==2{
@@ -103,7 +103,7 @@ rm_st_saved::(v:[]RmServer,k:int, s_id: SeatId,out:[]int)->bool #export_c{ s := 
   out[7]=e[0].rev;out[8]=ifx e[0].rev>e[0].acked then 1 else 0;
   if e[0].durable_rev>0&&e[0].durable_owner==tk.owner{out[2]=e[0].durable_process;out[3]=e[0].durable_rev;out[10]=e[0].durable_capture_at;out[4]=rs_max(0,v[0].wall_ms-e[0].durable_capture_at);out[5]=rs_max(0,v[0].wall_ms-e[0].durable_at);out[11]=1;}return true;
 }
-rm_st_saves::(v:[]RmServer,out:[]int) #export_c{
+rm_st_saves::(v:[]RmServer,out:[]int) #export_c #effects(all) {
   if out.count<28{return;}for q:0..<28{out[q]=0;}
   out[0]=rm_checkpoint_pending(v);out[1]=ifx v[0].ck.fly then 1 else 0;
   out[2]=v[0].ck.posts;out[3]=v[0].ck.retries;out[4]=v[0].ck.failures;out[5]=v[0].ck.applied;out[6]=v[0].ck.duplicates;out[7]=v[0].ck.late;out[8]=v[0].ck.refused;out[9]=v[0].ck.fenced;
@@ -112,14 +112,14 @@ rm_st_saves::(v:[]RmServer,out:[]int) #export_c{
   out[15]=ifx v[0].ck.finalizing then 1 else 0;out[16]=rm_vitals_pending(v);out[17]=ifx v[0].vit.fly then 1 else 0;
   out[18]=v[0].vit.posts;out[19]=v[0].vit.retried;out[20]=v[0].vit.failed;out[21]=v[0].vit.applied;out[22]=v[0].vit.dup;out[23]=v[0].vit.fenced;out[24]=v[0].vit.gave_up;out[25]=v[0].vit.evicted;out[27]=v[0].st.refused[ST_ELSEWHERE];
 }
-rm_st_rows::(v:[]RmServer,out:[]int) #export_c{
+rm_st_rows::(v:[]RmServer,out:[]int) #export_c #effects(all) {
   if out.count<9{return;}for q:0..<9{out[q]=0;}out[0]=v[0].st.rows;out[1]=v[0].st.row_bytes;out[2]=v[0].st.rows_deferred;out[5]= -1;out[6]= -1;
   for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}for s:0..<EG_SEATS{if !v[0].eg[k].seat[s].live||!v[0].eg[k].seat[s].placed{continue;}
     at:=k*EG_SEATS+s;n:=v[0].st.rows_last[at];left:=v[0].st.left_last[at];out[3]+=n;out[4]+=left;
     if out[5]<0||n+left>out[7]+out[8]{out[5]=k;out[6]=s;out[7]=n;out[8]=left;}
   }}
 }
-rm_st_capacity::(v:[]RmServer,out:[]int) #export_c{
+rm_st_capacity::(v:[]RmServer,out:[]int) #export_c #effects(all) {
   if out.count<6{return;}for q:0..<6{out[q]=0;}out[0]=EG_ROOMS;
   for k:0..<EG_ROOMS{if !v[0].eg[k].live{out[2]+=1;continue;}out[1]+=1;
     for s:0..<EG_SEATS{st:=v[0].eg[k].seat[s];if !st.live{continue;}

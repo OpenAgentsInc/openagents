@@ -52,13 +52,13 @@
   #assert f64_bits(values[3]) == 0x7fefffffffffffff;
 }
 
-swap :: (items: [] $T, a: int, b: int) {
+swap :: (items: [] $T, a: int, b: int) #effects(all) {
   value := items[a];
   items[a] = items[b];
   items[b] = value;
 }
 
-reverse :: (items: [] $T) {
+reverse :: (items: [] $T) #effects(all) {
   for i: 0..<items.count / 2 {
     swap(items, i, items.count - 1 - i);
   }

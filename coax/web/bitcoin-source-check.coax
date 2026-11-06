@@ -45,7 +45,7 @@ bs_run :: (c:[]Cdp,url:string,phone:bool)->bool {
   if !bs_click(c,220) || !bs_wait(c,"coaxial.guardProbe(20)===0&&coaxial.guardProbe(7)===0&&labSourceErrors.length===0") {return false;}
   print("PASS %: real fetch, fixture/node selection, reorg, page, transaction graph, synchronous invalidation, pending-request trap/rescue, device recovery, return to offline recording\n",ifx phone then "phone" else "desktop");return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}
   for phone:0..<2 {c:[1]Cdp;if !cdp_launch_background(c[..],1440,900,"bitcoin-source-") {return 1;}ok:=bs_run(c[..],args_at(a[..],0),phone==1);
     if !ok {n:=cdp_evaluate(c[..],"JSON.stringify({errors:globalThis.labSourceErrors,text:document.body.innerText.slice(0,300),ready:globalThis.coaxial?.ready,lost:globalThis.coaxial?.renderDeviceLost,status:document.querySelector('#coaxial-a11y-status')?.textContent?.slice(0,700),probe:Array.from({length:10},(_,i)=>globalThis.coaxial?.guardProbe?.(i+20))})");if n>=0 {print("%\n",jv_raw(c[0].doc[0],n));}}

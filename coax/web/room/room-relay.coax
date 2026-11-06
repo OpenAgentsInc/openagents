@@ -103,7 +103,7 @@ rl_seat :: (v: [] RmServer, r: int) -> SeatId {
     if c.live && c.relay == r && c.seat >= 0 && c.seat < RELAY_SEATS { taken[c.seat] = true; }
   }
   k := ifx v[0].relays[r].limited then eg_room_at(v, r) else -1;
-  if k >= 0 { for s: 0..<EG_SEATS { if eg_held(v, k, SeatId.{value = s}) { taken[s] = true; } } }
+  if k >= 0 { for s: 0..<EG_SEATS { if eg_held(v, k, SeatId.{value = s}) || v[0].eg[k].seat_life[s]==EV_SEAT_GENERATION_MAX { taken[s] = true; } } }
   for seat: 0..<v[0].relays[r].seats { if !taken[seat] { return SeatId.{value = seat}; } }
   return SeatId.{value = -1};
 }
@@ -397,14 +397,14 @@ rl_people :: (v: [] RmServer, r: int) -> int {
   return n;
 }
 // The clocks the host keeps: monotonic ms (rate limits) and wall ms (y and t), set before each event.
-rm_clock :: (v: [] RmServer, mono: int, wall: int) #export_c { v[0].mono_ms = mono; v[0].wall_ms = wall; }
+rm_clock :: (v: [] RmServer, mono: int, wall: int) #export_c #effects(all) { v[0].mono_ms = mono; v[0].wall_ms = wall; }
 // Whether conn's socket stayed over its rate limit RL_OVER_MS: the host closes it.
-rm_relay_kicked :: (v: [] RmServer, conn: int) -> bool #export_c { return conn >= 0 && conn < CONNS && v[0].conns[conn].live && v[0].conns[conn].kicked; }
+rm_relay_kicked :: (v: [] RmServer, conn: int) -> bool #export_c #effects(all) { return conn >= 0 && conn < CONNS && v[0].conns[conn].live && v[0].conns[conn].kicked; }
 // Frames dropped by the rate limits, and by a full queue, since the start.
-rm_relay_dropped :: (v: [] RmServer) -> int #export_c { return v[0].dropped; }
-rm_relay_queue_full :: (v: [] RmServer) -> int #export_c { return v[0].q_full; }
+rm_relay_dropped :: (v: [] RmServer) -> int #export_c #effects(all) { return v[0].dropped; }
+rm_relay_queue_full :: (v: [] RmServer) -> int #export_c #effects(all) { return v[0].q_full; }
 // The next frame for the host to send, into rout (who to: rto): its length, or 0 when none waits.
-rm_relay_next :: (v: [] RmServer) -> int #export_c {
+rm_relay_next :: (v: [] RmServer) -> int #export_c #effects(all) {
   if v[0].q_n == 0 { return 0; }
   k := v[0].q_head;
   n := v[0].q[k].n;
@@ -413,7 +413,7 @@ rm_relay_next :: (v: [] RmServer) -> int #export_c {
   v[0].q_head = (k + 1) % RELAY_QUEUE; v[0].q_n -= 1;
   return n;
 }
-rm_relay_to :: (v: [] RmServer, conn: int) -> bool #export_c { return conn >= 0 && conn < CONNS && v[0].rto[conn]; }
+rm_relay_to :: (v: [] RmServer, conn: int) -> bool #export_c #effects(all) { return conn >= 0 && conn < CONNS && v[0].rto[conn]; }
 
 // "N" when code is slug + "-" + N (1 to 999, no leading zero), else 0.
 rl_instance :: (code: string, slug: string) -> int {
@@ -471,7 +471,7 @@ rl_with :: (v: [] RmServer, slug: string, pid: string) -> int {
 //   {"realm":"SLUG","game":"everglade","seats":16,"join":"SLUG-K","rooms":[{"code":"SLUG-1","players":3},...]}
 // "join" is the lowest instance with a free seat (one nobody is in yet when all are full). Its
 // length, or -1 when the request isn't this path. A test room (pair-...) is never listed unless asked by name.
-rm_rooms :: (v: [] RmServer, request: string) -> int #export_c {
+rm_rooms :: (v: [] RmServer, request: string) -> int #export_c #effects(all) {
   if !rl_has_path(request, ROOMS_PATH) { return -1; }
   sb: [RELAY_NAME] u8;
   s := rl_name(request, 4 + ROOMS_PATH.count, sb[0..<RELAY_NAME - 4]);

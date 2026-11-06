@@ -2,7 +2,7 @@
 #import "Basic";
 #load "../render/tests/qualification-files.coax";
 #load "../../coax/lib/sys/args.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {tool_errln("usage: emit-linux-audio-demand ROOT COMPILER NEW_OUT");return 2;}
  root:=args_at(a[..],0);compiler:=args_at(a[..],1);out:=args_at(a[..],2);paths:[4][4096]u8;if !fs_mkdir(out) {return 1;}
  argv:=[8]string.[compiler,"c",fs_join(root,"aethyr/host/linux-audio-demand-tool.coax",paths[0][..]),"--library","--header",fs_join(out,"NativeAudio.h",paths[1][..]),"--profile-report",fs_join(out,"profile.json",paths[2][..])];

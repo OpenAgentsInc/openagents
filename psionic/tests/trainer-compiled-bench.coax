@@ -7,7 +7,7 @@
 #import "Basic";
 #load "../lib/trainer-compiled.coax";
 
-tcb_now :: ()->s64 #foreign;
+tcb_now :: ()->s64 #foreign #effects(all);
 TCB_WARM :: 10;   // untimed steps first, as chapter 34 requires
 TCB_RUNS :: 400;  // timed steps a path
 TCB_COMPILES :: 5; // compiles timed a path; the receipt keeps their mean

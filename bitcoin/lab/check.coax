@@ -64,7 +64,7 @@ lc_pow :: (port:int,state:string)->bool {
   if !lc_publish(state,journal[0..<28+init.n]) {return false;}path:[1024]u8;reply:[LAB_REPLY_MAX]u8;nodes:[256]JvNode;
   n:=lf_get(port,lc_path("window",123,"latest",path[..]),reply[..]);if n<0 {return false;}r:=lm_decode(cast(string)reply[0..<n],nodes[..]);return r.code==0 && r.source==2 && r.mode==2 && r.profile==1 && r.height==0 && r.validated==0;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: check API_BINARY JOURNAL SAME_HEIGHT_JOURNAL NEW_DIRECTORY");return 2;}
   dir:=args_at(a[..],3);if fs_exists(dir) || !fs_mkdir(dir) {return 2;}
   p:[3][4096]u8;state:=fs_join(dir,"state.kv",p[0][..]);blocks:=fs_join(dir,"blk00000.dat",p[1][..]);

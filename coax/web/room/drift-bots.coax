@@ -112,7 +112,7 @@ db_page_seat :: (b: [] DbBot, n: int, w: [] DbWorld) -> int {
   #assert db_atan2(1, 0) > 1.57 && db_atan2(1, 0) < 1.58;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 5 { tool_errln("usage: coax/web/tool.sh coax/web/room/drift-bots.coax ws://127.0.0.1:PORT N SECONDS ROOM DIR"); return 2; }
   bb: [512] u8;

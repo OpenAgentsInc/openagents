@@ -6,7 +6,7 @@
 pkfi_header :: (path:string,samples:int)->bool {
  h:[44]u8;wv_header(h[..],1,1,16000,16,samples*2);return fs_write(path,cast(string)h[..]);
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}
  source:[102240]u8;src:=args_at(a[..],0);dir:=args_at(a[..],1);
  if fs_size(src)!=source.count || fs_read(src,source[..])!=source.count {tool_errln("expected public Count s16le PCM, 51120 samples");return 3;}

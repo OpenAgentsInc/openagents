@@ -10,7 +10,7 @@
 #load "project.coax";
 
 // Check i, run; or, with run false, its name. The count of checks either way.
-native_check :: (i: int, run: bool) -> int #export_c {
+native_check :: (i: int, run: bool) -> int #export_c #effects(all) {
   if i == 0 { if run { pf_0(); } else { print("a frame draws every panel inside the canvas, within the vertex budget"); } }
   if i == 1 { if run { pf_1(); } else { print("the queue's rows are found by the pointer on a desktop and a phone, and a click opens each"); } }
   if i == 2 { if run { pf_2(); } else { print("the header's crumbs go home and back to the project list"); } }

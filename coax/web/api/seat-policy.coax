@@ -59,7 +59,7 @@ SP_IDLE_MS :: 600000;
 // Whether a seat opens: signed (an account), seen (the realm is there for that account: a private
 // realm only for its owner and site admins), others_open (seats open now on the site, the
 // caller's own left out), hosted, and whether a runner is configured.
-sp_open :: (signed: bool, seen: bool, others_open: int, hosted: bool, runner: bool) -> int #export_c {
+sp_open :: (signed: bool, seen: bool, others_open: int, hosted: bool, runner: bool) -> int #export_c #effects(all) {
   if !signed { return SP_UNSIGNED; }
   if !seen { return SP_BAD_REALM; }
   if hosted && !runner { return SP_NO_RUNNER; }
@@ -67,15 +67,15 @@ sp_open :: (signed: bool, seen: bool, others_open: int, hosted: bool, runner: bo
   return SP_OPEN;
 }
 // Whether a seat kept at kept_ms is still open at now_ms.
-sp_live :: (now_ms: int, kept_ms: int, closed: bool) -> bool #export_c {
+sp_live :: (now_ms: int, kept_ms: int, closed: bool) -> bool #export_c #effects(all) {
   if closed || kept_ms > now_ms { return false; }
   return now_ms - kept_ms < SP_IDLE_MS;
 }
 // When a seat kept now closes unless kept again.
-sp_until :: (now_ms: int) -> int #export_c { return now_ms + SP_IDLE_MS; }
-sp_idle_ms :: () -> int #export_c { return SP_IDLE_MS; }
-sp_site_most :: () -> int #export_c { return SP_SITE_MOST; }
-sp_status :: (code: int) -> int #export_c {
+sp_until :: (now_ms: int) -> int #export_c #effects(all) { return now_ms + SP_IDLE_MS; }
+sp_idle_ms :: () -> int #export_c #effects(all) { return SP_IDLE_MS; }
+sp_site_most :: () -> int #export_c #effects(all) { return SP_SITE_MOST; }
+sp_status :: (code: int) -> int #export_c #effects(all) {
   if code == SP_OPEN { return 200; }
   if code == SP_UNSIGNED { return 401; }
   if code == SP_SITE_FULL { return 429; }
@@ -83,7 +83,7 @@ sp_status :: (code: int) -> int #export_c {
   if code == SP_BAD_REALM { return 404; }
   return 500;
 }
-sp_refusal_text :: (code: int) -> string #export_c {
+sp_refusal_text :: (code: int) -> string #export_c #effects(all) {
   if code == SP_UNSIGNED { return "sign the request (NIP-98): a seat is an account's"; }
   if code == SP_SITE_FULL { return "the site's seats are full (8 at once): try again in a few minutes"; }
   if code == SP_NO_RUNNER { return "hosted seats aren't running here"; }

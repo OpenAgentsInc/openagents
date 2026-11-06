@@ -22,12 +22,12 @@ QsLayout :: struct {state:int;rope:int;rope_work:int;engine:int;total:int;}
     bad:=qs_decide(model,tokens[..],1,state[..],QrKind.choice,1,slots[..],out[..],prob[..],work[..],false);
     #assert bad.status==QxStatus.index && out[0]==-7 && out[1]==-7;for i:0..<394 {#assert state[i]==before[i];}
 }
-qs_layout :: (model:QxModel,count:int,prefix:int)->QsLayout {
+qs_layout :: (model:QxModel,count:int,prefix:int)->QsLayout #effects(all) {
     p:QsLayout;p.rope=qp_total(model.shape.state);p.rope_work=p.rope+count*64;p.engine=p.rope_work+count*64;
     first:=qx_layout(model,0,prefix).total;second:=qx_layout(model,prefix,count-prefix).total;
     p.total=p.engine+first+second;return p;
 }
-qs_decide :: (model:QxModel,tokens:[]int,prefix:int,state:[]f32,kind:QrKind,temperature:f32,slots:[]int,out:[]f64,prob:[]f64,work:[]f32,overlap:bool)->QxResult #export_c {
+qs_decide :: (model:QxModel,tokens:[]int,prefix:int,state:[]f32,kind:QrKind,temperature:f32,slots:[]int,out:[]f64,prob:[]f64,work:[]f32,overlap:bool)->QxResult #export_c #effects(all) {
     s:=model.shape;count:=tokens.count;
     if !qe_valid(s) || s.full.attention.rotary_dim!=64 || !qr_vocab_valid(model.vocab) || !qr_valid(cast(u8)kind,slots.count,temperature) {return QxResult.{status=QxStatus.shape};}
     if count<1 {return QxResult.{status=QxStatus.capacity};}

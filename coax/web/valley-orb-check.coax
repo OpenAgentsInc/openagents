@@ -1,6 +1,6 @@
 // Independent browser SDK observation: compare the actual additive draw to its unchanged backdrop.
 #load "valley-capture.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || (args_count(a[..])!=1 && args_count(a[..])!=2) {return 2;}c:[1]Cdp;if !cdp_launch_background(c[..],1280,800,"slay-orb-") {return 1;}
  _:=cdp_call(c[..],"Page.enable","",30000);_=cdp_call(c[..],"Emulation.setDeviceMetricsOverride","{\"width\":1280,\"height\":800,\"deviceScaleFactor\":1,\"mobile\":false}",30000);
  setup:="globalThis.coaxialClip=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';globalThis.faceHashes=[];globalThis.faceErrors=[];globalThis.orbCaptures=[];globalThis.orbFacts={};const ce=console.error;console.error=(...a)=>{faceErrors.push(a.map(String).join(' '));ce(...a)}";b:[4096]u8;j:[1]Jo;jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"source");jo_str(j[..],setup);jo_end(j[..]);_=cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument",jo_text(j[..]),30000);

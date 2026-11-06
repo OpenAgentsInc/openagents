@@ -240,9 +240,9 @@ text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE,
 
 // ---- the page's state
 
-coaxial_garden_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_garden_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_garden_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_garden_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_garden_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_garden_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 ground :: () -> Ground { g: Ground; g.n = CELLS; g.cell = CELL; g.west = EDGE; g.south = EDGE; return g; }
 garden_start :: (s: [] Garden) {
@@ -293,7 +293,7 @@ vase_sum :: (a: Arrange) -> f32 {
 }
 
 // The vase's flowers into out; the bytes written, or -1 when they don't fit.
-garden_vase_save :: (a: Arrange, out: [] u8) -> int #export_c {
+garden_vase_save :: (a: Arrange, out: [] u8) -> int #export_c #effects(all) {
   n := a.count;
   if n < 0 || n > ARRANGE_STEMS || out.count < 1 + n * STEM_BYTES { return -1; }
   out[0] = cast(u8) n;
@@ -308,7 +308,7 @@ garden_vase_save :: (a: Arrange, out: [] u8) -> int #export_c {
 
 // The flowers a save holds, into the vase; false (and the vase as it was) when
 // the save isn't one this vase can hold.
-garden_vase_restore :: (a: Arrange, b: [] u8, n: int, into: [] Arrange) -> bool #export_c {
+garden_vase_restore :: (a: Arrange, b: [] u8, n: int, into: [] Arrange) -> bool #export_c #effects(all) {
   if n < 1 || n > b.count || into.count < 1 { return false; }
   count := cast(int) b[0];
   if count > ARRANGE_STEMS || n != 1 + count * STEM_BYTES { return false; }
@@ -328,7 +328,7 @@ garden_vase_restore :: (a: Arrange, b: [] u8, n: int, into: [] Arrange) -> bool 
 }
 
 // The record kept on an earlier visit (the host's message 4): its vase, if it opens.
-garden_kept :: (s: [] Garden, text: string) -> bool #export_c {
+garden_kept :: (s: [] Garden, text: string) -> bool #export_c #effects(all) {
   if !s[0].started { garden_start(s); }
   s[0].slots = save_read(text, s[0].slot_bytes[..]);
   for from: 1..<3 {
@@ -368,9 +368,9 @@ keep_vase :: (s: [] Garden) {
   s[0].kept_at = s[0].time;
 }
 
-garden_action :: (s: [] Garden) -> int #export_c { return s[0].action; }
-garden_outbox_len :: (s: [] Garden) -> int #export_c { return ifx s[0].action == 4 then s[0].kept_n else 0; }
-garden_action_done :: (s: [] Garden) #export_c { s[0].action = 0; s[0].kept_n = 0; }
+garden_action :: (s: [] Garden) -> int #export_c #effects(all) { return s[0].action; }
+garden_outbox_len :: (s: [] Garden) -> int #export_c #effects(all) { return ifx s[0].action == 4 then s[0].kept_n else 0; }
+garden_action_done :: (s: [] Garden) #export_c #effects(all) { s[0].action = 0; s[0].kept_n = 0; }
 
 // The player's walls and the camera's scenery, from the layout.
 build_scenery :: (s: [] Garden) {
@@ -408,20 +408,20 @@ put6 :: (out: [] f32, i: int, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) {
 }
 
 // The walls the player walks among, for the face.
-garden_walls :: (s: [] Garden) -> int #export_c { if !s[0].started { garden_start(s); } return s[0].wall_n; }
-garden_spawn :: (s: [] Garden) -> Point #export_c { return v3(f32(SPAWN_X), 0, f32(SPAWN_Z)); }
+garden_walls :: (s: [] Garden) -> int #export_c #effects(all) { if !s[0].started { garden_start(s); } return s[0].wall_n; }
+garden_spawn :: (s: [] Garden) -> Point #export_c #effects(all) { return v3(f32(SPAWN_X), 0, f32(SPAWN_Z)); }
 
 // ---- where you are, kept so a reload puts you back (eg-pos, place.coax)
 
 // Open ground in the Garden: inside its edge and clear of the trees and hedges.
-garden_place_open :: (s: [] Garden, x: f32, z: f32) -> bool #export_c {
+garden_place_open :: (s: [] Garden, x: f32, z: f32) -> bool #export_c #effects(all) {
   if !s[0].started { garden_start(s); }
   e := abs(f32(EDGE)) - 1;
   if !finite(x) || !finite(z) || x < -e || x > e || z < -e || z > e { return false; }
   return verse_place_clear(s[0].walls[..], s[0].wall_n, x, 0, z, 0.35);
 }
 // A kept place made good: itself when open, else the nearest open spot, else the spawn.
-garden_place_fix :: (s: [] Garden, p: Place) -> Place #export_c {
+garden_place_fix :: (s: [] Garden, p: Place) -> Place #export_c #effects(all) {
   q := p; q.y = 0; q.room = -1;
   for i: 0..<PLACE_TRIES {
     t := verse_place_try(p.x, p.z, i);
@@ -431,7 +431,7 @@ garden_place_fix :: (s: [] Garden, p: Place) -> Place #export_c {
   return q;
 }
 // You are put at a kept place: the feet on the ground and the orbit as kept.
-garden_place_camera :: (s: [] Garden, p: Place) #export_c {
+garden_place_camera :: (s: [] Garden, p: Place) #export_c #effects(all) {
   if !s[0].started { garden_start(s); }
   s[0].feet = v3(p.x, ground_at(s, p.x, p.z), p.z); s[0].face = p.face;
   s[0].orbit = verse_place_orbit(p, s[0].feet);
@@ -457,7 +457,7 @@ hold_bit :: (key: int) -> int {
   return 0;
 }
 
-garden_key :: (s: [] Garden, key: int, mods: int) -> bool #export_c {
+garden_key :: (s: [] Garden, key: int, mods: int) -> bool #export_c #effects(all) {
   if !s[0].started { garden_start(s); }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
@@ -470,21 +470,21 @@ garden_key :: (s: [] Garden, key: int, mods: int) -> bool #export_c {
   return true;
 }
 
-garden_key_up :: (s: [] Garden, key: int, mods: int) -> bool #export_c {
+garden_key_up :: (s: [] Garden, key: int, mods: int) -> bool #export_c #effects(all) {
   b := hold_bit(key);
   if b == 0 { return false; }
   if s[0].held & b != 0 { s[0].held = s[0].held - b; }
   return true;
 }
 
-garden_blur :: (s: [] Garden) #export_c { s[0].held = 0; s[0].drag_on = false; s[0].finger = -1; s[0].point_on = false; }
+garden_blur :: (s: [] Garden) #export_c #effects(all) { s[0].held = 0; s[0].drag_on = false; s[0].finger = -1; s[0].point_on = false; }
 
 in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 
 // A mouse drag turns the camera and a click throws what you hold. A finger
 // on the phone's button presses it; any other finger is the face's (the
 // sticks), so this says it isn't used.
-garden_pointer :: (s: [] Garden, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+garden_pointer :: (s: [] Garden, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if !s[0].started { garden_start(s); }
   if kind != 0 { s[0].touch = true; }
   if verse_arrange_active(s[0].vase) { return arranging_pointer(s, x, y, phase, kind, id); }
@@ -547,9 +547,9 @@ arranging_pointer :: (s: [] Garden, x: f32, y: f32, phase: int, kind: int, id: i
 }
 
 // The face asks this before it moves you: in the close-up you stand still.
-garden_busy :: (s: [] Garden) -> bool #export_c { return verse_arrange_active(s[0].vase); }
+garden_busy :: (s: [] Garden) -> bool #export_c #effects(all) { return verse_arrange_active(s[0].vase); }
 
-garden_wheel :: (s: [] Garden, dy: f32) #export_c {
+garden_wheel :: (s: [] Garden, dy: f32) #export_c #effects(all) {
   if finite(dy) { s[0].orbit = verse_orbit_zoom(s[0].orbit, clamp(dy, -400, 400) * f32(WHEEL_ZOOM)); }
 }
 
@@ -563,7 +563,7 @@ axis :: (held: int, plus: int, minus: int) -> f32 {
 // Before the player moves: what the keys say, and the camera's turn, so
 // the player walks the way the camera looks. dyaw and dpitch are a
 // thumb's turn (grid.coax Sticks).
-garden_controls :: (s: [] Garden, dt: f32, dyaw: f32, dpitch: f32) #export_c {
+garden_controls :: (s: [] Garden, dt: f32, dyaw: f32, dpitch: f32) #export_c #effects(all) {
   if !s[0].started { garden_start(s); }
   h := s[0].held;
   s[0].key_x = axis(h, HOLD_RIGHT, HOLD_LEFT);
@@ -584,7 +584,7 @@ garden_controls :: (s: [] Garden, dt: f32, dyaw: f32, dpitch: f32) #export_c {
 
 // The yaw the player's controller reads its camera by (player.coax theta:
 // the eye's angle round you, opposite the way it looks).
-garden_player_theta :: (s: [] Garden) -> f32 #export_c { return wrap_angle(s[0].orbit.yaw + f32(PI)); }
+garden_player_theta :: (s: [] Garden) -> f32 #export_c #effects(all) { return wrap_angle(s[0].orbit.yaw + f32(PI)); }
 
 // ---- the scene
 
@@ -1058,7 +1058,7 @@ close_up :: (s: [] Garden, live: Shot, t: f32, still: bool) -> Shot {
 // Trusted variable-time entry retained for existing callers and examples.
 garden_frame :: (s: [] Garden, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
                  fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32,
-                 move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c {
+                 move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c #effects(all) {
   no_clock: realm_loop.FrameClock; no_targets: [1] walk_frame.StepTarget;
   return garden_frame_in(s, out, u, width, height, dpr, dt, still, fx, fy, fz, face, act, vx, vz,
     move_on, ox, oy, pad_x, pad_y, false, no_clock, no_targets[0..<0]);
@@ -1067,7 +1067,7 @@ garden_frame :: (s: [] Garden, out: [] f32, u: [] f32, width: f32, height: f32, 
 garden_frame_on_clock :: (s: [] Garden, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32,
     paid: realm_loop.FrameClock, targets: [] walk_frame.StepTarget, still: bool,
     fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32,
-    move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c {
+    move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c #effects(all) {
   return garden_frame_in(s, out, u, width, height, dpr, 0, still, fx, fy, fz, face, act, vx, vz,
     move_on, ox, oy, pad_x, pad_y, true, paid, targets);
 }
@@ -1151,8 +1151,8 @@ garden_frame_in :: (s: [] Garden, out: [] f32, u: [] f32, width: f32, height: f3
 // The clock of what moves on its own (the water, an idle wag): golden mode holds it.
 effect_time :: (s: [] Garden) -> f32 { return ifx s[0].golden then f32(GOLDEN_TIME) else f32(s[0].time); }
 
-garden_draws :: (s: [] Garden) -> int #export_c { return DRAWS; }
-garden_store_cap :: (k: int) -> int #export_c {
+garden_draws :: (s: [] Garden) -> int #export_c #effects(all) { return DRAWS; }
+garden_store_cap :: (k: int) -> int #export_c #effects(all) {
   if k == 0 { return GROUND_POINTS * 4; }
   return OBJECTS * OBJECT_FLOATS * 4;
 }

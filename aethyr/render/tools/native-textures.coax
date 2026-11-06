@@ -8,7 +8,7 @@
 #load "../../../coax/lib/sys/args.coax";
 #load "../native-texture-profile.coax";
 
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=3 {tool_errln("usage: native-textures SLUG SPEC_DIR OUT_DIR");return 2;}
  profile:=render_catalog_find(args_at(args[..],0));source_dir:=args_at(args[..],1);out_dir:=args_at(args[..],2);
  needs:=render_native_texture_needs(profile);

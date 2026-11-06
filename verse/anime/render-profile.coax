@@ -88,7 +88,7 @@
   }}}
 }
 
-anime_render_supported :: (d:AnimeDirection)->bool {
+anime_render_supported :: (d:AnimeDirection)->bool #effects(all) {
   if d.kind==AD_ACT {return d.who!=AS_MADE && (d.option==ACT_RAISE || d.option==ACT_CAST || d.option==ACT_HESITATE || d.option==ACT_RECOIL || d.option==ACT_POINT);}
   if d.kind==AD_EMOTE {return d.who!=AS_MADE;}
   if d.kind==AD_CAST {return d.who!=AS_MADE && d.to!=AS_MADE && d.option==SPELL_FIREBALL;}

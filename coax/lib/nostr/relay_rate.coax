@@ -49,9 +49,9 @@ RtKeys :: struct { key: [2048] u8; w: [RT_KEYS] RtWindow; n: int; }   // RT_KEYS
   c.reqs = 1; c.key_events = RT_LIMIT_MAX + 1; #assert !rt_config_ok(c);
   c.key_events = -5; #assert !rt_config_ok(c);
 }
-rt_default :: () -> RtConfig { return RtConfig.{events = 120, reqs = 120, key_events = 60}; }
-rt_limit_ok :: (v: int) -> bool { return v >= 1 && v <= RT_LIMIT_MAX; }
-rt_config_ok :: (c: RtConfig) -> bool {
+rt_default :: () -> RtConfig #effects(all) { return RtConfig.{events = 120, reqs = 120, key_events = 60}; }
+rt_limit_ok :: (v: int) -> bool #effects(all) { return v >= 1 && v <= RT_LIMIT_MAX; }
+rt_config_ok :: (c: RtConfig) -> bool #effects(all) {
   return rt_limit_ok(c.events) && rt_limit_ok(c.reqs) && rt_limit_ok(c.key_events);
 }
 
@@ -75,11 +75,11 @@ rt_config_ok :: (c: RtConfig) -> bool {
 // book:begin take
 // Whether w no longer counts at now: never opened, RT_WINDOW seconds old,
 // or opened after now (the clock went back).
-rt_window_ended :: (w: RtWindow, now: int) -> bool {
+rt_window_ended :: (w: RtWindow, now: int) -> bool #effects(all) {
   return w.count == 0 || now - w.started >= RT_WINDOW || now < w.started;
 }
 // One message at now against limit: true lets it through and counts it.
-rt_take :: (w: [] RtWindow, limit: int, now: int) -> bool {
+rt_take :: (w: [] RtWindow, limit: int, now: int) -> bool #effects(all) {
   if rt_window_ended(w[0], now) { w[0].started = now; w[0].count = 0; }
   if w[0].count >= limit { return false; }
   w[0].count += 1;
@@ -116,7 +116,7 @@ rt_take :: (w: [] RtWindow, limit: int, now: int) -> bool {
 }
 // The slot for key: its own, else the first slot whose window ended, else
 // a new one; -1 when the table is full of open windows or key isn't 32 bytes.
-rt_key_slot :: (k: [] RtKeys, key: [] u8, now: int) -> int {
+rt_key_slot :: (k: [] RtKeys, key: [] u8, now: int) -> int #effects(all) {
   if key.count != 32 { return -1; }
   for i: 0..<k[0].n {
     same := true;
@@ -152,7 +152,7 @@ rt_key_slot :: (k: [] RtKeys, key: [] u8, now: int) -> int {
 }
 // One EVENT signed by key on connection c at now. The connection's window
 // is charged first; a refusal there doesn't charge the key.
-rt_event :: (c: [] RtConn, k: [] RtKeys, cfg: RtConfig, key: [] u8, now: int) -> int {
+rt_event :: (c: [] RtConn, k: [] RtKeys, cfg: RtConfig, key: [] u8, now: int) -> int #effects(all) {
   w: [1] RtWindow; w[0] = c[0].events;
   ok := rt_take(w[..], cfg.events, now);
   c[0].events = w[0];
@@ -171,7 +171,7 @@ rt_event :: (c: [] RtConn, k: [] RtKeys, cfg: RtConfig, key: [] u8, now: int) ->
   #assert rt_req(c[..], cfg, 5) == RT_OK && rt_req(c[..], cfg, 6) == RT_OK && rt_req(c[..], cfg, 7) == RT_REQ_RATE;
   #assert c[0].events.count == 0 && rt_req(c[..], cfg, 65) == RT_OK;
 }
-rt_req :: (c: [] RtConn, cfg: RtConfig, now: int) -> int {
+rt_req :: (c: [] RtConn, cfg: RtConfig, now: int) -> int #effects(all) {
   w: [1] RtWindow; w[0] = c[0].reqs;
   ok := rt_take(w[..], cfg.reqs, now);
   c[0].reqs = w[0];
@@ -186,12 +186,12 @@ rt_req :: (c: [] RtConn, cfg: RtConfig, now: int) -> int {
   #assert rt_text(RT_KEYS_FULL) == "too many keys are publishing; try again later";
   #assert rt_prefix(-1) == "error" && rt_prefix(RT_REASONS) == "error" && rt_text(-1) == "unknown" && rt_text(RT_REASONS) == "unknown";
 }
-rt_prefix :: (r: int) -> string {
+rt_prefix :: (r: int) -> string #effects(all) {
   if r < 0 || r >= RT_REASONS { return "error"; }
   if r == RT_OK { return ""; }
   return "rate-limited";
 }
-rt_text :: (r: int) -> string {
+rt_text :: (r: int) -> string #effects(all) {
   t := [5] string.["", "event rate exceeded", "REQ rate exceeded", "event rate exceeded for this key",
     "too many keys are publishing; try again later"];
   if r < 0 || r >= RT_REASONS { return "unknown"; }
@@ -231,7 +231,7 @@ rt_text :: (r: int) -> string {
   #assert rt_decimal(out[0..<2], 0, 905) == -1 && rt_decimal(out[0..<3], 0, 905) == 3 && rt_decimal(out[..], -1, 5) == -1;
 }
 // Writes v in decimal at out[at..]: the end, or -1 when it doesn't fit.
-rt_decimal :: (out: [] u8, at: int, v: int) -> int {
+rt_decimal :: (out: [] u8, at: int, v: int) -> int #effects(all) {
   digits: [20] u8; d := 0; p := v;
   while d == 0 || p > 0 { digits[d] = cast(u8) ('0' + p % 10); p /= 10; d += 1; }
   if at < 0 || at + d > out.count { return -1; }
@@ -239,10 +239,10 @@ rt_decimal :: (out: [] u8, at: int, v: int) -> int {
   while d > 0 { d -= 1; out[k] = digits[d]; k += 1; }
   return k;
 }
-rt_ends :: (s: string, suffix: string) -> bool {
+rt_ends :: (s: string, suffix: string) -> bool #effects(all) {
   return s.count >= suffix.count && s[s.count - suffix.count..<s.count] == suffix;
 }
-rt_raw :: (out: [] u8, at: int, s: string) -> int {
+rt_raw :: (out: [] u8, at: int, s: string) -> int #effects(all) {
   if at < 0 || at + s.count > out.count { return -1; }
   for i: 0..<s.count { out[at + i] = s[i]; }
   return at + s.count;
@@ -254,7 +254,7 @@ rt_raw :: (out: [] u8, at: int, s: string) -> int {
 // are): base ends in "}}" and holds "\"limitation\":{" with no brace after
 // it but those two. An empty object gets no leading comma.
 RT_LIMITATION :: "\"limitation\":{";
-rt_nip11 :: (base: string, cfg: RtConfig, out: [] u8) -> int {
+rt_nip11 :: (base: string, cfg: RtConfig, out: [] u8) -> int #effects(all) {
   if !rt_config_ok(cfg) || !rt_ends(base, "}}") { return -1; }
   body := base[0..<base.count - 2];
   // the last "limitation":{ in the body

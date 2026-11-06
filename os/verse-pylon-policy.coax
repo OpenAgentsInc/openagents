@@ -17,7 +17,7 @@ PYLON_KEEP :: 0; PYLON_START :: 1; PYLON_STOP :: 2;
 
 // What to do now. idle_s: seconds since your last input (-1 when none was ever seen: the session
 // just started, which is not idleness). since_stop_s: seconds since the last stop (-1: never).
-pylon_decide :: (allowed: bool, running: bool, idle_s: int, since_stop_s: int) -> int {
+pylon_decide :: (allowed: bool, running: bool, idle_s: int, since_stop_s: int) -> int #effects(all) {
   if !allowed { return ifx running then PYLON_STOP else PYLON_KEEP; }
   away := idle_s >= PYLON_IDLE_S;
   if running { return ifx away then PYLON_KEEP else PYLON_STOP; }

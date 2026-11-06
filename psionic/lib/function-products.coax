@@ -99,15 +99,15 @@
   x:[32]f32;huge:f32=1e30f32;x[31]=huge*huge;v:[32]f64;values:[16000]f32;flags:[16000]u8;dots:[16000]f64;g:[16000]f64;gd:[16000]f64;seed:[1]f64;dir:[32]f64;stage:[64]f64;point:[32]f32;y:[32]f64;dy:[32]f64;w:=FxWork.{values=values[..],flags=flags[..],dots=dots[..],grads=g[..],grad_dots=gd[..],seed=seed[..],direction=dir[..],stage=stage[..],point=point[..]};#assert fx_hvp(f,x[..],v[..],y[..],dy[..],w,false).status==FxStatus.number;
 }
 
-fx_product_requests :: (f:FxFunction,l:FxLayout,vjp:bool)->int {if vjp {return fx_requests(f)+l.codomain+1;}return fx_requests(f);}
+fx_product_requests :: (f:FxFunction,l:FxLayout,vjp:bool)->int #effects(all) {if vjp {return fx_requests(f)+l.codomain+1;}return fx_requests(f);}
 
-fx_product_admit :: (f:FxFunction,l:FxLayout,x:[]f32,seed_count:int,y:[]f64,dy:[]f64,w:FxWork,vjp:bool,overlap:bool)->FxStatus {
+fx_product_admit :: (f:FxFunction,l:FxLayout,x:[]f32,seed_count:int,y:[]f64,dy:[]f64,w:FxWork,vjp:bool,overlap:bool)->FxStatus #effects(all) {
   if l.status!=FxStatus.ok {return l.status;}needed:=ifx vjp then f.count else l.domain;
   if x.count!=l.domain || seed_count!=needed {return FxStatus.shape;}
   target:=ifx vjp then l.domain else f.count;if y.count<f.count || dy.count<target || !fx_work_fits(l,w,f.count+target) {return FxStatus.capacity;}
   if overlap {return FxStatus.alias;}if !fx_work_allowed(l,fx_product_requests(f,l,vjp)) {return FxStatus.limit;}for i:0..<f.count {if f.leaves[i].order>1 {return FxStatus.order;}}return FxStatus.ok;
 }
-fx_jvp :: (f:FxFunction,x:[]f32,v:[]f64,y:[]f64,dy:[]f64,w:FxWork,overlap:bool)->FxRun #export_c {
+fx_jvp :: (f:FxFunction,x:[]f32,v:[]f64,y:[]f64,dy:[]f64,w:FxWork,overlap:bool)->FxRun #export_c #effects(all) {
   l:=fx_layout(f);status:=fx_product_admit(f,l,x,v.count,y,dy,w,false,overlap);if status!=FxStatus.ok {return FxRun.{status=status};}
   status=fx_forward(l,x,w);if status!=FxStatus.ok {return FxRun.{status=status};}for j:0..<l.domain {w.direction[j]=v[j];}status=fx_tangent(l,x,w);if status!=FxStatus.ok {return FxRun.{status=status};}
   for i:0..<f.count {leaf:=f.leaves[i];value:f64=0;dot:f64=0;
@@ -117,7 +117,7 @@ fx_jvp :: (f:FxFunction,x:[]f32,v:[]f64,y:[]f64,dy:[]f64,w:FxWork,overlap:bool)-
   }
   for i:0..<f.count {y[i]=w.stage[i];dy[i]=w.stage[f.count+i];}return FxRun.{values=f.count,derivatives=f.count};
 }
-fx_vjp :: (f:FxFunction,x:[]f32,cot:[]f64,y:[]f64,dx:[]f64,w:FxWork,overlap:bool)->FxRun #export_c {
+fx_vjp :: (f:FxFunction,x:[]f32,cot:[]f64,y:[]f64,dx:[]f64,w:FxWork,overlap:bool)->FxRun #export_c #effects(all) {
   l:=fx_layout(f);status:=fx_product_admit(f,l,x,cot.count,y,dx,w,true,overlap);if status!=FxStatus.ok {return FxRun.{status=status};}
   status=fx_stage(f,l,x,w);if status!=FxStatus.ok {return FxRun.{status=status};}
   for j:0..<l.codomain {w.seed[j]=0;}
@@ -134,7 +134,7 @@ fx_vjp :: (f:FxFunction,x:[]f32,cot:[]f64,y:[]f64,dx:[]f64,w:FxWork,overlap:bool
   for j:0..<l.domain {if !fx_finite(w.stage[f.count+j]) {return FxRun.{status=FxStatus.number};}}
   for i:0..<f.count {y[i]=w.stage[i];}for j:0..<l.domain {dx[j]=w.stage[f.count+j];}return FxRun.{values=f.count,derivatives=l.domain};
 }
-fx_hvp :: (f:FxFunction,x:[]f32,v:[]f64,gradient:[]f64,hv:[]f64,w:FxWork,overlap:bool)->FxRun #export_c {
+fx_hvp :: (f:FxFunction,x:[]f32,v:[]f64,gradient:[]f64,hv:[]f64,w:FxWork,overlap:bool)->FxRun #export_c #effects(all) {
   transformed:=fx_grad(f);if transformed.status!=FxStatus.ok {return FxRun.{status=transformed.status};}df:=transformed.function;l:=fx_layout(df);status:=fx_product_admit(df,l,x,v.count,gradient,hv,w,false,overlap);if status!=FxStatus.ok {return FxRun.{status=status};}
   status=fx_forward(l,x,w);if status!=FxStatus.ok {return FxRun.{status=status};}for j:0..<l.domain {w.direction[j]=v[j];}status=fx_tangent(l,x,w);if status!=FxStatus.ok {return FxRun.{status=status};}
   for j:0..<l.codomain {w.seed[j]=0;}w.seed[f.leaves[0].output]=1;status=fx_reverse(l,x,w);if status!=FxStatus.ok {return FxRun.{status=status};}

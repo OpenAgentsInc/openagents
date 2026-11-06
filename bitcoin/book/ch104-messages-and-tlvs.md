@@ -102,7 +102,7 @@ Unlike CompactSize in a transaction, BigSize has no upper limit below
 // below 0xfd, else 0xfd, 0xfe or 0xff and then 2, 4 or 8 bytes. Every value
 // has one encoding, the shortest, and a reader refuses any other.
 LnBigSize :: struct { code: int; value: u64; next: int; }
-bigsize_read_vartime :: (b: [] u8, at: int) -> LnBigSize {
+bigsize_read_vartime :: (b: [] u8, at: int) -> LnBigSize #effects(all) {
   if at >= b.count { return LnBigSize.{code = LN_TRUNCATED, next = at}; }
   first := b[at];
   if first < 0xfd { return LnBigSize.{value = cast(u64) first, next = at + 1}; }
@@ -114,14 +114,14 @@ bigsize_read_vartime :: (b: [] u8, at: int) -> LnBigSize {
   if value < least { return LnBigSize.{code = LN_NOT_MINIMAL, next = at}; }
   return LnBigSize.{value = value, next = at + 1 + width};
 }
-bigsize_size :: (value: u64) -> int {
+bigsize_size :: (value: u64) -> int #effects(all) {
   if value < 0xfd { return 1; }
   if value < 0x10000 { return 3; }
   if value < 0x100000000 { return 5; }
   return 9;
 }
 // Writes value at out[at] and returns where writing goes on, or -1.
-bigsize_write_vartime :: (out: [] u8, at: int, value: u64) -> int {
+bigsize_write_vartime :: (out: [] u8, at: int, value: u64) -> int #effects(all) {
   size := bigsize_size(value);
   if at < 0 || size > out.count - at { return -1; }
   if size == 1 { out[at] = cast(u8) value; return at + 1; }
@@ -156,7 +156,7 @@ known types.
 // order until the bytes end. Pass the previous record's type; first is true
 // for the first record.
 LnRecord :: struct { code: int; type: u64; start: int; length: int; next: int; }
-tlv_next_vartime :: (b: [] u8, at: int, previous: u64, first: bool) -> LnRecord {
+tlv_next_vartime :: (b: [] u8, at: int, previous: u64, first: bool) -> LnRecord #effects(all) {
   t := bigsize_read_vartime(b, at);
   if t.code != LN_OK { return LnRecord.{code = t.code, next = at}; }
   if !first && t.value <= previous { return LnRecord.{code = LN_ORDER, type = t.value, next = at}; }
@@ -169,10 +169,10 @@ tlv_next_vartime :: (b: [] u8, at: int, previous: u64, first: bool) -> LnRecord 
 // "It's OK to be odd": a reader that does not know a type skips an odd
 // one and refuses an even one. The same rule covers message types and
 // feature bits.
-ln_unknown_vartime :: (type: u64) -> int { return ifx type % 2 == 0 then LN_UNKNOWN_EVEN else LN_OK; }
+ln_unknown_vartime :: (type: u64) -> int #effects(all) { return ifx type % 2 == 0 then LN_UNKNOWN_EVEN else LN_OK; }
 // A whole stream whose known types are listed, in any order. It checks the
 // framing and the odd rule only; the caller reads each known value.
-tlv_check_vartime :: (b: [] u8, known: [] u64) -> int {
+tlv_check_vartime :: (b: [] u8, known: [] u64) -> int #effects(all) {
   at := 0; previous: u64 = 0; first := true;
   while at < b.count {
     r := tlv_next_vartime(b, at, previous, first);
@@ -184,7 +184,7 @@ tlv_check_vartime :: (b: [] u8, known: [] u64) -> int {
   return LN_OK;
 }
 // Writes one record and returns where writing goes on, or -1.
-tlv_write_vartime :: (out: [] u8, at: int, type: u64, value: [] u8) -> int {
+tlv_write_vartime :: (out: [] u8, at: int, type: u64, value: [] u8) -> int #effects(all) {
   w := bigsize_write_vartime(out, at, type);
   if w < 0 { return -1; }
   w = bigsize_write_vartime(out, w, cast(u64) value.count);
@@ -211,15 +211,15 @@ and more bytes than the type's width is a length error.
 // tu16, tu32 and tu64: the last value of a record may drop its leading
 // zero bytes, and must. Zero is no bytes at all.
 LnInt :: struct { code: int; value: u64; }
-tu_read_vartime :: (value: [] u8, width: int) -> LnInt {
+tu_read_vartime :: (value: [] u8, width: int) -> LnInt #effects(all) {
   if value.count > width { return LnInt.{code = LN_BAD_LENGTH}; }
   if value.count > 0 && value[0] == 0 { return LnInt.{code = LN_NOT_MINIMAL}; }
   v: u64 = 0;
   for i: 0..<value.count { v = (v << 8) | cast(u64) value[i]; }
   return LnInt.{value = v};
 }
-tu_size :: (v: u64) -> int { n := 0; while n < 8 && (v >> cast(u64) (8 * n)) != 0 { n += 1; } return n; }
-tu_write_vartime :: (out: [] u8, at: int, v: u64) -> int {
+tu_size :: (v: u64) -> int #effects(all) { n := 0; while n < 8 && (v >> cast(u64) (8 * n)) != 0 { n += 1; } return n; }
+tu_write_vartime :: (out: [] u8, at: int, v: u64) -> int #effects(all) {
   n := tu_size(v);
   if at < 0 || n > out.count - at { return -1; }
   for i: 0..<n { out[at + n - 1 - i] = cast(u8) ((v >> cast(u64) (8 * i)) & 255); }
@@ -245,18 +245,18 @@ unknown even one.
 // ignores an unknown odd type and closes the connection on an unknown
 // even one.
 LnMessage :: struct { code: int; type: int; payload: int; }
-ln_message_read_vartime :: (m: [] u8) -> LnMessage {
+ln_message_read_vartime :: (m: [] u8) -> LnMessage #effects(all) {
   if m.count > LN_MAX_MESSAGE { return LnMessage.{code = LN_TOO_LARGE}; }
   if m.count < LN_TYPE { return LnMessage.{code = LN_TRUNCATED}; }
   return LnMessage.{type = ln_u16(m, 0), payload = LN_TYPE};
 }
-ln_known_vartime :: (type: int) -> bool {
+ln_known_vartime :: (type: int) -> bool #effects(all) {
   return type == LN_WARNING || type == LN_INIT || type == LN_ERROR || type == LN_PING || type == LN_PONG;
 }
 // What a receiver does with a message's type: LN_OK to read it, LN_OK with
 // ignore true to drop it, or LN_UNKNOWN_EVEN to close the connection.
 LnDispatch :: struct { code: int; ignore: bool; }
-ln_dispatch_vartime :: (type: int) -> LnDispatch {
+ln_dispatch_vartime :: (type: int) -> LnDispatch #effects(all) {
   if ln_known_vartime(type) { return LnDispatch.{}; }
   if type % 2 == 1 { return LnDispatch.{ignore = true}; }
   return LnDispatch.{code = LN_UNKNOWN_EVEN};
@@ -291,31 +291,31 @@ LN_FEATURES :: [26] string.["option_data_loss_protect", "", "option_upfront_shut
   "option_provide_storage", "option_channel_type", "option_scid_alias",
   "option_payment_metadata", "option_zeroconf"];
 LN_FEATURES_MORE :: [4] string.["option_simple_close", "option_splice", "", "option_onion_messages_only_channels"];
-ln_feature_name :: (bit: int) -> string {
+ln_feature_name :: (bit: int) -> string #effects(all) {
   pair := bit / 2;
   if pair < 26 { return LN_FEATURES[pair]; }
   if pair >= 30 && pair < 34 { return LN_FEATURES_MORE[pair - 30]; }
   return "";
 }
-ln_feature_set :: (f: [] u8, bit: int) -> bool {
+ln_feature_set :: (f: [] u8, bit: int) -> bool #effects(all) {
   if bit < 0 || bit / 8 >= f.count { return false; }
   return (f[f.count - 1 - bit / 8] >> cast(u8) (bit % 8)) & 1 == 1;
 }
 // Sets bit in f, a big-endian bitmap of f.count bytes; false if it does
 // not fit.
-ln_feature_put :: (f: [] u8, bit: int) -> bool {
+ln_feature_put :: (f: [] u8, bit: int) -> bool #effects(all) {
   if bit < 0 || bit / 8 >= f.count { return false; }
   f[f.count - 1 - bit / 8] |= cast(u8) (1 << (bit % 8));
   return true;
 }
 // The bytes a bitmap needs: up to its highest set bit, no leading zeros.
-ln_feature_bytes :: (f: [] u8) -> int {
+ln_feature_bytes :: (f: [] u8) -> int #effects(all) {
   for i: 0..<f.count { if f[i] != 0 { return f.count - i; } }
   return 0;
 }
 // The first set bit, from bit 0, that the reader cannot accept: an even
 // bit of a feature it does not know. -1 when every bit is acceptable.
-ln_feature_refuse_vartime :: (f: [] u8, known: [] int) -> int {
+ln_feature_refuse_vartime :: (f: [] u8, known: [] int) -> int #effects(all) {
   for bit: 0..<f.count * 8 {
     if ln_feature_set(f, bit) && bit % 2 == 0 {
       found := false; for k: known { if k / 2 == bit / 2 { found = true; } }
@@ -353,7 +353,7 @@ LnInit :: struct {
   remote_addr: int; remote_addr_n: int; // -1 when absent
   ignored: int;                         // unknown odd records skipped
 }
-ln_init_read_vartime :: (m: [] u8) -> LnInit {
+ln_init_read_vartime :: (m: [] u8) -> LnInit #effects(all) {
   r := LnInit.{networks = -1, remote_addr = -1};
   h := ln_message_read_vartime(m);
   if h.code != LN_OK { r.code = h.code; return r; }
@@ -383,7 +383,7 @@ ln_init_read_vartime :: (m: [] u8) -> LnInit {
 }
 // The combined bitmap: globalfeatures ORed into features, right-aligned,
 // written to out[0..<n]; returns n, or -1 when out is too small.
-ln_init_features_vartime :: (m: [] u8, r: LnInit, out: [] u8) -> int {
+ln_init_features_vartime :: (m: [] u8, r: LnInit, out: [] u8) -> int #effects(all) {
   n := ifx r.global_n > r.features_n then r.global_n else r.features_n;
   if n > out.count { return -1; }
   for i: 0..<n { out[i] = 0; }
@@ -393,7 +393,7 @@ ln_init_features_vartime :: (m: [] u8, r: LnInit, out: [] u8) -> int {
 }
 // An init with empty globalfeatures, the given features, and networks
 // when chains is not empty. Returns the length, or -1.
-ln_init_write_vartime :: (features: [] u8, chains: [] u8, out: [] u8) -> int {
+ln_init_write_vartime :: (features: [] u8, chains: [] u8, out: [] u8) -> int #effects(all) {
   if chains.count % 32 != 0 || out.count < 6 + features.count { return -1; }
   ln_put16(out, 0, LN_INIT); ln_put16(out, 2, 0); ln_put16(out, 4, features.count);
   for i: 0..<features.count { out[6 + i] = features[i]; }
@@ -419,7 +419,7 @@ hostile peer, so a reader prints it only when it is printable ASCII.
 // error (17) and warning (1): a channel_id, all zeros for every channel,
 // then a u16 length and that much data, which should be printable ASCII.
 LnError :: struct { code: int; type: int; channel: int; all: bool; data: int; data_n: int; printable: bool; }
-ln_error_read_vartime :: (m: [] u8) -> LnError {
+ln_error_read_vartime :: (m: [] u8) -> LnError #effects(all) {
   h := ln_message_read_vartime(m);
   if h.code != LN_OK { return LnError.{code = h.code}; }
   if h.type != LN_ERROR && h.type != LN_WARNING { return LnError.{code = LN_BAD_VALUE, type = h.type}; }
@@ -431,7 +431,7 @@ ln_error_read_vartime :: (m: [] u8) -> LnError {
   for i: 0..<r.data_n { c := m[r.data + i]; if c < 32 || c > 126 { r.printable = false; } }
   return r;
 }
-ln_error_write_vartime :: (type: int, channel: [32] u8, text: string, out: [] u8) -> int {
+ln_error_write_vartime :: (type: int, channel: [32] u8, text: string, out: [] u8) -> int #effects(all) {
   n := LN_TYPE + 34 + text.count;
   if (type != LN_ERROR && type != LN_WARNING) || n > out.count || n > LN_MAX_MESSAGE { return -1; }
   ln_put16(out, 0, type);
@@ -455,7 +455,7 @@ for no reply: 65,531 is the largest padding that fits in a 65,535-byte
 // ping (18): num_pong_bytes, then byteslen bytes to ignore. pong (19):
 // byteslen bytes to ignore. Both pads should be zeros, never secrets.
 LnPing :: struct { code: int; type: int; pong_bytes: int; ignored_n: int; }
-ln_ping_read_vartime :: (m: [] u8) -> LnPing {
+ln_ping_read_vartime :: (m: [] u8) -> LnPing #effects(all) {
   h := ln_message_read_vartime(m);
   if h.code != LN_OK { return LnPing.{code = h.code}; }
   if h.type != LN_PING && h.type != LN_PONG { return LnPing.{code = LN_BAD_VALUE, type = h.type}; }
@@ -469,7 +469,7 @@ ln_ping_read_vartime :: (m: [] u8) -> LnPing {
   if r.ignored_n > m.count - at - 2 { return LnPing.{code = LN_TRUNCATED, type = h.type}; }
   return r;
 }
-ln_ping_write_vartime :: (pong_bytes: int, ignored: int, out: [] u8) -> int {
+ln_ping_write_vartime :: (pong_bytes: int, ignored: int, out: [] u8) -> int #effects(all) {
   n := LN_TYPE + 4 + ignored;
   if pong_bytes < 0 || pong_bytes > 65535 || ignored < 0 || n > out.count || n > LN_MAX_MESSAGE { return -1; }
   ln_put16(out, 0, LN_PING); ln_put16(out, 2, pong_bytes); ln_put16(out, 4, ignored);
@@ -478,7 +478,7 @@ ln_ping_write_vartime :: (pong_bytes: int, ignored: int, out: [] u8) -> int {
 }
 // The reply to a ping: a pong of num_pong_bytes zeros, or nothing (0)
 // when the ping asked for 65,532 bytes or more. Returns the length, or -1.
-ln_pong_reply_vartime :: (ping: LnPing, out: [] u8) -> int {
+ln_pong_reply_vartime :: (ping: LnPing, out: [] u8) -> int #effects(all) {
   if ping.code != LN_OK || ping.type != LN_PING { return -1; }
   if ping.pong_bytes >= LN_PONG_LIMIT { return 0; }
   n := LN_TYPE + 2 + ping.pong_bytes;

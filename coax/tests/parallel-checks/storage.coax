@@ -6,7 +6,7 @@
 // report what the sequential one does.
 #authority;
 Node :: struct { next: [] Node; k: int; }
-leave_behind :: (rounds: int) -> int {
+leave_behind :: (rounds: int) -> int #effects(all) {
   total := 0;
   for r: 0..<rounds {
     nodes: [64] Node;
@@ -16,7 +16,7 @@ leave_behind :: (rounds: int) -> int {
   }
   return total;
 }
-fill :: (n: int) -> int {
+fill :: (n: int) -> int #effects(all) {
   big: [30000] int;
   for i: 0..<n { big[i] = i; }
   return big[n - 1];

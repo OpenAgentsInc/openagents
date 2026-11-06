@@ -6,4 +6,4 @@
   #assert afp_submit(0) && afp_submit(1);
   #assert !afp_submit(2) && !afp_submit(3) && !afp_submit(-1) && !afp_submit(1000000);
 }
-afp_submit :: (pending:int)->bool #export_c {return afp_submit_allowed(pending);}
+afp_submit :: (pending:int)->bool #export_c #effects(all) {return afp_submit_allowed(pending);}

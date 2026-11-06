@@ -180,7 +180,7 @@ wr_fail :: (r: [] WrRun, what: string) -> int {
   return 1;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh verse/native/wasm-run.coax REALM.wasm [realm-run options]"); return 2; }
   wasm_path := args_at(a[..], 0);

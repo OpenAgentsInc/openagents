@@ -50,7 +50,7 @@ longer than it would if the load were even.
 // counts[e]: how many (token, slot) pairs of the first `tokens` routes
 // chose expert e. A route that was refused, or names an expert outside
 // counts, refuses.
-xm_count :: (routes:[]M4Route,tokens:int,counts:[]int)->XmStatus {
+xm_count :: (routes:[]M4Route,tokens:int,counts:[]int)->XmStatus #effects(all) {
     if tokens<0 || tokens>routes.count {return XmStatus.input;}
     for e:0..<counts.count {counts[e]=0;}
     for t:0..<tokens {
@@ -67,7 +67,7 @@ xm_count :: (routes:[]M4Route,tokens:int,counts:[]int)->XmStatus {
 // A placement's load: the uses each peer serves, their total, and the
 // largest. owner[e] is the peer that holds expert e.
 XmLoad :: struct {status:XmStatus;peers:int;load:[8]int;total:int;most:int;}
-xm_load :: (counts:[]int,owner:[]int,peers:int)->XmLoad {
+xm_load :: (counts:[]int,owner:[]int,peers:int)->XmLoad #effects(all) {
     l:=XmLoad.{peers=peers};
     if peers<1 || peers>XM_PEERS_MAX || owner.count!=counts.count {l.status=XmStatus.input;return l;}
     for e:0..<counts.count {
@@ -82,7 +82,7 @@ xm_load :: (counts:[]int,owner:[]int,peers:int)->XmLoad {
 // 1000 is perfect balance, peers * 1000 is one peer doing everything. A
 // layer waits for its busiest peer, so this is the slowdown imbalance
 // causes. No uses at all count as balanced.
-xm_imbalance :: (l:XmLoad)->int {
+xm_imbalance :: (l:XmLoad)->int #effects(all) {
     if l.total==0 {return 1000;}
     return l.most*l.peers*1000/l.total;
 }
@@ -108,7 +108,7 @@ peer has room to spare, the busiest peer's load is within
 ```jai
 // The usual split: peer d holds a contiguous block of experts, cut by
 // chapter 132's rule (sd_first), whatever their load.
-xm_contiguous :: (experts:int,peers:int,owner:[]int)->XmStatus {
+xm_contiguous :: (experts:int,peers:int,owner:[]int)->XmStatus #effects(all) {
     if experts<1 || peers<1 || peers>XM_PEERS_MAX || owner.count!=experts {return XmStatus.input;}
     for d:0..<peers {for e:sd_first(experts,peers,d)..<sd_first(experts,peers,d+1) {owner[e]=d;}}
     return XmStatus.ok;
@@ -121,7 +121,7 @@ xm_contiguous :: (experts:int,peers:int,owner:[]int)->XmStatus {
 // spare everywhere its busiest peer is within 4/3 - 1/(3 * peers) of the
 // best possible. owner is written only when every expert finds room.
 XmPlace :: struct {status:XmStatus;load:XmLoad;lacking:int;}
-xm_place :: (counts:[]int,slots:[]int,owner:[]int)->XmPlace {
+xm_place :: (counts:[]int,slots:[]int,owner:[]int)->XmPlace #effects(all) {
     E:=counts.count;P:=slots.count;
     if E<1 || E>M4_EXPERTS_MAX || P<1 || P>XM_PEERS_MAX || owner.count!=E {return XmPlace.{status=XmStatus.input};}
     room:=0;
@@ -176,19 +176,19 @@ and with it the last bits.
 XmExpert :: struct {id:int;up:[]u8;up_scale:f32;down:[]u8;down_scale:f32;}
 XmPeer :: struct {experts:[]XmExpert;}
 // Expert e of a whole layer's weights, as a peer would hold it.
-xm_expert :: (s:M4Shape,w:M4Moe,e:int)->XmExpert {
+xm_expert :: (s:M4Shape,w:M4Moe,e:int)->XmExpert #effects(all) {
     n:=s.expert_mlp*s.hidden;
     return XmExpert.{id=e,up=w.up[e*2*n..<(e+1)*2*n],up_scale=w.up_scale[e],down=w.down[e*n..<(e+1)*n],down_scale=w.down_scale[e]};
 }
 // Where expert id sits in a peer's store, or -1.
-xm_find :: (p:XmPeer,id:int)->int {
+xm_find :: (p:XmPeer,id:int)->int #effects(all) {
     for i:0..<p.experts.count {if p.experts[i].id==id {return i;}}
     return -1;
 }
 // Work: every token's normed row, every (token, slot)'s returned output,
 // one output row, one expert's inner values and each peer's received copy
 // of every row. fwork is chapter 85's: the sums and one score an expert.
-xm_work :: (s:M4Shape,tokens:int,peers:int)->int {
+xm_work :: (s:M4Shape,tokens:int,peers:int)->int #effects(all) {
     return tokens*s.hidden*(1+peers+s.top_k)+s.hidden+2*rp_max(s.expert_mlp,s.shared_mlp);
 }
 // The layer across peers. The home holds the block norm, the router and
@@ -202,7 +202,7 @@ xm_work :: (s:M4Shape,tokens:int,peers:int)->int {
 // expert and the residual, chapter 85's order exactly. A refusal while
 // summing token t leaves tokens before it written, as m4_moe does.
 XmResult :: struct {status:XmStatus;written:int;peer:int=-1;expert:int=-1;bytes:XmBytes;}
-xm_moe :: (s:M4Shape,w:M4Moe,peers:[]XmPeer,owner:[]int,tokens:int,homes:[]int,hidden:[]f32,routes:[]M4Route,work:[]f32,fwork:[]f64)->XmResult {
+xm_moe :: (s:M4Shape,w:M4Moe,peers:[]XmPeer,owner:[]int,tokens:int,homes:[]int,hidden:[]f32,routes:[]M4Route,work:[]f32,fwork:[]f64)->XmResult #effects(all) {
     h:=s.hidden;E:=s.experts;I:=s.expert_mlp;k:=s.top_k;P:=peers.count;
     if !m4_valid(s) || w.norm.count!=h || w.gate.count!=E*h || owner.count!=E || P<1 || P>XM_PEERS_MAX {return XmResult.{status=XmStatus.input};}
     if !m4_matrix_ok(w.shared_gate,s.shared_mlp,h) || !m4_matrix_ok(w.shared_up,s.shared_mlp,h) || !m4_matrix_ok(w.shared_down,h,s.shared_mlp) {return XmResult.{status=XmStatus.input};}
@@ -276,7 +276,7 @@ each of its experts on that peer. Each remote expert's output returns as
 // send[a][b] and back[a][b] are the bytes from peer a to peer b.
 XmBytes :: struct {status:XmStatus;send:[8][8]int;back:[8][8]int;dispatched:int;returned:int;total:int;}
 XM_INDEX :: 4;XM_TAG :: 2;
-xm_bytes :: (routes:[]M4Route,tokens:int,homes:[]int,owner:[]int,peers:int,hidden:int)->XmBytes {
+xm_bytes :: (routes:[]M4Route,tokens:int,homes:[]int,owner:[]int,peers:int,hidden:int)->XmBytes #effects(all) {
     b:XmBytes;
     if peers<1 || peers>XM_PEERS_MAX || hidden<1 || tokens<0 || tokens>routes.count || tokens>homes.count {b.status=XmStatus.input;return b;}
     row:=4*hidden;
@@ -331,7 +331,7 @@ return.
 // Nanoseconds to move b bytes over a link of one-way latency lat ns and
 // bw bytes a microsecond (MB/s): lat + ceil(b * 1000 / bw), chapter 189's
 // plc_send. Nothing to move takes no time.
-xm_link :: (lat:int,bw:int,b:int)->int {
+xm_link :: (lat:int,bw:int,b:int)->int #effects(all) {
     if b==0 {return 0;}
     return lat+(b*1000+bw-1)/bw;
 }
@@ -339,7 +339,7 @@ xm_link :: (lat:int,bw:int,b:int)->int {
 // the dispatch phase lasts as long as its slowest link, then the experts
 // run, then the return phase lasts as long as its slowest link. -1 when a
 // link that carries bytes has no bandwidth.
-xm_exchange :: (b:XmBytes,peers:int,lat:[8][8]int,bw:[8][8]int)->int {
+xm_exchange :: (b:XmBytes,peers:int,lat:[8][8]int,bw:[8][8]int)->int #effects(all) {
     out:=0;back:=0;
     for a:0..<peers {for p:0..<peers {
         if (b.send[a][p]>0 || b.back[a][p]>0) && bw[a][p]<1 {return -1;}

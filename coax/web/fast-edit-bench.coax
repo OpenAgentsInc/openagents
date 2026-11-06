@@ -163,7 +163,7 @@ fb_measure :: (c:[]Cdp,session:string,original:string,keep:bool)->int {
   saved:=fs_write(fb_path(session,"benchmark.json",path[..]),fb_text(summary[..]));print("%",fb_text(summary[..]));
   return ifx median<2000 then 0 else 1;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}session:=args_at(a[..],0);port:=args_whole(args_value(a[..],"--port","9060"));
   if session.count==0 || session[0]!='/' || port<1024 || port>65533 {tool_errln("usage: fast-edit-bench ABSOLUTE_SESSION [--port 9060] [--keep-edit]");return 2;}
   for forbidden:[5]int.[8830,8843,8872,8876,8913] {if port==forbidden || port+1==forbidden {return 2;}}

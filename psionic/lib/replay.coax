@@ -27,12 +27,12 @@ RxReport :: struct {status:RxStatus;verdict:RxVerdict;reason:RxReason;step:int;f
 RxFold :: struct {ok:bool;step:int;ip:int;state:TmState;cells:[64]int;}
 
 // book:begin digests
-rx_word :: (sha:[]u8,v:int) {
+rx_word :: (sha:[]u8,v:int) #effects(all) {
     b:[4]u8;w:=cast(u32)(v&0xffffffff);
     for i:0..<4 {b[i]=cast(u8)((w>>cast(u32)(i*8))&0xff);}
     #assert sha256_update_checked(sha,b[..],false)==SHA_OK;
 }
-rx_program_digest :: (program:[]TmOp)->[32]u8 {
+rx_program_digest :: (program:[]TmOp)->[32]u8 #effects(all) {
     sha:[112]u8;d:[32]u8;#assert sha256_init(sha[..])==SHA_OK;
     for op:program {
         c:[1]u8;c[0]=cast(u8)op.code;
@@ -44,21 +44,21 @@ rx_program_digest :: (program:[]TmOp)->[32]u8 {
 }
 // The first n integers, each as four little-endian bytes: a trace's rows
 // give chapter 226's trace digest, and a run's outputs its output digest.
-rx_ints_digest :: (v:[]int,n:int)->[32]u8 {
+rx_ints_digest :: (v:[]int,n:int)->[32]u8 #effects(all) {
     sha:[112]u8;d:[32]u8;#assert sha256_init(sha[..])==SHA_OK;
     for i:0..<n {rx_word(sha[..],v[i]);}
     #assert sha256_final_checked(sha[..],d[..],false)==SHA_OK;
     return d;
 }
 // book:end digests
-rx_same :: (a:[32]u8,b:[32]u8)->bool {
+rx_same :: (a:[32]u8,b:[32]u8)->bool #effects(all) {
     for i:0..<32 {if a[i]!=b[i] {return false;}}
     return true;
 }
 
 // book:begin claim
 // The claimant's side: run the program and name the run by its digests.
-rx_claim :: (program:[]TmOp,budget:int,trace:[]int,outputs:[]int)->RxMade {
+rx_claim :: (program:[]TmOp,budget:int,trace:[]int,outputs:[]int)->RxMade #effects(all) {
     r:=tm_run(program,budget,trace,outputs,false);
     m:=RxMade.{status=r.status};
     if r.status!=TmStatus.ok {return m;}
@@ -76,7 +76,7 @@ rx_claim :: (program:[]TmOp,budget:int,trace:[]int,outputs:[]int)->RxMade {
 // is checked, so the state stays inside the machine's bounds: the row's ip
 // and code, the stack depth, the address of a store, the output count and
 // where control goes next. ok is false at the first row that fails.
-rx_fold :: (program:[]TmOp,rows:[]int,upto:int)->RxFold {
+rx_fold :: (program:[]TmOp,rows:[]int,upto:int)->RxFold #effects(all) {
     f:RxFold;
     while f.step<upto {
         o:=f.step*TM_TOKENS;
@@ -121,11 +121,11 @@ rx_fold :: (program:[]TmOp,rows:[]int,upto:int)->RxFold {
 }
 // book:end fold
 
-rx_field :: (got:[]int,want:[]int)->RxField {
+rx_field :: (got:[]int,want:[]int)->RxField #effects(all) {
     for t:0..<TM_TOKENS {if got[t]!=want[t] {return cast(RxField)(t+1);}}
     return RxField.none;
 }
-rx_end :: (r:RxReport,verdict:RxVerdict,reason:RxReason,step:int)->RxReport {
+rx_end :: (r:RxReport,verdict:RxVerdict,reason:RxReason,step:int)->RxReport #effects(all) {
     e:=r;e.verdict=verdict;e.reason=reason;e.step=step;
     return e;
 }
@@ -134,7 +134,7 @@ rx_end :: (r:RxReport,verdict:RxVerdict,reason:RxReason,step:int)->RxReport {
 // Checks steps a..<b of a claim. rows are the claimed trace (all of it) or
 // empty; without rows only the whole run can be checked, by its digests.
 // budget bounds the steps the verifier executes; folded rows don't count.
-rx_check :: (program:[]TmOp,claim:RxClaim,rows:[]int,a:int,b:int,budget:int)->RxReport {
+rx_check :: (program:[]TmOp,claim:RxClaim,rows:[]int,a:int,b:int,budget:int)->RxReport #effects(all) {
     r:=RxReport.{step=-1};
     U:=RxVerdict.unverifiable;F:=RxVerdict.failed;
     if claim.steps<1 || claim.steps>TM_STEPS_MAX {return rx_end(r,F,RxReason.steps,-1);}
@@ -182,7 +182,7 @@ rx_check :: (program:[]TmOp,claim:RxClaim,rows:[]int,a:int,b:int,budget:int)->Rx
 
 // Chapter 227's program: store i*i at address i for i = 4..1, then print
 // memory 4 plus memory 1 (17), in 53 steps.
-rx_squares :: ()->[20]TmOp {
+rx_squares :: ()->[20]TmOp #effects(all) {
     return [20]TmOp.[TmOp.{code=TmCode.push,arg=4},TmOp.{code=TmCode.set,arg=0},
         TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.get,arg=0},
         TmOp.{code=TmCode.mul},TmOp.{code=TmCode.store},
@@ -209,12 +209,12 @@ rx_squares :: ()->[20]TmOp {
 
 // The squares run's honest claim and rows, for the tests.
 RxRun :: struct {claim:RxClaim;rows:[256]int;}
-rx_squares_run :: ()->RxRun {
+rx_squares_run :: ()->RxRun #effects(all) {
     p:=rx_squares();x:RxRun;outs:[4]int;
     x.claim=rx_claim(p[..],TM_STEPS_MAX,x.rows[..],outs[..]).claim;
     return x;
 }
-rx_says :: (r:RxReport,verdict:RxVerdict,reason:RxReason,step:int)->bool {
+rx_says :: (r:RxReport,verdict:RxVerdict,reason:RxReason,step:int)->bool #effects(all) {
     return r.status==RxStatus.ok && r.verdict==verdict && r.reason==reason && r.step==step;
 }
 #test "an honest claim replays exactly, with or without its rows" {
@@ -277,7 +277,7 @@ rx_says :: (r:RxReport,verdict:RxVerdict,reason:RxReason,step:int)->bool {
 }
 // Changes one token of the squares run and names the result by its digest,
 // as a claimant that recomputes its digests would.
-rx_tampered :: (at:int,by:int)->RxRun {
+rx_tampered :: (at:int,by:int)->RxRun #effects(all) {
     x:=rx_squares_run();x.rows[at]+=by;x.claim.trace=rx_ints_digest(x.rows[..],212);
     return x;
 }
@@ -325,7 +325,7 @@ rx_tampered :: (at:int,by:int)->RxRun {
     #assert rx_says(rx_check(p[..],c,x.rows[0..<216],52,53,64),RxVerdict.failed,RxReason.halted,52);
 }
 // A claim for rows the machine would refuse, with matching digests.
-rx_forged :: (q:[]TmOp,rows:[]int,steps:int)->RxClaim {
+rx_forged :: (q:[]TmOp,rows:[]int,steps:int)->RxClaim #effects(all) {
     c:RxClaim;c.program=rx_program_digest(q);c.trace=rx_ints_digest(rows,steps*TM_TOKENS);c.steps=steps;
     return c;
 }
@@ -351,7 +351,7 @@ rx_forged :: (q:[]TmOp,rows:[]int,steps:int)->RxClaim {
     f=rx_fold(p[..],rows,52);#assert f.ok && f.ip==19 && f.state.depth==0 && f.state.outputs==1;
     f=rx_fold(p[..],rows,53);#assert !f.ok && f.step==52;
 }
-rx_folds :: (q:[]TmOp,rows:[]int,upto:int)->int {
+rx_folds :: (q:[]TmOp,rows:[]int,upto:int)->int #effects(all) {
     f:=rx_fold(q,rows,upto);
     if f.ok {return -1;}
     return f.step;

@@ -5,24 +5,24 @@
 #load "pcm-compare.coax";
 #load "../render/tests/qualification-files.coax";
 #load "../../coax/lib/sys/args.coax";
-hld_open :: (root:[]u8,eager:bool)->int #foreign;
-hld_register :: (name:[]u8,wav:[]u8)->int #foreign;
-hld_command :: (line:[]u8,started:bool)->int #foreign;
-hld_info :: (field:int)->int #foreign;
-hld_warm :: ()->int #foreign;
-hld_probe :: (name:[]u8,field:int)->int #foreign;
-hld_copy :: (name:[]u8,out:[]u8)->int #foreign;
-hld_block :: (out:[]u8)->int #foreign;
-hld_reset :: () #foreign;
-hld_keep :: (name:[]u8) #foreign;
-hld_held :: ()->int #foreign;
-hld_retire :: () #foreign;
-hld_total :: ()->int #foreign;
-hld_drop :: () #foreign;
-hld_close :: () #foreign;
-hld_concurrency :: (out:[]int)->bool #foreign;
+hld_open :: (root:[]u8,eager:bool)->int #foreign #effects(all);
+hld_register :: (name:[]u8,wav:[]u8)->int #foreign #effects(all);
+hld_command :: (line:[]u8,started:bool)->int #foreign #effects(all);
+hld_info :: (field:int)->int #foreign #effects(all);
+hld_warm :: ()->int #foreign #effects(all);
+hld_probe :: (name:[]u8,field:int)->int #foreign #effects(all);
+hld_copy :: (name:[]u8,out:[]u8)->int #foreign #effects(all);
+hld_block :: (out:[]u8)->int #foreign #effects(all);
+hld_reset :: () #foreign #effects(all);
+hld_keep :: (name:[]u8) #foreign #effects(all);
+hld_held :: ()->int #foreign #effects(all);
+hld_retire :: () #foreign #effects(all);
+hld_total :: ()->int #foreign #effects(all);
+hld_drop :: () #foreign #effects(all);
+hld_close :: () #foreign #effects(all);
+hld_concurrency :: (out:[]int)->bool #foreign #effects(all);
 hld_bytes :: (text:string,out:[]u8)->int {if text.count>out.count {return -1;}for byte,i:text {out[i]=byte;}return text.count;}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<6||args_count(a[..])>7||(args_count(a[..])==7&&args_at(a[..],6)!="--eager-control") {tool_errln("usage: check-linux-audio-demand WEB_ROOT WAV_DIR PREFETCH.json RENDER_PLAN.json RENDER_DIR NEW_OUT [--eager-control]");return 2;}
  eager:=args_count(a[..])==7;out:=args_at(a[..],5);paths:[8][4096]u8;if !fs_mkdir(out) {return 1;}concurrency:[10]int;if !hld_concurrency(concurrency[..]) {return 1;}concurrent:=had_accept(concurrency[..]);root:[4096]u8;rn:=hld_bytes(args_at(a[..],0),root[..]);if rn<1||hld_open(root[0..<rn],eager)!=1 {return 1;}defer {hld_close();}
  inputs:[1]RtqInputs;for path:[2]string.[args_at(a[..],2),args_at(a[..],3)] {if !rtq_input_add(inputs[..],path) {return 1;}}

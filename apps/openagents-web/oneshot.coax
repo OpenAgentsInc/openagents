@@ -320,7 +320,7 @@ room_open :: (s: [] Os) {
   if pipe_open(s[0].pipe[..], cast(string) buf[0..<n]) { s[0].link = LINK_JOINING; }
 }
 // The face tells which socket the open got (-1: none).
-os_socket_opened :: (s: [] Os, id: int) #export_c {
+os_socket_opened :: (s: [] Os, id: int) #export_c #effects(all) {
   s[0].sock = id;
   if id < 0 { s[0].link = LINK_NONE; }
 }
@@ -1301,9 +1301,9 @@ os_start :: (s: [] Os) {
   // until the saved campaigns come back (message 4), the starter is there to run
   if os_new_one_shot(s[0].camps[..]) == 0 { s[0].edit = 0; }
 }
-os_golden :: (s: [] Os, on: bool) #export_c { os_start(s); s[0].golden = on; }
+os_golden :: (s: [] Os, on: bool) #export_c #effects(all) { os_start(s); s[0].golden = on; }
 
-os_frame :: (s: [] Os, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+os_frame :: (s: [] Os, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   os_start(s);
   if u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   s[0].width = width; s[0].height = height; s[0].dpr = dpr;
@@ -1381,7 +1381,7 @@ os_frame :: (s: [] Os, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32
 
 // ---- input
 
-os_key :: (s: [] Os, key: int, mods: int) -> bool #export_c {
+os_key :: (s: [] Os, key: int, mods: int) -> bool #export_c #effects(all) {
   os_start(s);
   if s[0].focus != F_NONE {
     if key == KEY_ESCAPE || key == KEY_ENTER || key == KEY_TAB { s[0].focus = F_NONE; return true; }
@@ -1401,8 +1401,8 @@ os_key :: (s: [] Os, key: int, mods: int) -> bool #export_c {
   }
   return false;
 }
-os_key_up :: (s: [] Os, key: int, mods: int) -> bool #export_c { return false; }
-os_blur :: (s: [] Os) #export_c { s[0].pressed = -1; s[0].dragging = false; }
+os_key_up :: (s: [] Os, key: int, mods: int) -> bool #export_c #effects(all) { return false; }
+os_blur :: (s: [] Os) #export_c #effects(all) { s[0].pressed = -1; s[0].dragging = false; }
 pg_hit :: (s: [] Os, x: f32, y: f32) -> int {
   q := s[0].btn_n - 1;
   while q >= 0 { if in_rect(s[0].btn[q].r, x, y) { return s[0].btn[q].id; } q -= 1; }
@@ -1414,7 +1414,7 @@ scroll_by :: (s: [] Os, dy: f32) {
   most := hi(0, s[0].content[v] - (s[0].height - top) + 20);
   s[0].scroll[v] = lo(most, hi(0, s[0].scroll[v] + dy));
 }
-os_pointer :: (s: [] Os, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+os_pointer :: (s: [] Os, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   os_start(s);
   if phase == 0 {
     s[0].pressed = pg_hit(s, x, y);
@@ -1441,16 +1441,16 @@ os_pointer :: (s: [] Os, x: f32, y: f32, phase: int, kind: int, id: int) -> bool
   if phase == 2 && was < 0 && !s[0].moved { s[0].focus = F_NONE; }
   return was >= 0;
 }
-os_wheel :: (s: [] Os, dy: f32) -> bool #export_c {
+os_wheel :: (s: [] Os, dy: f32) -> bool #export_c #effects(all) {
   os_start(s);
   if s[0].view == V_DISPLAY { s[0].dist = lo(60, hi(8, s[0].dist * (1 + lo(200, hi(-200, dy)) * 0.0012))); return true; }
   scroll_by(s, dy * hi(s[0].dpr, 0.5));
   return true;
 }
-os_cursor :: (s: [] Os) -> int #export_c { return 0; }
-os_wants_text :: (s: [] Os) -> bool #export_c { return s[0].focus != F_NONE; }
-os_field_at :: (s: [] Os, i: int) -> f32 #export_c { return s[0].field_box[i]; }
-os_message :: (s: [] Os, kind: int, t: string) #export_c {
+os_cursor :: (s: [] Os) -> int #export_c #effects(all) { return 0; }
+os_wants_text :: (s: [] Os) -> bool #export_c #effects(all) { return s[0].focus != F_NONE; }
+os_field_at :: (s: [] Os, i: int) -> f32 #export_c #effects(all) { return s[0].field_box[i]; }
+os_message :: (s: [] Os, kind: int, t: string) #export_c #effects(all) {
   os_start(s);
   if room_heard(s, kind, t) { return; }
   if kind == HOST_TEXT { type_text(s, t); return; }
@@ -1509,12 +1509,12 @@ stage_at :: (s: [] Os, stage: string) {
   s[0].target = t[0].party_n;
   s[0].view = ifx stage == "display" then V_DISPLAY else ifx stage == "character" then V_CHARACTER else V_GM;
 }
-os_action :: (s: [] Os) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
-os_action_done :: (s: [] Os) #export_c { s[0].out_n = 0; }
+os_action :: (s: [] Os) -> int #export_c #effects(all) { a := s[0].action; s[0].action = 0; return a; }
+os_action_done :: (s: [] Os) #export_c #effects(all) { s[0].out_n = 0; }
 
-coaxial_os_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
-coaxial_os_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
-coaxial_os_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_os_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_os_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_os_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // ---- checks
 

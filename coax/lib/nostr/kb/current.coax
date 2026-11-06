@@ -36,27 +36,27 @@ KbCurrent :: struct {
 // book:end codes
 
 // book:begin rules
-kb_less :: (a:string,b:string)->bool {
+kb_less :: (a:string,b:string)->bool #effects(all) {
   for i:0..<a.count {if i>=b.count {return false;}if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}}
   return a.count<b.count;
 }
-kb_mine :: (r:KbRecord,type:int,author:string,id:string)->bool {
+kb_mine :: (r:KbRecord,type:int,author:string,id:string)->bool #effects(all) {
   return r.error==KB_OK && r.type==type && r.author==author && r.id==id;
 }
 // A withdrawal by the version's own author, bound to its exact event.
-kb_withdrawn :: (rs:[]KbRecord,v:KbRecord)->bool {
+kb_withdrawn :: (rs:[]KbRecord,v:KbRecord)->bool #effects(all) {
   for w:rs {if kb_mine(w,KB_WITHDRAWAL,v.author,v.id) && w.entry==v.event && w.version==v.version {return true;}}
   return false;
 }
 // The same author, ID and version under another digest.
-kb_conflict :: (rs:[]KbRecord,v:KbRecord)->bool {
+kb_conflict :: (rs:[]KbRecord,v:KbRecord)->bool #effects(all) {
   for u:rs {if kb_mine(u,KB_ENTRY,v.author,v.id) && u.version==v.version && u.digest!=v.digest {return true;}}
   return false;
 }
 // book:end rules
 
 // book:begin current
-kb_current :: (rs:[]KbRecord,author:string,id:string)->KbCurrent {
+kb_current :: (rs:[]KbRecord,author:string,id:string)->KbCurrent #effects(all) {
   c:KbCurrent;
   head:=-1;
   for i:0..<rs.count {
@@ -84,7 +84,7 @@ kb_current :: (rs:[]KbRecord,author:string,id:string)->KbCurrent {
 // book:end current
 
 // book:begin status
-kb_status :: (r:KbRecord,reader:string,trusted:[]string)->int {
+kb_status :: (r:KbRecord,reader:string,trusted:[]string)->int #effects(all) {
   if r.author==reader {return r.status;}
   for t:trusted {if r.author==t {return r.status;}}
   if r.status==KS_ADMITTED {return KS_CANDIDATE;}

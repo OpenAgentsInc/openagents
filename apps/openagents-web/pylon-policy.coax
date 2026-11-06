@@ -1,12 +1,12 @@
 // Display policy only. Signed event and beacon admission use landing-nostr.coax.
 #authority;
-pl_newer :: (generation:int,observed:int,held_generation:int,held_observed:int)->bool {
+pl_newer :: (generation:int,observed:int,held_generation:int,held_observed:int)->bool #effects(all) {
   return generation>held_generation || (generation==held_generation && observed>held_observed);
 }
-pl_live_time :: (created:int,opened:int,now:int)->bool {
+pl_live_time :: (created:int,opened:int,now:int)->bool #effects(all) {
   return created>=opened && created<=now+30;
 }
-pl_current :: (until:int,now:int,status:string)->bool {return until>now && status=="online";}
+pl_current :: (until:int,now:int,status:string)->bool #effects(all) {return until>now && status=="online";}
 #test "beacon replacements never roll a generation or observation back" {
   #assert pl_newer(2,0,1,9);
   #assert pl_newer(1,2,1,1);

@@ -1,0 +1,4 @@
+SavedPoint :: struct #persisted { x: f32; y: f32; }
+SavedCharacter :: struct #persisted { id: u64; pos: SavedPoint; inventory: [4] int; title: u32?; revision: int = 1; }
+Saved :: struct($T:copyable) #persisted { data:$T; }
+main :: () { c: SavedCharacter; #assert c.revision == 1; s:Saved(int);#assert s.data==0; }

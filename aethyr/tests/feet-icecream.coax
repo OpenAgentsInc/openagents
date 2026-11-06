@@ -2,7 +2,7 @@
 // avatar writer emits a torso matrix with an authored 0.4 m model origin.
 #load "../../verse/icecream/scene.coax";
 
-drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c {
+drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c #effects(all) {
   s: [1] IceScene;
   s[0].games[0].house.cols = 1; s[0].games[0].house.rows = 1; s[0].games[0].house.room_n = 1;
   f := V3.{x = fx, y = fy, z = fz};

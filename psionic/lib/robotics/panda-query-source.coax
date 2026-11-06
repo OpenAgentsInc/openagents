@@ -37,14 +37,14 @@
  r:=pqs_select(1,w[..],qb[..],vb[..],0,0,out[..]);#assert r.code==PqsCode.ok && r.detail==PcStatus.ok && pcs_forward_raw(q[..],v[..],expected[..])==PcStatus.ok;pcs_same(out[0],expected[0]);
 }
 
-pqs_finite :: (words:[]u64)->bool {for word:words {if !pfk_finite(word) {return false;}}return true;}
+pqs_finite :: (words:[]u64)->bool #effects(all) {for word:words {if !pfk_finite(word) {return false;}}return true;}
 // Trusted fixed-layout helper, not an arbitrary telemetry/provenance gate.
-pqs_sdk :: (w:[]u64)->PcSample {
+pqs_sdk :: (w:[]u64)->PcSample #effects(all) {
  s:PcSample;for i:0..<3 {s.position[i]=f64_from_bits(w[106+i]);}for i:0..<9 {s.rotation[i]=f64_from_bits(w[109+i]);}
  for i:0..<7 {s.q[i]=f64_from_bits(w[1+i]);s.qd[i]=f64_from_bits(w[8+i]);s.bias[i]=f64_from_bits(w[134+i]);s.lower[i]=f64_from_bits(w[141+i]);s.upper[i]=f64_from_bits(w[148+i]);}
  for i:0..<49 {s.mass[i]=f64_from_bits(w[15+i]);}for i:0..<21 {s.jp[i]=f64_from_bits(w[64+i]);s.jr[i]=f64_from_bits(w[85+i]);}for i:0..<6 {s.velocity[i]=f64_from_bits(w[118+i]);}return s;
 }
-pqs_select :: (kind:int,sdk:[]u64,q:[]u64,v:[]u64,sdk_effect:int,robot_effect:int,output:[]PcSample)->PqsResult #export_c {
+pqs_select :: (kind:int,sdk:[]u64,q:[]u64,v:[]u64,sdk_effect:int,robot_effect:int,output:[]PcSample)->PqsResult #export_c #effects(all) {
  if sdk.count!=173 || q.count!=9 || v.count!=9 || output.count!=1 {return PqsResult.{code=PqsCode.shape};}
  if kind<0 || kind>1 {return PqsResult.{code=PqsCode.kind};}if sdk_effect!=0 || robot_effect!=0 {return PqsResult.{code=PqsCode.effect};}
  if !pqs_finite(sdk) || !pqs_finite(q) || !pqs_finite(v) {return PqsResult.{code=PqsCode.number,detail=PcStatus.number};}
@@ -52,4 +52,4 @@ pqs_select :: (kind:int,sdk:[]u64,q:[]u64,v:[]u64,sdk_effect:int,robot_effect:in
  if kind==0 {fresh=pqs_sdk(sdk);status=pc_sample(fresh);}else {coordinates:[9]f64;rates:[9]f64;for i:0..<9 {coordinates[i]=f64_from_bits(q[i]);rates[i]=f64_from_bits(v[i]);}owned:[1]PcSample;status=pcs_forward_raw(coordinates[..],rates[..],owned[..]);fresh=owned[0];}
  if status!=PcStatus.ok {return PqsResult.{code=PqsCode.sample,detail=status};}output[0]=fresh;return PqsResult.{};
 }
-pqs_name :: (kind:int)->string #export_c {if kind==0 {return "panda-sdk-query-shadow-v1";}if kind==1 {return "panda-owned-query-shadow-v1";}return "";}
+pqs_name :: (kind:int)->string #export_c #effects(all) {if kind==0 {return "panda-sdk-query-shadow-v1";}if kind==1 {return "panda-owned-query-shadow-v1";}return "";}

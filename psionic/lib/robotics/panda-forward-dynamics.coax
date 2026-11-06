@@ -50,7 +50,7 @@
  }}#assert observed>0;
 }
 
-pfd_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),hinge_rates:[]pfku.Quantity(PidAngularRate,f64),slide_rates:[]pfku.Quantity(PidLinearRate,f64),applied_hinge:[]pfku.Quantity(PmHingeGravity,f64),applied_slide:[]pfku.Quantity(PmSlideGravity,f64),output:[]PmsOutput)->PmsStatus #export_c {
+pfd_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),hinge_rates:[]pfku.Quantity(PidAngularRate,f64),slide_rates:[]pfku.Quantity(PidLinearRate,f64),applied_hinge:[]pfku.Quantity(PmHingeGravity,f64),applied_slide:[]pfku.Quantity(PmSlideGravity,f64),output:[]PmsOutput)->PmsStatus #export_c #effects(all) {
  if hinge_rates.count!=7 || slide_rates.count!=2 || applied_hinge.count!=7 || applied_slide.count!=2 || output.count!=1 {return PmsStatus.shape;}
  poses:[1]PffOutput;model:=pff_forward(angles,slides,poses[..]);if model!=PfkStatus.ok {return pms_model_status(model);}
  velocities:[9]f64;words:[9]u64;for i:0..<7 {velocities[i]=hinge_rates[i].value;words[i]=f64_bits(velocities[i]);}for i:0..<2 {velocities[7+i]=slide_rates[i].value;words[7+i]=f64_bits(velocities[7+i]);}
@@ -61,7 +61,7 @@ pfd_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(p
  net:=pfd_subtract(applied,bias);admission=pms_forces_admit(pfd_words(net));if admission!=PmsStatus.ok {return admission;}
  problem:=pms_basis(metric,net.hinge,net.slide);return pms_publish(pms_solve_force_admitted(problem.mass,problem.force),output);
 }
-pfd_forward_raw :: (coordinates:[]f64,rates:[]f64,applied:[]f64,output:[]PmsOutput)->PmsStatus #export_c {
+pfd_forward_raw :: (coordinates:[]f64,rates:[]f64,applied:[]f64,output:[]PmsOutput)->PmsStatus #export_c #effects(all) {
  if coordinates.count!=9 || rates.count!=9 || applied.count!=9 {return PmsStatus.shape;}
  q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);h:[7]pfku.Quantity(PmHingeGravity,f64);f:[2]pfku.Quantity(PmSlideGravity,f64);
  for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];h[i].value=applied[i];}for i:0..<2 {s[i].value=coordinates[7+i];sv[i].value=rates[7+i];f[i].value=applied[7+i];}return pfd_forward(q[..],s[..],v[..],sv[..],h[..],f[..],output);

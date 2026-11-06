@@ -5,13 +5,13 @@ entity_id_admission :: () -> bool {
   b: [1] OracleBacking; w := oracle_store(b[..]);
   first := entity_spawn(w); entity_flush(w);
   if !entity_alive(w, first.handle) { return false; }
-  forged := EntityHandle.{value = first.handle.value + 4294967296};
+  forged := Handle(Entity).{value = first.handle.value + 4294967296};
   if entity_alive(w, forged) || entity_waiting(w, forged) { return false; }
   entity_despawn(w, first.handle); entity_flush(w);
   second := entity_spawn(w); entity_flush(w);
   if entity_slot(first.handle) != entity_slot(second.handle) { return false; }
   if entity_generation(first.handle) == entity_generation(second.handle) { return false; }
-  if entity_alive(w, EntityHandle.{value = first.handle.value}) || !entity_alive(w, second.handle) { return false; }
+  if entity_alive(w, Handle(Entity).{value = first.handle.value}) || !entity_alive(w, second.handle) { return false; }
   w.n[ENTITY_NEXT_ID] = 9223372036854775807;
   count := entity_count(w); high := entity_high(w);
   refused := entity_spawn(w);

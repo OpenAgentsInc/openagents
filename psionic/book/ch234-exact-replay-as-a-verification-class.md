@@ -48,12 +48,12 @@ claim.
 
 <!-- source: psionic/lib/replay.coax digests -->
 ```jai
-rx_word :: (sha:[]u8,v:int) {
+rx_word :: (sha:[]u8,v:int) #effects(all) {
     b:[4]u8;w:=cast(u32)(v&0xffffffff);
     for i:0..<4 {b[i]=cast(u8)((w>>cast(u32)(i*8))&0xff);}
     #assert sha256_update_checked(sha,b[..],false)==SHA_OK;
 }
-rx_program_digest :: (program:[]TmOp)->[32]u8 {
+rx_program_digest :: (program:[]TmOp)->[32]u8 #effects(all) {
     sha:[112]u8;d:[32]u8;#assert sha256_init(sha[..])==SHA_OK;
     for op:program {
         c:[1]u8;c[0]=cast(u8)op.code;
@@ -65,7 +65,7 @@ rx_program_digest :: (program:[]TmOp)->[32]u8 {
 }
 // The first n integers, each as four little-endian bytes: a trace's rows
 // give chapter 226's trace digest, and a run's outputs its output digest.
-rx_ints_digest :: (v:[]int,n:int)->[32]u8 {
+rx_ints_digest :: (v:[]int,n:int)->[32]u8 #effects(all) {
     sha:[112]u8;d:[32]u8;#assert sha256_init(sha[..])==SHA_OK;
     for i:0..<n {rx_word(sha[..],v[i]);}
     #assert sha256_final_checked(sha[..],d[..],false)==SHA_OK;
@@ -87,7 +87,7 @@ check a window, and to name where a run went wrong.
 <!-- source: psionic/lib/replay.coax claim -->
 ```jai
 // The claimant's side: run the program and name the run by its digests.
-rx_claim :: (program:[]TmOp,budget:int,trace:[]int,outputs:[]int)->RxMade {
+rx_claim :: (program:[]TmOp,budget:int,trace:[]int,outputs:[]int)->RxMade #effects(all) {
     r:=tm_run(program,budget,trace,outputs,false);
     m:=RxMade.{status=r.status};
     if r.status!=TmStatus.ok {return m;}
@@ -113,7 +113,7 @@ value its step produced.
 // is checked, so the state stays inside the machine's bounds: the row's ip
 // and code, the stack depth, the address of a store, the output count and
 // where control goes next. ok is false at the first row that fails.
-rx_fold :: (program:[]TmOp,rows:[]int,upto:int)->RxFold {
+rx_fold :: (program:[]TmOp,rows:[]int,upto:int)->RxFold #effects(all) {
     f:RxFold;
     while f.step<upto {
         o:=f.step*TM_TOKENS;
@@ -182,7 +182,7 @@ is `unverifiable`, never `exact`.
 // Checks steps a..<b of a claim. rows are the claimed trace (all of it) or
 // empty; without rows only the whole run can be checked, by its digests.
 // budget bounds the steps the verifier executes; folded rows don't count.
-rx_check :: (program:[]TmOp,claim:RxClaim,rows:[]int,a:int,b:int,budget:int)->RxReport {
+rx_check :: (program:[]TmOp,claim:RxClaim,rows:[]int,a:int,b:int,budget:int)->RxReport #effects(all) {
     r:=RxReport.{step=-1};
     U:=RxVerdict.unverifiable;F:=RxVerdict.failed;
     if claim.steps<1 || claim.steps>TM_STEPS_MAX {return rx_end(r,F,RxReason.steps,-1);}

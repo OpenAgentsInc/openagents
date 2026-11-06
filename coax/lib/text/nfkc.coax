@@ -110,24 +110,24 @@
 UN_OK :: 0; UN_UTF8 :: 1; UN_LIMIT :: 2; UN_SPACE :: 3; UN_ALIAS :: 4;
 UnResult :: struct {error:int;written:int;}
 UnCode :: struct {value:u32;next:int;ok:bool;}
-un_admit :: (input:int,scratch:int,output:int,overlap:bool)->int {
+un_admit :: (input:int,scratch:int,output:int,overlap:bool)->int #effects(all) {
   if input<0 || input>1024 || scratch<0 || scratch>18432 || output<0 || output>73728 {return UN_LIMIT;}
   if overlap {return UN_ALIAS;}return UN_OK;
 }
-un_find32 :: (keys:[] const u32,key:u32)->int {
+un_find32 :: (keys:[] const u32,key:u32)->int #effects(all) {
   lo:=0;hi:=keys.count;
   while lo<hi {mid:=(lo+hi)/2;if keys[mid]<key {lo=mid+1;}else {hi=mid;}}
   if lo<keys.count && keys[lo]==key {return lo;}return -1;
 }
-un_find64 :: (keys:[] const u64,key:u64)->int {
+un_find64 :: (keys:[] const u64,key:u64)->int #effects(all) {
   lo:=0;hi:=keys.count;
   while lo<hi {mid:=(lo+hi)/2;if keys[mid]<key {lo=mid+1;}else {hi=mid;}}
   if lo<keys.count && keys[lo]==key {return lo;}return -1;
 }
-un_class :: (cp:u32)->u32 {
+un_class :: (cp:u32)->u32 #effects(all) {
   at:=un_find32(UN_CCC_KEYS[..],cp);if at<0 {return 0;}return UN_CCC_VALUES[at];
 }
-un_decode :: (text:string,at:int)->UnCode {
+un_decode :: (text:string,at:int)->UnCode #effects(all) {
   if at<0 || at>=text.count {return UnCode.{};}
   first:=cast(u32)text[at];if first<128 {return UnCode.{value=first,next=at+1,ok=true};}
   count:int;minimum:u32;cp:u32;
@@ -140,11 +140,11 @@ un_decode :: (text:string,at:int)->UnCode {
   if cp<minimum || cp>0x10ffff || (cp>=0xd800 && cp<=0xdfff) {return UnCode.{};}
   return UnCode.{value=cp,next=at+count,ok=true};
 }
-un_size :: (cp:u32)->int {
+un_size :: (cp:u32)->int #effects(all) {
   if cp>0x10ffff || (cp>=0xd800 && cp<=0xdfff) {return 0;}
   if cp<128 {return 1;}if cp<2048 {return 2;}if cp<65536 {return 3;}return 4;
 }
-un_decompose :: (cp:u32,scratch:[]u32,at:int)->int {
+un_decompose :: (cp:u32,scratch:[]u32,at:int)->int #effects(all) {
   if cp>=0xac00 && cp<0xac00+11172 {
     s:=cp-0xac00;t:=s%28;count:=ifx t==0 then 2 else 3;
     if scratch.count-at<count {return -1;}
@@ -157,19 +157,19 @@ un_decompose :: (cp:u32,scratch:[]u32,at:int)->int {
   if scratch.count-at<count {return -1;}
   for i:0..<count {scratch[at+i]=UN_DECOMP_VALUES[begin+i];}return at+count;
 }
-un_order :: (scratch:[]u32,count:int) {
+un_order :: (scratch:[]u32,count:int) #effects(all) {
   for i:1..<count {cp:=scratch[i];cc:=un_class(cp);if cc==0 {continue;}j:=i;
     while j>0 {previous:=un_class(scratch[j-1]);if previous<=cc {break;}scratch[j]=scratch[j-1];j-=1;}
     scratch[j]=cp;
   }
 }
-un_pair :: (a:u32,b:u32)->u32 {
+un_pair :: (a:u32,b:u32)->u32 #effects(all) {
   if a>=0x1100 && a<=0x1112 && b>=0x1161 && b<=0x1175 {return 0xac00+(a-0x1100)*588+(b-0x1161)*28;}
   if a>=0xac00 && a<0xac00+11172 && (a-0xac00)%28==0 && b>0x11a7 && b<=0x11c2 {return a+b-0x11a7;}
   key:=(cast(u64)a<<21)|cast(u64)b;row:=un_find64(UN_COMPOSE_KEYS[..],key);
   if row<0 {return 0;}return UN_COMPOSE_VALUES[row];
 }
-un_compose :: (scratch:[]u32,count:int)->int {
+un_compose :: (scratch:[]u32,count:int)->int #effects(all) {
   at:=0;starter:=-1;last:u32;
   for i:0..<count {cp:=scratch[i];cc:=un_class(cp);
     if starter>=0 {combined:=un_pair(scratch[starter],cp);
@@ -178,7 +178,7 @@ un_compose :: (scratch:[]u32,count:int)->int {
     scratch[at]=cp;if cc==0 {starter=at;}last=cc;at+=1;
   }return at;
 }
-un_emit :: (cp:u32,out:[]u8,at:int)->int {
+un_emit :: (cp:u32,out:[]u8,at:int)->int #effects(all) {
   size:=un_size(cp);
   if size==1 {out[at]=cast(u8)cp;}
   else if size==2 {out[at]=cast(u8)(192+cp/64);out[at+1]=cast(u8)(128+cp%64);}
@@ -186,7 +186,7 @@ un_emit :: (cp:u32,out:[]u8,at:int)->int {
   else {out[at]=cast(u8)(240+cp/262144);out[at+1]=cast(u8)(128+(cp/4096)%64);out[at+2]=cast(u8)(128+(cp/64)%64);out[at+3]=cast(u8)(128+cp%64);}
   return at+size;
 }
-un_nfkc :: (input:string,scratch:[]u32,out:[]u8,overlap:bool)->UnResult #export_c {
+un_nfkc :: (input:string,scratch:[]u32,out:[]u8,overlap:bool)->UnResult #export_c #effects(all) {
   status:=un_admit(input.count,scratch.count,out.count,overlap);if status!=UN_OK {return UnResult.{error=status};}
   from:=0;count:=0;
   while from<input.count {decoded:=un_decode(input,from);if !decoded.ok {return UnResult.{error=UN_UTF8};}

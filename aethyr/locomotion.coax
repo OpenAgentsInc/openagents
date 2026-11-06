@@ -66,10 +66,10 @@ LocomotionProfile :: struct {
 }
 #test "source locomotion accepts zero coefficients and bounded air control" {p:LocomotionProfile;p.source_velocity=true;p.source_friction=0;p.source_braking=0;p.source_braking_factor=0;p.source_air_control=1;#assert locomotion_profile_ok(p);p.source_air_control=1.001;#assert !locomotion_profile_ok(p);}
 
-locomotion_finite :: (value: f32) -> bool {
+locomotion_finite :: (value: f32) -> bool #effects(all) {
   return value == value && value > -f32(LOCOMOTION_LIMIT) && value < f32(LOCOMOTION_LIMIT);
 }
-locomotion_profile_ok :: (p: LocomotionProfile) -> bool {
+locomotion_profile_ok :: (p: LocomotionProfile) -> bool #effects(all) {
   values := [11] f32.[p.walk_speed, p.run_speed, p.gravity, p.jump_speed, p.acceleration, p.turn_rate,
     p.ride_height, p.step_smooth, p.slide_grip, p.sink_limit, p.run_animation_margin];
   for i: 0..<11 { if !locomotion_finite(values[i]) || values[i] < 0 { return false; } }

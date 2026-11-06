@@ -1,6 +1,6 @@
 // Native-only observation boundary. No #foreign calls from compile-time checks.
 #load "../../lib/sys/read-file.coax";
-fr_test_event :: (n:int) #foreign;
+fr_test_event :: (n:int) #foreign #effects(all);
 fr_fixture_error :: (error:FrError,state:[]int)->int {
  switch error {
   case invalid_path(e) {state[1]=cast(int)e.domain;state[2]=e.code;state[3]=cast(int)e.operation;return 1;}
@@ -26,7 +26,7 @@ fr_fixture_result :: (answer:Result(int,FrError),cleanup:[]FrCleanup,state:[]int
  switch answer {case ok(value) {n=value;}case err(error) {state[0]=fr_fixture_error(error,state);}}
  fr_fixture_report(cleanup,state);return n;
 }
-fr_fixture_run :: (path:[]u8,out:[]u8,state:[]int,variant:int)->int #export_c {
+fr_fixture_run :: (path:[]u8,out:[]u8,state:[]int,variant:int)->int #export_c #effects(all) {
  cleanup:[1]FrCleanup;for i:0..<state.count {state[i]=0;}
  if variant==1 {n:=fr_read_file(cast(string)path,out,cleanup[..]) or_else fr_fixture_fallback(cleanup[..],state);fr_fixture_report(cleanup[..],state);return n;}
  if variant==3 {return fr_fixture_result(fr_read_file(cast(string)path,out,cleanup[0..<0]),cleanup[..],state);}

@@ -21,7 +21,7 @@ oh_posix::(text:string,key:string)->f64{
   #assert oh_posix(t,"user")==2.34&&oh_posix(t,"sys")==0.56&&oh_posix(t,"real")==75.10;
   #assert oh_posix(t,"use")== -1&&oh_posix("user -1\n","user")== -1&&oh_posix("user 2x\n","user")== -1&&oh_posix("user \n","user")== -1;
 }
-tool_main::()->int #export_c{
+tool_main::()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4{return 2;}
   harness:=args_at(a[..],0);baseline:=args_at(a[..],1);observed:=args_at(a[..],2);dir:=args_at(a[..],3);
   if !fs_exists(harness)||!fs_exists(baseline)||!fs_exists(observed)||!fs_mkdir(dir){return 2;}

@@ -25,14 +25,14 @@ PqhPlan :: struct {status:u32;full:int;tail:int;}
  for mode:0..<3 {status:=ifx mode==0 then pqn_file_hash(input[..],out[0..<32],false) else pqn_hash_sized(input[..],out[0..<32],mode);#assert status==SHA_OK && out[32]==0xa5;for i:0..<32 {#assert out[i]==expected[i];}}
  #assert pqn_file_hash(input[0..<0],out[0..<32],false)==SHA_OK;empty:=[32]u8.[0xe3,0xb0,0xc4,0x42,0x98,0xfc,0x1c,0x14,0x9a,0xfb,0xf4,0xc8,0x99,0x6f,0xb9,0x24,0x27,0xae,0x41,0xe4,0x64,0x9b,0x93,0x4c,0xa4,0x95,0x99,0x1b,0x78,0x52,0xb8,0x55];for i:0..<32 {#assert out[i]==empty[i];}
 }
-pqn_file_chunk_bytes :: ()->int #export_c {return 1048576;}
-pqn_file_request :: (input:int,output:int,overlap:bool)->u32 #export_c {
+pqn_file_chunk_bytes :: ()->int #export_c #effects(all) {return 1048576;}
+pqn_file_request :: (input:int,output:int,overlap:bool)->u32 #export_c #effects(all) {
  if input<0 || input>16777216 {return SHA_BAD_INPUT;}if output!=32 {return SHA_BAD_OUTPUT;}if overlap {return SHA_ALIAS;}return SHA_OK;
 }
-pqn_file_plan :: (total:int,chunk:int)->PqhPlan #export_c {
+pqn_file_plan :: (total:int,chunk:int)->PqhPlan #export_c #effects(all) {
  if total<0 || total>16777216 || chunk<1 || chunk>1048576 {return PqhPlan.{status=SHA_BAD_INPUT};}return PqhPlan.{full=total/chunk,tail=total%chunk};
 }
-pqn_hash_sized :: (input:[]u8,out:[]u8,chunk:int)->u32 {
+pqn_hash_sized :: (input:[]u8,out:[]u8,chunk:int)->u32 #effects(all) {
  state:[112]u8;_:=sha256_init(state[..]);plan:=pqn_file_plan(input.count,chunk);
  for i:0..<plan.full {at:=i*chunk;_=sha256_update_checked(state[..],input[at..<at+chunk],false);}
  at:=plan.full*chunk;_=sha256_update_checked(state[..],input[at..<at+plan.tail],false);
@@ -40,6 +40,6 @@ pqn_hash_sized :: (input:[]u8,out:[]u8,chunk:int)->u32 {
  // every streaming precondition. Internal status is necessarily SHA_OK.
  stage:[32]u8;_=sha256_final_checked(state[..],stage[..],false);for i:0..<32 {out[i]=stage[i];}return SHA_OK;
 }
-pqn_file_hash :: (input:[]u8,out:[]u8,overlap:bool)->u32 #export_c {
+pqn_file_hash :: (input:[]u8,out:[]u8,overlap:bool)->u32 #export_c #effects(all) {
  status:=pqn_file_request(input.count,out.count,overlap);if status!=SHA_OK {return status;}return pqn_hash_sized(input,out,pqn_file_chunk_bytes());
 }

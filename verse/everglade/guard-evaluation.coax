@@ -83,7 +83,7 @@ GeTotals :: struct {seen:int;observed:int;eligible:int;contract:int;deadline:int
     #assert gev_manifest(-1,b[..])==-1 && gev_manifest(26,b[..])==-1 && gev_manifest(0,b[0..<0])==-1;
 }
 
-gev_case :: (index:int)->GeCase #export_c {
+gev_case :: (index:int)->GeCase #export_c #effects(all) {
     if index<0 || index>=GEV_CASES {return GeCase.{};}
     o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true,day=1,weather=0};
     if index<GEV_ELIGIBLE {
@@ -95,11 +95,11 @@ gev_case :: (index:int)->GeCase #export_c {
     if index==22 {o.day=-1;}if index==23 {o.day=4;}if index==24 {o.weather=-1;}if index==25 {o.weather=4;}
     return GeCase.{valid=true,index=index,observation=o,acceptable_mask=1,preferred_mask=1};
 }
-gev_request :: (index:int,out:[]u8)->int #export_c {
+gev_request :: (index:int,out:[]u8)->int #export_c #effects(all) {
     c:=gev_case(index);if !c.valid || c.remote_mask==0 {return -1;}return ga_request(out,c.observation);
 }
 // book:begin score
-gev_evaluate :: (index:int,status:string,body:string,elapsed_ms:int)->GeResult #export_c {
+gev_evaluate :: (index:int,status:string,body:string,elapsed_ms:int)->GeResult #export_c #effects(all) {
     c:=gev_case(index);if !c.valid {return GeResult.{};}
     r:=GeResult.{valid=true,index=index,deadline=elapsed_ms>=0 && elapsed_ms<GA_TIMEOUT,forbidden=c.remote_mask==0};
     if status!="200\n" {return r;}a:=ga_decode(body);r.contract=a.ok;if !a.ok {return r;}r.action=a.action;
@@ -111,15 +111,15 @@ gev_evaluate :: (index:int,status:string,body:string,elapsed_ms:int)->GeResult #
     return r;
 }
 // book:end score
-gev_add :: (totals:[]GeTotals,r:GeResult)->bool #export_c {
+gev_add :: (totals:[]GeTotals,r:GeResult)->bool #export_c #effects(all) {
     if totals.count!=1 || !r.valid || r.index<0 || r.index>=GEV_ELIGIBLE {return false;}
     bit:=1<<r.index;if (totals[0].seen&bit)!=0 {return false;}totals[0].seen|=bit;totals[0].observed+=1;
     totals[0].eligible+=1;if r.contract {totals[0].contract+=1;}if r.deadline {totals[0].deadline+=1;}
     if r.covered {totals[0].covered+=1;}if r.disagree {totals[0].disagree+=1;}if r.acceptable {totals[0].acceptable+=1;}
     if r.preferred {totals[0].preferred+=1;}if r.useful {totals[0].useful+=1;}return true;
 }
-gev_complete :: (totals:GeTotals)->bool #export_c {return (totals.seen&65535)==65535;}
-gev_manifest :: (index:int,out:[]u8)->int #export_c {
+gev_complete :: (totals:GeTotals)->bool #export_c #effects(all) {return (totals.seen&65535)==65535;}
+gev_manifest :: (index:int,out:[]u8)->int #export_c #effects(all) {
     c:=gev_case(index);if !c.valid {return -1;}
     n:=json_raw(out,0,"{\"corpus\":\"guard-editorial-v1\",\"case\":");n=json_write_int(out,n,index);
     n=json_raw(out,n,",\"day\":");n=json_write_int(out,n,c.observation.day);n=json_raw(out,n,",\"weather\":");n=json_write_int(out,n,c.observation.weather);

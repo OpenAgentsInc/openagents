@@ -59,7 +59,7 @@ UX_SAMPLE :: "200\n{\"snapshot\":{\"chain\":\"signet\",\"height\":17,\"hash\":\"
   m[0].serial = 9223372036854775807; #assert !ux_begin(m[..],0,0);
 }
 
-ux_decode :: (text: string, nodes: [] JvNode) -> UxSnapshot #export_c {
+ux_decode :: (text: string, nodes: [] JvNode) -> UxSnapshot #export_c #effects(all) {
   if text.count < 4 || text[3] != '\n' { return UxSnapshot.{code=503}; }
   status := ex_decimal(text[0..<3]); if status < 100 || status > 599 { return UxSnapshot.{code=503}; }
   if status != 200 { return UxSnapshot.{code=status}; }
@@ -74,11 +74,11 @@ ux_decode :: (text: string, nodes: [] JvNode) -> UxSnapshot #export_c {
   for c: r.hash { if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') { return UxSnapshot.{code=502}; } }
   return r;
 }
-ux_begin :: (m: [] UxModel, kind: int, id: int) -> bool {
+ux_begin :: (m: [] UxModel, kind: int, id: int) -> bool #effects(all) {
   if kind < 0 || kind > 1 || id < 0 || id > 7 || m[0].serial == 9223372036854775807 { return false; }
   m[0].serial += 1; m[0].pending[kind] = UxPending.{id=id,serial=m[0].serial}; if kind == 1 { m[0].ready = false; } return true;
 }
-ux_receive :: (m: [] UxModel, kind: int, id: int, snapshot: UxSnapshot) -> int {
+ux_receive :: (m: [] UxModel, kind: int, id: int, snapshot: UxSnapshot) -> int #effects(all) {
   if kind < 0 || kind > 1 || id < 0 { return 0; }
   if m[0].pending[kind].id != id { return 0; } ticket := m[0].pending[kind].serial; m[0].pending[kind].id = -1;
   if ticket <= m[0].last { return 0; }

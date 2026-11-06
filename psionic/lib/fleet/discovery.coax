@@ -31,19 +31,19 @@ MD_POLL_STEPS :: 64;
     }
 }
 
-md_eose :: (current:bool,authenticated:bool,subscribed:bool,subscription:string)->bool #export_c {
+md_eose :: (current:bool,authenticated:bool,subscribed:bool,subscription:string)->bool #export_c #effects(all) {
     return current && authenticated && subscribed && subscription=="fleet-beacons";
 }
-md_ready :: (connected:bool,authenticated:bool,subscribed:bool,ended:bool,empty:bool)->bool #export_c {
+md_ready :: (connected:bool,authenticated:bool,subscribed:bool,ended:bool,empty:bool)->bool #export_c #effects(all) {
     return connected && authenticated && subscribed && ended && empty;
 }
 // Route search retains its configured window when history is caught up but
 // has no eligible route. The post-signing check only drains/revalidates.
-md_done :: (ready:bool,eligible:bool,seeking:bool,elapsed:bool)->bool #export_c {
+md_done :: (ready:bool,eligible:bool,seeking:bool,elapsed:bool)->bool #export_c #effects(all) {
     return ready && (eligible || !seeking || elapsed);
 }
 // The exact caps permit one final empty-input observation. A 65th text
 // frame or an extra payload byte is refused before its JSON/crypto work.
-md_budget :: (frames:int,bytes:int,now:int,end:int)->bool #export_c {
+md_budget :: (frames:int,bytes:int,now:int,end:int)->bool #export_c #effects(all) {
     return frames>=0 && frames<=MD_FRAMES && bytes>=0 && bytes<=MD_BYTES && now>=0 && now<end;
 }

@@ -2,7 +2,7 @@
 // actual engineer bone writer, comparing translations of the same pose.
 #load "../../apps/openagents-web/deadgears.coax";
 
-drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c {
+drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c #effects(all) {
   s: [1] DeadGears;
   dg_page_start(s[..]);
   s[0].pl = pc.walk_place(fx, fy, fz, 0);

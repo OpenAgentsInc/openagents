@@ -156,17 +156,17 @@ ds_defaults :: (g: [] Settings, s: [] ZeronState) {
   coaxial_zeron_choose(s, CH_ACCESS, g[0].def_access);
 }
 
-coaxial_ds_save :: (k: [] Desk, x: f32, y: f32, w: f32, h: f32, out: [] u8) -> int #export_c { if k.count < 1 { return 0; } return ds_save(k, x, y, w, h, out); }
-coaxial_ds_load :: (g: [] Settings, k: [] Desk, json: string) -> int #export_c { if g.count < 1 || k.count < 1 { return 0; } return ds_load(g, k, json); }
-coaxial_ds_window :: (g: [] Settings, out: [] f32) -> bool #export_c {
+coaxial_ds_save :: (k: [] Desk, x: f32, y: f32, w: f32, h: f32, out: [] u8) -> int #export_c #effects(all) { if k.count < 1 { return 0; } return ds_save(k, x, y, w, h, out); }
+coaxial_ds_load :: (g: [] Settings, k: [] Desk, json: string) -> int #export_c #effects(all) { if g.count < 1 || k.count < 1 { return 0; } return ds_load(g, k, json); }
+coaxial_ds_window :: (g: [] Settings, out: [] f32) -> bool #export_c #effects(all) {
   if g.count < 1 || !g[0].has_window || out.count < 4 { return false; }
   for j: 0..<4 { out[j] = g[0].window[j]; }
   return true;
 }
-coaxial_ds_restore_cwd :: (g: [] Settings, i: int, out: [] u8) -> int #export_c { if g.count < 1 { return 0; } return ds_restore_cwd(g, i, out); }
-coaxial_ds_restore :: (g: [] Settings, k: [] Desk, i: int, c: int) #export_c { if g.count > 0 && k.count > 0 { ds_restore(g, k, i, c); } }
-coaxial_ds_restore_tabs :: (g: [] Settings, k: [] Desk, base: int) #export_c { if g.count > 0 && k.count > 0 { ds_restore_tabs(g, k, base); } }
-coaxial_ds_defaults :: (g: [] Settings, s: [] ZeronState) #export_c { if g.count > 0 && s.count > 0 { ds_defaults(g, s); } }
+coaxial_ds_restore_cwd :: (g: [] Settings, i: int, out: [] u8) -> int #export_c #effects(all) { if g.count < 1 { return 0; } return ds_restore_cwd(g, i, out); }
+coaxial_ds_restore :: (g: [] Settings, k: [] Desk, i: int, c: int) #export_c #effects(all) { if g.count > 0 && k.count > 0 { ds_restore(g, k, i, c); } }
+coaxial_ds_restore_tabs :: (g: [] Settings, k: [] Desk, base: int) #export_c #effects(all) { if g.count > 0 && k.count > 0 { ds_restore_tabs(g, k, base); } }
+coaxial_ds_defaults :: (g: [] Settings, s: [] ZeronState) #export_c #effects(all) { if g.count > 0 && s.count > 0 { ds_defaults(g, s); } }
 
 #test "settings.json: what is saved at quit comes back at launch: the sidebar, the window, the tabs and every session with its harness session" {
   k: [1] Desk;

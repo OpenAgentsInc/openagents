@@ -66,10 +66,10 @@ halves of every word except word 8, which holds it.
 
 <!-- source: psionic/lib/serve-split.coax wire -->
 ```jai
-dg_frames :: (c:PgConfig,positions:int)->int {return (positions+c.page-1)/c.page+ifx c.hybrid then 1 else 0;}
+dg_frames :: (c:PgConfig,positions:int)->int #effects(all) {return (positions+c.page-1)/c.page+ifx c.hybrid then 1 else 0;}
 // The checksum: chapter 176's chained hash over both halves of every word
 // but word 8, which holds it.
-dg_sum :: (w:[]u64)->int {
+dg_sum :: (w:[]u64)->int #effects(all) {
     h:=0;
     for k:0..<w.count {
         if k==8 {continue;}
@@ -82,7 +82,7 @@ dg_sum :: (w:[]u64)->int {
 // when the model is hybrid, frame by frame as the frames hold them. Returns
 // the words written, or -1 when there are no positions, the table does not
 // cover them, or out is too small.
-dg_pack :: (st:PgStore,mem:[]f64,i:int,model:int,request:int,positions:int,out:[]u64)->int {
+dg_pack :: (st:PgStore,mem:[]f64,i:int,model:int,request:int,positions:int,out:[]u64)->int #effects(all) {
     c:=st.cfg;w:=pg_width(c);pages:=(positions+c.page-1)/c.page;frames:=dg_frames(c,positions);n:=DG_HEAD+frames*w;
     if positions<1 || pages>st.table[i].n || n>out.count {return -1;}
     head:=[8]int.[DG_VERSION,model,request,positions,c.page,c.dim,ifx c.hybrid then 1 else 0,frames];
@@ -130,7 +130,7 @@ receiver as it was: nothing allocated, nothing written.
 ```jai
 // The count rule, shared with the simulation: a message is whole when
 // exactly the declared size arrived.
-dg_count :: (want:int,got:int)->DgRefusal {
+dg_count :: (want:int,got:int)->DgRefusal #effects(all) {
     if got<want {return DgRefusal.partial;}
     if got>want {return DgRefusal.excess;}
     return DgRefusal.none;
@@ -139,7 +139,7 @@ dg_count :: (want:int,got:int)->DgRefusal {
 // header; the version, the model, the geometry; the request and a prompt of
 // at least one position; the frame count; exactly the size those frames
 // take; the checksum.
-dg_check :: (c:PgConfig,want:DgExpect,wire:[]u64)->DgRefusal {
+dg_check :: (c:PgConfig,want:DgExpect,wire:[]u64)->DgRefusal #effects(all) {
     if wire.count<DG_HEAD {return DgRefusal.partial;}
     h:[9]int;for k:0..<DG_HEAD {h[k]=cast(int)wire[k];}
     if h[0]!=DG_VERSION {return DgRefusal.version;}
@@ -156,7 +156,7 @@ dg_check :: (c:PgConfig,want:DgExpect,wire:[]u64)->DgRefusal {
 // Receive into slot i: refuse, or take one device frame per page (and one
 // for the recurrent state) and write the values back bit for bit. Nothing
 // is held or written on a refusal.
-dg_receive :: (dst:PgStore,mem:[]f64,i:int,want:DgExpect,wire:[]u64)->DgReceived {
+dg_receive :: (dst:PgStore,mem:[]f64,i:int,want:DgExpect,wire:[]u64)->DgReceived #effects(all) {
     r:=DgReceived.{refusal=dg_check(dst.cfg,want,wire),st=dst};
     if r.refusal!=DgRefusal.none {return r;}
     s:=dst;c:=s.cfg;w:=pg_width(c);frames:=dg_frames(c,want.positions);pages:=(want.positions+c.page-1)/c.page;
@@ -232,17 +232,17 @@ For 64 positions: 4 pages in every layer, 96 pages, 3,145,800 bytes,
 // gpt-oss-20b (psionic/docs/targets/gpt-oss.md): 24 layers alternating full
 // and 128-position windowed attention, 8 KV heads of 64. Two bytes a value
 // and pages of 16 positions are this chapter's assumptions.
-dg_gptoss :: ()->DgShape {return DgShape.{full=12,windowed=12,window=128,kv_heads=8,head_dim=64,value_bytes=2,page=16};}
+dg_gptoss :: ()->DgShape #effects(all) {return DgShape.{full=12,windowed=12,window=128,kv_heads=8,head_dim=64,value_bytes=2,page=16};}
 // The bytes a snapshot of `positions` moves: the header, then whole pages
 // of K and V in every layer, a windowed layer holding at most its window.
-dg_bytes :: (s:DgShape,positions:int)->int {
+dg_bytes :: (s:DgShape,positions:int)->int #effects(all) {
     page:=2*s.kv_heads*s.head_dim*s.value_bytes*s.page;
     full:=(positions+s.page-1)/s.page;win:=(cb_min(positions,s.window)+s.page-1)/s.page;
     return 8*DG_HEAD+page*(s.full*full+s.windowed*win);
 }
 // Nanoseconds on the link: the latency, then the bits at gbit bits a
 // nanosecond, rounded up.
-dg_transfer_ns :: (l:DgLink,bytes:int)->int {return l.lat_ns+(bytes*8+l.gbit-1)/l.gbit;}
+dg_transfer_ns :: (l:DgLink,bytes:int)->int #effects(all) {return l.lat_ns+(bytes*8+l.gbit-1)/l.gbit;}
 ```
 
 <!-- source: psionic/lib/serve-split.coax check-bytes -->
@@ -312,7 +312,7 @@ A tie: one request with a 1-position prompt and 3 tokens on one slot gives
 // decode work, every worker but one runs prompts. A tie goes to fewer
 // prefill workers. Traffic outside the bounds, or fewer than 2 workers,
 // gets no split.
-dg_place :: (workers:int,slots:int,reqs:[]DgReq)->DgPlace {
+dg_place :: (workers:int,slots:int,reqs:[]DgReq)->DgPlace #effects(all) {
     d:DgPlace;
     if workers<2 || workers>DG_WORKERS || slots<1 || slots>DG_SLOTS || reqs.count<1 || reqs.count>DG_REQUESTS {return d;}
     for r:reqs {if r.prompt<1 || r.prompt>DG_PROMPT || r.output<1 || r.output>DG_PLACE_OUTPUT {return d;}}
@@ -418,7 +418,7 @@ DgPlace :: struct {prefill:int;decode:int;prefill_ns:int;decode_ns:int;}
 // their queue, oldest first, one each in turn while they have free slots;
 // and every idle worker with requests starts a step: one row for each
 // decoding request, then prompt chunks in admission order within `tokens`.
-dg_sim :: (cfg:DgConfig,reqs:[]DgReq)->DgSim {
+dg_sim :: (cfg:DgConfig,reqs:[]DgReq)->DgSim #effects(all) {
     s:DgSim;s.status=dg_start(cfg,reqs);
     if s.status!=DgStatus.ok {return s;}
     s.n=reqs.count;
@@ -510,7 +510,7 @@ handoff includes the transfer and any wait for a decode slot.
 // Nearest-rank time to first token and gaps between tokens in
 // nanoseconds (chapter 172's bn_stats: P50, P90, P95, P99), output tokens,
 // and the span from the first arrival to the last token.
-dg_report :: (s:DgSim,reqs:[]DgReq)->DgReport {
+dg_report :: (s:DgSim,reqs:[]DgReq)->DgReport #effects(all) {
     p:=DgReport.{tokens=s.tokens,span=s.end-reqs[0].arrive,transfers=s.transfers,refused=s.refused,bytes=s.bytes,rows=s.rows};
     first:[64]int;
     for i:0..<s.n {first[i]=s.fate[i].first-reqs[i].arrive;p.link+=s.fate[i].link;}

@@ -25,9 +25,9 @@ MpFeed :: struct { ok: bool; time: int; count: int; }
   #assert mp_feed_record(1,1,0,1) && mp_feed_record(400000,400000,1023,1024);
   #assert !mp_feed_record(0,1,0,1) && !mp_feed_record(400001,400001,0,1) && !mp_feed_record(2,1,0,1) && !mp_feed_record(1,1,1024,2048);
 }
-mp_feed_extent :: (n: int) -> bool { return n >= 16 && n <= MP_FEED_BYTES; }
-mp_feed_record :: (n: int, left: int, count: int, capacity: int) -> bool { return n > 0 && n <= 400000 && n <= left && count < MP_FEED_COUNT && count < capacity; }
-mp_feed :: (raw: [] u8, chain: int, rows: [] MpSlice) -> MpFeed {
+mp_feed_extent :: (n: int) -> bool #effects(all) { return n >= 16 && n <= MP_FEED_BYTES; }
+mp_feed_record :: (n: int, left: int, count: int, capacity: int) -> bool #effects(all) { return n > 0 && n <= 400000 && n <= left && count < MP_FEED_COUNT && count < capacity; }
+mp_feed :: (raw: [] u8, chain: int, rows: [] MpSlice) -> MpFeed #effects(all) {
   bad: MpFeed;
   if !mp_feed_extent(raw.count) || chain < 1 || chain > 5 || kv_get32(raw,4) != chain { return bad; }
   for i: 0..<4 { if raw[i] != "OMP1"[i] { return bad; } }

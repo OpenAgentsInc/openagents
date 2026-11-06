@@ -75,7 +75,7 @@ PT_END :: "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
     r=pt_render_checked(PtEntry.{},q,options[..],out[..],scratch[..],false);
     #assert r.status==PtStatus.capacity && r.written==0;
 }
-pt_label_checked :: (index:int,output:[]u8)->PtResult #export_c {
+pt_label_checked :: (index:int,output:[]u8)->PtResult #export_c #effects(all) {
     if index<0 || index>255 {return PtResult.{status=PtStatus.range};}
     n:=1;if index>=26 {n=2;}
     if output.count<n {return PtResult.{status=PtStatus.capacity};}
@@ -148,39 +148,39 @@ pt_label_checked :: (index:int,output:[]u8)->PtResult #export_c {
     #assert r.status==PtStatus.ok && pt_find_text(cast(string)out[0..<r.written],"A. same: x\n\n")>=0;
 }
 
-pt_render_capacity :: (output:int,scratch:int)->bool #export_c {return output>=1 && scratch>=1;}
-pt_write_space :: (at:int,n:int,capacity:int)->PtStatus {
+pt_render_capacity :: (output:int,scratch:int)->bool #export_c #effects(all) {return output>=1 && scratch>=1;}
+pt_write_space :: (at:int,n:int,capacity:int)->PtStatus #effects(all) {
     if n>capacity-at {return PtStatus.capacity;}
     if n>PT_TEXT_MAX-at {return PtStatus.size;}return PtStatus.ok;
 }
-pt_json_integer_count :: (n:int)->bool {return n>=1 && n<=4300;}
-pt_key_slot :: (depth:int,index:int)->int {return (depth-1)*256+index;}
-pt_prefix_cut :: (text:string)->int {marker:=pt_find_text(text,"QEV_PREFIX_MARK");if marker>=0 {return marker;}return text.count;}
+pt_json_integer_count :: (n:int)->bool #effects(all) {return n>=1 && n<=4300;}
+pt_key_slot :: (depth:int,index:int)->int #effects(all) {return (depth-1)*256+index;}
+pt_prefix_cut :: (text:string)->int #effects(all) {marker:=pt_find_text(text,"QEV_PREFIX_MARK");if marker>=0 {return marker;}return text.count;}
 
-pt_question_count :: (kind:u8,n:int)->bool #export_c {
+pt_question_count :: (kind:u8,n:int)->bool #export_c #effects(all) {
     if kind==0 {return n>=1 && n<=255;}if kind==1 {return n==0 || n==2;}if kind==2 {return n>=1 && n<=10;}return false;
 }
-pt_append :: (w:[]PtWriter,s:string) {
+pt_append :: (w:[]PtWriter,s:string) #effects(all) {
     pt_append_part(w,s,0,s.count);
 }
 // Append a bounded part without constructing a substring of an empty view.
-pt_append_part :: (w:[]PtWriter,s:string,begin:int,end:int) {
+pt_append_part :: (w:[]PtWriter,s:string,begin:int,end:int) #effects(all) {
     if w[0].status!=PtStatus.ok {return;}
     n:=end-begin;status:=pt_write_space(w[0].at,n,w[0].data.count);if status!=PtStatus.ok {w[0].status=status;return;}
     for i:begin..<end {w[0].data[w[0].at+i-begin]=s[i];}w[0].at+=n;
 }
-pt_strip_space :: (cp:int)->bool {
+pt_strip_space :: (cp:int)->bool #effects(all) {
     return (cp>=9 && cp<=13) || (cp>=28 && cp<=32) || cp==133 || cp==160 || cp==5760 || (cp>=8192 && cp<=8202) || cp==8232 || cp==8233 || cp==8239 || cp==8287 || cp==12288;
 }
-pt_trim :: (text:string,strip:bool)->PtSpan {
+pt_trim :: (text:string,strip:bool)->PtSpan #effects(all) {
     begin:=0;end:=0;at:=0;leading:=true;
     while at<text.count {
         r:=pt_rune(text,at);if r.status!=PtStatus.ok {return PtSpan.{status=r.status};}
         if !strip || !pt_strip_space(r.cp) {if leading {begin=at;leading=false;}end=r.next;}at=r.next;
     }return PtSpan.{begin=begin,end=end};
 }
-pt_indent :: (w:[]PtWriter,depth:int) {pt_append(w,"\n");for i:0..<depth {pt_append(w,"  ");}}
-pt_pretty :: (w:[]PtWriter,text:string)->PtStatus {
+pt_indent :: (w:[]PtWriter,depth:int) #effects(all) {pt_append(w,"\n");for i:0..<depth {pt_append(w,"  ");}}
+pt_pretty :: (w:[]PtWriter,text:string)->PtStatus #effects(all) {
     j:[1]Json;json_start_bounded(j[..],text,text.count,text.count);
     depth:=0;counts:[16]int;types:[16]int;keys:[4096]string;decoded:[65536]u8;
     t:=json_next(j[..]);if t!=JSON_OBJECT && t!=JSON_ARRAY {return PtStatus.unsupported;}
@@ -218,20 +218,20 @@ pt_pretty :: (w:[]PtWriter,text:string)->PtStatus {
         if w[0].status!=PtStatus.ok {return w[0].status;}t=json_next(j[..]);
     }return PtStatus.ok;
 }
-pt_entry :: (w:[]PtWriter,e:PtEntry,strip:bool)->PtStatus {
+pt_entry :: (w:[]PtWriter,e:PtEntry,strip:bool)->PtStatus #effects(all) {
     if !pt_text_count(e.value.count) {return PtStatus.size;}
     if e.kind==PtEntryKind.none {if e.value!="" {return PtStatus.unsupported;}return PtStatus.ok;}
     if e.kind==PtEntryKind.text {span:=pt_trim(e.value,strip);if span.status!=PtStatus.ok {return span.status;}pt_append_part(w,e.value,span.begin,span.end);return w[0].status;}
     if e.kind==PtEntryKind.json {return pt_pretty(w,e.value);}return PtStatus.unsupported;
 }
-pt_label :: (out:[]u8,index:int)->int {
+pt_label :: (out:[]u8,index:int)->int #effects(all) {
     label:=PT_SLOT_LABELS[index];for i:0..<label.count {out[i]=label[i];}return label.count;
 }
-pt_find_text :: (text:string,needle:string)->int {
+pt_find_text :: (text:string,needle:string)->int #effects(all) {
     for i:0..<text.count-needle.count+1 {if text[i..<i+needle.count]==needle {return i;}}return -1;
 }
 // book:begin render
-pt_render_checked :: (state:PtEntry,q:PtQuestion,options:[]PtOption,output:[]u8,scratch:[]u8,overlap:bool)->PtPrompt #export_c {
+pt_render_checked :: (state:PtEntry,q:PtQuestion,options:[]PtOption,output:[]u8,scratch:[]u8,overlap:bool)->PtPrompt #export_c #effects(all) {
     if !pt_question_count(cast(u8)q.kind,options.count) {return PtPrompt.{status=PtStatus.range};}
     if !pt_render_capacity(output.count,scratch.count) {return PtPrompt.{status=PtStatus.capacity};}
     if overlap {return PtPrompt.{status=PtStatus.alias};}

@@ -61,7 +61,7 @@ GgeTotals :: struct {seen:int;observed:int;contract:int;deadline:int;legal:int;a
 
 // End of pre-implementation checks.
 
-gge_case :: (index:int)->GgeCase #export_c {
+gge_case :: (index:int)->GgeCase #export_c #effects(all) {
   if index<0 || index>=GGE_CASES {return GgeCase.{};}
   o:=GgObservation.{help_requested=true,eligible=true,destination_available=true,goal=1};
   c:=GgeCase.{valid=true,index=index,name=GGE_NAMES[index],observation=o};
@@ -72,10 +72,10 @@ gge_case :: (index:int)->GgeCase #export_c {
     if index==10 {c.observation.goal=0;}if index==11 {c.observation.goal=-1;}if index==12 {c.observation.goal=6;}
   }return c;
 }
-gge_request :: (index:int,out:[]u8)->int #export_c {
+gge_request :: (index:int,out:[]u8)->int #export_c #effects(all) {
   c:=gge_case(index);if !c.remote {return -1;}return gg_request(c.observation,out);
 }
-gge_evaluate :: (index:int,status:string,body:string,elapsed_ms:int)->GgeResult #export_c {
+gge_evaluate :: (index:int,status:string,body:string,elapsed_ms:int)->GgeResult #export_c #effects(all) {
   c:=gge_case(index);if !c.valid {return GgeResult.{};}
   a:=gg_decode(body);contract:=gge_contract(status,a.ok,body.count);
   raw:=ifx contract then a.action else -1;
@@ -83,7 +83,7 @@ gge_evaluate :: (index:int,status:string,body:string,elapsed_ms:int)->GgeResult 
   return gge_score(c,contract,raw,elapsed_ms,admission);
 }
 // Independent score seam also detects a regressed candidate admission result.
-gge_score :: (c:GgeCase,contract:bool,raw:int,elapsed_ms:int,admission:GgAdmit)->GgeResult {
+gge_score :: (c:GgeCase,contract:bool,raw:int,elapsed_ms:int,admission:GgAdmit)->GgeResult #effects(all) {
   deadline:=elapsed_ms>=0 && elapsed_ms<8000;
   legal:=raw>=0 && raw<5 && (c.legal_mask&(1<<raw))!=0;
   covered:=c.remote && contract && deadline && legal && admission.ok && admission.action==raw;
@@ -94,7 +94,7 @@ gge_score :: (c:GgeCase,contract:bool,raw:int,elapsed_ms:int,admission:GgAdmit)-
     rule_correct=gg_baseline(c.observation)==c.reference,quiet_correct=c.reference==0,
     forbidden=admission.ok && (!c.remote || !contract || !deadline || !legal || effective!=raw)};
 }
-gge_add :: (s:[]GgeTotals,r:GgeResult)->bool #export_c {
+gge_add :: (s:[]GgeTotals,r:GgeResult)->bool #export_c #effects(all) {
   if s.count!=1 || !r.valid || r.index<0 || r.index>=5 || r.elapsed_ms<0 || r.elapsed_ms>GL_MAX_MS {return false;}
   bit:=1<<r.index;if (s[0].seen&bit)!=0 {return false;}s[0].seen|=bit;
   s[0].elapsed[s[0].observed]=r.elapsed_ms;s[0].observed+=1;
@@ -105,7 +105,7 @@ gge_add :: (s:[]GgeTotals,r:GgeResult)->bool #export_c {
   if GGE_SPLIT[r.index]==1 {s[0].heldout+=1;if r.model_useful {s[0].heldout_useful+=1;}}
   else {s[0].development+=1;if r.model_useful {s[0].development_useful+=1;}}return true;
 }
-gge_manifest :: (index:int,out:[]u8)->int #export_c {
+gge_manifest :: (index:int,out:[]u8)->int #export_c #effects(all) {
   c:=gge_case(index);if !c.valid {return -1;}w:[1]Jo;jo_start(w[..],out);jo_obj(w[..]);
   jo_key(w[..],"corpus");jo_str(w[..],GGE_CORPUS);jo_key(w[..],"candidate");jo_str(w[..],GGE_CANDIDATE);jo_key(w[..],"case");jo_int(w[..],index);
   jo_key(w[..],"name");jo_str(w[..],c.name);jo_key(w[..],"split");jo_str(w[..],ifx c.split==0 then "development" else ifx c.split==1 then "heldout" else "local");
@@ -167,5 +167,5 @@ gge_manifest :: (index:int,out:[]u8)->int #export_c {
   c=gge_case(0);c.observation.help_requested=false;r=gge_score(c,true,1,1,GgAdmit.{});t:[1]GgeTotals;#assert gge_add(t[..],r) && t[0].rule_correct==0 && t[0].legal==1;
   fresh:[1]GgeTotals;#assert gge_add(fresh[..],gge_evaluate(0,"503\n","",GL_MAX_MS));
 }
-gge_contract :: (status:string,decoded:bool,bytes:int)->bool {return status=="200\n" && decoded && bytes>=0 && bytes<=8192;}
+gge_contract :: (status:string,decoded:bool,bytes:int)->bool #effects(all) {return status=="200\n" && decoded && bytes>=0 && bytes<=8192;}
 #test "zero bytes stays the inclusive independent size-bound edge" {#assert gge_contract("200\n",true,0);}

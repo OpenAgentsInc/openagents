@@ -31,11 +31,11 @@
  for i:0..<21 {#assert pfk_finite(f64_bits(a[0].linear[i].value)) && pfk_finite(f64_bits(a[0].angular[i].value));}
 }
 
-pj_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),output:[]PjOutput)->PfkStatus #export_c {
+pj_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),output:[]PjOutput)->PfkStatus #export_c #effects(all) {
  if output.count!=1 {return PfkStatus.shape;}
  owned:[1]PfkOutput;status:=pfk_forward(angles,owned[..]);if status!=PfkStatus.ok {return status;}
  fresh:=pj_project_owned(owned[0]);output[0]=fresh;return PfkStatus.ok;
 }
-pj_forward_raw :: (radians:[]f64,output:[]PjOutput)->PfkStatus #export_c {
+pj_forward_raw :: (radians:[]f64,output:[]PjOutput)->PfkStatus #export_c #effects(all) {
  if radians.count!=7 {return PfkStatus.shape;}angles:[7]pfku.Quantity(pfku.Radian,f64);for i:0..<7 {angles[i].value=radians[i];}return pj_forward(angles[..],output);
 }

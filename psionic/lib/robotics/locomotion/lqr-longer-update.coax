@@ -31,17 +31,17 @@
 }
 
 // Numeric PODs/helpers are unsealed. Checkpoint identity is authenticated by the host/auditor.
-rlx_seed :: (seed:u64)->bool {return seed==0 || seed==1 || seed==7;}
-rlx_index :: (batch:int)->bool {return batch>=128 && batch<=512;}
+rlx_seed :: (seed:u64)->bool #effects(all) {return seed==0 || seed==1 || seed==7;}
+rlx_index :: (batch:int)->bool #effects(all) {return batch>=128 && batch<=512;}
 // Trusted helper: world in 0..<16 and batch in 128..512. The endpoint is never consumed.
-rlx_counter :: (world:int,batch:int)->u64 {return cast(u64)(131072+world*24576+(batch-128)*64);}
-rlx_resume :: (input:RltState,output:[]RltState)->RlpStatus #export_c {
+rlx_counter :: (world:int,batch:int)->u64 #effects(all) {return cast(u64)(131072+world*24576+(batch-128)*64);}
+rlx_resume :: (input:RltState,output:[]RltState)->RlpStatus #export_c #effects(all) {
  if output.count!=1 {return RlpStatus.shape;}if !rlx_seed(input.runseed) || input.batch!=128 || !rlt_state_ok(input) {return RlpStatus.state;}fresh:=input;for w:0..<16 {fresh.worlds[w].rng.counter=rlx_counter(w,128);}output[0]=fresh;return RlpStatus.ok;
 }
-rlx_state_ok :: (s:RltState)->bool #export_c {
+rlx_state_ok :: (s:RltState)->bool #export_c #effects(all) {
  if !rlx_index(s.batch) || !rlx_seed(s.runseed) || !rlt_optimizer_ok(s.optimizer) || s.optimizer.adam.step!=4*s.batch {return false;}for w:0..<16 {if !rgp_finite(f64_bits(s.worlds[w].x)) || abs(s.worlds[w].x)>16 || s.worlds[w].rng.seed!=s.runseed || s.worlds[w].rng.counter!=rlx_counter(w,s.batch) {return false;}}return true;
 }
-rlx_batch :: (input:RltState,output:[]RltIteration)->RlpStatus #export_c {
+rlx_batch :: (input:RltState,output:[]RltIteration)->RlpStatus #export_c #effects(all) {
  if output.count!=1 {return RlpStatus.shape;}if !rlx_state_ok(input) || input.batch==512 {return RlpStatus.state;}fresh:RltIteration;worlds:=input.worlds;collected:[1]RleBatch;#assert rle_rollout(16,32,input.optimizer.K,worlds[..],collected[..])==RlpStatus.ok;fresh.batch=collected[0];rows:[512]RlpRow;source_rows:=fresh.batch.rows;rlt_detach(source_rows[..],rows[..]);
  current:=input.optimizer;for epoch:0..<4 {next:[1]RltEpoch;status:=rlt_epoch(input.optimizer.K,current,rows[..],next[..]);if status!=RlpStatus.ok {return status;}fresh.epochs[epoch]=next[0];current=next[0].next;}
  fresh.next=input;fresh.next.optimizer=current;fresh.next.batch=input.batch+1;for w:0..<16 {fresh.next.worlds[w]=fresh.batch.next_worlds[w];}output[0]=fresh;return RlpStatus.ok;

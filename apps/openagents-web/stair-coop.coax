@@ -87,10 +87,10 @@ ACT_COPY :: 2;
 coop_socket :: (s: [] Stair, kind: int, text: string) -> bool {
   return lr_socket(s[0].lock[..], kind, text, s[0].snap[..]);
 }
-stair_socket_opened :: (s: [] Stair, id: int) #export_c { lr_opened(s[0].lock[..], id); }
+stair_socket_opened :: (s: [] Stair, id: int) #export_c #effects(all) { lr_opened(s[0].lock[..], id); }
 // The face took the game's bytes (n) for the partner, or put the partner's in (old: this client as it was).
-stair_snap_taken :: (s: [] Stair, n: int) #export_c { lr_snapshot_ready(s[0].lock[..], n); }
-stair_snap_adopted :: (s: [] Stair, old: [] Stair) #export_c { coop_keep(s, old); lr_adopted(s[0].lock[..]); }
+stair_snap_taken :: (s: [] Stair, n: int) #export_c #effects(all) { lr_snapshot_ready(s[0].lock[..], n); }
+stair_snap_adopted :: (s: [] Stair, old: [] Stair) #export_c #effects(all) { coop_keep(s, old); lr_adopted(s[0].lock[..]); }
 // What stays this client's when a partner's game comes in: the view, the hands, the seat.
 coop_keep :: (s: [] Stair, old: [] Stair) {
   s[0].started = old[0].started; s[0].spell_pick = -1;

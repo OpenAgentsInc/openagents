@@ -41,7 +41,7 @@ hpa_group :: (c:[]Cdp,commands:[]string,times:[]int,renders:[]HpaRender,total:in
   }
   return passed;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])<4 || args_count(a[..])>6 {tool_errln("usage: check-browser-audio LOCAL_URL PLAN.json AUDIO.json OUT_DIR [--coax | --canonical WAV_DIR | --authored BROWSER_PCM_DIR]");return 2;}
   common:=args_count(a[..])>=5;authored:=args_count(a[..])==6&&args_at(a[..],4)=="--authored";canonical:=args_count(a[..])==6&&!authored;if common&&!authored&&args_at(a[..],4)!=(ifx canonical then "--canonical" else "--coax") {return 2;}
   url:=args_at(a[..],0);if url.count<17 || url[0..<17]!="http://127.0.0.1:" {return 2;}

@@ -81,21 +81,21 @@ CtResult :: struct {status:int;n0:int;n1:int;mean0:f64;mean1:f64;variance0:f64;v
  #assert r.status==CT_DETECTED && r.t == -10 && r.variance0==1000000 && r.variance1==1000000;
 }
 
-ct_range :: (value:f64,upper:f64)->bool {return value>=0 && value<=upper;}
-ct_moment_valid :: (m:CtMoment)->bool {
+ct_range :: (value:f64,upper:f64)->bool #effects(all) {return value>=0 && value<=upper;}
+ct_moment_valid :: (m:CtMoment)->bool #effects(all) {
   if m.n<0 || m.n>CT_MAX {return false;}
   if !ct_range(m.mean,CT_TICKS) || !ct_range(m.m2,cast(f64)m.n*CT_TICKS*CT_TICKS) {return false;}
   if m.n==0 {return m.mean==0 && m.m2==0;}
   return m.n!=1 || m.m2==0;
 }
-ct_observe :: (s:[]CtStats,group:int,elapsed:f64)->bool #export_c {
+ct_observe :: (s:[]CtStats,group:int,elapsed:f64)->bool #export_c #effects(all) {
   if s[0].error {return false;}
   if group<0 || group>1 || !ct_range(elapsed,CT_TICKS) || !ct_moment_valid(s[0].a) || !ct_moment_valid(s[0].b) || s[0].a.n+s[0].b.n>=CT_MAX {s[0].error=true;return false;}
   m:=ifx group==0 then s[0].a else s[0].b;m.n+=1;
   delta:=elapsed-m.mean;m.mean+=delta/cast(f64)m.n;m.m2+=delta*(elapsed-m.mean);
   if group==0 {s[0].a=m;}else{s[0].b=m;}return true;
 }
-ct_result :: (s:CtStats)->CtResult #export_c {
+ct_result :: (s:CtStats)->CtResult #export_c #effects(all) {
   r:=CtResult.{status=CT_INVALID};
   if s.error || !ct_moment_valid(s.a) || !ct_moment_valid(s.b) || s.a.n+s.b.n>CT_MAX {return r;}
   r.n0=s.a.n;r.n1=s.b.n;r.mean0=s.a.mean;r.mean1=s.b.mean;
@@ -106,7 +106,7 @@ ct_result :: (s:CtStats)->CtResult #export_c {
   r.t=(s.a.mean-s.b.mean)/sqrt(denominator);
   r.status=ifx abs(r.t)>=CT_THRESHOLD then CT_DETECTED else CT_NONE;return r;
 }
-ct_status_name :: (status:int)->string #export_c {
+ct_status_name :: (status:int)->string #export_c #effects(all) {
  if status==CT_DETECTED {return "detected";}if status==CT_NONE {return "no-difference-detected";}if status==CT_SHORT {return "insufficient";}if status==CT_FLAT {return "no-variation";}return "invalid";
 }
 main :: () {}

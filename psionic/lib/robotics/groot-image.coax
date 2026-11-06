@@ -38,7 +38,7 @@
   #assert out[0]==7 && out[196608]==7;
 }
 
-gi_axis :: (d:int)->GiAxis {
+gi_axis :: (d:int)->GiAxis #effects(all) {
   // Exact specialization of source area-mode coefficients for243→256. None
   // of the243-denominator fractions is a half-integer at11-bit quantization.
   lo:=d*243/256;r:=(d+1)*243-(lo+1)*256;
@@ -47,10 +47,10 @@ gi_axis :: (d:int)->GiAxis {
   // lo is0..242; floor(lo/242) clips the one last neighbor to242.
   hi:=lo+1-lo/242;return GiAxis.{lo=lo,hi=hi,a=2048-b,b=b};
 }
-gi_source :: (y:int,x:int,c:int)->int {return ((249-y)*256+(249-x))*3+c;}
-gi_normalize :: (v:u8)->f32 {center:f32=f32(v)-127.5f32;return center/127.5f32;}
-gi_rows :: (first:int,rows:int)->bool {return first>=0 && rows>=1 && rows<=256-first;}
-gi_pixel :: (raw:[]u8,y:GiAxis,x:GiAxis,c:int)->u8 {
+gi_source :: (y:int,x:int,c:int)->int #effects(all) {return ((249-y)*256+(249-x))*3+c;}
+gi_normalize :: (v:u8)->f32 #effects(all) {center:f32=f32(v)-127.5f32;return center/127.5f32;}
+gi_rows :: (first:int,rows:int)->bool #effects(all) {return first>=0 && rows>=1 && rows<=256-first;}
+gi_pixel :: (raw:[]u8,y:GiAxis,x:GiAxis,c:int)->u8 #effects(all) {
   top:=cast(int)raw[gi_source(y.lo,x.lo,c)]*x.a+cast(int)raw[gi_source(y.lo,x.hi,c)]*x.b;
   bottom:=cast(int)raw[gi_source(y.hi,x.lo,c)]*x.a+cast(int)raw[gi_source(y.hi,x.hi,c)]*x.b;
   // OpenCV's uchar vertical specialization rounds after separate high-word
@@ -62,7 +62,7 @@ gi_pixel :: (raw:[]u8,y:GiAxis,x:GiAxis,c:int)->u8 {
 // Input is one raw simulator256x256HWC RGBu8 camera BEFORE its wrapper flip.
 // Output is normalized[3,rows,256]F32. (first=0,rows=256) is the full camera,
 // ready for gv_pack; smaller genuine row slices keep VM qualification bounded.
-gi_preprocess :: (first:int,rows:int,raw:[]u8,out:[]f32,work:[]f32,overlap:bool)->GiRead #export_c {
+gi_preprocess :: (first:int,rows:int,raw:[]u8,out:[]f32,work:[]f32,overlap:bool)->GiRead #export_c #effects(all) {
   if !gi_rows(first,rows) {return GiRead.{status=GiStatus.shape};}need:=rows*768;
   if raw.count!=196608 || out.count<need || work.count<need {return GiRead.{status=GiStatus.shape};}
   if overlap {return GiRead.{status=GiStatus.overlap};}

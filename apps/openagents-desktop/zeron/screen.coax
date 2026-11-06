@@ -319,7 +319,7 @@ zr_new_chat :: (s: [] ZeronState) {
   s[0].want_scroll = -1;
   zr_labels(s);
 }
-coaxial_zeron_new_chat :: (s: [] ZeronState) #export_c { if s.count > 0 { zr_new_chat(s); } }
+coaxial_zeron_new_chat :: (s: [] ZeronState) #export_c #effects(all) { if s.count > 0 { zr_new_chat(s); } }
 // The demo conversation, as the transcript-fixture capture opens it.
 zr_demo :: (s: [] ZeronState) {
   if s[0].demo { return; }
@@ -596,7 +596,7 @@ zr_paint_failure :: (out: [] f32, at: int, s: [] ZeronState, th: Theme, d: f32, 
 
 // ---------------------------------------------------------------- the host's calls
 
-coaxial_zeron_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c {
+coaxial_zeron_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
   if s.count < 1 || width < 1 || height < 1 { return 0; }
   return zr_frame(s, out, width, height, dpr, dt);
 }
@@ -604,7 +604,7 @@ coaxial_zeron_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, 
 // count and modifiers (1 Shift). A press over the composer goes to it, any
 // other to the transcript (selecting its text, opening its groups and
 // chips); moves and the release follow the press. Whether the composer took it.
-coaxial_zeron_pointer :: (s: [] ZeronState, x: f32, y: f32, phase: int, clicks: int, mods: int) -> bool #export_c {
+coaxial_zeron_pointer :: (s: [] ZeronState, x: f32, y: f32, phase: int, clicks: int, mods: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   d := ifx s[0].d < 1 then 1.0f32 else s[0].d;
   c := s[0].composer[..]; t := s[0].transcript[..];
@@ -654,7 +654,7 @@ coaxial_zeron_pointer :: (s: [] ZeronState, x: f32, y: f32, phase: int, clicks: 
 }
 // A wheel's pixel delta: the composer's text scrolls when the pointer is
 // over it and it overflows; otherwise the transcript.
-coaxial_zeron_wheel :: (s: [] ZeronState, dy: f32) -> bool #export_c {
+coaxial_zeron_wheel :: (s: [] ZeronState, dy: f32) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   if pk_is_open(s[0].picker[..]) { return pk_wheel(s[0].picker[..], zr_view_cat(s), dy); }
   if zr_on_composer(s, s[0].lx, s[0].ly) && composer_wheel(s[0].composer[..], dy) { return true; }
@@ -662,7 +662,7 @@ coaxial_zeron_wheel :: (s: [] ZeronState, dy: f32) -> bool #export_c {
   t_hover(s[0].transcript[..], s[0].lx, s[0].ly);
   return moved;
 }
-coaxial_zeron_key :: (s: [] ZeronState, key_code: int, mods: int) -> bool #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); }
+coaxial_zeron_key :: (s: [] ZeronState, key_code: int, mods: int) -> bool #export_c #effects(all) { if s.count > 0 { zdi_cancel(s[0].dictation[..]); }
   if s.count < 1 { return false; }
   // an open menu holds the keyboard
   p := s[0].picker[..];
@@ -676,19 +676,19 @@ coaxial_zeron_key :: (s: [] ZeronState, key_code: int, mods: int) -> bool #expor
   return composer_key(s[0].composer[..], s[0].atlas[..], key_code, mods);
 }
 // Typing: text with no range (replaces the selection or the composition).
-coaxial_zeron_text :: (s: [] ZeronState, text: string) #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); }
+coaxial_zeron_text :: (s: [] ZeronState, text: string) #export_c #effects(all) { if s.count > 0 { zdi_cancel(s[0].dictation[..]); }
   if s.count > 0 && pk_is_open(s[0].picker[..]) { b := pk_text(s[0].picker[..], zr_view_cat(s), text); return; }
   if s.count < 1 || !s[0].composer[0].focused { return; }
   composer_insert(s[0].composer[..], text);
 }
 
 // The Edit menu.
-coaxial_zeron_undo :: (s: [] ZeronState) #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); } if s.count > 0 { composer_undo(s[0].composer[..]); } }
-coaxial_zeron_redo :: (s: [] ZeronState) #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); } if s.count > 0 { composer_redo(s[0].composer[..]); } }
-coaxial_zeron_can_undo :: (s: [] ZeronState) -> bool #export_c { return s.count > 0 && can_undo(s[0].composer[..]); }
-coaxial_zeron_can_redo :: (s: [] ZeronState) -> bool #export_c { return s.count > 0 && can_redo(s[0].composer[..]); }
+coaxial_zeron_undo :: (s: [] ZeronState) #export_c #effects(all) { if s.count > 0 { zdi_cancel(s[0].dictation[..]); } if s.count > 0 { composer_undo(s[0].composer[..]); } }
+coaxial_zeron_redo :: (s: [] ZeronState) #export_c #effects(all) { if s.count > 0 { zdi_cancel(s[0].dictation[..]); } if s.count > 0 { composer_redo(s[0].composer[..]); } }
+coaxial_zeron_can_undo :: (s: [] ZeronState) -> bool #export_c #effects(all) { return s.count > 0 && can_undo(s[0].composer[..]); }
+coaxial_zeron_can_redo :: (s: [] ZeronState) -> bool #export_c #effects(all) { return s.count > 0 && can_redo(s[0].composer[..]); }
 // Select All: the focused composer's text, else the whole transcript.
-coaxial_zeron_select_all :: (s: [] ZeronState) #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); }
+coaxial_zeron_select_all :: (s: [] ZeronState) #export_c #effects(all) { if s.count > 0 { zdi_cancel(s[0].dictation[..]); }
   if s.count < 1 { return; }
   if s[0].composer[0].focused { composer_select_all(s[0].composer[..]); return; }
   t := s[0].transcript[..];
@@ -700,7 +700,7 @@ coaxial_zeron_select_all :: (s: [] ZeronState) #export_c { if s.count > 0 { zdi_
 // The selection's bytes, for Copy and Cut (0 when nothing is selected):
 // the focused composer's, else the transcript's.
 zr_composer_selects :: (s: [] ZeronState) -> bool { return s[0].composer[0].focused && sel_hi(s[0].composer[..]) > sel_lo(s[0].composer[..]); }
-coaxial_zeron_selected :: (s: [] ZeronState, out: [] u8) -> int #export_c {
+coaxial_zeron_selected :: (s: [] ZeronState, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   if !zr_composer_selects(s) {
     n := t_selected(s[0].transcript[..], out);
@@ -711,15 +711,15 @@ coaxial_zeron_selected :: (s: [] ZeronState, out: [] u8) -> int #export_c {
   for k: 0..<t.count { out[k] = t[k]; }
   return t.count;
 }
-coaxial_zeron_selected_count :: (s: [] ZeronState) -> int #export_c {
+coaxial_zeron_selected_count :: (s: [] ZeronState) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   if !zr_composer_selects(s) { none: [1] u8; return t_selected(s[0].transcript[..], none[0..<0]); }
   return sel_hi(s[0].composer[..]) - sel_lo(s[0].composer[..]);
 }
 // Whether Cut applies (only the composer's text can be cut).
-coaxial_zeron_can_cut :: (s: [] ZeronState) -> bool #export_c { return s.count > 0 && zr_composer_selects(s); }
+coaxial_zeron_can_cut :: (s: [] ZeronState) -> bool #export_c #effects(all) { return s.count > 0 && zr_composer_selects(s); }
 // A code block's Copy, pressed: its code's bytes, once (0 when none waits).
-coaxial_zeron_take_copy :: (s: [] ZeronState, out: [] u8) -> int #export_c {
+coaxial_zeron_take_copy :: (s: [] ZeronState, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   t := s[0].transcript[..];
   // a notice's copy: its message
@@ -741,7 +741,7 @@ coaxial_zeron_take_copy :: (s: [] ZeronState, out: [] u8) -> int #export_c {
 // The demo as the transcript-fixture capture opens it (every group open,
 // and the thought, the failed run and the edit, then the first run of the
 // second group), or all closed again; and a scroll from the top in px.
-coaxial_zeron_fixture :: (s: [] ZeronState, open: bool) #export_c {
+coaxial_zeron_fixture :: (s: [] ZeronState, open: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
   zr_demo(s);
   t := s[0].transcript[..];
@@ -749,7 +749,7 @@ coaxial_zeron_fixture :: (s: [] ZeronState, open: bool) #export_c {
   if open { t_set_open(t, 0, 0, true); t_set_open(t, 0, 3, true); t_set_open(t, 0, 4, true); t_set_open(t, 1, 0, true); }
 }
 // The shot step `fixture table`: a reply with GFM tables.
-coaxial_zeron_fixture_table :: (s: [] ZeronState) #export_c {
+coaxial_zeron_fixture_table :: (s: [] ZeronState) #export_c #effects(all) {
   if s.count < 1 { return; }
   zr_demo(s);
   t := s[0].transcript[..];
@@ -760,7 +760,7 @@ coaxial_zeron_fixture_table :: (s: [] ZeronState) #export_c {
 // stdout line, its decoded strings, the frames owed to the CLI, the
 // argument list) and the folder Claude Code works in. Without them (the
 // checks here) a sent message only joins the transcript.
-coaxial_zeron_attach :: (s: [] ZeronState, pool: [] u8, line: [] u8, arena: [] u8, out: [] u8, scratch: [] u8, cwd: string) #export_c {
+coaxial_zeron_attach :: (s: [] ZeronState, pool: [] u8, line: [] u8, arena: [] u8, out: [] u8, scratch: [] u8, cwd: string) #export_c #effects(all) {
   if s.count < 1 { return; }
   e := s[0].engine[..];
   // the last five 64 KiB of the pool are the Psionic engine's, and before them the Lab's request, response and curl's stderr
@@ -787,7 +787,7 @@ coaxial_zeron_attach :: (s: [] ZeronState, pool: [] u8, line: [] u8, arena: [] u
 }
 // The Codex engine and its buffers (the host allocates them: the engine itself, a stdout line, its
 // decoded strings, the requests owed to the server, its own CX_MEM bytes); it works in the chat's folder.
-coaxial_zeron_attach_codex :: (s: [] ZeronState, x: [] CxEngine, line: [] u8, arena: [] u8, out: [] u8, mem: [] u8) #export_c {
+coaxial_zeron_attach_codex :: (s: [] ZeronState, x: [] CxEngine, line: [] u8, arena: [] u8, out: [] u8, mem: [] u8) #export_c #effects(all) {
   if s.count < 1 || x.count < 1 { return; }
   e := s[0].engine[..];
   s[0].codex = x;
@@ -796,23 +796,23 @@ coaxial_zeron_attach_codex :: (s: [] ZeronState, x: [] CxEngine, line: [] u8, ar
   zr_catalogs(s);
 }
 // Microcoder for the Lab's other route (microcoder.coax), the host's for the app's life; it works in the chat's folder.
-coaxial_zeron_attach_mc :: (s: [] ZeronState, m: [] LabMc) #export_c {
+coaxial_zeron_attach_mc :: (s: [] ZeronState, m: [] LabMc) #export_c #effects(all) {
   if s.count < 1 || m.count < 1 { return; }
   e := s[0].engine[..];
   m[0].ncwd = e_set(m[0].cwd[..], 0, e_str(e[0].cwd[..], e[0].cwd_n));
   s[0].lab[0].mc = m;
 }
 // The bytes the Codex engine's own buffer needs (the mem above).
-coaxial_zeron_codex_mem :: () -> int #export_c { return CX_MEM; }
+coaxial_zeron_codex_mem :: () -> int #export_c #effects(all) { return CX_MEM; }
 // The demo conversation (--demo).
-coaxial_zeron_demo :: (s: [] ZeronState) #export_c { if s.count > 0 { zr_demo(s); } }
+coaxial_zeron_demo :: (s: [] ZeronState) #export_c #effects(all) { if s.count > 0 { zr_demo(s); } }
 // Picks a chip's choice among the mode's (coaxial_zeron_option_*): which 1
 // the model (its row in the mode's catalog: Claude's 13, Psionic's
 // gpt-oss-20b), 2 the effort (the catalog's level: Claude 0 Low .. 6
 // Ultrathink; Psionic 0 Low, 1 Medium, 2 High), 3 access (0 Full access, 1
 // Auto-accept edits, 2 Supervised), 4 the mode (MODE_*, an empty chat
 // only), 5 plan mode (0 off, 1 on).
-coaxial_zeron_choose :: (s: [] ZeronState, which: int, index: int) #export_c {
+coaxial_zeron_choose :: (s: [] ZeronState, which: int, index: int) #export_c #effects(all) {
   if s.count < 1 || index < 0 { return; }
   e := s[0].engine[..];
   if which == CH_MODE { b := zr_set_mode(s, index); return; }
@@ -838,7 +838,7 @@ coaxial_zeron_choose :: (s: [] ZeronState, which: int, index: int) #export_c {
 }
 // The same by name (the host's --model and --effort): a model's id or
 // name, or the start of its name ("haiku"); a level's id or name. Whether one matched.
-coaxial_zeron_choose_named :: (s: [] ZeronState, which: int, name: string) -> bool #export_c {
+coaxial_zeron_choose_named :: (s: [] ZeronState, which: int, name: string) -> bool #export_c #effects(all) {
   if s.count < 1 || name.count == 0 { return false; }
   cat := s[0].cats[s[0].mode..<s[0].mode + 1];
   if cat[0].n == 0 { zr_catalogs(s); }
@@ -859,12 +859,12 @@ zr_same :: (a: string, b: string) -> bool {
   return true;
 }
 // A chip's menu, opened as a press on it would (1 the model, 3 the access).
-coaxial_zeron_open_menu :: (s: [] ZeronState, which: int) #export_c {
+coaxial_zeron_open_menu :: (s: [] ZeronState, which: int) #export_c #effects(all) {
   if s.count < 1 || (which != CH_MODEL && which != CH_ACCESS) { return; }
   if s[0].picker[0].kind == PK_NONE || s[0].composer[0].open != which { zr_open_menu(s, which); }
 }
 // The attachments' store (the host's buffer for their bytes).
-coaxial_zeron_attach_store :: (s: [] ZeronState, store: [] u8) #export_c {
+coaxial_zeron_attach_store :: (s: [] ZeronState, store: [] u8) #export_c #effects(all) {
   if s.count < 1 { return; }
   room := ZR_PROMPT;
   if store.count <= 2 * room { s[0].att[0].store = store; s[0].att[0].used = 0; return; }
@@ -876,7 +876,7 @@ coaxial_zeron_attach_store :: (s: [] ZeronState, store: [] u8) #export_c {
 // A file the host staged (attachments.coax): its staged path, its name and
 // (up to 5 MB) its bytes join the draft as a chip at the caret; failure 1
 // (too large), 2 (not a file) or 3 (unreadable) shows Zeron's notice instead.
-coaxial_zeron_attach_file :: (s: [] ZeronState, path: string, name: string, bytes: [] u8, failure: int) #export_c {
+coaxial_zeron_attach_file :: (s: [] ZeronState, path: string, name: string, bytes: [] u8, failure: int) #export_c #effects(all) {
   if s.count < 1 || s[0].demo { return; }
   c := s[0].composer[..];
   if failure > 0 { buf: [512] u8; zr_fail(s, cast(string) buf[0..<at_failure(name, failure, buf[..])]); return; }
@@ -891,15 +891,15 @@ coaxial_zeron_attach_file :: (s: [] ZeronState, path: string, name: string, byte
 }
 // The chips' choices for the chat's mode, for a picker menu (which as for
 // coaxial_zeron_choose): how many, each label, the chosen one.
-coaxial_zeron_option_count :: (s: [] ZeronState, which: int) -> int #export_c { if s.count < 1 { return 0; } return mode_option_count(s[0].mode, which); }
-coaxial_zeron_option_label :: (s: [] ZeronState, which: int, i: int, out: [] u8) -> int #export_c {
+coaxial_zeron_option_count :: (s: [] ZeronState, which: int) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return mode_option_count(s[0].mode, which); }
+coaxial_zeron_option_label :: (s: [] ZeronState, which: int, i: int, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   l := mode_option_label(s[0].mode, which, i);
   n := ifx l.count < out.count then l.count else out.count;
   for k: 0..<n { out[k] = l[k]; }
   return n;
 }
-coaxial_zeron_option_selected :: (s: [] ZeronState, which: int) -> int #export_c {
+coaxial_zeron_option_selected :: (s: [] ZeronState, which: int) -> int #export_c #effects(all) {
   if s.count < 1 { return -1; }
   e := s[0].engine[..];
   if which == CH_MODE { return s[0].mode; }
@@ -910,28 +910,28 @@ coaxial_zeron_option_selected :: (s: [] ZeronState, which: int) -> int #export_c
   return ifx which == CH_MODEL then e[0].model else ifx which == CH_EFFORT then e[0].effort else -1;
 }
 // The chat's mode (MODE_*), and whether it can still change (the chat is empty).
-coaxial_zeron_mode :: (s: [] ZeronState) -> int #export_c { if s.count < 1 { return 0; } return s[0].mode; }
-coaxial_zeron_mode_open :: (s: [] ZeronState) -> bool #export_c { return s.count > 0 && zr_fresh(s); }
+coaxial_zeron_mode :: (s: [] ZeronState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].mode; }
+coaxial_zeron_mode_open :: (s: [] ZeronState) -> bool #export_c #effects(all) { return s.count > 0 && zr_fresh(s); }
 // Each mode's mark (an icon index; 0 the Claude mark in its brand tone).
-coaxial_zeron_mode_brand :: (mode: int) -> int #export_c { brands := MODE_BRANDS; return ifx mode >= 0 && mode < MODE_COUNT then brands[mode] else 0; }
+coaxial_zeron_mode_brand :: (mode: int) -> int #export_c #effects(all) { brands := MODE_BRANDS; return ifx mode >= 0 && mode < MODE_COUNT then brands[mode] else 0; }
 // Whether a turn is running (the --shot steps wait on it).
-coaxial_zeron_live :: (s: [] ZeronState) -> bool #export_c { return s.count > 0 && s[0].session[0].live; }
+coaxial_zeron_live :: (s: [] ZeronState) -> bool #export_c #effects(all) { return s.count > 0 && s[0].session[0].live; }
 // What the host should do for a notice's button (HOST_LOGIN: Terminal running `claude /login`; HOST_INSTALL: the install line;
 // HOST_CODEX_LOGIN and HOST_CODEX_INSTALL the same for Codex: `codex login`, its npm line), once.
-coaxial_zeron_take_action :: (s: [] ZeronState) -> int #export_c {
+coaxial_zeron_take_action :: (s: [] ZeronState) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   a := s[0].host_action; s[0].host_action = HOST_NONE;
   return a;
 }
 // The app is quitting: Claude Code's process group goes with it.
 // The status strip's words, and the conversation's last text part (for scripted runs).
-coaxial_zeron_status_text :: (s: [] ZeronState, out: [] u8) -> int #export_c {
+coaxial_zeron_status_text :: (s: [] ZeronState, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   buf: [96] u8;
   t := zr_status_text(s, buf[..]);
   return zr_put(out, 0, t);
 }
-coaxial_zeron_last_text :: (s: [] ZeronState, out: [] u8) -> int #export_c {
+coaxial_zeron_last_text :: (s: [] ZeronState, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   ss := s[0].session[..];
   k := ss[0].n - 1;
@@ -940,28 +940,28 @@ coaxial_zeron_last_text :: (s: [] ZeronState, out: [] u8) -> int #export_c {
   return zr_put(out, 0, s_text_of(ss, k));
 }
 // What a press on the asking notice's Allow (1) or Deny (0) does, for scripted runs: the same action the button sets.
-coaxial_zeron_answer :: (s: [] ZeronState, allow: bool) -> bool #export_c {
+coaxial_zeron_answer :: (s: [] ZeronState, allow: bool) -> bool #export_c #effects(all) {
   if s.count < 1 || s[0].session[0].asking < 0 { return false; }
   s[0].transcript[0].action = ifx allow then A_ALLOW else A_DENY;
   return true;
 }
-coaxial_zeron_quit :: (s: [] ZeronState) #export_c { if s.count > 0 && s[0].engine[0].on { e_close(s[0].engine[..]); ps_close(s[0].psionic[..]); switch so_request_discard(s[0].lab[0].owner[..],s[0].lab[0].ticket) {case ok {}case err(failure) {}} gs_close(s[0].gpu[..]); cxe_close(s[0].codex); } }
-coaxial_zeron_scroll_to :: (s: [] ZeronState, px: f32) #export_c { if s.count > 0 { s[0].want_scroll = ifx px < 0 then 0.0f32 else px; } }
-coaxial_zeron_cut :: (s: [] ZeronState) #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); } if s.count > 0 { composer_cut_selection(s[0].composer[..]); } }
-coaxial_zeron_paste :: (s: [] ZeronState, text: string) #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); }
+coaxial_zeron_quit :: (s: [] ZeronState) #export_c #effects(all) { if s.count > 0 && s[0].engine[0].on { e_close(s[0].engine[..]); ps_close(s[0].psionic[..]); switch so_request_discard(s[0].lab[0].owner[..],s[0].lab[0].ticket) {case ok {}case err(failure) {}} gs_close(s[0].gpu[..]); cxe_close(s[0].codex); } }
+coaxial_zeron_scroll_to :: (s: [] ZeronState, px: f32) #export_c #effects(all) { if s.count > 0 { s[0].want_scroll = ifx px < 0 then 0.0f32 else px; } }
+coaxial_zeron_cut :: (s: [] ZeronState) #export_c #effects(all) { if s.count > 0 { zdi_cancel(s[0].dictation[..]); } if s.count > 0 { composer_cut_selection(s[0].composer[..]); } }
+coaxial_zeron_paste :: (s: [] ZeronState, text: string) #export_c #effects(all) { if s.count > 0 { zdi_cancel(s[0].dictation[..]); }
   if s.count < 1 || !s[0].composer[0].focused { return; }
   composer_paste(s[0].composer[..], text);
 }
 
 // NSTextInputClient, in UTF-16 offsets (from < 0: no range given).
-coaxial_zeron_replace :: (s: [] ZeronState, from16: int, to16: int, text: string) #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); }
+coaxial_zeron_replace :: (s: [] ZeronState, from16: int, to16: int, text: string) #export_c #effects(all) { if s.count > 0 { zdi_cancel(s[0].dictation[..]); }
   if s.count > 0 && pk_is_open(s[0].picker[..]) { b := pk_text(s[0].picker[..], zr_view_cat(s), text); return; }
   if s.count < 1 || !s[0].composer[0].focused { return; }
   c := s[0].composer[..];
   if from16 < 0 { composer_replace(c, -1, -1, text); return; }
   composer_replace(c, byte_of(c, from16), byte_of(c, to16), text);
 }
-coaxial_zeron_mark :: (s: [] ZeronState, from16: int, to16: int, text: string, sel_from16: int, sel_to16: int) #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); }
+coaxial_zeron_mark :: (s: [] ZeronState, from16: int, to16: int, text: string, sel_from16: int, sel_to16: int) #export_c #effects(all) { if s.count > 0 { zdi_cancel(s[0].dictation[..]); }
   if s.count < 1 || !s[0].composer[0].focused || pk_is_open(s[0].picker[..]) { return; }
   c := s[0].composer[..];
   sf := ifx sel_from16 < 0 then -1 else byte_in(text, sel_from16);
@@ -969,9 +969,9 @@ coaxial_zeron_mark :: (s: [] ZeronState, from16: int, to16: int, text: string, s
   if from16 < 0 { composer_mark(c, -1, -1, text, sf, st); return; }
   composer_mark(c, byte_of(c, from16), byte_of(c, to16), text, sf, st);
 }
-coaxial_zeron_unmark :: (s: [] ZeronState) #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); } if s.count > 0 { composer_unmark(s[0].composer[..]); } }
+coaxial_zeron_unmark :: (s: [] ZeronState) #export_c #effects(all) { if s.count > 0 { zdi_cancel(s[0].dictation[..]); } if s.count > 0 { composer_unmark(s[0].composer[..]); } }
 // which 0: the selection's start, 1 its end, 2 the composition's start, 3 its end (-1 without one), 4 the text's length.
-coaxial_zeron_range16 :: (s: [] ZeronState, which: int) -> int #export_c {
+coaxial_zeron_range16 :: (s: [] ZeronState, which: int) -> int #export_c #effects(all) {
   if s.count < 1 { return -1; }
   c := s[0].composer[..];
   if which == 0 { return u16_of(c, sel_lo(c)); }
@@ -981,7 +981,7 @@ coaxial_zeron_range16 :: (s: [] ZeronState, which: int) -> int #export_c {
   return u16_of(c, c[0].n);
 }
 // The bytes of a UTF-16 range (attributedSubstringForProposedRange).
-coaxial_zeron_text16 :: (s: [] ZeronState, from16: int, to16: int, out: [] u8) -> int #export_c {
+coaxial_zeron_text16 :: (s: [] ZeronState, from16: int, to16: int, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   c := s[0].composer[..];
   a := byte_of(c, from16); b := byte_of(c, to16);
@@ -991,7 +991,7 @@ coaxial_zeron_text16 :: (s: [] ZeronState, from16: int, to16: int, out: [] u8) -
 }
 // bounds_for_range: the caret-sized rect (logical px, the view's top-left
 // origin) at a UTF-16 offset, where the IME puts its candidates.
-coaxial_zeron_rect16 :: (s: [] ZeronState, at16: int, out: [] f32) -> bool #export_c {
+coaxial_zeron_rect16 :: (s: [] ZeronState, at16: int, out: [] f32) -> bool #export_c #effects(all) {
   if s.count < 1 || out.count < 4 || !s[0].atlas[0].ready { return false; }
   c := s[0].composer[..];
   i := byte_of(c, at16);
@@ -1002,30 +1002,30 @@ coaxial_zeron_rect16 :: (s: [] ZeronState, at16: int, out: [] f32) -> bool #expo
   return true;
 }
 // character_index_for_point: the UTF-16 offset under a device point.
-coaxial_zeron_index16 :: (s: [] ZeronState, x: f32, y: f32) -> int #export_c {
+coaxial_zeron_index16 :: (s: [] ZeronState, x: f32, y: f32) -> int #export_c #effects(all) {
   if s.count < 1 || !s[0].atlas[0].ready { return 0; }
   d := ifx s[0].d < 1 then 1.0f32 else s[0].d;
   c := s[0].composer[..];
   return u16_of(c, content_hit(c, s[0].atlas[..], x / d, y / d).at);
 }
-coaxial_zeron_wants_text :: (s: [] ZeronState) -> bool #export_c { return s.count > 0 && (s[0].composer[0].focused || pk_is_open(s[0].picker[..])); }
-coaxial_zeron_cursor :: (s: [] ZeronState) -> int #export_c { if s.count < 1 { return 0; } return s[0].cursor; }
-coaxial_zeron_max_vertices :: () -> int #export_c { return ZR_MAX_VERTICES; }
-coaxial_zeron_vertex_floats :: () -> int #export_c { return GP_VERTEX_FLOATS; }
+coaxial_zeron_wants_text :: (s: [] ZeronState) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].composer[0].focused || pk_is_open(s[0].picker[..])); }
+coaxial_zeron_cursor :: (s: [] ZeronState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].cursor; }
+coaxial_zeron_max_vertices :: () -> int #export_c #effects(all) { return ZR_MAX_VERTICES; }
+coaxial_zeron_vertex_floats :: () -> int #export_c #effects(all) { return GP_VERTEX_FLOATS; }
 
 // What the atlas holds: the glyphs, the fonts (size, weight), the icons (name, size).
-coaxial_zeron_glyph_count :: () -> int #export_c { return GP_GLYPHS; }
-coaxial_zeron_glyph_code :: (g: int) -> int #export_c {
+coaxial_zeron_glyph_count :: () -> int #export_c #effects(all) { return GP_GLYPHS; }
+coaxial_zeron_glyph_code :: (g: int) -> int #export_c #effects(all) {
   if g < 95 { return g + 32; }
   extra := GP_EXTRA;
   return ifx g - 95 < 3 then cast(int) extra[g - 95] else 63;
 }
-coaxial_zeron_font_count :: () -> int #export_c { return GP_FONTS; }
-coaxial_zeron_font_size :: (k: int) -> f32 #export_c { sizes := FONT_SIZES; return ifx k >= 0 && k < GP_FONTS then sizes[k] else 14.0f32; }
-coaxial_zeron_font_weight :: (k: int) -> int #export_c { weights := FONT_WEIGHTS; return ifx k >= 0 && k < GP_FONTS then weights[k] else 0; }
-coaxial_zeron_icon_count :: () -> int #export_c { return ICON_COUNT; }
-coaxial_zeron_icon_size :: (i: int) -> f32 #export_c { sizes := ICON_SIZES; return ifx i >= 0 && i < ICON_COUNT then sizes[i] else 16.0f32; }
-coaxial_zeron_icon_name :: (i: int, out: [] u8) -> int #export_c {
+coaxial_zeron_font_count :: () -> int #export_c #effects(all) { return GP_FONTS; }
+coaxial_zeron_font_size :: (k: int) -> f32 #export_c #effects(all) { sizes := FONT_SIZES; return ifx k >= 0 && k < GP_FONTS then sizes[k] else 14.0f32; }
+coaxial_zeron_font_weight :: (k: int) -> int #export_c #effects(all) { weights := FONT_WEIGHTS; return ifx k >= 0 && k < GP_FONTS then weights[k] else 0; }
+coaxial_zeron_icon_count :: () -> int #export_c #effects(all) { return ICON_COUNT; }
+coaxial_zeron_icon_size :: (i: int) -> f32 #export_c #effects(all) { sizes := ICON_SIZES; return ifx i >= 0 && i < ICON_COUNT then sizes[i] else 16.0f32; }
+coaxial_zeron_icon_name :: (i: int, out: [] u8) -> int #export_c #effects(all) {
   if i < 0 || i >= ICON_COUNT { return 0; }
   names := ICON_NAMES;
   n := ifx names[i].count < out.count then names[i].count else out.count;
@@ -1035,7 +1035,7 @@ coaxial_zeron_icon_name :: (i: int, out: [] u8) -> int #export_c {
 
 // The host's measurements of a font: header is ascent, descent, cell,
 // pen x, pen y, first cell's y, columns; then the advances and kerning.
-coaxial_zeron_set_font :: (s: [] ZeronState, slot: int, header: [] f32, advance: [] f32, kern: [] f32) #export_c {
+coaxial_zeron_set_font :: (s: [] ZeronState, slot: int, header: [] f32, advance: [] f32, kern: [] f32) #export_c #effects(all) {
   if s.count < 1 || slot < 0 || slot >= GP_FONTS || header.count < 7 || advance.count < GP_GLYPHS || kern.count < GP_GLYPHS * GP_GLYPHS { return; }
   sizes := FONT_SIZES;
   s[0].atlas[0].fonts[slot].size = sizes[slot];
@@ -1045,18 +1045,18 @@ coaxial_zeron_set_font :: (s: [] ZeronState, slot: int, header: [] f32, advance:
   for g: 0..<GP_GLYPHS { s[0].atlas[0].fonts[slot].advance[g] = advance[g]; }
   for k: 0..<GP_GLYPHS * GP_GLYPHS { s[0].atlas[0].fonts[slot].kern[k] = kern[k]; }
 }
-coaxial_zeron_set_icon :: (s: [] ZeronState, i: int, x: f32, y: f32, w: f32, h: f32) #export_c {
+coaxial_zeron_set_icon :: (s: [] ZeronState, i: int, x: f32, y: f32, w: f32, h: f32) #export_c #effects(all) {
   if s.count < 1 || i < 0 || i >= GP_ICONS { return; }
   s[0].atlas[0].icons[i] = GpIcon.{x = x, y = y, w = w, h = h};
 }
-coaxial_zeron_set_atlas :: (s: [] ZeronState, width: f32, height: f32) #export_c {
+coaxial_zeron_set_atlas :: (s: [] ZeronState, width: f32, height: f32) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].atlas[0].width = width; s[0].atlas[0].height = height; s[0].atlas[0].ready = width > 0 && height > 0;
 }
 
 // The glyph cache (gpui.coax): the host measures each new grapheme and
 // draws each wanted cell, then says so.
-coaxial_zeron_set_dynamic :: (s: [] ZeronState, size: f32, pen_x: f32, pen_y: f32, y0: f32, cols: int, color_cols: int, color_width: f32, color_height: f32) #export_c {
+coaxial_zeron_set_dynamic :: (s: [] ZeronState, size: f32, pen_x: f32, pen_y: f32, y0: f32, cols: int, color_cols: int, color_width: f32, color_height: f32) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].atlas[0].dyn_size = size; s[0].atlas[0].dyn_pen_x = pen_x; s[0].atlas[0].dyn_pen_y = pen_y;
   s[0].atlas[0].dyn_y0 = y0; s[0].atlas[0].dyn_cols = cols;
@@ -1064,31 +1064,31 @@ coaxial_zeron_set_dynamic :: (s: [] ZeronState, size: f32, pen_x: f32, pen_y: f3
   // a new atlas: every cell is drawn again
   for k: 0..<GP_DYN_CELLS { dyn_free_cell(s[0].atlas[..], k); }
 }
-coaxial_zeron_next_cluster :: (s: [] ZeronState) -> int #export_c {
+coaxial_zeron_next_cluster :: (s: [] ZeronState) -> int #export_c #effects(all) {
   if s.count < 1 { return -1; }
   for k: 0..<GP_DYN_SLOTS { if s[0].atlas[0].clusters[k].state == 1 { return k; } }
   return -1;
 }
 // A slot's bytes (and its font in out's first return: font * 256 + count).
-coaxial_zeron_cluster :: (s: [] ZeronState, slot: int, out: [] u8) -> int #export_c {
+coaxial_zeron_cluster :: (s: [] ZeronState, slot: int, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || slot < 0 || slot >= GP_DYN_SLOTS { return 0; }
   n := s[0].atlas[0].clusters[slot].n;
   if n > out.count { return 0; }
   for k: 0..<n { out[k] = s[0].atlas[0].clusters[slot].bytes[k]; }
   return s[0].atlas[0].clusters[slot].font * 256 + n;
 }
-coaxial_zeron_measured :: (s: [] ZeronState, slot: int, advance: f32, color: bool) #export_c {
+coaxial_zeron_measured :: (s: [] ZeronState, slot: int, advance: f32, color: bool) #export_c #effects(all) {
   if s.count < 1 || slot < 0 || slot >= GP_DYN_SLOTS { return; }
   s[0].atlas[0].clusters[slot].advance = advance; s[0].atlas[0].clusters[slot].color = color;
   s[0].atlas[0].clusters[slot].state = 2;
 }
-coaxial_zeron_next_cell :: (s: [] ZeronState) -> int #export_c {
+coaxial_zeron_next_cell :: (s: [] ZeronState) -> int #export_c #effects(all) {
   if s.count < 1 { return -1; }
   for k: 0..<GP_DYN_CELLS { if s[0].atlas[0].cells[k].state == 1 { return k; } }
   return -1;
 }
 // A wanted cell: its slot, dilation, subpixel, whether color, and its texel origin.
-coaxial_zeron_cell :: (s: [] ZeronState, cell: int, out: [] f32) -> bool #export_c {
+coaxial_zeron_cell :: (s: [] ZeronState, cell: int, out: [] f32) -> bool #export_c #effects(all) {
   if s.count < 1 || cell < 0 || cell >= GP_DYN_CELLS || out.count < 6 { return false; }
   g := s[0].atlas[0].cells[cell];
   out[0] = cast(f32) g.slot; out[1] = cast(f32) g.level; out[2] = cast(f32) g.variant;
@@ -1096,7 +1096,7 @@ coaxial_zeron_cell :: (s: [] ZeronState, cell: int, out: [] f32) -> bool #export
   out[4] = dyn_cell_x(s[0].atlas[..], cell); out[5] = dyn_cell_y(s[0].atlas[..], cell);
   return true;
 }
-coaxial_zeron_cell_ready :: (s: [] ZeronState, cell: int) #export_c {
+coaxial_zeron_cell_ready :: (s: [] ZeronState, cell: int) #export_c #effects(all) {
   if s.count < 1 || cell < 0 || cell >= GP_DYN_CELLS { return; }
   if s[0].atlas[0].cells[cell].state == 1 { s[0].atlas[0].cells[cell].state = 2; }
 }
@@ -1408,29 +1408,29 @@ zr_test_screen :: (s: [] ZeronState) {
 }
 
 // Dictation callbacks only edit the draft. They never use the send path.
-coaxial_zeron_dictation_begin :: (s:[]ZeronState,ticket:int,source:int)->bool #export_c {
+coaxial_zeron_dictation_begin :: (s:[]ZeronState,ticket:int,source:int)->bool #export_c #effects(all) {
  if s.count<1 || !s[0].dictation_enabled || (source!=1 && source!=2) || pk_is_open(s[0].picker[..]) {return false;}
  if ticket<=0 || s[0].composer[0].marked {return false;}
  if source==2 {s[0].composer[0].focused=true;}
  if !zdi_begin(s[0].dictation[..],s[0].composer[..],ticket) {return false;}
  s[0].dictation_source=source;return true;
 }
-coaxial_zeron_dictation_cancel :: (s:[]ZeronState) #export_c {if s.count>0 {zdi_cancel(s[0].dictation[..]);s[0].dictation_source=0;}}
-coaxial_zeron_dictation_apply :: (s:[]ZeronState,ticket:int,current:bool,text:string)->bool #export_c {
+coaxial_zeron_dictation_cancel :: (s:[]ZeronState) #export_c #effects(all) {if s.count>0 {zdi_cancel(s[0].dictation[..]);s[0].dictation_source=0;}}
+coaxial_zeron_dictation_apply :: (s:[]ZeronState,ticket:int,current:bool,text:string)->bool #export_c #effects(all) {
  if s.count<1 {return false;}if ticket!=s[0].dictation[0].ticket {return false;}if !current || !s[0].dictation_enabled {zdi_cancel(s[0].dictation[..]);s[0].dictation_source=0;return false;}
  ok:=zdi_apply(s[0].dictation[..],s[0].composer[..],ticket,text);
  if !s[0].dictation[0].active {s[0].dictation_source=0;}return ok;
 }
-coaxial_zeron_dictation_status :: (s:[]ZeronState,enabled:bool,phase:int,outcome:int,fault:int,preparing:int) #export_c {
+coaxial_zeron_dictation_status :: (s:[]ZeronState,enabled:bool,phase:int,outcome:int,fault:int,preparing:int) #export_c #effects(all) {
  if s.count<1 {return;}s[0].dictation_enabled=enabled;s[0].dictation_phase=phase;s[0].dictation_outcome=outcome;s[0].dictation_fault=fault;s[0].dictation_preparing=preparing;
  if !enabled || phase==0 || (phase==1 && outcome>=1 && outcome<=4) {coaxial_zeron_dictation_cancel(s);}
 }
-coaxial_zeron_dictation_source :: (s:[]ZeronState)->int #export_c {return ifx s.count>0 then s[0].dictation_source else 0;}
-coaxial_zeron_dictation_key :: (s:[]ZeronState,key:int,mods:int,down:bool,repeated:bool,marked:bool,room:bool)->int #export_c {
+coaxial_zeron_dictation_source :: (s:[]ZeronState)->int #export_c #effects(all) {return ifx s.count>0 then s[0].dictation_source else 0;}
+coaxial_zeron_dictation_key :: (s:[]ZeronState,key:int,mods:int,down:bool,repeated:bool,marked:bool,room:bool)->int #export_c #effects(all) {
  if s.count<1 {return 0;}holding:=s[0].dictation_source==1 || (key==53 && s[0].dictation[0].active);
  return zdu_key(key,mods,down,repeated,marked,s[0].dictation_enabled,s[0].composer[0].focused && !pk_is_open(s[0].picker[..]),room,holding);
 }
-coaxial_zeron_dictation_hit :: (s:[]ZeronState,x:f32,y:f32)->bool #export_c {
+coaxial_zeron_dictation_hit :: (s:[]ZeronState,x:f32,y:f32)->bool #export_c #effects(all) {
  if s.count<1 || pk_is_open(s[0].picker[..]) {return false;}d:=ifx s[0].d<1 then 1.0f32 else s[0].d;c:=s[0].composer[..];
  return zdu_hit(s[0].dictation_enabled,c[0].x,c[0].y,c[0].w,c[0].h,x/d,y/d);
 }

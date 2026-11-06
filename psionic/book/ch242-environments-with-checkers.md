@@ -47,7 +47,7 @@ The [example](../examples/checked-environments.coax) runs in about a second.
 ```jai
 // task-sim-v1. Task i draws its kind, its size from 4 to 16, and its values
 // from 0 to 9 on counters 64i, 64i+1 and 64i+2 onwards.
-en_tasks :: (seed:u64,out:[]EnTask)->EnStatus #export_c {
+en_tasks :: (seed:u64,out:[]EnTask)->EnStatus #export_c #effects(all) {
     if out.count>300 {return EnStatus.shape;}
     for i:0..<out.count {
         b:=cast(u64)(64*i);
@@ -68,7 +68,7 @@ task.
 ```jai
 // The reference solutions: sort by counting, keep first occurrences, and
 // running sums.
-en_solve :: (t:EnTask)->EnWork {
+en_solve :: (t:EnTask)->EnWork #effects(all) {
     w:EnWork;n:=t.work.size;
     if t.kind==EnKind.sort {
         count:[10]int;for i:0..<n {count[t.work.v[i]]+=1;}
@@ -87,12 +87,12 @@ en_solve :: (t:EnTask)->EnWork {
 
 <!-- source: psionic/lib/env.coax check -->
 ```jai
-en_same :: (a:EnWork,b:EnWork)->bool {
+en_same :: (a:EnWork,b:EnWork)->bool #effects(all) {
     if a.size!=b.size {return false;}
     for i:0..<a.size {if a.v[i]!=b.v[i] {return false;}}
     return true;
 }
-en_check :: (checker:EnChecker,t:EnTask,work:EnWork)->bool {
+en_check :: (checker:EnChecker,t:EnTask,work:EnWork)->bool #effects(all) {
     if checker==EnChecker.anything {return true;}
     want:=en_solve(t);
     if checker==EnChecker.length_only {return work.size==want.size;}
@@ -105,10 +105,10 @@ mistakes admission has to catch.
 
 <!-- source: psionic/lib/env.coax admit -->
 ```jai
-en_near :: (w:EnWork)->EnWork {near:=w;near.v[near.size-1]+=1;return near;}
+en_near :: (w:EnWork)->EnWork #effects(all) {near:=w;near.v[near.size-1]+=1;return near;}
 // A checker earns admission three ways: it fails on no work, it passes the
 // reference, and it fails on the reference with its last value off by one.
-en_admit :: (e:EnEnv)->EnAdmit #export_c {
+en_admit :: (e:EnEnv)->EnAdmit #export_c #effects(all) {
     if en_check(e.checker,e.task,EnWork.{}) {return EnAdmit.empty_passes;}
     if !en_check(e.checker,e.task,e.reference) {return EnAdmit.reference_fails;}
     if en_check(e.checker,e.task,en_near(e.reference)) {return EnAdmit.near_miss_passes;}
@@ -132,12 +132,12 @@ checker.
 
 <!-- source: psionic/lib/env.coax digest -->
 ```jai
-en_work :: (buf:[]u8,at:int,w:EnWork)->int {
+en_work :: (buf:[]u8,at:int,w:EnWork)->int #effects(all) {
     p:=su_u64(buf,at,cast(u64)w.size);
     for i:0..<w.size {p=su_u64(buf,p,cast(u64)w.v[i]);}
     return p;
 }
-en_digest :: (e:EnEnv)->[32]u8 #export_c {
+en_digest :: (e:EnEnv)->[32]u8 #export_c #effects(all) {
     buf:[320]u8;at:=su_text(buf[..],0,"psionic.env.v1");buf[at]=cast(u8)e.task.kind;
     at=en_work(buf[..],at+1,e.task.work);buf[at]=cast(u8)e.checker;
     at=su_u64(buf[..],at+1,cast(u64)e.attempts);at=en_work(buf[..],at,e.reference);
@@ -158,7 +158,7 @@ record. Changing any field that is part of it changes the digest.
 // agent-sim-v1. On attempt a of rollout r the agent is right with
 // probability skill; otherwise it bumps one value, drops the last, or hands
 // back its input, each a third of the time.
-en_attempt :: (g:EnAgent,t:EnTask,r:int,a:int)->EnWork {
+en_attempt :: (g:EnAgent,t:EnTask,r:int,a:int)->EnWork #effects(all) {
     b:=cast(u64)((r*8+a)*4);w:=en_solve(t);
     if cast(int)(tb_uniform(g.seed,b)+g.skill)>0 {return w;}
     mistake:=cast(int)(3*tb_uniform(g.seed,b+1));
@@ -180,12 +180,12 @@ seed gives the same attempts.
 
 <!-- source: psionic/lib/env.coax rollout -->
 ```jai
-en_rollout_ok :: (e:EnEnv,g:EnAgent,r:int)->bool {
+en_rollout_ok :: (e:EnEnv,g:EnAgent,r:int)->bool #effects(all) {
     return e.attempts>=1 && e.attempts<=EN_ATTEMPTS_MAX && g.skill>=0 && g.skill<=1 && r>=0;
 }
 // The digest starts from the environment, the agent and the rollout number,
 // then chains each attempt's work and verdict.
-en_rollout :: (e:EnEnv,g:EnAgent,r:int)->EnRollout #export_c {
+en_rollout :: (e:EnEnv,g:EnAgent,r:int)->EnRollout #export_c #effects(all) {
     out:EnRollout;
     if !en_rollout_ok(e,g,r) {out.status=EnStatus.shape;return out;}
     buf:[320]u8;at:=su_text(buf[..],0,"psionic.rollout.v1");d:=en_digest(e);
@@ -218,7 +218,7 @@ checker's verdict on it.
 ```jai
 // A replay runs the rollout again from the record and accepts it only when
 // every field comes out the same.
-en_replay :: (e:EnEnv,g:EnAgent,r:int,claimed:EnRollout)->bool #export_c {
+en_replay :: (e:EnEnv,g:EnAgent,r:int,claimed:EnRollout)->bool #export_c #effects(all) {
     x:=en_rollout(e,g,r);
     return x.status==claimed.status && x.solved==claimed.solved && x.attempts==claimed.attempts && su_same(x.digest,claimed.digest);
 }

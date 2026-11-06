@@ -21,7 +21,7 @@
 #load "../coax/lib/sys/proc.coax";
 #load "coax-update-policy.coax";
 
-cxproc_self_pid :: () -> int #foreign;
+cxproc_self_pid :: () -> int #foreign #effects(all);
 
 UP_PROGS :: 16;
 UpProg :: struct {
@@ -183,7 +183,7 @@ up_lock_take :: (lock: string) -> bool {
 }
 up_lock_drop :: (lock: string) { pb: [4096] u8; r := fs_remove(up_cat(pb[..], lock, "/pid")); r = fs_remove(lock); }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("usage: coax-update [--root DIR] [--checkout DIR] [--coax PATH] [--repository URL] [--branch NAME] [--floor_gb-gb N] [--keep N]"); return 2; }
   hb: [1024] u8; home := proc_getenv("HOME", hb[..]);

@@ -2543,21 +2543,21 @@ bot_input :: (g: [] Game, b: [] Bot) -> Input {
 // ---- the C boundary: a host (verse/icecream/replay.c, later the realm)
 // keeps one Game and one Bot and passes each as a one-element view ----
 
-icecream_tuning :: (difficulty: s32) -> Tuning #export_c {
+icecream_tuning :: (difficulty: s32) -> Tuning #export_c #effects(all) {
   if difficulty == 0 { return tuning_for(Difficulty.easy); }
   if difficulty == 2 { return tuning_for(Difficulty.hard); }
   if difficulty == 3 { return tuning_original(); }
   return tuning_for(Difficulty.normal);
 }
-icecream_tuning_set :: (t: Tuning, name: string, value: f64) -> TuningSet #export_c { return tuning_set(t, name, value); }
-icecream_new :: (g: [] Game, seed: u64, man_on: bool, t: Tuning) #export_c { game_new(g, seed, man_on, t); }
-icecream_arm :: (g: [] Game) #export_c { game_arm(g); }
-icecream_keep_playing :: (g: [] Game) -> bool #export_c { return game_keep_playing(g); }
-icecream_step :: (g: [] Game, input: Input) #export_c { game_step(g, input); }
-icecream_fingerprint :: (g: [] Game) -> u64 #export_c { return fingerprint(g); }
-icecream_bot_reset :: (b: [] Bot) #export_c { fresh: Bot; b[0] = fresh; }
-icecream_bot :: (g: [] Game, b: [] Bot) -> Input #export_c { return bot_input(g, b); }
-icecream_same_input :: (a: Input, b: Input) -> bool #export_c { return input_same(a, b); }
+icecream_tuning_set :: (t: Tuning, name: string, value: f64) -> TuningSet #export_c #effects(all) { return tuning_set(t, name, value); }
+icecream_new :: (g: [] Game, seed: u64, man_on: bool, t: Tuning) #export_c #effects(all) { game_new(g, seed, man_on, t); }
+icecream_arm :: (g: [] Game) #export_c #effects(all) { game_arm(g); }
+icecream_keep_playing :: (g: [] Game) -> bool #export_c #effects(all) { return game_keep_playing(g); }
+icecream_step :: (g: [] Game, input: Input) #export_c #effects(all) { game_step(g, input); }
+icecream_fingerprint :: (g: [] Game) -> u64 #export_c #effects(all) { return fingerprint(g); }
+icecream_bot_reset :: (b: [] Bot) #export_c #effects(all) { fresh: Bot; b[0] = fresh; }
+icecream_bot :: (g: [] Game, b: [] Bot) -> Input #export_c #effects(all) { return bot_input(g, b); }
+icecream_same_input :: (a: Input, b: Input) -> bool #export_c #effects(all) { return input_same(a, b); }
 
 // ---- checks: ports of the Rust crate's own (tests/icecream-test.cpp) ----
 
@@ -2688,7 +2688,7 @@ check_house :: (g: [] Game, d: Difficulty, seed: u64) -> bool {
   for i: 0..<cast(int) (t.unlock * 30) + 1 { game_step(g, hold); }
   #assert g[0].status == Status.escaped && g[0].has_won && g[0].won == Status.escaped;
 }
-icecream_check_house :: (g: [] Game, difficulty: s32, seed: u64) -> bool #export_c {
+icecream_check_house :: (g: [] Game, difficulty: s32, seed: u64) -> bool #export_c #effects(all) {
   d := ifx difficulty == 0 then Difficulty.easy else ifx difficulty == 2 then Difficulty.hard else Difficulty.normal;
   return check_house(g, d, seed);
 }

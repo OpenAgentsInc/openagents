@@ -39,7 +39,7 @@ velocity scale produces a command with declared units:
 
 <!-- source: psionic/lib/robotics/sim.coax action -->
 ```jai
-rk_action :: (p:RkPolicy,s:RkState)->RkAction #export_c {
+rk_action :: (p:RkPolicy,s:RkState)->RkAction #export_c #effects(all) {
   if !rk_state_ok(s) {return RkAction.{status=RkStatus.state};}
   if !rk_policy_ok(p) {return RkAction.{status=RkStatus.policy};}
   nx:=(s.goal.x-s.position.x)/RK_POSITION_SCALE;ny:=(s.goal.y-s.position.y)/RK_POSITION_SCALE;
@@ -106,7 +106,7 @@ guarantee a stable rollout: its mistakes may change future observations.
 
 <!-- source: psionic/lib/robotics/evaluate.coax evaluate -->
 ```jai
-rk_measure :: (p:RkPolicy,expert:bool)->RkEval {
+rk_measure :: (p:RkPolicy,expert:bool)->RkEval #effects(all) {
   if !rk_policy_ok(p) {return RkEval.{status=RkStatus.policy};}
   successes:=0;total:=0.0;peak:RkPeak;
   for episode:100..<106 {
@@ -200,7 +200,7 @@ from those files rather than accepting the card's different width:
 
 <!-- source: psionic/lib/robotics/singlearm.coax metadata -->
 ```jai
-sr_info :: (text:string)->SrInfo #export_c {
+sr_info :: (text:string)->SrInfo #export_c #effects(all) {
   if text.count>8192 {return SrInfo.{status=SrStatus.capacity};}
   d:[1]Jv;nodes:[768]JvNode;
   if !jv_parse(d[..],text,nodes[..]) || jv_kind(d[0],0)!=JV_OBJECT {return SrInfo.{status=SrStatus.shape};}

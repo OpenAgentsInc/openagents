@@ -160,19 +160,19 @@ TO_NAMES :: [27]string.["add","subtract","multiply","divide","negate","relu","ex
     p=to_plan(ToRequest.{op=ToOp.cross_entropy},TvShape.{rank=2,dims=[4]int.[1,1,0,0]},none,1);#assert p.status==ToStatus.ok && p.n==1 && p.inner==1;
 }
 
-to_known_tag :: (tag:u8)->bool #export_c {return tag<27;}
-to_name :: (tag:int)->string #export_c {if tag<0 || tag>=27 {return "";}return TO_NAMES[tag];}
-to_arity :: (op:ToOp)->int #export_c {if cast(u8)op<=3 || op==ToOp.equal || op==ToOp.less || op==ToOp.update || op==ToOp.concat || op==ToOp.matmul || op==ToOp.conv2d || op==ToOp.mse {return 2;}return 1;}
-to_differentiable :: (op:ToOp)->bool #export_c {return to_known_tag(cast(u8)op) && op!=ToOp.equal && op!=ToOp.less;}
-to_same_shape :: (a:TvShape,b:TvShape)->bool {if a.rank!=b.rank {return false;}for i:0..<4 {if a.dims[i]!=b.dims[i] {return false;}}return true;}
-to_work_fits :: (n:int,inner:int)->bool {if n<0 || inner<0 {return false;}if n==0 || inner==0 {return true;}return n<=TV_LIMIT/inner;}
+to_known_tag :: (tag:u8)->bool #export_c #effects(all) {return tag<27;}
+to_name :: (tag:int)->string #export_c #effects(all) {if tag<0 || tag>=27 {return "";}return TO_NAMES[tag];}
+to_arity :: (op:ToOp)->int #export_c #effects(all) {if cast(u8)op<=3 || op==ToOp.equal || op==ToOp.less || op==ToOp.update || op==ToOp.concat || op==ToOp.matmul || op==ToOp.conv2d || op==ToOp.mse {return 2;}return 1;}
+to_differentiable :: (op:ToOp)->bool #export_c #effects(all) {return to_known_tag(cast(u8)op) && op!=ToOp.equal && op!=ToOp.less;}
+to_same_shape :: (a:TvShape,b:TvShape)->bool #effects(all) {if a.rank!=b.rank {return false;}for i:0..<4 {if a.dims[i]!=b.dims[i] {return false;}}return true;}
+to_work_fits :: (n:int,inner:int)->bool #effects(all) {if n<0 || inner<0 {return false;}if n==0 || inner==0 {return true;}return n<=TV_LIMIT/inner;}
 // The broadcast rank is a branchless maximum: a tie has one answer, so no
 // comparison there can be equivalent.
 // Concatenated extents need no own limit: each is at most 2^20, so the sum
 // cannot overflow and the output shape check below refuses it.
 // Pure inference: no pointer or coefficient is read here. Irrelevant request
 // fields have no semantics; named fields are checked in their operator branch.
-to_plan :: (r:ToRequest,a:TvShape,b:TvShape,indices:int)->ToPlan #export_c {
+to_plan :: (r:ToRequest,a:TvShape,b:TvShape,indices:int)->ToPlan #export_c #effects(all) {
     if !to_known_tag(cast(u8)r.op) {return ToPlan.{status=ToStatus.operation};}
     ca:=tv_elements(a);cb:=tv_elements(b);if ca.status==TvStatus.limit || cb.status==TvStatus.limit {return ToPlan.{status=ToStatus.limit};}
     if ca.status!=TvStatus.ok || cb.status!=TvStatus.ok {return ToPlan.{status=ToStatus.shape};}

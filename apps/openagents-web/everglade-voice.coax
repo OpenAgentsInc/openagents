@@ -202,17 +202,17 @@ everglade_voice_actions :: (s: [] Everglade) {
 // ---- the face's calls
 
 // The request to send (0 none): the face asks only when it has none out, and answers with everglade_edit_answer.
-everglade_edit_ask :: (s: [] Everglade) -> int #export_c { ev_next_ask(s); return s[0].ev.ask_n; }
-everglade_edit_ask_sent :: (s: [] Everglade) #export_c { s[0].ev.ask_n = 0; s[0].ev.look_due = false; }
+everglade_edit_ask :: (s: [] Everglade) -> int #export_c #effects(all) { ev_next_ask(s); return s[0].ev.ask_n; }
+everglade_edit_ask_sent :: (s: [] Everglade) #export_c #effects(all) { s[0].ev.ask_n = 0; s[0].ev.look_due = false; }
 // The ask waiting is a look: the face sends it to .../look with the next frame (the host's flag 32).
-everglade_edit_look :: (s: [] Everglade) -> bool #export_c { return s[0].ev.look_due; }
-everglade_edit_post :: (s: [] Everglade) -> int #export_c { return s[0].ev.post_n; }
-everglade_edit_post_sent :: (s: [] Everglade) #export_c { s[0].ev.post_n = 0; }
+everglade_edit_look :: (s: [] Everglade) -> bool #export_c #effects(all) { return s[0].ev.look_due; }
+everglade_edit_post :: (s: [] Everglade) -> int #export_c #effects(all) { return s[0].ev.post_n; }
+everglade_edit_post_sent :: (s: [] Everglade) #export_c #effects(all) { s[0].ev.post_n = 0; }
 // ORIGINAL: the face asks the server for the designed city (POST .../reset) once.
-everglade_edit_reset :: (s: [] Everglade) -> bool #export_c { r := s[0].ev.reset; s[0].ev.reset = false; return r; }
+everglade_edit_reset :: (s: [] Everglade) -> bool #export_c #effects(all) { r := s[0].ev.reset; s[0].ev.reset = false; return r; }
 
 // The published list (GET /api/playtest/world/everglade's answer), laid over the plan for everyone.
-everglade_world :: (s: [] Everglade, answer: string) #export_c {
+everglade_world :: (s: [] Everglade, answer: string) #export_c #effects(all) {
     everglade_guard_invalidate(s);
   s[0].guide.world_parsed=false;
   got: [1] EgEdits;
@@ -223,13 +223,13 @@ everglade_world :: (s: [] Everglade, answer: string) #export_c {
 }
 
 // The publish's answer: saved for everyone, or not.
-everglade_edit_saved :: (s: [] Everglade, status: int) #export_c {
+everglade_edit_saved :: (s: [] Everglade, status: int) #export_c #effects(all) {
   if status == 200 { return; }
   ev_line(s, ifx status == 403 || status == 401 then "NOT SAVED · LOG IN AS AN ADMIN" else "NOT SAVED · TRY AGAIN");
 }
 
 // The selector's answer ("STATUS\n" and its JSON): the edit, done in front of you.
-everglade_edit_answer :: (s: [] Everglade, answer: string) #export_c {
+everglade_edit_answer :: (s: [] Everglade, answer: string) #export_c #effects(all) {
   ev_answered(s, answer);
   if s[0].ev.look_due { return; }   // the same words go again, with the screen
   s[0].ev.asking_n = 0; s[0].ev.ask_n = 0;   // the next waiting sentence goes now

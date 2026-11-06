@@ -53,12 +53,12 @@ ClChannel :: struct {
 ClLabels :: struct {status:int=CL_OK; mode:int=CL_KEEP; labels:[CL_MAX_LABELS]G29Name; n:int;}
 // book:end state
 
-cl_fail :: (l:ClLabels,status:int)->ClLabels {r:=l;r.status=status;return r;}
-cl_type_index :: (t:G29Name)->int {for i:0..<CL_TYPES.count {if g29_is(t,CL_TYPES[i]) {return i;}}return -1;}
+cl_fail :: (l:ClLabels,status:int)->ClLabels #effects(all) {r:=l;r.status=status;return r;}
+cl_type_index :: (t:G29Name)->int #effects(all) {for i:0..<CL_TYPES.count {if g29_is(t,CL_TYPES[i]) {return i;}}return -1;}
 
 // book:begin one-label
 // One label value: 1 to 64 bytes from a-z, 0-9, '.', ':' and '-', and no type name.
-cl_label :: (t:G29Name)->int {
+cl_label :: (t:G29Name)->int #effects(all) {
   c:=t;if c.n<1 || c.n>CL_MAX_LABEL {return CL_LABEL;}
   for i:0..<c.n {
     b:=c.b[i];
@@ -74,7 +74,7 @@ cl_label :: (t:G29Name)->int {
 // The t tags of a create or edit command: keep (no t tag), clear (only
 // ["t", ""]) or set (the distinct labels in order). Any fault refuses the
 // whole event.
-cl_labels :: (e:NostrEvent)->ClLabels {
+cl_labels :: (e:NostrEvent)->ClLabels #effects(all) {
   l:ClLabels;k:=0;cleared:=false;
   while true {
     t:=g29_tag(e,k);k+=1;
@@ -97,7 +97,7 @@ cl_labels :: (e:NostrEvent)->ClLabels {
 // book:end label-set
 
 // The value of the first tag named name, or "" when there is none.
-cl_value :: (e:NostrEvent,name:string)->G29Name {
+cl_value :: (e:NostrEvent,name:string)->G29Name #effects(all) {
   k:=0;none:G29Name;
   while true {
     t:=g29_tag(e,k);k+=1;
@@ -111,7 +111,7 @@ cl_value :: (e:NostrEvent,name:string)->G29Name {
 // A verified 9007 or 9002 for the channel c[0] and group g[0]: labels and
 // type checked first, then NIP-29's decision. CL_GROUP: g29_admit refused,
 // with its code in g29[0]. Other kinds go to g29_admit unchanged.
-cl_admit :: (g:[]G29Group,c:[]ClChannel,e:NostrEvent,relay:[32]u8,now:int,g29:[]int)->int {
+cl_admit :: (g:[]G29Group,c:[]ClChannel,e:NostrEvent,relay:[32]u8,now:int,g29:[]int)->int #effects(all) {
   g29[0]=G29_OK;
   if e.kind!=G29_CREATE_GROUP && e.kind!=G29_EDIT_METADATA {
     g29[0]=g29_admit(g,e,relay);return ifx g29[0]==G29_OK then CL_OK else CL_GROUP;
@@ -140,7 +140,7 @@ cl_admit :: (g:[]G29Group,c:[]ClChannel,e:NostrEvent,relay:[32]u8,now:int,g29:[]
 
 // book:begin write
 // The 39000 tags the relay signs: NIP-29's metadata, then the identity tags.
-cl_write_metadata :: (g:G29Group,c:ClChannel,out:[]u8)->int {
+cl_write_metadata :: (g:G29Group,c:ClChannel,out:[]u8)->int #effects(all) {
   n:=g29_write_metadata(g,out)-1;   // drop its closing ]; -1 stays a failure
   n=json_raw(out,n,",[\"t\",");n=g29_put_name(out,n,c.type);n=json_raw(out,n,"]");
   for i:0..<c.labels_n {n=json_raw(out,n,",[\"t\",");n=g29_put_name(out,n,c.labels[i]);n=json_raw(out,n,"]");}
@@ -153,7 +153,7 @@ cl_write_metadata :: (g:G29Group,c:ClChannel,out:[]u8)->int {
 // book:end write
 
 // A decimal string with no sign, no leading zero and at most 18 digits.
-cl_decimal :: (v:N32Text,out:[]int)->bool {
+cl_decimal :: (v:N32Text,out:[]int)->bool #effects(all) {
   c:=v;if c.n<1 || c.n>18 || (c.b[0]=='0' && c.n>1) {return false;}
   x:=0;for i:0..<c.n {if c.b[i]<'0' || c.b[i]>'9' {return false;}x=x*10+cast(int)(c.b[i]-'0');}
   out[0]=x;return true;
@@ -162,7 +162,7 @@ cl_decimal :: (v:N32Text,out:[]int)->bool {
 // A channel-state event read back by a client. It must be a 39000 to 39002
 // signed by the relay's key. A missing tag stays unknown; a malformed one
 // refuses.
-cl_read :: (e:NostrEvent,relay:[32]u8)->ClChannel {
+cl_read :: (e:NostrEvent,relay:[32]u8)->ClChannel #effects(all) {
   c:ClChannel;
   if e.error!=NE_OK || !e.verified {c.status=CL_SHAPE;return c;}
   if e.kind<G29_METADATA || e.kind>G29_MEMBERS {c.status=CL_KIND;return c;}
@@ -192,7 +192,7 @@ cl_read :: (e:NostrEvent,relay:[32]u8)->ClChannel {
 // book:end read
 
 // Is a's channel id before b's, compared bytewise as strings?
-cl_id_before :: (a:G29Name,b:G29Name)->bool {
+cl_id_before :: (a:G29Name,b:G29Name)->bool #effects(all) {
   // Bytes past a name's length are zero, so a prefix sorts first.
   x:=a;y:=b;
   for i:0..<G29_MAX_NAME {if x.b[i]<y.b[i] {return true;}if x.b[i]>y.b[i] {return false;}}
@@ -201,13 +201,13 @@ cl_id_before :: (a:G29Name,b:G29Name)->bool {
 // book:begin oldest
 // Does a rank before b? Lower created_at first; a known time before an
 // unknown one; then the lower channel id.
-cl_before :: (a:ClChannel,b:ClChannel)->bool {
+cl_before :: (a:ClChannel,b:ClChannel)->bool #effects(all) {
   if a.has_created!=b.has_created {return a.has_created;}
   if a.has_created {if a.created<b.created {return true;}if a.created>b.created {return false;}}
   return cl_id_before(a.id,b.id);
 }
 // The index of the oldest channel, or -1 for none.
-cl_oldest :: (cs:[]ClChannel)->int {
+cl_oldest :: (cs:[]ClChannel)->int #effects(all) {
   best:= -1;
   for i:0..<cs.count {if best<0 || cl_before(cs[i],cs[best]) {best=i;}}
   return best;
@@ -222,10 +222,10 @@ ClFilter :: struct {
   t:[CL_MAX_LABELS]G29Name; t_n:int;
   has_P:bool;
 }
-cl_has_t :: (f:ClFilter,s:string)->bool {for i:0..<f.t_n {if g29_is(f.t[i],s) {return true;}}return false;}
+cl_has_t :: (f:ClFilter,s:string)->bool #effects(all) {for i:0..<f.t_n {if g29_is(f.t[i],s) {return true;}}return false;}
 // Does this filter return the channel to a reader? member: the reader is
 // in the channel's member list. Matching the filter's own tags is NIP-01's.
-cl_listed :: (g:G29Group,c:ClChannel,f:ClFilter,member:bool)->bool {
+cl_listed :: (g:G29Group,c:ClChannel,f:ClFilter,member:bool)->bool #effects(all) {
   readable:=member || !g.is_private;
   if f.names {return readable;}
   i:=cl_type_index(c.type);
@@ -235,7 +235,7 @@ cl_listed :: (g:G29Group,c:ClChannel,f:ClFilter,member:bool)->bool {
 }
 // Does a 44100 or 44101 notice reach a filter? has_type false: a notice
 // stored before the rule, which is about a legacy type.
-cl_notice :: (has_type:bool,type:G29Name,f:ClFilter)->bool {
+cl_notice :: (has_type:bool,type:G29Name,f:ClFilter)->bool #effects(all) {
   if !has_type {
     if f.t_n==0 {return true;}
     for i:0..<CL_LEGACY {if cl_has_t(f,CL_TYPES[i]) {return true;}}

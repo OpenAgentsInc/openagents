@@ -1,0 +1,71 @@
+// Native CLI and emitted-manifest oracle for compatibility.coax.
+// coax/web/tool.sh coax/tests/compat.coax COMPILER
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/sys/fs.coax";
+str_contains :: (text:string,part:string)->bool {if text.count<part.count {return false;}for i:0..<text.count-part.count+1 {if text[i..<i+part.count]==part {return true;}}return false;}
+kc_cli :: (compiler:string,old:string,fresh:string,base:string,expected:int)->bool {
+  argv:=[6]string.[compiler,"compat",old,fresh,"--baseline",base];
+  out:[65536]u8;err:[65536]u8;
+  r:=proc_run(argv[0..<(ifx base=="" then 4 else 6)],120000,out[..],err[..]);
+  ok:=r.started==0 && !r.cut && !r.timed_out && r.status==expected;
+  if expected==1 && !str_contains(cast(string)err[0..<r.err_n],"coax compat: incompatible") {ok=false;}
+  if !ok {tool_errln(cast(string)err[0..<r.err_n]);}
+  return ok;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=1 {tool_errln("usage: compat.coax COMPILER");return 2;}
+  compiler:=args_at(args[..],0);dirbuf:[4096]u8;dir:=fs_temp("coax-compat-",dirbuf[..]);if dir=="" {return 2;}
+  a:[4096]u8;b:[4096]u8;c:[4096]u8;d:[4096]u8;
+  old:=fs_join(dir,"old.coax",a[..]);fresh:=fs_join(dir,"new.coax",b[..]);base:=fs_join(dir,"base.coax",c[..]);manifest:=fs_join(dir,"old.surface",d[..]);
+  defer {gone1:=fs_remove(old);gone2:=fs_remove(fresh);gone3:=fs_remove(base);gone4:=fs_remove(manifest);gone5:=fs_remove(dir);}
+  source:="Box :: struct #persisted {value:int;}\nf :: (v:Box) -> int {return v.value;}\n";
+  if !fs_write(old,source) {return 2;}
+  variants:=[7]string.[source,
+    "Box :: struct #persisted {}\nf :: (v:Box) -> int {return 0;}",
+    "Box :: struct #persisted {added:int=1;value:int;}\nf :: (v:Box) -> int {return v.value;}",
+    "Box :: struct #persisted {value:int;added:int=1;}\nf :: (v:Box) -> int {return v.value;}",
+    "Box :: struct #persisted {value:int;added:int;}\nf :: (v:Box) -> int {return v.value;}",
+    "Box :: struct #persisted {value:int;}\n",
+    "Box :: struct #persisted {value:u32;}\nf :: (v:Box) -> int {return cast(int)v.value;}"];
+  expected:=[7]int.[0,1,1,0,1,1,1];bad:=0;
+  for variant,i:variants {
+    if !fs_write(fresh,variant) {return 2;}
+    if !kc_cli(compiler,old,fresh,"",expected[i]) {bad+=1;}
+  }
+  if !fs_write(base,variants[6]) || !fs_write(fresh,variants[6]) {return 2;}
+  if !kc_cli(compiler,old,fresh,base,0) {bad+=1;}
+  if !fs_write(fresh,variants[2]) {return 2;}
+  if !kc_cli(compiler,old,fresh,base,1) {bad+=1;}
+  emit:=[4]string.[compiler,"compat","--emit",old];output:[65536]u8;errors:[65536]u8;
+  result:=proc_run(emit[..],120000,output[..],errors[..]);
+  if result.status!=0 || result.cut || result.timed_out || !fs_write(manifest,cast(string)output[0..<result.out_n]) {return 2;}
+  if !fs_write(fresh,variants[3]) || !kc_cli(compiler,manifest,fresh,"",0) {bad+=1;}
+  // Owned defaults compare evaluated values and recurse through saved records.
+  if !fs_write(old,"Box :: struct #persisted {value:int=1+2;}") || !fs_write(fresh,"Box :: struct #persisted {value:int=3;}") {return 2;}
+  if !kc_cli(compiler,old,fresh,"",0) {bad+=1;}
+  if !fs_write(fresh,"Box :: struct #persisted {value:int=4;}") {return 2;}
+  if !kc_cli(compiler,old,fresh,"",1) {bad+=1;}
+  if !fs_write(old,"Child :: struct {x:int=1;} Box :: struct #persisted {child:Child=Child.{};}") {return 2;}
+  if !fs_write(fresh,"Child :: struct {x:int=1;y:int=2;} Box :: struct #persisted {child:Child=Child.{};}") {return 2;}
+  if !kc_cli(compiler,old,fresh,"",0) {bad+=1;}
+  if !fs_write(fresh,"Child :: struct {x:int=2;y:int=2;} Box :: struct #persisted {child:Child=Child.{};}") {return 2;}
+  if !kc_cli(compiler,old,fresh,"",1) {bad+=1;}
+  if !fs_write(old,"Box :: struct #persisted {value:int;}") || !fs_write(fresh,"Box :: struct {value:int;}") {return 2;}
+  if !kc_cli(compiler,old,fresh,"",1) {bad+=1;}
+  if !fs_write(old,"Choice :: union {one;}") || !fs_write(fresh,"Choice :: union {one;two;}") {return 2;}
+  if !kc_cli(compiler,old,fresh,"",1) {bad+=1;}
+  if !fs_write(old,"f :: (v:[]int)->int {return v.count;}") || !fs_write(fresh,"f :: (v:[]const int)->int {return v.count;}") {return 2;}
+  if !kc_cli(compiler,old,fresh,"",0) {bad+=1;}
+  if !kc_cli(compiler,fresh,old,"",1) {bad+=1;}
+  if !fs_write(old,"f :: (v:[]int)->[]const int {return v;}") || !fs_write(fresh,"f :: (v:[]int)->[]int {return v;}") {return 2;}
+  if !kc_cli(compiler,old,fresh,"",0) || !kc_cli(compiler,fresh,old,"",1) {bad+=1;}
+  if !fs_write(old,"f :: (a:int)->int {return a;}") || !fs_write(fresh,"f :: (a:int,b:int)->int {return a+b;}") {return 2;}
+  if !kc_cli(compiler,old,fresh,"",1) || !kc_cli(compiler,old,fresh,old,1) {bad+=1;}
+  // Appending even a defaulted field changes a C ABI passed by value.
+  if !fs_write(old,"Box :: struct #persisted {value:int;}\nf :: (v:Box) -> int #export_c #effects(all) {return v.value;}") || !fs_write(fresh,"Box :: struct #persisted {value:int;added:int=1;}\nf :: (v:Box) -> int #export_c #effects(all) {return v.value;}") {return 2;}
+  if !kc_cli(compiler,old,fresh,"",1) {bad+=1;}
+  print("compat CLI: % failing cases\n",bad);
+  return ifx bad==0 then 0 else 1;
+}

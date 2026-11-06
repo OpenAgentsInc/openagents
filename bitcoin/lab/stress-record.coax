@@ -27,7 +27,7 @@ lab_stress_tx :: (s:[]LabStress,parent:[]u8,vout:int,ni:int,value:int,no:int,coi
   kv_put32(s[0].raw[..],at,0);s[0].n=at+4;
 }
 lab_stress_work :: (s:[]LabStress)->ValidationWork {return ValidationWork.{ins=s[0].ins[..],outs=s[0].outs[..],items=s[0].items[..],ids=s[0].ids[..],wids=s[0].wids[..],merkle=s[0].merkle[..],coins=s[0].coins[..],spent=s[0].spent[..],sigops=s[0].ops[..],heights=s[0].heights[..],times=s[0].times[..],scripts=s[0].scripts[..],script=s[0].sw[..],signet_ids=s[0].signet_ids[..],signet_scratch=s[0].signet_scratch[..]};}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}dir:=args_at(a[..],0);r:[1]LabRecorder;if lab_record_run(r[..],dir,false)!=0 {return 1;}d:=r[0].core[..];s:[1]LabStress;
   previous:=cs_tip_vartime(d[0].live[..],d[0].used);parent:[32]u8;#assert tx_unhex("082ce8f5a122bbb144d35df07b05b9b2d77b745421b8168fac6725e5c9500675",parent[..]).count==32;for i:0..<16 {x:=parent[i];parent[i]=parent[31-i];parent[31-i]=x;}
   s[0].n=81;zero:[32]u8;lab_stress_tx(s[..],zero[..],0,1,5000074000,1,true);

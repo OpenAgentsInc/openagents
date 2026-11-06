@@ -15,8 +15,8 @@ CU_DEPTH_LIMIT :: 64;
 #forall "numbers exclude bool" code:0..<20 {
  #assert CU_number(cast(u32)code)==(code>=2 && code<=11);
 }
-CU_scalar :: (code:u32)->bool #export_c {return code>=1 && code<=11;}
-CU_number :: (code:u32)->bool #export_c {return code>=2 && code<=11;}
+CU_scalar :: (code:u32)->bool #export_c #effects(all) {return code>=1 && code<=11;}
+CU_number :: (code:u32)->bool #export_c #effects(all) {return code>=2 && code<=11;}
 
 // Reasons. 0 admits; each other value names what is refused.
 #test "every refusal reason has its own text and the fix names the subset" {
@@ -51,7 +51,7 @@ CU_number :: (code:u32)->bool #export_c {return code>=2 && code<=11;}
  #assert CU_reason_text(45)=="this reason" && CU_reason_text(4000000000)=="this reason";
  #assert CU_fix()=="coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 4096 scalars, views of numbers, if/else, for loops, break/continue and acyclic calls; every #export_c procedure is a kernel with an int work item first and no result";
 }
-CU_reason_text :: (reason:u32)->string #export_c {
+CU_reason_text :: (reason:u32)->string #export_c #effects(all) {
  texts:=[45] string.["","a string value","a struct value","an enum value","an array that is not a fixed array of at most 4096 scalars",
   "a view of something other than numbers","a value of this type","a while loop","defer","#assert","print","a #foreign call",
   "a recursive call","this storage intrinsic","a compile-time aggregate","a kernel that returns a value",
@@ -76,7 +76,7 @@ CU_reason_text :: (reason:u32)->string #export_c {
  if reason>=45 {return "this reason";}
  return texts[cast(int)reason];
 }
-CU_fix :: ()->string #export_c {
+CU_fix :: ()->string #export_c #effects(all) {
  return "coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 4096 scalars, views of numbers, if/else, for loops, break/continue and acyclic calls; every #export_c procedure is a kernel with an int work item first and no result";
 }
 
@@ -95,7 +95,7 @@ CU_fix :: ()->string #export_c {
  #assert CU_value(15,2,4097)==4 && CU_value(15,2,0)==4 && CU_value(15,2,-1)==4;
  #assert CU_value(16,2,0)==0 && CU_value(16,2,5000)==0;
 }
-CU_value :: (code:u32,elem:u32,length:int)->u32 #export_c {
+CU_value :: (code:u32,elem:u32,length:int)->u32 #export_c #effects(all) {
  if CU_scalar(code) {return 0;}
  if code==12 {return 1;}
  if code==13 {return 2;}
@@ -107,7 +107,7 @@ CU_value :: (code:u32,elem:u32,length:int)->u32 #export_c {
 #forall "results are scalars or nothing" code:0..<20 {
  #assert CU_result(cast(u32)code)==cast(u32)(ifx code<=11 then 0 else 18);
 }
-CU_result :: (code:u32)->u32 #export_c {if code==0 || CU_scalar(code) {return 0;}return 18;}
+CU_result :: (code:u32)->u32 #export_c #effects(all) {if code==0 || CU_scalar(code) {return 0;}return 18;}
 
 // Statement kinds: 0 block, 1 expr, 2 var, 3 assign, 4 return, 5 if, 6 while,
 // 7 for range, 8 for each, 9 break, 10 continue, 11 defer, 12 #assert.
@@ -115,7 +115,7 @@ CU_result :: (code:u32)->u32 #export_c {if code==0 || CU_scalar(code) {return 0;
  expected:u32=0;if kind==6 {expected=7;} else if kind==11 {expected=8;} else if kind==12 {expected=9;} else if kind>12 {expected=6;}
  #assert CU_statement(cast(u32)kind)==expected;
 }
-CU_statement :: (kind:u32)->u32 #export_c {
+CU_statement :: (kind:u32)->u32 #export_c #effects(all) {
  reasons:=[13] u32.[0,0,0,0,0,0,7,0,0,0,0,8,9];
  if kind>=13 {return 6;}
  return reasons[cast(int)kind];
@@ -127,7 +127,7 @@ CU_statement :: (kind:u32)->u32 #export_c {
 #forall "bit reinterpretation and wrapping arithmetic are admitted" code:0..<16 {
  #assert CU_byte_intrinsic(cast(u32)code)==cast(u32)(ifx (code>=2 && code<=5) || (code>=7 && code<=11) then 0 else 13);
 }
-CU_byte_intrinsic :: (code:u32)->u32 #export_c {
+CU_byte_intrinsic :: (code:u32)->u32 #export_c #effects(all) {
  if code>=2 && code<=5 {return 0;}
  if code>=7 && code<=11 {return 0;}
  return 13;
@@ -140,7 +140,7 @@ CU_byte_intrinsic :: (code:u32)->u32 #export_c {
  if print {expected=10;} else if foreign {expected=11;} else if active {expected=12;} else if depth>=64 {expected=17;}
  #assert r==expected;
 }
-CU_call :: (print:bool,foreign:bool,active:bool,depth:int)->u32 #export_c {
+CU_call :: (print:bool,foreign:bool,active:bool,depth:int)->u32 #export_c #effects(all) {
  if print {return 10;}
  if foreign {return 11;}
  if active {return 12;}
@@ -150,7 +150,7 @@ CU_call :: (print:bool,foreign:bool,active:bool,depth:int)->u32 #export_c {
 #forall "compile-time values must be scalars" code:0..<20 {
  #assert CU_constant(cast(u32)code)==cast(u32)(ifx code>=1 && code<=11 then 0 else 14);
 }
-CU_constant :: (code:u32)->u32 #export_c {if CU_scalar(code) {return 0;}return 14;}
+CU_constant :: (code:u32)->u32 #export_c #effects(all) {if CU_scalar(code) {return 0;}return 14;}
 
 // A kernel (#export_c procedure) returns nothing and takes its work item
 // first; its other parameters are scalars or views of numbers.
@@ -159,7 +159,7 @@ CU_constant :: (code:u32)->u32 #export_c {if CU_scalar(code) {return 0;}return 1
  if ret!=0 {expected=15;} else if count<1 || first!=7 {expected=16;}
  #assert CU_kernel(cast(u32)ret,count,cast(u32)first)==expected;
 }
-CU_kernel :: (ret:u32,count:int,first:u32)->u32 #export_c {
+CU_kernel :: (ret:u32,count:int,first:u32)->u32 #export_c #effects(all) {
  if ret!=0 {return 15;}
  if count<1 || first!=7 {return 16;}
  return 0;
@@ -171,7 +171,7 @@ CU_kernel :: (ret:u32,count:int,first:u32)->u32 #export_c {
  else if !(code>=1 && code<=11) {expected=6;}
  #assert CU_kernel_parameter(cast(u32)code,cast(u32)elem)==expected;
 }
-CU_kernel_parameter :: (code:u32,elem:u32)->u32 #export_c {
+CU_kernel_parameter :: (code:u32,elem:u32)->u32 #export_c #effects(all) {
  if CU_scalar(code) {return 0;}
  if code==16 {if CU_number(elem) {return 0;}return 19;}
  if code==12 {return 1;}
@@ -182,7 +182,7 @@ CU_kernel_parameter :: (code:u32,elem:u32)->u32 #export_c {
 #forall "#foreign procedures are refused" foreign:bool {
  #assert CU_procedure(foreign)==cast(u32)(ifx foreign then 20 else 0);
 }
-CU_procedure :: (foreign:bool)->u32 #export_c {if foreign {return 20;}return 0;}
+CU_procedure :: (foreign:bool)->u32 #export_c #effects(all) {if foreign {return 20;}return 0;}
 
 // Warp kernels. A kernel that contains `for lane: 0..<32` loops runs as one
 // 32-lane warp per work item: each lane runs the loop body once with its own
@@ -195,7 +195,7 @@ CU_procedure :: (foreign:bool)->u32 #export_c {if foreign {return 20;}return 0;}
  if nested {expected=22;} else if !kernel || !constant || lo!=0 || hi!=32 {expected=21;}
  #assert CU_lane_loop(kernel,constant,lo,hi,nested)==expected;
 }
-CU_lane_loop :: (kernel:bool,constant:bool,lo:int,hi:int,nested:bool)->u32 #export_c {
+CU_lane_loop :: (kernel:bool,constant:bool,lo:int,hi:int,nested:bool)->u32 #export_c #effects(all) {
  if nested {return 22;}
  if !kernel || !constant || lo!=0 || hi!=32 {return 21;}
  return 0;
@@ -205,7 +205,7 @@ CU_lane_loop :: (kernel:bool,constant:bool,lo:int,hi:int,nested:bool)->u32 #expo
  if form && length>=32 && length%32==0 && scale==length/32 && offset>=0 && offset<scale {expected=0;}
  #assert CU_lane_index(length,scale,offset,form)==expected;
 }
-CU_lane_index :: (length:int,scale:int,offset:int,form:bool)->u32 #export_c {
+CU_lane_index :: (length:int,scale:int,offset:int,form:bool)->u32 #export_c #effects(all) {
  if !form || length<32 || length%32!=0 || scale!=length/32 || offset<0 || offset>=scale {return 23;}
  return 0;
 }
@@ -214,7 +214,7 @@ CU_lane_index :: (length:int,scale:int,offset:int,form:bool)->u32 #export_c {
  if indexed && in_lane {expected=0;} else if primitive && !in_lane {expected=0;} else if primitive {expected=28;}
  #assert CU_lane_use(in_lane,indexed,primitive)==expected;
 }
-CU_lane_use :: (in_lane:bool,indexed:bool,primitive:bool)->u32 #export_c {
+CU_lane_use :: (in_lane:bool,indexed:bool,primitive:bool)->u32 #export_c #effects(all) {
  if indexed && in_lane {return 0;}
  if primitive {if in_lane {return 28;}return 0;}
  return 24;
@@ -222,11 +222,11 @@ CU_lane_use :: (in_lane:bool,indexed:bool,primitive:bool)->u32 #export_c {
 #forall "a lane loop writes its own locals and per-lane elements only" outer:bool, lane_array:bool {
  #assert CU_lane_assign(outer,lane_array)==cast(u32)(ifx outer && !lane_array then 25 else 0);
 }
-CU_lane_assign :: (outer:bool,lane_array:bool)->u32 #export_c {if outer && !lane_array {return 25;}return 0;}
+CU_lane_assign :: (outer:bool,lane_array:bool)->u32 #export_c #effects(all) {if outer && !lane_array {return 25;}return 0;}
 #forall "break and continue may not leave a lane loop" direct:bool {
  #assert CU_lane_jump(direct)==cast(u32)(ifx direct then 26 else 0);
 }
-CU_lane_jump :: (direct:bool)->u32 #export_c {if direct {return 26;}return 0;}
+CU_lane_jump :: (direct:bool)->u32 #export_c #effects(all) {if direct {return 26;}return 0;}
 // cu_mma_bf16_16x8x16(a, b, c): a is [128]u32 (the 16x16 BF16 A fragment), b
 // is [64]u32 (16x8 BF16 B), c is [128]f32 (16x8 f32, updated in place). The
 // type codes are those of compute_code (10 u32, 2 f32).
@@ -238,7 +238,7 @@ CU_lane_jump :: (direct:bool)->u32 #export_c {if direct {return 26;}return 0;}
 #test "the MMA primitive's B fragment is u32 too" {
  #assert CU_primitive_mma(128,64,128,10,10,2)==0 && CU_primitive_mma(128,64,128,10,2,2)==27 && CU_primitive_mma(128,64,128,10,11,2)==27;
 }
-CU_primitive_mma :: (a:int,b:int,c:int,a_code:u32,b_code:u32,c_code:u32)->u32 #export_c {
+CU_primitive_mma :: (a:int,b:int,c:int,a_code:u32,b_code:u32,c_code:u32)->u32 #export_c #effects(all) {
  if a!=128 || b!=64 || c!=128 || a_code!=10 || b_code!=10 || c_code!=2 {return 27;}
  return 0;
 }
@@ -264,7 +264,7 @@ CU_SHARED_LIMIT :: 32768; // bytes of threadgroup arrays per kernel: Apple GPUs 
  if nested {expected=33;} else if !kernel || !constant || lo!=0 || hi<32 || hi>1024 || hi%32!=0 {expected=32;}
  #assert CU_thread_loop(kernel,constant,lo,hi,nested)==expected;
 }
-CU_thread_loop :: (kernel:bool,constant:bool,lo:int,hi:int,nested:bool)->u32 #export_c {
+CU_thread_loop :: (kernel:bool,constant:bool,lo:int,hi:int,nested:bool)->u32 #export_c #effects(all) {
  if nested {return 33;}
  if !kernel || !constant || lo!=0 || hi<32 || hi%32!=0 || hi/32>CU_GROUP_WARPS {return 32;}
  return 0;
@@ -276,7 +276,7 @@ CU_thread_loop :: (kernel:bool,constant:bool,lo:int,hi:int,nested:bool)->u32 #ex
  if lane || mma || (other!=0 && other!=size) {expected=34;}
  #assert CU_group_size(size,other,lane,mma)==expected;
 }
-CU_group_size :: (size:int,other:int,lane:bool,mma:bool)->u32 #export_c {
+CU_group_size :: (size:int,other:int,lane:bool,mma:bool)->u32 #export_c #effects(all) {
  if lane || mma || (other!=0 && other!=size) {return 34;}
  return 0;
 }
@@ -288,7 +288,7 @@ CU_group_size :: (size:int,other:int,lane:bool,mma:bool)->u32 #export_c {
  if in_thread {expected=ifx own && !elsewhere then 1 else 2;}
  #assert CU_group_array(in_thread,own,elsewhere)==expected;
 }
-CU_group_array :: (in_thread:bool,own:bool,elsewhere:bool)->u32 #export_c {
+CU_group_array :: (in_thread:bool,own:bool,elsewhere:bool)->u32 #export_c #effects(all) {
  if !in_thread {return 0;}
  if own && !elsewhere {return 1;}
  return 2;
@@ -296,11 +296,11 @@ CU_group_array :: (in_thread:bool,own:bool,elsewhere:bool)->u32 #export_c {
 #forall "threadgroup arrays fit 32 KiB" bytes:0..<40000 {
  #assert CU_shared_bytes(bytes)==cast(u32)(ifx bytes>32768 then 35 else 0);
 }
-CU_shared_bytes :: (bytes:int)->u32 #export_c {if bytes>CU_SHARED_LIMIT {return 35;}return 0;}
+CU_shared_bytes :: (bytes:int)->u32 #export_c #effects(all) {if bytes>CU_SHARED_LIMIT {return 35;}return 0;}
 #forall "threadgroup arrays are declared at the top and only indexed" top:bool, indexed:bool {
  #assert CU_shared_use(top,indexed)==cast(u32)(ifx top && indexed then 0 else 36);
 }
-CU_shared_use :: (top:bool,indexed:bool)->u32 #export_c {if top && indexed {return 0;}return 36;}
+CU_shared_use :: (top:bool,indexed:bool)->u32 #export_c #effects(all) {if top && indexed {return 0;}return 36;}
 // An index thread*k + c + (multiples of T*k) is the thread's own: k >= 1,
 // c within [0, k) over its whole range, and every other term a nonnegative
 // multiple of T*k (stride). Distinct threads then never meet.
@@ -308,32 +308,32 @@ CU_shared_use :: (top:bool,indexed:bool)->u32 #export_c {if top && indexed {retu
  expected:=form && k>=1 && lo>=0 && hi<k && lo<=hi && stride;
  #assert CU_owned_index(form,k,lo,hi,stride)==expected;
 }
-CU_owned_index :: (form:bool,k:int,lo:int,hi:int,stride:bool)->bool #export_c {
+CU_owned_index :: (form:bool,k:int,lo:int,hi:int,stride:bool)->bool #export_c #effects(all) {
  return form && k>=1 && lo>=0 && lo<=hi && hi<k && stride;
 }
 #forall "a phase that writes a threadgroup array touches only owned elements" writes:bool, owned:bool {
  #assert CU_shared_access(writes,owned)==cast(u32)(ifx writes && !owned then 37 else 0);
 }
-CU_shared_access :: (writes:bool,owned:bool)->u32 #export_c {if writes && !owned {return 37;}return 0;}
+CU_shared_access :: (writes:bool,owned:bool)->u32 #export_c #effects(all) {if writes && !owned {return 37;}return 0;}
 #forall "threadgroup arrays are written in thread loops only" in_thread:bool {
  #assert CU_shared_store(in_thread)==cast(u32)(ifx in_thread then 0 else 38);
 }
-CU_shared_store :: (in_thread:bool)->u32 #export_c {if in_thread {return 0;}return 38;}
+CU_shared_store :: (in_thread:bool)->u32 #export_c #effects(all) {if in_thread {return 0;}return 38;}
 #forall "a thread loop writes its own locals and arrays only" outer:bool, array:bool {
  #assert CU_thread_assign(outer,array)==cast(u32)(ifx outer && !array then 39 else 0);
 }
-CU_thread_assign :: (outer:bool,array:bool)->u32 #export_c {if outer && !array {return 39;}return 0;}
+CU_thread_assign :: (outer:bool,array:bool)->u32 #export_c #effects(all) {if outer && !array {return 39;}return 0;}
 // Shared code runs in every thread of the group at once, so a store through
 // a view there (directly or in a procedure it calls) would race with itself;
 // thread loops and the matrix primitives write device memory instead.
 #forall "views are written in thread loops only" view:bool, in_thread:bool {
  #assert CU_group_store(view,in_thread)==cast(u32)(ifx view && !in_thread then 44 else 0);
 }
-CU_group_store :: (view:bool,in_thread:bool)->u32 #export_c {if view && !in_thread {return 44;}return 0;}
+CU_group_store :: (view:bool,in_thread:bool)->u32 #export_c #effects(all) {if view && !in_thread {return 44;}return 0;}
 #forall "break, continue and return may not leave a thread loop" direct:bool {
  #assert CU_thread_jump(direct)==cast(u32)(ifx direct then 40 else 0);
 }
-CU_thread_jump :: (direct:bool)->u32 #export_c {if direct {return 40;}return 0;}
+CU_thread_jump :: (direct:bool)->u32 #export_c #effects(all) {if direct {return 40;}return 0;}
 
 // Apple matrix primitives (lib/compute/apple.coax), Metal only, called in a
 // group kernel's shared code by every thread of the group. Kinds: 1
@@ -362,7 +362,7 @@ CU_thread_jump :: (direct:bool)->u32 #export_c {if direct {return 40;}return 0;}
  #assert CU_apple_primitive(2,true,true,128,2048,2048,0,true,false)==0 && CU_apple_primitive(2,true,true,128,2047,2048,0,true,false)==41;
  #assert CU_apple_primitive(2,true,true,128,2048,2049,0,true,false)==41 && CU_apple_primitive(3,true,true,64,0,0,0,false,false)==0;
 }
-CU_apple_primitive :: (kind:u32,metal:bool,shared_code:bool,threads:int,acc:int,a:int,b:int,a_tg:bool,b_tg:bool)->u32 #export_c {
+CU_apple_primitive :: (kind:u32,metal:bool,shared_code:bool,threads:int,acc:int,a:int,b:int,a_tg:bool,b_tg:bool)->u32 #export_c #effects(all) {
  if !metal {return 42;}
  if kind<1 || kind>3 || !shared_code {return 41;}
  if kind==1 && (threads!=128 || acc!=2048 || a!=2048 || b!=1024 || !a_tg || !b_tg) {return 41;}
@@ -377,7 +377,7 @@ CU_apple_primitive :: (kind:u32,metal:bool,shared_code:bool,threads:int,acc:int,
  if constant && (tm==16 || tm==32 || tm==64) && (tn==32 || tn==64 || tn==128) {expected=0;}
  #assert CU_apple_tile(tm,tn,constant)==expected;
 }
-CU_apple_tile :: (tm:int,tn:int,constant:bool)->u32 #export_c {
+CU_apple_tile :: (tm:int,tn:int,constant:bool)->u32 #export_c #effects(all) {
  if !constant {return 41;}
  if tm!=16 && tm!=32 && tm!=64 {return 41;}
  if tn!=32 && tn!=64 && tn!=128 {return 41;}
@@ -386,7 +386,7 @@ CU_apple_tile :: (tm:int,tn:int,constant:bool)->u32 #export_c {
 #forall "a matrix accumulator is used by Apple matrix primitives only" primitive:bool {
  #assert CU_accumulator_use(primitive)==cast(u32)(ifx primitive then 0 else 43);
 }
-CU_accumulator_use :: (primitive:bool)->u32 #export_c {if primitive {return 0;}return 43;}
+CU_accumulator_use :: (primitive:bool)->u32 #export_c #effects(all) {if primitive {return 0;}return 43;}
 
 // The Metal compute subset (`coax metal-compute`): the same admission as
 // CUDA, lowered to Metal Shading Language. Apple GPUs have no binary64, so an
@@ -399,7 +399,7 @@ CU_accumulator_use :: (primitive:bool)->u32 #export_c {if primitive {return 0;}r
 #test "the Metal fix names the float-float profile" {
  #assert MT_fix()=="coax metal-compute accepts what coax cuda accepts; f64 is a float-float pair, so its bit patterns, sin, cos, tan, pow and conversion to an integer are refused, and views point into device memory, never into a kernel's register arrays";
 }
-MT_fix :: ()->string #export_c {
+MT_fix :: ()->string #export_c #effects(all) {
  return "coax metal-compute accepts what coax cuda accepts; f64 is a float-float pair, so its bit patterns, sin, cos, tan, pow and conversion to an integer are refused, and views point into device memory, never into a kernel's register arrays";
 }
 #forall "Metal byte intrinsics: no binary64 bit patterns, otherwise as CUDA" code:0..<16 {
@@ -407,7 +407,7 @@ MT_fix :: ()->string #export_c {
  if code==3 || code==5 {expected=29;}
  #assert MT_byte_intrinsic(cast(u32)code)==expected;
 }
-MT_byte_intrinsic :: (code:u32)->u32 #export_c {
+MT_byte_intrinsic :: (code:u32)->u32 #export_c #effects(all) {
  if code==3 || code==5 {return 29;}
  return CU_byte_intrinsic(code);
 }
@@ -419,7 +419,7 @@ MT_byte_intrinsic :: (code:u32)->u32 #export_c {
  if wide && (code<4 || code>8) {expected=31;}
  #assert MT_math(cast(u32)code,wide)==expected;
 }
-MT_math :: (code:u32,wide:bool)->u32 #export_c {
+MT_math :: (code:u32,wide:bool)->u32 #export_c #effects(all) {
  if wide && (code<4 || code>8) {return 31;}
  return 0;
 }
@@ -429,7 +429,7 @@ MT_math :: (code:u32,wide:bool)->u32 #export_c {
  if from==3 && to>=4 && to<=11 {expected=31;}
  #assert MT_cast(cast(u32)from,cast(u32)to)==expected;
 }
-MT_cast :: (from:u32,to:u32)->u32 #export_c {
+MT_cast :: (from:u32,to:u32)->u32 #export_c #effects(all) {
  if from==3 && to>=4 && to<=11 {return 31;}
  return 0;
 }
@@ -438,7 +438,7 @@ MT_cast :: (from:u32,to:u32)->u32 #export_c {
 #forall "Metal views never point into registers" array:bool, primitive:bool {
  #assert MT_slice(array,primitive)==cast(u32)(ifx array && !primitive then 30 else 0);
 }
-MT_slice :: (array:bool,primitive:bool)->u32 #export_c {
+MT_slice :: (array:bool,primitive:bool)->u32 #export_c #effects(all) {
  if array && !primitive {return 30;}
  return 0;
 }

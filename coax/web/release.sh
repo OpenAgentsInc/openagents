@@ -90,6 +90,7 @@ take_lock "release $ref"
 git -C "$repo" fetch -q origin main
 full="$(git -C "$repo" rev-parse "$ref^{commit}")"; commit="${full:0:10}"
 passed="$(live)"
+passed_commit="${passed%% *}"
 if $prod && [[ -n "$passed" ]] && git -C "$repo" merge-base --is-ancestor "$full" "${passed%% *}" 2>/dev/null; then
   echo "release $commit: already live (production runs ${passed%% *}); nothing to do"
   exit 0
@@ -102,6 +103,12 @@ t=$(now); compiler "$tree" || exit 1; lap compiler "$t"
 
 # Reports: they never stop a release.
 reports="$(mktemp -d)"
+# Check the exact commit serving production. The Coax gate compares retained
+# manifests and remeasures production to suppress only pre-existing faults.
+t=$(now)
+(cd "$tree" && COAX="$tree/coax/bin/coax" coax/web/tool.sh compat-gate "$tree/coax/bin/coax" "${passed_commit:-$full}" "$reports/compat")
+lap compat "$t"
+
 compiler_env COAX_RELEASE_COMPILER="$tree/coax/bin/coax" "$tree/scripts/coax-release.sh" --check --binary "$tree/coax/bin/coax" > "$reports/metadata" 2>&1 ||
   echo "  report     the release metadata check fails (not stopping): $(tail -1 "$reports/metadata")"
 (cd "$tree" && bounded 300 coax/web/tool.sh tools-check) > "$reports/tools" 2>&1 ||
@@ -196,6 +203,7 @@ fi
 lap production "$t"
 echo "$full $stamp staged fast" | gcloud storage cp - "gs://$prod_bucket/releases/$stamp/PASSED" --quiet > /dev/null ||
   echo "release $commit: couldn't write releases/$stamp/PASSED" >&2
+gcloud storage cp "$reports/compat/"*.surface "gs://$prod_bucket/releases/$stamp/compat/" --quiet > /dev/null
 for r in metadata tools visuals; do gcloud storage cp "$reports/$r" "gs://$prod_bucket/releases/$stamp/${r^^}" --quiet > /dev/null 2>&1 || true; done
 echo "release $commit: live on openagents.com in $(secs $(( $(now) - start ))) s (rollback: coax/web/rollback.sh $stamp)"
 drop_lock

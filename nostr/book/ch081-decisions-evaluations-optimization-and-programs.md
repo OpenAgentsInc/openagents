@@ -126,10 +126,10 @@ keeps a 255-option choice linear to read.
 <!-- source: coax/lib/nostr/dec/answer.coax helpers -->
 ```jai
 // Within DEC_SLACK of b.
-dec_near :: (a:f64,b:f64)->bool {return a>=b-DEC_SLACK && a<=b+DEC_SLACK;}
-dec_unit :: (p:JsonF64)->bool {return p.ok && p.value>=0.0 && p.value<=1.0;}
+dec_near :: (a:f64,b:f64)->bool #effects(all) {return a>=b-DEC_SLACK && a<=b+DEC_SLACK;}
+dec_unit :: (p:JsonF64)->bool #effects(all) {return p.ok && p.value>=0.0 && p.value<=1.0;}
 // a before b in byte order.
-dec_less :: (a:string,b:string)->bool {
+dec_less :: (a:string,b:string)->bool #effects(all) {
   for i:0..<a.count {
     if i==b.count {return false;}
     if a[i]<b[i] {return true;}
@@ -139,7 +139,7 @@ dec_less :: (a:string,b:string)->bool {
 }
 // Whether v nests at most most levels: a string or null 0, each object or
 // array one more.
-dec_within :: (text:string,v:ClSlice,most:int)->bool {
+dec_within :: (text:string,v:ClSlice,most:int)->bool #effects(all) {
   j:[1]Json;cl_parse(j[..],cl_json(text,v));
   while json_next(j[..])>JSON_END {
     if j[0].depth>most {return false;}
@@ -147,17 +147,17 @@ dec_within :: (text:string,v:ClSlice,most:int)->bool {
   return true;
 }
 // An EntryType within its depth: a string, an object, an array or null.
-dec_entry :: (text:string,v:ClSlice)->bool {
+dec_entry :: (text:string,v:ClSlice)->bool #effects(all) {
   if v.tok!=JSON_STRING && v.tok!=JSON_OBJECT && v.tok!=JSON_ARRAY && v.tok!=JSON_NULL {return false;}
   return dec_within(text,v,DEC_ENTRY_DEPTH);
 }
 // Member i's key of the object v, decoded into buf (borrowed when plain).
-dec_key :: (text:string,v:ClSlice,i:int,buf:[]u8)->string {
+dec_key :: (text:string,v:ClSlice,i:int,buf:[]u8)->string #effects(all) {
   inner:=text[v.from..<v.to];ar:[1]ClArena;ar[0].buf=buf;
   return cl_text(ar[..],inner,cl_key(inner,i));
 }
-dec_count :: (text:string,v:ClSlice)->int {return cl_count(text[v.from..<v.to]);}
-dec_kind :: (text:string,q:ClSlice)->int {
+dec_count :: (text:string,v:ClSlice)->int #effects(all) {return cl_count(text[v.from..<v.to]);}
+dec_kind :: (text:string,q:ClSlice)->int #effects(all) {
   t:=cl_member(text,q,"type");
   if cl_eq(text,t,"noul") {return DEC_NOUL;}
   if cl_eq(text,t,"choice") {return DEC_CHOICE_KIND;}
@@ -166,7 +166,7 @@ dec_kind :: (text:string,q:ClSlice)->int {
 }
 // Whether the object v's keys, at most DEC_MAX_OPTIONS of them, are
 // distinct and each 1 to most bytes: one pass, the keys decoded side by side.
-dec_keys :: (text:string,v:ClSlice,most:int)->bool {
+dec_keys :: (text:string,v:ClSlice,most:int)->bool #effects(all) {
   inner:=text[v.from..<v.to];j:[1]Json;cl_parse(j[..],inner);
   arena:[40000]u8;ar:[1]ClArena;ar[0].buf=arena[..];
   keys:[DEC_MAX_OPTIONS]string;n:=0;
@@ -188,7 +188,7 @@ body. A refusal names the question it found at fault.
 <!-- source: coax/lib/nostr/dec/answer.coax question -->
 ```jai
 // What is wrong with question q, or DEC_OK.
-dec_question :: (text:string,q:ClSlice)->u32 {
+dec_question :: (text:string,q:ClSlice)->u32 #effects(all) {
   if q.to-q.from>DEC_QUESTION_BYTES {return DEC_INVALID;}
   kind:=dec_kind(text,q);
   if kind==0 {return DEC_INVALID;}
@@ -225,7 +225,7 @@ dec_question :: (text:string,q:ClSlice)->u32 {
 
 // What is wrong with the decision body, or DEC_OK; question is the index
 // of the question at fault.
-dec_body :: (text:string)->DecCheck {
+dec_body :: (text:string)->DecCheck #effects(all) {
   root:=cl_root(text);
   if !root.ok || root.tok!=JSON_OBJECT {return dec_at(DEC_MALFORMED,-1);}
   model:=cl_member(text,root,"model");
@@ -266,7 +266,7 @@ probability, and its legend maps the same indexes.
 <!-- source: coax/lib/nostr/dec/answer.coax answer -->
 ```jai
 // What is wrong with answer a (in at) to question q (in qt), or DEC_OK.
-dec_one :: (qt:string,q:ClSlice,at:string,a:ClSlice)->u32 {
+dec_one :: (qt:string,q:ClSlice,at:string,a:ClSlice)->u32 #effects(all) {
   kind:=dec_kind(qt,q);
   type:=cl_member(at,a,"type");
   if kind==DEC_NOUL {
@@ -309,7 +309,7 @@ dec_one :: (qt:string,q:ClSlice,at:string,a:ClSlice)->u32 {
 
 // What is wrong with response as the answer to body, or DEC_OK. A body
 // that dec_body refuses refuses here with the same code.
-dec_answer :: (body:string,response:string)->DecCheck {
+dec_answer :: (body:string,response:string)->DecCheck #effects(all) {
   check:=dec_body(body);
   if check.code!=DEC_OK {return check;}
   root:=cl_root(response);
@@ -400,26 +400,26 @@ EA_VERDICT :: cast(u32)8;      // an admit citing a report whose verdict is not 
 <!-- source: coax/lib/nostr/eval/report.coax helpers -->
 ```jai
 // "sha256:" and 64 lowercase hex digits.
-ev_digest :: (s:string)->bool {
+ev_digest :: (s:string)->bool #effects(all) {
   if s.count!=71 || s[0..<7]!="sha256:" {return false;}
   for c:s[7..<71] {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
   return true;
 }
-ev_in :: (s:string,set:[]string)->bool {for x:set {if x==s {return true;}}return false;}
+ev_in :: (s:string,set:[]string)->bool #effects(all) {for x:set {if x==s {return true;}}return false;}
 // An ArtifactRef: an object with a Digest and a nonnegative integer size.
-ev_ref :: (text:string,v:ClSlice)->bool {
+ev_ref :: (text:string,v:ClSlice)->bool #effects(all) {
   if v.tok!=JSON_OBJECT {return false;}
   d:=cl_member(text,v,"digest");size:=cl_int_of(text,cl_member(text,v,"size"));
   return d.tok==JSON_STRING && ev_digest(text[d.from..<d.to]) && size.ok && size.value>=0;
 }
-ev_str :: (text:string,v:ClSlice)->string {if !v.ok || v.tok!=JSON_STRING {return "";}return text[v.from..<v.to];}
-ev_count :: (text:string,arm:ClSlice,name:string)->int {
+ev_str :: (text:string,v:ClSlice)->string #effects(all) {if !v.ok || v.tok!=JSON_STRING {return "";}return text[v.from..<v.to];}
+ev_count :: (text:string,arm:ClSlice,name:string)->int #effects(all) {
   n:=cl_int_of(text,cl_member(text,arm,name));
   if !n.ok || n.value<0 {return -1;}
   return n.value;
 }
 // An arm's counts: each a nonnegative integer, the five outcomes summing to attempted.
-ev_arm :: (text:string,arm:ClSlice)->bool {
+ev_arm :: (text:string,arm:ClSlice)->bool #effects(all) {
   if arm.tok!=JSON_OBJECT {return false;}
   sum:=0;
   for name:[5]string.["completed","refused","failed","cancelled","unknown"] {
@@ -435,7 +435,7 @@ ev_arm :: (text:string,arm:ClSlice)->bool {
 ```jai
 // What this reader may show of the report: held are the digests of the
 // artifacts it holds, trusted the evaluators it has chosen.
-eval_report :: (text:string,held:[]string,trusted:[]string)->EvalView {
+eval_report :: (text:string,held:[]string,trusted:[]string)->EvalView #effects(all) {
   r:EvalView;r.code=EV_MALFORMED;
   root:=cl_root(text);
   if !root.ok || root.tok!=JSON_OBJECT {return r;}
@@ -502,7 +502,7 @@ EvalSeen :: struct {digest:string;view:EvalView;}
 
 // Whether the admission stands at now, given the reports this reader has
 // read and the operators it trusts to admit.
-eval_admit :: (text:string,seen:[]EvalSeen,operators:[]string,now:int)->u32 {
+eval_admit :: (text:string,seen:[]EvalSeen,operators:[]string,now:int)->u32 #effects(all) {
   root:=cl_root(text);
   if root.tok!=JSON_OBJECT || !cl_eq(text,cl_member(text,root,"v"),"openagents.eval-admission.v1") {return EA_MALFORMED;}
   subject:=ev_str(text,cl_member(text,cl_member(text,root,"subject"),"id"));
@@ -568,12 +568,12 @@ OptPlan :: struct {search:[]string;selection:[]string;confirmation:[]string;excl
 
 <!-- source: coax/lib/nostr/opt/plan.coax plan -->
 ```jai
-op_in :: (s:string,set:[]string)->bool {for x:set {if x==s {return true;}}return false;}
+op_in :: (s:string,set:[]string)->bool #effects(all) {for x:set {if x==s {return true;}}return false;}
 // Whether every ID of a is in b.
-op_subset :: (a:[]string,b:[]string)->bool {for x:a {if !op_in(x,b) {return false;}}return true;}
+op_subset :: (a:[]string,b:[]string)->bool #effects(all) {for x:a {if !op_in(x,b) {return false;}}return true;}
 // OP_DUPLICATE when an ID of a repeats in a or in any earlier array, else
 // OP_UNKNOWN when one is not a case, else OP_OK.
-op_fresh :: (a:[]string,earlier:[][]string,cases:[]string)->u32 {
+op_fresh :: (a:[]string,earlier:[][]string,cases:[]string)->u32 #effects(all) {
   for i:0..<a.count {
     if op_in(a[i],a[0..<i]) {return OP_DUPLICATE;}
     for e:earlier {if op_in(a[i],e) {return OP_DUPLICATE;}}
@@ -582,7 +582,7 @@ op_fresh :: (a:[]string,earlier:[][]string,cases:[]string)->u32 {
   return OP_OK;
 }
 
-opt_partition :: (p:OptPartition,cases:[]string)->u32 {
+opt_partition :: (p:OptPartition,cases:[]string)->u32 #effects(all) {
   arrays:=[3][]string.[p.development,p.held_out,p.excluded];
   for k:0..<3 {
     code:=op_fresh(arrays[k],arrays[0..<k],cases);
@@ -591,7 +591,7 @@ opt_partition :: (p:OptPartition,cases:[]string)->u32 {
   return OP_OK;
 }
 
-opt_plan :: (plan:OptPlan,p:OptPartition,cases:[]string)->u32 {
+opt_plan :: (plan:OptPlan,p:OptPartition,cases:[]string)->u32 #effects(all) {
   code:=opt_partition(p,cases);
   if code!=OP_OK {return code;}
   arrays:=[4][]string.[plan.search,plan.selection,plan.confirmation,plan.excluded];
@@ -609,7 +609,7 @@ opt_plan :: (plan:OptPlan,p:OptPartition,cases:[]string)->u32 {
   return OP_OK;
 }
 
-opt_trial :: (plan:OptPlan,phase:string,case_id:string)->u32 {
+opt_trial :: (plan:OptPlan,phase:string,case_id:string)->u32 #effects(all) {
   if phase=="search" && op_in(case_id,plan.search) {return OP_OK;}
   if phase=="selection" && op_in(case_id,plan.selection) {return OP_OK;}
   if phase=="confirmation" && op_in(case_id,plan.confirmation) {return OP_OK;}

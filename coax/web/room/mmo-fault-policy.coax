@@ -12,12 +12,12 @@ MQ_SLICES::[4]string.["durable","overlap","startup","isolation"];
 #forall "MMO qualification never converts a timeout, lost output or failed process into a pass" started:-1..<2,status:-1..<2,bits:0..<8 {
   #assert mq_pass(started,status,(bits&1)!=0,(bits&2)!=0,(bits&4)!=0)==(started==0&&status==0&&bits==4);
 }
-mq_slice::(name:string)->int{for name_at,i:MQ_SLICES{if name==name_at{return i;}}return -1;}
-mq_timeout::(kind:int)->int{
+mq_slice::(name:string)->int #effects(all) {for name_at,i:MQ_SLICES{if name==name_at{return i;}}return -1;}
+mq_timeout::(kind:int)->int #effects(all) {
   if kind==0{return 840000;}if kind==1{return 600000;}if kind==2{return 120000;}if kind==3{return 180000;}return 0;
 }
-mq_marker::(kind:int)->string{
+mq_marker::(kind:int)->string #effects(all) {
   if kind==0{return "api: checkpoint2 checks passed";}if kind==1{return "api: checks passed";}
   if kind==2{return "startup native:";}if kind==3{return "stress:";}return "";
 }
-mq_pass::(started:int,status:int,timed:bool,cut:bool,complete:bool)->bool{return started==0&&status==0&&!timed&&!cut&&complete;}
+mq_pass::(started:int,status:int,timed:bool,cut:bool,complete:bool)->bool #effects(all) {return started==0&&status==0&&!timed&&!cut&&complete;}

@@ -660,7 +660,7 @@ fd_round :: (v:[3]f64,r:f64)->FdDistance {
     if l>0 {out.grad=fd_div(v,l);}
     return out;
 }
-fd_shape_distance :: (s:FdShape,p:[3]f64)->FdDistance #export_c {
+fd_shape_distance :: (s:FdShape,p:[3]f64)->FdDistance #export_c #effects(all) {
     out:FdDistance;out.status=fd_shape_check(s);
     if out.status==FdStatus.ok && !fd_point(p) {out.status=FdStatus.number;}
     if out.status!=FdStatus.ok {return out;}
@@ -749,7 +749,7 @@ fd_flat :: (a:[3]f64,b:[3]f64,c:[3]f64)->bool {
     e1:=fd_sub(b,a);e2:=fd_sub(c,a);n:=fd_cross(e1,e2);
     return fd_dot(n,n)<=FD_FLAT*fd_dot(e1,e1)*fd_dot(e2,e2);
 }
-fd_mesh_admit :: (m:FdMesh)->FdChecked #export_c {
+fd_mesh_admit :: (m:FdMesh)->FdChecked #export_c #effects(all) {
     out:FdChecked;nv:=m.vertices.count/3;nt:=m.triangles.count/3;
     if nv==0 || nt==0 || m.vertices.count%3!=0 || m.triangles.count%3!=0 {return out;}
     if nv>FD_VERTICES_MAX || nt>FD_TRIANGLES_MAX {out.status=FdStatus.limit;return out;}
@@ -791,7 +791,7 @@ fd_winding :: (m:FdChecked,p:[3]f64)->f64 {
 // book:end winding
 
 // book:begin distance
-fd_mesh_distance :: (m:FdChecked,p:[3]f64)->FdDistance #export_c {
+fd_mesh_distance :: (m:FdChecked,p:[3]f64)->FdDistance #export_c #effects(all) {
     out:FdDistance;out.status=m.status;
     if out.status==FdStatus.ok && !fd_point(p) {out.status=FdStatus.number;}
     if out.status!=FdStatus.ok {return out;}

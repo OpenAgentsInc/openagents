@@ -6,7 +6,7 @@ EgWorldEffect::struct{
 }
 EgWorldEffects::struct{active:[EFFECT_TOTAL]EgWorldEffect;refused:int;landed:int;}
 eg_effects_fresh::(s:[]Everglade){for q:0..<EFFECT_TOTAL{s[0].sp.effects[0].active[q].on=false;}}
-everglade_room_effect_free::(s:[]Everglade,source:int)->int #export_c{
+everglade_room_effect_free::(s:[]Everglade,source:int)->int #export_c #effects(all) {
   span:=effect_span(source);if !span.ok{return 0;}n:=0;
   for q:span.first..<span.first+span.count{if !s[0].sp.effects[0].active[q].on{n+=1;}}
   return n;
@@ -30,7 +30,7 @@ everglade_room_effect_free::(s:[]Everglade,source:int)->int #export_c{
   eg_effects_step(g[..],2);#assert g[0].sp.effects[0].landed==1+SP_METEORS;
 }
 // Additive private SDK: false leaves the producer's accepted effect queued.
-everglade_room_strike_try::(s:[]Everglade,source:int,by:int,slot:int,fx:f32,fy:f32,fz:f32,ax:f32,ay:f32,az:f32,seed:int)->bool #export_c{
+everglade_room_strike_try::(s:[]Everglade,source:int,by:int,slot:int,fx:f32,fy:f32,fz:f32,ax:f32,ay:f32,az:f32,seed:int)->bool #export_c #effects(all) {
   if !sp_on(s){return false;}
   if !effect_physical(slot){
     // Editor melee is immediate; other nonphysical looks have no town effect.

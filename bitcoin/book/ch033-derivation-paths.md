@@ -93,7 +93,7 @@ refuses `H`, as BIP-380 does.
 // must be below 2^31 either way; a hardened step adds 2^31 to it. Returns
 // the BIP-32 index or a refusal. Leading zeros are allowed, as Bitcoin
 // Core allows them.
-path_step_vartime :: (step: string) -> int #export_c {
+path_step_vartime :: (step: string) -> int #export_c #effects(all) {
   if step.count == 0 { return DP_EMPTY_STEP; }
   n := step.count;
   last := step[n - 1];
@@ -122,7 +122,7 @@ allowed, because Bitcoin Core allows them; `m/007` is `m/7`.
 // A path string, "m" then zero to 255 steps each after a "/", into
 // indexes. Returns the number of steps or a refusal, and writes indexes
 // only on success.
-path_parse_vartime :: (text: string, indexes: [] int) -> int #export_c {
+path_parse_vartime :: (text: string, indexes: [] int) -> int #export_c #effects(all) {
   if text.count == 0 || text[0] != 'm' { return DP_NO_ROOT; }
   if text.count == 1 { return 0; }
   if text[1] != '/' { return DP_NO_ROOT; }
@@ -152,7 +152,7 @@ Writing a path back is the reverse. The caller chooses the mark:
 ```jai
 // A list of indexes as a path string, with marker ('h' or '\'') after each
 // hardened step. Returns the text's length or a refusal.
-path_format_vartime :: (indexes: [] int, marker: u8, out: [] u8) -> int #export_c {
+path_format_vartime :: (indexes: [] int, marker: u8, out: [] u8) -> int #export_c #effects(all) {
   if marker != 'h' && marker != '\'' { return DP_BAD_STEP; }
   if indexes.count > DP_MAX_DEPTH { return DP_TOO_DEEP; }
   text: [DP_MAX_DEPTH * 12 + 1] u8;   // "/", 10 digits and a marker per step
@@ -231,7 +231,7 @@ Each purpose names the output type its keys pay:
 // The output type a BIP-43 purpose gives: BIP-44 is P2PKH, BIP-49 is
 // P2SH-P2WPKH (a P2SH output), BIP-84 is P2WPKH and BIP-86 is key-path
 // P2TR. Returns chapter 29's AD_* kind or DP_BAD_PURPOSE.
-path_purpose_kind :: (purpose: int) -> int #export_c {
+path_purpose_kind :: (purpose: int) -> int #export_c #effects(all) {
   if purpose == 44 { return AD_P2PKH; }
   if purpose == 49 { return AD_P2SH; }
   if purpose == 84 { return AD_P2WPKH; }
@@ -241,7 +241,7 @@ path_purpose_kind :: (purpose: int) -> int #export_c {
 // m / purpose' / coin_type' / account' / change / address_index into
 // indexes[0..<5]. The coin type is 0 on mainnet and 1 on every test
 // network (SLIP-44). Change is 0 for receiving and 1 for change.
-path_standard_vartime :: (purpose: int, network: int, account: int, change: int, index: int, indexes: [] int) -> int #export_c {
+path_standard_vartime :: (purpose: int, network: int, account: int, change: int, index: int, indexes: [] int) -> int #export_c #effects(all) {
   if path_purpose_kind(purpose) < 0 { return DP_BAD_PURPOSE; }
   if network < SW_MAINNET || network > SW_REGTEST { return DP_BAD_NETWORK; }
   if account < 0 || account >= BIP32_HARDENED || change < 0 || change > 1 { return DP_BAD_FIELD; }
@@ -264,7 +264,7 @@ dropped, as BIP-340 keys do.
 ```jai
 // The scriptPubKey a purpose gives a 33-byte compressed public key. BIP-86
 // uses the key's x coordinate as the Taproot internal key.
-path_script_vartime :: (purpose: int, key: [] u8, out: [] u8) -> int #export_c {
+path_script_vartime :: (purpose: int, key: [] u8, out: [] u8) -> int #export_c #effects(all) {
   kind := path_purpose_kind(purpose);
   if kind < 0 { return kind; }
   if key.count != SE_COMPRESSED { return DP_ADDRESS + AD_BAD_KEY; }
@@ -307,7 +307,7 @@ private or public:
 // The node at a path string below a seed's master, into node: an xprv, or
 // a tprv for the test networks. Returns 78 or a refusal, and writes node
 // only on success. work (BIP32_WORK_BYTES) comes back as zeros.
-path_derive_ct :: (seed: [] u8, testnet: bool, text: string, work: [] u8, node: [] u8) -> int #export_c {
+path_derive_ct :: (seed: [] u8, testnet: bool, text: string, work: [] u8, node: [] u8) -> int #export_c #effects(all) {
   indexes: [DP_MAX_DEPTH] int;
   n := path_parse_vartime(text, indexes[..]);
   if n < 0 { return n; }
@@ -323,7 +323,7 @@ path_derive_ct :: (seed: [] u8, testnet: bool, text: string, work: [] u8, node: 
 // The account node may be private or public: a watch-only wallet holds
 // only the account's xpub and makes the same scripts. Both steps are
 // normal, so CKDpub can take them. work comes back as zeros.
-path_account_script_ct :: (purpose: int, account: [] u8, change: int, index: int, work: [] u8, out: [] u8) -> int #export_c {
+path_account_script_ct :: (purpose: int, account: [] u8, change: int, index: int, work: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if path_purpose_kind(purpose) < 0 { return DP_BAD_PURPOSE; }
   if change < 0 || change > 1 || index < 0 || index >= BIP32_HARDENED { return DP_BAD_FIELD; }
   if account.count != BIP32_NODE_BYTES { return DP_BIP32 + BIP32_BAD_SIZE; }

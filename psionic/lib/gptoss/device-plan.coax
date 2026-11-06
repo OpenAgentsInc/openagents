@@ -24,7 +24,7 @@ GDWriter :: struct {result:GDProgram;plan:GDPlan;ops:[]GDOp;args:[]GDArg;}
     s.capacity=4097;#assert gd_plan(s,pins[..],17179869184,17179869184).status==GStatus.shape;
     s=g_original_shape(1,256);large:=G120_ARTIFACTS;#assert gd_plan(s,large[..],17179869184,17179869184).status==GStatus.budget;
 }
-gd_plan :: (s:GShape,pins:[]GArtifact,free_bytes:int,budget:int)->GDPlan #export_c {
+gd_plan :: (s:GShape,pins:[]GArtifact,free_bytes:int,budget:int)->GDPlan #export_c #effects(all) {
     if !g_shape(s) || s.experts%4!=0 || s.capacity>4096 || pins.count<1 || pins.count>16 {return GDPlan.{status=GStatus.shape};}
     // Every tensor-relative element address used by the tiled kernels fits u32.
     if s.vocab*s.width>4294967295 || s.experts*2*s.hidden*(s.width/32)*2>4294967295 || s.experts*s.width*(s.hidden/32)*2>4294967295 {return GDPlan.{status=GStatus.shape};}
@@ -42,23 +42,23 @@ gd_plan :: (s:GShape,pins:[]GArtifact,free_bytes:int,budget:int)->GDPlan #export
     for i:0..<GD_BUFFERS {if p.counts[i]>4294967295 {return GDPlan.{status=GStatus.capacity};}p.workspace+=p.counts[i]*p.width[i];}p.total=p.weights+p.workspace+GD_RESERVE;
     if budget<p.total || free_bytes<p.total {return GDPlan.{status=GStatus.budget};}return p;
 }
-gd_kernel_name :: (kind:int)->string #export_c {if kind<0 || kind>=GD_KINDS {return "";}return GD_NAMES[kind];}
-gd_all :: (p:GDPlan,slot:int)->GDRef {return GDRef.{buffer=16+slot,count=p.counts[slot],elem=p.width[slot]};}
-gd_slice :: (p:GDPlan,slot:int,begin:int,count:int)->GDRef {return GDRef.{buffer=16+slot,offset=begin*p.width[slot],count=count,elem=p.width[slot]};}
-gd_weight :: (params:[]GDParam,index:int,elem:int)->GDRef {p:=params[index];return GDRef.{buffer=0,offset=p.device,count=p.bytes/elem,elem=elem};}
-gd_ref_fits :: (p:GDPlan,r:GDRef)->bool {
+gd_kernel_name :: (kind:int)->string #export_c #effects(all) {if kind<0 || kind>=GD_KINDS {return "";}return GD_NAMES[kind];}
+gd_all :: (p:GDPlan,slot:int)->GDRef #effects(all) {return GDRef.{buffer=16+slot,count=p.counts[slot],elem=p.width[slot]};}
+gd_slice :: (p:GDPlan,slot:int,begin:int,count:int)->GDRef #effects(all) {return GDRef.{buffer=16+slot,offset=begin*p.width[slot],count=count,elem=p.width[slot]};}
+gd_weight :: (params:[]GDParam,index:int,elem:int)->GDRef #effects(all) {p:=params[index];return GDRef.{buffer=0,offset=p.device,count=p.bytes/elem,elem=elem};}
+gd_ref_fits :: (p:GDPlan,r:GDRef)->bool #effects(all) {
     if r.buffer<0 || r.buffer>=16+GD_BUFFERS || r.offset<0 || r.count<0 || (r.elem!=1 && r.elem!=2 && r.elem!=4 && r.elem!=8) {return false;}
     bytes:=0;if r.buffer<16 {bytes=p.upload[r.buffer];}else {i:=r.buffer-16;bytes=p.counts[i]*p.width[i];}
     return r.offset%r.elem==0 && r.offset<=bytes && r.count<=(bytes-r.offset)/r.elem;
 }
-gd_params :: (profile:GProfile,out:[]GDParam)->GResult #export_c {
+gd_params :: (profile:GProfile,out:[]GDParam)->GResult #export_c #effects(all) {
     if profile.status!=GStatus.ok {return GResult.{status=profile.status};}s:=profile.shape;n:=3+15*s.layers;
     if out.count<n {return GResult.{status=GStatus.capacity};}cursor:=0;names:=[3]string.["embedding.weight","norm.scale","unembedding.weight"];
     for i:0..<3 {index:=g_spec_find(profile.specs,names[i]);if index<0 {return GResult.{status=GStatus.weights};}x:=profile.specs[index];cursor=(cursor+7)/8*8;out[i]=GDParam.{file=x.file,begin=x.begin,bytes=x.end-x.begin,device=cursor};cursor+=x.end-x.begin;}
     for l:0..<s.layers {for slot:0..<15 {text:[128]u8;count:=g_tensor_name(l,slot,text[..]);index:=g_spec_find(profile.specs,cast(string)text[0..<count]);if index<0 {return GResult.{status=GStatus.weights};}x:=profile.specs[index];cursor=(cursor+7)/8*8;out[3+15*l+slot]=GDParam.{file=x.file,begin=x.begin,bytes=x.end-x.begin,device=cursor};cursor+=x.end-x.begin;}}
     return GResult.{written=n,bytes=cursor};
 }
-gd_emit :: (w:GDWriter,kind:int,items:int,ni:int,nv:int,ints:GDScalars,views:GDViews)->GDWriter {
+gd_emit :: (w:GDWriter,kind:int,items:int,ni:int,nv:int,ints:GDScalars,views:GDViews)->GDWriter #effects(all) {
     result:=w;if result.result.status!=GStatus.ok {return result;}
     if kind<0 || kind>=GD_KINDS || items<1 || items>4294967295 || ni<0 || ni>8 || nv<0 || nv>16 {result.result.status=GStatus.shape;return result;}
     if result.result.ops>=w.ops.count || ni+nv>w.args.count-result.result.args {result.result.status=GStatus.capacity;return result;}
@@ -67,22 +67,22 @@ gd_emit :: (w:GDWriter,kind:int,items:int,ni:int,nv:int,ints:GDScalars,views:GDV
     first:=result.result.args;for i:0..<ni {w.args[first+i]=GDArg.{value=scalars[i]};}for i:0..<nv {w.args[first+ni+i]=GDArg.{view=true,ref=refs[i]};}
     w.ops[result.result.ops]=GDOp.{kind=kind,items=items,first=first,count=ni+nv,block=gd_block(kind)};result.result.ops+=1;result.result.args+=ni+nv;return result;
 }
-gd_flags :: (w:GDWriter,count:int)->GDRef {return gd_slice(w.plan,22,w.result.flags,count);}
-gd_norm :: (w:GDWriter,width:int,scale:GDRef,x:GDRef,out:GDRef)->GDWriter {
+gd_flags :: (w:GDWriter,count:int)->GDRef #effects(all) {return gd_slice(w.plan,22,w.result.flags,count);}
+gd_norm :: (w:GDWriter,width:int,scale:GDRef,x:GDRef,out:GDRef)->GDWriter #effects(all) {
     p:=w.plan;r:=gd_emit(w,3,64,1,2,GDScalars.{a=64},GDViews.{a=x,b=gd_all(p,10)});
     r=gd_emit(r,4,width,1,5,GDScalars.{a=width},GDViews.{a=gd_all(p,10),b=scale,c=x,d=out,e=gd_flags(r,width)});r.result.flags+=width;return r;
 }
-gd_bf :: (w:GDWriter,rows:int,cols:int,weight:GDRef,bias:GDRef,x:GDRef,out:GDRef)->GDWriter {
+gd_bf :: (w:GDWriter,rows:int,cols:int,weight:GDRef,bias:GDRef,x:GDRef,out:GDRef)->GDWriter #effects(all) {
     p:=w.plan;r:=gd_emit(w,5,rows*16,3,3,GDScalars.{a=rows,b=cols,c=16},GDViews.{a=weight,b=x,c=gd_all(p,9)});
     r=gd_emit(r,6,rows,2,4,GDScalars.{a=rows,b=16},GDViews.{a=gd_all(p,9),b=bias,c=out,d=gd_flags(r,rows)});r.result.flags+=rows;return r;
 }
-gd_mx :: (w:GDWriter,rows:int,cols:int,selected:int,stride:int,weight:GDRef,scale:GDRef,bias:GDRef,ids:GDRef,x:GDRef,out:GDRef)->GDWriter {
+gd_mx :: (w:GDWriter,rows:int,cols:int,selected:int,stride:int,weight:GDRef,scale:GDRef,bias:GDRef,ids:GDRef,x:GDRef,out:GDRef)->GDWriter #effects(all) {
     p:=w.plan;r:=gd_emit(w,7,selected*rows*16,4,5,GDScalars.{a=rows,b=cols,c=16,d=stride},GDViews.{a=weight,b=scale,c=ids,d=x,e=gd_all(p,9)});
     r=gd_emit(r,8,selected*rows,2,5,GDScalars.{a=rows,b=16},GDViews.{a=ids,b=gd_all(p,9),c=bias,d=out,e=gd_flags(r,selected*rows)});r.result.flags+=selected*rows;return r;
 }
 // The program is scratch until its returned status succeeds. Launches run on a
 // single ordered stream; no host reads are needed between these operations.
-gd_program :: (s:GShape,p:GDPlan,params:[]GDParam,position:int,token:int,choose:bool,limit:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+gd_program :: (s:GShape,p:GDPlan,params:[]GDParam,position:int,token:int,choose:bool,limit:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c #effects(all) {
     if p.status!=GStatus.ok || !g_shape(s) || s.capacity>4096 {return GDProgram.{status=GStatus.shape};}
     if position<0 || position>=s.capacity || token< -1 || token>=s.vocab || limit<1 || limit>s.capacity {return GDProgram.{status=GStatus.state};}
     if params.count!=3+15*s.layers || ops.count<p.max_ops || args.count<p.max_args {return GDProgram.{status=GStatus.capacity};}
@@ -133,18 +133,18 @@ gd_program :: (s:GShape,p:GDPlan,params:[]GDParam,position:int,token:int,choose:
 }
 // Called at admission, never per token. Coefficients keep chapter 62's exact
 // authored YaRN construction while every application of them runs on device.
-gd_rope :: (capacity:int,out:[]f32)->GResult #export_c {
+gd_rope :: (capacity:int,out:[]f32)->GResult #export_c #effects(all) {
     if capacity<1 || capacity>4096 {return GResult.{status=GStatus.shape};}if out.count<capacity*64 {return GResult.{status=GStatus.capacity};}
     first:=0;for batch:0..<(capacity+127)/128 {count:=gs_window(capacity-first,128);r:=go_yarn(first,count,out[first*64..<(first+count)*64]);if r.status!=GoStatus.ok {return GResult.{status=GStatus.arithmetic};}first+=count;}return GResult.{written=capacity*64};
 }
 // The kernels every session loads from its module. Kinds 45 to 47, the
 // tensor-core expert products, come from a second module that a session
 // loads only when it turns them on (gd_with_mma).
-gd_kernel_count :: ()->int #export_c {return 45;}
+gd_kernel_count :: ()->int #export_c #effects(all) {return 45;}
 GD_KINDS :: 48;
-gd_kinds :: ()->int #export_c {return GD_KINDS;}
+gd_kinds :: ()->int #export_c #effects(all) {return GD_KINDS;}
 // gk_mma_part is a warp kernel: one item is one 32-lane warp.
-gd_warp :: (kind:int)->bool #export_c {return kind==46;}
+gd_warp :: (kind:int)->bool #export_c #effects(all) {return kind==46;}
 #test "device coefficient admission covers multiple bounded rotary batches" {
     out:[8257]f32;one:[64]f32;out[8256]=-7;
     r:=gd_rope(129,out[..]);s:=go_yarn(128,1,one[..]);#assert r.status==GStatus.ok && r.written==8256 && out[8256]== -7 && s.status==GoStatus.ok;
@@ -152,9 +152,9 @@ gd_warp :: (kind:int)->bool #export_c {return kind==46;}
     #assert gd_rope(0,out[..]).status==GStatus.shape && gd_rope(4097,out[..]).status==GStatus.shape && gd_rope(129,out[0..<8255]).status==GStatus.capacity;
 }
 
-gd_buffer_count :: ()->int #export_c {return GD_BUFFERS;}
-gd_preserve :: (slot:int)->bool #export_c {return slot==25;}
-gd_packed_fits :: (p:GDPlan,bytes:int)->bool #export_c {return bytes>=0 && bytes<=p.upload[0];}
+gd_buffer_count :: ()->int #export_c #effects(all) {return GD_BUFFERS;}
+gd_preserve :: (slot:int)->bool #export_c #effects(all) {return slot==25;}
+gd_packed_fits :: (p:GDPlan,bytes:int)->bool #export_c #effects(all) {return bytes>=0 && bytes<=p.upload[0];}
 #test "workspace metadata and opaque packing are bounded" {
     pins:=GOWN_ARTIFACTS;p:=gd_plan(GT_SHAPE,pins[..],1000000000,1000000000);
     #assert !gd_ref_fits(p,GDRef.{buffer=0,offset=1,count=1,elem=8}) && !gd_ref_fits(p,GDRef.{buffer=16+GD_BUFFERS,count=1}) && gd_ref_fits(p,GDRef.{buffer=15+GD_BUFFERS,count=1});
@@ -173,7 +173,7 @@ gd_packed_fits :: (p:GDPlan,bytes:int)->bool #export_c {return bytes>=0 && bytes
 // Metadata can refuse a session cheaply; it never authenticates or admits it.
 // Successful construction still authenticates every original byte, compiles
 // the module and checks the actual remaining memory again before allocation.
-gd_preflight :: (profile:GProfile,free_bytes:int,budget:int)->GDPlan #export_c {
+gd_preflight :: (profile:GProfile,free_bytes:int,budget:int)->GDPlan #export_c #effects(all) {
     if profile.status!=GStatus.ok {return GDPlan.{status=profile.status};}
     return gd_plan(profile.shape,profile.pins,free_bytes,budget);
 }
@@ -185,7 +185,7 @@ gd_preflight :: (profile:GProfile,free_bytes:int,budget:int)->GDPlan #export_c {
 // On the qualified SM 8.9 build the batch MXFP4 kernel uses 154 registers
 // per thread. A 128-thread block permits three resident blocks instead of
 // one 256-thread block. This is dispatch policy, not a host-side heuristic.
-gd_block :: (kind:int)->int {return ifx kind==7 || kind==32 || kind==46 then 128 else 256;}
+gd_block :: (kind:int)->int #effects(all) {return ifx kind==7 || kind==32 || kind==46 then 128 else 256;}
 
 #test "decode softmax stages preserve scratch lifetime and valid divisions" {
     pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;profile:=GProfile.{shape=GT_SHAPE,pins=pins[..],specs=specs[..]};params:[33]GDParam;#assert gd_params(profile,params[..]).status==GStatus.ok;
@@ -197,7 +197,7 @@ gd_block :: (kind:int)->int {return ifx kind==7 || kind==32 || kind==46 then 128
 
 // Chapter 71. Grouped rows for a chunk of n tokens: one 8-row tile per eight
 // selected pairs of an expert, rounded up per expert.
-gd_grouped :: (n:int,s:GShape)->int {return 8*((n*s.selected+7)/8+s.experts);}
+gd_grouped :: (n:int,s:GShape)->int #effects(all) {return 8*((n*s.selected+7)/8+s.experts);}
 #test "tensor-core expert products are admitted per session and bounded by the plan" {
     pins:=GOWN_ARTIFACTS;p:=gd_plan(GT_SHAPE,pins[..],1000000000,1000000000);
     // Tiny: batch 8, 2 of 4 experts, width and hidden 32: 48 grouped rows.
@@ -235,7 +235,7 @@ gd_grouped :: (n:int,s:GShape)->int {return 8*((n*s.selected+7)/8+s.experts);}
 // for prefill expert products, 0 turns it off. Refused unless both expert
 // projections fit whole 16x32 fragments, the slices divide each
 // projection's 16-column steps, and the plan's partials hold every slice.
-gd_with_mma :: (p:GDPlan,s:GShape,slices:int)->GDPlan #export_c {
+gd_with_mma :: (p:GDPlan,s:GShape,slices:int)->GDPlan #export_c #effects(all) {
     if p.status!=GStatus.ok {return GDPlan.{status=p.status};}
     r:=p;r.mma=0;if slices==0 {return r;}
     g:=slices*gd_grouped(p.batch,s);

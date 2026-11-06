@@ -155,7 +155,7 @@ Five input nodes and five arithmetic nodes describe it:
 
 <!-- source: psionic/lib/tensor-ir.coax fixture -->
 ```jai
-ti_fixture :: ()->TiProgram #export_c {
+ti_fixture :: ()->TiProgram #export_c #effects(all) {
     p:TiProgram;p.count=10;p.output=9;
     p.nodes[0]=ti_input(TvShape.{rank=2,dims=[4]int.[2,3,0,0]},0);
     p.nodes[1]=ti_input(TvShape.{rank=2,dims=[4]int.[3,4,0,0]},6);

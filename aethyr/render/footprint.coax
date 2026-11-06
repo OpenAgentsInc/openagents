@@ -5,11 +5,11 @@
 RenderFootprint :: struct {valid:bool;taps:int;du:f32;dv:f32;lod:f32;}
 #load "tests/footprint-checks.coax";
 
-render_footprint_finite :: (x:f32)->bool {return x>=-3.4028234663852886e38f32 && x<=3.4028234663852886e38f32;}
+render_footprint_finite :: (x:f32)->bool #effects(all) {return x>=-3.4028234663852886e38f32 && x<=3.4028234663852886e38f32;}
 // Inputs are nonnegative and bounded by this profile. The identity is shared
 // Coax f32 arithmetic on all three targets; it cannot overflow in this box.
-render_footprint_max :: (a:f32,b:f32)->f32 {return (a+b+abs(a-b))*0.5f32;}
-render_footprint :: (width:int,height:int,du_dx:f32,dv_dx:f32,du_dy:f32,dv_dy:f32,bias:f32)->RenderFootprint {
+render_footprint_max :: (a:f32,b:f32)->f32 #effects(all) {return (a+b+abs(a-b))*0.5f32;}
+render_footprint :: (width:int,height:int,du_dx:f32,dv_dx:f32,du_dy:f32,dv_dy:f32,bias:f32)->RenderFootprint #effects(all) {
  if width<1 || width>16384 || height<1 || height>16384 ||
   !render_footprint_finite(du_dx) || !render_footprint_finite(dv_dx) || !render_footprint_finite(du_dy) || !render_footprint_finite(dv_dy) || !render_footprint_finite(bias) ||
   abs(du_dx)>65536 || abs(dv_dx)>65536 || abs(du_dy)>65536 || abs(dv_dy)>65536 || abs(bias)>32 {return RenderFootprint.{};}

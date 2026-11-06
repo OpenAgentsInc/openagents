@@ -34,7 +34,7 @@ st_compat :: (why: int) -> int {
   return ST_VERSION;
 }
 // This room's build, for the admins' room view: engine, rules, world, oldest and newest wire, schema.
-rm_st_pin :: (i: int) -> int #export_c {
+rm_st_pin :: (i: int) -> int #export_c #effects(all) {
   s := eg_server();
   if i == 0 { return s.pins.engine; }
   if i == 1 { return s.pins.rules; }
@@ -67,17 +67,17 @@ st_refuse :: (v: [] RmServer, why: int) -> int {
   if why >= 0 && why < ST_REASONS { v[0].st.refused[why] += 1; }
   return -1;
 }
-rm_st_refused :: (v: [] RmServer, why: int) -> int #export_c { return ifx why >= 0 && why < ST_REASONS then v[0].st.refused[why] else 0; }
-rm_st_reasons :: () -> int #export_c { return ST_REASONS; }
-rm_st_reason :: (why: int) -> string #export_c { return ifx why >= 0 && why < ST_REASONS then ST_REASON_NAMES[why] else ""; }
-rm_st_refuse_more :: (v: [] RmServer, why: int) #export_c { _ := st_refuse(v, why); }   // the host's own (no free connection)
-rm_st_re_tries :: (v: [] RmServer) -> int #export_c { return v[0].st.re_tries; }
-rm_st_re_ok :: (v: [] RmServer) -> int #export_c { return v[0].st.re_ok; }
-rm_st_re_seat :: (v: [] RmServer) -> int #export_c { return v[0].st.re_seat; }
-rm_st_stale :: (v: [] RmServer) -> int #export_c { return v[0].st.stale; }
+rm_st_refused :: (v: [] RmServer, why: int) -> int #export_c #effects(all) { return ifx why >= 0 && why < ST_REASONS then v[0].st.refused[why] else 0; }
+rm_st_reasons :: () -> int #export_c #effects(all) { return ST_REASONS; }
+rm_st_reason :: (why: int) -> string #export_c #effects(all) { return ifx why >= 0 && why < ST_REASONS then ST_REASON_NAMES[why] else ""; }
+rm_st_refuse_more :: (v: [] RmServer, why: int) #export_c #effects(all) { _ := st_refuse(v, why); }   // the host's own (no free connection)
+rm_st_re_tries :: (v: [] RmServer) -> int #export_c #effects(all) { return v[0].st.re_tries; }
+rm_st_re_ok :: (v: [] RmServer) -> int #export_c #effects(all) { return v[0].st.re_ok; }
+rm_st_re_seat :: (v: [] RmServer) -> int #export_c #effects(all) { return v[0].st.re_seat; }
+rm_st_stale :: (v: [] RmServer) -> int #export_c #effects(all) { return v[0].st.stale; }
 
 // The everglade room and seat on connection conn into out (k, s), or false.
-rm_st_conn :: (v: [] RmServer, conn: int, out: [] int) -> bool #export_c {
+rm_st_conn :: (v: [] RmServer, conn: int, out: [] int) -> bool #export_c #effects(all) {
   if conn < 0 || conn >= CONNS || out.count < 2 || !v[0].conns[conn].live || v[0].conns[conn].relay < 0 { return false; }
   k := eg_room_at(v, v[0].conns[conn].relay);
   s := v[0].conns[conn].seat;
@@ -86,14 +86,14 @@ rm_st_conn :: (v: [] RmServer, conn: int, out: [] int) -> bool #export_c {
   return true;
 }
 // Everglade room k's code (its relay's), "" none.
-rm_st_code :: (v: [] RmServer, k: int) -> string #export_c {
+rm_st_code :: (v: [] RmServer, k: int) -> string #export_c #effects(all) {
   if !rm_eg_live(v, k) || v[0].eg[k].relay < 0 { return ""; }
   r := v[0].eg[k].relay;
   return cast(string) v[0].relays[r].code[0..<v[0].relays[r].code_n];
 }
 
 // When seat s's newest acknowledged input was heard (mono ms), once each time it moves on; -1 none since.
-rm_st_ack :: (v: [] RmServer, k: int, s_id: SeatId) -> int #export_c { s := s_id.value;
+rm_st_ack :: (v: [] RmServer, k: int, s_id: SeatId) -> int #export_c #effects(all) { s := s_id.value;
   if !rm_eg_seat_live(v, k, s_id) { return -1; }
   st := v[0].eg[k].seat[s..<s + 1];
   if st[0].ack <= st[0].ack_told || st[0].ack_at <= 0 { return -1; }
@@ -103,7 +103,7 @@ rm_st_ack :: (v: [] RmServer, k: int, s_id: SeatId) -> int #export_c { s := s_id
 
 // What seat s's page may be told about this tick, as its last interest pick had it (room-interest.coax,
 // #12789): the entities picked whole or health-only, its own among them.
-rm_st_relevant :: (v: [] RmServer, k: int, s_id: SeatId) -> int #export_c { s := s_id.value;
+rm_st_relevant :: (v: [] RmServer, k: int, s_id: SeatId) -> int #export_c #effects(all) { s := s_id.value;
   if !rm_eg_seat_live(v, k, s_id) || !v[0].eg[k].seat[s].placed { return 0; }
   c: [4] int;
   im_counts(v[0].eg[k].im[..], s_id, c[..]);
@@ -115,7 +115,7 @@ rm_st_relevant :: (v: [] RmServer, k: int, s_id: SeatId) -> int #export_c { s :=
 // live, placed seats: count, four sums, four maxima, worst room/seat and its four
 // categories (whole, health-only, blocked, hidden). Largest whole+health wins;
 // ties retain the first room/seat. These are gauges, never transmission counts.
-rm_st_interest :: (v:[]RmServer,out:[]int) #export_c {
+rm_st_interest :: (v:[]RmServer,out:[]int) #export_c #effects(all) {
   if out.count<15{return;}for i:0..<15{out[i]=0;}out[9]=-1;out[10]=-1;
   best:=-1;
   for k:0..<EG_ROOMS{for s:0..<EG_SEATS{
@@ -129,7 +129,7 @@ rm_st_interest :: (v:[]RmServer,out:[]int) #export_c {
 // Seat s's replication counters (everglade-wire.coax WireSeat, #12836) into out: rows sent for their age
 // so far (WIRE_MAX_AGE), the ticks the oldest changed row still waiting has waited, the rows the last
 // tick left for a later one, and that tick's row bytes; false for no such seat.
-rm_st_wire :: (v: [] RmServer, k: int, s_id: SeatId, out: [] int) -> bool #export_c { s := s_id.value;
+rm_st_wire :: (v: [] RmServer, k: int, s_id: SeatId, out: [] int) -> bool #export_c #effects(all) { s := s_id.value;
   if !rm_eg_seat_live(v, k, s_id) || out.count < 4 { return false; }
   r := v[0].eg[k].seat[s].rep[0];
   out[0] = r.aged_all; out[1] = r.oldest; out[2] = r.left; out[3] = r.bytes;
@@ -140,14 +140,14 @@ rm_st_wire :: (v: [] RmServer, k: int, s_id: SeatId, out: [] int) -> bool #expor
 // w bytes, those left waiting, joining pages' piece bytes, the seat ticks with pieces still to go, cue
 // bytes, cues dropped, outcome and aimed bytes, outcomes lost, snapshots after a long time behind,
 // towns sent again, and seat ticks a snapshot waited (unheard on a slow link).
-rm_st_alloc :: (v: [] RmServer, out: [] int) #export_c {
+rm_st_alloc :: (v: [] RmServer, out: [] int) #export_c #effects(all) {
   if out.count < 13 { return; }
   out[0] = v[0].st.life_b; out[1] = v[0].st.life_wait; out[2] = v[0].st.meta_b; out[3] = v[0].st.meta_wait; out[4] = v[0].st.join_b; out[5] = v[0].st.join_wait;
   out[6] = v[0].st.cue_b; out[7] = v[0].st.cue_drop; out[8] = v[0].st.out_b; out[9] = v[0].st.ev_lost; out[10] = v[0].st.resnaps; out[11] = v[0].st.towns; out[12] = v[0].st.snaps_held;
 }
 
 // The X-Room-Mac of body (64 hex into out), with the seat-ticket key; false without one.
-rm_st_sign :: (v: [] RmServer, body: string, out: [] u8) -> bool #export_c {
+rm_st_sign :: (v: [] RmServer, body: string, out: [] u8) -> bool #export_c #effects(all) {
   if v[0].tkey_n == 0 || out.count < 64 { return false; }
   key: [TICKET_KEY] u8;
   for i: 0..<v[0].tkey_n { key[i] = v[0].tkey[i]; }

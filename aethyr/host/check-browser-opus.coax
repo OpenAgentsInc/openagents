@@ -2,7 +2,7 @@
 #load "../../coax/web/wasm-chrome.coax";
 #load "../audio/everglade-pcm-assets.coax";
 #load "audio-opus-conformance.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=5 {tool_errln("usage: check-browser-opus LOCAL_URL REPO_ROOT PICKED_BROWSER EXTRA_BROWSER OUTPUT.json");return 2;}
  c:[1]Cdp;if !cdp_launch(c[..],160,90,"coax-authored-opus-") {return 1;}defer {cdp_close(c[..]);}
  js:[8192]u8;o:[1]Jo;jo_start(o[..],js[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],args_at(a[..],0));jo_end(o[..]);nav:=cdp_call(c[..],"Page.navigate",jo_text(o[..]),CDP_CALL_MS);

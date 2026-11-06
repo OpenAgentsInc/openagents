@@ -85,7 +85,7 @@ lab_check_run :: (c:[]Cdp,url:string,out:string,phone:bool)->bool {
   while proc_now_ms()<until {if lab_check_eval(c,"location.pathname==='/worlds' || location.pathname==='/worlds/'") {print("Bitcoin Lab: exit to Worlds\n");return true;}proc_sleep(50);}
   return false;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) {return 2;}
   base:=ifx args_count(args[..])>0 then args_at(args[..],0) else "http://127.0.0.1:8832";
   dir:=ifx args_count(args[..])>1 then args_at(args[..],1) else "/tmp/bitcoin-lab-12802";

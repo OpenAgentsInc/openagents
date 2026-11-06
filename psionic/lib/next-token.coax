@@ -34,7 +34,7 @@ NX_LOGIT_MAX :: 1000000015047466219876688855040.0;
 NX_MASS :: 0.000000000931322574615478515625;
 
 // Checks first. Values marked "oracle" come from psionic/tests/next_token_oracle.py.
-nx_work :: (s:[]f64,o:[]int,t:[]int)->NxWork {return NxWork.{stage=s,order=o,temporary=t};}
+nx_work :: (s:[]f64,o:[]int,t:[]int)->NxWork #effects(all) {return NxWork.{stage=s,order=o,temporary=t};}
 #test "the counter RNG reproduces independent SplitMix64 words" {
     // oracle: bits(45001, 0..2) and bits(53, 7)
     #assert cr_bits(45001,0)==(cast(u64)0x647296f449639db9) && cr_bits(45001,1)==(cast(u64)0x4b212ad972e938d9);
@@ -151,13 +151,13 @@ nx_work :: (s:[]f64,o:[]int,t:[]int)->NxWork {return NxWork.{stage=s,order=o,tem
 }
 
 // The integer-list grammar of the chapter: [ int (, int)* ] with int = 0 | [1-9][0-9]*.
-nx_list_edges :: ()->[10]NxEdge {
+nx_list_edges :: ()->[10]NxEdge #effects(all) {
     return [10]NxEdge.[NxEdge.{from=0,low='[',high='[',to=1},NxEdge.{from=1,low='0',high='0',to=3},NxEdge.{from=1,low='1',high='9',to=2},
         NxEdge.{from=2,low='0',high='9',to=2},NxEdge.{from=2,low=',',high=',',to=4},NxEdge.{from=2,low=']',high=']',to=5},
         NxEdge.{from=3,low=',',high=',',to=4},NxEdge.{from=3,low=']',high=']',to=5},NxEdge.{from=4,low='0',high='0',to=3},NxEdge.{from=4,low='1',high='9',to=2}];
 }
 // The same grammar stated as a rule per state, to check the compiled table cell by cell.
-nx_list_rule :: (s:int,b:int)->int {
+nx_list_rule :: (s:int,b:int)->int #effects(all) {
     digit:=b>=48 && b<=57;
     if s==0 {return ifx b==91 then 1 else -1;}
     if s==1 || s==4 {return ifx b==48 then 3 else ifx digit then 2 else -1;}
@@ -210,7 +210,7 @@ nx_list_rule :: (s:int,b:int)->int {
     // Reused buffers start clean: only state 3 accepts now, so "[0" is complete and "[0]" is not.
     three:=[1]int.[3];c=nx_compile(6,0,edges[..],three[..],next[..],a[..],l[..],false);#assert c.status==NxStatus.ok && a[5]==0 && l[5]==0 && nx_accepts(c.grammar,"[0") && !nx_accepts(c.grammar,"[0]");
 }
-nx_list_pieces :: ()->[13]string {return [13]string.["[","]",",","0","1","7","42","[1","],","x","<end>",",0]",""];}
+nx_list_pieces :: ()->[13]string #effects(all) {return [13]string.["[","]",",","0","1","7","42","[1","],","x","<end>",",0]",""];}
 #test "the mask offers exactly the tokens that keep a parse possible" {
     edges:=nx_list_edges();acc:=[1]int.[5];next:[1536]int;a:[6]u8;l:[6]u8;g:=nx_compile(6,0,edges[..],acc[..],next[..],a[..],l[..],false).grammar;
     pieces:=nx_list_pieces();m:=[14]u8.[7,7,7,7,7,7,7,7,7,7,7,7,7,7];
@@ -263,17 +263,17 @@ nx_list_pieces :: ()->[13]string {return [13]string.["[","]",",","0","1","7","42
     #assert e.status==NxStatus.empty && e.token== -1 && e.state==1;
 }
 
-nx_vocab :: (n:int)->bool {return n>=1 && n<=NX_VOCAB_MAX;}
-nx_states :: (n:int)->bool {return n>=1 && n<=NX_STATES_MAX;}
-nx_options :: (o:NxOptions,n:int)->bool {return o.temperature>=0 && o.temperature<=100 && o.top_k>=0 && o.top_k<=n && o.top_p>0 && o.top_p<=1;}
-nx_min :: (a:int,b:int)->int {return (a+b-cast(int)abs(f64(a-b)))/2;}
+nx_vocab :: (n:int)->bool #effects(all) {return n>=1 && n<=NX_VOCAB_MAX;}
+nx_states :: (n:int)->bool #effects(all) {return n>=1 && n<=NX_STATES_MAX;}
+nx_options :: (o:NxOptions,n:int)->bool #effects(all) {return o.temperature>=0 && o.temperature<=100 && o.top_k>=0 && o.top_k<=n && o.top_p>0 && o.top_p<=1;}
+nx_min :: (a:int,b:int)->int #effects(all) {return (a+b-cast(int)abs(f64(a-b)))/2;}
 // A logit lies within ±10^30. NaN fails both comparisons, infinities fail one.
-nx_logit :: (v:f32)->bool {return f64(v)>=-NX_LOGIT_MAX && f64(v)<=NX_LOGIT_MAX;}
+nx_logit :: (v:f32)->bool #effects(all) {return f64(v)>=-NX_LOGIT_MAX && f64(v)<=NX_LOGIT_MAX;}
 
 // book:begin order
 // Allowed IDs, sorted by logit descending; equal logits keep ascending ID.
 // A bottom-up merge sort: stable, O(V log V), no allocation.
-nx_order :: (logits:[]f32,order:[]int,temporary:[]int,count:int)->int {
+nx_order :: (logits:[]f32,order:[]int,temporary:[]int,count:int)->int #effects(all) {
     width:=1;passes:=0;
     while width<count {
         first:=0;
@@ -291,7 +291,7 @@ nx_order :: (logits:[]f32,order:[]int,temporary:[]int,count:int)->int {
 }
 // book:end order
 // book:begin distribution
-nx_distribution :: (logits:[]f32,mask:[]u8,options:NxOptions,out:[]f64,work:NxWork,overlap:bool)->NxResult #export_c {
+nx_distribution :: (logits:[]f32,mask:[]u8,options:NxOptions,out:[]f64,work:NxWork,overlap:bool)->NxResult #export_c #effects(all) {
     n:=logits.count;
     if !nx_vocab(n) || !nx_options(options,n) {return NxResult.{status=NxStatus.shape};}
     if (mask.count!=0 && mask.count!=n) || out.count<n || work.stage.count<n || work.order.count<n || work.temporary.count<n {return NxResult.{status=NxStatus.capacity};}
@@ -322,7 +322,7 @@ nx_distribution :: (logits:[]f32,mask:[]u8,options:NxOptions,out:[]f64,work:NxWo
 // book:begin pick
 // The first ID whose running mass exceeds the uniform. If rounding leaves the
 // uniform at or above the final mass, the last ID with positive mass wins.
-nx_pick :: (probabilities:[]f64,uniform:f64)->NxPick #export_c {
+nx_pick :: (probabilities:[]f64,uniform:f64)->NxPick #export_c #effects(all) {
     if !nx_vocab(probabilities.count) || !(uniform>=0 && uniform<1) {return NxPick.{status=NxStatus.shape};}
     total:=0.0;
     for v:probabilities {if !(v>=0 && v<=1) {return NxPick.{status=NxStatus.number};}total+=v;}
@@ -334,7 +334,7 @@ nx_pick :: (probabilities:[]f64,uniform:f64)->NxPick #export_c {
 }
 // book:end pick
 // book:begin step
-nx_step :: (logits:[]f32,mask:[]u8,options:NxOptions,run:NxRun,stops:[]int,cancel:bool,out:[]f64,work:NxWork,overlap:bool)->NxEmission #export_c {
+nx_step :: (logits:[]f32,mask:[]u8,options:NxOptions,run:NxRun,stops:[]int,cancel:bool,out:[]f64,work:NxWork,overlap:bool)->NxEmission #export_c #effects(all) {
     if run.stop!=NxStop.running || run.limit>NX_LIMIT_MAX || run.emitted<0 || run.emitted>=run.limit {return NxEmission.{status=NxStatus.state};}
     for s:stops {if s<0 || s>=logits.count {return NxEmission.{status=NxStatus.shape};}}
     if cancel {next:=run;next.stop=NxStop.cancelled;return NxEmission.{run=next};}
@@ -348,7 +348,7 @@ nx_step :: (logits:[]f32,mask:[]u8,options:NxOptions,run:NxRun,stops:[]int,cance
 }
 // book:end step
 // book:begin compile
-nx_compile :: (states:int,start:int,edges:[]NxEdge,accepting:[]int,next:[]int,accept:[]u8,live:[]u8,overlap:bool)->NxCompiled #export_c {
+nx_compile :: (states:int,start:int,edges:[]NxEdge,accepting:[]int,next:[]int,accept:[]u8,live:[]u8,overlap:bool)->NxCompiled #export_c #effects(all) {
     if !nx_states(states) || start<0 || start>=states {return NxCompiled.{status=NxStatus.shape};}
     if next.count<states*256 || accept.count<states || live.count<states {return NxCompiled.{status=NxStatus.capacity};}
     if overlap {return NxCompiled.{status=NxStatus.alias};}
@@ -376,17 +376,17 @@ nx_compile :: (states:int,start:int,edges:[]NxEdge,accepting:[]int,next:[]int,ac
 }
 // book:end compile
 // The state after the bytes of `text`, or -1 once a byte has no transition.
-nx_walk :: (g:NxGrammar,state:int,text:string)->int #export_c {
+nx_walk :: (g:NxGrammar,state:int,text:string)->int #export_c #effects(all) {
     s:=state;
     for c:text {if s<0 {return -1;}s=g.next[s*256+cast(int)c];}
     return s;
 }
-nx_accepts :: (g:NxGrammar,text:string)->bool #export_c {s:=nx_walk(g,g.start,text);return s>=0 && g.accepting[s]==1;}
+nx_accepts :: (g:NxGrammar,text:string)->bool #export_c #effects(all) {s:=nx_walk(g,g.start,text);return s>=0 && g.accepting[s]==1;}
 // book:begin mask
 // 1 where the token keeps a complete parse reachable; the end token only
 // where the text so far is complete. Empty pieces other than the end token
 // make no progress and are never offered.
-nx_mask :: (g:NxGrammar,state:int,pieces:[]string,end_token:int,out:[]u8,overlap:bool)->NxResult #export_c {
+nx_mask :: (g:NxGrammar,state:int,pieces:[]string,end_token:int,out:[]u8,overlap:bool)->NxResult #export_c #effects(all) {
     if !nx_vocab(pieces.count) || end_token<0 || end_token>=pieces.count {return NxResult.{status=NxStatus.shape};}
     if g.next.count<g.states*256 || g.accepting.count<g.states || g.live.count<g.states || out.count<pieces.count {return NxResult.{status=NxStatus.capacity};}
     if state<0 || state>=g.states || g.live[state]!=1 {return NxResult.{status=NxStatus.state};}
@@ -402,7 +402,7 @@ nx_mask :: (g:NxGrammar,state:int,pieces:[]string,end_token:int,out:[]u8,overlap
 }
 // book:end mask
 // book:begin guided
-nx_guided :: (logits:[]f32,g:NxGrammar,state:int,pieces:[]string,end_token:int,options:NxOptions,run:NxRun,cancel:bool,mask:[]u8,out:[]f64,work:NxWork,overlap:bool)->NxGuided #export_c {
+nx_guided :: (logits:[]f32,g:NxGrammar,state:int,pieces:[]string,end_token:int,options:NxOptions,run:NxRun,cancel:bool,mask:[]u8,out:[]f64,work:NxWork,overlap:bool)->NxGuided #export_c #effects(all) {
     if logits.count!=pieces.count {return NxGuided.{status=NxStatus.shape};}
     m:=nx_mask(g,state,pieces,end_token,mask,overlap);if m.status!=NxStatus.ok {return NxGuided.{status=m.status};}
     stops:=[1]int.[end_token];

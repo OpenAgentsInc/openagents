@@ -23,8 +23,8 @@ QwResult :: struct {status:QwStatus;written:int;}
     #assert qw_rope(-1,1,out[..],work[..],false).status==QwStatus.range;
     for v:out {#assert v==-7;}
 }
-qw_valid :: (start:int,count:int)->bool {return start>=0 && count>=1 && count<=16384-start;}
-qw_rope :: (start:int,count:int,out:[]f32,work:[]f32,overlap:bool)->QwResult #export_c {
+qw_valid :: (start:int,count:int)->bool #effects(all) {return start>=0 && count>=1 && count<=16384-start;}
+qw_rope :: (start:int,count:int,out:[]f32,work:[]f32,overlap:bool)->QwResult #export_c #effects(all) {
     if !qw_valid(start,count) {return QwResult.{status=QwStatus.range};}
     n:=64*count;if out.count<n || work.count<n {return QwResult.{status=QwStatus.capacity};}
     if overlap {return QwResult.{status=QwStatus.alias};}

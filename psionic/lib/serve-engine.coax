@@ -26,7 +26,7 @@ SV_ANSWER_POOL :: 16320;       // 64 questions, 255 slots each
 SV_HEAD_ROOM :: 256;           // the response head goes in front of the body
 
 SvToy :: struct {model:[10194]u8;config:[57]u8;tokenizer:[52]u8;table:[27533]u8;specs:[56]P5Spec;inventory:[56]P5Tensor;draft:[56]P5Tensor;layers:[4]QeLayer;params:[189]f32;stage:[189]f32;layer_work:[151]f32;norm:[2]f32;norm_work:[2]f32;}
-sv_test_toy :: (t:[]SvToy,capacity:int)->SvEngine {
+sv_test_toy :: (t:[]SvToy,capacity:int)->SvEngine #effects(all) {
     files:=SvToyFiles.{model=t[0].model[..],config=t[0].config[..],tokenizer=t[0].tokenizer[..],table=t[0].table[..],specs=t[0].specs[..]};
     memory:=PsWorkspace.{inventory=t[0].inventory[..],draft=t[0].draft[..],layers=t[0].layers[..],params=t[0].params[..],stage=t[0].stage[..],layer_work=t[0].layer_work[..],norm=t[0].norm[..],norm_work=t[0].norm_work[..]};
     if !sv_toy_copy(files) {return SvEngine.{};}
@@ -157,33 +157,33 @@ sv_test_toy :: (t:[]SvToy,capacity:int)->SvEngine {
     #assert !sv_less("bb","ba") && sv_less("ab","ac") && !sv_less("ab","ab") && !sv_less("b","") && sv_less("ab","b");
 }
 
-sv_hex64 :: (s:string)->bool {
+sv_hex64 :: (s:string)->bool #effects(all) {
     if s.count!=64 {return false;}for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;
 }
 // The options a model can answer: pinned slot IDs below its vocabulary, in order.
-sv_max_options :: (vocab:int)->int {
+sv_max_options :: (vocab:int)->int #effects(all) {
     n:=0;while n<SV_OPTIONS_MAX && qr_pinned_slot(n)<vocab {n+=1;}return n;
 }
 // book:begin seam
-sv_engine :: (session:PsSession,name:string,alias:string,digest:string,temperature:f32,capacity:int)->SvEngine #export_c {
+sv_engine :: (session:PsSession,name:string,alias:string,digest:string,temperature:f32,capacity:int)->SvEngine #export_c #effects(all) {
     if session.status!=PsOpenStatus.ok || name.count<1 || !sv_hex64(digest) || !(temperature>0) {return SvEngine.{};}
     if capacity<1 || capacity>session.model.shape.state.capacity {return SvEngine.{};}
     return SvEngine.{ok=true,session=session,name=name,alias=alias,digest=digest,temperature=temperature,capacity=capacity,options=sv_max_options(session.model.vocab)};
 }
 // book:end seam
 // The host observes its fixed buffers once; an overlap keeps the engine closed.
-sv_seal :: (engine:SvEngine,overlap:bool)->SvEngine #export_c {
+sv_seal :: (engine:SvEngine,overlap:bool)->SvEngine #export_c #effects(all) {
     e:=engine;if !e.ok || overlap {return SvEngine.{};}e.sealed=true;return e;
 }
-sv_elephant :: (session:PsSession,capacity:int)->SvEngine #export_c {
+sv_elephant :: (session:PsSession,capacity:int)->SvEngine #export_c #effects(all) {
     if session.status!=PsOpenStatus.ok || session.target!=PsKind.elephant || session.model.vocab!=248320 || session.model.layers.count!=32 {return SvEngine.{};}
     target:=ps_target(0,capacity);if target.status!=PsStatus.ok {return SvEngine.{};}
     return sv_engine(session,SV_ELEPHANT_NAME,SV_ELEPHANT_ALIAS,target.shard[0].sha,1,capacity);
 }
-sv_toy_sizes :: ()->SvToySizes #export_c {
+sv_toy_sizes :: ()->SvToySizes #export_c #effects(all) {
     return SvToySizes.{model=SV_TOY_FILE.count,config=CH04_CONFIG_JSON.count,tokenizer=CH04_TOKENIZER_JSON.count,table=PT_TOY.count,tensors=56,layers=4,params=189,layer_work=151,norm=2};
 }
-sv_toy_copy :: (files:SvToyFiles)->bool #export_c {
+sv_toy_copy :: (files:SvToyFiles)->bool #export_c #effects(all) {
     s:=sv_toy_sizes();
     if files.model.count!=s.model || files.config.count!=s.config || files.tokenizer.count!=s.tokenizer || files.table.count!=s.table || files.specs.count!=s.tensors {return false;}
     model:=SV_TOY_FILE;config:=CH04_CONFIG_JSON;tokenizer:=CH04_TOKENIZER_JSON;table:=PT_TOY;specs:=SV_TOY_SPECS;
@@ -192,7 +192,7 @@ sv_toy_copy :: (files:SvToyFiles)->bool #export_c {
     for i:0..<s.tensors {files.specs[i]=specs[i];}
     return true;
 }
-sv_toy_target :: (capacity:int)->PsTarget {
+sv_toy_target :: (capacity:int)->PsTarget #effects(all) {
     delta:=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=0.000001f32};
     attention:=QfShape.{heads=1,kv_heads=1,head_dim=64,rotary_dim=64,epsilon=0.000001f32};
     shape:=QeShape.{linear=QlShape.{width=2,hidden=2,delta=delta,dtype=QmDtype.bf16},full=QhShape.{width=2,hidden=2,capacity=capacity,attention=attention,dtype=QmDtype.bf16},
@@ -201,7 +201,7 @@ sv_toy_target :: (capacity:int)->PsTarget {
     t.shard[0]=PsShardPin.{name="model.safetensors",bytes=SV_TOY_FILE.count,sha=SV_TOY_SHA};
     return t;
 }
-sv_toy_open :: (files:SvToyFiles,memory:PsWorkspace,capacity:int)->SvEngine #export_c {
+sv_toy_open :: (files:SvToyFiles,memory:PsWorkspace,capacity:int)->SvEngine #export_c #effects(all) {
     pa:=[1]PaFile.[PaFile.{data=files.model}];index:[1]u8;
     session:=ps_bind_core(sv_toy_target(capacity),files.config,files.tokenizer,files.config,index[0..<0],pa[..],files.specs,memory,files.table,false);
     if session.status!=PsOpenStatus.ok {return SvEngine.{session=session};}
@@ -209,47 +209,47 @@ sv_toy_open :: (files:SvToyFiles,memory:PsWorkspace,capacity:int)->SvEngine #exp
 }
 // The workspace grows with the request and with its prefix, so a full
 // request whose prefix is all but its last token needs the most.
-sv_plan :: (engine:SvEngine)->SvPlan #export_c {
+sv_plan :: (engine:SvEngine)->SvPlan #export_c #effects(all) {
     if !engine.ok {return SvPlan.{};}
     model:=engine.session.model;work:=qs_layout(model,engine.capacity,engine.capacity-1).total;
     return SvPlan.{ok=true,state=qp_total(model.shape.state),work=work,tokens=16384,prompt=PT_TEXT_MAX,render=PT_TEXT_MAX,candidate=16384,full=16384,stage=16384,normal=262144,scalars=262144,symbols=1024,answers=SV_ANSWER_POOL,prob=2*SV_OPTIONS_MAX};
 }
-sv_admit :: (engine:SvEngine,request:SvRequest,pools:SvPools)->SvCode #export_c {
+sv_admit :: (engine:SvEngine,request:SvRequest,pools:SvPools)->SvCode #export_c #effects(all) {
     if request.code!=SvCode.none {return request.code;}
     if !engine.ok {return SvCode.internal;}
     if request.model!=engine.name && (engine.alias.count==0 || request.model!=engine.alias) {return SvCode.not_admitted;}
     for i:0..<request.questions {if pools.questions[i].count>engine.options {return SvCode.unsupported_input;}}
     return SvCode.none;
 }
-sv_text_code :: (status:PtStatus)->SvCode {
+sv_text_code :: (status:PtStatus)->SvCode #effects(all) {
     if status==PtStatus.size || status==PtStatus.capacity || status==PtStatus.budget {return SvCode.limit_exceeded;}
     if status==PtStatus.unsupported || status==PtStatus.json || status==PtStatus.utf8 {return SvCode.unsupported_input;}
     if status==PtStatus.range {return SvCode.invalid_request;}
     return SvCode.internal;
 }
-sv_prepare_code :: (r:PrResult)->SvCode {
+sv_prepare_code :: (r:PrResult)->SvCode #effects(all) {
     if r.status==PrStatus.render || r.status==PrStatus.token {return sv_text_code(cast(PtStatus)r.cause);}
     if r.status==PrStatus.split {return SvCode.unsupported_input;}
     if r.status==PrStatus.capacity {return SvCode.limit_exceeded;}
     return SvCode.internal;
 }
 // Whether one prepared question fits the engine's capacity and the host's workspace.
-sv_fits :: (engine:SvEngine,prepared:PrResult,work:int)->SvCode #export_c {
+sv_fits :: (engine:SvEngine,prepared:PrResult,work:int)->SvCode #export_c #effects(all) {
     if prepared.status!=PrStatus.ok {return sv_prepare_code(prepared);}
     if prepared.written>engine.capacity || qs_layout(engine.session.model,prepared.written,prepared.prefix).total>work {return SvCode.limit_exceeded;}
     return SvCode.none;
 }
-sv_answer_code :: (status:QxStatus)->SvCode {
+sv_answer_code :: (status:QxStatus)->SvCode #effects(all) {
     if status==QxStatus.ok {return SvCode.none;}if status==QxStatus.capacity {return SvCode.limit_exceeded;}return SvCode.internal;
 }
-sv_reverse :: (out:[]u8,from:int,to:int) {
+sv_reverse :: (out:[]u8,from:int,to:int) #effects(all) {
     for s:0..<(to-from)/2 {sequence.swap(out,from+s,to-1-s);}
 }
-sv_less :: (a:string,b:string)->bool {
+sv_less :: (a:string,b:string)->bool #effects(all) {
     i:=0;while i<a.count && i<b.count {if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}i+=1;}return a.count<b.count;
 }
 // v in [0, 10] with nine decimals, half up, trailing zeros trimmed; -1 otherwise.
-sv_write_unit :: (out:[]u8,at:int,v:f64)->int {
+sv_write_unit :: (out:[]u8,at:int,v:f64)->int #effects(all) {
     if !(v>=0) || !(v<=10) {return -1;}
     q:=cast(int)(v*1000000000.0f64+0.5f64);whole:=q/1000000000;fraction:=q%1000000000;
     n:=json_write_int(out,at,whole);if fraction==0 {return n;}
@@ -257,8 +257,8 @@ sv_write_unit :: (out:[]u8,at:int,v:f64)->int {
     used:=9;while digits[used-1]=='0' {used-=1;}
     n=json_raw(out,n,".");return json_raw(out,n,cast(string)digits[0..<used]);
 }
-sv_probability :: (p:f64)->bool {return p>=0 && p<=1;}
-sv_render_answer :: (out:[]u8,at:int,q:SvQuestion,pools:SvPools,all:[]f64,base:int)->int {
+sv_probability :: (p:f64)->bool #effects(all) {return p>=0 && p<=1;}
+sv_render_answer :: (out:[]u8,at:int,q:SvQuestion,pools:SvPools,all:[]f64,base:int)->int #effects(all) {
     p:=all[base..<all.count];
     n:=at;
     if q.kind==PtQuestionKind.noul {
@@ -284,7 +284,7 @@ sv_render_answer :: (out:[]u8,at:int,q:SvQuestion,pools:SvPools,all:[]f64,base:i
     return json_raw(out,n,"}}");
 }
 // book:begin render
-sv_render :: (engine:SvEngine,request:SvRequest,pools:SvPools,p:[]f64,latency:int,out:[]u8)->SvSpan #export_c {
+sv_render :: (engine:SvEngine,request:SvRequest,pools:SvPools,p:[]f64,latency:int,out:[]u8)->SvSpan #export_c #effects(all) {
     if !engine.ok || latency<0 || p.count<SV_ANSWER_POOL {return SvSpan.{};}
     n:=json_raw(out,0,"{\"model\":");n=json_write_string(out,n,engine.name);n=json_raw(out,n,",\"answers\":{");
     for i:0..<request.questions {
@@ -394,19 +394,19 @@ SV_DECIDE_MOST :: 86400000;
     small:[5]u8;#assert sv_frame_put(small[..],SvCode.none,9)==5;
 }
 
-sv_sizes :: ()->SvSizes #export_c {
+sv_sizes :: ()->SvSizes #export_c #effects(all) {
     return SvSizes.{request=SV_HEAD_MAX+SV_BODY_MAX,arena=SV_BODY_MAX,questions=SV_QUESTIONS_MAX,options=SV_OPTION_POOL,head_room=SV_HEAD_ROOM,response=SV_RESPONSE_MAX,frame=SV_FRAME_HEAD};
 }
-sv_limits_valid :: (l:SvLimits)->bool #export_c {return l.read_ms>=1 && l.read_ms<=SV_READ_MOST && l.decide_ms>=1 && l.decide_ms<=SV_DECIDE_MOST;}
-sv_idle :: (slot:SvSlot)->SvSlot {return SvSlot.{epoch=slot.epoch};}
-sv_refused :: (slot:SvSlot,code:SvCode)->SvStep {return SvStep.{slot=sv_idle(slot),action=SvAction.refuse,code=code};}
-sv_accept :: (slot:SvSlot,limits:SvLimits,now:int)->SvStep #export_c {
+sv_limits_valid :: (l:SvLimits)->bool #export_c #effects(all) {return l.read_ms>=1 && l.read_ms<=SV_READ_MOST && l.decide_ms>=1 && l.decide_ms<=SV_DECIDE_MOST;}
+sv_idle :: (slot:SvSlot)->SvSlot #effects(all) {return SvSlot.{epoch=slot.epoch};}
+sv_refused :: (slot:SvSlot,code:SvCode)->SvStep #effects(all) {return SvStep.{slot=sv_idle(slot),action=SvAction.refuse,code=code};}
+sv_accept :: (slot:SvSlot,limits:SvLimits,now:int)->SvStep #export_c #effects(all) {
     if !sv_limits_valid(limits) {return SvStep.{slot=slot,action=SvAction.refuse,code=SvCode.internal};}
     if slot.phase!=SvPhase.idle {return SvStep.{slot=slot,action=SvAction.busy,code=SvCode.busy};}
     return SvStep.{slot=SvSlot.{phase=SvPhase.reading,epoch=slot.epoch,deadline=now+limits.read_ms},action=SvAction.read};
 }
 // book:begin bytes
-sv_bytes :: (slot:SvSlot,limits:SvLimits,engine:SvEngine,pools:SvPools,text:string,now:int)->SvStep #export_c {
+sv_bytes :: (slot:SvSlot,limits:SvLimits,engine:SvEngine,pools:SvPools,text:string,now:int)->SvStep #export_c #effects(all) {
     if slot.phase!=SvPhase.reading {return SvStep.{slot=slot};}
     if now>=slot.deadline {return sv_refused(slot,SvCode.request_timeout);}
     h:=sv_head(text);
@@ -423,29 +423,29 @@ sv_bytes :: (slot:SvSlot,limits:SvLimits,engine:SvEngine,pools:SvPools,text:stri
     return SvStep.{slot=next,action=SvAction.decide,request=request};
 }
 // book:end bytes
-sv_tick :: (slot:SvSlot,now:int)->SvStep #export_c {
+sv_tick :: (slot:SvSlot,now:int)->SvStep #export_c #effects(all) {
     if slot.phase==SvPhase.idle || now<slot.deadline {return SvStep.{slot=slot};}
     if slot.phase==SvPhase.reading {return sv_refused(slot,SvCode.request_timeout);}
     return SvStep.{slot=sv_idle(slot),action=SvAction.cancel_refuse,code=SvCode.timeout};
 }
-sv_closed :: (slot:SvSlot)->SvStep #export_c {
+sv_closed :: (slot:SvSlot)->SvStep #export_c #effects(all) {
     if slot.phase==SvPhase.reading {return SvStep.{slot=sv_idle(slot),action=SvAction.close};}
     if slot.phase==SvPhase.deciding {return SvStep.{slot=sv_idle(slot),action=SvAction.cancel_close};}
     return SvStep.{slot=slot};
 }
 // The child's frame: a code byte, a little-endian u32 length, then one HTTP response.
-sv_frame_put :: (out:[]u8,code:SvCode,length:int)->int #export_c {
+sv_frame_put :: (out:[]u8,code:SvCode,length:int)->int #export_c #effects(all) {
     if out.count<SV_FRAME_HEAD || length<9 || length>sv_sizes().response {return -1;}
     out[0]=cast(u8)code;v:=length;for i:1..<5 {out[i]=cast(u8)(v%256);v/=256;}return SV_FRAME_HEAD;
 }
-sv_frame :: (frame:string)->SvSpan {
+sv_frame :: (frame:string)->SvSpan #effects(all) {
     // The host's frame buffer holds sv_sizes().frame+response bytes, so no longer frame arrives.
     if frame.count<SV_FRAME_HEAD+9 || frame[0]>13 {return SvSpan.{};}
     length:=0;for k:0..<4 {length=length*256+cast(int)frame[4-k];}
     if frame.count!=SV_FRAME_HEAD+length || frame[5..<14]!="HTTP/1.1 " {return SvSpan.{};}
     return SvSpan.{from=SV_FRAME_HEAD,to=frame.count};
 }
-sv_done :: (slot:SvSlot,epoch:u32,exited:bool,frame:string,now:int)->SvStep #export_c {
+sv_done :: (slot:SvSlot,epoch:u32,exited:bool,frame:string,now:int)->SvStep #export_c #effects(all) {
     if slot.phase!=SvPhase.deciding || epoch!=slot.epoch {return SvStep.{slot=slot};}
     if now>=slot.deadline {return sv_refused(slot,SvCode.timeout);}
     span:=sv_frame(frame);if !exited || span.to==0 {return sv_refused(slot,SvCode.internal);}

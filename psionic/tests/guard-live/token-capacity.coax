@@ -5,7 +5,7 @@
 #load "../../lib/serve-request.coax";
 #load "../../lib/decision-prepare.coax";
 
-guard_token_probe :: (table:[]u8)->int #export_c {
+guard_token_probe :: (table:[]u8)->int #export_c #effects(all) {
   if !guard_token_input_size(table.count) || !pt_admit(table) {print("pinned tokenizer refused\n");return 1;}
   print("tokenizer_sha256=%\n",PT_QWEN_SHA);
   prompt:[8192]u8;render:[8192]u8;normal:[16384]u8;body:[1024]u8;

@@ -95,7 +95,7 @@ EcVerdict :: struct {status:int=EC_EVENT; row:int=EC_NONE; at:int=EC_NONE;}  // 
 }
 
 // [[name, 300 x's], ["k", "9321"]], into out.
-ec_long :: (out:[]u8,name:string)->string {
+ec_long :: (out:[]u8,name:string)->string #effects(all) {
   n:=json_raw(out,0,"[[\"");n=json_raw(out,n,name);n=json_raw(out,n,"\",\"");
   for j:0..<300 {out[n]='x';n+=1;}
   n=json_raw(out,n,"\"],[\"k\",\"9321\"]]");
@@ -104,14 +104,14 @@ ec_long :: (out:[]u8,name:string)->string {
 
 // book:begin classify
 // The row of an excluded kind, or EC_NONE.
-ec_kind :: (kind:int)->int {
+ec_kind :: (kind:int)->int #effects(all) {
   for i:0..<EC_N {if EC_KIND[i]==kind {return i;}}
   return EC_NONE;
 }
 // A received event: EC_EXCLUDED for an excluded kind, EC_REFERS when a k, K,
 // a or A tag names one (the first such tag), EC_OK otherwise, or EC_EVENT
 // when its tags don't read.
-ec_event :: (e:NostrEvent)->EcVerdict {
+ec_event :: (e:NostrEvent)->EcVerdict #effects(all) {
   v:EcVerdict;if e.error!=NE_OK {return v;}
   v.row=ec_kind(e.kind);
   if v.row!=EC_NONE {v.status=EC_EXCLUDED;return v;}
@@ -130,16 +130,16 @@ ec_event :: (e:NostrEvent)->EcVerdict {
   v.status=EC_OK;return v;
 }
 // The publishing check: an event of an excluded kind is never built.
-ec_build :: (kind:int)->int {return ifx ec_kind(kind)==EC_NONE then EC_OK else EC_EXCLUDED;}
+ec_build :: (kind:int)->int #effects(all) {return ifx ec_kind(kind)==EC_NONE then EC_OK else EC_EXCLUDED;}
 // A payment option's type: EC_EXCLUDED when it contains an ecash word in
 // any case.
-ec_option :: (type:string)->int {
+ec_option :: (type:string)->int #effects(all) {
   for w:EC_WORDS {if ec_holds_ci(type,w) {return EC_EXCLUDED;}}
   return EC_OK;
 }
 // A payment value: EC_EXCLUDED for a Cashu token (cashuA..., cashuB...,
 // any case) or a Fedimint invite code (fed11...).
-ec_value :: (text:string)->int {
+ec_value :: (text:string)->int #effects(all) {
   if ec_starts_ci(text,"cashu") || ec_starts_ci(text,"fed11") {return EC_EXCLUDED;}
   return EC_OK;
 }
@@ -147,7 +147,7 @@ ec_value :: (text:string)->int {
 
 // The row a tag names: a k or K tag's kind, or an a or A tag's
 // "kind:pubkey:d" address.
-ec_tag_kind :: (name:string,value:string)->int {
+ec_tag_kind :: (name:string,value:string)->int #effects(all) {
   if !ec_names(name) {return EC_NONE;}
   if name=="k" || name=="K" {return ec_kind(ec_number(value));}
   to:=0;while to<value.count && value[to]!=':' {to+=1;}
@@ -155,20 +155,20 @@ ec_tag_kind :: (name:string,value:string)->int {
   return ec_kind(ec_number(value[0..<to]));
 }
 // A kind written in decimal (one to six digits), or EC_NONE.
-ec_number :: (s:string)->int {
+ec_number :: (s:string)->int #effects(all) {
   if s.count<1 || s.count>6 {return EC_NONE;}
   n:=0;
   for c:s {if c<'0' || c>'9' {return EC_NONE;} n=n*10+cast(int)(c-'0');}
   return n;
 }
-ec_names :: (name:string)->bool {return name=="k" || name=="K" || name=="a" || name=="A";}
-ec_lower :: (c:u8)->u8 {return ifx c>='A' && c<='Z' then c+32 else c;}
-ec_starts_ci :: (s:string,p:string)->bool {
+ec_names :: (name:string)->bool #effects(all) {return name=="k" || name=="K" || name=="a" || name=="A";}
+ec_lower :: (c:u8)->u8 #effects(all) {return ifx c>='A' && c<='Z' then c+32 else c;}
+ec_starts_ci :: (s:string,p:string)->bool #effects(all) {
   if s.count<p.count {return false;}
   for i:0..<p.count {if ec_lower(s[i])!=p[i] {return false;}}
   return true;
 }
-ec_holds_ci :: (s:string,p:string)->bool {
+ec_holds_ci :: (s:string,p:string)->bool #effects(all) {
   for i:0..<s.count {if ec_starts_ci(s[i..<s.count],p) {return true;}}
   return false;
 }

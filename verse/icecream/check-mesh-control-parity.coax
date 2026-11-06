@@ -14,7 +14,7 @@ mbp_normalize :: (source:string,root:string,out:[]u8)->string {
     for byte:token {out[written]=byte;written+=1;}at=found+root.count;
   }return cast(string)out[0..<written];
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=5 {return 2;}
   left_bytes:[1048576]u8;right_bytes:[1048576]u8;left_nodes:[16384]JvNode;right_nodes:[16384]JvNode;left:[1]Jv;right:[1]Jv;
   if !rtq_json_file(args_at(a[..],0),left_bytes[..],left_nodes[..],left[..]) || !rtq_json_file(args_at(a[..],2),right_bytes[..],right_nodes[..],right[..]) {return 2;}

@@ -88,7 +88,7 @@ input_axis :: (a: f32) -> InputAxis {
 // Whether you run: a stick past the dead zone decides by its push; the keys go by
 // INPUT_RUN_BY_DEFAULT, Shift turning it the other way.
 input_keys_run :: (shift: bool) -> bool { return shift != INPUT_RUN_BY_DEFAULT; }
-input_runs :: (shift: bool, stick_run: bool, pad_x: f32, pad_y: f32) -> bool #export_c {
+input_runs :: (shift: bool, stick_run: bool, pad_x: f32, pad_y: f32) -> bool #export_c #effects(all) {
   if input_finite(pad_x) && input_finite(pad_y) && sqrt(pad_x * pad_x + pad_y * pad_y) > INPUT_DEAD_ZONE { return stick_run; }
   return input_keys_run(shift);
 }
@@ -325,7 +325,7 @@ controls. It records a jump as a press with `input_level`:
 // single-sample primitive applies look immediately. Frame-driven consumers use
 // walk-control.coax's versioned sidecar; the Grid samples before calling here.
 walk_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
-                          run: bool, jump: bool, dyaw: f32, dpitch: f32) -> Player {
+                          run: bool, jump: bool, dyaw: f32, dpitch: f32) -> Player #effects(all) {
   next := p;
   next.key_x = clamp(key_x, -1, 1);
   next.key_y = clamp(key_y, -1, 1);
@@ -349,7 +349,7 @@ jump:
 <!-- source: aethyr/walk.coax take -->
 ```jai
 // One fixed step. It first takes a waiting jump press: from the ground, it jumps.
-step :: (w: World, given: Player, dt: f32) -> Player {
+step :: (w: World, given: Player, dt: f32) -> Player #effects(all) {
   if !locomotion_profile_ok(w.locomotion) || w.locomotion.run_speed * f32(STEP) > w.collision.max_travel {
     return collision_report(given, CollideResult.{state = collision_state(given), status = CollideStatus.bad_profile});
   }

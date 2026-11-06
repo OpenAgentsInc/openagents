@@ -216,15 +216,15 @@ DtxOut :: struct {n:int;glue:bool;bad:bool;any:bool;}
 }
 
 // Whether the transcript formats to exactly want.
-dtx_check :: (raw:string,out:[]u8,want:string)->bool {r:=dtx_format(raw,out);if r.status!=DTX_OK {return false;}return cast(string)out[0..<r.n]==want;}
+dtx_check :: (raw:string,out:[]u8,want:string)->bool #effects(all) {r:=dtx_format(raw,out);if r.status!=DTX_OK {return false;}return cast(string)out[0..<r.n]==want;}
 
 // Well-formed UTF-8: shortest forms, no surrogates, nothing above U+10FFFF.
 // A two-byte lead below 0xc2 would be an overlong form, so it is refused
 // with the other bytes that cannot start a character.
-dtx_need :: (c:int)->int {
+dtx_need :: (c:int)->int #effects(all) {
  if c<0x80 {return 0;}if c>=0xc2 && c<=0xdf {return 1;}if c>=0xe0 && c<=0xef {return 2;}if c>=0xf0 && c<=0xf4 {return 3;}return -1;
 }
-dtx_utf8 :: (s:string)->bool {
+dtx_utf8 :: (s:string)->bool #effects(all) {
  i:=0;lows:=[4]int.[0,0x80,0x800,0x10000];
  while i<s.count {
   c:=cast(int)s[i];need:=dtx_need(c);
@@ -237,11 +237,11 @@ dtx_utf8 :: (s:string)->bool {
  return true;
 }
 // A byte of a word's core: an ASCII letter or digit, or any non-ASCII byte.
-dtx_letter :: (c:u8)->bool {return (c>='a' && c<='z') || (c>='A' && c<='Z');}
-dtx_wordy :: (c:u8)->bool {return dtx_letter(c) || (c>='0' && c<='9') || c>=128;}
-dtx_digit :: (s:string)->bool {for c:s {if c>='0' && c<='9' {return true;}}return false;}
-dtx_letters :: (s:string)->bool {if s.count==0 {return false;}for c:s {if !dtx_letter(c) {return false;}}return true;}
-dtx_tokens :: (s:string,k:[]DtxToks) {
+dtx_letter :: (c:u8)->bool #effects(all) {return (c>='a' && c<='z') || (c>='A' && c<='Z');}
+dtx_wordy :: (c:u8)->bool #effects(all) {return dtx_letter(c) || (c>='0' && c<='9') || c>=128;}
+dtx_digit :: (s:string)->bool #effects(all) {for c:s {if c>='0' && c<='9' {return true;}}return false;}
+dtx_letters :: (s:string)->bool #effects(all) {if s.count==0 {return false;}for c:s {if !dtx_letter(c) {return false;}}return true;}
+dtx_tokens :: (s:string,k:[]DtxToks) #effects(all) {
  k[0].n=0;i:=0;
  while k[0].n<DTX_TOKENS {
   while i<s.count && s[i]==' ' {i+=1;}
@@ -255,36 +255,36 @@ dtx_tokens :: (s:string,k:[]DtxToks) {
 // A core's ASCII-lowercased bytes, for matching rule words; "" when it is
 // not a plain ASCII word of at most 15 letters.
 DtxKey :: struct {b:[16]u8;n:int;}
-dtx_lower :: (c:u8)->u8 {return ifx c<'a' then c+32 else c;}   // letters only
-dtx_key_of :: (s:string,k:[]DtxKey)->string {
+dtx_lower :: (c:u8)->u8 #effects(all) {return ifx c<'a' then c+32 else c;}   // letters only
+dtx_key_of :: (s:string,k:[]DtxKey)->string #effects(all) {
  k[0].n=0;if s.count>15 || !dtx_letters(s) {return "";}
  for c:s {k[0].b[k[0].n]=dtx_lower(c);k[0].n+=1;}
  return cast(string)k[0].b[0..<k[0].n];
 }
-dtx_core :: (s:string,t:DtxTok)->string {return s[t.core..<t.tail];}
-dtx_lead :: (t:DtxTok)->bool {return t.core>t.at;}
-dtx_trail :: (t:DtxTok)->bool {return t.end>t.tail;}
+dtx_core :: (s:string,t:DtxTok)->string #effects(all) {return s[t.core..<t.tail];}
+dtx_lead :: (t:DtxTok)->bool #effects(all) {return t.core>t.at;}
+dtx_trail :: (t:DtxTok)->bool #effects(all) {return t.end>t.tail;}
 // Whether token i (with no punctuation before it) is the rule word w.
-dtx_is :: (s:string,k:[]DtxToks,i:int,w:string)->bool {
+dtx_is :: (s:string,k:[]DtxToks,i:int,w:string)->bool #effects(all) {
  if i>=k[0].n {return false;}t:=k[0].t[i];
  if dtx_lead(t) {return false;}kb:[1]DtxKey;return dtx_key_of(dtx_core(s,t),kb[..])==w;
 }
-dtx_filler :: (w:string)->bool {return w=="um" || w=="umm" || w=="uh" || w=="uhh" || w=="uhm" || w=="erm" || w=="hmm";}
-dtx_stop :: (w:string)->bool {
+dtx_filler :: (w:string)->bool #effects(all) {return w=="um" || w=="umm" || w=="uh" || w=="uhh" || w=="uhm" || w=="erm" || w=="hmm";}
+dtx_stop :: (w:string)->bool #effects(all) {
  stops:=[30]string.["a","an","the","in","on","at","to","of","for","with","and","or","is","are","was","as","from","into","by","then","but","so","it","this","that","be","use","call","set","named"];
  for x:stops {if w==x {return true;}}return false;
 }
 
 // Output: items separated by one space unless glued.
-dtx_put :: (o:[]DtxOut,out:[]u8,s:string,glue_before:bool,glue_after:bool) {
+dtx_put :: (o:[]DtxOut,out:[]u8,s:string,glue_before:bool,glue_after:bool) #effects(all) {
  if o[0].any && !glue_before && !o[0].glue {dtx_byte(o,out,' ');}
  for c:s {dtx_byte(o,out,c);}
  o[0].glue=glue_after;o[0].any=true;
 }
-dtx_byte :: (o:[]DtxOut,out:[]u8,c:u8) {if o[0].n>=out.count {o[0].bad=true;return;}out[o[0].n]=c;o[0].n+=1;}
+dtx_byte :: (o:[]DtxOut,out:[]u8,c:u8) #effects(all) {if o[0].n>=out.count {o[0].bad=true;return;}out[o[0].n]=c;o[0].n+=1;}
 // A word as part of an identifier: lower case, or with its first letter
 // raised (camel and Pascal), or all upper case.
-dtx_ident_word :: (o:[]DtxOut,out:[]u8,w:string,style:int,first:bool) {
+dtx_ident_word :: (o:[]DtxOut,out:[]u8,w:string,style:int,first:bool) #effects(all) {
  for i:0..<w.count {
   lower:=dtx_lower(w[i]);
   up:=style==DTX_UPPER || (i==0 && (style==DTX_PASCAL || (style==DTX_CAMEL && !first)));
@@ -293,7 +293,7 @@ dtx_ident_word :: (o:[]DtxOut,out:[]u8,w:string,style:int,first:bool) {
 }
 // The casing phrase at token i ("snake case", "all caps", ...): its
 // style, or 0; it is always two words, neither with punctuation after it.
-dtx_casing :: (s:string,k:[]DtxToks,i:int)->int {
+dtx_casing :: (s:string,k:[]DtxToks,i:int)->int #effects(all) {
  style:=0;second:="case";
  if dtx_is(s,k,i,"snake") {style=DTX_SNAKE;}
  if dtx_is(s,k,i,"camel") {style=DTX_CAMEL;}
@@ -306,7 +306,7 @@ dtx_casing :: (s:string,k:[]DtxToks,i:int)->int {
 // How many words from token i make the identifier: plain ASCII letter words
 // that are not stop words or the start of another rule, ending after the
 // first one with punctuation after it.
-dtx_ident_len :: (s:string,k:[]DtxToks,i:int)->int {
+dtx_ident_len :: (s:string,k:[]DtxToks,i:int)->int #effects(all) {
  n:=0;
  while n<DTX_IDENT {
   j:=i+n;if j>=k[0].n {break;}
@@ -318,7 +318,7 @@ dtx_ident_len :: (s:string,k:[]DtxToks,i:int)->int {
 }
 // A spoken symbol starting at token i: its text, join, and how many tokens.
 DtxSymbol :: struct {text:string;join:int;words:int;}
-dtx_symbol :: (s:string,k:[]DtxToks,i:int)->DtxSymbol {
+dtx_symbol :: (s:string,k:[]DtxToks,i:int)->DtxSymbol #effects(all) {
  none:=DtxSymbol.{};
  two:=!dtx_trail(k[0].t[i]);
  if two && dtx_is(s,k,i,"open") {
@@ -341,13 +341,13 @@ dtx_symbol :: (s:string,k:[]DtxToks,i:int)->DtxSymbol {
 }
 // Whether token i is a word a symbol may stick to: it exists, has a core
 // without digits, and has no punctuation on the side facing the symbol.
-dtx_joinable :: (s:string,k:[]DtxToks,i:int,facing_tail:bool)->bool {
+dtx_joinable :: (s:string,k:[]DtxToks,i:int,facing_tail:bool)->bool #effects(all) {
  if i<0 || i>=k[0].n {return false;}t:=k[0].t[i];c:=dtx_core(s,t);
  if c.count==0 || dtx_digit(c) {return false;}
  return ifx facing_tail then !dtx_trail(t) else !dtx_lead(t);
 }
 
-dtx_format :: (raw:string,out:[]u8)->DtxResult {
+dtx_format :: (raw:string,out:[]u8)->DtxResult #effects(all) {
  if raw.count>DTX_MAX || !dtx_utf8(raw) {return DtxResult.{status=DTX_REFUSED_INPUT};}
  for c:raw {if c<32 || c==127 {return DtxResult.{status=DTX_REFUSED_INPUT};}}
  k:[1]DtxToks;dtx_tokens(raw,k[..]);
@@ -404,7 +404,7 @@ dtx_format :: (raw:string,out:[]u8)->DtxResult {
 }
 // The draft a host inserts: the formatted text, or the raw transcript when a
 // rule refuses; -1 when neither fits out.
-dtx_draft :: (raw:string,out:[]u8)->int #export_c {
+dtx_draft :: (raw:string,out:[]u8)->int #export_c #effects(all) {
  r:=dtx_format(raw,out);if r.status==DTX_OK {return r.n;}
  if raw.count>out.count {return -1;}for i:0..<raw.count {out[i]=raw[i];}return raw.count;
 }

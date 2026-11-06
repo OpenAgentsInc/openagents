@@ -68,39 +68,39 @@ Entropy_Result :: struct { written: int; error: u32; }
   for b: out { #assert b == 77; } for b: scratch { #assert b == 88; }
 }
 
-entropy_admit :: (requested:int, capacity:int, scratch:int, spans:bool, overlap:bool)->u32 #export_c {
+entropy_admit :: (requested:int, capacity:int, scratch:int, spans:bool, overlap:bool)->u32 #export_c #effects(all) {
   if requested < 0 || requested > ENTROPY_MAX_BYTES { return ENTROPY_COUNT; }
   if capacity < requested || scratch < requested { return ENTROPY_CAPACITY; }
   if !spans { return ENTROPY_SPAN; }
   if overlap { return ENTROPY_ALIAS; }
   return ENTROPY_OK;
 }
-entropy_chunk_bytes :: () -> int #export_c { return 65536; }
-entropy_request_limit :: () -> int #export_c { return ENTROPY_MAX_BYTES; }
+entropy_chunk_bytes :: () -> int #export_c #effects(all) { return 65536; }
+entropy_request_limit :: () -> int #export_c #effects(all) { return ENTROPY_MAX_BYTES; }
 // Output-only preflight precedes host scratch allocation. No scratch span is
 // claimed to exist until entropy_admit/finish observe the actual reservation.
-entropy_output_admit :: (requested:int, capacity:int, output_valid:bool)->u32 #export_c {
+entropy_output_admit :: (requested:int, capacity:int, output_valid:bool)->u32 #export_c #effects(all) {
   if requested < 0 || requested > ENTROPY_MAX_BYTES { return ENTROPY_COUNT; }
   if capacity < requested { return ENTROPY_CAPACITY; }
   if !output_valid { return ENTROPY_SPAN; }
   return ENTROPY_OK;
 }
-entropy_full_chunks :: (requested:int)->int #export_c {
+entropy_full_chunks :: (requested:int)->int #export_c #effects(all) {
   if requested < 0 || requested > ENTROPY_MAX_BYTES { return -1; }
   return requested / 65536;
 }
-entropy_tail :: (requested:int)->int #export_c {
+entropy_tail :: (requested:int)->int #export_c #effects(all) {
   if requested < 0 || requested > ENTROPY_MAX_BYTES { return -1; }
   return requested % 65536;
 }
-entropy_completed :: (requested:int, available:bool, ok:bool, written:int)->Entropy_Result {
+entropy_completed :: (requested:int, available:bool, ok:bool, written:int)->Entropy_Result #effects(all) {
   if requested == 0 { return Entropy_Result.{}; }
   if !available { return Entropy_Result.{error=ENTROPY_UNAVAILABLE}; }
   if !ok { return Entropy_Result.{error=ENTROPY_FAILED}; }
   if written != requested { return Entropy_Result.{error=ENTROPY_SHORT}; }
   return Entropy_Result.{written=requested};
 }
-entropy_finish :: (requested:int, out:[] u8, scratch:[] u8, spans:bool, overlap:bool, available:bool, ok:bool, written:int)->Entropy_Result #export_c {
+entropy_finish :: (requested:int, out:[] u8, scratch:[] u8, spans:bool, overlap:bool, available:bool, ok:bool, written:int)->Entropy_Result #export_c #effects(all) {
   error := entropy_admit(requested,out.count,scratch.count,spans,overlap);
   if error != ENTROPY_OK { return Entropy_Result.{error=error}; }
   r := entropy_completed(requested,available,ok,written);

@@ -28,7 +28,7 @@ vt_preset :: () {
     #assert VEYR_V2.name.count<=60 && role.count<=120 && n<=4000 && VEYR_V2.greet.count<=300;
     b:[16384]u8;j:[1]Jo;jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"name");jo_str(j[..],VEYR_V2.name);jo_key(j[..],"role");jo_str(j[..],role);jo_key(j[..],"knowledge");jo_str(j[..],cast(string)knowledge[0..<n]);jo_key(j[..],"greet");jo_str(j[..],VEYR_V2.greet);jo_end(j[..]);#assert !j[0].bad;print("%\n",jo_text(j[..]));
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 {return 2;}mode:=args_at(a[..],0);prompt:[16384]u8;
     if mode=="preset" {vt_preset();return 0;}
     if mode=="judge" {if args_count(a[..])!=3 {return 2;}n:=fs_read(args_at(a[..],1),prompt[..]);#assert n>0 && !fs_exists(args_at(a[..],2));out:[65536]u8;k:=vt_call(cast(string)prompt[0..<n],out[..]);#assert k>0 && fs_write(args_at(a[..],2),cast(string)out[0..<k]);return 0;}

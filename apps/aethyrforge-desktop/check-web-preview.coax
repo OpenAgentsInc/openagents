@@ -5,7 +5,7 @@
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
 #load "world-preview-conformance.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<3{tool_errln("usage: check-web-preview ISOLATED_APP DATA_DIRECTORY NEW_OUTPUT [--existing]");return 2;}
  app:=args_at(a[..],0);data:=args_at(a[..],1);dir:=args_at(a[..],2);paths:[5][4096]u8;if !fs_mkdir(dir){return 1;}plan:=fs_join(dir,"plan.json",paths[0][..]);receipt:=fs_join(dir,"receipt.json",paths[1][..]);bytes:[32768]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"report");jo_str(o[..],receipt);jo_key(o[..],"operations");jo_arr(o[..]);
  for op:[10]string.["resize","connect","before","menu","connect","web","menu","connect","returned",""]{if op==""{continue;}jo_obj(o[..]);jo_key(o[..],"op");jo_str(o[..],ifx op=="before"||op=="web"||op=="returned" then "observe" else op);if op=="before"||op=="web"||op=="returned"{jo_key(o[..],"label");jo_str(o[..],op);}jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);if o[0].bad||!fs_write(plan,jo_text(o[..])){return 1;}

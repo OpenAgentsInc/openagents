@@ -6,7 +6,7 @@
 #load "../../coax/lib/json/json.coax";
 mai_s :: (o:[]Jo,k:string,v:string) {jo_key(o,k);jo_str(o,v);}
 mai_i :: (o:[]Jo,k:string,v:int) {jo_key(o,k);jo_int(o,v);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<3 {tool_errln("usage: metal-appkit-inputs ROOT RESOURCES NEW_OUTPUT [--basic]");return 2;}
  root:=args_at(a[..],0);res:=args_at(a[..],1);dir:=args_at(a[..],2);basic:=args_has(a[..],"--basic");if !fs_mkdir(dir) {return 1;}paths:[6][4096]u8;plan:=fs_join(dir,"plan.json",paths[0][..]);report:=fs_join(dir,"appkit.json",paths[1][..]);
  bytes:[16384]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);mai_s(o[..],"schema","aethyr.metal.appkit-events.v1");jo_key(o[..],"operations");jo_arr(o[..]);

@@ -10,7 +10,7 @@
 // in MoneyRange: checked at every step, in every build.
 MAX_MSAT :: 2_100_000_000_000_000_000;
 
-money_range :: (v: int) -> bool {
+money_range :: (v: int) -> bool #effects(all) {
   return v >= 0 && v <= MAX_MSAT;
 }
 
@@ -20,7 +20,7 @@ money_range :: (v: int) -> bool {
 }
 
 // A refund is never negative and never more than was paid.
-refund_ok :: (paid: int, refund: int) -> bool {
+refund_ok :: (paid: int, refund: int) -> bool #effects(all) {
   return money_range(paid) && money_range(refund) && refund <= paid;
 }
 
@@ -40,7 +40,7 @@ Sum :: struct {
 
 // Adds amounts, re-checking the range after every addition, as
 // consensus/tx_check.cpp does. Never overflows: it refuses first.
-sum_amounts :: (amounts: [] int) -> Sum {
+sum_amounts :: (amounts: [] int) -> Sum #effects(all) {
   s := Sum.{total = 0, ok = true};
   for a: amounts {
     if !money_range(a) || a > MAX_MSAT - s.total { return Sum.{total = 0, ok = false}; }
@@ -70,7 +70,7 @@ sum_amounts :: (amounts: [] int) -> Sum {
 // amount * ppm, which could overflow for large amounts. Preconditions bound
 // amount to MoneyRange and ppm to [0, 1M], even in release builds. They are
 // required: dividing first alone does not prevent overflow for arbitrary ppm.
-fee_inputs_ok :: (amount: int, ppm: int) -> bool {
+fee_inputs_ok :: (amount: int, ppm: int) -> bool #effects(all) {
   return money_range(amount) && ppm >= 0 && ppm <= 1_000_000;
 }
 
@@ -83,7 +83,7 @@ fee_inputs_ok :: (amount: int, ppm: int) -> bool {
   #assert fee_inputs_ok(MAX_MSAT, 1_000_000);
 }
 
-fee_msat :: (amount: int, ppm: int) -> int {
+fee_msat :: (amount: int, ppm: int) -> int #effects(all) {
   #assert fee_inputs_ok(amount, ppm);
   return amount / 1_000_000 * ppm + amount % 1_000_000 * ppm / 1_000_000;
 }
@@ -114,7 +114,7 @@ Terms :: struct {
   retain_until: int;
 }
 
-terms_ok :: (t: Terms) -> bool {
+terms_ok :: (t: Terms) -> bool #effects(all) {
   return t.quote_expires_at <= t.order_confirm_by && t.order_confirm_by < t.delivery_due_at &&
          t.delivery_due_at < t.review_due_at && t.review_due_at < t.payment_due_at &&
          t.payment_due_at < t.retain_until;

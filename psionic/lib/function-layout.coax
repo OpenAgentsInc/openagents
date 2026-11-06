@@ -52,9 +52,9 @@
   #assert fx_finite(0) && fx_finite(1e300) && fx_finite(-1e300);
   #assert !fx_finite_bits(0x7ff8000000000001) && !fx_finite_bits(0x7ff0000000000000) && !fx_finite_bits(0xfff0000000000000);
 }
-fx_finite_bits :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
-fx_finite :: (value:f64)->bool {return fx_finite_bits(f64_bits(value));}
-fx_program :: (p:TiProgram)->FxLayout {
+fx_finite_bits :: (bits:u64)->bool #effects(all) {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+fx_finite :: (value:f64)->bool #effects(all) {return fx_finite_bits(f64_bits(value));}
+fx_program :: (p:TiProgram)->FxLayout #effects(all) {
   r:FxLayout;r.tape.program=p;r.tape.plan=ti_compile(p,TiTarget.{},false);
   if r.tape.plan.status!=TiStatus.ok {r.status=FxStatus.program;return r;}
   r.domain=r.tape.plan.input_elements;r.codomain=r.tape.plan.output_elements;
@@ -72,9 +72,9 @@ fx_program :: (p:TiProgram)->FxLayout {
   }
   return r;
 }
-fx_domain_valid :: (domain:int,codomain:int)->bool {return domain>=1 && domain<=FX_DOMAIN && codomain>=1 && codomain<=FX_LEAVES;}
-fx_count_valid :: (count:int)->bool {return count>=1 && count<=FX_LEAVES;}
-fx_layout :: (f:FxFunction)->FxLayout {
+fx_domain_valid :: (domain:int,codomain:int)->bool #effects(all) {return domain>=1 && domain<=FX_DOMAIN && codomain>=1 && codomain<=FX_LEAVES;}
+fx_count_valid :: (count:int)->bool #effects(all) {return count>=1 && count<=FX_LEAVES;}
+fx_layout :: (f:FxFunction)->FxLayout #effects(all) {
   r:=fx_program(f.program);
   // Preserve original priority: program/domain, then leaf count, then roots.
   if !fx_count_valid(f.count) && fx_domain_valid(r.domain,r.codomain) {r.status=FxStatus.shape;return r;}

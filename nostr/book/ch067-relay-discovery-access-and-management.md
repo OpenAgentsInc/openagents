@@ -124,7 +124,7 @@ request.
 ```jai
 // The whole management endpoint for one HTTP request.
 n86_serve :: (p:[]N86Policy,http_method:string,content_type:string,authorization:string,
-              url:string,body:[]u8,now:int,out:[]u8)->N86Reply {
+              url:string,body:[]u8,now:int,out:[]u8)->N86Reply #effects(all) {
   if !n86_same_fold(content_type,N86_TYPE) {return n86_fail(N86_CONTENT_TYPE,out);}
   if http_method!="POST" {return n86_fail(N86_HTTP_METHOD,out);}
   work:[N98_WORK]u8;a:[N98_OUT]u8;
@@ -154,7 +154,7 @@ param is a string of at most 64 bytes or an integer.
 ```jai
 // The body as one request: the method's index and its params, checked
 // against the method's shape. Other keys are skipped.
-n86_request :: (body:string)->N86Request {
+n86_request :: (body:string)->N86Request #effects(all) {
   r:N86Request;j:[1]Json;json_start(j[..],body);has_method:=false;has_params:=false;
   if json_next(j[..])!=JSON_OBJECT {return r;}
   t:=json_next(j[..]);
@@ -204,7 +204,7 @@ the same way; NIP-86 doesn't say, so that is this relay's choice.
 ```jai
 // Apply one read request to the policy and write its reply. A refused
 // request changes nothing.
-n86_dispatch :: (p:[]N86Policy,r:N86Request,out:[]u8)->N86Reply {
+n86_dispatch :: (p:[]N86Policy,r:N86Request,out:[]u8)->N86Reply #effects(all) {
   if r.error!=N86_OK {return n86_fail(r.error,out);}
   m:=r.method;key:[32]u8;
   if N86_SHAPES[m]==1 {decoded:=n86_key(r.p[0].text,key[..]);}
@@ -253,7 +253,7 @@ non-empty allowed-kinds list admits only its kinds.
 // keys; a non-empty allowed-kinds list admits only its kinds.
 N86_ADMIT_OK :: 0; N86_ADMIT_BANNED :: 1; N86_ADMIT_NOT_ALLOWED :: 2;
 N86_ADMIT_EVENT :: 3; N86_ADMIT_KIND :: 4; N86_ADMIT_KIND_NOT_ALLOWED :: 5;
-n86_admit :: (p:N86Policy,pubkey:[32]u8,id:[32]u8,kind:int)->int {
+n86_admit :: (p:N86Policy,pubkey:[32]u8,id:[32]u8,kind:int)->int #effects(all) {
   if n86_find(p.banned,pubkey)>=0 {return N86_ADMIT_BANNED;}
   if p.allowed.n>0 && n86_find(p.allowed,pubkey)<0 {return N86_ADMIT_NOT_ALLOWED;}
   if n86_find(p.banned_events,id)>=0 {return N86_ADMIT_EVENT;}
@@ -473,7 +473,7 @@ That key is the `self` field of the relay's NIP-11 document (chapter 37):
 ```jai
 // The self field of a NIP-11 document: the relay's key, 64 lowercase hex
 // digits. False when the document has none or it does not read.
-n43_self :: (nip11:string,out:[]u8)->bool {
+n43_self :: (nip11:string,out:[]u8)->bool #effects(all) {
   j:[1]Json;json_start(j[..],nip11);found:=false;
   if json_next(j[..])!=JSON_OBJECT {return false;}
   t:=json_next(j[..]);
@@ -499,7 +499,7 @@ optionally, a role.
 ```jai
 // The relay's member list, when self signed it: each member tag's key and
 // its first role (empty when none).
-n43_members :: (self:[32]u8,e:NostrEvent)->N43Members {
+n43_members :: (self:[32]u8,e:NostrEvent)->N43Members #effects(all) {
   m:N43Members;m.status=n43_relay_event(self,e,N43_MEMBERS_KIND,N43_MEMBERS_KIND);
   if m.status!=N43_OK {return m;}
   k:=0;
@@ -534,7 +534,7 @@ a non-empty `claim`, an invite code.
 <!-- source: coax/lib/nostr/nip43.coax request -->
 ```jai
 // A user's join (28934, with a claim) or leave (28936) request.
-n43_request :: (e:NostrEvent,now:int)->N43Request {
+n43_request :: (e:NostrEvent,now:int)->N43Request #effects(all) {
   r:N43Request;
   if e.error!=NE_OK || !e.verified {return r;}
   r.status=N43_KIND;

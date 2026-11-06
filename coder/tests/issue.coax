@@ -1,6 +1,6 @@
 // Bounded issue driver. Qualification is a separate independent command.
 #load "process.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) {return 2;}
  e:=PeEnv.{repo=args_value(a[..],"--driver-repo",""),coder=args_value(a[..],"--driver",""),coax=args_value(a[..],"--coax",""),home=args_value(a[..],"--home",""),cwd=args_value(a[..],"--repo","")};
  taskb:[16384]u8;taskn:=fs_read(args_value(a[..],"--task",""),taskb[..]);if taskn<=0 || taskn>=taskb.count {return 2;}

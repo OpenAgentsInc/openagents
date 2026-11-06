@@ -9,7 +9,7 @@ AudioPcmVoice :: struct {
  coefficient:f64=1;left:f64;right:f64;fade:f64=1;stop:int= -1;
 }
 AudioPcmFrame :: struct {left:f64;right:f64;wet_left:f64;wet_right:f64;}
-apv_asset_name :: (name:string)->bool #export_c {
+apv_asset_name :: (name:string)->bool #export_c #effects(all) {
  if name.count<1 || name.count>48 {return false;}
  for c:name {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}
  return true;
@@ -66,7 +66,7 @@ apv_asset_name :: (name:string)->bool #export_c {
  one:=[1]f32.[1];e=audio_host_parse("~wind 3 0");v[0]=apv_open(one[..],1,e);#assert v[0].target_gain==1;
  v[0].rate=2;q:=apv_frame(v[..]);#assert v[0].position==0 && q.left==0 && v[0].gain>0;
 }
-apv_open :: (pcm:[]f32,channels:int,e:AudioHostEffect)->AudioPcmVoice #export_c {
+apv_open :: (pcm:[]f32,channels:int,e:AudioHostEffect)->AudioPcmVoice #export_c #effects(all) {
  if (channels!=1 && channels!=2) || pcm.count<channels || pcm.count%channels!=0 || (e.kind!=1 && e.kind!=2) {return AudioPcmVoice.{};}
  // Audio decoders can produce finite overshoots above full scale. Preserve
  // them; the carrier's dynamics still owns output gain.
@@ -74,9 +74,9 @@ apv_open :: (pcm:[]f32,channels:int,e:AudioHostEffect)->AudioPcmVoice #export_c 
  bed:=e.kind==2;v:=AudioPcmVoice.{pcm=pcm,channels=channels,active=true,bed=bed,mixed=e.id.count>0,delay=int(f64(e.delay)*48000+0.5),gain=ifx bed then 0 else f64(e.gain),target_gain=f64(e.gain),pan=f64(e.pan),target_pan=f64(e.pan),ease=ifx bed then 24000 else 0,rate=f64(e.rate),wet=f64(e.wet)};
  if bed {v.target_gain=f64(clamp(e.gain,0,1));}if e.lowpass>=1 && e.lowpass<24000 {v.coefficient=1-exp(-2*PI*f64(e.lowpass)/48000);}return v;
 }
-apv_bed :: (s:[]AudioPcmVoice,e:AudioHostEffect) #export_c {if s.count!=1 || !s[0].active || !s[0].bed {return;}s[0].target_gain=f64(clamp(e.gain,0,1));s[0].target_pan=f64(e.pan);s[0].ease=12000;}
-apv_stop :: (s:[]AudioPcmVoice) #export_c {if s.count!=1 || !s[0].active {return;}s[0].stop=3840;}
-apv_frame :: (s:[]AudioPcmVoice)->AudioPcmFrame #export_c {
+apv_bed :: (s:[]AudioPcmVoice,e:AudioHostEffect) #export_c #effects(all) {if s.count!=1 || !s[0].active || !s[0].bed {return;}s[0].target_gain=f64(clamp(e.gain,0,1));s[0].target_pan=f64(e.pan);s[0].ease=12000;}
+apv_stop :: (s:[]AudioPcmVoice) #export_c #effects(all) {if s.count!=1 || !s[0].active {return;}s[0].stop=3840;}
+apv_frame :: (s:[]AudioPcmVoice)->AudioPcmFrame #export_c #effects(all) {
  if s.count!=1 || !s[0].active {return AudioPcmFrame.{};}v:=s[0];if v.delay>0 {s[0].delay-=1;return AudioPcmFrame.{};}
  n:=v.pcm.count/v.channels;at:=int(v.position);next:=ifx at+1<n then at+1 else ifx v.bed then 0 else at;t:=v.position-f64(at);
  left:=f64(v.pcm[at*v.channels])*(1-t)+f64(v.pcm[next*v.channels])*t;

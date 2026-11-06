@@ -241,7 +241,7 @@ which a buried deployment applies.
 ```jai
 // The parameters of a network, 1 to 5; anything else is mainnet's with
 // chain 0, which no procedure accepts as a network.
-chain_params :: (chain: int) -> ChainParams #export_c {
+chain_params :: (chain: int) -> ChainParams #export_c #effects(all) {
   if chain == CHAIN_MAIN { return CHAIN_MAINNET_PARAMS; }
   if chain == CHAIN_TESTNET3 { return CHAIN_TESTNET3_PARAMS; }
   if chain == CHAIN_TESTNET4 { return CHAIN_TESTNET4_PARAMS; }
@@ -252,7 +252,7 @@ chain_params :: (chain: int) -> ChainParams #export_c {
 }
 // Core's DeploymentHeight: the height from which a buried deployment's
 // rules apply. Core's DeploymentActiveAt is height >= this.
-chain_deployment_height :: (p: ChainParams, dep: int) -> int #export_c {
+chain_deployment_height :: (p: ChainParams, dep: int) -> int #export_c #effects(all) {
   if dep == DEP_HEIGHTINCB { return p.bip34_height; }
   if dep == DEP_CLTV { return p.bip65_height; }
   if dep == DEP_DERSIG { return p.bip66_height; }
@@ -260,7 +260,7 @@ chain_deployment_height :: (p: ChainParams, dep: int) -> int #export_c {
   if dep == DEP_SEGWIT { return p.segwit_height; }
   return -1;
 }
-chain_deployment_active :: (p: ChainParams, dep: int, height: int) -> bool #export_c {
+chain_deployment_active :: (p: ChainParams, dep: int, height: int) -> bool #export_c #effects(all) {
   h := chain_deployment_height(p, dep);
   return h >= 0 && height >= h;
 }
@@ -294,7 +294,7 @@ with the shortest length prefix. It never turns one byte into `OP_1` to
 // bytes), OP_PUSHDATA1, OP_PUSHDATA2 and OP_PUSHDATA4. It never uses OP_0
 // or OP_1 to OP_16; those are opcodes, not pushed bytes. Writes at at and
 // returns where writing goes on, or -1 with no room.
-chain_push_vartime :: (out: [] u8, at: int, data: [] u8) -> int #export_c {
+chain_push_vartime :: (out: [] u8, at: int, data: [] u8) -> int #export_c #effects(all) {
   n := data.count;
   width := ifx n < OP_PUSHDATA1 then 0 else ifx n <= 0xff then 1 else ifx n <= 0xffff then 2 else 4;
   if at < 0 || 1 + width + n > out.count - at { return -1; }
@@ -317,7 +317,7 @@ coinbase. The Merkle root of a single transaction is its txid (chapter 46).
 // The Merkle root of one transaction is its txid. Returns the block's
 // length, or -1 when out is too small or a field does not decode.
 CHAIN_GENESIS_MAX :: 512;
-chain_genesis_block_vartime :: (g: ChainGenesis, out: [] u8) -> int #export_c {
+chain_genesis_block_vartime :: (g: ChainGenesis, out: [] u8) -> int #export_c #effects(all) {
   if out.count < CHAIN_GENESIS_MAX || g.message.count > 255 || g.script.count > 2 * 100 { return -1; }
   sig: [300] u8; spk: [100] u8; prefix: [7] u8; message: [255] u8;
   #assert cp_unhex(CHAIN_GENESIS_PREFIX, prefix[..]) == 7;
@@ -355,7 +355,7 @@ chain_genesis_block_vartime :: (g: ChainGenesis, out: [] u8) -> int #export_c {
 // Builds the genesis block and checks it as Core's asserts do: the Merkle
 // root, then the hash; then the hash meets the block's nBits under the
 // network's powLimit, as every block must.
-chain_genesis_check_vartime :: (p: ChainParams) -> int #export_c {
+chain_genesis_check_vartime :: (p: ChainParams) -> int #export_c #effects(all) {
   b: [CHAIN_GENESIS_MAX] u8; hash: [32] u8;
   n := chain_genesis_block_vartime(p.genesis, b[..]);
   if n < 0 { return CHAIN_CAPACITY; }
@@ -419,7 +419,7 @@ gets other magic bytes, so its nodes find each other and no one else.
 // the challenge serialized as a script, its length first. Every signet
 // with another challenge has other magic bytes, so its peers find each
 // other and nobody else.
-chain_signet_magic_vartime :: (challenge: [] u8, out: [] u8) -> bool #export_c {
+chain_signet_magic_vartime :: (challenge: [] u8, out: [] u8) -> bool #export_c #effects(all) {
   if out.count != 4 || challenge.count > SCRIPT_MAX_SIZE { return false; }
   s: [SCRIPT_MAX_SIZE + 3] u8; digest: [32] u8;
   at := tx_compact_write_vartime(s[..], 0, challenge.count);
@@ -430,7 +430,7 @@ chain_signet_magic_vartime :: (challenge: [] u8, out: [] u8) -> bool #export_c {
 }
 // Core's GetNetworkForMagic: which network a message's first four bytes
 // name, or 0. Signet means the default signet.
-chain_from_magic_vartime :: (magic: [] u8) -> int #export_c {
+chain_from_magic_vartime :: (magic: [] u8) -> int #export_c #effects(all) {
   if magic.count != 4 { return 0; }
   for chain: CHAIN_MAIN..<CHAIN_REGTEST + 1 {
     p := chain_params(chain);
@@ -443,7 +443,7 @@ chain_from_magic_vartime :: (magic: [] u8) -> int #export_c {
 // SigNetParams with a custom challenge (-signetchallenge), given in hex:
 // its own magic, and no minimum chain work or assumed-valid block. chain
 // is 0 when the challenge does not decode.
-chain_signet_custom_vartime :: (challenge: string) -> ChainParams #export_c {
+chain_signet_custom_vartime :: (challenge: string) -> ChainParams #export_c #effects(all) {
   p := CHAIN_SIGNET_PARAMS;
   p.challenge = challenge; p.min_chain_work = ""; p.assume_valid = ""; p.assume_valid_height = 0;
   b: [SCRIPT_MAX_SIZE] u8;
@@ -498,7 +498,7 @@ unknown version bits: Taproot's activation plus one period on mainnet,
 // BIP-16 exception (mainnet block 170,060, and one testnet3 block) spends
 // an output of the P2SH form that P2SH would refuse; the Taproot exception
 // (mainnet block 692,261) spends a witness v1 output before Taproot.
-chain_script_exception_vartime :: (p: ChainParams, hash: [] u8) -> int #export_c {
+chain_script_exception_vartime :: (p: ChainParams, hash: [] u8) -> int #export_c #effects(all) {
   if chain_hash_is_vartime(hash, p.bip16_exception) { return 0; }
   if chain_hash_is_vartime(hash, p.taproot_exception) { return SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS; }
   return -1;
@@ -518,11 +518,11 @@ CHAIN_BIP30_UNSPENDABLE_HASHES :: [2] string.["00000000000271a2dc26e7667f8419f2e
 // repeat: a coinbase of block 1,983,702 could match an early coinbase's
 // scriptSig, so ConnectBlock checks BIP-30 again from there.
 CHAIN_BIP34_IMPLIES_BIP30_LIMIT :: 1983702;
-chain_bip30_repeat_vartime :: (height: int, hash: [] u8) -> bool #export_c {
+chain_bip30_repeat_vartime :: (height: int, hash: [] u8) -> bool #export_c #effects(all) {
   for i: 0..<2 { if height == CHAIN_BIP30_REPEAT_HEIGHTS[i] && chain_hash_is_vartime(hash, CHAIN_BIP30_REPEAT_HASHES[i]) { return true; } }
   return false;
 }
-chain_bip30_unspendable_vartime :: (height: int, hash: [] u8) -> bool #export_c {
+chain_bip30_unspendable_vartime :: (height: int, hash: [] u8) -> bool #export_c #effects(all) {
   for i: 0..<2 { if height == CHAIN_BIP30_UNSPENDABLE_HEIGHTS[i] && chain_hash_is_vartime(hash, CHAIN_BIP30_UNSPENDABLE_HASHES[i]) { return true; } }
   return false;
 }
@@ -577,7 +577,7 @@ commitment output (chapter 49), as a push that starts with the four bytes
 // has at least 38 bytes and starts OP_RETURN, a push of 36 and aa21a9ed.
 // -1 when there is none. Chapter 49 checks the commitment itself.
 SIGNET_COMMITMENT_HEADER :: [6] u8.[0x6a, 0x24, 0xaa, 0x21, 0xa9, 0xed];
-chain_commitment_index_vartime :: (b: [] u8, t: Tx, outs: [] TxOut) -> int #export_c {
+chain_commitment_index_vartime :: (b: [] u8, t: Tx, outs: [] TxOut) -> int #export_c #effects(all) {
   found := -1;
   for o: 0..<t.nout {
     s := b[outs[o].script..<outs[o].script+outs[o].script_n];
@@ -608,7 +608,7 @@ longer prefix than needed changes too.
 // is none (then the script is unchanged).
 SIGNET_HEADER :: [4] u8.[0xec, 0xc7, 0xda, 0xa2];
 SignetFetch :: struct { length: int; at: int; n: int; }
-chain_signet_fetch_vartime :: (s: [] u8, out: [] u8) -> SignetFetch #export_c {
+chain_signet_fetch_vartime :: (s: [] u8, out: [] u8) -> SignetFetch #export_c #effects(all) {
   r := SignetFetch.{n=-1};
   w := 0; pc := 0;
   while pc < s.count {
@@ -679,7 +679,7 @@ SIGNET_FLAGS :: SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_DERSI
 // ins, outs and items must hold the block's largest transaction; ids
 // holds 96 bytes per transaction; scratch holds the coinbase, the
 // challenge or the solution with 200 bytes to spare.
-chain_signet_check_vartime :: (p: ChainParams, b: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, ids: [] u8, scratch: [] u8, w: [] ScriptWork) -> SignetCheck #export_c {
+chain_signet_check_vartime :: (p: ChainParams, b: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, ids: [] u8, scratch: [] u8, w: [] ScriptWork) -> SignetCheck #export_c #effects(all) {
   hash: [32] u8; root: [32] u8; spend_id: [32] u8;
   if b.count < 80 { return SignetCheck.{code=SIGNET_BAD_BLOCK}; }
   #assert pow_block_hash_vartime(b[0..<80], hash[..]) == POW_OK;

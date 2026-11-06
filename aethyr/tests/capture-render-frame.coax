@@ -49,7 +49,7 @@ pcf_metadata :: (p:PctOptions,s:PcSession,capture:[]PctCapture,work:string,wasm:
   jo_key(o[..],"uniform_floats");jo_int(o[..],s.uniforms);jo_key(o[..],"vertex_stride");jo_int(o[..],s.stride);jo_key(o[..],"max_vertices");jo_int(o[..],s.max_vertices);jo_key(o[..],"memory_bytes");jo_int(o[..],s.memory);jo_key(o[..],"files");pct_files_json(o[..],files);
   jo_key(o[..],"source_inputs");rtq_inputs_json(o[..],inputs[..],".");jo_end(o[..]);return !o[0].bad && rto_saved(work,"capture.json",jo_text(o[..]));
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}child:=rto_child(a[..]);if child>=0 {return child;}p:=pct_options(a[..]);if !p.valid {tool_errln("usage: capture-render-frame PRODUCER.wasm [--dump NEW_DIR] [--frames1..600 --every N --size WxH --scale S --clock I64 --page I32 --golden --pack FILE --facts FILE --fact K=V --extra N,... --hash TEXT --keys FRAME:KEY:DOWN,... --pointer FRAME:X:Y,... --index FILE --vertices FILE --mesh FILE]");return 2;}
   wasm_buf:[4096]u8;wasm:=fs_realpath(args_at(a[..],0),wasm_buf[..]);if wasm=="" {return 2;}bytes:[67108864]u8;wn:=fs_size(wasm);if wn<8 || wn>bytes.count || fs_read_at(wasm,0,bytes[0..<wn])!=wn {return 2;}description:=gm_describe(bytes[0..<wn]);wasm_hash:[64]u8;if !description.valid || description.maximum!=1024 || !S_hex(S_hash(cast(string)bytes[0..<wn]),wasm_hash[..]) {return 2;}
   work_buf:[4096]u8;temporary_buf:[4096]u8;work:="";temporary:=p.values[0]=="";if temporary {created:=fs_temp("aethyr-producer-capture-",temporary_buf[..]);if created!="" {work=fs_realpath(created,work_buf[..]);}}else {if fs_exists(p.values[0]) || !fs_mkdir(p.values[0]) {return 2;}work=fs_realpath(p.values[0],work_buf[..]);}if work=="" {return 2;}

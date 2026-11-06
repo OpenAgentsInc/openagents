@@ -158,7 +158,7 @@ same way, with zero bits to finish the last byte.
 // added at the end to fill the last byte. A field's value is the first
 // (5 * words) / 8 bytes: the partial byte is padding. The signature
 // covers all of them.
-inv_pack :: (words: [] u8, out: [] u8) -> int {
+inv_pack :: (words: [] u8, out: [] u8) -> int #effects(all) {
   n := (words.count * 5 + 7) / 8;
   for i: 0..<n { out[i] = 0; }
   for k: 0..<words.count * 5 {
@@ -167,7 +167,7 @@ inv_pack :: (words: [] u8, out: [] u8) -> int {
   return n;
 }
 // Bytes to words, with zero bits added at the end to fill the last word.
-inv_unpack :: (bytes: [] u8, out: [] u8) -> int {
+inv_unpack :: (bytes: [] u8, out: [] u8) -> int #effects(all) {
   n := (bytes.count * 8 + 4) / 5;
   for i: 0..<n { out[i] = 0; }
   for k: 0..<bytes.count * 8 {
@@ -176,7 +176,7 @@ inv_unpack :: (bytes: [] u8, out: [] u8) -> int {
   return n;
 }
 // A big-endian number in words: x, c and the timestamp.
-inv_number :: (words: [] u8) -> u64 {
+inv_number :: (words: [] u8) -> u64 #effects(all) {
   v: u64 = 0;
   for w: words { v = (v << 5) | cast(u64) w; }
   return v;
@@ -201,7 +201,7 @@ No amount means the payer chooses one, as for a donation.
 // msat: a p amount must end in 0.
 INV_PREFIXES :: [4] string.["bc", "tb", "tbs", "bcrt"];
 InvAmount :: struct { code: int; network: int; has: bool; msat: u64; }
-inv_hrp_vartime :: (hrp: [] u8) -> InvAmount {
+inv_hrp_vartime :: (hrp: [] u8) -> InvAmount #effects(all) {
   if hrp.count < 2 || hrp[0] != 'l' || hrp[1] != 'n' { return InvAmount.{code = INV_BAD_PREFIX}; }
   at := 2;
   while at < hrp.count && (hrp[at] < '0' || hrp[at] > '9') { at += 1; }
@@ -259,7 +259,7 @@ base fee, the proportional fee and the CLTV delta that channel's
 // One tagged field: its value checked against its type and kept. A field
 // whose type the reader does not know is skipped; so is a fallback of an
 // unknown version.
-inv_field_vartime :: (inv: [] Invoice, f: InvField, seen: [] int) -> int {
+inv_field_vartime :: (inv: [] Invoice, f: InvField, seen: [] int) -> int #effects(all) {
   w := inv[0].words[f.start..<f.start + f.length];
   b: [640] u8; nb := (f.length * 5) / 8; packed := inv_pack(w, b[..]);
   t := f.type;
@@ -344,7 +344,7 @@ needs `payment_secret`.
 <!-- source: coax/lib/lightning/invoice.coax decode -->
 ```jai
 // Reads an invoice into inv[0]. Returns INV_OK or the first refusal.
-invoice_decode_vartime :: (text: string, inv: [] Invoice) -> int {
+invoice_decode_vartime :: (text: string, inv: [] Invoice) -> int #effects(all) {
   fresh: Invoice; inv[0] = fresh;
   inv[0].expiry = 3600; inv[0].min_final_cltv = 18; inv[0].recovery = -1;
   // Bech32 without the 90-character limit (extended).
@@ -400,7 +400,7 @@ either.
 ```jai
 // The signed bytes: the human-readable part as text, then every word
 // before the signature, packed with zero bits to a whole byte.
-inv_digest :: (hrp: [] u8, words: [] u8, out: [] u8) {
+inv_digest :: (hrp: [] u8, words: [] u8, out: [] u8) #effects(all) {
   m: [83 + 2560] u8;
   for i: 0..<hrp.count { m[i] = hrp[i]; }
   n := inv_pack(words, m[hrp.count..<m.count]);
@@ -409,7 +409,7 @@ inv_digest :: (hrp: [] u8, words: [] u8, out: [] u8) {
 // With an n field, the signature must verify under that key with a low s.
 // Without one, the recovery ID names the nonce point, and the key that
 // signature recovers to is the payee: any s is accepted.
-inv_check_signature_vartime :: (inv: [] Invoice) -> int {
+inv_check_signature_vartime :: (inv: [] Invoice) -> int #effects(all) {
   sig: [65] u8;
   packed := inv_pack(inv[0].words[inv[0].data_n..<inv[0].words_n], sig[..]);
   for i: 0..<64 { inv[0].signature[i] = sig[i]; }
@@ -437,7 +437,7 @@ testnet's address formats.
 // A fallback's address on the invoice's network: version 17 is P2PKH,
 // 18 is P2SH, and 0 to 16 are witness programs (chapter 29). Signet
 // addresses are testnet's. Returns the length or a negative AD_ code.
-invoice_fallback_address_vartime :: (inv: [] Invoice, i: int, out: [] u8) -> int {
+invoice_fallback_address_vartime :: (inv: [] Invoice, i: int, out: [] u8) -> int #effects(all) {
   fb := inv[0].fallbacks[i]; script: [42] u8; n := 0;
   if fb.version >= 17 { n = ad_hash_script(fb.version == 17, fb.program[0..<20], script[..]); }
   else { n = ad_witness_script(fb.version, fb.program[0..<fb.length], script[..]); }
@@ -461,7 +461,7 @@ fields always give the same invoice. That is why it can reproduce BOLT
 InvoiceWriter :: struct { code: int; hrp: [90] u8; hrp_n: int; words: [4096] u8; n: int; }
 // The amount in the fewest digits: the largest multiplier that divides
 // it, or p with a trailing 0 for a whole number of msat.
-invoice_begin_vartime :: (w: [] InvoiceWriter, network: int, has_amount: bool, amount_msat: u64, timestamp: u64) -> int {
+invoice_begin_vartime :: (w: [] InvoiceWriter, network: int, has_amount: bool, amount_msat: u64, timestamp: u64) -> int #effects(all) {
   fresh: InvoiceWriter; w[0] = fresh;
   if network < INV_MAINNET || network > INV_REGTEST { w[0].code = INV_BAD_PREFIX; return w[0].code; }
   if timestamp >> 35 != 0 { w[0].code = INV_BAD_LENGTH; return w[0].code; }
@@ -485,7 +485,7 @@ invoice_begin_vartime :: (w: [] InvoiceWriter, network: int, has_amount: bool, a
   return INV_OK;
 }
 // A field of the given words: type, data_length, data.
-invoice_put_words_vartime :: (w: [] InvoiceWriter, type: int, words: [] u8) -> int {
+invoice_put_words_vartime :: (w: [] InvoiceWriter, type: int, words: [] u8) -> int #effects(all) {
   if w[0].code != INV_OK { return w[0].code; }
   if type < 0 || type > 31 || words.count > 1023 { w[0].code = INV_BAD_LENGTH; return w[0].code; }
   if w[0].n + 3 + words.count + INV_SIGNATURE > INV_MAX_WORDS { w[0].code = INV_CAPACITY; return w[0].code; }
@@ -496,13 +496,13 @@ invoice_put_words_vartime :: (w: [] InvoiceWriter, type: int, words: [] u8) -> i
   return INV_OK;
 }
 // Bytes, padded with zero bits to whole words: p, s, h, n, d and m.
-invoice_put_bytes_vartime :: (w: [] InvoiceWriter, type: int, bytes: [] u8) -> int {
+invoice_put_bytes_vartime :: (w: [] InvoiceWriter, type: int, bytes: [] u8) -> int #effects(all) {
   if bytes.count > 639 { w[0].code = INV_BAD_LENGTH; return w[0].code; }
   words: [1023] u8; n := inv_unpack(bytes, words[..]);
   return invoice_put_words_vartime(w, type, words[0..<n]);
 }
 // A number in the fewest words, no leading zero word: x and c.
-invoice_put_number_vartime :: (w: [] InvoiceWriter, type: int, v: u64) -> int {
+invoice_put_number_vartime :: (w: [] InvoiceWriter, type: int, v: u64) -> int #effects(all) {
   words: [13] u8; n := 0;
   while n < 13 && (v >> cast(u64) (5 * n)) != 0 { n += 1; }
   for i: 0..<n { words[i] = cast(u8) ((v >> cast(u64) (5 * (n - 1 - i))) & 31); }
@@ -510,7 +510,7 @@ invoice_put_number_vartime :: (w: [] InvoiceWriter, type: int, v: u64) -> int {
 }
 // A feature bitmap, big-endian as in BOLT 9, in the fewest words. An
 // empty bitmap writes no field at all.
-invoice_put_features_vartime :: (w: [] InvoiceWriter, f: [] u8) -> int {
+invoice_put_features_vartime :: (w: [] InvoiceWriter, f: [] u8) -> int #effects(all) {
   top := -1;
   for bit: 0..<f.count * 8 { if ln_feature_set(f, bit) { top = bit; } }
   if top < 0 { return w[0].code; }
@@ -520,14 +520,14 @@ invoice_put_features_vartime :: (w: [] InvoiceWriter, f: [] u8) -> int {
   return invoice_put_words_vartime(w, INV_9, words[0..<n]);
 }
 // A fallback: the version as one word, then the program or hash.
-invoice_put_fallback_vartime :: (w: [] InvoiceWriter, version: int, program: [] u8) -> int {
+invoice_put_fallback_vartime :: (w: [] InvoiceWriter, version: int, program: [] u8) -> int #effects(all) {
   if version < 0 || version > 18 || program.count > 40 { w[0].code = INV_BAD_FALLBACK; return w[0].code; }
   words: [66] u8; words[0] = cast(u8) version;
   n := inv_unpack(program, words[1..<66]);
   return invoice_put_words_vartime(w, INV_F, words[0..<n + 1]);
 }
 // One r field: the hops of one private route, 51 bytes each.
-invoice_put_route_vartime :: (w: [] InvoiceWriter, hops: [] InvHop) -> int {
+invoice_put_route_vartime :: (w: [] InvoiceWriter, hops: [] InvHop) -> int #effects(all) {
   if hops.count == 0 || hops.count > 12 { w[0].code = INV_BAD_ROUTE; return w[0].code; }
   b: [612] u8;
   for e: 0..<hops.count {
@@ -543,7 +543,7 @@ invoice_put_route_vartime :: (w: [] InvoiceWriter, hops: [] InvHop) -> int {
 // Signs the hrp and words with the payee's key and writes the invoice:
 // r || s || recovery ID as 104 words, then the Bech32 checksum.
 InvoiceText :: struct { code: int; length: int; }
-invoice_sign_vartime :: (w: [] InvoiceWriter, key: [] u8, out: [] u8) -> InvoiceText {
+invoice_sign_vartime :: (w: [] InvoiceWriter, key: [] u8, out: [] u8) -> InvoiceText #effects(all) {
   if w[0].code != INV_OK { return InvoiceText.{code = w[0].code}; }
   digest: [32] u8; sig: [65] u8; work: [1] EcdsaWork;
   inv_digest(w[0].hrp[0..<w[0].hrp_n], w[0].words[0..<w[0].n], digest[..]);

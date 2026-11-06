@@ -7,7 +7,7 @@ NIP06_PATH :: [5] int.[2147483692, 2147484885, 2147483648, 0, 0];   // 44', 1237
 
 // The NIP-06 private key of 12, 15, 18, 21 or 24 BIP-39 words; false, with
 // key zeroed, for an unknown word, another count or a wrong checksum.
-nip06_key :: (phrase: string, key: [] u8) -> bool #export_c {
+nip06_key :: (phrase: string, key: [] u8) -> bool #export_c #effects(all) {
   if key.count != 32 { return false; }
   seed: [64] u8; chain: [32] u8; e: [32] u8; path := NIP06_PATH;
   ok := bip39_entropy(phrase, e[..]) && bip39_seed(phrase, seed[..]) && bip32_path(seed[..], path[..], key, chain[..]);
@@ -17,7 +17,7 @@ nip06_key :: (phrase: string, key: [] u8) -> bool #export_c {
   return ok;
 }
 // The npub of a private key into out; its length, or -1.
-nip06_npub :: (key: [] u8, out: [] u8) -> int #export_c {
+nip06_npub :: (key: [] u8, out: [] u8) -> int #export_c #effects(all) {
   pub: [33] u8;
   if !bip32_public(key, pub[..]) { return -1; }
   r := nip19_encode_checked(N19_NPUB, cast(string) pub[1..<33], out, false);

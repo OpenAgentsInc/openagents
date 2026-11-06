@@ -39,24 +39,24 @@ PX_SAM_KEYS :: 16;           // the most key=value pairs read from one reply
 
 // ---- writing text into a byte buffer. Each returns the next position,
 // or -1 once anything has not fitted.
-px_put :: (out: [] u8, at: int, s: string) -> int {
+px_put :: (out: [] u8, at: int, s: string) -> int #effects(all) {
   if at < 0 || at + s.count > out.count { return -1; }
   for i: 0..<s.count { out[at + i] = s[i]; }
   return at + s.count;
 }
-px_put_byte :: (out: [] u8, at: int, b: int) -> int {
+px_put_byte :: (out: [] u8, at: int, b: int) -> int #effects(all) {
   if at < 0 || at >= out.count { return -1; }
   out[at] = cast,trunc(u8) b;
   return at + 1;
 }
-px_put_int :: (out: [] u8, at: int, v: int) -> int {
+px_put_int :: (out: [] u8, at: int, v: int) -> int #effects(all) {
   digits: [20] u8; n := 0; x := v;
   while true { digits[n] = cast,trunc(u8) (48 + x % 10); n += 1; x /= 10; if x == 0 { break; } }
   p := at;
   while n > 0 { n -= 1; p = px_put_byte(out, p, cast(int) digits[n]); }
   return p;
 }
-px_put_hex :: (out: [] u8, at: int, b: [] u8) -> int {
+px_put_hex :: (out: [] u8, at: int, b: [] u8) -> int #effects(all) {
   p := at;
   for x: b { p = px_put(out, p, "0123456789abcdef"[cast(int) (x >> 4)..<cast(int) (x >> 4) + 1]); p = px_put(out, p, "0123456789abcdef"[cast(int) (x & 15)..<cast(int) (x & 15) + 1]); }
   return p;
@@ -65,7 +65,7 @@ px_put_hex :: (out: [] u8, at: int, b: [] u8) -> int {
 // book:begin base32
 // Core's base32 (RFC 4648's alphabet in lower case). EncodeBase32 pads
 // with '=' to a multiple of 8 characters unless told not to.
-px_b32_encode :: (input: [] u8, pad: bool, out: [] u8) -> int {
+px_b32_encode :: (input: [] u8, pad: bool, out: [] u8) -> int #effects(all) {
   alphabet := "abcdefghijklmnopqrstuvwxyz234567";
   acc := 0; bits := 0; n := 0;
   for b: input {
@@ -77,7 +77,7 @@ px_b32_encode :: (input: [] u8, pad: bool, out: [] u8) -> int {
   return n;
 }
 // decode32_table: either case decodes.
-px_b32_digit :: (c: u8) -> int {
+px_b32_digit :: (c: u8) -> int #effects(all) {
   if c >= 'a' && c <= 'z' { return cast(int) (c - 'a'); }
   if c >= 'A' && c <= 'Z' { return cast(int) (c - 'A'); }
   if c >= '2' && c <= '7' { return cast(int) (c - '2') + 26; }
@@ -87,7 +87,7 @@ px_b32_digit :: (c: u8) -> int {
 // end may be '='. ConvertBits<5, 8, false> then refuses any other
 // character, 5 or more bits left over, or left-over bits that aren't 0.
 // Returns the number of bytes, or -1.
-px_b32_decode :: (text: string, out: [] u8) -> int {
+px_b32_decode :: (text: string, out: [] u8) -> int #effects(all) {
   if text.count % 8 != 0 { return -1; }
   n := text.count;
   if n >= 1 && text[n - 1] == '=' { n -= 1; }
@@ -109,7 +109,7 @@ px_b32_decode :: (text: string, out: [] u8) -> int {
 // book:begin onion
 // torv3::Checksum: the first two bytes of
 // SHA3-256(".onion checksum" | PUBKEY | VERSION).
-px_onion_checksum :: (pubkey: [] u8, out: [] u8) {
+px_onion_checksum :: (pubkey: [] u8, out: [] u8) #effects(all) {
   m: [48] u8;
   at := px_put(m[..], 0, ".onion checksum");
   for i: 0..<32 { m[at + i] = pubkey[i]; }
@@ -120,7 +120,7 @@ px_onion_checksum :: (pubkey: [] u8, out: [] u8) {
 }
 // OnionToString: base32(PUBKEY | CHECKSUM | VERSION) + ".onion", 62
 // characters.
-px_onion_text :: (pubkey: [] u8, out: [] u8) -> int {
+px_onion_text :: (pubkey: [] u8, out: [] u8) -> int #effects(all) {
   b: [35] u8;
   for i: 0..<32 { b[i] = pubkey[i]; }
   px_onion_checksum(pubkey, b[32..<34]);
@@ -132,7 +132,7 @@ px_onion_text :: (pubkey: [] u8, out: [] u8) -> int {
 // book:begin special
 // What CNetAddr::SetSpecial made of a name: ok, and the address with port 0.
 PxName :: struct { ok: bool; addr: AmAddr; }
-px_ends :: (s: string, suffix: string, fold: bool) -> bool {
+px_ends :: (s: string, suffix: string, fold: bool) -> bool #effects(all) {
   if s.count < suffix.count { return false; }
   for i: 0..<suffix.count {
     c := s[s.count - suffix.count + i];
@@ -143,7 +143,7 @@ px_ends :: (s: string, suffix: string, fold: bool) -> bool {
 }
 // SetTor: 35 bytes of base32 before ".onion", version 3 and the right
 // checksum. Core no longer reads Tor v2's 16-character names.
-px_set_tor :: (s: string) -> PxName {
+px_set_tor :: (s: string) -> PxName #effects(all) {
   if !px_ends(s, ".onion", false) { return PxName.{}; }
   b: [64] u8;
   n := px_b32_decode(s[0..<s.count - 6], b[..]);
@@ -154,7 +154,7 @@ px_set_tor :: (s: string) -> PxName {
 }
 // SetI2P: exactly 52 base32 characters, then ".b32.i2p" in any case. The
 // 56-character names of encrypted lease sets are refused.
-px_set_i2p :: (s: string) -> PxName {
+px_set_i2p :: (s: string) -> PxName #effects(all) {
   if s.count != PX_I2P_TEXT || !px_ends(s, ".b32.i2p", true) { return PxName.{}; }
   t: [56] u8;
   for i: 0..<52 { t[i] = s[i]; }
@@ -164,7 +164,7 @@ px_set_i2p :: (s: string) -> PxName {
   return PxName.{ok=true, addr=am_bytes(AM_NET_I2P, b[0..<32], 0)};
 }
 // SetSpecial: a name with a NUL in it is refused before either.
-px_set_special :: (s: string) -> PxName {
+px_set_special :: (s: string) -> PxName #effects(all) {
   for c: s { if c == 0 { return PxName.{}; } }
   t := px_set_tor(s);
   if t.ok { return t; }
@@ -172,7 +172,7 @@ px_set_special :: (s: string) -> PxName {
 }
 // ToStringAddr for the networks a proxy carries: Tor, I2P and IPv4.
 // Returns the length, or -1 for another network.
-px_addr_text :: (a: AmAddr, out: [] u8) -> int {
+px_addr_text :: (a: AmAddr, out: [] u8) -> int #effects(all) {
   ip := a.ip;
   if a.net == AM_NET_ONION { return px_onion_text(ip[0..<32], out); }
   if a.net == AM_NET_I2P { return px_put(out, px_b32_encode(ip[0..<32], false, out), ".b32.i2p"); }
@@ -204,13 +204,13 @@ PxSocks :: struct {
 // What a step leaves the caller to do: send out[0..<send], then read
 // s.need more bytes, until state is done or failed.
 PxStep :: struct { state: int; send: int; }
-px_socks_fail :: (s: [] PxSocks, e: int) -> PxStep {
+px_socks_fail :: (s: [] PxSocks, e: int) -> PxStep #effects(all) {
   s[0].state = PX_S_FAILED; s[0].error = e; s[0].need = 0;
   return PxStep.{state=PX_S_FAILED};
 }
 // The method selection message: SOCKS5 with no authentication, and with
 // username/password too when the caller has credentials.
-px_socks_begin :: (s: [] PxSocks, dest: string, port: int, user: string, pass: string, auth: bool, out: [] u8) -> PxStep {
+px_socks_begin :: (s: [] PxSocks, dest: string, port: int, user: string, pass: string, auth: bool, out: [] u8) -> PxStep #effects(all) {
   s[0] = PxSocks.{auth=auth, port=port};
   if dest.count > PX_MAX_NAME { return px_socks_fail(s, PX_E_NAME); }
   for i: 0..<dest.count { s[0].dest[i] = dest[i]; } s[0].dest_n = dest.count;
@@ -225,7 +225,7 @@ px_socks_begin :: (s: [] PxSocks, dest: string, port: int, user: string, pass: s
 }
 // CONNECT to a host name: Core always sends the name, never an address,
 // so the proxy resolves it and a .onion name works.
-px_socks_request :: (s: [] PxSocks, out: [] u8) -> PxStep {
+px_socks_request :: (s: [] PxSocks, out: [] u8) -> PxStep #effects(all) {
   at := px_put_byte(out, 0, PX_SOCKS5); at = px_put_byte(out, at, PX_CONNECT); at = px_put_byte(out, at, 0);
   at = px_put_byte(out, at, PX_ATYP_DOMAIN); at = px_put_byte(out, at, s[0].dest_n);
   for i: 0..<s[0].dest_n { at = px_put_byte(out, at, cast(int) s[0].dest[i]); }
@@ -234,7 +234,7 @@ px_socks_request :: (s: [] PxSocks, out: [] u8) -> PxStep {
   return PxStep.{state=PX_S_REPLY, send=at};
 }
 // The next s.need bytes from the proxy.
-px_socks_read :: (s: [] PxSocks, in: [] u8, out: [] u8) -> PxStep {
+px_socks_read :: (s: [] PxSocks, in: [] u8, out: [] u8) -> PxStep #effects(all) {
   st := s[0].state;
   if in.count != s[0].need || st == PX_S_DONE || st == PX_S_FAILED { return px_socks_fail(s, PX_E_MALFORMED); }
   if st == PX_S_GREET {
@@ -272,7 +272,7 @@ px_socks_read :: (s: [] PxSocks, in: [] u8, out: [] u8) -> PxStep {
   return PxStep.{state=PX_S_DONE};
 }
 // Socks5ErrorString: RFC 1928's replies and Tor's onion service ones.
-px_socks_reply_text :: (rep: int) -> string {
+px_socks_reply_text :: (rep: int) -> string #effects(all) {
   if rep == 0x01 { return "general failure"; }
   if rep == 0x02 { return "connection not allowed"; }
   if rep == 0x03 { return "network unreachable"; }
@@ -294,7 +294,7 @@ px_socks_reply_text :: (rep: int) -> string {
 // TorStreamIsolationCredentialsGenerator: the user name and password of
 // connection number counter, hex(8 random bytes) + "-" + counter. Tor
 // puts streams with different credentials on different circuits.
-px_isolation :: (prefix: [] u8, counter: int, out: [] u8) -> int {
+px_isolation :: (prefix: [] u8, counter: int, out: [] u8) -> int #effects(all) {
   if prefix.count != PX_PREFIX_BYTES { return -1; }
   return px_put_int(out, px_put(out, px_put_hex(out, 0, prefix), "-"), counter);
 }
@@ -310,10 +310,10 @@ PxProxy :: struct {
   user: [255] u8; user_n: int; pass: [255] u8; pass_n: int;
   dest: [255] u8; dest_n: int; port: int;
 }
-px_proxy_close :: (p: [] PxProxy) -> int { p[0].state = PX_P_CLOSED; return 0; }
+px_proxy_close :: (p: [] PxProxy) -> int #effects(all) { p[0].state = PX_P_CLOSED; return 0; }
 // One message from the client; returns how many bytes of reply it wrote
 // to out, 0 when the proxy waits for px_proxy_answer, or -1 when it closes.
-px_proxy_read :: (p: [] PxProxy, in: [] u8, out: [] u8) -> int {
+px_proxy_read :: (p: [] PxProxy, in: [] u8, out: [] u8) -> int #effects(all) {
   st := p[0].state;
   if st == PX_P_GREET {
     if in.count < 2 || in[0] != PX_SOCKS5 || in.count != 2 + cast(int) in[1] { return px_proxy_close(p) - 1; }
@@ -346,7 +346,7 @@ px_proxy_read :: (p: [] PxProxy, in: [] u8, out: [] u8) -> int {
   return px_proxy_close(p) - 1;
 }
 // The reply to the CONNECT: rep, and Tor's bound address 0.0.0.0:0.
-px_proxy_answer :: (p: [] PxProxy, rep: int, out: [] u8) -> int {
+px_proxy_answer :: (p: [] PxProxy, rep: int, out: [] u8) -> int #effects(all) {
   at := px_put_byte(out, 0, PX_SOCKS5); at = px_put_byte(out, at, rep); at = px_put_byte(out, at, 0); at = px_put_byte(out, at, PX_ATYP_IPV4);
   for i: 0..<6 { at = px_put_byte(out, at, 0); }
   p[0].state = ifx rep == 0 then PX_P_CONNECTING else PX_P_CLOSED;
@@ -355,7 +355,7 @@ px_proxy_answer :: (p: [] PxProxy, rep: int, out: [] u8) -> int {
 // The client and the proxy talk until the client is done or either gives
 // up. first is what px_socks_begin wrote; rep is the proxy's answer to
 // the CONNECT. Returns the client's state.
-px_socks_pump :: (s: [] PxSocks, p: [] PxProxy, first: [] u8, rep: int) -> int {
+px_socks_pump :: (s: [] PxSocks, p: [] PxProxy, first: [] u8, rep: int) -> int #effects(all) {
   a: [600] u8; b: [600] u8;
   for i: 0..<first.count { b[i] = first[i]; }
   pending := first.count;
@@ -381,7 +381,7 @@ px_socks_pump :: (s: [] PxSocks, p: [] PxProxy, first: [] u8, rep: int) -> int {
 // book:begin i2p
 // SwapBase64: I2P's base64 uses '-' and '~' where the standard one uses
 // '+' and '/'. The swap goes both ways.
-px_i2p_swap :: (c: u8) -> u8 {
+px_i2p_swap :: (c: u8) -> u8 #effects(all) {
   if c == '-' { return '+'; }
   if c == '~' { return '/'; }
   if c == '+' { return '-'; }
@@ -389,7 +389,7 @@ px_i2p_swap :: (c: u8) -> u8 {
   return c;
 }
 // DecodeI2PBase64: the bytes, or -1.
-px_i2p_decode :: (text: string, out: [] u8) -> int {
+px_i2p_decode :: (text: string, out: [] u8) -> int #effects(all) {
   if text.count > PX_B64_MAX { return -1; }
   t: [PX_B64_MAX] u8;
   for i: 0..<text.count { t[i] = px_i2p_swap(text[i]); }
@@ -397,7 +397,7 @@ px_i2p_decode :: (text: string, out: [] u8) -> int {
   return ifx r.error == NC_OK then r.written else -1;
 }
 // EncodeBase64, then SwapBase64.
-px_i2p_encode :: (bin: [] u8, out: [] u8) -> int {
+px_i2p_encode :: (bin: [] u8, out: [] u8) -> int #effects(all) {
   r := base64_encode_checked(cast(string) bin, out, false);
   if r.error != NC_OK { return -1; }
   for i: 0..<r.written { out[i] = px_i2p_swap(out[i]); }
@@ -405,14 +405,14 @@ px_i2p_encode :: (bin: [] u8, out: [] u8) -> int {
 }
 // MyDestination: a private key starts with the destination, 387 bytes and
 // the certificate whose big-endian length is at bytes 385 and 386.
-px_i2p_dest_len :: (key: [] u8) -> int {
+px_i2p_dest_len :: (key: [] u8) -> int #effects(all) {
   if key.count < PX_CERT_LEN_AT + 2 { return -1; }
   n := PX_DEST_BASE + ((cast(int) key[PX_CERT_LEN_AT] << 8) | cast(int) key[PX_CERT_LEN_AT + 1]);
   return ifx n > key.count then -1 else n;
 }
 // DestBinToAddr: an I2P address is the SHA-256 of the destination, and its
 // name is that hash in unpadded base32 + ".b32.i2p".
-px_i2p_addr :: (dest: [] u8) -> AmAddr {
+px_i2p_addr :: (dest: [] u8) -> AmAddr #effects(all) {
   h: [32] u8;
   #assert sha256_hash_checked(dest, h[..], false) == 0;
   return am_bytes(AM_NET_I2P, h[..], PX_I2P_PORT);
@@ -423,13 +423,13 @@ px_i2p_addr :: (dest: [] u8) -> AmAddr {
 // A SAM reply line: Core splits it at each space and reads each word as
 // key=value, or as a key alone. The first of two equal keys counts.
 PxReply :: struct { n: int; key: [PX_SAM_KEYS] int; key_n: [PX_SAM_KEYS] int; val: [PX_SAM_KEYS] int; val_n: [PX_SAM_KEYS] int; }
-px_sam_find :: (line: string, r: PxReply, key: string) -> int {
+px_sam_find :: (line: string, r: PxReply, key: string) -> int #effects(all) {
   for i: 0..<r.n {
     if r.key_n[i] == key.count && line[r.key[i]..<r.key[i] + r.key_n[i]] == key { return i; }
   }
   return -1;
 }
-px_sam_parse :: (line: string) -> PxReply {
+px_sam_parse :: (line: string) -> PxReply #effects(all) {
   r: PxReply;
   start := 0;
   for i: 0..<line.count + 1 {
@@ -446,13 +446,13 @@ px_sam_parse :: (line: string) -> PxReply {
 }
 // Reply::Get: the value of key, or "" with ok false when it is missing.
 PxValue :: struct { ok: bool; text: string; }
-px_sam_get :: (line: string, key: string) -> PxValue {
+px_sam_get :: (line: string, key: string) -> PxValue #effects(all) {
   r := px_sam_parse(line);
   i := px_sam_find(line, r, key);
   if i < 0 || r.val[i] < 0 { return PxValue.{}; }
   return PxValue.{ok=true, text=line[r.val[i]..<r.val[i] + r.val_n[i]]};
 }
-px_sam_ok :: (line: string) -> bool {
+px_sam_ok :: (line: string) -> bool #effects(all) {
   v := px_sam_get(line, "RESULT");
   return v.ok && v.text == "OK";
 }
@@ -480,10 +480,10 @@ PxSam :: struct {
   proxy_error: bool;           // Connect's proxy_error: retry another way
   disconnect: bool;            // the session must be made again
 }
-px_sam_fail :: (q: [] PxSam, e: int) -> PxStep { q[0].state = PX_Q_FAILED; q[0].error = e; return PxStep.{state=PX_Q_FAILED}; }
-px_sam_hello :: (out: [] u8) -> int { return px_put(out, 0, "HELLO VERSION MIN=3.1 MAX=3.1\n"); }
+px_sam_fail :: (q: [] PxSam, e: int) -> PxStep #effects(all) { q[0].state = PX_Q_FAILED; q[0].error = e; return PxStep.{state=PX_Q_FAILED}; }
+px_sam_hello :: (out: [] u8) -> int #effects(all) { return px_put(out, 0, "HELLO VERSION MIN=3.1 MAX=3.1\n"); }
 // Begin an exchange: HELLO. A connection to a peer needs its port to be 0.
-px_sam_begin :: (q: [] PxSam, kind: int, out: [] u8) -> PxStep {
+px_sam_begin :: (q: [] PxSam, kind: int, out: [] u8) -> PxStep #effects(all) {
   q[0].kind = kind; q[0].error = 0; q[0].disconnect = false;
   if kind == PX_SAM_CONNECT {
     q[0].proxy_error = q[0].peer.port == PX_I2P_PORT;
@@ -492,7 +492,7 @@ px_sam_begin :: (q: [] PxSam, kind: int, out: [] u8) -> PxStep {
   q[0].state = PX_Q_HELLO;
   return PxStep.{state=PX_Q_HELLO, send=px_sam_hello(out)};
 }
-px_sam_create :: (q: [] PxSam, out: [] u8) -> PxStep {
+px_sam_create :: (q: [] PxSam, out: [] u8) -> PxStep #effects(all) {
   at := px_put(out, 0, "SESSION CREATE STYLE=STREAM ID=");
   at = px_put(out, at, cast(string) q[0].id[..]);
   if q[0].transient {
@@ -509,7 +509,7 @@ px_sam_create :: (q: [] PxSam, out: [] u8) -> PxStep {
   return PxStep.{state=PX_Q_SESSION, send=at};
 }
 // The session's own address, from the destination at the start of its key.
-px_sam_me :: (q: [] PxSam) -> PxStep {
+px_sam_me :: (q: [] PxSam) -> PxStep #effects(all) {
   n := px_i2p_dest_len(q[0].key[0..<q[0].key_n]);
   if n < 0 { return px_sam_fail(q, PX_SAM_E_KEY); }
   q[0].me = px_i2p_addr(q[0].key[0..<n]);
@@ -517,7 +517,7 @@ px_sam_me :: (q: [] PxSam) -> PxStep {
   return PxStep.{state=PX_Q_DONE};
 }
 // One reply line, without its '\n'.
-px_sam_read :: (q: [] PxSam, line: string, out: [] u8) -> PxStep {
+px_sam_read :: (q: [] PxSam, line: string, out: [] u8) -> PxStep #effects(all) {
   st := q[0].state;
   if st == PX_Q_HELLO {
     if !px_sam_ok(line) { return px_sam_fail(q, PX_SAM_E_RESULT); }
@@ -623,7 +623,7 @@ PxNet :: struct {
   onion_later: bool;         // -listenonion may still make Tor reachable through the control port
 }
 // ParseNetwork: a name in any case, or NET_UNROUTABLE.
-px_parse_network :: (s: string) -> int {
+px_parse_network :: (s: string) -> int #effects(all) {
   t: [8] u8;
   if s.count > 8 { return AM_NET_UNROUTABLE; }
   for i: 0..<s.count { c := s[i]; if c >= 'A' && c <= 'Z' { c += 32; } t[i] = c; }
@@ -636,7 +636,7 @@ px_parse_network :: (s: string) -> int {
   return AM_NET_UNROUTABLE;
 }
 // Core's InitError for each code.
-px_configure_text :: (code: int) -> string {
+px_configure_text :: (code: int) -> string #effects(all) {
   if code == PX_C_UNKNOWN_NET { return "Unknown network specified in -onlynet"; }
   if code == PX_C_CJDNS { return "Outbound connections restricted to CJDNS (-onlynet=cjdns) but -cjdnsreachable is not provided"; }
   if code == PX_C_DNSSEED { return "Incompatible options: -dnsseed=1 was explicitly specified, but -onlynet forbids connections to IPv4/IPv6"; }
@@ -648,7 +648,7 @@ px_configure_text :: (code: int) -> string {
   return "";
 }
 // dnsseed is -1 when not given, else 0 or 1. onion is "" when not given.
-px_configure :: (onlynet: [] string, proxies: [] string, onion: string, listenonion: bool, i2psam: bool, cjdns: bool, dnsseed: int) -> PxNet {
+px_configure :: (onlynet: [] string, proxies: [] string, onion: string, listenonion: bool, i2psam: bool, cjdns: bool, dnsseed: int) -> PxNet #effects(all) {
   n: PxNet;
   for i: 0..<7 { n.reachable[i] = true; }
   if onlynet.count > 0 {
@@ -707,7 +707,7 @@ px_configure :: (onlynet: [] string, proxies: [] string, onion: string, listenon
 // isn't reachable, through the SAM bridge for I2P, through the network's
 // proxy if it has one, else directly.
 PX_R_UNREACHABLE :: 0; PX_R_DIRECT :: 1; PX_R_PROXY :: 2; PX_R_SAM :: 3;
-px_route :: (n: PxNet, a: AmAddr) -> int {
+px_route :: (n: PxNet, a: AmAddr) -> int #effects(all) {
   net := am_network(a);
   if !n.reachable[net] { return PX_R_UNREACHABLE; }
   if a.net == AM_NET_I2P && n.proxy[AM_NET_I2P] { return PX_R_SAM; }
@@ -717,7 +717,7 @@ px_route :: (n: PxNet, a: AmAddr) -> int {
 // book:end reach
 
 // ---- checks
-px_test_unhex :: (s: string, out: [] u8) -> [] u8 {
+px_test_unhex :: (s: string, out: [] u8) -> [] u8 #effects(all) {
   n := s.count / 2;
   for i: 0..<n {
     hi := px_b32_hexval(s[2 * i]); lo := px_b32_hexval(s[2 * i + 1]);
@@ -725,8 +725,8 @@ px_test_unhex :: (s: string, out: [] u8) -> [] u8 {
   }
   return out[0..<n];
 }
-px_b32_hexval :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
-px_test_text :: (a: AmAddr, want: string) -> bool {
+px_b32_hexval :: (c: u8) -> int #effects(all) { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+px_test_text :: (a: AmAddr, want: string) -> bool #effects(all) {
   t: [80] u8; n := px_addr_text(a, t[..]);
   return n == want.count && cast(string) t[0..<n] == want;
 }

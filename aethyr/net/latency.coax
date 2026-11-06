@@ -153,12 +153,12 @@ LatServer :: struct {
   #assert m.ok&&m.v[0]==8&&m.v[1]==1&&s[0].last_id==8;
 }
 
-lat_shape::(m:LatMessage)->bool {
+lat_shape::(m:LatMessage)->bool #effects(all) {
   if !m.ok{return false;}
   if !((m.kind==1&&(m.count==2||m.count==4))||(m.kind==2&&m.count==3)||(m.kind==3&&m.count==11)){return false;}
   for i:0..<m.count{if m.v[i]<=0||m.v[i]>LAT_MAX{return false;}}return true;
 }
-lat_decode::(text:string,server:bool)->LatMessage {
+lat_decode::(text:string,server:bool)->LatMessage #effects(all) {
   m:=LatMessage.{};if text.count>LAT_FRAME||!wire_is(text,"@1"){return m;}
   // Prefix and kind are exact; ordinary gameplay and other versions are ignored.
   r:[1]WireRd;r[0]=wire_rd(text,2);kind:=wire_word(text,r[..]);
@@ -167,20 +167,20 @@ lat_decode::(text:string,server:bool)->LatMessage {
   for i:0..<m.count{m.v[i]=wire_num(text,r[..]);}
   m.ok=r[0].ok&&!wire_more(text,r[..]);m.ok=lat_shape(m);return m;
 }
-lat_encode::(m:LatMessage,out:[]u8)->int {
+lat_encode::(m:LatMessage,out:[]u8)->int #effects(all) {
   if !lat_shape(m){return 0;}tmp:[LAT_FRAME]u8;n:=wire_put(tmp[..],0,ifx m.kind==1 then "@1 p" else ifx m.kind==2 then "@1 i" else "@1 d");
   for i:0..<m.count{n=wire_int(tmp[..],n,m.v[i]);}
   if n>out.count{return 0;}for i:0..<n{out[i]=tmp[i];}return n;
 }
-lat_count::(s:[]LatServer,kind:int) {
+lat_count::(s:[]LatServer,kind:int) #effects(all) {
   if kind==0{if s[0].refused<LAT_MAX{s[0].refused+=1;}else{s[0].overflow=true;}}
   if kind==1{if s[0].expired<LAT_MAX{s[0].expired+=1;}else{s[0].overflow=true;}}
   if kind==2{if s[0].completed<LAT_MAX{s[0].completed+=1;}else{s[0].overflow=true;}}
 }
-lat_expire::(s:[]LatServer,now:int) #export_c {
+lat_expire::(s:[]LatServer,now:int) #export_c #effects(all) {
   if s[0].id>0&&now-s[0].requested>=LAT_DEADLINE_US{s[0].id=0;lat_count(s,1);}
 }
-lat_request::(s:[]LatServer,text:string,received:int,encoded:int,out:[]u8)->int #export_c {
+lat_request::(s:[]LatServer,text:string,received:int,encoded:int,out:[]u8)->int #export_c #effects(all) {
   m:=lat_decode(text,false);if !m.ok{return 0;}lat_expire(s,received);
   if received<=0||encoded<received||encoded>LAT_MAX||m.v[0]<=s[0].last_id{lat_count(s,0);return 0;}
   if m.kind==1{
@@ -192,16 +192,16 @@ lat_request::(s:[]LatServer,text:string,received:int,encoded:int,out:[]u8)->int 
   s[0].id=m.v[0];s[0].last_id=m.v[0];s[0].seq=m.v[1];s[0].client=m.v[2];s[0].requested=received;s[0].last_input=received;
   s[0].received=0;s[0].step_begin=0;s[0].step_end=0;s[0].simulation_end=0;s[0].serialize_begin=0;s[0].serialize_end=0;return 0;
 }
-lat_received::(s:[]LatServer,old_tail:int,new_tail:int,now:int) #export_c {
+lat_received::(s:[]LatServer,old_tail:int,new_tail:int,now:int) #export_c #effects(all) {
   lat_expire(s,now);if s[0].id>0&&s[0].received==0&&new_tail>old_tail&&new_tail==s[0].seq&&now>=s[0].requested{s[0].received=now;}
 }
-lat_step::(s:[]LatServer,seq:int,began:int,ended:int) #export_c {
+lat_step::(s:[]LatServer,seq:int,began:int,ended:int) #export_c #effects(all) {
   lat_expire(s,ended);if s[0].id>0&&s[0].received>0&&seq==s[0].seq&&began>=s[0].received&&ended>=began{s[0].step_begin=began;s[0].step_end=ended;}
 }
-lat_serialized::(s:[]LatServer,simulation_end:int,began:int,ended:int) #export_c {
+lat_serialized::(s:[]LatServer,simulation_end:int,began:int,ended:int) #export_c #effects(all) {
   lat_expire(s,ended);if s[0].id>0&&s[0].step_end>0&&simulation_end>=s[0].step_end&&began>=simulation_end&&ended>=began{s[0].simulation_end=simulation_end;s[0].serialize_begin=began;s[0].serialize_end=ended;}
 }
-lat_queued::(s:[]LatServer,ack:int,tick:int,now:int,out:[]u8)->int #export_c {
+lat_queued::(s:[]LatServer,ack:int,tick:int,now:int,out:[]u8)->int #export_c #effects(all) {
   lat_expire(s,now);if ack<s[0].seq||now<s[0].serialize_end{return 0;}
   m:=LatMessage.{ok=true,kind=3,count=11};m.v[0]=s[0].id;m.v[1]=s[0].seq;m.v[2]=tick;m.v[3]=s[0].client;m.v[4]=s[0].received;
   m.v[5]=s[0].step_begin;m.v[6]=s[0].step_end;m.v[7]=s[0].simulation_end;m.v[8]=s[0].serialize_begin;m.v[9]=s[0].serialize_end;m.v[10]=now;

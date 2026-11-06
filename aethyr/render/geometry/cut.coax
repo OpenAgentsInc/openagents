@@ -31,12 +31,12 @@ ParentChoice :: enum u8 { fine; coarse; missing; }
     }}}
   }}}
 }
-projected_error :: (error:f32,near:f32,radial:f32,focal:f32)->f32 {
+projected_error :: (error:f32,near:f32,radial:f32,focal:f32)->f32 #effects(all) {
   if !(error>=0 && near>error && radial>=0 && focal>0) {return 1000000000;}
   exact:=cast(f64)error*cast(f64)focal*(1+cast(f64)radial/cast(f64)near)/(cast(f64)near-cast(f64)error);
   rounded:=cast(f32)exact;if cast(f64)rounded<exact {return f32_from_bits(f32_bits(rounded)+1);}return rounded;
 }
-parent_choice :: (error:f32,near:f32,radial:f32,focal:f32,tolerance:f32,resident:bool)->ParentChoice {
+parent_choice :: (error:f32,near:f32,radial:f32,focal:f32,tolerance:f32,resident:bool)->ParentChoice #effects(all) {
   if !(tolerance>=0 && tolerance<1000000000) {return ParentChoice.fine;}
   if projected_error(error,near,radial,focal)>tolerance {return ParentChoice.fine;}
   return ifx resident then ParentChoice.coarse else ParentChoice.missing;

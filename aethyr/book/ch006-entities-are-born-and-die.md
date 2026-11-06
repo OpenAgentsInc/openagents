@@ -35,7 +35,7 @@ wait until the end of the step.
 
 An entity has two identities:
 
-- A **handle** packs a slot and the slot's generation into an `EntityHandle`. Use it
+- A **handle** packs a slot and the slot's generation into a `Handle(Entity)`. Use it
   inside a step: it's fast, and `entity_alive` checks it. A despawn raises
   the slot's generation, so an old handle fails `entity_alive` instead of
   reaching the slot's next owner.
@@ -69,9 +69,10 @@ Dead Gears does.
 ```jai
 ENTITY_SLOT_BITS :: 20;
 ENTITY_SLOT_MASK :: 1048575;   // (1 << 20) - 1
-ENTITY_HANDLE_MAX :: 4294967295; // canonical 32-bit handle word
+ENTITY_HANDLE_MAX :: 17592187092991; // generation 4096, slot ENTITY_SLOT_MASK
 ENTITY_GEN_MASK :: 4095;       // 12 bits: 4,096 owners a slot, then it is retired
-ENTITY_NONE :: EntityHandle.{value = -1};             // no handle
+Entity :: struct { id: EntityId; }
+ENTITY_NONE :: Handle(Entity).{};                    // no handle
 ENTITY_NO_ID :: EntityId.{value = 0};             // no EntityId: IDs start at 1
 
 // The store's counters, at these places in `n` (ENTITY_COUNTERS of them).
@@ -103,8 +104,8 @@ spawn when every slot is in use is refused, and `ENTITY_REFUSED` counts it.
 
 ## Handles and IDs
 
-`aethyr/ids.coax` declares `EntityHandle`, `EntityId` and
-`EntityGeneration` as nominal integer wrappers. The checker refuses a saved
+`coax/lib/handle.coax` declares `Handle(T)`, and `aethyr/ids.coax` declares
+`EntityId` and `EntityGeneration` as nominal integer wrappers. The checker refuses a saved
 ID where a handle is required. Codecs construct a wrapper explicitly and
 extract `.value` to write its integer. Construction does not establish
 liveness: `entity_alive` rejects noncanonical words and checks the live slot
@@ -115,23 +116,41 @@ slot. These checks belong to the engine library.
 <!-- source: aethyr/entity.coax handles -->
 ```jai
 // Whether h names a live entity: its slot is in use, holds a live entity, and has h's generation.
-entity_alive :: (w: EntityStore, h: EntityHandle) -> bool {
+entity_alive :: (w: EntityStore, h: Handle(Entity)) -> bool #effects(all) {
   if !entity_canonical(h) { return false; }
   i := entity_slot(h);
   return i < w.n[ENTITY_HIGH] && w.live[i] && w.gen[i] == entity_generation(h).value;
 }
 // The live entity in slot i, or ENTITY_NONE: the ordered walk is slots 0..<entity_high.
-entity_at :: (w: EntityStore, i: int) -> EntityHandle {
+entity_at :: (w: EntityStore, i: int) -> Handle(Entity) #effects(all) {
   if i < 0 || i >= w.n[ENTITY_HIGH] || !w.live[i] { return ENTITY_NONE; }
   return entity_handle(i, EntityGeneration.{value = w.gen[i]});
 }
 // A live entity's EntityId, or ENTITY_NO_ID.
-entity_id :: (w: EntityStore, h: EntityHandle) -> EntityId {
+entity_id :: (w: EntityStore, h: Handle(Entity)) -> EntityId #effects(all) {
   if !entity_alive(w, h) { return ENTITY_NO_ID; }
   return EntityId.{value = w.ids[entity_slot(h)]};
 }
+// A stale reference is ordinary absence. Components remain in their owned
+// columns; this value identifies the live entity without exposing a slot view.
+entity_get :: (w: EntityStore, h: Handle(Entity)) -> Entity? #effects(all) {
+  if !entity_alive(w,h) { return null; }
+  return some(Entity.{id=entity_id(w,h)});
+}
+entity_get_live :: (w: EntityStore, h: Handle(Entity)) -> Entity #effects(all) {
+  #assert entity_alive(w,h);
+  return Entity.{id=entity_id(w,h)};
+}
+#test "entity lookup returns none after a slot is reused, and the new handle has the new stable ID" {
+  b:[1]OracleBacking;w:=oracle_store(b[..]);a:=entity_spawn(w);entity_flush(w);
+  #assert entity_get_live(w,a.handle).id==a.id;
+  entity_despawn(w,a.handle);entity_flush(w);next:=entity_spawn(w);entity_flush(w);
+  #assert entity_slot(a.handle)==entity_slot(next.handle) && a.handle!=next.handle;
+  switch entity_get(w,a.handle) {case none {} case some(value) {#assert false;}}
+  switch entity_get(w,next.handle) {case none {#assert false;} case some(value) {#assert value.id==next.id;}}
+}
 // The live entity with EntityId id, or ENTITY_NONE: how a save, a message or an edit finds it.
-entity_find :: (w: EntityStore, id: EntityId) -> EntityHandle {
+entity_find :: (w: EntityStore, id: EntityId) -> Handle(Entity) #effects(all) {
   if id == ENTITY_NO_ID { return ENTITY_NONE; }
   for i: 0..<w.n[ENTITY_HIGH] { if w.live[i] && w.ids[i] == id.value { return entity_handle(i, EntityGeneration.{value = w.gen[i]}); } }
   return ENTITY_NONE;
@@ -149,8 +168,8 @@ replays need.
 // A spawn: the new entity's handle and EntityId, or ENTITY_NONE and no ID when every slot is in
 // use (counted in ENTITY_REFUSED). Its slot is the realm's to fill now; it is alive from the
 // next flush.
-Spawned :: struct { handle: EntityHandle = ENTITY_NONE; id: EntityId; }
-entity_spawn :: (w: EntityStore) -> Spawned {
+Spawned :: struct { handle: Handle(Entity) = ENTITY_NONE; id: EntityId; }
+entity_spawn :: (w: EntityStore) -> Spawned #effects(all) {
   // Stable IDs never wrap. Decide before taking a free slot or raising high.
   next := add_checked(w.n[ENTITY_NEXT_ID], 1); id: int;
   switch next {
@@ -176,23 +195,23 @@ entity_spawn :: (w: EntityStore) -> Spawned {
   return Spawned.{handle = entity_handle(i, EntityGeneration.{value = w.gen[i]}), id = EntityId.{value = w.ids[i]}};
 }
 // Whether h names a spawn waiting for the next flush.
-entity_waiting :: (w: EntityStore, h: EntityHandle) -> bool {
+entity_waiting :: (w: EntityStore, h: Handle(Entity)) -> bool #effects(all) {
   if !entity_canonical(h) { return false; }
   i := entity_slot(h);
   return i < w.n[ENTITY_HIGH] && w.born[i] && w.gen[i] == entity_generation(h).value;
 }
 // A despawn: the entity stays alive and visible until the next flush. Asking twice is asking once.
 // A despawn of a waiting spawn cancels it: it never becomes alive.
-entity_despawn :: (w: EntityStore, h: EntityHandle) {
+entity_despawn :: (w: EntityStore, h: Handle(Entity)) #effects(all) {
   if !entity_alive(w, h) && !entity_waiting(w, h) { return; }
   i := entity_slot(h);
   if !w.doomed[i] { w.doomed[i] = true; w.n[ENTITY_DOOMED] += 1; }
 }
-entity_doomed :: (w: EntityStore, h: EntityHandle) -> bool { return (entity_alive(w, h) || entity_waiting(w, h)) && w.doomed[entity_slot(h)]; }
+entity_doomed :: (w: EntityStore, h: Handle(Entity)) -> bool #effects(all) { return (entity_alive(w, h) || entity_waiting(w, h)) && w.doomed[entity_slot(h)]; }
 
 // A slot given up: its generation goes up and it is free again, unless its generation would wrap:
 // then it is retired and counted.
-entity_release :: (w: EntityStore, i: int) {
+entity_release :: (w: EntityStore, i: int) #effects(all) {
   w.doomed[i] = false; w.ids[i] = ENTITY_NO_ID.value;
   if w.gen[i] == ENTITY_GEN_MASK { w.n[ENTITY_RETIRED] += 1; return; }
   w.gen[i] = add_sat(w.gen[i], 1);
@@ -202,7 +221,7 @@ entity_release :: (w: EntityStore, i: int) {
 
 // The step's end: the despawns in slot order, then the spawns in the order they were asked for,
 // where a cancelled spawn gives its slot up instead of becoming alive.
-entity_flush :: (w: EntityStore) {
+entity_flush :: (w: EntityStore) #effects(all) {
   for i: 0..<w.n[ENTITY_HIGH] {
     if !(w.live[i] && w.doomed[i]) { continue; }
     w.live[i] = false;
@@ -239,8 +258,8 @@ stores have equal digests, so a replay can compare them each step.
 ```jai
 // The store as one number (FNV-1a over the counters and every used slot): equal stores give equal
 // digests, so a replay (chapter 5) can compare them a step at a time.
-entity_mix :: (h: int, v: int) -> int { return ((h ^ (v & 4294967295)) * 16777619) & 4294967295; }
-entity_digest :: (w: EntityStore) -> int {
+entity_mix :: (h: int, v: int) -> int #effects(all) { return ((h ^ (v & 4294967295)) * 16777619) & 4294967295; }
+entity_digest :: (w: EntityStore) -> int #effects(all) {
   h := 2166136261;
   for c: 0..<ENTITY_COUNTERS { h = entity_mix(h, w.n[c]); }
   for i: 0..<w.n[ENTITY_HIGH] {
@@ -252,7 +271,7 @@ entity_digest :: (w: EntityStore) -> int {
   return h;
 }
 // Copies a store into another of the same capacity: a save, or a load. False if they differ.
-entity_copy :: (from: EntityStore, to: EntityStore) -> bool {
+entity_copy :: (from: EntityStore, to: EntityStore) -> bool #effects(all) {
   if from.gen.count != to.gen.count || from.n.count < ENTITY_COUNTERS || to.n.count < ENTITY_COUNTERS { return false; }
   for i: 0..<from.gen.count {
     to.gen[i] = from.gen[i]; to.live[i] = from.live[i]; to.born[i] = from.born[i];

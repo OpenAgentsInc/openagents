@@ -44,7 +44,7 @@ the algebraic check is the exact evidence, while the sample checks integration.
 
 <!-- source: psionic/lib/gptoss/speculation.coax decide -->
 ```jai
-gx_decide :: (target:[]f64,draft:[]f64,proposal:int,accept_uniform:f64,correct_uniform:f64,greedy:bool,residual:[]f64,stage:[]f64,overlap:bool)->GSpeculation #export_c {
+gx_decide :: (target:[]f64,draft:[]f64,proposal:int,accept_uniform:f64,correct_uniform:f64,greedy:bool,residual:[]f64,stage:[]f64,overlap:bool)->GSpeculation #export_c #effects(all) {
     n:=target.count;if !gs_size(n) || proposal<0 || proposal>=n || !(accept_uniform>=0 && accept_uniform<1) || !(correct_uniform>=0 && correct_uniform<1) {return GSpeculation.{status=GStatus.shape};}
     if draft.count!=n || residual.count<n || stage.count<n {return GSpeculation.{status=GStatus.capacity};}if overlap {return GSpeculation.{status=GStatus.alias};}
     if gs_pick(target,0).status!=GStatus.ok || gs_pick(draft,0).status!=GStatus.ok {return GSpeculation.{status=GStatus.number};}
@@ -80,7 +80,7 @@ qualification, not treated as sufficient model evidence on its own.
 
 <!-- source: psionic/lib/gptoss/speculation.coax block -->
 ```jai
-gx_block :: (vocab:int,target:[]f64,draft:[]f64,proposals:[]int,uniforms:[]f64,greedy:bool,out:[]int,stage:[]int,residual:[]f64,scratch:[]f64,overlap:bool)->GSpecBlock #export_c {
+gx_block :: (vocab:int,target:[]f64,draft:[]f64,proposals:[]int,uniforms:[]f64,greedy:bool,out:[]int,stage:[]int,residual:[]f64,scratch:[]f64,overlap:bool)->GSpecBlock #export_c #effects(all) {
     k:=proposals.count;if !gs_size(vocab) || !gx_draft_count(k) {return GSpecBlock.{status=GStatus.shape};}
     if target.count!=(k+1)*vocab || draft.count!=k*vocab || uniforms.count!=2*k+1 || out.count<k+1 || stage.count<k+1 || residual.count<vocab || scratch.count<vocab {return GSpecBlock.{status=GStatus.capacity};}if overlap {return GSpecBlock.{status=GStatus.alias};}
     for row:1..<k+1 {if gs_pick(target[row*vocab..<(row+1)*vocab],0).status!=GStatus.ok {return GSpecBlock.{status=GStatus.number};}}

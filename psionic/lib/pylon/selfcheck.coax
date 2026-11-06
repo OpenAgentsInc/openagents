@@ -37,7 +37,7 @@ PS_WET :: "{\"model\":\"elephant-1\",\"answers\":{\"wet\":{\"type\":\"choice\",\
 PS_REFUND :: "{\"model\":\"elephant-1\",\"answers\":{\"refund\":{\"type\":\"noul\",\"noul\":0.815389232}},\"usage\":null,\"service\":{\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\"}}";
 PS_SET :: "psionic.selfcheck.v1\nidentity elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\ntolerance 500000\ncase wet\nrequest {\"model\":\"elephant-1\",\"state\":\"Water is wet.\",\"questions\":{\"wet\":{\"type\":\"choice\",\"instructions\":\"Is the water wet?\",\"criteria\":{\"yes\":null,\"no\":null}}}}\nexpect choice yes yes=757202773 no=242797227\ncase refund\nrequest {\"model\":\"elephant-1\",\"state\":\"Customer: my order arrived broken and I want my money back.\",\"questions\":{\"refund\":{\"type\":\"noul\",\"instructions\":\"Should we issue a refund?\"}}}\nexpect noul 815389232\n";
 
-ps_set_text :: (cases:[]PsCase)->PsSet {return ps_read_set(PS_SET,cases);}
+ps_set_text :: (cases:[]PsCase)->PsSet #effects(all) {return ps_read_set(PS_SET,cases);}
 
 #test "billionths from an answer's decimal" {
     #assert ps_nanos("0.757202773")==757202773 && ps_nanos("0.98758345")==987583450 && ps_nanos("0.5")==500000000;
@@ -61,7 +61,7 @@ ps_set_text :: (cases:[]PsCase)->PsSet {return ps_read_set(PS_SET,cases);}
     d:=cases[1];#assert d.question=="refund" && d.kind==PsKind.noul && d.options==1 && d.nanos[0]==815389232;
 }
 
-ps_bad :: (text:string,status:PsStatus,line:int)->bool {
+ps_bad :: (text:string,status:PsStatus,line:int)->bool #effects(all) {
     cases:[PS_CASES]PsCase;s:=ps_read_set(text,cases[..]);return s.status==status && s.line==line;
 }
 #test "a set is refused at its first bad line" {
@@ -99,7 +99,7 @@ ps_bad :: (text:string,status:PsStatus,line:int)->bool {
     small:[1]PsCase;s=ps_read_set("psionic.selfcheck.v1\nidentity a\ntolerance 5\ncase q\nrequest {}\nexpect noul 5\ncase r\nrequest {}\nexpect noul 6\n",small[..]);
     #assert s.status==PsStatus.cases && s.line==7;
 }
-ps_put :: (out:[]u8,at:int,s:string)->int {for i:0..<s.count {out[at+i]=s[i];}return at+s.count;}
+ps_put :: (out:[]u8,at:int,s:string)->int #effects(all) {for i:0..<s.count {out[at+i]=s[i];}return at+s.count;}
 
 #test "reading an answer" {
     a:=ps_answer(PS_WET,"wet");
@@ -132,7 +132,7 @@ ps_put :: (out:[]u8,at:int,s:string)->int {for i:0..<s.count {out[at+i]=s[i];}re
     #assert ps_answer("{\"answers\":{\"q\":{\"type\":\"noul\",\"noul\":0.5}}} x","q").status==PsCode.shape;
 }
 
-ps_item_is :: (i:PsItem,code:PsCode,option:int,error:int)->bool {return i.code==code && i.option==option && i.error==error;}
+ps_item_is :: (i:PsItem,code:PsCode,option:int,error:int)->bool #effects(all) {return i.code==code && i.option==option && i.error==error;}
 #test "comparing an answer with its case" {
     cases:[PS_CASES]PsCase;s:=ps_set_text(cases[..]);
     #assert ps_item_is(ps_compare(cases[0],ps_answer(PS_WET,"wet"),500000),PsCode.pass,-1,0);
@@ -165,7 +165,7 @@ ps_item_is :: (i:PsItem,code:PsCode,option:int,error:int)->bool {return i.code==
     g:=[3]int.[1,2,9];#assert ps_largest(g[..])==2;
 }
 
-ps_verdict_is :: (c:PsCheck,v:PsVerdict,failed:int,code:PsCode,worst:int)->bool {
+ps_verdict_is :: (c:PsCheck,v:PsVerdict,failed:int,code:PsCode,worst:int)->bool #effects(all) {
     return c.verdict==v && c.failed==failed && c.item.code==code && c.worst==worst;
 }
 #test "checking a whole set" {
@@ -255,7 +255,7 @@ ps_verdict_is :: (c:PsCheck,v:PsVerdict,failed:int,code:PsCode,worst:int)->bool 
 // book:begin nanos
 // An answer's probability as billionths, exactly from its decimal text: 0 to
 // 1 with at most nine places; anything else is -1.
-ps_nanos :: (s:string)->int #export_c {
+ps_nanos :: (s:string)->int #export_c #effects(all) {
     if s.count==0 || (s[0]!='0' && s[0]!='1') {return -1;}
     whole:=cast(int)(s[0]-'0');
     if s.count==1 {return whole*PS_NANO;}
@@ -272,7 +272,7 @@ ps_nanos :: (s:string)->int #export_c {
 }
 // book:end nanos
 // A reference line's whole number, 0 to 10^9.
-ps_count :: (s:string)->int {
+ps_count :: (s:string)->int #effects(all) {
     if s.count==0 || (s[0]=='0' && s.count>1) {return -1;}
     v:=0;
     for c:s {
@@ -286,7 +286,7 @@ ps_count :: (s:string)->int {
 // The set is lines: the version, "identity ID", "tolerance BILLIONTHS", then
 // for each case "case QUESTION", "request JSON" and "expect noul N" or
 // "expect choice CHOICE OPTION=N ...". The first bad line refuses the set.
-ps_read_set :: (text:string,cases:[]PsCase)->PsSet #export_c {
+ps_read_set :: (text:string,cases:[]PsCase)->PsSet #export_c #effects(all) {
     s:PsSet;at:=0;n:=0;
     while true {
         end:=at;while end<text.count && text[end]!='\n' {end+=1;}
@@ -327,17 +327,17 @@ ps_read_set :: (text:string,cases:[]PsCase)->PsSet #export_c {
 }
 // book:end set
 // line starts with head and has something after it.
-ps_word :: (line:string,head:string)->bool {
+ps_word :: (line:string,head:string)->bool #effects(all) {
     if line.count<=head.count {return false;}
     for i:0..<head.count {if line[i]!=head[i] {return false;}}
     return true;
 }
 // The index of the first c in s, or s.count.
-ps_find :: (s:string,c:u8)->int {
+ps_find :: (s:string,c:u8)->int #effects(all) {
     at:=0;while at<s.count && s[at]!=c {at+=1;}
     return at;
 }
-ps_expect :: (line:string,c:[]PsCase)->bool {
+ps_expect :: (line:string,c:[]PsCase)->bool #effects(all) {
     if ps_word(line,"expect noul ") {
         v:=ps_count(line[12..<line.count]);if v<0 {return false;}
         c[0].kind=PsKind.noul;c[0].options=1;c[0].nanos[0]=v;return true;
@@ -363,7 +363,7 @@ ps_expect :: (line:string,c:[]PsCase)->bool {
 // book:begin answer
 // The one question's answer and the engine's identity, from the JSON answer.
 // Anything malformed returns at once, still marked shape.
-ps_answer :: (body:string,question:string)->PsAnswer #export_c {
+ps_answer :: (body:string,question:string)->PsAnswer #export_c #effects(all) {
     a:PsAnswer;a.status=PsCode.shape;got:PsAnswer;found:=false;identity:="";
     j:[1]Json;json_start(j[..],body);
     if json_next(j[..])!=JSON_OBJECT {return a;}
@@ -403,7 +403,7 @@ ps_answer :: (body:string,question:string)->PsAnswer #export_c {
 }
 // book:end answer
 // One answer object's fields, the object's { already read.
-ps_fields :: (j:[]Json)->PsAnswer {
+ps_fields :: (j:[]Json)->PsAnswer #effects(all) {
     a:PsAnswer;a.status=PsCode.shape;kind:=-1;value:=-1;have_choice:=false;have_probs:=false;
     while true {
         t:=json_next(j);
@@ -450,7 +450,7 @@ ps_fields :: (j:[]Json)->PsAnswer {
 // book:begin compare
 // Same kind, same choice, the same options, and each value within the
 // tolerance. A pass carries the largest error; a failure names its option.
-ps_compare :: (c:PsCase,a:PsAnswer,tolerance:int)->PsItem #export_c {
+ps_compare :: (c:PsCase,a:PsAnswer,tolerance:int)->PsItem #export_c #effects(all) {
     r:PsItem;r.option=-1;
     if a.status!=PsCode.pass {r.code=a.status;return r;}
     if a.kind!=c.kind {r.code=PsCode.kind;return r;}
@@ -474,7 +474,7 @@ ps_compare :: (c:PsCase,a:PsAnswer,tolerance:int)->PsItem #export_c {
 }
 // book:end compare
 // The first index of the largest value.
-ps_largest :: (v:[]int)->int {
+ps_largest :: (v:[]int)->int #effects(all) {
     at:=0;for k:1..<v.count {if v[k]>v[at] {at=k;}}
     return at;
 }
@@ -482,7 +482,7 @@ ps_largest :: (v:[]int)->int {
 // book:begin check
 // Every case against the engine's answer to its request, in order. The set
 // must be for the engine's identity, and each answer must name no other.
-ps_check :: (s:PsSet,cases:[]PsCase,identity:string,answers:[]string)->PsCheck #export_c {
+ps_check :: (s:PsSet,cases:[]PsCase,identity:string,answers:[]string)->PsCheck #export_c #effects(all) {
     r:PsCheck;
     if s.status!=PsStatus.ok || s.count==0 {r.verdict=PsVerdict.no_references;return r;}
     if s.identity!=identity {r.verdict=PsVerdict.other_model;return r;}
@@ -504,7 +504,7 @@ ps_check :: (s:PsSet,cases:[]PsCase,identity:string,answers:[]string)->PsCheck #
 // book:begin gate
 // last: the identity this Pylon served before ("" on its first start);
 // declared: the identity named on the command line ("" when none).
-ps_gate :: (last:string,declared:string,engine:string)->PsGate #export_c {
+ps_gate :: (last:string,declared:string,engine:string)->PsGate #export_c #effects(all) {
     if engine.count==0 {return PsGate.unnamed;}
     if declared.count>0 && declared!=engine {return PsGate.other;}
     if last.count==0 {return PsGate.first;}
@@ -512,11 +512,11 @@ ps_gate :: (last:string,declared:string,engine:string)->PsGate #export_c {
     if declared.count>0 {return PsGate.declared;}
     return PsGate.undeclared;
 }
-ps_gate_ok :: (g:PsGate)->bool #export_c {return g==PsGate.first || g==PsGate.same || g==PsGate.declared;}
+ps_gate_ok :: (g:PsGate)->bool #export_c #effects(all) {return g==PsGate.first || g==PsGate.same || g==PsGate.declared;}
 // book:end gate
 
 // book:begin doctor
-ps_doctor :: (f:PsFacts)->PsStep #export_c {
+ps_doctor :: (f:PsFacts)->PsStep #export_c #effects(all) {
     if !f.config {return PsStep.config;}
     if !f.engine {return PsStep.engine;}
     if !ps_gate_ok(f.gate) {return PsStep.identity;}
@@ -524,5 +524,5 @@ ps_doctor :: (f:PsFacts)->PsStep #export_c {
     if f.verdict!=PsVerdict.passed {return PsStep.check;}
     return PsStep.healthy;
 }
-ps_may_serve :: (f:PsFacts)->bool #export_c {return ps_doctor(f)==PsStep.healthy;}
+ps_may_serve :: (f:PsFacts)->bool #export_c #effects(all) {return ps_doctor(f)==PsStep.healthy;}
 // book:end doctor

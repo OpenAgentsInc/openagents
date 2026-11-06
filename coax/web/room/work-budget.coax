@@ -30,23 +30,23 @@ WorkBudget::struct{credit:int=WB_BURST;at:int= -1;last:int;skipped:int;refused:i
   e:[1]WorkBudget;e[0].at=0;wb_rate(e[..],WB_POOL);#assert e[0].credit==WB_BURST;
 }
 // Each live room's share of the pool (at least WB_RATE: never less than all sixteen rooms' share).
-wb_share::(live:int)->int #export_c {
+wb_share::(live:int)->int #export_c #effects(all) {
   if live<=1{return WB_POOL;}
   if live>=WB_ROOMS{return WB_RATE;}
   return WB_POOL/live;
 }
 // A budget that hasn't started yet and is full stays full at its new share's burst.
-wb_rate::(b:[]WorkBudget,rate:int){
+wb_rate::(b:[]WorkBudget,rate:int) #effects(all) {
   full:=b[0].at<0&&b[0].credit==wb_burst(b);
   b[0].rate=ifx rate<1 then 1 else rate;
   if full{b[0].credit=wb_burst(b);}
 }
-wb_burst::(b:[]WorkBudget)->int{return WB_BURST*b[0].rate/WB_RATE;}
-wb_start::(b:[]WorkBudget)->int{return WB_START*b[0].rate/WB_RATE;}
+wb_burst::(b:[]WorkBudget)->int #effects(all) {return WB_BURST*b[0].rate/WB_RATE;}
+wb_start::(b:[]WorkBudget)->int #effects(all) {return WB_START*b[0].rate/WB_RATE;}
 #test "room work: a new Everglade session waits for prepared worlds while other games keep their startup contract" {
   #assert wb_startup_admit(false,false)&&wb_startup_admit(false,true)&&wb_startup_admit(true,true)&&!wb_startup_admit(true,false);
 }
-wb_startup_admit::(everglade:bool,prepared:bool)->bool #export_c{return !everglade||prepared;}
+wb_startup_admit::(everglade:bool,prepared:bool)->bool #export_c #effects(all) {return !everglade||prepared;}
 #test "room work: normal thirty hertz ticks retain service and idle credit is bounded" {
   b:[1]WorkBudget;
   #assert wb_ready(b[..],0)&&b[0].at==0;#assert wb_charge(b[..],1000);
@@ -104,14 +104,14 @@ wb_startup_admit::(everglade:bool,prepared:bool)->bool #export_c{return !evergla
   #assert wb_waitable(0,0)&&wb_waitable(633,100)&&!wb_waitable(634,100);
   #assert !wb_waitable(99,100)&&!wb_waitable(-1,0)&&!wb_waitable(100,-1);
 }
-wb_admit::(b:[]WorkBudget,now:int)->bool #export_c {
+wb_admit::(b:[]WorkBudget,now:int)->bool #export_c #effects(all) {
   if wb_ready(b,now)&&b[0].last<=wb_burst(b){return true;}
   b[0].refused+=1;return false;
 }
-wb_waitable::(now:int,heard:int)->bool #export_c {
+wb_waitable::(now:int,heard:int)->bool #export_c #effects(all) {
   return heard>=0&&now>=heard&&now-heard<=WB_WAIT_MS;
 }
-wb_ready::(b:[]WorkBudget,now:int)->bool #export_c {
+wb_ready::(b:[]WorkBudget,now:int)->bool #export_c #effects(all) {
   if b[0].retired||now<0{return false;}
   if b[0].at<0{b[0].at=now;return b[0].credit>=wb_start(b);}
   if now<b[0].at{return false;}
@@ -122,7 +122,7 @@ wb_ready::(b:[]WorkBudget,now:int)->bool #export_c {
   else{b[0].credit+=dt*b[0].rate;}
   return b[0].credit>=wb_start(b);
 }
-wb_charge::(b:[]WorkBudget,cost:int)->bool #export_c {
+wb_charge::(b:[]WorkBudget,cost:int)->bool #export_c #effects(all) {
   if cost<0||cost>WB_LIMIT||b[0].credit< -WB_LIMIT+cost{b[0].retired=true;return false;}
   b[0].last=cost;b[0].credit-=cost;return true;
 }

@@ -45,7 +45,7 @@ NtTag :: struct {n:int;found:bool;values:int;v:[4]NtSpan;}
 NtCoord :: struct {kind:int=-1;d:int;}
 
 // ---- test events: a NtEvent whose original text is just its tags array.
-n34_event :: (tags:string,kind:int)->NtEvent {
+n34_event :: (tags:string,kind:int)->NtEvent #effects(all) {
  e:NtEvent;e.ok=true;e.kind=kind;e.original=tags;e.tags_to=tags.count;return e;
 }
 N34_HEX :: "09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af";
@@ -81,12 +81,12 @@ N34_PROJECT_A :: "30621:09af09af09af09af09af09af09af09af09af09af09af09af09af09af
  e=n34_event("[][]",1);e.tags_from=3;e.tags_to=2;#assert nt_tag(e,"d",0).n==-1;
 }
 
-nt_raw :: (e:NtEvent,s:NtSpan)->string {return e.original[s.from..<s.to];}
+nt_raw :: (e:NtEvent,s:NtSpan)->string #effects(all) {return e.original[s.from..<s.to];}
 
 // The k-th tag (from 0) named name whose value at index (0 is the first
 // value after the name) says marker; a negative index selects every tag of
 // the name.
-nt_select :: (e:NtEvent,name:string,index:int,marker:string,k:int)->NtTag {
+nt_select :: (e:NtEvent,name:string,index:int,marker:string,k:int)->NtTag #effects(all) {
  r:NtTag;bad:NtTag;bad.n=-1;
  if !e.ok || e.tags_from<0 || e.tags_to-e.tags_from<2 || e.tags_to>e.original.count {return bad;}
  j:[1]Json;json_start(j[..],e.original[e.tags_from..<e.tags_to]);
@@ -108,14 +108,14 @@ nt_select :: (e:NtEvent,name:string,index:int,marker:string,k:int)->NtTag {
  if t!=JSON_ARRAY_END || json_next(j[..])!=JSON_END {return bad;}
  return r;
 }
-nt_tag :: (e:NtEvent,name:string,k:int)->NtTag {return nt_select(e,name,-1,"",k);}
+nt_tag :: (e:NtEvent,name:string,k:int)->NtTag #effects(all) {return nt_select(e,name,-1,"",k);}
 // How many tags nt_select selects with this index and marker, or -1 when the tags don't read.
-nt_count :: (e:NtEvent,name:string,index:int,marker:string)->int {
+nt_count :: (e:NtEvent,name:string,index:int,marker:string)->int #effects(all) {
  k:=0;t:=nt_select(e,name,index,marker,k);
  while t.found {k+=1;t=nt_select(e,name,index,marker,k);}
  return ifx t.n<0 then -1 else k;
 }
-nt_tags :: (e:NtEvent,name:string)->int {return nt_count(e,name,-1,"");}
+nt_tags :: (e:NtEvent,name:string)->int #effects(all) {return nt_count(e,name,-1,"");}
 #test "tags count by name and by marker" {
  e:=n34_event("[[\"t\",\"x\"],[\"t\",\"\"],[\"u\"],[\"t\",\"x\",\"m\"]]",1);
  #assert nt_tags(e,"t")==3 && nt_tags(e,"u")==1 && nt_tags(e,"q")==0 && nt_count(e,"t",0,"x")==2 && nt_count(e,"t",1,"m")==1;
@@ -145,12 +145,12 @@ nt_tags :: (e:NtEvent,name:string)->int {return nt_count(e,name,-1,"");}
  #assert nt_coord("30617").kind==-1;
 }
 
-nt_hex :: (raw:string,size:int)->bool {
+nt_hex :: (raw:string,size:int)->bool #effects(all) {
  if raw.count!=size {return false;}
  for c:raw {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
  return true;
 }
-nt_slug :: (raw:string)->bool {
+nt_slug :: (raw:string)->bool #effects(all) {
  if raw.count<1 || raw.count>64 {return false;}
  for i:0..<raw.count {
   c:=raw[i];
@@ -159,7 +159,7 @@ nt_slug :: (raw:string)->bool {
  return true;
 }
 // "<kind>:<pubkey hex>:<d>": the kind (-1 when it doesn't read) and where d starts.
-nt_coord :: (raw:string)->NtCoord {
+nt_coord :: (raw:string)->NtCoord #effects(all) {
  r:NtCoord;i:=0;
  while i<raw.count && raw[i]!=':' {i+=1;}
  kind:=json_int(raw[0..<i]);
@@ -178,17 +178,17 @@ nt_coord :: (raw:string)->NtCoord {
  #assert n34_start(n34_event("[1]",1630),1630)==N34_EVENT && n34_valid(n34_event("[[\"x\"]]",1))==N34_OK;
 }
 
-nt_shape :: (t:NtTag,values:int,required:bool)->int {
+nt_shape :: (t:NtTag,values:int,required:bool)->int #effects(all) {
  if t.n==0 {return ifx required then N34_MISSING else N34_OK;}
  if t.values<values {return N34_MALFORMED;}
  return N34_OK;
 }
-nt_and :: (status:int,next:int)->int {return ifx status!=N34_OK then status else next;}
-n34_valid :: (e:NtEvent)->int {return ifx nt_tags(e,"")<0 then N34_EVENT else N34_OK;}
-n34_start :: (e:NtEvent,kind:int)->int {return nt_and(n34_valid(e),ifx e.kind!=kind then N34_KIND else N34_OK);}
+nt_and :: (status:int,next:int)->int #effects(all) {return ifx status!=N34_OK then status else next;}
+n34_valid :: (e:NtEvent)->int #effects(all) {return ifx nt_tags(e,"")<0 then N34_EVENT else N34_OK;}
+n34_start :: (e:NtEvent,kind:int)->int #effects(all) {return nt_and(n34_valid(e),ifx e.kind!=kind then N34_KIND else N34_OK);}
 // Whether every tag of the name has a first value, of size lowercase hex
 // digits when size is positive: how many there are, or -1.
-nt_each :: (e:NtEvent,name:string,size:int)->int {
+nt_each :: (e:NtEvent,name:string,size:int)->int #effects(all) {
  n:=nt_tags(e,name);
  for k:0..<n {
   t:=nt_tag(e,name,k);
@@ -197,7 +197,7 @@ nt_each :: (e:NtEvent,name:string,size:int)->int {
  return n;
 }
 // The first value of every tag of the name, in order: how many, or -1 when out is short.
-nt_values :: (e:NtEvent,name:string,out:[]NtSpan)->int {
+nt_values :: (e:NtEvent,name:string,out:[]NtSpan)->int #effects(all) {
  n:=nt_tags(e,name);if n>out.count {return -1;}
  for k:0..<n {out[k]=nt_tag(e,name,k).v[0];}
  return n;
@@ -215,7 +215,7 @@ nt_values :: (e:NtEvent,name:string,out:[]NtSpan)->int {
 // ---- 30617: a NIP-34 repository announcement. d is required; euc is the
 // first r tag marked "euc", whose commit is 40 hex digits.
 N34Repo :: struct {status:int;d:NtTag;name:NtTag;description:NtTag;web:NtTag;clone:NtTag;relays:NtTag;euc:NtTag;}
-n34_repo :: (e:NtEvent)->N34Repo #export_c {
+n34_repo :: (e:NtEvent)->N34Repo #export_c #effects(all) {
  r:N34Repo;r.status=n34_start(e,N34_KIND_REPO);if r.status!=N34_OK {return r;}
  r.d=nt_tag(e,"d",0);r.name=nt_tag(e,"name",0);r.description=nt_tag(e,"description",0);
  r.web=nt_tag(e,"web",0);r.clone=nt_tag(e,"clone",0);r.relays=nt_tag(e,"relays",0);r.euc=nt_select(e,"r",1,"euc",0);
@@ -253,7 +253,7 @@ N34Project :: struct {
  status:int;d:NtTag;name:NtTag;description:NtTag;a:NtTag;path:NtTag;contributions:NtTag;license:NtTag;
  visibility:NtTag;listing:NtTag;maintainers:int;
 }
-n34_project :: (e:NtEvent)->N34Project #export_c {
+n34_project :: (e:NtEvent)->N34Project #export_c #effects(all) {
  r:N34Project;r.status=n34_start(e,N34_KIND_PROJECT);if r.status!=N34_OK {return r;}
  r.d=nt_tag(e,"d",0);r.name=nt_tag(e,"name",0);r.description=nt_tag(e,"description",0);r.a=nt_tag(e,"a",0);
  r.path=nt_tag(e,"path",0);r.contributions=nt_tag(e,"contributions",0);r.license=nt_tag(e,"license",0);
@@ -299,7 +299,7 @@ n34_project :: (e:NtEvent)->N34Project #export_c {
 // the project's coordinate; every item tag is ["item", <issue id>, <rank>].
 N34Item :: struct {id:NtSpan;rank:NtSpan;}
 N34Order :: struct {status:int;d:NtTag;a:NtTag;items:int;}
-n34_order :: (e:NtEvent,items:[]N34Item)->N34Order #export_c {
+n34_order :: (e:NtEvent,items:[]N34Item)->N34Order #export_c #effects(all) {
  r:N34Order;r.status=n34_start(e,N34_KIND_ORDER);if r.status!=N34_OK {return r;}
  r.d=nt_tag(e,"d",0);r.a=nt_tag(e,"a",0);r.items=nt_tags(e,"item");
  s:=nt_and(nt_shape(r.d,1,true),nt_shape(r.a,1,false));
@@ -348,7 +348,7 @@ N34Fields :: struct {
  status:int;item:int;subject:NtTag;size:NtTag;reward:NtTag;sats:int;parent:NtTag;labels:int;blocked:int;needs:int;
 }
 N34Need :: struct {id:NtSpan;coord:NtSpan;}
-n34_fields :: (e:NtEvent)->N34Fields #export_c {
+n34_fields :: (e:NtEvent)->N34Fields #export_c #effects(all) {
  f:N34Fields;f.status=n34_valid(e);
  if f.status==N34_OK && e.kind!=N34_KIND_COMMENT && e.kind!=N34_KIND_ISSUE {f.status=N34_KIND;}
  if f.status!=N34_OK {return f;}
@@ -369,13 +369,13 @@ n34_fields :: (e:NtEvent)->N34Fields #export_c {
  for k:0..<nt_tags(e,"needs") {if n34_need(e,nt_tag(e,"needs",k)) {f.needs+=1;}}
  return f;
 }
-n34_need :: (e:NtEvent,t:NtTag)->bool {
+n34_need :: (e:NtEvent,t:NtTag)->bool #effects(all) {
  if t.values<2 || !nt_hex(nt_raw(e,t.v[0]),64) {return false;}
  coord:=nt_raw(e,t.v[1]);c:=nt_coord(coord);
  return c.kind==N34_KIND_PROJECT && nt_slug(coord[c.d..<coord.count]);
 }
 // The labels (t values other than initiative and milestone), in order: how many, or -1 when out is short.
-n34_labels :: (e:NtEvent,out:[]NtSpan)->int {
+n34_labels :: (e:NtEvent,out:[]NtSpan)->int #effects(all) {
  n:=0;
  for k:0..<nt_tags(e,"t") {
   v:=nt_tag(e,"t",k).v[0];raw:=nt_raw(e,v);
@@ -386,7 +386,7 @@ n34_labels :: (e:NtEvent,out:[]NtSpan)->int {
  return n;
 }
 // The well-formed needs, in order: how many, or -1 when out is short.
-n34_needs :: (e:NtEvent,out:[]N34Need)->int {
+n34_needs :: (e:NtEvent,out:[]N34Need)->int #effects(all) {
  n:=0;
  for k:0..<nt_tags(e,"needs") {
   t:=nt_tag(e,"needs",k);
@@ -445,7 +445,7 @@ n34_needs :: (e:NtEvent,out:[]N34Need)->int {
 // a coordinate; repo and project are the first of kinds 30617 and 30621
 // (to>from when present). slug is OpenAgents' item slug.
 N34Issue :: struct {status:int;fields:N34Fields;slug:NtTag;a:int;repo:NtSpan;project:NtSpan;}
-n34_issue :: (e:NtEvent)->N34Issue #export_c {
+n34_issue :: (e:NtEvent)->N34Issue #export_c #effects(all) {
  r:N34Issue;r.status=n34_start(e,N34_KIND_ISSUE);if r.status!=N34_OK {return r;}
  r.fields=n34_fields(e);r.slug=nt_tag(e,"slug",0);r.a=nt_tags(e,"a");
  s:=ifx r.a==0 then N34_MISSING else nt_and(nt_shape(r.slug,1,false),r.fields.status);
@@ -494,7 +494,7 @@ n34_issue :: (e:NtEvent)->N34Issue #export_c {
 // ---- 1630-1633: a NIP-34 status. root is the first e tag marked "root",
 // else the first e tag; it is required and is an event id.
 N34Status :: struct {status:int;state:int;root:NtTag;}
-n34_status :: (e:NtEvent)->N34Status #export_c {
+n34_status :: (e:NtEvent)->N34Status #export_c #effects(all) {
  r:N34Status;r.status=n34_valid(e);
  if r.status==N34_OK && (e.kind<N34_KIND_OPEN || e.kind>N34_KIND_DRAFT) {r.status=N34_KIND;}if r.status!=N34_OK {return r;}
  r.state=e.kind-N34_KIND_OPEN;r.root=nt_select(e,"e",2,"root",0);

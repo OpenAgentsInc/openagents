@@ -14,7 +14,7 @@ hrr_header :: (head:string,key:string)->string {
  at:=0;while at<head.count {end:=rtq_find(head,"\r\n",at);if end<0 {return "";}line:=head[at..<end];colon:=rtq_find(line,":",0);same:=colon==key.count;for i:0..<key.count {if i>=colon||rto_lower(line[i])!=rto_lower(key[i]) {same=false;}}if same {return rto_trim(line[colon+1..<line.count]);}at=end+2;}return "";
 }
 hrr_path :: (status:int,target:int,post:int,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"/r/");jo_int(o[..],status);jo_put(o[..],"/");jo_int(o[..],target);jo_put(o[..],"/");jo_int(o[..],post);return jo_text(o[..]);}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: check-http-redirect-observations RAW_DIR NEW_OUTPUT.json");return 2;}
  dir:=args_at(a[..],0);paths:[4][4096]u8;peer_bytes:[262144]u8;browser_bytes:[262144]u8;old_bytes:[262144]u8;peer_nodes:[32768]JvNode;browser_nodes:[32768]JvNode;old_nodes:[32768]JvNode;peer:[1]Jv;browser:[1]Jv;old:[1]Jv;
  if !rtq_json_file(fs_join(dir,"peer.json",paths[0][..]),peer_bytes[..],peer_nodes[..],peer[..])||!rtq_json_file(fs_join(dir,"browser.json",paths[1][..]),browser_bytes[..],browser_nodes[..],browser[..])||!rtq_json_file(fs_join(dir,"receipt.json",paths[2][..]),old_bytes[..],old_nodes[..],old[..]) {return 1;}

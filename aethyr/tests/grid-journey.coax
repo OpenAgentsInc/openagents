@@ -172,7 +172,7 @@ gj_run :: (c: [] Cdp, url: string, dir: string, package_dir:string) -> bool {
   png:[8388608]u8;pn:=cdp_screenshot(c,png[..]);
   return pn>0 && gj_file(dir,"final.png",cast(string)png[0..<pn]);
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a:[1]Args;
   if !args_load(a[..]) || (args_count(a[..])!=2 && args_count(a[..])!=4) || !gj_local(args_at(a[..],0)) ||
     (args_count(a[..])==4 && args_at(a[..],2)!="--capture") {tool_errln("usage: grid-journey http://127.0.0.1:PORT OUTDIR [--capture PACKAGE_DIR]");return 2;}

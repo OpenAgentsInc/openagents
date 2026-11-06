@@ -155,7 +155,7 @@ distributions, instead.
 ```jai
 // Allowed IDs, sorted by logit descending; equal logits keep ascending ID.
 // A bottom-up merge sort: stable, O(V log V), no allocation.
-nx_order :: (logits:[]f32,order:[]int,temporary:[]int,count:int)->int {
+nx_order :: (logits:[]f32,order:[]int,temporary:[]int,count:int)->int #effects(all) {
     width:=1;passes:=0;
     while width<count {
         first:=0;
@@ -182,7 +182,7 @@ decoding all read this order, so a tie at any boundary goes to the lower ID.
 
 <!-- source: psionic/lib/next-token.coax distribution -->
 ```jai
-nx_distribution :: (logits:[]f32,mask:[]u8,options:NxOptions,out:[]f64,work:NxWork,overlap:bool)->NxResult #export_c {
+nx_distribution :: (logits:[]f32,mask:[]u8,options:NxOptions,out:[]f64,work:NxWork,overlap:bool)->NxResult #export_c #effects(all) {
     n:=logits.count;
     if !nx_vocab(n) || !nx_options(options,n) {return NxResult.{status=NxStatus.shape};}
     if (mask.count!=0 && mask.count!=n) || out.count<n || work.stage.count<n || work.order.count<n || work.temporary.count<n {return NxResult.{status=NxStatus.capacity};}
@@ -231,7 +231,7 @@ infinities, because NaN fails both comparisons and an infinity fails one.
 ```jai
 // The first ID whose running mass exceeds the uniform. If rounding leaves the
 // uniform at or above the final mass, the last ID with positive mass wins.
-nx_pick :: (probabilities:[]f64,uniform:f64)->NxPick #export_c {
+nx_pick :: (probabilities:[]f64,uniform:f64)->NxPick #export_c #effects(all) {
     if !nx_vocab(probabilities.count) || !(uniform>=0 && uniform<1) {return NxPick.{status=NxStatus.shape};}
     total:=0.0;
     for v:probabilities {if !(v>=0 && v<=1) {return NxPick.{status=NxStatus.number};}total+=v;}
@@ -251,7 +251,7 @@ from somewhere else, such as a diffusion schedule or a policy.
 
 <!-- source: psionic/lib/next-token.coax step -->
 ```jai
-nx_step :: (logits:[]f32,mask:[]u8,options:NxOptions,run:NxRun,stops:[]int,cancel:bool,out:[]f64,work:NxWork,overlap:bool)->NxEmission #export_c {
+nx_step :: (logits:[]f32,mask:[]u8,options:NxOptions,run:NxRun,stops:[]int,cancel:bool,out:[]f64,work:NxWork,overlap:bool)->NxEmission #export_c #effects(all) {
     if run.stop!=NxStop.running || run.limit>NX_LIMIT_MAX || run.emitted<0 || run.emitted>=run.limit {return NxEmission.{status=NxStatus.state};}
     for s:stops {if s<0 || s>=logits.count {return NxEmission.{status=NxStatus.shape};}}
     if cancel {next:=run;next.stop=NxStop.cancelled;return NxEmission.{run=next};}
@@ -299,7 +299,7 @@ without leading zeros, such as `[10,0,972]`:
 
 <!-- source: psionic/lib/next-token.coax compile -->
 ```jai
-nx_compile :: (states:int,start:int,edges:[]NxEdge,accepting:[]int,next:[]int,accept:[]u8,live:[]u8,overlap:bool)->NxCompiled #export_c {
+nx_compile :: (states:int,start:int,edges:[]NxEdge,accepting:[]int,next:[]int,accept:[]u8,live:[]u8,overlap:bool)->NxCompiled #export_c #effects(all) {
     if !nx_states(states) || start<0 || start>=states {return NxCompiled.{status=NxStatus.shape};}
     if next.count<states*256 || accept.count<states || live.count<states {return NxCompiled.{status=NxStatus.capacity};}
     if overlap {return NxCompiled.{status=NxStatus.alias};}
@@ -345,7 +345,7 @@ end token is offered only in an accepting state.
 // 1 where the token keeps a complete parse reachable; the end token only
 // where the text so far is complete. Empty pieces other than the end token
 // make no progress and are never offered.
-nx_mask :: (g:NxGrammar,state:int,pieces:[]string,end_token:int,out:[]u8,overlap:bool)->NxResult #export_c {
+nx_mask :: (g:NxGrammar,state:int,pieces:[]string,end_token:int,out:[]u8,overlap:bool)->NxResult #export_c #effects(all) {
     if !nx_vocab(pieces.count) || end_token<0 || end_token>=pieces.count {return NxResult.{status=NxStatus.shape};}
     if g.next.count<g.states*256 || g.accepting.count<g.states || g.live.count<g.states || out.count<pieces.count {return NxResult.{status=NxStatus.capacity};}
     if state<0 || state>=g.states || g.live[state]!=1 {return NxResult.{status=NxStatus.state};}
@@ -371,7 +371,7 @@ after `]` nothing can follow.
 
 <!-- source: psionic/lib/next-token.coax guided -->
 ```jai
-nx_guided :: (logits:[]f32,g:NxGrammar,state:int,pieces:[]string,end_token:int,options:NxOptions,run:NxRun,cancel:bool,mask:[]u8,out:[]f64,work:NxWork,overlap:bool)->NxGuided #export_c {
+nx_guided :: (logits:[]f32,g:NxGrammar,state:int,pieces:[]string,end_token:int,options:NxOptions,run:NxRun,cancel:bool,mask:[]u8,out:[]f64,work:NxWork,overlap:bool)->NxGuided #export_c #effects(all) {
     if logits.count!=pieces.count {return NxGuided.{status=NxStatus.shape};}
     m:=nx_mask(g,state,pieces,end_token,mask,overlap);if m.status!=NxStatus.ok {return NxGuided.{status=m.status};}
     stops:=[1]int.[end_token];
@@ -483,7 +483,7 @@ the range. The range −999,999,999 to 999,999,999 takes 21 states.
 // from a to z, empty when a > z. Returns whether any is not empty. A live
 // prefix is complete when a is 0 for j = 0: it is not below lo, and being
 // live it is not above hi.
-ns_sign :: (x:int,lo:int,hi:int,d:int,out:[]int)->bool {
+ns_sign :: (x:int,lo:int,hi:int,d:int,out:[]int)->bool #effects(all) {
     p:=1;any:=false;
     for j:0..<d {
         a:=-nx_min(x*p-lo,0);z:=nx_min(hi-x*p,p-1);
@@ -493,7 +493,7 @@ ns_sign :: (x:int,lo:int,hi:int,d:int,out:[]int)->bool {
 }
 // Two prefixes with the same completions are the same state: every interval
 // equal, or empty in both.
-ns_same :: (a:[]int,b:[]int,d:int)->bool {
+ns_same :: (a:[]int,b:[]int,d:int)->bool #effects(all) {
     for j:0..<d {
         empty:=a[2*j]>a[2*j+1];
         if empty!=(b[2*j]>b[2*j+1]) || (!empty && (a[2*j]!=b[2*j] || a[2*j+1]!=b[2*j+1])) {return false;}
@@ -504,7 +504,7 @@ ns_same :: (a:[]int,b:[]int,d:int)->bool {
 // first; end states are added to ends from at. "0" is its own end state and
 // takes no more digits; every other prefix starts with 1 to 9. Returns the
 // new end count.
-ns_digits :: (b:[]NsBuild,w:NsWork,s:int,lo:int,hi:int,ends:[]int,at:int)->int {
+ns_digits :: (b:[]NsBuild,w:NsWork,s:int,lo:int,hi:int,ends:[]int,at:int)->int #effects(all) {
     d:=1;p:=10;while p<=hi {d+=1;p*=10;}
     signs:[NS_SIGNS][18]int;values:[NS_SIGNS]int;ids:[NS_SIGNS]int;sign:[18]int;n:=at;
     if lo==0 {z:=ns_state(b);ns_edge(b,w,s,'0','0',z);ends[n]=z;n+=1;}
@@ -528,7 +528,7 @@ ns_digits :: (b:[]NsBuild,w:NsWork,s:int,lo:int,hi:int,ends:[]int,at:int)->int {
     return n;
 }
 // minimum..maximum: the non-negative part after s, the negative part after '-'.
-ns_integer :: (b:[]NsBuild,w:NsWork,i:int,s:int,ends:[]int)->int {
+ns_integer :: (b:[]NsBuild,w:NsWork,i:int,s:int,ends:[]int)->int #effects(all) {
     x:=rs_get(w.nodes,i,"minimum");y:=rs_get(w.nodes,i,"maximum");
     lo:=ns_number(w,x);hi:=ns_number(w,y);
     if lo.why!=NsWhy.none {return ns_fail(b,lo.why,"minimum",i);}
@@ -552,7 +552,7 @@ continue. Every other value ends on one closing byte.
 ```jai
 // Schema node i as a value starting in state s. Its end states go to ends:
 // after them the next byte is the parent's , ] or }. Returns how many, or -1.
-ns_value :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int {
+ns_value :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int #effects(all) {
     if depth>NS_DEPTH {return ns_fail(b,NsWhy.depth,w.nodes[i].key,i);}
     if !rs_kind(w.nodes,i,JSON_OBJECT) {return ns_fail(b,NsWhy.value,w.nodes[i].key,i);}
     kind:=rs_string(w.nodes,rs_get(w.nodes,i,"type"));none:=[1]string.["type"];
@@ -567,7 +567,7 @@ ns_value :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int {
     return ns_fail(b,NsWhy.type,"type",i);
 }
 // [ item , item ... ]: maxItems copies of the item, ] after each from minItems on.
-ns_array :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int {
+ns_array :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int #effects(all) {
     items:=rs_get(w.nodes,i,"items");if items== -1 {return ns_fail(b,NsWhy.value,"items",i);}
     most:=ns_count(b,w,i,"maxItems",false,NS_ITEMS_MAX);if most== -2 {return -1;}
     least:=ns_count(b,w,i,"minItems",true,most);if least== -2 {return -1;}
@@ -583,7 +583,7 @@ ns_array :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int {
     ends[0]=close;return 1;
 }
 // { "key":value , ... }: the properties in the order they are written, each required once.
-ns_object :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int {
+ns_object :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int #effects(all) {
     p:=rs_get(w.nodes,i,"properties");q:=rs_get(w.nodes,i,"required");more:=rs_get(w.nodes,i,"additionalProperties");
     if !rs_kind(w.nodes,p,JSON_OBJECT) {return ns_fail(b,NsWhy.value,"properties",i);}
     if more!= -1 && !rs_kind(w.nodes,more,JSON_FALSE) {return ns_fail(b,NsWhy.value,"additionalProperties",i);}
@@ -615,7 +615,7 @@ start with the same `"a` states.
 <!-- source: psionic/lib/next-token-schema.coax schema -->
 ```jai
 // A schema's JSON text to a compiled grammar in the caller's buffers.
-nx_schema :: (text:string,w:NsWork)->NsSchema #export_c {
+nx_schema :: (text:string,w:NsWork)->NsSchema #export_c #effects(all) {
     if !rs_json(text,w.nodes,w.arena).ok {return NsSchema.{why=NsWhy.json};}
     if w.ends.count<NS_ENDS {return NsSchema.{why=NsWhy.capacity};}
     b:[1]NsBuild;start:=ns_state(b[..]);
@@ -649,7 +649,7 @@ read seven bytes.
 
 <!-- source: psionic/lib/next-token-trie.coax trie -->
 ```jai
-nt_build :: (pieces:[]string,byte:[]u8,child:[]int,sibling:[]int,first:[]int,after:[]int)->NtBuilt #export_c {
+nt_build :: (pieces:[]string,byte:[]u8,child:[]int,sibling:[]int,first:[]int,after:[]int)->NtBuilt #export_c #effects(all) {
     if !nx_vocab(pieces.count) {return NtBuilt.{status=NxStatus.shape};}
     room:=nx_min(nx_min(byte.count,child.count),nx_min(sibling.count,first.count));
     if room<1 || after.count<pieces.count {return NtBuilt.{status=NxStatus.capacity};}
@@ -676,7 +676,7 @@ nt_build :: (pieces:[]string,byte:[]u8,child:[]int,sibling:[]int,first:[]int,aft
 // (node, the state before its byte); a node whose byte leaves the grammar or
 // reaches a dead state is skipped with all its descendants. passes counts the
 // nodes visited.
-nt_mask :: (t:NtTrie,g:NxGrammar,state:int,end_token:int,out:[]u8,stack:[]int,overlap:bool)->NxResult #export_c {
+nt_mask :: (t:NtTrie,g:NxGrammar,state:int,end_token:int,out:[]u8,stack:[]int,overlap:bool)->NxResult #export_c #effects(all) {
     v:=t.after.count;
     if !nx_vocab(v) || end_token<0 || end_token>=v {return NxResult.{status=NxStatus.shape};}
     if g.next.count<g.states*256 || g.accepting.count<g.states || g.live.count<g.states || out.count<v || stack.count<2 {return NxResult.{status=NxStatus.capacity};}
@@ -701,7 +701,7 @@ nt_mask :: (t:NtTrie,g:NxGrammar,state:int,end_token:int,out:[]u8,stack:[]int,ov
     return NxResult.{written=v,kept=allowed,passes=visited};
 }
 // One row per state: masks[s*V..<(s+1)*V]. Dead states get an empty row.
-nt_table :: (t:NtTrie,g:NxGrammar,end_token:int,masks:[]u8,stack:[]int)->NxResult #export_c {
+nt_table :: (t:NtTrie,g:NxGrammar,end_token:int,masks:[]u8,stack:[]int)->NxResult #export_c #effects(all) {
     v:=t.after.count;total:=NxResult.{};
     if masks.count<g.states*v {return NxResult.{status=NxStatus.capacity};}
     for s:0..<g.states {
@@ -722,7 +722,7 @@ trie's rows with `nx_mask`'s.
 <!-- source: psionic/lib/next-token-trie.coax guided -->
 ```jai
 // nx_guided with the mask read from the table instead of walked per token.
-nt_guided :: (logits:[]f32,g:NxGrammar,state:int,pieces:[]string,end_token:int,masks:[]u8,options:NxOptions,run:NxRun,cancel:bool,out:[]f64,work:NxWork,overlap:bool)->NxGuided #export_c {
+nt_guided :: (logits:[]f32,g:NxGrammar,state:int,pieces:[]string,end_token:int,masks:[]u8,options:NxOptions,run:NxRun,cancel:bool,out:[]f64,work:NxWork,overlap:bool)->NxGuided #export_c #effects(all) {
     v:=pieces.count;
     if logits.count!=v || state<0 || state>=g.states || masks.count<g.states*v {return NxGuided.{status=NxStatus.shape,state=state};}
     stops:=[1]int.[end_token];

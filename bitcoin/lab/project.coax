@@ -19,7 +19,7 @@ lp_field :: (b:[]LabText,d:Jv,node:int,key:string,kind:int) {
   lp_num(b[..],4294967295);#assert b[0].n==16;
   b[0].n=b[0].data.count;lp_add(b[..],"x");#assert b[0].bad;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {tool_errln("usage: project RECORD_DIRECTORY OUTPUT.coax");return 2;}
   blocks:[1]LabText;txs:[1]LabText;ins:[1]LabText;outs:[1]LabText;meta:[1]LabText;all:[1]LabText;
   nb:=0;nt:=0;ni:=0;no:=0;

@@ -11,7 +11,7 @@
   for i:0..<p.count {a:=p.ops[i];b:=expected.ops[i];#assert a.kind==b.kind&&a.colour0==b.colour0&&a.colour1==b.colour1&&a.depth==b.depth&&a.source==b.source&&a.target==b.target;}
  }
 }
-render_host_prepare_plan :: (profile:int)->RenderPlan #export_c {
+render_host_prepare_plan :: (profile:int)->RenderPlan #export_c #effects(all) {
  m:=render_catalog(profile);if !m.valid {return RenderPlan.{};}
  return render_plan(m.features,RENDER_HOST_PIPELINE_TEMPLATE,RenderReadiness.ready,true);
 }

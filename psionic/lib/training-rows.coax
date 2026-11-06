@@ -32,10 +32,10 @@ TrAdd :: struct {set:TrSet;reason:TrReason;}
 TR_ARTIFACTS :: 64;
 
 // book:begin split
-tr_cuts_ok :: (c:TrCuts)->bool {
+tr_cuts_ok :: (c:TrCuts)->bool #effects(all) {
     return c.calibration>0 && c.calibration<=c.development && c.development<=c.heldout;
 }
-tr_role :: (c:TrCuts,time:int)->TrRole {
+tr_role :: (c:TrCuts,time:int)->TrRole #effects(all) {
     if time<c.calibration {return TrRole.train;}
     if time<c.development {return TrRole.calibration;}
     if time<c.heldout {return TrRole.development;}
@@ -43,29 +43,29 @@ tr_role :: (c:TrCuts,time:int)->TrRole {
 }
 // book:end split
 
-tr_open :: (artifact:int,cuts:TrCuts,rows:[]TrRow,entry:[]TrEntry,entries:int)->TrSet {
+tr_open :: (artifact:int,cuts:TrCuts,rows:[]TrRow,entry:[]TrEntry,entries:int)->TrSet #effects(all) {
     return TrSet.{artifact=artifact,cuts=cuts,row=rows,entry=entry,entries=entries};
 }
 
 // book:begin keys
-tr_put :: (buf:[]u8,n:int,v:int)->int {
+tr_put :: (buf:[]u8,n:int,v:int)->int #effects(all) {
     w:=cast(u64)v;
     for i:0..<8 {buf[n+i]=cast(u8)((w>>cast(u64)(i*8))&0xff);}
     return n+8;
 }
-tr_hash :: (buf:[]u8,n:int)->[32]u8 {
+tr_hash :: (buf:[]u8,n:int)->[32]u8 #effects(all) {
     d:[32]u8;#assert sha256_hash_checked(buf[0..<n],d[..],false)==SHA_OK;
     return d;
 }
 // The same decision at the same time in the same group is one outcome,
 // whatever its label says.
-tr_outcome_key :: (o:TrOutcome)->[32]u8 {
+tr_outcome_key :: (o:TrOutcome)->[32]u8 #effects(all) {
     b:[32]u8;n:=tr_put(b[..],0,cast(int)TrSource.decision);
     n=tr_put(b[..],n,o.group);n=tr_put(b[..],n,o.time);n=tr_put(b[..],n,o.decision);
     return tr_hash(b[..],n);
 }
 // A trace is the run its claim names, whichever group it was filed under.
-tr_trace_key :: (c:RxClaim)->[32]u8 {
+tr_trace_key :: (c:RxClaim)->[32]u8 #effects(all) {
     b:[112]u8;n:=tr_put(b[..],0,cast(int)TrSource.trace);
     for i:0..<32 {b[n+i]=c.program[i];b[n+32+i]=c.trace[i];b[n+64+i]=c.outputs[i];}
     n=tr_put(b[..],n+96,c.steps);
@@ -76,7 +76,7 @@ tr_trace_key :: (c:RxClaim)->[32]u8 {
 // book:begin admit
 // Checks the set and the row's place in the feed. A row that passes moves
 // the feed's time forward, even if a later check refuses it.
-tr_front :: (s:TrSet,group:int,time:int,ok:bool)->TrAdd {
+tr_front :: (s:TrSet,group:int,time:int,ok:bool)->TrAdd #effects(all) {
     a:=TrAdd.{set=s};
     if !ok || s.artifact<0 || s.artifact>=TR_ARTIFACTS || !tr_cuts_ok(s.cuts) || group<0 || time<0 ||
         s.count<0 || s.count>s.row.count || s.entries<0 || s.entries>s.entry.count {
@@ -86,12 +86,12 @@ tr_front :: (s:TrSet,group:int,time:int,ok:bool)->TrAdd {
     a.set.last=time;
     return a;
 }
-tr_find :: (s:TrSet,group:int)->int {
+tr_find :: (s:TrSet,group:int)->int #effects(all) {
     for i:0..<s.entries {if s.entry[i].group==group {return i;}}
     return -1;
 }
 // The ledger and the duplicate check, then the row is appended.
-tr_admit :: (s:TrSet,row:TrRow)->TrAdd {
+tr_admit :: (s:TrSet,row:TrRow)->TrAdd #effects(all) {
     a:=TrAdd.{set=s};r:=row;r.role=tr_role(s.cuts,r.time);
     bit:=cast(u64)1<<cast(u64)s.artifact;e:=tr_find(s,r.group);
     if e>=0 && s.entry[e].role!=r.role {
@@ -105,7 +105,7 @@ tr_admit :: (s:TrSet,row:TrRow)->TrAdd {
     a.set.entry[e].artifacts|=bit;
     return a;
 }
-tr_add_outcome :: (s:TrSet,o:TrOutcome)->TrAdd {
+tr_add_outcome :: (s:TrSet,o:TrOutcome)->TrAdd #effects(all) {
     a:=tr_front(s,o.group,o.time,o.label>=0 && o.label<=1 && o.from!=TrLabel.replay);
     if a.reason!=TrReason.admitted {return a;}
     if o.from==TrLabel.none {a.reason=TrReason.unlabelled;return a;}
@@ -115,7 +115,7 @@ tr_add_outcome :: (s:TrSet,o:TrOutcome)->TrAdd {
 }
 // The trace is replayed here, whole, within budget steps; chapter 234
 // refuses a budget below 1 by shape.
-tr_add_trace :: (s:TrSet,program:[]TmOp,claim:RxClaim,rows:[]int,group:int,time:int,budget:int)->TrAdd {
+tr_add_trace :: (s:TrSet,program:[]TmOp,claim:RxClaim,rows:[]int,group:int,time:int,budget:int)->TrAdd #effects(all) {
     a:=tr_front(s,group,time,true);
     if a.reason!=TrReason.admitted {return a;}
     r:=rx_check(program,claim,rows,0,claim.steps,budget);
@@ -129,7 +129,7 @@ tr_add_trace :: (s:TrSet,program:[]TmOp,claim:RxClaim,rows:[]int,group:int,time:
 // book:begin digest
 // The set's digest: its row count, then each row's source, group, time,
 // role, label and label source as words, and its key.
-tr_digest :: (s:TrSet)->[32]u8 {
+tr_digest :: (s:TrSet)->[32]u8 #effects(all) {
     sha:[112]u8;d:[32]u8;b:[80]u8;#assert sha256_init(sha[..])==SHA_OK;
     n:=tr_put(b[..],0,s.count);#assert sha256_update_checked(sha[..],b[0..<n],false)==SHA_OK;
     for i:0..<s.count {
@@ -143,7 +143,7 @@ tr_digest :: (s:TrSet)->[32]u8 {
     return d;
 }
 // Rows per role, indexed by the role's value.
-tr_counts :: (s:TrSet)->[5]int {
+tr_counts :: (s:TrSet)->[5]int #effects(all) {
     c:[5]int;
     for i:0..<s.count {c[cast(int)s.row[i].role]+=1;}
     return c;
@@ -154,7 +154,7 @@ tr_counts :: (s:TrSet)->[5]int {
 // Entry 25 repeats entry 24. Labels come from a summary when the time is 3
 // mod 5, are missing when it is 6 mod 11, and otherwise come from a check at
 // even times and a diff at odd ones.
-tr_feed :: ()->[48]TrOutcome {
+tr_feed :: ()->[48]TrOutcome #effects(all) {
     f:[48]TrOutcome;
     for i:0..<48 {
         t:=ifx i==25 then 24 else i;o:=TrOutcome.{group=i/4,time=t,decision=(t*13)%7};
@@ -170,10 +170,10 @@ tr_feed :: ()->[48]TrOutcome {
 // Tests.
 TrStore :: struct {rows:[64]TrRow;entry:[64]TrEntry;}
 TR_CUTS :: TrCuts.{calibration=10,development=20,heldout=30};
-tr_out :: (group:int,time:int,decision:int,label:int,from:TrLabel)->TrOutcome {
+tr_out :: (group:int,time:int,decision:int,label:int,from:TrLabel)->TrOutcome #effects(all) {
     return TrOutcome.{group=group,time=time,decision=decision,label=label,from=from};
 }
-tr_hex :: (d:[32]u8,text:string)->bool {
+tr_hex :: (d:[32]u8,text:string)->bool #effects(all) {
     digits:="0123456789abcdef";
     for i:0..<32 {
         if text[2*i]!=digits[cast(int)(d[i]>>4)] || text[2*i+1]!=digits[cast(int)(d[i]&15)] {return false;}
@@ -343,7 +343,7 @@ tr_hex :: (d:[32]u8,text:string)->bool {
     #assert d.reason==TrReason.admitted && rows[0].role==TrRole.train && st.entry[1].group==10 && st.entry[1].artifacts==4;
 }
 TrTally :: struct {reasons:[12]int;set:TrSet;}
-tr_tally :: (s:TrSet,feed:[]TrOutcome)->TrTally {
+tr_tally :: (s:TrSet,feed:[]TrOutcome)->TrTally #effects(all) {
     t:=TrTally.{set=s};
     for o:feed {a:=tr_add_outcome(t.set,o);t.set=a.set;t.reasons[cast(int)a.reason]+=1;}
     return t;

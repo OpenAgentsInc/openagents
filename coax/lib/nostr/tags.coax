@@ -139,27 +139,27 @@ NostrTag :: struct {
 }
 
 // A parsed event with only these tags, for checks.
-nt_event :: (tags:string)->NostrEvent {
+nt_event :: (tags:string)->NostrEvent #effects(all) {
   e:NostrEvent;e.error=NE_OK;e.original=tags;e.tags_to=tags.count;return e;
 }
 // An a tag's value checked through the full tag path.
-nt_address :: (value:string)->NostrTag {
+nt_address :: (value:string)->NostrTag #effects(all) {
   buf:[512]u8;n:=json_raw(buf[..],0,"[[\"a\",");n=json_write_string(buf[..],n,value);n=json_raw(buf[..],n,"]]");
   return nostr_tag(nt_event(cast(string)buf[0..<n]),0);
 }
-nt_fail :: (t:NostrTag,error:int)->NostrTag {r:=t;r.error=error;return r;}
-nt_relay_ok :: (s:string)->bool {
+nt_fail :: (t:NostrTag,error:int)->NostrTag #effects(all) {r:=t;r.error=error;return r;}
+nt_relay_ok :: (s:string)->bool #effects(all) {
   if s.count>=6 && s[0..<5]=="ws://" {return true;}
   return s.count>=7 && s[0..<6]=="wss://";
 }
-nt_marker :: (s:string)->int {
+nt_marker :: (s:string)->int #effects(all) {
   if s=="root" {return NT_MARK_ROOT;}if s=="reply" {return NT_MARK_REPLY;}if s=="mention" {return NT_MARK_MENTION;}
   return NT_MARK_NONE;
 }
 // The address "kind:pubkey:d" with the kind's replacement rule. A sixth
 // digit is over the bound (NT_LIMIT); a kind over 65535 has no replaceable
 // or addressable class.
-nt_read_address :: (t:NostrTag,s:string)->NostrTag {
+nt_read_address :: (t:NostrTag,s:string)->NostrTag #effects(all) {
   r:=t;i:=0;kind:=0;
   while i<s.count && s[i]>='0' && s[i]<='9' {
     if i==5 {return nt_fail(r,NT_LIMIT);}
@@ -173,14 +173,14 @@ nt_read_address :: (t:NostrTag,s:string)->NostrTag {
   r.address_kind=kind;for k:0..<rest.count {r.d[k]=rest[k];}r.d_n=rest.count;return r;
 }
 // The event's tag array, or false when the record or its span is forged.
-nt_start :: (j:[]Json,e:NostrEvent)->bool {
+nt_start :: (j:[]Json,e:NostrEvent)->bool #effects(all) {
   if e.error!=NE_OK || e.tags_from<0 || e.tags_to>e.original.count || e.tags_to-e.tags_from<2 {return false;}
   json_start(j,e.original[e.tags_from..<e.tags_to]);return json_next(j)==JSON_ARRAY;
 }
 // The index'th tag, read and checked when it is a standard one. Other tags
 // report their value count only. Values past those NIP-01 names are kept
 // in the signed tags for other NIPs and not checked here.
-nostr_tag :: (e:NostrEvent,index:int)->NostrTag #export_c {
+nostr_tag :: (e:NostrEvent,index:int)->NostrTag #export_c #effects(all) {
   t:NostrTag;j:[1]Json;if !nt_start(j[..],e) {return nt_fail(t,NT_EVENT);}
   k:=0;tok:=json_next(j[..]);
   while tok==JSON_ARRAY && k<index {skipped:=json_skip(j[..]);k+=1;tok=json_next(j[..]);}
@@ -222,7 +222,7 @@ nostr_tag :: (e:NostrEvent,index:int)->NostrTag #export_c {
 }
 // The first d tag's value: the identifier of an addressable event. Absent or
 // valueless reads as the empty identifier, as relays index it.
-nostr_tag_d :: (e:NostrEvent)->NostrTag #export_c {
+nostr_tag_d :: (e:NostrEvent)->NostrTag #export_c #effects(all) {
   t:NostrTag;t.type=NT_D;j:[1]Json;if !nt_start(j[..],e) {return nt_fail(t,NT_EVENT);}
   k:=0;tok:=json_next(j[..]);
   while tok==JSON_ARRAY {

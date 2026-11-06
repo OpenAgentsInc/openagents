@@ -2,7 +2,7 @@
 // Reuse passing raw GPU observations; no browser, renderer or numeric gate runs.
 #import "Basic";
 #load "render-layer-tools.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {tool_errln("usage: render-layer-recovery-check LEGACY_RECEIPT COAX_RECEIPT OUTPUT");return 2;}left:=args_at(a[..],0);right:=args_at(a[..],1);output:=args_at(a[..],2);lb:[1048576]u8;rb:[4194304]u8;ln:[32768]JvNode;rn:[65536]JvNode;l:[1]Jv;r:[1]Jv;
   inputs:[1]RtqInputs;compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);if compiler=="" {compiler="coax/bin/coax";}if !rtq_deps(inputs[..],compiler,"aethyr/tests/render-layer-recovery-check.coax",proc_now_ms()+30000,fs_dir(output),"profile-recovery-dependencies") {return 1;}
   self:[4096]u8;image:=gp_self(self[..]);image_hash:[64]u8;for file:[4]string.[left,right,image,compiler] {if !rtq_input_add(inputs[..],file) {return 1;}}if !rtq_hash_file(image,image_hash[..]) || !rtq_json_file(left,lb[..],ln[..],l[..]) || !rtq_json_file(right,rb[..],rn[..],r[..]) {return 1;}

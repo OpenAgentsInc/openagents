@@ -6,18 +6,18 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/json/json.coax";
 #load "grid-journey-sequence.coax";
-gj_native_open :: () -> int #foreign;
-gj_native_frame :: (dt: f32) -> int #foreign;
-gj_native_key :: (key: int, down: int) #foreign;
-gj_native_probe :: (field: int) -> int #foreign;
-gj_native_pose :: (field: int) -> f32 #foreign;
-gj_native_mark :: (step: int) -> int #foreign;
-gj_native_replay :: () -> int #foreign;
-gj_native_viewport :: (width:f32,height:f32) #foreign;
-gj_native_info :: (field:int)->int #foreign;
-gj_native_bytes :: (kind:int)->int #foreign;
-gj_native_byte :: (kind:int,offset:int)->int #foreign;
-gj_native_close :: () #foreign;
+gj_native_open :: () -> int #foreign #effects(all);
+gj_native_frame :: (dt: f32) -> int #foreign #effects(all);
+gj_native_key :: (key: int, down: int) #foreign #effects(all);
+gj_native_probe :: (field: int) -> int #foreign #effects(all);
+gj_native_pose :: (field: int) -> f32 #foreign #effects(all);
+gj_native_mark :: (step: int) -> int #foreign #effects(all);
+gj_native_replay :: () -> int #foreign #effects(all);
+gj_native_viewport :: (width:f32,height:f32) #foreign #effects(all);
+gj_native_info :: (field:int)->int #foreign #effects(all);
+gj_native_bytes :: (kind:int)->int #foreign #effects(all);
+gj_native_byte :: (kind:int,offset:int)->int #foreign #effects(all);
+gj_native_close :: () #foreign #effects(all);
 
 #test "the native Grid dump refuses clipped, malformed or differently shaped producer frames" {
   #assert grid_native_shape(1,400000,12,112,0,0) && grid_native_shape(400000,400000,12,112,0,0);
@@ -70,7 +70,7 @@ grid_journey_dt :: (frame: int) -> f32 {
   // the first t=1/60 frame also starts its clock. Later frames pay one period.
   return ifx frame==1 then 0.0f32 else 1.0f32/60.0f32;
 }
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}
   drop_jump:=args_has(a[..],"--drop-jump");freeze:=args_has(a[..],"--freeze");
   wrong_pose:=args_has(a[..],"--wrong-pose");skip_replay:=args_has(a[..],"--skip-replay");

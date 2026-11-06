@@ -4,8 +4,8 @@
 #load "anime-rules.coax";
 #load "anime-args.coax";
 
-cxcli_mkdir_exclusive :: (path:[]u8)->int #foreign;
-cxcli_same_file :: (left:[]u8,right:[]u8)->int #foreign;
+cxcli_mkdir_exclusive :: (path:[]u8)->int #foreign #effects(all);
+cxcli_same_file :: (left:[]u8,right:[]u8)->int #foreign #effects(all);
 LA_HTTP_MS :: 45000; // two capped 15s selector tries, signing and HTTP overhead
 
 labs_anime :: (a:[]Args,r:[]Rep,profile:string)->int {

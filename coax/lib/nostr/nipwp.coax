@@ -20,9 +20,9 @@ WP_MAX_URL :: 2048; WP_MAX_DATA :: 98304;
 
 // book:begin icon
 WpIcon :: struct {status:int=WP_OK; clear:bool; n:int;}   // the value is out[0..<n]
-wp_starts :: (s:string,p:string)->bool {return s.count>=p.count && s[0..<p.count]==p;}
+wp_starts :: (s:string,p:string)->bool #effects(all) {return s.count>=p.count && s[0..<p.count]==p;}
 // An icon value: scheme, bytes, size.
-wp_value :: (s:string)->int {
+wp_value :: (s:string)->int #effects(all) {
   for c:s {if c<=32 || c==127 {return WP_BYTES;}}
   if wp_starts(s,"https://") || wp_starts(s,"http://") {return ifx s.count<=WP_MAX_URL then WP_OK else WP_SIZE;}
   if wp_starts(s,"data:image/") {return ifx s.count<=WP_MAX_DATA then WP_OK else WP_SIZE;}
@@ -33,7 +33,7 @@ wp_value :: (s:string)->int {
 // book:begin admit
 // Decide a verified 9033 from a signer holding role; the icon is decoded
 // into out (at least WP_MAX_DATA bytes for the largest accepted value).
-wp_admit :: (e:NostrEvent,role:int,out:[]u8)->WpIcon {
+wp_admit :: (e:NostrEvent,role:int,out:[]u8)->WpIcon #effects(all) {
   r:WpIcon;
   if e.error!=NE_OK || !e.verified {r.status=WP_EVENT;return r;}
   if e.kind!=WP_SET {r.status=WP_KIND;return r;}
@@ -91,4 +91,4 @@ wp_admit :: (e:NostrEvent,role:int,out:[]u8)->WpIcon {
   e.verified=true;e.error=NE_ID;#assert wp_admit(e,WP_OWNER,out[..]).status==WP_EVENT;
   e=wpf_ev(9033,"[]");e.tags_from= -1;#assert wp_admit(e,WP_OWNER,out[..]).status==WP_SHAPE;
 }
-wpf_ev :: (kind:int,tags:string)->NostrEvent {e:=nt_event(tags);e.kind=kind;e.verified=true;return e;}
+wpf_ev :: (kind:int,tags:string)->NostrEvent #effects(all) {e:=nt_event(tags);e.kind=kind;e.verified=true;return e;}

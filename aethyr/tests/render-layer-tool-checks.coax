@@ -6,7 +6,7 @@ rlay_compare_config :: (old_dir:string,new_dir:string)->bool {
   paths:[4][4096]u8;old_file:=fs_join(old_dir,"layers.bin",paths[0][..]);new_file:=fs_join(new_dir,"layers.bin",paths[1][..]);a:[16384]u8;b:[16384]u8;an:=fs_read(fs_join(old_dir,"textures.config",paths[2][..]),a[..]);bn:=fs_read(fs_join(new_dir,"textures.config",paths[3][..]),b[..]);if an<1 || bn<1 {return false;}old_text:=cast(string)a[0..<an];new_text:=cast(string)b[0..<bn];old_path:=rtq_word(old_text,6);new_path:=rtq_word(new_text,6);canonical:[4][4096]u8;
   if fs_realpath(old_path,canonical[0][..])!=fs_realpath(old_file,canonical[1][..]) || fs_realpath(new_path,canonical[2][..])!=fs_realpath(new_file,canonical[3][..]) {return false;}left:[16384]u8;right:[16384]u8;ln:=rto_replace(old_text,old_path,"<captured-layer-bytes>",left[..]);rn:=rto_replace(new_text,new_path,"<captured-layer-bytes>",right[..]);return ln>0 && ln==rn && cast(string)left[0..<ln]==cast(string)right[0..<rn];
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: render-layer-tool-checks OLD_RECEIPT NEW_RECEIPT LEGACY_SOURCE_COPY OUT_JSON");return 2;}
   old_file:=args_at(a[..],0);new_file:=args_at(a[..],1);legacy_source:=args_at(a[..],2);out_file:=args_at(a[..],3);old_bytes:[1048576]u8;new_bytes:[4194304]u8;old_nodes:[32768]JvNode;new_nodes:[65536]JvNode;old:[1]Jv;fresh:[1]Jv;
   inputs:[1]RtqInputs;compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);if compiler=="" {compiler="coax/bin/coax";}self:[4096]u8;image:=gp_self(self[..]);image_hash:[64]u8;compiler_hash:[64]u8;label:[256]u8;lw:[1]Jo;jo_start(lw[..],label[..]);jo_put(lw[..],fs_base(out_file));jo_put(lw[..],"-dependencies");

@@ -5,7 +5,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) { return 2; }
   mode_buf: [256] u8; mode := proc_getenv("RECIPE_TOOL_MODE", mode_buf[..]);
   log_buf: [4096] u8; calls_path := proc_getenv("RECIPE_TOOL_LOG", log_buf[..]);

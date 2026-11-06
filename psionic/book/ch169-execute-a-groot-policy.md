@@ -76,7 +76,7 @@ rounding. The normalized eight values are padded with 124 zeros.
 
 <!-- source: psionic/lib/robotics/groot-embodiment.coax normalize -->
 ```jai
-ge_normalize :: (state:[]f32,out:[]f32,overlap:bool)->GeRead #export_c {
+ge_normalize :: (state:[]f32,out:[]f32,overlap:bool)->GeRead #export_c #effects(all) {
   if state.count!=8 || out.count<132 {return GeRead.{status=GeStatus.shape};}
   if overlap {return GeRead.{status=GeStatus.overlap};}
   for v:state {if !ge_finite(v) {return GeRead.{status=GeStatus.number};}}
@@ -105,7 +105,7 @@ this admitted source size.
 // Input is one raw simulator256x256HWC RGBu8 camera BEFORE its wrapper flip.
 // Output is normalized[3,rows,256]F32. (first=0,rows=256) is the full camera,
 // ready for gv_pack; smaller genuine row slices keep VM qualification bounded.
-gi_preprocess :: (first:int,rows:int,raw:[]u8,out:[]f32,work:[]f32,overlap:bool)->GiRead #export_c {
+gi_preprocess :: (first:int,rows:int,raw:[]u8,out:[]f32,work:[]f32,overlap:bool)->GiRead #export_c #effects(all) {
   if !gi_rows(first,rows) {return GiRead.{status=GiStatus.shape};}need:=rows*768;
   if raw.count!=196608 || out.count<need || work.count<need {return GiRead.{status=GiStatus.shape};}
   if overlap {return GiRead.{status=GiStatus.overlap};}
@@ -236,7 +236,7 @@ to F32 before the environment wrapper transforms the gripper.
 
 <!-- source: psionic/lib/robotics/groot-embodiment.coax decode -->
 ```jai
-ge_decode :: (model:[]f32,out:[]f32,overlap:bool)->GeRead #export_c {
+ge_decode :: (model:[]f32,out:[]f32,overlap:bool)->GeRead #export_c #effects(all) {
   if model.count!=5280 || out.count<112 {return GeRead.{status=GeStatus.shape};}
   if overlap {return GeRead.{status=GeStatus.overlap};}
   staged:[112]f32;clipped:=0;

@@ -99,7 +99,7 @@ GRADE_BLUE :: 0.5;
 
 // The same pixel on the CPU, for the host's check: what the GPU must write.
 grade_channel :: (v: f32) -> u32 { return cast(u32) (v * 255); }
-vg_grade_pixel :: (x: u32, y: u32, w: u32, h: u32) -> u32 #export_c {
+vg_grade_pixel :: (x: u32, y: u32, w: u32, h: u32) -> u32 #export_c #effects(all) {
   fx := f32(x); fy := f32(y); fw := f32(w); fh := f32(h);
   r := fx / fw; g := fy / fh; b := f32(GRADE_BLUE);
   dx := fx - fw * 0.5; dy := fy - fh * 0.5;
@@ -108,7 +108,7 @@ vg_grade_pixel :: (x: u32, y: u32, w: u32, h: u32) -> u32 #export_c {
   return grade_channel(r) | (grade_channel(g) << 8) | (grade_channel(b) << 16) | 0xFF000000;
 }
 
-vg_grade_module :: (out: [] u32) -> int #export_c {
+vg_grade_module :: (out: [] u32) -> int #export_c #effects(all) {
   st: [1] Spv; s := st[..];
   sp_begin(s, out);
   t_void := sp_id(s); t_fn := sp_id(s); t_bool := sp_id(s); t_uint := sp_id(s); t_float := sp_id(s);

@@ -98,7 +98,7 @@
   if field==90 {work[0].sig[63]=1;}
   #assert !n59_sign_zeroed(work[..]);n59_erase_sign(work[..]);#assert n59_sign_zeroed(work[..]);
 }
-n59_sign_zeroed :: (work:[]NostrSignWork)->bool {
+n59_sign_zeroed :: (work:[]NostrSignWork)->bool #effects(all) {
   clean:=true;
   clean=(work[0].stage==0) && clean;
   clean=(work[0].sign[0].stage==0) && clean;
@@ -193,7 +193,7 @@ n59_sign_zeroed :: (work:[]NostrSignWork)->bool {
   clean=crypto_zeroed(work[0].sig[..]) && clean;
   return clean;
 }
-n59_erase_sign :: (work:[]NostrSignWork) {
+n59_erase_sign :: (work:[]NostrSignWork) #effects(all) {
   work[0].stage=0;
   work[0].sign[0].stage=0;
   secure_zero(work[0].sign[0].prep[0].key[0].raw.limbs[..]);

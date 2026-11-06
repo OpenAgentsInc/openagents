@@ -28,7 +28,7 @@ GR_CHAT_MESSAGES :: 256;
 // The first statement keyword of a template that chapter 52's compiler does
 // not admit ("empty statement" when `{%` has no keyword), or "" when every
 // statement is in its subset.
-gr_template_construct :: (template:string)->string #export_c {
+gr_template_construct :: (template:string)->string #export_c #effects(all) {
     at:=0;
     while at+1<template.count {
         if template[at]=='{' && template[at+1]=='%' {
@@ -55,17 +55,17 @@ gr_template_construct :: (template:string)->string #export_c {
 }
 
 // Python's str.strip() whitespace: White_Space and the four separators 0x1c-0x1f.
-gr_space :: (cp:int)->bool {return gr_class(cp)==4 || cp/4==7;}  // 0x1c-0x1f
-gr_trim :: (s:string)->string {
+gr_space :: (cp:int)->bool #effects(all) {return gr_class(cp)==4 || cp/4==7;}  // 0x1c-0x1f
+gr_trim :: (s:string)->string #effects(all) {
     a:=0;while a<s.count {r:=gr_rune(s,a);if !gr_space(r.cp) {break;}a=r.next;}
     b:=a;pos:=a;while pos<s.count {r:=gr_rune(s,pos);if !gr_space(r.cp) {b=r.next;}pos=r.next;}
     return s[a..<b];
 }
 // Where `word` starts in s at or after `from`, or -1; the last start, or -1.
-gr_find_text :: (s:string,word:string,from:int)->int {
+gr_find_text :: (s:string,word:string,from:int)->int #effects(all) {
     i:=from;while i+word.count<=s.count {same:=true;for k:0..<word.count {if s[i+k]!=word[k] {same=false;break;}}if same {return i;}i+=1;}return -1;
 }
-gr_find_last :: (s:string,word:string)->int {last:=-1;at:=gr_find_text(s,word,0);while at>=0 {last=at;at=gr_find_text(s,word,at+1);}return last;}
+gr_find_last :: (s:string,word:string)->int #effects(all) {last:=-1;at:=gr_find_text(s,word,0);while at>=0 {last=at;at=gr_find_text(s,word,at+1);}return last;}
 #test "trim and search match Python's strip, in and split" {
     #assert gr_trim("  a b \n")=="a b" && gr_trim("")=="" && gr_trim(" \t ")=="" && gr_trim("　x ")=="x";
     sep:=[3]u8.[0x1f,120,0x1b];#assert gr_trim(cast(string)sep[0..<2])=="x" && gr_trim(cast(string)sep[1..<3]).count==2;
@@ -75,7 +75,7 @@ gr_find_last :: (s:string,word:string)->int {last:=-1;at:=gr_find_text(s,word,0)
 }
 
 GrWriter :: struct {status:GrChatStatus;at:int;out:[]u8;}
-gr_emit :: (w:GrWriter,s:string)->GrWriter {
+gr_emit :: (w:GrWriter,s:string)->GrWriter #effects(all) {
     r:=w;if r.status!=GrChatStatus.ok {return r;}
     if s.count>r.out.count-r.at {r.status=GrChatStatus.size;return r;}
     for i:0..<s.count {r.out[r.at+i]=s[i];}r.at+=s.count;return r;
@@ -99,13 +99,13 @@ gr_emit :: (w:GrWriter,s:string)->GrWriter {
     #assert gr_emit(GrWriter.{out=out[0..<3]},"abc").status==GrChatStatus.ok;
 }
 // book:begin render
-gr_chat :: (messages:[]GrMessage,generation:bool,thinking:bool,low_effort:bool,out:[]u8)->GrChat #export_c {
+gr_chat :: (messages:[]GrMessage,generation:bool,thinking:bool,low_effort:bool,out:[]u8)->GrChat #export_c #effects(all) {
     none:[1]string;return gr_chat_tools(messages,none[0..<0],generation,thinking,low_effort,out);
 }
 // The template's instructions after the tool definitions, verbatim.
 GR_TOOL_RULES :: "\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT>";
 // A function or parameter name the call format can carry: non-empty, with no '>', '<' or line break.
-gr_tool_name :: (s:string)->bool {
+gr_tool_name :: (s:string)->bool #effects(all) {
     if s.count==0 {return false;}
     for i:0..<s.count {c:=s[i];if c=='>' || c=='<' || c=='\n' || c=='\r' {return false;}}
     return true;
@@ -113,7 +113,7 @@ gr_tool_name :: (s:string)->bool {
 // tools: each definition as the template's tool_to_json writes it, one JSON
 // object a tool (the caller leaves out a deferred tool and the defer_loading
 // and strict keys, and writes `"key": value` pairs joined by ", ").
-gr_chat_tools :: (messages:[]GrMessage,tools:[]string,generation:bool,thinking:bool,low_effort:bool,out:[]u8)->GrChat #export_c {
+gr_chat_tools :: (messages:[]GrMessage,tools:[]string,generation:bool,thinking:bool,low_effort:bool,out:[]u8)->GrChat #export_c #effects(all) {
     if messages.count>GR_CHAT_MESSAGES {return GrChat.{status=GrChatStatus.size};}
     if messages.count==0 {return GrChat.{status=GrChatStatus.empty};}
     for t:0..<tools.count {if !gr_utf8(tools[t]) {return GrChat.{status=GrChatStatus.utf8,cause=t};}if tools[t].count==0 {return GrChat.{status=GrChatStatus.tool,cause=t};}}
@@ -171,7 +171,7 @@ gr_chat_tools :: (messages:[]GrMessage,tools:[]string,generation:bool,thinking:b
 // book:end render
 // An assistant turn with tool calls: its content (the thinking an earlier turn
 // drops, as above), then each call in the format the system block asks for.
-gr_calls :: (w0:GrWriter,m:GrMessage,earlier:bool)->GrWriter {
+gr_calls :: (w0:GrWriter,m:GrMessage,earlier:bool)->GrWriter #effects(all) {
     w:=gr_emit(w0,"<|im_start|>assistant\n");c:=m.content;
     tagged:=gr_find_text(c,"<think>",0)>=0 || gr_find_text(c,"</think>",0)>=0;
     if !earlier {
@@ -197,14 +197,14 @@ GrCallsStatus :: enum u8 {ok;none;malformed;size;}
 GrParsedCall :: struct {name:string;first:int;count:int;}
 // text: what comes before the first call (the reply's words); at: where reading stopped.
 GrCalls :: struct {status:GrCallsStatus;calls:int;args:int;text:int;at:int;}
-gr_ws :: (s:string,p:int)->int {q:=p;while q<s.count && (s[q]==' ' || s[q]=='\n' || s[q]=='\t' || s[q]=='\r') {q+=1;}return q;}
-gr_starts :: (s:string,p:int,word:string)->bool {return p+word.count<=s.count && s[p..<p+word.count]==word;}
+gr_ws :: (s:string,p:int)->int #effects(all) {q:=p;while q<s.count && (s[q]==' ' || s[q]=='\n' || s[q]=='\t' || s[q]=='\r') {q+=1;}return q;}
+gr_starts :: (s:string,p:int,word:string)->bool #effects(all) {return p+word.count<=s.count && s[p..<p+word.count]==word;}
 // The calls in a reply, in order. Each is
 //   <tool_call> <function=NAME> (<parameter=KEY>\nVALUE\n</parameter>)* </function> </tool_call>
 // with any whitespace between the tags; a value keeps its own lines except
 // the one line break the format puts on each side. A reply ends at </think>
 // for this: calls inside the thinking are not read.
-gr_tool_calls :: (reply:string,calls:[]GrParsedCall,args:[]GrArg)->GrCalls #export_c {
+gr_tool_calls :: (reply:string,calls:[]GrParsedCall,args:[]GrArg)->GrCalls #export_c #effects(all) {
     base:=0;close:=gr_find_last(reply,"</think>");if close>=0 {base=close+8;}
     s:=reply;r:=GrCalls.{text=s.count,at=base};
     p:=gr_find_text(s,"<tool_call>",base);
@@ -284,4 +284,4 @@ gr_tool_calls :: (reply:string,calls:[]GrParsedCall,args:[]GrArg)->GrCalls #expo
     #assert gr_chat(many[0..<256],false,true,false,out[..]).status==GrChatStatus.ok && gr_chat(many[..],false,true,false,out[..]).status==GrChatStatus.size;
 }
 // Strip only the end: the "<think></think>" prefix shields the start.
-gr_trim_end :: (s:string)->string {b:=0;pos:=0;while pos<s.count {r:=gr_rune(s,pos);if !gr_space(r.cp) {b=r.next;}pos=r.next;}return s[0..<b];}
+gr_trim_end :: (s:string)->string #effects(all) {b:=0;pos:=0;while pos<s.count {r:=gr_rune(s,pos);if !gr_space(r.cp) {b=r.next;}pos=r.next;}return s[0..<b];}

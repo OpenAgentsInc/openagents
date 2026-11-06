@@ -18,8 +18,8 @@
 #load "../../coax/lib/sys/proc.coax";
 #load "../lib/harness/protocols.coax";
 
-cxterm_byte :: (timeout_ms: int) -> int #foreign;
-cxterm_write :: (s: [] u8) -> int #foreign;
+cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 
 PS_LINE_MAX :: 1048576;       // a reply read whole, so a long one is refused as too long, not lost
 PS_WAIT_MS :: 10000;          // a reply that takes longer is a dead server
@@ -146,7 +146,7 @@ ps_client :: (args: [] Args) -> int {
   return ifx passed then 0 else 1;
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   ab: [1] Args; args := ab[..];
   if !args_load(args) { tool_errln("protocols-stdio: bad arguments"); return 2; }
   if args_count(args) == 0 { tool_errln("usage: protocols-stdio --serve | CMD [ARGS...]"); return 2; }

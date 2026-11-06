@@ -43,14 +43,14 @@ PtSplit :: struct {status:PtStatus;written:int;prefix:int;}
     r=pt_split_checked(candidate[0..<0],large[..],boundary[..],out[..],false);#assert r.status==PtStatus.ok && r.prefix==0 && out[1].answer==0;
     #assert pt_split_checked(large[..],full[..],ends[..],out[..],false).status==PtStatus.size;
 }
-pt_branch_span :: (start:int,end:int,total:int)->bool {return end>start && end<=total;}
+pt_branch_span :: (start:int,end:int,total:int)->bool #effects(all) {return end>start && end<=total;}
 
-pt_branch_count :: (n:int)->bool {return n>=1 && n<=32;}
-pt_id :: (id:int)->bool {return id>=0 && id<248077;}
+pt_branch_count :: (n:int)->bool #effects(all) {return n>=1 && n<=32;}
+pt_id :: (id:int)->bool #effects(all) {return id>=0 && id<248077;}
 // book:begin split
 // `full` is the concatenation of complete branch encodings; ends are exclusive.
 // Tokenize the prefix candidate separately, then shrink it against EVERY branch.
-pt_split_checked :: (candidate:[]int,full:[]int,ends:[]int,output:[]PtBranch,overlap:bool)->PtSplit #export_c {
+pt_split_checked :: (candidate:[]int,full:[]int,ends:[]int,output:[]PtBranch,overlap:bool)->PtSplit #export_c #effects(all) {
     if !pt_branch_count(ends.count) || !pt_token_count(candidate.count) {return PtSplit.{status=PtStatus.size};}
     if output.count<ends.count {return PtSplit.{status=PtStatus.capacity};}
     if overlap {return PtSplit.{status=PtStatus.alias};}

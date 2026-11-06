@@ -17,7 +17,7 @@ FC_LABELS :: [6]string.["Codex","Claude Code","Cursor","Microcoder","Psionic (lo
 ForgeChatEvent :: struct {kind:int=0; session:[128]u8; sn:int; text:[262144]u8; tn:int;live:bool=false;}
 ForgeChatModels :: struct {n:int=0; ids:[64][128]u8; levels:[64][8][16]u8; counts:[64]int;}
 FC_ROUTER_DEFAULT :: "{\"schema\":\"coder.router.v1\",\"url\":\"http://127.0.0.1:8793/v1/systemone\",\"remote\":false}\n";
-fc_router_default :: ()->string #export_c {return FC_ROUTER_DEFAULT;}
+fc_router_default :: ()->string #export_c #effects(all) {return FC_ROUTER_DEFAULT;}
 
 #test "desktop routing reports the chosen engine and honest fallback without exposing controls" {
   s:[1]ForgeChatEvent;
@@ -68,13 +68,13 @@ fc_route_text :: (v:Jv,out:[]u8)->int {
   #assert !fc_models(m[..],"not json") && m[0].n==1;
 }
 fc_cstr :: (b:[]u8)->string {n:=0;while n<b.count && b[n]!=0 {n+=1;}return cast(string)b[0..<n];}
-fc_model :: (m:[]ForgeChatModels,i:int,effort:int)->string #export_c {
+fc_model :: (m:[]ForgeChatModels,i:int,effort:int)->string #export_c #effects(all) {
   if i<0 || i>=m[0].n {return "";}
   if effort<0 {return fc_cstr(m[0].ids[i][..]);}
   if effort>=m[0].counts[i] {return "";}
   return fc_cstr(m[0].levels[i][effort][..]);
 }
-fc_models :: (m:[]ForgeChatModels,line:string)->bool #export_c {
+fc_models :: (m:[]ForgeChatModels,line:string)->bool #export_c #effects(all) {
   nodes:[4096]JvNode; d:[1]Jv;
   if !jv_parse(d[..],line,nodes[..]) {return false;}
   v:=d[0]; data:=jv_get(v,0,"data"); if jv_kind(v,data)!=JV_ARRAY {return false;}
@@ -131,9 +131,9 @@ fc_models :: (m:[]ForgeChatModels,line:string)->bool #export_c {
   out:[24000]f32; n:=fc_draw(out[..],900,800,1,false);
   #assert n>0 && n<=2000 && n%6==0;
 }
-fc_engine :: (index:int)->string #export_c {return ifx index>=0 && index<6 then FC_ENGINES[index] else "";}
-fc_label :: (index:int)->string #export_c {return ifx index>=0 && index<6 then FC_LABELS[index] else "";}
-fc_read :: (s:[]ForgeChatEvent,line:string)->int #export_c {
+fc_engine :: (index:int)->string #export_c #effects(all) {return ifx index>=0 && index<6 then FC_ENGINES[index] else "";}
+fc_label :: (index:int)->string #export_c #effects(all) {return ifx index>=0 && index<6 then FC_LABELS[index] else "";}
+fc_read :: (s:[]ForgeChatEvent,line:string)->int #export_c #effects(all) {
   s[0].kind=0; s[0].tn=0; nodes:[128]JvNode; d:[1]Jv;
   if !jv_parse(d[..],line,nodes[..]) {return 0;}
   v:=d[0]; k:=jv_raw(v,jv_get(v,0,"kind")); field:="text";
@@ -164,7 +164,7 @@ fc_read :: (s:[]ForgeChatEvent,line:string)->int #export_c {
   return s[0].kind;
 }
 // Shared point-space boxes: native text controls and the GPU frames use these.
-fc_box :: (kind:int,w:f32,h:f32)->HudBox #export_c {
+fc_box :: (kind:int,w:f32,h:f32)->HudBox #export_c #effects(all) {
   if kind==0 {return HudBox.{x=16,y=h-100,width=w-32,height=88};}
   if kind==1 {return HudBox.{x=16,y=h-356,width=620,height=244};}
   if kind==2 {return HudBox.{x=28,y=h-68,width=w-152,height=30};}
@@ -175,12 +175,12 @@ fc_box :: (kind:int,w:f32,h:f32)->HudBox #export_c {
   if kind==7 {return HudBox.{x=w-112,y=h-66,width=84,height=26};}
   return HudBox.{};
 }
-fc_draw :: (out:[]f32,w:f32,h:f32,d:f32,busy:bool)->int #export_c {
+fc_draw :: (out:[]f32,w:f32,h:f32,d:f32,busy:bool)->int #export_c #effects(all) {
   p:=HdPen.{d=d,cyan=true,top=0,bottom=h,sans=false}; n:=0;
   n=hd_panel(out,n,fc_box(0,w,h),p,busy);
   n=hd_panel(out,n,fc_box(2,w,h),p,false);
   return n;
 }
-fc_feed_draw :: (out:[]f32,feed:[]HudFeed,w:f32,h:f32,d:f32)->int #export_c {
+fc_feed_draw :: (out:[]f32,feed:[]HudFeed,w:f32,h:f32,d:f32)->int #export_c #effects(all) {
   return hd_feed(out,0,feed,fc_box(1,w,h),HdPen.{d=d,top=0,bottom=h,sans=false});
 }

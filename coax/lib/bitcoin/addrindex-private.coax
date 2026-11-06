@@ -86,7 +86,7 @@
   children[0] = LcBlock.{index=103,bytes=d[0].raw[2].bytes[0..<d[0].raw[2].n]};
   #assert axi_private_reorg_vartime(d[0].tree[..],d[0].live[..],d[0].used,102,children[..],locs[0..<2],d[0].batch[..],lc_demo_work(d[..])).code == LC_CONTEXT;
 }
-axi_private_reorg_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int, blocks: [] LcBlock, locs: [] TxiLoc, batch: [] u8, w: LcWork) -> LcResult #export_c {
+axi_private_reorg_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int, blocks: [] LcBlock, locs: [] TxiLoc, batch: [] u8, w: LcWork) -> LcResult #export_c #effects(all) {
   if axi_context_vartime(table,used) != LC_OK || tree.count != 1 || locs.count != blocks.count { return LcResult.{code=LC_CONTEXT}; }
   tip := lc_tip_vartime(table,used);
   if tip.chain != tree[0].p.chain || !lc_index_extent(target,tree[0].count) { return LcResult.{code=LC_CONTEXT}; }

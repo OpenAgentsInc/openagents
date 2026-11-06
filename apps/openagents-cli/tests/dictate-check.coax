@@ -93,7 +93,7 @@ check :: (t: [] Tally, name: string, r: [] Run, ok: bool) {
   print("  stderr: %\n", cast(string) r[0].err[0..<r[0].err_n]);
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) > 2 { tool_errln("usage: dictate-check [MODEL_DIR [CASE]]"); return 2; }
   model := ifx args_count(a[..]) >= 1 then args_at(a[..], 0) else "";

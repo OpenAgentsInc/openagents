@@ -185,6 +185,7 @@ EgEnd :: struct { seq: int; slot: int; }
 // heard, started, is released and strikes at, the order it was heard in, and its line of sight's
 // question this tick and answer (0 none, 1 clear, 2 blocked).
 EgCast :: struct {
+  owner: Handle(EvergladeSeat); target_owner: Handle(EvergladeSeat);
   on: bool; seat: int; slot: int; x: f32; y: f32; z: f32; tgt: int; due: int;
   seq: int; mode: int; phase: int; heard: int; queued_ms:int; start: int; release: int; order: int; helps: bool; seed: int;
   ask: int = -1; sight: int;
@@ -192,6 +193,7 @@ EgCast :: struct {
 }
 EgRoom :: struct {
   initialized:bool;
+  seat_life: [EG_SEATS] u32 #counter; // character lifetime; a socket rejoin keeps it
   work:[1]WorkBudget;
   forge_version:int=-1;
   stale_n: int;        // hellos refused for another WIRE_VERSION (#12788)
@@ -252,7 +254,7 @@ EgRoom :: struct {
   // who may receive what (room-interest.coax, #12789), and each seat's blocks by player id (K)
   im: [1] Interest; im_blk: [EG_SEATS] ImBlockList;
 }
-EgStrike :: struct { by: int; source: int = -1; slot: int; fx: f32; fy: f32; fz: f32; ax: f32; ay: f32; az: f32; seed: int; }
+EgStrike :: struct { owner:Handle(EvergladeSeat); by: int; source: int = -1; slot: int; fx: f32; fy: f32; fz: f32; ax: f32; ay: f32; az: f32; seed: int; }
 EgCrime :: struct { by: int; x: f32; z: f32; }
 
 // ---- text
@@ -335,6 +337,8 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
 eg_join :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat_id.value;
   k := eg_room_of(v, r);
   if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
+  if v[0].eg[k].seat_life[seat]==EV_SEAT_GENERATION_MAX {return;}
+  v[0].eg[k].seat_life[seat]=add_sat(v[0].eg[k].seat_life[seat],1);
   v[0].eg[k].seat[seat] = EgSeat.{live = true, conn = conn, full = true, bank = EG_JOIN_BANK, fresh = true, born = true, gen = v[0].conns[conn].gen};
   v[0].eg[k].tk[seat] = v[0].conns[conn].ticket;
   v[0].eg[k].wanted[seat] = 0;
@@ -419,9 +423,9 @@ eg_left :: (v: [] RmServer, r: int, seat_id: SeatId) { seat := seat_id.value;
   if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
   rv_note_seat(v, k, seat_id);   // its HP kept for its player (room-vitals.coax, #12715)
   v[0].vit.flush = true;      // and posted at the host's next second; the note stays until a receipt covers it (#12793)
+  rc_left(v, k, seat_id);   // publish the old lifetime's stops before invalidating it
   v[0].eg[k].seat[seat].live = false; v[0].eg[k].seat[seat].conn = -1; v[0].eg[k].seat[seat].held = false;
   e5rr_leave(v[0].eg[k].rules[..], seat);
-  rc_left(v, k, seat_id);   // its casts on their bars stop where everyone hears (room-casts.coax)
   v[0].eg[k].im_blk[seat] = ImBlockList.{}; im_seat_reset(v[0].eg[k].im[..], seat_id); im_room_blocks(v, k);
   any := false;
   for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { any = true; } }
@@ -434,7 +438,7 @@ eg_refuse :: (v: [] RmServer, k: int, seat_id: SeatId, seq: int, why: string) { 
   rl_queue(v, v[0].eg[k].relay, v[0].eg[k].seat[seat].conn, -1, cast(string) b[0..<n], "");
 }
 // The events every room's ticks had no room for since the last ask (room-host.c's minute report), then 0.
-rm_eg_dropped :: (v: [] RmServer) -> int #export_c {
+rm_eg_dropped :: (v: [] RmServer) -> int #export_c #effects(all) {
   n := 0;
   for k: 0..<EG_ROOMS { n += v[0].eg[k].ev_dropped; v[0].eg[k].ev_dropped = 0; }
   return n;
@@ -647,7 +651,7 @@ eg_heard_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
 // H 3 LOOK CLASS FLAGS NAME
 eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   r: [1] WireRd; r[0] = wire_rd(text, 1);
-  h := wire_read_hello(text, r[..]);
+  h := wire_read_hello_value(text, r[..]);
   if !r[0].ok { return; }
   st := v[0].eg[k].seat[seat..<seat + 1];
   // a page from before wire 3 (H 1): seated on the old wire while its window is open (room-oldwire.coax);
@@ -682,8 +686,8 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
       return;
     }
   }
-  st[0].look_n = eg_word(h.look, st[0].look[..]);
-  kind := h.kind;
+  st[0].look_n = eg_word(cast(string)h.look[0..<h.look_n], st[0].look[..]);
+  kind := cast(string)h.kind[0..<h.kind_n];
   if tk.schema == 2 && tk.capture.ok { kind = ifx tk.capture.state[0] == 1 then "warlock" else "druid"; }
   st[0].klass_n = eg_word(kind, st[0].klass[..]);
   // CLASS warlock: the seat's caster is the level 17 Warlock (fivebar.coax fb_warlock_hero), else the druid
@@ -698,7 +702,7 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   if tk.schema == 2 { st[0].checkpoint_hello=true; v[0].ck.force=true; }
   // the name: letters, digits, spaces, '-' and '_' ("-" none)
   m := 0;
-  for ch: h.name {
+  for ch: h.name[0..<h.name_n] {
     if m >= EG_NAME { break; }
     ok := (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || (ch == ' ' && m > 0) || ch == '-' || ch == '_';
     if ok { st[0].name[m] = ch; m += 1; }
@@ -776,7 +780,7 @@ eg_heard_rest :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat 
 
 // Room k's tick begins: each seat is owed the steps of time the server's clock has run since its last
 // tick (EG_BANK at most), however late this tick is. False: no such room.
-rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c {
+rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c #effects(all) {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return false; }
   if !net_world_steps(v[0].eg[k].initialized,v[0].eg[k].live,false) {return false;}
   eg_grace_ends(v, k);   // held seats whose player did not come back in time leave (#12792)
@@ -805,7 +809,7 @@ rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c {
 }
 // Seat s's next input to step this tick, EG_IN_FIELDS into out (SEQ KX KY PX PY THETA B); false when
 // none is queued, none owed, or EG_TICK_STEPS were stepped this tick.
-rm_eg_input :: (v: [] RmServer, k: int, s_id: SeatId, out: [] int) -> bool #export_c { s := s_id.value;
+rm_eg_input :: (v: [] RmServer, k: int, s_id: SeatId, out: [] int) -> bool #export_c #effects(all) { s := s_id.value;
   if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || out.count < EG_IN_FIELDS { return false; }
   st := v[0].eg[k].seat[s..<s + 1];
   if !st[0].live || !st[0].placed || st[0].q_n == 0 || !net_credit_can_step(eg_credit_profile(),st[0].bank,st[0].took) { return false; }
@@ -818,7 +822,7 @@ rm_eg_input :: (v: [] RmServer, k: int, s_id: SeatId, out: [] int) -> bool #expo
   return true;
 }
 // Where seat s stands after the step of input seq (0: just placed), as the step left it.
-rm_eg_moved :: (v: [] RmServer, k: int, s_id: SeatId, seq: int, x: f32, y: f32, z: f32, yaw: f32, vx: f32, vy: f32, vz: f32, g: int, clip: int, carry: int) #export_c { s := s_id.value;
+rm_eg_moved :: (v: [] RmServer, k: int, s_id: SeatId, seq: int, x: f32, y: f32, z: f32, yaw: f32, vx: f32, vy: f32, vz: f32, g: int, clip: int, carry: int) #export_c #effects(all) { s := s_id.value;
   if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || !v[0].eg[k].live || !v[0].eg[k].seat[s].live { return; }
   st := v[0].eg[k].seat[s..<s + 1];
   st[0].pose = EgPose.{x = x, y = y, z = z, yaw = yaw, vx = vx, vy = vy, vz = vz, g = g, clip = clip, carry = carry};
@@ -829,31 +833,31 @@ rm_eg_moved :: (v: [] RmServer, k: int, s_id: SeatId, seq: int, x: f32, y: f32, 
   e5rr_place(v[0].eg[k].rules[..], s, x, z);
 }
 // Whether seat s sits and is still to be put in the world.
-rm_eg_unplaced :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c { s := s_id.value;
+rm_eg_unplaced :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c #effects(all) { s := s_id.value;
   return k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS && v[0].eg[k].live && v[0].eg[k].seat[s].live && !v[0].eg[k].seat[s].placed && (v[0].eg[k].seat[s].checkpoint_hello || eg_ticket(v,k, s_id).schema!=2);
 }
-rm_eg_rooms :: () -> int #export_c { return EG_ROOMS; }
-rm_eg_seats :: () -> int #export_c { return EG_SEATS; }
-rm_eg_hz :: () -> int #export_c { return EG_HZ; }
-rm_eg_live :: (v: [] RmServer, k: int) -> bool #export_c { return k >= 0 && k < EG_ROOMS && v[0].eg[k].live; }
-rm_eg_seat_live :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c { s := s_id.value; return rm_eg_live(v, k) && s >= 0 && s < EG_SEATS && v[0].eg[k].seat[s].live; }
+rm_eg_rooms :: () -> int #export_c #effects(all) { return EG_ROOMS; }
+rm_eg_seats :: () -> int #export_c #effects(all) { return EG_SEATS; }
+rm_eg_hz :: () -> int #export_c #effects(all) { return EG_HZ; }
+rm_eg_live :: (v: [] RmServer, k: int) -> bool #export_c #effects(all) { return k >= 0 && k < EG_ROOMS && v[0].eg[k].live; }
+rm_eg_seat_live :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c #effects(all) { s := s_id.value; return rm_eg_live(v, k) && s >= 0 && s < EG_SEATS && v[0].eg[k].seat[s].live; }
 // Summoned creatures: how many places, where q stands (x, z) when it is on, and the ground's height
 // under it, which the host's world knows (before rm_eg_end: a new one is heard once it has it).
-rm_eg_beasts :: () -> int #export_c { return E5RR_BEASTS; }
-rm_eg_beast_at :: (v: [] RmServer, k: int, q: int, out: [] f32) -> bool #export_c {
+rm_eg_beasts :: () -> int #export_c #effects(all) { return E5RR_BEASTS; }
+rm_eg_beast_at :: (v: [] RmServer, k: int, q: int, out: [] f32) -> bool #export_c #effects(all) {
   if !rm_eg_live(v, k) || q < 0 || q >= E5RR_BEASTS || out.count < 2 { return false; }
   bt := v[0].eg[k].rules[0].beasts[q];
   if bt.id == 0 { return false; }
   out[0] = bt.x; out[1] = bt.z;
   return true;
 }
-rm_eg_beast_ground :: (v: [] RmServer, k: int, q: int, y: f32) #export_c { if rm_eg_live(v, k) { e5rr_beast_ground(v[0].eg[k].rules[..], q, y); } }
+rm_eg_beast_ground :: (v: [] RmServer, k: int, q: int, y: f32) #export_c #effects(all) { if rm_eg_live(v, k) { e5rr_beast_ground(v[0].eg[k].rules[..], q, y); } }
 
 // Room k's tick ends: the casts that strike now are rolled, the engine's clock moves on, its events
 // are heard (rm_eg_rules), and every EG_SEND ticks (each tick) each seat gets its state (rm_eg_send).
 // The host calls the two apart, to time the rules and the writing of the frames (room-stats.h).
-rm_eg_end :: (v: [] RmServer, k: int) #export_c { rm_eg_rules(v, k); rm_eg_send(v, k); }
-rm_eg_rules :: (v: [] RmServer, k: int) #export_c {
+rm_eg_end :: (v: [] RmServer, k: int) #export_c #effects(all) { rm_eg_rules(v, k); rm_eg_send(v, k); }
+rm_eg_rules :: (v: [] RmServer, k: int) #export_c #effects(all) {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return; }
   t := v[0].eg[k].tick;
   // the casts in the tick's order (room-casts.coax): starts, heals, the world's harm; the rules' step
@@ -868,7 +872,7 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c {
   eg_sky_tick(v, k);   // the weather turned: everyone hears it (room-sky.coax)
   ev_tick(v, k);       // its world event (room-events.coax)
 }
-rm_eg_send :: (v: [] RmServer, k: int) #export_c {
+rm_eg_send :: (v: [] RmServer, k: int) #export_c #effects(all) {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live || v[0].eg[k].tick % EG_SEND != 0 { return; }
   for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].placed && v[0].eg[k].seat[s].conn >= 0 { eg_send(v, k, SeatId.{value = s}); } }
   v[0].eg[k].ev_n = 0; v[0].eg[k].ev_bytes = 0;
@@ -916,7 +920,7 @@ eg_folk_saved :: (v: [] RmServer, k: int, sp: int, by: int, who: int, saved: boo
 eg_save_code :: (ab: int, seat_id: SeatId, saved: bool) -> int { seat := seat_id.value; return 1 + (ab * EG_SEATS + seat) * 2 + (ifx saved then 1 else 0); }
 // Person j's save the rules rolled since the world last heard: its ABILITY SEAT SAVED (1 a success),
 // once (it is heard as it is read). Whether there was one.
-rm_eg_folk_save :: (v: [] RmServer, k: int, j: int, out: [] f32) -> bool #export_c {
+rm_eg_folk_save :: (v: [] RmServer, k: int, j: int, out: [] f32) -> bool #export_c #effects(all) {
   if !rm_eg_live(v, k) || j < 0 || j >= E5R_FOLK || out.count < 3 || v[0].eg[k].folk_save[j] == 0 { return false; }
   c := v[0].eg[k].folk_save[j] - 1;
   v[0].eg[k].folk_save[j] = 0;
@@ -941,13 +945,13 @@ eg_crime :: (v: [] RmServer, k: int, by: int, who: int, x: f32, z: f32) {
 // ---- the town: the host's world steps it between rm_eg_begin and rm_eg_end (room-world.c world_town)
 
 // Whether room k is new since the world last heard (its town starts whole: world_fresh).
-rm_eg_fresh :: (v: [] RmServer, k: int) -> bool #export_c {
+rm_eg_fresh :: (v: [] RmServer, k: int) -> bool #export_c #effects(all) {
   if !rm_eg_live(v, k) || !v[0].eg[k].fresh { return false; }
   v[0].eg[k].fresh = false;
   return true;
 }
 // Seat s for the world: X Y Z LIVE HP MAX COND (everglade-watch.coax EG_ROOM_SEAT_FLOATS; LIVE 2 just sat).
-rm_eg_seat_town :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) #export_c { s := s_id.value;
+rm_eg_seat_town :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) #export_c #effects(all) { s := s_id.value;
   if out.count < 7 { return; }
   for q: 0..<7 { out[q] = 0; }
   if !rm_eg_seat_live(v, k, s_id) || !v[0].eg[k].seat[s].placed { return; }
@@ -959,10 +963,10 @@ rm_eg_seat_town :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) #export_c
   out[4] = ifx o[4] > 0.5 then 0.0f32 else o[0]; out[5] = o[1]; out[6] = o[3];
 }
 // The people where the world has them (E5R_FOLK_FLOATS each, n of them), for the rules.
-rm_eg_people :: (v: [] RmServer, k: int, folk: [] f32, n: int) #export_c { if rm_eg_live(v, k) { e5rr_people(v[0].eg[k].rules[..], folk, n); } }
+rm_eg_people :: (v: [] RmServer, k: int, folk: [] f32, n: int) #export_c #effects(all) { if rm_eg_live(v, k) { e5rr_people(v[0].eg[k].rules[..], folk, n); } }
 // Person j in the rules now, for the world: HP TEMP BY (the seat that last harmed them, -1) COND
 // (the conditions the rules hold them in: their holds in the world follow them).
-rm_eg_folk_hp :: (v: [] RmServer, k: int, j: int, out: [] f32) -> bool #export_c {
+rm_eg_folk_hp :: (v: [] RmServer, k: int, j: int, out: [] f32) -> bool #export_c #effects(all) {
   if !rm_eg_live(v, k) || j < 0 || j >= E5R_FOLK || out.count < 4 { return false; }
   o: [E5RR_OUT_FLOATS] f32;
   e5rr_folk_out(v[0].eg[k].rules[..], j, o[..]);
@@ -970,30 +974,30 @@ rm_eg_folk_hp :: (v: [] RmServer, k: int, j: int, out: [] f32) -> bool #export_c
   return true;
 }
 // The crimes since the world last heard: q's BY X Z, while q < the count.
-rm_eg_crimes :: (v: [] RmServer, k: int) -> int #export_c { return ifx rm_eg_live(v, k) then v[0].eg[k].crime_n else 0; }
-rm_eg_crime :: (v: [] RmServer, k: int, q: int, out: [] f32) #export_c {
+rm_eg_crimes :: (v: [] RmServer, k: int) -> int #export_c #effects(all) { return ifx rm_eg_live(v, k) then v[0].eg[k].crime_n else 0; }
+rm_eg_crime :: (v: [] RmServer, k: int, q: int, out: [] f32) #export_c #effects(all) {
   if !rm_eg_live(v, k) || q < 0 || q >= v[0].eg[k].crime_n || out.count < 3 { return; }
   c := v[0].eg[k].crimes[q];
   out[0] = f32(c.by); out[1] = c.x; out[2] = c.z;
 }
-rm_eg_crimes_heard :: (v: [] RmServer, k: int) #export_c { if rm_eg_live(v, k) { v[0].eg[k].crime_n = 0; } }
+rm_eg_crimes_heard :: (v: [] RmServer, k: int) #export_c #effects(all) { if rm_eg_live(v, k) { v[0].eg[k].crime_n = 0; } }
 // The doors and talks since the world last heard: q's KIND * 1000000 + SEAT * 1000 + ID + 1 (eg_use_code).
 eg_use_code :: (kind: int, seat_id: SeatId, id: int) -> int { seat := seat_id.value; return kind * 1000000 + seat * 1000 + id + 1; }
-rm_eg_use_asks :: (v: [] RmServer, k: int) -> int #export_c { return ifx rm_eg_live(v, k) then v[0].eg[k].use_ask_n else 0; }
-rm_eg_use_ask :: (v: [] RmServer, k: int, q: int) -> int #export_c {
+rm_eg_use_asks :: (v: [] RmServer, k: int) -> int #export_c #effects(all) { return ifx rm_eg_live(v, k) then v[0].eg[k].use_ask_n else 0; }
+rm_eg_use_ask :: (v: [] RmServer, k: int, q: int) -> int #export_c #effects(all) {
   if !rm_eg_live(v, k) || q < 0 || q >= v[0].eg[k].use_ask_n { return -1; }
   return v[0].eg[k].use_ask[q];
 }
-rm_eg_use_asks_heard :: (v: [] RmServer, k: int) #export_c { if rm_eg_live(v, k) { v[0].eg[k].use_ask_n = 0; } }
+rm_eg_use_asks_heard :: (v: [] RmServer, k: int) #export_c #effects(all) { if rm_eg_live(v, k) { v[0].eg[k].use_ask_n = 0; } }
 // The n-th rowboat as the world has it (room-world.c world_boat: x y z yaw rower oars float).
-rm_eg_boat :: (v: [] RmServer, k: int, n: int, b: [] f32) #export_c {
+rm_eg_boat :: (v: [] RmServer, k: int, n: int, b: [] f32) #export_c #effects(all) {
   if !rm_eg_live(v, k) || n < 0 || n >= EG_BOATS || b.count < 7 { return; }
   rm := v[0].eg[k..<k + 1];
   rm[0].boat_on[n] = true; rm[0].boat_x[n] = b[0]; rm[0].boat_y[n] = b[1]; rm[0].boat_z[n] = b[2]; rm[0].boat_yaw[n] = b[3];
   rm[0].boat_by[n] = cast(int) b[4]; rm[0].boat_oar[n] = ifx b[5] < 0 then -1 else cast(int) (b[5] * 1000); rm[0].boat_i[n] = cast(int) b[6];
 }
 // The world's complete sparse record, or an empty span when the record was restored or released.
-rm_eg_tree :: (v: [] RmServer, k: int, q: int, b: [] f32) #export_c {
+rm_eg_tree :: (v: [] RmServer, k: int, q: int, b: [] f32) #export_c #effects(all) {
   if !rm_eg_live(v, k) || q < 1 || q >= WIRE_TREES { return; }
   if b.count == 0 { v[0].eg[k].tree_on[q] = false; return; }
   if !forest_valid(b) { return; }
@@ -1005,19 +1009,19 @@ rm_eg_tree :: (v: [] RmServer, k: int, q: int, b: [] f32) #export_c {
     cond = cast(int) b[12], owner = cast(int) b[13], carry = b[14], form = cast(int) floor(b[15] * 1000 + 0.5)};
   v[0].eg[k].tree_on[q] = true;
 }
-rm_eg_doors :: (v: [] RmServer, k: int, w: int, bits: int) #export_c { if rm_eg_live(v, k) && w >= 0 && w < WIRE_DOOR_WORDS { v[0].eg[k].doors[w] = bits; } }
-rm_eg_gates :: (v: [] RmServer, k: int, shut: int) #export_c { if rm_eg_live(v, k) { v[0].eg[k].gates = ifx shut > 0 then shut else 0; } }   // its bits: shut, and the leaves burnt or alight (everglade-fire.coax fi_gates_bits)
+rm_eg_doors :: (v: [] RmServer, k: int, w: int, bits: int) #export_c #effects(all) { if rm_eg_live(v, k) && w >= 0 && w < WIRE_DOOR_WORDS { v[0].eg[k].doors[w] = bits; } }
+rm_eg_gates :: (v: [] RmServer, k: int, shut: int) #export_c #effects(all) { if rm_eg_live(v, k) { v[0].eg[k].gates = ifx shut > 0 then shut else 0; } }   // its bits: shut, and the leaves burnt or alight (everglade-fire.coax fi_gates_bits)
 // The strikes since the world last heard: q's BY SLOT FX FY FZ AX AY AZ SEED.
-rm_eg_strikes :: (v: [] RmServer, k: int) -> int #export_c { return ifx rm_eg_live(v, k) then v[0].eg[k].strike_n else 0; }
-rm_eg_strike :: (v: [] RmServer, k: int, q: int, out: [] f32) #export_c {
+rm_eg_strikes :: (v: [] RmServer, k: int) -> int #export_c #effects(all) { return ifx rm_eg_live(v, k) then v[0].eg[k].strike_n else 0; }
+rm_eg_strike :: (v: [] RmServer, k: int, q: int, out: [] f32) #export_c #effects(all) {
   if !rm_eg_live(v, k) || q < 0 || q >= v[0].eg[k].strike_n || out.count < 10 { return; }
   c := v[0].eg[k].strikes[q];
   out[0] = f32(c.by); out[1] = f32(c.slot); out[2] = c.fx; out[3] = c.fy; out[4] = c.fz; out[5] = c.ax; out[6] = c.ay; out[7] = c.az; out[8] = f32(c.seed);
   out[9]=f32(ifx c.source>=0 then c.source else ifx c.by>=0 then c.by else EFFECT_HOUSE);
 }
-rm_eg_strikes_heard :: (v: [] RmServer, k: int) #export_c { if rm_eg_live(v, k) { v[0].eg[k].strike_n = 0; } }
+rm_eg_strikes_heard :: (v: [] RmServer, k: int) #export_c #effects(all) { if rm_eg_live(v, k) { v[0].eg[k].strike_n = 0; } }
 // Whether a rebuild was asked for since the world last heard.
-rm_eg_rebuild :: (v: [] RmServer, k: int) -> bool #export_c {
+rm_eg_rebuild :: (v: [] RmServer, k: int) -> bool #export_c #effects(all) {
   if !rm_eg_live(v, k) || !v[0].eg[k].rebuild { return false; }
   v[0].eg[k].rebuild = false;
   return true;
@@ -1027,7 +1031,7 @@ rm_eg_rebuild :: (v: [] RmServer, k: int) -> bool #export_c {
 // KIND 3: a Repair stood structure `piece` up (everglade-repair.coax RP_*: a group, or a placed thing
 // past CR_REPAIR_PLACED0), its pieces whole (rm_eg_piece_up, from the host first). KIND 4 and 5: placed thing
 // `piece` caught or went out (A 1 alight), or burnt through and broke apart (everglade-placed-fire.coax).
-rm_eg_piece :: (v: [] RmServer, k: int, kind: int, piece: int, a: f32, b: f32, c: f32, x: f32, z: f32) #export_c {
+rm_eg_piece :: (v: [] RmServer, k: int, kind: int, piece: int, a: f32, b: f32, c: f32, x: f32, z: f32) #export_c #effects(all) {
   if !rm_eg_live(v, k) || piece < 0 { return; }
   e: [96] u8; n := 0;
   if kind == 3 {
@@ -1056,12 +1060,12 @@ rm_eg_piece :: (v: [] RmServer, k: int, kind: int, piece: int, a: f32, b: f32, c
   eg_event(v, k, cast(string) e[0..<n], x, z, true);
 }
 // Piece i stands whole again (a Repair): late pages hear nothing of it.
-rm_eg_piece_up :: (v: [] RmServer, k: int, i: int) #export_c {
+rm_eg_piece_up :: (v: [] RmServer, k: int, i: int) #export_c #effects(all) {
   if !rm_eg_live(v, k) || i < 0 || i >= EG_PIECES { return; }
   v[0].eg[k].broken[i] = false; v[0].eg[k].burning[i] = false;
 }
 // The realm's placed things changed (the host laid a new world): what burnt of the old list is forgotten.
-rm_eg_placed_reset :: (v: [] RmServer) #export_c {
+rm_eg_placed_reset :: (v: [] RmServer) #export_c #effects(all) {
   for k: 0..<EG_ROOMS { for q: 0..<CR_PLACED_MAX { v[0].eg[k].placed_burn[q] = false; v[0].eg[k].placed_gone[q] = false; } }
 }
 // e pburn I ON, or e pgone I: placed thing I alight or out, or burnt through.
@@ -1080,13 +1084,13 @@ eg_put_burn :: (e: [] u8, piece: int, on: bool) -> int {
 // What all the watch's blows took from seat s this tick, and who dealt them
 // (a watch actor, -1 none). The producer supplies a whole-tick aggregate once
 // per seat; a repeated report replaces that snapshot, never adds a new hit.
-rm_eg_hurt :: (v: [] RmServer, k: int, s_id: SeatId, amount: int, by: int) #export_c { s := s_id.value;
+rm_eg_hurt :: (v: [] RmServer, k: int, s_id: SeatId, amount: int, by: int) #export_c #effects(all) { s := s_id.value;
   if !rm_eg_seat_live(v, k, s_id) { return; }
   _ := hb_put(v[0].eg[k].hurts[..],s,amount,by);
 }
 // Person i as pages hear them (X Z YAW CLIP MODE HP SHOWN CASTING KIND FOE), and seat s's WANTED level.
 // A new mode starts its clock (T0), a new spell its own.
-rm_eg_folk :: (v: [] RmServer, k: int, i: int, at: [] f32) #export_c {
+rm_eg_folk :: (v: [] RmServer, k: int, i: int, at: [] f32) #export_c #effects(all) {
   if !rm_eg_live(v, k) || i < 0 || i >= E5R_FOLK || at.count < 7 { return; }
   // the first 7 floats (X Y Z YAW MODE CLIP OUTDOORS) are the person; the cast's three (SINCE KIND
   // FOE) may be missing: not casting
@@ -1108,7 +1112,7 @@ rm_eg_folk :: (v: [] RmServer, k: int, i: int, at: [] f32) #export_c {
 // A watch spell that left its caster's hands (everglade-watch.coax everglade_room_missile, the floats
 // KIND CASTER FOE AX AY AZ BX BY BZ FLIGHT LIFE): `e wm KIND CASTER FOE AX AY AZ BX BY BZ FLIGHT LIFE`
 // (metres in cm, seconds in ms) to the pages near its caster, and to the seat it is for wherever it is.
-rm_eg_missile :: (v: [] RmServer, k: int, m: [] f32) #export_c {
+rm_eg_missile :: (v: [] RmServer, k: int, m: [] f32) #export_c #effects(all) {
   if !rm_eg_live(v, k) || m.count < 11 { return; }
   b: [160] u8;
   n := wire_put(b[..], 0, "e wm");
@@ -1118,10 +1122,10 @@ rm_eg_missile :: (v: [] RmServer, k: int, m: [] f32) #export_c {
   foe := cast(int) m[2];
   eg_event_who(v, k, cast(string) b[0..<n], m[3], m[5], false, ifx foe >= 0 && foe < EG_SEATS then 1 << foe else 0);
 }
-rm_eg_cond :: (v: [] RmServer, k: int, s_id: SeatId, bits: int) #export_c { s := s_id.value; if rm_eg_seat_live(v, k, s_id) { v[0].eg[k].seat[s].wcond = bits; } }
+rm_eg_cond :: (v: [] RmServer, k: int, s_id: SeatId, bits: int) #export_c #effects(all) { s := s_id.value; if rm_eg_seat_live(v, k, s_id) { v[0].eg[k].seat[s].wcond = bits; } }
 // Seat s's watch effect by cause (WE_*): its seconds left, 0 none. A new one, or one cast again (more
 // left than last tick's), starts now (T0) and lasts what is left (DUR, ticks).
-rm_eg_cond_left :: (v: [] RmServer, k: int, s_id: SeatId, cause: int, left: f32) #export_c { s := s_id.value;
+rm_eg_cond_left :: (v: [] RmServer, k: int, s_id: SeatId, cause: int, left: f32) #export_c #effects(all) { s := s_id.value;
   if !rm_eg_seat_live(v, k, s_id) || cause < 0 || cause >= WE_WATCH { return; }
   st := v[0].eg[k].seat[s..<s + 1];
   was := st[0].fx_left[cause];
@@ -1130,28 +1134,28 @@ rm_eg_cond_left :: (v: [] RmServer, k: int, s_id: SeatId, cause: int, left: f32)
 }
 // Whether seat s is to be held by a scripted Hold Person (room-control.coax "hold"), once: the host
 // lays the watch's hold on it in the world (room-tick.c everglade_town, room-world.c world_hold).
-rm_eg_hold_take :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c { s := s_id.value;
+rm_eg_hold_take :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c #effects(all) { s := s_id.value;
   if !rm_eg_seat_live(v, k, s_id) || !v[0].eg[k].seat[s].hold_due { return false; }
   v[0].eg[k].seat[s].hold_due = false;
   return true;
 }
 // Seat s moved in one jump this tick (room-world.c world_cut_take: placed, teleported, into or out of a
 // boat): its next row is a WARP, so no page draws it between (#12835).
-rm_eg_cut :: (v: [] RmServer, k: int, s_id: SeatId) #export_c { s := s_id.value; if rm_eg_seat_live(v, k, s_id) { v[0].eg[k].seat[s].cut = true; } }
+rm_eg_cut :: (v: [] RmServer, k: int, s_id: SeatId) #export_c #effects(all) { s := s_id.value; if rm_eg_seat_live(v, k, s_id) { v[0].eg[k].seat[s].cut = true; } }
 // The rowboat seat s is to be put beside (room-control.coax "place", #12861), once: -1 none. The host
 // puts it there in the world (room-tick.c everglade_town, room-world.c world_place_boat).
-rm_eg_place_take :: (v: [] RmServer, k: int, s_id: SeatId) -> int #export_c { s := s_id.value;
+rm_eg_place_take :: (v: [] RmServer, k: int, s_id: SeatId) -> int #export_c #effects(all) { s := s_id.value;
   if !rm_eg_seat_live(v, k, s_id) || v[0].eg[k].seat[s].place_due <= 0 { return -1; }
   b := v[0].eg[k].seat[s].place_due - 1;
   v[0].eg[k].seat[s].place_due = 0;
   return b;
 }
 // Whether room k's dice are fixed (room-control.coax "dice fixed"): the host fixes its world's alike.
-rm_eg_dice_fixed :: (v: [] RmServer, k: int) -> bool #export_c { return rm_eg_live(v, k) && v[0].eg[k].rules[0].b[0].dice[0].fixed; }
-rm_eg_wanted :: (v: [] RmServer, k: int, s_id: SeatId, level: int) #export_c { s := s_id.value; if rm_eg_seat_live(v, k, s_id) { v[0].eg[k].wanted[s] = level; } }
+rm_eg_dice_fixed :: (v: [] RmServer, k: int) -> bool #export_c #effects(all) { return rm_eg_live(v, k) && v[0].eg[k].rules[0].b[0].dice[0].fixed; }
+rm_eg_wanted :: (v: [] RmServer, k: int, s_id: SeatId, level: int) #export_c #effects(all) { s := s_id.value; if rm_eg_seat_live(v, k, s_id) { v[0].eg[k].wanted[s] = level; } }
 // The WANTED level seat s comes back with (rv_join, #12794), once: the host lays it on the world's town
 // when the town first steps the seat. 0 none.
-rm_eg_want_take :: (v: [] RmServer, k: int, s_id: SeatId) -> int #export_c { s := s_id.value;
+rm_eg_want_take :: (v: [] RmServer, k: int, s_id: SeatId) -> int #export_c #effects(all) { s := s_id.value;
   if !rm_eg_seat_live(v, k, s_id) { return 0; }
   w := v[0].eg[k].seat[s].want_seed;
   v[0].eg[k].seat[s].want_seed = 0;

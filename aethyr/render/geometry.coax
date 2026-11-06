@@ -482,41 +482,41 @@ RGContext :: struct {
 }
 RGDomain :: struct { status:RenderGeometryStatus=RenderGeometryStatus.bad_draw; domain:RenderDrawDomain; }
 RGGround :: struct { ok:bool; n:int; rows:int; cells:u64; points:int; }
-rg_min :: (a:u64,b:u64)->u64 {
+rg_min :: (a:u64,b:u64)->u64 #effects(all) {
   if b==0 {return 0;}
   return ifx a<=b-1 then a else b;
 }
-rg_take :: (w:[]RGWork)->bool {
+rg_take :: (w:[]RGWork)->bool #effects(all) {
   if w[0].left<1 {return false;}
   w[0].left-=1;w[0].used+=1;return true;
 }
 // Strict address metadata is an exactly represented nonnegative integer. Shape
 // words may additionally carry their documented fractional opacity.
-rg_integer :: (v:f32,rg_local_most:int)->int {
+rg_integer :: (v:f32,rg_local_most:int)->int #effects(all) {
   if !(v>=0 && f64(v)<=f64(rg_local_most)) {return -1;}
   n:=cast(int)v;return ifx f32(n)==v then n else -1;
 }
-rg_code :: (v:f32)->int {
+rg_code :: (v:f32)->int #effects(all) {
   if !(v>=0 && v<4294967296.0f32) {return -1;}
   return cast(int)v;
 }
-rg_finite_word :: (word:u32)->bool {
+rg_finite_word :: (word:u32)->bool #effects(all) {
   exponent:u32=0x7f800000;
   return (word&exponent)!=exponent;
 }
-rg_integer_word :: (word:u32,rg_local_most:int)->int {
+rg_integer_word :: (word:u32,rg_local_most:int)->int #effects(all) {
   if !rg_finite_word(word) {return -1;}
   return rg_integer(f32_from_bits(word),rg_local_most);
 }
-rg_code_word :: (word:u32)->int {
+rg_code_word :: (word:u32)->int #effects(all) {
   if !rg_finite_word(word) {return -1;}
   return rg_code(f32_from_bits(word));
 }
-rg_payload :: (profile:int,set:int,name:string,buffers:[]RenderGeometryBuffer)->[]u32 {
+rg_payload :: (profile:int,set:int,name:string,buffers:[]RenderGeometryBuffer)->[]u32 #effects(all) {
   for b:buffers {if b.binding_set==set && render_catalog_binding(profile,set,b.resource).name==name {return b.words;}}
   empty:[]u32;return empty;
 }
-rg_buffers :: (profile:int,buffers:[]RenderGeometryBuffer)->int {
+rg_buffers :: (profile:int,buffers:[]RenderGeometryBuffer)->int #effects(all) {
   if buffers.count>RENDER_RESOURCES {return -2;}
   for i:0..<buffers.count {
     b:=buffers[i];rb:=render_catalog_binding(profile,b.binding_set,b.resource);
@@ -527,7 +527,7 @@ rg_buffers :: (profile:int,buffers:[]RenderGeometryBuffer)->int {
   return -1;
 }
 
-rg_ground :: (n_value:f32,rows_value:f32,height_words:int,planes:bool,plane_offset:f32)->RGGround {
+rg_ground :: (n_value:f32,rows_value:f32,height_words:int,planes:bool,plane_offset:f32)->RGGround #effects(all) {
   r:=RGGround.{};r.n=rg_integer(n_value,32767);r.rows=rg_integer(rows_value,32767);
   if r.n<1 || r.rows<1 {return r;}
   r.points=(r.n+1)*(r.rows+1);
@@ -536,7 +536,7 @@ rg_ground :: (n_value:f32,rows_value:f32,height_words:int,planes:bool,plane_offs
   r.cells=u64(r.n)*u64(r.rows);r.ok=true;return r;
 }
 
-rg_icecream :: (g:RGContext,d:RenderDecodedDraw)->RGDomain {
+rg_icecream :: (g:RGContext,d:RenderDecodedDraw)->RGDomain #effects(all) {
   r:=RGDomain.{};vcount:=cast(u64)g.vertices.count/6;
   object_base:u64=8388608;rg_local_outline:u64=4194304;chunks:u64=1024;chunk_vertices:u64=1020;
   start:=u64(d.base_instance);amount:=u64(d.instances);last:=start+amount-1;
@@ -562,7 +562,7 @@ rg_icecream :: (g:RGContext,d:RenderDecodedDraw)->RGDomain {
   r.status=RenderGeometryStatus.ok;return r;
 }
 
-rg_skin :: (g:RGContext,d:RenderDecodedDraw,row:int,w:[]RGWork)->RGDomain {
+rg_skin :: (g:RGContext,d:RenderDecodedDraw,row:int,w:[]RGWork)->RGDomain #effects(all) {
   r:=RGDomain.{status=RenderGeometryStatus.bad_resources};
   marker_word:=g.objects[row*16+14];
   if !rg_finite_word(marker_word) {return r;}
@@ -600,7 +600,7 @@ rg_skin :: (g:RGContext,d:RenderDecodedDraw,row:int,w:[]RGWork)->RGDomain {
   r.status=RenderGeometryStatus.ok;return r;
 }
 
-rg_water :: (g:RGContext)->RGDomain {
+rg_water :: (g:RGContext)->RGDomain #effects(all) {
   r:=RGDomain.{status=RenderGeometryStatus.bad_uniforms};
   at:=ifx g.app=="everglade" then 1072 else 780;
   cols:=rg_integer(g.u[at],32767);rows:=rg_integer(g.u[at+1],32767);
@@ -629,7 +629,7 @@ rg_water :: (g:RGContext)->RGDomain {
   r.status=RenderGeometryStatus.ok;return r;
 }
 
-rg_direct :: (g:RGContext,f:RenderFeatures,c:FrameCounts)->RenderGeometryResult {
+rg_direct :: (g:RGContext,f:RenderFeatures,c:FrameCounts)->RenderGeometryResult #effects(all) {
   r:=RenderGeometryResult.{status=RenderGeometryStatus.ok};
   if f.casters {r.direct.caster_vertices=1872;r.direct.caster_instances=8;}
   if f.grass && c.grass_instances>0 {
@@ -665,7 +665,7 @@ rg_direct :: (g:RGContext,f:RenderFeatures,c:FrameCounts)->RenderGeometryResult 
 // Pure extent arithmetic is separate from payload inspection, so its boundary
 // checks can exercise huge virtual domains without allocating huge fixtures.
 // Production callers obtain both word counts from the admitted borrowed views.
-rg_packed :: (app:string,vertex_words:int,object_words:int,d:RenderDecodedDraw)->RGDomain {
+rg_packed :: (app:string,vertex_words:int,object_words:int,d:RenderDecodedDraw)->RGDomain #effects(all) {
   r:=RGDomain.{};rows:=u64(object_words/16);
   if u64(d.base_instance)+u64(d.instances)>rows {return r;}
   r.domain.instances=rows;r.domain.vertices=u64(vertex_words/12);
@@ -677,7 +677,7 @@ rg_packed :: (app:string,vertex_words:int,object_words:int,d:RenderDecodedDraw)-
   r.status=RenderGeometryStatus.ok;return r;
 }
 
-rg_record :: (g:RGContext,d:RenderDecodedDraw,w:[]RGWork)->RGDomain {
+rg_record :: (g:RGContext,d:RenderDecodedDraw,w:[]RGWork)->RGDomain #effects(all) {
   r:=RGDomain.{};
   if g.app=="icecream" {return rg_icecream(g,d);}
   rows:=cast(u64)g.objects.count/16;
@@ -724,7 +724,7 @@ rg_record :: (g:RGContext,d:RenderDecodedDraw,w:[]RGWork)->RGDomain {
   r.status=RenderGeometryStatus.ok;return r;
 }
 
-render_geometry_admit :: (profile:int,c:FrameCounts,draw_words:[]u32,indices:[]u32,u:[]f32,buffers:[]RenderGeometryBuffer,rg_hud_payload:[]f32,domains:[]RenderDrawDomain,work_limit:int)->RenderGeometryResult {
+render_geometry_admit :: (profile:int,c:FrameCounts,draw_words:[]u32,indices:[]u32,u:[]f32,buffers:[]RenderGeometryBuffer,rg_hud_payload:[]f32,domains:[]RenderDrawDomain,work_limit:int)->RenderGeometryResult #effects(all) {
   result:=RenderGeometryResult.{};meta:=render_catalog(profile);
   if !meta.valid {return result;}
   if c.draw_count<0 || c.draw_count>RENDER_GEOMETRY_DRAWS || domains.count<c.draw_count || draw_words.count<c.draw_count*4 {result.status=RenderGeometryStatus.capacity;return result;}

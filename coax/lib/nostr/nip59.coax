@@ -225,12 +225,12 @@ Nip59Opened :: struct {
 // exact extents, disjoint roles and relative origin can be checked directly.
 N59WrapBuffers :: struct {rumor:[]u8;pre:[]u8;crypto:[]u8;payload:[]u8;scratch:[]u8;seal:[]u8;}
 N59OpenBuffers :: struct {wire:[]u8;crypto:[]u8;seal:[]u8;text:[]u8;copy:[]u8;pre:[]u8;}
-n59_wrap_buffers :: (work:[]u8)->N59WrapBuffers {
+n59_wrap_buffers :: (work:[]u8)->N59WrapBuffers #effects(all) {
   return N59WrapBuffers.{rumor=work[0..<NIP59_REGION],pre=work[NIP59_REGION..<2*NIP59_REGION],
     crypto=work[2*NIP59_REGION..<4*NIP59_REGION],payload=work[4*NIP59_REGION..<5*NIP59_REGION],
     scratch=work[5*NIP59_REGION..<6*NIP59_REGION],seal=work[6*NIP59_REGION..<7*NIP59_REGION]};
 }
-n59_open_buffers :: (work:[]u8)->N59OpenBuffers {
+n59_open_buffers :: (work:[]u8)->N59OpenBuffers #effects(all) {
   return N59OpenBuffers.{wire=work[0..<NIP59_REGION],crypto=work[NIP59_REGION..<3*NIP59_REGION],
     seal=work[3*NIP59_REGION..<4*NIP59_REGION],text=work[4*NIP59_REGION..<5*NIP59_REGION],
     copy=work[5*NIP59_REGION..<6*NIP59_REGION],pre=work[6*NIP59_REGION..<7*NIP59_REGION]};
@@ -260,12 +260,12 @@ N59_SEAL_FIXED :: 343;
 N59_RUMOR_FIXED :: 278;
 N59_SIG_FIELD :: ",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"";
 
-n59_back :: (now:int,r:u64)->int {return now-cast(int)(r%cast(u64)NIP59_WINDOW);}
-n59_zero :: (b:[]u8) {secure_zero(b);}
-n59_same32 :: (a:[]u8,b:[]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+n59_back :: (now:int,r:u64)->int #effects(all) {return now-cast(int)(r%cast(u64)NIP59_WINDOW);}
+n59_zero :: (b:[]u8) #effects(all) {secure_zero(b);}
+n59_same32 :: (a:[]u8,b:[]u8)->bool #effects(all) {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
 
 // A ["p", <lowercase hex of recipient_x>] tag, as the wrap's routing tag.
-n59_addressed :: (tags:string,recipient_x:[]u8)->bool {
+n59_addressed :: (tags:string,recipient_x:[]u8)->bool #effects(all) {
   if recipient_x.count!=32 {return false;}
   want:[64]u8;h:=hex_encode_checked(cast(string)recipient_x,want[..],false);#assert h.error==NC_OK;
   decoded:[NIP59_REGION]u8;
@@ -290,14 +290,14 @@ n59_addressed :: (tags:string,recipient_x:[]u8)->bool {
 // NIP-01 reader can parse it and recompute its id. A rumor that already has a
 // "sig" (signed, which NIP-59 forbids) then repeats the key and is refused.
 // Returns the copy's length, or -1.
-n59_signed_copy :: (rumor:string,out:[]u8)->int {
+n59_signed_copy :: (rumor:string,out:[]u8)->int #effects(all) {
   end:=n59_rumor_end(rumor);
   if end<0 || rumor[end]!='}' {return -1;}
   n:=json_raw(out,0,rumor[0..<end]);n=json_raw(out,n,N59_SIG_FIELD);
   return json_raw(out,n,rumor[end..<rumor.count]);
 }
 // Index of the final non-whitespace byte, or -1 for an empty rumor.
-n59_rumor_end :: (rumor:string)->int {
+n59_rumor_end :: (rumor:string)->int #effects(all) {
   end:=rumor.count-1;
   while end>=0 && (rumor[end]==' ' || rumor[end]==9 || rumor[end]==10 || rumor[end]==13) {end-=1;}
   return end;
@@ -307,19 +307,19 @@ n59_rumor_end :: (rumor:string)->int {
   for space:[4]u8.[32,9,10,13] {b:=[1]u8.[space];#assert n59_rumor_end(cast(string)b[..])==-1;}
   #assert n59_rumor_end("} \t\n\r")==0;
 }
-n59_decimal_digits :: (value:int)->int {out:[24]u8;return json_write_int(out[..],0,value);}
+n59_decimal_digits :: (value:int)->int #effects(all) {out:[24]u8;return json_write_int(out[..],0,value);}
 #test "timestamp digit extents include the earliest and largest admitted time" {
   #assert n59_decimal_digits(1)==1 && n59_decimal_digits(10)==2 && n59_decimal_digits(1793300000)==10;
   #assert n59_decimal_digits(9223372036854775807)==19;
 }
 // Signs one event to the end. The work starts where the caller left it.
-n59_sign :: (key:[]u8,aux:[]u8,at:int,kind:int,tags:string,content:string,sw:[]NostrSignWork,scratch:[]u8,out:[]u8)->int {
+n59_sign :: (key:[]u8,aux:[]u8,at:int,kind:int,tags:string,content:string,sw:[]NostrSignWork,scratch:[]u8,out:[]u8)->int #effects(all) {
   k:=EVENT_MORE;
   while k==EVENT_MORE {k=nostr_event_sign_step(key,aux,at,kind,tags,content,sw,scratch,out,false);}
   return k;
 }
 // The rumor's JSON into out (its NIP-01 preimage in pre first), its id in id.
-n59_rumor :: (pub:[]u8,at:int,kind:int,tags:string,content:string,pre:[]u8,out:[]u8,id:[]u8)->int {
+n59_rumor :: (pub:[]u8,at:int,kind:int,tags:string,content:string,pre:[]u8,out:[]u8,id:[]u8)->int #effects(all) {
   decoded:[NIP59_REGION]u8;defer {secure_zero(decoded[..]);#assert crypto_zeroed(decoded[..]);}
   hex:[64]u8;idhex:[64]u8;
   h:=hex_encode_checked(cast(string)pub,hex[..],false);
@@ -339,10 +339,10 @@ n59_rumor :: (pub:[]u8,at:int,kind:int,tags:string,content:string,pre:[]u8,out:[
   m=json_raw(out,m,",\"content\":");m=json_write_string(out,m,content);
   return json_raw(out,m,"}");
 }
-n59_ck :: (secret:[]u8,pub:[]u8,out:[]u8)->u32 {
+n59_ck :: (secret:[]u8,pub:[]u8,out:[]u8)->u32 #effects(all) {
   work:[1]EcdhScratch;return nip44_conversation_key_from_keys_checked(secret,pub,work[..],out,false);
 }
-n59_wrapped :: (r:Nip59Wrapped,error:u32,fresh:[]Nip59Fresh,work:[]u8,out:[]u8)->Nip59Wrapped {
+n59_wrapped :: (r:Nip59Wrapped,error:u32,fresh:[]Nip59Fresh,work:[]u8,out:[]u8)->Nip59Wrapped #effects(all) {
   w:=r;w.error=error;
   secure_zero(fresh[0].wrap_key[..]);secure_zero(fresh[0].seal_nonce[..]);secure_zero(fresh[0].wrap_nonce[..]);
   secure_zero(fresh[0].seal_aux[..]);secure_zero(fresh[0].wrap_aux[..]);
@@ -357,7 +357,7 @@ n59_wrapped :: (r:Nip59Wrapped,error:u32,fresh:[]Nip59Fresh,work:[]u8,out:[]u8)-
 // record of new host entropy, consumed (zeroed) on every admitted return.
 // overlap is the host's truthful fact that any two views share memory.
 // Refused views and inputs change nothing.
-nip59_wrap_checked :: (author:[]u8,recipient_x:[]u8,now:int,kind:int,tags:string,content:string,wrap_kind:int,fresh:[]Nip59Fresh,work:[]u8,out:[]u8,overlap:bool)->Nip59Wrapped #export_c {
+nip59_wrap_checked :: (author:[]u8,recipient_x:[]u8,now:int,kind:int,tags:string,content:string,wrap_kind:int,fresh:[]Nip59Fresh,work:[]u8,out:[]u8,overlap:bool)->Nip59Wrapped #export_c #effects(all) {
   r:Nip59Wrapped;
   if author.count!=32 || recipient_x.count!=32 || fresh.count!=1 {return r;}
   if !es_inputs(now,kind,tags) || now<NIP59_WINDOW || now>JA_SAFE || (wrap_kind!=NIP59_WRAP_KIND && wrap_kind!=NIP59_EPHEMERAL_KIND) {return r;}
@@ -409,13 +409,13 @@ nip59_wrap_checked :: (author:[]u8,recipient_x:[]u8,now:int,kind:int,tags:string
   r.written=k;return n59_wrapped(r,NIP59_OK,fresh,work,out);
 }
 
-n59_opened :: (o:Nip59Opened,error:u32,work:[]u8,out:[]u8)->Nip59Opened {
+n59_opened :: (o:Nip59Opened,error:u32,work:[]u8,out:[]u8)->Nip59Opened #effects(all) {
   n59_zero(work[0..<NIP59_WORK]);
   if error!=NIP59_OK {n59_zero(out);fail:Nip59Opened;fail.error=error;return fail;}
   r:=o;r.error=NIP59_OK;return r;
 }
 // A NIP-44 refusal of a layer's content: size is capacity, the rest the layer's.
-n59_payload :: (status:u32,layer:u32)->u32 {
+n59_payload :: (status:u32,layer:u32)->u32 #effects(all) {
   if status==NIP44_CAPACITY {return NIP59_CAPACITY;}
   if status==NIP44_OUTPUT {return NIP59_OUTPUT;}
   return layer;
@@ -425,7 +425,7 @@ n59_payload :: (status:u32,layer:u32)->u32 {
 // recipient_x. On NIP59_OK out[0..<written] is the rumor JSON and the spans
 // index it; author is the seal's key. Refused views change nothing; every
 // other refusal clears work and out. overlap as in nip59_wrap_checked.
-nip59_unwrap_checked :: (recipient:[]u8,recipient_x:[]u8,wrap:string,work:[]u8,out:[]u8,overlap:bool)->Nip59Opened #export_c {
+nip59_unwrap_checked :: (recipient:[]u8,recipient_x:[]u8,wrap:string,work:[]u8,out:[]u8,overlap:bool)->Nip59Opened #export_c #effects(all) {
   o:Nip59Opened;
   if recipient.count!=32 || recipient_x.count!=32 {return o;}
   if work.count<NIP59_WORK || out.count==0 {o.error=NIP59_OUTPUT;return o;}

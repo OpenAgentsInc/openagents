@@ -110,36 +110,36 @@ PvnPrep :: struct {status:GvpStatus;kind:int;camera:int;first:int;rows:int;frame
  #assert pvn_publish(s[0..<0],bits[..],normal[..],decoded[..],out[..],false).status==GvpStatus.shape;
 }
 
-pvn_buffer_count :: ()->int #export_c {return 1106;}
-pvn_kernel_count :: ()->int #export_c {return 32;}
-pvn_stage_count :: ()->int #export_c {return 189;}
-pvn_buffer_bytes :: (tokens:int,buffer:int)->int #export_c {if !gad_tokens(tokens) {return 0;}if buffer<336 {return gvp_buffer_bytes(buffer);}if buffer<538 {return glp_buffer_bytes(buffer-336,tokens);}return gad_buffer_bytes_for(tokens,buffer-538);}
-pvn_kernel :: (index:int)->GvpKernel #export_c {if index>=32 {return GvpKernel.{library=-1};}if index<9 {return gvp_kernel(index);}if index<20 {k:=glp_kernel(index-9);if k.library==2 {k.library=4;}return k;}k:=gac_kernel(index-20);if k.library==2 {k.library=5;}return k;}
+pvn_buffer_count :: ()->int #export_c #effects(all) {return 1106;}
+pvn_kernel_count :: ()->int #export_c #effects(all) {return 32;}
+pvn_stage_count :: ()->int #export_c #effects(all) {return 189;}
+pvn_buffer_bytes :: (tokens:int,buffer:int)->int #export_c #effects(all) {if !gad_tokens(tokens) {return 0;}if buffer<336 {return gvp_buffer_bytes(buffer);}if buffer<538 {return glp_buffer_bytes(buffer-336,tokens);}return gad_buffer_bytes_for(tokens,buffer-538);}
+pvn_kernel :: (index:int)->GvpKernel #export_c #effects(all) {if index>=32 {return GvpKernel.{library=-1};}if index<9 {return gvp_kernel(index);}if index<20 {k:=glp_kernel(index-9);if k.library==2 {k.library=4;}return k;}k:=gac_kernel(index-20);if k.library==2 {k.library=5;}return k;}
 
-pvn_stage :: (tokens:int,graph:int,stage:int)->PvnStep #export_c {
+pvn_stage :: (tokens:int,graph:int,stage:int)->PvnStep #export_c #effects(all) {
   if !gad_tokens(tokens) || graph<0 || graph>2 {return PvnStep.{status=GvpStatus.shape};}p:PvnStep;p.kind=1;p.graph=graph;
   p.sequence=stage;if graph==0 {s:=gvp_stage(stage);p.status=s.status;p.nodes=s.nodes;p.flags=s.flags;p.flag_buffer=329;p.index=stage;}
   else if graph==1 {s:=glp_stage(stage,tokens);p.status=s.status;p.nodes=s.nodes;p.flags=s.flags;p.flag_buffer=528;p.index=29+stage;}
   else {s:=gad_stage_for(tokens,stage);p.status=s.status;p.nodes=s.nodes;p.flags=s.flags;p.flag_buffer=1105;p.index=47+stage;}return p;
 }
-pvn_cache_stage :: (tokens:int,index:int)->PvnStep #export_c {return ifx index<29 then pvn_stage(tokens,0,index) else ifx index<47 then pvn_stage(tokens,1,index-29) else pvn_stage(tokens,2,index-47);}
+pvn_cache_stage :: (tokens:int,index:int)->PvnStep #export_c #effects(all) {return ifx index<29 then pvn_stage(tokens,0,index) else ifx index<47 then pvn_stage(tokens,1,index-29) else pvn_stage(tokens,2,index-47);}
 
-pvn_capture :: (tokens:int,graph:int,stage:int,slot:int)->PvnCapture #export_c {
+pvn_capture :: (tokens:int,graph:int,stage:int,slot:int)->PvnCapture #export_c #effects(all) {
   if !gad_tokens(tokens) {return PvnCapture.{};}if graph==0 {c:=gvp_capture(stage,slot);return PvnCapture.{ok=c.ok,prefix=c.prefix,number=c.number,suffix=c.suffix,buffer=c.buffer,count=c.count};}
   if graph==1 {if slot!=0 {return PvnCapture.{};}c:=glp_capture(stage,tokens);return PvnCapture.{ok=c.ok,prefix=c.prefix,number=c.number,suffix=c.suffix,buffer=c.buffer+336,count=c.count};}
   if graph==2 {c:=gad_capture_for(tokens,stage,slot);return PvnCapture.{ok=c.ok,prefix=c.name,number=-1,buffer=c.buffer+538,offset=c.offset,count=c.count};}return PvnCapture.{};
 }
-pvn_node :: (tokens:int,graph:int,stage:int,at:int)->GvpNode #export_c {
+pvn_node :: (tokens:int,graph:int,stage:int,at:int)->GvpNode #export_c #effects(all) {
   if !gad_tokens(tokens) || graph<0 || graph>2 {return GvpNode.{status=GvpStatus.shape};}
   n:=ifx graph==0 then gvp_node(stage,at) else ifx graph==1 then glp_node(stage,at,tokens) else gad_node_for(tokens,stage,at);offset:=ifx graph==0 then 0 else ifx graph==1 then 336 else 538;n.kernel+=ifx graph==0 then 0 else ifx graph==1 then 9 else 20;
   for a:0..<n.argc {if n.args[a].kind==4 {n.args[a].buffer+=offset;}}return n;
 }
-pvn_bind :: (buffer:int,inventory:[]P5Tensor,sizes:[]int)->PvnBind #export_c {
+pvn_bind :: (buffer:int,inventory:[]P5Tensor,sizes:[]int)->PvnBind #export_c #effects(all) {
   if buffer>=0 && buffer<315 {r:=gvp_bind(buffer,inventory,sizes);return PvnBind.{status=r.status,read=true,shard=r.shard,begin=r.begin,bytes=r.bytes,target=r.target_bytes,conversion=ifx r.decode then 1 else 0,count=r.count};}
   if buffer>=336 && buffer<514 {r:=glp_bind(buffer-336,inventory,sizes);return PvnBind.{status=r.status,read=true,shard=r.shard,begin=r.begin,bytes=r.bytes,target=r.target_bytes,conversion=ifx r.decode then 1 else 0,count=r.count};}
   if buffer>=538 && buffer<1075 {r:=gac_bind(buffer-538,inventory,sizes);return PvnBind.{status=r.status,read=true,shard=r.shard,begin=r.begin,bytes=r.bytes,target=r.target,conversion=ifx r.transpose then 2 else ifx r.decode then 3 else 0,rows=r.rows,cols=r.cols,count=buffer-538};}return PvnBind.{};
 }
-pvn_open_step :: (s:PvnOpen)->PvnOpenStep #export_c {
+pvn_open_step :: (s:PvnOpen)->PvnOpenStep #export_c #effects(all) {
   if s.status!=GvpStatus.ok {return PvnOpenStep.{status=s.status};}if s.at<0 || s.at>8 {return PvnOpenStep.{status=GvpStatus.order};}if s.at==8 {return PvnOpenStep.{kind=-1};}
   p:=PvnOpenStep.{kind=s.at,allocate=s.at==3};if s.at==0 {p.output_count=8192;}
   else if s.at==1 {p.input_count=s.rendered;p.output_count=2048;}
@@ -149,20 +149,20 @@ pvn_open_step :: (s:PvnOpen)->PvnOpenStep #export_c {
   else if s.at==6 {p.input_count=512;p.output_count=1024;p.destination=327;p.second=335;}
   else {p.input_count=s.tokens;p.output_count=s.tokens;p.destination=1078;p.second=1079;}return p;
 }
-pvn_open_ack :: (s:[]PvnOpen,at:int,status:int,written:int)->GvpStatus #export_c {
+pvn_open_ack :: (s:[]PvnOpen,at:int,status:int,written:int)->GvpStatus #export_c #effects(all) {
   if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}p:=pvn_open_step(s[0]);
   if at!=s[0].at || at<0 || at>=8 {s[0].status=GvpStatus.order;return s[0].status;}if status!=0 {s[0].status=GvpStatus.manifest;return s[0].status;}
   if at==0 {if written<1 || written>8192 {s[0].status=GvpStatus.capacity;return s[0].status;}s[0].rendered=written;}
   else if at==1 {if !gad_tokens(written) {s[0].status=GvpStatus.shape;return s[0].status;}s[0].tokens=written;}
   else if written!=p.receipt {s[0].status=GvpStatus.capacity;return s[0].status;}s[0].at+=1;return GvpStatus.ok;
 }
-pvn_prep :: (at:int)->PvnPrep #export_c {
+pvn_prep :: (at:int)->PvnPrep #export_c #effects(all) {
   if at<0 || at>=6 {return PvnPrep.{status=GvpStatus.shape};}p:PvnPrep;
   if at<4 {p.kind=at%2;p.camera=at/2;if p.kind==0 {p.rows=256;p.input_count=196608;p.output_count=196608;}else {p.frames=1;p.height=256;p.width=256;p.input_count=196608;p.output_count=393216;p.destination=330;p.offset=p.camera*393216;}}
   else if at==4 {p.kind=2;p.input_count=8;p.output_count=132;p.destination=1076;}else {p.kind=3;p.input_count=5280;p.output_count=5280;p.destination=1077;}return p;
 }
-pvn_begin :: (tokens:int)->PvnCursor #export_c {return PvnCursor.{status=ifx gad_tokens(tokens) then GvpStatus.ok else GvpStatus.shape,phase=-1,tokens=tokens};}
-pvn_step :: (s:PvnCursor)->PvnStep #export_c {
+pvn_begin :: (tokens:int)->PvnCursor #export_c #effects(all) {return PvnCursor.{status=ifx gad_tokens(tokens) then GvpStatus.ok else GvpStatus.shape,phase=-1,tokens=tokens};}
+pvn_step :: (s:PvnCursor)->PvnStep #export_c #effects(all) {
   if s.status!=GvpStatus.ok {return PvnStep.{status=s.status};}if !gad_tokens(s.tokens) {return PvnStep.{status=GvpStatus.shape};}
   if s.phase==-1 {p:=pvn_prep(s.prep);return PvnStep.{status=p.status,kind=0,index=s.prep};}
   if s.phase==0 || s.phase==2 || s.phase==4 {return pvn_stage(s.tokens,s.phase/2,s.stage);}
@@ -170,30 +170,30 @@ pvn_step :: (s:PvnCursor)->PvnStep #export_c {
   if s.phase==3 && s.copy==0 {return PvnStep.{kind=2,source=537,destination=1075,bytes=s.tokens*2048*4};}
   if s.phase==5 {return PvnStep.{kind=3,source=1077};}if s.phase==6 {return PvnStep.{kind=4};}return PvnStep.{status=GvpStatus.order};
 }
-pvn_prep_ack :: (s:[]PvnCursor,at:int,status:int,written:int)->GvpStatus #export_c {
+pvn_prep_ack :: (s:[]PvnCursor,at:int,status:int,written:int)->GvpStatus #export_c #effects(all) {
   if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}p:=pvn_prep(at);
   if s[0].phase!=-1 || at!=s[0].prep || p.status!=GvpStatus.ok {s[0].status=GvpStatus.order;return s[0].status;}if status!=0 || written!=p.output_count {s[0].status=GvpStatus.number;return s[0].status;}s[0].prep+=1;if s[0].prep==6 {s[0].phase=0;}return GvpStatus.ok;
 }
-pvn_sent :: (s:[]PvnCursor,index:int,effect:int)->GvpStatus #export_c {
+pvn_sent :: (s:[]PvnCursor,index:int,effect:int)->GvpStatus #export_c #effects(all) {
   if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}p:=pvn_step(s[0]);
   if p.kind!=1 || index!=s[0].node || index<0 || index>=p.nodes {s[0].status=GvpStatus.order;return s[0].status;}if effect!=0 {s[0].status=gac_effect(effect);return s[0].status;}s[0].node+=1;return GvpStatus.ok;
 }
-pvn_advance :: (s:[]PvnCursor) {last:=ifx s[0].phase==0 then 29 else ifx s[0].phase==2 then 18 else 142;s[0].stage+=1;s[0].node=0;if s[0].stage==last {s[0].phase+=1;s[0].copy=0;s[0].stage=0;}}
-pvn_waited :: (s:[]PvnCursor,effect:int,flags:[]u8)->GvpStatus #export_c {
+pvn_advance :: (s:[]PvnCursor) #effects(all) {last:=ifx s[0].phase==0 then 29 else ifx s[0].phase==2 then 18 else 142;s[0].stage+=1;s[0].node=0;if s[0].stage==last {s[0].phase+=1;s[0].copy=0;s[0].stage=0;}}
+pvn_waited :: (s:[]PvnCursor,effect:int,flags:[]u8)->GvpStatus #export_c #effects(all) {
   if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}p:=pvn_step(s[0]);
   if p.kind!=1 || s[0].node!=p.nodes {s[0].status=GvpStatus.order;return s[0].status;}if effect!=0 {s[0].status=gac_effect(effect);return s[0].status;}
   if flags.count!=p.flags {s[0].status=GvpStatus.capacity;return s[0].status;}for flag:flags {if flag!=0 {s[0].status=GvpStatus.number;return s[0].status;}}
   pvn_advance(s);return GvpStatus.ok;
 }
-pvn_copied :: (s:[]PvnCursor,effect:int)->GvpStatus #export_c {
+pvn_copied :: (s:[]PvnCursor,effect:int)->GvpStatus #export_c #effects(all) {
   if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}p:=pvn_step(s[0]);if p.kind!=2 {s[0].status=GvpStatus.order;return s[0].status;}
   if effect!=0 {s[0].status=gac_effect(effect);return s[0].status;}s[0].copy+=1;if s[0].copy==(ifx s[0].phase==1 then 4 else 1) {s[0].phase+=1;s[0].stage=0;s[0].node=0;s[0].copy=0;}return GvpStatus.ok;
 }
-pvn_noise :: (bits:[]u32,out:[]f32,overlap:bool)->GvpRead #export_c {
+pvn_noise :: (bits:[]u32,out:[]f32,overlap:bool)->GvpRead #export_c #effects(all) {
   if bits.count!=5280 || out.count<5280 {return GvpRead.{status=GvpStatus.capacity};}if overlap {return GvpRead.{status=GvpStatus.alias};}for b:bits {if !psionic_tensor_finite_bits(b) {return GvpRead.{status=GvpStatus.number};}}
   for i:0..<5280 {out[i]=f32_from_bits(bits[i]);}return GvpRead.{written=5280};
 }
-pvn_publish :: (s:[]PvnCursor,bits:[]u32,normal:[]f32,decoded:[]f32,out:[]f32,overlap:bool)->GvpRead #export_c {
+pvn_publish :: (s:[]PvnCursor,bits:[]u32,normal:[]f32,decoded:[]f32,out:[]f32,overlap:bool)->GvpRead #export_c #effects(all) {
   if s.count!=1 {return GvpRead.{status=GvpStatus.shape};}if s[0].status!=GvpStatus.ok {return GvpRead.{status=s[0].status};}if s[0].phase!=5 || !gad_tokens(s[0].tokens) {return GvpRead.{status=GvpStatus.order};}
   if decoded.count<112 || out.count<112 {return GvpRead.{status=GvpStatus.capacity};}if overlap {return GvpRead.{status=GvpStatus.alias};}
   copied:=pvn_noise(bits,normal,false);if copied.status!=GvpStatus.ok {return copied;}r:=ge_decode(normal[0..<5280],decoded,false);if r.written!=112 {return GvpRead.{status=GvpStatus.number};}

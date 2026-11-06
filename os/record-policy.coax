@@ -25,7 +25,7 @@ REC_CLOCK_MIN_ERROR :: 0.00005;   // a rate off by less is not worth stretching
 Piece :: struct { off: f64; dur: f64; tempo: f64; }
 
 // v to `places` decimals, as printf's %.Nf writes it (ties to even), into out.
-rec_fixed :: (v: f64, places: int, out: [] u8) -> string {
+rec_fixed :: (v: f64, places: int, out: [] u8) -> string #effects(all) {
   n := 0;
   neg := v < 0.0;   // a negative that rounds to zero keeps its sign, as printf's "-0.000" (negative zero is not told apart)
   x := ifx neg then -v else v;
@@ -63,7 +63,7 @@ rec_fixed :: (v: f64, places: int, out: [] u8) -> string {
 
 // The exact error of a * b against its rounded product p: a * b == p + error, by Dekker's
 // splitting of each factor into halves whose products are exact.
-rec_product_error :: (a: f64, b: f64, p: f64) -> f64 {
+rec_product_error :: (a: f64, b: f64, p: f64) -> f64 #effects(all) {
   ca := 134217729.0 * a; ah := ca - (ca - a); al := a - ah;
   cb := 134217729.0 * b; bh := cb - (cb - b); bl := b - bh;
   return ((ah * bh - p) + ah * bl + al * bh) + al * bl;
@@ -85,7 +85,7 @@ rec_product_error :: (a: f64, b: f64, p: f64) -> f64 {
 }
 
 // A decimal from text (an awk number: optional sign, digits, a point, digits); 0 when it is not.
-rec_num :: (t: string) -> f64 {
+rec_num :: (t: string) -> f64 #effects(all) {
   i := 0; neg := false;
   while i < t.count && t[i] == ' ' { i += 1; }
   if i < t.count && (t[i] == '-' || t[i] == '+') { neg = t[i] == '-'; i += 1; }
@@ -122,7 +122,7 @@ rec_num :: (t: string) -> f64 {
 // microseconds and file bytes at each look): a least-squares slope over the nominal bytes per
 // second, or 0 when it should not be corrected (too few looks, too short a span, a flat line, or a
 // rate off by less than the floor or more than the ceiling).
-rec_clock_ratio :: (us: [] f64, bytes: [] f64) -> f64 {
+rec_clock_ratio :: (us: [] f64, bytes: [] f64) -> f64 #effects(all) {
   n := us.count;
   if n < REC_CLOCK_MIN_SAMPLES { return 0.0; }
   st := 0.0; sb := 0.0; stt := 0.0; stb := 0.0; last := 0.0;
@@ -170,19 +170,19 @@ rec_clock_ratio :: (us: [] f64, bytes: [] f64) -> f64 {
 }
 
 // How long a piece plays once stretched by tempo (0 for none).
-rec_stretched :: (dur: f64, tempo: f64) -> f64 { return ifx tempo != 0.0 then dur / tempo else dur; }
+rec_stretched :: (dur: f64, tempo: f64) -> f64 #effects(all) { return ifx tempo != 0.0 then dur / tempo else dur; }
 #test "a stretched piece ends where the wall says" {
   #assert rec_stretched(99.6, 0.996) > 99.99999 && rec_stretched(99.6, 0.996) < 100.00001 && rec_stretched(5.0, 0.0) == 5.0;
 }
 
 // Where the sound reaches on the take's clock: the last piece's offset plus its length.
-rec_end :: (pieces: [] Piece) -> f64 {
+rec_end :: (pieces: [] Piece) -> f64 #effects(all) {
   return ifx pieces.count == 0 then 0.0 else pieces[pieces.count - 1].off + pieces[pieces.count - 1].dur;
 }
 
 // The windows the sound is missing from, "121.4s-147.3s" joined by ", ": every gap over the
 // outage floor between pieces, and the end only when proven (something saw the sound stop).
-rec_outages :: (pieces: [] Piece, vdur: f64, proven: bool, out: [] u8) -> string {
+rec_outages :: (pieces: [] Piece, vdur: f64, proven: bool, out: [] u8) -> string #effects(all) {
   n := 0; end := 0.0;
   for p: pieces {
     if p.off - end > REC_OUTAGE_MIN { n = rec_window(out, n, end, p.off); }
@@ -191,7 +191,7 @@ rec_outages :: (pieces: [] Piece, vdur: f64, proven: bool, out: [] u8) -> string
   if proven && vdur - end > REC_DRIFT_LIMIT { n = rec_window(out, n, end, vdur); }
   return cast(string) out[0..<n];
 }
-rec_window :: (out: [] u8, at: int, a: f64, b: f64) -> int {
+rec_window :: (out: [] u8, at: int, a: f64, b: f64) -> int #effects(all) {
   n := at;
   if n > 0 { out[n] = ','; out[n + 1] = ' '; n += 2; }   // mutant: equivalent (n is 0 or at least 9, one window's length)
   fb: [48] u8;
@@ -222,7 +222,7 @@ rec_window :: (out: [] u8, at: int, a: f64, b: f64) -> int {
 
 // The sound a take is missing that nothing located, in seconds, or -1 when every second is
 // accounted for (or the end is proven, and rec_outages names it instead).
-rec_shortfall :: (pieces: [] Piece, vdur: f64, proven: bool) -> f64 {
+rec_shortfall :: (pieces: [] Piece, vdur: f64, proven: bool) -> f64 #effects(all) {
   if proven { return -1.0; }
   end := rec_end(pieces);
   return ifx vdur - end > REC_DRIFT_LIMIT then vdur - end else -1.0;
@@ -236,7 +236,7 @@ rec_shortfall :: (pieces: [] Piece, vdur: f64, proven: bool) -> f64 {
 }
 
 // The clock line for the tag: each stretched piece's rate as a signed percentage, or "".
-rec_clock_note :: (pieces: [] Piece, out: [] u8) -> string {
+rec_clock_note :: (pieces: [] Piece, out: [] u8) -> string #effects(all) {
   head := "the microphone clock ran ";
   tail := " against the picture; the sound is stretched to it";
   n := 0; any := false;
@@ -266,7 +266,7 @@ rec_clock_note :: (pieces: [] Piece, out: [] u8) -> string {
 }
 
 // The samples a piece is delayed by to open at its offset (adelay's NS), rounded.
-rec_delay :: (off: f64) -> int { return cast(int) (off * cast(f64) REC_AUDIO_RATE + 0.5); }
+rec_delay :: (off: f64) -> int #effects(all) { return cast(int) (off * cast(f64) REC_AUDIO_RATE + 0.5); }
 #test "delays" {
   #assert rec_delay(0.0) == 0 && rec_delay(95.005) == 4560240 && rec_delay(0.00001) == 0 && rec_delay(0.00002) == 1;
 }

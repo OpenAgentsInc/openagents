@@ -49,7 +49,7 @@ subsequently modified file still has these contents.
 
 <!-- source: psionic/lib/gguf.coax inspect -->
 ```jai
-pg_read :: (header:[]u8,file_bytes:int,meta:[]PgMeta,meta_work:[]PgMeta,tensors:[]PgTensor,tensor_work:[]PgTensor,overlap:bool)->PgResult #export_c {
+pg_read :: (header:[]u8,file_bytes:int,meta:[]PgMeta,meta_work:[]PgMeta,tensors:[]PgTensor,tensor_work:[]PgTensor,overlap:bool)->PgResult #export_c #effects(all) {
     if overlap {return PgResult.{status=PgStatus.alias};}if !pg_file(file_bytes) {return PgResult.{status=PgStatus.size};}if header.count<24 {return PgResult.{status=PgStatus.truncated};}if !pg_prefix(header.count,file_bytes) {return PgResult.{status=PgStatus.size};}
     c:=pg_uint(PgCursor.{data=header},4);if c.word!=0x46554747 {return PgResult.{status=PgStatus.format};}c=pg_uint(c,4);if c.word!=3 {return PgResult.{status=PgStatus.unsupported};}
     c=pg_count(c,4096);if c.status!=PgStatus.ok {return PgResult.{status=c.status};}nt:=cast(int)c.word;c=pg_count(c,4096);if c.status!=PgStatus.ok {return PgResult.{status=c.status};}nm:=cast(int)c.word;

@@ -108,7 +108,7 @@ RcScan :: struct { kind: int; code: int; consumed: int; from: int; to: int; }
 // The first event in bytes, after any complete non-final fragments (those
 // collect into msg through the reader and count as consumed). One frame's
 // payload and one message are both capped at msg.count.
-rc_scan :: (rd: [] WsReader, bytes: string, msg: [] u8) -> RcScan {
+rc_scan :: (rd: [] WsReader, bytes: string, msg: [] u8) -> RcScan #effects(all) {
   s: RcScan;
   while true {
     f := ws_frame_read(bytes[s.consumed..<bytes.count], msg.count);
@@ -138,10 +138,10 @@ rc_scan :: (rd: [] WsReader, bytes: string, msg: [] u8) -> RcScan {
 }
 // The code to echo for a peer's close (RFC 6455 section 5.5.1): its own, or
 // 1000 when it gave none (1005 may not be sent).
-rc_close_reply :: (code: int) -> int { return ifx code == WS_CLOSE_NO_STATUS then WS_CLOSE_NORMAL else code; }
+rc_close_reply :: (code: int) -> int #effects(all) { return ifx code == WS_CLOSE_NO_STATUS then WS_CLOSE_NORMAL else code; }
 // A transport read result (cxsock_read or cxtls_read): bytes, nothing yet
 // (timeout), the peer's clean end of stream, or a failure.
-rc_read :: (n: int) -> int {
+rc_read :: (n: int) -> int #effects(all) {
   if n > 0 { return RC_GOT; }
   if n == 0 || n == -2 { return RC_NONE; }
   if n == -1 { return RC_CLOSED; }
@@ -156,21 +156,21 @@ rc_read :: (n: int) -> int {
 }
 // -12 is Apple's explicit uncertainty about TLS close_notify. A parsed close
 // frame is authenticated application framing; raw EOF cannot replace it.
-rc_closed_stream :: (n:int,close_code:int)->bool {
+rc_closed_stream :: (n:int,close_code:int)->bool #effects(all) {
   return n==-1 || (n==-12 && close_code!=0);
 }
 // How long the next read may wait: for ever (-1) when timeout_ms is
 // negative, else what is left until deadline, never below 0.
-rc_wait :: (timeout_ms: int, deadline: int, now: int) -> int {
+rc_wait :: (timeout_ms: int, deadline: int, now: int) -> int #effects(all) {
   if timeout_ms < 0 { return -1; }
   left := deadline - now;
   return ifx left >= 1 then left else 0;
 }
 // Whether n more bytes fit after used in a buffer of cap.
-rc_room :: (used: int, n: int, cap: int) -> bool { return used + n <= cap; }
+rc_room :: (used: int, n: int, cap: int) -> bool #effects(all) { return used + n <= cap; }
 // The opening request's target from the URL's path-and-query range: "/" in
 // front of an empty one or a bare query. Its length, or -1 when out is too small.
-rc_target :: (path: string, out: [] u8) -> int {
+rc_target :: (path: string, out: [] u8) -> int #effects(all) {
   n := 0;
   if path.count == 0 || path[0] != '/' {
     if out.count < 1 { return -1; }

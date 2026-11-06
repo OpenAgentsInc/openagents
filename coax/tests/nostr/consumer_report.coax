@@ -69,7 +69,7 @@ cr_file_line :: (path: string, k: int, buf: [] u8) -> string {
   return "";
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("consumer_report: arguments too long"); return 2; }
   json := args_has(a[..], "--json");

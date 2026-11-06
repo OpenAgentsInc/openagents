@@ -239,7 +239,7 @@ LcWork :: struct {
 }
 
 // ----- one block, on private scratch
-lc_connect_stage_vartime :: (tree: [] BlockTree, table: [] u8, c: [] LcCursor, batch: [] u8, block: LcBlock, w: LcWork) -> int {
+lc_connect_stage_vartime :: (tree: [] BlockTree, table: [] u8, c: [] LcCursor, batch: [] u8, block: LcBlock, w: LcWork) -> int #effects(all) {
   tip := lc_tip_vartime(table, c[0].used); i := block.index; b := block.bytes;
   if tip.code != LC_OK || tip.chain != tree[0].p.chain || !lc_index_extent(i, tree[0].count) { return LC_CONTEXT; }
   l := tree[0].l; e := tree[0].e;
@@ -305,7 +305,7 @@ lc_connect_stage_vartime :: (tree: [] BlockTree, table: [] u8, c: [] LcCursor, b
   return LC_OK;
 }
 
-lc_disconnect_stage_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8) -> int {
+lc_disconnect_stage_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8) -> int #effects(all) {
   tip := lc_tip_vartime(table, c[0].used);
   if tip.code != LC_OK || tip.height == 0 { return LC_CONTEXT; }
   hk: [33] u8; hk[0] = 'H'; for k: 0..<32 { hk[1+k] = tip.hash[k]; }
@@ -326,7 +326,7 @@ lc_disconnect_stage_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8) -> i
 }
 
 // A standalone disconnect prepares one atomic batch; genesis is never spent.
-lc_disconnect_vartime :: (table: [] u8, used: int, stage: [] u8, batch: [] u8) -> LcResult #export_c {
+lc_disconnect_vartime :: (table: [] u8, used: int, stage: [] u8, batch: [] u8) -> LcResult #export_c #effects(all) {
   c: [1] LcCursor;
   if !lc_begin_vartime(table, used, stage, batch, c[..]) { return LcResult.{code=LC_CAPACITY}; }
   code := lc_disconnect_stage_vartime(stage, c[..], batch);
@@ -338,7 +338,7 @@ lc_disconnect_vartime :: (table: [] u8, used: int, stage: [] u8, batch: [] u8) -
 // Blocks are exactly the fork's children through target in forward order.
 // Neither table nor index changes on failure, even after partial scratch work.
 // Do not raise BLOCK_VALID_CHAIN/SCRIPTS after committing this light profile.
-lc_reorg_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int, blocks: [] LcBlock, stage: [] u8, batch: [] u8, w: LcWork) -> LcResult #export_c {
+lc_reorg_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int, blocks: [] LcBlock, stage: [] u8, batch: [] u8, w: LcWork) -> LcResult #export_c #effects(all) {
   tip := lc_tip_vartime(table, used);
   if tip.code != LC_OK || tree.count != 1 || tip.chain != tree[0].p.chain || !lc_index_extent(target, tree[0].count) { return LcResult.{code=LC_CONTEXT}; }
   current := bi_find(tree, tip.hash[..]);

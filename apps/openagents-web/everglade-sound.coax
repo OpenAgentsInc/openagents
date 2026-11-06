@@ -343,7 +343,7 @@ egs_master :: (d: [] EgSound) -> f32 { return ifx d[0].muted then 0.0f32 else cl
 
 // The cues as lines, NAME GAIN PAN [DELAY], placed from the camera, and the bed's line when its gain
 // changes: the bytes written (the face's coaxial_sounds_len). The cues are spent.
-everglade_sound_lines :: (s: [] Everglade) -> int #export_c {
+everglade_sound_lines :: (s: [] Everglade) -> int #export_c #effects(all) {
   d := egs_of(s);
   out := d[0].lines[..];
   k := 0;
@@ -415,18 +415,18 @@ egs_mixed :: (s: [] Everglade, out: [] u8, master: f32) -> int {
 // ---- the sounds themselves, rendered once when the host starts audio (the face's coaxial_sound_bank)
 
 // The last is the room's impulse (aethyr/audio/mix.coax mix_room), "room", for the bank's voices.
-everglade_sound_count :: () -> int #export_c { return SFX_COUNT + 1; }
-everglade_sound_name :: (i: int, out: [] u8) -> int #export_c {
+everglade_sound_count :: () -> int #export_c #effects(all) { return SFX_COUNT + 1; }
+everglade_sound_name :: (i: int, out: [] u8) -> int #export_c #effects(all) {
   if i == SFX_COUNT { return egs_put(out, 0, "room"); }
   return ifx i >= 0 && i < SFX_COUNT then egs_put(out, 0, SFX_NAMES[i]) else -1;
 }
-everglade_sound_render :: (i: int, mix: [] int, out: [] u8) -> int #export_c {
+everglade_sound_render :: (i: int, mix: [] int, out: [] u8) -> int #export_c #effects(all) {
   if i == SFX_COUNT { h := mix.count / 2; return ifx h >= 2 * MIX_ROOM_MS * MIX_ROOM_RATE / 1000 then mix_room(mix[0..<h], mix[h..<mix.count], out) else -1; }
   r := sfx_render(i, SFX_RATE, mix, out);
   return ifx r.ok then r.bytes else -1;
 }
-everglade_sound_scratch :: () -> int #export_c { return hi_int(SFX_MAX_FRAMES, 4 * MIX_ROOM_MS * MIX_ROOM_RATE / 1000); }
-everglade_sound_bytes :: () -> int #export_c {
+everglade_sound_scratch :: () -> int #export_c #effects(all) { return hi_int(SFX_MAX_FRAMES, 4 * MIX_ROOM_MS * MIX_ROOM_RATE / 1000); }
+everglade_sound_bytes :: () -> int #export_c #effects(all) {
   n := mix_room_bytes();
   for i: 0..<SFX_COUNT { s := sfx_recipe(i); n += WAV_HEADER + 2 * (s.ms * SFX_RATE / 1000); }
   return n;
@@ -437,7 +437,7 @@ everglade_sound_bytes :: () -> int #export_c {
 // (a slot of -1 - id plays effect id there; EGS_PROBE_BREAK breaks the town's standing piece nearest
 // that point, as a spell would, so the next frame plays its stone).
 EGS_PROBE_BREAK :: -2000;
-everglade_sound_probe :: (s: [] Everglade, slot: int, right: f32, ahead: f32, up: f32) -> int #export_c {
+everglade_sound_probe :: (s: [] Everglade, slot: int, right: f32, ahead: f32, up: f32) -> int #export_c #effects(all) {
   d := egs_of(s);
   if !d[0].ear_ok { return 0; }
   e := d[0].ear;

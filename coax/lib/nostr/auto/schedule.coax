@@ -74,7 +74,7 @@ AutoResult :: struct {code:u32;ordinal:int;skipped:int;}
 
 // book:begin due
 // Slot n's due time, or -1 when there is no such slot or it overflows.
-auto_due :: (p:AutoPlan,slot:int)->int {
+auto_due :: (p:AutoPlan,slot:int)->int #effects(all) {
   if slot<0 {return -1;}
   if p.trigger==AU_ONCE {return ifx slot==0 then p.at else -1;}
   if p.every<=0 || p.first_at<0 {return -1;}
@@ -83,11 +83,11 @@ auto_due :: (p:AutoPlan,slot:int)->int {
 }
 // The latest slot due at t (t at or after the first slot), and the last
 // slot before expiry.
-auto_slot_at :: (p:AutoPlan,t:int)->int {
+auto_slot_at :: (p:AutoPlan,t:int)->int #effects(all) {
   if p.trigger==AU_ONCE {return 0;}
   return (t-p.first_at)/p.every;
 }
-auto_plan_ok :: (p:AutoPlan)->bool {
+auto_plan_ok :: (p:AutoPlan)->bool #effects(all) {
   if p.starts_at<0 || p.starts_at>=p.expires_at || p.expires_at>AU_MAX_SAFE || p.max_occurrences<=0 {return false;}
   if p.trigger==AU_ONCE {return p.at>=p.starts_at && p.at<p.expires_at;}
   if p.trigger==AU_INTERVAL {return p.every>0 && p.first_at>=p.starts_at && p.first_at<p.expires_at && (p.missed==AU_SKIP || p.missed==AU_LATEST);}
@@ -96,14 +96,14 @@ auto_plan_ok :: (p:AutoPlan)->bool {
 }
 // book:end due
 
-au_terminal :: (status:int)->bool {return status==AUS_EXHAUSTED || status==AUS_COMPLETE || status==AUS_CANCELLED || status==AUS_EXPIRED;}
-au_code :: (code:u32)->AutoResult {r:AutoResult;r.code=code;return r;}
+au_terminal :: (status:int)->bool #effects(all) {return status==AUS_EXHAUSTED || status==AUS_COMPLETE || status==AUS_CANCELLED || status==AUS_EXPIRED;}
+au_code :: (code:u32)->AutoResult #effects(all) {r:AutoResult;r.code=code;return r;}
 // Records slots first..last (first <= last, room already checked).
-au_skip :: (p:AutoPlan,s:[]AutoState,skips:[]AutoSkip,first:int,last:int,reason:int) {
+au_skip :: (p:AutoPlan,s:[]AutoState,skips:[]AutoSkip,first:int,last:int,reason:int) #effects(all) {
   k:AutoSkip;k.first_slot=first;k.last_slot=last;k.first_due=auto_due(p,first);k.last_due=auto_due(p,last);k.reason=reason;
   skips[s[0].skips]=k;s[0].skips+=1;
 }
-au_admit :: (s:[]AutoState,occ:[]AutoOccurrence,slot:int,due:int,revision:string)->AutoResult {
+au_admit :: (s:[]AutoState,occ:[]AutoOccurrence,slot:int,due:int,revision:string)->AutoResult #effects(all) {
   o:AutoOccurrence;o.ordinal=s[0].occurrences+1;o.slot=slot;o.due_at=due;o.revision=revision;
   occ[s[0].occurrences]=o;s[0].occurrences+=1;s[0].active=o.ordinal;s[0].revision+=1;
   r:=au_code(AU_OK);r.ordinal=o.ordinal;return r;
@@ -111,7 +111,7 @@ au_admit :: (s:[]AutoState,occ:[]AutoOccurrence,slot:int,due:int,revision:string
 
 // book:begin tick
 // A timer tick at now for a once or interval plan.
-auto_tick :: (p:AutoPlan,s:[]AutoState,skips:[]AutoSkip,occ:[]AutoOccurrence,now:int,authority:u32)->AutoResult {
+auto_tick :: (p:AutoPlan,s:[]AutoState,skips:[]AutoSkip,occ:[]AutoOccurrence,now:int,authority:u32)->AutoResult #effects(all) {
   if !auto_plan_ok(p) || p.trigger==AU_SOURCE {return au_code(AU_MALFORMED);}
   status:=s[0].status;
   if au_terminal(status) || status==AUS_BLOCKED {return au_code(AU_CLOSED);}
@@ -149,7 +149,7 @@ auto_tick :: (p:AutoPlan,s:[]AutoState,skips:[]AutoSkip,occ:[]AutoOccurrence,now
 
 // book:begin observe
 // An observation event for a source plan.
-auto_observe :: (p:AutoPlan,s:[]AutoState,occ:[]AutoOccurrence,obs:AutoObservation,now:int,authority:u32)->AutoResult {
+auto_observe :: (p:AutoPlan,s:[]AutoState,occ:[]AutoOccurrence,obs:AutoObservation,now:int,authority:u32)->AutoResult #effects(all) {
   if !auto_plan_ok(p) || p.trigger!=AU_SOURCE {return au_code(AU_MALFORMED);}
   if s[0].status!=AUS_ACTIVE {return au_code(AU_CLOSED);}
   if obs.source!=p.source || obs.resource!=p.resource {return au_code(AU_MALFORMED);}
@@ -170,14 +170,14 @@ auto_observe :: (p:AutoPlan,s:[]AutoState,occ:[]AutoOccurrence,obs:AutoObservati
 // book:begin settle
 // The active occurrence settled (its RUN terminal record is the caller's).
 // A once plan, or an interval plan with no slot left, is then complete.
-auto_settle :: (p:AutoPlan,s:[]AutoState,occ:[]AutoOccurrence,ordinal:int)->u32 {
+auto_settle :: (p:AutoPlan,s:[]AutoState,occ:[]AutoOccurrence,ordinal:int)->u32 #effects(all) {
   if ordinal<=0 || s[0].active!=ordinal {return AU_MALFORMED;}
   occ[ordinal-1].settled=true;s[0].active=0;s[0].revision+=1;
   if s[0].status==AUS_ACTIVE && p.trigger!=AU_SOURCE && s[0].next_slot>auto_slot_at(p,p.expires_at-1) {s[0].status=AUS_COMPLETE;}
   return AU_OK;
 }
 // Pause, resume or cancel, compared against the current revision.
-auto_control :: (s:[]AutoState,action:int,expected_revision:int,authority:u32)->u32 {
+auto_control :: (s:[]AutoState,action:int,expected_revision:int,authority:u32)->u32 #effects(all) {
   if expected_revision!=s[0].revision {return AU_CONFLICT;}
   status:=s[0].status;
   if action==AU_PAUSE {

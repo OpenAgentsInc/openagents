@@ -1,0 +1,3 @@
+// expect: E0941
+same :: (a:string,b:string)->bool #effects(computes) {return a==b;}
+main :: () {}

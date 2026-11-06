@@ -50,7 +50,7 @@ once.
 ```jai
 // The re-run is done: (dx, dy, dz) is where it puts you less where you were drawn. Small, it is eased
 // out (you are drawn where you were, coming to where you are); past NET_SNAP m, taken at once.
-net_fixed :: (s: [] Everglade, dx: f32, dy: f32, dz: f32) #export_c {
+net_fixed :: (s: [] Everglade, dx: f32, dy: f32, dz: f32) #export_c #effects(all) {
   n := net_of(s);
   n[0].fix_due = false; n[0].replays += 1;
   ox := n[0].off_x - dx; oy := n[0].off_y - dy; oz := n[0].off_z - dz;
@@ -58,7 +58,7 @@ net_fixed :: (s: [] Everglade, dx: f32, dy: f32, dz: f32) #export_c {
   n[0].off_x = ox; n[0].off_y = oy; n[0].off_z = oz;
 }
 // Where you are drawn less where you are, this frame (dt s): eased to nothing over NET_SMOOTH s.
-net_offset :: (s: [] Everglade, dt: f32) -> Point #export_c {
+net_offset :: (s: [] Everglade, dt: f32) -> Point #export_c #effects(all) {
   if !net_on(s) { return v3(0, 0, 0); }
   n := net_of(s);
   k := clamp01(1 - dt / f32(NET_SMOOTH));
@@ -82,7 +82,7 @@ that only the server had swung the camera. It now turns toward
 // The motion your controls ask for, m/s on the flat: the wish at the pace you walk or run. A follow
 // camera turns toward this, not toward the velocity, which a wall, a push or a room server's
 // correction changes without you asking (#12777).
-walk_asked :: (p: Player) -> Vec3 {
+walk_asked :: (p: Player) -> Vec3 #effects(all) {
   w := wish(p);
   if !w.on { return Vec3.{}; }
   pace := ifx p.run then f32(RUN) else f32(WALK);

@@ -26,10 +26,10 @@
 #load "../../lib/agent/claude/claude.coax";
 #load "confine-host.coax";
 
-eio_read_line :: (timeout_ms: int) -> int #foreign;
-eio_line_byte :: (i: int) -> int #foreign;
-eio_put :: (byte: int) -> int #foreign;
-eio_flush :: () -> int #foreign;
+eio_read_line :: (timeout_ms: int) -> int #foreign #effects(all);
+eio_line_byte :: (i: int) -> int #foreign #effects(all);
+eio_put :: (byte: int) -> int #foreign #effects(all);
+eio_flush :: () -> int #foreign #effects(all);
 
 TURN_LINE :: 1048576;
 PROMPT_MAX :: 196608;

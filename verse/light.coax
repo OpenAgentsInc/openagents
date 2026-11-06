@@ -4,10 +4,10 @@ lo :: (a:f32,b:f32)->f32 { if a<b { return a; } return b; }
 hi :: (a:f32,b:f32)->f32 { if a>b { return a; } return b; }
 sat :: (a:f32)->f32 { return lo(1.0f32,hi(0.0f32,a)); }
 smooth :: (a:f32,b:f32,x:f32)->f32 { t:=sat((x-a)/(b-a));return t*t*(3.0f32-2.0f32*t); }
-verse_sky :: (x:f32,y:f32)->f32 #export_c {
+verse_sky :: (x:f32,y:f32)->f32 #export_c #effects(all) {
   r:=sqrt(x*x+y*y); return 0.006f32+0.018f32*exp(-r*r*1.8f32);
 }
-verse_dot :: (x:f32,y:f32,light:f32,soft:f32,crisp:f32)->f32 #export_c {
+verse_dot :: (x:f32,y:f32,light:f32,soft:f32,crisp:f32)->f32 #export_c #effects(all) {
   r2:=x*x+y*y;
   if r2>=1.0f32 { return 0.0f32; }
   r:=sqrt(r2);
@@ -17,7 +17,7 @@ verse_dot :: (x:f32,y:f32,light:f32,soft:f32,crisp:f32)->f32 #export_c {
   node:=(1.0f32-smooth(0.40f32,0.5f32,r))+0.22f32*exp(-r2*7.0f32)*(1.0f32-smooth(0.7f32,1.0f32,r));
   return light*(a*1.6f32+(node-a*1.6f32)*crisp);
 }
-verse_line :: (across:f32,along:f32,a:f32,b:f32)->f32 #export_c {
+verse_line :: (across:f32,along:f32,a:f32,b:f32)->f32 #export_c #effects(all) {
   return (a+(b-a)*sat(along))*exp(-across*across*4.0f32);
 }
 cut_distance :: (x:f32,y:f32,w:f32,h:f32,k:f32)->f32 {
@@ -25,7 +25,7 @@ cut_distance :: (x:f32,y:f32,w:f32,h:f32,k:f32)->f32 {
   box:=sqrt(hi(dx,0.0f32)*hi(dx,0.0f32)+hi(dy,0.0f32)*hi(dy,0.0f32))+lo(hi(dx,dy),0.0f32);
   return hi(box,(abs(x+y)-(w+h-14.0f32*k))*0.70710678f32);
 }
-verse_bar :: (x:f32,y:f32,w:f32,h:f32,k:f32,t:f32,press:f32,flash:f32)->f32 #export_c {
+verse_bar :: (x:f32,y:f32,w:f32,h:f32,k:f32,t:f32,press:f32,flash:f32)->f32 #export_c #effects(all) {
   d:=cut_distance(x,y,w,h,k);
   inside:=1.0f32-smooth(-0.5f32,0.5f32,d);
   edge:=1.0f32-smooth(0.5f32*k,1.6f32*k,abs(d));
@@ -36,26 +36,26 @@ verse_bar :: (x:f32,y:f32,w:f32,h:f32,k:f32,t:f32,press:f32,flash:f32)->f32 #exp
   glow:=exp(-hi(d,0.0f32)/(9.0f32*k))*(1.0f32-inside)*(0.10f32+0.30f32*flash);
   return glass+edge*(0.65f32+0.5f32*flash)+glow;
 }
-verse_label :: (mask:f32,flash:f32)->f32 #export_c { return mask*(0.94f32+0.06f32*flash); }
-verse_tone :: (light:f32)->f32 #export_c { return 1.0f32-exp(-light*1.35f32); }
-verse_bloom :: (center:f32,near:f32,far:f32)->f32 #export_c { return center*0.4f32+near*0.24f32+far*0.06f32; }
+verse_label :: (mask:f32,flash:f32)->f32 #export_c #effects(all) { return mask*(0.94f32+0.06f32*flash); }
+verse_tone :: (light:f32)->f32 #export_c #effects(all) { return 1.0f32-exp(-light*1.35f32); }
+verse_bloom :: (center:f32,near:f32,far:f32)->f32 #export_c #effects(all) { return center*0.4f32+near*0.24f32+far*0.06f32; }
 // The Grid's cast (verse/cast.coax). Colours arrive as display values
 // (sRGB, as aethyr's art stores them); the scene is light the tone curve
 // maps back to the screen.
-verse_decode :: (v:f32)->f32 #export_c {
+verse_decode :: (v:f32)->f32 #export_c #effects(all) {
   if v<=0.04045f32 { return v/12.92f32; }
   return pow((v+0.055f32)/1.055f32,2.4f32);
 }
-verse_encode :: (c:f32)->f32 #export_c {
+verse_encode :: (c:f32)->f32 #export_c #effects(all) {
   x:=sat(c);
   if x<=0.0031308f32 { return x*12.92f32; }
   return 1.055f32*pow(x,1.0f32/2.4f32)-0.055f32;
 }
 // The light whose tone is the display value v: the inverse of verse_tone.
-verse_unlit :: (v:f32)->f32 #export_c { return -log(1.0f32-lo(sat(v),0.98f32))/1.35f32; }
+verse_unlit :: (v:f32)->f32 #export_c #effects(all) { return -log(1.0f32-lo(sat(v),0.98f32))/1.35f32; }
 // aethyr's Grid light on a surface facing (nx, ny, nz): a sun of 0.9 from
 // (0.3, 0.9, 0.35), and a sky of 0.32 over a ground of 0.05.
-verse_lit :: (nx:f32,ny:f32,nz:f32)->f32 #export_c {
+verse_lit :: (nx:f32,ny:f32,nz:f32)->f32 #export_c #effects(all) {
   n:=sqrt(nx*nx+ny*ny+nz*nz);
   if n<=0.0f32 { return 0.32f32; }
   sun:=hi(0.0f32,(0.3f32*nx+0.9f32*ny+0.35f32*nz)/(n*1.0111874f32));
@@ -64,18 +64,18 @@ verse_lit :: (nx:f32,ny:f32,nz:f32)->f32 #export_c {
 }
 // A lit character's colour channel: its linear albedo under that light,
 // shown as the display value aethyr would show.
-verse_character :: (albedo:f32,light:f32)->f32 #export_c { return verse_unlit(verse_encode(albedo*light)); }
+verse_character :: (albedo:f32,light:f32)->f32 #export_c #effects(all) { return verse_unlit(verse_encode(albedo*light)); }
 
 // A robot's line art, `distance` metres from the eye (its depth), on a
 // screen of `scale` pixels a point. Its width in pixels: half a point near,
 // thinning to a quarter of a point from 8 m, never under a pixel. Its light:
 // the tint's at 0.7, fading as the floor's lines do from 6 m to 110 m, and
 // dimmer as a far robot's lines crowd into a few pixels.
-verse_cast_line_width :: (scale:f32,distance:f32)->f32 #export_c {
+verse_cast_line_width :: (scale:f32,distance:f32)->f32 #export_c #effects(all) {
   near:=lo(1.0f32,4.0f32/hi(distance,4.0f32));
   return hi(scale*0.5f32*hi(near,0.5f32),1.0f32);
 }
-verse_cast_line_light :: (tint:f32,distance:f32)->f32 #export_c {
+verse_cast_line_light :: (tint:f32,distance:f32)->f32 #export_c #effects(all) {
   crowd:=hi(lo(1.0f32,6.0f32/hi(distance,0.001f32)),0.3f32);
   return verse_unlit(tint)*0.7f32*(1.0f32-smooth(6.0f32,110.0f32,distance))*crowd;
 }
@@ -100,7 +100,7 @@ sd_segment :: (px:f32,py:f32,ax:f32,ay:f32,bx:f32,by:f32)->f32 {
   dx:=vx-wx*t; dy:=vy-wy*t;
   return sqrt(dx*dx+dy*dy);
 }
-verse_slot_icon :: (icon:f32,px:f32,py:f32,s:f32,w:f32)->f32 #export_c {
+verse_slot_icon :: (icon:f32,px:f32,py:f32,s:f32,w:f32)->f32 #export_c #effects(all) {
   if icon<0.5f32 || icon>1.5f32 { return 0.0f32; }
   hx:=(px+0.2f32*s)/(0.24f32*s); hy:=(py-0.38f32*s)/(0.18f32*s);
   head:=cover((sqrt(hx*hx+hy*hy)-1.0f32)*0.18f32*s);
@@ -128,13 +128,13 @@ slot :: (px:f32,py:f32,ex:f32,ey:f32,k:f32,press:f32,flash:f32,sel:f32,icon:f32,
   if alpha { return a; }
   return g;
 }
-verse_slot_light :: (px:f32,py:f32,ex:f32,ey:f32,k:f32,press:f32,flash:f32,sel:f32,icon:f32)->f32 #export_c {
+verse_slot_light :: (px:f32,py:f32,ex:f32,ey:f32,k:f32,press:f32,flash:f32,sel:f32,icon:f32)->f32 #export_c #effects(all) {
   return slot(px,py,ex,ey,k,press,flash,sel,icon,false);
 }
-verse_slot_cover :: (px:f32,py:f32,ex:f32,ey:f32,k:f32,press:f32,flash:f32,sel:f32,icon:f32)->f32 #export_c {
+verse_slot_cover :: (px:f32,py:f32,ex:f32,ey:f32,k:f32,press:f32,flash:f32,sel:f32,icon:f32)->f32 #export_c #effects(all) {
   return slot(px,py,ex,ey,k,press,flash,sel,icon,true);
 }
-verse_slot_glow :: (px:f32,py:f32,ex:f32,ey:f32,k:f32,flash:f32,sel:f32)->f32 #export_c {
+verse_slot_glow :: (px:f32,py:f32,ex:f32,ey:f32,k:f32,flash:f32,sel:f32)->f32 #export_c #effects(all) {
   d:=sd_box(px,py,ex,ey,5.0f32*k);
   return exp(-hi(d,0.0f32)/(7.0f32*k))*(1.0f32-cover(d))*(0.12f32*sel+0.25f32*flash);
 }

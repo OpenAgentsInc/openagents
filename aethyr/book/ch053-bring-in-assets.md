@@ -89,7 +89,7 @@ catalog. Nothing is kept until all of it holds:
 ```jai
 // Read a pack whole: its header, its table in the format's order and layout, and its catalog's
 // account of every licence. False, with why and the entry, at the first thing that doesn't hold.
-pack_read :: (p: string, r: [] PackRead) -> bool {
+pack_read :: (p: string, r: [] PackRead) -> bool #effects(all) {
   if p.count < PACK_HEADER || p[0..<4] != PACK_MAGIC { return pack_why(r, "not a VPK1 pack", -1); }
   pk_count := pack_u32(p, 4);
   if pack_u32(p, 8) != p.count { return pack_why(r, "its stated size isn't its size", -1); }
@@ -135,7 +135,7 @@ licence its own table entry carries:
 ```jai
 // The catalog's account: the pack's budget and size again, its sources in order, every mesh's
 // source declared, and each layer and sound the source its own entry says.
-pack_catalog :: (t: string, r: [] PackRead) -> bool {
+pack_catalog :: (t: string, r: [] PackRead) -> bool #effects(all) {
   if t.count == 0 || t[t.count - 1] != '\n' { return pack_why(r, "a catalog that doesn't end its last line", 0); }
   pk_stated := 0; pk_layer := 0; pk_sound := 0; pk_at := 0;
   pk_layers := 0; pk_sounds := 0;
@@ -190,19 +190,19 @@ before it is kept:
 <!-- source: aethyr/forge/pack.coax write -->
 ```jai
 // The bytes a pack of these entries takes: header, table, and each entry padded to 4 bytes.
-pack_size :: (s: [] PackSource) -> int {
+pack_size :: (s: [] PackSource) -> int #effects(all) {
   pk_n := PACK_HEADER + PACK_ENTRY * s.count;
   for pk_e: s { pk_n += pack_pad(pk_e.data.count); }
   return pk_n;
 }
-pack_put32 :: (out: [] u8, at: int, v: int) {
+pack_put32 :: (out: [] u8, at: int, v: int) #effects(all) {
   out[at] = cast,trunc(u8) v; out[at + 1] = cast,trunc(u8) (v >> 8);
   out[at + 2] = cast,trunc(u8) (v >> 16); out[at + 3] = cast,trunc(u8) (v >> 24);
 }
 // Write a pack as pack_realm.py does: the bytes written, or -1 when out can't hold them, there are
 // more than PACK_MAX entries, or a name isn't 1 to 31 bytes. Nothing is checked beyond the layout:
 // pack_read is the check, so what this writes is read back before it is kept.
-pack_write :: (s: [] PackSource, budget: int, out: [] u8) -> int {
+pack_write :: (s: [] PackSource, budget: int, out: [] u8) -> int #effects(all) {
   pk_total := pack_size(s);
   if s.count > PACK_MAX || pk_total > out.count { return -1; }
   for pk_e: s { if pk_e.name.count == 0 || pk_e.name.count >= PACK_NAME { return -1; } }
@@ -235,7 +235,7 @@ twice:
 ```jai
 // A pack read takes its place in a realm's assets as its entries, each known by its content
 // (chapter 16): taken whole, or refused whole and nothing held changes.
-pack_admit :: (reg: [] AssetRegistry, p: string, r: [] PackRead) -> int {
+pack_admit :: (reg: [] AssetRegistry, p: string, r: [] PackRead) -> int #effects(all) {
   if !r[0].ok { return asset_refuse(reg, ASSET_MALFORMED, ASSET_NONE, 0, reg[0].held); }
   pk_content: [PACK_MAX] string; pk_table: [PACK_MAX] AssetId;
   for pk_k: 0..<r[0].count { pk_content[pk_k] = pack_bytes(p, r, pk_k); pk_table[pk_k] = asset_id(pk_content[pk_k]); }

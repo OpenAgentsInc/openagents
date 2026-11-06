@@ -146,10 +146,10 @@ RenderAssetLayers :: struct {format:string;premultiplied_alpha:bool;resize_quali
 #test "layer upload description preserves sRGB straight alpha and original high quality resizing" {
  rapt_layers:=render_asset_layers();#assert rapt_layers.format=="rgba8unorm-srgb" && !rapt_layers.premultiplied_alpha && rapt_layers.resize_quality=="high";
 }
-render_asset_layers :: ()->RenderAssetLayers {return RenderAssetLayers.{format="rgba8unorm-srgb",premultiplied_alpha=false,resize_quality="high"};}
+render_asset_layers :: ()->RenderAssetLayers #effects(all) {return RenderAssetLayers.{format="rgba8unorm-srgb",premultiplied_alpha=false,resize_quality="high"};}
 
-rap_half_extent :: (rap_extent:int)->int {rap_half:=rap_extent/2;return ifx rap_half==0 then 1 else rap_half;}
-render_asset_mip :: (rap_width:int,rap_height:int,rap_layers:int,rap_level:int,rap_device_max:int,rap_device_layers:int)->RenderAssetMip {
+rap_half_extent :: (rap_extent:int)->int #effects(all) {rap_half:=rap_extent/2;return ifx rap_half==0 then 1 else rap_half;}
+render_asset_mip :: (rap_width:int,rap_height:int,rap_layers:int,rap_level:int,rap_device_max:int,rap_device_layers:int)->RenderAssetMip #effects(all) {
  if rap_width<1 || rap_height<1 || rap_width>16384 || rap_height>16384 || rap_width>rap_device_max || rap_height>rap_device_max
    || rap_layers<1 || rap_layers>2048 || rap_layers>rap_device_layers {return RenderAssetMip.{};}
  rap_w:=rap_width;rap_h:=rap_height;rap_levels:=1;
@@ -160,13 +160,13 @@ render_asset_mip :: (rap_width:int,rap_height:int,rap_layers:int,rap_level:int,r
  return RenderAssetMip.{valid=true,width=rap_w,height=rap_h,levels=rap_levels};
 }
 
-rap_kind :: (rap_word:string)->RenderAssetKind {
+rap_kind :: (rap_word:string)->RenderAssetKind #effects(all) {
  if rap_word=="data" {return RenderAssetKind.data;}if rap_word=="storage" {return RenderAssetKind.storage;}
  if rap_word=="index" {return RenderAssetKind.index;}if rap_word=="layers" {return RenderAssetKind.layers;}
  if rap_word=="sound" {return RenderAssetKind.sound;}if rap_word=="loop" {return RenderAssetKind.loop;}
  if rap_word=="particles" {return RenderAssetKind.particles;}if rap_word=="mesh" {return RenderAssetKind.mesh;}return RenderAssetKind.invalid;
 }
-rap_url_count :: (rap_url:string)->int {
+rap_url_count :: (rap_url:string)->int #effects(all) {
  rap_start:=0;rap_count:=0;
  for rap_character,rap_at:rap_url {if rap_character=='|' {
   if rap_at==rap_start || rap_url[rap_start]!='/' {return 0;}rap_count+=1;rap_start=rap_at+1;
@@ -174,19 +174,19 @@ rap_url_count :: (rap_url:string)->int {
  if rap_start==rap_url.count || rap_url[rap_start]!='/' {return 0;}return rap_count+1;
 }
 // Qualified by the caller's nonnegative URL ordinal below the declared count.
-rap_url_at :: (rap_url:string,rap_wanted:int)->string {
+rap_url_at :: (rap_url:string,rap_wanted:int)->string #effects(all) {
  rap_start:=0;rap_count:=0;
  for rap_character,rap_at:rap_url {if rap_character=='|' {
   if rap_count==rap_wanted {return rap_url[rap_start..<rap_at];}rap_count+=1;rap_start=rap_at+1;
  }}return rap_url[rap_start..<rap_url.count];
 }
-rap_sound :: (rap_rest:string)->RenderAsset {
+rap_sound :: (rap_rest:string)->RenderAsset #effects(all) {
  for rap_character,rap_at:rap_rest {if rap_character=='=' {
   if rap_at==0 {return RenderAsset.{};}rap_url:=rap_rest[rap_at+1..<rap_rest.count];if rap_url_count(rap_url)!=1 {return RenderAsset.{};}
   return RenderAsset.{valid=true,kind=RenderAssetKind.sound,name=rap_rest[0..<rap_at],url=rap_url,url_count=1};
  }}return RenderAsset.{};
 }
-rap_declaration :: (rap_line:string)->RenderAsset {
+rap_declaration :: (rap_line:string)->RenderAsset #effects(all) {
  for rap_character,rap_at:rap_line {if rap_character==':' {
   rap_word:=rap_line[0..<rap_at];rap_kind_value:=rap_kind(rap_word);rap_packed:=rap_word=="pack";
   if !rap_packed && rap_kind_value==RenderAssetKind.invalid {return RenderAsset.{};}
@@ -195,7 +195,7 @@ rap_declaration :: (rap_line:string)->RenderAsset {
   return RenderAsset.{valid=true,kind=rap_kind_value,packed=rap_packed,url=rap_rest,url_count=rap_urls};
  }}return RenderAsset.{};
 }
-rap_append :: (rap_result:RenderAssetProfile,rap_decl:RenderAsset,rap_wanted:int)->RenderAssetProfile {
+rap_append :: (rap_result:RenderAssetProfile,rap_decl:RenderAsset,rap_wanted:int)->RenderAssetProfile #effects(all) {
  if !rap_decl.valid {return RenderAssetProfile.{};}rap_rows:=ifx rap_decl.packed then 4 else 1;
  if rap_rows>RENDER_ASSET_ROWS-rap_result.count {return RenderAssetProfile.{status=RenderAssetStatus.capacity};}
  rap_next:=rap_result;
@@ -212,30 +212,30 @@ rap_append :: (rap_result:RenderAssetProfile,rap_decl:RenderAsset,rap_wanted:int
 }
 // A streaming selection avoids allocating an array of string-bearing rows.
 // Every declaration is validated before a selected row is returned.
-rap_parse_at :: (rap_text:string,rap_wanted:int)->RenderAssetProfile {
+rap_parse_at :: (rap_text:string,rap_wanted:int)->RenderAssetProfile #effects(all) {
  rap_result:=RenderAssetProfile.{status=RenderAssetStatus.ok};if rap_text.count==0 {return rap_result;}rap_start:=0;
  for rap_character,rap_at:rap_text {if rap_character=='\n' {
   rap_result=rap_append(rap_result,rap_declaration(rap_text[rap_start..<rap_at]),rap_wanted);if rap_result.status!=RenderAssetStatus.ok {return rap_result;}rap_start=rap_at+1;
  }}return rap_append(rap_result,rap_declaration(rap_text[rap_start..<rap_text.count]),rap_wanted);
 }
-rap_parse :: (rap_text:string)->RenderAssetProfile {return rap_parse_at(rap_text,0);}
-render_asset_count :: (rap_profile:int)->int {
+rap_parse :: (rap_text:string)->RenderAssetProfile #effects(all) {return rap_parse_at(rap_text,0);}
+render_asset_count :: (rap_profile:int)->int #effects(all) {
  rap_meta:=render_catalog(rap_profile);if !rap_meta.valid {return -1;}
  // The complete closed catalog is checked below; malformed candidate text is
  // only accepted by the private checked parser, never installed in catalog.
  return rap_parse(rap_meta.assets).count;
 }
-render_asset :: (rap_profile:int,rap_row:int)->RenderAsset {return rap_parse_at(render_catalog(rap_profile).assets,rap_row).asset;}
-render_asset_url :: (rap_profile:int,rap_row:int,rap_url:int)->string {
+render_asset :: (rap_profile:int,rap_row:int)->RenderAsset #effects(all) {return rap_parse_at(render_catalog(rap_profile).assets,rap_row).asset;}
+render_asset_url :: (rap_profile:int,rap_row:int,rap_url:int)->string #effects(all) {
  rap_asset:=render_asset(rap_profile,rap_row);if rap_url>=0 && rap_url<rap_asset.url_count {return rap_url_at(rap_asset.url,rap_url);}return "";
 }
-render_asset_find :: (rap_profile:int,rap_find_kind:RenderAssetKind,rap_ordinal:int)->RenderAsset {
+render_asset_find :: (rap_profile:int,rap_find_kind:RenderAssetKind,rap_ordinal:int)->RenderAsset #effects(all) {
  if rap_ordinal<0 {return RenderAsset.{};}rap_seen:=0;
  for rap_row:0..<render_asset_count(rap_profile) {rap_asset:=render_asset(rap_profile,rap_row);if rap_asset.kind==rap_find_kind {
   if rap_seen==rap_ordinal {return rap_asset;}rap_seen+=1;
  }}return RenderAsset.{};
 }
-render_asset_for_source :: (rap_profile:int,rap_source:RenderBindingSource)->RenderAsset {
+render_asset_for_source :: (rap_profile:int,rap_source:RenderBindingSource)->RenderAsset #effects(all) {
  if !rap_source.valid {return RenderAsset.{};}rap_kind_value:=RenderAssetKind.invalid;
  if rap_source.kind==RenderSourceKind.immutable_storage_asset {rap_kind_value=RenderAssetKind.storage;}
  else if rap_source.kind==RenderSourceKind.mesh_asset {rap_kind_value=RenderAssetKind.mesh;}
@@ -243,7 +243,7 @@ render_asset_for_source :: (rap_profile:int,rap_source:RenderBindingSource)->Ren
  else {return RenderAsset.{};}
  return render_asset_find(rap_profile,rap_kind_value,rap_source.index);
 }
-render_asset_readiness :: (rap_profile:int,rap_pipeline_ready:bool,rap_particles_ready:bool,rap_observed:[]RenderAssetObservation)->RenderAssetReadiness {
+render_asset_readiness :: (rap_profile:int,rap_pipeline_ready:bool,rap_particles_ready:bool,rap_observed:[]RenderAssetObservation)->RenderAssetReadiness #effects(all) {
  rap_meta:=render_catalog(rap_profile);if !rap_meta.valid {return RenderAssetReadiness.{};}
  if rap_observed.count>RENDER_ASSET_ROWS {return RenderAssetReadiness.{status=RenderAssetStatus.capacity};}
  rap_count:=render_asset_count(rap_profile);rap_seen:[RENDER_ASSET_ROWS]bool;rap_states:[RENDER_ASSET_ROWS]RenderAssetState;

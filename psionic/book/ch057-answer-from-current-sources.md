@@ -53,11 +53,11 @@ is one word and `x_y` is two. ASCII letters compare without case.
 ```jai
 // A word is a run of ASCII letters and digits and of bytes at or above 128.
 // Words compare with ASCII letters folded to lower case.
-an_word_byte :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c >= 128; }
-an_lower :: (c: u8) -> u8 { if c >= 'A' && c <= 'Z' { return c + 32; } return c; }
+an_word_byte :: (c: u8) -> bool #effects(all) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c >= 128; }
+an_lower :: (c: u8) -> u8 #effects(all) { if c >= 'A' && c <= 'Z' { return c + 32; } return c; }
 // The first word that starts at or after at; from == to == text.count when
 // none is left.
-an_next_word :: (text: string, at: int) -> AnSpan {
+an_next_word :: (text: string, at: int) -> AnSpan #effects(all) {
   a := at;
   while a < text.count && !an_word_byte(text[a]) { a += 1; }
   b := a;
@@ -65,7 +65,7 @@ an_next_word :: (text: string, at: int) -> AnSpan {
   return AnSpan.{from = a, to = b};
 }
 // Does text[from..<to] hold word (lower case) as a whole word?
-an_holds :: (text: string, from: int, to: int, word: string) -> bool {
+an_holds :: (text: string, from: int, to: int, word: string) -> bool #effects(all) {
   at := from;
   while at < to {
     w := an_next_word(text[0..<to], at);
@@ -74,7 +74,7 @@ an_holds :: (text: string, from: int, to: int, word: string) -> bool {
   }
   return false;
 }
-an_same :: (text: string, from: int, to: int, word: string) -> bool {
+an_same :: (text: string, from: int, to: int, word: string) -> bool #effects(all) {
   if to - from != word.count { return false; }
   for i: 0..<word.count { if an_lower(text[from + i]) != word[i] { return false; } }
   return true;
@@ -99,7 +99,7 @@ the top three reranked passages.
 // query's distinct words; weight: one per word (the tool and the example
 // use BM25's IDF, so a word the books lack weighs the most). 0 when the
 // query weighs nothing.
-an_support :: (words: [] string, weight: [] f64, text: string, from: int, to: int) -> f64 {
+an_support :: (words: [] string, weight: [] f64, text: string, from: int, to: int) -> f64 #effects(all) {
   total := 0.0; held := 0.0;
   for w, i: words {
     total += weight[i];
@@ -110,8 +110,8 @@ an_support :: (words: [] string, weight: [] f64, text: string, from: int, to: in
 }
 // A sentence ends just after '.', '?' or '!' when white space or the end of
 // the text follows, before a blank line, or at the end of the text.
-an_space :: (c: u8) -> bool { return c == ' ' || c == '\n' || c == '\t' || c == '\r'; }
-an_sentence_end :: (text: string, from: int) -> int {
+an_space :: (c: u8) -> bool #effects(all) { return c == ' ' || c == '\n' || c == '\t' || c == '\r'; }
+an_sentence_end :: (text: string, from: int) -> int #effects(all) {
   for i: from..<text.count {
     c := text[i];
     if (c == '.' || c == '?' || c == '!') && (i + 1 == text.count || an_space(text[i + 1])) { return i + 1; }
@@ -120,7 +120,7 @@ an_sentence_end :: (text: string, from: int) -> int {
   return text.count;
 }
 // The sentence of text with the most support; the earlier one on a tie.
-an_best_span :: (words: [] string, weight: [] f64, text: string) -> AnSpan {
+an_best_span :: (words: [] string, weight: [] f64, text: string) -> AnSpan #effects(all) {
   best := AnSpan.{support = -1};
   at := 0;
   while at < text.count {
@@ -140,7 +140,7 @@ an_best_span :: (words: [] string, weight: [] f64, text: string) -> AnSpan {
 // AN_TOP. The answer is the best sentence over them, from the better-ranked
 // passage on a tie. It is given only when its support reaches least and is
 // above zero; otherwise the assistant abstains and keeps the span it found.
-an_answer :: (words: [] string, weight: [] f64, passages: [] string, least: f64) -> AnAnswer {
+an_answer :: (words: [] string, weight: [] f64, passages: [] string, least: f64) -> AnAnswer #effects(all) {
   r := AnAnswer.{verdict = AnVerdict.abstain, rank = -1, support = -1};
   for text, k: passages {
     s := an_best_span(words, weight, text);
@@ -179,7 +179,7 @@ the passages as they are now:
 ```jai
 // A passage's revision digest is chapter 54's passage hash: SHA-256 of its
 // heading path, a newline and its text. Any edit to either changes it.
-an_digest :: (heading: string, text: string) -> [32] u8 {
+an_digest :: (heading: string, text: string) -> [32] u8 #effects(all) {
   state: [112] u8; out: [32] u8; nl := [1] u8.['\n'];
   r := sha256_init(state[..]);
   an_feed(state[..], heading);
@@ -190,7 +190,7 @@ an_digest :: (heading: string, text: string) -> [32] u8 {
 }
 // A passage's identity stays the same across revisions: its file, heading
 // path and part, joined by '#'. "" when out is too small.
-an_id :: (path: string, heading: string, part: int, out: [] u8) -> string {
+an_id :: (path: string, heading: string, part: int, out: [] u8) -> string #effects(all) {
   digits: [20] u8; d := 0; v := part;
   while d == 0 || v > 0 { digits[d] = cast(u8) ('0' + v % 10); v /= 10; d += 1; }
   n := path.count + heading.count + 2 + d;
@@ -203,7 +203,7 @@ an_id :: (path: string, heading: string, part: int, out: [] u8) -> string {
 // and texts, one each). The answer may be served only when the check is
 // current: the passage exists, its digest is the cited one, and the cited
 // bytes are exactly the quoted answer.
-an_check :: (c: AnCite, quote: string, ids: [] string, heads: [] string, texts: [] string) -> AnCheck {
+an_check :: (c: AnCite, quote: string, ids: [] string, heads: [] string, texts: [] string) -> AnCheck #effects(all) {
   for id, i: ids {
     if id != c.id { continue; }
     if !an_same_digest(an_digest(heads[i], texts[i]), c.digest) { return AnCheck.changed; }
@@ -212,7 +212,7 @@ an_check :: (c: AnCite, quote: string, ids: [] string, heads: [] string, texts: 
   }
   return AnCheck.deleted;
 }
-an_serve :: (c: AnCheck) -> bool { return c == AnCheck.current; }
+an_serve :: (c: AnCheck) -> bool #effects(all) { return c == AnCheck.current; }
 ```
 
 A changed passage is refused even when the quoted sentence itself is

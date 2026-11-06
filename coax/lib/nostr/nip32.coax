@@ -173,22 +173,22 @@ N32_T_ID :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 // ---- test events: a parsed event of this kind with these tags, read from
 // out, and the same with every byte of its author and id set to one value.
-n32_event :: (kind:int,tags:string)->NostrEvent {e:=nt_event(tags);e.kind=kind;return e;}
-n32_event_in :: (kind:int,tags:string,out:[]u8)->NostrEvent {
+n32_event :: (kind:int,tags:string)->NostrEvent #effects(all) {e:=nt_event(tags);e.kind=kind;return e;}
+n32_event_in :: (kind:int,tags:string,out:[]u8)->NostrEvent #effects(all) {
   n:=json_raw(out,0,tags);e:=nt_event(cast(string)out[0..<n]);e.kind=kind;return e;
 }
-n32_at :: (e:NostrEvent,author:u8,id:u8)->NostrEvent {
+n32_at :: (e:NostrEvent,author:u8,id:u8)->NostrEvent #effects(all) {
   r:=e;for i:0..<32 {r.public_key[i]=author;r.id[i]=id;}return r;
 }
 
-n32_is :: (t:N32Text,s:string)->bool {c:=t;return cast(string)c.b[0..<c.n]==s;}
-n32_refuse :: (r:N32Labels,status:int,at:int)->N32Labels {o:=r;o.status=status;o.at=at;return o;}
-n32_fail :: (t:N32Tag,error:int)->N32Tag {r:=t;r.error=error;return r;}
+n32_is :: (t:N32Text,s:string)->bool #effects(all) {c:=t;return cast(string)c.b[0..<c.n]==s;}
+n32_refuse :: (r:N32Labels,status:int,at:int)->N32Labels #effects(all) {o:=r;o.status=status;o.at=at;return o;}
+n32_fail :: (t:N32Tag,error:int)->N32Tag #effects(all) {r:=t;r.error=error;return r;}
 
 // book:begin tag
 // The index'th tag of any name: its name and first two values decoded, and
 // how many values it has. Later values are counted, not read.
-n32_tag :: (e:NostrEvent,index:int)->N32Tag {
+n32_tag :: (e:NostrEvent,index:int)->N32Tag #effects(all) {
   t:N32Tag;j:[1]Json;if !nt_start(j[..],e) {return t;}
   k:=0;tok:=json_next(j[..]);
   while tok==JSON_ARRAY && k<index {skipped:=json_skip(j[..]);k+=1;tok=json_next(j[..]);}
@@ -212,7 +212,7 @@ n32_tag :: (e:NostrEvent,index:int)->N32Tag {
 // book:begin read
 // The labels an event carries. Kind 1985 labels the targets its e, p, a, r
 // and t tags name; any other kind labels itself.
-n32_labels :: (e:NostrEvent)->N32Labels {
+n32_labels :: (e:NostrEvent)->N32Labels #effects(all) {
   r:N32Labels;if e.error!=NE_OK {return r;}
   r.self=e.kind!=N32_KIND;
   marks:[N32_MAX_LABELS]N32Text;marked:[N32_MAX_LABELS]bool;
@@ -268,19 +268,19 @@ n32_labels :: (e:NostrEvent)->N32Labels {
 }
 // book:end read
 
-n32_find :: (list:[]N32Text,s:N32Text)->int {
+n32_find :: (list:[]N32Text,s:N32Text)->int #effects(all) {
   for k:0..<list.count {if n32_text_order(list[k],s)==0 {return k;}}
   return -1;
 }
 // Byte order, a prefix first: negative, zero or positive.
-n32_text_order :: (a:N32Text,b:N32Text)->int {
+n32_text_order :: (a:N32Text,b:N32Text)->int #effects(all) {
   for i:0..<a.n {
     if i==b.n {return 1;}
     if a.b[i]!=b.b[i] {return cast(int)a.b[i]-cast(int)b.b[i];}
   }
   return a.n-b.n;
 }
-n32_entry_order :: (a:N32Entry,b:N32Entry)->int {
+n32_entry_order :: (a:N32Entry,b:N32Entry)->int #effects(all) {
   o:=n32_text_order(a.ns,b.ns);if o!=0 {return o;}
   for i:0..<32 {if a.signer[i]!=b.signer[i] {return cast(int)a.signer[i]-cast(int)b.signer[i];}}
   return n32_text_order(a.value,b.value);
@@ -288,13 +288,13 @@ n32_entry_order :: (a:N32Entry,b:N32Entry)->int {
 
 // book:begin group
 // Whether key is one of the signers the caller trusts.
-n32_trusted :: (trusted:[][32]u8,key:[32]u8)->bool {
+n32_trusted :: (trusted:[][32]u8,key:[32]u8)->bool #effects(all) {
   for k:0..<trusted.count {if ns_equal32(trusted[k],key) {return true;}}
   return false;
 }
 // Whether the labels l, read from e, are about target: kind 1985 names it
 // in an e or p tag; a self-label is about the event itself.
-n32_about :: (e:NostrEvent,l:N32Labels,target:[32]u8)->bool {
+n32_about :: (e:NostrEvent,l:N32Labels,target:[32]u8)->bool #effects(all) {
   if l.self {return ns_equal32(e.id,target);}
   for k:0..<l.targets_n {if ns_equal32(l.targets[k].key,target) {return true;}}
   return false;
@@ -302,7 +302,7 @@ n32_about :: (e:NostrEvent,l:N32Labels,target:[32]u8)->bool {
 // The labels about target from the trusted signers in set, one entry per
 // namespace, signer and value, sorted in that order so each namespace's
 // labels sit together, signer by signer. Labels by anyone else are ignored.
-n32_group :: (set:[]NostrEvent,trusted:[][32]u8,target:[32]u8,out:[]N32Entry)->N32Tally {
+n32_group :: (set:[]NostrEvent,trusted:[][32]u8,target:[32]u8,out:[]N32Entry)->N32Tally #effects(all) {
   t:N32Tally;
   for i:0..<set.count {
     l:=n32_labels(set[i]);
@@ -323,7 +323,7 @@ n32_group :: (set:[]NostrEvent,trusted:[][32]u8,target:[32]u8,out:[]N32Entry)->N
   return t;
 }
 // How many trusted signers gave this label: entries are one per signer.
-n32_signers :: (entries:[]N32Entry,ns:string,value:string)->int {
+n32_signers :: (entries:[]N32Entry,ns:string,value:string)->int #effects(all) {
   c:=0;
   for k:0..<entries.count {if n32_is(entries[k].ns,ns) && n32_is(entries[k].value,value) {c+=1;}}
   return c;

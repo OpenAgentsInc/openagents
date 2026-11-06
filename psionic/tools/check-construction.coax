@@ -28,7 +28,7 @@ ccn_native :: ()->int {
         }
     }#assert fs_remove(dir);return 0;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {tool_errln("usage: check-construction all|checks|mutate|native|book");return 2;}
     phase:=args_at(a[..],0);out:[16777216]u8;
     if phase=="all" {start:=proc_now_ms();for part:[4]string.["checks","mutate","native","book"] {

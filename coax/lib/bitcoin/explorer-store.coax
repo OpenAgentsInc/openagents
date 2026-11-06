@@ -96,18 +96,18 @@ ExOutput :: struct { code: int; status: int; spend: AxiSpend; }
   #assert ex_output(table[..],c[0].used,point[..],1,1234,script[..],true).code == TXI_CORRUPT;
 }
 
-ex_id :: (text: string, out: [] u8) -> bool {
+ex_id :: (text: string, out: [] u8) -> bool #effects(all) {
   if text.count != 64 || out.count != 32 { return false; }
   if hex_decode_checked(text,out,false).error != NC_OK { return false; }
   for i: 0..<16 { a := out[i]; out[i] = out[31-i]; out[31-i] = a; } return true;
 }
-ex_network :: (chain: int) -> int { return ifx chain == 1 then 1 else (ifx chain == 5 then 3 else 2); }
-ex_block_hash :: (table: [] u8, used: int, hash: [] u8) -> ExBlock {
+ex_network :: (chain: int) -> int #effects(all) { return ifx chain == 1 then 1 else (ifx chain == 5 then 3 else 2); }
+ex_block_hash :: (table: [] u8, used: int, hash: [] u8) -> ExBlock #effects(all) {
   b := txi_block_vartime(table,used,hash); if b.code != LC_OK { return ExBlock.{code=b.code}; }
   active := axi_active_vartime(table,used,hash,b.height); if active < 0 { return ExBlock.{code=TXI_CORRUPT}; }
   r := ExBlock.{active=active == 1,record=b}; for k: 0..<32 { r.hash[k] = hash[k]; } return r;
 }
-ex_block_key :: (table: [] u8, used: int, key: string, genesis: [] u8) -> ExBlock #export_c {
+ex_block_key :: (table: [] u8, used: int, key: string, genesis: [] u8) -> ExBlock #export_c #effects(all) {
   if axi_context_vartime(table,used) != LC_OK || genesis.count != 32 { return ExBlock.{code=LC_CONTEXT}; }
   height := ex_decimal(key); hash: [32] u8;
   if height < 0 {
@@ -125,7 +125,7 @@ ex_block_key :: (table: [] u8, used: int, key: string, genesis: [] u8) -> ExBloc
   }
   return ExBlock.{code=TXI_MISS};
 }
-ex_output :: (table: [] u8, used: int, point: [] u8, height: int, value: int, script: [] u8, active: bool) -> ExOutput #export_c {
+ex_output :: (table: [] u8, used: int, point: [] u8, height: int, value: int, script: [] u8, active: bool) -> ExOutput #export_c #effects(all) {
   if axi_context_vartime(table,used) != LC_OK || point.count != 36 || !lc_amount_ok(value) { return ExOutput.{code=LC_CONTEXT}; }
   if !active { return ExOutput.{status=4}; }
   if lc_unspendable(script) { return ExOutput.{status=3}; }

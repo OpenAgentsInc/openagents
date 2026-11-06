@@ -166,7 +166,7 @@ GtPlan :: struct {status:GtStatus;parameters:int;work:int;rows:int;bytes:int;siz
 // What one run of chapter 115's decoder needs on the device, in bytes, and
 // whether the device has a kernel for every part of the step. Nothing is
 // allocated unless the whole plan fits the budget.
-gt_plan :: (s:TdShape,c:TrConfig,docs:[]PkDoc,tokens:[]u8,budget:int)->GtPlan #export_c {
+gt_plan :: (s:TdShape,c:TrConfig,docs:[]PkDoc,tokens:[]u8,budget:int)->GtPlan #export_c #effects(all) {
     if !td_valid(s) {return GtPlan.{status=GtStatus.shape};}
     n:=td_parameter_count(s);
     // The trainer admits the run first: its checkpoint (chapter 122's
@@ -186,7 +186,7 @@ gt_plan :: (s:TdShape,c:TrConfig,docs:[]PkDoc,tokens:[]u8,budget:int)->GtPlan #e
     return p;
 }
 // book:end plan
-gt_status :: (s:GtStatus)->string {
+gt_status :: (s:GtStatus)->string #effects(all) {
     if s==GtStatus.ok {return "admitted";}
     if s==GtStatus.shape {return "refused: the shape is not a chapter 113 decoder the trainer can checkpoint, or rows are not the context long";}
     if s==GtStatus.kernel {return "refused: no device kernel for this optimizer, decay or micro-batch";}
@@ -201,7 +201,7 @@ GtDecide :: struct {status:TrStatus;revision:int;loss:f64;norm:f64;rate:f64;clip
 // tr_apply. The loss sums the rows' losses over the micro-batch count in
 // order; the norm decides clipping; the schedule gives the rate; AdamW's
 // bias corrections for the next step are computed here, once.
-gt_decide :: (c:TrConfig,run:TrRun,b:TrBatch,losses:[]f64,squares:f64)->GtDecide #export_c {
+gt_decide :: (c:TrConfig,run:TrRun,b:TrBatch,losses:[]f64,squares:f64)->GtDecide #export_c #effects(all) {
     fail:=GtDecide.{status=TrStatus.order,revision=run.revision};
     if b.status!=TrStatus.ok || b.revision!=run.revision || b.micro<1 || losses.count!=b.micro {return fail;}
     k:=f64(b.micro);loss:=0.0;for x:losses {loss+=x/k;}
@@ -215,7 +215,7 @@ gt_decide :: (c:TrConfig,run:TrRun,b:TrBatch,losses:[]f64,squares:f64)->GtDecide
 // AdamW refuses; flags[1]: a parameter outside the bound): the rest of
 // tr_apply. Only an admitted step advances the run; the caller then
 // launches the commit.
-gt_commit :: (c:TrConfig,run:TrRun,b:TrBatch,d:GtDecide,flags:[]f64)->TrStep #export_c {
+gt_commit :: (c:TrConfig,run:TrRun,b:TrBatch,d:GtDecide,flags:[]f64)->TrStep #export_c #effects(all) {
     fail:=TrStep.{run=run,status=d.status};
     if d.status!=TrStatus.ok {return fail;}
     if d.revision!=run.revision || b.revision!=run.revision || b.status!=TrStatus.ok {fail.status=TrStatus.order;return fail;}
@@ -229,11 +229,11 @@ gt_commit :: (c:TrConfig,run:TrRun,b:TrBatch,d:GtDecide,flags:[]f64)->TrStep #ex
 
 // book:begin cpu
 // The shape as the kernels read it.
-gt_shape :: (s:TdShape,sh:[]int) #export_c {x:=[8]int.[s.vocab,s.width,s.heads,s.kv_heads,s.head_width,s.hidden,s.layers,s.context];for i:0..<8 {sh[i]=x[i];}}
+gt_shape :: (s:TdShape,sh:[]int) #export_c #effects(all) {x:=[8]int.[s.vocab,s.width,s.heads,s.kv_heads,s.head_width,s.hidden,s.layers,s.context];for i:0..<8 {sh[i]=x[i];}}
 // One step on the CPU: the device's launches, in the device's order, each
 // kernel run once for every work item. rows holds the batch tr_next filled.
 // flags is scalars[1..<3]: the norm is scalars[0].
-gt_step_cpu :: (s:TdShape,c:TrConfig,run:TrRun,b:TrBatch,rows:[]u8,rope:[]f64,p:[]f64,m:[]f64,v:[]f64,stage:[]f64,total:[]f64,grads:[]f64,work:[]f64,dwork:[]f64,losses:[]f64,scalars:[]f64)->TrStep #export_c {
+gt_step_cpu :: (s:TdShape,c:TrConfig,run:TrRun,b:TrBatch,rows:[]u8,rope:[]f64,p:[]f64,m:[]f64,v:[]f64,stage:[]f64,total:[]f64,grads:[]f64,work:[]f64,dwork:[]f64,losses:[]f64,scalars:[]f64)->TrStep #export_c #effects(all) {
     sh:[8]int;gt_shape(s,sh[..]);n:=p.count;micro:=b.micro;
     if b.status!=TrStatus.ok || micro<1 || micro>losses.count {return TrStep.{status=TrStatus.order,run=run};}
     for i:0..<micro {gk_rows(i,sh[..],p,rows,rope,work,dwork,grads,losses);}
@@ -249,12 +249,12 @@ gt_step_cpu :: (s:TdShape,c:TrConfig,run:TrRun,b:TrBatch,rows:[]u8,rope:[]f64,p:
 }
 // book:end cpu
 // The rope table the host fills once, for the shape's head width and context.
-gt_rope :: (s:TdShape,out:[]f64) #export_c {gk_rope_table(s.head_width,s.context,out);}
+gt_rope :: (s:TdShape,out:[]f64) #export_c #effects(all) {gk_rope_table(s.head_width,s.context,out);}
 
 // book:begin config
 // Chapter 118's tm_decoder: AdamW on chapter 115's linear schedule, each
 // step `rows` packed rows of the context length, one row a micro-batch.
-gt_config :: (s:TdShape,rows:int,steps:int)->TrConfig #export_c {
+gt_config :: (s:TdShape,rows:int,steps:int)->TrConfig #export_c #effects(all) {
     return TrConfig.{optimizer=TrOptimizer.adamw,schedule=TrSchedule.linear,source=TrSource.stream,rate=TT_RATE,drop=0.9,beta1=0.9,beta2=0.99,eps=0.00000001,
         bound=TD_NUMBER,batch=1,accumulate=rows,length=s.context,steps=steps,seed=TT_ORDER};
 }
@@ -262,11 +262,11 @@ gt_config :: (s:TdShape,rows:int,steps:int)->TrConfig #export_c {
 // equal the CPU's or its gap is at most this fraction of their magnitudes.
 GT_TOLERANCE :: 0.000000001;
 // book:end config
-gt_tolerance :: ()->f64 #export_c {return GT_TOLERANCE;}
+gt_tolerance :: ()->f64 #export_c #effects(all) {return GT_TOLERANCE;}
 GtGap :: struct {count:int;differ:int;far:int;worst:f64;at:int=-1;}
 // How a device result compares with the CPU's, element by element.
 // at is the first element with the worst gap (-1 when none differs in value).
-gt_gap :: (device:[]f64,cpu:[]f64,tolerance:f64)->GtGap #export_c {
+gt_gap :: (device:[]f64,cpu:[]f64,tolerance:f64)->GtGap #export_c #effects(all) {
     g:=GtGap.{count=device.count};if device.count!=cpu.count {g.far=1;return g;}
     for i:0..<device.count {a:=device[i];b:=cpu[i];
         if f64_bits(a)==f64_bits(b) {continue;}
@@ -276,15 +276,15 @@ gt_gap :: (device:[]f64,cpu:[]f64,tolerance:f64)->GtGap #export_c {
 }
 
 // The run's data and the C host's entry points to chapter 115 and 118.
-gt_fix :: ()->TtFix #export_c {return tt_fix();}
-gt_tiny :: ()->TdShape #export_c {return TT_SHAPE;}
-gt_init :: (s:TdShape,p:[]f64) #export_c {seed:=td_init(s,CrSeed.{seed=TT_INIT},p);}
-gt_begin :: (c:TrConfig,n:int,docs:[]PkDoc,tokens:[]u8,order:[]int)->TrState #export_c {return tr_begin(c,n,docs,tokens,order);}
-gt_next :: (c:TrConfig,run:TrRun,docs:[]PkDoc,tokens:[]u8,rows:[]u8)->TrBatch #export_c {return tr_next(c,run,docs,tokens,rows);}
-gt_ids :: (s:TdShape,c:TrConfig,docs:[]PkDoc,tokens:[]u8)->CkIds #export_c {i:=tt_ids(s,docs,tokens,c.steps);return tr_ids(c,i.model,i.tokenizer,i.dataset);}
-gt_size :: (n:int)->int #export_c {return tr_size(n);}
-gt_save :: (ids:CkIds,run:TrRun,p:[]f64,m:[]f64,v:[]f64,bytes:[]u8,pointer:[]u8)->CkStatus #export_c {return tr_save(ids,run,p,m,v,bytes,pointer);}
-gt_resume :: (c:TrConfig,ids:CkIds,pointer:[]u8,bytes:[]u8,docs:[]PkDoc,tokens:[]u8,p:[]f64,m:[]f64,v:[]f64,order:[]int)->TrResume #export_c {
+gt_fix :: ()->TtFix #export_c #effects(all) {return tt_fix();}
+gt_tiny :: ()->TdShape #export_c #effects(all) {return TT_SHAPE;}
+gt_init :: (s:TdShape,p:[]f64) #export_c #effects(all) {seed:=td_init(s,CrSeed.{seed=TT_INIT},p);}
+gt_begin :: (c:TrConfig,n:int,docs:[]PkDoc,tokens:[]u8,order:[]int)->TrState #export_c #effects(all) {return tr_begin(c,n,docs,tokens,order);}
+gt_next :: (c:TrConfig,run:TrRun,docs:[]PkDoc,tokens:[]u8,rows:[]u8)->TrBatch #export_c #effects(all) {return tr_next(c,run,docs,tokens,rows);}
+gt_ids :: (s:TdShape,c:TrConfig,docs:[]PkDoc,tokens:[]u8)->CkIds #export_c #effects(all) {i:=tt_ids(s,docs,tokens,c.steps);return tr_ids(c,i.model,i.tokenizer,i.dataset);}
+gt_size :: (n:int)->int #export_c #effects(all) {return tr_size(n);}
+gt_save :: (ids:CkIds,run:TrRun,p:[]f64,m:[]f64,v:[]f64,bytes:[]u8,pointer:[]u8)->CkStatus #export_c #effects(all) {return tr_save(ids,run,p,m,v,bytes,pointer);}
+gt_resume :: (c:TrConfig,ids:CkIds,pointer:[]u8,bytes:[]u8,docs:[]PkDoc,tokens:[]u8,p:[]f64,m:[]f64,v:[]f64,order:[]int)->TrResume #export_c #effects(all) {
     return tr_resume(c,ids,pointer,bytes,docs,tokens,p,m,v,order);
 }
 
@@ -293,7 +293,7 @@ gt_resume :: (c:TrConfig,ids:CkIds,pointer:[]u8,bytes:[]u8,docs:[]PkDoc,tokens:[
 // chapter 113's td_gradients on each row, tr_add and tr_apply. rows holds a
 // step's rows, w and dw one row's work, g one row's gradient, stage 3 * n
 // values; losses gets each step's loss.
-gt_reference :: (s:TdShape,c:TrConfig,docs:[]PkDoc,tokens:[]u8,order:[]int,run:TrRun,count:int,rows:[]u8,w:[]f64,dw:[]f64,g:[]f64,p:[]f64,m:[]f64,v:[]f64,total:[]f64,stage:[]f64,losses:[]f64)->TrStep #export_c {
+gt_reference :: (s:TdShape,c:TrConfig,docs:[]PkDoc,tokens:[]u8,order:[]int,run:TrRun,count:int,rows:[]u8,w:[]f64,dw:[]f64,g:[]f64,p:[]f64,m:[]f64,v:[]f64,total:[]f64,stage:[]f64,losses:[]f64)->TrStep #export_c #effects(all) {
     n:=p.count;ints:[64]int;r:=run;nw:=td_work_count(s);
     if !td_valid(s) || n!=td_parameter_count(s) || w.count<nw || dw.count<nw || g.count<n || rows.count<c.accumulate*c.length || c.length>64 {return TrStep.{status=TrStatus.shape,run=run};}
     for k:0..<count {
@@ -309,7 +309,7 @@ gt_reference :: (s:TdShape,c:TrConfig,docs:[]PkDoc,tokens:[]u8,order:[]int,run:T
 }
 // book:end reference
 // The same run with every step made by gt_step_cpu.
-gt_run_cpu :: (s:TdShape,c:TrConfig,docs:[]PkDoc,tokens:[]u8,run:TrRun,count:int,rows:[]u8,rope:[]f64,p:[]f64,m:[]f64,v:[]f64,stage:[]f64,total:[]f64,grads:[]f64,work:[]f64,dwork:[]f64,rowloss:[]f64,scalars:[]f64,losses:[]f64)->TrStep #export_c {
+gt_run_cpu :: (s:TdShape,c:TrConfig,docs:[]PkDoc,tokens:[]u8,run:TrRun,count:int,rows:[]u8,rope:[]f64,p:[]f64,m:[]f64,v:[]f64,stage:[]f64,total:[]f64,grads:[]f64,work:[]f64,dwork:[]f64,rowloss:[]f64,scalars:[]f64,losses:[]f64)->TrStep #export_c #effects(all) {
     r:=run;if rows.count<c.accumulate*c.length {return TrStep.{status=TrStatus.shape,run=run};}
     for k:0..<count {
         b:=tr_next(c,r,docs,tokens,rows[0..<c.accumulate*c.length]);if b.status!=TrStatus.ok {return TrStep.{status=b.status,run=r};}

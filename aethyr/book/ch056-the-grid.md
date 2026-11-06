@@ -74,7 +74,7 @@ nothing:
 // This frame's controls as one Intent: the touch stick when it is pushed past the dead zone,
 // else the keys; a jump from Space or a tap; the drag's, the arrows' and the right thumb's look
 // together; the wheel's and the pinch's zoom (already in metres, `zoom`).
-gw_intent :: (g: [] GridWalk, key_x: f32, key_y: f32, shift: bool, space: bool, look_x: f32, look_y: f32, zoom: f32) -> Intent {
+gw_intent :: (g: [] GridWalk, key_x: f32, key_y: f32, shift: bool, space: bool, look_x: f32, look_y: f32, zoom: f32) -> Intent #effects(all) {
   t := g[0].thumbs;
   acting := false;   // the Grid has no act control yet
   keys := input_keys(key_x, key_y, shift, space, acting, look_x + t.dyaw, look_y + t.dpitch, zoom);
@@ -89,7 +89,7 @@ gw_intent :: (g: [] GridWalk, key_x: f32, key_y: f32, shift: bool, space: bool, 
 // Once a frame: the controls into the record, then the steps the frame's time makes due. A
 // frozen frame (the page's golden pictures) runs no step and records nothing.
 gridwalk_frame :: (g: [] GridWalk, key_x: f32, key_y: f32, shift: bool, space: bool, look_x: f32, look_y: f32, zoom: f32,
-                   width: f32, height: f32, dpr: f32, dt: f32, frozen: bool) #export_c {
+                   width: f32, height: f32, dpr: f32, dt: f32, frozen: bool) #export_c #effects(all) {
   if g.count < 1 { return; }
   g[0].width = width; g[0].height = height; g[0].dpr = dpr;
   g[0].now += cast(f64) pc.hi(ifx pc.finite(dt) then dt else 0, 0);
@@ -119,7 +119,7 @@ leaves its state's digest in the record:
 <!-- source: verse/gridwalk.coax gridwalk-step -->
 ```jai
 // The frames the record holds for the next step, into the input buffer.
-gw_take :: (g: [] GridWalk, s: ReplaySession) {
+gw_take :: (g: [] GridWalk, s: ReplaySession) #effects(all) {
   while true {
     t := replay_take(s);
     if !t.ok { break; }
@@ -128,10 +128,10 @@ gw_take :: (g: [] GridWalk, s: ReplaySession) {
 }
 // One fixed step, live or replayed: the frames the record holds for it, then one sample of the
 // input buffer, then the controller's step.
-gw_world :: () -> pc.World {
+gw_world :: () -> pc.World #effects(all) {
   return pc.World.{collision = walk_profiles.collision_profile_lookup("the-grid").profile};
 }
-gw_step :: (g: [] GridWalk) {
+gw_step :: (g: [] GridWalk) #effects(all) {
   s := gw_session(g);
   gw_take(g, s);
   sm := input_sample(g[0].input);
@@ -164,7 +164,7 @@ at its step:
 // itself: true when every step gave the recorded digest and every frame was taken at its step.
 // The Grid execution profile is checked before writing `again`; ReplayEvent's envelope stays
 // unchanged. Old profile-1 digests cannot be interpreted as profile 2.
-gridwalk_replay :: (g: [] GridWalk, again: [] GridWalk) -> bool #export_c {
+gridwalk_replay :: (g: [] GridWalk, again: [] GridWalk) -> bool #export_c #effects(all) {
   if g.count < 1 || again.count < 1 || g[0].profile != GW_PROFILE { return false; }
   again[0] = g[0];
   again[0].you = g[0].start;
@@ -175,12 +175,12 @@ gridwalk_replay :: (g: [] GridWalk, again: [] GridWalk) -> bool #export_c {
   return replay_matched(s);
 }
 // The record's step digests, for comparing hosts: step k's, or -1 past the last.
-gridwalk_mark :: (g: [] GridWalk, k: int) -> int #export_c {
+gridwalk_mark :: (g: [] GridWalk, k: int) -> int #export_c #effects(all) {
   if g.count < 1 || k < 0 || k >= g[0].n[REPLAY_MARKS] { return -1; }
   return g[0].marks[k];
 }
-gridwalk_steps :: (g: [] GridWalk) -> int #export_c { return ifx g.count < 1 then 0 else g[0].n[REPLAY_MARKS]; }
-gridwalk_session :: (g: [] GridWalk) -> int #export_c { return ifx g.count < 1 then 0 else replay_digest(gw_session(g)); }
+gridwalk_steps :: (g: [] GridWalk) -> int #export_c #effects(all) { return ifx g.count < 1 then 0 else g[0].n[REPLAY_MARKS]; }
+gridwalk_session :: (g: [] GridWalk) -> int #export_c #effects(all) { return ifx g.count < 1 then 0 else replay_digest(gw_session(g)); }
 ```
 
 ### Worked by hand

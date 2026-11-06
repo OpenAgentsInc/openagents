@@ -35,14 +35,14 @@
     m.p[1]=data[0..<0];#assert ds_step(m,0,0,cache[..],o,w,false).status==DsStatus.weights;
 }
 
-ds_model_valid :: (m:DsModel)->bool {
+ds_model_valid :: (m:DsModel)->bool #effects(all) {
     s:=m.shape;if !ds_shape(s) || m.blocks.count!=s.layers {return false;}d:=s.width;h:=s.hidden;k:=s.kv_heads*s.head;
     if m.p[0].count!=2*s.vocab*d || m.p[1].count!=2*d || m.p[2].count!=2*s.vocab*d {return false;}
     sizes:=[12]int.[d,d,d*d,d,k*d,k,k*d,k,d*d,h*d,h*d,d*h];
     for block:m.blocks {for i:0..<12 {if block.p[i].count!=2*sizes[i] {return false;}}}return true;
 }
 // book:begin step
-ds_step :: (m:DsModel,token:int,position:int,cache:[]f32,out:DsOutput,work:DsWork,overlap:bool)->DsResult #export_c {
+ds_step :: (m:DsModel,token:int,position:int,cache:[]f32,out:DsOutput,work:DsWork,overlap:bool)->DsResult #export_c #effects(all) {
     s:=m.shape;p:=ds_plan(s);if p.status!=DsStatus.ok {return DsResult.{status=p.status};}
     if token<0 || token>=s.vocab {return DsResult.{status=DsStatus.token};}if position<0 || position>=s.capacity {return DsResult.{status=DsStatus.state};}
     if !ds_model_valid(m) {return DsResult.{status=DsStatus.weights};}
@@ -80,7 +80,7 @@ ds_step :: (m:DsModel,token:int,position:int,cache:[]f32,out:DsOutput,work:DsWor
 // book:end step
 
 DsViews :: struct {x:[]f32;normal:[]f32;q:[]f32;key:[]f32;value:[]f32;attention:[]f32;projected:[]f32;gate:[]f32;up:[]f32;activated:[]f32;stage:[]f32;scratch:[]f32;pending:[]f32;trace:[]f32;logits:[]f32;rope:[]f32;}
-ds_views :: (f:[]f32,p:DsPlan)->DsViews {b:=p.begin;return DsViews.{x=f[b[0]..<b[1]],normal=f[b[1]..<b[2]],q=f[b[2]..<b[3]],key=f[b[3]..<b[4]],value=f[b[4]..<b[5]],attention=f[b[5]..<b[6]],projected=f[b[6]..<b[7]],gate=f[b[7]..<b[8]],up=f[b[8]..<b[9]],activated=f[b[9]..<b[10]],stage=f[b[10]..<b[11]],scratch=f[b[11]..<b[12]],pending=f[b[12]..<b[13]],trace=f[b[13]..<b[14]],logits=f[b[14]..<b[15]],rope=f[b[15]..<b[16]]};}
+ds_views :: (f:[]f32,p:DsPlan)->DsViews #effects(all) {b:=p.begin;return DsViews.{x=f[b[0]..<b[1]],normal=f[b[1]..<b[2]],q=f[b[2]..<b[3]],key=f[b[3]..<b[4]],value=f[b[4]..<b[5]],attention=f[b[5]..<b[6]],projected=f[b[6]..<b[7]],gate=f[b[7]..<b[8]],up=f[b[8]..<b[9]],activated=f[b[9]..<b[10]],stage=f[b[10]..<b[11]],scratch=f[b[11]..<b[12]],pending=f[b[12]..<b[13]],trace=f[b[13]..<b[14]],logits=f[b[14]..<b[15]],rope=f[b[15]..<b[16]]};}
 #test "every workspace view has its exact disjoint interval" {
     f:[512]f32;for i:0..<512 {f[i]=f32(i);}p:=ds_plan(DS_TINY_SHAPE);v:=ds_views(f[..],p);
     parts:=[16][]f32.[v.x,v.normal,v.q,v.key,v.value,v.attention,v.projected,v.gate,v.up,v.activated,v.stage,v.scratch,v.pending,v.trace,v.logits,v.rope];

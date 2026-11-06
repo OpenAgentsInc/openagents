@@ -14,7 +14,7 @@ cf_run :: (argv:[]string,seconds:int,out:[]u8)->int {
     if r.status!=0 || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);tool_errln(cast(string)out[0..<r.out_n]);return -1;}
     return r.out_n;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
     args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=1 {tool_errln("usage: check-fit all|checks|mutate|native");return 2;}
     phase:=args_at(args[..],0);out:[4194304]u8;
     if phase=="all" {

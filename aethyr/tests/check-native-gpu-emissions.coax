@@ -5,7 +5,7 @@
 #load "native-gpu-reference-tools.coax";
 ngq_add_env :: (key:string,value:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],key);jo_put(o[..],"=");jo_put(o[..],value);return jo_text(o[..]);}
 ngq_same_file :: (a:string,b:string)->bool {if fs_exists(a)!=fs_exists(b) {return false;}if !fs_exists(a) {return true;}x:[64]u8;y:[64]u8;return rtq_hash_file(a,x[..]) && rtq_hash_file(b,y[..]) && cast(string)x[..]==cast(string)y[..];}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}work:=args_value(a[..],"--work-dir","");emitter:=args_value(a[..],"--emitter","");fixture:=args_value(a[..],"--fixture-compiler","");ssh_fixture:=args_value(a[..],"--fixture-ssh","");real:=args_value(a[..],"--real-coax","");receipt:=args_value(a[..],"--receipt","");
   if work=="" || emitter=="" || fixture=="" || ssh_fixture=="" || real=="" || receipt=="" || fs_exists(work) || fs_exists(receipt) || !fs_mkdir(work) {return 2;}
   paths:[12][4096]u8;root_buf:[4096]u8;root:=fs_cwd(root_buf[..]);deadline:=proc_deadline(810000,proc_now_ms());out:[1048576]u8;err:[65536]u8;none:[]string;inputs:[1]RtqInputs;

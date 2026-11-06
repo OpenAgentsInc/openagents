@@ -182,7 +182,7 @@ td_loss :: (s:TdShape,w:[]f64,tokens:[]int)->f64 {
         sum:=0.0;for v:0..<s.vocab {sum+=exp(w[z+v]-top);}total+=top+log(sum)-w[z+tokens[t+1]];}
     return total/f64(tokens.count-1);
 }
-td_forward :: (s:TdShape,p:[]f64,tokens:[]int,w:[]f64,logits:[]f64,overlap:bool)->TdResult #export_c {
+td_forward :: (s:TdShape,p:[]f64,tokens:[]int,w:[]f64,logits:[]f64,overlap:bool)->TdResult #export_c #effects(all) {
     status:=td_admit(s,p,w);if status!=TdStatus.ok {return TdResult.{status=status};}
     status=td_tokens(s,tokens);if status!=TdStatus.ok {return TdResult.{status=status};}
     n:=tokens.count*s.vocab;if logits.count<n {return TdResult.{status=TdStatus.capacity};}if overlap {return TdResult.{status=TdStatus.alias};}
@@ -193,7 +193,7 @@ td_forward :: (s:TdShape,p:[]f64,tokens:[]int,w:[]f64,logits:[]f64,overlap:bool)
 // book:begin decode
 // One incremental step: `filled` positions are already in the cache; this
 // writes position `filled` and returns its logits.
-td_decode :: (s:TdShape,p:[]f64,cache:[]f64,filled:int,token:int,logits:[]f64,overlap:bool)->TdResult #export_c {
+td_decode :: (s:TdShape,p:[]f64,cache:[]f64,filled:int,token:int,logits:[]f64,overlap:bool)->TdResult #export_c #effects(all) {
     status:=td_admit(s,p,cache);if status!=TdStatus.ok {return TdResult.{status=status};}
     if filled<0 || filled>=s.context {return TdResult.{status=TdStatus.position};}if token<0 || token>=s.vocab {return TdResult.{status=TdStatus.token};}
     if logits.count<s.vocab {return TdResult.{status=TdStatus.capacity};}if overlap {return TdResult.{status=TdStatus.alias};}
@@ -212,7 +212,7 @@ td_matvec_back :: (p:[]f64,wo:int,rows:int,cols:int,x:[]f64,xo:int,dy:[]f64,dyo:
     for r:0..<rows {for c:0..<cols {grads[wo+r*cols+c]+=dy[dyo+r]*x[xo+c];dx[dxo+c]+=p[wo+r*cols+c]*dy[dyo+r];}}
 }
 // book:begin backward
-td_gradients :: (s:TdShape,p:[]f64,tokens:[]int,w:[]f64,dw:[]f64,grads:[]f64,overlap:bool)->TdResult #export_c {
+td_gradients :: (s:TdShape,p:[]f64,tokens:[]int,w:[]f64,dw:[]f64,grads:[]f64,overlap:bool)->TdResult #export_c #effects(all) {
     status:=td_admit(s,p,w);if status!=TdStatus.ok {return TdResult.{status=status};}
     status=td_tokens(s,tokens);if status!=TdStatus.ok {return TdResult.{status=status};}if tokens.count<2 {return TdResult.{status=TdStatus.shape};}
     if dw.count<td_work_count(s) || grads.count!=p.count {return TdResult.{status=TdStatus.capacity};}if overlap {return TdResult.{status=TdStatus.alias};}
@@ -247,7 +247,7 @@ td_gradients :: (s:TdShape,p:[]f64,tokens:[]int,w:[]f64,dw:[]f64,grads:[]f64,ove
 }
 // book:end backward
 // Uniform(-1,1)/sqrt(fan-in) matrices, unit norm gains, from a counter RNG.
-td_init :: (s:TdShape,seed:CrSeed,p:[]f64)->CrSeed #export_c {
+td_init :: (s:TdShape,seed:CrSeed,p:[]f64)->CrSeed #export_c #effects(all) {
     state:=seed;for i:0..<p.count {draw:=cr_draw(state);state=draw.next;p[i]=(2*draw.value-1)/sqrt(f64(s.width));}
     for l:0..<s.layers {b:=td_block(s,l);for i:0..<s.width {p[b.norm1+i]=1;p[b.norm2+i]=1;}
         for i:0..<s.width*s.hidden {p[b.w2+i]*=sqrt(f64(s.width))/sqrt(f64(s.hidden));}}

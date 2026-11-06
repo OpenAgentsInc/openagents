@@ -109,7 +109,7 @@ such as `1024x1024`.
 ```jai
 // A badge definition: d is required and not empty; name, image, thumb and
 // description, when present, need a value. The first of each counts.
-n58_definition :: (e:NostrEvent)->N58Definition {
+n58_definition :: (e:NostrEvent)->N58Definition #effects(all) {
   r:N58Definition;if e.error!=NE_OK {return r;}
   if e.kind!=N58_KIND_DEFINITION {return n58_def_refuse(r,N58_KIND,-1);}
   i:=0;
@@ -159,7 +159,7 @@ pubkey between the two colons, and refuses the award when they differ.
 // A badge award: one a tag naming a kind 30009 definition, at least one p
 // tag, and signed by the definition's author. Anyone can sign a kind 8
 // event naming anyone's badge; only the issuer's award counts.
-n58_award :: (e:NostrEvent)->N58Award {
+n58_award :: (e:NostrEvent)->N58Award #effects(all) {
   r:N58Award;if e.error!=NE_OK {return r;}
   if e.kind!=N58_KIND_AWARD {return n58_award_refuse(r,N58_KIND,-1);}
   a_at:=-1;i:=0;
@@ -184,7 +184,7 @@ n58_award :: (e:NostrEvent)->N58Award {
   r.status=N58_OK;return r;
 }
 // Whether a p tag of the award names key.
-n58_names :: (e:NostrEvent,key:[32]u8)->bool {
+n58_names :: (e:NostrEvent,key:[32]u8)->bool #effects(all) {
   i:=0;t:=nostr_tag(e,0);
   while t.error!=NT_INDEX && t.error!=NT_EVENT {
     if t.error==NT_OK && t.type==NT_P && ns_equal32(t.pubkey,key) {return true;}
@@ -225,14 +225,14 @@ a badge set.
 <!-- source: coax/lib/nostr/nip58.coax profile -->
 ```jai
 // Whether two a tags name the same definition: kind, issuer and d.
-n58_same_address :: (x:NostrTag,y:NostrTag)->bool {
+n58_same_address :: (x:NostrTag,y:NostrTag)->bool #effects(all) {
   if x.address_kind!=y.address_kind || !ns_equal32(x.pubkey,y.pubkey) || x.d_n!=y.d_n {return false;}
   for k:0..<x.d_n {if x.d[k]!=y.d[k] {return false;}}
   return true;
 }
 // The verdict on one pair of owner's profile: the definition a, the award
 // id, the verified awards the caller fetched, and the pairs before it.
-n58_verdict :: (owner:NostrEvent,a:NostrTag,id:[32]u8,awards:[]NostrEvent,earlier:[]N58Pair)->int {
+n58_verdict :: (owner:NostrEvent,a:NostrTag,id:[32]u8,awards:[]NostrEvent,earlier:[]N58Pair)->int #effects(all) {
   for k:0..<earlier.count {if earlier[k].verdict==N58_SHOWN && ns_equal32(earlier[k].award,id) {return N58_DUPLICATE;}}
   found:=-1;
   for k:0..<awards.count {if awards[k].error==NE_OK && ns_equal32(awards[k].id,id) {found=k;break;}}
@@ -248,7 +248,7 @@ n58_verdict :: (owner:NostrEvent,a:NostrTag,id:[32]u8,awards:[]NostrEvent,earlie
 // A pair is an a tag naming a kind 30009 definition and the e tag right
 // after it. An a or e tag that is not part of a pair is counted as
 // unpaired; an a tag naming a kind 30008 badge set is counted in sets.
-n58_profile :: (e:NostrEvent,awards:[]NostrEvent,out:[]N58Pair)->N58Profile {
+n58_profile :: (e:NostrEvent,awards:[]NostrEvent,out:[]N58Pair)->N58Profile #effects(all) {
   r:N58Profile;if e.error!=NE_OK {return r;}
   if e.kind==N58_KIND_SET {
     d:=nostr_tag_d(e);
@@ -380,7 +380,7 @@ empty content clears the status.
 <!-- source: coax/lib/nostr/nip38.coax read -->
 ```jai
 // A NIP-40 time: one to 16 decimal digits, or -1.
-n38_time :: (t:N32Text)->int {
+n38_time :: (t:N32Text)->int #effects(all) {
   if t.n<1 || t.n>N38_MAX_DIGITS {return -1;}
   v:=0;
   for i:0..<t.n {
@@ -391,7 +391,7 @@ n38_time :: (t:N32Text)->int {
 }
 // A user status at time now. An expired status reads in full with status
 // N38_EXPIRED, so a caller can tell it from a refused one.
-n38_status :: (e:NostrEvent,now:int)->N38Status {
+n38_status :: (e:NostrEvent,now:int)->N38Status #effects(all) {
   r:N38Status;if e.error!=NE_OK {return r;}
   if e.kind!=N38_KIND_STATUS {return n38_refuse(r,N38_KIND,-1);}
   d:=nostr_tag_d(e);if d.error!=NT_OK {return r;}
@@ -457,7 +457,7 @@ author replaced it.
 // event of that type (later created_at, then the lower id, as NIP-01
 // replaces), read at now. The newest wins even when it has expired or is
 // empty; an older status never comes back.
-n38_current :: (set:[]NostrEvent,author:[32]u8,d:string,now:int)->N38Current {
+n38_current :: (set:[]NostrEvent,author:[32]u8,d:string,now:int)->N38Current #effects(all) {
   c:N38Current;
   for k:0..<set.count {
     e:=set[k];
@@ -475,7 +475,7 @@ n38_current :: (set:[]NostrEvent,author:[32]u8,d:string,now:int)->N38Current {
 }
 // Whether a client shows it: a status that reads, is not expired and is
 // not cleared.
-n38_shown :: (c:N38Current)->bool {
+n38_shown :: (c:N38Current)->bool #effects(all) {
   return c.index>=0 && c.status.status==N38_OK && !c.status.cleared;
 }
 ```

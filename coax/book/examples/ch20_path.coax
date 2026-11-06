@@ -8,12 +8,12 @@ sub :: (a: Point, b: Point) -> Point { return Point.{x = a.x - b.x, y = a.y - b.
 length :: (a: Point) -> f32 { return sqrt(a.x * a.x + a.y * a.y + a.z * a.z); }
 
 // The point a share `t` of the way from `a` to `b`.
-path_mix :: (a: Point, b: Point, t: f32) -> Point #export_c {
+path_mix :: (a: Point, b: Point, t: f32) -> Point #export_c #effects(all) {
   return Point.{x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t, z = a.z + (b.z - a.z) * t};
 }
 
 // The length of the path through every point in order.
-path_length :: (points: [] Point) -> f32 #export_c {
+path_length :: (points: [] Point) -> f32 #export_c #effects(all) {
   total: f32 = 0;
   for i: 1..<points.count {
     total += length(sub(points[i], points[i - 1]));
@@ -22,7 +22,7 @@ path_length :: (points: [] Point) -> f32 #export_c {
 }
 
 // What the camera does after `m` finishes.
-path_next :: (m: Mode) -> Mode #export_c {
+path_next :: (m: Mode) -> Mode #export_c #effects(all) {
   if m == Mode.orbit { return Mode.dolly; }
   return Mode.follow;
 }

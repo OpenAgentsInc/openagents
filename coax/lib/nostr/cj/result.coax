@@ -35,7 +35,7 @@ CJ_REQUEST_KIND :: 25900; CJ_RESULT_KIND :: 26900; CJ_FEEDBACK_KIND :: 27000;
 // book:begin family
 // The family of a kind of the given role (request 25900, result 26900 or
 // feedback 27000 as base): 0 conversation, 1 decision, 2 execution, -1 none.
-cj_family :: (kind:int,base:int)->int {
+cj_family :: (kind:int,base:int)->int #effects(all) {
   d:=kind-base;
   if d==0 || d==10 || d==20 {return d/10;}
   return -1;
@@ -46,7 +46,7 @@ cj_family :: (kind:int,base:int)->int {
 // The event's p and e tags: np and ne count them, p and e hold the last of
 // each, and a malformed one makes ok false. Other tags are not read.
 CjTags :: struct {ok:bool=true;np:int;ne:int;p:[32]u8;e:[32]u8;}
-cj_tags :: (ev:NostrEvent)->CjTags {
+cj_tags :: (ev:NostrEvent)->CjTags #effects(all) {
   r:CjTags;i:=0;
   while true {
     t:=nostr_tag(ev,i);
@@ -59,12 +59,12 @@ cj_tags :: (ev:NostrEvent)->CjTags {
   }
   return r;
 }
-cj_same :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+cj_same :: (a:[32]u8,b:[32]u8)->bool #effects(all) {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
 // book:end tags
 
 // book:begin answer
 // Whether response answers request: CJ_OK or the first refusal, in this order.
-cj_answer :: (request:NostrEvent,response:NostrEvent)->int {
+cj_answer :: (request:NostrEvent,response:NostrEvent)->int #effects(all) {
   if request.error!=NE_OK || !request.verified || response.error!=NE_OK || !response.verified {return CJ_EVENT;}
   family:=cj_family(request.kind,CJ_REQUEST_KIND);
   answer:=cj_family(response.kind,CJ_RESULT_KIND);
@@ -87,9 +87,9 @@ cj_answer :: (request:NostrEvent,response:NostrEvent)->int {
 // The vectors' ids recomputed (SHA-256 of the NIP-01 preimage) and marked
 // verified: BIP-340 is event.coax's to check and costs too many steps here;
 // the chapter's example verifies every signature at run time.
-cj_verify :: (text:string)->NostrEvent {scratch:[4096]u8;e:=nostr_event_read(text,scratch[..],false);e.verified=e.error==NE_OK;return e;}
+cj_verify :: (text:string)->NostrEvent #effects(all) {scratch:[4096]u8;e:=nostr_event_read(text,scratch[..],false);e.verified=e.error==NE_OK;return e;}
 // A verified-looking event with only these tags, kind and signer byte.
-cj_forged :: (tags:string,kind:int,signer:u8)->NostrEvent {
+cj_forged :: (tags:string,kind:int,signer:u8)->NostrEvent #effects(all) {
   e:=nt_event(tags);e.verified=true;e.kind=kind;e.public_key[31]=signer;return e;
 }
 

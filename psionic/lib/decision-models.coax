@@ -31,7 +31,7 @@ PsTarget :: struct {status:PsStatus;kind:PsKind;origin:string;revision:string;co
     #assert ps_target(0,0).status==PsStatus.capacity && ps_target(1,16385).status==PsStatus.capacity;
     #assert ps_target(0,1).status==PsStatus.ok && ps_target(1,16384).status==PsStatus.ok;
 }
-ps_target :: (kind:u8,capacity:int)->PsTarget #export_c {
+ps_target :: (kind:u8,capacity:int)->PsTarget #export_c #effects(all) {
     if kind>1 {return PsTarget.{status=PsStatus.kind};}
     if !qf_token_count(capacity) {return PsTarget.{status=PsStatus.capacity};}
     t:=PsTarget.{kind=cast(PsKind)kind,vocab=248320,tokenizer_sha="a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f",readout_sha="96ea8a5c6ecfc30c20cdd369762db5997c5f4fb9821ce0a0318941343eb5e8ba"};

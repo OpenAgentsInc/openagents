@@ -107,14 +107,14 @@ McDistance :: struct {ok:bool;worst:f64;option:int;floored:int;}
 
 // Only semantic fields are copied. Metadata cannot approve a comparison or
 // make a valid same-identity answer fail simply because the route changed.
-mc_project :: (body:string,out:[]u8)->McProjection {
+mc_project :: (body:string,out:[]u8)->McProjection #effects(all) {
   model:=mf_get(body,"model");answers:=mf_get(body,"answers");identity:=mf_get(mf_get(body,"service").raw,"identity");
   if model.token!=JSON_STRING || answers.token!=JSON_OBJECT || identity.token!=JSON_STRING {return McProjection.{};}
   n:=json_raw(out,0,"{\"model\":");n=json_raw(out,n,model.raw);n=json_raw(out,n,",\"answers\":");n=json_raw(out,n,answers.raw);
   n=json_raw(out,n,",\"service\":{\"door\":\"psionic\",\"identity\":");n=json_raw(out,n,identity.raw);n=json_raw(out,n,"}}");
   if n==-1 {return McProjection.{};}return McProjection.{ok=true,body=cast(string)out[0..<n]};
 }
-mc_request :: (r:SvRequest,pools:SvPools,identity:string)->bool {
+mc_request :: (r:SvRequest,pools:SvPools,identity:string)->bool #effects(all) {
   if r.code!=SvCode.none || r.model!=pb_identity_name(identity) || r.questions<1 || r.questions>64 || r.questions>pools.questions.count {return false;}
   for i:0..<r.questions {q:=pools.questions[i];if q.kind==PtQuestionKind.noul {continue;}
     if q.count<2 || q.count>8 {return false;}
@@ -123,7 +123,7 @@ mc_request :: (r:SvRequest,pools:SvPools,identity:string)->bool {
 }
 // q and its option spans have passed mc_request; this helper also validates a
 // single answer independently so it never feeds malformed numbers to log.
-mc_vector :: (raw:string,q:SvQuestion,pools:SvPools,out:[]f64)->McVector {
+mc_vector :: (raw:string,q:SvQuestion,pools:SvPools,out:[]f64)->McVector #effects(all) {
   count:=ifx q.kind==PtQuestionKind.noul then 2 else q.count;
   if out.count<count || !mf_one(raw,q,pools) {return McVector.{};}
   if q.kind==PtQuestionKind.noul {out[0]=f64(mf_number(mf_get(raw,"noul").text).units)/f64(MF_UNIT);out[1]=1-out[0];return McVector.{ok=true,count=2};}
@@ -134,7 +134,7 @@ mc_vector :: (raw:string,q:SvQuestion,pools:SvPools,out:[]f64)->McVector {
 // Bounded Chapter160 primitive, without its simulated-round experiment.
 // Floor each input before log, subtract each vector's mean log, then take
 // the largest absolute coordinate difference. Ties keep the first option.
-mc_distance :: (p:[]f64,q:[]f64)->McDistance {
+mc_distance :: (p:[]f64,q:[]f64)->McDistance #effects(all) {
   if p.count<2 || p.count>8 || p.count!=q.count {return McDistance.{};}
   a:[8]f64;b:[8]f64;sa:=0.0;sb:=0.0;r:=McDistance.{ok=true};
   for i:0..<p.count {x:=p[i];y:=q[i];if !(x>=0 && x<=1 && y>=0 && y<=1) {return McDistance.{};}
@@ -144,11 +144,11 @@ mc_distance :: (p:[]f64,q:[]f64)->McDistance {
   for i:0..<p.count {e:=abs((a[i]-sa/f64(p.count))-(b[i]-sb/f64(p.count)));if i==0 || e>r.worst {r.worst=e;r.option=i;}}
   return r;
 }
-mc_within :: (distance:f64,maximum_distance_ppb:int)->bool {return distance<=f64(maximum_distance_ppb)/1000000000.0;}
+mc_within :: (distance:f64,maximum_distance_ppb:int)->bool #effects(all) {return distance<=f64(maximum_distance_ppb)/1000000000.0;}
 // Binary64 profile, fixed request/option order, inclusive distance threshold.
 // Noul is a Bernoulli [noul,1-noul]; score compares its level probabilities.
 // Selected choice/score disagreement is a failure independently of distance.
-mc_compare :: (original:string,replica:string,r:SvRequest,pools:SvPools,identity:string,profile:string,compatible_backend:bool,maximum_distance_ppb:int)->McComparison #export_c {
+mc_compare :: (original:string,replica:string,r:SvRequest,pools:SvPools,identity:string,profile:string,compatible_backend:bool,maximum_distance_ppb:int)->McComparison #export_c #effects(all) {
   if !compatible_backend || profile!=MC_PROFILE || !pb_identity(identity) || maximum_distance_ppb<0 || maximum_distance_ppb>1000000000 {return McComparison.{};}
   if !mc_request(r,pools,identity) {return McComparison.{reason=MC_REQUEST};}
   a:[262144]u8;b:[262144]u8;left:=mc_project(original,a[..]);right:=mc_project(replica,b[..]);

@@ -8,10 +8,10 @@
 //   coax/bin/coax mutate apps/shared/dictation-join.coax
 #authority;
 
-dj_space :: (b: u8) -> bool { return b == ' ' || b == 9 || b == 10 || b == 13; }
-dj_open :: (b: u8) -> bool { return b == '(' || b == '[' || b == '{'; }
-dj_close :: (b: u8) -> bool { return b == '.' || b == ',' || b == ';' || b == ':' || b == '?' || b == '!' || b == ')' || b == ']' || b == '}'; }
-dj_gap :: (left: u8, right: u8) -> bool { return !dj_space(left) && !dj_space(right) && !dj_open(left) && !dj_close(right); }
+dj_space :: (b: u8) -> bool #effects(all) { return b == ' ' || b == 9 || b == 10 || b == 13; }
+dj_open :: (b: u8) -> bool #effects(all) { return b == '(' || b == '[' || b == '{'; }
+dj_close :: (b: u8) -> bool #effects(all) { return b == '.' || b == ',' || b == ';' || b == ':' || b == '?' || b == '!' || b == ')' || b == ']' || b == '}'; }
+dj_gap :: (left: u8, right: u8) -> bool #effects(all) { return !dj_space(left) && !dj_space(right) && !dj_open(left) && !dj_close(right); }
 
 #test "a space joins words, never whitespace, an opening bracket or closing punctuation" {
   left := [12] u8.['a', 'z', ' ', 9, 10, 13, '(', '[', '{', '.', '"', 0xc3];

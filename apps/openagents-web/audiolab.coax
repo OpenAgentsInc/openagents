@@ -386,7 +386,7 @@ lab_header :: (out: [] f32, at: int, s: [] LabState, l: LabLayout, p: Pen) -> in
   return frame(out, v, b, 10 * d, p);
 }
 
-coaxial_lab_frame :: (s: [] LabState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+coaxial_lab_frame :: (s: [] LabState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   if !s[0].ready { lab_init(s); }
   step := clamp(dt, 0, 0.1);
@@ -456,7 +456,7 @@ lab_act :: (s: [] LabState, t: int) {
   else if i == 3 { url := "/realms/everglade/"; for c: 0..<url.count { s[0].outbox[c] = url[c]; } s[0].out_n = url.count; s[0].action = LAB_NAVIGATE; }
 }
 
-coaxial_lab_pointer :: (s: [] LabState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
+coaxial_lab_pointer :: (s: [] LabState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   if !s[0].ready { lab_init(s); }
   d := hi(s[0].d, 1);
@@ -484,7 +484,7 @@ coaxial_lab_pointer :: (s: [] LabState, x: f32, y: f32, phase: int, kind: int) -
   s[0].press = -1;
   return true;
 }
-coaxial_lab_key :: (s: [] LabState, key: int) -> bool #export_c {
+coaxial_lab_key :: (s: [] LabState, key: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   d := hi(s[0].d, 1);
   if key == -1 { lab_stop(s); return true; }    // Escape
@@ -496,21 +496,21 @@ coaxial_lab_key :: (s: [] LabState, key: int) -> bool #export_c {
   if key == K_END { s[0].scroll = 1000000000; return true; }
   return false;
 }
-coaxial_lab_wheel :: (s: [] LabState, dy: f32) #export_c { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
-coaxial_lab_cursor :: (s: [] LabState) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].hot != -1 then 1 else 0; }
-coaxial_lab_action :: (s: [] LabState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
-coaxial_lab_action_done :: (s: [] LabState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
-coaxial_lab_max_vertices :: () -> int #export_c { return LAB_MAX_VERTICES; }
+coaxial_lab_wheel :: (s: [] LabState, dy: f32) #export_c #effects(all) { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
+coaxial_lab_cursor :: (s: [] LabState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return ifx s[0].hot != -1 then 1 else 0; }
+coaxial_lab_action :: (s: [] LabState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_lab_action_done :: (s: [] LabState) #export_c #effects(all) { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_lab_max_vertices :: () -> int #export_c #effects(all) { return LAB_MAX_VERTICES; }
 // This frame's sound lines: how many bytes, then none until the next.
-coaxial_lab_sounds_len :: (s: [] LabState) -> int #export_c { if s.count < 1 { return 0; } n := s[0].line_n; s[0].line_n = 0; return n; }
+coaxial_lab_sounds_len :: (s: [] LabState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } n := s[0].line_n; s[0].line_n = 0; return n; }
 
 // The bank the face renders once audio starts: the synthesized set (sfx.coax) and the room's impulse.
-coaxial_lab_sound_count :: () -> int #export_c { return SFX_COUNT + 1; }
-coaxial_lab_sound_name :: (i: int, out: [] u8) -> int #export_c {
+coaxial_lab_sound_count :: () -> int #export_c #effects(all) { return SFX_COUNT + 1; }
+coaxial_lab_sound_name :: (i: int, out: [] u8) -> int #export_c #effects(all) {
   if i == SFX_COUNT { return egm_put(out, 0, "room"); }
   return ifx i >= 0 && i < SFX_COUNT then egm_put(out, 0, SFX_NAMES[i]) else -1;
 }
-coaxial_lab_sound_render :: (i: int, mix: [] int, out: [] u8) -> int #export_c {
+coaxial_lab_sound_render :: (i: int, mix: [] int, out: [] u8) -> int #export_c #effects(all) {
   if i == SFX_COUNT { h := mix.count / 2; return ifx h >= 2 * MIX_ROOM_MS * MIX_ROOM_RATE / 1000 then mix_room(mix[0..<h], mix[h..<mix.count], out) else -1; }
   r := sfx_render(i, SFX_RATE, mix, out);
   return ifx r.ok then r.bytes else -1;

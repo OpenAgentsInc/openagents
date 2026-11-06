@@ -103,11 +103,11 @@ part compiled, and learn only the routing around it.
 
 <!-- source: psionic/lib/students.coax families -->
 ```jai
-es_op :: (code:TmCode,arg:int)->TmOp {return TmOp.{code=code,arg=arg};}
+es_op :: (code:TmCode,arg:int)->TmOp #effects(all) {return TmOp.{code=code,arg=arg};}
 // count prints n, n-1, ..., 1; stride prints 2n, 2n-2, ..., 2; squares
 // prints n*n, ..., 1; sum prints 1+2+...+n. Each keeps its counter in local
 // 0 and loops on a backward branch. Returns the program's length, or 0.
-es_program :: (family:EsFamily,n:int,out:[]TmOp)->int {
+es_program :: (family:EsFamily,n:int,out:[]TmOp)->int #effects(all) {
     if n<1 || n>ES_N_MAX {return 0;}
     p:[17]TmOp;k:int;
     T:=TmCode.push;G:=TmCode.get;S:=TmCode.set;
@@ -144,7 +144,7 @@ seen in training, with one different constant. `squares` adds `mul`.
 ```jai
 // The state a row is written from: [1, arg, top, second, the local named by
 // arg, depth, outputs, ip], with 0 for what is not there.
-es_base :: (program:[]TmOp,f:RxFold)->[ES_BASE]int {
+es_base :: (program:[]TmOp,f:RxFold)->[ES_BASE]int #effects(all) {
     op:=program[f.ip];d:=f.state.depth;b:[ES_BASE]int;
     b[0]=1;b[1]=op.arg;b[5]=d;b[6]=f.state.outputs;b[7]=f.ip;
     if d>=1 {b[2]=f.state.stack[d-1];}
@@ -152,12 +152,12 @@ es_base :: (program:[]TmOp,f:RxFold)->[ES_BASE]int {
     if op.arg>=0 && op.arg<TM_LOCALS {b[4]=f.state.locals[op.arg];}
     return b;
 }
-es_width :: (kind:EsKind)->int {
+es_width :: (kind:EsKind)->int #effects(all) {
     if kind==EsKind.table {return ES_TABLE;}
     return ifx kind==EsKind.gated then 2*ES_BASE else ES_BASE;
 }
 // The nonzero features as (index, value) pairs; returns how many.
-es_pairs :: (kind:EsKind,b:[ES_BASE]int,idx:[]int,val:[]f64)->int {
+es_pairs :: (kind:EsKind,b:[ES_BASE]int,idx:[]int,val:[]f64)->int #effects(all) {
     if kind==EsKind.table {
         idx[0]=0;val[0]=1;n:=1;
         for j:1..<ES_BASE {
@@ -173,12 +173,12 @@ es_pairs :: (kind:EsKind,b:[ES_BASE]int,idx:[]int,val:[]f64)->int {
     return 2*ES_BASE;
 }
 // Model (code, target) owns weights [at, at + width); target 0 is x, 1 is y.
-es_predict :: (kind:EsKind,w:[]f64,code:int,target:int,b:[ES_BASE]int)->f64 {
+es_predict :: (kind:EsKind,w:[]f64,code:int,target:int,b:[ES_BASE]int)->f64 #effects(all) {
     at:=(code*2+target)*es_width(kind);idx:[16]int;val:[16]f64;s:=0.0;
     for i:0..<es_pairs(kind,b,idx[..],val[..]) {s+=w[at+idx[i]]*val[i];}
     return s;
 }
-es_token :: (p:f64)->int {
+es_token :: (p:f64)->int #effects(all) {
     if !(p>-1e15 && p<1e15) {return ES_FAR;}
     return cast(int)floor(p+0.5);
 }
@@ -203,7 +203,7 @@ written as 2^31, which no row of the machine holds.
 // Appends one example per row of an admitted trace at ex[n..], each with
 // the state chapter 234's fold rebuilds from the rows before it. Returns the
 // new count, or -1.
-es_examples :: (program:[]TmOp,rows:[]int,steps:int,ex:[]EsExample,n:int)->int {
+es_examples :: (program:[]TmOp,rows:[]int,steps:int,ex:[]EsExample,n:int)->int #effects(all) {
     if n<0 || steps<0 || rows.count<steps*TM_TOKENS || n+steps>ex.count {return -1;}
     for k:0..<steps {
         f:=rx_fold(program,rows,k);
@@ -231,7 +231,7 @@ rows, so chapter 247's ledger keeps their groups out of any training set.
 // zero, for the given epochs. The loss and the tokens right are over all
 // examples with their true states: what training sees, not what a rollout
 // does.
-es_train :: (kind:EsKind,ex:[]EsExample,w:[]f64,epochs:int)->EsFit {
+es_train :: (kind:EsKind,ex:[]EsExample,w:[]f64,epochs:int)->EsFit #effects(all) {
     width:=es_width(kind);r:EsFit;
     if w.count!=ES_CODES*2*width || epochs<0 || ex.count<1 {r.status=EsStatus.shape;return r;}
     // Each example's code is counted once; one outside the codes is not.
@@ -302,7 +302,7 @@ reach values where they matter. The oracle retrains it in binary64 instead.
 // x and y are its rounded predictions. The state is chapter 234's fold of
 // the rows written so far, so a row the machine could not have written ends
 // the run as broken.
-es_rollout :: (kind:EsKind,w:[]f64,program:[]TmOp,budget:int,rows:[]int,outs:[]int)->EsRun {
+es_rollout :: (kind:EsKind,w:[]f64,program:[]TmOp,budget:int,rows:[]int,outs:[]int)->EsRun #effects(all) {
     r:EsRun;
     if budget<1 || rows.count<budget*TM_TOKENS || outs.count<TM_OUTPUTS || w.count!=ES_CODES*2*es_width(kind) ||
         tm_admit(program)!=TmStatus.ok {
@@ -334,7 +334,7 @@ the run as broken.
 // Rolls the student out for as many steps as the machine takes, then
 // claims its rows as chapter 234's claimants do and has chapter 234 replay
 // the claim: exact, or failed at the first token that differs.
-es_score :: (kind:EsKind,w:[]f64,program:[]TmOp,rows:[]int,truth:[]int,outs:[]int)->EsScore {
+es_score :: (kind:EsKind,w:[]f64,program:[]TmOp,rows:[]int,truth:[]int,outs:[]int)->EsScore #effects(all) {
     s:EsScore;
     m:=rx_claim(program,TM_STEPS_MAX,truth,outs);
     if m.status!=TmStatus.ok {s.status=EsStatus.shape;return s;}

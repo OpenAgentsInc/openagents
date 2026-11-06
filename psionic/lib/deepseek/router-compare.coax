@@ -23,7 +23,7 @@ DrComparison :: struct {status:DrStatus;reference:DrRoute;candidate:DrRoute;iden
     a.count=8;a.experts=8;b=a;#assert dr_compare(a,b).status==DrStatus.ok;
 }
 // book:begin compare
-dr_compare :: (a:DrRoute,b:DrRoute)->DrComparison #export_c {
+dr_compare :: (a:DrRoute,b:DrRoute)->DrComparison #export_c #effects(all) {
     if a.status!=DrStatus.ok || b.status!=DrStatus.ok || a.experts!=b.experts || a.count!=b.count || a.profile!=b.profile || a.count<1 || a.count>8 {return DrComparison.{status=DrStatus.shape};}
     r:=DrComparison.{reference=a,candidate=b,identical_ids=true};
     for i:0..<a.count {if a.ids[i]!=b.ids[i] {r.identical_ids=false;}

@@ -51,14 +51,14 @@
   } } }
 }
 
-ca_index :: (name: string) -> int {
+ca_index :: (name: string) -> int #effects(all) {
   if name == "claude" { return 0; }
   if name == "codex" { return 1; }
   if name == "micro" { return 2; }
   if name == "psionic" { return 3; }
   return -1;
 }
-ca_allowed :: (names: string) -> int {
+ca_allowed :: (names: string) -> int #effects(all) {
   if names.count == 0 { return 15; }
   mask := 0; at := 0;
   while at <= names.count {
@@ -73,14 +73,14 @@ ca_allowed :: (names: string) -> int {
 }
 // A typed reset is used only inside seven days; otherwise callers use a
 // conservative 60-second retry delay. Invalid stored data excludes the engine.
-ca_blocked :: (at: int, reset: int, now: int) -> bool {
+ca_blocked :: (at: int, reset: int, now: int) -> bool #effects(all) {
   if at < 0 || reset < at || reset - at > 604800 { return true; }
   return now - at < 60 || now < reset;
 }
-ca_typed_reset :: (now: int, reset: int) -> int {
+ca_typed_reset :: (now: int, reset: int) -> int #effects(all) {
   return ifx reset > now && reset - now <= 604800 then reset else 0;
 }
-ca_pick :: (preferred: int, mask: int) -> int {
+ca_pick :: (preferred: int, mask: int) -> int #effects(all) {
   if (mask & 15) != mask { return -1; }
   for i: [3] int.[1, 2, 3] { if preferred == i && (mask & (1 << i)) != 0 { return i; } }
   for i: [4] int.[0, 1, 2, 3] { if (mask & (1 << i)) != 0 { return i; } }

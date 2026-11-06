@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.51.2**. Status inventory schema: **1**.
+Current compiler: **coax0 0.52.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -419,8 +419,9 @@ not inferred from declaration order.
 
 `SeatId :: struct @id { value: u32; }` declares a nominal integer
 wrapper. `@id(ordered)` opts into ordering; plain `@id` supplies equality
-only. The annotation requires a nongeneric struct with exactly one concrete
+only. The annotation requires a struct with exactly one concrete
 integer field named `value`, no initializer, and no second annotation.
+Phantom generic parameters are allowed; the integer field must remain concrete.
 Every signed and unsigned integer width is supported. The wrapper's size
 and alignment equal its field's; its native C calling convention is a
 one-field struct, not a scalar typedef.
@@ -500,6 +501,15 @@ execution and checks never run a host procedure (E0404).
 Multiple returns, named/default arguments, overloads, variadics, callbacks and
 explicit pointer mutation are planned. Passing a large value by an optimized
 physical convention must not silently make it a mutable reference.
+
+### Checked state changes (0.52)
+
+[`checked-state.md`](checked-state.md) specifies enforced `#effects`, typed
+`Handle(T)`/`Store(T)`, `#transaction`, `#persisted` and `coax compat`, including
+profiles, refusal rules and lifetime limits. These mechanisms do not change
+§3's rule against promising general memory safety. Procedure values and callback
+type syntax remain planned; effect bounds apply to every admitted procedure
+signature and its transitive call closure.
 
 ### 7.1.1 Initial physical quantities (authored-source milestone, unreleased)
 

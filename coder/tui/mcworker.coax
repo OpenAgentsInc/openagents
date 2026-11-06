@@ -32,11 +32,11 @@
 #load "microcoder_keys.coax";
 #load "micro-observation.coax";
 #load "../../coax/lib/sys/fs.coax";
-cxproc_wall_us :: ()->int #foreign;
+cxproc_wall_us :: ()->int #foreign #effects(all);
 
-cxterm_byte :: (timeout_ms: int) -> int #foreign;
-cxterm_write :: (s: [] u8) -> int #foreign;
-cxproc_sleep_ms :: (ms: int) -> int #foreign;
+cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+cxproc_sleep_ms :: (ms: int) -> int #foreign #effects(all);
 
 MW_LINE :: 1048576;
 
@@ -138,7 +138,7 @@ mw_embed :: (k: [] MkKeys, text: string, query: bool, o: [] u8) {
   mw_send(o, n);
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   run: [1] McRun; sb: [1] McStateBuffers; lb: [1] McLoopBuffers;
   plan: [1] GwPlan; pb: [1] GwPlanBuffers; bench: [1] GwBench;
   k: [1] MkKeys; h: [1] MkTurns;

@@ -25,13 +25,13 @@ RQFilterWeights :: struct {v:[4]f64;}
  #assert other.v[0]==127.0/256 && other.v[1]==1.0/256 && other.v[2]==126.0/256 && other.v[3]==2.0/256;
  edge:=rq_filter_weights(0,1,true);#assert edge.v[0]==0 && edge.v[1]==0 && edge.v[2]==1 && edge.v[3]==0;
 }
-rq_filter_profile :: (name:string)->RQFilterProfile {
+rq_filter_profile :: (name:string)->RQFilterProfile #effects(all) {
  if name=="analytic" {return RQFilterProfile.analytic;}
  if name=="metal-unorm8" {return RQFilterProfile.metal_unorm8;}
  if name=="nvidia-unorm8-integer" {return RQFilterProfile.nvidia_unorm8_integer;}
  return RQFilterProfile.invalid;
 }
-rq_filter_limits :: (profile:RQFilterProfile)->RQFilterLimits {
+rq_filter_limits :: (profile:RQFilterProfile)->RQFilterLimits #effects(all) {
  if profile==RQFilterProfile.analytic {return RQFilterLimits.{ok=true};}
  if profile==RQFilterProfile.metal_unorm8 {return RQFilterLimits.{ok=true,axis=256,lod=64,result=4080,units=16};}
  if profile==RQFilterProfile.nvidia_unorm8_integer {return RQFilterLimits.{ok=true,axis=256,result=65535,units=257,integer_lod=true,joint=true};}
@@ -40,7 +40,7 @@ rq_filter_limits :: (profile:RQFilterProfile)->RQFilterLimits {
 // Inputs are admitted unit fractions; measured callers supply exact multiples
 // of1/256. Rounding the first joint weight and retaining the two exact marginal
 // sums avoids inventing gain at the independently probed half-weight ties.
-rq_filter_weights :: (x:f64,y:f64,joint:bool)->RQFilterWeights {
+rq_filter_weights :: (x:f64,y:f64,joint:bool)->RQFilterWeights #effects(all) {
  first:=(1-x)*(1-y);
  if joint {
   first=floor(first*256+0.5)/256;

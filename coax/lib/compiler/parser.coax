@@ -44,6 +44,7 @@ PS_Tag :: enum u32 {
   stmt_defer = 51;
   stmt_assert_ = 52;
   stmt_switch = 53;
+  stmt_transaction = 54;
   decl_proc = 64;
   decl_constant = 65;
   decl_struct_ = 66;
@@ -69,81 +70,81 @@ PS_Node :: struct {kind:PS_Tag;loc:PS_Loc;name:string;name2:string;loc2:PS_Loc;a
 PS_State :: struct {pos:int;used:int;depth:int;code:string;loc:PS_Loc;fix:string;length:int;development:bool;peak:int;}
 PS_Result :: struct {ok:bool;root:int;}
 PS_Caps :: struct {nodes:int;message:int;imports:int;}
-PS_caps :: (tokens:int,source:int)->PS_Caps #export_c {
+PS_caps :: (tokens:int,source:int)->PS_Caps #export_c #effects(all) {
   if tokens<1 || tokens>2147483646 || source<0 || source>2147483646 {return PS_Caps.{};}
   return PS_Caps.{nodes=tokens*3+97,message=source+512,imports=tokens/5};
 }
-PS_peek :: (t:[] PS_Token,s:[] PS_State,ahead:int)->PS_Token {at:=s[0].pos+ahead;if at>=t.count {return t[t.count-1];}return t[at];}
-PS_at :: (t:[] PS_Token,s:[] PS_State,kind:u32)->bool {return PS_peek(t,s,0).kind==kind;}
-PS_kw :: (t:[] PS_Token,s:[] PS_State,name:string)->bool {v:=PS_peek(t,s,0);return v.kind==2 && v.text==name;}
-PS_skip :: (t:[] PS_Token,s:[] PS_State) {if s[0].code=="" && s[0].pos<t.count-1 {s[0].pos+=1;}}
-PS_take :: (t:[] PS_Token,s:[] PS_State)->PS_Token {v:=PS_peek(t,s,0);PS_skip(t,s);return v;}
-PS_write :: (s:[] PS_State,out:[] u8,text:string) {
+PS_peek :: (t:[] PS_Token,s:[] PS_State,ahead:int)->PS_Token #effects(all) {at:=s[0].pos+ahead;if at>=t.count {return t[t.count-1];}return t[at];}
+PS_at :: (t:[] PS_Token,s:[] PS_State,kind:u32)->bool #effects(all) {return PS_peek(t,s,0).kind==kind;}
+PS_kw :: (t:[] PS_Token,s:[] PS_State,name:string)->bool #effects(all) {v:=PS_peek(t,s,0);return v.kind==2 && v.text==name;}
+PS_skip :: (t:[] PS_Token,s:[] PS_State) #effects(all) {if s[0].code=="" && s[0].pos<t.count-1 {s[0].pos+=1;}}
+PS_take :: (t:[] PS_Token,s:[] PS_State)->PS_Token #effects(all) {v:=PS_peek(t,s,0);PS_skip(t,s);return v;}
+PS_write :: (s:[] PS_State,out:[] u8,text:string) #effects(all) {
   for c:text {if s[0].length<out.count {out[s[0].length]=c;s[0].length+=1;}}
 }
-PS_error :: (s:[] PS_State,out:[] u8,loc:PS_Loc,code:string,fix:string,parts:[] string) {
+PS_error :: (s:[] PS_State,out:[] u8,loc:PS_Loc,code:string,fix:string,parts:[] string) #effects(all) {
   if s[0].code!="" {return;}s[0].code=code;s[0].loc=loc;s[0].fix=fix;for part:parts {PS_write(s,out,part);}
 }
-PS_fail :: (s:[] PS_State,out:[] u8,loc:PS_Loc,code:string,message:string,fix:string) {
+PS_fail :: (s:[] PS_State,out:[] u8,loc:PS_Loc,code:string,message:string,fix:string) #effects(all) {
   parts:=[1] string.[message];PS_error(s,out,loc,code,fix,parts[..]);
 }
-PS_label :: (kind:u32)->string {
+PS_label :: (kind:u32)->string #effects(all) {
   words:=[55] string.["end of file","identifier","keyword","integer","float","string","directive","annotation","'('","')'","'{'","'}'","'['","']'","','","';'","':'","'::'","':='","'->'","'.'","'..'","'..<'","'='","'+='","'-='","'*='","'/='","'%='","'&='","'|='","'^='","'<<='","'>>='","'+'","'-'","'*'","'/'","'%'","'&'","'|'","'^'","'<<'","'>>'","'=='","'!='","'<'","'<='","'>'","'>='","'&&'","'||'","'!'","'$' name","'?'"];
   return words[cast(int)kind];
 }
 PS_Description :: struct {open:string;word:string;close:string;}
-PS_describe :: (v:PS_Token)->PS_Description {
+PS_describe :: (v:PS_Token)->PS_Description #effects(all) {
   if v.kind==1 || v.kind==2 {return PS_Description.{open="'",word=v.text,close="'"};}
   if v.kind==53 {return PS_Description.{open="'$",word=v.text,close="'"};}return PS_Description.{word=PS_label(v.kind)};
 }
-PS_expect :: (t:[] PS_Token,s:[] PS_State,out:[] u8,kind:u32,what:string) {
+PS_expect :: (t:[] PS_Token,s:[] PS_State,out:[] u8,kind:u32,what:string) #effects(all) {
   if PS_at(t,s,kind) {PS_skip(t,s);return;}
   v:=PS_peek(t,s,0);loc:=v.loc;fix:="";
   if kind==15 && s[0].pos>0 {p:=t[s[0].pos-1];loc=PS_Loc.{line=p.loc.line,column=p.loc.column+p.raw_count,offset=p.loc.offset+p.raw_count};}
   if kind==15 {fix="add ';'";}
   d:=PS_describe(v);parts:=[8] string.["expected ",PS_label(kind)," ",what,", found ",d.open,d.word,d.close];PS_error(s,out,loc,"E0201",fix,parts[..]);
 }
-PS_expect_kw :: (t:[] PS_Token,s:[] PS_State,out:[] u8,name:string,what:string) {
+PS_expect_kw :: (t:[] PS_Token,s:[] PS_State,out:[] u8,name:string,what:string) #effects(all) {
   if PS_kw(t,s,name) {PS_skip(t,s);return;}
   v:=PS_peek(t,s,0);d:=PS_describe(v);parts:=[8] string.["expected '",name,"' ",what,", found ",d.open,d.word,d.close];PS_error(s,out,v.loc,"E0201","",parts[..]);
 }
-PS_ident :: (t:[] PS_Token,s:[] PS_State,out:[] u8,what:string)->PS_Token {
+PS_ident :: (t:[] PS_Token,s:[] PS_State,out:[] u8,what:string)->PS_Token #effects(all) {
   v:=PS_peek(t,s,0);if v.kind==1 {return PS_take(t,s);}
   d:=PS_describe(v);parts:=[6] string.["expected ",what,", found ",d.open,d.word,d.close];PS_error(s,out,v.loc,"E0208","",parts[..]);return PS_Token.{};
 }
-PS_new :: (n:[] PS_Node,s:[] PS_State,out:[] u8,kind:PS_Tag,loc:PS_Loc)->int {
+PS_new :: (n:[] PS_Node,s:[] PS_State,out:[] u8,kind:PS_Tag,loc:PS_Loc)->int #effects(all) {
   if s[0].code!="" {return 0;}
   if s[0].used+1>=n.count {PS_fail(s,out,loc,"E0221","parser node budget exceeded","");return 0;}
   s[0].used+=1;id:=s[0].used;n[id]=PS_Node.{kind=kind,loc=loc};return id;
 }
-PS_valid :: (s:[] PS_State,id:int)->int {if s[0].code!="" {return 0;}return id;}
-PS_link :: (n:[] PS_Node,parent:int,child:int) {
+PS_valid :: (s:[] PS_State,id:int)->int #effects(all) {if s[0].code!="" {return 0;}return id;}
+PS_link :: (n:[] PS_Node,parent:int,child:int) #effects(all) {
   if n[parent].head==0 {n[parent].head=child;}else {n[n[parent].tail].next=child;}n[parent].tail=child;
 }
 // Active recursive grammar entries. Fixed, with a stated memory bound: the
 // parser recurses on the native stack: 128 levels fit in the compiler's own (spec 16.2).
 PS_DEPTH_LIMIT :: 128;
-PS_depth_limit :: ()->int #export_c {return PS_DEPTH_LIMIT;}
-PS_enter :: (s:[] PS_State,out:[] u8,loc:PS_Loc)->bool {
+PS_depth_limit :: ()->int #export_c #effects(all) {return PS_DEPTH_LIMIT;}
+PS_enter :: (s:[] PS_State,out:[] u8,loc:PS_Loc)->bool #effects(all) {
   if s[0].code!="" {return false;}
   if s[0].depth>=PS_DEPTH_LIMIT {PS_fail(s,out,loc,"E0221","parser nesting budget exceeded","reduce syntax nesting");return false;}
   // peak is never below depth, so entering past it is entering at it.
   if s[0].peak==s[0].depth {s[0].peak+=1;}s[0].depth+=1;return true;
 }
-PS_leave :: (s:[] PS_State) {s[0].depth-=1;}
-PS_prec :: (k:u32)->int {
+PS_leave :: (s:[] PS_State) #effects(all) {s[0].depth-=1;}
+PS_prec :: (k:u32)->int #effects(all) {
   if k>=44 && k<=49 {return 3;}
   if k==51 {return 1;}if k==50 {return 2;}
   if k==34 || k==35 || k==40 || k==41 {return 4;}
   if k==36 || k==37 || k==38 || k==39 || k==42 || k==43 {return 5;}return 0;
 }
-PS_assign :: (k:u32)->bool {return k>=23 && k<=33;}
-PS_type :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
+PS_assign :: (k:u32)->bool #effects(all) {return k>=23 && k<=33;}
+PS_type :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int #effects(all) {
   inner:=PS_type_base(t,n,s,out);
   while s[0].code=="" && PS_at(t,s,54) {v:=PS_take(t,s);id:=PS_new(n,s,out,PS_Tag.type_optional,v.loc);n[id].b=inner;inner=id;}
   return inner;
 }
-PS_type_base :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
+PS_type_base :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int #effects(all) {
   v:=PS_peek(t,s,0);if !PS_enter(s,out,v.loc) {return 0;}defer PS_leave(s);
   if v.kind==8 {PS_skip(t,s);inner:=PS_type(t,n,s,out);PS_expect(t,s,out,9,"to close the parenthesized type");return PS_valid(s,inner);}
   id:=PS_new(n,s,out,PS_Tag.type_named,v.loc);
@@ -173,13 +174,13 @@ PS_type_base :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
 }
 // $T: ordered: a constraint name in name2, at loc2 (r4a-constraints). The
 // checker knows the names; ':' after a type is otherwise never valid.
-PS_constraint :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,id:int) {
+PS_constraint :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,id:int) #effects(all) {
   if PS_at(t,s,16) && PS_peek(t,s,1).kind==1 {PS_skip(t,s);w:=PS_take(t,s);n[id].name2=w.text;n[id].loc2=w.loc;}
 }
-PS_origin :: (n:[] PS_Node,e:int)->PS_Loc {q:=e;while n[q].kind==PS_Tag.expr_field {q=n[q].a;}return n[q].loc;}
-PS_reexport :: (s:[] PS_State,out:[] u8,loc:PS_Loc) {PS_fail(s,out,loc,"E0222","a qualified name takes one module alias; aliases are not reexported","load that module here with its own alias");}
-PS_expression :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {return PS_expr(t,n,s,out,0);}
-PS_expr :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,min_prec:int)->int {
+PS_origin :: (n:[] PS_Node,e:int)->PS_Loc #effects(all) {q:=e;while n[q].kind==PS_Tag.expr_field {q=n[q].a;}return n[q].loc;}
+PS_reexport :: (s:[] PS_State,out:[] u8,loc:PS_Loc) #effects(all) {PS_fail(s,out,loc,"E0222","a qualified name takes one module alias; aliases are not reexported","load that module here with its own alias");}
+PS_expression :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int #effects(all) {return PS_expr(t,n,s,out,0);}
+PS_expr :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,min_prec:int)->int #effects(all) {
   if !PS_enter(s,out,PS_peek(t,s,0).loc) {return 0;}defer PS_leave(s);
   lhs:=PS_unary(t,n,s,out);
   while s[0].code=="" {
@@ -190,7 +191,7 @@ PS_expr :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,min_prec:int)->in
     id:=PS_new(n,s,out,kind,op.loc);if !fallback {n[id].op=op.kind;}n[id].a=lhs;n[id].b=rhs;lhs=id;
   }return PS_valid(s,lhs);
 }
-PS_unary :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
+PS_unary :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int #effects(all) {
   v:=PS_peek(t,s,0);if !PS_enter(s,out,v.loc) {return 0;}defer PS_leave(s);
   kind:PS_Tag=PS_Tag.invalid;if v.kind==6 && v.text=="run" {kind=PS_Tag.expr_run;}else if v.kind==35 || v.kind==52 {kind=PS_Tag.expr_unary;}else if PS_kw(t,s,"cast") {kind=PS_Tag.expr_cast;}else if PS_kw(t,s,"try") {kind=PS_Tag.expr_try;}
   if kind!=PS_Tag.invalid {
@@ -204,7 +205,7 @@ PS_unary :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
   }
   return PS_postfix(t,n,s,out,PS_primary(t,n,s,out));
 }
-PS_list_expr :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,id:int,close:u32,what:string) {
+PS_list_expr :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,id:int,close:u32,what:string) #effects(all) {
   while !PS_at(t,s,close) && s[0].code=="" {
     a:=PS_expression(t,n,s,out);PS_link(n,id,a);
     if !PS_at(t,s,14) {break;}PS_skip(t,s);
@@ -296,17 +297,17 @@ PS_list_expr :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,id:int,close
  #assert parsed.ok && state[0].code=="";
  d:=nodes[nodes[1].head].next;#assert d!=0 && nodes[d].kind==PS_Tag.decl_struct_ && nodes[d].name=="CoaxU64Product";
 }
-PS_meta_kind :: (name:string)->int {
+PS_meta_kind :: (name:string)->int #effects(all) {
  if name=="type_info" {return 1;}if name=="field_info" {return 2;}if name=="enum_info" {return 3;}return 0;
 }
-PS_meta_record :: (n:[]PS_Node,s:[]PS_State,out:[]u8,root:int,loc:PS_Loc,name:string,names:[]string,types:[]string) {
+PS_meta_record :: (n:[]PS_Node,s:[]PS_State,out:[]u8,root:int,loc:PS_Loc,name:string,names:[]string,types:[]string) #effects(all) {
  d:=PS_new(n,s,out,PS_Tag.decl_struct_,loc);n[d].name=name;PS_link(n,root,d);
  for i:0..<names.count {
   f:=PS_new(n,s,out,PS_Tag.decl_field,loc);n[f].name=names[i];
   t:=PS_new(n,s,out,PS_Tag.type_named,loc);n[t].name=types[i];n[f].a=t;PS_link(n,d,f);
  }
 }
-PS_meta_types :: (n:[]PS_Node,s:[]PS_State,out:[]u8,root:int) {
+PS_meta_types :: (n:[]PS_Node,s:[]PS_State,out:[]u8,root:int) #effects(all) {
  for i:1..<s[0].used+1 {
   if n[i].kind==PS_Tag.expr_call && n[i].d!=0 && PS_meta_kind(n[i].name)!=0 {
    names:=[11]string.["schema_version","name","kind","size","alignment","bits","is_signed","field_count","member_count","element_count","element_name"];
@@ -322,7 +323,7 @@ PS_meta_types :: (n:[]PS_Node,s:[]PS_State,out:[]u8,root:int) {
  }
 }
 
-PS_wide_type :: (n:[]PS_Node,s:[]PS_State,out:[]u8,root:int) {
+PS_wide_type :: (n:[]PS_Node,s:[]PS_State,out:[]u8,root:int) #effects(all) {
  for i:1..<s[0].used+1 {
   if (n[i].kind==PS_Tag.expr_call && n[i].name=="mul_wide") || (n[i].kind==PS_Tag.type_named && n[i].name=="CoaxU64Product") {
    names:=[2]string.["hi","lo"];types:=[2]string.["u64","u64"];
@@ -331,7 +332,7 @@ PS_wide_type :: (n:[]PS_Node,s:[]PS_State,out:[]u8,root:int) {
  }
 }
 
-PS_primary :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
+PS_primary :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int #effects(all) {
   v:=PS_peek(t,s,0);id:=PS_new(n,s,out,PS_Tag.expr_int_lit,v.loc);
   if v.kind==3 {n[id].value=v.value;PS_skip(t,s);return PS_valid(s,id);}
   if v.kind==4 {n[id].kind=PS_Tag.expr_float_lit;n[id].floating=v.floating;n[id].width=v.width;if v.width==32 {n[id].floating=cast(f64)cast(f32)v.floating;}PS_skip(t,s);return PS_valid(s,id);}
@@ -371,14 +372,14 @@ PS_primary :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
 }
 // Parenthesized type arguments followed by .{ are type syntax, never runtime
 // calls. Admission of the named type and each argument remains in Coax checking.
-PS_typed_literal :: (t:[]PS_Token,s:[]PS_State)->bool {
+PS_typed_literal :: (t:[]PS_Token,s:[]PS_State)->bool #effects(all) {
   at:=1;if PS_peek(t,s,at).kind==20 && PS_peek(t,s,at+1).kind==1 {at+=2;}
   if PS_peek(t,s,at).kind!=8 {return false;}depth:=0;
   while PS_peek(t,s,at).kind!=0 {
     k:=PS_peek(t,s,at).kind;if k==8 {depth+=1;}if k==9 {depth-=1;if depth==0 {return PS_peek(t,s,at+1).kind==20 && PS_peek(t,s,at+2).kind==10;}}at+=1;
   }return false;
 }
-PS_literal_fields :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) {
+PS_literal_fields :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) #effects(all) {
   while !PS_at(t,s,11) && s[0].code=="" {
     name:=PS_ident(t,s,out,"a field or alternative name");f:=PS_new(n,s,out,PS_Tag.decl_field_init,name.loc);n[f].name=name.text;
     if PS_at(t,s,23) {PS_skip(t,s);n[f].a=PS_expression(t,n,s,out);}
@@ -386,8 +387,8 @@ PS_literal_fields :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) {
     PS_link(n,id,f);if !PS_at(t,s,14) {break;}PS_skip(t,s);
   }PS_expect(t,s,out,11,"to close the struct literal");
 }
-PS_reserved :: (s:[] PS_State,out:[] u8,v:PS_Token) {parts:=[3] string.["'",v.text,"' is reserved and not supported by coax0 yet"];PS_error(s,out,v.loc,"E0204","",parts[..]);}
-PS_postfix :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,first:int)->int {
+PS_reserved :: (s:[] PS_State,out:[] u8,v:PS_Token) #effects(all) {parts:=[3] string.["'",v.text,"' is reserved and not supported by coax0 yet"];PS_error(s,out,v.loc,"E0204","",parts[..]);}
+PS_postfix :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,first:int)->int #effects(all) {
   e:=first;
   while s[0].code=="" {
     v:=PS_peek(t,s,0);after:=PS_peek(t,s,1);
@@ -416,19 +417,19 @@ PS_postfix :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,first:int)->in
     }else {break;}
   }return PS_valid(s,e);
 }
-PS_block :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
+PS_block :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int #effects(all) {
   loc:=PS_peek(t,s,0).loc;if !PS_enter(s,out,loc) {return 0;}defer PS_leave(s);
   id:=PS_new(n,s,out,PS_Tag.stmt_block,loc);PS_expect(t,s,out,10,"to start a block");
   while !PS_at(t,s,11) && !PS_at(t,s,0) && s[0].code=="" {child:=PS_stmt(t,n,s,out);PS_link(n,id,child);}
   PS_expect(t,s,out,11,"to close the block");return PS_valid(s,id);
 }
-PS_if :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
+PS_if :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int #effects(all) {
   v:=PS_take(t,s);if !PS_enter(s,out,v.loc) {return 0;}defer PS_leave(s);
   id:=PS_new(n,s,out,PS_Tag.stmt_if_,v.loc);n[id].a=PS_expression(t,n,s,out);
   n[id].c=PS_block(t,n,s,out);
   if PS_kw(t,s,"else") {PS_skip(t,s);if PS_kw(t,s,"if") {n[id].d=PS_if(t,n,s,out);}else {n[id].d=PS_block(t,n,s,out);}}return PS_valid(s,id);
 }
-PS_for :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
+PS_for :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int #effects(all) {
   v:=PS_take(t,s);id:=PS_new(n,s,out,PS_Tag.stmt_for_each,v.loc);name:=PS_ident(t,s,out,"a loop variable name");n[id].name=name.text;
   if PS_at(t,s,14) {PS_skip(t,s);index:=PS_ident(t,s,out,"an index variable name");n[id].name2=index.text;n[id].loc2=index.loc;}
   PS_expect(t,s,out,16,"after the loop variable");
@@ -439,16 +440,17 @@ PS_for :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
   }else if PS_at(t,s,21) {PS_fail(s,out,PS_peek(t,s,0).loc,"E0216","ranges are half-open: write '..<'","for i: 0..<n { }");return 0;}
   n[id].c=PS_block(t,n,s,out);return PS_valid(s,id);
 }
-PS_simple :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
+PS_simple :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int #effects(all) {
   e:=PS_expression(t,n,s,out);v:=PS_peek(t,s,0);
   if PS_assign(v.kind) {
     if n[e].kind!=PS_Tag.expr_ident && n[e].kind!=PS_Tag.expr_field && n[e].kind!=PS_Tag.expr_index {PS_fail(s,out,n[e].loc,"E0207","only a variable, a field or an element can be assigned to","");return 0;}
     PS_skip(t,s);id:=PS_new(n,s,out,PS_Tag.stmt_assign,v.loc);n[id].op=v.kind;n[id].c=e;n[id].a=PS_expression(t,n,s,out);return PS_valid(s,id);
   }id:=PS_new(n,s,out,PS_Tag.stmt_expr,n[e].loc);n[id].a=e;return PS_valid(s,id);
 }
-PS_uninitialized :: (t:[] PS_Token,s:[] PS_State)->bool {for i:0..<3 {if PS_peek(t,s,i).kind!=35 {return false;}}return true;}
-PS_stmt :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
+PS_uninitialized :: (t:[] PS_Token,s:[] PS_State)->bool #effects(all) {for i:0..<3 {if PS_peek(t,s,i).kind!=35 {return false;}}return true;}
+PS_stmt :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int #effects(all) {
   v:=PS_peek(t,s,0);if v.kind==10 {return PS_block(t,n,s,out);}
+  if v.kind==6 && v.text=="transaction" {PS_skip(t,s);id:=PS_new(n,s,out,PS_Tag.stmt_transaction,v.loc);n[id].c=PS_block(t,n,s,out);return PS_valid(s,id);}
   if v.kind==6 && v.text=="if" {return PS_profile_stmt(t,n,s,out);}
   if v.kind==6 && v.text=="assert" {PS_skip(t,s);id:=PS_new(n,s,out,PS_Tag.stmt_assert_,v.loc);n[id].a=PS_expression(t,n,s,out);PS_expect(t,s,out,15,"after #assert");return PS_valid(s,id);}
   if v.kind==2 {
@@ -477,7 +479,7 @@ PS_stmt :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
   id:=PS_simple(t,n,s,out);what:="after the statement";if n[id].kind==PS_Tag.stmt_assign {what="after the assignment";}
   PS_expect(t,s,out,15,what);return PS_valid(s,id);
 }
-PS_switch :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8)->int {
+PS_switch :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8)->int #effects(all) {
   token:=PS_take(t,s);if !PS_enter(s,out,token.loc) {return 0;}defer PS_leave(s);
   id:=PS_new(n,s,out,PS_Tag.stmt_switch,token.loc);n[id].a=PS_expression(t,n,s,out);PS_expect(t,s,out,10,"to start the switch cases");
   while !PS_at(t,s,11) && s[0].code=="" {
@@ -494,11 +496,18 @@ PS_switch :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8)->int {
   }
   PS_expect(t,s,out,11,"to close the switch");return PS_valid(s,id);
 }
-PS_starts_proc :: (t:[] PS_Token,s:[] PS_State)->bool {
+#test "transaction syntax retains its scoped block and original source location" {
+ tokens:=[4]PS_Token.[PS_Token.{kind=6,text="transaction",loc=PS_Loc.{line=7,column=3}},PS_Token.{kind=10},PS_Token.{kind=11},PS_Token.{}];
+ nodes:[8]PS_Node;state:[1]PS_State;message:[128]u8;
+ id:=PS_stmt(tokens[..],nodes[..],state[..],message[..]);
+ #assert id!=0 && state[0].code=="" && nodes[id].kind==PS_Tag.stmt_transaction && cast(u32)nodes[id].kind==54;
+ #assert nodes[id].loc.line==7 && nodes[id].loc.column==3 && nodes[nodes[id].c].kind==PS_Tag.stmt_block && state[0].pos==3;
+}
+PS_starts_proc :: (t:[] PS_Token,s:[] PS_State)->bool #effects(all) {
   if !PS_at(t,s,8) {return false;}depth:=0;i:=0;
   while PS_peek(t,s,i).kind!=0 {k:=PS_peek(t,s,i).kind;if k==8 {depth+=1;}if k==9 {depth-=1;if depth==0 {after:=PS_peek(t,s,i+1).kind;return after==10 || after==19 || after==6;}}i+=1;}return false;
 }
-PS_proc :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)->int {
+PS_proc :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)->int #effects(all) {
   id:=PS_new(n,s,out,PS_Tag.decl_proc,name.loc);n[id].name=name.text;PS_expect(t,s,out,8,"to start the parameter list");
   while !PS_at(t,s,9) && s[0].code=="" {
     v:=PS_ident(t,s,out,"a parameter name");PS_expect(t,s,out,16,"after the parameter name");
@@ -510,13 +519,16 @@ PS_proc :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)->i
   while PS_at(t,s,6) && s[0].code=="" {
     d:=PS_take(t,s);if d.text=="pure" || d.text=="effects" {PS_effect_decl(t,n,s,out,id,d);}
     else if d.text=="export_c" {n[id].flag=true;}
-    else if d.text=="foreign" {n[id].flag2=true;if n[id].flag {PS_fail(s,out,d.loc,"E0210","a procedure is either #foreign or #export_c, not both","");return 0;}
-      PS_expect(t,s,out,15,"after #foreign; a foreign procedure has no body");return PS_valid(s,id);
+    else if d.text=="foreign" {if n[id].flag2 {PS_fail(s,out,d.loc,"E0210","#foreign is repeated","");return 0;}n[id].flag2=true;if n[id].flag {PS_fail(s,out,d.loc,"E0210","a procedure is either #foreign or #export_c, not both","");return 0;}
     }else {parts:=[3] string.["#",d.text," is not supported on procedures by coax0 yet"];PS_error(s,out,d.loc,"E0210","",parts[..]);return 0;}
+  }
+  if n[id].flag2 {
+    if n[id].flag {PS_fail(s,out,name.loc,"E0210","a procedure is either #foreign or #export_c, not both","");return 0;}
+    PS_expect(t,s,out,15,"after #foreign; a foreign procedure has no body");return PS_valid(s,id);
   }
   n[id].b=PS_block(t,n,s,out);return PS_valid(s,id);
 }
-PS_effect_decl :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int,d:PS_Token) {
+PS_effect_decl :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int,d:PS_Token) #effects(all) {
   if n[id].effect_present {PS_fail(s,out,d.loc,"E0940","a procedure has one effect declaration","");return;}
   n[id].effect_present=true;n[id].pure_decl=d.text=="pure";n[id].effect_loc=d.loc;if n[id].pure_decl {return;}
   PS_expect(t,s,out,8,"after #effects");last:=0;
@@ -528,7 +540,7 @@ PS_effect_decl :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int,d:PS_To
     if PS_at(t,s,9) {PS_fail(s,out,PS_peek(t,s,0).loc,"E0208","expected an effect capability after ','","");return;}
   }PS_expect(t,s,out,9,"after the effect capability list");
 }
-PS_union :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,name:PS_Token)->int {
+PS_union :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,name:PS_Token)->int #effects(all) {
   id:=PS_new(n,s,out,PS_Tag.decl_union,name.loc);n[id].name=name.text;PS_skip(t,s);PS_expect(t,s,out,10,"to start the union alternatives");
   while !PS_at(t,s,11) && s[0].code=="" {
     word:=PS_ident(t,s,out,"a union alternative name");v:=PS_new(n,s,out,PS_Tag.decl_variant,word.loc);n[v].name=word.text;
@@ -550,27 +562,35 @@ PS_union :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,name:PS_Token)->int 
  state[0]=PS_State.{};tokens[2].kind=1;tokens[3].kind=10;PS_physical(tokens[..],nodes[..],state[..],message[..],1);
  #assert state[0].code=="E0201";
 }
-PS_struct :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)->int {
+PS_struct :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)->int #effects(all) {
   id:=PS_new(n,s,out,PS_Tag.decl_struct_,name.loc);n[id].name=name.text;PS_skip(t,s);
+  if PS_at(t,s,6) && PS_peek(t,s,0).text=="persisted" {PS_skip(t,s);n[id].flag=true;}
   if PS_at(t,s,6) {d:=PS_peek(t,s,0);parts:=[3] string.["#",d.text," on structs is not supported by coax0 yet"];PS_error(s,out,d.loc,"E0210","",parts[..]);return 0;}
   if PS_at(t,s,8) {PS_struct_params(t,n,s,out,id);}
+  if PS_at(t,s,6) && PS_peek(t,s,0).text=="persisted" {if n[id].flag {PS_fail(s,out,PS_peek(t,s,0).loc,"E0210","#persisted is repeated","");return 0;}PS_skip(t,s);n[id].flag=true;}
   if PS_at(t,s,7) {PS_physical(t,n,s,out,id);}
   PS_field_block(t,n,s,out,id);return PS_valid(s,id);
 }
+#test "persisted struct markers survive parser transport" {
+  tokens:[5]PS_Token;tokens[0]=PS_Token.{kind=2,text="struct"};tokens[1]=PS_Token.{kind=6,text="persisted"};tokens[2].kind=10;tokens[3].kind=11;
+  nodes:[8]PS_Node;state:[1]PS_State;message:[256]u8;
+  id:=PS_struct(tokens[..],nodes[..],state[..],message[..],PS_Token.{text="Saved"});
+  #assert id==1 && nodes[id].flag && !nodes[id].flag2 && state[0].code=="" && state[0].pos==4;
+}
 // Physical metadata is literal parser data, never a source lookup. Semantic
 // frame shape/admission belongs to the checker; this transport has no SP load.
-PS_physical :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) {
+PS_physical :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) #effects(all) {
  if PS_peek(t,s,0).text=="frame" {PS_frame(t,n,s,out,id);}else if PS_peek(t,s,0).text=="id" {PS_id(t,n,s,out,id);}else {PS_quantity(t,n,s,out,id);}
  if s[0].code=="" && PS_at(t,s,7) {a:=PS_peek(t,s,0);PS_fail(s,out,a.loc,"E0832","a struct has at most one physical annotation","");}
 }
-PS_frame_word :: (field:int,word:string)->int {
+PS_frame_word :: (field:int,word:string)->int #effects(all) {
  if field==0 {if word=="right" {return 1;}if word=="left" {return -1;}}
  if field==1 {if word=="cartesian" {return 1;}if word=="body" {return 2;}if word=="optical" {return 3;}}
  if field==2 {if word=="continuous" {return 1;}if word=="jumping" {return 2;}}
  if field==3 {if word=="f32" {return 32;}if word=="f64" {return 64;}}
  return 0;
 }
-PS_frame :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) {
+PS_frame :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) #effects(all) {
  a:=PS_take(t,s);PS_expect(t,s,out,8,"after @frame");seen:u64=0;frame:[4]int;
  while s[0].code=="" {
   name:=PS_ident(t,s,out,"a frame metadata name");names:=[4]string.["handedness","convention","continuity","min_precision"];at:= -1;
@@ -587,14 +607,14 @@ PS_frame :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) {
  n[id].frame_decl=true;n[id].frame=frame;
 }
 // @id is nominal equality; @id(ordered) explicitly opts into integer ordering.
-PS_id :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) {
+PS_id :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) #effects(all) {
  PS_skip(t,s);n[id].quantity=3;
  if !PS_at(t,s,8) {return;}PS_skip(t,s);
  word:=PS_peek(t,s,0);
  if word.kind!=1 || word.text!="ordered" {PS_fail(s,out,word.loc,"E0960","@id accepts only the optional ordering opt-in","use @id or @id(ordered)");return;}
  PS_skip(t,s);PS_expect(t,s,out,9,"after @id(ordered)");n[id].quantity=4;
 }
-PS_quantity :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) {
+PS_quantity :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) #effects(all) {
   a:=PS_take(t,s);if a.text=="builtin_quantity" {n[id].quantity=2;return;}
   if a.text!="unit" {PS_fail(s,out,a.loc,"E0820","unsupported physical annotation","use @unit or @builtin_quantity");return;}
   n[id].quantity=1;PS_expect(t,s,out,8,"after @unit");seen:u64=0;u:[6]int;
@@ -613,7 +633,7 @@ PS_quantity :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) {
 }
 // Pair :: struct($T, $N): a generic struct's parameters, chained from d. The
 // checker binds them per instance (r4a-value-parameters).
-PS_struct_params :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,id:int) {
+PS_struct_params :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,id:int) #effects(all) {
   PS_skip(t,s);last:=0;
   while s[0].code=="" {
     v:=PS_peek(t,s,0);
@@ -627,7 +647,7 @@ PS_struct_params :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,id:int) 
 }
 // Build-profile selection operates on fully parsed syntax trees. It is not
 // source-text deletion or arbitrary compile-time expression evaluation.
-PS_debug_condition :: (t:[]PS_Token,s:[]PS_State,out:[]u8)->PS_Loc {
+PS_debug_condition :: (t:[]PS_Token,s:[]PS_State,out:[]u8)->PS_Loc #effects(all) {
  directive:=PS_take(t,s);selector:=PS_take(t,s);
  if selector.kind!=1 || selector.text!="BUILD_DEBUG" || !PS_at(t,s,10) {
   PS_fail(s,out,selector.loc,"E0210","this slice supports only #if BUILD_DEBUG followed by a block","");
@@ -636,15 +656,15 @@ PS_debug_condition :: (t:[]PS_Token,s:[]PS_State,out:[]u8)->PS_Loc {
 }
 // Branches allocate disjoint contiguous node ranges. Retain the allocation
 // count/budget, but clear inactive nodes before type/schema helper discovery.
-PS_discard_range :: (n:[]PS_Node,first:int,end:int) {for i:first..<end {n[i]=PS_Node.{};}}
-PS_profile_stmt :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8)->int {
+PS_discard_range :: (n:[]PS_Node,first:int,end:int) #effects(all) {for i:first..<end {n[i]=PS_Node.{};}}
+PS_profile_stmt :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8)->int #effects(all) {
  loc:=PS_debug_condition(t,s,out);yes_from:=s[0].used+1;yes:=PS_block(t,n,s,out);yes_end:=s[0].used+1;no:int;
  if PS_kw(t,s,"else") {PS_skip(t,s);no=PS_block(t,n,s,out);}
  else {no=PS_new(n,s,out,PS_Tag.stmt_block,loc);}
  if s[0].development {PS_discard_range(n,yes_end,s[0].used+1);return PS_valid(s,yes);}
  PS_discard_range(n,yes_from,yes_end);return PS_valid(s,no);
 }
-PS_field_block :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,parent:int) {
+PS_field_block :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,parent:int) #effects(all) {
  PS_expect(t,s,out,10,"to start the struct's fields");
  while !PS_at(t,s,11) && s[0].code=="" {
   token:=PS_peek(t,s,0);
@@ -667,7 +687,7 @@ PS_field_block :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,parent:int) {
  }
  PS_expect(t,s,out,11,"to close the struct");
 }
-PS_profile_fields :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,parent:int) {
+PS_profile_fields :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,parent:int) #effects(all) {
  loc:=PS_debug_condition(t,s,out);if s[0].code!="" {return;}
  if !PS_enter(s,out,loc) {return;}defer PS_leave(s);
  // Private holder records preserve ordinary field-list representation. Neither
@@ -685,7 +705,7 @@ PS_profile_fields :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,parent:int)
  n[selected]=PS_Node.{};
 }
 
-PS_enum :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)->int {
+PS_enum :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)->int #effects(all) {
   id:=PS_new(n,s,out,PS_Tag.decl_enum_,name.loc);n[id].name=name.text;PS_skip(t,s);
   if PS_at(t,s,10) {PS_fail(s,out,PS_peek(t,s,0).loc,"E0219","an enum names its underlying integer type","Outcome :: enum u8 { ... }");return 0;}
   n[id].a=PS_type(t,n,s,out);PS_expect(t,s,out,10,"to start the enum's members");
@@ -696,11 +716,11 @@ PS_enum :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)->i
   }
   PS_expect(t,s,out,11,"to close the enum");return PS_valid(s,id);
 }
-PS_trim_name :: (source:string,start:int,stop:int)->string {end:=stop;while end>start && (source[end-1]==32 || source[end-1]==10) {end-=1;}return source[start..<end];}
+PS_trim_name :: (source:string,start:int,stop:int)->string #effects(all) {end:=stop;while end>start && (source[end-1]==32 || source[end-1]==10) {end-=1;}return source[start..<end];}
 // One budget directive after a check's name, if there is one; a malformed one fails the parse.
 // #steps N: the check's own step budget, which replaces the file's (value).
 // #traversal N: its own aggregate traversal budget, which replaces the default (width).
-PS_check_budget :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,id:int) {
+PS_check_budget :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,id:int) #effects(all) {
   at:=PS_peek(t,s,0);if at.kind!=6 {return;}
   if at.text=="steps" && n[id].value==0 {
     PS_skip(t,s);v:=PS_peek(t,s,0);
@@ -713,7 +733,7 @@ PS_check_budget :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,id:int) {
     PS_skip(t,s);n[id].width=cast(int)v.value;
   }
 }
-PS_check :: (source:string,t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,d:PS_Token)->int {
+PS_check :: (source:string,t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,d:PS_Token)->int #effects(all) {
   id:=PS_new(n,s,out,PS_Tag.decl_check,d.loc);n[id].flag=d.text=="forall";p:=PS_new(n,s,out,PS_Tag.decl_proc,d.loc);n[id].a=p;
   if PS_at(t,s,5) {n[id].name=PS_take(t,s).text;}
   else if !n[id].flag {PS_fail(s,out,PS_peek(t,s,0).loc,"E0220","#test needs a name string","#test \"refunds never exceed payment\" { ... }");return 0;}
@@ -734,7 +754,7 @@ PS_check :: (source:string,t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,d:
   n[p].name=n[id].name;n[p].b=PS_block(t,n,s,out);return PS_valid(s,id);
 }
 // Tokens for `#test "a" #steps N {}` with the budget token's kind and value.
-PS_steps_tokens :: (kind:u32,value:u64,steps:string)->[7] PS_Token {
+PS_steps_tokens :: (kind:u32,value:u64,steps:string)->[7] PS_Token #effects(all) {
   return [7] PS_Token.[PS_Token.{kind=5,text="a"},PS_Token.{kind=6,text=steps},PS_Token.{kind=kind,value=value,loc=PS_Loc.{column=12}},
     PS_Token.{kind=10,text="{"},PS_Token.{kind=11,text="}"},PS_Token.{},PS_Token.{}];
 }
@@ -793,14 +813,14 @@ PS_TRAVERSAL_MAX :: 68719476736;
 // --run-steps N does (which overrides it). The file node keeps N (value) and
 // where it was declared (loc2); the driver honours it only in the entry file.
 PS_RUN_STEPS_MAX :: 250000000;
-PS_run_steps :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,root:int,at:PS_Token) {
+PS_run_steps :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,root:int,at:PS_Token) #effects(all) {
   if n[root].value!=0 {PS_fail(s,out,at.loc,"E0224","#run_steps is declared more than once","declare one #run_steps N; in the entry file");return;}
   v:=PS_peek(t,s,0);
   if v.kind!=3 || v.value==0 || v.value>PS_RUN_STEPS_MAX {PS_fail(s,out,v.loc,"E0224","#run_steps needs a whole number of steps from 1 through 250000000","#run_steps 250000000;");return;}
   PS_skip(t,s);n[root].value=v.value;n[root].loc2=at.loc;PS_expect(t,s,out,15,"after #run_steps N");
 }
 // Tokens for `#run_steps N;` with the budget token's kind and value.
-PS_run_steps_tokens :: (kind:u32,value:u64)->[4] PS_Token {
+PS_run_steps_tokens :: (kind:u32,value:u64)->[4] PS_Token #effects(all) {
   return [4] PS_Token.[PS_Token.{kind=6,text="run_steps",loc=PS_Loc.{line=2,column=3,offset=7}},
     PS_Token.{kind=kind,value=value,loc=PS_Loc.{column=14}},PS_Token.{kind=15},PS_Token.{}];
 }
@@ -831,10 +851,10 @@ PS_run_steps_tokens :: (kind:u32,value:u64)->[4] PS_Token {
   r:=PS_parse("",t[..],nodes[..],state[..],message[..]);
   #assert !r.ok && state[0].code=="E0224" && state[0].loc.column==9;
 }
-PS_parse :: (source:string,t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8)->PS_Result #export_c {
+PS_parse :: (source:string,t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8)->PS_Result #export_c #effects(all) {
  return PS_parse_build(source,t,n,s,out,true);
 }
-PS_parse_build :: (source:string,t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,development:bool)->PS_Result #export_c {
+PS_parse_build :: (source:string,t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,development:bool)->PS_Result #export_c #effects(all) {
   s[0]=PS_State.{};
   if t.count==0 {PS_fail(s,out,PS_Loc.{},"E0221","parser needs an EOF-terminated token stream","");return PS_Result.{};}
   if t[t.count-1].kind!=0 {PS_fail(s,out,t[t.count-1].loc,"E0221","parser needs an EOF-terminated token stream","");return PS_Result.{};}
@@ -877,10 +897,10 @@ PS_parse_build :: (source:string,t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,
 // skipped region whose brackets do not balance, so the restart was a guess
 // (follows). Each attempt still freezes its cursor and diagnostic.
 PS_REPORT_LIMIT :: 20;
-PS_report_limit :: ()->int #export_c {return PS_REPORT_LIMIT;}
+PS_report_limit :: ()->int #export_c #effects(all) {return PS_REPORT_LIMIT;}
 PS_Recovery :: struct {start:int;next:int;balanced:bool;cause:int;follows:bool;}
 // i is before the EOF token, so t[i+1] exists.
-PS_top :: (t:[] PS_Token,i:int)->bool {
+PS_top :: (t:[] PS_Token,i:int)->bool #effects(all) {
   v:=t[i];if v.loc.column!=1 {return false;}
   if v.kind==1 {return t[i+1].kind==17;}
   if v.kind!=6 {return false;}
@@ -892,7 +912,7 @@ PS_top :: (t:[] PS_Token,i:int)->bool {
 // from<=failed<=t.count-1 (a parse cursor never passes EOF). start is
 // the failed declaration's first token, next where the next attempt begins
 // (the EOF token when none is left).
-PS_recover :: (t:[] PS_Token,from:int,failed:int,lexed:[] int,guessed:bool)->PS_Recovery #export_c {
+PS_recover :: (t:[] PS_Token,from:int,failed:int,lexed:[] int,guessed:bool)->PS_Recovery #export_c #effects(all) {
   last:=t.count-1;r:=PS_Recovery.{start=from,next=last,balanced=true,cause=-1};
   if from<0 || from>=last {return r;}
   at:=failed;
@@ -906,7 +926,7 @@ PS_recover :: (t:[] PS_Token,from:int,failed:int,lexed:[] int,guessed:bool)->PS_
   for j:0..<lexed.count {if lexed[j]>=begin && lexed[j]<=stop {r.cause=j;}}
   return r;
 }
-PS_rt :: (kind:u32,line:int,column:int,offset:int,text:string)->PS_Token {
+PS_rt :: (kind:u32,line:int,column:int,offset:int,text:string)->PS_Token #effects(all) {
   return PS_Token.{kind=kind,text=text,raw_count=text.count,loc=PS_Loc.{line=line,column=column,offset=offset}};
 }
 #test "recovery resumes at the declaration the failure ran into" {
@@ -996,7 +1016,7 @@ PS_rt :: (kind:u32,line:int,column:int,offset:int,text:string)->PS_Token {
 // Source import syntax/admission belongs to the parser; native code reads files.
 PS_Import :: struct {path:string;prefix:string;loc:PS_Loc;end:int;}
 PS_Imports :: struct {count:int;code:string;message:string;loc:PS_Loc;}
-PS_imports :: (t:[] PS_Token,out:[] PS_Import,metal:bool)->PS_Imports #export_c {
+PS_imports :: (t:[] PS_Token,out:[] PS_Import,metal:bool)->PS_Imports #export_c #effects(all) {
   depth:=0;i:=0;r:=PS_Imports.{};
   while i<t.count {
     v:=t[i];if v.kind==10 {depth+=1;}if v.kind==11 {depth-=1;}
@@ -5213,7 +5233,7 @@ PS_imports :: (t:[] PS_Token,out:[] PS_Import,metal:bool)->PS_Imports #export_c 
 // Test-only token fixture: all four literal metadata words, with no lexer or
 // checker dependency. The independently compiled lexer/native transport checks
 // in tests/parser.py exercise the actual source spelling as a separate oracle.
-PS_frame_test_tokens :: ()->[19]PS_Token {
+PS_frame_test_tokens :: ()->[19]PS_Token #effects(all) {
  tokens:[19]PS_Token;tokens[0]=PS_Token.{kind=7,text="frame"};tokens[1].kind=8;
  names:=[4]string.["handedness","convention","continuity","min_precision"];
  words:=[4]string.["right","cartesian","continuous","f32"];tokens[17].kind=9;
@@ -5373,6 +5393,17 @@ PS_frame_test_tokens :: ()->[19]PS_Token {
  if mode==4 {#assert state[0].code=="E0208" && state[0].loc.offset==79 && cast(string)message[0..<state[0].length]=="expected an effect capability after ','";}
 }
 
+#forall "foreign effect declarations accept either directive order" foreign_first: bool {
+ tokens := [12] PS_Token.[PS_Token.{kind=8},PS_Token.{kind=9},PS_Token.{kind=6,text="foreign"},PS_Token.{kind=6,text="effects"},PS_Token.{kind=8},PS_Token.{kind=1,text="foreign"},PS_Token.{kind=14},PS_Token.{kind=1,text="clock"},PS_Token.{kind=9},PS_Token.{kind=15},PS_Token.{},PS_Token.{}];
+ if !foreign_first {
+   tokens[2]=PS_Token.{kind=6,text="effects"};tokens[3]=PS_Token.{kind=8};tokens[4]=PS_Token.{kind=1,text="foreign"};tokens[5]=PS_Token.{kind=14};tokens[6]=PS_Token.{kind=1,text="clock"};tokens[7]=PS_Token.{kind=9};tokens[8]=PS_Token.{kind=6,text="foreign"};
+ }
+ nodes:[32]PS_Node;state:[1]PS_State;message:[512]u8;
+ id:=PS_proc(tokens[..],nodes[..],state[..],message[..],PS_Token.{text="clock"});
+ #assert id!=0 && state[0].code=="" && nodes[id].flag2 && nodes[id].b==0 && nodes[id].effect_present;
+ first:=nodes[id].effect_head;#assert nodes[first].name=="foreign" && nodes[nodes[first].next].name=="clock";
+}
+
 #test "R2 qualified nested typed literals preserve alias type and length arguments" {
  tokens:=[20]PS_Token.[PS_Token.{kind=1,text="module"},PS_Token.{kind=20},PS_Token.{kind=1,text="Pair"},PS_Token.{kind=8},PS_Token.{kind=1,text="Result"},PS_Token.{kind=8},PS_Token.{kind=1,text="int"},PS_Token.{kind=14},PS_Token.{kind=1,text="Error"},PS_Token.{kind=9},PS_Token.{kind=14},PS_Token.{kind=3,value=4},PS_Token.{kind=9},PS_Token.{kind=20},PS_Token.{kind=10},PS_Token.{kind=1,text="item"},PS_Token.{kind=23},PS_Token.{kind=3,value=8},PS_Token.{kind=11},PS_Token.{}];
  nodes:[64]PS_Node;state:[1]PS_State;message:[256]u8;#assert PS_typed_literal(tokens[..],state[..]) && state[0].pos==0;
@@ -5419,4 +5450,23 @@ PS_frame_test_tokens :: ()->[19]PS_Token {
  id:=PS_type(tokens[..],nodes[..],state[..],out[..]);
  #assert state[0].code=="" && nodes[id].kind==PS_Tag.type_view && nodes[id].flag==readonly && nodes[nodes[id].b].name=="int";
  #assert state[0].pos==(ifx readonly then 4 else 3);
+}
+
+#forall "persisted markers after generic parameters retain their flag and reject repeats" mode:0..<4 {
+  tokens:=[10]PS_Token.[PS_Token.{kind=2,text="struct"},PS_Token.{kind=8},PS_Token.{kind=53,text="T"},PS_Token.{kind=9},PS_Token.{kind=6,text="persisted",loc=PS_Loc.{line=3,column=4,offset=30}},PS_Token.{kind=10},PS_Token.{kind=11},PS_Token.{},PS_Token.{},PS_Token.{}];
+  if mode==1 {tokens[1]=PS_Token.{kind=6,text="persisted"};tokens[2].kind=8;tokens[3]=PS_Token.{kind=53,text="T"};tokens[4].kind=9;tokens[5]=PS_Token.{kind=6,text="persisted",loc=PS_Loc.{line=3,column=4,offset=30}};tokens[6].kind=10;tokens[7].kind=11;}
+  if mode==2 {tokens[4].kind=7;}
+  if mode==3 {tokens[4]=PS_Token.{kind=6,text="other"};}
+  nodes:[16]PS_Node;state:[1]PS_State;message:[256]u8;r:=PS_struct(tokens[..],nodes[..],state[..],message[..],PS_Token.{text="Saved"});
+  if mode==0 {#assert r==1 && nodes[r].flag && state[0].code=="" && state[0].pos==7 && nodes[nodes[r].d].name=="T";}
+  else {#assert r==0 && state[0].code!="";}
+  if mode==1 {#assert state[0].code=="E0210" && state[0].loc.offset==30 && cast(string)message[0..<state[0].length]=="#persisted is repeated";}
+}
+#forall "foreign syntax refuses duplicate or contradictory boundary declarations" mode:0..<3 {
+  tokens:=[6]PS_Token.[PS_Token.{kind=8},PS_Token.{kind=9},PS_Token.{kind=6,text="foreign"},PS_Token.{kind=6,text="foreign"},PS_Token.{kind=15},PS_Token.{}];
+  if mode==1 {tokens[2].text="export_c";}
+  if mode==2 {tokens[3].text="export_c";}
+  nodes:[16]PS_Node;state:[1]PS_State;message:[256]u8;r:=PS_proc(tokens[..],nodes[..],state[..],message[..],PS_Token.{text="f"});
+  #assert r==0 && state[0].code=="E0210";
+  #assert cast(string)message[0..<state[0].length]==(ifx mode==0 then "#foreign is repeated" else "a procedure is either #foreign or #export_c, not both");
 }

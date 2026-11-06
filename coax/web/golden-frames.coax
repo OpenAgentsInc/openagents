@@ -465,7 +465,7 @@ gf_report :: (g: [] Gf, base: string, path: string, pages: [] GfPage, count: int
   return !o[0].bad && fs_write(path, jo_text(o[..]));
 }
 
-tool_main :: () -> int #export_c {
+tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   base := args_at(a[..], 0); table_path := args_at(a[..], 1);

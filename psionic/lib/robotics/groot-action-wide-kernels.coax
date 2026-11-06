@@ -9,7 +9,7 @@
   for i:0..<2 {flags[i]=9;gaw_norm(i,3,2,0.00001f32,x[..],scale[..],empty[0..<0],out[..],flags[..]);}#assert abs(out[0]-0.9258191f32)<2e-7f32 && abs(out[1]-2.7774572f32)<5e-7f32 && abs(out[2]-5.5549145f32)<1e-6f32 && flags[0]==0 && flags[1]==0;
   out[0]=7;flags[0]=9;gaw_norm(-1,3,0,0.1f32,x[..],empty[0..<0],empty[0..<0],out[..],flags[..]);gaw_norm(0,3,0,0,x[..],empty[0..<0],empty[0..<0],out[..],flags[..]);#assert out[0]==7 && flags[0]==9;
 }
-gaw_norm :: (item:int,width:int,kind:int,epsilon:f32,x:[]f32,scale:[]f32,bias:[]f32,out:[]f32,flags:[]u8) #export_c {
+gaw_norm :: (item:int,width:int,kind:int,epsilon:f32,x:[]f32,scale:[]f32,bias:[]f32,out:[]f32,flags:[]u8) #export_c #effects(all) {
   if !gdk_norm_bounds(item,width,kind,x.count,scale.count,bias.count,out.count,flags.count) || epsilon<=0 {return;}
   start:=item*width;sum:f64=0;checked:int=0;for j:0..<width {value:=x[start+j];checked=gdk_count(checked,f32_bits(value));sum+=f64(value);}
   mean:=ifx kind==2 then 0.0f64 else sum/f64(width);variance:f64=0;for j:0..<width {value:=f64(x[start+j])-mean;variance+=value*value;}
