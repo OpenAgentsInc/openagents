@@ -1,0 +1,27 @@
+// tool.sh: release
+#load "physics-kernel.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {tool_errln("usage: physics-aethyr INPUT OUTPUT");return 2;}
+  input:[3120160]u8;n:=fs_read(args_at(args[..],0),input[..]);if n<160 || cast(string)input[0..<8]!="LABIN001" {return 3;}
+  count:=cast(int)lab_uget(input[..],8);steps:=cast(int)lab_uget(input[..],16);every:=cast(int)lab_uget(input[..],24);
+  if count<1 || count>30000 || steps!=180 || every!=30 || n!=lab_input_bytes(count) {return 4;}
+  dt:=lab_fget(input[..],48);g:=d3(lab_fget(input[..],56),lab_fget(input[..],64),lab_fget(input[..],72));
+  ground:=plane(d3(lab_fget(input[..],80),lab_fget(input[..],88),lab_fget(input[..],96)),lab_fget(input[..],104));
+  half:=d3(lab_fget(input[..],112),lab_fget(input[..],120),lab_fget(input[..],128));mass:=lab_fget(input[..],136);
+  mu:=lab_fget(input[..],144);e:=lab_fget(input[..],152);passes:=cast(int)lab_uget(input[..],40);
+  b:[30000]RigidBody;order:[30000]int;tmp:[30000]int;a:[1000000]int;z:[1000000]int;
+  for i:0..<count {v:=lab_body_get(input[..],160+104*i);b[i]=rigid_body(mass,rigid_box_inertia(mass,d3_scale(half,2)),d3(v.pos.x,v.pos.y,v.pos.z),dq(v.rot.x,v.rot.y,v.rot.z,v.rot.w));
+    b[i].vel=d3(v.vel.x,v.vel.y,v.vel.z);b[i].omega=dq_rotate(dq_conj(b[i].orientation),d3(v.omega.x,v.omega.y,v.omega.z));}
+  out:[21841528]u8;magic:="LABOUT01";for i:0..<8 {out[i]=magic[i];}
+  lab_uput(out[..],8,cast(u64)count);lab_uput(out[..],16,cast(u64)steps);lab_uput(out[..],24,cast(u64)every);
+  at:=32+steps*8;lab_snapshot(out[..],at,b[0..<count],0);at+=8+104*count;
+  for step:1..<steps+1 {
+    start:=cxproc_now_ns();ok:=lab_advance(b[0..<count],dt,g,ground,half,e,mu,passes,order[..],tmp[..],a[..],z[..]);end:=cxproc_now_ns();
+    if !ok || start<0 || end<start {return 5;}lab_uput(out[..],32+(step-1)*8,cast(u64)(end-start));
+    if step%every==0 {lab_snapshot(out[..],at,b[0..<count],step);at+=8+104*count;}
+  }
+  if !fs_write(args_at(args[..],1),cast(string)out[0..<at]) {return 6;}return 0;
+}

@@ -1,0 +1,26 @@
+// Bounded artifact text. Finite decimals retain six places; state digests use exact hexadecimal.
+LabText :: struct {data:[]u8;n:int;full:bool;}
+lt_put :: (o:[]LabText,s:string) {
+  if o[0].full {return;}if s.count>o[0].data.count-o[0].n {o[0].full=true;return;}
+  for c:s {o[0].data[o[0].n]=c;o[0].n+=1;}
+}
+lt_int :: (o:[]LabText,v:int) {
+  if v<0 {lt_put(o,"-");lt_int(o,-v);return;}
+  digits:[20]u8;n:=0;x:=v;if x==0 {lt_put(o,"0");return;}
+  while x>0 {digits[n]=cast(u8)('0'+x%10);x/=10;n+=1;}
+  for i:0..<n {lt_put(o,cast(string)digits[n-1-i..<n-i]);}
+}
+lt_float :: (o:[]LabText,v:f64) {
+  if v!=v || abs(v)>1e12 {o[0].full=true;return;}
+  x:=v;if x<0 {lt_put(o,"-");x= -x;}
+  whole:=cast(int)x;frac:=cast(int)floor((x-f64(whole))*1000000+0.5);
+  if frac==1000000 {whole+=1;frac=0;}lt_int(o,whole);lt_put(o,".");
+  digits:[6]u8;for i:0..<6 {digits[5-i]=cast(u8)('0'+frac%10);frac/=10;}lt_put(o,cast(string)digits[..]);
+}
+lt_hex :: (o:[]LabText,v:u64) {digits:="0123456789abcdef";for i:0..<16 {k:=cast(int)((v>>cast(u64)((15-i)*4))&15);lt_put(o,digits[k..<k+1]);}}
+lt_text :: (o:[]LabText)->string {return cast(string)o[0].data[0..<o[0].n];}
+#test "physics lab text: precision, carry, exact checksum and overflow are observable" {
+  b:[80]u8;o:=[1]LabText.[LabText.{data=b[..]}];lt_float(o[..],-1.25);lt_put(o[..]," ");lt_float(o[..],2.9999999);lt_put(o[..]," ");lt_hex(o[..],0xffffffffffffffff);
+  #assert lt_text(o[..])=="-1.250000 3.000000 ffffffffffffffff" && !o[0].full;
+  tiny:[1]u8;t:=[1]LabText.[LabText.{data=tiny[..]}];lt_put(t[..],"ab");#assert t[0].full && t[0].n==0;
+}

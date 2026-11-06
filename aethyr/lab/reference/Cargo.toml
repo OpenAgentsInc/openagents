@@ -1,0 +1,15 @@
+[package]
+name = "aethyr-lab-rapier"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "lab-rapier"
+path = "rapier.rs"
+
+[dependencies]
+rapier3d-f64 = { git = "https://github.com/dimforge/rapier.git", rev = "3406750a38286a0d3c7d0f4be2f9d53153e81d90", default-features = false, features = ["dim3", "f64", "std", "enhanced-determinism"] }
+
+[profile.release]
+codegen-units = 1

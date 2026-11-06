@@ -1,0 +1,33 @@
+// One metric implementation observes every engine's recorded states. It is outside step timing.
+#load "physics-kernel.coax";
+LabMetrics :: struct {energy:f64;penetration:f64;at_rest:int;invalid:int;}
+#test "physics lab metrics: energy, full rotated ground support and rest use physical state" {
+  b:[2]RigidBody;b[0]=rigid_body(1,d3(1.0/6,1.0/6,1.0/6),d3(0,1,0),DQ.{});b[1]=b[0];b[1].pos=d3(4,0.4,0);b[1].vel=d3(3,0,0);
+  b[1].omega=d3(0,2,0);order:[2]int;tmp:[2]int;a:[8]int;z:[8]int;
+  m:=lab_metrics(b[..],lab_spec(0),order[..],tmp[..],a[..],z[..]);
+  #assert abs(m.energy-(1.4*f64(f32(9.81))+4.5+1.0/3))<0.000001 && abs(m.penetration-0.1)<0.000001 && m.at_rest==1 && m.invalid==0;
+  b[1].pos=d3(0,1.8,0);b[1].vel=D3_ZERO;b[1].omega=D3_ZERO;
+  m=lab_metrics(b[..],lab_spec(0),order[..],tmp[..],a[..],z[..]);#assert abs(m.penetration-0.2)<0.000001 && m.at_rest==2;
+  b[1].vel=d3(0.05,0,0);m=lab_metrics(b[..],lab_spec(0),order[..],tmp[..],a[..],z[..]);#assert m.at_rest==1;
+}
+#test "physics lab timings: nearest-rank percentiles include slow outliers" {
+  times:=[10]int.[100,1,9,4,7,2,6,3,8,5];lab_time_sort(times[..]);
+  #assert lab_percentile(times[..],50)==5 && lab_percentile(times[..],95)==100 && lab_percentile(times[..],99)==100;
+}
+lab_finite :: (v:f64)->bool {return v==v && abs(v)<1e100;}
+lab_metrics :: (b:[]RigidBody,p:LabSpec,order:[]int,tmp:[]int,a:[]int,z:[]int)->LabMetrics {
+  m:LabMetrics;ground:=plane(d3(p.normal.x,p.normal.y,p.normal.z),p.plane_d);half:=d3(p.half.x,p.half.y,p.half.z);
+  for i:0..<b.count {
+    v:=b[i];q:=v.orientation;
+    if !lab_finite(v.pos.x) || !lab_finite(v.pos.y) || !lab_finite(v.pos.z) || !lab_finite(q.x) || !lab_finite(q.y) || !lab_finite(q.z) || !lab_finite(q.w) || !lab_finite(d3_dot(v.vel,v.vel)) || !lab_finite(d3_dot(v.omega,v.omega)) {m.invalid+=1;continue;}
+    m.energy+= -p.mass*(p.gravity.x*v.pos.x+p.gravity.y*v.pos.y+p.gravity.z*v.pos.z)+0.5*p.mass*d3_dot(v.vel,v.vel)+0.5*d3_dot(v.omega,d3_mul(v.inertia,v.omega));
+    if d3_len(v.vel)<0.05 && d3_len(v.omega)<0.05 {m.at_rest+=1;}
+    contacts:[8]Contact;n:=contact_box_plane(v.pos,q,half,ground,contacts[..]);if n>0 {m.penetration=fmax(m.penetration,contacts[0].depth);}
+  }
+  if m.invalid>0 {return m;}
+  lab_order(b,order,tmp);n:=lab_pairs(b,order,a,z,p.half.x);if n<0 {m.invalid+=1;return m;}
+  for k:0..<n {ia:=a[k];ib:=z[k];hit:=narrow_box_box(narrow_box(b[ia].pos,b[ia].orientation,half),narrow_box(b[ib].pos,b[ib].orientation,half));for c:0..<hit.count {m.penetration=fmax(m.penetration,-hit.distance[c]);}}
+  return m;
+}
+lab_time_sort :: (t:[]int) {for i:1..<t.count {v:=t[i];j:=i;while j>0 && t[j-1]>v {t[j]=t[j-1];j-=1;}t[j]=v;}}
+lab_percentile :: (t:[]int,q:int)->int {return t[(t.count*q+99)/100-1];}

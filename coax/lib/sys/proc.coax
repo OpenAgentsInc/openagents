@@ -31,6 +31,7 @@ cxproc_stderr_count :: (h: int) -> int #foreign;
 cxproc_stderr_byte :: (h: int, i: int) -> int #foreign;
 cxproc_release :: (h: int) -> int #foreign;
 cxproc_now_ms :: () -> int #foreign;
+cxproc_now_ns :: () -> int #foreign;
 cxproc_sleep_ms :: (ms: int) -> int #foreign;
 cxproc_getenv_push :: (byte: int) -> int #foreign;
 cxproc_getenv :: () -> int #foreign;

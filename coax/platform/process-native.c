@@ -128,6 +128,13 @@ int64_t cxproc_now_ms(void) {
   return (int64_t)t.tv_sec * 1000 + t.tv_nsec / 1000000;
 }
 
+/* High-resolution monotonic elapsed time for numerical lab measurements. */
+int64_t cxproc_now_ns(void) {
+  struct timespec t;
+  if (clock_gettime(CLOCK_MONOTONIC, &t) != 0) return -1;
+  return (int64_t)t.tv_sec * 1000000000 + t.tv_nsec;
+}
+
 /* The wall clock in microseconds since the epoch (CLOCK_REALTIME): for logs that are compared with
    other programs' timestamps, never for timeouts, which use the monotonic clock above. */
 int64_t cxproc_wall_us(void) {

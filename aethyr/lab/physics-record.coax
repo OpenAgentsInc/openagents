@@ -1,0 +1,47 @@
+// Lab-only LABIN001/LABOUT01 codec; proto/aethyr/physics-lab-v1.json is the contract.
+#load "physics-scene.coax";
+#load "../../coax/lib/crypto/bytes.coax";
+
+LAB_BODY_BYTES :: 104;
+#test "physics lab record: literal little-endian bytes and exact lengths" {
+  b:[160]u8;lab_uput(b[..],8,0x0123456789abcdef);
+  #assert b[8]==0xef && b[9]==0xcd && b[15]==1 && lab_uget(b[..],8)==0x0123456789abcdef;
+  lab_fput(b[..],0,1.0);#assert b[6]==0xf0 && b[7]==0x3f && lab_fget(b[..],0)==1;
+  #assert lab_input_bytes(1000)==104160 && lab_output_bytes(1000,180,30)==729528;
+  #assert lab_input_bytes(30000)==3120160 && lab_output_bytes(30000,180,30)==21841528;
+  body:=lab_body(lab_spec(0),2026,0);lab_body_put(b[..],0,body);again:=lab_body_get(b[..],0);
+  #assert again.pos.x== -38.75 && again.pos.y==6.251953125 && again.rot.w==1 && again.vel.y==0;
+}
+#test "physics lab record: checksum changes for a velocity, rotation or last body's position" {
+  b:[208]u8;lab_body_put(b[..],0,LabBody.{});lab_body_put(b[..],104,LabBody.{});
+  a:=lab_hash(b[..]);lab_fput(b[..],104,1);#assert a!=lab_hash(b[..]);
+  lab_fput(b[..],104,0);lab_fput(b[..],24,0.5);#assert a!=lab_hash(b[..]);
+  lab_fput(b[..],24,0);lab_fput(b[..],80,0.1);#assert a!=lab_hash(b[..]);
+}
+lab_input_bytes :: (count:int)->int {return 160+104*count;}
+lab_output_bytes :: (count:int,steps:int,every:int)->int {return 32+8*steps+(steps/every+1)*(8+104*count);}
+// Slice only the addressed word: crypto byte helpers deliberately cap each view at 1 MiB.
+lab_uput :: (b:[]u8,at:int,v:u64) {ok:=cb_store_le64(b[at..<at+8],0,v);}
+lab_uget :: (b:[]u8,at:int)->u64 {return cb_load_le64(b[at..<at+8],0).value;}
+lab_fput :: (b:[]u8,at:int,v:f64) {lab_uput(b,at,f64_bits(v));}
+lab_fget :: (b:[]u8,at:int)->f64 {return f64_from_bits(lab_uget(b,at));}
+lab_body_put :: (b:[]u8,at:int,v:LabBody) {
+  values:=[13]f64.[v.pos.x,v.pos.y,v.pos.z,v.rot.x,v.rot.y,v.rot.z,v.rot.w,v.vel.x,v.vel.y,v.vel.z,v.omega.x,v.omega.y,v.omega.z];
+  for i:0..<13 {lab_fput(b,at+i*8,values[i]);}
+}
+lab_body_get :: (b:[]u8,at:int)->LabBody {
+  return LabBody.{ok=true,pos=LabVec.{x=lab_fget(b,at),y=lab_fget(b,at+8),z=lab_fget(b,at+16)},
+    rot=LabQuat.{x=lab_fget(b,at+24),y=lab_fget(b,at+32),z=lab_fget(b,at+40),w=lab_fget(b,at+48)},
+    vel=LabVec.{x=lab_fget(b,at+56),y=lab_fget(b,at+64),z=lab_fget(b,at+72)},
+    omega=LabVec.{x=lab_fget(b,at+80),y=lab_fget(b,at+88),z=lab_fget(b,at+96)}};
+}
+lab_input_put :: (b:[]u8,p:LabSpec,seed:int) {
+  magic:="LABIN001";for i:0..<8 {b[i]=magic[i];}
+  ints:=[5]int.[p.count,p.steps,p.sample_every,seed,p.passes];for i:0..<5 {lab_uput(b,8+i*8,cast(u64)ints[i]);}
+  vals:=[14]f64.[p.dt,p.gravity.x,p.gravity.y,p.gravity.z,p.normal.x,p.normal.y,p.normal.z,p.plane_d,p.half.x,p.half.y,p.half.z,p.mass,p.friction,p.restitution];
+  for i:0..<14 {lab_fput(b,48+i*8,vals[i]);}
+  for i:0..<p.count {lab_body_put(b,160+104*i,lab_body(p,seed,i));}
+}
+lab_hash :: (b:[]u8)->u64 {
+  h:u64=14695981039346656037;for c:b {h=mul_wrap(h^cast(u64)c,1099511628211);}return h;
+}
