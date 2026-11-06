@@ -3,6 +3,7 @@
 #import "Basic";
 #load "../render/tests/qualification-files.coax";
 #load "../../coax/lib/sys/args.coax";
+#load "text-conformance.coax";
 hlac_open::(mode:int) #foreign #effects(all);
 hlac_trigger::() #foreign #effects(all);
 hlac_poll::() #foreign #effects(all);
@@ -11,9 +12,20 @@ hlac_probe::(field:int)->int #foreign #effects(all);
 hlac_observe::(event:int,field:int)->int #foreign #effects(all);
 hlac_effect::()->int #foreign #effects(all);
 hlac_close::() #foreign #effects(all);
+hlac_text::(text:[]u8)->int #foreign #effects(all);
+hlac_text_offer::(text:string)->int {bytes:[129]u8;for byte,i:text {bytes[i]=byte;}return hlac_text(bytes[0..<text.count]);}
 tool_main::()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {return 2;}
  missing:=args_at(a[..],1)=="missing";if !missing&&args_at(a[..],1)!="normal" {return 2;}
+ if !missing {
+  hlac_open(0);text_rows:[5][5]int;large:[129]u8;for i:0..<large.count {large[i]=97;}
+  for i:0..<5 {
+   result:=0;if i==0||i==4 {result=hlac_text_offer("Aé🙂");}else if i==1 {result=hlac_text_offer("");}else if i==2 {result=hlac_text(large[..]);}else {hlac_poll();}
+   count:=hlac_observe(-1,2);text_rows[i][0]=result;text_rows[i][1]=count;text_rows[i][2]=hlac_observe(count-1,1);text_rows[i][3]=hlac_observe(count-1,6);text_rows[i][4]=hlac_observe(count-1,7);
+  }hlac_close();
+  bytes:[8192]u8;w:[1]Jo;jo_start(w[..],bytes[..]);jo_arr(w[..]);for row:text_rows {jo_arr(w[..]);for value:row {jo_int(w[..],value);}jo_end(w[..]);}jo_end(w[..]);path:[4096]u8;
+  if w[0].bad||!fs_write(fs_join(fs_dir(args_at(a[..],0)),"text-rows.json",path[..]),jo_text(w[..]))||!htxt_accept(text_rows[..]) {return 1;}
+ }
  modes:=[10]int.[0,1,2,3,4,5,6,7,8,99];rows:[110]int;count:=0;
  for mode,index:modes {if (index==9)!=missing {continue;}
   hlac_open(mode);hlac_trigger();hlac_poll();before:=hlac_observe(-1,4);hlac_frame();

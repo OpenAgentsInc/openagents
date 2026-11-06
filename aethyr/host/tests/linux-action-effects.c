@@ -17,6 +17,7 @@ int64_t hlac_probe(int64_t field){return coaxial_action_fixture_probe((int32_t)f
 int64_t hlac_observe(int64_t event,int64_t field){return coaxial_host_probe(host.state,(int32_t)event,(int32_t)field);}
 int64_t hlac_effect(void){size_t n=0;const char *p=rh_hash(&host,&n);return n!=9||(n&&memcmp(p,"unchanged",9));}
 void hlac_close(void){rh_close(&host);}
+int64_t hlac_text(coax_v_u8 text){return rh_text(&host,(const char*)text.data,(size_t)text.count);}
 extern int32_t guard_http(cx_face_addr,uint32_t,cx_face_addr,uint32_t,uint32_t,int64_t);
 extern int32_t guard_cancel(int32_t);
 int32_t coaxial_http_bounded(cx_face_addr u,uint32_t n,cx_face_addr b,uint32_t bn,int32_t flags,int64_t timeout){return guard_http(u,n,b,bn,(uint32_t)flags,timeout);}

@@ -1,0 +1,14 @@
+// Actual native dispatcher observations: result, delivered event count,
+// last kind, last byte count and last byte hash, before and after refusal.
+#authority;
+#test "text dispatch preserves whole Unicode and empty commits and defers overflow refusal" {
+ rows:=[5][5]int.[[5]int.[1,1,1,7,2634860734],[5]int.[1,2,1,0,2166136261],[5]int.[0,2,1,0,2166136261],[5]int.[0,3,604,0,2166136261],[5]int.[1,4,1,7,2634860734]];
+ #assert htxt_accept(rows[..]);
+ for row:0..<5 {for field:0..<5 {a:=rows;a[row][field]+=1;#assert !htxt_accept(a[..]);}}
+ #assert !htxt_accept(rows[0..<4]);extra:[6][5]int;#assert !htxt_accept(extra[..]);
+}
+htxt_accept::(rows:[][5]int)->bool #export_c #effects(all) {
+ if rows.count!=5 {return false;}
+ want:=[5][5]int.[[5]int.[1,1,1,7,2634860734],[5]int.[1,2,1,0,2166136261],[5]int.[0,2,1,0,2166136261],[5]int.[0,3,604,0,2166136261],[5]int.[1,4,1,7,2634860734]];
+ for row:0..<5 {for field:0..<5 {if rows[row][field]!=want[row][field] {return false;}}}return true;
+}

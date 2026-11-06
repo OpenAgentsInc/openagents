@@ -53,6 +53,9 @@ const RhEntry *rh_entry(const RealmHost *h, int kind);
 void rh_deliver(RealmHost *h, int extra, const uint32_t *extra_sizes);
 // A message into the realm's inbox (cut at its capacity).
 void rh_send(RealmHost *h, int kind, const char *text, size_t length);
+// Text commits are whole offers: a smaller producer inbox refuses with604.
+int rh_text(RealmHost *h,const char *text,size_t length);
+void rh_refuse(RealmHost *h);
 // One frame: the vertex count.
 uint32_t rh_frame(RealmHost *h, float w, float ht, float scale, float dt);
 // The explicit still-frame form used by deterministic host probes/previews.

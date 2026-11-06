@@ -182,6 +182,14 @@ void rh_send(RealmHost *h, int kind, const char *text, size_t length) {
   rh_after(h, 0);
 }
 
+void rh_refuse(RealmHost *h){h->action_refused=1;}
+int rh_text(RealmHost *h,const char *text,size_t length){
+  rh_audio_gesture(h);
+  uint32_t cap=coaxial_inbox_cap();cx_face_addr at=coaxial_inbox(h->state);
+  if(length&&(!text||!at||length>cap||(rh_host_version()==1&&(!coaxial_host_copy_span||!coaxial_host_copy_span(at,cap,length,rh_address_limit()))))){rh_refuse(h);return 0;}
+  if(length)memcpy(rh_ptr(at),text,length);coaxial_message(h->state,1,(uint32_t)length);rh_after(h,0);return 1;
+}
+
 uint32_t rh_frame(RealmHost *h, float w, float ht, float scale, float dt) {
   return rh_frame_input(h,w,ht,scale,dt,0);
 }
