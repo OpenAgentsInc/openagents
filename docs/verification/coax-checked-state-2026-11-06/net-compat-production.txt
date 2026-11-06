@@ -1,0 +1,2 @@
+compat gate: apps/openagents-web/everglade-wire.coax against 1da0654445: compatible, no new regression
+compat gate: aethyr/session/character-checkpoint.coax against 1da0654445: compatible, no new regression

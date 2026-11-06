@@ -1,0 +1,52 @@
+{
+  "command": {
+    "mutants": 50,
+    "killed": 50,
+    "survivors": 0
+  },
+  "diagnostics": {
+    "mutants": 68,
+    "killed": 68,
+    "survivors": 0
+  },
+  "realm": {
+    "mutants": 64,
+    "killed": 64,
+    "survivors": 0
+  },
+  "record": {
+    "mutants": 154,
+    "killed": 154,
+    "survivors": 0
+  },
+  "replication": {
+    "mutants": 106,
+    "killed": 106,
+    "survivors": 0
+  },
+  "row": {
+    "mutants": 32,
+    "killed": 32,
+    "survivors": 0
+  },
+  "session": {
+    "mutants": 22,
+    "killed": 22,
+    "survivors": 0
+  },
+  "orbit-session": {
+    "mutants": 114,
+    "killed": 114,
+    "survivors": 0
+  },
+  "orbit-snapshot": {
+    "mutants": 284,
+    "killed": 284,
+    "survivors": 0
+  },
+  "room-input": {
+    "mutants": 6,
+    "killed": 6,
+    "survivors": 0
+  }
+}

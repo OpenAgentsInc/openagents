@@ -113,7 +113,7 @@ oq_run :: (a:[]Cdp,b:[]Cdp,url:string,out:string,quick:bool)->bool {
   n=0;for t:[2]string.[out,"/page.png"] {for ch:t {query[n]=ch;n+=1;}}
   saved:=fs_write(cast(string)query[0..<n],cast(string)png[0..<k]);return saved;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) || args_count(args[..])<2 || args_count(args[..])>3 {tool_errln("usage: orbit-qualification URL OUT_DIR [quick]");return 2;}
   quick:=args_count(args[..])==3;if quick && args_at(args[..],2)!="quick" {return 2;}
   out:=args_at(args[..],1);made:=fs_mkdir(out);a:[1]Cdp;b:[1]Cdp;

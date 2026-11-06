@@ -1,1 +1,1 @@
-built /Users/christopherdavid/work/oa-entity-handles/apps/openagents-web/build/everglade-room.wasm (1045992 bytes)
+built /Users/christopherdavid/work/oa-entity-handles/apps/openagents-web/build/everglade-room.wasm (1053804 bytes)

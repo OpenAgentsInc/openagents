@@ -18,10 +18,10 @@ NetReplica :: struct {
   #assert net_snapshot_visible(false,true,true) && !net_snapshot_visible(true,false,true);
   #assert net_snapshot_visible(true,true,true) && net_snapshot_visible(false,true,false);
 }
-net_snapshot_received :: (heard:int,tick:int,assembling:int,whole:bool,final:bool)->bool {
+net_snapshot_received :: (heard:int,tick:int,assembling:int,whole:bool,final:bool)->bool #effects(all) {
   return final && whole && tick==assembling && tick>heard;
 }
-net_snapshot_visible :: (previous:bool,present:bool,whole:bool)->bool {return present || (previous && !whole);}
+net_snapshot_visible :: (previous:bool,present:bool,whole:bool)->bool #effects(all) {return present || (previous && !whole);}
 
 #test "replication: a replacement retains both owed removals before its next row" {
   s:=NetReplica.{held=8,base=3,sent=15,last=3,priority=2,since=2};
@@ -77,17 +77,17 @@ net_snapshot_visible :: (previous:bool,present:bool,whole:bool)->bool {return pr
   a=net_replica_fields(s,15,3);#assert a.base==0 && a.sent==0;
 }
 
-net_replica_ack_allowed :: (heard:int,previous:int,now:int,acks:int)->bool {
+net_replica_ack_allowed :: (heard:int,previous:int,now:int,acks:int)->bool #effects(all) {
   return heard>previous && heard<=now && now-heard<acks;
 }
-net_replica_ack :: (s:NetReplica,heard:int,acks:int)->NetReplica {
+net_replica_ack :: (s:NetReplica,heard:int,acks:int)->NetReplica #effects(all) {
   out:=s;bit:=1<<(heard%acks);
   if (out.sent & bit)!=0 { out.base=net_accepted_result(out.base,heard).seq; }
   if out.gone!=0 && out.gone_t==heard { out.gone=0;out.gone_t=0; }
   if out.gone2!=0 && out.gone2_t==heard { out.gone2=0;out.gone2_t=0; }
   return out;
 }
-net_replica_observe :: (s:NetReplica,id1:int,seen:bool,now:int,acks:int)->NetReplica {
+net_replica_observe :: (s:NetReplica,id1:int,seen:bool,now:int,acks:int)->NetReplica #effects(all) {
   out:=s;keep:=((1<<acks)-1) ^ (1<<(now%acks));out.sent=out.sent & keep;
   if out.held!=0 && (!seen || out.held!=id1) {
     if out.gone!=0 { out.gone2=out.gone;out.gone2_t=out.gone_t; }
@@ -95,11 +95,11 @@ net_replica_observe :: (s:NetReplica,id1:int,seen:bool,now:int,acks:int)->NetRep
   }
   return out;
 }
-net_replica_ready :: (s:NetReplica)->bool { return !(s.gone!=0 && s.gone_t==0) && s.gone2==0; }
-net_replica_fields :: (s:NetReplica,previous:int,wanted:int)->NetReplica {
+net_replica_ready :: (s:NetReplica)->bool #effects(all) { return !(s.gone!=0 && s.gone_t==0) && s.gone2==0; }
+net_replica_fields :: (s:NetReplica,previous:int,wanted:int)->NetReplica #effects(all) {
   out:=s;if previous!=wanted {out.base=0;out.sent=0;}return out;
 }
-net_replica_sent :: (s:NetReplica,id1:int,now:int,acks:int)->NetReplica {
+net_replica_sent :: (s:NetReplica,id1:int,now:int,acks:int)->NetReplica #effects(all) {
   out:=s;
   if out.held!=id1 { out.base=0;out.sent=0; }
   out.sent=out.sent | (1<<(now%acks));out.last=now;out.held=id1;out.priority=0;out.since=0;

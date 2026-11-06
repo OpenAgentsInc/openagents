@@ -40,7 +40,7 @@ ow_check :: (d:Jv)->bool {
   }
   return true;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {tool_errln("orbit-wire-profile PROFILE.json");return 2;}
   text:[16384]u8;n:=fs_read(args_at(a[..],0),text[..]);if n<=0 {return 2;}
   nodes:[2048]JvNode;j:[1]Jv;if !jv_parse(j[..],cast(string)text[0..<n],nodes[..]) {return 2;}

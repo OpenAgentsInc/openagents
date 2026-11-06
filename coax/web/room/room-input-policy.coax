@@ -5,7 +5,7 @@
 #authority;
 #load "../../../aethyr/net/command.coax";
 EGI_QUEUE :: 32; EGI_CREDIT :: 30; EGI_STEPS :: 4; EGI_KEEP :: 4;
-eg_credit_profile :: ()->NetCreditProfile { return NetCreditProfile.{hz=30,most=EGI_CREDIT,per_tick=EGI_STEPS,excess=EGI_KEEP}; }
+eg_credit_profile :: ()->NetCreditProfile #effects(all) { return NetCreditProfile.{hz=30,most=EGI_CREDIT,per_tick=EGI_STEPS,excess=EGI_KEEP}; }
 #test "input policy: the qualified resend fits within bounded earned clock credit" {
   p:=eg_credit_profile();
   #assert EGI_QUEUE == 32 && p.hz==30 && p.most==30 && p.per_tick==4 && p.excess==4;
@@ -17,4 +17,4 @@ eg_credit_profile :: ()->NetCreditProfile { return NetCreditProfile.{hz=30,most=
   #assert net_credit_excess(p,32,0)==28 && net_credit_excess(p,0,30)==-34;
 }
 // The room's existing decisions, with explicit realm limits. Credit still comes only from its clock.
-egi_queue_full :: (queued: int) -> bool { return queued >= EGI_QUEUE; }
+egi_queue_full :: (queued: int) -> bool #effects(all) { return queued >= EGI_QUEUE; }

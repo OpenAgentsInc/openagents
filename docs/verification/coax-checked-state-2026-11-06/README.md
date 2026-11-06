@@ -11,40 +11,41 @@ Coax 0.52 implements Everglade issues [#12952](https://github.com/OpenAgentsInc/
 
 | Host | Local p95 | 100 ms p95 | 250 ms p95 | Issue limit |
 | --- | ---: | ---: | ---: | ---: |
-| Native | 370 µs | 330 µs | 360 µs | 840 µs |
-| Browser worker | 515 µs | 535 µs | 505 µs | 600 µs |
+| Native | 480 µs | 630 µs | 430 µs | 840 µs |
+| Browser worker | 486 µs | 530 µs | 491 µs | 600 µs |
 
 Every paired gameplay probe passes, including movement, observed jumps, spells,
 conditions, status text, camera behavior and corrections. The native local room
 runs in its own process, separately from the paired room and its three bots.
 Native observations are in `native-final.txt` and `native-cost-windows.txt`.
-Worker results are in `worker-final-local-100.txt` and
+Worker results are in `worker-final-local-raid.txt`, `worker-final-100-raid.txt` and
 `worker-final-250-raid.txt`; their raw samples are `worker-final-ticks-*.csv`.
 
 The worker gate covers completed cost batches from boot through the paired
-script: 2,053 / 2,077 / 2,073 ticks. The browser rounds observations upward to
+script: 2,078 / 2,044 / 2,047 ticks. The browser rounds observations upward to
 microseconds; Coax computes the nearest-rank percentile. Missing, malformed or
 overflowing observations refuse qualification. These runs use muted headless
 Chrome with background throttling disabled and a 1280×800 viewport. They qualify
 this authored scenario on this Mac; capacity retains its separate load checks.
 Own builds and other checks were stopped during timing.
 
-The extended 250 ms run also passes all four raid verdicts: stables collapse on
-both pages, the room reaches level 2 through XP, and its hotbar changes with the
-level. The 600 µs observation covers the paired script preceding that raid.
+Each extended local / 100 ms / 250 ms run passes all four raid verdicts: stables
+collapse on both pages, the room reaches level 2 through XP, and its hotbar changes
+with the level. Each 600 µs observation covers the paired script before its raid.
 The focused 250 ms forest rehearsal passes: both pages see the fire and burnt
 tree, and their settled forest digests match (`forest-final.txt`).
 
 | Ordinary release artifact | Bytes | Limit |
 | --- | ---: | ---: |
-| SRD page served at `/worlds/everglade` | 2,005,680 | 2,150,000 |
-| Classic page | 1,790,730 | 1,910,000 |
-| Local room worker | 1,045,992 | 1,060,000 |
+| SRD page served at `/worlds/everglade` | 1,999,484 | 2,150,000 |
+| Classic page | 1,784,949 | 1,910,000 |
+| Local room worker | 1,053,804 | 1,060,000 |
+| Orbit League | 289,987 | 300,000 |
 
 `current-builds.json` retains artifact hashes and checked-build observations.
-The served SRD build executes 1,391 checks. The earlier complete evaluator
+The served SRD build executes 1,404 checks. The earlier complete evaluator
 reports pass 674/674 room checks and 777/777 page checks; final checked builds
-cover the integrated sources, whose root inventories are 682 and 788. The
+cover the integrated sources, whose root inventories are 724 and 801. The
 12 room-town regressions pass with the fixture lifetimes supplied by the real
 host. API room qualification passes, including its 203 room checks.
 
@@ -60,6 +61,7 @@ host. API room qualification passes, including its 203 room checks.
 | In-memory ledger | 254 / 254 | 0 |
 | Compatibility policy | 306 / 306 | 0 |
 | Complete Coax checker | 13,534 / 13,534 | 0 |
+| Shared network / Orbit / input-policy integration | 900 / 900 | 0 |
 
 These are full component inventories, without equivalent labels. Library and
 realm runs use `--root-only` while retaining dependency checks. The complete
@@ -102,18 +104,25 @@ compiler. Application gates use a development compiler with the same compiler
 source inputs. No compiler inputs changed during final application integration.
 
 The integration preserves session-v5 forest/input work through `e5c3b69fac` and
-Valley Lab `f255037e9c`. Its 21 newly required effect declarations in eight files
-preserve the upstream bodies byte-for-byte; the Valley world compiles. Release
+Valley Lab `f255037e9c`, then the shared-network integration through `cff8a2cf2b`.
+Valley's 21 newly required effect declarations in eight files preserve its bodies;
+the Valley world compiles. The network integration adds 50 effect declarations
+in 13 files while preserving their merged bodies. Ten affected authority units
+kill all 900 mutants. Orbit's consumer body matches main after removing effect
+declarations, and its fresh Wasm build passes the byte gate. Release
 metadata passes; tools-check reports 1,833 tracked tool files and zero new files
 without a reason.
 
-The admitted worker optimizes the river and world C units at `-O2`; other units
+The admitted worker compiles only the river C unit at `-O3`; other units
 remain `-Os`. River C emission enables guarded loop versioning, retaining
 checked arithmetic, development branches, debug metadata and the checked
 fallback. Its profile participates in the C-cache key. The actual axis report
 is `river-emission-profile.json`; source keys and artifact hashes are retained.
-Strict floating-point flags remain enabled. Larger whole-city, river `-O3` and
-worker-wrapper `-O2` candidates exceeded the size gate and were excluded.
+Strict floating-point flags remain enabled. Whole-city and combined
+worker-wrapper speed candidates exceeded the size gate and were excluded.
+On the merged network base, a river-only `-O2` attempt measured 615 / 606 µs
+for local / 100 ms. Its failed report and samples are retained; river-only
+`-O3` passes all three full profiles within the unchanged byte and tick limits.
 
 Final application builds use `COAX_NEAR_LIMIT=100` to avoid serial replays for
 informational near-limit notes. Work, storage and traversal limits stay intact;
@@ -137,7 +146,7 @@ Failed observations remain reviewable:
   origin preserves real gaps and avoids inventing gaps after convergence.
 - The first extended raid filled the old report bound and omitted the last two
   verdicts. Its report and observations are retained. The report now holds 64
-  verdicts and traps on overflow; a regression retains a late failure. The final
+  verdicts and refuses qualification on overflow; a regression retains a late failure. The final
   extended run prints and passes all four raid verdicts.
 
 Existing drift tolerances and the issue's tick limits remain unchanged.
@@ -159,7 +168,8 @@ coax/web/tool.sh coax/tests/compat-facades.coax "$PWD/coax/bin/coax"
 coax/web/tool.sh tools-check
 # After building the SRD page, worker and native room; run separately:
 coax/web/tool.sh everglade-drift --profiles local,100,250 --offline native --no-raid --tick-us 840 --port 8980
-coax/web/tool.sh everglade-drift --profiles local,100 --offline worker --no-raid --tick-us 600 --port 8990
+coax/web/tool.sh everglade-drift --profiles local --offline worker --tick-us 600 --port 8990
+coax/web/tool.sh everglade-drift --profiles 100 --offline worker --tick-us 600 --port 8990
 coax/web/tool.sh everglade-drift --profiles 250 --offline worker --tick-us 600 --port 8990
 coax/web/tool.sh everglade-drift --profiles 250 --offline native --forest-only --port 8980
 ```

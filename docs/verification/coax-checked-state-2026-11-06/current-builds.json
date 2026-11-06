@@ -2,15 +2,12 @@
   "release_emission": {
     "compiler": "coax0 0.52.0",
     "success": true,
-    "parallel_checks": "parallel: 527 checks, 8 jobs",
-    "authority_checks": {
-      "cached": 0,
-      "checked": 1
-    },
-    "check_reuse": {
-      "reused": 517,
-      "run": 10
-    }
+    "source": "apps/openagents-web/everglade.coax",
+    "flags": [
+      "--release",
+      "--library"
+    ],
+    "emitted_sha256": "700618b4675729994abbfc6e71055949f3a89f58ded6c02383bab09b15a74c1e"
   },
   "artifacts": [
     {
@@ -24,98 +21,110 @@
       "sha256": "ef2733e92f9eafdb1cb2dbd36841c65f5d2c0f41d948abc17623c41500d1f939"
     },
     {
+      "path": "apps/openagents-web/build/everglade5e.wasm",
+      "bytes": 1999484,
+      "sha256": "3692c5303c1431ebfa39b1fbb2da0b0884793bfb301ac89e6549b7a2396a085b"
+    },
+    {
       "path": "apps/openagents-web/build/everglade.wasm",
-      "bytes": 1790730,
-      "sha256": "3b20100164fd6a69b9eca25cbc6a294649258751a2948d9b270e2227893da4b8"
+      "bytes": 1784949,
+      "sha256": "f2cc9af044ff1ccd5d9dd6a03d7467992d7d7f765a86d2f66fb9583b84e62d13"
     },
     {
       "path": "apps/openagents-web/build/everglade-room.wasm",
-      "bytes": 1045992,
-      "sha256": "4afbbdd24fb9ed12d600c4b1fad3a9c7026c10b4249ad35bee58de0851432e78"
+      "bytes": 1053804,
+      "sha256": "1189ca302eef79e6bca10b0dbb3280944b0747043bf8cc35d55cff4e0df5974c"
+    },
+    {
+      "path": "apps/openagents-web/build/orbitleague.wasm",
+      "bytes": 289987,
+      "sha256": "1d7e06f0e039dc2b17d9618a3a8ad23b85c9fef06695881947408262fe50759d"
     },
     {
       "path": "coax/web/room/bin/room",
-      "bytes": 4052680,
-      "sha256": "f1e3806ef4c7947af1b9a9bfdd4f6e24ef5dd086c7df109db5e26bca00c2e934"
+      "bytes": 4091496,
+      "sha256": "83161c8267d24647cc2d9e9015fadf8183ce456becd43ded7a31113dd267bec2"
     },
     {
-      "path": "/tmp/oa-state-final-c/everglade.c",
-      "bytes": 7621922,
-      "sha256": "9ed7e6ec3bb6aa423a966889b29b3498454c1e95c1843b3fd12a3269d1cefd6b"
+      "path": "/tmp/oa-state-net-c/room.c",
+      "bytes": 3531928,
+      "sha256": "b5082c287a9e19064e0448015900743969b836310ffae6a81e267dc3c7d19f9e"
     },
     {
-      "path": "/tmp/oa-state-final-everglade-release-v2.c",
-      "bytes": 9647754,
-      "sha256": "27334c56c0363e4e94ba9af6ab002e1db16e1640872e01445e9e6ad53b11cb6e"
+      "path": "/tmp/oa-state-net-c/everglade.c",
+      "bytes": 7641291,
+      "sha256": "6c048c9793e37ad1d298b768405b310f9f55f7f5423cf625db8b9098e316d0d4"
     },
     {
-      "path": "apps/openagents-web/build/everglade5e.wasm",
-      "bytes": 2005680,
-      "sha256": "1199b2292bb6fbf7fc620d1cffc450712328165cf229bf69cbc84ad7945bfb04"
-    },
-    {
-      "path": "/tmp/oa-state-final-versioned-c/river.c",
+      "path": "/tmp/oa-state-net-c/river.c",
       "bytes": 1154169,
       "sha256": "becfe731eb0a2d13af2f3495404522cb3be60e8b6d70bf5d49827eccbc9056d1"
+    },
+    {
+      "path": "/tmp/oa-state-net-native/everglade-release.c",
+      "bytes": 9665127,
+      "sha256": "700618b4675729994abbfc6e71055949f3a89f58ded6c02383bab09b15a74c1e"
+    },
+    {
+      "path": "/tmp/oa-state-net-native/safety-development.c",
+      "bytes": 3547726,
+      "sha256": "0debc2facfad4ae5963e66037219b6c5ee6e0201219038d91c4e6f3b1133d81a"
+    },
+    {
+      "path": "/tmp/oa-state-net-native/safety-release.c",
+      "bytes": 4588448,
+      "sha256": "a6fa13ae7e6b2391be1f9f449691a95b815b38c7b0366e300c0b0863a2757191"
     }
   ],
   "classic_page": {
-    "bytes": 1790730,
+    "target": "everglade",
+    "bytes": 1784949,
+    "limit_bytes": 1910000,
     "mode": "release",
     "compiler_sha256": "ef2733e92f9eafdb1cb2dbd36841c65f5d2c0f41d948abc17623c41500d1f939",
     "units": [
       {
         "unit": "everglade",
         "success": true,
+        "parallel_checks": "parallel: 1396 checks, 8 jobs",
+        "checks": 1396,
+        "check_reuse": {
+          "reused": 0,
+          "run": 1396
+        },
         "authority_checks": {
           "cached": 0,
           "checked": 1
-        },
-        "parallel_checks": "parallel: 1383 checks, 8 jobs",
-        "checks": 1383
+        }
       }
     ]
   },
   "page": {
     "target": "everglade5e",
-    "route": "/worlds/everglade",
-    "bytes": 2005680,
+    "bytes": 1999484,
     "limit_bytes": 2150000,
     "mode": "release",
     "compiler_sha256": "ef2733e92f9eafdb1cb2dbd36841c65f5d2c0f41d948abc17623c41500d1f939",
     "units": [
       {
-        "unit": "Everglade5e-rules",
-        "success": true,
-        "authority_checks": {
-          "cached": 0,
-          "checked": 0
-        },
-        "parallel_checks": "",
-        "check_reuse": {
-          "reused": 0,
-          "run": 0
-        },
-        "checks": 0
-      },
-      {
         "unit": "everglade5e",
         "success": true,
+        "parallel_checks": "parallel: 1404 checks, 8 jobs",
+        "checks": 1404,
+        "check_reuse": {
+          "reused": 0,
+          "run": 1404
+        },
         "authority_checks": {
           "cached": 0,
           "checked": 1
-        },
-        "parallel_checks": "parallel: 1391 checks, 8 jobs",
-        "check_reuse": {
-          "reused": 0,
-          "run": 1391
-        },
-        "checks": 1391
+        }
       }
-    ]
+    ],
+    "route": "/worlds/everglade"
   },
   "worker": {
-    "bytes": 1045992,
+    "bytes": 1053804,
     "limit_bytes": 1060000,
     "arithmetic": "checked",
     "build_profile": "development",
@@ -124,13 +133,12 @@
       "others": 0
     },
     "clang_opt": {
-      "river": "O2",
-      "room-world.c": "O2",
+      "river": "O3",
       "others": "Os"
     },
     "strict_fp": true
   },
-  "integrated_base": "cff8a2cf2b2c54f806ac86a3e743e7521b3f811f",
+  "integrated_base": "a06449b17dc7cc6aaffe72b5735c454afbf90164",
   "qualification": {
     "network_profiles": [
       "local",
@@ -138,28 +146,55 @@
       "250 ms"
     ],
     "native_p95_us": [
-      370,
-      330,
-      360
+      480,
+      630,
+      430
     ],
     "native_limit_us": 840,
     "worker_p95_us": [
-      515,
-      535,
-      505
+      486,
+      530,
+      491
     ],
     "worker_limit_us": 600,
     "worker_sample_counts": [
-      2053,
-      2077,
-      2073
+      2078,
+      2044,
+      2047
     ],
-    "raid_profile": "250 ms",
     "forest_profile": "250 ms",
     "headless_background_throttling": false,
     "viewport": [
       1280,
       800
+    ],
+    "raid_profiles": [
+      "local",
+      "100 ms",
+      "250 ms"
+    ]
+  },
+  "orbit_page": {
+    "target": "orbitleague",
+    "bytes": 289987,
+    "limit_bytes": 300000,
+    "mode": "release",
+    "compiler_sha256": "ef2733e92f9eafdb1cb2dbd36841c65f5d2c0f41d948abc17623c41500d1f939",
+    "units": [
+      {
+        "unit": "orbitleague",
+        "success": true,
+        "parallel_checks": "parallel: 591 checks, 4 jobs",
+        "checks": 591,
+        "check_reuse": {
+          "reused": 0,
+          "run": 591
+        },
+        "authority_checks": {
+          "cached": 0,
+          "checked": 1
+        }
+      }
     ]
   }
 }

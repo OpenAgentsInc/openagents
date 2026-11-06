@@ -1,21 +1,22 @@
-everglade-drift: room 127.0.0.1:8980, page 127.0.0.1:8981, results in /tmp/oa-state-native-qualified
+everglade-drift: room 127.0.0.1:8980, page 127.0.0.1:8981, results in /tmp/oa-state-net-final-native
 profile local: round trip 0 ms
-  native room ready after 1 ms
+  native room ready after 0 ms
   step start
   step crate
   step strafe
   step walk
   step jump
   step rg
-  gravity placement: you -6300,-56700 mm, Bram -450,-5950 cm, Tilda 450,-5950 cm
-  gravity placement: you -6300,-56700 mm, Bram -450,-5950 cm, Tilda 450,-5950 cm
+  gravity placement: you -6300,-56700 mm, Bram -150,-7050 cm, Tilda 450,-5950 cm
+  gravity placement: you -6300,-56700 mm, Bram -150,-7050 cm, Tilda 450,-5950 cm
   step wos
   step ww
   step held
   step folk
   step end
+  transmitted inputs: origins 152/153, end steps 1848/1848, identical true
   (offline room host: 0 stalls, 0 ms of its beat dropped)
-  (native room tick: p95 370 us, p99 470 us, budget 8000 us at p95: within)
+  (native room tick: p95 480 us, p99 520 us, budget 8000 us at p95: within)
 ok    local background players stayed at least 32 m away
 ok    local gravity safely reaches and drops a townsperson
 ok    local native tick p95
@@ -47,22 +48,23 @@ ok    local corrections
 ok    local a townsperson held
 ok    local NPC speed against clip
 profile 100: round trip 100 ms, jitter 30 ms, 2% lost
-  native room ready after 0 ms
+  native room ready after 1 ms
   step start
   step crate
   step strafe
   step walk
   step jump
   step rg
-  gravity placement: you -6300,-56700 mm, Bram -150,-7050 cm, Tilda 180,-4693 cm
-  gravity placement: you -6300,-56700 mm, Bram -150,-7050 cm, Tilda 180,-4690 cm
+  gravity placement: you -6300,-56700 mm, Bram -450,-5950 cm, Tilda 207,-5685 cm
+  gravity placement: you -6300,-56700 mm, Bram -450,-5950 cm, Tilda 207,-5687 cm
   step wos
   step ww
   step held
   step folk
   step end
+  transmitted inputs: origins 153/151, end steps 1864/1864, identical false
   (offline room host: 0 stalls, 0 ms of its beat dropped)
-  (native room tick: p95 330 us, p99 420 us, budget 8000 us at p95: within)
+  (native room tick: p95 630 us, p99 730 us, budget 8000 us at p95: within)
 ok    100 background players stayed at least 32 m away
 ok    100 gravity safely reaches and drops a townsperson
 ok    100 native tick p95
@@ -101,15 +103,16 @@ profile 250: round trip 250 ms, jitter 30 ms, 2% lost
   step walk
   step jump
   step rg
-  gravity placement: you -6300,-56700 mm, Bram -450,-5950 cm, Tilda 180,-4811 cm
-  gravity placement: you -6300,-56700 mm, Bram -450,-5950 cm, Tilda 180,-4801 cm
+  gravity placement: you -6300,-56700 mm, Bram -150,-7050 cm, Tilda 180,-4500 cm
+  gravity placement: you -6300,-56700 mm, Bram -150,-7050 cm, Tilda 180,-4500 cm
   step wos
   step ww
   step held
   step folk
   step end
+  transmitted inputs: origins 149/147, end steps 1856/1856, identical true
   (offline room host: 0 stalls, 0 ms of its beat dropped)
-  (native room tick: p95 360 us, p99 440 us, budget 8000 us at p95: within)
+  (native room tick: p95 430 us, p99 520 us, budget 8000 us at p95: within)
 ok    250 background players stayed at least 32 m away
 ok    250 gravity safely reaches and drops a townsperson
 ok    250 native tick p95

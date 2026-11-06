@@ -31,10 +31,10 @@ NetRecord :: struct {ok:bool;head:u8;n:int;v:[NET_RECORD_FIELDS]int;}
   b[n]=' ';b[n+1]='0';#assert !net_record_read(cast(string)b[0..<n+2]).ok;
 }
 
-net_record_digit :: (ch:u8)->int {
+net_record_digit :: (ch:u8)->int #effects(all) {
   if ch>='0' && ch<='9' {return cast(int)(ch-'0');}return -1;
 }
-net_record_read :: (t:string)->NetRecord {
+net_record_read :: (t:string)->NetRecord #effects(all) {
   out:NetRecord;
   if t.count<3 || t.count>NET_RECORD_BYTES || t[1]!=' ' {return out;}
   out.head=t[0];i:=2;
@@ -54,7 +54,7 @@ net_record_read :: (t:string)->NetRecord {
   }
   return NetRecord.{};
 }
-net_record_write :: (head:u8,values:[]int,out:[]u8)->int {
+net_record_write :: (head:u8,values:[]int,out:[]u8)->int #effects(all) {
   if values.count<1 || values.count>NET_RECORD_FIELDS {return 0;}
   need:=1;
   for value:values {

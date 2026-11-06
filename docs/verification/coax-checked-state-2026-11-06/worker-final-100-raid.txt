@@ -1,0 +1,99 @@
+everglade-drift: room 127.0.0.1:8990, page 127.0.0.1:8991, results in /tmp/oa-state-net-final-worker-100
+profile 100: round trip 100 ms, jitter 30 ms, 2% lost
+  native room ready after 1 ms
+  step start
+  step crate
+  step strafe
+  step walk
+  step jump
+  step rg
+  gravity placement: you -6300,-56700 mm, Bram -169,-6728 cm, Tilda 450,-5950 cm
+  gravity placement: you -6300,-56700 mm, Bram -169,-6730 cm, Tilda 450,-5950 cm
+  step wos
+  step ww
+  step held
+  step folk
+  step end
+  transmitted inputs: origins 168/170, end steps 1875/1875, identical false
+  (offline room host: 0 stalls, 0 ms of its beat dropped)
+  (worker workload: 2044 ticks in completed cost batches, p50 390 us, p95 530 us, p99 660 us)
+  worker mean tick parts (us): move=24 abilities=61 town=29 spells=7 people=5 rules=13 write=35 send=0 core=416 flush=19 begin=0 prepare=0 owners=0 casts=0 town_setup=0 town_results=0 orbit=0
+  (worker room tick: p95 530 us, p99 660 us, budget 11000 us at p95: within)
+ok    100 background players stayed at least 32 m away
+ok    100 gravity safely reaches and drops a townsperson
+ok    100 worker tick p95
+ok    100 movement inputs took effect (mm)
+ok    100 jump inputs took effect (cm)
+ok    100 position (in your heading, since the step)
+ok    100 camera heading
+ok    100 lift height
+ok    100 Reverse Gravity shown
+ok    100 Reverse Gravity particles
+ok    100 Wind Wall shown
+ok    100 Wind Wall particles
+ok    100 Wall of Stone shown
+ok    100 Wall of Stone panels
+ok    100 spell and condition particles
+ok    100 hotbar slots
+ok    100 condition on you
+ok    100 condition on others
+ok    100 conditions on the town's people
+ok    100 your engine conditions
+ok    100 stables down
+ok    100 plate text
+ok    100 status lines
+ok    100 camera jump, offline
+ok    100 camera jump, room
+ok    100 camera turn with no look, offline
+ok    100 camera turn with no look, room
+ok    100 corrections
+ok    100 a townsperson held
+ok    100 NPC speed against clip
+  raid: gameplay full-kit baseline 864523051
+  raid: opened true/true, ready true/true, native true
+  raid: LEVEL 1 kit ready, bar 222308816 (whole 864523051)
+  step raid
+  step fight
+  step end
+ok    100 stables collapse, offline raid
+ok    100 stables collapse, room raid
+ok    100 level up through XP
+ok    100 hotbar follows the level
+
+| probe | 100 |
+|---|---|
+| background players stayed at least 32 m away | ok |
+| gravity safely reaches and drops a townsperson | ok |
+| worker tick p95 | ok |
+| movement inputs took effect (mm) | ok |
+| jump inputs took effect (cm) | ok |
+| position (in your heading, since the step) | ok |
+| camera heading | ok |
+| lift height | ok |
+| Reverse Gravity shown | ok |
+| Reverse Gravity particles | ok |
+| Wind Wall shown | ok |
+| Wind Wall particles | ok |
+| Wall of Stone shown | ok |
+| Wall of Stone panels | ok |
+| spell and condition particles | ok |
+| hotbar slots | ok |
+| condition on you | ok |
+| condition on others | ok |
+| conditions on the town's people | ok |
+| your engine conditions | ok |
+| stables down | ok |
+| plate text | ok |
+| status lines | ok |
+| camera jump, offline | ok |
+| camera jump, room | ok |
+| camera turn with no look, offline | ok |
+| camera turn with no look, room | ok |
+| corrections | ok |
+| a townsperson held | ok |
+| NPC speed against clip | ok |
+| stables collapse, offline raid | ok |
+| stables collapse, room raid | ok |
+| level up through XP | ok |
+| hotbar follows the level | ok |
+holds

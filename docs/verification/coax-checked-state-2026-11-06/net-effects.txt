@@ -1,0 +1,14 @@
+6 aethyr/net/command.coax
+2 aethyr/net/diagnostics.coax
+3 aethyr/net/realm.coax
+3 aethyr/net/record.coax
+8 aethyr/net/replication.coax
+1 aethyr/net/row.coax
+5 aethyr/net/session.coax
+9 apps/openagents-web/orbit-session.coax
+8 apps/openagents-web/orbit-snapshot.coax
+1 apps/openagents-web/orbit-wire-profile.coax
+1 coax/web/orbit-qualification.coax
+2 coax/web/room/room-input-policy.coax
+1 coax/web/room/room.coax
+effects migration: 50 procedures in 13 files written

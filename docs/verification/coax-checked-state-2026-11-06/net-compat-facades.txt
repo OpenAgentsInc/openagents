@@ -1,0 +1,6 @@
+ok facade: private cache growth
+ok facade: message field removal
+ok facade: message field insertion
+ok facade: defaulted trailing field
+ok facade: withdrawn input marker
+ok facade: withdrawn owned hello marker

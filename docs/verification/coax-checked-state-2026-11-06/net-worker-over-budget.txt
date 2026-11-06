@@ -1,0 +1,1 @@
+wasm-size: everglade-room is 1066704 bytes, over its budget of 1060000 (apps/openagents-web/wasm-budgets.txt)

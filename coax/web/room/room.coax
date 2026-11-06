@@ -343,7 +343,7 @@ rm_realm :: (realm:int)->NetRealm {
 }
 // ABI observations use the realm's own room index. -1 means unavailable, including counters
 // that a realm does not maintain. No observation changes admission, timing or durability.
-rm_net_observation :: (v:[]RmServer,realm:int,room:int,metric:int)->int #export_c {
+rm_net_observation :: (v:[]RmServer,realm:int,room:int,metric:int)->int #export_c #effects(all) {
   if realm==RM_REALM_EVERGLADE {
     if room<0 || room>=EG_ROOMS || !v[0].eg[room].live {return -1;}
     seats:=0;for s:0..<EG_SEATS {if v[0].eg[room].seat[s].live {seats+=1;}}

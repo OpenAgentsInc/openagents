@@ -1,23 +1,24 @@
-everglade-drift: room 127.0.0.1:8990, page 127.0.0.1:8991, results in /tmp/oa-state-worker-unthrottled-raid
+everglade-drift: room 127.0.0.1:8990, page 127.0.0.1:8991, results in /tmp/oa-state-net-final-worker-250
 profile 250: round trip 250 ms, jitter 30 ms, 2% lost
-  native room ready after 0 ms
+  native room ready after 1 ms
   step start
   step crate
   step strafe
   step walk
   step jump
   step rg
-  gravity placement: you -6300,-56700 mm, Bram -251,-6149 cm, Tilda 320,-5933 cm
-  gravity placement: you -6300,-56700 mm, Bram -248,-6152 cm, Tilda 323,-5933 cm
+  gravity placement: you -6300,-56700 mm, Bram -450,-5950 cm, Tilda 216,-5855 cm
+  gravity placement: you -6300,-56700 mm, Bram -450,-5950 cm, Tilda 216,-5849 cm
   step wos
   step ww
   step held
   step folk
   step end
+  transmitted inputs: origins 162/167, end steps 1875/1876, identical false
   (offline room host: 0 stalls, 0 ms of its beat dropped)
-  (worker workload: 2073 ticks in completed cost batches, p50 390 us, p95 505 us, p99 666 us)
-  worker mean tick parts (us): move=22 abilities=60 town=29 spells=8 people=4 rules=14 write=32 send=0 core=411 flush=20 begin=0 prepare=0 owners=0 casts=0 town_setup=0 town_results=0 orbit=0
-  (worker room tick: p95 505 us, p99 666 us, budget 11000 us at p95: within)
+  (worker workload: 2047 ticks in completed cost batches, p50 385 us, p95 491 us, p99 621 us)
+  worker mean tick parts (us): move=24 abilities=60 town=29 spells=8 people=5 rules=13 write=34 send=0 core=406 flush=20 begin=0 prepare=0 owners=0 casts=0 town_setup=0 town_results=0 orbit=0
+  (worker room tick: p95 491 us, p99 621 us, budget 11000 us at p95: within)
 ok    250 background players stayed at least 32 m away
 ok    250 gravity safely reaches and drops a townsperson
 ok    250 worker tick p95

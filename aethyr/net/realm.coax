@@ -60,7 +60,7 @@ NetRealm :: struct {
   #assert net_field_allowed(p,recipient,false,field);
 }
 
-net_realm_ok :: (p: NetRealm) -> bool {
+net_realm_ok :: (p: NetRealm) -> bool #effects(all) {
   if !net_profile_ok(p.beat) || p.fields<1 || p.fields>NET_FIELD_MOST { return false; }
   if p.collision<NET_COLLIDE_CAPSULE || p.collision>NET_COLLIDE_REPORTED { return false; }
   if p.collision==NET_COLLIDE_REPORTED && net_authoritative(p.beat) { return false; }
@@ -68,14 +68,14 @@ net_realm_ok :: (p: NetRealm) -> bool {
   return p.public_fields>=0 && p.public_fields<=all && p.owner_fields>=0 && p.owner_fields<=all
     && p.party_fields>=0 && p.party_fields<=all;
 }
-net_recipient_fields :: (p: NetRealm, recipient: int, blocked: bool) -> int {
+net_recipient_fields :: (p: NetRealm, recipient: int, blocked: bool) -> int #effects(all) {
   if blocked || !net_realm_ok(p) { return 0; }
   if recipient==NET_RECIPIENT_PUBLIC { return p.public_fields; }
   if recipient==NET_RECIPIENT_OWNER { return p.owner_fields; }
   if recipient==NET_RECIPIENT_PARTY { return p.party_fields; }
   return 0;
 }
-net_field_allowed :: (p: NetRealm, recipient: int, blocked: bool, field: int) -> bool {
+net_field_allowed :: (p: NetRealm, recipient: int, blocked: bool, field: int) -> bool #effects(all) {
   mask:=net_recipient_fields(p,recipient,blocked);
   if mask==0 { return false; }
   // The input field never becomes a shift count. The admitted mask already bounds its domain.

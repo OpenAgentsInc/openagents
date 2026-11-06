@@ -23,7 +23,7 @@ NetRowDelta :: struct {ok:bool;mask:int;}
   d=net_row_delta(23,((1<<23)-1)^(1<<f),a[..],b[..]);#assert d.ok && d.mask==0;
 }
 
-net_row_delta :: (fields:int,allowed:int,base:[]s32,now:[]s32)->NetRowDelta {
+net_row_delta :: (fields:int,allowed:int,base:[]s32,now:[]s32)->NetRowDelta #effects(all) {
   if fields<1 || fields>NET_ROW_FIELDS || base.count!=fields || now.count!=fields { return NetRowDelta.{}; }
   if allowed<0 || allowed>=(1<<fields) { return NetRowDelta.{}; }
   mask:=0;

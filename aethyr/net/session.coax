@@ -32,14 +32,14 @@
   #assert !net_session_saved(-1,true,0);
 }
 
-net_session_admit :: (server:CompatServer,pins:CompatPins,initialized:bool)->int {
+net_session_admit :: (server:CompatServer,pins:CompatPins,initialized:bool)->int #effects(all) {
   why:=compat_admit(server,pins);if why!=CP_OK {return why;}
   return ifx initialized then CP_OK else CP_NO_CAPACITY;
 }
-net_world_steps :: (initialized:bool,live:bool,paused:bool)->bool {return initialized && live && !paused;}
-net_session_current :: (expected:SeatGeneration,actual:SeatGeneration)->bool {return expected.value>0 && expected==actual;}
-net_session_holds :: (hold_ms:int,since:int,now:int)->bool {return now>=since && now-since<hold_ms;}
-net_session_saved :: (durability:int,accepted:bool,age:int)->bool {
+net_world_steps :: (initialized:bool,live:bool,paused:bool)->bool #effects(all) {return initialized && live && !paused;}
+net_session_current :: (expected:SeatGeneration,actual:SeatGeneration)->bool #effects(all) {return expected.value>0 && expected==actual;}
+net_session_holds :: (hold_ms:int,since:int,now:int)->bool #effects(all) {return now>=since && now-since<hold_ms;}
+net_session_saved :: (durability:int,accepted:bool,age:int)->bool #effects(all) {
   if durability==NET_DURABLE_NONE {return true;}
   return durability==NET_DURABLE_RECEIPTS && cf_fresh(accepted,age);
 }

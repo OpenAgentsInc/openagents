@@ -106,7 +106,7 @@ ORB_SNAPSHOT_FIXTURE :: "S 9 1 7 17 12345 1 1500 299000 3 4 2 2;s 0 0 32834 1000
   #assert !orb_packed_ok(f[0..<15]);
 }
 
-orb_fields :: (raw:[]f64)->OrbFields {
+orb_fields :: (raw:[]f64)->OrbFields #effects(all) {
   out:OrbFields;if raw.count!=ORB_FIELDS {return out;}
   scales:=[16]f64.[1000,1000,1000,1000000,1000000,1000000,1000000,1000,1000,1000,1000,1000,1000,1,1000,1];
   for i:0..<ORB_FIELDS {
@@ -116,10 +116,10 @@ orb_fields :: (raw:[]f64)->OrbFields {
   if raw[13]!=floor(raw[13]) || raw[15]!=floor(raw[15]) || !orb_packed_ok(out.v[..]) {return OrbFields.{};}
   out.ok=true;return out;
 }
-orb_packed_ok :: (v:[]s32)->bool {
+orb_packed_ok :: (v:[]s32)->bool #effects(all) {
   return v.count==ORB_FIELDS && v[13]>=0 && v[13]<32 && v[14]>=0 && v[14]<=100000 && v[15]>0;
 }
-orb_row_write :: (id:int,values:[]s32,seat:int,out:[]u8)->int {
+orb_row_write :: (id:int,values:[]s32,seat:int,out:[]u8)->int #effects(all) {
   if id<0 || id>=ORB_ROWS || !orb_packed_ok(values) {return 0;}
   relation:=ifx id==seat+1 && id>0 then NET_RECIPIENT_OWNER else NET_RECIPIENT_PUBLIC;
   allowed:=net_recipient_fields(orb_realm(),relation,false);zero:[ORB_FIELDS]s32;
@@ -128,12 +128,12 @@ orb_row_write :: (id:int,values:[]s32,seat:int,out:[]u8)->int {
   for q:0..<values.count {if (d.mask&(1<<q))!=0 {v[n]=cast(int)values[q];n+=1;}}
   return net_record_write('s',v[0..<n],out);
 }
-orb_header_ok :: (r:NetRecord)->bool {
+orb_header_ok :: (r:NetRecord)->bool #effects(all) {
   return r.ok && r.head=='S' && r.n==12 && r.v[0]>=0 && r.v[1]>=0 && r.v[1]<4 && r.v[2]>0
     && r.v[3]>=0 && r.v[4]>=-1 && r.v[5]>=0 && r.v[5]<=2 && r.v[6]>=-10000
     && r.v[7]>=0 && r.v[7]<=300000 && r.v[8]>=0 && r.v[9]>=0 && r.v[10]>0 && r.v[11]>=1 && r.v[11]<=4;
 }
-orb_row_read :: (text:string,seat:int)->OrbRow {
+orb_row_read :: (text:string,seat:int)->OrbRow #effects(all) {
   r:=net_record_read(text);out:OrbRow;
   // LIFE is positive, so even the smallest admitted row has one value after its three headers.
   if !r.ok || r.head!='s' || r.n<4 || r.v[0]<0 || r.v[0]>=ORB_ROWS || r.v[1]!=0 {return out;}
@@ -146,7 +146,7 @@ orb_row_read :: (text:string,seat:int)->OrbRow {
   if at!=r.n || !orb_packed_ok(out.v[..]) {return OrbRow.{};}
   out.id=r.v[0];out.ok=true;return out;
 }
-orb_snapshot_read :: (text:string)->OrbSnapshot {
+orb_snapshot_read :: (text:string)->OrbSnapshot #effects(all) {
   out:OrbSnapshot;if text.count>NET_RECORD_BYTES {return out;}
   at:int;at=orb_packet_boundary(text,at);
   h:=net_record_read(text[0..<at]);if !orb_header_ok(h) {return out;}
@@ -160,10 +160,10 @@ orb_snapshot_read :: (text:string)->OrbSnapshot {
   if rows!=h.v[11]+1 || !out.present[0] || cast(int)out.v[(h.v[1]+1)*ORB_FIELDS+ORB_LIFE]!=h.v[2] {return OrbSnapshot.{};}
   out.ok=true;return out;
 }
-orb_packet_boundary :: (text:string,from:int)->int {
+orb_packet_boundary :: (text:string,from:int)->int #effects(all) {
   for i:from..<text.count {if text[i]==';' {return i;}}return text.count;
 }
-orb_snapshot_takes :: (s:OrbSnapshot,generation:SeatGeneration,tick:int,sent:int)->bool {
+orb_snapshot_takes :: (s:OrbSnapshot,generation:SeatGeneration,tick:int,sent:int)->bool #effects(all) {
   if !s.ok || s.h[3]>sent {return false;}
   if generation.value==0 {if tick!=-1 {return false;}}
   else if !net_session_current(generation,SeatGeneration.{value=s.h[2]}) {return false;}

@@ -68,41 +68,41 @@ OrbInput :: struct {ok:bool;seq:int;throttle:int;steer:int;flags:int;paint:int;c
   #assert orb_next_input(-1)==0 && orb_next_input(NET_RECORD_MAX)==0;
 }
 
-orb_realm :: ()->NetRealm {
+orb_realm :: ()->NetRealm #effects(all) {
   return NetRealm.{beat=NetProfile.{hz=60,substeps=2,trust=NET_TRUST_AUTHORITY,durable=NET_DURABLE_NONE,fair=NET_FAIR_BEAT},
     collision=NET_COLLIDE_VEHICLE,fields=ORB_FIELDS,public_fields=((1<<ORB_FIELDS)-1)^(1<<ORB_FUEL),owner_fields=(1<<ORB_FIELDS)-1};
 }
-orb_admit :: (text:string,initialized:bool)->int {
+orb_admit :: (text:string,initialized:bool)->int #effects(all) {
   r:=net_record_read(text);if !r.ok || r.head!='H' || r.n!=4 {return ORB_MALFORMED;}
   pins:=CompatPins.{engine=r.v[1],rules=r.v[2],content=r.v[3],wire=r.v[0]};
   server:=CompatServer.{pins=CompatPins.{engine=1,rules=1,content=1,wire=ORB_VERSION},wire_min=ORB_VERSION};
   return net_session_admit(server,pins,initialized);
 }
-orb_input_valid :: (i:OrbInput)->bool {
+orb_input_valid :: (i:OrbInput)->bool #effects(all) {
   return i.ok && i.seq>0 && i.seq<=NET_RECORD_MAX && i.throttle>= -1000 && i.throttle<=1000
     && i.steer>= -1000 && i.steer<=1000 && i.flags>=0 && i.flags<=7 && i.paint>=0 && i.paint<32
     && i.clock>=0 && i.clock<=NET_RECORD_MAX && i.heard>=0 && i.heard<=NET_RECORD_MAX;
 }
-orb_input :: (text:string)->OrbInput {
+orb_input :: (text:string)->OrbInput #effects(all) {
   if text.count>ORB_CLIENT_BYTES {return OrbInput.{};}
   r:=net_record_read(text);if !r.ok || r.head!='I' || r.n!=7 {return OrbInput.{};}
   out:=OrbInput.{ok=true,seq=r.v[0],throttle=r.v[1],steer=r.v[2],flags=r.v[3],paint=r.v[4],clock=r.v[5],heard=r.v[6]};
   if !orb_input_valid(out) {return OrbInput.{};}return out;
 }
-orb_input_write :: (i:OrbInput,out:[]u8)->int {
+orb_input_write :: (i:OrbInput,out:[]u8)->int #effects(all) {
   if !orb_input_valid(i) {return 0;}
   v:=[7]int.[i.seq,i.throttle,i.steer,i.flags,i.paint,i.clock,i.heard];return net_record_write('I',v[..],out);
 }
-orb_input_takes :: (admitted:bool,expected:SeatGeneration,actual:SeatGeneration,i:OrbInput,accepted:int,pending:int)->bool {
+orb_input_takes :: (admitted:bool,expected:SeatGeneration,actual:SeatGeneration,i:OrbInput,accepted:int,pending:int)->bool #effects(all) {
   return admitted && net_session_current(expected,actual) && orb_input_valid(i) && net_command_newer(i.seq,accepted,pending);
 }
-orb_controls_active :: (i:OrbInput,heard_ms:int,now:int)->bool {
+orb_controls_active :: (i:OrbInput,heard_ms:int,now:int)->bool #effects(all) {
   return i.ok && now>=heard_ms && now-heard_ms<ORB_INPUT_STALE_MS;
 }
-orb_next_generation :: (previous:SeatGeneration)->SeatGeneration {
+orb_next_generation :: (previous:SeatGeneration)->SeatGeneration #effects(all) {
   if previous.value<0 || previous.value>=NET_RECORD_MAX {return SeatGeneration.{};}
   return SeatGeneration.{value=add_sat(previous.value,1)};
 }
-orb_next_input :: (previous:int)->int {
+orb_next_input :: (previous:int)->int #effects(all) {
   if previous<0 || previous>=NET_RECORD_MAX {return 0;}return add_sat(previous,1);
 }

@@ -1,0 +1,165 @@
+{
+  "release_emission": {
+    "compiler": "coax0 0.52.0",
+    "success": true,
+    "parallel_checks": "parallel: 527 checks, 8 jobs",
+    "authority_checks": {
+      "cached": 0,
+      "checked": 1
+    },
+    "check_reuse": {
+      "reused": 517,
+      "run": 10
+    }
+  },
+  "artifacts": [
+    {
+      "path": "coax/bin/coax",
+      "bytes": 3884072,
+      "sha256": "23dfc150fa0d21dd199b2da382b9c2dd0762e8183e3f576657fe1341d327117e"
+    },
+    {
+      "path": "coax/bin/effects-dev/coax",
+      "bytes": 3883960,
+      "sha256": "ef2733e92f9eafdb1cb2dbd36841c65f5d2c0f41d948abc17623c41500d1f939"
+    },
+    {
+      "path": "apps/openagents-web/build/everglade.wasm",
+      "bytes": 1790730,
+      "sha256": "3b20100164fd6a69b9eca25cbc6a294649258751a2948d9b270e2227893da4b8"
+    },
+    {
+      "path": "apps/openagents-web/build/everglade-room.wasm",
+      "bytes": 1045992,
+      "sha256": "4afbbdd24fb9ed12d600c4b1fad3a9c7026c10b4249ad35bee58de0851432e78"
+    },
+    {
+      "path": "coax/web/room/bin/room",
+      "bytes": 4052680,
+      "sha256": "f1e3806ef4c7947af1b9a9bfdd4f6e24ef5dd086c7df109db5e26bca00c2e934"
+    },
+    {
+      "path": "/tmp/oa-state-final-c/everglade.c",
+      "bytes": 7621922,
+      "sha256": "9ed7e6ec3bb6aa423a966889b29b3498454c1e95c1843b3fd12a3269d1cefd6b"
+    },
+    {
+      "path": "/tmp/oa-state-final-everglade-release-v2.c",
+      "bytes": 9647754,
+      "sha256": "27334c56c0363e4e94ba9af6ab002e1db16e1640872e01445e9e6ad53b11cb6e"
+    },
+    {
+      "path": "apps/openagents-web/build/everglade5e.wasm",
+      "bytes": 2005680,
+      "sha256": "1199b2292bb6fbf7fc620d1cffc450712328165cf229bf69cbc84ad7945bfb04"
+    },
+    {
+      "path": "/tmp/oa-state-final-versioned-c/river.c",
+      "bytes": 1154169,
+      "sha256": "becfe731eb0a2d13af2f3495404522cb3be60e8b6d70bf5d49827eccbc9056d1"
+    }
+  ],
+  "classic_page": {
+    "bytes": 1790730,
+    "mode": "release",
+    "compiler_sha256": "ef2733e92f9eafdb1cb2dbd36841c65f5d2c0f41d948abc17623c41500d1f939",
+    "units": [
+      {
+        "unit": "everglade",
+        "success": true,
+        "authority_checks": {
+          "cached": 0,
+          "checked": 1
+        },
+        "parallel_checks": "parallel: 1383 checks, 8 jobs",
+        "checks": 1383
+      }
+    ]
+  },
+  "page": {
+    "target": "everglade5e",
+    "route": "/worlds/everglade",
+    "bytes": 2005680,
+    "limit_bytes": 2150000,
+    "mode": "release",
+    "compiler_sha256": "ef2733e92f9eafdb1cb2dbd36841c65f5d2c0f41d948abc17623c41500d1f939",
+    "units": [
+      {
+        "unit": "Everglade5e-rules",
+        "success": true,
+        "authority_checks": {
+          "cached": 0,
+          "checked": 0
+        },
+        "parallel_checks": "",
+        "check_reuse": {
+          "reused": 0,
+          "run": 0
+        },
+        "checks": 0
+      },
+      {
+        "unit": "everglade5e",
+        "success": true,
+        "authority_checks": {
+          "cached": 0,
+          "checked": 1
+        },
+        "parallel_checks": "parallel: 1391 checks, 8 jobs",
+        "check_reuse": {
+          "reused": 0,
+          "run": 1391
+        },
+        "checks": 1391
+      }
+    ]
+  },
+  "worker": {
+    "bytes": 1045992,
+    "limit_bytes": 1060000,
+    "arithmetic": "checked",
+    "build_profile": "development",
+    "coax_native_opt": {
+      "river": 2,
+      "others": 0
+    },
+    "clang_opt": {
+      "river": "O2",
+      "room-world.c": "O2",
+      "others": "Os"
+    },
+    "strict_fp": true
+  },
+  "integrated_base": "cff8a2cf2b2c54f806ac86a3e743e7521b3f811f",
+  "qualification": {
+    "network_profiles": [
+      "local",
+      "100 ms",
+      "250 ms"
+    ],
+    "native_p95_us": [
+      370,
+      330,
+      360
+    ],
+    "native_limit_us": 840,
+    "worker_p95_us": [
+      515,
+      535,
+      505
+    ],
+    "worker_limit_us": 600,
+    "worker_sample_counts": [
+      2053,
+      2077,
+      2073
+    ],
+    "raid_profile": "250 ms",
+    "forest_profile": "250 ms",
+    "headless_background_throttling": false,
+    "viewport": [
+      1280,
+      800
+    ]
+  }
+}

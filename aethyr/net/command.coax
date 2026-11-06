@@ -49,22 +49,22 @@ NetAccepted :: struct { seq:int; advanced:bool; }
   c=net_credit_step(p,c,500);#assert c.earned==1 && c.bank==1 && c.advanced;
 }
 
-net_command_newer :: (seq:int,accepted:int,queued:int)->bool { return life_room_takes(seq,accepted,queued); }
-net_accepted_result :: (accepted:int,seq:int)->NetAccepted {
+net_command_newer :: (seq:int,accepted:int,queued:int)->bool #effects(all) { return life_room_takes(seq,accepted,queued); }
+net_accepted_result :: (accepted:int,seq:int)->NetAccepted #effects(all) {
   if seq>accepted { return NetAccepted.{seq=seq,advanced=true}; }
   return NetAccepted.{seq=accepted};
 }
-net_credit_cap :: (c:NetCredit,n:int,most:int)->NetCredit {
+net_credit_cap :: (c:NetCredit,n:int,most:int)->NetCredit #effects(all) {
   out:=c;
   if n<most {out.bank=n;out.limited=false;}else{out.bank=most;out.limited=true;}
   return out;
 }
-net_credit_step :: (p:NetCreditProfile,c:NetCredit,now:int)->NetCredit {
+net_credit_step :: (p:NetCreditProfile,c:NetCredit,now:int)->NetCredit #effects(all) {
   out:=c;out.reset=false;out.advanced=false;out.limited=false;
   if out.since<0 || now<out.since { out.since=now;out.earned=0;out=net_credit_cap(out,out.bank+1,p.most);out.reset=true; }
   due:=((now-out.since)*p.hz+500)/1000;
   if due>out.earned { out=net_credit_cap(out,out.bank+due-out.earned,p.most);out.earned=due;out.advanced=true; }
   return out;
 }
-net_credit_excess :: (p:NetCreditProfile,queued:int,bank:int)->int { return queued-bank-p.excess; }
-net_credit_can_step :: (p:NetCreditProfile,bank:int,took:int)->bool { return bank>0 && took<p.per_tick; }
+net_credit_excess :: (p:NetCreditProfile,queued:int,bank:int)->int #effects(all) { return queued-bank-p.excess; }
+net_credit_can_step :: (p:NetCreditProfile,bank:int,took:int)->bool #effects(all) { return bank>0 && took<p.per_tick; }

@@ -23,11 +23,11 @@ NetObservation :: struct {
   #assert !net_observe(p,true,true,0,0,0,0,-2).valid;
   #assert net_observation_metric(NetObservation.{},0)==-1;
 }
-net_observe :: (p:NetRealm,initialized:bool,live:bool,tick:int,seats:int,accepted:int,refused:int,frames:int)->NetObservation {
+net_observe :: (p:NetRealm,initialized:bool,live:bool,tick:int,seats:int,accepted:int,refused:int,frames:int)->NetObservation #effects(all) {
   if !net_realm_ok(p) || tick<0 || seats<0 || accepted< -1 || refused< -1 || frames< -1 {return NetObservation.{};}
   return NetObservation.{valid=true,profile=p,ready=net_world_steps(initialized,live,false),tick=tick,seats=seats,accepted=accepted,refused=refused,frames=frames};
 }
-net_observation_metric :: (o:NetObservation,metric:int)->int {
+net_observation_metric :: (o:NetObservation,metric:int)->int #effects(all) {
   if !o.valid {return -1;}
   if metric==0 {return ifx o.ready then 1 else 0;}
   if metric==1 {return o.profile.beat.hz;}if metric==2 {return o.profile.beat.substeps;}
