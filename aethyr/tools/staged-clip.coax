@@ -1,5 +1,6 @@
 // A staged page capture with a provenance sidecar; rendering stays in the shared recorder.
 // This entry point does not accept a replay or claim that it recorded a real session.
+// tool.sh caches by basename: this wrapper must have a distinct name from web/clip.coax.
 #import "Basic";
 #load "clip-label.coax";
 #load "../../coax/lib/sys/tool.coax";

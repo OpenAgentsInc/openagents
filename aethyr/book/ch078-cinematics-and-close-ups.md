@@ -207,7 +207,7 @@ coax/bin/coax run aethyr/examples/closeup-refuses-projection.coax --release
 
 ## Capture a staged page clip
 
-[aethyr/tools/clip.coax](../tools/clip.coax) delegates frame capture and encoding
+[aethyr/tools/staged-clip.coax](../tools/staged-clip.coax) delegates frame capture and encoding
 to the existing [shared recorder](../../coax/web/clip.coax). Headless, muted
 Chrome draws one fixed step, captures it and repeats. ffmpeg encodes those
 frames. Slow capture changes the time spent recording, not the game-time
@@ -230,7 +230,7 @@ is a reproducible test setup, not a saved player's session.
 ```shell
 coax/web/serve.sh apps/openagents-web --static --listen 127.0.0.1:8990
 # In another terminal, use the source commit you built for COMMIT_SHA40.
-coax/web/tool.sh aethyr/tools/clip.coax \
+coax/web/tool.sh aethyr/tools/staged-clip.coax \
   'http://127.0.0.1:8990/realms/garden?golden=1&probe&do=kw;t3.2;ke;t1' \
   /tmp/garden-close-up.mp4 --game garden --commit COMMIT_SHA40 \
   --stage close-up --seed 0 --size 960x600 --fps 30 --seconds 1 \
