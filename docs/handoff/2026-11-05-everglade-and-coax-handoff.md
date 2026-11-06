@@ -127,7 +127,7 @@ Books: #12610 stays open and paused. The only books work approved is #12947.
 | Issue | Owner or status |
 | --- | --- |
 | #12944 | Closed by `6414ba56c4`. The room server fails to link on main, with 21 duplicate `cb_*` symbols, since `010c25bbed` (Codex lane). This blocks room builds, the API room checks, the drift check and the #12936 release. The #12936 agent knows. |
-| #12945 | No agent. Other failures on main: the `results-cache-policy` test, traversal budgets for `everglade5e-room-raid` and `rigid.coax d3_dot`, and listing drift in Aethyr chapter 89. |
+| #12945 | Closed by `c8319bb8ac`. The cache oracle uses the current staging signature, split C includes integer helpers, and reviewed evidence bindings are current. All 1,358 cache-policy checks, 209 room-rules checks, 211 Aethyr listings and the default split page build pass. No traversal budget was raised. |
 | #12946 | Closed by `e00925f958`. The smoke counted doors and boats as gravity cylinders, rejected a valid landing on the 4.5 m palisade, and counted the invited visitor as the blocked player. It now observes each spell's kind and caster, grounded landings, and the blocked seat. Verification is below. |
 | #12941 | No agent. The drift check held at 250 ms during the release, so this may have been load. Close it if three runs in a row hold. The drift check's 250 ms profile failed twice after the fire fixes, on Hold Person timing, conditions and townspeople walking in place. It may be real or caused by load, and it gates release.sh. Check it first if #12936's release is stuck. |
 | #12940 | No agent. Tree fires never burn or spread on the room server; only pages step them. |
@@ -152,10 +152,42 @@ The page was 2,021,551 bytes against 2,150,000; the room worker was 988,275
 against 1,060,000. `tools-check` passed.
 
 The default split page build exposed a separate missing integer-runtime
-prelude in generated C. The verified page used `COAXIAL_SPLIT=0`; fix the
-default build as part of #12945 before the next release. No production
+prelude in generated C. This verified page used `COAXIAL_SPLIT=0`; #12945
+subsequently fixed and verified the default build. No production
 deployment was performed. Local logs are `/tmp/oa-12946-*.log`, with drift
 receipts in `/tmp/oa-12946-drift/`.
+
+## #12945 verification (2026-11-05, 20:19 Chicago)
+
+The obsolete three-argument staging oracle failed with E0316/E0317 before
+the fix; all 1,358 checks now pass. The split-cache fixture reproduced an
+undeclared `coax_add_sat_s32` before the emitter fix and now passes, including
+cached and uncached byte comparisons. The five integer oracle tests pass
+for checked/release evaluation, native C, ASan/UBSan and actual Wasm. The
+two spatial fixture checks pass.
+
+The rebuilt compiler passed both bootstrap stages, seed/final reproduction
+and provenance verification with `COAX_MUTATION=0`, the release build path.
+Compiler policy bodies did not change; this is not a new full mutation
+qualification. Its source fingerprint is
+`b8802e5b501a95f0c5f682aff916b73e3c0c48d2b588b3fdc496b41632357302`.
+
+Chapter 89 was already reconciled by `625a21c253`. The current structural
+gate initially stopped on stale evidence bindings. The graphics status
+update was reviewed against its named product-snapshot receipt, and the
+spatial fixture change removes only the obsolete load-notice workaround.
+The existing language/graphics claim scopes are preserved; the Aethyr
+structure gate now passes all 211 listings. All 209 room-rules checks pass
+without traversal overrides. The unchanged page-suite traversal result is
+the 770/770 receipt under #12946.
+
+The default split page, including the incoming action-packet capacity
+export, builds at 1,990,711 bytes against 2,150,000. Logs are
+`/tmp/oa-12945-*.log`. The native room's startup check passed and the rebuilt
+worker is 988,275 bytes against 1,060,000. The incoming rebase changed none
+of their Coax source closures. Runtime artifacts and checksums are retained
+in `/tmp/oa-12945-artifacts/` for #12941. `tools-check` passed. No production
+deployment was performed.
 
 ## Owner rules that still apply
 
