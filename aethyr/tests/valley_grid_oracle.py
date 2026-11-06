@@ -1,5 +1,5 @@
 # Firm reason: 2 (independent f64 topology, boundary and surface-distance oracle for Coax grid parents)
-"""Run with SOURCE_VRO_DIRECTORY PAGE_DIRECTORY; emits JSON, imports no project code."""
+"""Run with SOURCE_VRO_DIRECTORY PAGE_DIRECTORY [FIELD_RECORD]; emits JSON, imports no project code."""
 import hashlib
 import json
 from pathlib import Path
@@ -105,4 +105,33 @@ for div, expected_hash in HASHES.items():
                          resident_bytes=[1384, 1096], certified_error_metres=error,
                          sampled_distances_metres=worst, samples=[1440, 1080]))
     assert chains[0] == chains[1]
-print(json.dumps(dict(scope='independent f64 samples supplement the analytic barycentric certificate; all four mixed cuts preserve the same shared four-edge chain', profiles=rows), indent=2))
+field_checks = []
+if len(sys.argv) > 3:
+    record = json.loads(Path(sys.argv[3]).read_text())
+    assert record['version'] == 1 and record['seed'] == 12609 and len(record['words']) == 30
+    def f32(x):
+        return struct.unpack('<f', struct.pack('<f', x))[0]
+    words = [struct.unpack('<f', struct.pack('<I', x))[0] for x in record['words']]
+    for div in (8, 16):
+        for group in (0, 1):
+            page = bytes.fromhex((Path(sys.argv[2])/f'grid-{div}-{group}.vgp.hex').read_text())
+            _, n, _, error = struct.unpack_from('<3If', page)
+            coarse = [struct.unpack_from('<3f', page, 16+k*12) for k in range(n)]
+            raw = (Path(sys.argv[1])/f'rock-{div}.vro').read_bytes()
+            x0, y0 = div//2-4+group*4, div//2-2
+            fine = [struct.unpack_from('<3f', raw, 24+((y0+y)*(div+1)+x0+x)*24) for y in range(5) for x in range(5)]
+            for instance in range(6):
+                x, y, z, yaw, scale = words[instance*5:instance*5+5]
+                assert scale in (0.5, 1.0)
+                c, sn = f32(math.cos(yaw)), f32(math.sin(yaw))
+                operator = max(1, math.sqrt(c*c+sn*sn))
+                rounding = 0
+                for px, py, pz in fine+coarse:
+                    ideal = ((px*c+pz*sn)*scale+x, py*scale+y, (pz*c-px*sn)*scale+z)
+                    rounded = (f32(f32(f32(f32(px*c)+f32(pz*sn))*scale)+x), f32(f32(py*scale)+y), f32(f32(f32(f32(pz*c)-f32(px*sn))*scale)+z))
+                    rounding = max(rounding, math.sqrt(dot(sub(ideal, rounded), sub(ideal, rounded))))
+                bound = error*scale*operator+2*rounding
+                padded = f32(f32(error*scale)+f32(0.00001))
+                assert bound <= padded
+                field_checks.append(dict(divisions=div, group=group, instance=instance, rounded_vertex_distance=rounding, affine_surface_bound=bound, padded_runtime_bound=padded))
+print(json.dumps(dict(scope='independent f64 samples supplement the analytic barycentric certificate; all four mixed cuts preserve the same shared four-edge chain; field enclosure models f32 rigid transforms with exact binary scales', profiles=rows, field_checks=field_checks), indent=2))

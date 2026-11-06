@@ -3,7 +3,8 @@
 Status: active implementation roadmap, updated 2026-11-05. The initial
 walkable world, procedural asset/indexed baseline, bounded leaves, ownership
 hierarchy, parent simplification, screen-error cuts and HTTP page stations now
-run locally, including the first bounded parent on the original rock.
+run locally, including adjacent nonplanar grid parents and a deterministic
+six-rock field with shared HTTP pages.
 
 Build **Valley Lab**, an unlisted world at `/worlds/valley-lab`, where a
 visitor can inspect each engine system alone and then watch those same
@@ -72,8 +73,9 @@ light fixtures and a qualified shared GPU renderer profile. The current
 renderer remains explicitly tracked on the initial scene/HUD path. No GPU
 ledger/native-host parity, hero-quality imported art, texture streaming,
 cluster hierarchy, error-based LOD or Nanite parity is claimed by this slice.
-The 6 MB arena and 64,000 submitted-vertex budget now include index traffic
-and the highest tessellation; the physical HUD buffer has 65,536 vertices.
+That slice used a 6 MB arena and 64,000 submitted-vertex budget including
+index traffic, with a 65,536-vertex HUD buffer. The field slice below raises
+those declared capacities together after measuring its larger submission.
 
 ## Landed: bounded leaf clusters
 
@@ -282,7 +284,7 @@ unpaged/paged crops, missing/corrupt page fallback, 255/256-byte admission and
 exact state/pixels after device loss. Evidence and limits are in the
 [real-rock parent receipt](../verification/valley-lab-rock-parent-2026-11-05/README.md).
 
-## Next three phases: implementation record
+## Landed: multi-interior groups, mixed cuts and a deterministic field
 
 1. **Qualified native grid reducer.** `grid-parent.coax` reduces a canonical
    4×4-cell nonplanar grid using four independent interior star collapses:
@@ -302,9 +304,39 @@ exact state/pixels after device loss. Evidence and limits are in the
    residency is 1,096 bytes, versus 1,384 for its source representation.
    `B` selects 2,192 or 1,096 bytes of residency. Native app budgets and an
    independent f64 topology/surface oracle pass for all three profiles.
-   Browser qualification follows with the field phase before this batch ships.
-3. **Deterministic field.** Planned in this batch: bounded repeated original
-   rocks with per-instance conservative selection and shared page identities.
+   Desktop/phone browser checks qualify visible source/mixed/coarse cuts,
+   near/far perspective selection, stale/corrupt responses, one-page fallback
+   and exact unpaged/paged GPU crops.
+3. **Deterministic field.** `9 FIELD` / `#field`, `#field-lod` and
+   `#field-pages` show six original rocks on a larger ground court. Seed 12609
+   and layout version 1 reproduce all six transforms exactly in native Coax
+   and Wasm; the native f32 word record is checked in the browser. Rocks use
+   yaw and exact binary scales 1 / ½. Bounds scale with each instance and
+   include a 10 µm transform-rounding allowance; the independent oracle checks
+   this allowance on both field profiles. Each instance selects its own cut.
+   `H` selects 18,432 / 18,384 / 18,336 triangles at profile 16. `L` cycles
+   supported field profiles 8 and 16; entering from profile 32 selects 16.
+   All six rocks retain **one original source identity and two parent page
+   identities**: two HTTP requests and 2,192 resident bytes serve twelve
+   coarse group uses. One-page budget pressure leaves six groups full detail.
+   `R` restores the field camera and its same seeded record.
+
+The field raised the declared arena to **7 MB**, the submitted-vertex limit
+to **80,000**, and the physical HUD buffer to **81,920** vertices together.
+The geometry buffers stay at 16,384 vertices / 65,536 indices. Actual paged
+field submissions are 69,066 vertices on desktop and 66,834 on phone; the
+arena occupies 6,483,512 bytes. Source/mixed/coarse frames and the supported
+profiles also pass the native desktop and high-DPR phone budget checks.
+
+The field uses CPU-transformed indexed copies in the existing scene path;
+it does not claim hardware instancing, GPU page residency or shared-renderer
+resource retirement. Both the single-star fixture and the original controller
+remain independently inspectable and pass their regression journeys. This is
+an orbitable geometry field, not the completed walkable valley tile. Source
+asset hashes remain unchanged. Full native, independent oracle, headless GPU,
+HTTP and recovery evidence is in the
+[three-phase receipt](../verification/valley-lab-next-three-2026-11-05/README.md).
+No book draft is upgraded.
 
 ## What the book gives us
 
@@ -538,19 +570,21 @@ draft's status on the strength of a roadmap.
 
 ## Next implementation task
 
-Extend the qualified real-rock star to **bounded patches with multiple
-interior vertices**. Keep the star as an isolated reference fixture. Add
-safe topology operations, preserve external/shared segmentation, and carry a
-conservative error through each operation. Retain unsupported groups at full
-detail. Exercise mixed cuts across adjacent real groups and establish larger
-triangle/byte savings against the unchanged original. The first star above
-completes the real-asset connection to selection and HTTP paging; it does not
-complete this larger reducer or qualify an arbitrary hierarchy cut.
+Qualify **Valley on the shared frame/pass/resource renderer**, using the
+current CPU-copy path as the reference. Give real GPU vertex/index/page
+allocations explicit ranges and generations, fence upload completions and
+retirement, and test late old-device acknowledgements, replacement and exact
+cleanup on this actual lab route. The deterministic field now supplies a
+bounded repeated-asset workload; its CPU page cache does not satisfy GPU
+ownership exits.
 
-Then scale to a deterministic field of original rocks and qualify actual
-shared-renderer GPU resource ownership and page-upload retirement. Occlusion,
-indirect submission and world-cell streaming follow their own fixtures. The
-current two-patch CPU pager is a checked foundation, not a full Nanite path.
+Then compose these field placements into the first walkable valley tile,
+connecting their transformed collision proxies to the existing character
+controller and preserving collision independently of presentation page
+arrivals. Add conservative frustum fixtures before occlusion, indirect
+submission and world-cell streaming. Extend the structured grid reducer to
+larger connected interior topology only with its own refusal, seam, error and
+measured-savings gates; arbitrary imported meshes remain unsupported.
 
 Continue the remaining milestone 0/1 exits alongside that step: saved
 walkthrough/replay, bounded source import and shared-renderer qualification.

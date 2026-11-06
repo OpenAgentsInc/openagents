@@ -1,0 +1,72 @@
+// Actual adjacent-group and deterministic-field journeys in muted headless WebGPU.
+#import "Basic";
+#load "../lib/net/cdp.coax";
+vg_eval :: (c:[]Cdp,label:string,js:string)->bool {
+  n:=cdp_evaluate(c,js);if n>=0 && jv_raw(c[0].doc[0],n)=="true" {return true;}
+  print("FAIL %\n",label);n=cdp_evaluate(c,"JSON.stringify({ready:coaxial?.sceneReady,hash:location.hash,pages:Array.from({length:21},(_,i)=>coaxial?.guardProbe(50+i)),requests:groupGate.requests,captures:groupPixels.length,hashes:groupPixels,shotStates:globalThis.groupShotStates,diff:globalThis.groupShots?.length>3?(()=>{let a=groupShots[2],b=groupShots[3],n=0,box=[9999,9999,0,0];for(let y=0;y<a.height;y++)for(let x=0;x<a.width;x++){let i=(y*a.width+x)*4;if(a.bytes[i]!==b.bytes[i]||a.bytes[i+1]!==b.bytes[i+1]||a.bytes[i+2]!==b.bytes[i+2]){n++;box=[Math.min(box[0],x),Math.min(box[1],y),Math.max(box[2],x),Math.max(box[3],y)]}}return {n,box}})():null,errors:groupErrors})");if n>=0 {print("%\n",jv_raw(c[0].doc[0],n));}return false;
+}
+vg_key :: (c:[]Cdp,key:string)->bool {
+  b:[512]u8;o:[1]Jo;for down:0..<2 {jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],ifx down==0 then "keyDown" else "keyUp");jo_key(o[..],"key");jo_str(o[..],key);jo_end(o[..]);if cdp_call(c,"Input.dispatchKeyEvent",jo_text(o[..]),30000)<0 {return false;}}return true;
+}
+vg_capture :: (c:[]Cdp)->bool {
+  return vg_eval(c,"GPU crop","(async()=>{coaxial.renderCapture=null;if(!coaxial.captureFrame())return false;await coaxialClipStep(1,60);for(let i=0;i<100&&!coaxial.renderCapture;i++)await new Promise(r=>setTimeout(r,10));let r=coaxial.renderCapture;if(r?.format!=='rgba8unorm')return false;groupShots.push({width:r.width,height:r.height,bytes:r.bytes.slice()});groupShotStates.push([7,50,51,65,66].map(x=>coaxial.guardProbe(x)));let phone=r.width<700,x=phone?80:500,y=240,w=phone?290:500,h=phone?280:400,b=new Uint8Array(w*h*4);if(x+w>r.width||y+h>r.height)return false;for(let j=0;j<h;j++)b.set(r.bytes.slice(((y+j)*r.width+x)*4,((y+j)*r.width+x+w)*4),j*w*4);let hash=new Uint8Array(await crypto.subtle.digest('SHA-256',b));groupPixels.push(Array.from(hash,x=>x.toString(16).padStart(2,'0')).join(''));return true})()");
+}
+vg_hash :: (c:[]Cdp,hash:string)->bool {
+  // Hash names are fixed identifiers supplied by this tool, never source text.
+  script:[256]u8;at:=0;for v:"location.hash='" {script[at]=v;at+=1;}for v:hash {script[at]=v;at+=1;}for v:"'" {script[at]=v;at+=1;}
+  n:=cdp_evaluate(c,cast(string)script[0..<at]);return n>=0 && vg_eval(c,"hash route","(async()=>{await new Promise(r=>setTimeout(r,40));await coaxialClipStep(2,60);return coaxial.sceneReady})()");
+}
+vg_wait_pages :: (c:[]Cdp,used:int)->bool {
+  target:=ifx used==2192 then "2192" else "1096";js:[1024]u8;at:=0;
+  for v:"(async()=>{for(let i=0;i<90&&coaxial.guardProbe(52)!==" {js[at]=v;at+=1;}for v:target {js[at]=v;at+=1;}
+  for v:";i++){await coaxialClipStep(1,60);await new Promise(r=>setTimeout(r,10))}await coaxialClipStep(1,60);return coaxial.guardProbe(52)===" {js[at]=v;at+=1;}for v:target {js[at]=v;at+=1;}for v:"})()" {js[at]=v;at+=1;}
+  return vg_eval(c,"page residency",cast(string)js[0..<at]);
+}
+vg_run :: (c:[]Cdp,url:string,phone:bool)->bool {
+  _:=cdp_call(c,"Page.enable","",30000);buffer:[4096]u8;o:[1]Jo;jo_start(o[..],buffer[..]);jo_obj(o[..]);jo_key(o[..],"source");
+  jo_str(o[..],"globalThis.coaxialClip=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';globalThis.groupPixels=[];globalThis.groupShots=[];globalThis.groupShotStates=[];globalThis.groupErrors=[];globalThis.groupGate={hold:false,corrupt:false,requests:[],releases:[]};const gf=fetch.bind(globalThis);globalThis.fetch=async(...a)=>{if(String(a[0]).includes('/assets/valley/grid-')){let g=groupGate;g.requests.push(String(a[0]));let r=await gf(...a),t=await r.text();if(g.hold)await new Promise(f=>g.releases.push(f));if(g.corrupt)t=(t[0]==='0'?'1':'0')+t.slice(1);return new Response(t,{status:r.status})}return gf(...a)};const ge=console.error;console.error=(...a)=>{groupErrors.push(a.map(String).join(' '));ge(...a)}");jo_end(o[..]);
+  if cdp_call(c,"Page.addScriptToEvaluateOnNewDocument",jo_text(o[..]),30000)<0 {return false;}
+  if !phone {_=cdp_call(c,"Emulation.setDeviceMetricsOverride","{\"width\":1280,\"height\":800,\"deviceScaleFactor\":1,\"mobile\":false}",30000);}
+  if phone {_=cdp_call(c,"Emulation.setDeviceMetricsOverride","{\"width\":390,\"height\":844,\"deviceScaleFactor\":1,\"mobile\":true}",30000);_=cdp_call(c,"Emulation.setTouchEmulationEnabled","{\"enabled\":true,\"maxTouchPoints\":5}",30000);}
+  jo_start(o[..],buffer[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);if cdp_call(c,"Page.navigate",jo_text(o[..]),30000)<0 {return false;}
+  ready:=false;until:=proc_now_ms()+30000;while proc_now_ms()<until {n:=cdp_evaluate(c,"(async()=>!!globalThis.coaxial?.ready&&(await coaxialClipStep(1,60))===1&&coaxial.sceneReady)()");if n>=0 && jv_raw(c[0].doc[0],n)=="true" {ready=true;break;}proc_sleep(100);}if !ready {return false;}
+  if !vg_hash(c,"groups") || !vg_eval(c,"group source","coaxial.guardProbe(64)===1&&coaxial.guardProbe(50)===3072&&coaxial.guardProbe(51)===0") || !vg_capture(c) {return false;}
+  if !vg_key(c,"h") || !vg_eval(c,"mixed cut","coaxialClipStep(1,60).then(()=>coaxial.guardProbe(50)===3064&&coaxial.guardProbe(51)===1)") || !vg_capture(c) {return false;}
+  if !vg_key(c,"h") || !vg_eval(c,"coarse cut","coaxialClipStep(1,60).then(()=>coaxial.guardProbe(50)===3056&&coaxial.guardProbe(51)===2)") || !vg_capture(c) || !vg_eval(c,"three visible cuts","new Set(groupPixels).size===3") {return false;}
+  if !vg_hash(c,"group-lod") || !vg_key(c,"t") || !vg_eval(c,"far error","coaxialClipStep(1,60).then(()=>{globalThis.groupFar=[coaxial.guardProbe(65),coaxial.guardProbe(66),coaxial.guardProbe(50)];return true})") {return false;}
+  _=cdp_call(c,"Input.dispatchMouseEvent",ifx phone then "{\"type\":\"mouseWheel\",\"x\":300,\"y\":350,\"deltaX\":0,\"deltaY\":-500}" else "{\"type\":\"mouseWheel\",\"x\":700,\"y\":400,\"deltaX\":0,\"deltaY\":-500}",30000);
+  if !vg_eval(c,"near conservative cut","coaxialClipStep(1,60).then(()=>coaxial.guardProbe(65)>groupFar[0]&&coaxial.guardProbe(66)>groupFar[1]&&coaxial.guardProbe(50)>groupFar[2])") {return false;}
+  if !vg_eval(c,"hold HTTP","(groupGate.hold=true,true)") || !vg_hash(c,"group-pages") || !vg_key(c,"t") || !vg_key(c,"t") {return false;}
+  if !vg_eval(c,"missing fallback","(async()=>{for(let i=0;i<80&&groupGate.releases.length<2;i++){await coaxialClipStep(1,60);await new Promise(r=>setTimeout(r,10))}return groupGate.requests.length===2&&coaxial.guardProbe(50)===3072&&coaxial.guardProbe(52)===0})()") {return false;}
+  if !vg_key(c,"e") || !vg_eval(c,"new epoch tickets","(async()=>{for(let i=0;i<80&&groupGate.releases.length<4;i++){await coaxialClipStep(1,60);await new Promise(r=>setTimeout(r,10))}groupGate.hold=false;groupGate.releases.splice(0).forEach(f=>f());return groupGate.requests.length===4})()") || !vg_wait_pages(c,2192) || !vg_capture(c) {return false;}
+  if !vg_eval(c,"stale refusal and actual decoded GPU mesh","coaxial.guardProbe(54)===2&&coaxial.guardProbe(50)===3056&&groupPixels[3]===groupPixels[2]") {return false;}
+  if !vg_eval(c,"corrupt transport","(groupGate.corrupt=true,true)") || !vg_key(c,"e") || !vg_eval(c,"corrupt fallback","(async()=>{for(let i=0;i<80&&coaxial.guardProbe(54)<4;i++){await coaxialClipStep(1,60);await new Promise(r=>setTimeout(r,10))}groupGate.corrupt=false;return coaxial.guardProbe(54)===4&&coaxial.guardProbe(50)===3072&&coaxial.guardProbe(52)===0})()") {return false;}
+  if !vg_key(c,"e") || !vg_wait_pages(c,2192) || !vg_key(c,"b") || !vg_wait_pages(c,1096) || !vg_eval(c,"one-page mixed fallback","coaxial.guardProbe(50)===3064&&coaxial.guardProbe(56)>=1") {return false;}
+  if !vg_key(c,"b") || !vg_wait_pages(c,2192) || !vg_capture(c) || !vg_eval(c,"restored two-page crop","groupPixels[4]===groupPixels[2]") {return false;}
+  print("PASS adjacent groups %: source/mixed/coarse 3072/3064/3056, perspective cut, real HTTP, stale/corrupt fallback, 1096/2192-byte residency and exact decoded GPU crop\n",ifx phone then "phone" else "desktop");
+  if phone {
+    _=cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":[{\"x\":230,\"y\":210,\"id\":4}]}",30000);_=cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}",30000);
+    if !vg_eval(c,"actual field touch tab","coaxialClipStep(1,60).then(()=>location.hash==='#field'&&coaxial.guardProbe(68)===1)") {return false;}
+  }else {if !vg_hash(c,"field") {return false;}}
+  if !vg_eval(c,"native field word parity","(async()=>{let r=await(await fetch('/assets/valley/field-v1.json')).json();globalThis.fieldWords=Array.from({length:30},(_,i)=>coaxial.guardProbe(80+i)>>>0);return r.version===1&&r.seed===12609&&r.words.every((v,i)=>v===fieldWords[i])&&coaxial.guardProbe(67)===6&&coaxial.guardProbe(11)===1&&coaxial.guardProbe(50)===18432&&coaxial.guardProbe(69)<80000&&coaxial.guardProbe(70)<7000000})()") || !vg_capture(c) {return false;}
+  if !vg_key(c,"r") || !vg_eval(c,"field record replay","coaxialClipStep(1,60).then(()=>fieldWords.every((v,i)=>v===(coaxial.guardProbe(80+i)>>>0))&&coaxial.guardProbe(50)===18432)") {return false;}
+  if !vg_key(c,"h") || !vg_eval(c,"field mixed","coaxialClipStep(1,60).then(()=>coaxial.guardProbe(50)===18384&&coaxial.guardProbe(51)===6)") || !vg_capture(c) {return false;}
+  if !vg_key(c,"h") || !vg_eval(c,"field coarse","coaxialClipStep(1,60).then(()=>coaxial.guardProbe(50)===18336&&coaxial.guardProbe(51)===12)") || !vg_capture(c) || !vg_eval(c,"visible field cuts","new Set(groupPixels.slice(5,8)).size===3") {return false;}
+  if !vg_key(c,"l") || !vg_eval(c,"bounded field low profile","coaxialClipStep(1,60).then(()=>coaxial.guardProbe(8)===768&&coaxial.guardProbe(50)===4512&&coaxial.guardProbe(69)<80000)") || !vg_key(c,"l") || !vg_eval(c,"bounded field high profile","coaxialClipStep(1,60).then(()=>coaxial.guardProbe(8)===3072&&coaxial.guardProbe(50)===18336&&coaxial.guardProbe(11)===1)") {return false;}
+  if !vg_hash(c,"field-lod") || !vg_eval(c,"per-instance error accounting","coaxial.guardProbe(50)===18432-coaxial.guardProbe(51)*8&&coaxial.guardProbe(51)>0") {return false;}
+  _=cdp_call(c,"Input.dispatchMouseEvent",ifx phone then "{\"type\":\"mouseWheel\",\"x\":300,\"y\":350,\"deltaX\":0,\"deltaY\":-2000}" else "{\"type\":\"mouseWheel\",\"x\":700,\"y\":400,\"deltaX\":0,\"deltaY\":-2000}",30000);
+  if !vg_eval(c,"near field has independent cuts","coaxialClipStep(1,60).then(()=>coaxial.guardProbe(51)>0&&coaxial.guardProbe(51)<12&&coaxial.guardProbe(50)===18432-coaxial.guardProbe(51)*8)") {return false;}
+  if !vg_eval(c,"hold shared page requests","(groupGate.hold=true,globalThis.fieldRequests=groupGate.requests.length,true)") || !vg_hash(c,"field-pages") || !vg_key(c,"t") || !vg_key(c,"t") {return false;}
+  if !vg_eval(c,"six rocks share two missing pages","(async()=>{for(let i=0;i<80&&groupGate.releases.length<2;i++){await coaxialClipStep(1,60);await new Promise(r=>setTimeout(r,10))}return groupGate.requests.length-fieldRequests===2&&coaxial.guardProbe(50)===18432&&coaxial.guardProbe(52)===0})()") {return false;}
+  if !vg_eval(c,"release shared pages","(groupGate.hold=false,groupGate.releases.splice(0).forEach(f=>f()),true)") || !vg_wait_pages(c,2192) || !vg_capture(c) || !vg_eval(c,"shared decoded field reference","coaxial.guardProbe(50)===18336&&groupPixels[8]===groupPixels[7]&&groupGate.requests.length-fieldRequests===2") {return false;}
+  if !vg_key(c,"b") || !vg_wait_pages(c,1096) || !vg_eval(c,"field one-page budget","coaxial.guardProbe(50)===18384&&coaxial.guardProbe(51)===6") || !vg_key(c,"b") || !vg_wait_pages(c,2192) {return false;}
+  if !vg_eval(c,"field exact GPU recovery","(async()=>{let before=await coaxial.stateDigest();coaxial.loseDevice();await new Promise(r=>setTimeout(r,10));for(let i=0;i<300&&coaxial.gpuRecovery?.state!=='recovered';i++)await new Promise(r=>setTimeout(r,10));if(coaxial.gpuRecovery?.state!=='recovered'||await coaxial.stateDigest()!==before)return false;await coaxialClipStep(1,60);return coaxial.sceneReady&&coaxial.guardProbe(50)===18336&&coaxial.guardProbe(52)===2192&&groupErrors.length===1&&groupErrors.pop().startsWith('coaxial: GPU device lost (destroyed:')})()") || !vg_capture(c) || !vg_eval(c,"recovered field GPU crop","groupPixels[9]===groupPixels[7]&&groupErrors.length===0") {return false;}
+  n:=cdp_evaluate(c,"JSON.stringify({profile:coaxial.guardProbe(8),instances:coaxial.guardProbe(67),sourceTriangles:18432,drawnTriangles:coaxial.guardProbe(50),coarseGroups:coaxial.guardProbe(51),submittedVertices:coaxial.guardProbe(69),arenaBytes:coaxial.guardProbe(70),residentBytes:coaxial.guardProbe(52),pageIdentities:2,cropHashes:groupPixels})");if n>=0 {print("Field observation %: %\n",ifx phone then "phone" else "desktop",jv_raw(c[0].doc[0],n));}
+  print("PASS deterministic field %: six exact native/Wasm transforms, one source asset, 18432/18384/18336 manual cuts, per-instance perspective cuts, 8/16 profile budgets, two shared HTTP pages, exact decoded pixels and state after GPU loss\n",ifx phone then "phone" else "desktop");return true;
+}
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=1 {return 2;}
+  for phone:0..<2 {c:[1]Cdp;if !cdp_launch_background(c[..],ifx phone==0 then 1280 else 390,ifx phone==0 then 800 else 844,"valley-groups-") {return 1;}
+    path:[4096]u8;url:=fs_join(args_at(args[..],0),"worlds/valley-lab",path[..]);ok:=vg_run(c[..],url,phone==1);cdp_close(c[..]);if !ok {return 1;}
+  }return 0;
+}

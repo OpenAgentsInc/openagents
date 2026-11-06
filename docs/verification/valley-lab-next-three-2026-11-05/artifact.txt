@@ -1,0 +1,12 @@
+31a74e925ead8d8f836e2e4df30259c058cd0aa7f25c29da3640c82091df4219  apps/openagents-web/build/valleylab.wasm
+  120601 apps/openagents-web/build/valleylab.wasm
+tools-check: 1799 tracked tool files (35 of them vendored upstream vectors), 0 new without a reason
+compiler: coax0 0.50.0
+compiler_sha256: cca78e123e3ac6b943870e31c08d6525e2a88570a737bd76a18bb3a40e559dc9
+qualified_source_fingerprint: c82201e2cfff7c937fc0a29bf7010ae1ec75e7ab746ad29548bac7c2db61409e
+release bytes: 120601; existing cap: 160000
+CPU arena measured: 6483512; declared: 7000000
+submitted vertex limit: 80000; physical HUD capacity: 81920
+geometry storage capacity: 16384 vertices, 65536 indices
+Final release includes the augmented DPR check. Both browser drivers pass on this final artifact.
+WGSL sources/emission are unchanged; their earlier qualification remains applicable.

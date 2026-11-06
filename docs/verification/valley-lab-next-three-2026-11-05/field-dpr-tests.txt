@@ -1,0 +1,3 @@
+ok   #test Valley field replays its six transforms shares two pages and stays in declared budgets (1 case, 575823302 steps, 7600 ms)
+1 of 487 checks (--only 'Valley field'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

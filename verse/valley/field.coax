@@ -1,0 +1,25 @@
+// Original deterministic six-rock teaching field. Rigid yaw and exact binary
+// scales (1 or 1/2) reuse one source asset and its two content-addressed pages.
+#load "../../aethyr/points.coax";
+#load "../../aethyr/rand.coax";
+FieldRock :: struct {pos:Point;yaw:f32;scale:f32=1;}
+#test "field records replay exactly within six bounded placement cells" {
+  a:=valley_field(12609);b:=valley_field(12609);c:=valley_field(12610);different:=false;
+  for k:0..<6 {#assert a[k].pos.x==b[k].pos.x && a[k].pos.z==b[k].pos.z && a[k].yaw==b[k].yaw && a[k].scale==b[k].scale;
+    #assert abs(a[k].pos.x-cast(f32)(k%3-1)*7)<=0.4 && abs(a[k].pos.z-cast(f32)(k/3*10-5))<=0.4 && a[k].pos.y==0;
+    #assert a[k].yaw>=0 && a[k].yaw<6.283186 && (a[k].scale==1 || a[k].scale==0.5);
+    if a[k].pos.x!=c[k].pos.x || a[k].yaw!=c[k].yaw {different=true;}
+  }#assert different;
+}
+#test "field transforms rotate positions and normals and scale the surface bound exactly" {
+  r:=FieldRock.{pos=v3(4,0,-2),yaw=1.57079632679,scale=0.5};p:=field_point(v3(2,2,0),r);
+  #assert abs(p.x-4)<0.000001 && p.y==1 && abs(p.z+3)<0.000001;
+  n:=field_vector(v3(1,0,0),r);#assert abs(n.x)<0.000001 && abs(n.z+1)<0.000001;
+  a:=field_point(v3(-1,2,0.5),r);b:=field_point(v3(2,-1,0),r);d:=sub(a,b);
+  #assert abs(dot(d,d)-4.5625)<0.00001;
+}
+valley_field :: (seed:int)->[6]FieldRock {
+  out:[6]FieldRock;for k:0..<6 {out[k]=FieldRock.{pos=v3(cast(f32)(k%3-1)*7+(rand_unit(seed,61,k*3)*2-1)*0.4,0,cast(f32)(k/3*10-5)+(rand_unit(seed,61,k*3+1)*2-1)*0.4),yaw=rand_unit(seed,61,k*3+2)*6.28318530718,scale=ifx k%3==1 then 0.5f32 else 1.0f32};}return out;
+}
+field_vector :: (p:Point,r:FieldRock)->Point {c:=cos(r.yaw);s:=sin(r.yaw);return v3(p.x*c+p.z*s,p.y,p.z*c-p.x*s);}
+field_point :: (p:Point,r:FieldRock)->Point {return add(times(field_vector(p,r),r.scale),r.pos);}

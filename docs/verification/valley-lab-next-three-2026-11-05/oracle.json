@@ -1,5 +1,5 @@
 {
-  "scope": "independent f64 samples supplement the analytic barycentric certificate; all four mixed cuts preserve the same shared four-edge chain",
+  "scope": "independent f64 samples supplement the analytic barycentric certificate; all four mixed cuts preserve the same shared four-edge chain; field enclosure models f32 rigid transforms with exact binary scales",
   "profiles": [
     {
       "divisions": 8,
@@ -192,6 +192,200 @@
         1440,
         1080
       ]
+    }
+  ],
+  "field_checks": [
+    {
+      "divisions": 8,
+      "group": 0,
+      "instance": 0,
+      "rounded_vertex_distance": 4.833637278570574e-07,
+      "affine_surface_bound": 0.667210133785592,
+      "padded_runtime_bound": 0.6672191619873047
+    },
+    {
+      "divisions": 8,
+      "group": 0,
+      "instance": 1,
+      "rounded_vertex_distance": 2.0976253445670947e-07,
+      "affine_surface_bound": 0.3336050013614062,
+      "padded_runtime_bound": 0.3336145877838135
+    },
+    {
+      "divisions": 8,
+      "group": 0,
+      "instance": 2,
+      "rounded_vertex_distance": 4.6103039861008883e-07,
+      "affine_surface_bound": 0.6672100704677797,
+      "padded_runtime_bound": 0.6672191619873047
+    },
+    {
+      "divisions": 8,
+      "group": 0,
+      "instance": 3,
+      "rounded_vertex_distance": 4.0635924107552463e-07,
+      "affine_surface_bound": 0.6672099611254646,
+      "padded_runtime_bound": 0.6672191619873047
+    },
+    {
+      "divisions": 8,
+      "group": 0,
+      "instance": 4,
+      "rounded_vertex_distance": 2.2352685601348097e-07,
+      "affine_surface_bound": 0.3336050243153515,
+      "padded_runtime_bound": 0.3336145877838135
+    },
+    {
+      "divisions": 8,
+      "group": 0,
+      "instance": 5,
+      "rounded_vertex_distance": 3.630823173899331e-07,
+      "affine_surface_bound": 0.6672098745716172,
+      "padded_runtime_bound": 0.6672191619873047
+    },
+    {
+      "divisions": 8,
+      "group": 1,
+      "instance": 0,
+      "rounded_vertex_distance": 3.814080669645312e-07,
+      "affine_surface_bound": 0.5667248406242716,
+      "padded_runtime_bound": 0.5667340755462646
+    },
+    {
+      "divisions": 8,
+      "group": 1,
+      "instance": 1,
+      "rounded_vertex_distance": 1.462869602950391e-07,
+      "affine_surface_bound": 0.2833623300401925,
+      "padded_runtime_bound": 0.28337204456329346
+    },
+    {
+      "divisions": 8,
+      "group": 1,
+      "instance": 2,
+      "rounded_vertex_distance": 6.077959940728084e-07,
+      "affine_surface_bound": 0.5667252775579306,
+      "padded_runtime_bound": 0.5667340755462646
+    },
+    {
+      "divisions": 8,
+      "group": 1,
+      "instance": 3,
+      "rounded_vertex_distance": 3.244376515097858e-07,
+      "affine_surface_bound": 0.5667247108412454,
+      "padded_runtime_bound": 0.5667340755462646
+    },
+    {
+      "divisions": 8,
+      "group": 1,
+      "instance": 4,
+      "rounded_vertex_distance": 3.128091896818763e-07,
+      "affine_surface_bound": 0.28336265919892617,
+      "padded_runtime_bound": 0.28337204456329346
+    },
+    {
+      "divisions": 8,
+      "group": 1,
+      "instance": 5,
+      "rounded_vertex_distance": 3.9418638499551446e-07,
+      "affine_surface_bound": 0.5667248503387123,
+      "padded_runtime_bound": 0.5667340755462646
+    },
+    {
+      "divisions": 16,
+      "group": 0,
+      "instance": 0,
+      "rounded_vertex_distance": 2.857787049431532e-07,
+      "affine_surface_bound": 0.3618438994194883,
+      "padded_runtime_bound": 0.36185333132743835
+    },
+    {
+      "divisions": 16,
+      "group": 0,
+      "instance": 1,
+      "rounded_vertex_distance": 2.0976253445670947e-07,
+      "affine_surface_bound": 0.1809220825381001,
+      "padded_runtime_bound": 0.18093165755271912
+    },
+    {
+      "divisions": 16,
+      "group": 0,
+      "instance": 2,
+      "rounded_vertex_distance": 5.040026147504139e-07,
+      "affine_surface_bound": 0.3618443257523456,
+      "padded_runtime_bound": 0.36185333132743835
+    },
+    {
+      "divisions": 16,
+      "group": 0,
+      "instance": 3,
+      "rounded_vertex_distance": 3.745564251857359e-07,
+      "affine_surface_bound": 0.36184406685996645,
+      "padded_runtime_bound": 0.36185333132743835
+    },
+    {
+      "divisions": 16,
+      "group": 0,
+      "instance": 4,
+      "rounded_vertex_distance": 3.154662222769774e-07,
+      "affine_surface_bound": 0.1809222914645088,
+      "padded_runtime_bound": 0.18093165755271912
+    },
+    {
+      "divisions": 16,
+      "group": 0,
+      "instance": 5,
+      "rounded_vertex_distance": 4.510678141816368e-07,
+      "affine_surface_bound": 0.36184421988274446,
+      "padded_runtime_bound": 0.36185333132743835
+    },
+    {
+      "divisions": 16,
+      "group": 1,
+      "instance": 0,
+      "rounded_vertex_distance": 2.864733441351088e-07,
+      "affine_surface_bound": 0.46430705965789865,
+      "padded_runtime_bound": 0.4643164873123169
+    },
+    {
+      "divisions": 16,
+      "group": 1,
+      "instance": 1,
+      "rounded_vertex_distance": 1.3465196149122654e-07,
+      "affine_surface_bound": 0.2321535114815679,
+      "padded_runtime_bound": 0.2321632355451584
+    },
+    {
+      "divisions": 16,
+      "group": 1,
+      "instance": 2,
+      "rounded_vertex_distance": 6.627030870133824e-07,
+      "affine_surface_bound": 0.46430779913816866,
+      "padded_runtime_bound": 0.4643164873123169
+    },
+    {
+      "divisions": 16,
+      "group": 1,
+      "instance": 3,
+      "rounded_vertex_distance": 3.913470981684561e-07,
+      "affine_surface_bound": 0.464307256426191,
+      "padded_runtime_bound": 0.4643164873123169
+    },
+    {
+      "divisions": 16,
+      "group": 1,
+      "instance": 4,
+      "rounded_vertex_distance": 3.128091896818763e-07,
+      "affine_surface_bound": 0.232153864612522,
+      "padded_runtime_bound": 0.2321632355451584
+    },
+    {
+      "divisions": 16,
+      "group": 1,
+      "instance": 5,
+      "rounded_vertex_distance": 4.02654756092323e-07,
+      "affine_surface_bound": 0.4643072790415068,
+      "padded_runtime_bound": 0.4643164873123169
     }
   ]
 }
