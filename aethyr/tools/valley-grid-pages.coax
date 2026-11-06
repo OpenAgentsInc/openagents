@@ -1,0 +1,23 @@
+// Author adjacent original-rock grid parent pages and optional independent-oracle inputs.
+#import "Basic";
+#load "../../verse/valley/rock-grid.coax";
+#load "../render/geometry/pages.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])<1 || args_count(args[..])>2 {return 2;}r:[1]Rock;
+  for detail:[3]int.[8,16,32] {
+    if !rock_build(r[..],detail,12609) {return 1;}
+    if args_count(args[..])==2 {path:[4096]u8;name:=ifx detail==8 then "rock-8.vro" else ifx detail==16 then "rock-16.vro" else "rock-32.vro";
+      if !fs_write(fs_join(args_at(args[..],1),name,path[..]),cast(string)r[0].encoded[0..<r[0].bytes]) {return 1;}
+    }
+    for group:0..<2 {g:=rock_grid(r[..],group);if !g.supported {print("unsupported % %\n",detail,group);return 1;}
+      page:=geometry_page(g.coarse);hex:[GEOMETRY_PAGE_BYTES*2]u8;id:[64]u8;
+      for v,k:page.data[0..<page.bytes] {hex[k*2]="0123456789abcdef"[cast(int)v>>4];hex[k*2+1]="0123456789abcdef"[cast(int)v&15];}
+      _:=asset_hex(page.key,id[..]);print("grid-%-%: triangles=32->24 vertices=25->21 error=% bytes=% resident=% sha256=%\n",detail,group,g.coarse.error,page.bytes,page.bytes+g.coarse.vertices*12+g.coarse.indices*4,cast(string)id[..]);
+      names:=[6]string.["grid-8-0.vgp.hex","grid-8-1.vgp.hex","grid-16-0.vgp.hex","grid-16-1.vgp.hex","grid-32-0.vgp.hex","grid-32-1.vgp.hex"];
+      profile:=ifx detail==8 then 0 else ifx detail==16 then 1 else 2;path:[4096]u8;
+      if !fs_write(fs_join(args_at(args[..],0),names[profile*2+group],path[..]),cast(string)hex[0..<page.bytes*2]) {return 1;}
+    }
+  }return 0;
+}

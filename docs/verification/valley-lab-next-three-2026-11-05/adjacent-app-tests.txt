@@ -1,0 +1,3 @@
+ok   #test Valley adjacent groups render source mixed coarse and admitted pages across all profiles (1 case, 1123257571 steps, 11241 ms)
+1 of 484 checks (--only 'Valley adjacent'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

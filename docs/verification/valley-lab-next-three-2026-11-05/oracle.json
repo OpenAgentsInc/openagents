@@ -1,0 +1,197 @@
+{
+  "scope": "independent f64 samples supplement the analytic barycentric certificate; all four mixed cuts preserve the same shared four-edge chain",
+  "profiles": [
+    {
+      "divisions": 8,
+      "group": 0,
+      "source_sha256": "c39ef513e76cfb373abbb2185e35120cf4a02e13db13f80f92c82e05449bbf64",
+      "page_sha256": "8a2425ac7d4d2f7e322e84bac28381972f8e49b4a3a1fe092402552f46a077b1",
+      "triangles": [
+        32,
+        24
+      ],
+      "vertices": [
+        25,
+        21
+      ],
+      "exact_boundary_segments": 16,
+      "encoded_bytes": [
+        700,
+        556
+      ],
+      "resident_bytes": [
+        1384,
+        1096
+      ],
+      "certified_error_metres": 0.6672091484069824,
+      "sampled_distances_metres": [
+        0.14969372090321073,
+        0.12415341506693492
+      ],
+      "samples": [
+        1440,
+        1080
+      ]
+    },
+    {
+      "divisions": 8,
+      "group": 1,
+      "source_sha256": "c39ef513e76cfb373abbb2185e35120cf4a02e13db13f80f92c82e05449bbf64",
+      "page_sha256": "bfc09fc7459136b829bda178179838a99fb2ffffc04a7f819fc531f3b4a49785",
+      "triangles": [
+        32,
+        24
+      ],
+      "vertices": [
+        25,
+        21
+      ],
+      "exact_boundary_segments": 16,
+      "encoded_bytes": [
+        700,
+        556
+      ],
+      "resident_bytes": [
+        1384,
+        1096
+      ],
+      "certified_error_metres": 0.5667240619659424,
+      "sampled_distances_metres": [
+        0.10617127648774845,
+        0.0907660498705449
+      ],
+      "samples": [
+        1440,
+        1080
+      ]
+    },
+    {
+      "divisions": 16,
+      "group": 0,
+      "source_sha256": "3669c50bede0c4da9f611f4c658620ffc906ad6839984107838ab73aba37550b",
+      "page_sha256": "c7f0d0398ed5689fb2591c3b7083b705177a266ec12cc8f2143ff8e933c9a135",
+      "triangles": [
+        32,
+        24
+      ],
+      "vertices": [
+        25,
+        21
+      ],
+      "exact_boundary_segments": 16,
+      "encoded_bytes": [
+        700,
+        556
+      ],
+      "resident_bytes": [
+        1384,
+        1096
+      ],
+      "certified_error_metres": 0.3618433177471161,
+      "sampled_distances_metres": [
+        0.10911260339192164,
+        0.09581946615363851
+      ],
+      "samples": [
+        1440,
+        1080
+      ]
+    },
+    {
+      "divisions": 16,
+      "group": 1,
+      "source_sha256": "3669c50bede0c4da9f611f4c658620ffc906ad6839984107838ab73aba37550b",
+      "page_sha256": "1b5a8732115a3bdddb6324f49b32761145d55e06ae12e97951c6b3190cfe06ac",
+      "triangles": [
+        32,
+        24
+      ],
+      "vertices": [
+        25,
+        21
+      ],
+      "exact_boundary_segments": 16,
+      "encoded_bytes": [
+        700,
+        556
+      ],
+      "resident_bytes": [
+        1384,
+        1096
+      ],
+      "certified_error_metres": 0.46430647373199463,
+      "sampled_distances_metres": [
+        0.1409701666159252,
+        0.11704311236506243
+      ],
+      "samples": [
+        1440,
+        1080
+      ]
+    },
+    {
+      "divisions": 32,
+      "group": 0,
+      "source_sha256": "4e2053348a34e5a363ee5451b54412daba41bd41813c40d0cd6d8559f2ddd56c",
+      "page_sha256": "f5e71a927e121240516b3c1a79ea39ff528b9c6c7dc4b339231dfbcb061d9a3a",
+      "triangles": [
+        32,
+        24
+      ],
+      "vertices": [
+        25,
+        21
+      ],
+      "exact_boundary_segments": 16,
+      "encoded_bytes": [
+        700,
+        556
+      ],
+      "resident_bytes": [
+        1384,
+        1096
+      ],
+      "certified_error_metres": 0.2530323565006256,
+      "sampled_distances_metres": [
+        0.020515176844906835,
+        0.019448410075301265
+      ],
+      "samples": [
+        1440,
+        1080
+      ]
+    },
+    {
+      "divisions": 32,
+      "group": 1,
+      "source_sha256": "4e2053348a34e5a363ee5451b54412daba41bd41813c40d0cd6d8559f2ddd56c",
+      "page_sha256": "849e7dffd857de9ed73dc27daa891d32c974270bb5d8c2d03b1e508d2f66dc30",
+      "triangles": [
+        32,
+        24
+      ],
+      "vertices": [
+        25,
+        21
+      ],
+      "exact_boundary_segments": 16,
+      "encoded_bytes": [
+        700,
+        556
+      ],
+      "resident_bytes": [
+        1384,
+        1096
+      ],
+      "certified_error_metres": 0.1115560382604599,
+      "sampled_distances_metres": [
+        0.042214408307726464,
+        0.040411105018338195
+      ],
+      "samples": [
+        1440,
+        1080
+      ]
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+// Two adjacent 4x4-cell parent groups from the admitted original rock's +X face.
+#load "rock.coax";
+#load "../../aethyr/render/geometry/grid-parent.coax";
+RockGrid :: struct {source:ParentMesh;coarse:ParentMesh;triangles:[32]int;supported:bool;}
+#test "adjacent real groups preserve the shared five-vertex chain and exact source triangles" #steps 1000000000 {
+  r:[1]Rock;for detail:[3]int.[8,16,32] {#assert rock_build(r[..],detail,12609);before:=r[0].id;
+    a:=rock_grid(r[..],0);b:=rock_grid(r[..],1);#assert a.supported && b.supported && asset_same(before,r[0].id);
+    for input:[2]RockGrid.[a,b] {g:=input;#assert g.source.vertices==25 && g.source.indices==96 && g.coarse.vertices==21 && g.coarse.indices==72 && g.coarse.error>0;
+      for id,k:g.triangles {for c:0..<3 {x:=r[0].p[cast(int)r[0].i[id*3+c]];y:=g.source.p[cast(int)g.source.i[k*3+c]];#assert x.x==y.x && x.y==y.y && x.z==y.z;}}
+      for y:0..<5 {for x:0..<5 {if x==0 || x==4 || y==0 || y==4 {p:=g.source.p[y*5+x];count:=0;for q:g.coarse.p[0..<g.coarse.vertices] {if p.x==q.x && p.y==q.y && p.z==q.z {count+=1;}}#assert count==1;}}}
+    }
+    for y:0..<5 {x:=a.source.p[y*5+4];z:=b.source.p[y*5];#assert f32_bits(x.x)==f32_bits(z.x) && f32_bits(x.y)==f32_bits(z.y) && f32_bits(x.z)==f32_bits(z.z);}
+    for x:a.triangles {for y:b.triangles {#assert x!=y;}}
+  }
+  #assert !rock_grid(r[..],-1).supported && !rock_grid(r[..],2).supported;
+}
+rock_grid :: (r:[]Rock,group:int)->RockGrid {
+  g:=RockGrid.{};if group<0 || group>1 {return g;}side:=r[0].divisions+1;x0:=r[0].divisions/2-4+group*4;y0:=r[0].divisions/2-2;
+  p:[25]Point;for y:0..<5 {for x:0..<5 {p[y*5+x]=r[0].p[(y0+y)*side+x0+x];}}
+  g.source=grid_parent_source(p[..]);for y:0..<4 {for x:0..<4 {for t:0..<2 {g.triangles[(y*4+x)*2+t]=((y0+y)*r[0].divisions+x0+x)*2+t;}}}
+  m:[1]ParentMesh;g.supported=grid_parent_reduce(m[..],p[..],0,0);g.coarse=m[0];return g;
+}

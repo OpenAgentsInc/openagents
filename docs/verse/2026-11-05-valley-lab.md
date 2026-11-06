@@ -293,8 +293,16 @@ exact state/pixels after device loss. Evidence and limits are in the
    with no survivors/equivalents. This is a bounded structured class, not an
    arbitrary imported topology reducer. Native checks and mutation evidence
    are in `docs/verification/valley-lab-next-three-2026-11-05/`.
-2. **Adjacent real groups.** In progress: source extraction, mixed cuts and
-   content-checked HTTP pages on two neighboring groups of the original rock.
+2. **Adjacent real groups.** Implemented: `8 GROUPS` / `#groups`,
+   `#group-lod` and `#group-pages`. Two neighboring 4×4-cell groups have 64→48
+   triangles; `H` selects source/mixed/coarse cuts. Whole-rock triangles are
+   768→752, 3,072→3,056, and 12,288→12,272 across the three original profiles.
+   The exact shared chain retains five vertices and four segments in every
+   mixed cut. Each VGP1 page is 556 bytes; logical encoded-plus-decoded
+   residency is 1,096 bytes, versus 1,384 for its source representation.
+   `B` selects 2,192 or 1,096 bytes of residency. Native app budgets and an
+   independent f64 topology/surface oracle pass for all three profiles.
+   Browser qualification follows with the field phase before this batch ships.
 3. **Deterministic field.** Planned in this batch: bounded repeated original
    rocks with per-instance conservative selection and shared page identities.
 
