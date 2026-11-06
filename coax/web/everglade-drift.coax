@@ -852,6 +852,33 @@ DR_RAID_DIALS :: "event 1 0 1 8 3 1 3 1 1 1 3 1 300 5";   // the siege at size 8
 DR_RAID_S :: 360;   // the announce and the siege, the cult's casters at the stables before the gate
 // The bar's slots (its hash) page pg drew at wall ms t.
 dr_bar_at :: (pg: [] DrPage, t: int) -> int { h := 0; for r: 0..<pg[0].n { if dr_at(pg, r, C_T) <= t { h = dr_at(pg, r, C_BAR); } } return h; }
+#test "raid observer never samples a bar before LEVEL 1 when LEVEL 2 follows quickly" {
+  #assert dr_raid_bar_time(1000, 1100) == 1000;
+  #assert dr_raid_bar_time(1000, 1300) == 1100;
+  #assert dr_raid_bar_time(1000, 5000) == 4000;
+  #assert dr_raid_bar_time(1000, -1) == 4000;
+}
+dr_raid_bar_time :: (l1: int, l2: int) -> int {
+  t := l1 + 3000; if l2 >= 0 && t > l2 - 200 { t = l2 - 200; } return ifx t < l1 then l1 else t;
+}
+// Control-file reads and the first kit snapshot are asynchronous. Establish the actual LEVEL 1
+// kit before starting combat, rather than infer it from a fixed wait after opening the socket.
+dr_raid_kit_ready :: (c: [] Cdp, whole: int) -> bool {
+  if whole == 0 { return false; }
+  q: [1] Buf;
+  bput(q[..], "(() => { const p=__dr.texts.filter(x=>x[1]===0), t=p[p.length-1]; return __dr.probe(65)===1 && __dr.probe(66)===1 && __dr.probe(49)!==");
+  bint(q[..], whole); bput(q[..], " && t && t[2].startsWith('LEVEL 1') ? 1 : 0; })()");
+  deadline := proc_now_ms() + 12000; stable := 0;
+  while proc_now_ms() < deadline {
+    if dr_int(c, btext(q[..]), 0) == 1 { stable += 1; } else { stable = 0; }
+    if stable >= 3 {
+      print("  raid: LEVEL 1 kit ready, bar % (whole %)\n", dr_int(c, "__dr.probe(49)", 0), whole);
+      return true;
+    }
+    proc_sleep(100);
+  }
+  tool_errln("everglade-drift: the raid never established a LEVEL 1 kit before combat"); return false;
+}
 // whole: the whole bar's hash, as the paired session's room page drew it at its end (levels off there);
 // the raid's offline page can't say it, as on the local host (?offline=worker) its room has levels on (#12897).
 dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPage, b: [] DrPage, whole: int) -> bool {
@@ -876,7 +903,7 @@ dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPag
   if cdp_launch(ca[..], 1280, 800, "coax-drift-a-") {
     if cdp_launch(cc[..], 1280, 800, "coax-drift-b-") {
       script:[1]Buf;
-      if dr_open(ca[..], btext(ua[..]), dr_offline_script(run,script[..])) && dr_open(cc[..], btext(ub[..]), run.script) && dr_ready(ca[..], false) && dr_ready(cc[..], true) && dr_native_ready(run,ca[..]) {
+      if dr_open(ca[..], btext(ua[..]), dr_offline_script(run,script[..])) && dr_open(cc[..], btext(ub[..]), run.script) && dr_ready(ca[..], false) && dr_ready(cc[..], true) && dr_native_ready(run,ca[..]) && dr_raid_kit_ready(cc[..], whole) {
         dr_dice(ca[..], run.worker && !run.native);
         sh: [1] Buf; bput(sh[..], run.dir); bput(sh[..], "/shot-raid-"); bput(sh[..], profile);
         p := DrPair.{a = ca[..], b = cc[..], shots = btext(sh[..])};
@@ -901,6 +928,11 @@ dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPag
         dr_mark(p, "end"); proc_sleep(300);
         ok = dr_pull(ca[..], a) && dr_pull(cc[..], b);
       } else { tool_errln("everglade-drift: the raid's pages didn't come up"); }
+      for side: 0..<2 {
+        report: [1] Buf; bput(report[..], run.dir); bput(report[..], "/raid-"); bput(report[..], profile); bput(report[..], ifx side == 0 then "-offline.json" else "-room.json");
+        obs: [65536] u8;
+        _ = fs_write(btext(report[..]), dr_str(ifx side == 0 then ca[..] else cc[..], "JSON.stringify({texts:__dr.texts.filter(x=>x[1]===0).slice(-64),bars:__dr.bars.slice(-64),marks:__dr.marks,kit:__dr.probe(65),level:__dr.probe(66)})", obs[..]));
+      }
       cdp_close(cc[..]);
     }
     cdp_close(ca[..]);
@@ -948,7 +980,7 @@ dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPag
     w: [1] DrVerdict;
     full := ifx whole != 0 then whole else dr_bar_at(a, dr_mark_t(a, "end"));
     // the room re-reads its control lines every 2 s: the level's bar once that has come, and before LEVEL 2
-    k1t := l1 + 3000; if l2 >= 0 && k1t > l2 - 200 { k1t = l2 - 200; }
+    k1t := dr_raid_bar_time(l1, l2);
     k1 := ifx l1 >= 0 then dr_bar_at(b, k1t) else 0; k2 := ifx l2 >= 0 then dr_bar_at(b, l2 + 1500) else 0;
     if l1 >= 0 && (k1 == full || (l2 >= 0 && k2 == k1)) {
       w[0].drifted = true; w[0].t = l1; w[0].step = dr_step_at(b, l1); w[0].mine = full; w[0].other = k1;
