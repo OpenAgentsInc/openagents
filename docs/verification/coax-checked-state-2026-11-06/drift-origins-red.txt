@@ -1,0 +1,7 @@
+FAIL #test shared movement origins preserve real gaps and do not invent one after convergence (47 ms)
+coax/web/everglade-drift.coax:607:3: error[E0406]: assertion failed
+    #assert a[0].rows[DR_COLS+C_LX]==b[0].rows[DR_COLS+C_LX];
+    ^
+  note: in #test shared movement origins preserve real gaps and do not invent one after convergence
+1 of 145 checks (--only 'shared movement origins'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

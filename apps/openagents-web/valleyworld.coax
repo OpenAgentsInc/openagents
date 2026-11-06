@@ -52,14 +52,14 @@ world_start :: (s:[]ValleyWorld) {
  if best<1000000 {p.x=c[0].you.pos.x;p.z=c[0].you.pos.z;}
  c[0].you=pc.walk_place(p.x,world_height(s,p.x,p.z),p.z,0);c[0].you.on_ground=true;c[0].you.phi=1.3;c[0].you.dist=4;c[0].you.prev_dist=4;c[0].you.max_dist=6;
 }
-world_hold :: (s:[]ValleyWorld,key:int,down:bool)->bool #export_c {
+world_hold :: (s:[]ValleyWorld,key:int,down:bool)->bool #export_c #effects(all) {
  if down && (key==86 || key==118) {s[0].canyon[0].mode=(s[0].canyon[0].mode+1)%4;return true;}
  if down && key>=50 && key<=53 {s[0].station=key-50;s[0].started=false;canyon_blur(s[0].canyon[..]);world_echo_reset(s);world_start(s);return true;}
  if down && (key==82 || key==114) {s[0].started=false;s[0].canyon[0].portrait=false;s[0].canyon[0].closeup=false;canyon_blur(s[0].canyon[..]);world_echo_reset(s);world_start(s);return true;}
  return canyon_hold(s[0].canyon[..],key,down);
 }
 world_echo_reset :: (s:[]ValleyWorld) {s[0].canyon[0].walking=true;s[0].canyon[0].portrait=false;s[0].canyon[0].closeup=false;e:=s[0].canyon[0].echo[..];e[0].input_on=false;e[0].run_requested=false;echo_reset(e);echo_advance(e,0,0,true,0);}
-world_pointer :: (s:[]ValleyWorld,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c {
+world_pointer :: (s:[]ValleyWorld,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c #effects(all) {
  c:=s[0].canyon[..];if phase==0 {cx:=x/c[0].d;cy:=y/c[0].d;width:=c[0].width/c[0].d;height:=c[0].height/c[0].d;
   if cy<72 {if cx>width-110 {return world_hold(s,82,true);}if cx<100 && cy<48 {return world_hold(s,49,true);}return true;}
   if cy>=72 && cy<=108 && cx>=16 && cx<=width-16 {station:=cast(int)((cx-16)/((width-32)/4));if station>=0 && station<4 {return world_hold(s,50+station,true);}}
@@ -68,7 +68,7 @@ world_pointer :: (s:[]ValleyWorld,x:f32,y:f32,phase:int,kind:int,id:int)->bool #
  }
  return canyon_pointer_event(c,x,y,phase,kind,id);
 }
-world_step :: (s:[]ValleyWorld,dt:f32,still:bool) #export_c {
+world_step :: (s:[]ValleyWorld,dt:f32,still:bool) #export_c #effects(all) {
  world_start(s);if !s[0].loaded || still {return;}c:=s[0].canyon[..];if !c[0].walking || c[0].portrait {return;}
  k:=c[0].keys;t:=c[0].thumbs;p:=pc.walk_input(c[0].you,cast(f32)((ifx (k&8)!=0 then 1 else 0)-(ifx (k&4)!=0 then 1 else 0)),cast(f32)((ifx (k&1)!=0 then 1 else 0)-(ifx (k&2)!=0 then 1 else 0)),t.pad_x,t.pad_y,pc.walk_runs((k&32)!=0,t.run,t.pad_x,t.pad_y),(k&16)!=0 || t.jump,c[0].look_x+t.dyaw,c[0].look_y+t.dpitch);
  field:=[1]query.QueryHeightfield.[query.QueryHeightfield.{ground=world_ground(),heights=s[0].heights[..]}];
@@ -78,7 +78,7 @@ world_step :: (s:[]ValleyWorld,dt:f32,still:bool) #export_c {
  for step:0..<trace.count {target:=trace.targets[step];c[0].echo[0].drive_inputs=true;c[0].echo[0].input_on=!blocked && (target.act==1 || target.act==2);c[0].echo[0].run_requested=target.act==2;echo_advance(c[0].echo[..],1.0/64.0,ifx blocked then 0.0f32 else sqrt(target.velocity.x*target.velocity.x+target.velocity.z*target.velocity.z),target.act!=3,pc.wrap_angle(want-target.face));}
  c[0].now+=cast(f64)(trace.count)/64;c[0].look_x=0;c[0].look_y=0;c[0].thumbs=verse_sticks_used(t);
 }
-world_asset :: (s:[]ValleyWorld,index:int,bytes:int) #export_c {
+world_asset :: (s:[]ValleyWorld,index:int,bytes:int) #export_c #effects(all) {
  if index<0 || index>3 {return;}s[0].assets[index]=bytes;if bytes==0 {s[0].failed=true;return;}
  if index==0 {
   if bytes<VW_RIG_BYTES || bytes>s[0].canyon[0].echo[0].data.count {s[0].failed=true;return;}
@@ -99,7 +99,7 @@ world_visible :: (u:[]f32,p:Point,r:f32)->bool {
 world_sun :: ()->Point {return v3(0.7742571472,0.6158125107,0.1459480103);}
 #test "World retains offscreen source casters within the sun projection" {u:[128]f32;u[80]=1;u[85]=1;u[90]=1;u[96]=45;#assert world_shadowed(u[..],v3(0,0,-10),1) && world_shadowed(u[..],v3(46,0,0),1);#assert !world_shadowed(u[..],v3(100,0,0),1);}
 world_shadowed :: (u:[]f32,p:Point,r:f32)->bool {q:=sub(p,v3(u[92],u[93],u[94]));return abs(dot(q,v3(u[80],u[81],u[82])))<=u[96]+r && abs(dot(q,v3(u[84],u[85],u[86])))<=u[96]+r && abs(dot(q,v3(u[88],u[89],u[90])))<=u[96]+r;}
-world_frame :: (s:[]ValleyWorld,out:[]f32,u:[]f32,w:f32,h:f32,d:f32)->int #export_c {
+world_frame :: (s:[]ValleyWorld,out:[]f32,u:[]f32,w:f32,h:f32,d:f32)->int #export_c #effects(all) {
  world_start(s);c:=s[0].canyon[..];_:=canyon_frame(c,out,u,w,h,d);s[0].visible=0;s[0].triangles=0;s[0].draw_count=0;
  // This profile uses the original Valley body rig. Slay's morph/shot flags stay clear.
  u[7]=0;u[111]=0;u[112]=0;u[113]=0;u[114]= -1;u[116]=cast(f32)s[0].vertex_word;u[120]=cast(f32)s[0].matrix_word;u[124]=cast(f32)s[0].material_word;
@@ -119,11 +119,11 @@ world_frame :: (s:[]ValleyWorld,out:[]f32,u:[]f32,w:f32,h:f32,d:f32)->int #expor
  n=hd_text_fit(out,n,"WASD MOVE / DRAG LOOK / SPACE JUMP / R RESET / 2-5 VIEWS / C ECHO",20,h/d-20,10,w/d-40,pen,0);
  s[0].meter[0]=budget_meter(WORLD_BUDGET);budget_measure(s[0].meter[..],n+s[0].triangles*6+(ifx s[0].loaded then (522009+2957442)*2 else 0),s[0].draw_count*2+2,budget_arena_bytes(size_of(ValleyWorld),CANYON_HUD,12,128)+WORLD_PACK_BYTES+s[0].vertices+s[0].indices+s[0].layers*22369620+cast(int)w*cast(int)h*8);#assert budget_ok(s[0].meter[0]);return n;
 }
-world_probe :: (s:[]ValleyWorld,f:int)->int #export_c {
+world_probe :: (s:[]ValleyWorld,f:int)->int #export_c #effects(all) {
  if f==0 {return ifx s[0].loaded then 1 else 0;}if f==1 {return s[0].triangles;}if f==2 {return s[0].visible;}if f==3 {return s[0].source_count;}if f==6 {return s[0].checks;}if f==7 {return ifx s[0].failed then 1 else 0;}
  if f==4 {return s[0].meter[0].used[BUDGET_BYTES]/1024;}if f==5 {return s[0].meter[0].used[BUDGET_VERTICES];}if f==8 {return s[0].draw_count;}
  return canyon_probe(s[0].canyon[..],f);
 }
-world_pack_gate :: (s:[]ValleyWorld,bytes:int)->bool #export_c {
+world_pack_gate :: (s:[]ValleyWorld,bytes:int)->bool #export_c #effects(all) {
  s[0].checks+=1;s[0].verified=world_pack_accept(s[0].digest[..],bytes);if !s[0].verified {s[0].failed=true;}return s[0].verified;
 }

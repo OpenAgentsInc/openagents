@@ -1,0 +1,9 @@
+1 aethyr/tools/valley-world-merge.coax
+2 aethyr/tools/valley-world-pack.coax
+1 aethyr/tools/valley-world-select.coax
+7 apps/openagents-web/valleyworld.coax
+1 coax/web/valley-world-check.coax
+7 verse/valley/world-catalog.coax
+1 verse/valley/world-host-policy.coax
+1 verse/valley/world-pack-policy.coax
+effects migration: 21 procedures in 8 files written

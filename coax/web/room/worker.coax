@@ -232,6 +232,7 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
       if ln > 0 {
         // the key: the compiler's and the unit's names, then shasum's lines for the closure
         kt: [1] Wk; wk_s(kt[..], "coax-room-worker-c-1\n"); wk_s(kt[..], compiler_sum); wk_s(kt[..], "\n"); wk_s(kt[..], u); wk_s(kt[..], "\n");
+        if ui==4 {wk_s(kt[..],"opt=2 arithmetic=checked\n");}
         list := cast(string) lb[0..<ln]; ok := true; j := 0;
         while j < list.count {
           while j < list.count && (list[j] == ' ' || list[j] == '\n' || list[j] == '\t') { j += 1; }
@@ -257,8 +258,11 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
         }
       }
     }
-    // (cd ROOT && coax c UNIT --library --header WORK/NAME.h) > WORK/NAME.c
-    ca := [9] string.["/bin/sh", "-c", "exec \"$0\" c \"$1\" --library --header \"$2\" > \"$3\"", coax, u, wh, wc, "", ""];
+    // `c` accepts the legacy optimization preset rather than --opt. Restore
+    // every other axis: checked integers, development branches, debug metadata.
+    // Only river gets guarded loop versioning, with its checked fallback.
+    command:=ifx ui==4 then "exec \"$0\" c \"$1\" --library --release --arithmetic checked --build-profile development --debug-info --header \"$2\" > \"$3\"" else "exec \"$0\" c \"$1\" --library --header \"$2\" > \"$3\"";
+    ca := [9] string.["/bin/sh", "-c", command, coax, u, wh, wc, "", ""];
     hs[ui] = wk_start(ca[0..<7], root, env);
   }
   started: [6] int; ns := 0;
@@ -338,9 +342,9 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
     wk_s(objs[jb][..], work); wk_s(objs[jb][..], "/"); wk_s(objs[jb][..], stem); wk_s(objs[jb][..], ".o");
     argv: [4200] string; c := 0;
     for x: [5] string.[clang, "--target=wasm32-wasip1", wk_text(sr[..]), wk_text(rd[..]), "-std=c11"] { argv[c] = x; c += 1; }
-    // River buoyancy takes most of the local host's tick. Keep its strict
-    // arithmetic, but optimize that unit for speed; the final size gate still applies.
-    argv[c] = ifx dev then "-O1" else ifx jb==5 then "-O2" else "-Os"; c += 1;
+    // Optimize the native world adapter and river buoyancy for speed under
+    // the same strict arithmetic and final size gate.
+    argv[c] = ifx dev then "-O1" else ifx jb==5 || jb==7 then "-O2" else "-Os"; c += 1;
     if proc_has_env("COAX_ROOM_PROFILE") {argv[c]="-DCOAX_ROOM_PROFILE=1";c+=1;}
     if !dev && jb != 0 { argv[c] = "-flto"; c += 1; }
     for x: [3] string.["-ffp-contract=off", "-fno-fast-math", "-w"] { argv[c] = x; c += 1; }

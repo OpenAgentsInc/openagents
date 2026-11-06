@@ -1,0 +1,2 @@
+wasm-size: oa-state-city-o2 is 1284152 bytes and has no size budget: add a line "oa-state-city-o2 BYTES" to apps/openagents-web/wasm-budgets.txt
+built /private/tmp/oa-state-city-o2.wasm (1284152 bytes)

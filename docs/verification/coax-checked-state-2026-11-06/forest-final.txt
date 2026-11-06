@@ -1,0 +1,12 @@
+everglade-drift: room 127.0.0.1:8980, page 127.0.0.1:8981, results in /tmp/oa-state-forest-final
+profile 250: round trip 250 ms, jitter 30 ms, 2% lost
+  forest 250: caster moved from 0, -84000 to -21923, -84000 mm
+  forest 250: Produce Flame at tree -1
+  forest 250: Produce Flame at tree -1
+  forest 250: Produce Flame at tree 1783
+  forest 250: fire seen true/true, burnt 1/1, settled digest 897021801/897021801: holds
+
+| probe | 250 |
+|---|---|
+| shared burnt forest | ok |
+holds

@@ -1,0 +1,7 @@
+FAIL #test the report retains every gameplay and raid verdict including late failures (0 ms)
+coax/web/everglade-drift.coax:561:3: error[E0406]: assertion failed
+    #assert report[0].n==40;
+    ^
+  note: in #test the report retains every gameplay and raid verdict including late failures
+1 of 144 checks (--only 'report retains'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

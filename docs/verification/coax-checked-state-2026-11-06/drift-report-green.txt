@@ -1,0 +1,3 @@
+ok   #test the report retains every gameplay and raid verdict including late failures (1 case, 18053 steps, 0 ms)
+1 of 144 checks (--only 'report retains'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

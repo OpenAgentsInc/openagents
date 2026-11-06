@@ -12,7 +12,7 @@
 #load "../../coax/lib/image/pillow.coax";
 #load "../../coax/lib/crypto/sha256.coax";
 #load "../../verse/tools/humans/ph_num.coax";
-ceil :: (x:f64)->f64 #foreign;
+ceil :: (x:f64)->f64 #foreign #effects(all);
 WpJson :: struct {text:[33554432]u8;nodes:[1048576]JvNode;d:[1]Jv;}
 WpMesh :: struct {first:int;count:int;low:Point;high:Point;material:int;}
 wp_path :: (root:string,name:string,b:[]u8)->string {return fs_join(root,name,b);}
@@ -123,7 +123,7 @@ wp_layers :: (root:string,base:string,dest:string,start:int,end:int)->int {
   if k<32 {r:=32+(3+k)*48;at:=cast(int)scan_u32(source[..],r+4);n:=cast(int)scan_u32(source[..],r+8);#assert wp_layer_encoded(source[at..<at+n],out)==0;}else {row:=wp_at(j[..],tx,k-32);#assert wp_layer(wp_path(root,wp_text(j[..],row,"file"),src[..]),out)==0;}print("World layer %/%\n",k+1,32+nl);
  }return 0;
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) {return 2;}mode:=args_at(a[..],0);
  if args_count(a[..])==6 && mode=="layers" {return wp_layers(args_at(a[..],1),args_at(a[..],2),args_at(a[..],3),cast(int)pn_f(args_at(a[..],4)),cast(int)pn_f(args_at(a[..],5)));}
  if args_count(a[..])==3 && mode=="layer" {return wp_layer(args_at(a[..],1),args_at(a[..],2));}

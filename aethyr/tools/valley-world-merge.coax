@@ -16,7 +16,7 @@ wm_load :: (s:[]WmDoc,path:string) {n:=fs_read(path,s[0].text[..]);#assert n>0 &
 wm_get :: (s:[]WmDoc,node:int,key:string)->int {return jv_get(s[0].d[0],node,key);}
 wm_str :: (s:[]WmDoc,node:int,key:string)->string {return jv_raw(s[0].d[0],wm_get(s,node,key));}
 wm_name :: (index:int,suffix:string,b:[]u8)->string {prefix:="mesh";for c,k:prefix {b[k]=c;}b[4]=cast(u8)(48+index/100);b[5]=cast(u8)(48+(index/10)%10);b[6]=cast(u8)(48+index%10);for c,k:suffix {b[7+k]=c;}return cast(string)b[0..<7+suffix.count];}
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 || args_count(a[..])>8 {return 2;}root:=args_at(a[..],0);nparts:=args_count(a[..]);world:[8]WmDoc;material:[8]WmDoc;path:[4096]u8;partpath:[4096]u8;
  for k:0..<nparts {part:=ifx k==0 then root else fs_join(root,args_at(a[..],k),partpath[..]);wm_load(world[k..<k+1],fs_join(part,"world.json",path[..]));wm_load(material[k..<k+1],fs_join(part,"materials.json",path[..]));}
  materials:[8388608]u8;textures:[2097152]u8;mo:[1]Jo;to:[1]Jo;mn:[1]WmNames;tn:[1]WmNames;

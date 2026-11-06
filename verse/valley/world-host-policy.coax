@@ -1,4 +1,4 @@
 // The local world profile reloads a complete private multi-gigabyte texture residency after GPU loss.
 #authority;
 #test "World recovery gives its complete source residency a bounded minute" {#assert world_recover_ms()==60000;}
-world_recover_ms :: ()->int #export_c {return 60000;}
+world_recover_ms :: ()->int #export_c #effects(all) {return 60000;}

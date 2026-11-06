@@ -319,7 +319,7 @@ dr_int :: (c: [] Cdp, js: string, fallback: int) -> int {
 // Window target failure even when two motionless pages would otherwise compare equal.
 dr_input_check :: () -> bool {
   c: [1] Cdp; ok := false;
-  if !cdp_launch(c[..], 128, 128, "coax-drift-input-") { return false; }
+  if !cdp_launch_background(c[..], 128, 128, "coax-drift-input-") { return false; }
   setup := dr_int(c[..], "(() => { const root=document.createElement('div'), canvas=document.createElement('canvas'); document.body.append(root,canvas); globalThis.__drInput={errors:0,forwarded:0}; addEventListener('error',e=>{__drInput.errors++;e.preventDefault();}); addEventListener('keydown',e=>{if(root.contains(e.target))return;__drInput.forwarded++;}); dispatchEvent(new KeyboardEvent('keydown',{key:'d',bubbles:true})); return __drInput.errors===1 && __drInput.forwarded===0 ? 1 : 0; })()", 0);
   if setup == 1 {
     q: [1] Buf; dr_key_js(q[..], true, "d", "KeyD", 68, false);
@@ -372,7 +372,20 @@ dr_both :: (p: DrPair, down: bool, key: string, code: string, vk: int, shift: bo
   }
 }
 dr_both_key :: (p: DrPair, down: bool, key: string, code: string, vk: int) { dr_both(p, down, key, code, vk, false); }
-dr_tap :: (p: DrPair, key: string, code: string, vk: int) { dr_both_key(p, true, key, code, vk); proc_sleep(80); dr_both_key(p, false, key, code, vk); }
+dr_tap :: (p: DrPair, key: string, code: string, vk: int) {
+  dr_both_key(p, true, key, code, vk);
+  // A slow rendered frame can drain both queued edges before any input step
+  // sees the key. Observe the press through a step on both pages first.
+  if p.at.count>0 {
+    target:=p.at[0]+1;deadline:=proc_now_ms()+2000;seen:=false;
+    while !seen && proc_now_ms()<deadline {
+      seen=dr_int(p.a,"__dr.sstep()",-1)>=target && dr_int(p.b,"__dr.sstep()",-1)>=target;
+      if !seen {proc_sleep(10);}
+    }
+    #assert seen;
+  }
+  proc_sleep(80);dr_both_key(p, false, key, code, vk);
+}
 dr_mark :: (p: DrPair, name: string) {
   if p.shots.count > 0 && name != "start" && name != "raid" { dr_shots(p, name); }
   q: [1] Buf;
@@ -588,7 +601,7 @@ dr_text_way :: (a: [] DrPage, b: [] DrPage, which: int, window: int, t0: int, t1
 }
 
 DrResult :: struct { name: string; v: DrVerdict; }
-DR_PROBES :: 32;
+DR_PROBES :: 64;
 DrReport :: struct { r: [DR_PROBES] DrResult; n: int; overflow:bool; }
 #test "a drift report cannot silently omit an overflowing required probe" {
   r:[1]DrReport;
@@ -597,7 +610,14 @@ DrReport :: struct { r: [DR_PROBES] DrResult; n: int; overflow:bool; }
   dr_add(r[..],"must not disappear",DrVerdict.{drifted=true});
   #assert r[0].overflow && r[0].n==DR_PROBES;
 }
+#test "the report retains every gameplay and raid verdict including late failures" {
+  report:[1]DrReport;
+  for i:0..<40 {dr_add(report[..],"probe",DrVerdict.{drifted=i==39});}
+  #assert report[0].n==40;
+  last:=report[0].n-1;#assert report[0].r[last].v.drifted;
+}
 dr_add :: (rep: [] DrReport, name: string, v: DrVerdict) {
+  #assert rep[0].n>=0;
   if rep[0].n>=DR_PROBES {rep[0].overflow=true;return;}
   rep[0].r[rep[0].n] = DrResult.{name = name, v = v}; rep[0].n += 1;
 }
@@ -631,7 +651,20 @@ dr_begin :: (a: [] DrPage, b: [] DrPage, k: int, out: [] int) -> bool {
   }
   return false;
 }
+#test "shared movement origins preserve real gaps and do not invent one after convergence" {
+  a:[1]DrPage;b:[1]DrPage;
+  for side:0..<2 {
+    p:=ifx side==0 then a[..] else b[..];p[0].n=2;p[0].marks_n=1;
+    for ch,i:"start" {p[0].marks[0].name[i]=ch;}p[0].marks[0].name_n=5;p[0].marks[0].t=1000;
+    for i:0..<2 {p[0].rows[i*DR_COLS+C_T]=1000+33*i;p[0].rows[i*DR_COLS+C_STEP]=i;}
+    p[0].rows[DR_COLS+C_X]=1000;
+  }
+  b[0].rows[C_X]=400;dr_local(a[..],b[..]);
+  #assert a[0].rows[DR_COLS+C_LX]==b[0].rows[DR_COLS+C_LX];
+  #assert b[0].rows[C_LX]-a[0].rows[C_LX]==400;
+}
 dr_local :: (a: [] DrPage, b: [] DrPage) {
+  if a[0].n<1 || b[0].n<1 {return;}
   // each page's rows that begin a step, in order (one marks; -1 a mark with no shared step: its wall moment)
   ba: [DR_MARKS] int; bb: [DR_MARKS] int;
   for k: 0..<DR_MARKS { ba[k] = -1; bb[k] = -1; }
@@ -642,6 +675,16 @@ dr_local :: (a: [] DrPage, b: [] DrPage) {
       ba[k] = rr[0];
       for i: 0..<b[0].marks_n { if dr_mark_name(b, i) == name { bb[i] = rr[1]; } }
     }
+  }
+  // Both recordings use one physical origin per phase. Subtracting each
+  // page's own rendered position hides an existing gap, then invents the
+  // opposite gap when the players converge at a wall.
+  oa:[DR_MARKS]int;ob:[DR_MARKS]int;
+  for k:0..<a[0].marks_n {
+    source:=ifx ba[k]>=0 then ba[k] else a[0].marks[k].row;
+    if source<0 {source=0;}if source>=a[0].n {source=a[0].n-1;}
+    oa[k]=source;
+    for i:0..<b[0].marks_n {if dr_mark_name(a,k)==dr_mark_name(b,i) {ob[i]=source;}}
   }
   // each frame's step as a time (C_ST): the offline page's start mark, and a step every 1/30 s after it
   base := dr_mark_t(a, "start");
@@ -659,10 +702,11 @@ dr_local :: (a: [] DrPage, b: [] DrPage) {
       t := dr_at(p, r, C_T);
       for k: 0..<p[0].marks_n {
         at := ifx side == 0 then ba[k] else bb[k];
-        if at >= 0 { if at == r { m = r; } }
-        else if p[0].marks[k].t <= t && (r == 0 || p[0].marks[k].t > dr_at(p, r - 1, C_T)) { m = r; }
+        origin:=ifx side==0 then oa[k] else ob[k];
+        if at >= 0 { if at == r { m = origin; } }
+        else if p[0].marks[k].t <= t && (r == 0 || p[0].marks[k].t > dr_at(p, r - 1, C_T)) { m = origin; }
       }
-      dx := f64(dr_at(p, r, C_X) - dr_at(p, m, C_X)); dz := f64(dr_at(p, r, C_Z) - dr_at(p, m, C_Z));
+      dx := f64(dr_at(p, r, C_X) - dr_at(a, m, C_X)); dz := f64(dr_at(p, r, C_Z) - dr_at(a, m, C_Z));
       th := f64(dr_at(p, r, C_YAW)) / 1000.0;
       p[0].rows[r * DR_COLS + C_LX] = cast(int) (dx * cos(th) - dz * sin(th));
       p[0].rows[r * DR_COLS + C_LZ] = cast(int) (dx * sin(th) + dz * cos(th));
@@ -707,6 +751,24 @@ dr_town_fell :: (p: [] DrPage, t0: int, t1: int) -> bool {
   #assert dr_town_fell(p[..], 1000, 2000) && !dr_town_fell(p[..], -1, 2000);
 }
 
+#test "the jump rehearsal requires an observed rise inside its own phase" {
+  p:[1]DrPage;p[0].n=3;
+  for i:0..<3 {p[0].rows[i*DR_COLS+C_T]=(i+1)*1000;p[0].rows[i*DR_COLS+C_LIFT]=28;}
+  #assert dr_jump_rise(p[..],1000,3000)==0;
+  p[0].rows[DR_COLS+C_LIFT]=138;
+  #assert dr_jump_rise(p[..],1000,3000)==110;
+  #assert dr_jump_rise(p[..],1000,1500)==0 && dr_jump_rise(p[..],-1,3000)==0;
+}
+dr_jump_rise :: (p:[]DrPage,t0:int,t1:int)->int {
+  if t0<0 || t1<=t0 {return 0;}first:= -1;rise:=0;
+  for r:0..<p[0].n {
+    t:=dr_at(p,r,C_T);if t<t0 || t>=t1 {continue;}
+    if first<0 {first=r;}
+    d:=dr_at(p,r,C_LIFT)-dr_at(p,first,C_LIFT);if d>rise {rise=d;}
+  }
+  return rise;
+}
+
 // Every probe of the paired session, offline (a) against the room (b) and back.
 dr_compare :: (a: [] DrPage, b: [] DrPage, rtt: int, rep: [] DrReport, worker: bool) {
   window := 250 + rtt;
@@ -719,6 +781,11 @@ dr_compare :: (a: [] DrPage, b: [] DrPage, rtt: int, rep: [] DrReport, worker: b
     ma := dr_movement(a, t0, dr_mark_t(a, "held")); mb := dr_movement(b, dr_mark_t(b, "start"), dr_mark_t(b, "held"));
     v := DrVerdict.{drifted = ma < 3000 || mb < 3000, mine = ma, other = mb, by = 3000};
     dr_add(rep, "movement inputs took effect (mm)", v);
+  }
+  {
+    ja:=dr_jump_rise(a,dr_mark_t(a,"jump"),dr_mark_t(a,"rg"));
+    jb:=dr_jump_rise(b,dr_mark_t(b,"jump"),dr_mark_t(b,"rg"));
+    dr_add(rep,"jump inputs took effect (cm)",DrVerdict.{drifted=ja<50 || jb<50,mine=ja,other=jb,by=50});
   }
   probes := [16] DrProbe.[
     DrProbe.{name = "position (in your heading, since the step)", col = C_LX, how = DR_PLACE, tol = 350},
@@ -955,8 +1022,8 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
   proc_sleep(2500);
   ua: [1] Buf; bput(ua[..], "http://127.0.0.1:"); bint(ua[..], run.port + 3); bput(ua[..], "/worlds/everglade?offline=worker&levels=off");
   ub: [1] Buf; bput(ub[..], "http://127.0.0.1:"); bint(ub[..], page); bput(ub[..], "/worlds/everglade?relay=ws://localhost:"); bint(ub[..], proxy); bput(ub[..], "&room=pair-drift-"); bint(ub[..], code);
-  if cdp_launch(ca[..], 1280, 800, "coax-drift-a-") {
-    if cdp_launch(cb[..], 1280, 800, "coax-drift-b-") {
+  if cdp_launch_background(ca[..], 1280, 800, "coax-drift-a-") {
+    if cdp_launch_background(cb[..], 1280, 800, "coax-drift-b-") {
       script:[1]Buf;
       if dr_open(ca[..], btext(ua[..]), dr_offline_script(run,script[..])) && dr_open(cb[..], btext(ub[..]), run.script) && dr_ready(ca[..], false) && dr_ready(cb[..], true) && dr_native_ready(run,ca[..]) {
         dr_dice(ca[..], run.worker && !run.native);
@@ -1069,8 +1136,8 @@ dr_forest :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport) -> bool {
   bput(url[..], "&room=pair-forest-"); bint(url[..], run.stamp * 10 + rtt / 50);
   a: [1] Cdp; b: [1] Cdp; ok := false; fire_a := false; fire_b := false;
   burnt_a := -1; burnt_b := -1; hash_a := -1; hash_b := -1;
-  if cdp_launch(a[..], 1280, 800, "coax-forest-a-") {
-    if cdp_launch(b[..], 1280, 800, "coax-forest-b-") {
+  if cdp_launch_background(a[..], 1280, 800, "coax-forest-a-") {
+    if cdp_launch_background(b[..], 1280, 800, "coax-forest-b-") {
       if dr_open(a[..], btext(url[..]), run.script) && dr_ready(a[..], true) {
         marked := dr_int(a[..], "__dr.mark('start')", 0);
         _ := dr_press(a[..], true, "Escape", "Escape", 27, false); _ = dr_press(a[..], false, "Escape", "Escape", 27, false);
@@ -1194,8 +1261,8 @@ dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPag
   ua: [1] Buf; bput(ua[..], "http://127.0.0.1:"); bint(ua[..], run.port + 3); bput(ua[..], "/worlds/everglade?raid=preview&offline=worker");
   ub: [1] Buf; bput(ub[..], "http://127.0.0.1:"); bint(ub[..], page); bput(ub[..], "/worlds/everglade?relay=ws://localhost:"); bint(ub[..], proxy); bput(ub[..], "&room=pair-raid-"); bint(ub[..], code);
   ca: [1] Cdp; cc: [1] Cdp; ok := false;
-  if cdp_launch(ca[..], 1280, 800, "coax-drift-a-") {
-    if cdp_launch(cc[..], 1280, 800, "coax-drift-b-") {
+  if cdp_launch_background(ca[..], 1280, 800, "coax-drift-a-") {
+    if cdp_launch_background(cc[..], 1280, 800, "coax-drift-b-") {
       script:[1]Buf;
       open_a := dr_open(ca[..], btext(ua[..]), dr_offline_script(run,script[..]));
       open_b := open_a && dr_open(cc[..], btext(ub[..]), run.script);

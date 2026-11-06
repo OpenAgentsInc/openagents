@@ -30,13 +30,13 @@
     },
     {
       "path": "apps/openagents-web/build/everglade-room.wasm",
-      "bytes": 1023072,
-      "sha256": "5958bdcd10bd944c0f92f024adaf2e383d49c26b28327f11775701c6bc1b5478"
+      "bytes": 1045992,
+      "sha256": "4afbbdd24fb9ed12d600c4b1fad3a9c7026c10b4249ad35bee58de0851432e78"
     },
     {
       "path": "coax/web/room/bin/room",
-      "bytes": 4052472,
-      "sha256": "714f8ee406350a1d42dacac09912f4a227012130ae453768e4ffdcaa8fa6d55e"
+      "bytes": 4052680,
+      "sha256": "f1e3806ef4c7947af1b9a9bfdd4f6e24ef5dd086c7df109db5e26bca00c2e934"
     },
     {
       "path": "/tmp/oa-state-final-c/everglade.c",
@@ -52,6 +52,11 @@
       "path": "apps/openagents-web/build/everglade5e.wasm",
       "bytes": 2005680,
       "sha256": "1199b2292bb6fbf7fc620d1cffc450712328165cf229bf69cbc84ad7945bfb04"
+    },
+    {
+      "path": "/tmp/oa-state-final-versioned-c/river.c",
+      "bytes": 1154169,
+      "sha256": "becfe731eb0a2d13af2f3495404522cb3be60e8b6d70bf5d49827eccbc9056d1"
     }
   ],
   "classic_page": {
@@ -107,6 +112,54 @@
         },
         "checks": 1391
       }
+    ]
+  },
+  "worker": {
+    "bytes": 1045992,
+    "limit_bytes": 1060000,
+    "arithmetic": "checked",
+    "build_profile": "development",
+    "coax_native_opt": {
+      "river": 2,
+      "others": 0
+    },
+    "clang_opt": {
+      "river": "O2",
+      "room-world.c": "O2",
+      "others": "Os"
+    },
+    "strict_fp": true
+  },
+  "integrated_base": "cff8a2cf2b2c54f806ac86a3e743e7521b3f811f",
+  "qualification": {
+    "network_profiles": [
+      "local",
+      "100 ms",
+      "250 ms"
+    ],
+    "native_p95_us": [
+      370,
+      330,
+      360
+    ],
+    "native_limit_us": 840,
+    "worker_p95_us": [
+      515,
+      535,
+      505
+    ],
+    "worker_limit_us": 600,
+    "worker_sample_counts": [
+      2053,
+      2077,
+      2073
+    ],
+    "raid_profile": "250 ms",
+    "forest_profile": "250 ms",
+    "headless_background_throttling": false,
+    "viewport": [
+      1280,
+      800
     ]
   }
 }

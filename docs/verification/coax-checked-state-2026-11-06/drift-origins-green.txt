@@ -1,0 +1,3 @@
+ok   #test shared movement origins preserve real gaps and do not invent one after convergence (1 case, 1403883 steps, 48 ms)
+1 of 145 checks (--only 'shared movement origins'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
