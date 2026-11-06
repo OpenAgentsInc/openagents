@@ -11,12 +11,21 @@ slay_shot_meta :: (s:[]SlayShot,k:int)->f32 {
  b:=s[0].data[0..<s[0].bytes];f:=shot_info(b);frame:=slay_shot_frame(s);a:=cast(int)floor(frame);c:=ifx a+1<f.frames then a+1 else a;
  return curve_linear(face_float(b,f.data+a*f.stride+f.bones*28+k*4),face_float(b,f.data+c*f.stride+f.bones*28+k*4),frame-cast(f32)a);
 }
+// The source face clip covers only part of the shot. Its first and last expressions ease in and out
+// over SLAY_FACE_EASE source frames beyond that range instead of switching on and off in one frame.
+SLAY_FACE_EASE :: 12.0f32;
+slay_face_ease :: (source:f32,start:int,end:int)->f32 {outside:=hi(cast(f32)start-source,source-cast(f32)end);return lo(hi(1-outside/SLAY_FACE_EASE,0),1);}
+#test "The shot face eases in before its source range and out after it" {
+ #assert slay_face_ease(1121,1121,1159)==1 && slay_face_ease(1140,1121,1159)==1 && slay_face_ease(1115,1121,1159)==0.5 && slay_face_ease(1165,1121,1159)==0.5;
+ #assert slay_face_ease(1109,1121,1159)==0 && slay_face_ease(1001,1121,1159)==0 && slay_face_ease(1180,1121,1159)==0;
+}
 slay_shot_present :: (s:[]SlayShot,e:[]Echo) {
  if !s[0].ready || !e[0].ready {return;}b:=s[0].data[0..<s[0].bytes];f:=shot_info(b);frame:=slay_shot_frame(s);a:=cast(int)floor(frame);c:=ifx a+1<f.frames then a+1 else a;
  for k:0..<f.bones {joint:=cast(int)face_word(b,f.names+k*68+64);e[0].body[joint]=pose_blend(face_local(b,f.data+a*f.stride+k*28),face_local(b,f.data+c*f.stride+k*28),frame-cast(f32)a);}
  e[0].face[0].enabled=false;source:=frame+cast(f32)f.source_first;
- if e[0].face_bytes>0 && source>=cast(f32)f.face_start && source<=cast(f32)f.face_end {
-  face:=echo_face_bytes(e);info:=face_info(face);frames:=cast(int)face_word(face,info.clip_table+f.face_clip*80+64);
-  _:=echo_face_start(e,f.face_clip,0,frames-1,true);e[0].face[0].playing=false;e[0].face[0].time=(source-cast(f32)f.face_start)/f.rate;e[0].face[0].age=0.15;face_tick(e[0].face[..],face,0);
+ ease:=slay_face_ease(source,f.face_start,f.face_end);
+ if e[0].face_bytes>0 && ease>0 {
+  face:=echo_face_bytes(e);info:=face_info(face);frames:=cast(int)face_word(face,info.clip_table+f.face_clip*80+64);held:=lo(hi(source,cast(f32)f.face_start),cast(f32)f.face_end);
+  _:=echo_face_start(e,f.face_clip,0,frames-1,true);e[0].face[0].playing=false;e[0].face[0].blend=FACE_BLEND;e[0].face[0].time=(held-cast(f32)f.face_start)/f.rate;e[0].face[0].age=0.15*ease;face_tick(e[0].face[..],face,0);
  }echo_present(e);
 }

@@ -352,3 +352,20 @@ Headless Chrome, 1280x800 at DPR 2:
 | Slay shot | 5.4 | 41.1 |
 
 Hair colours in frame 1125 match the per-pixel version within 2 levels.
+
+### Facial expression transitions
+
+Sampling the face weights every quarter shot frame showed three snaps:
+
+- The shot's face clip (source 1121 to 1159) switched on at frame 120 and off
+  at frame 158 in one frame, from a neutral face to an expression and back
+  (summed weights about 5.2 and 5.4 in one step). It now holds the first and last
+  expression and eases in and out over 12 source frames (half a second).
+- Looping clips (the F view) jumped from their last frame to their first. The
+  last 0.4 s (at most a third of the clip) now blends into the head of the
+  clip, and the loop resumes past that head.
+- Changing clips with `[` or `]` dropped to neutral and faded in. A new clip now
+  crossfades from the face on screen over 0.25 s.
+
+The one remaining fast change in the shot, at frame 134, is a blink in the
+source (eye close goes from 0 to 1 within a frame and reopens by frame 140).

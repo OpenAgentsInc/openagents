@@ -2,7 +2,12 @@
 #load "layer-core.coax";
 #load "morph.coax";
 #load "face-pack.coax";
-FacePlayback :: struct {ready:bool;enabled:bool;playing:bool=true;looping:bool=true;clip:int;time:f32;age:f32;start:f32;end:f32;fade:f32;weights:[256]f32;local:[64]SkinLocal;}
+FacePlayback :: struct {ready:bool;enabled:bool;playing:bool=true;looping:bool=true;clip:int;time:f32;age:f32;start:f32;end:f32;fade:f32;weights:[256]f32;local:[64]SkinLocal;
+ // Crossfade from the face shown when this clip began (blend counts up to FACE_BLEND).
+ blend:f32=FACE_BLEND;from_fade:f32;from_weights:[256]f32;from_local:[64]SkinLocal;}
+// Seconds to crossfade into a new clip from the face on screen, and the longest loop seam blend.
+FACE_BLEND :: 0.25f32;
+FACE_SEAM :: 0.4f32;
 FACE_RUNTIME_CAP :: 2097152;
 #test "admitted face projection retains playback and releases CPU morph deltas" {
  source:[536]u8;face_fixture(source[..]);out:[536]u8;n:=face_project_admitted(out[..],source[..]);#assert n==504 && face_info(out[0..<n]).deltas==0 && face_info(out[0..<n]).data==440;
@@ -29,6 +34,14 @@ face_project_admitted :: (out:[]u8,source:[]u8)->int {
  face_tick(s[..],b[..],0.02);#assert s[0].fade>0 && s[0].fade<1;face_tick(s[..],b[..],0.1);#assert s[0].fade==0;
  s[0].enabled=false;face_layer(s[..],b[..],body[..]);#assert body[0].t.x==before[0].t.x;
 }
+#test "a new clip crossfades from the face on screen and a loop wraps without a jump" {
+ b:[536]u8;face_fixture(b[..]);face_put(b[..],472,f32_bits(0.2f32));face_put(b[..],476,f32_bits(0.8f32));
+ s:[1]FacePlayback;#assert face_begin(s[..],b[..],0,0,1,true);for k:0..<20 {face_tick(s[..],b[..],0.01);}#assert s[0].fade==1;
+ // Loop the one-frame clip at fine steps: no step changes the weight by more than a smooth amount.
+ last:=s[0].weights[0];big:f32=0;for k:0..<400 {face_tick(s[..],b[..],0.001);big=hi(big,abs(s[0].weights[0]-last));last=s[0].weights[0];}#assert big<0.05;
+ shown:=s[0].weights[0];#assert face_begin(s[..],b[..],0,0,1,true);#assert abs(s[0].weights[0]-shown)<0.00001 && s[0].fade==1;
+ for k:0..<3 {face_tick(s[..],b[..],0.1);}#assert s[0].blend==FACE_BLEND;
+}
 #test "face selection refuses unknown clips and preserves a paused source frame" {
  b:[536]u8;face_fixture(b[..]);s:[1]FacePlayback;#assert !face_begin(s[..],b[..],1,0,1,true) && !face_begin(s[..],b[..],0,1,0,true);
  #assert face_begin(s[..],b[..],0,0,1,true);s[0].playing=false;s[0].time=0.01;face_tick(s[..],b[..],0.1);#assert s[0].time==0.01;
@@ -36,18 +49,35 @@ face_project_admitted :: (out:[]u8,source:[]u8)->int {
 face_begin :: (s:[]FacePlayback,b:[]u8,clip:int,first:int,last:int,looping:bool)->bool {
  f:=face_info(b);if clip<0 || clip>=f.clips {return false;}at:=f.clip_table+clip*80;frames:=cast(int)face_word(b,at+64);rate:=face_float(b,at+68);
  if first<0 || last<=first || last>=frames {return false;}
- s[0].ready=true;s[0].enabled=true;s[0].clip=clip;s[0].start=cast(f32)first/rate;s[0].end=cast(f32)last/rate;s[0].time=s[0].start;s[0].age=0;s[0].looping=looping;s[0].playing=true;face_tick(s,b,0);return true;
+ // A face already on screen crossfades into the new clip instead of dropping to neutral first.
+ showing:=s[0].ready && s[0].enabled && s[0].fade>0;
+ if showing {s[0].from_fade=s[0].fade;for k:0..<256 {s[0].from_weights[k]=s[0].weights[k];}for k:0..<64 {s[0].from_local[k]=s[0].local[k];}s[0].blend=0;} else {s[0].blend=FACE_BLEND;}
+ s[0].ready=true;s[0].enabled=true;s[0].clip=clip;s[0].start=cast(f32)first/rate;s[0].end=cast(f32)last/rate;s[0].time=s[0].start;s[0].age=ifx showing then 0.15f32 else 0.0f32;s[0].looping=looping;s[0].playing=true;face_tick(s,b,0);return true;
+}
+// A looping clip's last FACE_SEAM seconds (at most a third of it) blend into its head, and the loop
+// then resumes past that head, so the wrap shows no jump.
+face_seam :: (s:[]FacePlayback)->f32 {return lo(FACE_SEAM,(s[0].end-s[0].start)/3);}
+face_sample :: (s:[]FacePlayback,b:[]u8,time:f32,target:[]f32,local:[]SkinLocal) {
+ f:=face_info(b);at:=f.clip_table+s[0].clip*80;sample:=curve_frame(time,face_float(b,at+68),cast(int)face_word(b,at+64));weights:=cast(int)face_word(b,at+72);bones:=cast(int)face_word(b,at+76);
+ for k:0..<f.curves {target[k]=curve_linear(face_float(b,weights+(sample.a*f.curves+k)*4),face_float(b,weights+(sample.b*f.curves+k)*4),sample.share);}
+ for k:0..<f.bones {local[k]=pose_blend(face_local(b,bones+(sample.a*f.bones+k)*28),face_local(b,bones+(sample.b*f.bones+k)*28),sample.share);}
 }
 face_tick :: (s:[]FacePlayback,b:[]u8,dt:f32) {
  if !s[0].ready || !s[0].enabled || !(dt>=0 && dt<=0.125) {return;}
- f:=face_info(b);at:=f.clip_table+s[0].clip*80;frames:=cast(int)face_word(b,at+64);rate:=face_float(b,at+68);
- if s[0].playing {s[0].time+=dt;}s[0].age+=dt;
- if s[0].looping && s[0].time>s[0].end {duration:=s[0].end-s[0].start;s[0].time=s[0].start+(s[0].time-s[0].start)-duration*floor((s[0].time-s[0].start)/duration);}
- fade:=layer_fades(s[0].age,s[0].end-s[0].time,0.15,ifx s[0].looping then 0 else 0.15,1);s[0].fade=fade;
- sample:=curve_frame(s[0].time,rate,frames);weights:=cast(int)face_word(b,at+72);bones:=cast(int)face_word(b,at+76);
+ f:=face_info(b);if s[0].playing {s[0].time+=dt;}s[0].age+=dt;s[0].blend=lo(s[0].blend+dt,FACE_BLEND);
+ seam:=face_seam(s);seamed:=s[0].looping && s[0].playing;
+ if seamed && s[0].time>s[0].end {period:=s[0].end-s[0].start-seam;s[0].time=s[0].start+seam+(s[0].time-s[0].end)-period*floor((s[0].time-s[0].end)/period);}
+ if !seamed && s[0].looping && s[0].time>s[0].end {duration:=s[0].end-s[0].start;s[0].time=s[0].start+(s[0].time-s[0].start)-duration*floor((s[0].time-s[0].start)/duration);}
+ fade:=layer_fades(s[0].age,s[0].end-s[0].time,0.15,ifx s[0].looping then 0 else 0.15,1);
+ values:[256]f32;local:[64]SkinLocal;face_sample(s,b,s[0].time,values[..],local[..]);
+ if seamed && s[0].time>s[0].end-seam {head:[256]f32;head_local:[64]SkinLocal;face_sample(s,b,s[0].start+s[0].time-(s[0].end-seam),head[..],head_local[..]);share:=pose_fade(s[0].time-(s[0].end-seam),seam);
+  for k:0..<f.curves {values[k]=curve_linear(values[k],head[k],share);}for k:0..<f.bones {local[k]=pose_blend(local[k],head_local[k],share);}}
  for k:0..<256 {s[0].weights[k]=0;}
- for k:0..<f.curves {target:=cast(int)face_word(b,f.curve_table+k*68+64);a:=face_float(b,weights+(sample.a*f.curves+k)*4);c:=face_float(b,weights+(sample.b*f.curves+k)*4);s[0].weights[target]=curve_linear(a,c,sample.share)*fade;}
- for k:0..<f.bones {s[0].local[k]=pose_blend(face_local(b,bones+(sample.a*f.bones+k)*28),face_local(b,bones+(sample.b*f.bones+k)*28),sample.share);}
+ for k:0..<f.curves {s[0].weights[cast(int)face_word(b,f.curve_table+k*68+64)]=values[k]*fade;}
+ for k:0..<f.bones {s[0].local[k]=local[k];}
+ if s[0].blend<FACE_BLEND {share:=pose_fade(s[0].blend,FACE_BLEND);for k:0..<256 {s[0].weights[k]=curve_linear(s[0].from_weights[k],s[0].weights[k],share);}
+  for k:0..<f.bones {s[0].local[k]=pose_blend(s[0].from_local[k],s[0].local[k],share);}fade=curve_linear(s[0].from_fade,fade,share);}
+ s[0].fade=fade;
 }
 face_local :: (b:[]u8,at:int)->SkinLocal {return SkinLocal.{t=v3(face_float(b,at),face_float(b,at+4),face_float(b,at+8)),q=Quat.{x=face_float(b,at+12),y=face_float(b,at+16),z=face_float(b,at+20),w=face_float(b,at+24)}};}
 face_layer :: (s:[]FacePlayback,b:[]u8,body:[]SkinLocal) {
