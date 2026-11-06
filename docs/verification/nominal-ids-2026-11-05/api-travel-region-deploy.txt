@@ -1,0 +1,30 @@
+  ok    travel: room A sends P on only after the API has P's state
+  ok    travel: P sits in pair-b on room B with A gone
+  ok    travel: room B's save of P is applied, as the new owner, with the HP and XP P left A with
+  ok    travel: after the destination crashes, P sits in pair-b on its replacement
+  ok    travel: the replacement's save of P is applied as the next owner, the HP and XP unchanged
+  ok    travel crash: room A dies before any travel; P sits in pair-b with the HP A saved, and B's save of it is applied
+  ok    travel crash: the API keeps C's posts but no answer reaches C, so C never sends P on
+  ok    travel crash: C gone, P sits in pair-b with the HP the API kept, and B's line for P is taken as the next owner's
+  ok    region: B is a streaming replica of A
+  ok    region: a room's save in A reaches B
+  ok    region: partitioned, A keeps taking its room's writes
+  ok    region: promoted after the lease, B takes epoch 2; an epoch not newer is refused
+  ok    region: B's API starts on B with the same migrations as A (a compatible build)
+  ok    region: B's ticket carries an owner generation above anything A issued (2 << 20 and up)
+  ok    region: the loss window: B has the HP saved before the partition, none of A's 10 later writes
+  ok    region: A's room's line under A's owner generation is refused in B (f)
+  ok    region: Alice sits in a room that reports to B, with B's ticket
+  ok    region: that room's save under B's generation is kept in B
+  ok    region: the former primary (epoch 1) returns as B's replica at epoch 2, with B's HP, not its own window's
+  rate  region: replication lag 12 ms; loss window 10 writes over 5039 ms (the partition until the promotion); promoted in 125 ms, B's API ready at 263 ms, the first ticket at 298 ms, the first seat at 6403 ms (-1: no ROOM_BIN)
+  ok    deploy: a fresh room process answers ready once its world is built
+  ok    deploy: an unsigned drain is refused; a signed one is taken
+  ok    deploy: the room says its drain is done (every bot told, every save received) within 40 s
+  ok    deploy: every bot was seated, heard restarting, and its socket closed
+  ok    deploy: the API accepted a save of every bot after the drain was asked, before the room ends
+  ok    deploy: ready replacement overlaps the live drained revision before SIGTERM
+  ok    deploy: SIGTERM ends the drained room within 9 s
+  ok    deploy: every bot sits again in pair-deploy on the new process
+  ok    deploy: the new process saves every bot with the HP and XP it had before the deploy
+room checks: 28 checks, 0 failed

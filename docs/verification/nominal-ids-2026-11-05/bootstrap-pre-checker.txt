@@ -1,0 +1,56 @@
+In file included from src/main.cpp:111:
+src/emit_c.cpp:4063:57: warning: unused parameter 'text' [-Wunused-parameter]
+ 4063 | static std::string debug_source_hash(const std::string &text) {
+      |                                                         ^
+In file included from src/main.cpp:113:
+src/effects.cpp:128:55: warning: unused parameter 'file' [-Wunused-parameter]
+  128 | static bool effects_report(const Source *,const File *file,const EmitOptions &opts,const std::string &selected,std::string *text) {
+      |                                                       ^
+src/main.cpp:1272:15: warning: variable 'known' set but not used [-Wunused-but-set-variable]
+ 1272 |   static bool known = false;
+      |               ^
+3 warnings generated.
+coax bootstrap:     0 s  stage0 test release-model.coax
+coax bootstrap:     0 s  stage0 mutate release-model.coax
+coax bootstrap:     1 s  stage0 test changelog-model.coax
+coax bootstrap:     0 s  stage0 mutate changelog-model.coax --root-only
+coax bootstrap:     0 s  stage0 test lib/compiler/budget.coax
+coax bootstrap:     0 s  stage0 test lib/compiler/strict-math.coax --library
+coax bootstrap:     0 s  stage0 mutate lib/compiler/budget.coax
+coax bootstrap:     0 s  stage0 test lib/compiler/check-domains.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/check-domains.coax --root-only
+coax bootstrap:     0 s  stage0 test lib/compiler/profiles.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/profiles.coax
+coax bootstrap:     0 s  stage0 test lib/compiler/provenance.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/provenance.coax
+coax bootstrap:     1 s  stage0 test lib/compiler/mutation-schedule.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/mutation-schedule.coax
+coax bootstrap:     0 s  stage0 test lib/compiler/compute.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/compute.coax
+coax bootstrap:     0 s  stage0 test lib/compiler/effects.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/effects.coax --root-only
+coax bootstrap:     0 s  stage0 test lib/compiler/quantity.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/quantity.coax --root-only
+coax bootstrap:     0 s  stage0 test lib/compiler/native-checks.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/native-checks.coax
+coax bootstrap:     1 s  stage0 test lib/compiler/native-execution.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/native-execution.coax --root-only
+coax bootstrap:     0 s  stage0 test lib/compiler/quantified-execution.coax
+coax bootstrap:     1 s  stage0 mutate lib/compiler/quantified-execution.coax --root-only
+coax bootstrap:     0 s  stage0 test lib/compiler/native-semantics.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/native-semantics.coax --root-only
+coax bootstrap:     1 s  stage0 test lib/compiler/spirv.coax
+coax bootstrap:     2 s  stage0 mutate lib/compiler/spirv.coax
+coax bootstrap:     2 s  stage0 test lib/compiler/shader.coax
+coax bootstrap:    43 s  stage0 mutate lib/compiler/shader.coax
+coax bootstrap:     1 s  stage0 test lib/compiler/wgsl.coax
+coax bootstrap:    14 s  stage0 mutate lib/compiler/wgsl.coax
+coax bootstrap:     1 s  stage0 test lib/compiler/metal-shader.coax
+coax bootstrap:    40 s  stage0 mutate lib/compiler/metal-shader.coax --root-only
+coax bootstrap:     5 s  stage0 test lib/compiler/lexer.coax
+coax bootstrap:     3 s  stage0 mutate lib/compiler/lexer.coax
+coax bootstrap:     0 s  stage0 test lib/compiler/sources.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/sources.coax
+coax bootstrap:     1 s  stage0 test lib/compiler/parser.coax
+coax bootstrap:     1 s  stage0 mutate lib/compiler/parser.coax
+coax bootstrap:    41 s  stage0 test lib/compiler/checker.coax

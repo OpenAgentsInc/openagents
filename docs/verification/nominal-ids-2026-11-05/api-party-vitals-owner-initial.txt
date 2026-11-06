@@ -1,0 +1,72 @@
+  ok    party: a player in no party has none
+  ok    party: an unknown key has no roster (403)
+  ok    party: an invite makes Alice's party and a code that lasts minutes
+  ok    party: Bob joins by the code; the party's version rises
+  ok    party: a code is used once (404 for the next)
+  ok    party: no such code (404)
+  ok    party: Bob's roster has Alice and him, the version he joined at
+  ok    party: Alice's HP is the room's report (7 of 9), and the roster lasts a minute
+  ok    party: health only: no place, room, look or class
+  ok    party: a report older than ten minutes (the room stopped) is no HP, not an old one
+  ok    party: Carol, who blocks Alice, can't join her party (403)
+  ok    party: Bob hidden: not in Alice's roster; the version rose
+  ok    party: a hidden member still sees themself
+  ok    party: Dave joins
+  ok    party: asked for the realm, Dave is placed in Alice's room (evpty-2), not the lowest (evpty-1)
+  ok    party: a room he names is his choice
+  ok    party join: without a member named, Dave goes where the party's pick is (evpty-1)
+  ok    party join: Dave joins Alice: her room (evpty-2)
+  ok    party join: one not in Alice's party can't follow her (party_away, placed as before)
+  ok    party join: a hidden member can't be followed (party_away)
+  ok    party join: Bob shown again: Dave joins him (evpty-1)
+  ok    party join: the roster still names no room
+  ok    party: one in no party is placed as before
+  ok    party: Alice's room full: Dave's ticket says so (party_full) and he is placed elsewhere
+  ok    party join: Alice's room full: joining her names it (party_full), placed elsewhere
+  ok    party: Bob leaves and has no party
+  ok    party: Alice's roster no longer has Bob
+  ok    party: eight at most: the eighth joins, the ninth is refused (409)
+  ok    party: durable: kept in the database (a restart reads the same rows)
+  rate  party placement: 32 of 32 tickets kept with the party while its room had a seat; 2 of 2 full rooms named; 0 trials not run
+  ok    party: the placement rate: every ticket with a seat in its party's room went there, every full one was named
+  ok    parties (room): a real room's report is Alice's HP in Bob's roster
+  ok    parties (room): from the room's own directory report, Dave's ticket for the realm goes to Alice's room
+  ok    parties (room): JOIN Alice: Dave's ticket names her room, and he sits in that real room with it
+  ok    parties (room): the room crashed: the party is unchanged (its members, its version)
+  ok    parties (room): crashed with a seat held, Bob's ticket for the realm still goes to the party's room
+  ok    parties (room): crashed with no seat held, the party has no room to place anyone in
+  ok    parties (room): restarted, the new room's report is Alice's HP in Bob's roster again
+  ok    parties (room): restarted, Dave's ticket goes to Alice's room again
+  ok    parties (room): the party service down: the roster is refused, not made up
+  ok    parties (room): the party service down: a ticket for the realm is still made
+  ok    parties (room): the party service down: Dave sits with that ticket
+  ok    parties (room): the service back: the roster is whole, at the same version
+  ok    room-vitals: a post with operation IDs answers a receipt, a line applied
+  ok    room-vitals: the line's HP, XP and WANTED are kept, WANTED by the room that wrote it
+  ok    room-vitals: the same operation again (a retry) is applied once: d
+  ok    room-vitals: an older revision from the same process is stale and changes nothing
+  ok    room-vitals: a receipt names each line: no such player, unreadable, applied
+  ok    room-vitals: an unsigned post is refused
+  ok    room-vitals: another process's revisions are its own; XP still only rises
+  ok    room-state: a page's WANTED alone is refused
+  ok    room-state: the look is kept and the WANTED refused
+  ok    room-ticket: after the page's 0 and a reload, the room's WANTED is still there (w4)
+  ok    room-ticket: a WANTED level no room wrote (a page's, from before 0124) is not brought back
+  ok    room-ticket: the API runs without OA_ROOM_OWNER_GEN here: the ticket carries no generation (a room from before reads it)
+  ok    room-owner: each ticket takes the character's next generation
+  ok    room-owner: no such player has none
+  ok    room-vitals: a line from an older owner is refused (f) and changes nothing; the newest owner's is kept
+  ok    room-vitals: a line without a generation (a room from before) applies as before; generation 0 doesn't read
+  fault check: heard XP {}, API XP {}, proxy {'mode': 'pass', 'failed': 0, 'passed': 0, 'held': 0, 'after': 0}
+  FAIL  vitals fault: the raid ran with every seat, and each earned XP  
+  FAIL  vitals fault: the API refused and then held posts mid-raid  {'mode': 'pass', 'failed': 0, 'passed': 0, 'held': 0, 'after': 0}
+  ok    vitals fault: the API's XP is exactly what each seat earned
+  FAIL  vitals fault: posts kept while their answers were lost came again and were not applied twice  0 0
+  ok    vitals fault: the room exits on SIGTERM with every note saved
+  ok    owner: a running room seats P with owner generation g1 and saves P's vitals
+  ok    owner: while the room is paused, another shard's room saves P as g2
+  ok    owner: resumed, the room's line for P is refused, P's seat ends and its page is told elsewhere
+  ok    owner: the new owner's HP stays
+  ok    owner: a page with the older ticket is refused
+  ok    owner: a page with a newer ticket sits
+room checks: 69 checks, 3 failed

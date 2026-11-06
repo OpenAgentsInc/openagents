@@ -1,0 +1,69 @@
+Nominal integer identities (#12948, audit 6.2)
+
+Implementation commits:
+1469357f3a Specify nominal ID conformance and refusals
+0265cd16df Add nominal integer identities to Coax, including refreshed seeds
+bb5fc45978 Record the nominal ID release commit
+d53cc8a8b9 Use nominal IDs across engine and room contracts
+9ceca725fa Share seeded raid identities with the API fault fixture (#12957)
+3b5548bf98 Run the portability math oracle with a final compiler (#12958)
+
+Language profile:
+struct @id { value: INTEGER; } provides exact-domain equality.
+@id(ordered) adds ordering. Construction and .value extraction are explicit.
+Integer arithmetic, hashes and codecs consume the extracted integer.
+Generic keys, read-only views and #counter retain their existing rules.
+C uses distinct naturally aligned structs and a new identity header schema.
+Device output refuses E0962. IDs alone grant no validity or liveness.
+Aethyr owns canonical handle, generation, owner and admission checks.
+Store entity IDs remain session-local; this is no global identity service.
+
+Compiler trust:
+The previously checked b8802e5b501a compiler runs the source checks and full
+parser/checker mutation gates: 1835 and 12868 mutants, zero survivors.
+Seed emission runs from coax/ with lib/compiler/*.coax, as documented in
+coax/bootstrap/README.md. The source and C/header pairs share one commit.
+The normal COAX_MUTATION_FULL=1 bootstrap passes both stages, their seed
+and combined-module fixed points, and every required compiler gate.
+The bounded first leg retains stage0 and passes the pre-checker gates.
+The final leg reuses those exact gate keys and runs the native checker gate
+in 127 seconds. Its private likely-killer map only changes scheduling:
+every mutant still receives an actual check verdict. No equivalent marks
+are added. The installed provenance verifies; mutation-survivors is empty.
+Compiler input fingerprint:
+4b8f497d67b1589f75af15938733269fde5b9f5cd367010141b76bc2cc2270b0
+
+Checks:
+- Qualified coax0 0.51.0: 6 conformance methods, evaluator and native debug/
+  release, all integer widths, diagnostics, read-only/generic keys, counter
+  arithmetic, C ABI debug/release/ASan/UBSan, incompatible headers, GPU refusal.
+- Legacy generated-header composition: 8 tests.
+- Release: 19 tests. Tools-check: no new tool without its reason.
+- All Aethyr examples: 48 programs, 96 debug/release runs, 211 listings.
+- Full Coax book: examples, checks, mutation, native hosts and structure.
+- book_claims: 10 tests; book_registry: 11 tests.
+- Room suite: 662 checks. Existing near-limit notes remain visible.
+- Entity: stale reuse, noncanonical words, constructor limits and exhausted
+  IDs; native debug/release and ASan/UBSan. Mutation: 219/219 killed.
+- Control 103, ledger 246, travel 304, checkpoint flow 51, API checkpoint
+  policy 138 and shared raid identity 6 mutants: all killed, root-only
+  with dependency checks retained.
+- Mac Clang and coderos-4080 Linux GCC: all five seeds match stage0 output.
+  Their final compilers pass 2104 independent math references in both
+  optimization modes, ASan/UBSan, IEEE edges and evaluator/native parity.
+- Sanitized API on a throwaway Postgres, real native room binary: every
+  room selector is covered. Core 106; party/vitals/owner non-fault checks
+  64; repaired save fault 5; travel/region/deploy 28: 203 assertions.
+  api-party-vitals-owner-initial.txt preserves the initial mixed receipt:
+  its 3 failures belong to the 5-check save-fault slice, whose complete
+  replacement receipt is api-save-fault.txt. Passing non-fault sections
+  are not rerun. The shared formatter fixes the obsolete fixture IDs.
+- Drift: local, 100 ms and 250 ms, worker offline host, including raids;
+  every probe holds. Ports 8980-8984, own room/page/proxy/bots and muted
+  headless Chrome. Screenshots remain in /tmp/oa-ids-drift-results/.
+- Wasm: page 1997831 < 2150000 bytes; worker 988180 < 1060000 bytes.
+
+New bugs: #12956 (entity admission), #12957 (raid fixture), #12958
+(portability oracle) are fixed here. #12951, the separate warm-cache
+near-limit diagnostic parity bug found during #12947, remains open.
+No deployment or owner sign-off runs.

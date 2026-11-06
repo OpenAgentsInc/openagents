@@ -1,0 +1,10 @@
+lexer: matches
+sources: matches
+parser: matches
+checker: matches
+strict-math: matches
+coax: note[E0400]: compile-time steps: 18320317 of 20000000 used (91%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    18320317 steps  lib/proto/importer.coax:1732:1  #test 'object count limit is exact'
+  fix: run coax test --only 'object count limit is exact' for what inside the check uses the most; then do less work in it, split it, or give it a larger #steps N
+fixed math: 2104 independent references, both optimization modes, ASan/UBSan, IEEE edges and evaluator/native parity pass

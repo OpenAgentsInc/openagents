@@ -1,0 +1,11 @@
+...
+Build workers: 0 of 12 in use by 0 coax processes
+  budget 12 = 18 performance cores - 6 reserved for you ($COAX_JOBS_RESERVE; $COAX_JOBS_BUDGET sets it)
+  load 5.9; no new workers past each build's first at 12 or above ($COAX_JOBS_LOAD)
+  each build's own cap: --jobs N, $COAX_CHECK_JOBS, $COAX_MUTATE_JOBS, $COAX_JOBS
+  tokens in /Users/christopherdavid/.cache/coax/jobs
+................
+----------------------------------------------------------------------
+Ran 19 tests in 64.858s
+
+OK

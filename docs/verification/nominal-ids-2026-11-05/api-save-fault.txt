@@ -1,0 +1,10 @@
+fault-profile mmo-fault-v1 slice=save source=4fb5a15d8f58105b0b797a03c15939e31fb10803fed34c68c41cce0e1059be81 seed=319 consumer=native-socket state=legacy-vitals
+fault-injection: check+16s: HTTP500/30000ms; then two committed replies held7000ms; final SIGTERM drain
+  fault check: heard XP {'p-raidcheck-319-0': 1350, 'p-raidcheck-319-1': 1550, 'p-raidcheck-319-2': 800, 'p-raidcheck-319-3': 4300}, API XP {'p-raidcheck-319-0': '1350', 'p-raidcheck-319-1': '1550', 'p-raidcheck-319-2': '800', 'p-raidcheck-319-3': '4300'}, proxy {'mode': 'done', 'failed': 5, 'passed': 2, 'held': 2, 'after': 1}
+  ok    vitals fault: the raid ran with every seat, and each earned XP
+  ok    vitals fault: the API refused and then held posts mid-raid
+  ok    vitals fault: the API's XP is exactly what each seat earned
+  ok    vitals fault: posts kept while their answers were lost came again and were not applied twice
+  ok    vitals fault: the room exits on SIGTERM with every note saved
+fault-profile mmo-fault-v1 slice=save elapsed_ms=152765
+MMO fault slice: 5 checks, 0 failed

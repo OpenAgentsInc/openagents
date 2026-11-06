@@ -1,0 +1,8 @@
+ok   #test checkpoint flow: gameplay has a strict accepted-capture age bound, including initial and reversed clocks (1 case, 102 steps, 0 ms)
+ok   #test checkpoint flow: no unsaved, seated or in-flight reservation can be recycled (1 case, 744 steps, 0 ms)
+ok   #test checkpoint flow: exact v2 receipt identity, status and acceptance are required (1 case, 363 steps, 0 ms)
+ok   #test checkpoint flow: retries stay bounded and add deterministic per-process jitter (1 case, 13522 steps, 0 ms)
+ok   #test checkpoint flow: only an exact versioned fencing answer retires a capture (1 case, 182 steps, 0 ms)
+5 checks, 5 passed, 0 failed
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+51 mutants, 51 killed, 0 survived

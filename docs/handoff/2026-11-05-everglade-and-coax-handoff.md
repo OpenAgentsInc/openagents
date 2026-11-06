@@ -120,7 +120,7 @@ Compiler:
 - The order of work is recorded in
   `coax/audits/2026-11-05-mmorpg-language-and-compiler.md`.
 
-Books: #12610 stays open and paused. The only books work approved is #12947.
+Books: #12610 stays open and paused. Approved books work is #12947 and the runnable Coax section in #12948.
 
 ## Open issues and who owns them
 
@@ -132,7 +132,11 @@ Books: #12610 stays open and paused. The only books work approved is #12947.
 | #12941 | Closed by `8ba4376dc1`. A delayed world header dated server ticks at receipt, leaving buffered states ahead after clock synchronization. It now recovers the header's authored time from its server day. Three consecutive 250 ms runs, local and 100 ms runs pass with raids; 773 page checks pass. Verification is below. |
 | #12940 | Next in the current burn-down. Tree fires never burn or spread on the room server; only pages step them. |
 | #12947 | Completed: current-code overviews for Aethyr 49, 50, 58, 84 and 85; contradictory follow-up status text corrected; Coax 6, 19 and 41 updated. Verification below. |
-| #12948 | In progress after #12947: nominal integer ID types (audit §6.2, P0), then room, API and ledger adoption. |
+| #12948 | Completed by `0265cd16df` and `d53cc8a8b9`: nominal integer IDs, engine/room/API/ledger adoption, generation admission, chapter 8 and qualified seeds. The books, room/API checks, drift and Wasm budgets pass. Verification below. |
+| #12956 | Completed by `d53cc8a8b9`: canonical entity handles and checked ID exhaustion; no slot is allocated on refusal. |
+| #12957 | Completed by `9ceca725fa`: the raid client and API fault fixture share seeded character identities; the native save-fault slice passes. |
+| #12958 | Completed by `3b5548bf98`: seed comparison uses stage0; the native math oracle uses a final compiler. Mac and Linux pass. |
+| #12951 | Open: a warm authority cache drops near-limit diagnostics. The book verification uses explicit headroom and retains the separate bug. |
 | #12838, #12840–#12843, #12868, #12869 | The owner's Codex agent. Don't take them. Its room changes share files with ours, so use small commits and rebase often. |
 | #12845 | Open, with no agent. It still needs commands, accepted results and replication behind shared interfaces, profiles for collision and per-recipient fields, Orbit League sharing more than the timing profile, and the book's adoption inventory. |
 | #12910 | Nostr chapter 104 on signet. Blocked on the signet faucet's captcha, which is in NEEDS_OWNER.md. |
@@ -295,3 +299,40 @@ deployment was performed.
   `/private/tmp/claude-501/-Users-christopherdavid-work-openagents/7212f8f4-e1c3-408c-b1be-66dbf716b6be/scratchpad/build-gate.sh`.
   It lives in that session's scratchpad. Copy it somewhere permanent if that
   session's temp directory is cleaned up.
+
+## #12948 verification (2026-11-05)
+
+Coax 0.51.0 adds `struct @id` and opt-in `@id(ordered)`. IDs compare only
+within their declared domain. Construction and integer extraction are
+explicit. Generic keys and read-only views preserve the type; named integer
+arithmetic and codecs consume `.value`. C headers expose distinct records
+and include ordering in a new compatibility schema. Device output refuses
+E0962. Aethyr keeps liveness and generation admission; entity IDs remain
+session-local.
+
+The compiler and refreshed seeds are in `0265cd16df`; `bb5fc45978` records
+the introducing release hash. `d53cc8a8b9` adopts seat, entity, generation,
+character and item domains across the engine, room, API and ledger. Its
+entity changes also resolve #12956. `9ceca725fa` resolves the stale seeded
+raid fixture (#12957); `3b5548bf98` repairs the portability oracle (#12958).
+
+The full parser and checker mutation gates kill 1,835 and 12,868 mutants.
+The normal full-mutation bootstrap passes both stages and fixed points;
+its installed provenance verifies and its survivor file is empty. The
+qualified compiler passes six conformance methods and 19 release tests.
+Both books pass, including all 96 Aethyr runs and chapter 89's listing.
+The claims and registry tests pass. Entity, control, travel, ledger and
+checkpoint mutation gates have zero survivors. Mac and Linux seed
+comparison and the independent math oracle pass.
+
+The room suite passes 662 checks. The sanitized API and real room cover all
+15 room selectors: 203 assertions across bounded slices. The failed
+save-fault slice is replaced by its complete passing receipt after the
+shared identity fix; passing non-fault sections are not repeated. Drift
+holds at local, 100 ms and 250 ms latency, including raids. Page Wasm is
+1,997,831 of 2,150,000 bytes; worker Wasm is 988,180 of 1,060,000 bytes.
+Tools-check passes. No deployment or owner sign-off runs.
+
+The commands, scope, compiler fingerprint and raw receipts are in
+[the verification record](../verification/nominal-ids-2026-11-05/checks.txt).
+#12951 remains open as the separate cache diagnostic-parity bug.

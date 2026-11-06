@@ -1,0 +1,10 @@
+ok   #test control: two rooms claim one character; one owns it, and the other is told it plays elsewhere (1 case, 754 steps, 0 ms)
+ok   #test control: a lapsed lease goes to the next room at the next generation; the old owner's writes are refused (1 case, 1308 steps, 0 ms)
+ok   #test control: release and acquire, twice each, are safe (1 case, 901 steps, 0 ms)
+ok   #test control: generations run out by refusal, never by wrapping (1 case, 370 steps, 0 ms)
+ok   #test control: room clocks, equal or skewed, change nothing; only the directory's counts (1 case, 918907 steps, 12 ms)
+ok   #test control: a transfer moves the owner in one write, once (1 case, 684 steps, 0 ms)
+ok   #test control: a second tab takes control; the first tab's commands are refused (1 case, 299 steps, 0 ms)
+7 checks, 7 passed, 0 failed
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+103 mutants, 103 killed, 0 survived

@@ -1,0 +1,107 @@
+  ok    room-admission: 250 bots for 192 seats: 192 seated, 58 wait
+  ok    room-observe: actual reservation request outcomes match returned holds and exhaustion
+  ok    room-admission: a full answer says how many wait and when to ask again (and Retry-After)
+  ok    room-admission: once all have asked, the 58 waiting pages ask 3.49 times a second, under the bound of 5
+  ok    room-admission: a reconnect storm of the 192 seated keeps every seat
+  ok    room-admission: a freed seat goes to a waiting bot
+  ok    room-admission: the next full answer names the last wait
+  ok    room-admission: the 13th ask in a minute from one player is 429 with retry_ms and Retry-After
+  ok    room-admission: one address is limited at 120 asks a minute
+  ok    room-admission: refusals are counted by reason: full, rate, seated after a wait
+  ok    room-observe: a locked metrics row times out without delaying or undoing the held ticket
+  ok    room-observe: after the metrics lock clears the same seat and its next observation succeed
+  ok    a chat line's blocked words are masked, in any case
+  ok    a clean line is kept as said
+  ok    a kicked player can't say a line, and is told until when
+  ok    a kick that ended lets them speak again
+  ok    a paired check says a line
+  ok    the other check of the pair reads it with its presence
+  ok    and with a chat read
+  ok    another mark's check doesn't
+  ok    nor does a person
+  ok    the speaker still reads their own
+  ok    room-event: anyone reads the dials, off by default with every default
+  ok    room-event: a visitor can't change it
+  ok    room-event: a site admin's dials are kept, each clamped to its range
+  ok    room-event: dials not named keep their values; START counts a press
+  ok    room-event: STOP counts a press
+  ok    room-event: a body that isn't JSON is a 400
+  ok    room-event: room-control's line is the room server's 16 numbers
+  ok    room-event: XP is a column of the vitals, and the migration runs twice
+  ok    room-control: the event's line and the levels switch
+  ok    room-vitals: XP is kept and only rises; an old line (no XP) keeps it
+  ok    room-vitals: a line without XP keeps the XP
+  ok    room-ticket: its HP field carries the XP (HPxXP), and the answer says it
+  ok    room-invite: the shard's report puts Alice and 14 others in evinv-1
+  ok    room-invite: a player not in the room holds no seat (403)
+  ok    room-invite: Alice's INVITE holds the 16th seat for two minutes
+  ok    room-invite: a stranger is placed elsewhere while the seat is held
+  ok    room-invite: the list sends Alice's friend to her room while her invite holds a seat
+  ok    room-invite: the friend's ticket takes the held seat
+  ok    room-invite: claimed once: a second friend hears the room was full, whose it was, and is placed elsewhere
+  ok    room-invite: no invite into a full room (409)
+  ok    room-invite: the list names Alice's full room as with_full
+  ok    room-observe: invite counters rise at the returned hold absence and full outcomes
+  ok    items: a grant applies and names its item
+  ok    items: the same grant again (its answer lost) answers the same item and grants nothing more
+  ok    items: another payload under that ID is refused (conflict)
+  ok    items: one item, not two
+  ok    items: two transfers from one read: the first applies, the second is refused (version), the item moved once
+  ok    items: a transfer of an item that isn't yours is refused (held)
+  ok    items: an escrowed item can't be transferred elsewhere
+  ok    items: the escrow settles to its party
+  ok    items: no escrow to cancel (held)
+  ok    items: a write under an older owner generation is refused (stale)
+  ok    items: the newest owner's applies
+  ok    items: a retry first sent more than a day ago is refused (expired), not applied
+  ok    items: an unsigned mutation is refused (401)
+  ok    items: the outbox has an entry for each applied change (grant, transfer, escrow, settle, grant)
+  ok    items: a consumer at sequence 2 gets 3 onward, once
+  ok    items: replaying the outbox gives the same items, owners and versions (restore)
+  ok    items: a row changed outside the ledger fails the reconciliation
+  ok    room-stats: a shard's signed report is kept
+  ok    room-stats: an unsigned one is refused
+  ok    room-stats: a replayed one (its t ten minutes old) is refused
+  ok    room-stats: the next is kept beside it
+  ok    room view: signed out, a 401 and no numbers
+  ok    room view: native capacity stays distinct from placement and outstanding holds
+  ok    room view: each number now and its series, oldest first, in its group
+  ok    room view: the queues and the bytes in their own groups
+  ok    room view: the seats from the last report
+  ok    room view: actual replication and durable acceptance keep their separate groups
+  ok    room view: accepted revision and owner are visible separately from pending latest state
+  ok    room view: worst selection and actual queue ACK retain their own boundaries
+  ok    room view: omission and measured overhead numbers remain visible beside their scope
+  ok    room view: current generation readiness and actual live holds exclude duplicate seated and expired reservations
+  ok    room view: another process's ready report cannot certify its replacement
+  ok    room view: expired readiness is unknown with an explicit missing sample age
+  ok    room view: no shard reporting is one empty section
+  ok    builds: each shard's stats name its build, and the directory keeps it
+  ok    builds: a page of build 1.2.3 is placed on shard 4, the shard that runs it
+  ok    builds: a page of build 7.7.7 that asks for that instance is placed on a shard of its build instead
+  ok    builds: a page that names no build is placed as before (the instance it asks for)
+  ok    builds: a page of a build no shard runs is placed as before, for the room to send it to reload
+  ok    builds: once shard 4's build is a minute old, a 7.7.7 page may join its instance
+  ok    builds: an older report leaves the newer build
+  ok    builds: a saved character names the build that saved it (1.2.3, schema 2)
+  ok    checkpoint: a bad signature is refused
+  ok    checkpoint: a partial snapshot is refused
+  ok    checkpoint: an unissued owner cannot create a snapshot
+  ok    checkpoint: a whole snapshot is committed before its versioned receipt
+  ok    checkpoint: retry after a lost response keeps the original acceptance time
+  ok    checkpoint: a reused identity with changed coordinates conflicts
+  ok    checkpoint: a process cannot switch under the same owner
+  ok    checkpoint: later revisions cannot reduce accepted XP
+  ok    checkpoint: the next revision advances the entire snapshot
+  ok    checkpoint: an older revision is stale
+  ok    checkpoint: taking a new owner fences the old process
+  ok    checkpoint: a newly issued owner starts its own process revision
+  ok    checkpoint: a separate database connection sees the complete committed dead/place/build state
+  ok    drain: a report with its process's generation is kept, and the shard takes players
+  ok    drain: once the shard says it drains, a new player is placed on another shard
+  ok    drain: a player of the draining shard who joins again is placed on another shard
+  ok    drain: a report from an older process of the shard is refused whole (409) and changes nothing
+  ok    drain: the replacement's first report clears the drain, and the shard takes players again
+  ok    drain: a report with no generation (a room from before) is kept as before
+  ok    drain: a malformed generation line is not a report
+room checks: 106 checks, 0 failed
