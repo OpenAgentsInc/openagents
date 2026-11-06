@@ -1,5 +1,15 @@
 # Owner actions
 
+## Verse monetization plan (2026-11-06)
+
+[docs/verse/2026-11-06-monetization-plan.md](docs/verse/2026-11-06-monetization-plan.md) needs these decisions before any of it is built:
+
+- [ ] The platform share on maker sales (proposed 10%; today OpenAgents keeps nothing), and whether purchases paid with credit pay it too.
+- [ ] The lineage share for the realm a fork came from (proposed 2.5%, one level up, taken out of our share).
+- [ ] Editions: approve the design (our ledger, signed by Nostr keys, anchored daily to Bitcoin). Do Spark tokens count as Bitcoin under the money rule? The plan assumes they don't.
+- [ ] Patronage campaigns: can payments go to the maker as they arrive, with no refunds?
+- [ ] Get legal review before resales, campaigns or player earnings: money transmission, consumer law, tax, securities.
+
 ## Valley Lab source world (2026-11-06)
 
 - The requested local preview is open at [Valley World](http://127.0.0.1:8895/worlds/valley-world?pack=valley-world). Its retained local runtime lives under `~/.openagents/verse/private-build/valley-preview/`, so closing the implementation worktree does not remove the preview.
