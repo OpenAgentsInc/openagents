@@ -138,6 +138,43 @@ Use `face` for the F checkpoints. Baseline receipts record the loaded Wasm
 hash and viewport as well as the crop hashes. Comparisons require the same
 viewport and every crop; the producer hashes can differ after a code move.
 
+## Rendering the converted documents
+
+Follow-up qualification on `42920e800b` closes the document-to-runtime path.
+`anim-echo-documents --compile` admits the rig and 44 clips and rebuilds the
+ECH1/EFC1 streams from those records. The compatibility backend supplies no
+animation samples from the template. Its limits are documented in the format
+reference. A made-fixture check changes a bind value and face clip name and
+verifies both changes in the emitted runtime stream. The complete converter
+suite passes **247/247** checks; the unchanged admission gates above retain
+**2,372 killed, zero survivors**.
+
+The ordered receipt/rig/clip input digest is
+`3c773cb5444183258613ecfb43f6bd72dd97addd0eb85abaffd749613a4b95c2`.
+The compiled VPK has **1,023,634,576 bytes**, SHA-256
+`5807c40f1c56dd67727bc7a72605049e6ca533c177251ab9b8c156fd0560dc0c`.
+It is byte-identical to the current source VPK. The private output is
+`~/.openagents/aethyrforge/animation-lab/a0-runtime/valley-from-documents.pack`.
+Only this task's new `animlab-a0-documents` alias points to it; the shared
+Valley alias was not changed.
+
+Muted headless Chrome loaded that emitted package through
+`/worlds/valley-canyon?pack=animlab-a0-documents`. The baseline used
+`animlab-a0-current` with the same `bb61c1ff9a` lighting, host, viewport and
+`e1cf7ca1…faa2b7c` Wasm. All 11 captured crops match. J's frame 1125 and
+step-back hash is
+`4bdccc51f7cf6774aff62730856c990cc1700b74dcba600232d89e1b52c19888`;
+the adjacent frame is
+`09d62e352e49babf506e8ce15bbefde259b9be40fee01a3b9708e60e37860b8b`;
+advancing playback is
+`52de9411a12a312107d071f2938d278bbb5aba42cacb939600be27a2ade4a8f8`;
+and the phone viewport is
+`bb9528187d2c5c0b82aa456cb516a29802f5efab995a783ac82710a38cbf6e30`.
+F retains the neutral, frame 12 and frame 28 hashes in the previous table,
+including pause and neutral reset. Both comparisons report no browser errors.
+Raw hash-only receipts and the compile/check logs are committed alongside
+this record. Captured images and licensed documents remain private.
+
 ## Scope
 
 A0 supplies the documents, admission, binary conversion and shared source

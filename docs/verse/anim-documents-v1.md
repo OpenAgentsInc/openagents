@@ -21,6 +21,8 @@ individual fields can have smaller limits. JSON numbers have at most 40
 source bytes and a decimal exponent between −38 and 38. NaN and infinity
 are invalid, including in binary float tracks. Times are seconds, distances
 are metres, angles are radians, and rotations are `[x,y,z,w]` quaternions.
+The compiled FRG1 block is an adapter exception: its evaluator retains the
+source rig's centimetres and Euler degrees internally.
 Quaternion squared length must be strictly between 0.99 and 1.01. Readers
 preserve the supplied floats; they do not normalize them during admission.
 
@@ -284,3 +286,25 @@ adapter until the corresponding lab stations adopt them.
 The receipt also records the converter version, source sampling and chosen
 loop defaults; ECH1 does not encode a loop flag. Those defaults can be
 overridden during playback without changing the source samples.
+
+Compile the admitted documents for Valley's existing GPU consumer with:
+
+```sh
+coax/web/tool.sh aethyr/tools/anim-echo-documents.coax --compile DOCUMENT_DIR TEMPLATE_VPK OUTPUT_VPK
+```
+
+This reads and admits the rig and all 44 clips again, then emits ECH1 and
+EFC1 from their typed records and referenced samples. It rebuilds rest poses,
+bind matrices, hierarchy, body samples, face names, morph records, curves and
+facial bone samples. The template supplies scenery, textures, groom, GPU mesh
+preparation, source-shot cameras and locomotion reference speeds. It does
+not supply the rebuilt animation samples. A digest covers the receipt, rig
+and clip documents in that order.
+
+The compatibility backend keeps Valley's 24 body roles, 30 Hz body clock,
+track order, loop defaults and catalogue sizes. It rejects events, independent
+root tracks, face loops and incompatible track tables. These are backend
+limits, not document admission limits. New lab playback can use the complete
+document model without this legacy backend. The unchanged converted source
+produces the exact original VPK bytes; Valley can load that emitted private
+package directly.

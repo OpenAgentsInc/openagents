@@ -1,0 +1,41 @@
+// Compatibility backend for Valley's ECH1/EFC1 GPU consumer. Input records
+// and immutable packs have passed the animation document authorities.
+#load "clip-document.coax";
+#load "echo-pack.coax";
+#load "echo-source-names.coax";
+#load "face-pack.coax";
+
+anim_echo_copy :: (out:[]u8,at:int,part:AnimPart,packs:[]AnimPack,index:int,width:int) {
+ b:=packs[part.pack].bytes;for k:0..<width {out[at+k]=b[part.offset+index*part.stride+k];}
+}
+anim_echo_name :: (out:[]u8,at:int,name:AnimName)->bool {
+ if name.n<1 || name.n>=64 {return false;}for k:0..<64 {out[at+k]=ifx k<name.n then name.bytes[k] else 0;}return true;
+}
+anim_echo_rig_encode :: (out:[]u8,r:AnimRig,clips:[]AnimClip,packs:[]AnimPack,source:[]u8)->int {
+ if !r.ready || clips.count!=24 || !echo_rig_valid(source) || r.joints!=cast(int)anim_word(source,8) {return -1;}
+ tracks:=clips[0].joint_count;size:=416+r.joints*80;
+ for c,k:clips {if !c.ready || c.rate!=30 || c.joint_count!=tracks || c.face_joint_count!=0 || c.curve_count!=0 || c.event_count!=0 || c.looping!=(k==0 || k==1 || k==2 || k==18 || k==19 || k==22) || !anim_equal(c.name,anim_named(EP_CLIPS[k])) {return -1;}
+  for j:0..<tracks {if c.joints[j]!=j {return -1;}}size+=c.frames*tracks*28;
+  if c.root.pack>=0 {for frame:0..<c.frames {for word:0..<3 {a:=packs[c.root.pack].bytes;b:=packs[c.body.pack].bytes;if anim_word(a,c.root.offset+frame*c.root.stride+word*4)!=anim_word(b,c.body.offset+frame*tracks*c.body.stride+word*4) {return -1;}}}}
+ }
+ if size>out.count || size>ECHO_RIG_CAP {return -1;}for k:0..<size {out[k]=0;}
+ for x,k:[7]u32.[0x31484345,1,cast(u32)r.joints,24,416,cast(u32)size,cast(u32)tracks] {face_put(out,k*4,x);}
+ for j:0..<r.joints {at:=416+j*80;face_put(out,at,cast(u32)(r.parents[j]+1));for k:0..<12 {face_put(out,at+4+k*4,f32_bits(r.bind[j*12+k]));}p:=r.rest[j];for x,k:[7]f32.[p.t.x,p.t.y,p.t.z,p.q.x,p.q.y,p.q.z,p.q.w] {face_put(out,at+52+k*4,f32_bits(x));}}
+ cursor:=416+r.joints*80;for c,k:clips {at:=32+k*16;face_put(out,at,cast(u32)cursor);face_put(out,at+4,cast(u32)c.frames);face_put(out,at+8,f32_bits(c.length));face_put(out,at+12,anim_word(source,at+12));for j:0..<c.frames*tracks {anim_echo_copy(out,cursor+j*28,c.body,packs,j,28);}cursor+=c.frames*tracks*28;}
+ return ifx echo_rig_valid(out[0..<size]) then size else -1;
+}
+anim_echo_face_encode :: (out:[]u8,r:AnimRig,clips:[]AnimClip,packs:[]AnimPack)->int {
+ if !r.ready || clips.count<1 || clips.count>64 {return -1;}first:=clips[0];targets:=r.shape_count;bones:=first.face_joint_count;curves:=first.curve_count;deltas:=0;
+ for mi:0..<r.morph_count {m:=r.morphs[mi];if m.section!=0 {return -1;}deltas+=m.data.count;}
+ f:=FacePack.{targets=targets,vertices=r.meshes[0].vertices.count,deltas=deltas,clips=clips.count,bones=bones,curves=curves,joints=r.joints,target_table=80};
+ f.rig_names=80+targets*80;f.bone_table=f.rig_names+r.joints*64;f.curve_table=f.bone_table+bones*68;f.clip_table=f.curve_table+curves*68;f.delta_table=f.clip_table+clips.count*80;f.data=f.delta_table+deltas*32;size:=f.data;
+ for c:clips {if !c.ready || c.joint_count!=0 || c.root.pack>=0 || c.event_count!=0 || c.looping || c.face_joint_count!=bones || c.curve_count!=curves {return -1;}for j:0..<bones {if c.face_joints[j]!=first.face_joints[j] {return -1;}}for j:0..<curves {if c.curves[j]!=first.curves[j] {return -1;}}size+=c.frames*(curves*4+bones*28);}
+ if !face_counts_ok(f) || size>out.count || size>FACE_PACK_CAP {return -1;}for k:0..<size {out[k]=0;}
+ for x,k:[17]u32.[0x31434645,1,cast(u32)size,cast(u32)targets,cast(u32)f.vertices,cast(u32)deltas,cast(u32)clips.count,cast(u32)bones,cast(u32)curves,cast(u32)r.joints,cast(u32)f.target_table,cast(u32)f.rig_names,cast(u32)f.bone_table,cast(u32)f.curve_table,cast(u32)f.clip_table,cast(u32)f.delta_table,cast(u32)f.data] {face_put(out,k*4,x);}
+ for j:0..<r.joints {if !anim_echo_name(out,f.rig_names+j*64,r.names[j]) {return -1;}}
+ cursor:=0;for shape:0..<targets {at:=f.target_table+shape*80;if !anim_echo_name(out,at,r.shapes[shape]) {return -1;}face_put(out,at+64,cast(u32)cursor);for mi:0..<r.morph_count {m:=r.morphs[mi];if m.shape==shape {face_put(out,at+68,cast(u32)m.data.count);for j:0..<m.data.count {anim_echo_copy(out,f.delta_table+(cursor+j)*32,m.data,packs,j,32);}cursor+=m.data.count;}}}
+ for j:0..<bones {id:=first.face_joints[j];at:=f.bone_table+j*68;if !anim_echo_name(out,at,r.names[id]) {return -1;}face_put(out,at+64,cast(u32)id);}
+ for j:0..<curves {id:=first.curves[j];at:=f.curve_table+j*68;if !anim_echo_name(out,at,r.shapes[id]) {return -1;}face_put(out,at+64,cast(u32)id);}
+ cursor=f.data;for c,k:clips {at:=f.clip_table+k*80;if !anim_echo_name(out,at,c.name) {return -1;}face_put(out,at+64,cast(u32)c.frames);face_put(out,at+68,f32_bits(c.rate));face_put(out,at+72,cast(u32)cursor);for j:0..<c.frames*curves {anim_echo_copy(out,cursor+j*4,c.face,packs,j,4);}cursor+=c.frames*curves*4;face_put(out,at+76,cast(u32)cursor);for j:0..<c.frames*bones {anim_echo_copy(out,cursor+j*28,c.face_pose,packs,j,28);}cursor+=c.frames*bones*28;}
+ return ifx face_valid(out[0..<size]) then size else -1;
+}

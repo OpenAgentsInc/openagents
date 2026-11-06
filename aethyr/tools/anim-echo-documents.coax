@@ -3,11 +3,13 @@
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/crypto/sha256.coax";
 #load "../../verse/tools/humans/ph_num.coax";
 #load "../anim/clip-document.coax";
 #load "../anim/echo-pack.coax";
 #load "../anim/echo-source-names.coax";
 #load "../anim/face-pack.coax";
+#load "../anim/echo-document-runtime.coax";
 
 AeParts :: struct {rig:int;face:int;vertices:int;indices:int;end:int;}
 
@@ -20,6 +22,25 @@ AeParts :: struct {rig:int;face:int;vertices:int;indices:int;end:int;}
  n=ae_clip(text[..],pack,parts,0,true,cast(string)hash[..],cast(string)hash[..]);#assert anim_clip_load(cast(string)text[0..<n],packs[..],rig[..],clip[..])==0 && ae_clip_bits(clip[0],pack,parts,0,true);
  #assert rig[0].parents[0]== -1 && rig[0].rest[0].q.w==1 && rig[0].bind[0]==1 && rig[0].bind[5]==1 && rig[0].bind[10]==1;
  #assert ae_rig_bits(rig[0],pack,parts);
+}
+
+#test "document backend rebuilds source bytes and uses edited admitted records" #steps 300000000 {
+ bytes:[8192]u8;rn:=echo_rig_fixture(bytes[..],1);face_fixture(bytes[rn..<rn+536]);face_put(bytes[..],rn+16,3);
+ p:=AeParts.{face=rn,vertices=rn+536,indices=rn+824,end=rn+836};for k:0..<3 {bytes[p.vertices+k*96+52]=255;face_put(bytes[..],p.indices+k*4,cast(u32)k);}
+ pack:=AnimPack.{id=asset_id(cast(string)bytes[0..<p.end]),bytes=bytes[0..<p.end]};packs:=[1]AnimPack.[pack];hash:[64]u8;#assert asset_hex(pack.id,hash[..]);text:[262144]u8;rig:[1]AnimRig;clips:[25]AnimClip;
+ n:=ae_rig(text[..],pack,p,cast(string)hash[..]);#assert anim_rig_load(cast(string)text[0..<n],packs[..],rig[..])==0;
+ for k:0..<25 {n=ae_clip(text[..],pack,p,ifx k<24 then k else 0,k==24,cast(string)hash[..],cast(string)hash[..]);#assert anim_clip_load(cast(string)text[0..<n],packs[..],rig[..],clips[k..<k+1])==0;}
+ out:[8192]u8;#assert anim_echo_rig_encode(out[0..<rn],rig[0],clips[0..<24],packs[..],bytes[0..<rn])==rn;
+ #assert anim_echo_face_encode(out[rn..<rn+536],rig[0],clips[24..<25],packs[..])==536;
+ for k:0..<rn+536 {#assert out[k]==bytes[k];}
+ // A changed admitted clip name and bind value must reach the legacy consumer.
+ clips[24].name=anim_named("edited");rig[0].bind[3]=0.25;
+ #assert anim_echo_rig_encode(out[0..<rn],rig[0],clips[0..<24],packs[..],bytes[0..<rn])==rn && anim_float(out[..],432)==0.25;
+ #assert anim_echo_face_encode(out[rn..<rn+536],rig[0],clips[24..<25],packs[..])==536 && ae_name(out[..],rn+360)=="edited";
+ #assert echo_rig_valid(out[0..<rn]) && face_valid(out[rn..<rn+536]);
+ clips[0].rate=24;#assert anim_echo_rig_encode(out[..],rig[0],clips[0..<24],packs[..],bytes[0..<rn])== -1;
+ clips[0].rate=30;clips[0].events[0].at=0;clips[0].event_count=1;#assert anim_echo_rig_encode(out[..],rig[0],clips[0..<24],packs[..],bytes[0..<rn])== -1;
+ #assert anim_echo_face_encode(out[0..<535],rig[0],clips[24..<25],packs[..])== -1;
 }
 
 ae_name :: (b:[]u8,at:int)->string {n:=0;while n<64 && b[at+n]!=0 {n+=1;}return cast(string)b[at..<at+n];}
@@ -65,8 +86,27 @@ ae_rig_bits :: (r:AnimRig,pack:AnimPack,p:AeParts)->bool {
  morph:=0;for shape:0..<f.targets {at:=p.face+f.target_table+shape*80;count:=cast(int)anim_word(b,at+68);if count==0 {continue;}if morph>=r.morph_count || r.morphs[morph].shape!=shape || !ae_same_words(b,r.morphs[morph].data,p.face+f.delta_table+cast(int)anim_word(b,at+64)*32,count,32) {return false;}morph+=1;}return morph==r.morph_count;
 }
 ae_write :: (root:string,name:string,text:string) {path:[4096]u8;#assert fs_write(fs_join(root,name,path[..]),text);}
+// Compile the admitted documents back into the existing Valley GPU package.
+// The template supplies non-animation assets and locomotion reference speeds.
+// This compatibility profile keeps table sizes fixed; unsupported edits fail.
+ae_compile :: (root:string,template:string,dest:string)->int {
+ text:[262144]u8;path:[4096]u8;n:=fs_read(fs_join(root,"receipt.json",path[..]),text[..]);#assert n>0;
+ state:[112]u8;digest:[32]u8;#assert sha256_init(state[..])==SHA_OK && sha256_update_checked(state[..],text[0..<n],false)==SHA_OK;
+ nodes:[32768]JvNode;d:[1]Jv;#assert anim_json(cast(string)text[0..<n],d[..],nodes[..])==0 && anim_schema(d[0],"anim.export.v1");id:[1]AssetId;#assert anim_hash(d[0],jv_get(d[0],0,"pack"),id[..]);count:=jv_int(d[0],jv_get(d[0],0,"face_clips"),0);#assert count>=1 && count<=64;
+ hash:[64]u8;#assert asset_hex(id[0],hash[..]);filename:[68]u8;for c,k:hash {filename[k]=c;}for c,k:".bin" {filename[64+k]=c;}source:[134217728]u8;sn:=fs_read(fs_join(root,cast(string)filename[..],path[..]),source[..]);#assert sn>0;packs:=[1]AnimPack.[AnimPack.{id=id[0],bytes=source[0..<sn]}];#assert anim_pack_valid(packs[0]);
+ rig:[1]AnimRig;clips:[88]AnimClip;n=fs_read(fs_join(root,"echo.rig.json",path[..]),text[..]);#assert n>0 && sha256_update_checked(state[..],text[0..<n],false)==SHA_OK && anim_rig_load(cast(string)text[0..<n],packs[..],rig[..])==0;
+ for k:0..<24+count {name:[32]u8;o:[1]PnOut;o[0].buf=name[..];pn_put(o[..],"clip-");pn_putint(o[..],k);pn_put(o[..],".json");n=fs_read(fs_join(root,pn_text(o[..]),path[..]),text[..]);#assert n>0 && sha256_update_checked(state[..],text[0..<n],false)==SHA_OK && anim_clip_load(cast(string)text[0..<n],packs[..],rig[..],clips[k..<k+1])==0;}
+ // Validate the template's bounded catalogue window before touching it.
+ out:[1073741824]u8;n=fs_read(template,out[..]);#assert n>=80 && anim_word(out[..],0)==0x314b5056 && anim_word(out[..],32)==1;at:=cast(int)anim_word(out[..],36);size:=cast(int)anim_word(out[..],40);#assert at>=80 && size>=20 && at<=n-size;
+ catalog:=out[at..<at+size];#assert anim_word(catalog,0)==0x33504345 && cast(int)anim_word(catalog,16)==size;rn:=cast(int)anim_word(catalog,4);fn:=cast(int)anim_word(catalog,8);#assert rn>=416 && fn>=80 && rn+fn<=size-20;
+ encoded:[67108864]u8;nr:=anim_echo_rig_encode(encoded[..],rig[0],clips[0..<24],packs[..],catalog[20..<20+rn]);#assert nr==rn;
+ nf:=anim_echo_face_encode(encoded[nr..<encoded.count],rig[0],clips[24..<24+count],packs[..]);#assert nf==fn;
+ for k:0..<rn+fn {catalog[20+k]=encoded[k];}
+ #assert fs_write(dest,cast(string)out[0..<n]);result:[64]u8;#assert asset_hex(asset_id(cast(string)out[0..<n]),result[..]);#assert sha256_final_checked(state[..],digest[..],false)==SHA_OK;doc_hash:[64]u8;for k:0..<32 {doc_hash[k*2]=ASSET_HEX_DIGITS[cast(int)(digest[k]>>4)];doc_hash[k*2+1]=ASSET_HEX_DIGITS[cast(int)(digest[k]&15)];}
+ print("compiled admitted_documents=% joints=% body_clips=24 face_clips=% bytes=% sha256=% documents_sha256=%\n",25+count,rig[0].joints,count,n,cast(string)result[..],cast(string)doc_hash[..]);return 0;
+}
 tool_main :: ()->int #export_c #effects(all) {
- args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=3 {print("usage: anim-echo-documents ECHO_DIR FACE_DIR OUTPUT_DIR\n");return 2;}echo:=args_at(args[..],0);face:=args_at(args[..],1);dest:=args_at(args[..],2);#assert fs_exists(dest) || fs_mkdir(dest);
+ args:[1]Args;if !args_load(args[..]) {return 2;}if args_count(args[..])==4 && args_at(args[..],0)=="--compile" {return ae_compile(args_at(args[..],1),args_at(args[..],2),args_at(args[..],3));}if args_count(args[..])!=3 {print("usage: anim-echo-documents ECHO_DIR FACE_DIR OUTPUT_DIR\n");return 2;}echo:=args_at(args[..],0);face:=args_at(args[..],1);dest:=args_at(args[..],2);#assert fs_exists(dest) || fs_mkdir(dest);
  bytes:[134217728]u8;path:[4096]u8;p:AeParts;rn:=fs_read(fs_join(echo,"echo.rig",path[..]),bytes[..]);#assert rn>0 && echo_rig_valid(bytes[0..<rn]);p.face=rn;fn:=fs_read(fs_join(face,"echo.face",path[..]),bytes[rn..<bytes.count]);#assert fn>0 && face_valid(bytes[rn..<rn+fn]);p.vertices=rn+fn;vn:=fs_read(fs_join(echo,"echo.vertices",path[..]),bytes[p.vertices..<bytes.count]);#assert vn>0 && vn%96==0;p.indices=p.vertices+vn;ix:=fs_read(fs_join(echo,"echo.indices",path[..]),bytes[p.indices..<bytes.count]);#assert ix>0 && ix%12==0;p.end=p.indices+ix;for k:0..<ix/4 {#assert cast(int)anim_word(bytes[..],p.indices+k*4)<vn/96;}
  pack:=AnimPack.{id=asset_id(cast(string)bytes[0..<p.end]),bytes=bytes[0..<p.end]};#assert anim_pack_valid(pack);hash:[64]u8;#assert asset_hex(pack.id,hash[..]);h:=cast(string)hash[..];f:=face_info(bytes[p.face..<p.vertices]);joints:=cast(int)anim_word(bytes[..],8);#assert joints==f.joints;
  // Receipt contains identities and counts only. Source files are retained

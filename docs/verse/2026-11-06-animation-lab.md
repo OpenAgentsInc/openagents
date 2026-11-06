@@ -338,6 +338,11 @@ Recorded 2026-11-06 while implementing the milestones:
    `~/.openagents/aethyrforge/animation-lab/`. Original extras and props move
    into public packs only with a recorded source and rights review. A
    content hash alone does not establish permission to publish.
+5. **Compile documents for Valley's existing consumer.** A0 lowers admitted
+   rig and clip records into ECH1/EFC1, retaining the template's GPU assets
+   and source-shot cameras. This lets Valley render the converted documents
+   while preserving its exact frames. The backend rejects edits outside
+   its fixed legacy profile; the document formats retain their wider limits.
 
 The exact formats and admission limits are in
 [Animation documents v1](anim-documents-v1.md).
