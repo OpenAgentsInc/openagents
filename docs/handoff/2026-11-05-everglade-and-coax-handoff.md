@@ -16,46 +16,28 @@ agents below are the last ones started.
 
 ## Agents still running at handoff
 
-Each one works in its own worktree, pushes to `main` and closes its issue
-with a comment. Check the issue and `git log origin/main` for their results.
-
-| Issue | Work | Worktree |
-| --- | --- | --- |
-| #12936 | Fix the production room regression, then finish the release (rooms, then web) | `../openagents-roomperf` |
-
-If one of them stops without closing its issue, read its last issue comment
-and its worktree's `git status` and `git log`. Pick up from there; don't
-redo work that's already on `main`.
+None. Every agent started this session has finished.
 
 ## Production state (most important)
 
-The owner authorized a production deploy of current `main` at about 14:20.
-Here's what happened:
+Everything is live as of about 18:15 Chicago on 2026-11-05 (#12936, closed):
 
-- **API: live.** `oa-api-00107-l9z`, build `54575b412a`, migrations through
-  `0135_character_checkpoints_v2.sql`. They only add tables, columns and
-  functions.
-- **Rooms: rolled back.** All six shards are back on `oa-room-00037-4kj` and
-  `oa-room-K-00016-*` (build `1fee391fc9`, 2026-11-03). In production, the
-  new rooms ran at 23–26 updates a second with 16 players a room; the spec
-  needs 28. Each player also got 7 times more bytes, and 2 of 16 first joins
-  returned 404. A local room on the same build holds 30 updates a second, so
-  the problem only shows up over real internet links.
-- **Web: held.** Production pages are still release `20261104T010141Z`,
-  because the new pages need the new rooms.
-- The room deploy's check loop always fails on `sim-check`. That check
-  expects a closed player to leave within 800 ms, but the room now holds a
-  seat for 15 s.
-
-The #12936 agent is told to find the cause and fix it, test it, and then
-redeploy the rooms. Its release bar: at least 28 updates a second, bytes
-within about 1.5 times the old build, and 16 of 16 seats, measured against
-the old revision the same way. Only then does it run
-`coax/web/release.sh` for web. If its result isn't on #12936, start there.
-
-The authorization covered the API, rooms and web. It doesn't cover setting
-`OA_ROOM_OWNER_GEN=1`, which waits a day after all six shards run the new
-build, or the relay fix (#12909), a second region, or other database changes.
+- **API:** `oa-api-00107-l9z`, build `54575b412a`, migrations through
+  `0135_character_checkpoints_v2.sql`.
+- **Rooms:** all six shards run `6414ba56c4`. With 16 players a room they ran
+  at 30 updates a second, with bytes 1.06–1.16 times the old build's and 16 of
+  16 seats opening. The regression was a fixed work budget per room on a
+  1-vCPU instance; `b17aaf5cd1` shares a pool among the live rooms.
+  `deploy.sh` now moves traffic to each new revision (`13e0cb0376`).
+- **Web:** release `7a679e651e`. Roll back with `coax/web/rollback.sh
+  20261106T005750Z`.
+- **Live checks:** `/worlds/everglade` seats a player, SETTINGS shows, and the
+  pair run passes except for two checks filed as #12946: Reverse Gravity's
+  second press, and BLOCK.
+- **Owner generations:** `OA_ROOM_OWNER_GEN=1` can be set a day after this
+  release, from 2026-11-06 at 18:15 Chicago (see `NEEDS_OWNER.md`).
+- **Not authorized:** the relay fix (#12909), a second region and other
+  database changes.
 
 ## The owner's local playtest stack (don't touch)
 
@@ -144,10 +126,10 @@ Books: #12610 stays open. The owner said "no more books work". Don't work it.
 
 | Issue | Owner or status |
 | --- | --- |
-| #12936 | A running agent (see above) |
-| #12944 | No agent. **Blocker.** The room server fails to link on main, with 21 duplicate `cb_*` symbols, since `010c25bbed` (Codex lane). This blocks room builds, the API room checks, the drift check and the #12936 release. The #12936 agent knows. |
+| #12944 | Closed by `6414ba56c4`. The room server fails to link on main, with 21 duplicate `cb_*` symbols, since `010c25bbed` (Codex lane). This blocks room builds, the API room checks, the drift check and the #12936 release. The #12936 agent knows. |
 | #12945 | No agent. Other failures on main: the `results-cache-policy` test, traversal budgets for `everglade5e-room-raid` and `rigid.coax d3_dot`, and listing drift in Aethyr chapter 89. |
-| #12941 | No agent. The drift check's 250 ms profile failed twice after the fire fixes, on Hold Person timing, conditions and townspeople walking in place. It may be real or caused by load, and it gates release.sh. Check it first if #12936's release is stuck. |
+| #12946 | No agent. In the live pair run, Reverse Gravity's second press and BLOCK fail. They may predate this release. |
+| #12941 | No agent. The drift check held at 250 ms during the release, so this may have been load. Close it if three runs in a row hold. The drift check's 250 ms profile failed twice after the fire fixes, on Hold Person timing, conditions and townspeople walking in place. It may be real or caused by load, and it gates release.sh. Check it first if #12936's release is stuck. |
 | #12940 | No agent. Tree fires never burn or spread on the room server; only pages step them. |
 | #12838, #12840–#12843, #12868, #12869 | The owner's Codex agent. Don't take them. Its room changes share files with ours, so use small commits and rebase often. |
 | #12845 | Open, with no agent. It still needs commands, accepted results and replication behind shared interfaces, profiles for collision and per-recipient fields, Orbit League sharing more than the timing profile, and the book's adoption inventory. |
