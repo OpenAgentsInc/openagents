@@ -389,3 +389,21 @@ started at Unreal's 1001.
 - Still different: Unreal draws the temple behind her, depth of field and
   motion blur on the final shoulder and bracer pass; our skin has more
   specular sheen on the cheeks.
+
+### Skin sheen
+
+Unreal minus Unreal with specular off (frame 1125, the face) gives a soft,
+even sheen: mean 0.024 linear, 99th percentile 0.23. Ours was 0.006 mean in
+sharp glints on the cheek and forehead: no reflection of the surroundings, and
+the key light's highlight broken up by the pore normals at roughness near 0.15.
+
+- Skin now adds environment specular (split-sum `pbr_environment`, warm white,
+  `SLAY_SKIN_ENV` 0.7).
+- The direct-light lobes use a normal half way to the geometric one and a
+  roughness of at least 0.4 (`SLAY_SKIN_SPEC_ROUGH`), so the pores no longer
+  break the key into wet glints.
+- Result: mean 0.025, 99th percentile 0.17, max 0.54 (Unreal 0.63). The shadow
+  cheek moved from 229/152/96 to 230/165/116 (Unreal 226/151/109).
+- Depth of field is not the cause: blurring our specular by a 4 to 6 pixel
+  disc leaves its mean unchanged. The camera focuses at 1.15 m on a head at
+  1.32 m, f/2.4.

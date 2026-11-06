@@ -270,8 +270,11 @@ cv_area_light :: (base:V3,f0:V3,metal:f32,rough:f32,n:V3,l:V3,v:V3,spec_scale:f3
  #assert cv_area_light(black,f0,0,0.2,n,n,v,1,SLAY_KEY_SIZE).x<cv_surface_light(black,f0,0,0.2,n,n,v,1).x*0.5;
  #assert cv_area_a2(0.04,0,1)==0.04*0.04 && cv_area_a2(0.04,SLAY_KEY_SIZE,1)>0.04*0.04 && cv_area_a2(1,1,0)==1;
 }
+// Skin's direct highlights: half way to the geometric normal and no smoother than this, so the
+// pores' normals don't break the key into the wet glints Unreal's subsurface and TSR never show.
+SLAY_SKIN_SPEC_ROUGH :: 0.4f32;
 cv_skin_light :: (base:V3,f0:V3,rough:f32,n:V3,g:V3,l:V3,v:V3,spec_scale:f32,size:f32)->V3 {
- black:=v3(0,0,0);a:=cv_area_light(black,f0,0,clampf(rough*0.75,0.045f32,1.0f32),n,l,v,spec_scale,size);b:=cv_area_light(black,f0,0,clampf(rough*1.3,0.045f32,1.0f32),n,l,v,spec_scale,size);
+ black:=v3(0,0,0);ns:=wg_normalize3(cv_add(cv_scale(n,0.5),cv_scale(g,0.5)));sr:=fmax(rough,SLAY_SKIN_SPEC_ROUGH);a:=cv_area_light(black,f0,0,clampf(sr*0.75,0.045f32,1.0f32),ns,l,v,spec_scale,size);b:=cv_area_light(black,f0,0,clampf(sr*1.3,0.045f32,1.0f32),ns,l,v,spec_scale,size);
  nr:=wg_normalize3(cv_add(cv_scale(n,0.4),cv_scale(g,0.6)));ng:=wg_normalize3(cv_add(cv_scale(n,0.75),cv_scale(g,0.25)));
  dr:=fmax(0.0f32,(wg_dot3(nr,l)+0.35)/1.35);dg:=fmax(0.0f32,(wg_dot3(ng,l)+0.12)/1.12);db:=fmax(0.0f32,wg_dot3(n,l));
  return cv_add(cv_add(cv_scale(a,0.15),cv_scale(b,0.85)),v3(base.x*dr/3.14159265,base.y*dg/3.14159265,base.z*db/3.14159265));
@@ -320,6 +323,9 @@ cv_rect_power :: (u:[]f32,rect:V3)->f32 {d2:=wg_dot3(rect,rect);aim:=cv_oct_deco
  u:[128]f32;u[107]=0.5;u[11]=slay_oct_x(0,0,1);u[127]=slay_oct_y(0,0,1);
  #assert cv_rect_power(u[..],v3(0,0,-0.3))>0 && cv_rect_power(u[..],v3(0,0,0.3))==0 && cv_rect_power(u[..],v3(0.3,0,-0.01))==0;
 }
+// Unreal's skin in TF0290 carries a soft, even sheen from its reflections of the temple and sky
+// (about 0.02 linear on the face, neutral to warm): environment specular, split-sum, at this radiance.
+SLAY_SKIN_ENV :: 0.7f32;
 cv_slay_light :: (skin:bool,base:V3,f0:V3,metal:f32,rough:f32,n:V3,g:V3,l:V3,v:V3,spec_scale:f32,size:f32)->V3 {if skin {return cv_skin_light(base,f0,rough,n,g,l,v,spec_scale,size);}return cv_area_light(base,f0,metal,rough,n,l,v,spec_scale,size);}
 
 vc_scene_fs :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices:[]u32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
@@ -372,6 +378,7 @@ cv_scene_shade :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,verti
    colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,cv_at(u,28),v,SLAY_SOFT_SPECULAR,SLAY_SOFT_SIZE),u[31]*SLAY_FILL_FALLOFF),cv_at(u,124)));
    colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,cv_kick_dir(u),v,SLAY_SOFT_SPECULAR,SLAY_SOFT_SIZE),SLAY_KICK_POWER*SLAY_KICK_FALLOFF),v3(SLAY_KICK_R,SLAY_KICK_G,SLAY_KICK_B)));
    colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,wg_normalize3(rect),v,1,0),cv_rect_power(u,rect)*s.extra.x),v3(u[23],u[27],u[95])));
+   if skin {env:=pbr_environment(rough,nv);colour=cv_add(colour,cv_scale(v3(1,0.94,0.75),(f0.x*env.a+env.b)*SLAY_SKIN_ENV));}
   }
   if s.character>0.5 && s.material<26 && u[112]<0.5 {environment:=pbr_environment(rough,nv);f90:=clampf(50*f0.y,0.0f32,1.0f32);colour=cv_add(colour,cv_scale(cv_add(cv_scale(f0,environment.a),v3(f90*environment.b,f90*environment.b,f90*environment.b)),0.7734375));}
   if s.character>0.5 {mapped:=film_rec709(film_rgb(colour.x,colour.y,colour.z));return v4(cv_srgb(clampf(mapped.r,0.0f32,1.0f32)),cv_srgb(clampf(mapped.g,0.0f32,1.0f32)),cv_srgb(clampf(mapped.b,0.0f32,1.0f32)),ifx s.material==26 || s.material==27 then cv_groom_opacity(s.paint.x,s.paint.y) else 1.0f32);}
