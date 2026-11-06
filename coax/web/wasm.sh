@@ -298,7 +298,7 @@ seconds() { printf '%d.%06d' $(( $1 / 1000000 )) $(( $1 % 1000000 )); }
     printf '}'
   done < "$work/steps"
   printf ']}\n'
-} > "$report.tmp" && mv -f "$report.tmp" "$report"
+} > "$report.tmp.$$" && mv -f "$report.tmp.$$" "$report"
 if [[ "${COAXIAL_WASM_TIMES:-}" != 0 ]]; then
   summary="$(awk -v total="$(( $(now) - started_us ))" '
     { s = ($5 - $4) / 1e6; if (s > most[$2]) most[$2] = s; if ($3 == "hit") hits[$2]++; n[$2]++ }
