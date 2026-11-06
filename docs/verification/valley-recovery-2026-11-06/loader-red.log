@@ -1,0 +1,12 @@
+AssertionError [ERR_ASSERTION]: same-session replacement must reuse the already retained source bytes
+
+2 !== 1
+
+    at /Users/christopherdavid/work/openagents-12962-recovery/coax/web/tests/legacy-pack-recovery.cjs:84:10 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 2,
+  expected: 1,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
