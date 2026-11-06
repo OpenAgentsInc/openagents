@@ -1,0 +1,31 @@
+coax/web/everglade-drift.coax:74:3: error[E0315]: procedure 'dr_input_note' is not declared
+    dr_input_note(a[..],100,"I 101 0 1000 0 0 0 0 3");
+    ^
+coax/web/everglade-drift.coax:75:3: error[E0315]: procedure 'dr_input_note' is not declared
+    dr_input_note(b[..],200,"I 201 0 1000 0 0 0 0 8");
+    ^
+coax/web/everglade-drift.coax:76:11: error[E0315]: procedure 'dr_inputs_same' is not declared
+    #assert dr_inputs_same(a[..],b[..],1);
+            ^
+coax/web/everglade-drift.coax:77:3: error[E0315]: procedure 'dr_input_note' is not declared
+    dr_input_note(a[..],100,"I 102 1000 1000 0 0 0 0 3");
+    ^
+coax/web/everglade-drift.coax:78:3: error[E0315]: procedure 'dr_input_note' is not declared
+    dr_input_note(b[..],200,"I 202 0 1000 0 0 0 0 8");
+    ^
+coax/web/everglade-drift.coax:79:12: error[E0315]: procedure 'dr_inputs_same' is not declared
+    #assert !dr_inputs_same(a[..],b[..],2);
+             ^
+coax/web/everglade-drift.coax:80:12: error[E0315]: procedure 'dr_inputs_same' is not declared
+    #assert !dr_inputs_same(a[..],b[..],3);
+             ^
+coax/web/everglade-drift.coax:81:3: error[E0315]: procedure 'dr_input_note' is not declared
+    dr_input_note(a[..],100,"I 101 1 1000 0 0 0 0 3");#assert a[0].bad;
+    ^
+coax/web/everglade-drift.coax:82:20: error[E0315]: procedure 'dr_input_note' is not declared
+    b[0]=DrInputs.{};dr_input_note(b[..],200,"I 201 0 1");#assert b[0].bad;
+                     ^
+coax/web/everglade-drift.coax:83:12: error[E0315]: procedure 'dr_inputs_same' is not declared
+    #assert !dr_inputs_same(a[..],b[..],0);
+             ^
+10 errors

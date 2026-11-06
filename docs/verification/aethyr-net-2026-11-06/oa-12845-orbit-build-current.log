@@ -1,0 +1,17 @@
+coax: note[E0400]: compile-time steps: 19343034 of 20000000 used (96%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    15744112 steps  aethyr/render/package.coax:178:1  in 'render_package_spirv_bytes' (30 times)
+    573375 steps  coax/lib/json/json.coax:258:1  in 'jv_raw_eq' (9525 times)
+    477240 steps  coax/lib/json/json.coax:165:1  in 'jv_string_end' (1650 times)
+    360975 steps  coax/lib/json/json.coax:77:1  in 'jv_parse' (15 times)
+    291750 steps  coax/lib/crypto/sha256-kernel.coax:63:1  in 'S_compress' (30 times)
+  fix: do less work in 'render_package_spirv_bytes', split the check, or give it a larger budget with #steps N on the check (or coax test --steps N for every check)
+coax: note[E0400]: compile-time traversal work: 111052283 of 134217728 used (82%), above three quarters of the limit; more than 134217728 fails with E0400
+  top users of compile-time traversal work:
+    31223874 visits  aethyr/rigid.coax:50:1  in 'd3' (5203979 times)
+    3562872 visits  aethyr/rigid.coax:125:9  copying arguments into 'd3_dot' (445359 calls)
+    3562872 visits  aethyr/rigid.coax:126:65  copying arguments into 'd3_dot' (445359 calls)
+    3562872 visits  aethyr/rigid.coax:126:96  copying arguments into 'd3_cross' (445359 calls)
+    3154912 visits  aethyr/contact.coax:49:1  in 'rigid_force_at' (41512 times)
+  fix: copy fewer whole arrays and structs in 'd3' (pass a view or an index, assign single fields); or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+wasm.sh: orbitleague.wasm: 143.9 s: Coax to C 141.0 s (0/1 cached), clang 1.8 s (2/3 cached), link 0.7 s, wasm-opt 0.2 s; 292500 bytes; report /home/christopherdavid/openagents-12845-build/apps/openagents-web/build/.c/orbitleague.timings.json

@@ -1,0 +1,22 @@
+room: --dev coax/web/room/dev: the API's stand-in (seat tickets checked and required)
+room: the local world (416 bytes) laid over the rooms
+room: shard 1
+room: listening on 127.0.0.1:9000
+room: vitals: tick p95 0.02 ms, input to ack p95 -1 ms, measuring 6.68% of the tick
+room: net realm 2 room 0 ready 1 hz 60 steps 2 tick 418 seats 4 accepted 765 refused 0 frames 783
+room: 3601 ticks in 60.0 s, 0 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 432 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 0 abilities 0 town 0 spells 0 people 0 rules 0 write 0 send 0, 0 events with no room in their tick
+room: vitals posts 0 (0 retried, 0 failed), lines applied 0, already applied 0, stale 0, refused 0, late answers 0, given up 0, evicted unsaved 0, 0 players unsaved now, fenced 0 (0 seats ended)
+room: travel asked 0, sent on 0, full 0, refused 0, arrived 0, called off 0, intents dropped in a cutover 0
+room: 3600 ticks in 60.0 s, 0 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 432 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 0 abilities 0 town 0 spells 0 people 0 rules 0 write 0 send 0, 0 events with no room in their tick
+room: vitals posts 0 (0 retried, 0 failed), lines applied 0, already applied 0, stale 0, refused 0, late answers 0, given up 0, evicted unsaved 0, 0 players unsaved now, fenced 0 (0 seats ended)
+room: travel asked 0, sent on 0, full 0, refused 0, arrived 0, called off 0, intents dropped in a cutover 0
+room: 3601 ticks in 60.0 s, 0 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 432 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 0 abilities 0 town 0 spells 0 people 0 rules 0 write 0 send 0, 0 events with no room in their tick
+room: vitals posts 0 (0 retried, 0 failed), lines applied 0, already applied 0, stale 0, refused 0, late answers 0, given up 0, evicted unsaved 0, 0 players unsaved now, fenced 0 (0 seats ended)
+room: travel asked 0, sent on 0, full 0, refused 0, arrived 0, called off 0, intents dropped in a cutover 0
+room: SIGTERM before a drain: told 0 pages restarting
+room: SIGTERM: saving 0 players' vitals before exit
+room: exit after 0 ms, 0 players' vitals with no receipt
+room: exit: 0 unacknowledged character checkpoints

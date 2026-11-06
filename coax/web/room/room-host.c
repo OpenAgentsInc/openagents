@@ -829,8 +829,28 @@ static void stats_window(double secs) {
   st_line(&o,"observation measured wall share %%=%.3f",secs>0?100.0*(observation_path_us+report_us)/(secs*1000000.0):0.0);
   st_line(&o,"observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters");
   memcpy(st_last, body + head, o.n - head + 1);
-  if (rm_players(view()) > 0)
+  if (rm_players(view()) > 0) {
     printf("room: vitals: tick p95 %.2f ms, input to ack p95 %lld ms, measuring %.2f%% of the tick\n", p95 / 1000.0, (long long)ack95, cost);
+    /* Effects only: Coax supplies each initialized world's contract and observations. Keep this
+       local log outside the published signed stats body; unavailable counters remain -1. */
+    for (int realm = 1; realm <= 2; realm++) {
+      size_t count = realm == 1 ? sizeof server->eg.e / sizeof server->eg.e[0]
+                               : sizeof server->rooms.e / sizeof server->rooms.e[0];
+      for (size_t room = 0; room < count; room++) {
+        int64_t ready = rm_net_observation(view(), realm, (int64_t)room, 0);
+        if (ready < 0) continue;
+        printf("room: net realm %d room %zu ready %lld hz %lld steps %lld tick %lld seats %lld accepted %lld refused %lld frames %lld\n",
+          realm, room, (long long)ready,
+          (long long)rm_net_observation(view(), realm, room, 1),
+          (long long)rm_net_observation(view(), realm, room, 2),
+          (long long)rm_net_observation(view(), realm, room, 7),
+          (long long)rm_net_observation(view(), realm, room, 8),
+          (long long)rm_net_observation(view(), realm, room, 9),
+          (long long)rm_net_observation(view(), realm, room, 10),
+          (long long)rm_net_observation(view(), realm, room, 11));
+      }
+    }
+  }
   if (dev_dir) return;
   static uint8_t mac[65];
   if (!rm_st_sign(view(), (coax_string){body, (int64_t)o.n}, (coax_v_u8){mac, 64})) return;

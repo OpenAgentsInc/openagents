@@ -1,0 +1,17 @@
+coax: note[E0400]: compile-time steps: 19343034 of 20000000 used (96%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    15744112 steps  aethyr/render/package.coax:178:1  in 'render_package_spirv_bytes' (30 times)
+    573375 steps  coax/lib/json/json.coax:258:1  in 'jv_raw_eq' (9525 times)
+    477240 steps  coax/lib/json/json.coax:165:1  in 'jv_string_end' (1650 times)
+    360975 steps  coax/lib/json/json.coax:77:1  in 'jv_parse' (15 times)
+    291750 steps  coax/lib/crypto/sha256-kernel.coax:63:1  in 'S_compress' (30 times)
+  fix: do less work in 'render_package_spirv_bytes', split the check, or give it a larger budget with #steps N on the check (or coax test --steps N for every check)
+coax: note[E0400]: compile-time traversal work: 117615478 of 134217728 used (87%), above three quarters of the limit; more than 134217728 fails with E0400
+  top users of compile-time traversal work:
+    40147254 visits  aethyr/rigid.coax:50:1  in 'd3' (6691209 times)
+    8323332 visits  verse/demolish.coax:1831:1  in 'demo_apart' (570578 times)
+    5909515 visits  verse/demolish.coax:1595:1  in 'demo_pair' (31491 times)
+    4554664 visits  aethyr/rigid.coax:125:9  copying arguments into 'd3_dot' (569333 calls)
+    4554664 visits  aethyr/rigid.coax:126:65  copying arguments into 'd3_dot' (569333 calls)
+  fix: copy fewer whole arrays and structs in 'd3' (pass a view or an index, assign single fields); or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+wasm.sh: everglade5e.wasm: 852.1 s: Coax to C 841.4 s (3/4 cached), clang 1.5 s (3/19 cached), link 6.3 s, wasm-opt 2.7 s; 2027996 bytes; report /home/christopherdavid/openagents-12845-build/apps/openagents-web/build/.c/everglade5e.timings.json

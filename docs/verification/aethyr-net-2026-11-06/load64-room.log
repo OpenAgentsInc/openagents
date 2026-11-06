@@ -1,0 +1,18 @@
+room: --dev /tmp/oa-12845-load64: the API's stand-in (seat tickets checked and required)
+room: the local world (416 bytes) laid over the rooms
+room: shard 1
+room: listening on 127.0.0.1:9000
+room: vitals: tick p95 3.02 ms, input to ack p95 34 ms, measuring 2.56% of the tick
+room: net realm 1 room 0 ready 1 hz 30 steps 1 tick 115 seats 16 accepted -1 refused -1 frames -1
+room: net realm 1 room 1 ready 1 hz 30 steps 1 tick 115 seats 16 accepted -1 refused -1 frames -1
+room: net realm 1 room 2 ready 1 hz 30 steps 1 tick 115 seats 16 accepted -1 refused -1 frames -1
+room: net realm 1 room 3 ready 1 hz 30 steps 1 tick 115 seats 16 accepted -1 refused -1 frames -1
+room: vitals: tick p95 3.21 ms, input to ack p95 34 ms, measuring 2.40% of the tick
+room: net realm 1 room 0 ready 1 hz 30 steps 1 tick 415 seats 16 accepted -1 refused -1 frames -1
+room: net realm 1 room 1 ready 1 hz 30 steps 1 tick 415 seats 16 accepted -1 refused -1 frames -1
+room: net realm 1 room 2 ready 1 hz 30 steps 1 tick 415 seats 16 accepted -1 refused -1 frames -1
+room: net realm 1 room 3 ready 1 hz 30 steps 1 tick 415 seats 16 accepted -1 refused -1 frames -1
+room: 3601 ticks in 60.0 s, 0 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 3259 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 154 abilities 28 town 40 spells 189 people 7 rules 31 write 567 send 193, 0 events with no room in their tick
+room: vitals posts 6 (0 retried, 0 failed), lines applied 152, already applied 0, stale 0, refused 0, late answers 0, given up 0, evicted unsaved 0, 0 players unsaved now, fenced 0 (0 seats ended)
+room: travel asked 0, sent on 0, full 0, refused 0, arrived 0, called off 0, intents dropped in a cutover 0

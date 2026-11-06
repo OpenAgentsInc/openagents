@@ -75,8 +75,8 @@ built at 1,029,953 bytes. The sequential native builds were stopped before
 then supplied the qualified six C/header units through its existing retained-C
 mode. Native compilation and linking use the strict math flags, symbol
 localization order and host effects from `coax/web/room/build.sh`. The native
-start check reports zero fields off their declared defaults. Final artifact
-hashes and browser receipts are added below after qualification.
+start check reports zero fields off their declared defaults. Artifact hashes
+are in `oa-12845-final-artifacts.sha256`; retained-C keys are in `sources.txt`.
 
 The final presentation fix built Orbit at 292,500 bytes against 300,000.
 Its release build took 2m24s. Rebuilding the changed room unit and reusing
@@ -84,6 +84,61 @@ the other five qualified units took 6m9s; the worker remains 1,029,953 bytes.
 The native host was relinked from those current C units and again passed its
 start check. The old and current generated room headers are byte-identical;
 only the room unit's retained-C closure key changed.
+
+Native compilation uses the same qualified Linux Coax 0.51.2 output as the
+worker (`088782b2838c3119eeb5b352f9ef36144d08171da8b910e1a0a79d93e401ee4e`),
+with Apple's host C compiler and the room build's strict math flags. Local
+Coax checks use the verified Mac 0.51.2 binary
+`61bb0a8213647b7f2fdd1f169709000be3fd52c6eb55c5359684e42971c4f5a0`.
+
+## Everglade consumer recordings
+
+The local, 100 ms and 250 ms sessions include three background players and
+the siege raid. The 250 ms run retains all 32 probes, including both stable
+collapses, the level transition and hotbar transition. The separate 250 ms
+forest run observes fire on both pages and converges on burnt count 1 and
+settled digest 897021801. No offline clock stall or dropped beat was recorded.
+
+| Profile | Worker p95 at session end (µs) | Largest native window p95 (ms) |
+| --- | ---: | ---: |
+| Local | 735 | 1.11 |
+| 100 ms | 815 | 1.30 |
+| 250 ms | 770 | 0.97 |
+
+The lifecycle envelopes in the unchanged source are 8,000 µs native and
+11,000 µs worker. These local window measurements do not establish the
+separate optimization targets in #12952 or a deployed fleet envelope.
+
+A signed 64-player load across four 16-seat rooms also passes. Every socket
+stays open, the slowest receiver gets 30 state frames/s, ACK p95 is 34–35 ms,
+and state drops, backward ACKs, stale final ACKs and blind peers are zero.
+The raw load receipt retains ten gameplay refusal frames per room; it does
+not claim every spell was accepted.
+
+### Input and report audits
+
+An initial 100 ms attempt failed the position comparison. Its key edges
+landed on different input steps between pages. The added outgoing-input
+trace confirms that rendered frames can batch across scheduled edges.
+Exact stream equality is recorded as a diagnostic; the original position,
+correction and time-window limits stayed unchanged. The second recorded
+100 ms attempt passed every original comparison but failed an extra exact
+input-equality audit, before that audit became informational.
+
+The next 100 ms gameplay/raid run passed, but an added diagnostic row filled
+the bounded report and displaced the hotbar result. The required hotbar
+calculation still ran and its JSON receipt was saved. `raid100-replay.coax`
+independently checks that real receipt: LEVEL 1 hash 222308816, LEVEL 2 hash
+237252350, distinct from full-kit hash 864523051; kit ready and level 2.
+Its passing replay is retained. Diagnostics now stay outside the 32-row
+report, and overflow fails explicitly. The failing overflow regression and
+the full 143-check passing driver suite are retained. The final 250 ms run
+uses that corrected report and includes its hotbar result directly.
+
+Input traces include their sequence origins so an auditor can normalize the
+actual sent records and distinguish unequal input intervals from simulation
+differences. The 100 ms final trace and 250 ms trace are retained beside the
+raid receipts. Earlier unsuccessful attempts remain visible in this directory.
 
 ## Orbit browser receipts
 
@@ -97,6 +152,12 @@ The current native host also passes the quick-2v2 variant at 250 ms: both
 server bots move, all four cars share one world, and a bot retains the seat
 after its human disconnects. No page error was recorded. The saved PNG was
 visually inspected: arena, car, ball, score, timer and fuel are visible.
+
+The native host consumes the shared observation interface for its local log.
+The recorded Orbit line reports 60 Hz, two substeps, four seats, 765 consumed
+controls and 783 generated snapshots. Everglade's recorded lines report
+30 Hz and one substep, with unavailable counters explicitly −1. The signed
+room-stats format is unchanged.
 
 ### Existing offline bot-balance failure
 

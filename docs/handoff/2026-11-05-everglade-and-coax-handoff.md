@@ -92,12 +92,14 @@ Goldens and builds (#12918, #12922): `golden-check.sh --since 5c6db93d2f
 --ref origin/main` exits 0. Nine worlds still have no golden. They're reported
 as NEW REALM, not failures.
 
-Aethyr (#12856 closed; #12845 partly done):
+Aethyr (#12856 and #12845 closed):
 
 - the room side of the lifecycle contract;
-- tick budgets per host (native room 0.84 ms, browser worker 0.6 ms);
+- current lifecycle envelopes of 8 ms native and 11 ms worker; the separate
+  0.84/0.6 ms optimization targets are tracked in #12952;
 - the party contract in `aethyr/session/party.coax`;
-- the realm profiles in `aethyr/net/profile.coax`.
+- the delivered networking interfaces and consumer inventory in
+  `aethyr/net/README.md`, adopted by Everglade and authoritative Orbit v2.
 
 Compiler:
 
@@ -140,7 +142,7 @@ Books: #12610 stays open and paused. Approved books work is #12947 and the runna
 | #12961 | Completed by `eae6049b87`: Coax 0.51.2 measures peaks against each phase's limits. Retained live storage still counts; sequential, parallel and reused notes agree. Verification below. |
 | #12960 | Completed: a real shared door-rule edit reaches the native room and page in 899.5 ms median over ten runs on the merged host. Both replaced and full builds pass all three drift profiles with raids; failed checks appear in the session and block the guarded commit. Verification below. |
 | #12838, #12840–#12843, #12868, #12869 | The owner's Codex agent. Don't take them. Its room changes share files with ours, so use small commits and rebase often. |
-| #12845 | Next for this burn-down agent after #12940. It still needs commands, accepted results and replication behind shared interfaces, profiles for collision and per-recipient fields, Orbit League sharing more than the timing profile, and an adoption inventory. Book edits remain outside this run's scope. |
+| #12845 | Completed: caller-owned session, command, replication, recipient-field, persistence and diagnostic contracts; Everglade adoption and input-authoritative Orbit v2. Policy gates kill all 900 mutants. Local/100/250 ms gameplay and raids, forest convergence, two real Orbit pages and signed 64-player load are recorded in [the verification record](../verification/aethyr-net-2026-11-06/README.md). The 100 ms hotbar result is replayed from its saved receipt after fixing bounded-report overflow. The unchanged baseline's offline bot-balance failure is retained explicitly. No production deploy; books remain paused. |
 | #12910 | Nostr chapter 104 on signet. Blocked on the signet faucet's captcha, which is in NEEDS_OWNER.md. |
 | #12718, #12833 | Epics. Close each when its children close. |
 | #12610 | The book epic, paused by the owner. |

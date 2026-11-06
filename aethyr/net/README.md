@@ -25,6 +25,8 @@ Hz, substeps, trust, collision, durability, fairness, tick, seats, accepted
 controls, refusals, snapshot count, public mask, owner mask and party mask.
 Everglade's seat count includes its reconnect holds. Orbit counts admitted
 humans and the quick match's bot seats.
+The native host reads this interface for its local per-room diagnostic log.
+The published signed room-stats body keeps its existing format.
 
 ## Adoption points
 

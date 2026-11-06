@@ -1,0 +1,18 @@
+coax: note[E0400]: compile-time steps: 159366091 of 200000000 used (79%), above three quarters of the limit; more than 200000000 fails with E0400
+  top users of compile-time steps:
+    24133040 steps  aethyr/rigid.coax:61:1  in 'd3_dot' (1270160 times)
+    21062652 steps  aethyr/rigid.coax:50:1  in 'd3' (3510442 times)
+    20487078 steps  aethyr/rigid.coax:55:1  in 'd3_add' (1138171 times)
+    18211200 steps  aethyr/rigid.coax:57:1  in 'd3_scale' (1214080 times)
+    14929308 steps  aethyr/rigid.coax:62:1  in 'd3_cross' (414703 times)
+  fix: do less work in 'd3_dot', split the check, or give it a larger budget with a larger #steps N on the check
+coax: note[E0400]: compile-time traversal work: 130103484 of 134217728 used (96%), above three quarters of the limit; more than 134217728 fails with E0400
+  top users of compile-time traversal work:
+    35766276 visits  apps/openagents-web/everglade5e-room-raid.coax:170:1  in 'e5rd_up' (121654 times)
+    7370955 visits  apps/openagents-web/everglade-raid-tactics.coax:571:10  copying arguments into 'rt_blocked_in' (387945 calls)
+    6605160 visits  apps/openagents-web/everglade5e-room-raid.coax:801:1  in 'e5rd_step' (2600 times)
+    5526212 visits  apps/openagents-web/everglade5e-room-raid.coax:1129:1  #test 'room raid: squads at every gate and the bridge go round the walls, towers, buildings and trees, through the wall only by a gate or where the town's wall is broken, and home again (#12747)' itself
+    5275872 visits  apps/openagents-web/everglade5e-room-raid.coax:156:46  copying arguments into 'e5rd_is' (251232 calls)
+  fix: copy fewer whole arrays and structs in 'e5rd_up' (pass a view or an index, assign single fields); or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+coax: note[E0400]: compile-time value slots: 29985991 of 33554432 used (89%), above three quarters of the limit; more than 33554432 fails with E0400
+built /home/christopherdavid/openagents-12845-build/apps/openagents-web/build/everglade-room.wasm (1029953 bytes)

@@ -1,0 +1,19 @@
+// Independent golden observations from final100/raid-100-room.json. This checks the retained
+// hotbar receipt that an intermediate report omitted; it does not rerun the passing live raid.
+#import "Basic";
+#load "../../../coax/lib/json/json.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}
+  bytes:[16384]u8;n:=fs_read(args_at(a[..],0),bytes[..]);if n<1 {return 2;}
+  nodes:[1024]JvNode;j:[1]Jv;if !jv_parse(j[..],cast(string)bytes[0..<n],nodes[..]) {return 2;}
+  d:=j[0];bars:=jv_get(d,0,"bars");
+  one:=jv_int(d,jv_at(d,jv_at(d,bars,1),1),-1);
+  two:=jv_int(d,jv_at(d,jv_at(d,bars,2),1),-1);
+  ok:=jv_len(d,bars)==3 && one==222308816 && two==237252350;
+  ok=ok && one!=864523051 && two!=one;
+  ok=ok && jv_int(d,jv_get(d,0,"kit"),-1)==1 && jv_int(d,jv_get(d,0,"level"),-1)==2;
+  print("retained 100 ms hotbar: LEVEL 1 %, LEVEL 2 %, full kit 864523051: %\n",one,two,ifx ok then "holds" else "fails");
+  return ifx ok then 0 else 1;
+}

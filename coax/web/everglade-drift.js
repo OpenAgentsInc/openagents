@@ -29,6 +29,7 @@
   // either side of a step by its own frames, so a 3 s hold was 90 steps on one page and 91 on the
   // other: the two players stood 17 cm apart, and the two towns played out differently round them.
   D.origin = null; D.pend = [];
+  D.inputs = []; D.inputOverflow = false;
   D.correctionTrace = []; D.largeCorrections = []; D.lastReruns = -1;
   D.sstep = () => (D.origin == null || !D.x || !D.state ? -1 : D.probe(15) - D.origin);
   D.at = (step, press) => { D.pend.push([D.origin + step, press]); return 1; };
@@ -44,6 +45,19 @@
   const held = (b) => (b & 2 ? (b | 1) & ~2 : b);
   const instantiate = WebAssembly.instantiate;
   WebAssembly.instantiate = async function (m, imports) {
+    const env = imports?.env, send = env?.coaxial_socket_send;
+    if (typeof send === "function" && !send.__drInputs) {
+      const observe = function (id, ptr, len) {
+        if (mem && D.origin != null && len > 0 && len <= 2048) {
+          const raw = new TextDecoder().decode(new Uint8Array(mem.buffer, ptr, len));
+          if (raw.startsWith("I ")) {
+            if (D.inputs.length < 8192) D.inputs.push(raw); else D.inputOverflow = true;
+          }
+        }
+        return send(id, ptr, len);
+      };
+      observe.__drInputs = true; env.coaxial_socket_send = observe;
+    }
     const r = await instantiate.call(this, m, imports);
     const real = r instanceof WebAssembly.Instance ? r : r.instance;
     if (!real || !real.exports.coaxial_frame || !real.exports.coaxial_net_probe) return r;

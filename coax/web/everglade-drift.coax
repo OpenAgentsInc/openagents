@@ -50,6 +50,7 @@
 #import "Basic";
 #load "../lib/net/cdp.coax";
 #load "../../aethyr/session/lifecycle.coax";   // each host's room tick budget (#12856)
+#load "../../aethyr/net/record.coax";
 
 DR_JS_COLS :: 32;         // everglade-drift.js D.cols
 DR_COLS :: 35;            // those, then C_LX, C_LZ and C_ST (dr_local)
@@ -66,6 +67,53 @@ DR_STALL :: 15;           // percent more frames of the town's people walking in
 DR_MARKS :: 32;
 DR_TEXTS :: 256;
 DR_PROFILES :: 6;
+DR_INPUTS :: 8192;
+DrInputs :: struct {seen:[DR_INPUTS]bool;v:[DR_INPUTS*6]int;bad:bool;origin:int=-1;}
+#test "drift input comparison distinguishes unequal scripts, missing sequences and changed resends" {
+  a:[1]DrInputs;b:[1]DrInputs;
+  dr_input_note(a[..],100,"I 101 0 1000 0 0 0 0 3");
+  dr_input_note(b[..],200,"I 201 0 1000 0 0 0 0 8");
+  #assert dr_inputs_same(a[..],b[..],1);
+  dr_input_note(a[..],100,"I 102 1000 1000 0 0 0 0 3");
+  dr_input_note(b[..],200,"I 202 0 1000 0 0 0 0 8");
+  #assert !dr_inputs_same(a[..],b[..],2);
+  dr_input_note(a[..],100,"I 103 0 1000 0 0 0 0 3");
+  #assert !dr_inputs_same(a[..],b[..],3);
+  dr_input_note(a[..],100,"I 101 1 1000 0 0 0 0 3");#assert a[0].bad;
+  b[0]=DrInputs.{};dr_input_note(b[..],200,"I 201 0 1");#assert b[0].bad;
+  #assert !dr_inputs_same(a[..],b[..],0);
+}
+dr_input_note :: (v:[]DrInputs,origin:int,text:string) {
+  r:=net_record_read(text);
+  if !r.ok || r.head!='I' || r.n!=8 {v[0].bad=true;return;}
+  seq:=r.v[0]-origin;if seq<=0 {return;}
+  if seq>=DR_INPUTS {v[0].bad=true;return;}
+  for f:0..<6 {
+    if v[0].seen[seq] && v[0].v[seq*6+f]!=r.v[1+f] {v[0].bad=true;}
+    v[0].v[seq*6+f]=r.v[1+f];
+  }
+  v[0].seen[seq]=true;
+}
+dr_inputs_same :: (a:[]DrInputs,b:[]DrInputs,end:int)->bool {
+  if a[0].bad || b[0].bad || end<1 || end>=DR_INPUTS {return false;}
+  n:=0;
+  for seq:1..<end+1 {
+    if a[0].seen[seq]!=b[0].seen[seq] {return false;}
+    if !a[0].seen[seq] {continue;} // casts and other commands legitimately occupy sequence numbers
+    n+=1;for f:0..<6 {if a[0].v[seq*6+f]!=b[0].v[seq*6+f] {return false;}}
+  }
+  return n>0;
+}
+dr_input_pull :: (c:[]Cdp,v:[]DrInputs,path:string)->bool {
+  origin:=dr_int(c,"__dr.origin",-1);if origin<0 || dr_int(c,"__dr.inputOverflow ? 1:0",1)!=0 {return false;}
+  v[0].origin=origin;
+  buf:[1048576]u8;text:=dr_str(c,"__dr.inputs.join('\\n')",buf[..]);
+  header:[1]Buf;bput(header[..],"# origin ");bint(header[..],origin);bput(header[..],"\n");
+  saved:=fs_write(path,btext(header[..])) && fs_append(path,text);if !saved || text.count==0 {return false;}
+  at:=0;
+  while at<text.count {end:=at;while end<text.count && text[end]!='\n' {end+=1;}dr_input_note(v,origin,text[at..<end]);at=end+1;}
+  return !v[0].bad;
+}
 // the columns
 C_T :: 0; C_X :: 2; C_Y :: 3; C_Z :: 4; C_YAW :: 5; C_LIFT :: 6; C_RERUNS :: 7; C_FIX :: 8; C_SPRITES :: 9;
 C_RG :: 10; C_WW :: 11; C_WOS :: 12; C_SPELLS :: 13; C_BAR :: 14; C_COND :: 15; C_SCOND :: 16; C_OCOND :: 17;
@@ -533,8 +581,18 @@ dr_text_way :: (a: [] DrPage, b: [] DrPage, which: int, window: int, t0: int, t1
 
 DrResult :: struct { name: string; v: DrVerdict; }
 DR_PROBES :: 32;
-DrReport :: struct { r: [DR_PROBES] DrResult; n: int; }
-dr_add :: (rep: [] DrReport, name: string, v: DrVerdict) { if rep[0].n < DR_PROBES { rep[0].r[rep[0].n] = DrResult.{name = name, v = v}; rep[0].n += 1; } }
+DrReport :: struct { r: [DR_PROBES] DrResult; n: int; overflow:bool; }
+#test "a drift report cannot silently omit an overflowing required probe" {
+  r:[1]DrReport;
+  for i:0..<DR_PROBES {dr_add(r[..],"recorded",DrVerdict.{});}
+  #assert r[0].n==DR_PROBES && !r[0].overflow;
+  dr_add(r[..],"must not disappear",DrVerdict.{drifted=true});
+  #assert r[0].overflow && r[0].n==DR_PROBES;
+}
+dr_add :: (rep: [] DrReport, name: string, v: DrVerdict) {
+  if rep[0].n>=DR_PROBES {rep[0].overflow=true;return;}
+  rep[0].r[rep[0].n] = DrResult.{name = name, v = v}; rep[0].n += 1;
+}
 
 
 // Where you are in your own heading (C_LX, C_LZ, mm): what you moved since the step began, turned by
@@ -783,7 +841,8 @@ dr_compare :: (a: [] DrPage, b: [] DrPage, rtt: int, rep: [] DrReport, worker: b
 }
 
 dr_print :: (rep: [] DrReport, profile: string, t0: int) -> bool {
-  all := true;
+  all := !rep[0].overflow;
+  if rep[0].overflow {print("DRIFT % report overflow: a required probe could not be retained\n",profile);}
   for k: 0..<rep[0].n {
     r := rep[0].r[k];
     if !r.v.drifted { print("ok    % %\n", profile, r.name); continue; }
@@ -901,6 +960,19 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
         at: [1] int;
         gravity_ready := dr_script(DrPair.{a = ca[..], b = cb[..], shots = btext(sh[..]), ctl = run.ctl, room = code, worker = run.worker, native=run.native, at = at[..]}, run.dir);
         ok = dr_pull(ca[..], a, true) && dr_pull(cb[..], b, true);
+        ia:[1]DrInputs;ib:[1]DrInputs;ip:[1]Buf;
+        bput(ip[..],run.dir);bput(ip[..],"/inputs-");bput(ip[..],profile);bput(ip[..],"-offline.txt");
+        input_a:=dr_input_pull(ca[..],ia[..],btext(ip[..]));
+        ip[0].n=0;bput(ip[..],run.dir);bput(ip[..],"/inputs-");bput(ip[..],profile);bput(ip[..],"-room.txt");
+        input_b:=dr_input_pull(cb[..],ib[..],btext(ip[..]));
+        end_a:=-1;end_b:=-1;
+        for m:0..<a[0].marks_n {if dr_mark_name(a,m)=="end" {end_a=a[0].marks[m].step;}}
+        for m:0..<b[0].marks_n {if dr_mark_name(b,m)=="end" {end_b=b[0].marks[m].step;}}
+        same_inputs:=input_a && input_b && dr_inputs_same(ia[..],ib[..],ifx end_a<end_b then end_a else end_b);
+        print("  transmitted inputs: origins %/%, end steps %/%, identical %\n",ia[0].origin,ib[0].origin,end_a,end_b,same_inputs);
+        // Rendered frames can batch input steps across a scripted key edge. Retain exact streams
+        // as diagnostics; they do not replace or loosen any existing movement/correction bound.
+        ok=ok && input_a && input_b;
         clearance: [1] DrVerdict;
         clearance[0].drifted = !fs_exists(btext(ready_path[..])) || fs_exists(btext(unsafe_path[..]));
         clearance[0].step = "background players";
@@ -1282,7 +1354,8 @@ tool_main :: () -> int #export_c {
       whole := dr_game_bar(pb[..]);   // the session's room page: levels off, an observed whole bar
       if !dr_raid(run, profile, rtt, reps[np - 1..<np], pa[..], pb[..], whole) { print("DRIFT % raid: it didn't run\n", profile); all = false; }
       else {
-        sub: [1] DrReport; for k: rr0..<reps[np - 1].n { dr_add(sub[..], reps[np - 1].r[k].name, reps[np - 1].r[k].v); }
+        sub: [1] DrReport;sub[0].overflow=reps[np-1].overflow;
+        for k: rr0..<reps[np - 1].n { dr_add(sub[..], reps[np - 1].r[k].name, reps[np - 1].r[k].v); }
         held2 := dr_print(sub[..], profile, dr_mark_t(pb[..], "raid"));
         all = all && held2;
       }

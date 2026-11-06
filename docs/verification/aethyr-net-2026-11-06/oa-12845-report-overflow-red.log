@@ -1,0 +1,7 @@
+FAIL #test a drift report cannot silently omit an overflowing required probe (0 ms)
+coax/web/everglade-drift.coax:590:3: error[E0406]: assertion failed
+    #assert r[0].overflow && r[0].n==DR_PROBES;
+    ^
+  note: in #test a drift report cannot silently omit an overflowing required probe
+1 of 143 checks (--only 'overflowing required'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

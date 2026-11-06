@@ -1,0 +1,47 @@
+room: --dev /tmp/oa-12845-final250: the API's stand-in (seat tickets checked and required)
+room: the local world (416 bytes) laid over the rooms
+room: shard 1
+room: listening on 127.0.0.1:9000
+room: vitals: tick p95 0.53 ms, input to ack p95 14 ms, measuring 1.21% of the tick
+room: net realm 1 room 0 ready 1 hz 30 steps 1 tick 248 seats 4 accepted -1 refused -1 frames -1
+room: vitals: tick p95 0.48 ms, input to ack p95 26 ms, measuring 1.27% of the tick
+room: net realm 1 room 0 ready 1 hz 30 steps 1 tick 548 seats 4 accepted -1 refused -1 frames -1
+room: vitals: tick p95 0.45 ms, input to ack p95 28 ms, measuring 1.19% of the tick
+room: net realm 1 room 0 ready 1 hz 30 steps 1 tick 848 seats 4 accepted -1 refused -1 frames -1
+room: vitals: tick p95 0.50 ms, input to ack p95 24 ms, measuring 1.09% of the tick
+room: net realm 1 room 0 ready 1 hz 30 steps 1 tick 1148 seats 4 accepted -1 refused -1 frames -1
+room: vitals: tick p95 0.53 ms, input to ack p95 26 ms, measuring 1.05% of the tick
+room: net realm 1 room 0 ready 1 hz 30 steps 1 tick 1448 seats 4 accepted -1 refused -1 frames -1
+room: vitals: tick p95 0.51 ms, input to ack p95 26 ms, measuring 0.98% of the tick
+room: net realm 1 room 0 ready 1 hz 30 steps 1 tick 1748 seats 4 accepted -1 refused -1 frames -1
+room: 3601 ticks in 60.0 s, 4 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 1791 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 60 abilities 65 town 33 spells 11 people 6 rules 16 write 89 send 59, 0 events with no room in their tick
+room: vitals posts 3 (0 retried, 0 failed), lines applied 6, already applied 0, stale 0, refused 0, late answers 0, given up 0, evicted unsaved 0, 0 players unsaved now, fenced 0 (0 seats ended)
+room: travel asked 0, sent on 0, full 0, refused 0, arrived 0, called off 0, intents dropped in a cutover 0
+room: vitals: tick p95 0.63 ms, input to ack p95 30 ms, measuring 0.94% of the tick
+room: net realm 1 room 0 ready 1 hz 30 steps 1 tick 2049 seats 4 accepted -1 refused -1 frames -1
+room: vitals: tick p95 0.89 ms, input to ack p95 30 ms, measuring 0.75% of the tick
+room: net realm 1 room 0 ready 1 hz 30 steps 1 tick 2349 seats 4 accepted -1 refused -1 frames -1
+room: net realm 1 room 1 ready 1 hz 30 steps 1 tick 192 seats 4 accepted -1 refused -1 frames -1
+room: vitals: tick p95 0.97 ms, input to ack p95 28 ms, measuring 0.77% of the tick
+room: net realm 1 room 1 ready 1 hz 30 steps 1 tick 492 seats 4 accepted -1 refused -1 frames -1
+room: vitals: tick p95 0.48 ms, input to ack p95 24 ms, measuring 1.17% of the tick
+room: net realm 1 room 1 ready 1 hz 30 steps 1 tick 792 seats 4 accepted -1 refused -1 frames -1
+room: vitals: tick p95 0.49 ms, input to ack p95 26 ms, measuring 1.13% of the tick
+room: net realm 1 room 1 ready 1 hz 30 steps 1 tick 1093 seats 4 accepted -1 refused -1 frames -1
+room: 3600 ticks in 60.0 s, 4 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 2873 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 60 abilities 129 town 50 spells 23 people 8 rules 29 write 124 send 77, 0 events with no room in their tick
+room: vitals posts 6 (0 retried, 0 failed), lines applied 15, already applied 0, stale 0, refused 0, late answers 0, given up 0, evicted unsaved 0, 0 players unsaved now, fenced 0 (0 seats ended)
+room: travel asked 0, sent on 0, full 0, refused 0, arrived 0, called off 0, intents dropped in a cutover 0
+room: vitals: tick p95 0.76 ms, input to ack p95 28 ms, measuring 1.36% of the tick
+room: net realm 1 room 1 ready 1 hz 30 steps 1 tick 1393 seats 4 accepted -1 refused -1 frames -1
+room: vitals: tick p95 0.72 ms, input to ack p95 28 ms, measuring 1.26% of the tick
+room: net realm 1 room 1 ready 1 hz 30 steps 1 tick 1693 seats 4 accepted -1 refused -1 frames -1
+room: vitals: tick p95 0.75 ms, input to ack p95 28 ms, measuring 1.26% of the tick
+room: net realm 1 room 1 ready 1 hz 30 steps 1 tick 1993 seats 4 accepted -1 refused -1 frames -1
+room: vitals: tick p95 0.97 ms, input to ack p95 28 ms, measuring 1.13% of the tick
+room: net realm 1 room 1 ready 1 hz 30 steps 1 tick 2293 seats 4 accepted -1 refused -1 frames -1
+room: SIGTERM before a drain: told 0 pages restarting
+room: SIGTERM: saving 1 players' vitals before exit
+room: exit after 8 ms, 0 players' vitals with no receipt
+room: exit: 0 unacknowledged character checkpoints
