@@ -114,13 +114,20 @@ ep_str :: (c: [] Cdp, js: string, out: [] u8) -> string {
   n := jv_str(cdp_doc(c), v, out);
   return ifx n > 0 then cast(string) out[0..<n] else "";
 }
-// A key as the page hears it: a keydown or keyup on window (host.js listens there).
+// A key as the page hears it: a real key press through DevTools (Input.dispatchKeyEvent), as a player's
+// keyboard makes it, focus and the text it types included. A KeyboardEvent dispatched on window from
+// the page's own script no longer moves the player (the 2026-11-05 release: the trials, the jump and
+// Reverse Gravity all missed while a real key walked), so the smoke presses keys the way people do.
 ep_press :: (c: [] Cdp, down: bool, key: string, code: string, vk: int) -> bool {
-  q: [1] Buf;
-  bput(q[..], "dispatchEvent(new KeyboardEvent('"); bput(q[..], ifx down then "keydown" else "keyup");
-  bput(q[..], "', {key: '"); bput(q[..], key); bput(q[..], "', code: '"); bput(q[..], code); bput(q[..], "', keyCode: "); bint(q[..], vk);
-  bput(q[..], ", bubbles: true})); 1");
-  return ep_int(c, btext(q[..]), 0) == 1;
+  params: [1024] u8; o: [1] Jo;
+  jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], ifx down then "keyDown" else "keyUp");
+  jo_key(o[..], "key"); jo_str(o[..], key); jo_key(o[..], "code"); jo_str(o[..], code);
+  jo_key(o[..], "windowsVirtualKeyCode"); jo_int(o[..], vk); jo_key(o[..], "nativeVirtualKeyCode"); jo_int(o[..], vk);
+  if down && key.count == 1 { jo_key(o[..], "text"); jo_str(o[..], key); }
+  if down && key == "Enter" { jo_key(o[..], "text"); jo_str(o[..], "\r"); }
+  jo_end(o[..]);
+  return cdp_call(c, "Input.dispatchKeyEvent", jo_text(o[..]), CDP_CALL_MS) >= 0;
 }
 ep_w :: (c: [] Cdp, down: bool) -> bool { return ep_press(c, down, "w", "KeyW", 87); }
 // A mouse click at (x, y) CSS px, as the host hears one (coax/web/host.js: pointer events on the window).
