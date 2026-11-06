@@ -47,3 +47,7 @@ The corrected wrapper exits 0, writes an MP4 and the staged sidecar, and ffprobe
 Rebase preserves every camera/label source hash recorded in `qualification.json`: pre-rebase `a5543ba23e` maps to landed `b7c843788e`. Concurrent main adds a storage-buffer limit request only for pages exporting `coaxial_storage_limit_v1` (the Valley page). Villa, Garden and SRD do not export it; their request keeps the default limits. No tested Coax closure changed. A merged-host input rehearsal records the remaining browser bootstrap check separately from the already passing full gameplay/raid result.
 
 The [merged-host input rehearsal](merged-host-input.log) passes, and the [merged tools check](merged-tools-check.log) passes for all 1,837 tracked tool files. The full earlier local/100/250 rehearsal reports worker p95 tick costs of 600/765/1,210 µs, each below 11,000 µs.
+
+## Publication
+
+Published November 6, 2026, **08:13 Chicago**, from `a11100ccef8b7ba889811639ba46a01243771858`, as GitBook revision `0LjR8W49qQGlNu3mjCk4`. The publisher and a separate `--check-live --require-receipt` invocation agree on all **117 page identities** and that revision. [Publication log](publication.log), [live check](publication-live.log) and [source receipt](../../books/publications/aethyr.json) bind the submitted source and inventory. They do not independently verify live document-body parity. The source chapter remains partly implemented; #12610 remains open.

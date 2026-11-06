@@ -4,20 +4,20 @@
   "book": "aethyr",
   "space_id": "QxVdkZGgQYnLsXWZlkTh",
   "public_url": "https://openagents.gitbook.io/building-aethyr-world-engine",
-  "published_at": "2026-11-06T13:11:49Z",
+  "published_at": "2026-11-06T14:13:35Z",
   "source": {
-    "commit": "10ec4b7b02ce4c83347a042c8686d6eb6bb330a3",
+    "commit": "a11100ccef8b7ba889811639ba46a01243771858",
     "directory": "aethyr/book",
     "summary": {
       "path": "aethyr/book/SUMMARY.md",
-      "bytes": 9051,
-      "sha256": "b791c7ad1c9566cb764ee0c605db1145b646f1b7cf04b0b3d47cb5b1357b026a"
+      "bytes": 9057,
+      "sha256": "fb78e52565b6a9418a2145d450ce820b6df25f463291f9820f91c23ea7d73566"
     },
     "pages": [
       {
         "path": "aethyr/book/README.md",
-        "bytes": 43918,
-        "sha256": "d32b578e70dfb4a22a38d2e7980793473d4fd7bf420cff59a35ebd5c3cd7d0f6",
+        "bytes": 44078,
+        "sha256": "421c2b86b1fd7ef5ca3fd4760b089eba377220a9fdded2f92efd6ee7ce52ec3d",
         "file": "README.md",
         "title": "Introduction",
         "group": null
@@ -25,7 +25,7 @@
       {
         "path": "aethyr/book/PLAN.md",
         "bytes": 23097,
-        "sha256": "abb4438ddc76c6760530e73d2d79bc8f0574c64351497d87e978a5efa1f4e34d",
+        "sha256": "c6d590c7ba332202bd30df4935d4887263bc8e655ad6afc40eec4e173be540a4",
         "file": "PLAN.md",
         "title": "Plan and prerequisites",
         "group": null
@@ -648,8 +648,8 @@
       },
       {
         "path": "aethyr/book/ch078-cinematics-and-close-ups.md",
-        "bytes": 4925,
-        "sha256": "a39c43364ba56b8a260d38fb087d43ccd9f07b54f1c5664c1e3485c3fa1660e8",
+        "bytes": 13400,
+        "sha256": "30bc23e575cabfde867582e5d7c64d5f8016a1ba3603d0419b780895e2386932",
         "file": "ch078-cinematics-and-close-ups.md",
         "title": "78. Cinematics and close-ups",
         "group": "IX. A living world"
@@ -847,14 +847,14 @@
         "group": "Appendices"
       }
     ],
-    "sha256": "1df6fc891dee8e1f66ad39fed6132ad36cb52a5d5d27e566d80dc1508b2356ad"
+    "sha256": "37d2cb6b1d2fdec065385ce6bda79bf8eb9fee57a98149b6a0be2ab69f73440a"
   },
-  "change_request": "CwR9JJ91zxgGrKYIfeLP",
+  "change_request": "IAnrIreLsWRCW70Qsd88",
   "submitted_markdown": [
     {
       "path": "README.md",
-      "bytes": 44815,
-      "sha256": "0a891329791ead9a9fb6c42e5b156ea7bb714c97f2db1868eba33541abcedb9a",
+      "bytes": 44975,
+      "sha256": "0b61264c6c0a45175555afa28eecab54c221524c08ba11a6d878a1738a7071d3",
       "file": "README.md",
       "page_id": "qZZIPHRaO82WjkCCTiTY",
       "title": "Introduction"
@@ -862,7 +862,7 @@
     {
       "path": "PLAN.md",
       "bytes": 24092,
-      "sha256": "beba392efb47417d20318c981136ce1d8c575d65048a796263d4c4bd402c35c8",
+      "sha256": "0f1f935273853f0ff0e7df495751922ee7b38c695f7f785f2199fe4d25491fa7",
       "file": "PLAN.md",
       "page_id": "5v0GTV4F3xphmZC2GuRw",
       "title": "Plan and prerequisites"
@@ -870,7 +870,7 @@
     {
       "path": "ch001-a-frame-has-a-fixed-step.md",
       "bytes": 23907,
-      "sha256": "4055cd190671299617b5c6e6adf02faae1d37899365f45598dffe36fa0cbf384",
+      "sha256": "72d4909bdd1ae9041d52d9d43a633e22a5fd9969aa17c4babe55572fd3a69481",
       "file": "ch001-a-frame-has-a-fixed-step.md",
       "page_id": "hDkWkM4UmAl8bxavPveC",
       "title": "1. A frame has a fixed step"
@@ -878,7 +878,7 @@
     {
       "path": "ch002-spaces-and-units.md",
       "bytes": 18622,
-      "sha256": "0b05396811a9ec2811cf12cf34c77c2b2e7c0f12d14bf5fa363e07903965bcd1",
+      "sha256": "33776b1a4b5490e62807f5d884b97e1fe7cde3b4305f94e66c86beb7508c7cc7",
       "file": "ch002-spaces-and-units.md",
       "page_id": "voY4jW8HQZ4topSrY7fm",
       "title": "2. Spaces and units"
@@ -886,7 +886,7 @@
     {
       "path": "ch003-state-starts-from-its-defaults.md",
       "bytes": 10883,
-      "sha256": "270e70d1e09a341f8ba0beb1ab7a0f66254f317ec65833f04328219c2e39ea9d",
+      "sha256": "db83b946fedcca7a47d600c742abd1da7228e987206222dce9a5cc9f454a6d1d",
       "file": "ch003-state-starts-from-its-defaults.md",
       "page_id": "ZKElMU5oR2Fmx3iEJZW6",
       "title": "3. State starts from its defaults"
@@ -894,7 +894,7 @@
     {
       "path": "ch004-input-becomes-typed-actions.md",
       "bytes": 26150,
-      "sha256": "d08c508ccd4c2456fa9f91ec095a4f88ff78102a8175dd891ecaf06fb570a43b",
+      "sha256": "7b021190aa92cedbd27261ab912f3ba65829655e785af2822b3e389e231314df",
       "file": "ch004-input-becomes-typed-actions.md",
       "page_id": "dpvmsja8lEOjWzowHDGX",
       "title": "4. Input becomes typed actions"
@@ -902,7 +902,7 @@
     {
       "path": "ch005-replay-a-session-exactly.md",
       "bytes": 39563,
-      "sha256": "4a7b877470d478f09c8dbda931514c3d3bfdc536f33f2619d4e7924e7b55b333",
+      "sha256": "7cc87e7d10598d6b7bac28f46288fd7f5d141e28879450de95eb675350443d4e",
       "file": "ch005-replay-a-session-exactly.md",
       "page_id": "9suJlhioDVSkesrKkCvv",
       "title": "5. Replay a session exactly"
@@ -910,7 +910,7 @@
     {
       "path": "ch006-entities-are-born-and-die.md",
       "bytes": 22245,
-      "sha256": "f048bfb93b26ecdc24da88a0391f97fe426fd5cf4e3441015c7049d107f57e62",
+      "sha256": "7001603ae2a8021aeefa468fbd1216aaccb97ba6c5078124f0c1ac43ed2892c1",
       "file": "ch006-entities-are-born-and-die.md",
       "page_id": "IXtgl5XjLnu5v3T6zBPu",
       "title": "6. Entities are born and die"
@@ -918,7 +918,7 @@
     {
       "path": "ch007-ask-the-world-where-things-are.md",
       "bytes": 33039,
-      "sha256": "0e73f08c69bf168abd95421c30bafb29f5a45384b8614274f3978727cd67ed6e",
+      "sha256": "56fdf6299918d8c13a7ad4656ed1d9695ed3d8b82c5694ce92f4c33ed83de982",
       "file": "ch007-ask-the-world-where-things-are.md",
       "page_id": "LZWzlYcYjcRsvCDI5yeB",
       "title": "7. Ask the world where things are"
@@ -926,7 +926,7 @@
     {
       "path": "ch008-ground-and-collision.md",
       "bytes": 17512,
-      "sha256": "fd92a7fa7a839343aa5947e2678a317abc5db98b814419a9bc6c58b62cb1aad6",
+      "sha256": "a8ddb5aad2768135d96c7ee5e566315d7d405486387a4e801cdf802f894c468e",
       "file": "ch008-ground-and-collision.md",
       "page_id": "QvmQ85eiluM1JVXmMHcj",
       "title": "8. Ground and collision"
@@ -934,7 +934,7 @@
     {
       "path": "ch009-a-character-moves.md",
       "bytes": 22320,
-      "sha256": "68fbd83680e5b6e221cee27eabf64a2b088da368cadc13413cc246edb0e2a4eb",
+      "sha256": "e7efb30e0578b5c996f49e51b02c87e90818d11d088602cd80cba9a3de144181",
       "file": "ch009-a-character-moves.md",
       "page_id": "ZzoeWOJAVNyCQ3j8i6Y5",
       "title": "9. A character moves"
@@ -942,7 +942,7 @@
     {
       "path": "ch010-the-camera-follows.md",
       "bytes": 41931,
-      "sha256": "a583bd9ce3eec85125c512b4e4d983e11fec1629d81ef8ec3860f4592d030f5f",
+      "sha256": "4bd4adfa4fa5e964f8c5da35a1d25cf4981f3ed09baa8724ac0dceb00896398e",
       "file": "ch010-the-camera-follows.md",
       "page_id": "KCeBsKpTNhCOKaVVuJmt",
       "title": "10. The camera follows"
@@ -950,7 +950,7 @@
     {
       "path": "ch011-the-wgsl-renderer.md",
       "bytes": 44502,
-      "sha256": "cbe01b6b0e12131b747746214cc482fedf1bedddf8a4b19196df3d05b7b3e705",
+      "sha256": "ab50dee3cda7ab0b0ffe8c0271125842dd3e5fe233763cc3d20cb338e62c5f7c",
       "file": "ch011-the-wgsl-renderer.md",
       "page_id": "agUsIYKUnfJV0M2lROzh",
       "title": "11. The WGSL renderer"
@@ -958,7 +958,7 @@
     {
       "path": "ch012-materials.md",
       "bytes": 17857,
-      "sha256": "e854eb5b2938a7650675fb483a39fe569cc9e2e44353e9ece5f09bd3e6b83ce0",
+      "sha256": "cb24bb3cae5651e3bc8ac9c1d69041e98107171ceea2b7abff2fd804f1d0f8ed",
       "file": "ch012-materials.md",
       "page_id": "9fkWhY3YR8o5DI3e8VqA",
       "title": "12. Materials"
@@ -966,7 +966,7 @@
     {
       "path": "ch013-light-and-shadow.md",
       "bytes": 15361,
-      "sha256": "204bf8a1e78bd5cf51d35192fe502a9544043664465e6ff21e0620a2ce8bdcd1",
+      "sha256": "7a88bde0b83ca17172c50adbec786da53e63b1eed80368a80e7fc8aaab120845",
       "file": "ch013-light-and-shadow.md",
       "page_id": "0XDOecEj6QBjFsn1vJCU",
       "title": "13. Light and shadow"
@@ -974,7 +974,7 @@
     {
       "path": "ch014-figures-and-animation.md",
       "bytes": 13477,
-      "sha256": "6421e0ec7f1ba4b29efa3907733f0466eef480d12ff2c9721b29717baa06ad91",
+      "sha256": "8e07129a81331db3b4af275e1c9135b066ea705dcaff964734c258d4287a1845",
       "file": "ch014-figures-and-animation.md",
       "page_id": "geAcL8bet81Fg1YJ4VG9",
       "title": "14. Figures and animation"
@@ -982,7 +982,7 @@
     {
       "path": "ch015-ui-and-the-hud.md",
       "bytes": 22125,
-      "sha256": "2b4e691a2e3f5812e89fd0656d1c756c0df11c407659edaf202c0f3d179c6ade",
+      "sha256": "592acc75feda7b050bbacda546aa60206f0f072000a9003853c8c8c0f2d402ef",
       "file": "ch015-ui-and-the-hud.md",
       "page_id": "nsM4eb4Fevb051pnogaH",
       "title": "15. UI and the HUD"
@@ -990,7 +990,7 @@
     {
       "path": "ch016-budgets-that-refuse.md",
       "bytes": 22197,
-      "sha256": "2a2e5b54de4b647280d353fcaaa8bf6b1d245681d26c65f05b775e5ecd0724b8",
+      "sha256": "7ab9ae96dcfbc604c3cb5c7eccc117615a4c7ea8a0610621d22cf6cb7919f5a1",
       "file": "ch016-budgets-that-refuse.md",
       "page_id": "3yw1XEdxdycXVSt5w0kT",
       "title": "16. Budgets that refuse"
@@ -998,7 +998,7 @@
     {
       "path": "ch017-a-scene-owns-the-state.md",
       "bytes": 12693,
-      "sha256": "f057a3b1d7aa437a2a788012ba8470742ccd7976df9c75874a20e4d77f88adcc",
+      "sha256": "8361da0f7814c34945bc80a219776654b53e5d08527a9f7a37aa5e3fef9fd2cb",
       "file": "ch017-a-scene-owns-the-state.md",
       "page_id": "ls8L2tBSOmNLGjOX2Woe",
       "title": "17. A scene owns the state"
@@ -1006,7 +1006,7 @@
     {
       "path": "ch018-rigid-bodies-and-time-steps.md",
       "bytes": 12337,
-      "sha256": "2d075aeca6759c69c625fcb2bd0a7b11d0c2d934a031c8ae6c2b30ea0c0d8c58",
+      "sha256": "f3516eb8b334b98b469d3bc4d7e5c986b697c41e937b1ce2d0704b85acaa97fb",
       "file": "ch018-rigid-bodies-and-time-steps.md",
       "page_id": "2VXaHs3nIu33T2dBI4Hr",
       "title": "18. Rigid bodies and time steps"
@@ -1014,7 +1014,7 @@
     {
       "path": "ch019-joints-in-generalized-coordinates.md",
       "bytes": 5582,
-      "sha256": "efbb15da8b6447a0feb222778763f18b563073baa1417d4f666397786392ad29",
+      "sha256": "3e984395ceaee25d57e48451a496e2e0a3fe8b824a27e7d8a7e4dc7065df869f",
       "file": "ch019-joints-in-generalized-coordinates.md",
       "page_id": "JNjzghSyPTi6ZGmfx5ix",
       "title": "19. Joints in generalized coordinates"
@@ -1022,7 +1022,7 @@
     {
       "path": "ch020-find-the-pairs-that-might-touch.md",
       "bytes": 11655,
-      "sha256": "a3118d282f281741526077ef2c13820daeeb749a76d630796a273f48bffed172",
+      "sha256": "ecd202613ce40e83165ed58aa2f246fcab7e9604ea94e0e1063ba9e169402c78",
       "file": "ch020-find-the-pairs-that-might-touch.md",
       "page_id": "A4m6Ohuw5YwDwkstyXCZ",
       "title": "20. Find the pairs that might touch"
@@ -1030,7 +1030,7 @@
     {
       "path": "ch021-find-where-they-touch.md",
       "bytes": 15305,
-      "sha256": "7135dd6c928822c9ece2725de88dd603841fcc8dcd983233a0b7b4b70febd923",
+      "sha256": "8ec85f9e643ae1004d65f24067f70dcaab55de10ef80bc3e5be85305c35bad06",
       "file": "ch021-find-where-they-touch.md",
       "page_id": "ezpFVvQytYRccKIFFcV3",
       "title": "21. Find where they touch"
@@ -1038,7 +1038,7 @@
     {
       "path": "ch022-contact-as-an-optimization.md",
       "bytes": 5616,
-      "sha256": "0bb2decebfc9b70ec22b743dbfd65ae71e17f7e91bfe7fb008ed74d3cb55aa53",
+      "sha256": "438e027f6f0dcf3b487cad4d3103e813769bec589bb618f06d170644c9995458",
       "file": "ch022-contact-as-an-optimization.md",
       "page_id": "i3kSDvCeSEOQmvVIKJQy",
       "title": "22. Contact as an optimization"
@@ -1046,7 +1046,7 @@
     {
       "path": "ch023-particles-and-their-neighbors.md",
       "bytes": 9523,
-      "sha256": "27e306c36b6d7c9a56e73093809786e97b3e00e716c3387aa7a6173cf1f3684d",
+      "sha256": "ffbee6227eebe5c5c4ddcee2031b53e35571f93b053b09ba161ea554900ff44c",
       "file": "ch023-particles-and-their-neighbors.md",
       "page_id": "2ZjzAoaqEkhjQu8bABQk",
       "title": "23. Particles and their neighbors"
@@ -1054,7 +1054,7 @@
     {
       "path": "ch024-liquids-from-particles.md",
       "bytes": 11621,
-      "sha256": "5e612d8d9d8a8a59217c4a0d45b69d39db44513f6ee2538fca30f38c2c99b433",
+      "sha256": "966bcc7e1332d1457f97a8273641c69955883a50d5ff538dbe24cd26282f395c",
       "file": "ch024-liquids-from-particles.md",
       "page_id": "RLnBaGLnavht9jGiQL5B",
       "title": "24. Liquids from particles"
@@ -1062,7 +1062,7 @@
     {
       "path": "ch025-cloth-and-rope-from-constraints.md",
       "bytes": 12526,
-      "sha256": "fd480c103bbbfe23bf0caa32c7f5387704902d7f352af94d393890b572084cb7",
+      "sha256": "8b71228fad72b3ea625209ac00c8f6107590f6fb37c8e219cc0050fd19d8bb33",
       "file": "ch025-cloth-and-rope-from-constraints.md",
       "page_id": "X7b1y3ylXQQsdVvAu5OW",
       "title": "25. Cloth and rope from constraints"
@@ -1070,7 +1070,7 @@
     {
       "path": "ch026-sand-snow-and-clay-on-a-grid.md",
       "bytes": 10816,
-      "sha256": "88a08a568b7eb6d41c6d34e088da0eebd3b5509603b0e49d0be67139d1e4c083",
+      "sha256": "90e97afdb28d825da2e6fefd1f15e90604a26ce5d02e3862c9477c2451247fbc",
       "file": "ch026-sand-snow-and-clay-on-a-grid.md",
       "page_id": "sqoKILI33CajCBOCSNL8",
       "title": "26. Sand, snow and clay on a grid"
@@ -1086,7 +1086,7 @@
     {
       "path": "ch028-smoke-on-a-grid.md",
       "bytes": 9392,
-      "sha256": "81e061cd663384f84c0a065499e6c08de1c67ea872a5493003ff07689c74cde8",
+      "sha256": "3502edd5374e9ffd37226a791249d174ab9acec11671bb19de96e7fdc6494c7d",
       "file": "ch028-smoke-on-a-grid.md",
       "page_id": "Y0z1wmg6ZqUz0WDrXtMa",
       "title": "28. Smoke on a grid"
@@ -1110,7 +1110,7 @@
     {
       "path": "ch031-many-worlds-in-one-step.md",
       "bytes": 3887,
-      "sha256": "6c398698fbf7d2a1d1df524127f482b0a337187b9e9ce54319e36c4fd23c719e",
+      "sha256": "b87cbcdea97492af8da5d03bf547f5b0ef5d3becbe027ef30526b3fe5238ced6",
       "file": "ch031-many-worlds-in-one-step.md",
       "page_id": "Ga4fEb5FGFch673AYI51",
       "title": "31. Many worlds in one step"
@@ -1118,7 +1118,7 @@
     {
       "path": "ch032-differentiate-a-simulation.md",
       "bytes": 4406,
-      "sha256": "f918b5e74f0e696192496535c7835a9c49e089ac4feddc55a5a7ee7e96e46acf",
+      "sha256": "6a26dce7fa91dedfa80ec7b793daa71ba45e9d5417eceeeb39c9915dee1c04c7",
       "file": "ch032-differentiate-a-simulation.md",
       "page_id": "A1pHyMKZO6cqHZU1PBx4",
       "title": "32. Differentiate a simulation"
@@ -1150,7 +1150,7 @@
     {
       "path": "ch036-record-and-replay-a-world.md",
       "bytes": 3067,
-      "sha256": "99c8204a1efda7a2b7ac0b3228e983297c68964b3983668e455883b545f80b00",
+      "sha256": "de39d3fdd5f1ad93d5b2e966514b45a06ba784ccc966a3b8dfd3d46e8f5a6213",
       "file": "ch036-record-and-replay-a-world.md",
       "page_id": "PzuHyMf013OlWODL9bSG",
       "title": "36. Record and replay a world"
@@ -1158,7 +1158,7 @@
     {
       "path": "ch037-measure-the-engine-honestly.md",
       "bytes": 3766,
-      "sha256": "a23fa68d0de1030cdfe2736e05e6671233290b9bee76d1243dda678fff37d88d",
+      "sha256": "4bbb14f9234dac0f24356d0bdbbb14d30d1fac92df466264e272694c760c3ac9",
       "file": "ch037-measure-the-engine-honestly.md",
       "page_id": "mCJjxNGRKq3w4nwXLb0l",
       "title": "37. Measure the engine honestly"
@@ -1166,7 +1166,7 @@
     {
       "path": "ch038-stream-a-large-world.md",
       "bytes": 5034,
-      "sha256": "96159aad6713c055e7b4793908d09217bd5b2e3447ca98b338efea5166bb0dbd",
+      "sha256": "863750a61f284702cd527626e119ab1396b69b899c7a6ccac42be8abe0036bef",
       "file": "ch038-stream-a-large-world.md",
       "page_id": "buRzY4A2gxNM6xogfeNW",
       "title": "38. Stream a large world"
@@ -1174,7 +1174,7 @@
     {
       "path": "ch039-ephemerides-time-scales-and-frames.md",
       "bytes": 13370,
-      "sha256": "6bb9b8befcdb931e1bc3b899bf497f9e6bb7b2f746a89fc721beddde738b73e7",
+      "sha256": "4ba00f6c1986218c27d3f9641ffca6141823f5a691ac5be7c0fef4129cd9de6f",
       "file": "ch039-ephemerides-time-scales-and-frames.md",
       "page_id": "2XDQ2wVJEAMUGb1EL5cu",
       "title": "39. Ephemerides, time scales and frames"
@@ -1182,7 +1182,7 @@
     {
       "path": "ch040-propagate-with-a-stated-error.md",
       "bytes": 4362,
-      "sha256": "83d98dcecb8aba83fd5b655d957a809632959f854ae230129b253ebfcefbc5ce",
+      "sha256": "4579c9c9a7c9b8af5faab02d0552677e1ac5015fb9e10b21938131a772978382",
       "file": "ch040-propagate-with-a-stated-error.md",
       "page_id": "hs3pkJy58LtpD8QKYXGv",
       "title": "40. Propagate with a stated error"
@@ -1190,7 +1190,7 @@
     {
       "path": "ch041-burns-consume-mass.md",
       "bytes": 4731,
-      "sha256": "f08d10d2385aa0e3220aa87e4ac4bd1c03bd3e1c4be77df20ee68a2634b204ba",
+      "sha256": "b62eccf1320de81725e5788fb3870d2fec88a73976f837f4dfcc0f6abd9febca",
       "file": "ch041-burns-consume-mass.md",
       "page_id": "3PbX7DWXdfggVeRcAURH",
       "title": "41. Burns consume mass"
@@ -1198,7 +1198,7 @@
     {
       "path": "ch042-reach-a-moving-target.md",
       "bytes": 4721,
-      "sha256": "708542b03d3414465fabb5247770944cffd9620ed16123cad2e0665e8301fbee",
+      "sha256": "9550867ca9bdb0a1592415952e6ed92ca0cb068d8f24fe53e68e5f3539e8a790",
       "file": "ch042-reach-a-moving-target.md",
       "page_id": "NIZFtwT94ZoKbkXa9Gco",
       "title": "42. Reach a moving target"
@@ -1206,7 +1206,7 @@
     {
       "path": "ch043-heat-has-to-go-somewhere.md",
       "bytes": 4451,
-      "sha256": "e6e6a3fa8f4ca3fb949f3d9b948abb254ebe9b0df4108e4be73f5595f04cea87",
+      "sha256": "d241cb433365e5ea10910efe816553fb323838ec24b0405a1c2e9dd96e710a3d",
       "file": "ch043-heat-has-to-go-somewhere.md",
       "page_id": "i0mItq3gQbYVaAKaA1Ee",
       "title": "43. Heat has to go somewhere"
@@ -1214,7 +1214,7 @@
     {
       "path": "ch044-inside-a-turning-accelerating-ship.md",
       "bytes": 4583,
-      "sha256": "fbf016dc5f55c08a188c93e8145323ec0f74ef9af5c5c58bb67715d1d9e4e763",
+      "sha256": "652b61a9d2e0d3bb76d3e2f64470df457e89ce9a61fdb5e21d1a5145794a8363",
       "file": "ch044-inside-a-turning-accelerating-ship.md",
       "page_id": "wabcW9TtDfx6904LlkGf",
       "title": "44. Inside a turning, accelerating ship"
@@ -1222,7 +1222,7 @@
     {
       "path": "ch045-sensors-that-see-the-past.md",
       "bytes": 4266,
-      "sha256": "ae66a3987f54cc488aa49291e37f544996886eb7200617646888b1e108b105ee",
+      "sha256": "d7731b650af198542fc5ec093a13c0505fb6dd42e1f0b29881e45fcb8e05fb51",
       "file": "ch045-sensors-that-see-the-past.md",
       "page_id": "bWoEAlLwOVq9akZTDEwj",
       "title": "45. Sensors that see the past"
@@ -1230,7 +1230,7 @@
     {
       "path": "ch046-time-warp-that-stops-for-every-event.md",
       "bytes": 4141,
-      "sha256": "204451b10da9b95258ae4f41d7a9c417db916713ee9a8a420198df404b54a2b9",
+      "sha256": "0a768db1549fee3ffff0e808fb88fc8e06f764646f07e3cc4f6979da59a8d9b2",
       "file": "ch046-time-warp-that-stops-for-every-event.md",
       "page_id": "N0tZ8RNQmjskL0CL56aF",
       "title": "46. Time warp that stops for every event"
@@ -1238,7 +1238,7 @@
     {
       "path": "ch047-hits-through-layers.md",
       "bytes": 4023,
-      "sha256": "19e8cf50a83f392d813dd597908be7e0539d377b91019cabe1272dbef74a7a16",
+      "sha256": "17e1e578107bed38bef0515116e5fc4b12178eda7bc8bd9fda566935471306ca",
       "file": "ch047-hits-through-layers.md",
       "page_id": "GkiUqEZXc4DKAHKMEY9a",
       "title": "47. Hits through layers"
@@ -1246,7 +1246,7 @@
     {
       "path": "ch048-one-world-at-three-fidelities.md",
       "bytes": 5184,
-      "sha256": "ff60a0b53e912d42c0dcd13d3436bba5bde40b948b3aaff90913d41ca2488cc2",
+      "sha256": "2cf1bc20b10c536eeabb7dce178f5704ed08b97d643c60a8b540c461711390ca",
       "file": "ch048-one-world-at-three-fidelities.md",
       "page_id": "qlUvfwICaq5eu4CmN45K",
       "title": "48. One world at three fidelities"
@@ -1254,7 +1254,7 @@
     {
       "path": "ch049-rooms-and-presence.md",
       "bytes": 2670,
-      "sha256": "e0cc297e79bcc134377814fcd677c30380280a7847080096ac5ede9d45851afd",
+      "sha256": "8d7fb29d225743e5c3ba547e23f15634a6a844e9b9353ca95a7f63522532eeae",
       "file": "ch049-rooms-and-presence.md",
       "page_id": "ug5jl5G0Ybzljt8OP6ko",
       "title": "49. Rooms and presence"
@@ -1262,7 +1262,7 @@
     {
       "path": "ch050-shared-state-over-the-network.md",
       "bytes": 2811,
-      "sha256": "dcf1fdb1ee2cde0c0d7cb1384ab4cbcda9ddd484e0fba3099f9da247763aa30f",
+      "sha256": "d8c4450a914fb4a7a99631f111f3d691f0ef32f26f84aadb8831c3346607b09e",
       "file": "ch050-shared-state-over-the-network.md",
       "page_id": "jUjjQb3veg4d9dIS77i3",
       "title": "50. Lockstep for small deterministic games"
@@ -1270,7 +1270,7 @@
     {
       "path": "ch051-a-realm-is-a-document.md",
       "bytes": 16715,
-      "sha256": "ce9898909550d203e5d0cefd122e56071f6aeb0138a79f145efc3205b405c24f",
+      "sha256": "4b706aa59f56e0cb53e1c6cbba2f11207da4395a451406b8272f166bd48a3472",
       "file": "ch051-a-realm-is-a-document.md",
       "page_id": "rGOPKrxgS1gLlEKlp36S",
       "title": "51. A realm is a document"
@@ -1278,7 +1278,7 @@
     {
       "path": "ch052-edit-a-realm-in-place.md",
       "bytes": 27442,
-      "sha256": "ff5c82913b2213ee5e5f0675de2557c4de4d2c95b769b2c9232eb07dcc44d167",
+      "sha256": "508a7b2087a9d7de4e9aac989179a9b461cd5cc1c5d9934011b14e6969ada3e0",
       "file": "ch052-edit-a-realm-in-place.md",
       "page_id": "UzfrDyxmMuo1WayJC92Z",
       "title": "52. Edit a realm in place"
@@ -1286,7 +1286,7 @@
     {
       "path": "ch053-bring-in-assets.md",
       "bytes": 24559,
-      "sha256": "9e25c084170127fa1b0aa23effec9eba0fc088bbdfa3aa02b8f162c84d48da36",
+      "sha256": "60b120a4c66fa3541fb4f5219121c3c4b87ae2be7153a276c4f4c12b6a5f4092",
       "file": "ch053-bring-in-assets.md",
       "page_id": "uNRVTrz76PD4kg5DK19M",
       "title": "53. Bring in assets"
@@ -1294,7 +1294,7 @@
     {
       "path": "ch054-publish-a-realm.md",
       "bytes": 25998,
-      "sha256": "89f7870ad2017a4619b219400da85f1367a3abae33645cd230b87db6e7df79e1",
+      "sha256": "9d6d1a0fa4fd78bfd429a9a3e4a357024aa4601d3d240f7dd5cc8e9cd587b954",
       "file": "ch054-publish-a-realm.md",
       "page_id": "WJNoL9N5j6QYivzQClxg",
       "title": "54. Publish a realm"
@@ -1302,7 +1302,7 @@
     {
       "path": "ch055-fork-a-realm.md",
       "bytes": 14247,
-      "sha256": "d043853b82891f6fb89a24f4c1b5cfac35797eaf65b5cdbaf19b0cd27b73c354",
+      "sha256": "a22ce6a14f61b3bac28627fb0de39f79b57aebfe607e1adff817c924ea232357",
       "file": "ch055-fork-a-realm.md",
       "page_id": "0lpmtN9IT1QXHYNo5eev",
       "title": "55. Fork a realm"
@@ -1310,7 +1310,7 @@
     {
       "path": "ch056-the-grid.md",
       "bytes": 17339,
-      "sha256": "3d2b5d477a110a57250962412f65c705add3803c6e751e980786e92d751a115e",
+      "sha256": "cad523db580941602642cfb0b6ab3c23ed407799cc796055482a8addb0c9e3bb",
       "file": "ch056-the-grid.md",
       "page_id": "nGd2S7coUdW1pugJISvS",
       "title": "56. The Grid"
@@ -1318,7 +1318,7 @@
     {
       "path": "ch057-made-realms.md",
       "bytes": 5231,
-      "sha256": "8faa6b48bc28fd599ee1aa2c0b6a0115a705f3fba12eb56f6ce859d01518c7e3",
+      "sha256": "51ddc5b41e22c111bbc4a1244e72ce93aad2d6d6f01ff33ce85ae621c0dd6ee8",
       "file": "ch057-made-realms.md",
       "page_id": "R0zHeAGGgiAilHUVYgu1",
       "title": "57. Made realms"
@@ -1326,7 +1326,7 @@
     {
       "path": "ch058-everglade.md",
       "bytes": 2683,
-      "sha256": "682cda1cbf18d9bba26e38d0e15fb0e61fff6f9120a90fc91147d831486cf624",
+      "sha256": "fca38534c5ee8b0a47c285e0ca22b5723690c241f3846de4851700b106931b57",
       "file": "ch058-everglade.md",
       "page_id": "Sr6f2uIq0gtByto4SM1W",
       "title": "58. Everglade"
@@ -1334,7 +1334,7 @@
     {
       "path": "ch059-dead-gears.md",
       "bytes": 5171,
-      "sha256": "0901b03d86b921fd680ccd11d68fe838d00b0c5bcd8212dd3b8bdcf93cfeca2c",
+      "sha256": "04b2ae072f52282e6107e42cdf9f1ee5566f7e02cc61a6628d2eb805fd672f19",
       "file": "ch059-dead-gears.md",
       "page_id": "xtRtG6us06OW59PbEiWP",
       "title": "59. Dead Gears"
@@ -1342,7 +1342,7 @@
     {
       "path": "ch060-ice-cream-man.md",
       "bytes": 5557,
-      "sha256": "15dd7ce6c2f5e194ba4f4e6940684f94115458f8026d7eac6778cadb22ce1acf",
+      "sha256": "2513ce44beab2f1fac3fac10c33d43a8e098d9efd39b0e4903bd40500b68b388",
       "file": "ch060-ice-cream-man.md",
       "page_id": "v0k46acHbE5droA4SoNb",
       "title": "60. Ice Cream Man"
@@ -1350,7 +1350,7 @@
     {
       "path": "ch061-hecates-cemetery.md",
       "bytes": 5162,
-      "sha256": "dbd586a5da638f189a49bd29052778c92317854e6638501ecc5eebafd1512398",
+      "sha256": "7d84074dd379476a09b54476649cf0609f77884e007c6dcbb65913aff0e7d3d7",
       "file": "ch061-hecates-cemetery.md",
       "page_id": "tRWy5vNBs6MPdVk4T5AA",
       "title": "61. Hecate's Cemetery"
@@ -1358,7 +1358,7 @@
     {
       "path": "ch062-fairy-forest.md",
       "bytes": 5347,
-      "sha256": "de759b117d2745b0ae65c364b7d5fe8e1929c07bd2f6ffa1cd2cfde6e5d914a3",
+      "sha256": "7b19fd0e9289d27bcc78defd78682841fe8825d515b57a7ba67869f629509d4e",
       "file": "ch062-fairy-forest.md",
       "page_id": "VwZ1z9p8VJbmaWK7EGSP",
       "title": "62. Fairy Forest"
@@ -1366,7 +1366,7 @@
     {
       "path": "ch063-the-space-games.md",
       "bytes": 6293,
-      "sha256": "7e09782b68d4c10b5240f67427144fb519137d3d25166123c1146e8aa66c173a",
+      "sha256": "aafe13da9d5eb16ae2ee79ff03475e186782a90babc8585ac30488389f9a779e",
       "file": "ch063-the-space-games.md",
       "page_id": "4sl9RCAUjfP6opekHQpe",
       "title": "63. The space games"
@@ -1374,7 +1374,7 @@
     {
       "path": "ch064-every-realm-runs-on-aethyr.md",
       "bytes": 19860,
-      "sha256": "0882c19938f6e20d4baa862bbec1ff3c2c76f885358bdbee02d8ca71de90ce97",
+      "sha256": "31fcb42efbaddcca927e79c89f8643ab1ee1c8bef2d6e52ba920eab25361caf9",
       "file": "ch064-every-realm-runs-on-aethyr.md",
       "page_id": "qQIPkyeUWkvpM2Hu0cHQ",
       "title": "64. Every realm runs on Aethyr"
@@ -1382,7 +1382,7 @@
     {
       "path": "ch065-sound-from-numbers.md",
       "bytes": 11970,
-      "sha256": "6dad8207d2717b12966667e4a73ebdc0edec0011266c8eb7e711c6df5fa19e4e",
+      "sha256": "b0e4b3fa60efb580bd9997f5e5df892c4b8be24ad62b338ad06b3c2b6eb1c4ad",
       "file": "ch065-sound-from-numbers.md",
       "page_id": "QlJMStEFCGelspcE5Kq2",
       "title": "65. Sound from numbers: oscillators and envelopes"
@@ -1390,7 +1390,7 @@
     {
       "path": "ch066-a-sequencer-on-the-beat-grid.md",
       "bytes": 8891,
-      "sha256": "329e3a0d525702f370affbb1fc8d06c3b575f089b73bd0149b47aa6f73374142",
+      "sha256": "b91fb05cd8f594c8715822c13971fe761235cd455450918e1817db3b2031c348",
       "file": "ch066-a-sequencer-on-the-beat-grid.md",
       "page_id": "7Sy1MWTbZIfvaB5Sk7i9",
       "title": "66. A sequencer on the beat grid"
@@ -1398,7 +1398,7 @@
     {
       "path": "ch067-scores-mixing-and-a-soundtrack.md",
       "bytes": 15935,
-      "sha256": "e4b50f61e491304d609afa7cbad3eb73117228e19f15c1794c1315785e45c5d5",
+      "sha256": "e692d9e05ce34f681072927e9027fb16a50c4971d29b7795e74e2d1aa29559dd",
       "file": "ch067-scores-mixing-and-a-soundtrack.md",
       "page_id": "M6O8xc53f5UkEpfhPNuO",
       "title": "67. Scores, mixing and a soundtrack"
@@ -1406,7 +1406,7 @@
     {
       "path": "ch068-sound-in-the-world.md",
       "bytes": 13053,
-      "sha256": "6d675292e5b375f2292c8b2550d6984608b099a7f7e86926924a4060b7663286",
+      "sha256": "616b78949f00622e479f7a5895631d2ddd6e4e6cc697657354a0a6ac7c176cbb",
       "file": "ch068-sound-in-the-world.md",
       "page_id": "TyCUkYcqtwMKBRYsTqNh",
       "title": "68. Sound in the world: playback, space and reaction"
@@ -1414,7 +1414,7 @@
     {
       "path": "ch069-voices-in-a-realm.md",
       "bytes": 13472,
-      "sha256": "d18bcdb7d2bab683d39501b2123e8b06aae39406a80d877d1aee6acc5653916e",
+      "sha256": "258aee9efd512383bb938475b93a97b6252c0e0b59ad380af8e5b0d4aaef939e",
       "file": "ch069-voices-in-a-realm.md",
       "page_id": "SCIE4t3WoloMxgsjJCDe",
       "title": "69. Voices in a realm"
@@ -1422,7 +1422,7 @@
     {
       "path": "ch070-rivers-ponds-and-the-sea.md",
       "bytes": 7185,
-      "sha256": "330db5898911219209f600892fffef48a01d89e2c1d85e8cd12ceb64b582cf24",
+      "sha256": "8d420654cdde744d820c91648a18511cf51fa452421768d49bf9f716a9e67aab",
       "file": "ch070-rivers-ponds-and-the-sea.md",
       "page_id": "NbFHwc3J68ZQ02aVCxrh",
       "title": "70. Rivers, ponds and the sea"
@@ -1430,7 +1430,7 @@
     {
       "path": "ch071-sky-weather-and-the-time-of-day.md",
       "bytes": 6788,
-      "sha256": "1c2ccc0e9e8994c03b79e830088cf108591c0991a6dee1e6750cfecb3e3ee861",
+      "sha256": "8f1dd5594bbf9f0d0c12b59b2331e47850ea8d41714b0f0e68c32390c26815dc",
       "file": "ch071-sky-weather-and-the-time-of-day.md",
       "page_id": "LJjLisH5pUPViej2h6Sk",
       "title": "71. Sky, weather and the time of day"
@@ -1438,7 +1438,7 @@
     {
       "path": "ch072-effects-made-of-particles.md",
       "bytes": 8112,
-      "sha256": "359be05fce3792e5dc4695c75d37e5b4f1dfc2e7d5eeab10acadb397bbf63230",
+      "sha256": "addc43373996a38b0f80199f1364f36b5a7b43e88ae39c28e526aa433f5892cc",
       "file": "ch072-effects-made-of-particles.md",
       "page_id": "gszNZWaXoigQxBlgTI9T",
       "title": "72. Effects made of particles"
@@ -1446,7 +1446,7 @@
     {
       "path": "ch073-things-that-break.md",
       "bytes": 6158,
-      "sha256": "84bae40be0da6b19e8e52697b49e1de52a2e7a82852679b92658f79d50568228",
+      "sha256": "7706eb78d68b77a73854eec2fc2cf4989439df5c1d3dc644707fc137ab27832d",
       "file": "ch073-things-that-break.md",
       "page_id": "CSdp0cxyNBGaRbu9SKzx",
       "title": "73. Things that break"
@@ -1454,7 +1454,7 @@
     {
       "path": "ch074-wheels-on-the-ground.md",
       "bytes": 5531,
-      "sha256": "98715ce69f4e4be612d67baa3422d80627729976911352bc9865170b7e1d40c5",
+      "sha256": "40bbddc91d1121eb966d79e49574c0b9c54c4c18123679a9d758fbdeffc46d5a",
       "file": "ch074-wheels-on-the-ground.md",
       "page_id": "XdTDy6WOvrYcEtC1K3vF",
       "title": "74. Wheels on the ground"
@@ -1462,7 +1462,7 @@
     {
       "path": "ch075-creatures-that-follow-and-watch.md",
       "bytes": 26301,
-      "sha256": "8f995a5262f95eab2cfac30f6e303e5e5f4a3b8b10b5a8f3191a26076d707215",
+      "sha256": "2546355e92f63034b4f802d9ba91b96ebcf539539f84dea6442eab5820ad7536",
       "file": "ch075-creatures-that-follow-and-watch.md",
       "page_id": "Fj95uD5v9akItixpbmpf",
       "title": "75. Creatures that follow and watch"
@@ -1470,7 +1470,7 @@
     {
       "path": "ch076-find-a-way-through.md",
       "bytes": 22127,
-      "sha256": "831e42f2bd6a354aab057fa3dd24a6b4fc2788e9026e5617c5ec0208e59c41e9",
+      "sha256": "adf16a0bcd3667d3e7dddced5bc00764cfb620cc88456d4c69fd2933a9c510a4",
       "file": "ch076-find-a-way-through.md",
       "page_id": "lkGlWkKmkY5QD9j5zTMo",
       "title": "76. Find a way through"
@@ -1478,15 +1478,15 @@
     {
       "path": "ch077-people-who-talk-back.md",
       "bytes": 19068,
-      "sha256": "3fa114b5fe1ffaccf0e5feec79822170a5caa7ab1811c0be17c05f6b24e86004",
+      "sha256": "bebe2e1cd810fea56565e476bf95df39765758b0cf92260362d12c0a25615a30",
       "file": "ch077-people-who-talk-back.md",
       "page_id": "ouIXvu4la4CxO4OIQROD",
       "title": "77. People who talk back"
     },
     {
       "path": "ch078-cinematics-and-close-ups.md",
-      "bytes": 5895,
-      "sha256": "6ed43f198112735af797292876fed4e014bf3d8ff815ba12f65cfdf914de4f44",
+      "bytes": 15020,
+      "sha256": "c407613e0845e1030be09a87116075db9afd0f4a4c890a4aae5d2248048bf22f",
       "file": "ch078-cinematics-and-close-ups.md",
       "page_id": "91r8u1g5i8VdirgvCGop",
       "title": "78. Cinematics and close-ups"
@@ -1494,7 +1494,7 @@
     {
       "path": "ch079-a-piece-from-a-sentence.md",
       "bytes": 6444,
-      "sha256": "1ee56b5a171dd1b2eb097933d3d86ec3b3ad926d942b2bddac0689160d1b4a63",
+      "sha256": "82606c4ba13b143b31aacfbc15c4b83750df8823b22140eecaeedecc907569a3",
       "file": "ch079-a-piece-from-a-sentence.md",
       "page_id": "AU63xDuoppKcSLDqxbJy",
       "title": "79. A piece from a sentence"
@@ -1502,7 +1502,7 @@
     {
       "path": "ch080-terrain-and-scatter-from-a-seed.md",
       "bytes": 23540,
-      "sha256": "3d7c5ec8b16654aae5359a5f092a2bd66d0837b12184e80b8328fc96335af485",
+      "sha256": "e56066037cb4aa4fad41a9c8629a136f063a72847da1049fcb62eb0df4a39e41",
       "file": "ch080-terrain-and-scatter-from-a-seed.md",
       "page_id": "Ph22r4WRpi36SdE0E8dG",
       "title": "80. Terrain and scatter from a seed"
@@ -1510,7 +1510,7 @@
     {
       "path": "ch081-save-and-come-back.md",
       "bytes": 19451,
-      "sha256": "960be8238334665d939005db0e43aa46264ffc5f0d4b43f9317418d0e01aa9d2",
+      "sha256": "af23ff9ce4da6e02ec365e5cd2369f07aa387ad4103015984ecd7b309d6b81e4",
       "file": "ch081-save-and-come-back.md",
       "page_id": "b8by6byd3uXxIuoY2ZCp",
       "title": "81. Save and come back"
@@ -1518,7 +1518,7 @@
     {
       "path": "ch082-change-code-while-it-runs.md",
       "bytes": 5336,
-      "sha256": "6c940c66b80a3e31d4bff0937a8a75f543bab9b6a384a2b45c0cdfd8eae27659",
+      "sha256": "4282b1d5e9e64fdd4b981e135422b112bbb4250e21d967e65dadf3c4add6802c",
       "file": "ch082-change-code-while-it-runs.md",
       "page_id": "9CHK5B4vpIMuOjMXSX0Q",
       "title": "82. Change code while it runs"
@@ -1526,7 +1526,7 @@
     {
       "path": "ch083-inspect-and-profile-a-running-realm.md",
       "bytes": 23876,
-      "sha256": "a14268fec8b143895d772c967a9749866151440283400d68c4df665c7016a5f6",
+      "sha256": "79b7288d0aa32285a2da39c56152403e89bfa69d829531fcafc3460669d21b71",
       "file": "ch083-inspect-and-profile-a-running-realm.md",
       "page_id": "rxop8AXYx3IElrLAbcFE",
       "title": "83. Inspect and profile a running realm"
@@ -1534,7 +1534,7 @@
     {
       "path": "ch084-one-realm-on-every-host.md",
       "bytes": 2937,
-      "sha256": "ee808ca28a4622836753bd4d5ce8e8af925283e7ecc6ccb99ed1a482ac97232e",
+      "sha256": "570f110ec6264e963708c64ed7abf26125b6b987ae92043096b69b6e3f6c176c",
       "file": "ch084-one-realm-on-every-host.md",
       "page_id": "irrEoHebrwidNijovoay",
       "title": "84. One realm on every host"
@@ -1542,7 +1542,7 @@
     {
       "path": "ch085-everyone-can-play.md",
       "bytes": 2869,
-      "sha256": "0ad0ebbf9a6ddba2a076f47dcca4434d7c0958639f2cf3174397cfd68632a59c",
+      "sha256": "5aaa2c07fd8fb3d7abaa662302fd78d76500e6b3f703c0b790c98d75842b641b",
       "file": "ch085-everyone-can-play.md",
       "page_id": "0tboFGXdzRoqiCEDUfRb",
       "title": "85. Everyone can play"
@@ -1550,7 +1550,7 @@
     {
       "path": "ch086-one-server-owns-the-scene.md",
       "bytes": 6158,
-      "sha256": "b26dba122a5f07c5edac5835d54591eae1054beebaab861e8006e3b610c308c2",
+      "sha256": "e2c8bd2475aebdc0852d17bb1fc78e2c215839949f494cd6df66b46e4c8e9bc6",
       "file": "ch086-one-server-owns-the-scene.md",
       "page_id": "hu40ZrJcKwgHObbvzYlk",
       "title": "86. One server owns the scene"
@@ -1558,7 +1558,7 @@
     {
       "path": "ch087-server-and-client-share-one-step.md",
       "bytes": 4741,
-      "sha256": "e214b0077899a737eeee094cdbb4dd822b4baa11f1119de658a195c1a9fc2ae0",
+      "sha256": "54cb8babfe2ddd874cf23134b0f78fca897e13af57e3986314025ab0bd55227e",
       "file": "ch087-server-and-client-share-one-step.md",
       "page_id": "w4GzmvXigrbsuQztJj4k",
       "title": "87. Server and client share one step and one world"
@@ -1566,7 +1566,7 @@
     {
       "path": "ch088-a-seat-joins-with-a-signed-ticket.md",
       "bytes": 4388,
-      "sha256": "18a4ad6aad83a2ede52a26d65208b7b8ef3ffe05adba695692607c8a03111743",
+      "sha256": "f3d298412db9c737126810f60fd2da83ac6a7a7a11003e40458ada08ca63adaf",
       "file": "ch088-a-seat-joins-with-a-signed-ticket.md",
       "page_id": "vACPH8jRBsWpHWsibxnP",
       "title": "88. A seat joins with a signed ticket"
@@ -1590,7 +1590,7 @@
     {
       "path": "ch091-one-record-for-every-replicated-entity.md",
       "bytes": 4735,
-      "sha256": "60bf786de359985fe2cb8a643ef5e1ce645e0bca32d2031c1c0662ec6ac48c54",
+      "sha256": "83b7cd2e76e90589bc6ebb8ccbc95b2e54296ae38d8461bf7983660fb18fdb53",
       "file": "ch091-one-record-for-every-replicated-entity.md",
       "page_id": "w7j7z64eKbIGkV4khKAt",
       "title": "91. One record for every replicated entity"
@@ -1598,7 +1598,7 @@
     {
       "path": "ch092-priority-under-a-budget.md",
       "bytes": 3918,
-      "sha256": "dfbcb39a0cef0b7bc1151c2de9fb9ccd4de65922f6b73370e6a431f2eb5bb2d3",
+      "sha256": "f89cf6697d2509b143ec4a37da99b42446fe47dea46a022a42f324502fbc0727",
       "file": "ch092-priority-under-a-budget.md",
       "page_id": "L2oB7p89H6zKkiD6eXFH",
       "title": "92. Priority under a budget"
@@ -1614,7 +1614,7 @@
     {
       "path": "ch094-effects-are-state-events-are-cues.md",
       "bytes": 4268,
-      "sha256": "99eebbaa7b7b6314daf71daed601dc7edb114ce4f52fb3aae026b09417a507f3",
+      "sha256": "9e5e268fb3b187179af456d3745a1478b568d2825b06a7839570fa37acdbc09a",
       "file": "ch094-effects-are-state-events-are-cues.md",
       "page_id": "UCmqJmTgIA8CstSqwc4u",
       "title": "94. Effects are state, events are cues"
@@ -1622,7 +1622,7 @@
     {
       "path": "ch095-offline-is-a-local-server.md",
       "bytes": 5087,
-      "sha256": "8dd3285d9e055afbd8d2fd6be2c1430eb2225ea04c421f69023b832b13e53ddf",
+      "sha256": "4db3f009ac479ce7f09d80592e005af3bd77efd442d4097b3d7bfc03468e37f0",
       "file": "ch095-offline-is-a-local-server.md",
       "page_id": "Jdqu401TcAP7aVpOzrg4",
       "title": "95. Offline is a local server"
@@ -1630,7 +1630,7 @@
     {
       "path": "ch096-casts-and-combat-under-latency.md",
       "bytes": 7170,
-      "sha256": "c015963c742335ca6bb596b88d58793807a032e5e47e71e8006327ba65400576",
+      "sha256": "1afb6522901625e6caaf1bcb1476082cec75358ed08cef2aa6847d2198c017ba",
       "file": "ch096-casts-and-combat-under-latency.md",
       "page_id": "kECE4obktNX67o60flQt",
       "title": "96. Casts and combat under latency"
@@ -1638,7 +1638,7 @@
     {
       "path": "ch097-interest-without-leaks.md",
       "bytes": 3552,
-      "sha256": "6df35fdc03ca5615fb6a2ede5e464ae6b508025a8e1f391efaa79cda0c712351",
+      "sha256": "68473b865cb19ed648410303285c44ed4a9eb852dc972c85e437061a684ecb12",
       "file": "ch097-interest-without-leaks.md",
       "page_id": "ViIYMRd5VCnS9MdLB1ll",
       "title": "97. Interest without leaks"
@@ -1662,7 +1662,7 @@
     {
       "path": "ch100-prove-the-room-plays-like-the-game.md",
       "bytes": 6177,
-      "sha256": "58d73a06e88aa26bbe5d77a0c67a8aca9e9b099fb997a7d7b952fcd89796f980",
+      "sha256": "258543c05132fb8c8b6515130c129c7fe1d4cba3543b718c9be478eb0c32e3be",
       "file": "ch100-prove-the-room-plays-like-the-game.md",
       "page_id": "bz55zNuy36Xq8Zkgy84d",
       "title": "100. Prove the room plays like the game"
@@ -1678,15 +1678,15 @@
     {
       "path": "appendix-mmo-gap-analysis.md",
       "bytes": 14347,
-      "sha256": "b522125d720cd945c62eb5cd1df41df0ec8e0e6ecf9b65bc272e139fbceeff0f",
+      "sha256": "0e1d83eb0e79756ff67623fb186d56ddc6d8319d09487ed5975372d16e64cd5d",
       "file": "appendix-mmo-gap-analysis.md",
       "page_id": "7H4WSEg7iGALHCYMUnPJ",
       "title": "A. Everglade rooms against an MMO engine"
     }
   ],
-  "submitted_markdown_sha256": "0dd70eea94d0bc0ecacdc892542a249d6e0c1354549eabc8da84036d9d52b260",
+  "submitted_markdown_sha256": "ec47d48f93149c93b37e63c1782a6da5105b0671c113497554f713c8fb8192fa",
   "verified_live": {
-    "revision": "XlnRpuoOdtlIuXEWFXEk",
+    "revision": "0LjR8W49qQGlNu3mjCk4",
     "inventory": [
       {
         "id": "qZZIPHRaO82WjkCCTiTY",
