@@ -1,0 +1,4 @@
+// expect: E0359
+A :: struct @id {value:int;}
+f :: (a:[] const A) {a[0].value=2;}
+main :: () {}

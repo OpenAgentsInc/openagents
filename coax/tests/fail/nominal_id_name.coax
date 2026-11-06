@@ -1,0 +1,3 @@
+// expect: E0960
+A :: struct @id {raw:int;}
+main :: () {}

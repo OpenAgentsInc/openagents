@@ -1,0 +1,5 @@
+// expect: E0367
+A :: struct @id {value:int;}
+B :: struct @id {value:int;}
+f :: (id:A) {}
+main :: () {f(B.{value=1});}

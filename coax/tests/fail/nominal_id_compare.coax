@@ -1,0 +1,4 @@
+// expect: E0961
+A :: struct @id {value:int;}
+B :: struct @id {value:int;}
+main :: () {a:=A.{value=1};b:=B.{value=1};_:=a==b;}

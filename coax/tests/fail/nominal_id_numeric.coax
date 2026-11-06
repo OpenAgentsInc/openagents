@@ -1,0 +1,4 @@
+// expect: E0806
+A :: struct @id {value:int;}
+f :: (a:$T:numeric)->$T{return a;}
+main :: () {_:=f(A.{value=1});}

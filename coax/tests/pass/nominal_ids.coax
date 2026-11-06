@@ -1,0 +1,44 @@
+#import "Basic";
+SeatId :: struct @id { value: int; }
+EntityId :: struct @id { value: int; }
+ItemId :: struct @id { value: u64; }
+Revision :: struct @id(ordered) { value: u8 #counter; }
+Box :: struct($K: equatable) { key: $K; payload: int; }
+same :: (a: $K: equatable, b: $K) -> bool { return a == b; }
+first :: (a: $K: ordered, b: $K) -> $K { return ifx a < b then a else b; }
+seat :: (id: SeatId) -> int { return id.value; }
+key_hash :: (id: ItemId) -> u64 { return mul_wrap(id.value, cast(u64) 1099511628211); }
+lookup :: (entries: [] const Box(ItemId), key: ItemId) -> int {
+  for entry: entries { if entry.key == key { return entry.payload; } }
+  return -1;
+}
+next :: (r: Revision) -> Revision? {
+  n := add_checked(r.value, 1);
+  switch n { case none { return null; } case some(v) { return Revision.{value = v}; } }
+}
+make :: (calls: [] int, raw: int) -> SeatId { calls[0] += 1; return SeatId.{value = raw}; }
+exercise :: () -> int {
+  #assert size_of(SeatId) == size_of(int) && size_of(ItemId) == size_of(u64);
+  a := SeatId.{value = 7}; b := SeatId.{value = 8};
+  #assert seat(a) == 7 && a == a && a != b && same(a, a) && !same(a, b);
+  #assert EntityId.{value = a.value}.value == 7;
+  calls: [1] int;
+  #assert make(calls[..], 9) == make(calls[..], 9) && calls[0] == 2;
+  items: [2] Box(ItemId);
+  items[0] = Box(ItemId).{key = ItemId.{value = 41}, payload = 19};
+  items[1] = Box(ItemId).{key = ItemId.{value = 42}, payload = 23};
+  #assert lookup(items[..], ItemId.{value = 42}) == 23;
+  #assert lookup(items[..], ItemId.{value = 43}) == -1;
+  #assert key_hash(ItemId.{value = 41}) == 45079976756651;
+  r := Revision.{value = 254};
+  #assert first(r, Revision.{value = 1}).value == 1;
+  #assert r < Revision.{value = 255} && r <= r && r >= r && Revision.{value = 255} > r;
+  n := next(r);
+  switch n { case none { #assert false; } case some(v) { #assert v.value == 255 && next(v) == null; } }
+  #assert add_sat(r.value, 10) == 255;
+  #assert type_info(SeatId).name == "SeatId";
+  return 0;
+}
+#test "nominal IDs retain identity through calls, generic keys, views and checked arithmetic" { #assert exercise() == 0; }
+FOLDED :: #run exercise();
+main :: () { #assert exercise() == 0 && FOLDED == 0; print("nominal IDs: ok\n"); }

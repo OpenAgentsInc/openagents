@@ -1,0 +1,3 @@
+// expect: E0367
+A :: struct @id {value:int;}
+main :: () {a:A=1;}
