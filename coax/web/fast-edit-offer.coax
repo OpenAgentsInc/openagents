@@ -1,0 +1,10 @@
+// Shared publication decision; adapters project physical identity and lifecycle
+// facts and call this at a quiescent host boundary.
+#authority;
+#forall "only a complete matching new safe offer publishes" length:63..<66, same:0..<2, revision:0..<3, active:0..<3, safe:0..<2 {
+  expected := length==64 && same==1 && revision>active && safe==1;
+  #assert fe_publish_offer(length,same==1,revision,active,safe==1)==expected;
+}
+fe_publish_offer :: (identity_length: int, same: bool, revision: int, active: int, safe: bool) -> bool #export_c {
+  return identity_length == 64 && same && revision > active && safe;
+}

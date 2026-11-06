@@ -1,0 +1,186 @@
+// Restricted development replacement. The host supplies source bytes and
+// compiler identities; these decisions admit a closed scalar expression only.
+#load "../lib/compiler/lexer.coax";
+#load "fast-edit-offer.coax";
+#authority;
+
+FeSpan :: struct { ok: bool; begin: int; body: int; end: int; }
+
+#test "replacement finds the actual declaration, not a comment or string" {
+  s := "// e5r_sq :: (m:f32)->int {return 99;}\nS :: \"e5r_sq {\";\ne5r_sq :: (m: f32) -> int { return cast(int) floor(m); }\n";
+  p := fe_span(s, "e5r_sq");
+  #assert p.ok && s[p.begin..<p.body] == "e5r_sq :: (m: f32) -> int ";
+  #assert s[p.body..<p.end] == "{ return cast(int) floor(m); }";
+  #assert !fe_span(s, "missing").ok;
+}
+#test "replacement refuses duplicate or changed interfaces and incomplete bodies" {
+  good := "e5r_sq :: (m:f32)->int {return cast(int)m;}";
+  #assert fe_span(good, "e5r_sq").ok;
+  #assert !fe_span("e5r_sq :: (m:f64)->int {return 1;}", "e5r_sq").ok;
+  #assert !fe_span("e5r_sq :: (m:f32)->f32 {return m;}", "e5r_sq").ok;
+  #assert !fe_span("e5r_sq :: (m:f32)->int {return 1;", "e5r_sq").ok;
+  #assert !fe_span("e5r_sq :: (m:f32)->int #foreign;", "e5r_sq").ok;
+  #assert !fe_span("e5r_sq :: (m:f32)->int {return 1;} e5r_sq :: (m:f32)->int {return 2;}", "e5r_sq").ok;
+  #assert !fe_span("e5r_sq :: (m:f32)->int {return 1;} other :: () {", "e5r_sq").ok;
+  #assert !fe_span("} e5r_sq :: (m:f32)->int {return 1;}", "e5r_sq").ok;
+  #assert !fe_span("e5r_sq :: (m:f32)->int {return 1;} `", "e5r_sq").ok;
+  #assert fe_span("other :: () {x:=e5r_sq(1);} e5r_sq :: (m:f32)->int {return 1;}", "e5r_sq").ok;
+  #assert fe_span("alias :: e5r_sq; e5r_sq :: (m:f32)->int {return 1;}", "e5r_sq").ok;
+}
+#test "only the selected body may change" {
+  a := "X :: 1; e5r_sq :: (m:f32)->int {return 1;} main :: () {}";
+  b := "X :: 1; e5r_sq :: (m:f32)->int {return 2 + cast(int)m;} main :: () {}";
+  #assert fe_same_context(a, b, "e5r_sq");
+  #assert !fe_same_context(a, "X :: 2; e5r_sq :: (m:f32)->int {return 2;} main :: () {}", "e5r_sq");
+  #assert !fe_same_context(a, "X :: 1; e5r_sq :: (m:f32)->int {return 2;} main :: () {x:=1;}", "e5r_sq");
+  #assert !fe_same_context(a, "e5r_sq :: (m:f32)->int {return 2;}", "e5r_sq");
+  #assert !fe_same_context("", b, "e5r_sq");
+  #assert !fe_same_context(a, "", "e5r_sq");
+  #assert !fe_same_context("", "", "e5r_sq");
+}
+#test "closed expressions permit numbers and named literal constants" {
+  constants := [2]string.["E5R_X0", "E5R_SQ"];
+  #assert fe_expression("{ return cast(int) floor((m - f32(E5R_X0)) / f32(E5R_SQ)); }", constants[..]);
+  #assert fe_expression("{ return ifx m > 0 then cast(int) m + 1 else -1; }", constants[..]);
+  #assert !fe_expression("{ print(m); return 1; }", constants[..]);
+  #assert !fe_expression("{ return clock(); }", constants[..]);
+  #assert !fe_expression("{ return other(m); }", constants[..]);
+  #assert !fe_expression("{ return a[0]; }", constants[..]);
+  #assert !fe_expression("{ return #run clock(); }", constants[..]);
+  #assert !fe_expression("{ return 1; return 2; }", constants[..]);
+  #assert !fe_expression("{ return 1; } #load \"x\";", constants[..]);
+  #assert !fe_expression("{ return 1;", constants[..]);
+  #assert fe_expression("{ return 1.5; }", constants[..]);
+  #assert fe_expression("{ return m; }", constants[..]);
+  #assert !fe_expression("{ return; }", constants[..]);
+  #assert !fe_expression("return 1; }", constants[..]);
+  #assert !fe_expression("{ return `; }", constants[..]);
+  #assert !fe_expression("{ return 1, 2; }", constants[..]);
+  #assert !fe_expression("{ return 1?; }", constants[..]);
+  for op:[19]string.["+","-","*","/","%","&","|","^","<<",">>","==","!=","<","<=",">",">=","&&","||","!"] { #assert fe_operator(op); }
+  #assert !fe_operator("?") && !fe_operator("=");
+}
+#test "commit receipts bind the complete candidate and require every check" {
+  #assert fe_commit_ok("a", "a", true, true);
+  #assert !fe_commit_ok("a", "b", true, true);
+  #assert !fe_commit_ok("", "", true, true);
+  #assert !fe_commit_ok("a", "a", false, true);
+  #assert !fe_commit_ok("a", "a", true, false);
+}
+#test "publication requires the same sealed identity and a new safe revision" {
+  id := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  #assert fe_publish_ok(id, id, 1, 0, true);
+  #assert !fe_publish_ok(id, id, 1, 1, true);
+  #assert !fe_publish_ok(id, id, 0, 1, true);
+  #assert !fe_publish_ok(id, id, 2, 1, false);
+  #assert !fe_publish_ok(id, "different", 2, 1, true);
+  #assert !fe_publish_ok("", "", 2, 1, true);
+}
+#test "replacement constants are original literal declarations" {
+  s := "// X :: 9;\nX :: -110.0; Y :: 1.524; Z :: f32(2);";
+  x := fe_constant(s, "X"); y := fe_constant(s, "Y");
+  #assert x.ok && s[x.begin..<x.end] == "X :: -110.0;";
+  #assert y.ok && s[y.begin..<y.end] == "Y :: 1.524;";
+  #assert !fe_constant(s, "Z").ok && !fe_constant(s, "missing").ok;
+  #assert !fe_constant("X :: 1; X :: 2;", "X").ok;
+  #assert !fe_constant("X :: 1 + 2;", "X").ok;
+  #assert !fe_constant("X :: --1;", "X").ok;
+  #assert fe_constant("X :: +1;", "X").ok;
+  #assert fe_constant("X :: 1; other :: () { X :: 2; }", "X").ok;
+  #assert !fe_constant("X :: 1; other :: () {", "X").ok;
+  #assert !fe_constant("} X :: 1;", "X").ok;
+  #assert !fe_constant("X :: 1; `", "X").ok;
+  #assert fe_constant("other :: () { X :: 2; } X :: 1;", "X").ok;
+  #assert fe_constant("alias :: X; X :: 1;", "X").ok;
+}
+
+fe_span :: (text: string, name: string) -> FeSpan {
+  state := [1]LX_State.[LX_begin(text.count)]; decoded: [4096]u8; message: [256]u8;
+  depth := 0; item := true; progress := -1; collecting := false; found: FeSpan;
+  expected := [9]string.["::", "(", "m", ":", "f32", ")", "->", "int", "{"];
+  while true {
+    r := LX_next(text, state[..], decoded[..], message[..]);
+    if r.diagnostic.code != "" { return FeSpan.{}; }
+    t := r.token; if t.kind == LX_Kind.k_eof { break; }
+    word := text[t.loc.offset..<state[0].pos];
+    if progress >= 0 {
+      if word != expected[progress] { return FeSpan.{}; }
+      progress += 1;
+      if progress == expected.count { found.body = t.loc.offset; progress = -1; collecting = true; }
+    } else if item && word == name {
+      if found.ok { return FeSpan.{}; }
+      found.begin = t.loc.offset; progress = 0;
+    }
+    item = false;
+    if t.kind == LX_Kind.k_lbrace { depth += 1; }
+    if t.kind == LX_Kind.k_rbrace {
+      depth -= 1; if depth < 0 { return FeSpan.{}; }
+      if depth == 0 { item = true; if collecting { found.end = state[0].pos; found.ok = true; collecting = false; } }
+    }
+    if depth == 0 && t.kind == LX_Kind.k_semicolon { item = true; }
+  }
+  if depth != 0 { return FeSpan.{}; }
+  return found;
+}
+fe_same_context :: (baseline: string, candidate: string, name: string) -> bool {
+  a := fe_span(baseline, name); b := fe_span(candidate, name);
+  // A valid baseline has a nonempty prefix; it cannot match an absent body.
+  return a.ok && baseline[0..<a.body] == candidate[0..<b.body] && baseline[a.end..<baseline.count] == candidate[b.end..<candidate.count];
+}
+fe_known :: (name: string, constants: [] const string) -> bool {
+  for s: [9]string.["m", "cast", "int", "f32", "floor", "ifx", "then", "else", "return"] { if name == s { return true; } }
+  for s: constants { if name == s { return true; } }
+  return false;
+}
+fe_expression :: (body: string, constants: [] const string) -> bool {
+  state := [1]LX_State.[LX_begin(body.count)]; decoded: [64]u8; message: [256]u8;
+  phase := 0; any := false;
+  while true {
+    r := LX_next(body, state[..], decoded[..], message[..]);
+    if r.diagnostic.code != "" { return false; }
+    t := r.token; word := body[t.loc.offset..<state[0].pos];
+    if t.kind == LX_Kind.k_eof { break; }
+    if phase == 0 { if t.kind != LX_Kind.k_lbrace { return false; } phase = 1; }
+    else if phase == 1 { if word != "return" { return false; } phase = 2; }
+    else if phase == 2 {
+      if t.kind == LX_Kind.k_semicolon { phase = 3; }
+      else {
+        if t.kind == LX_Kind.k_ident || t.kind == LX_Kind.k_keyword { if !fe_known(word, constants) || word == "return" { return false; } }
+        else if t.kind != LX_Kind.k_int_lit && t.kind != LX_Kind.k_float_lit && t.kind != LX_Kind.k_lparen && t.kind != LX_Kind.k_rparen && !fe_operator(word) { return false; }
+        any = true;
+      }
+    } else if phase == 3 { if t.kind != LX_Kind.k_rbrace { return false; } phase = 4; }
+    else { return false; }
+  }
+  return phase == 4 && any;
+}
+fe_operator :: (word: string) -> bool {
+  for op:[19]string.["+","-","*","/","%","&","|","^","<<",">>","==","!=","<","<=",">",">=","&&","||","!"] {if word==op {return true;}}return false;
+}
+fe_constant :: (text: string, name: string) -> FeSpan {
+  state := [1]LX_State.[LX_begin(text.count)]; decoded: [4096]u8; message: [256]u8;
+  depth := 0; item := true; phase := 0; found: FeSpan;
+  while true {
+    r := LX_next(text, state[..], decoded[..], message[..]);
+    if r.diagnostic.code != "" { return FeSpan.{}; }
+    t := r.token; word := text[t.loc.offset..<state[0].pos];
+    if t.kind == LX_Kind.k_eof { break; }
+    if phase == 1 { if t.kind != LX_Kind.k_coloncolon { return FeSpan.{}; } phase = 2; }
+    else if phase == 2 && (word == "-" || word == "+") { phase = 3; }
+    else if phase == 2 || phase == 3 { if t.kind != LX_Kind.k_int_lit && t.kind != LX_Kind.k_float_lit { return FeSpan.{}; } phase = 4; }
+    else if phase == 4 { if t.kind != LX_Kind.k_semicolon { return FeSpan.{}; } found.end = state[0].pos; found.ok = true; phase = 0; }
+    else if item && word == name { if found.ok { return FeSpan.{}; } found.begin = t.loc.offset; phase = 1; }
+    item = false;
+    if t.kind == LX_Kind.k_lbrace { depth += 1; }
+    if t.kind == LX_Kind.k_rbrace { depth -= 1; if depth < 0 { return FeSpan.{}; } if depth == 0 { item = true; } }
+    if depth == 0 && t.kind == LX_Kind.k_semicolon { item = true; }
+  }
+  if depth != 0 { return FeSpan.{}; }
+  return found;
+}
+fe_commit_ok :: (current: string, checked: string, room: bool, page: bool) -> bool {
+  return current.count > 0 && current == checked && room && page;
+}
+fe_publish_ok :: (expected: string, candidate: string, revision: int, active: int, safe: bool) -> bool {
+  return fe_publish_offer(expected.count,expected==candidate,revision,active,safe);
+}
