@@ -29,7 +29,7 @@ ValleyWorld :: struct {
  s:[1]ValleyWorld;world_step(s[..],0.1,false);#assert !s[0].started && !s[0].loaded;
 }
 #test "World detailed page replaces one complete source draw in both passes and keeps indexed ownership" {
- s:[1]ValleyWorld;s[0].source_count=1;s[0].source[0]=7614858;s[0].source[1]=70686;s[0].source[2]=3;s[0].source[3]=1;s[0].detail[0].ready[0]=true;s[0].detail[0].chosen=0;u:[128]f32;b:[1]u8;
+ s:[1]ValleyWorld;s[0].source_count=1;s[0].source[0]=7614858;s[0].source[1]=70686;s[0].source[2]=3;s[0].source[3]=1;s[0].detail[0].ready[0]=true;s[0].detail[0].chosen=0;u:[CANYON_UNIFORMS]f32;b:[1]u8;
  world_select(s[..],u[..],b[..],false);world_select(s[..],u[..],b[..],true);#assert s[0].selection[0].indices==5992848 && s[0].selection[1].indices==5992848;
  #assert world_draw_index(s[..],0,false,0)==4 && world_draw_index(s[..],0,true,1)==4051752 && world_draw_index(s[..],1,false,0)== -1;
  #assert world_hold(s[..],75,true) && s[0].detail[0].mode==2;#assert world_detail_source(s[..])==0;s[0].detail[0].ready[1]=true;#assert world_detail_source(s[..])==1 && world_detail_bytes(s[..])==56385280;
@@ -53,7 +53,7 @@ ValleyWorld :: struct {
  _=world_hold(s[..],82,true);#assert s[0].canyon[0].keys==0 && s[0].canyon[0].you.pos.y== -5 && !s[0].canyon[0].echo[0].input_on && !s[0].canyon[0].echo[0].run_requested && s[0].canyon[0].walking && !s[0].canyon[0].portrait && !s[0].canyon[0].closeup;
 }
 #test "World's source visibility is conservative behind and around the eye" {
- u:[128]f32;u[15]=1;u[19]=1;u[12]=1;u[17]=1;u[22]=1;
+ u:[CANYON_UNIFORMS]f32;u[15]=1;u[19]=1;u[12]=1;u[17]=1;u[22]=1;
  #assert world_visible(u[..],v3(0,0,5),1);#assert !world_visible(u[..],v3(0,0,-5),1);
  #assert world_visible(u[..],v3(0,0,-0.5),1);#assert world_visible(u[..],v3(8,0,5),3);
  #assert world_inside(u[..],v3(0,0,5),1,false) && !world_inside(u[..],v3(4,0,5),1,false) && !world_inside(u[..],v3(0,0,0.5),1,false);
@@ -61,7 +61,7 @@ ValleyWorld :: struct {
 }
 #test "World separates offscreen casters and falls back completely when hierarchy bytes are absent" {
  s:[1]ValleyWorld;s[0].source_count=1;s[0].source[0]=12;s[0].source[1]=6;s[0].source[2]=3;s[0].source[3]=1;s[0].bounds[2]= -10;s[0].bounds[3]=1;
- u:[128]f32;u[12]=1;u[17]=1;u[22]=1;u[15]=1;u[19]=1;u[80]=1;u[85]=1;u[90]=1;u[96]=45;b:[1]u8;
+ u:[CANYON_UNIFORMS]f32;u[12]=1;u[17]=1;u[22]=1;u[15]=1;u[19]=1;u[80]=1;u[85]=1;u[90]=1;u[96]=45;b:[1]u8;
  world_select(s[..],u[..],b[..],false);world_select(s[..],u[..],b[..],true);#assert s[0].selection[0].indices==0 && s[0].selection[1].indices==6;
  s[0].geometry_mode=0;world_select(s[..],u[..],b[..],false);#assert s[0].selection[0].indices==6;
  s[0].geometry_mode=2;s[0].hierarchy_bytes=252;world_select(s[..],u[..],b[..],true);#assert s[0].selection[1].indices==6 && s[0].selection[1].nodes==0 && s[0].fallbacks==0;
@@ -69,13 +69,13 @@ ValleyWorld :: struct {
 #test "World draw capacity reserves the two Echo records after every unbatchable source placement" #steps 1000000000 {
  s:[1]ValleyWorld;s[0].geometry_mode=0;s[0].source_count=VW_DRAWS;
  for k:0..<VW_DRAWS {s[0].source[k*4]=cast(u32)(k*3);s[0].source[k*4+1]=3;s[0].source[k*4+2]=cast(u32)(k+3);s[0].source[k*4+3]=1;s[0].bounds[k*4+2]=5;}
- u:[128]f32;u[12]=1;u[17]=1;u[22]=1;u[15]=1;u[19]=1;b:[1]u8;world_select(s[..],u[..],b[..],false);
+ u:[CANYON_UNIFORMS]f32;u[12]=1;u[17]=1;u[22]=1;u[15]=1;u[19]=1;b:[1]u8;world_select(s[..],u[..],b[..],false);
  #assert s[0].selection[0].draws==VW_DRAWS+2 && !s[0].selection[0].overflow && s[0].draws[(VW_DRAWS-1)*4]==cast(u32)((VW_DRAWS-1)*3) && s[0].draws[VW_DRAWS*4]==0 && s[0].draws[(VW_DRAWS+1)*4]==0;
 }
 #test "World frames batch adjacent source instances and fit desktop phone and high DPR budgets" #steps 1000000000 {
  s:[1]ValleyWorld;s[0].loaded=true;s[0].source_count=2;s[0].vertices=116686256;s[0].indices=50173080;s[0].layers=240;for k:0..<VW_POINTS {s[0].heights[k]= -5;}
  for k:0..<2 {s[0].source[k*4]=7427745;s[0].source[k*4+1]=3;s[0].source[k*4+2]=cast(u32)(3+k);s[0].source[k*4+3]=1;s[0].bounds[k*4+1]= -5;s[0].bounds[k*4+3]=10;}
- out:[CANYON_HUD*12]f32;u:[128]f32;for screen:0..<3 {n:=world_frame(s[..],out[..],u[..],[3]f32.[1280,390,1170][screen],[3]f32.[800,844,2532][screen],[3]f32.[1,1,3][screen]);#assert n>0 && n<CANYON_HUD && s[0].visible==2 && s[0].draw_count==3 && s[0].draws[3]==2 && s[0].draws[9]==2957442 && budget_ok(s[0].meter[0]);}
+ out:[CANYON_HUD*12]f32;u:[CANYON_UNIFORMS]f32;for screen:0..<3 {n:=world_frame(s[..],out[..],u[..],[3]f32.[1280,390,1170][screen],[3]f32.[800,844,2532][screen],[3]f32.[1,1,3][screen]);#assert n>0 && n<CANYON_HUD && s[0].visible==2 && s[0].draw_count==3 && s[0].draws[3]==2 && s[0].draws[9]==2957442 && budget_ok(s[0].meter[0]);}
 }
 #test "World spawn requires a gentle patch across both terrain triangles before moving or jumping" #steps 1000000000 {s:[1]ValleyWorld;s[0].loaded=true;for k:0..<VW_POINTS {s[0].heights[k]= -5;}s[0].heights[108*257+112]=5;#assert world_surface(s[..],0,-5).gx==0 && world_surface(s[..],0,-5).gz==0 && !world_spawn_safe(s[..],0,-5);world_start(s[..]);q:=world_surface(s[..],s[0].canyon[0].you.pos.x,s[0].canyon[0].you.pos.z);#assert q.gx*q.gx+q.gz*q.gz<0.49;world_step(s[..],1.0/64.0,false);#assert s[0].canyon[0].you.on_ground;_:=world_hold(s[..],32,true);_=world_hold(s[..],32,false);world_step(s[..],0.001,false);#assert s[0].canyon[0].you.jumps.waiting==1;world_step(s[..],0.02,false);#assert s[0].canyon[0].you.vel.y>0;}
 world_surface :: (s:[]ValleyWorld,x:f32,z:f32)->query.QueryGround {field:=[1]query.QueryHeightfield.[query.QueryHeightfield.{ground=world_ground(),heights=s[0].heights[..]}];return query.query_base_ground(query.Colliders.{ground= -128,heightfields=field[..]},x,z);}
@@ -165,7 +165,7 @@ world_visible :: (u:[]f32,p:Point,r:f32)->bool {
 }
 #test "Valley daylight uses the original CF light direction in Coax axes" {sun:=world_sun();#assert abs(dot(sun,sun)-1)<0.000001 && sun.x>0.77 && sun.y>0.61 && sun.z>0.14;}
 world_sun :: ()->Point {return v3(0.7742571472,0.6158125107,0.1459480103);}
-#test "World retains offscreen source casters across the shader's doubled depth extent" {u:[128]f32;u[80]=1;u[85]=1;u[90]=1;u[96]=45;#assert world_shadowed(u[..],v3(0,0,-89),1) && world_shadowed(u[..],v3(46,0,0),1);#assert !world_shadowed(u[..],v3(100,0,0),1) && !world_shadowed(u[..],v3(0,0,-92),1);#assert world_inside(u[..],v3(0,0,89),1,true) && !world_inside(u[..],v3(0,0,90),1,true);}
+#test "World retains offscreen source casters across the shader's doubled depth extent" {u:[CANYON_UNIFORMS]f32;u[80]=1;u[85]=1;u[90]=1;u[96]=45;#assert world_shadowed(u[..],v3(0,0,-89),1) && world_shadowed(u[..],v3(46,0,0),1);#assert !world_shadowed(u[..],v3(100,0,0),1) && !world_shadowed(u[..],v3(0,0,-92),1);#assert world_inside(u[..],v3(0,0,89),1,true) && !world_inside(u[..],v3(0,0,90),1,true);}
 world_shadowed :: (u:[]f32,p:Point,r:f32)->bool {q:=sub(p,v3(u[92],u[93],u[94]));return abs(dot(q,v3(u[80],u[81],u[82])))<=u[96]+r && abs(dot(q,v3(u[84],u[85],u[86])))<=u[96]+r && abs(dot(q,v3(u[88],u[89],u[90])))<=2*u[96]+r;}
 // Wholly admitted source spheres need no node decode or local plane transform.
 world_inside :: (u:[]f32,p:Point,r:f32,shadow:bool)->bool {

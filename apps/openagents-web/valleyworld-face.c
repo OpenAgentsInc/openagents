@@ -16,7 +16,7 @@ EXPORT("coaxial_state_size") uint32_t size(void){return sizeof(coax_t_ValleyWorl
 EXPORT("coaxial_state_init") void init(uint32_t p){coax_default_t_ValleyWorld(state(p));}
 EXPORT("coaxial_max_vertices") uint32_t vertices(void){return 32768;}
 EXPORT("coaxial_vertex_floats") uint32_t stride(void){return 12;}
-EXPORT("coaxial_uniform_floats") uint32_t uniforms(void){return 128;}
+EXPORT("coaxial_uniform_floats") uint32_t uniforms(void){return 136;}
 EXPORT("coaxial_gpu_recover_ms_v1") uint32_t recover_ms(void){return (uint32_t)world_recover_ms();}
 EXPORT("coaxial_frame_admit") int32_t frame_admit(int32_t pending){return afp_submit(pending)?1:0;}
 EXPORT("coaxial_sampling_v1") uint32_t sampling(uint32_t p){return (uint32_t)canyon_sampling(canyon(p));}
