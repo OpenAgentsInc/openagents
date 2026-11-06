@@ -1,6 +1,7 @@
 {
   "profile": "openagents.orbit.session",
   "version": 2,
+  "check": "coax/web/tool.sh apps/openagents-web/orbit-wire-profile.coax proto/verse/orbit-session-v2.json",
   "path": "/api/room/orbit-league-v2/NAME",
   "legacy_path": "/api/room/orbit-league/NAME",
   "pins": {"engine": 1, "rules": 1, "content": 1, "schema": 0},
@@ -38,6 +39,13 @@
     "baseline": "this small-room profile selects absolute rows; only complete snapshots are applied or acknowledged"
   },
   "limits": {"players": 4, "client_frame": 256, "server_frame": 2048},
+  "fixtures": {
+    "hello": "H 2 1 1 1",
+    "input": "I 17 -501 702 5 29 12345 9",
+    "snapshot": "S 9 1 7 17 12345 1 1500 299000 3 4 2 2;s 0 0 32834 1000 1000000 1;s 2 0 57879 1234 1000 -36000 1000000 -1000 13 42500 7;s 1 0 41031 -1000 1000 36000 1000000 5 8",
+    "malformed_inputs": ["I 1 1001 0 0 0 0 0", "I 1 0 0 8 0 0 0", "I 1 0 0 0 0 0", "c 0 0 0"],
+    "malformed_snapshots": ["S 9 1 7 17 12345 1 1500 299000 3 4 2 2;s 0 0 32834 1000 1000000 1", "S 9 1 7 17 12345 1 1500 299000 3 4 2 1;s 0 0 32834 1000 1000000 1;s 2 0 32768 8"]
+  },
   "presentation": "authoritative car snapshots; no self-asserted transform or replay of rejected controls",
   "legacy": "the published unversioned c/s profile remains a separate reported-car/server-ball hybrid and does not qualify as authoritative"
 }
