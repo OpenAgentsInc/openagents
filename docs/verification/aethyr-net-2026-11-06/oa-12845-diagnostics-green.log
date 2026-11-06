@@ -1,0 +1,4 @@
+ok   #test network diagnostics expose each running realm's selected contract without inventing counters (1 case, 1931285 steps, 540 ms)
+1 of 710 checks (--only 'network diagnostics'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: note[E0400]: compile-time value slots: 29985989 of 33554432 used (89%), above three quarters of the limit; more than 33554432 fails with E0400

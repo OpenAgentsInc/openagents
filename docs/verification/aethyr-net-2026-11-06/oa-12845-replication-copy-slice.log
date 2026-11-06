@@ -1,0 +1,12 @@
+ok   #test events: a whole raid at the allowances' limits keeps your own row every tick, starves nothing, bounds each tick's bytes, and brings a late or broken join whole (#12836) (1 case, 1020213785 steps, 9831 ms)
+1 of 685 checks (--only 'a whole raid at the allowances'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: note[E0400]: compile-time traversal work: 126492845 of 134217728 used (94%), above three quarters of the limit; more than 134217728 fails with E0400
+  top users of compile-time traversal work:
+    39308652 visits  coax/web/room/room-everglade.coax:1301:1  in 'eg_send' (666 times)
+    32280040 visits  coax/web/room/room-events.coax:1047:1  #test 'events: a whole raid at the allowances' limits keeps your own row every tick, starves nothing, bounds each tick's bytes, and brings a late or broken join whole (#12836)' itself
+    4051845 visits  apps/openagents-web/everglade5e-room-rules.coax:533:1  in 'e5rr_beast' (23328 times)
+    3935440 visits  apps/openagents-web/everglade-wire.coax:165:1  in 'wire_int' (196772 times)
+    3495392 visits  coax/web/room/room.coax:120:1  in 'rm_init'
+  fix: copy fewer whole arrays and structs in 'eg_send' (pass a view or an index, assign single fields); or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+coax: note[E0400]: compile-time value slots: 29001410 of 33554432 used (86%), above three quarters of the limit; more than 33554432 fails with E0400

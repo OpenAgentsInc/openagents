@@ -1,0 +1,3 @@
+ok   #test Orbit v2 presentation follows the server spin clock and describes a lost connection truthfully (1 case, 104148 steps, 13 ms)
+1 of 183 checks (--only 'Orbit v2 presentation'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

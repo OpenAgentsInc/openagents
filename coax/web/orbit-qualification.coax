@@ -1,5 +1,5 @@
 // Two real headless pages over an already running local authoritative room host.
-//   coax/web/tool.sh orbit-qualification URL OUT_DIR
+//   coax/web/tool.sh orbit-qualification URL OUT_DIR [quick]
 #load "../lib/net/cdp.coax";
 #load "../../apps/openagents-web/orbit-snapshot.coax";
 #import "Basic";
@@ -56,16 +56,29 @@ oq_save :: (c:[]Cdp,out:string,suffix:string) {
   t:=oq_text(c,"JSON.stringify({sent:__oq.sent,received:__oq.received,errors:__oq.errors,probe:[0,1,2,3,4,5,6,7,8,100,110,111,112,113,120,121,122,123].map(x=>[x,coaxial.fieldProbe(x)])},null,2)",buf[..]);
   _:=fs_write(cast(string)path[0..<n],t);
 }
-oq_run :: (a:[]Cdp,b:[]Cdp,url:string,out:string)->bool {
+oq_run :: (a:[]Cdp,b:[]Cdp,url:string,out:string,quick:bool)->bool {
   if !oq_open(a,url) || !oq_ready(a) {tool_errln("Orbit: first page did not enter authority");return false;}
   if !oq_open(b,url) || !oq_ready(b) {tool_errln("Orbit: second page did not enter authority");return false;}
-  proc_sleep(4000);
+  deadline:=proc_now_ms()+20000;
+  while proc_now_ms()<deadline {
+    first:=oq_last(a);second:=oq_last(b);
+    if first.ok && second.ok && first.h[5]==1 && second.h[5]==1 {break;}
+    proc_sleep(250);
+  }
   before:=oq_last(a);other:=oq_last(b);
-  if !before.ok || !other.ok || before.h[1]==other.h[1] || before.h[11]!=2 || other.h[11]!=2 {tool_errln("Orbit: two admitted seats missing");return false;}
+  players:=ifx quick then 4 else 2;
+  if !before.ok || !other.ok || before.h[1]==other.h[1] || before.h[11]!=players || other.h[11]!=players {tool_errln("Orbit: admitted seats or quick bots missing");return false;}
   row:=(before.h[1]+1)*ORB_FIELDS;x:=cast(int)before.v[row];z:=cast(int)before.v[row+2];
   if !oq_key(a,true) {return false;}proc_sleep(2500);released:=oq_key(a,false);if !released {return false;}
   after:=oq_last(a);
   if !after.ok || after.h[3]<=before.h[3] || !oq_moved(x,z,cast(int)after.v[row],cast(int)after.v[row+2]) {tool_errln("Orbit: real controls did not move the server car");return false;}
+  if quick {
+    for bot:3..<5 {
+      if !after.present[bot] || !oq_moved(cast(int)before.v[bot*ORB_FIELDS],cast(int)before.v[bot*ORB_FIELDS+2],cast(int)after.v[bot*ORB_FIELDS],cast(int)after.v[bot*ORB_FIELDS+2]) {
+        tool_errln("Orbit: a quick-match bot did not move under server physics");return false;
+      }
+    }
+  }
   // Browser instrumentation only records transport effects. The Coax codec validates the frames.
   common:[2048]u8;raw:=oq_text(a,"__oq.received.filter(x=>x.startsWith('S ')).at(-8)||''",common[..]);
   shared:=orb_snapshot_read(raw);if !shared.ok {return false;}
@@ -91,7 +104,9 @@ oq_run :: (a:[]Cdp,b:[]Cdp,url:string,out:string)->bool {
   print("Orbit pages: common tick %, seats %/%, consumed ACK %, displayed tick %, pose %,%\n",shared.h[0],shared.h[1],matching.h[1],forged.h[3],seen,px,pz);
   oq_save(a,out,"a.json");oq_save(b,out,"b.json");
   cdp_close(b);proc_sleep(500);
-  departed:=oq_last(a);if !departed.ok || departed.h[11]!=1 || departed.present[other.h[1]+1] {tool_errln("Orbit: departed body survived a complete snapshot");return false;}
+  departed:=oq_last(a);if !departed.ok {return false;}
+  if quick {if departed.h[11]!=4 || !departed.present[other.h[1]+1] {tool_errln("Orbit: quick match did not retain the departed seat for a bot");return false;}}
+  else if departed.h[11]!=1 || departed.present[other.h[1]+1] {tool_errln("Orbit: departed body survived a complete snapshot");return false;}
   if oq_int(a,"__oq.errors.length")!=0 {tool_errln("Orbit: page reported an error");return false;}
   oq_save(a,out,"a-departed.json");
   png:[8388608]u8;k:=cdp_screenshot(a,png[..]);if k<=0 {return false;}
@@ -99,8 +114,9 @@ oq_run :: (a:[]Cdp,b:[]Cdp,url:string,out:string)->bool {
   saved:=fs_write(cast(string)query[0..<n],cast(string)png[0..<k]);return saved;
 }
 tool_main :: ()->int #export_c {
-  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {tool_errln("usage: orbit-qualification URL OUT_DIR");return 2;}
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])<2 || args_count(args[..])>3 {tool_errln("usage: orbit-qualification URL OUT_DIR [quick]");return 2;}
+  quick:=args_count(args[..])==3;if quick && args_at(args[..],2)!="quick" {return 2;}
   out:=args_at(args[..],1);made:=fs_mkdir(out);a:[1]Cdp;b:[1]Cdp;
-  ok:=oq_run(a[..],b[..],args_at(args[..],0),out);cdp_close(b[..]);cdp_close(a[..]);
+  ok:=oq_run(a[..],b[..],args_at(args[..],0),out,quick);cdp_close(b[..]);cdp_close(a[..]);
   print("Orbit qualification: %\n",ifx ok then "holds" else "fails");return ifx ok then 0 else 1;
 }

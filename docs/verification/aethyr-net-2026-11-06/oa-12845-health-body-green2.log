@@ -1,0 +1,3 @@
+ok   #test net (#12845): a party health row never creates a player body at the default origin (1 case, 1183788 steps, 124 ms)
+1 of 786 checks (--only 'party health row'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

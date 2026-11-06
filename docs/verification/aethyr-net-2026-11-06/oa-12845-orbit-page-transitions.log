@@ -1,0 +1,4 @@
+ok   #test Orbit v2 page (#12845): the default room sends a pinned hello before bounded controls (1 case, 155660 steps, 27 ms)
+ok   #test Orbit v2 page (#12845): complete snapshots own every pose; partial, stale and foreign generations change nothing (1 case, 162247 steps, 14 ms)
+2 of 181 checks (--only 'Orbit v2 page (#12845)'), 2 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

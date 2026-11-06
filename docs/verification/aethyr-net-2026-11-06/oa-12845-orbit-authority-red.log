@@ -1,0 +1,8 @@
+FAIL #test Orbit v2 (#12845): the room ignores reported transforms and steps admitted controls (1051 ms)
+coax/web/room/room.coax:375:3: error[E0406]: assertion failed
+    #assert rm_join(v[..],0,"GET /api/room/orbit-league-v2/qualified HTTP/1.1\r\n\r\n")==0;
+    ^
+  note: in #test Orbit v2 (#12845): the room ignores reported transforms and steps admitted controls
+1 of 690 checks (--only 'Orbit v2 (#12845)'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: note[E0400]: compile-time value slots: 29001442 of 33554432 used (86%), above three quarters of the limit; more than 33554432 fails with E0400

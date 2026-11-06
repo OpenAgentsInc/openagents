@@ -1,0 +1,7 @@
+FAIL #test net (#12845): a party health row never creates a player body at the default origin (122 ms)
+apps/openagents-web/everglade-net.coax:2888:3: error[E0406]: assertion failed
+    #assert net_count(a[..],WK_PLAYER)==0 && !net_view(a[..],WK_PLAYER,0).ok;
+    ^
+  note: in #test net (#12845): a party health row never creates a player body at the default origin
+1 of 785 checks (--only 'party health row'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

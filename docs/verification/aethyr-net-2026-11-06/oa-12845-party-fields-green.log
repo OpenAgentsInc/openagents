@@ -1,0 +1,4 @@
+ok   #test interest (#12845): the party health channel cannot disclose a distant player's position (1 case, 6031161 steps, 985 ms)
+1 of 684 checks (--only 'party health channel'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: note[E0400]: compile-time value slots: 29001410 of 33554432 used (86%), above three quarters of the limit; more than 33554432 fails with E0400

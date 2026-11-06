@@ -1,0 +1,7 @@
+FAIL #test Orbit v2 presentation follows the server spin clock and describes a lost connection truthfully (12 ms)
+apps/openagents-web/orbitleague.coax:3250:3: error[E0406]: assertion failed
+    #assert abs(s[0].played-97.5)<0.001 && s[0].spin_every==SPIN_EVERY && s[0].spin_g==1;
+    ^
+  note: in #test Orbit v2 presentation follows the server spin clock and describes a lost connection truthfully
+1 of 183 checks (--only 'Orbit v2 presentation'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,0 +1,8 @@
+FAIL #test interest (#12845): the party health channel cannot disclose a distant player's position (869 ms)
+coax/web/room/room-blocks.coax:249:3: error[E0406]: assertion failed
+    #assert e.id==1 && e.hp>0 && e.max>0 && e.x==0 && e.z==0;
+    ^
+  note: in #test interest (#12845): the party health channel cannot disclose a distant player's position
+1 of 681 checks (--only 'party health channel'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: note[E0400]: compile-time value slots: 28476098 of 33554432 used (84%), above three quarters of the limit; more than 33554432 fails with E0400

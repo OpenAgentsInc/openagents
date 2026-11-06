@@ -1,0 +1,66 @@
+2v2 novice (behind 0, every 0.0 s): your team 2 the bots 5, first minute ahead by -1, over true
+2v2 novice (behind 1, every 0.0 s): your team 1 the bots 3, first minute ahead by 1, over true
+2v2 novice (behind 0, every 0.4 s): your team 1 the bots 0, first minute ahead by 0, over true
+2v2 novice (behind 1, every 0.4 s): your team 1 the bots 2, first minute ahead by 0, over true
+2v2 novice (behind 0, every 0.8 s): your team 2 the bots 0, first minute ahead by 0, over true
+2v2 novice (behind 1, every 0.8 s): your team 2 the bots 2, first minute ahead by 0, over true
+pro (every 0.0 s): you 1 bot 2, over true overtime false
+pro (every 0.4 s): you 5 bot 2, over true overtime false
+pro (every 0.8 s): you 0 bot 1, over true overtime false
+box novice (behind 0, every 0.0 s): you 2 bot 3
+box novice (behind 0, every 0.2 s): you 2 bot 5
+box novice (behind 0, every 0.4 s): you 2 bot 5
+box novice (behind 0, every 0.6 s): you 0 bot 2
+box novice (behind 0, every 0.8 s): you 3 bot 2
+box novice (behind 0, every 1.0 s): you 0 bot 5
+box novice (behind 1, every 0.0 s): you 1 bot 6
+box novice (behind 1, every 0.2 s): you 6 bot 3
+box novice (behind 1, every 0.4 s): you 0 bot 3
+box novice (behind 1, every 0.6 s): you 5 bot 2
+box novice (behind 1, every 0.8 s): you 1 bot 3
+box novice (behind 1, every 1.0 s): you 1 bot 3
+box: twelve novices: you 23 bot 42, the bot's most in a match 6, in a first minute 2, in the first 15 s 0; against a still player in 2 min: 4
+drum novice (behind 0, every 0.0 s): you 1 bot 1
+drum novice (behind 0, every 0.2 s): you 0 bot 0
+drum novice (behind 0, every 0.4 s): you 0 bot 0
+drum novice (behind 0, every 0.6 s): you 0 bot 3
+drum novice (behind 0, every 0.8 s): you 1 bot 1
+drum novice (behind 0, every 1.0 s): you 0 bot 1
+drum novice (behind 1, every 0.0 s): you 3 bot 0
+drum novice (behind 1, every 0.2 s): you 4 bot 1
+drum novice (behind 1, every 0.4 s): you 1 bot 3
+drum novice (behind 1, every 0.6 s): you 3 bot 1
+drum novice (behind 1, every 0.8 s): you 4 bot 0
+drum novice (behind 1, every 1.0 s): you 1 bot 1
+drum: twelve novices: you 18 bot 12, the bot's most in a match 3, in a first minute 1, in the first 15 s 0; against a still player in 2 min: 3
+sphere novice (behind 0, every 0.0 s): you 0 bot 4
+sphere novice (behind 0, every 0.2 s): you 1 bot 2
+sphere novice (behind 0, every 0.4 s): you 2 bot 4
+sphere novice (behind 0, every 0.6 s): you 0 bot 4
+sphere novice (behind 0, every 0.8 s): you 0 bot 1
+sphere novice (behind 0, every 1.0 s): you 0 bot 3
+sphere novice (behind 1, every 0.0 s): you 10 bot 0
+sphere novice (behind 1, every 0.2 s): you 11 bot 5
+sphere novice (behind 1, every 0.4 s): you 9 bot 0
+sphere novice (behind 1, every 0.6 s): you 4 bot 2
+sphere novice (behind 1, every 0.8 s): you 4 bot 1
+sphere novice (behind 1, every 1.0 s): you 15 bot 3
+sphere: twelve novices: you 56 bot 29, the bot's most in a match 5, in a first minute 1, in the first 15 s 0; against a still player in 2 min: 2
+the longest a car stood on the box's glass: 1.6833333333333298 s
+FAILS
+coax: note[E0400]: compile-time steps: 238715152 of 300000000 used (79%), above three quarters of the limit; more than 300000000 fails with E0400
+  top users of compile-time steps:
+    34826487 steps  aethyr/rigid.coax:61:1  in 'd3_dot' (1832973 times)
+    31223874 steps  aethyr/rigid.coax:50:1  in 'd3' (5203979 times)
+    26428215 steps  aethyr/rigid.coax:57:1  in 'd3_scale' (1761881 times)
+    25968402 steps  aethyr/rigid.coax:55:1  in 'd3_add' (1442689 times)
+    20161548 steps  aethyr/rigid.coax:62:1  in 'd3_cross' (560043 times)
+  fix: do less work in 'd3_dot', split the check, or give it a larger budget with a larger #steps N on the check
+coax: note[E0400]: compile-time traversal work: 111052283 of 134217728 used (82%), above three quarters of the limit; more than 134217728 fails with E0400
+  top users of compile-time traversal work:
+    31223874 visits  aethyr/rigid.coax:50:1  in 'd3' (5203979 times)
+    3562872 visits  aethyr/rigid.coax:125:9  copying arguments into 'd3_dot' (445359 calls)
+    3562872 visits  aethyr/rigid.coax:126:65  copying arguments into 'd3_dot' (445359 calls)
+    3562872 visits  aethyr/rigid.coax:126:96  copying arguments into 'd3_cross' (445359 calls)
+    3154912 visits  aethyr/contact.coax:49:1  in 'rigid_force_at' (41512 times)
+  fix: copy fewer whole arrays and structs in 'd3' (pass a view or an index, assign single fields); or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
