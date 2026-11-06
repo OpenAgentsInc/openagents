@@ -56,6 +56,16 @@ no claim or feature qualification was expanded.
 claim, reviewed file and old/new SHA-256. This review does not claim to rerun the
 compiler's release qualification.
 
+## Publication
+
+Source commit `10ec4b7b02ce4c83347a042c8686d6eb6bb330a3` was published
+November 6 at 07:11 Chicago time as GitBook revision
+`XlnRpuoOdtlIuXEWFXEk`. The [publication receipt](../../books/publications/aethyr.json)
+binds the source and submitted Markdown. The publisher verified all 117 live
+pages against the contents and retained six old URL redirects. The separate
+[live receipt check](publication-live.log) verifies the recorded revision and
+inventory. Live document-body parity is not independently verified.
+
 ## Scope still open
 
 Realm UI and ownership integration, authentication and daily caps, hosted-model

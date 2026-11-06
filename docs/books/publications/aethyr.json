@@ -1,0 +1,2410 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/OpenAgentsInc/openagents.git",
+  "book": "aethyr",
+  "space_id": "QxVdkZGgQYnLsXWZlkTh",
+  "public_url": "https://openagents.gitbook.io/building-aethyr-world-engine",
+  "published_at": "2026-11-06T13:11:49Z",
+  "source": {
+    "commit": "10ec4b7b02ce4c83347a042c8686d6eb6bb330a3",
+    "directory": "aethyr/book",
+    "summary": {
+      "path": "aethyr/book/SUMMARY.md",
+      "bytes": 9051,
+      "sha256": "b791c7ad1c9566cb764ee0c605db1145b646f1b7cf04b0b3d47cb5b1357b026a"
+    },
+    "pages": [
+      {
+        "path": "aethyr/book/README.md",
+        "bytes": 43918,
+        "sha256": "d32b578e70dfb4a22a38d2e7980793473d4fd7bf420cff59a35ebd5c3cd7d0f6",
+        "file": "README.md",
+        "title": "Introduction",
+        "group": null
+      },
+      {
+        "path": "aethyr/book/PLAN.md",
+        "bytes": 23097,
+        "sha256": "abb4438ddc76c6760530e73d2d79bc8f0574c64351497d87e978a5efa1f4e34d",
+        "file": "PLAN.md",
+        "title": "Plan and prerequisites",
+        "group": null
+      },
+      {
+        "path": "aethyr/book/ch001-a-frame-has-a-fixed-step.md",
+        "bytes": 22745,
+        "sha256": "82b53894a0dafa6a89073c22b02549f40138a427318ff5995e3ab87c77a97b48",
+        "file": "ch001-a-frame-has-a-fixed-step.md",
+        "title": "1. A frame has a fixed step",
+        "group": "I. Foundations"
+      },
+      {
+        "path": "aethyr/book/ch002-spaces-and-units.md",
+        "bytes": 17433,
+        "sha256": "e8baeebc21c481acbb59b39fe33fd4d6023ef4d747c1ac8e424b779229a66b4b",
+        "file": "ch002-spaces-and-units.md",
+        "title": "2. Spaces and units",
+        "group": "I. Foundations"
+      },
+      {
+        "path": "aethyr/book/ch003-state-starts-from-its-defaults.md",
+        "bytes": 10252,
+        "sha256": "9519c44cf47ffb0a88f5c7842f8ab6b1a928e813860add48d7379225c383709c",
+        "file": "ch003-state-starts-from-its-defaults.md",
+        "title": "3. State starts from its defaults",
+        "group": "I. Foundations"
+      },
+      {
+        "path": "aethyr/book/ch004-input-becomes-typed-actions.md",
+        "bytes": 25491,
+        "sha256": "1675bc1b74bb29880b9a4f9eb7e898cd2da721a904798e3bf215fa5eaf0d2a18",
+        "file": "ch004-input-becomes-typed-actions.md",
+        "title": "4. Input becomes typed actions",
+        "group": "I. Foundations"
+      },
+      {
+        "path": "aethyr/book/ch005-replay-a-session-exactly.md",
+        "bytes": 38318,
+        "sha256": "bc279d867a98b9d11a25a0f14b3efbb678c4d69dc4d6381047ec7e7535245689",
+        "file": "ch005-replay-a-session-exactly.md",
+        "title": "5. Replay a session exactly",
+        "group": "I. Foundations"
+      },
+      {
+        "path": "aethyr/book/ch006-entities-are-born-and-die.md",
+        "bytes": 21691,
+        "sha256": "22d43839d30c7999e294f2d32ea8b562a740fc7df6b65bca7ffde6c84535f6e5",
+        "file": "ch006-entities-are-born-and-die.md",
+        "title": "6. Entities are born and die",
+        "group": "II. A world"
+      },
+      {
+        "path": "aethyr/book/ch007-ask-the-world-where-things-are.md",
+        "bytes": 32573,
+        "sha256": "1a1de52811f5556a39c5f7f6ad10fa773b4e831f57d19596fcf0ad738d3c5312",
+        "file": "ch007-ask-the-world-where-things-are.md",
+        "title": "7. Ask the world where things are",
+        "group": "II. A world"
+      },
+      {
+        "path": "aethyr/book/ch008-ground-and-collision.md",
+        "bytes": 17273,
+        "sha256": "8bc2af68978c42bf9fba4d608c22bf19fc011eb052014a0e4aecc7b5e6383513",
+        "file": "ch008-ground-and-collision.md",
+        "title": "8. Ground and collision",
+        "group": "II. A world"
+      },
+      {
+        "path": "aethyr/book/ch009-a-character-moves.md",
+        "bytes": 21565,
+        "sha256": "7909255f8da3570517a13b6e0366a854c13ca203734299b103ac3fc2bf415818",
+        "file": "ch009-a-character-moves.md",
+        "title": "9. A character moves",
+        "group": "II. A world"
+      },
+      {
+        "path": "aethyr/book/ch010-the-camera-follows.md",
+        "bytes": 41361,
+        "sha256": "0fb254e6c8205b087cdf2bdf48f109b0f1f36450a0a339484a2e09e9db0dd954",
+        "file": "ch010-the-camera-follows.md",
+        "title": "10. The camera follows",
+        "group": "II. A world"
+      },
+      {
+        "path": "aethyr/book/ch011-the-wgsl-renderer.md",
+        "bytes": 40195,
+        "sha256": "493ad7f4333839772ef342fa586d5c13d130b41620622eeb0aba2a829d2b51df",
+        "file": "ch011-the-wgsl-renderer.md",
+        "title": "11. The WGSL renderer",
+        "group": "III. Seeing it"
+      },
+      {
+        "path": "aethyr/book/ch012-materials.md",
+        "bytes": 17517,
+        "sha256": "d0518c56ba76d5ca180922b25097dc4942f6f9fc449e988e05e81bc3d8a38a11",
+        "file": "ch012-materials.md",
+        "title": "12. Materials",
+        "group": "III. Seeing it"
+      },
+      {
+        "path": "aethyr/book/ch013-light-and-shadow.md",
+        "bytes": 15110,
+        "sha256": "ca61b396669aada13b3c080424528cbe3acee3b2cee4e01227c7fd4f870ab5f5",
+        "file": "ch013-light-and-shadow.md",
+        "title": "13. Light and shadow",
+        "group": "III. Seeing it"
+      },
+      {
+        "path": "aethyr/book/ch014-figures-and-animation.md",
+        "bytes": 13046,
+        "sha256": "7aa4a319c52c5c715556da13138b589a6b0425ea0382cb972e874d83934e764e",
+        "file": "ch014-figures-and-animation.md",
+        "title": "14. Figures and animation",
+        "group": "III. Seeing it"
+      },
+      {
+        "path": "aethyr/book/ch015-ui-and-the-hud.md",
+        "bytes": 20563,
+        "sha256": "9eb89125b3a9151b6a20a07320b277066cf61425baa173500d74bc205c70bbb5",
+        "file": "ch015-ui-and-the-hud.md",
+        "title": "15. UI and the HUD",
+        "group": "III. Seeing it"
+      },
+      {
+        "path": "aethyr/book/ch016-budgets-that-refuse.md",
+        "bytes": 20974,
+        "sha256": "d4006b96caf409a0a983cf054db2cdb09bdef345715e93667989004ae21f7fdc",
+        "file": "ch016-budgets-that-refuse.md",
+        "title": "16. Budgets that refuse",
+        "group": "III. Seeing it"
+      },
+      {
+        "path": "aethyr/book/ch017-a-scene-owns-the-state.md",
+        "bytes": 12396,
+        "sha256": "0711c36060a002c2a3f33eaecf4908de5a07a39c0f9c28394688a274a36caa2b",
+        "file": "ch017-a-scene-owns-the-state.md",
+        "title": "17. A scene owns the state",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch018-rigid-bodies-and-time-steps.md",
+        "bytes": 12036,
+        "sha256": "3af1c0bac3d6d562defe976f03c80b4cf4d10111c6f1c2bbb0daa02e81aa00f9",
+        "file": "ch018-rigid-bodies-and-time-steps.md",
+        "title": "18. Rigid bodies and time steps",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch019-joints-in-generalized-coordinates.md",
+        "bytes": 5539,
+        "sha256": "366d2121fd783e59320d63c7b05983dec2400b11a84f23e0c0f9e2809df88182",
+        "file": "ch019-joints-in-generalized-coordinates.md",
+        "title": "19. Joints in generalized coordinates",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch020-find-the-pairs-that-might-touch.md",
+        "bytes": 11442,
+        "sha256": "078909a24a2ab85e5798b323001688178ca00a0d666ef36387341f1bdb87ee20",
+        "file": "ch020-find-the-pairs-that-might-touch.md",
+        "title": "20. Find the pairs that might touch",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch021-find-where-they-touch.md",
+        "bytes": 14998,
+        "sha256": "7045b81cf4e92b222100522622d075d2e72c685e62a3f44825e8fe859fdb0b87",
+        "file": "ch021-find-where-they-touch.md",
+        "title": "21. Find where they touch",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch022-contact-as-an-optimization.md",
+        "bytes": 5566,
+        "sha256": "7bcf95a9be151898b95bf4188395877cc1e1c59b9ef44c87ea99dca9dacf7baa",
+        "file": "ch022-contact-as-an-optimization.md",
+        "title": "22. Contact as an optimization",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch023-particles-and-their-neighbors.md",
+        "bytes": 9224,
+        "sha256": "d6f27846829bdd806b0dc1b8a8a06b8e6403332762eeda73e46fd1645fffc830",
+        "file": "ch023-particles-and-their-neighbors.md",
+        "title": "23. Particles and their neighbors",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch024-liquids-from-particles.md",
+        "bytes": 11399,
+        "sha256": "8905f04f00fe59dcb1f381f8e18ebdc59708ba31df53a536e14ce22d75928859",
+        "file": "ch024-liquids-from-particles.md",
+        "title": "24. Liquids from particles",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch025-cloth-and-rope-from-constraints.md",
+        "bytes": 12313,
+        "sha256": "eb1bf6709f1ccef20721ce45274c6af67646a6604609f7e0f8b4770463738fed",
+        "file": "ch025-cloth-and-rope-from-constraints.md",
+        "title": "25. Cloth and rope from constraints",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch026-sand-snow-and-clay-on-a-grid.md",
+        "bytes": 10601,
+        "sha256": "81c923c041b97981145e8c91c5805f06148d119ffe7d17faf8b493cd9d0328c5",
+        "file": "ch026-sand-snow-and-clay-on-a-grid.md",
+        "title": "26. Sand, snow and clay on a grid",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch027-elastic-solids-on-a-mesh.md",
+        "bytes": 4255,
+        "sha256": "eb270ccde58f9c3898b824fe306c57fb1adbcc13dd319ca7738d13b5f2ac65a1",
+        "file": "ch027-elastic-solids-on-a-mesh.md",
+        "title": "27. Elastic solids on a mesh",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch028-smoke-on-a-grid.md",
+        "bytes": 9163,
+        "sha256": "225f357cd29925c7196c219de2e8af5b683bcca2eaa0e094becd4e8c5d64979e",
+        "file": "ch028-smoke-on-a-grid.md",
+        "title": "28. Smoke on a grid",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch029-materials-meet.md",
+        "bytes": 3262,
+        "sha256": "a4625db8be22d54f7589764106d4385b529f92f4d9fb321dab9b0f84734c8c6c",
+        "file": "ch029-materials-meet.md",
+        "title": "29. Materials meet",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch030-contact-that-holds.md",
+        "bytes": 3548,
+        "sha256": "53c2a2ba9f0b5e95ba3ac453cb0fcd20c35c4e72335502b873555451ca73a063",
+        "file": "ch030-contact-that-holds.md",
+        "title": "30. Contact that holds",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch031-many-worlds-in-one-step.md",
+        "bytes": 3834,
+        "sha256": "82e6af0b03afe071eaf681ecb4fc5af213d5411ec92c02dda82b9e05a9620e5f",
+        "file": "ch031-many-worlds-in-one-step.md",
+        "title": "31. Many worlds in one step",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch032-differentiate-a-simulation.md",
+        "bytes": 4272,
+        "sha256": "219cf0f7109a60d83847625215d23cf9aa844f965a3d21d40c91077b89731493",
+        "file": "ch032-differentiate-a-simulation.md",
+        "title": "32. Differentiate a simulation",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch033-sensors-read-the-simulation.md",
+        "bytes": 3213,
+        "sha256": "03089eac30d47a423d7415937d638e43e80545ad1d2902544f54df6a6d125528",
+        "file": "ch033-sensors-read-the-simulation.md",
+        "title": "33. Sensors read the simulation",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch034-pictures-for-policies.md",
+        "bytes": 3567,
+        "sha256": "b7b1cc744ea5b8198202befaf18ca0e67a044492857fed237f3cc1d5587ecb44",
+        "file": "ch034-pictures-for-policies.md",
+        "title": "34. Pictures for policies",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch035-bring-in-robots-and-meshes.md",
+        "bytes": 3943,
+        "sha256": "42c88af6281c70127b1dbe6e34ecf09a10a517f0ab69cc4974f6bdfcbf019980",
+        "file": "ch035-bring-in-robots-and-meshes.md",
+        "title": "35. Bring in robots and meshes",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch036-record-and-replay-a-world.md",
+        "bytes": 3016,
+        "sha256": "6364b23a810bd846bfba5cd2c39e905330d03a42cc67bb46516a19e4bdb0ef68",
+        "file": "ch036-record-and-replay-a-world.md",
+        "title": "36. Record and replay a world",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch037-measure-the-engine-honestly.md",
+        "bytes": 3728,
+        "sha256": "230c61ec16449f388f6b8cbf594b70f000d9199a50e9340acbf2f293483870d3",
+        "file": "ch037-measure-the-engine-honestly.md",
+        "title": "37. Measure the engine honestly",
+        "group": "IV. Physics"
+      },
+      {
+        "path": "aethyr/book/ch038-stream-a-large-world.md",
+        "bytes": 4726,
+        "sha256": "7e98af0b2b996daafb98493d3ca082874b1b0ae1275d7e38ff7487ea908c0e5b",
+        "file": "ch038-stream-a-large-world.md",
+        "title": "38. Stream a large world",
+        "group": "V. Big worlds"
+      },
+      {
+        "path": "aethyr/book/ch039-ephemerides-time-scales-and-frames.md",
+        "bytes": 12567,
+        "sha256": "1354fa048012458b9e8d4326426ce6bf2f4cf685093ee7ce5dc96614d78ad55c",
+        "file": "ch039-ephemerides-time-scales-and-frames.md",
+        "title": "39. Ephemerides, time scales and frames",
+        "group": "V. Big worlds"
+      },
+      {
+        "path": "aethyr/book/ch040-propagate-with-a-stated-error.md",
+        "bytes": 4262,
+        "sha256": "a35e642b961de057fad1e2bdb61269b894888c1da5730d0bab8560d25b4341af",
+        "file": "ch040-propagate-with-a-stated-error.md",
+        "title": "40. Propagate with a stated error",
+        "group": "V. Big worlds"
+      },
+      {
+        "path": "aethyr/book/ch041-burns-consume-mass.md",
+        "bytes": 4355,
+        "sha256": "defd1ee14d3dc6570619977cd2bd061ee7f1c0defa459a5449b591baac5e7808",
+        "file": "ch041-burns-consume-mass.md",
+        "title": "41. Burns consume mass",
+        "group": "V. Big worlds"
+      },
+      {
+        "path": "aethyr/book/ch042-reach-a-moving-target.md",
+        "bytes": 4441,
+        "sha256": "82491521802cb47a52e9c206f252811a862f638ca44f85c789af6932e56dd03e",
+        "file": "ch042-reach-a-moving-target.md",
+        "title": "42. Reach a moving target",
+        "group": "V. Big worlds"
+      },
+      {
+        "path": "aethyr/book/ch043-heat-has-to-go-somewhere.md",
+        "bytes": 3977,
+        "sha256": "3a4a3198f4501fb2ab83f01a10221ffe12d5c94e75eb4156e805de104f41538d",
+        "file": "ch043-heat-has-to-go-somewhere.md",
+        "title": "43. Heat has to go somewhere",
+        "group": "V. Big worlds"
+      },
+      {
+        "path": "aethyr/book/ch044-inside-a-turning-accelerating-ship.md",
+        "bytes": 4312,
+        "sha256": "a7ec3651fd22574aa1e14cc7b3a31af905e4d89c14c870fdd77a5f5c0f72d726",
+        "file": "ch044-inside-a-turning-accelerating-ship.md",
+        "title": "44. Inside a turning, accelerating ship",
+        "group": "V. Big worlds"
+      },
+      {
+        "path": "aethyr/book/ch045-sensors-that-see-the-past.md",
+        "bytes": 3988,
+        "sha256": "a2cea60079981e7ce8449c056c93ec98d0860843cde789f8e3632db5bd0eca8f",
+        "file": "ch045-sensors-that-see-the-past.md",
+        "title": "45. Sensors that see the past",
+        "group": "V. Big worlds"
+      },
+      {
+        "path": "aethyr/book/ch046-time-warp-that-stops-for-every-event.md",
+        "bytes": 3989,
+        "sha256": "bd35535088590ce18b5e40321fd87f2131d7730b31005d6452d1a136a21744be",
+        "file": "ch046-time-warp-that-stops-for-every-event.md",
+        "title": "46. Time warp that stops for every event",
+        "group": "V. Big worlds"
+      },
+      {
+        "path": "aethyr/book/ch047-hits-through-layers.md",
+        "bytes": 3914,
+        "sha256": "312ef30b65d85f323f8d5e9d2c2b3d807fa388de8e8675b1859d1e2153640766",
+        "file": "ch047-hits-through-layers.md",
+        "title": "47. Hits through layers",
+        "group": "V. Big worlds"
+      },
+      {
+        "path": "aethyr/book/ch048-one-world-at-three-fidelities.md",
+        "bytes": 4583,
+        "sha256": "e86b7ba1c2fc15e6d639beac6d3184cf11a8b7f602a91f0b3dea1ca69654cb00",
+        "file": "ch048-one-world-at-three-fidelities.md",
+        "title": "48. One world at three fidelities",
+        "group": "V. Big worlds"
+      },
+      {
+        "path": "aethyr/book/ch049-rooms-and-presence.md",
+        "bytes": 2526,
+        "sha256": "f469be24f54a981dbc57e4d4afc02f05403e032f294b2e1129d34e5810217fa2",
+        "file": "ch049-rooms-and-presence.md",
+        "title": "49. Rooms and presence",
+        "group": "V. Big worlds"
+      },
+      {
+        "path": "aethyr/book/ch050-shared-state-over-the-network.md",
+        "bytes": 2330,
+        "sha256": "631248fe7e9245516fdc21d10573487e2e8b2ea928155c130fb5004519cb583a",
+        "file": "ch050-shared-state-over-the-network.md",
+        "title": "50. Lockstep for small deterministic games",
+        "group": "V. Big worlds"
+      },
+      {
+        "path": "aethyr/book/ch051-a-realm-is-a-document.md",
+        "bytes": 15995,
+        "sha256": "1d557db33a599e77f21af98238d14b908838311f4fb864ccc681d6dab6de573c",
+        "file": "ch051-a-realm-is-a-document.md",
+        "title": "51. A realm is a document",
+        "group": "VI. Making worlds: Aethyrforge"
+      },
+      {
+        "path": "aethyr/book/ch052-edit-a-realm-in-place.md",
+        "bytes": 26868,
+        "sha256": "f67f79e2f99105756fed0985b9328430f858eae92a3363187b5bf570d3fa05be",
+        "file": "ch052-edit-a-realm-in-place.md",
+        "title": "52. Edit a realm in place",
+        "group": "VI. Making worlds: Aethyrforge"
+      },
+      {
+        "path": "aethyr/book/ch053-bring-in-assets.md",
+        "bytes": 23555,
+        "sha256": "c6fa1bea1f5ca8f51461b669545d906a32addbbdcec86a6aefaae8aabbdd8f5d",
+        "file": "ch053-bring-in-assets.md",
+        "title": "53. Bring in assets",
+        "group": "VI. Making worlds: Aethyrforge"
+      },
+      {
+        "path": "aethyr/book/ch054-publish-a-realm.md",
+        "bytes": 24479,
+        "sha256": "4d9ba67aec80896f7dc118b8f0e76959a1e0e479472a4923a5ce2a4b5b29d59c",
+        "file": "ch054-publish-a-realm.md",
+        "title": "54. Publish a realm",
+        "group": "VI. Making worlds: Aethyrforge"
+      },
+      {
+        "path": "aethyr/book/ch055-fork-a-realm.md",
+        "bytes": 13418,
+        "sha256": "e7deb78731d7a1b795b04e5a28467c41ff1b3469ff09cb51e9e0ecf0e2ec3745",
+        "file": "ch055-fork-a-realm.md",
+        "title": "55. Fork a realm",
+        "group": "VI. Making worlds: Aethyrforge"
+      },
+      {
+        "path": "aethyr/book/ch056-the-grid.md",
+        "bytes": 15877,
+        "sha256": "7c7bace31f08ac5017f6565c1be70078f8fa00f5e55a80bc715d90808d148dae",
+        "file": "ch056-the-grid.md",
+        "title": "56. The Grid",
+        "group": "VII. Realms"
+      },
+      {
+        "path": "aethyr/book/ch057-made-realms.md",
+        "bytes": 4514,
+        "sha256": "01adb214bcb0393f59a5dd888d4b60a9d1a7dfd1b55a3e85c1939840df2b3b45",
+        "file": "ch057-made-realms.md",
+        "title": "57. Made realms",
+        "group": "VII. Realms"
+      },
+      {
+        "path": "aethyr/book/ch058-everglade.md",
+        "bytes": 2372,
+        "sha256": "1a4d2ba11368e92731f04fc5e9c6475982f2c2863d6da95f7c746f7457d2b542",
+        "file": "ch058-everglade.md",
+        "title": "58. Everglade",
+        "group": "VII. Realms"
+      },
+      {
+        "path": "aethyr/book/ch059-dead-gears.md",
+        "bytes": 4569,
+        "sha256": "4b52cc4a7fd8248ab9737667fe8d30204f4d8a70da778c3d85d715d6d5d15bf7",
+        "file": "ch059-dead-gears.md",
+        "title": "59. Dead Gears",
+        "group": "VII. Realms"
+      },
+      {
+        "path": "aethyr/book/ch060-ice-cream-man.md",
+        "bytes": 4502,
+        "sha256": "a820a0a95ccd7fea2e525367367578c6eeca92ffe9d382e0702d44ca51d85387",
+        "file": "ch060-ice-cream-man.md",
+        "title": "60. Ice Cream Man",
+        "group": "VII. Realms"
+      },
+      {
+        "path": "aethyr/book/ch061-hecates-cemetery.md",
+        "bytes": 4294,
+        "sha256": "82eaa6739cc68c40dd2b7108afcd5abce81f1ec59deca8178ca7d6cca197f047",
+        "file": "ch061-hecates-cemetery.md",
+        "title": "61. Hecate's Cemetery",
+        "group": "VII. Realms"
+      },
+      {
+        "path": "aethyr/book/ch062-fairy-forest.md",
+        "bytes": 4465,
+        "sha256": "0e211fd007c577452ee94f52804a86df615083eccbce85c1b8c2e036ce8f3ea8",
+        "file": "ch062-fairy-forest.md",
+        "title": "62. Fairy Forest",
+        "group": "VII. Realms"
+      },
+      {
+        "path": "aethyr/book/ch063-the-space-games.md",
+        "bytes": 5019,
+        "sha256": "df8bbcf87be6de859f3fe9ce1d3ffd42e3a6f582d69c0506a5783d96b96e2794",
+        "file": "ch063-the-space-games.md",
+        "title": "63. The space games",
+        "group": "VII. Realms"
+      },
+      {
+        "path": "aethyr/book/ch064-every-realm-runs-on-aethyr.md",
+        "bytes": 19189,
+        "sha256": "fdefb8b6da3fa30167cd672abe0b0f49d915142251c5619d36ea23f3fffc7798",
+        "file": "ch064-every-realm-runs-on-aethyr.md",
+        "title": "64. Every realm runs on Aethyr",
+        "group": "VII. Realms"
+      },
+      {
+        "path": "aethyr/book/ch065-sound-from-numbers.md",
+        "bytes": 11787,
+        "sha256": "2bd4a5aeec7546cc70eee3b6567d4036398bc0b989c8c4d081c9ded50b6e4ee4",
+        "file": "ch065-sound-from-numbers.md",
+        "title": "65. Sound from numbers: oscillators and envelopes",
+        "group": "VIII. Hearing it"
+      },
+      {
+        "path": "aethyr/book/ch066-a-sequencer-on-the-beat-grid.md",
+        "bytes": 8757,
+        "sha256": "d4de219719db339a8feed404052512ea8914418d39bfebd103ef185623a27ee9",
+        "file": "ch066-a-sequencer-on-the-beat-grid.md",
+        "title": "66. A sequencer on the beat grid",
+        "group": "VIII. Hearing it"
+      },
+      {
+        "path": "aethyr/book/ch067-scores-mixing-and-a-soundtrack.md",
+        "bytes": 15522,
+        "sha256": "cb275305a6d3f7dadfb9b846e12647e247f3516509a923d7c8f85fa0bbb2ebbb",
+        "file": "ch067-scores-mixing-and-a-soundtrack.md",
+        "title": "67. Scores, mixing and a soundtrack",
+        "group": "VIII. Hearing it"
+      },
+      {
+        "path": "aethyr/book/ch068-sound-in-the-world.md",
+        "bytes": 12335,
+        "sha256": "a023d9170dc321ba75f8456bac6a9c2e0ef664df954dab83727f185650655315",
+        "file": "ch068-sound-in-the-world.md",
+        "title": "68. Sound in the world: playback, space and reaction",
+        "group": "VIII. Hearing it"
+      },
+      {
+        "path": "aethyr/book/ch069-voices-in-a-realm.md",
+        "bytes": 11709,
+        "sha256": "2d9d7488bd9a73fc7763da0b42445f16f74dd474d36f94b36bbbcf3d6ca3d8a6",
+        "file": "ch069-voices-in-a-realm.md",
+        "title": "69. Voices in a realm",
+        "group": "VIII. Hearing it"
+      },
+      {
+        "path": "aethyr/book/ch070-rivers-ponds-and-the-sea.md",
+        "bytes": 6143,
+        "sha256": "acb15afb77f91f3a1079f940f66c84dae1c1c4fb5a3d66c7d3ec7db0b6521e5f",
+        "file": "ch070-rivers-ponds-and-the-sea.md",
+        "title": "70. Rivers, ponds and the sea",
+        "group": "IX. A living world"
+      },
+      {
+        "path": "aethyr/book/ch071-sky-weather-and-the-time-of-day.md",
+        "bytes": 5746,
+        "sha256": "f21d92b5aaf69b28ab74eb0a64270a25f1422bb2eb1a488555bf58bb73a46213",
+        "file": "ch071-sky-weather-and-the-time-of-day.md",
+        "title": "71. Sky, weather and the time of day",
+        "group": "IX. A living world"
+      },
+      {
+        "path": "aethyr/book/ch072-effects-made-of-particles.md",
+        "bytes": 7153,
+        "sha256": "25c14d7ea7c9ac4a33189d28167579607c5b0e8ecc7ecd6b18d1510ed276078e",
+        "file": "ch072-effects-made-of-particles.md",
+        "title": "72. Effects made of particles",
+        "group": "IX. A living world"
+      },
+      {
+        "path": "aethyr/book/ch073-things-that-break.md",
+        "bytes": 5630,
+        "sha256": "2b647ef254a15d37bd8461e3fa818d77f7bfa2773ebe44fb3059417260e6b2a0",
+        "file": "ch073-things-that-break.md",
+        "title": "73. Things that break",
+        "group": "IX. A living world"
+      },
+      {
+        "path": "aethyr/book/ch074-wheels-on-the-ground.md",
+        "bytes": 5105,
+        "sha256": "97228c1507a60f92aec3eb180d736440df2807719fc11084dcbecdcd077b2118",
+        "file": "ch074-wheels-on-the-ground.md",
+        "title": "74. Wheels on the ground",
+        "group": "IX. A living world"
+      },
+      {
+        "path": "aethyr/book/ch075-creatures-that-follow-and-watch.md",
+        "bytes": 24850,
+        "sha256": "c0ae3403fb6985c3751522f041187961b6bdce0389bcc844d1c468031c9e0a19",
+        "file": "ch075-creatures-that-follow-and-watch.md",
+        "title": "75. Creatures that follow and watch",
+        "group": "IX. A living world"
+      },
+      {
+        "path": "aethyr/book/ch076-find-a-way-through.md",
+        "bytes": 20891,
+        "sha256": "360d23c155676dd6800b7155d968cffcd261f20a5afb42a2f24d9f9096e20f5f",
+        "file": "ch076-find-a-way-through.md",
+        "title": "76. Find a way through",
+        "group": "IX. A living world"
+      },
+      {
+        "path": "aethyr/book/ch077-people-who-talk-back.md",
+        "bytes": 18115,
+        "sha256": "81867bcbdd8c0a5dc8401ebcf03dbdd2c525e1c3e7aa954c0c550bd85483af92",
+        "file": "ch077-people-who-talk-back.md",
+        "title": "77. People who talk back",
+        "group": "IX. A living world"
+      },
+      {
+        "path": "aethyr/book/ch078-cinematics-and-close-ups.md",
+        "bytes": 4925,
+        "sha256": "a39c43364ba56b8a260d38fb087d43ccd9f07b54f1c5664c1e3485c3fa1660e8",
+        "file": "ch078-cinematics-and-close-ups.md",
+        "title": "78. Cinematics and close-ups",
+        "group": "IX. A living world"
+      },
+      {
+        "path": "aethyr/book/ch079-a-piece-from-a-sentence.md",
+        "bytes": 5809,
+        "sha256": "ab2de70b3b2070eb194a854b16b7a866de58c597d4079d36819023137be036d0",
+        "file": "ch079-a-piece-from-a-sentence.md",
+        "title": "79. A piece from a sentence",
+        "group": "X. Aethyrforge: generating worlds"
+      },
+      {
+        "path": "aethyr/book/ch080-terrain-and-scatter-from-a-seed.md",
+        "bytes": 22487,
+        "sha256": "7f99f33994db849184e3c760f561cc28eda02cf4c6dbb20b4c85ba8cec6b8ca4",
+        "file": "ch080-terrain-and-scatter-from-a-seed.md",
+        "title": "80. Terrain and scatter from a seed",
+        "group": "X. Aethyrforge: generating worlds"
+      },
+      {
+        "path": "aethyr/book/ch081-save-and-come-back.md",
+        "bytes": 18331,
+        "sha256": "e43060bcaacb3191da794d8fc0acef4252cceacee0e213a982857b06acd212ab",
+        "file": "ch081-save-and-come-back.md",
+        "title": "81. Save and come back",
+        "group": "XI. Shipping realms"
+      },
+      {
+        "path": "aethyr/book/ch082-change-code-while-it-runs.md",
+        "bytes": 4567,
+        "sha256": "d6a0a4f39c364117e797a532ab0ff1b3c3a96dfacaf800a9e50b993c7c9b81a0",
+        "file": "ch082-change-code-while-it-runs.md",
+        "title": "82. Change code while it runs",
+        "group": "XI. Shipping realms"
+      },
+      {
+        "path": "aethyr/book/ch083-inspect-and-profile-a-running-realm.md",
+        "bytes": 22181,
+        "sha256": "3b0802116ce728e294b8561e51524a3a1959b43b5a1c806d357a0b5e983ffc95",
+        "file": "ch083-inspect-and-profile-a-running-realm.md",
+        "title": "83. Inspect and profile a running realm",
+        "group": "XI. Shipping realms"
+      },
+      {
+        "path": "aethyr/book/ch084-one-realm-on-every-host.md",
+        "bytes": 2453,
+        "sha256": "b057ceeb24984c69d46a2053f326d451dd60cc357fa723955f8da3f11b11242d",
+        "file": "ch084-one-realm-on-every-host.md",
+        "title": "84. One realm on every host",
+        "group": "XI. Shipping realms"
+      },
+      {
+        "path": "aethyr/book/ch085-everyone-can-play.md",
+        "bytes": 2651,
+        "sha256": "74ebbc88d445ac1b4717eac5362bdf2df57c6a6880402386791f885e78d6a43f",
+        "file": "ch085-everyone-can-play.md",
+        "title": "85. Everyone can play",
+        "group": "XI. Shipping realms"
+      },
+      {
+        "path": "aethyr/book/ch086-one-server-owns-the-scene.md",
+        "bytes": 5771,
+        "sha256": "d75bd66a2bd32f45ffe7c539e581da053cdf5ab5c8a45537cbf1ed63ca98090d",
+        "file": "ch086-one-server-owns-the-scene.md",
+        "title": "86. One server owns the scene",
+        "group": "XII. Many players: a multiplayer engine"
+      },
+      {
+        "path": "aethyr/book/ch087-server-and-client-share-one-step.md",
+        "bytes": 4627,
+        "sha256": "9a2f38125a37bae64f37d5fc9d4243076fbc19fb2625d653f61cda0b52310aa1",
+        "file": "ch087-server-and-client-share-one-step.md",
+        "title": "87. Server and client share one step and one world",
+        "group": "XII. Many players: a multiplayer engine"
+      },
+      {
+        "path": "aethyr/book/ch088-a-seat-joins-with-a-signed-ticket.md",
+        "bytes": 4345,
+        "sha256": "11832bf9571e6051f950ebf1bc27d77dfea6fa8b6ae85b4d2dd4e41e94b70f8a",
+        "file": "ch088-a-seat-joins-with-a-signed-ticket.md",
+        "title": "88. A seat joins with a signed ticket",
+        "group": "XII. Many players: a multiplayer engine"
+      },
+      {
+        "path": "aethyr/book/ch089-intents-in-acknowledgements-out.md",
+        "bytes": 5423,
+        "sha256": "f5d072495d2d23fd268284df930a9391389289153ca76f6c1d5074796db0e7f8",
+        "file": "ch089-intents-in-acknowledgements-out.md",
+        "title": "89. Intents in, acknowledgements out",
+        "group": "XII. Many players: a multiplayer engine"
+      },
+      {
+        "path": "aethyr/book/ch090-predict-your-own-movement.md",
+        "bytes": 5952,
+        "sha256": "c07f85a4ee4eef828c975a4bf7d2e34fc5fa46e92104ec1c8e86ab0893accca3",
+        "file": "ch090-predict-your-own-movement.md",
+        "title": "90. Predict your own movement",
+        "group": "XII. Many players: a multiplayer engine"
+      },
+      {
+        "path": "aethyr/book/ch091-one-record-for-every-replicated-entity.md",
+        "bytes": 4697,
+        "sha256": "ef5860c60219efb0a29e5cbc3d3e930267a7b524c971f603bc3b6a7236dc1730",
+        "file": "ch091-one-record-for-every-replicated-entity.md",
+        "title": "91. One record for every replicated entity",
+        "group": "XII. Many players: a multiplayer engine"
+      },
+      {
+        "path": "aethyr/book/ch092-priority-under-a-budget.md",
+        "bytes": 3865,
+        "sha256": "8b6a459982d075c4e9fcb47cfe2ae710b8ee55a20733275e6cd666d44323c1ce",
+        "file": "ch092-priority-under-a-budget.md",
+        "title": "92. Priority under a budget",
+        "group": "XII. Many players: a multiplayer engine"
+      },
+      {
+        "path": "aethyr/book/ch093-one-interpolation-buffer.md",
+        "bytes": 6287,
+        "sha256": "4a155236f48f6efabfdb415c1f86191f2a9c6cff5cd3bd42ad71a98f32fe05cf",
+        "file": "ch093-one-interpolation-buffer.md",
+        "title": "93. One interpolation buffer for every remote entity",
+        "group": "XII. Many players: a multiplayer engine"
+      },
+      {
+        "path": "aethyr/book/ch094-effects-are-state-events-are-cues.md",
+        "bytes": 4226,
+        "sha256": "24137092e949e339d72ac04c6a3de58b30d232253d4e4e9e88d3f8fdbc3c514c",
+        "file": "ch094-effects-are-state-events-are-cues.md",
+        "title": "94. Effects are state, events are cues",
+        "group": "XII. Many players: a multiplayer engine"
+      },
+      {
+        "path": "aethyr/book/ch095-offline-is-a-local-server.md",
+        "bytes": 4868,
+        "sha256": "a4afce5de0cfe9297a966a66480b3824d3f39392ad339858b6a907b296bdfb08",
+        "file": "ch095-offline-is-a-local-server.md",
+        "title": "95. Offline is a local server",
+        "group": "XII. Many players: a multiplayer engine"
+      },
+      {
+        "path": "aethyr/book/ch096-casts-and-combat-under-latency.md",
+        "bytes": 7040,
+        "sha256": "0780bc79ef084c3fb9a050db29fa26b786de959f03df85714fae3875b7272770",
+        "file": "ch096-casts-and-combat-under-latency.md",
+        "title": "96. Casts and combat under latency",
+        "group": "XII. Many players: a multiplayer engine"
+      },
+      {
+        "path": "aethyr/book/ch097-interest-without-leaks.md",
+        "bytes": 3498,
+        "sha256": "f5331914e5cc42c84d99f8bd060da58b2cf56e4877965c8af0fcbd3d0ab19c47",
+        "file": "ch097-interest-without-leaks.md",
+        "title": "97. Interest without leaks",
+        "group": "XII. Many players: a multiplayer engine"
+      },
+      {
+        "path": "aethyr/book/ch098-versions-deploys-and-reconnect.md",
+        "bytes": 6681,
+        "sha256": "1b4dd2e3a1803b2d810f7af36ad186b5df324122cb68cb586d0673e17c358daf",
+        "file": "ch098-versions-deploys-and-reconnect.md",
+        "title": "98. Versions, deploys and reconnect",
+        "group": "XII. Many players: a multiplayer engine"
+      },
+      {
+        "path": "aethyr/book/ch099-watch-the-whole-action-path.md",
+        "bytes": 2982,
+        "sha256": "a14fac407c5a6507a7f2981b406750b3c9ae08099ccde2d86b262bf63fe37cb2",
+        "file": "ch099-watch-the-whole-action-path.md",
+        "title": "99. Watch the whole action path",
+        "group": "XII. Many players: a multiplayer engine"
+      },
+      {
+        "path": "aethyr/book/ch100-prove-the-room-plays-like-the-game.md",
+        "bytes": 6136,
+        "sha256": "fd98592514a36c547a668f86a70516fdbd5331f12b5561ab915009536b8d320d",
+        "file": "ch100-prove-the-room-plays-like-the-game.md",
+        "title": "100. Prove the room plays like the game",
+        "group": "XII. Many players: a multiplayer engine"
+      },
+      {
+        "path": "aethyr/book/ch101-the-everglade-room.md",
+        "bytes": 4932,
+        "sha256": "1671872f31888212435f801fb4eb0e603b3ca08c73b1640a5f05931e075d908d",
+        "file": "ch101-the-everglade-room.md",
+        "title": "101. The Everglade room",
+        "group": "XII. Many players: a multiplayer engine"
+      },
+      {
+        "path": "aethyr/book/appendix-mmo-gap-analysis.md",
+        "bytes": 14148,
+        "sha256": "00def959a7fc40dd81012d27cf49349f87ade60435e95e7b343c059cfd4c4cec",
+        "file": "appendix-mmo-gap-analysis.md",
+        "title": "A. Everglade rooms against an MMO engine",
+        "group": "Appendices"
+      }
+    ],
+    "sha256": "1df6fc891dee8e1f66ad39fed6132ad36cb52a5d5d27e566d80dc1508b2356ad"
+  },
+  "change_request": "CwR9JJ91zxgGrKYIfeLP",
+  "submitted_markdown": [
+    {
+      "path": "README.md",
+      "bytes": 44815,
+      "sha256": "0a891329791ead9a9fb6c42e5b156ea7bb714c97f2db1868eba33541abcedb9a",
+      "file": "README.md",
+      "page_id": "qZZIPHRaO82WjkCCTiTY",
+      "title": "Introduction"
+    },
+    {
+      "path": "PLAN.md",
+      "bytes": 24092,
+      "sha256": "beba392efb47417d20318c981136ce1d8c575d65048a796263d4c4bd402c35c8",
+      "file": "PLAN.md",
+      "page_id": "5v0GTV4F3xphmZC2GuRw",
+      "title": "Plan and prerequisites"
+    },
+    {
+      "path": "ch001-a-frame-has-a-fixed-step.md",
+      "bytes": 23907,
+      "sha256": "4055cd190671299617b5c6e6adf02faae1d37899365f45598dffe36fa0cbf384",
+      "file": "ch001-a-frame-has-a-fixed-step.md",
+      "page_id": "hDkWkM4UmAl8bxavPveC",
+      "title": "1. A frame has a fixed step"
+    },
+    {
+      "path": "ch002-spaces-and-units.md",
+      "bytes": 18622,
+      "sha256": "0b05396811a9ec2811cf12cf34c77c2b2e7c0f12d14bf5fa363e07903965bcd1",
+      "file": "ch002-spaces-and-units.md",
+      "page_id": "voY4jW8HQZ4topSrY7fm",
+      "title": "2. Spaces and units"
+    },
+    {
+      "path": "ch003-state-starts-from-its-defaults.md",
+      "bytes": 10883,
+      "sha256": "270e70d1e09a341f8ba0beb1ab7a0f66254f317ec65833f04328219c2e39ea9d",
+      "file": "ch003-state-starts-from-its-defaults.md",
+      "page_id": "ZKElMU5oR2Fmx3iEJZW6",
+      "title": "3. State starts from its defaults"
+    },
+    {
+      "path": "ch004-input-becomes-typed-actions.md",
+      "bytes": 26150,
+      "sha256": "d08c508ccd4c2456fa9f91ec095a4f88ff78102a8175dd891ecaf06fb570a43b",
+      "file": "ch004-input-becomes-typed-actions.md",
+      "page_id": "dpvmsja8lEOjWzowHDGX",
+      "title": "4. Input becomes typed actions"
+    },
+    {
+      "path": "ch005-replay-a-session-exactly.md",
+      "bytes": 39563,
+      "sha256": "4a7b877470d478f09c8dbda931514c3d3bfdc536f33f2619d4e7924e7b55b333",
+      "file": "ch005-replay-a-session-exactly.md",
+      "page_id": "9suJlhioDVSkesrKkCvv",
+      "title": "5. Replay a session exactly"
+    },
+    {
+      "path": "ch006-entities-are-born-and-die.md",
+      "bytes": 22245,
+      "sha256": "f048bfb93b26ecdc24da88a0391f97fe426fd5cf4e3441015c7049d107f57e62",
+      "file": "ch006-entities-are-born-and-die.md",
+      "page_id": "IXtgl5XjLnu5v3T6zBPu",
+      "title": "6. Entities are born and die"
+    },
+    {
+      "path": "ch007-ask-the-world-where-things-are.md",
+      "bytes": 33039,
+      "sha256": "0e73f08c69bf168abd95421c30bafb29f5a45384b8614274f3978727cd67ed6e",
+      "file": "ch007-ask-the-world-where-things-are.md",
+      "page_id": "LZWzlYcYjcRsvCDI5yeB",
+      "title": "7. Ask the world where things are"
+    },
+    {
+      "path": "ch008-ground-and-collision.md",
+      "bytes": 17512,
+      "sha256": "fd92a7fa7a839343aa5947e2678a317abc5db98b814419a9bc6c58b62cb1aad6",
+      "file": "ch008-ground-and-collision.md",
+      "page_id": "QvmQ85eiluM1JVXmMHcj",
+      "title": "8. Ground and collision"
+    },
+    {
+      "path": "ch009-a-character-moves.md",
+      "bytes": 22320,
+      "sha256": "68fbd83680e5b6e221cee27eabf64a2b088da368cadc13413cc246edb0e2a4eb",
+      "file": "ch009-a-character-moves.md",
+      "page_id": "ZzoeWOJAVNyCQ3j8i6Y5",
+      "title": "9. A character moves"
+    },
+    {
+      "path": "ch010-the-camera-follows.md",
+      "bytes": 41931,
+      "sha256": "a583bd9ce3eec85125c512b4e4d983e11fec1629d81ef8ec3860f4592d030f5f",
+      "file": "ch010-the-camera-follows.md",
+      "page_id": "KCeBsKpTNhCOKaVVuJmt",
+      "title": "10. The camera follows"
+    },
+    {
+      "path": "ch011-the-wgsl-renderer.md",
+      "bytes": 44502,
+      "sha256": "cbe01b6b0e12131b747746214cc482fedf1bedddf8a4b19196df3d05b7b3e705",
+      "file": "ch011-the-wgsl-renderer.md",
+      "page_id": "agUsIYKUnfJV0M2lROzh",
+      "title": "11. The WGSL renderer"
+    },
+    {
+      "path": "ch012-materials.md",
+      "bytes": 17857,
+      "sha256": "e854eb5b2938a7650675fb483a39fe569cc9e2e44353e9ece5f09bd3e6b83ce0",
+      "file": "ch012-materials.md",
+      "page_id": "9fkWhY3YR8o5DI3e8VqA",
+      "title": "12. Materials"
+    },
+    {
+      "path": "ch013-light-and-shadow.md",
+      "bytes": 15361,
+      "sha256": "204bf8a1e78bd5cf51d35192fe502a9544043664465e6ff21e0620a2ce8bdcd1",
+      "file": "ch013-light-and-shadow.md",
+      "page_id": "0XDOecEj6QBjFsn1vJCU",
+      "title": "13. Light and shadow"
+    },
+    {
+      "path": "ch014-figures-and-animation.md",
+      "bytes": 13477,
+      "sha256": "6421e0ec7f1ba4b29efa3907733f0466eef480d12ff2c9721b29717baa06ad91",
+      "file": "ch014-figures-and-animation.md",
+      "page_id": "geAcL8bet81Fg1YJ4VG9",
+      "title": "14. Figures and animation"
+    },
+    {
+      "path": "ch015-ui-and-the-hud.md",
+      "bytes": 22125,
+      "sha256": "2b4e691a2e3f5812e89fd0656d1c756c0df11c407659edaf202c0f3d179c6ade",
+      "file": "ch015-ui-and-the-hud.md",
+      "page_id": "nsM4eb4Fevb051pnogaH",
+      "title": "15. UI and the HUD"
+    },
+    {
+      "path": "ch016-budgets-that-refuse.md",
+      "bytes": 22197,
+      "sha256": "2a2e5b54de4b647280d353fcaaa8bf6b1d245681d26c65f05b775e5ecd0724b8",
+      "file": "ch016-budgets-that-refuse.md",
+      "page_id": "3yw1XEdxdycXVSt5w0kT",
+      "title": "16. Budgets that refuse"
+    },
+    {
+      "path": "ch017-a-scene-owns-the-state.md",
+      "bytes": 12693,
+      "sha256": "f057a3b1d7aa437a2a788012ba8470742ccd7976df9c75874a20e4d77f88adcc",
+      "file": "ch017-a-scene-owns-the-state.md",
+      "page_id": "ls8L2tBSOmNLGjOX2Woe",
+      "title": "17. A scene owns the state"
+    },
+    {
+      "path": "ch018-rigid-bodies-and-time-steps.md",
+      "bytes": 12337,
+      "sha256": "2d075aeca6759c69c625fcb2bd0a7b11d0c2d934a031c8ae6c2b30ea0c0d8c58",
+      "file": "ch018-rigid-bodies-and-time-steps.md",
+      "page_id": "2VXaHs3nIu33T2dBI4Hr",
+      "title": "18. Rigid bodies and time steps"
+    },
+    {
+      "path": "ch019-joints-in-generalized-coordinates.md",
+      "bytes": 5582,
+      "sha256": "efbb15da8b6447a0feb222778763f18b563073baa1417d4f666397786392ad29",
+      "file": "ch019-joints-in-generalized-coordinates.md",
+      "page_id": "JNjzghSyPTi6ZGmfx5ix",
+      "title": "19. Joints in generalized coordinates"
+    },
+    {
+      "path": "ch020-find-the-pairs-that-might-touch.md",
+      "bytes": 11655,
+      "sha256": "a3118d282f281741526077ef2c13820daeeb749a76d630796a273f48bffed172",
+      "file": "ch020-find-the-pairs-that-might-touch.md",
+      "page_id": "A4m6Ohuw5YwDwkstyXCZ",
+      "title": "20. Find the pairs that might touch"
+    },
+    {
+      "path": "ch021-find-where-they-touch.md",
+      "bytes": 15305,
+      "sha256": "7135dd6c928822c9ece2725de88dd603841fcc8dcd983233a0b7b4b70febd923",
+      "file": "ch021-find-where-they-touch.md",
+      "page_id": "ezpFVvQytYRccKIFFcV3",
+      "title": "21. Find where they touch"
+    },
+    {
+      "path": "ch022-contact-as-an-optimization.md",
+      "bytes": 5616,
+      "sha256": "0bb2decebfc9b70ec22b743dbfd65ae71e17f7e91bfe7fb008ed74d3cb55aa53",
+      "file": "ch022-contact-as-an-optimization.md",
+      "page_id": "i3kSDvCeSEOQmvVIKJQy",
+      "title": "22. Contact as an optimization"
+    },
+    {
+      "path": "ch023-particles-and-their-neighbors.md",
+      "bytes": 9523,
+      "sha256": "27e306c36b6d7c9a56e73093809786e97b3e00e716c3387aa7a6173cf1f3684d",
+      "file": "ch023-particles-and-their-neighbors.md",
+      "page_id": "2ZjzAoaqEkhjQu8bABQk",
+      "title": "23. Particles and their neighbors"
+    },
+    {
+      "path": "ch024-liquids-from-particles.md",
+      "bytes": 11621,
+      "sha256": "5e612d8d9d8a8a59217c4a0d45b69d39db44513f6ee2538fca30f38c2c99b433",
+      "file": "ch024-liquids-from-particles.md",
+      "page_id": "RLnBaGLnavht9jGiQL5B",
+      "title": "24. Liquids from particles"
+    },
+    {
+      "path": "ch025-cloth-and-rope-from-constraints.md",
+      "bytes": 12526,
+      "sha256": "fd480c103bbbfe23bf0caa32c7f5387704902d7f352af94d393890b572084cb7",
+      "file": "ch025-cloth-and-rope-from-constraints.md",
+      "page_id": "X7b1y3ylXQQsdVvAu5OW",
+      "title": "25. Cloth and rope from constraints"
+    },
+    {
+      "path": "ch026-sand-snow-and-clay-on-a-grid.md",
+      "bytes": 10816,
+      "sha256": "88a08a568b7eb6d41c6d34e088da0eebd3b5509603b0e49d0be67139d1e4c083",
+      "file": "ch026-sand-snow-and-clay-on-a-grid.md",
+      "page_id": "sqoKILI33CajCBOCSNL8",
+      "title": "26. Sand, snow and clay on a grid"
+    },
+    {
+      "path": "ch027-elastic-solids-on-a-mesh.md",
+      "bytes": 4223,
+      "sha256": "ef6500890ea6cf8350ae8066cc63e18c0800d77d42628c93a6944cf1640f84b9",
+      "file": "ch027-elastic-solids-on-a-mesh.md",
+      "page_id": "whkZ6WoTiPqaHuKuhdze",
+      "title": "27. Elastic solids on a mesh"
+    },
+    {
+      "path": "ch028-smoke-on-a-grid.md",
+      "bytes": 9392,
+      "sha256": "81e061cd663384f84c0a065499e6c08de1c67ea872a5493003ff07689c74cde8",
+      "file": "ch028-smoke-on-a-grid.md",
+      "page_id": "Y0z1wmg6ZqUz0WDrXtMa",
+      "title": "28. Smoke on a grid"
+    },
+    {
+      "path": "ch029-materials-meet.md",
+      "bytes": 3240,
+      "sha256": "c4cd2e8888c3be4d4cd1d1b2a8da60d1329610902cd25b29d2f08e745fc27c38",
+      "file": "ch029-materials-meet.md",
+      "page_id": "wgKRVdZr0NlKLk5bkx7D",
+      "title": "29. Materials meet"
+    },
+    {
+      "path": "ch030-contact-that-holds.md",
+      "bytes": 3522,
+      "sha256": "913f81035fc2ecc56116ac11cad4806552165c39635a5147be7aa55db69fe237",
+      "file": "ch030-contact-that-holds.md",
+      "page_id": "bQwPHyo2JLWRsh18d187",
+      "title": "30. Contact that holds"
+    },
+    {
+      "path": "ch031-many-worlds-in-one-step.md",
+      "bytes": 3887,
+      "sha256": "6c398698fbf7d2a1d1df524127f482b0a337187b9e9ce54319e36c4fd23c719e",
+      "file": "ch031-many-worlds-in-one-step.md",
+      "page_id": "Ga4fEb5FGFch673AYI51",
+      "title": "31. Many worlds in one step"
+    },
+    {
+      "path": "ch032-differentiate-a-simulation.md",
+      "bytes": 4406,
+      "sha256": "f918b5e74f0e696192496535c7835a9c49e089ac4feddc55a5a7ee7e96e46acf",
+      "file": "ch032-differentiate-a-simulation.md",
+      "page_id": "A1pHyMKZO6cqHZU1PBx4",
+      "title": "32. Differentiate a simulation"
+    },
+    {
+      "path": "ch033-sensors-read-the-simulation.md",
+      "bytes": 3178,
+      "sha256": "bf35ddb7ded57dfe0228634f39d3a0dde7093434021306a4582177c38a9d3c65",
+      "file": "ch033-sensors-read-the-simulation.md",
+      "page_id": "QIZto7X5jnGTAScgbBde",
+      "title": "33. Sensors read the simulation"
+    },
+    {
+      "path": "ch034-pictures-for-policies.md",
+      "bytes": 3538,
+      "sha256": "1b513ef733133d559784502e1da73224683bcf3e159b1f734ba357f010140600",
+      "file": "ch034-pictures-for-policies.md",
+      "page_id": "MsL8BAFgQUJNq8bmA1mA",
+      "title": "34. Pictures for policies"
+    },
+    {
+      "path": "ch035-bring-in-robots-and-meshes.md",
+      "bytes": 3909,
+      "sha256": "dc37b37eca6d7c12656c3af6fdd2875219572d53a8f2c07808580dab43321bd1",
+      "file": "ch035-bring-in-robots-and-meshes.md",
+      "page_id": "VFREuAplbJX9UCj9SSwC",
+      "title": "35. Bring in robots and meshes"
+    },
+    {
+      "path": "ch036-record-and-replay-a-world.md",
+      "bytes": 3067,
+      "sha256": "99c8204a1efda7a2b7ac0b3228e983297c68964b3983668e455883b545f80b00",
+      "file": "ch036-record-and-replay-a-world.md",
+      "page_id": "PzuHyMf013OlWODL9bSG",
+      "title": "36. Record and replay a world"
+    },
+    {
+      "path": "ch037-measure-the-engine-honestly.md",
+      "bytes": 3766,
+      "sha256": "a23fa68d0de1030cdfe2736e05e6671233290b9bee76d1243dda678fff37d88d",
+      "file": "ch037-measure-the-engine-honestly.md",
+      "page_id": "mCJjxNGRKq3w4nwXLb0l",
+      "title": "37. Measure the engine honestly"
+    },
+    {
+      "path": "ch038-stream-a-large-world.md",
+      "bytes": 5034,
+      "sha256": "96159aad6713c055e7b4793908d09217bd5b2e3447ca98b338efea5166bb0dbd",
+      "file": "ch038-stream-a-large-world.md",
+      "page_id": "buRzY4A2gxNM6xogfeNW",
+      "title": "38. Stream a large world"
+    },
+    {
+      "path": "ch039-ephemerides-time-scales-and-frames.md",
+      "bytes": 13370,
+      "sha256": "6bb9b8befcdb931e1bc3b899bf497f9e6bb7b2f746a89fc721beddde738b73e7",
+      "file": "ch039-ephemerides-time-scales-and-frames.md",
+      "page_id": "2XDQ2wVJEAMUGb1EL5cu",
+      "title": "39. Ephemerides, time scales and frames"
+    },
+    {
+      "path": "ch040-propagate-with-a-stated-error.md",
+      "bytes": 4362,
+      "sha256": "83d98dcecb8aba83fd5b655d957a809632959f854ae230129b253ebfcefbc5ce",
+      "file": "ch040-propagate-with-a-stated-error.md",
+      "page_id": "hs3pkJy58LtpD8QKYXGv",
+      "title": "40. Propagate with a stated error"
+    },
+    {
+      "path": "ch041-burns-consume-mass.md",
+      "bytes": 4731,
+      "sha256": "f08d10d2385aa0e3220aa87e4ac4bd1c03bd3e1c4be77df20ee68a2634b204ba",
+      "file": "ch041-burns-consume-mass.md",
+      "page_id": "3PbX7DWXdfggVeRcAURH",
+      "title": "41. Burns consume mass"
+    },
+    {
+      "path": "ch042-reach-a-moving-target.md",
+      "bytes": 4721,
+      "sha256": "708542b03d3414465fabb5247770944cffd9620ed16123cad2e0665e8301fbee",
+      "file": "ch042-reach-a-moving-target.md",
+      "page_id": "NIZFtwT94ZoKbkXa9Gco",
+      "title": "42. Reach a moving target"
+    },
+    {
+      "path": "ch043-heat-has-to-go-somewhere.md",
+      "bytes": 4451,
+      "sha256": "e6e6a3fa8f4ca3fb949f3d9b948abb254ebe9b0df4108e4be73f5595f04cea87",
+      "file": "ch043-heat-has-to-go-somewhere.md",
+      "page_id": "i0mItq3gQbYVaAKaA1Ee",
+      "title": "43. Heat has to go somewhere"
+    },
+    {
+      "path": "ch044-inside-a-turning-accelerating-ship.md",
+      "bytes": 4583,
+      "sha256": "fbf016dc5f55c08a188c93e8145323ec0f74ef9af5c5c58bb67715d1d9e4e763",
+      "file": "ch044-inside-a-turning-accelerating-ship.md",
+      "page_id": "wabcW9TtDfx6904LlkGf",
+      "title": "44. Inside a turning, accelerating ship"
+    },
+    {
+      "path": "ch045-sensors-that-see-the-past.md",
+      "bytes": 4266,
+      "sha256": "ae66a3987f54cc488aa49291e37f544996886eb7200617646888b1e108b105ee",
+      "file": "ch045-sensors-that-see-the-past.md",
+      "page_id": "bWoEAlLwOVq9akZTDEwj",
+      "title": "45. Sensors that see the past"
+    },
+    {
+      "path": "ch046-time-warp-that-stops-for-every-event.md",
+      "bytes": 4141,
+      "sha256": "204451b10da9b95258ae4f41d7a9c417db916713ee9a8a420198df404b54a2b9",
+      "file": "ch046-time-warp-that-stops-for-every-event.md",
+      "page_id": "N0tZ8RNQmjskL0CL56aF",
+      "title": "46. Time warp that stops for every event"
+    },
+    {
+      "path": "ch047-hits-through-layers.md",
+      "bytes": 4023,
+      "sha256": "19e8cf50a83f392d813dd597908be7e0539d377b91019cabe1272dbef74a7a16",
+      "file": "ch047-hits-through-layers.md",
+      "page_id": "GkiUqEZXc4DKAHKMEY9a",
+      "title": "47. Hits through layers"
+    },
+    {
+      "path": "ch048-one-world-at-three-fidelities.md",
+      "bytes": 5184,
+      "sha256": "ff60a0b53e912d42c0dcd13d3436bba5bde40b948b3aaff90913d41ca2488cc2",
+      "file": "ch048-one-world-at-three-fidelities.md",
+      "page_id": "qlUvfwICaq5eu4CmN45K",
+      "title": "48. One world at three fidelities"
+    },
+    {
+      "path": "ch049-rooms-and-presence.md",
+      "bytes": 2670,
+      "sha256": "e0cc297e79bcc134377814fcd677c30380280a7847080096ac5ede9d45851afd",
+      "file": "ch049-rooms-and-presence.md",
+      "page_id": "ug5jl5G0Ybzljt8OP6ko",
+      "title": "49. Rooms and presence"
+    },
+    {
+      "path": "ch050-shared-state-over-the-network.md",
+      "bytes": 2811,
+      "sha256": "dcf1fdb1ee2cde0c0d7cb1384ab4cbcda9ddd484e0fba3099f9da247763aa30f",
+      "file": "ch050-shared-state-over-the-network.md",
+      "page_id": "jUjjQb3veg4d9dIS77i3",
+      "title": "50. Lockstep for small deterministic games"
+    },
+    {
+      "path": "ch051-a-realm-is-a-document.md",
+      "bytes": 16715,
+      "sha256": "ce9898909550d203e5d0cefd122e56071f6aeb0138a79f145efc3205b405c24f",
+      "file": "ch051-a-realm-is-a-document.md",
+      "page_id": "rGOPKrxgS1gLlEKlp36S",
+      "title": "51. A realm is a document"
+    },
+    {
+      "path": "ch052-edit-a-realm-in-place.md",
+      "bytes": 27442,
+      "sha256": "ff5c82913b2213ee5e5f0675de2557c4de4d2c95b769b2c9232eb07dcc44d167",
+      "file": "ch052-edit-a-realm-in-place.md",
+      "page_id": "UzfrDyxmMuo1WayJC92Z",
+      "title": "52. Edit a realm in place"
+    },
+    {
+      "path": "ch053-bring-in-assets.md",
+      "bytes": 24559,
+      "sha256": "9e25c084170127fa1b0aa23effec9eba0fc088bbdfa3aa02b8f162c84d48da36",
+      "file": "ch053-bring-in-assets.md",
+      "page_id": "uNRVTrz76PD4kg5DK19M",
+      "title": "53. Bring in assets"
+    },
+    {
+      "path": "ch054-publish-a-realm.md",
+      "bytes": 25998,
+      "sha256": "89f7870ad2017a4619b219400da85f1367a3abae33645cd230b87db6e7df79e1",
+      "file": "ch054-publish-a-realm.md",
+      "page_id": "WJNoL9N5j6QYivzQClxg",
+      "title": "54. Publish a realm"
+    },
+    {
+      "path": "ch055-fork-a-realm.md",
+      "bytes": 14247,
+      "sha256": "d043853b82891f6fb89a24f4c1b5cfac35797eaf65b5cdbaf19b0cd27b73c354",
+      "file": "ch055-fork-a-realm.md",
+      "page_id": "0lpmtN9IT1QXHYNo5eev",
+      "title": "55. Fork a realm"
+    },
+    {
+      "path": "ch056-the-grid.md",
+      "bytes": 17339,
+      "sha256": "3d2b5d477a110a57250962412f65c705add3803c6e751e980786e92d751a115e",
+      "file": "ch056-the-grid.md",
+      "page_id": "nGd2S7coUdW1pugJISvS",
+      "title": "56. The Grid"
+    },
+    {
+      "path": "ch057-made-realms.md",
+      "bytes": 5231,
+      "sha256": "8faa6b48bc28fd599ee1aa2c0b6a0115a705f3fba12eb56f6ce859d01518c7e3",
+      "file": "ch057-made-realms.md",
+      "page_id": "R0zHeAGGgiAilHUVYgu1",
+      "title": "57. Made realms"
+    },
+    {
+      "path": "ch058-everglade.md",
+      "bytes": 2683,
+      "sha256": "682cda1cbf18d9bba26e38d0e15fb0e61fff6f9120a90fc91147d831486cf624",
+      "file": "ch058-everglade.md",
+      "page_id": "Sr6f2uIq0gtByto4SM1W",
+      "title": "58. Everglade"
+    },
+    {
+      "path": "ch059-dead-gears.md",
+      "bytes": 5171,
+      "sha256": "0901b03d86b921fd680ccd11d68fe838d00b0c5bcd8212dd3b8bdcf93cfeca2c",
+      "file": "ch059-dead-gears.md",
+      "page_id": "xtRtG6us06OW59PbEiWP",
+      "title": "59. Dead Gears"
+    },
+    {
+      "path": "ch060-ice-cream-man.md",
+      "bytes": 5557,
+      "sha256": "15dd7ce6c2f5e194ba4f4e6940684f94115458f8026d7eac6778cadb22ce1acf",
+      "file": "ch060-ice-cream-man.md",
+      "page_id": "v0k46acHbE5droA4SoNb",
+      "title": "60. Ice Cream Man"
+    },
+    {
+      "path": "ch061-hecates-cemetery.md",
+      "bytes": 5162,
+      "sha256": "dbd586a5da638f189a49bd29052778c92317854e6638501ecc5eebafd1512398",
+      "file": "ch061-hecates-cemetery.md",
+      "page_id": "tRWy5vNBs6MPdVk4T5AA",
+      "title": "61. Hecate's Cemetery"
+    },
+    {
+      "path": "ch062-fairy-forest.md",
+      "bytes": 5347,
+      "sha256": "de759b117d2745b0ae65c364b7d5fe8e1929c07bd2f6ffa1cd2cfde6e5d914a3",
+      "file": "ch062-fairy-forest.md",
+      "page_id": "VwZ1z9p8VJbmaWK7EGSP",
+      "title": "62. Fairy Forest"
+    },
+    {
+      "path": "ch063-the-space-games.md",
+      "bytes": 6293,
+      "sha256": "7e09782b68d4c10b5240f67427144fb519137d3d25166123c1146e8aa66c173a",
+      "file": "ch063-the-space-games.md",
+      "page_id": "4sl9RCAUjfP6opekHQpe",
+      "title": "63. The space games"
+    },
+    {
+      "path": "ch064-every-realm-runs-on-aethyr.md",
+      "bytes": 19860,
+      "sha256": "0882c19938f6e20d4baa862bbec1ff3c2c76f885358bdbee02d8ca71de90ce97",
+      "file": "ch064-every-realm-runs-on-aethyr.md",
+      "page_id": "qQIPkyeUWkvpM2Hu0cHQ",
+      "title": "64. Every realm runs on Aethyr"
+    },
+    {
+      "path": "ch065-sound-from-numbers.md",
+      "bytes": 11970,
+      "sha256": "6dad8207d2717b12966667e4a73ebdc0edec0011266c8eb7e711c6df5fa19e4e",
+      "file": "ch065-sound-from-numbers.md",
+      "page_id": "QlJMStEFCGelspcE5Kq2",
+      "title": "65. Sound from numbers: oscillators and envelopes"
+    },
+    {
+      "path": "ch066-a-sequencer-on-the-beat-grid.md",
+      "bytes": 8891,
+      "sha256": "329e3a0d525702f370affbb1fc8d06c3b575f089b73bd0149b47aa6f73374142",
+      "file": "ch066-a-sequencer-on-the-beat-grid.md",
+      "page_id": "7Sy1MWTbZIfvaB5Sk7i9",
+      "title": "66. A sequencer on the beat grid"
+    },
+    {
+      "path": "ch067-scores-mixing-and-a-soundtrack.md",
+      "bytes": 15935,
+      "sha256": "e4b50f61e491304d609afa7cbad3eb73117228e19f15c1794c1315785e45c5d5",
+      "file": "ch067-scores-mixing-and-a-soundtrack.md",
+      "page_id": "M6O8xc53f5UkEpfhPNuO",
+      "title": "67. Scores, mixing and a soundtrack"
+    },
+    {
+      "path": "ch068-sound-in-the-world.md",
+      "bytes": 13053,
+      "sha256": "6d675292e5b375f2292c8b2550d6984608b099a7f7e86926924a4060b7663286",
+      "file": "ch068-sound-in-the-world.md",
+      "page_id": "TyCUkYcqtwMKBRYsTqNh",
+      "title": "68. Sound in the world: playback, space and reaction"
+    },
+    {
+      "path": "ch069-voices-in-a-realm.md",
+      "bytes": 13472,
+      "sha256": "d18bcdb7d2bab683d39501b2123e8b06aae39406a80d877d1aee6acc5653916e",
+      "file": "ch069-voices-in-a-realm.md",
+      "page_id": "SCIE4t3WoloMxgsjJCDe",
+      "title": "69. Voices in a realm"
+    },
+    {
+      "path": "ch070-rivers-ponds-and-the-sea.md",
+      "bytes": 7185,
+      "sha256": "330db5898911219209f600892fffef48a01d89e2c1d85e8cd12ceb64b582cf24",
+      "file": "ch070-rivers-ponds-and-the-sea.md",
+      "page_id": "NbFHwc3J68ZQ02aVCxrh",
+      "title": "70. Rivers, ponds and the sea"
+    },
+    {
+      "path": "ch071-sky-weather-and-the-time-of-day.md",
+      "bytes": 6788,
+      "sha256": "1c2ccc0e9e8994c03b79e830088cf108591c0991a6dee1e6750cfecb3e3ee861",
+      "file": "ch071-sky-weather-and-the-time-of-day.md",
+      "page_id": "LJjLisH5pUPViej2h6Sk",
+      "title": "71. Sky, weather and the time of day"
+    },
+    {
+      "path": "ch072-effects-made-of-particles.md",
+      "bytes": 8112,
+      "sha256": "359be05fce3792e5dc4695c75d37e5b4f1dfc2e7d5eeab10acadb397bbf63230",
+      "file": "ch072-effects-made-of-particles.md",
+      "page_id": "gszNZWaXoigQxBlgTI9T",
+      "title": "72. Effects made of particles"
+    },
+    {
+      "path": "ch073-things-that-break.md",
+      "bytes": 6158,
+      "sha256": "84bae40be0da6b19e8e52697b49e1de52a2e7a82852679b92658f79d50568228",
+      "file": "ch073-things-that-break.md",
+      "page_id": "CSdp0cxyNBGaRbu9SKzx",
+      "title": "73. Things that break"
+    },
+    {
+      "path": "ch074-wheels-on-the-ground.md",
+      "bytes": 5531,
+      "sha256": "98715ce69f4e4be612d67baa3422d80627729976911352bc9865170b7e1d40c5",
+      "file": "ch074-wheels-on-the-ground.md",
+      "page_id": "XdTDy6WOvrYcEtC1K3vF",
+      "title": "74. Wheels on the ground"
+    },
+    {
+      "path": "ch075-creatures-that-follow-and-watch.md",
+      "bytes": 26301,
+      "sha256": "8f995a5262f95eab2cfac30f6e303e5e5f4a3b8b10b5a8f3191a26076d707215",
+      "file": "ch075-creatures-that-follow-and-watch.md",
+      "page_id": "Fj95uD5v9akItixpbmpf",
+      "title": "75. Creatures that follow and watch"
+    },
+    {
+      "path": "ch076-find-a-way-through.md",
+      "bytes": 22127,
+      "sha256": "831e42f2bd6a354aab057fa3dd24a6b4fc2788e9026e5617c5ec0208e59c41e9",
+      "file": "ch076-find-a-way-through.md",
+      "page_id": "lkGlWkKmkY5QD9j5zTMo",
+      "title": "76. Find a way through"
+    },
+    {
+      "path": "ch077-people-who-talk-back.md",
+      "bytes": 19068,
+      "sha256": "3fa114b5fe1ffaccf0e5feec79822170a5caa7ab1811c0be17c05f6b24e86004",
+      "file": "ch077-people-who-talk-back.md",
+      "page_id": "ouIXvu4la4CxO4OIQROD",
+      "title": "77. People who talk back"
+    },
+    {
+      "path": "ch078-cinematics-and-close-ups.md",
+      "bytes": 5895,
+      "sha256": "6ed43f198112735af797292876fed4e014bf3d8ff815ba12f65cfdf914de4f44",
+      "file": "ch078-cinematics-and-close-ups.md",
+      "page_id": "91r8u1g5i8VdirgvCGop",
+      "title": "78. Cinematics and close-ups"
+    },
+    {
+      "path": "ch079-a-piece-from-a-sentence.md",
+      "bytes": 6444,
+      "sha256": "1ee56b5a171dd1b2eb097933d3d86ec3b3ad926d942b2bddac0689160d1b4a63",
+      "file": "ch079-a-piece-from-a-sentence.md",
+      "page_id": "AU63xDuoppKcSLDqxbJy",
+      "title": "79. A piece from a sentence"
+    },
+    {
+      "path": "ch080-terrain-and-scatter-from-a-seed.md",
+      "bytes": 23540,
+      "sha256": "3d7c5ec8b16654aae5359a5f092a2bd66d0837b12184e80b8328fc96335af485",
+      "file": "ch080-terrain-and-scatter-from-a-seed.md",
+      "page_id": "Ph22r4WRpi36SdE0E8dG",
+      "title": "80. Terrain and scatter from a seed"
+    },
+    {
+      "path": "ch081-save-and-come-back.md",
+      "bytes": 19451,
+      "sha256": "960be8238334665d939005db0e43aa46264ffc5f0d4b43f9317418d0e01aa9d2",
+      "file": "ch081-save-and-come-back.md",
+      "page_id": "b8by6byd3uXxIuoY2ZCp",
+      "title": "81. Save and come back"
+    },
+    {
+      "path": "ch082-change-code-while-it-runs.md",
+      "bytes": 5336,
+      "sha256": "6c940c66b80a3e31d4bff0937a8a75f543bab9b6a384a2b45c0cdfd8eae27659",
+      "file": "ch082-change-code-while-it-runs.md",
+      "page_id": "9CHK5B4vpIMuOjMXSX0Q",
+      "title": "82. Change code while it runs"
+    },
+    {
+      "path": "ch083-inspect-and-profile-a-running-realm.md",
+      "bytes": 23876,
+      "sha256": "a14268fec8b143895d772c967a9749866151440283400d68c4df665c7016a5f6",
+      "file": "ch083-inspect-and-profile-a-running-realm.md",
+      "page_id": "rxop8AXYx3IElrLAbcFE",
+      "title": "83. Inspect and profile a running realm"
+    },
+    {
+      "path": "ch084-one-realm-on-every-host.md",
+      "bytes": 2937,
+      "sha256": "ee808ca28a4622836753bd4d5ce8e8af925283e7ecc6ccb99ed1a482ac97232e",
+      "file": "ch084-one-realm-on-every-host.md",
+      "page_id": "irrEoHebrwidNijovoay",
+      "title": "84. One realm on every host"
+    },
+    {
+      "path": "ch085-everyone-can-play.md",
+      "bytes": 2869,
+      "sha256": "0ad0ebbf9a6ddba2a076f47dcca4434d7c0958639f2cf3174397cfd68632a59c",
+      "file": "ch085-everyone-can-play.md",
+      "page_id": "0tboFGXdzRoqiCEDUfRb",
+      "title": "85. Everyone can play"
+    },
+    {
+      "path": "ch086-one-server-owns-the-scene.md",
+      "bytes": 6158,
+      "sha256": "b26dba122a5f07c5edac5835d54591eae1054beebaab861e8006e3b610c308c2",
+      "file": "ch086-one-server-owns-the-scene.md",
+      "page_id": "hu40ZrJcKwgHObbvzYlk",
+      "title": "86. One server owns the scene"
+    },
+    {
+      "path": "ch087-server-and-client-share-one-step.md",
+      "bytes": 4741,
+      "sha256": "e214b0077899a737eeee094cdbb4dd822b4baa11f1119de658a195c1a9fc2ae0",
+      "file": "ch087-server-and-client-share-one-step.md",
+      "page_id": "w4GzmvXigrbsuQztJj4k",
+      "title": "87. Server and client share one step and one world"
+    },
+    {
+      "path": "ch088-a-seat-joins-with-a-signed-ticket.md",
+      "bytes": 4388,
+      "sha256": "18a4ad6aad83a2ede52a26d65208b7b8ef3ffe05adba695692607c8a03111743",
+      "file": "ch088-a-seat-joins-with-a-signed-ticket.md",
+      "page_id": "vACPH8jRBsWpHWsibxnP",
+      "title": "88. A seat joins with a signed ticket"
+    },
+    {
+      "path": "ch089-intents-in-acknowledgements-out.md",
+      "bytes": 5383,
+      "sha256": "a06adbd3eff258d38fe8cf06e21369cc6ee1f8b21ba2e7ea75cd909e7b1b8582",
+      "file": "ch089-intents-in-acknowledgements-out.md",
+      "page_id": "40wbocaHbqR7Fdh8LbEq",
+      "title": "89. Intents in, acknowledgements out"
+    },
+    {
+      "path": "ch090-predict-your-own-movement.md",
+      "bytes": 5919,
+      "sha256": "43dbc85554a893e3427b67ffdfeec90f2067f6032e0c36197386b10fcecf93c3",
+      "file": "ch090-predict-your-own-movement.md",
+      "page_id": "Qu6y7wmUam1X3VzYl6sk",
+      "title": "90. Predict your own movement"
+    },
+    {
+      "path": "ch091-one-record-for-every-replicated-entity.md",
+      "bytes": 4735,
+      "sha256": "60bf786de359985fe2cb8a643ef5e1ce645e0bca32d2031c1c0662ec6ac48c54",
+      "file": "ch091-one-record-for-every-replicated-entity.md",
+      "page_id": "w7j7z64eKbIGkV4khKAt",
+      "title": "91. One record for every replicated entity"
+    },
+    {
+      "path": "ch092-priority-under-a-budget.md",
+      "bytes": 3918,
+      "sha256": "dfbcb39a0cef0b7bc1151c2de9fb9ccd4de65922f6b73370e6a431f2eb5bb2d3",
+      "file": "ch092-priority-under-a-budget.md",
+      "page_id": "L2oB7p89H6zKkiD6eXFH",
+      "title": "92. Priority under a budget"
+    },
+    {
+      "path": "ch093-one-interpolation-buffer.md",
+      "bytes": 6231,
+      "sha256": "379946239b58f5ff2bc6c0a708684295cd6793404fc85e04292fa8cf9b626f6a",
+      "file": "ch093-one-interpolation-buffer.md",
+      "page_id": "ywwKMQOZp9wWj5zJus65",
+      "title": "93. One interpolation buffer for every remote entity"
+    },
+    {
+      "path": "ch094-effects-are-state-events-are-cues.md",
+      "bytes": 4268,
+      "sha256": "99eebbaa7b7b6314daf71daed601dc7edb114ce4f52fb3aae026b09417a507f3",
+      "file": "ch094-effects-are-state-events-are-cues.md",
+      "page_id": "UCmqJmTgIA8CstSqwc4u",
+      "title": "94. Effects are state, events are cues"
+    },
+    {
+      "path": "ch095-offline-is-a-local-server.md",
+      "bytes": 5087,
+      "sha256": "8dd3285d9e055afbd8d2fd6be2c1430eb2225ea04c421f69023b832b13e53ddf",
+      "file": "ch095-offline-is-a-local-server.md",
+      "page_id": "Jdqu401TcAP7aVpOzrg4",
+      "title": "95. Offline is a local server"
+    },
+    {
+      "path": "ch096-casts-and-combat-under-latency.md",
+      "bytes": 7170,
+      "sha256": "c015963c742335ca6bb596b88d58793807a032e5e47e71e8006327ba65400576",
+      "file": "ch096-casts-and-combat-under-latency.md",
+      "page_id": "kECE4obktNX67o60flQt",
+      "title": "96. Casts and combat under latency"
+    },
+    {
+      "path": "ch097-interest-without-leaks.md",
+      "bytes": 3552,
+      "sha256": "6df35fdc03ca5615fb6a2ede5e464ae6b508025a8e1f391efaa79cda0c712351",
+      "file": "ch097-interest-without-leaks.md",
+      "page_id": "ViIYMRd5VCnS9MdLB1ll",
+      "title": "97. Interest without leaks"
+    },
+    {
+      "path": "ch098-versions-deploys-and-reconnect.md",
+      "bytes": 6642,
+      "sha256": "d06caaec13f144ba99a958ec3eed7bd7caa70e6bac5d683f3bfa793e4fa0327a",
+      "file": "ch098-versions-deploys-and-reconnect.md",
+      "page_id": "vFS7wzsym10xpN8AAUhW",
+      "title": "98. Versions, deploys and reconnect"
+    },
+    {
+      "path": "ch099-watch-the-whole-action-path.md",
+      "bytes": 2947,
+      "sha256": "423c85def4edeace74d135f765180738a22360de3cd0999e71a112fb1f3e1e09",
+      "file": "ch099-watch-the-whole-action-path.md",
+      "page_id": "ssq4VwXn1kL7Di3R8n93",
+      "title": "99. Watch the whole action path"
+    },
+    {
+      "path": "ch100-prove-the-room-plays-like-the-game.md",
+      "bytes": 6177,
+      "sha256": "58d73a06e88aa26bbe5d77a0c67a8aca9e9b099fb997a7d7b952fcd89796f980",
+      "file": "ch100-prove-the-room-plays-like-the-game.md",
+      "page_id": "bz55zNuy36Xq8Zkgy84d",
+      "title": "100. Prove the room plays like the game"
+    },
+    {
+      "path": "ch101-the-everglade-room.md",
+      "bytes": 4905,
+      "sha256": "58d1138ac58e573ba13e2da80a0736e3bfd0f8fc5801ca2c1bd861f174a72fc9",
+      "file": "ch101-the-everglade-room.md",
+      "page_id": "3dCoGUVwk969qAD8fZzl",
+      "title": "101. The Everglade room"
+    },
+    {
+      "path": "appendix-mmo-gap-analysis.md",
+      "bytes": 14347,
+      "sha256": "b522125d720cd945c62eb5cd1df41df0ec8e0e6ecf9b65bc272e139fbceeff0f",
+      "file": "appendix-mmo-gap-analysis.md",
+      "page_id": "7H4WSEg7iGALHCYMUnPJ",
+      "title": "A. Everglade rooms against an MMO engine"
+    }
+  ],
+  "submitted_markdown_sha256": "0dd70eea94d0bc0ecacdc892542a249d6e0c1354549eabc8da84036d9d52b260",
+  "verified_live": {
+    "revision": "XlnRpuoOdtlIuXEWFXEk",
+    "inventory": [
+      {
+        "id": "qZZIPHRaO82WjkCCTiTY",
+        "title": "Introduction",
+        "path": "readme",
+        "pages": []
+      },
+      {
+        "id": "5v0GTV4F3xphmZC2GuRw",
+        "title": "Plan and prerequisites",
+        "path": "plan",
+        "pages": []
+      },
+      {
+        "id": "SFP48m279i4tf5AVK1pY",
+        "title": "I. Foundations",
+        "path": "i.-foundations",
+        "pages": [
+          {
+            "id": "hDkWkM4UmAl8bxavPveC",
+            "title": "1. A frame has a fixed step",
+            "path": "i.-foundations/ch001-a-frame-has-a-fixed-step",
+            "pages": []
+          },
+          {
+            "id": "voY4jW8HQZ4topSrY7fm",
+            "title": "2. Spaces and units",
+            "path": "i.-foundations/ch002-spaces-and-units",
+            "pages": []
+          },
+          {
+            "id": "ZKElMU5oR2Fmx3iEJZW6",
+            "title": "3. State starts from its defaults",
+            "path": "i.-foundations/ch003-state-starts-from-its-defaults",
+            "pages": []
+          },
+          {
+            "id": "dpvmsja8lEOjWzowHDGX",
+            "title": "4. Input becomes typed actions",
+            "path": "i.-foundations/ch004-input-becomes-typed-actions",
+            "pages": []
+          },
+          {
+            "id": "9suJlhioDVSkesrKkCvv",
+            "title": "5. Replay a session exactly",
+            "path": "i.-foundations/ch005-replay-a-session-exactly",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "vY1CsA8hLsXXgwGmkeLV",
+        "title": "II. A world",
+        "path": "ii.-a-world",
+        "pages": [
+          {
+            "id": "IXtgl5XjLnu5v3T6zBPu",
+            "title": "6. Entities are born and die",
+            "path": "ii.-a-world/ch006-entities-are-born-and-die",
+            "pages": []
+          },
+          {
+            "id": "LZWzlYcYjcRsvCDI5yeB",
+            "title": "7. Ask the world where things are",
+            "path": "ii.-a-world/ch007-ask-the-world-where-things-are",
+            "pages": []
+          },
+          {
+            "id": "QvmQ85eiluM1JVXmMHcj",
+            "title": "8. Ground and collision",
+            "path": "ii.-a-world/ch008-ground-and-collision",
+            "pages": []
+          },
+          {
+            "id": "ZzoeWOJAVNyCQ3j8i6Y5",
+            "title": "9. A character moves",
+            "path": "ii.-a-world/ch009-a-character-moves",
+            "pages": []
+          },
+          {
+            "id": "KCeBsKpTNhCOKaVVuJmt",
+            "title": "10. The camera follows",
+            "path": "ii.-a-world/ch010-the-camera-follows",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "mYeMuatnlvdjWlbzeFFe",
+        "title": "III. Seeing it",
+        "path": "iii.-seeing-it",
+        "pages": [
+          {
+            "id": "agUsIYKUnfJV0M2lROzh",
+            "title": "11. The WGSL renderer",
+            "path": "iii.-seeing-it/ch011-the-wgsl-renderer",
+            "pages": []
+          },
+          {
+            "id": "9fkWhY3YR8o5DI3e8VqA",
+            "title": "12. Materials",
+            "path": "iii.-seeing-it/ch012-materials",
+            "pages": []
+          },
+          {
+            "id": "0XDOecEj6QBjFsn1vJCU",
+            "title": "13. Light and shadow",
+            "path": "iii.-seeing-it/ch013-light-and-shadow",
+            "pages": []
+          },
+          {
+            "id": "geAcL8bet81Fg1YJ4VG9",
+            "title": "14. Figures and animation",
+            "path": "iii.-seeing-it/ch014-figures-and-animation",
+            "pages": []
+          },
+          {
+            "id": "nsM4eb4Fevb051pnogaH",
+            "title": "15. UI and the HUD",
+            "path": "iii.-seeing-it/ch015-ui-and-the-hud",
+            "pages": []
+          },
+          {
+            "id": "3yw1XEdxdycXVSt5w0kT",
+            "title": "16. Budgets that refuse",
+            "path": "iii.-seeing-it/ch016-budgets-that-refuse",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "oOQTcvIjC6dgA3CxHhZu",
+        "title": "IV. Physics",
+        "path": "iv.-physics",
+        "pages": [
+          {
+            "id": "ls8L2tBSOmNLGjOX2Woe",
+            "title": "17. A scene owns the state",
+            "path": "iv.-physics/ch017-a-scene-owns-the-state",
+            "pages": []
+          },
+          {
+            "id": "2VXaHs3nIu33T2dBI4Hr",
+            "title": "18. Rigid bodies and time steps",
+            "path": "iv.-physics/ch018-rigid-bodies-and-time-steps",
+            "pages": []
+          },
+          {
+            "id": "JNjzghSyPTi6ZGmfx5ix",
+            "title": "19. Joints in generalized coordinates",
+            "path": "iv.-physics/ch019-joints-in-generalized-coordinates",
+            "pages": []
+          },
+          {
+            "id": "A4m6Ohuw5YwDwkstyXCZ",
+            "title": "20. Find the pairs that might touch",
+            "path": "iv.-physics/ch020-find-the-pairs-that-might-touch",
+            "pages": []
+          },
+          {
+            "id": "ezpFVvQytYRccKIFFcV3",
+            "title": "21. Find where they touch",
+            "path": "iv.-physics/ch021-find-where-they-touch",
+            "pages": []
+          },
+          {
+            "id": "i3kSDvCeSEOQmvVIKJQy",
+            "title": "22. Contact as an optimization",
+            "path": "iv.-physics/ch022-contact-as-an-optimization",
+            "pages": []
+          },
+          {
+            "id": "2ZjzAoaqEkhjQu8bABQk",
+            "title": "23. Particles and their neighbors",
+            "path": "iv.-physics/ch023-particles-and-their-neighbors",
+            "pages": []
+          },
+          {
+            "id": "RLnBaGLnavht9jGiQL5B",
+            "title": "24. Liquids from particles",
+            "path": "iv.-physics/ch024-liquids-from-particles",
+            "pages": []
+          },
+          {
+            "id": "X7b1y3ylXQQsdVvAu5OW",
+            "title": "25. Cloth and rope from constraints",
+            "path": "iv.-physics/ch025-cloth-and-rope-from-constraints",
+            "pages": []
+          },
+          {
+            "id": "sqoKILI33CajCBOCSNL8",
+            "title": "26. Sand, snow and clay on a grid",
+            "path": "iv.-physics/ch026-sand-snow-and-clay-on-a-grid",
+            "pages": []
+          },
+          {
+            "id": "whkZ6WoTiPqaHuKuhdze",
+            "title": "27. Elastic solids on a mesh",
+            "path": "iv.-physics/ch027-elastic-solids-on-a-mesh",
+            "pages": []
+          },
+          {
+            "id": "Y0z1wmg6ZqUz0WDrXtMa",
+            "title": "28. Smoke on a grid",
+            "path": "iv.-physics/ch028-smoke-on-a-grid",
+            "pages": []
+          },
+          {
+            "id": "wgKRVdZr0NlKLk5bkx7D",
+            "title": "29. Materials meet",
+            "path": "iv.-physics/ch029-materials-meet",
+            "pages": []
+          },
+          {
+            "id": "bQwPHyo2JLWRsh18d187",
+            "title": "30. Contact that holds",
+            "path": "iv.-physics/ch030-contact-that-holds",
+            "pages": []
+          },
+          {
+            "id": "Ga4fEb5FGFch673AYI51",
+            "title": "31. Many worlds in one step",
+            "path": "iv.-physics/ch031-many-worlds-in-one-step",
+            "pages": []
+          },
+          {
+            "id": "A1pHyMKZO6cqHZU1PBx4",
+            "title": "32. Differentiate a simulation",
+            "path": "iv.-physics/ch032-differentiate-a-simulation",
+            "pages": []
+          },
+          {
+            "id": "QIZto7X5jnGTAScgbBde",
+            "title": "33. Sensors read the simulation",
+            "path": "iv.-physics/ch033-sensors-read-the-simulation",
+            "pages": []
+          },
+          {
+            "id": "MsL8BAFgQUJNq8bmA1mA",
+            "title": "34. Pictures for policies",
+            "path": "iv.-physics/ch034-pictures-for-policies",
+            "pages": []
+          },
+          {
+            "id": "VFREuAplbJX9UCj9SSwC",
+            "title": "35. Bring in robots and meshes",
+            "path": "iv.-physics/ch035-bring-in-robots-and-meshes",
+            "pages": []
+          },
+          {
+            "id": "PzuHyMf013OlWODL9bSG",
+            "title": "36. Record and replay a world",
+            "path": "iv.-physics/ch036-record-and-replay-a-world",
+            "pages": []
+          },
+          {
+            "id": "mCJjxNGRKq3w4nwXLb0l",
+            "title": "37. Measure the engine honestly",
+            "path": "iv.-physics/ch037-measure-the-engine-honestly",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "kANft39Znh39gtenaZRZ",
+        "title": "V. Big worlds",
+        "path": "v.-big-worlds",
+        "pages": [
+          {
+            "id": "buRzY4A2gxNM6xogfeNW",
+            "title": "38. Stream a large world",
+            "path": "v.-big-worlds/ch038-stream-a-large-world",
+            "pages": []
+          },
+          {
+            "id": "2XDQ2wVJEAMUGb1EL5cu",
+            "title": "39. Ephemerides, time scales and frames",
+            "path": "v.-big-worlds/ch039-ephemerides-time-scales-and-frames",
+            "pages": []
+          },
+          {
+            "id": "hs3pkJy58LtpD8QKYXGv",
+            "title": "40. Propagate with a stated error",
+            "path": "v.-big-worlds/ch040-propagate-with-a-stated-error",
+            "pages": []
+          },
+          {
+            "id": "3PbX7DWXdfggVeRcAURH",
+            "title": "41. Burns consume mass",
+            "path": "v.-big-worlds/ch041-burns-consume-mass",
+            "pages": []
+          },
+          {
+            "id": "NIZFtwT94ZoKbkXa9Gco",
+            "title": "42. Reach a moving target",
+            "path": "v.-big-worlds/ch042-reach-a-moving-target",
+            "pages": []
+          },
+          {
+            "id": "i0mItq3gQbYVaAKaA1Ee",
+            "title": "43. Heat has to go somewhere",
+            "path": "v.-big-worlds/ch043-heat-has-to-go-somewhere",
+            "pages": []
+          },
+          {
+            "id": "wabcW9TtDfx6904LlkGf",
+            "title": "44. Inside a turning, accelerating ship",
+            "path": "v.-big-worlds/ch044-inside-a-turning-accelerating-ship",
+            "pages": []
+          },
+          {
+            "id": "bWoEAlLwOVq9akZTDEwj",
+            "title": "45. Sensors that see the past",
+            "path": "v.-big-worlds/ch045-sensors-that-see-the-past",
+            "pages": []
+          },
+          {
+            "id": "N0tZ8RNQmjskL0CL56aF",
+            "title": "46. Time warp that stops for every event",
+            "path": "v.-big-worlds/ch046-time-warp-that-stops-for-every-event",
+            "pages": []
+          },
+          {
+            "id": "GkiUqEZXc4DKAHKMEY9a",
+            "title": "47. Hits through layers",
+            "path": "v.-big-worlds/ch047-hits-through-layers",
+            "pages": []
+          },
+          {
+            "id": "qlUvfwICaq5eu4CmN45K",
+            "title": "48. One world at three fidelities",
+            "path": "v.-big-worlds/ch048-one-world-at-three-fidelities",
+            "pages": []
+          },
+          {
+            "id": "ug5jl5G0Ybzljt8OP6ko",
+            "title": "49. Rooms and presence",
+            "path": "v.-big-worlds/ch049-rooms-and-presence",
+            "pages": []
+          },
+          {
+            "id": "jUjjQb3veg4d9dIS77i3",
+            "title": "50. Lockstep for small deterministic games",
+            "path": "v.-big-worlds/ch050-shared-state-over-the-network",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "ypDSTwxnKJ9l06BqsL0v",
+        "title": "VI. Making worlds: Aethyrforge",
+        "path": "vi.-making-worlds-aethyrforge",
+        "pages": [
+          {
+            "id": "rGOPKrxgS1gLlEKlp36S",
+            "title": "51. A realm is a document",
+            "path": "vi.-making-worlds-aethyrforge/ch051-a-realm-is-a-document",
+            "pages": []
+          },
+          {
+            "id": "UzfrDyxmMuo1WayJC92Z",
+            "title": "52. Edit a realm in place",
+            "path": "vi.-making-worlds-aethyrforge/ch052-edit-a-realm-in-place",
+            "pages": []
+          },
+          {
+            "id": "uNRVTrz76PD4kg5DK19M",
+            "title": "53. Bring in assets",
+            "path": "vi.-making-worlds-aethyrforge/ch053-bring-in-assets",
+            "pages": []
+          },
+          {
+            "id": "WJNoL9N5j6QYivzQClxg",
+            "title": "54. Publish a realm",
+            "path": "vi.-making-worlds-aethyrforge/ch054-publish-a-realm",
+            "pages": []
+          },
+          {
+            "id": "0lpmtN9IT1QXHYNo5eev",
+            "title": "55. Fork a realm",
+            "path": "vi.-making-worlds-aethyrforge/ch055-fork-a-realm",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "b3k2rcKJ7wh1WdOT7Yk6",
+        "title": "VII. Realms",
+        "path": "vii.-realms",
+        "pages": [
+          {
+            "id": "nGd2S7coUdW1pugJISvS",
+            "title": "56. The Grid",
+            "path": "vii.-realms/ch056-the-grid",
+            "pages": []
+          },
+          {
+            "id": "R0zHeAGGgiAilHUVYgu1",
+            "title": "57. Made realms",
+            "path": "vii.-realms/ch057-made-realms",
+            "pages": []
+          },
+          {
+            "id": "Sr6f2uIq0gtByto4SM1W",
+            "title": "58. Everglade",
+            "path": "vii.-realms/ch058-everglade",
+            "pages": []
+          },
+          {
+            "id": "xtRtG6us06OW59PbEiWP",
+            "title": "59. Dead Gears",
+            "path": "vii.-realms/ch059-dead-gears",
+            "pages": []
+          },
+          {
+            "id": "v0k46acHbE5droA4SoNb",
+            "title": "60. Ice Cream Man",
+            "path": "vii.-realms/ch060-ice-cream-man",
+            "pages": []
+          },
+          {
+            "id": "tRWy5vNBs6MPdVk4T5AA",
+            "title": "61. Hecate's Cemetery",
+            "path": "vii.-realms/ch061-hecates-cemetery",
+            "pages": []
+          },
+          {
+            "id": "VwZ1z9p8VJbmaWK7EGSP",
+            "title": "62. Fairy Forest",
+            "path": "vii.-realms/ch062-fairy-forest",
+            "pages": []
+          },
+          {
+            "id": "4sl9RCAUjfP6opekHQpe",
+            "title": "63. The space games",
+            "path": "vii.-realms/ch063-the-space-games",
+            "pages": []
+          },
+          {
+            "id": "qQIPkyeUWkvpM2Hu0cHQ",
+            "title": "64. Every realm runs on Aethyr",
+            "path": "vii.-realms/ch064-every-realm-runs-on-aethyr",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "UcK2eHoe5R3BuZB3yywT",
+        "title": "VIII. Hearing it",
+        "path": "viii.-hearing-it",
+        "pages": [
+          {
+            "id": "QlJMStEFCGelspcE5Kq2",
+            "title": "65. Sound from numbers: oscillators and envelopes",
+            "path": "viii.-hearing-it/ch065-sound-from-numbers",
+            "pages": []
+          },
+          {
+            "id": "7Sy1MWTbZIfvaB5Sk7i9",
+            "title": "66. A sequencer on the beat grid",
+            "path": "viii.-hearing-it/ch066-a-sequencer-on-the-beat-grid",
+            "pages": []
+          },
+          {
+            "id": "M6O8xc53f5UkEpfhPNuO",
+            "title": "67. Scores, mixing and a soundtrack",
+            "path": "viii.-hearing-it/ch067-scores-mixing-and-a-soundtrack",
+            "pages": []
+          },
+          {
+            "id": "TyCUkYcqtwMKBRYsTqNh",
+            "title": "68. Sound in the world: playback, space and reaction",
+            "path": "viii.-hearing-it/ch068-sound-in-the-world",
+            "pages": []
+          },
+          {
+            "id": "SCIE4t3WoloMxgsjJCDe",
+            "title": "69. Voices in a realm",
+            "path": "viii.-hearing-it/ch069-voices-in-a-realm",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "jN53pqBuZdV7bMf6znGl",
+        "title": "IX. A living world",
+        "path": "ix.-a-living-world",
+        "pages": [
+          {
+            "id": "NbFHwc3J68ZQ02aVCxrh",
+            "title": "70. Rivers, ponds and the sea",
+            "path": "ix.-a-living-world/ch070-rivers-ponds-and-the-sea",
+            "pages": []
+          },
+          {
+            "id": "LJjLisH5pUPViej2h6Sk",
+            "title": "71. Sky, weather and the time of day",
+            "path": "ix.-a-living-world/ch071-sky-weather-and-the-time-of-day",
+            "pages": []
+          },
+          {
+            "id": "gszNZWaXoigQxBlgTI9T",
+            "title": "72. Effects made of particles",
+            "path": "ix.-a-living-world/ch072-effects-made-of-particles",
+            "pages": []
+          },
+          {
+            "id": "CSdp0cxyNBGaRbu9SKzx",
+            "title": "73. Things that break",
+            "path": "ix.-a-living-world/ch073-things-that-break",
+            "pages": []
+          },
+          {
+            "id": "XdTDy6WOvrYcEtC1K3vF",
+            "title": "74. Wheels on the ground",
+            "path": "ix.-a-living-world/ch074-wheels-on-the-ground",
+            "pages": []
+          },
+          {
+            "id": "Fj95uD5v9akItixpbmpf",
+            "title": "75. Creatures that follow and watch",
+            "path": "ix.-a-living-world/ch075-creatures-that-follow-and-watch",
+            "pages": []
+          },
+          {
+            "id": "lkGlWkKmkY5QD9j5zTMo",
+            "title": "76. Find a way through",
+            "path": "ix.-a-living-world/ch076-find-a-way-through",
+            "pages": []
+          },
+          {
+            "id": "ouIXvu4la4CxO4OIQROD",
+            "title": "77. People who talk back",
+            "path": "ix.-a-living-world/ch077-people-who-talk-back",
+            "pages": []
+          },
+          {
+            "id": "91r8u1g5i8VdirgvCGop",
+            "title": "78. Cinematics and close-ups",
+            "path": "ix.-a-living-world/ch078-cinematics-and-close-ups",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "maDWAmkc0IV19pu4C90h",
+        "title": "X. Aethyrforge: generating worlds",
+        "path": "x.-aethyrforge-generating-worlds",
+        "pages": [
+          {
+            "id": "AU63xDuoppKcSLDqxbJy",
+            "title": "79. A piece from a sentence",
+            "path": "x.-aethyrforge-generating-worlds/ch079-a-piece-from-a-sentence",
+            "pages": []
+          },
+          {
+            "id": "Ph22r4WRpi36SdE0E8dG",
+            "title": "80. Terrain and scatter from a seed",
+            "path": "x.-aethyrforge-generating-worlds/ch080-terrain-and-scatter-from-a-seed",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "QMMbhtjTGutQLiAGjuPp",
+        "title": "XI. Shipping realms",
+        "path": "xi.-shipping-realms",
+        "pages": [
+          {
+            "id": "b8by6byd3uXxIuoY2ZCp",
+            "title": "81. Save and come back",
+            "path": "xi.-shipping-realms/ch081-save-and-come-back",
+            "pages": []
+          },
+          {
+            "id": "9CHK5B4vpIMuOjMXSX0Q",
+            "title": "82. Change code while it runs",
+            "path": "xi.-shipping-realms/ch082-change-code-while-it-runs",
+            "pages": []
+          },
+          {
+            "id": "rxop8AXYx3IElrLAbcFE",
+            "title": "83. Inspect and profile a running realm",
+            "path": "xi.-shipping-realms/ch083-inspect-and-profile-a-running-realm",
+            "pages": []
+          },
+          {
+            "id": "irrEoHebrwidNijovoay",
+            "title": "84. One realm on every host",
+            "path": "xi.-shipping-realms/ch084-one-realm-on-every-host",
+            "pages": []
+          },
+          {
+            "id": "0tboFGXdzRoqiCEDUfRb",
+            "title": "85. Everyone can play",
+            "path": "xi.-shipping-realms/ch085-everyone-can-play",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "D4f12dAkF3ygpYbASulq",
+        "title": "XII. Many players: a multiplayer engine",
+        "path": "xii.-many-players-a-multiplayer-engine",
+        "pages": [
+          {
+            "id": "hu40ZrJcKwgHObbvzYlk",
+            "title": "86. One server owns the scene",
+            "path": "xii.-many-players-a-multiplayer-engine/ch086-one-server-owns-the-scene",
+            "pages": []
+          },
+          {
+            "id": "w4GzmvXigrbsuQztJj4k",
+            "title": "87. Server and client share one step and one world",
+            "path": "xii.-many-players-a-multiplayer-engine/ch087-server-and-client-share-one-step",
+            "pages": []
+          },
+          {
+            "id": "vACPH8jRBsWpHWsibxnP",
+            "title": "88. A seat joins with a signed ticket",
+            "path": "xii.-many-players-a-multiplayer-engine/ch088-a-seat-joins-with-a-signed-ticket",
+            "pages": []
+          },
+          {
+            "id": "40wbocaHbqR7Fdh8LbEq",
+            "title": "89. Intents in, acknowledgements out",
+            "path": "xii.-many-players-a-multiplayer-engine/ch089-intents-in-acknowledgements-out",
+            "pages": []
+          },
+          {
+            "id": "Qu6y7wmUam1X3VzYl6sk",
+            "title": "90. Predict your own movement",
+            "path": "xii.-many-players-a-multiplayer-engine/ch090-predict-your-own-movement",
+            "pages": []
+          },
+          {
+            "id": "w7j7z64eKbIGkV4khKAt",
+            "title": "91. One record for every replicated entity",
+            "path": "xii.-many-players-a-multiplayer-engine/ch091-one-record-for-every-replicated-entity",
+            "pages": []
+          },
+          {
+            "id": "L2oB7p89H6zKkiD6eXFH",
+            "title": "92. Priority under a budget",
+            "path": "xii.-many-players-a-multiplayer-engine/ch092-priority-under-a-budget",
+            "pages": []
+          },
+          {
+            "id": "ywwKMQOZp9wWj5zJus65",
+            "title": "93. One interpolation buffer for every remote entity",
+            "path": "xii.-many-players-a-multiplayer-engine/ch093-one-interpolation-buffer",
+            "pages": []
+          },
+          {
+            "id": "UCmqJmTgIA8CstSqwc4u",
+            "title": "94. Effects are state, events are cues",
+            "path": "xii.-many-players-a-multiplayer-engine/ch094-effects-are-state-events-are-cues",
+            "pages": []
+          },
+          {
+            "id": "Jdqu401TcAP7aVpOzrg4",
+            "title": "95. Offline is a local server",
+            "path": "xii.-many-players-a-multiplayer-engine/ch095-offline-is-a-local-server",
+            "pages": []
+          },
+          {
+            "id": "kECE4obktNX67o60flQt",
+            "title": "96. Casts and combat under latency",
+            "path": "xii.-many-players-a-multiplayer-engine/ch096-casts-and-combat-under-latency",
+            "pages": []
+          },
+          {
+            "id": "ViIYMRd5VCnS9MdLB1ll",
+            "title": "97. Interest without leaks",
+            "path": "xii.-many-players-a-multiplayer-engine/ch097-interest-without-leaks",
+            "pages": []
+          },
+          {
+            "id": "vFS7wzsym10xpN8AAUhW",
+            "title": "98. Versions, deploys and reconnect",
+            "path": "xii.-many-players-a-multiplayer-engine/ch098-versions-deploys-and-reconnect",
+            "pages": []
+          },
+          {
+            "id": "ssq4VwXn1kL7Di3R8n93",
+            "title": "99. Watch the whole action path",
+            "path": "xii.-many-players-a-multiplayer-engine/ch099-watch-the-whole-action-path",
+            "pages": []
+          },
+          {
+            "id": "bz55zNuy36Xq8Zkgy84d",
+            "title": "100. Prove the room plays like the game",
+            "path": "xii.-many-players-a-multiplayer-engine/ch100-prove-the-room-plays-like-the-game",
+            "pages": []
+          },
+          {
+            "id": "3dCoGUVwk969qAD8fZzl",
+            "title": "101. The Everglade room",
+            "path": "xii.-many-players-a-multiplayer-engine/ch101-the-everglade-room",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "hU0MnSE1iRxWgB4bpdHf",
+        "title": "Appendices",
+        "path": "appendices",
+        "pages": [
+          {
+            "id": "7H4WSEg7iGALHCYMUnPJ",
+            "title": "A. Everglade rooms against an MMO engine",
+            "path": "appendices/appendix-mmo-gap-analysis",
+            "pages": []
+          }
+        ]
+      }
+    ],
+    "sha256": "1a230f93e32562bf9e938c247d7b23f86838aa340e09b0a6250fd7a5e5b3ed1f"
+  },
+  "verification_scope": "Source and submitted-markdown hashes record publication provenance; live revision and page inventory were checked, not live document-body parity."
+}
