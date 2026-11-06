@@ -31,3 +31,15 @@ an_test_error :: (tokens:[]string,expected:string) {
  a[0]=Args.{};for token:[6]string.["labs","anim","retarget","clip","--to","rig"] {#assert args_add(a[..],token);}#assert !an_parse(a[..]).help && !an_parse(a[..]).json;
  #assert args_add(a[..],"--json");#assert an_parse(a[..]).json && !an_parse(a[..]).help;
 }
+
+#test "animation import grammar requires a rig and preserves literal source output and rate" {
+ a:[1]Args;for token:[10]string.["labs","anim","import","made.gltf","--rig","made","--out","private-dir","--rate","60"] {#assert args_add(a[..],token);}r:=an_parse(a[..]);#assert r.err=="" && r.verb=="import" && r.rig=="made" && r.rate==60 && r.out=="private-dir" && r.clip=="made.gltf";
+ a[0].n=4;#assert an_parse(a[..]).err!="";a[0].n=10;#assert args_add(a[..],"--rig") && args_add(a[..],"other");#assert an_parse(a[..]).err=="repeated animation flag";
+}
+
+#test "animation sample rates and verb-specific options have independent errors" {
+ a:[1]Args;for token:[8]string.["labs","anim","import","source.csv","--rig","face","--rate","30"] {#assert args_add(a[..],token);}#assert an_parse(a[..]).rate==30;
+ a[0].n=7;#assert args_add(a[..],"31");#assert an_parse(a[..]).err=="animation rate must be 30 or 60";
+ a[0]=Args.{};for token:[8]string.["labs","anim","retarget","source","--to","target","--rate","30"] {#assert args_add(a[..],token);}#assert an_parse(a[..]).err=="import options require labs anim import";
+ a[0]=Args.{};for token:[8]string.["labs","anim","retarget","source","--to","target","--rig","other"] {#assert args_add(a[..],token);}#assert an_parse(a[..]).err=="import options require labs anim import";
+}

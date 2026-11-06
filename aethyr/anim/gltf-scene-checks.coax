@@ -1,0 +1,207 @@
+AG_CHARACTER :: "{\"asset\":{\"version\":\"2.0\"},\"buffers\":[{\"byteLength\":252,\"uri\":\"made.bin\"}],\"nodes\":[{\"name\":\"Head\"},{\"name\":\"Character\",\"mesh\":0,\"skin\":0}],\"skins\":[{\"joints\":[0],\"inverseBindMatrices\":5}],\"meshes\":[{\"extras\":{\"targetNames\":[\"jawOpen\"]},\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1,\"JOINTS_0\":2,\"WEIGHTS_0\":3},\"indices\":4,\"targets\":[{\"POSITION\":8}]}]}],\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},{\"buffer\":0,\"byteOffset\":36,\"byteLength\":36},{\"buffer\":0,\"byteOffset\":72,\"byteLength\":12},{\"buffer\":0,\"byteOffset\":84,\"byteLength\":12},{\"buffer\":0,\"byteOffset\":96,\"byteLength\":6},{\"buffer\":0,\"byteOffset\":104,\"byteLength\":64},{\"buffer\":0,\"byteOffset\":168,\"byteLength\":8},{\"buffer\":0,\"byteOffset\":176,\"byteLength\":32},{\"buffer\":0,\"byteOffset\":208,\"byteLength\":36},{\"buffer\":0,\"byteOffset\":244,\"byteLength\":8}],\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},{\"bufferView\":2,\"componentType\":5121,\"count\":3,\"type\":\"VEC4\"},{\"bufferView\":3,\"componentType\":5121,\"normalized\":true,\"count\":3,\"type\":\"VEC4\"},{\"bufferView\":4,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"},{\"bufferView\":5,\"componentType\":5126,\"count\":1,\"type\":\"MAT4\"},{\"bufferView\":6,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"},{\"bufferView\":7,\"componentType\":5126,\"count\":2,\"type\":\"VEC4\"},{\"bufferView\":8,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},{\"bufferView\":9,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"}],\"animations\":[{\"name\":\"turn\",\"samplers\":[{\"input\":6,\"output\":7},{\"input\":6,\"output\":9}],\"channels\":[{\"sampler\":0,\"target\":{\"node\":0,\"path\":\"rotation\"}},{\"sampler\":1,\"target\":{\"node\":1,\"path\":\"weights\"}}]}]}";
+ag_character_bytes :: (b:[]u8) {
+ for k:0..<252 {b[k]=0;}for value,k:[9]f32.[-0.2,1,0,0.2,1,0,0,1.4,0] {aw_put(b,k*4,f32_bits(value));}for k:0..<3 {aw_put(b,36+k*12+8,f32_bits(1));b[84+k*4]=255;b[96+k*2]=cast(u8)k;}for k:0..<4 {aw_put(b,104+(k*4+k)*4,f32_bits(1));}aw_put(b,172,f32_bits(1));aw_put(b,188,f32_bits(1));aw_put(b,196,f32_bits(0.70710677));aw_put(b,204,f32_bits(0.70710677));aw_put(b,236,f32_bits(-0.1));aw_put(b,248,f32_bits(1));
+}
+#test "glTF character imports its skin mesh inverse binds shapes and named face map" {
+ b:[252]u8;ag_character_bytes(b[..]);g:[1]AgFile;nodes:[2048]JvNode;#assert ag_test_open(AG_CHARACTER,b[..],g[..],nodes[..]);w:[1]AiBuild;out:[65536]u8;scene:[1]AgScene;#assert ag_scene(g[..],"made",out[..],w[..],scene[..])=="";
+ r:=w[0].library[0].rig[0];#assert r.joints==2 && r.parents[0]== -1 && r.mapped[0]==6 && r.names[1].n==9 && r.bind[0]==1 && r.sections==1 && r.material_count==1 && r.shape_count==1 && r.face_bindings==1 && r.face_map[0].input==17;
+ mesh:=r.meshes[0];#assert mesh.vertices.count==3 && mesh.indices.count==3 && anim_float(out[..],mesh.vertices.offset)== -0.2 && out[mesh.vertices.offset+52]==255 && anim_word(out[..],mesh.indices.offset+8)==2;
+ #assert r.morph_count==1 && r.morphs[0].data.count==1 && anim_word(out[..],r.morphs[0].data.offset)==2 && anim_float(out[..],r.morphs[0].data.offset+12)== -0.1;
+}
+#test "glTF scene rejects incompatible transforms hierarchy skin and mesh before publication" {
+ b:[252]u8;ag_character_bytes(b[..]);g:[1]AgFile;nodes:[2048]JvNode;w:[1]AiBuild;out:[65536]u8;scene:[1]AgScene;text:[8192]u8;
+ for row:[9]string.["2.0|1.0","\"name\":\"Head\"|\"name\":\"Head\",\"scale\":[2,2,2]","\"name\":\"Head\"|\"name\":\"Head\",\"children\":[0]","\"joints\":[0]|\"joints\":[2]","\"skin\":0|\"skin\":1","\"indices\":4|\"indices\":4,\"mode\":1","\"POSITION\":0|\"POSITION\":99","\"name\":\"Character\"|\"name\":\"Head\"","\"version\":\"2.0\"|\"version\":\"2.0\"},\"extensionsRequired\":[\"KHR_draco_mesh_compression\"],\"unused\":{"] {split:=0;for c,k:row {if c=='|' {split=k;break;}}n:=anim_test_replace(AG_CHARACTER,row[0..<split],row[split+1..<row.count],text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],scene[..])!="";}
+ #assert ag_test_open(AG_CHARACTER,b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[0..<16],w[..],scene[..])=="output-capacity";
+ b[72]=1;#assert ag_test_open(AG_CHARACTER,b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],scene[..])=="gltf-skin-weights";
+}
+
+#test "glTF made geometry matches an independent packed-format byte oracle" {
+ b:[252]u8;ag_character_bytes(b[..]);g:[1]AgFile;nodes:[2048]JvNode;#assert ag_test_open(AG_CHARACTER,b[..],g[..],nodes[..]);w:[1]AiBuild;out:[65536]u8;for k:0..<out.count {out[k]=255;}scene:[1]AgScene;#assert ag_scene(g[..],"made",out[..],w[..],scene[..])=="" && w[0].at==484 && w[0].layout.bytes==484;id:[1]AssetId;#assert asset_parse("bf4ce9c1d3deecbafd48fc8c41f545b65fb3cbdaf0a1e33503d1440f36c957c4",id[..]) && asset_same(asset_id(cast(string)out[0..<484]),id[0]);
+ r:=w[0].library[0].rig[0];#assert scene[0].nodes==2 && scene[0].node_joint[0]==0 && scene[0].node_joint[1]==1 && scene[0].skin_count==1 && scene[0].skin_joint[0]==0 && scene[0].shape_first[1]==0 && scene[0].shape_count[1]==1 && r.ready && anim_equal(r.name,anim_named("made")) && r.parents[1]== -1 && r.mapped[1]== -1;
+ p:=w[0].layout;#assert p.rest.pack==0 && p.rest.offset==0 && p.rest.count==2 && p.rest.stride==28 && p.rest.width==28 && p.bind.pack==0 && p.bind.offset==56 && p.bind.count==2 && p.bind.stride==48 && p.bind.width==48;
+ m:=r.meshes[0];#assert m.material==0 && m.vertices.pack==0 && m.vertices.offset==152 && m.vertices.count==3 && m.vertices.stride==96 && m.vertices.width==96 && m.indices.pack==0 && m.indices.offset==440 && m.indices.stride==4 && m.indices.width==4;
+ d:=r.morphs[0];#assert d.shape==0 && d.section==0 && d.data.pack==0 && d.data.offset==452 && d.data.stride==32 && d.data.width==32 && r.face_map[0].target==0 && !r.face_map[0].control && r.face_map[0].weight==1;
+}
+
+#test "glTF source names sanitize only unsupported bytes and bound every generated label" {
+ text:[4096]u8;nodes:[128]JvNode;g:[1]AgFile;#assert ag_test_open("{\"name\":\"A b:c/9._-\",\"wrong\":7,\"empty\":\"\"}",text[0..<0],g[..],nodes[..]);
+ #assert anim_equal(ag_name(g[..],0,"name","unused",0),anim_named("A_b_c_9._-")) && ag_name(g[..],0,"wrong","unused",0).n==0 && ag_name(g[..],0,"empty","unused",0).n==0 && anim_equal(ag_name(g[..],0,"missing","joint-",123),anim_named("joint-123"));
+ for n:[2]int.[64,65] {o:[1]PnOut;o[0].buf=text[..];pn_put(o[..],"{\"name\":\"");for k:0..<n {pn_put(o[..],"a");}pn_put(o[..],"\"}");#assert ag_test_open(pn_text(o[..]),text[0..<0],g[..],nodes[..]);#assert ag_name(g[..],0,"name","",0).n==(ifx n==64 then 64 else 0);}
+}
+#test "glTF scene names every rejected hierarchy transform material mesh and shape condition" {
+ b:[252]u8;ag_character_bytes(b[..]);g:[1]AgFile;nodes:[4096]JvNode;w:[1]AiBuild;out:[65536]u8;scene:[1]AgScene;text:[8192]u8;
+ for row:[29]string.[
+ "\"name\":\"Head\"|\"name\":\"Head\",\"children\":false|gltf-hierarchy",
+ "\"name\":\"Head\"|\"name\":\"Head\",\"children\":[1,1]|gltf-hierarchy",
+ "\"name\":\"Head\"|\"name\":\"Head\",\"children\":[-1]|gltf-hierarchy",
+ "\"name\":\"Head\"|\"name\":\"Head\",\"children\":[1]|",
+ "\"name\":\"Head\"|\"name\":\"Head\",\"translation\":[1,2]|gltf-node-transform",
+ "\"name\":\"Head\"|\"name\":\"Head\",\"rotation\":[0,0,0,0]|gltf-node-rotation",
+ "\"name\":\"Head\"|\"name\":\"Head\",\"matrix\":[]|gltf-node-transform",
+ "\"joints\":[0]|\"joints\":[]|gltf-skin-joints",
+ "\"joints\":[0]|\"joints\":[0,0]|gltf-skin-joints",
+ "\"inverseBindMatrices\":5|\"inverseBindMatrices\":0|gltf-inverse-bind",
+ "\"inverseBindMatrices\":5|\"inverseBindMatrices\":-1|gltf-inverse-bind",
+ "\"skin\":0|\"skin\":-1|gltf-mesh-skin",
+ "\"indices\":4|\"indices\":4,\"material\":1|gltf-material-index",
+ "\"indices\":4|\"indices\":4,\"material\":-1|gltf-material-index",
+ "\"indices\":4|\"indices\":4,\"extensions\":{}|gltf-primitive-mode",
+ "\"indices\":4|\"indices\":0|gltf-geometry-accessor",
+ "\"NORMAL\":1|\"NORMAL\":4|gltf-vertex-accessor",
+ "\"NORMAL\":1|\"TEXCOORD_0\":1|gltf-vertex-accessor",
+ "\"NORMAL\":1|\"TANGENT\":1|gltf-vertex-accessor",
+ "\"JOINTS_0\":2|\"JOINTS_0\":3|gltf-skin-accessor",
+ "\"JOINTS_0\":2|\"JOINTS_0\":4|gltf-skin-accessor",
+ "\"WEIGHTS_0\":3|\"WEIGHTS_0\":4|gltf-skin-accessor",
+ "\"WEIGHTS_0\":3|\"WEIGHTS_0\":3,\"JOINTS_1\":-1|gltf-skin-accessor",
+ "\"WEIGHTS_0\":3|\"WEIGHTS_0\":3,\"WEIGHTS_1\":-1|gltf-skin-accessor",
+ "\"WEIGHTS_0\":3|\"WEIGHTS_0\":3,\"JOINTS_2\":2|gltf-influence-limit",
+ "\"WEIGHTS_0\":3|\"WEIGHTS_0\":3,\"WEIGHTS_2\":3|gltf-influence-limit",
+ "\"targetNames\":[\"jawOpen\"]|\"targetNames\":[]|gltf-shape-names",
+ "\"targets\":[{\"POSITION\":8}]|\"targets\":[{\"POSITION\":4}]|gltf-morph-accessor",
+ "\"targets\":[{\"POSITION\":8}]|\"targets\":[{\"POSITION\":8,\"TANGENT\":8}]|gltf-morph-tangent"
+ ] {a:= -1;z:= -1;for c,k:row {if c=='|' {if a<0 {a=k;}else {z=k;}}}n:=anim_test_replace(AG_CHARACTER,row[0..<a],row[a+1..<z],text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]);e:=ag_scene(g[..],"made",out[..],w[..],scene[..]);if row[z+1..<row.count]=="" {#assert e=="";}else {#assert e==row[z+1..<row.count];}}
+}
+
+#test "glTF eight influences normalize by largest remainder and retain all 16-bit joint IDs" {
+ b:[64]u8;out:[96]u8;for k:0..<8 {b[k*2]=cast(u8)k;aw_put(b[..],16+k*4,f32_bits([8]f32.[0.05,0.1,0.15,0.2,0.1,0.1,0.1,0.2][k]));}
+ g:=[1]AgFile.[AgFile.{binary=b[..]}];sc:[1]AgScene;sc[0].skin_count=8;for k:0..<8 {sc[0].skin_joint[k]=407-k;}
+ joints:[2]AgAccess;weights:[2]AgAccess;for k:0..<2 {joints[k]=AgAccess.{ok=true,count=1,components=4,component=5123,bytes=2,stride=8,offset=k*8};weights[k]=AgAccess.{ok=true,count=1,components=4,component=5126,bytes=4,stride=16,offset=16+k*16};}
+ #assert ag_skin_vertex(g[..],sc[..],joints[..],weights[..],0,out[..],0);sum:=0;for k:0..<8 {#assert cast(int)out[36+k*2]+cast(int)out[37+k*2]*256==407-k && out[52+k]==[8]u8.[13,26,38,51,26,25,25,51][k];sum+=cast(int)out[52+k];}#assert sum==255;
+ b[14]=8;#assert !ag_skin_vertex(g[..],sc[..],joints[..],weights[..],0,out[..],0);b[14]=7;
+ b[14]=0;#assert !ag_skin_vertex(g[..],sc[..],joints[..],weights[..],0,out[..],0);aw_put(b[..],16,0);#assert ag_skin_vertex(g[..],sc[..],joints[..],weights[..],0,out[..],0);b[14]=7;
+ for value:[2]f32.[-0.1,1.1] {aw_put(b[..],44,f32_bits(value));#assert !ag_skin_vertex(g[..],sc[..],joints[..],weights[..],0,out[..],0);}
+ for k:0..<8 {aw_put(b[..],16+k*4,0);}#assert !ag_skin_vertex(g[..],sc[..],joints[..],weights[..],0,out[..],0);
+ aw_put(b[..],16,f32_bits(1));joints[1].ok=false;#assert ag_skin_vertex(g[..],sc[..],joints[..],weights[..],0,out[..],0) && out[52]==255 && out[56]==0;g[0].bad=true;#assert !ag_skin_vertex(g[..],sc[..],joints[..],weights[..],0,out[..],0);
+}
+
+#test "glTF hierarchy reorders forward parents and retains nonidentity local transforms" {
+ b:[252]u8;ag_character_bytes(b[..]);g:[1]AgFile;nodes:[4096]JvNode;w:[1]AiBuild;out:[65536]u8;sc:[1]AgScene;a:[8192]u8;z:[8192]u8;
+ n:=anim_test_replace(AG_CHARACTER,"\"name\":\"Character\"","\"name\":\"Character\",\"children\":[0]",a[..]);#assert n>0;n=anim_test_replace(cast(string)a[0..<n],"\"name\":\"Head\"","\"name\":\"Head\",\"translation\":[1,2,3],\"rotation\":[0,0,1,0],\"scale\":[1,1,1]",z[..]);#assert n>0 && ag_test_open(cast(string)z[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="";
+ r:=w[0].library[0].rig[0];#assert r.parents[0]== -1 && r.parents[1]==0 && sc[0].node_joint[0]==1 && sc[0].node_joint[1]==0 && sc[0].skin_joint[0]==1 && r.rest[1].t.x==1 && r.rest[1].t.y==2 && r.rest[1].t.z==3 && r.rest[1].q.z==1 && r.rest[1].q.w==0 && anim_local(out[..],28).t.z==3;
+ #assert r.bind[12]==1 && r.bind[17]==1 && r.bind[22]==1;
+ n=anim_test_replace(cast(string)z[0..<n],",\"inverseBindMatrices\":5","",a[..]);#assert n>0 && ag_test_open(cast(string)a[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="";r=w[0].library[0].rig[0];#assert r.bind[12]== -1 && r.bind[17]== -1 && r.bind[15]==1 && r.bind[19]==2 && r.bind[23]== -3;
+}
+#test "glTF material and node capacities accept the inclusive limit before refusing the next" #steps 200000000 {
+ b:[252]u8;ag_character_bytes(b[..]);g:[1]AgFile;nodes:[8192]JvNode;w:[1]AiBuild;out:[262144]u8;sc:[1]AgScene;insert:[32768]u8;text:[65536]u8;
+ for count:[2]int.[512,513] {o:[1]PnOut;o[0].buf=insert[..];pn_put(o[..],"\"nodes\":[");for k:2..<count {pn_put(o[..],"{\"name\":\"node-");pn_putint(o[..],k);pn_put(o[..],"\"},");}n:=anim_test_replace(AG_CHARACTER,"\"nodes\":[",pn_text(o[..]),text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]);e:=ag_scene(g[..],"made",out[..],w[..],sc[..]);#assert e==(ifx count==512 then "" else "gltf-skin-count");if count==512 {#assert w[0].library[0].rig[0].joints==512;}}
+ for count:[2]int.[64,65] {o:[1]PnOut;o[0].buf=insert[..];pn_put(o[..],"\"materials\":[");for k:0..<count {if k>0 {pn_put(o[..],",");}pn_put(o[..],"{}");}pn_put(o[..],"],\"meshes\":[");n:=anim_test_replace(AG_CHARACTER,"\"meshes\":[",pn_text(o[..]),text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]);e:=ag_scene(g[..],"made",out[..],w[..],sc[..]);#assert e==(ifx count==64 then "" else "gltf-material-limit");}
+}
+
+#test "glTF exact binary windows cover rest vertex index and sparse-morph output independently" {
+ b:[252]u8;ag_character_bytes(b[..]);g:[1]AgFile;nodes:[2048]JvNode;w:[1]AiBuild;out:[65536]u8;sc:[1]AgScene;
+ for size:[7]int.[0,151,439,440,451,452,483] {#assert ag_test_open(AG_CHARACTER,b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[0..<size],w[..],sc[..])=="output-capacity";}
+ #assert ag_test_open(AG_CHARACTER,b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[0..<484],w[..],sc[..])=="" && w[0].at==484;
+ for value:[3]f32.[-1,3,4] {aw_put(b[..],104+12,f32_bits(value));#assert ag_test_open(AG_CHARACTER,b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="gltf-inverse-bind";}
+ ag_character_bytes(b[..]);b[96]=3;#assert ag_test_open(AG_CHARACTER,b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="gltf-index-range";
+ ag_character_bytes(b[..]);aw_put(b[..],0,0x7f800000);#assert ag_test_open(AG_CHARACTER,b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="gltf-skin-weights";
+}
+#test "glTF label sanitization covers every inclusive ASCII boundary and rejects oversized fields" {
+ g:[1]AgFile;nodes:[128]JvNode;empty:[1]u8;#assert ag_test_open("{\"name\":\"AZaz09_-.@[/:`{\"}",empty[0..<0],g[..],nodes[..]);
+ name:=ag_name(g[..],0,"name","",0);#assert anim_equal(name,anim_named("AZaz09_-.______"));
+}
+
+#test "glTF normal UV tangent and index widths retain independent vertex fields" {
+ b:[512]u8;ag_character_bytes(b[..]);for value,k:[6]f32.[0.1,0.2,0.3,0.4,0.5,0.6] {aw_put(b[..],256+k*4,f32_bits(value));}for v:0..<3 {for value,k:[4]f32.[0,1,0,-1] {aw_put(b[..],280+v*16+k*4,f32_bits(value));}aw_put(b[..],352+v*4,cast(u32)v);}
+ a:[8192]u8;z:[8192]u8;n:=anim_test_replace(AG_CHARACTER,"\"bufferViews\":[","\"bufferViews\":[",a[..]);#assert n>0;
+ n=anim_test_replace(AG_CHARACTER,"\"byteOffset\":244,\"byteLength\":8}","\"byteOffset\":244,\"byteLength\":8},{\"buffer\":0,\"byteOffset\":256,\"byteLength\":24},{\"buffer\":0,\"byteOffset\":280,\"byteLength\":48}",a[..]);#assert n>0;n=anim_test_replace(cast(string)a[0..<n],"\"bufferView\":9,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"}","\"bufferView\":9,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"},{\"bufferView\":10,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},{\"bufferView\":11,\"componentType\":5126,\"count\":3,\"type\":\"VEC4\"}",z[..]);#assert n>0;n=anim_test_replace(cast(string)z[0..<n],"\"NORMAL\":1","\"NORMAL\":1,\"TEXCOORD_0\":10,\"TANGENT\":11",a[..]);#assert n>0;
+ g:[1]AgFile;nodes:[4096]JvNode;w:[1]AiBuild;out:[65536]u8;sc:[1]AgScene;#assert ag_test_open(cast(string)a[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="";m:=w[0].library[0].rig[0].meshes[0];for v:0..<3 {#assert anim_float(out[..],m.vertices.offset+v*96+24)==[3]f32.[0.1,0.3,0.5][v] && anim_float(out[..],m.vertices.offset+v*96+28)==[3]f32.[0.2,0.4,0.6][v] && anim_float(out[..],m.vertices.offset+v*96+60)==0 && anim_float(out[..],m.vertices.offset+v*96+64)==1 && anim_float(out[..],m.vertices.offset+v*96+68)==0 && anim_float(out[..],m.vertices.offset+v*96+72)== -1;}
+ n=anim_test_replace(AG_CHARACTER,"\"byteOffset\":96,\"byteLength\":6","\"byteOffset\":352,\"byteLength\":12",a[..]);#assert n>0;n=anim_test_replace(cast(string)a[0..<n],"\"componentType\":5123","\"componentType\":5125",z[..]);#assert n>0 && ag_test_open(cast(string)z[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="";m=w[0].library[0].rig[0].meshes[0];for k:0..<3 {#assert anim_word(out[..],m.indices.offset+k*4)==cast(u32)k;}
+ b[96]=0;b[97]=1;b[98]=2;n=anim_test_replace(AG_CHARACTER,"\"componentType\":5123","\"componentType\":5121",a[..]);#assert n>0 && ag_test_open(cast(string)a[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="";
+}
+#test "glTF absent normals and normal-only morphs use the documented defaults" {
+ b:[252]u8;ag_character_bytes(b[..]);a:[8192]u8;z:[8192]u8;n:=anim_test_replace(AG_CHARACTER,",\"NORMAL\":1","",a[..]);#assert n>0;n=anim_test_replace(cast(string)a[0..<n],"\"targets\":[{\"POSITION\":8}]","\"targets\":[{\"NORMAL\":8}]",z[..]);#assert n>0;
+ g:[1]AgFile;nodes:[4096]JvNode;w:[1]AiBuild;out:[65536]u8;sc:[1]AgScene;#assert ag_test_open(cast(string)z[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="";r:=w[0].library[0].rig[0];at:=r.meshes[0].vertices.offset;#assert anim_float(out[..],at+12)==0 && anim_float(out[..],at+16)==1 && anim_float(out[..],at+20)==0;at=r.morphs[0].data.offset;#assert anim_float(out[..],at+8)==0 && anim_float(out[..],at+12)==0 && anim_float(out[..],at+16)==0 && anim_float(out[..],at+20)==0 && anim_float(out[..],at+24)== -0.1 && anim_float(out[..],at+28)==0;
+}
+
+#test "glTF shared shape and sparse descriptor capacities fail at their own named boundary" #steps 200000000 {
+ b:[252]u8;ag_character_bytes(b[..]);g:[1]AgFile;nodes:[32768]JvNode;w:[1]AiBuild;out:[65536]u8;sc:[1]AgScene;mesh:[32768]u8;text:[65536]u8;
+ for shapes:[2]int.[256,257] {o:[1]PnOut;o[0].buf=mesh[..];pn_put(o[..],"\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"JOINTS_0\":2,\"WEIGHTS_0\":3},\"indices\":4,\"targets\":[");for k:0..<shapes {if k>0 {pn_put(o[..],",");}pn_put(o[..],"{\"POSITION\":8}");}pn_put(o[..],"]}]}],\"unused\":[");n:=anim_test_replace(AG_CHARACTER,"\"meshes\":[",pn_text(o[..]),text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]);e:=ag_scene(g[..],"made",out[..],w[..],sc[..]);#assert e==(ifx shapes==256 then "" else "gltf-shape-limit");if shapes==256 {#assert w[0].library[0].rig[0].shape_count==256 && w[0].library[0].rig[0].morph_count==256 && sc[0].shape_count[1]==256;second:[65536]u8;nn:=anim_test_replace(cast(string)text[0..<n],"\"name\":\"Head\"","\"name\":\"Head\",\"mesh\":0,\"skin\":0",second[..]);#assert nn>0 && ag_test_open(cast(string)second[0..<nn],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="gltf-shape-limit";}}
+ o:[1]PnOut;o[0].buf=mesh[..];pn_put(o[..],"\"meshes\":[{\"primitives\":[");for p:0..<3 {if p>0 {pn_put(o[..],",");}pn_put(o[..],"{\"attributes\":{\"POSITION\":0,\"JOINTS_0\":2,\"WEIGHTS_0\":3},\"indices\":4,\"targets\":[");for k:0..<128 {if k>0 {pn_put(o[..],",");}pn_put(o[..],"{\"POSITION\":8}");}pn_put(o[..],"]}");}pn_put(o[..],"]}],\"unused\":[");n:=anim_test_replace(AG_CHARACTER,"\"meshes\":[",pn_text(o[..]),text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="gltf-morph-limit";
+}
+#test "glTF shape predicates and optional source vectors preserve exact field contracts" {
+ a:=AgAccess.{ok=true,count=3,components=2};#assert ag_shape(a,3,2) && !ag_shape(a,2,2) && !ag_shape(a,3,3);a.ok=false;#assert !ag_shape(a,3,2);
+ b:[1]u8;nodes:[128]JvNode;g:[1]AgFile;#assert ag_test_open("{\"v\":[1,2,3],\"bad\":[1,2],\"name\":\":Zz0_\"}",b[0..<0],g[..],nodes[..]);#assert ag_vec(g[..],0,"v",3) && !ag_vec(g[..],0,"bad",3) && ag_vec(g[..],0,"absent",3) && anim_equal(ag_name(g[..],0,"name","",0),anim_named("_Zz0_"));
+}
+
+#test "glTF multiple mesh nodes retain separate materials global shapes and source sections" {
+ b:[252]u8;ag_character_bytes(b[..]);aw_put(b[..],208,f32_bits(0.25));aw_put(b[..],212,f32_bits(0.5));aw_put(b[..],216,f32_bits(0.75));a:[8192]u8;z:[8192]u8;
+ n:=anim_test_replace(AG_CHARACTER,"\"name\":\"Head\"","\"name\":\"Head\",\"mesh\":1,\"skin\":0",a[..]);#assert n>0;
+ n=anim_test_replace(cast(string)a[0..<n],"\"meshes\":[","\"materials\":[{\"name\":\"zero\"},{\"name\":\"one\"}],\"meshes\":[{\"extras\":{\"targetNames\":[\"jawOpen\"]},\"primitives\":[{\"attributes\":{\"POSITION\":0,\"JOINTS_0\":2,\"WEIGHTS_0\":3},\"indices\":4,\"material\":1,\"targets\":[{\"POSITION\":8}]}]},{\"extras\":{\"targetNames\":[\"eyeBlinkLeft\"]},\"primitives\":[{\"attributes\":{\"POSITION\":0,\"JOINTS_0\":2,\"WEIGHTS_0\":3},\"indices\":4,\"targets\":[{\"POSITION\":8}]}]}],\"unused\":[",z[..]);#assert n>0;
+ g:[1]AgFile;nodes:[4096]JvNode;w:[1]AiBuild;out:[65536]u8;sc:[1]AgScene;#assert ag_test_open(cast(string)z[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="";r:=w[0].library[0].rig[0];#assert r.sections==2 && r.shape_count==2 && r.morph_count==2 && sc[0].shape_first[0]==0 && sc[0].shape_first[1]==1 && sc[0].shape_count[0]==1 && sc[0].shape_count[1]==1 && r.face_bindings==2 && r.face_map[0].input==0 && r.face_map[1].target==1;
+ #assert r.meshes[0].material==0 && r.meshes[1].material==1 && anim_word(out[..],r.meshes[1].vertices.offset+32)==1 && r.morphs[0].shape==0 && r.morphs[1].shape==1 && r.morphs[1].section==1 && r.morphs[0].data.count==2;
+ for k:0..<2 {p:=r.morphs[k].data;#assert anim_word(out[..],p.offset)==0 && anim_word(out[..],p.offset+4)==cast(u32)k && anim_float(out[..],p.offset+8)==0.25 && anim_float(out[..],p.offset+12)==0.5 && anim_float(out[..],p.offset+16)==0.75 && anim_word(out[..],p.offset+32)==2;}
+}
+#test "glTF one-node skins and malformed child ownership have distinct admission results" {
+ b:[252]u8;ag_character_bytes(b[..]);a:[8192]u8;g:[1]AgFile;nodes:[4096]JvNode;w:[1]AiBuild;out:[65536]u8;sc:[1]AgScene;
+ n:=anim_test_replace(AG_CHARACTER,"{\"name\":\"Head\"},{\"name\":\"Character\",\"mesh\":0,\"skin\":0}","{\"name\":\"Head\",\"mesh\":0,\"skin\":0}",a[..]);#assert n>0 && ag_test_open(cast(string)a[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"one",out[..],w[..],sc[..])=="" && w[0].library[0].rig[0].joints==1;
+ n=anim_test_replace(AG_CHARACTER,"\"name\":\"Head\"","\"name\":\"Head\",\"children\":[2]",a[..]);#assert n>0 && ag_test_open(cast(string)a[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"bad",out[..],w[..],sc[..])=="gltf-hierarchy";
+ n=anim_test_replace(AG_CHARACTER,"\"name\":\"Character\"","\"name\":\"Character\",\"children\":[0]",a[..]);#assert n>0;z:[8192]u8;n=anim_test_replace(cast(string)a[0..<n],"\"name\":\"Head\"","\"name\":\"Head\",\"children\":[1]",z[..]);#assert n>0 && ag_test_open(cast(string)z[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"cycle",out[..],w[..],sc[..])=="gltf-hierarchy";
+}
+
+#test "glTF full skin joint table and primitive table preserve inclusive capacities" #steps 200000000 {
+ b:[252]u8;ag_character_bytes(b[..]);g:[1]AgFile;nodes:[16384]JvNode;w:[1]AiBuild;out:[262144]u8;sc:[1]AgScene;a:[65536]u8;z:[65536]u8;insert:[32768]u8;
+ o:[1]PnOut;o[0].buf=insert[..];pn_put(o[..],"\"nodes\":[");for k:2..<512 {pn_put(o[..],"{\"name\":\"j-");pn_putint(o[..],k);pn_put(o[..],"\"},");}n:=anim_test_replace(AG_CHARACTER,"\"nodes\":[",pn_text(o[..]),a[..]);#assert n>0;
+ for count:[2]int.[512,513] {o[0]=PnOut.{buf=insert[..]};pn_put(o[..],"\"joints\":[");for k:0..<count {if k>0 {pn_put(o[..],",");}pn_putint(o[..],k);}pn_put(o[..],"]");m:=anim_test_replace(cast(string)a[0..<n],"\"joints\":[0],\"inverseBindMatrices\":5",pn_text(o[..]),z[..]);#assert m>0 && ag_test_open(cast(string)z[0..<m],b[..],g[..],nodes[..]);e:=ag_scene(g[..],"full",out[..],w[..],sc[..]);#assert e==(ifx count==512 then "" else "gltf-skin-joints");if count==512 {#assert sc[0].skin_count==512 && sc[0].skin_joint[511]==511;}}
+ for count:[2]int.[64,65] {o[0]=PnOut.{buf=insert[..]};pn_put(o[..],"\"meshes\":[{\"extras\":{\"targetNames\":[\"jawOpen\"]},\"primitives\":[");for k:0..<count {if k>0 {pn_put(o[..],",");}pn_put(o[..],"{\"attributes\":{\"POSITION\":0,\"JOINTS_0\":2,\"WEIGHTS_0\":3},\"indices\":4,\"targets\":[{\"POSITION\":8}]}");}pn_put(o[..],"]}],\"unused\":[");n=anim_test_replace(AG_CHARACTER,"\"meshes\":[",pn_text(o[..]),a[..]);#assert n>0 && ag_test_open(cast(string)a[0..<n],b[..],g[..],nodes[..]);e:=ag_scene(g[..],"sections",out[..],w[..],sc[..]);#assert e==(ifx count==64 then "" else "gltf-primitive-limit");if count==64 {#assert w[0].library[0].rig[0].sections==64 && w[0].library[0].rig[0].morphs[63].section==63;m:=anim_test_replace(cast(string)a[0..<n],"\"name\":\"Head\"","\"name\":\"Head\",\"mesh\":0,\"skin\":0",z[..]);#assert m>0 && ag_test_open(cast(string)z[0..<m],b[..],g[..],nodes[..]) && ag_scene(g[..],"sections",out[..],w[..],sc[..])=="gltf-primitive-limit";}}
+}
+
+#test "glTF all-zero source morphs allocate no sparse rows and permit exact geometry capacity" {
+ b:[252]u8;ag_character_bytes(b[..]);for k:208..<244 {b[k]=0;}g:[1]AgFile;nodes:[2048]JvNode;w:[1]AiBuild;out:[452]u8;sc:[1]AgScene;#assert ag_test_open(AG_CHARACTER,b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="" && w[0].at==452 && w[0].library[0].rig[0].morph_count==0 && w[0].library[0].rig[0].shape_count==1;
+}
+
+#test "glTF wrong material shape and geometry declarations have named refusals" {
+ b:[252]u8;ag_character_bytes(b[..]);g:[1]AgFile;nodes:[4096]JvNode;w:[1]AiBuild;out:[65536]u8;sc:[1]AgScene;text:[8192]u8;
+ for row:[14]string.["\"meshes\":[|\"materials\":[{\"name\":\"\"}],\"meshes\":[|gltf-material-name","\"meshes\":[|\"materials\":[{\"name\":\"a\"},{\"name\":\"a\"}],\"meshes\":[|gltf-material-name","\"targetNames\":[\"jawOpen\"]|\"targetNames\":[\"bad name\"]|gltf-shape-name","\"targetNames\":[\"jawOpen\"]|\"targetNames\":[\"\"]|gltf-shape-name","\"targetNames\":[\"jawOpen\"]|\"targetNames\":[false]|gltf-shape-name","\"POSITION\":0|\"POSITION\":-1|gltf-geometry-accessor","\"POSITION\":0|\"POSITION\":4|gltf-geometry-accessor","\"indices\":4|\"indices\":-1|gltf-geometry-accessor","\"indices\":4|\"indices\":5|gltf-geometry-accessor","\"mesh\":0|\"mesh\":-1|gltf-primitive-limit","\"targets\":[{\"POSITION\":8}]|\"targets\":[{\"NORMAL\":4}]|gltf-morph-accessor","\"skins\":[|\"skins\":[],\"unused\":[|gltf-skin-count","\"meshes\":[|\"meshes\":[],\"unused\":[|gltf-primitive-limit","\"primitives\":[|\"primitives\":[],\"unused\":[|gltf-primitive-limit"] {a:= -1;z:= -1;for c,k:row {if c=='|' {if a<0 {a=k;}else {z=k;}}}n:=anim_test_replace(AG_CHARACTER,row[0..<a],row[a+1..<z],text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]);#assert ag_scene(g[..],"made",out[..],w[..],sc[..])==row[z+1..<row.count];}
+ #assert ag_test_open(AG_CHARACTER,b[..],g[..],nodes[..]) && ag_scene(g[..],"bad name",out[..],w[..],sc[..])=="rig-name";
+}
+
+#test "glTF float skin weights and 16-bit joints are accepted without integer normalization" {
+ b:[512]u8;ag_character_bytes(b[..]);for v:0..<3 {for k:0..<4 {b[256+v*8+k*2]=0;aw_put(b[..],280+v*16+k*4,f32_bits(ifx k==0 then 1 else 0));}}
+ a:[8192]u8;z:[8192]u8;n:=anim_test_replace(AG_CHARACTER,"\"byteOffset\":72,\"byteLength\":12","\"byteOffset\":256,\"byteLength\":24",a[..]);#assert n>0;n=anim_test_replace(cast(string)a[0..<n],"\"bufferView\":2,\"componentType\":5121","\"bufferView\":2,\"componentType\":5123",z[..]);#assert n>0;n=anim_test_replace(cast(string)z[0..<n],"\"byteOffset\":84,\"byteLength\":12","\"byteOffset\":280,\"byteLength\":48",a[..]);#assert n>0;n=anim_test_replace(cast(string)a[0..<n],"\"bufferView\":3,\"componentType\":5121,\"normalized\":true","\"bufferView\":3,\"componentType\":5126",z[..]);#assert n>0;
+ g:[1]AgFile;nodes:[4096]JvNode;w:[1]AiBuild;out:[65536]u8;sc:[1]AgScene;#assert ag_test_open(cast(string)z[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"float-skin",out[..],w[..],sc[..])=="";#assert out[w[0].library[0].rig[0].meshes[0].vertices.offset+52]==255;
+ m:=anim_test_replace(cast(string)z[0..<n],"\"componentType\":5126,\"count\":3,\"type\":\"VEC4\"","\"componentType\":5121,\"count\":3,\"type\":\"VEC4\"",a[..]);#assert m>0 && ag_test_open(cast(string)a[0..<m],b[..],g[..],nodes[..]) && ag_scene(g[..],"bad",out[..],w[..],sc[..])=="gltf-skin-accessor";
+}
+
+#test "glTF missing indices refuses even when accessor zero could supply it" {
+ b:[252]u8;ag_character_bytes(b[..]);g:[1]AgFile;nodes:[4096]JvNode;w:[1]AiBuild;out:[65536]u8;sc:[1]AgScene;text:[8192]u8;source:="{\"asset\":{\"version\":\"2.0\"},\"buffers\":[{\"byteLength\":252,\"uri\":\"made.bin\"}],\"nodes\":[{\"name\":\"Head\"},{\"name\":\"Character\",\"mesh\":0,\"skin\":0}],\"skins\":[{\"joints\":[0],\"inverseBindMatrices\":5}],\"meshes\":[{\"extras\":{\"targetNames\":[\"jawOpen\"]},\"primitives\":[{\"attributes\":{\"POSITION\":4,\"NORMAL\":1,\"JOINTS_0\":2,\"WEIGHTS_0\":3},\"indices\":0,\"targets\":[{\"POSITION\":8}]}]}],\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},{\"buffer\":0,\"byteOffset\":36,\"byteLength\":36},{\"buffer\":0,\"byteOffset\":72,\"byteLength\":12},{\"buffer\":0,\"byteOffset\":84,\"byteLength\":12},{\"buffer\":0,\"byteOffset\":96,\"byteLength\":6},{\"buffer\":0,\"byteOffset\":104,\"byteLength\":64},{\"buffer\":0,\"byteOffset\":168,\"byteLength\":8},{\"buffer\":0,\"byteOffset\":176,\"byteLength\":32},{\"buffer\":0,\"byteOffset\":208,\"byteLength\":36},{\"buffer\":0,\"byteOffset\":244,\"byteLength\":8}],\"accessors\":[{\"bufferView\":4,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"},{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},{\"bufferView\":2,\"componentType\":5121,\"count\":3,\"type\":\"VEC4\"},{\"bufferView\":3,\"componentType\":5121,\"normalized\":true,\"count\":3,\"type\":\"VEC4\"},{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},{\"bufferView\":5,\"componentType\":5126,\"count\":1,\"type\":\"MAT4\"},{\"bufferView\":6,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"},{\"bufferView\":7,\"componentType\":5126,\"count\":2,\"type\":\"VEC4\"},{\"bufferView\":8,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},{\"bufferView\":9,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"}],\"animations\":[{\"name\":\"turn\",\"samplers\":[{\"input\":6,\"output\":7},{\"input\":6,\"output\":9}],\"channels\":[{\"sampler\":0,\"target\":{\"node\":0,\"path\":\"rotation\"}},{\"sampler\":1,\"target\":{\"node\":1,\"path\":\"weights\"}}]}]}";#assert ag_test_open(source,b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="";n:=anim_test_replace(source,",\"indices\":0","",text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="gltf-geometry-accessor";
+}
+
+#test "glTF missing weights refuses even when accessor zero could supply it" {
+ b:[252]u8;ag_character_bytes(b[..]);g:[1]AgFile;nodes:[4096]JvNode;w:[1]AiBuild;out:[65536]u8;sc:[1]AgScene;text:[8192]u8;source:="{\"asset\":{\"version\":\"2.0\"},\"buffers\":[{\"byteLength\":252,\"uri\":\"made.bin\"}],\"nodes\":[{\"name\":\"Head\"},{\"name\":\"Character\",\"mesh\":0,\"skin\":0}],\"skins\":[{\"joints\":[0],\"inverseBindMatrices\":5}],\"meshes\":[{\"extras\":{\"targetNames\":[\"jawOpen\"]},\"primitives\":[{\"attributes\":{\"POSITION\":3,\"NORMAL\":1,\"JOINTS_0\":2,\"WEIGHTS_0\":0},\"indices\":4,\"targets\":[{\"POSITION\":8}]}]}],\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},{\"buffer\":0,\"byteOffset\":36,\"byteLength\":36},{\"buffer\":0,\"byteOffset\":72,\"byteLength\":12},{\"buffer\":0,\"byteOffset\":84,\"byteLength\":12},{\"buffer\":0,\"byteOffset\":96,\"byteLength\":6},{\"buffer\":0,\"byteOffset\":104,\"byteLength\":64},{\"buffer\":0,\"byteOffset\":168,\"byteLength\":8},{\"buffer\":0,\"byteOffset\":176,\"byteLength\":32},{\"buffer\":0,\"byteOffset\":208,\"byteLength\":36},{\"buffer\":0,\"byteOffset\":244,\"byteLength\":8}],\"accessors\":[{\"bufferView\":3,\"componentType\":5121,\"normalized\":true,\"count\":3,\"type\":\"VEC4\"},{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},{\"bufferView\":2,\"componentType\":5121,\"count\":3,\"type\":\"VEC4\"},{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},{\"bufferView\":4,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"},{\"bufferView\":5,\"componentType\":5126,\"count\":1,\"type\":\"MAT4\"},{\"bufferView\":6,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"},{\"bufferView\":7,\"componentType\":5126,\"count\":2,\"type\":\"VEC4\"},{\"bufferView\":8,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},{\"bufferView\":9,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"}],\"animations\":[{\"name\":\"turn\",\"samplers\":[{\"input\":6,\"output\":7},{\"input\":6,\"output\":9}],\"channels\":[{\"sampler\":0,\"target\":{\"node\":0,\"path\":\"rotation\"}},{\"sampler\":1,\"target\":{\"node\":1,\"path\":\"weights\"}}]}]}";#assert ag_test_open(source,b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="";n:=anim_test_replace(source,",\"WEIGHTS_0\":0","",text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="gltf-skin-accessor";
+}
+
+#test "glTF one-character names and source parent zero retain their identities" {
+ b:[252]u8;ag_character_bytes(b[..]);g:[1]AgFile;nodes:[4096]JvNode;w:[1]AiBuild;out:[65536]u8;sc:[1]AgScene;a:[8192]u8;z:[8192]u8;n:=anim_test_replace(AG_CHARACTER,"\"name\":\"Head\"","\"name\":\"A\",\"children\":[1]",a[..]);#assert n>0;n=anim_test_replace(cast(string)a[0..<n],"\"meshes\":[","\"materials\":[{\"name\":\"B\"}],\"meshes\":[",z[..]);#assert n>0;n=anim_test_replace(cast(string)z[0..<n],"\"targetNames\":[\"jawOpen\"]","\"targetNames\":[\"C\"]",a[..]);#assert n>0 && ag_test_open(cast(string)a[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"D",out[..],w[..],sc[..])=="";r:=w[0].library[0].rig[0];#assert r.names[0].n==1 && r.materials[0].n==1 && r.shapes[0].n==1 && r.parents[1]==0 && r.face_bindings==0;
+}
+
+#test "glTF skin normalization divides by the source sum rather than assuming unit input" {
+ b:[64]u8;out:[96]u8;for k:0..<8 {b[k*2]=cast(u8)k;aw_put(b[..],16+k*4,f32_bits(0.5));}g:=[1]AgFile.[AgFile.{binary=b[..]}];sc:[1]AgScene;sc[0].skin_count=8;for k:0..<8 {sc[0].skin_joint[k]=k;}joints:[2]AgAccess;weights:[2]AgAccess;for k:0..<2 {joints[k]=AgAccess.{ok=true,count=1,components=4,component=5123,bytes=2,stride=8,offset=k*8};weights[k]=AgAccess.{ok=true,count=1,components=4,component=5126,bytes=4,stride=16,offset=16+k*16};}
+ #assert ag_skin_vertex(g[..],sc[..],joints[..],weights[..],0,out[..],0);for k:0..<8 {#assert cast(int)out[52+k]==(ifx k<7 then 32 else 31);}
+}
+#test "glTF replacement clears scene scratch shape metadata before publishing a new rig" {
+ b:[252]u8;ag_character_bytes(b[..]);g:[1]AgFile;nodes:[2048]JvNode;w:[1]AiBuild;out:[65536]u8;sc:[1]AgScene;sc[0].shape_count[0]=255;sc[0].shape_first[0]=7;sc[0].skin_joint[5]=100;#assert ag_test_open(AG_CHARACTER,b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="" && sc[0].shape_count[0]==0 && sc[0].shape_first[0]==0 && sc[0].skin_joint[5]==0;
+}
+
+#test "glTF generated shape labels ignore unrelated root metadata and reject duplicates" {
+ b:[252]u8;ag_character_bytes(b[..]);g:[1]AgFile;nodes:[4096]JvNode;w:[1]AiBuild;out:[65536]u8;sc:[1]AgScene;a:[8192]u8;z:[8192]u8;n:=anim_test_replace(AG_CHARACTER,"\"asset\":{","\"name\":\"unrelated\",\"asset\":{",a[..]);#assert n>0;n=anim_test_replace(cast(string)a[0..<n],"\"extras\":{\"targetNames\":[\"jawOpen\"]},","",z[..]);#assert n>0 && ag_test_open(cast(string)z[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="" && anim_equal(w[0].library[0].rig[0].shapes[0],anim_named("shape-0"));
+ n=anim_test_replace(AG_CHARACTER,"\"targetNames\":[\"jawOpen\"]","\"targetNames\":[\"a\",\"a\"]",a[..]);#assert n>0;n=anim_test_replace(cast(string)a[0..<n],"\"targets\":[{\"POSITION\":8}]","\"targets\":[{\"POSITION\":8},{\"POSITION\":8}]",z[..]);#assert n>0 && ag_test_open(cast(string)z[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="gltf-shape-name";
+}
+#test "glTF final geometry admission refuses either an empty scene or a nonfinite sparse delta" {
+ b:[252]u8;ag_character_bytes(b[..]);g:[1]AgFile;nodes:[4096]JvNode;w:[1]AiBuild;out:[65536]u8;sc:[1]AgScene;text:[8192]u8;n:=anim_test_replace(AG_CHARACTER,",\"mesh\":0","",text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="gltf-geometry";
+ aw_put(b[..],208,0x7f800000);#assert ag_test_open(AG_CHARACTER,b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="gltf-geometry";
+}
+#test "glTF positions and morph deltas require float components even with valid integer vectors" {
+ b:[252]u8;ag_character_bytes(b[..]);g:[1]AgFile;nodes:[4096]JvNode;w:[1]AiBuild;out:[65536]u8;sc:[1]AgScene;text:[8192]u8;
+ for accessor:[2]int.[0,8] {needle:[128]u8;replacement:[128]u8;a:[1]PnOut;z:[1]PnOut;a[0].buf=needle[..];z[0].buf=replacement[..];pn_put(a[..],"\"bufferView\":");pn_putint(a[..],accessor);pn_put(a[..],",\"componentType\":5126");pn_put(z[..],"\"bufferView\":");pn_putint(z[..],accessor);pn_put(z[..],",\"componentType\":5122,\"normalized\":true");n:=anim_test_replace(AG_CHARACTER,pn_text(a[..]),pn_text(z[..]),text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])==(ifx accessor==0 then "gltf-geometry-accessor" else "gltf-morph-accessor");}
+}
+
+#test "glTF first scale axis missing attributes and float-vector geometry fail independently" {
+ b:[252]u8;ag_character_bytes(b[..]);g:[1]AgFile;nodes:[4096]JvNode;w:[1]AiBuild;out:[65536]u8;sc:[1]AgScene;text:[8192]u8;
+ for row:[4]string.["\"name\":\"Head\"|\"name\":\"Head\",\"scale\":[2,1,1]|gltf-nonunit-scale","\"POSITION\":0,||gltf-geometry-accessor",",\"skin\":0||gltf-mesh-skin","\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"|\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"|gltf-geometry-accessor"] {a:= -1;z:= -1;for c,k:row {if c=='|' {if a<0 {a=k;}else {z=k;}}}n:=anim_test_replace(AG_CHARACTER,row[0..<a],row[a+1..<z],text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])==row[z+1..<row.count];}
+ for k:0..<16 {aw_put(b[..],104+k*4,ifx k%5==0 then 1 else 0);}n:=anim_test_replace(AG_CHARACTER,"\"bufferView\":5,\"componentType\":5126","\"bufferView\":5,\"componentType\":5125",text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="gltf-inverse-bind";
+}
+
+#test "glTF invalid child indices on later parents cannot default to source node zero" {
+ b:[252]u8;ag_character_bytes(b[..]);text:[8192]u8;n:=anim_test_replace(AG_CHARACTER,"\"name\":\"Character\"","\"name\":\"Character\",\"children\":[\"not-an-index\"]",text[..]);#assert n>0;g:[1]AgFile;nodes:[4096]JvNode;w:[1]AiBuild;out:[65536]u8;sc:[1]AgScene;#assert ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && ag_scene(g[..],"made",out[..],w[..],sc[..])=="gltf-hierarchy";
+}

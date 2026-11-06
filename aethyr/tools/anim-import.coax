@@ -1,0 +1,6 @@
+// Native entry for exercising the same import used by openagents labs anim.
+#import "Basic";
+#load "anim-import-io.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {print("usage: anim-import SOURCE RIG NEW_PRIVATE_DIR RATE_OR_0\n");return 2;}rate:=anim_decimal(args_at(a[..],3));if !rate.ok {return 2;}cwd:[4096]u8;r:=ai_import_files(args_at(a[..],0),args_at(a[..],1),args_at(a[..],2),cast(f32)rate.value,fs_cwd(cwd[..]));if r.err!="" {print("import refused: %\n",r.err);return 1;}hash:[64]u8;#assert asset_hex(r.pack,hash[..]);print("import clips=% joints=% frames=% bytes=% pack_sha256=%\n",r.clips,r.joints,r.frames,r.bytes,cast(string)hash[..]);return 0;
+}

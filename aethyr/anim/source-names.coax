@@ -1,0 +1,10 @@
+// Common source-skeleton aliases, shared by BVH and glTF.
+#load "../mannequin.coax";
+#authority;
+ai_bvh_map :: (name:string)->int #effects(all) {
+ names:=[24]string.["Hips","Spine","Spine1","Spine2","Neck","Head","LeftShoulder","LeftArm","LeftForeArm","LeftHand","RightShoulder","RightArm","RightForeArm","RightHand","LeftUpLeg","LeftLeg","LeftFoot","LeftToeBase","RightUpLeg","RightLeg","RightFoot","RightToeBase","LHipJoint","RHipJoint"];
+ slots:=[24]int.[1,2,3,4,5,6,7,8,9,10,31,32,33,34,55,56,57,58,60,61,62,63,55,60];for n,k:names {if mq_same(name,n) {return slots[k];}}return mannequin_fold(name);
+}
+#test "source aliases cover every declared left and right body anchor" {
+ for name,k:[25]string.["root","Hips","Spine","Spine1","Spine2","Neck","Head","LeftShoulder","LeftArm","LeftForeArm","LeftHand","RightShoulder","RightArm","RightForeArm","RightHand","LeftUpLeg","LeftLeg","LeftFoot","LeftToeBase","RightUpLeg","RightLeg","RightFoot","RightToeBase","LHipJoint","RHipJoint"] {#assert ai_bvh_map(name)==[25]int.[0,1,2,3,4,5,6,7,8,9,10,31,32,33,34,55,56,57,58,60,61,62,63,55,60][k];}#assert ai_bvh_map("unknown")== -1;
+}

@@ -14,16 +14,17 @@
 #include "HAL/FileManager.h"
 
 static TSharedPtr<FJsonValue> SlayNumber(double X) { return MakeShared<FJsonValueNumber>(X); }
-static bool SlaySave(const FString& Name, const TSharedRef<FJsonObject>& Object) {
+static bool SlaySave(const FString& Name, const TSharedRef<FJsonObject>& Object, const FString& Destination = FString()) {
     FString Text;
     FJsonSerializer::Serialize(Object,TJsonWriterFactory<>::Create(&Text));
-    const FString Root=FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("slay-source"));
+    const FString Root=Destination.IsEmpty()?FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("slay-source")):Destination;
     IFileManager::Get().MakeDirectory(*Root,true);
     return FFileHelper::SaveStringToFile(Text,*FPaths::Combine(Root,Name+TEXT(".json")));
 }
-static int32 SlayAnimation(const FString& Name, bool FaceOnly, TArray<TSharedPtr<FJsonValue>>& Receipt) {
+static int32 SlayAnimation(const FString& Name, bool FaceOnly, TArray<TSharedPtr<FJsonValue>>& Receipt, const FString& AssetOverride = FString(), const FString& Destination = FString()) {
     FString Shot=Name.Left(6);
-    auto* Anim=LoadObject<UAnimSequence>(nullptr,*(TEXT("/Game/Slay/Sequences/TF/Shots/")+Shot+TEXT("/Animations/")+Name));
+    const FString AssetPath=AssetOverride.IsEmpty()?TEXT("/Game/Slay/Sequences/TF/Shots/")+Shot+TEXT("/Animations/")+Name:AssetOverride;
+    auto* Anim=LoadObject<UAnimSequence>(nullptr,*AssetPath);
     if (!Anim || !Anim->GetDataModel()) { UE_LOG(LogTemp,Error,TEXT("Missing Slay animation %s"),*Name); return 30; }
     const auto* Model=Anim->GetDataModel();
     const FFrameRate Rate=Model->GetFrameRate();
@@ -68,11 +69,11 @@ static int32 SlayAnimation(const FString& Name, bool FaceOnly, TArray<TSharedPtr
         Row->SetArrayField(TEXT("values"),Values);Bones.Add(MakeShared<FJsonValueObject>(Row));
     }
     Out->SetArrayField(TEXT("bones"),Bones);
-    if (FaceOnly && !SlaySave(Name,Out)) return 31;
+    if (FaceOnly && !SlaySave(Name,Out,Destination)) return 31;
     // Preserve original keys in the receipt export; give Coax a separate bounded
     // source-rate stream without duplicating each key's editor metadata.
     for (auto& Curve:Curves) Curve->AsObject()->RemoveField(TEXT("keys"));
-    if (!SlaySave(Name+TEXT(".samples"),Out)) return 31;
+    if (!SlaySave(Name+TEXT(".samples"),Out,Destination)) return 31;
     TSharedRef<FJsonObject> Entry=MakeShared<FJsonObject>();
     Entry->SetStringField(TEXT("name"),Name);Entry->SetNumberField(TEXT("frames"),Frames);
     Entry->SetNumberField(TEXT("fps"),Rate.AsDecimal());Entry->SetNumberField(TEXT("curves"),Curves.Num());Entry->SetNumberField(TEXT("bones"),Bones.Num());
@@ -128,4 +129,9 @@ int32 EchoSourceSlay(const FString& Params) {
         Receipt->SetArrayField(FString(MeshPath)+TEXT("/bones"),BoneNames);
     }
     return SlaySave(TEXT("receipt"),Receipt)?0:33;
+}
+
+// Shared by the data-only Animation Lab commandlet and the legacy Slay path.
+int32 AnimationLabSequence(const FString& Asset, const FString& Name, const FString& Destination, bool FaceOnly, TArray<TSharedPtr<FJsonValue>>& Receipt) {
+    return SlayAnimation(Name,FaceOnly,Receipt,Asset,Destination);
 }

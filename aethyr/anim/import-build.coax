@@ -1,0 +1,22 @@
+// Native import scratch and original diagnostic geometry. Admission follows
+// through the document readers before any file can be published.
+#load "write.coax";
+#load "library.coax";
+AiBuild :: struct {library:[1]AnimLibrary;layout:AwRigParts;at:int;source_frames:int;extra_curves:int;}
+ai_pose :: (bytes:[]u8,at:int,p:SkinLocal) {for x,k:[7]f32.[p.t.x,p.t.y,p.t.z,p.q.x,p.q.y,p.q.z,p.q.w] {aw_put(bytes,at+k*4,f32_bits(x));}}
+ai_bind :: (r:[]AnimRig) {
+ q:[512]Quat;t:[512]Point;
+ for j:0..<r[0].joints {pose_chain(q[..],t[..],r[0].parents[j],j,r[0].rest[j]);inverse:=Quat.{x= -q[j].x,y= -q[j].y,z= -q[j].z,w=q[j].w};x:=quat_rotate(inverse,v3(1,0,0));y:=quat_rotate(inverse,v3(0,1,0));z:=quat_rotate(inverse,v3(0,0,1));p:=quat_rotate(inverse,times(t[j],-1));for value,k:[12]f32.[x.x,y.x,z.x,p.x,x.y,y.y,z.y,p.y,x.z,y.z,z.z,p.z] {r[0].bind[j*12+k]=value;}}
+}
+ai_rest :: (w:[]AiBuild,bytes:[]u8)->bool {
+ r:=w[0].library[0].rig[..];n:=r[0].joints;if n*76>bytes.count {return false;}
+ w[0].layout=AwRigParts.{rest=AnimPart.{pack=0,count=n,stride=28,width=28},bind=AnimPart.{pack=0,offset=n*28,count=n,stride=48,width=48},bytes=n*76};w[0].at=n*76;
+ for j:0..<n {ai_pose(bytes,j*28,r[0].rest[j]);for k:0..<12 {aw_put(bytes,n*28+j*48+k*4,f32_bits(r[0].bind[j*12+k]));}}return true;
+}
+ai_boxes :: (w:[]AiBuild,bytes:[]u8)->bool {
+ r:=w[0].library[0].rig[..];n:=r[0].joints;start:=w[0].at;indices:=start+n*8*96;end:=indices+n*36*4;if end>bytes.count {return false;}for k:start..<end {bytes[k]=0;}
+ q:[512]Quat;t:[512]Point;corners:=[8]Point.[v3(-1,-1,-1),v3(1,-1,-1),v3(1,1,-1),v3(-1,1,-1),v3(-1,-1,1),v3(1,-1,1),v3(1,1,1),v3(-1,1,1)];tri:=[36]int.[0,2,1,0,3,2,4,5,6,4,6,7,0,1,5,0,5,4,3,7,6,3,6,2,1,2,6,1,6,5,0,4,7,0,7,3];
+ for j:0..<n {pose_chain(q[..],t[..],r[0].parents[j],j,r[0].rest[j]);size:f32=ifx r[0].mapped[j]==6 then 0.1 else 0.025;for c,v:corners {at:=start+(j*8+v)*96;p:=add(t[j],times(c,size));for x,k:[6]f32.[p.x,p.y,p.z,c.x*0.5773503,c.y*0.5773503,c.z*0.5773503] {aw_put(bytes,at+k*4,f32_bits(x));}bytes[at+36]=cast,trunc(u8)j;bytes[at+37]=cast(u8)(j>>8);bytes[at+52]=255;}for v,k:tri {aw_put(bytes,indices+(j*36+k)*4,cast(u32)(j*8+v));}}
+ r[0].sections=1;r[0].material_count=1;r[0].materials[0]=anim_named("diagnostic");r[0].meshes[0]=AnimMesh.{vertices=AnimPart.{pack=0,offset=start,count=n*8,stride=96,width=96},indices=AnimPart.{pack=0,offset=indices,count=n*36,stride=4,width=4}};w[0].at=end;return true;
+}
+ai_axis :: (axis:int,angle:f32)->Quat {q:Quat;v:=sin(angle*0.5);q.w=cos(angle*0.5);if axis==0 {q.x=v;}if axis==1 {q.y=v;}if axis==2 {q.z=v;}return q;}

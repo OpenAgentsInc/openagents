@@ -1,0 +1,12 @@
+// A bounded source container is data, never a program or a network request.
+#load "document.coax";
+#load "../mannequin.coax";
+#load "import-container-checks.coax";
+#authority;
+AiGlb :: struct {ok:bool;json_first:int;json_size:int;binary_first:int;binary_size:int;}
+ai_format :: (path:string)->int #effects(all) {for suffix,k:[6]string.[".gltf",".glb",".bvh",".csv",".fbx",".unreal.json"] {if path.count>=suffix.count && mq_same(path[path.count-suffix.count..<path.count],suffix) {return k;}}return -1;}
+ai_buffer_name :: (text:string)->bool #effects(all) {if text.count<1 || text.count>255 || text=="." || text==".." {return false;}for c:text {if c<32 || c=='/' || c=='\\' || c==':' || c=='%' {return false;}}return true;}
+ai_glb :: (bytes:[]u8)->AiGlb #effects(all) {
+ c:AiGlb;if bytes.count<36 || anim_word(bytes,0)!=0x46546c67 || anim_word(bytes,4)!=2 || cast(int)anim_word(bytes,8)!=bytes.count {return c;}n:=cast(int)anim_word(bytes,12);if n==0 || n%4!=0 || n>bytes.count-32 || anim_word(bytes,16)!=0x4e4f534a {return c;}next:=20+n;size:=cast(int)anim_word(bytes,next);if size%4!=0 || size!=bytes.count-next-8 || anim_word(bytes,next+4)!=0x004e4942 {return c;}
+ c.ok=true;c.json_first=20;c.json_size=n;c.binary_first=next+8;c.binary_size=size;return c;
+}

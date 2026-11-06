@@ -13,8 +13,10 @@ int32 EchoSourceReference();
 int32 EchoSourceCurves();
 int32 EchoSourceSlay(const FString& Params);
 int32 EchoSourceCamera();
+int32 AnimationLabExport(const FString& Params);
 
 int32 UEchoSourceExportCommandlet::Main(const FString& Params) {
+    if (Params.Contains(TEXT("AnimationLab="))) return AnimationLabExport(Params);
     if (Params.Contains(TEXT("CameraTemplate"))) return EchoSourceCamera();
     if (FParse::Param(*Params,TEXT("Slay"))) return EchoSourceSlay(Params);
     if (Params.Contains(TEXT("Curves"))) {

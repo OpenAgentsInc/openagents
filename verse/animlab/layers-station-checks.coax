@@ -25,3 +25,9 @@
  #assert al_pointer(s[..],90,300,0) && s[0].layer_selected==0;#assert al_pointer(s[..],250,300,0) && s[0].layer_disabled==1;
  #assert al_pointer(s[..],10,300,0) && s[0].layer_selected==p.count-1 && s[0].layer_disabled==1;
 }
+
+#test "private selection uses the imported rig name and inspection includes distant bind geometry" #steps 300000000 {
+ s:[1]AlState;al_init(s[..]);s[0].libraries[1]=s[0].libraries[0];s[0].libraries[1].rig[0].name=anim_named("made-import");s[0].libraries[1].clips[0].rig=s[0].libraries[1].rig[0].name;s[0].private_loaded=true;#assert al_key(s[..],69) && s[0].rig==1 && s[0].wanted_rig.n==11 && s[0].error==0;
+ s[0].width=390;s[0].height=844;#assert al_key(s[..],77) && s[0].rig==0;#assert al_pointer(s[..],300,28,0) && s[0].rig==1;
+ part:=s[0].libraries[1].rig[0].meshes[0].vertices;anim_bundle_put(s[0].made[..],part.offset,f32_bits(100));s[0].libraries[1].packs[0].id=asset_id(cast(string)s[0].libraries[1].packs[0].bytes);al_bounds(s[..]);#assert s[0].center.x>40 && s[0].radius>50;
+}

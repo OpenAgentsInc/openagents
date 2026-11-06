@@ -145,6 +145,21 @@ Labs adds one exit code to the CLI's table:
 | --- | --- |
 | 8 | a program Labs needs is missing: Chrome, ffmpeg, or the transcribe backend. The message names it and the one command that installs it, for example `brew install ffmpeg` |
 
+### `labs anim import`
+
+```sh
+openagents labs anim import SOURCE --rig NAME [--out PRIVATE_DIR] [--rate 30|60] [--json]
+```
+
+Imports a supported source into admitted rig/clip documents, a private binary,
+an ALB1 bundle and a receipt. The default output is a new directory under
+`~/.openagents/aethyrforge/animation-lab/imports/`. Existing directories and
+paths outside `~/.openagents/` are refused. glTF reads directly; FBX uses
+headless Blender; BVH declares its own clock; Live Link Face CSV uses an
+explicit 30/60 fps timecode clock. Bounded Unreal body imports use a trusted
+compiled SDK plugin. See [profiles and current limits](../verse/anim-imports-v1.md),
+including the unmet exact Echo/Slay re-import qualification.
+
 ### `labs anim retarget`
 
 ```sh

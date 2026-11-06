@@ -1,0 +1,16 @@
+ai_container_put :: (b:[]u8,at:int,value:u32) {for k:0..<4 {b[at+k]=cast,trunc(u8)(value>>(k*8));}}
+#test "animation import formats and local buffer names keep data paths literal" {
+ for name,k:[6]string.["mesh.GLTF","mesh.glb","walk.bvh","face.csv","body.fbx","assets.unreal.json"] {#assert ai_format(name)==k;}#assert ai_format("mesh.json")== -1 && ai_format("a")== -1;
+ for name:[3]string.["a.bin","mesh-buffer_0.bin","original mesh.bin"] {#assert ai_buffer_name(name);}for name:[9]string.["",".","..","../a.bin","a/b.bin","a\\b.bin","https:a.bin","a%20.bin","a\0b"] {#assert !ai_buffer_name(name);}
+}
+#test "GLB admits the exact JSON and BIN chunks and refuses every truncated prefix" {
+ b:[36]u8;for word,k:[9]u32.[0x46546c67,2,36,4,0x4e4f534a,0x20207d7b,4,0x004e4942,0x12345678] {ai_container_put(b[..],k*4,word);}c:=ai_glb(b[..]);#assert c.ok && c.json_first==20 && c.json_size==4 && c.binary_first==32 && c.binary_size==4;
+ zero:=b;ai_container_put(zero[..],12,0);ai_container_put(zero[..],20,8);ai_container_put(zero[..],24,0x004e4942);#assert !ai_glb(zero[..]).ok;
+ for k:0..<36 {#assert !ai_glb(b[0..<k]).ok;}for index:0..<9 {original:=anim_word(b[..],index*4);if index==5 || index==8 {continue;}ai_container_put(b[..],index*4,original+1);#assert !ai_glb(b[..]).ok;ai_container_put(b[..],index*4,original);}
+}
+
+#test "source names and GLB chunk padding enforce exact lower upper and trailing-byte boundaries" {
+ #assert ai_format(".gltf")==0 && ai_buffer_name("a");long:[256]u8;for k:0..<256 {long[k]='a';}#assert ai_buffer_name(cast(string)long[0..<255]) && !ai_buffer_name(cast(string)long[..]);
+ b:[40]u8;for word,k:[10]u32.[0x46546c67,2,40,4,0x4e4f534a,0x20207d7b,4,0x004e4942,0,0] {ai_container_put(b[..],k*4,word);}#assert !ai_glb(b[..]).ok;
+ ai_container_put(b[..],8,36);ai_container_put(b[..],12,40);#assert !ai_glb(b[0..<36]).ok;
+}

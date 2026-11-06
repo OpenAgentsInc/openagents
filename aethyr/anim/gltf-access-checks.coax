@@ -1,0 +1,65 @@
+AG_ACCESS_TEST :: "{\"bufferViews\":[{\"buffer\":0,\"byteOffset\":4,\"byteLength\":32,\"byteStride\":16}],\"accessors\":[{\"bufferView\":0,\"byteOffset\":0,\"componentType\":5126,\"count\":2,\"type\":\"VEC3\"}]}";
+ag_test_open :: (text:string,b:[]u8,g:[]AgFile,nodes:[]JvNode)->bool {d:[1]Jv;if !jv_parse(d[..],text,nodes) {return false;}g[0].d=d[0];g[0].binary=b;g[0].bad=false;return true;}
+#test "glTF accessors honor interleaved strides component bounds and finite values" {
+ b:[36]u8;aw_put(b[..],4,f32_bits(2.5));aw_put(b[..],24,f32_bits(-3));g:[1]AgFile;nodes:[128]JvNode;#assert ag_test_open(AG_ACCESS_TEST,b[..],g[..],nodes[..]);a:=ag_accessor(g[..],0);#assert a.ok && a.count==2 && a.components==3 && a.stride==16 && ag_value(g[..],a,0,0)==2.5 && ag_value(g[..],a,1,1)== -3 && !g[0].bad;
+ #assert ag_value(g[..],a,2,0)==0 && g[0].bad;g[0].bad=false;aw_put(b[..],4,0x7f800000);#assert ag_value(g[..],a,0,0)==0 && g[0].bad;
+ text:[4096]u8;for row:[7]string.["byteLength\":32|byteLength\":20","byteStride\":16|byteStride\":8","5126|5124","VEC3|OTHER","count\":2|count\":0","buffer\":0|buffer\":1","byteOffset\":4|byteOffset\":8"] {split:=0;for c,k:row {if c=='|' {split=k;break;}}n:=anim_test_replace(AG_ACCESS_TEST,row[0..<split],row[split+1..<row.count],text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && !ag_accessor(g[..],0).ok;}
+ #assert !ag_accessor(g[..],-1).ok;
+}
+#test "glTF normalized integers and sparse zero-base accessors retain exact selected values" {
+ text:="{\"bufferViews\":[{\"buffer\":0,\"byteLength\":1},{\"buffer\":0,\"byteOffset\":4,\"byteLength\":4}],\"accessors\":[{\"componentType\":5126,\"type\":\"SCALAR\",\"count\":3,\"sparse\":{\"count\":1,\"indices\":{\"bufferView\":0,\"componentType\":5121},\"values\":{\"bufferView\":1}}}]}";
+ b:[8]u8;b[0]=1;aw_put(b[..],4,f32_bits(7));g:[1]AgFile;nodes:[128]JvNode;#assert ag_test_open(text,b[..],g[..],nodes[..]);a:=ag_accessor(g[..],0);#assert a.ok && ag_value(g[..],a,0,0)==0 && ag_value(g[..],a,1,0)==7 && ag_value(g[..],a,2,0)==0;
+ b[0]=3;#assert !ag_accessor(g[..],0).ok;b[0]=1;
+ ntext:="{\"bufferViews\":[{\"buffer\":0,\"byteLength\":4}],\"accessors\":[{\"bufferView\":0,\"componentType\":5121,\"normalized\":true,\"type\":\"VEC4\",\"count\":1}]}";b[0]=255;b[1]=0;b[2]=128;#assert ag_test_open(ntext,b[..],g[..],nodes[..]);a=ag_accessor(g[..],0);#assert a.ok && ag_value(g[..],a,0,0)==1 && ag_value(g[..],a,0,1)==0 && abs(ag_value(g[..],a,0,2)-128.0f32/255)<0.000001;
+}
+
+ag_access_json :: (out:[]u8,component:int,kind:string,count:int,normalized:bool)->int {
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"bufferViews");jo_raw(o[..],"[{\"buffer\":0,\"byteLength\":256}]");jo_key(o[..],"accessors");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"bufferView");jo_int(o[..],0);jo_key(o[..],"componentType");jo_int(o[..],component);jo_key(o[..],"type");jo_str(o[..],kind);jo_key(o[..],"count");jo_int(o[..],count);jo_key(o[..],"normalized");jo_bool(o[..],normalized);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);return o[0].n;
+}
+#test "glTF decodes signed unsigned float normalized and matrix component profiles" {
+ g:[1]AgFile;nodes:[128]JvNode;text:[2048]u8;b:[256]u8;
+ for component,i:[6]int.[5120,5121,5122,5123,5125,5126] {
+  for k:0..<256 {b[k]=0;}raw:=[6]u32.[128,255,32768,65535,16777215,0x3f800000][i];width:=[6]int.[1,1,2,2,4,4][i];for k:0..<width {b[k]=cast,trunc(u8)(raw>>(k*8));}
+  for norm:0..<2 {n:=ag_access_json(text[..],component,"SCALAR",1,norm==1);#assert ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]);a:=ag_accessor(g[..],0);if norm==1 && component>=5125 {#assert !a.ok;continue;}#assert a.ok && a.bytes==width && a.components==1 && a.count==1 && a.stride==width && a.component==component && a.normalized==(norm==1);
+   expected:=ifx norm==1 then [6]f32.[-1,1,-1,1,0,0][i] else [6]f32.[-128,255,-32768,65535,16777215,1][i];#assert ag_value(g[..],a,0,0)==expected && !g[0].bad;
+  }
+ }
+ for kind,i:[6]string.["SCALAR","VEC2","VEC3","VEC4","MAT4","MAT3"] {n:=ag_access_json(text[..],5126,kind,2,false);#assert ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]);a:=ag_accessor(g[..],0);#assert a.ok && a.components==[6]int.[1,2,3,4,16,9][i] && a.stride==a.components*4;}
+ for kind:[2]string.["MAT3","MAT4"] {n:=ag_access_json(text[..],5123,kind,1,false);#assert ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && !ag_accessor(g[..],0).ok;}
+}
+#test "glTF sparse vectors select every boundary and binary-search gap without a dense base" {
+ source:="{\"bufferViews\":[{\"buffer\":0,\"byteOffset\":4,\"byteLength\":6},{\"buffer\":0,\"byteOffset\":32,\"byteLength\":24}],\"accessors\":[{\"componentType\":5126,\"type\":\"VEC2\",\"count\":5,\"sparse\":{\"count\":3,\"indices\":{\"bufferView\":0,\"componentType\":5123},\"values\":{\"bufferView\":1}}}]}";
+ b:[64]u8;b[6]=2;b[8]=4;for k:0..<6 {aw_put(b[..],32+k*4,f32_bits(cast(f32)(k+2)));}g:[1]AgFile;nodes:[128]JvNode;#assert ag_test_open(source,b[..],g[..],nodes[..]);a:=ag_accessor(g[..],0);#assert a.ok && a.sparse==3 && a.sparse_indices==4 && a.sparse_values==32 && a.sparse_bytes==2;
+ expected:=[10]f32.[2,3,0,0,4,5,0,0,6,7];for k:0..<10 {#assert ag_value(g[..],a,k/2,k%2)==expected[k] && !g[0].bad;}
+ b[8]=2;#assert !ag_accessor(g[..],0).ok;b[8]=4;
+ text:[2048]u8;temp:[2048]u8;n:=anim_test_replace(source,"5123","5125",temp[..]);#assert n>0;n=anim_test_replace(cast(string)temp[0..<n],"byteLength\":6","byteLength\":12",text[..]);b[6]=0;b[8]=2;b[12]=4;#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]);a=ag_accessor(g[..],0);#assert a.ok && a.sparse_bytes==4 && ag_value(g[..],a,4,1)==7;
+ for row:[9]string.["sparse\":{\"count\":3|sparse\":{\"count\":0","sparse\":{\"count\":3|sparse\":{\"count\":6","componentType\":5123|componentType\":5122","values\":{\"bufferView\":1}|values\":{\"bufferView\":2}","indices\":{\"bufferView\":0|indices\":{\"bufferView\":2","byteOffset\":4|byteOffset\":3","byteOffset\":32|byteOffset\":31","byteLength\":6|byteLength\":5","byteLength\":24|byteLength\":23"] {split:=0;for c,k:row {if c=='|' {split=k;break;}}n=anim_test_replace(source,row[0..<split],row[split+1..<row.count],text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && !ag_accessor(g[..],0).ok;}
+}
+#test "glTF integer fields binary windows alignment and invalid samples keep exact refusal boundaries" {
+ b:[512]u8;g:[1]AgFile;nodes:[128]JvNode;#assert ag_test_open("{\"zero\":0,\"max\":67108864,\"large\":67108865,\"fraction\":0.5}",b[..],g[..],nodes[..]);#assert ag_int(g[..],0,"missing",17)==17 && ag_int(g[..],0,"zero",17)==0 && ag_int(g[..],0,"max",17)==67108864 && ag_int(g[..],0,"large",17)== -1 && ag_int(g[..],0,"fraction",17)== -1;
+ #assert ag_test_open(AG_ACCESS_TEST,b[..],g[..],nodes[..]);#assert ag_view(g[..],0,4,2,16,4)==8 && ag_view(g[..],0,16,2,16,4)== -1 && ag_view(g[..],3,0,1,4,4)== -1;
+ a:=ag_accessor(g[..],0);for component:[2]int.[-1,3] {g[0].bad=false;#assert ag_value(g[..],a,0,component)==0 && g[0].bad;}g[0].bad=false;#assert ag_value(g[..],AgAccess.{},0,0)==0 && g[0].bad;
+ text:[2048]u8;for row:[6]string.["byteStride\":16|byteStride\":15","byteStride\":16|byteStride\":253","byteOffset\":0|byteOffset\":1","5126|5127","count\":2|count\":1000001","VEC3|MAT2"] {split:=0;for c,k:row {if c=='|' {split=k;break;}}n:=anim_test_replace(AG_ACCESS_TEST,row[0..<split],row[split+1..<row.count],text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && !ag_accessor(g[..],0).ok;}
+ for bits:[3]u32.[0x7f800000,0x7f800001,0xff800000] {#assert ag_test_open(AG_ACCESS_TEST,b[..],g[..],nodes[..]);a=ag_accessor(g[..],0);aw_put(b[..],4,bits);#assert ag_value(g[..],a,0,0)==0 && g[0].bad;}
+}
+
+#test "glTF required fields absent types exact stride and source allocation limits are enforced" {
+ b:[1000001]u8;g:[1]AgFile;nodes:[128]JvNode;#assert ag_test_open("{\"zero\":0}",b[..],g[..],nodes[..]) && ag_required(g[..],0,"zero")==0 && ag_required(g[..],0,"missing")== -1;
+ source:="{\"bufferViews\":[{\"buffer\":0,\"byteLength\":1000001}],\"accessors\":[{\"bufferView\":0,\"componentType\":5121,\"count\":1000000,\"type\":\"SCALAR\"}]}";
+ #assert ag_test_open(source,b[..],g[..],nodes[..]);a:=ag_accessor(g[..],0);#assert a.ok && a.count==1000000;text:[2048]u8;n:=anim_test_replace(source,"count\":1000000","count\":1000001",text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && !ag_accessor(g[..],0).ok;
+ stride:="{\"bufferViews\":[{\"buffer\":0,\"byteLength\":512,\"byteStride\":252}],\"accessors\":[{\"bufferView\":0,\"componentType\":5121,\"count\":2,\"type\":\"VEC4\"}]}";
+ #assert ag_test_open(stride,b[..],g[..],nodes[..]);a=ag_accessor(g[..],0);#assert a.ok && a.stride==252;
+ for replacement:[3]string.["256","253","0"] {n=anim_test_replace(stride,"252",replacement,text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && !ag_accessor(g[..],0).ok;}
+ for row:[8]string.["\"componentType\":5121,|","\"count\":1000000,|","\"buffer\":0,|","byteLength\":1000001|missing\":1000001","\"bufferView\":0,|","componentType\":5121|componentType\":5124","type\":\"SCALAR\"|type\":\"OTHER\"","count\":1000000|count\":-1"] {split:=0;for c,k:row {if c=='|' {split=k;break;}}n=anim_test_replace(source,row[0..<split],row[split+1..<row.count],text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && !ag_accessor(g[..],0).ok;}
+ n=anim_test_replace(AG_ACCESS_TEST,"byteOffset\":4","byteOffset\":3",text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && !ag_accessor(g[..],0).ok;
+ invalid:="{\"bufferViews\":[{\"buffer\":0,\"byteLength\":4}],\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"normalized\":true,\"type\":\"SCALAR\",\"count\":1}]}";#assert ag_test_open(invalid,b[..],g[..],nodes[..]);a=ag_accessor(g[..],0);#assert !a.ok && ag_value(g[..],a,0,0)==0 && g[0].bad;
+}
+#test "glTF sparse values may start at byte zero and every declared sparse row must fit" {
+ b:[64]u8;aw_put(b[..],0,f32_bits(3));b[32]=0;source:="{\"bufferViews\":[{\"buffer\":0,\"byteOffset\":32,\"byteLength\":1},{\"buffer\":0,\"byteOffset\":0,\"byteLength\":4}],\"accessors\":[{\"componentType\":5126,\"type\":\"SCALAR\",\"count\":1,\"sparse\":{\"count\":1,\"indices\":{\"bufferView\":0,\"componentType\":5121},\"values\":{\"bufferView\":1}}}]}";
+ g:[1]AgFile;nodes:[128]JvNode;#assert ag_test_open(source,b[..],g[..],nodes[..]);a:=ag_accessor(g[..],0);#assert a.ok && a.sparse_values==0 && ag_value(g[..],a,0,0)==3;
+ text:[2048]u8;for row:[5]string.["indices\":{\"bufferView\":0,|indices\":{","values\":{\"bufferView\":1}|values\":{}","sparse\":{\"count\":1,|sparse\":{","componentType\":5121|componentType\":5120","sparse\":{\"count\":1|sparse\":{\"count\":2"] {split:=0;for c,k:row {if c=='|' {split=k;break;}}n:=anim_test_replace(source,row[0..<split],row[split+1..<row.count],text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && !ag_accessor(g[..],0).ok;}
+}
+
+#test "glTF component alignment is required relative to the view as well as the whole buffer" {
+ b:[64]u8;g:[1]AgFile;nodes:[128]JvNode;text:[2048]u8;temp:[2048]u8;n:=anim_test_replace(AG_ACCESS_TEST,"byteOffset\":4","byteOffset\":3",temp[..]);#assert n>0;n=anim_test_replace(cast(string)temp[0..<n],"byteOffset\":0","byteOffset\":1",text[..]);#assert n>0 && ag_test_open(cast(string)text[0..<n],b[..],g[..],nodes[..]) && !ag_accessor(g[..],0).ok;
+}

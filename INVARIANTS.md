@@ -5965,3 +5965,22 @@ A3 authority gates kill 30 envelope/pose, 82 mask, 88 layer, 84 anchor and
 47 bundle mutants: 331 total, zero survivors. Source frame preservation,
 contact travel, blend-boundary limits, toggles and frame times are recorded
 in `docs/verification/animation-lab-a3-2026-11-06/README.md`.
+
+## Animation imports admit complete private output before publication
+
+A4 source readers convert supported glTF/GLB, BVH and wide ARKit CSV into
+the shared rig/clip records. FBX uses headless Blender; bounded Unreal body
+imports use a trusted compiled read-only SDK and a data-only project. Source
+modules are not loaded. Each generated rig, clip and ALB1 is re-admitted
+before an owned staging directory is renamed into a new canonical path
+below `~/.openagents/`. Existing destinations are refused. Bad input or
+failed admission publishes no pack. Receipts retain source/converted/output
+hashes, counts and settings; Unreal sequences retain per-asset export hashes.
+
+The source profile is explicitly bounded, including 64 MiB source/output
+windows, 512 nodes, 64 clips and 2,000 frames. It does not claim general
+nonuniform scale, required-extension or multi-mesh Unreal compatibility.
+The frozen A0 Echo/Slay conversions remain qualified: regenerated Unreal
+body samples fail exact equality, and A4 does not substitute them in Valley.
+The failed qualification, profile limits and verification are recorded in
+`docs/verification/animation-lab-a4-2026-11-06/README.md`.

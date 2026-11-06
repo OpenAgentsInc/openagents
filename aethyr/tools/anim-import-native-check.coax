@@ -1,0 +1,11 @@
+// Exercise the production import path, including refusal before publication.
+// All source files are original fixtures. Reports contain counts and hashes only.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "anim-import-io.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {print("usage: anim-import-native-check ORIGINAL_FIXTURE_DIR NEW_PRIVATE_CHECK_DIR\n");return 2;}fixtures:=args_at(a[..],0);root:=args_at(a[..],1);if fs_kind(root)!=FS_NONE || !fs_mkdir(root) {return 2;}cwd:[4096]u8;sdk:=fs_cwd(cwd[..]);file:[4096]u8;dest:[4096]u8;
+ for leaf,k:[4]string.["made.gltf","made.bvh","made.csv","made.fbx"] {out_name:=[4]string.["gltf","bvh","csv","fbx"][k];input:=fs_join(fixtures,leaf,file[..]);output:=fs_join(root,out_name,dest[..]);r:=ai_import_files(input,out_name,output,0,sdk);if r.err!="" {print("FAIL %: %\n",out_name,r.err);return 1;}#assert r.clips==1 && r.frames>=2 && r.joints>=1 && fs_kind(output)==FS_DIR;hash:[64]u8;#assert asset_hex(r.pack,hash[..]);print("PASS % clips=% frames=% joints=% bytes=% pack_sha256=%\n",out_name,r.clips,r.frames,r.joints,r.bytes,cast(string)hash[..]);again:=ai_import_files(input,out_name,output,0,sdk);#assert again.err=="output-exists";}
+ for source,k:[6]string.["broken.gltf","broken.bvh","broken.csv","broken.glb","broken.unreal.json","broken.fbx"] {body:=[6]string.["{\"asset\":{\"version\":\"2.0\"},\"buffers\":[]}","HIERARCHY ROOT Hips { OFFSET 0 0 0","Timecode,BlendShapeCount\n","glTF","{\"schema\":\"wrong\"}","not an FBX file"][k];input:=fs_join(root,source,file[..]);#assert fs_write(input,body);output:=fs_join(root,"must-not-publish",dest[..]);r:=ai_import_files(input,"bad",output,0,sdk);#assert r.err!="" && fs_kind(output)==FS_NONE;print("PASS refused % reason=%\n",source,r.err);}
+ return 0;
+}

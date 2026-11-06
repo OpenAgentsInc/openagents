@@ -1,0 +1,31 @@
+// glTF 2.0 single-buffer access, including interleaving and sparse overlays.
+#load "import-build.coax";
+#load "gltf-access-checks.coax";
+#authority;
+AgAccess :: struct {ok:bool;offset:int= -1;count:int;components:int;component:int;bytes:int;stride:int;normalized:bool;sparse:int;sparse_indices:int;sparse_bytes:int;sparse_values:int;}
+AgFile :: struct {d:Jv;binary:[]u8;bad:bool;}
+ag_get :: (g:[]AgFile,node:int,key:string)->int #effects(all) {return jv_get(g[0].d,node,key);}
+ag_int :: (g:[]AgFile,node:int,key:string,default:int)->int #effects(all) {n:=ag_get(g,node,key);if n== -1 {return default;}return anim_integer(g[0].d,n,0,67108864);}
+ag_required :: (g:[]AgFile,node:int,key:string)->int #effects(all) {return ag_int(g,node,key,-1);}
+ag_top :: (g:[]AgFile,key:string,index:int)->int #effects(all) {return jv_at(g[0].d,ag_get(g,0,key),index);}
+ag_uint :: (bytes:[]u8,at:int,width:int)->int #effects(all) {v:=0;for k:0..<width {v|=cast(int)bytes[at+k]<<(k*8);}return v;}
+ag_view :: (g:[]AgFile,index:int,relative:int,count:int,stride:int,width:int)->int #effects(all) {
+ v:=ag_top(g,"bufferViews",index);if ag_required(g,v,"buffer")!=0 {return -1;}offset:=ag_int(g,v,"byteOffset",0);length:=ag_required(g,v,"byteLength");if !anim_window(g[0].binary.count,offset,length,1,1) || !anim_window(length,relative,count,stride,width) {return -1;}return offset+relative;
+}
+ag_accessor :: (g:[]AgFile,index:int)->AgAccess #effects(all) {
+ a:AgAccess;node:=ag_top(g,"accessors",index);a.component=ag_required(g,node,"componentType");a.bytes=ifx a.component==5120 || a.component==5121 then 1 else ifx a.component==5122 || a.component==5123 then 2 else ifx a.component==5125 || a.component==5126 then 4 else 0;if a.bytes==0 {return a;}
+ kind:=ag_get(g,node,"type");for name,k:[6]string.["SCALAR","VEC2","VEC3","VEC4","MAT4","MAT3"] {if jv_raw_eq(jv_raw(g[0].d,kind),name) {a.components=[6]int.[1,2,3,4,16,9][k];}}if (a.components==9 || a.components==16) && a.bytes!=4 {return a;}
+ a.count=ag_required(g,node,"count");if a.count<1 || a.count>1000000 {return a;}norm:=ag_get(g,node,"normalized");if norm!= -1 && jv_kind(g[0].d,norm)!=JV_TRUE && jv_kind(g[0].d,norm)!=JV_FALSE {return a;}a.normalized=jv_kind(g[0].d,norm)==JV_TRUE;if a.normalized && (a.component==5125 || a.component==5126) {return a;}
+ width:=a.components*a.bytes;view:=ag_int(g,node,"bufferView",-1);relative:=ag_int(g,node,"byteOffset",0);view_node:=ag_top(g,"bufferViews",view);stride_node:=ag_get(g,view_node,"byteStride");a.stride=ifx stride_node== -1 then width else ag_required(g,view_node,"byteStride");
+ if view>=0 {if a.stride<width || (stride_node!= -1 && (a.stride%4!=0 || a.stride/4>63)) || relative%a.bytes!=0 {return a;}a.offset=ag_view(g,view,relative,a.count,a.stride,width);if a.offset<0 || a.offset%a.bytes!=0 {return a;}}else if relative!=0 {return a;}
+ sparse:=ag_get(g,node,"sparse");if sparse!= -1 {a.sparse=ag_required(g,sparse,"count");indices:=ag_get(g,sparse,"indices");values:=ag_get(g,sparse,"values");component:=ag_required(g,indices,"componentType");a.sparse_bytes=ifx component==5121 then 1 else ifx component==5123 then 2 else ifx component==5125 then 4 else 0;if a.sparse_bytes==0 {return a;}
+  a.sparse_indices=ag_view(g,ag_required(g,indices,"bufferView"),ag_int(g,indices,"byteOffset",0),a.sparse,a.sparse_bytes,a.sparse_bytes);a.sparse_values=ag_view(g,ag_required(g,values,"bufferView"),ag_int(g,values,"byteOffset",0),a.sparse,width,width);if a.sparse_indices<0 || a.sparse_values<0 || a.sparse_indices%a.sparse_bytes!=0 || a.sparse_values%a.bytes!=0 {return a;}previous:= -1;for k:0..<a.sparse {v:=ag_uint(g[0].binary,a.sparse_indices+k*a.sparse_bytes,a.sparse_bytes);if v<=previous || v>=a.count {return a;}previous=v;}
+ }else if a.offset<0 {return a;}a.ok=true;return a;
+}
+ag_value :: (g:[]AgFile,a:AgAccess,index:int,component:int)->f32 #effects(all) {
+ if !a.ok || index<0 || index>=a.count || component<0 || component>=a.components {g[0].bad=true;return 0;}at:=ifx a.offset<0 then -1 else a.offset+index*a.stride+component*a.bytes;
+ first:=0;end:=a.sparse;while first<end {mid:=(first+end)/2;key:=ag_uint(g[0].binary,a.sparse_indices+mid*a.sparse_bytes,a.sparse_bytes);if key<index {first=mid+1;}else {end=mid;}}
+ if first<a.sparse && ag_uint(g[0].binary,a.sparse_indices+first*a.sparse_bytes,a.sparse_bytes)==index {at=a.sparse_values+(first*a.components+component)*a.bytes;}if at<0 {return 0;}
+ raw:=ag_uint(g[0].binary,at,a.bytes);if a.component==5126 {if (cast(u32)raw&0x7f800000)==0x7f800000 {g[0].bad=true;return 0;}return f32_from_bits(cast(u32)raw);}
+ if a.component==5120 && raw>=128 {raw-=256;}if a.component==5122 && raw>=32768 {raw-=65536;}value:=cast(f32)raw;if !a.normalized {return value;}divisor:f32=ifx a.component==5120 then 127 else ifx a.component==5121 then 255 else ifx a.component==5122 then 32767 else 65535;return hi(-1,value/divisor);
+}

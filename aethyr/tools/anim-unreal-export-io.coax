@@ -1,0 +1,32 @@
+// Files and SDK effects only. The source plan is admitted in Coax, and an
+// isolated project reads Content without loading the source project's modules.
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../verse/tools/humans/ph_num.coax";
+#load "../anim/unreal-source.coax";
+#load "../anim/export-policy.coax";
+AuExport :: struct {err:string;meshes:int;clips:int;request:AssetId;}
+au_join_arg :: (prefix:string,value:string,out:[]u8)->string {
+ if prefix.count+value.count>out.count {return "";}for c,k:prefix {out[k]=c;}for c,k:value {out[prefix.count+k]=c;}return cast(string)out[0..<prefix.count+value.count];
+}
+// Unreal owns background SDK helpers. They must not inherit a stdout pipe:
+// the private -abslog file is the export log, and the owned editor PID is
+// the completion boundary rather than EOF from its descendant processes.
+au_sdk_run :: (args:[]string)->ProcRun {
+ r:ProcRun;h:=proc_new();if h<0 {r.started=PROC_ERROR;return r;}defer {released:=proc_release(h);}ok:=proc_quiet(h);for a:args {ok=ok && proc_arg(h,a);}if !ok {r.started=PROC_ERROR;return r;}r.started=proc_start(h);if r.started!=0 {return r;}r.status=proc_wait(h,600000);if r.status==PROC_RUNNING {r.timed_out=true;killed:=proc_kill(h,PROC_SIGKILL);r.status=proc_wait(h,2000);}return r;
+}
+au_export_files :: (source:string,plugin:string,destination:string)->AuExport {
+ result:AuExport;text:[262144]u8;n:=fs_read(source,text[..]);if n<1 {result.err="unreal-source-read";return result;}p:[1]AuSource;e:=au_source(cast(string)text[0..<n],p[..]);if e!=0 {result.err=ifx e==ANIM_NAME then "unreal-source-name" else ifx e==ANIM_LIMIT then "unreal-source-limit" else "unreal-source-schema";return result;}
+ source_project:[4096]u8;project:=fs_realpath(cast(string)p[0].project[0..<p[0].project_n],source_project[..]);content_path:[4096]u8;content:=fs_join(fs_dir(project),"Content",content_path[..]);if fs_kind(project)!=FS_FILE || fs_kind(content)!=FS_DIR {result.err="unreal-project-content";return result;}
+ plugin_path:[4096]u8;canonical_plugin:=fs_realpath(plugin,plugin_path[..]);check:[4096]u8;if fs_kind(fs_join(canonical_plugin,"Binaries/Mac/libUnrealEditor-EchoSourceSDK.dylib",check[..]))!=FS_FILE {result.err="unreal-sdk-build-required";return result;}
+ program_path:[4096]u8;program:=proc_getenv("OPENAGENTS_UNREAL_EDITOR",program_path[..]);if program=="" {program="/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/UnrealEditor-Cmd";}if fs_kind(program)!=FS_FILE {result.err="unreal-editor-unavailable";return result;}
+ home:[4096]u8;root:[4096]u8;canonical_root:[4096]u8;private_root:=fs_realpath(fs_join(proc_getenv("HOME",home[..]),".openagents",root[..]),canonical_root[..]);canonical_parent:[4096]u8;parent:=fs_realpath(fs_dir(destination),canonical_parent[..]);leaf:=fs_base(destination);if !anim_export_path(parent,private_root,leaf) {result.err="output-private-root";return result;}dest_buf:[4096]u8;dest:=fs_join(parent,leaf,dest_buf[..]);if fs_kind(dest)!=FS_NONE || !fs_mkdir(dest) {result.err="output-exists-or-create";return result;}keep:=false;defer {if !keep {removed:=fs_remove(dest);}}
+ project_dir:[4096]u8;data_dir:[4096]u8;plugins_dir:[4096]u8;stage:=fs_join(dest,"project",project_dir[..]);data:=fs_join(dest,"data",data_dir[..]);plugins:=fs_join(stage,"Plugins",plugins_dir[..]);if !fs_mkdir(stage) || !fs_mkdir(data) || !fs_mkdir(plugins) {result.err="unreal-staging";return result;}
+ link_content:[4096]u8;link_plugin:[4096]u8;content_link:=fs_join(stage,"Content",link_content[..]);plugin_link:=fs_join(plugins,"EchoSourceSDK",link_plugin[..]);output:[8192]u8;error:[8192]u8;content_args:=[4]string.["/bin/ln","-s",content,content_link];r:=proc_run(content_args[..],10000,output[..],error[..]);if r.status!=0 {result.err="unreal-content-link";return result;}plugin_args:=[4]string.["/bin/ln","-s",canonical_plugin,plugin_link];r=proc_run(plugin_args[..],10000,output[..],error[..]);if r.status!=0 {result.err="unreal-plugin-link";return result;}
+ project_file:[4096]u8;uproject:=fs_join(stage,"AnimationData.uproject",project_file[..]);if !fs_write(uproject,"{\"FileVersion\":3,\"Plugins\":[{\"Name\":\"EchoSourceSDK\",\"Enabled\":true},{\"Name\":\"GLTFExporter\",\"Enabled\":true},{\"Name\":\"HairStrands\",\"Enabled\":true}]}") {result.err="unreal-project-write";return result;}
+ request:[262144]u8;o:[1]Jo;jo_start(o[..],request[..]);jo_obj(o[..]);jo_key(o[..],"profile");jo_str(o[..],ifx p[0].profile==1 then "echo-a0" else "generic");jo_key(o[..],"output");jo_str(o[..],data);for pass:0..<2 {jo_key(o[..],ifx pass==0 then "meshes" else "animations");jo_arr(o[..]);count:=ifx pass==0 then p[0].meshes else p[0].clips;for k:0..<count {a:=ifx pass==0 then p[0].mesh[k] else p[0].clip[k];jo_obj(o[..]);jo_key(o[..],"asset");jo_str(o[..],cast(string)a.path[0..<a.path_n]);jo_key(o[..],"name");jo_str(o[..],cast(string)a.name.bytes[0..<a.name.n]);if pass==1 {jo_key(o[..],"face_only");jo_bool(o[..],a.face);}jo_end(o[..]);}jo_end(o[..]);}jo_end(o[..]);if o[0].bad {result.err="unreal-request-capacity";return result;}result.request=asset_id(jo_text(o[..]));request_file:[4096]u8;req:=fs_join(dest,"request.json",request_file[..]);if !fs_write(req,jo_text(o[..])) {result.err="unreal-request-write";return result;}
+ parameter:[4096]u8;log_path:[4096]u8;log_arg:[4096]u8;request_arg:=au_join_arg("-AnimationLab=",req,parameter[..]);sdk_log:=fs_join(dest,"sdk.log",log_path[..]);args:=[11]string.[program,uproject,"-run=EchoSourceExport",request_arg,"-unattended","-NullRHI","-nosound","-nosplash","-stdout","-NoSourceControl",au_join_arg("-abslog=",sdk_log,log_arg[..])];r=au_sdk_run(args[..]);if r.status!=0 || r.timed_out {result.err="unreal-sdk-export";return result;}
+ file:[4096]u8;name_buf:[128]u8;for pass:0..<2 {count:=ifx pass==0 then p[0].meshes else p[0].clips;for k:0..<count {a:=ifx pass==0 then p[0].mesh[k] else p[0].clip[k];name:[1]PnOut;name[0].buf=name_buf[..];pn_put(name[..],cast(string)a.name.bytes[0..<a.name.n]);pn_put(name[..],".gltf");if fs_kind(fs_join(data,pn_text(name[..]),file[..]))!=FS_FILE {result.err="unreal-export-missing";return result;}}}
+ result.meshes=p[0].meshes;result.clips=p[0].clips;keep=true;return result;
+}

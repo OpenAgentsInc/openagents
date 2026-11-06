@@ -1,0 +1,3 @@
+// Shared in-memory records; transport admission lives in bundle.coax.
+#load "clip-document.coax";
+AnimLibrary :: struct {rig:[1]AnimRig;clips:[64]AnimClip;count:int;packs:[1]AnimPack;}

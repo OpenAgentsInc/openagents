@@ -1,0 +1,95 @@
+ai_csv_fixture :: (out:[]u8)->int {
+ o:[1]PnOut;o[0].buf=out;pn_put(o[..],"Timecode,BlendShapeCount");for name:ARKIT_NAMES {pn_put(o[..],",");pn_put(o[..],name);}pn_put(o[..],",HeadYaw,HeadPitch,HeadRoll\n");
+ for frame:0..<3 {pn_put(o[..],"00:00:00:");pn_putint(o[..],frame);pn_put(o[..],",55");for k:0..<52 {pn_put(o[..],",");pn_fixed(o[..],cast(f64)((k+1)*(frame+1))/1000,3);}pn_put(o[..],ifx frame==1 then ",0.5,0.25,-0.125\n" else ",0,0,0\n");}return o[0].n;
+}
+#test "ARKit wide CSV imports every named curve and head rotation at explicit timecode rate" {
+ text:[4096]u8;n:=ai_csv_fixture(text[..]);w:[1]AiBuild;b:[65536]u8;#assert ai_face_csv(cast(string)text[0..<n],"made-face",60,b[..],w[..])=="";c:=w[0].library[0].clips[0];r:=w[0].library[0].rig[0];#assert c.frames==3 && c.rate==60 && c.curve_count==52 && c.face_joint_count==1 && c.face_joints[0]==0 && r.shape_count==52 && r.face_bindings==52 && r.morph_count==52;
+  #assert abs(anim_float(b[..],c.face.offset+(52+17)*4)-0.036)<0.000001 && abs(anim_float(b[..],c.face.offset+17*4)-0.018)<0.000001;head:=anim_local(b[..],c.face_pose.offset+28);#assert abs(head.q.x-0.1052309237)<0.00001 && abs(head.q.y-0.2525393634)<0.00001 && abs(head.q.z-(-0.0908302285))<0.00001 && abs(head.q.w-0.9575490547)<0.00001;
+}
+#test "ARKit malformed headers values counts timestamps and capacity have named refusals" {
+ text:[4096]u8;n:=ai_csv_fixture(text[..]);source:=cast(string)text[0..<n];w:[1]AiBuild;b:[65536]u8;changed:[8192]u8;
+ for row:[8]string.["Timecode|Other","BlendShapeCount|Count","HeadRoll|Other","HeadPitch|HeadYaw","eyeBlinkRight|eyeBlinkLeft","00:00:00:1|00:00:00:0",",55|,54",",0.5,0.25,-0.125|,NaN,0,0"] {split:=0;for c,k:row {if c=='|' {split=k;break;}}nn:=anim_test_replace(source,row[0..<split],row[split+1..<row.count],changed[..]);#assert nn>0 && ai_face_csv(cast(string)changed[0..<nn],"face",60,b[..],w[..])!="";}
+ #assert ai_face_csv(source,"bad name",60,b[..],w[..])=="rig-name" && ai_face_csv(source,"face",0,b[..],w[..])=="csv-rate" && ai_face_csv(source,"face",60,b[0..<100],w[..])=="output-capacity";
+ #assert ai_face_csv("","face",60,b[..],w[..])=="csv-header";#assert ai_csv_time("00:00:01:0",60)==1 && ai_csv_time("01:02:03:30.5",60)>3723.5;for bad:[6]string.["00:00:00","00:60:00:0","00:00:60:0","-1:00:00:0","00:00:00:60","00:00:00:NaN"] {#assert ai_csv_time(bad,60)<0;}
+}
+
+#test "ARKit optional eye rotations are validated and counted without replacing look curves" {
+ text:[4096]u8;n:=ai_csv_fixture(text[..]);source:=cast(string)text[0..<n];a:[8192]u8;b:[8192]u8;o:[1]PnOut;o[0].buf=a[..];line:=0;for c:source {if c=='\n' {pn_put(o[..],ifx line==0 then ",LeftEyeYaw" else ",0.25");line+=1;}pn_byte(o[..],c);}nn:=o[0].n;
+
+ for k:0..<3 {nn=anim_test_replace(cast(string)a[0..<nn],",55,",",56,",b[..]);#assert nn>0;for j:0..<nn {a[j]=b[j];}}
+ w:[1]AiBuild;bytes:[65536]u8;#assert ai_face_csv(cast(string)a[0..<nn],"face",60,bytes[..],w[..])=="" && w[0].extra_curves==1 && w[0].source_frames==3 && w[0].library[0].clips[0].curve_count==52;
+}
+
+#test "ARKit keeps every curve map sparse delta pose descriptor and binary sample" {
+ text:[4096]u8;n:=ai_csv_fixture(text[..]);w:[1]AiBuild;b:[65536]u8;#assert ai_face_csv(cast(string)text[0..<n],"mapped",30,b[..],w[..])=="";
+ r:=w[0].library[0].rig[0];c:=w[0].library[0].clips[0];#assert r.ready && c.ready && r.name.n==6 && c.rig.n==6 && c.name.n==9 && r.joints==1 && r.names[0].n==4 && r.parents[0]== -1 && r.mapped[0]==6 && r.rest[0].t.y==1.6 && r.bind[0]==1 && r.bind[7]== -1.6 && r.face_joint_count==1 && r.face_joints[0]==0;
+ #assert r.sections==1 && r.meshes[0].vertices.count==8 && r.meshes[0].indices.count==36 && w[0].library[0].count==1 && w[0].layout.bytes==w[0].at && w[0].source_frames==3 && w[0].extra_curves==0;
+ #assert c.face.count==156 && c.face.stride==4 && c.face.width==4 && c.face.pack==0 && c.face_pose.count==3 && c.face_pose.stride==28 && c.face_pose.width==28 && c.face_pose.pack==0 && c.face_pose.offset==c.face.offset+624 && w[0].at==c.face_pose.offset+84 && abs(c.length-2.0f32/30)<0.000001;
+ for k:0..<52 {#assert anim_equal(r.shapes[k],anim_named(ARKIT_NAMES[k])) && r.face_map[k].input==k && r.face_map[k].target==k && !r.face_map[k].control && r.face_map[k].weight==1 && c.curves[k]==k;
+  m:=r.morphs[k];#assert m.shape==k && m.section==0 && m.data.count==1 && m.data.width==32 && m.data.stride==32 && m.data.pack==0 && anim_word(b[..],m.data.offset)==cast(u32)(k%8) && anim_word(b[..],m.data.offset+4)==cast(u32)k && anim_float(b[..],m.data.offset+8)==(ifx k%2==0 then -0.015f32 else 0.015f32);
+  for frame:0..<3 {#assert abs(anim_float(b[..],c.face.offset+(frame*52+k)*4)-cast(f32)((k+1)*(frame+1))/1000)<0.000001;}
+ }
+ for frame:0..<3 {#assert anim_local(b[..],c.face_pose.offset+frame*28).t.y==1.6;}
+}
+#test "CSV lexer handles quoted fields CR LF EOF exact capacity and malformed delimiters" {
+ s:=[1]AiCsv.[AiCsv.{text="\"a\",b\r\n,c\nlast,end"}];fields:[2]string;#assert ai_csv_row(s[..],fields[..])==2 && fields[0]=="a" && fields[1]=="b";#assert ai_csv_row(s[..],fields[..])==2 && fields[0]=="" && fields[1]=="c";#assert ai_csv_row(s[..],fields[..])==2 && fields[0]=="last" && fields[1]=="end";#assert ai_csv_row(s[..],fields[..])==0 && !s[0].bad;
+ for value:[4]string.["a,b,c","a,","\"a,b","a\",b"] {s[0]=AiCsv.{text=value};#assert ai_csv_row(s[..],fields[..])== -1 && s[0].bad;}
+ #assert ai_csv_time("23:59:59:59",60)>86399.98 && ai_csv_time("0:0:0:0",60)==0 && ai_csv_time("0:0:0:0:0",60)<0 && ai_csv_time("0.5:0:0:0",60)<0;
+}
+
+#test "ARKit normalized curves and radian angles have distinct inclusive endpoints" {
+ for text:[3]string.["0","0.5","1"] {#assert ai_face_value(text,true).ok;}for text:[3]string.["-0.001","1.001","NaN"] {#assert !ai_face_value(text,true).ok;}
+ for text:[4]string.["-3.141592653589793","3.141592653589793","-2","2"] {#assert ai_face_value(text,false).ok;}for text:[3]string.["-3.142","3.142","NaN"] {#assert !ai_face_value(text,false).ok;}
+}
+
+ai_csv_many :: (out:[]u8,frames:int)->int {
+ fixture:[4096]u8;n:=ai_csv_fixture(fixture[..]);end:=0;for k:0..<n {if fixture[k]=='\n' {end=k+1;break;}}o:[1]PnOut;o[0].buf=out;pn_put(o[..],cast(string)fixture[0..<end]);
+ for frame:0..<frames {seconds:=frame/60;tick:=frame%60;pn_put(o[..],"00:00:");if seconds<10 {pn_put(o[..],"0");}pn_putint(o[..],seconds);pn_put(o[..],":");pn_putint(o[..],tick);pn_put(o[..],",55");for k:0..<55 {pn_put(o[..],",0");}pn_put(o[..],"\n");}return o[0].n;
+}
+#test "ARKit exact row output and sample capacity limits include their last frame" #steps 200000000 {
+ text:[300000]u8;bytes:[1048576]u8;w:[1]AiBuild;n:=ai_csv_many(text[..],2000);#assert ai_face_csv(cast(string)text[0..<n],"long-face",60,bytes[..],w[..])=="" && w[0].source_frames==2000 && w[0].library[0].clips[0].frames==2000;
+ n=ai_csv_many(text[..],2001);#assert ai_face_csv(cast(string)text[0..<n],"long-face",60,bytes[..],w[..])=="csv-frame-limit";
+ n=ai_csv_fixture(text[..]);#assert ai_face_csv(cast(string)text[0..<n],"face",60,bytes[..],w[..])=="";size:=w[0].at;#assert ai_face_csv(cast(string)text[0..<n],"face",60,bytes[0..<size],w[..])=="" && ai_face_csv(cast(string)text[0..<n],"face",60,bytes[0..<size-1],w[..])=="output-capacity";
+}
+#test "ARKit dropped rows interpolate on the explicit source clock and retain the final sample" {
+ text:[4096]u8;changed:[4096]u8;n:=ai_csv_fixture(text[..]);n=anim_test_replace(cast(string)text[0..<n],"00:00:00:2","00:00:00:4",changed[..]);#assert n>0;w:[1]AiBuild;bytes:[65536]u8;#assert ai_face_csv(cast(string)changed[0..<n],"dropped",60,bytes[..],w[..])=="";c:=w[0].library[0].clips[0];#assert c.frames==5 && w[0].source_frames==3;
+ for k:0..<52 {#assert abs(anim_float(bytes[..],c.face.offset+(2*52+k)*4)-cast(f32)(k+1)*0.00233333333)<0.000001 && abs(anim_float(bytes[..],c.face.offset+(4*52+k)*4)-cast(f32)(k+1)*0.003)<0.000001;}
+}
+
+#test "CSV empty quoted fields bare CR and clock rollovers keep exact endpoints" {
+ s:=[1]AiCsv.[AiCsv.{text="\"\",x\r"}];fields:[2]string;#assert ai_csv_row(s[..],fields[..])==2 && fields[0]=="" && fields[1]=="x" && !s[0].bad;
+ #assert ai_csv_time("24:0:0:0",60)<0 && abs(ai_csv_time("01:02:03:30.5",60)-3723.508333333333)<0.00000001 && ai_csv_time("00:00:00:00.5",60)>0;
+}
+#test "ARKit two-row takes independent high head angles and missing first curves are checked" {
+ text:[4096]u8;changed:[4096]u8;bytes:[65536]u8;w:[1]AiBuild;n:=ai_csv_many(text[..],2);#assert ai_face_csv(cast(string)text[0..<n],"two",60,bytes[..],w[..])=="" && w[0].library[0].clips[0].frames==2;n=ai_csv_many(text[..],1);#assert ai_face_csv(cast(string)text[0..<n],"one",60,bytes[..],w[..])=="csv-frame-count";
+ n=ai_csv_fixture(text[..]);m:=anim_test_replace(cast(string)text[0..<n],"eyeBlinkLeft","LeftEyeYaw",changed[..]);#assert m>0 && ai_face_csv(cast(string)changed[0..<m],"missing",60,bytes[..],w[..])=="csv-missing-column";
+ m=anim_test_replace(cast(string)text[0..<n],",0.5,0.25,-0.125",",2.5,0.25,-0.125",changed[..]);#assert m>0 && ai_face_csv(cast(string)changed[0..<m],"angle",60,bytes[..],w[..])=="";
+ for k:0..<bytes.count {bytes[k]=255;}w[0].library[0].rig[0].control_count=1;w[0].library[0].rig[0].dna.pack=0;#assert ai_face_csv(cast(string)text[0..<n],"reset",60,bytes[..],w[..])=="" && w[0].library[0].rig[0].control_count==0 && w[0].library[0].rig[0].dna.pack== -1;
+ for k:0..<52 {part:=w[0].library[0].rig[0].morphs[k].data;for byte:12..<32 {#assert bytes[part.offset+byte]==0;}}
+}
+#test "ARKit fractional last timecode remains bounded at the full row capacity" #steps 200000000 {
+ text:[300000]u8;changed:[300000]u8;bytes:[1048576]u8;w:[1]AiBuild;n:=ai_csv_many(text[..],2000);n=anim_test_replace(cast(string)text[0..<n],"33:19,","33:18.75,",changed[..]);#assert n>0 && ai_face_csv(cast(string)changed[0..<n],"fractional",60,bytes[..],w[..])=="" && w[0].library[0].clips[0].frames==2000;
+}
+
+#test "ARKit validates all six optional eye columns and preserves their independent positions" {
+ text:[4096]u8;n:=ai_csv_fixture(text[..]);source:=cast(string)text[0..<n];a:[8192]u8;changed:[8192]u8;o:[1]PnOut;o[0].buf=a[..];line:=0;
+ for c:source {if c=='\n' {pn_put(o[..],ifx line==0 then ",LeftEyeYaw,LeftEyePitch,LeftEyeRoll,RightEyeYaw,RightEyePitch,RightEyeRoll" else ",-2,2,-1,1,-0.5,0.5");line+=1;}pn_byte(o[..],c);}nn:=o[0].n;
+ for k:0..<3 {nn=anim_test_replace(cast(string)a[0..<nn],",55,",",61,",changed[..]);#assert nn>0;for j:0..<nn {a[j]=changed[j];}}
+ w:[1]AiBuild;bytes:[65536]u8;#assert ai_face_csv(cast(string)a[0..<nn],"eyes",60,bytes[..],w[..])=="" && w[0].extra_curves==6;
+ for row:[6]string.["-2,2|-4,2","-2,2|-2,4","-1,1|-4,1","-1,1|-1,4","-0.5,0.5|-4,0.5","-0.5,0.5|-0.5,4"] {split:=0;for c,k:row {if c=='|' {split=k;break;}}m:=anim_test_replace(cast(string)a[0..<nn],row[0..<split],row[split+1..<row.count],changed[..]);#assert m>0 && ai_face_csv(cast(string)changed[0..<m],"eyes",60,bytes[..],w[..])=="csv-value-range";}
+}
+
+#test "CSV clock and interval boundaries have explicit inclusive key semantics" {
+ #assert ai_csv_time("1:2:3:4",60)>3723 && ai_csv_time("1:2:3:4",60)<3724;
+ rows:[1]AiFaceRows;rows[0].count=4;for k:0..<4 {rows[0].time[k]=cast(f64)k;}
+ #assert ai_face_bracket(rows[..],0,0)==0 && ai_face_bracket(rows[..],1,0)==1 && ai_face_bracket(rows[..],2,0)==2 && ai_face_bracket(rows[..],3,0)==2;
+}
+#test "ARKit offsets tiny spans and excessive resampled durations are refused before publish" {
+ text:[4096]u8;changed:[4096]u8;w:[1]AiBuild;bytes:[1048576]u8;n:=ai_csv_many(text[..],2);
+ m:=anim_test_replace(cast(string)text[0..<n],"00:00:00:1","00:00:00:0.1",changed[..]);#assert m>0 && ai_face_csv(cast(string)changed[0..<m],"tiny",60,bytes[..],w[..])=="csv-duration";
+ m=anim_test_replace(cast(string)text[0..<n],"00:00:00:1","00:00:33:20",changed[..]);#assert m>0 && ai_face_csv(cast(string)changed[0..<m],"long",60,bytes[..],w[..])=="csv-duration";
+ for k:0..<n-8 {if text[k]=='0' && text[k+1]=='0' && text[k+2]==':' && text[k+3]=='0' && text[k+4]=='0' && text[k+5]==':' && text[k+6]=='0' && text[k+7]=='0' && text[k+8]==':' {text[k+7]='1';}}
+ #assert ai_face_csv(cast(string)text[0..<n],"offset",60,bytes[..],w[..])=="" && w[0].library[0].clips[0].frames==2;
+}
+
+#test "CSV clock refuses empty sections and trailing delimiters" {for bad:[7]string.["",":0:0:0","0::0:0","0:0::0","0:0:0:","0:0:0:0:","0:0:0:0:0"] {#assert ai_csv_time(bad,60)<0;}}

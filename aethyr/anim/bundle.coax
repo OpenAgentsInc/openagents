@@ -1,8 +1,7 @@
 #load "bundle-policy.coax";
-#load "clip-document.coax";
+#load "library.coax";
 #load "bundle-checks.coax";
 #authority;
-AnimLibrary :: struct {rig:[1]AnimRig;clips:[64]AnimClip;count:int;packs:[1]AnimPack;}
 anim_bundle_part :: (b:[]u8,k:int)->[]u8 #effects(all) {at:=12+k*8;first:=cast(int)anim_word(b,at);n:=cast(int)anim_word(b,at+4);return b[first..<first+n];}
 anim_bundle_load :: (b:[]u8,out:[]AnimLibrary)->int #effects(all) {
  if out.count<1 {return ANIM_CAPACITY;}if !anim_bundle_valid(b) {return ANIM_RANGE;}next:AnimLibrary;bytes:=anim_bundle_part(b,0);next.packs[0]=AnimPack.{id=asset_id(cast(string)bytes),bytes=bytes};

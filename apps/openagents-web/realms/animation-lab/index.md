@@ -25,7 +25,7 @@ Echo and the Slay face clips load from the owner's private animation bundle.
   Seeking resets the meter. The built-in studio wave has stationary feet.
 
 Drag the model to orbit. Scroll to zoom. On a phone, the same controls are
-at the top and bottom of the stage. M selects the mannequin, E selects Echo;
+at the top and bottom of the stage. M selects the mannequin, E selects the loaded private rig;
 J/K select joints, U/I shapes, V switches joint/curve plots, S toggles the
 skeleton. Space or P toggles playback; comma and period step. Escape returns
 to Worlds.
@@ -33,6 +33,14 @@ to Worlds.
 A deep link selects the station, rig and clip, for example
 `#clip?rig=echo&clip=jog_fwd`. Unknown names stay visibly refused. Retarget links also select the target,
 for example `#retarget?rig=echo&clip=jog_fwd&to=mannequin`.
+
+## Imports
+
+Run `openagents labs anim import SOURCE --rig NAME` to import a glTF/FBX,
+BVH, ARKit CSV or supported Unreal body source. See the
+[import profiles and limits](/docs/verse/anim-imports-v1.md). Expose the output
+`library.bundle` through the private alias below, tap **PRIVATE**, then
+**CLIP**. A deep link such as `#clip?rig=NAME` selects the imported rig.
 
 ## Private source
 

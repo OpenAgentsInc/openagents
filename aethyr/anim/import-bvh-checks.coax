@@ -1,0 +1,52 @@
+AI_BVH :: "HIERARCHY ROOT Hips { OFFSET 0 100 0 CHANNELS 6 Xposition Yposition Zposition Zrotation Xrotation Yrotation JOINT LeftUpLeg { OFFSET 10 -40 0 CHANNELS 3 Zrotation Xrotation Yrotation End Site { OFFSET 0 -40 0 } } } MOTION Frames: 2 Frame Time: 0.0333333333333 0 0 0 0 0 0 0 0 0 10 0 0 90 0 0 15 0 0";
+#test "BVH hierarchy offsets units channel order and root travel become admitted tracks" {
+ w:[1]AiBuild;b:[65536]u8;#assert ai_bvh(AI_BVH,"made",b[..],w[..])=="";r:=w[0].library[0].rig[0];c:=w[0].library[0].clips[0];#assert r.sections==1 && r.meshes[0].vertices.count==16 && r.meshes[0].indices.count==72 && r.joints==2 && r.parents[0]== -1 && r.parents[1]==0 && r.mapped[0]==1 && r.mapped[1]==55;#assert r.rest[0].t.y==1 && abs(r.rest[1].t.x-0.1)<0.00001;
+ p:=anim_local(b[..],c.body.offset+2*28);#assert abs(p.t.x-0.1)<0.00001 && p.t.y==1 && abs(p.q.z-0.7071068)<0.00001 && abs(p.q.w-0.7071068)<0.00001;#assert abs(anim_local(b[..],c.body.offset+3*28).q.z-0.13052619)<0.00001;#assert c.frames==2 && abs(c.rate-30)<0.00001 && c.joint_count==2 && c.joints[1]==1 && w[0].at==c.body.offset+112;
+ for name,k:[12]string.["root","Hips","Spine","Spine1","Spine2","Neck","Head","LeftShoulder","LeftArm","LeftForeArm","LeftHand","LeftUpLeg"] {#assert ai_bvh_map(name)==[12]int.[0,1,2,3,4,5,6,7,8,9,10,55][k];}#assert ai_bvh_map("RightFoot")==62 && ai_bvh_map("unknown")== -1;
+}
+#test "BVH rejects truncated hostile and unsupported text with a named error" {
+ w:[1]AiBuild;b:[65536]u8;#assert ai_bvh("","made",b[..],w[..])=="bvh-header";#assert ai_bvh(AI_BVH,"bad name",b[..],w[..])=="rig-name";
+ for k:0..<AI_BVH.count {#assert ai_bvh(AI_BVH[0..<k],"made",b[..],w[..])!="";}
+ text:[4096]u8;for row:[8]string.["HIERARCHY|OTHER","Frames: 2|Frames: 1","0.0333333333333|0","Xposition Yposition|Xposition Xposition","Zrotation Xrotation Yrotation|Zrotation Xposition Yrotation","LeftUpLeg|Hips","End Site|End Other","100|1e39"] {split:=0;for c,k:row {if c=='|' {split=k;break;}}n:=anim_test_replace(AI_BVH,row[0..<split],row[split+1..<row.count],text[..]);#assert n>0 && ai_bvh(cast(string)text[0..<n],"made",b[..],w[..])!="";}
+ #assert ai_bvh(AI_BVH,"made",b[0..<16],w[..])=="output-capacity";#assert ai_bvh_map("RightArm")==32 && ai_bvh_map("RightForeArm")==33 && ai_bvh_map("RightHand")==34 && ai_bvh_map("RightUpLeg")==60 && ai_bvh_map("RightLeg")==61 && ai_bvh_map("LeftLeg")==56 && ai_bvh_map("LeftFoot")==57 && ai_bvh_map("LeftToeBase")==58 && ai_bvh_map("RightToeBase")==63;
+}
+
+#test "BVH tokens preserve adjacent braces punctuation exact numeric endpoints and end-site roots" {
+ s:=[1]AiTokens.[AiTokens.{text=" \t!root{}"}];#assert ai_token(s[..])=="!root" && ai_token(s[..])=="{" && ai_token(s[..])=="}" && ai_token(s[..])=="";
+ s[0]=AiTokens.{text="1000000 -1000000 1000001"};#assert ai_bvh_number(s[..])==1000000 && !s[0].bad;#assert ai_bvh_number(s[..])== -1000000 && !s[0].bad;#assert ai_bvh_number(s[..])==0 && s[0].bad;
+ w:[1]AiBuild;b:[65536]u8;source:="HIERARCHY ROOT root{OFFSET 10 20 30 CHANNELS 6 Xposition Yposition Zposition Xrotation Yrotation Zrotation End Site{OFFSET 0 1 0}}MOTION Frames: 2 Frame Time: 1 1 2 3 10 20 30 -1 -2 -3 40 50 60";
+ #assert ai_bvh(source,"axis",b[..],w[..])=="";r:=w[0].library[0].rig[0];c:=w[0].library[0].clips[0];#assert r.ready && c.ready && c.name.n==6 && c.rig.n==4 && c.length==1 && c.frames==2 && c.rate==1 && w[0].library[0].count==1 && w[0].layout.bytes==w[0].at;
+ #assert c.body.count==2 && c.body.stride==28 && c.body.width==28 && c.body.pack==0 && c.body.offset==w[0].at-56 && c.joints[0]==0 && r.mapped[0]==0;
+ #assert r.bind[0]==1 && r.bind[5]==1 && r.bind[10]==1 && abs(r.bind[3]+0.1)<0.000001 && abs(r.bind[7]+0.2)<0.000001 && abs(r.bind[11]+0.3)<0.000001;
+ a:=anim_local(b[..],c.body.offset);last:=anim_local(b[..],c.body.offset+28);#assert abs(a.t.x-0.11)<0.000001 && abs(a.t.y-0.22)<0.000001 && abs(a.t.z-0.33)<0.000001 && abs(last.t.x-0.09)<0.000001 && abs(last.t.y-0.18)<0.000001 && abs(last.t.z-0.27)<0.000001;
+ // Independent XYZ Euler product, 10/20/30 degrees in the first sample.
+ #assert abs(a.q.x-0.12767944)<0.00001 && abs(a.q.y-0.14487813)<0.00001 && abs(a.q.z-0.26853582)<0.00001 && abs(a.q.w-0.94371436)<0.00001;
+ #assert ai_bvh(AI_BVH,"second",b[..],w[..])=="" && w[0].library[0].rig[0].joints==2 && w[0].library[0].rig[0].names[0].n==4 && w[0].library[0].rig[0].bind[0]==1 && w[0].library[0].count==1;
+ for name,k:[3]string.["RightShoulder","LHipJoint","RHipJoint"] {#assert ai_bvh_map(name)==[3]int.[31,55,60][k];}
+}
+ai_bvh_bad :: (old:string,new:string,reason:string) {
+ text:[8192]u8;n:=anim_test_replace(AI_BVH,old,new,text[..]);#assert n>0;w:[1]AiBuild;b:[65536]u8;#assert ai_bvh(cast(string)text[0..<n],"made",b[..],w[..])==reason;
+}
+#test "BVH reports the first broken hierarchy channel and motion contract" {
+ ai_bvh_bad("ROOT Hips","JOINT Hips","bvh-header");ai_bvh_bad("Hips {","Hips OFFSET","bvh-hierarchy");ai_bvh_bad("JOINT LeftUpLeg","ROOT Other","bvh-hierarchy");
+ ai_bvh_bad("OFFSET 0 100 0","OFFSET 0 100 0 OFFSET 0 100 0","bvh-offset");ai_bvh_bad("CHANNELS 6","CHANNELS 0","bvh-channels");ai_bvh_bad("CHANNELS 6","CHANNELS 7","bvh-channels");ai_bvh_bad("CHANNELS 6","CHANNELS 1.5","bvh-channels");ai_bvh_bad("Xposition","Unknown","bvh-channel-kind");ai_bvh_bad("Yposition","Xposition","bvh-channel-kind");ai_bvh_bad("Hips","$","bvh-joint-name");
+ ai_bvh_bad("CHANNELS 3 Zrotation Xrotation Yrotation","CHANNELS 3 Zrotation Xrotation Yrotation CHANNELS 1 Xrotation","bvh-channels");
+ ai_bvh_bad("OFFSET 0 100 0","","bvh-joint-fields");ai_bvh_bad("CHANNELS 6 Xposition Yposition Zposition Zrotation Xrotation Yrotation","","bvh-joint-fields");
+ ai_bvh_bad("} MOTION","MOTION","bvh-motion");ai_bvh_bad("Frames: 2","Frames: 1","bvh-frame-count");ai_bvh_bad("Frames: 2","Frames: 2001","bvh-frame-count");ai_bvh_bad("Frames: 2","Frames: 2.5","bvh-frame-count");ai_bvh_bad("Frame Time:","Other Time:","bvh-frame-count");ai_bvh_bad("Frame Time:","Frame Other:","bvh-frame-count");
+ ai_bvh_bad("0.0333333333333","1.1","bvh-frame-time");ai_bvh_bad("0.0333333333333","0.004","bvh-frame-time");
+ ai_bvh_bad("Xposition Yposition Zposition Zrotation Xrotation Yrotation","Xrotation Xposition Yposition Zposition Yrotation Zrotation","bvh-position-order");
+}
+ai_bvh_many :: (out:[]u8,joints:int,frames:int,step:string)->int {
+ o:[1]PnOut;o[0].buf=out;pn_put(o[..],"HIERARCHY ROOT root { OFFSET 0 0 0 CHANNELS 1 Xrotation ");
+ for j:1..<joints {pn_put(o[..],"JOINT j");pn_putint(o[..],j);pn_put(o[..]," { OFFSET 0 1 0 CHANNELS 1 Xrotation ");}
+ for j:0..<joints {pn_put(o[..],"} ");}pn_put(o[..],"MOTION Frames: ");pn_putint(o[..],frames);pn_put(o[..]," Frame Time: ");pn_put(o[..],step);for k:0..<frames*joints {pn_put(o[..]," 0");}return o[0].n;
+}
+#test "BVH admits exact joint frame duration and binary endpoints and refuses the next value" #steps 200000000 {
+ text:[65536]u8;b:[1048576]u8;w:[1]AiBuild;n:=ai_bvh_many(text[..],512,2,"1");#assert ai_bvh(cast(string)text[0..<n],"full",b[..],w[..])=="" && w[0].library[0].rig[0].joints==512 && w[0].library[0].rig[0].parents[511]==510;
+ #assert w[0].library[0].clips[0].joints[511]==511;
+ n=ai_bvh_many(text[..],513,2,"1");#assert ai_bvh(cast(string)text[0..<n],"full",b[..],w[..])=="bvh-joint-limit";
+ n=ai_bvh_many(text[..],1,2000,"0.25");#assert ai_bvh(cast(string)text[0..<n],"long",b[..],w[..])=="" && w[0].library[0].clips[0].frames==2000;
+ n=ai_bvh_many(text[..],1,601,"1");#assert ai_bvh(cast(string)text[0..<n],"long",b[..],w[..])=="" && w[0].library[0].clips[0].length==600;
+ n=ai_bvh_many(text[..],1,602,"1");#assert ai_bvh(cast(string)text[0..<n],"long",b[..],w[..])=="bvh-duration";
+ n=ai_bvh_many(text[..],1,2,"0.004166666666666667");#assert ai_bvh(cast(string)text[0..<n],"fast",b[..],w[..])=="";size:=w[0].at;#assert ai_bvh(cast(string)text[0..<n],"fast",b[0..<size],w[..])=="";#assert ai_bvh(cast(string)text[0..<n],"fast",b[0..<size-1],w[..])=="output-capacity";
+}

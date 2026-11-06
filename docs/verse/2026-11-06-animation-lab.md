@@ -1,7 +1,8 @@
 # Animation Lab
 
 Written 2026-11-06. Status: A0 documents, A1 rig/clip stations, A2 retargeting and A3 layers/fix-ups are implemented.
-A4–A8 are pending. See the verification record linked below.
+A4 imports are implemented within the [v1 profile](anim-imports-v1.md); the exact
+Echo/Slay re-import qualification remains open in [#12983](https://github.com/OpenAgentsInc/openagents/issues/12983). A5–A8 are pending.
 
 Animation Lab is an unlisted realm and a set of `openagents labs` commands
 where you take any character's animation apart, change it and put it back
@@ -29,6 +30,7 @@ Draconia, The Guardian").
 | Rig and clip stations (A1) | `verse/animlab/`, `/worlds/animation-lab` | Neutral inspection, weights, shapes, scrub/play/step, skeleton ghosts and cached plots; [verification](../verification/animation-lab-a1-2026-11-06/README.md) |
 | Retargeting (A2) | `aethyr/anim/retarget*.coax`, `#retarget`, `labs anim retarget` | Rest-corrected anchor rotations, leg-scaled root motion, private exports and paired views; [verification](../verification/animation-lab-a2-2026-11-06/README.md) |
 | Layers and fix-ups (A3) | `aethyr/anim/layers.coax`, `fixup.coax`, `#layers` | Base, masked override, additive and facial layers; planted feet, head/eye aims and hand targets; [verification](../verification/animation-lab-a3-2026-11-06/README.md) |
+| Imports (A4) | `aethyr/anim/import-*.coax`, `gltf-*.coax`, `labs anim import` | glTF/FBX, BVH, ARKit CSV and bounded Unreal body imports; [limits](anim-imports-v1.md) and [verification](../verification/animation-lab-a4-2026-11-06/README.md) |
 | Pose math | `aethyr/anim/pose.coax` | Quaternions, local poses, blending, the joint chain and the skinning palette |
 | Blend shapes | `aethyr/anim/morph.coax`, `morph-gpu.coax` | Sampled curves; sparse morph deltas applied on the GPU before skinning |
 | Face playback | `aethyr/anim/face.coax`, `face-pack.coax` | Plays face clips as morph weights plus face-bone overlays on a body pose; the EFC1 face pack format and its checks |
@@ -54,7 +56,7 @@ Before the Nuke (`git show 0b401561a0^:<path>`):
 - `docs/video-lab/`: typed `cut.v1`, `shot.v1` and `scene.v1` documents and
   the `lab.*` chat tools.
 
-The documents and admission are shared. The remaining milestones build imports, scene tools and the director
+The documents and admission are shared. The remaining milestones build scene tools and the director
 on them.
 
 ## Principles
@@ -156,7 +158,7 @@ the mannequin, plus face curves.
 | Source | How |
 | --- | --- |
 | Unreal projects (Valley, Slay, Epic samples) | The editor-only SDK plugin and Python exporters, generalized from `aethyr/tools/unreal-echo-sdk/` and `valley-echo-*` |
-| glTF and FBX | Headless Blender export to glTF, then the same reader |
+| glTF and FBX | glTF reads directly; FBX uses headless Blender, then the same reader |
 | BVH mocap | Read directly; retarget by name |
 | Phone face capture | ARKit curves (Live Link Face CSV) straight into face curves |
 | MetaHuman | The existing pipeline (`docs/verse/metahuman-support.md`), DNA through `aethyr/facerig.coax` |
@@ -430,3 +432,18 @@ views refer to fixed host-owned buffers; admitted names and values are owned.
 Each JSON admission uses one bounded scratch arena and a separate ABI entry.
 Rig views avoid copying whole skeletons into the frame stack. These choices
 keep the existing 256 MiB memory and 4 MiB stack declarations.
+
+## A4 import decisions
+
+The first importer uses bounded, admitted source profiles rather than guessing
+missing units, unsupported transforms or timecode rates. CSV defaults to an
+explicit 60 fps timecode clock; BVH uses centimetres and Y up. Unknown fields
+that change the supported geometry or animation representation are refused.
+The profile, SDK behavior and diagnostic geometry are specified in
+[Animation imports v1](anim-imports-v1.md).
+
+The generalized Unreal exporter reproduces Echo mesh data, but regenerated
+body samples fail exact A0 equality. Keep the frozen A0 conversions as the
+qualified source. Do not substitute regenerated clips in Valley Lab. This
+unmet A4 qualification is recorded in the verification record and #12969;
+#12962 remains open for its separate exact-render work.

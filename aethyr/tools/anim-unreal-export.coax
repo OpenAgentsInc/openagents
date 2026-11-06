@@ -1,0 +1,6 @@
+// Read-only source export through the generalized native Unreal SDK.
+#import "Basic";
+#load "anim-unreal-export-io.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {print("usage: anim-unreal-export SOURCE.unreal.json SDK_PLUGIN NEW_PRIVATE_DIR\n");return 2;}r:=au_export_files(args_at(a[..],0),args_at(a[..],1),args_at(a[..],2));if r.err!="" {print("unreal export refused: %\n",r.err);return 1;}hash:[64]u8;#assert asset_hex(r.request,hash[..]);print("unreal export meshes=% clips=% request_sha256=%\n",r.meshes,r.clips,cast(string)hash[..]);return 0;
+}

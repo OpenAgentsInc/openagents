@@ -37,6 +37,11 @@ al_init :: (s:[]AlState) #export_c #effects(all) {if s[0].initialized {return;}a
 al_bounds :: (s:[]AlState) {
  lib:=al_library(s);r:=lib[0].rig[0];empty:AnimClip;anim_sample(r,empty,lib[0].packs[..],0,s[0].live[..]);low:=s[0].live[0].position[0];high:=low;
  for p:s[0].live[0].position[0..<r.joints] {low=v3(lo(low.x,p.x),lo(low.y,p.y),lo(low.z,p.z));high=v3(hi(high.x,p.x),hi(high.y,p.y),hi(high.z,p.z));}
+ // Joint pivots can lie outside their mesh (including a single-joint rig).
+ // Include each shared bind-space vertex pool once when fitting inspection.
+ for section:0..<r.sections {part:=r.meshes[section].vertices;duplicate:=false;for prev:0..<section {if anim_same_part(part,r.meshes[prev].vertices) {duplicate=true;}}if duplicate {continue;}bytes:=lib[0].packs[part.pack].bytes;
+  for vertex:0..<part.count {at:=part.offset+vertex*part.stride;p:=v3(anim_float(bytes,at),anim_float(bytes,at+4),anim_float(bytes,at+8));low=v3(lo(low.x,p.x),lo(low.y,p.y),lo(low.z,p.z));high=v3(hi(high.x,p.x),hi(high.y,p.y),hi(high.z,p.z));}
+ }
  s[0].center=times(add(low,high),0.5);s[0].radius=hi(0.2,length(sub(high,low))*0.6);s[0].mesh_dirty=true;
 }
 al_resolve :: (s:[]AlState) {
@@ -65,7 +70,7 @@ al_key :: (s:[]AlState,key:int)->bool #export_c #effects(all) {
  if key==32 || key==80 {s[0].playing=!s[0].playing;return true;}
  if key==46 || key== -5 {al_seek(s,al_frame_index(s)+1);return true;}if key==44 || key== -4 {al_seek(s,al_frame_index(s)-1);return true;}
  if key==82 || key==67 || key==84 || key==76 {al_station(s,ifx key==82 then 0 else ifx key==84 then 2 else ifx key==76 then 3 else 1);al_retarget(s);return true;}
- if key==77 || key==69 {s[0].wanted_rig=anim_named(ifx key==77 then "mannequin" else "echo");s[0].wanted_clip=AnimName.{};al_resolve(s);return true;}
+ if key==77 || key==69 {s[0].wanted_rig=ifx key==69 && s[0].private_loaded then s[0].libraries[1].rig[0].name else anim_named(ifx key==77 then "mannequin" else "echo");s[0].wanted_clip=AnimName.{};al_resolve(s);return true;}
  if key==91 || key==93 {s[0].clip=(s[0].clip+lib[0].count+(ifx key==91 then -1 else 1))%lib[0].count;s[0].time=0;s[0].wanted_clip=lib[0].clips[s[0].clip].name;s[0].curve=lib[0].clips[s[0].clip].curve_count>0;if s[0].curve {s[0].shape=lib[0].clips[s[0].clip].curves[0];}return true;}
  if key==74 || key==75 {s[0].curve=false;s[0].joint=(s[0].joint+r.joints+(ifx key==74 then -1 else 1))%r.joints;return true;}
  if key==85 || key==73 {if r.shape_count>0 {s[0].shape=(s[0].shape+r.shape_count+(ifx key==85 then -1 else 1))%r.shape_count;}s[0].curve=r.shape_count>0;return true;}
@@ -122,7 +127,7 @@ al_draw :: (s:[]AlState,out:[]f32,u:[]f32,geometry:[]u32,width:f32,height:f32,d:
  for k:0..<u.count {u[k]=0;}u[0]=w;u[1]=h;u[3]=1;for p,k:[5]Point.[s[0].eye,s[0].right,s[0].up,s[0].forward,s[0].origin] {u[8+k*4]=p.x;u[9+k*4]=p.y;u[10+k*4]=p.z;}u[28]=s[0].zoom;u[29]=cast(f32)s[0].joint;u[30]=ifx s[0].station==0 then 1 else 0;u[31]=h*0.51;u[32]=ifx s[0].station==2 then 1 else 0;u[36]=s[0].target_origin.x;u[37]=s[0].target_origin.y;u[38]=s[0].target_origin.z;
  n:=0;if s[0].station==1 && s[0].ghost_step>0 {for sign:[2]f32.[-1,1] {anim_sample(r,c,lib[0].packs[..],s[0].time+sign*cast(f32)s[0].ghost_step/c.rate,s[0].ghost[..]);n=al_skeleton(s,out,n,s[0].ghost[..],0.25);}}
  if s[0].station==2 && s[0].error==0 {n=al_mapped_skeleton(s,out,n,0);n=al_mapped_skeleton(s,out,n,1);}else if s[0].skeleton {n=al_skeleton(s,out,n,s[0].live[..],0.8);}
- n=al_text(out,n,"RIG     CLIP     MANNEQUIN    ECHO",16,28,11);
+ n=al_text(out,n,"RIG",16,28,11);n=al_text(out,n,"CLIP",100,28,11);n=al_text(out,n,"MANNEQUIN",180,28,9);n=al_text(out,n,"PRIVATE",280,28,9);
  n=al_text(out,n,"JOINT <",16,65,10);n=al_text(out,n,">",w*0.25+16,65,10);n=al_text(out,n,"SHAPE <",w*0.5+16,65,10);n=al_text(out,n,">",w*0.75+16,65,10);
  name:=[1]AnimName.[r.names[s[0].joint]];n=al_text(out,n,anim_text(name[..],0),16,92,11);parent:=r.parents[s[0].joint];parent_name:=ifx parent<0 then "NO PARENT" else anim_text(r.names[..],parent);n=al_text(out,n,parent_name,16,111,9);
  info:[256]u8;o:[1]PnOut;o[0].buf=info[..];pn_putint(o[..],r.joints);pn_put(o[..]," JOINTS / 8 INFLUENCES / ");pn_putint(o[..],r.shape_count);pn_put(o[..]," SHAPES");n=al_text(out,n,pn_text(o[..]),16,132,8);
