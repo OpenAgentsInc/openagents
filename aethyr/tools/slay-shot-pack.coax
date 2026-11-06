@@ -48,6 +48,23 @@ ss_light_channel :: (g:[]EpJson,binding:string,parent_name:string,track:string,c
  }#assert found;
 }
 ss_channel :: (g:[]EpJson,binding:string,track:string,channel:string,out:[]f32,stride:int,field:int) {ss_light_channel(g,binding,"",track,channel,out,stride,field);}
+// TF0290's head key swings about 4 degrees to her left and back over source frames 1070 to 1076
+// (the neck stays smooth), a twitch Unreal plays too. The pack replaces those frames with an eased
+// turn from 1069's rotation to 1077's.
+SLAY_HEAD_BRIDGE_FROM :: 68;
+SLAY_HEAD_BRIDGE_TO :: 76;
+slay_shot_quat :: (out:[]u8,at:int)->Quat {return Quat.{x=face_float(out,at+12),y=face_float(out,at+16),z=face_float(out,at+20),w=face_float(out,at+24)};}
+slay_bridge_head :: (out:[]u8,data:int,stride:int,head:int) {
+ a:=slay_shot_quat(out,data+SLAY_HEAD_BRIDGE_FROM*stride+head*28);b:=slay_shot_quat(out,data+SLAY_HEAD_BRIDGE_TO*stride+head*28);
+ for frame:SLAY_HEAD_BRIDGE_FROM+1..<SLAY_HEAD_BRIDGE_TO {t:=cast(f32)(frame-SLAY_HEAD_BRIDGE_FROM)/cast(f32)(SLAY_HEAD_BRIDGE_TO-SLAY_HEAD_BRIDGE_FROM);q:=slerp(a,b,t*t*(3-2*t));at:=data+frame*stride+head*28;
+  face_put(out,at+12,f32_bits(q.x));face_put(out,at+16,f32_bits(q.y));face_put(out,at+20,f32_bits(q.z));face_put(out,at+24,f32_bits(q.w));}
+}
+#test "The head bridge eases from the first frame's rotation to the last's" {
+ out:[80*28]u8;a:=Quat.{x=0,y=0,z=0,w=1};b:=Quat.{x=0,y=0.0871557,z=0,w=0.9961947};
+ for frame:0..<80 {q:=ifx frame<=SLAY_HEAD_BRIDGE_FROM then a else ifx frame>=SLAY_HEAD_BRIDGE_TO then b else Quat.{x=0.5,y=0,z=0,w=0.8660254};face_put(out[..],frame*28+12,f32_bits(q.x));face_put(out[..],frame*28+16,f32_bits(q.y));face_put(out[..],frame*28+20,f32_bits(q.z));face_put(out[..],frame*28+24,f32_bits(q.w));}
+ slay_bridge_head(out[..],0,28,0);mid:=slay_shot_quat(out[..],72*28);
+ #assert abs(mid.x)<0.00001 && mid.y>0.04 && mid.y<0.05 && slay_shot_quat(out[..],SLAY_HEAD_BRIDGE_TO*28).y==b.y;
+}
 tool_main :: ()->int #export_c #effects(all) {
  args:[1]Args;if !args_load(args[..]) || (args_count(args[..])!=3 && args_count(args[..])!=4) {return 2;}source:=args_at(args[..],0);sdk:=args_at(args[..],1);dest:=args_at(args[..],2);camera_sdk:=ifx args_count(args[..])==4 then args_at(args[..],3) else sdk;
  g:[1]EpJson;j:[1]EpJson;names:[135]SfName;parent:[135]int;node_parent:[2048]int;node_bone:[2048]int;
@@ -64,6 +81,7 @@ tool_main :: ()->int #export_c #effects(all) {
  for k:0..<ep_len(j[..],tracks) {row:=ep_item(j[..],tracks,k);bone_name:=ep_text(j[..],row,"name");id:=sf_find(names[0..<134],bone_name);if bone_name=="prop_01" {id=134;}if id<0 {continue;}#assert !found[id];found[id]=true;values:=ep_get(j[..],row,"values");#assert ep_len(j[..],values)==2000;node:=j[0].nodes[values].first;
   for frame:0..<frames {raw:[10]f32;for v:0..<10 {raw[v]=sf_value(j[..],node);node=j[0].nodes[node].next;}local:=sf_local(raw);for v:0..<7 {face_put(out[..],data+frame*stride+id*28+v*4,f32_bits(local[v]));}}
  }for k:0..<134 {#assert found[k];}#assert found[134];
+ slay_bridge_head(out[..],data,stride,sf_find(names[0..<134],"head"));
  sf_json(j[..],sdk,"tf0290-shot-samples.json");camera:[200*9]f32;offset:[200*3]f32;focal:[200]f32;focus:[200]f32;
  channels:=[9]string.["Location.X","Location.Y","Location.Z","Rotation.X","Rotation.Y","Rotation.Z","Scale.X","Scale.Y","Scale.Z"];
  for k:0..<9 {ss_channel(j[..],"TF0290_01_Camera","Transform",channels[k],camera[..],9,k);}

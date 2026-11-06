@@ -407,3 +407,17 @@ the key light's highlight broken up by the pore normals at roughness near 0.15.
 - Depth of field is not the cause: blurring our specular by a 4 to 6 pixel
   disc leaves its mean unchanged. The camera focuses at 1.15 m on a head at
   1.32 m, f/2.4.
+
+### Head twitch at 1070 to 1076
+
+TF0290_Echo's `head` key swings about 4 degrees to her left and back over source
+frames 1070 to 1076 while `neck_01` and `neck_02` stay smooth. Unreal plays it:
+its face jumps 13 pixels right at 1073 to 1075 and comes back by 1076, and so
+did ours.
+
+- `slay-shot-pack.coax` replaces the head rotation at 1070 to 1076 with an
+  eased slerp from 1069's rotation to 1077's.
+- After the change, the face moves -3, -3, -4, -4, -3, -3, -2, -1, 0, +2 pixels
+  over 1068 to 1077: one smooth turn.
+- The pack's digest changed, so `canyon-pack-policy.coax` pins
+  `a2d937dbe5deed4ec3e1085ddae039160cadae2f9d585cefd3fba14c422b4a56`.

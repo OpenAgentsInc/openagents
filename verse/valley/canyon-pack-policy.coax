@@ -2,11 +2,12 @@
 #load "../../aethyr/assets.coax";
 #authority;
 CANYON_PACK_BYTES :: 1023642576;
-// Full Slay groom (118,339 curves), the TF0290 source camera template and SHS1 v3 with the orb Rect Light.
-CANYON_PACK_SHA256 :: "bcff9de83ab0fc38ecac6363ccbed5f88681eba418f6fb848d08f0637be6cc3f";
-CANYON_PACK_DIGEST :: [32]u8.[0xbc,0xff,0x9d,0xe8,0x3a,0xb0,0xfc,0x38,0xec,0xac,0x63,0x63,0xcc,0xbe,0xd5,0xf8,0x86,0x81,0xeb,0xa4,0x18,0xf6,0xfb,0x84,0x8d,0x08,0xf0,0x63,0x7b,0xe6,0xcc,0x3f];
+// Full Slay groom (118,339 curves), the TF0290 source camera template and SHS1 v3 with the orb Rect Light;
+// TF0290's head twitch at 1070-1076 bridged.
+CANYON_PACK_SHA256 :: "a2d937dbe5deed4ec3e1085ddae039160cadae2f9d585cefd3fba14c422b4a56";
+CANYON_PACK_DIGEST :: [32]u8.[0xa2,0xd9,0x37,0xdb,0xe5,0xde,0xed,0x4e,0xc3,0xe1,0x08,0x5d,0xda,0xe0,0x39,0x16,0x0c,0xad,0xae,0x2f,0x9d,0x58,0x5c,0xef,0xd3,0xfb,0xa1,0x4c,0x42,0x2b,0x4a,0x56];
 #test "Canyon pack gate pins every digest byte and exact length before GPU upload" {
-  digest:[33]u8;hex:="bcff9de83ab0fc38ecac6363ccbed5f88681eba418f6fb848d08f0637be6cc3f";
+  digest:[33]u8;hex:="a2d937dbe5deed4ec3e1085ddae039160cadae2f9d585cefd3fba14c422b4a56";
   for k:0..<32 {digest[k]=cast(u8)(asset_digit(hex[k*2])*16+asset_digit(hex[k*2+1]));}
   #assert canyon_pack_accept(digest[0..<32],1023642576);
   #assert !canyon_pack_accept(digest[0..<31],1023642576) && !canyon_pack_accept(digest[..],1023642576);
