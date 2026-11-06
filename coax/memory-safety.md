@@ -7,9 +7,9 @@ approach to take, what the guarantee would cover, and what stays trusted.
 
 The mechanisms borrowed from Epic's Verse language are specified in
 [from-epic-verse.md](from-epic-verse.md), along with the issue roadmap.
-The host-buffer choice is decided below (2026-11-05): host-declared regions
-tied to explicit leases, with acquisition at the unsafe boundary. Enforcement
-remains proposed.
+The host-buffer question is decided below (2026-11-05): each host buffer
+gets a region tied to one lease, starting with scoped `#lease` blocks.
+Enforcement is still proposed.
 
 ## Why
 
@@ -136,71 +136,106 @@ Cons:
 
 #### Host-owned buffers: decision (2026-11-05)
 
-**Use host-declared, lease-scoped regions.** Importing a Vulkan mapping,
-dmabuf CPU mapping or camera frame stays in a reviewed `#boundary` module
-with `foreign`/`unsafe` effects as applicable. Once acquired, its bounded
-view follows the ordinary region rules; indexing and passing it to a safe
-consumer don't each need `#unsafe`. A bare pointer/count or a declaration
-such as `region(host)` is insufficient: the region must identify one
-concrete owner and acquisition generation, never a process-wide lifetime.
+**A host buffer gets a region tied to one lease.** A lease is one
+acquisition of one buffer: a Vulkan mapping, a dmabuf CPU mapping or a
+camera frame. A region label for the whole host, such as `region(host)`,
+isn't enough, because it can't tell one acquisition from the next.
 
-This follows the ownership already needed in our hosts:
+- Acquiring and releasing a buffer happens in a reviewed `#boundary` module
+  and carries `foreign` and `unsafe` effects. Wrappers keep those effects;
+  a region annotation never hides them.
+- The view a lease gives follows the ordinary region rules. Code that only
+  receives the view (indexes it, passes it on) is safe and doesn't need
+  `#unsafe`.
 
-- [The camera host](platform/camera-native.c) dequeues a V4L2 buffer, copies
-  into caller storage and requeues before returning. That copy remains valid.
-  A future zero-copy view must end before requeue, even though the mapping
-  itself is still live. The current API returns no borrowed camera storage.
-- [The Vulkan helper](../verse/gpu/vkc.c) keeps buffers mapped, records a
-  host-read barrier and waits for a submission fence before copying readback.
-  A mapping's lifetime alone therefore isn't the CPU access interval.
-- [Psionic's tensor placement](../psionic/lib/tensor-placement.coax) already
-  tracks pending work and reader claims, refusing release while they remain.
-  Regions must preserve these obligations, not replace them with a label.
-  [Read-only views](readonly-views.md) likewise restrict the reader without
-  freezing another alias.
+**Why a lease and not the mapping's lifetime.** A buffer can stay mapped long
+after the CPU may safely touch it. Our hosts already show this:
 
-The boundary contract must provide:
+- [The camera host](platform/camera-native.c) dequeues a V4L2 frame, copies
+  it into caller storage and requeues it before returning. The mapping
+  outlives the requeue; the frame's contents don't. A view without copying
+  would have to end before the requeue. Today's copy is already safe.
+- [The Vulkan helper](../verse/gpu/vkc.c) keeps buffers mapped for their
+  whole life, but reads them only after a host-read barrier and a fence
+  wait. The CPU may read between the fence and the next submission, not
+  for as long as the buffer is mapped.
+- [Psionic's tensor placement](../psionic/lib/tensor-placement.coax)
+  counts pending work and readers and refuses release while any remain.
+  Regions have to keep those counts, not replace them with a label.
+  [Read-only views](readonly-views.md) likewise stop the reader from
+  writing; they don't stop another alias from writing.
 
-1. **A concrete owner and checked span.** Retain the allocation/import and
-   declare the typed extent, alignment, initialized readable bytes and access
-   mode. Coax owns lease accounting and admission; C observes addresses and
-   performs SDK effects. Only the boundary can introduce the host-backed
-   region. Copying its descriptor cannot extend it or create a new owner.
-2. **A bounded CPU access scope.** The region begins after successful acquire
-   and required synchronization. Views, slices and records containing them
-   cannot escape its lease. Release, requeue, unmap, resize and reuse must be
-   refused while a borrow remains live. Begin with scoped consumers; a
-   longer-lived API needs compiler-enforced lease ownership/transfer, not a
-   freely copyable ticket or an assertion by the caller.
-3. **An alias and device-access contract.** Readers exclude external writers;
-   a writer excludes other readers and writers over the same bytes. Aliased
-   imports share the same backing owner/range accounting. Vulkan fences and
-   required flush/invalidate operations, camera dequeue/requeue, and dmabuf
-   producer/consumer synchronization stay explicit. Coherent or read-only
-   memory alone establishes none of this. A CPU borrow must end before a
-   conflicting device submission; asynchronous work retains its own owner
-   until actual completion.
-4. **Retirement that cannot revive old views.** Cancellation, device loss and
-   host replacement stop new acquisitions. Outstanding CPU borrows and SDK
-   work drain before backing storage is released or reused; cancellation is
-   not completion. Retire generations rather than wrap. If the platform can
-   revoke access without allowing that contract to hold, it cannot expose a
-   safe borrowed view.
+##### Scoped blocks first
 
-If extent, retention or synchronization cannot be established, copy within a
-valid host access interval into Coax-owned storage, or require explicit
-`#unsafe` access carrying the unresolved obligations. Keep the existing camera
-copy path until a lease implementation qualifies. Foreign acquisition and
-release effects still propagate through wrappers under A3; the annotation
-doesn't make a foreign-calling unit safe. A consumer receiving only the
-bounded view can be safe without reaching those calls.
+The first API is a block. There is no lease value to store, copy or return:
 
-S3's gate must include valid mapped-buffer and camera borrows; rejected view
-and record escapes, early release/requeue, conflicting CPU/device access and
-aliased imports; and native sanitizer traces for delayed completion,
-cancellation, replacement and reacquisition. An old generation must never
-authorize a new acquisition. These checks qualify the adapters separately
-from the compiler's region checker; host sanitizers don't qualify GPU code.
+```jai
+#lease readback read {        // acquire: wait for the fence, then map for reading
+  sum := checksum(readback);  // readback is [] const u8, valid only in here
+}                             // release: the view ends, the GPU may write again
+```
+
+- The view, any slice of it and any record that holds it can't leave the
+  block.
+- Code inside the block can't release, requeue, unmap, resize or submit
+  device work that writes the same bytes.
+
+Coax can't stop a lease value from being copied yet: R3 hasn't built
+ownership that can't be copied ([results.md](results.md) says a copied
+ticket is "fenced", not prevented). A lease that outlives one block waits
+for that. Blocks let S3 ship without it.
+
+##### What's checked when
+
+| Check | When | Who enforces it |
+| --- | --- | --- |
+| The view and anything holding it stay inside the block | Compile time | The region checker |
+| No release, requeue or conflicting submission inside the block | Compile time | The region checker, with the boundary's effect declarations |
+| The span (size, alignment, readable bytes) and access mode | Acquire | The adapter |
+| Reader and writer counts per buffer range | Acquire and release | The adapter, in Coax, with the counts kept as Psionic's placement does |
+| Fences, flushes, invalidates, dequeue and requeue | Acquire and release | The adapter's C |
+| A stale acquisition can't return | Acquire | The adapter, by generation |
+
+The compile-time rows are proven by the compiler. The other rows depend on
+the adapter being right, and its C part is trusted, so each adapter is
+tested on its own (S3b, S3c).
+
+##### The adapter's rules
+
+1. **One owner, one span.** The adapter keeps the allocation alive and states
+   the span's type, size, alignment, readable bytes and access mode. Only a
+   boundary can create a lease. Copying a view doesn't create a new owner or
+   extend the lease.
+2. **Access starts after synchronization.** The lease starts after the
+   acquire and any fence, invalidate or dequeue it needs. It ends at the
+   block's end.
+3. **Readers and writers exclude each other.** Readers exclude writers; a
+   writer excludes everyone else on the same bytes. Two imports of the same
+   memory share one count. Coherent memory or a read-only mapping doesn't
+   change this. A CPU lease ends before any device work that writes the
+   same bytes is submitted. Device work keeps its own claim until it
+   actually completes.
+4. **Old leases can't come back.** Cancellation, device loss and host
+   replacement stop new acquisitions. Outstanding leases and device work
+   finish before the storage is released or reused. Cancelling work is not
+   the same as the work completing. Generations retire instead of wrapping.
+   A platform that can revoke access in the middle of a lease can't offer
+   safe views.
+
+**Fallback.** When an adapter can't meet these rules, copy into Coax-owned
+storage while access is valid, or keep the access inside `#unsafe` with the
+unmet rules written as its reason. The camera keeps its copy path until a
+lease adapter passes S3c.
+
+S3 is split into three issues (see the roadmap in
+[from-epic-verse.md](from-epic-verse.md)):
+
+- **S3a: scoped `#lease` blocks in the compiler.** Views can't escape;
+  release and conflicting submission inside the block are refused.
+- **S3b: the Vulkan readback adapter** in `verse/gpu`, the first real
+  consumer. It already has the fence.
+- **S3c: camera and dmabuf leases without copying.** Only after a
+  measurement shows the copy costs too much.
 
 ### 2. A Rust-style borrow checker
 
