@@ -228,6 +228,7 @@ CK_constraint_name :: (need:int)->string {if need==2 {return "equatable";}if nee
 CK_meets :: (c:CK_Context,t:int,need:int)->bool {
   if need<=1 {return true;}
   r:=c.types[t];if r.kind==CK_Kind.param {return r.need>=need;}
+  mode:=CK_id_mode(c,t);if mode!=0 {return need==2 || (need==3 && mode==2);}
   if r.carrier!=0 {return need<=3;}
   if need==2 {return !CK_aggregate(c,t) && r.kind!=CK_Kind.view;}
   return CK_numeric(c,t);

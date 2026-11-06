@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.50.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.51.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -414,6 +414,58 @@ storage, if introduced, needs an explicit unsafe form and manual discriminator
 rules. Enums specify an underlying width; flags use a separate `enum_flags`
 form. Persistent enum values and field identities must be assigned explicitly,
 not inferred from declaration order.
+
+### Nominal integer IDs
+
+`SeatId :: struct @id { value: u32; }` declares a nominal integer
+wrapper. `@id(ordered)` opts into ordering; plain `@id` supplies equality
+only. The annotation requires a nongeneric struct with exactly one concrete
+integer field named `value`, no initializer, and no second annotation.
+Every signed and unsigned integer width is supported. The wrapper's size
+and alignment equal its field's; its native C calling convention is a
+one-field struct, not a scalar typedef.
+
+Construct an ID explicitly with `SeatId.{value = raw}` and extract its
+integer with `id.value`. Integer narrowing still requires the ordinary
+checked cast. There is no implicit conversion between an ID and an integer,
+between two ID declarations, or between ID arrays/views. `cast` does not
+convert ID domains. A typed default initializes `value` to zero; it proves
+neither validity, liveness nor authority.
+
+`==` and `!=` accept two values of the exact same ID type. `<`, `<=`, `>`
+and `>=` additionally require `@id(ordered)`. The checker lowers each
+operand once to its integer field; evaluator and generated C execute those
+same checked field projections. Arithmetic, bit operations, shifts and
+numeric generic constraints do not become available on the wrapper.
+
+IDs meet `copyable` and `equatable`; ordered IDs also meet `ordered`.
+Generic records, key tables and read-only views preserve exact nominal
+identity. Hashing and codecs explicitly consume `value`; decode constructs
+the intended ID after integer admission. An equal hash is not ID equality.
+`add_checked`, `add_sat` and `add_wrap` (and sub/mul forms) take extracted
+integers, and a caller explicitly reconstructs a wrapper after handling the
+result. A `value` field may carry `#counter`, retaining E0840 on plain
+arithmetic through that field. `#counter` on a wrapper-valued field remains
+outside the integer-field rule; put it on the underlying `value` instead.
+
+E0960 refuses a malformed annotation or shape. E0961 refuses binary ID
+operations that mix domains, use arithmetic or lack declared ordering.
+Calls, assignments, returns, casts, unary operations and numeric constraints
+retain their ordinary stable type diagnostics, naming the actual types.
+E0962 refuses device output in the initial profile. Native C and the
+ordinary C-to-Wasm path are supported; this does not qualify GPU execution.
+
+Generated headers expose distinct structs and use `coax-c-id-lp64-v1`
+compatibility schemas, including the ordering mode. Legacy C type schemas
+are unchanged. Exported C callers explicitly construct the wrapper struct;
+foreign calls retain their existing scalar/view admission and need an
+explicit raw-integer adapter. The annotation adds no wire or durable format.
+
+Aethyr libraries retain namespaces, owner checks, slot bounds, liveness and
+generation comparison. Deserializing `EntityId.{value = raw}` never proves
+that an entity exists. `EntityHandle` packs a slot and generation; `entity_alive` checks the
+canonical word, live slot and generation after reuse. `EntityId` is the
+separate stable lookup identity. These engine IDs remain session-local.
 
 ## 7. Procedures and specialization
 

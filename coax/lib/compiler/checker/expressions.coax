@@ -21,6 +21,7 @@ CK_binary :: (c:CK_Context,id:int,want:CK_Hint)->int {
   comparison:=e.op>=44;shift:=e.op==42 || e.op==43;hint:=want;
   if comparison {hint=CK_Hint.{};}rhint:=hint;if shift {rhint=CK_Hint.{};}
   a:=CK_expr(c,e.a,hint);b:=CK_expr(c,e.b,rhint);if a==CK_NONE || b==CK_NONE {return CK_NONE;}
+  if CK_id_mode(c,a)!=0 || CK_id_mode(c,b)!=0 {return CK_id_binary(c,id,a,b);}
   if c.types[a].space.kind!=SP_Kind.raw || c.types[b].space.kind!=SP_Kind.raw {return CK_spatial_binary(c,id,a,b);}
   if CK_untyped(c,a) && CK_untyped(c,b) {return CK_fold_binary(c,id);}
   if shift {

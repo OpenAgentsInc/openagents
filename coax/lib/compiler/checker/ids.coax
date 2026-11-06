@@ -1,0 +1,102 @@
+// Nominal integer identity policy. Annotation tags 3 and 4 use the parser's
+// existing struct metadata slot; the representation remains an ordinary record.
+#authority;
+
+#forall "ID shape needs one concrete integer value, no initializer or generic parameters" mode:0..<9 {
+ nodes:[12]CK_Node;types:[18]CK_Type;state:=[1]CK_State.[CK_State.{used=8,type_count=18}];errors:[4]CK_Error;bytes:[2048]u8;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],state=state[..],errors=errors[..],bytes=bytes[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="SeatId",type=16,quantity=3,head=3};types[16]=CK_Type.{kind=CK_Kind.struct_,decl=2};
+ nodes[3]=CK_Node.{kind=CK_Tag.field,name="value",type=11};
+ if mode==1 {nodes[2].quantity=4;}
+ if mode==2 {nodes[2].d=7;}
+ if mode==3 {nodes[3].next=4;}
+ if mode==4 {nodes[3].name="raw";}
+ if mode==5 {nodes[3].type=6;}
+ if mode==6 {nodes[3].b=5;}
+ if mode==7 {nodes[2].head=0;}
+ if mode==8 {nodes[2].quantity=5;}
+ CK_id_layout(c,2);
+ #assert state[0].error_count==(ifx mode<2 then 0 else 1);
+ if mode<2 {#assert CK_id_mode(c,16)==mode+1 && CK_meets(c,16,2) && !CK_meets(c,16,4);#assert CK_meets(c,16,3)==(mode==1);}
+ else {#assert errors[0].code=="E0960";}
+ #assert CK_id_mode(c,11)==0;
+}
+#forall "ID operators compare one domain, ordering only when declared; all arithmetic refuses" mode:0..<3, right_domain:0..<3, op:34..<52 {
+ nodes:[32]CK_Node;types:[18]CK_Type;locals:[2]CK_Local;state:=[1]CK_State.[CK_State.{used=8,type_count=18,local_count=2}];errors:[4]CK_Error;bytes:[2048]u8;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],state=state[..],errors=errors[..],bytes=bytes[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.struct_,name="SeatId",decl=2};types[17]=CK_Type.{kind=CK_Kind.struct_,name="EntityId",decl=4};
+ nodes[2]=CK_Node.{kind=CK_Tag.struct_,quantity=ifx mode==0 then 0 else cast(u8)(mode+2),head=3};nodes[3]=CK_Node.{kind=CK_Tag.field,name="value",type=11};
+ nodes[4]=CK_Node.{kind=CK_Tag.struct_,quantity=3,head=5};nodes[5]=CK_Node.{kind=CK_Tag.field,name="value",type=11};
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,name="a",type=16};nodes[7]=CK_Node.{kind=CK_Tag.expr_ident,name="b",type=ifx right_domain==1 then 17 else ifx right_domain==2 then 11 else 16};
+ nodes[8]=CK_Node.{kind=CK_Tag.expr_binary,a=6,b=7,op=cast(u32)op};
+ locals[0]=CK_Local.{name="a",type=16,decl=6};locals[1]=CK_Local.{name="b",type=nodes[7].type,decl=7};
+ accepted:=right_domain==0 && mode>0 && op>=44 && op<=(ifx mode==2 then 49 else 45);
+ got:=ifx mode==0 && right_domain!=1 then CK_id_binary(c,8,16,nodes[7].type) else CK_binary(c,8,CK_Hint.{});
+ #assert got==(ifx accepted then 2 else 0) && state[0].error_count==(ifx accepted then 0 else 1);
+ if accepted {#assert nodes[8].a!=6 && nodes[8].b!=7;#assert nodes[nodes[8].a].kind==CK_Tag.expr_field && nodes[nodes[8].a].a==6 && nodes[nodes[8].a].field_index==0 && nodes[nodes[8].a].type==11;#assert nodes[nodes[8].b].a==7 && nodes[nodes[8].b].name=="value";}
+ else {#assert errors[0].code=="E0961" && nodes[8].a==6 && nodes[8].b==7;}
+}
+
+#forall "ID declarations keep natural integer layout through the ordinary checker" ordered:bool, width:0..<8 {
+ nodes:[12]CK_Node;types:[17]CK_Type;state:=[1]CK_State.[CK_State.{used=4,type_count=17}];errors:[4]CK_Error;bytes:[2048]u8;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],state=state[..],errors=errors[..],bytes=bytes[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ names:=[8]string.["s8","s16","s32","int","u8","u16","u32","u64"];
+ types[16]=CK_Type.{kind=CK_Kind.struct_,name="Id",decl=2};nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="Id",type=16,quantity=ifx ordered then 4 else 3,head=3};
+ nodes[3]=CK_Node.{kind=CK_Tag.field,name="value",a=4};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name=names[width]};
+ CK_layout(c,2);
+ #assert state[0].error_count==0 && nodes[2].mark==2;
+ #assert types[16].size==types[8+width].size && types[16].alignment==types[8+width].alignment;
+ #assert CK_id_mode(c,16)==(ifx ordered then 2 else 1) && nodes[3].field_index==0 && nodes[3].type==8+width;
+}
+
+#test "ID layout dispatch validates the wrapper instead of admitting an ordinary record" {
+ nodes:[12]CK_Node;types:[17]CK_Type;state:=[1]CK_State.[CK_State.{used=4,type_count=17}];errors:[4]CK_Error;bytes:[2048]u8;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],state=state[..],errors=errors[..],bytes=bytes[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.struct_,name="BadId",decl=2};nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="BadId",type=16,quantity=3,head=3};
+ nodes[3]=CK_Node.{kind=CK_Tag.field,name="raw",a=4};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="int"};
+ CK_layout(c,2);#assert state[0].error_count==1 && errors[0].code=="E0960";
+}
+
+#test "ID device admission remains separate from native and Wasm identity" {
+ nodes:[8]CK_Node;types:[17]CK_Type;state:=[1]CK_State.[CK_State.{used=4,type_count=17,quantity_device=true}];errors:[4]CK_Error;bytes:[1024]u8;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],state=state[..],errors=errors[..],bytes=bytes[..]};types[11]=CK_builtin(11);
+ nodes[2]=CK_Node.{quantity=3,head=3};nodes[3]=CK_Node.{name="value",type=11};
+ CK_id_layout(c,2);#assert state[0].error_count==1 && errors[0].code=="E0962";
+}
+
+#forall "ID projection refuses either exhausted allocation before publishing operands" remaining:0..<2 {
+ nodes:[12]CK_Node;types:[17]CK_Type;state:=[1]CK_State.[CK_State.{used=11-remaining,type_count=17}];errors:[4]CK_Error;bytes:[1024]u8;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],state=state[..],errors=errors[..],bytes=bytes[..]};
+ types[16]=CK_Type.{kind=CK_Kind.struct_,decl=2};nodes[2]=CK_Node.{quantity=3,head=3};nodes[3]=CK_Node.{type=11};
+ nodes[6]=CK_Node.{type=16};nodes[7]=CK_Node.{type=16};nodes[8]=CK_Node.{a=6,b=7,op=44};
+ #assert CK_id_binary(c,8,16,16)==0 && state[0].fatal && errors[0].code=="E0381";
+ #assert nodes[8].a==6 && nodes[8].b==7;
+ #assert nodes[0].a==0 && nodes[0].type==0 && nodes[0].field_index== -1;
+}
+
+CK_id_mode :: (c:CK_Context,t:int)->int {
+ if c.types[t].kind!=CK_Kind.struct_ {return 0;}
+ q:=c.nodes[c.types[t].decl].quantity;
+ if q==3 {return 1;}if q==4 {return 2;}return 0;
+}
+CK_id_layout :: (c:CK_Context,id:int) {
+ n:=c.nodes[id];f:=n.head;
+ if (n.quantity!=3 && n.quantity!=4) || n.d!=0 || CK_list_count(c,f)!=1 || c.nodes[f].name!="value" || !CK_integer(c,c.nodes[f].type) || c.nodes[f].b!=0 {
+  CK_error(c,n.loc,"E0960","@id requires a nongeneric struct with one integer field named value and no initializer","Id :: struct @id { value: int; }; use @id(ordered) only when ordering is meaningful");
+ } else if c.state[0].quantity_device {CK_error(c,n.loc,"E0962","nominal integer IDs are not yet qualified for device output","extract the integer in a host-side adapter");}
+}
+CK_id_value :: (c:CK_Context,operand:int)->int {
+ t:=c.nodes[operand].type;field:=c.nodes[c.types[t].decl].head;
+ raw:=CK_new(c,CK_Tag.expr_field,c.nodes[operand].loc);if raw==0 {return 0;}
+ c.nodes[raw].a=operand;c.nodes[raw].name="value";c.nodes[raw].field_index=0;c.nodes[raw].type=c.nodes[field].type;return raw;
+}
+CK_id_binary :: (c:CK_Context,id:int,a:int,b:int)->int {
+ e:=c.nodes[id];mode:=CK_id_mode(c,a);
+ if a!=b || mode==0 || e.op<44 || e.op>cast(u32)(ifx mode==2 then 49 else 45) {
+  parts:=[4]string.["nominal ID operation requires one domain and declared ordering: ",c.types[a].name," and ",c.types[b].name];
+  CK_error(c,e.loc,"E0961",CK_text(c,parts[..]),"construct the intended ID explicitly; extract .value for codecs or named integer arithmetic; opt in with @id(ordered)");return 0;
+ }
+ left:=CK_id_value(c,e.a);right:=CK_id_value(c,e.b);// A failed first allocation is fatal, so the second also returns zero.
+ if right==0 {return 0;}
+ c.nodes[id].a=left;c.nodes[id].b=right;return 2;
+}

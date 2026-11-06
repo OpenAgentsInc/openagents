@@ -536,6 +536,7 @@ struct Field {
 };
 
 struct StructDecl {
+  uint8_t identity = 0;  // checked @id: 1 equality, 2 explicit ordering
   Str name;
   Loc loc;
   int32_t end = 0;  // offset just past the item's last authored token (0: unknown)

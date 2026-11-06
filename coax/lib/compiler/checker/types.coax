@@ -512,7 +512,7 @@ CK_quantity_derived :: (c:CK_Context,id:int,a:int,b:int)->int {
 }
 
 CK_quantity_layout :: (c:CK_Context,id:int) {
-  n:=c.nodes[id];if n.quantity==0 {return;}
+  n:=c.nodes[id];if n.quantity==0 {return;}if n.quantity>=3 {CK_id_layout(c,id);return;}
   if n.quantity==1 {if n.d!=0 || n.head!=0 || !Q_unit_valid(n.unit) {CK_error(c,n.loc,"E0820","@unit requires an empty nongeneric tag and valid literal metadata","");}return;}
   origin:=n.origin;if origin==0 {origin=id;}params:=c.nodes[origin].d;field:=n.head;
   if CK_list_count(c,params)!=2 || CK_list_count(c,field)!=1 || c.nodes[field].name!="value" || c.nodes[field].b!=0 {CK_error(c,n.loc,"E0821","@builtin_quantity requires two parameters and one field value of the representation parameter","");return;}

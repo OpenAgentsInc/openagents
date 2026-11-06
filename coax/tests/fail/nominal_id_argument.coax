@@ -1,4 +1,4 @@
-// expect: E0367
+// expect: E0317
 A :: struct @id {value:int;}
 B :: struct @id {value:int;}
 f :: (id:A) {}

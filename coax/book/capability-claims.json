@@ -480,6 +480,28 @@
           "sha256": "b17ceaef68bf999a2f891390fb5a915b12c1ea682cd310b0db8a3844a86b367a"
         }
       ]
+    },
+    {
+      "id": "coax.ids.current",
+      "document": "coax/book/ch08-generics.md",
+      "scope": "Initial nominal integer record wrappers with explicit construction/extraction, equality, ordering opt-in, generic keys, read-only views and native C/Wasm lowering. Liveness, ownership and GPU qualification remain separate.",
+      "text_sha256": "426410e6547a51c8671ef3ddfd1ff3d68711c0f19af8b6c32b3610255963e9de",
+      "features": [
+        {
+          "id": "types.nominal-ids",
+          "sha256": "f9aec46c5ca533245c0e1f2153ab52d9ce2dc369507723b91a1bba7728d0d18c"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "coax/tests/nominal-ids.py",
+          "sha256": "a078ff43ac364b1e5f180d058d5807c053f10f6190fb2454f93125fd1241a68f"
+        },
+        {
+          "path": "coax/tests/pass/nominal_ids.coax",
+          "sha256": "baa757419243be448abcb368e54f29b8f10bdf243c824048eca4a43405127315"
+        }
+      ]
     }
   ]
 }

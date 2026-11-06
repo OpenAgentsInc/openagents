@@ -1,0 +1,18 @@
+#import "Basic";
+SeatId :: struct @id { value: int; }
+ItemId :: struct @id { value: int; }
+Revision :: struct @id(ordered) { value: u8 #counter; }
+Entry :: struct($Key: equatable) { key: $Key; amount: int; }
+find :: (rows: [] const Entry(ItemId), key: ItemId) -> int {
+  for row: rows { if row.key == key { return row.amount; } }
+  return -1;
+}
+main :: () {
+  seat := SeatId.{value = 7};
+  rows: [1] Entry(ItemId);
+  rows[0] = Entry(ItemId).{key = ItemId.{value = 41}, amount = 19};
+  decoded := ItemId.{value = 41}; // after the codec admits the integer
+  #assert decoded == rows[0].key;
+  #assert Revision.{value = 1} < Revision.{value = 2};
+  print("seat %, item %, amount %\n", seat.value, decoded.value, find(rows[..], decoded));
+}

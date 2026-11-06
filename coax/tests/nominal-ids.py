@@ -86,6 +86,31 @@ class NominalIds(unittest.TestCase):
             wrong = invoke(os.environ.get('CC', 'cc'), '-std=c11', '-c', base / 'host.c', '-o', base / 'bad.o')
             self.assertNotEqual(wrong.returncode, 0, 'C must refuse swapping wrapper domains')
 
+    def test_device_output_refuses_before_emission(self):
+        with tempfile.TemporaryDirectory(prefix='coax-id-device-') as temp:
+            source = Path(temp) / 'device.coax'
+            source.write_text('SeatId :: struct @id {value:int;}\n')
+            result = invoke(COAX, 'metal', source)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('error[E0962]', result.stderr)
+
+    def test_header_contract_includes_identity_and_ordering(self):
+        with tempfile.TemporaryDirectory(prefix='coax-id-headers-') as temp:
+            base = Path(temp)
+            for name, annotation in [('equal', '@id'), ('ordered', '@id(ordered)'), ('plain', '')]:
+                source = base / (name + '.coax')
+                source.write_text('Key :: struct ' + annotation + ' {value:int;}\n'
+                                  'take_' + name + ' :: (id:Key)->Key #export_c {return id;}\n')
+                result = invoke(COAX, 'header', source, '-o', base / (name + '.h'))
+                self.assertEqual(result.returncode, 0, result.stderr)
+            for second in ['ordered', 'plain']:
+                for first, last in [('equal', second), (second, 'equal')]:
+                    host = base / 'host.c'
+                    host.write_text('#include "' + first + '.h"\n#include "' + last + '.h"\n')
+                    result = invoke(os.environ.get('CC', 'cc'), '-std=c11', '-c', host, '-o', base / 'host.o')
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('incompatible Coax C type', result.stderr)
+
 
 if __name__ == '__main__':
     unittest.main()

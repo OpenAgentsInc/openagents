@@ -314,14 +314,13 @@ largest :: (values: [] $T: ordered) -> $T {
 
 *Listing 8-6: The implemented `ordered` signature (illustrative fragment)*
 
-`$T: ordered` reads "bind a type `T` that supports built-in number
-comparisons". It belongs where `$T` is bound. The current built-ins are:
+`$T: ordered` reads "bind a type `T` that supports built-in ordering". It belongs where `$T` is bound. The current built-ins are:
 
 | Constraint | Operations it permits | Concrete types admitted |
 | --- | --- | --- |
 | `copyable` | Assignment, passing and returning | Every current type, subject to existing binding restrictions |
-| `equatable` | `==` and `!=` | Scalars, strings and enums |
-| `ordered` | Equality and `<`, `<=`, `>` and `>=` | Integers and floats |
+| `equatable` | `==` and `!=` | Scalars, strings, enums and nominal integer IDs |
+| `ordered` | Equality and `<`, `<=`, `>` and `>=` | Integers, floats and IDs declared with `@id(ordered)` |
 | `numeric` | Ordering, `+`, `-`, `*`, `/`, their compound assignments and integer literals | Integers and floats |
 
 These are compiler-defined bounds. `ordered` does not derive an order for
@@ -608,6 +607,63 @@ calls use it. Since 0.43.0 a literal argument takes the type a typed
 argument bound, so `wsp_clamp(dt, 0, 0.1)` instantiates at `f32`. The
 water checks and the generated C, apart from the instance names, were
 unchanged.
+
+## Nominal integer keys
+
+<!-- capability-claim: coax.ids.current -->
+A nominal ID is an integer wrapper whose declaration defines its identity:
+`SeatId :: struct @id { value: int; }`. Construct it explicitly with
+`SeatId.{value = raw}` and extract the integer with `id.value`. Two different
+ID declarations cannot be mixed in a call, assignment or comparison even
+when both wrap the same integer type.
+
+An ID supports `==` and `!=` and meets `equatable` and `copyable` constraints.
+`@id(ordered)` also permits ordering and meets `ordered`. IDs are never
+`numeric`: extract the integer for `add_checked`, `add_sat` or a hash function,
+then explicitly construct the result's domain. A `value` field marked
+`#counter` keeps the ordinary counter rule on arithmetic through that field.
+Read-only views and generic records retain the exact ID type.
+
+The evaluator and C backend execute the same checked field projections.
+A generated C header exposes a distinct one-field struct, with integer size
+and alignment, and records the ordering mode in its compatibility schema.
+The C-to-Wasm path uses the same representation. Device output refuses this
+initial profile with E0962; an annotation does not qualify GPU execution.
+<!-- /capability-claim -->
+
+The runnable `examples/ch08_ids.coax` uses an item ID as a generic table key:
+
+<!-- checked-source: examples/ch08_ids.coax -->
+```jai
+SeatId :: struct @id { value: int; }
+ItemId :: struct @id { value: int; }
+Revision :: struct @id(ordered) { value: u8 #counter; }
+Entry :: struct($Key: equatable) { key: $Key; amount: int; }
+find :: (rows: [] const Entry(ItemId), key: ItemId) -> int {
+  for row: rows { if row.key == key { return row.amount; } }
+  return -1;
+}
+```
+
+```shell
+coax/bin/coax run coax/book/examples/ch08_ids.coax
+```
+
+```text
+seat 7, item 41, amount 19
+```
+
+Passing a `SeatId` to `find` instead of an `ItemId` is E0317, naming both
+types. Binary operations that mix ID domains, use arithmetic or order an
+unordered ID are E0961. E0960 rejects an invalid wrapper shape: the type must
+have exactly one concrete integer field named `value`, no initializer and
+no generic parameters. Use a generic container of an ID, as above.
+
+For a hash table, hash `key.value` and compare full typed keys after selecting
+a bucket. A hash collision is not identity. Decoding an integer does not
+prove a handle is live or belongs to the current owner. Aethyr's entity and
+session libraries own those checks; language conformance does not complete
+an engine's liveness or persistence gate.
 
 ## Summary
 

@@ -536,6 +536,20 @@ PS_union :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,name:PS_Token)->int 
     PS_expect(t,s,out,15,"after the union alternative");PS_link(n,id,v);
   }PS_expect(t,s,out,11,"to close the union");return PS_valid(s,id);
 }
+#test "identity annotations admit equality or explicit ordering" {
+ tokens:=[5]PS_Token.[PS_Token.{kind=7,text="id"},PS_Token.{kind=8},PS_Token.{kind=1,text="ordered"},PS_Token.{kind=9},PS_Token.{}];
+ nodes:[4]PS_Node;state:[1]PS_State;message:[1024]u8;
+ PS_physical(tokens[..],nodes[..],state[..],message[..],1);
+ #assert state[0].code=="" && nodes[1].quantity==4 && state[0].pos==4;
+ state[0]=PS_State.{};tokens[1].kind=10;PS_physical(tokens[..],nodes[..],state[..],message[..],1);
+ #assert state[0].code=="" && nodes[1].quantity==3 && state[0].pos==1;
+ state[0]=PS_State.{};tokens[1].kind=8;tokens[2].text="unordered";PS_physical(tokens[..],nodes[..],state[..],message[..],1);
+ #assert state[0].code=="E0960";
+ state[0]=PS_State.{};tokens[2].text="ordered";tokens[2].kind=3;PS_physical(tokens[..],nodes[..],state[..],message[..],1);
+ #assert state[0].code=="E0960";
+ state[0]=PS_State.{};tokens[2].kind=1;tokens[3].kind=10;PS_physical(tokens[..],nodes[..],state[..],message[..],1);
+ #assert state[0].code=="E0201";
+}
 PS_struct :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)->int {
   id:=PS_new(n,s,out,PS_Tag.decl_struct_,name.loc);n[id].name=name.text;PS_skip(t,s);
   if PS_at(t,s,6) {d:=PS_peek(t,s,0);parts:=[3] string.["#",d.text," on structs is not supported by coax0 yet"];PS_error(s,out,d.loc,"E0210","",parts[..]);return 0;}
@@ -546,7 +560,7 @@ PS_struct :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)-
 // Physical metadata is literal parser data, never a source lookup. Semantic
 // frame shape/admission belongs to the checker; this transport has no SP load.
 PS_physical :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) {
- if PS_peek(t,s,0).text=="frame" {PS_frame(t,n,s,out,id);}else {PS_quantity(t,n,s,out,id);}
+ if PS_peek(t,s,0).text=="frame" {PS_frame(t,n,s,out,id);}else if PS_peek(t,s,0).text=="id" {PS_id(t,n,s,out,id);}else {PS_quantity(t,n,s,out,id);}
  if s[0].code=="" && PS_at(t,s,7) {a:=PS_peek(t,s,0);PS_fail(s,out,a.loc,"E0832","a struct has at most one physical annotation","");}
 }
 PS_frame_word :: (field:int,word:string)->int {
@@ -571,6 +585,14 @@ PS_frame :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) {
  PS_expect(t,s,out,9,"after the frame metadata");if s[0].code!="" {return;}
  if seen!=15 {PS_fail(s,out,a.loc,"E0832","incomplete frame metadata","all four literal metadata names are required");return;}
  n[id].frame_decl=true;n[id].frame=frame;
+}
+// @id is nominal equality; @id(ordered) explicitly opts into integer ordering.
+PS_id :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) {
+ PS_skip(t,s);n[id].quantity=3;
+ if !PS_at(t,s,8) {return;}PS_skip(t,s);
+ word:=PS_peek(t,s,0);
+ if word.kind!=1 || word.text!="ordered" {PS_fail(s,out,word.loc,"E0960","@id accepts only the optional ordering opt-in","use @id or @id(ordered)");return;}
+ PS_skip(t,s);PS_expect(t,s,out,9,"after @id(ordered)");n[id].quantity=4;
 }
 PS_quantity :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) {
   a:=PS_take(t,s);if a.text=="builtin_quantity" {n[id].quantity=2;return;}

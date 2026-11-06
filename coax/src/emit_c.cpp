@@ -2430,7 +2430,9 @@ static std::string header_type_schema(Type t) {
   auto part = [&](const std::string &value) {
     schema += std::to_string(value.size()) + ":" + value;
   };
-  part(is_sum(t) ? "coax-c-sum-lp64-v1" : "coax-c-type-v1");
+  const bool identity=t->kind==TypeKind::struct_ && t->struct_decl->identity!=0;
+  part(identity ? "coax-c-id-lp64-v1" : is_sum(t) ? "coax-c-sum-lp64-v1" : "coax-c-type-v1");
+  if(identity) part(std::to_string(t->struct_decl->identity));
   switch (t->kind) {
     case TypeKind::struct_: part("struct"); break;
     case TypeKind::enum_: part("enum"); break;

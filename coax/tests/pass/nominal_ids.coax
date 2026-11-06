@@ -14,8 +14,9 @@ lookup :: (entries: [] const Box(ItemId), key: ItemId) -> int {
 }
 next :: (r: Revision) -> Revision? {
   n := add_checked(r.value, 1);
-  switch n { case none { return null; } case some(v) { return Revision.{value = v}; } }
+  switch n { case none { return null; } case some(v) { return some(Revision.{value = v}); } }
 }
+trace :: (calls: [] int, raw: int) -> SeatId { calls[0] = calls[0] * 10 + raw; return SeatId.{value = raw}; }
 make :: (calls: [] int, raw: int) -> SeatId { calls[0] += 1; return SeatId.{value = raw}; }
 exercise :: () -> int {
   #assert size_of(SeatId) == size_of(int) && size_of(ItemId) == size_of(u64);
@@ -24,6 +25,7 @@ exercise :: () -> int {
   #assert EntityId.{value = a.value}.value == 7;
   calls: [1] int;
   #assert make(calls[..], 9) == make(calls[..], 9) && calls[0] == 2;
+  calls[0] = 0; #assert trace(calls[..], 1) != trace(calls[..], 2) && calls[0] == 12;
   items: [2] Box(ItemId);
   items[0] = Box(ItemId).{key = ItemId.{value = 41}, payload = 19};
   items[1] = Box(ItemId).{key = ItemId.{value = 42}, payload = 23};

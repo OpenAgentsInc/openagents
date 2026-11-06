@@ -13,6 +13,19 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.51.0 — Nominal integer identities — 2026-11-05
+
+Commit: pending
+
+- Add `struct @id { value: INTEGER; }` for nominal integer domains and
+  `@id(ordered)` for explicit ordering. Construction and extraction stay
+  explicit; generic keys and read-only views preserve the declaration.
+- Keep arithmetic on extracted integers. The evaluator and C backend use
+  checked field projections; C headers preserve distinct wrapper types and
+  ordering metadata. Device output refuses with E0962. Shape and operation
+  refusals use E0960 and E0961. Aethyr retains liveness and generation checks.
+
+
 ## 0.50.0 — Observable Secret Erasure — 2026-11-05
 
 Commit: [`3266aa2d5c9a14a43ab478a28be4c889a55415f7`](https://github.com/OpenAgentsInc/openagents/commit/3266aa2d5c9a14a43ab478a28be4c889a55415f7)
