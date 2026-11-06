@@ -307,7 +307,10 @@ copy is an independent value. Elements containing writable view descriptors
 are refused with E0950, since copying those descriptors could expose write
 access. Strings and nested read-only descriptors are allowed. Device outputs
 currently refuse this profile with E0951. See the [full contract](https://github.com/OpenAgentsInc/openagents/blob/main/coax/readonly-views.md)
-for containment, conversions and generated C interfaces.
+for containment, conversions and generated C interfaces. The generated
+read-only C descriptor has its own type name and a `const T *data` field;
+restricting access preserves the backing pointer and count and evaluates
+the operand once.
 
 The runnable example is `examples/ch06_readonly.coax`; its deliberately broken
 counterpart is `examples/ch06_readonly_refused.coax`. The complete compiler

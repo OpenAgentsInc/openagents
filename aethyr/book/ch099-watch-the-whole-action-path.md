@@ -29,17 +29,15 @@ input sampling → network → server queue → simulation → dependency work �
 replication queue → network back → presentation
 ```
 
-| Stage | Measure | Today |
-| --- | --- | --- |
-| Input to acknowledgement | ms from an `I` being heard to its `ACK` going out; the socket's round trip from `TCP_INFO` | client side only, in `load.coax` |
-| Server queue | inputs queued per seat; owed steps | not reported |
-| Simulation | tick time p50 and p95 by workload (players, raiders, effects) | tick p50 and p95; time by part per minute |
-| Serialization | time in the send loop, apart from the rules | inside `end` |
-| Replication queue | bytes and age of each socket's queue | peak bytes waiting, slow closed |
-| Network out | bytes and messages by message type; `s` rows by id range | not reported |
-| Interest | relevant entities per seat | not reported |
-| Join | bytes from a join to its first whole state | not reported |
-| Reconnect | rejoins and how many came back to their seat | not reported |
+| Stage | Current observation |
+| --- | --- |
+| Input to acknowledgement | `rm_st_ack` reports when the newest acknowledged input arrived; the host records its delay. |
+| Simulation | Tick p50, p95 and p99 by workload, with timing by part. |
+| Replication queue | Per-socket queued bytes and oldest age; slow socket closures. |
+| Network out | Bytes and messages by frame and row; deferred rows and byte allowances. |
+| Interest | Relevant entities and budget omissions per seat. |
+| Join | Bytes until the first complete state, and admission refusals by reason. |
+| Reconnect | Rejoins and whether the player recovered their held seat. |
 
 A host average hides one saturated room. Report percentiles per room and per
 workload, and the worst room.
@@ -64,8 +62,9 @@ from 0.1 ms buckets.
 
 ## What is left
 
-- Every "not reported" row above, on the admin room view, with the launch
-  runbook naming the numbers to watch during a raid (#12791).
+- Qualify each workload against its current tick, bandwidth and queue-age
+  bounds. The counters above exist; their presence alone does not prove a
+  deployment can sustain a larger room or more shards.
 
 ## Acceptance checks
 

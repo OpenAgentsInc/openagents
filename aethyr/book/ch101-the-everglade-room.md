@@ -6,9 +6,9 @@
 > Raid of up to 60 standing raiders on the server (#12740). Placement holds
 > 2 rooms a shard today, 192 players in all. Replication, budgets, interest,
 > the version check, reconnect and vitals have landed (chapters 91, 92, 97,
-> 98 and 99). Still open: offline on the local host by default (chapter 95,
-> #12882), draining a shard on deploy (#12797), and the drift check holding
-> (chapter 100, #12778).
+> 98 and 99). Offline starts on the worker by default (chapter 95); drain
+> and readiness are implemented (chapter 98). Shared command and
+> replication interfaces still need extraction (#12845).
 
 This chapter puts the part together: the full Everglade room, built from
 chapters 86 to 100, at the scale it runs.
@@ -38,10 +38,10 @@ EG_HZ :: 30;
 | Replication | 91, 92 | one row for every entity, deltas against what the page heard, 1,000 bytes a tick a seat (#12783) |
 | Drawing others | 93 | one adaptive buffer, 80 to 300 ms |
 | Effects | 94 | lasting abilities as entities; one status state |
-| Offline | 95 | a local worker host behind `?offline=worker` (#12784); the default next (#12882) |
+| Offline | 95 | local worker first by default; a remote room takes over after seating; `?offline=worker` keeps it local |
 | Combat rules | 96 | range and sight at start and release, a 0.5 s command age, heals before harm |
 | Interest | 97 | 32 m cells, in at 110 m and out past 130 m; blocked and hidden entities never sent (#12789) |
-| Live operations | 98 | a version check, reconnect with a 15 s grace hold; drain next (#12797) |
+| Live operations | 98 | version check, reconnect with a 15 s grace hold, signed drain and receipt-gated shutdown |
 | Measurement | 99 | the action path's vitals every 10 s on `/admin/rooms` (#12791) |
 | Proof | 100 | the drift check; bots that fight |
 
@@ -91,10 +91,12 @@ raid ran.
 
 ## What is left
 
-The rest of this part's design, and the gaps in [appendix
-A](appendix-mmo-gap-analysis.md): reconnect (#12792), durable saves
-(#12793, #12794), group seats (#12795), admission (#12796) and drain
-(#12797).
+The remaining extraction in #12845 includes shared commands, accepted
+results and replication, additional realm profiles and the adoption
+inventory. Reconnect, party contracts, admission and drain have code;
+they are not future work merely because an older gap table lists them.
+Qualify every later persistence, ownership and scale claim with its own
+consumer evidence.
 
 ## Acceptance checks
 

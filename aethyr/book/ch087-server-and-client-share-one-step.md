@@ -6,9 +6,8 @@
 > #12706), the same SRD rules unit
 > ([everglade5e-room-rules.coax](../../apps/openagents-web/everglade5e-room-rules.coax)),
 > and, since commit 5f7d50e2d1, load the same world document, `everglade`, in
-> every setup (#12773). Talking, doors, boats and quest boards are still the
-> page's alone: the server refuses them as `unbuilt`
-> (`room-everglade.coax`, `eg_heard`).
+> every setup (#12773). Talking, doors and boats now run through room intents
+> (`room-everglade.coax`); quest-board stages remain page-owned.
 
 The server owns the scene, but a client still has to move its own player
 before the server answers (chapter 90). That prediction is correct only if
@@ -89,11 +88,9 @@ The output is cut to its last lines; the first three checks pass too.
 
 ## What is left
 
-- Interactions (talk, doors, boats, the quest board) run on the page only.
-  When chapter 95 makes the page always a client, they must move into the
-  server's step or offline play loses them (#12784).
-- The river, boats and swimming are "not yet the server's"
-  (`room-world.c`).
+- More of the shared step and world adapters can move behind Aethyr
+  interfaces (#12845). Keep native and worker observations separate from
+  source-sharing claims.
 
 ## Acceptance checks
 

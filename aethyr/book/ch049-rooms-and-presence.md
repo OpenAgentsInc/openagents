@@ -1,101 +1,51 @@
 # 49. Rooms and presence
 
-> **Status: unimplemented — design draft.** Today presence is an HTTP poll
-> answered from SQL (`coax/web/api/room.c`), Orbit League has its own 60 Hz
-> room server and other games use a relay of unread text frames
-> (`coax/web/room/`). This chapter plans lightweight presence: who is in a
-> realm, where they are and what they look like, as one bounded,
-> self-asserted stream. A realm whose shared state matters, such as
-> Everglade, uses an authoritative server instead: Part XII
-> ([chapters 86–101](ch086-one-server-owns-the-scene.md)) builds it.
-> Nothing here runs yet.
+> **Status: partly implemented.** Rooms, signed seat admission, replication,
+> interest and interpolation run in `coax/web/room/`. This overview directs
+> you to the checked implementations in chapters 86–101. Presence and
+> lockstep remain separate trust profiles.
 
-Presence answers a small question often: who else is here, where, and doing
-what. It needs no authority (a player says where it is, and nobody's game
-depends on believing it), so it can be cheap, lossy and late, as long as it
-looks smooth and stays bounded on a phone.
+A room groups players under one simulation owner. Everglade clients send
+commands over a socket; the server steps the world and sends accepted state.
+An HTTP presence poll is not Everglade's simulation path.
 
-## What this chapter teaches
+## Follow a player into a room
 
-- A room as a named set of seats with a capacity.
-- Presence as self-asserted state: position, orientation, animation and
-  look, keyed by stable entity IDs.
-- Interest: send and draw only the nearest, the rest by name.
-- Interpolating remote players a fixed delay behind, so jitter does not
-  show.
-- Rate limits and sizes that refuse rather than queue.
+1. [Chapter 86](ch086-one-server-owns-the-scene.md) starts the headless
+   server. [Chapter 88](ch088-a-seat-joins-with-a-signed-ticket.md) checks
+   the API's signed ticket before assigning a seat.
+2. [Chapter 89](ch089-intents-in-acknowledgements-out.md) queues numbered
+   inputs and acknowledges the last accepted input.
+3. [Chapters 91](ch091-one-record-for-every-replicated-entity.md) and
+   [92](ch092-priority-under-a-budget.md) encode state within each seat's
+   byte budget. [Chapter 97](ch097-interest-without-leaks.md) withholds
+   blocked and hidden players across channels.
+4. [Chapter 93](ch093-one-interpolation-buffer.md) draws remote entities
+   from one interpolation buffer. [Chapter 98](ch098-versions-deploys-and-reconnect.md)
+   keeps the seat through a short disconnect and rejects replaced sockets.
 
-## The method
+## Shared contracts and their limits
 
-Each client posts its own entity state every `Δ_post` seconds and receives
-the others seen within a window `W`. A remote player is drawn at a fixed
-delay `D` behind the newest sample, interpolated between the two samples
-that bracket it:
+[`aethyr/net/profile.coax`](../../aethyr/net/profile.coax) distinguishes
+server authority, self-asserted presence and lockstep. The room's `rm_profile`
+selects timing, trust, durability and fairness; a presence profile cannot
+qualify progression as authoritative.
 
-```jai
-t_draw = t_now − D,      D ≈ 2 · Δ_post
-x(t_draw) = lerp(x_a, x_b, (t_draw − t_a) / (t_b − t_a))   // t_a ≤ t_draw ≤ t_b
+[`aethyr/session/party.coax`](../../aethyr/session/party.coax) supplies
+membership, invite, roster visibility and placement rules. The API persists
+the party; the room applies its health-only visibility rules. A party is
+not a seat and outlives a room. Travel between owners uses
+[`travel.coax`](../../aethyr/session/travel.coax), rather than making a
+second room authoritative by opening another socket.
+
+Run the contracts' checks from the repository root:
+
+```shell
+coax/bin/coax test aethyr/net/profile.coax --library
+coax/bin/coax test aethyr/session/party.coax --library
 ```
 
-With no newer sample, the drawing holds the last pose rather than
-extrapolating into a wall. Only the `k` nearest others are drawn as bodies;
-the rest appear by name. A sample older than `W` drops the player. The
-latency budget from a key going down on one client to the move being drawn
-on another is `Δ_post + network + D`, and it is measured, not assumed.
-
-## What exists today
-
-- [coax/web/api/room.c](../../coax/web/api/room.c): `POST
-  /api/playtest/presence/<room>` with `{x, y, z, yaw, after}`, answered with
-  the others and new chat lines; rules in SQL
-  (`coax/web/api/migrations/0014_verse_rooms.sql`: a page posts about every
-  second and sees everyone seen in the last six seconds).
-- [apps/openagents-web/fairyroom.coax](../../apps/openagents-web/fairyroom.coax):
-  Fairy Forest posts every 0.25 s (`FF_ROOM_EVERY`) and draws the ten
-  nearest others as fairies (`OTHERS_DRAWN`) so a phone keeps 60 FPS.
-- [coax/web/presence-pair.coax](../../coax/web/presence-pair.coax): two
-  headless Chromes measure how soon each sees the other move, failing over a
-  millisecond budget.
-- [coax/web/room/room-relay.coax](../../coax/web/room/room-relay.coax):
-  relay rooms keyed by game and code, up to `RELAY_SEATS` 4, carrying text
-  frames unread (`y`, `j`, `l`, `m`).
-- The protocol's presence package, `openagents.verse.presence.v1`
-  (`EntityState`, `PoseFrame` at most 4 KiB with 1–16 entries), in
-  [docs/verse/openagents-verse-protocol.md](../../docs/verse/openagents-verse-protocol.md),
-  section 10.6.
-
-## The design in Aethyr
-
-A room is `(realm, name)` with a capacity. A client's presence is a
-`PoseFrame` of its own entities (avatar, pet, carried object) using the
-stable IDs of chapter 6 and the typed spaces of chapter 2. The transport is
-a WebSocket to the room server, falling back to the HTTP poll; both carry
-the same frames. The receiving side keeps a small ring of samples per remote
-entity and the draw delay `D`. Presence never feeds the local simulation:
-remote avatars are drawn, and collide only as kinematic bodies if the realm
-asks.
-
-## What it builds
-
-- `aethyr/net/room.coax`: rooms, seats, joins and leaves, capacity.
-- `aethyr/net/presence.coax`: frame encoding, sample rings, interest and
-  interpolation.
-
-## Acceptance checks and oracles
-
-- Two headless sessions see each other move within one second at the 95th
-  percentile (the existing presence-pair budget), over both transports.
-- Remote motion drawn from jittered samples (recorded jitter up to `D`) has
-  no backward steps and no extrapolation past the last sample.
-- A frame over 4 KiB, more than 16 entries, or posts faster than the rate
-  limit are refused and counted.
-- Automation sessions stay out of other players' rooms and analytics, as
-  migration 0074 requires today.
-- A phone with a full room keeps 60 FPS.
-
-## Dependencies
-
-Chapters 1 (the clock), 2 (spaces), 5 (replay, for recorded sample
-streams), 6 (stable entity IDs) and 14 (the poses drawn). From Coax:
-[chapter 18](../../coax/book/ch18-protocol.md) for the protocol boundary,
-R13 typed clocks.
+The authoritative engine is partly extracted. Commands, accepted results and
+replication still have Everglade-specific implementations in the room and
+page. Chapter 101 records that integration; these profiles do not claim that
+every realm uses the same networking implementation.

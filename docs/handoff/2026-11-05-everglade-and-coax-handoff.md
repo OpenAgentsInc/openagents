@@ -131,14 +131,38 @@ Books: #12610 stays open and paused. The only books work approved is #12947.
 | #12946 | Closed by `e00925f958`. The smoke counted doors and boats as gravity cylinders, rejected a valid landing on the 4.5 m palisade, and counted the invited visitor as the blocked player. It now observes each spell's kind and caster, grounded landings, and the blocked seat. Verification is below. |
 | #12941 | No agent. The drift check held at 250 ms during the release, so this may have been load. Close it if three runs in a row hold. The drift check's 250 ms profile failed twice after the fire fixes, on Hold Person timing, conditions and townspeople walking in place. It may be real or caused by load, and it gates release.sh. Check it first if #12936's release is stuck. |
 | #12940 | No agent. Tree fires never burn or spread on the room server; only pages step them. |
-| #12947 | No agent. Fix the stale Aethyr chapters 49, 50, 58, 84 and 85 (they still describe the old world) and update Coax chapters 6, 19 and 41 to today's compiler. An owner-approved exception to the books pause. |
-| #12948 | No agent. Nominal integer ID types (audit §6.2, P0), adopted for the room's seat, entity, character and item IDs. Do it after #12947. |
+| #12947 | Completed: current-code overviews for Aethyr 49, 50, 58, 84 and 85; contradictory follow-up status text corrected; Coax 6, 19 and 41 updated. Verification below. |
+| #12948 | In progress after #12947: nominal integer ID types (audit §6.2, P0), then room, API and ledger adoption. |
 | #12838, #12840–#12843, #12868, #12869 | The owner's Codex agent. Don't take them. Its room changes share files with ours, so use small commits and rebase often. |
 | #12845 | Open, with no agent. It still needs commands, accepted results and replication behind shared interfaces, profiles for collision and per-recipient fields, Orbit League sharing more than the timing profile, and the book's adoption inventory. |
 | #12910 | Nostr chapter 104 on signet. Blocked on the signet faucet's captcha, which is in NEEDS_OWNER.md. |
 | #12718, #12833 | Epics. Close each when its children close. |
 | #12610 | The book epic, paused by the owner. |
 | #12864–#12867 | Excluded; left for Codex. |
+
+## #12947 verification (2026-11-05)
+
+The Aethyr structure check passes with 211 source-linked listings, including
+chapter 89. All 48 runnable programs pass in debug and release (96 runs).
+The full `coax/book/check-examples.sh` passes, including checks, mutation,
+native hosts and structure. `book_claims.py` passes 10 tests and
+`book_registry.py` passes 11. Chapter 3's overflow and counter examples were
+already registered; chapter 6's read-only examples were already present and
+pass both modes. Chapter 41 adds a checked traversal-budget example.
+
+The Wasm cache oracle passes cold/warm reuse, changed inputs, split parts and
+uncached byte parity. Small actual Wasm builds, phase/declaration reports,
+split output, a traversal refusal and a near-limit note were recorded while
+writing chapter 41. These observations use checked compiler fingerprint
+`037278f2a55d`; no new whole-app performance claim is made. Tools-check and
+whitespace checks pass. No deployment or owner action is needed.
+
+Two prerequisites were filed and resolved: #12949 (reviewed evidence hashes;
+concurrent `c8319bb8ac` also refreshes them) and #12950 (authority-check
+headroom). Commit `80ec7cabbc` records the review and explicit budgets.
+Property domains and assertions are unchanged. `aethyr/book/examples.json`
+keeps its existing 48 programs: the rewritten overviews link to existing
+implementation chapters rather than inventing duplicate examples.
 
 ## #12946 verification (2026-11-05, 20:05 Chicago)
 

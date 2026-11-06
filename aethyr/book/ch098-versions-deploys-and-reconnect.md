@@ -8,9 +8,9 @@
 > for `EG_GRACE_MS` (15 s), a rejoin takes it back with its HP, conditions,
 > effects and cooldowns, and each seat has a generation, so frames from a
 > replaced socket are dropped. Room vitals count as saved only when the API's
-> receipt covers them (#12793, commit 5016ba0be3). Still open: a deploy cuts
-> every socket and loses the rooms' in-memory state (#12797), and one owner
-> per character across rooms (#12834).
+> receipt covers them (#12793, commit 5016ba0be3). Signed drain requests,
+> readiness checks and receipt-gated shutdown now run in `room-host.c`;
+> owner generations fence character writes separately from seat generations.
 
 A live game changes while people play it. A new page release meets an old
 server, a new server meets cached pages, and phones lose their network in
@@ -52,8 +52,10 @@ memory. On a shutdown signal, a shard:
 4. exits after its world events end, or at a stated limit.
 
 The directory places no new seat on a draining shard, and a new revision
-takes traffic only after its readiness check builds a room's world. Today
-none of this exists: deploys happen "when few players are on" (#12797).
+takes traffic only after its readiness check builds a room's world.
+`room-host.c` implements waiting, telling, saving and done/failed phases.
+A missing receipt fails the drain; it is not reported as saved. This
+protocol preserves captured character state, not every transient world event.
 
 ## Reconnect is its own protocol
 

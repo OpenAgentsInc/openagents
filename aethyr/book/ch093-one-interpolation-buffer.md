@@ -114,11 +114,10 @@ coax/bin/coax test apps/openagents-web/everglade5e.coax --only "net:"
 
 ## What is left
 
-- Townsfolk: the generic record at a fixed tick (#12783). The drift check's
-  walking-in-place probe measured 8% of walking frames offline against 33%
-  in a room on localhost and 55% at 250 ms.
-- Teleports slide through the buffer instead of cutting to the new place
-  (chapter 91's discontinuity flag).
+- Generalizing this buffer for other realms remains part of #12845.
+  Fixed-tick townsfolk rows and LIFE/WARP resets already run. Historical
+  walking-in-place measurements describe the earlier counterexample, not
+  the current status; chapter 100 measures the current artifact.
 
 ## Acceptance checks
 

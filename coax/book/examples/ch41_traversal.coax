@@ -1,0 +1,10 @@
+#import "Basic";
+Game :: struct { cells: [1024] int; tick: int; }
+step :: (g: Game) -> int { return g.tick + 1; }
+#test "copy budget" #traversal 3000000 {
+  g: Game;
+  total := 0;
+  for i: 0..<2000 { total += step(g); }
+  #assert total == 2000;
+}
+main :: () { print("budgeted copies\n"); }

@@ -286,7 +286,7 @@ small model or sign and verify a Nostr event, see
   [39. A freighter scenario, end to end](ch39-a-freighter-scenario.md) (planned)
 - Part VIII. Simulation compute:
   [40. Logical tensors over chosen layouts](ch40-logical-tensors.md) (planned),
-  [41. Compile and startup budgets](ch41-compile-budgets.md) (planned),
+  [41. Compile and startup budgets](ch41-compile-budgets.md) (partly implemented),
   [42. Device graphs and zero-copy buffers](ch42-device-graphs.md) (planned),
   [43. Differentiating kernels](ch43-differentiating-kernels.md) (planned)
 - Part IX. Finishing the toolchain:

@@ -4,11 +4,10 @@
 > ([coax/web/room/](../../coax/web/room/room.coax)), steps every room's
 > world headless at 30 Hz and starts from every declared default, checked by
 > `bin/room --start-check` (#12774, commit c3e170d689). The same tick also
-> runs in a Web Worker as the offline host, behind `?offline=worker`
-> (chapter 95, #12784, commits e8c68921ed and 2b86e8fafc); until #12882
-> makes it the default, offline play still runs the page's own copy of the
-> game. The shared `aethyr/net/` module this part plans is not extracted yet
-> (#12845).
+> runs in a Web Worker as the default local host (chapter 95, #12882);
+> `?offline=worker` keeps it local. Shared profiles and session contracts
+> live in `aethyr/net/` and `aethyr/session/`; command and replication
+> extraction remains work (#12845).
 
 Part XII builds a multiplayer engine from an empty server to the full
 Everglade room. Each chapter adds one capability. This chapter adds the
@@ -119,10 +118,9 @@ their defaults and exits 1.
 
 ## What is left
 
-- Offline play runs the page's own simulation instead of this server. Chapter
-  95 runs this server in a local worker (#12784).
-- The shared loop lives in `coax/web/room/` and is Everglade's. Extracting it
-  to `aethyr/net/server.coax` for other realms waits on the rest of this part.
+- The shared tick lives in `coax/web/room/` and remains Everglade-specific.
+  Network profiles and lifecycle policy are shared, but commands, accepted
+  results and replication still need shared interfaces (#12845).
 
 ## Acceptance checks
 

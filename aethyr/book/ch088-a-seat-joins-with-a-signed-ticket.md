@@ -6,8 +6,9 @@
 > ticket names the room and the shard, and a shard seats only its own
 > tickets (#12717). The hello carries the wire version, and a room refuses
 > any other with `r 0 version` (chapter 98, #12788, commit 67b4f62448). A
-> ticket authenticates a player; it does not yet make one room the only
-> owner of that player's character (#12834).
+> ticket authenticates a player. Owner generations and durable character
+> capture add fencing and resume state; their rollout and persistence
+> remain distinct from seat authentication.
 
 A server that owns the scene must know who sits in each seat. The page can't
 say so itself: anything a page sends, a player can change. This chapter adds
@@ -82,13 +83,10 @@ through `rm_join` with a ticket and with a forged one.
 
 ## What is left
 
-- The join never checks the page's wire version. A cached page from the last
-  release joins the new server and misreads its frames (#12788, chapter 98).
-- A rejoin takes a new seat with no generation, so frames from the replaced
-  socket still reach the old seat (#12792, chapter 98).
-- The ticket endpoint has no rate limit, and a page facing a full room
-  retries without jitter (#12796,
-  [appendix A](appendix-mmo-gap-analysis.md)).
+- Authentication alone does not prove character liveness or ownership.
+  Keep owner fencing, durable capture and deployment policy qualified
+  separately from the signed ticket codec. Chapter 98 covers wire versions
+  and seat generations, both of which are implemented.
 
 ## Acceptance checks
 

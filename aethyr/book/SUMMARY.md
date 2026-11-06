@@ -65,8 +65,8 @@
 - [46. Time warp that stops for every event](ch046-time-warp-that-stops-for-every-event.md) — design draft
 - [47. Hits through layers](ch047-hits-through-layers.md) — design draft
 - [48. One world at three fidelities](ch048-one-world-at-three-fidelities.md) — design draft
-- [49. Rooms and presence](ch049-rooms-and-presence.md) — design draft
-- [50. Lockstep for small deterministic games](ch050-shared-state-over-the-network.md) — design draft
+- [49. Rooms and presence](ch049-rooms-and-presence.md) — partly implemented
+- [50. Lockstep for small deterministic games](ch050-shared-state-over-the-network.md) — partly implemented
 
 **VI. Making worlds: Aethyrforge**
 
@@ -80,7 +80,7 @@
 
 - [56. The Grid](ch056-the-grid.md) — partly implemented
 - [57. Made realms](ch057-made-realms.md) — design draft
-- [58. Everglade](ch058-everglade.md) — design draft
+- [58. Everglade](ch058-everglade.md) — partly implemented
 - [59. Dead Gears](ch059-dead-gears.md) — design draft
 - [60. Ice Cream Man](ch060-ice-cream-man.md) — design draft
 - [61. Hecate's Cemetery](ch061-hecates-cemetery.md) — design draft
@@ -118,8 +118,8 @@
 - [81. Save and come back](ch081-save-and-come-back.md) — partly implemented
 - [82. Change code while it runs](ch082-change-code-while-it-runs.md) — design draft
 - [83. Inspect and profile a running realm](ch083-inspect-and-profile-a-running-realm.md) — partly implemented
-- [84. One realm on every host](ch084-one-realm-on-every-host.md) — design draft
-- [85. Everyone can play](ch085-everyone-can-play.md) — design draft
+- [84. One realm on every host](ch084-one-realm-on-every-host.md) — partly implemented
+- [85. Everyone can play](ch085-everyone-can-play.md) — partly implemented
 
 **XII. Many players: a multiplayer engine**
 

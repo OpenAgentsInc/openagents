@@ -76,12 +76,9 @@ holds you, with the spell's name and its time left.
 
 ## What is left
 
-- `WK_EFFECT` with `T0` and `DUR` on the wire (#12783), then the status
-  state reads it (#12776).
-- The drift check still reports the Reverse Gravity particles, Wall of
-  Stone panels, conditions on you and HELD lines as drifting at some
-  profiles (#12718's table at `cbb9a1ce9b`; the local run at `a941197cf1`
-  matches for Reverse Gravity, Wind Wall and Wall of Stone).
+- Other realms still need to adopt shared effect/replication interfaces.
+  `WK_EFFECT`, `T0`, `DUR` and the single status filler already run. Keep
+  each drift result with its revision and network profile (chapter 100).
 
 ## Acceptance checks
 

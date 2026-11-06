@@ -8,7 +8,8 @@
 > #12778). `coax/web/room/deploy.sh` runs it before every deploy, and a
 > failure stops the deploy. A local room's fixed dice
 > and bots walking clear of your abilities removed three causes of drift
-> (commit f54bb0f001); #12778 stays open until the check holds. Raid bots
+> (commit f54bb0f001). The 2026-11-05 handoff records later complete
+> passes and probe corrections (#12946); keep revision-specific receipts. Raid bots
 > fight (`raid-check.coax`); the load test's bots walk and cast but don't
 > fight (`load.coax`, #12711).
 
@@ -108,8 +109,9 @@ Idle bots holding sockets measure nothing useful (research doc, section 15).
 
 ## What is left
 
-- The drift check holds on every probe at every profile (#12778, with
-  #12783 and #12784).
+- Keep the drift check passing on every probe and network profile after
+  each simulation or presentation change. The handoff records a full pass
+  at `e00925f958`; that receipt does not qualify later changes.
 - The 64-player load test, with bots that fight (#12711).
 - Failure injection at the hard points: during a deploy (#12797), with old
   and new versions overlapping (#12788), and after a save commits but before

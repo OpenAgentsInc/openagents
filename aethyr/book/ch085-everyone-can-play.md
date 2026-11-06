@@ -1,183 +1,53 @@
 # 85. Everyone can play
 
-> **Status: unimplemented — design draft.** Little exists today. The
-> browser host honours `prefers-reduced-motion` by drawing the finished
-> frame at once ([`coax/web/host.js`](../../coax/web/host.js)). Each realm
-> page keeps its text in the HTML for screen readers while the canvas is
-> `aria-hidden`. Everglade's voice shows a caption of what it heard
-> (`everglade-voice.coax`). The stroke font draws 77 glyphs, with lowercase
-> drawn as capitals and Latin-1 accents as their base letter. A made realm's
-> controls are also real ones: the page describes them a line each
-> (`apps/openagents-web/myrealm-a11y.coax`) and the host mirrors them as
-> buttons and checkboxes in a named toolbar beside the canvas, first in the
-> tab order, with the page's note as a polite live region, so the made-realm
-> route works keyboard-only and with a screen reader; a controller's stick
-> and button go through `aethyr/input.coax`. There is no input remapping, no
-> text-size setting, no subtitles for realm sounds and no translation. This
-> chapter plans them. Nothing else in `aethyr/` runs yet.
+> **Status: partly implemented.** The shared settings record and Everglade's
+> SETTINGS pane implement key and controller remapping, text size, reduced
+> motion and captions. The accessible control mirror works in the browser.
+> Other-realm adoption and translation remain work.
 
-A realm should work for a player who can't hear its sound, can't see small
-text, can't use a mouse, or reads another language. This chapter adds the
-settings and checks that make that true for every realm at once, because
-they live in Aethyr's input, UI and sound modules, not in each realm.
+[`aethyr/ui/settings.coax`](../ui/settings.coax) owns the versioned record,
+its defaults and its codec. Each action has one key and one pad button.
+Binding a code already in use swaps the two bindings, leaving every action
+bound. Text size ranges from 100 to 200 percent in steps of 25. A malformed
+or unsupported saved record returns the defaults whole, with a status.
 
-## What this chapter teaches
+## Everglade's SETTINGS pane
 
-- How the action table of [chapter 4](ch004-input-becomes-typed-actions.md)
-  becomes a remapping a player can change.
-- How text size, contrast and reduced motion apply through the UI of
-  [chapter 15](ch015-ui-and-the-hud.md).
-- How every sound that carries information gets a caption.
-- How text gets stable IDs, so it can be translated and checked.
+[`everglade-access.coax`](../../apps/openagents-web/everglade-access.coax)
+uses that record for gameplay input and the pane above SOUND. The browser
+persists it as `verse.settings`. Text size scales the HUD within the
+screen's layout limit, which the pane names. Reduced motion stops camera
+shake. Captions identify sounds that matter and their direction.
 
-## Outline
+The page exposes controls as ordered, named records. The browser host
+mirrors them into buttons and checkboxes, preserves keyboard focus and
+reports status through a live region. MAP, SETTINGS, SOUND, INVITE,
+CHARACTER, PARTY and the hotbar use the same actions as their canvas
+controls. The made-realm editor has its own
+[accessible layer](../../apps/openagents-web/myrealm-a11y.coax).
 
-1. **Remapping.** The device-to-action table is data, so a player can bind
-   any action to another key, button or touch control. Hold-to-run and
-   toggle-to-run are both offered. The table is saved in the realm's save
-   slot ([chapter 81](ch081-save-and-come-back.md)).
-2. **Timing.** A setting slows the realm's simulation clock for timed
-   challenges, through the time controls of
-   [chapter 1](ch001-a-frame-has-a-fixed-step.md), and replays still match.
-3. **Reduced motion.** The host already reads `prefers-reduced-motion`.
-   Aethyr passes it to the camera of [chapter 10](ch010-the-camera-follows.md)
-   (no shake, shorter flights) and to effects.
-4. **Text size and contrast.** A text scale (1.0, 1.25, 1.5) applies to the
-   stroke font, and the UI layout still fits the safe area. Information
-   never depends on colour alone.
-5. **Captions.** Each sound source of [chapter 68](ch068-sound-in-the-world.md)
-   that carries information has a caption ID and a direction. Captions
-   draw in the HUD with the speaker's name, as Everglade's voice caption does
-   today.
-6. **Screen readers.** The page's hidden HTML text stays the accessible
-   copy of the realm; Aethyr adds a short live region for captions and
-   HUD changes.
-7. **Text IDs and languages.** Every HUD string gets a stable ID in a
-   table. The stroke font gains lowercase and accented glyphs (its stage
-   3). Pseudolocalization with 40 percent longer strings checks that
-   layouts fit. The languages this chapter supports are listed in
-   [Supported languages](#supported-languages).
+## Sessions and remaining scope
 
-## Supported languages
+Accessibility settings do not grant authority or change the room's game
+clock. [Chapter 95](ch095-offline-is-a-local-server.md) keeps offline and
+room gameplay on one simulation; [chapter 98](ch098-versions-deploys-and-reconnect.md)
+keeps reconnect distinct from held device input. The shared lifecycle
+releases held input on blur and revokes old commands after a long suspension.
 
-> **Design draft.** Not implemented.
+Everglade is English only. Its pane has stable text IDs and `?pseudo=1`
+lengthens labels for layout checks. Pseudolocalization does not qualify
+translation, script coverage, bidirectional layout or IME composition.
+Applying remapping, captions and scaled layouts to every realm also remains
+work; this chapter does not claim universal accessibility from one adoption.
 
-The chapter's scope is explicit. Aethyr supports a language only when the
-font draws its script, the layout handles its direction and line breaking,
-and the input path accepts its text. This chapter's first scope is:
+## Run the checks
 
-| Scope | Status in this chapter | What it requires |
-| --- | --- | --- |
-| English | Supported | Lowercase glyphs and the string table. |
-| Languages written in Latin script with Latin-1 accents (for example French, German, Spanish and Portuguese) | Supported after the font's stage 3 | Accented glyphs drawn as accented letters, not as their base letter, and the pseudolocalization check. |
-| Right-to-left scripts (Arabic, Hebrew) | Not supported | Bidirectional layout, mirrored UI and glyph shaping. A separate chapter plans them. |
-| Chinese, Japanese and Korean | Not supported | Thousands of glyphs, line breaking without spaces and a glyph atlas instead of strokes. A separate chapter plans them. |
-| Text entry through an input method editor (IME) | Not supported | Composition events from the host, a composition preview and candidate windows. A separate chapter plans it. |
+```shell
+coax/bin/coax test aethyr/ui/settings.coax --library
+coax/web/tool.sh coax/web/forge-access.coax
+```
 
-Pseudolocalization establishes less than it appears to. It replaces Latin
-letters with accented Latin letters and lengthens strings by 40 percent, so
-it checks that a layout fits longer text and that no string is hard-coded. It
-doesn't check right-to-left layout, the glyphs and line breaking of Chinese,
-Japanese or Korean, or IME composition. A realm can't claim any of those from
-a pseudolocalization pass. Each needs its own font coverage, layout rules and
-checks with real text in that script.
-
-## What exists today
-
-- [coax/web/host.js](../../coax/web/host.js): `prefers-reduced-motion`
-  and the typed-text field's `aria-label`.
-- [coax/web/realms.ts](../../coax/web/realms.ts): realm pages with
-  `lang="en"`, an `aria-hidden` canvas and text kept for screen readers.
-- [apps/openagents-web/everglade-voice.coax](../../apps/openagents-web/everglade-voice.coax):
-  the heard caption.
-- [apps/openagents-web/font.coax](../../apps/openagents-web/font.coax):
-  the stroke font and its glyph list.
-- [apps/openagents-web/myrealm-a11y.coax](../../apps/openagents-web/myrealm-a11y.coax):
-  a made realm's accessible layer. Every control the canvas draws is a line
-  `ID ROLE STATE LABEL` (`button`, `checkbox`, `status`; pressed, checked or
-  neither); `realm_a11y_do` does what a tap on it does. The owner's MOVE,
-  UNDO, REDO, SAVE and PUBLISH, the picked thing's TURN IT, MAKE IT BIGGER,
-  MAKE IT SMALLER, TAKE IT AWAY and LET IT GO, the BUILD pane's things and
-  the board's rows (checkboxes) are all there; a visitor gets only what a
-  visitor may press. R, + and - and Delete turn, size and take away the
-  picked thing from the keyboard. `realm_pad` takes a controller's stick and
-  first button through `aethyr/input.coax` (its dead zone, a junk number
-  counted as no push, a held button one press).
-- [aethyr/ui/settings.coax](../../aethyr/ui/settings.coax): the versioned
-  settings record (`s1 k=... p=... t=... m=... c=...`): a key and a pad
-  button for each action, with no code doing two actions; text size 100 to
-  200 percent; reduced motion; captions. A record of another version, or one
-  that doesn't read whole, gives the defaults whole.
-- [apps/openagents-web/everglade-access.coax](../../apps/openagents-web/everglade-access.coax):
-  Everglade on that record (#12857). Every key it reads for play goes
-  through the record, and so does a controller (its stick walks, a held
-  direction or Jump holds, any other button presses its action once).
-  SETTINGS, over SOUND, opens TEXT SIZE, REDUCED MOTION, CAPTIONS and KEYS
-  (press a row, then the key or the pad button); this browser keeps the
-  record (`verse.settings`). Text size scales the whole HUD as a zoom does,
-  up to the most the screen takes (the HUD keeps a phone's 360 by 640 CSS
-  pixels), and the pane names that limit. The pane sits above the bar, and
-  one too wide for the screen stacks its rows, then draws smaller rather
-  than cut off. Reduced motion stops the camera's shake.
-  Captions name the sounds that matter and the side they came from. Every
-  HUD control (MAP, SETTINGS and its pane, SOUND, INVITE, CHARACTER, PARTY,
-  the bar's slots) is a line of the accessible layer, pressed on the canvas
-  where it is drawn, and the control with the layer's focus is ringed. The
-  live status says what the room, the party and the bar last said. The
-  pane's words are a table of ids; `?pseudo=1` lengthens each by half again
-  in brackets. Everglade is in English only.
-- [coax/web/host.js](../../coax/web/host.js) `a11yMirror` and `padPoll`: the
-  host only mirrors. It keeps the module's order, moving only a control that
-  is out of place (a control moved in the DOM loses focus, so the one being
-  pressed keeps it while the layer changes), keeps focus in the toolbar when
-  a control goes, lets Tab, Enter and Space be the browser's in it, and hides
-  the toolbar until something in it has focus.
-- An owner's press (UNDO, REDO, SAVE, PUBLISH, FORK) made while a request is
-  out, such as the half-second read of the spec, waits for its answer and
-  then goes; and what this browser keeps of unsaved work holds turns, sizes
-  and removals as well as moves (`apps/openagents-web/myrealm.coax`).
-- [coax/web/forge-access.coax](../../coax/web/forge-access.coax): the check in
-  muted headless Chrome (keyboard only, names and roles, the live region,
-  lifecycle, a guest's keys and a stand-in controller), run by
-  `coax/web/api/realm-gate.sh --page --require-hardware`. On coderos-4080's
-  RTX 4080 all 24 of its checks pass (#12629).
-- [docs/research/game-engine-systems.md](../../docs/research/game-engine-systems.md),
-  section 42: the inventory this chapter draws from.
-
-## What it builds
-
-- `aethyr/access.coax`: the settings record (remapping, run mode, time
-  scale, reduced motion, text scale, captions) and its defaults.
-- `aethyr/ui/strings.coax`: the text ID table and the pseudolocalization
-  pass.
-- Caption records attached to sound sources.
-
-## Acceptance checks and oracles
-
-The chapter is done when:
-
-- Every action in every realm can be rebound, and a test plays a realm
-  with all keys moved.
-- With reduced motion on, no camera move exceeds a stated angular speed
-  and no screen shake runs.
-- At text scale 1.5, no HUD element in any realm leaves the safe area at
-  390x844.
-- Every sound marked as information has a caption, checked by a scan of
-  the realm's sound table.
-- Pseudolocalized strings fit, and a missing text ID fails the build.
-- Every string in the supported Latin-script languages draws with its
-  accents, checked by rendering each glyph of Latin-1 and comparing it with
-  its base letter.
-- The realm's settings list only the supported languages. A request for an
-  unsupported language or script falls back to English and says so.
-- The settings change no session digest except through the time scale,
-  which is recorded in the session.
-
-## Dependencies
-
-Chapters [1](ch001-a-frame-has-a-fixed-step.md) (time control),
-[4](ch004-input-becomes-typed-actions.md) (the action table),
-[10](ch010-the-camera-follows.md) (camera motion),
-[15](ch015-ui-and-the-hud.md) (text and layout),
-[68](ch068-sound-in-the-world.md) (sound sources) and
-[81](ch081-save-and-come-back.md) (saved settings).
+The second command exercises the made-realm browser layer and requires its
+local page setup; see the tool's usage. Browser checks run headless and
+muted. Keyboard navigation, focus, captions and actual layout need their
+own observations in addition to the settings codec's unit checks.

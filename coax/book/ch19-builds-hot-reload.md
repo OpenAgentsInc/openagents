@@ -1,7 +1,8 @@
 # 19. Builds and hot reload
 
 > **Status: partly implemented.** The build commands and the iOS app's build run in
-> `coax0`. `build.coax`, compile and startup budgets and hot reload are design.
+> `coax0`. Phase/declaration reports, split C emission and the Wasm step cache
+> run today. `build.coax`, general startup budgets and hot reload remain planned.
 
 So far we've mostly run single files with `coax run`. Real Coax code
 doesn't live alone. In the OpenAgents iOS app, Coax sources
@@ -202,166 +203,44 @@ boundary.
 
 ## In the real world: the iOS app's build
 
-Now let's look at the real thing. The iOS app's build starts with
-`apps/openagents-ios/generate.sh`, which Xcode runs before compiling
-anything else. Here it is in full:
+`apps/openagents-ios/generate.sh` generates the app's Coax libraries,
+headers and Metal source before Xcode compiles the platform shell. Read the
+script in the current checkout for its complete module list; that list grows
+as engine modules move into Aethyr.
 
-Filename: apps/openagents-ios/generate.sh
+The generator verifies the compiler against the current source fingerprint.
+A checked build can come from the compiler cache or a verified published
+build; otherwise `coax/build.sh` bootstraps it. Xcode's iOS SDK environment
+must not turn that host compiler into an iOS executable. The script selects
+the Mac SDK and host triple for compiler production, then Xcode compiles the
+generated C for the actual app target.
 
-```shell
-#!/usr/bin/env bash
-set -euo pipefail
-cd "$(dirname "$0")/../.."
-# Xcode exports an iOS SDKROOT; the bootstrap compiler runs on the build Mac.
-# The explicit host triple also blocks inherited iOS deployment settings.
-# Product output is ordinary C11, compiled by Xcode for the actual target SDK.
-mkdir -p apps/openagents-ios/Generated
-compiler=coax/bin/coax
-if [[ ! -x "$compiler" || coax/build.sh -nt "$compiler" || apps/openagents-ios/generate.sh -nt "$compiler" ]] || [[ -n "$(find coax/src coax/lib coax/bootstrap -type f \( -name '*.cpp' -o -name '*.h' -o -name '*.c' -o -name '*.inc' -o -name '*.coax' \) -newer "$compiler" -print -quit)" ]]; then
-  env -u CFLAGS -u CXXFLAGS SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" \
-    CXX="$(xcrun --sdk macosx --find clang++)" \
-    COAX_HOST_TARGET="$(uname -m)-apple-macosx11.0" coax/build.sh
-fi
-out=apps/openagents-ios/Generated
-for name in home player grid cast camera wallet haunt hud; do
-  # Home, Player, Grid, Cast, Camera, Wallet: one C library and header each. Wallet
-  # is #authority, so its checks run in this compile and a failure stops it.
-  base="$(printf '%s' "${name:0:1}" | tr a-z A-Z)${name:1}"
-  "$compiler" c "verse/$name.coax" --library --header "$out/$base.h" > "$out/$base.c.tmp"
-  mv "$out/$base.c.tmp" "$out/$base.c"
-done
-"$compiler" c verse/haunt-buffer.coax --library --header "$out/HauntBuffer.h" > "$out/HauntBuffer.c"
-# Voice: the engine, its wire codecs and the floor/meter authorities, under
-# names that cannot collide with verse/platform/voice.h on a
-# case-insensitive disk (so the engine is VoiceEngine, not Voice). Floor and
-# meter are #authority: their checks run in this compile.
-for pair in voice:VoiceEngine voice-wire:VoiceWire voice-floor:VoiceFloor voice-meter:VoiceMeter; do
-  "$compiler" c "verse/${pair%%:*}.coax" --library --header "$out/${pair##*:}.h" > "$out/${pair##*:}.c.tmp"
-  mv "$out/${pair##*:}.c.tmp" "$out/${pair##*:}.c"
-done
-"$compiler" metal verse/light.coax > "$out/HomeShaders.txt.tmp"
-"$compiler" metal verse/haunt-light.coax >> "$out/HomeShaders.txt.tmp"
-cat apps/openagents-ios/OpenAgents/Platform/Stages.metal >> "$out/HomeShaders.txt.tmp"
-mv "$out/HomeShaders.txt.tmp" "$out/HomeShaders.txt"
-```
-
-*Listing 19-4: The script that turns `verse/*.coax` into the iOS app's sources*
-
-It has three parts.
-
-The first part makes sure the compiler is current. If `coax/bin/coax`
-is missing, or older than any file in the compiler's sources, it
-rebuilds it with `coax/build.sh`. There's a subtlety here worth
-understanding. Xcode runs this script with environment variables set up
-for building an iOS app: `SDKROOT` points at the iOS SDK, and there may
-be iOS compiler flags in `CFLAGS`. The compiler, though, has to run
-here, on the Mac doing the build. So the script clears those flags,
-points the SDK at macOS, and sets `COAX_HOST_TARGET` to the Mac's own
-architecture, so the compiler can never accidentally be built as an iOS
-program.
-
-The second part generates the libraries. For each file, `coax c
---library --header` writes the C to standard output and the header to
-`Generated/`. The script writes the C to a `.tmp` file and renames it
-only after `coax` succeeds, so a failed compile never leaves a
-half-written `Home.c` for Xcode to pick up.
-
-The third part is the shader, exactly as in Chapter 17: Metal from
-`light.coax`, then the hand-written stages appended.
-
-Here's what the generated C looks like at the top, for `Home.c`:
-
-```c
-// coax-proto-v4 generator=coax0-coax-v1 compiler=coax0-0.10.0 importer_sha256=3a9a7e61... prefix=Home
-/* Generated by coax0 from verse/home.coax. Do not edit: change the .coax file. */
-static const char *coax_source_path = "verse/home.coax";
-/* Coax float arithmetic is plain IEEE, one rounding per operation: no fused
-   multiply-add, so results match compile-time evaluation and other compilers. */
-#pragma STDC FP_CONTRACT OFF
-```
-
-The first line is the protocol import's provenance from Chapter 18, and
-the pragma is Chapter 16's. Generated code carries its rules with it,
-so Xcode can compile these files with whatever flags the project uses.
+A library generation uses `coax c --library --header`: C goes to stdout,
+the header to the named file. The generator publishes complete outputs and
+keeps the generated headers in the Swift bridging interface. Metal emission
+supplies shader source to the host's platform stages. Generated module names,
+C types and defaults are part of the host boundary; chapter 20 covers it.
 
 ### Checks that stop the build
 
-The comment inside the loop says `wallet.coax` "is #authority, so its
-checks run in this compile and a failure stops it." The file starts:
+`#authority;` marks rules that guard money, admission or policy. Compiling an
+authority requires all its checks to pass. A matching cached passing result
+can discharge that obligation, but a changed input invalidates it. Without
+`#authority`, ordinary `#test` bodies wait for `coax test`.
 
-```jai
-#import "Basic";
-#authority;
-```
+For example, `verse/wallet.coax` guards payment admission. Its generated
+library cannot be replaced after a failed check. Code generation is not
+permission to send a payment; the runtime still applies the wallet's rules.
 
-`#authority;` marks a file whose rules guard money, signatures or
-grants. For such a file, compiling it means running its `#test` and
-`#forall` checks, and any failure is a compile error. The wallet decides
-whether a payment may be sent, so a broken rule there should stop the
-app from building, not reach a phone.
-
-We can watch this happen with our glow library. Put `#authority;` on the
-first line of a copy of `ch17_glow.coax`, break its first test by
-changing `1.2f32` to `1.25f32`, and try to generate the library:
+From the command line, the iOS shell's build entry is:
 
 ```shell
-$ coax c ch17_glow_auth.coax --library --header ch17_glow_auth.h > ch17_glow_auth.c
-ch17_glow_auth.coax:32:3: error[E0406]: assertion failed
-    #assert glow_dot(0.0f32, 0.0f32, 1.0f32) == 1.25f32;
-    ^
-  note: in #test the dot is brightest in the middle and dark at its edge
-1 error
+apps/openagents-ios/build.sh
 ```
 
-The command exits with status 1, `set -e` stops the script, and Xcode
-reports the failure. Without `#authority`, the same file compiles and
-the broken test waits for someone to run `coax test`.
-
-### How Xcode runs it
-
-The app's project is generated from `apps/openagents-ios/project.yml`
-by XcodeGen. Two parts of it matter here. The generated files are listed
-as sources, with warnings that generated code triggers turned off, and
-the shader text is a resource rather than something Xcode compiles:
-
-```yaml
-    sources:
-      - path: OpenAgents
-        excludes: [Platform/Stages.metal]
-      - path: Generated/Home.c
-        compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
-      # ... Player.c, Grid.c, Cast.c, Camera.c, Wallet.c the same way
-      - path: ../../verse/platform/host.c
-      - path: Generated/HomeShaders.txt
-        buildPhase: resources
-```
-
-`Stages.metal` is excluded so Xcode doesn't try to compile it as a Metal
-file on its own; it only makes sense after the generated functions are
-put in front of it. And `generate.sh` runs as a pre-build script that
-declares its outputs:
-
-```yaml
-    preBuildScripts:
-      - name: Generate Coax product code
-        script: '"$SRCROOT/generate.sh"'
-        basedOnDependencyAnalysis: false
-        outputFiles:
-          - $(SRCROOT)/Generated/Home.c
-          - $(SRCROOT)/Generated/Home.h
-          # ... and the other libraries, headers and HomeShaders.txt
-```
-
-`basedOnDependencyAnalysis: false` makes the script run on every build.
-Declaring the outputs tells Xcode to wait for them, which matters on a
-fresh checkout where `Generated/` starts empty. The Swift side reaches
-the generated headers through one bridging header,
-`OpenAgents/Platform/Bridge.h`, which is just a list of `#include`
-lines.
-
-From the command line, `apps/openagents-ios/build.sh` runs
-`generate.sh`, then `xcodegen generate`, then `xcodebuild` for the
-simulator.
+That command builds for the simulator. The app's README gives its targeted
+tests and signing workflow. This chapter's compiler reports do not measure
+installation, device startup or GPU pipeline creation.
 
 ## Measure the whole loop
 
@@ -403,7 +282,7 @@ also includes:
 3. asset processing;
 4. installing and launching the app, and compiling the Metal shader
    source at startup (Chapter 17);
-5. for the browser later: Wasm processing, compression, transfer and
+5. for the browser: Wasm processing, compression, transfer and
    instantiation.
 
 Only the first step is measured here. A fair measurement names the
@@ -462,25 +341,40 @@ execution or artifact signing. Each of those is its own system. Today,
 for example, `coax0` doesn't provision or pin the C compiler; it uses
 whatever `COAX_CC` or `cc` names.
 
-## Planned: compile and startup budgets
+## Measure and cache the browser build
 
-> Note: Not implemented. This is roadmap R22 (spec stage 11).
+Compiler reports and build caching run today. Use `--timings FILE` (or
+`--timings-json FILE`) with `--timings-top N` to retain phase costs and the
+most expensive declarations. `--timings-table` prints the same observations
+as a table. [Chapter 41](ch41-compile-budgets.md) gives commands and recorded
+output, including counted work when the clock alone does not explain a cost.
 
-"How long until I see the result" is really five different questions, and
-the plan gives each its own measured budget:
+The browser driver, `coax/web/wasm.sh`, caches Coax-to-C, C objects, linking
+and Wasm optimization separately. It writes a JSON report beside the output
+under `.c/`, or at `COAXIAL_WASM_REPORT`. Each step says `hit`, `miss` or
+`off`, its duration and, when the compiler ran, its compiler report.
+Changing a Coax file need not rebuild an unchanged C object. Changing a
+header invalidates each object that includes it. The toolchain, options and
+input identities belong to the keys.
 
-1. compiling a kernel for the first time;
-2. loading a kernel that is already compiled;
-3. rebuilding a scene from cached assets;
-4. changing a runtime parameter, which must not recompile anything;
-5. changing a structural property, which must recompile and say why.
+For large library units, `coax c FILE --library --split N --split-unit BYTES`
+emits a stream of C parts and a shared prelude. The Wasm driver separates
+them and caches their objects independently. Renderer carriers default to
+up to 16 parts; `COAXIAL_SPLIT=0` disables splitting. The threshold defaults
+to 512 KiB of procedure C, and a small unit stays whole. Coax still checks
+the graph; this reduces repeated native compilation, not semantic work.
 
-A persistent kernel cache would be keyed by content identities: the source,
-the values a kernel was specialized on, its layout, the target, the
-compiler build and its options. A stale entry could never be reused and a
-valid one would never be rebuilt, and the front end would skip unchanged
-kernels rather than only skipping code generation. A parameter edit that
-triggers recompilation would fail its budget like any other regression.
+A capacity refusal now reports its limit, top users and a suggested fix.
+`#traversal N` budgets aggregate-copy work for a check; `--traversal N` sets
+the default. Near-limit notes appear before exhaustion, at 75 percent by
+default (`--near-limit P` changes the threshold). Read the report before
+raising a limit: passing a view or only the required fields can remove the
+copy that consumed it. Chapter 41 demonstrates both a refusal and a note.
+
+R22's five general kernel/startup budgets remain planned: first compile,
+cached load, scene rebuild, parameter edit and structural edit. Those gates
+need their own target and consumer evidence. The browser build's measured
+cache does not establish a universal kernel cache or a startup deadline.
 
 ## Hot reload is an engine design
 
@@ -488,8 +382,8 @@ triggers recompilation would fail its budget like any other regression.
 > reloads code today. A resident compiler and reload are stage 8 of the
 > plan (spec §16.3).
 
-Generating the whole app's Coax code in a tenth of a second makes hot
-reload tempting: change a light function, see the new glow without
+Fast code generation makes hot reload tempting: change a light function,
+see the new glow without
 restarting. But a fast compiler only produces new code quickly. Swapping
 that code into a running program safely needs a list of things, and
 compile speed provides none of them:
@@ -532,10 +426,10 @@ Today's Coax build is a set of small, single-shot commands, each writing
 one kind of output: executables, object files, C, headers and Metal. A
 build script, ours in Listing 19-2 or the iOS app's `generate.sh`,
 chains them and hands the results to the platform's own tools, with
-`#authority` files stopping the build when their checks fail. Generating
-all of the app's Coax code takes about a tenth of a second, but that's
-one stage of the loop; the rest isn't measured yet. A build written in
-Coax, a resident compiler and hot reload are planned, and hot reload
+`#authority` files stopping the build when their checks fail. Phase and
+declaration reports measure the compiler; the Wasm driver
+reports and caches native steps independently, including split units. A build
+written in Coax, a resident compiler and hot reload are planned, and hot reload
 especially depends on engine machinery (safe points, stable IDs,
 transactional migration) that no compiler can supply.
 

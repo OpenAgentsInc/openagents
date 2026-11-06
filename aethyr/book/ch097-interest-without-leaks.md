@@ -7,8 +7,9 @@
 > players and hidden entities are withheld (#12789, commit b4826d83b2). The
 > pick gates every channel a seat is sent: rows, names, WANTED, levels and
 > events, the join's snapshot included, and a blocked pair can't target,
-> harm or heal each other (commit 22c492ffc5). Party channels are a hook:
-> Everglade has no parties yet.
+> harm or heal each other (commit 22c492ffc5). Parties now have a shared
+> contract and API-backed roster. The room's out-of-range health channel
+> remains a hook until its seat party IDs are populated.
 
 Interest management decides which information each client gets. It saves
 bandwidth and server time, and it is a security boundary: anything sent to
