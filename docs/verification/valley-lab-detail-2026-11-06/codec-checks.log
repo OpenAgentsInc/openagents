@@ -1,0 +1,3 @@
+ok   #test detail quantization preserves endpoints degenerate axes and the half-cell error (1 case, 12225 steps, 0 ms)
+ok   #test detail normal coding retains both hemispheres and all signed axes (1 case, 35511 steps, 0 ms)
+2 checks, 2 passed, 0 failed

@@ -1,0 +1,4 @@
+PASS all 5992848 original corners retain exact F32 position/normal/UV and source triangle order
+PASS 1012930 compressed vertices: max position error=2.71670374e-05m <= 3.39668004e-05m; normal component=5.6483832e-05; UV=7.62517772e-06
+Q16 bytes=40178400 sha256=8f7f401b6acf1dbf7a2a4e69ffff75bd03a4ca1e7340f164f2ef11008c45c1bd
+F32 bytes=56385280 sha256=652031658f97cc103a590f8c5aafa4cfa838f3626fe85517d09d1c5743576b17

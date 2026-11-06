@@ -1,10 +1,21 @@
 // Original world geometry/placements and source maps; Echo uses the shared source shader.
 #load "valleycanyon.coax";
 #load "../../../verse/valley/world-materials.coax";
+#load "../../../verse/valley/detail-codec.coax";
 #test "World sky has a bright horizon and a finite sun disc" {u:[128]f32;u[0]=1280;u[1]=800;u[15]=1;u[19]=1;u[17]=1;u[22]=1;u[25]=1;a:=vw_bg_fs(v4(640,400,0,1),u[..]);#assert a.x>0 && a.w==1;}
 vw_at :: (b:[]u32,at:int)->V3 {return v3(cv_word(b,at),cv_word(b,at+1),cv_word(b,at+2));}
 vw_matrix :: (b:[]u32,at:int,p:V3,w:f32)->V3 {return v3(wg_dot3(vw_at(b,at),p)+cv_word(b,at+3)*w,wg_dot3(vw_at(b,at+4),p)+cv_word(b,at+7)*w,wg_dot3(vw_at(b,at+8),p)+cv_word(b,at+11)*w);}
-vw_world :: (id:u32,instance:u32,vertices:[]u32,u:[]f32)->V3 {
+VdVertex :: struct {p:V3;n:V3;uv:V2;}
+vd_word :: (detail:[]u32,at:int)->f32 {return f32_from_bits(detail[at]);}
+vd_vertex :: (id:u32,detail:[]u32)->VdVertex {
+ k:=cast(int)id-8000000;
+ at:=32+k*4;a:=detail[at];b:=detail[at+1];normal:=dq_normal(detail[at+2]);uv:=detail[at+3];return VdVertex.{p=v3(dq_decode(a&65535,vd_word(detail,8),vd_word(detail,11)),dq_decode(a>>16,vd_word(detail,9),vd_word(detail,12)),dq_decode(b&65535,vd_word(detail,10),vd_word(detail,13))),n=v3(normal.x,normal.y,normal.z),uv=v2(dq_decode(uv&65535,vd_word(detail,14),vd_word(detail,16)),dq_decode(uv>>16,vd_word(detail,15),vd_word(detail,17)))};
+}
+vr_word :: (reference:[]u32,at:int)->f32 {return f32_from_bits(reference[at]);}
+vr_vertex :: (id:u32,reference:[]u32)->VdVertex {at:=32+(cast(int)id-12000000)*8;return VdVertex.{p=v3(vr_word(reference,at),vr_word(reference,at+1),vr_word(reference,at+2)),n=v3(vr_word(reference,at+3),vr_word(reference,at+4),vr_word(reference,at+5)),uv=v2(vr_word(reference,at+6),vr_word(reference,at+7))};}
+vw_fine_vertex :: (id:u32,detail:[]u32,reference:[]u32)->VdVertex {if id>=12000000 {return vr_vertex(id,reference);}return vd_vertex(id,detail);}
+vw_world :: (id:u32,instance:u32,vertices:[]u32,u:[]f32,detail:[]u32,reference:[]u32)->V3 {
+ if id>=8000000 {return vw_matrix(vertices,cast(int)u[120]+(cast(int)instance-3)*24,vw_fine_vertex(id,detail,reference).p,1);}
  at:=ifx id<504367 then cast(int)id*12 else cast(int)u[116]+(cast(int)id-2000000)*9;
  m:=cast(int)u[120]+(cast(int)instance-3)*24;return vw_matrix(vertices,m,vw_at(vertices,at),1);
 }
@@ -16,15 +27,18 @@ vw_bg_fs :: (p:V4,u:[]f32)->V4 {
 }
 vw_fx_vs :: (i:u32,j:u32,a:vc_vertex,u:[]f32)->SplashV {return vc_fx_vs(i,j,a,u);}
 vw_fx_fs :: (v:SplashV,u:[]f32)->V4 {return vc_fx_fs(v,u);}
-vw_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,bones:[]f32)->CanyonSurface {
+vw_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,bones:[]f32,detail:[]u32,reference:[]u32)->CanyonSurface {
  if instance<3 {return vc_scene_vs(id,instance,u,vertices,bones);}
- world:=vw_world(id,instance,vertices,u);at:=ifx id<504367 then cast(int)id*12 else cast(int)u[116]+(cast(int)id-2000000)*9;m:=cast(int)u[120]+(cast(int)instance-3)*24;
- normal:=vw_matrix(vertices,m+12,vw_at(vertices,at+3),0);uv:=v2(cv_word(vertices,at+6),cv_word(vertices,at+7));r:=cv_sub(world,cv_at(u,8));z:=wg_dot3(r,cv_at(u,20));base:=ifx id<504367 then cast(u32)0 else vertices[at+8];override:=vertices[m+15];material:=cast(f32)(ifx (base>>16)==0 && override>0 then override else base&65535);
+ world:=vw_world(id,instance,vertices,u,detail,reference);at:=ifx id<504367 then cast(int)id*12 else cast(int)u[116]+(cast(int)id-2000000)*9;m:=cast(int)u[120]+(cast(int)instance-3)*24;
+ normal:V3;uv:V2;base:u32;
+ if id>=8000000 {v:=vw_fine_vertex(id,detail,reference);normal=vw_matrix(vertices,m+12,v.n,0);uv=v.uv;base=ifx id>=12000000 then reference[23] else detail[23];}
+ else {normal=vw_matrix(vertices,m+12,vw_at(vertices,at+3),0);uv=v2(cv_word(vertices,at+6),cv_word(vertices,at+7));base=ifx id<504367 then cast(u32)0 else vertices[at+8];}
+ r:=cv_sub(world,cv_at(u,8));z:=wg_dot3(r,cv_at(u,20));override:=vertices[m+15];material:=cast(f32)(ifx (base>>16)==0 && override>0 then override else base&65535);
  return CanyonSurface.{pos=v4(wg_dot3(r,cv_at(u,12))*u[15],wg_dot3(r,cv_at(u,16))*u[19],300.0/299.95*(z-0.05),z),world=world,normal=normal,uv=uv,paint=v4(1,1,1,1),tangent=v4(0,0,0,1),character= -1,material=material};
 }
-vw_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,bones:[]f32)->CanyonShadow {
+vw_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,bones:[]f32,detail:[]u32,reference:[]u32)->CanyonShadow {
  if instance<3 {return vc_shadow_vs(id,instance,u,vertices,bones);}
- q:=cv_shadow(vw_world(id,instance,vertices,u),u);return CanyonShadow.{pos=v4(q.x,q.y,q.z,1),uv=v2(0,0),character=0,material=0};
+ q:=cv_shadow(vw_world(id,instance,vertices,u,detail,reference),u);return CanyonShadow.{pos=v4(q.x,q.y,q.z,1),uv=v2(0,0),character=0,material=0};
 }
 vw_shadow_fs :: (s:CanyonShadow,vertices:[]u32,sheets:Tex2DArray,sheet:Sampler) {vc_shadow_fs(s,vertices,sheets,sheet);}
 vw_rgb :: (a:V4)->V3 {return v3(a.x,a.y,a.z);}

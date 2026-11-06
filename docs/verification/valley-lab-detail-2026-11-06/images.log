@@ -1,0 +1,6 @@
+Source world ready; checking source page
+View 0 {\"metrics\":{\"meanRgb\":0.00105908203125,\"badFraction\":0.000008544921875,\"changedPixels\":23845},\"pageMask\":3,\"instance\":7870,\"fineTriangles\":1997616,\"colorTriangles\":108043484,\"shadowTriangles\":68353818,\"bytes\":7522905088}
+View 1 {\"metrics\":{\"meanRgb\":0.0016097005208333334,\"badFraction\":0.00001904296875,\"changedPixels\":39658},\"pageMask\":3,\"instance\":3763,\"fineTriangles\":1997616,\"colorTriangles\":86214978,\"shadowTriangles\":50229222,\"bytes\":7522905088}
+View 2 {\"metrics\":{\"meanRgb\":0.0034130045572916667,\"badFraction\":0.00003076171875,\"changedPixels\":69987},\"pageMask\":3,\"instance\":32,\"fineTriangles\":1997616,\"colorTriangles\":21753729,\"shadowTriangles\":70304034,\"bytes\":7522905088}
+View 3 {\"metrics\":{\"meanRgb\":0,\"badFraction\":0,\"changedPixels\":0},\"pageMask\":3,\"instance\":23114,\"fineTriangles\":1997616,\"colorTriangles\":22057351,\"shadowTriangles\":64439480,\"bytes\":7522905088}
+PASS Q16/F32 tolerance in four views: three visible source-detail observations and north occlusion control

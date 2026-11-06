@@ -960,6 +960,8 @@ async function deviceLost(device, info) {
   if (dev) globalThis.coaxial.renderDeviceLost = { reason: info.reason, message: info.message };
   if (!gpu || gpu.device !== device || leaving || !engine) return;
   const t0 = performance.now();
+  gpu.retired = true;
+  const retainedOptional = new Set(firstAssets.filter(a => engine.exports.coaxial_asset_optional_v1?.(a.i) && a.done && !a.failed));
   hostLifeEvent(8,Math.floor(t0*1000));
   losses = losses.filter((t) => t0 - t < LOSSES_WINDOW_MS);losses.push(t0);
   say(`GPU device lost (${info.reason}${info.message ? `: ${info.message}` : ""}); taking a new one`, true);
@@ -984,7 +986,7 @@ async function deviceLost(device, info) {
       await Promise.race([late, rebuildGpu(() => {
         if (attempt.n !== n) throw new Error("the new device was lost too");
         if (performance.now() > until) throw new Error("no new GPU device in time");
-      }, until)]).finally(() => clearTimeout(timer));
+      }, until, retainedOptional)]).finally(() => clearTimeout(timer));
       if (attempt.n === n) { error = null;break; }
     } catch (e) { error = e; }
     if (attempt.n === n || losses.length > LOSSES_MAX || performance.now() > until) break;
@@ -1006,7 +1008,7 @@ async function deviceLost(device, info) {
 }
 // A new device, the pipelines and every asset the world opens with, uploaded to it; `check` throws
 // once this attempt is lost or late.
-async function rebuildGpu(check, until) {
+async function rebuildGpu(check, until, retainedOptional = new Set()) {
   // A GPU process that crashed is started again by the browser; until it is, there is no adapter.
   let opened = null;
   for (let wait = 100; !(opened = await openDevice()) && performance.now() + wait < until; wait *= 2) await new Promise((ok) => setTimeout(ok, wait));
@@ -1023,9 +1025,9 @@ async function rebuildGpu(check, until) {
   if (!(await loadShaders())) throw new Error("the shaders did not build");
   check();
   // the renderer path's rows are new ones (loadShadersOnce): none done yet
-  await Promise.all([...firstAssets.map(loadAsset), ...[...firstPacks].map(loadPack)]);
+  await Promise.all([...firstAssets.map(a => {const task = loadAsset(a);return engine.exports.coaxial_asset_optional_v1?.(a.i) && !retainedOptional.has(a) ? Promise.resolve() : task;}), ...[...firstPacks].map(loadPack)]);
   check();
-  if (firstAssets.some((a) => a.failed) || assets.some((a) => a.pack && a.failed)) throw new Error("the world's assets did not load again");
+  if (firstAssets.some((a) => a.failed && (!engine.exports.coaxial_asset_optional_v1?.(a.i) || retainedOptional.has(a))) || assets.some((a) => a.pack && a.failed)) throw new Error("the world's assets did not load again");
 }
 
 function makeBuffers() {
@@ -1659,10 +1661,33 @@ function unpack(bytes) {
 }
 // Hands an asset that has arrived to the app (data into its memory) and tells it.
 function currentAsset(a) { return !renderUrl || !a.renderOwner || a.renderOwner === gpu?.renderer; }
+// Optional legacy page companion. SHA is a browser effect; Coax admits its exact identity and spans.
+function assetGateV1(a, x) {
+  const at = x.coaxial_asset_digest_v1?.(arena.state, a.i) || 0;
+  if (!at) return true;
+  if (!a.pageDigest || at + 32 > memory.buffer.byteLength) return false;
+  new Uint8Array(memory.buffer, at, 32).set(a.pageDigest);
+  return !!x.coaxial_asset_admit_v1?.(arena.state, a.i, a.size);
+}
+async function pageBytesV1(a, x, owner) {
+  const owned = () => gpu === owner && !owner.retired && engine?.exports === x;
+  if (a.pageBytes) {if (!x.coaxial_asset_extent_v1(a.i, 0, a.pageBytes.length)) throw Error("Coax refused retained asset span");return a.pageBytes;}
+  const r = await fetch(a.url);if (!r.ok) throw Error(`${a.url}: ${r.status}`);
+  const reader = r.body.getReader(), chunks = [];let held = 0, complete = false;
+  try {
+    for (;;) {const row = await reader.read();if (!owned()) return null;if (row.done) {complete = true;break;}
+      if (!x.coaxial_asset_extent_v1(a.i, held, row.value.length)) throw Error("Coax refused asset stream extent");
+      chunks.push(row.value);held += row.value.length;loading.bytes(a.url, held, 0);
+    }
+  } finally {if (!complete) await reader.cancel().catch(() => {});reader.releaseLock();}
+  const bytes = new Uint8Array(held);let at = 0;for (const chunk of chunks) {bytes.set(chunk, at);at += chunk.length;}return bytes;
+}
 function deliver(a) {
   if (!currentAsset(a)) return;
   const x = engine?.exports;
   if (!x) return;
+  if (waiting && x.coaxial_asset_digest_v1?.(arena.state, a.i)) {const owner = gpu;waiting.push(() => {if (gpu === owner && !owner.retired && engine?.exports === x) deliver(a);});return;}
+  if (!assetGateV1(a, x)) a.failed = true;
   if (a.kind === "data" && a.bytes) {
     const at = x.coaxial_asset?.(arena.state, a.i, a.bytes.length) || 0;
     if (gpu?.renderer) {
@@ -1681,6 +1706,8 @@ function deliver(a) {
 async function loadAsset(a) {
   if (a.fetching) return;a.fetching = true;
   const { device } = gpu;
+  const owner = gpu, x = engine.exports, gated = !!x.coaxial_asset_digest_v1?.(arena.state, a.i);
+  if (x.coaxial_asset_optional_v1?.(a.i) && !a.loadingDetached) {a.loadingDetached = true;loading.assetDone();}
   try {
     if (a.kind === "layers") {
       loading.textures(0, 2 * a.urls.length);
@@ -1700,25 +1727,39 @@ async function loadAsset(a) {
       if (gpu.renderer) gpu.renderer.layerTexture = a.texture;a.size = images.length;
     } else {
       if (a.away) throw new Error("local only");
-      const bytes = await fetchedOnce(a.url);
+      const bytes = gated ? await pageBytesV1(a, x, owner) : await fetchedOnce(a.url);
+      if (gated && (!bytes || gpu !== owner || owner.retired || engine?.exports !== x)) return;
       if (renderUrl) await renderReload;if (!currentAsset(a)) return;
       a.size = bytes.length;
+      if (gated) {
+        const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+        if (gpu !== owner || owner.retired || engine?.exports !== x) return;
+        a.pageDigest = digest;if (!assetGateV1(a, x)) throw Error("Coax refused asset identity");a.pageBytes = bytes;
+      }
       if (a.kind === "data") a.bytes = bytes;
       else if (gpu.renderer) { a.bytes = bytes;gpu.renderer.acceptAsset(a); }
       else {
-        const usage = (a.kind === "index" ? GPUBufferUsage.INDEX : GPUBufferUsage.STORAGE) | GPUBufferUsage.COPY_DST;
-        const whole = new Uint8Array(align(bytes.length, 4)); whole.set(bytes);   // writes come in 4-byte words
-        a.buffer = device.createBuffer({ size: whole.length, usage });
+        const usage = (a.kind === "index" ? GPUBufferUsage.INDEX : GPUBufferUsage.STORAGE) | GPUBufferUsage.COPY_DST | (x.coaxial_asset_index_v1?.(a.i) ? GPUBufferUsage.INDEX : 0);
+        const whole = gated && bytes.length % 4 === 0 ? bytes : new Uint8Array(align(bytes.length, 4));
+        if (whole !== bytes) whole.set(bytes);   // v1 immutable aligned pages need no second upload copy
+        const priorBuffer = a.buffer;a.buffer = device.createBuffer({ size: whole.length, usage });
         device.queue.writeBuffer(a.buffer, 0, whole);
+        if (gated) {gpu.sceneGroup = null;if (priorBuffer) device.queue.onSubmittedWorkDone().then(() => priorBuffer.destroy()).catch(() => priorBuffer.destroy());}
       }
     }
-  } catch (e) { a.failed = true; if (!a.quiet) say(`${app}: ${e.message}`, true); }
+  } catch (e) {
+    if (gated && (gpu !== owner || owner.retired || engine?.exports !== x)) return;
+    a.failed = true;
+    if (a.kind === "storage" && x.coaxial_asset_optional_v1?.(a.i)) {
+      a.buffer ||= device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.INDEX|GPUBufferUsage.COPY_DST});a.size = 0;
+    } else if (!a.quiet) say(`${app}: ${e.message}`, true);
+  }
   a.fetching = false;if (!currentAsset(a)) return;
   a.done = true;
   deliver(a);
   if (a.kind === "mesh") bindMesh();
   bindScene();
-  loading.assetDone(a.failed && !a.quiet && `ASSET FAILED TO LOAD: ${(a.url || "").split("/").pop()}`);
+  if (!a.loadingDetached) loading.assetDone(a.failed && !a.quiet && `ASSET FAILED TO LOAD: ${(a.url || "").split("/").pop()}`);
 }
 // An asset's bytes, fetched once however many of the page's assets name the same URL (the Grid's
 // Cast.bin is both data, for its clips, and storage, for its vertices).
@@ -1869,14 +1910,14 @@ function postTargets(w, h) {
 function bindScene() {
   if (gpu?.renderer) return;
   const gpuAssets = assets.filter((a) => ["storage", "index", "layers"].includes(a.kind));
-  if (!gpu || gpu.sceneGroup || !engine?.exports.coaxial_draws || gpuAssets.some((a) => !a.done || a.failed)) return;
+  if (!gpu || gpu.sceneGroup || !engine?.exports.coaxial_draws || gpuAssets.some((a) => (!a.done || a.failed) && !engine.exports.coaxial_asset_optional_v1?.(a.i))) return;
   const x = engine.exports, { device } = gpu, resources = [];
-  for (const a of assets) if (a.kind === "storage") resources.push({ buffer: a.buffer });
-  gpu.stores = []; gpu.storeVersions = [];
-  for (let k = 0; k < (x.coaxial_stores?.() || 0); k++) {
-    const buffer = device.createBuffer({ size: align(Math.max(x.coaxial_store_cap(k), 16), 16), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-    gpu.stores.push(buffer); resources.push({ buffer });
+  for (const a of assets) if (a.kind === "storage") {
+    if (!a.buffer && x.coaxial_asset_optional_v1?.(a.i)) a.buffer = device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.INDEX|GPUBufferUsage.COPY_DST});
+    resources.push({ buffer: a.buffer });
   }
+  if (!gpu.stores) {gpu.stores = [];gpu.storeVersions = [];for (let k = 0; k < (x.coaxial_stores?.() || 0); k++) gpu.stores.push(device.createBuffer({size:align(Math.max(x.coaxial_store_cap(k),16),16),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST}));}
+  for (const buffer of gpu.stores) resources.push({buffer});
   const layers = assets.find((a) => a.kind === "layers");
   if (layers) {
     resources.push(layers.texture.createView({ dimension: "2d-array" }));
@@ -2594,21 +2635,27 @@ function draw(now) {
   const shadowList = separateShadow && shadowDraws ? new Uint32Array(memory.buffer, x.coaxial_shadow_draws_v1(arena.state), shadowDraws * 4) : list;
   const wet = draws && gpu.waterTransmit && x.coaxial_water_draws ? Math.min(x.coaxial_water_draws(arena.state), draws) : 0;
   // a draw whose base instance has its top bit set draws its vertices in order, with no index buffer
-  const drawOne = (pass, i, source = list) => {
+  const drawOne = (pass, i, source = list, shadow = false) => {
     const [first, count, base, instances] = [source[i * 4], source[i * 4 + 1], source[i * 4 + 2], source[i * 4 + 3]];
     if (!count || !instances) return;
     if (base & 0x80000000) pass.draw(count, instances, first, base & 0x7fffffff);
-    else pass.drawIndexed(count, instances, first, 0, base);
+    else pass.drawIndexed(count, instances, x.coaxial_draw_index_v1 ? x.coaxial_draw_index_v1(arena.state, i, shadow ? 1 : 0, 1) : first, 0, base);
   };
-  const drawScene = (pass, colours = false, source = list, count = draws - wet) => {
+  const drawScene = (pass, colours = false, source = list, count = draws - wet, shadow = false) => {
     pass.setBindGroup(1, gpu.sceneGroup); if (gpu.index) pass.setIndexBuffer(gpu.index, "uint32");   // none: in-order draws only
+    let indexBank = -1;
     for (let i = 0; i < count; i++) {
+      if (x.coaxial_draw_index_v1 && !(source[i * 4 + 2] & 0x80000000)) {
+        const bank = x.coaxial_draw_index_v1(arena.state, i, shadow ? 1 : 0, 0);
+        if (bank !== -1 && (bank < 0 || bank >= assets.length || !assets[bank].buffer || !x.coaxial_asset_index_v1?.(bank))) throw Error(`invalid Coax index asset v1: ${bank}`);
+        if (bank !== indexBank) {pass.setIndexBuffer(bank === -1 ? gpu.index : assets[bank].buffer, "uint32");indexBank = bank;}
+      }
       if (colours && x.coaxial_draw_blend_v1) {
         const profile = x.coaxial_draw_blend_v1(arena.state, i);
         if (profile !== 0 && profile !== 1 && profile !== 2) throw Error(`invalid Coax scene blend v1: ${profile}`);
         pass.setPipeline(profile === 1 ? gpu.sceneAdditive : profile === 2 ? gpu.sceneAlpha : gpu.scene);
       }
-      drawOne(pass, i, source);
+      drawOne(pass, i, source, shadow);
     }
   };
   const cast = gpu.caster && x.coaxial_caster_instances ? [x.coaxial_caster_vertices(arena.state), x.coaxial_caster_instances(arena.state)] : [0, 0];
@@ -2617,7 +2664,7 @@ function draw(now) {
     const shade = encoder.beginRenderPass({ colorAttachments: [],
       depthStencilAttachment: { view: gpu.shadowMap.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" } });
     shade.setBindGroup(0, gpu.bindGroup);
-    if (shadowDraws && gpu.shadow) { shade.setPipeline(gpu.shadow); drawScene(shade, false, shadowList, separateShadow ? shadowDraws : draws - wet); }
+    if (shadowDraws && gpu.shadow) { shade.setPipeline(gpu.shadow); drawScene(shade, false, shadowList, separateShadow ? shadowDraws : draws - wet, true); }
     if (cast[0] && cast[1]) { shade.setPipeline(gpu.caster); shade.draw(cast[0], cast[1]); }
     shade.end();
   }
@@ -2791,7 +2838,7 @@ function rescueFrom(record, id, layout, size) {
   else say(`${app}: a save from another build of this world was not put back`);
 }
 const stateBytes = () => new Uint8Array(memory.buffer, arena.state, arena.stateSize).slice();
-const worldIn = () => firstAssets.every((a) => a.done) && [...firstPacks].every((p) => p.done);
+const worldIn = () => firstAssets.every((a) => a.done || engine?.exports.coaxial_asset_optional_v1?.(a.i)) && [...firstPacks].every((p) => p.done);
 function frameStart() {
   if (pendingRescue && worldIn()) {
     new Uint8Array(memory.buffer, arena.state, pendingRescue.length).set(pendingRescue);

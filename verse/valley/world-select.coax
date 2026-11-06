@@ -23,8 +23,9 @@ WhSelection :: struct {draws:int;indices:int;instances:int;nodes:int;rejected:in
  u:[128]f32;u[12]=1;u[17]=1;u[22]=1;u[15]=1;u[19]=1;p:[6]WhPlane;wh_planes(u[..],p[..],false);
  #assert wh_box(p[..],v3(-1,-1,-1),v3(1,1,1))==0 && wh_box(p[..],v3(0,0,2),v3(0,0,2))==1;
  for point:[6]Point.[v3(0,0,-1),v3(0,0,301),v3(-3,0,1),v3(3,0,1),v3(0,-3,1),v3(0,3,1)] {#assert wh_box(p[..],point,point)== -1;}
- u[80]=1;u[85]=1;u[90]=1;u[96]=45;wh_planes(u[..],p[..],true);#assert wh_box(p[..],v3(-45,-45,-45),v3(45,45,45))==0;
- for point:[6]Point.[v3(-46,0,0),v3(46,0,0),v3(0,-46,0),v3(0,46,0),v3(0,0,-46),v3(0,0,46)] {#assert wh_box(p[..],point,point)== -1;}
+ u[80]=1;u[85]=1;u[90]=1;u[96]=45;wh_planes(u[..],p[..],true);#assert wh_box(p[..],v3(-45,-45,-90),v3(45,45,90))==0;
+ #assert wh_box(p[..],v3(0,0,-89),v3(0,0,89))==1;
+ for point:[6]Point.[v3(-46,0,0),v3(46,0,0),v3(0,-46,0),v3(0,46,0),v3(0,0,-91),v3(0,0,91)] {#assert wh_box(p[..],point,point)== -1;}
 }
 #test "cluster traversal rejects one child and keeps a complete unsplit reference when capped" {
  b:[252]u8;wh_fixture(b[..]);scan_write_point(b[..],72,v3(-3,-2,-3));scan_write_point(b[..],84,v3(-2,2,3));scan_write_point(b[..],120,v3(2,-2,-3));scan_write_point(b[..],132,v3(3,2,3));scan_write_point(b[..],168,v3(-3,-2,-3));scan_write_point(b[..],180,v3(3,2,3));
@@ -66,7 +67,7 @@ wh_select :: (out:[]u32,s:[]WhSelection,b:[]u8,instance:int,planes:[]WhPlane,dep
 wh_plane :: (axis:Point,origin:Point,offset:f32)->WhPlane #effects(all) {return WhPlane.{x=cast(f64)axis.x,y=cast(f64)axis.y,z=cast(f64)axis.z,w=cast(f64)offset-cast(f64)axis.x*cast(f64)origin.x-cast(f64)axis.y*cast(f64)origin.y-cast(f64)axis.z*cast(f64)origin.z,ax=abs(cast(f64)axis.x),ay=abs(cast(f64)axis.y),az=abs(cast(f64)axis.z),aw=abs(cast(f64)offset)+abs(cast(f64)axis.x*cast(f64)origin.x)+abs(cast(f64)axis.y*cast(f64)origin.y)+abs(cast(f64)axis.z*cast(f64)origin.z)};}
 wh_side :: (a:Point,b:Point,origin:Point)->WhPlane #effects(all) {out:=wh_plane(add(a,b),origin,0);out.ax=abs(cast(f64)a.x)+abs(cast(f64)b.x);out.ay=abs(cast(f64)a.y)+abs(cast(f64)b.y);out.az=abs(cast(f64)a.z)+abs(cast(f64)b.z);out.aw=out.ax*abs(cast(f64)origin.x)+out.ay*abs(cast(f64)origin.y)+out.az*abs(cast(f64)origin.z);return out;}
 wh_planes :: (u:[]f32,out:[]WhPlane,shadow:bool) #effects(all) {
- if shadow {origin:=v3(u[92],u[93],u[94]);for k:0..<3 {axis:=scan_axis(u,80+k*4);out[k*2]=wh_plane(axis,origin,u[96]);out[k*2+1]=wh_plane(times(axis,-1),origin,u[96]);}}
+ if shadow {origin:=v3(u[92],u[93],u[94]);for k:0..<3 {axis:=scan_axis(u,80+k*4);extent:=u[96]*(ifx k==2 then 2.0f32 else 1.0f32);out[k*2]=wh_plane(axis,origin,extent);out[k*2+1]=wh_plane(times(axis,-1),origin,extent);}}
  else {origin:=v3(u[8],u[9],u[10]);forward:=scan_axis(u,20);right:=times(scan_axis(u,12),u[15]);up:=times(scan_axis(u,16),u[19]);out[0]=wh_plane(forward,origin,-0.05);out[1]=wh_plane(times(forward,-1),origin,300);out[2]=wh_side(forward,right,origin);out[3]=wh_side(forward,times(right,-1),origin);out[4]=wh_side(forward,up,origin);out[5]=wh_side(forward,times(up,-1),origin);}
 }
 scan_axis :: (u:[]f32,k:int)->Point #effects(all) {return v3(u[k],u[k+1],u[k+2]);}

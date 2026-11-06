@@ -244,6 +244,30 @@ for an admin only and publishes the list as the realm's world.
 
 ## Adding a realm
 
+### Legacy optional geometry assets, companion v1
+
+Valley World's private full-source pages use an optional scalar companion;
+realms without these exports retain the original storage/index ABI. It is
+separate from the shared renderer's resource ledger and pack transport.
+
+| Export | Meaning |
+| --- | --- |
+| `coaxial_asset_optional_v1(asset)` | A nonzero result permits the realm's complete root scene to render before this asset arrives; a 16-byte GPU placeholder occupies its storage binding. |
+| `coaxial_asset_extent_v1(asset, held, incoming)` | Coax admits each stream chunk before retention; false cancels the stream. |
+| `coaxial_asset_digest_v1(state, asset)` | Zero means ordinary legacy loading; otherwise a writable 32-byte SHA-256 destination inside Wasm memory. |
+| `coaxial_asset_admit_v1(state, asset, bytes)` | Coax accepts the complete native SHA-256 and exact byte length before GPU upload/publication. |
+| `coaxial_asset_index_v1(asset)` | Nonzero adds INDEX usage to this immutable storage asset. |
+| `coaxial_draw_index_v1(state, draw, shadow, field)` | Field0 returns the index asset ordinal or−1 for the original index buffer; field1 returns the physical first-index word. Shadow is0 for color and1 for the independent shadow list. |
+
+`coaxial_asset_ready(state, asset, bytes)` remains the complete-arrival callback;
+failure receives0. The draw record's logical first word is interpreted only
+by Coax. The shader must not access an optional placeholder before Coax has
+admitted and selected its complete page. Source fetch/digest completion is
+fenced to its engine and GPU owner. Replacement reuploads already admitted
+pages before restoring the old state; pages still pending cannot block root
+recovery or publish from their retired owner. See the
+[physical source-detail checks](../verification/valley-lab-detail-2026-11-06/README.md).
+
 1. Its module: `<module>.coax` with checks, `<module>-face.c`, `<module>.wgsl`; a `wasm.sh` line in `build.sh`, and its size budget in `apps/openagents-web/wasm-budgets.txt` (`<module> BYTES`, its release size with about 5% room; `build.sh` stops at once on a module without a line, and the build stops a module over its budget and names its biggest functions).
 2. Its pack: `verse/packs/<realm>.json`, compiled with `pack_realm.py` (above).
 3. Its world in `realms.json`: listed `false` until launch, assets `pack:...`, its `style` and `clock`.

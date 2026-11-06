@@ -1,0 +1,22 @@
+// Rank source mesh types around the basin spawn from the admitted catalogue, never asset names.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../verse/valley/world-catalog.coax";
+#test "detail rank measures sphere proximity without negative inside distances" {#assert detail_distance(v3(0,0,0),v3(3,4,0),2)==3 && detail_distance(v3(0,0,0),v3(0,1,0),2)==0;}
+detail_distance :: (a:Point,b:Point,r:f32)->f32 {d:=sqrt(dot(sub(a,b),sub(a,b)))-r;return ifx d<0 then 0.0f32 else d;}
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {return 2;}
+ b:[33554432]u8;text:[33554432]u8;nodes:[1048576]JvNode;j:[1]Jv;nc:=fs_read(args_at(args[..],0),b[..]);nt:=fs_read(args_at(args[..],1),text[..]);#assert nc>10142592 && nt>0 && jv_parse(j[..],cast(string)text[0..<nt],nodes[..]);
+ rig:=10142528;n:=cast(int)scan_u32(b[..],rig+8);core:=rig+64+66049*4+n*32;#assert core<=nc && vw_catalog_valid(b[rig..<core]);
+ meshes:=jv_get(j[0],0,"meshes");instances:=jv_get(j[0],0,"instances");nm:=jv_len(j[0],meshes);#assert nm<=512 && n==jv_len(j[0],instances);
+ best:[512]f32;ordinal:[512]int;radius:[512]f32;centers:[512]Point;for k:0..<nm {best[k]=1000000;}
+ spawn:=v3(2,scan_float(b[..],rig+64+(103*257+114)*4),-9);
+ for k:0..<n {at:=rig+64+66049*4+k*32;p:=scan_point(b[..],at+16);r:=scan_float(b[..],at+28);if r>8 {continue;}
+  row:=jv_at(j[0],instances,k);path:=jv_raw(j[0],jv_get(j[0],row,"mesh"));m:= -1;for q:0..<nm {item:=jv_at(j[0],meshes,q);if jv_raw(j[0],jv_get(j[0],item,"path"))==path {m=q;break;}}#assert m>=0;
+  distance:=detail_distance(spawn,p,r);if distance<best[m] {best[m]=distance;ordinal[m]=k;radius[m]=r;centers[m]=p;}
+ }
+ for k:0..<20 {pick:= -1;for m:0..<nm {if pick<0 || best[m]<best[pick] {pick=m;}}if pick<0 || best[pick]>100000 {break;}row:=jv_at(j[0],meshes,pick);p:=centers[pick];print("mesh=% instance=% surface_distance=% radius=% center=(%,%,%) %\n",pick,ordinal[pick],best[pick],radius[pick],p.x,p.y,p.z,jv_raw(j[0],jv_get(j[0],row,"path")));best[pick]=1000000;
+ }return 0;
+}

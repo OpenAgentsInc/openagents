@@ -1,0 +1,2 @@
+Source world ready; checking source page
+PASS --held-recover: complete root renders while pages wait; only current complete pages replace it

@@ -28,7 +28,12 @@ EXPORT("coaxial_blur") void blur(uint32_t p){canyon_blur(canyon(p));}
 EXPORT("coaxial_scene_ready") uint32_t ready(uint32_t p){return state(p)->loaded;}
 EXPORT("coaxial_asset") uint32_t asset(uint32_t p,int32_t i,uint32_t n){(void)p;return i==0&&n<=sizeof(catalog)&&n<=(uint32_t)world_catalog_capacity()?(uint32_t)(uintptr_t)catalog:0;}
 EXPORT("coaxial_asset_capacity") uint32_t capacity(uint32_t p,int32_t i){(void)p;return i==0?sizeof(catalog):0;}
-EXPORT("coaxial_asset_ready") void loaded(uint32_t p,int32_t i,uint32_t n){if(i==0){catalog_used=n;world_catalog(view(p),(coax_v_u8){catalog,n});}else world_asset(view(p),i,n);}
+EXPORT("coaxial_asset_ready") void loaded(uint32_t p,int32_t i,uint32_t n){if(i==0){catalog_used=n;world_catalog(view(p),(coax_v_u8){catalog,n});}else if(i>=4&&i<=5)world_detail_asset(view(p),i-4,n);else world_asset(view(p),i,n);}
+EXPORT("coaxial_asset_digest_v1") uint32_t asset_digest(uint32_t p,int32_t i){return i>=4&&i<=5?(uint32_t)(uintptr_t)state(p)->detail_digest.e[i-4].e:0;}
+EXPORT("coaxial_asset_admit_v1") uint32_t asset_admit(uint32_t p,int32_t i,uint32_t n){return i>=4&&i<=5?world_detail_gate(view(p),i-4,n):1;}
+EXPORT("coaxial_asset_extent_v1") uint32_t asset_extent(int32_t i,int32_t held,int32_t n){return i>=4&&i<=5?detail_extent(i-4,held,n):0;}
+EXPORT("coaxial_asset_index_v1") uint32_t asset_index(int32_t i){return i>=4&&i<=5;}
+EXPORT("coaxial_asset_optional_v1") uint32_t asset_optional(int32_t i){return i>=4&&i<=5;}
 EXPORT("coaxial_draws") uint32_t draws(uint32_t p){return (uint32_t)(uintptr_t)state(p)->draws.e;}
 EXPORT("coaxial_draw_count") uint32_t draw_count(uint32_t p){return state(p)->loaded?(uint32_t)state(p)->draw_count:0u;}
 EXPORT("coaxial_shadow_draws_v1") uint32_t shadow_draws(uint32_t p){return (uint32_t)(uintptr_t)state(p)->shadow_draws.e;}
@@ -38,6 +43,7 @@ EXPORT("coaxial_store") uint32_t store(uint32_t p,uint32_t i){return i==0?(uint3
 EXPORT("coaxial_store_bytes") uint32_t store_bytes(uint32_t p,uint32_t i){(void)p;return i==0?334*12*4:0;}
 EXPORT("coaxial_store_cap") uint32_t store_cap(uint32_t i){return i==0?334*12*4:0;}
 EXPORT("coaxial_store_version") uint32_t store_version(uint32_t p,uint32_t i){return i==0?(uint32_t)state(p)->canyon.e[0].echo.e[0].revision:0;}
+EXPORT("coaxial_draw_index_v1") int32_t draw_index(uint32_t p,uint32_t i,uint32_t shadow,uint32_t field){return (int32_t)world_draw_index(view(p),i,shadow!=0,field);}
 EXPORT("coaxial_guard_probe") int32_t probe(uint32_t p,int32_t f){return (int32_t)world_probe(view(p),f);}
 EXPORT("coaxial_action") int32_t action(uint32_t p){return state(p)->canyon.e[0].action;}
 EXPORT("coaxial_outbox") uint32_t outbox(uint32_t p){return (uint32_t)(uintptr_t)state(p)->canyon.e[0].outbox.e;}

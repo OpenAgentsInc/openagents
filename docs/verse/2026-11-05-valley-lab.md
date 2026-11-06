@@ -42,6 +42,21 @@ Nanite source. Collision uses a bounded one-metre sampled top surface with
 explicit holes, rather than exact triangles and overhangs. The full source and
 verification scope is in the [world slice receipt](../verification/valley-lab-world-2026-11-06/README.md).
 
+## Landed: original full-source detail in the walking world (2026-11-06)
+
+The first source-model GPU page replaces one nearby sandstone instance's
+23,562 fallback triangles with all1,997,616 original triangles. K cycles the
+fallback, bounded Q16 page(default) and exact F32 reference; L shows the
+selected instance. Three walking views show additional detail, independently
+compared with the source and full precision GPU output. Missing, corrupt and
+held pages preserve the complete original scene. Both loaded pages and held
+requests have physical device-recovery checks.
+
+The source inventory reveals253,525,214 input triangles across130 types;
+only one type/instance is promoted here. Source-detail clusters, adaptive
+error-qualified LOD, Hi-Z selection, page eviction and shared/native renderer
+qualification remain open. See the [source-detail receipt](../verification/valley-lab-detail-2026-11-06/README.md).
+
 ## Landed: graybox, one rock and its full-detail baseline
 
 The initial controller/graybox landed in `640adf8deb`. The next slice adds

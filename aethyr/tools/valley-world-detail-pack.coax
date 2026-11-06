@@ -1,0 +1,42 @@
+// Full source glTF -> one bounded VDP1 page. No original pack bytes are rewritten.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../verse/valley/scan.coax";
+#load "../../verse/valley/detail-codec.coax";
+dp_at :: (j:Jv,id:int)->int {return jv_at(j,jv_get(j,0,"accessors"),id);}
+dp_offset :: (j:Jv,id:int)->int {a:=dp_at(j,id);v:=jv_at(j,jv_get(j,0,"bufferViews"),jv_int(j,jv_get(j,a,"bufferView"),-1));#assert jv_get(j,v,"byteStride")<0;return jv_int(j,jv_get(j,v,"byteOffset"),0)+jv_int(j,jv_get(j,a,"byteOffset"),0);}
+dp_hash :: (key:[]u32)->int {x:u64=1469598103934665603;for k:0..<key.count {x=mul_wrap(x^cast(u64)key[k],1099511628211);x=x^(x>>29);}return cast(int)(x&4194303);}
+#test "detail tuple hash includes all eight exact source words" {a:=[8]u32.[0,1,2,3,4,5,6,7];base:=dp_hash(a[..]);for k:0..<8 {a[k]^=0x8000;#assert dp_hash(a[..])!=base;a[k]^=0x8000;}}
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])<4 || args_count(args[..])>5 {return 2;}root:=args_at(args[..],0);base:=args_at(args[..],1);source_root:=args_at(args[..],2);dest:=args_at(args[..],3);reference:=args_count(args[..])==5 && args_at(args[..],4)=="raw";stride:=ifx reference then 32 else 16;
+ text:[33554432]u8;nodes:[1048576]JvNode;j:[1]Jv;path:[4096]u8;n:=fs_read(fs_join(root,"mesh003.gltf",path[..]),text[..]);#assert n>0 && jv_parse(j[..],cast(string)text[0..<n],nodes[..]);doc:=j[0];mesh:=jv_at(doc,jv_get(doc,0,"meshes"),0);pr:=jv_get(doc,mesh,"primitives");#assert jv_len(doc,pr)==1;pr=jv_at(doc,pr,0);attrs:=jv_get(doc,pr,"attributes");pos:=jv_int(doc,jv_get(doc,attrs,"POSITION"),-1);norm:=jv_int(doc,jv_get(doc,attrs,"NORMAL"),-1);uv:=jv_int(doc,jv_get(doc,attrs,"TEXCOORD_0"),-1);ind:=jv_int(doc,jv_get(doc,pr,"indices"),-1);
+ ni:=jv_int(doc,jv_get(doc,dp_at(doc,ind),"count"),0);nv:=jv_int(doc,jv_get(doc,dp_at(doc,pos),"count"),0);#assert ni>0 && ni%3==0 && ni<=12000000 && nv>0;#assert jv_int(doc,jv_get(doc,dp_at(doc,ind),"componentType"),0)==5125;
+ raw:[268435456]u8;catalog:[33554432]u8;out:[67108864]u8;index:[48000000]u8;table:[4194304]u32;representative:[2000000]u32;
+ buffer:=jv_at(doc,jv_get(doc,0,"buffers"),0);nr:=fs_read(fs_join(root,jv_raw(doc,jv_get(doc,buffer,"uri")),path[..]),raw[..]);#assert nr>0;cn:=fs_read(base,catalog[..]);#assert cn>10142592;
+ po:=dp_offset(doc,pos);no:=dp_offset(doc,norm);uo:=dp_offset(doc,uv);io:=dp_offset(doc,ind);#assert po+nv*12<=nr && no+nv*12<=nr && uo+nv*8<=nr && io+ni*4<=nr;
+ low:=v3(100000,100000,100000);high:=v3(-100000,-100000,-100000);ul:[2]f32;uh:[2]f32;ul[0]=100000;ul[1]=100000;uh[0]= -100000;uh[1]= -100000;
+ for k:0..<nv {p:=scan_point(raw[..],po+k*12);#assert finite3(p);low=v3(lo(low.x,p.x),lo(low.y,p.y),lo(low.z,p.z));high=v3(hi(high.x,p.x),hi(high.y,p.y),hi(high.z,p.z));for axis:0..<2 {value:=scan_float(raw[..],uo+k*8+axis*4);ul[axis]=lo(ul[axis],value);uh[axis]=hi(uh[axis],value);}}
+ unique:=0;for corner:0..<ni {vertex:=cast(int)scan_u32(raw[..],io+corner*4);#assert vertex<nv;p:=scan_point(raw[..],po+vertex*12);normal:=scan_point(raw[..],no+vertex*12);#assert finite3(normal) && dot(normal,normal)>0.5;
+  key:[8]u32;for lane:0..<8 {at:=ifx lane<3 then po+vertex*12+lane*4 else ifx lane<6 then no+vertex*12+(lane-3)*4 else uo+vertex*8+(lane-6)*4;key[lane]=scan_u32(raw[..],at);}bucket:=dp_hash(key[..]);found:= -1;
+  while table[bucket]!=0 {id:=cast(int)table[bucket]-1;old:=cast(int)representative[id];equal:=true;for lane:0..<8 {at:=ifx lane<3 then po+old*12+lane*4 else ifx lane<6 then no+old*12+(lane-3)*4 else uo+old*8+(lane-6)*4;if scan_u32(raw[..],at)!=key[lane] {equal=false;}}if equal {found=id;break;}bucket=(bucket+1)&4194303;}
+  if found<0 {#assert unique<2000000 && 128+(unique+1)*stride<=out.count;found=unique;table[bucket]=cast(u32)(unique+1);representative[unique]=cast(u32)vertex;
+   if reference {for lane:0..<8 {scan_put(out[..],128+unique*32+lane*4,key[lane]);}}else {encoded:=[4]u32.[dq_quant(p.x,low.x,high.x)|(dq_quant(p.y,low.y,high.y)<<16),dq_quant(p.z,low.z,high.z),dq_encode_normal(normal.x,normal.y,normal.z),dq_quant(scan_float(raw[..],uo+vertex*8),ul[0],uh[0])|(dq_quant(scan_float(raw[..],uo+vertex*8+4),ul[1],uh[1])<<16)];for lane:0..<4 {scan_put(out[..],128+unique*16+lane*4,encoded[lane]);}}unique+=1;
+  }
+  base_id:int=ifx reference then 12000000 else 8000000;scan_put(index[..],corner*4,cast(u32)(base_id+found));
+ }
+ indices:=128+unique*stride;bytes:=indices+ni*4;#assert bytes<=out.count;for k:0..<ni*4 {out[indices+k]=index[k];}
+ // Bind by the complete SDK source identity, never a batch's local ordinal.
+ n=fs_read(fs_join(root,"mesh-003-source.json",path[..]),text[..]);#assert n>0 && jv_parse(j[..],cast(string)text[0..<n],nodes[..]);identity:[1024]u8;row:=jv_at(j[0],0,0);id:=jv_raw(j[0],jv_get(j[0],row,"path"));idn:=id.count;for c,k:id {identity[k]=c;}
+ n=fs_read(fs_join(source_root,"world.json",path[..]),text[..]);#assert n>0 && jv_parse(j[..],cast(string)text[0..<n],nodes[..]);doc=j[0];instances:=jv_get(doc,0,"instances");count:=cast(int)scan_u32(catalog[..],10142528+8);#assert jv_len(doc,instances)==count;first:int;fallback:int;found:=false;
+ for k:0..<count {row=jv_at(doc,instances,k);if jv_raw(doc,jv_get(doc,row,"mesh"))==cast(string)identity[0..<idn] {at:=10142528+64+66049*4+k*32;first=cast(int)scan_u32(catalog[..],at);fallback=cast(int)scan_u32(catalog[..],at+4);found=true;break;}}#assert found;
+ material:[1024]u8;mn:=0;meshes:=jv_get(doc,0,"meshes");for k:0..<jv_len(doc,meshes) {row=jv_at(doc,meshes,k);if jv_raw(doc,jv_get(doc,row,"path"))==cast(string)identity[0..<idn] {list:=jv_get(doc,row,"materials");#assert jv_len(doc,list)==1;value:=jv_raw(doc,jv_at(doc,list,0));mn=value.count;for c,q:value {material[q]=c;}break;}}#assert mn>0;
+ n=fs_read(fs_join(source_root,"materials.json",path[..]),text[..]);#assert n>0 && jv_parse(j[..],cast(string)text[0..<n],nodes[..]);doc=j[0];list:=jv_get(doc,0,"materials");mid:= -1;for k:0..<jv_len(doc,list) {row=jv_at(doc,list,k);if jv_raw(doc,jv_get(doc,row,"path"))==cast(string)material[0..<mn] {mid=k+1;}}#assert mid>0;
+ for value,k:[8]u32.[0x31504456,1,cast(u32)(ifx reference then 2 else 1),cast(u32)unique,cast(u32)ni,128,cast(u32)indices,cast(u32)bytes] {scan_put(out[..],k*4,value);}
+ scan_write_point(out[..],32,low);scan_write_point(out[..],44,high);for axis:0..<2 {scan_put(out[..],56+axis*4,f32_bits(ul[axis]));scan_put(out[..],64+axis*4,f32_bits(uh[axis]));}
+ e:=v3(dq_bound(low.x,high.x),dq_bound(low.y,high.y),dq_bound(low.z,high.z));scan_put(out[..],72,f32_bits(ifx reference then 0.0f32 else sqrt(dot(e,e))*1.000001));scan_put(out[..],76,f32_bits(ifx reference then 0.0f32 else 0.0002f32));scan_put(out[..],80,f32_bits(ifx reference then 0.0f32 else hi(dq_bound(ul[0],uh[0]),dq_bound(ul[1],uh[1]))));scan_put(out[..],84,cast(u32)first);scan_put(out[..],88,cast(u32)fallback);
+ scan_put(out[..],92,cast(u32)mid);digest:=asset_id(cast(string)raw[0..<nr]);for k:0..<8 {for q:0..<4 {out[96+k*4+q]=cast,trunc(u8)(digest.words[k]>>cast(u32)(24-q*8));}}
+ #assert fs_write(dest,cast(string)out[0..<bytes]);print("VDP1 source_vertices=% indexed_corners=% unique_source_vertices=% bytes=% first=% fallback=% material=% error_metres=%\n",nv,ni,unique,bytes,first,fallback,mid,ifx reference then 0.0f32 else sqrt(dot(e,e))*1.000001);return 0;
+}

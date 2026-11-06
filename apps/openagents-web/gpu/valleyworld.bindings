@@ -1,7 +1,9 @@
 u 0 0 uniform 32
 vertices 1 0
-bones 1 1
-sheets 1 2
-sheet 1 3
+detail 1 1
+reference 1 2
+bones 1 3
+sheets 1 4
+sheet 1 5
 shadow_map 2 0
 shadow_cmp 2 1

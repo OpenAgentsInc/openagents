@@ -1,0 +1,55 @@
+// A single pinned geometry page; the complete original scene remains resident as its fallback.
+#load "detail-policy.coax";
+#load "../../aethyr/points.coax";
+#authority;
+DetailState :: struct {ready:[2]bool;mode:int=1;revision:int;chosen:int= -1;refused:int;}
+DetailView :: struct {eye:Point;forward:Point=Point.{x=1};right:Point=Point.{y=1};up:Point=Point.{z=1};sx:f32=1;sy:f32=1;}
+#test "detail source choice never publishes a partial page and falls back while raw is missing" {
+ s:[1]DetailState;#assert detail_effective(s[..])== -1;s[0].ready[0]=true;#assert detail_effective(s[..])==0;s[0].mode=2;#assert detail_effective(s[..])==0;s[0].ready[1]=true;#assert detail_effective(s[..])==1;s[0].mode=0;#assert detail_effective(s[..])== -1;
+ s[0].mode=1;s[0].ready[1]=false;bad:=AssetId.{};#assert !detail_arrive(s[..],0,bad,1) && !s[0].ready[0] && s[0].refused==1 && s[0].revision==1;#assert !detail_arrive(s[..],2,bad,1) && !detail_arrive(s[..],-1,bad,1) && s[0].refused==1;
+ for k:0..<2 {#assert detail_arrive(s[..],k,detail_id(k),detail_info(k).bytes) && s[0].ready[k];}#assert s[0].revision==3;
+ #assert detail_arrive(s[..],0,detail_id(0),detail_info(0).bytes) && s[0].revision==3;
+}
+#test "detail proximity retains one source instance with an enter exit hysteresis" {
+ s:[1]DetailState;source:[12]u32;bounds:[12]f32;for k:0..<3 {source[k*4]=7614858;source[k*4+1]=70686;bounds[k*4]=cast(f32)(5+k*5);bounds[k*4+3]=1;}source[8]=12;v:=DetailView.{};
+ #assert detail_choose(s[..],source[..],bounds[..],v)==0;s[0].chosen=1;#assert detail_choose(s[..],source[..],bounds[..],v)==1;
+ v.eye=v3(-20,0,0);#assert detail_choose(s[..],source[..],bounds[..],v)== -1;s[0].chosen= -1;v.eye=v3(23,0,0);v.forward.x= -1;#assert detail_choose(s[..],source[..],bounds[..],v)==1;
+ #assert detail_distance2(bounds[..],1,v3(1,2,3))==94;s[0].chosen=0;v.eye.x=27;#assert detail_choose(s[..],source[..],bounds[..],v)==0;
+ s[0].chosen= -1;v.eye.x=23;#assert detail_choose(s[..],source[0..<4],bounds[..],v)==0;v.eye.x=23.01;#assert detail_choose(s[..],source[0..<4],bounds[..],v)== -1;
+ s[0].chosen=3;v=DetailView.{};#assert detail_choose(s[..],source[..],bounds[..],v)==0;bounds[7]=6;s[0].chosen= -1;#assert detail_choose(s[..],source[..],bounds[..],v)==1;
+}
+#test "detail candidates face the camera and their centres lie in its viewport" {v:=DetailView.{};#assert detail_visible(v,v3(1,1,1)) && !detail_visible(v,v3(0.05,0,0)) && !detail_visible(v,v3(-1,0,0)) && !detail_visible(v,v3(1,1.01,0)) && !detail_visible(v,v3(1,-1.01,0)) && !detail_visible(v,v3(1,0,1.01)) && !detail_visible(v,v3(1,0,-1.01));v.sx=2;#assert !detail_visible(v,v3(1,0.6,0));v.sx=1;v.sy=2;#assert !detail_visible(v,v3(1,0,0.6));}
+#test "detail distance visits every independent spatial lane and placement stride" {
+ b:=[12]f32.[1,2,3,99,4,5,6,99,7,8,9,99];for k:0..<3 {#assert detail_distance2(b[..],k,v3(1,-2,3))==[3]f32.[16,67,172][k];}
+}
+#test "detail selection resolves projected centres, radii and stable ties across independent lanes" {
+ s:[1]DetailState;source:=[8]u32.[7614858,70686,123,456,7614858,70686,789,321];bounds:[12]f32;
+ // The eye is deliberately away from the origin; radius/next-record words cannot stand in for Y/Z.
+ v:=DetailView.{eye=Point.{x=2,y=3,z=4}};
+ for y:[3]f32.[-3,0,3] {for z:[3]f32.[-3,0,3] {for r:[4]f32.[0.5,1,1.5,3] {
+  bounds[0]=4;bounds[1]=3+y;bounds[2]=4+z;bounds[3]=r;bounds[4]=5;bounds[5]=3;bounds[6]=4;bounds[7]=1;
+  expected:=1;if abs(y)<=2 && abs(z)<=2 && r*r*10>4+y*y+z*z+1 {expected=0;}
+  s[0].chosen= -1;#assert detail_choose(s[..],source[..],bounds[..],v)==expected;
+  s[0].chosen=0;#assert detail_choose(s[..],source[..],bounds[..],v)==ifx abs(y)<=2 && abs(z)<=2 then 0 else 1;
+ }}}
+ bounds=[12]f32.[3,3,4,1,3,3,4,1,0,0,0,0];s[0].chosen= -1;#assert detail_choose(s[..],source[..],bounds[..],v)==1;
+ // The score's denominator changes the winner: 1/(4+1) < 2.25/(9+1).
+ bounds=[12]f32.[4,3,4,1,5,3,4,1.5,0,0,0,0];#assert detail_choose(s[..],source[..],bounds[..],v)==1;
+ for y:[3]f32.[-4,0,4] {for z:[3]f32.[-4,0,4] {
+  bounds=[12]f32.[4,3,4,1,5,3+y,4+z,1,0,0,0,0];s[0].chosen=1;
+  #assert detail_choose(s[..],source[..],bounds[..],v)==ifx abs(y)<=3 && abs(z)<=3 then 1 else 0;
+ }}
+ source[0]=123;bounds=[12]f32.[4,3,4,1,5,7,4,1,0,0,0,0];s[0].chosen= -1;#assert detail_choose(s[..],source[..],bounds[..],v)== -1;
+}
+detail_effective :: (s:[]DetailState)->int #export_c #effects(all) {if s[0].mode==0 {return -1;}if s[0].mode==2 && s[0].ready[1] {return 1;}return ifx s[0].ready[0] then 0 else -1;}
+detail_arrive :: (s:[]DetailState,slot:int,id:AssetId,bytes:int)->bool #export_c #effects(all) {
+ if slot<0 || slot>1 {return false;}
+ if !detail_accept(slot,id,bytes) {s[0].ready[slot]=false;s[0].revision+=1;s[0].refused+=1;return false;}if !s[0].ready[slot] {s[0].ready[slot]=true;s[0].revision+=1;}return true;
+}
+detail_distance2 :: (bounds:[]f32,k:int,p:Point)->f32 #effects(all) {x:=bounds[k*4]-p.x;y:=bounds[k*4+1]-p.y;z:=bounds[k*4+2]-p.z;return x*x+y*y+z*z;}
+detail_visible :: (v:DetailView,p:Point)->bool #effects(all) {q:=sub(p,v.eye);z:=dot(q,v.forward);return z>0.05 && abs(dot(q,v.right))*v.sx<=z && abs(dot(q,v.up))*v.sy<=z;}
+detail_choose :: (s:[]DetailState,source:[]u32,bounds:[]f32,v:DetailView)->int #effects(all) {
+ n:=source.count/4;old:=s[0].chosen;
+ if old>=0 && old<n && source[old*4]==cast(u32)DETAIL_FALLBACK_FIRST && source[old*4+1]==cast(u32)DETAIL_FALLBACK_COUNT && detail_visible(v,v3(bounds[old*4],bounds[old*4+1],bounds[old*4+2])) && detail_distance2(bounds,old,v.eye)<=22*22 {return old;}
+ best:f32= -1;chosen:= -1;for k:0..<n {if source[k*4]!=cast(u32)DETAIL_FALLBACK_FIRST || source[k*4+1]!=cast(u32)DETAIL_FALLBACK_COUNT || !detail_visible(v,v3(bounds[k*4],bounds[k*4+1],bounds[k*4+2])) {continue;}distance:=detail_distance2(bounds,k,v.eye);score:=bounds[k*4+3]*bounds[k*4+3]/(distance+1);if distance<=18*18 && score>=best {best=score;chosen=k;}}return chosen;
+}

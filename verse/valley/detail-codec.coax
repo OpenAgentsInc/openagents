@@ -1,0 +1,17 @@
+// VDP1: 16-byte vertices. Q16 position/UV, octahedral Q16 normal; no triangle removal.
+DqNormal :: struct {x:f32;y:f32;z:f32;}
+#test "detail quantization preserves endpoints degenerate axes and the half-cell error" {
+ #assert dq_quant(-2,-2,4)==0 && dq_quant(4,-2,4)==65535 && dq_quant(2,2,2)==0;
+ #assert dq_decode(0,-2,4)== -2 && dq_decode(65535,-2,4)==4;
+ for k:0..<100 {p:=cast(f32)k/10-2;q:=dq_quant(p,-2,8);#assert abs(p-dq_decode(q,-2,8))<=dq_bound(-2,8);}
+ #assert dq_quant(-3,-2,4)==0 && dq_quant(5,-2,4)==65535;
+}
+#test "detail normal coding retains both hemispheres and all signed axes" {
+ for x:-2..<3 {for y:-2..<3 {for z:-2..<3 {if x==0 && y==0 && z==0 {continue;}a:=cast(f32)x;b:=cast(f32)y;c:=cast(f32)z;length:=sqrt(a*a+b*b+c*c);p:=dq_normal(dq_encode_normal(a,b,c));#assert abs(p.x-a/length)<0.0002 && abs(p.y-b/length)<0.0002 && abs(p.z-c/length)<0.0002;}}}
+}
+dq_decode :: (q:u32,low:f32,high:f32)->f32 {return low+(high-low)*(cast(f32)q/65535);}
+dq_quant :: (p:f32,low:f32,high:f32)->u32 {if high<=low {return 0;}q:=(cast(f64)p-cast(f64)low)/(cast(f64)high-cast(f64)low);if q<0 {q=0;}if q>1 {q=1;}return cast(u32)floor(q*65535+0.5);}
+dq_bound :: (low:f32,high:f32)->f32 {m:=ifx abs(low)>abs(high) then abs(low) else abs(high);exact:=(cast(f64)high-cast(f64)low)/131070+0.00000095367431640625*(cast(f64)m+abs(cast(f64)high-cast(f64)low)+1);out:=cast(f32)exact;if cast(f64)out<exact {out=f32_from_bits(f32_bits(out)+1);}return out;}
+dq_sign :: (x:f32)->f32 {return ifx x>=0 then 1.0f32 else -1.0f32;}
+dq_encode_normal :: (x:f32,y:f32,z:f32)->u32 {sum:=abs(x)+abs(y)+abs(z);a:=x/sum;b:=y/sum;if z<0 {a=(1-abs(y/sum))*dq_sign(x);b=(1-abs(x/sum))*dq_sign(y);}return dq_quant(a,-1,1)|(dq_quant(b,-1,1)<<16);}
+dq_normal :: (word:u32)->DqNormal {x:=dq_decode(word&65535,-1,1);y:=dq_decode(word>>16,-1,1);z:=1-abs(x)-abs(y);t:=ifx z<0 then -z else 0.0f32;x-=t*dq_sign(x);y-=t*dq_sign(y);length:=sqrt(x*x+y*y+z*z);return DqNormal.{x=x/length,y=y/length,z=z/length};}

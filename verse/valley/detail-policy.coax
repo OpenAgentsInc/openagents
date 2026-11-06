@@ -1,0 +1,24 @@
+// Two complete immutable VDP1 artifacts, independently checked against the original source mesh.
+#load "../../aethyr/assets.coax";
+#authority;
+DETAIL_CAP :: 67108864;
+DETAIL_TAG :: 1073741824;
+DETAIL_BASE :: 8000000;
+DETAIL_FALLBACK_FIRST :: 7614858;
+DETAIL_FALLBACK_COUNT :: 70686;
+DetailInfo :: struct {bytes:int;index_word:int;indices:int;vertices:int;fallback_first:int=DETAIL_FALLBACK_FIRST;fallback_count:int=DETAIL_FALLBACK_COUNT;}
+detail_info :: (slot:int)->DetailInfo #effects(all) {return ifx slot==0 then DetailInfo.{bytes=40178400,index_word=4051752,indices=5992848,vertices=1012930} else DetailInfo.{bytes=56385280,index_word=8103472,indices=5992848,vertices=1012930};}
+detail_id :: (slot:int)->AssetId #effects(all) {return ifx slot==0 then AssetId.{words=[8]u32.[0x8f7f401b,0x6acf1dbf,0x7a2a4e69,0xffff75bd,0x03a4ca1e,0x7340f164,0xf2ef1100,0x8c45c1bd]} else AssetId.{words=[8]u32.[0x65203165,0x8f97cc10,0x3a590f8c,0x5aafa4cf,0xa838f362,0x6fe85517,0xd09d1c57,0x43576b17]};}
+#test "detail page admission binds complete Q16 and exact F32 artifacts separately" {
+ q:=AssetId.{words=[8]u32.[0x8f7f401b,0x6acf1dbf,0x7a2a4e69,0xffff75bd,0x03a4ca1e,0x7340f164,0xf2ef1100,0x8c45c1bd]};r:=AssetId.{words=[8]u32.[0x65203165,0x8f97cc10,0x3a590f8c,0x5aafa4cf,0xa838f362,0x6fe85517,0xd09d1c57,0x43576b17]};
+ for slot:0..<2 {id:=ifx slot==0 then q else r;bytes:=ifx slot==0 then 40178400 else 56385280;#assert detail_accept(slot,id,bytes) && !detail_accept(slot,id,bytes-1) && !detail_accept(slot,id,bytes+1) && !detail_accept(1-slot,id,bytes);for k:0..<8 {bad:=id;bad.words[k]^=1;#assert !detail_accept(slot,bad,bytes);}info:=detail_info(slot);#assert info.bytes==bytes && info.index_word==[2]int.[4051752,8103472][slot] && info.indices==5992848 && info.vertices==1012930 && info.fallback_first==7614858 && info.fallback_count==70686;}
+ #assert !detail_accept(-1,q,40178400) && !detail_accept(2,r,56385280) && DETAIL_CAP==67108864 && DETAIL_TAG==1073741824 && DETAIL_BASE==8000000;
+}
+detail_extent :: (slot:int,held:int,incoming:int)->bool #export_c #effects(all) {return slot>=0 && slot<2 && held>=0 && incoming>=0 && held<=detail_info(slot).bytes && incoming<=detail_info(slot).bytes-held;}
+detail_digest_id :: (b:[]u8)->AssetId #effects(all) {out:=AssetId.{};for k:0..<8 {at:=k*4;out.words[k]=(cast(u32)b[at]<<24)|(cast(u32)b[at+1]<<16)|(cast(u32)b[at+2]<<8)|cast(u32)b[at+3];}return out;}
+#test "detail effect spans are bounded before retention and digest byte order is exact" {
+ for slot:0..<2 {n:=detail_info(slot).bytes;#assert detail_extent(slot,0,n) && detail_extent(slot,n,0) && detail_extent(slot,n-1,1) && !detail_extent(slot,n,1) && !detail_extent(slot,n+1,0) && !detail_extent(slot,-1,0) && !detail_extent(slot,0,-1);}
+ #assert !detail_extent(-1,0,0) && !detail_extent(2,0,0);
+ b:[32]u8;for k:0..<32 {b[k]=cast(u8)(k+1);}id:=detail_digest_id(b[..]);for k:0..<8 {#assert id.words[k]==cast(u32)(k*4+1)*16777216+cast(u32)(k*4+2)*65536+cast(u32)(k*4+3)*256+cast(u32)(k*4+4);}
+}
+detail_accept :: (slot:int,id:AssetId,bytes:int)->bool #effects(all) {return slot>=0 && slot<=1 && bytes==detail_info(slot).bytes && asset_same(id,detail_id(slot));}
