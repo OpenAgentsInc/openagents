@@ -33,7 +33,7 @@ RLR_AUTH_REQUIRED :: "auth-required:";
   #assert in.id[0] == RLR_REAL_ID0 && in.id[31] == RLR_REAL_ID31;
   #assert rl_input(r[..], g, in) == RL_DELIVER && rl_input(r[..], g, in) == RL_DUPLICATE;
 }
-#test "a changed signature is read but not verified, and relay.coax counts it forged" {
+#test "a changed signature is read but not verified, and relay.coax counts it forged" #steps 100000000 {
   r: [1] Relay; g := rl_open_at(r[..], 1000); slot := rl_subscribe(r[..]);o := rl_next(r[..], 1000);
   frame: [4096] u8; scratch: [4096] u8;
   in := rl_read(rlr_event_frame("s0.1", RLR_BAD_SIG, frame[..]), scratch[..], false);
