@@ -1,0 +1,17 @@
+coax: note[E0400]: compile-time steps: 21749884 of 28000000 used (77%), above three quarters of the limit; more than 28000000 fails with E0400
+  top users of compile-time steps:
+    3325140 steps  aethyr/query.coax:59:1  in 'query_finite' (255780 times)
+    2853176 steps  aethyr/walk.coax:399:1  in 'step' (8820 times)
+    2143260 steps  aethyr/locomotion.coax:72:1  in 'locomotion_profile_ok' (8820 times)
+    1852200 steps  aethyr/locomotion.coax:69:1  in 'locomotion_finite' (132300 times)
+    1058400 steps  aethyr/collide.coax:164:1  in 'collide_move' (8820 times)
+  fix: do less work in 'query_finite', split the check, or give it a larger budget with a larger #steps N on the check
+coax: note[E0400]: compile-time steps: 19343034 of 20000000 used (96%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    15744112 steps  aethyr/render/package.coax:178:1  in 'render_package_spirv_bytes' (30 times)
+    573375 steps  coax/lib/json/json.coax:258:1  in 'jv_raw_eq' (9525 times)
+    477240 steps  coax/lib/json/json.coax:165:1  in 'jv_string_end' (1650 times)
+    360975 steps  coax/lib/json/json.coax:77:1  in 'jv_parse' (15 times)
+    291750 steps  coax/lib/crypto/sha256-kernel.coax:63:1  in 'S_compress' (30 times)
+  fix: do less work in 'render_package_spirv_bytes', split the check, or give it a larger budget with #steps N on the check (or coax test --steps N for every check)
+wasm.sh: villa.wasm: 11.2 s: Coax to C 8.1 s (1/4 cached), clang 1.4 s (3/6 cached), link 0.7 s, wasm-opt 0.7 s; 501221 bytes; report /Users/christopherdavid/work/openagents-12610-ch078/apps/openagents-web/build/.c/villa.timings.json

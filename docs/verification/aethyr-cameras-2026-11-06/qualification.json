@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "issue": 12610,
+  "chapter": 78,
+  "source_commit": "a5543ba23e7b38fa8c6104b8c0b92292c3b1ac63",
+  "compiler": {
+    "version": "Coax 0.52.0",
+    "sha256": "23dfc150fa0d21dd199b2da382b9c2dd0762e8183e3f576657fe1341d327117e"
+  },
+  "target": "Darwin arm64 native CPU; headless Chrome Metal Wasm pages",
+  "sources": {
+    "aethyr/shot/blend.coax": "47323a4c50d66eda154feedfe0875f8e04be9d4b01cea0d52b12b3774b350125",
+    "aethyr/shot/legacy.coax": "ca70111e2aa444e696e2ccc9ad987b9b66a614490b5a3066fedee1c14d394503",
+    "aethyr/shot/flight.coax": "773aa5172f06bb109ec81b3a03329501b3e0b0bee4abf0c5ca9456b01f5e5af5",
+    "aethyr/shot/closeup.coax": "fed9a45f9be6acdbfd72291c7b23efe6d6e2ed45207b2919029b0fa4a5cd56bb",
+    "verse/planetary-villa/arrival.coax": "3687aec9b07fb013c7be5670d1eddf2f0db1dda6c949408d3664435263fe5479",
+    "aethyr/tests/camera-take.coax": "f1b88f6c221c89cde3dffb5ca6ae8cf898720c4b66533ab7223a4e12ab4effa7",
+    "aethyr/examples/a-flight-and-a-flower.coax": "b25804e092635ddf18f7243c38202a5a400c8ef848580cbebece2ada1439ab81",
+    "aethyr/examples/closeup-refuses-projection.coax": "a8e24f492812a57e6cbc980bac6a49312851d5477ad18156b18eafa4b25623f8",
+    "aethyr/tools/staged-clip.coax": "e73498cd85030098fedb06d46d8cd5d36824913d83b8d2be96e24a4d24972163",
+    "aethyr/tools/clip-label.coax": "84825f83118f17dc0e6eea18b385450b9af31d8b49798f82571ef0d88a7a86a3",
+    "apps/openagents-web/villa.coax": "c91c04c2dcd127194e586db99006a87f3d48bfd92068b6887bb58e3beda86679",
+    "apps/openagents-web/garden.coax": "a015e1c0196d32f29f78b8e5981e10142fe7595e2a5c74c432e46b34a8f51acd"
+  },
+  "native_examples": [
+    {
+      "source": "aethyr/examples/a-flight-and-a-flower.coax",
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "exit_status": 0,
+      "stdout_fixture": "aethyr/fixtures/a-flight-and-a-flower.out"
+    },
+    {
+      "source": "aethyr/examples/closeup-refuses-projection.coax",
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "exit_status": 2,
+      "stdout_fixture": "aethyr/fixtures/closeup-refuses-projection.out",
+      "stderr_bytes": 0
+    }
+  ],
+  "checks": {
+    "camera_take": 116,
+    "villa": 229,
+    "garden": 191
+  },
+  "root_mutants": {
+    "blend": 4,
+    "flight": 8,
+    "closeup": 19,
+    "label": 95,
+    "survivors": 0
+  },
+  "wasm": {
+    "villa": {
+      "bytes": 501221,
+      "sha256": "1af21e5cb9024b1d164f51a6904589e41524b2ad07bf46d07eab0035980f2fb1",
+      "budget": 550000
+    },
+    "garden": {
+      "bytes": 282655,
+      "sha256": "e01386c24891aa51eba73603c4cbb07fa0ca0121d679e19355d5e2dce3a9fa6e",
+      "budget": 300000
+    }
+  },
+  "drift": {
+    "profiles": [
+      "local",
+      "100",
+      "250"
+    ],
+    "raids": true,
+    "exit_status": 0,
+    "receipt": "drift.log"
+  },
+  "claim_limits": [
+    "bounded native camera take, not a full realm replay",
+    "staged page captures, not saved-session video",
+    "root mutation scopes, not full legacy mutation qualification",
+    "no production deployment"
+  ]
+}

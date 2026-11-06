@@ -1,0 +1,7 @@
+FAIL #test pointing admits the viewport edges and refuses malformed projection without a stale selection (0 ms)
+aethyr/shot/closeup.coax:17:50: error[E0406]: assertion failed
+    b:=camera_closeup_point(a,s,1,1,f32(x),f32(y));#assert b.hover==ARRANGE_PLACE;
+                                                   ^
+  note: in #test pointing admits the viewport edges and refuses malformed projection without a stale selection
+1 of 51 checks (--only 'pointing admits'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

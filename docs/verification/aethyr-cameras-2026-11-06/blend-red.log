@@ -1,0 +1,24 @@
+FAIL #test a camera blend has exact endpoints and hand-worked quarter and half shots (0 ms)
+aethyr/shot/blend.coax:10:28: error[E0406]: assertion failed
+   q:=camera_blend(a,b,0.25);#assert q.eye.x==0.828125 && q.eye.y==2.828125 && q.at.z==6.828125;
+                             ^
+  note: in #test a camera blend has exact endpoints and hand-worked quarter and half shots
+ok   #test legacy and world camera records preserve all six source components (1 case, 171 steps, 0 ms)
+ok   #test a realm's floor-relative feet become one world point, including the height (1 case, 641 steps, 0 ms)
+ok   #forall atan2 points the right way (81 cases, 10603 steps, 0 ms)
+ok   #forall wrap_angle keeps the direction (61 cases, 3662 steps, 0 ms)
+ok   #test yaw 0 faces +Z and a quarter turn faces +X (1 case, 170 steps, 0 ms)
+ok   #test vectors (1 case, 514 steps, 0 ms)
+ok   #forall settle never overshoots and is framerate-free (20 cases, 2140 steps, 0 ms)
+ok   #test world arithmetic (1 case, 1081 steps, 0 ms)
+ok   #test distances keep their units, and grid units convert exactly (1 case, 143 steps, 0 ms)
+ok   #forall a local point goes to the world and back (16 cases, 2674 steps, 0 ms)
+ok   #test a placement turns with its yaw: a quarter turn takes local +Z to world +X (1 case, 369 steps, 0 ms)
+ok   #test the Grid draws a metre as half a unit, heights too (1 case, 335 steps, 0 ms)
+ok   #test the lens sees ahead, right, up, and nothing behind its near plane (1 case, 2009 steps, 0 ms)
+ok   #test top down looks down at the feet from 22 m (1 case, 70 steps, 0 ms)
+ok   #test the free orbit sits back and right of the pivot outside, and starts at the eyes inside (1 case, 1922 steps, 0 ms)
+ok   #test a dive starts on its first shot, lands on the live one, and moves smoothly frame to frame (1 case, 26248 steps, 0 ms)
+ok   #test a dive of no length is a cut, and frames that aren't time don't move it (1 case, 1593 steps, 0 ms)
+ok   #test the helpers' edges: signed zeros, the finite range, a line just long enough, and mixing (1 case, 479 steps, 0 ms)
+19 checks, 18 passed, 1 failed

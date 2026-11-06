@@ -224,14 +224,16 @@ These fields describe the caller's setup. `--stage` and `--seed` label the
 capture; they do not inject a stage or seed into a realm. The URL and any
 `--eval` setup must actually establish it. Seed 0 below denotes the Garden's
 authored setup without an external random seed. The development `probe` URL
-holds W, advances 3.2 seconds, presses E and advances into the close-up. It
+holds W, advances 3.2 seconds, presses E and advances into the close-up.
+`at=0.1` starts its observation with a normal 0.1-second frame and retains
+normal motion; a probe without `at` requests the reduced-motion endpoint. It
 is a reproducible test setup, not a saved player's session.
 
 ```shell
 coax/web/serve.sh apps/openagents-web --static --listen 127.0.0.1:8990
 # In another terminal, use the source commit you built for COMMIT_SHA40.
 coax/web/tool.sh aethyr/tools/staged-clip.coax \
-  'http://127.0.0.1:8990/realms/garden?golden=1&probe&do=kw;t3.2;ke;t1' \
+  'http://127.0.0.1:8990/realms/garden?golden=1&probe&at=0.1&do=kw;t3.2;ke;t1' \
   /tmp/garden-close-up.mp4 --game garden --commit COMMIT_SHA40 \
   --stage close-up --seed 0 --size 960x600 --fps 30 --seconds 1 \
   --frames /tmp/garden-close-up-frames
@@ -239,9 +241,10 @@ coax/web/tool.sh aethyr/tools/staged-clip.coax \
 
 Golden mode freezes the Garden's visual effects for this staged capture.
 Hecate's golden mode suppresses its arrival, so it must be off when checking
-that flight. A frame-for-frame repeat of this Garden setup would qualify
-that staged clip only; it would not establish a clip rendered from a saved
-realm replay.
+that flight. Two fresh normal-motion transition captures at 480 × 300 and 30 FPS
+match all 30 decoded frames, with 22 distinct frames. That qualifies the
+staged setup on the measured adapter; it does not establish a clip rendered
+from a saved realm replay.
 
 ## Checks and evidence
 
