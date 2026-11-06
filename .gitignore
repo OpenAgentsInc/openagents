@@ -73,3 +73,5 @@ apps/openagents-web/projects/baked.coax
 
 # Licensed scan source/derived bytes stay in the private Aethyrforge cache.
 /apps/openagents-web/assets/valley/scans/
+# Lab-only reference engines, their build products and raw large captures.
+aethyr/lab/.cache/

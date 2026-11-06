@@ -1,0 +1,33 @@
+{
+  "name": "Aethyr Physics Lab records",
+  "version": 1,
+  "scope": "Lab-only files; no network or product contract",
+  "byte_order": "little endian",
+  "scalar": "IEEE 754 binary64; initial physical values rounded to binary32 then promoted",
+  "input": {
+    "magic_ascii": "LABIN001",
+    "header_u64": ["count", "steps", "sample_every", "seed", "solver_passes"],
+    "header_f64": ["dt", "gravity_x", "gravity_y", "gravity_z", "plane_nx", "plane_ny", "plane_nz", "plane_d", "half_x", "half_y", "half_z", "mass", "friction", "restitution"],
+    "bodies": "count records of body_f64, dense stable ID order",
+    "bytes": "160 + 104 * count"
+  },
+  "body_f64": ["x", "y", "z", "qx", "qy", "qz", "qw", "vx", "vy", "vz", "world_wx", "world_wy", "world_wz"],
+  "output": {
+    "magic_ascii": "LABOUT01",
+    "header_u64": ["count", "steps", "sample_every"],
+    "step_ns": "steps unsigned 64-bit monotonic durations, engine advance only",
+    "samples": "step 0 and every sample_every steps through steps inclusive; each is u64 step then count body_f64 records",
+    "bytes": "32 + 8 * steps + (steps / sample_every + 1) * (8 + 104 * count)"
+  },
+  "profile": {
+    "steps": 180,
+    "sample_every": 30,
+    "sleep": false,
+    "ccd": false,
+    "linear_damping": 0,
+    "angular_damping": 0,
+    "box_convex_radius": 0,
+    "material_combine": "identical colliders, arithmetic mean",
+    "timing": "single thread, release, one advance per measured interval; reporting and file I/O excluded"
+  }
+}

@@ -1,0 +1,113 @@
+// The Physics Lab's canonical inputs. Every engine receives this one generated body table.
+#module "aethyr.lab.physics_scene";
+#authority;
+#load "../rand.coax";
+
+LAB_SCENES :: 6;LAB_MAX_BODIES :: 30000;LAB_STEPS :: 180;LAB_SAMPLE_EVERY :: 30;
+LabVec :: struct {x:f64;y:f64;z:f64;}
+LabQuat :: struct {x:f64;y:f64;z:f64;w:f64=1;}
+LabSpec :: struct {
+  ok:bool;kind:int;count:int;cols:int;rows:int;steps:int=LAB_STEPS;
+  dt:f64;gravity:LabVec;normal:LabVec;plane_d:f64;
+  half:LabVec;mass:f64=1;friction:f64=0.5;restitution:f64;
+  passes:int=8;sample_every:int=LAB_SAMPLE_EVERY;
+}
+LabBody :: struct {ok:bool;pos:LabVec;rot:LabQuat;vel:LabVec;omega:LabVec;}
+
+#test "physics lab: canonical scenes name their actual requested body counts and fixed profile" {
+  counts:=[6]int.[1000,10000,30000,32,128,64];
+  names:=[6]string.["fall-1k","fall-10k","fall-30k","stack","pile","slope"];
+  cols:=[6]int.[32,100,174,1,8,8];rows:=[6]int.[32,100,173,1,8,8];
+  for i:0..<LAB_SCENES {
+    p:=lab_spec(i);#assert p.ok && p.kind==i && p.count==counts[i] && lab_name(i)==names[i];
+    #assert p.cols==cols[i] && p.rows==rows[i] && p.normal.x==0;
+    #assert p.dt==f64(f32(1.0/60.0)) && p.steps==180 && p.sample_every==30 && p.passes==8;
+    #assert p.mass==1 && p.half.x==0.5 && p.half.y==0.5 && p.half.z==0.5;
+    #assert p.friction==0.5 && p.restitution==f64(f32(0.1));
+    #assert p.gravity.x==0 && p.gravity.y== -f64(f32(9.81)) && p.gravity.z==0 && p.plane_d==0;
+    if i<5 {#assert p.normal.x==0 && p.normal.y==1 && p.normal.z==0;}
+  }
+  #assert !lab_spec(-1).ok && !lab_spec(6).ok && lab_name(-1)=="unknown" && lab_name(6)=="unknown";
+  #assert lab_spec(5).normal.y==f64(f32(0.8)) && lab_spec(5).normal.z==f64(f32(0.6));
+}
+#test "physics lab: fixed stack, pile and slope coordinates cover ground, row and layer transitions" {
+  s:=lab_spec(3);a:=lab_body(s,2026,0);b:=lab_body(s,2026,31);
+  #assert a.pos.x==0.00189208984375 && a.pos.z==0.0013427734375 && a.pos.y==0.5;
+  #assert b.pos.y==f64(f32(31.81));
+  ids:=[6]int.[0,7,8,63,64,127];
+  xs:=[6]f64.[-3.0289063453674316,3.1919922828674316,-3.2085938453674316,3.1988282203674316,-3.2398438453674316,3.1373047828674316];
+  ys:=[6]f64.[2.9931640625,2.8896484375,2.984375,2.7216796875,3.971484422683716,3.796679735183716];
+  zs:=[6]f64.[-3.0640625953674316,-3.0552735328674316,-2.1865234375,3.0376954078674316,-3.0259766578674316,3.1275391578674316];
+  for i:0..<6 {p:=lab_body(lab_spec(4),2026,ids[i]);#assert p.pos.x==xs[i] && p.pos.y==ys[i] && p.pos.z==zs[i];}
+  a=lab_body(lab_spec(5),2026,0);b=lab_body(lab_spec(5),2026,63);
+  #assert a.pos.x== -6.99810791015625 && a.pos.y==3 && a.pos.z==0;
+  #assert b.pos.y== -7.5 && b.pos.z==14;
+  #assert lab_body(lab_spec(5),2026,7).pos.x>6.99;
+}
+#test "physics lab: a hand-computed draw pins the first falling box, grid dimensions and extents" {
+  p:=lab_spec(0);#assert p.cols==32 && p.rows==32;
+  b:=lab_body(p,2026,0);
+  // rand_u32(2026,1,0) = 1345137313; its top twelve bits are 1282.
+  #assert b.ok && b.pos.x== -38.75 && b.pos.z== -38.75 && b.pos.y==6.251953125;
+  b=lab_body(p,2026,999);#assert b.ok && b.pos.x== -21.25 && b.pos.z==38.75;
+  #assert lab_spec(1).cols==100 && lab_spec(1).rows==100;
+  #assert lab_spec(2).cols==174 && lab_spec(2).rows==173;
+  #assert b.rot.x==0 && b.rot.y==0 && b.rot.z==0 && b.rot.w==1;
+  #assert b.vel.x==0 && b.vel.y==0 && b.vel.z==0 && b.omega.x==0 && b.omega.y==0 && b.omega.z==0;
+}
+#test "physics lab: body generation rejects invalid identities and preserves explicit seed bounds" {
+  p:=lab_spec(0);
+  #assert !lab_body(p,0,-1).ok && !lab_body(p,0,p.count).ok && !lab_body(p,0,30000).ok;
+  #assert !lab_body(LabSpec.{},0,0).ok && !lab_body(p,-1,0).ok && !lab_body(p,4294967296,0).ok;
+  #assert lab_body(p,0,0).ok && lab_body(p,4294967295,0).ok;
+  for kind:0..<6 {
+    s:=lab_spec(kind);a:=lab_body(s,2026,0);b:=lab_body(s,2026,0);c:=lab_body(s,2027,0);
+    #assert a.ok && b.ok && c.ok && a.pos.x==b.pos.x && a.pos.y==b.pos.y && a.pos.z==b.pos.z;
+    #assert a.pos.x!=c.pos.x || a.pos.y!=c.pos.y || a.pos.z!=c.pos.z;
+    #assert lab_body(s,2026,s.count-1).ok;
+  }
+}
+#forall "physics lab: every requested body has finite shared binary32 inputs" kind:0..<6, sample:0..<8 {
+  p:=lab_spec(kind);i:=sample*(p.count-1)/7;b:=lab_body(p,20261106,i);
+  #assert b.ok && b.pos.x==f64(f32(b.pos.x)) && b.pos.y==f64(f32(b.pos.y)) && b.pos.z==f64(f32(b.pos.z));
+  #assert b.pos.x>= -1000 && b.pos.x<=1000 && b.pos.y>= -1000 && b.pos.y<=1000 && b.pos.z>= -1000 && b.pos.z<=1000;
+}
+
+LAB_NAMES :: [6]string.["fall-1k","fall-10k","fall-30k","stack","pile","slope"];
+lab_name :: (kind:int)->string {
+  if kind<0 || kind>=LAB_SCENES {return "unknown";}return LAB_NAMES[kind];
+}
+lab_vec :: (x:f64,y:f64,z:f64)->LabVec {
+  return LabVec.{x=f64(f32(x)),y=f64(f32(y)),z=f64(f32(z))};
+}
+lab_spec :: (kind:int)->LabSpec {
+  if kind<0 || kind>=LAB_SCENES {return LabSpec.{};}
+  counts:=[6]int.[1000,10000,30000,32,128,64];count:=counts[kind];
+  columns:=[6]int.[32,100,174,1,8,8];row_counts:=[6]int.[32,100,173,1,8,8];
+  cols:=columns[kind];rows:=row_counts[kind];
+  p:=LabSpec.{ok=true,kind=kind,count=count,cols=cols,rows=rows,
+    dt=f64(f32(1.0/60.0)),gravity=lab_vec(0,-9.81,0),normal=lab_vec(0,1,0),
+    half=lab_vec(0.5,0.5,0.5),restitution=f64(f32(0.1))};
+  if kind==5 {p.normal=lab_vec(0,0.8,0.6);}
+  return p;
+}
+lab_body :: (p:LabSpec,seed:int,index:int)->LabBody {
+  if !p.ok || index<0 || index>=p.count || seed<0 || seed>4294967295 {return LabBody.{};}
+  if p.kind<3 {
+    x:=(f64(index%p.cols)-f64(p.cols-1)*0.5)*2.5;
+    z:=(f64(index/p.cols)-f64(p.rows-1)*0.5)*2.5;
+    y:=5.0+f64(rand_below(seed,1,index,4096))/1024;
+    return LabBody.{ok=true,pos=lab_vec(x,y,z)};
+  }
+  jx:=f64(rand_below(seed,2,index,256)-128);
+  jz:=f64(rand_below(seed,3,index,256)-128);
+  if p.kind==3 {return LabBody.{ok=true,pos=lab_vec(jx/65536,0.5+f64(index)*1.01,jz/65536)};}
+  if p.kind==4 {
+    x:=(f64(index%p.cols)-3.5)*0.9+jx/1024;
+    z:=(f64((index/p.cols)%p.rows)-3.5)*0.9+jz/1024;
+    y:=2.5+f64(index/(p.cols*p.rows))*1.2+f64(rand_below(seed,4,index,1024))/1024;
+    return LabBody.{ok=true,pos=lab_vec(x,y,z)};
+  }
+  x:=(f64(index%p.cols)-3.5)*2+jx/65536;z:=f64(index/p.cols)*2;y:=3.0-0.75*z;
+  return LabBody.{ok=true,pos=lab_vec(x,y,z)};
+}
