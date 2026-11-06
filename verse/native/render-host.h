@@ -32,6 +32,7 @@ VksImage *rhg_screen(RhgRenderer *renderer);
 // The ordinary adapter supplies the unchanged checked descriptor. Preparing
 // its physical destination precedes the producer and admitted frame clock.
 int rhg_prepare_presentation(RhgRenderer *renderer,coax_t_RenderPresentation plan,char *error,size_t error_bytes);
+int rhg_prepare_extent(RhgRenderer *renderer,int64_t width,int64_t height,int coarse,coax_t_RenderTextureFormat draw_format,char *error,size_t error_bytes);
 VksImage *rhg_present_plan(RhgRenderer *renderer,coax_t_RenderPresentation plan,char *error,size_t error_bytes);
 // Optional diagnostic only. Execute the shared RenderPresentation descriptor
 // after a complete float-screen frame. No ordinary caller selects this path.

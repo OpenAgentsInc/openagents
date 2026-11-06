@@ -4,6 +4,7 @@
 #load "host.coax";
 #load "host-inputs.coax";
 #load "presentation-host.coax";
+#load "host-preparation.coax";
 #load "../host/transport.coax";
 #load "../host/routes.coax";
 #load "../host/local-socket-route.coax";

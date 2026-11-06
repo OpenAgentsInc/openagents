@@ -1,5 +1,17 @@
 # Invariants
 
+The ordinary Vulkan v1 adapter prepares the checked graph targets and actual
+UNORM display before advancing its producer. Device replacement preserves
+the producer, immutable original package identity, retained CPU buffers and
+bounded decoded image cache; GPU resources retire before their physical
+device closes. The replacement uploads complete retained buffer spans and
+does not acknowledge a producer update merely to recover rendering. Actual
+90-frame world recovery compares every FP16 graph and UNORM display byte
+without an intervening producer call, retires a measured old handle and
+closes all GPU/CPU owners. Its observer kills 30 root mutants; software-GPU
+sanitizer failures remain separate from the normal RTX verdict. See
+`docs/verification/host-contract-2026-11-05/linux-world-recovery.md`.
+
 ## Host transport keeps concrete asynchronous owners across every effect
 
 `aethyr/host/transport.coax` owns the four socket and eight response-bearing

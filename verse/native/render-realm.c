@@ -3,11 +3,13 @@
 #include "render-realm.h"
 #include "render-textures.h"
 #include "render-media.h"
+#include "render-live-media.h"
 #include "face.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+extern uint32_t coaxial_media_capacity(cx_face_addr) __attribute__((weak));
 
 typedef struct {
   char name[32];coax_t_RenderBindingSource source;
@@ -19,12 +21,15 @@ typedef struct {
 typedef struct RrGenerated {VkcBuffer gpu;RhgHandle handle;struct RrGenerated *next;} RrGenerated;
 struct RhgRealm {
   Vkc *device;RealmHost *producer;RhgRenderer *renderer;int64_t profile;
-  char *package_directory;unsigned char *last_file;
+  char *package_directory,*package_name;unsigned char *last_file,*package_manifest;size_t package_bytes;
   RrBuffer *buffers;coax_t_RenderHostNamedBuffer *named;size_t buffer_count,buffer_limit;
   VkcBuffer hud,index;RhgHandle hud_handle,index_handle;unsigned char *index_bytes;size_t index_size;
   VkSampler samplers[16];coax_string sampler_names[16];size_t sampler_count;
   RrGenerated *generated;
   RfiFrame texture_inputs;RhgTextures *textures;
+  RhgLiveMedia *media;
+  coax_t_RenderHostPresentation presentation;VksImage *display;
+  int64_t notices,recovery_upload_bytes;
 };
 static int rr_error(char *error,size_t bytes,const char *message){if(bytes)snprintf(error,bytes,"%s",message);return 0;}
 static int rr_same(coax_string a,coax_string b){return a.count==b.count&&!memcmp(a.data,b.data,(size_t)a.count);}
@@ -41,9 +46,9 @@ static unsigned char *rr_asset_file(coax_string url,size_t *bytes){return rr_fil
 static int rr_deliver_data(RealmHost *h,int64_t row,const unsigned char *bytes,size_t size,char *error,size_t error_bytes){
   if(!aethyr_native_span(0,size,0,UINT32_MAX))return rr_error(error,error_bytes,"asset byte count does not fit the producer ABI");
   uint32_t capacity=coaxial_asset_capacity(h->state,(int32_t)row);
-  uint32_t destination=coaxial_asset(h->state,(int32_t)row,(uint32_t)size);
+  cx_face_addr destination=coaxial_asset(h->state,(int32_t)row,(uint32_t)size);
   if(!aethyr_native_span((uint64_t)(uintptr_t)bytes,size,(uint64_t)(uintptr_t)bytes,size)
-      ||aethyr_render_asset_span(destination,capacity,size,UINT32_MAX).status!=COAX_RenderFrameStatus_ok)return rr_error(error,error_bytes,"asset destination allocation refused by Coax");
+      ||aethyr_render_asset_span(destination,capacity,size,rh_address_limit()).status!=COAX_RenderFrameStatus_ok)return rr_error(error,error_bytes,"asset destination allocation refused by Coax");
   if(size)memcpy(rh_ptr(destination),bytes,size);return 1;
 }
 int rhgr_deliver(RealmHost *h,int64_t profile,char *error,size_t error_bytes){
@@ -75,7 +80,7 @@ static coax_t_RenderHostWordView rr_draw_words(RealmHost *h,uint64_t bytes){
   uint32_t capacity=coaxial_draw_capacity(h->state);
   // A static owner's measured allocation is distinct from the state arena.
   if(capacity){
-    coax_t_RenderHostByteView object=aethyr_render_asset_span(address,capacity,bytes,UINT32_MAX);
+    coax_t_RenderHostByteView object=aethyr_render_asset_span(address,capacity,bytes,rh_address_limit());
     if(object.status!=COAX_RenderFrameStatus_ok)return(coax_t_RenderHostWordView){.status=object.status};
     return aethyr_render_words(address,address,capacity,bytes);
   }
@@ -143,6 +148,7 @@ static int rr_binding(void *user,coax_t_RenderHostUse use,coax_t_RenderOp op,con
     out->offset=view.view.offset;out->range=view.view.bytes;return 1;
   }
   if(use.use.native_kind==VKS_IMAGE){
+    if(r->media&&media&&use.source.kind==COAX_RenderSourceKind_media_image){out->image=rhglm_binding(r->media,media->line);return out->image!=NULL;}
     coax_t_RenderHostTextureReceipt view=aethyr_render_resolve_texture(r->profile,use.binding_set,use.use.resource,rhgt_names(r->textures),media?media->line:-1);
     if(view.status!=COAX_RenderResourceStatus_ok)return 0;
     if(view.source.kind==COAX_RenderSourceKind_render_target)out->image=rhg_target_image(r->renderer,view.source.target);
@@ -177,8 +183,10 @@ RhgRealm *rhgr_open(Vkc *device,RealmHost *producer,int64_t profile,const char *
   RhgRealm *r=calloc(1,sizeof*r);if(!r)return NULL;r->device=device;r->producer=producer;r->profile=profile;
   const char *slash=strrchr(package_file,'/');size_t n=slash?(size_t)(slash-package_file):1;r->package_directory=calloc(n+1,1);if(!r->package_directory){rhgr_close(r);return NULL;}
   if(slash)memcpy(r->package_directory,package_file,n);else r->package_directory[0]='.';const char *base=slash?slash+1:package_file;
+  size_t name_bytes=strlen(base);r->package_name=malloc(name_bytes+1);if(!r->package_name){rhgr_close(r);return NULL;}memcpy(r->package_name,base,name_bytes+1);
   RhgBytes json=rr_package_read(r,(coax_string){base,(int64_t)strlen(base)});if(!json.data){rr_error(error,error_bytes,"canonical render package is missing");rhgr_close(r);return NULL;}
-  r->renderer=rhg_open(device,profile,(coax_string){(char*)json.data,(int64_t)json.bytes},rr_package_read,r,error,error_bytes);if(!r->renderer){rhgr_close(r);return NULL;}
+  r->package_manifest=malloc(json.bytes?json.bytes:1);if(!r->package_manifest){rhgr_close(r);return NULL;}memcpy(r->package_manifest,json.data,json.bytes);r->package_bytes=json.bytes;
+  r->renderer=rhg_open(device,profile,(coax_string){(char*)r->package_manifest,(int64_t)r->package_bytes},rr_package_read,r,error,error_bytes);if(!r->renderer){rhgr_close(r);return NULL;}
   coax_t_RenderHostBufferSizes sizes=aethyr_render_buffer_sizes(profile,producer->max_vertices,producer->floats,producer->uniform_floats,device->props.limits.maxStorageBufferRange);
   if(sizes.status!=COAX_RenderFrameStatus_ok){rr_error(error,error_bytes,"producer allocation layout refused by Coax");rhgr_close(r);return NULL;}
   if(!rhg_ledger_acquire(RHG_VERTEX,aethyr_render_buffer_words((int64_t)sizes.vertex_bytes),&r->hud_handle)){rr_error(error,error_bytes,"vertex buffer refused by the Coax ledger");rhgr_close(r);return NULL;}
@@ -194,9 +202,22 @@ RhgRealm *rhgr_open(Vkc *device,RealmHost *producer,int64_t profile,const char *
     if(!rhg_ledger_acquire(RHG_INDEX,aethyr_render_buffer_words((int64_t)r->index_size),&r->index_handle)){rr_error(error,error_bytes,"index buffer refused by the Coax ledger");rhgr_close(r);return NULL;}
     r->index=vkc_buffer(device,r->index_size);}
   FILE *texture_file=fopen("render-assets/textures.config","r");if(texture_file){fclose(texture_file);if(!rfi_load_textures("render-assets/textures.config",&r->texture_inputs,error,error_bytes)){rhgr_close(r);return NULL;}}
-  r->textures=rhgt_open(device,&r->texture_inputs,error,error_bytes);if(!r->textures){rhgr_close(r);return NULL;}return r;
+  r->textures=rhgt_open(device,&r->texture_inputs,error,error_bytes);if(!r->textures){rhgr_close(r);return NULL;}
+  if(rh_host_version()==1){r->media=rhglm_open(device,"render-assets",coaxial_inbox_cap());if(!r->media){rr_error(error,error_bytes,"live media owner could not open its physical bundle");rhgr_close(r);return NULL;}}return r;
+}
+int rhgr_prepare(RhgRealm *r,uint32_t width,uint32_t height,coax_t_RenderTextureFormat format,char *error,size_t error_bytes){
+  if(!r||!r->device||!r->renderer)return rr_error(error,error_bytes,"physical render device is unavailable");
+  r->display=NULL;r->presentation=render_host_presentation(rh_host_version(),r->profile,width,height,(int64_t)format,r->device->props.limits.maxImageDimension2D);
+  if(r->presentation.enabled&&!rhg_prepare_presentation(r->renderer,r->presentation.plan,error,error_bytes))return 0;
+  return rhg_prepare_extent(r->renderer,width,height,0,r->presentation.enabled?r->presentation.plan.draw.format:format,error,error_bytes);
 }
 int rhgr_frame(RhgRealm *r,uint32_t hud_vertices,uint32_t width,uint32_t height,int coarse,coax_t_RenderTextureFormat format,char *error,size_t error_bytes){
+  if(!r||!r->device||!r->renderer)return rr_error(error,error_bytes,"physical render device is unavailable");
+  r->display=NULL;
+  if(r->presentation.enabled){
+    if(r->presentation.plan.status!=COAX_RenderResourceStatus_ok||r->presentation.plan.draw.width!=width||r->presentation.plan.draw.height!=height)return rr_error(error,error_bytes,"prepared presentation extent changed before frame");
+    format=r->presentation.plan.draw.format;
+  }
   RealmHost *h=r->producer;coax_t_RenderFrameLimits limits;coax_default_t_RenderFrameLimits(&limits);
   coax_t_FrameCounts counts={.width=width,.height=height,.hud_vertices=hud_vertices,.vertex_stride=h->floats,.draw_count=coaxial_draw_count(h->state),.water_draws=coaxial_water_draws(h->state),
     .grass_instances=coaxial_grass_instances(h->state),.particle_instances=coaxial_particle_instances(h->state),.surface_vertices=coaxial_surface_vertices(h->state),.caster_vertices=coaxial_caster_vertices(h->state),.caster_instances=coaxial_caster_instances(h->state)};
@@ -243,10 +264,12 @@ int rhgr_frame(RhgRealm *r,uint32_t hud_vertices,uint32_t width,uint32_t height,
   }
   // The native producer's media export is a borrowed pointer/length view
   // (its growable text can live in the Coax heap outside the state arena).
-  uint32_t media_address=coaxial_media(h->state),media_bytes=coaxial_media_len(h->state);
+  cx_face_addr media_address=coaxial_media(h->state);uint32_t media_bytes=coaxial_media_len(h->state);
+  if(rh_host_version()==1&&!hmp_span(media_address,coaxial_media_capacity?coaxial_media_capacity(h->state):0,media_bytes,rh_address_limit(),coaxial_media_capacity!=NULL)){media_address=0;media_bytes=0;}
   if(media_bytes&&!media_address)return rr_error(error,error_bytes,"native media export has no source allocation");
   RfiFrame media_input=r->texture_inputs;media_input.media_text.data=rh_ptr(media_address);media_input.media_text.size=media_bytes;
-  RhgMediaRects media={0};if(!rhgm_rects(r->profile,&media_input,r->textures,width,height,&media,error,error_bytes))return 0;
+  RhgMediaRects media={0};if(r->media){if(!rhglm_prepare(r->media,r->profile,(coax_string){(const char*)media_input.media_text.data,(int64_t)media_bytes},width,height,&media,error,error_bytes))return 0;}
+  else if(!rhgm_rects(r->profile,&media_input,r->textures,width,height,&media,error,error_bytes))return 0;
   if(!rhgt_frame_admit(r->textures,r->profile,&receipt,coarse,format,error,error_bytes)){rhgm_close(&media);return 0;}
   // Every buffer the frame draws with is live in the ledger before any write.
   int live=rhg_ledger_live(&r->hud_handle)&&(!r->index_size||rhg_ledger_live(&r->index_handle));
@@ -256,16 +279,39 @@ int rhgr_frame(RhgRealm *r,uint32_t hud_vertices,uint32_t width,uint32_t height,
   if(hud_vertices)memcpy(r->hud.map,rh_ptr(h->vertices),(size_t)hud_vertices*(size_t)h->floats*4);if(r->index_size)memcpy(r->index.map,r->index_bytes,r->index_size);
   RhgFrame frame={.media_receipt=media.receipt,.media_rects={media.rects,media.receipt.count},.hud=&r->hud,.index=r->index_size?&r->index:NULL,.draw_words=draws,.binding=rr_binding,.user=r};int result=rhg_execute(r->renderer,&receipt,&frame,coarse,format,error,error_bytes);
   rhgm_close(&media);
+  if(result&&r->presentation.enabled){r->display=rhg_present_plan(r->renderer,r->presentation.plan,error,error_bytes);if(!r->display)result=0;}
   for(size_t i=0;i<n;i++)r->buffers[i].upload=aethyr_render_upload_ack(r->buffers[i].upload,result!=0);
   // execute waits for its submission; these per-op observations can now be
   // released without accumulating device allocations across frames.
   for(RrGenerated *b=r->generated;b;){RrGenerated *next=b->next;vkc_free(r->device,&b->gpu);rhg_ledger_release(&b->handle);free(b);b=next;}r->generated=NULL;return result;
 }
-VksImage *rhgr_screen(RhgRealm *r){return rhg_screen(r->renderer);}
+VksImage *rhgr_screen(RhgRealm *r){return r->display?r->display:rhg_screen(r->renderer);}
+VksImage *rhgr_graph(RhgRealm *r){return rhg_screen(r->renderer);}
+void rhgr_deliver_media(RhgRealm *r){if(!r||!r->media)return;size_t n=0;const uint8_t *packet=rhglm_notice(r->media,&n);if(n){rh_send(r->producer,(int)htn_kind(),(const char*)packet,n);rhglm_notice_done(r->media);r->notices++;}}
 uint64_t rhgr_draw_commands(const RhgRealm *r){return rhg_draw_commands(r->renderer);}
-void rhgr_close(RhgRealm *r){
-  if(!r)return;rhg_close(r->renderer);rhgt_close(r->textures);rfi_close(&r->texture_inputs);for(size_t i=0;i<r->buffer_count;i++){vkc_free(r->device,&r->buffers[i].gpu);rhg_ledger_release(&r->buffers[i].handle);free(r->buffers[i].retained);free((void*)r->buffers[i].immutable);}
+void rhgr_drop_gpu(RhgRealm *r){
+  if(!r||!r->device)return;vkDeviceWaitIdle(r->device->dev);rhglm_drop_gpu(r->media);rhg_close(r->renderer);r->renderer=NULL;rhgt_close(r->textures);r->textures=NULL;r->display=NULL;
+  for(size_t i=0;i<r->buffer_count;i++){if(r->buffers[i].gpu.buf)vkc_free(r->device,&r->buffers[i].gpu);memset(&r->buffers[i].gpu,0,sizeof r->buffers[i].gpu);rhg_ledger_release(&r->buffers[i].handle);}
   if(r->hud.buf)vkc_free(r->device,&r->hud);if(r->index.buf)vkc_free(r->device,&r->index);rhg_ledger_release(&r->hud_handle);rhg_ledger_release(&r->index_handle);for(size_t i=0;i<r->sampler_count;i++)vkDestroySampler(r->device->dev,r->samplers[i],NULL);
   for(RrGenerated *b=r->generated;b;){RrGenerated *next=b->next;vkc_free(r->device,&b->gpu);rhg_ledger_release(&b->handle);free(b);b=next;}
-  free(r->buffers);free(r->named);free(r->index_bytes);free(r->last_file);free(r->package_directory);free(r);
+  r->generated=NULL;r->sampler_count=0;memset(&r->hud,0,sizeof r->hud);memset(&r->index,0,sizeof r->index);r->device=NULL;
+}
+int rhgr_device(RhgRealm *r,Vkc *device,char *error,size_t size){
+  if(!r||r->device||!device)return rr_error(error,size,"old physical device must retire before replacement");r->device=device;r->recovery_upload_bytes=0;
+  r->renderer=rhg_open(device,r->profile,(coax_string){(const char*)r->package_manifest,(int64_t)r->package_bytes},rr_package_read,r,error,size);if(!r->renderer)return 0;
+  RealmHost *h=r->producer;coax_t_RenderHostBufferSizes sizes=aethyr_render_buffer_sizes(r->profile,h->max_vertices,h->floats,h->uniform_floats,device->props.limits.maxStorageBufferRange);
+  if(sizes.status!=COAX_RenderFrameStatus_ok||!rhg_ledger_acquire(RHG_VERTEX,aethyr_render_buffer_words(sizes.vertex_bytes),&r->hud_handle))return rr_error(error,size,"replacement vertex allocation refused by Coax");r->hud=vkc_buffer(device,sizes.vertex_bytes);
+  if(r->index_size){if(!rhg_ledger_acquire(RHG_INDEX,aethyr_render_buffer_words(r->index_size),&r->index_handle))return rr_error(error,size,"replacement index allocation refused by Coax");r->index=vkc_buffer(device,r->index_size);}
+  for(size_t i=0;i<r->buffer_count;i++){
+    RrBuffer *b=&r->buffers[i];coax_t_RenderBufferView allocation=aethyr_render_buffer_bytes(b->capacity,device->props.limits.maxStorageBufferRange);
+    if(allocation.status!=COAX_RenderResourceStatus_ok||allocation.bytes!=r->named[i].observed.gpu_bytes||!rhg_ledger_acquire(b->source.kind==COAX_RenderSourceKind_main_uniform?RHG_UNIFORM:RHG_STORAGE,aethyr_render_buffer_words(allocation.bytes),&b->handle))return rr_error(error,size,"replacement retained buffer refused by Coax");
+    b->gpu=vkc_buffer(device,allocation.bytes);coax_t_RenderHostUploadReceipt staged=aethyr_render_upload_stage(b->upload,b->capacity,b->capacity);if(staged.status!=COAX_RenderFrameStatus_ok)return rr_error(error,size,"replacement complete upload refused by Coax");b->upload=staged.next;r->recovery_upload_bytes+=(int64_t)staged.next.pending;
+  }
+  r->textures=rhgt_open(device,&r->texture_inputs,error,size);if(!r->textures)return 0;rhglm_device(r->media,device);return 1;
+}
+int64_t rhgr_info(RhgRealm *r,int field){if(!r)return 0;switch(field){case 0:return rhglm_info(r->media,(coax_string){0},5);case 1:return rhglm_info(r->media,(coax_string){0},6);case 2:return rhglm_info(r->media,(coax_string){0},7);case 3:return rhglm_info(r->media,(coax_string){0},8);case 4:return r->notices;case 5:return r->recovery_upload_bytes;case 6:return r->device!=NULL;default:return -1;}}
+RhgHandle rhgr_vertex_handle(RhgRealm *r){return r->hud_handle;}
+int64_t rhgr_close(RhgRealm *r){
+  if(!r)return 0;rhgr_drop_gpu(r);int64_t remaining=rhglm_close(r->media);rfi_close(&r->texture_inputs);for(size_t i=0;i<r->buffer_count;i++){free(r->buffers[i].retained);free((void*)r->buffers[i].immutable);}
+  free(r->buffers);free(r->named);free(r->index_bytes);free(r->last_file);free(r->package_manifest);free(r->package_name);free(r->package_directory);free(r);return remaining;
 }

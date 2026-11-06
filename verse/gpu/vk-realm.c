@@ -80,14 +80,18 @@ static void vt_leave(int to) {
   vt_fd = -1;
 }
 static RealmHost H;
+static uint64_t producer_calls;
+#ifdef AETHYR_RENDER_TYPED
+static int64_t recovery_observed[23];
+#endif
 // Optional native shell effects; ordinary realms keep the existing defaults.
 __attribute__((weak)) const char *coaxial_window_title(void);
 __attribute__((weak)) const char *coaxial_window_app_id(void);
-__attribute__((weak)) int coaxial_should_close(uint32_t state);
-__attribute__((weak)) void coaxial_close(uint32_t state);
-__attribute__((weak)) void coaxial_hover(uint32_t state,float x,float y);
-__attribute__((weak)) double coaxial_frame_parts(uint32_t state,int32_t field);
-__attribute__((weak)) int32_t coaxial_net_probe(uint32_t state,int32_t field);
+__attribute__((weak)) int coaxial_should_close(cx_face_addr state);
+__attribute__((weak)) void coaxial_close(cx_face_addr state);
+__attribute__((weak)) void coaxial_hover(cx_face_addr state,float x,float y);
+__attribute__((weak)) double coaxial_frame_parts(cx_face_addr state,int32_t field);
+__attribute__((weak)) int32_t coaxial_net_probe(cx_face_addr state,int32_t field);
 static VkQueryPool benchmark_queries;
 static int benchmark_timestamps=1;
 static FILE *benchmark_file;
@@ -224,9 +228,9 @@ static Vkp *window_p;          // the window's presenter (--window): its size, t
 static float draw_w, draw_h;   // what the realm draws at
 static VkDesk desk;            // --desk: Linux programs on a panel over the realm (vkdesk.h)
 // F8: the realm's own screen for the desk, when its face has one (the Grid's: newland-local.coax)
-__attribute__((weak)) float coaxial_panel_rect(uint32_t state, int32_t k);
+__attribute__((weak)) float coaxial_panel_rect(cx_face_addr state, int32_t k);
 // an agent clicked in the realm (the Grid's): the session opens its transcript on the desk
-__attribute__((weak)) int32_t coaxial_os_request(uint32_t state);
+__attribute__((weak)) int32_t coaxial_os_request(cx_face_addr state);
 static void os_requests(void) {
   if (!coaxial_os_request || desk.pid <= 0) return;
   int32_t a = coaxial_os_request(H.state);
@@ -302,6 +306,7 @@ static uint32_t with_cursor(uint32_t n) {
   return n + 6;
 }
 static uint32_t produce_frame(float width,float height,float scale,float dt){
+  producer_calls++;
 #ifdef AETHYR_RENDER_TYPED
   // Preserve the producer's requested count for Coax admission. The legacy
   // rh_frame helper clips it and is retained only by the legacy spec path.
@@ -404,6 +409,36 @@ static void press_keys(const char *keys, int frame) {
   }
 }
 
+#ifdef AETHYR_RENDER_TYPED
+// Diagnostic physical effects only. The Coax observer admits these raw facts;
+// it also verifies the complete SDK/product source fence outside this process.
+static int world_replacement(RhgRealm *s,Vkc *v,uint32_t w,uint32_t h,float scale,char *error,size_t error_bytes){
+  VksImage *graph=rhgr_graph(s),*display=rhgr_screen(s);
+  if(!graph||!display||graph->format!=VK_FORMAT_R16G16B16A16_SFLOAT||display->format!=VK_FORMAT_R8G8B8A8_UNORM)return 0;
+  size_t graph_bytes=(size_t)w*h*8,display_bytes=(size_t)w*h*4;
+  uint8_t *before=malloc(graph_bytes),*after=malloc(graph_bytes),*display_before=malloc(display_bytes),*display_after=malloc(display_bytes),*arena=malloc(H.arena_size);
+  if(!before||!after||!display_before||!display_after||!arena){free(before);free(after);free(display_before);free(display_after);free(arena);return 0;}
+  vks_read(v,graph,before,graph_bytes);vks_read(v,display,display_before,display_bytes);memcpy(arena,H.arena,H.arena_size);
+  RhgHandle old=rhgr_vertex_handle(s);int old_live=rhg_ledger_live(&old);uint64_t calls=producer_calls;void *old_arena=H.arena;cx_face_addr old_state=H.state;
+  recovery_observed[0]=1;recovery_observed[1]=sizeof(cx_face_addr)*8;recovery_observed[2]=(int64_t)calls;
+  recovery_observed[3]=rhgr_info(s,2);recovery_observed[4]=rhgr_info(s,1);recovery_observed[5]=rhgr_info(s,4)>0;
+  rh_lifecycle_event(&H,8,now_us(),0);rhgr_drop_gpu(s);recovery_observed[6]=rhg_ledger_info(1);recovery_observed[7]=rhgr_info(s,0);recovery_observed[8]=rhgr_info(s,1);
+  vkc_close(v);vkc_open(v);
+  int ok=rhgr_device(s,v,error,error_bytes)&&rhgr_prepare(s,w,h,COAX_RenderTextureFormat_rgba8,error,error_bytes)&&rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,error,error_bytes);
+  if(ok){
+    vks_read(v,rhgr_graph(s),after,graph_bytes);vks_read(v,rhgr_screen(s),display_after,display_bytes);
+    recovery_observed[9]=H.arena==old_arena&&H.state==old_state&&!memcmp(arena,H.arena,H.arena_size);
+    recovery_observed[10]=!memcmp(before,after,graph_bytes);recovery_observed[11]=!memcmp(display_before,display_after,display_bytes);
+    recovery_observed[12]=producer_calls==calls;recovery_observed[13]=rhgr_info(s,5)>0;recovery_observed[14]=old_live&&!rhg_ledger_live(&old);
+    rhgr_deliver_media(s);rh_lifecycle_event(&H,9,now_us(),0);
+    ok=rhgr_prepare(s,w,h,COAX_RenderTextureFormat_rgba8,error,error_bytes);
+    if(ok){hud_vertices=produce_frame((float)w,(float)h,scale,1.0f/60);ok=rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,error,error_bytes);if(ok){rhgr_deliver_media(s);rh_after(&H,0);}}
+    recovery_observed[15]=ok&&producer_calls==calls+1;recovery_observed[16]=v->validating;recovery_observed[17]=vkc_validation_errors;recovery_observed[18]=vkc_validation_warnings;
+  }
+  free(before);free(after);free(display_before);free(display_after);free(arena);return ok;
+}
+#endif
+
 int main(int argc, char **argv) {
   benchmark_begin=now_s();
   if (argc < 3) {
@@ -418,7 +453,7 @@ int main(int argc, char **argv) {
   int golden = 0, headless = 0, demo = 0, windowed = 0, fullscreen = 0, leave_to = 0, facts_once = 0;
   const char *desk_dir = NULL, *desk_size = NULL, *desk_mode = NULL, *hands_path = NULL;
   const char *net_dir = NULL, *origin = "openagents.com", *name = "everglade", *go = NULL, *keys = "";
-  const char *replay_path=NULL,*benchmark_path=NULL;
+  const char *replay_path=NULL,*benchmark_path=NULL,*host_recovery=NULL;
   int page = 0;
   int sample_capacity = MAX_FRAMES;
   for (int i = 3; i < argc; i++) {
@@ -456,6 +491,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--keys")) keys = val, i++;  // headless: realm-run's F:KEY:DOWN, a key held or let go at frame F
     else if (!strcmp(a,"--replay")) replay_path=val,i++;
     else if (!strcmp(a,"--benchmark")) benchmark_path=val,i++;
+    else if (!strcmp(a,"--host-recovery")) host_recovery=val,i++;
     else { fprintf(stderr, "vk-realm: unknown argument %s\n", a); return 2; }
   }
   signal(SIGINT, on_signal);
@@ -515,7 +551,7 @@ int main(int argc, char **argv) {
   rh_deliver(&H, nextra, sizes);
 #endif
   // one frame so the stores exist at their sizes before the spec's buffers are made
-  if(headless||rh_host_version()!=1)hud_vertices = produce_frame(320,180,scale,1.0f/60);
+  if(rh_host_version()!=1)hud_vertices = produce_frame(320,180,scale,1.0f/60);
 #ifndef AETHYR_RENDER_TYPED
   if (chdir(dir)) { fprintf(stderr, "vk-realm: no directory %s\n", dir); return 1; }
 #endif
@@ -580,13 +616,16 @@ int main(int argc, char **argv) {
   if (headless) {
     // every frame drawn and waited for: the realm's step, then the GPU's
     // the frame before the spec was opened is the first of them
-    for (frames = 1; frames < headless && frames < MAX_FRAMES && !stopping; frames++) {
+    for (frames = rh_host_version()==1?0:1; frames < headless && frames < MAX_FRAMES && !stopping; frames++) {
       double t0 = now_s();
       if (net_dir) rh_net_poll(&H);
       press_keys(keys, frames);
+#ifdef AETHYR_RENDER_TYPED
+      if(!rhgr_prepare(s,w,h,COAX_RenderTextureFormat_rgba8,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}
+#endif
       hud_vertices = produce_frame((float)w,(float)h,scale,1.0f/60);
 #ifdef AETHYR_RENDER_TYPED
-      if(!rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}last[0]=rhgr_screen(s);
+      if(!rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}last[0]=rhgr_graph(s);rhgr_deliver_media(s);
 #else
       update(s);
 #endif
@@ -600,6 +639,9 @@ int main(int argc, char **argv) {
       took[frames] = now_s() - t1;
     }
     if (!travelled) why = "it drew its frames";
+#ifdef AETHYR_RENDER_TYPED
+    if(host_recovery){if(!world_replacement(s,&v,w,h,scale,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: replacement failed: %s\n",render_error);return 1;}last[0]=rhgr_graph(s);}
+#endif
     if(raw_out){
       FILE *f=fopen(raw_out,"wb");if(!f){fprintf(stderr,"vk-realm: cannot write raw output\n");return 1;}
       uint16_t *raw=malloc((size_t)w*h*8);if(!raw)return 1;
@@ -617,6 +659,7 @@ int main(int argc, char **argv) {
         fwrite(px, 16, (size_t)w * h, f);
       }
       fclose(f);
+      free(raw);free(px);
     }
   } else {
     if (windowed) { window_p = &p; cursor = 1; }
@@ -690,6 +733,10 @@ int main(int argc, char **argv) {
       int affordable=vkp_reserve(&v,&p);
       if(affordable<0){vkp_resize(&v,&p,p.w,p.h);continue;}
       if(!affordable){struct timespec nap={0,2000000};nanosleep(&nap,NULL);continue;}
+#ifdef AETHYR_RENDER_TYPED
+      coax_t_RenderTextureFormat physical_format=p.format.format==VK_FORMAT_R8G8B8A8_UNORM?COAX_RenderTextureFormat_rgba8:p.format.format==VK_FORMAT_B8G8R8A8_UNORM?COAX_RenderTextureFormat_bgra8:COAX_RenderTextureFormat_invalid;
+      if(!rhgr_prepare(s,w,h,physical_format,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}
+#endif
       t = now_s();
       static double benchmark_last;
       double benchmark_interval=benchmark_last?t-benchmark_last:0;benchmark_last=t;
@@ -706,9 +753,10 @@ int main(int argc, char **argv) {
       }
       uint32_t requested=0;int offer=rh_frame_at(&H,(float)w,(float)h,scale,now_us(),0,0,&requested);
       if(!offer){struct timespec nap={0,2000000};nanosleep(&nap,NULL);continue;}
+      if(offer>0)producer_calls++;
       hud_vertices = with_cursor(offer<0?produce_frame((float)w,(float)h,scale,(float)dt):requested);
 #ifdef AETHYR_RENDER_TYPED
-      if(!rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}last[0]=rhgr_screen(s);
+      if(!rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}last[0]=rhgr_screen(s);rhgr_deliver_media(s);
 #else
       update(s);
 #endif
@@ -790,7 +838,8 @@ int main(int argc, char **argv) {
   if (v.validating) printf("vk-realm: validation: %d errors, %d warnings\n", vkc_validation_errors, vkc_validation_warnings);
 #ifdef AETHYR_RENDER_TYPED
   printf("vk-realm: ledger: %lld objects, %lld words live at the last frame (epoch %lld)\n",(long long)rhg_ledger_info(1),(long long)rhg_ledger_info(2),(long long)rhg_ledger_info(0));
-  rhgr_close(s);
+  int64_t closed_cpu=rhgr_close(s);
+  if(host_recovery){recovery_observed[19]=rhg_ledger_info(1);recovery_observed[20]=rhg_ledger_info(2);recovery_observed[21]=closed_cpu;}
   printf("vk-realm: ledger: %lld objects live after close\n",(long long)rhg_ledger_info(1));
 #else
   vk_spec_close(&v, s);
@@ -812,5 +861,8 @@ int main(int argc, char **argv) {
   rh_net_close();
   if(coaxial_close)coaxial_close(H.state);
   rh_close(&H);
+#ifdef AETHYR_RENDER_TYPED
+  if(host_recovery){FILE *f=fopen(host_recovery,"wb");if(!f)return 1;int ok=fwrite(recovery_observed,sizeof recovery_observed,1,f)==1;if(fclose(f)||!ok)return 1;}
+#endif
   return (vkc_validation_errors || vkc_validation_warnings) ? 1 : travelled ? 3 : 0;
 }

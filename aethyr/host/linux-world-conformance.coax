@@ -1,0 +1,17 @@
+// Actual complete world frames and physical replacement device, without a
+// producer call between the two compared graph/display readbacks.
+#authority;
+#test "world recovery requires every concrete byte lifetime and source observation" {
+ q:=[23]int.[1,64,90,7,64512,1,0,7,64512,1,1,1,1,1,1,1,1,0,0,0,0,0,1];
+ #assert hlwc_accept(q[..]);#assert !hlwc_accept(q[0..<22]);long:[24]int;#assert !hlwc_accept(long[..]);
+ for i:0..<q.count {changed:=q;changed[i]+=1;#assert !hlwc_accept(changed[..]);}
+}
+// version/address bits/produced frames/ready images/CPU bytes/deferred notice;
+// old GPU live/cache count/cache bytes/unchanged producer/state and graph,
+// display/no intervening producer/full re-upload/old handle retirement;
+// resumed producer/validation/errors/warnings/closed GPU live/words/CPU bytes;
+// actual source fence.
+hlwc_accept :: (q:[]int)->bool #export_c {
+ want:=[23]int.[1,64,90,7,64512,1,0,7,64512,1,1,1,1,1,1,1,1,0,0,0,0,0,1];
+ if q.count!=want.count {return false;}for value,i:want {if q[i]!=value {return false;}}return true;
+}

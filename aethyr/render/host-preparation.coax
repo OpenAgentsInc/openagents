@@ -1,0 +1,17 @@
+// Reuse the canonical pipeline graph to reserve target effects before a
+// producer call. Template draws never become an admitted or submitted frame.
+#load "host-bindings.coax";
+#authority;
+#forall "preparation retains every canonical target role and refuses unknown profiles" profile:-1..<19 {
+ p:=render_host_prepare_plan(profile);m:=render_catalog(profile);
+ if !m.valid {#assert p.status==RenderPlanStatus.invalid&&p.count==0;}
+ else {
+  expected:=render_plan(m.features,RENDER_HOST_PIPELINE_TEMPLATE,RenderReadiness.ready,true);
+  #assert p.status==RenderPlanStatus.ok&&p.count==expected.count&&p.count>0;
+  for i:0..<p.count {a:=p.ops[i];b:=expected.ops[i];#assert a.kind==b.kind&&a.colour0==b.colour0&&a.colour1==b.colour1&&a.depth==b.depth&&a.source==b.source&&a.target==b.target;}
+ }
+}
+render_host_prepare_plan :: (profile:int)->RenderPlan #export_c {
+ m:=render_catalog(profile);if !m.valid {return RenderPlan.{};}
+ return render_plan(m.features,RENDER_HOST_PIPELINE_TEMPLATE,RenderReadiness.ready,true);
+}

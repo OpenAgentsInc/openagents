@@ -138,6 +138,17 @@ static int rhg_prepare(RhgRenderer *r,int coarse,coax_t_RenderTextureFormat scre
   }
   return 1;
 }
+int rhg_prepare_extent(RhgRenderer *r,int64_t width,int64_t height,int coarse,coax_t_RenderTextureFormat screen,char *error,size_t size){
+  // Only target preparation consumes this template; no template draw record
+  // is decoded, admitted as a frame or submitted to the device.
+  coax_t_RenderPlan plan=render_host_prepare_plan(r->profile);if(plan.status!=COAX_RenderPlanStatus_ok)return rhg_error(error,size,"Coax refused the preparation graph");
+  coax_t_FrameCounts counts={.width=width,.height=height};rhg_frame_close(r);
+  for(int64_t i=0;i<plan.count;i++){
+    coax_t_RenderOp op=plan.ops.e[i];
+    if(op.kind==COAX_RenderOpKind_begin){if(!rhg_target(r,op.colour0,&counts,coarse,screen,error,size)||!rhg_target(r,op.colour1,&counts,coarse,screen,error,size)||!rhg_target(r,op.depth,&counts,coarse,screen,error,size))return 0;}
+    if(op.kind==COAX_RenderOpKind_copy){if(!rhg_target(r,op.source,&counts,coarse,screen,error,size)||!rhg_target(r,op.target,&counts,coarse,screen,error,size))return 0;}
+  }return 1;
+}
 static void rhg_record_draw(RhgRenderer *r,VkCommandBuffer cmd,coax_t_RenderDecodedDraw draw){
   if(draw.kind==COAX_RenderDrawKind_nonindexed){vkCmdDraw(cmd,draw.count,draw.instances,draw.first,draw.base_instance);r->draw_commands++;}
   if(draw.kind==COAX_RenderDrawKind_indexed){vkCmdDrawIndexed(cmd,draw.count,draw.instances,draw.first,0,draw.base_instance);r->draw_commands++;}

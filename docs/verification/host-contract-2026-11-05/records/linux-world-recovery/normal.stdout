@@ -1,0 +1,6 @@
+vk-realm: step+render median 34.18 ms, 99th 41.52 ms, longest 41.52 ms
+vk-realm: post-render median 0.00 ms, 99th 0.00 ms, longest 0.00 ms
+vk-realm: NVIDIA GeForce RTX 4080, 320x180, 90 frames, 137 draws the last; it ended because it drew its frames
+vk-realm: validation: 0 errors, 0 warnings
+vk-realm: ledger: 29 objects, 21095403 words live at the last frame (epoch 93)
+vk-realm: ledger: 0 objects live after close
