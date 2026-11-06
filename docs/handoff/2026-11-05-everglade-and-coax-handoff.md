@@ -128,7 +128,7 @@ Books: #12610 stays open. The owner said "no more books work". Don't work it.
 | --- | --- |
 | #12944 | Closed by `6414ba56c4`. The room server fails to link on main, with 21 duplicate `cb_*` symbols, since `010c25bbed` (Codex lane). This blocks room builds, the API room checks, the drift check and the #12936 release. The #12936 agent knows. |
 | #12945 | No agent. Other failures on main: the `results-cache-policy` test, traversal budgets for `everglade5e-room-raid` and `rigid.coax d3_dot`, and listing drift in Aethyr chapter 89. |
-| #12946 | No agent. In the live pair run, Reverse Gravity's second press and BLOCK fail. They may predate this release. |
+| #12946 | Closed by `e00925f958`. The smoke counted doors and boats as gravity cylinders, rejected a valid landing on the 4.5 m palisade, and counted the invited visitor as the blocked player. It now observes each spell's kind and caster, grounded landings, and the blocked seat. Verification is below. |
 | #12941 | No agent. The drift check held at 250 ms during the release, so this may have been load. Close it if three runs in a row hold. The drift check's 250 ms profile failed twice after the fire fixes, on Hold Person timing, conditions and townspeople walking in place. It may be real or caused by load, and it gates release.sh. Check it first if #12936's release is stuck. |
 | #12940 | No agent. Tree fires never burn or spread on the room server; only pages step them. |
 | #12838, #12840–#12843, #12868, #12869 | The owner's Codex agent. Don't take them. Its room changes share files with ours, so use small commits and rebase often. |
@@ -137,6 +137,23 @@ Books: #12610 stays open. The owner said "no more books work". Don't work it.
 | #12718, #12833 | Epics. Close each when its children close. |
 | #12610 | The book epic, paused by the owner. |
 | #12864–#12867 | Excluded; left for Codex. |
+
+## #12946 verification (2026-11-05, 20:05 Chicago)
+
+The page suite passed all 770 checks. The added cylinder regression also
+passed; keyboard, ticket restoration and the actual remote-body renderer
+checks passed. The headless local pair passed, including the BLOCK click
+with an unrelated visitor still present. The local API does not store
+blocks, so reload persistence was checked through the native ticket path.
+The complete drift run held at local, 100 ms and 250 ms, including raids.
+The page was 2,021,551 bytes against 2,150,000; the room worker was 988,275
+against 1,060,000. `tools-check` passed.
+
+The default split page build exposed a separate missing integer-runtime
+prelude in generated C. The verified page used `COAXIAL_SPLIT=0`; fix the
+default build as part of #12945 before the next release. No production
+deployment was performed. Local logs are `/tmp/oa-12946-*.log`, with drift
+receipts in `/tmp/oa-12946-drift/`.
 
 ## Owner rules that still apply
 
