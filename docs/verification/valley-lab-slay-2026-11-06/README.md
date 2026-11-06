@@ -323,3 +323,32 @@ cut the frame rate to a third. Headless Chrome at 1280x800, DPR 2:
   above the first absorption row); `hair-lut.txt` keeps the table.
 - The pictures match the per-pixel version within 2 levels on the hair and
   4 on the fully white finger count.
+
+### Hair LOD and per-vertex hair light
+
+Removing draws one at a time showed the groom is the whole frame cost: 13.8
+million vertices (2.3 million strand segments) a frame. Without it every view
+ran at 60 fps; with it, 4 to 7.
+
+- Strand LOD, as Unreal's groom LOD: the CPU measures the head's height on
+  screen and the vertex shader keeps that share of whole strands (by a hash of
+  each strand's seed), widening the kept ones by the inverse share so coverage
+  holds. The share falls with the head's on-screen area below 300 pixels,
+  never under 2%, and is half in close views, where strands are still under a
+  pixel wide and half of them at twice the coverage look the same.
+- The shadow map takes at most a quarter of the strands.
+- Hair is lit per strand vertex (all five Slay lights, fiber lobes and dual
+  scattering); a hair pixel adds only the key light's shadow map lookup.
+  Before, every hair pixel also ran the skin and cloth lighting and discarded
+  it.
+
+Headless Chrome, 1280x800 at DPR 2:
+
+| View | Before | Now |
+|---|---|---|
+| Face close-up (start view) | 5.8 fps | 41.7 |
+| Full body (H) | 19 | 60 |
+| Walk | 7 | 60 |
+| Slay shot | 5.4 | 41.1 |
+
+Hair colours in frame 1125 match the per-pixel version within 2 levels.
