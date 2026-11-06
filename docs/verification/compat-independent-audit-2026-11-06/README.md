@@ -45,6 +45,31 @@ profile, clock effect or captured state was changed. The measured 0.51.2
 physics results remain the results recorded in the Physics Lab delivery;
 this audit does not replace them with new 0.52 timing measurements.
 
+## Unknown production reference
+
+A further control-flow audit found that the candidate release script passes
+`${passed_commit:-$full}` to the compatibility gate. If production's source
+lookup is empty, that expression substitutes the candidate's commit. The
+comparison can then admit the candidate against itself.
+
+The [regression driver](release-reference.coax) executes the actual release
+fragment from production lookup through compatibility. Local doubles replace
+Git, compilation and the final comparison effect. The gate's real
+`cg_revision` predicate validates its supplied reference. No gcloud command,
+production script or product build executes. A known production reference
+is the positive control; an unknown reference must reach no comparison.
+The [original fragment fails](release-reference-red.log) that second case.
+
+The [prepared fix](release-reference.patch) passes `$passed_commit` directly,
+so the existing Coax validator refuses the unknown reference. It introduces
+no new shell policy. [Both cases pass](release-reference-green.log), and
+`bash -n coax/web/release.sh` passes. These changes were qualified in a
+second temporary integration worktree against `b969dccdef`; they must be
+applied to the final compiler delivery before treating #12955 as complete.
+The zero-context patches in this record can be checked with
+`git apply --check --unidiff-zero`; the lab patch also needs the separate
+foreign clock declaration described above.
+
 Coax 0.51 deliberately refuses effect declarations with E0940. Apply this
 transition only with the compiler delivery, then rebase it onto the final
 main sources. This audit does not close #12952–#12955 or claim the concurrent

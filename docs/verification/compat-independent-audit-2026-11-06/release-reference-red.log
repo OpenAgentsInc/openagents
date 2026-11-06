@@ -1,0 +1,6 @@
+release aaaaaaaaaa ()
+COMPARISON aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+
+PASS known production reaches comparison with its own commit
+FAIL missing production never compares the candidate with itself
