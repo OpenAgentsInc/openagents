@@ -132,7 +132,7 @@ def main():
         for statement in statements:
             if statement not in attachment['text']:
                 raise RuntimeError('actual attachment ownership statement changed: '+statement)
-        helper = '\nzdf_attach :: (s:[]ZeronState,body:[]u8,out:[]u8,err:[]u8) #export_c {lab_attach(s[0].lab[..],body,out,err);'+' '.join(statements)+'}\n'
+        helper = '\nzdf_attach :: (s:[]ZeronState,body:[]u8,out:[]u8,err:[]u8) #export_c #effects(all) {lab_attach(s[0].lab[..],body,out,err);'+' '.join(statements)+'}\n'
         projection['attachment_statements'] = dict(path=attachment['path'], line=attachment['line'],
                                                    source_sha256=attachment['sha256'], statements=statements)
         with (generated/'subset.coax').open('a') as target: target.write(helper)

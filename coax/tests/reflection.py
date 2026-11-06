@@ -65,7 +65,7 @@ main :: () {
     def test_metadata_values_are_ordinary_records(self):
         src = self.write("records.coax", '''#import "Basic";
 S :: struct {a:u8;b:f64;}
-inspect :: (info:CoaxTypeInfo)->int {return info.size;}
+inspect :: (info:CoaxTypeInfo)->int #effects(all) {return info.size;}
 main :: () {
  infos:=[2]CoaxTypeInfo.[type_info(S),type_info([] S)];
  f:=field_info(S,1);e:=enum_info(E,0);
@@ -106,16 +106,16 @@ main :: () {
             ("type_info(u8,0)", "E0201"), ("field_info(S)", "E0201"),
         ]:
             with self.subTest(expr=expr):
-                self.error('S :: struct {a:u8;} Empty :: struct {} E :: enum u8 {} f :: () {x:='+expr+';}', code)
-        self.error('field_info :: () {}', "E0335")
+                self.error('S :: struct {a:u8;} Empty :: struct {} E :: enum u8 {} f :: () #effects(all) {x:='+expr+';}', code)
+        self.error('field_info :: () #effects(all) {}', "E0335")
         self.error('enum_info :: 1;', "E0345")
-        self.error('CoaxTypeInfo :: struct {} f :: () {x:=type_info(u8);}', "E0372")
+        self.error('CoaxTypeInfo :: struct {} f :: () #effects(all) {x:=type_info(u8);}', "E0372")
 
     def test_dynamic_bounds_trap_in_debug_and_release(self):
         for query, decl in [("field_info", "S :: struct {a:u8;b:f64;}"),
                             ("enum_info", "S :: enum u8 {a;b;}")]:
             for index in [-1, 2]:
-                src = self.write("bounds.coax", decl+f'\nf :: (i:int) {{x:={query}(S,i);}} main :: () {{f({index});}}')
+                src = self.write("bounds.coax", decl+f'\nf :: (i:int) #effects(all) {{x:={query}(S,i);}} main :: () {{f({index});}}')
                 for mode in [[], ["--release"]]:
                     p = self.command("run", src, *mode, expect_crash=True)
                     self.assertNotEqual(p.returncode, 0)
@@ -139,7 +139,7 @@ main :: () {
                 checks += [f'assert(probe_{i}({j},2)==offsetof(struct O{i},f{j}));',
                            f'assert(probe_{i}({j},3)==sizeof(((struct O{i}*)0)->f{j}));']
             coax += [f'{name} :: struct {{'+''.join(fields)+'}',
-                     f'probe_{i} :: (index:int,part:int)->int #export_c {{',
+                     f'probe_{i} :: (index:int,part:int)->int #export_c #effects(all) {{',
                      f'if part==0 {{return type_info({name}).size;}}',
                      f'if part==1 {{return type_info({name}).alignment;}}',
                      f'info:=field_info({name},index);if part==2 {{return info.offset;}}return info.size;}}']
@@ -161,7 +161,7 @@ main :: () {
     def test_mutation_targets_source_logic_not_synthetic_metadata(self):
         src = self.write("mutate.coax", '''#authority;
 S :: struct {a:u8;b:f64;}
-f :: (index:int)->int #export_c {return field_info(S,index).offset+1;}
+f :: (index:int)->int #export_c #effects(all) {return field_info(S,index).offset+1;}
 #forall "source decisions" i:0..<2 {expected:=[2]int.[1,9];#assert f(i)==expected[i];}
 ''')
         output = self.success("mutate", src)
@@ -169,15 +169,15 @@ f :: (index:int)->int #export_c {return field_info(S,index).offset+1;}
         self.assertNotIn("no reachable", output)
         # User-authored values of the same record type still supply sites.
         src.write_text('''#authority;
-f :: ()->int #export_c {x:=CoaxFieldInfo.{offset=7};return x.offset;}
-g :: () {unused:=type_info(u8);}
+f :: ()->int #export_c #effects(all) {x:=CoaxFieldInfo.{offset=7};return x.offset;}
+g :: () #effects(all) {unused:=type_info(u8);}
 #test "authored metadata" {#assert f()==7;g();}
 ''')
         self.assertIn("0 survived", self.success("mutate", src))
 
     def test_large_dynamic_table_refuses_bounded_expansion(self):
         fields = ''.join(f'f{i}:u8;' for i in range(9000))
-        self.error('Large :: struct {'+fields+'} f :: (index:int)->int {return field_info(Large,index).offset;}', "E0381")
+        self.error('Large :: struct {'+fields+'} f :: (index:int)->int #effects(all) {return field_info(Large,index).offset;}', "E0381")
 
     def test_relocated_compiler_needs_no_helpers(self):
         compiler = self.base/"coax"

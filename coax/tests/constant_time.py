@@ -12,15 +12,15 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 COMPILER = ROOT / 'bin/coax'
 SOURCE = '''
-ct_select :: (bit: u64, a: u64, b: u64) -> u64 #export_c {
+ct_select :: (bit: u64, a: u64, b: u64) -> u64 #export_c #effects(all) {
   mask := value_barrier(sub_wrap(cast(u64) 0, bit));
   return b ^ ((a ^ b) & mask);
 }
-ct_select32 :: (bit: u32, a: u32, b: u32) -> u32 #export_c {
+ct_select32 :: (bit: u32, a: u32, b: u32) -> u32 #export_c #effects(all) {
   mask := value_barrier(sub_wrap(cast(u32) 0, bit));
   return b ^ ((a ^ b) & mask);
 }
-zero_dead :: (value: u64) -> u64 #export_c {
+zero_dead :: (value: u64) -> u64 #export_c #effects(all) {
   bytes: [32]u8;
   bytes[0] = cast,trunc(u8) value;
   defer secure_zero(bytes[..]);

@@ -62,7 +62,7 @@ class AggregateSource(unittest.TestCase):
          ('loop_view_backedge','write :: (v:[]u64,x:u64)->bool {v[0]=x;return true;} candidate :: (x:u64)->u64 {a:[2]u64;v:=a[..];for i:0..<2 {if a[0]==0 {}ok:=write(v,x);}return x;}',6),
          ('public_loop_hull_laundering','candidate :: (x:u64)->u64 {for i:0..<2 {if i==0 {}else {if x==0 {}}}return x;}',5),
          ('loop_scalar_backedge','candidate :: (x:u64)->u64 {a:u64;for i:0..<2 {if a==0 {}a=x;}return a;}',6),
-         ('foreign','effect :: (x:u64)->u64 #foreign; candidate :: (x:u64)->u64 {return effect(x);}',9),
+         ('foreign','effect :: (x:u64)->u64 #foreign #effects(all); candidate :: (x:u64)->u64 {return effect(x);}',9),
          ('vartime','read_vartime :: (x:u64)->u64 {return x;} candidate :: (x:u64)->u64 {return read_vartime(x);}',8),
          ('public_only','decode_public :: (x:u64)->u64 {return x;} candidate :: (x:u64)->u64 {return decode_public(1);}',8),
          ('secret_induction_write','candidate :: (x:u64)->u64 {for i:0..<2 {i=cast(int)x;}return x;}',1),
@@ -89,7 +89,7 @@ class AggregateSource(unittest.TestCase):
         text='''Pair :: struct {value:u64;}
 unsafe_vartime :: (x:u64)->u64 {return x+1;}
 helper :: (p:Pair,x:u64)->u64 {if p.value==0 {return x;}else {return unsafe_vartime(x);}}
-candidate :: (x:u64)->u64 #export_c {p:=Pair.{value=0};p.value=1;return helper(p,x);}'''
+candidate :: (x:u64)->u64 #export_c #effects(all) {p:=Pair.{value=0};p.value=1;return helper(p,x);}'''
         for fixture,body in [('dirty_literal_witness',text),('dirty_literal_cast_witness',text.replace('helper(p,x);','helper(cast(Pair)p,x);'))]:
             self.case(fixture,body,5);source=self.directory/(fixture+'.coax')
             for name,flags in [('checked',[]),('release',['--release'])]:
@@ -107,7 +107,7 @@ candidate :: (x:u64)->u64 #export_c {p:=Pair.{value=0};p.value=1;return helper(p
         finally:self.tool.lib.ag_bridge=bridge
         self.assertEqual(broken['error'],0);self.observations.append({'case':'stale_literal_rule_reversion_detected','runtime_result':8,'expected_error':5,'broken_error':broken['error'],'mutant_c_sha256':metadata_sha(mutant)})
     def test_byte_wrap_release_runtime_witness(self):
-        text='unsafe_vartime :: (x:u64)->u64 {return x+1;} candidate :: (x:u64)->u64 #export_c {v:=cast(u8)255;w:=v+cast(u8)1;if w==0 {return unsafe_vartime(x);}else {return x;}}'
+        text='unsafe_vartime :: (x:u64)->u64 {return x+1;} candidate :: (x:u64)->u64 #export_c #effects(all) {v:=cast(u8)255;w:=v+cast(u8)1;if w==0 {return unsafe_vartime(x);}else {return x;}}'
         self.case('byte_wrap_witness',text,5);source=self.directory/'byte_wrap_witness.coax'
         c=self.directory/'byte-wrap.c';c.write_text(run(COMPILER,'c',source,'--library','--release').stdout)
         artifact=self.directory/'byte-wrap.dylib';run('cc','-std=c11','-O2','-shared','-fPIC',c,'-lm','-o',artifact)
@@ -115,8 +115,8 @@ candidate :: (x:u64)->u64 #export_c {p:=Pair.{value=0};p.value=1;return helper(p
         self.assertEqual(lib.candidate(7),8)
     def test_empty_loop_runtime_witnesses(self):
         cases=[
-            ('zero_loop','unsafe_vartime :: (x:u64)->u64 {return x+1;} candidate :: (x:u64)->u64 #export_c {flag:u64=1;for i:0..<0 {flag=0;}if flag==0 {return x;}else {return unsafe_vartime(x);}}'),
-            ('possibly_empty_loop','unsafe_vartime :: (x:u64)->u64 {return x+1;} candidate :: (x:u64)->u64 #export_c {flag:u64=1;for i:0..<2 {flag=1;for j:0..<(1-i) {flag=0;}}if flag==0 {return x;}else {return unsafe_vartime(x);}}')]
+            ('zero_loop','unsafe_vartime :: (x:u64)->u64 {return x+1;} candidate :: (x:u64)->u64 #export_c #effects(all) {flag:u64=1;for i:0..<0 {flag=0;}if flag==0 {return x;}else {return unsafe_vartime(x);}}'),
+            ('possibly_empty_loop','unsafe_vartime :: (x:u64)->u64 {return x+1;} candidate :: (x:u64)->u64 #export_c #effects(all) {flag:u64=1;for i:0..<2 {flag=1;for j:0..<(1-i) {flag=0;}}if flag==0 {return x;}else {return unsafe_vartime(x);}}')]
         for name,text in cases:
             self.case(name,text,5);source=self.directory/(name+'.coax')
             for mode,flags in [('checked',[]),('release',['--release'])]:
@@ -130,7 +130,7 @@ candidate :: (x:u64)->u64 #export_c {p:=Pair.{value=0};p.value=1;return helper(p
         r=self.case('summary_guard_context','helper :: (x:u64)->u64 {#assert x!=0;return x;} candidate :: (x:u64)->u64 {a:=helper(1);return helper(x)+a;}',14)
         self.assertEqual(len(r['authored_guard_obligations']),1);self.assertEqual(r['authored_guard_obligations'][0]['origin_mask'],1)
     def test_compiled_run_provenance_is_required_and_public_only(self):
-        text='generate :: ()->[2]u64 {return [2]u64.[1,2];} table :: #run generate(); candidate :: (x:u64)->u64 #export_c {t:=table;return t[0]^x;}'
+        text='generate :: ()->[2]u64 {return [2]u64.[1,2];} table :: #run generate(); candidate :: (x:u64)->u64 #export_c #effects(all) {t:=table;return t[0]^x;}'
         source=self.directory/'compiled_public_table.coax';source.write_text(text)
         accepted=self.tool.audit(source,'candidate',run_steps=100000);self.assertTrue(accepted['accepted'],accepted);self.assertEqual(accepted['run_expression_provenance'],'compiled-source-hash-and-dependencies-verified');self.assertEqual(accepted['compiler_descriptors'],[])
         default=self.tool.audit(source,'candidate');self.assertEqual(default['error'],5);self.assertNotIn('run_expression_provenance',default)
@@ -139,10 +139,10 @@ candidate :: (x:u64)->u64 #export_c {p:=Pair.{value=0};p.value=1;return helper(p
         finally:self.tool.lib.ag_bridge_compiled=bridge
         self.assertEqual(unverified['error'],5);self.assertFalse(unverified['accepted'])
         secret=self.directory/'run_secret_input.coax';secret.write_text('candidate :: (x:u64)->u64 {v:=#run x;return v;}');self.assertEqual(self.tool.audit(secret,'candidate',run_steps=100000)['error'],1)
-        unknown=self.directory/'run_unknown_loop_bound.coax';unknown.write_text('limit :: #run 2; candidate :: (x:u64)->u64 #export_c {for i:0..<limit {}return x;}');self.assertEqual(self.tool.audit(unknown,'candidate',run_steps=100000)['error'],2)
+        unknown=self.directory/'run_unknown_loop_bound.coax';unknown.write_text('limit :: #run 2; candidate :: (x:u64)->u64 #export_c #effects(all) {for i:0..<limit {}return x;}');self.assertEqual(self.tool.audit(unknown,'candidate',run_steps=100000)['error'],2)
         self.observations.append({'case':'compiled_public_table','report':accepted,'unverified_error':unverified['error'],'secret_compile_refused':True,'unknown_bound_refused':True})
     def test_run_provenance_refuses_changed_or_missing_dependencies(self):
-        source=self.directory/'run_dependency_control.coax';source.write_text('value :: #run 1; candidate :: (x:u64)->u64 #export_c {return x;}')
+        source=self.directory/'run_dependency_control.coax';source.write_text('value :: #run 1; candidate :: (x:u64)->u64 #export_c #effects(all) {return x;}')
         original=subprocess.run
         for variant in ['descriptor','source','steps','malformed','nonobject']:
             def changed(command,*args,**kwargs):
@@ -161,7 +161,7 @@ candidate :: (x:u64)->u64 #export_c {p:=Pair.{value=0};p.value=1;return helper(p
             self.assertFalse(result['accepted'],(variant,result));self.assertNotIn('run_expression_provenance',result)
         self.observations.append({'case':'compiled_run_dependency_controls','variants':['descriptor','source','steps','malformed','nonobject'],'all_refused':True})
     def test_run_provenance_refuses_missing_or_mismatched_source_map(self):
-        source=self.directory/'run_map_control.coax';source.write_text('value :: #run 1; candidate :: (x:u64)->u64 #export_c {return x;}')
+        source=self.directory/'run_map_control.coax';source.write_text('value :: #run 1; candidate :: (x:u64)->u64 #export_c #effects(all) {return x;}')
         for variant in ['missing','malformed','hash']:
             def changed():
                 path=self.tool.directory/'source-map.json'
@@ -178,7 +178,7 @@ candidate :: (x:u64)->u64 #export_c {p:=Pair.{value=0};p.value=1;return helper(p
     def test_masked_aggregate_executes_checked_and_optimized(self):
         text='''Pair :: struct {words:[2]u64;}
 pick :: (mask:u64,a:Pair,b:Pair)->Pair {r:Pair;for i:0..<2 {r.words[i]=b.words[i]^((a.words[i]^b.words[i])&value_barrier(mask));}return r;}
-candidate :: (mask:u64,a:u64,b:u64)->u64 #export_c {x:Pair;y:Pair;x.words[0]=a;y.words[0]=b;return pick(mask,x,y).words[0];}'''
+candidate :: (mask:u64,a:u64,b:u64)->u64 #export_c #effects(all) {x:Pair;y:Pair;x.words[0]=a;y.words[0]=b;return pick(mask,x,y).words[0];}'''
         r=self.case('execute',text,0);p=self.directory/'execute.coax';rng=random.Random(8091)
         for mode,flags in [('checked',[]),('release',['--release'])]:
             c=self.directory/(mode+'.c');c.write_text(run(COMPILER,'c',p,'--library',*flags).stdout);artifact=self.directory/(mode+'.dylib');run('cc','-std=c11','-O2','-shared','-fPIC',c,'-lm','-o',artifact)

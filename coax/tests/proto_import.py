@@ -59,7 +59,7 @@ SOURCE='''
 #import_proto "TYPES" as X;
 #import_proto "VERSE" as V;
 Buffer :: struct { bytes:[] u8; }
-inspect_proto :: (input:Buffer,op:u32)->u64 #export_c {
+inspect_proto :: (input:Buffer,op:u32)->u64 #export_c #effects(all) {
  w:=input.bytes;
  if op==0 {return cast(u64) N_Event_decode(w).error;}
  if op==1 {return cast(u64) N_Event_get_kind(N_Event_decode(w)).value;}
@@ -86,7 +86,7 @@ inspect_proto :: (input:Buffer,op:u32)->u64 #export_c {
  if op==17 {return cast(u64) N_Event_unknown(N_Event_decode(w),0).number;}
  return 999;
 }
-transform_proto :: (input:Buffer,output:Buffer,op:u32)->s64 #export_c {
+transform_proto :: (input:Buffer,output:Buffer,op:u32)->s64 #export_c #effects(all) {
  w:=input.bytes;out:=output.bytes;
  if op==0 {m:=N_Event_set_kind(N_Event_decode(w),0,out);if m.error!=0 {return -cast(s64)m.error;}return m.wire.count;}
  if op==1 {m:=X_Scalars_encode(X_Scalars_decode(w),out);if m.error!=0 {return -cast(s64)m.error;}return m.wire.count;}

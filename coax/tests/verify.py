@@ -50,8 +50,8 @@ class Verify(unittest.TestCase):
     def test_only_runs_the_named_checks_and_list_names_them(self):
         path = self.write(
             "#authority;\n"
-            "f :: (x: int) -> int { return x + 1; }\n"
-            "g :: (x: int) -> int { return x * 2; }\n"
+            "f :: (x: int) -> int #effects(all) { return x + 1; }\n"
+            "g :: (x: int) -> int #effects(all) { return x * 2; }\n"
             "#test \"f adds one\" { #assert f(1) == 2; }\n"
             "#test \"g doubles\" { #assert g(2) == 4; }\n"
             "#forall x: 0..<4 { #assert f(x) > x; }\n"
@@ -106,7 +106,7 @@ class Verify(unittest.TestCase):
         for body in ('#assert false;', 'while true {}'):
             path = self.write(
                 'Outcome :: struct { value: int; }\n'  # Result is the built-in result type
-                'bad :: () -> Outcome {' + body + ' return Outcome.{}; }\n'
+                'bad :: () -> Outcome #effects(all) {' + body + ' return Outcome.{}; }\n'
                 '#test "failed value" { #assert bad().value == 0; }\nmain :: () {}\n')
             r = coax('test', path, '--steps', '1000')
             self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
@@ -125,7 +125,7 @@ class Verify(unittest.TestCase):
     def test_authority_builds_run_the_checks(self):
         path = self.write(
             "#authority;\n"
-            "inc :: (x: int) -> int { return x + 1; }\n"
+            "inc :: (x: int) -> int #effects(all) { return x + 1; }\n"
             "#forall x: 0..<5 { #assert inc(x) > x; }\n"
             "main :: () { }\n")
         self.assertEqual(coax("check", path).returncode, 0)
@@ -141,12 +141,12 @@ class Verify(unittest.TestCase):
 
     def test_mutate_reports_survivors_and_equivalent_marks(self):
         path = self.write(
-            "clamp :: (x: int, lo: int) -> int {\n"
+            "clamp :: (x: int, lo: int) -> int #effects(all) {\n"
             "  if x < lo { return lo; }  // mutant: equivalent\n"
             "  return x;\n"
             "}\n"
-            "fee :: (x: int) -> int { return x / 100 + 1; }\n"
-            "untested :: () -> int { return 3; }\n"
+            "fee :: (x: int) -> int #effects(all) { return x / 100 + 1; }\n"
+            "untested :: () -> int #effects(all) { return 3; }\n"
             "#forall x: -5..<5 { #assert clamp(x, 0) >= 0; #assert clamp(x, 0) == x || x < 0; }\n"
             "#test \"fee\" { #assert fee(1000) > 0; }\n"
             "main :: () { }\n")
@@ -178,7 +178,7 @@ class Verify(unittest.TestCase):
 
     def test_authority_requires_execution_not_dead_references(self):
         for body in ['if false { #assert f()==1; }', '#assert true || f()==1;', '#assert #run f()==1;']:
-            path=self.write('#authority; f :: ()->int { return 1; }\n#test "dead" { '+body+' }\nmain :: () {}')
+            path=self.write('#authority; f :: ()->int #effects(all) { return 1; }\n#test "dead" { '+body+' }\nmain :: () {}')
             for command in ('test','check','c','mutate'):
                 r=coax(command,path);self.assertEqual(r.returncode,1,(command,r.stdout,r.stderr));self.assertIn('E0380',r.stderr)
             self.assertNotIn('-1 passed',coax('test',path).stdout)
@@ -186,7 +186,7 @@ class Verify(unittest.TestCase):
     def test_empty_checks_and_uncovered_mutation_cannot_go_green(self):
         path=self.write('main :: () {}')
         r=coax('test',path);self.assertEqual(r.returncode,1);self.assertIn('no #test or #forall',r.stderr)
-        path=self.write('f :: ()->int {return 1;} #test "empty" {#assert true;} main :: () {}')
+        path=self.write('f :: ()->int #effects(all) {return 1;} #test "empty" {#assert true;} main :: () {}')
         r=coax('mutate',path);self.assertEqual(r.returncode,1);self.assertIn('not reached by any check: f',r.stdout)
         path=self.write('#test "empty" {#assert true;} main :: () {}')
         r=coax('mutate',path);self.assertEqual(r.returncode,1);self.assertIn('no reachable mutation sites',r.stdout)
@@ -214,7 +214,7 @@ class Verify(unittest.TestCase):
             # With a line comment, put it after the weak code; string/block
             # markers before it must not hide a surviving literal mutation.
             line='return x+1; '+marker if marker.startswith('//') else marker+' return x+1;'
-            path=self.write('f :: (x:int)->int {'+line+'\n}\n#test "weak" {#assert f(0)>0;} main :: () {}')
+            path=self.write('f :: (x:int)->int #effects(all) {'+line+'\n}\n#test "weak" {#assert f(0)>0;} main :: () {}')
             r=coax('mutate',path);self.assertEqual(r.returncode,1,r.stderr)
             self.assertIn('mutant survived',r.stdout);self.assertNotIn('marked equivalent',r.stdout)
 

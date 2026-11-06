@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory(prefix='coax-message-limit-') as t:
         guards=re.findall(r'if wire\.count>(\d+) \{return T__pb_Check\.\{error=T__pb_LIMIT\};\}',text)
         assert guards==(['1048575'] if name=='Below' else []),(name,guards)
         if guards:assert text.index(admission)<text.index('if wire.count>'),name
-    source=d/'limit.coax';source.write_text('#import_proto "'+str(pb)+'" as T;\n'+''.join('check_'+str(i)+' :: (v:[]u8)->u32 #export_c {return T_'+name+'_decode(v).error;}\n' for i,name in enumerate(('Absent','Zero','Below','Equal','Above'))))
+    source=d/'limit.coax';source.write_text('#import_proto "'+str(pb)+'" as T;\n'+''.join('check_'+str(i)+' :: (v:[]u8)->u32 #export_c #effects(all) {return T_'+name+'_decode(v).error;}\n' for i,name in enumerate(('Absent','Zero','Below','Equal','Above'))))
     cases=[]
     for i,name in enumerate(('Absent','Zero','Below','Equal','Above')):
         for n in (0,1048575,1048576,1048577):

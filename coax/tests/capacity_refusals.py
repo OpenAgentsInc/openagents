@@ -19,14 +19,14 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 COMPILER = Path(os.environ.get('COAX', ROOT / 'bin/coax')).resolve()
 
-STEPS = ('build :: (n: int) -> int { s := 0; for i: 0..<n { s += i; } return s; }\n'
-         'small :: () -> int { return 1; }\n'
-         'total :: () -> int { return build(40000) + small(); }\n'
+STEPS = ('build :: (n: int) -> int #effects(all) { s := 0; for i: 0..<n { s += i; } return s; }\n'
+         'small :: () -> int #effects(all) { return 1; }\n'
+         'total :: () -> int #effects(all) { return build(40000) + small(); }\n'
          'X :: #run total();\n'
          'main :: () {}\n')
 
 GAME = ('Game :: struct { cells: [1024] int; tick: int; }\n'
-        'step :: (g: Game) -> int { return g.tick + 1; }\n'
+        'step :: (g: Game) -> int #effects(all) { return g.tick + 1; }\n'
         '#test "page" {\n'
         '  g: Game;\n'
         '  t := 0;\n'
@@ -52,7 +52,7 @@ def node_store(count, statements):
     """count instances of a generic with a long body fill the checker's node store."""
     body = ''.join(f'  x = x + cast(int) a[{i % 1}];\n' for i in range(statements))
     calls = ''.join(f'  b{i}: [{i}] int; y += sum(b{i});\n' for i in range(1, count + 1))
-    return ('sum :: (a: [$N] int) -> int {\n  x := 0;\n' + body + '  return x;\n}\n'
+    return ('sum :: (a: [$N] int) -> int #effects(all) {\n  x := 0;\n' + body + '  return x;\n}\n'
             'main :: () {\n  y := 0;\n' + calls + '}\n')
 
 
@@ -164,7 +164,7 @@ class CapacityRefusals(unittest.TestCase):
     def test_check_steps_near_limit_from_a_parallel_check(self):
         """A near-limit child refreshes detailed consumers in the parent."""
         source = ('#authority;\n'
-                  'spin :: (n: int) -> int { s := 0; for i: 0..<n { s += i; } return s; }\n'
+                  'spin :: (n: int) -> int #effects(all) { s := 0; for i: 0..<n { s += i; } return s; }\n'
                   '#test "heavy" #steps 40000 { #assert spin(8000) > 0; }\n'
                   '#test "light" { #assert spin(3) == 3; }\n'
                   'main :: () {}\n')
@@ -191,8 +191,8 @@ class CapacityRefusals(unittest.TestCase):
         # Two checks force the parallel path. Editing only the quiet check's
         # procedure misses the whole verdict while preserving other inputs.
         source = ('#authority;\n'
-                  'spin :: (n: int) -> int { s := 0; for i: 0..<n { s += i; } return s; }\n'
-                  'quiet :: () -> int { return 7; }\n'
+                  'spin :: (n: int) -> int #effects(all) { s := 0; for i: 0..<n { s += i; } return s; }\n'
+                  'quiet :: () -> int #effects(all) { return 7; }\n'
                   '#test "heavy" #steps 40000 { #assert spin(8000) > 0; }\n'
                   '#test "quiet" { #assert quiet() == 7; }\n'
                   '#test "reusable" { #assert spin(3) == 3; }\n'
@@ -238,7 +238,7 @@ class CapacityRefusals(unittest.TestCase):
 
     def test_authority_note_threshold_and_corrupt_record_are_cache_inputs(self):
         source = ('#authority;\n'
-                  'spin :: (n: int) -> int { s := 0; for i: 0..<n { s += i; } return s; }\n'
+                  'spin :: (n: int) -> int #effects(all) { s := 0; for i: 0..<n { s += i; } return s; }\n'
                   '#test "heavy" #steps 40000 { #assert spin(8000) > 0; }\n'
                   'main :: () {}\n')
         cache = Path(self.tmp.name) / 'threshold-cache'
@@ -259,7 +259,7 @@ class CapacityRefusals(unittest.TestCase):
 
     def test_authority_note_cache_renders_each_format_from_the_same_facts(self):
         source = ('#authority;\n'
-                  'spin :: (n: int) -> int { s := 0; for i: 0..<n { s += i; } return s; }\n'
+                  'spin :: (n: int) -> int #effects(all) { s := 0; for i: 0..<n { s += i; } return s; }\n'
                   '#test "quoted \\"title\\" and \\\\ slash" #steps 40000 { #assert spin(8000) > 0; }\n'
                   'main :: () {}\n')
         cache = Path(self.tmp.name) / 'formats'
@@ -277,7 +277,7 @@ class CapacityRefusals(unittest.TestCase):
     def test_authority_storage_peaks_use_their_own_phase_limits(self):
         # Released compile-phase storage never belongs to the checks' budget.
         (Path(self.tmp.name) / 'make.coax').write_text(
-            'make :: () -> int { a: [200] u8; return cast(int) a[0]; }\n')
+            'make :: () -> int #effects(all) { a: [200] u8; return cast(int) a[0]; }\n')
         source = ('#authority;\n#load "make.coax";\n'
                   'X :: #run make();\n'
                   '#test "tiny" { #assert X == 0; }\nmain :: () {}\n')
@@ -296,7 +296,7 @@ class CapacityRefusals(unittest.TestCase):
         # A real near-limit compile-phase use stays visible under its own
         # limit, even when checks have a different budget.
         (Path(self.tmp.name) / 'make.coax').write_text(
-            'make :: () -> int { a: [20000] u8; return cast(int) a[0]; }\n')
+            'make :: () -> int #effects(all) { a: [20000] u8; return cast(int) a[0]; }\n')
         near, nt = self.cache_compile(source, cache, 'compile-near', '--slots', '100', '--near-limit', '1')
         peak = next(x for x in nt['capacities'] if x['name'] == 'compile-time value slots')
         self.assertEqual((peak['used'], peak['limit']), (20000, 1572864))
@@ -306,7 +306,7 @@ class CapacityRefusals(unittest.TestCase):
 
     def test_check_storage_pressure_after_a_larger_released_compile_peak(self):
         (Path(self.tmp.name) / 'make.coax').write_text(
-            'make :: () -> int { a: [200] u8; return cast(int) a[0]; }\n')
+            'make :: () -> int #effects(all) { a: [200] u8; return cast(int) a[0]; }\n')
         source = ('#authority;\n#load "make.coax";\nX :: #run make();\n'
                   '#test "table" { a: [80] u8; #assert cast(int) a[0] == X; }\n'
                   '#test "quiet" { #assert true; }\nmain :: () {}\n')
@@ -337,7 +337,7 @@ class CapacityRefusals(unittest.TestCase):
 
     def test_live_compile_storage_still_counts_in_the_check_phase(self):
         (Path(self.tmp.name) / 'keep.coax').write_text(
-            'keep :: () -> [40] u8 { a: [40] u8; return a; }\n')
+            'keep :: () -> [40] u8 #effects(all) { a: [40] u8; return a; }\n')
         # The evaluated constant and its frozen value retain 40 slots each.
         source = ('#authority;\n#load "keep.coax";\nX :: #run keep();\n'
                   '#test "tiny" { #assert true; }\n#test "quiet" { #assert true; }\nmain :: () {}\n')
@@ -440,7 +440,7 @@ class CapacityRefusals(unittest.TestCase):
 
     def test_compile_slots_refusal_and_near_limit(self):
         def program(n):
-            return f'table :: () -> int {{ a: [{n}] u8; return 1; }}\nX :: #run table();\nmain :: () {{}}\n'
+            return f'table :: () -> int #effects(all) {{ a: [{n}] u8; return 1; }}\nX :: #run table();\nmain :: () {{}}\n'
         capacity, _ = self.refusal('check', program(1572865), 'compile-time value slots', 'E0400', '--run-steps', '250000000')
         self.assertEqual(capacity['limit'], 1572864)
         self.assertIn("in 'table'", capacity['consumers'][0]['what'])

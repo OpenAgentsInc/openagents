@@ -13,10 +13,10 @@ class DerivedQuantities(unittest.TestCase):
  def invoke(self,source,command='c',*extra):
   p=self.work/'case.coax';p.write_text(PRELUDE+source+'\n');return subprocess.run([str(COMPILER),command,str(p),'--library',*extra],cwd=ROOT,capture_output=True,text=True,timeout=120)
  def test_concrete_product_quotient_and_formal_cancellation(self):
-  r=self.invoke('''product :: (a:u.Quantity(u.Metre,f32),b:u.Quantity(u.Second,f32))->u.Quantity(UnitProduct(u.Second,u.Metre),f32) #export_c {return a*b;}
-speed :: (a:u.Quantity(u.Metre,f32),b:u.Quantity(u.Second,f32))->u.Quantity(UnitQuotient(u.Metre,u.Second),f32) #export_c {return a/b;}
-back :: (a:u.Quantity(UnitQuotient(u.Metre,u.Second),f32),b:u.Quantity(u.Second,f32))->u.Quantity(u.Metre,f32) #export_c {return a*b;}
-ratio :: (a:u.Quantity(u.Metre,f32),b:u.Quantity(u.Metre,f32))->u.Quantity(UnitOne,f32) #export_c {return a/b;}
+  r=self.invoke('''product :: (a:u.Quantity(u.Metre,f32),b:u.Quantity(u.Second,f32))->u.Quantity(UnitProduct(u.Second,u.Metre),f32) #export_c #effects(all) {return a*b;}
+speed :: (a:u.Quantity(u.Metre,f32),b:u.Quantity(u.Second,f32))->u.Quantity(UnitQuotient(u.Metre,u.Second),f32) #export_c #effects(all) {return a/b;}
+back :: (a:u.Quantity(UnitQuotient(u.Metre,u.Second),f32),b:u.Quantity(u.Second,f32))->u.Quantity(u.Metre,f32) #export_c #effects(all) {return a*b;}
+ratio :: (a:u.Quantity(u.Metre,f32),b:u.Quantity(u.Metre,f32))->u.Quantity(UnitOne,f32) #export_c #effects(all) {return a/b;}
 calc :: ()->f32 {a:u.Quantity(u.Metre,f32)=u.Quantity.{value=6};b:u.Quantity(u.Second,f32)=u.Quantity.{value=2};return product(a,b).value+speed(a,b).value+back(speed(a,b),b).value+ratio(a,a).value;}
 V :: #run calc();#assert V==22;''');self.assertEqual(r.returncode,0,r.stderr)
  def test_generic_representation_keeps_bound_scalar_literals(self):
@@ -31,14 +31,14 @@ V :: #run calc();#assert V==6;''');self.assertEqual(r.returncode,0,r.stderr)
   for body in ['f :: (a:u.Quantity(u.Metre,f64),b:u.Quantity(u.Second,f64))->u.Quantity(Speed,f64) {return a/b;}','f :: (a:u.Quantity(OtherMetre,f64),b:u.Quantity(u.Second,f64))->u.Quantity(UnitProduct(u.Metre,u.Second),f64) {return a*b;}','f :: (a:u.Quantity(UnitOne,f64))->u.Quantity(Count,f64) {return a;}']:
    r=self.invoke(body);self.assertNotEqual(r.returncode,0);self.assertEqual(r.stdout,'')
  def test_conversions_are_explicit_in_both_directions(self):
-  r=self.invoke('''to_named :: (a:u.Quantity(UnitQuotient(u.Metre,u.Second),f64))->u.Quantity(Speed,f64) #export_c {return convert_unit(Speed,a);}
-to_derived :: (a:u.Quantity(Speed,f64))->u.Quantity(UnitQuotient(u.Metre,u.Second),f64) #export_c {return convert_unit(UnitQuotient(u.Metre,u.Second),a);}
-to_one :: (a:u.Quantity(u.HalfMetre,f64),b:u.Quantity(u.Metre,f64))->u.Quantity(UnitOne,f64) #export_c {return convert_unit(UnitOne,a/b);}
+  r=self.invoke('''to_named :: (a:u.Quantity(UnitQuotient(u.Metre,u.Second),f64))->u.Quantity(Speed,f64) #export_c #effects(all) {return convert_unit(Speed,a);}
+to_derived :: (a:u.Quantity(Speed,f64))->u.Quantity(UnitQuotient(u.Metre,u.Second),f64) #export_c #effects(all) {return convert_unit(UnitQuotient(u.Metre,u.Second),a);}
+to_one :: (a:u.Quantity(u.HalfMetre,f64),b:u.Quantity(u.Metre,f64))->u.Quantity(UnitOne,f64) #export_c #effects(all) {return convert_unit(UnitOne,a/b);}
 calc :: ()->f64 {x:u.Quantity(Speed,f64)=u.Quantity.{value=3};h:u.Quantity(u.HalfMetre,f64)=u.Quantity.{value=6};m:u.Quantity(u.Metre,f64)=u.Quantity.{value=3};return to_named(to_derived(x)).value+to_one(h,m).value;}
 V :: #run calc();#assert V==4;''');self.assertEqual(r.returncode,0,r.stderr)
  def test_result_keeps_left_family_and_same_carrier(self):
   base='B :: struct($U:copyable,$R:numeric) @builtin_quantity {value:$R;}\n'
-  r=self.invoke(base+'f :: (a:B(u.Metre,f64),b:u.Quantity(u.Second,f64))->B(UnitProduct(u.Metre,u.Second),f64) #export_c {return a*b;}');self.assertEqual(r.returncode,0,r.stderr)
+  r=self.invoke(base+'f :: (a:B(u.Metre,f64),b:u.Quantity(u.Second,f64))->B(UnitProduct(u.Metre,u.Second),f64) #export_c #effects(all) {return a*b;}');self.assertEqual(r.returncode,0,r.stderr)
   r=self.invoke('f :: (a:u.Quantity(u.Metre,f32),b:u.Quantity(u.Second,f64)) {x:=a*b;}');self.assertNotEqual(r.returncode,0);self.assertIn('E0823',r.stderr)
  def test_physical_dimension_and_reduced_scale_refusals(self):
   for meta in ['length=8,numerator=1','length=0,numerator=1048576']:
@@ -63,7 +63,7 @@ V :: #run calc();#assert V==4;''');self.assertEqual(r.returncode,0,r.stderr)
    r=self.invoke('f :: (x:u.Quantity('+target+',f64)) {}');self.assertNotEqual(r.returncode,0);self.assertEqual(r.stdout,'')
    r=self.invoke('f :: (a:u.Quantity(Speed,f64)) {x:=convert_unit('+target+',a);}');self.assertNotEqual(r.returncode,0);self.assertEqual(r.stdout,'')
  def test_type_constructor_target_has_no_runtime_call_effect(self):
-  r=self.invoke('f :: (a:u.Quantity(Speed,f64))->u.Quantity(UnitQuotient(u.Metre,u.Second),f64) #export_c {return convert_unit(UnitQuotient(u.Metre,u.Second),a);}','deps','--effects','--proc','f');self.assertEqual(r.returncode,0,r.stderr)
+  r=self.invoke('f :: (a:u.Quantity(Speed,f64))->u.Quantity(UnitQuotient(u.Metre,u.Second),f64) #export_c #effects(all) {return convert_unit(UnitQuotient(u.Metre,u.Second),a);}','deps','--effects','--proc','f');self.assertEqual(r.returncode,0,r.stderr)
   v=json.loads(r.stdout);self.assertEqual(v['edge_count'],0);self.assertEqual(len(v['procedures']),1);self.assertEqual(v['procedures'][0]['effects_mask'],0);self.assertEqual(v['procedures'][0]['reachable_procedures'],1)
  def test_native_verification_runtime_preserves_derived_units(self):
   fixture=ROOT/'coax/tests/quantity/native-verification-integration.coax';record=self.work/'native-record.json'

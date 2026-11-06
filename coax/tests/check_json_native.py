@@ -56,9 +56,9 @@ def main():
     fixture = work / "json.coax"
     fixture.write_text(f'''#load "{ROOT}/coax/lib/json/json.coax";
 JsonNativeWrite :: struct {{bad:bool;count:int;}}
-json_integer_native :: (text:string)->int #export_c {{nodes:[1]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {{return -71;}}return jv_int(d[0],0,-71);}}
-json_unescape_native :: (text:string,out:[]u8)->int #export_c {{return jv_unescape(text,out);}}
-json_requote_native :: (text:string,out:[]u8)->JsonNativeWrite #export_c {{o:[1]Jo;jo_start(o[..],out);jo_requote(o[..],text);return JsonNativeWrite.{{bad=o[0].bad,count=o[0].n}};}}
+json_integer_native :: (text:string)->int #export_c #effects(all) {{nodes:[1]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {{return -71;}}return jv_int(d[0],0,-71);}}
+json_unescape_native :: (text:string,out:[]u8)->int #export_c #effects(all) {{return jv_unescape(text,out);}}
+json_requote_native :: (text:string,out:[]u8)->JsonNativeWrite #export_c #effects(all) {{o:[1]Jo;jo_start(o[..],out);jo_requote(o[..],text);return JsonNativeWrite.{{bad=o[0].bad,count=o[0].n}};}}
 ''')
     driver = work / "driver.c"; driver.write_text(DRIVER)
     dependencies = json.loads(run([compiler, "deps", fixture, "--library"]).stdout)

@@ -56,7 +56,7 @@ def projection():
  for name in ['Lab','Session','SoClient','SO_OWN_IDLE','SO_OWN_LAST','SoStartFailure']:add(name)
  for token in sorted(set(re.findall(r'\b[A-Za-z_]\w*\b',extract.mask(actual)))):
   if token in index and index[token]['kind']!='procedure':add(token)
- chunks=['#import "Basic";\n','lab_owner_unexpected :: () #foreign;\n']+[r['text'] for r in selected.values()]
+ chunks=['#import "Basic";\n','lab_owner_unexpected :: () #foreign #effects(all);\n']+[r['text'] for r in selected.values()]
  stubs=[]
  for name in STUBS:
   original=proc(index[name]['text']);signature=original[:extract.mask(original).index('{')].rstrip()
@@ -68,8 +68,8 @@ def projection():
   stubs.append(dict(name=name,path=index[name]['path'],line=index[name]['line'],signature=signature,source_sha256=sha(original.encode()),stub_sha256=sha(stub.encode())))
  for name in ['so_start_allowed','so_owned_can_start']:chunks.append(proc(index[name]['text']))
  chunks.append(actual)
- chunks.append('lab_owner_init :: (l:[]Lab,s:[]Session) #export_c {l[0]=Lab.{};s[0]=Session.{};}\n')
- chunks.append('lab_owner_ask :: (l:[]Lab,s:[]Session) #export_c {lab_ask(l,s);}\n')
+ chunks.append('lab_owner_init :: (l:[]Lab,s:[]Session) #export_c #effects(all) {l[0]=Lab.{};s[0]=Session.{};}\n')
+ chunks.append('lab_owner_ask :: (l:[]Lab,s:[]Session) #export_c #effects(all) {lab_ask(l,s);}\n')
  return '\n'.join(chunks),dict(files=files,declarations=[{k:v for k,v in r.items() if k!='text'} for r in selected.values()],stubs=stubs,actual_lab_ask_sha256=sha(actual.encode()),guard=GUARD,compared_fields=COMPARED_FIELDS),actual
 
 def main():

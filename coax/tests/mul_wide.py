@@ -16,12 +16,12 @@ else:
     WASM=(str(_tc/'bin/clang'),str(_tc/'sysroot'),str(_tc/'resource'),str(_tc/'bin'))
 COMPILER=Path(os.environ.get('COAX_TEST_COMPILER',ROOT/'bin/coax'))
 SOURCE='''
-product :: (a:u64,b:u64)->CoaxU64Product #export_c {return mul_wide(a,b);}
-hi :: (a:u64,b:u64)->u64 #export_c {return mul_wide(a,b).hi;}
-lo :: (a:u64,b:u64)->u64 #export_c {return mul_wide(a,b).lo;}
+product :: (a:u64,b:u64)->CoaxU64Product #export_c #effects(all) {return mul_wide(a,b);}
+hi :: (a:u64,b:u64)->u64 #export_c #effects(all) {return mul_wide(a,b).hi;}
+lo :: (a:u64,b:u64)->u64 #export_c #effects(all) {return mul_wide(a,b).lo;}
 one :: (s:[]u64)->u64 {s[0]+=1;return s[0];}
 two :: (s:[]u64)->u64 {s[0]+=2;return s[0];}
-ordered :: ()->u64 #export_c {s:[1]u64;return mul_wide(one(s[..]),two(s[..])).lo;}
+ordered :: ()->u64 #export_c #effects(all) {s:[1]u64;return mul_wide(one(s[..]),two(s[..])).lo;}
 #assert #run mul_wide(cast(u64)18446744073709551615,cast(u64)18446744073709551615).hi==18446744073709551614;
 #assert #run mul_wide(cast(u64)18446744073709551615,cast(u64)18446744073709551615).lo==1;
 #assert #run size_of(CoaxU64Product)==16;

@@ -36,44 +36,44 @@ class PublicViews(unittest.TestCase):
         r=self.tool.audit(p,'candidate',classification=m);self.assertEqual(r['error'],error,r);self.observations.append({'case':p.name,'expected':error,'report':r});return r
     def test_view_read_and_default_refusal(self):
         for cls,mask in [('public',0),('secret',1)]:
-            p,baseline,m=self.source('read_'+cls,'candidate :: (v:[]u8)->u8 #export_c {return v[0];}', [('v','[] u8',cls,'read',2)])
+            p,baseline,m=self.source('read_'+cls,'candidate :: (v:[]u8)->u8 #export_c #effects(all) {return v[0];}', [('v','[] u8',cls,'read',2)])
             self.assertFalse(baseline['accepted']);r=self.audit(p,m,0);self.assertEqual(r['return_dependency_mask'],mask);self.assertIn('caller supplies live aligned',r['view_assumption'])
     def test_checked_cast_on_secret_view(self):
-        p,_,m=self.source('secret_cast','candidate :: (v:[]u8)->u64 #export_c {return cast(u64)v[0];}', [('v','[] u8','secret','read',2)])
+        p,_,m=self.source('secret_cast','candidate :: (v:[]u8)->u64 #export_c #effects(all) {return cast(u64)v[0];}', [('v','[] u8','secret','read',2)])
         r=self.audit(p,m,5);self.assertEqual(r['error_name'],'unsupported');self.assertFalse(r['accepted'])
-        p,_,m=self.source('tainted_alias_cast','candidate :: (v:[]u8,x:u8)->u64 #export_c {w:[]u8=v[0..<1];v[0]=x;return cast(u64)w[0];}', [('v','[] u8','public','write',2),('x','u8','secret',None,0)])
+        p,_,m=self.source('tainted_alias_cast','candidate :: (v:[]u8,x:u8)->u64 #export_c #effects(all) {w:[]u8=v[0..<1];v[0]=x;return cast(u64)w[0];}', [('v','[] u8','public','write',2),('x','u8','secret',None,0)])
         r=self.audit(p,m,5);self.assertEqual(r['error_name'],'unsupported');self.assertFalse(r['accepted'])
     def test_taint_alias_and_readonly_effects(self):
         cases=[
-          ('branch','candidate :: (v:[]u8)->u8 #export_c {if v[0]==0 {return 1;}return 2;}',[('v','[] u8','secret','read',2)],6),
-          ('index','candidate :: (v:[]u8,i:u64)->u8 #export_c {return v[cast,trunc(int)i];}',[('v','[] u8','public','read',2),('i','u64','secret',None,0)],7),
-          ('readonly','candidate :: (v:[]u8)->u8 #export_c {v[0]=1;return v[0];}',[('v','[] u8','public','read',2)],5),
-          ('readonly_callee','write :: (v:[]u8)->u8 {v[0]=1;return 0;} candidate :: (v:[]u8)->u8 #export_c {return write(v);}',[('v','[] u8','public','read',2)],5),
-          ('readonly_slice','write :: (v:[]u8)->u8 {v[0]=1;return 0;} candidate :: (v:[]u8)->u8 #export_c {w:[]u8=v[0..<1];return write(w);}',[('v','[] u8','public','read',2)],5),
-          ('tainted_public','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8,x:u8)->u8 #export_c {v[0]=x;return read_public(v);}',[('v','[] u8','public','write',2),('x','u8','secret',None,0)],8),
-          ('tainted_slice_alias','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8,x:u8)->u8 #export_c {w:[]u8=v[0..<1];v[0]=x;return read_public(w);}',[('v','[] u8','public','write',2),('x','u8','secret',None,0)],8),
-          ('tainted_alias_branch','candidate :: (v:[]u8,x:u8)->u8 #export_c {w:[]u8=v[0..<1];w[0]=x;if v[0]==0 {return 1;}return 0;}',[('v','[] u8','public','write',2),('x','u8','secret',None,0)],6),
-          ('secret_public','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8)->u8 #export_c {return read_public(v);}',[('v','[] u8','secret','read',2)],8),
-          ('forbidden_public','read_vartime :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8)->u8 #export_c {return read_vartime(v);}',[('v','[] u8','public','read',2)],8),
-          ('forbidden_transitive','read_vartime :: (v:[]u8)->u8 {return v[0];} outer_public :: (v:[]u8)->u8 {return read_vartime(v);} candidate :: (v:[]u8)->u8 #export_c {return outer_public(v);}',[('v','[] u8','public','read',2)],8),
-          ('secret_branch_public_helper','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8)->u8 #export_c {if v[0]==0 {return read_public(v);}return 0;}',[('v','[] u8','secret','read',2)],6),
-          ('foreign','external :: (x:u8)->u8 #foreign; candidate :: (v:[]u8)->u8 #export_c {return external(v[0]);}',[('v','[] u8','public','read',2)],9),
-          ('bounds','candidate :: (v:[]u8)->u8 #export_c {return v[2];}',[('v','[] u8','public','read',2)],2),
-          ('zero_trip','candidate :: (v:[]u8)->u8 #export_c {for i:0..<0 {}return v[0];}',[('v','[] u8','public','read',2)],5),
-          ('view_escape','candidate :: (v:[]u8)->[]u8 #export_c {return v;}',[('v','[] u8','public','read',2)],5),
+          ('branch','candidate :: (v:[]u8)->u8 #export_c #effects(all) {if v[0]==0 {return 1;}return 2;}',[('v','[] u8','secret','read',2)],6),
+          ('index','candidate :: (v:[]u8,i:u64)->u8 #export_c #effects(all) {return v[cast,trunc(int)i];}',[('v','[] u8','public','read',2),('i','u64','secret',None,0)],7),
+          ('readonly','candidate :: (v:[]u8)->u8 #export_c #effects(all) {v[0]=1;return v[0];}',[('v','[] u8','public','read',2)],5),
+          ('readonly_callee','write :: (v:[]u8)->u8 {v[0]=1;return 0;} candidate :: (v:[]u8)->u8 #export_c #effects(all) {return write(v);}',[('v','[] u8','public','read',2)],5),
+          ('readonly_slice','write :: (v:[]u8)->u8 {v[0]=1;return 0;} candidate :: (v:[]u8)->u8 #export_c #effects(all) {w:[]u8=v[0..<1];return write(w);}',[('v','[] u8','public','read',2)],5),
+          ('tainted_public','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8,x:u8)->u8 #export_c #effects(all) {v[0]=x;return read_public(v);}',[('v','[] u8','public','write',2),('x','u8','secret',None,0)],8),
+          ('tainted_slice_alias','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8,x:u8)->u8 #export_c #effects(all) {w:[]u8=v[0..<1];v[0]=x;return read_public(w);}',[('v','[] u8','public','write',2),('x','u8','secret',None,0)],8),
+          ('tainted_alias_branch','candidate :: (v:[]u8,x:u8)->u8 #export_c #effects(all) {w:[]u8=v[0..<1];w[0]=x;if v[0]==0 {return 1;}return 0;}',[('v','[] u8','public','write',2),('x','u8','secret',None,0)],6),
+          ('secret_public','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8)->u8 #export_c #effects(all) {return read_public(v);}',[('v','[] u8','secret','read',2)],8),
+          ('forbidden_public','read_vartime :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8)->u8 #export_c #effects(all) {return read_vartime(v);}',[('v','[] u8','public','read',2)],8),
+          ('forbidden_transitive','read_vartime :: (v:[]u8)->u8 {return v[0];} outer_public :: (v:[]u8)->u8 {return read_vartime(v);} candidate :: (v:[]u8)->u8 #export_c #effects(all) {return outer_public(v);}',[('v','[] u8','public','read',2)],8),
+          ('secret_branch_public_helper','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8)->u8 #export_c #effects(all) {if v[0]==0 {return read_public(v);}return 0;}',[('v','[] u8','secret','read',2)],6),
+          ('foreign','external :: (x:u8)->u8 #foreign #effects(all); candidate :: (v:[]u8)->u8 #export_c #effects(all) {return external(v[0]);}',[('v','[] u8','public','read',2)],9),
+          ('bounds','candidate :: (v:[]u8)->u8 #export_c #effects(all) {return v[2];}',[('v','[] u8','public','read',2)],2),
+          ('zero_trip','candidate :: (v:[]u8)->u8 #export_c #effects(all) {for i:0..<0 {}return v[0];}',[('v','[] u8','public','read',2)],5),
+          ('view_escape','candidate :: (v:[]u8)->[]u8 #export_c #effects(all) {return v;}',[('v','[] u8','public','read',2)],5),
         ]
         for name,text,params,error in cases:
             with self.subTest(name=name):p,_,m=self.source(name,text,params);self.audit(p,m,error)
     def test_public_callee_and_writable_view(self):
-        cases=[('public_call','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8)->u8 #export_c {return read_public(v);}','read'),('write','candidate :: (v:[]u8)->u8 #export_c {v[0]=1;return v[0];}','write')]
+        cases=[('public_call','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8)->u8 #export_c #effects(all) {return read_public(v);}','read'),('write','candidate :: (v:[]u8)->u8 #export_c #effects(all) {v[0]=1;return v[0];}','write')]
         for n,text,access in cases:
             p,_,m=self.source(n,text,[('v','[] u8','public',access,2)]);self.audit(p,m,0)
-        p,_,m=self.source('secret_copy','candidate :: (s:[]u8,d:[]u8)->u8 #export_c {d[0]=s[0];return d[0];}', [('s','[] u8','secret','read',2),('d','[] u8','public','write',2)])
+        p,_,m=self.source('secret_copy','candidate :: (s:[]u8,d:[]u8)->u8 #export_c #effects(all) {d[0]=s[0];return d[0];}', [('s','[] u8','secret','read',2),('d','[] u8','public','write',2)])
         self.assertEqual(self.audit(p,m,0)['return_dependency_mask'],1)
-        p,_,m=self.source('public_guard','candidate :: (v:[]u8)->u8 #export_c {#assert v[0]==0;return 0;}', [('v','[] u8','public','read',2)])
+        p,_,m=self.source('public_guard','candidate :: (v:[]u8)->u8 #export_c #effects(all) {#assert v[0]==0;return 0;}', [('v','[] u8','public','read',2)])
         r=self.audit(p,m,14);self.assertFalse(r['accepted']);self.assertEqual([g['origin_mask'] for g in r['authored_guard_obligations']],[0])
     def test_manifest_and_tool_identity_mismatches_refuse(self):
-        p,_,m=self.source('manifest','candidate :: (v:[]u8)->u8 #export_c {return v[0];}',[('v','[] u8','public','read',2)]);self.audit(p,m,0)
+        p,_,m=self.source('manifest','candidate :: (v:[]u8)->u8 #export_c #effects(all) {return v[0];}',[('v','[] u8','public','read',2)]);self.audit(p,m,0)
         variants=[]
         for key,value in [('views_disjoint',False),('live_aligned_exclusive',False),('public_only',False),('compiler_sha256','0'*64),('audit_artifact_sha256','0'*64),('audit_inputs',{}),('profile','release')]:
             x=copy.deepcopy(m);x[key]=value;variants.append(x)
@@ -83,7 +83,7 @@ class PublicViews(unittest.TestCase):
         x=copy.deepcopy(m);x['sources'][str(p)]='0'*64;variants.append(x)
         for x in variants:self.audit(p,x,13)
     def test_cli_handshake_binds_this_process_and_refuses_changed_identity(self):
-        p,_,_=self.source('handshake','candidate :: (v:[]u8)->u8 #export_c {return v[0];}', [('v','[] u8','secret','read',2)])
+        p,_,_=self.source('handshake','candidate :: (v:[]u8)->u8 #export_c #effects(all) {return v[0];}', [('v','[] u8','secret','read',2)])
         for changed in (False,True):
             proc=subprocess.Popen([sys.executable,str(ROOT/'tools/coax-nostr/public-view-check/aggregate.py'),str(p),'--entry','candidate','--classification-stdio'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
             try:
@@ -96,7 +96,7 @@ class PublicViews(unittest.TestCase):
             finally:
                 if proc.poll() is None:proc.kill();proc.wait()
     def test_loaded_artifact_substitution_with_new_hash_refuses(self):
-        p,_,m=self.source('artifact_swap','candidate :: (v:[]u8)->u8 #export_c {return v[0];}', [('v','[] u8','secret','read',2)])
+        p,_,m=self.source('artifact_swap','candidate :: (v:[]u8)->u8 #export_c #effects(all) {return v[0];}', [('v','[] u8','secret','read',2)])
         original=self.tool.artifact.read_bytes();old_hash=self.tool.artifact_fingerprint;poison=original+b'changed';new_hash=hashlib.sha256(poison).hexdigest()
         def replace(data):
             path=self.tool.artifact.with_suffix('.replacement');path.write_bytes(data);os.replace(path,self.tool.artifact)

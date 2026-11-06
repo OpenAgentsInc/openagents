@@ -27,13 +27,13 @@ def run(*args,ok=True):
  return r
 PROFILE='''
 Cell :: struct { value:u32 = 7; #if BUILD_DEBUG { magnitude:u64 = 2; } }
-profile_identity :: (c:Cell)->Cell #export_c {return c;}
-profile_size :: ()->int #export_c {return size_of(Cell);}
-profile_value :: ()->int #export_c {
+profile_identity :: (c:Cell)->Cell #export_c #effects(all) {return c;}
+profile_size :: ()->int #export_c #effects(all) {return size_of(Cell);}
+profile_value :: ()->int #export_c #effects(all) {
  c:Cell;#if BUILD_DEBUG {#assert c.magnitude<8;return cast(int)c.value+cast(int)c.magnitude;}
  else {return cast(int)c.value+100;}
 }
-profile_fields :: ()->int #export_c {return type_info(Cell).field_count;}
+profile_fields :: ()->int #export_c #effects(all) {return type_info(Cell).field_count;}
 #test "selected evaluator layout and body" {
  #if BUILD_DEBUG {#assert size_of(Cell)==16 && profile_value()==9 && profile_fields()==2;}
  else {#assert size_of(Cell)==4 && profile_value()==107 && profile_fields()==1;}
@@ -60,23 +60,23 @@ class BuildProfiles(unittest.TestCase):
     exe=self.dir/(mode+'-probe');run('cc','-std=c11','-O1','-g','-fsanitize=address,undefined',c,probe,'-lm','-o',exe);run(exe)
  def test_only_selected_names_types_and_compiletime_work_are_resolved(self):
   source=self.source('''S :: struct { a:u8; #if BUILD_DEBUG { missing:NoSuchType; } }
-f :: ()->int #export_c {#if BUILD_DEBUG {return no_such_procedure();}else{return 7;}}
+f :: ()->int #export_c #effects(all) {#if BUILD_DEBUG {return no_such_procedure();}else{return 7;}}
 ''')
   self.assertNotEqual(run(COMPILER,'c',source,'--library',ok=False).returncode,0)
   release=run(COMPILER,'c',source,'--library','--release').stdout;self.assertNotIn('NoSuchType',release);self.assertNotIn('no_such_procedure',release)
   source=self.source('''bad :: (value:int)->int {return 1/value;}
-f :: ()->int #export_c {#if BUILD_DEBUG {return 7;}else{return #run bad(0);}}
+f :: ()->int #export_c #effects(all) {#if BUILD_DEBUG {return 7;}else{return #run bad(0);}}
 ''')
   run(COMPILER,'c',source,'--library');r=run(COMPILER,'c',source,'--library','--release',ok=False);self.assertNotEqual(r.returncode,0);self.assertIn('E0407',r.stderr)
   # An inactive reflection/wide reference must not inject helper declarations.
-  source=self.source('''f :: ()->int #export_c {#if BUILD_DEBUG {x:=type_info(int);p:=mul_wide(cast(u64)2,cast(u64)3);return x.size+cast(int)p.lo;}else{return 7;}}''')
+  source=self.source('''f :: ()->int #export_c #effects(all) {#if BUILD_DEBUG {x:=type_info(int);p:=mul_wide(cast(u64)2,cast(u64)3);return x.size+cast(int)p.lo;}else{return 7;}}''')
   release=run(COMPILER,'c',source,'--library','--release').stdout
   for name in ['CoaxTypeInfo','CoaxFieldInfo','CoaxEnumInfo','CoaxU64Product','coax_mul_wide']:self.assertNotIn(name,release)
  def test_both_branches_parse_and_scope_remains_lexical(self):
   for text in ['f :: () {#if BUILD_DEBUG {x:=1} else {}}','S :: struct {#if BUILD_DEBUG {} else {x:u8}}']:
    source=self.source(text)
    for flags in [[],['--release']]:self.assertNotEqual(run(COMPILER,'check',source,*flags,ok=False).returncode,0)
-  source=self.source('f :: ()->int #export_c {#if BUILD_DEBUG {x:=1;}else{x:=2;}return x;}')
+  source=self.source('f :: ()->int #export_c #effects(all) {#if BUILD_DEBUG {x:=1;}else{x:=2;}return x;}')
   for flags in [[],['--release']]:
    result=run(COMPILER,'c',source,'--library',*flags,ok=False);self.assertNotEqual(result.returncode,0);self.assertIn('E0306',result.stderr)
   for text in ['FLAG :: true; f :: () {#if FLAG {}}','#if BUILD_DEBUG {x :: 1;}','S :: struct {#if true {x:u8;}}']:
@@ -85,21 +85,21 @@ f :: ()->int #export_c {#if BUILD_DEBUG {return 7;}else{return #run bad(0);}}
     result=run(COMPILER,'check',source,*flags,ok=False);self.assertNotEqual(result.returncode,0);self.assertIn('E0210',result.stderr)
  def test_nested_conditions_duplicate_fields_and_original_locations(self):
   source=self.source('''S :: struct {#if BUILD_DEBUG {#if BUILD_DEBUG {x:u8;}}else{#if BUILD_DEBUG {missing:Missing;}else{x:u8;}}}
-f :: ()->int #export_c {s:S;s.x=9;return cast(int)s.x;}''')
+f :: ()->int #export_c #effects(all) {s:S;s.x=9;return cast(int)s.x;}''')
   for flags in [[],['--release']]:run(COMPILER,'c',source,'--library',*flags)
   # A struct whose only field is development-only becomes a valid empty
   # struct in release, including in emitted native code and reflection.
-  source=self.source('Empty :: struct {#if BUILD_DEBUG {debug:u64;}}\nsize :: ()->int #export_c {return size_of(Empty);}\nfields :: ()->int #export_c {return type_info(Empty).field_count;}')
+  source=self.source('Empty :: struct {#if BUILD_DEBUG {debug:u64;}}\nsize :: ()->int #export_c #effects(all) {return size_of(Empty);}\nfields :: ()->int #export_c #effects(all) {return type_info(Empty).field_count;}')
   for mode,flags,size,fields in [('debug',[],8,1),('release',['--release'],1,0)]:
    c=self.dir/('empty-'+mode+'.c');c.write_text(run(COMPILER,'c',source,'--library',*flags).stdout)
    binary=self.dir/('empty-'+mode+'.dylib');run('cc','-std=c11','-O2','-shared','-fPIC',c,'-lm','-o',binary);lib=C.CDLL(str(binary))
    self.assertEqual(lib.size(),size);self.assertEqual(lib.fields(),fields)
-  source=self.source('S :: struct {#if BUILD_DEBUG {x:u8;} x:u8;} f :: () #export_c {}')
+  source=self.source('S :: struct {#if BUILD_DEBUG {x:u8;} x:u8;} f :: () #export_c #effects(all) {}')
   self.assertNotEqual(run(COMPILER,'c',source,'--library',ok=False).returncode,0);run(COMPILER,'c',source,'--library','--release')
-  source=self.source('f :: () #export_c {\n#if BUILD_DEBUG {} else {\n missing();\n}\n}')
+  source=self.source('f :: () #export_c #effects(all) {\n#if BUILD_DEBUG {} else {\n missing();\n}\n}')
   result=run(COMPILER,'c',source,'--library','--release',ok=False);self.assertNotEqual(result.returncode,0);self.assertIn(str(source)+':3:',result.stderr)
   # Syntax still consumes the existing nesting budget in a disabled branch.
-  source=self.source('S :: struct {'+'#if BUILD_DEBUG {'*140+'x:u8;'+'}'*140+'} f :: () #export_c {}')
+  source=self.source('S :: struct {'+'#if BUILD_DEBUG {'*140+'x:u8;'+'}'*140+'} f :: () #export_c #effects(all) {}')
   for flags in [[],['--release']]:
    result=run(COMPILER,'c',source,'--library',*flags,ok=False);self.assertNotEqual(result.returncode,0);self.assertIn('E0221',result.stderr)
  def test_loaded_units_and_real_wasm_and_metal_profiles(self):

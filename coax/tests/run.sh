@@ -204,6 +204,23 @@ unit_constant_time() { python3 tests/constant_time.py; }
 unit_wrapping() { python3 tests/wrapping.py; }
 unit_integer_ops() { python3 tests/integer_ops.py; }
 unit_nominal_ids() { COAX="$COAX_ABS" python3 tests/nominal-ids.py; }
+unit_handles() { "$COAX" test lib/handle.coax && "$COAX" mutate lib/handle.coax --root-only; }
+unit_effect_contracts() {
+  "$COAX" test lib/compiler/effect-contract.coax &&
+    "$COAX" mutate lib/compiler/effect-contract.coax --root-only &&
+    (cd .. && COAX="$COAX_ABS" coax/web/tool.sh coax/tests/effect-contracts.coax "$COAX_ABS")
+}
+unit_transactions() {
+  "$COAX" test tests/transactions.coax &&
+    "$COAX" run tests/transactions.coax && "$COAX" run tests/transactions.coax --release &&
+    "$COAX" test lib/compiler/transaction-runtime.coax &&
+    "$COAX" mutate lib/compiler/transaction-runtime.coax --root-only
+}
+unit_compat() {
+  "$COAX" test lib/compiler/compatibility.coax &&
+    "$COAX" mutate lib/compiler/compatibility.coax --root-only &&
+    COAX="$COAX_ABS" web/tool.sh tests/compat.coax "$COAX_ABS"
+}
 unit_mul_wide() { python3 tests/mul_wide.py && python3 tests/foreign_buffers.py; }
 unit_cuda() {
   python3 tests/cuda.py && python3 tests/metal_compute.py && "$COAX" test lib/compute/mma.coax --lib && "$COAX" mutate lib/compute/mma.coax --lib && "$COAX" test lib/compute/apple.coax --lib && "$COAX" mutate lib/compute/apple.coax --lib
@@ -254,7 +271,7 @@ unit_spatial() {
 UNITS=(pass fail examples pulse python native strict_math native_checks lexer parser budget strings traversal
   provenance query steps library_checks authority_cache check_reuse parallel_checks job_budget loaded release mutation_schedule
   build_profiles semantic_profiles checker systemone results book sources reflection library_tools
-  sequence bounded kept clock debugging nostr constant_time wrapping integer_ops nominal_ids mul_wide cuda proto_cap proto proto_policy
+  sequence bounded kept clock debugging nostr constant_time wrapping integer_ops nominal_ids handles effect_contracts transactions compat mul_wide cuda proto_cap proto proto_policy
   proto_message verify wire_checks generated_checks wire_core importer_checks fingerprint_checks
   unit_algebra unit_forms spatial_policy borrow_summary spatial_operators spatial)
 

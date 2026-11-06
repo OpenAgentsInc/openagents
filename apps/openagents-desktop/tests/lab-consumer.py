@@ -37,23 +37,23 @@ def projection():
  roots=['Lab','Session','Engine','PsEngine','GpuSwitch','lab_attach','lab_ask','lab_pump','lab_stop','s_init','s_user','s_text_of','LAB_TEST_ANSWER','so_owned_discard','so_request_cancel']
  for name in roots:add(name)
  helpers='''
-lab_consumer_effect :: (code:int) #foreign;
-lab_consumer_init :: (l:[]Lab,s:[]Session,e:[]Engine,p:[]PsEngine,g:[]GpuSwitch,body:[]u8,out:[]u8,err:[]u8,pool:[]u8) #export_c {
+lab_consumer_effect :: (code:int) #foreign #effects(all);
+lab_consumer_init :: (l:[]Lab,s:[]Session,e:[]Engine,p:[]PsEngine,g:[]GpuSwitch,body:[]u8,out:[]u8,err:[]u8,pool:[]u8) #export_c #effects(all) {
  l[0]=Lab.{};g[0]=GpuSwitch.{};s_init(s,pool);lab_attach(l,body,out,err);
  l[0].url_n=e_set(l[0].url[..],0,SO_PSIONIC_URL);s_user(s,"fix the failing test");l[0].part=0;
 }
-lab_consumer_ask :: (l:[]Lab,s:[]Session) #export_c {lab_ask(l,s);}
-lab_consumer_pump :: (l:[]Lab,e:[]Engine,p:[]PsEngine,g:[]GpuSwitch,s:[]Session) #export_c {lab_pump(l,e,p,g,s,0.016);}
-lab_consumer_stop :: (l:[]Lab,s:[]Session)->bool #export_c {return lab_stop(l,s);}
-lab_consumer_text :: (s:[]Session,i:int)->string #export_c {return s_text_of(s,i);}
-lab_consumer_fixture :: ()->string #export_c {return LAB_TEST_ANSWER;}
-lab_consumer_stale :: (l:[]Lab,ticket:int)->bool #export_c {
+lab_consumer_ask :: (l:[]Lab,s:[]Session) #export_c #effects(all) {lab_ask(l,s);}
+lab_consumer_pump :: (l:[]Lab,e:[]Engine,p:[]PsEngine,g:[]GpuSwitch,s:[]Session) #export_c #effects(all) {lab_pump(l,e,p,g,s,0.016);}
+lab_consumer_stop :: (l:[]Lab,s:[]Session)->bool #export_c #effects(all) {return lab_stop(l,s);}
+lab_consumer_text :: (s:[]Session,i:int)->string #export_c #effects(all) {return s_text_of(s,i);}
+lab_consumer_fixture :: ()->string #export_c #effects(all) {return LAB_TEST_ANSWER;}
+lab_consumer_stale :: (l:[]Lab,ticket:int)->bool #export_c #effects(all) {
  switch so_request_discard(l[0].owner[..],ticket) {case ok {return true;}case err(failure) {return false;}}
 }
-lab_consumer_cancel_ticket :: (l:[]Lab,ticket:int)->bool #export_c {
+lab_consumer_cancel_ticket :: (l:[]Lab,ticket:int)->bool #export_c #effects(all) {
  switch so_request_cancel(l[0].owner[..],ticket) {case ok {return true;}case err(failure) {return false;}}
 }
-lab_consumer_again :: (l:[]Lab,s:[]Session) #export_c {
+lab_consumer_again :: (l:[]Lab,s:[]Session) #export_c #effects(all) {
  s_turn_end(s,false,"");s_user(s,"next request");l[0].part=s[0].n-1;lab_ask(l,s);
 }
 '''

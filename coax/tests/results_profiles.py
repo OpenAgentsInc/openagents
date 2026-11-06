@@ -107,7 +107,7 @@ class ResultProfiles(unittest.TestCase):
         self.assertEqual(json.loads(result.stderr.splitlines()[0])['code'],'E0389')
 
     def test_effects_v1_visits_each_case_and_fallback(self):
-        source = self.source('io :: ()->int #foreign; Reply :: union { value:int; empty; } root :: (r:Reply)->int { switch r { case value(x) { return x; } case empty { return some(io()) or_else io(); } } }')
+        source = self.source('io :: ()->int #foreign #effects(all); Reply :: union { value:int; empty; } root :: (r:Reply)->int { switch r { case value(x) { return x; } case empty { return some(io()) or_else io(); } } }')
         result = self.run_coax('deps', source, '--effects', '--proc', 'root')
         self.assertEqual(result.returncode, 0, result.stderr)
         report = json.loads(result.stdout)
@@ -118,7 +118,7 @@ class ResultProfiles(unittest.TestCase):
         self.assertEqual([p['name'] for p in effects['foreign_call']['path']], ['root', 'io'])
 
     def test_effects_v1_marks_enum_switch_unsupported_and_visits_case(self):
-        source=self.source('io :: ()->int #foreign; Flag :: enum u8 { off; on; } root :: (f:Flag)->int { switch f { case Flag.off { return 0; } case Flag.on { return io(); } } }')
+        source=self.source('io :: ()->int #foreign #effects(all); Flag :: enum u8 { off; on; } root :: (f:Flag)->int { switch f { case Flag.off { return 0; } case Flag.on { return io(); } } }')
         result=self.run_coax('deps',source,'--effects','--proc','root')
         self.assertEqual(result.returncode,0,result.stderr)
         effects={e['kind']:e for e in json.loads(result.stdout)['procedures'][0]['effects']}
@@ -159,7 +159,7 @@ class ResultProfiles(unittest.TestCase):
     def test_compute_profiles_refuse_sums_and_exhaustive_switch(self):
         # These are valid native programs. Device profiles must refuse before
         # producing a partial kernel, including a switch over an ordinary enum.
-        control=self.source('k :: (item:int,out:[]int) #export_c { out[item]=7; }')
+        control=self.source('k :: (item:int,out:[]int) #export_c #effects(all) { out[item]=7; }')
         for command in ('cuda','metal-compute'):
             result=self.run_coax(command,control)
             self.assertEqual(result.returncode,0,result.stderr)
@@ -167,7 +167,7 @@ class ResultProfiles(unittest.TestCase):
             'choose :: ()->int { x:int?=some(7); return x or_else 0; }',
             'Flag :: enum u8 { off; on; } choose :: ()->int { switch Flag.on { case Flag.off { return 0; } case Flag.on { return 7; } } }',
         ):
-            source=self.source(helper+' k :: (item:int,out:[]int) #export_c { out[item]=choose(); }')
+            source=self.source(helper+' k :: (item:int,out:[]int) #export_c #effects(all) { out[item]=choose(); }')
             result=self.run_coax('check',source)
             self.assertEqual(result.returncode,0,result.stderr)
             for command,code in (('cuda','E0700'),('metal-compute','E0702')):
@@ -351,8 +351,8 @@ int main(int argc,char **argv){
 C :: union {number:int;}
 A :: union {number:int;}
 B__u_C :: union {number:int;}
-first :: ()->Result(A__u_B,C) #export_c {return Result(A__u_B,C).{ok=A__u_B.{number=3}};}
-second :: ()->Result(A,B__u_C) #export_c {return Result(A,B__u_C).{err=B__u_C.{number=7}};}
+first :: ()->Result(A__u_B,C) #export_c #effects(all) {return Result(A__u_B,C).{ok=A__u_B.{number=3}};}
+second :: ()->Result(A,B__u_C) #export_c #effects(all) {return Result(A,B__u_C).{err=B__u_C.{number=7}};}
 ''')
         _,header=self.emit(source,'names')
         text=header.read_text()

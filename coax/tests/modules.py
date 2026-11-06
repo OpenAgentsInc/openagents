@@ -29,7 +29,7 @@ PREFIX = "coax.decl.v1:"
 HUD = {
     "hud.coax": '#module "engine.hud";\n#load "hud/types.coax";\n#load "hud/frame.coax";\nHUD_BASE :: cast(int) 2;\n',
     "hud/types.coax": "HudSlot :: struct { index: int; }\nHudMode :: enum u8 { idle; busy; }\n",
-    "hud/frame.coax": '#load "types.coax";\nhud_frame :: (s: HudSlot) -> int { return s.index + HUD_BASE; }\n',
+    "hud/frame.coax": '#load "types.coax";\nhud_frame :: (s: HudSlot) -> int #effects(all) { return s.index + HUD_BASE; }\n',
     "main.coax": '#import "Basic";\n#load "hud.coax";\nmain :: () { print("%\\n", hud_frame(HudSlot.{index=40})); }\n',
 }
 
@@ -202,11 +202,11 @@ class ModuleIdentity(unittest.TestCase):
 
     def test_member_diagnostics_and_authority_stay_with_their_units(self):
         files = dict(HUD)
-        files["hud/frame.coax"] = '#load "types.coax";\n// line two\nhud_frame :: (s: HudSlot) -> int { return s.index + missing; }\n'
+        files["hud/frame.coax"] = '#load "types.coax";\n// line two\nhud_frame :: (s: HudSlot) -> int #effects(all) { return s.index + missing; }\n'
         root = self.tree(files)
         record = self.error(root / "main.coax", "E0306", root / "hud/frame.coax")
         self.assertEqual(record["line"], 3)
-        files["hud/frame.coax"] = '#authority;\n#load "types.coax";\nhud_frame :: (s: HudSlot) -> int { return s.index + HUD_BASE; }\n#test "frame" {#assert hud_frame(HudSlot.{index=1})==4;}\n'
+        files["hud/frame.coax"] = '#authority;\n#load "types.coax";\nhud_frame :: (s: HudSlot) -> int #effects(all) { return s.index + HUD_BASE; }\n#test "frame" {#assert hud_frame(HudSlot.{index=1})==4;}\n'
         root = self.tree(files, "b")
         self.error(root / "main.coax", "E0406", root / "hud/frame.coax")
         (root / "hud/frame.coax").write_text(files["hud/frame.coax"].replace("==4", "==3"))
@@ -215,7 +215,7 @@ class ModuleIdentity(unittest.TestCase):
         self.assertEqual(ids[("proc", "hud_frame")], PREFIX + "engine.hud:proc:hud_frame")
 
     def test_a_claim_changes_no_generated_code_or_lines(self):
-        root = self.tree({"plain.coax": "Pair :: struct { a: int; b: int; }\nsum :: (p: Pair) -> int #export_c { return p.a + p.b; }\n"})
+        root = self.tree({"plain.coax": "Pair :: struct { a: int; b: int; }\nsum :: (p: Pair) -> int #export_c #effects(all) { return p.a + p.b; }\n"})
         plain = self.run_coax("c", root / "plain.coax", "--library")
         self.assertEqual(plain.returncode, 0, plain.stderr)
         claimed = root / "claimed.coax"
@@ -235,9 +235,9 @@ class ModuleIdentity(unittest.TestCase):
 
 GUARD = {
     "types.coax": '#module "game.guard_types";\nGaObservation :: struct { calm: bool; day: int; }\nGaEffect :: struct { flags: int; }\n',
-    "util.coax": "ga_clamp :: (x: int) -> int { return ifx x < 0 then 0 else x; }\n",
-    "policy.coax": '#module "game.guard_policy";\n#load "types.coax";\n#load "util.coax";\nga_decide :: (o: GaObservation) -> GaEffect #export_c { return GaEffect.{flags=ga_clamp(o.day)}; }\n',
-    "page.coax": '#load "types.coax";\npage_frame :: (o: GaObservation) -> int #export_c { return o.day; }\n',
+    "util.coax": "ga_clamp :: (x: int) -> int #effects(all) { return ifx x < 0 then 0 else x; }\n",
+    "policy.coax": '#module "game.guard_policy";\n#load "types.coax";\n#load "util.coax";\nga_decide :: (o: GaObservation) -> GaEffect #export_c #effects(all) { return GaEffect.{flags=ga_clamp(o.day)}; }\n',
+    "page.coax": '#load "types.coax";\npage_frame :: (o: GaObservation) -> int #export_c #effects(all) { return o.day; }\n',
 }
 
 
@@ -274,14 +274,14 @@ class ModuleRevisions(unittest.TestCase):
         a = self.revs(self.tree(GUARD, "a") / "policy.coax")
         self.assertEqual(self.revs(self.tree(GUARD, "x/y/b") / "policy.coax"), a)
         moved = dict(GUARD)
-        moved["policy.coax"] = '#load "util.coax";\nga_decide :: (o: GaObservation) -> GaEffect #export_c { return GaEffect.{flags=ga_clamp(o.day)}; }\n#load "types.coax";\n#module "game.guard_policy";\n'
+        moved["policy.coax"] = '#load "util.coax";\nga_decide :: (o: GaObservation) -> GaEffect #export_c #effects(all) { return GaEffect.{flags=ga_clamp(o.day)}; }\n#load "types.coax";\n#module "game.guard_policy";\n'
         c = self.revs(self.tree(moved, "c") / "policy.coax")
         self.assertEqual(c[0]["game.guard_types"], a[0]["game.guard_types"])
         self.assertEqual(c[1][PREFIX + "game.guard_types:struct:GaEffect"], a[1][PREFIX + "game.guard_types:struct:GaEffect"])
         # The policy's own source changed (reordered lines), so its revision changes, conservatively.
         self.assertNotEqual(c[0]["game.guard_policy"], a[0]["game.guard_policy"])
         unrelated = dict(GUARD)
-        unrelated["extra.coax"] = "unrelated :: () -> int { return 7; }\n"
+        unrelated["extra.coax"] = "unrelated :: () -> int #effects(all) { return 7; }\n"
         unrelated["page.coax"] = '#load "extra.coax";\n' + GUARD["page.coax"]
         d = self.revs(self.tree(unrelated, "d") / "page.coax")
         self.assertEqual(d[0]["game.guard_types"], a[0]["game.guard_types"])
@@ -322,7 +322,7 @@ class ModuleRevisions(unittest.TestCase):
         self.assertNotIn("page_frame", json.dumps(r["declarations"]))
         (root / "proto").mkdir()
         shutil.copy(ROOT.parent / "proto/descriptors/ios-home.pb", root / "proto/types.pb")
-        (root / "proto/codec.coax").write_text('#module "game.wire";\n#import_proto "types.pb" as Wire;\nwire_rev :: () -> u64 { return Wire_HudInvocation_get_revision(Wire_HudInvocation_new()).value; }\n')
+        (root / "proto/codec.coax").write_text('#module "game.wire";\n#import_proto "types.pb" as Wire;\nwire_rev :: () -> u64 #effects(all) { return Wire_HudInvocation_get_revision(Wire_HudInvocation_new()).value; }\n')
         (root / "wire.coax").write_text('#load "proto/codec.coax";\nmain :: () {}\n')
         r = self.modules(root / "wire.coax")
         wire = next(m for m in r["modules"] if m["id"] == "game.wire")
@@ -333,8 +333,8 @@ class ModuleRevisions(unittest.TestCase):
 
 # Two modules that spell the same local names differently.
 PAIR = {
-    "left.coax": '#module "demo.left";\nV :: struct { x: int; }\nE :: enum u8 { lo; hi; }\nK :: cast(int) 10;\ng :: () -> int { return 1; }\nscale :: (v: V) -> int { return v.x * K; }\n',
-    "right.coax": '#module "demo.right";\nV :: struct { x: int; }\nK :: cast(int) 20;\ng :: () -> int { return 2; }\n',
+    "left.coax": '#module "demo.left";\nV :: struct { x: int; }\nE :: enum u8 { lo; hi; }\nK :: cast(int) 10;\ng :: () -> int #effects(all) { return 1; }\nscale :: (v: V) -> int #effects(all) { return v.x * K; }\n',
+    "right.coax": '#module "demo.right";\nV :: struct { x: int; }\nK :: cast(int) 20;\ng :: () -> int #effects(all) { return 2; }\n',
     "main.coax": '#import "Basic";\n#load "left.coax" as l;\n#load "right.coax" as r;\n'
                  'main :: () {\n  a: l.V = l.V.{x = l.g()};\n  b := r.V.{x = r.g()};\n  e := l.E.hi;\n'
                  '  print("% % % % % %\\n", a.x, b.x, l.K, r.K, l.scale(a), cast(int) e);\n}\n',
@@ -385,10 +385,10 @@ class QualifiedLookup(unittest.TestCase):
 
     def test_metal_scalar_kernel_binds_qualified_calls(self):
         files = {
-            "warm.coax": '#module "shade.warm";\ngain :: (x: f32) -> f32 { return x * 0.5; }\n',
-            "cool.coax": '#module "shade.cool";\ngain :: (x: f32) -> f32 { return x * 0.25; }\n',
+            "warm.coax": '#module "shade.warm";\ngain :: (x: f32) -> f32 #effects(all) { return x * 0.5; }\n',
+            "cool.coax": '#module "shade.cool";\ngain :: (x: f32) -> f32 #effects(all) { return x * 0.25; }\n',
             "shader.coax": '#load "warm.coax" as warm;\n#load "cool.coax" as cool;\n'
-                           'shade :: (x: f32) -> f32 #export_c { return warm.gain(x) + cool.gain(x); }\n',
+                           'shade :: (x: f32) -> f32 #export_c #effects(all) { return warm.gain(x) + cool.gain(x); }\n',
         }
         root = self.tree(files)
         metal = self.ok("metal", root / "shader.coax")
@@ -425,7 +425,7 @@ class QualifiedLookup(unittest.TestCase):
         d = self.at(self.case('main :: () { v: l.V = r.V.{x=1}; }\n', "d"), "E0325", 4, 23)
         self.assertIn("demo.left.V", d["message"])
         self.assertIn("demo.right.V", d["message"])
-        self.at(self.case('f :: (v: r.V) {}\nmain :: () { f(l.V.{x=1}); }\n', "e"), "E0317", 5, 16)
+        self.at(self.case('f :: (v: r.V) #effects(all) {}\nmain :: () { f(l.V.{x=1}); }\n', "e"), "E0317", 5, 16)
 
     def test_unsupported_forms_fail_explicitly(self):
         self.at(self.case('main :: () { v: l.r.V; }\n', "a"), "E0222", 4, 17)
@@ -438,7 +438,7 @@ class QualifiedLookup(unittest.TestCase):
                            ('#load "left.coax" as 7;\nmain :: () {}\n', "E0600")]:
             root = self.tree(dict(PAIR, **{"m.coax": text}), "x" + code)
             self.at(root / "m.coax", code, 1, 1)
-        plain = self.tree(dict(PAIR, **{"plain.coax": "p :: () {}\n", "m.coax": '#load "plain.coax" as p;\nmain :: () {}\n'}), "y")
+        plain = self.tree(dict(PAIR, **{"plain.coax": "p :: () #effects(all) {}\n", "m.coax": '#load "plain.coax" as p;\nmain :: () {}\n'}), "y")
         self.at(plain / "m.coax", "E0610", 1, 23, "plain.coax'")
         twice = self.tree(dict(PAIR, **{"m.coax": '#load "left.coax" as a;\n#load "right.coax" as a;\nmain :: () {}\n'}), "z")
         self.at(twice / "m.coax", "E0611", 2, 23, "'demo.left'")
@@ -447,15 +447,15 @@ class QualifiedLookup(unittest.TestCase):
 
     def test_c_symbol_collisions_are_refused_not_merged(self):
         files = {
-            "one.coax": '#module "lib.one";\nopen_it :: () -> int #export_c { return 1; }\nT :: struct { a: int; }\n',
-            "two.coax": '#module "lib.two";\nopen_it :: () -> int #export_c { return 2; }\n',
+            "one.coax": '#module "lib.one";\nopen_it :: () -> int #export_c #effects(all) { return 1; }\nT :: struct { a: int; }\n',
+            "two.coax": '#module "lib.two";\nopen_it :: () -> int #export_c #effects(all) { return 2; }\n',
             "main.coax": '#load "one.coax" as one;\n#load "two.coax" as two;\n',
         }
         root = self.tree(files)
         d = self.error(root / "main.coax", "E0387")
         self.assertIn("C symbol 'open_it'", d["message"])
         types = {
-            "one.coax": '#module "lib.one";\nT :: struct { a: int; }\nget_one :: (t: T) -> int #export_c { return t.a; }\n',
+            "one.coax": '#module "lib.one";\nT :: struct { a: int; }\nget_one :: (t: T) -> int #export_c #effects(all) { return t.a; }\n',
             "two.coax": '#module "lib.two";\nT :: struct { a: int; }\n',
             "main.coax": '#load "one.coax" as one;\n#load "two.coax" as two;\n',
         }
@@ -473,16 +473,16 @@ class QualifiedLookup(unittest.TestCase):
         c_flat = self.ok("c", self.tree(flat, "f") / "main.coax")
         self.assertNotIn("coax_q", c_flat)
         # Same-scope duplicates are still duplicates.
-        dup = self.tree({"main.coax": 'g :: () {}\ng :: () {}\nmain :: () {}\n'}, "d")
+        dup = self.tree({"main.coax": 'g :: () #effects(all) {}\ng :: () #effects(all) {}\nmain :: () {}\n'}, "d")
         self.error(dup / "main.coax", "E0334")
         dup = self.tree({"x.coax": '#module "m.x";\nV :: struct {}\nV :: struct {}\n', "main.coax": '#load "x.coax" as x;\nmain :: () {}\n'}, "e")
         self.error(dup / "main.coax", "E0372")
 # A sealed module (an #export list) whose member unit uses its private names,
 # loaded by a second module that is not sealed.
 SEALED = {
-    "geo/geo.coax": '#module "demo.geo";\n#export Rect, area, UNIT;\n#load "inner.coax";\nRect :: struct { w: int; h: int; }\nUNIT :: cast(int) 1;\narea :: (r: Rect) -> int { return scale(r.w * r.h); }\n',
-    "geo/inner.coax": '#authority;\nSCALE :: cast(int) 2;\nPad :: struct { p: int; }\nscale :: (v: int) -> int { p := Pad.{p = SCALE}; return v * p.p; }\n#test "members use private names" { #assert scale(3) == 6; }\n',
-    "mid.coax": '#module "demo.mid";\n#load "geo/geo.coax" as geo;\nmid_area :: () -> int { return geo.area(geo.Rect.{w = 2, h = 3}); }\nMID :: cast(int) 5;\n',
+    "geo/geo.coax": '#module "demo.geo";\n#export Rect, area, UNIT;\n#load "inner.coax";\nRect :: struct { w: int; h: int; }\nUNIT :: cast(int) 1;\narea :: (r: Rect) -> int #effects(all) { return scale(r.w * r.h); }\n',
+    "geo/inner.coax": '#authority;\nSCALE :: cast(int) 2;\nPad :: struct { p: int; }\nscale :: (v: int) -> int #effects(all) { p := Pad.{p = SCALE}; return v * p.p; }\n#test "members use private names" { #assert scale(3) == 6; }\n',
+    "mid.coax": '#module "demo.mid";\n#load "geo/geo.coax" as geo;\nmid_area :: () -> int #effects(all) { return geo.area(geo.Rect.{w = 2, h = 3}); }\nMID :: cast(int) 5;\n',
     "main.coax": '#import "Basic";\n#load "mid.coax" as mid;\n#load "geo/geo.coax" as geo;\n'
                  'main :: () { r := geo.Rect.{w = 4, h = 5}; print("% % % %\\n", geo.area(r), mid.mid_area(), mid.MID, geo.UNIT); }\n',
 }
@@ -555,8 +555,8 @@ class Visibility(unittest.TestCase):
         self.assertEqual(Path(hit["file"]).name, "b.coax")
         # A diamond is one dependency, revised once.
         files = {"base.coax": '#module "demo.base";\n#export K;\nK :: cast(int) 3;\n',
-                 "l.coax": '#module "demo.l";\n#load "base.coax" as base;\nL :: () -> int { return base.K; }\n',
-                 "r.coax": '#module "demo.r";\n#load "base.coax" as base;\nR :: () -> int { return base.K + 1; }\n',
+                 "l.coax": '#module "demo.l";\n#load "base.coax" as base;\nL :: () -> int #effects(all) { return base.K; }\n',
+                 "r.coax": '#module "demo.r";\n#load "base.coax" as base;\nR :: () -> int #effects(all) { return base.K + 1; }\n',
                  "main.coax": '#import "Basic";\n#load "l.coax" as l;\n#load "r.coax" as r;\nmain :: () { print("%\\n", l.L() + r.R()); }\n'}
         root = self.tree(files, "d")
         self.assertEqual(self.ok("run", root / "main.coax"), "7\n")
@@ -583,7 +583,7 @@ class Visibility(unittest.TestCase):
         self.assertEqual(sorted(Path(x["path"]).name for x in mod["members"]), ["frame.coax", "hud.coax", "types.coax"])
         # A page in that graph cannot reach the private HUD_* constants.
         page = self.base / "page.coax"
-        page.write_text('#load "%s" as hud;\nx :: () -> f32 { return hud.HUD_ARM; }\nmain :: () {}\n' % hud)
+        page.write_text('#load "%s" as hud;\nx :: () -> f32 #effects(all) { return hud.HUD_ARM; }\nmain :: () {}\n' % hud)
         self.assertEqual(self.error(page, "E0389")["message"], "'HUD_ARM' is private to module 'verse.hud'")
         cc = shutil.which("cc") or shutil.which("clang")
         if not cc:
@@ -611,7 +611,7 @@ ORACLE_TYPES = [("bool", "_Bool"), ("f32", "float"), ("f64", "double"), ("s8", "
                 ("u64", "uint64_t")]
 SPANS = {
     "shapes.coax": '#module "demo.shapes";\n\n// a comment before is not part of the item\nPoint :: struct {\n  x: int;\n#if BUILD_DEBUG { tag: int; }\n  y: int;\n}\nMode :: enum u8 { a; b; }  // trailing\n',
-    "main.coax": '#load "shapes.coax";\nLIMIT :: cast(int) 3;\nsq :: (p: Point) -> int {\n  return p.x * p.y;\n}\nmain :: () {}\n',
+    "main.coax": '#load "shapes.coax";\nLIMIT :: cast(int) 3;\nsq :: (p: Point) -> int #effects(all) {\n  return p.x * p.y;\n}\nmain :: () {}\n',
 }
 
 
@@ -692,7 +692,7 @@ class TargetSpans(unittest.TestCase):
         self.assertEqual(s["Point"][2], "Point :: struct {\n  x: int;\n#if BUILD_DEBUG { tag: int; }\n  y: int;\n}")
         self.assertEqual(s["Mode"][2], "Mode :: enum u8 { a; b; }")
         self.assertEqual(s["LIMIT"][2], "LIMIT :: cast(int) 3;")
-        self.assertEqual(s["sq"][2], "sq :: (p: Point) -> int {\n  return p.x * p.y;\n}")
+        self.assertEqual(s["sq"][2], "sq :: (p: Point) -> int #effects(all) {\n  return p.x * p.y;\n}")
         self.assertEqual(s["main"][2], "main :: () {}")
         self.assertEqual((s["Point"][1]["start_line"], s["Point"][1]["end_line"]), (4, 8))
         # The release profile selects the other #if form; the range is still the authored one.

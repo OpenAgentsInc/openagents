@@ -43,12 +43,12 @@ State :: struct {
   count: s32;
   name: u8 = 7;
 }
-state_gravity :: (s: [] State) -> f64 #export_c { return s[0].gravity; }
-plain_sum :: (p: Plain) -> s64 #export_c { return p.a; }
+state_gravity :: (s: [] State) -> f64 #export_c #effects(all) { return s[0].gravity; }
+plain_sum :: (p: Plain) -> s64 #export_c #effects(all) { return p.a; }
 """
 
 OTHER = """#load "shared.coax";
-other_step :: (c: Clock) -> s64 #export_c { return c.step_ns; }
+other_step :: (c: Clock) -> s64 #export_c #effects(all) { return c.step_ns; }
 """
 
 # The bytes `v = coax_init_t_State()` gives natively, and coax_default_t_State

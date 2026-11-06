@@ -49,7 +49,7 @@ def main():
     source_digest = run([compiler, "source-digest", ROOT]).stdout.decode().strip()
     assert source_digest == (compiler.parent / "source-digest").read_text().strip()
     fixture = work / "uploads.coax"
-    fixture.write_text(f'#load "{ROOT}/aethyr/render/host-uploads.coax";\nuploads_stage_native :: (s:RenderHostUploadState,n:u64,c:u64)->RenderHostUploadReceipt #export_c {{return render_host_upload_stage(s,n,c);}}\nuploads_ack_native :: (s:RenderHostUploadState,a:bool)->RenderHostUploadState #export_c {{return render_host_upload_ack(s,a);}}\n')
+    fixture.write_text(f'#load "{ROOT}/aethyr/render/host-uploads.coax";\nuploads_stage_native :: (s:RenderHostUploadState,n:u64,c:u64)->RenderHostUploadReceipt #export_c #effects(all) {{return render_host_upload_stage(s,n,c);}}\nuploads_ack_native :: (s:RenderHostUploadState,a:bool)->RenderHostUploadState #export_c #effects(all) {{return render_host_upload_ack(s,a);}}\n')
     driver = work / "driver.c"; driver.write_text(DRIVER)
     dependencies = json.loads(run([compiler, "deps", fixture, "--library"]).stdout)
     paths = [Path(name) for name in dependencies["sources"]] + [Path(__file__).resolve(), driver]

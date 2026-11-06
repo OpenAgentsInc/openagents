@@ -80,8 +80,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix='coax-strict-math-') as temp:
         d = Path(temp)
         source = d/'math.coax'
-        source.write_text('\n'.join(f'{name}64 :: (x:f64)->f64 #export_c {{return {name}(x);}}\n'
-                                    f'{name}32 :: (x:f32)->f32 #export_c {{return {name}(x);}}'
+        source.write_text('\n'.join(f'{name}64 :: (x:f64)->f64 #export_c #effects(all) {{return {name}(x);}}\n'
+                                    f'{name}32 :: (x:f32)->f32 #export_c #effects(all) {{return {name}(x);}}'
                                     for name in ('sin', 'cos', 'exp', 'log')))
         c = d/'math.c'
         c.write_bytes(subprocess.check_output([str(COAX), 'c', str(source), '--library']))

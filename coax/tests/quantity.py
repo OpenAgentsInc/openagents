@@ -39,7 +39,7 @@ V :: #run calc(); #assert V==29;''');self.assertEqual(r.returncode,0,r.stderr)
   for query in ['type_info(Quantity(Metre,f32))','field_info(Quantity(Metre,f32),0)']:
    r=self.compile('X :: #run '+query+';');self.assertNotEqual(r.returncode,0);self.assertIn('E0827',r.stderr)
  def test_device_output_is_explicitly_unqualified(self):
-  p=self.work/'device.coax';p.write_text(PRELUDE+'k :: (x:Quantity(Metre,f32))->Quantity(Metre,f32) #export_c {return x;}')
+  p=self.work/'device.coax';p.write_text(PRELUDE+'k :: (x:Quantity(Metre,f32))->Quantity(Metre,f32) #export_c #effects(all) {return x;}')
   for target in ['metal','metal-compute','cuda','spirv','wgsl']:
    with self.subTest(target=target):
     r=subprocess.run([str(COMPILER),target,str(p),'--library'],cwd=ROOT,capture_output=True,text=True,timeout=90);self.assertNotEqual(r.returncode,0);self.assertIn('E0828',r.stderr)
@@ -57,16 +57,16 @@ V :: #run calc(); #assert V==29;''');self.assertEqual(r.returncode,0,r.stderr)
    r=self.compile(body);self.assertNotEqual(r.returncode,0);self.assertIn('E0821',r.stderr)
  def test_explicit_conversion_keeps_module_alias_scope(self):
   (self.work/'units.coax').write_text('#module "test.quantity.units";\n'+PRELUDE)
-  p=self.work/'client.coax';p.write_text('#module "test.quantity.client"; #load "units.coax" as u; f :: (a:u.Quantity(u.HalfMetre,f32))->u.Quantity(u.Metre,f32) #export_c {return convert_unit(u.Metre,a);}')
+  p=self.work/'client.coax';p.write_text('#module "test.quantity.client"; #load "units.coax" as u; f :: (a:u.Quantity(u.HalfMetre,f32))->u.Quantity(u.Metre,f32) #export_c #effects(all) {return convert_unit(u.Metre,a);}')
   r=subprocess.run([str(COMPILER),'c',str(p),'--library'],cwd=ROOT,capture_output=True,text=True,timeout=90);self.assertEqual(r.returncode,0,r.stderr)
  def test_explicit_family_interoperation_on_one_imported_unit(self):
   source='#load "'+str(ROOT/'coax/lib/quantity.coax')+'" as u;\n'+'''A :: struct($U:copyable,$R:numeric) @builtin_quantity {value:$R;}
 B :: struct($U:copyable,$R:numeric) @builtin_quantity {value:$R;}
-family_ab :: (a:A(u.Metre,f64),b:B(u.Metre,f64))->A(u.Metre,f64) #export_c {return a+b;}
-family_ba :: (b:B(u.Metre,f64),a:A(u.Metre,f64))->B(u.Metre,f64) #export_c {return b+a;}
-family_scale :: (s:f64,b:B(u.Metre,f64))->B(u.Metre,f64) #export_c {return s*b;}
-family_convert_a :: (a:A(u.Metre,f64))->A(u.HalfMetre,f64) #export_c {return convert_unit(u.HalfMetre,a);}
-family_convert_b :: (b:B(u.Metre,f64))->B(u.HalfMetre,f64) #export_c {return convert_unit(u.HalfMetre,b);}
+family_ab :: (a:A(u.Metre,f64),b:B(u.Metre,f64))->A(u.Metre,f64) #export_c #effects(all) {return a+b;}
+family_ba :: (b:B(u.Metre,f64),a:A(u.Metre,f64))->B(u.Metre,f64) #export_c #effects(all) {return b+a;}
+family_scale :: (s:f64,b:B(u.Metre,f64))->B(u.Metre,f64) #export_c #effects(all) {return s*b;}
+family_convert_a :: (a:A(u.Metre,f64))->A(u.HalfMetre,f64) #export_c #effects(all) {return convert_unit(u.HalfMetre,a);}
+family_convert_b :: (b:B(u.Metre,f64))->B(u.HalfMetre,f64) #export_c #effects(all) {return convert_unit(u.HalfMetre,b);}
 family_value :: ()->f64 {a:A(u.Metre,f64)=A.{value=3};b:B(u.Metre,f64)=B.{value=4};x:=family_ab(a,b);y:=family_ba(b,a);#assert x==y;return x.value+y.value+family_scale(2.0,b).value+family_convert_a(a).value+family_convert_b(b).value;}
 FamilyAnswer :: #run family_value();#assert FamilyAnswer==36;
 '''

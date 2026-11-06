@@ -249,18 +249,18 @@ class ScalarRevalidation(unittest.TestCase):
         # Sources the policy must refuse; their emitted C must also fail the
         # independent oracle, or the oracle could pass vacuously.
         controls = {
-          'checked_add': 'candidate :: (x:u64)->u64 #export_c {return x+1;}',
-          'checked_sub': 'candidate :: (x:u64)->u64 #export_c {return x-1;}',
-          'checked_mul': 'candidate :: (x:u64)->u64 #export_c {return x*3;}',
-          'division': 'candidate :: (x:u64)->u64 #export_c {return 7/x;}',
-          'compound_add': 'candidate :: (x:u64)->u64 #export_c {a:=x;a+=x;return a;}',
-          'narrow_cast': 'candidate :: (x:u64)->u32 #export_c {return cast(u32)x;}',
-          'widening_checked_cast': 'candidate :: (x:u32)->u64 #export_c {return cast(u64)x;}',
-          'secret_shift_count': 'candidate :: (x:u64,y:u64)->u64 #export_c {return x<<y;}',
-          'secret_ifx': 'candidate :: (x:u64)->u64 #export_c {return ifx x==0 then 1 else 2;}',
-          'secret_short_circuit': 'candidate :: (p:bool,q:bool)->bool #export_c {return p && q;}',
-          'secret_index': 'candidate :: (a:[]u64,i:int)->u64 #export_c {return a[i];}',
-          'secret_if': 'candidate :: (x:u64)->u64 #export_c {if x==0 {return 1;}return 2;}',
+          'checked_add': 'candidate :: (x:u64)->u64 #export_c #effects(all) {return x+1;}',
+          'checked_sub': 'candidate :: (x:u64)->u64 #export_c #effects(all) {return x-1;}',
+          'checked_mul': 'candidate :: (x:u64)->u64 #export_c #effects(all) {return x*3;}',
+          'division': 'candidate :: (x:u64)->u64 #export_c #effects(all) {return 7/x;}',
+          'compound_add': 'candidate :: (x:u64)->u64 #export_c #effects(all) {a:=x;a+=x;return a;}',
+          'narrow_cast': 'candidate :: (x:u64)->u32 #export_c #effects(all) {return cast(u32)x;}',
+          'widening_checked_cast': 'candidate :: (x:u32)->u64 #export_c #effects(all) {return cast(u64)x;}',
+          'secret_shift_count': 'candidate :: (x:u64,y:u64)->u64 #export_c #effects(all) {return x<<y;}',
+          'secret_ifx': 'candidate :: (x:u64)->u64 #export_c #effects(all) {return ifx x==0 then 1 else 2;}',
+          'secret_short_circuit': 'candidate :: (p:bool,q:bool)->bool #export_c #effects(all) {return p && q;}',
+          'secret_index': 'candidate :: (a:[]u64,i:int)->u64 #export_c #effects(all) {return a[i];}',
+          'secret_if': 'candidate :: (x:u64)->u64 #export_c #effects(all) {if x==0 {return 1;}return 2;}',
         }
         seen = {}
         for name, text in controls.items():
@@ -272,7 +272,7 @@ class ScalarRevalidation(unittest.TestCase):
                 self.assertTrue(problems, (name, release, 'oracle missed a refused guard shape'))
             seen[name] = report['error_name']
         accepted = self.directory / 'control-accepted.coax'
-        accepted.write_text('candidate :: (m:u64,a:u64,b:u64)->u64 #export_c {return b^((a^b)&value_barrier(m));}')
+        accepted.write_text('candidate :: (m:u64,a:u64,b:u64)->u64 #export_c #effects(all) {return b^((a^b)&value_barrier(m));}')
         self.assertTrue(self.tool.audit(accepted, 'candidate')['accepted'])
         for release in [False, True]:self.assertEqual(guard_findings(self.emitted(accepted, release)), [])
         self.record['oracle_controls'] = seen

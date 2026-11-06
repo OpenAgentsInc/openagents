@@ -24,40 +24,40 @@ ROOT = Path(__file__).resolve().parents[1]
 COAX = Path(os.environ.get("COAX_TEST_COMPILER", ROOT / "bin/coax")).resolve()
 
 GENERIC = (
-    "first :: (v: [] $T) -> $T { return v[0]; }\n"
-    "swap :: (a: [] $T, i: int, j: int) { t := a[i]; a[i] = a[j]; a[j] = t; }\n"
-    "pick :: (a: $T, b: $T, second: bool) -> $T { r: $T = a; if second { r = b; } return r; }\n"
-    "count :: (v: [] $T) -> int { n := 0; for x, i: v { n += 1; } return n; }\n"
+    "first :: (v: [] $T) -> $T #effects(all) { return v[0]; }\n"
+    "swap :: (a: [] $T, i: int, j: int) #effects(all) { t := a[i]; a[i] = a[j]; a[j] = t; }\n"
+    "pick :: (a: $T, b: $T, second: bool) -> $T #effects(all) { r: $T = a; if second { r = b; } return r; }\n"
+    "count :: (v: [] $T) -> int #effects(all) { n := 0; for x, i: v { n += 1; } return n; }\n"
 )
 PROGRAM = (
     '#import "Basic";\n'
-    "total :: (v: [] int) -> int { s := 0; for x: v { s += x; } return s; }\n"
+    "total :: (v: [] int) -> int #effects(all) { s := 0; for x: v { s += x; } return s; }\n"
     'main :: () { a := [3] int.[4, 5, 6]; print("%\\n", total(a[..])); }\n'
 )
 REFUSED = [
-    ("make :: () -> $T { x: $T; return x; }", ["E0392", "E0393"]),
-    ("f :: (a: $T) { b: $U; }", ["E0393"]),
+    ("make :: () -> $T #effects(all) { x: $T; return x; }", ["E0392", "E0393"]),
+    ("f :: (a: $T) #effects(all) { b: $U; }", ["E0393"]),
     ("K :: size_of($T);", ["E0393"]),
     ('#test "t" { x: $T; }', ["E0393"]),
-    ("f :: (a: [4] [] $T) {}", ["E0394"]),
-    ("f :: (a: [] [] $T) {}", ["E0394"]),
+    ("f :: (a: [4] [] $T) #effects(all) {}", ["E0394"]),
+    ("f :: (a: [] [] $T) #effects(all) {}", ["E0394"]),
     ("S :: struct { x: $T; }", ["E0395"]),
-    ("f :: (a: $T) -> $T { return f(a); }", ["E0396"]),
-    ("f :: (a: $T) {} n :: () {} g :: () { f(n()); }", ["E0397"]),
-    ("f :: (a: $T, b: $T) {} g :: () { f(1, true); }", ["E0348"]),
-    ("f :: (v: [] $T) {} g :: () { a := [2] int.[1, 2]; f(a); }", ["E0349"]),
-    ("f :: (a: $T) -> $T { return a; } g :: () -> bool { return f(1); }", ["E0330"]),
-    ("f :: (a: $T) -> $T #export_c { return a; }", ["E0398"]),
-    ("f :: (a: $T) -> int { return size_of($T); }", ["E0399"]),
-    ("f :: (a: $T) -> string { return type_name(a); }", ["E0399"]),
-    ("f :: (a: $T) -> $T { return 1; }", ["E0330"]),
-    ("f :: (a: $T, b: $U) { c := a; c = b; }", ["E0327"]),
-    ("g :: (x: int) {} f :: (a: $T) { g(a); }", ["E0317"]),
-    ("f :: (a: $T, b: $T) -> bool { return a == b; }", ["E0311"]),
-    ("f :: (a: $T, b: $T) -> bool { return a < b; }", ["E0310"]),
-    ("f :: (a: $T) { x := a + a; }", ["E0309"]),
-    ("f :: (a: $ T) {}", ["E0108"]),
-    ("f :: () { x := $T; }", ["E0205"]),
+    ("f :: (a: $T) -> $T #effects(all) { return f(a); }", ["E0396"]),
+    ("f :: (a: $T) #effects(all) {} n :: () #effects(all) {} g :: () #effects(all) { f(n()); }", ["E0397"]),
+    ("f :: (a: $T, b: $T) #effects(all) {} g :: () #effects(all) { f(1, true); }", ["E0348"]),
+    ("f :: (v: [] $T) #effects(all) {} g :: () #effects(all) { a := [2] int.[1, 2]; f(a); }", ["E0349"]),
+    ("f :: (a: $T) -> $T #effects(all) { return a; } g :: () -> bool #effects(all) { return f(1); }", ["E0330"]),
+    ("f :: (a: $T) -> $T #export_c #effects(all) { return a; }", ["E0398"]),
+    ("f :: (a: $T) -> int #effects(all) { return size_of($T); }", ["E0399"]),
+    ("f :: (a: $T) -> string #effects(all) { return type_name(a); }", ["E0399"]),
+    ("f :: (a: $T) -> $T #effects(all) { return 1; }", ["E0330"]),
+    ("f :: (a: $T, b: $U) #effects(all) { c := a; c = b; }", ["E0327"]),
+    ("g :: (x: int) #effects(all) {} f :: (a: $T) #effects(all) { g(a); }", ["E0317"]),
+    ("f :: (a: $T, b: $T) -> bool #effects(all) { return a == b; }", ["E0311"]),
+    ("f :: (a: $T, b: $T) -> bool #effects(all) { return a < b; }", ["E0310"]),
+    ("f :: (a: $T) #effects(all) { x := a + a; }", ["E0309"]),
+    ("f :: (a: $ T) #effects(all) {}", ["E0108"]),
+    ("f :: () #effects(all) { x := $T; }", ["E0205"]),
 ]
 
 
@@ -105,7 +105,7 @@ class TypeParameters(unittest.TestCase):
             self.assertIn(f"coax.decl.v1:app.generic:proc:{name}", ids)
 
     def test_checks_metal_and_mutation_ignore_generic_procedures(self):
-        source = GENERIC + "double :: (x: int) -> int { return x * 2; }\nmain :: () {}\n" + '#test "double" { #assert double(3) == 6; }\n'
+        source = GENERIC + "double :: (x: int) -> int #effects(all) { return x * 2; }\nmain :: () {}\n" + '#test "double" { #assert double(3) == 6; }\n'
         path = self.write("checks.coax", source)
         r = self.coax("test", path)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -113,7 +113,7 @@ class TypeParameters(unittest.TestCase):
         r = self.coax("mutate", path)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertRegex(r.stdout + r.stderr, r"(\d+) mutants, \1 killed, 0 survived")
-        metal = self.write("metal.coax", "scale :: (x: f32) -> f32 { return x * 2.0; }\n" + GENERIC)
+        metal = self.write("metal.coax", "scale :: (x: f32) -> f32 #effects(all) { return x * 2.0; }\n" + GENERIC)
         r = self.coax("metal", metal)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("scale", r.stdout)
@@ -144,16 +144,16 @@ class TypeParameters(unittest.TestCase):
 INSTANCES = (
     "P :: struct { x: int; y: f64; }\n"
     "E :: enum u8 { red; blue; }\n"
-    "id :: (a: $T) -> $T { return a; }\n"
-    "first :: (v: [] $T) -> $T { return v[0]; }\n"
-    "swap :: (a: [] $T, i: int, j: int) { t := a[i]; a[i] = a[j]; a[j] = t; }\n"
-    "pick :: (a: $T, b: $T, second: bool) -> $T { r: $T = a; if second { r = b; } return r; }\n"
-    "count :: (v: [] $T) -> int { n := 0; for x, i: v { n += 1; } return n; }\n"
-    "twice :: (a: $T, b: $T) -> $T { return pick(a, id(b), true); }\n"
-    "f64_sum :: (v: [] f64) -> f64 { s := 0.0; for x: v { s += x; } return s; }\n"
-    "int_result :: () -> int { a := [3] int.[4, 5, 6]; swap(a[..], 0, 2); return first(a[..]) * 100 + pick(7, 8, true) * 10 + count(a[..]); }\n"
-    "f64_result :: () -> f64 { a := [3] f64.[0.5, 1.25, 2.0]; swap(a[..], 1, 2); return first(a[..]) + twice(1.5, 2.25) + f64_sum(a[..]); }\n"
-    "struct_result :: () -> int { a := [2] P.[P.{x = 1, y = 0.5}, P.{x = 2, y = 1.5}]; swap(a[..], 0, 1); p := pick(a[0], a[1], false); "
+    "id :: (a: $T) -> $T #effects(all) { return a; }\n"
+    "first :: (v: [] $T) -> $T #effects(all) { return v[0]; }\n"
+    "swap :: (a: [] $T, i: int, j: int) #effects(all) { t := a[i]; a[i] = a[j]; a[j] = t; }\n"
+    "pick :: (a: $T, b: $T, second: bool) -> $T #effects(all) { r: $T = a; if second { r = b; } return r; }\n"
+    "count :: (v: [] $T) -> int #effects(all) { n := 0; for x, i: v { n += 1; } return n; }\n"
+    "twice :: (a: $T, b: $T) -> $T #effects(all) { return pick(a, id(b), true); }\n"
+    "f64_sum :: (v: [] f64) -> f64 #effects(all) { s := 0.0; for x: v { s += x; } return s; }\n"
+    "int_result :: () -> int #effects(all) { a := [3] int.[4, 5, 6]; swap(a[..], 0, 2); return first(a[..]) * 100 + pick(7, 8, true) * 10 + count(a[..]); }\n"
+    "f64_result :: () -> f64 #effects(all) { a := [3] f64.[0.5, 1.25, 2.0]; swap(a[..], 1, 2); return first(a[..]) + twice(1.5, 2.25) + f64_sum(a[..]); }\n"
+    "struct_result :: () -> int #effects(all) { a := [2] P.[P.{x = 1, y = 0.5}, P.{x = 2, y = 1.5}]; swap(a[..], 0, 1); p := pick(a[0], a[1], false); "
     "e := id(E.blue); k := 0; if e == E.blue { k = 1; } return p.x * 10 + first(a[..]).x + count(a[..]) * 100 + k * 1000; }\n"
 )
 INSTANCE_MAIN = '#import "Basic";\n' + INSTANCES + 'main :: () { print("% % %\\n", int_result(), f64_result(), struct_result()); }\n'
@@ -262,13 +262,13 @@ class Instantiation(unittest.TestCase):
         self.assertFalse(row["near"])
 
 VALUES = (
-    "sum :: (a: [$N] int) -> int { s := 0; for x: a { s += x; } return s; }\n"
-    "last :: (a: [$N] $T) -> $T { return a[a.count - 1]; }\n"
-    "rev :: (a: [$N] $T) -> [$N] $T { b := a; for i: 0..<a.count { b[i] = a[a.count - 1 - i]; } return b; }\n"
-    "dot :: (a: [$N] f64, b: [$N] f64) -> f64 { s := 0.0; for x, i: a { s += x * b[i]; } return s; }\n"
-    "fourth :: (a: [4] $T) -> $T { return a[3]; }\n"
-    "result :: () -> int { x := [3] int.[1, 2, 3]; y := [5] int.[1, 2, 3, 4, 5]; r := rev(y); return sum(x) * 100 + sum(y) + last(r) * 1000 + fourth([4] int.[0, 0, 0, 9]) * 10000; }\n"
-    "fresult :: () -> f64 { a := [2] f64.[1.5, 2.0]; return dot(a, rev(a)) + last(a); }\n"
+    "sum :: (a: [$N] int) -> int #effects(all) { s := 0; for x: a { s += x; } return s; }\n"
+    "last :: (a: [$N] $T) -> $T #effects(all) { return a[a.count - 1]; }\n"
+    "rev :: (a: [$N] $T) -> [$N] $T #effects(all) { b := a; for i: 0..<a.count { b[i] = a[a.count - 1 - i]; } return b; }\n"
+    "dot :: (a: [$N] f64, b: [$N] f64) -> f64 #effects(all) { s := 0.0; for x, i: a { s += x * b[i]; } return s; }\n"
+    "fourth :: (a: [4] $T) -> $T #effects(all) { return a[3]; }\n"
+    "result :: () -> int #effects(all) { x := [3] int.[1, 2, 3]; y := [5] int.[1, 2, 3, 4, 5]; r := rev(y); return sum(x) * 100 + sum(y) + last(r) * 1000 + fourth([4] int.[0, 0, 0, 9]) * 10000; }\n"
+    "fresult :: () -> f64 #effects(all) { a := [2] f64.[1.5, 2.0]; return dot(a, rev(a)) + last(a); }\n"
 )
 
 
@@ -295,13 +295,13 @@ class ValueParameters(unittest.TestCase):
 
     def test_refused_value_parameter_forms(self):
         cases = [
-            ("two :: (a: [$N] int, b: [$N] int) {} g :: () { x := [3] int.[1, 2, 3]; y := [2] int.[1, 2]; two(x, y); }", ["E0348"]),
-            ("f :: (a: [$N] int) {} g :: () { x := [3] int.[1, 2, 3]; f(x[..]); }", ["E0349"]),
-            ("f :: (a: [4] $T) {} g :: () { x := [3] int.[1, 2, 3]; f(x); }", ["E0349"]),
-            ("f :: (a: [$T] int, b: $T) {}", ["E0368"]),
-            ("f :: (a: $T, b: [$T] int) {}", ["E0368"]),
-            ("f :: () -> [$N] int { x: [$N] int; return x; }", ["E0392", "E0393"]),
-            ("f :: (a: [] [$N] int) {}", ["E0394"]),
+            ("two :: (a: [$N] int, b: [$N] int) #effects(all) {} g :: () #effects(all) { x := [3] int.[1, 2, 3]; y := [2] int.[1, 2]; two(x, y); }", ["E0348"]),
+            ("f :: (a: [$N] int) #effects(all) {} g :: () #effects(all) { x := [3] int.[1, 2, 3]; f(x[..]); }", ["E0349"]),
+            ("f :: (a: [4] $T) #effects(all) {} g :: () #effects(all) { x := [3] int.[1, 2, 3]; f(x); }", ["E0349"]),
+            ("f :: (a: [$T] int, b: $T) #effects(all) {}", ["E0368"]),
+            ("f :: (a: $T, b: [$T] int) #effects(all) {}", ["E0368"]),
+            ("f :: () -> [$N] int #effects(all) { x: [$N] int; return x; }", ["E0392", "E0393"]),
+            ("f :: (a: [] [$N] int) #effects(all) {}", ["E0394"]),
         ]
         for i, (source, want) in enumerate(cases):
             with self.subTest(source=source):
@@ -314,11 +314,11 @@ STRUCTS = (
     "Pair :: struct($T) { a: $T; b: $T; }\n"
     "Box :: struct($T, $N) { items: [$N] $T; n: int; }\n"
     "Holder :: struct { p: Pair(int); q: Pair(f64); }\n"
-    "swap :: (p: Pair($T)) -> Pair($T) { return Pair.{a = p.b, b = p.a}; }\n"
-    "total :: (b: Box(int, $N)) -> int { s := 0; for v: b.items { s += v; } return s + b.n; }\n"
-    "pick :: (v: [] Pair($T), i: int) -> $T { return v[i].b; }\n"
-    "first :: (b: Box($T, $N)) -> $T { return b.items[0]; }\n"
-    "calc :: () -> int {\n"
+    "swap :: (p: Pair($T)) -> Pair($T) #effects(all) { return Pair.{a = p.b, b = p.a}; }\n"
+    "total :: (b: Box(int, $N)) -> int #effects(all) { s := 0; for v: b.items { s += v; } return s + b.n; }\n"
+    "pick :: (v: [] Pair($T), i: int) -> $T #effects(all) { return v[i].b; }\n"
+    "first :: (b: Box($T, $N)) -> $T #effects(all) { return b.items[0]; }\n"
+    "calc :: () -> int #effects(all) {\n"
     "  p := Pair.{a = 1, b = 2}; q: Pair(f64) = Pair.{a = 1.5, b = 2}; r := swap(p); w := swap(q);\n"
     "  bx := Box.{items = [3] int.[1, 2, 3], n = 4}; ps := [2] Pair(int).[p, r];\n"
     "  h := Holder.{p = r, q = w};\n"
@@ -360,14 +360,14 @@ class GenericStructs(unittest.TestCase):
 
     def test_refused_generic_struct_forms(self):
         cases = [
-            ("Pair :: struct($T) { a: $T; b: $T; } f :: (p: Pair) {}", ["E0800"]),
-            ("Pair :: struct($T) { a: $T; b: $T; } f :: (p: Pair(int, int)) {}", ["E0801"]),
-            ("Pair :: struct($T) { a: $T; b: $T; } f :: (p: Pair([] int)) {}", ["E0802"]),
-            ("Pair :: struct($T) { a: $T; b: $T; } g :: () { v := [2] int.[1, 2]; p := Pair.{a = v[..], b = v[..]}; }", ["E0802"]),
-            ("V :: struct { v: [] int; } Pair :: struct($T) { a: $T; } f :: (p: Pair(V)) {}", ["E0802"]),
-            ("P :: struct { x: int; } f :: (p: P(int)) {}", ["E0803"]),
-            ("Two :: struct($T, $U) { a: $T; b: $U; } g :: () { t := Two.{a = 1}; }", ["E0804"]),
-            ("Box :: struct($T, $N) { items: [$N] $T; } f :: (b: Box(4, int)) {}", ["E0368", "E0368"]),
+            ("Pair :: struct($T) { a: $T; b: $T; } f :: (p: Pair) #effects(all) {}", ["E0800"]),
+            ("Pair :: struct($T) { a: $T; b: $T; } f :: (p: Pair(int, int)) #effects(all) {}", ["E0801"]),
+            ("Pair :: struct($T) { a: $T; b: $T; } f :: (p: Pair([] int)) #effects(all) {}", ["E0802"]),
+            ("Pair :: struct($T) { a: $T; b: $T; } g :: () #effects(all) { v := [2] int.[1, 2]; p := Pair.{a = v[..], b = v[..]}; }", ["E0802"]),
+            ("V :: struct { v: [] int; } Pair :: struct($T) { a: $T; } f :: (p: Pair(V)) #effects(all) {}", ["E0802"]),
+            ("P :: struct { x: int; } f :: (p: P(int)) #effects(all) {}", ["E0803"]),
+            ("Two :: struct($T, $U) { a: $T; b: $U; } g :: () #effects(all) { t := Two.{a = 1}; }", ["E0804"]),
+            ("Box :: struct($T, $N) { items: [$N] $T; } f :: (b: Box(4, int)) #effects(all) {}", ["E0368", "E0368"]),
             ("Pair :: struct($T, $T) { a: $T; }", ["E0223"]),
             ("S :: struct { a: $T; }", ["E0395"]),
             ("Node :: struct($T) { next: Node($T); }", ["E0353"]),
@@ -384,13 +384,13 @@ class GenericStructs(unittest.TestCase):
 
 
 CONSTRAINED = """
-max :: (a: $T: ordered, b: $T) -> $T { if a < b { return b; } return a; }
-sum :: (v: [] $T: numeric) -> $T { s: $T = 0; for x: v { s += x; } return s; }
-same :: (a: $T: equatable, b: $T) -> bool { return a == b; }
+max :: (a: $T: ordered, b: $T) -> $T #effects(all) { if a < b { return b; } return a; }
+sum :: (v: [] $T: numeric) -> $T #effects(all) { s: $T = 0; for x: v { s += x; } return s; }
+same :: (a: $T: equatable, b: $T) -> bool #effects(all) { return a == b; }
 Range :: struct($T: ordered) { lo: $T; hi: $T; }
-inside :: (r: Range($T: ordered), x: $T) -> bool { return r.lo <= x && x <= r.hi; }
+inside :: (r: Range($T: ordered), x: $T) -> bool #effects(all) { return r.lo <= x && x <= r.hi; }
 Mode :: enum u8 { a; b; }
-calc :: () -> int {
+calc :: () -> int #effects(all) {
   v := [4] int.[3, 9, 2, 7]; w := [2] f64.[0.5, 2.0]; u := [3] u8.[1, 2, 3];
   r: Range(int) = Range.{lo = 2, hi = 8};
   n := max(4, 11) * 100000 + sum(v[..]) * 1000 + cast(int) (sum(w[..]) * 4.0) * 10 + cast(int) sum(u[..]);
@@ -419,17 +419,17 @@ class Constraints(unittest.TestCase):
 
     def test_refused_bodies_and_calls_name_the_constraint(self):
         cases = [
-            ("lt :: (a: $T, b: $T) -> bool { return a < b; }", ["E0310"]),
-            ("add :: (a: $T: ordered, b: $T) -> $T { return a + b; }", ["E0309"]),
-            ("eq :: (a: $T, b: $T) -> bool { return a == b; }", ["E0311"]),
-            ("f :: (a: $T: sortable) {}", ["E0805"]),
-            ("f :: (v: [$N] int, n: $N: ordered) {}", ["E0805", "E0368"]),
-            ("f :: (a: $T: ordered, b: $T: numeric) {}", ["E0808"]),
-            ("f :: (a: $T) { x: $T: ordered = a; }", ["E0808"]),
-            ("max :: (a: $T: ordered, b: $T) -> $T { return a; } g :: () { m := max(true, false); }", ["E0806"]),
-            ("P :: struct { x: int; } same :: (a: $T: equatable) {} g :: () { same(P.{x = 1}); }", ["E0806"]),
-            ("R :: struct($T: ordered) { lo: $T; } g :: () { r: R(bool); }", ["E0806"]),
-            ("grow :: (x: $T: numeric) -> $T { return x + 300; } g :: () { a: u8 = 1; b := grow(a); }", ["E0350", "E0807"]),
+            ("lt :: (a: $T, b: $T) -> bool #effects(all) { return a < b; }", ["E0310"]),
+            ("add :: (a: $T: ordered, b: $T) -> $T #effects(all) { return a + b; }", ["E0309"]),
+            ("eq :: (a: $T, b: $T) -> bool #effects(all) { return a == b; }", ["E0311"]),
+            ("f :: (a: $T: sortable) #effects(all) {}", ["E0805"]),
+            ("f :: (v: [$N] int, n: $N: ordered) #effects(all) {}", ["E0805", "E0368"]),
+            ("f :: (a: $T: ordered, b: $T: numeric) #effects(all) {}", ["E0808"]),
+            ("f :: (a: $T) #effects(all) { x: $T: ordered = a; }", ["E0808"]),
+            ("max :: (a: $T: ordered, b: $T) -> $T #effects(all) { return a; } g :: () #effects(all) { m := max(true, false); }", ["E0806"]),
+            ("P :: struct { x: int; } same :: (a: $T: equatable) #effects(all) {} g :: () #effects(all) { same(P.{x = 1}); }", ["E0806"]),
+            ("R :: struct($T: ordered) { lo: $T; } g :: () #effects(all) { r: R(bool); }", ["E0806"]),
+            ("grow :: (x: $T: numeric) -> $T #effects(all) { return x + 300; } g :: () #effects(all) { a: u8 = 1; b := grow(a); }", ["E0350", "E0807"]),
         ]
         for i, (source, want) in enumerate(cases):
             with self.subTest(source=source):
@@ -452,37 +452,37 @@ class Diagnostics12913(unittest.TestCase):
     def test_an_unconstrained_placeholder_meets_copyable(self):
         source = ('#import "Basic";\n'
                   "Box :: struct($C: copyable) { n: int; }\n"
-                  "keep :: (x: $C: copyable) -> int { return 1; }\n"
-                  "wrap :: (x: $T) -> int { return keep(x); }\n"
-                  "tag :: (b: Box($K)) -> int { return b.n + 1; }\n"
+                  "keep :: (x: $C: copyable) -> int #effects(all) { return 1; }\n"
+                  "wrap :: (x: $T) -> int #effects(all) { return keep(x); }\n"
+                  "tag :: (b: Box($K)) -> int #effects(all) { return b.n + 1; }\n"
                   'main :: () { b: Box(bool); b.n = 4; print("% %\\n", wrap(3), tag(b)); }\n')
         r = self.coax("run", self.write("copyable.coax", source))
         self.assertEqual((r.returncode, r.stdout), (0, "1 5\n"), r.stderr)
         # An unmet constraint still names the constraint it needs.
-        r = self.coax("check", self.write("ordered.coax", "max :: (a: $T: ordered) -> $T { return a; } wrap :: (x: $T) -> $T { return max(x); }\nmain :: () {}\n"))
+        r = self.coax("check", self.write("ordered.coax", "max :: (a: $T: ordered) -> $T #effects(all) { return a; } wrap :: (x: $T) -> $T #effects(all) { return max(x); }\nmain :: () {}\n"))
         self.assertIn("$T is not ordered, but 'max' needs '$T: ordered'", r.stderr)
 
     def test_a_struct_mismatch_does_not_suggest_cast(self):
         source = ("A :: struct { n: int; } B :: struct { n: int; }\n"
-                  "same :: (a: $T, b: $T) -> int { return 1; }\n"
-                  "g :: () { a: A; b: B; n := same(a, b); }\nmain :: () {}\n")
+                  "same :: (a: $T, b: $T) -> int #effects(all) { return 1; }\n"
+                  "g :: () #effects(all) { a: A; b: B; n := same(a, b); }\nmain :: () {}\n")
         r = self.coax("check", self.write("tags.coax", source))
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("E0348", r.stderr)
         self.assertIn("fix: pass the same type; a struct or array does not convert with cast", r.stderr)
         self.assertNotIn("cast(A)", r.stderr)
-        r = self.coax("check", self.write("numbers.coax", "pick :: (a: $T, b: $T) -> $T { return a; } g :: () { x: u8 = 1; y: int = 2; z := pick(x, y); }\nmain :: () {}\n"))
+        r = self.coax("check", self.write("numbers.coax", "pick :: (a: $T, b: $T) -> $T #effects(all) { return a; } g :: () #effects(all) { x: u8 = 1; y: int = 2; z := pick(x, y); }\nmain :: () {}\n"))
         self.assertIn("fix: pass the same type, or convert it: cast(u8) value", r.stderr)
 
     def test_a_literal_may_name_its_instance(self):
         source = ('#import "Basic";\n'
                   "Sim :: struct {} Instant :: struct($C: copyable) { ns: s64; }\n"
                   "Pair :: struct($T) { a: $T; b: $T; }\n"
-                  "at :: (i: Instant($C)) -> s64 { return i.ns; }\n"
+                  "at :: (i: Instant($C)) -> s64 #effects(all) { return i.ns; }\n"
                   'main :: () { i := Instant(Sim).{ns = 7}; p := Pair(f64).{a = 1, b = 2}; print("% %\\n", at(i), p.a + p.b); }\n')
         r = self.coax("run", self.write("named.coax", source))
         self.assertEqual((r.returncode, r.stdout), (0, "7 3.0\n"), r.stderr)
-        code, codes = self.codes(self.write("wrong.coax", "Pair :: struct($T) { a: $T; } g :: () { p := Pair(int).{a = true}; }\nmain :: () {}\n"))
+        code, codes = self.codes(self.write("wrong.coax", "Pair :: struct($T) { a: $T; } g :: () #effects(all) { p := Pair(int).{a = true}; }\nmain :: () {}\n"))
         self.assertEqual(codes, ["E0367"])
 
 
@@ -495,8 +495,8 @@ class LiteralArguments(unittest.TestCase):
 
     def test_literals_take_the_type_a_typed_argument_bound(self):
         source = ('#import "Basic";\n'
-                  "clamp :: (v: $T: ordered, lo: $T, hi: $T) -> $T { if v < lo { return lo; } if v > hi { return hi; } return v; }\n"
-                  "calc :: () -> int { x: f32 = 1.75; n: u8 = 250; a := clamp(x, 0, 1); b := clamp(0, x, 1.5); c := clamp(n, 1, 200);\n"
+                  "clamp :: (v: $T: ordered, lo: $T, hi: $T) -> $T #effects(all) { if v < lo { return lo; } if v > hi { return hi; } return v; }\n"
+                  "calc :: () -> int #effects(all) { x: f32 = 1.75; n: u8 = 250; a := clamp(x, 0, 1); b := clamp(0, x, 1.5); c := clamp(n, 1, 200);\n"
                   "  d := clamp(7, 2, 3); e := clamp(0.25, 0, 1); return cast(int) (a * 1000) + cast(int) (b * 100) + cast(int) c * 10 + d + cast(int) (e * 4); }\n")
         program = self.write("l.coax", source + 'main :: () { print("%\\n", calc()); }\n')
         checked = self.write("l_ct.coax", source + "K :: #run calc();\n"
@@ -509,9 +509,9 @@ class LiteralArguments(unittest.TestCase):
 
     def test_literals_that_cannot_take_the_bound_type(self):
         cases = [
-            ("clamp :: (v: $T: ordered, lo: $T, hi: $T) -> $T { return v; } g :: () { n: u8 = 1; a := clamp(n, 0, 300); }", ["E0350"]),
-            ("pick :: (a: $T, b: $T) -> $T { return a; } g :: () { b := pick(true, 1); }", ["E0348"]),
-            ("pick :: (a: $T, b: $T) -> $T { return a; } g :: () { c := pick(2, 1.5); }", ["E0350"]),
+            ("clamp :: (v: $T: ordered, lo: $T, hi: $T) -> $T #effects(all) { return v; } g :: () #effects(all) { n: u8 = 1; a := clamp(n, 0, 300); }", ["E0350"]),
+            ("pick :: (a: $T, b: $T) -> $T #effects(all) { return a; } g :: () #effects(all) { b := pick(true, 1); }", ["E0348"]),
+            ("pick :: (a: $T, b: $T) -> $T #effects(all) { return a; } g :: () #effects(all) { c := pick(2, 1.5); }", ["E0350"]),
         ]
         for i, (source, want) in enumerate(cases):
             with self.subTest(source=source):

@@ -19,17 +19,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 COAX = Path(os.environ.get("COAX_TEST_COMPILER", ROOT / "bin/coax")).resolve()
 
-MIXED = '''f :: (x: int) -> int { return x + 1; }
+MIXED = '''f :: (x: int) -> int #effects(all) { return x + 1; }
 #test "one" { #assert f(1) == 2; }
 #forall "bad" x: 0..<4 { #assert f(x) < 3; }
 #test "spin" { i := 0; while true { i += 1; } }
 main :: () {}
 '''
-GOOD = '''f :: (x: int) -> int { return x + 1; }
+GOOD = '''f :: (x: int) -> int #effects(all) { return x + 1; }
 #test "one" { #assert f(1) == 2; }
 main :: () {}
 '''
-WEAK = '''f :: (x: int) -> int { return x * 2; }
+WEAK = '''f :: (x: int) -> int #effects(all) { return x * 2; }
 #test "zero" { #assert f(0) == 0; }
 main :: () {}
 '''
@@ -84,13 +84,13 @@ class Evidence(unittest.TestCase):
         self.assertEqual((r["verdict"], r["selection"]["only"]), ("not-checked", "one"))
         r, _, _ = self.run_with(MIXED, "test", "--list")
         self.assertEqual(r["verdict"], "not-checked")
-        r, _, p = self.run_with("f :: (x: int) -> int { return x + ; }\n", "test")
+        r, _, p = self.run_with("f :: (x: int) -> int #effects(all) { return x + ; }\n", "test")
         self.assertEqual((p.returncode, r["front_end"], r["claims"], r["verdict"]), (1, "failed", [], "not-checked"))
         r, _, _ = self.run_with(GOOD, "test")
         self.assertEqual(r["verdict"], "passed")
 
     def test_authority_coverage_is_a_claim(self):
-        text = "#authority;\nf :: (x: int) -> int { return x + 1; }\ng :: () -> int { return 3; }\n#test \"f\" { if f(0) == 7 { y := g(); } #assert f(1) == 2; }\nmain :: () {}\n"
+        text = "#authority;\nf :: (x: int) -> int #effects(all) { return x + 1; }\ng :: () -> int #effects(all) { return 3; }\n#test \"f\" { if f(0) == 7 { y := g(); } #assert f(1) == 2; }\nmain :: () {}\n"
         r, _, _ = self.run_with(text, "test", "--lib")
         cover = next(c for c in r["claims"] if c["kind"] == "#authority")
         self.assertEqual((cover["outcome"], cover["code"]), ("counterexample", "E0380"))

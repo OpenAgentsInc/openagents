@@ -19,9 +19,9 @@ import time
 
 ROOT = Path(__file__).resolve().parents[3]
 FIXTURE = '''#load "{root}/aethyr/render/media-commands.coax";
-media_native_parse :: (mt:string,mo:[]RenderMediaRequest)->RenderMediaParse #export_c {{return render_media_parse(mt,mo);}}
-media_native_rect :: (mq:RenderMediaRequest,mw:int,mh:int,miw:int,mih:int)->RenderMediaRect #export_c {{return render_media_rect(mq,mw,mh,miw,mih);}}
-media_native_extent :: (mk:RenderMediaKind,mw:int,mh:int)->RenderMediaExtent #export_c {{return render_media_image_extent(mk,mw,mh);}}
+media_native_parse :: (mt:string,mo:[]RenderMediaRequest)->RenderMediaParse #export_c #effects(all) {{return render_media_parse(mt,mo);}}
+media_native_rect :: (mq:RenderMediaRequest,mw:int,mh:int,miw:int,mih:int)->RenderMediaRect #export_c #effects(all) {{return render_media_rect(mq,mw,mh,miw,mih);}}
+media_native_extent :: (mk:RenderMediaKind,mw:int,mh:int)->RenderMediaExtent #export_c #effects(all) {{return render_media_image_extent(mk,mw,mh);}}
 '''
 DRIVER = r'''#include "media.h"
 #include <inttypes.h>

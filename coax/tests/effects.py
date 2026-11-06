@@ -80,7 +80,7 @@ class EffectsCLI(unittest.TestCase):
   p=self.work/'case.coax';p.write_text(body+'\nmain :: () {}\n');r=command([COMPILER,'deps',p,'--library','--effects','--proc',proc,*flags]);self.assertEqual(r.returncode,0,r.stderr);return json.loads(r.stdout)
  def kinds(self,r):return {x['kind']:x for x in r['procedures'][0]['effects']}
  def test_transitive_foreign_defer_and_unreachable_procedure(self):
-  r=self.report('io :: (x:int)->int #foreign; leaf :: () { r:=io(7); } root :: () { defer { leaf(); } } other :: () { x:int=---; }')
+  r=self.report('io :: (x:int)->int #foreign #effects(all); leaf :: () { r:=io(7); } root :: () { defer { leaf(); } } other :: () { x:int=---; }')
   k=self.kinds(r);self.assertIn('unknown_effects',k);self.assertIn('foreign_call',k);self.assertNotIn('uninitialized_storage',k);self.assertEqual([x['name'] for x in k['foreign_call']['path']],['root','leaf','io'])
  def test_generic_instantiation_follows_resolved_body(self):
   r=self.report('#import "Basic"; helper :: (x:$T) { print("%",x); } root :: () { helper(7); }')
@@ -102,7 +102,7 @@ class EffectsCLI(unittest.TestCase):
  def test_uninstantiated_template_does_not_pollute_runtime_closure(self):
   r=self.report('#import "Basic"; unused :: (x:$T) { print("%",x); } root :: ()->int { return 7; }');self.assertEqual(r['procedures'][0]['effects_mask'],0);self.assertEqual(r['uninstantiated_templates'],1)
  def test_loaded_callee_keeps_physical_witness_file(self):
-  (self.work/'leaf.coax').write_text('io :: () #foreign; leaf :: () { io(); }')
+  (self.work/'leaf.coax').write_text('io :: () #foreign #effects(all); leaf :: () { io(); }')
   r=self.report('#load "leaf.coax"; root :: () { leaf(); }');k=self.kinds(r);self.assertIn('foreign_call',k);self.assertTrue(k['foreign_call']['site']['unit'].endswith('leaf.coax'));self.assertEqual([x['name'] for x in k['foreign_call']['path']],['root','leaf','io'])
  def test_report_binds_exact_source_bytes(self):
   r=self.report('root :: (x:f64)->f64 { return x*2; }');self.assertEqual(len(r['sources']),1);source=r['sources'][0];self.assertEqual(source['sha256'],hashlib.sha256(Path(source['unit']).read_bytes()).hexdigest())

@@ -56,7 +56,7 @@ def main():
     source_digest = run([compiler, "source-digest", ROOT]).stdout.decode().strip()
     assert source_digest == (compiler.parent / "source-digest").read_text().strip()
     fixture = work / "stage.coax"
-    fixture.write_text('#load "' + str(ROOT / "aethyr/render/host-memory.coax") + '";\nstage_native :: (c:u64,n:u64,l:u64)->RenderHostStage #export_c {return render_host_stage(c,n,l);}\n')
+    fixture.write_text('#load "' + str(ROOT / "aethyr/render/host-memory.coax") + '";\nstage_native :: (c:u64,n:u64,l:u64)->RenderHostStage #export_c #effects(all) {return render_host_stage(c,n,l);}\n')
     driver = work / "driver.c"; driver.write_text(DRIVER)
     deps = json.loads(run([compiler, "deps", fixture, "--library"]).stdout)
     paths = [Path(x) for x in deps["sources"]] + [Path(__file__).resolve(), driver]

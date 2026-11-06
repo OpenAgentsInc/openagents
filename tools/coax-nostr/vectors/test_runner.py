@@ -33,7 +33,7 @@ class Runner(unittest.TestCase):
     def test_incorrect_actual_native_candidate_is_detected(self):
         with tempfile.TemporaryDirectory() as tmp:
             d=Path(tmp);src=d/'bad.coax'
-            src.write_text('vector_digest :: (input:[]u8,out:[]u8)->bool #export_c { for i:0..<32 {out[i]=0;} return true;}')
+            src.write_text('vector_digest :: (input:[]u8,out:[]u8)->bool #export_c #effects(all) { for i:0..<32 {out[i]=0;} return true;}')
             driver,_=v.build(src,d)
             with self.assertRaisesRegex(RuntimeError,'digest mismatch'):v.execute(driver,self.cases[:1])
     def test_empty_and_truncated_transport_refuse(self):

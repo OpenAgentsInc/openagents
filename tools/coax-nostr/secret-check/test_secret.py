@@ -35,7 +35,7 @@ class SecretSource(unittest.TestCase):
         report=self.tool.audit(path,'candidate');self.assertEqual(report['error'],expected,(name,report))
         self.observations.append({'case':name,'expected':expected,'report':report});return report
     def test_explicit_run_step_input_is_bounded_and_recorded(self):
-        source=self.directory/'run-step-input.coax';source.write_text('value :: ()->u64 {return 7;} public_value :: #run value(); candidate :: (x:u64)->u64 #export_c {return x;}')
+        source=self.directory/'run-step-input.coax';source.write_text('value :: ()->u64 {return 7;} public_value :: #run value(); candidate :: (x:u64)->u64 #export_c #effects(all) {return x;}')
         low=self.tool.audit(source,'candidate',run_steps=1);self.assertFalse(low['accepted']);self.assertEqual(low['compiler_run_steps'],1)
         allowed=self.tool.audit(source,'candidate',run_steps=100000);self.assertTrue(allowed['accepted'],allowed);self.assertEqual(allowed['compiler_run_steps'],100000)
         default=self.tool.audit(source,'candidate');self.assertTrue(default['accepted'],default);self.assertIsNone(default['compiler_run_steps'])
@@ -53,7 +53,7 @@ class SecretSource(unittest.TestCase):
           ('public_memory','candidate :: (a:[]u64)->u64 {return a[0];}',5),
           ('shift','candidate :: (x:u64,i:int)->u64 {return x<<i;}',12),
           ('vartime','read_vartime :: (x:u64)->u64 {return x;} candidate :: (x:u64)->u64 {return read_vartime(1);}',8),
-          ('foreign','read :: (x:u64)->u64 #foreign; candidate :: (x:u64)->u64 {return read(x);}',9),
+          ('foreign','read :: (x:u64)->u64 #foreign #effects(all); candidate :: (x:u64)->u64 {return read(x);}',9),
           ('transitive','leaf :: (x:u64)->u64 {return ifx x==0 then 1 else 2;} middle :: (x:u64)->u64 {return leaf(x);} candidate :: (x:u64)->u64 {return middle(x);}',6),
           ('recursion','again :: (x:u64)->u64 {return again(x);} candidate :: (x:u64)->u64 {return again(x);}',11),
           ('while','candidate :: (x:u64)->u64 {n:=x;while n>0 {n-=1;}return n;}',6),
@@ -71,7 +71,7 @@ class SecretSource(unittest.TestCase):
         for name,text,error in cases:self.case(name,text,error)
     def test_real_accepted_masking_public_conditions_and_actual_crypto_helpers(self):
         cases=[
-          ('masked','candidate :: (m:u64,a:u64,b:u64)->u64 #export_c {return b^((a^b)&value_barrier(m));}'),
+          ('masked','candidate :: (m:u64,a:u64,b:u64)->u64 #export_c #effects(all) {return b^((a^b)&value_barrier(m));}'),
           ('public_ifx','candidate :: (x:u64)->u64 {return ifx true then x else 0;}'),
           ('clear_assignment','candidate :: (x:u64)->u64 {a:=x;a=0;return ifx a==0 then 1 else 2;}'),
           ('truncation','candidate :: (x:u64)->u32 {return cast,trunc(u32)x;}'),
@@ -98,7 +98,7 @@ class SecretSource(unittest.TestCase):
         self.assertEqual(drift['error'],13);self.assertFalse(drift['accepted'])
         self.observations.extend([{'case':'loaded_closure','report':first},{'case':'changed_helper','report':changed},{'case':'postcompile_source_drift','report':drift}])
     def test_accepted_masking_executes_checked_and_optimized_against_independent_bits(self):
-        path=self.directory/'execute.coax';path.write_text('#load "'+str(ROOT/'coax/lib/crypto/bytes.coax')+'"; candidate :: (m:u64,a:u64,b:u64)->u64 #export_c {return cb_ct_select64(m,a,b);}')
+        path=self.directory/'execute.coax';path.write_text('#load "'+str(ROOT/'coax/lib/crypto/bytes.coax')+'"; candidate :: (m:u64,a:u64,b:u64)->u64 #export_c #effects(all) {return cb_ct_select64(m,a,b);}')
         self.assertTrue(self.tool.audit(path,'candidate')['accepted'])
         rng=random.Random(1751)
         for mode,flags in [('checked',[]),('release',['--release'])]:

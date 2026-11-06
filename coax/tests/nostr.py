@@ -89,7 +89,7 @@ class CoaxJsonTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             d = Path(t)
             (d/'check.coax').write_text(f'#load "{ROOT}/coax/lib/nostr/json.coax";\n'
-                'json_check :: (text: string) -> bool #export_c { out: [65536] u8; j: [1] Json; json_start(j[..], text);\n'
+                'json_check :: (text: string) -> bool #export_c #effects(all) { out: [65536] u8; j: [1] Json; json_start(j[..], text);\n'
                 '  while true { t := json_next(j[..]); if t == JSON_END { return true; } if t == JSON_ERROR { return false; }\n'
                 '    if t == JSON_STRING && json_unescape(json_text(j[..]), out[..]) < 0 { return false; } } return false; }\n')
             c = subprocess.check_output([str(ROOT/'coax/bin/coax'), 'c', str(d/'check.coax'), '--library', '--header', str(d/'check.h')])

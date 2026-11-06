@@ -29,7 +29,7 @@ class LargeClosure(unittest.TestCase):
             (self.directory / f'unit{i}.coax').write_text(f'helper{i} :: (x:u64)->u64 {{{body}}}\n')
         root = self.directory / 'root.coax'
         loads = ''.join(f'#load "unit{i}.coax";\n' for i in range(units - 1))
-        root.write_text(loads + f'candidate :: (x:u64)->u64 #export_c {{return helper{units-2}(x);}}\n')
+        root.write_text(loads + f'candidate :: (x:u64)->u64 #export_c #effects(all) {{return helper{units-2}(x);}}\n')
         return root
 
     def test_old_limit_and_new_complete_last_unit(self):

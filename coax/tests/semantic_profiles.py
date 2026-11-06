@@ -22,7 +22,7 @@ from quiet_crash import run as run_quiet_crash
 
 SOURCE = '''#import "Basic";
 Cell :: struct { value:u32=7; #if BUILD_DEBUG { stamp:u64=2; } }
-sum :: (a:u8,b:u8)->u8 #export_c {return a+b;}
+sum :: (a:u8,b:u8)->u8 #export_c #effects(all) {return a+b;}
 main :: () {
  cell:Cell;
  #if BUILD_DEBUG {print("% %\\n",size_of(Cell),cell.value+cast(u32)cell.stamp);}
@@ -160,10 +160,10 @@ class SemanticProfiles(unittest.TestCase):
 
     def test_overflow_policy_is_independent_of_optimization(self):
         cases = (
-            ("unsigned addition", "work :: (a:u8,b:u8)->u8 {return a+b;}", "work(250,10)", "4\n"),
-            ("signed negation", "work :: (a:s8)->s8 {return -a;}", "work(-128)", "-128\n"),
-            ("signed subtraction", "work :: (a:s8,b:s8)->s8 {return a-b;}", "work(-128,1)", "127\n"),
-            ("signed multiplication", "work :: (a:s8,b:s8)->s8 {return a*b;}", "work(64,4)", "0\n"),
+            ("unsigned addition", "work :: (a:u8,b:u8)->u8 #effects(all) {return a+b;}", "work(250,10)", "4\n"),
+            ("signed negation", "work :: (a:s8)->s8 #effects(all) {return -a;}", "work(-128)", "-128\n"),
+            ("signed subtraction", "work :: (a:s8,b:s8)->s8 #effects(all) {return a-b;}", "work(-128,1)", "127\n"),
+            ("signed multiplication", "work :: (a:s8,b:s8)->s8 #effects(all) {return a*b;}", "work(64,4)", "0\n"),
         )
         for name, procedure, call, expected in cases:
             source = self.source('#import "Basic";\n' + procedure + '\nmain :: () {print("%\\n",' + call + ');}\n')
@@ -182,7 +182,7 @@ class SemanticProfiles(unittest.TestCase):
             ("1 / value", 0, "division by zero"),
         )
         for expression, value, diagnostic in expressions:
-            source = self.source("work :: (value:int)->int {return cast(int)(" + expression + ");}\nmain :: () {out:=work(" + str(value) + ");}\n")
+            source = self.source("work :: (value:int)->int #effects(all) {return cast(int)(" + expression + ");}\nmain :: () {out:=work(" + str(value) + ");}\n")
             for arithmetic in ("checked", "wrapping"):
                 for optimization in ("0", "2"):
                     with self.subTest(expression=expression, arithmetic=arithmetic, optimization=optimization):
@@ -192,8 +192,8 @@ class SemanticProfiles(unittest.TestCase):
 
     def test_ordered_places_and_cleanup_match_at_both_native_optimization_levels(self):
         source = self.source('''#import "Basic";
-next :: (counter:[]int)->int {value:=counter[0];counter[0]+=1;return value;}
-work :: (counter:[]int,out:[]int)->int {
+next :: (counter:[]int)->int #effects(all) {value:=counter[0];counter[0]+=1;return value;}
+work :: (counter:[]int,out:[]int)->int #effects(all) {
  defer out[0]=out[0]*10+1;
  defer out[0]=out[0]*10+2;
  out[next(counter)]+=next(counter);
@@ -216,8 +216,8 @@ main :: () {
         # The product rounds to 1 before subtraction; contraction would retain
         # a nonzero residual. This pins today's separate-operation contract.
         source = self.source('''#import "Basic";
-separate :: (a:f32,b:f32)->f32 {return a*b-1.0f32;}
-exact :: (a:f32,b:f32)->f32 {return a+b;}
+separate :: (a:f32,b:f32)->f32 #effects(all) {return a*b-1.0f32;}
+exact :: (a:f32,b:f32)->f32 #effects(all) {return a+b;}
 #assert #run f32_bits(separate(f32_from_bits(1065353217),f32_from_bits(1065353215)))==0;
 #assert #run f32_bits(exact(1.5f32,2.25f32))==1081081856;
 main :: () {
@@ -236,7 +236,7 @@ main :: () {
         # rounding remains a separate design/migration decision.
         source = self.source('''#import "Basic";
 #authority;
-literal_bits :: (which:int)->u32 #export_c {
+literal_bits :: (which:int)->u32 #export_c #effects(all) {
  if which==0 {value:=1.000000059604644775390625f32;return f32_bits(value);}
  if which==1 {value:=1.0000000596046448f32;return f32_bits(value);}
  if which==2 {value:=1.000000059604645f32;return f32_bits(value);}
@@ -256,9 +256,9 @@ main :: () {print("% % % %\\n",literal_bits(0),literal_bits(1),literal_bits(2),l
                     self.assertEqual((result.returncode, result.stdout), (0, expected), result.stderr)
 
     def test_compile_time_and_authority_checks_remain_checked(self):
-        compile_time = self.source("bad :: (a:u8,b:u8)->u8 {return a+b;}\nVALUE :: #run bad(250,10);\nmain :: () {}\n", "constant.coax")
+        compile_time = self.source("bad :: (a:u8,b:u8)->u8 #effects(all) {return a+b;}\nVALUE :: #run bad(250,10);\nmain :: () {}\n", "constant.coax")
         authority = self.source('''#authority;
-bad :: (a:u8,b:u8)->u8 #export_c {return a+b;}
+bad :: (a:u8,b:u8)->u8 #export_c #effects(all) {return a+b;}
 #test "authority must execute checked arithmetic" {value:=bad(250,10);#assert value==4;}
 main :: () {}
 ''', "authority.coax")
@@ -270,7 +270,7 @@ main :: () {}
                     self.assertIn('"E0407"', result.stderr)
 
     def test_profile_report_records_loaded_source_content_and_emission(self):
-        helper = self.source("answer :: ()->int {return 7;}\n", "helper.coax")
+        helper = self.source("answer :: ()->int #effects(all) {return 7;}\n", "helper.coax")
         source = self.source('#load "helper.coax";\nmain :: () {value:=answer();}\n')
         first, data = self.report("c", source, "--arithmetic", "checked", "--build-profile", "release")
         self.assertIsNone(data["native_optimization_flag"])
@@ -278,7 +278,7 @@ main :: () {}
         by_path = {row["path"]: row["sha256"] for row in data["sources"]}
         for path in (source, helper):
             self.assertEqual(by_path[str(path.resolve())], hashlib.sha256(path.read_bytes()).hexdigest())
-        helper.write_text("answer :: ()->int {return 9;}\n")
+        helper.write_text("answer :: ()->int #effects(all) {return 9;}\n")
         second, changed = self.report("c", source, "--arithmetic", "checked", "--build-profile", "release")
         self.assertNotEqual(changed["emitted_sha256"], data["emitted_sha256"])
         self.assertNotEqual(changed["sources"], data["sources"])
@@ -305,7 +305,7 @@ main :: () {}
 
     def test_mutation_shards_bind_resolved_profiles_even_for_identical_sites(self):
         source = self.source('''#authority;
-adjust :: (value:int)->int #export_c {return value+1;}
+adjust :: (value:int)->int #export_c #effects(all) {return value+1;}
 #forall value:0..<3 {#assert adjust(value)==value+1;}
 ''')
         combinations = (
@@ -385,7 +385,7 @@ adjust :: (value:int)->int #export_c {return value+1;}
     def test_report_destinations_cannot_overwrite_inputs(self):
         for kind in ("root", "loaded", "symlink", "hardlink", "partial-load"):
             with self.subTest(kind=kind):
-                helper = self.source("answer :: ()->int {return 7;}\n", kind + "-helper.coax")
+                helper = self.source("answer :: ()->int #effects(all) {return 7;}\n", kind + "-helper.coax")
                 text = '#load "' + helper.name + '";\n'
                 if kind == "partial-load":
                     text += '#load "missing.coax";\n'

@@ -111,7 +111,7 @@ class Profiles(unittest.TestCase):
         # now lives in an explicit driver, so no runtime-prefix copy is needed.
         bridge = cls.dir/'json_profile.coax'
         bridge.write_text(f'#load {json.dumps(str(SOURCE))};\n#load {json.dumps(str(ROOT / "coax/lib/nostr/json.coax"))};\n' + '''
-np_json_projection :: (text: string) -> int #export_c {
+np_json_projection :: (text: string) -> int #export_c #effects(all) {
   parsed := json_int(text);
   if !parsed.ok { return 0; }
   return ifx np_safe_integer(parsed.value) then 3 else 1;

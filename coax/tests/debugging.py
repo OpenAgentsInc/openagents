@@ -25,7 +25,7 @@ class Debugging(unittest.TestCase):
   for phase in ['load','lex','imports','parse','check','evaluate','authority','emit']:
    self.assertIn(phase,t['seconds']);self.assertGreaterEqual(t['seconds'][phase],0)
  def test_timing_report_parts_checks_and_table(self):
-  source=self.d/'checked.coax';source.write_text('#authority;\ntwice :: (x:int)->int {return x*2;}\n#test "doubles" {#assert twice(21)==42;}\nmain :: () {}\n')
+  source=self.d/'checked.coax';source.write_text('#authority;\ntwice :: (x:int)->int #effects(all) {return x*2;}\n#test "doubles" {#assert twice(21)==42;}\nmain :: () {}\n')
   report=self.d/'t.json'
   r=self.call('check',source,'--timings-json',report,'--timings-table')
   self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(r.stdout,'')
@@ -38,8 +38,8 @@ class Debugging(unittest.TestCase):
  def test_declaration_costs_name_the_costly_declarations(self):
   # #12925: per-declaration seconds and work units, a generic's instances charged to it.
   source=self.d/'costs.coax';source.write_text(
-   'pick :: (a: $T, b: $T, first: bool) -> $T {if first {return a;} return b;}\n'
-   'table :: () -> int {t:=0;for i: 0..<500 {t+=i;} return t;}\n'
+   'pick :: (a: $T, b: $T, first: bool) -> $T #effects(all) {if first {return a;} return b;}\n'
+   'table :: () -> int #effects(all) {t:=0;for i: 0..<500 {t+=i;} return t;}\n'
    'TOTAL :: #run table();\n'
    'Pair :: struct {a: int; b: int;}\n'
    'main :: () {x:=pick(1,2,true);y:=pick(1.5,2.5,false);p:=Pair.{a=TOTAL,b=x};#assert p.a==124750 && y==2.5;}\n')
@@ -66,7 +66,7 @@ class Debugging(unittest.TestCase):
  @MAC_LLDB
  def test_loaded_function_source_step_values_and_stack(self):
   source=self.d/'main.coax';helper=self.d/'helper.coax';mapping=self.d/'map.json';exe=self.d/'app'
-  helper.write_text('twice :: (value:int)->int {\n total:=value*2;\n total+=2;\n return total;\n}\n')
+  helper.write_text('twice :: (value:int)->int #effects(all) {\n total:=value*2;\n total+=2;\n return total;\n}\n')
   source.write_text('#load "helper.coax";\nmain :: () {answer:=twice(20);#assert answer==42;}\n')
   result=self.call('build',source,'-o',exe,'--source-map',mapping,'--timings',self.d/'time.json')
   self.assertEqual(result.returncode,0,result.stderr)
@@ -79,14 +79,14 @@ class Debugging(unittest.TestCase):
    self.assertIn(text,run.stdout)
  @MAC_LLDB
  def test_lowered_assignment_steps_once_with_the_completed_value(self):
-  src=self.d/'steps.coax';src.write_text('work :: (value:int)->int {\n values:=[1]int.[value*2];\n values[0]+=increment();\n total:=values[0];\n return total;\n}\nincrement :: ()->int {return 2;}\nmain :: () {answer:=work(20);#assert answer==42;}')
+  src=self.d/'steps.coax';src.write_text('work :: (value:int)->int #effects(all) {\n values:=[1]int.[value*2];\n values[0]+=increment();\n total:=values[0];\n return total;\n}\nincrement :: ()->int #effects(all) {return 2;}\nmain :: () {answer:=work(20);#assert answer==42;}')
   built=self.call('build',src,'-o',self.d/'app');self.assertEqual(built.returncode,0,built.stderr)
   commands=self.d/'lldb.txt';commands.write_text('settings set target.disable-aslr false\nbreakpoint set --file steps.coax --line 3\nrun\nframe variable l_values.e[0]\nthread step-over\nframe variable l_values.e[0]\ncontinue\n')
   run=subprocess.run(['xcrun','lldb','--batch','--source',str(commands),str(self.d/'app')],capture_output=True,text=True)
   self.assertEqual(run.returncode,0,run.stdout+run.stderr)
   self.assertIn('l_values.e[0] = 40',run.stdout);self.assertIn('l_values.e[0] = 42',run.stdout);self.assertIn('steps.coax:4',run.stdout)
  def test_native_diagnostic_retains_loaded_source(self):
-  helper=self.d/'helper.coax';helper.write_text('missing :: (n:int)->int #foreign;\nleaf :: ()->int {return missing(1);}\n')
+  helper=self.d/'helper.coax';helper.write_text('missing :: (n:int)->int #foreign #effects(all);\nleaf :: ()->int #effects(all) {return missing(1);}\n')
   source=self.d/'entry.coax';source.write_text('#load "helper.coax";\nmain :: () {answer:=leaf();}\n')
   code=self.call('c',source,'--debug-info');self.assertEqual(code.returncode,0,code.stderr)
   c=self.d/'program.c';c.write_text(code.stdout.replace("return missing(","return undeclared_native_symbol("))
@@ -98,7 +98,7 @@ class Debugging(unittest.TestCase):
   self.assertEqual(result.returncode,0,result.stderr)
   self.assertEqual(json.loads((self.d/'map.json').read_text())['functions'][0]['file'],str(source))
  def test_sanitizer_abort_stack_has_original_coax_frame(self):
-  helper=self.d/'leaf.coax';helper.write_text('leaf :: (index:int)->int #export_c {\n values:=[1]int.[7];\n return values[index];\n}\n')
+  helper=self.d/'leaf.coax';helper.write_text('leaf :: (index:int)->int #export_c #effects(all) {\n values:=[1]int.[7];\n return values[index];\n}\n')
   src=self.d/'entry.coax';src.write_text('#load "leaf.coax";\n')
   emitted=self.call('c',src,'--library','--debug-info','--header',self.d/'lib.h');self.assertEqual(emitted.returncode,0,emitted.stderr)
   c=self.d/'lib.c';c.write_text(emitted.stdout)
@@ -119,7 +119,7 @@ class Debugging(unittest.TestCase):
  @MAC_LLDB
  def test_private_names_from_two_libraries_use_their_source_owner(self):
   for letter,name in [('a','first'),('b','second')]:
-   src=self.d/(letter+'.coax');src.write_text('adjust :: ('+name+':int)->int {\n total:='+name+'+1;\n return total;\n}\nf'+letter+' :: ()->int #export_c {return adjust(20);}')
+   src=self.d/(letter+'.coax');src.write_text('adjust :: ('+name+':int)->int {\n total:='+name+'+1;\n return total;\n}\nf'+letter+' :: ()->int #export_c #effects(all) {return adjust(20);}')
    built=self.call('lib',src,'-o',self.d/(letter+'.o'),'--source-map',self.d/(letter+'.json'));self.assertEqual(built.returncode,0,built.stderr)
   host=self.d/'host.c';host.write_text('long long fa(void);long long fb(void);int main(void){return fa()+fb()==42?0:1;}')
   built=subprocess.run(['cc','-g',str(host),str(self.d/'a.o'),str(self.d/'b.o'),'-o',str(self.d/'app')],capture_output=True,text=True);self.assertEqual(built.returncode,0,built.stderr)

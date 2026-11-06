@@ -58,7 +58,7 @@ class ReceiptTests(unittest.TestCase):
         row = {'procedure': 'aethyr_native_deadgears_0', 'kind': 'forall', 'cases': 10,
                'original_bindings': ' k: 0..<10 ', 'body_sha256': RUNNER.digest(body.encode()),
                'original_name': 'fixture'}
-        source = row['procedure'] + ' :: () #export_c {\n  for k: 0..<10 ' + body + '}\n'
+        source = row['procedure'] + ' :: () #export_c #effects(all) {\n  for k: 0..<10 ' + body + '}\n'
         RUNNER.original_body(source, row)
         for invalid in (source.replace('{\n  for', '{\n  return;\n  for', 1),
                         source.replace('{\n  for', '{\n  if false {\n  for', 1) + '}\n'):

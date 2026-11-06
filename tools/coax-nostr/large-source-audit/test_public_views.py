@@ -36,14 +36,14 @@ class PublicViews(unittest.TestCase):
         r=self.tool.audit(p,'candidate',classification=m);self.assertEqual(r['error'],error,r);self.observations.append({'case':p.name,'expected':error,'report':r});return r
     def test_view_read_and_default_refusal(self):
         for cls,mask in [('public',0),('secret',1)]:
-            p,baseline,m=self.source('read_'+cls,'candidate :: (v:[]u8)->u8 #export_c {return v[0];}', [('v','[] u8',cls,'read',2)])
+            p,baseline,m=self.source('read_'+cls,'candidate :: (v:[]u8)->u8 #export_c #effects(all) {return v[0];}', [('v','[] u8',cls,'read',2)])
             self.assertFalse(baseline['accepted']);r=self.audit(p,m,0);self.assertEqual(r['return_dependency_mask'],mask);self.assertIn('caller supplies live aligned',r['view_assumption'])
     def test_checked_cast_on_secret_view(self):
         # v2: a range-contained (widening) checked cast of a secret is admitted
         # and keeps its dependency; every other secret checked cast refuses.
-        p,_,m=self.source('secret_cast','candidate :: (v:[]u8)->u64 #export_c {return cast(u64)v[0];}', [('v','[] u8','secret','read',2)])
+        p,_,m=self.source('secret_cast','candidate :: (v:[]u8)->u64 #export_c #effects(all) {return cast(u64)v[0];}', [('v','[] u8','secret','read',2)])
         r=self.audit(p,m,0);self.assertTrue(r['accepted']);self.assertEqual(r['return_dependency_mask'],1)
-        p,_,m=self.source('tainted_alias_cast','candidate :: (v:[]u8,x:u8)->u64 #export_c {w:[]u8=v[0..<1];v[0]=x;return cast(u64)w[0];}', [('v','[] u8','public','write',2),('x','u8','secret',None,0)])
+        p,_,m=self.source('tainted_alias_cast','candidate :: (v:[]u8,x:u8)->u64 #export_c #effects(all) {w:[]u8=v[0..<1];v[0]=x;return cast(u64)w[0];}', [('v','[] u8','public','write',2),('x','u8','secret',None,0)])
         # x lands in the public v, which is reported as a public output.
         r=self.audit(p,m,14);self.assertEqual(r['return_dependency_mask'],2);self.assertEqual([g['kind'] for g in r['authored_guard_obligations']],['public-output'])
         # Classified scalars are u64, so narrower secrets come from explicit truncation.
@@ -59,7 +59,7 @@ class PublicViews(unittest.TestCase):
             ('sign_u64_int','return cast(int)x;','int',5),
             ('identity_u64','return cast(u64)x;','u64',5),
             ('narrow_after_widen','b:=cast,trunc(u8)x;return cast(u8)(cast(u32)b<<1);','u8',5)]:
-            text='candidate :: (x:u64)->'+ret+' #export_c {'+body+'}'
+            text='candidate :: (x:u64)->'+ret+' #export_c #effects(all) {'+body+'}'
             p,_,m=self.source(name,text,[('x','u64','secret',None,0)]);r=self.audit(p,m,error);self.assertEqual(r['accepted'],error==0,name)
             if error==0:self.assertEqual(r['return_dependency_mask'],1,name)
             else:self.assertEqual(r['error_name'],'unsupported',name)
@@ -78,16 +78,16 @@ class PublicViews(unittest.TestCase):
             ('sub_underflow','return (x&0xFF)-(x>>60);',5),
             ('sub_safe','return (cast(u64)256+(x&0xFF))-(x>>60);',0),
             ('carry_escapes','carry:=cast(u64)0;for i:0..<8 {carry=(x&0xFFFFFFFF)+carry;}return carry;',5)]:
-            text='candidate :: (x:u64)->u64 #export_c {'+body+'}'
+            text='candidate :: (x:u64)->u64 #export_c #effects(all) {'+body+'}'
             p,_,m=self.source(name,text,[('x','u64','secret',None,0)]);r=self.audit(p,m,error);self.assertEqual(r['accepted'],error==0,name)
             if error==0:self.assertEqual(r['return_dependency_mask'],1,name)
             else:self.assertEqual(r['error_name'],'unsupported',name)
-        p,_,m=self.source('narrow_view_shift','candidate :: (v:[]u8)->u8 #export_c {return cast(u8)(cast(u32)v[0]<<1);}',[('v','[] u8','secret','read',2)])
+        p,_,m=self.source('narrow_view_shift','candidate :: (v:[]u8)->u8 #export_c #effects(all) {return cast(u8)(cast(u32)v[0]<<1);}',[('v','[] u8','secret','read',2)])
         r=self.audit(p,m,5);self.assertFalse(r['accepted'])
-        p,_,m=self.source('public_narrow','candidate :: (x:u64)->u32 #export_c {return cast(u32)x;}',[('x','u64','public',None,0)])
+        p,_,m=self.source('public_narrow','candidate :: (x:u64)->u32 #export_c #effects(all) {return cast(u32)x;}',[('x','u64','public',None,0)])
         r=self.audit(p,m,0);self.assertEqual(r['return_dependency_mask'],0)
     def test_public_fields_manifest(self):
-        src='W :: struct {stage:int;val:u64;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c {w[0].val=k;if w[0].stage==0 {return 1;}return 2;}'
+        src='W :: struct {stage:int;val:u64;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c #effects(all) {w[0].val=k;if w[0].stage==0 {return 1;}return 2;}'
         p,_,m=self.source('public_field',src,[('w','[] W','secret','write',1),('k','u64','secret',None,0)])
         r=self.audit(p,m,10);self.assertEqual(r['error_name'],'type')
         m4=dict(m,schema='coax.secret-large-classification-views.v4',public_fields=[['W','stage']])
@@ -97,7 +97,7 @@ class PublicViews(unittest.TestCase):
         r=self.tool.audit(p,'candidate',classification=dict(m,public_fields=[['W','stage']]));self.assertFalse(r['accepted'])
         r=self.audit(p,dict(m4,public_fields=[['W','nope']]),10)
     def test_declassification_is_reported(self):
-        src='ok_declassify :: (v:u64)->bool {return v==1;}\ncandidate :: (k:u64)->u64 #export_c {if ok_declassify(k) {return 1;}return 2;}'
+        src='ok_declassify :: (v:u64)->bool {return v==1;}\ncandidate :: (k:u64)->u64 #export_c #effects(all) {if ok_declassify(k) {return 1;}return 2;}'
         p,_,m=self.source('declassify',src,[('k','u64','secret',None,0)])
         r=self.audit(p,m,14);self.assertFalse(r['accepted']);self.assertEqual(r['source_status'],'analyzed-with-guard-obligations')
         self.assertEqual([(g['kind'],g['origin_mask'],g['line']) for g in r['authored_guard_obligations']],[('declassification',1,2)])
@@ -107,21 +107,21 @@ class PublicViews(unittest.TestCase):
         # nested for-each must reach the outer loop's back edge, and a scalar
         # read from a public field must not declassify the field everywhere.
         K=('k','u64','secret',None,0);V=('v','[] u8','public','read',2)
-        cases=[('foreach_backedge','candidate :: (v:[]u8,k:u64)->u64 #export_c {\n x:=cast(u64)0;r:=cast(u64)0;\n for i:0..<2 {\n  if x==0 {r=r|1;}\n  for item:v {x=k;}\n }\n return r;\n}',6),
-          ('foreach_in_foreach','candidate :: (v:[]u8,k:u64)->u64 #export_c {\n x:=cast(u64)0;r:=cast(u64)0;\n for a:v {\n  if x==0 {r=r|1;}\n  for item:v {x=k;}\n }\n return r;\n}',6),
-          ('foreach_stale_range_trap','candidate :: (v:[]u8,k:u64)->u64 #export_c {\n x:=cast(u64)0;y:=cast(u64)0;acc:=cast(u64)0;\n for i:0..<100 {\n  acc=x+(k&1);\n  for item:v {x=(y<<1)|1;}\n  y=x;\n }\n return acc;\n}',5),
-          ('foreach_index','candidate :: (v:[]u8,k:u64)->u8 #export_c {\n x:=0;r:u8=0;\n for i:0..<2 {\n  r=v[x];\n  for item:v {x=cast,trunc(int)(k&1);}\n }\n return r;\n}',None)]
+        cases=[('foreach_backedge','candidate :: (v:[]u8,k:u64)->u64 #export_c #effects(all) {\n x:=cast(u64)0;r:=cast(u64)0;\n for i:0..<2 {\n  if x==0 {r=r|1;}\n  for item:v {x=k;}\n }\n return r;\n}',6),
+          ('foreach_in_foreach','candidate :: (v:[]u8,k:u64)->u64 #export_c #effects(all) {\n x:=cast(u64)0;r:=cast(u64)0;\n for a:v {\n  if x==0 {r=r|1;}\n  for item:v {x=k;}\n }\n return r;\n}',6),
+          ('foreach_stale_range_trap','candidate :: (v:[]u8,k:u64)->u64 #export_c #effects(all) {\n x:=cast(u64)0;y:=cast(u64)0;acc:=cast(u64)0;\n for i:0..<100 {\n  acc=x+(k&1);\n  for item:v {x=(y<<1)|1;}\n  y=x;\n }\n return acc;\n}',5),
+          ('foreach_index','candidate :: (v:[]u8,k:u64)->u8 #export_c #effects(all) {\n x:=0;r:u8=0;\n for i:0..<2 {\n  r=v[x];\n  for item:v {x=cast,trunc(int)(k&1);}\n }\n return r;\n}',None)]
         for name,src,error in cases:
             p,_,m=self.source(name,src,[V,K]);r=self.tool.audit(p,'candidate',classification=m);self.assertFalse(r['accepted'],name)
             if error is not None:self.assertEqual(r['error'],error,(name,r['error_name']))
-        src='W :: struct {stage:u64;val:u64;}\nok_declassify :: (s:u64)->u64 {return s;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c {\n w[0].stage=1;w[1].stage=k;\n d:=ok_declassify(w[0].stage);\n if w[1].stage==0 {return 1;}\n return d;\n}'
+        src='W :: struct {stage:u64;val:u64;}\nok_declassify :: (s:u64)->u64 {return s;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c #effects(all) {\n w[0].stage=1;w[1].stage=k;\n d:=ok_declassify(w[0].stage);\n if w[1].stage==0 {return 1;}\n return d;\n}'
         p,_,m=self.source('declassify_one_element',src,[('w','[] W','secret','write',2),K])
         r=self.tool.audit(p,'candidate',classification=dict(m,schema='coax.secret-large-classification-views.v4',public_fields=[['W','stage']]));self.assertEqual(r['error'],6,r['error_name'])
     def test_second_review_false_accepts_refuse(self):
         # Reproducers from the second independent review: partial or repeated-field
         # declassification, declassification on one path only, and secrets left in
         # public outputs.
-        cases=[('declassify_subslice', 'W :: struct {arr:[2]u64;v:u64;}\nok_declassify :: (s:[]u64)->u64 {return 0;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c {\n w[0].arr[1]=k;\n d:=ok_declassify(w[0].arr[0..<1]);\n if w[0].arr[1]==0 {return 1;}\n return d;\n}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], [['W', 'arr']]), ('nested_items', 'I :: struct {arr:[2]u64;}\nW :: struct {items:[2]I;}\nok_declassify :: (s:[]u64)->u64 {return 0;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c {\n w[0].items[0].arr[0]=1;w[0].items[1].arr[0]=k;\n d:=ok_declassify(w[0].items[0].arr[0..<2]);\n if w[0].items[1].arr[0]==0 {return 1;}\n return d;\n}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], [['I', 'arr']]), ('two_fields_same_struct', 'I :: struct {arr:[2]u64;}\nW :: struct {a:I;b:I;}\nok_declassify :: (s:[]u64)->u64 {return 0;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c {\n w[0].a.arr[0]=1;w[0].b.arr[0]=k;\n d:=ok_declassify(w[0].a.arr[0..<2]);\n if w[0].b.arr[0]==0 {return 1;}\n return d;\n}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], [['I', 'arr']]), ('struct_field_subarray', 'I :: struct {arr:[2]u64;s:u64;}\nW :: struct {inner:I;}\nok_declassify :: (s:[]u64)->u64 {return 0;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c {\n w[0].inner.s=k;\n d:=ok_declassify(w[0].inner.arr[0..<1]);\n if w[0].inner.s==0 {return 1;}\n return d;\n}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], [['W', 'inner']]), ('loop_declassify_order', 'W :: struct {stage:[2]u64;}\nok_declassify :: (s:[]u64)->u64 {return 0;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c {\n r:=cast(u64)0;\n for i:0..<3 {\n  d:=ok_declassify(w[0].stage[0..<1]);\n  if w[0].stage[1]==0 {r=r|1;}\n  w[0].stage[1]=k;\n }\n return r;\n}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], [['W', 'stage']]), ('arm_declassify', 'W :: struct {arr:[2]u64;}\nok_declassify :: (s:[]u64)->u64 {return 0;}\ncandidate :: (w:[]W,k:u64,p:u64)->u64 #export_c {\n w[0].arr[1]=k;\n if p==0 {d:=ok_declassify(w[0].arr[0..<2]);}\n if w[0].arr[1]==0 {return 1;}\n return 2;\n}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0), ('p', 'u64', 'public', None, 0)], [['W', 'arr']]), ('field_out', 'W :: struct {stage:u64;val:u64;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c {w[0].stage=k;return 0;}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], [['W', 'stage']]), ('out_view', 'candidate :: (d:[]u64,k:u64)->u64 #export_c {d[0]=k;return 0;}', [('d', '[] u64', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], None)]
+        cases=[('declassify_subslice', 'W :: struct {arr:[2]u64;v:u64;}\nok_declassify :: (s:[]u64)->u64 {return 0;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c #effects(all) {\n w[0].arr[1]=k;\n d:=ok_declassify(w[0].arr[0..<1]);\n if w[0].arr[1]==0 {return 1;}\n return d;\n}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], [['W', 'arr']]), ('nested_items', 'I :: struct {arr:[2]u64;}\nW :: struct {items:[2]I;}\nok_declassify :: (s:[]u64)->u64 {return 0;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c #effects(all) {\n w[0].items[0].arr[0]=1;w[0].items[1].arr[0]=k;\n d:=ok_declassify(w[0].items[0].arr[0..<2]);\n if w[0].items[1].arr[0]==0 {return 1;}\n return d;\n}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], [['I', 'arr']]), ('two_fields_same_struct', 'I :: struct {arr:[2]u64;}\nW :: struct {a:I;b:I;}\nok_declassify :: (s:[]u64)->u64 {return 0;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c #effects(all) {\n w[0].a.arr[0]=1;w[0].b.arr[0]=k;\n d:=ok_declassify(w[0].a.arr[0..<2]);\n if w[0].b.arr[0]==0 {return 1;}\n return d;\n}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], [['I', 'arr']]), ('struct_field_subarray', 'I :: struct {arr:[2]u64;s:u64;}\nW :: struct {inner:I;}\nok_declassify :: (s:[]u64)->u64 {return 0;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c #effects(all) {\n w[0].inner.s=k;\n d:=ok_declassify(w[0].inner.arr[0..<1]);\n if w[0].inner.s==0 {return 1;}\n return d;\n}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], [['W', 'inner']]), ('loop_declassify_order', 'W :: struct {stage:[2]u64;}\nok_declassify :: (s:[]u64)->u64 {return 0;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c #effects(all) {\n r:=cast(u64)0;\n for i:0..<3 {\n  d:=ok_declassify(w[0].stage[0..<1]);\n  if w[0].stage[1]==0 {r=r|1;}\n  w[0].stage[1]=k;\n }\n return r;\n}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], [['W', 'stage']]), ('arm_declassify', 'W :: struct {arr:[2]u64;}\nok_declassify :: (s:[]u64)->u64 {return 0;}\ncandidate :: (w:[]W,k:u64,p:u64)->u64 #export_c #effects(all) {\n w[0].arr[1]=k;\n if p==0 {d:=ok_declassify(w[0].arr[0..<2]);}\n if w[0].arr[1]==0 {return 1;}\n return 2;\n}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0), ('p', 'u64', 'public', None, 0)], [['W', 'arr']]), ('field_out', 'W :: struct {stage:u64;val:u64;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c #effects(all) {w[0].stage=k;return 0;}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], [['W', 'stage']]), ('out_view', 'candidate :: (d:[]u64,k:u64)->u64 #export_c #effects(all) {d[0]=k;return 0;}', [('d', '[] u64', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], None)]
         for name,src,params,fields in cases:
             p,_,m=self.source(name,src,params)
             if fields:m=dict(m,schema='coax.secret-large-classification-views.v4',public_fields=fields)
@@ -131,36 +131,36 @@ class PublicViews(unittest.TestCase):
             else:self.assertEqual(r['error'],6,(name,r['error_name']))
     def test_taint_alias_and_readonly_effects(self):
         cases=[
-          ('branch','candidate :: (v:[]u8)->u8 #export_c {if v[0]==0 {return 1;}return 2;}',[('v','[] u8','secret','read',2)],6),
-          ('index','candidate :: (v:[]u8,i:u64)->u8 #export_c {return v[cast,trunc(int)i];}',[('v','[] u8','public','read',2),('i','u64','secret',None,0)],7),
-          ('readonly','candidate :: (v:[]u8)->u8 #export_c {v[0]=1;return v[0];}',[('v','[] u8','public','read',2)],5),
-          ('readonly_callee','write :: (v:[]u8)->u8 {v[0]=1;return 0;} candidate :: (v:[]u8)->u8 #export_c {return write(v);}',[('v','[] u8','public','read',2)],5),
-          ('readonly_slice','write :: (v:[]u8)->u8 {v[0]=1;return 0;} candidate :: (v:[]u8)->u8 #export_c {w:[]u8=v[0..<1];return write(w);}',[('v','[] u8','public','read',2)],5),
-          ('tainted_public','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8,x:u8)->u8 #export_c {v[0]=x;return read_public(v);}',[('v','[] u8','public','write',2),('x','u8','secret',None,0)],8),
-          ('tainted_slice_alias','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8,x:u8)->u8 #export_c {w:[]u8=v[0..<1];v[0]=x;return read_public(w);}',[('v','[] u8','public','write',2),('x','u8','secret',None,0)],8),
-          ('tainted_alias_branch','candidate :: (v:[]u8,x:u8)->u8 #export_c {w:[]u8=v[0..<1];w[0]=x;if v[0]==0 {return 1;}return 0;}',[('v','[] u8','public','write',2),('x','u8','secret',None,0)],6),
-          ('secret_public','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8)->u8 #export_c {return read_public(v);}',[('v','[] u8','secret','read',2)],8),
-          ('forbidden_public','read_vartime :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8)->u8 #export_c {return read_vartime(v);}',[('v','[] u8','public','read',2)],8),
-          ('forbidden_transitive','read_vartime :: (v:[]u8)->u8 {return v[0];} outer_public :: (v:[]u8)->u8 {return read_vartime(v);} candidate :: (v:[]u8)->u8 #export_c {return outer_public(v);}',[('v','[] u8','public','read',2)],8),
-          ('secret_branch_public_helper','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8)->u8 #export_c {if v[0]==0 {return read_public(v);}return 0;}',[('v','[] u8','secret','read',2)],6),
-          ('foreign','external :: (x:u8)->u8 #foreign; candidate :: (v:[]u8)->u8 #export_c {return external(v[0]);}',[('v','[] u8','public','read',2)],9),
-          ('bounds','candidate :: (v:[]u8)->u8 #export_c {return v[2];}',[('v','[] u8','public','read',2)],2),
-          ('zero_trip','candidate :: (v:[]u8)->u8 #export_c {for i:0..<0 {}return v[0];}',[('v','[] u8','public','read',2)],5),
-          ('view_escape','candidate :: (v:[]u8)->[]u8 #export_c {return v;}',[('v','[] u8','public','read',2)],5),
+          ('branch','candidate :: (v:[]u8)->u8 #export_c #effects(all) {if v[0]==0 {return 1;}return 2;}',[('v','[] u8','secret','read',2)],6),
+          ('index','candidate :: (v:[]u8,i:u64)->u8 #export_c #effects(all) {return v[cast,trunc(int)i];}',[('v','[] u8','public','read',2),('i','u64','secret',None,0)],7),
+          ('readonly','candidate :: (v:[]u8)->u8 #export_c #effects(all) {v[0]=1;return v[0];}',[('v','[] u8','public','read',2)],5),
+          ('readonly_callee','write :: (v:[]u8)->u8 {v[0]=1;return 0;} candidate :: (v:[]u8)->u8 #export_c #effects(all) {return write(v);}',[('v','[] u8','public','read',2)],5),
+          ('readonly_slice','write :: (v:[]u8)->u8 {v[0]=1;return 0;} candidate :: (v:[]u8)->u8 #export_c #effects(all) {w:[]u8=v[0..<1];return write(w);}',[('v','[] u8','public','read',2)],5),
+          ('tainted_public','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8,x:u8)->u8 #export_c #effects(all) {v[0]=x;return read_public(v);}',[('v','[] u8','public','write',2),('x','u8','secret',None,0)],8),
+          ('tainted_slice_alias','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8,x:u8)->u8 #export_c #effects(all) {w:[]u8=v[0..<1];v[0]=x;return read_public(w);}',[('v','[] u8','public','write',2),('x','u8','secret',None,0)],8),
+          ('tainted_alias_branch','candidate :: (v:[]u8,x:u8)->u8 #export_c #effects(all) {w:[]u8=v[0..<1];w[0]=x;if v[0]==0 {return 1;}return 0;}',[('v','[] u8','public','write',2),('x','u8','secret',None,0)],6),
+          ('secret_public','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8)->u8 #export_c #effects(all) {return read_public(v);}',[('v','[] u8','secret','read',2)],8),
+          ('forbidden_public','read_vartime :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8)->u8 #export_c #effects(all) {return read_vartime(v);}',[('v','[] u8','public','read',2)],8),
+          ('forbidden_transitive','read_vartime :: (v:[]u8)->u8 {return v[0];} outer_public :: (v:[]u8)->u8 {return read_vartime(v);} candidate :: (v:[]u8)->u8 #export_c #effects(all) {return outer_public(v);}',[('v','[] u8','public','read',2)],8),
+          ('secret_branch_public_helper','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8)->u8 #export_c #effects(all) {if v[0]==0 {return read_public(v);}return 0;}',[('v','[] u8','secret','read',2)],6),
+          ('foreign','external :: (x:u8)->u8 #foreign #effects(all); candidate :: (v:[]u8)->u8 #export_c #effects(all) {return external(v[0]);}',[('v','[] u8','public','read',2)],9),
+          ('bounds','candidate :: (v:[]u8)->u8 #export_c #effects(all) {return v[2];}',[('v','[] u8','public','read',2)],2),
+          ('zero_trip','candidate :: (v:[]u8)->u8 #export_c #effects(all) {for i:0..<0 {}return v[0];}',[('v','[] u8','public','read',2)],5),
+          ('view_escape','candidate :: (v:[]u8)->[]u8 #export_c #effects(all) {return v;}',[('v','[] u8','public','read',2)],5),
         ]
         for name,text,params,error in cases:
             with self.subTest(name=name):p,_,m=self.source(name,text,params);self.audit(p,m,error)
     def test_public_callee_and_writable_view(self):
-        cases=[('public_call','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8)->u8 #export_c {return read_public(v);}','read'),('write','candidate :: (v:[]u8)->u8 #export_c {v[0]=1;return v[0];}','write')]
+        cases=[('public_call','read_public :: (v:[]u8)->u8 {return v[0];} candidate :: (v:[]u8)->u8 #export_c #effects(all) {return read_public(v);}','read'),('write','candidate :: (v:[]u8)->u8 #export_c #effects(all) {v[0]=1;return v[0];}','write')]
         for n,text,access in cases:
             p,_,m=self.source(n,text,[('v','[] u8','public',access,2)]);self.audit(p,m,0)
-        p,_,m=self.source('secret_copy','candidate :: (s:[]u8,d:[]u8)->u8 #export_c {d[0]=s[0];return d[0];}', [('s','[] u8','secret','read',2),('d','[] u8','public','write',2)])
+        p,_,m=self.source('secret_copy','candidate :: (s:[]u8,d:[]u8)->u8 #export_c #effects(all) {d[0]=s[0];return d[0];}', [('s','[] u8','secret','read',2),('d','[] u8','public','write',2)])
         # The secret copied into the public d is reported as a public output.
         r=self.audit(p,m,14);self.assertEqual(r['return_dependency_mask'],1);self.assertEqual([g['kind'] for g in r['authored_guard_obligations']],['public-output'])
-        p,_,m=self.source('public_guard','candidate :: (v:[]u8)->u8 #export_c {#assert v[0]==0;return 0;}', [('v','[] u8','public','read',2)])
+        p,_,m=self.source('public_guard','candidate :: (v:[]u8)->u8 #export_c #effects(all) {#assert v[0]==0;return 0;}', [('v','[] u8','public','read',2)])
         r=self.audit(p,m,14);self.assertFalse(r['accepted']);self.assertEqual([g['origin_mask'] for g in r['authored_guard_obligations']],[0])
     def test_manifest_and_tool_identity_mismatches_refuse(self):
-        p,_,m=self.source('manifest','candidate :: (v:[]u8)->u8 #export_c {return v[0];}',[('v','[] u8','public','read',2)]);self.audit(p,m,0)
+        p,_,m=self.source('manifest','candidate :: (v:[]u8)->u8 #export_c #effects(all) {return v[0];}',[('v','[] u8','public','read',2)]);self.audit(p,m,0)
         variants=[]
         for key,value in [('views_disjoint',False),('live_aligned_exclusive',False),('public_only',False),('compiler_sha256','0'*64),('audit_artifact_sha256','0'*64),('audit_inputs',{}),('profile','release')]:
             x=copy.deepcopy(m);x[key]=value;variants.append(x)
@@ -170,7 +170,7 @@ class PublicViews(unittest.TestCase):
         x=copy.deepcopy(m);x['sources'][str(p)]='0'*64;variants.append(x)
         for x in variants:self.audit(p,x,13)
     def test_cli_handshake_binds_this_process_and_refuses_changed_identity(self):
-        p,_,_=self.source('handshake','candidate :: (v:[]u8)->u8 #export_c {return v[0];}', [('v','[] u8','secret','read',2)])
+        p,_,_=self.source('handshake','candidate :: (v:[]u8)->u8 #export_c #effects(all) {return v[0];}', [('v','[] u8','secret','read',2)])
         for changed in (False,True):
             proc=subprocess.Popen([sys.executable,str(ROOT/'tools/coax-nostr/large-source-audit/aggregate.py'),str(p),'--entry','candidate','--classification-stdio'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
             try:
@@ -183,7 +183,7 @@ class PublicViews(unittest.TestCase):
             finally:
                 if proc.poll() is None:proc.kill();proc.wait()
     def test_loaded_artifact_substitution_with_new_hash_refuses(self):
-        p,_,m=self.source('artifact_swap','candidate :: (v:[]u8)->u8 #export_c {return v[0];}', [('v','[] u8','secret','read',2)])
+        p,_,m=self.source('artifact_swap','candidate :: (v:[]u8)->u8 #export_c #effects(all) {return v[0];}', [('v','[] u8','secret','read',2)])
         original=self.tool.artifact.read_bytes();old_hash=self.tool.artifact_fingerprint;poison=original+b'changed';new_hash=hashlib.sha256(poison).hexdigest()
         def replace(data):
             path=self.tool.artifact.with_suffix('.replacement');path.write_bytes(data);os.replace(path,self.tool.artifact)

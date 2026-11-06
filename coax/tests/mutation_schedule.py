@@ -11,9 +11,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 COMPILER = Path(os.environ.get('COAX_TEST_COMPILER', ROOT / 'bin/coax'))
 SAFE = '''
-f :: (x:int)->int { return x+1; }
-g :: (x:int)->int { return x*2; }
-h :: (x:int)->int { if x>2 { return x-1; } return x+1; }
+f :: (x:int)->int #effects(all) { return x+1; }
+g :: (x:int)->int #effects(all) { return x*2; }
+h :: (x:int)->int #effects(all) { if x>2 { return x-1; } return x+1; }
 #test "first" { #assert f(2)==3; }
 #test "second" { #assert g(3)==6; }
 #forall "range" x:0..<5 { #assert f(x)>x; }
@@ -22,13 +22,13 @@ main :: () {}
 '''
 BORROWED = '''
 Node :: struct { next:[] Node; value:int; }
-f :: (x:int)->int { return x+1; }
+f :: (x:int)->int #effects(all) { return x+1; }
 #test "chain" { a:[1] Node; a[0].next=a[..]; #assert f(1)==2; }
 #test "again" { #assert f(2)==3; }
 main :: () {}
 '''
 STRINGS = '''
-f :: (x:int)->int { return x+1; }
+f :: (x:int)->int #effects(all) { return x+1; }
 #test "bytes" { a:[1]u8; a[0]=65; #assert cast(string)a[..]=="A" && f(1)==2; }
 #test "again" { #assert f(2)==3; }
 main :: () {}
@@ -68,9 +68,9 @@ class MutationScheduleTests(unittest.TestCase):
         rng = random.Random(20261029)
         for case in range(12):
             factors = [rng.randrange(1, 5) for _ in range(5)]
-            functions = ['f0 :: (x:int)->int { return x+%d; }' % factors[0]]
+            functions = ['f0 :: (x:int)->int #effects(all) { return x+%d; }' % factors[0]]
             for i in range(1, 5):
-                functions.append('f%d :: (x:int)->int { if x>%d { return f%d(x)+%d; } return x+%d; }' %
+                functions.append('f%d :: (x:int)->int #effects(all) { if x>%d { return f%d(x)+%d; } return x+%d; }' %
                                  (i, i, i-1, factors[i], factors[i]))
             def expected(i, x):
                 if i and x > i: return expected(i-1, x) + factors[i]
@@ -105,7 +105,7 @@ class MutationScheduleTests(unittest.TestCase):
         self.assertIn('unstable=1', fast.stderr)
 
     def test_array_of_views_falls_back(self):
-        source = ('f :: (x:int)->int { return x+1; } '
+        source = ('f :: (x:int)->int #effects(all) { return x+1; } '
                   '#test "array view" { a:[1]u8; v:[1][]u8; v[0]=a[..]; #assert f(1)==2; } '
                   'main :: () {}')
         fast, _ = self.run_pair(source)
@@ -113,7 +113,7 @@ class MutationScheduleTests(unittest.TestCase):
         self.assertIn('borrowed=1', fast.stderr)
 
     def test_dead_branches_survive_in_both_runners(self):
-        source = ('f :: (x:int)->int { if x>10 { return x-3; } return x+1; } '
+        source = ('f :: (x:int)->int #effects(all) { if x>10 { return x-3; } return x+1; } '
                   '#test "one" { #assert f(1)==2; } main :: () {}')
         fast, _ = self.run_pair(source)
         self.assertEqual(fast.returncode, 1)
@@ -126,8 +126,8 @@ class MutationScheduleTests(unittest.TestCase):
         self.assertIn('strings=1', fast.stderr)
 
     def test_unentered_helper_mutants_remain_survivors(self):
-        source = ('hidden :: (x:int)->int { return x+1; } '
-                  'f :: (x:int)->int { if x>10 { return hidden(x); } return x+1; } '
+        source = ('hidden :: (x:int)->int #effects(all) { return x+1; } '
+                  'f :: (x:int)->int #effects(all) { if x>10 { return hidden(x); } return x+1; } '
                   '#test "f" { #assert f(1)==2; } main :: () {}')
         fast, _ = self.run_pair(source)
         self.assertEqual(fast.returncode, 1)
@@ -135,8 +135,8 @@ class MutationScheduleTests(unittest.TestCase):
         self.assertIn('mutation-scheduling selective', fast.stderr)
 
     def test_authority_execution_coverage_still_fails(self):
-        self.source.write_text('#authority; hidden :: ()->int { return 1; } '
-                               'f :: (x:int)->int { if x>10 { return hidden(); } return x; } '
+        self.source.write_text('#authority; hidden :: ()->int #effects(all) { return 1; } '
+                               'f :: (x:int)->int #effects(all) { if x>10 { return hidden(); } return x; } '
                                '#test "f" { #assert f(1)==1; } main :: () {}')
         for extra in ([], ['--mutation-reference']):
             r = subprocess.run([str(COMPILER), 'mutate', str(self.source), *extra],
@@ -146,8 +146,8 @@ class MutationScheduleTests(unittest.TestCase):
             self.assertIn('checks fail before any mutation', r.stderr)
 
     def test_mutant_allocation_failure_and_later_constant_read_match(self):
-        source = ('make :: () -> [500000] u8 { a:[500000] u8; return a; } A :: #run make(); '
-                  'f :: (n:int)->int { if n>0 { big:[400000]u8; copy:=A; return cast(int)big[0]+cast(int)copy[0]; } return n; } '
+        source = ('make :: () -> [500000] u8 #effects(all) { a:[500000] u8; return a; } A :: #run make(); '
+                  'f :: (n:int)->int #effects(all) { if n>0 { big:[400000]u8; copy:=A; return cast(int)big[0]+cast(int)copy[0]; } return n; } '
                   '#test "f" { #assert f(0)==0; } '
                   '#test "constant" { #assert A[0]==0; } main :: () {}')
         fast, _ = self.run_pair(source, '--run-steps', '250000000')

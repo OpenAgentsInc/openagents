@@ -56,9 +56,62 @@ ea_contains :: (s:string,part:string)->bool {
   for i:0..<s.count-part.count+1 {same:=true;for j:0..<part.count {if s[i+j]!=part[j] {same=false;break;}}if same {return true;}}
   return false;
 }
-ea_file :: (path:string,write:bool)->int {
+// Python oracles retain literal Coax boundary declarations, including f-strings.
+// Add a bound only at the directive's following body/prototype delimiter; do
+// not treat Python interpolation braces as Coax types or rewrite diagnostics.
+#test "embedded boundary migration preserves explicit bounds and prose" {
+  positions:[16]int;
+  #assert ea_embedded_plan("f :: () #export_c {{return {x};}} host :: () #foreign;",positions[..])==2;
+  #assert ea_embedded_plan("f :: () #effects(reads) #export_c {} h :: () #foreign #effects(all);",positions[..])==0;
+  #assert ea_embedded_plan("#foreign procedures and #export_c uses",positions[..])==0;
+}
+#test "literal authority fixture headers are complete before migration" {
+  positions:[16]int;
+  #assert ea_literal_plan("'f :: (v:[]int)->int {return v[0];}' 'main :: () {}'",positions[..])==1;
+  #assert ea_literal_plan("'f :: (' + params + ') {}'",positions[..])==0;
+  #assert ea_literal_plan("'f :: () #effects(reads) {}'",positions[..])==0;
+}
+ea_literal_plan :: (text:string,positions:[]int)->int {
+  count:=0;
+  for ch,i:text {
+    if !ea_matches(text,i,"::") {continue;}
+    name_end:=i;while name_end>0 && text[name_end-1]==' ' {name_end-=1;}
+    if name_end>=4 && text[name_end-4..<name_end]=="main" {continue;}
+    start:=i+2;while start<text.count && text[start]==' ' {start+=1;}
+    if start>=text.count || text[start]!='(' {continue;}
+    depth:=0;end:=start;valid:=false;
+    while end<text.count {
+      c:=text[end];if c=='\'' || c=='"' || c==92 {break;}
+      if c=='(' {depth+=1;}if c==')' {depth-=1;}
+      if depth==0 && (c=='{' || c==';') {valid=true;break;}end+=1;
+    }
+    if !valid {continue;}header:=text[start..<end];
+    if ea_contains(header,"#effects(") || ea_contains(header,"#pure") {continue;}
+    if count>=positions.count {return -1;}positions[count]=end;count+=1;
+  }
+  return count;
+}
+ea_matches :: (text:string,at:int,part:string)->bool {
+  if at<0 || part.count>text.count-at {return false;}
+  for ch,i:part {if text[at+i]!=ch {return false;}}return true;
+}
+ea_embedded_plan :: (text:string,positions:[]int)->int {
+  count:=0;decl:=0;
+  for ch,i:text {
+    if ea_matches(text,i,"::") {decl=i;}
+    width:=ifx ea_matches(text,i,"#export_c") then 9 else ifx ea_matches(text,i,"#foreign") then 8 else 0;
+    if width==0 {continue;}
+    end:=i+width;
+    while end<text.count && (text[end]==' ' || text[end]==9 || text[end]==10 || text[end]==13) {end+=1;}
+    if end>=text.count || (text[end]!='{' && text[end]!=';') {continue;}
+    header:=text[decl..<i];if ea_contains(header,"#effects(") || ea_contains(header,"#pure") {continue;}
+    if count>=positions.count {return -1;}positions[count]=end;count+=1;
+  }
+  return count;
+}
+ea_file :: (path:string,write:bool,embedded:bool,literal:bool)->int {
   input:[2097152]u8;n:=fs_read(path,input[..]);if n<0 || n==input.count {tool_errln(path);return -1;}
-  text:=cast(string)input[0..<n];positions:[20000]int;changes:=ea_plan(text,positions[..]);if changes<=0 {return 0;}
+  text:=cast(string)input[0..<n];positions:[20000]int;changes:=ifx literal then ea_literal_plan(text,positions[..]) else ifx embedded then ea_embedded_plan(text,positions[..]) else ea_plan(text,positions[..]);if changes<=0 {return 0;}
   output:[3145728]u8;at:=0;next:=0;
   for i:0..<text.count {
     if next<changes && positions[next]==i {
@@ -72,9 +125,10 @@ ea_file :: (path:string,write:bool)->int {
 }
 tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) {return 2;}
-  write:=args_count(args[..])==1 && args_at(args[..],0)=="--write";
-  if args_count(args[..])>0 && !write {tool_errln("usage: annotate-effects.coax [--write]");return 2;}
-  command:=[7]string.["git","ls-files","--cached","--others","--exclude-standard","--","*.coax"];
+  write:=false;embedded:=false;literal:="";
+  for i:0..<args_count(args[..]) {arg:=args_at(args[..],i);if arg=="--write" {write=true;}else if arg=="--embedded" {embedded=true;}else if (arg.count>3 && arg[arg.count-3..<arg.count]==".py") || (arg.count>5 && arg[arg.count-5..<arg.count]==".coax") {literal=arg;}else {tool_errln("usage: annotate-effects.coax [--write] [--embedded] [FILE.py|FILE.coax]");return 2;}}
+  if literal!="" {return ifx ea_file(literal,write,false,true)<0 then 1 else 0;}
+  command:=[7]string.["git","ls-files","--cached","--others","--exclude-standard","--",ifx embedded then "*.py" else "*.coax"];
   paths:[2097152]u8;errors:[4096]u8;r:=proc_run(command[..],120000,paths[..],errors[..]);
   if r.status!=0 || r.cut || r.timed_out {tool_errln(cast(string)errors[0..<r.err_n]);return 2;}
   start:=0;total:=0;files:=0;
@@ -83,7 +137,7 @@ tool_main :: ()->int #export_c #effects(all) {
     // Verification packages retain the exact old source and its hashes.
     if (path.count>=5 && path[0..<5]=="docs/") || ea_contains(path,"/inputs/") || ea_contains(path,"/archive/") {continue;}
     if ea_contains(path,"/fail/") || ea_contains(path,"/invalid/") || ea_contains(path,"/negative/") {continue;}
-    changed:=ea_file(path,write);if changed<0 {return 1;}if changed>0 {files+=1;total+=changed;}
+    changed:=ea_file(path,write,embedded,false);if changed<0 {return 1;}if changed>0 {files+=1;total+=changed;}
   }
   print("effects migration: % procedures in % files%\n",total,files,ifx write then " written" else " (dry run)");
   return 0;

@@ -21,14 +21,14 @@ class Scope(unittest.TestCase):
         self.dependency = self.d / 'deps/case.coax'
         self.dependency.write_text('''
 #load "leaf.coax";
-dep :: (x:int)->int { if x>100 { return x-7; } return leaf(x); }
+dep :: (x:int)->int #effects(all) { if x>100 { return x-7; } return leaf(x); }
 #test "imported" { #assert dep(2)==6; }
 ''')
-        (self.d / 'deps/leaf.coax').write_text('leaf :: (x:int)->int { return x*3; }\n')
+        (self.d / 'deps/leaf.coax').write_text('leaf :: (x:int)->int #effects(all) { return x*3; }\n')
         self.entry.write_text('''
 #authority;
 #load "deps/case.coax";
-root :: (x:int)->int { return dep(x)+1; }
+root :: (x:int)->int #effects(all) { return dep(x)+1; }
 #test "root" { #assert root(2)==7 && root(3)==10; }
 main :: () {}
 ''')
@@ -120,7 +120,7 @@ main :: () {}
     def test_equal_inventory_scopes_still_cannot_mix_receipts(self):
         # No imports: both modes have exactly the same mutation sites.
         path = self.d / 'solo.coax'
-        path.write_text('f :: (x:int)->int { return x+1; } #test "f" { #assert f(2)==3; } main :: () {}')
+        path.write_text('f :: (x:int)->int #effects(all) { return x+1; } #test "f" { #assert f(2)==3; } main :: () {}')
         full = self.records(path, False, 'full')
         root = self.records(path, True, 'root-solo')
         self.assertEqual(self.count(self.run_mutate(source=path)), self.count(self.run_mutate('--root-only', source=path)))
@@ -171,9 +171,9 @@ main :: () {}
 
     def test_killers_change_the_work_not_the_verdicts(self):
         path = self.d / 'killers.coax'
-        path.write_text('f :: (x:int)->int { return x*3+1; }\n#test "weak one" { #assert f(0)>=0; }\n'
+        path.write_text('f :: (x:int)->int #effects(all) { return x*3+1; }\n#test "weak one" { #assert f(0)>=0; }\n'
                         '#test "weak two" { #assert f(0)>=0; }\n#test "strong" { #assert f(2)==7 && f(0)==1; }\n'
-                        'g :: (x:int)->int { if x>5 { return 1; } return 0; }\n#test "g" { #assert g(0)==0; }\nmain :: () {}\n')
+                        'g :: (x:int)->int #effects(all) { if x>5 { return 1; } return 0; }\n#test "g" { #assert g(0)==0; }\nmain :: () {}\n')
         killers = self.d / 'killers.txt'
         plain = self.run_mutate('--mutation-stats', source=path)
         first = self.run_mutate('--mutation-stats', '--killers', str(killers), source=path)

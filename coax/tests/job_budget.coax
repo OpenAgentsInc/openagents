@@ -23,11 +23,11 @@ cxproc_read_bytes :: (h: int, timeout_ms: int, out: [] u8) -> int #foreign #effe
 cxproc_pid_signal :: (pid: int, sig: int) -> int #foreign #effects(all);
 
 // Eight #authority checks of about a fifth of a second each.
-SLOW :: "#authority;\nspin :: (n: int, k: int) -> int { s := 0; for i: 0..<n { s += (i * k) % 7; } return s; }\n#test \"spin 1\" #steps 400000000 { #assert spin(4000000, 1) >= 0; }\n#test \"spin 2\" #steps 400000000 { #assert spin(4000000, 2) >= 0; }\n#test \"spin 3\" #steps 400000000 { #assert spin(4000000, 3) >= 0; }\n#test \"spin 4\" #steps 400000000 { #assert spin(4000000, 4) >= 0; }\n#test \"spin 5\" #steps 400000000 { #assert spin(4000000, 5) >= 0; }\n#test \"spin 6\" #steps 400000000 { #assert spin(4000000, 6) >= 0; }\n#test \"spin 7\" #steps 400000000 { #assert spin(4000000, 7) >= 0; }\n#test \"spin 8\" #steps 400000000 { #assert spin(4000000, 8) >= 0; }\nmain :: () { }\n";
+SLOW :: "#authority;\nspin :: (n: int, k: int) -> int #effects(all) { s := 0; for i: 0..<n { s += (i * k) % 7; } return s; }\n#test \"spin 1\" #steps 400000000 { #assert spin(4000000, 1) >= 0; }\n#test \"spin 2\" #steps 400000000 { #assert spin(4000000, 2) >= 0; }\n#test \"spin 3\" #steps 400000000 { #assert spin(4000000, 3) >= 0; }\n#test \"spin 4\" #steps 400000000 { #assert spin(4000000, 4) >= 0; }\n#test \"spin 5\" #steps 400000000 { #assert spin(4000000, 5) >= 0; }\n#test \"spin 6\" #steps 400000000 { #assert spin(4000000, 6) >= 0; }\n#test \"spin 7\" #steps 400000000 { #assert spin(4000000, 7) >= 0; }\n#test \"spin 8\" #steps 400000000 { #assert spin(4000000, 8) >= 0; }\nmain :: () { }\n";
 // Three #authority checks of several seconds each: a worker still runs one long after its compile
 // is killed unless it ends with its parent.
-LONG :: "#authority;\nspin :: (n: int, k: int) -> int { s := 0; for i: 0..<n { s += (i * k) % 7; } return s; }\n#test \"long 1\" #steps 20000000000 { #assert spin(100000000, 1) >= 0; }\n#test \"long 2\" #steps 20000000000 { #assert spin(100000000, 2) >= 0; }\n#test \"long 3\" #steps 20000000000 { #assert spin(100000000, 3) >= 0; }\nmain :: () { }\n";
-MUTATE :: "\nf :: (x:int)->int { return x+1; }\ng :: (x:int)->int { return x*2; }\nh :: (x:int)->int { if x>2 { return x-1; } return x+1; }\n#test \"first\" { #assert f(2)==3; }\n#test \"second\" { #assert g(3)==6; }\n#forall \"range\" x:0..<5 { #assert f(x)>x; }\n#test \"branch\" { #assert h(1)==2 && h(2)==3 && h(3)==2; }\nmain :: () {}\n";
+LONG :: "#authority;\nspin :: (n: int, k: int) -> int #effects(all) { s := 0; for i: 0..<n { s += (i * k) % 7; } return s; }\n#test \"long 1\" #steps 20000000000 { #assert spin(100000000, 1) >= 0; }\n#test \"long 2\" #steps 20000000000 { #assert spin(100000000, 2) >= 0; }\n#test \"long 3\" #steps 20000000000 { #assert spin(100000000, 3) >= 0; }\nmain :: () { }\n";
+MUTATE :: "\nf :: (x:int)->int #effects(all) { return x+1; }\ng :: (x:int)->int #effects(all) { return x*2; }\nh :: (x:int)->int #effects(all) { if x>2 { return x-1; } return x+1; }\n#test \"first\" { #assert f(2)==3; }\n#test \"second\" { #assert g(3)==6; }\n#forall \"range\" x:0..<5 { #assert f(x)>x; }\n#test \"branch\" { #assert h(1)==2 && h(2)==3 && h(3)==2; }\nmain :: () {}\n";
 
 // The variables a case's environment leaves out (Python's: every COAX_JOBS*, COAX_CHECK_JOBS, COAX_MUTATE_JOBS).
 JB_UNSET :: [8] string.["COAX_JOBS", "COAX_JOBS_DIR", "COAX_JOBS_BUDGET", "COAX_JOBS_LOAD", "COAX_JOBS_RESERVE", "COAX_JOBS_QUIET", "COAX_CHECK_JOBS", "COAX_MUTATE_JOBS"];
@@ -35,22 +35,22 @@ JB_OUT :: 1048576;
 
 // A text being built.
 Jt :: struct { b: [8192] u8; n: int; }
-jt_s :: (t: [] Jt, s: string) { for c: s { if t[0].n < t[0].b.count { t[0].b[t[0].n] = c; t[0].n += 1; } } }
-jt_i :: (t: [] Jt, v: int) {
+jt_s :: (t: [] Jt, s: string) #effects(all) { for c: s { if t[0].n < t[0].b.count { t[0].b[t[0].n] = c; t[0].n += 1; } } }
+jt_i :: (t: [] Jt, v: int) #effects(all) {
   d: [24] u8; k := 0; x := ifx v < 0 then -v else v;
   if v < 0 { jt_s(t, "-"); }
   if x == 0 { d[0] = '0'; k = 1; }
   while x > 0 { d[k] = cast,trunc(u8) ('0' + x % 10); x /= 10; k += 1; }
   for i: 0..<k { if t[0].n < t[0].b.count { t[0].b[t[0].n] = d[k - 1 - i]; t[0].n += 1; } }
 }
-jt_text :: (t: [] Jt) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+jt_text :: (t: [] Jt) -> string #effects(all) { return cast(string) t[0].b[0..<t[0].n]; }
 
-has :: (text: string, part: string) -> bool {
+has :: (text: string, part: string) -> bool #effects(all) {
   if part.count > text.count { return false; }
   for at: 0..<text.count - part.count + 1 { if text[at..<at + part.count] == part { return true; } }
   return false;
 }
-count_of :: (text: string, part: string) -> int {
+count_of :: (text: string, part: string) -> int #effects(all) {
   n := 0;
   if part.count == 0 || part.count > text.count { return 0; }
   for at: 0..<text.count - part.count + 1 { if text[at..<at + part.count] == part { n += 1; } }
@@ -60,7 +60,7 @@ count_of :: (text: string, part: string) -> int {
   #assert has("a waiting b", "waiting") && !has("ab", "abc") && count_of("x y x", "x") == 2 && count_of("", "x") == 0;
 }
 // Whether text has "waiting for D of 3 build workers held by D other coax process".
-waits_line :: (text: string) -> bool {
+waits_line :: (text: string) -> bool #effects(all) {
   m := "waiting for ";
   for at: 0..<(ifx text.count >= m.count then text.count - m.count + 1 else 0) {
     if text[at..<at + m.count] != m { continue; }
@@ -89,7 +89,7 @@ JbRun :: struct { status: int = -1; out: [JB_OUT] u8; out_n: int; err: [65536] u
 
 // Starts COMPILER ARGS in the case's directory with its environment and env (NAME=VALUE entries).
 // unset names leave the environment too (as the Python test deleted them from its copy).
-jb_start :: (j: [] Jb, args: [] string, env: [] string, unset: [] string, cache: bool) -> int {
+jb_start :: (j: [] Jb, args: [] string, env: [] string, unset: [] string, cache: bool) -> int #effects(all) {
   h := proc_new();
   if h < 0 { return -1; }
   ok := proc_arg(h, jt_text(j[0].compiler[..]));
@@ -115,7 +115,7 @@ jb_start :: (j: [] Jb, args: [] string, env: [] string, unset: [] string, cache:
   return h;
 }
 // Reads h's stdout to its end into r, waits and releases it.
-jb_finish :: (h: int, r: [] JbRun) {
+jb_finish :: (h: int, r: [] JbRun) #effects(all) {
   r[0].out_n = 0; r[0].err_n = 0; r[0].status = -1;
   if h < 0 { return; }
   chunk: [65536] u8;
@@ -129,19 +129,19 @@ jb_finish :: (h: int, r: [] JbRun) {
   r[0].err_n = proc_stderr(h, r[0].err[..]).count;
   d := proc_release(h);
 }
-jb_run :: (j: [] Jb, args: [] string, env: [] string, unset: [] string, cache: bool, r: [] JbRun) {
+jb_run :: (j: [] Jb, args: [] string, env: [] string, unset: [] string, cache: bool, r: [] JbRun) #effects(all) {
   jb_finish(jb_start(j, args, env, unset, cache), r);
 }
-jb_out :: (r: [] JbRun) -> string { return cast(string) r[0].out[0..<r[0].out_n]; }
-jb_err :: (r: [] JbRun) -> string { return cast(string) r[0].err[0..<r[0].err_n]; }
+jb_out :: (r: [] JbRun) -> string #effects(all) { return cast(string) r[0].out[0..<r[0].out_n]; }
+jb_err :: (r: [] JbRun) -> string #effects(all) { return cast(string) r[0].err[0..<r[0].err_n]; }
 
-check :: (j: [] Jb, ok: bool, what: string) {
+check :: (j: [] Jb, ok: bool, what: string) #effects(all) {
   if ok { print("  ok   %\n", what); } else { print("  FAIL %\n", what); j[0].failed += 1; }
 }
 
 // The budget as `coax status --jobs --json` reports it.
 JbStatus :: struct { ok: bool; budget: int; held: int; shared: bool; load_limit: int; holders: int = -1; cores: int; reserve: int; over: int; }
-jb_parse_status :: (text: string) -> JbStatus {
+jb_parse_status :: (text: string) -> JbStatus #effects(all) {
   s: JbStatus;
   nodes: [4096] JvNode; d: [1] Jv;
   if !jv_parse(d[..], text, nodes[..]) { return s; }
@@ -159,7 +159,7 @@ jb_parse_status :: (text: string) -> JbStatus {
   #assert s.ok && s.budget == 3 && s.held == 1 && s.shared && s.load_limit == 0 && s.holders == 1 && s.cores == 12 && s.reserve == 4;
   #assert !jb_parse_status("{").ok;
 }
-jb_status :: (j: [] Jb, env: [] string, unset: [] string) -> JbStatus {
+jb_status :: (j: [] Jb, env: [] string, unset: [] string) -> JbStatus #effects(all) {
   r: [1] JbRun; a := [3] string.["status", "--jobs", "--json"];
   jb_run(j, a[..], env, unset, false, r[..]);
   s := jb_parse_status(jb_out(r[..]));
@@ -168,7 +168,7 @@ jb_status :: (j: [] Jb, env: [] string, unset: [] string) -> JbStatus {
 }
 
 // A fresh case: a new directory with the three sources.
-jb_case :: (j: [] Jb, compiler: string) -> bool {
+jb_case :: (j: [] Jb, compiler: string) -> bool #effects(all) {
   j[0] = Jb.{};
   tb: [FS_PATH_MAX] u8; dir := fs_temp("coax-job-budget-", tb[..]);
   if dir.count == 0 { return false; }
@@ -182,10 +182,10 @@ jb_case :: (j: [] Jb, compiler: string) -> bool {
   }
   return ok;
 }
-jb_done :: (j: [] Jb) -> int { gone := fs_remove(jt_text(j[0].dir[..])); return j[0].failed; }
+jb_done :: (j: [] Jb) -> int #effects(all) { gone := fs_remove(jt_text(j[0].dir[..])); return j[0].failed; }
 
 
-test_status :: (compiler: string, root: string) -> int {
+test_status :: (compiler: string, root: string) -> int #effects(all) {
   j: [1] Jb; if !jb_case(j[..], compiler) { return 1; }
   n0: [1] string;
   print("status shows the budget\n");
@@ -215,7 +215,7 @@ test_status :: (compiler: string, root: string) -> int {
   return jb_done(j[..]);
 }
 
-test_concurrent :: (compiler: string) -> int {
+test_concurrent :: (compiler: string) -> int #effects(all) {
   j: [1] Jb; if !jb_case(j[..], compiler) { return 1; }
   n0: [1] string;
   print("concurrent compiles share the budget\n");
@@ -256,14 +256,14 @@ test_concurrent :: (compiler: string) -> int {
 }
 
 // Waits up to 30 s for the case's pool to have all 3 tokens held.
-jb_until_held :: (j: [] Jb) -> int {
+jb_until_held :: (j: [] Jb) -> int #effects(all) {
   n0: [1] string;
   deadline := proc_now_ms() + 30000; held := 0;
   while proc_now_ms() < deadline { held = jb_status(j[..], n0[0..<0], n0[0..<0]).held; if held >= 3 { break; } proc_sleep(20); }
   return held;
 }
 
-test_killed_frees :: (compiler: string) -> int {
+test_killed_frees :: (compiler: string) -> int #effects(all) {
   j: [1] Jb; if !jb_case(j[..], compiler) { return 1; }
   n0: [1] string;
   print("a killed compile frees its tokens\n");
@@ -283,7 +283,7 @@ test_killed_frees :: (compiler: string) -> int {
 }
 
 // Whether a process of group pgid is alive (not a zombie), from ps.
-group_alive :: (pgid: int) -> bool {
+group_alive :: (pgid: int) -> bool #effects(all) {
   out: [1048576] u8; err: [1024] u8;
   a := [4] string.["ps", "-A", "-o", "pgid=,stat="];
   r := proc_run(a[..], 10000, out[..], err[..]);
@@ -300,7 +300,7 @@ group_alive :: (pgid: int) -> bool {
   return false;
 }
 
-test_killed_ends_workers :: (compiler: string) -> int {
+test_killed_ends_workers :: (compiler: string) -> int #effects(all) {
   j: [1] Jb; if !jb_case(j[..], compiler) { return 1; }
   n0: [1] string;
   print("a killed compile ends its check workers\n");
@@ -319,7 +319,7 @@ test_killed_ends_workers :: (compiler: string) -> int {
   return jb_done(j[..]);
 }
 
-test_same_results :: (compiler: string, cores: int) -> int {
+test_same_results :: (compiler: string, cores: int) -> int #effects(all) {
   j: [1] Jb; if !jb_case(j[..], compiler) { return 1; }
   n0: [1] string;
   print("results are the same for every worker count\n");
@@ -370,7 +370,7 @@ test_same_results :: (compiler: string, cores: int) -> int {
 
 // A loaded machine changes no compared output: off a terminal the load and waiting notices are
 // printed only when $COAX_JOBS_QUIET=0 asks for them (GitHub #12939).
-test_notices :: (compiler: string) -> int {
+test_notices :: (compiler: string) -> int #effects(all) {
   j: [1] Jb; if !jb_case(j[..], compiler) { return 1; }
   n0: [1] string;
   print("a loaded machine leaves captured output alone\n");
@@ -391,7 +391,7 @@ test_notices :: (compiler: string) -> int {
   return jb_done(j[..]);
 }
 
-test_no_pool :: (compiler: string) -> int {
+test_no_pool :: (compiler: string) -> int #effects(all) {
   j: [1] Jb; if !jb_case(j[..], compiler) { return 1; }
   n0: [1] string;
   print("no token directory\n");

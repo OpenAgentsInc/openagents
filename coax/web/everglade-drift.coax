@@ -2,10 +2,12 @@
 // in a local room, side by side, frame by frame. Any difference in what the two pages draw fails it,
 // with the probe that drifted, when and by how much. It runs on this machine only: its own room
 // server, page server, network and bots, and two headless Chromes.
-//   coax/web/tool.sh everglade-drift [--profiles local,100,250] [--bots 3] [--port 8960] [--no-raid] [--forest-only] [--offline worker|native] [--out DIR]
+//   coax/web/tool.sh everglade-drift [--profiles local,100,250] [--bots 3] [--port 8960] [--no-raid] [--forest-only] [--offline worker|native] [--tick-us N] [--out DIR]
 // --forest-only: rehearse a real tree fire with two pages in the same native room (#12940), as a
 // separate bounded command so a new forest check need not repeat an unchanged gameplay/raid result.
 // --input-only: check the synthetic key's DOM target against the accessibility event guard.
+// --tick-us N adds an explicit p95 qualification gate for the offline host; defaults
+// to reporting the product lifecycle budget without tightening its policy.
 // --offline: the offline page on the room server's local host (worker, the default: ?offline=worker,
 // #12784), or the native local room (native). The page's own offline game is gone (#12882).
 // Before it: coax/web/room/build.sh (the room server, coax/web/room/bin/room) and the page
@@ -905,10 +907,10 @@ dr_dice :: (c: [] Cdp, worker: bool) {
   if dr_int(c, "coaxial.roomHost && coaxial.roomHost.control ? coaxial.roomHost.control('dice fixed\\n') : 0", 0) != 1 { print("  (the offline page's room didn't take the dice line)\n"); }
 }
 // worker: the offline page plays on the room server's local host (?offline=worker, #12784); false its own game
-DrRun :: struct { port: int; bots: int; stamp: int; dir: string; ctl: string; script: string; key: string; worker: bool; native: bool; }
+DrRun :: struct { port: int; bots: int; stamp: int; dir: string; ctl: string; script: string; key: string; worker: bool; native: bool; tick_us:int; }
 dr_offline_script :: (run:DrRun,out:[]Buf)->string {
   out[0].n=0;
-  if run.native {bput(out,"globalThis.coaxialNativeRoomHost='ws://127.0.0.1:");bint(out,run.port);bput(out,"';\n");}
+  if run.native {bput(out,"globalThis.coaxialNativeRoomHost='ws://127.0.0.1:");bint(out,run.port+4);bput(out,"';\n");}
   bput(out,run.script);return btext(out);
 }
 dr_native_ready :: (run:DrRun,c:[]Cdp)->bool {
@@ -994,6 +996,13 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
           p95 := dr_int(ca[..], "coaxial.roomHost && coaxial.roomHost.tickP95Us >= 0 ? Math.round(coaxial.roomHost.tickP95Us) : -1", -1);
           p99 := dr_int(ca[..], "coaxial.roomHost && coaxial.roomHost.tickP99Us >= 0 ? Math.round(coaxial.roomHost.tickP99Us) : -1", -1);
           print("  (% room tick: p95 % us, p99 % us, budget % us at p95: %)\n", ifx run.native then "native" else "worker", p95, p99, LIFECYCLE_TICK_US[host], ifx life_tick_ok(host, p95) then "within" else "over");
+          if run.tick_us>0 {
+            verdict:=DrVerdict.{drifted=!dr_tick_ok(p95,run.tick_us),t=dr_mark_t(a,"start"),step="tick budget",mine=p95,other=run.tick_us,by=p95-run.tick_us};
+            message:[1]Buf;bput(message[..],"tick p95 ");bint(message[..],p95);bput(message[..]," us against qualification limit ");bint(message[..],run.tick_us);bput(message[..]," us");
+            for ch,i:btext(message[..]) {if i<verdict.note.count {verdict.note[i]=ch;verdict.note_n=i+1;}}
+            dr_add(rep,ifx run.native then "native tick p95" else "worker tick p95",verdict);
+          }
+
         }
         // the town's people's conditions as each page drew them (wall ms, WANTED, the rows held, then PERSON:BITS), a note
         // for a drift of "conditions on the town's people": conds-PROFILE-offline.txt, -room.txt
@@ -1277,9 +1286,10 @@ tool_main :: () -> int #export_c #effects(all) {
   bots := args_whole(args_value(a[..], "--bots", "3"));
   port := args_whole(args_value(a[..], "--port", "8960"));
   offline:=args_value(a[..],"--offline","worker");native:=offline=="native";
+  tick_us:=args_whole(args_value(a[..],"--tick-us","0"));
   near := (port <= 8830 && port + 4 >= 8830) || (port <= 8872 && port + 4 >= 8872);   // the owner's servers (it takes PORT to PORT + 4)
-  if !ok || bots < 1 || port < 1024 || near || (offline!="native" && offline!="worker") {
-    tool_errln("usage: coax/web/tool.sh everglade-drift [--profiles local,100,250] [--bots 3] [--port 8960] [--no-raid] [--forest-only] [--offline native|worker] [--out DIR] (not on 8830 or 8872)"); return 2;
+  if !ok || bots < 1 || port < 1024 || near || tick_us<0 || tick_us>1000000 || (offline!="native" && offline!="worker") {
+    tool_errln("usage: coax/web/tool.sh everglade-drift [--profiles local,100,250] [--bots 3] [--port 8960] [--no-raid] [--forest-only] [--offline native|worker] [--tick-us N] [--out DIR] (not on 8830 or 8872)"); return 2;
   }
   js: [65536] u8;
   jn := fs_read("coax/web/everglade-drift.js", js[..]);
@@ -1308,22 +1318,22 @@ tool_main :: () -> int #export_c #effects(all) {
   _ = fs_write(ctl, DR_CONTROL_PAIR);
   // the room server, the API's stand-in (--dev DIR): its seat tickets signed with the stand-in's key
   q: [1] Buf;
-  bput(q[..], "exec coax/web/room/bin/room --port "); bint(q[..], port); bput(q[..], " --dev "); bput(q[..], dir);if native {bput(q[..]," --listen 127.0.0.1 --native-local");} bput(q[..], " > "); bput(q[..], dir); bput(q[..], "/room.log 2>&1");
+  bput(q[..], "exec coax/web/room/bin/room --port "); bint(q[..], port); bput(q[..], " --dev "); bput(q[..], dir); bput(q[..], " > "); bput(q[..], dir); bput(q[..], "/room.log 2>&1");
   hr := dr_spawn(btext(q[..]));
   q[0].n = 0;
   bput(q[..], "exec coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:"); bint(q[..], port + 1); bput(q[..], " --api "); bint(q[..], port); bput(q[..], " --static --cache 0 > "); bput(q[..], dir); bput(q[..], "/serve.log 2>&1");
   hs := dr_spawn(btext(q[..]));
-  // the offline page's server: the same files, its /api/ sent to a second stand-in with no rooms
-  // (room-host.c --no-rooms), so the page reads the same world and players' API but finds no room to
-  // join and plays offline, as it does when the rooms can't be reached
+  // The offline page has its own API/server. The native host runs its local
+  // room there, so its tick measurement does not include the paired server's
+  // unrelated room and bots. The worker has no rooms in its API stand-in.
   q[0].n = 0;
-  bput(q[..], "exec coax/web/room/bin/room --port "); bint(q[..], port + 4); bput(q[..], " --dev "); bput(q[..], dir); bput(q[..], " --no-rooms > "); bput(q[..], dir); bput(q[..], "/room-offline.log 2>&1");
+  bput(q[..], "exec coax/web/room/bin/room --port "); bint(q[..], port + 4); bput(q[..], " --dev "); bput(q[..], dir); bput(q[..],ifx native then " --listen 127.0.0.1 --native-local > " else " --no-rooms > "); bput(q[..], dir); bput(q[..], "/room-offline.log 2>&1");
   hn := dr_spawn(btext(q[..]));
   q[0].n = 0;
-  bput(q[..], "exec coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:"); bint(q[..], port + 3); bput(q[..], " --api "); bint(q[..], ifx native then port else port+4); bput(q[..], " --static --cache 0 > "); bput(q[..], dir); bput(q[..], "/serve-offline.log 2>&1");
+  bput(q[..], "exec coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:"); bint(q[..], port + 3); bput(q[..], " --api "); bint(q[..],port+4); bput(q[..], " --static --cache 0 > "); bput(q[..], dir); bput(q[..], "/serve-offline.log 2>&1");
   ho := dr_spawn(btext(q[..]));
   // the bots sign their seat tickets with the room's key
-  run := DrRun.{port = port, bots = bots, stamp = stamp, dir = dir, ctl = ctl, script = cast(string) js[0..<jn], key = DR_DEV_KEY, worker = offline!="page",native=native};
+  run := DrRun.{port = port, bots = bots, stamp = stamp, dir = dir, ctl = ctl, script = cast(string) js[0..<jn], key = DR_DEV_KEY, worker = offline!="page",native=native,tick_us=tick_us};
   proc_sleep(2000);
   print("everglade-drift: room 127.0.0.1:%, page 127.0.0.1:%, results in %\n", port, port + 1, dir);
   all := true;
@@ -1379,3 +1389,8 @@ tool_main :: () -> int #export_c #effects(all) {
   print("%\n", ifx all then "holds" else "fails");
   return ifx all then 0 else 1;
 }
+
+#forall "tick qualification refuses missing samples and includes the stated p95 limit" sample:-1..<842, which:0..<2 {
+  limits:=[2]int.[600,840];limit:=limits[which];#assert dr_tick_ok(sample,limit)==(sample>=0 && sample<=limit);
+}
+dr_tick_ok :: (sample:int,limit:int)->bool {return sample>=0 && sample<=limit;}

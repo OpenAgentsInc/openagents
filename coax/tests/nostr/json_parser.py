@@ -7,7 +7,7 @@ REFERENCE='a165c9bc26a5aeb95a371a137583425ec6948398'
 REFERENCE_SHA256='28887ed82a25ff92dd7ee6965ee18417f62421725dd79df23c2664a723c8226b'
 OBSERVER=r'''
 JsonObservation :: struct {hash:u64;tokens:int;valid:bool;scalars:bool;error_at:int;}
-NAME_probe :: (text:string)->JsonObservation #export_c {
+NAME_probe :: (text:string)->JsonObservation #export_c #effects(all) {
   j:[1]Json;json_start(j[..],text);h:=cast(u64)1;n:=0;scalars:=true;buf:[65536]u8;t:=json_next(j[..]);
   while true {
     values:=[8]int.[t,j[0].at,j[0].depth,j[0].want,j[0].from,j[0].to,j[0].error_at,ifx j[0].key then 1 else 0];
@@ -20,8 +20,8 @@ NAME_probe :: (text:string)->JsonObservation #export_c {
   }
   return JsonObservation.{hash=h,tokens=n,valid=t==JSON_END,scalars=scalars,error_at=j[0].error_at};
 }
-NAME_write :: (text:string,out:[]u8)->int #export_c {return json_write_string(out,0,text);}
-NAME_integer :: (text:string)->JsonInt #export_c {return json_int(text);}
+NAME_write :: (text:string,out:[]u8)->int #export_c #effects(all) {return json_write_string(out,0,text);}
+NAME_integer :: (text:string)->JsonInt #export_c #effects(all) {return json_int(text);}
 '''
 DRIVER=r'''
 #include "cur.h"

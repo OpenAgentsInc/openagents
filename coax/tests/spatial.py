@@ -25,7 +25,7 @@ V :: #run calc();#assert V==26;''');self.assertEqual(r.returncode,0,r.stderr)
   for rhs in ['Vector3(Other,u.Metre,f32)','Vector3(World,u.HalfMetre,f32)','Vector3(World,u.Metre,f64)','u.Quantity(UnitOne,f32)']:
    op='*' if 'Quantity' in rhs else '+';r=self.invoke('f :: (a:Vector3(World,u.Metre,f32),b:'+rhs+') {x:=a'+op+'b;}');self.assertNotEqual(r.returncode,0);self.assertIn('E0834',r.stderr)
  def test_vector_any_unit_and_ordinary_aggregate_layout(self):
-  r=self.invoke('''f :: (a:Vector3(World,u.Second,f64),b:Vector3(World,u.Second,f64))->Vector3(World,u.Second,f64) #export_c {return a+b;}
+  r=self.invoke('''f :: (a:Vector3(World,u.Second,f64),b:Vector3(World,u.Second,f64))->Vector3(World,u.Second,f64) #export_c #effects(all) {return a+b;}
 S :: #run size_of(Point3(World,u.Metre,f32));D :: #run size_of(Vector3(Deep,u.Second,f64));#assert S==12 && D==24;''');self.assertEqual(r.returncode,0,r.stderr)
  def test_frame_declaration_shapes_and_optical_profile(self):
   for decl in ['Bad :: struct @frame(handedness=left,convention=optical,continuity=continuous,min_precision=f32) {}','Bad :: struct @frame(handedness=right,convention=cartesian,continuity=continuous,min_precision=f32) {x:f32;}','Bad :: struct($T) @frame(handedness=right,convention=cartesian,continuity=continuous,min_precision=f32) {}']:
@@ -36,7 +36,7 @@ S :: #run size_of(Point3(World,u.Metre,f32));D :: #run size_of(Vector3(Deep,u.Se
  def test_semantic_reflection_and_device_output_are_refused(self):
   r=self.invoke('f :: () {v:=type_info(Point3(World,u.Metre,f32));}');self.assertNotEqual(r.returncode,0);self.assertIn('E0835',r.stderr)
   for command in ['metal-compute','cuda','spirv']:
-   r=self.invoke('f :: (x:Point3(World,u.Metre,f32))->f32 #export_c {return x.x;}',command);self.assertNotEqual(r.returncode,0);self.assertIn('E0836',r.stderr)
+   r=self.invoke('f :: (x:Point3(World,u.Metre,f32))->f32 #export_c #effects(all) {return x.x;}',command);self.assertNotEqual(r.returncode,0);self.assertIn('E0836',r.stderr)
  def test_generic_constructor_arguments_remain_explicitly_outside_profile(self):
   r=self.invoke('f :: (p:Point3(World,u.Metre,$R:numeric)) {}');self.assertNotEqual(r.returncode,0);self.assertIn('E0833',r.stderr)
  def test_no_implicit_ordinary_record_or_nominal_frame_assignment(self):

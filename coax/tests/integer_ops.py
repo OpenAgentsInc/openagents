@@ -79,10 +79,10 @@ def source():
     for signed, bits in WIDTHS:
         t = name(signed, bits)
         for op in OPS:
-            lines.append(f'c_{op}_{t} :: (a:{t},b:{t},none:{t})->{t} #export_c {{return {op}_checked(a,b) or_else none;}}')
-            lines.append(f'h_{op}_{t} :: (a:{t},b:{t})->bool #export_c {{r:={op}_checked(a,b);switch r {{case none {{return false;}} case some(v) {{return true;}}}}}}')
-            lines.append(f's_{op}_{t} :: (a:{t},b:{t})->{t} #export_c {{return {op}_sat(a,b);}}')
-            lines.append(f'w_{op}_{t} :: (a:{t},b:{t})->{t} #export_c {{return {op}_wrap(a,b);}}')
+            lines.append(f'c_{op}_{t} :: (a:{t},b:{t},none:{t})->{t} #export_c #effects(all) {{return {op}_checked(a,b) or_else none;}}')
+            lines.append(f'h_{op}_{t} :: (a:{t},b:{t})->bool #export_c #effects(all) {{r:={op}_checked(a,b);switch r {{case none {{return false;}} case some(v) {{return true;}}}}}}')
+            lines.append(f's_{op}_{t} :: (a:{t},b:{t})->{t} #export_c #effects(all) {{return {op}_sat(a,b);}}')
+            lines.append(f'w_{op}_{t} :: (a:{t},b:{t})->{t} #export_c #effects(all) {{return {op}_wrap(a,b);}}')
     lines.append('''
 // A counter's refusal leaves it as it was (#12927): the change happens only when the result fits.
 Bank :: struct { n: u8 #counter; changes: int; }
@@ -90,12 +90,12 @@ bump :: (b: [] Bank, k: u8) -> bool {
   r := add_checked(b[0].n, k);
   switch r { case none { return false; } case some(v) { b[0].n = v; b[0].changes += 1; return true; } }
 }
-bank_after :: (start: u8, k: u8) -> u8 #export_c { b: [1] Bank; b[0].n = start; ok := bump(b[..], k); return b[0].n; }
-bank_ok :: (start: u8, k: u8) -> bool #export_c { b: [1] Bank; b[0].n = start; return bump(b[..], k); }
-bank_changes :: (start: u8, k: u8) -> int #export_c { b: [1] Bank; b[0].n = start; ok := bump(b[..], k); return b[0].changes; }
+bank_after :: (start: u8, k: u8) -> u8 #export_c #effects(all) { b: [1] Bank; b[0].n = start; ok := bump(b[..], k); return b[0].n; }
+bank_ok :: (start: u8, k: u8) -> bool #export_c #effects(all) { b: [1] Bank; b[0].n = start; return bump(b[..], k); }
+bank_changes :: (start: u8, k: u8) -> int #export_c #effects(all) { b: [1] Bank; b[0].n = start; ok := bump(b[..], k); return b[0].changes; }
 // Operands run once, left to right.
 next :: (s: [] s32) -> s32 { v := s[0]; s[0] = v + 1; return v; }
-order :: () -> s32 #export_c { s: [1] s32; s[0] = 5; return sub_sat(next(s[..]), next(s[..])) * 10 + s[0]; }
+order :: () -> s32 #export_c #effects(all) { s: [1] s32; s[0] = 5; return sub_sat(next(s[..]), next(s[..])) * 10 + s[0]; }
 ''')
     return '\n'.join(lines)
 

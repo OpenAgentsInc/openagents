@@ -23,14 +23,14 @@ else:
     _tc=Path(os.environ.get('COAXIAL_TOOLCHAIN',Path.home()/'.cache/coax-wasm-toolchain'))
     WASM=(str(_tc/'bin/clang'),str(_tc/'sysroot'),str(_tc/'resource'),str(_tc/'bin'))
 OPS=('add_wrap','sub_wrap','mul_wrap','rotl','rotr')
-SOURCE='\n'.join(f'w_{op}_{bits} :: (a:u{bits},b:u{bits})->u{bits} #export_c {{return {op}(a,b);}}' for bits in (32,64) for op in OPS)+'''
+SOURCE='\n'.join(f'w_{op}_{bits} :: (a:u{bits},b:u{bits})->u{bits} #export_c #effects(all) {{return {op}(a,b);}}' for bits in (32,64) for op in OPS)+'''
 #assert #run add_wrap(cast(u64)18446744073709551615,cast(u64)1)==0;
 #assert #run sub_wrap(cast(u32)0,cast(u32)1)==4294967295;
 #assert #run mul_wrap(cast(u64)18446744073709551615,cast(u64)18446744073709551615)==1;
 #assert #run rotl(cast(u32)1,cast(u32)32)==1;
 #assert #run rotr(cast(u64)1,cast(u64)1)==9223372036854775808;
 next :: (s:[]u64)->u64 {v:=s[0];s[0]=v+1;return v;}
-order :: ()->u64 #export_c {s:[1]u64;return sub_wrap(next(s[..]),next(s[..]));}
+order :: ()->u64 #export_c #effects(all) {s:[1]u64;return sub_wrap(next(s[..]),next(s[..]));}
 '''
 
 def oracle(op,a,b,bits):

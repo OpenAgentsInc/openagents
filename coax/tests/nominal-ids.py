@@ -64,8 +64,8 @@ class NominalIds(unittest.TestCase):
             source = base / 'ids.coax'
             source.write_text('SeatId :: struct @id {value:u32;}\n'
                               'EntityId :: struct @id {value:u32;}\n'
-                              'pass_seat :: (id:SeatId)->SeatId #export_c {return id;}\n'
-                              'pass_entity :: (id:EntityId)->EntityId #export_c {return id;}\n')
+                              'pass_seat :: (id:SeatId)->SeatId #export_c #effects(all) {return id;}\n'
+                              'pass_entity :: (id:EntityId)->EntityId #export_c #effects(all) {return id;}\n')
             result = invoke(COAX, 'c', source, '--library', '--header', base / 'ids.h')
             self.assertEqual(result.returncode, 0, result.stderr)
             (base / 'ids.c').write_text(result.stdout)
@@ -100,7 +100,7 @@ class NominalIds(unittest.TestCase):
             for name, annotation in [('equal', '@id'), ('ordered', '@id(ordered)'), ('plain', '')]:
                 source = base / (name + '.coax')
                 source.write_text('Key :: struct ' + annotation + ' {value:int;}\n'
-                                  'take_' + name + ' :: (id:Key)->Key #export_c {return id;}\n')
+                                  'take_' + name + ' :: (id:Key)->Key #export_c #effects(all) {return id;}\n')
                 result = invoke(COAX, 'header', source, '-o', base / (name + '.h'))
                 self.assertEqual(result.returncode, 0, result.stderr)
             for second in ['ordered', 'plain']:

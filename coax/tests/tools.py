@@ -77,7 +77,7 @@ class Tools(unittest.TestCase):
         source = self.write("kernel.coax", """
 Sample :: struct { value: f32; weight: s32 = 1; }
 Mode :: enum u8 { off; on = 3; }
-weigh :: (samples: [] Sample, mode: Mode) -> f64 #export_c {
+weigh :: (samples: [] Sample, mode: Mode) -> f64 #export_c #effects(all) {
   total := 0.0;
   if mode == Mode.off { return total; }
   for s: samples { total += cast(f64) s.value * cast(f64) s.weight; }
@@ -178,10 +178,10 @@ class HeaderComposition(unittest.TestCase):
                 libraries = []
                 for suffix, index, amount in (("a", 1, 1), ("b", 2, 2)):
                     source = self.source(suffix + ".coax", f"""
-array_{suffix} :: (value:[3]u16)->[3]u16 #export_c {{
+array_{suffix} :: (value:[3]u16)->[3]u16 #export_c #effects(all) {{
   result:=value;result[{index}]+={amount};return result;
 }}
-sum_{suffix} :: (rows:[] [3]u16)->int #export_c {{
+sum_{suffix} :: (rows:[] [3]u16)->int #export_c #effects(all) {{
   total:=0;for row:rows {{for value:row {{total+=cast(int)value;}}}}return total;
 }}
 """)
@@ -208,15 +208,15 @@ Node :: struct { value:int; children:[]Node; }
 """)
         a = self.source("shared-a.coax", """
 #load "common.coax";
-cell_a :: (cell:Cell)->Cell #export_c {result:=cell;result.tag+=1;return result;}
-batch_a :: (batch:Batch)->int #export_c {return batch.rows.count+cast(int)batch.mode;}
-node_a :: (node:Node)->int #export_c {return node.value+node.children.count;}
+cell_a :: (cell:Cell)->Cell #export_c #effects(all) {result:=cell;result.tag+=1;return result;}
+batch_a :: (batch:Batch)->int #export_c #effects(all) {return batch.rows.count+cast(int)batch.mode;}
+node_a :: (node:Node)->int #export_c #effects(all) {return node.value+node.children.count;}
 """)
         b = self.source("shared-b.coax", """
 #load "common.coax";
-cell_b :: (cell:Cell)->Cell #export_c {result:=cell;result.samples[2]+=2;return result;}
-batch_b :: (batch:Batch)->int #export_c {return batch.rows.count+cast(int)batch.mode;}
-node_b :: (node:Node)->int #export_c {return node.value+node.children.count;}
+cell_b :: (cell:Cell)->Cell #export_c #effects(all) {result:=cell;result.samples[2]+=2;return result;}
+batch_b :: (batch:Batch)->int #export_c #effects(all) {return batch.rows.count+cast(int)batch.mode;}
+node_b :: (node:Node)->int #export_c #effects(all) {return node.value+node.children.count;}
 """)
         for flags in ((), ("--release",)):
             with self.subTest(flags=flags):
@@ -242,8 +242,8 @@ int main(void) {
         )
         for index, (left, right) in enumerate(variants):
             with self.subTest(variant=index):
-                a = self.source("conflict-a.coax", "Collision :: struct {" + left + "}\nread_a :: (v:Collision)->int #export_c {return 1;}")
-                b = self.source("conflict-b.coax", "Collision :: struct {" + right + "}\nread_b :: (v:Collision)->int #export_c {return 2;}")
+                a = self.source("conflict-a.coax", "Collision :: struct {" + left + "}\nread_a :: (v:Collision)->int #export_c #effects(all) {return 1;}")
+                b = self.source("conflict-b.coax", "Collision :: struct {" + right + "}\nread_b :: (v:Collision)->int #export_c #effects(all) {return 2;}")
                 # The last pair differs only after the left producer selects
                 # release; mixed-profile includes must not silently coalesce.
                 left_flags = ("--release",) if index == 2 else ()
@@ -254,8 +254,8 @@ int main(void) {
                           diagnostic="incompatible Coax C type")
 
     def test_conflicting_enum_member_values_are_explicitly_rejected(self):
-        a = self.source("enum-a.coax", "Mode :: enum u8 { idle; ready = 3; }\nmode_a :: (mode:Mode)->int #export_c {return cast(int)mode;}")
-        b = self.source("enum-b.coax", "Mode :: enum u8 { idle; ready = 4; }\nmode_b :: (mode:Mode)->int #export_c {return cast(int)mode;}")
+        a = self.source("enum-a.coax", "Mode :: enum u8 { idle; ready = 3; }\nmode_a :: (mode:Mode)->int #export_c #effects(all) {return cast(int)mode;}")
+        b = self.source("enum-b.coax", "Mode :: enum u8 { idle; ready = 4; }\nmode_b :: (mode:Mode)->int #export_c #effects(all) {return cast(int)mode;}")
         headers = [self.library(a, "enum-a")[0], self.library(b, "enum-b")[0]]
         self.host(headers, "int main(void) { return 0; }\n", succeeds=False,
                   diagnostic="incompatible Coax C type")
@@ -263,8 +263,8 @@ int main(void) {
                   diagnostic="incompatible Coax C type")
 
     def test_same_basename_entries_do_not_hide_each_others_exports(self):
-        a = self.source("left/kernel.coax", "from_left :: (value:int)->int #export_c {return value+1;}")
-        b = self.source("right/kernel.coax", "from_right :: (value:int)->int #export_c {return value+2;}")
+        a = self.source("left/kernel.coax", "from_left :: (value:int)->int #export_c #effects(all) {return value+1;}")
+        b = self.source("right/kernel.coax", "from_right :: (value:int)->int #export_c #effects(all) {return value+2;}")
         libraries = [self.library(a, "left"), self.library(b, "right")]
         headers, objects = zip(*libraries)
         body = "int main(void) { return from_left(3) == 4 && from_right(3) == 5 ? 0 : 1; }\n"
@@ -274,7 +274,7 @@ int main(void) {
     def test_repeated_header_includes_remain_valid(self):
         source = self.source("repeated.coax", """
 Entry :: struct { values:[2]u8; }
-read_entry :: (entries:[]Entry)->int #export_c {return cast(int)entries[0].values[1];}
+read_entry :: (entries:[]Entry)->int #export_c #effects(all) {return cast(int)entries[0].values[1];}
 """)
         header, obj = self.library(source, "repeated")
         body = """
@@ -292,7 +292,7 @@ int main(void) {
             source = self.source(side + "/defaults.coax", f"""
 Empty :: struct {{}}
 Box :: struct {{value:int={default}; marker:Empty;}}
-make_{side} :: ()->Box #export_c {{box:Box;return box;}}
+make_{side} :: ()->Box #export_c #effects(all) {{box:Box;return box;}}
 """)
             libraries.append(self.library(source, "defaults-" + side))
         headers, objects = zip(*libraries)
@@ -307,7 +307,7 @@ make_{side} :: ()->Box #export_c {{box:Box;return box;}}
         fields = "".join(name + ":u32;" for name in names)
         libraries = []
         for side in ("left", "right"):
-            source = self.source("long-" + side + ".coax", "Long :: struct {" + fields + "}\nread_" + side + " :: (value:Long)->int #export_c {return cast(int)value." + names[0] + "+cast(int)value." + names[-1] + ";}")
+            source = self.source("long-" + side + ".coax", "Long :: struct {" + fields + "}\nread_" + side + " :: (value:Long)->int #export_c #effects(all) {return cast(int)value." + names[0] + "+cast(int)value." + names[-1] + ";}")
             libraries.append(self.library(source, "long-" + side))
         headers, objects = zip(*libraries)
         body = "int main(void) { coax_t_Long value = {0}; value." + names[0] + " = 5; value." + names[-1] + " = 7; return read_left(value) == 12 && read_right(value) == 12 ? 0 : 1; }\n"

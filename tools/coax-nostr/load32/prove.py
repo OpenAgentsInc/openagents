@@ -31,8 +31,8 @@ NEEDLES = [
     '  result.value = value; result.ok = true;\n'
     '  return result;\n'
     '}',
-    'cb_load_be32 :: (data: [] u8, at: int) -> CbU32 #export_c { return cb_load_word32(data, at, true); }',
-    'cb_load_le32 :: (data: [] u8, at: int) -> CbU32 #export_c { return cb_load_word32(data, at, false); }',
+    'cb_load_be32 :: (data: [] u8, at: int) -> CbU32 #export_c #effects(all) { return cb_load_word32(data, at, true); }',
+    'cb_load_le32 :: (data: [] u8, at: int) -> CbU32 #export_c #effects(all) { return cb_load_word32(data, at, false); }',
 ]
 
 def order(n, big):

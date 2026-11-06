@@ -39,9 +39,9 @@ class Sources(unittest.TestCase):
         return records
 
     def test_shared_types_forward_names_and_diamond(self):
-        self.write("common.coax","Shared :: struct { value: int; }\nshared :: (x:Shared)->int {return x.value;} // no trailing newline")
-        self.write("parts/left.coax",'#load "../common.coax";\nleft :: ()->int {return shared(Shared.{value=20});}')
-        self.write("parts/right.coax",'#load ".././common.coax";\nright :: ()->int {return shared(Shared.{value=22});}')
+        self.write("common.coax","Shared :: struct { value: int; }\nshared :: (x:Shared)->int #effects(all) {return x.value;} // no trailing newline")
+        self.write("parts/left.coax",'#load "../common.coax";\nleft :: ()->int #effects(all) {return shared(Shared.{value=20});}')
+        self.write("parts/right.coax",'#load ".././common.coax";\nright :: ()->int #effects(all) {return shared(Shared.{value=22});}')
         main=self.write("main.coax",'#import "Basic";\n#load "parts/left.coax";\n#load "parts/right.coax";\nmain :: () {print("%\\n", left()+right());}')
         for mode in [[],["--release"]]:
             self.assertEqual(self.success("run",main,*mode),"42\n")
@@ -77,7 +77,7 @@ class Sources(unittest.TestCase):
         main.write_text('#load "."; main :: () {}')
         self.error(main,"E0601",main)
         main.write_text('#load "part.coax"; main :: () {}')
-        part=self.write("part.coax",'work :: () {')
+        part=self.write("part.coax",'work :: () #effects(all) {')
         self.error(main,"E0604",part)
         # No token/brace can escape a loaded file into its parent.
         main.write_text('#load "part.coax"; main :: () {')
@@ -98,10 +98,10 @@ class Sources(unittest.TestCase):
 
     def test_original_file_diagnostics_in_parser_checker_and_evaluator(self):
         main=self.write("main.coax",'#load "sub/part.coax";\nmain :: () {}')
-        part=self.write("sub/part.coax",'// original line one\nwork :: ()->int {\n return missing;\n}\n')
+        part=self.write("sub/part.coax",'// original line one\nwork :: ()->int #effects(all) {\n return missing;\n}\n')
         records=self.error(main,"E0306",part)
         self.assertEqual(next(r["line"] for r in records if r["code"]=="E0306"),3)
-        part.write_text('work :: () {\n value := 1\n}\n')
+        part.write_text('work :: () #effects(all) {\n value := 1\n}\n')
         p=self.command("check",main)
         self.assertNotEqual(p.returncode,0)
         self.assertIn(str(part)+":2:",p.stderr)
@@ -112,24 +112,24 @@ class Sources(unittest.TestCase):
 
     def test_file_authority_cannot_be_lost_or_spread(self):
         main=self.write("main.coax",'#load "policy.coax";\n#load "utility.coax";\nmain :: () {}')
-        policy=self.write("policy.coax",'#authority;\nallowed :: (n:int)->bool #export_c {return n>0;}\n#test "policy" {#assert allowed(1); #assert !allowed(0);}')
-        self.write("utility.coax",'unused :: ()->int {return 99;}')
+        policy=self.write("policy.coax",'#authority;\nallowed :: (n:int)->bool #export_c #effects(all) {return n>0;}\n#test "policy" {#assert allowed(1); #assert !allowed(0);}')
+        self.write("utility.coax",'unused :: ()->int #effects(all) {return 99;}')
         self.success("c",main)
-        policy.write_text('#authority;\nallowed :: (n:int)->bool #export_c {return n>0;}\n#test "policy" {#assert false;}')
+        policy.write_text('#authority;\nallowed :: (n:int)->bool #export_c #effects(all) {return n>0;}\n#test "policy" {#assert false;}')
         self.error(main,"E0380",policy)
-        policy.write_text('#authority;\nallowed :: (n:int)->bool #export_c {return n>0;}\n#test "policy" {#assert allowed(1)==false;}')
+        policy.write_text('#authority;\nallowed :: (n:int)->bool #export_c #effects(all) {return n>0;}\n#test "policy" {#assert allowed(1)==false;}')
         self.error(main,"E0406",policy)
-        policy.write_text('#authority;\nallowed :: (n:int)->bool #export_c {return n>0;}\n#test "dead" {if false {#assert allowed(1);}}')
+        policy.write_text('#authority;\nallowed :: (n:int)->bool #export_c #effects(all) {return n>0;}\n#test "dead" {if false {#assert allowed(1);}}')
         self.error(main,"E0380",policy)
 
     def test_entry_authority_with_non_authority_dependency(self):
-        self.write("utility.coax",'unused :: ()->int {return 99;}')
-        main=self.write("main.coax",'#authority;\n#load "utility.coax";\nallowed :: (n:int)->bool #export_c {return n>0;}\n#test "boundary" {#assert allowed(1);#assert !allowed(0);}')
+        self.write("utility.coax",'unused :: ()->int #effects(all) {return 99;}')
+        main=self.write("main.coax",'#authority;\n#load "utility.coax";\nallowed :: (n:int)->bool #export_c #effects(all) {return n>0;}\n#test "boundary" {#assert allowed(1);#assert !allowed(0);}')
         self.success("check",main,"--library")
         self.assertIn("0 survived",self.success("mutate",main))
 
     def test_loaded_checks_can_cover_entry_authority(self):
-        main=self.write("main.coax",'#authority;\n#load "checks.coax";\nallowed :: (n:int)->bool #export_c {return n>0;}')
+        main=self.write("main.coax",'#authority;\n#load "checks.coax";\nallowed :: (n:int)->bool #export_c #effects(all) {return n>0;}')
         self.write("checks.coax",'#test "boundary" {#assert allowed(1);#assert !allowed(0);}')
         self.success("check",main,"--library")
         self.assertIn("0 survived",self.success("mutate",main))
@@ -138,7 +138,7 @@ class Sources(unittest.TestCase):
         profile=ROOT.parent/"proto/descriptors/ios-home.pb"
         (self.base/"adapter").mkdir()
         shutil.copy(profile,self.base/"adapter/types.pb")
-        adapter=self.write("adapter/codec.coax",'#import_proto "types.pb" as Wire;\nread :: ()->u64 {return Wire_HudInvocation_get_revision(Wire_HudInvocation_new()).value;}')
+        adapter=self.write("adapter/codec.coax",'#import_proto "types.pb" as Wire;\nread :: ()->u64 #effects(all) {return Wire_HudInvocation_get_revision(Wire_HudInvocation_new()).value;}')
         main=self.write("main.coax",'#authority;\n#load "adapter/codec.coax";\nmain :: () {}')
         self.success("c",main)
         deps=json.loads(self.success("deps",main))
@@ -149,7 +149,7 @@ class Sources(unittest.TestCase):
 
     def test_runtime_trap_points_to_loaded_file(self):
         main=self.write("main.coax",'#load "part.coax";\nmain :: () {bad();}')
-        part=self.write("part.coax",'bad :: () {\n a:=[1]int.[7];\n i:=2;\n #assert a[i]==7;\n}')
+        part=self.write("part.coax",'bad :: () #effects(all) {\n a:=[1]int.[7];\n i:=2;\n #assert a[i]==7;\n}')
         for mode in [[],["--release"]]:
             p=self.command("run",main,*mode,expect_crash=True)
             self.assertNotEqual(p.returncode,0)
@@ -157,7 +157,7 @@ class Sources(unittest.TestCase):
 
     def test_loaded_path_is_escaped_for_generated_native_code(self):
         name='part\n"quoted".coax'
-        part=self.write(name,'bad :: () {#assert false;}')
+        part=self.write(name,'bad :: () #effects(all) {#assert false;}')
         spelling=name.replace('\\','\\\\').replace('"','\\"').replace('\n','\\n')
         main=self.write("main.coax",'#load "'+spelling+'"; main :: () {bad();}')
         p=self.command("run",main,expect_crash=True)
@@ -165,12 +165,12 @@ class Sources(unittest.TestCase):
         self.assertIn(str(part)+':1: assertion failed',p.stderr)
 
     def test_metal_backend_uses_loaded_functions_and_original_errors(self):
-        part=self.write("light.coax",'gain :: (x:f32)->f32 {return x*0.5;}')
-        main=self.write("shader.coax",'#load "light.coax"; shade :: (x:f32)->f32 #export_c {return gain(x);}')
+        part=self.write("light.coax",'gain :: (x:f32)->f32 #effects(all) {return x*0.5;}')
+        main=self.write("shader.coax",'#load "light.coax"; shade :: (x:f32)->f32 #export_c #effects(all) {return gain(x);}')
         metal=self.success("metal",main)
         self.assertIn('shade(',metal)
         self.assertIn('gain(',metal)
-        part.write_text('gain :: (x:f32)->f32 {while false {} return x;}')
+        part.write_text('gain :: (x:f32)->f32 #effects(all) {while false {} return x;}')
         p=self.command("metal",main,"--json")
         self.assertNotEqual(p.returncode,0)
         diagnostics=[json.loads(x) for x in p.stderr.splitlines()]
@@ -254,7 +254,7 @@ class Sources(unittest.TestCase):
         self.error(exports(513), "E0613")
 
     def test_private_library_checks_need_no_native_exports(self):
-        unit=self.write("policy.coax",'#authority; allowed :: (n:int)->bool {return n>0;} #test "edge" {#assert allowed(1);#assert !allowed(0);}')
+        unit=self.write("policy.coax",'#authority; allowed :: (n:int)->bool #effects(all) {return n>0;} #test "edge" {#assert allowed(1);#assert !allowed(0);}')
         self.success("test",unit,"--library")
         self.assertIn("0 survived",self.success("mutate",unit,"--library"))
 
@@ -295,7 +295,7 @@ int main(void) {
         shutil.copy(COAX,self.base/"coax")
         profile=ROOT.parent/"proto/descriptors/ios-home.pb"
         self.write("codec.coax",f'#import_proto "{profile}" as Wire;')
-        main=self.write("main.coax",'#load "codec.coax";\nanswer :: ()->int #export_c {return 42;}')
+        main=self.write("main.coax",'#load "codec.coax";\nanswer :: ()->int #export_c #effects(all) {return 42;}')
         env=dict(os.environ,PATH="/path-with-no-tools")
         p=subprocess.run([str(self.base/"coax"),"c",str(main),"--library"],capture_output=True,text=True,env=env)
         self.assertEqual(p.returncode,0,p.stderr)

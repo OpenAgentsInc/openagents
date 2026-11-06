@@ -12,7 +12,7 @@ from cuda import APPLE, COMPILER, GROUP, GROUP_REFUSALS, KERNEL, REFUSALS, WARP,
 # The Apple matrix primitives in a group kernel of 128 threads: simdgroup
 # tiles through threadgroup memory, and a Metal 4 tensor-op tile.
 SIMDGROUP='#load "'+APPLE+'''";
-sg :: (item:int,x:[]f32,out:[]f32) #export_c {
+sg :: (item:int,x:[]f32,out:[]f32) #export_c #effects(all) {
     a:[2048]f32;b:[1024]f32;acc:[2048]f32;
     for thread:0..<128 {
         for i:0..<16 {a[thread+128*i]=x[thread+128*i];}
@@ -22,14 +22,14 @@ sg :: (item:int,x:[]f32,out:[]f32) #export_c {
     am_sg_spill_64x32(acc[..],a[..]);
     for thread:0..<128 {for i:0..<16 {out[item*2048+thread+128*i]=a[thread+128*i];}}
 }
-tensor :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c {
+tensor :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {
     am_matmul_bf16(128,16,64,rows,cols,tokens,item*64,0,w,x,out);
 }
 '''
 # A store whose value calls a function places its target first (spec 7.3):
 # the pointer to a threadgroup array element is a threadgroup pointer.
 GROUP_PLACE='''tw :: (x:f32)->f32 {return x*2;}
-k :: (item:int,n:int,x:[]f32,out:[]f32) #export_c {
+k :: (item:int,n:int,x:[]f32,out:[]f32) #export_c #effects(all) {
     s:[1024]f32;red:[8]f32;
     for thread:0..<128 {for t:0..<8 {s[thread+128*t]=x[item*1024+thread+128*t];}}
     for thread:0..<128 {if thread<8 {red[thread]=s[thread];}}
@@ -38,7 +38,7 @@ k :: (item:int,n:int,x:[]f32,out:[]f32) #export_c {
 }
 '''
 # An f64 threadgroup array: its float-float elements are zeroed as pairs.
-GROUP_F64='''k :: (item:int,x:[]f32,out:[]f64) #export_c {
+GROUP_F64='''k :: (item:int,x:[]f32,out:[]f64) #export_c #effects(all) {
     s:[128]f64;
     for thread:0..<128 {s[thread]=cast(f64) x[item*128+thread];}
     for thread:0..<128 {out[item*128+thread]=s[127-thread]*2;}
@@ -46,7 +46,7 @@ GROUP_F64='''k :: (item:int,x:[]f32,out:[]f64) #export_c {
 '''
 # Intervals for the 32-bit body: a product of the item, increments under a
 # bounded loop, a product of two parameters, and a local that doubles in a loop.
-NARROW='''nk :: (item:int,n:int,big:int,x:[]f32,out:[]f32) #export_c {
+NARROW='''nk :: (item:int,n:int,big:int,x:[]f32,out:[]f32) #export_c #effects(all) {
     i:=item*4;s:=0;
     for j:0..<4 {s+=1;if i+j<n {out[i+j]=x[i+j]*2;}}
     k:=big*big;w:=0;
@@ -56,7 +56,7 @@ NARROW='''nk :: (item:int,n:int,big:int,x:[]f32,out:[]f32) #export_c {
 }
 '''
 def apple(body,arrays='a:[2048]f32;b:[1024]f32;acc:[2048]f32;'):
-    return '#load "'+APPLE+'";\nk :: (item:int,w:[]u32,x:[]f32,out:[]f32) #export_c {'+arrays+body+'}'
+    return '#load "'+APPLE+'";\nk :: (item:int,w:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {'+arrays+body+'}'
 APPLE_REFUSALS=[
     ('an Apple matrix primitive with the wrong arguments or outside a group kernel\'s shared code',apple('for thread:0..<128 {a[thread]=1;b[thread]=1;}am_sg_mma_64x32x32(acc[..],b[..],b[..]);','a:[2048]f32;b:[2048]f32;acc:[2048]f32;')),
     ('a group kernel whose thread loops and group primitives disagree on its size, or that has lane loops or the MMA primitive',apple('for thread:0..<64 {a[thread]=1;b[thread]=1;}am_sg_mma_64x32x32(acc[..],a[..],b[..]);')),
@@ -67,10 +67,10 @@ APPLE_REFUSALS=[
     ('a group kernel whose thread loops and group primitives disagree on its size, or that has lane loops or the MMA primitive',apple('for thread:0..<64 {out[thread]=1;}am_matmul_bf16(128,16,64,64,32,16,0,0,w,x,out);','')),
 ]
 METAL_REFUSALS=[
-    ('an f64 bit pattern','k :: (item:int,out:[]u64) #export_c {x:f64=1;out[item]=f64_bits(x);}'),
-    ('this f64 operation','k :: (item:int,out:[]f64) #export_c {x:f64=1;out[item]=sin(x);}'),
-    ('this f64 operation','k :: (item:int,out:[]int) #export_c {x:f64=1.5;out[item]=cast(int)x;}'),
-    ('a view of a register array','f :: (v:[]f32)->f32 {return v[0];}\nk :: (item:int,out:[]f32) #export_c {a:[4]f32;out[item]=f(a[..]);}'),
+    ('an f64 bit pattern','k :: (item:int,out:[]u64) #export_c #effects(all) {x:f64=1;out[item]=f64_bits(x);}'),
+    ('this f64 operation','k :: (item:int,out:[]f64) #export_c #effects(all) {x:f64=1;out[item]=sin(x);}'),
+    ('this f64 operation','k :: (item:int,out:[]int) #export_c #effects(all) {x:f64=1.5;out[item]=cast(int)x;}'),
+    ('a view of a register array','f :: (v:[]f32)->f32 {return v[0];}\nk :: (item:int,out:[]f32) #export_c #effects(all) {a:[4]f32;out[item]=f(a[..]);}'),
 ]
 
 def metal_toolchain():
@@ -156,7 +156,7 @@ class MetalCompute(unittest.TestCase):
         self.assertIn('coax_am_matmul<16, 64, 4>(',out);self.assertIn('matmul2d_descriptor(TM, TN',out)
         self.assertNotIn('coax_p_am_',out)  # the bodies are the CPU meaning only
     def test_f64_is_float_float(self):
-        r=self.run_metal('k :: (item:int,x:[]f64,out:[]f64) #export_c {out[item]=exp(x[item])*2+log(x[item]);}')
+        r=self.run_metal('k :: (item:int,x:[]f64,out:[]f64) #export_c #effects(all) {out[item]=exp(x[item])*2+log(x[item]);}')
         self.assertEqual(r.returncode,0,r.stderr)
         self.assertIn('coax_ff_exp(',r.stdout);self.assertIn('coax_ff_log(',r.stdout)
         self.assertIn('typedef struct { device coax_ff *data; int64_t count; } coax_v_f64;',r.stdout)

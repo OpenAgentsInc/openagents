@@ -30,16 +30,16 @@ CC = os.environ.get("COAX_NATIVE_CC", "/usr/bin/clang" if platform.system() == "
 CXX = os.environ.get("COAX_NATIVE_CXX", "/usr/bin/clang++" if platform.system() == "Darwin" else "c++")
 
 PROGRAM = '''#import "Basic";
-host_sum :: (xs: [] f32) -> f32 #foreign;
-host_fill :: (out: [] u8, v: int) -> int #foreign;
-host_move :: (dst: [] s16, src: [] s16) -> int #foreign;
-host_any :: (k: [] bool) -> bool #foreign;
-host_tag :: (t: int) -> int #foreign;
-host_pair :: (a: int, xs: [] u8, b: int) -> int #foreign;
-host_back :: (xs: [] s64) -> s64 #foreign;
+host_sum :: (xs: [] f32) -> f32 #foreign #effects(all);
+host_fill :: (out: [] u8, v: int) -> int #foreign #effects(all);
+host_move :: (dst: [] s16, src: [] s16) -> int #foreign #effects(all);
+host_any :: (k: [] bool) -> bool #foreign #effects(all);
+host_tag :: (t: int) -> int #foreign #effects(all);
+host_pair :: (a: int, xs: [] u8, b: int) -> int #foreign #effects(all);
+host_back :: (xs: [] s64) -> s64 #foreign #effects(all);
 
 // The host calls this one back with its own buffer.
-sum_back :: (xs: [] s64) -> s64 #export_c {
+sum_back :: (xs: [] s64) -> s64 #export_c #effects(all) {
   s: s64 = 0;
   for x: xs { s += x; }
   return s;
@@ -129,11 +129,11 @@ EXPECTED = [
 ]
 
 REFUSED = [
-    ("h :: (s: [] string) -> int #foreign;", "parameter 's' is [] string; #foreign procedures pass integers, floats, bool and views of them"),
-    ("h :: (v: [] [] u8) -> int #foreign;", "parameter 'v' is [] [] u8; #foreign procedures pass integers, floats, bool and views of them"),
-    ("h :: (a: [4] u8) -> int #foreign;", "parameter 'a' is [4] u8; #foreign procedures pass integers, floats, bool and views of them"),
-    ("P :: struct { x: int; }\nh :: (p: [] P) -> int #foreign;", "parameter 'p' is [] P; #foreign procedures pass integers, floats, bool and views of them"),
-    ("h :: (n: int) -> [] u8 #foreign;", "'h' returns [] u8; #foreign procedures return integers, floats, bool or nothing"),
+    ("h :: (s: [] string) -> int #foreign #effects(all);", "parameter 's' is [] string; #foreign procedures pass integers, floats, bool and views of them"),
+    ("h :: (v: [] [] u8) -> int #foreign #effects(all);", "parameter 'v' is [] [] u8; #foreign procedures pass integers, floats, bool and views of them"),
+    ("h :: (a: [4] u8) -> int #foreign #effects(all);", "parameter 'a' is [4] u8; #foreign procedures pass integers, floats, bool and views of them"),
+    ("P :: struct { x: int; }\nh :: (p: [] P) -> int #foreign #effects(all);", "parameter 'p' is [] P; #foreign procedures pass integers, floats, bool and views of them"),
+    ("h :: (n: int) -> [] u8 #foreign #effects(all);", "'h' returns [] u8; #foreign procedures return integers, floats, bool or nothing"),
 ]
 
 
@@ -192,14 +192,14 @@ class ForeignBuffers(unittest.TestCase):
 
     def test_host_effects_never_run_at_compile_time_or_in_checks(self):
         (self.dir / "ct.coax").write_text(
-            "h :: (b: [] u8) -> int #foreign;\n"
+            "h :: (b: [] u8) -> int #foreign #effects(all);\n"
             "N :: #run h(u8_bytes());\n"
             "u8_bytes :: () -> [] u8 { x: [] u8; return x; }\n"
             "main :: () {}\n")
         r = run([COAX, "check", "ct.coax"], cwd=self.dir)
         self.assertIn("error[E0404]: compile-time execution cannot call the host procedure 'h'", r.stdout + r.stderr)
         (self.dir / "t.coax").write_text(
-            "h :: (b: [] u8) -> int #foreign;\n"
+            "h :: (b: [] u8) -> int #foreign #effects(all);\n"
             "use :: (b: [] u8) -> int { return h(b); }\n"
             '#test "a check cannot reach the host" { b := [2] u8.[1, 2]; #assert use(b[..]) == 0; }\n'
             "main :: () {}\n")
@@ -215,9 +215,9 @@ class ForeignBuffers(unittest.TestCase):
         self.assertEqual(e.returncode, 0, e.stderr)
         (self.dir / "entropy.c").write_text(e.stdout)
         prog = '''#import "Basic";
-cxrand_draw :: (out: [] u8, n: int) -> int #foreign;
-cxrand_fill :: (n: int) -> int #foreign;
-cxrand_byte :: (i: int) -> int #foreign;
+cxrand_draw :: (out: [] u8, n: int) -> int #foreign #effects(all);
+cxrand_fill :: (n: int) -> int #foreign #effects(all);
+cxrand_byte :: (i: int) -> int #foreign #effects(all);
 main :: () {
   a: [34] u8;
   a[0] = 77; a[33] = 88;

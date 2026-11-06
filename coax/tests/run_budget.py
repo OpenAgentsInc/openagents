@@ -22,7 +22,7 @@ class RunBudgetTests(unittest.TestCase):
                               capture_output=True, timeout=30)
 
     def test_authority_compilation_uses_check_storage_limits(self):
-        source = ('#authority; answer :: ()->int {return 4;} '
+        source = ('#authority; answer :: ()->int #effects(all) {return 4;} '
                   '#test "large check" {words:[1572865]u8; words[1572864]=7; '
                   '#assert words[1572864]==7 && answer()==4;} main :: () {}')
         for command in ('check', 'c', 'header', 'deps'):
@@ -35,9 +35,9 @@ class RunBudgetTests(unittest.TestCase):
         library.write_text('CheckOnlyLarge :: struct($N) {words:[$N]u8;} '
                            '#test "large library check" {x:CheckOnlyLarge(1572865); '
                            'x.words[1572864]=7; #assert x.words[1572864]==7;} '
-                           'library_answer :: ()->int {return 4;}')
+                           'library_answer :: ()->int #effects(all) {return 4;}')
         source = ('#load "large-library.coax"; #authority; '
-                  'answer :: ()->int {return library_answer();} '
+                  'answer :: ()->int #effects(all) {return library_answer();} '
                   '#test "answer" {#assert answer()==4;} main :: () {}')
         r = self.invoke(source, 'c')
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -51,14 +51,14 @@ class RunBudgetTests(unittest.TestCase):
         self.assertIn('the limit is 33554432', r.stderr)
 
     def test_authority_does_not_enlarge_constant_evaluation_storage(self):
-        source = ('#authority; large :: ()->u8 {words:[1572865]u8; return words[1572864];} '
+        source = ('#authority; large :: ()->u8 #effects(all) {words:[1572865]u8; return words[1572864];} '
                   'A :: #run large(); #test "constant" {#assert A==0 && large()==0;} main :: () {}')
         r = self.invoke(source, 'check', '--run-steps', '20000000')
         self.assertEqual(r.returncode, 1, r.stderr)
         self.assertIn('the limit is 1572864', r.stderr)
 
     def test_explicit_test_storage_limit_stays_lowered(self):
-        source = ('#authority; answer :: ()->int {return 4;} '
+        source = ('#authority; answer :: ()->int #effects(all) {return 4;} '
                   '#test "limited" {words:[1000]u8; '
                   '#assert words[999]==0 && answer()==4;} main :: () {}')
         r = self.invoke(source, 'test', '--slots', '100')
@@ -78,7 +78,7 @@ class RunBudgetTests(unittest.TestCase):
             self.assertIn('--run-steps requires', r.stderr)
 
     def test_shared_counter_and_checked_release(self):
-        f = 'f :: () -> int { n:=0; while n<10000 { n+=1; } return n; }\n'
+        f = 'f :: () -> int #effects(all) { n:=0; while n<10000 { n+=1; } return n; }\n'
         one = f + 'A :: #run f(); main :: () {}'
         two = f + 'A :: #run f(); B :: #run f(); main :: () {}'
         for profile in ((), ('--release',)):
@@ -89,18 +89,18 @@ class RunBudgetTests(unittest.TestCase):
             self.assertEqual(self.invoke(two, 'check', *profile, '--run-steps', '200000').returncode, 0)
 
     def test_all_compiler_commands_receive_work_limit(self):
-        source = ('f :: () -> int { n:=0; while n<20 { n+=1; } return n; } '
+        source = ('f :: () -> int #effects(all) { n:=0; while n<20 { n+=1; } return n; } '
                   'A :: #run f(); #test "a" { #assert A==20; } '
-                  'api :: () -> int #export_c { return A; } main :: () {}')
+                  'api :: () -> int #export_c #effects(all) { return A; } main :: () {}')
         for command in ('check', 'c', 'header', 'layout', 'deps', 'metal', 'build', 'lib', 'run', 'test', 'mutate'):
             with self.subTest(command=command):
-                program = 'f :: () -> f32 { return 1.0f32 + 2.0f32; } A :: #run f(); api :: () -> f32 #export_c { return A; }' if command == 'metal' else source
+                program = 'f :: () -> f32 #effects(all) { return 1.0f32 + 2.0f32; } A :: #run f(); api :: () -> f32 #export_c #effects(all) { return A; }' if command == 'metal' else source
                 r = self.invoke(program, command, '--run-steps', '1', '-o', str(Path(self.tmp.name) / 'out')) if command in ('build', 'lib') else self.invoke(program, command, '--run-steps', '1')
                 self.assertEqual(r.returncode, 1, r.stderr)
                 self.assertIn('exceeded 1 steps', r.stderr)
 
     def test_retained_constants_share_storage_budget(self):
-        head = 'f :: () -> [500000] u8 { a:[500000] u8; return a; }\n'
+        head = 'f :: () -> [500000] u8 #effects(all) { a:[500000] u8; return a; }\n'
         one = head + 'A :: #run f(); main :: () {}'
         two = head + 'A :: #run f(); B :: #run f(); main :: () {}'
         for profile in ((), ('--release',)):
@@ -125,7 +125,7 @@ class RunBudgetTests(unittest.TestCase):
         self.assertIn('original input budget is inclusive', r.stdout)
 
     def test_failed_constant_clone_restores_cycle_state(self):
-        source = ("make :: () -> [500000] u8 { a:[500000] u8; return a; } "
+        source = ("make :: () -> [500000] u8 #effects(all) { a:[500000] u8; return a; } "
                   "A :: #run make(); "
                   '#test "fails allocation" { big:[400000] u8; copy:=A; #assert big[0]==copy[0]; } '
                   '#test "later constant read" { #assert A[0]==0; } main :: () {}')
@@ -139,7 +139,7 @@ class RunBudgetTests(unittest.TestCase):
         self.assertIn('2 checks, 1 passed, 1 failed', r.stdout)
 
     def test_nested_allocation_refuses_in_all_profiles(self):
-        source = 'f :: () -> int { a:[1500][1500] u8; return cast(int) a[0][0]; } A :: #run f(); main :: () {}'
+        source = 'f :: () -> int #effects(all) { a:[1500][1500] u8; return cast(int) a[0][0]; } A :: #run f(); main :: () {}'
         for profile in ((), ('--release',)):
             r = self.invoke(source, 'check', *profile, '--run-steps', '250000000')
             self.assertEqual(r.returncode, 1)
@@ -157,17 +157,18 @@ class RunBudgetTests(unittest.TestCase):
                            check=True, capture_output=True, timeout=120)
             objects.append(str(obj))
         exe = directory / 'storage-test'
-        subprocess.run(['c++', '-std=c++20', '-O1', '-g', '-fsanitize=address,undefined',
+        built = subprocess.run(['c++', '-std=c++20', '-O1', '-g', '-fsanitize=address,undefined',
                         '-DCOAX_BOOTSTRAP_IMPORTER', '-I', str(ROOT / 'bootstrap'),
                         '-I', str(ROOT / 'bin'), str(ROOT / 'tests/ct_storage.cpp'),
-                        *objects, '-o', str(exe)], check=True, capture_output=True, timeout=120)
+                        *objects, '-o', str(exe)], capture_output=True, text=True, timeout=120)
+        self.assertEqual(built.returncode, 0, built.stderr)
         result = subprocess.run([str(exe)], capture_output=True, text=True, timeout=60,
                                 env={**__import__('os').environ, 'ASAN_OPTIONS':'detect_leaks=0'})
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_timings_record_work_and_peaks(self):
         report = Path(self.tmp.name) / 'timings.json'
-        source = 'f :: () -> int { a:[12] u8; return cast(int) a[0]; } A :: #run f(); main :: () {}'
+        source = 'f :: () -> int #effects(all) { a:[12] u8; return cast(int) a[0]; } A :: #run f(); main :: () {}'
         r = self.invoke(source, 'check', '--run-steps', '123456', '--timings', str(report))
         self.assertEqual(r.returncode, 0, r.stderr)
         data = json.loads(report.read_text())
@@ -186,7 +187,7 @@ class RunBudgetTests(unittest.TestCase):
 
     # GitHub #12660: a program whose tables need more than the default
     # budget (the openagents CLI) declares it in its entry file.
-    WORK = ('spin :: (n:int)->int {s:=0; for i: 0..<n {s+=i%3;} return s;} '
+    WORK = ('spin :: (n:int)->int #effects(all) {s:=0; for i: 0..<n {s+=i%3;} return s;} '
             'A :: #run spin(60000); main :: () {}')
 
     def test_entry_file_declares_its_run_budget(self):
@@ -277,8 +278,8 @@ class RunBudgetTests(unittest.TestCase):
     def test_call_chains_have_no_checker_depth_limit(self):
         for length in (33, 71, 1000, 10000):
             with self.subTest(length=length):
-                source = ''.join('g%d :: ()->int {return g%d();}\n' % (i, i + 1) for i in range(length - 1))
-                source += 'g%d :: ()->int {return 1;}\nmain :: () { x := g0(); }\n' % (length - 1)
+                source = ''.join('g%d :: ()->int #effects(all) {return g%d();}\n' % (i, i + 1) for i in range(length - 1))
+                source += 'g%d :: ()->int #effects(all) {return 1;}\nmain :: () { x := g0(); }\n' % (length - 1)
                 r = self.invoke(source, 'check')
                 self.assertEqual((r.returncode, r.stderr), (0, ''))
 
@@ -286,9 +287,9 @@ class RunBudgetTests(unittest.TestCase):
         for length in (40, 500):
             with self.subTest(length=length):
                 source = ('Slot :: struct { view: []u8; }\n'
-                          'bad :: (dst: []Slot) {\n  local: [4]u8;\n  relay0(dst, local[..]);\n}\n')
-                source += ''.join('relay%d :: (dst: []Slot, input: []u8) { relay%d(dst, input); }\n' % (i, i + 1) for i in range(length))
-                source += 'relay%d :: (dst: []Slot, input: []u8) { dst[0].view = input; }\nmain :: () {}\n' % length
+                          'bad :: (dst: []Slot) #effects(all) {\n  local: [4]u8;\n  relay0(dst, local[..]);\n}\n')
+                source += ''.join('relay%d :: (dst: []Slot, input: []u8) #effects(all) { relay%d(dst, input); }\n' % (i, i + 1) for i in range(length))
+                source += 'relay%d :: (dst: []Slot, input: []u8) #effects(all) { dst[0].view = input; }\nmain :: () {}\n' % length
                 r = self.invoke(source, 'check')
                 self.assertNotEqual(r.returncode, 0)
                 self.assertIn('case.coax:4:', r.stderr)
@@ -344,14 +345,14 @@ class CapacityTests(unittest.TestCase):
     def test_compile_time_call_depth(self):
         # down(n) is n+1 calls deep
         self.assert_boundaries('compile-time call depth',
-            lambda k: f'down :: (n:int)->int {{if n==0 {{return 0;}} return down(n-1)+1;}}\nX :: #run down({k - 1});\nmain :: () {{}}\n',
+            lambda k: f'down :: (n:int)->int #effects(all) {{if n==0 {{return 0;}} return down(n-1)+1;}}\nX :: #run down({k - 1});\nmain :: () {{}}\n',
             64, 'E0403', 48)
 
     def test_compile_time_dependency_depth(self):
         # C0 needs C1 ... needs C(k-1): k constants evaluated inside one another. Past
         # 64, the checker's own constant dependency bound (E0347) refuses first.
         def chain(k):
-            return ('inc :: (a:int)->int {return a+1;}\n' + ''.join(f'C{i} :: #run inc(C{i+1});\n' for i in range(k - 1)) +
+            return ('inc :: (a:int)->int #effects(all) {return a+1;}\n' + ''.join(f'C{i} :: #run inc(C{i+1});\n' for i in range(k - 1)) +
                     f'C{k-1} :: #run inc(0);\nmain :: () {{}}\n')
         self.assert_boundaries('compile-time dependency depth', chain, 64, 'E0403', 48, 'E0347')
 
@@ -364,7 +365,7 @@ class CapacityTests(unittest.TestCase):
         self.assert_boundaries('checker nesting', lambda k: 'main :: () { x := 1' + '+1' * (k - 3) + '; }\n', 256, 'E0381', 192)
 
     def test_compile_time_steps(self):
-        source = 'spin :: (n:int)->int {s:=0; for i:0..<n {s+=i;} return s;}\nX :: #run spin(1000);\nmain :: () {}\n'
+        source = 'spin :: (n:int)->int #effects(all) {s:=0; for i:0..<n {s+=i;} return s;}\nX :: #run spin(1000);\nmain :: () {}\n'
         r, row = self.use(source, 'compile-time steps')
         self.assertEqual(r.returncode, 0, r.stderr)
         used = row['used']
@@ -381,7 +382,7 @@ class CapacityTests(unittest.TestCase):
     def test_compile_time_value_slots(self):
         # a [n] u8 local is n value slots
         def program(n):
-            return f'f :: ()->int {{ a: [{n}] u8; return 1; }}\nX :: #run f();\nmain :: () {{}}\n'
+            return f'f :: ()->int #effects(all) {{ a: [{n}] u8; return 1; }}\nX :: #run f();\nmain :: () {{}}\n'
         for n, near in [(1179648, False), (1179649, True), (1572864, True)]:
             r, row = self.use(program(n), 'compile-time value slots', '--run-steps', '250000000')
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -396,8 +397,8 @@ class CapacityTests(unittest.TestCase):
         # whole run against the sum of every declaration's budget. The 3/4 and
         # limit boundaries are checked in checker/budget-checks.coax.
         body = ''.join(f'    if n == {i} {{ return a[{i}..<{i + 1}]; }}\n' for i in range(40))
-        source = ('pick :: (a: [] int, n: int) -> [] int {\n' + body + '    return a[0..<1];\n}\n'
-                  'first :: (a: [] int) -> [] int { return a[0..<1]; }\n'
+        source = ('pick :: (a: [] int, n: int) -> [] int #effects(all) {\n' + body + '    return a[0..<1];\n}\n'
+                  'first :: (a: [] int) -> [] int #effects(all) { return a[0..<1]; }\n'
                   'main :: () { b: [64] int; v := pick(b[..], 3); w := first(b[..]); }\n')
         r, rows = self.capacities(source)
         self.assertEqual(r.returncode, 0, r.stderr)

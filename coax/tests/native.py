@@ -9,7 +9,7 @@ import unittest
 from quiet_crash import run as run_quiet_crash
 
 ROOT = Path(__file__).resolve().parents[1]
-COMPILER = ROOT / 'bin/coax'
+COMPILER = Path(os.environ.get('COAX_TEST_COMPILER', ROOT / 'bin/coax')).resolve()
 
 class NativeTests(unittest.TestCase):
     def invoke(self, source, command='c', *options, expect_crash=False):
@@ -19,8 +19,8 @@ class NativeTests(unittest.TestCase):
             return runner([str(COMPILER),command,str(path),*options],capture_output=True,text=True,timeout=15)
 
     def test_borrowed_return_storage_under_sanitizers(self):
-        source='''tail :: (input:[]u8)->[]u8 #export_c {alias:=input;return alias[1..<input.count];}
-        text :: (input:[]u8)->string #export_c {return cast(string)input;}
+        source='''tail :: (input:[]u8)->[]u8 #export_c #effects(all) {alias:=input;return alias[1..<input.count];}
+        text :: (input:[]u8)->string #export_c #effects(all) {return cast(string)input;}
         '''
         with tempfile.TemporaryDirectory() as directory:
             d=Path(directory);path=d/'borrow.coax';path.write_text(source)
@@ -41,11 +41,11 @@ class NativeTests(unittest.TestCase):
         source = '''TABLE :: [4]int.[3,5,7,9];
         Row :: struct {n:int;}
         Carrier :: struct {data:[] const Row;}
-        row_tail :: (input:[] const Row)->Carrier #export_c {return Carrier.{data=input[1..<input.count]};}
-        table :: ()->[] const int #export_c {return TABLE[..];}
-        tail :: (input:[] const int)->[] const int #export_c {return input[1..<input.count];}
-        total :: (input:[] const int)->int #export_c {answer:=0;for x:input {answer+=x;}return answer;}
-        bytes :: (input:[] const u8)->string #export_c {return cast(string)input;}
+        row_tail :: (input:[] const Row)->Carrier #export_c #effects(all) {return Carrier.{data=input[1..<input.count]};}
+        table :: ()->[] const int #export_c #effects(all) {return TABLE[..];}
+        tail :: (input:[] const int)->[] const int #export_c #effects(all) {return input[1..<input.count];}
+        total :: (input:[] const int)->int #export_c #effects(all) {answer:=0;for x:input {answer+=x;}return answer;}
+        bytes :: (input:[] const u8)->string #export_c #effects(all) {return cast(string)input;}
         '''
         with tempfile.TemporaryDirectory() as directory:
             d=Path(directory); path=d/'readonly.coax'; path.write_text(source)
@@ -80,7 +80,7 @@ class NativeTests(unittest.TestCase):
                ('main :: () {a:[1]int;r:[] const int=a[..];s:=cast([]int)r;}', 'E0362')]
         for source,code in cases:
             r=self.invoke(source,'check');self.assertNotEqual(r.returncode,0);self.assertIn(code,r.stderr)
-        source='run :: (index:int, data:[] const f32) #export_c {}'
+        source='run :: (index:int, data:[] const f32) #export_c #effects(all) {}'
         for command in ('cuda','metal-compute','wgsl','spirv','metal'):
             r=self.invoke(source,command);self.assertNotEqual(r.returncode,0);self.assertIn('E0951',r.stderr)
 
@@ -105,10 +105,10 @@ class NativeTests(unittest.TestCase):
                ('#assert #run byte_at("a",1)==0; main :: () {}','E0410'),
                ('#assert f32(1e100) == 0.0; main :: () {}','E0350'),
                ('A :: 1e100; #assert #run f32(A * 1.0f64) == 0.0; main :: () {}','E0411'),
-               ('x :: () -> int #foreign; A :: #run x(); main :: () {}','E0404'),
-               ('x :: (s:string) #foreign; main :: () {}','E0376'),
-               ('x :: () -> string #foreign; main :: () {}','E0376'),
-               ('coax_x :: () #foreign; main :: () {}','E0376'),
+               ('x :: () -> int #foreign #effects(all); A :: #run x(); main :: () {}','E0404'),
+               ('x :: (s:string) #foreign #effects(all); main :: () {}','E0376'),
+               ('x :: () -> string #foreign #effects(all); main :: () {}','E0376'),
+               ('coax_x :: () #foreign #effects(all); main :: () {}','E0376'),
                ('sqrt :: (x:f64)->f64 { return x; } main :: () {}','E0335'),
                ('main :: () { x:=1e999; }','E0109'),
                ('main :: () { x:=1e39f32; }','E0109'),
@@ -126,15 +126,15 @@ class NativeTests(unittest.TestCase):
             self.assertNotEqual(r.returncode,0);self.assertIn(message,r.stderr)
 
     def test_fixed_abi_and_ordered_effects(self):
-        source='''next :: () -> int #foreign;
+        source='''next :: () -> int #foreign #effects(all);
         pair :: (a:int,b:int)->int { return a*10+b; }
-        result :: ()->int #export_c {
+        result :: ()->int #export_c #effects(all) {
           a:=pair(next(),next()); b:=next()*10+next();
           skip:=false && next()==99;
           loop:=0; while next()<7 { loop+=1; }
           return a*1000+b*10+loop;
         }
-        scalar :: (a:f32,b:f64,c:bool)->f64 #export_c { if c { return f64(a)+b; } return 0.0; }
+        scalar :: (a:f32,b:f64,c:bool)->f64 #export_c #effects(all) { if c { return f64(a)+b; } return 0.0; }
         '''
         for opt in ('-O0','-O2'):
             with tempfile.TemporaryDirectory() as directory:
@@ -174,11 +174,11 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(r.stdout,'-2 4 -9223372036854775808\n')
 
     def test_metal_scalar_restrictions(self):
-        good='f :: (x:f32)->f32 #export_c { return sin(x)+1.0f32; }'
+        good='f :: (x:f32)->f32 #export_c #effects(all) { return sin(x)+1.0f32; }'
         r=self.invoke(good,'metal');self.assertEqual(r.returncode,0,r.stderr)
         self.assertIn('metal_stdlib',r.stdout);self.assertNotIn('stdio',r.stdout)
         for source in ['f :: (x:f64)->f64 {return x;}', 'f :: (x:int)->int {return x;}',
-                       'f :: () #foreign;', 'f :: () {while true {}}',
+                       'f :: () #foreign #effects(all);', 'f :: () {while true {}}',
                        'f :: (x:f32)->f32 {return f(x);}',
                        'f :: () {s:="host";}']:
             r=self.invoke(source,'metal');self.assertNotEqual(r.returncode,0);self.assertIn('E0377',r.stderr)

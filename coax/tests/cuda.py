@@ -9,12 +9,12 @@ COMPILER=Path(os.environ.get('COAX_TEST_COMPILER',ROOT/'bin/coax'))
 
 KERNEL='''
 twice :: (x:f32)->f32 {return x+x;}
-scale :: (item:int,factor:f32,x:[]f32,out:[]f32) #export_c {
+scale :: (item:int,factor:f32,x:[]f32,out:[]f32) #export_c #effects(all) {
     acc:[4]f32;
     for i:0..<4 {acc[i]=twice(x[item])*factor;}
     out[item]=acc[3];
 }
-bits :: (item:int,w:[]u64,out:[]u32) #export_c {
+bits :: (item:int,w:[]u64,out:[]u32) #export_c #effects(all) {
     out[item]=cast,trunc(u32)(w[item]>>16)|add_wrap(cast(u32)1,cast(u32)2);
     for value:w {if value==0 {break;}}
 }
@@ -29,29 +29,29 @@ label :: (x:f32)->string {if x>0 {return "positive";}return "other";}
 '''
 
 REFUSALS=[
-    ('a string value','k :: (item:int,out:[]f32) #export_c {s:="x";out[item]=1;}'),
-    ('a struct value','P :: struct {a:f32;}\nk :: (item:int,out:[]f32) #export_c {p:P;out[item]=p.a;}'),
-    ('an enum value','E :: enum u8 {a;b;}\nk :: (item:int,out:[]f32) #export_c {e:=E.a;out[item]=1;}'),
-    ('an array that is not a fixed array of at most 4096 scalars','k :: (item:int,out:[]f32) #export_c {a:[4097]f32;out[item]=a[0];}'),
-    ('a view parameter of a kernel that is not a view of numbers','k :: (item:int,flags:[]bool,out:[]f32) #export_c {out[item]=1;}'),
-    ('a view of something other than numbers','f :: (v:[]bool)->bool {return v[0];}\nk :: (item:int,out:[]f32) #export_c {a:[2]bool;if f(a[..]) {out[item]=1;}}'),
-    ('a while loop','k :: (item:int,out:[]f32) #export_c {i:=0;while i<3 {i+=1;}out[item]=1;}'),
-    ('defer','k :: (item:int,out:[]f32) #export_c {defer {out[item]=2;}out[item]=1;}'),
-    ('#assert','k :: (item:int,out:[]f32) #export_c {#assert item>=0;out[item]=1;}'),
-    ('print','#import "Basic";\nk :: (item:int,out:[]f32) #export_c {print("hi\\n");out[item]=1;}'),
-    ('a #foreign call','host :: (x:f32)->f32 #foreign;\nk :: (item:int,out:[]f32) #export_c {out[item]=host(1);}'),
-    ('a recursive call','f :: (n:int)->int {if n<=0 {return 0;}return f(n-1);}\nk :: (item:int,out:[]f32) #export_c {out[item]=f32(f(item));}'),
-    ('this storage intrinsic','k :: (item:int,out:[]u64) #export_c {out[item]=value_barrier(cast(u64)1);}'),
-    ('a kernel that returns a value','k :: (item:int,out:[]f32)->int #export_c {out[item]=1;return 0;}'),
-    ('a kernel whose first parameter is not its int work item','k :: (item:u32,out:[]f32) #export_c {out[0]=1;}'),
-    ('a returned value that is not a scalar','f :: ()->[2]f32 {a:[2]f32;return a;}\nk :: (item:int,out:[]f32) #export_c {out[item]=f()[0];}'),
-    ('a call chain deeper than 64',''.join('g%d :: ()->int {return g%d();}\n'%(i,i+1) for i in range(70))+'g70 :: ()->int {return 1;}\nk :: (item:int,out:[]f32) #export_c {out[item]=f32(g0());}'),
+    ('a string value','k :: (item:int,out:[]f32) #export_c #effects(all) {s:="x";out[item]=1;}'),
+    ('a struct value','P :: struct {a:f32;}\nk :: (item:int,out:[]f32) #export_c #effects(all) {p:P;out[item]=p.a;}'),
+    ('an enum value','E :: enum u8 {a;b;}\nk :: (item:int,out:[]f32) #export_c #effects(all) {e:=E.a;out[item]=1;}'),
+    ('an array that is not a fixed array of at most 4096 scalars','k :: (item:int,out:[]f32) #export_c #effects(all) {a:[4097]f32;out[item]=a[0];}'),
+    ('a view parameter of a kernel that is not a view of numbers','k :: (item:int,flags:[]bool,out:[]f32) #export_c #effects(all) {out[item]=1;}'),
+    ('a view of something other than numbers','f :: (v:[]bool)->bool {return v[0];}\nk :: (item:int,out:[]f32) #export_c #effects(all) {a:[2]bool;if f(a[..]) {out[item]=1;}}'),
+    ('a while loop','k :: (item:int,out:[]f32) #export_c #effects(all) {i:=0;while i<3 {i+=1;}out[item]=1;}'),
+    ('defer','k :: (item:int,out:[]f32) #export_c #effects(all) {defer {out[item]=2;}out[item]=1;}'),
+    ('#assert','k :: (item:int,out:[]f32) #export_c #effects(all) {#assert item>=0;out[item]=1;}'),
+    ('print','#import "Basic";\nk :: (item:int,out:[]f32) #export_c #effects(all) {print("hi\\n");out[item]=1;}'),
+    ('a #foreign call','host :: (x:f32)->f32 #foreign #effects(all);\nk :: (item:int,out:[]f32) #export_c #effects(all) {out[item]=host(1);}'),
+    ('a recursive call','f :: (n:int)->int {if n<=0 {return 0;}return f(n-1);}\nk :: (item:int,out:[]f32) #export_c #effects(all) {out[item]=f32(f(item));}'),
+    ('this storage intrinsic','k :: (item:int,out:[]u64) #export_c #effects(all) {out[item]=value_barrier(cast(u64)1);}'),
+    ('a kernel that returns a value','k :: (item:int,out:[]f32)->int #export_c #effects(all) {out[item]=1;return 0;}'),
+    ('a kernel whose first parameter is not its int work item','k :: (item:u32,out:[]f32) #export_c #effects(all) {out[0]=1;}'),
+    ('a returned value that is not a scalar','f :: ()->[2]f32 {a:[2]f32;return a;}\nk :: (item:int,out:[]f32) #export_c #effects(all) {out[item]=f()[0];}'),
+    ('a call chain deeper than 64',''.join('g%d :: ()->int {return g%d();}\n'%(i,i+1) for i in range(70))+'g70 :: ()->int {return 1;}\nk :: (item:int,out:[]f32) #export_c #effects(all) {out[item]=f32(g0());}'),
 ]
 
 MMA=str((ROOT/'lib/compute/mma.coax').resolve())
 APPLE=str((ROOT/'lib/compute/apple.coax').resolve())
 WARP='#load "'+MMA+'";\n'+'''
-tile :: (item:int,a:[]u32,b:[]u32,c:[]f32,d:[]f32) #export_c {
+tile :: (item:int,a:[]u32,b:[]u32,c:[]f32,d:[]f32) #export_c #effects(all) {
     fa:[128]u32;fb:[64]u32;fc:[128]f32;
     for lane:0..<32 {
         for j:0..<4 {fa[lane*4+j]=a[item*128+lane*4+j];fc[lane*4+j]=c[item*128+lane*4+j];}
@@ -63,9 +63,9 @@ tile :: (item:int,a:[]u32,b:[]u32,c:[]f32,d:[]f32) #export_c {
 }
 '''
 def warp(body,arrays='fa:[128]u32;fb:[64]u32;fc:[128]f32;'):
-    return '#load "'+MMA+'";\nwarp_kernel :: (item:int,out:[]f32) #export_c {'+arrays+body+'}'
+    return '#load "'+MMA+'";\nwarp_kernel :: (item:int,out:[]f32) #export_c #effects(all) {'+arrays+body+'}'
 WARP_REFUSALS=[
-    ('a lane loop that is not for lane: 0..<32 in a kernel','f :: () {for lane:0..<32 {}}\nk :: (item:int,out:[]f32) #export_c {f();out[item]=1;}'),
+    ('a lane loop that is not for lane: 0..<32 in a kernel','f :: () {for lane:0..<32 {}}\nk :: (item:int,out:[]f32) #export_c #effects(all) {f();out[item]=1;}'),
     ('a per-lane index that is not lane*k+c into a [32*k] array',warp('for lane:0..<32 {fc[lane*4+4]=1;}')),
     ('a per-lane index that is not lane*k+c into a [32*k] array',warp('for lane:0..<32 {fc[lane*2]=1;}')),
     ('a per-lane index that is not lane*k+c into a [32*k] array',warp('for lane:0..<32 {fc[lane+lane]=1;}')),
@@ -79,7 +79,7 @@ WARP_REFUSALS=[
 
 # Group kernels: thread loops, threadgroup and per-thread arrays, barriers.
 GROUP='''
-tile :: (item:int,n:int,x:[]f32,out:[]f32) #export_c {
+tile :: (item:int,n:int,x:[]f32,out:[]f32) #export_c #effects(all) {
     shared:[256]f32;own:[256]f32;
     for thread:0..<128 {
         for i:0..<2 {shared[thread+128*i]=x[item*256+thread+128*i];}
@@ -93,11 +93,11 @@ tile :: (item:int,n:int,x:[]f32,out:[]f32) #export_c {
 }
 '''
 def group(body,arrays='t:[256]f32;'):
-    return 'group_kernel :: (item:int,out:[]f32) #export_c {'+arrays+body+'}'
+    return 'group_kernel :: (item:int,out:[]f32) #export_c #effects(all) {'+arrays+body+'}'
 GROUP_REFUSALS=[
     ('a thread loop that is not for thread: 0..<T in a kernel, with T a multiple of 32 from 32 to 1024',group('for thread:0..<48 {out[item]=1;}','')),
     ('a thread loop that is not for thread: 0..<T in a kernel, with T a multiple of 32 from 32 to 1024',group('for thread:0..<2048 {out[item]=1;}','')),
-    ('a thread loop that is not for thread: 0..<T in a kernel, with T a multiple of 32 from 32 to 1024','f :: (out:[]f32) {for thread:0..<64 {out[thread]=1;}}\nk :: (item:int,out:[]f32) #export_c {f(out);}'),
+    ('a thread loop that is not for thread: 0..<T in a kernel, with T a multiple of 32 from 32 to 1024','f :: (out:[]f32) {for thread:0..<64 {out[thread]=1;}}\nk :: (item:int,out:[]f32) #export_c #effects(all) {f(out);}'),
     ('a thread loop inside a lane loop or another thread loop',group('for lane:0..<32 {for thread:0..<64 {out[thread]=1;}}','')),
     ('a group kernel whose thread loops and group primitives disagree on its size, or that has lane loops or the MMA primitive',group('for thread:0..<64 {out[thread]=1;}for thread:0..<128 {out[thread]=2;}','')),
     ('threadgroup arrays of more than 32768 bytes in one kernel',group('for thread:0..<128 {a[thread]=1;b[thread]=1;c[thread]=1;}for thread:0..<128 {out[thread]=a[4095-thread]+b[4095-thread]+c[4095-thread];}','a:[4096]f32;b:[4096]f32;c:[4096]f32;')),
@@ -157,7 +157,7 @@ class Cuda(unittest.TestCase):
         self.assertGreaterEqual(out.count('__syncthreads();'),5)  # zeroing, then both sides of each thread loop
         self.assertIn('if (blockDim.x != 128u) __trap();\n  int64_t coax_item = (int64_t)blockIdx.x;',out)
     def test_apple_matrix_primitives_are_refused(self):
-        r=self.run_cuda('#load "'+APPLE+'";\nk :: (item:int,w:[]u32,x:[]f32,out:[]f32) #export_c {am_matmul_bf16(128,16,64,64,32,16,0,0,w,x,out);}')
+        r=self.run_cuda('#load "'+APPLE+'";\nk :: (item:int,w:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {am_matmul_bf16(128,16,64,64,32,16,0,0,w,x,out);}')
         self.assertNotEqual(r.returncode,0)
         self.assertIn('an Apple matrix primitive in a CUDA kernel is outside the CUDA compute subset',r.stderr)
     def test_warp_kernels_keep_per_lane_values_and_emit_one_mma(self):
@@ -173,7 +173,7 @@ class Cuda(unittest.TestCase):
             p=Path(d)/'w.coax';p.write_text(WARP)
             self.assertEqual(subprocess.run([str(COMPILER),'c',str(p),'--library'],capture_output=True,text=True).returncode,0)
     def test_a_loop_named_lane_with_other_bounds_is_ordinary(self):
-        r=self.run_cuda('k :: (item:int,n:int,out:[]f32) #export_c {sum:f32=0;for lane:0..<n {sum+=1;}for lane:0..<16 {sum+=2;}out[item]=sum;}')
+        r=self.run_cuda('k :: (item:int,n:int,out:[]f32) #export_c #effects(all) {sum:f32=0;for lane:0..<n {sum+=1;}for lane:0..<16 {sum+=2;}out[item]=sum;}')
         self.assertEqual(r.returncode,0,r.stderr)
         self.assertNotIn('threadIdx.x & 31u',r.stdout)
         self.assertIn('if (coax_item >= coax_items) return;',r.stdout)
