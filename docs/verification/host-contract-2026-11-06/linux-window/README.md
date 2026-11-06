@@ -43,5 +43,6 @@ Use a new output directory for each run. The prepared instrumented build
 reuses only the source-fenced successful Coax emission; it compiles and runs
 the actual SDK and generated producer/observer under the sanitizers.
 
-Physical window acceptance remains required before switching the desktop
-default. The dispatcher observations alone do not qualify that integration.
+The [current ordinary window](complete/README.md) now passes its normal and
+fully instrumented room/input/audio/JPEG workload. The dispatcher observations
+alone do not qualify that integration or the final three-host default switch.

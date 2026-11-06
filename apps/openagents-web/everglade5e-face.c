@@ -362,6 +362,12 @@ EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(cx_face_addr state, in
   /* 8: the town's people with one of the engine's conditions drawn on them (in a room the server's, e5_take); 9 yours (E5_CONDITION bits) */
   if (field == 8) { int k = 0; for (int i = 1; i < (int)(sizeof e5_view.cond / sizeof e5_view.cond.e[0]); i++) if (e5_view.cond.e[i]) k++; return k; }
   if (field == 9) return (int32_t)e5_view.cond.e[0];
+  /* Input diagnostics share the actual realm state; they do not inject input. */
+  if (field == 10) return (int32_t)city(state)->held;
+  if (field == 11) return (int32_t)(city(state)->key_y * 1000);
+  if (field == 12) return everglade_busy(at(state));
+  if (field == 13) return city(state)->chat.typing;
+  if (field == 14) return everglade_held(at(state));
   /* 100 + I: townsperson I's conditions (E5_CONDITION bits), for the drift check's notes of who holds what */
   if (field >= 100 && field < 100 + (int)(sizeof e5_view.cond / sizeof e5_view.cond.e[0]) - 1) return (int32_t)e5_view.cond.e[field - 99];
   return -1;

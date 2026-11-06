@@ -1,0 +1,26 @@
+vk-realm: online: http://127.0.0.1:36069 through /tmp/oa-12869-final/world-asan-shutdown/net, kept in /tmp/oa-12869-final/window-asan-shutdown/state
+vk-realm: canonical profile2 at 320x180, package made in 2689 ms
+vk-realm: in a 320x180 window at 60.000 Hz, drawn at 320x180; closing the window or 40 s ends it
+vk-realm: window network row=0 local=1 emitted=88 delivered=41 waiting=40 outgoing=7
+vk-realm: window held input: held=1 y=1000 busy=0 typing=0 stopped=0
+vk-realm: window network row=1 local=2 emitted=130 delivered=81 waiting=82 outgoing=19
+vk-realm: window network row=2 local=2 emitted=130 delivered=81 waiting=83 outgoing=19
+vk-realm: window network row=3 local=1 emitted=547 delivered=548 waiting=406 outgoing=0
+vk-realm: window availability: fence=0 reserved=0 suspended=0 life=1,1,1,1 clock=587091864030
+vk-realm: window network row=4 local=2 emitted=635 delivered=587 waiting=447 outgoing=4
+
+=================================================================
+==529550==ERROR: LeakSanitizer: detected memory leaks
+
+Direct leak of 96 byte(s) in 1 object(s) allocated from:
+    #0 0x79d7a31215a3 in calloc (/nix/store/3b7njvjfc2w5lhj1jklrsw4lq7nwypri-gcc-15.2.0-lib/lib/libasan.so.8+0x1215a3)
+    #1 0x79d7a37bb69c in proxy_create (/nix/store/1hn1hflihwi4qr3nkyqfiavz6jxm4ks0-wayland-1.25.0/lib/libwayland-client.so.0+0x669c) (BuildId: f6900a2232f56da67352e4f9476b7af5c3308cb4)
+    #2 0x79d7a37bdc5d in wl_proxy_marshal_array_flags (/nix/store/1hn1hflihwi4qr3nkyqfiavz6jxm4ks0-wayland-1.25.0/lib/libwayland-client.so.0+0x8c5d) (BuildId: f6900a2232f56da67352e4f9476b7af5c3308cb4)
+    #3 0x79d7a37be316 in wl_proxy_marshal_flags (/nix/store/1hn1hflihwi4qr3nkyqfiavz6jxm4ks0-wayland-1.25.0/lib/libwayland-client.so.0+0x9316) (BuildId: f6900a2232f56da67352e4f9476b7af5c3308cb4)
+    #4 0x555859dd3df0 in vkw_open (/tmp/oa-12869-final/world-asan-shutdown/vk-realm+0x224df0)
+    #5 0x555859dea32e in main (/tmp/oa-12869-final/world-asan-shutdown/vk-realm+0x23b32e)
+    #6 0x79d79f82b284 in __libc_start_call_main (/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6+0x2b284) (BuildId: efb85690f4b57f8e3536cf17e8835f0ec7631404)
+    #7 0x79d79f82b337 in __libc_start_main@GLIBC_2.2.5 (/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6+0x2b337) (BuildId: efb85690f4b57f8e3536cf17e8835f0ec7631404)
+    #8 0x555859d20a84 in _start (/tmp/oa-12869-final/world-asan-shutdown/vk-realm+0x171a84)
+
+SUMMARY: AddressSanitizer: 96 byte(s) leaked in 1 allocation(s).

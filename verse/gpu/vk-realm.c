@@ -34,6 +34,7 @@
 #endif
 #ifdef AETHYR_RENDER_TYPED
 #include "render-realm.h"
+#include "linux-window-session.h"
 #else
 #include "vk-spec.h"
 #endif
@@ -81,6 +82,8 @@ static void vt_leave(int to) {
 }
 static RealmHost H;
 static uint64_t producer_calls;
+static Vkw *text_window;
+static int to_text_rect(void *,float[4]);
 static const char *image_request_observer;
 extern int32_t guard_http(cx_face_addr,uint32_t,cx_face_addr,uint32_t,uint32_t,int64_t);
 static volatile int touched;
@@ -96,6 +99,8 @@ __attribute__((weak)) void coaxial_hover(cx_face_addr state,float x,float y);
 __attribute__((weak)) double coaxial_frame_parts(cx_face_addr state,int32_t field);
 __attribute__((weak)) int32_t coaxial_net_probe(cx_face_addr state,int32_t field);
 __attribute__((weak)) int32_t coaxial_wants_text(cx_face_addr state);
+__attribute__((weak)) cx_face_addr coaxial_field(cx_face_addr state);
+__attribute__((weak)) uint32_t coaxial_host_copy_span(uint64_t,uint64_t,uint64_t,uint64_t);
 static VkQueryPool benchmark_queries;
 static int benchmark_timestamps=1;
 static FILE *benchmark_file;
@@ -112,11 +117,14 @@ static double now_s(void) {
   return t.tv_sec + t.tv_nsec / 1e9;
 }
 static int64_t now_us(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (int64_t)t.tv_sec*1000000+t.tv_nsec/1000;}
-static int to_focus(void *user,int focused){(void)user;if(rh_host_version()!=1)return 0;rh_lifecycle_event(&H,focused?2:3,now_us(),0);return 1;}
+static int to_focus(void *user,int focused){(void)user;if(rh_host_version()!=1)return 0;if(!focused&&text_window)vkw_text_invalidate(text_window);rh_lifecycle_event(&H,focused?2:3,now_us(),0);return 1;}
 static uint32_t to_realm_key(void *user,int key,int mods,int down){(void)user;touched = 1;return rh_key(&H,key,mods,down);}
-static void to_text(void *user,const char *bytes,size_t length){(void)user;rh_audio_gesture(&H);rh_send(&H,1,bytes,length);}
+static void to_text(void *user,const char *bytes,size_t length){(void)user;(void)rh_text(&H,bytes,length);}
 static int to_wants_text(void *user){(void)user;return coaxial_wants_text?coaxial_wants_text(H.state):0;}
-static void to_shown(void *user,int shown){(void)user;rh_lifecycle_event(&H,shown?5:4,now_us(),0);rh_send(&H,shown?602:601,"",0);}
+static uint64_t to_text_owner(void *user){return to_wants_text(user)?(uint64_t)H.state:0;}
+static void to_text_error(void *user,const char *message){(void)user;(void)message;rh_refuse(&H);}
+static int to_clipboard(void *user,const char *bytes,size_t length){return vkw_clipboard_set(user,bytes,length);}
+static void to_shown(void *user,int shown){(void)user;if(!shown&&text_window)vkw_text_invalidate(text_window);rh_lifecycle_event(&H,shown?5:4,now_us(),0);rh_send(&H,shown?602:601,"",0);}
 
 // 16 random hex digits from the kernel.
 static void random_id(char out[17]) {
@@ -231,7 +239,25 @@ static void to_wheel(void *user, float dy) { (void)user; touched = 1; rh_wheel(&
 static Mice mice;
 static int cursor;
 static Vkp *window_p;          // the window's presenter (--window): its size, to scale the pointer
-static float draw_w, draw_h;   // what the realm draws at
+static float draw_w, draw_h;
+#ifdef AETHYR_RENDER_TYPED
+static int64_t session_observed[89];
+__attribute__((weak)) int32_t coaxial_field_probe(cx_face_addr,int32_t);
+__attribute__((weak)) int64_t rhn_socket_queue_info(int32_t);
+__attribute__((weak)) void rhn_socket_pool_shutdown(void);
+static void session_snapshot(int row,Vkp *p,RhgRealm *s,uint64_t presented){
+ int64_t *q=session_observed+row*16;
+ q[0]=producer_calls;q[1]=presented;q[2]=coaxial_net_probe?coaxial_net_probe(H.state,0):-1;q[3]=coaxial_net_probe?coaxial_net_probe(H.state,1):-1;
+ q[4]=coaxial_field_probe?coaxial_field_probe(H.state,0):0;q[5]=coaxial_field_probe?coaxial_field_probe(H.state,2):0;
+ q[6]=rh_audio_info(&H,0);q[7]=rh_audio_info(&H,23);q[8]=rh_audio_info(&H,9);q[9]=rh_audio_info(&H,30);
+ q[10]=p->w;q[11]=p->h;q[12]=rhgr_info(s,1);q[13]=rhg_ledger_info(1);q[14]=rhg_ledger_info(2);q[15]=coaxial_net_probe?coaxial_net_probe(H.state,6):-1;
+ if(rhn_socket_queue_info)fprintf(stderr,"vk-realm: window network row=%d local=%d emitted=%lld delivered=%lld waiting=%lld outgoing=%lld\n",row,coaxial_net_probe?coaxial_net_probe(H.state,98):-1,(long long)rhn_socket_queue_info(7),(long long)rhn_socket_queue_info(8),(long long)rhn_socket_queue_info(6),(long long)rhn_socket_queue_info(2));
+}
+#endif
+static int to_text_rect(void *user,float rect[4]){(void)user;if(!text_window||!window_p||!draw_w||!draw_h||!coaxial_field||!coaxial_host_copy_span)return 0;
+ cx_face_addr at=coaxial_field(H.state);if(!coaxial_host_copy_span(at,16,16,rh_address_limit()))return 0;float source[4];memcpy(source,rh_ptr(at),sizeof source);
+ for(int i=0;i<4;i++)rect[i]=source[i]*(i%2?(float)window_p->h/draw_h:(float)window_p->w/draw_w);return 1;
+}
 static VkDesk desk;            // --desk: Linux programs on a panel over the realm (vkdesk.h)
 // F8: the realm's own screen for the desk, when its face has one (the Grid's: newland-local.coax)
 __attribute__((weak)) float coaxial_panel_rect(cx_face_addr state, int32_t k);
@@ -460,7 +486,7 @@ int main(int argc, char **argv) {
   int golden = 0, headless = 0, demo = 0, windowed = 0, fullscreen = 0, leave_to = 0, facts_once = 0,audio_muted=0,headless_audio=0;
   const char *desk_dir = NULL, *desk_size = NULL, *desk_mode = NULL, *hands_path = NULL;
   const char *net_dir = NULL, *origin = "openagents.com", *name = "everglade", *go = NULL, *keys = "";
-  const char *replay_path=NULL,*benchmark_path=NULL,*host_recovery=NULL;
+  const char *replay_path=NULL,*benchmark_path=NULL,*host_recovery=NULL,*host_window=NULL;
   int page = 0;
   int sample_capacity = MAX_FRAMES;
   for (int i = 3; i < argc; i++) {
@@ -502,6 +528,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(a,"--benchmark")) benchmark_path=val,i++;
     else if (!strcmp(a,"--host-recovery")) host_recovery=val,i++;
     else if (!strcmp(a,"--host-image-request")) image_request_observer=val,i++;
+    else if (!strcmp(a,"--host-window")) host_window=val,i++;
     else { fprintf(stderr, "vk-realm: unknown argument %s\n", a); return 2; }
   }
   signal(SIGINT, on_signal);
@@ -576,8 +603,9 @@ int main(int argc, char **argv) {
   if (headless) vkc_open(&v);
   else if (windowed) {
     // the window's size, or the draw size, or 1600x900; the realm draws at the window's first size
-    VkwTo wto = {.pointer=to_pointer_window,.wheel=to_wheel,.moved=to_moved,.key=vkdesk_key,.button=to_extra_button,.focus=to_focus,.shown=to_shown,.realm_key=to_realm_key,.text=to_text,.wants_text=to_wants_text};
+    VkwTo wto = {.pointer=to_pointer_window,.wheel=to_wheel,.moved=to_moved,.key=vkdesk_key,.button=to_extra_button,.focus=to_focus,.shown=to_shown,.realm_key=to_realm_key,.text=to_text,.wants_text=to_wants_text,.text_rect=to_text_rect,.text_owner=to_text_owner,.text_error=to_text_error};
     vkw_open(&v, &win, coaxial_window_title?coaxial_window_title():"Verse", w ? w : 1600, h ? h : 900, fullscreen, wto);
+    text_window=&win;rh_set_clipboard(&H,to_clipboard,&win);
     if(coaxial_window_app_id)xdg_toplevel_set_app_id(win.toplevel,coaxial_window_app_id());
     screen.period = win.period;
     vkp_open(&v, &p, win.vk_surface, (uint32_t)win.want_w, (uint32_t)win.want_h);
@@ -709,6 +737,9 @@ int main(int argc, char **argv) {
     else fprintf(stderr, "vk-realm: on %ux%u at %.3f Hz, %d keyboards, %d mice; Escape held a second or %.0f s returns the screen\n", p.w, p.h, 1 / screen.period, keyboard_count,
             mice.count, seconds);
     double start = now_s(), prev = start;
+#ifdef AETHYR_RENDER_TYPED
+    coax_t_HostLinuxWindowSession session;coax_default_t_HostLinuxWindowSession(&session);int session_hidden=0;
+#endif
     while (1) {
       // The bounded timing sample is not a lifetime cap. Keep its recent half in order.
       int keep = (int)verse_panel_sample_keep(frames, sample_capacity);
@@ -747,6 +778,19 @@ int main(int argc, char **argv) {
       // image or the preceding submission still owns the mutable buffers.
       touch_activity(t);agents_poll(t);vkdesk_pump(&desk,t);os_requests();
       vkhands_poll(&hands,t,p.w,p.h,hand_to);rh_net_poll(&H);rh_replay_poll(&H);
+#ifdef AETHYR_RENDER_TYPED
+      if(host_window){session.messages=coaxial_net_probe?coaxial_net_probe(H.state,6):-1;int effect=(int)hlws_offer((coax_v_t_HostLinuxWindowSession){&session,1},(int64_t)((now_s()-start)*1000),(int64_t)producer_calls,coaxial_net_probe?coaxial_net_probe(H.state,0):-1,coaxial_net_probe?coaxial_net_probe(H.state,1):-1);
+       if(effect<0){fprintf(stderr,"vk-realm: window schedule refused: phase=%lld started=%lld last=%lld at=%lld now=%lld frames=%llu net=%d seat=%d; fence=%d reserved=%d suspended=%d life=%lld,%lld,%lld,%lld clock=%lld\n",(long long)session.phase,(long long)session.started,(long long)session.last,(long long)session.at,(long long)((now_s()-start)*1000),(unsigned long long)producer_calls,coaxial_net_probe?coaxial_net_probe(H.state,0):-1,coaxial_net_probe?coaxial_net_probe(H.state,1):-1,(int)vkGetFenceStatus(v.dev,p.fence),p.reserved,win.suspended,(long long)rh_lifecycle_info(0),(long long)rh_lifecycle_info(1),(long long)rh_lifecycle_info(2),(long long)rh_lifecycle_info(3),(long long)rh_lifecycle_info(4));why="window diagnostic refused";break;}
+       if(effect==1){rh_key(&H,-2,0,1);rh_key(&H,-2,0,0);}
+       if(effect==2){rh_key(&H,-2,0,1);rh_key(&H,-2,0,0);rh_key(&H,-1,0,1);rh_key(&H,-1,0,0);session_snapshot(0,&p,s,live_frames);rh_key(&H,'w',0,1);}
+       if(effect==3){if(coaxial_field_probe)fprintf(stderr,"vk-realm: window held input: held=%d y=%d busy=%d typing=%d stopped=%d\n",coaxial_field_probe(H.state,10),coaxial_field_probe(H.state,11),coaxial_field_probe(H.state,12),coaxial_field_probe(H.state,13),coaxial_field_probe(H.state,14));rh_key(&H,'w',0,0);}
+       if(effect==4){session_snapshot(1,&p,s,live_frames);to_shown(NULL,0);session_hidden=1;session_snapshot(2,&p,s,live_frames);}
+       if(effect==5){session_snapshot(3,&p,s,live_frames);to_shown(NULL,1);session_hidden=0;}
+       if(effect==6){win.want_w=640;win.want_h=360;}
+       if(effect==7){fprintf(stderr,"vk-realm: window availability: fence=%d reserved=%d suspended=%d life=%lld,%lld,%lld,%lld clock=%lld\n",(int)vkGetFenceStatus(v.dev,p.fence),p.reserved,win.suspended,(long long)rh_lifecycle_info(0),(long long)rh_lifecycle_info(1),(long long)rh_lifecycle_info(2),(long long)rh_lifecycle_info(3),(long long)rh_lifecycle_info(4));session_snapshot(4,&p,s,live_frames);size_t jpeg_bytes=0;uint8_t *jpeg=rhgr_jpeg(s,&jpeg_bytes);session_observed[88]=(int64_t)jpeg_bytes;free(jpeg);why="window diagnostic finished";break;}
+       if(session_hidden){struct timespec nap={0,2000000};nanosleep(&nap,NULL);continue;}
+      }
+#endif
       if(windowed&&win.suspended){struct timespec nap={0,2000000};nanosleep(&nap,NULL);continue;}
       int affordable=vkp_reserve(&v,&p);
       if(affordable<0){vkp_resize(&v,&p,p.w,p.h);continue;}
@@ -857,6 +901,7 @@ int main(int argc, char **argv) {
 #ifdef AETHYR_RENDER_TYPED
   printf("vk-realm: ledger: %lld objects, %lld words live at the last frame (epoch %lld)\n",(long long)rhg_ledger_info(1),(long long)rhg_ledger_info(2),(long long)rhg_ledger_info(0));
   int64_t closed_cpu=rhgr_close(s);
+  if(host_window){session_observed[80]=v.validating;session_observed[81]=vkc_validation_errors;session_observed[82]=vkc_validation_warnings;session_observed[83]=rhg_ledger_info(1);session_observed[84]=rhg_ledger_info(2);session_observed[85]=closed_cpu;}
   if(host_recovery){recovery_observed[19]=rhg_ledger_info(1);recovery_observed[20]=rhg_ledger_info(2);recovery_observed[21]=closed_cpu;}
   printf("vk-realm: ledger: %lld objects live after close\n",(long long)rhg_ledger_info(1));
 #else
@@ -880,6 +925,12 @@ int main(int argc, char **argv) {
   if(coaxial_close)coaxial_close(H.state);
   rh_close(&H);
 #ifdef AETHYR_RENDER_TYPED
+  // Join process-owned workers before global TLS teardown. Engine retirement
+  // alone does not wait for a worker's immutable job and thread-local state.
+  if(rhn_socket_pool_shutdown)rhn_socket_pool_shutdown();
+#endif
+#ifdef AETHYR_RENDER_TYPED
+  if(host_window){session_observed[86]=rh_audio_info(&H,42);session_observed[87]=rh_audio_info(&H,43);FILE *f=fopen(host_window,"wb");if(!f)return 1;int ok=fwrite(session_observed,sizeof session_observed,1,f)==1;if(fclose(f)||!ok)return 1;}
   if(host_recovery){FILE *f=fopen(host_recovery,"wb");if(!f)return 1;int ok=fwrite(recovery_observed,sizeof recovery_observed,1,f)==1;if(fclose(f)||!ok)return 1;}
 #endif
   return (vkc_validation_errors || vkc_validation_warnings) ? 1 : travelled ? 3 : 0;

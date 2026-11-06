@@ -51,6 +51,7 @@ typedef struct {
 
 typedef struct {
   struct wl_display *display;
+  struct wl_registry *registry;
   struct wl_compositor *compositor;
   struct xdg_wm_base *wm;
   struct wl_seat *seat;
@@ -58,6 +59,7 @@ typedef struct {
   struct wl_pointer *pointer;
   struct wl_output *output;
   struct zxdg_decoration_manager_v1 *decorations;
+  struct zxdg_toplevel_decoration_v1 *decoration;
   struct wl_surface *surface;
   struct xdg_surface *xdg;
   struct xdg_toplevel *toplevel;
@@ -384,8 +386,8 @@ static void vkw_open(Vkc *v, Vkw *w, const char *title, uint32_t width, uint32_t
   w->fullscreen = fullscreen;
   w->display = wl_display_connect(NULL);
   if (!w->display) { fprintf(stderr, "vk-realm: no Wayland display (WAYLAND_DISPLAY)\n"); exit(1); }
-  struct wl_registry *registry = wl_display_get_registry(w->display);
-  wl_registry_add_listener(registry, &vkw_registry_listener, NULL);
+  w->registry = wl_display_get_registry(w->display);
+  wl_registry_add_listener(w->registry, &vkw_registry_listener, NULL);
   wl_display_roundtrip(w->display);
   wl_display_roundtrip(w->display);
   if (!w->compositor || !w->wm) { fprintf(stderr, "vk-realm: the compositor has no xdg-shell\n"); exit(1); }
@@ -400,8 +402,8 @@ static void vkw_open(Vkc *v, Vkw *w, const char *title, uint32_t width, uint32_t
   xdg_toplevel_set_title(w->toplevel, title);
   xdg_toplevel_set_app_id(w->toplevel, "com.openagents.verse");
   if (w->decorations) {
-    struct zxdg_toplevel_decoration_v1 *deco = zxdg_decoration_manager_v1_get_toplevel_decoration(w->decorations, w->toplevel);
-    zxdg_toplevel_decoration_v1_set_mode(deco, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+    w->decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(w->decorations, w->toplevel);
+    zxdg_toplevel_decoration_v1_set_mode(w->decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
   }
   if (fullscreen) xdg_toplevel_set_fullscreen(w->toplevel, NULL);
   wl_surface_commit(w->surface);
@@ -444,9 +446,20 @@ static void vkw_close(Vkc *v, Vkw *w) {
 #endif
   vkDestroySurfaceKHR(v->inst, w->vk_surface, NULL);
   vkc_close(v);
+  if(w->decoration)zxdg_toplevel_decoration_v1_destroy(w->decoration);
   xdg_toplevel_destroy(w->toplevel);
   xdg_surface_destroy(w->xdg);
   wl_surface_destroy(w->surface);
+  if(w->keyboard){if(wl_proxy_get_version((struct wl_proxy*)w->keyboard)>=3)wl_keyboard_release(w->keyboard);else wl_keyboard_destroy(w->keyboard);}
+  if(w->pointer){if(wl_proxy_get_version((struct wl_proxy*)w->pointer)>=3)wl_pointer_release(w->pointer);else wl_pointer_destroy(w->pointer);}
+  if(w->output)wl_output_destroy(w->output);
+  if(w->seat){if(wl_proxy_get_version((struct wl_proxy*)w->seat)>=5)wl_seat_release(w->seat);else wl_seat_destroy(w->seat);}
+  if(w->decorations)zxdg_decoration_manager_v1_destroy(w->decorations);
+  xdg_wm_base_destroy(w->wm);
+  wl_compositor_destroy(w->compositor);
+  wl_registry_destroy(w->registry);
   wl_display_disconnect(w->display);
+  if(vkw_==w)vkw_=NULL;
+  memset(w,0,sizeof *w);
 }
 #endif

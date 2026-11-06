@@ -1,0 +1,54 @@
+// Authored diagnostic schedule for the ordinary Wayland world adapter. The
+// SDK supplies monotonic time and observed room/frame facts; it owns effects.
+#authority;
+HostLinuxWindowSession :: struct {phase:int;started:int= -1;last:int= -1;at:int;messages:int;hidden_messages:int;}
+#test "hidden observation waits for actual room delivery within the existing diagnostic deadline" {
+ s:[1]HostLinuxWindowSession;s[0].phase=4;s[0].started=0;s[0].last=0;s[0].hidden_messages=7;s[0].messages=7;
+ #assert hlws_offer(s[..],1000,3,2,0)==0&&s[0].phase==4;
+ #assert hlws_offer(s[..],2000,3,2,0)==0;
+ s[0].messages=8;#assert hlws_offer(s[..],2001,3,2,0)==5&&s[0].phase==5;
+ a:[1]HostLinuxWindowSession;a[0].phase=4;a[0].started=0;#assert hlws_offer(a[..],30001,3,2,0)== -1;
+ b:[1]HostLinuxWindowSession;b[0].phase=3;b[0].started=0;b[0].messages=9;b[0].hidden_messages=7;
+ #assert hlws_offer(b[..],250,3,2,0)==4&&b[0].hidden_messages==9;
+ #assert hlws_offer(b[..],1250,3,2,0)==0;
+ b[0].messages=10;#assert hlws_offer(b[..],1251,3,2,0)==5&&b[0].hidden_messages==9;
+}
+#test "window schedule waits for a real frame and never enters a connecting room" {
+ s:[1]HostLinuxWindowSession;
+ #assert hlws_offer(s[..],0,0,0, -1)==0&&s[0].phase==0;
+ #assert hlws_offer(s[..],1,1,1, -1)==0&&s[0].phase==0;
+ #assert hlws_offer(s[..],2,1,0, -1)==1&&s[0].phase==1;
+ #assert hlws_offer(s[..],3001,2,2,0)==0;
+ #assert hlws_offer(s[..],3002,2,1,0)==0;
+ #assert hlws_offer(s[..],3002,2,2, -1)==0;
+ #assert hlws_offer(s[..],3002,2,2,0)==2&&s[0].phase==2;
+ times:=[5]int.[3252,3502,4502,5502,6502];
+ for t,i:times {if i==2 {s[0].messages=1;}#assert hlws_offer(s[..],t-1,3,2,0)==0;#assert hlws_offer(s[..],t,3,2,0)==i+3&&s[0].phase==i+3;}
+ #assert hlws_offer(s[..],6502,3,2,0)==0&&s[0].phase==7;
+ #assert hlws_offer(s[..],999999,3,2,0)==0;
+}
+#test "window diagnostic refuses invalid clocks and expires without a successful prefix" {
+ empty:[]HostLinuxWindowSession;#assert hlws_offer(empty,0,0,0,0)== -1;
+ for invalid:[2]int.[-1, -9223372036854775807] {s:[1]HostLinuxWindowSession;#assert hlws_offer(s[..],invalid,0,0,0)== -1&&s[0].phase== -1;}
+ s:[1]HostLinuxWindowSession;#assert hlws_offer(s[..],50,0,0,0)==0;#assert hlws_offer(s[..],49,0,0,0)== -1;#assert hlws_offer(s[..],51,1,0,0)== -1;
+ a:[1]HostLinuxWindowSession;#assert hlws_offer(a[..],50,0,0,0)==0;#assert hlws_offer(a[..],30050,0,0,0)==0;#assert hlws_offer(a[..],30051,0,0,0)== -1&&a[0].phase== -1;
+ z:[1]HostLinuxWindowSession;#assert hlws_offer(z[..],0,0,0,0)==0;#assert hlws_offer(z[..],1,0,0,0)==0&&z[0].started==0;
+ b:[1]HostLinuxWindowSession;#assert hlws_offer(b[..],0,1,0,0)==1;#assert hlws_offer(b[..],3000,1,2,0)==0;#assert hlws_offer(b[..],3000,2,2,0)==2;
+ c:[1]HostLinuxWindowSession;c[0].phase=8;#assert hlws_offer(c[..],0,1,2,0)== -1&&c[0].phase== -1;
+}
+// Effects 1 Enter; 2 observe play/hold W; 3 release W; 4 observe move/hide;
+// 5 observe hidden/show; 6 resize; 7 observe resume/finish. Zero waits.
+hlws_offer :: (s:[]HostLinuxWindowSession,now:int,frames:int,net:int,seat:int)->int #export_c #effects(all) {
+ if s.count!=1 {return -1;}
+ if s[0].phase<0||s[0].phase>7 {s[0].phase= -1;return -1;}if s[0].phase==7 {return 0;}
+ if now<0||now<s[0].last {s[0].phase= -1;return -1;}
+ if s[0].started<0 {s[0].started=now;}s[0].last=now;
+ if now-s[0].started>30000 {s[0].phase= -1;return -1;}
+ p:=s[0].phase;
+ if p==0 {if frames<1||net==1 {return 0;}}
+ else {waits:=[6]int.[3000,250,250,1000,1000,1000];if now-s[0].at<waits[p-1] {return 0;}
+  if p==1&&(frames<2||net!=2||seat<0) {return 0;}
+  if p==4&&s[0].messages<=s[0].hidden_messages {return 0;}}
+ if p==3 {s[0].hidden_messages=s[0].messages;}
+ s[0].phase+=1;s[0].at=now;return s[0].phase;
+}

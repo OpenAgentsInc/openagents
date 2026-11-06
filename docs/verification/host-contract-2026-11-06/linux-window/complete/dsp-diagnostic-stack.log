@@ -1,0 +1,154 @@
+could not load cursor 'dnd-move'
+could not load cursor 'dnd-move'
+could not load cursor 'dnd-copy'
+could not load cursor 'dnd-copy'
+could not load cursor 'dnd-none'
+could not load cursor 'dnd-none'
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libthread_db.so.1".
+vk-realm: online: http://127.0.0.1:9279 through /tmp/oa-12869-final/world-asan/net, kept in /tmp/oa-12869-final/audio-debug-state2
+[New Thread 0x7bffeedff6c0 (LWP 516209)]
+[New Thread 0x7bffe28b86c0 (LWP 516210)]
+[New Thread 0x7bffe20b76c0 (LWP 516211)]
+[New Thread 0x7bffe18b66c0 (LWP 516212)]
+[New Thread 0x7bffe10b56c0 (LWP 516213)]
+[New Thread 0x7bffdfdab6c0 (LWP 516214)]
+[New Thread 0x7bffdc5ff6c0 (LWP 516215)]
+vk-realm: canonical profile2 at 320x180, package made in 2944 ms
+vk-realm: in a 320x180 window at 60.000 Hz, drawn at 320x180; closing the window or 40 s ends it
+[New Thread 0x7bffc42366c0 (LWP 516265)]
+[New Thread 0x7bffc32356c0 (LWP 516266)]
+[New Thread 0x7bffc22346c0 (LWP 516267)]
+[New Thread 0x7bffc12256c0 (LWP 516268)]
+[Detaching after vfork from child process 516269]
+[Detaching after vfork from child process 516270]
+[Detaching after vfork from child process 516272]
+[Detaching after vfork from child process 516274]
+[Detaching after vfork from child process 516276]
+[Detaching after vfork from child process 516360]
+[Detaching after vfork from child process 516361]
+[Detaching after vfork from child process 516362]
+vk-realm: window network row=0 local=1 emitted=81 delivered=34 waiting=34 outgoing=7
+
+Thread 1 "vk-realm" received signal SIGINT, Interrupt.
+0x00007ffff3e9aa6f in __lll_lock_wait () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+
+Thread 12 (Thread 0x7bffc12256c0 (LWP 516268) "vk-realm"):
+#0  0x00007ffff3ea6962 in __syscall_cancel_arch () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#1  0x00007ffff3e9a04c in __internal_syscall_cancel () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#2  0x00007ffff3e9a7cc in __futex_abstimed_wait_common () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#3  0x00007ffff3e9d22e in pthread_cond_wait@@GLIBC_2.3.2 () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#4  0x000055555581585e in worker ()
+#5  0x00007ffff7863c76 in asan_thread_start(void*) () from /nix/store/3b7njvjfc2w5lhj1jklrsw4lq7nwypri-gcc-15.2.0-lib/lib/libasan.so.8
+#6  0x00007ffff3e9dd93 in start_thread () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#7  0x00007ffff3f258bc in __clone3 () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+
+Thread 11 (Thread 0x7bffc22346c0 (LWP 516267) "vk-realm"):
+#0  0x00007ffff3ea6962 in __syscall_cancel_arch () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#1  0x00007ffff3e9a04c in __internal_syscall_cancel () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#2  0x00007ffff3e9a7cc in __futex_abstimed_wait_common () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#3  0x00007ffff3e9d22e in pthread_cond_wait@@GLIBC_2.3.2 () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#4  0x000055555581585e in worker ()
+#5  0x00007ffff7863c76 in asan_thread_start(void*) () from /nix/store/3b7njvjfc2w5lhj1jklrsw4lq7nwypri-gcc-15.2.0-lib/lib/libasan.so.8
+#6  0x00007ffff3e9dd93 in start_thread () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#7  0x00007ffff3f258bc in __clone3 () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+
+Thread 10 (Thread 0x7bffc32356c0 (LWP 516266) "vk-realm"):
+#0  0x00007ffff3ea6962 in __syscall_cancel_arch () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#1  0x00007ffff3e9a04c in __internal_syscall_cancel () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#2  0x00007ffff3e9a7cc in __futex_abstimed_wait_common () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#3  0x00007ffff3e9d22e in pthread_cond_wait@@GLIBC_2.3.2 () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#4  0x000055555581585e in worker ()
+#5  0x00007ffff7863c76 in asan_thread_start(void*) () from /nix/store/3b7njvjfc2w5lhj1jklrsw4lq7nwypri-gcc-15.2.0-lib/lib/libasan.so.8
+#6  0x00007ffff3e9dd93 in start_thread () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#7  0x00007ffff3f258bc in __clone3 () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+
+Thread 9 (Thread 0x7bffc42366c0 (LWP 516265) "vk-realm"):
+#0  0x00007ffff3ea6962 in __syscall_cancel_arch () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#1  0x00007ffff3e9a04c in __internal_syscall_cancel () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#2  0x00007ffff3e9a7cc in __futex_abstimed_wait_common () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#3  0x00007ffff3e9d22e in pthread_cond_wait@@GLIBC_2.3.2 () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#4  0x00005555558171f0 in hni_emit ()
+#5  0x0000555555755ee9 in coax_p_hns_input ()
+#6  0x0000555555764718 in hns_worker_context ()
+#7  0x0000555555815774 in worker ()
+
+Thread 8 (Thread 0x7bffdc5ff6c0 (LWP 516215) "vk-real:disk$0"):
+#0  0x00007ffff3ea6962 in __syscall_cancel_arch () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#1  0x00007ffff3e9a04c in __internal_syscall_cancel () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#2  0x00007ffff3e9a7cc in __futex_abstimed_wait_common () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#3  0x00007ffff3e9d22e in pthread_cond_wait@@GLIBC_2.3.2 () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#4  0x00007bffece0c6c9 in cnd_wait () from /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
+#5  0x00007bffecdc34ec in util_queue_thread_func () from /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
+#6  0x00007bffece0c5f8 in impl_thrd_routine () from /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
+#7  0x00007ffff7863c76 in asan_thread_start(void*) () from /nix/store/3b7njvjfc2w5lhj1jklrsw4lq7nwypri-gcc-15.2.0-lib/lib/libasan.so.8
+
+Thread 7 (Thread 0x7bffdfdab6c0 (LWP 516214) "vk-realm"):
+#0  0x00007ffff3ea6962 in __syscall_cancel_arch () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#1  0x00007ffff3e9a04c in __internal_syscall_cancel () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#2  0x00007ffff3e9a7cc in __futex_abstimed_wait_common () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#3  0x00007ffff3e9d22e in pthread_cond_wait@@GLIBC_2.3.2 () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#4  0x00007bffece0c6c9 in cnd_wait () from /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
+#5  0x00007bffed08303c in lp_cs_tpool_worker () from /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
+#6  0x00007bffece0c5f8 in impl_thrd_routine () from /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
+#7  0x00007ffff7863c76 in asan_thread_start(void*) () from /nix/store/3b7njvjfc2w5lhj1jklrsw4lq7nwypri-gcc-15.2.0-lib/lib/libasan.so.8
+
+Thread 6 (Thread 0x7bffe10b56c0 (LWP 516213) "vk-realm"):
+#0  0x00007ffff3ea6962 in __syscall_cancel_arch () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#1  0x00007ffff3e9a04c in __internal_syscall_cancel () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#2  0x00007ffff3e9a7cc in __futex_abstimed_wait_common () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#3  0x00007ffff3e9d22e in pthread_cond_wait@@GLIBC_2.3.2 () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#4  0x00007bffece0c6c9 in cnd_wait () from /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
+#5  0x00007bffed08303c in lp_cs_tpool_worker () from /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
+#6  0x00007bffece0c5f8 in impl_thrd_routine () from /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
+#7  0x00007ffff7863c76 in asan_thread_start(void*) () from /nix/store/3b7njvjfc2w5lhj1jklrsw4lq7nwypri-gcc-15.2.0-lib/lib/libasan.so.8
+
+Thread 5 (Thread 0x7bffe18b66c0 (LWP 516212) "llvmpipe-1"):
+#0  0x00007ffff3ea6962 in __syscall_cancel_arch () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#1  0x00007ffff3e9a04c in __internal_syscall_cancel () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#2  0x00007ffff3e9a7cc in __futex_abstimed_wait_common () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#3  0x00007ffff3e9d22e in pthread_cond_wait@@GLIBC_2.3.2 () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#4  0x00007bffece0c6c9 in cnd_wait () from /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
+#5  0x00007bffed086c8f in thread_function () from /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
+#6  0x00007bffece0c5f8 in impl_thrd_routine () from /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
+#7  0x00007ffff7863c76 in asan_thread_start(void*) () from /nix/store/3b7njvjfc2w5lhj1jklrsw4lq7nwypri-gcc-15.2.0-lib/lib/libasan.so.8
+
+Thread 4 (Thread 0x7bffe20b76c0 (LWP 516211) "llvmpipe-0"):
+#0  0x00007ffff3ea6962 in __syscall_cancel_arch () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#1  0x00007ffff3e9a04c in __internal_syscall_cancel () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#2  0x00007ffff3e9a7cc in __futex_abstimed_wait_common () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#3  0x00007ffff3e9d22e in pthread_cond_wait@@GLIBC_2.3.2 () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#4  0x00007bffece0c6c9 in cnd_wait () from /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
+#5  0x00007bffed086c8f in thread_function () from /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
+#6  0x00007bffece0c5f8 in impl_thrd_routine () from /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
+#7  0x00007ffff7863c76 in asan_thread_start(void*) () from /nix/store/3b7njvjfc2w5lhj1jklrsw4lq7nwypri-gcc-15.2.0-lib/lib/libasan.so.8
+
+Thread 3 (Thread 0x7bffe28b86c0 (LWP 516210) "vk-realm"):
+#0  0x00007ffff3ea6962 in __syscall_cancel_arch () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#1  0x00007ffff3e9a04c in __internal_syscall_cancel () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#2  0x00007ffff3e9a7cc in __futex_abstimed_wait_common () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#3  0x00007ffff3e9d22e in pthread_cond_wait@@GLIBC_2.3.2 () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#4  0x00007bffece0c6c9 in cnd_wait () from /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
+#5  0x00007bffecc81072 in vk_queue_submit_thread_func () from /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
+#6  0x00007bffece0c5f8 in impl_thrd_routine () from /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
+#7  0x00007ffff7863c76 in asan_thread_start(void*) () from /nix/store/3b7njvjfc2w5lhj1jklrsw4lq7nwypri-gcc-15.2.0-lib/lib/libasan.so.8
+
+Thread 2 (Thread 0x7bffeedff6c0 (LWP 516209) "Aethyr Coax aud"):
+#0  0x00007ffff556c1c1 in coax_elem_v_f64 () from /tmp/oa-12869-final/world-asan/libhostaudio.so
+#1  0x00007ffff557d065 in ac_block () from /tmp/oa-12869-final/world-asan/libhostaudio.so
+#2  0x00007ffff557f00e in ap_block () from /tmp/oa-12869-final/world-asan/libhostaudio.so
+#3  0x00007ffff558c4f3 in next_block () from /tmp/oa-12869-final/world-asan/libhostaudio.so
+#4  0x00007ffff559293b in rha_render () from /tmp/oa-12869-final/world-asan/libhostaudio.so
+#5  0x00007ffff559845b in process () from /tmp/oa-12869-final/world-asan/libhostaudio.so
+#6  0x00007ffff53e42a8 in impl_node_process_output () from /nix/store/v29v9xa8sxwkm7a8bygzqpdn0yb235dg-pipewire-1.6.6/lib/libpipewire-0.3.so.0
+#7  0x00007ffff353ffdb in impl_node_process () from /nix/store/v29v9xa8sxwkm7a8bygzqpdn0yb235dg-pipewire-1.6.6/lib/spa-0.2/audioconvert/libspa-audioconvert.so
+
+Thread 1 (Thread 0x7ffff77cc7c0 (LWP 516161) "vk-realm"):
+#0  0x00007ffff3e9aa6f in __lll_lock_wait () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#1  0x00007ffff3ea15d8 in pthread_mutex_lock@@GLIBC_2.2.5 () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#2  0x00007ffff40851c8 in loop_lock () from /nix/store/v29v9xa8sxwkm7a8bygzqpdn0yb235dg-pipewire-1.6.6/lib/spa-0.2/support/libspa-support.so
+#3  0x00007ffff53f58f0 in pw_thread_loop_lock () from /nix/store/v29v9xa8sxwkm7a8bygzqpdn0yb235dg-pipewire-1.6.6/lib/libpipewire-0.3.so.0
+#4  0x00007ffff55a3327 in rhap_start () from /tmp/oa-12869-final/world-asan/libhostaudio.so
+#5  0x00005555557d578e in rh_audio_gesture ()
+#6  0x00005555557d83e9 in rh_key ()
+#7  0x0000555555793412 in main ()

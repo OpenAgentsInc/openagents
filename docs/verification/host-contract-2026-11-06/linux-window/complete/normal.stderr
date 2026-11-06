@@ -1,0 +1,10 @@
+vk-realm: online: http://127.0.0.1:45313 through /tmp/oa-12869-final/world-complete/net, kept in /tmp/oa-12869-final/window-complete/state
+vk-realm: canonical profile2 at 320x180, package made in 1073 ms
+vk-realm: in a 320x180 window at 60.000 Hz, drawn at 320x180; closing the window or 40 s ends it
+vk-realm: window network row=0 local=1 emitted=101 delivered=101 waiting=0 outgoing=0
+vk-realm: window held input: held=1 y=1000 busy=0 typing=0 stopped=0
+vk-realm: window network row=1 local=1 emitted=121 delivered=122 waiting=0 outgoing=0
+vk-realm: window network row=2 local=1 emitted=121 delivered=122 waiting=0 outgoing=0
+vk-realm: window network row=3 local=1 emitted=151 delivered=152 waiting=0 outgoing=0
+vk-realm: window availability: fence=0 reserved=0 suspended=0 life=1,1,1,1 clock=587567835052
+vk-realm: window network row=4 local=1 emitted=216 delivered=218 waiting=0 outgoing=0

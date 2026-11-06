@@ -1,0 +1,7 @@
+FAIL #test hidden observation waits for actual room delivery within the existing diagnostic deadline (0 ms)
+aethyr/host/linux-window-session.coax:7:2: error[E0406]: assertion failed
+   #assert hlws_offer(s[..],1000,3,2,0)==0&&s[0].phase==4;
+   ^
+  note: in #test hidden observation waits for actual room delivery within the existing diagnostic deadline
+1 of 3 checks (--only 'hidden observation'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

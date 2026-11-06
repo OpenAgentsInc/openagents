@@ -27,9 +27,12 @@ run correctly failed because the layer was absent from Vulkan's search
 path; the final run names the concrete installed SDK layer directory and
 requires the observed enabled fact. Zero counters alone cannot pass.
 
-`vkp_reserve` checks the preceding submission fence and acquires an
-available WSI image with zero timeout before producer advancement. An
-unavailable resource returns immediately. Presentation consumes that exact
+The original component checks the preceding submission fence and acquires
+a WSI image with zero timeout before producer advancement. The subsequent
+[ordinary-window qualification](../host-contract-2026-11-06/linux-window/complete/README.md)
+finds that repeated zero-timeout acquire exhausts the initial swapchain
+images. Current `vkp_reserve` uses a bounded one-millisecond acquire after
+the fence check; timeout still refuses producer advancement. Presentation consumes that exact
 reservation. Resize and close consume an unused acquire semaphore before
 retiring its swapchain; validation remains clear through complete teardown.
 The existing blocking API remains available to explicit synchronous probes.

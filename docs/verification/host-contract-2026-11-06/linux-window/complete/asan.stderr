@@ -1,0 +1,10 @@
+vk-realm: online: http://127.0.0.1:40211 through /tmp/oa-12869-final/world-asan-proxies/net, kept in /tmp/oa-12869-final/window-asan-proxies/state
+vk-realm: canonical profile2 at 320x180, package made in 2679 ms
+vk-realm: in a 320x180 window at 60.000 Hz, drawn at 320x180; closing the window or 40 s ends it
+vk-realm: window network row=0 local=1 emitted=88 delivered=41 waiting=44 outgoing=7
+vk-realm: window held input: held=1 y=1000 busy=0 typing=0 stopped=0
+vk-realm: window network row=1 local=2 emitted=126 delivered=77 waiting=85 outgoing=19
+vk-realm: window network row=2 local=2 emitted=126 delivered=77 waiting=86 outgoing=19
+vk-realm: window network row=3 local=1 emitted=549 delivered=550 waiting=414 outgoing=0
+vk-realm: window availability: fence=0 reserved=0 suspended=0 life=1,1,1,1 clock=587320879385
+vk-realm: window network row=4 local=2 emitted=632 delivered=586 waiting=450 outgoing=4

@@ -99,7 +99,7 @@ int vkp_reserve(Vkc *v,Vkp *p){
   if(ready!=VK_SUCCESS)CHECK(ready);
   if(p->shoot==2){p->shoot=0;p->shot_ready=1;}
   double began=now_s();
-  VkResult got=vkAcquireNextImageKHR(v->dev,p->chain,0,p->acquired,VK_NULL_HANDLE,&p->reserved_image);
+  VkResult got=vkAcquireNextImageKHR(v->dev,p->chain,1000000,p->acquired,VK_NULL_HANDLE,&p->reserved_image);
   p->acquiring=now_s()-began;
   if(got==VK_NOT_READY||got==VK_TIMEOUT)return 0;
   if(got==VK_ERROR_OUT_OF_DATE_KHR)return -1;

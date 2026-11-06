@@ -64,4 +64,5 @@ int64_t rhn_socket_queue_info(int32_t field){return context?mn_info(context,fiel
 int64_t rhn_socket_pool_info(int32_t field){return mn_pool_info(field);}
 void rhn_socket_shutdown(void){coaxial_host_transport_reset();for(int i=0;i<4;i++)owners[i].active=0;if(context){void *old=context;context=NULL;mn_close(old);}}
 // The pool is process-owned; engine replacement retires only its context.
-__attribute__((destructor)) static void pool_close(void){if(context)rhn_socket_shutdown();mn_shutdown();}
+void rhn_socket_pool_shutdown(void){if(context)rhn_socket_shutdown();mn_shutdown();}
+__attribute__((destructor)) static void pool_close(void){rhn_socket_pool_shutdown();}

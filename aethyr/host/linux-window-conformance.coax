@@ -1,0 +1,31 @@
+// Raw ordinary-world snapshots: play, moved, hidden start/end, resumed;
+// each has calls/presents/net/seat/feetX,Z/audioFrames,callbacks/active/
+// nonzeroMutedSamples/WSIwidth,height/mediaBytes/GPUlive,words/messages.
+// Live demand includes seven 48x48 stills and six 11x14 video placeholders:
+// 7*48*48*4 + 6*11*14*4 = 68208 decoded RGBA bytes.
+#authority;
+#test "ordinary window requires real movement, held world and continued room, then clean resume" {
+ q:[89]int;for r:0..<5 {b:=r*16;q[b]=10+r*10;q[b+1]=10+r*10;q[b+2]=2;q[b+3]=0;q[b+4]=ifx r==0 then 0 else 100;q[b+6]=100+r*100;q[b+7]=r+1;q[b+8]=ifx r==2||r==3 then 0 else 1;q[b+10]=ifx r==4 then 640 else 320;q[b+11]=ifx r==4 then 360 else 180;q[b+12]=68208;q[b+13]=1;q[b+14]=1;q[b+15]=10+r*10;}
+ for f:[4]int.[0,1,6,7] {q[48+f]=q[32+f];}q[80]=1;q[86]=1;q[87]=1;q[88]=900;#assert hlwq_accept(q[..]);#assert !hlwq_accept(q[0..<88]);long:[90]int;#assert !hlwq_accept(long[..]);
+ for r:0..<5 {for f:[8]int.[0,1,6,7,13,14,15,12] {a:=q;a[r*16+f]=0;#assert !hlwq_accept(a[..]);}
+  for f:[7]int.[2,8,9,10,11,12,3] {a:=q;a[r*16+f]=ifx f==3 then -1 else q[r*16+f]+1;#assert !hlwq_accept(a[..]);}}
+ a:=q;a[20]=a[4];#assert !hlwq_accept(a[..]);a=q;a[20]=a[4];a[21]=1;#assert hlwq_accept(a[..]);
+ for f:[4]int.[0,1,6,7] {a=q;a[16+f]=a[f];#assert !hlwq_accept(a[..]);a=q;a[48+f]+=1;#assert !hlwq_accept(a[..]);a=q;a[64+f]=a[48+f];#assert !hlwq_accept(a[..]);}
+ a=q;a[63]=a[47];#assert !hlwq_accept(a[..]);a=q;a[79]=a[63];#assert !hlwq_accept(a[..]);
+ for row:1..<5 {a=q;a[row*16+3]=1;#assert !hlwq_accept(a[..]);}
+ a=q;for row:0..<5 {a[row*16+3]= -1;}#assert !hlwq_accept(a[..]);
+ a=q;a[4]= -17;#assert hlwq_accept(a[..]);a=q;a[5]=11;a[21]=11;#assert hlwq_accept(a[..]);a[20]=a[4];#assert !hlwq_accept(a[..]);
+ a=q;a[47]=101;a[63]=102;a[79]=103;#assert hlwq_accept(a[..]);a[63]=101;#assert !hlwq_accept(a[..]);
+ for f:80..<88 {a=q;a[f]+=1;#assert !hlwq_accept(a[..]);}
+ a=q;a[88]=800;#assert !hlwq_accept(a[..]);a[88]=801;#assert hlwq_accept(a[..]);a[88]=1398104;#assert hlwq_accept(a[..]);a[88]+=1;#assert !hlwq_accept(a[..]);
+}
+hlwq_accept :: (q:[]int)->bool #export_c #effects(all) {
+ if q.count!=89 {return false;}
+ for r:0..<5 {b:=r*16;for f:[7]int.[0,1,6,7,13,14,15] {if q[b+f]<1 {return false;}}
+  if q[b+2]!=2||q[b+3]<0||q[b+3]!=q[3]||q[b+8]!=(ifx r==2||r==3 then 0 else 1)||q[b+9]!=0||q[b+10]!=(ifx r==4 then 640 else 320)||q[b+11]!=(ifx r==4 then 360 else 180)||q[b+12]!=68208 {return false;}}
+ if q[20]==q[4]&&q[21]==q[5] {return false;}
+ for f:[4]int.[0,1,6,7] {if q[16+f]<=q[f]||q[48+f]!=q[32+f]||q[64+f]<=q[48+f] {return false;}}
+ if q[63]<=q[47]||q[79]<=q[63] {return false;}
+ want:=[8]int.[1,0,0,0,0,0,1,1];for v,i:want {if q[80+i]!=v {return false;}}
+ return q[88]>800&&q[88]<=1398104;
+}

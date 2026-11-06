@@ -1,0 +1,9 @@
+vk-realm: lifetime 147 presented frames; timing sample 147 frames
+vk-realm: step+render median 40.69 ms, 99th 51.00 ms, longest 51.00 ms
+vk-realm: wait median 0.00 ms, 99th 0.00 ms, longest 0.00 ms
+vk-realm: 87 frames in 4.6 s (18.69 a second) at 60.000 Hz; dropped 191, longest gap 1049.7 ms
+vk-realm: frame time median 45.25 ms, 95th 48.63 ms, 99th 1049.66 ms
+vk-realm: NVIDIA GeForce RTX 4080, 320x180, 147 frames, 143 draws the last; it ended because window diagnostic finished
+vk-realm: validation: 0 errors, 0 warnings
+vk-realm: ledger: 35 objects, 21096327 words live at the last frame (epoch 148)
+vk-realm: ledger: 0 objects live after close

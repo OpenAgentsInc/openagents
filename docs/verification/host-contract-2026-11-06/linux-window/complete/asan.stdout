@@ -1,0 +1,9 @@
+vk-realm: lifetime 6 presented frames; timing sample 6 frames
+vk-realm: step+render median 4505.10 ms, 99th 4862.05 ms, longest 4862.05 ms
+vk-realm: wait median 0.00 ms, 99th 0.00 ms, longest 0.00 ms
+vk-realm: 6 frames in 23.3 s (0.21 a second) at 60.000 Hz; dropped 1394, longest gap 5651.8 ms
+vk-realm: frame time median 4417.42 ms, 95th 5651.81 ms, 99th 5651.81 ms
+vk-realm: llvmpipe (LLVM 21.1.8, 256 bits), 320x180, 6 frames, 143 draws the last; it ended because window diagnostic finished
+vk-realm: validation: 0 errors, 0 warnings
+vk-realm: ledger: 35 objects, 21096327 words live at the last frame (epoch 7)
+vk-realm: ledger: 0 objects live after close

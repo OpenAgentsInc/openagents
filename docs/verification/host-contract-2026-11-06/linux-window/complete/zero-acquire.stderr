@@ -1,0 +1,4 @@
+vk-realm: online: http://127.0.0.1:40517 through /tmp/oa-12869-final/world-observe/net, kept in /tmp/oa-12869-final/window-observe/state
+vk-realm: canonical profile2 at 320x180, package made in 1052 ms
+vk-realm: in a 320x180 window at 60.000 Hz, drawn at 320x180; closing the window or 40 s ends it
+vk-realm: window schedule refused: phase=-1 started=0 last=30001 at=120 now=30001 frames=3 net=3 seat=-1; fence=0 reserved=0 suspended=0 life=1,1,1,1 clock=584559176337
