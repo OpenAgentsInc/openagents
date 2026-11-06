@@ -1,0 +1,13 @@
+// Capture the measured optional media allocation without borrowing a prefix.
+#authority;
+#test "media capture admits only complete measured allocations in actual Wasm memory" {
+ #assert pcm_span(100,64,64,200)&&pcm_span(100,64,0,164)&&pcm_span(0,0,0,0);
+ #assert !pcm_span(0,64,1,200)&&!pcm_span(100,64,65,200);
+ #assert !pcm_span(100,64,64,163)&&!pcm_span(-1,0,0,200);
+ #assert !pcm_span(100,-1,0,200)&&!pcm_span(100,64,-1,200);
+ #assert !pcm_span(100,16777217,0,67108864)&&!pcm_span(100,64,0,-1);
+ #assert pcm_span(1,16777216,16777216,16777217);
+}
+pcm_span :: (address:int,capacity:int,bytes:int,memory:int)->bool #export_c #effects(all) {
+ return address>=0&&bytes>=0&&bytes<=capacity&&capacity<=16777216&&address<=memory&&capacity<=memory-address&&(bytes==0||address>0);
+}

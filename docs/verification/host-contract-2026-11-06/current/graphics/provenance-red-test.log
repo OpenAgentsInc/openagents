@@ -1,0 +1,7 @@
+FAIL #test Coax observer provenance can appear on either side without hiding product differences (3 ms)
+aethyr/tests/producer-capture-parity-checks.coax:25:2: error[E0406]: assertion failed
+   #assert jv_parse(a[..],cast(string)left[0..<ln],an[..])&&jv_parse(b[..],cast(string)right[0..<rn],bn[..])&&pcp_fields(a[0],b[0]);
+   ^
+  note: in #test Coax observer provenance can appear on either side without hiding product differences
+1 of 81 checks (--only 'Coax observer provenance'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

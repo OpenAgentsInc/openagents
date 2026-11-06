@@ -1,0 +1,27 @@
+{
+  "closedLedgerLive" : 0,
+  "closedLedgerWords" : 0,
+  "closedMediaBytes" : 0,
+  "completed" : 1,
+  "draws" : 136,
+  "frames" : 1,
+  "images" : [
+
+  ],
+  "ledgerEpoch" : 2,
+  "ledgerLive" : 37,
+  "ledgerWords" : 23529063,
+  "mediaOwnership" : [
+
+  ],
+  "pending" : 0,
+  "recoveries" : 0,
+  "recoveryReleasedLive" : 0,
+  "schema" : "aethyr.metal.effects-result.v1",
+  "seconds" : 0.94042495836038142,
+  "snapshots" : [
+    "\/tmp\/oa-12869-wasm90-metal.f32",
+    "\/tmp\/oa-12869-wasm90-metal-presented.bgra"
+  ],
+  "stateAddress" : 28689039360
+}

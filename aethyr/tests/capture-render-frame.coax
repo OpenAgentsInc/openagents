@@ -2,6 +2,7 @@
 // event/frame order, counts, retained uploads and artifact metadata.
 #load "producer-capture-frames.coax";
 #load "producer-facts-text-policy.coax";
+#load "producer-capture-media.coax";
 PCF_DRIVER :: "aethyr/tests/capture-render-frame.coax";
 PCF_EFFECTS :: "aethyr/tests/producer-capture-effects.js";
 pcf_input :: (inputs:[]RtqInputs,path:string)->bool {p:[4096]u8;file:=fs_realpath(path,p[..]);return file!="" && rtq_input_add(inputs,file);}
@@ -30,6 +31,17 @@ pcf_setup :: (c:[]Cdp,s:[]PcSession,p:PctOptions,pack:[]u8,pack_used:bool,facts:
 pcf_dump :: (c:[]Cdp,s:[]PcSession,p:PctOptions,capture:[]PctCapture,work:string,pack:[]u8,paths:[][4096]u8,path_n:[]int,files:[]PctFiles)->bool {
   row:=capture[0].frames[capture[0].frame_count-1];state:=[1]f64.[cast(f64)s[0].arena.base];draws:=row[2];pointer:=ifx draws>0 then pc_get(c,s,"coaxial_draws",state[..],true) else 0;
   if s[0].failed || !pct_binary(c,s,work,"u.bin",s[0].arena.uniforms,s[0].uniforms*4,files) || !pct_binary(c,s,work,"hud.bin",s[0].arena.vertices,row[1]*s[0].stride*4,files) || !pct_binary(c,s,work,"draws.bin",pointer,draws*16,files) {return false;}
+  media:=pc_call(c,"coaxial_media_len",state[..]);if !media.ok {return false;}
+  if media.defined {
+    capacity:=pc_call(c,"coaxial_media_capacity",state[..]);if !capacity.ok {return false;}
+    // Older faces without a measured media allocation keep their existing
+    // capture output. No media observation is claimed for those faces.
+    if capacity.defined {
+      if !media.integer_valid||!capacity.integer_valid {return false;}
+      at:=ifx media.integer>0 then pc_get(c,s,"coaxial_media",state[..],true) else 0;
+      if s[0].failed||!pcm_span(at,capacity.integer,media.integer,s[0].memory)||!pct_binary(c,s,work,"media.txt",at,media.integer,files) {return false;}
+    }
+  }
   counts:[4096]u8;o:[1]Jo;jo_start(o[..],counts[..]);for value,k:[9]int.[row[2],row[3],row[4],row[5],row[1],s[0].stride,row[6],row[7],row[8]] {if k>0 {jo_put(o[..]," ");}jo_int(o[..],value);}jo_put(o[..],"\n");if o[0].bad || !rto_saved(work,"draws.txt",jo_text(o[..])) {return false;}
   list:[65536]u8;lo:[1]Jo;jo_start(lo[..],list[..]);image:=0;have_vertices:=false;have_index:=false;
   for k:0..<pc_pack_count(pack) {

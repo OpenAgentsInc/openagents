@@ -17,6 +17,15 @@
   for byte:0..<256 {bytes:=[2]u8.['a',cast(u8)byte];allowed:=(byte>=65 && byte<=90)||(byte>=97 && byte<=122)||(byte>=48 && byte<=57)||byte==45||byte==95||byte==46;#assert pcp_file_name(cast(string)bytes[..])==allowed;}
   bytes:[256]u8;for k:0..<256 {bytes[k]='a';}#assert pcp_file_name(cast(string)bytes[0..<255]) && !pcp_file_name(cast(string)bytes[..]);
 }
+#test "Coax observer provenance can appear on either side without hiding product differences" {
+ base:[8192]u8;left:[8192]u8;right:[8192]u8;n:=pcp_fixture(-1,base[..]);o:[1]Jo;
+ jo_start(o[..],left[..]);jo_put(o[..],cast(string)base[0..<n-1]);jo_put(o[..],",\"source_inputs\":{\"observer.coax\":\"old\"}}");ln:=o[0].n;
+ jo_start(o[..],right[..]);jo_put(o[..],cast(string)base[0..<n-1]);jo_put(o[..],",\"source_inputs\":{\"observer.coax\":\"new\"}}");rn:=o[0].n;
+ a:[1]Jv;b:[1]Jv;an:[1024]JvNode;bn:[1024]JvNode;
+ #assert jv_parse(a[..],cast(string)left[0..<ln],an[..])&&jv_parse(b[..],cast(string)right[0..<rn],bn[..])&&pcp_fields(a[0],b[0]);
+ #assert jv_parse(b[..],cast(string)base[0..<n],bn[..])&&pcp_fields(a[0],b[0]);
+ n=pcp_fixture(2,base[..]);#assert jv_parse(b[..],cast(string)base[0..<n],bn[..])&&!pcp_fields(a[0],b[0]);
+}
 pcp_fixture :: (loss:int,out:[]u8)->int {
   o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);for key,k:pcp_keys() {jo_key(o[..],key);if k==0 {jo_str(o[..],ifx loss==k then "wrong" else "aethyr.render.producer-capture.v1");}else if k==1 {jo_str(o[..],ifx loss==k then "wrong" else "captured-unadmitted");}else if k==13 {jo_obj(o[..]);jo_key(o[..],"frames");jo_str(o[..],ifx loss==k then "3" else "2");jo_end(o[..]);}else {jo_int(o[..],ifx loss==k then k+1 else k);}}if loss==14 {jo_key(o[..],"extra");jo_int(o[..],1);}jo_end(o[..]);return o[0].n;
 }
