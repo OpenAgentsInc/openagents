@@ -447,3 +447,32 @@ was unused.
 
 - `MF_PerPartRoughnessModulation` (mouth x0.9, upper lip x1.1, chin x0.96 from
   the `T_Head_Skin_00x_R` masks) is not ported yet; its effect is small.
+
+### Depth of field and skin blur
+
+The shot now runs a post pass (`vc_post_fs`) after bloom. The scene pass
+writes linear light plus an aux target that marks skin.
+
+- Depth of field uses each frame's lens from the shot: focal length (meta
+  12), f-number (13) and focus distance (34) on a 24.89 mm sensor. The circle
+  of confusion is the thin-lens value, capped at 14 px at 1280 wide. The
+  gather is a single pass: 48 Vogel taps, widened by nearer neighbours' blur
+  so foreground edges spread over sharp areas.
+- Skin pixels get a depth-aware, per-channel Gaussian (1.6/0.75/0.4 mm for
+  red/green/blue), which stands in for Unreal's subsurface profile.
+- At dpr 2, the shot runs at 35.6 FPS, against 37.4 without the pass.
+
+### Inside the mouth
+
+At the snarl (frame 1152), the teeth (slot 10, `M_TeethNew`) showed as a
+flat white band. Unreal's ray-traced shadows leave the inside of the mouth
+dark red.
+
+- Every light and the ambient reach the teeth at 6 percent
+  (`SLAY_MOUTH_OCCLUSION`).
+- Shadowed skin, and the teeth, get the key's light back as a red-weighted
+  scatter term (`SLAY_SSS_BLEED_R/G`, `SLAY_MOUTH_BLEED`). Shadowed creases
+  turn warm instead of taking only the cool fill.
+- The contact term now scales every light, not only the total.
+- Still open: our lips part a little wider than Unreal's at 1150 to 1154. The
+  nostril rim stays grey-blue because the fill casts no shadow.

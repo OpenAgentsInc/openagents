@@ -1,3 +1,3 @@
 --vertices vc_bg_vs,vc_scene_vs,vc_shadow_vs,vc_fx_vs
---fragments vc_bg_fs,vc_scene_fs,vc_shadow_fs,vc_fx_fs
+--fragments vc_bg_fs,vc_scene_fs,vc_shadow_fs,vc_bloom_fs,vc_post_fs,vc_fx_fs
 --bindings apps/openagents-web/gpu/valleycanyon.bindings --strip vc_

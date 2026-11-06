@@ -61,7 +61,7 @@ cv_world :: (id:u32,instance:u32,vertices:[]u32,u:[]f32,bones:[]f32)->V3 {
 cv_shadow :: (world:V3,u:[]f32)->V3 {p:=cv_sub(world,cv_at(u,92));return v3(wg_dot3(p,cv_at(u,80))/u[96],wg_dot3(p,cv_at(u,84))/u[96],0.5-wg_dot3(p,cv_at(u,88))/(4*u[96]));}
 vc_bg_vs :: (i:u32,j:u32)->V4 {return splash_bg_vs(i,j);}
 // An explicit metre grid on the inspection floor, below every source bound. The original scene's terrain is not included.
-vc_bg_fs :: (p:V4,u:[]f32)->V4 {
+cv_bg_colour :: (p:V4,u:[]f32)->V4 {
   if u[112]>0.5 {
    sy:=1-p.y/u[1]*2;if abs(sy)>u[0]/u[1]/u[113] {return v4(0,0,0,1);}
    ray:=wg_normalize3(cv_add(cv_at(u,20),cv_add(cv_scale(cv_at(u,12),(p.x/u[0]*2-1)/u[15]),cv_scale(cv_at(u,16),sy/u[19]))));
@@ -75,6 +75,10 @@ vc_bg_fs :: (p:V4,u:[]f32)->V4 {
   at:=cv_add(cv_at(u,8),cv_scale(ray,t));fx:=abs(at.x-floor(at.x+0.5));fz:=abs(at.z-floor(at.z+0.5));line:=ifx fx<0.025 || fz<0.025 then 0.08f32 else 0.0f32;
   fade:=1.0f32/(1.0f32+t*0.025f32);c:=cv_add(cv_scale(v3(0.16+line,0.15+line,0.13+line),fade),cv_scale(sky,1-fade));return v4(c.x,c.y,c.z,1);
 }
+// bg_fs and scene_fs draw the toned colour into the post pass's light target and, in aux.x, how
+// much of the pixel is skin (aux.w the draw's coverage, so hair blended over skin thins it).
+VcLit :: struct {light:V4; aux:V4;}
+vc_bg_fs :: (p:V4,u:[]f32)->VcLit {c:=cv_bg_colour(p,u);return VcLit.{light=c,aux=v4(0,0,0,1)};}
 vc_vertex :: struct {a:V4;b:V4;c:V4;}
 vc_fx_vs :: (i:u32,j:u32,a:vc_vertex,u:[]f32)->SplashV {return splash_fx_vs(i,j,splash_fx_vs_in.{a=a.a,b=a.b,c=a.c,d=v4(0,0,0,0)},u);}
 vc_fx_fs :: (v:SplashV,u:[]f32)->V4 {return splash_fx_fs(v,u);}
@@ -154,6 +158,15 @@ cv_echo_head_ao :: (r:f32)->f32 {return 0.25+0.75*pow(fmax(r,0.0f32),1.6f32);}
 // in creases (the lip seam, under the lower lip) and at grazing angles where AO is low.
 // Unreal's ray-traced shadows darken the creases (the lip seam, under the lower lip, the nostrils)
 // even under direct light; our shadow map is too coarse for them, so the source AO stands in.
+// The teeth sit inside the mouth: Unreal's ray-traced shadows leave them only what reaches through
+// the lips. Every light and the ambient reach them at this share; the key's shadow map is too coarse to resolve the lips, so it takes the same share.
+SLAY_MOUTH_OCCLUSION :: 0.06f32;
+// Skin carries the key's light a few mm past its shadow edge, mostly red: Unreal's subsurface profile
+// turns shadowed creases (the nostrils, under the lips) warm instead of leaving them to the cool fill.
+SLAY_SSS_BLEED_R :: 0.35f32;
+SLAY_SSS_BLEED_G :: 0.07f32;
+// Inside the mouth the scattered key is what Unreal shows: a dark red, not grey teeth.
+SLAY_MOUTH_BLEED :: 0.5f32;
 SLAY_SKIN_CONTACT :: 1.1f32;
 cv_specular_occlusion :: (nv:f32,ao:f32,rough:f32)->f32 {return clampf(pow(fmax(nv,0.0f32)+ao,pow(2.0f32,-16.0f32*rough-1.0f32))-1.0f32+ao,0.0f32,1.0f32);}
 #test "Head AO and specular occlusion follow the source remap and fade in creases" {
@@ -340,10 +353,12 @@ cv_rect_power :: (u:[]f32,rect:V3)->f32 {d2:=wg_dot3(rect,rect);aim:=cv_oct_deco
 SLAY_SKIN_ENV :: 0.7f32;
 cv_slay_light :: (skin:bool,base:V3,f0:V3,metal:f32,rough:f32,n:V3,g:V3,l:V3,v:V3,spec_scale:f32,size:f32)->V3 {if skin {return cv_skin_light(base,f0,rough,n,g,l,v,spec_scale,size);}return cv_area_light(base,f0,metal,rough,n,l,v,spec_scale,size);}
 
-vc_scene_fs :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices:[]u32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
+vc_scene_fs :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices:[]u32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->VcLit {
   if u[112]>0.5 && abs(1-s.pos.y/u[1]*2)>u[0]/u[1]/u[113] {gpu_discard();}
   dx:=v2(gpu_dpdx_fine(s.uv.x),gpu_dpdx_fine(s.uv.y));dy:=v2(gpu_dpdy_fine(s.uv.x),gpu_dpdy_fine(s.uv.y));
-  return cv_scene_shade(s,u,sheets,sheet,vertices,shadow_map,shadow_cmp,dx,dy);
+  c:=cv_scene_shade(s,u,sheets,sheet,vertices,shadow_map,shadow_cmp,dx,dy);
+  skin:=ifx s.character>0.5 && (s.material==ECHO_HEAD_SLOT || s.material==ECHO_SKIN_SLOT) then 1.0f32 else 0.0f32;
+  return VcLit.{light=c,aux=v4(skin,0,0,c.w)};
 }
 #test "Walking Valley and Slay retain their own source head material profiles" {a:=v3(0.2,0.1,0.05);v:=cv_profile_head_colour(a,true);s:=cv_profile_head_colour(a,false);#assert v.x==cv_echo_head_colour(a).x && s.x==cv_echo_slay_head_colour(a).x && v.x!=s.x;}
 cv_profile_head_colour :: (a:V3,valley:bool)->V3 {return ifx valley then cv_echo_head_colour(a) else cv_echo_slay_head_colour(a);}
@@ -385,16 +400,81 @@ cv_scene_shade :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,verti
   ambient:=ifx s.character>0.5 then 0.7734375f32 else 0.16f32+0.12f32*(n.y*0.5f32+0.5f32);direct:=nl*shadow*3.5;colour:=cv_add(cv_scale(albedo,ambient*(1-metal)+direct*(1-metal)/3.14159265),cv_scale(spec,direct));
   if u[112]>0.5 {
    skin:=s.character>0.5 && (s.material==ECHO_HEAD_SLOT || s.material==ECHO_SKIN_SLOT);geo:=wg_normalize3(s.normal);rect:=cv_rect_delta(u,s.world);
-   colour=cv_add(cv_scale(albedo,0.08*occlusion),cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,l,v,1,SLAY_KEY_SIZE),shadow*u[123]),cv_at(u,120)));
-   colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,cv_at(u,97),v,1,SLAY_SOFT_SIZE),u[115]*SLAY_WRAP_FALLOFF),v3(1,0.40197778,0.20155625)));
-   colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,cv_at(u,28),v,SLAY_SOFT_SPECULAR,SLAY_SOFT_SIZE),u[31]*SLAY_FILL_FALLOFF),cv_at(u,124)));
-   colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,cv_kick_dir(u),v,SLAY_SOFT_SPECULAR,SLAY_SOFT_SIZE),SLAY_KICK_POWER*SLAY_KICK_FALLOFF),v3(SLAY_KICK_R,SLAY_KICK_G,SLAY_KICK_B)));
-   colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,wg_normalize3(rect),v,1,0),cv_rect_power(u,rect)*s.extra.x),v3(u[23],u[27],u[95])));
-   if skin {colour=cv_scale(colour,fmin(1.0f32,occlusion*SLAY_SKIN_CONTACT));}
-   if skin {env:=pbr_environment(rough,nv);colour=cv_add(colour,cv_scale(v3(1,0.94,0.75),(f0.x*env.a+env.b)*SLAY_SKIN_ENV*cv_specular_occlusion(nv,occlusion,rough)));}
+   inner:=ifx s.character>0.5 && s.material==ECHO_TEETH_SLOT then SLAY_MOUTH_OCCLUSION else 1.0f32;
+   // Skin creases: every light takes the contact term (the key on top of its shadow map).
+   contact:=ifx skin then fmin(1.0f32,occlusion*SLAY_SKIN_CONTACT) else 1.0f32;soft:=inner*contact;
+   colour=cv_add(cv_scale(albedo,0.08*occlusion*inner),cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,l,v,1,SLAY_KEY_SIZE),shadow*u[123]*inner),cv_at(u,120)));
+   colour=cv_scale(colour,contact);
+   if skin || inner<1 {bleed:=fmax(0.0f32,(wg_dot3(geo,l)+0.5)/1.5)*(1-shadow)*u[123]*contact*(ifx inner<1 then SLAY_MOUTH_BLEED else 1.0f32)/3.14159265;key_rgb:=cv_at(u,120);colour=cv_add(colour,v3(albedo.x*key_rgb.x*bleed*SLAY_SSS_BLEED_R,albedo.y*key_rgb.y*bleed*SLAY_SSS_BLEED_G,0));}
+   colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,cv_at(u,97),v,1,SLAY_SOFT_SIZE),u[115]*SLAY_WRAP_FALLOFF*soft),v3(1,0.40197778,0.20155625)));
+   colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,cv_at(u,28),v,SLAY_SOFT_SPECULAR,SLAY_SOFT_SIZE),u[31]*SLAY_FILL_FALLOFF*soft),cv_at(u,124)));
+   colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,cv_kick_dir(u),v,SLAY_SOFT_SPECULAR,SLAY_SOFT_SIZE),SLAY_KICK_POWER*SLAY_KICK_FALLOFF*soft),v3(SLAY_KICK_R,SLAY_KICK_G,SLAY_KICK_B)));
+   colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,wg_normalize3(rect),v,1,0),cv_rect_power(u,rect)*s.extra.x*soft),v3(u[23],u[27],u[95])));
+   if skin {env:=pbr_environment(rough,nv);colour=cv_add(colour,cv_scale(v3(1,0.94,0.75),(f0.x*env.a+env.b)*SLAY_SKIN_ENV*cv_specular_occlusion(nv,occlusion,rough)*smoothstep(0.0f32,0.35f32,nv)));}
   }
   if s.character>0.5 && s.material<26 && u[112]<0.5 {environment:=pbr_environment(rough,nv);f90:=clampf(50*f0.y,0.0f32,1.0f32);colour=cv_add(colour,cv_scale(cv_add(cv_scale(f0,environment.a),v3(f90*environment.b,f90*environment.b,f90*environment.b)),0.7734375));}
   if s.character>0.5 {mapped:=film_rec709(film_rgb(colour.x,colour.y,colour.z));return v4(cv_srgb(clampf(mapped.r,0.0f32,1.0f32)),cv_srgb(clampf(mapped.g,0.0f32,1.0f32)),cv_srgb(clampf(mapped.b,0.0f32,1.0f32)),ifx s.material==26 || s.material==27 then cv_groom_opacity(s.paint.x,s.paint.y) else 1.0f32);}
   return v4(cv_tone(colour.x),cv_tone(colour.y),cv_tone(colour.z),1);
 }
 cv_scale2 :: (a:V2,k:f32)->V2 {return v2(a.x*k,a.y*k);}
+
+// ---- the post pass: TF0290's depth of field and the skin's subsurface blur
+// No bloom: the host runs bloom_fs's passes for any post pass; these write nothing to it.
+vc_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f32)->V4 {return v4(0,0,0,1);}
+CV_NEAR :: 0.05f32;
+// Camera distance from the depth buffer (scene_vs: z' = 300/299.95 (z - 0.05), w = z).
+cv_view_z :: (d:f32)->f32 {return CV_NEAR/fmax(1.0f32-d*299.95f32/300.0f32,0.000001f32);}
+cv_srgb_linear :: (x:f32)->f32 {return ifx x<=0.04045 then x/12.92 else pow((x+0.055)/1.055,2.4f32);}
+cv_light_at :: (t:Tex2D,p:I2,size:U2)->V3 {q:=i2(clamp_s(p.x,0,cast(s32)size.x-1),clamp_s(p.y,0,cast(s32)size.y-1));c:=wg_load_2d(t,q,0);return v3(cv_srgb_linear(c.x),cv_srgb_linear(c.y),cv_srgb_linear(c.z));}
+clamp_s :: (x:s32,a:s32,b:s32)->s32 {if x<a {return a;}if x>b {return b;}return x;}
+// The thin-lens circle of confusion's radius in target pixels: f^2/N |z-zf| / (z (zf-f)) on a filmback
+// SLAY_SENSOR_WIDTH wide, spread over the target's width. u[128] focus (m), u[129] N, u[130] f (m).
+CV_SENSOR :: 0.02489f32;
+CV_DOF_MAX :: 14.0f32;
+cv_coc :: (z:f32,u:[]f32,width:f32)->f32 {
+ f:=u[130];zf:=u[128];if u[129]<=0 || f<=0 || zf<=f {return 0;}
+ c:=f*f/u[129]*abs(z-zf)/(z*(zf-f));return fmin(0.5*c/CV_SENSOR*width,CV_DOF_MAX*width/1280.0f32);
+}
+#test "TF0290's lens blurs the face a little and the temple a lot" {
+ u:[136]f32;u[128]=1.15;u[129]=2.4;u[130]=0.04;
+ face:=cv_coc(1.32,u[..],1280);far:=cv_coc(5,u[..],1280);#assert face>1.5 && face<2.5 && far>10 && far<CV_DOF_MAX && cv_coc(1.15,u[..],1280)==0;
+ #assert abs(cv_view_z(300.0f32/299.95f32*(1-CV_NEAR/1.32))-1.32)<0.001;
+}
+CV_GOLDEN :: 2.39996323f32;
+CV_DOF_TAPS :: 48;
+// Skin's subsurface blur, per channel (Gaussian sigma in mm on the face): red carries farthest.
+CV_SSS_R :: 1.6f32;
+CV_SSS_G :: 0.75f32;
+CV_SSS_B :: 0.4f32;
+vc_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_depth:TexDepth,post_lin:Sampler)->V4 {
+ px:=i2(wg_i32_f(pos.x),wg_i32_f(pos.y));size:=wg_dims_2d(post_light);width:=cast(f32)size.x;
+ raw:=wg_load_2d(post_light,px,0);
+ if u[112]<0.5 || u[129]<=0 {return v4(raw.x,raw.y,raw.z,1);}
+ zc:=cv_view_z(wg_load_depth(post_depth,px,0));rc:=cv_coc(zc,u,width);centre:=cv_light_at(post_light,px,size);
+ skin:=wg_load_2d(post_aux,px,0).x;
+ if skin>0.01 {
+  // Depth-aware Gaussian over the neighbouring skin: mm to pixels from the lens at this depth.
+  per_mm:=0.001*u[130]/CV_SENSOR*width/zc;reach:=fmin(3.0f32*CV_SSS_R*per_mm,12.0f32);
+  sum:=centre;wr:f32=1;wgt:f32=1;wb:f32=1;
+  for k:0..<24 {r:=reach*sqrt((cast(f32)k+0.5)/24.0f32);a:=cast(f32)k*CV_GOLDEN;q:=i2(px.x+wg_i32_f(r*cos(a)+0.5),px.y+wg_i32_f(r*sin(a)+0.5));
+   q=i2(clamp_s(q.x,0,cast(s32)size.x-1),clamp_s(q.y,0,cast(s32)size.y-1));
+   if wg_load_2d(post_aux,q,0).x<0.5 || abs(cv_view_z(wg_load_depth(post_depth,q,0))-zc)>0.012 {continue;}
+   c:=cv_light_at(post_light,q,size);mm:=r/per_mm;
+   kr:=exp(-mm*mm/(2*CV_SSS_R*CV_SSS_R));kg:=exp(-mm*mm/(2*CV_SSS_G*CV_SSS_G));kb:=exp(-mm*mm/(2*CV_SSS_B*CV_SSS_B));
+   sum=v3(sum.x+c.x*kr,sum.y+c.y*kg,sum.z+c.z*kb);wr+=kr;wgt+=kg;wb+=kb;}
+  blurred:=v3(sum.x/wr,sum.y/wgt,sum.z/wb);centre=cv_add(cv_scale(centre,1-skin),cv_scale(blurred,skin));
+ }
+ // Gustafsson's single-pass bokeh gather: each tap counts where its own circle reaches this pixel;
+ // taps behind the centre may not blur more than twice the centre's circle (no background bleeding).
+ reach:=rc;for k:0..<8 {a:=cast(f32)k*0.785398;q:=i2(px.x+wg_i32_f(cos(a)*CV_DOF_MAX),px.y+wg_i32_f(sin(a)*CV_DOF_MAX));q=i2(clamp_s(q.x,0,cast(s32)size.x-1),clamp_s(q.y,0,cast(s32)size.y-1));z:=cv_view_z(wg_load_depth(post_depth,q,0));if z<zc {reach=fmax(reach,cv_coc(z,u,width));}}
+ colour:=centre;
+ if reach>0.5 {
+  total:f32=1;
+  for k:0..<CV_DOF_TAPS {r:=reach*sqrt((cast(f32)k+0.5)/cast(f32)CV_DOF_TAPS);a:=cast(f32)k*CV_GOLDEN;q:=i2(clamp_s(px.x+wg_i32_f(r*cos(a)+0.5),0,cast(s32)size.x-1),clamp_s(px.y+wg_i32_f(r*sin(a)+0.5),0,cast(s32)size.y-1));
+   z:=cv_view_z(wg_load_depth(post_depth,q,0));sz:=cv_coc(z,u,width);if z>zc {sz=fmin(sz,rc*2);}
+   m:=smoothstep(r-0.5,r+0.5,sz);c:=cv_light_at(post_light,q,size);mean:=cv_scale(colour,1/total);
+   colour=cv_add(colour,cv_add(cv_scale(mean,1-m),cv_scale(c,m)));total+=1;}
+  colour=cv_scale(colour,1/total);
+ }
+ return v4(cv_srgb(clampf(colour.x,0.0f32,1.0f32)),cv_srgb(clampf(colour.y,0.0f32,1.0f32)),cv_srgb(clampf(colour.z,0.0f32,1.0f32)),1);
+}

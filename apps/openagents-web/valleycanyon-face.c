@@ -12,11 +12,11 @@ EXPORT("coaxial_state_size") uint32_t size(void){return sizeof(coax_t_ValleyCany
 EXPORT("coaxial_state_init") void init(uint32_t p){coax_default_t_ValleyCanyon(state(p));}
 EXPORT("coaxial_max_vertices") uint32_t vertices(void){return 32768;}
 EXPORT("coaxial_vertex_floats") uint32_t stride(void){return 12;}
-EXPORT("coaxial_uniform_floats") uint32_t uniforms(void){return 128;}
+EXPORT("coaxial_uniform_floats") uint32_t uniforms(void){return 136;}
 EXPORT("coaxial_sampling_v1") uint32_t sampling(uint32_t p){return (uint32_t)canyon_sampling(view(p));}
 EXPORT("coaxial_pixel_budget") uint32_t pixel_budget(void){return (uint32_t)canyon_pixel_budget();}
 EXPORT("coaxial_storage_limit_v1") uint32_t storage_limit(void){return (uint32_t)canyon_storage_limit();}
-EXPORT("coaxial_frame") uint32_t frame(uint32_t p,uint32_t v,uint32_t u,float w,float h,float d,float dt,uint32_t still){canyon_step(view(p),dt,still!=0);return (uint32_t)canyon_frame(view(p),(coax_v_f32){(float *)(uintptr_t)v,32768*12},(coax_v_f32){(float *)(uintptr_t)u,128},w,h,d);}
+EXPORT("coaxial_frame") uint32_t frame(uint32_t p,uint32_t v,uint32_t u,float w,float h,float d,float dt,uint32_t still){canyon_step(view(p),dt,still!=0);return (uint32_t)canyon_frame(view(p),(coax_v_f32){(float *)(uintptr_t)v,32768*12},(coax_v_f32){(float *)(uintptr_t)u,136},w,h,d);}
 EXPORT("coaxial_key") uint32_t key(uint32_t p,int32_t k,int32_t mods){(void)mods;return canyon_hold(view(p),k,true);}
 EXPORT("coaxial_key_up") uint32_t key_up(uint32_t p,int32_t k,int32_t mods){(void)mods;return canyon_hold(view(p),k,false);}
 EXPORT("coaxial_pointer") uint32_t pointer(uint32_t p,float x,float y,int32_t phase,int32_t kind,int32_t id){return canyon_pointer_event(view(p),x,y,phase,kind,id);}
