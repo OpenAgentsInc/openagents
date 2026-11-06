@@ -25,6 +25,7 @@
 #load "../../../aethyr/net/profile.coax";   // each realm's timing, trust, durability and fairness (#12845)
 #load "../../../aethyr/session/party.coax";   // a party's rules: who shows to whom (#12852, #12845)
 #load "room-interest.coax";   // who may receive what, each tick (#12789)
+#load "room-input-policy.coax";
 #load "room-blocks.coax";     // and who each seat blocks
 #load "room-everglade.coax";
 #load "room-oldwire.coax";   // pages from before wire 3, for the week after it ships

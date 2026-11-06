@@ -736,6 +736,12 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
         at: [1] int;
         dr_script(DrPair.{a = ca[..], b = cb[..], shots = btext(sh[..]), ctl = run.ctl, room = code, worker = run.worker, native=run.native, at = at[..]}, run.dir);
         ok = dr_pull(ca[..], a) && dr_pull(cb[..], b);
+        {
+          diag: [65536] u8; path: [1] Buf; bput(path[..], run.dir); bput(path[..], "/corrections-"); bput(path[..], profile); bput(path[..], ".json");
+          _ := fs_write(btext(path[..]), dr_str(cb[..], "JSON.stringify(__dr.largeCorrections)", diag[..]));
+          path[0].n = 0; bput(path[..], run.dir); bput(path[..], "/vitals-"); bput(path[..], profile); bput(path[..], ".txt");
+          _ = fs_write(btext(path[..]), dr_str(cb[..], "fetch('/api/room/vitals').then(r=>r.text())", diag[..]));
+        }
         if run.worker {
           print("  (offline room host: % stalls, % ms of its beat dropped)\n", dr_int(ca[..], "coaxial.roomHost ? coaxial.roomHost.stalls | 0 : -1", -1), dr_int(ca[..], "coaxial.roomHost ? coaxial.roomHost.lost | 0 : -1", -1));
           // its tick against the host's budget (aethyr/session/lifecycle.coax LIFECYCLE_TICK_US)

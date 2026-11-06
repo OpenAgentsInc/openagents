@@ -1,0 +1,20 @@
+// Bounded movement credit and backlog for the qualified 250 ms link. A lost upstream read can
+// hold 640 ms of 30 Hz input, plus a browser's bounded frame. Keep one second, spend at most four
+// steps per room tick, and never grant more simulation time than the server's clock earned.
+#module "room.input.policy";
+#authority;
+EGI_QUEUE :: 32; EGI_CREDIT :: 30; EGI_STEPS :: 4; EGI_KEEP :: 4;
+#test "input policy: the qualified resend fits within bounded earned clock credit" {
+  #assert EGI_QUEUE == 32 && egi_credit_limit() == 30 && EGI_STEPS == 4 && EGI_KEEP == 4;
+  // 640 ms at 30 Hz, with a bounded browser frame, fits without changing simulation rate.
+  #assert EGI_QUEUE >= 20 && EGI_CREDIT >= 20 && EGI_CREDIT <= 30;
+  #assert !egi_queue_full(31) && egi_queue_full(32) && egi_queue_full(33) && !egi_queue_full(0);
+  #assert !egi_tick_full(3) && egi_tick_full(4) && egi_tick_full(5) && !egi_tick_full(0);
+  #assert egi_excess(20, 20) == -4 && egi_excess(24, 20) == 0 && egi_excess(25, 20) == 1;
+  #assert egi_excess(32, 0) == 28 && egi_excess(0, 30) == -34;
+}
+// The room's existing decisions, with explicit realm limits. Credit still comes only from its clock.
+egi_queue_full :: (queued: int) -> bool { return queued >= EGI_QUEUE; }
+egi_tick_full :: (took: int) -> bool { return took >= EGI_STEPS; }
+egi_credit_limit :: () -> int { return EGI_CREDIT; }
+egi_excess :: (queued: int, bank: int) -> int { return queued - bank - EGI_KEEP; }

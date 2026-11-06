@@ -28,6 +28,7 @@
   // either side of a step by its own frames, so a 3 s hold was 90 steps on one page and 91 on the
   // other: the two players stood 17 cm apart, and the two towns played out differently round them.
   D.origin = null; D.pend = [];
+  D.correctionTrace = []; D.largeCorrections = []; D.lastReruns = -1;
   D.sstep = () => (D.origin == null || !D.x || !D.state ? -1 : D.probe(15) - D.origin);
   D.at = (step, press) => { D.pend.push([D.origin + step, press]); return 1; };
   let mem = null;
@@ -62,6 +63,12 @@
         D.state = state;
         const np = (f) => ex.coaxial_net_probe(state, f), fp = (f) => (ex.coaxial_field_probe ? ex.coaxial_field_probe(state, f) : -1);
         const t = Math.round(now());
+        const reruns = np(14), fix = Math.round(Math.sqrt(Math.max(0, fp(7))));
+        const correction = {t, seq:np(15), ack:np(12), serverY:np(20), feetY:fp(1), rg:np(45), reruns, fix};
+        if (reruns !== D.lastReruns && fix > 500 && D.largeCorrections.length < 8)
+          D.largeCorrections.push({correction, before:D.correctionTrace.slice()});
+        D.lastReruns = reruns; D.correctionTrace.push(correction);
+        if (D.correctionTrace.length > 24) D.correctionTrace.shift();
         // the town's people as drawn: those playing the walk (clip 1), those of them drawn where they
         // were the frame before, and how far those walking moved this frame
         let walking = 0, stalled = 0, moved = 0;

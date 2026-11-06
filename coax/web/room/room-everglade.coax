@@ -56,22 +56,22 @@ EG_HZ :: 30;
 // tick for its ACK, up to 66 ms on top of the round trip (#12731); the table every seat's rows are cut
 // from is filled once a tick (eg_table).
 EG_SEND :: 1;
-EG_INPUTS :: 16;                // inputs queued a seat; past it the oldest go
+EG_INPUTS :: EGI_QUEUE; // inputs queued a seat; past it the oldest go
 EG_IN_FIELDS :: 7;              // SEQ KX KY PX PY THETA B: what rm_eg_input hands the host (HEARD is the wire's: wire_seat_ack)
 // A seat earns a step for each 1/EG_HZ s of the server's clock since it sat (not a step a tick: a tick
 // that ran late or a beat the host started again cost the seat nothing, so its page's one input a
 // step is stepped as fast as it comes and no queue stands; a step a tick let a raid's slow ticks fall
 // behind the pages' 30 a second, the queue filled to its 16 and input-to-ACK stood at 528 ms, #12718)
-// and spends one an input. What it is owed is kept up to EG_BANK (half a
+// and spends one an input. What it is owed is kept up to EG_BANK (one
 // second), so a page that stalled (a busy browser runs 2 to 4 steps in one frame, then none) spends
 // the steps when they come, at most EG_TICK_STEPS a tick: a page can't move faster than the tick over
 // time, nor more than 4 steps at once. With the old bank of 4, every stall over 4 steps lost its time
 // for good, and the inputs after it waited in the queue a tick each from then on: the queue grew to
 // its 8, about 270 ms of input-to-ACK, and past that the oldest went (the page had stepped them; the
 // server's word snapped you back) (#12731).
-EG_BANK :: 15;
-EG_TICK_STEPS :: 4;
-EG_KEEP :: 4;                   // ticks of input a seat may hold past what it may step now (rm_eg_begin)
+EG_BANK :: EGI_CREDIT;
+EG_TICK_STEPS :: EGI_STEPS;
+EG_KEEP :: EGI_KEEP; // ticks of input a seat may hold past what it may step now (rm_eg_begin)
 EG_JOIN_BANK :: 3;              // what a seat that just sat is owed (its first tick's step on top)
 EG_VIEW :: 120.0;               // m: what a seat hears of creatures, zones and events
 // The allowances beside the wire's (everglade-wire.coax WIRE_BUDGET, WIRE_AGED_BUDGET,
@@ -632,7 +632,7 @@ eg_heard_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   seq := w.seq;
   n := st[0].q_n;
   if !life_room_takes(seq, st[0].ack, ifx n > 0 then st[0].q[n - 1].seq else st[0].ack) { return; }   // old or repeated (aethyr/session/lifecycle.coax)
-  if n >= EG_INPUTS {
+  if egi_queue_full(n) {
     for i: 1..<EG_INPUTS { st[0].q[i - 1] = st[0].q[i]; }
     n = EG_INPUTS - 1;
   }
@@ -787,13 +787,13 @@ rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c {
     if !st[0].live { continue; }
     st[0].took = 0;
     // its first tick earns its first step; each 1/EG_HZ s of the clock after it, one more (to the nearest)
-    if st[0].sat_ms < 0 || now < st[0].sat_ms { st[0].sat_ms = now; st[0].earned = 0; st[0].bank = least(st[0].bank + 1, EG_BANK); }
+    if st[0].sat_ms < 0 || now < st[0].sat_ms { st[0].sat_ms = now; st[0].earned = 0; st[0].bank = least(st[0].bank + 1, egi_credit_limit()); }
     due := ((now - st[0].sat_ms) * EG_HZ + 500) / 1000;
-    if due > st[0].earned { st[0].bank = least(st[0].bank + due - st[0].earned, EG_BANK); st[0].earned = due; }
+    if due > st[0].earned { st[0].bank = least(st[0].bank + due - st[0].earned, egi_credit_limit()); st[0].earned = due; }
     // input past what it is owed and EG_KEEP ticks more is a page sending faster than the clock (a
     // skewed clock, or a cheat): the oldest of it goes, so no seat's input stands more than EG_KEEP
     // ticks behind its time; the page's re-run takes the server's word for the step that went
-    over := st[0].q_n - st[0].bank - EG_KEEP;
+    over := egi_excess(st[0].q_n, st[0].bank);
     if over > 0 {
       for i: over..<st[0].q_n { st[0].q[i - over] = st[0].q[i]; }
       st[0].q_n -= over; st[0].late += over;
@@ -806,7 +806,7 @@ rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c {
 rm_eg_input :: (v: [] RmServer, k: int, s_id: SeatId, out: [] int) -> bool #export_c { s := s_id.value;
   if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || out.count < EG_IN_FIELDS { return false; }
   st := v[0].eg[k].seat[s..<s + 1];
-  if !st[0].live || !st[0].placed || st[0].q_n == 0 || st[0].bank <= 0 || st[0].took >= EG_TICK_STEPS { return false; }
+  if !st[0].live || !st[0].placed || st[0].q_n == 0 || st[0].bank <= 0 || egi_tick_full(st[0].took) { return false; }
   if eg_waits(v, k, s_id, st[0].q[0].seq) { return false; }
   i := st[0].q[0];
   for q: 1..<st[0].q_n { st[0].q[q - 1] = st[0].q[q]; }
@@ -2067,6 +2067,23 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
     #assert !v[0].eg[k].rules[0].b[0].dice[0].fixed && !v[0].eg[o].rules[0].b[0].dice[0].fixed;
   }
 }
+#test "everglade room: a 250 ms link's TCP resend preserves every earned movement input" #steps 2000000000 {
+  v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-resend HTTP/1.1\r\n\r\n") == 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay); eg_test_tick(v[..], k);
+  seq := 0;
+  for q: 0..<30 { seq += 1; eg_test_input(v[..], seq); eg_test_tick(v[..], k); }
+  v[0].eg[k].seat[0].bank = 0;
+  // net-proxy's 250 ms RTT + 30 ms jitter + a TCP resend can hold an upstream read 640 ms.
+  // Twenty real 30 Hz steps then arrive together. Losing one while falling moves you nearly a metre.
+  for q: 0..<20 { eg_test_tick(v[..], k); }
+  z := v[0].eg[k].seat[0].pose.z;
+  for q: 0..<20 { seq += 1; eg_test_input(v[..], seq); }
+  #assert v[0].eg[k].seat[0].q_n == 20;
+  for q: 0..<7 { seq += 1; eg_test_input(v[..], seq); eg_test_tick(v[..], k); }
+  #assert v[0].eg[k].seat[0].ack == seq && v[0].eg[k].seat[0].q_n == 0;
+  #assert v[0].eg[k].seat[0].late == 0 && abs(v[0].eg[k].seat[0].pose.z - z - 2.7) < 0.001;
+}
 #test "everglade room: a page that stalls spends the steps it is owed, and its inputs wait no tick after (#12731)" #steps 2000000000 {
   v: [1] RmServer;
   rm_init(v[..]);
@@ -2086,15 +2103,16 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   seq += 1; eg_test_input(v[..], seq); eg_test_tick(v[..], k);
   seq += 1; eg_test_input(v[..], seq); eg_test_tick(v[..], k);
   #assert v[0].eg[k].seat[0].ack == seq && v[0].eg[k].seat[0].q_n == 0;   // caught up: nothing waits
-  // it stalls a long while: half a second is kept, no more (a page can't bank time to run ahead)
+  // it stalls a long while: one second is kept, no more (a page can't bank time to run ahead)
   for q: 0..<90 { eg_test_tick(v[..], k); }
   #assert v[0].eg[k].seat[0].bank == EG_BANK;
-  // it sends 16 at once: 4 a tick, its bank covering them; then 16 more at once with the bank spent:
+  // it sends 16 at once: 4 a tick, its bank covering them; then 16 more with only two credits left:
   // those past its owed time and EG_KEEP ticks go, the rest are stepped as the clock owes them (no page runs ahead)
   was := v[0].eg[k].seat[0].ack;
   for q: 0..<16 { seq += 1; eg_test_input(v[..], seq); }
   for q: 0..<4 { eg_test_tick(v[..], k); }
   #assert v[0].eg[k].seat[0].ack == was + 16 && v[0].eg[k].seat[0].bank == EG_BANK - 16 + 3;   // (the first tick's step past a full bank is lost)
+  v[0].eg[k].seat[0].bank = 2;   // independently exercise exhausted credit, whatever the bank's cap
   was = v[0].eg[k].seat[0].ack;
   for q: 0..<16 { seq += 1; eg_test_input(v[..], seq); }
   for q: 0..<4 { eg_test_tick(v[..], k); }
