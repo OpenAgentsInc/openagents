@@ -24,7 +24,7 @@
 
 RLR_AUTH_REQUIRED :: "auth-required:";
 
-#test "an EVENT frame for a current subscription is verified and delivered" {
+#test "an EVENT frame for a current subscription is verified and delivered" #steps 100000000 {
   r: [1] Relay; g := rl_open_at(r[..], 1000); slot := rl_subscribe(r[..]);
   o := rl_next(r[..], 1000);#assert o.kind == RL_OUT_REQ && o.slot == slot;
   frame: [4096] u8; scratch: [4096] u8;
