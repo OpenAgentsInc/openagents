@@ -8,8 +8,11 @@ device closes. The replacement uploads complete retained buffer spans and
 does not acknowledge a producer update merely to recover rendering. Actual
 90-frame world recovery compares every FP16 graph and UNORM display byte
 without an intervening producer call, retires a measured old handle and
-closes all GPU/CPU owners. Its observer kills 30 root mutants; software-GPU
-sanitizer failures remain separate from the normal RTX verdict. See
+closes all GPU/CPU owners. Its observer kills 30 root mutants. The complete
+current producer and SDK also pass ASan/UBSan/LSan on a two-worker Lavapipe
+device with Vulkan validation, within the existing 810-second qualifier
+budget; earlier software submission/total-runtime failures remain retained.
+The product's submission fence is unchanged. See
 `docs/verification/host-contract-2026-11-05/linux-world-recovery.md`.
 
 ## Host transport keeps concrete asynchronous owners across every effect

@@ -48,9 +48,21 @@ None of these observations constitutes a new compiler release.
 
 The first whole-world ASan/UBSan software-GPU attempt fails the unchanged
 10-second SDK fence wait during Lavapipe/LLVM shader compilation. The raw
-timeout and subsequent LLVM shutdown crash are retained; this is not a
-sanitizer pass or an instrumented RTX claim. Further instrumented evidence
-must retain its exact SDK worker configuration and verdict separately.
+timeout and subsequent LLVM shutdown crash are retained. Capping the SDK to
+two software workers avoids that submission timeout, but the first capped
+attempt exceeds the qualifier's shorter 240-second total runtime budget.
+That separate failed attempt is retained too.
+
+The final capped run uses the repository's existing 810-second qualification
+budget and passes every observation. The product's 10-second submission
+fence, shader products, comparison and cleanup gates remain unchanged.
+The complete current producer DSO, generated renderer/audio companions and
+SDK C are instrumented with ASan/UBSan; leak detection and Vulkan validation
+are enabled. No sanitizer diagnostic or Vulkan error/warning occurs. Both
+complete readbacks are exact after replacement and final owners are zero.
+This is actual Lavapipe coverage, not an instrumented RTX or performance
+claim. Its raw receipt, actual compiler/link arguments and separately frozen
+qualifier image/source identities remain distinct from the normal RTX run.
 
 Small receipts and joins are in `records/linux-world-recovery/`. Complete
 C/header/profile, independently frozen sources, native producer and SDK
