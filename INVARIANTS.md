@@ -5898,3 +5898,11 @@ responses remain documented Aethyr approximations. The original procedural fores
 shares placements with its collision fixtures. Runtime budgets include retained
 encoded source and all mipmapped texture layers. See
 `docs/verse/2026-11-06-ocarina-lab.md` for reconstruction and verification evidence.
+
+During play the controller owns planar translation. The sampled carrier's X/Z
+transport is removed after pose blending, including inspector-to-play blends;
+original vertical pose motion, rotations and all raw inspection tracks survive.
+Locomotion limits come from original carrier distance/duration, and gait time
+uses actual collision-resolved travel, not an extra animated world displacement
+or unresolved velocity. The source 30-fps assumption remains explicit; original
+controller physics and its transition graph have not been recovered.

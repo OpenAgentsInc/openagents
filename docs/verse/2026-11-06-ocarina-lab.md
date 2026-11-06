@@ -94,7 +94,7 @@ The final 390×844 browser run passed all 32 checks, including forced GPU loss,
 recovery in 720 ms, identical complete state digest, and zero private-pack network
 requests during recovery. The normal render had no shader errors. Its declared
 resident-byte measurement was 1,052,146,064 bytes, below the 1.2 GiB ceiling.
-The target Wasm is 68,563 bytes. Reassembling from the durable private streams
+The initial target Wasm was 68,563 bytes. Reassembling from the durable private streams
 reproduced the complete pack SHA above. These are local validation results, not
 an original-game visual parity or frame-rate qualification.
 
@@ -102,3 +102,38 @@ an original-game visual parity or frame-rate qualification.
 coax/web/tool.sh coax/web/ocarina-check.coax \
   'http://127.0.0.1:8837/worlds/ocarina-lab?pack' /tmp/ocarina.png --verify --recover
 ```
+
+## Forward-loop correction
+
+The original run carrier moves 1.9500002 m over 26 source-frame intervals. The
+initial lab added that animated displacement to controller travel, then wrapped
+it to zero every 0.8666667 s. This caused the reported recurring backward chop.
+A regression against a translating carrier failed before the fix. A second
+regression covers returning from a raw moving inspector pose during a crossfade.
+
+Play now removes only carrier X/Z transport after blending. It keeps original
+vertical motion and rotations, all child poses and the unmodified inspection
+tracks. Controller speeds are derived from the real carrier endpoints: walking
+0.64 m/s, running 2.25 m/s and the dash clip 2.655 m/s, at the explicitly assumed
+30-fps source clock. Walk/run limits use those measured clip speeds. Gait time
+scales with actual collision-resolved distance each paid step; landing plays the
+original 0.2-second landing clip before returning to locomotion.
+
+`coax test verse/ocarina/play.coax` passes all 434 loaded checks. The real-asset
+`aethyr/tools/ocarina-motion-check.coax` checks eight seconds each of walk, run
+and dash: five, nine and ten loop boundaries, with zero planar carrier residual
+and strictly forward pelvis motion. The headless browser's `--motion` path holds
+forward across multiple run loops and checks the same pelvis placement used by
+the renderer, including drawing interpolation and yaw, rather than only checking
+the controller position. Use `--verify --motion --recover` for the complete flow.
+The final 960×600 motion run crossed six run loops with zero carrier residual;
+every rendered pelvis step stayed forward (0.005524–0.092859 m per 30-Hz frame,
+including the initial acceleration and clip transition). No shader or console
+errors were reported. The updated Wasm is 70,026 bytes. The earlier complete
+36-check browser run also passed inspection, touch, landing/jump transitions and
+GPU recovery; the final motion capture uses the renderer's exact pelvis placement.
+
+These changes align travel and animation to the recovered source data. Gravity,
+jump impulse, acceleration, turning and the collision profile remain the shared
+Aethyr controller's lab tuning. They are not verified copies of the original
+game's controller or transition graph. The private pack bytes and hash are unchanged.

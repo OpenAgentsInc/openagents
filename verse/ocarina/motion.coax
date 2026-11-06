@@ -1,0 +1,21 @@
+// Source planar carrier translation is consumed by walking, never added a second time to its pose.
+#load "rig-policy.coax";
+#load "../../aethyr/anim/pose.coax";
+#test "Ocarina gait rate follows resolved travel and leaves one shots on source time" {
+ #assert ocl_motion_rate(2,2.25,2.25)==1 && ocl_motion_rate(2,1.125,2.25)==0.5;
+ #assert ocl_motion_rate(1,0,0.64)==0 && ocl_motion_rate(3,2,4)==0.5;
+ #assert ocl_motion_rate(0,0,0)==1 && ocl_motion_rate(4,0,0)==1 && ocl_motion_rate(5,2,2.25)==1 && ocl_motion_rate(6,0,0)==1;
+ #assert ocl_motion_rate(2,1,0)==1;
+}
+#test "Ocarina speed is measured from the unmodified source carrier endpoints" {
+ b:[OCL_TEST_BYTES]u8;ocr_fixture(b[..]);c:=ocr_clip(b[..],32+2*32);
+ scan_put(b[..],c.start+OCL_JOINTS*28+8,f32_bits(0.075));
+ #assert abs(ocl_source_speed(b[..],2)-2.25)<0.000001 && ocl_source_speed(b[..],0)==0;
+}
+ocl_source_speed :: (b:[]u8,clip:int)->f32 {
+ c:=ocr_clip(b,32+clip*32);first:=scan_point(b,c.start);last:=scan_point(b,c.start+(c.frames-1)*OCL_JOINTS*28);
+ x:=last.x-first.x;z:=last.z-first.z;return sqrt(x*x+z*z)/scan_float(b,32+clip*32+8);
+}
+ocl_motion_rate :: (clip:int,travel_speed:f32,source_speed:f32)->f32 {
+ return ifx clip>=1 && clip<=3 && source_speed>0 then travel_speed/source_speed else 1.0f32;
+}

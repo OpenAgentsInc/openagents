@@ -2,6 +2,7 @@
 #load "rig-policy.coax";
 #load "pack-policy.coax";
 #load "forest.coax";
+#load "motion.coax";
 #load "../../aethyr/loop.coax" as clock;
 #load "../../aethyr/anim/scaled-pose.coax";
 #load "../../aethyr/walk.coax" as pc;
@@ -20,9 +21,24 @@ OCL_BUDGET :: FrameBudget.{steps=8,vertices=1000000,draws=8,bytes=1288490188};
 OcarinaLab :: struct {
  data:[OCL_RUNTIME_CAP]u8;bytes:int;ready:bool;failed:bool;loaded:[4]int;started:bool;pack_digest:[32]u8;pack_verified:bool;pack_checks:int;meter:[1]BudgetMeter;frame_steps:int;
  parents:[OCL_JOINTS]int;bind:[OCL_JOINTS*12]f32;rest:[OCL_JOINTS]SkinLocal;pose:[OCL_JOINTS]SkinLocal;from:[OCL_JOINTS]SkinLocal;scales:[OCL_JOINTS]Point;from_scales:[OCL_JOINTS]Point;basis:[OCL_JOINTS*12]f32;world:[OCL_JOINTS*12]f32;palette:[OCL_JOINTS*12]f32;revision:int;
- clip:int;time:f32;age:f32;forced:bool;playing:bool=true;inspect:int;view:int;orbit:f32=0.3;tilt:f32=0.05;distance:f32=2.3;
+ clip:int;time:f32;age:f32;forced:bool;grounded:bool=true;source_speeds:[8]f32;playing:bool=true;inspect:int;view:int;orbit:f32=0.3;tilt:f32=0.05;distance:f32=2.3;
  you:pc.Player;keys:int;look_x:f32;look_y:f32;thumbs:Sticks;active:[4]bool;ids:[4]int;now:f64;drag:bool;drag_id:int;x:f32;y:f32;
  width:f32=1280;height:f32=800;d:f32=1;draws:[4]u32;action:int;outbox:[128]u8;out_n:int;
+}
+#test "Ocarina carrier translation belongs to the controller and remains original in inspection" #steps 1000000000 {
+ b:[OCL_TEST_BYTES]u8;ocr_fixture(b[..]);c:=ocr_clip(b[..],32+2*32);
+ scan_put(b[..],c.start+OCL_JOINTS*28+8,f32_bits(0.075));scan_put(b[..],c.start+OCL_JOINTS*28+4,f32_bits(0.03));
+ s:[1]OcarinaLab;#assert ocl_admit(s[..],b[..]);s[0].clip=2;s[0].time=0.02;s[0].age=1;ocl_present(s[..]);
+ #assert s[0].pose[0].t.z==s[0].rest[0].t.z && abs(s[0].pose[0].t.y-0.018)<0.000001;
+ s[0].inspect=1;ocl_present(s[..]);#assert abs(s[0].pose[0].t.z-0.045)<0.000001;
+ s[0].from[0]=s[0].pose[0];s[0].inspect=0;s[0].age=0;ocl_present(s[..]);#assert s[0].pose[0].t.z==s[0].rest[0].t.z;
+}
+#test "Ocarina moving gait scales with travel and uses original landing before resuming" #steps 1000000000 {
+ b:[OCL_TEST_BYTES]u8;ocr_fixture(b[..]);c:=ocr_clip(b[..],32+2*32);scan_put(b[..],c.start+OCL_JOINTS*28+8,f32_bits(0.075));
+ s:[1]OcarinaLab;#assert ocl_admit(s[..],b[..]);s[0].source_speeds[1]=0.64;ocl_tick(s[..],1.125,true);
+ #assert s[0].clip==2 && abs(s[0].time-0.5/64)<0.000001;
+ ocl_tick(s[..],1,false);#assert s[0].clip==4;ocl_tick(s[..],1,true);#assert s[0].clip==5;
+ ocl_tick(s[..],1,true);#assert s[0].clip==5;ocl_tick(s[..],1,true);ocl_tick(s[..],1,true);#assert s[0].clip==2;
 }
 #test "Ocarina forest movement uses shared paid steps, blur and reset" #steps 1000000000 {
  s:[1]OcarinaLab;ocl_start(s[..]);before:=s[0].you.pos.z;#assert ocl_hold(s[..],87,true);for k:0..<20 {ocl_step(s[..],1.0/64.0,false);}#assert s[0].you.pos.z>before;ocl_blur(s[..]);#assert s[0].keys==0 && s[0].thumbs.pad_y==0;#assert ocl_key(s[..],82) && s[0].you.pos.z== -12;
@@ -72,21 +88,31 @@ ocl_pose_at :: (b:[]u8,p:int)->SkinLocal {return SkinLocal.{t=scan_point(b,p),q=
 ocl_admit :: (s:[]OcarinaLab,b:[]u8)->bool #export_c #effects(all) {
  if b.count>s[0].data.count || !ocarina_rig_valid(b) {s[0].failed=true;return false;}for k:0..<b.count {s[0].data[k]=b[k];}s[0].bytes=b.count;s[0].ready=true;
  for k:0..<OCL_JOINTS {p:=OCL_RIG_BASE+k*80;s[0].parents[k]=cast(int)scan_u32(b,p)-1;for j:0..<12 {s[0].bind[k*12+j]=scan_float(b,p+4+j*4);}s[0].rest[k]=ocl_pose_at(b,p+52);s[0].pose[k]=s[0].rest[k];s[0].from[k]=s[0].rest[k];s[0].scales[k]=v3(1,1,1);s[0].from_scales[k]=v3(1,1,1);}
- s[0].clip=0;s[0].time=0;s[0].age=1;ocl_present(s);return true;
+ for k:0..<8 {s[0].source_speeds[k]=ocl_source_speed(b,k);}s[0].clip=0;s[0].time=0;s[0].age=1;ocl_present(s);return true;
 }
 ocl_select :: (s:[]OcarinaLab,clip:int) {if clip==s[0].clip {return;}for k:0..<OCL_JOINTS {s[0].from[k]=s[0].pose[k];s[0].from_scales[k]=s[0].scales[k];}s[0].clip=clip;s[0].time=0;s[0].age=0;}
 ocl_duration :: (s:[]OcarinaLab)->f32 {return ifx s[0].ready then scan_float(s[0].data[..],32+s[0].clip*32+8) else 1.0f32;}
 ocl_present :: (s:[]OcarinaLab) {
  if !s[0].ready {return;}b:=s[0].data[0..<s[0].bytes];desc:=ocr_clip(b,32+s[0].clip*32);duration:=ocl_duration(s);looping:=s[0].clip<=3 || s[0].clip==7;time:=ifx looping then s[0].time-duration*floor(s[0].time/duration) else lo(s[0].time,duration);f:=lo(time*30,cast(f32)(desc.frames-1));a:=cast(int)floor(f);next:=ifx a+1<desc.frames then a+1 else a;share:=f-cast(f32)a;fade:=pose_fade(s[0].age,0.12);
- for k:0..<OCL_JOINTS {pa:=ocl_pose_at(b,desc.start+(a*OCL_JOINTS+k)*28);pb:=ocl_pose_at(b,desc.start+(next*OCL_JOINTS+k)*28);target:=pose_blend(pa,pb,share);s[0].pose[k]=pose_blend(s[0].from[k],target,fade);scale:=mix(scan_point(b,desc.scale+(a*OCL_JOINTS+k)*12),scan_point(b,desc.scale+(next*OCL_JOINTS+k)*12),share);s[0].scales[k]=mix(s[0].from_scales[k],scale,fade);}
+ for k:0..<OCL_JOINTS {pa:=ocl_pose_at(b,desc.start+(a*OCL_JOINTS+k)*28);pb:=ocl_pose_at(b,desc.start+(next*OCL_JOINTS+k)*28);target:=pose_blend(pa,pb,share);s[0].pose[k]=pose_blend(s[0].from[k],target,fade);if k==0 && s[0].inspect==0 {s[0].pose[k].t.x=s[0].rest[0].t.x;s[0].pose[k].t.z=s[0].rest[0].t.z;}scale:=mix(scan_point(b,desc.scale+(a*OCL_JOINTS+k)*12),scan_point(b,desc.scale+(next*OCL_JOINTS+k)*12),share);s[0].scales[k]=mix(s[0].from_scales[k],scale,fade);}
  for k:0..<OCL_JOINTS {flags:=scan_u32(b,desc.flags+k*4);pose_affine_chain(s[0].world[..],s[0].basis[..],s[0].scales[..],s[0].parents[k],k,s[0].pose[k],(flags&0x800000)!=0);pose_affine_palette(s[0].world[..],s[0].bind[..],k,s[0].palette[..]);}s[0].revision+=1;
 }
-ocl_tick :: (s:[]OcarinaLab,speed:f32,grounded:bool) {if !s[0].ready {return;}if s[0].forced && s[0].time>=ocl_duration(s) {s[0].forced=false;}if !s[0].forced {chosen:=ifx !grounded then 4 else ifx speed>3.5 then 3 else ifx speed>1.8 then 2 else ifx speed>0.08 then 1 else 0;ocl_select(s,chosen);}s[0].time+=1.0/64.0;s[0].age+=1.0/64.0;ocl_present(s);}
+ocl_tick :: (s:[]OcarinaLab,speed:f32,grounded:bool) {
+ if !s[0].ready {return;}
+ if s[0].forced && s[0].time>=ocl_duration(s) {s[0].forced=false;}
+ if !s[0].forced {
+  landing:=grounded && !s[0].grounded;hold_land:=s[0].clip==5 && s[0].time<ocl_duration(s);
+  walk_speed:=s[0].source_speeds[1];run_speed:=s[0].source_speeds[2];
+  chosen:=ifx !grounded then 4 else ifx landing || hold_land then 5 else ifx speed>run_speed+0.2 && s[0].source_speeds[3]>run_speed then 3 else ifx speed>walk_speed+0.2 then 2 else ifx speed>0.08 then 1 else 0;
+  ocl_select(s,chosen);
+ }
+ s[0].grounded=grounded;s[0].time+=ocl_motion_rate(s[0].clip,speed,s[0].source_speeds[s[0].clip])/64;s[0].age+=1.0/64.0;ocl_present(s);
+}
 ocl_start :: (s:[]OcarinaLab) {if s[0].started {return;}s[0].started=true;s[0].you=pc.walk_place(oc_path(-12),0,-12,0);s[0].you.phi=1.38;s[0].you.dist=3;s[0].you.prev_dist=3;s[0].you.max_dist=3;}
 ocl_blur :: (s:[]OcarinaLab) #export_c #effects(all) {s[0].keys=0;s[0].look_x=0;s[0].look_y=0;s[0].drag=false;s[0].thumbs=verse_sticks_reset();for k:0..<4 {s[0].active[k]=false;}p:=s[0].you;s[0].you=pc.walk_input(p,0,0,0,0,false,false,0,0);}
 ocl_key :: (s:[]OcarinaLab,raw_key:int)->bool #export_c #effects(all) {
  key:=ifx raw_key>=97 && raw_key<=122 then raw_key-32 else raw_key;
- if key==82 {ocl_blur(s);s[0].started=false;s[0].inspect=0;s[0].forced=false;ocl_start(s);ocl_select(s,0);return true;}
+ if key==82 {ocl_blur(s);s[0].started=false;s[0].inspect=0;s[0].forced=false;s[0].grounded=true;ocl_start(s);ocl_select(s,0);return true;}
  if key==67 || key==72 {ocl_blur(s);mode:=ifx key==72 then 2 else 1;s[0].inspect=ifx s[0].inspect==mode then 0 else mode;ocl_select(s,0);s[0].time=0;s[0].age=1;ocl_present(s);return true;}
  if key==86 {s[0].view=(s[0].view+1)%4;return true;}if key==66 {ocl_select(s,6);s[0].time=0;s[0].forced=true;return true;}
  if s[0].inspect>0 {if key==91 || key==93 {ocl_select(s,(s[0].clip+8+(ifx key==91 then -1 else 1))%8);return true;}if key==80 || key==32 {s[0].playing=!s[0].playing;return true;}if key==44 || key==46 {s[0].playing=false;s[0].time=clamp(s[0].time+(ifx key==46 then 1.0f32/30 else -1.0f32/30),0,ocl_duration(s));s[0].age=1;ocl_present(s);return true;}}
@@ -98,7 +124,7 @@ ocl_hold :: (s:[]OcarinaLab,raw_key:int,down:bool)->bool #export_c #effects(all)
 }
 ocl_walls :: (walls:[]f32) {for k:0..<OC_TREES+OC_ROCKS {tree:=ifx k<OC_TREES then oc_tree(k) else OcTree.{};rock:=ifx k>=OC_TREES then oc_rock(k-OC_TREES) else OcRock.{};x:=ifx k<OC_TREES then tree.x else rock.x;z:=ifx k<OC_TREES then tree.z else rock.z;r:=ifx k<OC_TREES then tree.radius else rock.radius;h:=ifx k<OC_TREES then tree.height else rock.height;v:=[6]f32.[x-r,0,z-r,x+r,h,z+r];for j:0..<6 {walls[k*6+j]=v[j];}}}
 ocl_step :: (s:[]OcarinaLab,dt:f32,still:bool) #export_c #effects(all) {s[0].frame_steps=0;ocl_start(s);if still {return;}if s[0].inspect>0 {if s[0].playing && s[0].ready {p:=s[0].you;p.clock=clock.loop_accept(p.clock,cast(f64)dt);steps:=clock.loop_due(p.clock);s[0].frame_steps=steps;s[0].time+=cast(f32)steps/64;s[0].age+=cast(f32)steps/64;p.clock=clock.loop_ran(p.clock);s[0].you=p;ocl_present(s);}return;}
- k:=s[0].keys;t:=s[0].thumbs;p:=pc.walk_input(s[0].you,cast(f32)((ifx (k&8)!=0 then 1 else 0)-(ifx (k&4)!=0 then 1 else 0)),cast(f32)((ifx (k&1)!=0 then 1 else 0)-(ifx (k&2)!=0 then 1 else 0)),t.pad_x,t.pad_y,pc.walk_runs((k&32)!=0,t.run,t.pad_x,t.pad_y),(k&16)!=0 || t.jump,s[0].look_x+t.dyaw,s[0].look_y+t.dpitch);walls:[(OC_TREES+OC_ROCKS)*6]f32;ocl_walls(walls[..]);declaration:=collision.collision_profile_lookup("valley-lab");w:=pc.World.{ground=0,room=29,walls=walls[..],collision=declaration.profile,locomotion=locomotion.LocomotionProfile.{walk_speed=1.3,run_speed=3.4,gravity=16,jump_speed=5,acceleration=12,turn_rate=10}};trace:=pc.advance_traced(w,p,dt);s[0].frame_steps=trace.count;s[0].you=trace.player;for step:0..<trace.count {target:=trace.targets[step];ocl_tick(s,sqrt(target.velocity.x*target.velocity.x+target.velocity.z*target.velocity.z),target.act!=3);}s[0].now+=cast(f64)trace.count/64;s[0].look_x=0;s[0].look_y=0;s[0].thumbs=verse_sticks_used(t);
+ k:=s[0].keys;t:=s[0].thumbs;p:=pc.walk_input(s[0].you,cast(f32)((ifx (k&8)!=0 then 1 else 0)-(ifx (k&4)!=0 then 1 else 0)),cast(f32)((ifx (k&1)!=0 then 1 else 0)-(ifx (k&2)!=0 then 1 else 0)),t.pad_x,t.pad_y,pc.walk_runs((k&32)!=0,t.run,t.pad_x,t.pad_y),(k&16)!=0 || t.jump,s[0].look_x+t.dyaw,s[0].look_y+t.dpitch);walls:[(OC_TREES+OC_ROCKS)*6]f32;ocl_walls(walls[..]);declaration:=collision.collision_profile_lookup("valley-lab");w:=pc.World.{ground=0,room=29,walls=walls[..],collision=declaration.profile,locomotion=locomotion.LocomotionProfile.{walk_speed=(ifx s[0].ready then s[0].source_speeds[1] else 0.64f32),run_speed=(ifx s[0].ready then s[0].source_speeds[2] else 2.25f32),gravity=16,jump_speed=5,acceleration=12,turn_rate=10}};trace:=pc.advance_traced(w,p,dt);s[0].frame_steps=trace.count;previous:=s[0].you.pos;s[0].you=trace.player;for step:0..<trace.count {target:=trace.targets[step];dx:=target.feet.x-previous.x;dz:=target.feet.z-previous.z;ocl_tick(s,sqrt(dx*dx+dz*dz)*64,target.act!=3);previous=pc.Vec3.{x=target.feet.x,y=target.feet.y,z=target.feet.z};}s[0].now+=cast(f64)trace.count/64;s[0].look_x=0;s[0].look_y=0;s[0].thumbs=verse_sticks_used(t);
 }
 #test "Ocarina phone top controls have disjoint visible hit areas including jump" #steps 1000000000 {
  s:[1]OcarinaLab;s[0].width=390;s[0].height=844;ocl_start(s[..]);
@@ -122,7 +148,7 @@ ocl_frame :: (s:[]OcarinaLab,out:[]f32,u:[]f32,width:f32,height:f32,d:f32)->int 
  s[0].meter[0]=budget_meter(OCL_BUDGET);budget_measure(s[0].meter[..],n+(ifx ocl_ready(s) then OCL_INDEX_COUNT*2 else 0),8,ocl_resident_bytes(width,height));
  _:=budget_take(s[0].meter[..],BUDGET_STEPS,s[0].frame_steps);s[0].frame_steps=0;#assert n<OCL_HUD && budget_ok(s[0].meter[0]);return n;
 }
-ocl_probe :: (s:[]OcarinaLab,k:int)->int #export_c #effects(all) {if k==0 {return ifx ocl_ready(s) then 1 else 0;}if k==1 {return s[0].clip;}if k==2 {return s[0].inspect;}if k==3 {return s[0].view;}if k==4 {return OCL_JOINTS;}if k==5 {return s[0].revision;}if k==6 {return cast(int)(s[0].you.pos.x*1000);}if k==7 {return cast(int)(s[0].you.pos.z*1000);}if k==8 {return ifx s[0].failed then 1 else 0;}if k==10 {return s[0].meter[0].used[BUDGET_BYTES];}if k==11 {return s[0].meter[0].used[BUDGET_VERTICES];}if k==12 {return s[0].meter[0].used[BUDGET_DRAWS];}if k==13 {return ifx budget_ok(s[0].meter[0]) then 1 else 0;}if k==14 {return s[0].pack_checks;}if k==15 {return ifx s[0].pack_verified then 1 else 0;}if k==16 {return s[0].bytes;}if k>=17 && k<=20 {return s[0].loaded[k-17];}if k==21 {return s[0].meter[0].used[BUDGET_STEPS];}if k==22 {return OCL_BUDGET.bytes;}return cast(int)(s[0].time*30000);}
+ocl_probe :: (s:[]OcarinaLab,k:int)->int #export_c #effects(all) {if k==0 {return ifx ocl_ready(s) then 1 else 0;}if k==1 {return s[0].clip;}if k==2 {return s[0].inspect;}if k==3 {return s[0].view;}if k==4 {return OCL_JOINTS;}if k==5 {return s[0].revision;}if k==6 {return cast(int)(s[0].you.pos.x*1000);}if k==7 {return cast(int)(s[0].you.pos.z*1000);}if k==8 {return ifx s[0].failed then 1 else 0;}if k==10 {return s[0].meter[0].used[BUDGET_BYTES];}if k==11 {return s[0].meter[0].used[BUDGET_VERTICES];}if k==12 {return s[0].meter[0].used[BUDGET_DRAWS];}if k==13 {return ifx budget_ok(s[0].meter[0]) then 1 else 0;}if k==14 {return s[0].pack_checks;}if k==15 {return ifx s[0].pack_verified then 1 else 0;}if k==16 {return s[0].bytes;}if k>=17 && k<=20 {return s[0].loaded[k-17];}if k==21 {return s[0].meter[0].used[BUDGET_STEPS];}if k==22 {return OCL_BUDGET.bytes;}if k==23 {return cast(int)(s[0].pose[0].t.x*1000000);}if k==24 {return cast(int)(s[0].pose[0].t.z*1000000);}if k==25 {return cast(int)(s[0].source_speeds[1]*1000000);}if k==26 {return cast(int)(s[0].source_speeds[2]*1000000);}if k==27 {return cast(int)(s[0].world[3*12+11]*1000000);}if k==28 {return cast(int)(ocl_duration(s)*1000000);}if k==29 {feet:=pc.walk_feet(s[0].you);yaw:=pc.walk_face(s[0].you);return cast(int)((feet.z-sin(yaw)*s[0].world[3*12+3]+cos(yaw)*s[0].world[3*12+11])*1000000);}return cast(int)(s[0].time*30000);}
 ocl_ready :: (s:[]OcarinaLab)->bool #export_c #effects(all) {return s[0].ready && s[0].pack_verified && !s[0].failed && s[0].loaded[0]==s[0].bytes && s[0].loaded[1]==OCL_VERTEX_BYTES && s[0].loaded[2]==OCL_INDEX_COUNT*4 && s[0].loaded[3]==OCL_LAYERS;}
 ocl_asset :: (s:[]OcarinaLab,index:int,n:int) #export_c #effects(all) {if index<0 || index>=4 {s[0].failed=true;return;}s[0].loaded[index]=n;if n<=0 || (index==1 && n!=OCL_VERTEX_BYTES) || (index==2 && n!=OCL_INDEX_COUNT*4) || (index==3 && n!=OCL_LAYERS) {s[0].failed=true;}}
 ocl_pack_gate :: (s:[]OcarinaLab,n:int)->bool #export_c #effects(all) {s[0].pack_checks+=1;s[0].pack_verified=ocarina_pack_accept(s[0].pack_digest[..],n);if !s[0].pack_verified {s[0].failed=true;}return s[0].pack_verified;}
