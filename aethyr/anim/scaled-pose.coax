@@ -1,0 +1,45 @@
+// Affine joint chains for source animations with nonuniform scale, alongside the TQ pose API.
+#load "pose.coax";
+#test "Maya zero parent scale retains compensated basis and scales child translation" {
+ world:[24]f32;basis:[24]f32;scale:=[2]Point.[v3(0,2,3),v3(5,6,7)];
+ pose_affine_chain(world[..],basis[..],scale[..],-1,0,SkinLocal.{t=v3(1,2,3)},false);
+ pose_affine_chain(world[..],basis[..],scale[..],0,1,SkinLocal.{t=v3(4,5,6)},true);
+ #assert world[12]==5 && world[17]==6 && world[22]==7;
+ #assert world[15]==1 && world[19]==12 && world[23]==21;
+}
+#test "Maya compensation preserves rotated ancestor scale but removes immediate parent scale" {
+ world:[36]f32;basis:[36]f32;scale:=[3]Point.[v3(0,-2,3),v3(4,5,6),v3(7,8,9)];turn:=Quat.{z=1,w=0};
+ pose_affine_chain(world[..],basis[..],scale[..],-1,0,SkinLocal.{t=v3(1,2,3),q=turn},false);
+ pose_affine_chain(world[..],basis[..],scale[..],0,1,SkinLocal.{t=v3(1,2,3),q=turn},false);
+ pose_affine_chain(world[..],basis[..],scale[..],1,2,SkinLocal.{t=v3(2,3,4),q=turn},true);
+ expected:=[12]f32.[0,0,0,1,0,16,0,-24,0,0,27,84];for k:0..<12 {#assert world[24+k]==expected[k];}
+ #assert basis[24]==0 && basis[29]==2 && basis[34]==3;
+}
+#test "scaled joint chains retain nonuniform parent scale in child translation" {
+ world:[24]f32;basis:[24]f32;scale:=[2]Point.[v3(2,3,4),v3(1,1,1)];pose_affine_chain(world[..],basis[..],scale[..],-1,0,SkinLocal.{t=v3(1,2,3)},false);pose_affine_chain(world[..],basis[..],scale[..],0,1,SkinLocal.{t=v3(1,1,1)},false);
+ #assert world[12]==2 && world[17]==3 && world[22]==4 && world[15]==3 && world[19]==5 && world[23]==7;
+}
+#test "Maya segment compensation cancels parent local scale only in the child basis" {
+ world:[24]f32;basis:[24]f32;scale:=[2]Point.[v3(2,3,4),v3(5,6,7)];pose_affine_chain(world[..],basis[..],scale[..],-1,0,SkinLocal.{t=v3(1,2,3)},false);pose_affine_chain(world[..],basis[..],scale[..],0,1,SkinLocal.{t=v3(1,1,1)},true);
+ #assert world[12]==5 && world[17]==6 && world[22]==7 && world[15]==3 && world[19]==5 && world[23]==7;
+}
+#test "scaled inverse binds preserve a rest point and singular scales stay finite" {
+ world:[24]f32;basis:[24]f32;scale:=[2]Point.[v3(1,1,1),v3(1,1,1)];pose_affine_chain(world[..],basis[..],scale[..],-1,0,SkinLocal.{t=v3(1,2,3)},false);bind:=[12]f32.[1,0,0,-1,0,1,0,-2,0,0,1,-3];out:[12]f32;pose_affine_palette(world[..],bind[..],0,out[..]);for k:0..<12 {#assert out[k]==(ifx k==0 || k==5 || k==10 then 1.0f32 else 0.0f32);}
+ scale[0]=v3(0,-2,1);pose_affine_chain(world[..],basis[..],scale[..],-1,0,SkinLocal.{},false);pose_affine_chain(world[..],basis[..],scale[..],0,1,SkinLocal.{},true);for v:world {#assert finite(v);}
+}
+pose_affine_local :: (t:Point,q:Quat,s:Point,out:[]f32) {
+ x:=times(quat_rotate(q,v3(1,0,0)),s.x);y:=times(quat_rotate(q,v3(0,1,0)),s.y);z:=times(quat_rotate(q,v3(0,0,1)),s.z);
+ values:=[12]f32.[x.x,y.x,z.x,t.x,x.y,y.y,z.y,t.y,x.z,y.z,z.z,t.z];for k:0..<12 {out[k]=values[k];}
+}
+// NintendoWare CalcWorldMaya: U excludes this joint's scale; W = U * S.
+// https://github.com/nw4f/G3d/blob/ed43f049896126ec5c32b04f7d9fb38eac37baeb/src/nw/g3d/g3d_SkeletonObj.cpp
+pose_affine_chain :: (world:[]f32,basis:[]f32,scale:[]Point,parent:int,joint:int,local:SkinLocal,compensate:bool) {
+ m:[12]f32;pose_affine_local(local.t,local.q,v3(1,1,1),m[..]);at:=joint*12;
+ if parent<0 {for k:0..<12 {basis[at+k]=m[k];}}
+ else {
+  #assert parent<joint;p:=parent*12;ps:=scale[parent];parent_scale:=[3]f32.[ps.x,ps.y,ps.z];
+  for row:0..<3 {for col:0..<4 {v:f32=0;for k:0..<3 {factor:=ifx !compensate || col==3 then parent_scale[k] else 1.0f32;v+=basis[p+row*4+k]*m[k*4+col]*factor;}if col==3 {v+=basis[p+row*4+3];}basis[at+row*4+col]=v;}}
+ }
+ own:=scale[joint];own_scale:=[3]f32.[own.x,own.y,own.z];for row:0..<3 {for col:0..<4 {world[at+row*4+col]=basis[at+row*4+col]*(ifx col<3 then own_scale[col] else 1.0f32);}}
+}
+pose_affine_palette :: (world:[]f32,bind:[]f32,joint:int,out:[]f32) {at:=joint*12;for row:0..<3 {for col:0..<4 {v:f32=0;for k:0..<3 {v+=world[at+row*4+k]*bind[at+k*4+col];}if col==3 {v+=world[at+row*4+3];}out[at+row*4+col]=v;}}}

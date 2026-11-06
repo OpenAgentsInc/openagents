@@ -20,6 +20,14 @@ render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animati
   #assert !render_adoption("animation-la","animationlab").tracked_legacy;
 }
 
+#test "Ocarina Lab binds its source renderer only to the unlisted Ocarina producer" {
+  r:=render_adoption("ocarina-lab","ocarinalab");
+  #assert r.tracked_legacy && !r.shared && r.profile== -1;
+  #assert !render_adoption("ocarina-lab","animationlab").tracked_legacy;
+  #assert !render_adoption("ocarina-labs","ocarinalab").tracked_legacy;
+  #assert !render_adoption("animation-lab","ocarinalab").tracked_legacy;
+}
+
 #test "shared adoption binds each catalog slug to its actual producer" {
   for i: 0..<RENDER_CATALOG_COUNT {
     p := render_catalog(i); route := render_adoption(p.slug, p.app);
@@ -120,6 +128,7 @@ render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animati
 }
 #test "Valley world's source slice binds only its isolated initial renderer" {r:=render_adoption("valley-world","valleyworld");#assert r.tracked_legacy && !r.shared && r.profile== -1;#assert !render_adoption("valley-world","valleycanyon").tracked_legacy && !render_adoption("valley-worlds","valleyworld").tracked_legacy && !render_adoption("valley-canyon","valleyworld").tracked_legacy;}
 render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effects(all) {
+  if slug == "ocarina-lab" && app == "ocarinalab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "animation-lab" && app == "animationlab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "valley-world" && app == "valleyworld" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "valley-canyon" && app == "valleycanyon" { return RenderAdoption.{tracked_legacy = true}; }

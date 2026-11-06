@@ -1,0 +1,14 @@
+// One deterministic forest placement source for rendering and trunk collision.
+OC_TREES :: 96;
+OC_TREE_VERTICES :: 1164;
+OC_GRASS :: 600;
+OC_ROCKS :: 36;
+OC_FERNS :: 32;
+OC_FOREST_VERTICES :: 6+OC_TREES*OC_TREE_VERTICES+OC_GRASS*18+OC_ROCKS*192+OC_FERNS*288;
+OcTree :: struct {x:f32;z:f32;height:f32;radius:f32;}
+OcRock :: struct {x:f32;z:f32;radius:f32;height:f32;}
+oc_path :: (z:f32)->f32 {return sin(z*0.15)*2.8;}
+oc_tree :: (k:int)->OcTree {x:=(cast(f32)(k%12)-5.5)*4.5+sin(cast(f32)k*3.4);z:=(cast(f32)(k/12)-3.5)*5.5+cos(cast(f32)k*4.7)*1.2;path:=oc_path(z);if abs(x-path)<3 {x=path+(ifx x<path then -3.3f32 else 3.3f32);}return OcTree.{x=x,z=z,height=8+cos(cast(f32)k*2.1)*2.3,radius=0.32+0.1*sin(cast(f32)k*1.3)};}
+oc_rock :: (k:int)->OcRock {x:=sin(cast(f32)k*2.41)*22;z:=cos(cast(f32)k*1.77)*19;if abs(x-oc_path(z))<2.5 {x+=4;}return OcRock.{x=x,z=z,radius=0.35+(sin(cast(f32)k)*0.5+0.5)*0.8,height=0.3+(cos(cast(f32)k)*0.5+0.5)*0.7};}
+#test "forest trunks and boulders retain a clear winding path" {for k:0..<OC_TREES {t:=oc_tree(k);#assert abs(t.x-oc_path(t.z))>3 && t.radius>0.2 && t.height>5;}for k:0..<OC_ROCKS {r:=oc_rock(k);#assert r.radius>0 && r.height>0;}}
+#test "forest indexed procedural ranges cover every primitive without overlap" {#assert OC_FOREST_VERTICES==138678 && OC_TREE_VERTICES==60+144+5*192;}

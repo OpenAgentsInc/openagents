@@ -102,3 +102,4 @@ valleyworld 136000
 # Optional socket-owned room timing and clock intervals; 21,910 release bytes.
 latency-client 26000
 animationlab 290000
+ocarinalab 190000

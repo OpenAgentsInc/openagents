@@ -1,0 +1,131 @@
+// Direct original BFRES -> private OCL1 character streams. No JSON/glTF input.
+// CLI MODEL PACK1 PACK2 PACK3 PACK4 FACIAL OUTPUT_DIR; all BFRES decompressed.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "ocarina-bfres.coax";
+OCL_BONES :: 512; OCL_VERTICES :: 200000; OCL_INDEX :: 1000000; OCL_CLIPS :: 8;
+OCL_NAMES :: [8]string.["Wait","Move_Walk","Move_Run","Move_Dash","Jump_Run_FootL","Land_Run_F_FootL","BackFlip","Player_Child_FacialCheck"];
+ObBone :: struct {name:[96]u8;length:int;parent:int= -1;rest:SkinLocal;flags:u32;euler:Point;bind:[12]f32;gq:Quat;gt:Point;}
+ObRig :: struct {bone:[OCL_BONES]ObBone;count:int;palette:[OCL_BONES]int;paletteCount:int;smooth:int;}
+ObAttribute :: struct {exists:bool;format:int;offset:int;buffer:int;}
+ObBuffer :: struct {offset:int;size:int;stride:int;}
+
+#test "Ocarina OCL1 vertex record preserves packed colors eight weights and material" {
+ b:[128]u8;ob_rgba(b[..],76,[4]f32.[0,1,0.5,1]);#assert scan_u32(b[..],76)==0xff80ff00;
+ scan_put(b[..],32,17);#assert scan_u32(b[..],32)==17;for k:0..<8 {b[52+k]=cast(u8)(k*9);}#assert b[52]==0 && b[59]==63;
+ #assert OCL_NAMES[0]=="Wait" && OCL_NAMES[7]=="Player_Child_FacialCheck";
+}
+#test "Ocarina rigid source vertices are transformed into character bind space" {
+ b:=ObBone.{gq=ob_euler(v3(0,0,1.57079632679)),gt=v3(2,3,4)};p:=ob_bind_point(b,v3(1,0,0));#assert abs(p.x-2)<0.00001 && abs(p.y-4)<0.00001 && p.z==4;
+}
+ob_bind_point :: (b:ObBone,p:Point)->Point {return add(b.gt,quat_rotate(b.gq,p));}
+ob_rgba :: (b:[]u8,at:int,c:[4]f32) {for j:0..<4 {v:=cast(int)(ob_min(ob_max(c[j],0),1)*255+0.5);b[at+j]=cast(u8)v;}}
+ob_file :: (b:[]u8) {#assert b.count>=240 && ob_word(b,0)==0x53455246 && ob_word(b,8)==0x000a0400 && ob_u16(b,12)==0xfeff;}
+ob_rig :: (b:[]u8,out:[]ObRig) {
+ ob_file(b);#assert ob_u16(b,0xdc)==1;m:=ob_ptr(b,0x28);#assert ob_word(b,m)==0x4c444d46;s:=ob_ptr(b,m+24);#assert ob_word(b,s)==0x4c4b5346;n:=ob_u16(b,s+56);smooth:=ob_u16(b,s+58);rigid:=ob_u16(b,s+60);#assert n>0 && n<=OCL_BONES && smooth+rigid<=OCL_BONES;
+ out[0].count=n;out[0].smooth=smooth;out[0].paletteCount=smooth+rigid;pa:=ob_ptr(b,s+24);for k:0..<smooth+rigid {v:=ob_u16(b,pa+k*2);#assert v<n;out[0].palette[k]=v;}
+ array:=ob_ptr(b,s+16);inv:=ob_ptr(b,s+32);
+ for k:0..<n {p:=array+k*88;name:=ob_name(b,p);#assert name.count>0 && name.count<96;v:=ObBone.{};v.length=name.count;for c,j:name {v.name[j]=c;}v.flags=ob_word(b,p+44);v.parent=ob_s16(b,p+34);#assert v.parent>= -1 && v.parent<k;
+  for j:0..<3 {#assert abs(ob_float(b,p+48+j*4)-1)<0.00001;}#assert (ob_word(b,p+44)&0x7000)==0x1000;
+  v.euler=v3(ob_float(b,p+60),ob_float(b,p+64),ob_float(b,p+68));v.rest=SkinLocal.{q=ob_euler(v.euler),t=scan_point(b,p+76)};
+  v.gq=v.rest.q;v.gt=v.rest.t;if v.parent>=0 {parent:=out[0].bone[v.parent];v.gq=quat_unit(quat_mul(parent.gq,v.rest.q));v.gt=add(parent.gt,quat_rotate(parent.gq,v.rest.t));}
+  iq:=Quat.{x= -v.gq.x,y= -v.gq.y,z= -v.gq.z,w=v.gq.w};ex:=quat_rotate(iq,v3(1,0,0));ey:=quat_rotate(iq,v3(0,1,0));ez:=quat_rotate(iq,v3(0,0,1));invTranslation:=times(quat_rotate(iq,v.gt),-1);
+  v.bind=[12]f32.[ex.x,ey.x,ez.x,invTranslation.x,ex.y,ey.y,ez.y,invTranslation.y,ex.z,ey.z,ez.z,invTranslation.z];si:=ob_s16(b,p+36);
+  if si>=0 {#assert si<smooth && out[0].palette[si]==k;for j:0..<12 {value:=ob_float(b,inv+si*48+j*4);#assert abs(value-v.bind[j])<0.0001;v.bind[j]=value;}}
+  out[0].bone[k]=v;
+ }
+}
+ob_attr_components :: (format:int)->int {
+ if format==0x1805 {return 3;}if format==0x1505 || format==0x1503 || format==0x0b03 || format==0x0b01 || format==0x0e02 {return 4;}
+ if format==0x1205 || format==0x1201 || format==0x1202 || format==0x0903 || format==0x0901 {return 2;}
+ #assert format==0x0a03 || format==0x0203 || format==0x0201;return 1;
+}
+ob_attr_value :: (b:[]u8,a:ObAttribute,buf:ObBuffer,vertex:int,lane:int)->f32 {
+ #assert a.exists && vertex>=0 && lane>=0 && lane<ob_attr_components(a.format);base:=buf.offset+vertex*buf.stride+a.offset;fmt:=a.format;
+ width:=ifx fmt==0x1805 then 12 else ifx fmt==0x1505 || fmt==0x1503 then 8 else ifx fmt==0x0a03 || fmt==0x0903 || fmt==0x0901 then 2 else ifx fmt==0x0203 || fmt==0x0201 then 1 else 4;
+ #assert a.offset+width<=buf.stride && vertex*buf.stride+a.offset+width<=buf.size;
+ if fmt==0x1805 {return ob_float(b,base+lane*4);}if fmt==0x1505 || fmt==0x1205 {x:=rh_half_decode(cast(u32)ob_u16(b,base+lane*2));#assert x.ok;return x.value;}
+ if fmt==0x1201 {return cast(f32)ob_u16(b,base+lane*2)/65535;}if fmt==0x1202 {return ob_max(cast(f32)ob_s16(b,base+lane*2)/32767,-1);}
+ if fmt==0x0e02 {raw:=ob_word(b,base);if lane<3 {return ob_snorm10(raw>>cast(u32)(lane*10));}return ifx ((raw>>30)&3)==3 then -1 else 1;}
+ if fmt==0x1503 {return cast(f32)ob_u16(b,base+lane*2);}if fmt==0x0a03 {return cast(f32)ob_u16(b,base);}
+ #assert ob_span(b.count,base+lane,1);value:=cast(f32)b[base+lane];return ifx fmt==0x0b01 || fmt==0x0901 || fmt==0x0201 then value/255 else value;
+}
+ob_attribute :: (b:[]u8,vertex:int,name:string)->ObAttribute {
+ count:=cast(int)b[vertex+76];array:=ob_ptr(b,vertex+8);found:=ObAttribute.{};
+ for k:0..<count {p:=array+k*16;if ob_name(b,p)==name {#assert !found.exists;found=ObAttribute.{exists=true,format=ob_int(b,p+8),offset=ob_u16(b,p+12),buffer=cast(int)b[p+14]};}}
+ return found;
+}
+ob_attr_point :: (b:[]u8,a:ObAttribute,buffers:[]ObBuffer,k:int)->Point {#assert a.buffer>=0 && a.buffer<buffers.count;buf:=buffers[a.buffer];return v3(ob_attr_value(b,a,buf,k,0),ob_attr_value(b,a,buf,k,1),ob_attr_value(b,a,buf,k,2));}
+ob_mesh :: (b:[]u8,rig:ObRig,out:[]u8,indices:[]u8,counts:[]int) {
+ model:=ob_ptr(b,40);pool:=ob_ptr(b,176);gpu:=ob_ptr(b,pool+8);poolSize:=ob_int(b,pool+4);#assert ob_span(b.count,gpu,poolSize);shapes:=ob_u16(b,model+106);#assert shapes>0 && shapes<=256;array:=ob_ptr(b,model+40);
+ for shape:0..<shapes {
+  s:=array+shape*96;#assert ob_word(b,s)==0x50485346 && (ob_word(b,s+4)&16)==0;v:=ob_ptr(b,s+16);#assert ob_word(b,v)==0x58545646;nv:=ob_int(b,v+80);nb:=cast(int)b[v+77];#assert nv>0 && counts[0]+nv<=OCL_VERTICES && nb>0 && nb<=8;
+  buffers:[8]ObBuffer;cur:=gpu+ob_int(b,v+72);alignment:=ob_u16(b,v+86);#assert alignment>0 && (alignment&(alignment-1))==0;
+  for j:0..<nb {cur=((cur+alignment-1)/alignment)*alignment;size:=ob_int(b,ob_ptr(b,v+48)+j*16);stride:=ob_int(b,ob_ptr(b,v+56)+j*16);#assert stride>0 && cur>=gpu && ob_span(poolSize,cur-gpu,size);buffers[j]=ObBuffer.{offset=cur,size=size,stride=stride};cur+=size;}
+  names:=[15]string.["_p0","_n0","_u0","_t0","_c0","_u1","_u2","_u3","_c1","_i0","_i1","_w0","_w1","_u4","_i2"];attrs:[15]ObAttribute;
+  for j:0..<15 {attrs[j]=ob_attribute(b,v,names[j]);if attrs[j].exists {#assert attrs[j].buffer<nb;}}#assert attrs[0].exists && attrs[1].exists && attrs[2].exists && !attrs[13].exists && !attrs[14].exists;
+  wc:=cast(int)b[s+90];#assert wc<=8;base:=counts[0];material:=ob_u16(b,s+82);baseBone:=ob_u16(b,s+84);
+  for k:0..<nv {
+   p:=ob_attr_point(b,attrs[0],buffers[0..<nb],k);normal:=ob_attr_point(b,attrs[1],buffers[0..<nb],k);tangent:=v3(1,0,0);tw:f32=1;
+   if attrs[3].exists {tangent=ob_attr_point(b,attrs[3],buffers[0..<nb],k);tw=ob_attr_value(b,attrs[3],buffers[attrs[3].buffer],k,3);}
+   joints:[8]int;weights:[8]int;sum:=0;
+   for w:0..<wc {set:=w/4;lane:=w%4;ia:=attrs[9+set];wa:=attrs[11+set];#assert ia.exists && lane<ob_attr_components(ia.format);palette:=cast(int)ob_attr_value(b,ia,buffers[ia.buffer],k,lane);#assert palette>=0 && palette<rig.paletteCount;joints[w]=rig.palette[palette];weights[w]=ifx wc==1 then 255 else cast(int)(ob_attr_value(b,wa,buffers[wa.buffer],k,lane)*255+0.5);#assert weights[w]>=0 && weights[w]<=255;sum+=weights[w];}
+   if wc==0 {#assert baseBone<rig.count;joints[0]=baseBone;weights[0]=255;sum=255;}#assert sum==255;
+   if wc<=1 {bone:=rig.bone[joints[0]];p=ob_bind_point(bone,p);normal=quat_rotate(bone.gq,normal);tangent=quat_rotate(bone.gq,tangent);}
+   at:=(base+k)*128;scan_write_point(out,at,p);scan_write_point(out,at+12,unit_or(normal,v3(0,1,0)));scan_put(out,at+32,cast(u32)material);
+   for j:0..<4 {scan_put(out,at+36+j*4,cast(u32)joints[j*2]|(cast(u32)joints[j*2+1]<<16));}for j:0..<8 {out[at+52+j]=cast(u8)weights[j];}
+   scan_write_point(out,at+60,unit_or(tangent,v3(1,0,0)));scan_put(out,at+72,f32_bits(tw));
+   for uv:0..<4 {a:=attrs[[4]int.[2,5,6,7][uv]];if a.exists {dest:=ifx uv==0 then at+24 else at+80+(uv-1)*8;scan_put(out,dest,f32_bits(ob_attr_value(b,a,buffers[a.buffer],k,0)));scan_put(out,dest+4,f32_bits(ob_attr_value(b,a,buffers[a.buffer],k,1)));}}
+   for color:0..<2 {a:=attrs[ifx color==0 then 4 else 8];rgba:=[4]f32.[1,1,1,1];if a.exists {for lane:0..<4 {rgba[lane]=ob_attr_value(b,a,buffers[a.buffer],k,lane);}}ob_rgba(out,at+(ifx color==0 then 76 else 104),rgba);}
+  }
+  mesh:=ob_ptr(b,s+24);#assert ob_word(b,mesh+36)==3;fmt:=ob_int(b,mesh+40);#assert fmt<=2;n:=ob_int(b,mesh+44);#assert n>0 && n%3==0 && counts[1]+n<=OCL_INDEX;start:=gpu+ob_int(b,mesh+32);width:=ifx fmt==0 then 1 else ifx fmt==1 then 2 else 4;#assert ob_span(poolSize,start-gpu,n*width);bias:=ob_int(b,mesh+48);
+  for j:0..<n {i:=ifx fmt==0 then cast(int)b[start+j] else ifx fmt==1 then ob_u16(b,start+j*2) else ob_int(b,start+j*4);i+=bias;#assert i>=0 && i<nv;scan_put(indices,(counts[1]+j)*4,cast(u32)(base+i));}
+  counts[0]+=nv;counts[1]+=n;print("Ocarina shape % vertices=% triangles=% material=% influences=%\n",shape,nv,n/3,material,wc);
+ }
+}
+ob_pose_write :: (b:[]u8,at:int,p:SkinLocal) {v:=[7]f32.[p.t.x,p.t.y,p.t.z,p.q.x,p.q.y,p.q.z,p.q.w];for k:0..<7 {#assert (f32_bits(v[k])&0x7f800000)!=0x7f800000;scan_put(b,at+k*4,f32_bits(v[k]));}}
+ob_bone_find :: (rig:ObRig,name:string)->int {for k:0..<rig.count {v:=rig.bone[k];if cast(string)v.name[0..<v.length]==name {return k;}}return -1;}
+ob_clip :: (b:[]u8,a:int,id:int,source:int,rig:ObRig,out:[]u8,cursor:[]int) {
+ nframes:=ob_int(b,a+64);#assert nframes>0 && nframes<=2000;frames:=nframes+1;nb:=ob_u16(b,a+76);#assert nb>0 && nb<=rig.count;array:=ob_ptr(b,a+40);start:=cursor[0];poseBytes:=frames*rig.count*28;scaleStart:=start+poseBytes;#assert ob_span(out.count,start,poseBytes+frames*rig.count*12+rig.count*4);scaled:=false;scaleMin:f32=1;scaleMax:f32=1;localFlags:[OCL_BONES]u32;for joint:0..<rig.count {localFlags[joint]=rig.bone[joint].flags;}
+ for f:0..<frames {for k:0..<rig.count {ob_pose_write(out,start+(f*rig.count+k)*28,rig.bone[k].rest);for j:0..<3 {scan_put(out,scaleStart+((f*rig.count+k)*3+j)*4,f32_bits(1));}}}
+ used:[OCL_BONES]bool;curveCount:=0;
+ for bi:0..<nb {
+  ba:=array+bi*56;name:=ob_name(b,ba);joint:=ob_bone_find(rig,name);#assert joint>=0 && !used[joint];used[joint]=true;flags:=ob_word(b,ba+40);localFlags[joint]=flags;mode:=cast(int)((flags>>20)&3);#assert mode<=1;base:=ob_ptr(b,ba+16);rest:=rig.bone[joint];
+  values:[10]f32;values[0]=1;values[1]=1;values[2]=1;values[3]=rest.euler.x;values[4]=rest.euler.y;values[5]=rest.euler.z;values[6]=1;values[7]=rest.rest.t.x;values[8]=rest.rest.t.y;values[9]=rest.rest.t.z;
+  if mode==1 {values[3]=rest.rest.q.x;values[4]=rest.rest.q.y;values[5]=rest.rest.q.z;values[6]=rest.rest.q.w;}
+  if (flags&8)!=0 {for k:0..<3 {values[k]=ob_float(b,base+k*4);}base+=12;}if (flags&16)!=0 {for k:0..<4 {values[k+3]=ob_float(b,base+k*4);}base+=16;}if (flags&32)!=0 {for k:0..<3 {values[k+7]=ob_float(b,base+k*4);}}
+  nc:=cast(int)b[ba+46];curves:=ob_ptr(b,ba+8);curveCount+=nc;
+  for k:0..<nc {c:=curves+k*48;n:=ob_u16(b,c+18);#assert n>0;previous:f32= -100000;for j:0..<n {time:=ob_curve_frame(b,c,j);#assert time>=previous;previous=time;}}
+  for f:0..<frames {current:=values;
+   for k:0..<nc {c:=curves+k*48;target:=ob_int(b,c+20);ct:=(ob_curve_flags(b,c)>>4)&15;
+    if ct>=8 {#assert target==32 && mode==1;q:=ob_curve_quat(b,c,cast(f32)f);current[3]=q.x;current[4]=q.y;current[5]=q.z;current[6]=q.w;}
+    else {#assert target%4==0 && ((target>=4 && target<=24) || (target>=32 && target<=44));lane:=ifx target<16 then (target-4)/4 else ifx target<32 then 7+(target-16)/4 else 3+(target-32)/4;current[lane]=ob_curve_value(b,c,cast(f32)f);}
+   }
+   q:=ifx mode==0 then ob_euler(v3(current[3],current[4],current[5])) else quat_unit(Quat.{x=current[3],y=current[4],z=current[5],w=current[6]});#assert abs(quat_dot(q,q)-1)<0.0001;
+   ob_pose_write(out,start+(f*rig.count+joint)*28,SkinLocal.{t=v3(current[7],current[8],current[9]),q=q});
+   for k:0..<3 {value:=current[k];#assert abs(value)<1000 && (f32_bits(value)&0x7f800000)!=0x7f800000;scan_put(out,scaleStart+((f*rig.count+joint)*3+k)*4,f32_bits(value));scaleMin=ob_min(scaleMin,value);scaleMax=ob_max(scaleMax,value);if abs(value-1)>0.00001 {scaled=true;}}
+  }
+ }
+ #assert curveCount==ob_int(b,a+68);entry:=32+id*32;scan_put(out,entry,cast(u32)start);scan_put(out,entry+4,cast(u32)frames);scan_put(out,entry+8,f32_bits(cast(f32)nframes/30));scan_put(out,entry+12,0);scan_put(out,entry+16,f32_bits(30));scan_put(out,entry+20,cast(u32)source);scan_put(out,entry+24,cast(u32)(ifx scaled then 6 else 4));scan_put(out,entry+28,cast(u32)(ifx scaled then scaleStart else 0));
+ flagsStart:=scaleStart+(ifx scaled then frames*rig.count*12 else 0);for joint:0..<rig.count {scan_put(out,flagsStart+joint*4,localFlags[joint]);}cursor[0]=flagsStart+rig.count*4;print("Ocarina clip % source=% frames=% curves=% scales=% scaleMin=% scaleMax=%\n",OCL_NAMES[id],source,frames,curveCount,scaled,scaleMin,scaleMax);
+}
+ob_find_clips :: (b:[]u8,source:int,rig:ObRig,out:[]u8,cursor:[]int,done:[]bool) {
+ ob_file(b);array:=ob_ptr(b,88);n:=ob_u16(b,226);#assert n<=2000;
+ for k:0..<n {a:=array+k*80;#assert ob_word(b,a)==0x414b5346;name:=ob_name(b,a+8);for id:0..<OCL_CLIPS {if !done[id] && name==OCL_NAMES[id] {ob_clip(b,a,id,source,rig,out,cursor);done[id]=true;}}}
+}
+ob_rig_write :: (rig:ObRig,out:[]u8)->int {
+ scan_put(out,0,0x314c434f);scan_put(out,4,1);scan_put(out,8,cast(u32)rig.count);scan_put(out,12,OCL_CLIPS);at:=32+OCL_CLIPS*32;scan_put(out,16,cast(u32)at);scan_put(out,24,cast(u32)rig.count);
+ for k:0..<rig.count {b:=rig.bone[k];scan_put(out,at,cast(u32)(b.parent+1));at+=4;for j:0..<12 {scan_put(out,at,f32_bits(b.bind[j]));at+=4;}ob_pose_write(out,at,b.rest);at+=28;}return at;
+}
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=7 {print("usage: MODEL PACK1 PACK2 PACK3 PACK4 FACIAL OUTPUT_DIR\n");return 2;}
+ data:[67108864]u8;vertices:[OCL_VERTICES*128]u8;indices:[OCL_INDEX*4]u8;poses:[33554432]u8;rig:[1]ObRig;counts:[2]int;cursor:[1]int;done:[OCL_CLIPS]bool;path:[4096]u8;
+ n:=fs_read(args_at(args[..],0),data[..]);if n<=0 {return 3;}ob_rig(data[0..<n],rig[..]);#assert rig[0].count==309;ob_mesh(data[0..<n],rig[0],vertices[..],indices[..],counts[..]);cursor[0]=ob_rig_write(rig[0],poses[..]);
+ for source:1..<6 {n=fs_read(args_at(args[..],source),data[..]);if n<=0 {return 4;}ob_find_clips(data[0..<n],source,rig[0],poses[..],cursor[..],done[..]);}
+ for id:0..<OCL_CLIPS {if !done[id] {print("missing original clip %\n",OCL_NAMES[id]);return 5;}}
+ scan_put(poses[..],20,cast(u32)cursor[0]);dest:=args_at(args[..],6);if !fs_mkdir(dest) {return 6;}
+ if !fs_write(fs_join(dest,"link.vertices",path[..]),cast(string)vertices[0..<counts[0]*128]) || !fs_write(fs_join(dest,"link.indices",path[..]),cast(string)indices[0..<counts[1]*4]) || !fs_write(fs_join(dest,"link.rig",path[..]),cast(string)poses[0..<cursor[0]]) {return 7;}
+ print("OCL1 bones=% vertices=% indices=% triangles=% rig_bytes=%\n",rig[0].count,counts[0],counts[1],counts[1]/3,cursor[0]);return 0;
+}

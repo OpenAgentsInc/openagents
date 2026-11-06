@@ -1,0 +1,2 @@
+# Keep the pinned decoder byte-for-byte, including upstream whitespace.
+bcdec.h -whitespace

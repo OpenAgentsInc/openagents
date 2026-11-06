@@ -1,0 +1,118 @@
+// OCL1 private Link rig profile: 309 joints, eight named source clips, TQ/S3/flags.
+// Content identity is a separate whole-pack gate. No view is formed before this succeeds.
+#load "../valley/scan.coax";
+#load "rig-policy-fixture.coax";
+#authority;
+OCL_JOINTS :: 309;
+OCL_RIG_CAP :: 12582912;
+OCL_RIG_CLIPS :: 8;
+OCL_RIG_BASE :: 32+8*32;
+OCL_TEST_BYTES :: 232656;
+OclRigClip :: struct {ok:bool;start:int;end:int;frames:int;scale:int;flags:int;}
+
+#test "Ocarina rig spans and quaternion checks refuse hostile words before reads" {
+ #assert ocr_span(16,0,16) && ocr_span(16,16,0) && !ocr_span(16,-1,1) && !ocr_span(16,15,2) && !ocr_span(16,17,0) && !ocr_span(16,0,-1);
+ b:[28]u8;scan_put(b[..],24,f32_bits(1));#assert ocr_pose(b[..],0) && !ocr_pose(b[0..<27],0) && !ocr_pose(b[..],1);
+ for lane:0..<7 {old:=scan_u32(b[..],lane*4);for bits:[3]u32.[0x7fc00000,0x7f800000,0xff800000] {scan_put(b[..],lane*4,bits);#assert !ocr_pose(b[..],0);}scan_put(b[..],lane*4,old);}
+ scan_put(b[..],24,f32_bits(0));#assert !ocr_pose(b[..],0);scan_put(b[..],24,f32_bits(2));#assert !ocr_pose(b[..],0);
+ scan_put(b[..],24,f32_bits(-1));#assert ocr_pose(b[..],0);
+}
+#test "Ocarina finite-value admission remains separate from the positive source scale profile" {
+ b:[12]u8;scan_put(b[..],4,f32_bits(-0.25));scan_put(b[..],8,f32_bits(1.5));#assert ocr_finite(b[..],0,3);
+ #assert !ocr_finite(b[0..<11],0,3) && !ocr_finite(b[..],-1,1) && !ocr_finite(b[..],0,-1);
+ for lane:0..<3 {old:=scan_u32(b[..],lane*4);scan_put(b[..],lane*4,0x7fc00000);#assert !ocr_finite(b[..],0,3);scan_put(b[..],lane*4,old);}
+}
+#test "Ocarina rig admits the complete bounded source profile and rejects header edits" #steps 100000000 {
+ b:[OCL_TEST_BYTES+1]u8;ocr_fixture(b[..]);#assert ocarina_rig_valid(b[0..<OCL_TEST_BYTES]);
+ #assert !ocarina_rig_valid(b[0..<31]) && !ocarina_rig_valid(b[0..<OCL_TEST_BYTES-1]) && !ocarina_rig_valid(b[..]);
+ for field:0..<8 {old:=scan_u32(b[..],field*4);scan_put(b[..],field*4,old+1);#assert !ocarina_rig_valid(b[0..<OCL_TEST_BYTES]);scan_put(b[..],field*4,old);}
+}
+#test "Ocarina rig refuses parent cycles nonfinite binds and nonunit rest rotations" #steps 100000000 {
+ b:[OCL_TEST_BYTES]u8;ocr_fixture(b[..]);base:=OCL_RIG_BASE;
+ scan_put(b[..],base,1);#assert !ocarina_rig_valid(b[..]);scan_put(b[..],base,0);
+ scan_put(b[..],base+80,2);#assert !ocarina_rig_valid(b[..]);scan_put(b[..],base+80,1);
+ scan_put(b[..],base+4,0x7f800000);#assert !ocarina_rig_valid(b[..]);scan_put(b[..],base+4,f32_bits(1));
+ scan_put(b[..],base+76,f32_bits(0));#assert !ocarina_rig_valid(b[..]);
+}
+#test "Ocarina clip descriptors bind frames fps source scales and disjoint payloads" #steps 100000000 {
+ b:[OCL_TEST_BYTES]u8;ocr_fixture(b[..]);entry:=32;
+ for word:[7]int.[0,1,2,4,5,6,7] {old:=scan_u32(b[..],entry+word*4);scan_put(b[..],entry+word*4,0);#assert !ocr_clip(b[..],entry).ok;scan_put(b[..],entry+word*4,old);}
+ scan_put(b[..],entry+4,2002);#assert !ocr_clip(b[..],entry).ok;scan_put(b[..],entry+4,2);
+ scan_put(b[..],entry+12,0x7fc00000);#assert !ocr_clip(b[..],entry).ok;scan_put(b[..],entry+12,0);
+ old:=scan_u32(b[..],32+32);scan_put(b[..],32+32,scan_u32(b[..],32));scan_put(b[..],32+32+28,scan_u32(b[..],32+28));#assert !ocarina_rig_valid(b[..]);
+ scan_put(b[..],32+32,old);scan_put(b[..],32+32+28,old+2*OCL_JOINTS*28);
+ scale:=cast(int)scan_u32(b[..],32+28);scan_put(b[..],scale,0x7fc00000);#assert !ocarina_rig_valid(b[..]);
+}
+
+ocr_span :: (size:int,at:int,n:int)->bool #effects(all) {return at>=0 && n>=0 && at<=size && n<=size-at;}
+ocr_finite :: (b:[]u8,at:int,n:int)->bool #effects(all) {
+ if !ocr_span(b.count,at,0) || n<0 {return false;}
+ if n>(b.count-at)/4 {return false;}
+ for k:0..<n {if !ocr_finite_bits(scan_u32(b,at+k*4)) {return false;}}return true;
+}
+ocr_finite_bits :: (bits:u32)->bool #effects(all) {return (bits&0x7f800000)!=0x7f800000;}
+ocr_norm :: (sum:f32)->bool #effects(all) {return sum>=0.99 && sum<=1.01;}
+ocr_inverse :: (b:[]u8,at:int)->bool #effects(all) {return ocr_finite(b,at,12);}
+ocr_pose :: (b:[]u8,at:int)->bool #effects(all) {
+ if !ocr_finite(b,at,7) {return false;}sum:f32=0;for k:0..<4 {q:=scan_float(b,at+12+k*4);sum+=q*q;}return ocr_norm(sum);
+}
+ocr_scales :: (b:[]u8,at:int)->bool #effects(all) {
+ if !ocr_finite(b,at,3) {return false;}for k:0..<3 {s:=scan_float(b,at+k*4);if !(s>0) || s>1000 {return false;}}return true;
+}
+ocr_clip :: (b:[]u8,entry:int)->OclRigClip #effects(all) {
+ if !ocr_descriptor_span(b.count,entry) {return OclRigClip.{};}
+ start:=cast(int)scan_u32(b,entry);frames:=cast(int)scan_u32(b,entry+4);scale:=cast(int)scan_u32(b,entry+28);flags:=cast(int)scan_u32(b,entry+24);
+ if !ocr_frames(frames) || !ocr_finite_bits(scan_u32(b,entry+12)) || flags!=6 {return OclRigClip.{};}
+ fps:=scan_float(b,entry+16);duration:=scan_float(b,entry+8);source:=cast(int)scan_u32(b,entry+20);id:=(entry-32)/32;
+ if fps!=30 || duration!=cast(f32)(frames-1)/30 || source!=[8]int.[4,2,2,2,2,2,1,5][id] {return OclRigClip.{};}
+ bytes:=frames*OCL_JOINTS*40+OCL_JOINTS*4;
+ if start<OCL_RIG_BASE+OCL_JOINTS*80 || scale!=start+frames*OCL_JOINTS*28 || !ocr_span(b.count,start,bytes) {return OclRigClip.{};}
+ return OclRigClip.{ok=true,start=start,end=start+bytes,frames=frames,scale=scale,flags=scale+frames*OCL_JOINTS*12};
+}
+ocarina_rig_valid :: (b:[]u8)->bool #effects(all) {
+ if !ocr_size_ok(b.count) {return false;}
+ if scan_u32(b,0)!=0x314c434f || scan_u32(b,4)!=1 || scan_u32(b,8)!=OCL_JOINTS || scan_u32(b,12)!=OCL_RIG_CLIPS || scan_u32(b,16)!=OCL_RIG_BASE || scan_u32(b,20)!=cast(u32)b.count || scan_u32(b,24)!=OCL_JOINTS || scan_u32(b,28)!=0 {return false;}
+ rigEnd:=OCL_RIG_BASE+OCL_JOINTS*80;if !ocr_bones(b) {return false;}
+ clips:[8]OclRigClip;total:=rigEnd;
+ for k:0..<8 {c:=ocr_clip(b,32+k*32);if !c.ok {return false;}clips[k]=c;total+=c.end-c.start;for j:0..<k {p:=clips[j];if c.start<p.end && p.start<c.end {return false;}}}
+ if total!=b.count {return false;}
+ for k:0..<8 {c:=clips[k];for frame:0..<c.frames {for joint:0..<OCL_JOINTS {if !ocr_pose(b,c.start+(frame*OCL_JOINTS+joint)*28) || !ocr_scales(b,c.scale+(frame*OCL_JOINTS+joint)*12) {return false;}}}}
+ return true;
+}
+ocr_bones :: (b:[]u8)->bool #effects(all) {
+ if !ocr_span(b.count,OCL_RIG_BASE,OCL_JOINTS*80) {return false;}
+ for k:0..<OCL_JOINTS {at:=OCL_RIG_BASE+k*80;if scan_u32(b,at)>cast(u32)k || !ocr_inverse(b,at+4) || !ocr_pose(b,at+52) {return false;}}return true;
+}
+ocr_descriptor_span :: (size:int,entry:int)->bool #effects(all) {return entry>=32 && entry<OCL_RIG_BASE && entry%32==0 && ocr_span(size,entry,32);}
+ocr_frames :: (frames:int)->bool #effects(all) {return frames>=2 && frames<=601;}
+ocr_size_ok :: (n:int)->bool #effects(all) {return n>=32 && n<=OCL_RIG_CAP;}
+#test "Ocarina source profile pins counts size boundaries and strictly positive finite scales" {
+ #assert OCL_JOINTS==309 && OCL_RIG_CAP==12582912 && OCL_RIG_CLIPS==8 && OCL_RIG_BASE==288;
+ #assert ocr_size_ok(32) && ocr_size_ok(12582912) && !ocr_size_ok(31) && !ocr_size_ok(12582913);
+ b:[12]u8;scan_put(b[..],0,f32_bits(0.000000001));scan_put(b[..],4,f32_bits(1));scan_put(b[..],8,f32_bits(1000));#assert ocr_scales(b[..],0);
+ #assert !ocr_scales(b[0..<11],0);
+ for lane:0..<3 {old:=scan_u32(b[..],lane*4);for bits:[5]u32.[0,0xbf800000,0x447a0001,0x7fc00000,0x7f800000] {scan_put(b[..],lane*4,bits);#assert !ocr_scales(b[..],0);}scan_put(b[..],lane*4,old);}
+}
+#test "Ocarina exact field helpers admit empty finite spans odd NaNs and complete descriptors" {
+ b:[52]u8;#assert ocr_finite(b[..],0,0) && ocr_finite(b[..],52,0);
+ #assert !ocr_finite(b[..],0,9223372036854775807) && !ocr_finite(b[..],0,-9223372036854775807);
+ #assert !ocr_finite(b[..],0,14);scan_put(b[..],0,0x7fc00001);#assert !ocr_finite(b[..],0,1);scan_put(b[..],0,0);
+ #assert ocr_inverse(b[0..<48],0) && !ocr_inverse(b[0..<47],0);scan_put(b[..],48,0x7fc00001);#assert ocr_inverse(b[..],0);
+ #assert ocr_norm(0.99) && ocr_norm(1.01) && !ocr_norm(0.9899) && !ocr_norm(1.0101);
+ #assert ocr_descriptor_span(64,32) && !ocr_descriptor_span(63,32) && !ocr_descriptor_span(1000,288) && !ocr_descriptor_span(1000,0) && !ocr_descriptor_span(1000,33);
+ #assert ocr_frames(2) && ocr_frames(601) && !ocr_frames(1) && !ocr_frames(602);
+}
+#test "Ocarina whole rig rejects correctly sized prefixes failed descriptors and hidden suffixes" #steps 100000000 {
+ b:[OCL_TEST_BYTES+1]u8;ocr_fixture(b[..]);for size:[4]int.[32,288,25007,25008] {scan_put(b[..],20,cast(u32)size);#assert !ocarina_rig_valid(b[0..<size]);}
+ scan_put(b[..],20,OCL_TEST_BYTES);old:=scan_u32(b[..],40);scan_put(b[..],40,0);#assert !ocarina_rig_valid(b[0..<OCL_TEST_BYTES]);scan_put(b[..],40,old);
+ scan_put(b[..],20,OCL_TEST_BYTES+1);#assert !ocarina_rig_valid(b[..]);
+}
+#test "Ocarina disjoint payloads may appear out of table order and flags point after all scale words" #steps 100000000 {
+ b:[OCL_TEST_BYTES]u8;ocr_fixture(b[..]);c:=ocr_clip(b[..],32);#assert c.ok && c.start==25008 && c.frames==2 && c.scale==42312 && c.flags==49728 && c.end==50964;
+ a:=scan_u32(b[..],32);z:=scan_u32(b[..],64);sa:=scan_u32(b[..],60);sz:=scan_u32(b[..],92);scan_put(b[..],32,z);scan_put(b[..],64,a);scan_put(b[..],60,sz);scan_put(b[..],92,sa);#assert ocarina_rig_valid(b[..]);
+ q:[28]u8;scan_put(q[..],12,f32_bits(1));#assert ocr_pose(q[..],0);
+}
+#test "Ocarina bone table has an exact end and every inverse-bind lane is inspected" #steps 100000000 {
+ b:[OCL_TEST_BYTES]u8;ocr_fixture(b[..]);#assert ocr_bones(b[0..<25008]) && !ocr_bones(b[0..<25007]);
+ scan_put(b[..],OCL_RIG_BASE+48,0x7fc00001);#assert !ocr_bones(b[0..<25008]);
+}

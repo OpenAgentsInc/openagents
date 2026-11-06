@@ -1,0 +1,39 @@
+// Original FMAT bindings and UnifyTex aliases -> private normalized material records.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "ocarina-bfres.coax";
+MpNames :: struct {text:[96][160]u8;n:[96]int;count:int;}
+mp_u64 :: (b:[]u8,p:int)->u64 {return cast(u64)ob_word(b,p)|(cast(u64)ob_word(b,p+4)<<32);}
+mp_name :: (b:[]u8,p:int,e:[]u8)->string {id:=mp_u64(b,p);if id==0 {return "";}ids:=ob_ptr(e,0xb8);dic:=ob_ptr(e,0xc0);for i:0..<ob_int(e,dic+4) {if mp_u64(e,ids+i*8)==id {return ob_name(e,dic+32+i*16);}}return ob_name(b,p);}
+mp_zstring :: (b:[]u8,p:int)->string {n:=p;while n<b.count && b[n]!=0 {n+=1;}#assert n<b.count;return cast(string)b[p..<n];}
+mp_byml_string :: (b:[]u8,table:int,index:int)->string {#assert index>=0 && index<(ob_int(b,table)>>8);return mp_zstring(b,table+ob_int(b,table+4+index*4));}
+#test "BYML alias records use little endian 24bit counts and exact string nodes" {b:[80]u8;b[0]='Y';b[1]='B';scan_put(b[..],4,16);scan_put(b[..],8,32);scan_put(b[..],12,48);scan_put(b[..],16,0x1c2);scan_put(b[..],20,8);b[24]='a';scan_put(b[..],32,0x1c2);scan_put(b[..],36,8);b[40]='b';scan_put(b[..],48,0x1c1);scan_put(b[..],52,0xa0000000);#assert mp_alias(b[..],"a")=="b" && mp_alias(b[..],"other")=="other";}
+mp_alias :: (b:[]u8,name:string)->string {#assert cast(string)b[0..<2]=="YB";root:=ob_int(b,12);keys:=ob_int(b,4);strings:=ob_int(b,8);#assert b[root]==0xc1;for i:0..<(ob_int(b,root)>>8) {p:=root+4+i*8;key:=ob_int(b,p)&0xffffff;if mp_byml_string(b,keys,key)==name {#assert b[p+3]==0xa0;return mp_byml_string(b,strings,ob_int(b,p+4));}}return name;}
+mp_layer :: (s:[]MpNames,b:[]u8,name:string)->int {if name=="" {return 0;}resolved:=name;for i:0..<8 {next:=mp_alias(b,resolved);if next==resolved {break;}resolved=next;}for i:0..<s[0].count {if cast(string)s[0].text[i][0..<s[0].n[i]]==resolved {return i+1;}}#assert s[0].count<96 && resolved.count<160;i:=s[0].count;for c,k:resolved {s[0].text[i][k]=c;}s[0].n[i]=resolved.count;s[0].count+=1;return i+1;}
+mp_texture :: (b:[]u8,e:[]u8,m:int,sampler:string)->string {d:=ob_ptr(b,m+0x38);n:=ob_int(b,d+4);for i:0..<n {if mp_name(b,d+32+i*16,e)==sampler {#assert i<cast(int)b[m+0xa3];return mp_name(b,ob_ptr(b,m+0x20)+i*8,e);}}return "";}
+mp_parameter :: (b:[]u8,e:[]u8,m:int,name:string)->int {s:=ob_ptr(b,ob_ptr(b,m+0x10));list:=ob_ptr(b,s+0x20);for i:0..<ob_u16(b,s+0x4a) {p:=list+i*24;if mp_name(b,p+8,e)==name {return ob_ptr(b,m+0x58)+ob_u16(b,p+16);}}return -1;}
+mp_render :: (b:[]u8,e:[]u8,m:int,name:string)->int {s:=ob_ptr(b,ob_ptr(b,m+0x10));list:=ob_ptr(b,s+0x10);for i:0..<ob_u16(b,s+0x48) {p:=list+i*16;if mp_name(b,p,e)==name {return ob_ptr(b,m+0x40)+ob_u16(b,ob_ptr(b,m+0x50)+i*2);}}return -1;}
+mp_float :: (b:[]u8,p:int,otherwise:f32)->f32 {return ifx p<0 then otherwise else ob_float(b,p);}
+mp_type :: (name:string)->int {return ifx name=="Mt_Hairs" then 1 else ifx name=="Mt_Skin" || name=="Mt_Face" || name=="Mt_Face_Eyelid" then 2 else ifx name=="Mt_Eye_Inner" then 3 else ifx name=="Mt_Eye_Outer" then 4 else ifx name=="Mt_Eyebrow" || name=="Mt_Eyelashes_01" || name=="Mt_Eyelashes_02" || name=="Mt_Eyelashes_03" then 5 else ifx name=="Mt_EyeShadow_test" then 6 else ifx name=="Mt_Cloth" || name=="Mt_Cloth_Pants" then 7 else 0;}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=5 {return 2;}model:[8388608]u8;external:[65536]u8;aliases:[1048576]u8;out:[8192]u8;path:[4096]u8;names:[1]MpNames;list:[32768]u8;listed:=0;
+ n:=fs_read(args_at(a[..],0),model[..]);en:=fs_read(args_at(a[..],1),external[..]);an:=fs_read(args_at(a[..],2),aliases[..]);#assert n>0 && en>0 && an>0;b:=model[0..<n];e:=external[0..<en];ab:=aliases[0..<an];fm:=ob_ptr(b,0x28);count:=ob_u16(b,fm+0x6c);#assert count==25;
+ // First image fixes the shared texture array's dimensions. Keep the largest source atlas first.
+ _:=mp_layer(names[..],ab,"Player_Child_Skin_Alb");
+ for i:0..<count {m:=ob_ptr(b,fm+0x38)+i*0xb0;name:=mp_name(b,m+8,e);kind:=mp_type(name);base:=32+i*256;
+  samplers:=[8]string.["_a0","_n0","_rgh0","_ao0","_n1","_gn1","_gn0","_a1"];
+  for k:0..<8 {texture:=mp_texture(b,e,m,samplers[k]);if kind==1 && k==5 {texture="Player_Child_Hairs_Gn3";}if kind==1 && k==6 {texture="Player_Child_Hairs_Gn0";}if kind==3 && k==5 {texture="Eye_Inner_Mask_CmnTex_Chara_Eye_Gn3";}scan_put(out[..],base+k*4,cast(u32)mp_layer(names[..],ab,texture));}
+  scan_put(out[..],base+16*4,cast(u32)kind);mode:=mp_render(b,e,m,"gsys_render_state_mode");mode_name:=ifx mode<0 then "opaque" else mp_name(b,mode,e);scan_put(out[..],base+17*4,ifx mode_name=="mask" then 1 else ifx mode_name=="translucent" then 2 else 0);
+  cut:=mp_render(b,e,m,"gsys_alpha_test_value");scan_put(out[..],base+18*4,f32_bits(mp_float(b,cut,0.5)));scan_put(out[..],base+19*4,f32_bits(ifx kind==1 then 0.3f32 else ifx kind==2 then 0.5f32 else 0.7f32));
+  for c:0..<4 {scan_put(out[..],base+(20+c)*4,f32_bits(1.0f32));}
+  for c:0..<2 {p:=mp_parameter(b,e,m,[2]string.["ns_param_color0","ns_param_color1"][c]);for j:0..<4 {scan_put(out[..],base+(24+c*4+j)*4,f32_bits(ifx p>=0 then ob_float(b,p+j*4) else 1.0f32));}}
+  for c:0..<2 {p:=mp_parameter(b,e,m,[2]string.["ns_tex_mtx0","ns_tex_mtx1"][c]);for j:0..<6 {scan_put(out[..],base+(32+c*6+j)*4,f32_bits(ifx p>=0 then ob_float(b,p+j*4) else ifx j==1 || j==2 then 1.0f32 else 0.0f32));}}
+  for c:0..<8 {key:=[8]string.["ns_param_scalar0","ns_param_scalar1","ns_param_scalar2","ns_param_scalar3","ns_param_scalar4","ns_param_scalar5","ns_param_scalar6","ns_param_scalar7"][c];p:=mp_parameter(b,e,m,key);scan_put(out[..],base+(44+c)*4,f32_bits(mp_float(b,p,1)));}
+  for j:0..<8 {scan_put(out[..],base+(52+j)*4,cast(u32)(ifx kind==7 && j<4 then 1 else 0));}
+  scan_put(out[..],base+60*4,cast(u32)mp_layer(names[..],ab,mp_texture(b,e,m,"_mt0")));print("FMAT % type=% mode=%\n",name,kind,mode_name);
+ }
+ for i:0..<names[0].count {name:=cast(string)names[0].text[i][0..<names[0].n[i]];file:[256]u8;for c,k:name {file[k]=c;}for c,k:".png" {file[name.count+k]=c;}filename:=cast(string)file[0..<name.count+4];#assert fs_exists(fs_join(args_at(a[..],3),filename,path[..]));for c:filename {list[listed]=c;listed+=1;}list[listed]='\n';listed+=1;}
+ scan_put(out[..],0,0x314d434f);scan_put(out[..],4,1);scan_put(out[..],8,cast(u32)count);scan_put(out[..],12,cast(u32)names[0].count);dest:=args_at(a[..],4);#assert fs_write(fs_join(dest,"link.materials",path[..]),cast(string)out[0..<32+count*256]);#assert fs_write(fs_join(dest,"link.textures",path[..]),cast(string)list[0..<listed]);print("Ocarina materials=% image_layers=%\n",count,names[0].count);return 0;
+}

@@ -1,0 +1,20 @@
+// VPK1 private assembly. Original character bytes stay outside git; forest indices are procedural.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../verse/valley/scan.coax";
+#load "../../verse/ocarina/forest.coax";
+#test "Ocarina metadata reserves all source records and procedural forest indices" {#assert 4096*4+110515*128==14162304 && (218334+OC_FOREST_VERTICES)*4==1428048;}
+ocb_append :: (out:[]u8,at:int,b:[]u8,entry:int,kind:u32,name:string)->int {#assert at>=0 && b.count<=out.count-at;table:=32+entry*48;scan_put(out,table,kind);scan_put(out,table+4,cast(u32)at);scan_put(out,table+8,cast(u32)b.count);for c,k:name {if k<31 {out[table+16+k]=c;}}for k:0..<b.count {out[at+k]=b[k];}return (at+b.count+3)/4*4;}
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=3 {return 2;}root:=args_at(args[..],0);textures:=args_at(args[..],1);dest:=args_at(args[..],2);out:[134217728]u8;data:[33554432]u8;path:[4096]u8;list:[32768]u8;
+ n:=fs_read(fs_join(root,"link.textures",path[..]),list[..]);#assert n>0;names:[96]string;count:=0;begin:=0;for k:0..<n {if list[k]=='\n' {#assert count<96;names[count]=cast(string)list[begin..<k];count+=1;begin=k+1;}}#assert count==60 && begin==n;entries:=3+count;at:=32+entries*48;
+ size:=fs_read(fs_join(root,"link.rig",path[..]),data[..]);#assert size>0;at=ocb_append(out[..],at,data[0..<size],0,1,"link-rig");
+ for k:0..<16384 {data[k]=0;}size=fs_read(fs_join(root,"link.materials",path[..]),data[256..<16384]);#assert size==6432;for k:0..<25*256 {data[256+k]=data[256+32+k];}
+ scan_put(data[..],0,0x3156434f);scan_put(data[..],4,1);scan_put(data[..],8,110515);scan_put(data[..],12,cast(u32)(218334+OC_FOREST_VERTICES));scan_put(data[..],16,4096);scan_put(data[..],20,64);scan_put(data[..],24,64);scan_put(data[..],28,25);scan_put(data[..],32,218334);
+ size=fs_read(fs_join(root,"link.vertices",path[..]),data[16384..<data.count]);#assert size==110515*128;at=ocb_append(out[..],at,data[0..<16384+size],1,2,"source-vertices");
+ size=fs_read(fs_join(root,"link.indices",path[..]),data[..]);#assert size==218334*4;for k:0..<OC_FOREST_VERTICES {scan_put(data[..],size+k*4,cast(u32)(110515+k));}size+=OC_FOREST_VERTICES*4;at=ocb_append(out[..],at,data[0..<size],2,3,"source-forest-indices");
+ for k:0..<count {size=fs_read(fs_join(textures,names[k],path[..]),data[..]);#assert size>0;at=ocb_append(out[..],at,data[0..<size],3+k,4,names[k]);}
+ scan_put(out[..],0,0x314b5056);scan_put(out[..],4,cast(u32)entries);scan_put(out[..],8,cast(u32)at);scan_put(out[..],12,cast(u32)at);scan_put(out[..],16,32);scan_put(out[..],20,cast(u32)(32+entries*48));#assert fs_write(dest,cast(string)out[0..<at]);hex:[64]u8;#assert asset_hex(asset_id(cast(string)out[0..<at]),hex[..]);print("OCARINA_PACK_BYTES=%\nOCARINA_PACK_SHA256=%\n",at,cast(string)hex[..]);return 0;
+}

@@ -1,0 +1,81 @@
+// BFRES 10.4 decoding for private Ocarina assets. Primary layouts:
+// BfresLibrary e2c5debc; Watertoon/Awn c3c090bb extended curves.
+#load "../../verse/valley/scan.coax";
+#load "../anim/pose.coax";
+#load "../render/reference-half.coax";
+
+#test "Ocarina source spans reject negative truncated and overflowing requests" {
+ #assert ob_span(16,0,16) && ob_span(16,16,0);
+ #assert !ob_span(16,-1,1) && !ob_span(16,15,2) && !ob_span(16,17,0) && !ob_span(16,1,-1);
+ b:=[8]u8.[0x34,0x12,0,0,0xff,0xff,0,0];#assert ob_u16(b[..],0)==0x1234 && ob_s16(b[..],4)== -1;
+ #assert ob_snorm10(0x200)== -1 && ob_snorm10(0x1ff)==1 && ob_snorm10(0)==0;
+}
+#test "Ocarina extended Hermite uses separate tangent quantization and exact endpoints" {
+ b:[128]u8;scan_put(b[..],0,64);scan_put(b[..],8,72);scan_put(b[..],16,0x00024806);
+ scan_put(b[..],24,f32_bits(0));scan_put(b[..],28,f32_bits(2));scan_put(b[..],36,f32_bits(0.25));scan_put(b[..],40,f32_bits(2));b[64]=0;b[65]=2;
+ scan_put(b[..],72,f32_bits(0.125));scan_put(b[..],76,f32_bits(-1));b[80]=0;b[82]=8;b[84]=8;b[86]=8;
+ #assert ob_curve_value(b[..],0,0)==2 && ob_curve_value(b[..],0,2)==4;
+ #assert abs(ob_curve_value(b[..],0,1)-3)<0.00001;
+}
+#test "Ocarina interval-scaled keys decode time and retain the final repeated timestamp" {
+ b:[128]u8;scan_put(b[..],0,64);scan_put(b[..],8,72);scan_put(b[..],16,0x00034412);scan_put(b[..],24,f32_bits(10));scan_put(b[..],28,f32_bits(12));scan_put(b[..],32,f32_bits(0.5));
+ b[64]=0;b[65]=0;b[66]=4;scan_put(b[..],72,f32_bits(99));scan_put(b[..],76,f32_bits(2));scan_put(b[..],80,f32_bits(6));
+ #assert ob_curve_frame(b[..],0,2)==12 && ob_curve_value(b[..],0,10)==2 && ob_curve_value(b[..],0,11)==4 && ob_curve_value(b[..],0,12)==6;
+}
+#test "Ocarina Euler XYZ agrees with the stored inverse-bind convention" {
+ q:=ob_euler(v3(1.57079632679,0,0));v:=quat_rotate(q,v3(0,1,0));#assert abs(v.y)<0.00001 && abs(v.z-1)<0.00001;
+ q2:=ob_euler(v3(0,0,1.57079632679));v2:=quat_rotate(q2,v3(1,0,0));#assert abs(v2.x)<0.00001 && abs(v2.y-1)<0.00001;
+}
+#test "Ocarina quaternion curves take the shortest normalized arc" {
+ b:[128]u8;scan_put(b[..],0,64);scan_put(b[..],8,72);scan_put(b[..],16,0x00024082);scan_put(b[..],28,f32_bits(2));b[64]=0;b[65]=2;
+ scan_put(b[..],84,f32_bits(1));scan_put(b[..],96,f32_bits(-0.70710678));scan_put(b[..],100,f32_bits(-0.70710678));
+ q:=ob_curve_quat(b[..],0,1);#assert abs(quat_dot(q,q)-1)<0.00001 && abs(q.z-0.38268343)<0.00002 && abs(q.w-0.92387953)<0.00002;
+}
+
+ob_span :: (size:int,at:int,n:int)->bool {return at>=0 && n>=0 && at<=size && n<=size-at;}
+ob_u16 :: (b:[]u8,at:int)->int {#assert ob_span(b.count,at,2);return cast(int)b[at]|(cast(int)b[at+1]<<8);}
+ob_s16 :: (b:[]u8,at:int)->int {v:=ob_u16(b,at);return ifx v>=32768 then v-65536 else v;}
+ob_word :: (b:[]u8,at:int)->u32 {#assert ob_span(b.count,at,4);return scan_u32(b,at);}
+ob_int :: (b:[]u8,at:int)->int {return cast(int)ob_word(b,at);}
+ob_ptr :: (b:[]u8,at:int)->int {#assert ob_word(b,at+4)==0;p:=ob_int(b,at);#assert p<=b.count;return p;}
+ob_float :: (b:[]u8,at:int)->f32 {w:=ob_word(b,at);#assert (w&0x7f800000)!=0x7f800000;return f32_from_bits(w);}
+ob_name :: (b:[]u8,at:int)->string {p:=ob_ptr(b,at);if p==0 {return "";}n:=ob_u16(b,p);#assert ob_span(b.count,p+2,n);return cast(string)b[p+2..<p+2+n];}
+ob_snorm10 :: (x:u32)->f32 {v:=cast(int)(x&1023);if v>=512 {v-=1024;}return ob_max(cast(f32)v/511,-1);}
+ob_euler :: (e:Point)->Quat {sx:=sin(e.x*0.5);cx:=cos(e.x*0.5);sy:=sin(e.y*0.5);cy:=cos(e.y*0.5);sz:=sin(e.z*0.5);cz:=cos(e.z*0.5);return Quat.{x=sx*cy*cz-cx*sy*sz,y=cx*sy*cz+sx*cy*sz,z=cx*cy*sz-sx*sy*cz,w=cx*cy*cz+sx*sy*sz};}
+ob_curve_flags :: (b:[]u8,c:int)->int {f:=ob_u16(b,c+16);#assert (f&0x4000)!=0 && (f&3)<=2 && ((f>>2)&3)<=2;return f;}
+ob_curve_frame :: (b:[]u8,c:int,k:int)->f32 {
+ f:=ob_curve_flags(b,c);p:=ob_ptr(b,c);kind:=f&3;#assert k>=0 && k<ob_u16(b,c+18);v:f32=0;
+ if kind==0 {v=ob_float(b,p+k*4);}else if kind==1 {v=cast(f32)ob_s16(b,p+k*2);}else {#assert ob_span(b.count,p+k,1);v=cast(f32)b[p+k];}
+ if (f&0x400)!=0 {return v*ob_float(b,c+32)+ob_float(b,c+24);}return ifx kind==1 then v/32 else v;
+}
+ob_curve_index :: (b:[]u8,c:int,time:f32)->int {n:=ob_u16(b,c+18);#assert n>0;low:=0;high:=n;while low<high {mid:=(low+high)/2;if ob_curve_frame(b,c,mid)<=time {low=mid+1;}else {high=mid;}}return ifx low>0 then low-1 else 0;}
+ob_key :: (b:[]u8,c:int,k:int,part:int)->f32 {
+ f:=ob_curve_flags(b,c);kind:=(f>>2)&3;ct:=(f>>4)&15;#assert ct==0 || ct==1 || ct==3 || ct==8 || ct==9;
+ elements:=ifx ct==0 then 2 else ifx ct>=8 then 4 else 1;#assert k>=0 && k<ob_u16(b,c+18) && part>=0 && part<elements;p:=ob_ptr(b,c+8);if (f&0x800)!=0 {p+=8;}v:f32=0;
+ if kind==0 || ct>=8 {v=ob_float(b,p+(k*elements+part)*4);}else if kind==1 {v=cast(f32)ob_u16(b,p+(k*elements+part)*2);}else {at:=p+k*elements+part;#assert ob_span(b.count,at,1);v=cast(f32)b[at];}
+ if kind==0 || ct>=8 {return v;}if part==1 && (f&0x800)!=0 {p=ob_ptr(b,c+8);return v*ob_float(b,p)+ob_float(b,p+4);}return v*ob_float(b,c+36)+ob_float(b,c+40);
+}
+ob_curve_value :: (b:[]u8,c:int,time:f32)->f32 {
+ f:=ob_curve_flags(b,c);ct:=(f>>4)&15;#assert ct==0 || ct==1 || ct==3;n:=ob_u16(b,c+18);t:=ob_min(ob_max(time,ob_float(b,c+24)),ob_float(b,c+28));i:=ob_curve_index(b,c,t);a:=ob_key(b,c,i,0);if i==n-1 || ct==3 {return a;}
+ start:=ob_curve_frame(b,c,i);dt:=ob_curve_frame(b,c,i+1)-start;#assert dt>0;x:=ob_min(ob_max((t-start)/dt,0),1);z:=ob_key(b,c,i+1,0);if ct==1 {return a+(z-a)*x;}
+ m0:=ob_key(b,c,i,1)*dt;m1:=ob_key(b,c,i+1,1)*dt;x2:=x*x;x3:=x2*x;return (2*x3-3*x2+1)*a+(x3-2*x2+x)*m0+(-2*x3+3*x2)*z+(x3-x2)*m1;
+}
+ob_curve_quat :: (b:[]u8,c:int,time:f32)->Quat {
+ ct:=(ob_curve_flags(b,c)>>4)&15;#assert ct==8 || ct==9;t:=ob_min(ob_max(time,ob_float(b,c+24)),ob_float(b,c+28));i:=ob_curve_index(b,c,t);
+ a:=quat_unit(Quat.{x=ob_key(b,c,i,0),y=ob_key(b,c,i,1),z=ob_key(b,c,i,2),w=ob_key(b,c,i,3)});if i==ob_u16(b,c+18)-1 {return a;}
+ z:=quat_unit(Quat.{x=ob_key(b,c,i+1,0),y=ob_key(b,c,i+1,1),z=ob_key(b,c,i+1,2),w=ob_key(b,c,i+1,3)});start:=ob_curve_frame(b,c,i);dt:=ob_curve_frame(b,c,i+1)-start;#assert dt>0;x:=ob_min(ob_max((t-start)/dt,0),1);
+ if ct==8 {return slerp(a,z,x);}if quat_dot(a,z)<0 {z=quat_scaled(z,-1);}return quat_unit(quat_plus(quat_scaled(a,1-x),quat_scaled(z,x)));
+}
+ob_min :: (a:f32,b:f32)->f32 {return ifx a<b then a else b;}
+ob_max :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
+#test "Ocarina extended integer keys are unsigned points and biased unsigned tangents" {
+ b:[128]u8;scan_put(b[..],0,64);scan_put(b[..],8,72);scan_put(b[..],16,0x0002480a);scan_put(b[..],28,f32_bits(2));scan_put(b[..],36,f32_bits(1.0/255));b[64]=0;b[65]=2;
+ scan_put(b[..],72,f32_bits(1.0/128));scan_put(b[..],76,f32_bits(-1));b[80]=0;b[81]=128;b[82]=255;b[83]=128;
+ #assert ob_curve_value(b[..],0,0)==0 && abs(ob_curve_value(b[..],0,2)-1)<0.000001;
+ #assert abs(ob_curve_value(b[..],0,1)-0.5)<0.000001;
+}
+#test "Ocarina extended unsigned sixteen-bit points retain the full quantized range" {
+ b:[128]u8;scan_put(b[..],0,64);scan_put(b[..],8,72);scan_put(b[..],16,0x00024806);scan_put(b[..],28,f32_bits(2));scan_put(b[..],36,f32_bits(1.0/65535));b[64]=0;b[65]=2;
+ scan_put(b[..],72,f32_bits(1.0/32768));scan_put(b[..],76,f32_bits(-1));b[82]=0;b[83]=128;b[84]=255;b[85]=255;b[86]=0;b[87]=128;
+ #assert abs(ob_curve_value(b[..],0,2)-1)<0.000001 && abs(ob_curve_value(b[..],0,1)-0.5)<0.000001;
+}

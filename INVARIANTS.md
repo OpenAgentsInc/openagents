@@ -5878,3 +5878,23 @@ private output directory. Canonical parent resolution confines output below
 The synchronized two-rig GPU upload stays within the inspector's combined
 64 MiB limit. Metrics and frame hashes are recorded in
 `docs/verification/animation-lab-a2-2026-11-06/README.md`.
+
+## Ocarina Lab keeps original character streams private and admits them whole
+
+`ocarina-lab` / `ocarinalab` is an exact tracked legacy renderer admission and an
+unlisted realm. Its owner-local VPK1 pack is gated by complete SHA-256 and byte
+count before upload. No extracted character payload belongs in Git or a public
+build. Local loading retains the existing `?pack` opt-in.
+
+The Coax OCL1 gate requires the complete 309-joint/eight-clip profile, ordered
+parents, finite inverse binds, unit quaternions, positive finite scale tracks,
+whole disjoint payloads and the exact total size. Source flags preserve Maya SSC;
+playback keeps an unscaled world basis separately and never divides by parent
+scale. The exact content gate and structural gate remain independent.
+
+Material import resolves original hash strings and texture aliases, preserves
+UV1 hair coverage, BNTX block height and component selectors. Special shader
+responses remain documented Aethyr approximations. The original procedural forest
+shares placements with its collision fixtures. Runtime budgets include retained
+encoded source and all mipmapped texture layers. See
+`docs/verse/2026-11-06-ocarina-lab.md` for reconstruction and verification evidence.

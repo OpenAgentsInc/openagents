@@ -1,0 +1,13 @@
+// Exact optional private source identity; no Nintendo payload is in the repository.
+#load "../../aethyr/assets.coax";
+#authority;
+OCARINA_PACK_BYTES :: 49448496;
+OCARINA_PACK_SHA256 :: "fad738db36516efd185a81b11ce00538096d4cbb4a7b824fc8d2d02d3fb585c7";
+#test "Ocarina source pack pins every SHA byte and refuses incomplete payloads" {
+ b:[33]u8;for k:0..<32 {b[k]=cast(u8)(asset_digit(OCARINA_PACK_SHA256[k*2])*16+asset_digit(OCARINA_PACK_SHA256[k*2+1]));}
+ #assert ocarina_pack_accept(b[0..<32],OCARINA_PACK_BYTES);
+ #assert !ocarina_pack_accept(b[0..<31],OCARINA_PACK_BYTES) && !ocarina_pack_accept(b[..],OCARINA_PACK_BYTES);
+ #assert !ocarina_pack_accept(b[0..<32],OCARINA_PACK_BYTES-1) && !ocarina_pack_accept(b[0..<32],OCARINA_PACK_BYTES+1);
+ for k:0..<32 {b[k]^=1;#assert !ocarina_pack_accept(b[0..<32],OCARINA_PACK_BYTES);b[k]^=1;}
+}
+ocarina_pack_accept :: (digest:[]u8,bytes:int)->bool #effects(all) {if digest.count!=32 || bytes!=OCARINA_PACK_BYTES {return false;}for k:0..<32 {want:=asset_digit(OCARINA_PACK_SHA256[k*2])*16+asset_digit(OCARINA_PACK_SHA256[k*2+1]);if cast(int)digest[k]!=want {return false;}}return true;}

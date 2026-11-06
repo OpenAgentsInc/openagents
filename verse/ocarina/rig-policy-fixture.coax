@@ -1,0 +1,8 @@
+ocr_fixture :: (b:[]u8) #effects(all) {
+ scan_put(b,0,0x314c434f);scan_put(b,4,1);scan_put(b,8,OCL_JOINTS);scan_put(b,12,8);scan_put(b,16,OCL_RIG_BASE);scan_put(b,20,OCL_TEST_BYTES);scan_put(b,24,OCL_JOINTS);
+ for k:0..<OCL_JOINTS {at:=OCL_RIG_BASE+k*80;scan_put(b,at,cast(u32)(ifx k==0 then 0 else k));for row:0..<3 {scan_put(b,at+4+(row*4+row)*4,f32_bits(1));}scan_put(b,at+76,f32_bits(1));}
+ start:=OCL_RIG_BASE+OCL_JOINTS*80;
+ for clip:0..<8 {entry:=32+clip*32;scale:=start+2*OCL_JOINTS*28;scan_put(b,entry,cast(u32)start);scan_put(b,entry+4,2);scan_put(b,entry+8,f32_bits(1.0/30));scan_put(b,entry+16,f32_bits(30));scan_put(b,entry+20,cast(u32)[8]int.[4,2,2,2,2,2,1,5][clip]);scan_put(b,entry+24,6);scan_put(b,entry+28,cast(u32)scale);
+  for k:0..<2*OCL_JOINTS {scan_put(b,start+k*28+24,f32_bits(1));for lane:0..<3 {scan_put(b,scale+k*12+lane*4,f32_bits(1));}}start+=2*OCL_JOINTS*40+OCL_JOINTS*4;
+ }
+}

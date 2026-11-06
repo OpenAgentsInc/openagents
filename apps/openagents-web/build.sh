@@ -128,6 +128,8 @@ villa=$!
 animelab=$!
 "$here/../../coax/web/wasm.sh" "$here/animationlab.coax" "$here/animationlab-face.c" "$here/build/animationlab.wasm" &
 animationlab=$!
+"$here/../../coax/web/wasm.sh" "$here/ocarinalab.coax" "$here/ocarinalab-face.c" "$here/build/ocarinalab.wasm" &
+ocarinalab=$!
 # /worlds/fixture: the realm host's test world, the smallest realm module.
 "$here/../../coax/web/wasm.sh" "$here/fixture.coax" "$here/fixture-face.c" "$here/build/fixture.wasm" &
 fixture=$!
@@ -303,6 +305,7 @@ wait "$bitcoin_lab"
 wait "$valleylab"
 wait "$valleycanyon"
 wait "$animationlab"
+wait "$ocarinalab"
 wait "$valleyworld"
 wait "$animelab"
 wait "$droprealm"
