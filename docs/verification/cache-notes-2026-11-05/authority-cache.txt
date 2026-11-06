@@ -1,0 +1,11 @@
+  ok   the first check runs the checks and records the pass; the second reuses it
+  ok   a reused pass prints what a run one prints
+  ok   coax c gives the same C and output with the verdict reused
+  ok   a changed loaded unit runs the checks again
+  ok   a changed #run_steps runs the checks again, then reuses them
+  ok   a changed --run-steps or build profile runs the checks again
+  ok   a changed compiler runs the checks again
+  ok   a failing check runs every time and exits 1 with the same diagnostics
+  ok   the failure names the check
+  ok   coax test runs the check
+authority-cache: ok

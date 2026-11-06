@@ -1,0 +1,74 @@
+Authority-cache capacity diagnostics (#12951)
+
+Implementation:
+b08d3a16a4 Preserve capacity notes when authority checks are reused
+1d8c1818a5 Record the capacity diagnostic release commit
+Coax 0.51.1. No Coax kernel or bootstrap seed changes.
+
+Behavior:
+The whole-program authority cache stores frozen capacity facts in its v2
+private record. Cold and warm C and diagnostics match byte for byte.
+Formatting is applied after reuse, so text, one-line JSON and rich JSON
+share the same facts. The near-limit threshold participates in identity.
+A truncated/invalid record is a miss and publishes no partial facts.
+Per-check reuse keeps quiet passing checks. Diagnostic-bearing checks
+rerun in the parent, with current source locations and detailed consumers.
+Parallel diagnostics match a one-job run. Checks that retain storage keep
+the existing sequential fallback. An earlier quiet pass survives a later
+failed or diagnostic check and can be reused when that source is restored.
+No diagnostics are suppressed and no budget is raised.
+
+Regression-first evidence:
+regression-before.txt retains the old compiler's failures for the first
+three added methods. The final suite has six new methods and 21 total.
+
+Qualified compiler:
+COAX_NO_PUBLISHED=1 COAX_MUTATION_FULL=1 coax/build.sh, via the required
+build gate, completes in under 8 minutes. Both stages, required Coax
+checks/mutations, seed and combined-module fixed points pass. A private
+likely-killer map changes only mutation scheduling; every mutant still
+receives an actual verdict. No equivalents are added. The installed
+provenance verifies and mutation-survivors is empty. See bootstrap.txt
+and compiler-provenance.txt. Input fingerprint:
+78543e535886c4481af5a5c48dd492e340bde7c26cab1487cfaa5eeb032d1fe6
+
+Checks (all pass):
+- COAX=$PWD/coax/bin/coax python3 coax/tests/capacity_refusals.py:
+  all 21 methods on the qualified Mac Clang compiler.
+- The same 21 methods on coderos-4080, GCC O1, nice 15; the main.cpp,
+  verify.cpp and test source SHA-256 hashes match this implementation.
+- All six new methods under an ASan/UBSan-instrumented C++ frontend.
+  The linked checked kernel object is not instrumented in that run.
+- From coax/, web/tool.sh tests/authority-cache.coax COMPILER,
+  tests/check-reuse.coax COMPILER and tests/parallel-checks.coax COMPILER:
+  legacy authority, edited-dependency reuse, corpus and one/multi-job parity.
+- COAX_BIN=COMPILER python3 coax/tests/diagnostics_json.py: 14 methods.
+- COAX_TEST_COMPILER=COMPILER python3 coax/tests/traversal_work.py:
+  four methods, including native evaluator ASan/UBSan.
+- python3 coax/tests/book_claims.py: 10 methods.
+- python3 coax/tests/book_registry.py: 11 methods.
+- python3 coax/book/check-structure.py and capability-claims.py.
+- coax/web/tool.sh tools-check: zero new files without a firm reason.
+- scripts/coax-release.sh --check --binary coax/bin/coax: metadata match.
+- python3 coax/tests/release.py: 19 methods.
+- coax/book/check-examples.sh: full debug/release, checks, mutation, native
+  hosts and structure.
+- python3 psionic/tests/book.py --book aethyr --coax coax/bin/coax:
+  48 programs, 96 debug/release runs and 211 source-linked listings.
+
+The legacy cache/parallel/JSON/traversal suites use the development
+frontend; the final capacity suite and books use the qualified compiler.
+Each development frontend uses the checked kernel; the final compiler
+additionally completes the normal bootstrap. The final Linux and sanitizer
+runs include the record validation and retained-quiet-entry fixes.
+
+New bug:
+#12961: check slot diagnostics can attribute a peak from an earlier
+compile-time phase to the later, smaller check budget. A passing compile
+can therefore report more than 100% use. This fix preserves those existing
+facts across cache reuse; phase accounting stays in the separate issue.
+The regression documents that compatibility and can be updated with its fix.
+
+No deployment, owner sign-off, new server or browser runs. The temporary
+Linux worktree is removed. Text receipts trim trailing whitespace only;
+verdicts and diagnostic content are unchanged.

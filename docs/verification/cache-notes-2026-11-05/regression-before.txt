@@ -1,0 +1,62 @@
+FFFFF
+======================================================================
+FAIL: test_authority_near_notes_survive_whole_and_check_reuse (__main__.CapacityRefusals.test_authority_near_notes_survive_whole_and_check_reuse) (rich=False)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-cache-notes/coax/tests/capacity_refusals.py", line 208, in test_authority_near_notes_survive_whole_and_check_reuse
+    self.assertEqual((warm.stdout, warm.stderr), (cold.stdout, cold.stderr))
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Tuples differ: ('/* [9772 chars]\n', '') != ('/* [9772 chars]\n', "coax: note[E0400]: compile-time steps: 3[389 chars]N\n")
+
+First differing element 1:
+''
+"coax: note[E0400]: compile-time steps: 3[388 chars] N\n"
+
+Diff is 11836 characters long. Set self.maxDiff to None to see it.
+
+======================================================================
+FAIL: test_authority_near_notes_survive_whole_and_check_reuse (__main__.CapacityRefusals.test_authority_near_notes_survive_whole_and_check_reuse) (rich=True)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-cache-notes/coax/tests/capacity_refusals.py", line 208, in test_authority_near_notes_survive_whole_and_check_reuse
+    self.assertEqual((warm.stdout, warm.stderr), (cold.stdout, cold.stderr))
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Tuples differ: ('/* [9773 chars]n', '') != ('/* [9773 chars]n', '{"schema":"coax.diagnostic.v1","severity"[799 chars]}\n')
+
+First differing element 1:
+''
+'{"schema":"coax.diagnostic.v1","severity"[798 chars]}}\n'
+
+Diff is 12255 characters long. Set self.maxDiff to None to see it.
+
+======================================================================
+FAIL: test_authority_traversal_and_storage_notes_match_one_job_and_reuse (__main__.CapacityRefusals.test_authority_traversal_and_storage_notes_match_one_job_and_reuse) (resource='compile-time traversal work')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-cache-notes/coax/tests/capacity_refusals.py", line 233, in test_authority_traversal_and_storage_notes_match_one_job_and_reuse
+    self.assertIn(resource + ':', cold.stderr)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'compile-time traversal work:' not found in ''
+
+======================================================================
+FAIL: test_authority_traversal_and_storage_notes_match_one_job_and_reuse (__main__.CapacityRefusals.test_authority_traversal_and_storage_notes_match_one_job_and_reuse) (resource='compile-time value slots')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-cache-notes/coax/tests/capacity_refusals.py", line 233, in test_authority_traversal_and_storage_notes_match_one_job_and_reuse
+    self.assertIn(resource + ':', cold.stderr)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'compile-time value slots:' not found in ''
+
+======================================================================
+FAIL: test_authority_note_threshold_and_corrupt_record_are_cache_inputs (__main__.CapacityRefusals.test_authority_note_threshold_and_corrupt_record_are_cache_inputs)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-cache-notes/coax/tests/capacity_refusals.py", line 248, in test_authority_note_threshold_and_corrupt_record_are_cache_inputs
+    self.assertIn('note[E0400]', loud.stderr)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'note[E0400]' not found in ''
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.362s
+
+FAILED (failures=5)

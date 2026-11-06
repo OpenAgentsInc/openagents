@@ -1,0 +1,2 @@
+scripts/coax-release.sh --check --binary coax/bin/coax
+Exit 0; generated metadata and qualified binary match.

@@ -136,7 +136,8 @@ Books: #12610 stays open and paused. Approved books work is #12947 and the runna
 | #12956 | Completed by `d53cc8a8b9`: canonical entity handles and checked ID exhaustion; no slot is allocated on refusal. |
 | #12957 | Completed by `9ceca725fa`: the raid client and API fault fixture share seeded character identities; the native save-fault slice passes. |
 | #12958 | Completed by `3b5548bf98`: seed comparison uses stage0; the native math oracle uses a final compiler. Mac and Linux pass. |
-| #12951 | Open: a warm authority cache drops near-limit diagnostics. The book verification uses explicit headroom and retains the separate bug. |
+| #12951 | Completed by `b08d3a16a4`: cold, warm and check-level reuse preserve near-limit diagnostics in Coax 0.51.1. Verification below. |
+| #12961 | Open: a check can report an earlier compile-time phase's slot peak against its later, smaller budget. #12951 preserves those existing facts; phase accounting remains separate. |
 | #12838, #12840–#12843, #12868, #12869 | The owner's Codex agent. Don't take them. Its room changes share files with ours, so use small commits and rebase often. |
 | #12845 | Open, with no agent. It still needs commands, accepted results and replication behind shared interfaces, profiles for collision and per-recipient fields, Orbit League sharing more than the timing profile, and the book's adoption inventory. |
 | #12910 | Nostr chapter 104 on signet. Blocked on the signet faucet's captcha, which is in NEEDS_OWNER.md. |
@@ -335,4 +336,30 @@ Tools-check passes. No deployment or owner sign-off runs.
 
 The commands, scope, compiler fingerprint and raw receipts are in
 [the verification record](../verification/nominal-ids-2026-11-05/checks.txt).
-#12951 remains open as the separate cache diagnostic-parity bug.
+At completion of #12948, #12951 remains open as the separate cache
+diagnostic-parity bug. Its later resolution is recorded below.
+
+
+## #12951 verification (2026-11-05)
+
+Coax 0.51.1 preserves capacity facts in whole-program authority verdicts
+and renders them in the requested diagnostic format on reuse. The private
+record uses a new schema and is parsed completely before publication.
+The near-limit threshold participates in cache identity. Per-check reuse
+keeps quiet passes; a diagnostic-bearing check runs in the parent to
+refresh its detailed consumers and current source locations. Retained
+storage still triggers the sequential fallback when necessary.
+
+`b08d3a16a4` implements the fix, regressions, cache invariant and chapter 41
+explanation. `1d8c1818a5` records the introducing release commit. The
+qualified compiler passes all 21 capacity regressions; the same suite
+passes on Linux GCC. The six new cases also pass under ASan/UBSan.
+Authority-cache, check-reuse, sequential/parallel parity, traversal and
+JSON diagnostic suites pass. The full-mutation bootstrap completes with
+an empty survivor file, and installed provenance verifies.
+
+The checks preserve visible near-limit notes and do not change budgets.
+The books, release metadata, tools and registry checks are recorded in
+[the verification record](../verification/cache-notes-2026-11-05/checks.txt).
+Testing finds #12961, the separate phase-peak accounting bug listed above.
+No deployment or owner sign-off runs.

@@ -1,0 +1,6 @@
+coax0 0.51.1
+Verified installed provenance; mutation-survivors is empty.
+coax-provenance-v1
+78543e535886c4481af5a5c48dd492e340bde7c26cab1487cfaa5eeb032d1fe6
+2399c5b403d8559c6ff11f9cc7510f355ee20ebd234b7b25f09aefba43d07dee
+9392c67c7b881b08c29495c3ddab43c46bf9427b5cf0ff0488cc4c3745935909

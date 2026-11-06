@@ -1,0 +1,12 @@
+...
+Build workers: 1 of 12 in use by 1 coax process
+  budget 12 = 18 performance cores - 6 reserved for you ($COAX_JOBS_RESERVE; $COAX_JOBS_BUDGET sets it)
+  load 18.6; no new workers past each build's first at 12 or above ($COAX_JOBS_LOAD)
+  each build's own cap: --jobs N, $COAX_CHECK_JOBS, $COAX_MUTATE_JOBS, $COAX_JOBS
+  tokens in /Users/christopherdavid/.cache/coax/jobs
+  pid 65610 holds 1: coax c apps/openagents-web/everglade.coax --library --header /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T//coax-room-build.LeLMiB/everglade.h
+................
+----------------------------------------------------------------------
+Ran 19 tests in 113.983s
+
+OK
