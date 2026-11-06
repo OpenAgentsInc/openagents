@@ -658,6 +658,18 @@ net_ent :: (n: [] EgNet, eid: int, make: bool) -> int {
   return free;
 }
 // A tick's server time (W's clock), or the last state's when no W has come.
+// W carries the server's wall-clock phase as its day. Recover its nearest day around our synced
+// clock: anchoring at receipt instead includes transport delay, and a later ping correction then
+// leaves every buffered state dated too far ahead. Headers without a sky keep the legacy fallback.
+net_world_t :: (n: [] EgNet, w: WireWorld) -> int {
+  now := net_now(n);
+  if now <= 0 || w.weather <= 0 || w.day < 0 || w.day >= WIRE_DAY_MS { return now; }
+  delta := w.day - now % WIRE_DAY_MS;
+  if delta > WIRE_DAY_MS / 2 { delta -= WIRE_DAY_MS; }
+  if delta < -WIRE_DAY_MS / 2 { delta += WIRE_DAY_MS; }
+  at := add_checked(now, delta);
+  switch at { case none { return now; } case some(v) { return v; } }
+}
 net_tick_t :: (n: [] EgNet, tick: int) -> int {
   if n[0].worlds == 0 || n[0].hz <= 0 { return net_now(n); }
   return n[0].w_t + (tick - n[0].w_tick) * 1000 / n[0].hz;
@@ -693,7 +705,7 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
   if c == 'W' {
     w := wire_read_world(t, r[..]);
     if !r[0].ok { return; }
-    n[0].w_tick = w.tick; n[0].w_t = net_now(n); n[0].hz = clamp_i(w.hz, 1, 120); n[0].budget = w.budget;
+    n[0].w_tick = w.tick; n[0].w_t = net_world_t(n, w); n[0].hz = clamp_i(w.hz, 1, 120); n[0].budget = w.budget;
     n[0].seed = w.seed; n[0].day = w.day; n[0].weather = w.weather; n[0].worlds += 1;
     return;
   }
@@ -3045,6 +3057,40 @@ net_test_rooms :: (s: [] Everglade) {
     #assert !eg_ra_drawn(g, 0, AB_REVERSE) && eg_ra_drawn(g, 1, AB_REVERSE);
     #assert !everglade_lift(g, 5, 4, 0, 0, 0, 0, 1.0 / 30).on && everglade_lift(g, 61, 4, 0, 0, 0, 0, 1.0 / 30).on;
   }
+}
+#test "net: a delayed world header dates its tick at the server, including either side of midnight" {
+  for side: 0..<2 {
+    for delay: 0..<3 {
+      a: [1] Everglade; n: [1] EgNet;
+      #assert net_test_page(a[..], n[..], 0, "pa", 100);
+      at := 2 * WIRE_DAY_MS + (ifx side == 0 then -40 else 40);
+      buf: [128] u8;
+      // Establish a server clock before the header spends time in transit.
+      hello: [160] u8;
+      h := wire_int(hello[..], wire_put(hello[..], 0, "y 0 1"), at);
+      #assert net_test_hear(a[..], 0, cast(string) hello[0..<h]);
+      late := ifx delay == 0 then 0 else ifx delay == 1 then 125 else 750;
+      n[0].mono += late;
+      m := wire_put_world(buf[..], 0, WireWorld.{tick = 17, hz = 30, day = at % WIRE_DAY_MS, weather = WEATHER_CLEAR + 1});
+      #assert net_test_hear(a[..], 0, cast(string) buf[0..<m]);
+      #assert net_tick_t(n[..], 17) == at && net_tick_t(n[..], 18) == at + 33;
+      want := f32((at + late) % WIRE_DAY_MS) / f32(WIRE_DAY_MS);
+      #assert abs(net_sky_day(a[..]) - want) < 0.00001;
+      n[0].offset += 200;   // a ping improves the clock after the header: its authored time stays put
+      #assert net_tick_t(n[..], 17) == at;
+    }
+  }
+}
+#test "net: headers without a valid server day retain their receipt-time fallback" {
+  n: [1] EgNet; n[0].mono = 100; n[0].offset = 5000000;
+  #assert net_world_t(n[..], WireWorld.{day = 5}) == 5000100;
+  #assert net_world_t(n[..], WireWorld.{day = -1, weather = 1}) == 5000100;
+  #assert net_world_t(n[..], WireWorld.{day = WIRE_DAY_MS, weather = 1}) == 5000100;
+  n[0].offset = -100;
+  #assert net_world_t(n[..], WireWorld.{day = 5, weather = 1}) == 0;
+  // A clock estimate just behind the server crosses midnight the other way.
+  n[0].mono = 2 * WIRE_DAY_MS - 40; n[0].offset = 0;
+  #assert net_world_t(n[..], WireWorld.{day = 40, weather = 1}) == 2 * WIRE_DAY_MS + 40;
 }
 #test "net: the time of day and the weather are the server's: two pages 4 s apart on their own clocks draw the same sky" {
   a: [1] Everglade; na: [1] EgNet; b: [1] Everglade; nb: [1] EgNet;
