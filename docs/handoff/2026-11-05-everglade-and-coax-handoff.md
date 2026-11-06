@@ -137,7 +137,7 @@ Books: #12610 stays open and paused. Approved books work is #12947 and the runna
 | #12957 | Completed by `9ceca725fa`: the raid client and API fault fixture share seeded character identities; the native save-fault slice passes. |
 | #12958 | Completed by `3b5548bf98`: seed comparison uses stage0; the native math oracle uses a final compiler. Mac and Linux pass. |
 | #12951 | Completed by `b08d3a16a4`: cold, warm and check-level reuse preserve near-limit diagnostics in Coax 0.51.1. Verification below. |
-| #12961 | Open: a check can report an earlier compile-time phase's slot peak against its later, smaller budget. #12951 preserves those existing facts; phase accounting remains separate. |
+| #12961 | Completed by `eae6049b87`: Coax 0.51.2 measures peaks against each phase's limits. Retained live storage still counts; sequential, parallel and reused notes agree. Verification below. |
 | #12838, #12840–#12843, #12868, #12869 | The owner's Codex agent. Don't take them. Its room changes share files with ours, so use small commits and rebase often. |
 | #12845 | Open, with no agent. It still needs commands, accepted results and replication behind shared interfaces, profiles for collision and per-recipient fields, Orbit League sharing more than the timing profile, and the book's adoption inventory. |
 | #12910 | Nostr chapter 104 on signet. Blocked on the signet faucet's captcha, which is in NEEDS_OWNER.md. |
@@ -363,3 +363,31 @@ The books, release metadata, tools and registry checks are recorded in
 [the verification record](../verification/cache-notes-2026-11-05/checks.txt).
 Testing finds #12961, the separate phase-peak accounting bug listed above.
 No deployment or owner sign-off runs.
+
+
+## #12961 verification (2026-11-05)
+
+`eae6049b87` resets evaluator storage measurements at phase boundaries in
+Coax 0.51.2; `f8e5e55a89` records its release hash. Each new phase starts
+with its retained live slots, containers and string bytes. Earlier temporary
+peaks, holder snapshots and refusal snapshots are cleared. Retained values
+keep their allocation locations, and capacity facts already collected keep
+their original governing limits. Returning from authority checks restores
+both compile limits and measurements, including after failures.
+
+The regressions reject the old false note, retain real compile and check
+notes, and still refuse a new table when it exceeds the budget together
+with live constants. One and multiple workers, whole-cache reuse, edited
+check reuse and direct test execution agree. All 23 capacity methods pass
+on Mac Clang and Linux GCC. The 33 work/storage methods pass, including
+the actual allocator under ASan/UBSan and passing/failing limit restoration.
+Legacy cache, parallel and JSON diagnostic checks pass. The normal
+full-mutation bootstrap passes, installed provenance verifies, and the
+survivor file is empty. All 23 capacity methods also pass on its qualified
+compiler; release metadata and 19 release tests pass. Both books pass,
+including all 96 Aethyr runs and 211 source-linked listings. The claims,
+registry and tools checks pass.
+
+Commands, compiler qualification and book checks are in
+[the verification record](../verification/phase-peaks-2026-11-05/checks.txt).
+No deployment or owner sign-off runs. No new bug is found.

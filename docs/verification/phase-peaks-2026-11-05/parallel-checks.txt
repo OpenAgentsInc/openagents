@@ -1,0 +1,8 @@
+  ok   passing checks: run in parallel, the same quiet pass
+  ok   failing checks: the same diagnostics, in order, and exit 1
+  ok   both failures are reported, the #forall with its counterexample
+  ok   a check out of its #steps fails the same way (E0400)
+  ok   coverage comes from every child: E0380 for 'unused' only
+  ok   storage left behind within the limit: run in parallel, the same pass
+  ok   past the limit only sequentially: the parallel compile runs sequentially and reports its E0400
+parallel-checks: ok

@@ -1,0 +1,12 @@
+...
+Build workers: 2 of 12 in use by 1 coax process
+  budget 12 = 18 performance cores - 6 reserved for you ($COAX_JOBS_RESERVE; $COAX_JOBS_BUDGET sets it)
+  load 6.9; no new workers past each build's first at 12 or above ($COAX_JOBS_LOAD)
+  each build's own cap: --jobs N, $COAX_CHECK_JOBS, $COAX_MUTATE_JOBS, $COAX_JOBS
+  tokens in /Users/christopherdavid/.cache/coax/jobs
+  pid 10983 holds 2: coax mutate lib/compiler/shader.coax --killers /tmp/oa-phase-peaks-bootstrap-gates/killers/4caf23ea3f25d2a2d6d86abdd3be52957d35519b98d9fbf206e0e5b74bd1d7ea
+................
+----------------------------------------------------------------------
+Ran 19 tests in 98.271s
+
+OK

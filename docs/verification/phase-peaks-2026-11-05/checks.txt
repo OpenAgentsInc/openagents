@@ -1,0 +1,76 @@
+Evaluation phase storage peaks (#12961)
+
+Implementation:
+eae6049b87 Measure evaluator storage peaks within each phase
+f8e5e55a89 Record the phase accounting release commit
+Coax 0.51.2. Coax kernel sources and seeds are unchanged.
+
+Behavior:
+CtMemory starts each phase's slot, container and string peaks at its live
+counts. It clears old peak/refusal holders and the old snapshot threshold;
+if retained slots are already near the new limit, their current holders
+are captured immediately. Live counts, owners and admission are unchanged.
+Authority checks, direct test/mutation execution, native check-domain
+preparation and parallel children use the same reset. Authority scope exit
+restores compile limits and measurements even after a failing check.
+Already-collected capacity facts keep the limits that governed their phase.
+
+Regressions:
+The old checked 0.51.1 compiler fails all three phase regression methods.
+Released 200-slot compile storage must not be charged against a 100-slot
+check budget; the 200/1572864 compile fact remains recorded. A real 80-slot
+check under a 100-slot limit keeps its note and source location, even after
+the larger compile transient. A compile-phase near-limit note stays visible.
+The evaluated and frozen array constants retain 40 slots each: both count
+in the checks' 80-slot live baseline, and adding 30 slots refuses. One and
+multiple workers agree; cold, whole-cache, edited check reuse and direct
+test cases exercise the phase boundaries in text and rich JSON.
+
+Checks:
+- COAX=DEVELOPMENT_COMPILER python3 coax/tests/capacity_refusals.py:
+  23 methods pass. Regression-before receipt uses the old checked compiler.
+- COAX=$PWD/coax/bin/coax python3 coax/tests/capacity_refusals.py:
+  all 23 methods also pass on the qualified 0.51.2 compiler.
+- COAX=DEVELOPMENT_COMPILER python3 coax/tests/run_budget.py:
+  all 33 methods pass. Its actual CtMemory/allocator harness builds the
+  C++ frontend and every linked seed with ASan/UBSan. New native assertions
+  cover retained slot/container/string baselines, snapshots, allocation
+  refusal and limit restoration after passing/failing authority checks.
+- coderos-4080, nice 15, GCC O1: all 23 capacity methods pass.
+  source-hashes.txt matches both machines' relevant sources and test file.
+- From coax/, web/tool.sh tests/authority-cache.coax DEVELOPMENT_COMPILER,
+  tests/check-reuse.coax DEVELOPMENT_COMPILER and
+  tests/parallel-checks.coax DEVELOPMENT_COMPILER: all pass, including
+  edited dependency corpus reuse, failures, retained storage and fallback.
+- COAX_BIN=DEVELOPMENT_COMPILER python3 coax/tests/diagnostics_json.py:
+  14 methods pass.
+- python3 coax/tests/book_claims.py: 10 methods pass.
+- python3 coax/tests/book_registry.py: 11 methods pass.
+- python3 coax/book/check-structure.py and capability-claims.py pass.
+- Qualified compiler, coax/book/check-examples.sh: full debug/release,
+  checks, mutation, native hosts and structure pass.
+- Qualified compiler, python3 psionic/tests/book.py --book aethyr
+  --coax coax/bin/coax: 48 programs, 96 runs and 211 source-linked listings
+  pass.
+- coax/web/tool.sh tools-check: no new tool without a firm reason.
+- COAX_TEST_COMPILER=DEVELOPMENT_COMPILER python3 coax/tests/release.py:
+  all 19 methods pass.
+
+Qualification:
+COAX_NO_PUBLISHED=1 COAX_MUTATION_FULL=1 coax/build.sh passes through the
+required build gate within the 15-minute boundary. Both stages, required
+Coax checks/mutations, seed and combined-module fixed points pass. Private
+likely-killer maps affect scheduling only; all mutants receive actual
+verdicts and no equivalent marks are added. mutation-survivors is empty.
+Installed provenance verifies; release snapshots and binary metadata match.
+Qualified compiler input fingerprint:
+d089275991317b7e18d27de19fe59c9710d69488e1d28a4ba99fc523fc006016
+
+The development compiler links the checked final kernel. It contains the
+final C++ source and 0.51.2 metadata. The normal bootstrap separately
+qualifies the installed release compiler. Heavy local builds use the
+required build gate; Linux uses one nice-15 compiler. No server, browser,
+deployment or owner sign-off runs. No new bug is found.
+
+Text receipts trim trailing whitespace only; verdicts and diagnostic
+content are unchanged. The handoff table records #12961's completion.

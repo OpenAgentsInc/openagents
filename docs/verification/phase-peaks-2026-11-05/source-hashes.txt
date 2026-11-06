@@ -1,0 +1,5 @@
+3a306cf1a4cdcbc92492f489ef4218e95a0cd9618db02f9ed5a73f85b867759a  coax/src/coax.h
+638f2d670dbc22acbe402bdb8948ade58a844b4146dff4666882140c5e42e27f  coax/src/eval.cpp
+5f557cc4e4cc689dfaea95b23969c2ec1dc94ec2e687197855eb5f315062de22  coax/src/main.cpp
+1bb8f73263382a5dca0c5b877ee899b1bb0e742bfe5cccdc8ddd6298ae6658f9  coax/src/verify.cpp
+7a7c199850c2db609d225390be08aa9816a5ceb6f22c26c4c1be37257c638144  coax/tests/capacity_refusals.py

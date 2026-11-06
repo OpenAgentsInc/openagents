@@ -1,0 +1,16 @@
+  ok   a cold compile runs every check; a second reuses the whole pass
+  ok   an edited procedure runs only the check that reaches it, and the C is a cold compile's
+  ok   an edited constant runs only the check that reads it; reused checks still cover what they ran
+  ok   the body of a procedure no check runs is no check's input
+  ok   its parameter types are an input of the check that names it
+  ok   moving declarations runs nothing again
+  ok   a procedure a constant runs at compile time is an input of the check that reads the constant
+  ok   a failing check runs every time, with a cold compile's diagnostics and exit 1
+  ok   the failure names the check
+  ok   putting the source back (and editing RATE) reuses the pass recorded before the failure
+  ok   a changed --run-steps or build profile runs every check
+  ok   a changed compiler runs every check
+  ok   coax test runs every check
+  ok   the cache stays within its limit and a compile after an eviction is a cold one's
+  ok   the corpora compile the same with a cache as with none, before and after an edit
+check-reuse: ok

@@ -1,0 +1,63 @@
+FFFF
+======================================================================
+FAIL: test_authority_storage_peaks_use_their_own_phase_limits (__main__.CapacityRefusals.test_authority_storage_peaks_use_their_own_phase_limits)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-phase-peaks/coax/tests/capacity_refusals.py", line 287, in test_authority_storage_peaks_use_their_own_phase_limits
+    self.assertEqual(peak['limit'], 1572864)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 100 != 1572864
+
+======================================================================
+FAIL: test_check_storage_pressure_after_a_larger_released_compile_peak (__main__.CapacityRefusals.test_check_storage_pressure_after_a_larger_released_compile_peak)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-phase-peaks/coax/tests/capacity_refusals.py", line 320, in test_check_storage_pressure_after_a_larger_released_compile_peak
+    self.assertLessEqual(peak['used'], 100)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+AssertionError: 200 not less than or equal to 100
+
+======================================================================
+FAIL: test_live_compile_storage_still_counts_in_the_check_phase (__main__.CapacityRefusals.test_live_compile_storage_still_counts_in_the_check_phase) (jobs=1)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-phase-peaks/coax/tests/capacity_refusals.py", line 350, in test_live_compile_storage_still_counts_in_the_check_phase
+    self.assertEqual((peak['used'], peak['limit']), (80, 100))
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Tuples differ: (120, 100) != (80, 100)
+
+First differing element 0:
+120
+80
+
+- (120, 100)
+?  ^^
+
++ (80, 100)
+?  ^
+
+
+======================================================================
+FAIL: test_live_compile_storage_still_counts_in_the_check_phase (__main__.CapacityRefusals.test_live_compile_storage_still_counts_in_the_check_phase) (jobs=2)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-phase-peaks/coax/tests/capacity_refusals.py", line 350, in test_live_compile_storage_still_counts_in_the_check_phase
+    self.assertEqual((peak['used'], peak['limit']), (80, 100))
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Tuples differ: (120, 100) != (80, 100)
+
+First differing element 0:
+120
+80
+
+- (120, 100)
+?  ^^
+
++ (80, 100)
+?  ^
+
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.196s
+
+FAILED (failures=4)
