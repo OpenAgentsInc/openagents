@@ -13,5 +13,12 @@
     "sword_indices_bit_exact": 134418,
     "bundled_source_textures_bit_exact": 35,
     "slay_mesh_and_morph_geometry_equals_valley": true
+  },
+  {
+    "orb_source_vertices_bit_exact": 559,
+    "orb_source_indices_bit_exact": 2880,
+    "orb_source_RGBA_pixels_bit_exact": 1114112,
+    "orb_hand_rotation_frames": 200,
+    "maximum_hand_quaternion_error": 1.9227726430481873e-07
   }
 ]

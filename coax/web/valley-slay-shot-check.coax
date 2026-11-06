@@ -1,11 +1,5 @@
-// Actual private face pack -> source-rate Wasm playback -> WebGPU captures/recovery.
-#import "Basic";
-#load "../lib/net/cdp.coax";
-#load "../lib/sys/fs.coax";
-fc_eval :: (c:[]Cdp,label:string,js:string)->bool {n:=cdp_evaluate(c,js);if n>=0 && jv_raw(c[0].doc[0],n)=="true" {return true;}print("FAIL %: %\n",label,cdp_error(c));n=cdp_evaluate(c,"JSON.stringify({ready:coaxial?.sceneReady,probes:Array.from({length:5},(_,i)=>coaxial?.guardProbe(87+i)),errors:faceErrors,recovery:coaxial?.gpuRecovery,hashes:faceHashes})");if n>=0 {print("%\n",jv_raw(c[0].doc[0],n));}return false;}
-fc_key :: (c:[]Cdp,key:string)->bool {b:[256]u8;j:[1]Jo;for phase:[2]string.["keyDown","keyUp"] {jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"type");jo_str(j[..],phase);jo_key(j[..],"key");jo_str(j[..],key);jo_end(j[..]);if cdp_call(c,"Input.dispatchKeyEvent",jo_text(j[..]),30000)<0 {return false;}}return true;}
-fc_hash :: (c:[]Cdp)->bool {return fc_eval(c,"actual face GPU crop","(async()=>{coaxial.renderCapture=null;coaxial.captureFrame();await coaxialClipStep(1,60);for(let i=0;i<100&&!coaxial.renderCapture;i++)await new Promise(r=>setTimeout(r,10));let r=coaxial.renderCapture;if(!r?.bytes)return false;let x=Math.floor(r.width*.34),y=Math.floor(r.height*.42),w=Math.floor(r.width*.32),h=Math.floor(r.height*.50),b=new Uint8Array(w*h*4);for(let j=0;j<h;j++)b.set(r.bytes.slice(((y+j)*r.width+x)*4,((y+j)*r.width+x+w)*4),j*w*4);let hash=await crypto.subtle.digest('SHA-256',b);faceHashes.push(Array.from(new Uint8Array(hash),x=>x.toString(16).padStart(2,'0')).join(''));return true})()");}
-fc_shot :: (c:[]Cdp,root:string,name:string)->bool {bytes:[8388608]u8;path:[4096]u8;n:=cdp_screenshot(c,bytes[..]);return n>0 && fs_write(fs_join(root,name,path[..]),cast(string)bytes[0..<n]);}
+// Source shot playback, recovery and locomotion observations.
+#load "valley-capture.coax";
 tool_main :: ()->int #export_c {
  a:[1]Args;if !args_load(a[..]) || (args_count(a[..])!=2 && args_count(a[..])!=3) {return 2;}c:[1]Cdp;if !cdp_launch_background(c[..],1280,800,"slay-shot-") {return 1;}
  _:=cdp_call(c[..],"Page.enable","",30000);_=cdp_call(c[..],"Emulation.setDeviceMetricsOverride","{\"width\":1280,\"height\":800,\"deviceScaleFactor\":1,\"mobile\":false}",30000);

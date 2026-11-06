@@ -1,16 +1,16 @@
 // Version 1 optional pack digest gate. Browser hashes received bytes; Coax owns admission.
 #load "../../aethyr/assets.coax";
 #authority;
-CANYON_PACK_BYTES :: 789955936;
-CANYON_PACK_SHA256 :: "9cdf33ffdee413a76bed96b2e041940da684cba7ef81fcd0551f35d041dd9d37";
-CANYON_PACK_DIGEST :: [32]u8.[0x9c,0xdf,0x33,0xff,0xde,0xe4,0x13,0xa7,0x6b,0xed,0x96,0xb2,0xe0,0x41,0x94,0x0d,0xa6,0x84,0xcb,0xa7,0xef,0x81,0xfc,0xd0,0x55,0x1f,0x35,0xd0,0x41,0xdd,0x9d,0x37];
+CANYON_PACK_BYTES :: 794477568;
+CANYON_PACK_SHA256 :: "9c285e9ffa59b850e93337c4089be86a39e7c54f52cda51419fe86eac7ef4074";
+CANYON_PACK_DIGEST :: [32]u8.[0x9c,0x28,0x5e,0x9f,0xfa,0x59,0xb8,0x50,0xe9,0x33,0x37,0xc4,0x08,0x9b,0xe8,0x6a,0x39,0xe7,0xc5,0x4f,0x52,0xcd,0xa5,0x14,0x19,0xfe,0x86,0xea,0xc7,0xef,0x40,0x74];
 #test "Canyon pack gate pins every digest byte and exact length before GPU upload" {
-  digest:[33]u8;hex:="9cdf33ffdee413a76bed96b2e041940da684cba7ef81fcd0551f35d041dd9d37";
+  digest:[33]u8;hex:="9c285e9ffa59b850e93337c4089be86a39e7c54f52cda51419fe86eac7ef4074";
   for k:0..<32 {digest[k]=cast(u8)(asset_digit(hex[k*2])*16+asset_digit(hex[k*2+1]));}
-  #assert canyon_pack_accept(digest[0..<32],789955936);
-  #assert !canyon_pack_accept(digest[0..<31],789955936) && !canyon_pack_accept(digest[..],789955936);
-  #assert !canyon_pack_accept(digest[0..<32],789955935) && !canyon_pack_accept(digest[0..<32],789955937);
-  for k:0..<32 {digest[k]^=1;#assert !canyon_pack_accept(digest[0..<32],789955936);digest[k]^=1;}
+  #assert canyon_pack_accept(digest[0..<32],794477568);
+  #assert !canyon_pack_accept(digest[0..<31],794477568) && !canyon_pack_accept(digest[..],794477568);
+  #assert !canyon_pack_accept(digest[0..<32],794477567) && !canyon_pack_accept(digest[0..<32],794477569);
+  for k:0..<32 {digest[k]^=1;#assert !canyon_pack_accept(digest[0..<32],794477568);digest[k]^=1;}
 }
 canyon_pack_accept :: (digest:[]u8,bytes:int)->bool {
   if digest.count!=32 || bytes!=CANYON_PACK_BYTES {return false;}

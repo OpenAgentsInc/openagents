@@ -1,0 +1,2 @@
+{\"orbFacts\":{\"width\":3840,\"height\":2400,\"changed\":171054,\"dimmed\":0},\"errors\":[]}
+PASS actual source orb adds colour without a dark rim; opaque walking remains ready

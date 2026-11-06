@@ -5,6 +5,7 @@
 #load "../../../aethyr/render/pbr-env.coax";
 #load "../../../aethyr/render/filmic.coax";
 #load "../../../aethyr/anim/morph-gpu.coax";
+#load "../../../verse/valley/slay-orb.coax";
 cv_at :: (u:[]f32,at:int)->V3 {return v3(u[at],u[at+1],u[at+2]);}
 cv_add :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
 cv_sub :: (a:V3,b:V3)->V3 {return v3(a.x-b.x,a.y-b.y,a.z-b.z);}
@@ -13,7 +14,7 @@ cv_word :: (vertices:[]u32,at:int)->f32 {return f32_from_bits(vertices[at]);}
 ECHO_VERTEX_WORD :: 6052916;
 ECHO_MATERIAL_WORD :: 6052404;
 ECHO_GROOM_WORD :: 13573820;
-cv_vertex_at :: (id:u32,vertices:[]u32)->int {return ifx id>=900000 then cast(int)vertices[ECHO_MATERIAL_WORD+31*16]+(cast(int)id-900000)*24 else ECHO_VERTEX_WORD+(cast(int)id-504367)*24;}
+cv_vertex_at :: (id:u32,vertices:[]u32)->int {return ifx id>=980000 then cast(int)vertices[ECHO_MATERIAL_WORD+31*16+1]+(cast(int)id-980000)*24 else ifx id>=900000 then cast(int)vertices[ECHO_MATERIAL_WORD+31*16]+(cast(int)id-900000)*24 else ECHO_VERTEX_WORD+(cast(int)id-504367)*24;}
 cv_morph :: (id:u32,vertices:[]u32,bones:[]f32,u:[]f32)->MorphVertex {
  at:=cv_vertex_at(id,vertices);p:=v3(cv_word(vertices,at),cv_word(vertices,at+1),cv_word(vertices,at+2));n:=v3(cv_word(vertices,at+3),cv_word(vertices,at+4),cv_word(vertices,at+5));
  if u[111]<0.5 {return MorphVertex.{position=p,normal=n};}
@@ -22,6 +23,8 @@ cv_morph :: (id:u32,vertices:[]u32,bones:[]f32,u:[]f32)->MorphVertex {
 cv_head :: (p:V3,u:[]f32,bones:[]f32)->V3 {b:=82*12;q:=v4(p.x,p.y,p.z,1);local:=v3(wg_dot4(wg_at4(bones,b),q),wg_dot4(wg_at4(bones,b+4),q),wg_dot4(wg_at4(bones,b+8),q));return cv_add(cv_at(u,104),cv_echo_direction(local,u));}
 GroomVertex :: struct {world:V3;normal:V3;tangent:V3;uv:V2;material:f32;coverage:f32;edge:f32;}
 #test "Groom ribbons form two consistent triangles per original curve segment" {#assert cv_groom_endpoint(0)==0 && cv_groom_endpoint(1)==0 && cv_groom_endpoint(2)==1 && cv_groom_endpoint(3)==1 && cv_groom_endpoint(4)==0 && cv_groom_endpoint(5)==1;#assert cv_groom_side(0)== -1 && cv_groom_side(1)==1 && cv_groom_side(2)== -1 && cv_groom_side(3)== -1 && cv_groom_side(4)==1 && cv_groom_side(5)==1;}
+#test "Strand colour coverage preserves the former stochastic expectation continuously" {#assert cv_groom_opacity(0.5,0)==0.5 && cv_groom_opacity(0.5,1)==0.375 && cv_groom_opacity(0,0)==0 && cv_groom_opacity(2,0)==1;}
+cv_groom_opacity :: (coverage:f32,edge:f32)->f32 {return clampf(coverage*(1-abs(edge)*0.25),0.0f32,1.0f32);}
 cv_groom_endpoint :: (vertex:int)->int {return ifx vertex==2 || vertex==3 || vertex==5 then 1 else 0;}
 cv_groom_side :: (vertex:int)->f32 {return ifx vertex==0 || vertex==2 || vertex==3 then -1.0f32 else 1.0f32;}
 cv_groom :: (id:u32,vertices:[]u32,u:[]f32,bones:[]f32)->GroomVertex {
@@ -34,8 +37,10 @@ cv_skin :: (id:u32,p:V4,vertices:[]u32,bones:[]f32)->V3 {
  return cv_scale(out,1/fmax(sum,0.00001f32));
 }
 cv_echo_direction :: (p:V3,u:[]f32)->V3 {return v3(u[108]*p.x+u[109]*p.z,p.y,-u[109]*p.x+u[108]*p.z);}
+cv_orb_rotate :: (p:V3,u:[]f32)->V3 {q:=cv_at(u,100);return cv_add(p,cv_scale(wg_cross3(q,cv_add(wg_cross3(q,p),cv_scale(p,u[103]))),2));}
 cv_world :: (id:u32,instance:u32,vertices:[]u32,u:[]f32,bones:[]f32)->V3 {
  if id>=1000000 {return cv_groom(id,vertices,u,bones).world;}
+ if id>=980000 {at:=cv_vertex_at(id,vertices);return cv_add(cv_at(u,116),cv_orb_rotate(cv_scale(v3(cv_word(vertices,at),cv_word(vertices,at+1),cv_word(vertices,at+2)),u[119]*2),u));}
  if instance==2 {m:=cv_morph(id,vertices,bones,u);p:=v4(m.position.x,m.position.y,m.position.z,1);return cv_add(cv_at(u,104),cv_echo_direction(cv_skin(id,p,vertices,bones),u));}
  at:=cast(int)id*12;p:=v4(cv_word(vertices,at),cv_word(vertices,at+1),cv_word(vertices,at+2),1);m:=32+cast(int)instance*24;return v3(wg_dot4(wg_at4(u,m),p),wg_dot4(wg_at4(u,m+4),p),wg_dot4(wg_at4(u,m+8),p));
 }
@@ -47,7 +52,7 @@ vc_bg_fs :: (p:V4,u:[]f32)->V4 {
    sy:=1-p.y/u[1]*2;if abs(sy)>u[0]/u[1]/u[113] {return v4(0,0,0,1);}
    ray:=wg_normalize3(cv_add(cv_at(u,20),cv_add(cv_scale(cv_at(u,12),(p.x/u[0]*2-1)/u[15]),cv_scale(cv_at(u,16),sy/u[19]))));
    delta:=cv_sub(cv_at(u,116),cv_at(u,8));along:=wg_dot3(delta,ray);distance:=sqrt(fmax(0.0f32,wg_dot3(delta,delta)-along*along));r:=u[119];core:=1-smoothstep(r*0.8,r*1.05,distance);halo:=exp(-distance*distance/(r*r*5))*0.5;flare:=exp(-distance*distance/(r*r*35))*0.06;
-   return v4(clampf(core+halo*0.2+flare*0.1,0.0f32,1.0f32),clampf(core+halo*0.65+flare*0.5,0.0f32,1.0f32),clampf(core+halo+flare,0.0f32,1.0f32),1);
+   return v4(clampf(halo*0.2+flare*0.1,0.0f32,1.0f32),clampf(halo*0.65+flare*0.5,0.0f32,1.0f32),clampf(halo+flare,0.0f32,1.0f32),1);
   }
   if u[110]>0.5 {return v4(0,0,0,1);}
   sky:=v3(0.065,0.075,0.09);if u[7]<0.5 {return v4(sky.x,sky.y,sky.z,1);}
@@ -63,19 +68,20 @@ CanyonSurface :: struct {pos:V4;world:V3;normal:V3;uv:V2;paint:V4;tangent:V4;cha
 vc_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,bones:[]f32)->CanyonSurface {
  world:=cv_world(id,instance,vertices,u,bones);at:=cast(int)id*12;normal:=v3(0,1,0);uv:=v2(0,0);paint:=v4(1,1,1,1);tangent:=v4(0,0,0,1);material:f32=0;character:f32=0;
  if id>=1000000 {groom:=cv_groom(id,vertices,u,bones);normal=groom.normal;tangent=v4(groom.tangent.x,groom.tangent.y,groom.tangent.z,1);uv=groom.uv;paint=v4(groom.coverage,groom.edge,1,1);character=1;material=groom.material;}
+ else if id>=980000 {at=cv_vertex_at(id,vertices);normal=cv_orb_rotate(v3(cv_word(vertices,at+3),cv_word(vertices,at+4),cv_word(vertices,at+5)),u);t:=cv_orb_rotate(v3(cv_word(vertices,at+15),cv_word(vertices,at+16),cv_word(vertices,at+17)),u);tangent=v4(t.x,t.y,t.z,cv_word(vertices,at+18));character=1;material=29;}
  else if instance==2 {at=cv_vertex_at(id,vertices);m:=cv_morph(id,vertices,bones,u);normal=cv_echo_direction(cv_skin(id,v4(m.normal.x,m.normal.y,m.normal.z,0),vertices,bones),u);t:=cv_echo_direction(cv_skin(id,v4(cv_word(vertices,at+15),cv_word(vertices,at+16),cv_word(vertices,at+17),0),vertices,bones),u);tangent=v4(t.x,t.y,t.z,cv_word(vertices,at+18));character=1;material=cast(f32)vertices[at+8];}
  else {n:=v3(cv_word(vertices,at+3),cv_word(vertices,at+4),cv_word(vertices,at+5));m:=44+cast(int)instance*24;normal=v3(wg_dot3(cv_at(u,m),n),wg_dot3(cv_at(u,m+4),n),wg_dot3(cv_at(u,m+8),n));paint=wg_unpack4x8unorm(vertices[at+8]);}
  if id<1000000 {uv=v2(cv_word(vertices,at+6),cv_word(vertices,at+7));}r:=cv_sub(world,cv_at(u,8));z:=wg_dot3(r,cv_at(u,20));return CanyonSurface.{pos=v4(wg_dot3(r,cv_at(u,12))*u[15],wg_dot3(r,cv_at(u,16))*u[19],300.0/299.95*(z-0.05),z),world=world,normal=normal,uv=uv,paint=paint,tangent=tangent,character=character,material=material};
 }
-CanyonShadow :: struct {pos:V4;uv:V2;character:f32;material:f32;}
+CanyonShadow :: struct {pos:V4;uv:V2;character:f32;material:f32;coverage:f32;edge:f32;}
 vc_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,bones:[]f32)->CanyonShadow {
- q:=cv_shadow(cv_world(id,instance,vertices,u,bones),u);uv:=v2(0,0);material:f32=0;if id>=1000000 {groom:=cv_groom(id,vertices,u,bones);uv=groom.uv;material=groom.material;}else if instance==2 {at:=cv_vertex_at(id,vertices);uv=v2(cv_word(vertices,at+6),cv_word(vertices,at+7));material=cast(f32)vertices[at+8];}return CanyonShadow.{pos=v4(q.x,q.y,q.z,1),uv=uv,character=ifx instance==2 then 1.0f32 else 0.0f32,material=material};
+ q:=cv_shadow(cv_world(id,instance,vertices,u,bones),u);uv:=v2(0,0);material:f32=0;coverage:f32=1;edge:f32=0;if id>=1000000 {groom:=cv_groom(id,vertices,u,bones);uv=groom.uv;material=groom.material;coverage=groom.coverage;edge=groom.edge;}else if instance==2 {at:=cv_vertex_at(id,vertices);uv=v2(cv_word(vertices,at+6),cv_word(vertices,at+7));material=cast(f32)vertices[at+8];}return CanyonShadow.{pos=v4(q.x,q.y,q.z,1),uv=uv,character=ifx instance==2 then 1.0f32 else 0.0f32,material=material,coverage=coverage,edge=edge};
 }
 cv_echo_mask :: (uv:V2,material:f32,vertices:[]u32,sheets:Tex2DArray,sheet:Sampler,dx:V2,dy:V2) {
  if material==ECHO_LASH_SLOT {if cv_echo_lash_mask(uv)<0.3333 {gpu_discard();}return;}
  m:=ECHO_MATERIAL_WORD+cast(int)material*16;if vertices[m+9]!=0 {gpu_discard();}alpha:=cast(int)vertices[m+3]-1;if alpha>=0 {a:=render_sample_layer8_grad(sheets,sheet,uv,cast(s32)alpha,dx,dy,0);if cv_srgb(a.x)<0.333333 {gpu_discard();}}
 }
-vc_shadow_fs :: (s:CanyonShadow,vertices:[]u32,sheets:Tex2DArray,sheet:Sampler) {dx:=v2(gpu_dpdx_fine(s.uv.x),gpu_dpdx_fine(s.uv.y));dy:=v2(gpu_dpdy_fine(s.uv.x),gpu_dpdy_fine(s.uv.y));if s.character>0.5 {cv_echo_mask(s.uv,s.material,vertices,sheets,sheet,dx,dy);}}
+vc_shadow_fs :: (s:CanyonShadow,vertices:[]u32,sheets:Tex2DArray,sheet:Sampler) {if s.material==29 {gpu_discard();}if s.material==26 || s.material==27 {noise:=sin(floor(s.pos.x)*12.9898+floor(s.pos.y)*78.233+s.uv.y*437.0)*43758.5453;if cv_groom_opacity(s.coverage,s.edge)<noise-floor(noise) {gpu_discard();}}dx:=v2(gpu_dpdx_fine(s.uv.x),gpu_dpdx_fine(s.uv.y));dy:=v2(gpu_dpdy_fine(s.uv.x),gpu_dpdy_fine(s.uv.y));if s.character>0.5 {cv_echo_mask(s.uv,s.material,vertices,sheets,sheet,dx,dy);}}
 cv_srgb :: (x:f32)->f32 {return ifx x<=0.0031308 then 12.92*x else 1.055*pow(x,1.0f32/2.4f32)-0.055;}
 cv_tone :: (x:f32)->f32 {return cv_srgb(fmin(1.0f32,(x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14)));}
 #test "Echo source face graph applies instance colour multiplier desaturation contrast and tint" {
@@ -117,11 +123,17 @@ cv_echo_eye_shadow :: (radius:f32)->f32 {return clampf((1-radius/0.345)/(1-0.535
 #test "Original lash opacity tapers to the root and preserves the central tip" {#assert cv_echo_lash_mask(v2(0.5,1))==1 && cv_echo_lash_mask(v2(0.5,0))==0;#assert abs(cv_echo_lash_mask(v2(0,1))-0.35355339)<0.000001;}
 cv_echo_lash_mask :: (uv:V2)->f32 {return pow(fmax(0.0f32,1-abs(uv.x-0.5)),1.5f32)*pow(fmax(0.0f32,uv.y),0.45f32);}
 #test "Canyon material helpers retain linear roughness and bounded filmic response" {#assert abs(cv_srgb(0.21404114)-0.5)<0.00001;#assert cv_tone(0)==0 && cv_tone(1)>0.9 && cv_tone(100)<=1;}
+cv_orb_shade :: (s:CanyonSurface,u:[]f32,vertices:[]u32)->V4 {
+ dist:=cast(int)vertices[ECHO_MATERIAL_WORD+31*16+2];energy:=cast(int)vertices[ECHO_MATERIAL_WORD+31*16+3];n:=wg_normalize3(s.normal);t:=wg_normalize3(v3(s.tangent.x,s.tangent.y,s.tangent.z));b:=cv_scale(wg_cross3(n,t),s.tangent.w);v:=wg_normalize3(cv_sub(cv_at(u,8),s.world));nv:=wg_dot3(n,v);if nv<=0 {gpu_discard();}
+ bump:=raw_rgb_sample(vertices,dist,256,v2(u[5]*0.1,u[5]*0.1));x:=bump.x*2-1;y:=1-bump.y*2;z:=sqrt(fmax(0.0f32,1-x*x-y*y));normal:=cv_add(cv_scale(t,x*0.5),cv_add(cv_scale(b,y*0.5),cv_scale(n,z*0.5+0.5)));
+ e:=slay_orb_emission(wg_dot3(normal,v),nv,slay_orb_energy(vertices,dist,energy,s.uv,u[5]));mapped:=film_rec709(film_rgb(e.x,e.y,e.z));return v4(cv_srgb(clampf(mapped.r,0.0f32,1.0f32)),cv_srgb(clampf(mapped.g,0.0f32,1.0f32)),cv_srgb(clampf(mapped.b,0.0f32,1.0f32)),e.w);
+}
 vc_scene_fs :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices:[]u32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
   if u[112]>0.5 && abs(1-s.pos.y/u[1]*2)>u[0]/u[1]/u[113] {gpu_discard();}
   dx:=v2(gpu_dpdx_fine(s.uv.x),gpu_dpdx_fine(s.uv.y));dy:=v2(gpu_dpdy_fine(s.uv.x),gpu_dpdy_fine(s.uv.y));
+  if s.material==29 {return cv_orb_shade(s,u,vertices);}
   n:=wg_normalize3(s.normal);albedo:=v3(1,1,1);rough:f32=0.65;metal:f32=0;
-  if (s.material==26 || s.material==27) {noise:=sin(floor(s.pos.x)*12.9898+floor(s.pos.y)*78.233+s.uv.y*437.0)*43758.5453;threshold:=noise-floor(noise);if s.paint.x*(1-abs(s.paint.y)*0.25)<threshold {gpu_discard();}}
+
   if s.character>0.5 {cv_echo_mask(s.uv,s.material,vertices,sheets,sheet,dx,dy);m:=ECHO_MATERIAL_WORD+cast(int)s.material*16;albedo=v3(cv_word(vertices,m+4),cv_word(vertices,m+5),cv_word(vertices,m+6));rough=cv_word(vertices,m+8);metal=cv_word(vertices,m+7);colour:=cast(int)vertices[m]-1;normal_map:=cast(int)vertices[m+1]-1;orm:=cast(int)vertices[m+2]-1;
    if colour>=0 {a:=render_sample_layer8_grad(sheets,sheet,s.uv,cast(s32)colour,dx,dy,0);albedo=v3(albedo.x*a.x,albedo.y*a.y,albedo.z*a.z);}if orm>=0 {a:=render_sample_layer8_grad(sheets,sheet,s.uv,cast(s32)orm,dx,dy,0);rough=cv_srgb(a.y);metal=cv_srgb(a.z);}
    if (s.material==26 || s.material==27) {albedo=cv_echo_groom_colour(s.uv.x,s.uv.y);metal=0;rough=mix(0.32f32,0.45f32,s.uv.y)*(1+0.1*s.uv.x);}
@@ -149,7 +161,7 @@ vc_scene_fs :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices
    wrap:=fmax(0.0f32,wg_dot3(n,cv_at(u,97)))*u[115];lit:=cv_add(cv_scale(warm,nl*shadow*u[123]),cv_add(cv_scale(v3(1,0.40197778,0.20155625),wrap),cv_add(cv_scale(fill,fill_amount),cv_scale(v3(0.012514,0.33214,1),orb_amount))));colour=v3(albedo.x*(0.08+lit.x/3.14159265)+spec.x*lit.x,albedo.y*(0.08+lit.y/3.14159265)+spec.y*lit.y,albedo.z*(0.08+lit.z/3.14159265)+spec.z*lit.z);
   }
   if s.character>0.5 && s.material<26 && u[112]<0.5 {environment:=pbr_environment(rough,nv);f90:=clampf(50*f0.y,0.0f32,1.0f32);colour=cv_add(colour,cv_scale(cv_add(cv_scale(f0,environment.a),v3(f90*environment.b,f90*environment.b,f90*environment.b)),0.7734375));}
-  if s.character>0.5 {mapped:=film_rec709(film_rgb(colour.x,colour.y,colour.z));return v4(cv_srgb(clampf(mapped.r,0.0f32,1.0f32)),cv_srgb(clampf(mapped.g,0.0f32,1.0f32)),cv_srgb(clampf(mapped.b,0.0f32,1.0f32)),1);}
+  if s.character>0.5 {mapped:=film_rec709(film_rgb(colour.x,colour.y,colour.z));return v4(cv_srgb(clampf(mapped.r,0.0f32,1.0f32)),cv_srgb(clampf(mapped.g,0.0f32,1.0f32)),cv_srgb(clampf(mapped.b,0.0f32,1.0f32)),ifx s.material==26 || s.material==27 then cv_groom_opacity(s.paint.x,s.paint.y) else 1.0f32);}
   return v4(cv_tone(colour.x),cv_tone(colour.y),cv_tone(colour.z),1);
 }
 cv_scale2 :: (a:V2,k:f32)->V2 {return v2(a.x*k,a.y*k);}

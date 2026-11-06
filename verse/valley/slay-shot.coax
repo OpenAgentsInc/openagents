@@ -1,4 +1,4 @@
-// SHS1: source body locals and camera/orb samples for the TF0290 shot.
+// SHS1 v2: source body locals, camera/light samples and unit world orb rotation.
 #load "../../aethyr/anim/pose.coax";
 #load "../../aethyr/anim/face-pack.coax";
 #authority;
@@ -14,12 +14,13 @@ shot_info :: (b:[]u8)->ShotInfo {return ShotInfo.{frames=cast(int)face_word(b,12
 shot_name_matches :: (a:[]u8,b:[]u8)->bool {if a.count!=64 || b.count!=64 {return false;}for k:0..<64 {if a[k]!=b[k] {return false;}}return true;}
 shot_valid :: (b:[]u8,rig_names:[]u8,joints:int,clips:int)->bool {
  if !shot_size_ok(b.count) || !face_finite(b,20) {return false;}
- if face_word(b,0)!=0x31534853 || face_word(b,4)!=1 || cast(int)face_word(b,8)!=b.count {return false;}
+ if face_word(b,0)!=0x31534853 || face_word(b,4)!=2 || cast(int)face_word(b,8)!=b.count {return false;}
  f:=shot_info(b);if !shot_counts_ok(f.frames,f.bones) || !face_rate_ok(f.rate) || f.names!=64 || f.data!=64+f.bones*68 || f.stride!=f.bones*28+SLAY_SHOT_META*4 || !face_prefix_ok(b.count,f.data) {return false;}
  if !shot_rig_ok(joints,rig_names.count) || f.face_clip>=clips || !shot_source_range_ok(f.source_first,f.frames,f.face_start,f.face_end) {return false;}
  if f.frames!=(b.count-f.data)/f.stride || (b.count-f.data)%f.stride!=0 {return false;}
  for k:0..<f.bones {at:=f.names+k*68;id:=cast(int)face_word(b,at+64);if id>=joints || !shot_name_matches(b[at..<at+64],rig_names[id*64..<id*64+64]) {return false;}for j:0..<k {if face_word(b,f.names+j*68+64)==cast(u32)id {return false;}}}
  for frame:0..<f.frames {at:=f.data+frame*f.stride;if !face_floats_ok(b[at..<at+f.stride]) {return false;}
+  orb_length:f32=0;for k:0..<4 {q:=face_float(b,at+f.bones*28+(30+k)*4);orb_length+=q*q;}if !face_rotation_ok(orb_length) {return false;}
   for k:0..<f.bones {p:=at+k*28;length:f32=0;for q:3..<7 {x:=face_float(b,p+q*4);length+=x*x;}if !face_rotation_ok(length) {return false;}}
  }return true;
 }

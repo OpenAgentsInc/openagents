@@ -1,4 +1,12 @@
 // Synthetic source-shot binary fixtures; no licensed data.
+#test "Shot v2 requires a unit source orb rotation and refuses the older metadata layout" {
+ b:[540]u8;names:[64]u8;shot_fixture(b[..],names[..]);original:=b;
+ face_put(b[..],4,1);#assert !shot_valid(b[..],names[..],1,1);
+ for frame:0..<2 {for axis:0..<4 {b=original;face_put(b[..],160+frame*204+120+axis*4,f32_bits(2.0f32));#assert !shot_valid(b[..],names[..],1,1);}}
+ b=original;face_put(b[..],292,0);#assert !shot_valid(b[..],names[..],1,1);
+ b=original;face_put(b[..],292,0);face_put(b[..],280,f32_bits(1.0f32));#assert shot_valid(b[..],names[..],1,1);
+ b=original;face_put(b[..],296,f32_bits(10.0f32));#assert shot_valid(b[..],names[..],1,1);
+}
 #test "shot admission retains complete source bytes and refuses before exposing a partial clip" {
  b:[540]u8;names:[64]u8;shot_fixture(b[..],names[..]);face:[536]u8;face_fixture(face[..]);face_put(b[..],536,f32_bits(7.0f32));s:[1]SlayShot;
  #assert shot_admit(s[..],b[..],face[..]) && s[0].ready && s[0].bytes==540;for k:0..<540 {#assert s[0].data[k]==b[k];}
@@ -33,11 +41,12 @@
 }
 shot_fixture_three :: (b:[]u8,names:[]u8) {
  for k:0..<b.count {b[k]=0;}for k:0..<names.count {names[k]=0;}
- header:=[13]u32.[0x31534853,1,788,2,3,f32_bits(24.0f32),64,268,260,1000,0,1000,1001];for x,k:header {face_put(b,k*4,x);}
+ header:=[13]u32.[0x31534853,2,788,2,3,f32_bits(24.0f32),64,268,260,1000,0,1000,1001];for x,k:header {face_put(b,k*4,x);}
  for k:0..<3 {b[64+k*68]='b';b[65+k*68]=cast(u8)('0'+k);names[k*64]='b';names[k*64+1]=cast(u8)('0'+k);face_put(b,128+k*68,cast(u32)k);}
  for frame:0..<2 {for joint:0..<3 {at:=268+frame*260+joint*28;face_put(b,at+24,f32_bits(1.0f32));}}
  face_put(b,268+12,f32_bits(1.0f32));face_put(b,268+24,0);
  face_put(b,268+28,f32_bits(2.0f32));
+ for frame:0..<2 {face_put(b,268+frame*260+84+33*4,f32_bits(1.0f32));}
 }
 #test "Slay shot admits source locals and refuses a corrupt named binding and pose" {
  b:[540]u8;names:[64]u8;shot_fixture(b[..],names[..]);#assert shot_valid(b[..],names[..],1,1);
@@ -53,6 +62,7 @@ shot_fixture_three :: (b:[]u8,names:[]u8) {
 }
 shot_fixture :: (b:[]u8,names:[]u8) {
  for k:0..<b.count {b[k]=0;}for k:0..<names.count {names[k]=0;}
- header:=[13]u32.[0x31534853,1,540,2,1,f32_bits(24.0f32),64,132,204,1000,0,1000,1001];for x,k:header {face_put(b,k*4,x);}
+ header:=[13]u32.[0x31534853,2,540,2,1,f32_bits(24.0f32),64,132,204,1000,0,1000,1001];for x,k:header {face_put(b,k*4,x);}
  for c,k:"face" {b[64+k]=c;names[k]=c;}face_put(b,156,f32_bits(1.0f32));face_put(b,360,f32_bits(1.0f32));
+ face_put(b,292,f32_bits(1.0f32));face_put(b,496,f32_bits(1.0f32));
 }

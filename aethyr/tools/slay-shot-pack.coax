@@ -36,7 +36,7 @@ tool_main :: ()->int #export_c {
  for k:0..<134 {id:=jv_int(g[0].d[0],ep_item(g[..],joints,k),-1);p:=node_parent[id];parent[k]=ifx p>=0 then node_bone[p] else -1;#assert parent[k]<k;}
  names[134]=sf_name("groom.prop_01");parent[134]= -1;
  out:[SLAY_SHOT_CAP]u8;frames:=200;data:=64+135*68;stride:=135*28+SLAY_SHOT_META*4;total:=data+frames*stride;
- header:=[13]u32.[0x31534853,1,cast(u32)total,200,135,f32_bits(24.0f32),64,cast(u32)data,cast(u32)stride,1001,16,1121,1159];for x,k:header {face_put(out[..],k*4,x);}
+ header:=[13]u32.[0x31534853,2,cast(u32)total,200,135,f32_bits(24.0f32),64,cast(u32)data,cast(u32)stride,1001,16,1121,1159];for x,k:header {face_put(out[..],k*4,x);}
  for k:0..<135 {sf_write_name(out[..],64+k*68,names[k]);face_put(out[..],64+k*68+64,cast(u32)(ifx k==134 then 135 else k));}
  sf_json(j[..],sdk,"TF0290_Echo.samples.json");#assert ep_int(j[..],0,"frames",0)==200;tracks:=ep_get(j[..],0,"bones");found:[135]bool;
  for k:0..<ep_len(j[..],tracks) {row:=ep_item(j[..],tracks,k);bone_name:=ep_text(j[..],row,"name");id:=sf_find(names[0..<134],bone_name);if bone_name=="prop_01" {id=134;}if id<0 {continue;}#assert !found[id];found[id]=true;values:=ep_get(j[..],row,"values");#assert ep_len(j[..],values)==2000;node:=j[0].nodes[values].first;
@@ -60,7 +60,7 @@ tool_main :: ()->int #export_c {
   wrap_axes:=ss_camera_axes(wrap_actor[frame*9+3],wrap_actor[frame*9+4],wrap_actor[frame*9+5]);meta[14]= -wrap_axes[0].x;meta[15]= -wrap_axes[0].y;meta[16]= -wrap_axes[0].z;meta[18]=wrap_power[frame];
   meta[39]= -fill_axes[0].x;meta[40]= -fill_axes[0].y;meta[41]= -fill_axes[0].z;meta[42]=key_power[frame];meta[43]=fill_power[frame];
   for axis:0..<3 {vectors:=[7]Point.[eye,axes[1],axes[2],axes[0],orb,key,gt[head]];starts:=[7]int.[0,3,6,9,19,24,36];for v:0..<7 {meta[starts[v]+axis]=ifx axis==0 then vectors[v].x else ifx axis==1 then vectors[v].y else vectors[v].z;}}
-  meta[12]=2*focal[frame]/24.889999f32;meta[13]=2.4;meta[17]=1;meta[22]=0.0375;meta[23]=30;meta[27]=key_rgb[frame*3];meta[28]=key_rgb[frame*3+1];meta[29]=key_rgb[frame*3+2];meta[30]=0.012514;meta[31]=0.33214;meta[32]=1;meta[33]=1;meta[34]=focus[frame]*0.01;meta[35]=4;
+  meta[12]=2*focal[frame]/24.889999f32;meta[13]=2.4;meta[17]=1;meta[22]=0.0375;meta[23]=30;meta[27]=key_rgb[frame*3];meta[28]=key_rgb[frame*3+1];meta[29]=key_rgb[frame*3+2];meta[30]=gq[hand].x;meta[31]=gq[hand].y;meta[32]=gq[hand].z;meta[33]=gq[hand].w;meta[34]=focus[frame]*0.01;meta[35]=4;
   for k:0..<44 {face_put(out[..],at+135*28+k*4,f32_bits(meta[k]));}
  }
  face:[FACE_PACK_CAP]u8;path:[4096]u8;n:=fs_read(ep_path(dest,"echo.face",path[..]),face[..]);#assert n>0 && face_valid(face[0..<n]);f:=face_info(face[..]);#assert shot_valid(out[0..<total],face[f.rig_names..<f.rig_names+f.joints*64],f.joints,f.clips);

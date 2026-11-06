@@ -1,0 +1,25 @@
+// Bilinear repeat sampling of bounded, admitted RGBA8 GPU storage streams.
+#load "../../verse/gpu/wgsl.coax";
+#test "Raw texture sampling retains texel centres, bilinear centres and negative repeat" {
+ b:=[4]u32.[0xff0000ff,0xff00ff00,0xffff0000,0xffffffff];a:=raw_rgb_sample(b[..],0,2,v2(0.25,0.25));#assert a.x==1 && a.y==0 && a.z==0;
+ a=raw_rgb_sample(b[..],0,2,v2(0.5,0.5));#assert a.x==0.5 && a.y==0.5 && a.z==0.5;
+ a=raw_rgb_sample(b[..],0,2,v2(-0.75,1.25));#assert a.x==1 && a.y==0 && a.z==0;
+}
+raw_rgb_texel :: (words:[]u32,base:int,edge:int,x:int,y:int)->V3 {
+ px:=(x%edge+edge)%edge;py:=(y%edge+edge)%edge;word:=words[base+py*edge+px];return v3(cast(f32)(word&255)/255,cast(f32)((word>>8)&255)/255,cast(f32)((word>>16)&255)/255);
+}
+raw_rgb_lerp :: (a:V3,b:V3,k:f32)->V3 {return v3(a.x+(b.x-a.x)*k,a.y+(b.y-a.y)*k,a.z+(b.z-a.z)*k);}
+raw_rgb_sample :: (words:[]u32,base:int,edge:int,uv:V2)->V3 {
+ return raw_rgb_filter(words,base,edge,uv,false);
+}
+#test "Raw sRGB sampling decodes texels before filtering" {
+ b:=[4]u32.[0xff808080,0xffffffff,0xff000000,0xff000000];a:=raw_rgb_srgb_sample(b[..],0,2,v2(0.25,0.25));#assert abs(a.x-0.2158605)<0.000001;
+ a=raw_rgb_srgb_sample(b[..],0,2,v2(0.5,0.25));#assert abs(a.x-0.60793025)<0.000001;
+}
+raw_rgb_srgb_sample :: (words:[]u32,base:int,edge:int,uv:V2)->V3 {return raw_rgb_filter(words,base,edge,uv,true);}
+raw_srgb_channel :: (x:f32)->f32 {return ifx x<=0.04045 then x/12.92 else pow((x+0.055)/1.055,2.4f32);}
+raw_rgb_decode :: (a:V3,decode:bool)->V3 {if !decode {return a;}return v3(raw_srgb_channel(a.x),raw_srgb_channel(a.y),raw_srgb_channel(a.z));}
+raw_rgb_filter :: (words:[]u32,base:int,edge:int,uv:V2,decode:bool)->V3 {
+ x:=(uv.x-floor(uv.x))*cast(f32)edge-0.5;y:=(uv.y-floor(uv.y))*cast(f32)edge-0.5;ix:=cast(int)floor(x);iy:=cast(int)floor(y);fx:=x-floor(x);fy:=y-floor(y);
+ a:=raw_rgb_lerp(raw_rgb_decode(raw_rgb_texel(words,base,edge,ix,iy),decode),raw_rgb_decode(raw_rgb_texel(words,base,edge,ix+1,iy),decode),fx);b:=raw_rgb_lerp(raw_rgb_decode(raw_rgb_texel(words,base,edge,ix,iy+1),decode),raw_rgb_decode(raw_rgb_texel(words,base,edge,ix+1,iy+1),decode),fx);return raw_rgb_lerp(a,b,fy);
+}

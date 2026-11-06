@@ -7,6 +7,7 @@
 #load "../../verse/valley/scan.coax";
 #load "../../verse/tools/humans/ph_num.coax";
 #load "echo-gltf.coax";
+#load "../../coax/lib/image/png.coax";
 #test "Sword vertices use the admitted source prop palette and one complete weight" {
  b:[96]u8;slay_sword_binding(b[..],0);#assert scan_u32(b[..],36)==135 && scan_u32(b[..],52)==255 && scan_u32(b[..],32)==28;
  #assert scan_u32(b[..],40)==0 && scan_u32(b[..],56)==0 && scan_u32(b[..],80)==0;
@@ -24,5 +25,10 @@ tool_main :: ()->int #export_c {
  acc:=ep_read(g[..],ep_int(g[..],attr,"JOINTS_0",-1),raw[..]);#assert acc.count==25547 && acc.component==5121;for k:0..<25547 {#assert raw[k*4]==1;}
  acc=ep_read(g[..],ep_int(g[..],attr,"WEIGHTS_0",-1),raw[..]);#assert acc.count==25547 && acc.component==5121;for k:0..<25547 {#assert scan_u32(raw[..],k*4)==255;slay_sword_binding(vertices[..],k*96);}
  acc=ep_read(g[..],ep_int(g[..],pr,"indices",-1),raw[..]);#assert acc.count==134418 && acc.component==5123;for k:0..<134418 {id:=cast(int)raw[k*2]|(cast(int)raw[k*2+1]<<8);#assert id<25547;scan_put(indices[..],k*4,cast(u32)(900000+id));}
+ ep_load(g[..],root,"SlayOrb.gltf");orb_pr:=ep_item(g[..],ep_get(g[..],ep_top(g[..],"meshes",0),"primitives"),0);orb_attr:=ep_get(g[..],orb_pr,"attributes");orb:[559*96]u8;orb_indices:[2880*4]u8;
+ for field:0..<4 {oa:=ep_read(g[..],ep_int(g[..],orb_attr,[4]string.["POSITION","NORMAL","TEXCOORD_0","TANGENT"][field],-1),raw[..]);#assert oa.count==559 && oa.component==5126 && oa.components==[4]int.[3,3,2,4][field];word:=[4]int.[0,3,6,15][field];for k:0..<559 {for c:0..<oa.components {scan_put(orb[..],k*96+(word+c)*4,scan_u32(raw[..],(k*oa.components+c)*4));}}}
+ for k:0..<559 {scan_put(orb[..],k*96+32,29);}oa:=ep_read(g[..],ep_int(g[..],orb_pr,"indices",-1),raw[..]);#assert oa.count==2880 && oa.component==5123;for k:0..<2880 {id:=cast(int)raw[k*2]|(cast(int)raw[k*2+1]<<8);#assert id<559;scan_put(orb_indices[..],k*4,cast(u32)(980000+id));}
+ #assert fs_write(ep_path(dest,"echo.orb-vertices",path[..]),cast(string)orb[..]) && fs_write(ep_path(dest,"echo.orb-indices",path[..]),cast(string)orb_indices[..]);
+ rgba:[4194304]u8;work:[16777216]u8;for k:0..<2 {n:=fs_read(ep_path(root,[2]string.["T_Distortion_HQ.png","T_OC_EnergyTile_Greyscale.png"][k],path[..]),raw[..]);#assert n>0;info:=png_info(raw[0..<n]);edge:=ifx k==0 then 256 else 1024;#assert info.status==PNG_OK && info.w==edge && info.h==edge && png_decode(raw[0..<n],work[..],rgba[..])==PNG_OK;#assert fs_write(ep_path(dest,[2]string.["echo.orb-distortion","echo.orb-energy"][k],path[..]),cast(string)rgba[0..<edge*edge*4]);}
  #assert fs_write(ep_path(dest,"echo.sword-vertices",path[..]),cast(string)vertices[..]) && fs_write(ep_path(dest,"echo.sword-indices",path[..]),cast(string)indices[..]);print("Slay render source: 101672 UVs, 25547 sword vertices, 134418 indices, source prop palette135\n");return 0;
 }

@@ -85,7 +85,7 @@ for clip in range(nc):
 
 shot = (packed / 'echo.shot').read_bytes()
 _, v, size, frames, bones, rate, names, start, stride, first, clip, face_first, face_last = struct.unpack_from('<5If7I', shot)
-assert v == 1 and size == len(shot) and first == 1001 and clip == 16 and face_first == 1121 and face_last == 1159
+assert v == 2 and size == len(shot) and first == 1001 and clip == 16 and face_first == 1121 and face_last == 1159
 raw = json.loads((sdk / 'TF0290_Echo.samples.json').read_text())
 tracks = {b['name'].casefold(): b['values'] for b in raw['bones']}
 for bone in range(bones):
@@ -140,9 +140,9 @@ if len(sys.argv) > 4:
     for vertex in range(101672):
         assert vb[24211664+vertex*96+24:24211664+vertex*96+32] == expected_uv[vertex*8:(vertex+1)*8]
     sword_base = u32(vb, 24209616+31*64)*4
-    assert vb[sword_base:] == sword
+    assert vb[sword_base:sword_base+len(sword)] == sword
     _, start, count = entries[2]
-    assert pack[start+29710980:start+count] == (packed / 'echo.sword-indices').read_bytes()
+    assert pack[start+29710980:start+29710980+134418*4] == (packed / 'echo.sword-indices').read_bytes()
     for index, (_, start, count) in enumerate(entries[3:]):
         label = bytes(pack[32+(index+3)*48+16:32+(index+3)*48+48]).split(b'\0',1)[0].decode()
         file = (source.parent / 'section-source' if index < 2 else slay) / label
@@ -150,3 +150,49 @@ if len(sys.argv) > 4:
     print(json.dumps({'slay_uv_pairs_bit_exact': 101672, 'sword_vertices_bit_exact': 25547,
                       'sword_indices_bit_exact': 134418, 'bundled_source_textures_bit_exact': len(entries)-3,
                       'slay_mesh_and_morph_geometry_equals_valley': True}))
+
+    if (packed / 'echo.orb-vertices').exists():
+        from PIL import Image
+        import math
+        og = json.loads((slay / 'SlayOrb.gltf').read_text())
+        ob = (slay / og['buffers'][0]['uri']).read_bytes()
+        primitive = og['meshes'][0]['primitives'][0]
+        orb = (packed / 'echo.orb-vertices').read_bytes()
+        for field, offset, width in [('POSITION',0,12),('NORMAL',12,12),('TEXCOORD_0',24,8),('TANGENT',60,16)]:
+            expected = dense(og, ob, primitive['attributes'][field])
+            for vertex in range(559):
+                assert orb[vertex*96+offset:vertex*96+offset+width] == expected[vertex*width:(vertex+1)*width]
+        orb_base = u32(vb, 24209616+31*64+4)*4
+        assert vb[orb_base:orb_base+len(orb)] == orb
+        expected_indices = b''.join(struct.pack('<I', x+980000) for (x,) in struct.iter_unpack('<H', dense(og, ob, primitive['indices'])))
+        assert (packed / 'echo.orb-indices').read_bytes() == expected_indices
+        _, ib_start, ib_count = entries[2]
+        assert pack[ib_start+30248652:ib_start+ib_count] == expected_indices
+        pixels = 0
+        for field, original, generated in [(8,'T_Distortion_HQ.png','echo.orb-distortion'),(12,'T_OC_EnergyTile_Greyscale.png','echo.orb-energy')]:
+            expected = Image.open(slay / original).convert('RGBA').tobytes()
+            assert (packed / generated).read_bytes() == expected
+            tex_base = u32(vb, 24209616+31*64+field)*4
+            assert vb[tex_base:tex_base+len(expected)] == expected
+            pixels += len(expected)//4
+        def multiply(a, b):
+            x,y,z,w = a; X,Y,Z,W = b
+            q = (w*X+x*W+y*Z-z*Y,w*Y-x*Z+y*W+z*X,w*Z+x*Y-y*X+z*W,w*W-x*X-y*Y-z*Z)
+            length = math.sqrt(sum(v*v for v in q))
+            return tuple(v/length for v in q)
+        nodes = g['nodes']; joints = g['skins'][0]['joints']; reverse = {n:i for i,n in enumerate(joints)}
+        parents = {child:node for node,row in enumerate(nodes) for child in row.get('children',[])}
+        hand = next(i for i,n in enumerate(joints) if nodes[n]['name'].casefold() == 'hand_l')
+        max_error = 0
+        for frame in range(frames):
+            rotations = []
+            for node in joints:
+                key = nodes[node]['name'].casefold(); v = local(tracks[key][frame*10:(frame+1)*10]); q = tuple(v[3:])
+                parent = reverse.get(parents.get(node), -1)
+                rotations.append(multiply(rotations[parent],q) if parent >= 0 else q)
+            actual = struct.unpack_from('<4f',shot,u32(shot,28)+frame*stride+bones*28+30*4)
+            max_error = max(max_error, max(abs(a-b) for a,b in zip(actual,rotations[hand])))
+        assert max_error < 2e-6
+        print(json.dumps({'orb_source_vertices_bit_exact':559,'orb_source_indices_bit_exact':2880,
+                          'orb_source_RGBA_pixels_bit_exact':pixels,'orb_hand_rotation_frames':frames,
+                          'maximum_hand_quaternion_error':max_error}))

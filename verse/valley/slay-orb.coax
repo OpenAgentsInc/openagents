@@ -1,0 +1,18 @@
+// Arithmetic read from the source M_Simple_Orb graph; texture/mesh payloads stay private.
+#load "../../aethyr/render/raw-rgba.coax";
+#test "Source orb base emission retains tint, desaturation and front-facing opacity" {
+ c:=slay_orb_emission(1,1,0);#assert abs(c.x-1.736294)<0.00001 && abs(c.y-6.530684)<0.00001 && abs(c.z-16.548584)<0.00001 && c.w==1;
+ c=slay_orb_emission(0,0,1);#assert c.x==0 && c.y==0 && c.z==0 && c.w==0;
+ a:=slay_orb_emission(0.5,0.5,0.25);b:=slay_orb_emission(0.5,0.5,0.5);#assert b.z>a.z && a.w>0 && a.w<1;
+}
+slay_orb_emission :: (bump_dot:f32,nv:f32,energy:f32)->V4 {
+ facing:=clampf(nv,0.0f32,1.0f32);base:=pow(pow(clampf(bump_dot,0.0f32,1.0f32),8.0f32),1.2f32)*20;e:=clampf(energy,0.0f32,1.0f32)*pow(facing,4.0f32);
+ // DeriveHDRfromLDR: range100, power1, full luminance desaturation,
+ // HDR tint(.501736,.601389,1), multiplier2, followed by SwirlEnergyTint*25.
+ hdr:=200*e*e/(101-100*e);r:=base*0.012514;g:=base*0.33214+hdr*0.601389*0.141989*25;b:=base+hdr*25;l:=r*0.3+g*0.59+b*0.11;
+ return v4(r*0.75+l*0.25,g*0.75+l*0.25,b*0.75+l*0.25,pow(facing,1.808728f32));
+}
+slay_orb_energy :: (vertices:[]u32,distortion:int,energy:int,uv:V2,time:f32)->f32 {
+ a:=raw_rgb_sample(vertices,distortion,256,v2(uv.x*2+time*0.1,uv.y*2+time*0.1));b:=raw_rgb_sample(vertices,distortion,256,v2(uv.x+time*0.04,uv.y-time*0.15));
+ first:=raw_rgb_srgb_sample(vertices,energy,1024,v2(uv.x+(a.x*2-1)*0.15-time*0.01,uv.y+(a.y*2-1)*0.15-time*0.01));second:=raw_rgb_srgb_sample(vertices,energy,1024,v2(uv.x*2+(b.x*2-1)*0.125+time*0.01,uv.y*2+(b.y*2-1)*0.125+time*0.25));return first.x*second.x;
+}

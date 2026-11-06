@@ -1212,7 +1212,7 @@ async function loadShadersOnce() {
   // Grass (docs/verse/art-styles.md 8), when the WGSL has grass_vs and grass_fs: coaxial_grass_instances(state)
   // blades of one triangle each, instanced from their cells' hashes (no buffer), drawn after bg_fs with bg's groups.
   const grassy = scene && /fn\s+grass_vs\b/.test(code) && !!engine?.exports.coaxial_grass_instances;
-  const [bg, fx, sc, sh, bl, po, ca, gr, su] = await Promise.all([
+  const [bg, fx, sc, sh, bl, po, ca, gr, su, sa, st] = await Promise.all([
     device.createRenderPipelineAsync({ layout: bgLayout, ...bgDepth, vertex: { module, entryPoint: "bg_vs" }, fragment: { module, entryPoint: "bg_fs", targets: lit } }),
     device.createRenderPipelineAsync({
       layout, ...(post ? {} : flat),
@@ -1259,7 +1259,26 @@ async function loadShadersOnce() {
       primitive: { topology: "triangle-list", cullMode: "none" },
       depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less" },
     }) : null,
+    scene && engine.exports.coaxial_draw_blend_v1 ? device.createRenderPipelineAsync({
+      layout: device.createPipelineLayout({ bindGroupLayouts: sceneGroups }),
+      vertex: { module, entryPoint: "scene_vs" },
+      fragment: { module, entryPoint: "scene_fs", targets: lit.map((target) => ({ ...target, blend: {
+        color: { operation: "add", srcFactor: "src-alpha", dstFactor: "one" },
+        alpha: { operation: "add", srcFactor: "zero", dstFactor: "one" } } })) },
+      primitive: { topology: "triangle-list", cullMode: "none" },
+      depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "less" },
+    }) : null,
+    scene && engine.exports.coaxial_draw_blend_v1 ? device.createRenderPipelineAsync({
+      layout: device.createPipelineLayout({ bindGroupLayouts: sceneGroups }),
+      vertex: { module, entryPoint: "scene_vs" },
+      fragment: { module, entryPoint: "scene_fs", targets: lit.map((target) => ({ ...target, blend: {
+        color: { operation: "add", srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha" },
+        alpha: { operation: "add", srcFactor: "one", dstFactor: "one-minus-src-alpha" } } })) },
+      primitive: { topology: "triangle-list", cullMode: "none" },
+      depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "less" },
+    }) : null,
   ]);
+  gpu.sceneAdditive = sa;gpu.sceneAlpha = st;
   gpu.surface = su;
   gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; gpu.shadow = sh; gpu.bloom = bl; gpu.post = po; gpu.caster = ca; gpu.grass = gr; // swapped whole, at the next frame
   // A procedural scene may have stores and no fetched assets. Asset delivery
@@ -2554,9 +2573,16 @@ function draw(now) {
     if (base & 0x80000000) pass.draw(count, instances, first, base & 0x7fffffff);
     else pass.drawIndexed(count, instances, first, 0, base);
   };
-  const drawScene = (pass) => {
+  const drawScene = (pass, colours = false) => {
     pass.setBindGroup(1, gpu.sceneGroup); if (gpu.index) pass.setIndexBuffer(gpu.index, "uint32");   // none: in-order draws only
-    for (let i = 0; i < draws - wet; i++) drawOne(pass, i);
+    for (let i = 0; i < draws - wet; i++) {
+      if (colours && x.coaxial_draw_blend_v1) {
+        const profile = x.coaxial_draw_blend_v1(arena.state, i);
+        if (profile !== 0 && profile !== 1 && profile !== 2) throw Error(`invalid Coax scene blend v1: ${profile}`);
+        pass.setPipeline(profile === 1 ? gpu.sceneAdditive : profile === 2 ? gpu.sceneAlpha : gpu.scene);
+      }
+      drawOne(pass, i);
+    }
   };
   const cast = gpu.caster && x.coaxial_caster_instances ? [x.coaxial_caster_vertices(arena.state), x.coaxial_caster_instances(arena.state)] : [0, 0];
   if ((draws && gpu.shadow) || gpu.caster) {
@@ -2590,7 +2616,7 @@ function draw(now) {
   if (draws) {
     pass.setPipeline(gpu.scene);
     if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup);
-    drawScene(pass);
+    drawScene(pass, true);
     const sparks = gpu.particles ? x.coaxial_particle_instances(arena.state) : 0;
     if ((wet || (sparks && gpu.particleDepth)) && post && gpu.waterCopyGroup) {
       // W5: the scene's light and depth as they stand before the water (and the soft particles), then on

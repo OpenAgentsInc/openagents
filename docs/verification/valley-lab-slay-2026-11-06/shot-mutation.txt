@@ -1,3 +1,3 @@
-coax jobs: waiting for 11 of 12 build workers held by 1 other coax process; running 1 now (coax status shows them)
+coax jobs: the load average is 53.7, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 2, until it drops
 mutation scope: root-only (entry-source procedures; dependency checks retained)
-175 mutants, 175 killed, 0 survived
+190 mutants, 190 killed, 0 survived

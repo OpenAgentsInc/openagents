@@ -26,7 +26,8 @@ EXPORT("coaxial_asset") uint32_t asset(uint32_t p,int32_t i,uint32_t n){(void)p;
 EXPORT("coaxial_asset_capacity") uint32_t capacity(uint32_t p,int32_t i){(void)p;return i==0?sizeof(catalogScratch.bytes.e):0;}
 EXPORT("coaxial_asset_ready") void loaded(uint32_t p,int32_t i,uint32_t n){if(i==0&&n<=sizeof(catalogScratch.bytes.e))canyon_catalog(view(p),(coax_v_u8){catalogScratch.bytes.e,n});else canyon_asset(view(p),i,n);}
 EXPORT("coaxial_draws") uint32_t draws(uint32_t p){return (uint32_t)(uintptr_t)state(p)->draws.e;}
-EXPORT("coaxial_draw_count") uint32_t draw_count(uint32_t p){return canyon_ready(view(p))?4u:0u;}
+EXPORT("coaxial_draw_count") uint32_t draw_count(uint32_t p){return canyon_ready(view(p))?5u:0u;}
+EXPORT("coaxial_draw_blend_v1") uint32_t draw_blend(uint32_t p,int32_t i){return (uint32_t)canyon_draw_blend(view(p),i);}
 EXPORT("coaxial_stores") uint32_t stores(void){return 1;}
 EXPORT("coaxial_store") uint32_t store(uint32_t p,uint32_t i){return i==0?(uint32_t)(uintptr_t)state(p)->echo.e[0].palette.e:0;}
 EXPORT("coaxial_store_bytes") uint32_t store_bytes(uint32_t p,uint32_t i){(void)p;return i==0?sizeof(state(0)->echo.e[0].palette.e):0;}

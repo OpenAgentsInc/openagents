@@ -18,9 +18,9 @@ applying its serialized keys again would double-transform the animation root.
 
 SDK reads use the clean private SlayData project and the installed UE5.8 SDK.
 They load data-only packages and do not run source Blueprint events or save
-source packages. The 789,955,936-byte private VPK has SHA256
-`9cdf33ffdee413a76bed96b2e041940da684cba7ef81fcd0551f35d041dd9d37`.
-ECP3 binds the unchanged rig, full EFC1 morph/face source and SHS1 fixed-shot
+source packages. The 794,477,568-byte private VPK has SHA256
+`9c285e9ffa59b850e93337c4089be86a39e7c54f52cda51419fe86eac7ef4074`.
+ECP3 binds the unchanged rig, full EFC1 morph/face source and SHS1 v2 fixed-shot
 samples. CPU state retains a checked face projection and the admitted shot;
 GPU storage retains sparse position/normal deltas. No licensed source payloads
 are committed. The comparison image is a QA observation, not training data.
@@ -44,26 +44,27 @@ are TF0130[4..22], TF0145[3..21], TF0250[19..40], every8s with.15s fades.
 
 ## Checks and limitations
 
-- EFC1 admission:402/402 mutants killed; SHS1:175/175;
+- EFC1 admission:402/402 mutants killed; SHS1 v2:190/190;
   ECP3/legacy rig admission:246/246; whole-package SHA:13/13. No equivalents.
 - Source frame round trip produces identical image hashes; the neighboring
   frame differs. Body/face/camera playback advances on the same source clock.
 - Current Canyon checks:10/10, including walking, jump taps, non-inverted
   mouse/touch/arrow look, conservative collision and desktop/phone/DPR budgets.
 - Ambient timing and non-face local-pose preservation checks pass.
-- Current Wasm is91,568 bytes within96,000. The original80,000 budget was
+- Current Wasm is91,877 bytes within96,000. The original80,000 budget was
   raised explicitly for shared facial playback and the source-shot view.
 - **Default GPU recovery is red:** both new shot and face observations exceed
   the legacy host's10-second replacement deadline under the observed machine
   load. Earlier face-only recovery passed before the shot extension; that
   result does not qualify this package. [The shot failure is retained](shot-gpu-red.txt).
-  A separately labeled60s diagnostic recovered in14,116ms with identical
+  A separately labeled60s diagnostic recovered in9,697ms with identical
   pixels/state, then passed ambient locomotion and the390x844 phone viewport.
   [Its receipt](diagnostic-gpu.txt) does not qualify the unchanged default10s fence.
 
-The source project disables bloom. The displayed orb is an interim analytic
-core/halo at the animated source hand attachment, not the original procedural
-material/Niagara flare. Key/fill/wrap samples drive an interim direct-light
+The source project disables bloom. The source orb mesh and its original texture layers now use Coax panning,
+normal distortion, source Fresnel/tint/HDR/desaturation arithmetic and an
+additive colour draw. Its halo/flare remains analytic; source curl-noise
+vertex displacement and the original Niagara flare are not yet ported. Key/fill/wrap samples drive an interim direct-light
 model. Proper area-light integration, regional skin scattering, eyes/refraction,
 strand coverage/shading, source orb texture/flare and temple scenery
 remain. These differences are visible in the comparison and prevent claiming
@@ -79,3 +80,28 @@ private package.35 mipmapped4K RGBA8 layers reserve approximately3.13GB of
 GPU texture storage; the lab's explicit aggregate budget is4.6GB. A phone
 viewport observation on this Mac does not qualify mobile hardware memory
 or performance. A separate mobile/source-detail profile remains necessary.
+
+The orb extension adds559 exact source vertices,2,880 indices and1,114,112
+original RGBA texels, including independent checks of the full packed GPU
+streams. Its world hand quaternion matches independent double precision over
+all200 frames within1.93e-7. [SHS1 v2](private-shot-format.md) explicitly versions
+that new quaternion metadata and validates its unit length before publication.
+Distortion remains linear and normal-mapped; the energy texture decodes sRGB
+before bilinear filtering, matching the native SDK texture flags.
+
+The opt-in legacy browser `coaxial_draw_blend_v1` keeps ordinary geometry
+opaque, selects straight-alpha additive colour for the orb and source-over
+coverage for strand colour. Translucent colour depth-tests without depth
+writes; shadow coverage remains shader-owned. The unchanged599558 indexed
+module without this export and the parent lab pass on the new host. The
+actual orb GPU comparison adds colour to171,054 supersampled pixels and
+darkens none; the scene remains ready on return to ordinary walking. Hair
+colour uses continuous coverage instead of stochastic opaque colour samples;
+its shadow keeps separate stochastic coverage. This improves the visible
+noise but is not Marschner scattering, deep opacity or sorted/OIT hair.
+
+The pixel budget bounds the base raster before the explicit3x portrait
+supersampling: the1280x800 observation captures3840x2400 physical pixels.
+The additive operation currently occurs in the legacy display-mapped target;
+full linear-HDR compositing, the source material-time phase, source camera
+shake, exact reference frame selection and cinematic background remain open.

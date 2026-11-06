@@ -1764,6 +1764,9 @@ only a checked runtime projection; sparse morph deltas stay in GPU storage.
 Shared Aethyr morph arithmetic runs before skinning. Facial bones overlay a
 fresh body pose each presentation, so repeated presentation cannot accumulate
 facial deformation. Exact zero weights retain the original vertex path.
+The v2 source shot additionally admits its unit world orb quaternion before
+playback. The legacy browser opt-in draw-blend v1 preserves opaque defaults;
+Coax selects additive orb colour or continuous source-over strand coverage.
 The fixed source-shot clock is separate from the walking controller. Source
 sample equality is not qualification of Unreal rendering or screenshot parity.
 Evidence and outstanding exits: `docs/verification/valley-lab-slay-2026-11-06/`.

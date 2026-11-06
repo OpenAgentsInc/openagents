@@ -689,7 +689,7 @@ must retain the existing Valley body clips.
    image differences and outstanding source render features before pushing.
 
 The first implementation is now the parent P destination:
-`/worlds/valley-canyon?pack=valley-slay`. Its private 789,955,936-byte bundle
+`/worlds/valley-canyon?pack=valley-slay`. Its private 794,477,568-byte bundle
 adds 181 named morph targets (564,903 sparse position/normal deltas), 20
 24-fps facial clips, 125 mapped curves and 16 facial bones to the existing
 334-joint/24-body-clip Echo port. Morphs execute before skinning in shared
@@ -706,9 +706,9 @@ unchanged walking/collision path. Short ambient source segments run every
 eight seconds with 0.15-second fades: TF0130 frames 4–22, TF0145 frames 3–21
 and TF0250 frames 19–40, at 24 fps.
 
-The source project disables bloom. The current analytic blue core/halo is
-an interim orb effect, not a port of the original material/Niagara lens
-flare. Source key, fill and warm wrap directions/colors/intensities feed an
+The source project disables bloom. The source orb mesh and two texture layers now drive its Coax material
+arithmetic and additive colour. The halo/flare remains an interim analytic
+effect, and source curl-noise deformation is not yet implemented. Source key, fill and warm wrap directions/colors/intensities feed an
 interim direct-light approximation with filtered shadow samples. This does
 not reproduce the original area-light integration, skin scattering or room
 lighting. Temple scenery, source orb textures/flare, camera shake,
@@ -850,3 +850,28 @@ private package.35 mipmapped4K RGBA8 layers reserve approximately3.13GB of
 GPU texture storage; the lab's explicit aggregate budget is4.6GB. A phone
 viewport observation on this Mac does not qualify mobile hardware memory
 or performance. A separate mobile/source-detail profile remains necessary.
+
+The orb extension adds559 exact source vertices,2,880 indices and1,114,112
+original RGBA texels, including independent checks of the full packed GPU
+streams. Its world hand quaternion matches independent double precision over
+all200 frames within1.93e-7. [SHS1 v2](../verification/valley-lab-slay-2026-11-06/private-shot-format.md) explicitly versions
+that new quaternion metadata and validates its unit length before publication.
+Distortion remains linear and normal-mapped; the energy texture decodes sRGB
+before bilinear filtering, matching the native SDK texture flags.
+
+The opt-in legacy browser `coaxial_draw_blend_v1` keeps ordinary geometry
+opaque, selects straight-alpha additive colour for the orb and source-over
+coverage for strand colour. Translucent colour depth-tests without depth
+writes; shadow coverage remains shader-owned. The unchanged599558 indexed
+module without this export and the parent lab pass on the new host. The
+actual orb GPU comparison adds colour to171,054 supersampled pixels and
+darkens none; the scene remains ready on return to ordinary walking. Hair
+colour uses continuous coverage instead of stochastic opaque colour samples;
+its shadow keeps separate stochastic coverage. This improves the visible
+noise but is not Marschner scattering, deep opacity or sorted/OIT hair.
+
+The pixel budget bounds the base raster before the explicit3x portrait
+supersampling: the1280x800 observation captures3840x2400 physical pixels.
+The additive operation currently occurs in the legacy display-mapped target;
+full linear-HDR compositing, the source material-time phase, source camera
+shake, exact reference frame selection and cinematic background remain open.
