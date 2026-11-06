@@ -34,7 +34,7 @@ MeterReport :: struct {
 // Each comparison is placed where its boundary changes the answer, so the
 // boundary is something a check can see (a saturated sum at exactly TOP - 1
 // is not saturated; usage of exactly the free amount owes nothing).
-add_sat :: (a: u64, b: u64) -> u64 {
+meter_add_sat :: (a: u64, b: u64) -> u64 {
   if b == TOP { return TOP; }
   if a > TOP - 1 - b { return TOP; }
   return a + b;
@@ -49,14 +49,14 @@ left :: (free: u64, used: u64) -> u64 {
   if used > free - 1 { return 0; }
   return free - used;
 }
-mul_sat :: (a: u64, b: u64) -> u64 {
+meter_mul_sat :: (a: u64, b: u64) -> u64 {
   if b != 0 && a > TOP / b { return TOP; }
   return a * b;
 }
 
 // Millisatoshis owed for a day's usage.
 owed :: (ms: u64, chars: u64) -> u64 {
-  return add_sat(mul_sat(over(ms, FREE_MS), MSAT_PER_MS), mul_sat(over(chars, FREE_CHARS), MSAT_PER_CHAR));
+  return meter_add_sat(meter_mul_sat(over(ms, FREE_MS), MSAT_PER_MS), meter_mul_sat(over(chars, FREE_CHARS), MSAT_PER_CHAR));
 }
 
 verse_voice_meter_free_ms :: () -> u64 #export_c { return FREE_MS; }
@@ -80,14 +80,14 @@ verse_voice_meter_budget :: (m: [] Meter, budget: u64) #export_c { m[0].budget =
 
 // May a turn of at most max_ms recognized and max_chars synthesized run?
 verse_voice_meter_may_run :: (m: [] Meter, max_ms: u64, max_chars: u64) -> bool #export_c {
-  return owed(add_sat(m[0].ms, max_ms), add_sat(m[0].chars, max_chars)) <= m[0].budget;
+  return owed(meter_add_sat(m[0].ms, max_ms), meter_add_sat(m[0].chars, max_chars)) <= m[0].budget;
 }
 
 // Record what was used (it happened, so it always counts). False when the
 // account is now past its free tier plus budget: refuse further turns.
 verse_voice_meter_charge :: (m: [] Meter, ms: u64, chars: u64) -> bool #export_c {
-  m[0].ms = add_sat(m[0].ms, ms);
-  m[0].chars = add_sat(m[0].chars, chars);
+  m[0].ms = meter_add_sat(m[0].ms, ms);
+  m[0].chars = meter_add_sat(m[0].chars, chars);
   return owed(m[0].ms, m[0].chars) <= m[0].budget;
 }
 
@@ -102,18 +102,18 @@ verse_voice_meter_report :: (m: [] Meter) -> MeterReport #export_c {
 #forall "saturating arithmetic" a: 0..<70, b: 0..<70 {
   x := cast(u64) a;
   y := cast(u64) b;
-  #assert add_sat(x, y) == x + y;
+  #assert meter_add_sat(x, y) == x + y;
   #assert over(x, y) == (ifx a > b then x - y else cast(u64) 0);
   if b > 0 { #assert left(y, x) == (ifx b > a then y - x else cast(u64) 0); }
-  #assert mul_sat(x, y) == x * y;
+  #assert meter_mul_sat(x, y) == x * y;
 }
 
 #test "saturating arithmetic at the top" {
-  #assert add_sat(TOP, 1) == TOP && add_sat(TOP - 1, 1) == TOP && add_sat(TOP - 2, 1) == TOP - 1;
-  #assert add_sat(TOP - 3, 2) == TOP - 1 && add_sat(TOP - 2, 2) == TOP && add_sat(TOP, 0) == TOP && add_sat(TOP - 1, 0) == TOP - 1;
-  #assert add_sat(1, TOP) == TOP && add_sat(0, TOP) == TOP;
-  #assert mul_sat(TOP, 2) == TOP && mul_sat(TOP / 2, 2) == TOP - 1 && mul_sat(TOP / 2 + 1, 2) == TOP;
-  #assert mul_sat(TOP, 0) == 0 && mul_sat(0, TOP) == 0 && mul_sat(TOP, 1) == TOP;
+  #assert meter_add_sat(TOP, 1) == TOP && meter_add_sat(TOP - 1, 1) == TOP && meter_add_sat(TOP - 2, 1) == TOP - 1;
+  #assert meter_add_sat(TOP - 3, 2) == TOP - 1 && meter_add_sat(TOP - 2, 2) == TOP && meter_add_sat(TOP, 0) == TOP && meter_add_sat(TOP - 1, 0) == TOP - 1;
+  #assert meter_add_sat(1, TOP) == TOP && meter_add_sat(0, TOP) == TOP;
+  #assert meter_mul_sat(TOP, 2) == TOP && meter_mul_sat(TOP / 2, 2) == TOP - 1 && meter_mul_sat(TOP / 2 + 1, 2) == TOP;
+  #assert meter_mul_sat(TOP, 0) == 0 && meter_mul_sat(0, TOP) == 0 && meter_mul_sat(TOP, 1) == TOP;
   #assert over(0, TOP - 1) == 0 && over(TOP, 0) == TOP && left(TOP, TOP) == 0 && left(TOP, 0) == TOP && left(1, TOP) == 0;
 }
 
