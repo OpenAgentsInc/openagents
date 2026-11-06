@@ -375,7 +375,9 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
   if !dev {
     if wasm_opt.count > 0 {
       optw: [1] Wk; wk_s(optw[..], work); wk_s(optw[..], "/optimized.wasm");
-      wo := [5] string.[wasm_opt, wk_text(outw[..]), "-O3", "-o", wk_text(optw[..])];
+      // Keep the qualified Mac optimization; Linux's LLVM output needs O3
+      // to fit the same byte budget. Both artifacts retain their tick gate.
+      wo := [5] string.[wasm_opt, wk_text(outw[..]), ifx tool_os()==TOOL_LINUX then "-O3" else "-O2", "-o", wk_text(optw[..])];
       if wk_run(wo[..], "", env, nb[..]) >= 0 { ok := fs_rename(wk_text(optw[..]), wk_text(outw[..])); }
     }
     // its budget line (apps/openagents-web/wasm-budgets.txt everglade-room)
