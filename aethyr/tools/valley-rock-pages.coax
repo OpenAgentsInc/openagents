@@ -1,0 +1,20 @@
+// Author original-rock star pages through the same content-checked VGP1 codec.
+#import "Basic";
+#load "../../verse/valley/rock-parent.coax";
+#load "../render/geometry/pages.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..]) || (args_count(args[..])<1 || args_count(args[..])>2) {return 2;}r:[1]Rock;
+  for detail:[3]int.[8,16,32] {
+    if !rock_build(r[..],detail,12609) {return 1;}g:=rock_parent(r[..]);if !g.supported {return 1;}
+    if args_count(args[..])==2 {proof:[4096]u8;name:=ifx detail==8 then "rock-8.vro" else ifx detail==16 then "rock-16.vro" else "rock-32.vro";
+      if !fs_write(fs_join(args_at(args[..],1),name,proof[..]),cast(string)r[0].encoded[0..<r[0].bytes]) {return 1;}
+    }
+    p:=geometry_page(g.coarse);hex:[GEOMETRY_PAGE_BYTES*2]u8;id:[64]u8;
+    for v,j:p.data[0..<p.bytes] {hex[j*2]="0123456789abcdef"[cast(int)v>>4];hex[j*2+1]="0123456789abcdef"[cast(int)v&15];}
+    _:=asset_hex(p.key,id[..]);print("rock-%: original=% parent=6->4 error=% bytes=% resident_cost=% sha256=%\n",detail,r[0].indices/3,g.coarse.error,p.bytes,p.bytes+g.coarse.vertices*12+g.coarse.indices*4,cast(string)id[..]);
+    name:=ifx detail==8 then "rock-8.vgp.hex" else ifx detail==16 then "rock-16.vgp.hex" else "rock-32.vgp.hex";path:[4096]u8;
+    if !fs_write(fs_join(args_at(args[..],0),name,path[..]),cast(string)hex[0..<p.bytes*2]) {return 1;}
+  }return 0;
+}

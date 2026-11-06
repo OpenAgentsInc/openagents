@@ -1,0 +1,8 @@
+bd6a225d2525a28dc465b4b539eb75d6358893be8bbc5964509048194636e26c  apps/openagents-web/build/valleylab.wasm
+  110197 apps/openagents-web/build/valleylab.wasm
+coax jobs: waiting for 1 of 12 build workers held by 1 other coax process; running 11 now (coax status shows them)
+tools-check: 1796 tracked tool files (35 of them vendored upstream vectors), 0 new without a reason
+compiler: coax0 0.50.0
+compiler_sha256: cca78e123e3ac6b943870e31c08d6525e2a88570a737bd76a18bb3a40e559dc9
+qualified_source_fingerprint: c82201e2cfff7c937fc0a29bf7010ae1ec75e7ab746ad29548bac7c2db61409e
+Wasm release build evaluates all embedded checks; final release build succeeded after the initial LOD threshold changed from 64 to 16 pixels.

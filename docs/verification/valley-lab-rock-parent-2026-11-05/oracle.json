@@ -1,0 +1,134 @@
+[
+  {
+    "divisions": 8,
+    "source_sha256": "c39ef513e76cfb373abbb2185e35120cf4a02e13db13f80f92c82e05449bbf64",
+    "page_sha256": "eb01ec3547a949e80097c722e693bcb8c00e4843dd48a4502b9320b6adb61ebe",
+    "boundary_edges_exact": 6,
+    "selected_source_triangle_ids": [
+      55,
+      56,
+      57,
+      72,
+      71,
+      70
+    ],
+    "full_triangles": [
+      768,
+      766
+    ],
+    "patch_triangles": [
+      6,
+      4
+    ],
+    "patch_vertices": [
+      7,
+      6
+    ],
+    "encoded_bytes": [
+      172,
+      136
+    ],
+    "resident_bytes": [
+      328,
+      256
+    ],
+    "certified_L1_error_metres": 0.7087950706481934,
+    "sampled_surface_distance_metres": [
+      0.26743910262089365,
+      0.19516546259051024
+    ],
+    "samples_per_direction": [
+      3366,
+      2244
+    ],
+    "scope": "independent f64 point-to-triangle samples; analytic barycentric L1 bound certifies unsampled points"
+  },
+  {
+    "divisions": 16,
+    "source_sha256": "3669c50bede0c4da9f611f4c658620ffc906ad6839984107838ab73aba37550b",
+    "page_sha256": "daee32d58b1a36da2ca06e424d7088b62c0d899f7651b8902f04e40253012dd7",
+    "boundary_edges_exact": 6,
+    "selected_source_triangle_ids": [
+      239,
+      240,
+      241,
+      272,
+      271,
+      270
+    ],
+    "full_triangles": [
+      3072,
+      3070
+    ],
+    "patch_triangles": [
+      6,
+      4
+    ],
+    "patch_vertices": [
+      7,
+      6
+    ],
+    "encoded_bytes": [
+      172,
+      136
+    ],
+    "resident_bytes": [
+      328,
+      256
+    ],
+    "certified_L1_error_metres": 0.5025531053543091,
+    "sampled_surface_distance_metres": [
+      0.1715888504872963,
+      0.12931743719067396
+    ],
+    "samples_per_direction": [
+      3366,
+      2244
+    ],
+    "scope": "independent f64 point-to-triangle samples; analytic barycentric L1 bound certifies unsampled points"
+  },
+  {
+    "divisions": 32,
+    "source_sha256": "4e2053348a34e5a363ee5451b54412daba41bd41813c40d0cd6d8559f2ddd56c",
+    "page_sha256": "ee48ccebc6e2c6aab7d219b15c1332064c8d341588275933af25fff0a43bad7d",
+    "boundary_edges_exact": 6,
+    "selected_source_triangle_ids": [
+      991,
+      992,
+      993,
+      1056,
+      1055,
+      1054
+    ],
+    "full_triangles": [
+      12288,
+      12286
+    ],
+    "patch_triangles": [
+      6,
+      4
+    ],
+    "patch_vertices": [
+      7,
+      6
+    ],
+    "encoded_bytes": [
+      172,
+      136
+    ],
+    "resident_bytes": [
+      328,
+      256
+    ],
+    "certified_L1_error_metres": 0.21173906326293945,
+    "sampled_surface_distance_metres": [
+      0.09650885933749154,
+      0.055227456708408965
+    ],
+    "samples_per_direction": [
+      3366,
+      2244
+    ],
+    "scope": "independent f64 point-to-triangle samples; analytic barycentric L1 bound certifies unsampled points"
+  }
+]

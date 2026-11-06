@@ -1,0 +1,31 @@
+// First real-rock parent: one interior six-triangle star on cube face +X.
+// The remaining source triangles and the six shared boundary segments stay exact.
+#load "rock.coax";
+#load "../../aethyr/render/geometry/star.coax";
+RockParent :: struct {source:ParentMesh;coarse:ParentMesh;triangles:[6]int;supported:bool;}
+#test "original rock star reduces without changing any shared boundary or unrelated triangle" #steps 1000000000 {
+  r:[1]Rock;
+  for detail:[3]int.[8,16,32] {#assert rock_build(r[..],detail,12609);before:=r[0].id;g:=rock_parent(r[..]);
+    #assert g.supported && g.source.vertices==7 && g.source.indices==18 && g.coarse.vertices==6 && g.coarse.indices==12;
+    #assert asset_same(before,r[0].id) && g.coarse.error>0;
+    for k:0..<6 {a:=g.source.p[k];b:=g.coarse.p[k];#assert f32_bits(a.x)==f32_bits(b.x) && f32_bits(a.y)==f32_bits(b.y) && f32_bits(a.z)==f32_bits(b.z);
+      t:=g.triangles[k];#assert t>=0;for j:0..<k {#assert t!=g.triangles[j];}
+      // Every original star triangle is exactly one source triangle, cyclically.
+      matched:=false;for shift:0..<3 {same:=true;for c:0..<3 {x:=r[0].p[cast(int)r[0].i[t*3+(c+shift)%3]];y:=g.source.p[cast(int)g.source.i[k*3+c]];if x.x!=y.x || x.y!=y.y || x.z!=y.z {same=false;}}if same {matched=true;}}
+      #assert matched;
+    }
+    // Independent squared Euclidean displacement bound, including source words.
+    d:=sub(g.source.p[6],g.coarse.p[0]);#assert cast(f64)g.coarse.error*cast(f64)g.coarse.error>=cast(f64)d.x*cast(f64)d.x+cast(f64)d.y*cast(f64)d.y+cast(f64)d.z*cast(f64)d.z;
+  }
+}
+rock_parent :: (r:[]Rock)->RockParent {
+  g:=RockParent.{};side:=r[0].divisions+1;center:=(r[0].divisions/2)*side+r[0].divisions/2;
+  offsets:=[6]int.[-1,-side,1-side,1,side,side-1];g.source.vertices=7;g.source.indices=18;
+  for delta,k:offsets {g.source.p[k]=r[0].p[center+delta];g.source.i[k*3]=cast(u32)k;g.source.i[k*3+1]=cast(u32)((k+1)%6);g.source.i[k*3+2]=6;g.triangles[k]= -1;}
+  g.source.p[6]=r[0].p[center];
+  for t:0..<r[0].indices/3 {for k:0..<6 {a:=center+offsets[k];b:=center+offsets[(k+1)%6];
+    for shift:0..<3 {if r[0].i[t*3+shift]==cast(u32)a && r[0].i[t*3+(shift+1)%3]==cast(u32)b && r[0].i[t*3+(shift+2)%3]==cast(u32)center {g.triangles[k]=t;}}
+  }}
+  for t:g.triangles {if t<0 {return g;}}
+  coarse:[1]ParentMesh;g.supported=star_reduce(coarse[..],g.source.p[0..<6],g.source.p[6],0,0);g.coarse=coarse[0];return g;
+}

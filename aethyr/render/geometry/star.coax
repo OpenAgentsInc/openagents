@@ -1,0 +1,69 @@
+// Canonical nonplanar star: boundary[k], boundary[k+1], apex. Projected
+// strict convexity certifies a disk. Collapsing apex onto boundary[0] fixes
+// every boundary edge. The barycentric map moves points by at most L1(apex-0).
+#load "parent.coax";
+#authority;
+#test "nonplanar star fixes every boundary word and encloses barycentric motion" {
+  p:=[4]Point.[v3(-1,-1,0),v3(1,-1,0.1),v3(1,1,0),v3(-1,1,-0.1)];apex:=v3(0,0,0.4);m:[1]ParentMesh;
+  #assert star_reduce(m[..],p[..],apex,2,0.25);
+  #assert m[0].vertices==4 && m[0].indices==6 && m[0].error==parent_error(2.4,0,0.25);
+  for k:0..<4 {#assert m[0].p[k].x==p[k].x && m[0].p[k].y==p[k].y && m[0].p[k].z==p[k].z;}
+  #assert m[0].i[0]==0 && m[0].i[1]==1 && m[0].i[2]==2 && m[0].i[3]==0 && m[0].i[4]==2 && m[0].i[5]==3;
+  for k:0..<17 {t:=cast(f32)k/16;d:=times(sub(apex,p[0]),t);#assert sqrt(dot(d,d))<=m[0].error;}
+  for axis:0..<3 {q:=p;for v,k:p {q[k]=ifx axis==0 then v3(v.z,v.x,v.y) else ifx axis==1 then v3(v.y,v.z,v.x) else v;}
+    a:=ifx axis==0 then v3(apex.z,apex.x,apex.y) else ifx axis==1 then v3(apex.y,apex.z,apex.x) else apex;
+    #assert star_reduce(m[..],q[..],a,axis,0.25) && m[0].error>=2.65;
+  }
+  q:=p;for k:0..<4 {q[k]=p[3-k];}#assert star_reduce(m[..],q[..],apex,2,0);
+  #assert star_flat(v3(1,2,3),0).x==2 && star_flat(v3(1,2,3),0).y==3;
+  #assert star_flat(v3(1,2,3),1).x==3 && star_flat(v3(1,2,3),1).y==1;
+  #assert star_flat(v3(1,2,3),2).x==1 && star_flat(v3(1,2,3),2).y==2;
+}
+#test "star malformed geometry refuses atomically and supports exact capacity endpoints" #steps 100000000 {
+  p:=[4]Point.[v3(-1,-1,0),v3(1,-1,0),v3(1,1,0),v3(-1,1,0)];a:=v3(0,0,0.4);m:[1]ParentMesh;m[0].vertices=99;
+  #assert !star_reduce(m[..],p[0..<2],a,2,0);
+  huge:[257]Point;#assert !star_reduce(m[..],huge[..],a,2,0);
+  #assert !star_reduce(m[..],p[..],a,-1,0) && !star_reduce(m[..],p[..],a,3,0);
+  #assert !star_reduce(m[..],p[..],a,2,-1) && !star_reduce(m[..],p[..],a,2,1000000);
+  q:=p;q[0].x=1000000;#assert !star_reduce(m[..],q[..],a,2,0);
+  #assert !star_reduce(m[..],p[..],v3(0,0,1000000),2,0);
+  #assert !star_reduce(m[..],p[..],v3(3,0,0),2,0) && !star_reduce(m[..],p[..],v3(1,0,0),2,0);
+  q=p;q[2]=q[1];#assert !star_reduce(m[..],q[..],a,2,0);
+  q=p;q[2]=v3(0,0,0);#assert !star_reduce(m[..],q[..],a,2,0);
+  q=p;q[2]=v3(0,-1,0);#assert !star_reduce(m[..],q[..],a,2,0);
+  #assert m[0].vertices==99;
+  tri:=[3]Point.[v3(-1,-1,0),v3(1,-1,0),v3(0,1,0)];#assert star_reduce(m[..],tri[..],a,2,0) && m[0].vertices==3 && m[0].indices==3;
+  for k:0..<256 {angle:=cast(f32)k*6.28318530718/256;huge[k]=v3(cos(angle),sin(angle),0);}
+  #assert star_reduce(m[..],huge[0..<256],a,2,0) && m[0].vertices==256 && m[0].indices==762;
+  // Rounding must be the smallest f32 which encloses the f64 sum.
+  #assert star_reduce(m[..],p[..],v3(0.1,0.2,0.3),2,0.000000001);
+  exact:=cast(f64)1.1f32; // compute from source words, not rounded f32 differences
+  exact=abs(cast(f64)0.1f32+1)+abs(cast(f64)0.2f32+1)+abs(cast(f64)0.3f32)+cast(f64)0.000000001f32;
+  #assert cast(f64)m[0].error>=exact && cast(f64)f32_from_bits(f32_bits(m[0].error)-1)<exact;
+}
+#test "star rejects concavity and collinear segmentation and handles exact bounds" {
+  m:[1]ParentMesh;p:=[5]Point.[v3(-2,-2,1),v3(2,-2,1),v3(0.5,0,1),v3(2,2,1),v3(-2,2,1)];
+  #assert !star_reduce(m[..],p[..],v3(-0.5,0,1),2,0);
+  p[2]=v3(2,0,1);#assert !star_reduce(m[..],p[..],v3(0,0,1),2,0);
+  #assert !star_reduce(m[..],p[0..<0],v3(0,0,1),2,0);
+  q:=[3]Point.[v3(-1,-1,1),v3(1,-1,1),v3(0,1,1)];
+  #assert star_reduce(m[..],q[..],v3(0,0,1.5),2,0) && m[0].error==2.5;
+}
+
+star_flat :: (p:Point,axis:int)->Point {if axis==0 {return v3(p.y,p.z,0);}if axis==1 {return v3(p.z,p.x,0);}return v3(p.x,p.y,0);}
+star_turn :: (a:Point,b:Point,c:Point)->f32 {return cross(sub(b,a),sub(c,a)).z;}
+star_reduce :: (out:[]ParentMesh,p:[]Point,apex:Point,axis:int,child:f32)->bool {
+  if p.count==0 || p.count>PARENT_VERTICES || axis<0 || axis>2 || !(child>=0 && child<1000000) {return false;}
+  if !finite3(apex) {return false;}for v:p {if !finite3(v) {return false;}}
+  flat:[PARENT_VERTICES]Point;for v,k:p {flat[k]=star_flat(v,axis);}
+  sign:=star_turn(flat[0],flat[1],star_flat(apex,axis));
+  for a,k:flat[0..<p.count] {b:=flat[(k+1)%p.count];
+    if star_turn(a,b,star_flat(apex,axis))*sign<=0 {return false;}
+    for q,j:flat[0..<p.count] {if j!=k && j!=(k+1)%p.count && star_turn(a,b,q)*sign<=0 {return false;}}
+  }
+  mesh:=ParentMesh.{vertices=p.count,indices=(p.count-2)*3};for v,k:p {mesh.p[k]=v;}
+  exact:=abs(cast(f64)apex.x-cast(f64)p[0].x)+abs(cast(f64)apex.y-cast(f64)p[0].y)+abs(cast(f64)apex.z-cast(f64)p[0].z)+cast(f64)child;
+  mesh.error=cast(f32)exact;if cast(f64)mesh.error<exact {mesh.error=f32_from_bits(f32_bits(mesh.error)+1);}
+  for k:0..<mesh.indices/3 {mesh.i[k*3+1]=cast(u32)(k+1);mesh.i[k*3+2]=cast(u32)(k+2);}
+  out[0]=mesh;return true;
+}

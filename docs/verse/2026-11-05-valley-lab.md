@@ -3,7 +3,7 @@
 Status: active implementation roadmap, updated 2026-11-05. The initial
 walkable world, procedural asset/indexed baseline, bounded leaves, ownership
 hierarchy, parent simplification, screen-error cuts and HTTP page stations now
-run locally.
+run locally, including the first bounded parent on the original rock.
 
 Build **Valley Lab**, an unlisted world at `/worlds/valley-lab`, where a
 visitor can inspect each engine system alone and then watch those same
@@ -232,6 +232,55 @@ These stages qualify the supported patch family and CPU page cache on the
 initial WebGPU scene/HUD path. They do not complete arbitrary rock reduction,
 a GPU page registry, occlusion/indirect submission, a large streamed valley,
 shared/native renderer qualification or book drafts.
+
+## Landed: first nonplanar parent on the original rock
+
+`7 ROCK` / `#rock-parent` opens a highlighted interior star on the real rock.
+`H` switches its six source triangles to four parent triangles. The rest of
+that rock keeps its original shared vertex table, indices, normals and material.
+The six boundary vertices and segments remain byte-exact. `4 PARENT`, `5 LOD`
+and `6 PAGES` retain this dataset after entering ROCK; the direct `#parents`,
+`#lod` and `#pages` links still open the earlier two-patch fixtures.
+`#rock-lod` and `#rock-pages` open the real-rock versions directly. `L` cycles
+all three original profiles, `T` changes the pixel threshold, and `E` flushes
+pages. In the rock pager, `B` changes the exact 256-byte resident budget to
+255 bytes, demonstrating full-detail fallback when the parent cannot fit.
+
+The new Coax primitive [`star.coax`](../../aethyr/render/geometry/star.coax)
+constructs a canonical nonplanar star from an ordered boundary and one interior
+apex. Projected strict convexity checks the supported disk. Collapsing the
+apex onto the first boundary vertex produces the boundary fan; its
+barycentric map gives a conservative two-way surface-distance bound of the
+L1 displacement, plus any child error, rounded upward from f64. This loose
+bound, rather than a fitted or sampled error, drives the existing perspective
+selector. Unsupported inputs refuse atomically. The authority gate kills all
+90 root mutants, with no survivors or equivalents.
+
+[`rock-parent.coax`](../../verse/valley/rock-parent.coax) extracts and verifies
+one six-triangle star on the +X face of each original rock. This is an
+intentionally narrow first real-geometry qualification: **one interior vertex**,
+not a reducer for arbitrary cluster groups with several interior vertices.
+
+| Original profile | Whole-rock source → parent triangles | Patch vertices | Certified error (m) |
+| --- | --- | --- | --- |
+| 8 | 768 → 766 | 7 → 6 | 0.708795071 |
+| 16 | 3,072 → 3,070 | 7 → 6 | 0.502553105 |
+| 32 | 12,288 → 12,286 | 7 → 6 | 0.211739063 |
+
+The standalone patch representation drops from 172 to 136 encoded bytes,
+and from 328 to 256 logical encoded-plus-decoded resident bytes. The original
+canonical rock assets remain unchanged and retained; these numbers are not
+whole-asset download savings. Pages use the existing VGP1 codec, SHA-256
+identity, real HTTP transport and two-slot CPU cache. The paged draw copies
+the admitted decoded mesh, rather than the locally computed parent.
+
+Native checks cover all three profiles, exact source triangle identity,
+boundary words and frame budgets. An independent f64 point-to-triangle oracle
+samples both surfaces and checks the analytic bound and pinned hashes.
+Desktop/phone WebGPU checks compare source and parent crops, exact
+unpaged/paged crops, missing/corrupt page fallback, 255/256-byte admission and
+exact state/pixels after device loss. Evidence and limits are in the
+[real-rock parent receipt](../verification/valley-lab-rock-parent-2026-11-05/README.md).
 
 ## What the book gives us
 
@@ -465,15 +514,14 @@ draft's status on the strength of a roadmap.
 
 ## Next implementation task
 
-Build **the first qualified simplified rock parent**. Extend the reducer to
-a bounded nonplanar patch class with multiple interior vertices, preserving
-external/shared edge positions and segmentation. Begin with a small real
-rock parent group, retain unsupported groups at full detail, and establish an
-independently checked conservative surface-distance bound against the original
-triangles. Carry that bound upward and feed the existing screen-error and
-HTTP page path with the resulting real rock parents. Compare silhouettes,
-cracks, selected cuts, page absence and measured triangle/byte savings against
-the pinned original; keep its content hashes unchanged.
+Extend the qualified real-rock star to **bounded patches with multiple
+interior vertices**. Keep the star as an isolated reference fixture. Add
+safe topology operations, preserve external/shared segmentation, and carry a
+conservative error through each operation. Retain unsupported groups at full
+detail. Exercise mixed cuts across adjacent real groups and establish larger
+triangle/byte savings against the unchanged original. The first star above
+completes the real-asset connection to selection and HTTP paging; it does not
+complete this larger reducer or qualify an arbitrary hierarchy cut.
 
 Then scale to a deterministic field of original rocks and qualify actual
 shared-renderer GPU resource ownership and page-upload retirement. Occlusion,

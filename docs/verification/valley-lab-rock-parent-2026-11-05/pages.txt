@@ -1,0 +1,3 @@
+rock-8: original=768 parent=6->4 error=0.7087951 bytes=136 resident_cost=256 sha256=eb01ec3547a949e80097c722e693bcb8c00e4843dd48a4502b9320b6adb61ebe
+rock-16: original=3072 parent=6->4 error=0.5025531 bytes=136 resident_cost=256 sha256=daee32d58b1a36da2ca06e424d7088b62c0d899f7651b8902f04e40253012dd7
+rock-32: original=12288 parent=6->4 error=0.21173906 bytes=136 resident_cost=256 sha256=ee48ccebc6e2c6aab7d219b15c1332064c8d341588275933af25fff0a43bad7d

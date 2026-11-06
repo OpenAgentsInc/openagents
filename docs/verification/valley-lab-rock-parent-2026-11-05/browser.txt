@@ -1,0 +1,16 @@
+PASS Valley clusters desktop: decoded leaf counts/index traffic, cluster-ID readback, exact lit reference region, C path toggle and #clusters link
+PASS Valley hierarchy desktop: real parent cuts/colors, unchanged rock triangles, planar 4->2 error=0, bent 4->2 error=750mm, H/F keyboard controls
+PASS Valley three stages desktop: real topology 12->8, perspective/zoom cuts, HTTP page requests, missing-page 12-triangle fallback, stale/corrupt refusal, 256/512-byte residency, eviction and exact unpaged/paged GPU patch
+PASS Valley pages desktop: GPU loss retains the exact state digest, resident pages and rendered reference patch; exactly one expected device-loss diagnostic
+PASS Valley real-rock parent desktop: original 3072->3070, boundary star 6->4, conservative LOD, real HTTP missing/corrupt fallback, 255/256-byte admission, exact unpaged/paged GPU crop and device-loss recovery
+Valley fenced frame observation: {\"scope\":\"30 static paged-rock-parent frames, CPU submission plus GPU queue completion, not GPU timestamps or route FPS\",\"viewport\":[1280,800],\"triangles\":3070,\"medianMs\":0.7400000095367432,\"p95Ms\":1.7549999952316284,\"p99Ms\":1.7750000953674316}
+PASS Valley asset/geometry desktop: stations, actual index pulling, view modes, three native/Wasm SHA256 matches, bounded replacement and keyboard controls
+PASS Valley Lab desktop: direct route, rendered geometry, WASD, jump/land, reset, keyboard controls, noindex, no console errors
+PASS Valley clusters phone: decoded leaf counts/index traffic, cluster-ID readback, exact lit reference region, C path toggle and #clusters link
+PASS Valley hierarchy phone: real parent cuts/colors, unchanged rock triangles, planar 4->2 error=0, bent 4->2 error=750mm, actual touch source/level controls
+PASS Valley three stages phone: real topology 12->8, perspective/zoom cuts, HTTP page requests, missing-page 12-triangle fallback, stale/corrupt refusal, 256/512-byte residency, eviction and exact unpaged/paged GPU patch
+PASS Valley pages phone: GPU loss retains the exact state digest, resident pages and rendered reference patch; exactly one expected device-loss diagnostic
+PASS Valley real-rock parent phone: original 3072->3070, boundary star 6->4, conservative LOD, real HTTP missing/corrupt fallback, 255/256-byte admission, exact unpaged/paged GPU crop and device-loss recovery
+Valley fenced frame observation: {\"scope\":\"30 static paged-rock-parent frames, CPU submission plus GPU queue completion, not GPU timestamps or route FPS\",\"viewport\":[390,844],\"triangles\":3070,\"medianMs\":0.7199999094009399,\"p95Ms\":1.7999999523162842,\"p99Ms\":1.9900000095367432}
+PASS Valley asset/geometry phone: stations, actual index pulling, view modes, three native/Wasm SHA256 matches, bounded replacement and touch station/detail controls
+PASS Valley Lab phone: direct route, rendered geometry, WASD, jump/land, reset, actual touch movement, noindex, no console errors
