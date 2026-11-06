@@ -40,7 +40,12 @@ compare() {  # compare ROOT: build stage0 from ROOT's seeds, emit, compare
     if cmp -s "bootstrap/$s.c" "$w/$s.c" && cmp -s "bootstrap/$s.h" "$w/$s.h"; then echo "$s: matches"
     else echo "$s: DIFFERS from what stage0 emits"; diff "bootstrap/$s.c" "$w/$s.c" | head -20 || true; rc=1; fi
   done
-  COAX_TEST_COMPILER="$w/stage0" python3 tests/strict_math.py || rc=1
+  # checks-c needs the native-check kernels in the final compiler. Stage0
+  # remains the seed comparator; it deliberately refuses native check output.
+  "$w/stage0" c lib/compiler/compiler.coax --library --header "$w/proto_importer.h" > "$w/proto_importer.c"
+  "${CC:-cc}" -std=c11 -O1 -c "$w/proto_importer.c" -o "$w/proto_importer.o"
+  "${CXX:-c++}" -std=c++20 -O1 -w -I "$w" -o "$w/final" src/main.cpp "$w/proto_importer.o"
+  COAX_TEST_COMPILER="$w/final" python3 tests/strict_math.py || rc=1
   rm -rf "$w"
   return $rc
 }
