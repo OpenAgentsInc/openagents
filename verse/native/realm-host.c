@@ -20,7 +20,7 @@
 extern char **environ;
 static int golden_mode;
 extern uint32_t coaxial_host_contract_version(void) __attribute__((weak));
-extern void coaxial_focus(uint32_t) __attribute__((weak));
+extern void coaxial_focus(cx_face_addr) __attribute__((weak));
 extern uint32_t coaxial_host_lifecycle_version(void) __attribute__((weak));
 extern void coaxial_host_lifecycle_reset(void) __attribute__((weak));
 extern int64_t coaxial_host_lifecycle_event(int32_t,int64_t,int64_t) __attribute__((weak));
@@ -42,14 +42,14 @@ extern uint32_t coaxial_host_http_finish(int32_t,int64_t,int64_t,int64_t,int32_t
 extern uint32_t coaxial_host_http_cancel(int32_t) __attribute__((weak));
 extern int64_t coaxial_host_delivery(int32_t) __attribute__((weak));
 // The realm dispatcher also serves non-audio fixtures and older faces.
-extern uint32_t coaxial_sound_bank(uint32_t) __attribute__((weak));
-extern uint32_t coaxial_sound_bank_len(uint32_t) __attribute__((weak));
-extern uint32_t coaxial_sound_bank_capacity(uint32_t) __attribute__((weak));
-extern uint32_t coaxial_sound_bank_storage(uint32_t) __attribute__((weak));
-extern uint32_t coaxial_sound_bank_storage_bytes(uint32_t) __attribute__((weak));
-extern uint32_t coaxial_sounds(uint32_t) __attribute__((weak));
-extern uint32_t coaxial_sounds_len(uint32_t) __attribute__((weak));
-extern uint32_t coaxial_sounds_capacity(uint32_t) __attribute__((weak));
+extern cx_face_addr coaxial_sound_bank(cx_face_addr) __attribute__((weak));
+extern uint32_t coaxial_sound_bank_len(cx_face_addr) __attribute__((weak));
+extern uint32_t coaxial_sound_bank_capacity(cx_face_addr) __attribute__((weak));
+extern cx_face_addr coaxial_sound_bank_storage(cx_face_addr) __attribute__((weak));
+extern uint32_t coaxial_sound_bank_storage_bytes(cx_face_addr) __attribute__((weak));
+extern cx_face_addr coaxial_sounds(cx_face_addr) __attribute__((weak));
+extern uint32_t coaxial_sounds_len(cx_face_addr) __attribute__((weak));
+extern uint32_t coaxial_sounds_capacity(cx_face_addr) __attribute__((weak));
 #pragma weak rha_open
 #pragma weak rha_bank
 #pragma weak rha_bank_lazy
@@ -68,11 +68,20 @@ extern bool rhao_resources(RhAudio *,const char *) __attribute__((weak));
 // The face's offsets are 32 bits. Built without PIE, its static data is
 // below 2 GB; malloc stays on the brk heap (no mmap), which follows it; and
 // the arena is mapped there too. rh_ptr refuses anything else.
-void *rh_ptr(uint32_t offset) { return (void *)(uintptr_t)offset; }
-uint32_t rh_off(const void *p) {
+void *rh_ptr(cx_face_addr offset) { return (void *)(uintptr_t)offset; }
+cx_face_addr rh_off(const void *p) {
   uintptr_t a = (uintptr_t)p;
+#if !defined(COAXIAL_NATIVE_ADDRESS)
   if (a >> 32) { fprintf(stderr, "realm-host: %p is above 4 GB, where the face cannot point\n", p); exit(1); }
-  return (uint32_t)a;
+#endif
+  return (cx_face_addr)a;
+}
+uint64_t rh_address_limit(void) {
+#if defined(COAXIAL_NATIVE_ADDRESS)
+  return UINTPTR_MAX;
+#else
+  return UINT64_C(1)<<32;
+#endif
 }
 
 static uint32_t align16(uint32_t n) { return (n + 15u) & ~15u; }
@@ -80,13 +89,19 @@ static uint32_t align16(uint32_t n) { return (n + 15u) & ~15u; }
 void rh_open(RealmHost *h, int golden) {
   memset(h, 0, sizeof *h);
   golden_mode = golden;
+#if !defined(COAXIAL_NATIVE_ADDRESS)
   mallopt(M_MMAP_MAX, 0);
+#endif
   h->floats = (int)coaxial_vertex_floats();
   h->max_vertices = (int)coaxial_max_vertices();
   h->uniform_floats = (int)coaxial_uniform_floats();
   uint32_t state = align16(coaxial_state_size() > 1024 ? coaxial_state_size() : 1024);
   h->arena_size = (size_t)state + (size_t)h->max_vertices * h->floats * 4 + (size_t)h->uniform_floats * 4 + 64;
-  h->arena = mmap(NULL, h->arena_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
+  int map_flags=MAP_PRIVATE|MAP_ANONYMOUS;
+#if !defined(COAXIAL_NATIVE_ADDRESS)
+  map_flags|=MAP_32BIT;
+#endif
+  h->arena = mmap(NULL, h->arena_size, PROT_READ | PROT_WRITE, map_flags, -1, 0);
   if (h->arena == MAP_FAILED) { perror("realm-host: arena"); exit(1); }
   h->state = rh_off(h->arena);
   h->vertices = h->state + state;
@@ -147,9 +162,9 @@ void rh_deliver(RealmHost *h, int extra, const uint32_t *extra_sizes) {
   const RhEntry *catalog = rh_entry(h, RH_CATALOG), *vertices = rh_entry(h, RH_VERTICES), *indices = rh_entry(h, RH_INDICES);
   uint32_t sizes[4] = {catalog ? catalog->length : 0, vertices ? vertices->length : 0, indices ? indices->length : 0, (uint32_t)h->layers};
   if (catalog) {
-    uint32_t at = coaxial_asset(h->state, 0, catalog->length);
+    cx_face_addr at = coaxial_asset(h->state, 0, catalog->length);
     int contract = coaxial_host_contract_version && coaxial_host_contract_version() == 1;
-    if (contract && (!coaxial_host_copy_span || !coaxial_host_copy_span(at, coaxial_asset_capacity(h->state,0),catalog->length,UINT64_C(1)<<32))) sizes[0] = 0;
+    if (contract && (!coaxial_host_copy_span || !coaxial_host_copy_span(at, coaxial_asset_capacity(h->state,0),catalog->length,rh_address_limit()))) sizes[0] = 0;
     else if (at) memcpy(rh_ptr(at), catalog->bytes, catalog->length);
   }
   for (int i = 0; i < 4; i++) coaxial_asset_ready(h->state, i, sizes[i]);
@@ -184,9 +199,9 @@ int rh_audio_enable(RealmHost *h,int muted){
   if(rh_host_version()!=1||!coaxial_host_copy_span||!coaxial_sound_bank_len||!coaxial_sound_bank||!coaxial_sound_bank_capacity||!coaxial_sound_bank_storage||!coaxial_sound_bank_storage_bytes||!coaxial_sounds||!coaxial_sounds_len||!coaxial_sounds_capacity||!rha_open||!rha_bank_lazy||!rha_session_event||!rha_command_current||!rha_info||!rha_close||!rhap_open||!rhap_start||!rhap_pause||!rhap_info||!rhap_close)return -1;
   // Length generates the borrowed metadata. Admit its complete measured
   // allocation before forming either metadata or source-memory views.
-  uint32_t n=coaxial_sound_bank_len(h->state),at=coaxial_sound_bank(h->state),cap=coaxial_sound_bank_capacity(h->state);
-  uint32_t base=coaxial_sound_bank_storage(h->state),bytes=coaxial_sound_bank_storage_bytes(h->state);
-  if(!coaxial_host_copy_span(at,cap,n,UINT64_C(1)<<32)||!coaxial_host_copy_span(base,bytes,bytes,UINT64_C(1)<<32))return -1;
+  uint32_t n=coaxial_sound_bank_len(h->state),cap=coaxial_sound_bank_capacity(h->state);
+  cx_face_addr at=coaxial_sound_bank(h->state),base=coaxial_sound_bank_storage(h->state);uint32_t bytes=coaxial_sound_bank_storage_bytes(h->state);
+  if(!coaxial_host_copy_span(at,cap,n,rh_address_limit())||!coaxial_host_copy_span(base,bytes,bytes,rh_address_limit()))return -1;
   h->audio=rha_open();if(!h->audio)return -1;
   h->audio_status=rha_bank_lazy(h->audio,rh_ptr(at),n,rh_ptr(base),bytes);
   if(rhao_resources&&!rhao_resources(h->audio,"render-assets")){rh_audio_close(h);return -1;}
@@ -202,8 +217,8 @@ int64_t rh_audio_info(RealmHost *h,int field){if(field>=0&&field<=11)return h->a
 static void audio_after(RealmHost *h){
   if(!h->audio)return;
   uint32_t n=coaxial_sounds_len(h->state);if(!n)return;
-  uint32_t at=coaxial_sounds(h->state),cap=coaxial_sounds_capacity(h->state);
-  if(!coaxial_host_copy_span(at,cap,n,UINT64_C(1)<<32)){h->audio_command=-1;return;}
+  cx_face_addr at=coaxial_sounds(h->state);uint32_t cap=coaxial_sounds_capacity(h->state);
+  if(!coaxial_host_copy_span(at,cap,n,rh_address_limit())){h->audio_command=-1;return;}
   const uint8_t *text=rh_ptr(at);size_t start=0;
   for(size_t i=0;i<=n;i++)if(i==n||text[i]=='\n'){if(i>start)h->audio_command=rha_command_current(h->audio,text+start,i-start);start=i+1;}
 }
@@ -214,9 +229,9 @@ int64_t rh_lifecycle_event(RealmHost *h,int kind,int64_t us,int64_t arg){
 int64_t rh_lifecycle_info(int field){return coaxial_host_lifecycle_info?coaxial_host_lifecycle_info(field):-1;}
 int rh_asset_data(RealmHost *h, int index, const void *bytes, size_t length) {
   uint32_t n=length<=UINT32_MAX?(uint32_t)length:0;
-  uint32_t at=n?coaxial_asset(h->state,index,n):0;
+  cx_face_addr at=n?coaxial_asset(h->state,index,n):0;
   int contract=coaxial_host_contract_version && coaxial_host_contract_version()==1;
-  if (length>UINT32_MAX || !at || (contract && (!coaxial_host_copy_span || !coaxial_host_copy_span(at,coaxial_asset_capacity(h->state,index),length,UINT64_C(1)<<32)))) n=0;
+  if (length>UINT32_MAX || !at || (contract && (!coaxial_host_copy_span || !coaxial_host_copy_span(at,coaxial_asset_capacity(h->state,index),length,rh_address_limit())))) n=0;
   if(n)memcpy(rh_ptr(at),bytes,n);
   coaxial_asset_ready(h->state,index,n);
   return n==length;
@@ -375,7 +390,7 @@ static void forget(RhRequest *r) {
   if (r->body[0]) unlink(r->body);
   memset(r, 0, sizeof *r);
 }
-static int64_t request(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len, int32_t flags, int64_t timeout) {
+static int64_t request(cx_face_addr url, uint32_t url_len, cx_face_addr body, uint32_t body_len, int32_t flags, int64_t timeout) {
   if (!net.on) return -1;
   int contract=coaxial_host_contract_version&&coaxial_host_contract_version()==1;
   const char *u = rh_ptr(url);
@@ -527,12 +542,12 @@ int32_t coaxial_storage_get(int32_t a, int32_t b, uint32_t c, int32_t d, int32_t
   (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; return 2;
 }
 // coaxial_http_bounded and coaxial_http_cancel, as the face names them
-int32_t guard_http(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e, int64_t f) {
+int32_t guard_http(cx_face_addr a, uint32_t b, cx_face_addr c, uint32_t d, uint32_t e, int64_t f) {
   return (int32_t)request(a, b, c, d, (int32_t)e, f < 0 ? 0 : f);
 }
 int32_t guard_cancel(int32_t id) { return cancel(id); }
-static int32_t replay_http(uint32_t url,uint32_t len);
-int32_t coaxial_http(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len, int32_t flags) {
+static int32_t replay_http(cx_face_addr url,uint32_t len);
+int32_t coaxial_http(cx_face_addr url, uint32_t url_len, cx_face_addr body, uint32_t body_len, int32_t flags) {
   int32_t fixture=replay_http(url,url_len);if(fixture!=-2)return fixture;
   return (int32_t)request(url, url_len, body, body_len, flags, -1);
 }
@@ -547,7 +562,7 @@ static struct {char path[257],wire[16385];uint32_t path_n,wire_n;} replay_api[16
 static struct {const char *bytes;uint32_t length;int pending;} replay_reply[32];
 static uint32_t replay_api_count;
 static int replay_viewer_sent;
-static int32_t replay_http(uint32_t url,uint32_t len) {
+static int32_t replay_http(cx_face_addr url,uint32_t len) {
   if(!replay_api_count)return -2;
   const char *bytes="404\n";uint32_t n=4;const char *path=rh_ptr(url);
   for(uint32_t i=0;i<replay_api_count;i++)if(len==replay_api[i].path_n&&!memcmp(path,replay_api[i].path,len)){bytes=replay_api[i].wire;n=replay_api[i].wire_n;break;}
@@ -593,50 +608,18 @@ void rh_replay_poll(RealmHost *h) {
     if(replay_read()<0){fprintf(stderr,"realm-host: truncated/refused replay\n");exit(1);}
   }
 }
-int32_t coaxial_socket_open(uint32_t url, uint32_t len) {
+int32_t coaxial_socket_open(cx_face_addr url, uint32_t len) {
   if(coaxial_host_contract_version && coaxial_host_contract_version()==1 && rhn_socket_open)return rhn_socket_open(rh_ptr(url),len);
   (void)url;(void)len;if(!replay_file||replay_opened)return -1;
   replay_opened=1;return 0;
 }
-void coaxial_socket_send(int32_t id, uint32_t ptr, uint32_t len) {if(coaxial_host_contract_version && coaxial_host_contract_version()==1 && rhn_socket_send)rhn_socket_send(id,rh_ptr(ptr),len);}
+void coaxial_socket_send(int32_t id, cx_face_addr ptr, uint32_t len) {if(coaxial_host_contract_version && coaxial_host_contract_version()==1 && rhn_socket_send)rhn_socket_send(id,rh_ptr(ptr),len);}
 void coaxial_socket_close(int32_t id) {if(coaxial_host_contract_version && coaxial_host_contract_version()==1 && rhn_socket_close)rhn_socket_close(id);}
 // The exports host.js calls only when a realm's face has them (x.coaxial_draws?.(...) and
 // the like): a face without them gets these, which say it has none.
-#define NONE __attribute__((weak))
-NONE void coaxial_state_init(uint32_t s) { (void)s; }
-// a realm that never asks the host for anything (waterlab)
-NONE int32_t coaxial_action(uint32_t s) { (void)s; return 0; }
-NONE uint32_t coaxial_outbox(uint32_t s) { (void)s; return 0; }
-NONE uint32_t coaxial_outbox_len(uint32_t s) { (void)s; return 0; }
-NONE void coaxial_action_done(uint32_t s) { (void)s; }
-NONE uint32_t coaxial_asset(uint32_t s, int32_t i, uint32_t b) { (void)s; (void)i; (void)b; return 0; }
-NONE uint32_t coaxial_asset_capacity(uint32_t s, int32_t i) { (void)s; (void)i; return 0; }
-NONE void coaxial_asset_ready(uint32_t s, int32_t i, uint32_t b) { (void)s; (void)i; (void)b; }
-NONE void coaxial_hash(uint32_t s, uint32_t n) { (void)s; (void)n; }
-NONE uint32_t coaxial_draws(uint32_t s) { (void)s; return 0; }
-NONE uint32_t coaxial_draw_capacity(uint32_t s) { (void)s; return 0; }
-NONE uint32_t coaxial_draw_count(uint32_t s) { (void)s; return 0; }
-NONE uint32_t coaxial_water_draws(uint32_t s) { (void)s; return 0; }
-NONE uint32_t coaxial_grass_instances(uint32_t s) { (void)s; return 0; }
-NONE uint32_t coaxial_surface_vertices(uint32_t s) { (void)s; return 0; }
-NONE uint32_t coaxial_caster_vertices(uint32_t s) { (void)s; return 0; }   // a traced scene's casters (the fixture's)
-NONE uint32_t coaxial_caster_instances(uint32_t s) { (void)s; return 0; }
-NONE void coaxial_wheel(uint32_t s, float dy) { (void)s; (void)dy; }   // a realm that does not zoom (Orbit League)
-NONE void coaxial_page(uint32_t s, int32_t p) { (void)s; (void)p; }   // an app of one page
-NONE void coaxial_golden(uint32_t on) { (void)on; }   // an app with no golden mode (the homepage)
-NONE uint32_t coaxial_stores(void) { return 0; }
-NONE uint32_t coaxial_store_cap(int32_t k) { (void)k; return 0; }
-NONE uint32_t coaxial_store(uint32_t s, int32_t k) { (void)s; (void)k; return 0; }
-NONE uint32_t coaxial_store_bytes(uint32_t s, int32_t k) { (void)s; (void)k; return 0; }
-// an app without store versions has its stores copied every frame, as host.js copies them (its
-// version undefined): a number that is new at every call
-NONE uint32_t coaxial_store_version(uint32_t s, int32_t k) { static uint32_t calls; (void)s; (void)k; return ++calls; }
-NONE uint32_t coaxial_particle_cap(void) { return 0; }
-NONE uint32_t coaxial_particles(uint32_t s) { (void)s; return 0; }
-NONE uint32_t coaxial_particle_bytes(uint32_t s) { (void)s; return 0; }
-NONE uint32_t coaxial_particle_instances(uint32_t s) { (void)s; return 0; }
-NONE uint32_t coaxial_media(uint32_t s) { (void)s; return 0; }
-NONE uint32_t coaxial_media_len(uint32_t s) { (void)s; return 0; }
+#if !defined(COAXIAL_DYNAMIC_FACE)
+#include "face-defaults.h"
+#endif
 // The phone's thumbs (verse/grid.coax) draw through these; a desktop has none.
 void host_line(int64_t h, double ax, double ay, double bx, double by, double la, double lb, double w) {
   (void)h; (void)ax; (void)ay; (void)bx; (void)by; (void)la; (void)lb; (void)w;

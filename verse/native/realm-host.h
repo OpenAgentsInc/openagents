@@ -1,6 +1,6 @@
 // A realm natively: what coax/web/host.js does for a realm's wasm, for the
 // same face built with gcc (face.h). It keeps the realm's state, vertices
-// and uniforms in an arena below 4 GB, loads its asset pack from a file
+// and uniforms in an arena (below 4 GB for a legacy address face), loads its asset pack from a file
 // (verse/tools/pack_realm.py has the format), hands the pack's parts to the
 // realm as the browser does, and passes messages, keys and frames. It
 // draws nothing; a GPU host (verse/gpu) draws what it hands back.
@@ -8,6 +8,7 @@
 #define VERSE_NATIVE_REALM_HOST_H
 #include <stddef.h>
 #include <stdint.h>
+#include "face-address.h"
 
 enum { RH_CATALOG = 1, RH_VERTICES = 2, RH_INDICES = 3, RH_LAYER = 4, RH_SOUND = 5 };
 // host.js's message kinds.
@@ -23,7 +24,7 @@ typedef struct {
 typedef struct {
   uint8_t *arena;
   size_t arena_size;
-  uint32_t state, vertices, uniforms;
+  cx_face_addr state, vertices, uniforms;
   int floats, max_vertices, uniform_floats;
   uint8_t *pack;
   size_t pack_size;
@@ -35,9 +36,10 @@ typedef struct {
   int64_t audio_status,audio_command;
 } RealmHost;
 
-// A pointer the face handed back (a 32-bit offset), and the offset of one of ours.
-void *rh_ptr(uint32_t offset);
-uint32_t rh_off(const void *p);
+// Face addresses and the matching address of one of our measured allocations.
+void *rh_ptr(cx_face_addr offset);
+cx_face_addr rh_off(const void *p);
+uint64_t rh_address_limit(void);
 // Starts the realm: its arena, zeroed state, golden mode if asked.
 void rh_open(RealmHost *h, int golden);
 // Reads a pack ("-": none, as a page that names no pack); 0 on success, else prints why.

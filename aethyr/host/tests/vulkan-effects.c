@@ -5,10 +5,17 @@
 #include "realm-host.h"
 #include "face.h"
 #include <string.h>
-extern int64_t coaxial_host_probe(uint32_t,int32_t,int32_t);
-extern void coaxial_host_reset(uint32_t);
+extern int64_t coaxial_host_probe(cx_face_addr,int32_t,int32_t);
+extern void coaxial_host_reset(cx_face_addr);
 static RealmHost host;
-int64_t hvn_open(void) {rh_open(&host,0);return 1;}
+int64_t hvn_memory(int64_t field){switch(field){case 0:return (int64_t)(uintptr_t)rh_ptr(host.state);case 1:return (int64_t)(uintptr_t)rh_ptr(coaxial_asset(host.state,0,4));case 2:return sizeof(cx_face_addr)*8;default:return -1;}}
+int64_t hvn_open(void) {rh_open(&host,0);
+#if defined(COAXIAL_NATIVE_ADDRESS)
+  // This fixture must exercise real addresses outside the old ABI, including
+  // a producer-owned asset pointer, rather than passing on a low arena alone.
+  if((uintptr_t)rh_ptr(host.state)<=UINT32_MAX || (uintptr_t)rh_ptr(coaxial_asset(host.state,0,4))<=UINT32_MAX)return 0;
+#endif
+  return 1;}
 int64_t hvn_observe(int64_t event,int64_t field) {return coaxial_host_probe(host.state,(int32_t)event,(int32_t)field);}
 void hvn_reset(void) {coaxial_host_reset(host.state);}
 void hvn_asset(int64_t index,coax_v_u8 bytes) {rh_asset_data(&host,(int)index,bytes.data,(size_t)bytes.count);}
@@ -31,7 +38,7 @@ int64_t hvn_net(coax_v_u8 helper,coax_v_u8 dir) {
   return rh_net_open(&host,hp,"http://127.0.0.1",9170,dp,"host-contract");
 }
 // The fixture uses the canonical import names; legacy faces call guard_*.
-int32_t guard_http(uint32_t,uint32_t,uint32_t,uint32_t,uint32_t,int64_t);
+int32_t guard_http(cx_face_addr,uint32_t,cx_face_addr,uint32_t,uint32_t,int64_t);
 int32_t guard_cancel(int32_t);
-int32_t coaxial_http_bounded(uint32_t u,uint32_t n,uint32_t b,uint32_t bn,int32_t f,int64_t t) {return guard_http(u,n,b,bn,(uint32_t)f,t);}
+int32_t coaxial_http_bounded(cx_face_addr u,uint32_t n,cx_face_addr b,uint32_t bn,int32_t f,int64_t t) {return guard_http(u,n,b,bn,(uint32_t)f,t);}
 int32_t coaxial_http_cancel(int32_t id) {return guard_cancel(id);}

@@ -6,6 +6,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/args.coax";
 hvn_open :: ()->int #foreign;
+hvn_memory :: (field:int)->int #foreign;
 hvn_observe :: (event:int,field:int)->int #foreign;
 hvn_reset :: () #foreign;
 hvn_asset :: (index:int,bytes:[]u8) #foreign;
@@ -38,6 +39,7 @@ tool_main :: ()->int #export_c {
   buf:[8192]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);
   jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.observations.v1");jo_key(o[..],"host");jo_str(o[..],"vulkan");jo_key(o[..],"scope");jo_str(o[..],"core");
   jo_key(o[..],"version");jo_int(o[..],version);jo_key(o[..],"constructed");jo_int(o[..],constructed);jo_key(o[..],"dropped");jo_int(o[..],dropped);jo_key(o[..],"held");jo_int(o[..],held);
+  jo_key(o[..],"physical_addresses");jo_arr(o[..]);for i:0..<3 {jo_int(o[..],hvn_memory(i));}jo_end(o[..]);
   jo_key(o[..],"assets");hvn_json_rows(o[..],assets[0..<an]);jo_key(o[..],"frames");hvn_json_rows(o[..],frames[0..<fn]);jo_key(o[..],"events");hvn_json_rows(o[..],events[0..<en]);jo_end(o[..]);
   d:[1]Jv;nodes:[512]JvNode;
   if o[0].bad || !jv_parse(d[..],jo_text(o[..]),nodes[..]) || !hcr_core(d[0]) || !fs_write(args_at(a[..],0),jo_text(o[..])) {return 1;}
