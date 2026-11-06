@@ -48,7 +48,9 @@ nip01 90000
 nip-guide 130000
 og 60000
 oneshot 270000
-orbitleague 290000
+# Orbit v2 adds authoritative input/snapshot codecs while retaining the published legacy profile.
+# 291,597 Linux release bytes at #12845; under 3% room in this 300,000-byte bound.
+orbitleague 300000
 private 280000
 project 2400000
 projects 110000

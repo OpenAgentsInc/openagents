@@ -1,0 +1,106 @@
+// Two real headless pages over an already running local authoritative room host.
+//   coax/web/tool.sh orbit-qualification URL OUT_DIR
+#load "../lib/net/cdp.coax";
+#load "../../apps/openagents-web/orbit-snapshot.coax";
+#import "Basic";
+
+OQ_JS :: "(()=>{const q=globalThis.__oq={sent:[],received:[],errors:[],socket:null};const W=WebSocket;globalThis.WebSocket=class extends W{constructor(...a){super(...a);if(!String(a[0]).includes('/orbit-league-v2/'))return;q.socket=this;const send=this.send.bind(this);this.send=t=>{q.sent.push(String(t));if(q.sent.length>512)q.sent.shift();return send(t)};this.addEventListener('message',e=>{q.received.push(String(e.data));if(q.received.length>512)q.received.shift()})}};addEventListener('error',e=>q.errors.push(String(e.message)));})();";
+
+#test "Orbit qualification requires both real seats, shared ticks and consumed controls" {
+  a:=orb_snapshot_read(ORB_SNAPSHOT_FIXTURE);b:=a;
+  #assert !oq_pair(a,b);b.h[1]=0;#assert oq_pair(a,b);
+  b.h[0]+=1;#assert !oq_pair(a,b);b.h[0]=a.h[0];b.ok=false;#assert !oq_pair(a,b);
+  #assert oq_moved(1000,1000,1001,2200) && !oq_moved(1000,1000,1001,1999);
+}
+oq_pair :: (a:OrbSnapshot,b:OrbSnapshot)->bool {
+  return a.ok && b.ok && a.h[0]==b.h[0] && a.h[1]!=b.h[1] && a.h[11]>=2 && b.h[11]>=2;
+}
+oq_moved :: (x:int,z:int,nx:int,nz:int)->bool {return abs(f64(nx-x))+abs(f64(nz-z))>1000;}
+oq_int :: (c:[]Cdp,js:string)->int {
+  n:=cdp_evaluate(c,js);if n<0 {return -1;}return jv_int(cdp_doc(c),n,-1);
+}
+oq_text :: (c:[]Cdp,js:string,out:[]u8)->string {
+  n:=cdp_evaluate(c,js);if n<0 {return "";}k:=jv_str(cdp_doc(c),n,out);
+  return ifx k>=0 then cast(string)out[0..<k] else "";
+}
+oq_open :: (c:[]Cdp,url:string)->bool {
+  if !cdp_launch(c,960,600,"coax-orbit-qualification-") {return false;}
+  _:=cdp_call(c,"Page.enable","",5000);
+  _=cdp_call(c,"Emulation.setFocusEmulationEnabled","{\"enabled\":true}",5000);
+  _=cdp_call(c,"Network.setCookie","{\"name\":\"verse-automation\",\"value\":\"orbit-check\",\"url\":\"http://127.0.0.1\"}",5000);
+  buf:[8192]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"source");jo_str(o[..],OQ_JS);jo_end(o[..]);
+  if cdp_call(c,"Page.addScriptToEvaluateOnNewDocument",jo_text(o[..]),5000)<0 {return false;}
+  jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);
+  return cdp_call(c,"Page.navigate",jo_text(o[..]),15000)>=0;
+}
+oq_key :: (c:[]Cdp,down:bool)->bool {
+  return cdp_call(c,"Input.dispatchKeyEvent",ifx down then "{\"type\":\"keyDown\",\"key\":\"w\",\"code\":\"KeyW\",\"windowsVirtualKeyCode\":87}" else "{\"type\":\"keyUp\",\"key\":\"w\",\"code\":\"KeyW\",\"windowsVirtualKeyCode\":87}",5000)>=0;
+}
+oq_ready :: (c:[]Cdp)->bool {
+  deadline:=proc_now_ms()+60000;
+  while proc_now_ms()<deadline {
+    if oq_int(c,"globalThis.coaxial?.ready && coaxial.fieldProbe(0)===1 && coaxial.fieldProbe(1)>0 ? 1:0")==1 {return true;}
+    _:=cdp_call(c,"Input.dispatchKeyEvent","{\"type\":\"keyDown\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13}",5000);
+    _=cdp_call(c,"Input.dispatchKeyEvent","{\"type\":\"keyUp\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13}",5000);
+    proc_sleep(500);
+  }
+  return false;
+}
+oq_last :: (c:[]Cdp)->OrbSnapshot {
+  buf:[2048]u8;return orb_snapshot_read(oq_text(c,"__oq.received.filter(x=>x.startsWith('S ')).at(-1)||''",buf[..]));
+}
+oq_save :: (c:[]Cdp,out:string,suffix:string) {
+  path:[2048]u8;o:[1]Jo; // paths are bounded arguments, never shell text
+  n:=0;for t:[3]string.[out,"/",suffix] {for ch:t {if n<path.count {path[n]=ch;n+=1;}}}
+  buf:[524288]u8;
+  t:=oq_text(c,"JSON.stringify({sent:__oq.sent,received:__oq.received,errors:__oq.errors,probe:[0,1,2,3,4,5,6,7,8,100,110,111,112,113,120,121,122,123].map(x=>[x,coaxial.fieldProbe(x)])},null,2)",buf[..]);
+  _:=fs_write(cast(string)path[0..<n],t);
+}
+oq_run :: (a:[]Cdp,b:[]Cdp,url:string,out:string)->bool {
+  if !oq_open(a,url) || !oq_ready(a) {tool_errln("Orbit: first page did not enter authority");return false;}
+  if !oq_open(b,url) || !oq_ready(b) {tool_errln("Orbit: second page did not enter authority");return false;}
+  proc_sleep(4000);
+  before:=oq_last(a);other:=oq_last(b);
+  if !before.ok || !other.ok || before.h[1]==other.h[1] || before.h[11]!=2 || other.h[11]!=2 {tool_errln("Orbit: two admitted seats missing");return false;}
+  row:=(before.h[1]+1)*ORB_FIELDS;x:=cast(int)before.v[row];z:=cast(int)before.v[row+2];
+  if !oq_key(a,true) {return false;}proc_sleep(2500);released:=oq_key(a,false);if !released {return false;}
+  after:=oq_last(a);
+  if !after.ok || after.h[3]<=before.h[3] || !oq_moved(x,z,cast(int)after.v[row],cast(int)after.v[row+2]) {tool_errln("Orbit: real controls did not move the server car");return false;}
+  // Browser instrumentation only records transport effects. The Coax codec validates the frames.
+  common:[2048]u8;raw:=oq_text(a,"__oq.received.filter(x=>x.startsWith('S ')).at(-8)||''",common[..]);
+  shared:=orb_snapshot_read(raw);if !shared.ok {return false;}
+  // Find the same whole tick at the other receiver. Its own fuel is the only private field.
+  js:[4096]u8;jo:[1]Jo;jo_start(jo[..],js[..]);jo_str(jo[..],raw);
+  query:[8192]u8;n:=0;
+  for t:[3]string.["(()=>{let t=",jo_text(jo[..]),".split(' ')[1];return __oq.received.find(x=>x.startsWith('S '+t+' '))||''})()"] {for ch:t {query[n]=ch;n+=1;}}
+  got:[2048]u8;matching:=orb_snapshot_read(oq_text(b,cast(string)query[0..<n],got[..]));
+  if !oq_pair(shared,matching) {tool_errln("Orbit: receivers lack a common complete tick");return false;}
+  for id:0..<ORB_ROWS {if shared.present[id]!=matching.present[id] {return false;}
+    for f:0..<ORB_FIELDS {if f!=ORB_FUEL && shared.v[id*ORB_FIELDS+f]!=matching.v[id*ORB_FIELDS+f] {tool_errln("Orbit: shared world differs by receiver");return false;}}
+  }
+  _:=cdp_evaluate(a,"__oq.socket.send('c 100000 1000 100000 0 0 0 1 0 0 0 0 0 0');true");proc_sleep(300);
+  forged:=oq_last(a);if !forged.ok || abs(f64(cast(int)forged.v[row]))>100000 {tool_errln("Orbit: reported transform changed authority");return false;}
+  // Observe tick and pose together, then compare against the raw complete frame for that tick.
+  v:=cdp_evaluate(a,"(()=>{let t=coaxial.fieldProbe(1);return [t,coaxial.fieldProbe(111),coaxial.fieldProbe(113),__oq.received.find(x=>x.startsWith('S '+t+' '))||'']})()");
+  if v<0 {return false;}d:=cdp_doc(a);seen:=jv_int(d,jv_at(d,v,0),-1);px:=jv_int(d,jv_at(d,v,1),0);pz:=jv_int(d,jv_at(d,v,2),0);
+  pose:[2048]u8;kpose:=jv_str(d,jv_at(d,v,3),pose[..]);if kpose<0 {return false;}
+  drawn:=orb_snapshot_read(cast(string)pose[0..<kpose]);sign:=ifx before.h[1]%2==0 then 1 else -1;
+  if !drawn.ok || abs(f64(px-sign*cast(int)drawn.v[row]))>1 || abs(f64(pz-sign*cast(int)drawn.v[row+2]))>1 {
+    tool_errln("Orbit: displayed pose differs from its accepted server snapshot");return false;
+  }
+  print("Orbit pages: common tick %, seats %/%, consumed ACK %, displayed tick %, pose %,%\n",shared.h[0],shared.h[1],matching.h[1],forged.h[3],seen,px,pz);
+  oq_save(a,out,"a.json");oq_save(b,out,"b.json");
+  cdp_close(b);proc_sleep(500);
+  departed:=oq_last(a);if !departed.ok || departed.h[11]!=1 || departed.present[other.h[1]+1] {tool_errln("Orbit: departed body survived a complete snapshot");return false;}
+  if oq_int(a,"__oq.errors.length")!=0 {tool_errln("Orbit: page reported an error");return false;}
+  oq_save(a,out,"a-departed.json");
+  png:[8388608]u8;k:=cdp_screenshot(a,png[..]);if k<=0 {return false;}
+  n=0;for t:[2]string.[out,"/page.png"] {for ch:t {query[n]=ch;n+=1;}}
+  saved:=fs_write(cast(string)query[0..<n],cast(string)png[0..<k]);return saved;
+}
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {tool_errln("usage: orbit-qualification URL OUT_DIR");return 2;}
+  out:=args_at(args[..],1);made:=fs_mkdir(out);a:[1]Cdp;b:[1]Cdp;
+  ok:=oq_run(a[..],b[..],args_at(args[..],0),out);cdp_close(b[..]);cdp_close(a[..]);
+  print("Orbit qualification: %\n",ifx ok then "holds" else "fails");return ifx ok then 0 else 1;
+}

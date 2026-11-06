@@ -22,6 +22,14 @@ starts a new body. This profile has no persistent progression or durable
 resume promise. An unsupported hello receives a reason rather than a
 silent fallback to the legacy profile.
 
+Current engine, rules and content pins are all 1. Admission failures are
+`R 1` (engine), `R 2` (rules), `R 3` (content), `R 4` (older wire), `R 5`
+(newer wire), `R 7` (world not ready) and `R 9` (malformed hello). A malformed
+or stale input is refused without changing controls or acknowledging it.
+The page defaults to v2. `room-profile=legacy` explicitly selects the old
+endpoint. V2 content 1 uses the box arena; the drum remains an offline or
+legacy selection.
+
 ## Commands and accepted state
 
 `I SEQ THROTTLE STEER FLAGS PAINT CLOCK HEARD` supplies the latest controls.
@@ -30,6 +38,12 @@ controls actually consumed by its world step. The match clock, collision,
 fuel, goals and car transforms remain server state. The page displays the
 authoritative snapshots; it does not submit a transform as evidence.
 After one second without fresh controls, the room releases them.
+
+Records use space-separated decimal whole numbers. Inputs are at most 256
+bytes; complete server frames are at most 2,048 bytes. A sequence is positive
+and at most 2,000,000,000; axes are −1,000 through 1,000, flags are 0 through
+7 and paint is 0 through 31. `CLOCK` and `HEARD` are nonnegative and at most
+2,000,000,000. Sequence and generation exhaustion fail closed.
 
 Each `S` frame contains one complete tick. This small-room profile selects
 absolute rows (`BACK 0`) with explicit integer field masks. Public recipients receive body,
