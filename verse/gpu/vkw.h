@@ -19,6 +19,10 @@
 #include <string.h>
 #include <unistd.h>
 
+#ifdef AETHYR_WAYLAND_INPUT_V1
+#include "wayland-input-sdk.h"
+#endif
+
 bool realm_key(void *state, int key);
 bool realm_key_up(void *state, int key);
 
@@ -31,6 +35,9 @@ typedef struct {
   int (*button)(void *user,float x,float y,uint32_t code,int pressed); // additional physical mouse buttons
   int (*focus)(void *user,int focused); // 1: host released input; 0: retain per-key legacy release
   void (*shown)(void *user,int shown);
+  uint32_t (*realm_key)(void *user,int key,int mods,int down);
+  void (*text)(void *user,const char *bytes,size_t length);
+  int (*wants_text)(void *user);
 } VkwTo;
 
 typedef struct {
@@ -57,6 +64,12 @@ typedef struct {
   int shift, keys_down[KEY_MAX + 1];
   unsigned char forwarded_down[KEY_MAX + 1]; // physical keys delivered to the desk
   VkwTo to;
+#ifdef AETHYR_WAYLAND_INPUT_V1
+  HwiSdk input;
+  double axis_value;
+  int64_t axis_discrete,axis120;
+  int axis_source,axis_has_discrete,axis_has120,axis_pending;
+#endif
 } Vkw;
 
 static Vkw *vkw_;   // the one window the listeners serve
@@ -101,7 +114,13 @@ static void vkw_output_done(void *d, struct wl_output *o) { (void)d; (void)o; }
 static void vkw_output_scale(void *d, struct wl_output *o, int32_t s) { (void)d; (void)o; (void)s; }
 static const struct wl_output_listener vkw_output_listener = {.geometry = vkw_geometry, .mode = vkw_mode, .done = vkw_output_done, .scale = vkw_output_scale};
 
-static void vkw_keymap(void *d, struct wl_keyboard *k, uint32_t f, int32_t fd, uint32_t n) { (void)d; (void)k; (void)f; (void)n; close(fd); }
+static void vkw_keymap(void *d, struct wl_keyboard *k, uint32_t f, int32_t fd, uint32_t n) {
+ (void)d;(void)k;
+#ifdef AETHYR_WAYLAND_INPUT_V1
+ if(vkw_->to.realm_key){if(!hwi_sdk_keymap(&vkw_->input,f,fd,n)){fprintf(stderr,"vk-realm: keyboard map refused\n");vkw_->closed=1;}return;}
+#endif
+ (void)f;(void)n;close(fd);
+}
 static void vkw_kb_enter(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *w, struct wl_array *keys) {
   (void)d; (void)k; (void)s; (void)w;
   if(vkw_->to.focus)vkw_->to.focus(vkw_->to.user,1);
@@ -128,6 +147,9 @@ static void vkw_kb_leave(void *d, struct wl_keyboard *k, uint32_t s, struct wl_s
     if (vkw_->keys_down[c]) { if(!released)realm_key_up(NULL, vkw_->keys_down[c]);vkw_->keys_down[c] = 0; }
   }
   vkw_->shift = 0;
+#ifdef AETHYR_WAYLAND_INPUT_V1
+  hwi_sdk_reset(&vkw_->input);
+#endif
 }
 // evdev codes, as the seat sends them; shifted and released as evdev.h does.
 static void vkw_key(void *d, struct wl_keyboard *k, uint32_t serial, uint32_t time, uint32_t code, uint32_t state) {
@@ -142,12 +164,21 @@ static void vkw_key(void *d, struct wl_keyboard *k, uint32_t serial, uint32_t ti
   if (vkw_->to.key && !vkw_->keys_down[code] && vkw_->to.key((int)code, pressed)) {
     vkw_->forwarded_down[code] = pressed; return;
   }
+#ifdef AETHYR_WAYLAND_INPUT_V1
+  if(vkw_->to.realm_key){hwi_sdk_key(&vkw_->input,vkw_->to.user,code,pressed,vkw_->to.wants_text?vkw_->to.wants_text(vkw_->to.user):0,vkw_->to.realm_key,vkw_->to.text);return;}
+#endif
   int r = pressed ? realm_key_shifted((int)code, vkw_->shift > 0) : vkw_->keys_down[code];
   if (!r) return;
   if (pressed) { vkw_->keys_down[code] = r; realm_key(NULL, r); }
   else { vkw_->keys_down[code] = 0; realm_key_up(NULL, r); }
 }
-static void vkw_mods(void *d, struct wl_keyboard *k, uint32_t s, uint32_t a, uint32_t b, uint32_t c, uint32_t g) { (void)d; (void)k; (void)s; (void)a; (void)b; (void)c; (void)g; }
+static void vkw_mods(void *d, struct wl_keyboard *k, uint32_t serial, uint32_t a, uint32_t b, uint32_t c, uint32_t g) {
+ (void)d;(void)k;(void)serial;
+#ifdef AETHYR_WAYLAND_INPUT_V1
+ if(vkw_->to.realm_key){hwi_sdk_modifiers(&vkw_->input,a,b,c,g);return;}
+#endif
+ (void)a;(void)b;(void)c;(void)g;
+}
 static void vkw_repeat(void *d, struct wl_keyboard *k, int32_t rate, int32_t delay) { (void)d; (void)k; (void)rate; (void)delay; }
 static const struct wl_keyboard_listener vkw_kb_listener = {.keymap = vkw_keymap, .enter = vkw_kb_enter, .leave = vkw_kb_leave, .key = vkw_key, .modifiers = vkw_mods, .repeat_info = vkw_repeat};
 
@@ -160,6 +191,7 @@ static void vkw_pt_enter(void *d, struct wl_pointer *p, uint32_t serial, struct 
 }
 static void vkw_pt_leave(void *d, struct wl_pointer *p, uint32_t serial, struct wl_surface *s) {
   (void)d; (void)p; (void)serial; (void)s;
+  if (vkw_->to.realm_key) return;
   if (vkw_->down) { vkw_->down = 0; if (vkw_->to.pointer) vkw_->to.pointer(vkw_->to.user, vkw_->x, vkw_->y, 2); }
   for(int i=0;i<2;i++) if(vkw_->extra_down[i]) {
     if(vkw_->to.button)vkw_->to.button(vkw_->to.user,vkw_->x,vkw_->y,BTN_RIGHT+i,0);
@@ -187,17 +219,49 @@ static void vkw_pt_button(void *d, struct wl_pointer *p, uint32_t serial, uint32
   vkw_->down = state == WL_POINTER_BUTTON_STATE_PRESSED;
   if (vkw_->to.pointer) vkw_->to.pointer(vkw_->to.user, vkw_->x, vkw_->y, vkw_->down ? 0 : 2);
 }
-static void vkw_pt_axis(void *d, struct wl_pointer *p, uint32_t time, uint32_t axis, wl_fixed_t v) {
-  (void)d; (void)p; (void)time;
-  // a notch is 10 here and 100 CSS pixels in Chromium
-  if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL && vkw_->to.wheel) vkw_->to.wheel(vkw_->to.user, (float)wl_fixed_to_double(v) * 10);
+static void vkw_pt_axis(void *d, struct wl_pointer *p, uint32_t time, uint32_t axis, wl_fixed_t value) {
+ (void)d;(void)time;
+ if(axis!=WL_POINTER_AXIS_VERTICAL_SCROLL)return;
+#ifdef AETHYR_WAYLAND_INPUT_V1
+ if(vkw_->to.realm_key){vkw_->axis_value+=wl_fixed_to_double(value);vkw_->axis_pending=1;
+  if(wl_proxy_get_version((struct wl_proxy*)p)>=WL_POINTER_FRAME_SINCE_VERSION)return;
+  if(vkw_->to.wheel)vkw_->to.wheel(vkw_->to.user,(float)hwi_wheel(vkw_->axis_value,0,false,0,false,0));vkw_->axis_value=0;vkw_->axis_pending=0;return;}
+#endif
+ (void)p;if(vkw_->to.wheel)vkw_->to.wheel(vkw_->to.user,(float)wl_fixed_to_double(value)*10);
 }
-static void vkw_pt_frame(void *d, struct wl_pointer *p) { (void)d; (void)p; }
-static void vkw_pt_source(void *d, struct wl_pointer *p, uint32_t s) { (void)d; (void)p; (void)s; }
-static void vkw_pt_stop(void *d, struct wl_pointer *p, uint32_t time, uint32_t axis) { (void)d; (void)p; (void)time; (void)axis; }
-static void vkw_pt_discrete(void *d, struct wl_pointer *p, uint32_t axis, int32_t v) { (void)d; (void)p; (void)axis; (void)v; }
+static void vkw_pt_frame(void *d, struct wl_pointer *p) {
+ (void)d;(void)p;
+#ifdef AETHYR_WAYLAND_INPUT_V1
+ if(vkw_->to.realm_key&&vkw_->axis_pending&&vkw_->to.wheel)vkw_->to.wheel(vkw_->to.user,(float)hwi_wheel(vkw_->axis_value,vkw_->axis_discrete,vkw_->axis_has_discrete,vkw_->axis120,vkw_->axis_has120,vkw_->axis_source));
+ vkw_->axis_value=0;vkw_->axis_discrete=0;vkw_->axis120=0;vkw_->axis_has_discrete=0;vkw_->axis_has120=0;vkw_->axis_pending=0;vkw_->axis_source=0;
+#endif
+}
+static void vkw_pt_source(void *d, struct wl_pointer *p, uint32_t source) {
+ (void)d;(void)p;
+#ifdef AETHYR_WAYLAND_INPUT_V1
+ vkw_->axis_source=(int)source;
+#else
+ (void)source;
+#endif
+}
+static void vkw_pt_stop(void *d, struct wl_pointer *p, uint32_t time, uint32_t axis) { (void)d;(void)p;(void)time;(void)axis; }
+static void vkw_pt_discrete(void *d, struct wl_pointer *p, uint32_t axis, int32_t value) {
+ (void)d;(void)p;
+#ifdef AETHYR_WAYLAND_INPUT_V1
+ if(axis==WL_POINTER_AXIS_VERTICAL_SCROLL){vkw_->axis_discrete+=value;vkw_->axis_has_discrete=1;vkw_->axis_pending=1;}
+#else
+ (void)axis;(void)value;
+#endif
+}
+#if defined(AETHYR_WAYLAND_INPUT_V1) && defined(WL_POINTER_AXIS_VALUE120_SINCE_VERSION)
+static void vkw_pt_value120(void *d,struct wl_pointer *p,uint32_t axis,int32_t value){(void)d;(void)p;if(axis==WL_POINTER_AXIS_VERTICAL_SCROLL){vkw_->axis120+=value;vkw_->axis_has120=1;vkw_->axis_pending=1;}}
+#endif
 static const struct wl_pointer_listener vkw_pt_listener = {.enter = vkw_pt_enter, .leave = vkw_pt_leave, .motion = vkw_pt_motion, .button = vkw_pt_button,
-  .axis = vkw_pt_axis, .frame = vkw_pt_frame, .axis_source = vkw_pt_source, .axis_stop = vkw_pt_stop, .axis_discrete = vkw_pt_discrete};
+  .axis = vkw_pt_axis, .frame = vkw_pt_frame, .axis_source = vkw_pt_source, .axis_stop = vkw_pt_stop, .axis_discrete = vkw_pt_discrete,
+#if defined(AETHYR_WAYLAND_INPUT_V1) && defined(WL_POINTER_AXIS_VALUE120_SINCE_VERSION)
+ .axis_value120=vkw_pt_value120,
+#endif
+};
 
 static void vkw_caps(void *d, struct wl_seat *seat, uint32_t caps) {
   (void)d;
@@ -224,7 +288,11 @@ static void vkw_global(void *d, struct wl_registry *r, uint32_t name, const char
 #endif
     xdg_wm_base_add_listener(vkw_->wm, &vkw_wm_listener, NULL);
   } else if (!strcmp(iface, wl_seat_interface.name) && !vkw_->seat) {
-    vkw_->seat = wl_registry_bind(r, name, &wl_seat_interface, version < 5 ? version : 5);
+    #if defined(AETHYR_WAYLAND_INPUT_V1) && defined(WL_POINTER_AXIS_VALUE120_SINCE_VERSION)
+    vkw_->seat = wl_registry_bind(r,name,&wl_seat_interface,version<8?version:8);
+#else
+    vkw_->seat = wl_registry_bind(r,name,&wl_seat_interface,version<5?version:5);
+#endif
     wl_seat_add_listener(vkw_->seat, &vkw_seat_listener, NULL);
   } else if (!strcmp(iface, wl_output_interface.name) && !vkw_->output) {
     vkw_->output = wl_registry_bind(r, name, &wl_output_interface, 2);
@@ -240,6 +308,9 @@ static void vkw_open(Vkc *v, Vkw *w, const char *title, uint32_t width, uint32_t
   memset(w, 0, sizeof *w);
   vkw_ = w;
   w->to = to;
+#ifndef AETHYR_WAYLAND_INPUT_V1
+  if(to.realm_key){fprintf(stderr,"vk-realm: required keyboard adapter unavailable\n");exit(1);}
+#endif
   w->fullscreen = fullscreen;
   w->display = wl_display_connect(NULL);
   if (!w->display) { fprintf(stderr, "vk-realm: no Wayland display (WAYLAND_DISPLAY)\n"); exit(1); }
@@ -288,6 +359,9 @@ static void vkw_pump(Vkw *w) {
 }
 
 static void vkw_close(Vkc *v, Vkw *w) {
+#ifdef AETHYR_WAYLAND_INPUT_V1
+  hwi_sdk_close(&w->input);
+#endif
   vkDestroySurfaceKHR(v->inst, w->vk_surface, NULL);
   vkc_close(v);
   xdg_toplevel_destroy(w->toplevel);

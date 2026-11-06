@@ -227,6 +227,21 @@ held-input release while hidden. Its clock, semantic and JSON root gates
 kill 80, 104 and 39 mutants, with no equivalents. This normalized SDK trace
 does not substitute for ordinary window integration or session recovery.
 
+The v1 Wayland window consumes the compositor's actual bounded XKB keymap
+and serialized modifier state. A separate checked Coax companion projects
+named keys, Unicode scalars, modifiers and scroll units into the existing
+host ABI. Physical modifier transitions include the event itself, while
+keysym-to-Unicode avoids Control's SDK control-character conversion. Text
+fields receive committed UTF-8 once; local compose emits no intermediate
+key presses. High-resolution/discrete wheel facts produce one frame offer;
+finger travel keeps its pixel units. An implicit pointer grab retains a drag
+outside the surface. Actual production-listener receipts require all 53
+rows/212 fields normally and under ASan/UBSan/LSan; SDK ownership closes to
+zero. Policy/observer root gates kill 201/219 mutants without equivalents.
+This SDK component does not qualify external IME, clipboard, the complete
+ordinary window or three-host/default composition. Exact scope and inputs
+are in `docs/verification/host-contract-2026-11-05/wayland-input.md`.
+
 The shared WebGPU renderer has one physical mutable frame-buffer set. Its
 availability is checked before producer advancement, and its busy state
 waits for both validation and actual queue completion. Completion counts

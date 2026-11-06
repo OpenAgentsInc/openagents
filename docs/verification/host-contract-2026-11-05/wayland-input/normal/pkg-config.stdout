@@ -1,0 +1,1 @@
+-I/nix/store/q1zmavcwqb61c2ap6dk769g6bnn9irga-wayland-1.25.0-dev/include -I/nix/store/hw6plsnys92q9ph353jc57cjq0nmb6yi-libxkbcommon-1.13.1-dev/include -L/nix/store/1hn1hflihwi4qr3nkyqfiavz6jxm4ks0-wayland-1.25.0/lib -L/nix/store/qqj7kf501qvwi2xdj6nvjh00hqgf8q1l-libxkbcommon-1.13.1/lib -lwayland-client -lm -lxkbcommon

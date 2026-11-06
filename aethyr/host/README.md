@@ -155,6 +155,24 @@ disconnect supplies one neutral sample. Blur/hidden invokes
 `coaxial_blur` even when no render frame is running. The Coax input/session
 layer decides dead zones, held controls and which fixed step takes a press.
 
+The v1 Wayland SDK reads the compositor's complete XKB keymap (at most
+1 MiB), and updates its client state from serialized modifier masks. The
+separate `wayland-input.coax` projects actual keysyms/Unicode and modifier
+facts; it never assumes a physical US layout. Text-field local compose
+publishes a complete UTF-8 commit (at most 1,024 bytes), with no intermediate
+or duplicate printable key-down. Physical modifier transitions include the
+key event before the following serialized mask update. Key-up releases the
+same delivered key even if the modifier snapshot changed.
+
+Scroll offers coalesce one protocol frame: value120 takes precedence over
+discrete notches, with 100 CSS pixels per notch; finger/continuous sources
+retain pixel travel. The existing old-protocol wheel fallback remains ten
+CSS pixels per axis unit. Captured drags retain motion/release outside the
+view. The SDK's real keymap/listener and ownership receipts are in
+[`wayland-input.md`](../../docs/verification/host-contract-2026-11-05/wayland-input.md).
+This scoped component leaves external input-method and clipboard services
+for the ordinary-window integration; it does not redefine those requirements.
+
 ## Inbox, actions and storage
 
 `coaxial_inbox(state)` and `coaxial_inbox_cap()` identify writable bytes.

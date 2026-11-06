@@ -6,7 +6,7 @@
 # transcendental math ahead of glibc's so a realm computes what its wasm computes) and installs the
 # tree to $out/share/verse-os, the directory verse-session runs (`--dir`). Nothing here is Coax: the
 # Coax compiler already ran, on the machine that shipped `src`.
-{ lib, stdenv, pkg-config, libdrm, libglvnd, libgbm, vulkan-headers, vulkan-loader, wayland, wayland-scanner, wayland-protocols, openssl, musl, foot, xwayland, src }:
+{ lib, stdenv, pkg-config, libdrm, libglvnd, libgbm, vulkan-headers, vulkan-loader, libxkbcommon, wayland, wayland-scanner, wayland-protocols, openssl, musl, foot, xwayland, src }:
 
 stdenv.mkDerivation {
   pname = "verse-realms";
@@ -14,7 +14,7 @@ stdenv.mkDerivation {
   inherit src;
 
   nativeBuildInputs = [ pkg-config wayland-scanner ];
-  buildInputs = [ libdrm libglvnd libgbm vulkan-headers vulkan-loader wayland wayland-protocols openssl ];
+  buildInputs = [ libdrm libglvnd libgbm vulkan-headers vulkan-loader libxkbcommon wayland wayland-protocols openssl ];
 
   dontConfigure = true;
 
@@ -54,11 +54,11 @@ stdenv.mkDerivation {
          units=(render-host.c render-realm.c render-media.c render-textures.c RenderTexture.c)
          flags="$flags -ffunction-sections -fdata-sections"; link=(-Wl,--gc-sections)
        fi
-       for s in "''${sources[@]}" "''${units[@]}" realm-host.c verse-panel.c verse-hands.c; do gcc $flags -c $s -o ''${s%.c}.o; done
+       for s in "''${sources[@]}" "''${units[@]}" realm-host.c verse-panel.c verse-hands.c wayland-input.c; do gcc $flags -c $s -o ''${s%.c}.o; done
        gcc $flags -c ../wl/xdg-shell-protocol.c -o wl-xdg-shell.o
        gcc $flags -c ../wl/xdg-decoration-unstable-v1-protocol.c -o wl-xdg-decoration.o
-       gcc $flags "''${link[@]}" -Ikms -I../wl $(pkg-config --cflags libdrm wayland-client) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o $math \
-         $(pkg-config --libs libdrm wayland-client) -lvulkan -lm -o vk-realm
+       gcc $flags "''${link[@]}" -DAETHYR_WAYLAND_INPUT_V1 -Ikms -I../wl $(pkg-config --cflags libdrm wayland-client xkbcommon) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o $math \
+         $(pkg-config --libs libdrm wayland-client xkbcommon) -lvulkan -lm -o vk-realm
        cp ../net .)
     done
     runHook postBuild

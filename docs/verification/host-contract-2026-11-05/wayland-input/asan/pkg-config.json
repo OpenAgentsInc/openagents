@@ -1,0 +1,1 @@
+{"argv":["pkg-config","--cflags","--libs","wayland-client","xkbcommon"],"started":0,"exit":0,"timed_out":false,"cut":false}

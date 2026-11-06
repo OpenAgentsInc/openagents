@@ -1,0 +1,66 @@
+// Wayland/XKB SDK observations projected into the existing host-v1 input ABI.
+#authority;
+#forall "Wayland named symbols retain the host contract key table" row:0..<20 {
+ syms:=[20]int.[0xff1b,0xff0d,0xff8d,0xff08,0xff51,0xff53,0xff52,0xff54,0xff50,0xff57,0xff55,0xff56,0xffff,0xffe1,0xffe2,0xffe3,0xffe4,0xff09,0xfe20,0xffe9];
+ keys:=[20]int.[-1,-2,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-13,-14,-14,-15,-15,0];
+ #assert hwi_key(syms[row],0)==keys[row];
+}
+#test "Wayland printable keys use observed Unicode, never physical US placement" {
+ #assert hwi_key(0,1)==1&&hwi_key(0,97)==97&&hwi_key(0,65)==65&&hwi_key(0,233)==233&&hwi_key(0,0x1f642)==0x1f642;
+ #assert hwi_key(0,0x10ffff)==0x10ffff&&hwi_key(0,0xd7ff)==0xd7ff&&hwi_key(0,0xe000)==0xe000;
+ for v:[6]int.[-1,0,0xd800,0xdfff,0x110000,9223372036854775807]{#assert hwi_key(0,v)==0;}
+ #assert hwi_key(0xff1b,97)== -1;
+}
+#forall "Wayland modifier bits preserve every independently enumerated combination" bits:0..<16 {
+ #assert hwi_mods((bits&1)!=0,(bits&2)!=0,(bits&4)!=0,(bits&8)!=0)==bits;
+}
+#test "Wayland text routing suppresses duplicate printable downs and shortcut text" {
+ #assert hwi_text(true,0,97)&&hwi_text(true,1,233)&&hwi_text(true,4,0x1f642)&&hwi_text(true,5,97);
+ #assert !hwi_text(false,0,97)&&!hwi_text(true,2,97)&&!hwi_text(true,8,97)&&!hwi_text(true,16,97)&&!hwi_text(true,-1,97);
+ #assert !hwi_text(true,0,-2)&&!hwi_text(true,0,0)&&!hwi_text(true,0,31)&&hwi_text(true,0,32)&&hwi_text(true,0,126)&&!hwi_text(true,0,127);
+}
+#test "Wayland keymap and text copies are bounded before SDK retention" {
+ #assert !hwi_keymap(0)&&hwi_keymap(1)&&hwi_keymap(1048576)&&!hwi_keymap(1048577)&&!hwi_keymap(-1);
+ #assert !hwi_commit(0)&&hwi_commit(1)&&hwi_commit(1024)&&!hwi_commit(1025)&&!hwi_commit(-1);
+}
+#test "Wayland scroll chooses complete high-resolution wheel facts without double counting" {
+ #assert hwi_wheel(10,0,false,0,false,0)==100;
+ #assert hwi_wheel(-1.25,0,false,0,false,1)==(-1.25)&&hwi_wheel(2.5,0,false,0,false,2)==2.5;
+ #assert hwi_wheel(10,-2,true,0,false,0)==(-200);
+ #assert hwi_wheel(10,2,true,-30,true,0)==(-25);
+ #assert hwi_wheel(10,2,true,0,true,0)==0;
+ #assert hwi_wheel(2.5,0,false,0,false,3)==25;
+ #assert hwi_wheel(2.5,1,true,0,false,1)==2.5;
+ #assert hwi_wheel(2.5,0,false,0,false,-1)==0&&hwi_wheel(2.5,0,false,0,false,4)==0;
+}
+#test "Wayland physical modifier transitions include the event before serialized mask updates" {
+ #assert hwi_role(0xffe1)==1&&hwi_role(0xffe2)==1&&hwi_role(0xffe3)==2&&hwi_role(0xffe4)==2;
+ #assert hwi_role(0xffe9)==4&&hwi_role(0xffea)==4&&hwi_role(0xffe7)==8&&hwi_role(0xffe8)==8&&hwi_role(0xffeb)==8&&hwi_role(0xffec)==8&&hwi_role(0)==0;
+ #assert hwi_mod_event(0,1,true,false)==1&&hwi_mod_event(1,1,false,false)==0&&hwi_mod_event(1,1,false,true)==1;
+ #assert hwi_mod_event(9,2,true,false)==11&&hwi_mod_event(15,4,false,false)==11&&hwi_mod_event(15,8,false,false)==7;
+ #assert hwi_mod_event(0,0,true,false)==0&&hwi_mod_event(9,3,false,false)==9&&hwi_mod_event(9,16,true,false)==9;
+ #assert hwi_mod_event(-1,1,true,false)==0&&hwi_mod_event(16,1,true,false)==0;
+ #assert hwi_mod_event(15,0,false,false)==15;
+}
+hwi_key::(symbol:int,unicode:int)->int #export_c {
+ if symbol==0xff1b{return -1;}if symbol==0xff0d||symbol==0xff8d{return -2;}if symbol==0xff08{return -3;}
+ if symbol==0xff51{return -4;}if symbol==0xff53{return -5;}if symbol==0xff52{return -6;}if symbol==0xff54{return -7;}
+ if symbol==0xff50{return -8;}if symbol==0xff57{return -9;}if symbol==0xff55{return -10;}if symbol==0xff56{return -11;}if symbol==0xffff{return -12;}
+ if symbol==0xffe1||symbol==0xffe2{return -13;}if symbol==0xffe3||symbol==0xffe4{return -14;}if symbol==0xff09||symbol==0xfe20{return -15;}
+ if unicode<1||unicode>0x10ffff||(unicode>=0xd800&&unicode<=0xdfff){return 0;}return unicode;
+}
+hwi_mods::(shift:bool,control:bool,alt:bool,meta:bool)->int #export_c {return (ifx shift then 1 else 0)|(ifx control then 2 else 0)|(ifx alt then 4 else 0)|(ifx meta then 8 else 0);}
+hwi_text::(wants:bool,mods:int,key:int)->bool #export_c {return wants&&(mods==0||mods==1||mods==4||mods==5)&&key>=32&&key!=127;}
+hwi_keymap::(bytes:int)->bool #export_c {return bytes>=1&&bytes<=1048576;}
+hwi_commit::(bytes:int)->bool #export_c {return bytes>=1&&bytes<=1024;}
+hwi_wheel::(value:f64,discrete:int,has_discrete:bool,value120:int,has120:bool,source:int)->f64 #export_c {
+ if source<0||source>3{return 0;}if source==1||source==2{return value;}
+ if has120{return f64(value120)*(100.0/120.0);}if has_discrete{return f64(discrete)*100.0;}return value*10.0;
+}
+hwi_role::(symbol:int)->int #export_c {
+ if symbol==0xffe1||symbol==0xffe2{return 1;}if symbol==0xffe3||symbol==0xffe4{return 2;}if symbol==0xffe9||symbol==0xffea{return 4;}if symbol==0xffe7||symbol==0xffe8||symbol==0xffeb||symbol==0xffec{return 8;}return 0;
+}
+hwi_mod_event::(current:int,role:int,down:bool,other:bool)->int #export_c {
+ if current<0||current>15{return 0;}if role!=1&&role!=2&&role!=4&&role!=8{return current;}
+ return (current&(15^role))|(ifx down||other then role else 0);
+}
