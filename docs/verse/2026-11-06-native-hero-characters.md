@@ -216,6 +216,52 @@ her current pack through the local `/private/` route:
 H3's texture tiers, H5 (a second world), H6 (replication), H7 (production)
 and H8 (native hosts) come after the recording works.
 
+### R1: the character pass (done, #12985)
+
+`?stage=echo` in Everglade draws Echo through the host's character pass, in
+the town's own depth buffer, light and aux targets and shadow map. The parts:
+
+- **Shading.** `aethyr/render/character.coax` holds Echo's shading (her
+  materials, skinning, morphs, strands and the skin and fibre light), moved
+  out of `apps/openagents-web/gpu/valleycanyon.coax`, which now loads it.
+  Its pass entries are `ch_character_vs/fs` (body and strands) and
+  `ch_caster_vs/fs`. `apps/openagents-web/character.wgsl` is written from it
+  (`gpu/character.module`, `gpu/character.bindings`).
+- **SceneLights.** `aethyr/render/scene-lights.coax` lays out the block: the
+  world's clip rows and camera, the shadow map's rows, the key light, sky and
+  ground ambient, the haze, up to 8 point lights (the 8 nearest her that
+  reach her), wetness and the aux distance scale. Everglade fills it each
+  frame in `apps/openagents-web/everglade-character.coax`, from the same
+  uniforms its own shaders read. The pass writes linear light, and the
+  town's post pass tones it as it tones the town.
+- **Runtime.** `apps/openagents-web/character-host.coax` (`build/character-host.wasm`,
+  41,715 bytes) runs Echo on `aethyr/character/` beside the world: pack
+  admission (SHA-256, catalog, part sizes), standing on the locomotion graph,
+  her idle face cycle, the hair's share by her head's size on screen, her
+  palette. Everglade's wasm grows by 10 KB (the block and four exports), and
+  no Everglade visitor loads anything else until a stage places her.
+- **Host.** `coax/web/character-host.js` loads the runtime, `character.wgsl`
+  and her pack (`/private/valley-slay.pack` locally, the broker on
+  openagents.com) only when the world's `coaxial_character_v1` returns a
+  block. It draws her caster after the world's casters in the shadow pass,
+  and her body, then her strands, after the world's opaque geometry and
+  before its water and particles. A world that may place her asks the device
+  for her 187,564,308-byte vertex binding (`coaxial_character_storage_v1`),
+  as far as the adapter allows.
+
+Measured on this Mac (headless Chrome, 1280×720 at DPR 1): the 1 GB pack
+loads, is checked and uploaded in 10 to 13 s; the runtime's step takes under
+0.1 ms; the close-up frame holds 60 FPS (the display's rate) with half the
+strands drawn. `coax/web/everglade-echo-frames.coax` records the orbit's
+frames, and the TF0290 frames stay byte-identical. Eyes take 0.35 of the
+light (`CH_EYE_SHADE`): the town's map, about 6 cm a texel, can't shadow them
+under her lids as Valley Lab's close map does.
+
+Left for R3 and later: placing her by the stage rather than a fixed spot,
+her capsule, the production render path (the render packages draw through
+`render.js`, not this pass), a close shadow map for the face, and the Valley
+page on the pass (H2).
+
 ## Risks
 
 - **Frame time.** Strand hair is the costliest part: the Valley page runs the

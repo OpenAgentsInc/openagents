@@ -8,7 +8,7 @@
 //    key light, sky, lamps, haze and weather, and goes through the world's tone.
 // The pass's module is apps/openagents-web/character.wgsl, written from this file by
 // coax/web/wgsl-module.coax (apps/openagents-web/gpu/character.module and character.bindings):
-//   coax/web/tool.sh coax/web/wgsl-module.coax aethyr/render/character.coax apps/openagents-web/character.wgsl apps/openagents-web/gpu/character.module
+//   coax/web/tool.sh coax/web/wgsl-module.coax apps/openagents-web/gpu/character.coax apps/openagents-web/character.wgsl apps/openagents-web/gpu/character.module
 // Echo's word offsets and material slots are her pack's (verse/valley/); they move into the
 // character pack's own data with Character pack v1 (H3).
 //   coax/bin/coax test aethyr/render/character.coax
@@ -277,4 +277,125 @@ cv_echo_material :: (normal:V3,tangent:V4,world:V3,uv:V2,material:f32,u:[]f32,sh
     if material==0 {rough=rough*0.6+0.095238;}if material==1 || material==15 {rough*=0.721429;}if material==8 {rough*=0.883333;}if material==5 || material==13 {rough*=0.857451;}
    }
  return EchoMaterial.{normal=n,albedo=albedo,rough=rough,metal=metal,f0=skin_f0,occlusion=occlusion};
+}
+
+// ---- the character pass: Echo in a world (host.js draws these after the world's opaque geometry,
+// before its blended geometry, and the caster in the world's shadow pass). u is the SceneLights
+// block (scene-lights.coax); vertices her pack's vertex words, bones her palette, morph weights and
+// hand capsules (the character runtime's store), sheets her texture layers.
+ch_rows :: (u:[]f32,at:int,p:V3)->V4 {q:=v4(p.x,p.y,p.z,1);return v4(wg_dot4(wg_at4(u,at),q),wg_dot4(wg_at4(u,at+4),q),wg_dot4(wg_at4(u,at+8),q),wg_dot4(wg_at4(u,at+12),q));}
+ch_clip :: (u:[]f32,p:V3)->V4 {return ch_rows(u,SCL_CLIP,p);}
+ch_shadow_place :: (u:[]f32,p:V3)->V3 {q:=v4(p.x,p.y,p.z,1);at:=SCL_SHADOW;return v3(wg_dot4(wg_at4(u,at),q),wg_dot4(wg_at4(u,at+4),q),wg_dot4(wg_at4(u,at+8),q));}
+// Her skinned, morphed place, normal and tangent (Valley Lab's instance 2), or a strand ribbon's.
+ChSurface :: struct {pos:V4;world:V3;normal:V3;uv:V2;tangent:V4;material:f32;paint:V4;extra:V4;extra2:V4;}
+ch_hidden :: ()->ChSurface {return ChSurface.{pos=v4(0,0,-2,1),world=v3(0,0,0),normal=v3(0,1,0),uv=v2(0,0),tangent=v4(0,0,0,1),material=26,paint=v4(0,0,1,1),extra=v4(0,0,0,0),extra2=v4(0,0,0,0)};}
+// A point light's share at p: the world's pool, (1 - (d/reach)^2)^2 (Everglade's lamps).
+ch_pool :: (d:f32,reach:f32)->f32 {k:=clampf(1-d*d/fmax(reach*reach,0.0001f32),0.0f32,1.0f32);return k*k;}
+#test "A point light's pool is full at the light and gone at its reach" {#assert ch_pool(0,4)==1 && ch_pool(4,4)==0 && ch_pool(5,4)==0 && abs(ch_pool(2,4)-0.5625)<0.00001;}
+// The hemisphere ambient by the normal's y (aethyr/render/light.coax verse_style_ambient).
+ch_ambient :: (u:[]f32,ny:f32)->V3 {return v3(verse_style_ambient(ny,u[SCL_SKY],u[SCL_GROUND],1),verse_style_ambient(ny,u[SCL_SKY+1],u[SCL_GROUND+1],1),verse_style_ambient(ny,u[SCL_SKY+2],u[SCL_GROUND+2],1));}
+// The strands' light at one vertex: the key (shadowed per pixel) and the rest (sky, ground and the
+// point lights), through the same fibre and dual-scattering model Valley Lab's rig uses. The world's
+// light is in its own albedo units, so a lambert surface takes pi times it (cv_area_light's 1/pi).
+CH_PI :: 3.14159265f32;
+CH_EYE_SHADE :: 0.35f32;
+ChHairLight :: struct {key:V3;rest:V3;}
+ch_hair_light :: (u:[]f32,albedo:V3,rough:f32,seed:f32,t:V3,world:V3)->ChHairLight {
+ v:=wg_normalize3(cv_sub(cv_at(u,SCL_EYE),world));avg:=cv_hair_averages(albedo,-wg_dot3(t,v));
+ key:=cv_mul(cv_scale(cv_fiber_light(albedo,t,cv_at(u,SCL_KEY_DIR),v,rough,seed,avg),CH_PI),cv_at(u,SCL_KEY));
+ rest:=cv_mul(albedo,cv_scale(cv_add(cv_at(u,SCL_SKY),cv_at(u,SCL_GROUND)),0.5));
+ for k:0..<SCL_MAX_LIGHTS {
+  if cast(f32)k>=u[SCL_OUT] {break;}at:=SCL_LIGHTS+k*8;delta:=cv_sub(cv_at(u,at),world);d:=wg_length3(delta);share:=ch_pool(d,u[at+3]);
+  if share>0 {rest=cv_add(rest,cv_mul(cv_scale(cv_fiber_light(albedo,t,cv_scale(delta,1/fmax(d,0.001f32)),v,rough,seed,avg),CH_PI*share*u[at+7]),cv_at(u,at+4)));}
+ }
+ return ChHairLight.{key=key,rest=rest};
+}
+ch_place :: (id:u32,u:[]f32,vertices:[]u32,bones:[]f32)->ChSurface {
+ if id>=1000000 {
+  if !cv_groom_kept(id,vertices,u,false) {return ch_hidden();}
+  g:=cv_groom(id,vertices,u,bones,false);rough:=mix(0.32f32,0.45f32,g.uv.y)*(1+0.1*g.uv.x);
+  lit:=ch_hair_light(u,cv_hair_colour(u,g.uv.x,g.uv.y),rough,g.uv.y,wg_normalize3(g.tangent),g.world);
+  return ChSurface.{pos=ch_clip(u,g.world),world=g.world,normal=g.normal,uv=g.uv,tangent=v4(g.tangent.x,g.tangent.y,g.tangent.z,1),material=g.material,paint=v4(g.coverage,g.edge,1,1),extra=v4(lit.key.x,lit.key.y,lit.key.z,1),extra2=v4(lit.rest.x,lit.rest.y,lit.rest.z,0)};
+ }
+ at:=cv_vertex_at(id,vertices);m:=cv_morph(id,vertices,bones,u);world:=cv_add(cv_at(u,SCL_AT),cv_echo_direction(cv_skin(id,v4(m.position.x,m.position.y,m.position.z,1),vertices,bones),u));
+ normal:=cv_echo_direction(cv_skin(id,v4(m.normal.x,m.normal.y,m.normal.z,0),vertices,bones),u);t:=cv_echo_direction(cv_skin(id,v4(cv_word(vertices,at+15),cv_word(vertices,at+16),cv_word(vertices,at+17),0),vertices,bones),u);
+ return ChSurface.{pos=ch_clip(u,world),world=world,normal=normal,uv=v2(cv_word(vertices,at+6),cv_word(vertices,at+7)),tangent=v4(t.x,t.y,t.z,cv_word(vertices,at+18)),material=cast(f32)vertices[at+8],paint=v4(1,1,1,1),extra=v4(1,1,1,1),extra2=v4(0,0,0,0)};
+}
+ch_character_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,bones:[]f32)->ChSurface {return ch_place(id,u,vertices,bones);}
+// The world's shadow map at p (1 lit, 0 shadowed): a 3x3 filter over the world's map, read as the
+// world's casters wrote it, offset off the surface along its normal.
+ch_shadow :: (u:[]f32,p:V3,n:V3,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->f32 {
+ if u[SCL_SHADOW_INFO]<0.5 {return 1;}
+ q:=ch_shadow_place(u,cv_add(p,cv_scale(n,u[SCL_SHADOW_INFO+3])));if !(abs(q.x)<1 && abs(q.y)<1 && q.z>0 && q.z<1) {return 1;}
+ lit:f32=0;r:=u[SCL_SHADOW_INFO+1];for y:0..<3 {for x:0..<3 {lit+=gpu_compare(shadow_map,shadow_cmp,v2(q.x*0.5+0.5+cast(f32)(x-1)*r,0.5-q.y*0.5+cast(f32)(y-1)*r),q.z-u[SCL_SHADOW_INFO+2])/9;}}
+ return smoothstep(0.1f32,0.75f32,lit);   // firmed as the world firms its own (Everglade's eg_map_lit)
+}
+// The world's haze over her: Everglade's height haze (verse_style_haze) toward its hue by its share,
+// with the key light's glow through it (the moon's added, the sun's mixed).
+ch_haze :: (u:[]f32,c:V3,world:V3,v:V3)->V3 {
+ d:=wg_length3(cv_sub(cv_at(u,SCL_EYE),world));f:=verse_style_haze(d,world.y,u[SCL_HAZE],u[SCL_HAZE+1],u[SCL_HAZE+2],u[SCL_HAZE_HUE+3],u[SCL_HAZE+3]);
+ if f<=0 {return c;}cap:=u[SCL_HAZE_HUE+3];h:=v3(verse_style_haze_hue(u[SCL_HAZE_HUE],0.0f32,f,cap),verse_style_haze_hue(u[SCL_HAZE_HUE+1],1.0f32,f,cap),verse_style_haze_hue(u[SCL_HAZE_HUE+2],2.0f32,f,cap));
+ glow:=verse_style_haze_glow(wg_dot3(v,cv_at(u,SCL_KEY_DIR)));h=ifx u[SCL_GLOW+3]>0.5 then cv_add(h,cv_scale(cv_at(u,SCL_GLOW),glow)) else cv_add(cv_scale(h,1-glow),cv_scale(cv_at(u,SCL_GLOW),glow));
+ return cv_add(cv_scale(c,1-f),cv_scale(h,f));
+}
+#test "No haze before it starts, and her colour goes toward the haze's past it" {
+ u:[SCL_FLOATS]f32;u[SCL_HAZE]= -10;u[SCL_HAZE+1]=20;u[SCL_HAZE+2]=0.05;u[SCL_HAZE+3]=30;u[SCL_HAZE_HUE]=0.5;u[SCL_HAZE_HUE+1]=0.5;u[SCL_HAZE_HUE+2]=0.5;u[SCL_HAZE_HUE+3]=0.9;u[SCL_KEY_DIR+1]=1;
+ c:=ch_haze(u[..],v3(1,1,1),v3(0,0,5),v3(0,0,1));#assert c.x==1 && c.y==1;
+ c=ch_haze(u[..],v3(1,1,1),v3(0,0,80),v3(0,0,1));#assert c.x<1 && c.x>0.5;
+}
+// The light and aux targets as the world's post pass reads them (Everglade's convention): linear
+// light, its alpha the bloom's share (none: she is not a light) or a strand's coverage for the
+// blend; aux.g her distance over the aux scale, so the post pass's far softening leaves her sharp.
+ChLit :: struct {light:V4;aux:V4;}
+ch_out :: (u:[]f32,c:V3,alpha:f32,world:V3)->ChLit {
+ d:=wg_length3(cv_sub(cv_at(u,SCL_EYE),world));
+ return ChLit.{light=v4(c.x,c.y,c.z,alpha),aux=v4(0,d/fmax(u[SCL_OUT+1],0.001f32),0,alpha)};
+}
+ch_character_fs :: (s:ChSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices:[]u32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->ChLit {
+ dx:=v2(gpu_dpdx_fine(s.uv.x),gpu_dpdx_fine(s.uv.y));dy:=v2(gpu_dpdy_fine(s.uv.x),gpu_dpdy_fine(s.uv.y));
+ e:=cv_echo_material(s.normal,s.tangent,s.world,s.uv,s.material,u,sheets,sheet,vertices,dx,dy);
+ geo:=wg_normalize3(s.normal);v:=wg_normalize3(cv_sub(cv_at(u,SCL_EYE),s.world));wet:=clampf(u[SCL_LOOK],0.0f32,1.0f32);
+ hair:=s.material==26 || s.material==27;
+ if hair {
+  // strands are lit per vertex (ch_hair_light); a hair pixel adds the key's shadow and its coverage
+  colour:=cv_add(cv_scale(v3(s.extra.x,s.extra.y,s.extra.z),ch_shadow(u,s.world,geo,shadow_map,shadow_cmp)),v3(s.extra2.x,s.extra2.y,s.extra2.z));
+  colour=cv_scale(colour,1-0.3*wet);
+  return ch_out(u,ch_haze(u,colour,s.world,cv_scale(v,-1)),cv_groom_opacity(s.paint.x,s.paint.y),s.world);
+ }
+ skin:=s.material==ECHO_HEAD_SLOT || s.material==ECHO_SKIN_SLOT;
+ // rain darkens what it wets and sharpens its highlights
+ albedo:=cv_scale(e.albedo,1-(ifx skin then 0.12f32 else 0.3f32)*wet);rough:=clampf(e.rough*(1-0.35*wet),0.045f32,1.0f32);metal:=e.metal;n:=e.normal;
+ nv:=fmax(0.0001f32,wg_dot3(n,v));f0:=v3(mix(e.f0,albedo.x,metal),mix(e.f0,albedo.y,metal),mix(e.f0,albedo.z,metal));
+ // the eyes sit under her lids and brow, which the world's shadow map (centimetres a texel) can't
+ // resolve: they take CH_EYE_SHADE of the light, as her own close shadow map gives them on Valley Lab
+ eye:=s.material==ECHO_EYE_LEFT_SLOT || s.material==ECHO_EYE_RIGHT_SLOT;
+ inner:=ifx s.material==ECHO_TEETH_SLOT then SLAY_MOUTH_OCCLUSION else ifx eye then CH_EYE_SHADE else 1.0f32;contact:=ifx skin then fmin(1.0f32,e.occlusion*SLAY_SKIN_CONTACT) else 1.0f32;soft:=inner*contact;
+ l:=cv_at(u,SCL_KEY_DIR);key:=cv_at(u,SCL_KEY);shadow:=ch_shadow(u,s.world,geo,shadow_map,shadow_cmp);
+ colour:=cv_mul(cv_scale(albedo,(1-metal)*e.occlusion*inner),ch_ambient(u,n.y));
+ colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,l,v,1,0),CH_PI*shadow*soft),key));
+ // skin carries the key a little past its shadow's edge, mostly red (Valley Lab's subsurface bleed)
+ teeth:=s.material==ECHO_TEETH_SLOT;
+ if skin || teeth {bleed:=fmax(0.0f32,(wg_dot3(geo,l)+0.5)/1.5)*(1-shadow)*contact*(ifx teeth then SLAY_MOUTH_BLEED else 1.0f32);colour=cv_add(colour,v3(albedo.x*key.x*bleed*SLAY_SSS_BLEED_R,albedo.y*key.y*bleed*SLAY_SSS_BLEED_G,0));}
+ for k:0..<SCL_MAX_LIGHTS {
+  if cast(f32)k>=u[SCL_OUT] {break;}at:=SCL_LIGHTS+k*8;delta:=cv_sub(cv_at(u,at),s.world);d:=wg_length3(delta);share:=ch_pool(d,u[at+3]);
+  if share>0 {colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,cv_scale(delta,1/fmax(d,0.001f32)),v,1,0),CH_PI*share*u[at+7]*soft),cv_at(u,at+4)));}
+ }
+ // reflections of the sky: the split-sum environment at the sky's ambient, faded in creases
+ env:=pbr_environment(rough,nv);sky:=cv_at(u,SCL_SKY);reflect:=cv_scale(cv_add(cv_scale(f0,env.a),v3(env.b,env.b,env.b)),cv_specular_occlusion(nv,e.occlusion,rough)*inner*(1+wet));
+ colour=cv_add(colour,cv_mul(reflect,sky));
+ return ch_out(u,ch_haze(u,colour,s.world,cv_scale(v,-1)),0,s.world);
+}
+// Her shadow caster: the world's shadow pass draws it into the world's map, a quarter of the strands
+// at most (cv_groom_share), the strands' coverage and her masks cut as Valley Lab's caster cuts them.
+ChCaster :: struct {pos:V4;uv:V2;material:f32;coverage:f32;edge:f32;}
+ch_caster_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,bones:[]f32)->ChCaster {
+ if u[SCL_SHADOW_INFO]<0.5 || (id>=1000000 && !cv_groom_kept(id,vertices,u,true)) {return ChCaster.{pos=v4(0,0,-2,1),uv=v2(0,0),material=26,coverage=0,edge=0};}
+ world:=v3(0,0,0);uv:=v2(0,0);material:f32=0;coverage:f32=1;edge:f32=0;
+ if id>=1000000 {g:=cv_groom(id,vertices,u,bones,true);world=g.world;uv=g.uv;material=g.material;coverage=g.coverage;edge=g.edge;}
+ else {at:=cv_vertex_at(id,vertices);m:=cv_morph(id,vertices,bones,u);world=cv_add(cv_at(u,SCL_AT),cv_echo_direction(cv_skin(id,v4(m.position.x,m.position.y,m.position.z,1),vertices,bones),u));uv=v2(cv_word(vertices,at+6),cv_word(vertices,at+7));material=cast(f32)vertices[at+8];}
+ q:=ch_shadow_place(u,world);return ChCaster.{pos=v4(q.x,q.y,q.z,1),uv=uv,material=material,coverage=coverage,edge=edge};
+}
+ch_caster_fs :: (s:ChCaster,vertices:[]u32,sheets:Tex2DArray,sheet:Sampler) {
+ if s.material==26 || s.material==27 {noise:=sin(floor(s.pos.x)*12.9898+floor(s.pos.y)*78.233+s.uv.y*437.0)*43758.5453;if cv_groom_opacity(s.coverage,s.edge)<noise-floor(noise) {gpu_discard();}}
+ dx:=v2(gpu_dpdx_fine(s.uv.x),gpu_dpdx_fine(s.uv.y));dy:=v2(gpu_dpdy_fine(s.uv.x),gpu_dpdy_fine(s.uv.y));cv_echo_mask(s.uv,s.material,vertices,sheets,sheet,dx,dy);
 }

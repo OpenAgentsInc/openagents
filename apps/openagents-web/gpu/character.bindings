@@ -1,0 +1,12 @@
+# The character pass's bindings for `coax wgsl aethyr/render/character.coax` (coax/web/wgsl-module.coax):
+# NAME GROUP BINDING, and `uniform COUNT` for a []f32 read as a uniform block of COUNT vec4fs.
+# coax/web/host.js's character pass: group 0 the SceneLights block (aethyr/render/scene-lights.coax,
+# SCL_FLOATS / 4 rows); group 1 the character's vertex words, its palette store, its texture layers
+# and their sampler; group 2 the world's shadow map and its comparison sampler.
+u 0 0 uniform 68
+vertices 1 0
+bones 1 1
+sheets 1 2
+sheet 1 3
+shadow_map 2 0
+shadow_cmp 2 1

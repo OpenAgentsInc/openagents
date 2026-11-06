@@ -25,10 +25,10 @@
 //   180..183 the haze's hue (rgb) and its cap
 //   184..187 the haze: the eye's base height (m), where it starts (m), its density (1/m), its falloff (m)
 //   188..191 the key light seen through the haze (rgb), 1 when it is added (the moon) rather than mixed
-//   192..195 how wet surfaces are (0 to 1), rain, exposure, 0 when the world's post pass tones the
-//            light target (else the character tones it with Aethyr's film response, as Valley Lab does)
-//   196..199 how many point lights, 0 for the world's aux convention (aux.g distance / 199), the
-//            aux distance scale (m), 0
+//   192..195 how wet surfaces are (0 to 1), rain, 0, 0
+//   196..199 how many point lights, the aux distance scale (m: aux.g is the distance over it), 0, 0
+// The pass writes linear light for the world's post pass to tone (Everglade's light and aux
+// targets), as the world's own geometry does.
 //   200..263 up to 8 point lights, two rows each: x, y, z, reach (m); r, g, b, strength
 //
 // The first 128 floats keep Valley Lab's slots, the ones Echo's shared shading reads (the camera,

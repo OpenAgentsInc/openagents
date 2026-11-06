@@ -142,6 +142,9 @@ bitcoin_lab=$!
 valleylab=$!
 "$here/../../coax/web/wasm.sh" "$here/valleycanyon.coax" "$here/valleycanyon-face.c" "$here/build/valleycanyon.wasm" &
 valleycanyon=$!
+# The character pass's runtime, loaded beside a world that places a character (coax/web/character-host.js).
+"$here/../../coax/web/wasm.sh" "$here/character-host.coax" "$here/character-host-face.c" "$here/build/character-host.wasm" &
+characterhost=$!
 "$here/../../coax/web/wasm.sh" "$here/valleyworld.coax" "$here/valleyworld-face.c" "$here/build/valleyworld.wasm" &
 valleyworld=$!
 # /worlds/anime-lab: direct an anime (docs/verse/anime-lab.md): the director and stage (verse/anime/), the
@@ -304,6 +307,7 @@ wait "$waterlab"
 wait "$bitcoin_lab"
 wait "$valleylab"
 wait "$valleycanyon"
+wait "$characterhost"
 wait "$animationlab"
 wait "$ocarinalab"
 wait "$valleyworld"

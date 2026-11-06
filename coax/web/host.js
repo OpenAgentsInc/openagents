@@ -224,6 +224,7 @@ import { makeHttpRequests } from "./http-requests.js";
 import { makeHostTransport } from "./host-transport.js";
 import {openSocketRetention,makeSocketQueues} from "./socket-queue-host.js";
 import {openPackHost} from "./pack-host.js";
+import { characterPass } from "./character-host.js";
 import { makeHostLifecycle } from "./host-lifecycle.js";
 import { openHostServices, openPcmMemory } from "./services-host.js";
 import { openCoaxAudio, renderCoaxAudio, renderClipAudio } from "./audio-host.js";
@@ -313,6 +314,9 @@ let last = 0;
 let sceneEpoch = 0, pendingSceneEpoch = -1, installedGeneration = 0, shaderLoads = 0;
 let renderReload = Promise.resolve();
 let packHost=null,packRetirement=Promise.resolve();
+// The character pass: only a world that places a character (coaxial_character_v1) loads anything.
+const characters = characterPass({ gpu: () => gpu, dev, golden, site: /(^|\.)openagents\.com$/.test(location.hostname),
+  privatePack: (session, cipher) => privatePack(session, cipher), unpack: (bytes) => unpack(bytes), decode: (bytes, options) => layerBitmap(bytes, options) });
 const packGroups=new Map();
 function retirePacks(test=()=>true){
   const selected=[...packGroups.values()].filter(test);
@@ -917,7 +921,10 @@ async function openDevice(made = () => {}) {
   if(roomTraceEnabled)globalThis.coaxial.gpuAdapterInfo={vendor:adapter.info?.vendor,architecture:adapter.info?.architecture,device:adapter.info?.device,description:adapter.info?.description,fallback:adapter.info?.isFallbackAdapter??adapter.isFallbackAdapter??null};
   // a page with data-timing asks for the GPU's timestamps (message 610), when the adapter has them
   const timing = !!script?.dataset.timing && adapter.features.has("timestamp-query");
-  const storage = engine?.exports.coaxial_storage_limit_v1?.() ?? 0;
+  // a world that may place a detailed character (the character pass) asks for her vertex words'
+  // binding, as far as the adapter has it; she stays off on one that has less
+  const character = Math.min(engine?.exports.coaxial_character_storage_v1?.() ?? 0, adapter.limits.maxStorageBufferBindingSize);
+  const storage = Math.max(engine?.exports.coaxial_storage_limit_v1?.() ?? 0, character);
   const options = timing ? { requiredFeatures: ["timestamp-query"] } : {};
   if (storage) options.requiredLimits = { maxStorageBufferBindingSize: storage };
   const device = await adapter.requestDevice(options);
@@ -2662,6 +2669,8 @@ function draw(now) {
     }
   };
   const cast = gpu.caster && x.coaxial_caster_instances ? [x.coaxial_caster_vertices(arena.state), x.coaxial_caster_instances(arena.state)] : [0, 0];
+  // the character pass (character-host.js): a detailed character the world places, in its passes
+  const hero = draws && gpu.shadow ? characters.want(x, arena.state, memory, now) : false;
   if (((draws || shadowDraws) && gpu.shadow) || gpu.caster) {
     // cleared every frame even with nothing to cast, so a traced scene never reads a stale map
     const shade = encoder.beginRenderPass({ colorAttachments: [],
@@ -2669,6 +2678,7 @@ function draw(now) {
     shade.setBindGroup(0, gpu.bindGroup);
     if (shadowDraws && gpu.shadow) { shade.setPipeline(gpu.shadow); drawScene(shade, false, shadowList, separateShadow ? shadowDraws : draws - wet, true); }
     if (cast[0] && cast[1]) { shade.setPipeline(gpu.caster); shade.draw(cast[0], cast[1]); }
+    if (hero) characters.cast(shade);
     shade.end();
   }
   // the particles' sort (the header's "Sorting"), before the pass that draws them; timed when asked
@@ -2694,6 +2704,12 @@ function draw(now) {
     pass.setPipeline(gpu.scene);
     if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup);
     drawScene(pass, true);
+    if (hero) {
+      // after the world's opaque geometry, before its water and particles; then the world's groups again
+      characters.draw(pass);
+      pass.setBindGroup(0, gpu.bindGroup); pass.setBindGroup(1, gpu.sceneGroup); pass.setBindGroup(2, gpu.shadowGroup);
+      if (gpu.index) pass.setIndexBuffer(gpu.index, "uint32");
+    }
     const sparks = gpu.particles ? x.coaxial_particle_instances(arena.state) : 0;
     if ((wet || (sparks && gpu.particleDepth)) && post && gpu.waterCopyGroup) {
       // W5: the scene's light and depth as they stand before the water (and the soft particles), then on
@@ -2948,6 +2964,7 @@ globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageF
   fieldProbe: (field = 0) => engine?.exports.coaxial_field_probe?.(arena.state, field) ?? -1 };
 // Headless verification observes effects without exposing renderer policy.
 if (dev) {
+  globalThis.coaxial.character=()=>characters.info();
   globalThis.coaxial.packRetention=()=>({...(packHost?.info()??{}),groups:packGroups.size});
   globalThis.coaxial.socketRetention=()=>({active:socketQueues?.info()??null,retired:lastSocketQueueRetired});
   globalThis.coaxial.holdSocketDelivery=value=>{socketDeliveryHeld=!!value;};

@@ -1,0 +1,130 @@
+// The character runtime the host runs beside a world (coax/web/host.js, the "character pass"
+// section; docs/verse/2026-11-06-native-hero-characters.md, Design 3). A world that places a
+// character asks for her pack by name (coaxial_character_pack_v1); the host loads this module and
+// the pack only then, so a world's own wasm and memory carry none of it (Everglade's wasm has about
+// 150 KB of its budget left, and Echo's rig, face and catalog take about 46 MB of memory). Each
+// frame the host copies the world's SceneLights block (aethyr/render/scene-lights.coax) in here;
+// this steps her idle body and idle face on a 1/64 s clock, fills the block's character slots (the
+// hair's share, the morph switch, the head profile) and her palette, and names her draws. Her body
+// and face run on Aethyr's character runtime (aethyr/character/), with Echo's declarations
+// (verse/valley/echo.coax): standing on the locomotion graph, her idle face segments on their cycle.
+//   coax/bin/coax test apps/openagents-web/character-host.coax
+#load "../../verse/valley/echo.coax";
+#load "../../verse/valley/canyon-pack-policy.coax";
+#load "../../verse/valley/slay-gpu-policy.coax";
+#load "../../aethyr/render/scene-lights.coax";
+
+// The valley-slay pack's parts and Echo's two draws in its index buffer (Valley Lab's canyon_frame):
+// her body, then her strands (drawn blended).
+CHARACTER_INDEX_BYTES :: 73674948;
+CHARACTER_LAYERS :: 35;
+CHARACTER_DRAWS :: 2;
+CHARACTER_BODY :: [4]u32.[2999985, 522009, 0, 1];
+CHARACTER_GROOM :: [4]u32.[4470303, 13811136, 0, 1];
+CHARACTER_STEP :: 1.0f32 / 64.0f32;
+// Her eyes over her feet, for the head's height on screen.
+CHARACTER_HEAD :: 1.6f32;
+// The hair's share by the head's height on screen (Valley Lab's canyon_hair_share): the strands per
+// pixel stay about the same below 300 pixels, never under 2%, at most half.
+CHARACTER_HAIR_FULL :: 300.0f32;
+CHARACTER_HAIR_MAX :: 0.5f32;
+
+CharacterHost :: struct {
+  echo: [1] Character; pack: [1] CharacterPack;
+  block: [SCL_FLOATS] f32; draws: [CHARACTER_DRAWS * 4] u32;
+  digest: [32] u8; verified: bool; failed: bool; assets: [4] int;
+  clock: f32; share: f32; frames: int;
+}
+
+// The catalog's landing place (the face's one static scratch), named so the face's header has its type.
+character_catalog_capacity :: (scratch: [] EchoCatalogScratch) -> int #export_c #effects(all) { return scratch[0].bytes.count; }
+character_pack_gate :: (s: [] CharacterHost, bytes: int) -> bool #export_c #effects(all) {
+  s[0].verified = canyon_pack_accept(s[0].digest[..], bytes);
+  if !s[0].verified { s[0].failed = true; }
+  return s[0].verified;
+}
+character_catalog :: (s: [] CharacterHost, b: [] u8) -> bool #export_c #effects(all) {
+  s[0].assets[0] = b.count;
+  if !s[0].verified || !echo_catalog_admit(s[0].pack[..], 0, b) || !echo_spawn(s[0].echo[..], s[0].pack[..], 0) { s[0].failed = true; return false; }
+  return true;
+}
+// The pack's other parts, by their sizes: the vertex words, the indices, the texture layers.
+character_asset :: (s: [] CharacterHost, index: int, bytes: int) #export_c #effects(all) {
+  if index < 1 || index > 3 { return; }
+  s[0].assets[index] = bytes;
+  want := ifx index == 1 then slay_gpu_storage() else ifx index == 2 then CHARACTER_INDEX_BYTES else CHARACTER_LAYERS;
+  if bytes != want { s[0].failed = true; }
+}
+character_ready :: (s: [] CharacterHost) -> bool #export_c #effects(all) {
+  return s[0].verified && !s[0].failed && s[0].echo[0].ready && s[0].assets[1] == slay_gpu_storage() && s[0].assets[2] == CHARACTER_INDEX_BYTES && s[0].assets[3] == CHARACTER_LAYERS;
+}
+character_hair_share :: (head: f32) -> f32 {
+  r := head / CHARACTER_HAIR_FULL; q := r * r;
+  return ifx q < 0.02 then 0.02f32 else ifx q > CHARACTER_HAIR_MAX then CHARACTER_HAIR_MAX else q;
+}
+// Her head's height on screen in pixels, from the block's camera.
+character_head_pixels :: (b: [] f32) -> f32 {
+  hx := b[SCL_AT] - b[SCL_EYE]; hy := b[SCL_AT + 1] + CHARACTER_HEAD - b[SCL_EYE + 1]; hz := b[SCL_AT + 2] - b[SCL_EYE + 2];
+  z := hx * b[SCL_FORWARD] + hy * b[SCL_FORWARD + 1] + hz * b[SCL_FORWARD + 2];
+  if z <= 0.05 { return 100000; }
+  return 0.25 * b[SCL_FOCAL_Y] / z * b[SCL_SIZE + 1] * 0.5;
+}
+// One frame: her clock on by dt in whole 1/64 s steps (standing, her idle face cycle), then the block's
+// character slots and the draws. Returns how many draws (0 until she is ready).
+character_frame :: (s: [] CharacterHost, dt: f32) -> int #export_c #effects(all) {
+  if !character_ready(s) { return 0; }
+  e := s[0].echo[..];
+  step := ifx dt > 0 && dt < 0.25 then dt else 0.0f32;
+  s[0].clock += step;
+  p := s[0].pack[..];
+  while s[0].clock >= CHARACTER_STEP {
+    s[0].clock -= CHARACTER_STEP;
+    character_step(e, p, CHARACTER_STEP);
+  }
+  s[0].frames += 1;
+  b := s[0].block[..];
+  s[0].share = character_hair_share(character_head_pixels(b));
+  b[SCL_HAIR] = s[0].share;
+  b[SCL_MORPH] = ifx e[0].face[0].enabled && e[0].face[0].fade > 0 then 1.0f32 else 0.0f32;
+  b[SCL_RIG] = 0; b[SCL_PROFILE] = 1;
+  for k: 0..<4 { s[0].draws[k] = CHARACTER_BODY[k]; s[0].draws[4 + k] = CHARACTER_GROOM[k]; }
+  return CHARACTER_DRAWS;
+}
+// 0 opaque, 2 blended over what is behind (host.js's scene blend profiles).
+character_draw_blend :: (index: int) -> int #export_c #effects(all) { return ifx index == 1 then 2 else 0; }
+character_probe :: (s: [] CharacterHost, field: int) -> int #export_c #effects(all) {
+  if field == 0 { return ifx character_ready(s) then 1 else 0; }
+  if field == 1 { return s[0].echo[0].clip; }
+  if field == 2 { return cast(int) (s[0].share * 1000); }
+  if field == 3 { return ifx s[0].echo[0].face[0].enabled then 1 else 0; }
+  if field == 4 { return s[0].frames; }
+  if field == 5 { return ifx s[0].failed then 1 else 0; }
+  if field >= 10 && field < 14 { return s[0].assets[field - 10]; }
+  return -1;
+}
+
+#test "She draws once her digest, catalog and three parts are in; her clock runs in whole steps; the hair's share falls with her head's size" #steps 1000000000 {
+  s: [1] CharacterHost;
+  #assert !character_ready(s[..]) && character_frame(s[..], 0.1) == 0;
+  #assert !character_pack_gate(s[..], 12) && s[0].failed;
+  s[0].failed = false;
+  n := echo_rig_fixture(s[0].pack[0].data[..], 1);
+  s[0].verified = true;
+  #assert character_pack_rig(s[0].pack[..], 0, n) && echo_spawn(s[0].echo[..], s[0].pack[..], 0);
+  character_asset(s[..], 1, slay_gpu_storage()); character_asset(s[..], 2, CHARACTER_INDEX_BYTES);
+  #assert !character_ready(s[..]);
+  character_asset(s[..], 3, CHARACTER_LAYERS);
+  #assert character_ready(s[..]);
+  b := s[0].block[..];
+  b[SCL_SIZE + 1] = 720; b[SCL_FOCAL_Y] = 1.25; b[SCL_FORWARD + 2] = 1; b[SCL_AT + 2] = 0.3;   // close
+  #assert character_frame(s[..], 0.02) == CHARACTER_DRAWS && s[0].draws[1] == 522009 && s[0].draws[5] == 13811136;
+  #assert abs(s[0].clock - (0.02 - CHARACTER_STEP)) < 0.00001;
+  #assert b[SCL_HAIR] == CHARACTER_HAIR_MAX && b[SCL_PROFILE] == 1 && b[SCL_RIG] == 0;
+  b[SCL_AT + 2] = 30;
+  _ := character_frame(s[..], 0);
+  #assert b[SCL_HAIR] == 0.02f32;
+  #assert character_hair_share(10) == 0.02f32 && character_hair_share(600) == CHARACTER_HAIR_MAX && abs(character_hair_share(150) - 0.25) < 0.00001;
+  #assert character_draw_blend(0) == 0 && character_draw_blend(1) == 2;
+  character_asset(s[..], 2, 4);
+  #assert !character_ready(s[..]) && s[0].failed;
+}

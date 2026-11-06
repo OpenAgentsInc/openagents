@@ -1,0 +1,3 @@
+--vertices ch_character_vs,ch_caster_vs
+--fragments ch_character_fs,ch_caster_fs
+--bindings apps/openagents-web/gpu/character.bindings --strip ch_

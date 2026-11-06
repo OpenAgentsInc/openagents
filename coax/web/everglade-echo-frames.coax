@@ -1,0 +1,44 @@
+// Everglade's character pass, observed (docs/verse/2026-11-06-native-hero-characters.md, R1;
+// coax/web/character-host.js): the page in clip mode, so every frame is one fixed 1/30 s step,
+// read back from the measured offscreen GPU target.
+//   coax/web/tool.sh coax/web/everglade-echo-frames.coax URL OUTDIR echo
+//     waits for Echo's pack and pass, writes echo-0.png (the orbit's start) and, after N starts the
+//     orbit, echo-2.png, echo-4.png, echo-6.png and echo-9.png (its seconds); prints the pass's numbers
+//   coax/web/tool.sh coax/web/everglade-echo-frames.coax URL OUTDIR plain
+//     a page with no character: writes plain.png after 60 steps, to compare with another build's
+//   coax/web/tool.sh coax/web/everglade-echo-frames.coax URL OUTDIR fps
+//     the page in real time (no clip mode) once it is ready: frames a second over 10 s
+// Steps go one at a time, each waiting for the GPU, so the page admits every frame. PASS when every frame has visible pixels and the page logged no console errors.
+#load "valley-capture.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {print("usage: everglade-echo-frames URL OUTDIR echo|plain\n");return 2;}
+ echo:=args_at(a[..],2)=="echo";fps:=args_at(a[..],2)=="fps";
+ c:[1]Cdp;if !cdp_launch_background(c[..],1280,720,"echo-frames-") {return 1;}
+ _:=cdp_call(c[..],"Page.enable","",30000);_=cdp_call(c[..],"Emulation.setDeviceMetricsOverride","{\"width\":1280,\"height\":720,\"deviceScaleFactor\":1,\"mobile\":false}",30000);
+ b:[4096]u8;j:[1]Jo;jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"source");jo_str(j[..],ifx fps then "globalThis.faceErrors=[];" else "globalThis.coaxialClip=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';globalThis.faceErrors=[];globalThis.faceHashes=[];const ce=console.error;console.error=(...a)=>{faceErrors.push(a.map(String).join(' '));ce(...a)}");jo_end(j[..]);_=cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument",jo_text(j[..]),30000);
+ jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"url");jo_str(j[..],args_at(a[..],0));jo_end(j[..]);_=cdp_call(c[..],"Page.navigate",jo_text(j[..]),30000);
+ // the world drawn, and with echo her pack loaded and admitted and her pass built (a 1 GB pack: minutes at most)
+ want:=ifx fps then "!!globalThis.coaxial?.ready&&coaxial.sceneReady&&['off','ready','failed'].includes(coaxial.character?.().status??'off')" else ifx echo then "(async()=>!!globalThis.coaxial?.ready&&(await coaxialClipStep(1,30))===1&&coaxial.sceneReady&&coaxial.character().status==='ready')()" else "(async()=>!!globalThis.coaxial?.ready&&(await coaxialClipStep(1,30))===1&&coaxial.sceneReady)()";
+ ready:=false;until:=proc_now_ms()+240000;
+ while proc_now_ms()<until {n:=cdp_evaluate(c[..],want);if n>=0 && jv_raw(c[0].doc[0],n)=="true" {ready=true;break;}proc_sleep(100);}
+ if !ready {print("FAIL the page (and her pass) never came ready\n");n:=cdp_evaluate(c[..],"JSON.stringify({character:globalThis.coaxial?.character?.(),errors:faceErrors})");if n>=0 {print("%\n",jv_raw(c[0].doc[0],n));}cdp_close(c[..]);return 1;}
+ ok:=true;
+ if fps {
+  proc_sleep(3000);
+  n:=cdp_evaluate(c[..],"(async()=>{let n=0;const t0=performance.now();await new Promise(r=>{const f=()=>{n++;if(performance.now()-t0<10000)requestAnimationFrame(f);else r()};requestAnimationFrame(f)});return JSON.stringify({fps:Math.round(n/((performance.now()-t0)/1000)*10)/10,character:coaxial.character?.()})})()");
+  if n>=0 {print("fps: %\n",jv_raw(c[0].doc[0],n));}
+  cdp_close(c[..]);return 0;
+ }
+ if !echo {ok=fc_eval(c[..],"sixty steps","(async()=>{for(let i=0;i<60;i++)if((await coaxialClipStep(1,30))!==1)return false;return true})()") && fc_hash(c[..]) && fc_shot(c[..],args_at(a[..],1),"plain.png");}
+ else {
+  ok=fc_eval(c[..],"two steps for her first upload","(async()=>{for(let i=0;i<2;i++)if((await coaxialClipStep(1,30))!==1)return false;return true})()") && fc_hash(c[..]) && fc_shot(c[..],args_at(a[..],1),"echo-0.png") && fc_key(c[..],"n");
+  // 2, 4, 6 and 9 s into the orbit: 60, 60, 60 and 90 steps
+  steps:=[4]string.["(async()=>{for(let i=0;i<60;i++)if((await coaxialClipStep(1,30))!==1)return false;return true})()","(async()=>{for(let i=0;i<60;i++)if((await coaxialClipStep(1,30))!==1)return false;return true})()","(async()=>{for(let i=0;i<60;i++)if((await coaxialClipStep(1,30))!==1)return false;return true})()","(async()=>{for(let i=0;i<90;i++)if((await coaxialClipStep(1,30))!==1)return false;return true})()"];
+  names:=[4]string.["echo-2.png","echo-4.png","echo-6.png","echo-9.png"];
+  for k:0..<4 {if ok {ok=fc_eval(c[..],"orbit steps",steps[k]) && fc_hash(c[..]) && fc_shot(c[..],args_at(a[..],1),names[k]);}}
+  n:=cdp_evaluate(c[..],"JSON.stringify(coaxial.character())");if n>=0 {print("character pass: %\n",jv_raw(c[0].doc[0],n));}
+  ok=ok && fc_eval(c[..],"she drew every step","coaxial.character().frames>=272");
+ }
+ ok=ok && fc_eval(c[..],"no console errors","faceErrors.length===0");
+ cdp_close(c[..]);if ok {print("PASS % frames, no console errors\n",ifx echo then "five Echo" else "one plain");}return ifx ok then 0 else 1;
+}

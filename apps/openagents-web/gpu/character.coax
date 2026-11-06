@@ -1,0 +1,5 @@
+// The character pass's shaders (coax/web/host.js, the "character pass" section): Aethyr's character
+// module, aethyr/render/character.coax, every entry and binding as character.module and
+// character.bindings name them. apps/openagents-web/character.wgsl is written from this with
+// coax/web/wgsl-module.coax (build.sh's --site run).
+#load "../../../aethyr/render/character.coax";

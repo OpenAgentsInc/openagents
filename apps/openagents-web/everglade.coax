@@ -92,6 +92,7 @@
 #load "everglade-quality.coax";   // the graphics quality: tier, governor, knobs (aethyr/quality.coax)
 #load "everglade-warlock.coax";   // the Warlock's bar, spells and Zombies (CHARACTER: WARLOCK)
 #load "everglade-raid-preview.coax";   // the Cultist Raid offline, a preview (?raid=preview, &cine=1 its flight)
+#load "everglade-character.coax";   // a detailed character through the host's character pass (?stage=echo)
 #load "everglade-sound.coax";   // the spells', the fight's, the raid's and the town's sound (#12751)
 #load "everglade-access.coax";   // SETTINGS: keys and a pad through one record, text size, captions, the accessible layer (#12857)
 #load "../../verse/style-preset.coax";
@@ -495,6 +496,7 @@ Everglade :: struct {
   sp: Spells;                              // the spell bar and what breaks (everglade-spells.coax), with the ruleset srd5
   wl: Warlock;                             // the Warlock's bar and its spells' looks (everglade-warlock.coax)
   rp: RaidPreview;                         // the Cultist Raid offline, a preview (everglade-raid-preview.coax)
+  character: [SCL_FLOATS] f32;             // the character pass's SceneLights block (everglade-character.coax)
   wt: [1] Watch; wv: WatchView;            // the town watch and what the town does about a crime (everglade-watch.coax)
   fk: [] EgFork;                           // FORK, and a fork's rules: the face holds it (everglade-fork.coax everglade_attach_fork)
   fg: EgForge;                             // Aethyrforge's panels in edit mode (everglade-forge.coax)
@@ -4273,6 +4275,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   spells_lamps(s, u, ifx phone(s) then LIGHTS_PHONE else LIGHTS);   // the blasts' light, after the lamps
   u[U_GROUND] = f32(EG_CELLS); u[U_GROUND + 1] = f32(EG_CELL); u[U_GROUND + 2] = f32(EG_EDGE); u[U_GROUND + 3] = f32(EG_EDGE);
   paths(u, shot.eye);
+  everglade_character(s, u, width, height);   // after the lamps, the weather and the style
 
   s[0].near = ifx s[0].above || s[0].talk >= 0 || s[0].board then -1 else nearest(s, feet);
   // the quest board, when it is nearer than anyone
