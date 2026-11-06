@@ -3,6 +3,14 @@ import {openPackHost} from '../pack-host.js';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function wait(test,label){const end=performance.now()+5000;while(!test()){if(performance.now()>end)throw Error(`pack fixture:${label}`);await sleep(5);}}
 const hex=b=>Array.from(new Uint8Array(b),v=>v.toString(16).padStart(2,'0')).join('');
+export async function physicalPackFixture(){
+ const host=await openPackHost(),progress=[],url=path=>`http://127.0.0.1:9187/${path}`;
+ const result=await host.load({url:url('split')},{owner:'physical',progress:(loaded,total)=>progress.push([loaded,total])});
+ const out=[result.bytes,result.entries.length,Number(progress.some(([n,t])=>n===3&&t===0)),Number(progress.some(([n,t])=>n===11&&t===0)),Number(progress.some(([n,t])=>n===12&&t===512))];
+ await host.retire('physical');let refused=0;try{await host.load({url:url('cut')},{owner:'cut'});}catch{refused=1;}out.push(refused);
+ let started=false;const held=host.load({url:url('hold')},{owner:'held',progress:()=>{started=true;}}).catch(()=>null);await wait(()=>started,'physical held bytes');await host.retire('held');await held;
+ let closed=false;const until=performance.now()+5000;while(!closed&&performance.now()<until){closed=await(await fetch(url('close-count'))).text()==='1';if(!closed)await sleep(10);}out.push(Number(closed));const state=host.info();out.push(state.owners,state.storage[0],state.storage[1]);return out;
+}
 export async function packFixture(){
  const host=await openPackHost(),bytes=new Uint8Array(await(await fetch('/fixture.pack')).arrayBuffer()),originalFetch=globalThis.fetch,originalDecrypt=crypto.subtle.decrypt.bind(crypto.subtle),routes=new Map(),out={},unblock=[];
  const totals=()=>{const i=host.info();return [i.owners,i.storage[0],i.storage[1]];},refuse=async p=>{try{await p;return 0;}catch{return 1;}},source=(path)=>({url:path}),response=b=>new Response(b,{status:200});

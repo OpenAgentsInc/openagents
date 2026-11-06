@@ -327,6 +327,20 @@ at 0, licence at 1, byte offset at 4, length at 8 and a zero-terminated
 32-byte name at 16. Table/product/end arithmetic is checked against the
 actual complete allocation before reading a row or payload.
 
+The v1 browser consumes `pack-stream.coax` and `private-pack.coax` through
+the separate pack reactor. Each observed stream admits at most 64 MiB;
+actual retained allocation pages share a 256 MiB/64-ticket owner. The twelve
+header bytes may arrive separately. Private metadata is at most 4,096 bytes;
+exact encoded/plaintext extents and plaintext identity must precede whole
+VPK1 admission. SDK cancellation or retirement keeps ownership through actual
+reader/crypto/decoder completion. Completed immutable bytes can transfer to a
+matching renderer; a retired pending load cannot publish into it. Pack sound
+descriptors retain source bytes until awaited audio installation releases
+them. The page's measured 8 MiB master workspace remains separately retained.
+These application bounds do not measure hidden browser/network queues or GC
+RSS. Actual ordinary world and physical failure/retirement observations are
+in `docs/verification/host-contract-2026-11-05/browser-pack-loading.md`.
+
 Parts retain order: catalog kind 1, vertex bytes kind 2, index bytes kind 3,
 texture layers kind 4 in table order, sounds kind 5 by name. One page pack
 occupies four declared asset indices: catalog, vertices, indices, layers.

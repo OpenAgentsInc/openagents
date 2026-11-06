@@ -40,6 +40,8 @@ host_media=$!
 host_services=$!
 "$here/../../coax/web/tool.sh" "$here/../../coax/web/build-sockets.coax" "$here/../.." "$here/build/host-sockets.wasm" &
 host_sockets=$!
+"$here/../../coax/web/tool.sh" "$here/../../coax/web/build-packs.coax" "$here/../.." "$here/build/host-packs.wasm" &
+host_packs=$!
 # Opt-in room timing stays separate from the realm's producer.
 "$here/../../coax/web/tool.sh" "$here/../../coax/web/build-latency.coax" "$here/../.." "$here/build/latency-client.wasm" &
 room_latency=$!
@@ -318,6 +320,7 @@ wait "$host_layers"
 wait "$host_media"
 wait "$host_services"
 wait "$host_sockets"
+wait "$host_packs"
 wait "$room_latency"
 wait "$fairy"
 wait "$villa"

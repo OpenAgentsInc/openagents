@@ -1,0 +1,4 @@
+// Concrete browser descriptor/install references, independent of DSP samples.
+#authority;
+#test "pack audio source survives actual held installation and closed descriptor return" {good:=[20]int.[1,1,1,1,0,0,1,0,0,0,1,1,0,0,1,1,1,0,0,0];#assert hpac_accept(good[..]);for i:0..<good.count{good[i]+=1;#assert !hpac_accept(good[..]);good[i]-=1;}#assert !hpac_accept(good[0..<19]);}
+hpac_accept :: (v:[]int)->bool #export_c {if v.count!=20{return false;}expected:=[20]int.[1,1,1,1,0,0,1,0,0,0,1,1,0,0,1,1,1,0,0,0];for n,i:expected{if v[i]!=n{return false;}}return true;}

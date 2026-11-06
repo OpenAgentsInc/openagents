@@ -65,7 +65,7 @@ export async function openCoaxAudio(context,destination,decode,options={}){
   async function command(line,started,dispatch=true){
     await ready;if(closed)return -1;const effect=parser.parse(line);
     if(effect.name&&!assets.has(effect.name)){
-      try{const task=(async()=>{const buffer=await decode(effect.name,bytes=>({wav:bytes}),parser.asset(effect.name));if(closed||!buffer)return -1;return install(effect.name,buffer);})();physical.add(task);try{if(await task<0)return -1;}finally{physical.delete(task);}}catch(error){if(error instanceof AudioRefusal){allocationRefusals++;return -1;}throw error;}
+      try{const task=(async()=>{const buffer=await decode(effect.name,bytes=>({wav:bytes}),parser.asset(effect.name));try{if(closed||!buffer)return -1;return await install(effect.name,buffer);}finally{buffer?.release?.();}})();physical.add(task);try{if(await task<0)return -1;}finally{physical.delete(task);}}catch(error){if(error instanceof AudioRefusal){allocationRefusals++;return -1;}throw error;}
     }
     if(!dispatch)return 0;
     const bytes=typeof line==='string'?parser.encoder.encode(line):line;return request('command',{line:bytes,started},[bytes.buffer]);

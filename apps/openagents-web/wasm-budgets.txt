@@ -84,6 +84,8 @@ host-media 70000
 host-services 32000
 # Shared socket retention, packet spans and drain budget (18,523 release bytes).
 host-sockets 24000
+# Bounded VPK1/private reader and exact retained stream ownership (34,411 bytes).
+host-packs 42000
 # Initial procedural Valley Lab and shared walker, no fetched assets.
 valleylab 160000
 # #12921: buffered V2 frame input adds checked per-step control state.

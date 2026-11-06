@@ -17,6 +17,22 @@ The product's submission fence is unchanged. See
 
 ## Host transport keeps concrete asynchronous owners across every effect
 
+The v1 browser's `pack-stream.coax` and `private-pack.coax` bound public/private
+streams before copying and use the existing whole Coax VPK1 reader. Each
+stream is at most 64 MiB; separately retained allocation pages share a
+256 MiB/64-ticket pool. Private metadata, decrypt/decompress extents and
+plaintext identity precede asset publication. No chunk/prefix list or failed
+pack part becomes ready. Cancellation and retirement retain tickets through
+actual SDK completion and active immutable borrowers. Completed bytes can
+transfer to a matching renderer; old pending completion cannot publish there.
+The ordinary browser passes physical split/cut/TCP-cancel, current85c pack
+reload/device recovery and held audio-source borrow observations. Required
+pack failure continues RAF while refusing partial-world GPU submission.
+Root component/adapter gates kill 155/132/72 and 43/31/36/28 mutants without
+equivalents. The page's 8 MiB master remains retained; SDK/OS/GC memory is
+separate. No producer/shader/default admission is inferred. Exact scope is
+`docs/verification/host-contract-2026-11-05/browser-pack-loading.md`.
+
 `aethyr/host/transport.coax` owns the four socket and eight response-bearing
 HTTP slots for host contract v1. A callback carries its reserved slot,
 generation and engine epoch; a reused slot cannot inherit an older callback.

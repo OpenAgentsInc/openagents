@@ -15,11 +15,11 @@ export async function openPackHost(){
   function reserve(bytes){if(master.x.pack_storage_reserve(BigInt(bytes))!==0)throw Error('Coax refused retained pack storage');return [0,1,2].map(f=>master.x.pack_storage_ticket(f));}
   function release(ticket){if(!master.x.pack_storage_release(...ticket))throw Error('Coax refused pack storage release');}
   const masterTicket=reserve(master.memory.buffer.byteLength);
-  const info=()=>({storage:[0,1,2,3].map(f=>Number(master.x.pack_storage_info(f))),owners:ops.size,loading:[...ops].filter(o=>o.loading).length,published:[...ops].filter(o=>o.published).length,readers:[...ops].reduce((n,o)=>n+o.readers.size,0),sdkPending:[...ops].reduce((n,o)=>n+o.sdkPending,0)});
+  const info=()=>({storage:[0,1,2,3].map(f=>Number(master.x.pack_storage_info(f))),owners:ops.size,loading:[...ops].filter(o=>o.loading).length,published:[...ops].filter(o=>o.published).length,readers:[...ops].reduce((n,o)=>n+o.readers.size,0),sdkPending:[...ops].reduce((n,o)=>n+o.sdkPending,0),copied:[...ops].reduce((n,o)=>n+o.copied,0)});
   function operation(owner,current,progress){
    const initial=reserve(master.memory.buffer.byteLength);let context;
    try{context=instance(module);}catch(error){release(initial);throw error;}
-   const op={owner,context,current,progress,tickets:[initial],buffers:[],readers:new Map(),controller:new AbortController(),loading:true,published:false,retired:false,borrowers:0,sdkPending:0};
+   const op={owner,context,current,progress,tickets:[initial],buffers:[],readers:new Map(),controller:new AbortController(),loading:true,published:false,retired:false,borrowers:0,sdkPending:0,copied:0};
    op.closed=new Promise(resolve=>{op.closedResolve=resolve;});ops.add(op);
    op.check=()=>{if(op.retired||!op.current()){op.abort();throw new DOMException('pack owner retired','AbortError');}};
    op.cancel=reader=>{let pending=op.readers.get(reader);if(!pending){pending=Promise.resolve().then(()=>reader.cancel()).catch(()=>{});op.readers.set(reader,pending);}return pending;};
@@ -46,7 +46,7 @@ export async function openPackHost(){
     if(!x.pack_stream_offer(BigInt(value.byteLength),prefix.byteLength))throw Error('Coax refused pack stream chunk');const at=Number(x.pack_stream_chunk(0)),total=Number(x.pack_stream_chunk(2));
     if(total&&!target){if(encoded){ticket=op.reserve(total);try{target=new Uint8Array(total);op.buffers.push(target);}catch(error){op.free(ticket);throw error;}}
      else{address=arena(op,total);target=new Uint8Array(memory.buffer,address,total);if(at)target.set(new Uint8Array(memory.buffer,x.pack_stream_head_ptr(),at));}}
-    if(target)target.set(value,at);if(report)op.progress?.(at+value.byteLength,total);
+    if(target)target.set(value,at);op.copied+=value.byteLength;if(report)op.progress?.(at+value.byteLength,total);
    });
    if(!x.pack_stream_finish())throw Error('Coax refused incomplete pack stream');return {target,address,ticket};
   }

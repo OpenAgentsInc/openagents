@@ -222,6 +222,7 @@ import { startLoading, readBytes } from "./loader.js";
 import { makeHttpRequests } from "./http-requests.js";
 import { makeHostTransport } from "./host-transport.js";
 import {openSocketRetention,makeSocketQueues} from "./socket-queue-host.js";
+import {openPackHost} from "./pack-host.js";
 import { makeHostLifecycle } from "./host-lifecycle.js";
 import { openHostServices, openPcmMemory } from "./services-host.js";
 import { openCoaxAudio, renderCoaxAudio, renderClipAudio } from "./audio-host.js";
@@ -307,12 +308,32 @@ let last = 0;
 // decide whether the frame actually looks correct.
 let sceneEpoch = 0, pendingSceneEpoch = -1, installedGeneration = 0, shaderLoads = 0;
 let renderReload = Promise.resolve();
+let packHost=null,packRetirement=Promise.resolve();
+const packGroups=new Map();
+function retirePacks(test=()=>true){
+  const selected=[...packGroups.values()].filter(test);
+  for(const group of selected){group.retired=true;group.retiredResolve();group.result?.close();}
+  const retired=Promise.all(selected.map(async group=>{
+    await packHost?.retire(group);
+    for(const row of [...group.parts,...group.sounds]){row.bytes=null;}
+    if(packGroups.get(group.pack)===group)packGroups.delete(group.pack);
+    group.pack.done=false;group.pack.fetching=false;
+  }));
+  packRetirement=Promise.all([packRetirement,retired]).then(()=>{});return retired;
+}
+function packSoundSource(asset){
+  const group=packGroups.get(asset.sourcePack);if(!group?.result||group.retired)return null;
+  return new Promise((resolve,reject)=>{
+    group.result.use(async()=>{let release;const held=new Promise(done=>{release=done;});resolve({opus:asset.bytes,release});await held;}).catch(reject);
+  });
+}
 function invalidateScene() {
   sceneEpoch += 1; pendingSceneEpoch = -1;
   globalThis.coaxial.sceneReady = false;
 }
 function beginEngine() {
   const generation = ++wanted;
+  retirePacks(group=>group.loading);
   if(hostTransport){reconnectAfterEngine ||= sockets.some(Boolean);retireTransport();}
   else {
     httpRequests.reset();
@@ -356,7 +377,7 @@ function importedMemoryPages(bytes) {
 }
 
 async function loadEngine(bytes, generation) {
-  await audioRetirement;if(generation!==wanted)return false;
+  await Promise.all([audioRetirement,packRetirement]);if(generation!==wanted)return false;
   if (dev) globalThis.coaxial.renderLifecyclePhase="engine-await-render";
   if (dev) globalThis.coaxial.renderLifecyclePhase="engine-compile";
   const module = await WebAssembly.compile(bytes);
@@ -396,6 +417,7 @@ async function loadEngine(bytes, generation) {
   hostTransport=makeHostTransport(x,memory);
   hostLifecycle=makeHostLifecycle(x);
   if(hostTransport){const services=await openHostServices();if(generation!==wanted)return false;hostServices=services;
+    if(firstPacks.size){packHost??=await openPackHost();if(generation!==wanted)return false;}
     if(clipping&&globalThis.coaxialClipAudio){const timeline=await openClipTimeline();if(generation!==wanted){await timeline.retire();return false;}clipTimeline=timeline;}}
   if(hostTransport && sockets.some(Boolean)){reconnectAfterEngine=true;resetSockets();}
   if(hostTransport){
@@ -933,11 +955,13 @@ async function deviceLost(device, info) {
   say(`GPU device lost (${info.reason}${info.message ? `: ${info.message}` : ""}); taking a new one`, true);
   gpu.bg = null;
   try { gpu.renderer?.destroy(); } catch {}
+  const retiredPacks=retirePacks();
   if (recovering) { recovering.n += 1;return; }   // the device being built went too: its rebuild starts again
   waiting ||= [];
   const attempt = recovering = { n: 0 }, held = stateBytes(), until = t0 + (dev && globalThis.coaxialRecoverMs || RECOVER_MS);
   globalThis.coaxial.gpuRecovery = { state: "recovering", reason: info.reason, losses: losses.length };
   let error = null;
+  await retiredPacks;
   for (;;) {
     const n = attempt.n;
     try {
@@ -1152,6 +1176,9 @@ async function loadShadersOnce() {
     gpu.renderer = candidate;
     gpu.bg = candidate.pipelines.get(0);gpu.fx = candidate.pipelines.get(12);gpu.scene3d = Boolean(candidate.pipeline(5, 0));
     if (previous) { if (!candidate.reuses) previous.destroy(candidate.retainedResources);else previous.ready = false; }
+    await retirePacks(group=>!assets.some(row=>row.pack===group.pack));
+    for(const group of packGroups.values())for(const sound of group.sounds)if(!assets.some(row=>row.kind==="sound"&&row.name===sound.name)){sound.i=assets.length;assets.push(sound);}
+    if(hostTransport&&firstPacks.size)packHost??=await openPackHost();
     return true;
   }
   const code = await (await fetch(wgslUrl, { cache: dev ? "no-store" : "default" })).text();
@@ -1437,6 +1464,7 @@ function parseAssets(text) {
 }
 // ---- a realm's asset pack (verse/tools/pack_realm.py has the format)
 async function loadPack(pack) {
+  if(hostTransport)return loadPackV1(pack);
   if (pack.fetching || pack.done) return;pack.fetching = true;
   const parts = assets.filter((a) => a.pack === pack);
   let entries = null;
@@ -1494,6 +1522,56 @@ async function loadPack(pack) {
   for (const a of parts) { a.done = true; deliver(a); }
   bindScene();
   loading.assetDone(parts[0].failed && !pack.quiet && `WORLD FAILED TO LOAD: ${pack.url.split("/").pop()}`);
+}
+// The Coax companion admits complete bytes before entry views reach the renderer.
+async function loadPackV1(pack){
+  if(pack.fetching||pack.done)return;
+  const parts=assets.filter(row=>row.pack===pack),generation=wanted,exports=engine?.exports;
+  const group={pack,parts,sounds:[],generation,exports,loading:true,retired:false,result:null};
+  group.retiredPromise=new Promise(resolve=>{group.retiredResolve=resolve;});
+  const current=()=>!group.retired&&wanted===generation&&engine?.exports===exports&&parts.every(currentAsset);
+  const check=()=>{if(!current())throw new DOMException("pack renderer retired","AbortError");};
+  const rendererReady=async()=>{if(renderUrl)await Promise.race([renderReload,group.retiredPromise]);check();};
+  try{
+    if(pack.away)throw Error("private");
+    if(!packHost)throw Error("pack reader is unavailable");
+    let told=0;
+    // Admission is synchronous, before a group or fetch promise can retain bytes.
+    const incoming=packHost.load(pack,{owner:group,current,progress:(loaded,total)=>{
+      if(!current())return;loading.bytes(pack.url,loaded,total);
+      if(!waiting&&performance.now()-told>100){told=performance.now();send(PACK_KIND,`${loaded} ${total}`);}
+    }});
+    pack.fetching=true;packGroups.set(pack,group);
+    group.result=await incoming;
+    await group.result.use(async result=>{
+      await rendererReady();const entries=result.entries,of=kind=>entries.filter(entry=>entry.kind===kind);
+      const [catalog,vertices,indices,layers]=parts;
+      loading.textures(0,2*of(PACK_LAYER).length);
+      const images=gpu.renderer?.canonicalLayers?of(PACK_LAYER).map(entry=>entry.bytes):await Promise.all(of(PACK_LAYER).map(entry=>createImageBitmap(new Blob([entry.bytes])).then(image=>(loading.textures(1,0),image))));
+      await rendererReady();
+      const texture=images.length?await layerTexture(images):null;
+      await rendererReady();
+      catalog.bytes=of(PACK_CATALOG)[0].bytes;catalog.size=catalog.bytes.length;
+      for(const [row,entry]of [[vertices,of(PACK_VERTICES)[0]],[indices,of(PACK_INDICES)[0]]]){
+        if(gpu.renderer){row.bytes=entry.bytes;row.size=entry.bytes.length;gpu.renderer.acceptAsset(row);}
+        else{const whole=new Uint8Array(align(Math.max(entry.bytes.length,4),4));whole.set(entry.bytes);row.buffer=gpu.device.createBuffer({size:whole.length,usage:(row.kind==="index"?GPUBufferUsage.INDEX:GPUBufferUsage.STORAGE)|GPUBufferUsage.COPY_DST});gpu.device.queue.writeBuffer(row.buffer,0,whole);row.size=entry.bytes.length;}
+      }
+      layers.texture=texture;layers.size=images.length;layers.failed=!texture;if(gpu.renderer&&texture)gpu.renderer.layerTexture=texture;
+      for(const entry of of(PACK_SOUND))if(!assets.some(row=>row.kind==="sound"&&row.name===entry.name)){
+        const sound={i:assets.length,kind:"sound",name:entry.name,bytes:entry.bytes,done:true,sourcePack:pack};group.sounds.push(sound);assets.push(sound);
+      }
+      if(!waiting)send(PACK_KIND,`${result.bytes} ${result.bytes}`);
+    });
+  }catch(error){
+    if(group.retired||wanted!==generation||engine?.exports!==exports)return;
+    for(const row of parts)row.failed=true;
+    if(!pack.quiet)say(`${app}: ${error.message}`,true);
+    group.result?.close();await packHost?.retire(group);packGroups.delete(pack);
+  }finally{group.loading=false;}
+  if(!current())return;
+  pack.fetching=false;pack.done=true;
+  for(const row of parts){row.done=true;deliver(row);}bindScene();
+  loading.assetDone(parts[0].failed&&!pack.quiet&&`WORLD FAILED TO LOAD: ${pack.url.split("/").pop()}`);
 }
 // A private pack from the broker (coax/web/api/verse_packs.c): the session's bytes are the gzipped
 // pack under its own key (AES-256-CTR, a 64-bit block counter), opened here, unzipped and checked
@@ -1867,6 +1945,7 @@ function prepareContractAudio() {
   const owner=audioOwner,context=audio,services=hostServices;contractAudioMemory=openPcmMemory(services);
   contractAudioReady=openCoaxAudio(context,audioOut,async(name,canonical)=>{
     const asset=soundAsset(name);if(!asset)return null;
+    if(asset.sourcePack)return packSoundSource(asset);
     if(asset.canonical)return canonical(asset.bytes);
     return asset.bytes?{opus:asset.bytes}:{url:asset.url};
   },{services,memory:contractAudioMemory}).then(adapter=>{if(owner===audioOwner)contractAudio=adapter;return adapter;}).catch(error=>{if(owner===audioOwner){audioFailure=String(error.message);say(`Audio: ${audioFailure}`);}return null;});
@@ -2721,6 +2800,7 @@ globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageF
   fieldProbe: (field = 0) => engine?.exports.coaxial_field_probe?.(arena.state, field) ?? -1 };
 // Headless verification observes effects without exposing renderer policy.
 if (dev) {
+  globalThis.coaxial.packRetention=()=>({...(packHost?.info()??{}),groups:packGroups.size});
   globalThis.coaxial.socketRetention=()=>({active:socketQueues?.info()??null,retired:lastSocketQueueRetired});
   globalThis.coaxial.holdSocketDelivery=value=>{socketDeliveryHeld=!!value;};
   globalThis.coaxial.holdSocketSending=value=>{socketSendingHeld=!!value;};
@@ -3085,6 +3165,7 @@ function stopEngine() {
   retireTransport();
   engine = null;
   if (gpu) { gpu.bg = null;gpu.renderer?.destroy();gpu.renderer = null; }
+  retirePacks();
   globalThis.coaxial.ready = false;globalThis.coaxial.sceneReady = false;
 }
 

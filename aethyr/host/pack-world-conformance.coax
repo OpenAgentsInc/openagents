@@ -1,0 +1,4 @@
+// Current one-pack realm's actual owner/renderer replacement observations.
+#authority;
+#test "ordinary pack world requires GPU progress and exact lifetime transfer" {good:=[23]int.[1,1,1,1,0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,1,8388608];#assert hpwc_accept(good[..]);for i:0..<good.count{good[i]+=1;#assert !hpwc_accept(good[..]);good[i]-=1;}#assert !hpwc_accept(good[0..<22]);}
+hpwc_accept :: (v:[]int)->bool #export_c {if v.count!=23{return false;}expected:=[23]int.[1,1,1,1,0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,1,8388608];for n,i:expected{if v[i]!=n{return false;}}return true;}
