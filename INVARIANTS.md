@@ -5936,11 +5936,16 @@ encoded source, source geometry and every mipmapped texture layer. See
 
 During play the controller owns planar translation. The sampled carrier's X/Z
 transport is removed after pose blending, including inspector-to-play blends;
-original vertical pose motion, rotations and all raw inspection tracks survive.
+original rotations and raw inspection tracks survive. During physical jump/backflip\nonly, the actor owns carrier Y too, preventing a second vertical displacement.
 Locomotion limits come from original carrier distance/duration, and gait time
 uses actual collision-resolved travel, not an extra animated world displacement
 or unresolved velocity. The source 30-fps assumption remains explicit; original
 controller physics and its transition graph have not been fully recovered.
+The child gameplay jump/backflip height, gravity-scale and backflip-speed values
+are pinned in `verse/ocarina/controller.coax`. Their ballistic launch mapping and
+absolute gravity remain explicit Aethyr adaptations. Backflip captures facing,
+uses normal source collision, refuses airborne restarts and recovers after landing
+and the selected clip. Analog input retains magnitude above Aethyr's dead zone.
 
 ## Animation performance sampling is bounded and starts from source each frame
 

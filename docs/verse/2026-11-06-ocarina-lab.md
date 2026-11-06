@@ -323,3 +323,41 @@ Chrome at 1280×800 passes controls, seven actual GPU walk/orbit readbacks over
 2.268 m of lateral travel, and retained device recovery without source refetch.
 The walk/orbit images were visually inspected. The 390×844 phone check covers
 the same controls; receipts and capture hashes are recorded in ore.
+
+## Source gameplay parameter pass
+
+`verse/ocarina/controller.coax` pins the original `PlayerGameParam` binary32
+values: jump height .7 and gravity scale .55; backflip height .35, gravity
+scale .8 and speed 6.8. The decoded player pack identity and full parameter
+inventory are in ore's `character-controller-reconstruction.md`.
+
+Space now uses the source jump height/gravity-scale inputs. B starts a physical
+backflip in play: backward from captured character facing, independent of camera
+angle, with the original selected BackFlip pose. It cannot restart in the air,
+uses the same imported world collision as ordinary movement, stops horizontal
+transport on landing and recovers when the selected clip completes. R resets the
+action; inspection still permits viewing the raw original BackFlip track.
+During physical jump/backflip, actor physics owns carrier Y as well as X/Z;
+raw inspection and the remaining local bone animation are preserved. This avoids
+adding an authored vertical carrier trajectory on top of physical ascent.
+
+Analog stick magnitude now scales movement pace above the existing .2 dead zone;
+keyboard diagonals retain unit pace. This is a bounded improvement using the
+source's explicit magnitude state, not a recovered native analog response curve.
+
+The launch equation `sqrt(2*height*gravity)` and gravity baseline 16 m/s² remain
+Aethyr adaptations. Source action code, absolute gravity, event windows and ASB
+playback/transition rules remain unresolved. No gameplay roll is claimed: the
+current eight-clip profile has no roll clip. Full roll/state-graph integration
+needs a separately versioned clip profile and original roll events. The private
+pack, source collision, rig and texture identities are unchanged.
+
+Verification: 467 runtime checks pass, including fixed-camera world direction,
+wall contact, repeat-input rejection, reset and single vertical ownership.
+Native verification on the real forest reports a .6728363 m jump rise, eight-step
+frame equivalence, 128 bridge/shop steps and 360 original clip samples. Muted
+1280×800 Chrome measures a .673 m jump and 2.518 m backflip displacement, verifies
+recovery, all controls/clips, and five run loops without a transport chop.
+GPU loss recovers with no source refetch and an identical retained state digest.
+The phone check runs at 390×844. These establish our implementation's behavior;
+they do not establish original-game controller parity.

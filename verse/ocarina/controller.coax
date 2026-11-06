@@ -1,0 +1,21 @@
+// Original PlayerGameParam values; source equations/absolute gravity remain unrecovered.
+// Source decoded Player_Child.pack SHA256 627fd46ee4edb62e6b9eb2132ff38eb4d0d8a4c3024b40bb6e601ee9c505fef3.
+#load "../valley/scan.coax";
+#test "Child source jump and backflip tuning preserves exact authored binary32 values" {
+ #assert f32_bits(OCL_JUMP_HEIGHT)==0x3f333333 && f32_bits(OCL_JUMP_GRAVITY)==0x3f0ccccd;
+ #assert f32_bits(OCL_FLIP_HEIGHT)==0x3eb33333 && f32_bits(OCL_FLIP_SPEED)==0x40d9999a && f32_bits(OCL_FLIP_GRAVITY)==0x3f4ccccd;
+}
+OCL_JUMP_HEIGHT :: 0.7f32; OCL_JUMP_GRAVITY :: 0.55f32;
+OCL_FLIP_HEIGHT :: 0.35f32; OCL_FLIP_SPEED :: 6.8f32; OCL_FLIP_GRAVITY :: 0.8f32;
+// Aethyr ballistic interpretation, NOT the recovered native launch equation.
+#test "Adapted launch integrates to authored height on the existing fixed-step clock" {
+ for height:[2]f32.[OCL_JUMP_HEIGHT,OCL_FLIP_HEIGHT] {g:=ifx height==OCL_JUMP_HEIGHT then 16*OCL_JUMP_GRAVITY else 16*OCL_FLIP_GRAVITY;v:=ocl_launch(height,g);y:f32=0;peak:f32=0;for k:0..<100 {v-=g/64;y+=v/64;peak=(ifx peak>y then peak else y);}#assert peak<height && peak>height-0.03;}
+}
+ocl_launch :: (height:f32,gravity:f32)->f32 {return sqrt(2*height*gravity);}
+#test "Analog movement retains stick magnitude while keyboard diagonals keep unit pace" {
+ #assert ocl_input_pace(1,1,0,0)==1 && ocl_input_pace(0,0,0,0)==0;
+ #assert ocl_input_pace(0,0,0,0.5)==0.5 && ocl_input_pace(1,0,0,0.5)==0.5 && ocl_input_pace(1,0,0,0.1)==1;
+ #assert ocl_input_pace(0,0,1,1)==1 && ocl_input_pace(0,0,0.1,0.1)==0;
+}
+// Dead zone is still Aethyr's; the source blackboard establishes magnitude, not its transfer curve.
+ocl_input_pace :: (kx:f32,ky:f32,px:f32,py:f32)->f32 {pad:=sqrt(px*px+py*py);return ifx pad>0.2 then (ifx pad<1 then pad else 1.0f32) else ifx kx!=0 || ky!=0 then 1.0f32 else 0.0f32;}
