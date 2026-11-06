@@ -192,15 +192,29 @@ H0 is the most important phase. It decides the pass and the lighting
 contract, and it needs no private data, so it can run in public with CC0
 assets.
 
-## Owner decisions
+## Owner decisions (2026-11-06)
 
-1. **Slay content on production.** Echo comes from Epic's Slay sample, not
-   from MetaHuman Creator. Until the licence is confirmed for showing her on
-   openagents.com, she renders only on local dev hosts (H0 to H6 need nothing
-   more). Production waits for H7.
-2. **Look per world.** Photoreal or painterly variant in Everglade.
-3. **Phone support.** Whether hero characters must run on phones at launch,
-   or desktop first with the far tier on phones.
+1. **Slay content may go on openagents.com.** Echo goes through the broker
+   like a MetaHuman pack ([MetaHuman support](metahuman-support.md)).
+2. **Look:** as close to the current Slay version as reasonable graphics
+   limits allow, in Everglade too. The painterly variant is not needed.
+3. **Phones:** close-ups are not a phone goal. Phones get a low tier.
+
+## First: Echo in the raid scene for recording
+
+The owner's first priority is recording Echo in the Cultist Raid scene.
+That needs only part of the plan, done directly on Echo on this Mac, with
+her current pack through the local `/private/` route:
+
+| Step | From | Work |
+| --- | --- | --- |
+| **R1** | H0, H2 | The character pass and the `SceneLights` block, drawing Echo with the Valley shading straight away (no Quaternius stand-in first) |
+| **R2** | H1 | Echo's CPU runtime in `aethyr/character/`, with the idle face, used by both pages |
+| **R3** | H4 | `?stage=echo` spawns her beside the player with a capsule and runs the orbit natively; the clip records straight from Everglade |
+| **R4** | H3 (part) | Groom levels and a frame-rate check while she is in a wide shot of the raid |
+
+H3's texture tiers, H5 (a second world), H6 (replication), H7 (production)
+and H8 (native hosts) come after the recording works.
 
 ## Risks
 
