@@ -469,7 +469,7 @@
         "alt": "Two original Canyon Sandstone outcrops at their recovered Ancient World placements",
         "style": "lowpoly", "clock": "fixed:0.5", "timing": true,
         "golden": { "lit": 0.001, "settle": 1000, "blocks": 6 },
-        "assets": ["private:valley-echo"]
+        "assets": ["private:valley-slay"]
       } },
     { "id": "splatlab", "name": "SPLAT LAB", "kind": "open", "listed": false, "orbit": { "r": 0.41, "a": 3.3, "size": 0.02 },
       "realm": {

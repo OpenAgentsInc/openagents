@@ -1,0 +1,58 @@
+// Synthetic source-shot binary fixtures; no licensed data.
+#test "shot admission retains complete source bytes and refuses before exposing a partial clip" {
+ b:[540]u8;names:[64]u8;shot_fixture(b[..],names[..]);face:[536]u8;face_fixture(face[..]);face_put(b[..],536,f32_bits(7.0f32));s:[1]SlayShot;
+ #assert shot_admit(s[..],b[..],face[..]) && s[0].ready && s[0].bytes==540;for k:0..<540 {#assert s[0].data[k]==b[k];}
+ b[0]^=1;#assert !shot_admit(s[..],b[..],face[..]) && !s[0].ready && s[0].data[0]!=b[0];
+}
+#test "source shot reader preserves labeled timing, lens sample stride and source rate" {
+ b:[540]u8;names:[64]u8;shot_fixture(b[..],names[..]);f:=shot_info(b[..]);#assert f.frames==2 && f.bones==1 && f.rate==24 && f.names==64 && f.data==132 && f.stride==204 && f.source_first==1000 && f.face_clip==0 && f.face_start==1000 && f.face_end==1001;
+}
+#test "shot rig and source sequence bounds include their declared edges" {
+ #assert shot_rig_ok(1,64) && shot_rig_ok(334,21376) && !shot_rig_ok(0,0) && !shot_rig_ok(335,21440) && !shot_rig_ok(1,63);
+ #assert shot_source_range_ok(0,2,0,2) && shot_source_range_ok(1000000,2,1000000,1000002);
+ #assert !shot_source_range_ok(-1,2,0,1) && !shot_source_range_ok(1000001,2,1000001,1000002) && !shot_source_range_ok(0,2,-1,1) && !shot_source_range_ok(0,2,0,0) && !shot_source_range_ok(0,2,0,3);
+}
+#test "shot refuses extra tails and exact past-end face clip bindings" {
+ b:[541]u8;names:[64]u8;shot_fixture(b[0..<540],names[..]);face_put(b[..],8,541);#assert !shot_valid(b[..],names[..],1,1);
+ face_put(b[..],8,540);face_put(b[..],40,1);#assert !shot_valid(b[0..<540],names[..],1,1);
+ shot_fixture(b[0..<540],names[..]);face_put(b[..],20,0);#assert !shot_valid(b[0..<540],names[..],1,1);
+}
+#test "shot name spans retain both exact physical widths" {
+ a:[65]u8;b:[65]u8;a[0]='a';b[0]='a';#assert shot_name_matches(a[0..<64],b[0..<64]);
+ for n:[2]int.[63,65] {#assert !shot_name_matches(a[0..<n],b[0..<64]) && !shot_name_matches(a[0..<64],b[0..<n]);}
+ b[63]=1;#assert !shot_name_matches(a[0..<64],b[0..<64]);
+}
+#test "three source-shot joints retain names and inspect every local pose" {
+ b:[788]u8;names:[192]u8;shot_fixture_three(b[..],names[..]);#assert shot_valid(b[..],names[..],3,1);
+ original:=b;
+ for k:0..<3 {b=original;b[64+k*68]='x';#assert !shot_valid(b[..],names[..],3,1);}
+ b=original;for k:0..<68 {b[64+2*68+k]=b[64+68+k];}#assert !shot_valid(b[..],names[..],3,1);
+ b=original;for k:0..<68 {b[64+2*68+k]=b[64+k];}#assert !shot_valid(b[..],names[..],3,1);
+ b=original;face_put(b[..],128,3);#assert !shot_valid(b[..],names[..],3,1);
+ for frame:0..<2 {for joint:0..<3 {for axis:0..<7 {b=original;face_put(b[..],268+frame*260+joint*28+axis*4,0x7f800000);#assert !shot_valid(b[..],names[..],3,1);}}}
+}
+shot_fixture_three :: (b:[]u8,names:[]u8) {
+ for k:0..<b.count {b[k]=0;}for k:0..<names.count {names[k]=0;}
+ header:=[13]u32.[0x31534853,1,788,2,3,f32_bits(24.0f32),64,268,260,1000,0,1000,1001];for x,k:header {face_put(b,k*4,x);}
+ for k:0..<3 {b[64+k*68]='b';b[65+k*68]=cast(u8)('0'+k);names[k*64]='b';names[k*64+1]=cast(u8)('0'+k);face_put(b,128+k*68,cast(u32)k);}
+ for frame:0..<2 {for joint:0..<3 {at:=268+frame*260+joint*28;face_put(b,at+24,f32_bits(1.0f32));}}
+ face_put(b,268+12,f32_bits(1.0f32));face_put(b,268+24,0);
+ face_put(b,268+28,f32_bits(2.0f32));
+}
+#test "Slay shot admits source locals and refuses a corrupt named binding and pose" {
+ b:[540]u8;names:[64]u8;shot_fixture(b[..],names[..]);#assert shot_valid(b[..],names[..],1,1);
+ original:=b;for at:[12]int.[0,4,8,12,16,20,24,28,32,40,44,48] {b=original;face_put(b[..],at,0xffffffff);#assert !shot_valid(b[..],names[..],1,1);}
+ b=original;b[64]='x';#assert !shot_valid(b[..],names[..],1,1);b=original;face_put(b[..],128,1);#assert !shot_valid(b[..],names[..],1,1);
+ for at:132/4..<540/4 {b=original;face_put(b[..],at*4,0x7fc00000);#assert !shot_valid(b[..],names[..],1,1);}
+ b=original;face_put(b[..],156,0);#assert !shot_valid(b[..],names[..],1,1);
+ #assert !shot_valid(original[0..<539],names[..],1,1) && !shot_valid(original[..],names[0..<63],1,1);
+}
+#test "Slay shot physical storage and sample counts have independent endpoint contracts" {
+ #assert shot_size_ok(64) && shot_size_ok(1048576) && !shot_size_ok(63) && !shot_size_ok(1048577);
+ #assert shot_counts_ok(2,1) && shot_counts_ok(2000,334) && !shot_counts_ok(1,1) && !shot_counts_ok(2001,1) && !shot_counts_ok(2,0) && !shot_counts_ok(2,335);
+}
+shot_fixture :: (b:[]u8,names:[]u8) {
+ for k:0..<b.count {b[k]=0;}for k:0..<names.count {names[k]=0;}
+ header:=[13]u32.[0x31534853,1,540,2,1,f32_bits(24.0f32),64,132,204,1000,0,1000,1001];for x,k:header {face_put(b,k*4,x);}
+ for c,k:"face" {b[64+k]=c;names[k]=c;}face_put(b,156,f32_bits(1.0f32));face_put(b,360,f32_bits(1.0f32));
+}

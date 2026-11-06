@@ -1,0 +1,81 @@
+# Slay facial performance and fixed-shot progress — 2026-11-06
+
+Issue #12962 remains open. The owner extended its face-only request with the
+Slay trailer shot at 0:57: narrowed eyes, raised left palm, blue orb and sword.
+This record qualifies source transport/playback components, not visual parity.
+
+![Owner reference left; current Aethyr shot right](comparison.png)
+
+The local view is `http://127.0.0.1:8894/worlds/valley-canyon?pack=valley-slay`.
+It starts paused at TF0290 sequence frame1125: body124, face4. P plays/pauses,
+comma/period step, J returns to the shot; F selects isolated face performance,
+brackets select clips, T restarts, B restores neutral and R returns to walking.
+The camera is the source 40mm/24.889999mm filmback, 2.4 aspect. Source handheld
+camera shake is not yet applied. The source actor transform track is disabled;
+applying its serialized keys again would double-transform the animation root.
+
+## Source transport
+
+SDK reads use the clean private SlayData project and the installed UE5.8 SDK.
+They load data-only packages and do not run source Blueprint events or save
+source packages. The 789,955,936-byte private VPK has SHA256
+`9cdf33ffdee413a76bed96b2e041940da684cba7ef81fcd0551f35d041dd9d37`.
+ECP3 binds the unchanged rig, full EFC1 morph/face source and SHS1 fixed-shot
+samples. CPU state retains a checked face projection and the admitted shot;
+GPU storage retains sparse position/normal deltas. No licensed source payloads
+are committed. The comparison image is a QA observation, not training data.
+
+The full independent SDK/glTF comparison checks all564,903 sparse deltas and
+GPU CSR records bit-for-bit, all143,750 curve samples bit-for-bit, all18,400
+facial local transforms and27,000 shot body locals as exact float32 values.
+Signed-zero differences are ignored for local-transform numeric comparison.
+See [the receipt](source-oracle.json). The oracle is
+`aethyr/tools/slay_asset_oracle.py`; source packing/playback is Coax.
+
+Twenty source clips contain131 raw curves each.125 bind actual mesh morphs.
+`blendParent1`, `tongueOut`, `jawFwd`, `CTRL_rigLogic_OnOff`,
+`mouth_cornerPull_cor` and `mouth_stretch_cor` are named in SDK receipts but
+have no mesh morph target; no invented mapping is applied.16 FACIAL tracks
+bind both mesh reference skeletons. `facial_c_skull` and `facial_c_chin` are
+unweighted source skeleton leaves absent from both mesh reference skeletons.
+Body poses are retained separately, so face layering never accumulates on
+itself or changes the locomotion/collision decision. Ambient source segments
+are TF0130[4..22], TF0145[3..21], TF0250[19..40], every8s with.15s fades.
+
+## Checks and limitations
+
+- EFC1 admission:402/402 mutants killed; SHS1:175/175;
+  ECP3/legacy rig admission:246/246; whole-package SHA:13/13. No equivalents.
+- Source frame round trip produces identical image hashes; the neighboring
+  frame differs. Body/face/camera playback advances on the same source clock.
+- Current Canyon checks:10/10, including walking, jump taps, non-inverted
+  mouse/touch/arrow look, conservative collision and desktop/phone/DPR budgets.
+- Ambient timing and non-face local-pose preservation checks pass.
+- Current Wasm is91,568 bytes within96,000. The original80,000 budget was
+  raised explicitly for shared facial playback and the source-shot view.
+- **Default GPU recovery is red:** both new shot and face observations exceed
+  the legacy host's10-second replacement deadline under the observed machine
+  load. Earlier face-only recovery passed before the shot extension; that
+  result does not qualify this package. [The shot failure is retained](shot-gpu-red.txt).
+  A separately labeled60s diagnostic recovered in14,116ms with identical
+  pixels/state, then passed ambient locomotion and the390x844 phone viewport.
+  [Its receipt](diagnostic-gpu.txt) does not qualify the unchanged default10s fence.
+
+The source project disables bloom. The displayed orb is an interim analytic
+core/halo at the animated source hand attachment, not the original procedural
+material/Niagara flare. Key/fill/wrap samples drive an interim direct-light
+model. Proper area-light integration, regional skin scattering, eyes/refraction,
+strand coverage/shading, source orb texture/flare and temple scenery
+remain. These differences are visible in the comparison and prevent claiming
+an exact shot recreation or closing the issue.
+
+Slay render source extension:101,672 UV pairs,25,547 sword vertices,
+134,418 sword indices and35 bundled textures pass the independent source-byte
+oracle. The sword follows the source `prop_01` track through the existing
+`groom.prop_01` palette entry135; its mesh inverse bind is the same. Slay's
+head instance uses Desat=.3 and Tint=(.921582,1,.871367), unlike Valley's .2
+and(.9,1,.949020). Its actual textures replace Valley counterparts in this
+private package.35 mipmapped4K RGBA8 layers reserve approximately3.13GB of
+GPU texture storage; the lab's explicit aggregate budget is4.6GB. A phone
+viewport observation on this Mac does not qualify mobile hardware memory
+or performance. A separate mobile/source-detail profile remains necessary.

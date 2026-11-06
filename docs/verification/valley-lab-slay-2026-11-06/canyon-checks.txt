@@ -1,0 +1,21 @@
+ok   #test Canyon requires the source geometry maps and admitted Echo rig before drawing (1 case, 15819259 steps, 1269 ms)
+ok   #test Canyon pointer orbit mode isolation and two full source draws stay bounded (1 case, 15740278 steps, 808 ms)
+ok   #test Canyon walk moves stops jumps and resets through Aethyr (1 case, 16350583 steps, 906 ms)
+ok   #test Canyon retains a jump tap released before the next frame (1 case, 15883753 steps, 733 ms)
+ok   #test Canyon conservative source bounds stop a capsule and touch moves it (1 case, 19433827 steps, 888 ms)
+ok   #test Canyon mouse touch and arrow look use the existing non-inverted controller (1 case, 15881753 steps, 648 ms)
+ok   #test Canyon source frames fit declared budget at desktop phone and high DPR (1 case, 50816538 steps, 1211 ms)
+ok   #test Canyon source instances retain scale and source origin instead of flooring each asset (1 case, 1335 steps, 0 ms)
+ok   #test Canyon coordinate transform agrees with independent Unreal SDK samples (1 case, 660 steps, 0 ms)
+ok   #test Canyon pack gate pins every digest byte and exact length before GPU upload (1 case, 12189 steps, 0 ms)
+10 of 461 checks (--only 'Canyon'), 10 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: note[E0400]: compile-time steps: 15740278 of 20000000 used (78%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    15739847 steps  apps/openagents-web/valleycanyon.coax:28:1  #test 'Canyon pointer orbit mode isolation and two full source draws stay bounded' itself
+    225 steps  apps/openagents-web/valleycanyon.coax:114:1  in 'canyon_pointer_event' (3 times)
+    158 steps  apps/openagents-web/valleycanyon.coax:97:1  in 'canyon_key' (2 times)
+    27 steps  apps/openagents-web/valleycanyon.coax:113:1  in 'canyon_pointer' (3 times)
+    7 steps  aethyr/points.coax:42:1  in 'clamp'
+  fix: do less work #test 'Canyon pointer orbit mode isolation and two full source draws stay bounded' itself, split the check, or give it a larger budget with #steps N on the check (or coax test --steps N for every check)
+coax: note[E0400]: compile-time value slots: 31513074 of 33554432 used (93%), above three quarters of the limit; more than 33554432 fails with E0400

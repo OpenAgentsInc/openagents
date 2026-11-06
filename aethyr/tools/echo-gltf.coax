@@ -1,0 +1,19 @@
+// Shared read-only glTF accessor SDK output adapter for the Coax Echo packers.
+EpJson :: struct {text:[8388608]u8;nodes:[524288]JvNode;d:[1]Jv;binary:[4096]u8;binary_n:int;}
+EpAcc :: struct {count:int;components:int;component:int;bytes:int;normalized:bool;}
+ep_path :: (root:string,name:string,b:[]u8)->string {return fs_join(root,name,b);}
+ep_get :: (g:[]EpJson,node:int,key:string)->int {return jv_get(g[0].d[0],node,key);}
+ep_int :: (g:[]EpJson,node:int,key:string,default:int)->int {return jv_int(g[0].d[0],ep_get(g,node,key),default);}
+ep_item :: (g:[]EpJson,node:int,i:int)->int {return jv_at(g[0].d[0],node,i);}
+ep_len :: (g:[]EpJson,node:int)->int {return jv_len(g[0].d[0],node);}
+ep_top :: (g:[]EpJson,name:string,i:int)->int {return ep_item(g,ep_get(g,0,name),i);}
+ep_text :: (g:[]EpJson,node:int,key:string)->string {return jv_raw(g[0].d[0],ep_get(g,node,key));}
+ep_load :: (g:[]EpJson,root:string,name:string) {p:[4096]u8;n:=fs_read(ep_path(root,name,p[..]),g[0].text[..]);#assert n>0 && jv_parse(g[0].d[..],cast(string)g[0].text[0..<n],g[0].nodes[..]);uri:=ep_text(g,ep_top(g,"buffers",0),"uri");path:=ep_path(root,uri,p[..]);#assert path.count<4096;for c,k:path {g[0].binary[k]=c;}g[0].binary_n=path.count;}
+ep_read :: (g:[]EpJson,index:int,out:[]u8)->EpAcc {
+ a:=ep_top(g,"accessors",index);v:=ep_top(g,"bufferViews",ep_int(g,a,"bufferView",-1));#assert a>=0 && v>=0 && ep_int(g,v,"buffer",0)==0 && ep_get(g,v,"byteStride")<0;
+ kind:=ep_text(g,a,"type");width:=ifx kind=="SCALAR" then 1 else ifx kind=="VEC2" then 2 else ifx kind=="VEC3" then 3 else ifx kind=="VEC4" then 4 else ifx kind=="MAT4" then 16 else 0;
+ component:=ep_int(g,a,"componentType",0);bytes:=ifx component==5121 then 1 else ifx component==5123 then 2 else ifx component==5125 || component==5126 then 4 else 0;count:=ep_int(g,a,"count",0);#assert width>0 && bytes>0 && count>0 && count<=out.count/(width*bytes);
+ length:=count*width*bytes;offset:=ep_int(g,v,"byteOffset",0)+ep_int(g,a,"byteOffset",0);#assert offset>=0 && fs_read_at(cast(string)g[0].binary[0..<g[0].binary_n],offset,out[0..<length])==length;
+ return EpAcc.{count=count,components=width,component=component,bytes=bytes,normalized=jv_raw(g[0].d[0],ep_get(g,a,"normalized"))=="true"};
+}
+ep_float :: (g:[]EpJson,node:int,key:string,i:int,default:f32)->f32 {a:=ep_get(g,node,key);v:=ep_item(g,a,i);if v<0 {return default;}return cast(f32)pn_f(jv_raw(g[0].d[0],v));}

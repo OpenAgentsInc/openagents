@@ -1,0 +1,56 @@
+// Named facial bone overlays and morph curves over a caller-owned body pose.
+#load "pose.coax";
+#load "morph.coax";
+#load "face-pack.coax";
+FacePlayback :: struct {ready:bool;enabled:bool;playing:bool=true;looping:bool=true;clip:int;time:f32;age:f32;start:f32;end:f32;fade:f32;weights:[256]f32;local:[64]SkinLocal;}
+FACE_RUNTIME_CAP :: 2097152;
+#test "admitted face projection retains playback and releases CPU morph deltas" {
+ source:[536]u8;face_fixture(source[..]);out:[536]u8;n:=face_project_admitted(out[..],source[..]);#assert n==504 && face_info(out[0..<n]).deltas==0 && face_info(out[0..<n]).data==440;
+ #assert face_word(out[..],432)==440 && face_word(out[..],436)==448 && face_float(out[..],472)==1;
+ s:[1]FacePlayback;#assert face_begin(s[..],out[0..<n],0,0,1,true);face_tick(s[..],out[0..<n],0.01);
+}
+// A projection, not another serialized package: call only after face_valid.
+// The GPU retains its separately admitted deltas. CPU playback needs names and samples only.
+face_project_admitted :: (out:[]u8,source:[]u8)->int {
+ f:=face_info(source);removed:=f.data-f.delta_table;n:=source.count-removed;if n>out.count {return 0;}
+ for k:0..<f.delta_table {out[k]=source[k];}for k:f.data..<source.count {out[k-removed]=source[k];}
+ face_put(out,0,0x31524645);face_put(out,8,cast(u32)n);face_put(out,20,0);face_put(out,64,cast(u32)f.delta_table);
+ for k:0..<f.clips {at:=f.clip_table+k*80;face_put(out,at+72,face_word(source,at+72)-cast(u32)removed);face_put(out,at+76,face_word(source,at+76)-cast(u32)removed);}
+ return n;
+}
+#test "face curves sample at source rate and layer only the named facial joint" {
+ b:[536]u8;face_fixture(b[..]);face_put(b[..],472,f32_bits(0.2f32));face_put(b[..],476,f32_bits(0.8f32));face_put(b[..],508,f32_bits(2.0f32));
+ s:[1]FacePlayback;#assert face_begin(s[..],b[..],0,0,1,true);s[0].playing=false;s[0].time=1.0/48.0;s[0].age=0.15;face_tick(s[..],b[..],0);#assert abs(s[0].weights[0]-0.5)<0.00001 && abs(s[0].local[0].t.x-1)<0.00001;
+ body:=[2]SkinLocal.[SkinLocal.{},SkinLocal.{t=v3(3,4,5)}];face_layer(s[..],b[..],body[..]);#assert abs(body[0].t.x-1)<0.00001 && body[1].t.x==3 && body[1].t.y==4 && body[1].t.z==5;
+}
+#test "face zero blend retains the body, then enters and leaves without a jump" {
+ b:[536]u8;face_fixture(b[..]);s:[1]FacePlayback;#assert face_begin(s[..],b[..],0,0,1,false);face_tick(s[..],b[..],0);
+ body:=[1]SkinLocal.[SkinLocal.{t=v3(1,2,3)}];before:=body;face_layer(s[..],b[..],body[..]);#assert body[0].t.x==before[0].t.x && body[0].t.y==before[0].t.y && s[0].fade==0;
+ face_tick(s[..],b[..],0.02);#assert s[0].fade>0 && s[0].fade<1;face_tick(s[..],b[..],0.1);#assert s[0].fade==0;
+ s[0].enabled=false;face_layer(s[..],b[..],body[..]);#assert body[0].t.x==before[0].t.x;
+}
+#test "face selection refuses unknown clips and preserves a paused source frame" {
+ b:[536]u8;face_fixture(b[..]);s:[1]FacePlayback;#assert !face_begin(s[..],b[..],1,0,1,true) && !face_begin(s[..],b[..],0,1,0,true);
+ #assert face_begin(s[..],b[..],0,0,1,true);s[0].playing=false;s[0].time=0.01;face_tick(s[..],b[..],0.1);#assert s[0].time==0.01;
+}
+face_begin :: (s:[]FacePlayback,b:[]u8,clip:int,first:int,last:int,looping:bool)->bool {
+ f:=face_info(b);if clip<0 || clip>=f.clips {return false;}at:=f.clip_table+clip*80;frames:=cast(int)face_word(b,at+64);rate:=face_float(b,at+68);
+ if first<0 || last<=first || last>=frames {return false;}
+ s[0].ready=true;s[0].enabled=true;s[0].clip=clip;s[0].start=cast(f32)first/rate;s[0].end=cast(f32)last/rate;s[0].time=s[0].start;s[0].age=0;s[0].looping=looping;s[0].playing=true;face_tick(s,b,0);return true;
+}
+face_tick :: (s:[]FacePlayback,b:[]u8,dt:f32) {
+ if !s[0].ready || !s[0].enabled || !(dt>=0 && dt<=0.125) {return;}
+ f:=face_info(b);at:=f.clip_table+s[0].clip*80;frames:=cast(int)face_word(b,at+64);rate:=face_float(b,at+68);
+ if s[0].playing {s[0].time+=dt;}s[0].age+=dt;
+ if s[0].looping && s[0].time>s[0].end {duration:=s[0].end-s[0].start;s[0].time=s[0].start+(s[0].time-s[0].start)-duration*floor((s[0].time-s[0].start)/duration);}
+ fade:=pose_fade(s[0].age,0.15);if !s[0].looping {fade=lo(fade,pose_fade(s[0].end-s[0].time,0.15));}s[0].fade=fade;
+ sample:=curve_frame(s[0].time,rate,frames);weights:=cast(int)face_word(b,at+72);bones:=cast(int)face_word(b,at+76);
+ for k:0..<256 {s[0].weights[k]=0;}
+ for k:0..<f.curves {target:=cast(int)face_word(b,f.curve_table+k*68+64);a:=face_float(b,weights+(sample.a*f.curves+k)*4);c:=face_float(b,weights+(sample.b*f.curves+k)*4);s[0].weights[target]=curve_linear(a,c,sample.share)*fade;}
+ for k:0..<f.bones {s[0].local[k]=pose_blend(face_local(b,bones+(sample.a*f.bones+k)*28),face_local(b,bones+(sample.b*f.bones+k)*28),sample.share);}
+}
+face_local :: (b:[]u8,at:int)->SkinLocal {return SkinLocal.{t=v3(face_float(b,at),face_float(b,at+4),face_float(b,at+8)),q=Quat.{x=face_float(b,at+12),y=face_float(b,at+16),z=face_float(b,at+20),w=face_float(b,at+24)}};}
+face_layer :: (s:[]FacePlayback,b:[]u8,body:[]SkinLocal) {
+ if !s[0].ready || !s[0].enabled || s[0].fade==0 {return;}f:=face_info(b);
+ for k:0..<f.bones {joint:=cast(int)face_word(b,f.bone_table+k*68+64);body[joint]=pose_blend(body[joint],s[0].local[k],s[0].fade);}
+}

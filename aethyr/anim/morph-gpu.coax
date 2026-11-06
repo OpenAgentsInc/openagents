@@ -1,0 +1,15 @@
+// Sparse CSR morph application shared by Coax GPU vertex programs.
+#load "../../verse/gpu/wgsl.coax";
+#load "morph.coax";
+MorphVertex :: struct {position:V3;normal:V3;}
+#test "GPU morph inputs add position and normal deltas, and zero weights preserve source bits" {
+ b:=[7]u32.[0,f32_bits(2.0f32),f32_bits(4.0f32),f32_bits(-2.0f32),f32_bits(0.1f32),0,0];w:=[1]f32.[0.25];p:=morph_gpu(v3(1,2,3),v3(0,1,0),b[..],0,0,1,w[..],0,1);#assert p.position.x==1.5 && p.position.y==3 && p.position.z==2.5 && p.normal.x==0.025;
+ w[0]=0;p=morph_gpu(v3(-0.0,2,3),v3(0,1,0),b[..],0,0,1,w[..],0,1);#assert f32_bits(p.position.x)==f32_bits(-0.0f32) && p.normal.x==0;
+}
+morph_gpu :: (position:V3,normal:V3,bytes:[]u32,base:int,first:int,count:int,weights:[]f32,weight_at:int,targets:int)->MorphVertex {
+ out:=MorphVertex.{position=position,normal=normal};
+ for k:0..<count {at:=base+(first+k)*7;target:=cast(int)bytes[at];if target>=targets {continue;}weight:=weights[weight_at+target];if weight==0 {continue;}
+  out.position=v3(morph_axis(out.position.x,f32_from_bits(bytes[at+1]),weight),morph_axis(out.position.y,f32_from_bits(bytes[at+2]),weight),morph_axis(out.position.z,f32_from_bits(bytes[at+3]),weight));
+  out.normal=v3(morph_axis(out.normal.x,f32_from_bits(bytes[at+4]),weight),morph_axis(out.normal.y,f32_from_bits(bytes[at+5]),weight),morph_axis(out.normal.z,f32_from_bits(bytes[at+6]),weight));
+ }return out;
+}

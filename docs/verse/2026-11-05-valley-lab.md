@@ -665,7 +665,7 @@ The [source-section record](../verification/valley-lab-canyon-pair-2026-11-05/RE
 contains exact source identities, original poses, reproducible SDK/Coax tools,
 independent all-corner checks, browser observations and screenshots.
 
-## Next implementation task: Slay performance (#12962)
+## Current implementation: Slay performance (#12962, still open)
 
 The owner's target is the Slay trailer frame at 0:57 (desktop screenshot
 2026-11-05 22:44:37): Echo's narrowed eyes and expression, raised open hand,
@@ -681,12 +681,40 @@ must retain the existing Valley body clips.
    Apply morphs before skinning, layer facial bones by name, and test zero
    weights, bad indices, nonfinite deltas and unresolved bindings.
 4. Add a fixed source-shot view, preserving the actual hand/body pose and
-   expression. Port the orb, lighting and bloom in Coax, comparing fixed
+   expression. Port the orb material, source lighting and lens-flare effects in Coax, comparing fixed
    captures to the supplied reference. Do not substitute neutral Idle or an
    arbitrary sphere and label it an exact match.
 5. Add selectable face clips and documented ambient segments over locomotion;
    check blend boundaries, desktop/phone cost and GPU recovery. Record actual
    image differences and outstanding source render features before pushing.
+
+The first implementation is now the parent P destination:
+`/worlds/valley-canyon?pack=valley-slay`. Its private 789,955,936-byte bundle
+adds 181 named morph targets (564,903 sparse position/normal deltas), 20
+24-fps facial clips, 125 mapped curves and 16 facial bones to the existing
+334-joint/24-body-clip Echo port. Morphs execute before skinning in shared
+Aethyr Coax shader code. Face-only layering retains a separate body pose;
+zero weights preserve the neutral path. All licensed payloads stay private.
+
+The fixed J view starts paused at TF0290 sequence frame 1125 (body sample
+124, face sample 4). It reads the source camera/lens, body pose and animated
+`hand_l` orb attachment. The serialized actor transform track is disabled,
+so it is not applied over the already authored animation root. P toggles
+playback and comma/period step the source clock. F isolates all 20 facial
+clips; brackets select, T restarts and B toggles neutral. R returns to the
+unchanged walking/collision path. Short ambient source segments run every
+eight seconds with 0.15-second fades: TF0130 frames 4–22, TF0145 frames 3–21
+and TF0250 frames 19–40, at 24 fps.
+
+The source project disables bloom. The current analytic blue core/halo is
+an interim orb effect, not a port of the original material/Niagara lens
+flare. Source key, fill and warm wrap directions/colors/intensities feed an
+interim direct-light approximation with filtered shadow samples. This does
+not reproduce the original area-light integration, skin scattering or room
+lighting. Temple scenery, source orb textures/flare, camera shake,
+hair coverage/shading and the remaining material differences still prevent
+an exact reproduction of the owner's screenshot. Do not close #12962 on
+source-data equality alone. See the [implementation and comparison record](../verification/valley-lab-slay-2026-11-06/README.md).
 
 ## Subsequent engine work
 
@@ -741,7 +769,8 @@ and clears held controls.
 
 ## Current Echo port: third-person walking and source inspection
 
-The parent P action now opens `/worlds/valley-canyon?pack=valley-echo`.
+The initial source port used `/worlds/valley-canyon?pack=valley-echo`; the current
+parent P action opens the Slay extension described above.
 The 668,024,432-byte private bundle retains both original Canyon instances,
 Echo's source mesh/UVs/normals/tangents, eight skin influences, 334 palette
 joints, 24 animation clips (2,696 frames), 32 original texture files and
@@ -770,11 +799,12 @@ decoded 8K source and resized mip at once. Source inspection supersamples
 the strand ribbons within an explicit raster cap.
 
 **Visual parity is unfinished.** Eyes/refraction/occlusion, regional skin
-scattering, strand shading/coverage, facial morph playback, full animation
+scattering, strand shading/coverage, full animation
 graph, source camera stack, cloth and hair simulation remain incomplete.
 The native reference's groom also renders incorrectly and cannot qualify
 hair parity. The original game's incompatible native modules were not run.
-The neutral face is not the Slay expression requested for #12962.
+The isolated neutral view remains a control; the Slay extension above adds
+source facial performance and a separate fixed shot.
 
 The source velocity, locomotion integration, walking, collision profile,
 rig admission and pack identity gates killed 98/25/598/33/165/13 mutants,
@@ -809,3 +839,14 @@ samples against the source before claiming equivalence. Add slope warping,
 vaulting, secondary motion and encounter abilities only after those checks.
 The current Canyon Pair view is first person; it does not contain Echo's mesh
 or claim an Unreal controller port.
+
+Slay render source extension:101,672 UV pairs,25,547 sword vertices,
+134,418 sword indices and35 bundled textures pass the independent source-byte
+oracle. The sword follows the source `prop_01` track through the existing
+`groom.prop_01` palette entry135; its mesh inverse bind is the same. Slay's
+head instance uses Desat=.3 and Tint=(.921582,1,.871367), unlike Valley's .2
+and(.9,1,.949020). Its actual textures replace Valley counterparts in this
+private package.35 mipmapped4K RGBA8 layers reserve approximately3.13GB of
+GPU texture storage; the lab's explicit aggregate budget is4.6GB. A phone
+viewport observation on this Mac does not qualify mobile hardware memory
+or performance. A separate mobile/source-detail profile remains necessary.

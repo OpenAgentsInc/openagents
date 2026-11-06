@@ -1,9 +1,9 @@
 # Owner actions
 
-## Valley Lab Echo preview (2026-11-05)
+## Valley Lab Slay preview (2026-11-06)
 
-- [ ] Try [the local Echo walking view](http://127.0.0.1:8892/worlds/valley-canyon?pack=valley-echo). WASD moves, Shift walks, Space jumps, drag or arrows look, R resets and O changes to orbit. C inspects the character; H inspects the face. Report movement direction and visible skin/eye/hair problems.
-- The owner explicitly requested reopening this local preview. Automated checks use muted headless Chrome. This is an unfinished visual port; the Slay reference shot and facial performance are the next task (#12962).
+- [ ] Try [the local source-shot view](http://127.0.0.1:8894/worlds/valley-canyon?pack=valley-slay). It starts paused at TF0290 sequence frame 1125. P plays/pauses; comma/period step; J returns to that shot. F isolates facial performance; brackets select clips; B toggles neutral; T restarts. R returns to walking, WASD moves, Shift walks, Space jumps, drag/arrows look, C/H inspect.
+- The owner explicitly requested reopening the preview. Automated checks remain muted/headless. This is an unfinished visual port: hard/soft lighting response, hair coverage, orb surface/flare, sword and temple scenery still differ from the Slay screenshot. Source animation equality does not establish visual parity.
 
 ## WoW automation terminated (2026-11-04)
 

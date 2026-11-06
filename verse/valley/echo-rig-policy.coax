@@ -1,9 +1,12 @@
 // Structural admission for the private Echo local-pose stream, after the whole-pack SHA gate.
 #load "scan.coax";
+#load "../../aethyr/anim/face-pack.coax";
+#load "slay-shot.coax";
 #authority;
 ECHO_RIG_CAP :: 12582912;
 ECHO_JOINTS :: 334;
 ECHO_CLIPS :: 24;
+ECHO_CATALOG_CAP :: 31457280;
 echo_rig_finite :: (b:[]u8,at:int)->bool {return (scan_u32(b,at)&0x7f800000)!=0x7f800000;}
 echo_rig_size_ok :: (n:int)->bool {return n>=416 && n<=ECHO_RIG_CAP;}
 echo_rig_frames_ok :: (n:int)->bool {return n>=2 && n<=1000;}
@@ -26,3 +29,39 @@ echo_rig_valid :: (b:[]u8)->bool {
  }return cursor==b.count;
 }
 #load "../../aethyr/tests/echo-rig-policy-checks.coax";
+echo_catalog_size_ok :: (n:int)->bool {return n>=16 && n<=ECHO_CATALOG_CAP;}
+echo_catalog_parts_ok :: (n:int,rig:int,face:int)->bool {return rig>=416 && rig<=ECHO_RIG_CAP && face>=80 && face<=FACE_PACK_CAP && rig+face==n-16;}
+echo_catalog_header :: (b:[]u8)->int {return ifx scan_u32(b,0)==0x33504345 then 20 else 16;}
+#test "ECP3 binds the source shot to the same rig and face before publication" #steps 1000000000 {
+ b:[8192]u8;rig:=echo_rig_fixture(b[20..<b.count],1);face_fixture(b[20+rig..<20+rig+536]);at:=20+rig+536;names:[64]u8;shot_fixture(b[at..<at+540],names[..]);total:=at+540;
+ scan_put(b[..],0,0x33504345);scan_put(b[..],4,cast(u32)rig);scan_put(b[..],8,536);scan_put(b[..],12,540);scan_put(b[..],16,cast(u32)total);
+ #assert echo_catalog_header(b[..])==20 && echo_catalog_valid(b[0..<total]);original:=b;
+ for offset:[8]int.[0,4,8,12,16,at,at+40,at+64] {b=original;scan_put(b[..],offset,0xffffffff);#assert !echo_catalog_valid(b[0..<total]);}
+ b=original;#assert !echo_catalog_valid(b[0..<19]) && !echo_catalog_valid(b[0..<total-1]) && !echo_catalog_valid(b[0..<total+1]);
+}
+echo_catalog_valid :: (b:[]u8)->bool {
+ if !echo_catalog_size_ok(b.count) {return false;}
+ if scan_u32(b,0)==0x31484345 {return echo_rig_valid(b);}
+ magic:=scan_u32(b,0);if magic!=0x32504345 && magic!=0x33504345 {return false;}header:=echo_catalog_header(b);if !face_prefix_ok(b.count,header) || cast(int)scan_u32(b,header-4)!=b.count {return false;}
+ shot:=ifx header==20 then cast(int)scan_u32(b,12) else 0;
+ rig:=cast(int)scan_u32(b,4);face:=cast(int)scan_u32(b,8);if !echo_catalog_parts_ok(b.count-(header-16)-shot,rig,face) {return false;}
+ faces:=b[header+rig..<header+rig+face];if !echo_rig_valid(b[header..<header+rig]) || !face_valid(faces) {return false;}
+ f:=face_info(faces);if scan_u32(b,header+8)!=cast(u32)f.joints {return false;}
+ if header==20 && !shot_valid(b[header+rig+face..<b.count],faces[f.rig_names..<f.rig_names+f.joints*64],f.joints,f.clips) {return false;}return true;
+}
+#test "Echo catalog preserves legacy rigs and binds an admitted face to its rig" #steps 1000000000 {
+ b:[8192]u8;n:=echo_rig_fixture(b[16..<b.count],1);face_fixture(b[16+n..<16+n+536]);scan_put(b[..],0,0x32504345);scan_put(b[..],4,cast(u32)n);scan_put(b[..],8,536);scan_put(b[..],12,cast(u32)(16+n+536));#assert echo_catalog_valid(b[0..<16+n+536]);#assert echo_catalog_valid(b[16..<16+n]);
+ original:=b;for at:[7]int.[0,4,8,12,16,16+n,16+n+440] {b=original;scan_put(b[..],at,0xffffffff);#assert !echo_catalog_valid(b[0..<16+n+536]);}
+ b=original;scan_put(b[..],16+n+36,2);#assert !echo_catalog_valid(b[0..<16+n+536]);
+ #assert !echo_catalog_valid(b[0..<15]);
+}
+#test "Catalog refuses individually valid face and rig with different joint counts" #steps 1000000000 {
+ b:[8192]u8;rig:=echo_rig_fixture(b[16..<b.count],1);face_fixture_three(b[16+rig..<16+rig+1656]);scan_put(b[..],0,0x32504345);scan_put(b[..],4,cast(u32)rig);scan_put(b[..],8,1656);scan_put(b[..],12,cast(u32)(16+rig+1656));
+ #assert echo_rig_valid(b[16..<16+rig]) && face_valid(b[16+rig..<16+rig+1656]) && !echo_catalog_valid(b[0..<16+rig+1656]);
+}
+#test "Echo catalog byte boundaries are exact before slicing either payload" {
+ #assert !echo_catalog_size_ok(15) && echo_catalog_size_ok(16) && echo_catalog_size_ok(31457280) && !echo_catalog_size_ok(31457281);
+ #assert echo_catalog_parts_ok(512,416,80) && !echo_catalog_parts_ok(511,416,80) && !echo_catalog_parts_ok(512,415,81) && !echo_catalog_parts_ok(512,417,79);
+ #assert echo_catalog_parts_ok(12583008,12582912,80) && !echo_catalog_parts_ok(12583009,12582913,80);
+ #assert echo_catalog_parts_ok(41943472,416,41943040) && !echo_catalog_parts_ok(41943473,416,41943041);
+}

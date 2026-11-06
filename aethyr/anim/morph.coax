@@ -1,0 +1,22 @@
+// Shared morph arithmetic and sampled animation curves. Deltas precede skinning.
+#test "zero morph weight preserves the original scalar bits" {
+ for x:[5]f32.[0,-0.0,1,-3,0.0001] {#assert f32_bits(morph_axis(x,0.3,0))==f32_bits(x);}
+}
+#test "morphs add signed weighted deltas before any skin transform" {
+ #assert morph_axis(morph_axis(1,2,0.25),-3,0.5)==0;
+ #assert morph_axis(2,3,-0.5)==0.5;
+}
+#test "curve sampling clamps endpoints and interpolates source frames" {
+ a:=curve_frame(0.0625,24,4);#assert a.a==1 && a.b==2 && a.share==0.5;
+ a=curve_frame(-1,24,4);#assert a.a==0 && a.b==1 && a.share==0;
+ a=curve_frame(100,24,4);#assert a.a==3 && a.b==3 && a.share==0;
+ #assert curve_linear(2,6,0.25)==3 && curve_frame(1,0,0).b==0;
+}
+morph_axis :: (base:f32,delta:f32,weight:f32)->f32 {if weight==0 {return base;}return base+delta*weight;}
+CurveFrame :: struct {a:int;b:int;share:f32;}
+curve_frame :: (time:f32,rate:f32,frames:int)->CurveFrame {
+ if frames<2 || frames>2000 || !(rate>0 && rate<=240) || (f32_bits(time)&0x7f800000)==0x7f800000 {return CurveFrame.{};}
+ frame:=time*rate;if frame<0 {frame=0;}if frame>cast(f32)(frames-1) {frame=cast(f32)(frames-1);}a:=cast(int)floor(frame);
+ return CurveFrame.{a=a,b=ifx a+1<frames then a+1 else a,share=frame-cast(f32)a};
+}
+curve_linear :: (a:f32,b:f32,share:f32)->f32 {return a+(b-a)*share;}

@@ -1,0 +1,28 @@
+// Slay's literal UVs and rigid source sword geometry. Licensed data stays private.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../verse/valley/scan.coax";
+#load "../../verse/tools/humans/ph_num.coax";
+#load "echo-gltf.coax";
+#test "Sword vertices use the admitted source prop palette and one complete weight" {
+ b:[96]u8;slay_sword_binding(b[..],0);#assert scan_u32(b[..],36)==135 && scan_u32(b[..],52)==255 && scan_u32(b[..],32)==28;
+ #assert scan_u32(b[..],40)==0 && scan_u32(b[..],56)==0 && scan_u32(b[..],80)==0;
+}
+slay_sword_binding :: (b:[]u8,at:int) {scan_put(b,at+32,28);scan_put(b,at+36,135);scan_put(b,at+52,255);}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}root:=args_at(a[..],0);dest:=args_at(a[..],1);g:[1]EpJson;raw:[4194304]u8;uv:[101672*8]u8;path:[4096]u8;
+ ep_load(g[..],root,"SK_Echo.gltf");primitives:=ep_get(g[..],ep_top(g[..],"meshes",0),"primitives");at:=0;
+ for k:0..<ep_len(g[..],primitives) {attr:=ep_get(g[..],ep_item(g[..],primitives,k),"attributes");acc:=ep_read(g[..],ep_int(g[..],attr,"TEXCOORD_0",-1),raw[..]);#assert acc.component==5126 && acc.components==2 && at+acc.count*8<=uv.count;for i:0..<acc.count*8 {uv[at+i]=raw[i];}at+=acc.count*8;}
+ #assert at==uv.count && fs_write(ep_path(dest,"echo.slay-uv",path[..]),cast(string)uv[..]);
+ ep_load(g[..],root,"SK_Echo_Sword.gltf");pr:=ep_top(g[..],"meshes",0);pr=ep_item(g[..],ep_get(g[..],pr,"primitives"),0);attr:=ep_get(g[..],pr,"attributes");vertices:[25547*96]u8;indices:[134418*4]u8;
+ for field:0..<4 {acc:=ep_read(g[..],ep_int(g[..],attr,[4]string.["POSITION","NORMAL","TEXCOORD_0","TANGENT"][field],-1),raw[..]);#assert acc.count==25547 && acc.component==5126 && acc.components==[4]int.[3,3,2,4][field];word:=[4]int.[0,3,6,15][field];
+  for k:0..<acc.count {for c:0..<acc.components {scan_put(vertices[..],k*96+(word+c)*4,scan_u32(raw[..],(k*acc.components+c)*4));}}
+ }
+ acc:=ep_read(g[..],ep_int(g[..],attr,"JOINTS_0",-1),raw[..]);#assert acc.count==25547 && acc.component==5121;for k:0..<25547 {#assert raw[k*4]==1;}
+ acc=ep_read(g[..],ep_int(g[..],attr,"WEIGHTS_0",-1),raw[..]);#assert acc.count==25547 && acc.component==5121;for k:0..<25547 {#assert scan_u32(raw[..],k*4)==255;slay_sword_binding(vertices[..],k*96);}
+ acc=ep_read(g[..],ep_int(g[..],pr,"indices",-1),raw[..]);#assert acc.count==134418 && acc.component==5123;for k:0..<134418 {id:=cast(int)raw[k*2]|(cast(int)raw[k*2+1]<<8);#assert id<25547;scan_put(indices[..],k*4,cast(u32)(900000+id));}
+ #assert fs_write(ep_path(dest,"echo.sword-vertices",path[..]),cast(string)vertices[..]) && fs_write(ep_path(dest,"echo.sword-indices",path[..]),cast(string)indices[..]);print("Slay render source: 101672 UVs, 25547 sword vertices, 134418 indices, source prop palette135\n");return 0;
+}

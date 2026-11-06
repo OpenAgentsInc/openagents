@@ -1,0 +1,104 @@
+// Hostile EFC1 fixtures and public admission boundaries.
+#forall "face spans match the bounded public interval model" total:-1..<8,first:-1..<10,count:-1..<10 {
+ #assert face_span(total,first,count)==(total>=0 && first>=0 && count>=0 && first<=total && first+count<=total);
+}
+#test "face spans avoid signed overflow at public integer extremes" {
+ #assert face_prefix_ok(5,5) && !face_prefix_ok(5,6);
+ #assert face_span(9223372036854775807,9223372036854775807,0) && !face_span(4,9223372036854775807,1) && !face_span(4,0,9223372036854775807);
+}
+#test "finite float spans inspect each aligned word and refuse a partial word" {
+ b:[17]u8;for n:[5]int.[0,4,8,12,16] {#assert face_floats_ok(b[0..<n]);for k:0..<n/4 {face_put(b[..],k*4,0x7f800000);#assert !face_floats_ok(b[0..<n]);face_put(b[..],k*4,0);}}
+ #assert !face_floats_ok(b[..]);
+}
+#test "three bindings exercise duplicates beyond the first record and exact target end" {
+ b:[1656]u8;face_fixture_three(b[..]);#assert face_valid(b[..]);
+ face_put(b[..],face_info(b[..]).data+2*3*4+12,f32_bits(1.0f32));face_put(b[..],face_info(b[..]).data+2*3*4+24,0);#assert face_valid(b[..]);
+ f:=face_info(b[..]);
+ face_fixture_three(b[..]);for k:0..<64 {b[f.rig_names+2*64+k]=b[f.rig_names+64+k];b[f.bone_table+2*68+k]=b[f.bone_table+68+k];}#assert !face_valid(b[..]);
+ face_fixture_three(b[..]);for k:0..<64 {b[f.rig_names+2*64+k]=b[f.rig_names+k];b[f.bone_table+2*68+k]=b[f.bone_table+k];}#assert !face_valid(b[..]);
+ face_fixture_three(b[..]);b[f.rig_names]=0;b[f.bone_table]=0;#assert !face_valid(b[..]);
+ face_fixture_three(b[..]);for k:0..<64 {b[f.target_table+2*80+k]=b[f.target_table+80+k];b[f.curve_table+2*68+k]=b[f.curve_table+68+k];}#assert !face_valid(b[..]);
+ face_fixture_three(b[..]);for k:0..<64 {b[f.target_table+2*80+k]=b[f.target_table+k];b[f.curve_table+2*68+k]=b[f.curve_table+k];}#assert !face_valid(b[..]);
+ face_fixture_three(b[..]);for k:0..<68 {b[f.bone_table+2*68+k]=b[f.bone_table+68+k];}#assert !face_valid(b[..]);
+ face_fixture_three(b[..]);for k:0..<68 {b[f.curve_table+2*68+k]=b[f.curve_table+68+k];}#assert !face_valid(b[..]);
+ face_fixture_three(b[..]);for k:0..<64 {b[f.curve_table+k]=b[f.rig_names+k];}face_put(b[..],f.curve_table+64,3);#assert !face_valid(b[..]);
+ face_fixture_three(b[..]);face_put(b[..],f.target_table+2*80+68,0);#assert !face_valid(b[..]);
+}
+face_fixture_three :: (b:[]u8) {
+ for k:0..<b.count {b[k]=0;}
+ header:=[17]u32.[0x31434645,1,1656,3,3,3,2,3,3,3,80,320,512,716,920,1080,1176];for x,k:header {face_put(b,k*4,x);}
+ for k:0..<3 {b[80+k*80]=cast(u8)('a'+k);b[716+k*68]=cast(u8)('a'+k);b[320+k*64]='r';b[320+k*64+1]=cast(u8)('0'+k);b[512+k*68]='r';b[512+k*68+1]=cast(u8)('0'+k);face_put(b,80+k*80+64,cast(u32)k);face_put(b,80+k*80+68,1);face_put(b,512+k*68+64,cast(u32)k);face_put(b,716+k*68+64,cast(u32)k);face_put(b,1080+k*32,cast(u32)k);face_put(b,1084+k*32,cast(u32)k);}
+ b[920]='a';face_put(b,984,2);face_put(b,988,f32_bits(24.0f32));face_put(b,992,1176);face_put(b,996,1200);
+ b[1000]='b';face_put(b,1064,3);face_put(b,1068,f32_bits(24.0f32));face_put(b,1072,1368);face_put(b,1076,1404);
+ for k:0..<6 {face_put(b,1200+k*28+24,f32_bits(1.0f32));}for k:0..<9 {face_put(b,1404+k*28+24,f32_bits(1.0f32));}
+}
+#test "wide curve channels fit the exact final payload without extra implied capacity" {
+ b:[5372]u8;face_fixture_wide(b[..]);#assert face_valid(b[..]);
+}
+face_fixture_wide :: (b:[]u8) {
+ for k:0..<b.count {b[k]=0;}header:=[17]u32.[0x31434645,1,5372,32,1,1,1,1,32,1,80,2640,2704,2772,4948,5028,5060];for x,k:header {face_put(b,k*4,x);}
+ digits:="0123456789abcdef";
+ for k:0..<32 {for at:[2]int.[80+k*80,2772+k*68] {b[at]='c';b[at+1]=digits[k/16];b[at+2]=digits[k%16];}face_put(b,80+k*80+64,ifx k==0 then 0 else 1);face_put(b,80+k*80+68,ifx k==0 then 1 else 0);face_put(b,2772+k*68+64,cast(u32)k);}
+ b[2640]='r';b[2704]='r';b[4948]='a';face_put(b,5012,2);face_put(b,5016,f32_bits(24.0f32));face_put(b,5020,5060);face_put(b,5024,5316);face_put(b,5340,f32_bits(1.0f32));face_put(b,5368,f32_bits(1.0f32));
+}
+#test "face admission public byte and scalar bounds keep their exact endpoints" {
+ #assert !face_size_ok(79) && face_size_ok(80) && face_size_ok(41943040) && !face_size_ok(41943041);
+ #assert !face_frames_ok(1) && face_frames_ok(2) && face_frames_ok(2000) && !face_frames_ok(2001);
+ #assert !face_rate_ok(0) && face_rate_ok(0.001) && face_rate_ok(240) && !face_rate_ok(240.001);
+ #assert !face_rotation_ok(0.99) && face_rotation_ok(0.990001) && face_rotation_ok(1.009999) && !face_rotation_ok(1.01);
+}
+#test "face count boundaries are independently admitted before byte arithmetic" {
+ caps:=[7]int.[256,1000000,2000000,64,64,256,512];
+ for field:0..<7 {for value:[4]int.[0,1,caps[field],caps[field]+1] {v:=[7]int.[1,1,1,1,1,1,1];v[field]=value;f:=FacePack.{targets=v[0],vertices=v[1],deltas=v[2],clips=v[3],bones=v[4],curves=v[5],joints=v[6]};#assert face_counts_ok(f)==(value==1 || value==caps[field]);}}
+}
+#forall "every ASCII name byte has the declared identifier meaning" byte:0..<256 {
+ b:[64]u8;b[0]=cast(u8)byte;allowed:="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-";expected:=false;for c:allowed {if cast(int)c==byte {expected=true;}}#assert face_name_ok(b[..])==expected;
+}
+#test "multi-track face fixture exercises later names, targets and frames" {
+ b:[1216]u8;face_fixture_two(b[..]);#assert face_valid(b[..]);
+ for at:[11]int.[0,240,304,368,436,504,572,640,720,80,160] {face_fixture_two(b[..]);b[at]=0;#assert !face_valid(b[..]);}
+ for at:[4]int.[432,500,568,636] {face_fixture_two(b[..]);face_put(b[..],at,2);#assert !face_valid(b[..]);}
+ face_fixture_two(b[..]);for k:0..<64 {b[304+k]=b[240+k];}#assert !face_valid(b[..]);
+ face_fixture_two(b[..]);for k:0..<64 {b[160+k]=b[80+k];}#assert !face_valid(b[..]);
+ face_fixture_two(b[..]);for k:0..<68 {b[436+k]=b[368+k];}#assert !face_valid(b[..]);
+ face_fixture_two(b[..]);for k:0..<68 {b[572+k]=b[504+k];}#assert !face_valid(b[..]);
+ for at:800/4..<896/4 {if (at*4-800)%32<8 {continue;}face_fixture_two(b[..]);face_put(b[..],at*4,0x7fc00000);#assert !face_valid(b[..]);}
+ for at:896/4..<1216/4 {face_fixture_two(b[..]);face_put(b[..],at*4,0x7f800000);#assert !face_valid(b[..]);}
+ face_fixture_two(b[..]);original:=b;for n:80..<1216 {b=original;face_put(b[..],8,cast(u32)n);#assert !face_valid(b[0..<n]);}
+}
+face_fixture_two :: (b:[]u8) {
+ for k:0..<b.count {b[k]=0;}
+ header:=[17]u32.[0x31434645,1,1216,2,3,3,2,2,2,2,80,240,368,504,640,800,896];for x,k:header {face_put(b,k*4,x);}
+ for x,k:"alpha" {b[80+k]=x;b[504+k]=x;}for x,k:"beta" {b[160+k]=x;b[572+k]=x;}
+ for x,k:"face0" {b[240+k]=x;b[368+k]=x;}for x,k:"face1" {b[304+k]=x;b[436+k]=x;}
+ b[640]='a';b[720]='b';face_put(b,148,1);face_put(b,224,1);face_put(b,228,2);face_put(b,500,1);face_put(b,636,1);
+ face_put(b,704,2);face_put(b,708,f32_bits(24.0f32));face_put(b,712,896);face_put(b,716,912);
+ face_put(b,784,3);face_put(b,788,f32_bits(24.0f32));face_put(b,792,1024);face_put(b,796,1048);
+ face_put(b,832,1);face_put(b,836,1);face_put(b,864,2);face_put(b,868,1);
+ for k:0..<4 {face_put(b,912+k*28+24,f32_bits(1.0f32));}for k:0..<6 {face_put(b,1048+k*28+24,f32_bits(1.0f32));}
+ face_put(b,896,f32_bits(0.25f32));
+}
+#test "face fixture resolves names and retains all sparse deltas" {b:[536]u8;face_fixture(b[..]);#assert face_valid(b[..]);#assert face_word(b[..],440)==1 && face_word(b[..],444)==0;}
+#test "face admission refuses bad vertex, NaN delta, unknown curve and bone" {
+ b:[536]u8;face_fixture(b[..]);face_put(b[..],440,2);#assert !face_valid(b[..]);face_fixture(b[..]);face_put(b[..],448,0x7fc00000);#assert !face_valid(b[..]);
+ face_fixture(b[..]);face_put(b[..],468,0x7f800000);#assert !face_valid(b[..]);face_fixture(b[..]);b[292]='x';#assert !face_valid(b[..]);
+ face_fixture(b[..]);b[224]='x';#assert !face_valid(b[..]);face_fixture(b[..]);face_put(b[..],356,1);#assert !face_valid(b[..]);
+ face_fixture(b[..]);face_put(b[..],288,1);#assert !face_valid(b[..]);face_fixture(b[..]);face_put(b[..],472,0xff800000);#assert !face_valid(b[..]);
+ face_fixture(b[..]);face_put(b[..],504,0);#assert !face_valid(b[..]);
+}
+#test "face header offsets, counts and exact extents precede every read" {
+ b:[537]u8;face_fixture(b[0..<536]);#assert !face_valid(b[..]) && !face_valid(b[0..<79]);
+ for at:[19]int.[0,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64,424,428] {face_fixture(b[0..<536]);face_put(b[..],at,0xffffffff);#assert !face_valid(b[0..<536]);}
+ for at:[4]int.[432,436,144,148] {face_fixture(b[0..<536]);face_put(b[..],at,0xffffffff);#assert !face_valid(b[0..<536]);}
+}
+#test "face names require a bounded canonical ASCII terminator" {
+ b:[64]u8;#assert !face_name_ok(b[..]);b[0]='a';#assert face_name_ok(b[..]);b[63]=1;#assert !face_name_ok(b[..]);
+ for k:0..<64 {b[k]='a';}#assert !face_name_ok(b[..]);b[1]=0;b[2]=0;b[0]=31;#assert !face_name_ok(b[..]);
+}
+face_fixture :: (b:[]u8) {
+ for k:0..<b.count {b[k]=0;}
+ header:=[17]u32.[0x31434645,1,536,1,2,1,1,1,1,1,80,160,224,292,360,440,472];for x,k:header {face_put(b,k*4,x);}
+ for x,k:"blink" {b[80+k]=x;b[292+k]=x;}for x,k:"face" {b[160+k]=x;b[224+k]=x;}for x,k:"TF0100" {b[360+k]=x;}
+ face_put(b,148,1);face_put(b,424,2);face_put(b,428,f32_bits(24.0f32));face_put(b,432,472);face_put(b,436,480);face_put(b,440,1);
+ face_put(b,504,f32_bits(1.0f32));face_put(b,532,f32_bits(1.0f32));
+}

@@ -1,0 +1,9 @@
+// Shared Coax conversion of read-only Slay SDK output.
+SfName :: struct {bytes:[64]u8;n:int;}
+sf_lower :: (c:u8)->u8 {return ifx c>='A' && c<='Z' then c+32 else c;}
+sf_name :: (name:string)->SfName {out:=SfName.{};#assert name.count>0 && name.count<64;out.n=name.count;for c,k:name {out.bytes[k]=sf_lower(c);}return out;}
+sf_find :: (names:[]SfName,name:string)->int {for n,k:names {if n.n!=name.count {continue;}same:=true;for c,j:name {if n.bytes[j]!=sf_lower(c) {same=false;break;}}if same {return k;}}return -1;}
+sf_write_name :: (out:[]u8,at:int,name:SfName) {for k:0..<64 {out[at+k]=name.bytes[k];}}
+sf_json :: (g:[]EpJson,root:string,file:string) {p:[4096]u8;n:=fs_read(ep_path(root,file,p[..]),g[0].text[..]);#assert n>0 && jv_parse(g[0].d[..],cast(string)g[0].text[0..<n],g[0].nodes[..]);}
+sf_value :: (g:[]EpJson,node:int)->f32 {return cast(f32)pn_f(jv_raw(g[0].d[0],node));}
+sf_local :: (raw:[10]f32)->[7]f32 {#assert raw[7]==1 && raw[8]==1 && raw[9]==1;return [7]f32.[raw[0]*0.01,raw[2]*0.01,raw[1]*0.01,-raw[3],-raw[5],-raw[4],raw[6]];}

@@ -1754,6 +1754,20 @@ surfaces. Chapter 64 owns the remaining special realm adapters, including
 flight and boat/warp paths. Evidence: `aethyr/tests/walk-qualification.json`,
 `aethyr/tests/follower-qualification.json` and the chapter 9 verification data.
 
+## Source facial animation layers over an independently retained body pose
+
+Valley Lab's optional Slay catalog binds its original Echo rig, named EFC1
+face data and SHS1 shot through a whole-package SHA and bounded structural
+admission. Invalid names, indices, nonfinite values, duplicate bindings or
+inconsistent extents cannot publish partial source data. CPU playback keeps
+only a checked runtime projection; sparse morph deltas stay in GPU storage.
+Shared Aethyr morph arithmetic runs before skinning. Facial bones overlay a
+fresh body pose each presentation, so repeated presentation cannot accumulate
+facial deformation. Exact zero weights retain the original vertex path.
+The fixed source-shot clock is separate from the walking controller. Source
+sample equality is not qualification of Unreal rendering or screenshot parity.
+Evidence and outstanding exits: `docs/verification/valley-lab-slay-2026-11-06/`.
+
 ## One follow camera eases the walker's view
 
 Valley Lab explicitly opts into `locomotion-source.coax`'s flat-ground

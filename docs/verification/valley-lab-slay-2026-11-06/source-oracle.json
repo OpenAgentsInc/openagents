@@ -1,0 +1,17 @@
+[
+  {
+    "source_morph_deltas_bit_exact": 564903,
+    "gpu_csr_records_bit_exact": 564903,
+    "source_face_clips": 20,
+    "curve_samples_bit_exact": 143750,
+    "facial_local_samples_exact_values": 18400,
+    "shot_body_local_samples_exact_values": 27000
+  },
+  {
+    "slay_uv_pairs_bit_exact": 101672,
+    "sword_vertices_bit_exact": 25547,
+    "sword_indices_bit_exact": 134418,
+    "bundled_source_textures_bit_exact": 35,
+    "slay_mesh_and_morph_geometry_equals_valley": true
+  }
+]
