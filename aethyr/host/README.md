@@ -312,13 +312,19 @@ and target; a native HTTP request writes the target with its separately
 bound Host header. A refused or short destination receives no prefix.
 
 Answers arrive as message `512+id`, ASCII `STATUS\n` followed by raw body
-bytes. Bounded requests want an answer, cannot be beacons and fit the
+bytes, including a leading byte-order mark or malformed UTF-8 in an ordinary
+unbounded response. Ordinary delivery clips the byte sequence at the inbox
+capacity. The browser v1 adapter does not decode/re-encode those body bytes.
+Bounded requests require valid UTF-8, want an answer, cannot be beacons and fit the
 **entire** response including status/newline inside the inbox. Deadline,
 overflow and network failure produce exactly one `0\n`. Cancellation returns
 1 when it cancels a live owner or 0 when absent, invalidates ownership before
 aborting, and is silent: no later reply from that owner. Replacing the engine
 cancels all its operations. `coaxial_now_ms()` is monotonic integer
 milliseconds; `coaxial_now_seconds()` is Unix wall seconds. Neither is dt.
+The physical browser byte/prefix regression and unchanged legacy helper
+observations are in
+[`http-bytes.md`](../../docs/verification/host-contract-2026-11-05/http-bytes.md).
 
 Version 1 refuses HTTP redirects. `http-redirect.coax` selects no-follow
 before the request and refuses status 301, 302, 303, 307 or 308 before

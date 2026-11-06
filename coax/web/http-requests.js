@@ -20,7 +20,8 @@ export function makeHttpRequests({
   function finish(r, text, abort = false) {
     if (!owns(r)) return;
     if (r.policy) {
-      if (!abort && !r.counted && !r.policy.httpChunk(r.owner,new TextEncoder().encode(text).length)) abort=true;
+      const length=text instanceof Uint8Array?text.byteLength:new TextEncoder().encode(text).length;
+      if (!abort && !r.counted && !r.policy.httpChunk(r.owner,length)) abort=true;
       const receipt=r.policy.httpFinish(r.owner,now(),!abort,true);
       if (!receipt) { release(r);return; }
       if (receipt.failure) { text='0\n';abort=true; }
@@ -60,7 +61,10 @@ export function makeHttpRequests({
       let offset = 0;
       for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
       // Replacement characters can expand malformed bytes beyond the inbox.
-      return header + new TextDecoder('utf-8', {fatal: true}).decode(bytes);
+      const decoded=new TextDecoder('utf-8', {fatal: true}).decode(bytes);
+      if(!r.policy)return header+decoded;
+      const prefix=new TextEncoder().encode(header),wire=new Uint8Array(prefix.length+bytes.length);
+      wire.set(prefix);wire.set(bytes,prefix.length);return wire;
     } finally { reader.releaseLock?.(); }
   }
   function request(url, input, flags, timeoutMs) {
@@ -127,7 +131,12 @@ export function makeHttpRequests({
         headers, ...(r ? {signal: r.controller.signal} : {})});
       if (!r || !owns(r)) return;
       if (!responseAllowed(response.status)) throw Error('HTTP redirect refused by Coax');
-      const text = bounded ? await boundedBody(r, response) : `${response.status}\n${await response.text()}`;
+      let text;
+      if(bounded)text=await boundedBody(r,response);
+      else if(r.policy){
+        const body=new Uint8Array(await response.arrayBuffer()),prefix=new TextEncoder().encode(`${response.status}\n`);
+        text=new Uint8Array(prefix.length+body.length);text.set(prefix);text.set(body,prefix.length);
+      }else text=`${response.status}\n${await response.text()}`;
       if (text !== null) finish(r, text);
     }).catch(() => { if (r) finish(r, '0\n', true); });
     return id;

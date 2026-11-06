@@ -60,6 +60,15 @@ the complete request, never publishes a successful prefix, and bounded
 failure is exactly `0\n`. Deadline and whole-response capacity include the
 status line. Generations and epochs retire rather than wrap.
 
+Version 1 HTTP inbox delivery preserves actual status/body bytes. Ordinary
+unbounded replies may carry malformed UTF-8 and clip at the inbox's byte
+capacity; a browser text conversion must not replace bytes, strip a leading
+body BOM or discard the body on clipping. Bounded replies instead require
+valid UTF-8 and the complete response inside capacity. The actual import,
+inbox and next-frame browser regression checks all66 authored words, retaining
+the original red plus unchanged pre-v1 helper controls. See
+`docs/verification/host-contract-2026-11-05/http-bytes.md`.
+
 `routes.coax` admits bounded root-relative HTTP inputs and the exact
 development native-local URI/IPv4-loopback origin. `http-target.coax` owns
 UTF-8 percent encoding, fragment removal, empty queries and dot segments;

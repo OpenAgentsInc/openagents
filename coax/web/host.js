@@ -638,6 +638,7 @@ const HTTP_KIND = 512;
 function answer(id, text) {
   const x = engine?.exports;
   if (!x?.coaxial_message) return;
+  if(text instanceof Uint8Array){send(HTTP_KIND+id,text);return;}
   const bytes = new TextEncoder().encode(text);
   send(HTTP_KIND + id, bytes.length > x.coaxial_inbox_cap() ? text.slice(0, text.indexOf("\n") + 1) : text);
 }
@@ -2779,7 +2780,7 @@ function send(kind, text = "") {
   if (waiting) { waiting.push(() => send(kind, text));return; }
   const x = engine?.exports;
   if (!x?.coaxial_message) return;
-  const bytes = new TextEncoder().encode(text).subarray(0, x.coaxial_inbox_cap());
+  const bytes = (text instanceof Uint8Array?text:new TextEncoder().encode(text)).subarray(0, x.coaxial_inbox_cap());
   new Uint8Array(memory.buffer, x.coaxial_inbox(arena.state), bytes.length).set(bytes);
   x.coaxial_message(arena.state, kind, bytes.length);
   if(kind===607&&mediaNoticeTrace){

@@ -11,6 +11,9 @@ HcnConnection :: struct {h:int=-1;phase:int;used:int;input:[8192]u8;reader:[1]Ws
   #assert hcn_path("GET /api/host-contract/ok HTTP/1.1\r\n\r\n")=="/api/host-contract/ok";
   #assert hcn_path("GET /x?y HTTP/1.1\r\n")=="/x?y" && hcn_path("bad")=="";
 }
+#test "HTTP byte fixture sends a literal BOM without normalizing its payload" {
+ c:[1]HcnConnection;delay:=hcn_body(c[..],"/api/host-contract/bom");#assert delay==0&&c[0].body_n==10&&c[0].body[0]==239&&c[0].body[1]==187&&c[0].body[2]==191&&c[0].body[3]==65&&c[0].body[9]==130;
+}
 hcn_path :: (request:string)->string {
   if request.count<5 || request[0..<4]!="GET " {return "";}
   at:=4;while at<request.count && request[at]!=' ' {at+=1;}
@@ -19,7 +22,7 @@ hcn_path :: (request:string)->string {
 hcn_close :: (c:[]HcnConnection) {if c[0].h>=0 {closed:=cxsock_close(c[0].h);}c[0]=HcnConnection.{};}
 hcn_write :: (h:int,bytes:string)->bool {for c:bytes {if cxsock_write(h,cast(int)c)!=0 {return false;}}return cxsock_flush(h,100)==0;}
 hcn_consume :: (c:[]HcnConnection,n:int) {for i:n..<c[0].used {c[0].input[i-n]=c[0].input[i];}c[0].used-=n;}
-hcn_http :: (c:[]HcnConnection,path:string) {
+hcn_body :: (c:[]HcnConnection,path:string)->int {
   text:=path;delay:=0;
   if path=="/health" {text="ok";}
   if path=="/api/host-contract/ok" {text="Aé🙂";}
@@ -28,8 +31,10 @@ hcn_http :: (c:[]HcnConnection,path:string) {
   c[0].body_n=text.count;for v,i:text {c[0].body[i]=v;}
   if path=="/api/host-contract/large" {c[0].body_n=125;for i:0..<125 {c[0].body[i]='x';}}
   if path=="/api/host-contract/invalid" {c[0].body_n=1;c[0].body[0]=255;}
-  c[0].phase=2;c[0].due=cxsock_now_ms()+delay;
+  if path=="/api/host-contract/bom" {bytes:=[10]u8.[239,187,191,65,195,169,240,159,153,130];c[0].body_n=10;for byte,i:bytes{c[0].body[i]=byte;}}
+  return delay;
 }
+hcn_http :: (c:[]HcnConnection,path:string) {delay:=hcn_body(c,path);c[0].phase=2;c[0].due=cxsock_now_ms()+delay;}
 hcn_step :: (c:[]HcnConnection) {
   if c[0].h<0 {return;}
   out:[16384]u8;

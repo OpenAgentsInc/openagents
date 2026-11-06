@@ -1,0 +1,9 @@
+#authority;
+#test "ordinary HTTP receipts retain every byte fact, callback and recovery observation" {
+ rows:=[66]int.[0,0,1,512,5,1194251966,1,1,0,1,512,11,2124975662,1,2,0,1,512,14,4139733601,1,3,0,1,512,128,3093033317,1,4,0,1,512,2,669875135,1,5,0,1,512,14,4139733601,1,6,0,1,512,2,669875135,1,7,0,1,512,11,2124975662,1,8,1,1,7,3220067738,9,1,1,11,2124975662];
+ long:[67]int;#assert hfb_accept(rows[..])&&!hfb_accept(rows[0..<65])&&!hfb_accept(long[..]);for i:0..<rows.count{rows[i]+=1;#assert !hfb_accept(rows[..]);rows[i]-=1;}
+}
+hfb_accept::(rows:[]int)->bool #export_c {
+ expected:=[66]int.[0,0,1,512,5,1194251966,1,1,0,1,512,11,2124975662,1,2,0,1,512,14,4139733601,1,3,0,1,512,128,3093033317,1,4,0,1,512,2,669875135,1,5,0,1,512,14,4139733601,1,6,0,1,512,2,669875135,1,7,0,1,512,11,2124975662,1,8,1,1,7,3220067738,9,1,1,11,2124975662];
+ if rows.count!=expected.count{return false;}for value,i:expected{if rows[i]!=value{return false;}}return true;
+}
