@@ -1885,7 +1885,7 @@ static int usage() {
           "       coax build   file.coax [-o out] [--release] [--keep-c]\n"
           "       coax lib     file.coax [-o out.o] [--release] [--keep-c]\n"
           "       coax header  file.coax [-o out.h]\n"
-          "       coax c       file.coax [--release] [--library [--header out.h] [--split N]]\n"
+          "       coax c       file.coax [--release] [--library [--header out.h] [--split N [--split-unit BYTES]]]\n"
           "       coax checks-c file.coax [--verification-abi 1|2] [--only SUBSTR] [-o checks.c]  verification-only checked C\n"
           "       coax metal   file.coax [--vertex V --fragment F [--tree]] [-o out.metal]\n"
           "       coax cuda    file.coax [--release]\n"
@@ -2304,6 +2304,15 @@ static int main_impl(int argc, char **argv) {
       long n = strtol(value, &end, 10);
       if (!*value || *end || n < 1 || n > 256) { fprintf(stderr, "coax: --split requires a unit count from 1 to 256\n"); return 1; }
       opts.split = (int32_t)n;
+      ++i;
+    }
+    else if (a == "--split-unit" && cmd == "c") {
+      // Bytes of procedures' C a --split part holds (#12938; default 512 KiB).
+      const char *value = i + 1 < argc ? argv[i + 1] : "";
+      char *end = nullptr;
+      unsigned long long n = strtoull(value, &end, 10);
+      if (!*value || *value == '-' || *end || n < 1 || n > (1ULL << 40)) { fprintf(stderr, "coax: --split-unit requires a byte count from 1 to 2^40\n"); return 1; }
+      opts.split_unit = n;
       ++i;
     }
     else if (a == "--header" && i + 1 < argc) header = argv[++i];

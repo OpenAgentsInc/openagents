@@ -3578,28 +3578,44 @@ static std::set<const ProcDecl *> called_instances(const File *file) {
 
 size_t g_instance_c_bytes = 0;
 
-// --split N (#12938): a --library unit's C as up to N translation units and a
-// shared one, so a build compiles again only the units whose C changed (a
-// gameplay edit to Everglade's carrier changed all 9 MB of one unit). The
-// output is one stream: a prelude every unit begins with (the runtime, the
-// types, the view helpers and every procedure's prototype), then each unit's
-// part after a line "/* coax-unit ID */" (coax/web/wasm.sh writes each part,
-// after the prelude, to a file of its own). Procedures are grouped into runs
-// of neighbours in one source file, a run ending after a procedure whose
-// name's hash is 0 mod 8, so an edit moves no other procedure between runs; a
-// run's unit is the hash of its file and first procedure's name, mod N. A
-// generic instance goes with the generic's file and name. Each unit names its
-// own compile-time values (coax_k0...). The shared unit holds the init, show
-// and host-default helpers. Procedures the program alone calls lose static:
-// they are called across units (a release's link-time optimization, which sees
-// every unit, internalizes them again).
+// --split N (#12938): a --library unit's C as up to N translation units and
+// a shared one, so a build compiles again only the units whose C changed (a
+// gameplay edit to Everglade's carrier changed all 9 MB of one unit). There is
+// one unit per 512 KiB of procedures' C (--split-unit BYTES), at most N; a
+// unit under 2 MiB (four units' worth) is emitted whole. The output is one stream: a prelude every unit
+// begins with (the runtime, the types, the view helpers and every procedure's
+// prototype), then each unit's part after a line "/* coax-unit ID */"
+// (coax/web/wasm.sh writes each part, after the prelude, to a file of its
+// own). Procedures are grouped into runs of neighbours in one source file, a
+// run ending after a procedure whose name's hash is 0 mod 8, so an edit moves
+// no other procedure between runs; a run's unit is the hash of its file and
+// first procedure's name, mod the unit count. A generic instance goes with the
+// generic's file and name. Each unit names its own compile-time values
+// (coax_k0...). The shared unit holds the init, show and host-default
+// helpers. Procedures the program alone calls lose static: they are called
+// across units (a release's link-time optimization, which sees every unit,
+// internalizes them again).
 static uint64_t split_hash(const std::string &text) {
   uint64_t h = 1469598103934665603ULL;  // FNV-1a
   for (unsigned char c : text) { h ^= c; h *= 1099511628211ULL; }
   return h;
 }
 
-static std::string emit_c_split(const File *file, const EmitOptions &opts) {
+// The bytes of the procedures' C, as a split emits them (no cost is recorded
+// and no expression is numbered: the C that follows is emitted afresh).
+static size_t split_function_bytes(const File *file, const EmitOptions &opts, const std::set<const ProcDecl *> &called) {
+  Emitter em{file, opts};
+  em.split = true;
+  std::map<const Expr *, int32_t> ids;
+  std::vector<const Expr *> values;
+  em.unit_ct_ids = &ids; em.unit_ct_values = &values;
+  size_t bytes = 0;
+  for (const ProcDecl *p : file->procs)
+    if (!p->origin || called.count(p)) bytes += em.function(p).size();
+  return bytes;
+}
+
+static std::string emit_c_split(const File *file, const EmitOptions &opts, uint64_t units) {
   Emitter em{file, opts};
   em.split = true;
   g_instance_c_bytes = 0;
@@ -3607,7 +3623,6 @@ static std::string emit_c_split(const File *file, const EmitOptions &opts) {
   const std::set<const ProcDecl *> called = called_instances(file);
   laps.lap("emit.instances");
   auto emitted = [&](const ProcDecl *p) { return !p->origin || called.count(p); };
-  const uint64_t units = (uint64_t)opts.split;
   // Each procedure's unit: runs of a source file's own procedures, then instances.
   std::map<const ProcDecl *, uint64_t> unit_of;
   std::string run_key, last_path;
@@ -3696,7 +3711,14 @@ static std::string emit_c_split(const File *file, const EmitOptions &opts) {
 std::string emit_c(const File *file, const EmitOptions &opts) {
   if (opts.cuda) return emit_cuda(file, opts);
   if (opts.metal_compute) return emit_metal_compute(file, opts);
-  if (opts.split > 0 && opts.library && !opts.metal) return emit_c_split(file, opts);
+  if (opts.split > 0 && opts.library && !opts.metal) {
+    // One part per 512 KiB of procedures' C (--split-unit), at most N; a unit
+    // with less than four parts' worth is emitted whole, as without --split
+    // (splitting a small unit only makes a release larger: Belt's 1.6 MB of C
+    // in 16 parts linked 2% larger).
+    const uint64_t bytes = split_function_bytes(file, opts, called_instances(file));
+    if (bytes / opts.split_unit >= 4) return emit_c_split(file, opts, std::min<uint64_t>((uint64_t)opts.split, bytes / opts.split_unit));
+  }
   Emitter em{file, opts};
   std::string functions;
   g_instance_c_bytes = 0;

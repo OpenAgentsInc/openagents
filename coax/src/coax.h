@@ -664,6 +664,7 @@ struct EmitOptions {
   bool quantity_device = false; // device output is outside initial quantity qualification
   bool metal_compute = false;  // Metal Shading Language compute kernels: the same subset, f64 as float-float
   int32_t split = 0;  // --split N: a --library unit's C as N translation units and a shared one (#12938)
+  uint64_t split_unit = 512 << 10;  // --split-unit BYTES: one translation unit per this many bytes of procedures' C
 };
 std::string emit_c(const File *file, const EmitOptions &opts);
 // Verification emission borrows the original checked graph. Its procedure
