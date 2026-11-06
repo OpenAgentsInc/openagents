@@ -59,8 +59,8 @@ export function makeSocketQueues(retention,{current,deliver,closed,schedule,canD
  function pump(){
   if(retired||timer)return;
   timer=setTimeout(()=>{timer=0;if(retired)return;
-   for(let i=0;i<output.length;){const row=output[i];if(row.ws.readyState===3||row.sent&&row.ws.bufferedAmount===0||!row.sent&&(!current(row.ws,row.id)||row.ws[failed])){output.splice(i,1);release(true,row);continue;}
-    if(!row.sent&&canSend()&&row.ws.readyState===1){try{row.ws.send(decoder.decode(row.bytes));row.sent=true;}catch{terminal(row.ws,row.id,retention.failure());}}
+   for(let i=0;i<output.length;){const row=output[i];if(row.ws.readyState===3||row.sent&&row.ws.bufferedAmount===0&&(row.ws.bufferedCommands??0)===0||!row.sent&&(!current(row.ws,row.id)||row.ws[failed])){output.splice(i,1);release(true,row);continue;}
+    if(!row.sent&&canSend()&&row.ws.readyState===1){try{row.ws.send(decoder.decode(row.bytes),{bytes:row.bytes.length,lease:row.lease});row.sent=true;}catch{terminal(row.ws,row.id,retention.failure());}}
     i++;
    }
    if(output.length)pump();
@@ -78,6 +78,6 @@ export function makeSocketQueues(retention,{current,deliver,closed,schedule,canD
   }
  }
  return Object.freeze({receive,send,drain,hasInput:()=>input.length>0||terminals.some(Boolean),
-  info:()=>({input:retention.info(false),output:retention.info(true),events:input.length,commands:output.length,delivering,terminals:terminals.filter(Boolean).length,overflow,allocations,retired,buffered:output.map(r=>({id:r.id,sent:r.sent,bytes:r.bytes.length,bufferedAmount:r.ws.bufferedAmount,readyState:r.ws.readyState}))}),
+  info:()=>({input:retention.info(false),output:retention.info(true),events:input.length,commands:output.length,delivering,terminals:terminals.filter(Boolean).length,overflow,allocations,retired,buffered:output.map(r=>({id:r.id,sent:r.sent,bytes:r.bytes.length,bufferedAmount:r.ws.bufferedAmount,bufferedCommands:r.ws.bufferedCommands??0,readyState:r.ws.readyState}))}),
   reset(){if(retired)return;retired=true;if(timer)clearTimeout(timer);timer=0;for(const row of input)release(false,row);input.length=0;for(const row of output)release(true,row);output.length=0;terminals.fill(null);if(!delivering)retention.reset();}});
 }

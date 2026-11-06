@@ -221,6 +221,7 @@ import { startGpui } from "./gpui.js";
 import { startLoading, readBytes } from "./loader.js";
 import { makeHttpRequests } from "./http-requests.js";
 import { makeHostTransport } from "./host-transport.js";
+import {openSocketRetention,makeSocketQueues} from "./socket-queue-host.js";
 import { makeHostLifecycle } from "./host-lifecycle.js";
 import { openHostServices, openPcmMemory } from "./services-host.js";
 import { openCoaxAudio, renderCoaxAudio } from "./audio-host.js";
@@ -268,6 +269,7 @@ const probeDo = probe ? new URLSearchParams(location.search).get("do") || "" : "
 const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024 }); // 8 MiB, at most 64 MiB
 let engine = null;   // { exports, layout }
 let hostTransport = null, hostLifecycle = null, hostServices = null, reconnectAfterEngine = false;
+let socketQueues=null,lastSocketQueueRetired=null,socketDeliveryHeld=false,socketSendingHeld=false;
 function hostLifeEvent(kind,nowUs=Math.floor(performance.now()*1000),arg=0){const actions=hostLifecycle?.event(kind,nowUs,arg)??0;if(actions&1)call("coaxial_blur");return actions;}
 let engineBytes = null;   // the running engine's wasm: a rescue save names it (rescueIdentity)
 let engineInstalling = false;
@@ -393,6 +395,15 @@ async function loadEngine(bytes, generation) {
   hostLifecycle=makeHostLifecycle(x);
   if(hostTransport){const services=await openHostServices();if(generation!==wanted)return false;hostServices=services;}
   if(hostTransport && sockets.some(Boolean)){reconnectAfterEngine=true;resetSockets();}
+  if(hostTransport){
+    const retention=await openSocketRetention(x.coaxial_inbox_cap());if(generation!==wanted)return false;
+    socketQueues=makeSocketQueues(retention,{
+      current:(ws,id)=>ws.__coaxialEngine===generation&&wanted===generation&&(sockets[id]===ws||sockets[id]===null&&ws.__coaxialLocallyClosed),
+      closed:(ws,id)=>{if(sockets[id]===ws)sockets[id]=null;},
+      deliver:(ws,id,event,bytes)=>socketEvent(id,event,"",ws,bytes,retention),
+      schedule:()=>{if(!socketTimer)socketTimer=setTimeout(socketIdle,100);},
+      canDeliver:()=>!waiting&&!!engine&&!socketDeliveryHeld,canSend:()=>!socketSendingHeld});
+  }
   if(frameTrace)x.coaxial_frame_parts?.(0,-1);
   const layout = x.coaxial_layout();
   const heapBase = x.__heap_base?.value ?? 0;
@@ -498,6 +509,7 @@ function resetSockets() {
     const ws=sockets[id];sockets[id]=null;
     if(ws){retireRoomTrace(ws);try{ws.close();}catch{}}
   }
+  if(socketQueues){socketQueues.reset();lastSocketQueueRetired=socketQueues.info();socketQueues=null;}
   socketQueue.length=0;socketHead=0;
   if(socketTimer){clearTimeout(socketTimer);socketTimer=0;}
 }
@@ -512,16 +524,18 @@ function socketQueued(ws, id, event, text = "") {
   if(event===SOCKET_FRAME)ws.__roomTrace?.receive(text);
   if(event===SOCKET_CLOSED||event===SOCKET_ERROR)retireRoomTrace(ws);
   if (event === SOCKET_FRAME) socketFrames++;
+  if(ws.__coaxialPolicy&&socketQueues){socketQueues.receive(ws,id,event,text);return;}
   socketQueue.push([ws, id, event, text]);
   if (!socketTimer) socketTimer = setTimeout(socketIdle, 100);
 }
 function socketIdle() {
   socketTimer = 0;
   if (performance.now() - socketDrained > 90) drainSockets();
-  if (socketHead < socketQueue.length) socketTimer = setTimeout(socketIdle, 100);
+  if (socketQueues?.hasInput() || socketHead < socketQueue.length) socketTimer = setTimeout(socketIdle, 100);
 }
 function drainSockets(budget = SOCKET_BUDGET_MS) {
   const t0 = socketDrained = performance.now();
+  if(socketQueues){socketQueues.drain();return;}
   while (socketHead < socketQueue.length) {
     const [ws, id, event, text] = socketQueue[socketHead];
     socketQueue[socketHead++] = null;
@@ -534,19 +548,21 @@ function drainSockets(budget = SOCKET_BUDGET_MS) {
   else if (socketHead > 4096) { socketQueue.splice(0, socketHead); socketHead = 0; }
 }
 // An event for socket id: its bytes go in the inbox, as typed text does.
-function socketEvent(id, event, text = "", ws = null) {
+function socketEvent(id, event, text = "", ws = null, ownedBytes = null, retention = null) {
   if(ws && (ws.__coaxialEngine!==wanted || (sockets[id] && sockets[id]!==ws)))return;
-  if (waiting) { waiting.push(() => socketEvent(id, event, text, ws));return; }
+  if (waiting) {if(ownedBytes)throw Error('leased socket callback attempted inside a realm call');waiting.push(() => socketEvent(id, event, text, ws));return; }
   const x = engine?.exports;
   if (!x?.coaxial_message) return;
-  let bytes = new TextEncoder().encode(text);
+  let bytes = ownedBytes ?? new TextEncoder().encode(text);
   let kind=SOCKET_KIND+4*id+event;
   if(ws?.__coaxialPolicy){
     const receipt=ws.__coaxialPolicy.socketEvent(ws.__coaxialOwner,event,bytes.length,x.coaxial_inbox_cap());
     if(!receipt)return;
     kind=receipt.kind;if(receipt.failure)bytes=new Uint8Array();
   } else if (bytes.length > x.coaxial_inbox_cap()) { socketEvent(id, SOCKET_ERROR, "",ws); return; }
-  new Uint8Array(memory.buffer, x.coaxial_inbox(arena.state), bytes.length).set(bytes);
+  const address=x.coaxial_inbox(arena.state);
+  if(retention&&!retention.span(address,x.coaxial_inbox_cap(),bytes.length,memory.buffer.byteLength))throw Error('Coax refused socket inbox span');
+  if(bytes.length)new Uint8Array(memory.buffer,address,bytes.length).set(bytes);
   x.coaxial_message(arena.state, kind, bytes.length);
   roomTraceApplied(ws);
   after(false);
@@ -576,6 +592,7 @@ const socketImports = {
   },
   coaxial_socket_send(id, ptr, len) {
     const ws = sockets[id];
+    if(ws?.__coaxialPolicy&&socketQueues){if(ws.readyState===1&&ws.__coaxialPolicy.socketSend(ws.__coaxialOwner))socketQueues.send(ws,id,memory,ptr,len,text=>ws.__roomTrace?.before(text));return;}
     if (ws && ws.readyState === 1 && (!ws.__coaxialPolicy || ws.__coaxialPolicy.socketSend(ws.__coaxialOwner))) {const text=utf8(ptr,len),sample=ws.__roomTrace?.before(text);if(sample)ws.send(sample);ws.send(text);}   // WebSocket.OPEN, or a local socket's
   },
   coaxial_socket_close(id) {
@@ -586,6 +603,7 @@ const socketImports = {
     retireRoomTrace(ws);
     ws.close();
     // The app hears it a turn later, never inside its own call.
+    if(ws.__coaxialPolicy&&socketQueues){ws.__coaxialLocallyClosed=true;socketQueues.receive(ws,id,SOCKET_CLOSED);return;}
     setTimeout(() => socketEvent(id, SOCKET_CLOSED,"",ws));
   },
 };
@@ -2227,7 +2245,7 @@ function frame(now) {
   worldFrames++;
   const observedStart = frameTrace ? performance.now() : 0;
   if (frameTrace) { traceRow = [traceLast ? now - traceLast : 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0];traceLast = now; }
-  if (engine && socketHead < socketQueue.length) drainSockets(Math.max(2, SOCKET_BUDGET_MS - frameCost));
+  if (engine && (socketQueues?.hasInput() || socketHead < socketQueue.length)) drainSockets(Math.max(2, SOCKET_BUDGET_MS - frameCost));
   padPoll();
   const t0 = performance.now();
   if (traceRow) traceRow[3] = t0 - observedStart;
@@ -2686,6 +2704,9 @@ globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageF
   fieldProbe: (field = 0) => engine?.exports.coaxial_field_probe?.(arena.state, field) ?? -1 };
 // Headless verification observes effects without exposing renderer policy.
 if (dev) {
+  globalThis.coaxial.socketRetention=()=>({active:socketQueues?.info()??null,retired:lastSocketQueueRetired});
+  globalThis.coaxial.holdSocketDelivery=value=>{socketDeliveryHeld=!!value;};
+  globalThis.coaxial.holdSocketSending=value=>{socketSendingHeld=!!value;};
   globalThis.coaxial.hostProbe=(event,field)=>engine?.exports.coaxial_host_probe?.(arena.state,event,field)?.toString() ?? "";
   globalThis.coaxial.hostReset=()=>engine?.exports.coaxial_host_reset?.(arena.state);
   globalThis.coaxial.hotbarProbe = (slot, field = 0) => engine?.exports.coaxial_hotbar_probe?.(arena.state, slot, field) ?? -1;

@@ -80,6 +80,8 @@ host-layers 70000
 host-media 70000
 # Physical host-service spans, synthesized-bank registry and PCM reservations.
 host-services 32000
+# Shared socket retention, packet spans and drain budget (18,523 release bytes).
+host-sockets 24000
 # Initial procedural Valley Lab and shared walker, no fetched assets.
 valleylab 160000
 # #12921: buffered V2 frame input adds checked per-step control state.

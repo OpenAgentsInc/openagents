@@ -1,0 +1,42 @@
+// Finite private physical peer. All RFC6455 bytes use the checked Coax codec.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/net/socket_foreign.coax";
+#load "../../../coax/lib/net/ws_server.coax";
+BspConnection :: struct {h:int=-1;phase:int;used:int;input:[4096]u8;mode:int;due:int;}
+#test "physical queue fixture modes keep adjacent names separate" {
+ #assert bsp_mode("GET /events HTTP/1.1\r\n")==1 && bsp_mode("GET /bytes HTTP/1.1\r\n")==2;
+ #assert bsp_mode("GET /unicode HTTP/1.1\r\n")==3 && bsp_mode("GET /hold HTTP/1.1\r\n")==4;
+ #assert bsp_mode("GET /buffer HTTP/1.1\r\n")==5 && bsp_mode("GET /idle HTTP/1.1\r\n")==0;
+}
+bsp_mode :: (raw:string)->int {for s,i:[5]string.["GET /events HTTP/1.1\r\n","GET /bytes HTTP/1.1\r\n","GET /unicode HTTP/1.1\r\n","GET /hold HTTP/1.1\r\n","GET /buffer HTTP/1.1\r\n"]{if raw.count>=s.count&&raw[0..<s.count]==s{return i+1;}}return 0;}
+bsp_write :: (h:int,bytes:string)->bool {for b:bytes {if cxsock_write(h,int(b))!=0{return false;}}return cxsock_flush(h,100)==0;}
+bsp_close :: (c:[]BspConnection){if c[0].h>=0{done:=cxsock_close(c[0].h);}c[0]=BspConnection.{};}
+bsp_step :: (c:[]BspConnection){
+ if c[0].h<0{return;}if c[0].phase==2{if cxsock_now_ms()>=c[0].due{bsp_close(c);}return;}
+ n:=cxsock_read(c[0].h,0);if n== -1||n< -2||n>c[0].input.count-c[0].used{bsp_close(c);return;}if n>0{for i:0..<n{c[0].input[c[0].used+i]=u8(cxsock_byte(c[0].h,i));}c[0].used+=n;}
+ wire:[4096]u8;
+ if c[0].phase==0{
+  raw:=cast(string)c[0].input[0..<c[0].used];if ws_find_end(raw)==0{return;}hello:=wss_request(raw);if hello.status!=WSS_OK{bsp_close(c);return;}
+  c[0].mode=bsp_mode(raw);count:=wss_accept_write(raw[hello.key_from..<hello.key_to],wire[..]);if count<0||!bsp_write(c[0].h,cast(string)wire[0..<count]){bsp_close(c);return;}
+  for i:hello.consumed..<c[0].used{c[0].input[i-hello.consumed]=c[0].input[i];}c[0].used-=hello.consumed;c[0].phase=1;
+  if c[0].mode==5{c[0].phase=2;c[0].due=cxsock_now_ms()+2000;return;}
+ }
+ if c[0].phase!=1||c[0].used==0{return;}
+ raw:=cast(string)c[0].input[0..<c[0].used];frame:=wss_frame_read(raw,2048);if frame.status==WS_FRAME_MORE{return;}if frame.status!=WS_FRAME_OK{bsp_close(c);return;}
+ count:=wss_unmask(raw,frame,wire[..]);if count<0||frame.op==WS_OP_CLOSE{bsp_close(c);return;}
+ if frame.op!=WS_OP_TEXT||cast(string)wire[0..<count]!="go"{c[0].used=0;return;}
+ payload:[132]u8;
+ if c[0].mode==1{for i:0..<65{count=wss_frame_write(WS_OP_TEXT,"",wire[..]);if count<0||!bsp_write(c[0].h,cast(string)wire[0..<count]){bsp_close(c);return;}}}
+ if c[0].mode==2||c[0].mode==4{for i:0..<(ifx c[0].mode==2 then 5 else 4){for k:0..<128{payload[k]=u8(65+i);}count=wss_frame_write(WS_OP_TEXT,cast(string)payload[0..<128],wire[..]);if count<0||!bsp_write(c[0].h,cast(string)wire[0..<count]){bsp_close(c);return;}}}
+ if c[0].mode==3{for i:0..<33{for b,k:"🙂"{payload[4*i+k]=b;}}count=wss_frame_write(WS_OP_TEXT,cast(string)payload[..],wire[..]);if count<0||!bsp_write(c[0].h,cast(string)wire[0..<count]){bsp_close(c);return;}count=wss_frame_write(WS_OP_BINARY,"ignored",wire[..]);if count<0||!bsp_write(c[0].h,cast(string)wire[0..<count]){bsp_close(c);return;}count=wss_frame_write(WS_OP_TEXT,"after",wire[..]);if count<0||!bsp_write(c[0].h,cast(string)wire[0..<count]){bsp_close(c);return;}}
+ c[0].phase=2;c[0].due=cxsock_now_ms()+3000;
+}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2{return 2;}port:=args_whole(args_at(a[..],0));if port<1024||port>65535{return 2;}listener:=cxsock_listen(port);if listener<0{return 1;}defer{done:=cxsock_close(listener);}if !fs_write(args_at(a[..],1),"ready"){return 1;}
+ conns:[12]BspConnection;deadline:=cxsock_now_ms()+60000;
+ while cxsock_now_ms()<deadline{h:=cxsock_accept(listener,0);if h>=0{taken:=false;for i:0..<conns.count{if conns[i].h<0{conns[i]=BspConnection.{h=h};taken=true;break;}}if !taken{done:=cxsock_close(h);}}for i:0..<conns.count{bsp_step(conns[i..<i+1]);}proc_sleep(1);}
+ for i:0..<conns.count{bsp_close(conns[i..<i+1]);}return 0;
+}

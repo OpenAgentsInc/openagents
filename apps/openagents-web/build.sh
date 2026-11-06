@@ -38,6 +38,8 @@ host_media=$!
 # Physical bank/packet spans use the shared host-service authorities.
 "$here/../../coax/web/tool.sh" "$here/../../coax/web/build-services.coax" "$here/../.." "$here/build/host-services.wasm" &
 host_services=$!
+"$here/../../coax/web/tool.sh" "$here/../../coax/web/build-sockets.coax" "$here/../.." "$here/build/host-sockets.wasm" &
+host_sockets=$!
 # Opt-in room timing stays separate from the realm's producer.
 "$here/../../coax/web/tool.sh" "$here/../../coax/web/build-latency.coax" "$here/../.." "$here/build/latency-client.wasm" &
 room_latency=$!
@@ -315,6 +317,7 @@ wait "$host_audio"
 wait "$host_layers"
 wait "$host_media"
 wait "$host_services"
+wait "$host_sockets"
 wait "$room_latency"
 wait "$fairy"
 wait "$villa"

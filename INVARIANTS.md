@@ -152,8 +152,16 @@ contexts fence callback bytes through their final lease; the four physical
 workers are process-owned. Actual Linux physical-pressure and ordinary
 realm 79-row transport traces pass normally and instrumented. Fixed terminal
 owner cells are separate scalar retention from the 64 leased event nodes;
-kernel/browser/SDK buffers remain separate observations. Browser queue
-adoption and complete world/default qualification remain open.
+kernel/browser/SDK buffers remain separate observations. Browser v1 now uses
+the same checked lease/byte authorities before retained copies. Actual
+ordinary-host pressure covers a blocked main thread, 64 events, four inboxes,
+Unicode no-prefix refusal, 64 outbound commands and replacement. A real
+unread peer observes 32 MiB SDK buffered bytes independently from application
+leases. The local Worker holds even empty commands until real dispatch ACKs;
+64 actual room-worker acknowledgments release every lease. Pressure and
+room-completion observer gates kill 90/16 mutants without equivalents. Hidden
+browser/SDK/OS queues remain outside those application storage claims;
+complete world/default qualification remains separate.
 
 Version 1 browser bank and packet consumers call the shared span/registry
 authorities through a separate service reactor before forming byte views.

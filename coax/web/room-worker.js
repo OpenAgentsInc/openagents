@@ -116,7 +116,7 @@ function roomWorkerMain() {
         if (start) { x.rw_control(put(start)); start = ""; }   // an event's START, once a seat is in the room
         flush();
         if (!timer) { next = performance.now(); beat(); }
-      } else if (m.t === "frame" && conns.has(m.id)) { x.rw_heard(m.id, put(m.text)); flush(); }
+      } else if (m.t === "frame") { if(conns.has(m.id)){x.rw_heard(m.id, put(m.text));flush();}if(m.ack!==undefined)postMessage({t:"sent",id:m.id,ack:m.ack}); }
       else if (m.t === "close" && conns.has(m.id)) { conns.delete(m.id); x.rw_left(m.id); flush(); }
       else if (m.t === "control") { x.rw_control(put(m.text)); flush(); }   // roomHost.control
     };
@@ -175,6 +175,7 @@ function roomWorker(wasmUrl) {
     if (m.t === "failed") { host.failed = m.why; console.error(m.why); for (const k of sockets.values()) k.closed(); return; }
     if (!s) return;
     if (m.t === "open") { s.readyState = 1; s.onopen?.(); }
+    else if (m.t === "sent") {s.acknowledge(m.ack);host.acknowledgedFrames=(host.acknowledgedFrames||0)+1;}
     else if (m.t === "frame") s.onmessage?.({ data: m.text });
     else if (m.t === "close") s.closed();
   };
@@ -194,18 +195,24 @@ function idle() {
   }, IDLE_MS);
 }
 // A socket to the local host: readyState, send, close and the four handlers, as a WebSocket's.
-export function localRoomSocket(url, wasmUrl) {
-  const path = url.slice("local:".length);
-  if (!path.startsWith("/api/room/")) throw new Error("not a room's path");
-  if (globalThis.coaxialNativeRoomHost) return nativeRoomSocket(path);
-  const w = roomWorker(wasmUrl), id = nextId++;
+// Effects-only concrete Worker ownership. Coax leases select retained commands;
+// an actual Worker reply acknowledges their platform delivery, including empty frames.
+export function workerRoomSocket(w,id,path,release){
+  const pending=new Map();
   const s = {
     readyState: 0,
-    send(text) { if (s.readyState === 1) w.postMessage({ t: "frame", id, text }); },
-    close() { if (s.readyState > 1) return; w.postMessage({ t: "close", id }); s.readyState = 3; sockets.delete(id); idle(); },
-    closed() { if (s.readyState === 3) return; s.readyState = 3; sockets.delete(id); s.onclose?.(); },
+    get bufferedAmount(){let bytes=0;for(const n of pending.values())bytes+=n;return bytes;},
+    get bufferedCommands(){return pending.size;},
+    acknowledge(key){pending.delete(key);},
+    send(text,owned) { if(s.readyState!==1)return;const ack=owned?owned.lease.join(':'):undefined;if(owned)pending.set(ack,owned.bytes);try{w.postMessage({t:'frame',id,text,ack});}catch(error){pending.delete(ack);throw error;} },
+    close() { if (s.readyState > 1) return; w.postMessage({ t: "close", id }); s.readyState = 3;pending.clear();release(); },
+    closed() { if (s.readyState === 3) return; s.readyState = 3;pending.clear();release();s.onclose?.(); },
   };
-  sockets.set(id, s);
   w.postMessage({ t: "open", id, path });
   return s;
+}
+export function localRoomSocket(url, wasmUrl) {
+  const path=url.slice("local:".length);if(!path.startsWith("/api/room/"))throw Error("not a room's path");
+  if(globalThis.coaxialNativeRoomHost)return nativeRoomSocket(path);
+  const w=roomWorker(wasmUrl),id=nextId++,s=workerRoomSocket(w,id,path,()=>{sockets.delete(id);idle();});sockets.set(id,s);return s;
 }

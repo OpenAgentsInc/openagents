@@ -1,0 +1,29 @@
+// Authored acceptance of physical browser/realm queue effects, not SDK internals.
+#load "socket-retention-conformance.coax";
+#authority;
+#test "physical host pressure requires exact deliveries and every final owner" {
+ d:[1]Jv;n:[1024]JvNode;#assert jv_parse(d[..],HBSP_GOOD,n[..])&&hbsp_accept(d[0]);
+ b:[4096]u8;for c,i:HBSP_GOOD{b[i]=c;}
+ for key:[8]string.["events","bytes","byteHashes","unicode","commands","retirement","wire","worker"]{
+  #assert jv_parse(d[..],cast(string)b[0..<HBSP_GOOD.count],n[..]);row:=jv_get(d[0],0,key);
+  for i:0..<jv_len(d[0],row){at:=d[0].nodes[jv_at(d[0],row,i)].from;keep:=b[at];b[at]='9';#assert jv_parse(d[..],cast(string)b[0..<HBSP_GOOD.count],n[..])&&!hbsp_accept(d[0]);b[at]=keep;}
+ }
+}
+#test "observed physical SDK buffering and main-thread stall are bounded facts, not fixed platform sizes" {
+ d:[1]Jv;n:[1024]JvNode;b:[4096]u8;for c,i:HBSP_GOOD{b[i]=c;}
+ #assert jv_parse(d[..],HBSP_GOOD,n[..]);a:=d[0].nodes[jv_at(d[0],jv_get(d[0],0,"wire"),3)].from;
+ b[a]='0';#assert jv_parse(d[..],cast(string)b[0..<HBSP_GOOD.count],n[..])&&!hbsp_accept(d[0]);b[a]='1';
+ #assert jv_parse(d[..],cast(string)b[0..<HBSP_GOOD.count],n[..]);at:=d[0].nodes[jv_get(d[0],0,"stall_ms")].from;b[at]=' ';b[at+1]='9';b[at+2]='9';#assert jv_parse(d[..],cast(string)b[0..<HBSP_GOOD.count],n[..])&&!hbsp_accept(d[0]);
+ b[at]='1';b[at+1]='0';b[at+2]='0';#assert jv_parse(d[..],cast(string)b[0..<HBSP_GOOD.count],n[..])&&hbsp_accept(d[0]);
+ b[at]=' ';b[at+1]=' ';b[at+2]='0';#assert jv_parse(d[..],cast(string)b[0..<HBSP_GOOD.count],n[..])&&!hbsp_accept(d[0]);
+ key_at:=d[0].nodes[jv_get(d[0],0,"stall_ms")].key_from;b[key_at]='x';#assert jv_parse(d[..],cast(string)b[0..<HBSP_GOOD.count],n[..])&&!hbsp_accept(d[0]);
+ #assert !hbsp_accept(Jv.{});
+}
+HBSP_GOOD :: "{\"events\":[64,0,64,1,1,64,1,1,0,0,0,0],\"bytes\":[4,512,4,1,1,4,1,1,0,0,0,0],\"byteHashes\":[69337157,4030807493,4126202949,822565317],\"unicode\":[2,0,1,1,5,460225993,0,0],\"commands\":[64,0,64,1,1,0,0,1,1],\"retirement\":[4,512,4,0,0,1,0,0,0,0,0,0],\"wire\":[4,33554432,4,1,0,0,1,0],\"worker\":[64,0,64,0,0,0],\"stall_ms\":150}";
+hbsp_accept :: (d:Jv)->bool #export_c {
+ events:=[12]int.[64,0,64,1,1,64,1,1,0,0,0,0];bytes:=[12]int.[4,512,4,1,1,4,1,1,0,0,0,0];hashes:[4]int;
+ for i:0..<4{h:u32=2166136261;for k:0..<128{h=mul_wrap(h^u32(65+i),u32(16777619));}hashes[i]=int(h);}
+ unicode:=[8]int.[2,0,1,1,5,460225993,0,0];commands:=[9]int.[64,0,64,1,1,0,0,1,1];retirement:=[12]int.[4,512,4,0,0,1,0,0,0,0,0,0];wire:=[8]int.[4,33554432,4,1,0,0,1,0];
+ worker:=[6]int.[64,0,64,0,0,0];
+ return hsrb_row(d,"events",events[..])&&hsrb_row(d,"bytes",bytes[..])&&hsrb_row(d,"byteHashes",hashes[..])&&hsrb_row(d,"unicode",unicode[..])&&hsrb_row(d,"commands",commands[..])&&hsrb_row(d,"retirement",retirement[..])&&hsrb_row(d,"wire",wire[..])&&hsrb_row(d,"worker",worker[..])&&jv_int(d,jv_get(d,0,"stall_ms"),99)>=100;
+}

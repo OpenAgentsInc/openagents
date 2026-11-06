@@ -33,7 +33,9 @@ stack and compiler admission gates apply. Build it with
 
 `socket-queue-host.js` performs bounded `encodeInto` staging, reserves before
 copying immutable event/command bytes, and retains output leases while actual
-`bufferedAmount` is nonzero. Full input storage owns at most four separate
+`bufferedAmount` or acknowledged Worker commands remain pending. The local
+room Worker acknowledges a command only after its actual dispatch; empty
+commands retain count leases too. Full input storage owns at most four separate
 scalar terminal cells; no payload is stored in those cells. It preserves
 existing admitted messages before error/close, fences replaced owners, and
 does not deliver into a blocked callback consumer. Retirement during a
@@ -43,5 +45,7 @@ observed effects; these counters do not measure or bound those internals.
 
 The [browser component record](../../docs/verification/host-contract-2026-11-05/socket-retention-component.md)
 qualifies actual JavaScript copies and real Coax Wasm leases with explicitly
-mocked/stalled send and close effects. Ordinary `host.js` adoption and
-physical peer pressure remain separate exits.
+mocked/stalled send and close effects. The separate
+[ordinary-host/physical-pressure record](../../docs/verification/host-contract-2026-11-05/browser-socket-queues.md)
+qualifies the v1 hook, real WebSocket peers, actual Worker acknowledgments and
+retirement. Pre-v1 keeps its existing adapter.
