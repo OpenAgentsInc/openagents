@@ -476,3 +476,13 @@ dark red.
 - The contact term now scales every light, not only the total.
 - Still open: our lips part a little wider than Unreal's at 1150 to 1154. The
   nostril rim stays grey-blue because the fill casts no shadow.
+
+### Spell orbit (M)
+
+M starts a seven-second camera move from the snarl close-up (frame 1152).
+Echo plays on at 0.28 speed through the end of TF0290. The camera pulls back
+2.6 times, then turns once around her head. Her back and the orb face the
+camera mid-clip, and the move ends on her chest and orb hand. P pauses, T
+restarts, and , and . step one frame. `spell_camera` is a pure function with
+a test, and the depth of field focuses on the camera's pivot. The wasm budget
+rises to 104,000 bytes for the lens uniforms and this camera (101,376 bytes).

@@ -92,7 +92,8 @@ host-packs 42000
 valleylab 160000
 # Named face admission, sparse morph playback and source-rate facial-bone overlays (#12962): 85,271 bytes.
 # TF0290's orb Rect Light, the face view's turned hero rig and the orb hand's shadow capsules: 96,601 bytes.
-valleycanyon 100000
+# The depth-of-field lens uniforms and the spell orbit camera (M): 101,258 bytes.
+valleycanyon 104000
 # Valley's bounded source-page admission, source LOD selection and index-bank ABI add ~4 KiB.
 # Keep the shared canyon code's Slay replay control and face-view hero lighting.
 # Spatial source companions, bounded tree admission and independent exact-range cuts add ~4.3 KiB.
