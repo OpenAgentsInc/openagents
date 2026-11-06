@@ -82,14 +82,24 @@ fb_at_door :: (c:[]Cdp,session:string)->bool {
   text:=fb_string(c,"JSON.stringify({x_mm:__dr.x.coaxial_field_probe(__dr.state,0),z_mm:__dr.x.coaxial_field_probe(__dr.state,2),seat:__dr.probe(1)})",bytes[..]);
   path:[1]FbText;saved:=fs_write(fb_path(session,"warmup.json",path[..]),text);return true;
 }
-fb_bad_check :: (c:[]Cdp,session:string,original:string)->int {
+fb_bad_check :: (c:[]Cdp,session:string,original:string,observe:bool,stage:bool)->int {
   span:=fe_scalar_span(original,"door_ease","t","f32");if !span.ok {return 1;}
-  edit:[1]FbText;fb_add(edit[..],original[0..<span.body]);fb_add(edit[..],"{ k := clamp(t, 0, 1); return 0.0f32; }");fb_add(edit[..],original[span.end..<original.count]);
+  if observe {
+    path:[1]FbText;number:[64]u8;rn:=fs_read(fb_path(session,"revision",path[..]),number[..]);if rn<0 {return 1;}
+    revision:=args_whole(cast(string)number[0..<rn]);name:[1]FbText;fb_add(name[..],"source-");fb_int(name[..],revision);fb_add(name[..],".coax");
+    snapshot:[1048576]u8;sn:=fs_read(fb_path(session,fb_text(name[..]),path[..]),snapshot[..]);
+    flag:[8]u8;fn:=fs_read(fb_path(session,"verified.page",path[..]),flag[..]);
+    if revision<=0 || sn<0 || cast(string)snapshot[0..<sn]!=original || fn!=1 || flag[0]!='1' {tool_errln("fast-edit-bench: no completed failure for this source");return 1;}
+  }
   git:=[3]string.["git","rev-parse","HEAD"];head:[256]u8;err:[4096]u8;before:=proc_run(git[..],10000,head[..],err[..]);
-  if before.status!=0 || !fs_write("apps/openagents-web/everglade-doors.coax",fb_text(edit[..])) || fb_command(session,"apply")!=0 {return 1;}
-  deadline:=proc_now_ms()+640000;seen:=false;
-  while proc_now_ms()<deadline {
-    if fb_eval(c,"coaxial.fastEdit?.verification?.state==='failed' && coaxial.fastEdit.error.includes('failed checks') ? 1:0")==1 {seen=true;break;}
+  if before.status!=0 {return 1;}
+  if !observe {
+    edit:[1]FbText;fb_add(edit[..],original[0..<span.body]);fb_add(edit[..],"{ k := clamp(t, 0, 1); return 0.0f32; }");fb_add(edit[..],original[span.end..<original.count]);
+    if !fs_write("apps/openagents-web/everglade-doors.coax",fb_text(edit[..])) || fb_command(session,"apply")!=0 {return 1;}
+  }
+  deadline:=proc_now_ms()+ifx observe then 30000 else 740000;seen:=false;
+  while !stage && proc_now_ms()<deadline {
+    if fb_eval(c,"coaxial.fastEdit?.verification?.state==='failed' && coaxial.fastEdit.verification.revision===coaxial.fastEdit.info().revision && coaxial.fastEdit.error.includes('failed checks') && document.querySelector('pre[role=status]')?.textContent.includes('failed checks') ? 1:0")==1 {seen=true;break;}
     proc_sleep(100);
   }
   args:=[5]string.["coax/web/tool.sh","fast-edit","commit",session,"--dry-run"];out:[65536]u8;denied:=proc_run(args[..],10000,out[..],err[..]);
@@ -97,8 +107,8 @@ fb_bad_check :: (c:[]Cdp,session:string,original:string)->int {
   path:[1]FbText;status:[64]u8;n:=fs_read(fb_path(session,"verified.page",path[..]),status[..]);
   failed:=n==1 && status[0]=='1';same:=after.status==0 && cast(string)head[0..<before.out_n]==cast(string)after_head[0..<after.out_n];
   report:[1]FbText;fb_add(report[..],"{\"session_reported_failure\":");fb_add(report[..],ifx seen then "true" else "false");fb_add(report[..],",\"page_check_failed\":");fb_add(report[..],ifx failed then "true" else "false");fb_add(report[..],",\"commit_refused\":");fb_add(report[..],ifx denied.status==1 then "true" else "false");fb_add(report[..],",\"head_unchanged\":");fb_add(report[..],ifx same then "true" else "false");fb_add(report[..],"}\n");
-  saved:=fs_write(fb_path(session,"bad-check.json",path[..]),fb_text(report[..]));print("%",fb_text(report[..]));
-  return ifx seen && failed && denied.status==1 && same then 0 else 1;
+  saved:=fs_write(fb_path(session,ifx stage then "bad-check-staged.json" else "bad-check.json",path[..]),fb_text(report[..]));print("%",fb_text(report[..]));
+  return ifx (stage || (seen && failed)) && denied.status==1 && same then 0 else 1;
 }
 fb_refusals :: (c:[]Cdp,session:string)->int {
   revision:=fb_eval(c,"coaxial.fastEdit.info().revision");if revision<=0 {return 1;}
@@ -166,15 +176,15 @@ tool_main :: ()->int #export_c {
   page:=fb_spawn(page_args[..],session);
   c:[1]Cdp;rc:=1;
   if room>=0 && page>=0 && cdp_launch(c[..],1280,800,"coax-fast-edit-") {
-    url:[1]FbText;fb_add(url[..],"http://127.0.0.1:");fb_int(url[..],port+1);fb_add(url[..],"/worlds/everglade?relay=ws://localhost:");fb_int(url[..],port);fb_add(url[..],"&room=pair-drift-12960&fast-edit=/build/fast-edit/latest.json");
+    url:[1]FbText;fb_add(url[..],"http://127.0.0.1:");fb_int(url[..],port+1);fb_add(url[..],"/worlds/everglade?relay=ws://localhost:");fb_int(url[..],port);fb_add(url[..],"&room=pair-drift-12960&fast-edit=");fb_add(url[..],args_value(a[..],"--endpoint","/build/fast-edit/latest.json"));
     if fb_open(c[..],fb_text(url[..])) && fb_ready(c[..]) {
-      if args_has(a[..],"--bad-check") {rc=fb_bad_check(c[..],session,cast(string)original[0..<n]);}
+      if args_has(a[..],"--bad-check") || args_has(a[..],"--observe-bad-check") || args_has(a[..],"--stage-bad-check") {rc=fb_bad_check(c[..],session,cast(string)original[0..<n],args_has(a[..],"--observe-bad-check"),args_has(a[..],"--stage-bad-check"));}
       else if fb_at_door(c[..],session) {rc=fb_measure(c[..],session,cast(string)original[0..<n],args_has(a[..],"--keep-edit"));if rc==0 && args_has(a[..],"--refusals") {rc=fb_refusals(c[..],session);}}
     }
     else {details:[8192]u8;tool_errln(fb_string(c[..],"JSON.stringify({url:location.href,text:document.body.innerText.slice(-3000),net:globalThis.__dr?.probe(0),seat:globalThis.__dr?.probe(1),frames:globalThis.__dr?.count(),fast:globalThis.coaxial?.fastEdit?.info()})",details[..]));}
     cdp_close(c[..]);
   }
   fb_stop(page);fb_stop(room);
-  if !args_has(a[..],"--keep-edit") || rc!=0 {restored:=fs_write("apps/openagents-web/everglade-doors.coax",cast(string)original[0..<n]);}
+  if (!args_has(a[..],"--keep-edit") && !args_has(a[..],"--stage-bad-check")) || rc!=0 {restored:=fs_write("apps/openagents-web/everglade-doors.coax",cast(string)original[0..<n]);}
   return rc;
 }
