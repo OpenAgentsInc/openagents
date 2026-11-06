@@ -358,7 +358,9 @@ vc_scene_fs :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices
   dx:=v2(gpu_dpdx_fine(s.uv.x),gpu_dpdx_fine(s.uv.y));dy:=v2(gpu_dpdy_fine(s.uv.x),gpu_dpdy_fine(s.uv.y));
   c:=cv_scene_shade(s,u,sheets,sheet,vertices,shadow_map,shadow_cmp,dx,dy);
   skin:=ifx s.character>0.5 && (s.material==ECHO_HEAD_SLOT || s.material==ECHO_SKIN_SLOT) then 1.0f32 else 0.0f32;
-  return VcLit.{light=c,aux=v4(skin,0,0,c.w)};
+  // aux.y/aux.z: the view depth, weighted by coverage. Blended hair writes no depth buffer, so
+  // the post pass reads the strands' depth from here instead of the background's behind them.
+  return VcLit.{light=c,aux=v4(skin,cv_view_z(s.pos.z),1,c.w)};
 }
 #test "Walking Valley and Slay retain their own source head material profiles" {a:=v3(0.2,0.1,0.05);v:=cv_profile_head_colour(a,true);s:=cv_profile_head_colour(a,false);#assert v.x==cv_echo_head_colour(a).x && s.x==cv_echo_slay_head_colour(a).x && v.x!=s.x;}
 cv_profile_head_colour :: (a:V3,valley:bool)->V3 {return ifx valley then cv_echo_head_colour(a) else cv_echo_slay_head_colour(a);}
@@ -446,11 +448,13 @@ CV_DOF_TAPS :: 48;
 CV_SSS_R :: 1.6f32;
 CV_SSS_G :: 0.75f32;
 CV_SSS_B :: 0.4f32;
+// The depth the lens sees at q: the depth buffer, or blended hair in front of it.
+cv_post_z :: (depth:TexDepth,aux:Tex2D,q:I2)->f32 {zd:=cv_view_z(wg_load_depth(depth,q,0));a:=wg_load_2d(aux,q,0);if a.z>0.02 {return fmin(zd,a.y/a.z);}return zd;}
 vc_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_depth:TexDepth,post_lin:Sampler)->V4 {
  px:=i2(wg_i32_f(pos.x),wg_i32_f(pos.y));size:=wg_dims_2d(post_light);width:=cast(f32)size.x;
  raw:=wg_load_2d(post_light,px,0);
  if u[112]<0.5 || u[129]<=0 {return v4(raw.x,raw.y,raw.z,1);}
- zc:=cv_view_z(wg_load_depth(post_depth,px,0));rc:=cv_coc(zc,u,width);centre:=cv_light_at(post_light,px,size);
+ zc:=cv_post_z(post_depth,post_aux,px);rc:=cv_coc(zc,u,width);centre:=cv_light_at(post_light,px,size);
  skin:=wg_load_2d(post_aux,px,0).x;
  if skin>0.01 {
   // Depth-aware Gaussian over the neighbouring skin: mm to pixels from the lens at this depth.
@@ -466,12 +470,12 @@ vc_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Te
  }
  // Gustafsson's single-pass bokeh gather: each tap counts where its own circle reaches this pixel;
  // taps behind the centre may not blur more than twice the centre's circle (no background bleeding).
- reach:=rc;for k:0..<8 {a:=cast(f32)k*0.785398;q:=i2(px.x+wg_i32_f(cos(a)*CV_DOF_MAX),px.y+wg_i32_f(sin(a)*CV_DOF_MAX));q=i2(clamp_s(q.x,0,cast(s32)size.x-1),clamp_s(q.y,0,cast(s32)size.y-1));z:=cv_view_z(wg_load_depth(post_depth,q,0));if z<zc {reach=fmax(reach,cv_coc(z,u,width));}}
+ reach:=rc;for k:0..<8 {a:=cast(f32)k*0.785398;q:=i2(px.x+wg_i32_f(cos(a)*CV_DOF_MAX),px.y+wg_i32_f(sin(a)*CV_DOF_MAX));q=i2(clamp_s(q.x,0,cast(s32)size.x-1),clamp_s(q.y,0,cast(s32)size.y-1));z:=cv_post_z(post_depth,post_aux,q);if z<zc {reach=fmax(reach,cv_coc(z,u,width));}}
  colour:=centre;
  if reach>0.5 {
   total:f32=1;
   for k:0..<CV_DOF_TAPS {r:=reach*sqrt((cast(f32)k+0.5)/cast(f32)CV_DOF_TAPS);a:=cast(f32)k*CV_GOLDEN;q:=i2(clamp_s(px.x+wg_i32_f(r*cos(a)+0.5),0,cast(s32)size.x-1),clamp_s(px.y+wg_i32_f(r*sin(a)+0.5),0,cast(s32)size.y-1));
-   z:=cv_view_z(wg_load_depth(post_depth,q,0));sz:=cv_coc(z,u,width);if z>zc {sz=fmin(sz,rc*2);}
+   z:=cv_post_z(post_depth,post_aux,q);sz:=cv_coc(z,u,width);if z>zc {sz=fmin(sz,rc*2);}
    m:=smoothstep(r-0.5,r+0.5,sz);c:=cv_light_at(post_light,q,size);mean:=cv_scale(colour,1/total);
    colour=cv_add(colour,cv_add(cv_scale(mean,1-m),cv_scale(c,m)));total+=1;}
   colour=cv_scale(colour,1/total);

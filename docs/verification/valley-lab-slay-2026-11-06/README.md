@@ -488,3 +488,12 @@ camera mid-clip, and the move ends on her chest and orb hand. P pauses, T
 restarts, and , and . step one frame. `spell_camera` is a pure function with
 a test, and the depth of field focuses on the camera's pivot. The wasm budget
 rises to 104,000 bytes for the lens uniforms and this camera (101,376 bytes).
+
+### Hair under depth of field
+
+Blended hair writes no depth buffer, so the post pass read the background's
+depth through every strand. Her silhouette strands and buns took the
+background's maximum blur: a soft halo around her head. The scene pass now
+writes the view depth, weighted by coverage, into the aux target
+(`aux.y / aux.z`). `cv_post_z` uses that depth where it is nearer than the
+depth buffer, so the strands stay sharp at her focus.
