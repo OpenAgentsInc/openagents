@@ -1,0 +1,180 @@
+// A real edit-to-running measurement, on the room and the page together.
+// Run from the repository root after fast-edit prepare and both dev builds:
+//   coax/web/tool.sh fast-edit-bench ABSOLUTE_SESSION --port 9060
+// The two servers and muted headless Chrome belong to this process.
+#import "Basic";
+#load "fast-edit-policy.coax";
+#load "../lib/net/cdp.coax";
+
+FbText :: struct { b:[131072]u8; n:int; }
+fb_add :: (b:[]FbText,s:string) { for c:s {b[0].b[b[0].n]=c;b[0].n+=1;} }
+fb_int :: (b:[]FbText,v:int) { a:[32]u8;n:=0;x:=v;if x==0 {fb_add(b,"0");return;}while x>0 {a[n]=cast(u8)('0'+x%10);n+=1;x/=10;}for i:0..<n {c:=[1]u8.[a[n-1-i]];fb_add(b,cast(string)c[..]);} }
+fb_signed :: (b:[]FbText,v:int) {if v<0 {fb_add(b,"-");fb_int(b,-v);}else {fb_int(b,v);}}
+fb_text :: (b:[]FbText)->string {return cast(string)b[0].b[0..<b[0].n];}
+fb_path :: (dir:string,name:string,b:[]FbText)->string {b[0].n=0;fb_add(b,dir);fb_add(b,"/");fb_add(b,name);return fb_text(b);}
+
+#test "ten-run median uses both middle measurements, regardless of order" {
+  a:=[10]int.[9,1,8,2,7,3,6,4,5,0];#assert fb_median(a[..])==4;
+  b:=[10]int.[22,2,20,4,18,6,16,8,14,10];#assert fb_median(b[..])==12;
+}
+fb_median :: (values:[]int)->int {
+  for i:0..<values.count {for j:i+1..<values.count {if values[j]<values[i] {t:=values[i];values[i]=values[j];values[j]=t;}}}
+  return (values[4]+values[5])/2;
+}
+fb_eval :: (c:[]Cdp,js:string)->int {v:=cdp_evaluate(c,js);return ifx v>=0 then jv_int(cdp_doc(c),v,-1) else -1;}
+fb_string :: (c:[]Cdp,js:string,out:[]u8)->string {v:=cdp_evaluate(c,js);if v<0 {return "";}n:=jv_str(cdp_doc(c),v,out);return ifx n>=0 then cast(string)out[0..<n] else "";}
+fb_command :: (dir:string,cmd:string)->int {
+  argv:=[4]string.["coax/web/tool.sh","fast-edit",cmd,dir];out:[65536]u8;err:[65536]u8;
+  r:=proc_run(argv[..],780000,out[..],err[..]);print("%",cast(string)out[0..<r.out_n]);if r.status!=0 {tool_errln(cast(string)err[0..<r.err_n]);}return r.status;
+}
+fb_spawn :: (argv:[]string,session:string)->int {
+  h:=proc_new();if h<0 {return -1;}
+  for v:argv {if !proc_arg(h,v) {r:=proc_release(h);return -1;}}
+  env:[1]FbText;fb_add(env[..],"COAX_FAST_EDIT=");fb_add(env[..],session);
+  if !proc_env(h,fb_text(env[..])) || !proc_gentle(h) || !proc_quiet(h) || proc_start(h)!=0 {r:=proc_release(h);return -1;}
+  return h;
+}
+fb_stop :: (h:int) {if h<0 {return;}k:=proc_kill(h,PROC_SIGTERM);w:=proc_wait(h,3000);if w==PROC_RUNNING {k=proc_kill(h,PROC_SIGKILL);w=proc_wait(h,1000);}r:=proc_release(h);}
+fb_open :: (c:[]Cdp,url:string)->bool {
+  script:[65536]u8;n:=fs_read("coax/web/everglade-drift.js",script[..]);if n<=0 {return false;}
+  params:[131072]u8;o:[1]Jo;
+  if cdp_call(c,"Page.enable","",CDP_CALL_MS)<0 || cdp_call(c,"Emulation.setFocusEmulationEnabled","{\"enabled\":true}",CDP_CALL_MS)<0 {return false;}
+  r:=cdp_call(c,"Network.setCookie","{\"name\":\"verse-automation\",\"value\":\"drift-check\",\"url\":\"http://127.0.0.1\"}",CDP_CALL_MS);
+  jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"source");jo_str(o[..],cast(string)script[0..<n]);jo_end(o[..]);
+  if cdp_call(c,"Page.addScriptToEvaluateOnNewDocument",jo_text(o[..]),CDP_CALL_MS)<0 {return false;}
+  jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);
+  return cdp_call(c,"Page.navigate",jo_text(o[..]),CDP_CALL_MS)>=0;
+}
+fb_ready :: (c:[]Cdp)->bool {
+  deadline:=proc_now_ms()+90000;
+  while proc_now_ms()<deadline {
+    if fb_eval(c,"typeof __dr !== 'undefined' && __dr.probe(0)===2 && __dr.probe(1)>=0 && coaxial.fastEdit ? 1:0")==1 {return true;}
+    r:=cdp_evaluate(c,"dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,bubbles:true}));dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',code:'Enter',keyCode:13,bubbles:true}));1");
+    proc_sleep(500);
+  }
+  return false;
+}
+// Walk the actual connected seat to the inn before starting the clock. A
+// player at the gate has no nearby door collider, so it cannot demonstrate
+// ordinary native calls of this rule. All motion uses the real pad interface.
+fb_walk_to :: (c:[]Cdp,tx:int,tz:int)->bool {
+  deadline:=proc_now_ms()+25000;arrived:=false;
+  while proc_now_ms()<deadline {
+    x:=fb_eval(c,"__dr.x.coaxial_field_probe(__dr.state,0)");z:=fb_eval(c,"__dr.x.coaxial_field_probe(__dr.state,2)");
+    dx:=f32(tx-x);dz:=f32(tz-z);distance:=sqrt(dx*dx+dz*dz);
+    if distance<650 {arrived=true;break;}
+    angle:=f32(fb_eval(c,"__dr.probe(60)"))/1000+3.14159265f32;
+    co:=cos(angle);si:=sin(angle);px:=cast(int)((dx*co-dz*si)/distance*900);py:=cast(int)(-(dx*si+dz*co)/distance*900);
+    query:[1]FbText;fb_add(query[..],"__dr.x.coaxial_pad(__dr.state,");fb_signed(query[..],px);fb_add(query[..],"/1000,");fb_signed(query[..],py);fb_add(query[..],"/1000,0,0);1");
+    r:=fb_eval(c,fb_text(query[..]));proc_sleep(100);
+  }
+  r:=fb_eval(c,"__dr.x.coaxial_pad(__dr.state,0,0,0,0);1");
+  print("walk waypoint (%,%): %, at (%,%), yaw %\n",tx,tz,arrived,fb_eval(c,"__dr.x.coaxial_field_probe(__dr.state,0)"),fb_eval(c,"__dr.x.coaxial_field_probe(__dr.state,2)"),fb_eval(c,"__dr.probe(60)"));
+  if !arrived {details:[8192]u8;tool_errln(fb_string(c,"JSON.stringify({text:document.body.innerText.slice(-2000),net:__dr.probe(0),seat:__dr.probe(1),frames:__dr.count(),held:__dr.probe(52)})",details[..]));}
+  return arrived;
+}
+fb_at_door :: (c:[]Cdp,session:string)->bool {
+  // Readiness may accept the character with Enter, which also opens chat
+  // once seated. Follow the ordinary drift script's Escape before motion.
+  escaped:=fb_eval(c,"for(let i=0;i<2;i++){__dr.x.coaxial_key(__dr.state,-1,0);__dr.x.coaxial_key_up(__dr.state,-1,0);}1");
+  if !fb_walk_to(c,3000,-84000) || !fb_walk_to(c,3000,-74000) || !fb_walk_to(c,0,-44000) || !fb_walk_to(c,-4590,-37000) {return false;}
+  proc_sleep(500);bytes:[4096]u8;
+  text:=fb_string(c,"JSON.stringify({x_mm:__dr.x.coaxial_field_probe(__dr.state,0),z_mm:__dr.x.coaxial_field_probe(__dr.state,2),seat:__dr.probe(1)})",bytes[..]);
+  path:[1]FbText;saved:=fs_write(fb_path(session,"warmup.json",path[..]),text);return true;
+}
+fb_bad_check :: (c:[]Cdp,session:string,original:string)->int {
+  span:=fe_scalar_span(original,"door_ease","t","f32");if !span.ok {return 1;}
+  edit:[1]FbText;fb_add(edit[..],original[0..<span.body]);fb_add(edit[..],"{ k := clamp(t, 0, 1); return 0.0f32; }");fb_add(edit[..],original[span.end..<original.count]);
+  git:=[3]string.["git","rev-parse","HEAD"];head:[256]u8;err:[4096]u8;before:=proc_run(git[..],10000,head[..],err[..]);
+  if before.status!=0 || !fs_write("apps/openagents-web/everglade-doors.coax",fb_text(edit[..])) || fb_command(session,"apply")!=0 {return 1;}
+  deadline:=proc_now_ms()+640000;seen:=false;
+  while proc_now_ms()<deadline {
+    if fb_eval(c,"coaxial.fastEdit?.verification?.state==='failed' && coaxial.fastEdit.error.includes('failed checks') ? 1:0")==1 {seen=true;break;}
+    proc_sleep(100);
+  }
+  args:=[5]string.["coax/web/tool.sh","fast-edit","commit",session,"--dry-run"];out:[65536]u8;denied:=proc_run(args[..],10000,out[..],err[..]);
+  after_head:[256]u8;after:=proc_run(git[..],10000,after_head[..],err[..]);
+  path:[1]FbText;status:[64]u8;n:=fs_read(fb_path(session,"verified.page",path[..]),status[..]);
+  failed:=n==1 && status[0]=='1';same:=after.status==0 && cast(string)head[0..<before.out_n]==cast(string)after_head[0..<after.out_n];
+  report:[1]FbText;fb_add(report[..],"{\"session_reported_failure\":");fb_add(report[..],ifx seen then "true" else "false");fb_add(report[..],",\"page_check_failed\":");fb_add(report[..],ifx failed then "true" else "false");fb_add(report[..],",\"commit_refused\":");fb_add(report[..],ifx denied.status==1 then "true" else "false");fb_add(report[..],",\"head_unchanged\":");fb_add(report[..],ifx same then "true" else "false");fb_add(report[..],"}\n");
+  saved:=fs_write(fb_path(session,"bad-check.json",path[..]),fb_text(report[..]));print("%",fb_text(report[..]));
+  return ifx seen && failed && denied.status==1 && same then 0 else 1;
+}
+fb_refusals :: (c:[]Cdp,session:string)->int {
+  revision:=fb_eval(c,"coaxial.fastEdit.info().revision");if revision<=0 {return 1;}
+  browser:=fb_eval(c,"(async()=>{const api=coaxial.fastEdit,before=api.info(),x=__dr.x,state=__dr.state,seat=__dr.probe(1),offer=await(await fetch('/build/fast-edit/latest.json',{cache:'no-store'})).json(),bytes=await(await fetch('/build/fast-edit/candidate-'+offer.revision+'.wasm',{cache:'no-store'})).arrayBuffer();let rejected=0;for(const [data,metadata] of [[bytes,offer],[bytes,{...offer,identity:'0'.repeat(64)}],[new Uint8Array([0,1,2]),offer]]){try{await api.install(data,metadata);}catch{rejected++;}}const after=api.info();return rejected===3&&after.revision===before.revision&&after.value===before.value&&__dr.x===x&&__dr.state===state&&__dr.probe(1)===seat?1:0;})()")==1;
+  path:[1]FbText;counter:[1]FbText;fb_int(counter[..],revision+1);
+  offer:[1]FbText;fb_add(offer[..],fb_text(counter[..]));fb_add(offer[..],"\n");fb_add(offer[..],session);fb_add(offer[..],"/missing-library.so\n");
+  if !fs_write(fb_path(session,"revision",path[..]),fb_text(counter[..])) || !fs_write(fb_path(session,"native.current",path[..]),fb_text(offer[..])) {return 1;}
+  query:[1]FbText;fb_add(query[..],"(async()=>{const x=await(await fetch('/api/playtest/dev/fast-edit',{cache:'no-store'})).json();globalThis.__feRefusal=x;return x.revision===");fb_int(query[..],revision);fb_add(query[..],"&&x.error==='candidate library did not load'?1:0;})()");
+  deadline:=proc_now_ms()+5000;native:=false;
+  while proc_now_ms()<deadline {if fb_eval(c,fb_text(query[..]))==1 {native=true;break;}proc_sleep(10);}
+  if fb_command(session,"apply")!=0 {return 1;}
+  query[0].n=0;fb_add(query[..],"(async()=>{const a=await(await fetch('/api/playtest/dev/fast-edit',{cache:'no-store'})).json(),b=coaxial.fastEdit.info();return a.revision===");fb_int(query[..],revision+2);fb_add(query[..],"&&a.revision===b.revision&&!a.error&&a.game_calls_since_publish>0&&b.game_calls_since_publish>0&&Math.abs(a.value-b.value)<0.0000001&&__dr.x===__feBase.x&&__dr.state===__feBase.state&&__dr.probe(1)===__feBase.seat?1:0;})()");
+  deadline=proc_now_ms()+5000;recovered:=false;
+  while proc_now_ms()<deadline {if fb_eval(c,fb_text(query[..]))==1 {recovered=true;break;}proc_sleep(10);}
+  result:[1]FbText;fb_add(result[..],"{\"browser_replay_identity_and_malformed_refused\":");fb_add(result[..],ifx browser then "true" else "false");fb_add(result[..],",\"native_load_failure_retained_old_revision\":");fb_add(result[..],ifx native then "true" else "false");fb_add(result[..],",\"newer_valid_revision_recovered\":");fb_add(result[..],ifx recovered then "true" else "false");fb_add(result[..],"}\n");
+  saved:=fs_write(fb_path(session,"refusals.json",path[..]),fb_text(result[..]));print("%",fb_text(result[..]));
+  return ifx browser && native && recovered then 0 else 1;
+}
+fb_measure :: (c:[]Cdp,session:string,original:string,keep:bool)->int {
+  span:=fe_scalar_span(original,"door_ease","t","f32");if !span.ok {return 1;}
+  path:[1]FbText;times:[10]int;
+  if fb_eval(c,"globalThis.__feBase={x:__dr.x,state:__dr.state,seat:__dr.probe(1)};1")!=1 {return 1;}
+  for i:0..<10 {
+    // A small offset changes even a shut door in the native collision path;
+    // the curve term also changes the swing drawn by the page. Both retain
+    // the existing endpoint checks' tolerance. This is product source.
+    edit:[1]FbText;fb_add(edit[..],original[0..<span.body]);
+    fb_add(edit[..],"{ k := clamp(t, 0, 1); return k*k*(3-2*k) + 0.01*k*(1-k)*(k-0.5) + ");fb_int(edit[..],i+1);fb_add(edit[..],".0f32 / 1000000; }");
+    fb_add(edit[..],original[span.end..<original.count]);
+    r:=fb_eval(c,"globalThis.__feFrame=__dr.fr.length;1");
+    began:=proc_now_ms();
+    if !fs_write("apps/openagents-web/everglade-doors.coax",fb_text(edit[..])) || fb_command(session,"apply")!=0 {return 1;}
+    expected:[1]FbText;fb_int(expected[..],i+1);
+    query:[1]FbText;
+    fb_add(query[..],"(async()=>{const room=await(await fetch('/api/playtest/dev/fast-edit',{cache:'no-store'})).json(),page=coaxial.fastEdit.info(),epsilon=");fb_add(query[..],fb_text(expected[..]));
+    fb_add(query[..],"/1000000;const rule=t=>{const k=Math.max(0,Math.min(1,t));return k*k*(3-2*k)+0.01*k*(1-k)*(k-0.5)+epsilon;};const same=__dr.x===__feBase.x&&__dr.state===__feBase.state&&__dr.probe(1)===__feBase.seat;const good=x=>x.revision===");fb_add(query[..],fb_text(expected[..]));
+    fb_add(query[..],"&&x.game_calls_since_publish>0&&Math.abs(x.value-rule(0.25))<0.0000001&&Math.abs(x.last_value-rule(x.last_input))<0.0000001;const ok=good(room)&&good(page)&&same&&__dr.fr.length>__feFrame&&room.identity===page.identity;globalThis.__feResult={room,page,same_engine_state_seat:same,frames_after_edit:__dr.fr.length-__feFrame,ok};return ok?1:0;})()");
+    seen:=false;
+    while proc_now_ms()-began<10000 {
+      if fb_eval(c,fb_text(query[..]))==1 {seen=true;break;}
+      proc_sleep(10);
+    }
+    elapsed:=proc_now_ms()-began;times[i]=elapsed;
+    observation:[8192]u8;sample:=fb_string(c,"JSON.stringify(__feResult)",observation[..]);
+    build:[16384]u8;bn:=fs_read(fb_path(session,"latest.json",path[..]),build[..]);if bn<0 {return 1;}
+    report:[1]FbText;fb_add(report[..],"{\"edit_to_running_ms\":");fb_int(report[..],elapsed);fb_add(report[..],",\"build\":");fb_add(report[..],cast(string)build[0..<bn]);fb_add(report[..],",\"observation\":");fb_add(report[..],ifx sample.count>0 then sample else "null");fb_add(report[..],"}\n");
+    name:[1]FbText;fb_add(name[..],"measurement-");fb_int(name[..],i+1);fb_add(name[..],".json");saved:=fs_write(fb_path(session,fb_text(name[..]),path[..]),fb_text(report[..]));
+    print("edit %: % ms, ordinary room and page calls: %\n",i+1,elapsed,seen);
+    if !seen {tool_errln(sample);return 1;}
+  }
+  median:=fb_median(times[..]);summary:[1]FbText;fb_add(summary[..],"{\"runs\":10,\"median_ms\":");fb_int(summary[..],median);fb_add(summary[..],",\"times_sorted_ms\":[");for i:0..<10 {if i>0 {fb_add(summary[..],",");}fb_int(summary[..],times[i]);}fb_add(summary[..],"]}\n");
+  saved:=fs_write(fb_path(session,"benchmark.json",path[..]),fb_text(summary[..]));print("%",fb_text(summary[..]));
+  return ifx median<2000 then 0 else 1;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}session:=args_at(a[..],0);port:=args_whole(args_value(a[..],"--port","9060"));
+  if session.count==0 || session[0]!='/' || port<1024 || port>65533 {tool_errln("usage: fast-edit-bench ABSOLUTE_SESSION [--port 9060] [--keep-edit]");return 2;}
+  for forbidden:[5]int.[8830,8843,8872,8876,8913] {if port==forbidden || port+1==forbidden {return 2;}}
+  original:[1048576]u8;n:=fs_read("apps/openagents-web/everglade-doors.coax",original[..]);if n<0 {return 1;}
+  if fb_command(session,"candidate")!=0 {return 1;}
+  path:[1]FbText;rp:[1]FbText;sp:[1]FbText;fb_int(rp[..],port);fb_add(sp[..],"127.0.0.1:");fb_int(sp[..],port+1);
+  room_args:=[7]string.[fb_path(session,"room",path[..]),"--listen","127.0.0.1","--port",fb_text(rp[..]),"--dev","coax/web/room/dev"];
+  room:=fb_spawn(room_args[..],session);
+  page_args:=[9]string.["coax/web/serve.sh","apps/openagents-web","--static","--listen",fb_text(sp[..]),"--api",fb_text(rp[..]),"--cache","0"];
+  page:=fb_spawn(page_args[..],session);
+  c:[1]Cdp;rc:=1;
+  if room>=0 && page>=0 && cdp_launch(c[..],1280,800,"coax-fast-edit-") {
+    url:[1]FbText;fb_add(url[..],"http://127.0.0.1:");fb_int(url[..],port+1);fb_add(url[..],"/worlds/everglade?relay=ws://localhost:");fb_int(url[..],port);fb_add(url[..],"&room=pair-drift-12960&fast-edit=/build/fast-edit/latest.json");
+    if fb_open(c[..],fb_text(url[..])) && fb_ready(c[..]) {
+      if args_has(a[..],"--bad-check") {rc=fb_bad_check(c[..],session,cast(string)original[0..<n]);}
+      else if fb_at_door(c[..],session) {rc=fb_measure(c[..],session,cast(string)original[0..<n],args_has(a[..],"--keep-edit"));if rc==0 && args_has(a[..],"--refusals") {rc=fb_refusals(c[..],session);}}
+    }
+    else {details:[8192]u8;tool_errln(fb_string(c[..],"JSON.stringify({url:location.href,text:document.body.innerText.slice(-3000),net:globalThis.__dr?.probe(0),seat:globalThis.__dr?.probe(1),frames:globalThis.__dr?.count(),fast:globalThis.coaxial?.fastEdit?.info()})",details[..]));}
+    cdp_close(c[..]);
+  }
+  fb_stop(page);fb_stop(room);
+  if !args_has(a[..],"--keep-edit") || rc!=0 {restored:=fs_write("apps/openagents-web/everglade-doors.coax",cast(string)original[0..<n]);}
+  return rc;
+}
