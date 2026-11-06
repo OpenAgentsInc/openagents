@@ -1,0 +1,55 @@
+// Whole forest records and their public world-state identity. The independent contract is
+// proto/verse/everglade-session-v5.json; the host transports these sixteen floats without decisions.
+#module "everglade.forest.profile";
+#authority;
+
+FOREST_KIND :: 26; FOREST_EID :: 1162000; FOREST_RECORDS :: 192;
+FOREST_PLANTED :: 3400; FOREST_FLOATS :: 16; FOREST_SLOTS :: 512;
+
+#test "forest profile: the published tree is public world state, independent of its starter" {
+  #assert FOREST_KIND == 26 && FOREST_EID == 1162000 && FOREST_RECORDS == 192;
+  #assert FOREST_PLANTED == 3400 && FOREST_FLOATS == 16 && FOREST_SLOTS == 512;
+  #assert forest_public(26) && !forest_public(1) && !forest_public(25) && !forest_public(27);
+  b := [16] f32.[0, -80, 0.2, -15, 1, 1, -0.2, 0.6, 1.5, 0.25, 0.5, 0.1, 1, 2, 3.4, 40];
+  #assert forest_valid(b[..]);
+  b[13] = -1; #assert forest_valid(b[..]);   // a raid's fire has no player
+}
+#forall "forest profile: closed field domains admit each endpoint and refuse past it" i: 0..<16, upper: bool {
+  lo := [16] f32.[0, -1000000, 0, -1000000, 0, -4, -4, 0, 0, 0, 0, 0, 0, -1, 0, 0];
+  hi := [16] f32.[3399, 1000000, 1000000, 1000000, 2, 4, 4, 100, 4, 1, 1, 1, 1, 15, 3600, 3600];
+  b := [16] f32.[0, -80, 0.2, -15, 1, 1, -0.2, 0.6, 1.5, 0.25, 0.5, 0.1, 1, 2, 3.4, 40];
+  b[i] = ifx upper then hi[i] else lo[i];
+  #assert forest_valid(b[..]);
+  b[i] += ifx upper then 1.0f32 else -1.0f32;
+  #assert !forest_valid(b[..]);
+}
+#forall "forest profile: every field refuses NaN and either infinity" i: 0..<16, bad: 0..<3 {
+  b := [16] f32.[0, -80, 0.2, -15, 1, 1, -0.2, 0.6, 1.5, 0.25, 0.5, 0.1, 1, 2, 3.4, 40];
+  b[i] = ifx bad == 0 then 0.0f32 / 0.0f32 else ifx bad == 1 then 1.0f32 / 0.0f32 else -1.0f32 / 0.0f32;
+  #assert !forest_valid(b[..]);
+}
+#forall "forest profile: indices modes burning and owners are whole numbers" q: 0..<4 {
+  fields := [4] int.[0, 4, 12, 13];
+  b := [16] f32.[0, -80, 0.2, -15, 1, 1, -0.2, 0.6, 1.5, 0.25, 0.5, 0.1, 1, 2, 3.4, 40];
+  b[fields[q]] = 0.5;
+  #assert !forest_valid(b[..]);
+}
+#forall "forest profile: neither a partial nor an extended record is accepted" n: 0..<18 {
+  b := [17] f32.[0, -80, 0.2, -15, 1, 1, -0.2, 0.6, 1.5, 0.25, 0.5, 0.1, 1, 2, 3.4, 40, 0];
+  #assert forest_valid(b[0..<n]) == (n == 16);
+}
+
+forest_public :: (kind: int) -> bool { return kind == FOREST_KIND; }
+forest_valid :: (b: [] f32) -> bool {
+  if b.count != FOREST_FLOATS { return false; }
+  for i: 0..<FOREST_FLOATS { if b[i] != b[i] || b[i] < -1000000 || b[i] > 1000000 { return false; } }
+  if b[0] < 0 || b[0] >= f32(FOREST_PLANTED) || b[0] != f32(cast(int) b[0]) { return false; }
+  if b[2] < 0 || b[4] < 0 || b[4] > 2 || b[4] != f32(cast(int) b[4]) { return false; }
+  if b[5] < -4 || b[5] > 4 || b[6] < -4 || b[6] > 4 { return false; }
+  if b[7] < 0 || b[7] > 100 || b[8] < 0 || b[8] > 4 { return false; }
+  for i: 9..<13 { if b[i] < 0 || b[i] > 1 { return false; } }
+  if b[12] != f32(cast(int) b[12]) { return false; }
+  if b[13] < -1 || b[13] > 15 || b[13] != f32(cast(int) b[13]) { return false; }
+  if b[14] < 0 || b[14] > 3600 || b[15] < 0 || b[15] > 3600 { return false; }
+  return true;
+}

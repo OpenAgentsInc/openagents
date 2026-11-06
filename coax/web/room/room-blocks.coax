@@ -32,8 +32,8 @@ eg_im_table :: (v: [] RmServer, k: int) {
     } else if kind == WK_BEAST {
       form := cast(int) h[0].f[a + WS_P1];
       if form == E5RR_FORM_RAID + RS_NPC_ARCH || form == E5RR_FORM_WARD { flags = IM_ROOM; }
-    } else if kind == WK_DOORS {
-      flags = IM_ROOM;   // the town's doors: every seat's, however far
+    } else if kind == WK_DOORS || forest_public(kind) {
+      flags = IM_ROOM;   // doors and physical forest state stay shared, regardless of their starter
     } else if (kind == WK_ZONE || kind == WK_STONE || kind == WK_TENTACLES || kind == WK_THORNS || kind == WK_LINE) && cast(int) h[0].f[a + WS_OWNER] < 0 {
       flags = IM_ROOM;   // a zone the world made, not a player's spell
     }
@@ -251,7 +251,7 @@ im_room_blocks :: (v: [] RmServer, k: int) {
   #assert rm_join(v[..], 0, tk_test_ask_in(r[..], t[..], n, "pair-imw")) == 0;
   n = tk_sign(key, "p-00000000000000cc", false, "", "pair-imw", now + 60000, -1, t[..]);
   #assert rm_join(v[..], 1, tk_test_ask_in(r[..], t[..], n, "pair-imw")) == 1;
-  rm_heard(v[..], 0, "H 4 ranger.0.0.0 warlock 0 -");
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 warlock 0 -");
   k := eg_room_at(v[..], v[0].conns[0].relay);
   for q: 0..<2 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   rm_eg_moved(v[..], k, SeatId.{value = 0}, 0, 37.21, 0, 41.13, 0, 0, 0, 0, 1, 0, 0);

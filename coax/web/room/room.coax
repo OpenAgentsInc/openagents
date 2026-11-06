@@ -510,8 +510,8 @@ tk_test_ask_in :: (r: [] u8, t: [] u8, n: int, room: string) -> string {
   eg_test_drain(v[..], box[..]);
   k := eg_room_at(v[..], v[0].conns[0].relay);
   #assert k >= 0;
-  rm_heard(v[..], 0, "H 4 ranger.2.1.0 druid 0 Someone Else");
-  rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 3 Guest");
+  rm_heard(v[..], 0, "H 5 ranger.2.1.0 druid 0 Someone Else");
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 3 Guest");
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
   a := eg_test_of(box[..], 1);
@@ -870,7 +870,7 @@ rl_test_heard2 :: (v: [] RmServer, a: int, ba: [] u8, na: [] int, b: int, bb: []
   #assert rm_join(v[..], 0, rl_test_owned(r[..], t[..], key, a, "pair-a", 3, now)) == 0;
   #assert rm_join(v[..], 1, rl_test_owned(r[..], t[..], key, "p-c0ffeec0ffeec0ff", "pair-b", 2, now)) == 0;
   ka := eg_room_at(v[..], v[0].conns[0].relay); kb := eg_room_at(v[..], v[0].conns[1].relay);
-  rm_heard(v[..], 0, "H 4 ranger.0.0.0 warlock 0 Ash");
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 warlock 0 Ash");
   // spent: a slot of each level it has, a use, 4 Temporary Hit Points; repaired 2 s ago
   c := v[0].eg[ka].rules[0].b[0].c[E5RR_SEAT..<E5RR_SEAT + 1];
   lv := -1; for i: 1..<10 { if lv < 0 && c[0].slots_max[i] > 0 { lv = i; } }
@@ -890,14 +890,14 @@ rl_test_heard2 :: (v: [] RmServer, a: int, ba: [] u8, na: [] int, b: int, bb: []
   // pair-b: the same build, laid on after its hello; the Repair wait goes on from where it was
   s := rm_join(v[..], 2, rl_test_owned(r[..], t[..], key, a, "pair-b", 4, now));
   #assert s == 1;
-  rm_heard(v[..], 2, "H 4 ranger.0.0.0 warlock 0 Ash");
+  rm_heard(v[..], 2, "H 5 ranger.0.0.0 warlock 0 Ash");
   d := v[0].eg[kb].rules[0].b[0].c[E5RR_SEAT + 1];
   #assert d.slots[lv] == d.slots_max[lv] - 1 && d.temp == 4;
   if u >= 0 { #assert d.uses[u] == d.uses_max[u] - 1; }
   #assert v[0].eg[kb].tick - v[0].eg[kb].seat[1].repaired == 2 * EG_HZ;
   // once: a later hello builds it as any hello does
-  rm_heard(v[..], 2, "H 4 ranger.0.0.0 druid 0 Ash");
-  rm_heard(v[..], 2, "H 4 ranger.0.0.0 warlock 0 Ash");
+  rm_heard(v[..], 2, "H 5 ranger.0.0.0 druid 0 Ash");
+  rm_heard(v[..], 2, "H 5 ranger.0.0.0 warlock 0 Ash");
   #assert v[0].eg[kb].rules[0].b[0].c[E5RR_SEAT + 1].slots[lv] == v[0].eg[kb].rules[0].b[0].c[E5RR_SEAT + 1].slots_max[lv];
 }
 #test "travel (#12850): a cast on its bar stops at the cutover, and the room hears why; one released before lands" #steps 3000000000 {
@@ -977,7 +977,7 @@ rl_test_ticks :: (v: [] RmServer, k: int, ticks: int, conn: int, part: string) -
   #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
   n = tk_sign(key, "p-8899aabbccddeeff", false, "", "pair-tk", now + 600000, -1, t[..]);
   #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 1;
-  rm_heard(v[..], 0, "H 4 ranger.2.1.0 druid 0 A"); rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 B");
+  rm_heard(v[..], 0, "H 5 ranger.2.1.0 druid 0 A"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 B");
   k := eg_room_at(v[..], v[0].conns[0].relay);
   for i: 0..<10 { eg_test_tick(v[..], k); }
   // A is hurt, and walks a little; then A's socket closes
@@ -997,7 +997,7 @@ rl_test_ticks :: (v: [] RmServer, k: int, ticks: int, conn: int, part: string) -
   #assert eg_test_has(a, "y 0 1 ") && eg_test_has(a, " 2|") && eg_test_has(a, "j 1") && v[0].conns[2].gen.value == 2 && v[0].eg[k].seat[0].gen.value == 2;
   #assert !eg_held(v[..], k, SeatId.{value = 0}) && v[0].eg[k].seat[0].full && v[0].eg[k].seat[0].ack == 0 && rm_st_re_seat(v[..]) == 1;
   #assert v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + 0].hp == hp && v[0].eg[k].seat[0].pose.x == x && v[0].eg[k].seat[0].placed;
-  rm_heard(v[..], 2, "H 4 ranger.2.1.0 druid 0 A");
+  rm_heard(v[..], 2, "H 5 ranger.2.1.0 druid 0 A");
   #assert v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + 0].hp == hp;
   rm_heard(v[..], 1, "I 1 0 0 0 0 0 0 0");
   b := rl_heard_by(v[..], 1, box[..]);

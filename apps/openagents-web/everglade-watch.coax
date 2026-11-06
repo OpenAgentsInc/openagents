@@ -1233,6 +1233,39 @@ eg_room_repair :: (s: [] Everglade, from: Point, at: Point) {
   eg_room_known(s);   // its pieces stand: what breaks of them next is news again
   eg_room_put(s, 3, code, c.x, c.y, c.z);
 }
+// Sparse forest record q for the host's ordinary entity table. Zero is the planted default.
+// Identity, base x, extra lift, base z, mode, tilt x/z, break, rest, soot, bare, frost, burning,
+// starter, age and lifetime. The host only copies this record to rm_eg_tree.
+everglade_room_tree :: (s: [] Everglade, q: int, out: [] f32) -> bool #export_c {
+  if !sp_on(s) || q < 1 || q >= TF_POOL || out.count < FOREST_FLOATS { return false; }
+  v := tf_of(s); t := v[0].owner[q] - 1;
+  if t < 0 || t >= s[0].tree_n { return false; }
+  for i: 0..<FOREST_FLOATS { out[i] = 0; }
+  out[0] = f32(t); out[1] = s[0].trees[t * TREE_FLOATS] + v[0].ox[q]; out[2] = v[0].oy[q]; out[3] = s[0].trees[t * TREE_FLOATS + 1] + v[0].oz[q];
+  out[4] = f32(v[0].mode[q]); out[5] = v[0].ax[q]; out[6] = v[0].az[q]; out[7] = v[0].pivot[q]; out[8] = v[0].rest[q];
+  out[9] = v[0].soot[q]; out[10] = v[0].bare[q]; out[11] = v[0].frost[q]; out[13] = -1;
+  for b: 0..<v[0].n {
+    e := v[0].burn[b];
+    if e.tree == t { out[12] = 1; out[13] = f32(e.by); out[14] = e.t; out[15] = e.out; break; }
+  }
+  return forest_valid(out[0..<FOREST_FLOATS]);
+}
+#test "room forest: the host exports the independently specified tree record and clears it on rebuild (#12940)" #steps 2000000000 {
+  g: [1] Everglade; dm: [1] DemoWorld; sp_ready_city(g[..], dm[..]);
+  #assert TF_POOL == FOREST_RECORDS && TREES == FOREST_PLANTED;
+  g[0].tree_n = 2; put_tree(g[0].trees[..], 0, -80, -15, 0.6, 0, 0);
+  #assert tf_own(g[..], 0);
+  v := tf_of(g[..]); k := tf_k(g[..], 0);
+  v[0].mode[k] = TF_FALL; v[0].ax[k] = 1; v[0].az[k] = -0.2; v[0].oy[k] = 2;
+  v[0].pivot[k] = 0.6; v[0].rest[k] = 1.5; v[0].soot[k] = 0.25; v[0].bare[k] = 0.5; v[0].frost[k] = 0.1;
+  v[0].n = 1; v[0].burn[0] = TfBurn.{tree = 0, by = 2, t = 3.4, out = 40};
+  want := [16] f32.[0, -80, 2, -15, 1, 1, -0.2, 0.6, 1.5, 0.25, 0.5, 0.1, 1, 2, 3.4, 40];
+  out: [16] f32;
+  #assert !everglade_room_tree(g[..], 0, out[..]) && !everglade_room_tree(g[..], TF_POOL, out[..]);
+  #assert !everglade_room_tree(g[..], k, out[0..<15]) && everglade_room_tree(g[..], k, out[..]);
+  for i: 0..<16 { #assert out[i] == want[i]; }
+  tf_restore(g[..]); #assert !everglade_room_tree(g[..], k, out[..]);
+}
 // The town's pieces, and whether piece i stands whole and not alight (a Repair's, for the host).
 everglade_room_pieces :: (s: [] Everglade) -> int #export_c { return ifx sp_on(s) then sp_dm(s)[0].n else 0; }
 everglade_room_piece_up :: (s: [] Everglade, i: int) -> bool #export_c {
@@ -1267,6 +1300,7 @@ everglade_room_spells :: (s: [] Everglade, dt: f32) -> int #export_c {
   sp_strikes(s, dt);
   wl_step(s, dt);   // the Warlock's strikes land (everglade-warlock.coax)
   fi_frame(s, dt);
+  tf_frame(s, dt);   // the same authoritative step burns, spreads and moves the forest (#12940)
   s[0].wv.room_nobody = false;
   wt[0].me = me;
   if s[0].sp.walls_dirty { sp_open_walls(s); }
@@ -1698,6 +1732,38 @@ eg_fire_casters :: (casters: int, out: [] f32) {
 }
 // Seat 0 lights a tree, seat 1 casts after it (the step's last caster), and the fire spreads from tree to
 // tree: every tree it reaches burns as seat 0's, and what it does is seat 0's crime, never seat 1's (#12935).
+#test "room town: the actual room tick burns and spreads trees as their starter's crime (#12940)" #steps 6000000000 {
+  g: [1] Everglade; dm: [1] DemoWorld;
+  walled := everglade_walls(g[..]);
+  everglade_room_spells_start(g[..], dm[..], "");
+  // Two small, dry trees outside the west palisade, with touching crowns. The real room tick is
+  // the only simulation entry below: calling tf_frame here would hide the missing server step.
+  g[0].tree_n = 2;
+  put_tree(g[0].trees[..], 0, -80, -15, 0.6, 0, 0);
+  put_tree(g[0].trees[..], 1, -78.5, -15, 0.6, 0, 0);
+  seats: [EG_ROOM_SEAT_FLOATS * 2] f32; took: [WATCH_YOUS * 2] f32;
+  seats[0] = -80; seats[1] = ground_at(g[..], -80, -10); seats[2] = -10; seats[3] = 2; seats[4] = 100000; seats[5] = 100000;
+  seats[7] = 100; seats[8] = ground_at(g[..], 100, 100); seats[9] = 100; seats[10] = 2; seats[11] = 100000; seats[12] = 100000;
+  everglade_room_town(g[..], 1.0 / 30.0, 1000.0, seats[..], 2, took[..]);
+  #assert walled >= 0 && !fr_wet(g[..], -80, -15) && !fr_wet(g[..], -78.5, -15);
+  g[0].sky.rain = 0;
+  wt := watch_w(g[..]); wt[0].me = 0;
+  #assert tf_ignite(g[..], 0);
+  wt[0].yous[0].crimes = 0; wt[0].yous[1].crimes = 0;
+  g[0].wv.room_by = 1; wt[0].me = 1;
+  spread := false;
+  for tick: 0..<1800 {
+    events := everglade_room_spells(g[..], 1.0 / 30.0);
+    #assert events >= 0;
+    v := tf_of(g[..]);
+    if v[0].lit > 1 { spread = true; }
+    for k: 0..<v[0].n { #assert v[0].burn[k].by == 0; }
+  }
+  v := tf_of(g[..]); k := tf_k(g[..], 0);
+  #assert spread && v[0].soot[k] == 1 && v[0].bare[k] == 1;
+  #assert v[0].mode[k] == TF_DOWN && !tf_burning(g[..], 0);
+  #assert wt[0].yous[0].crimes > 0 && wt[0].yous[1].crimes == 0;
+}
 #test "room town: a tree fire spreading to the next tree stays its starter's, not the last caster's (#12935)" #steps 60000000000 {
   g: [1] Everglade; dm: [1] DemoWorld;
   walled := everglade_walls(g[..]);

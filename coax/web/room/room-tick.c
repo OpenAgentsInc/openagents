@@ -76,6 +76,11 @@ static void everglade_town(int k) {
   rm_eg_strikes_taken(view(),k,taken);
   int64_t t2 = now_us();
   int en = world_spells(k, 1.0f / WORLD_HZ);
+  float tree[WORLD_TREE];
+  for (int q = 1; q < WORLD_TREES; q++) {
+    int n = world_tree(k, q, tree) ? WORLD_TREE : 0;
+    rm_eg_tree(view(), k, q, (coax_v_f32){tree, n});
+  }
   for(int source=0;source<rm_effect_sources();source++)rm_effect_free(view(),k,source,world_effect_free(k,source));
   for (int q = 0; q < en; q++)
     if (world_event(k, q, ev)) {

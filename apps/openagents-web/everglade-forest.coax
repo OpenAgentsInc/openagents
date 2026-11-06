@@ -31,8 +31,8 @@
 //
 // Felling or burning the trees near the city (TF_CITY of the palisade) is a crime the watch answers;
 // out in the deep woods nobody hears. R, or a long rest, stands the forest again with the town
-// (fi_restore). Nothing grows back by itself. Like the town's breaking, it is each page's own: the
-// shared room (everglade-room.coax) does not carry it.
+// (fi_restore). Nothing grows back by itself. In a room the server steps the forest; version 5
+// tree rows carry its transforms, fire and burnt state to every page (#12940).
 //
 // The near trees (the kit's) and the far ones (their cones) draw the same state, so a fallen or burnt
 // tree stays down and black past KIT_NEAR.
@@ -362,6 +362,7 @@ tf_push :: (s: [] Everglade, from: Point, way: Point, takes: f32, span: f32) -> 
 tf_ignite :: (s: [] Everglade, t: int) -> bool { return tf_ignite_gen(s, t, 0); }
 // The same, `gen` crowns from where the fire was lit.
 tf_ignite_gen :: (s: [] Everglade, t: int, gen: int) -> bool {
+  if net_live(s) { return false; }   // room pages draw the server's fires, never start or spread their own
   v := tf_of(s);
   if t < 0 || t >= s[0].tree_n || v[0].n >= tf_cap(s) || tf_burning(s, t) { return false; }
   if v[0].soot[tf_k(s, t)] >= 1 && v[0].bare[tf_k(s, t)] >= 1 { return false; }

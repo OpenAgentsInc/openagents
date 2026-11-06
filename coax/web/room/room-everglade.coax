@@ -116,10 +116,11 @@ EG_ENT :: 192;                  // bytes of one cached n entry (eg_table) at mos
 // creatures, the rules' zones, then the world's abilities' entities as they come and go
 EG_SLOT_FOLK :: EG_SEATS; EG_SLOT_BEAST :: EG_SLOT_FOLK + E5R_FOLK; EG_SLOT_ZONE :: EG_SLOT_BEAST + E5RR_BEASTS;
 // (the watch's effects on the seats take slots of the same EG_SLOT_AB pool, fx_slot)
-EG_SLOT_AB :: EG_SLOT_ZONE + E5RR_ZONES; EG_SLOT_ABS :: WIRE_SLOTS - EG_SLOT_AB - 1 - EG_BOATS;
-EG_SLOT_DOORS :: WIRE_SLOTS - 1;   // the town's doors, one row always (WK_DOORS)
+EG_SLOT_AB :: EG_SLOT_ZONE + E5RR_ZONES; EG_SLOT_ABS :: EG_SLOT_BOAT - EG_SLOT_AB;
+EG_SLOT_DOORS :: 255;   // preserve the original slots and every spell reservation
 EG_BOATS :: 3;                     // the rowboats (river.coax BOATS), a row each always (WK_BOAT, #12861)
 EG_SLOT_BOAT :: EG_SLOT_DOORS - EG_BOATS;
+EG_SLOT_TREE :: 256;    // separate sparse forest records, zero unused
 EG_DOORS_ID :: WIRE_DOORS_EID;    // its id: WIRE_ID_MADE + EG_DOORS_ID
 EG_USE_ASKS :: EG_SEATS*2;        // one interaction and one release per seat per tick
 EG_FX_ID :: 950000;              // a watch effect's id: WIRE_ID_MADE + EG_FX_ID + SS * WE_WATCH + cause
@@ -223,6 +224,7 @@ EgRoom :: struct {
   // the rowboats as the world has them (rm_eg_boat): where, which way, who rows (a seat, -1 none), the oars, the float
   boat_on: [EG_BOATS] bool; boat_x: [EG_BOATS] f32; boat_y: [EG_BOATS] f32; boat_z: [EG_BOATS] f32; boat_yaw: [EG_BOATS] f32;
   boat_by: [EG_BOATS] int; boat_oar: [EG_BOATS] int; boat_i: [EG_BOATS] int;
+  tree_on: [WIRE_TREES] bool; tree: [WIRE_TREES] WireS;
   place_stamp: int;                                // the newest place line's STAMP this room laid (room-control.coax "place"; 0 none)
   gates: int;                                      // bit 0 while the world has the town's gates shut (rm_eg_gates, WANTED 4: #12794), then its leaves burnt and alight (#12932): the row's FORM
   folk_by: [E5R_FOLK] int;
@@ -312,6 +314,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     v[0].eg[q].ev_n = 0; v[0].eg[q].ev_bytes = 0;
     // the town as new: the world's (the host's) is made whole again on rm_eg_fresh
     v[0].eg[q].folk_on = false; v[0].eg[q].crime_n = 0; v[0].eg[q].use_ask_n = 0; for w: 0..<WIRE_DOOR_WORDS { v[0].eg[q].doors[w] = 0; } for b: 0..<EG_BOATS { v[0].eg[q].boat_on[b] = false; } v[0].eg[q].place_stamp = 0; v[0].eg[q].strike_n = 0; v[0].eg[q].rebuild = false; v[0].eg[q].fresh = true;
+    for t: 0..<WIRE_TREES { v[0].eg[q].tree_on[t] = false; }
     v[0].eg[q].broke_at = -100000; v[0].eg[q].rebuilt_at = -100000;
     for s: 0..<EG_SEATS { v[0].eg[q].wanted[s] = 0; }
     for j: 0..<E5R_FOLK { v[0].eg[q].folk_by[j] = -1; v[0].eg[q].folk_save[j] = 0; }
@@ -986,6 +989,19 @@ rm_eg_boat :: (v: [] RmServer, k: int, n: int, b: [] f32) #export_c {
   rm[0].boat_on[n] = true; rm[0].boat_x[n] = b[0]; rm[0].boat_y[n] = b[1]; rm[0].boat_z[n] = b[2]; rm[0].boat_yaw[n] = b[3];
   rm[0].boat_by[n] = cast(int) b[4]; rm[0].boat_oar[n] = ifx b[5] < 0 then -1 else cast(int) (b[5] * 1000); rm[0].boat_i[n] = cast(int) b[6];
 }
+// The world's complete sparse record, or an empty span when the record was restored or released.
+rm_eg_tree :: (v: [] RmServer, k: int, q: int, b: [] f32) #export_c {
+  if !rm_eg_live(v, k) || q < 1 || q >= WIRE_TREES { return; }
+  if b.count == 0 { v[0].eg[k].tree_on[q] = false; return; }
+  if !forest_valid(b) { return; }
+  if !v[0].eg[k].tree_on[q] || v[0].eg[k].tree[q].clip != cast(int) b[0] { wire_hist_born(v[0].eg[k].hist[..], EG_SLOT_TREE + q); }
+  v[0].eg[k].tree[q] = WireS.{id = FOREST_EID + q, kind = WK_TREE, clip = cast(int) b[0], x = b[1], y = b[2], z = b[3], g = cast(int) b[4],
+    p1 = cast(int) floor(b[5] * 1000 + 0.5), p2 = cast(int) floor(b[6] * 1000 + 0.5),
+    t0 = cast(int) floor(b[7] * 1000 + 0.5), dur = cast(int) floor(b[8] * 1000 + 0.5),
+    hp = cast(int) floor(b[9] * 1000 + 0.5), max = cast(int) floor(b[10] * 1000 + 0.5), temp = cast(int) floor(b[11] * 1000 + 0.5),
+    cond = cast(int) b[12], owner = cast(int) b[13], carry = b[14], form = cast(int) floor(b[15] * 1000 + 0.5)};
+  v[0].eg[k].tree_on[q] = true;
+}
 rm_eg_doors :: (v: [] RmServer, k: int, w: int, bits: int) #export_c { if rm_eg_live(v, k) && w >= 0 && w < WIRE_DOOR_WORDS { v[0].eg[k].doors[w] = bits; } }
 rm_eg_gates :: (v: [] RmServer, k: int, shut: int) #export_c { if rm_eg_live(v, k) { v[0].eg[k].gates = ifx shut > 0 then shut else 0; } }   // its bits: shut, and the leaves burnt or alight (everglade-fire.coax fi_gates_bits)
 // The strikes since the world last heard: q's BY SLOT FX FY FZ AX AY AZ SEED.
@@ -1271,6 +1287,9 @@ eg_table :: (v: [] RmServer, k: int) {
     wire_hist_put(h, EG_SLOT_BOAT + b, WireS.{id = WIRE_ID_MADE + WIRE_BOAT_EID + b, kind = WK_BOAT, x = rm[0].boat_x[b], y = rm[0].boat_y[b], z = rm[0].boat_z[b], yaw = rm[0].boat_yaw[b],
                                              g = 1, owner = rm[0].boat_by[b], p1 = rm[0].boat_i[b], p2 = rm[0].boat_oar[b]}, wire_rel(WK_BOAT), true, false);
   }
+  for t: 1..<WIRE_TREES {
+    if rm[0].tree_on[t] { wire_hist_put(h, EG_SLOT_TREE + t, rm[0].tree[t], wire_rel(WK_TREE), true, false); }
+  }
   eg_im_table(v, k);   // and the table into the interest grid (room-blocks.coax, #12789)
 }
 
@@ -1541,8 +1560,8 @@ eg_test_has :: (t: string, part: string) -> bool {
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   eg_test_drain(v[..], box[..]);
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 3 ranger.0.0.0 druid 0 Old");   // a page from before this release
-  rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 New");
+  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 Old");   // v4 has no authoritative forest
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 New");
   eg_test_drain(v[..], box[..]);
   #assert eg_test_has(eg_test_of(box[..], 0), "r 0 version") && rm_relay_kicked(v[..], 0);
   #assert !eg_test_has(eg_test_of(box[..], 1), "r 0 version") && !rm_relay_kicked(v[..], 1);
@@ -1559,7 +1578,7 @@ eg_test_has :: (t: string, part: string) -> bool {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0;
   eg_test_drain(v[..], box[..]);
-  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 Before");
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 Before");
   eg_test_drain(v[..], box[..]);
   // a drain ask: only this shard's, signed with the key, near this server's clock
   at := 1762190000000;
@@ -1572,7 +1591,7 @@ eg_test_has :: (t: string, part: string) -> bool {
   // a page joining now is told restarting and closed
   #assert rm_join(v[..], 1, ev) == 1;
   eg_test_drain(v[..], box[..]);
-  rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 After");
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 After");
   eg_test_drain(v[..], box[..]);
   #assert eg_test_has(eg_test_of(box[..], 1), "r 0 restarting") && rm_relay_kicked(v[..], 1);
   #assert !eg_test_has(eg_test_of(box[..], 0), "r 0 restarting") && !rm_relay_kicked(v[..], 0);
@@ -1600,14 +1619,14 @@ dr_mac :: (key: string, text: string, out: [] u8) {
   k := eg_room_at(v[..], v[0].conns[0].relay);
   b: [64] u8;
   same := cast(string) b[0..<wire_put_pins(b[..], 0, WirePins.{})];
-  rm_heard(v[..], 0, same); rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 Same");
-  rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 Before");             // a page from before P: the first build's
-  rm_heard(v[..], 2, "P 1 2 1"); rm_heard(v[..], 2, "H 4 ranger.0.0.0 druid 0 Rules");
-  rm_heard(v[..], 3, "P 2 1 1"); rm_heard(v[..], 3, "H 4 ranger.0.0.0 druid 0 Engine");
-  rm_heard(v[..], 4, "P 1 1 2"); rm_heard(v[..], 4, "H 4 ranger.0.0.0 druid 0 World");
-  rm_heard(v[..], 5, "P 1 2"); rm_heard(v[..], 5, "H 4 ranger.0.0.0 druid 0 Short");   // a P that doesn't read is no build
+  rm_heard(v[..], 0, same); rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 Same");
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 Before");             // a page from before P: the first build's
+  rm_heard(v[..], 2, "P 1 2 1"); rm_heard(v[..], 2, "H 5 ranger.0.0.0 druid 0 Rules");
+  rm_heard(v[..], 3, "P 2 1 1"); rm_heard(v[..], 3, "H 5 ranger.0.0.0 druid 0 Engine");
+  rm_heard(v[..], 4, "P 1 1 2"); rm_heard(v[..], 4, "H 5 ranger.0.0.0 druid 0 World");
+  rm_heard(v[..], 5, "P 1 2"); rm_heard(v[..], 5, "H 5 ranger.0.0.0 druid 0 Short");   // a P that doesn't read is no build
   v[0].conns[6].ticket.schema = RV_SCHEMA + 1;                         // saved by a newer room: a rollback past its limit
-  rm_heard(v[..], 6, same); rm_heard(v[..], 6, "H 4 ranger.0.0.0 druid 0 Saved");
+  rm_heard(v[..], 6, same); rm_heard(v[..], 6, "H 5 ranger.0.0.0 druid 0 Saved");
   eg_test_drain(v[..], box[..]);
   for i: 0..<7 {
     refused := i >= 2 && i != 5;
@@ -1636,8 +1655,8 @@ dr_mac :: (key: string, text: string, out: [] u8) {
   #assert eg_test_has(eg_test_of(box[..], 0), "y 0 0 1762190000000 1|W 0 30 ");
   k := eg_room_at(v[..], v[0].conns[0].relay);
   #assert k >= 0;
-  rm_heard(v[..], 0, "H 4 ranger.2.1.0 druid 1 Ash Vale");
-  rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 5 ranger.2.1.0 druid 1 Ash Vale");
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
   // seat 0 queues 8 inputs at once: 4 are stepped this tick (its bank), the rest on the next ticks
   for q: 1..<9 {
     t: [64] u8; n := put(t[..], 0, "I"); n = eg_n(t[..], n, q); n = put(t[..], n, " 0 0 0 50 0 1 0");
@@ -1683,7 +1702,7 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
   for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   // seat 0 walks; seat 1's socket has 10 KB waiting: its frame holds its own row, not seat 0's
   rm_conn_waiting(v[..], 1, 10000);
@@ -1709,7 +1728,7 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
   for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   // seat 1's page goes on sending, but what it hears comes later and later: its HEARD stays put
   box[0].deaf[1] = true;
@@ -1741,7 +1760,7 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
   seq := 0;
   for t: 0..<3 { seq += 1; eg_test_input_on(v[..], 1, seq, box[0].m[1].heard); eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   // seat 1's page goes on sending, but hears nothing in time, and the room snapshots it (as after a stall)
@@ -1835,7 +1854,7 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   towns: [2] EgTestTown;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
   // every seat's first town ends with e town; nothing asked
   for t: 0..<120 { eg_test_town_tick(v[..], k, box[..], towns[..]); }
   #assert towns[0].ended == 1 && towns[1].ended == 1 && towns[0].asked == 0 && towns[1].asked == 0 && v[0].st.towns == 0;
@@ -1877,13 +1896,13 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -");
   for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   // a raid broke 3000 of the town's pieces and set one alight; then seat 1 joins
   for q: 0..<3000 { v[0].eg[k].broken[q * 2] = true; }
   v[0].eg[k].burning[5999] = true;
   #assert rm_join(v[..], 1, ev) == 1;
-  rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
   was := v[0].st.join_b;
   breaks := 0; burns := 0; ticks := 0;
   for t: 0..<60 {
@@ -1909,7 +1928,7 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
   for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   #assert eg_ev_outcome("e break 12 0 0 0") && eg_ev_outcome("e rebuild") && eg_ev_outcome("e edit 3") && !eg_ev_outcome("e hit 1001 2003 7 3") && !eg_ev_outcome("e breakx 1") && !eg_ev_outcome("x 3");
   // a tick of 200 hits near both seats (more than a tick's events), a hit aimed at seat 1, then 20 pieces break
@@ -1939,7 +1958,7 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
   for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   id := WIRE_ID_MADE + EG_FX_ID + 1 * WE_WATCH + WE_HOLD_PERSON;
   // the world holds seat 1 for 3 s: a row on both pages
@@ -1966,7 +1985,7 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-hold HTTP/1.1\r\n\r\n") == 0 && rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-hold HTTP/1.1\r\n\r\n") == 1;
   #assert rm_join(v[..], 2, "GET /api/room/relay/everglade/pair-other HTTP/1.1\r\n\r\n") == 0;
   k := eg_room_at(v[..], v[0].conns[0].relay); o := eg_room_at(v[..], v[0].conns[2].relay);
-  for c: 0..<3 { rm_heard(v[..], c, "H 4 ranger.0.0.0 druid 0 -"); }
+  for c: 0..<3 { rm_heard(v[..], c, "H 5 ranger.0.0.0 druid 0 -"); }
   for t: 0..<3 { eg_test_tick(v[..], k); eg_test_tick(v[..], o); eg_test_drain(v[..], box[..]); }
   rm_control(v[..], "levels 0 2\nhold pair-hold 1 77\n");
   #assert !rm_eg_hold_take(v[..], k, SeatId.{value = 0}) && rm_eg_hold_take(v[..], k, SeatId.{value = 1}) && !rm_eg_hold_take(v[..], k, SeatId.{value = 1}) && !rm_eg_hold_take(v[..], o, SeatId.{value = 1});
@@ -1985,7 +2004,7 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   ev := "GET /api/room/relay/everglade/pair-life HTTP/1.1\r\n\r\n";
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  for c: 0..<2 { rm_heard(v[..], c, "H 4 ranger.0.0.0 druid 0 -"); }
+  for c: 0..<2 { rm_heard(v[..], c, "H 5 ranger.0.0.0 druid 0 -"); }
   for t: 0..<2 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   a0 := eg_test_ent(box[..], 1, 0);
   #assert a0.kind == WK_PLAYER && a0.life >= 1;
@@ -1999,7 +2018,7 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   // seat 0's player leaves and another sits in seat 0 before a tick: the same id and slot, a new life
   rm_left(v[..], 0);
   #assert rm_join(v[..], 2, ev) == 0;
-  rm_heard(v[..], 2, "H 4 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 2, "H 5 ranger.0.0.0 druid 0 -");
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   #assert eg_test_ent(box[..], 1, 0).life == a1.life + 1;
 }
@@ -2012,7 +2031,7 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
     box: [1] EgInbox;
     #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-place HTTP/1.1\r\n\r\n") == 0 && rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-place HTTP/1.1\r\n\r\n") == 1;
     k := eg_room_at(v[..], v[0].conns[0].relay);
-    for c: 0..<2 { rm_heard(v[..], c, "H 4 ranger.0.0.0 druid 0 -"); }
+    for c: 0..<2 { rm_heard(v[..], c, "H 5 ranger.0.0.0 druid 0 -"); }
     eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
     rm_control(v[..], "place pair-place 1 2 50\nplace pair-place 0 0 51\n");
     if local == 0 { #assert rm_eg_place_take(v[..], k, SeatId.{value = 0}) == -1 && rm_eg_place_take(v[..], k, SeatId.{value = 1}) == -1; continue; }
@@ -2120,8 +2139,8 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 4 ranger.0.0.0 warlock 0 -");
-  rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 warlock 0 -");
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
   #assert v[0].eg[k].rules[0].klass[0] == 1 && v[0].eg[k].rules[0].klass[1] == 0;
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
@@ -2241,7 +2260,7 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 A"); rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 B");
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 A"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 B");
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   // seat 0 asks to board float 26: the world's to decide, no refusal
   rm_heard(v[..], 0, "E 1 3 26");
@@ -2267,6 +2286,54 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   #assert rm_eg_use_asks(v[..], k) == 0;
 }
 
+#test "everglade room: forest state survives blocks late joins rebuilds and sparse record reuse (#12940)" #steps 6000000000 {
+  v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-forest HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 A"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 B");
+  #assert EG_SLOT_ABS == 61 && EG_SLOT_DOORS == 255 && EG_SLOT_TREE + WIRE_TREES <= WIRE_SLOTS && IM_ENTS >= WIRE_SLOTS;
+  b := [16] f32.[7, -80, 2, -15, 1, 1, -0.2, 0.6, 1.5, 0.25, 0.5, 0.1, 1, 1, 3.4, 40];
+  rm_eg_tree(v[..], k, 1, b[..]); im_block(v[0].eg[k].im[..], 0, 1, true);
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  for c: 0..<2 {
+    w := eg_test_ent(box[..], c, 1162001);
+    #assert w.kind == 26 && w.clip == 7 && w.owner == 1 && w.cond == 1 && w.hp == 250 && w.max == 500 && w.temp == 100;
+    #assert w.x == -80 && w.y == 2 && w.z == -15 && w.p1 == 1000 && w.p2 == -200 && w.t0 == 600 && w.dur == 1500 && w.form == 40000;
+    #assert abs(w.carry - 3.4) < 0.001;
+  }
+  // Burnt trees remain in the state after their fire ends, including a late joiner's snapshot.
+  b[4] = 2; b[9] = 1; b[10] = 1; b[12] = 0; b[13] = -1;
+  rm_eg_tree(v[..], k, 1, b[..]);
+  #assert rm_join(v[..], 2, ev) == 2; rm_heard(v[..], 2, "H 5 ranger.0.0.0 druid 0 C");
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  for c: 0..<3 { #assert eg_test_ent(box[..], c, 1162001).hp == 1000 && eg_test_ent(box[..], c, 1162001).g == 2; }
+  // A partial or invalid host record never overwrites the complete state.
+  b[9] = -1; rm_eg_tree(v[..], k, 1, b[..]); b[9] = 0; rm_eg_tree(v[..], k, 1, b[0..<15]);
+  #assert v[0].eg[k].tree[1].hp == 1000;
+  life := eg_test_ent(box[..], 0, 1162001).life;
+  b[0] = 8; b[9] = 1; rm_eg_tree(v[..], k, 1, b[..]);
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  for c: 0..<3 { w := eg_test_ent(box[..], c, 1162001); #assert w.clip == 8 && w.life > life; }
+  rm_eg_tree(v[..], k, 1, b[0..<0]);
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  for c: 0..<3 { #assert eg_test_ent(box[..], c, 1162001).id == -1; }
+  // Every sparse record fits without displacing the original entities. Drop a multipart snapshot
+  // for a fourth page: no incomplete ACK, then the complete retry restores the entire forest.
+  for q: 1..<WIRE_TREES {
+    b[0] = f32(q - 1); b[1] = -180 + f32(q); rm_eg_tree(v[..], k, q, b[..]);
+  }
+  #assert rm_join(v[..], 3, ev) == 3; rm_heard(v[..], 3, "H 5 ranger.0.0.0 druid 0 D"); box[0].lose[3] = true;
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  #assert !box[0].lose[3] && box[0].m[3].heard == 0;
+  for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  for q: 1..<WIRE_TREES {
+    w := eg_test_ent(box[..], 3, FOREST_EID + q);
+    #assert w.kind == WK_TREE && w.clip == q - 1 && w.hp == 1000;
+  }
+  #assert v[0].eg[k].im[0].over == 0;
+}
 #test "everglade room: a door one seat uses is the world's to open (and a talk the world's to hold), every seat's row says it is open, and a late joiner's snapshot has it" #steps 2000000000 {
   v: [1] RmServer;
   rm_init(v[..]);
@@ -2275,7 +2342,7 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 A"); rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 B");
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 A"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 B");
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   doors := WIRE_ID_MADE + EG_DOORS_ID;
   #assert eg_test_ent(box[..], 0, doors).kind == WK_DOORS && eg_test_ent(box[..], 0, doors).p1 == 0;   // every door shut
@@ -2290,7 +2357,7 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   #assert eg_test_ent(box[..], 0, doors).p1 == 32 && eg_test_ent(box[..], 1, doors).p1 == 32;
   // a seat that joins now has it open in its first snapshot
   #assert rm_join(v[..], 2, ev) == 2;
-  rm_heard(v[..], 2, "H 4 ranger.0.0.0 druid 0 C");
+  rm_heard(v[..], 2, "H 5 ranger.0.0.0 druid 0 C");
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   #assert eg_test_ent(box[..], 2, doors).p1 == 32 && eg_test_ent(box[..], 2, doors).form == 0;   // the gates open
   // a door past the doors there are is dropped
@@ -2324,8 +2391,8 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 -");
-  rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
   for q: 0..<40 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   f: [EG_FOLK_FLOATS] f32;
   // person 3 stands 10 m off, casting Hold Person (MS_HOLD 3) at seat 0, half a second in

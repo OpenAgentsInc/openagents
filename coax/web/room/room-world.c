@@ -260,6 +260,7 @@ bool world_strike(int k, int source, int by, int slot, const float from[3], cons
   return everglade_room_strike_try(at(k),source,by,slot,from[0],from[1],from[2],to[0],to[1],to[2],seed);
 }
 int world_spells(int k, float dt) { return world_of(k) ? (int)everglade_room_spells(at(k), dt) : 0; }
+bool world_tree(int k, int q, float out[WORLD_TREE]) { return world_of(k) && everglade_room_tree(at(k), q, (coax_v_f32){out, WORLD_TREE}); }
 bool world_event(int k, int q, float out[WORLD_EVENT]) { return world_of(k) && everglade_room_event(at(k), q, (coax_v_f32){out, WORLD_EVENT}); }
 bool world_sight(int k, const float from[3], const float to[3]) { return !world_of(k) || everglade_room_sight(at(k), from[0], from[1], from[2], to[0], to[1], to[2]); }
 void world_fresh(int k) { if (world_of(k)) everglade_room_fresh(at(k)); }

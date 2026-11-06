@@ -31,9 +31,9 @@
 // as blocked and withheld as hidden, per seat, from the last pick.
 
 IM_SEATS :: 16;                 // EG_SEATS
-IM_ENTS :: 256;                 // entities a room holds at once: 16 players, 38 townsfolk, 32 zones, 96 creatures, effects
+IM_ENTS :: 512;                 // original entities plus the separate forest records (#12940)
 IM_PICKS :: IM_ENTS;
-IM_KEYS :: 512;                 // the ID table's lists (a power of two)
+IM_KEYS :: 1024;                // the ID table's lists (a power of two)
 IM_CELL :: 32.0;                // m: a grid cell's side
 IM_BUCKETS :: 1024;             // the grid's lists (a power of two): cells hash into them
 IM_ENTER :: 110.0;              // m: an entity comes into a seat's view within this

@@ -197,7 +197,7 @@ eg_old_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 New");
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 New");
   rm_heard(v[..], 1, "H 1 ranger.0.0.0 druid 0 Old");   // the page production served before this release
   #assert v[0].eg[k].seat[1].old && !v[0].eg[k].seat[0].old && v[0].eg[k].old_n == 1 && v[0].eg[k].stale_n == 0;
   eg_test_tick(v[..], k);

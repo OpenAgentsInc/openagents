@@ -14,7 +14,7 @@
 //
 // Page to server:
 //   P ENGINE RULES CONTENT         the build this page is (WIRE_PINS), just before its hello (#12839)
-//   H 4 LOOK CLASS FLAGS NAME      hello, after y: look ("ranger.SKIN.DYE.TRIM"), class ("druid"), FLAGS
+//   H 5 LOOK CLASS FLAGS NAME      hello, after y: look ("ranger.SKIN.DYE.TRIM"), class ("druid"), FLAGS
 //                                  (1 touch, 2 logged in), the name shown ("-" none)
 //   I SEQ KX KY PX PY THETA B HEARD  one step's input (everglade-move-types.coax EgMoveIn), every step at
 //                                  30 Hz, idle ones too: the keys and the stick (-100 to 100, along the
@@ -72,14 +72,16 @@
 // The page keeps every entity's last WIRE_BASES rows (WireMirror), decodes each row against its base,
 // and draws every remote entity from one interpolation buffer (everglade-net.coax).
 
-WIRE_VERSION :: 4;   // 4: I's THETA in 0.1 mrad (WIRE_FINE), #12718
+#load "everglade-forest-profile.coax";
+
+WIRE_VERSION :: 5;   // 5: authoritative forest rows; 4: I's THETA in 0.1 mrad (WIRE_FINE)
 WIRE_REFUSE_VERSION :: "version";   // r 0 version: the room speaks another WIRE_VERSION than the hello's (the page reloads)
 WIRE_REFUSE_ELSEWHERE :: "elsewhere";   // r 0 elsewhere: a newer seat ticket has your character, in another tab or room (#12834); the page stops rejoining
 WIRE_REFUSE_RESTARTING :: "restarting";   // r 0 restarting: the room drains before a release (#12797); the page joins again at once, on another shard
 // The oldest wire the room still speaks: a page cached from the release before still joins while its
 // hello's version is in WIRE_MIN..WIRE_VERSION. Keep WIRE_MIN below WIRE_VERSION only while the room
 // still writes what that older page reads.
-WIRE_MIN :: 4;
+WIRE_MIN :: 5;
 // The build a page and a room are, beside the wire (#12839, aethyr/session/compat.coax): one encounter
 // never mixes two engines, two rule sets or two worlds. Raise WIRE_ENGINE when the shared movement or
 // world step changes what a page predicts, WIRE_RULES when the room's rules (everglade5e-room-rules.coax,
@@ -117,6 +119,8 @@ WIRE_DOOR_WORD :: 31; WIRE_DOOR_WORDS :: 2;
 WIRE_DOORS_EID :: 960000;   // the doors row's id: WIRE_ID_MADE + WIRE_DOORS_EID
 WK_BOAT :: 25;             // a rowboat (#12861): one row each always; OWNER the seat that rows it (-1 moored), P1 its float (river.coax), P2 the oars' stroke in thousandths (-1 shipped)
 WIRE_BOAT_EID :: 961000;   // the n-th boat row's id: WIRE_ID_MADE + WIRE_BOAT_EID + n
+WK_TREE :: FOREST_KIND;             // authoritative forest state (everglade-session-v5.json forest.fields)
+WIRE_TREE_EID :: FOREST_EID - WIRE_ID_MADE; WIRE_TREES :: FOREST_RECORDS;
 WK_EFFECT :: 30;           // a condition, buff or hold that lasts: OWNER the TGT code it is on, P1 the slot or ability, P2 its WC_* bit, T0 and DUR
 // an effect's cause (WK_EFFECT's P1) for the watch's spells on a player (everglade-status.coax ST_*)
 WE_HOLD_PERSON :: 0; WE_EARTHBIND :: 1; WE_RAY_OF_FROST :: 2; WE_WATCH :: 3;
@@ -427,7 +431,7 @@ WS_LIFE :: 21; WS_WARP :: 22;
 WIRE_WARP_M :: 3.0;           // m: a move this far in one tick is a jump (WARP), not a walk
 // entity ids: a seat SS, a townsperson WIRE_ID_FOLK + I, what the server made WIRE_ID_MADE + EID
 WIRE_ID_FOLK :: 100000; WIRE_ID_MADE :: 200000;
-WIRE_SLOTS :: 256;            // entities a room replicates at once
+WIRE_SLOTS :: FOREST_SLOTS;   // original 256 plus the forest's separate sparse slots (#12940)
 WIRE_BASES :: 16;             // ticks back a base may be; a page keeps each entity's last WIRE_BASES rows
 WIRE_ACKS :: 32;              // ticks of sends a seat remembers for HEARD, a bit each
 WIRE_RESEND :: 10;            // ticks a row or an x sent and not yet acknowledged waits before it goes again
@@ -439,12 +443,12 @@ WIRE_LIFE_BUDGET :: 240;
 // The age bound (#12836): a visible entity whose row changed and has waited WIRE_MAX_AGE ticks goes
 // ahead of the priority order, the oldest first, from WIRE_AGED_BUDGET bytes a tick of its own (not
 // the ordinary budget's). A row is about 30 to 60 bytes, so at least 6 aged rows go a tick, and none
-// of a seat's WIRE_SLOTS waits past WIRE_MAX_AGE + WIRE_SLOTS / 6 ticks (about 2.4 s) while the seat
+// of a seat's WIRE_SLOTS waits past WIRE_MAX_AGE + WIRE_SLOTS / 6 ticks (about 3.8 s) while the seat
 // keeps up; a seat behind (budget 0) is sent none (#12837 owns its recovery).
 WIRE_MAX_AGE :: 30;
 WIRE_AGED_BUDGET :: 400;
 WIRE_NEAR :: 10.0;            // m: an entity this far off gains half the priority it would at your feet
-WIRE_MIRROR :: 256;           // entities a page holds
+WIRE_MIRROR :: FOREST_SLOTS;  // entities a page holds
 WIRE_ROW :: 320;              // a row's bytes at most
 
 // A row by name. Players: G bits (WG_*), CLIP the controller's act, HP MAX TEMP COND FORM, CARRY the
@@ -1194,7 +1198,7 @@ WIRE_TEST_QN :: 64; WIRE_TEST_QB :: 4096;   // the throttle check's socket queue
   #assert wire_axis(0.354) == 35 && wire_axis(-2) == -100;
   n = wire_put_hello(buf[..], 0, WireHello.{look = "ranger.2.1.0", kind = "druid", flags = 2, name = "Ash Wood;x"});
   t = cast(string) buf[0..<n];
-  #assert t == "H 4 ranger.2.1.0 druid 2 Ash Woodx";
+  #assert t == "H 5 ranger.2.1.0 druid 2 Ash Woodx";
   r[0] = wire_rd(t, 1);
   h := wire_read_hello(t, r[..]);
   #assert r[0].ok && h.version == WIRE_VERSION && h.look == "ranger.2.1.0" && h.flags == 2 && h.name == "Ash Woodx";

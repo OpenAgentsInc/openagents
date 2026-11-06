@@ -250,7 +250,7 @@ tool_main :: () -> int #export_c {
     if ui.count == 0 || !relay_conn_open(c[i..<i + 1], ui) { tool_err("raid-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
     hm: [96] u8;
     h[i].wl = klass == "warlock" || (klass == "mix" && i % 2 == 1);
-    hello := ifx h[i].wl then "H 4 ranger.0.0.0 warlock 0 " else (ifx klass == "demo" then "H 4 ranger.0.0.0 druid 64 " else "H 4 ranger.0.0.0 druid 0 ");
+    hello := ifx h[i].wl then "H 5 ranger.0.0.0 warlock 0 " else (ifx klass == "demo" then "H 5 ranger.0.0.0 druid 64 " else "H 5 ranger.0.0.0 druid 0 ");
     hn := rs_put(hm[..], rs_put(hm[..], 0, hello), cast(string) nm[0..<mn]);
     _ := relay_conn_send(c[i..<i + 1], cast(string) hm[0..<hn]);
     t1 := rs_now();

@@ -1,4 +1,4 @@
-// The Everglade session profile's field-level check (#12844): proto/verse/everglade-session-v4.json
+// The Everglade session profile's field-level check (#12844): proto/verse/everglade-session-v5.json
 // names each text-wire message, its fields in order, a canonical value for each and the exact frame
 // those values make. This program holds the codec (everglade-wire.coax) to that file:
 //   - the profile's version, oldest version and pins are the codec's WIRE_VERSION, WIRE_MIN and WIRE_PINS;
@@ -16,7 +16,7 @@
 //     of the row, or of the ticket.
 // The file is the independent expected result: its frames are written by hand, not by this codec.
 // Prints a line per message and "profile holds" (exit 0), or what differs and "profile fails" (exit 1).
-//   coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v4.json
+//   coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v5.json
 #import "Basic";
 #load "everglade-wire.coax";
 #load "../../coax/lib/json/json.coax";
@@ -187,6 +187,36 @@ tool_main :: () -> int #export_c {
           && wp_key(d, fm, "page") == WIRE_FRAME && wp_key(d, fm, "server") == WIRE_SERVER_FRAME;
   print("%  identity: version %, min %, pins %.%.%\n", ifx same then "ok  " else "FAIL", WIRE_VERSION, WIRE_MIN, WIRE_ENGINE, WIRE_RULES, WIRE_CONTENT);
   if !same { bad += 1; }
+  forest := jv_get(d, 0, "forest");
+  forest_ok := wp_key(d, forest, "kind") == WK_TREE && wp_key(d, forest, "entity_base") == WIRE_ID_MADE + WIRE_TREE_EID
+    && wp_key(d, forest, "records") == WIRE_TREES - 1 && wp_key(d, forest, "total_slots") == WIRE_SLOTS
+    && wp_key(d, forest, "planted") == FOREST_PLANTED && wp_key(d, forest, "bridge_floats") == FOREST_FLOATS;
+  print("%  forest identity and capacity\n", ifx forest_ok then "ok  " else "FAIL");
+  if !forest_ok { bad += 1; }
+  fixture := jv_get(d, forest, "bridge_fixture_milli"); ranges := jv_get(d, forest, "bridge_ranges"); whole := jv_get(d, forest, "bridge_whole");
+  fb: [FOREST_FLOATS] f32;
+  bridge_ok := jv_len(d, fixture) == FOREST_FLOATS && jv_len(d, ranges) == FOREST_FLOATS;
+  for i: 0..<FOREST_FLOATS { fb[i] = f32(wp_int(jv_raw(d, jv_at(d, fixture, i)))) / 1000; }
+  bridge_ok = bridge_ok && forest_valid(fb[..]);
+  for i: 0..<FOREST_FLOATS {
+    saved := fb[i]; range := jv_at(d, ranges, i);
+    if jv_len(d, range) != 2 { bridge_ok = false; continue; }
+    for side: 0..<2 {
+      fb[i] = f32(wp_int(jv_raw(d, jv_at(d, range, side))));
+      bridge_ok = bridge_ok && forest_valid(fb[..]);
+      fb[i] += ifx side == 0 then -1.0f32 else 1.0f32;
+      bridge_ok = bridge_ok && !forest_valid(fb[..]);
+    }
+    fb[i] = saved;
+  }
+  for i: 0..<jv_len(d, whole) {
+    field := wp_int(jv_raw(d, jv_at(d, whole, i)));
+    if field < 0 || field >= FOREST_FLOATS { bridge_ok = false; continue; }
+    saved := fb[field]; fb[field] = 0.5;
+    bridge_ok = bridge_ok && !forest_valid(fb[..]); fb[field] = saved;
+  }
+  print("%  forest whole-record domains\n", ifx bridge_ok then "ok  " else "FAIL");
+  if !bridge_ok { bad += 1; }
   strs: [8192] u8; sk := 0;
   ms := jv_get(d, 0, "messages");
   for m: 0..<jv_len(d, ms) {

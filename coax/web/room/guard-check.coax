@@ -100,7 +100,7 @@ tool_main :: () -> int #export_c {
   ut: [1024] u8;
   url_t := rs_ticketed(ut[..], url, "p-guardcheck-a", "Guard Check");
   if url.count == 0 || url_t.count == 0 || !relay_conn_open(c[..], url_t) { tool_err("guard-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
-  sent := relay_conn_send(c[..], "H 4 ranger.1.0.0 druid 64 Guard Check");
+  sent := relay_conn_send(c[..], "H 5 ranger.1.0.0 druid 64 Guard Check");
   sent = gc_steps(c[..], h[..], seq[..], 2000) && sent;
   // the bolt at the nearest townsperson, until the room says WANTED
   strikes := 0;

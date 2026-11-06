@@ -46,7 +46,7 @@
 #load "everglade-party.coax";      // PARTY: your party's roster, its link, joining by one (#12852)
 #load "everglade-events.coax";     // the raid's banner, your level and kit, the admin's EVENTS (#12737)
 
-NET_ENTS :: 256;
+NET_ENTS :: WIRE_MIRROR;
 NET_RING :: 8;            // a state's last few: 8 at 15 Hz hold 470 ms, past NET_HIGH
 NET_HIST :: 64;            // your inputs kept for the server's ACK
 NET_FX :: 8;               // casts waiting for their time
@@ -87,11 +87,11 @@ NET_FOLK_ID :: WIRE_ID_FOLK; NET_MADE_ID :: WIRE_ID_MADE;
 // a target or hit's WHO code (the wire's TGT): 0-999 a watch actor, 1000 + SS a seat, 2000 + EID a creature
 net_who :: (who: int) -> int { return ifx who >= 2000 then NET_MADE_ID + who - 2000 else ifx who >= 1000 then who - 1000 else NET_FOLK_ID + who; }
 
-NetState :: struct { t: int; x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; f: int; a: int; }
+NetState :: struct { t: int; x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; f: int; a: int; ax: f32; az: f32; age: f32; }
 NetEnt :: struct {
   live: bool; eid: int; kind: int; owner: int = -1;   // eid: a seat, NET_FOLK_ID + its index, NET_MADE_ID + the server's EID
   ring: [NET_RING] NetState; ring_n: int;   // oldest first, server times
-  hp: int; max: int; p1: int; p2: int; form: int;
+  hp: int; max: int; temp: int; p1: int; p2: int; form: int;
   cond: int;                 // its row's COND: the conditions on it (a townsperson's; a player's is P1 too)
   wanted: int;               // a player's WANTED level (w)
   born: int;                 // server ms it was first seen
@@ -1038,13 +1038,14 @@ net_row :: (s: [] Everglade, n: [] EgNet, w: WireS, d: WireD) {
   if en[0].ring_n > 0 && w.life != en[0].life { en[0].ring_n = 0; en[0].born = n[0].tick_t; }
   else if en[0].ring_n > 0 && w.warp != en[0].warp { en[0].ring_n = 0; }
   en[0].life = w.life; en[0].warp = w.warp; en[0].t0 = w.t0; en[0].dur = w.dur;
-  en[0].kind = w.kind; en[0].owner = w.owner; en[0].hp = w.hp; en[0].max = w.max; en[0].seen = d.tick; en[0].cond = w.cond;
+  en[0].kind = w.kind; en[0].owner = w.owner; en[0].hp = w.hp; en[0].max = w.max; en[0].temp = w.temp; en[0].seen = d.tick; en[0].cond = w.cond;
   st := NetState.{t = n[0].tick_t, x = w.x, y = w.y, z = w.z, yaw = w.yaw, vx = w.vx, vy = w.vy, vz = w.vz, f = w.g, a = w.clip};
   if w.kind == WK_PLAYER {
     // a player's P1 is its conditions, P2 its temporary Hit Points (net_view)
     en[0].seat = w.id; en[0].p1 = w.cond; en[0].p2 = w.temp; en[0].form = w.form;
   } else if w.kind == WK_BEAST { en[0].p1 = w.p1; en[0].p2 = w.max; st.a = 0; }
-  else { en[0].p1 = w.p1; en[0].p2 = w.p2; if w.kind != WK_FOLK { st.a = 0; } if w.kind == WK_FOLK || w.kind == WK_DOORS { en[0].form = w.form; } }
+  else { en[0].p1 = w.p1; en[0].p2 = w.p2; if w.kind != WK_FOLK { st.a = 0; } if w.kind == WK_FOLK || w.kind == WK_DOORS || w.kind == WK_TREE { en[0].form = w.form; } }
+  if w.kind == WK_TREE { st.a = w.clip; st.ax = f32(w.p1) / 1000; st.az = f32(w.p2) / 1000; st.age = w.carry; }
   net_push_row(en, st, n[0].hz);
   if en[0].ring_n == 1 { en[0].shown = en[0].ring[0]; }
   if w.kind == WK_PLAYER && w.id == n[0].seat && d.ack > n[0].acked {
@@ -1137,7 +1138,7 @@ net_ahead :: (en: [] NetEnt) -> int { return ifx en[0].kind == WK_FOLK then NET_
 // State p gone on by its velocity to server time rt, `ahead` ms at most, then held.
 net_on_from :: (p: NetState, rt: int, ahead_ms: int) -> NetState {
   ahead := f32(lo_int(hi_int(rt - p.t, 0), ahead_ms)) / 1000;
-  return NetState.{t = rt, x = p.x + p.vx * ahead, y = p.y + p.vy * ahead, z = p.z + p.vz * ahead, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, f = p.f, a = p.a};
+  return NetState.{t = rt, x = p.x + p.vx * ahead, y = p.y + p.vy * ahead, z = p.z + p.vz * ahead, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, f = p.f, a = p.a, ax = p.ax, az = p.az, age = p.age};
 }
 // Where entity en is at server time rt.
 net_state_at :: (en: [] NetEnt, rt: int) -> NetState {
@@ -1150,7 +1151,8 @@ net_state_at :: (en: [] NetEnt, rt: int) -> NetState {
     f := f32(rt - a.t) / f32(hi_int(b.t - a.t, 1));
     o := ifx f < 0.5 then a else b;
     return NetState.{t = rt, x = lerp(a.x, b.x, f), y = lerp(a.y, b.y, f), z = lerp(a.z, b.z, f), yaw = a.yaw + net_turn(a.yaw, b.yaw) * f,
-                     vx = lerp(a.vx, b.vx, f), vy = lerp(a.vy, b.vy, f), vz = lerp(a.vz, b.vz, f), f = o.f, a = o.a};
+                     vx = lerp(a.vx, b.vx, f), vy = lerp(a.vy, b.vy, f), vz = lerp(a.vz, b.vz, f), f = o.f, a = o.a,
+                     ax = lerp(a.ax, b.ax, f), az = lerp(a.az, b.az, f), age = lerp(a.age, b.age, f)};
   }
   // past the newest: on by its velocity for net_ahead ms (a frame late or lost), then held
   return net_on_from(en[0].ring[c - 1], rt, net_ahead(en));
@@ -1334,6 +1336,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
     if en[0].kind == WK_FOLK && p.f == WM_CALM && p.a == 1 { n[0].folk_walk += 1; if dx * dx + dz * dz < 1.0e-8 { n[0].folk_still += 1; } }
     en[0].shown = p;
   }
+  net_forest_frame(s, n);
   if net_open(s) && sp_on(s) { net_follow(s, n, now); }
   if net_open(s) { net_own_rg_frame(s, n); }
   // the casts, each at its time
@@ -1414,6 +1417,33 @@ net_end :: (s: [] Everglade, b: int) -> bool {
   n[0].seq += 1;
   net_send(n, wire_put_use(n[0].out[..], 0, WireUse.{seq = n[0].seq, kind = WE_END, id = b}));
   return true;
+}
+// The room's complete held forest state replaces local guesses, including acknowledged removals.
+// The clock used by fire drawing is retained; no damage, spread or tree physics runs here.
+net_forest_frame :: (s: [] Everglade, n: [] EgNet) {
+  if !net_live(s) || s[0].tree_n <= 0 { return; }
+  tf_restore(s);
+  v := tf_of(s);
+  for e: 0..<NET_ENTS {
+    en := n[0].ents[e];
+    if !en.live || en.kind != WK_TREE || en.ring_n == 0 { continue; }
+    slot := en.eid - FOREST_EID;
+    p := en.shown; t := p.a;
+    if slot < 1 || slot >= FOREST_RECORDS || t < 0 || t >= s[0].tree_n { continue; }
+    row := [FOREST_FLOATS] f32.[f32(t), p.x, p.y, p.z, f32(p.f), p.ax, p.az,
+      f32(en.t0) / 1000, f32(en.dur) / 1000, f32(en.hp) / 1000, f32(en.max) / 1000,
+      f32(en.temp) / 1000, f32(en.cond), f32(en.owner), p.age, f32(en.form) / 1000];
+    if !forest_valid(row[..]) || !tf_own(s, t) { continue; }
+    k := tf_k(s, t);
+    v[0].mode[k] = p.f; v[0].ax[k] = p.ax; v[0].az[k] = p.az;
+    v[0].ox[k] = p.x - s[0].trees[t * TREE_FLOATS]; v[0].oy[k] = p.y; v[0].oz[k] = p.z - s[0].trees[t * TREE_FLOATS + 1];
+    v[0].pivot[k] = row[7]; v[0].rest[k] = row[8];
+    v[0].soot[k] = row[9]; v[0].bare[k] = row[10]; v[0].frost[k] = row[11]; v[0].touched = true;
+    if en.cond == 1 && v[0].n < TF_BURN {
+      v[0].burn[v[0].n] = TfBurn.{tree = t, by = en.owner, t = p.age, out = row[15]};
+      v[0].n += 1;
+    }
+  }
 }
 // E on door i: the room opens or shuts it for every seat (WE_DOOR, everglade-doors.coax). False
 // when the socket is down.
@@ -3056,6 +3086,68 @@ net_test_rooms :: (s: [] Everglade) {
     g := ifx p == 0 then a[..] else b[..];
     #assert !eg_ra_drawn(g, 0, AB_REVERSE) && eg_ra_drawn(g, 1, AB_REVERSE);
     #assert !everglade_lift(g, 5, 4, 0, 0, 0, 0, 1.0 / 30).on && everglade_lift(g, 61, 4, 0, 0, 0, 0, 1.0 / 30).on;
+  }
+}
+#test "net: two room pages draw the server's burnt trees and never advance their fire (#12940)" #steps 6000000000 {
+  a: [1] Everglade; na: [1] EgNet; da: [1] DemoWorld;
+  b: [1] Everglade; nb: [1] EgNet; db: [1] DemoWorld; room: [1] NetTestRoom;
+  sp_ready_city(a[..], da[..]); sp_ready_city(b[..], db[..]);
+  #assert net_test_pair(a[..], na[..], b[..], nb[..], room[..]);
+  tree := 0; id := 1162001;
+  net_test_tick(room[..], 1, 0);
+  net_test_s(room[..], WireS.{id = id, kind = 26, x = a[0].trees[0], y = 0.2, z = a[0].trees[1],
+    g = TF_FALL, hp = 250, max = 500, temp = 100, cond = 1, owner = 2, p1 = 1000, p2 = -200,
+    t0 = 600, dur = 1500, carry = 3.4, form = 40000, life = 1});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..]));
+  nb[0].mono += 250;   // the second page receives the same row later
+  #assert net_test_hear(b[..], 1, net_test_frame(room[..]));
+  for p: 0..<2 {
+    s := ifx p == 0 then a[..] else b[..];
+    net_step(s, 900, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+    v := tf_of(s); k := tf_k(s, tree);
+    #assert k > 0 && v[0].mode[k] == TF_FALL && abs(v[0].ax[k] - 1) < 0.001 && abs(v[0].az[k] + 0.2) < 0.001;
+    #assert v[0].soot[k] == 0.25 && v[0].bare[k] == 0.5 && v[0].frost[k] == 0.1;
+    #assert v[0].n == 1 && v[0].burn[0].by == 2 && abs(v[0].burn[0].t - 3.4) < 0.001;
+    #assert !tf_ignite(s, 1);   // even a local spell cannot start a room tree's fire
+    u: [UNIFORM_FLOATS] f32; s[0].width = 1280; s[0].height = 800;
+    for frame: 0..<60 { spells_frame(s, u[..], Shot.{}, 1.0 / 30.0); }
+    #assert v[0].soot[k] == 0.25 && v[0].bare[k] == 0.5 && v[0].mode[k] == TF_FALL && v[0].n == 1;
+  }
+  // A complete later state repairs a missed update and gives both pages the same burnt trunk.
+  net_test_tick(room[..], 90, 0);
+  net_test_s(room[..], WireS.{id = id, kind = 26, x = a[0].trees[0], z = a[0].trees[1], g = TF_DOWN,
+    hp = 1000, max = 1000, p1 = 1500, t0 = 600, dur = 1500, life = 1});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_test_hear(b[..], 1, net_test_frame(room[..]));
+  for p: 0..<2 {
+    s := ifx p == 0 then a[..] else b[..];
+    net_step(s, 4000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+    v := tf_of(s); k := tf_k(s, tree);
+    #assert k > 0 && v[0].mode[k] == TF_DOWN && v[0].soot[k] == 1 && v[0].bare[k] == 1 && v[0].n == 0;
+  }
+  net_test_tick(room[..], 91, 0); net_test_x(room[..], id);
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_test_hear(b[..], 1, net_test_frame(room[..]));
+  for p: 0..<2 {
+    s := ifx p == 0 then a[..] else b[..];
+    net_step(s, 4100, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+    #assert tf_k(s, tree) == 0 && tf_count(s) == 0;
+  }
+  // The same planted tree can later occupy another sparse record. A delayed removal of the old
+  // record cannot erase it; that old record can then track a different tree under a new LIFE.
+  net_test_tick(room[..], 92, 0);
+  net_test_s(room[..], WireS.{id = 1162002, kind = 26, clip = 0, x = a[0].trees[0], z = a[0].trees[1],
+    g = TF_DOWN, hp = 1000, max = 1000, p1 = 1500, dur = 1500, life = 1});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_test_hear(b[..], 1, net_test_frame(room[..]));
+  net_test_tick(room[..], 93, 0); net_test_x(room[..], 1162001);
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_test_hear(b[..], 1, net_test_frame(room[..]));
+  net_test_tick(room[..], 94, 0);
+  net_test_s(room[..], WireS.{id = 1162001, kind = 26, clip = 1, x = a[0].trees[TREE_FLOATS], z = a[0].trees[TREE_FLOATS + 1],
+    g = TF_DOWN, hp = 1000, max = 1000, p1 = 1500, dur = 1500, life = 2});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_test_hear(b[..], 1, net_test_frame(room[..]));
+  for p: 0..<2 {
+    s := ifx p == 0 then a[..] else b[..];
+    net_step(s, 4300, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+    #assert tf_k(s, 0) > 0 && tf_k(s, 1) > 0;
+    #assert tf_of(s)[0].soot[tf_k(s, 0)] == 1 && tf_of(s)[0].soot[tf_k(s, 1)] == 1;
   }
 }
 #test "net: a delayed world header dates its tick at the server, including either side of midnight" {

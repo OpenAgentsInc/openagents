@@ -6,6 +6,9 @@
 #define WORLD_ROOMS 16   /* room-everglade.coax EG_ROOMS */
 #define WORLD_SEATS 16   /* EG_SEATS */
 #define WORLD_HZ 30      /* EG_HZ */
+#define WORLD_TREES 192
+#define WORLD_TREE 16
+bool world_tree(int k, int q, float out[WORLD_TREE]);
 #define WORLD_IN 7       /* EG_IN_FIELDS: SEQ KX KY PX PY THETA B */
 #define WORLD_POSE 10    /* X Y Z YAW VX VY VZ G CLIP CARRY */
 /* Seat s of room k stands at the gate: its pose. */
