@@ -1,0 +1,20 @@
+// Resource-informed Aethyr responses; native shader equations remain unrecovered.
+#load "ocarina-atmosphere.coax";
+#test "Forest soil accumulates on steep faces without camera dependent noise" {
+ #assert oa_soil(0.5,1)<oa_soil(0.5,0.6) && oa_soil(0.5,0.6)<oa_soil(0.5,0);
+ #assert oa_soil(0,1)>=0 && oa_soil(1,0)<=1;
+}
+#test "Dielectric GGX responds to roughness and stays finite at grazing incidence" {
+ #assert oa_specular(1,1,1,1,0.15)>oa_specular(1,1,1,1,0.8);
+ #assert oa_specular(0,0,1,0,0)==0;
+ for r:[4]f32.[0,0.1,0.5,1] {v:=oa_specular(0.001,0.001,0.1,0.1,r);#assert v>=0 && v<10;}
+}
+#test "Source LowTree ten metre shadow range fades in world space" {
+ #assert oa_leaf_shadow(0)==1 && oa_leaf_shadow(8)==1 && oa_leaf_shadow(9)>0 && oa_leaf_shadow(9)<1 && oa_leaf_shadow(10)==0 && oa_leaf_shadow(50)==0;
+}
+oa_soil :: (patch:f32,up:f32)->f32 {return clampf(0.18+smoothstep(0.28f32,0.72f32,patch)*0.52+smoothstep(0.15f32,0.65f32,1-up)*0.65,0,1);}
+oa_leaf_shadow :: (distance:f32)->f32 {return 1-smoothstep(8.0f32,10.0f32,distance);}
+// Cook-Torrance dielectric, F0=.04; roughness maps are perceptual roughness.
+oa_specular :: (nl:f32,nv:f32,nh:f32,vh:f32,rough:f32)->f32 {
+ if nl<=0 || nv<=0 {return 0;}r:=clampf(rough,0.08,1);a:=r*r;a2:=a*a;d:=nh*nh*(a2-1)+1;distribution:=a2/(3.14159265*d*d);k:=(r+1)*(r+1)/8;geometry:=nl/(nl*(1-k)+k)*nv/(nv*(1-k)+k);f:=0.04+0.96*pow(1-clampf(vh,0,1),5);return distribution*geometry*f/(4*fmax(nv,0.001f32));
+}

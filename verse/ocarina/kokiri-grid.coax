@@ -60,6 +60,22 @@ kokiri_encoded_lateral :: (b:[]u8,previous:Point,proposed:Point,radius:f32,heigh
  return out;
 }
 KokiriRay :: struct {hit:bool;share:f32=1;tested:int;}
+#test "Ascending head sweeps stop at original ceiling triangles and do not affect descent" {
+ b:[112]u8;koc_ceiling_fixture(b[..]);p:=v3(-0.5,0,-0.5);q:=kokiri_encoded_head(b[..],p,add(p,v3(0,1,0)),0.23,1.17);
+ #assert q.contacts>0 && q.feet.y<0.84 && q.feet.y>0.80 && q.feet.x==p.x;
+ down:=kokiri_encoded_head(b[..],add(p,v3(0,1,0)),p,0.23,1.17);#assert down.contacts==0 && down.tested==0 && down.feet.y==0;
+}
+koc_ceiling_fixture :: (b:[]u8) {
+ for k:0..<b.count {b[k]=0;}scan_put(b,0,0x3147434b);scan_put(b,4,1);scan_put(b,8,1);scan_put(b,12,1);scan_put(b,16,1);scan_put(b,20,f32_bits(4));scan_put(b,24,f32_bits(-2));scan_put(b,28,f32_bits(-2));scan_put(b,32,64);scan_put(b,36,72);scan_put(b,40,1);scan_put(b,44,76);scan_put(b,48,112);scan_put(b,52,1);scan_put(b,68,1);scan_write_point(b,76,v3(-2,2,-2));scan_write_point(b,88,v3(2,2,-2));scan_write_point(b,100,v3(-2,2,2));
+}
+// Five head probes catch low beams during paid upward steps; not a Havok shape cast.
+kokiri_encoded_head :: (b:[]u8,previous:Point,proposed:Point,radius:f32,height:f32)->KokiriResolve {
+ out:=KokiriResolve.{feet=proposed};if proposed.y<=previous.y {return out;}share:f32=1;
+ for offset:[5]Point.[v3(0,0,0),v3(radius,0,0),v3(-radius,0,0),v3(0,0,radius),v3(0,0,-radius)] {
+  a:=add(previous,add(offset,v3(0,height-0.01,0)));end:=add(proposed,add(offset,v3(0,height,0)));q:=kokiri_encoded_ray(b,a,end);out.tested+=q.tested;if q.hit {out.contacts+=1;share=lo(share,q.share);}
+ }
+ if out.contacts>0 {out.feet.y=previous.y+(proposed.y-previous.y+0.01)*share-0.02;}return out;
+}
 kokiri_triangle_ray :: (t:KokiriTriangle,a:Point,b:Point)->KokiriRay {
  normal:=cross(sub(t.b,t.a),sub(t.c,t.a));delta:=sub(b,a);denom:=dot(normal,delta);if denom==0 {return KokiriRay.{};}
  share:=dot(normal,sub(t.a,a))/denom;if share<=0.00001 || share>1 {return KokiriRay.{};}p:=add(a,times(delta,share));s0:=dot(normal,cross(sub(t.b,t.a),sub(p,t.a)));s1:=dot(normal,cross(sub(t.c,t.b),sub(p,t.b)));s2:=dot(normal,cross(sub(t.a,t.c),sub(p,t.c)));if s0<0 || s1<0 || s2<0 {return KokiriRay.{};}return KokiriRay.{hit=true,share=share};
