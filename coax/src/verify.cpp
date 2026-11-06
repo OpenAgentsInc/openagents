@@ -1162,9 +1162,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
       job_child(parent);
       int null = open("/dev/null", O_WRONLY);
       if (null >= 0) { dup2(null, 1); dup2(null, 2); }
-      memory.peak_slots = memory.slots;
-      memory.peak_containers = memory.containers;
-      memory.string_peak_bytes = memory.string_bytes;
+      memory.reset_peaks();
       CheckDecl *c = file->checks[(int32_t)index];
       const auto began = std::chrono::steady_clock::now();
       CheckOutcome r = run_check(file, c, c->steps ? c->steps : max_steps, false);

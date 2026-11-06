@@ -13,6 +13,17 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.51.2 — Phase Storage Accounting — 2026-11-05
+
+Commit: pending
+
+- Measure storage peaks against the limits that govern each evaluation
+  phase. Clear earlier transient peaks and holder snapshots when entering
+  checks, and retain live constants in the new phase's baseline.
+- Keep real compile and check pressure visible, with matching sequential,
+  parallel and cached diagnostics. Restore measurements with compile limits
+  after authority checks, including failures.
+
 ## 0.51.1 — Preserved Capacity Diagnostics — 2026-11-05
 
 Commit: [`b08d3a16a467d0f6c84a9c60ac885a2f65dc6394`](https://github.com/OpenAgentsInc/openagents/commit/b08d3a16a467d0f6c84a9c60ac885a2f65dc6394)

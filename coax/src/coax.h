@@ -327,6 +327,9 @@ struct CtMemory {
   const std::vector<const struct ProcDecl *> *active = nullptr;
   // request: slots being requested now (counted at *where), or containers when by_storages.
   std::vector<Holder> holders(bool by_storages, uint64_t request) const;
+  // Start measurements under the current limits. Retained live storage is
+  // the new baseline; earlier transient allocations and snapshots are not.
+  void reset_peaks() noexcept;
   void take_slots(size_t n);
   void release_slots(size_t n) noexcept { slots -= n; }
   void take_container();

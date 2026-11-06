@@ -54,6 +54,12 @@ Authority checks remain mandatory. A matching checked-result cache can reuse a
 passing verdict; enabling timings neither skips an obligation nor grants a
 stale cache entry permission to run.
 
+Storage measurements restart when evaluation enters a phase with different
+limits. Live constants still count toward the new phase's storage use;
+released temporary arrays do not. Each reported peak keeps the limit that
+governs that phase, so an earlier allocation cannot produce a false note
+against a later, smaller check budget.
+
 ## The Wasm build cache and report
 
 `coax/web/wasm.sh APP.coax FACE.c OUT.wasm [LIBRARY.coax...]` reports each

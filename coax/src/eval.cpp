@@ -116,6 +116,18 @@ std::vector<CtMemory::Holder> CtMemory::holders(bool by_storages, uint64_t reque
   if (out.size() > CAPACITY_TOP) out.resize(CAPACITY_TOP);
   return out;
 }
+void CtMemory::reset_peaks() noexcept {
+  peak_slots = slots;
+  peak_containers = containers;
+  string_peak_bytes = string_bytes;
+  at_peak.clear();
+  at_failure.clear();
+  at_peak_slots = 0;
+  snapshot_from = 0;
+  if (capacity_near(slots, slot_limit)) {
+    try { at_peak = holders(false, 0); at_peak_slots = slots; } catch (...) {}
+  }
+}
 void CtMemory::take_slots(size_t n) {
   if (!CB_admit(slots, n, slot_limit)) {
     try { at_failure = holders(false, n); } catch (...) { at_failure.clear(); }
@@ -2006,6 +2018,7 @@ CheckOutcome run_check(File *file, CheckDecl *check, uint64_t max_steps, bool pr
 bool prepare_native_check_domains(File *file, NativeCheckCPlan *plan, uint64_t steps) {
   file->ct_memory->slot_limit = CB_test_slot_limit();
   file->ct_memory->container_limit = CB_test_container_limit();
+  file->ct_memory->reset_peaks();
   for (auto &entry : plan->checks) {
     if (entry.declaration_index < 0 || entry.declaration_index >= file->checks.count ||
         file->checks[(int32_t)entry.declaration_index] != entry.check) {

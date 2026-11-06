@@ -1380,10 +1380,11 @@ static bool run_compilation_checks(File *file) {
   struct RestoreLimits {
     CtMemory &memory;
     uint64_t slots, containers;
-    ~RestoreLimits() { memory.slot_limit = slots; memory.container_limit = containers; }
+    ~RestoreLimits() { memory.slot_limit = slots; memory.container_limit = containers; memory.reset_peaks(); }
   } restore{memory, memory.slot_limit, memory.container_limit};
   memory.slot_limit = g_check_slots ? g_check_slots : CB_test_slot_limit();
   memory.container_limit = CB_test_container_limit();
+  memory.reset_peaks();
   g_timings.check_phase = "authority";
   // Each check's time in the last parallel run, beside the check cache
   // ("seconds<TAB>name" lines), so the next run starts the slowest first.
@@ -2548,6 +2549,7 @@ static int main_impl(int argc, char **argv) {
     // Checks get their own, larger storage limits (budget.coax): a test may hold a whole world.
     file.ct_memory->slot_limit = slots;
     file.ct_memory->container_limit = CB_test_container_limit();
+    file.ct_memory->reset_peaks();
     return record(cmd == "test" ? test_command(&file, steps, only, list, profile_steps) : mutate_command(&arena, &file, mutation), true);
   }
   if (cmd == "query") {

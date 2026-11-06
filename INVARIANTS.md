@@ -5114,6 +5114,20 @@ Checks: `coax/tests/capacity_refusals.py` compares cold, warm, edited and
 moved-source diagnostics in text and rich JSON, one and multiple workers,
 threshold changes, cross-format reuse and incomplete private records.
 
+Storage peaks belong to the limits in effect during that evaluation phase.
+When compilation enters checks, direct test/mutation execution, or native
+check-domain preparation, measurements restart at the live storage retained
+from earlier evaluation. Released storage and old holder snapshots do not
+carry into the new phase. Returning from authority checks restores the
+compile limits and starts measurements from the remaining live storage.
+Previously reported capacity facts retain their original limits. Parallel
+children start from the same live baseline. Real check pressure, including
+retained constants, still produces notes and allocation refusals.
+Checks: `capacity_refusals.py` covers released and retained compile storage,
+real notes and refusals, direct tests, one/multiple jobs and cache reuse;
+`ct_storage.cpp` checks slot, container, string and snapshot resets under
+ASan/UBSan, including limit restoration after passing and failing checks.
+
 Check: `coax/tests/authority-cache.coax` (a second check reuses the pass and
 prints what the first printed; `coax c` gives the same C either way; a changed
 loaded unit, `#run_steps`, `--run-steps`, build profile or compiler binary

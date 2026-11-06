@@ -28,6 +28,39 @@ int main() {
     assert(memory->slots == CtMemory::max_slots() && another->empty());
   }
   assert(memory->slots == 0 && memory->containers == 0);
+  // A phase starts at retained live storage, not an earlier transient peak.
+  // Its snapshots use the new limits and retain the live allocation origins.
+  {
+    memory->slot_limit = 1000;
+    memory->container_limit = 100;
+    auto retained = evaluator.storage();
+    retained->reserve(80);
+    auto retained_string = std::make_shared<CtString>(memory, 12);
+    {
+      auto transient = evaluator.storage();
+      transient->reserve(120);
+      auto transient_string = std::make_shared<CtString>(memory, 40);
+      assert(memory->peak_slots >= 200);
+    }
+    memory->slot_limit = 100;
+    memory->container_limit = 10;
+    memory->reset_peaks();
+    assert(memory->slots == 80 && memory->peak_slots == 80);
+    assert(memory->containers == 1 && memory->peak_containers == 1);
+    assert(memory->string_peak_bytes == 12 && memory->string_bytes == 12);
+    assert(memory->at_peak_slots == 80 && !memory->at_peak.empty());
+    assert(memory->at_failure.empty() && memory->snapshot_from == 0);
+    try { retained->reserve(110); assert(false); } catch (const CtLimit &) {}
+    assert(memory->slots == 80 && !memory->at_failure.empty());
+    retained.reset();
+    retained_string.reset();
+    memory->slot_limit = CtMemory::max_slots();
+    memory->container_limit = CtMemory::max_containers();
+    memory->reset_peaks();
+    assert(memory->peak_slots == 0 && memory->peak_containers == 0);
+    assert(memory->string_peak_bytes == 0);
+    assert(memory->at_peak.empty() && memory->at_peak_slots == 0 && memory->at_failure.empty());
+  }
   {
     std::vector<std::shared_ptr<CtStorage>> all;
     all.reserve(CtMemory::max_containers());
@@ -147,6 +180,9 @@ int main() {
     assert(slots == CB_slot_limit() && containers == CB_container_limit());
     assert(run_compilation_checks(&checked) == succeeds);
     assert(checked.ct_memory->slot_limit == slots && checked.ct_memory->container_limit == containers);
+    assert(checked.ct_memory->peak_slots == checked.ct_memory->slots);
+    assert(checked.ct_memory->peak_containers == checked.ct_memory->containers);
+    assert(checked.ct_memory->string_peak_bytes == checked.ct_memory->string_bytes);
     g_error_count = 0;
     g_quiet_errors = was_quiet;
     assert(unlink(path) == 0);

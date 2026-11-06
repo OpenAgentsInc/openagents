@@ -274,9 +274,8 @@ class CapacityRefusals(unittest.TestCase):
         self.assertEqual(rich.stderr, fresh.stderr)
         self.assertTrue(json.loads(rich.stderr)['capacity']['consumers'])
 
-    def test_authority_cache_preserves_peak_facts_from_an_earlier_phase(self):
-        # A compile-phase allocation can exceed the later checks' smaller
-        # slot budget without the checks ever exceeding their live budget.
+    def test_authority_storage_peaks_use_their_own_phase_limits(self):
+        # Released compile-phase storage never belongs to the checks' budget.
         (Path(self.tmp.name) / 'make.coax').write_text(
             'make :: () -> int { a: [200] u8; return cast(int) a[0]; }\n')
         source = ('#authority;\n#load "make.coax";\n'
@@ -285,10 +284,82 @@ class CapacityRefusals(unittest.TestCase):
         cache = Path(self.tmp.name) / 'earlier-peak'
         cold, ct = self.cache_compile(source, cache, 'peak-cold', '--slots', '100')
         peak = next(x for x in ct['capacities'] if x['name'] == 'compile-time value slots')
-        self.assertGreater(peak['used'], peak['limit'])
+        self.assertEqual(peak['limit'], 1572864)
+        self.assertGreaterEqual(peak['used'], 200)
+        self.assertEqual(cold.stderr, '')
         warm, wt = self.cache_compile(source, cache, 'peak-warm', '--slots', '100')
         self.assertEqual(wt['authority_checks'], {'cached': 1, 'checked': 0})
         self.assertEqual(warm.stderr, cold.stderr)
+        direct = self.run_coax('test', source, '--slots', '100')
+        self.assertEqual(direct.returncode, 0, direct.stderr)
+        self.assertEqual(direct.stderr, '')
+        # A real near-limit compile-phase use stays visible under its own
+        # limit, even when checks have a different budget.
+        (Path(self.tmp.name) / 'make.coax').write_text(
+            'make :: () -> int { a: [20000] u8; return cast(int) a[0]; }\n')
+        near, nt = self.cache_compile(source, cache, 'compile-near', '--slots', '100', '--near-limit', '1')
+        peak = next(x for x in nt['capacities'] if x['name'] == 'compile-time value slots')
+        self.assertEqual((peak['used'], peak['limit']), (20000, 1572864))
+        self.assertIn('compile-time value slots: 20000 of 1572864', near.stderr)
+        warm, _ = self.cache_compile(source, cache, 'compile-near-warm', '--slots', '100', '--near-limit', '1')
+        self.assertEqual(near.stderr, warm.stderr)
+
+    def test_check_storage_pressure_after_a_larger_released_compile_peak(self):
+        (Path(self.tmp.name) / 'make.coax').write_text(
+            'make :: () -> int { a: [200] u8; return cast(int) a[0]; }\n')
+        source = ('#authority;\n#load "make.coax";\nX :: #run make();\n'
+                  '#test "table" { a: [80] u8; #assert cast(int) a[0] == X; }\n'
+                  '#test "quiet" { #assert true; }\nmain :: () {}\n')
+        for rich in (False, True):
+            cache = Path(self.tmp.name) / ('check-after-compile-' + str(rich))
+            flags = ('--slots', '100') + (('--diagnostics', 'json') if rich else ())
+            cold, ct = self.cache_compile(source, cache, 'phase-cold', *flags)
+            peak = next(x for x in ct['capacities'] if x['name'] == 'compile-time value slots')
+            self.assertEqual(peak['limit'], 100)
+            self.assertGreaterEqual(peak['used'], 80)
+            self.assertLessEqual(peak['used'], 100)
+            self.assertIn('compile-time value slots:', cold.stderr)
+            if rich:
+                note = next(json.loads(x) for x in cold.stderr.splitlines()
+                            if json.loads(x).get('capacity', {}).get('resource') == 'compile-time value slots')
+                self.assertTrue(note['capacity']['consumers'])
+                self.assertEqual(note['capacity']['consumers'][0]['span']['line'], self.line_of(source, '#test "table"'))
+            one, _ = self.cache_compile(source, Path(self.tmp.name) / ('one-phase-' + str(rich)), 'phase-one', *flags, jobs=1)
+            self.assertEqual(cold.stderr, one.stderr)
+            warm, wt = self.cache_compile(source, cache, 'phase-warm', *flags)
+            self.assertEqual(wt['authority_checks'], {'cached': 1, 'checked': 0})
+            self.assertEqual(cold.stderr, warm.stderr)
+            moved = '// moved\n' + source
+            reused, rt = self.cache_compile(moved, cache, 'phase-reused', *flags)
+            fresh, _ = self.cache_compile(moved, Path(self.tmp.name) / ('fresh-phase-' + str(rich)), 'phase-fresh', *flags)
+            self.assertGreater(rt['check_reuse']['reused'], 0)
+            self.assertEqual(reused.stderr, fresh.stderr)
+
+    def test_live_compile_storage_still_counts_in_the_check_phase(self):
+        (Path(self.tmp.name) / 'keep.coax').write_text(
+            'keep :: () -> [40] u8 { a: [40] u8; return a; }\n')
+        # The evaluated constant and its frozen value retain 40 slots each.
+        source = ('#authority;\n#load "keep.coax";\nX :: #run keep();\n'
+                  '#test "tiny" { #assert true; }\n#test "quiet" { #assert true; }\nmain :: () {}\n')
+        baseline = None
+        for jobs in (1, 2):
+            with self.subTest(jobs=jobs):
+                cache = Path(self.tmp.name) / ('live-' + str(jobs))
+                cold, ct = self.cache_compile(source, cache, 'live-cold', '--slots', '100', jobs=jobs)
+                peak = next(x for x in ct['capacities'] if x['name'] == 'compile-time value slots')
+                self.assertEqual((peak['used'], peak['limit']), (80, 100))
+                self.assertIn('compile-time value slots:', cold.stderr)
+                self.assertIn('keep.coax:1:', cold.stderr)
+                if baseline is not None:
+                    self.assertEqual(cold.stderr, baseline)
+                baseline = cold.stderr
+                warm, _ = self.cache_compile(source, cache, 'live-warm', '--slots', '100', jobs=jobs)
+                self.assertEqual(cold.stderr, warm.stderr)
+                # Live storage and a new table must still refuse together.
+                refused = source.replace('#assert true;', 'a: [30] u8; #assert a[0] == 0;', 1)
+                failure, _ = self.cache_compile(refused, cache, 'live-refusal', '--slots', '100', jobs=jobs, expected=1)
+                self.assertIn('error[E0400]', failure.stderr)
+                self.assertIn('value slots', failure.stderr)
 
     def test_failed_note_check_keeps_an_older_quiet_reuse_entry(self):
         source = ('#authority;\n'
