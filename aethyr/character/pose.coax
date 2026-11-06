@@ -1,7 +1,8 @@
 // A character's body on the fixed step: the ECH1 locomotion graph, or one clip looped in place.
 // ECH1 rigs carry 24 clips at 30 fps in one fixed order: 0 idle, 1 walk, 2 jog, 3 fall, 4 land,
 // 5 walk start, 6 walk stop, 7 jog start, 8 jog stop, 10..13 walk starts turning 90 and 180
-// degrees left and right, 14..17 the same for the jog, and loops at 18, 19 and 22.
+// degrees left and right, 14..17 the same for the jog. The graph loops idle, walk and jog (0..2)
+// and plays the rest once; it never chooses 9 or 18..23.
 
 // The rig's clip `clip` lasts this many seconds.
 character_duration :: (c:[]Character,packs:[]CharacterPack,clip:int)->f32 {return f32_from_bits(scan_u32(character_rig(c,packs),32+clip*16+8));}
@@ -17,13 +18,13 @@ character_start_clip :: (run:bool,angle:f32)->int {
 // With drive_inputs set, the world's input_on and run_requested decide moving and running.
 character_locomote :: (c:[]Character,packs:[]CharacterPack,dt:f32,speed:f32,grounded:bool,turn:f32) {
  if !c[0].ready {return;}moving:=ifx c[0].drive_inputs then c[0].input_on else speed>0.05;run:=ifx c[0].drive_inputs then c[0].run_requested else speed>2;clip:=c[0].clip;chosen:=clip;
- if clip<0 {chosen=ifx grounded then 0 else 3;}
+ if clip<0 {chosen=0;}
  if !grounded {chosen=3;}else if !c[0].grounded {chosen=4;}
  else if moving && !c[0].moving {chosen=character_start_clip(run,turn);}
  else if !moving && c[0].moving {chosen=ifx clip==2 || clip==7 || (clip>=14 && clip<=17) then 8 else 6;}
  else if clip==1 || clip==2 {chosen=ifx moving then (ifx run then 2 else 1) else 0;}
  else if clip>=0 && c[0].time>=character_duration(c,packs,clip)-0.1 {chosen=ifx moving then (ifx run then 2 else 1) else 0;}
- character_play(c,packs,chosen,dt,ifx chosen==1 then speed/1.47 else ifx chosen==2 then speed/4.27 else 1.0f32,chosen==0 || chosen==1 || chosen==2 || chosen==18 || chosen==19 || chosen==22);
+ character_play(c,packs,chosen,dt,ifx chosen==1 then speed/1.47 else ifx chosen==2 then speed/4.27 else 1.0f32,chosen<=2);
  c[0].moving=moving;c[0].grounded=grounded;character_face_clock(c,packs,dt);
 }
 // The idle body: idle_clip looped in place, cross-faded in from whatever the body was showing.

@@ -44,11 +44,11 @@ Character :: struct {
 character_spawn :: (c:[]Character,packs:[]CharacterPack,pack:int)->bool {
  if pack<0 || pack>=packs.count || !packs[pack].ready {c[0].ready=false;return false;}
  c[0].ready=true;c[0].pack=pack;rig:=character_rig(c,packs);c[0].joints=cast(int)scan_u32(rig,8);c[0].tracks=cast(int)scan_u32(rig,24);
- for k:0..<c[0].joints {at:=416+k*80;c[0].parent[k]=cast(int)scan_u32(rig,at)-1;for word:0..<12 {c[0].bind[k*12+word]=f32_from_bits(scan_u32(rig,at+4+word*4));}c[0].rest[k]=character_local_at(rig,at+52);c[0].body[k]=c[0].rest[k];c[0].pose[k]=c[0].rest[k];}
+ for k:0..<c[0].joints {at:=416+k*80;c[0].parent[k]=cast(int)scan_u32(rig,at)-1;for word:0..<12 {c[0].bind[k*12+word]=f32_from_bits(scan_u32(rig,at+4+word*4));}c[0].rest[k]=character_local_at(rig,at+52);c[0].body[k]=c[0].rest[k];}
  character_reset(c);character_body(c,packs,0);return true;
 }
 // Despawn: the record stops stepping and its palette goes to zero, so a pass that still draws it draws nothing.
-character_despawn :: (c:[]Character) {c[0].ready=false;for k:0..<c[0].palette.count {c[0].palette[k]=0;}c[0].revision+=1;}
+character_despawn :: (c:[]Character) {c[0].ready=false;for k:0..<CHARACTER_PALETTE_WORDS {c[0].palette[k]=0;}c[0].revision+=1;}
 character_place :: (c:[]Character,at:Point,heading:f32) {c[0].at=at;c[0].heading=heading;}
 // Back to the start of the body graph with the face clip off. The idle face cycle keeps its clock.
 character_reset :: (c:[]Character) {c[0].clip= -1;c[0].time=0;c[0].age=0;c[0].moving=false;c[0].grounded=true;c[0].face[0].enabled=false;}

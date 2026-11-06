@@ -54,9 +54,9 @@ character_name_is :: (b:[]u8,at:int,name:string)->bool {
 character_idle_bind :: (s:[]CharacterIdle,c:[]Character,packs:[]CharacterPack,rig:CharacterIdleRig)->int {
  s[0]=CharacterIdle.{seed=rig.seed,eye_yaw=rig.eye_yaw,eye_pitch=rig.eye_pitch,breath_axis=rig.breath_axis};
  if !c[0].ready || !character_has_face(c,packs) {return 0;}b:=character_face_bytes(c,packs);
- for name:[2]string.[rig.blink_left,rig.blink_right] {k:=character_face_target(b,name);if k>=0 && k<CHARACTER_MORPHS {s[0].blink[s[0].blinks]=k;s[0].blinks+=1;}}
- for name:[2]string.[rig.eye_left,rig.eye_right] {k:=character_face_joint(b,name);if k>=0 && k<c[0].joints {s[0].eye[s[0].eyes]=k;s[0].eyes+=1;}}
- k:=character_face_joint(b,rig.breath);if k>=0 && k<c[0].joints {s[0].breath=k;}
+ for name:[2]string.[rig.blink_left,rig.blink_right] {k:=character_face_target(b,name);if k>=0 {s[0].blink[s[0].blinks]=k;s[0].blinks+=1;}}
+ for name:[2]string.[rig.eye_left,rig.eye_right] {k:=character_face_joint(b,name);if k>=0 {s[0].eye[s[0].eyes]=k;s[0].eyes+=1;}}
+ k:=character_face_joint(b,rig.breath);if k>=0 {s[0].breath=k;}
  s[0].next_blink=1+2*character_idle_draw(s,1);return s[0].blinks+s[0].eyes+(ifx s[0].breath>=0 then 1 else 0);
 }
 character_idle_draw :: (s:[]CharacterIdle,stream:int)->f32 {s[0].draws+=1;return rand_unit(s[0].seed,stream,s[0].draws);}

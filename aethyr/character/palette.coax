@@ -16,7 +16,7 @@ CharacterCapsule :: struct {joint:int;end:int;radius:f32;}
 // Pose the body with the face clip's bones, chain it and write the palette.
 character_present :: (c:[]Character,packs:[]CharacterPack) {
  for k:0..<c[0].joints {c[0].pose[k]=c[0].body[k];}
- face:=character_face_bytes(c,packs);if face.count>0 {face_layer(c[0].face[..],face,c[0].pose[..]);}
+ if character_has_face(c,packs) {face_layer(c[0].face[..],character_face_bytes(c,packs),c[0].pose[..]);}
  for k:0..<c[0].joints {pose_chain(c[0].gq[..],c[0].gt[..],c[0].parent[k],k,c[0].pose[k]);pose_palette(c[0].gq[k],c[0].gt[k],c[0].bind[..],k,c[0].palette[..]);}
  for k:0..<CHARACTER_MORPHS {c[0].palette[CHARACTER_PALETTE_MORPHS+k]=ifx c[0].face[0].enabled then c[0].face[0].weights[k] else 0.0f32;}
  character_capsules(c);c[0].revision+=1;

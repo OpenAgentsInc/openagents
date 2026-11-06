@@ -8,9 +8,9 @@ CHARACTER_FACE_SEGMENTS :: 4;
 CharacterFaceCycle :: struct {paused:bool;period:f32;count:int;clip:[CHARACTER_FACE_SEGMENTS]int;first:[CHARACTER_FACE_SEGMENTS]int;last:[CHARACTER_FACE_SEGMENTS]int;clock:f32;segment:int;}
 
 // Tick the face clip, then present the palette.
-character_face_clock :: (c:[]Character,packs:[]CharacterPack,dt:f32) {face:=character_face_bytes(c,packs);if face.count>0 {face_tick(c[0].face[..],face,dt);}character_present(c,packs);}
+character_face_clock :: (c:[]Character,packs:[]CharacterPack,dt:f32) {if character_has_face(c,packs) {face_tick(c[0].face[..],character_face_bytes(c,packs),dt);}character_present(c,packs);}
 // Play source frames first..last of face clip `clip`, cross-faded from the face on screen.
-character_face_start :: (c:[]Character,packs:[]CharacterPack,clip:int,first:int,last:int,looping:bool)->bool {face:=character_face_bytes(c,packs);if !c[0].ready || face.count==0 {return false;}return face_begin(c[0].face[..],face,clip,first,last,looping);}
+character_face_start :: (c:[]Character,packs:[]CharacterPack,clip:int,first:int,last:int,looping:bool)->bool {if !c[0].ready || !character_has_face(c,packs) {return false;}return face_begin(c[0].face[..],character_face_bytes(c,packs),clip,first,last,looping);}
 // Loop the whole of face clip `clip` and present it; an unknown clip changes nothing.
 character_face_play :: (c:[]Character,packs:[]CharacterPack,clip:int)->bool {
  if !c[0].ready || !character_has_face(c,packs) {return false;}b:=character_face_bytes(c,packs);f:=face_info(b);if clip<0 || clip>=f.clips {return false;}

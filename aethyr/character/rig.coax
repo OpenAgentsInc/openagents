@@ -5,6 +5,7 @@
 #load "../anim/face.coax";
 
 // The most joints a character rig may have: a MetaHuman body and face skeleton (Echo's has 334).
+// ECH1 admission (echo_rig_valid) holds a rig to ECHO_JOINTS, which checks.coax keeps at or under this.
 CHARACTER_JOINTS :: 334;
 // Morph weights per character: every face target an EFC1 face may name.
 CHARACTER_MORPHS :: 256;
@@ -20,7 +21,7 @@ CharacterPack :: struct {data:[CHARACTER_RIG_CAP]u8;face:[FACE_RUNTIME_CAP]u8;ri
 // Admit the n-byte ECH1 rig the world copied into packs[pack].data. A new rig drops the pack's face.
 character_pack_rig :: (packs:[]CharacterPack,pack:int,n:int)->bool {
  p:=pack;if p<0 || p>=packs.count {return false;}
- if n<0 || n>packs[p].data.count || !echo_rig_valid(packs[p].data[0..<n]) || cast(int)scan_u32(packs[p].data[..],8)>CHARACTER_JOINTS {packs[p].ready=false;return false;}
+ if n<0 || n>packs[p].data.count || !echo_rig_valid(packs[p].data[0..<n]) {packs[p].ready=false;return false;}
  packs[p].ready=true;packs[p].rig_bytes=n;packs[p].face_bytes=0;return true;
 }
 // Add an EFC1 face to an admitted rig: the face must be valid and name exactly the rig's joints.

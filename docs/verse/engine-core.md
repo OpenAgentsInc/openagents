@@ -384,6 +384,22 @@ World run her on this module, with the TF0290 frames byte-identical to the
 runtime they replaced. Checks: `aethyr/character/checks.coax`, on authored
 rig and face fixtures with no private data.
 
+Mutation (`coax/bin/coax mutate aethyr/character/checks.coax --unit
+aethyr/character/UNIT.coax`) kills every mutant in `face.coax` and
+`palette.coax`. The survivors elsewhere change nothing a world can see:
+
+- `rig.coax`: `n<0` as `n<=0` or `n<1` (a rig of 0 or 1 bytes already fails
+  `echo_rig_valid`), and `n>count` as `n>=count` (only a valid rig that
+  fills the whole 14 MB arena tells them apart).
+- `pose.coax`: `degrees<0` as `<=0` (at 0 both starts are the same);
+  `clip<0` as `<=0` or `<1`, and `idle_clip>=0` as `>0` or `>=1` (clip 0 is
+  the answer either way); and the frame clamp's `frames-1`, the frame
+  count's offset and `a+1<frames` as `<=` or `a-1` (ECH1 ends each clip on
+  its last key, so the clamp only guards rounding, and the next key differs
+  only where the blend share is 0).
+- `idle.coax`: `t<0` as `t<=0` in the blink weight (the sine is 0 at 0), and
+  `j<first` as `j<=first` (equal joints set the same value).
+
 ## Cross-realm checks (`aethyr/tests/cross-realm.coax`, `cross-realm-floor.coax`)
 
 Every walking realm steps one controller (`aethyr/walk.coax`) with its own
