@@ -1,0 +1,65 @@
+// Qualified fixed 4x4-cell nonplanar grid. Four nonadjacent interior stars
+// collapse independently. Outer segmentation and all star boundaries stay exact.
+#load "star.coax";
+#authority;
+#test "grid parent removes four interior vertices and eight triangles with exact topology" {
+  p:[25]Point;for y:0..<5 {for x:0..<5 {p[y*5+x]=v3(cast(f32)x,cast(f32)y,cast(f32)(x*y)*0.03);}}
+  m:[1]ParentMesh;#assert grid_parent_reduce(m[..],p[..],2,0.25);
+  #assert m[0].vertices==21 && m[0].indices==72 && m[0].error>1.25;
+  retained:=[21]int.[0,1,2,3,4,5,7,9,10,11,12,13,14,15,17,19,20,21,22,23,24];
+  for id,k:retained {a:=p[id];b:=m[0].p[k];#assert a.x==b.x && a.y==b.y && a.z==b.z;}
+  expected:=[72]u32.[0,1,5,1,2,5,2,6,5,2,3,6,3,4,6,4,7,6,5,9,8,5,6,9,6,10,9,6,11,10,6,7,11,7,12,11,8,9,13,9,10,13,10,14,13,10,11,14,11,12,14,12,15,14,13,17,16,13,14,17,14,18,17,14,19,18,14,15,19,15,20,19];for v,k:expected {#assert m[0].i[k]==v;}
+  source:=grid_parent_source(p[..]);#assert source.vertices==25 && source.indices==96;
+  for t:0..<32 {q:=t/2;a:=(q/4)*5+q%4;want:=ifx t%2==0 then [3]int.[a,a+1,a+5] else [3]int.[a+1,a+6,a+5];for id,k:want {#assert source.i[t*3+k]==cast(u32)id;}}
+  #assert grid_interior(6) && grid_interior(8) && grid_interior(16) && grid_interior(18);
+  #assert !grid_interior(0) && !grid_interior(7) && !grid_interior(24);
+  for axis:0..<3 {q:=p;for v,k:p {q[k]=ifx axis==0 then v3(v.z,v.x,v.y) else ifx axis==1 then v3(v.y,v.z,v.x) else v;}
+    #assert grid_parent_reduce(m[..],q[..],axis,0) && m[0].indices==72;
+  }
+}
+#test "grid parent refuses unsupported shapes atomically and composes the maximum child bound" {
+  p:[26]Point;for y:0..<5 {for x:0..<5 {p[y*5+x]=v3(cast(f32)x,cast(f32)y,0);}}
+  m:[1]ParentMesh;m[0].vertices=99;
+  #assert !grid_parent_reduce(m[..],p[0..<24],2,0) && !grid_parent_reduce(m[..],p[..],2,0);
+  #assert !grid_parent_reduce(m[..],p[0..<25],-1,0) && !grid_parent_reduce(m[..],p[0..<25],3,0);
+  #assert !grid_parent_reduce(m[..],p[0..<25],2,-1) && !grid_parent_reduce(m[..],p[0..<25],2,1000000);
+  for k:0..<25 {q:=p;q[k].z=1000000;#assert !grid_parent_reduce(m[..],q[0..<25],2,0);}
+  for center:[4]int.[6,8,16,18] {q:=p;q[center].x= -10;#assert !grid_parent_reduce(m[..],q[0..<25],2,0);}
+  q:=p;q[0]=q[1];#assert !grid_parent_reduce(m[..],q[0..<25],2,0);
+  #assert m[0].vertices==99;
+  #assert grid_parent_reduce(m[..],p[0..<25],2,0) && m[0].error==1;
+  #assert grid_parent_reduce(m[..],p[0..<25],2,0.25) && m[0].error==1.25;
+  p[18].z=0.5;#assert grid_parent_reduce(m[..],p[0..<25],2,0.25) && m[0].error==1.75;
+}
+#test "grid source copies translated points and each collapse contributes its own bound" {
+  p:[25]Point;for y:0..<5 {for x:0..<5 {p[y*5+x]=v3(cast(f32)x+10,cast(f32)y-2,1);}}
+  source:=grid_parent_source(p[..]);for v,k:p {#assert source.p[k].x==v.x && source.p[k].y==v.y && source.p[k].z==v.z;}
+  m:[1]ParentMesh;
+  for center:[4]int.[6,8,16,18] {q:=p;q[center].z=1.5;q[center-1].z=0.75;#assert grid_parent_reduce(m[..],q[..],2,0.25) && m[0].error==2;}
+  q:=p;for v,k:p {q[k].y= -v.y;}#assert !grid_parent_reduce(m[..],q[..],2,0);
+  q=p;q[0].x=q[1].x;q[0].y=q[1].y;#assert !grid_parent_reduce(m[..],q[..],2,0);
+}
+grid_interior :: (id:int)->bool {return id==6 || id==8 || id==16 || id==18;}
+grid_corner :: (index:int)->int {q:=index/6;return q/4*5+q%4+[6]int.[0,1,5,1,6,5][index%6];}
+grid_parent_source :: (p:[]Point)->ParentMesh {
+  m:=ParentMesh.{vertices=25,indices=96};for k:0..<25 {m.p[k]=p[k];}for k:1..<m.indices {m.i[k]=cast(u32)grid_corner(k);}return m;
+}
+grid_parent_reduce :: (out:[]ParentMesh,p:[]Point,axis:int,child:f32)->bool {
+  if p.count!=25 {return false;}
+  // Each original triangle belongs to at most one collapsing star, so their
+  // maximum error encloses the union; errors are not summed across siblings.
+  error:f32=0;offsets:=[6]int.[-1,-5,-4,1,5,4];
+  for center:[4]int.[6,8,16,18] {ring:[6]Point;for delta,k:offsets {ring[k]=p[center+delta];}star:[1]ParentMesh;
+    if !star_reduce(star[..],ring[..],p[center],axis,child) {return false;}error=hi(error,star[0].error);
+  }
+  for v:p {if !finite3(v) {return false;}}
+  for t:0..<32 {a:=star_flat(p[grid_corner(t*3)],axis);b:=star_flat(p[grid_corner(t*3+1)],axis);c:=star_flat(p[grid_corner(t*3+2)],axis);
+    if star_turn(a,b,c)<=0 {return false;}
+  }
+  m:=ParentMesh.{error=error};ids:[25]u32;
+  for v,k:p {if grid_interior(k) {ids[k]=ids[k-1];}else {ids[k]=cast(u32)m.vertices;m.p[m.vertices]=v;m.vertices+=1;}}
+  for t:0..<32 {a:=ids[grid_corner(t*3)];b:=ids[grid_corner(t*3+1)];c:=ids[grid_corner(t*3+2)];
+    if a!=b && a!=c && b!=c {m.i[m.indices]=a;m.i[m.indices+1]=b;m.i[m.indices+2]=c;m.indices+=3;}
+  }
+  out[0]=m;return true;
+}

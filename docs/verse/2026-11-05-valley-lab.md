@@ -282,6 +282,22 @@ unpaged/paged crops, missing/corrupt page fallback, 255/256-byte admission and
 exact state/pixels after device loss. Evidence and limits are in the
 [real-rock parent receipt](../verification/valley-lab-rock-parent-2026-11-05/README.md).
 
+## Next three phases: implementation record
+
+1. **Qualified native grid reducer.** `grid-parent.coax` reduces a canonical
+   4×4-cell nonplanar grid using four independent interior star collapses:
+   25→21 vertices and 32→24 triangles. Its external segmentation is unchanged.
+   The maximum sibling bound, with child error included, encloses the union.
+   It requires positive orientation in the supplied projection and refuses
+   unsupported inputs atomically. All 113 authority root mutants are killed,
+   with no survivors/equivalents. This is a bounded structured class, not an
+   arbitrary imported topology reducer. Native checks and mutation evidence
+   are in `docs/verification/valley-lab-next-three-2026-11-05/`.
+2. **Adjacent real groups.** In progress: source extraction, mixed cuts and
+   content-checked HTTP pages on two neighboring groups of the original rock.
+3. **Deterministic field.** Planned in this batch: bounded repeated original
+   rocks with per-instance conservative selection and shared page identities.
+
 ## What the book gives us
 
 Read the [book construction plan](../../aethyr/book/PLAN.md) and the
