@@ -1,0 +1,4 @@
+scope=exact wasm.sh cache-key observation and frozen bytes; not original emission profile or graphics/default admission
+unit=aethyr/host/socket-carrier.coax header=socket-carrier sources=7 key=e89ec486b94aa9dfdd8314de2e79dcfb74a153e297f3dc895edb61564950c33d
+frozen=/Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/browser-sockets/emission/socket-carrier.c bytes=34679 sha256=ed516db339d2c14473335a63aac1cbc0489ca5ee060540c9b621fd14b57105ef
+frozen=/Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/browser-sockets/emission/socket-carrier.h bytes=20651 sha256=284e1eb47be181aecbc5a8ad9e11e4a381e0dfa611bb22328476c6173265f280

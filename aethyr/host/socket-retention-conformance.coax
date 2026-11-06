@@ -1,0 +1,51 @@
+#load "../../coax/lib/json/json.coax";
+#load "socket-retention-fixture.coax";
+#authority;
+#test "browser queue acceptance uses the complete actual copies and both ownership directions" {
+ d:[1]Jv;n:[512]JvNode;#assert jv_parse(d[..],HSRB_GOOD,n[..]) && hsrb_accept(d[0]);
+ empty:[1]int;#assert hsrb_row(d[0],"empty",empty[0..<0]) && !hsrb_row(d[0],"bad",empty[0..<0]) && !hsrb_row(d[0],"missing",empty[0..<0]);
+ q:=[2]int.[1,2];#assert !hsrb_row(d[0],"tiny",q[..]);
+}
+#forall "every field is checked including the final logical element" index:0..<3 {
+ d:[1]Jv;n:[512]JvNode;#assert jv_parse(d[..],HSRB_GOOD,n[..]);q:=[3]int.[1,2,3];q[index]+=1;#assert !hsrb_row(d[0],"tiny",q[..]);
+}
+#test "a null value cannot stand for a measured zero" {
+ d:[1]Jv;n:[8]JvNode;zero:=[1]int.[0];#assert jv_parse(d[..],"{\"null\":[null]}",n[..])&&!hsrb_row(d[0],"null",zero[..]);
+}
+#forall "every required SDK case can independently refuse the complete receipt" index:0..<12 {
+ keys:=[12]string.["plan","copy","oversize","bytes","events","sendCopy","sendFull","retire","borrow","terminals","outBytes","span"];
+ b:[4096]u8;for c,i:HSRB_GOOD {b[i]=c;}d:[1]Jv;n:[512]JvNode;#assert jv_parse(d[..],cast(string)b[0..<HSRB_GOOD.count],n[..]);
+ row:=jv_get(d[0],0,keys[index]);at:=d[0].nodes[jv_at(d[0],row,0)].from;b[at]='9';
+ #assert jv_parse(d[..],cast(string)b[0..<HSRB_GOOD.count],n[..])&&!hsrb_accept(d[0]);
+}
+hsrb_row :: (d:Jv,key:string,expected:[]int)->bool {
+ row:=jv_get(d,0,key);if jv_kind(d,row)!=JV_ARRAY || jv_len(d,row)!=expected.count {return false;}
+ for i:0..<expected.count {if jv_int(d,jv_at(d,row,i),-1)!=expected[i] {return false;}}
+ return true;
+}
+hsrb_accept :: (d:Jv)->bool #export_c {
+ plan:=[10]int.[4,64,0,0,8,32,0,0,8388608,33554432];
+ copy:=[17]int.[2,9,2,2,9,0,0,2,195,169,240,159,153,130,116,119,111];
+ oversize:=[6]int.[1,0,3,0,0,0];
+ bytes:=[11]int.[4,32,1,1,4,32,0,0,6,3,2];
+ events:=[8]int.[64,0,1,1,0,0,0,0];
+ sendCopy:=[18]int.[2,11,2,5,102,105,114,115,116,6,195,169,240,159,153,130,0,0];
+ sendFull:=[7]int.[64,0,0,0,1,1,0];
+ retire:=[10]int.[1,3,1,4,0,0,0,0,1,1];
+ borrow:=[7]int.[1,1,1,0,0,0,1];
+ terminals:=[7]int.[64,0,4,4,0,0,0];
+ outBytes:=[7]int.[4,33554432,4,0,0,1,1];
+ span:=[5]int.[0,0,0,1,1];
+ return hsrb_row(d,"plan",plan[..])
+ && hsrb_row(d,"copy",copy[..])
+ && hsrb_row(d,"oversize",oversize[..])
+ && hsrb_row(d,"bytes",bytes[..])
+ && hsrb_row(d,"events",events[..])
+ && hsrb_row(d,"sendCopy",sendCopy[..])
+ && hsrb_row(d,"sendFull",sendFull[..])
+ && hsrb_row(d,"retire",retire[..])
+ && hsrb_row(d,"borrow",borrow[..])
+ && hsrb_row(d,"terminals",terminals[..])
+ && hsrb_row(d,"outBytes",outBytes[..])
+ && hsrb_row(d,"span",span[..]);
+}

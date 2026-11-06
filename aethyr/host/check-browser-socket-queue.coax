@@ -1,0 +1,21 @@
+// Exercise real browser copies and the real Coax reactor without a realm/GPU.
+// Mock send/close effects are explicit here; physical peer pressure is separate.
+#load "../../coax/web/wasm-chrome.coax";
+#load "socket-retention-conformance.coax";
+#load "../render/tests/qualification-files.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3{tool_errln("usage: check-browser-socket-queue ROOT REACTOR NEW_OUTPUT");return 2;}
+ held:[1]RtqInputs;if !rtq_input_add(held[..],args_at(a[..],1)){return 1;}
+ root:=args_at(a[..],0);dir:=args_at(a[..],2);paths:[6][4096]u8;if !fs_mkdir(dir){return 1;}site:=fs_join(dir,"site",paths[0][..]);build:=fs_join(site,"build",paths[1][..]);if !fs_mkdir(build)||!fs_write(fs_join(site,"index.html",paths[2][..]),"<!doctype html><meta charset=utf-8><title>Socket copy observations</title>"){return 1;}
+ for file:[11]string.["coax/web/socket-queue-host.js","coax/web/tests/socket-queue-fixture.js","coax/web/socket-face.c","aethyr/host/socket-carrier.coax","aethyr/host/socket-retention.coax","aethyr/host/socket-queue.coax","aethyr/host/inbox-queue.coax","aethyr/host/buffers.coax","aethyr/host/media-packet.coax","aethyr/host/event-drain.coax","aethyr/host/check-browser-socket-queue.coax"] {if !rtq_input_add(held[..],fs_join(root,file,paths[5][..])){return 1;}}
+ wasm:[1048576]u8;n:=fs_read(args_at(a[..],1),wasm[..]);if n<1||!fs_write(fs_join(build,"host-sockets.wasm",paths[2][..]),cast(string)wasm[0..<n]){return 1;}
+ p:=proc_new();if p<0{return 1;}defer{killed:=proc_kill(p,PROC_SIGTERM);waited:=proc_wait(p,2000);released:=proc_release(p);}
+ for arg:[9]string.[fs_join(root,"coax/web/serve.sh",paths[2][..]),site,"--host-dir",fs_join(root,"coax/web",paths[3][..]),"--listen","127.0.0.1:9184","--static","--cache","0"]{if !proc_arg(p,arg){return 1;}}if proc_start(p)!=0{return 1;}
+ waiting:[1]Cdp;body:[4096]u8;deadline:=proc_now_ms()+10000;ready:=false;while proc_now_ms()<deadline{if cdp_get(waiting[..],9184,"/",body[..])>0{ready=true;break;}proc_sleep(50);}if !ready{return 1;}
+ c:[1]Cdp;if !cdp_launch(c[..],160,90,"coax-socket-queue-"){return 1;}defer{cdp_close(c[..]);}
+ _:=cdp_call(c[..],"Page.navigate","{\"url\":\"http://127.0.0.1:9184/\"}",CDP_CALL_MS);
+ deadline=proc_now_ms()+10000;ready=false;while proc_now_ms()<deadline{if wc_eval(c[..],"location.origin==='http://127.0.0.1:9184' && document.readyState==='complete'")=="true"{ready=true;break;}proc_sleep(25);}if !ready{return 1;}
+ at:=cdp_evaluate(c[..],"(async()=>{const {socketQueueFixture}=await import('/coaxial/tests/socket-queue-fixture.js');return await socketQueueFixture()})()");if at<0{tool_errln(cdp_error(c[..]));return 1;}
+ raw:[32768]u8;o:[1]Jo;jo_start(o[..],raw[..]);jv_write(cdp_doc(c[..]),at,o[..]);receipt:=fs_join(dir,"receipt.json",paths[4][..]);if o[0].bad||!fs_write(receipt,jo_text(o[..])){return 1;}
+ d:[1]Jv;nodes:[512]JvNode;if !jv_parse(d[..],jo_text(o[..]),nodes[..]){return 1;}ok:=hsrb_accept(d[0]);stable:=rtq_inputs_match(held[..]);jo_start(o[..],raw[..]);jo_obj(o[..]);jo_key(o[..],"source_fence_unchanged");jo_bool(o[..],stable);jo_key(o[..],"inputs");rtq_inputs_json(o[..],held[..],root);jo_end(o[..]);if o[0].bad||!fs_write(fs_join(dir,"source-observation.json",paths[4][..]),jo_text(o[..])){return 1;}print("Browser application socket copies:12cases/113fields:%,sourcefence:%; physical browser/OS buffers not measured\n",ok,stable);return ifx ok&&stable then 0 else 1;
+}

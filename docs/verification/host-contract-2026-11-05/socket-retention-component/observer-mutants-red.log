@@ -1,0 +1,38 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/host/socket-retention-conformance.coax:14:55: mutant survived: -1 became 0
+   for i:0..<expected.count {if jv_int(d,jv_at(d,row,i),-1)!=expected[i] {return false;}}
+                                                        ^
+aethyr/host/socket-retention-conformance.coax:41:2: mutant survived: '&&' became '||'
+   && hsrb_row(d,"span",span[..]);
+   ^
+aethyr/host/socket-retention-conformance.coax:40:2: mutant survived: '&&' became '||'
+   && hsrb_row(d,"outBytes",outBytes[..])
+   ^
+aethyr/host/socket-retention-conformance.coax:39:2: mutant survived: '&&' became '||'
+   && hsrb_row(d,"terminals",terminals[..])
+   ^
+aethyr/host/socket-retention-conformance.coax:38:2: mutant survived: '&&' became '||'
+   && hsrb_row(d,"borrow",borrow[..])
+   ^
+aethyr/host/socket-retention-conformance.coax:37:2: mutant survived: '&&' became '||'
+   && hsrb_row(d,"retire",retire[..])
+   ^
+aethyr/host/socket-retention-conformance.coax:36:2: mutant survived: '&&' became '||'
+   && hsrb_row(d,"sendFull",sendFull[..])
+   ^
+aethyr/host/socket-retention-conformance.coax:35:2: mutant survived: '&&' became '||'
+   && hsrb_row(d,"sendCopy",sendCopy[..])
+   ^
+aethyr/host/socket-retention-conformance.coax:34:2: mutant survived: '&&' became '||'
+   && hsrb_row(d,"events",events[..])
+   ^
+aethyr/host/socket-retention-conformance.coax:33:2: mutant survived: '&&' became '||'
+   && hsrb_row(d,"bytes",bytes[..])
+   ^
+aethyr/host/socket-retention-conformance.coax:32:2: mutant survived: '&&' became '||'
+   && hsrb_row(d,"oversize",oversize[..])
+   ^
+aethyr/host/socket-retention-conformance.coax:31:2: mutant survived: '&&' became '||'
+   && hsrb_row(d,"copy",copy[..])
+   ^
+137 mutants, 125 killed, 12 survived

@@ -1,0 +1,57 @@
+// Browser/application-owned copies use the same bounded native queue leases.
+// Browser, SDK and kernel socket buffers are separate observed effects.
+#load "socket-queue.coax";
+#authority;
+HostSocketRetention :: struct {valid:bool;input:[1]HostInboxQueue;output:[1]HostInboxQueue;}
+HostSocketRetained :: struct {accepted:bool;lease:HostInboxLease;error:int;close:int;}
+#test "both retained directions share the existing descriptor and keep separate exact leases" {
+ s:=[1]HostSocketRetention.[hsr_open(3)];#assert s[0].valid;
+ #assert hsr_info(s[..],false,0)==0&&hsr_info(s[..],false,1)==0&&hsr_info(s[..],false,2)==3&&hsr_info(s[..],false,3)==12;
+ #assert hsr_info(s[..],true,2)==8388608&&hsr_info(s[..],true,3)==33554432&&hsr_info(s[..],false,4)==1;
+ a:=hsr_offer(s[..],false,3);b:=hsr_offer(s[..],true,8388608);#assert a.accepted&&b.accepted&&a.error==0&&a.close==0&&b.error==0&&b.close==0;
+ #assert hsr_info(s[..],false,1)==3&&hsr_info(s[..],true,1)==8388608;
+ #assert hsr_release(s[..],false,a.lease)&&hsr_release(s[..],true,b.lease)&&!hsr_release(s[..],true,b.lease);
+ #assert hsr_info(s[..],false,-1)== -1&&hsr_info(s[..],true,5)== -1;
+}
+#test "oversize input is one error while full retained storage explicitly fails and closes" {
+ s:=[1]HostSocketRetention.[hsr_open(1)];bad:=hsr_offer(s[..],false,2);#assert !bad.accepted&&bad.error==3&&bad.close==0&&bad.lease.slot== -1;
+ for i:0..<4 {r:=hsr_offer(s[..],false,1);#assert r.accepted;}
+ r:=hsr_offer(s[..],false,1);#assert !r.accepted&&r.error==3&&r.close==2&&hsr_info(s[..],false,0)==4&&hsr_info(s[..],false,1)==4;
+ for i:0..<4 {#assert hsr_offer(s[..],true,8388608).accepted;}
+ r=hsr_offer(s[..],true,1);#assert !r.accepted&&r.error==3&&r.close==2&&hsr_info(s[..],true,0)==4&&hsr_info(s[..],true,1)==33554432;
+ for n:[3]int.[-1,8388609,9223372036854775807] {r=hsr_offer(s[..],true,n);#assert !r.accepted&&r.error==3&&r.close==2;}
+}
+#test "reset retires copies in both directions and stale leases cannot release replacement data" {
+ s:=[1]HostSocketRetention.[hsr_open(1)];a:=hsr_offer(s[..],false,1);b:=hsr_offer(s[..],true,1);#assert hsr_reset(s[..]);
+ #assert hsr_info(s[..],false,0)==0&&hsr_info(s[..],true,0)==0&&hsr_info(s[..],false,4)==2&&hsr_info(s[..],true,4)==2;
+ #assert hsr_offer(s[..],false,1).accepted&&hsr_offer(s[..],true,1).accepted;
+ #assert !hsr_release(s[..],false,a.lease)&&!hsr_release(s[..],true,b.lease);
+ s[0].input[0].epoch=9223372036854775807;#assert !hsr_reset(s[..])&&hsr_info(s[..],true,4)==3&&hsr_info(s[..],true,1)==0;
+ #assert !hsr_offer(s[..],false,0).accepted;
+}
+#test "invalid capacities and retired byte owners do not become a valid application queue" {
+ for cap:[3]int.[-1,8388609,9223372036854775807] {s:=[1]HostSocketRetention.[hsr_open(cap)];#assert !s[0].valid&&!hsr_offer(s[..],false,0).accepted&&!hsr_offer(s[..],true,0).accepted;}
+ s:=[1]HostSocketRetention.[hsr_open(0)];#assert s[0].valid;
+ for i:0..<64 {#assert hsr_offer(s[..],false,0).accepted;}r:=hsr_offer(s[..],false,0);#assert !r.accepted&&r.close==2;
+ s[0].input[0].serial=9223372036854775807;r=hsr_offer(s[..],false,0);#assert !r.accepted&&r.error==3&&r.close==2;
+}
+hsr_open :: (capacity:int)->HostSocketRetention #export_c {
+ p:=hsq_plan(capacity);if !p.valid {return HostSocketRetention.{};}
+ return HostSocketRetention.{valid=true,input=[1]HostInboxQueue.[hiq_open(p.input_bytes)],output=[1]HostInboxQueue.[hiq_open(p.output_bytes)]};
+}
+hsr_offer :: (s:[]HostSocketRetention,output:bool,bytes:int)->HostSocketRetained #export_c {
+ if output {r:=hsq_send(s[0].output[..],bytes);return HostSocketRetained.{accepted=r.accepted,lease=r.lease,error=r.error,close=r.close};}
+ r:=hiq_reserve(s[0].input[..],bytes);if r.status==HostInboxStatus.ok {return HostSocketRetained.{accepted=true,lease=r.lease};}
+ return HostSocketRetained.{error=3,close=ifx r.status==HostInboxStatus.full||r.status==HostInboxStatus.retired then 2 else 0};
+}
+hsr_release :: (s:[]HostSocketRetention,output:bool,lease:HostInboxLease)->bool #export_c {
+ return ifx output then hiq_release(s[0].output[..],lease) else hiq_release(s[0].input[..],lease);
+}
+hsr_reset :: (s:[]HostSocketRetention)->bool #export_c {
+ a:=hiq_reset(s[0].input[..]);b:=hiq_reset(s[0].output[..]);return a&&b;
+}
+hsr_info :: (s:[]HostSocketRetention,output:bool,field:int)->int #export_c {
+ q:=ifx output then s[0].output[0] else s[0].input[0];
+ if field==0 {return q.count;}if field==1 {return q.bytes;}if field==2 {return q.capacity;}
+ if field==3 {return q.limit;}if field==4 {return q.epoch;}return -1;
+}
