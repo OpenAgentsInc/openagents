@@ -333,6 +333,16 @@ dr_mark :: (p: DrPair, name: string) {
   _ := dr_int(p.a, btext(q[..]), 0); _ = dr_int(p.b, btext(q[..]), 0);
   print("  step %\n", name);
 }
+dr_wait_end :: (p: DrPair) -> bool {
+  deadline := proc_now_ms() + 5000;
+  while proc_now_ms() < deadline {
+    a := dr_int(p.a, "__dr.marks.some(m=>m[0]==='end') ? 1:0", 0);
+    b := dr_int(p.b, "__dr.marks.some(m=>m[0]==='end') ? 1:0", 0);
+    if a == 1 && b == 1 { return true; }
+    proc_sleep(25);
+  }
+  tool_errln("everglade-drift: an end mark was scheduled but never observed on both pages"); return false;
+}
 
 // The held step's Hold Person, one spell on both pages (#12886): room-control.coax's "hold" line,
 // the watch's hold on you (3 s, no save) and the rules' on the townsperson nearest you (6 s, no save).
@@ -423,8 +433,8 @@ dr_script :: (p: DrPair, dir: string) -> bool {
   dr_hold(p);
   dr_both_key(p, true, "w", "KeyW", 87); proc_sleep(dr_held_move_ms()); dr_both_key(p, false, "w", "KeyW", 87); proc_sleep(4000);
   dr_mark(p, "folk"); proc_sleep(6000);
-  dr_mark(p, "end"); proc_sleep(300);
-  return rg_ready && rg_ready_b;
+  dr_mark(p, "end"); marked := dr_wait_end(p);
+  return rg_ready && rg_ready_b && marked;
 }
 
 // The page's record back from the browser.
@@ -470,6 +480,7 @@ dr_pull :: (c: [] Cdp, pg: [] DrPage, folk: bool) -> bool {
       pg[0].marks_n += 1; e = d.nodes[e].next;
     }
   }
+  if dr_mark_t(pg, "end") < 0 { return false; }
   v = cdp_evaluate(c, "__dr.texts.slice(-256)");
   if v >= 0 {
     d := cdp_doc(c); e := d.nodes[v].first; pg[0].texts_n = 0;
@@ -1004,6 +1015,18 @@ DR_RAID_DIALS :: "event 1 0 1 8 3 1 3 1 1 1 3 1 300 5";   // the siege at size 8
 DR_RAID_S :: 360;   // the announce and the siege, the cult's casters at the stables before the gate
 // The bar's slots (its hash) page pg drew at wall ms t.
 dr_bar_at :: (pg: [] DrPage, t: int) -> int { h := 0; for r: 0..<pg[0].n { if dr_at(pg, r, C_T) <= t { h = dr_at(pg, r, C_BAR); } } return h; }
+dr_game_bar :: (pg: [] DrPage) -> int {
+  t := dr_mark_t(pg, "end");
+  if t < 0 || pg[0].n < 1 || dr_at(pg, pg[0].n - 1, C_T) < t { return -1; }
+  return dr_bar_at(pg, t);
+}
+#test "raid baseline requires an observed end mark, not a future scheduled mark" {
+  p: [1] DrPage; p[0].n = 1; p[0].rows[C_T] = 1000; p[0].rows[C_BAR] = 864523051;
+  #assert dr_game_bar(p[..]) == -1;
+  p[0].marks_n = 1; p[0].marks[0].name_n = 3;
+  p[0].marks[0].name[0] = 'e'; p[0].marks[0].name[1] = 'n'; p[0].marks[0].name[2] = 'd'; p[0].marks[0].t = 1000;
+  #assert dr_game_bar(p[..]) == 864523051;
+}
 #test "raid observer never samples a bar before LEVEL 1 when LEVEL 2 follows quickly" {
   #assert dr_raid_bar_time(1000, 1100) == 1000;
   #assert dr_raid_bar_time(1000, 1300) == 1100;
@@ -1016,7 +1039,7 @@ dr_raid_bar_time :: (l1: int, l2: int) -> int {
 // Control-file reads and the first kit snapshot are asynchronous. Establish the actual LEVEL 1
 // kit before starting combat, rather than infer it from a fixed wait after opening the socket.
 dr_raid_kit_ready :: (c: [] Cdp, whole: int) -> bool {
-  if whole == 0 { return false; }
+  if whole <= 0 { tool_errln("everglade-drift: the gameplay end has no full-kit baseline"); return false; }
   q: [1] Buf;
   bput(q[..], "(() => { const p=__dr.texts.filter(x=>x[1]===0), t=p[p.length-1]; return __dr.probe(65)===1 && __dr.probe(66)===1 && __dr.probe(49)!==");
   bint(q[..], whole); bput(q[..], " && t && t[2].startsWith('LEVEL 1') ? 1 : 0; })()");
@@ -1034,6 +1057,8 @@ dr_raid_kit_ready :: (c: [] Cdp, whole: int) -> bool {
 // whole: the whole bar's hash, as the paired session's room page drew it at its end (levels off there);
 // the raid's offline page can't say it, as on the local host (?offline=worker) its room has levels on (#12897).
 dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPage, b: [] DrPage, whole: int) -> bool {
+  print("  raid: gameplay full-kit baseline %\n", whole);
+  if whole <= 0 { tool_errln("everglade-drift: refusing a raid without an observed gameplay baseline"); return false; }
   room := run.port; page := run.port + 1; proxy := run.port + 2;
   cb_: [1] Buf; bput(cb_[..], "pvp 0\nedit 1\nlevels 1 2\n"); bput(cb_[..], DR_RAID_DIALS); bput(cb_[..], " 0 0\n");
   _ := fs_write(run.ctl, btext(cb_[..]));
@@ -1055,7 +1080,12 @@ dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPag
   if cdp_launch(ca[..], 1280, 800, "coax-drift-a-") {
     if cdp_launch(cc[..], 1280, 800, "coax-drift-b-") {
       script:[1]Buf;
-      if dr_open(ca[..], btext(ua[..]), dr_offline_script(run,script[..])) && dr_open(cc[..], btext(ub[..]), run.script) && dr_ready(ca[..], false) && dr_ready(cc[..], true) && dr_native_ready(run,ca[..]) && dr_raid_kit_ready(cc[..], whole) {
+      open_a := dr_open(ca[..], btext(ua[..]), dr_offline_script(run,script[..]));
+      open_b := open_a && dr_open(cc[..], btext(ub[..]), run.script);
+      ready_a := open_b && dr_ready(ca[..], false); ready_b := ready_a && dr_ready(cc[..], true);
+      native_ready := ready_b && dr_native_ready(run,ca[..]);
+      print("  raid: opened %/%, ready %/%, native %\n", open_a, open_b, ready_a, ready_b, native_ready);
+      if native_ready && dr_raid_kit_ready(cc[..], whole) {
         dr_dice(ca[..], run.worker && !run.native);
         sh: [1] Buf; bput(sh[..], run.dir); bput(sh[..], "/shot-raid-"); bput(sh[..], profile);
         p := DrPair.{a = ca[..], b = cc[..], shots = btext(sh[..])};
@@ -1077,8 +1107,8 @@ dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPag
           l2 := dr_int(cc[..], "__dr.texts.some((x) => x[1] === 0 && x[2].startsWith('LEVEL 2')) ? 1 : 0", 0);
           if fa == 1 && fb == 1 && l2 == 1 { break; }
         }
-        dr_mark(p, "end"); proc_sleep(300);
-        ok = dr_pull(ca[..], a, false) && dr_pull(cc[..], b, false);
+        dr_mark(p, "end"); marked := dr_wait_end(p);
+        ok = marked && dr_pull(ca[..], a, false) && dr_pull(cc[..], b, false);
       } else { tool_errln("everglade-drift: the raid's pages didn't come up"); }
       for side: 0..<2 {
         report: [1] Buf; bput(report[..], run.dir); bput(report[..], "/raid-"); bput(report[..], profile); bput(report[..], ifx side == 0 then "-offline.json" else "-room.json");
@@ -1237,7 +1267,7 @@ tool_main :: () -> int #export_c {
     rr: [1] Buf; bput(rr[..], btext(rb[..])); bput(rr[..], "-room.txt"); dr_write_rows(btext(rr[..]), pb[..]);
     if held && !args_has(a[..], "--no-raid") {
       rr0 := reps[np - 1].n;
-      whole := dr_bar_at(pb[..], dr_mark_t(pb[..], "end"));   // the session's room page: levels off, the whole bar
+      whole := dr_game_bar(pb[..]);   // the session's room page: levels off, an observed whole bar
       if !dr_raid(run, profile, rtt, reps[np - 1..<np], pa[..], pb[..], whole) { print("DRIFT % raid: it didn't run\n", profile); all = false; }
       else {
         sub: [1] DrReport; for k: rr0..<reps[np - 1].n { dr_add(sub[..], reps[np - 1].r[k].name, reps[np - 1].r[k].v); }
