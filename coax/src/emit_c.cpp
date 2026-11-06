@@ -3684,6 +3684,7 @@ static std::string emit_c_split(const File *file, const EmitOptions &opts, uint6
   if (em.erasure) s += ZERO_RUNTIME;
   if (em.barrier) s += BARRIER_RUNTIME;
   if (em.wrapping) s += WRAP_RUNTIME;
+  if (em.intops) s += INTOPS_RUNTIME;
   if (em.versioned) s += IV_RUNTIME;
   s += "#define COAX_LAYOUT(c, m) _Static_assert(c, m)\n";
   s += "\n/* Types */\n" + types.out;

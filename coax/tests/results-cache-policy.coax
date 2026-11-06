@@ -2,9 +2,9 @@
 #load "../lib/compiler/checker.coax";
 #authority;
 
-#forall "R2 cache staging permission requires an enabled nonnegative ordinal in its own block" enabled:bool,index:-1..<18,block:-1..<3 {
- expected:=enabled && ((index>=0 && index<=7 && block==0) || (index>=8 && index<=15 && block==1) || (index>=16 && block==2));
- #assert CB_literal_stageable(enabled,index,block)==expected;
+#forall "R2 cache staging selects a nonnegative ordinal in its own block independently of lookup enabling" index:-1..<18,block:-1..<3 {
+ expected:=((index>=0 && index<=7 && block==0) || (index>=8 && index<=15 && block==1) || (index>=16 && block==2));
+ #assert CB_literal_stageable(index,block)==expected;
 }
 
 #test "R2 cache nested element keys retain four lookup working sets within fuel" {

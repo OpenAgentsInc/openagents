@@ -68,7 +68,7 @@ SETUP :: "mkdir -p \"$D/app\" \"$D/out\" && printf '#import \"Basic\";\\nSCALE :
 // The split app: four files, each its own run of procedures; with
 // COAXIAL_SPLIT=4 and a part a byte (COAXIAL_SPLIT_UNIT=1: the app is tiny)
 // their runs fall in two parts (split-b.coax's procedure in one of them).
-SPLIT_SETUP :: "printf '#import \"Basic\";\\n#load \"split-a.coax\";\\n#load \"split-b.coax\";\\n#load \"split-c.coax\";\\nsplit_all :: (x: s32) -> s32 #export_c { return split_a(x) + split_b(x) + split_c(x); }\\n' > \"$D/app/split.coax\" && for f in a b c; do printf 'SPLIT_%s :: 3;\\nsplit_%s :: (x: s32) -> s32 { return x * SPLIT_%s; }\\n' $f $f $f > \"$D/app/split-$f.coax\"; done && printf '#include \"split.h\"\\n__attribute__((export_name(\\\"split_face\\\"))) int split_face(int x) { return split_all(x); }\\n' > \"$D/app/split-face.c\"";
+SPLIT_SETUP :: "printf '#import \"Basic\";\\n#load \"split-a.coax\";\\n#load \"split-b.coax\";\\n#load \"split-c.coax\";\\nsplit_all :: (x: s32) -> s32 #export_c { return split_a(x) + split_b(x) + split_c(x); }\\n' > \"$D/app/split.coax\" && for f in a b c; do printf 'SPLIT_%s :: 3;\\nsplit_%s :: (x: s32) -> s32 { return add_sat(x * SPLIT_%s, 0); }\\n' $f $f $f > \"$D/app/split-$f.coax\"; done && printf '#include \"split.h\"\\n__attribute__((export_name(\\\"split_face\\\"))) int split_face(int x) { return split_all(x); }\\n' > \"$D/app/split-face.c\"";
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
