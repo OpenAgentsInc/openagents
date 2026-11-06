@@ -597,12 +597,13 @@ query_sweep :: (c: Colliders, from: WorldPoint, r: f32, by: WorldPoint) -> Query
   #assert !query_clear(cc, world_point(0, 0.5, 0.5), world_point(1, 0, 0), 5).clear && query_clear(cc, world_point(0, 0.5, 0.5), world_point(1, 0, 0), 2).clear;
 }
 
-#forall "rays: the first hit is where marching by containment first finds a collider (1 of 3)" seed: 0..<16 { oracle_rays(seed); }
-#forall "rays: the first hit is where marching by containment first finds a collider (2 of 3)" seed: 16..<32 { oracle_rays(seed); }
-#forall "rays: the first hit is where marching by containment first finds a collider (3 of 3)" seed: 32..<48 { oracle_rays(seed); }
-#forall "sweeps: the first touch is where marching the sphere first finds a collider (1 of 3)" seed: 0..<16 { oracle_sweeps(seed); }
-#forall "sweeps: the first touch is where marching the sphere first finds a collider (2 of 3)" seed: 16..<32 { oracle_sweeps(seed); }
-#forall "sweeps: the first touch is where marching the sphere first finds a collider (3 of 3)" seed: 32..<48 { oracle_sweeps(seed); }
+// Measured up to 18,509,243 steps per slice; 26 million keeps over 25% headroom (#12950).
+#forall "rays: the first hit is where marching by containment first finds a collider (1 of 3)" seed: 0..<16 #steps 26000000 { oracle_rays(seed); }
+#forall "rays: the first hit is where marching by containment first finds a collider (2 of 3)" seed: 16..<32 #steps 26000000 { oracle_rays(seed); }
+#forall "rays: the first hit is where marching by containment first finds a collider (3 of 3)" seed: 32..<48 #steps 26000000 { oracle_rays(seed); }
+#forall "sweeps: the first touch is where marching the sphere first finds a collider (1 of 3)" seed: 0..<16 #steps 26000000 { oracle_sweeps(seed); }
+#forall "sweeps: the first touch is where marching the sphere first finds a collider (2 of 3)" seed: 16..<32 #steps 26000000 { oracle_sweeps(seed); }
+#forall "sweeps: the first touch is where marching the sphere first finds a collider (3 of 3)" seed: 32..<48 #steps 26000000 { oracle_sweeps(seed); }
 
 #forall "an overlap lists exactly the colliders the sphere is closer to than its radius, in order" seed: 0..<32 {
   r := [1] OracleDraw.[OracleDraw.{rng = seed * 31337 + 1}];

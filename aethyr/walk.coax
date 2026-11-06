@@ -715,7 +715,8 @@ held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player {
   #assert q.on_ground && !walk_place(0, 0.41, 0, 0).on_ground;
 }
 
-#forall "speed never passes the top, and changes no faster than ACCEL" run: bool, ix: -3..<4, iy: -3..<4 #steps 26000000 {
+// Measured 20,700,304 steps: keep more than 25% headroom below the near-limit note (#12950).
+#forall "speed never passes the top, and changes no faster than ACCEL" run: bool, ix: -3..<4, iy: -3..<4 #steps 28000000 {
   w: World;
   p := walk_place(0, 0, 0, 0);
   p = walk_input(p, 0, 0, f32(ix) * 0.5, f32(iy) * 0.5, run, false, 0, 0);
