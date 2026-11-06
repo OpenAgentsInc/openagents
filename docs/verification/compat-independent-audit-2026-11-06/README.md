@@ -23,9 +23,15 @@ The frozen driver contains the candidate's required effect declaration.
 After Coax 0.52 is available, reproduce it from a normal isolated worktree:
 
 ```sh
-coax/web/tool.sh docs/verification/compat-independent-audit-2026-11-06/audit.coax \
-  "$PWD/coax/bin/coax"
+cp docs/verification/compat-independent-audit-2026-11-06/audit.coax \
+  coax/tests/compat-independent-audit.coax
+coax/web/tool.sh coax/tests/compat-independent-audit.coax "$PWD/coax/bin/coax"
+rm coax/tests/compat-independent-audit.coax
 ```
+
+The frozen drivers retain their original `coax/tests/` relative imports;
+copy them there before running. The release-reference driver follows the
+same pattern, using the temporary name `compat-release-reference.coax`.
 
 ## Physics Lab integration
 
