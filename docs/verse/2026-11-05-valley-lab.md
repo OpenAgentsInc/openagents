@@ -44,6 +44,14 @@ verification scope is in the [world slice receipt](../verification/valley-lab-wo
 
 ## Landed: original full-source detail in the walking world (2026-11-06)
 
+The next phase adds27,004 spatial source clusters and54,007 conservative
+nodes, with independently pinned Q16/F32 index companions. N compares the
+original draw(default), complete spatial reference and exact cluster cut;
+G2 enables deeper traversal. The west leaf cut removes18.2% of fine color
+triangles, with complete-frame pixels equal to its spatial reference.
+Whole-world speedup remains unqualified, so the original draw stays default.
+See the [source-cluster receipt](../verification/valley-lab-source-clusters-2026-11-06/README.md).
+
 The first source-model GPU page replaces one nearby sandstone instance's
 23,562 fallback triangles with all1,997,616 original triangles. K cycles the
 fallback, bounded Q16 page(default) and exact F32 reference; L shows the

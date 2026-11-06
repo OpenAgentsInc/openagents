@@ -1750,8 +1750,8 @@ async function loadAsset(a) {
   } catch (e) {
     if (gated && (gpu !== owner || owner.retired || engine?.exports !== x)) return;
     a.failed = true;
-    if (a.kind === "storage" && x.coaxial_asset_optional_v1?.(a.i)) {
-      a.buffer ||= device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.INDEX|GPUBufferUsage.COPY_DST});a.size = 0;
+    if (x.coaxial_asset_optional_v1?.(a.i)) {
+      if (a.kind === "storage") a.buffer ||= device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.INDEX|GPUBufferUsage.COPY_DST});a.size = 0;
     } else if (!a.quiet) say(`${app}: ${e.message}`, true);
   }
   a.fetching = false;if (!currentAsset(a)) return;

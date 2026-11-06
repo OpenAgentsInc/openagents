@@ -1,0 +1,7 @@
+coax: note[E0400]: compile-time steps: 17519835 of 20000000 used (87%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    17519172 steps  apps/openagents-web/valleyworld.coax:47:1  #test 'World traversal refuses source coverage holes and the bounded outer edge' itself
+    663 steps  apps/openagents-web/valleyworld.coax:84:1  in 'world_safe' (4 times)
+  fix: do less work #test 'World traversal refuses source coverage holes and the bounded outer edge' itself, split the check, or give it a larger budget with #steps N on the check (or coax test --steps N for every check)
+coax: note[E0400]: compile-time value slots: 32694442 of 33554432 used (97%), above three quarters of the limit; more than 33554432 fails with E0400
+wasm.sh: valleyworld.wasm: 24.1 s: Coax to C 22.5 s (0/1 cached), clang 0.9 s (1/2 cached), link 0.3 s, wasm-opt 0.2 s; 129823 bytes; report /Users/christopherdavid/work/oa-valley-source-clusters/apps/openagents-web/build/.c/valleyworld.timings.json

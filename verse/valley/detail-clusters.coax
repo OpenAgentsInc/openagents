@@ -1,0 +1,37 @@
+// Exact source-range traversal. The admitted companion is scratch for this frame's placement affine.
+#load "world-select.coax";
+#test "fine cluster cuts use the selected original placement and immutable GPU index namespace" {
+ b:[252]u8;wh_fixture(b[..]);o:[16]u32;s:[1]WhSelection;p:[6]WhPlane;p[0].x=1;for k:1..<6 {p[k].w=100;}
+ scan_write_point(b[..],72,v3(-3,-2,-3));scan_write_point(b[..],84,v3(-2,2,3));scan_write_point(b[..],120,v3(2,-2,-3));scan_write_point(b[..],132,v3(3,2,3));scan_write_point(b[..],168,v3(-3,-2,-3));scan_write_point(b[..],180,v3(3,2,3));
+ detail_cluster_cut(o[..],s[..],b[..],p[..],1000,47,32);
+ #assert s[0].draws==1 && s[0].indices==3 && s[0].instances==1 && s[0].nodes==3 && s[0].rejected==1 && !s[0].overflow;
+ #assert o[0]==1015 && o[1]==3 && o[2]==47 && o[3]==1;
+ s[0]=WhSelection.{};detail_cluster_cut(o[..],s[..],b[..],p[..],2000,8,0);#assert s[0].indices==6 && o[0]==2012 && o[2]==8 && s[0].nodes==1;
+ s[0]=WhSelection.{};detail_cluster_cut(o[0..<0],s[..],b[..],p[..],1000,47,32);#assert s[0].overflow && s[0].draws==0;
+ p[0].w= -100;s[0]=WhSelection.{};detail_cluster_cut(o[..],s[..],b[..],p[..],1000,47,32);#assert s[0].draws==0 && s[0].indices==0 && s[0].instances==0 && s[0].rejected==1;
+}
+detail_cluster_cut :: (out:[]u32,s:[]WhSelection,tree:[]u8,planes:[]WhPlane,first:int,instance:int,depth:int) #effects(all) {
+ wh_select(out,s,tree,0,planes,depth);
+ for k:0..<s[0].draws {out[k*4]+=cast(u32)first;out[k*4+2]=cast(u32)instance;}
+}
+#test "fine cluster append accounts the cut and preserves the earlier draw prefix on overflow" {
+ b:[252]u8;wh_fixture(b[..]);o:[12]u32;s:[1]WhSelection;fine:[1]WhSelection;p:[6]WhPlane;for k:0..<6 {p[k].w=100;}
+ wh_emit(o[..],s[..],7,3,9);#assert detail_cluster_append(o[..],s[..],fine[..],b[..],p[..],100,47,32);
+ #assert o[0]==7 && o[1]==3 && o[4]==112 && o[5]==6 && o[6]==47 && s[0].draws==2 && s[0].indices==9 && s[0].nodes==1 && fine[0].indices==6;
+ s[0]=WhSelection.{};fine[0]=WhSelection.{};#assert !detail_cluster_append(o[0..<0],s[..],fine[..],b[..],p[..],100,47,32) && s[0].overflow && s[0].instances==0 && fine[0].indices==6;
+}
+#test "spatial cuts keep separated ranges and fall back to one complete draw under pressure" {
+ b:[348]u8;for value,k:[8]u32.[0x31485756,1,1,5,1,32,56,296] {scan_put(b[..],k*4,value);}for value,k:[6]u32.[0,9,0,5,4,3] {scan_put(b[..],32+k*4,value);}
+ for k:0..<5 {at:=56+k*48;scan_put(b[..],at,cast(u32)(ifx k<3 then k*3 else 0));scan_put(b[..],at+4,cast(u32)(ifx k<3 then 3 else ifx k==3 then 6 else 9));scan_put(b[..],at+8,ifx k<3 then 0xffffffff else ifx k==3 then 0 else 3);scan_put(b[..],at+12,ifx k<3 then 0xffffffff else ifx k==3 then 1 else 2);scan_write_point(b[..],at+16,v3(ifx k==1 || k>=3 then -3.0f32 else 2.0f32,-2,-3));scan_write_point(b[..],at+28,v3(ifx k==1 then -2.0f32 else 3.0f32,2,3));scan_put(b[..],at+40,cast(u32)(ifx k<3 then 0 else k-2));scan_put(b[..],at+44,cast(u32)(ifx k<3 then 3 else 0));}
+ for k:0..<3 {scan_put(b[..],300+k*20,f32_bits(1));}#assert wh_valid(b[..],1,9);
+ p:[6]WhPlane;p[0].x=1;for k:1..<6 {p[k].w=100;}o:[12]u32;s:[1]WhSelection;fine:[1]WhSelection;
+ wh_emit(o[..],s[..],7,3,9);s[0].instances=1;s[0].nodes=2;s[0].rejected=3;#assert detail_cluster_append(o[..],s[..],fine[..],b[..],p[..],100,47,32);
+ #assert s[0].draws==3 && s[0].indices==9 && s[0].instances==2 && s[0].nodes==7 && s[0].rejected==4 && o[4]==100 && o[8]==106 && o[6]==47 && o[10]==47;
+ s[0]=WhSelection.{};fine[0]=WhSelection.{};wh_emit(o[..],s[..],7,3,9);s[0].instances=1;#assert !detail_cluster_append(o[0..<8],s[..],fine[..],b[..],p[..],100,47,32);
+ #assert !s[0].overflow && s[0].draws==2 && s[0].indices==12 && s[0].instances==2 && fine[0].draws==1 && fine[0].instances==1 && fine[0].indices==9 && o[4]==100 && o[5]==9 && o[6]==47;
+}
+detail_cluster_append :: (out:[]u32,s:[]WhSelection,fine:[]WhSelection,tree:[]u8,planes:[]WhPlane,first:int,instance:int,depth:int)->bool #effects(all) {
+ detail_cluster_cut(out[s[0].draws*4..<out.count],fine,tree,planes,first,instance,depth);
+ if fine[0].overflow {fine[0]=WhSelection.{draws=1,indices=cast(int)scan_u32(tree,36),instances=1};wh_emit(out,s,first,fine[0].indices,instance);if !s[0].overflow {s[0].instances+=1;}return false;}
+ s[0].draws+=fine[0].draws;s[0].indices+=fine[0].indices;s[0].instances+=fine[0].instances;s[0].nodes+=fine[0].nodes;s[0].rejected+=fine[0].rejected;return true;
+}

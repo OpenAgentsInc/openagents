@@ -1,0 +1,7 @@
+FAIL #test spatial cuts keep separated ranges and fall back to one complete draw under pressure (0 ms)
+verse/valley/detail-clusters.coax:31:2: error[E0406]: assertion failed
+   #assert !s[0].overflow && s[0].draws==2 && s[0].indices==12 && s[0].instances==2 && fine[0].draws==1 && fine[0].instances==1 && fine[0].indices==9 && o[4]==100 && o[5]==9 && o[6]==47;
+   ^
+  note: in #test spatial cuts keep separated ranges and fall back to one complete draw under pressure
+1 of 68 checks (--only 'spatial cuts keep'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

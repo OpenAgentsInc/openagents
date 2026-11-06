@@ -268,6 +268,13 @@ pages before restoring the old state; pages still pending cannot block root
 recovery or publish from their retired owner. See the
 [physical source-detail checks](../verification/valley-lab-detail-2026-11-06/README.md).
 
+The source-cluster companion uses the same v1 ABI for optional index assets
+and a bounded CPU metadata asset. Optional failure leaves the complete root
+scene available for all three kinds(storage/index/data); only storage needs
+a placeholder binding. Index companions do not add shader storage bindings.
+Coax's complete-profile readiness determines whether a draw may select them.
+See the [physical spatial-source checks](../verification/valley-lab-source-clusters-2026-11-06/README.md).
+
 1. Its module: `<module>.coax` with checks, `<module>-face.c`, `<module>.wgsl`; a `wasm.sh` line in `build.sh`, and its size budget in `apps/openagents-web/wasm-budgets.txt` (`<module> BYTES`, its release size with about 5% room; `build.sh` stops at once on a module without a line, and the build stops a module over its budget and names its biggest functions).
 2. Its pack: `verse/packs/<realm>.json`, compiled with `pack_realm.py` (above).
 3. Its world in `realms.json`: listed `false` until launch, assets `pack:...`, its `style` and `clock`.

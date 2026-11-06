@@ -1,0 +1,38 @@
+// Spatial index companions and VWH1 tree for immutable VDP1 pages; neither source page is rewritten.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../verse/valley/source-clusters.coax";
+#load "../../verse/valley/world-hierarchy.coax";
+#load "../../verse/valley/detail-policy.coax";
+#test "Morton order retains all thirty coordinate bits and radix order is stable" {
+ #assert dcb_morton(0,0,0)==0 && dcb_morton(1,0,0)==1 && dcb_morton(0,1,0)==2 && dcb_morton(0,0,1)==4 && dcb_morton(1023,1023,1023)==0x3fffffff;
+ for k:0..<10 {#assert dcb_morton(1<<k,0,0)==cast(u32)(1<<(k*3)) && dcb_morton(0,1<<k,0)==cast(u32)(1<<(k*3+1)) && dcb_morton(0,0,1<<k)==cast(u32)(1<<(k*3+2));}
+ keys:=[6]u32.[0xffffffff,7,0,7,256,0x80000000];order:=[6]u32.[0,1,2,3,4,5];tmp:[6]u32;dcb_sort(keys[..],order[..],tmp[..]);for k:0..<6 {#assert order[k]==[6]u32.[2,1,3,4,5,0][k];}
+}
+dcb_morton :: (x:int,y:int,z:int)->u32 {out:u32;for k:0..<10 {out|=cast(u32)(((x>>k)&1)<<cast(u32)(k*3));out|=cast(u32)(((y>>k)&1)<<cast(u32)(k*3+1));out|=cast(u32)(((z>>k)&1)<<cast(u32)(k*3+2));}return out;}
+dcb_sort :: (keys:[]u32,order:[]u32,tmp:[]u32) #effects(all) {for pass:0..<4 {bins:[256]int;shift:=cast(u32)(pass*8);for id:order {bins[cast(int)((keys[cast(int)id]>>shift)&255)]+=1;}at:=0;for k:0..<256 {n:=bins[k];bins[k]=at;at+=n;}for id:order {bin:=cast(int)((keys[cast(int)id]>>shift)&255);tmp[bins[bin]]=id;bins[bin]+=1;}for id,k:tmp {order[k]=id;}}}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {return 2;}root:=args_at(a[..],2);path:[4096]u8;
+ q:[DETAIL_CAP]u8;r:[DETAIL_CAP]u8;v:[72000000]u8;indices:[24000000]u8;tree:[16777216]u8;nodes:[262144]SourceCluster;active:[131072]int;
+ keys:[2000000]u32;order:[2000000]u32;tmp:[2000000]u32;permutation:[8000000]u8;qi:[24000128]u8;ri:[24000128]u8;
+ qn:=fs_read(args_at(a[..],0),q[..]);rn:=fs_read(args_at(a[..],1),r[..]);#assert qn>0 && rn>0 && detail_accept(0,asset_id(cast(string)q[0..<qn]),qn) && detail_accept(1,asset_id(cast(string)r[0..<rn]),rn);
+ nv:=detail_info(0).vertices;ni:=detail_info(0).indices;#assert nv*36<=v.count && ni*4<=indices.count;
+ for k:0..<nv {scan_write_point(v[..],k*36,scan_point(r[..],128+k*32));}
+ nt:=ni/3;low:=scan_point(q[..],32);span:=sub(scan_point(q[..],44),low);
+ for triangle:0..<nt {centre:=v3(0,0,0);for corner:0..<3 {id:=scan_u32(r[..],detail_info(1).index_word*4+(triangle*3+corner)*4);#assert id>=12000000 && id<12000000+cast(u32)nv && scan_u32(q[..],detail_info(0).index_word*4+(triangle*3+corner)*4)==id-4000000;centre=add(centre,scan_point(r[..],128+cast(int)(id-12000000)*32));}centre=sub(times(centre,1.0/3.0),low);keys[triangle]=dcb_morton(cast(int)(centre.x/span.x*1023),cast(int)(centre.y/span.y*1023),cast(int)(centre.z/span.z*1023));order[triangle]=cast(u32)triangle;}
+ dcb_sort(keys[0..<nt],order[0..<nt],tmp[0..<nt]);
+ for triangle:0..<nt {old:=cast(int)order[triangle];scan_put(permutation[..],triangle*4,cast(u32)old);for corner:0..<3 {id:=scan_u32(r[..],detail_info(1).index_word*4+(old*3+corner)*4);scan_put(indices[..],(triangle*3+corner)*4,id-10000000);scan_put(qi[..],128+(triangle*3+corner)*4,id-4000000);scan_put(ri[..],128+(triangle*3+corner)*4,id);}}
+ nn:=source_clusters(nodes[..],active[..],v[0..<nv*36],indices[0..<ni*4],0,0,ni);#assert nn>0;leaves:=(nn+1)/2;io:=56+nn*48;size:=io+52;#assert size<=tree.count;
+ for value,k:[8]u32.[0x31485756,1,1,cast(u32)nn,1,32,56,cast(u32)io] {scan_put(tree[..],k*4,value);}
+ for value,k:[6]u32.[0,cast(u32)ni,0,cast(u32)nn,cast(u32)(nn-1),cast(u32)leaves] {scan_put(tree[..],32+k*4,value);}
+ // Include the independently bounded quantization error in every leaf and ancestor.
+ error:=scan_float(q[..],72);padding:=v3(error,error,error);
+ for k:0..<nn {node:=nodes[k];p:=56+k*48;scan_put(tree[..],p,cast(u32)node.first);scan_put(tree[..],p+4,cast(u32)node.count);scan_put(tree[..],p+8,ifx node.left<0 then 0xffffffff else cast(u32)node.left);scan_put(tree[..],p+12,ifx node.right<0 then 0xffffffff else cast(u32)node.right);scan_write_point(tree[..],p+16,sub(node.low,padding));scan_write_point(tree[..],p+28,add(node.high,padding));scan_put(tree[..],p+40,cast(u32)node.height);scan_put(tree[..],p+44,cast(u32)node.vertices);}
+ for lane:0..<3 {scan_put(tree[..],io+4+lane*20,f32_bits(1));}
+ #assert wh_valid(tree[0..<size],1,ni) && fs_write(fs_join(root,"valley-detail.clusters",path[..]),cast(string)tree[0..<size]);
+ #assert fs_write(fs_join(root,"valley-detail.order",path[..]),cast(string)permutation[0..<nt*4]);order_id:=asset_id(cast(string)permutation[0..<nt*4]);
+ for profile:0..<2 {out:=ifx profile==0 then qi[..] else ri[..];bytes:=128+ni*4;for value,k:[8]u32.[0x31494456,1,cast(u32)(profile+1),cast(u32)(ifx profile==0 then 8000000 else 12000000),cast(u32)ni,128,cast(u32)bytes,cast(u32)nt] {scan_put(out,k*4,value);}source_id:=detail_id(profile);for k:0..<8 {for lane:0..<4 {out[32+k*4+lane]=cast,trunc(u8)(source_id.words[k]>>cast(u32)(24-lane*8));out[96+k*4+lane]=cast,trunc(u8)(order_id.words[k]>>cast(u32)(24-lane*8));}}for k:0..<32 {out[64+k]=r[96+k];}#assert fs_write(fs_join(root,ifx profile==0 then "valley-detail-spatial.page" else "valley-detail-spatial-reference.page",path[..]),cast(string)out[0..<bytes]);}
+ print("VWH1 source companion: leaves=% nodes=% height=% bytes=% corners=%\n",leaves,nn,nodes[nn-1].height,size,ni);return 0;
+}

@@ -1,0 +1,7 @@
+PASS exact ownership of all 5992848 original corners in 27004 leaves / 54007 nodes; max 64 vertices / 100 triangles; height 15
+PASS every leaf encloses every referenced F32 and Q16 position; every ancestor encloses both children
+PASS spatial indices permute each original triangle exactly once with original winding and corner attributes
+bytes=2592444 sha256=17b39d202d36ba5d4197bd62f380f65e4a515bd5352a1589e3c1d00ff36abec4
+Q16 spatial index bytes=23971520 sha256=54fd393bd76d1236eb87ac7bf615375edec70113be6b1e777d33f8c6ef710dba
+F32 spatial index bytes=23971520 sha256=0e12d9ca2c4e1802b65e7d2848ac488b15136f2a4adc670399ab3ee85601bfbd
+leaf/root AABB volume fraction: median=0.000003 p90=0.000013

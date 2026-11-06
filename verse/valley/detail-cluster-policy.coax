@@ -1,0 +1,28 @@
+// Three immutable companions. Every one must arrive whole before spatial selection can replace a mesh.
+#load "detail-policy.coax";
+#authority;
+DCS_TREE_CAP :: 4194304;
+DCS_TAG :: 536870912;
+DcsAssets :: struct {ready:[3]bool;revision:int;refused:int;}
+#test "ordinary source cuts cap traversal depth and the deeper leaf walk is diagnostic" {#assert dcs_depth(false)==8 && dcs_depth(true)==32;}
+dcs_depth :: (diagnostic:bool)->int #effects(all) {return ifx diagnostic then 32 else 8;}
+dcs_bytes :: (slot:int)->int #effects(all) {return ifx slot==2 then 2592444 else 23971520;}
+dcs_id :: (slot:int)->AssetId #effects(all) {return ifx slot==0 then AssetId.{words=[8]u32.[0x54fd393b,0xd76d1236,0xeb87ac7b,0xf615375e,0xdec70113,0xbe6b1e77,0x7d33f8c6,0xef710dba]} else ifx slot==1 then AssetId.{words=[8]u32.[0x0e12d9ca,0x2c4e1802,0xb65e7d28,0x48ac488b,0x15136f2a,0x4adc6703,0x99ab3ee8,0x5601bfbd]} else AssetId.{words=[8]u32.[0x17b39d20,0x2d36ba5d,0x4197bd62,0xf380f65e,0x4a515bd5,0x352a1589,0xe3c1d00f,0xf36abec4]};}
+#test "spatial artifacts bind exact profile identities lengths and each digest word" {
+ ids:=[3]AssetId.[AssetId.{words=[8]u32.[0x54fd393b,0xd76d1236,0xeb87ac7b,0xf615375e,0xdec70113,0xbe6b1e77,0x7d33f8c6,0xef710dba]},AssetId.{words=[8]u32.[0x0e12d9ca,0x2c4e1802,0xb65e7d28,0x48ac488b,0x15136f2a,0x4adc6703,0x99ab3ee8,0x5601bfbd]},AssetId.{words=[8]u32.[0x17b39d20,0x2d36ba5d,0x4197bd62,0xf380f65e,0x4a515bd5,0x352a1589,0xe3c1d00f,0xf36abec4]}];
+ for slot:0..<3 {n:=[3]int.[23971520,23971520,2592444][slot];#assert dcs_accept(slot,ids[slot],n) && !dcs_accept(slot,ids[slot],n-1) && !dcs_accept(slot,ids[slot],n+1) && !dcs_accept((slot+1)%3,ids[slot],n);for k:0..<8 {bad:=ids[slot];bad.words[k]^=1;#assert !dcs_accept(slot,bad,n);}}
+ #assert !dcs_accept(-1,ids[0],23971520) && !dcs_accept(3,ids[0],23971520) && !dcs_accept(-1,ids[2],2592444) && !dcs_accept(3,ids[2],2592444) && DCS_TREE_CAP==4194304 && DCS_TAG==536870912;
+ for slot:[3]int.[-1,3,4] {for id:ids {for n:[2]int.[23971520,2592444] {#assert !dcs_accept(slot,id,n);}}}
+}
+#test "spatial chunks are bounded before retention including exact ends and invalid slots" {for slot:0..<3 {n:=dcs_bytes(slot);#assert dcs_extent(slot,0,n) && dcs_extent(slot,n,0) && dcs_extent(slot,n-1,1) && !dcs_extent(slot,n,1) && !dcs_extent(slot,n+1,0) && !dcs_extent(slot,-1,0) && !dcs_extent(slot,0,-1);}#assert !dcs_extent(-1,0,0) && !dcs_extent(3,0,0);}
+#test "spatial publication is idempotent and demands checked metadata before either index profile" {
+ for shape:0..<2 {for slot:0..<3 {s:[1]DcsAssets;valid:=slot<2 || shape==1;#assert dcs_arrive(s[..],slot,dcs_id(slot),dcs_bytes(slot),shape==1)==valid && s[0].ready[slot]==valid && s[0].revision==1 && s[0].refused==ifx valid then 0 else 1;}}
+ s:[1]DcsAssets;for slot:0..<3 {#assert dcs_arrive(s[..],slot,dcs_id(slot),dcs_bytes(slot),true);}#assert s[0].revision==3;#assert dcs_arrive(s[..],1,dcs_id(1),dcs_bytes(1),true) && s[0].revision==3;
+ #assert !dcs_arrive(s[..],1,AssetId.{},1,true) && !s[0].ready[1] && s[0].refused==1 && s[0].revision==4;
+ #assert !dcs_arrive(s[..],-1,AssetId.{},0,true) && !dcs_arrive(s[..],3,AssetId.{},0,true) && s[0].revision==4;
+ for mask:0..<8 {for k:0..<3 {s[0].ready[k]=(mask&(1<<k))!=0;}for profile:-1..<3 {expected:=profile>=0 && profile<2 && (mask&4)!=0 && (mask&(1<<profile))!=0;#assert dcs_available(s[..],profile)==expected;}}
+}
+dcs_accept :: (slot:int,id:AssetId,bytes:int)->bool #effects(all) {return slot>=0 && slot<3 && bytes==dcs_bytes(slot) && asset_same(id,dcs_id(slot));}
+dcs_extent :: (slot:int,held:int,incoming:int)->bool #export_c #effects(all) {return slot>=0 && slot<3 && held>=0 && incoming>=0 && held<=dcs_bytes(slot) && incoming<=dcs_bytes(slot)-held;}
+dcs_arrive :: (s:[]DcsAssets,slot:int,id:AssetId,bytes:int,shape:bool)->bool #effects(all) {if slot<0 || slot>=3 {return false;}if !dcs_accept(slot,id,bytes) || (slot==2 && !shape) {s[0].ready[slot]=false;s[0].revision+=1;s[0].refused+=1;return false;}if !s[0].ready[slot] {s[0].ready[slot]=true;s[0].revision+=1;}return true;}
+dcs_available :: (s:[]DcsAssets,profile:int)->bool #effects(all) {return profile>=0 && profile<2 && s[0].ready[2] && s[0].ready[profile];}

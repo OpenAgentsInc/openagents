@@ -1,0 +1,4 @@
+PASS exact ownership of all 5992848 original corners in 72300 leaves / 144599 nodes; max 64 vertices / 40 triangles; height 17
+PASS every leaf encloses every referenced F32 and Q16 position; every ancestor encloses both children
+bytes=6940860 sha256=e357693b21a3097d22612ab38ce4d3ed1f347df84590c79d1a1f91fd2f8d56d2
+leaf/root AABB volume fraction: median=0.491970 p90=0.621185

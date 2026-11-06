@@ -1,0 +1,3 @@
+ok   #test Morton order retains all thirty coordinate bits and radix order is stable (1 case, 31722 steps, 0 ms)
+1 of 71 checks (--only 'Morton'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
