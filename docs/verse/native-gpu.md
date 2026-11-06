@@ -58,8 +58,12 @@ complete graphics stages from that same portable checked tree. All eleven
 Everglade entry pairs compile with Apple's SDK; seven existing G5 cases pass
 on the Mac against WGSL and native Vulkan with the original tolerances.
 [Qualification, binding ABI and one-command rerun](../verification/everglade-metal-2026-11-05/README.md).
-This is the shader backend; the interactive Mac host is #12868, followed by
-the written three-host contract and native default in #12869.
+The interactive Mac host (#12868) now runs ordinary Everglade at 120 Hz,
+with actual Web/Metal/Vulkan displayed comparisons inside the existing live
+allowance and instrumented producer/recovery checks. See its
+[exact source and runtime record](../verification/metal-host-2026-11-05/current-85c-final.md).
+It is selected with `--world metal`; WebKit remains default until the
+three-host service migration in #12869 completes.
 
 ## G4 and G5: the shader subset, and Everglade in it
 

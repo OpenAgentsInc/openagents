@@ -42,6 +42,7 @@ typedef struct {int64_t slot,generation;} MFHandle;
  NSMutableArray<MFBuffer*> *buffers;id<MTLBuffer> indices;MFHandle indexHandle;
  NSArray<id<MTLBuffer>> *hud;MFHandle hudHandles[2];NSData *packBytes,*packageBytes,*metalBytes;
  NSMutableDictionary<NSString*,MFMedia*> *mediaCache;RhgiImages *mediaCPU;NSData *mediaNotice,*lastMediaNotice;
+ uint64_t mediaParserCalls;
  NSMutableArray<NSData*> *reflectionBytes;NSMutableDictionary<NSNumber*,id<MTLLibrary>> *libraries;
  NSMutableDictionary<NSNumber*,NSData*> *shaderSources;coax_t_HostLifecycle life;int64_t frameTime;
  coax_t_RenderHostPackageState packageState;coax_t_RenderHostEntryBank entryBank;
@@ -106,6 +107,17 @@ static void releaseHandle(MFRealm *r,MFHandle *h){if(h->generation)aethyr_render
 static BOOL live(MFRealm *r,MFHandle h){return aethyr_render_registry_live(ledger(r),h.slot,h.generation);}
 static NSString *text(coax_string s){return [[NSString alloc]initWithBytes:s.data length:(NSUInteger)s.count encoding:NSUTF8StringEncoding];}
 static NSData *file(NSString *dir,coax_string name){return [NSData dataWithContentsOfFile:[dir stringByAppendingPathComponent:text(name)]];}
+typedef struct {const uint8_t *bytes;size_t count;BOOL admitted;} MFMediaPacket;
+static MFMediaPacket mediaPacket(MFRealm *r){
+ uintptr_t p=r->face.media?r->face.media(r->state):0;size_t n=r->face.media_len?r->face.media_len(r->state):0;
+ if(r->face.host_contract_version&&r->face.host_contract_version()==1){size_t capacity=r->face.media_capacity?r->face.media_capacity(r->state):0;
+  if(!hmp_span(p,capacity,n,UINTPTR_MAX,r->face.media_capacity!=NULL))return(MFMediaPacket){0};}
+ return(MFMediaPacket){(const uint8_t*)p,n,YES};
+}
+static coax_t_RenderMediaParse parseMedia(MFRealm *r,coax_v_t_RenderMediaRequest requests,MFMediaPacket *observed){
+ MFMediaPacket p=mediaPacket(r);if(observed)*observed=p;if(!p.admitted)return(coax_t_RenderMediaParse){0};
+ r->mediaParserCalls++;return aethyr_render_media_parse((coax_string){(const char*)p.bytes,(int64_t)p.count},requests);
+}
 // The caller supplies the already resolved physical file. The portable cache
 // admits its measured extent before either callback can retain encoded bytes.
 static int64_t mediaSourceSize(void *raw,coax_string url){
@@ -350,7 +362,7 @@ static void blend(MTLRenderPipelineColorAttachmentDescriptor *a,coax_t_RenderBle
  if(receipt.status!=COAX_RenderRuntimeStatus_ok){
   coax_t_RenderDrawDomain d[4096];coax_t_RenderGeometryResult why=metal_geometry_diagnose(counts,records,words(indices.contents,indices.length,indices.length),(coax_v_f32){uniforms.mutableBytes,(int64_t)uniforms.length/4},(coax_v_t_RenderGeometryBuffer){geometry,mapped.count},(coax_v_f32){vertices.mutableBytes,(int64_t)vertices.length/4},(coax_v_t_RenderDrawDomain){d,4096});fprintf(stderr," diagnostic geometry%u resource%lld draw%lld work%lld\n",why.status,(long long)why.bad_resource,(long long)why.bad_draw,(long long)why.work);
   return [self fail:[NSString stringWithFormat:@"Coax refused frame: runtime%u geometry%u resource%lld draw%lld",receipt.status,receipt.geometry_status,(long long)why.bad_resource,(long long)why.bad_draw]];}
- coax_t_RenderMediaRequest requests[112];uint32_t mediaLength=replay?(uint32_t)textureInput.media_text.size:face.media_len?face.media_len(state):0;coax_t_RenderMediaParse parsed=aethyr_render_media_parse((coax_string){replay?(const char*)textureInput.media_text.data:face.media?(const char*)face.media(state):NULL,mediaLength},(coax_v_t_RenderMediaRequest){requests,112});if(parsed.status!=COAX_RenderMediaStatus_ok)return [self fail:@"Coax refused the media packet"];
+ coax_t_RenderMediaRequest requests[112];coax_t_RenderMediaParse parsed=replay?aethyr_render_media_parse((coax_string){(const char*)textureInput.media_text.data,(int64_t)textureInput.media_text.size},(coax_v_t_RenderMediaRequest){requests,112}):parseMedia(self,(coax_v_t_RenderMediaRequest){requests,112},NULL);if(parsed.status!=COAX_RenderMediaStatus_ok)return [self fail:@"Coax refused the media packet"];
  coax_t_RenderHostMediaImage observed[112];coax_t_RenderHostMediaTexture physical[112];coax_t_RenderMediaRect mediaRects[112];char mediaNames[112][32];NSMutableDictionary<NSNumber*,MFMedia*> *mediaByLine=[NSMutableDictionary dictionary];NSMutableDictionary<NSString*,MFMedia*> *frameMedia=[NSMutableDictionary dictionary];int imageCount=0,physicalCount=0;
  for(int i=0;i<parsed.count;i++){coax_t_RenderMediaRequest request=requests[i];NSString *url=text(request.url);MFMedia *m=mediaCache[url];
   if(replay){char scratch[32];coax_string name=aethyr_render_texture_name((coax_t_RenderBindingSource){.kind=COAX_RenderSourceKind_media_image,.index=request.line,.valid=true},(coax_v_u8){(uint8_t*)scratch,32});for(size_t k=0;k<textureInput.texture_count;k++)if(same(name,textureNames[k].name)){m=[MFMedia new];m->texture=textureImages[k];m->handle=textureHandles[k];m->width=m->texture.width;m->height=m->texture.height;}}
@@ -480,7 +492,7 @@ void mf_shown(void *host,bool shown){MFRealm *r=(__bridge MFRealm*)host;coax_t_L
 int64_t mf_lifecycle_info(void *host,int32_t field){MFRealm *r=(__bridge MFRealm*)host;switch(field){case 0:return r->life.profile.e[0].active;case 1:return r->life.profile.e[0].drawing;case 2:return r->life.shown;case 3:return r->life.focused;case 4:return r->life.last_us;default:return -1;}}
 bool mf_replay(void *host,const char *path){return [(__bridge MFRealm*)host loadReplay:path];}
 bool mf_recover(void *host){return [(__bridge MFRealm*)host recoverGPU];}
-const uint8_t *mf_cpu_bytes(void *host,int32_t kind,size_t *n){MFRealm *r=(__bridge MFRealm*)host;*n=0;if(kind==0){*n=r->uniforms.length;return r->uniforms.bytes;}if(kind==1){*n=(size_t)r->lastHud*r->face.vertex_floats()*4;return r->vertices.bytes;}if(kind==2){*n=(size_t)r->face.draw_count(r->state)*16;return(void*)r->face.draws(r->state);}if(kind>=3&&kind<=6){*n=r->face.store_bytes(r->state,kind-3);return(void*)r->face.store(r->state,kind-3);}if(kind==7){*n=r->face.particle_bytes(r->state);return(void*)r->face.particles(r->state);}if(kind==8){*n=r->stateBytes.length;return r->stateBytes.bytes;}if(kind==9&&r->face.media&&r->face.media_len){*n=r->face.media_len(r->state);return(void*)r->face.media(r->state);}return NULL;}
+const uint8_t *mf_cpu_bytes(void *host,int32_t kind,size_t *n){MFRealm *r=(__bridge MFRealm*)host;*n=0;if(kind==0){*n=r->uniforms.length;return r->uniforms.bytes;}if(kind==1){*n=(size_t)r->lastHud*r->face.vertex_floats()*4;return r->vertices.bytes;}if(kind==2){*n=(size_t)r->face.draw_count(r->state)*16;return(void*)r->face.draws(r->state);}if(kind>=3&&kind<=6){*n=r->face.store_bytes(r->state,kind-3);return(void*)r->face.store(r->state,kind-3);}if(kind==7){*n=r->face.particle_bytes(r->state);return(void*)r->face.particles(r->state);}if(kind==8){*n=r->stateBytes.length;return r->stateBytes.bytes;}if(kind==9){MFMediaPacket p=mediaPacket(r);*n=p.count;return p.bytes;}return NULL;}
 size_t mf_cpu_capacity(void *host,int32_t kind){MFRealm *r=(__bridge MFRealm*)host;if(kind==0)return r->uniforms.length;if(kind>=3&&kind<=6)return r->face.store_cap(kind-3);if(kind==7)return r->face.particle_cap();return 0;}
 void mf_still(void *host,bool value){((__bridge MFRealm*)host)->still=value;}
 bool mf_asset(void *host,int32_t index,const uint8_t *bytes,size_t count){MFRealm *r=(__bridge MFRealm*)host;if(!r->face.asset||!r->face.asset_capacity||!r->face.asset_ready)return false;uintptr_t dst=r->face.asset(r->state,index,(uint32_t)count);uint32_t cap=r->face.asset_capacity(r->state,index);if(aethyr_render_asset_span(dst,cap,count,UINT64_MAX).status!=COAX_RenderFrameStatus_ok){r->face.asset_ready(r->state,index,0);return false;}if(count)memcpy((void*)dst,bytes,count);r->face.asset_ready(r->state,index,(uint32_t)count);return true;}
@@ -521,6 +533,11 @@ bool mf_media_snapshot(void *host,const char *url,const char *path){
 const uint8_t *mf_media_notice(void *host,size_t *count){MFRealm *r=(__bridge MFRealm*)host;*count=r->lastMediaNotice.length;return r->lastMediaNotice.bytes;}
 int64_t mf_media_info(void *host,const char *url,int32_t field){MFRealm *r=(__bridge MFRealm*)host;MFMedia *m=r->mediaCache[[NSString stringWithUTF8String:url]];if(!m)return 0;switch(field){case 0:return 1;case 1:return m->texture&&!m->failed;case 2:return m->failed;case 3:return m->width;case 4:return m->height;default:return -1;}}
 int64_t mf_media_cache_info(void *host,int32_t field){MFRealm *r=(__bridge MFRealm*)host;return field==0?(int64_t)rhgi_count(r->mediaCPU):field==1?(int64_t)rhgi_bytes(r->mediaCPU):-1;}
+bool mf_media_span_probe(void *host,int64_t *observed,size_t count){
+ MFRealm *r=(__bridge MFRealm*)host;if(!r->fixture||!observed||count!=5)return false;coax_t_RenderMediaRequest requests[112];MFMediaPacket p;uint64_t before=r->mediaParserCalls;
+ (void)parseMedia(r,(coax_v_t_RenderMediaRequest){requests,112},&p);int64_t sum=0;if(p.admitted)for(size_t i=0;i<p.count;i++)sum+=p.bytes[i];
+ observed[0]=p.admitted;observed[1]=(int64_t)p.count;observed[2]=sum;observed[3]=(int64_t)(r->mediaParserCalls-before);observed[4]=!p.admitted;return true;
+}
 const uint8_t *mf_frame_jpeg(void *host,size_t *count){
  *count=0;MFRealm *r=(__bridge MFRealm*)host;id<MTLTexture> t=r->presentedTexture?:r->targets[@(COAX_RenderTarget_screen)];if(!t||t.pixelFormat!=MTLPixelFormatBGRA8Unorm)return NULL;
  id<MTLCommandBuffer> end=[r->queue commandBuffer];[end commit];[end waitUntilCompleted];if(end.error)return NULL;

@@ -1,0 +1,27 @@
+{
+  "closedLedgerLive" : 0,
+  "closedLedgerWords" : 0,
+  "closedMediaBytes" : 0,
+  "completed" : 90,
+  "draws" : 136,
+  "frames" : 90,
+  "images" : [
+
+  ],
+  "ledgerEpoch" : 91,
+  "ledgerLive" : 37,
+  "ledgerWords" : 23529063,
+  "mediaOwnership" : [
+
+  ],
+  "pending" : 0,
+  "recoveries" : 0,
+  "recoveryReleasedLive" : 0,
+  "schema" : "aethyr.metal.effects-result.v1",
+  "seconds" : 3.6825666250661016,
+  "snapshots" : [
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-final-asan-native90\/native\/graph.f32",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-final-asan-native90\/native\/frame.f32"
+  ],
+  "stateAddress" : 4491069440
+}

@@ -68,6 +68,12 @@ An AppKit shell around the website's Everglade 5e WebGPU engine in WKWebView,
 with its own local room, page server and local Parakeet voice service. Requires an Apple Silicon Mac running
 macOS 26 or later, Xcode and the existing Coax web build toolchain.
 
+`--world metal` selects the native AppKit/CAMetalLayer realm host with the
+same Coax Everglade producer and renderer. It uses the shared canonical assets,
+Coax audio mixer and native room. Its [Mac qualification](../../docs/verification/metal-host-2026-11-05/current-85c-final.md)
+records actual 120 Hz gameplay, frame parity, input, session reload and GPU
+recovery. WebKit remains default while #12869 completes the common migration.
+
 Offline `local:` sockets use that native room process through the same text
 messages as a network room. The loopback-only `--native-local` room option admits
 one ticketless `everglade/local-1` seat; ordinary rooms still require tickets.

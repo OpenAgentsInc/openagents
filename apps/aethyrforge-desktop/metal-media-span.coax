@@ -1,0 +1,13 @@
+// Common authored hostile media offers through the actual native SDK reader.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../aethyr/host/media-span-conformance.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])<3{tool_errln("usage: metal-media-span ROOT SDK NEW_OUTPUT [--existing]");return 2;}sdk:=args_at(a[..],1);dir:=args_at(a[..],2);paths:[4][4096]u8;if !fs_mkdir(dir){return 1;}plan:=fs_join(dir,"plan.json",paths[0][..]);receipt:=fs_join(dir,"receipt.json",paths[1][..]);bytes:[4096]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"operations");jo_arr(o[..]);
+ for i:0..<8{jo_obj(o[..]);jo_key(o[..],"kind");jo_int(o[..],ifx i==2 then 933 else ifx i==3 then 931 else ifx i==4 then 934 else 930);jo_key(o[..],"length");jo_int(o[..],ifx i==1 then 5 else ifx i==2 then 1 else ifx i==6 then 0 else 4);jo_key(o[..],"capacity");jo_bool(o[..],i!=5);jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);if o[0].bad||!fs_write(plan,jo_text(o[..])){return 1;}
+ if !args_has(a[..],"--existing"){cmd:=[5]string.[fs_join(sdk,"MetalMediaSpan",paths[2][..]),dir,sdk,plan,receipt];out:[65536]u8;err:[65536]u8;r:=proc_run(cmd[..],60000,out[..],err[..]);if !fs_write(fs_join(dir,"sdk.stderr",paths[3][..]),cast(string)err[0..<r.err_n])||r.started!=0||r.status!=0||r.cut||r.timed_out{return 1;}}
+ n:=fs_read(receipt,bytes[..]);doc:[1]Jv;nodes:[256]JvNode;if n<1||!jv_parse(doc[..],cast(string)bytes[0..<n],nodes[..]){return 1;}d:=doc[0];list:=jv_get(d,0,"observed");if jv_len(d,list)!=40{return 1;}rows:[40]int;for i:0..<40{rows[i]=jv_int(d,jv_at(d,list,i),-1);}ok:=hmsp_accept(rows[..])&&jv_int(d,jv_get(d,0,"producerFrames"),-1)==8;print("Actual Metal measured media reader/parser:40words,8continuing producerframes:%\n",ok);return ifx ok then 0 else 1;
+}

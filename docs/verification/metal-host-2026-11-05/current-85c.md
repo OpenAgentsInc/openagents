@@ -59,6 +59,8 @@ SHA identities are committed in `current-85c/`.
 The staged isolated shell contains the parent's current Mac room artifact
 SHA `90dc184cb1d3baee9cefb416043bda886b2793134bc15aaf24e4e2724be7d10a`
 (85c plus the 580e input-age observation, 662 room checks). This checkpoint
-has not yet run its ordinary window/session gate. Current displayed frame
-matrix, packet-capacity adoption and final session/recovery remain separate
-exits. WebKit remains default; neither issue is closed by this candidate.
+now passes its ordinary display-rate window, same-seat GPU rebuild/reload,
+packet-capacity and normal/ASan complete-frame recovery gates. The
+[final acceptance record](current-85c-final.md) binds those results and the
+new current displayed/direct Vulkan matrix to their exact inputs. WebKit
+remains default; the three-host migration remains #12869's responsibility.

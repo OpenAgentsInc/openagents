@@ -1,0 +1,34 @@
+{
+  "closedLedgerLive" : 0,
+  "closedLedgerWords" : 0,
+  "closedMediaBytes" : 0,
+  "completed" : 2,
+  "draws" : 136,
+  "frames" : 2,
+  "images" : [
+    {
+      "bytes" : 26270,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-final-asan-replay\/frame-image",
+      "height" : 180,
+      "width" : 320
+    }
+  ],
+  "ledgerEpoch" : 3,
+  "ledgerLive" : 37,
+  "ledgerWords" : 23529063,
+  "mediaOwnership" : [
+
+  ],
+  "pending" : 0,
+  "recoveries" : 1,
+  "recoveryReleasedLive" : 0,
+  "schema" : "aethyr.metal.effects-result.v1",
+  "seconds" : 1.0960908333072439,
+  "snapshots" : [
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-final-asan-replay\/metal.f32",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-final-asan-replay\/presented.f32",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-final-asan-replay\/recovered.f32",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-final-asan-replay\/recovered-presented.f32"
+  ],
+  "stateAddress" : 4517873664
+}

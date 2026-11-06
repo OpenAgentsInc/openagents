@@ -65,6 +65,7 @@ const uint8_t *mf_media_notice(void *host,size_t *count);
 // 0 cached,1 ready,2 failed,3 width,4 height (diagnostic observation only).
 int64_t mf_media_info(void *host,const char *url,int32_t field);
 int64_t mf_media_cache_info(void *host,int32_t field);
+bool mf_media_span_probe(void *host,int64_t *observed,size_t count);
 // Test-only source upload and one presentation pass; never calls the producer.
 // Quantized requires the separately linked private Coax v1 descriptor.
 bool mf_present_probe(void *host,const uint8_t *bytes,size_t count,int64_t width,int64_t height,int64_t format,bool quantized);

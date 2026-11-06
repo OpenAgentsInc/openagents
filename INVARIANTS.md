@@ -254,9 +254,20 @@ without storage; nonempty packets require that export and the complete
 measured span before a view or parser call. Refused bytes produce an empty
 media request set and no derived readiness notice. Browser component receipts
 observe all 40 fields through the real shared-renderer entry point; policy
-and observer root gates kill 4/47 mutants without equivalents. Native and
-ordinary world integration remain separate exits. See the host contract's
+and observer root gates kill 4/47 mutants without equivalents. Metal's actual
+reader/parser passes the same 40 fields normally and under ASan, with no
+parser call on refusal and eight continuing producer frames. See the host contract's
 `media-packet.md` and verification `media-spans.md`.
+
+The opt-in Mac Metal host's final 85c producer snapshot runs ordinary gameplay
+at its observed 120 Hz display rate, with same-seat GPU rebuild and engine
+reload, fresh gesture ownership, and final GPU/CPU/audio retirement. Actual
+current browser-to-Metal and direct native90-to-Vulkan comparisons pass the
+unchanged live allowance; nonzero strict failures remain recorded. Its final
+ASan run includes all four genuine producer C units. This completes the
+Mac host acceptance, not the remaining three-host/default migration. Exact
+compiler, producer, shader and SDK identities remain separate in
+`docs/verification/metal-host-2026-11-05/current-85c-final.md`.
 
 The new admitted 3f8 compiler regenerates shader products byte-identical to
 the frozen graphics corpus. Actual current17a browser, Vulkan and Metal

@@ -1,8 +1,12 @@
-# Interactive Metal host (#12868): qualification in progress
+# Interactive Metal host (#12868)
 
 The opt-in `--world metal` AppKit host executes the shared Coax renderer and
-Everglade producer. The desktop default remains WebKit. This record does not
-close #12868 or qualify the three-host default change in #12869.
+Everglade producer. Its [final current-source acceptance](current-85c-final.md)
+runs at 120 Hz and passes complete Web/Metal/Vulkan comparisons at the
+unchanged tolerances, with normal and instrumented session/recovery gates.
+The desktop default remains WebKit; #12869 owns the remaining three-host
+service/default migration. The sections below preserve earlier checkpoints
+and failures at their named source snapshots.
 
 The durable raw observations are under
 `~/.openagents/aethyrforge/metal-host-12868/`. Tests use a separate app bundle,
