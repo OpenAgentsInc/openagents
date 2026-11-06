@@ -93,11 +93,53 @@ FeSpan :: struct { ok: bool; begin: int; body: int; end: int; }
   #assert fe_constant("other :: () { X :: 2; } X :: 1;", "X").ok;
   #assert fe_constant("alias :: X; X :: 1;", "X").ok;
 }
+#test "door replacement retains its clamp and admits only a scalar expression" {
+  s := "door_ease :: (t: f32) -> f32 { k := clamp(t, 0, 1); return k*k*(3-2*k); }";
+  p := fe_scalar_span(s,"door_ease","t","f32");
+  #assert p.ok && fe_door_body(s[p.body..<p.end]);
+  #assert !fe_door_body("{ k := clamp(t, 0, 2); return k; }");
+  #assert !fe_door_body("{ k := clamp(t, 0, 1); return clock(); }");
+  #assert !fe_door_body("{ k := clamp(t, 0, 1); return k; } #load \"x\";");
+  #assert !fe_door_body("{ return t; }");
+  #assert !fe_scalar_span(s,"door_ease","m","f32").ok;
+  #assert !fe_scalar_span(s,"door_ease","t","int").ok;
+  #assert fe_door_context(s,s);
+  #assert !fe_door_context("",s) && !fe_door_context(s,"") && !fe_door_context("","");
+  #assert !fe_door_context(s,"// changed\ndoor_ease :: (t:f32)->f32 { k:=clamp(t,0,1);return k; }");
+}
+#test "helper extraction preserves the actual complete declaration" {
+  s := "// hi :: () {}\nlo :: (a:f32,b:f32)->f32 {if a<b {return a;}return b;} hi :: (a:f32,b:f32)->f32 {return a+b;}";
+  p:=fe_named(s,"lo");#assert p.ok && s[p.begin..<p.end]=="lo :: (a:f32,b:f32)->f32 {if a<b {return a;}return b;}";
+  #assert fe_named(s,"hi").ok && !fe_named(s,"missing").ok;
+  #assert !fe_named("lo :: () {", "lo").ok;
+  #assert !fe_named("lo :: () {} lo :: () {}", "lo").ok;
+  #assert !fe_named("lo := 1;", "lo").ok;
+  #assert !fe_named("lo () {}", "lo").ok;
+  #assert !fe_named("lo :: 1;", "lo").ok;
+  #assert !fe_named("} lo :: () {}", "lo").ok;
+  #assert !fe_named("lo :: () {} `", "lo").ok;
+  #assert fe_named("alias :: lo; lo :: () {}", "lo").ok;
+  #assert fe_named("X :: 1; lo :: () {}", "lo").ok;
+  #assert fe_named("other :: () {lo();} lo :: () {}", "lo").ok;
+}
+#test "door expression storage accepts its exact bound and refuses one more byte" #steps 10000000 {
+  b:[16464]u8;n:=0;
+  prefix:="{ k := clamp(t, 0, 1);";tail:="return k; }";
+  for c:prefix {b[n]=c;n+=1;}
+  for i:0..<16383-tail.count {b[n]=' ';n+=1;}
+  for c:tail {b[n]=c;n+=1;}
+  #assert fe_door_body(cast(string)b[0..<n]);
+  b[n]=' ';n+=1;
+  #assert !fe_door_body(cast(string)b[0..<n]);
+}
 
 fe_span :: (text: string, name: string) -> FeSpan {
+  return fe_scalar_span(text,name,"m","int");
+}
+fe_scalar_span :: (text: string, name: string, parameter: string, result: string) -> FeSpan {
   state := [1]LX_State.[LX_begin(text.count)]; decoded: [4096]u8; message: [256]u8;
   depth := 0; item := true; progress := -1; collecting := false; found: FeSpan;
-  expected := [9]string.["::", "(", "m", ":", "f32", ")", "->", "int", "{"];
+  expected := [9]string.["::", "(", parameter, ":", "f32", ")", "->", result, "{"];
   while true {
     r := LX_next(text, state[..], decoded[..], message[..]);
     if r.diagnostic.code != "" { return FeSpan.{}; }
@@ -126,6 +168,36 @@ fe_same_context :: (baseline: string, candidate: string, name: string) -> bool {
   a := fe_span(baseline, name); b := fe_span(candidate, name);
   // A valid baseline has a nonempty prefix; it cannot match an absent body.
   return a.ok && baseline[0..<a.body] == candidate[0..<b.body] && baseline[a.end..<baseline.count] == candidate[b.end..<candidate.count];
+}
+fe_door_context :: (baseline: string, candidate: string) -> bool {
+  a:=fe_scalar_span(baseline,"door_ease","t","f32");b:=fe_scalar_span(candidate,"door_ease","t","f32");
+  return a.ok && baseline[0..<a.body]==candidate[0..<b.body] && baseline[a.end..<baseline.count]==candidate[b.end..<candidate.count];
+}
+fe_door_body :: (body: string) -> bool {
+  state:=[1]LX_State.[LX_begin(body.count)];decoded:[64]u8;message:[256]u8;
+  for word:[12]string.["{","k",":=","clamp","(","t",",","0",",","1",")",";"] {
+    r:=LX_next(body,state[..],decoded[..],message[..]);if r.diagnostic.code!="" || body[r.token.loc.offset..<state[0].pos]!=word {return false;}
+  }
+  // Reuse the closed-expression admission after the immutable local preamble.
+  rest:[16384]u8;n:=0;rest[n]='{';n+=1;
+  if body.count-state[0].pos>rest.count-n {return false;}
+  for c:body[state[0].pos..<body.count] {rest[n]=c;n+=1;}
+  constants:=[2]string.["k","t"];return fe_expression(cast(string)rest[0..<n],constants[..]);
+}
+fe_named :: (text: string, name: string) -> FeSpan {
+  state:=[1]LX_State.[LX_begin(text.count)];decoded:[4096]u8;message:[256]u8;
+  item:=true;depth:=0;collecting:=false;colon:=false;found:FeSpan;
+  while true {
+    r:=LX_next(text,state[..],decoded[..],message[..]);if r.diagnostic.code!="" {return FeSpan.{};}
+    t:=r.token;if t.kind==LX_Kind.k_eof {break;}word:=text[t.loc.offset..<state[0].pos];
+    if colon {if t.kind!=LX_Kind.k_coloncolon {return FeSpan.{};}colon=false;}
+    if item && word==name {if found.ok {return FeSpan.{};}found.begin=t.loc.offset;collecting=true;colon=true;}
+    item=false;
+    if t.kind==LX_Kind.k_lbrace {depth+=1;}
+    if t.kind==LX_Kind.k_rbrace {depth-=1;if depth<0 {return FeSpan.{};}if depth==0 {item=true;if collecting {found.end=state[0].pos;found.ok=true;collecting=false;}}}
+    if depth==0 && t.kind==LX_Kind.k_semicolon {item=true;if collecting {return FeSpan.{};}}
+  }
+  if depth!=0 {return FeSpan.{};}return found;
 }
 fe_known :: (name: string, constants: [] const string) -> bool {
   for s: [9]string.["m", "cast", "int", "f32", "floor", "ifx", "then", "else", "return"] { if name == s { return true; } }
