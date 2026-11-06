@@ -1497,37 +1497,46 @@ async function loadPack(pack) {
   if(hostTransport)return loadPackV1(pack);
   if (pack.fetching || pack.done) return;pack.fetching = true;
   const parts = assets.filter((a) => a.pack === pack);
+  const owner = engine, generation = wanted;
   let entries = null;
   try {
     if (pack.away) throw new Error("private");
-    let session = null, r = null;
-    // the first of its urls that answers (a phone's build, then the full pack)
-    for (const url of pack.urls || [pack.url]) {
-      session = null;
-      if (pack.broker) {
-        const s = await fetch(url, { method: "POST", cache: "no-store", credentials: "same-origin" });
-        if (!s.ok) { r = s; continue; }
-        session = await s.json();
+    // Catalog entry views already retain this complete encoded pack. Reuse that
+    // same storage on device replacement, within its original engine only.
+    // Broker sessions still perform their authorization and download each time.
+    let bytes = !pack.broker && pack.retainedSource?.owner.deref() === owner && pack.retainedSource.generation === generation
+      ? pack.retainedSource.bytes : null;
+    if (!bytes) {
+      pack.retainedSource = null;
+      let session = null, r = null;
+      // the first of its urls that answers (a phone's build, then the full pack)
+      for (const url of pack.urls || [pack.url]) {
+        session = null;
+        if (pack.broker) {
+          const s = await fetch(url, { method: "POST", cache: "no-store", credentials: "same-origin" });
+          if (!s.ok) { r = s; continue; }
+          session = await s.json();
+        }
+        r = await fetch(session ? session.url : url, pack.quiet ? { cache: "no-store" } : undefined);
+        if (r.ok && r.body) { pack.url = url; break; }
       }
-      r = await fetch(session ? session.url : url, pack.quiet ? { cache: "no-store" } : undefined);
-      if (r.ok && r.body) { pack.url = url; break; }
+      if (!r || !r.ok || !r.body) throw new Error(`${pack.url}: ${r ? r.status : 0}`);
+      const reader = r.body.getReader(), chunks = [];
+      let loaded = 0, total = session ? session.size : Number(r.headers.get("content-length")) || 0, told = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value); loaded += value.length;
+        if (!session && loaded >= 12 && chunks[0].length >= 12) total = new DataView(chunks[0].buffer, chunks[0].byteOffset).getUint32(8, true);
+        loading.bytes(pack.url, loaded, total);
+        if (performance.now() - told > 100) { told = performance.now(); send(PACK_KIND, `${loaded} ${total}`); }
+      }
+      bytes = new Uint8Array(loaded);
+      let at = 0; for (const c of chunks) { bytes.set(c, at); at += c.length; }
+      chunks.length = 0;
+      if (session) bytes = await privatePack(session, bytes);
+      send(PACK_KIND, `${loaded} ${loaded}`);
     }
-    if (!r || !r.ok || !r.body) throw new Error(`${pack.url}: ${r ? r.status : 0}`);
-    const reader = r.body.getReader(), chunks = [];
-    let loaded = 0, total = session ? session.size : Number(r.headers.get("content-length")) || 0, told = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value); loaded += value.length;
-      if (!session && loaded >= 12 && chunks[0].length >= 12) total = new DataView(chunks[0].buffer, chunks[0].byteOffset).getUint32(8, true);
-      loading.bytes(pack.url, loaded, total);
-      if (performance.now() - told > 100) { told = performance.now(); send(PACK_KIND, `${loaded} ${total}`); }
-    }
-    let bytes = new Uint8Array(loaded);
-    let at = 0; for (const c of chunks) { bytes.set(c, at); at += c.length; }
-    chunks.length = 0;
-    if (session) bytes = await privatePack(session, bytes);
-    send(PACK_KIND, `${loaded} ${loaded}`);
     if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;
     // Optional pack gate v1: SHA256 is a platform effect; acceptance stays in the realm's Coax.
     const packGate = engine.exports;
@@ -1558,7 +1567,9 @@ async function loadPack(pack) {
     if (images.length) { layers.texture = await layerTexture(images);if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;if (gpu.renderer) gpu.renderer.layerTexture = layers.texture;layers.size = images.length; }
     else layers.failed = true;
     for (const e of of(PACK_SOUND)) if (!assets.some((a) => a.kind === "sound" && a.name === e.name)) assets.push({ i: assets.length, kind: "sound", name: e.name, bytes: e.bytes, done: true });
-  } catch (e) { for (const a of parts) a.failed = true; if (dev) console.error(`${app} asset pack: ${e.message}`); if (!pack.quiet) say(`${app}: ${e.message}`, true); }
+    if (!pack.broker && typeof WeakRef === "function" && engine === owner && wanted === generation && parts.every(a => !a.failed))
+      pack.retainedSource = { owner: new WeakRef(owner), generation, bytes };
+  } catch (e) { pack.retainedSource = null;for (const a of parts) a.failed = true; if (dev) console.error(`${app} asset pack: ${e.message}`); if (!pack.quiet) say(`${app}: ${e.message}`, true); }
   pack.fetching = false;pack.done = true;
   if (!parts.every(currentAsset)) return;
   for (const a of parts) { a.done = true; deliver(a); }
