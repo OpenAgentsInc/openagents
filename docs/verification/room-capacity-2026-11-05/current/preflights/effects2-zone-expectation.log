@@ -1,0 +1,216 @@
+stress preflight: all_ten_open=true retries=0 (six attempts per socket; overall 10000 ms deadline)
+stress initial: actor=0 seat=0 position=0.0/-84.0 slot=32
+stress health:
+ok 10 players, fanout p50 100 us p95 100 us over 4662 reads, 5 rate-limited, 0 slow closed, shard 1, everglade tick p50 2000 us at the 95th 2800 us over 464 ticks, waiting 0 bytes most, 0 ms oldest, 2 world events running, drain none
+checkpoints pending 0, flying 0, refused 0, applied 0, duplicates 0
+background pending 0/6, offered 55, refused 15, expired 0, late 1, failed 11
+work process rooms 2, lowest credit 3000 us, largest last tick 1087 us room 0, deferred ticks 0, refused new work 0, retired rooms 0
+world preparation max 27401 us room 0, startup preparation 420677 us, last publication 636 us
+stress observed report:
+process generation=1793926016345
+capacity startup ready=1
+observation scope=process report window
+out scope=accepted application frames including websocket framing
+transport kernel bytes including upgrade and controls a second=162860
+transport discarded queued bytes a second=0
+transport refused frame bytes a second=0
+transport refused frames a second=0.0
+observation counter overflow=0
+server ack scope=input heard to final D accepted by socket queue
+server queued ack p50 ms=24
+server queued ack p95 ms=34
+server queued ack samples=2729
+shard=1
+players=10
+ticks a second=30.0
+tick p50 ms=1.93
+tick p95 ms=2.83
+tick p99 ms=3.11
+players p50 ms=0.14
+players p95 ms=0.21
+players p99 ms=0.23
+raiders p50 ms=0.11
+raiders p95 ms=0.21
+raiders p99 ms=0.26
+effects p50 ms=0.25
+effects p95 ms=0.93
+effects p99 ms=1.27
+folk p50 ms=0.07
+folk p95 ms=0.08
+folk p99 ms=0.09
+writing p50 ms=0.30
+writing p95 ms=0.40
+writing p99 ms=0.51
+sending p50 ms=0.17
+sending p95 ms=0.23
+sending p99 ms=0.36
+measuring % of tick=0.71
+queue bytes most=0
+queue age ms most=0
+input queue scope=process latest pending simulation inputs at report time
+input queued total=10
+input oldest pending ms=12
+input queued a seat most=1
+input credit drops since start=9
+input unknown clock ages=0
+relevant entities a seat=50.6
+relevant entities most=51
+interest scope=process latest picks
+interest aggregation us=2
+interest seats=10
+interest whole total=506
+interest whole most=51
+interest health only total=0
+interest health only most=0
+interest blocked total=0
+interest blocked most=0
+interest hidden total=0
+interest hidden most=0
+interest worst|pair-stress-busy|0|51|0|0|0
+rows sent for their age a second=0.0
+row wait ticks most=0
+rows left for later most=0
+replication scope=process serialized output before relay admission
+rows serialized a second=6219.7
+row text bytes serialized a second=148251
+rows deferred a second=17.0
+rows latest serialized total=163
+rows latest deferred total=0
+replication worst|pair-stress-busy|8|18|0
+checkpoint pending=0
+checkpoint flying=0
+checkpoint posts=0
+checkpoint retries=0
+checkpoint failures=0
+checkpoint applied=0
+checkpoint duplicates=0
+checkpoint late receipts=0
+checkpoint capacity refusals=0
+checkpoint stale owner refusals=0
+checkpoint resident=0
+checkpoint accepted=0
+checkpoint capture age ms most=0
+checkpoint receipt age ms most=0
+checkpoint paused rooms=0
+checkpoint finalizing=0
+legacy save pending=10
+legacy save flying=0
+legacy save posts=7
+legacy save retries=6
+legacy save failures=7
+legacy save applied=0
+legacy save duplicates=0
+legacy stale owner refusals=0
+legacy save abandoned=0
+legacy save evicted=0
+owner generation most=0
+owner ticket refusals=0
+checkpoint active loss bound ms=30000
+checkpoint healthy recovery target ms=60000
+capacity draining=0
+capacity native slots=16
+capacity live worlds=2
+capacity unused worlds=14
+capacity seated connections=10
+capacity grace holds=0
+capacity initial gates=0
+capacity scope=native world slots and seat state; API placement caps and reservations are separate
+removal bytes a second=109
+removals waiting a second=0.0
+player info bytes a second=0
+player info waiting a second=0.0
+join pieces bytes a second=0
+join pieces waiting a second=0.0
+cue bytes a second=1593
+cues dropped a second=0.0
+outcome bytes a second=405
+outcomes lost a second=0.0
+snapshots after a stall a second=0.00
+towns sent again a second=0.00
+snapshots held for a slow page a second=0.0
+input to ack p50 ms=32
+input to ack p95 ms=62
+joins=0
+join burst bytes=0
+join burst bytes most=0
+join burst ms=0
+join burst ms most=0
+rejoins tried=0
+rejoins seated=0
+rejoins same seat=0
+old socket frames dropped=0
+refused no room=0
+refused ticket=0
+refused kicked=0
+refused shard=0
+refused full=0
+refused version=0
+refused engine=0
+refused rules=0
+refused content=0
+refused schema=0
+refused elsewhere=0
+build engine=1 rules=1 content=1 wire=4-4 schema=2
+out bytes a second=162860
+out messages a second=300
+in bytes a second=8742
+in messages a second=301
+out D bytes a second=162860
+out D a second=300
+out D e bytes a second=1979
+out D e a second=89
+out D g bytes a second=412
+out D g a second=9
+out D o bytes a second=162
+out D o a second=32
+out D x bytes a second=109
+out D x a second=12
+out D s players bytes a second=36809
+out D s players a second=2266
+out D s townsfolk bytes a second=49761
+out D s townsfolk a second=1833
+out D s made bytes a second=67660
+out D s made a second=2120
+out D header bytes a second=5969
+out D header a second=300
+in C bytes a second=100
+in C a second=3
+in I bytes a second=8642
+in I a second=298
+seat|pair-stress-busy|0|0|0|51|34|62|10
+queued ack|pair-stress-busy|0|24|34
+saved|pair-stress-busy|0|1|0|0|0|-1|-1|0|13|1|0
+seat|pair-stress-busy|1|0|0|51|32|62|10
+queued ack|pair-stress-busy|1|24|34
+saved|pair-stress-busy|1|1|0|0|0|-1|-1|0|17|1|0
+seat|pair-stress-busy|2|0|0|51|32|62|10
+queued ack|pair-stress-busy|2|24|34
+saved|pair-stress-busy|2|1|0|0|0|-1|-1|0|3|1|0
+seat|pair-stress-busy|3|0|0|51|32|62|10
+queued ack|pair-stress-busy|3|24|34
+saved|pair-stress-busy|3|1|0|0|0|-1|-1|0|4|1|0
+seat|pair-stress-busy|4|0|0|51|32|62|10
+queued ack|pair-stress-busy|4|24|34
+saved|pair-stress-busy|4|1|0|0|0|-1|-1|0|5|1|0
+seat|pair-stress-busy|5|0|0|51|32|62|10
+queued ack|pair-stress-busy|5|24|34
+saved|pair-stress-busy|5|1|0|0|0|-1|-1|0|6|1|0
+seat|pair-stress-busy|6|0|0|51|32|62|10
+queued ack|pair-stress-busy|6|24|34
+saved|pair-stress-busy|6|1|0|0|0|-1|-1|0|7|1|0
+seat|pair-stress-busy|7|0|0|51|32|62|10
+queued ack|pair-stress-busy|7|24|34
+saved|pair-stress-busy|7|1|0|0|0|-1|-1|0|8|1|0
+seat|pair-stress-healthy|0|0|0|47|32|62|10
+queued ack|pair-stress-healthy|0|24|34
+saved|pair-stress-healthy|0|1|0|0|0|-1|-1|0|16|1|0
+seat|pair-stress-busy|8|0|0|51|32|62|10
+queued ack|pair-stress-busy|8|24|34
+saved|pair-stress-busy|8|1|0|0|0|-1|-1|0|9|1|0
+report omitted lines=0
+report generation us=357
+observation measured wall share %=0.048
+observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters
+stress report profile: exact-observer accepted=true
+stress: seconds=75 opened=true active_casters=2 raid_size_dial=6 casts_sent=308 busy=58 peak_pets=4 peak_zones=0 peak_raiders=19 break_frames=67 raid_cast_frames=1
+stress: healthy_frames=2251 healthy_gap_max_ms=79 slow_tick_before=450 slow_tick_after=1650 slow_closed=1 slow_rejoined=true waiting_max_bytes=0 closed=0 health_ok=150 health_failed=0 pending_max=4/6 recovered=true publication=true

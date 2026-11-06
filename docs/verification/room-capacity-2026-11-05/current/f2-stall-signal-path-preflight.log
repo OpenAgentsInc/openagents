@@ -1,0 +1,40 @@
+fleet-profile raid-fleet-v1 source=85cfc9d1b1-input-age-158b40f4 seed=1284301 towns=2 seats_per_town=16 players=32 seconds=160 class=mix mode=fight network=loopback persistence=local-stand-in stall_ms=400
+fleet-start barrier=all-players-in-report elapsed_ms=11009 players=32 written=true
+fleet-injection barrier=all-players-in-report elapsed_ms=31027 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=36032 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=41033 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=46035 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=51041 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=56047 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=61052 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=66055 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=71058 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=76063 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=81069 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=86070 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=91077 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=96081 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=101089 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=106091 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=111097 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=116099 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=121100 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=126108 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=131110 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=136118 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=141120 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=146128 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=151130 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=156139 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-injection barrier=all-players-in-report elapsed_ms=161141 SIGSTOP=false SIGCONT=false duration_ms=400
+fleet-town=0 {"players":16,"seconds":160,"seat0_offered_extra_inputs":480,"least_d_hz":30,"bytes_per_s":28415,"input_to_final_ack_p50_ms":29,"input_to_final_ack_p95_ms":33,"input_to_final_ack_p99_ms":144,"input_to_final_ack_max_ms_or_2000plus":165,"ack_samples_missing":0,"ack_clock_backwards":0,"peak_live_raiders_in_a_seat_mirror":31,"peak_live_pets_in_a_seat_mirror":0,"peak_zones_in_a_seat_mirror":8,"front_least":166,"front_most":683,"front_band_pct":63,"watch_most":24,"sieges":1,"camp_fell_s":-1,"regrouped":0,"expect":"any","least_raiders_seen":269,"kinds_seat0":1052544,"least_raider_casts_heard":530,"least_hits_on_raiders_heard":1000,"most_breaks_heard":151,"our_casts":2318,"seats_earned_xp":16,"xp_total":26875,"seats_level_2":15,"phases_seat0":131,"arch_seat0":3,"outcome_seat0":0,"camp":"standing","most_xp_a_seat":3659,"bad":0,"least_xp_a_seat":66,"mode":"fight","class":"mix","xp_cues_missed":0,"xp_seats":"d3137+0 w1197+0 d2105+0 w1133+0 d3172+0 w2992+0 d3659+0 w351+0 d1640+0 w690+0 d2735+0 w66+0 d937+0 w1483+0 d598+0 w980+0","refused":1201,"refused_cooldown":0,"refused_range":0,"refused_level":0,"refused_other":140,"refused_dead":1061,"refused_busy":0,"refused_slot":0,"players_off_the_square":16}
+fleet-town=1 {"players":16,"seconds":160,"seat0_offered_extra_inputs":480,"least_d_hz":30,"bytes_per_s":28512,"input_to_final_ack_p50_ms":29,"input_to_final_ack_p95_ms":33,"input_to_final_ack_p99_ms":144,"input_to_final_ack_max_ms_or_2000plus":165,"ack_samples_missing":0,"ack_clock_backwards":0,"peak_live_raiders_in_a_seat_mirror":31,"peak_live_pets_in_a_seat_mirror":0,"peak_zones_in_a_seat_mirror":8,"front_least":74,"front_most":680,"front_band_pct":47,"watch_most":24,"sieges":1,"camp_fell_s":112,"regrouped":0,"expect":"any","least_raiders_seen":256,"kinds_seat0":1052544,"least_raider_casts_heard":499,"least_hits_on_raiders_heard":1000,"most_breaks_heard":135,"our_casts":2271,"seats_earned_xp":16,"xp_total":34072,"seats_level_2":16,"phases_seat0":483,"arch_seat0":15,"outcome_seat0":1,"camp":"taken","most_xp_a_seat":6319,"bad":0,"least_xp_a_seat":389,"mode":"fight","class":"mix","xp_cues_missed":0,"xp_seats":"d189+200 w1198+200 d1771+200 w905+200 d2368+200 w1082+200 d2553+466 w1791+200 d1262+266 w1904+200 d4953+1366 w605+200 d2064+200 w773+200 d3865+200 w2091+200","refused":1081,"refused_cooldown":0,"refused_range":0,"refused_level":0,"refused_other":91,"refused_dead":990,"refused_busy":0,"refused_slot":0,"players_off_the_square":16}
+fleet-town=0 raids
+fleet-town=1 raids
+fleet-town=0 pass=true
+fleet-town=1 pass=true
+room: 3601 ticks in 60.0 s, 32 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 3203 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 414 abilities 53 town 59 spells 111 people 21 rules 118 write 1464 send 547, 0 events with no room in their tick
+room: 3600 ticks in 60.0 s, 32 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 3203 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 611 abilities 1456 town 54 spells 267 people 15 rules 272 write 1925 send 470, 0 events with no room in their tick
+fleet-result pass=false towns=2 players=32 samples=31 elapsed_ms=165097 complete=false

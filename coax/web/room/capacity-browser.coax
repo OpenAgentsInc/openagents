@@ -23,26 +23,26 @@ tool_main::()->int #export_c{
   if rate==4{
     if cdp_call(c[..],"Emulation.setDeviceMetricsOverride","{\"width\":390,\"height\":844,\"deviceScaleFactor\":3,\"mobile\":true}",10000)<0||cdp_call(c[..],"Emulation.setCPUThrottlingRate","{\"rate\":4}",10000)<0{return 1;}
   }
-  init:="{\"source\":\"globalThis.coaxialFrameTrace=true;globalThis.__latencyErrors=[];addEventListener('error',e=>__latencyErrors.push(String(e.message)));addEventListener('unhandledrejection',e=>__latencyErrors.push(String(e.reason)));Object.defineProperty(Navigator.prototype,'sendBeacon',{value:()=>false});\"}";
+  init:="{\"source\":\"globalThis.coaxialFrameTrace=true;globalThis.__latencyErrors=[];globalThis.__capacitySockets=[];const CapacityWebSocket=globalThis.WebSocket;globalThis.WebSocket=class extends CapacityWebSocket{constructor(...args){super(...args);const u=new URL(this.url);__capacitySockets.push(u.origin+u.pathname);}};addEventListener('error',e=>__latencyErrors.push(String(e.message)));addEventListener('unhandledrejection',e=>__latencyErrors.push(String(e.reason)));Object.defineProperty(Navigator.prototype,'sendBeacon',{value:()=>false});\"}";
   if cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument",init,10000)<0{return 1;}
   b:[4096]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],args_at(a[..],0));jo_end(o[..]);if o[0].bad||cdp_call(c[..],"Page.navigate",jo_text(o[..]),10000)<0{return 1;}
-  until:=proc_now_ms()+60000;ready:=false;
+  waiting:=proc_now_ms();until:=waiting+60000;ready:=false;entered:=false;
   while proc_now_ms()<until{
     ready=wc_eval(c[..],"!!(globalThis.coaxial?.sceneReady&&coaxial.netProbe(84)===1&&coaxial.netProbe(12)>0&&coaxial.netProbe(51)>0)")=="true";
     if ready{break;}
-    if wc_eval(c[..],"!!(globalThis.coaxial?.sceneReady&&coaxial.netProbe(0)!==2)")=="true"{ignored_enter_down:=cb_key(c[..],"Enter","Enter",true);ignored_enter_up:=cb_key(c[..],"Enter","Enter",false);}
+    if !entered&&proc_now_ms()-waiting>=5000&&wc_eval(c[..],"!!(globalThis.coaxial?.sceneReady&&coaxial.netProbe(0)===0)")=="true"{entered=true;ignored_enter_down:=cb_key(c[..],"Enter","Enter",true);ignored_enter_up:=cb_key(c[..],"Enter","Enter",false);}
     proc_sleep(100);
   }
   if ready{
     ignored_start:=wc_eval(c[..],"(coaxial.takeFrameTrace(),globalThis.__capacityStart=[coaxial.fieldProbe(0),coaxial.fieldProbe(2)],true)");
-    ready=cb_key(c[..],"d","KeyD",true);begun:=proc_now_ms();until=begun+20000;
+    ready=cb_key(c[..],"d","KeyD",true);begun:=proc_now_ms();until=begun+45000;
     while ready&&proc_now_ms()<until{
       if proc_now_ms()>=begun+13000&&wc_eval(c[..],"!!(coaxial.roomTrace().active.some(x=>x.rows.length>=50)&&coaxial.takeFrameTrace)")=="true"{break;}proc_sleep(100);
     }
     ignored_key_up:=cb_key(c[..],"d","KeyD",false);
-    ready=ready&&wc_eval(c[..],"!!(coaxial.roomTrace().active.some(x=>x.rows.length>=50)&&!coaxial.roomTrace().error&&!__latencyErrors.length&&(__capacityStart[0]!==coaxial.fieldProbe(0)||__capacityStart[1]!==coaxial.fieldProbe(2)))")=="true";
+    ready=ready&&wc_eval(c[..],"!!(coaxial.roomTrace().active.some(x=>x.rows.length>=50)&&!coaxial.roomTrace().error&&!__latencyErrors.length&&__capacitySockets.some(x=>x.startsWith(new URL(location.href).searchParams.get('relay')+'/'))&&(__capacityStart[0]!==coaxial.fieldProbe(0)||__capacityStart[1]!==coaxial.fieldProbe(2)))")=="true";
   }
-  observation:=cb_save(c[..],args_at(a[..],1),"JSON.stringify({scope:'current-capacity-actual-browser',sceneReady:globalThis.coaxial?.sceneReady||false,net:[0,12,51,84].map(x=>globalThis.coaxial?.netProbe?.(x)??-1),movement:{start:globalThis.__capacityStart||null,end:[globalThis.coaxial?.fieldProbe?.(0)??-1,globalThis.coaxial?.fieldProbe?.(2)??-1]},trace:globalThis.coaxial?.roomTrace?.()??null,adapter:globalThis.coaxial?.gpuAdapterInfo??null,viewport:[innerWidth,innerHeight,devicePixelRatio],errors:globalThis.__latencyErrors||[]})");
+  observation:=cb_save(c[..],args_at(a[..],1),"JSON.stringify({scope:'current-capacity-actual-browser',sceneReady:globalThis.coaxial?.sceneReady||false,net:[0,12,51,84].map(x=>globalThis.coaxial?.netProbe?.(x)??-1),sockets:globalThis.__capacitySockets||[],movement:{start:globalThis.__capacityStart||null,end:[globalThis.coaxial?.fieldProbe?.(0)??-1,globalThis.coaxial?.fieldProbe?.(2)??-1]},trace:globalThis.coaxial?.roomTrace?.()??null,adapter:globalThis.coaxial?.gpuAdapterInfo??null,viewport:[innerWidth,innerHeight,devicePixelRatio],errors:globalThis.__latencyErrors||[]})");
   frames:=cb_save(c[..],args_at(a[..],2),"JSON.stringify({scope:'current-capacity-actual-browser',windows:[{visible:document.visibilityState==='visible',samples:globalThis.coaxial?.takeFrameTrace?.()||[]}]})");
   print("capacity browser: profile=% cpu_rate=% actual_room_movement_and_50_presentations=% observations_saved=% frames_saved=%\n",args_at(a[..],3),rate,ready,observation,frames);
   if !ready{print("browser failure: %\n",cdp_error(c[..]));}

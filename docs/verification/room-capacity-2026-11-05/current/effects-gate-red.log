@@ -1,0 +1,7 @@
+FAIL #test controlled effect profiles require only the summons and zones they actually request (0 ms)
+coax/web/room/background-check.coax:132:3: error[E0406]: assertion failed
+    #assert bc_effect_peaks(2,1,0)&&bc_effect_peaks(4,2,0)&&bc_effect_peaks(8,4,1);
+    ^
+  note: in #test controlled effect profiles require only the summons and zones they actually request
+1 of 238 checks (--only 'controlled effect profiles'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,8 +1,28 @@
 // Fleet orchestration around the same real fighting-raid consumer, not a new
 // simulation. Each client process owns at most sixteen SDK sockets.
 #load "capacity-profile.coax";
+#test "sixteen towns use two eight-client groups within the process SDK handle bound" {
+  #assert cf_workers(1)==1&&cf_workers(2)==2&&cf_workers(4)==4&&cf_workers(8)==8&&cf_workers(16)==2;
+}
+cf_workers::(towns:int)->int{return ifx towns==16 then 2 else towns;}
+cf_clients::(a:[]Args)->int{
+  seats:=rp_arg(a,2,16);secs:=rp_arg(a,3,160);seed:=rp_arg(a,4,0);
+  if args_count(a)!=5||!cf_shape(8,seats,secs)||seed<1||seed>2147483600{return 2;}
+  h:[8]int;done:[8]bool;mark:[8]bool;good:[8]bool;stamp:[8]Rp;ntext:[1]Rp;rp_i(ntext[..],seats);stext:[1]Rp;rp_i(stext[..],secs);key:=[1]string.[RP_KEY];
+  for i:0..<8{rp_i(stamp[i..<i+1],seed+i);argv:=[10]string.["coax/web/tool.sh","coax/web/room/raid-check.coax",args_at(a,1),rp_text(ntext[..]),rp_text(stext[..]),rp_text(stamp[i..<i+1]),"mix","fight","0","any"];h[i]=rp_start(argv[..],key[..]);if h[i]<0{done[i]=true;}}
+  left:=8;until:=proc_now_ms()+secs*1000+60000;complete:=true;
+  while left>0&&proc_now_ms()<until{left=0;line:[8192]u8;
+    for i:0..<8{if done[i]{continue;}left+=1;n:=proc_line(h[i],0,line[..]);
+      if n>=0{t:=cast(string)line[0..<n];print("fleet-town-seed=% %\n",seed+i,t);if t=="raids"{mark[i]=true;}}
+      if n==PROC_TOO_LONG{complete=false;}
+      if n==PROC_EOF||n==PROC_ERROR{good[i]=proc_wait(h[i],1000)==0&&mark[i];done[i]=true;err:[8192]u8;e:=proc_stderr(h[i],err[..]);if e.count>0{print("fleet-town-seed=% stderr=%\n",seed+i,e);}ignored_group_release:=proc_release(h[i]);}
+    }proc_sleep(10);
+  }
+  for i:0..<8{if !done[i]{rp_end(h[i]);}complete=complete&&good[i];}
+  print("%\n",ifx complete then "raids" else "fails");return ifx complete then 0 else 1;
+}
 cf_signal::(h:int,word:string)->bool{
-  pid:[1]Rp;rp_i(pid[..],cxproc_pid(h));argv:=[3]string.["/bin/kill",word,rp_text(pid[..])];out:[128]u8;err:[128]u8;r:=proc_run(argv[..],2000,out[..],err[..]);return r.status==0&&!r.timed_out;
+  pid:[1]Rp;rp_i(pid[..],cxproc_pid(h));argv:=[3]string.["kill",word,rp_text(pid[..])];out:[128]u8;err:[128]u8;r:=proc_run(argv[..],2000,out[..],err[..]);return r.status==0&&!r.timed_out;
 }
 cf_run::(a:[]Args,dir:string)->int {
   towns:=rp_arg(a,2,1);secs:=rp_arg(a,3,160);port:=rp_arg(a,4,61261);seats:=rp_arg(a,5,16);
@@ -20,17 +40,20 @@ cf_run::(a:[]Args,dir:string)->int {
   url:[1]Rp;rp_s(url[..],"ws://127.0.0.1:");rp_i(url[..],port);
   handles:[16]int;done:[16]bool;marker:[16]bool;good:[16]bool;stamp:[16]Rp;ntext:[1]Rp;rp_i(ntext[..],seats);stext:[1]Rp;rp_i(stext[..],secs);key:=[1]string.[RP_KEY];
   print("fleet-profile raid-fleet-v1 source=% seed=% towns=% seats_per_town=% players=% seconds=% class=mix mode=fight network=loopback persistence=local-stand-in stall_ms=%\n",build,seed,towns,seats,towns*seats,secs,stall_ms);
-  started:=proc_now_ms();
-  for i:0..<towns{rp_i(stamp[i..<i+1],seed+i);argv:=[10]string.["coax/web/tool.sh","coax/web/room/raid-check.coax",rp_text(url[..]),rp_text(ntext[..]),rp_text(stext[..]),rp_text(stamp[i..<i+1]),"mix","fight","0","any"];handles[i]=rp_start(argv[..],key[..]);if handles[i]<0{done[i]=true;}}
-  ctl:[1]Rp;rp_s(ctl[..],dir);rp_s(ctl[..],"/room-control.txt");pressed:=false;until:=started+secs*1000+90000;next_vitals:=started+11000;left:=towns;
+  started:=proc_now_ms();workers:=cf_workers(towns);tag:=ifx towns==16 then "fleet-group" else "fleet-town";
+  for i:0..<workers{rp_i(stamp[i..<i+1],seed+(ifx towns==16 then i*8 else i));
+    if towns==16{argv:=[7]string.["coax/web/tool.sh","coax/web/room/room-proof.coax","fleet-clients",rp_text(url[..]),rp_text(ntext[..]),rp_text(stext[..]),rp_text(stamp[i..<i+1])];handles[i]=rp_start(argv[..],key[..]);}
+    else{argv:=[10]string.["coax/web/tool.sh","coax/web/room/raid-check.coax",rp_text(url[..]),rp_text(ntext[..]),rp_text(stext[..]),rp_text(stamp[i..<i+1]),"mix","fight","0","any"];handles[i]=rp_start(argv[..],key[..]);}
+    if handles[i]<0{done[i]=true;}}
+  ctl:[1]Rp;rp_s(ctl[..],dir);rp_s(ctl[..],"/room-control.txt");pressed:=false;until:=started+secs*1000+90000;next_vitals:=started+11000;left:=workers;
   vitals:[1]RpLog;samples:=0;complete:=true;http:[1]HttpWork;body:[16384]u8;none:[1]string;vurl:[1]Rp;rp_s(vurl[..],"http://127.0.0.1:");rp_i(vurl[..],port);rp_s(vurl[..],"/api/room/vitals");
   expected:[1]Rp;rp_s(expected[..],"\nplayers=");rp_i(expected[..],towns*seats);rp_s(expected[..],"\n");stall_done:=stall_ms==0;
   while left>0&&proc_now_ms()<until{
     left=0;line:[8192]u8;
-    for i:0..<towns{
+    for i:0..<workers{
       if done[i]{continue;}left+=1;
       n:=proc_line(handles[i],0,line[..]);
-      if n>=0{t:=cast(string)line[0..<n];print("fleet-town=% %\n",i,t);if t=="raids"{marker[i]=true;}}
+      if n>=0{t:=cast(string)line[0..<n];print("%=% %\n",tag,i,t);if t=="raids"{marker[i]=true;}}
       if n==PROC_TOO_LONG{complete=false;}
       if n==PROC_EOF||n==PROC_ERROR{status:=proc_wait(handles[i],1000);good[i]=status==0&&marker[i];done[i]=true;rp_keep_stderr(handles[i],roomlog[..]);ignored_release:=proc_release(handles[i]);}
     }
@@ -42,7 +65,7 @@ cf_run::(a:[]Args,dir:string)->int {
     proc_sleep(10);
   }
   passed:=complete&&samples>0&&pressed&&stall_done;
-  for i:0..<towns{if !done[i]{rp_end(handles[i]);passed=false;}passed=good[i]&&passed;print("fleet-town=% pass=%\n",i,good[i]);}
+  for i:0..<workers{if !done[i]{rp_end(handles[i]);passed=false;}passed=good[i]&&passed;print("%=% pass=%\n",tag,i,good[i]);}
   saved:=fs_write(vp,cast(string)vitals[0].b[0..<vitals[0].n]);passed=saved&&passed;
   rp_finish_room(room,roomlog[..],"RAID_PROOF_LOG",true);
   print("fleet-result pass=% towns=% players=% samples=% elapsed_ms=% complete=%\n",passed,towns,towns*seats,samples,proc_now_ms()-started,complete&&saved);

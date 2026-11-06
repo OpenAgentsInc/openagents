@@ -1,0 +1,16 @@
+net-proxy: 127.0.0.1:61256 to 127.0.0.1:61251, round trip 250 ms, jitter 30 ms, loss 20 in 1000
+net-proxy: seed=1284302 rate=0 bytes/s; random choices follow observed TCP reads
+net-proxy: lost a read up at 869484860 ms, held 636 ms
+net-proxy: lost a read down at 869486210 ms, held 612 ms
+net-proxy: lost a read up at 869487531 ms, held 628 ms
+net-proxy: lost a read down at 869488258 ms, held 633 ms
+net-proxy: lost a read down at 869492742 ms, held 619 ms
+net-proxy: lost a read up at 869494827 ms, held 631 ms
+net-proxy: lost a read up at 869495166 ms, held 631 ms
+net-proxy: lost a read down at 869496143 ms, held 616 ms
+net-proxy: lost a read up at 869500009 ms, held 636 ms
+net-proxy: lost a read down at 869501675 ms, held 617 ms
+net-proxy: lost a read up at 869502761 ms, held 619 ms
+net-proxy: lost a read down at 869502809 ms, held 628 ms
+net-proxy: 633 reads up, 704 down, 12 lost, the longest hold 636 ms
+net-proxy final: 633 reads up, 704 down, 12 lost, the longest hold 636 ms, elapsed 90000 ms

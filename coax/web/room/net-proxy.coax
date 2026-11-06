@@ -201,5 +201,6 @@ tool_main :: () -> int #export_c {
     }
     if !busy { proc_sleep(1); }
   }
+  print("net-proxy final: % reads up, % down, % lost, the longest hold % ms, elapsed % ms\n",net[0].reads[0],net[0].reads[1],net[0].lost,net[0].most,cxsock_now_ms()-start);
   return 0;
 }

@@ -1,0 +1,5 @@
+net-proxy: 127.0.0.1:61255 to 127.0.0.1:61251, round trip 100 ms, jitter 30 ms, loss 20 in 1000
+net-proxy: seed=1284301 rate=0 bytes/s; random choices follow observed TCP reads
+net-proxy: 0 reads up, 0 down, 0 lost, the longest hold 0 ms
+net-proxy: 0 reads up, 0 down, 0 lost, the longest hold 0 ms
+net-proxy final: 0 reads up, 0 down, 0 lost, the longest hold 0 ms, elapsed 150000 ms

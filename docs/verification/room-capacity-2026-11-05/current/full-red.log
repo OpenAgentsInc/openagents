@@ -1,0 +1,7 @@
+FAIL #test same-town ceiling observes seated connections rather than worlds or grace holds (0 ms)
+coax/web/room/background-check.coax:132:3: error[E0406]: assertion failed
+    #assert bc_full_seated("players=16\ncapacity seated connections=16\ncapacity grace holds=0\n");
+    ^
+  note: in #test same-town ceiling observes seated connections rather than worlds or grace holds
+1 of 237 checks (--only 'same-town ceiling'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

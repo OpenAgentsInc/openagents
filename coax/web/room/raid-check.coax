@@ -38,6 +38,11 @@ RC_MAX :: 16;
   #assert rc_skew(true,"")== -1&&rc_skew(true,"2")== -1;
 }
 rc_skew::(asked:bool,value:string)->int{if !asked||value=="0"{return 0;}return ifx value=="1" then 1 else -1;}
+#test "capacity hold keeps bots alive after raid victory for the full declared interval" {
+  #assert rc_early_end(false,false,10,101)&&!rc_early_end(false,false,10,100);
+  #assert !rc_early_end(true,false,10,101)&&!rc_early_end(false,true,10,101)&&!rc_early_end(false,false,-1,101);
+}
+rc_early_end::(full:bool,capture:bool,ended:int,tick:int)->bool{return !full&&!capture&&ended>=0&&tick-ended>90;}
 #test "raid shaped links distribute at most six sockets per existing proxy" {
   #assert rc_proxy_port(61262,0)==61262&&rc_proxy_port(61262,5)==61262&&rc_proxy_port(61262,6)==61263&&rc_proxy_port(61262,15)==61264;
   #assert rc_proxy_port(0,0)==0&&rc_proxy_port(65534,15)== -1&&rc_proxy_port(61262,-1)== -1&&rc_proxy_port(61262,16)== -1;
@@ -228,6 +233,7 @@ tool_main :: () -> int #export_c {
   proxy_b:[24]u8;proxy_text:=proc_getenv("RAID_PROXY_BASE",proxy_b[..]);proxy_base:=ifx proxy_text=="" then 0 else args_whole(proxy_text);
   if rc_proxy_port(proxy_base,n-1)<0{tool_errln("RAID_PROXY_BASE must leave three permitted adjacent loopback ports");return 2;}
   skew_b:[8]u8;skew:=rc_skew(proc_has_env("RAID_SKEW"),proc_getenv("RAID_SKEW",skew_b[..]));if skew<0{return 2;}
+  full_b:[8]u8;full:=rc_skew(proc_has_env("RAID_RUN_FULL"),proc_getenv("RAID_RUN_FULL",full_b[..]));if full<0{return 2;}
   klass := ifx args_count(a[..]) > 4 then args_at(a[..], 4) else "druid";
   fight := args_count(a[..]) > 5 && args_at(a[..], 5) == "fight";
   want2 := args_count(a[..]) > 6 && args_at(a[..], 6) == "1";
@@ -262,7 +268,7 @@ tool_main :: () -> int #export_c {
       h[0].f_n += 1;
       if h[0].f_now >= 500 && h[0].f_now <= 860 { h[0].f_band += 1; }
     }
-    if capture.count==0 && ended >= 0 && tick - ended > 90 { break; }
+    if rc_early_end(full==1,capture.count>0,ended,tick){break;}
     for i: 0..<n {
       seq[i] += 1;
       m: [128] u8;

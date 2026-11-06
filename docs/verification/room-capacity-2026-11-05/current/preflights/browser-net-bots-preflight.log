@@ -1,0 +1,3 @@
+/Users/christopherdavid/work/oa-character-recovery/apps/openagents-web/everglade-wire.coax:605:26: error[E0210]: #counter is not supported on fields
+    life: [WIRE_SLOTS] s32 #counter; warp: [WIRE_SLOTS] s32 #counter;   // each slot's entity's LIFE and WARP now (wire_count_next only, #12927)
+                           ^

@@ -16,7 +16,7 @@ and workloads. Neither qualifies today's integrated workload.
 | Actions | `RAID_MODE=fight`: move through the South Gate toward raiders, use the existing level-1 kit, keep sending movement and HEARD acknowledgments |
 | Raid | The harness's default `event 1 0 3 12 6 1 3 3 31 1 2 1 100 15`, scaled by the existing siege rules; START NOW at checker +(3 + seats/2) s |
 | Duration / seed | 160 s of checker gameplay, `RAID_SEED=1284301` |
-| Pets / sustained spells | No instructed player summons or sustained spells. Incidental enemy/environment effects are possible; their peak counts are not yet measured |
+| Pets / sustained spells | No instructed player summons. Actual live raiders, player pets and persistent zones are counted in each seat's replication mirror; controlled summon/effect cases below are separate |
 | Area spells / destruction | The existing kit can use Ice Knife. Town damage is enabled by the dials, but these cases do not prescribe concurrent area-spell or destruction counts |
 | Network / consumer | Loopback native sockets; no injected latency, jitter or loss; wire 4 using the current production interest selector; no browser renderer |
 | Persistence | Local dev world/control/key; no API persistence or production routes |
@@ -39,17 +39,17 @@ the action's network transit or its presentation in a browser.
 Local results and rerun commands belong in
 [`docs/verification/2026-11-05-everglade-raid-capacity.md`](../verification/2026-11-05-everglade-raid-capacity.md).
 
-## Independent fleet and gameplay curves still to qualify
+## Independent fleet and gameplay curves
 
-The next fleet curve is **1, 2, 4, 8, 16 towns per native process**, each
+The measured fleet curve is **1, 2, 4, 8, 16 towns per native process**, each
 with 16 fighting players using the same encounter recipe. A separate
 multi-process curve must include actual directory placement, cold joins,
 independent room overload and recovery. Record the configured shard/room
 caps and the observed placements for each run; do not infer them from a
 historical deployment or change production to collect this evidence.
 
-Cross those workloads with controlled raider, player-pet, persistent-effect,
-simultaneous area-spell and destruction counts, with actual observed peaks.
+Keep controlled raider, player-pet, persistent-effect, simultaneous
+area-spell and destruction cases separate, with actual observed peaks.
 Movement-only `load.coax` remains useful but is not a substitute for these
 fighting workloads. Each command stays below 15 minutes, and already
 passing source-identical evidence is reused.
@@ -57,9 +57,10 @@ passing source-identical evidence is reused.
 Network variants are local and 100/250 ms injected RTT, each with its stated
 jitter/loss and socket versus actual-browser consumer. Qualify current
 movement credit/four-extra-input behavior, heading/cast fairness, skew and
-host stalls. Phone CPU and browser frame/presentation cost need real client
-measurements. The vitals, overload, checkpoint and fault prerequisites keep
-their own uncompleted gates; fast ticks cannot stand in for them.
+host stalls. Browser measurements include an explicit phone viewport/CPU
+proxy; they do not qualify physical phone hardware. Vitals, overload,
+checkpoint and fault prerequisites retain their own source-scoped
+acceptance; fast ticks cannot stand in for them.
 
 ## Current qualification harness
 
@@ -68,7 +69,9 @@ mixed-class fighting consumer in **1, 2, 4, 8 or 16 distinct towns** within
 one actual native process. It requires `RAID_BUILD`, `RAID_SEED` and
 `RAID_VITALS_LOG`; `RAID_PROOF_LOG` keeps the native process log. Every town
 has distinct character identities and its own client process, with at most
-sixteen SDK sockets each. START NOW waits for admission. The default fleet
+sixteen SDK sockets each. For sixteen towns the parent owns two groups of
+eight client processes, preserving the SDK's sixteen-process bound. START
+NOW waits for all requested seated players in a retained report. The default fleet
 duration is 160 s; each command ends before 15 minutes. This is local
 stand-in persistence, not a measured Postgres or production-shard capacity.
 
@@ -108,12 +111,50 @@ everyone must reach level two. Keep that verdict alongside performance
 measurements. Earning XP and preserving progression do not imply identical
 levels for every participant at a fixed time under randomized combat.
 
+Set `RAID_RUN_FULL=1` when fixture bots must remain for the full requested
+interval after victory/regroup, especially across multiple browser captures.
+The default raid consumer keeps its existing early-completion behavior.
+
+### Controlled summon, area-effect and outage cases
+
+`background-check.coax stress BIN 75 CASTERS` accepts **2, 4 or 8** active
+mixed-class casters. Ten gameplay sockets remain connected: eight potential
+casters plus a slow reader in one town, and an independently moving player
+in another town. The configured raid-size dial is `CASTERS*3` (6/12/24).
+Report actual simultaneously observed raiders, live player pets and zones;
+configured dials, cumulative sightings and cast attempts are not populations.
+
+Every 600ms each active caster sends the existing attack. On the initial
+round, even-indexed owners below4 summon wolves; subsequent even owners
+create Moonbeams. Other attacks include the warlock area kit. A64-cast burst
+at12s probes explicit busy refusal. The fixture holds HTTP work during
+20–55s, stops reading one gameplay socket during15–50s, then requires
+bounded pending work, healthy independent-room frames, publication and
+recovery. Record actual pets/zones, destruction and raider-cast frames,
+refusals, queue ages, tick/serialization cost and health outcomes. Entity
+peaks are from seat zero's real mirror; event-frame counts are neither
+distinct destruction counts nor proof of every simultaneous cast succeeding.
+
+### Actual browser route and network profile
+
+Use `capacity-browser.coax URL OBSERVATIONS.json FRAMES.json desktop|phone`
+with the matching release page and owned native server. Phone means
+390×844/DPR3/CDP CPU throttle4 on the recorded Mac. Retain50 matched
+ACK/whole/GPU-completion observations, raw600-frame history, expired/unknown
+observations and actual movement. GPU completion is not optical scanout.
+
+Local relay URLs must use `?relay=ws://localhost:PORT`; numeric relay hosts
+fall back to the page proxy. The driver records actual WebSocket origins
+and requires the requested path, so a shaped-link claim cannot silently
+measure the local fallback. Run local,100/30/20 and250/30/20 separately;
+keep proxy read/loss receipts and do not combine independent maximum axes.
+
 The integrated prerequisite issues are now closed, including the
 [fault matrix](../verification/2026-11-05-mmo-fault-matrix.md). Current capacity
 still requires the exact current artifact and consumer profiles below; older
 fae22 and 9b1 component smoke runs retain their own identities.
 
-## Proposed larger encounter, not yet admitted
+## Proposed larger encounter and early admission result
 
 Use **32 players in one town** as the next explicit density experiment:
 16 druids and 16 warlocks, up to 60 live raiders, one player pet each,
@@ -121,7 +162,15 @@ Use **32 players in one town** as the next explicit density experiment:
 destruction, for separate 160 s network slices. Count actual peaks and
 record refused/deferred work and action/presentation ages.
 
-This is a proposed workload, not supported capacity. The current 16-seat
-room and harness reject it; no admission cap is raised here. Prove this
-case early in a dedicated prototype before choosing partitioning or
-changing gameplay. Current E8/E16 results cannot establish it.
+This is a proposed workload, not supported capacity. The actual
+`background-check.coax full BIN 40` probe fills16 seated connections with
+zero grace holds, then offers distinct candidates17–32. All16 extra
+connections are refused, the original consumers keep advancing and the
+native full-refusal counter records16. This establishes the current
+admission boundary early; it does not qualify a32-player prototype or
+choose partitioning/gameplay changes. No admission cap is raised.
+
+The qualified artifact identities, curves, supported envelope and excluded
+preflights are recorded in
+[current room capacity](../verification/2026-11-05-current-room-capacity.md).
+Historical capacity records retain their original source/workload scope.

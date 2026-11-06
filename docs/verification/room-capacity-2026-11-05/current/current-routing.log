@@ -1,0 +1,278 @@
+coax/web/api/mesh-policy.coax: OK
+coax/lib/nostr/json.coax: OK
+coax/web/api/mesh-policy.generated.c: OK
+coax/web/api/mesh-policy.generated.h: OK
+coax/web/api/caller-policy.coax: OK
+coax/web/api/caller-policy.generated.c: OK
+coax/web/api/caller-policy.generated.h: OK
+coax/web/api/nip98.coax: OK
+coax/web/api/nip98_vectors.coax: OK
+coax/web/api/nip98_testkit.coax: OK
+coax/web/api/nip98.generated.c: OK
+coax/web/api/nip98.generated.h: OK
+deployment command failures propagate; successful output filtering is non-fatal
+.....
+----------------------------------------------------------------------
+Ran 5 tests in 0.136s
+
+OK
+....
+----------------------------------------------------------------------
+Ran 4 tests in 5.406s
+
+OK
+....
+----------------------------------------------------------------------
+Ran 4 tests in 4.464s
+
+OK
+coax: note[E0400]: compile-time steps: 15301645 of 20000000 used (76%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    15301645 steps  /Users/christopherdavid/work/oa-capacity-consumer-85c/coax/web/api/anime-director-checks.coax:96:1  #test 'API anime every admitted kind and optional finite field has a canonical direction'
+  fix: run coax test --only 'API anime every admitted kind and optional finite field has a canonical direction' for what inside the check uses the most; then do less work in it, split it, or give it a larger #steps N
+nip98 diff: 33286 cases (925 accepted by both, 16 numbers past the end), 0 disagreements
+coax jobs: waiting for 1 of 12 build workers held by 41 other coax processes; running 1 now (coax status shows them)
+coax jobs: the load average is 16.4, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 2, until it drops
+coax: note[E0400]: compile-time steps: 16663731 of 20000000 used (83%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    16663731 steps  /Users/christopherdavid/work/oa-capacity-consumer-85c/coax/lib/crypto/secp_encode.coax:156:1  #test 'x or y at least p and points off the curve refuse'
+  fix: run coax test --only 'x or y at least p and points off the curve refuse' for what inside the check uses the most; then do less work in it, split it, or give it a larger #steps N
+/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/tmp.aDjEaxpdXM/runner-sign.c:1929:9: warning: variable 'l_written' set but not used [-Wunused-but-set-variable]
+ 1929 |   _Bool l_written = coax_p_ss_write((l_challenge).value, coax_mkview_v_u8((((*coax_elem_v_t_SignWork(l_work, INT64_C(0), 492))).challenge).e, 32, 0, 32, 492));
+      |         ^
+1 warning generated.
+  ok    health answers with a database round trip
+  ok    health reports exact deployment identity
+  ok    every migration applied once
+  ok    an unknown path is a 404
+coax jobs: the load average is 26.3, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 2, until it drops
+fault-profile mmo-fault-v1 slice=travel source=85cfc9d1b1-input-age-90dc184c seed=1284301 consumer=native-socket state=legacy-vitals
+fault-injection: SIGKILL source after route; SIGKILL destination after save; restart with next owner
+  ok    travel: room A sends P on only after the API has P's state
+  ok    travel: P sits in pair-b on room B with A gone
+  ok    travel: room B's save of P is applied, as the new owner, with the HP and XP P left A with
+  ok    travel: after the destination crashes, P sits in pair-b on its replacement
+  ok    travel: the replacement's save of P is applied as the next owner, the HP and XP unchanged
+fault-profile mmo-fault-v1 slice=travel elapsed_ms=43870
+MMO fault slice: 5 checks, 0 failed
+coax jobs: the load average is 18.0, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 2, until it drops
+coax: note[E0400]: compile-time steps: 16663731 of 20000000 used (83%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    16663731 steps  /Users/christopherdavid/work/oa-capacity-consumer-85c/coax/lib/crypto/secp_encode.coax:156:1  #test 'x or y at least p and points off the curve refuse'
+  fix: run coax test --only 'x or y at least p and points off the curve refuse' for what inside the check uses the most; then do less work in it, split it, or give it a larger #steps N
+ok   me: nobody is 401
+ok   me: a signed GET answers the key's own account
+ok   me: the same signature again is refused
+ok   me: a signature for another URL is refused
+ok   realms: a signed MAKE IT makes a realm
+ok   realms: a replayed MAKE IT is refused
+ok   realms: its owner makes it public
+ok   realms: the signer owns it
+ok   realms: the owner's signed save works
+ok   realms: another key's signed save is refused
+ok   realms: another key is a visitor, or can't see it
+ok   realms: a changed body is refused
+ok   realms: an unbound signed write is refused
+ok   realms: a signed write from another site's page is 403
+ok   realms: a forged header is 401, never the player key
+ok   guest: a player key is minted
+ok   guest: the player key makes a realm, as before
+ok   guest: and saves it
+ok   guest: a signer can't save the guest's realm
+ok   guest: the guest can't save the signer's realm
+ok   mine: an owner's realms, as lines
+ok   mine: and as JSON
+ok   mine: a key with no realms has none
+ok   mine: a guest key's realms
+ok   mine: nobody has none
+ok   mine: a replayed signature is refused
+ok   mine: is a GET
+ok   device: an unsigned start is 401
+ok   device: a start names its machine
+ok   device: a signed start answers an id and a code
+ok   device: the key's poll is waiting
+ok   device: another key's poll is 404
+ok   device: an unsigned poll is 401
+ok   device: look from another site is 403
+ok   device: look shows the machine
+ok   device: look with a bad code is 404
+ok   device: approving logged out is 401
+ok   device: a's key logs in with a session cookie
+ok   device: the session approves it
+ok   device: approved once
+ok   device: look says approved
+ok   device: the key's poll says approved, and the account
+ok   device: the key is the account now
+ok   device: the key saves the account's realm
+ok   device: and lists it as its own
+ok   device: a key with realms of its own is refused
+ok   unlink: the account's own key stays
+ok   unlink: a key not the account's is 404
+ok   unlink: logged out is 401
+ok   unlink: the device's key unlinks itself
+ok   unlink: and is its own account again
+ok   unlink: so it can't save the account's realm
+ok   expiry: the poll says expired
+ok   expiry: an expired code isn't approved
+ok   visibility: a made realm
+ok   visibility: a new realm is private: its owner sees it
+ok   visibility: private: another key gets 404
+ok   visibility: private: nobody gets 404
+ok   visibility: private: its document is 404 too
+ok   visibility: private: another key can't fork it
+ok   visibility: private: not on /og's rows
+ok   visibility: private: not on /realms' list
+ok   visibility: mine says private
+ok   visibility: another key can't change it (it is not there for them)
+ok   visibility: a word not a visibility is 400
+ok   visibility: its owner makes it unlisted
+ok   visibility: unlisted: another key reaches it by its slug
+ok   visibility: unlisted: still not on /og's rows
+ok   visibility: unlisted: still not on /realms' list
+ok   visibility: another key still can't change it
+ok   visibility: public: on /og's rows
+ok   visibility: public: on /realms' list
+ok   visibility: back to private: 404 to others again
+ok   visibility: back to private: off /realms' list
+ok   visibility: /realms' list takes no POST
+ok   visibility: a site admin sees a private realm
+ok   visibility: a site admin changes any realm's
+ok   admin realms: every realm with who sees it
+ok   admin realms: a filter leaves the others out
+ok   admin realms: not for others
+ok   invites on
+ok   visibility: invite only: an owner not approved is 403
+ok   visibility: invite only: and a publish can't list it
+ok   admin: approve the owner as a creator
+ok   visibility: invite only: an approved creator changes it
+ok   invites off
+ok   admin keys: not an admin yet
+ok   admin keys: a non-admin can't add one
+ok   admin keys: a root adds a database admin
+ok   admin keys: who is then an admin
+ok   admin keys: listed as db, the root as root
+ok   admin keys: a database admin sees a private realm
+ok   admin keys: a database admin can't add another
+ok   admin keys: a database admin can't remove a root
+ok   admin keys: nor can a root remove a root
+ok   admin keys: a root removes the database admin
+ok   admin keys: who is no longer an admin
+ok   admin keys: removing it again is 404
+98 checks, 98 passed, 0 failed
+coax jobs: the load average is 14.0, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 2, until it drops
+coax jobs: the load average is 12.5, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 2, until it drops
+ok no identity cannot spend selector quota
+ok a guest player header is not a spending identity
+ok a bound fresh NIP-98 request works without Origin
+ok the same signed event is refused on replay
+ok an unbound signed write is refused
+ok changed body cannot reuse a valid signature
+ok a signature for another URL is refused
+ok foreign Origin is refused before spending a good signature
+ok changing only Origin admits that exact unspent signature
+ok actual sign-in mints a throwaway session
+ok cookie writes require the same-site Origin
+ok a same-site session request reaches the selector
+ok bad Authorization cannot fall back to a good cookie
+ok wrong Origin wins even without an identity
+ok malformed input JSON
+ok missing input fields
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok 601-byte words refuse before quota/model
+ok raw request cap refuses byte 16385
+ok empty raw request refuses before model
+ok wrong media is 415 without quota/model effects
+ok wrong method is 405
+ok stock
+ok selector receives exact words and typed stage context
+ok multi
+ok out
+ok exact-play
+ok above-play
+ok half
+ok below-half
+ok empty answer list is heard-only success
+ok private selection rows normalize to the same strict public answer
+ok in-stock creature retains confidence but unsupported entrance stays heard
+ok unsupported creature body action stays heard despite high confidence
+ok malformed
+ok duplicate
+ok bad-second
+ok scalar-p
+ok embedded-nul
+ok overlong
+ok missing-option
+ok wrong-sum
+ok not-argmax
+ok bad-envelope
+ok candidates-object
+ok parts-object
+ok status500
+ok status429
+ok minute
+ok user-day
+ok global-day
+ok user-active
+ok global-active
+ok expired lease no longer occupies an active slot
+ok reservation waits on the lock and refuses against the concurrently committed lease
+ok overlapping same-user slot admission is atomic
+ok overlapping global slot admission is atomic
+ok model timeout finishes one charged lease with no partial answer
+63 anime API checks passed, 0 failed
+coax jobs: the load average is 12.6, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 2, until it drops
+ok the server's manifest of the fixture is the Coax rule's, byte for byte
+ok a template is refused when its engine is not named by content
+ok a realm's first revision is pinned to the engine served then; its page and spec name it
+ok publish pins the revision and today's engine together; a refused publish keeps nothing
+ok a fork starts on its parent's engine; its own publish leaves the parent's record alone
+ok without a bucket a publish is unpinned and the page plays today's engine
+ok coax/web/api/tests/realm_engine_pin.sql: 6 checks
+ok a shape is a FEATURE:N name, a whole-degree turn, a whole-percent size and gone
+ok a save keeps shapes with its moves; a page that sends moves only keeps them; refusals change nothing
+ok visitors, forks and undo carry the shapes of their revision
+ok coax/web/api/tests/realm_shapes.sql: 3 checks
+ok a slot is read and written as aethyr/forge/edit.coax names it; an edit's ops are the slots that differ
+ok a save, the settings, a row, lore, a quest and a card accepted are one step each, with their ops
+ok undo walks every step back to the first state, redo walks forward to the last, cards with them
+ok a new edit drops the redo; a step whose slots changed under it is refused whole; a declined card goes back and forth
+ok a step kept before the log undoes and redoes its whole revision
+ok lore and quests are published, undone and forked with the document; a visitor reads the revision published
+ok lore and quests kept before move into the document as one revision; older bytes and hashes stay; visitors see no change
+ok coax/web/api/tests/realm_edit_log.sql: 7 checks
+coax jobs: the load average is 12.7, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 2, until it drops
+coax: note[E0400]: compile-time steps: 16293710 of 20000000 used (81%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    16293710 steps  /Users/christopherdavid/work/oa-capacity-consumer-85c/aethyr/forge/doc.coax:372:1  #test 'every bound holds at its edge and refuses one past it'
+  fix: run coax test --only 'every bound holds at its edge and refuses one past it' for what inside the check uses the most; then do less work in it, split it, or give it a larger #steps N
+ok   release 1 staged; engine-served wrote its served hashes
+ok   its engine is named by content, served hashes included
+ok   the realm read into the edit model at revision 1
+ok   four edits and an undo in the model
+ok   saved as revision 2
+ok   published revision 2; the engine hash stated is the manifest's, worked out here
+ok   the record: revision 2, its manifest holds by the rule, its hash is the manifest's
+ok   every file the record names is served with the bytes it records (engine-served check)
+ok   a visitor's document hashes, here, to the record's document hash
+ok   reloaded from the published document: the same moves, turns, sizes and removals the edits made
+ok   the realm's page plays the pinned engine, not today's template
+ok   release 2 staged with a new engine
+ok   after release 2 the record and the realm's page still name release 1's engine
+ok   the owner moves trees:1 again
+ok   saved as revision 3, not published
+ok   a visitor still gets revision 2's document, byte for byte
+ok   a visitor forks it
+ok   the fork starts on its parent's pinned engine
+ok   the fork's document is the published revision's moves and shapes
+ok   the fork's owner restores props:2 and turns trees:1
+ok   the parent's published and current documents are untouched by the fork's edits
+ok   a save from a stale revision is refused (409); nothing changes
+ok   a publish whose engine can't be pinned is refused (503); revision 2 stays published
+ok   a newer document version is refused by the reader; the last one read stays
+24 of 24 checks
+api: checks passed

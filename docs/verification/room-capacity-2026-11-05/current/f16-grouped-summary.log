@@ -1,0 +1,25 @@
+capacity-summary scope=min/max of sampled window values source=/Users/christopherdavid/work/oa-character-recovery/docs/verification/room-capacity-2026-11-05/current/f16-grouped-vitals.log valid=true
+players | 256.0 | 256.0 | 31 | 0
+ticks a second | 30.0 | 30.1 | 31 | 0
+tick p50 ms | 7.38 | 23.13 | 31 | 0
+tick p95 ms | 12.12 | 29.85 | 31 | 0
+tick p99 ms | 13.3 | 33.81 | 31 | 0
+writing p95 ms | 3.51 | 9.22 | 31 | 0
+writing p99 ms | 4.04 | 10.35 | 31 | 0
+sending p95 ms | 1.42 | 1.98 | 31 | 0
+server queued ack p95 ms | 30.0 | 38.0 | 31 | 0
+input oldest pending ms | 0.0 | 19.0 | 31 | 0
+input queued a seat most | 0.0 | 1.0 | 31 | 0
+input credit drops since start | 0.0 | 8518.0 | 31 | 0
+queue bytes most | 0.0 | 0.0 | 31 | 0
+queue age ms most | 0.0 | 0.0 | 31 | 0
+interest whole most | 38.0 | 107.0 | 31 | 0
+rows latest deferred total | 0.0 | 4796.0 | 31 | 0
+row wait ticks most | 0.0 | 17.0 | 31 | 0
+out bytes a second | 3411904.0 | 8203685.0 | 31 | 0
+transport refused frames a second | 0.0 | 0.0 | 31 | 0
+cues dropped a second | 0.0 | 129.6 | 31 | 0
+outcomes lost a second | 0.0 | 0.0 | 31 | 0
+refused full | 0.0 | 0.0 | 31 | 0
+checkpoint pending | 0.0 | 0.0 | 31 | 0
+report omitted lines | 610.0 | 622.0 | 31 | 0

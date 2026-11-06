@@ -1,0 +1,25 @@
+capacity-summary scope=min/max of sampled window values source=docs/verification/room-capacity-2026-11-05/current/f2-stall-fixed-vitals.log valid=true
+players | 32.0 | 32.0 | 31 | 0
+ticks a second | 28.8 | 30.1 | 31 | 0
+tick p50 ms | 1.02 | 3.12 | 31 | 0
+tick p95 ms | 1.56 | 5.09 | 31 | 0
+tick p99 ms | 1.74 | 6.31 | 31 | 0
+writing p95 ms | 0.46 | 1.38 | 31 | 0
+writing p99 ms | 0.55 | 1.53 | 31 | 0
+sending p95 ms | 0.18 | 0.33 | 31 | 0
+server queued ack p95 ms | 20.0 | 124.0 | 31 | 0
+input oldest pending ms | 0.0 | 146.0 | 31 | 0
+input queued a seat most | 0.0 | 5.0 | 31 | 0
+input credit drops since start | 0.0 | 875.0 | 31 | 0
+queue bytes most | 0.0 | 0.0 | 31 | 0
+queue age ms most | 0.0 | 0.0 | 31 | 0
+interest whole most | 38.0 | 101.0 | 31 | 0
+rows latest deferred total | 0.0 | 756.0 | 31 | 0
+row wait ticks most | 0.0 | 14.0 | 31 | 0
+out bytes a second | 415940.0 | 1032228.0 | 31 | 0
+transport refused frames a second | 0.0 | 0.0 | 31 | 0
+cues dropped a second | 0.0 | 19.2 | 31 | 0
+outcomes lost a second | 0.0 | 0.0 | 31 | 0
+refused full | 0.0 | 0.0 | 31 | 0
+checkpoint pending | 0.0 | 0.0 | 31 | 0
+report omitted lines | 0.0 | 0.0 | 31 | 0

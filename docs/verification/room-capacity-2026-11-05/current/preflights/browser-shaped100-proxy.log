@@ -1,0 +1,24 @@
+net-proxy: 127.0.0.1:61255 to 127.0.0.1:61251, round trip 100 ms, jitter 30 ms, loss 20 in 1000
+net-proxy: seed=1284301 rate=0 bytes/s; random choices follow observed TCP reads
+net-proxy: lost a read down at 869020022 ms, held 261 ms
+net-proxy: lost a read down at 869021088 ms, held 237 ms
+net-proxy: lost a read up at 869021771 ms, held 260 ms
+net-proxy: lost a read down at 869022189 ms, held 262 ms
+net-proxy: lost a read down at 869023521 ms, held 257 ms
+net-proxy: lost a read up at 869026119 ms, held 252 ms
+net-proxy: lost a read down at 869026856 ms, held 262 ms
+net-proxy: lost a read up at 869028785 ms, held 246 ms
+net-proxy: lost a read up at 869029365 ms, held 236 ms
+net-proxy: lost a read up at 869029920 ms, held 260 ms
+net-proxy: lost a read up at 869032219 ms, held 260 ms
+net-proxy: lost a read down at 869032955 ms, held 240 ms
+net-proxy: lost a read down at 869033188 ms, held 252 ms
+net-proxy: lost a read down at 869033657 ms, held 247 ms
+net-proxy: lost a read down at 869034189 ms, held 236 ms
+net-proxy: lost a read down at 869034521 ms, held 238 ms
+net-proxy: lost a read up at 869034655 ms, held 248 ms
+net-proxy: lost a read down at 869035323 ms, held 261 ms
+net-proxy: lost a read down at 869037721 ms, held 239 ms
+net-proxy: lost a read down at 869038190 ms, held 258 ms
+net-proxy: 565 reads up, 666 down, 20 lost, the longest hold 262 ms
+net-proxy final: 565 reads up, 666 down, 20 lost, the longest hold 262 ms, elapsed 90000 ms

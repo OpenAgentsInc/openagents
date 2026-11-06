@@ -1,0 +1,29 @@
+room: --dev /tmp/transport-proof.vpROwE: the API's stand-in (seat tickets checked and required)
+room: the local world (416 bytes) laid over the rooms
+room: shard 1
+room: listening on 127.0.0.1:61401
+room: vitals: tick p95 1.71 ms, input to ack p95 40 ms, measuring 1.98% of the tick
+room: vitals: tick p95 1.56 ms, input to ack p95 68 ms, measuring 1.62% of the tick
+room: vitals: tick p95 1.57 ms, input to ack p95 134 ms, measuring 1.65% of the tick
+room: a stall of 378 ms, the beat started again
+room: vitals: tick p95 1.56 ms, input to ack p95 134 ms, measuring 1.63% of the tick
+room: vitals: tick p95 2.63 ms, input to ack p95 134 ms, measuring 1.71% of the tick
+room: vitals: tick p95 2.77 ms, input to ack p95 134 ms, measuring 1.72% of the tick
+room: 3578 ticks in 60.0 s, 32 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 3201 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 232 abilities 29 town 34 spells 65 people 11 rules 67 write 882 send 262, 0 events with no room in their tick
+room: vitals posts 1 (0 retried, 0 failed), lines applied 32, already applied 0, stale 0, refused 0, late answers 0, given up 0, evicted unsaved 0, 0 players unsaved now, fenced 0 (0 seats ended)
+room: travel asked 0, sent on 0, full 0, refused 0, arrived 0, called off 0, intents dropped in a cutover 0
+room: vitals: tick p95 2.54 ms, input to ack p95 134 ms, measuring 1.75% of the tick
+room: vitals: tick p95 2.61 ms, input to ack p95 134 ms, measuring 1.73% of the tick
+room: vitals: tick p95 3.05 ms, input to ack p95 134 ms, measuring 1.62% of the tick
+room: vitals: tick p95 3.16 ms, input to ack p95 134 ms, measuring 1.49% of the tick
+room: vitals: tick p95 3.94 ms, input to ack p95 134 ms, measuring 1.27% of the tick
+room: vitals: tick p95 5.09 ms, input to ack p95 134 ms, measuring 1.06% of the tick
+room: 3600 ticks in 60.0 s, 32 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 3201 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 379 abilities 662 town 38 spells 184 people 12 rules 207 write 1586 send 327, 0 events with no room in their tick
+room: vitals posts 7 (0 retried, 0 failed), lines applied 124, already applied 0, stale 0, refused 0, late answers 0, given up 0, evicted unsaved 0, 0 players unsaved now, fenced 0 (0 seats ended)
+room: travel asked 0, sent on 0, full 0, refused 0, arrived 0, called off 0, intents dropped in a cutover 0
+room: vitals: tick p95 5.09 ms, input to ack p95 134 ms, measuring 1.06% of the tick
+room: vitals: tick p95 3.88 ms, input to ack p95 134 ms, measuring 1.11% of the tick
+room: vitals: tick p95 4.30 ms, input to ack p95 134 ms, measuring 1.08% of the tick
+room: vitals: tick p95 4.48 ms, input to ack p95 134 ms, measuring 1.08% of the tick

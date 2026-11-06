@@ -1,0 +1,455 @@
+coax jobs: the load average is 13.6, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 2, until it drops
+coax jobs: waiting for 1 of 12 build workers held by 5 other coax processes; running 1 now (coax status shows them)
+same-town ceiling before:
+process generation=1793924535787
+capacity startup ready=1
+observation scope=process report window
+out scope=accepted application frames including websocket framing
+transport kernel bytes including upgrade and controls a second=205910
+transport discarded queued bytes a second=0
+transport refused frame bytes a second=0
+transport refused frames a second=0.0
+observation counter overflow=0
+server ack scope=input heard to final D accepted by socket queue
+server queued ack p50 ms=18
+server queued ack p95 ms=34
+server queued ack samples=3895
+shard=1
+players=16
+ticks a second=29.2
+tick p50 ms=0.37
+tick p95 ms=0.58
+tick p99 ms=0.66
+players p50 ms=0.04
+players p95 ms=0.11
+players p99 ms=0.13
+raiders p50 ms=0.01
+raiders p95 ms=0.01
+raiders p99 ms=0.02
+effects p50 ms=0.02
+effects p95 ms=0.03
+effects p99 ms=0.03
+folk p50 ms=0.02
+folk p95 ms=0.02
+folk p99 ms=0.02
+writing p50 ms=0.12
+writing p95 ms=0.16
+writing p99 ms=0.21
+sending p50 ms=0.07
+sending p95 ms=0.10
+sending p99 ms=0.12
+measuring % of tick=2.45
+queue bytes most=0
+queue age ms most=0
+input queue scope=process latest pending simulation inputs at report time
+input queued total=16
+input oldest pending ms=14
+input queued a seat most=1
+input credit drops since start=0
+input unknown clock ages=0
+relevant entities a seat=38.1
+relevant entities most=39
+interest scope=process latest picks
+interest aggregation us=0
+interest seats=16
+interest whole total=608
+interest whole most=38
+interest health only total=0
+interest health only most=0
+interest blocked total=0
+interest blocked most=0
+interest hidden total=0
+interest hidden most=0
+interest worst|pair-capacity-full|0|38|0|0|0
+rows sent for their age a second=0.0
+row wait ticks most=0
+rows left for later most=2
+replication scope=process serialized output before relay admission
+rows serialized a second=9912.7
+row text bytes serialized a second=184111
+rows deferred a second=58.4
+rows latest serialized total=127
+rows latest deferred total=0
+replication worst|pair-capacity-full|0|8|0
+checkpoint pending=0
+checkpoint flying=0
+checkpoint posts=0
+checkpoint retries=0
+checkpoint failures=0
+checkpoint applied=0
+checkpoint duplicates=0
+checkpoint late receipts=0
+checkpoint capacity refusals=0
+checkpoint stale owner refusals=0
+checkpoint resident=0
+checkpoint accepted=0
+checkpoint capture age ms most=0
+checkpoint receipt age ms most=0
+checkpoint paused rooms=0
+checkpoint finalizing=0
+legacy save pending=16
+legacy save flying=0
+legacy save posts=4
+legacy save retries=3
+legacy save failures=4
+legacy save applied=0
+legacy save duplicates=0
+legacy stale owner refusals=0
+legacy save abandoned=0
+legacy save evicted=0
+owner generation most=0
+owner ticket refusals=0
+checkpoint active loss bound ms=30000
+checkpoint healthy recovery target ms=60000
+capacity draining=0
+capacity native slots=16
+capacity live worlds=1
+capacity unused worlds=15
+capacity seated connections=16
+capacity grace holds=0
+capacity initial gates=0
+capacity scope=native world slots and seat state; API placement caps and reservations are separate
+removal bytes a second=1
+removals waiting a second=0.0
+player info bytes a second=2865
+player info waiting a second=0.0
+join pieces bytes a second=0
+join pieces waiting a second=0.0
+cue bytes a second=0
+cues dropped a second=0.0
+outcome bytes a second=0
+outcomes lost a second=0.0
+snapshots after a stall a second=0.00
+towns sent again a second=0.00
+snapshots held for a slow page a second=0.0
+input to ack p50 ms=18
+input to ack p95 ms=34
+joins=16
+join burst bytes=3318
+join burst bytes most=3319
+join burst ms=12
+join burst ms most=15
+rejoins tried=0
+rejoins seated=0
+rejoins same seat=0
+old socket frames dropped=0
+refused no room=0
+refused ticket=0
+refused kicked=0
+refused shard=0
+refused full=0
+refused version=0
+refused engine=0
+refused rules=0
+refused content=0
+refused schema=0
+refused elsewhere=0
+build engine=1 rules=1 content=1 wire=4-4 schema=2
+out bytes a second=205704
+out messages a second=490
+in bytes a second=10352
+in messages a second=394
+out D bytes a second=205484
+out D a second=463
+out W bytes a second=53
+out W a second=2
+out j bytes a second=129
+out j a second=24
+out y bytes a second=38
+out y a second=2
+out D e bytes a second=11
+out D e a second=2
+out D g bytes a second=149
+out D g a second=3
+out D n bytes a second=2498
+out D n a second=58
+out D o bytes a second=96
+out D o a second=32
+out D v bytes a second=809
+out D v a second=50
+out D w bytes a second=366
+out D w a second=58
+out D x bytes a second=1
+out D x a second=0
+out D s players bytes a second=108281
+out D s players a second=6318
+out D s townsfolk bytes a second=81199
+out D s townsfolk a second=3460
+out D s made bytes a second=4114
+out D s made a second=135
+out D header bytes a second=7960
+out D header a second=463
+in H bytes a second=64
+in H a second=2
+in I bytes a second=10268
+in I a second=391
+in P bytes a second=21
+in P a second=2
+seat|pair-capacity-full|0|0|0|38|18|34|-1
+queued ack|pair-capacity-full|0|18|34
+saved|pair-capacity-full|0|1|0|0|0|-1|-1|0|1|1|0
+seat|pair-capacity-full|1|0|0|38|18|34|-1
+queued ack|pair-capacity-full|1|18|34
+saved|pair-capacity-full|1|1|0|0|0|-1|-1|0|2|1|0
+seat|pair-capacity-full|2|0|0|38|20|34|-1
+queued ack|pair-capacity-full|2|20|34
+saved|pair-capacity-full|2|1|0|0|0|-1|-1|0|3|1|0
+seat|pair-capacity-full|3|0|0|38|18|34|-1
+queued ack|pair-capacity-full|3|18|34
+saved|pair-capacity-full|3|1|0|0|0|-1|-1|0|4|1|0
+seat|pair-capacity-full|4|0|0|38|20|34|-1
+queued ack|pair-capacity-full|4|20|34
+saved|pair-capacity-full|4|1|0|0|0|-1|-1|0|5|1|0
+seat|pair-capacity-full|5|0|0|38|20|34|-1
+queued ack|pair-capacity-full|5|20|34
+saved|pair-capacity-full|5|1|0|0|0|-1|-1|0|6|1|0
+seat|pair-capacity-full|6|0|0|38|20|34|-1
+queued ack|pair-capacity-full|6|20|34
+saved|pair-capacity-full|6|1|0|0|0|-1|-1|0|7|1|0
+seat|pair-capacity-full|7|0|0|38|20|34|-1
+queued ack|pair-capacity-full|7|20|34
+saved|pair-capacity-full|7|1|0|0|0|-1|-1|0|8|1|0
+seat|pair-capacity-full|8|0|0|38|20|34|-1
+queued ack|pair-capacity-full|8|20|34
+saved|pair-capacity-full|8|1|0|0|0|-1|-1|0|9|1|0
+seat|pair-capacity-full|9|0|0|39|18|34|-1
+queued ack|pair-capacity-full|9|18|34
+saved|pair-capacity-full|9|1|0|0|0|-1|-1|0|10|1|0
+seat|pair-capacity-full|10|0|0|38|20|34|-1
+queued ack|pair-capacity-full|10|20|34
+saved|pair-capacity-full|10|1|0|0|0|-1|-1|0|11|1|0
+seat|pair-capacity-full|11|0|0|38|20|34|-1
+queued ack|pair-capacity-full|11|20|34
+saved|pair-capacity-full|11|1|0|0|0|-1|-1|0|12|1|0
+seat|pair-capacity-full|12|0|0|38|20|34|-1
+queued ack|pair-capacity-full|12|20|34
+saved|pair-capacity-full|12|1|0|0|0|-1|-1|0|13|1|0
+seat|pair-capacity-full|13|0|0|38|20|34|-1
+queued ack|pair-capacity-full|13|20|34
+saved|pair-capacity-full|13|1|0|0|0|-1|-1|0|14|1|0
+seat|pair-capacity-full|14|0|0|38|20|34|-1
+queued ack|pair-capacity-full|14|20|34
+saved|pair-capacity-full|14|1|0|0|0|-1|-1|0|15|1|0
+seat|pair-capacity-full|15|0|0|38|20|34|-1
+queued ack|pair-capacity-full|15|20|34
+saved|pair-capacity-full|15|1|0|0|0|-1|-1|0|16|1|0
+report omitted lines=0
+report generation us=119
+observation measured wall share %=0.029
+observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters
+same-town ceiling after:
+process generation=1793924535787
+capacity startup ready=1
+observation scope=process report window
+out scope=accepted application frames including websocket framing
+transport kernel bytes including upgrade and controls a second=190196
+transport discarded queued bytes a second=0
+transport refused frame bytes a second=0
+transport refused frames a second=0.0
+observation counter overflow=0
+server ack scope=input heard to final D accepted by socket queue
+server queued ack p50 ms=18
+server queued ack p95 ms=34
+server queued ack samples=4055
+shard=1
+players=16
+ticks a second=30.0
+tick p50 ms=0.38
+tick p95 ms=0.59
+tick p99 ms=0.64
+players p50 ms=0.05
+players p95 ms=0.12
+players p99 ms=0.14
+raiders p50 ms=0.01
+raiders p95 ms=0.01
+raiders p99 ms=0.01
+effects p50 ms=0.02
+effects p95 ms=0.03
+effects p99 ms=0.03
+folk p50 ms=0.02
+folk p95 ms=0.02
+folk p99 ms=0.02
+writing p50 ms=0.11
+writing p95 ms=0.16
+writing p99 ms=0.18
+sending p50 ms=0.08
+sending p95 ms=0.09
+sending p99 ms=0.10
+measuring % of tick=2.32
+queue bytes most=0
+queue age ms most=0
+input queue scope=process latest pending simulation inputs at report time
+input queued total=15
+input oldest pending ms=13
+input queued a seat most=1
+input credit drops since start=0
+input unknown clock ages=0
+relevant entities a seat=38.0
+relevant entities most=38
+interest scope=process latest picks
+interest aggregation us=1
+interest seats=16
+interest whole total=608
+interest whole most=38
+interest health only total=0
+interest health only most=0
+interest blocked total=0
+interest blocked most=0
+interest hidden total=0
+interest hidden most=0
+interest worst|pair-capacity-full|0|38|0|0|0
+rows sent for their age a second=0.0
+row wait ticks most=0
+rows left for later most=0
+replication scope=process serialized output before relay admission
+rows serialized a second=9398.6
+row text bytes serialized a second=172548
+rows deferred a second=4.5
+rows latest serialized total=320
+rows latest deferred total=0
+replication worst|pair-capacity-full|0|20|0
+checkpoint pending=0
+checkpoint flying=0
+checkpoint posts=0
+checkpoint retries=0
+checkpoint failures=0
+checkpoint applied=0
+checkpoint duplicates=0
+checkpoint late receipts=0
+checkpoint capacity refusals=0
+checkpoint stale owner refusals=0
+checkpoint resident=0
+checkpoint accepted=0
+checkpoint capture age ms most=0
+checkpoint receipt age ms most=0
+checkpoint paused rooms=0
+checkpoint finalizing=0
+legacy save pending=16
+legacy save flying=0
+legacy save posts=5
+legacy save retries=4
+legacy save failures=5
+legacy save applied=0
+legacy save duplicates=0
+legacy stale owner refusals=0
+legacy save abandoned=0
+legacy save evicted=0
+owner generation most=0
+owner ticket refusals=0
+checkpoint active loss bound ms=30000
+checkpoint healthy recovery target ms=60000
+capacity draining=0
+capacity native slots=16
+capacity live worlds=1
+capacity unused worlds=15
+capacity seated connections=16
+capacity grace holds=0
+capacity initial gates=0
+capacity scope=native world slots and seat state; API placement caps and reservations are separate
+removal bytes a second=0
+removals waiting a second=0.0
+player info bytes a second=0
+player info waiting a second=0.0
+join pieces bytes a second=0
+join pieces waiting a second=0.0
+cue bytes a second=0
+cues dropped a second=0.0
+outcome bytes a second=0
+outcomes lost a second=0.0
+snapshots after a stall a second=0.00
+towns sent again a second=0.00
+snapshots held for a slow page a second=0.0
+input to ack p50 ms=18
+input to ack p95 ms=34
+joins=0
+join burst bytes=0
+join burst bytes most=0
+join burst ms=0
+join burst ms most=0
+rejoins tried=0
+rejoins seated=0
+rejoins same seat=0
+old socket frames dropped=0
+refused no room=0
+refused ticket=0
+refused kicked=0
+refused shard=0
+refused full=16
+refused version=0
+refused engine=0
+refused rules=0
+refused content=0
+refused schema=0
+refused elsewhere=0
+build engine=1 rules=1 content=1 wire=4-4 schema=2
+out bytes a second=190196
+out messages a second=480
+in bytes a second=10985
+in messages a second=406
+out D bytes a second=190196
+out D a second=480
+out D o bytes a second=96
+out D o a second=32
+out D s players bytes a second=109634
+out D s players a second=6562
+out D s townsfolk bytes a second=68703
+out D s townsfolk a second=2776
+out D s made bytes a second=3161
+out D s made a second=61
+out D header bytes a second=8601
+out D header a second=480
+in I bytes a second=10985
+in I a second=406
+seat|pair-capacity-full|0|0|0|38|18|34|-1
+queued ack|pair-capacity-full|0|18|34
+saved|pair-capacity-full|0|1|0|0|0|-1|-1|0|1|1|0
+seat|pair-capacity-full|1|0|0|38|18|34|-1
+queued ack|pair-capacity-full|1|18|34
+saved|pair-capacity-full|1|1|0|0|0|-1|-1|0|2|1|0
+seat|pair-capacity-full|2|0|0|38|18|34|-1
+queued ack|pair-capacity-full|2|18|34
+saved|pair-capacity-full|2|1|0|0|0|-1|-1|0|3|1|0
+seat|pair-capacity-full|3|0|0|38|18|34|-1
+queued ack|pair-capacity-full|3|18|34
+saved|pair-capacity-full|3|1|0|0|0|-1|-1|0|4|1|0
+seat|pair-capacity-full|4|0|0|38|18|34|-1
+queued ack|pair-capacity-full|4|18|34
+saved|pair-capacity-full|4|1|0|0|0|-1|-1|0|5|1|0
+seat|pair-capacity-full|5|0|0|38|18|34|-1
+queued ack|pair-capacity-full|5|18|34
+saved|pair-capacity-full|5|1|0|0|0|-1|-1|0|6|1|0
+seat|pair-capacity-full|6|0|0|38|18|34|-1
+queued ack|pair-capacity-full|6|18|34
+saved|pair-capacity-full|6|1|0|0|0|-1|-1|0|7|1|0
+seat|pair-capacity-full|7|0|0|38|18|34|-1
+queued ack|pair-capacity-full|7|18|34
+saved|pair-capacity-full|7|1|0|0|0|-1|-1|0|8|1|0
+seat|pair-capacity-full|8|0|0|38|18|34|-1
+queued ack|pair-capacity-full|8|18|34
+saved|pair-capacity-full|8|1|0|0|0|-1|-1|0|9|1|0
+seat|pair-capacity-full|9|0|0|38|18|32|-1
+queued ack|pair-capacity-full|9|18|32
+saved|pair-capacity-full|9|1|0|0|0|-1|-1|0|10|1|0
+seat|pair-capacity-full|10|0|0|38|20|34|-1
+queued ack|pair-capacity-full|10|20|34
+saved|pair-capacity-full|10|1|0|0|0|-1|-1|0|11|1|0
+seat|pair-capacity-full|11|0|0|38|20|34|-1
+queued ack|pair-capacity-full|11|20|34
+saved|pair-capacity-full|11|1|0|0|0|-1|-1|0|12|1|0
+seat|pair-capacity-full|12|0|0|38|20|34|-1
+queued ack|pair-capacity-full|12|20|34
+saved|pair-capacity-full|12|1|0|0|0|-1|-1|0|13|1|0
+seat|pair-capacity-full|13|0|0|38|20|34|-1
+queued ack|pair-capacity-full|13|20|34
+saved|pair-capacity-full|13|1|0|0|0|-1|-1|0|14|1|0
+seat|pair-capacity-full|14|0|0|38|20|34|-1
+queued ack|pair-capacity-full|14|20|34
+saved|pair-capacity-full|14|1|0|0|0|-1|-1|0|15|1|0
+seat|pair-capacity-full|15|0|0|38|20|34|-1
+queued ack|pair-capacity-full|15|20|34
+saved|pair-capacity-full|15|1|0|0|0|-1|-1|0|16|1|0
+report omitted lines=0
+report generation us=67
+observation measured wall share %=0.027
+observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters
+same-town ceiling: actual_sixteen=true candidates17through32_refused=16 unexpected_upgrade=0 native_full_count=16 seats_remain16=true original_consumers_advance=true peer_exit=0 elapsed_ms=25044 pass=true

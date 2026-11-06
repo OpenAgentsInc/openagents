@@ -1,0 +1,28 @@
+room: --dev /tmp/raid-proof.kUHuK4: the API's stand-in (seat tickets checked and required)
+room: the local world (416 bytes) laid over the rooms
+room: shard 1
+room: listening on 127.0.0.1:61411
+room: vitals: tick p95 1.06 ms, input to ack p95 58 ms, measuring 2.23% of the tick
+room: vitals: tick p95 0.87 ms, input to ack p95 58 ms, measuring 1.66% of the tick
+room: vitals: tick p95 0.88 ms, input to ack p95 58 ms, measuring 1.75% of the tick
+room: vitals: tick p95 0.84 ms, input to ack p95 58 ms, measuring 1.60% of the tick
+room: vitals: tick p95 1.53 ms, input to ack p95 58 ms, measuring 1.71% of the tick
+room: 3601 ticks in 60.0 s, 16 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 3274 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 101 abilities 12 town 17 spells 19 people 6 rules 27 write 349 send 127, 0 events with no room in their tick
+room: vitals posts 2 (0 retried, 0 failed), lines applied 16, already applied 0, stale 0, refused 0, late answers 0, given up 0, evicted unsaved 0, 0 players unsaved now, fenced 0 (0 seats ended)
+room: travel asked 0, sent on 0, full 0, refused 0, arrived 0, called off 0, intents dropped in a cutover 0
+room: vitals: tick p95 1.38 ms, input to ack p95 52 ms, measuring 1.72% of the tick
+room: vitals: tick p95 1.24 ms, input to ack p95 52 ms, measuring 1.81% of the tick
+room: vitals: tick p95 1.21 ms, input to ack p95 50 ms, measuring 1.85% of the tick
+room: vitals: tick p95 1.33 ms, input to ack p95 52 ms, measuring 1.81% of the tick
+room: vitals: tick p95 2.07 ms, input to ack p95 52 ms, measuring 1.36% of the tick
+room: vitals: tick p95 2.30 ms, input to ack p95 52 ms, measuring 1.21% of the tick
+room: 3600 ticks in 60.0 s, 16 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 3274 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 176 abilities 195 town 22 spells 102 people 7 rules 102 write 761 send 172, 0 events with no room in their tick
+room: vitals posts 7 (0 retried, 0 failed), lines applied 54, already applied 0, stale 0, refused 0, late answers 0, given up 0, evicted unsaved 0, 0 players unsaved now, fenced 0 (0 seats ended)
+room: travel asked 0, sent on 0, full 0, refused 0, arrived 0, called off 0, intents dropped in a cutover 0
+room: vitals: tick p95 2.31 ms, input to ack p95 52 ms, measuring 1.19% of the tick
+room: vitals: tick p95 2.14 ms, input to ack p95 52 ms, measuring 1.17% of the tick
+room: vitals: tick p95 2.30 ms, input to ack p95 52 ms, measuring 1.14% of the tick
+room: vitals: tick p95 2.26 ms, input to ack p95 52 ms, measuring 1.15% of the tick
+room: vitals: tick p95 2.43 ms, input to ack p95 52 ms, measuring 1.07% of the tick

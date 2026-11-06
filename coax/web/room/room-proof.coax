@@ -441,6 +441,7 @@ tool_main :: () -> int #export_c {
   a: [1] Args;
   ok := args_load(a[..]);
   verb := args_at(a[..], 0);
+  if ok&&verb=="fleet-clients"{return cf_clients(a[..]);}
   if !ok || args_count(a[..]) < 2 || (verb != "cast" && verb != "raid" && verb != "transport" && verb != "fleet") {
     tool_errln("usage: room-proof cast BIN [PORT] [LATENCY_MS] [JITTER_MS] [LOSS_PERMILLE] [ROUNDS] | room-proof raid BIN [N] [SECONDS] [PORT] | room-proof transport BIN [PORT] [PLAYERS] [SECONDS] [PROFILE...] | room-proof fleet BIN TOWNS SECONDS PORT [SEATS_PER_TOWN]");
     return 2;

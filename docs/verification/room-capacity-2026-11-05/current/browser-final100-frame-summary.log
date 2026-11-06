@@ -1,0 +1,9 @@
+frames=600 submitted=576 skipped=24 visible_windows=1/1 max_pending=2 submitted_fps_x10=567
+submitted_interval p50_us=16665 p95_us=33330 max_us=66660
+cadence p50_us=16665 p95_us=16670 max_us=66660 fps_x10=591
+wasm p50_us=4510 p95_us=5825 max_us=8415 fps_x10=2274
+encode p50_us=2260 p95_us=2820 max_us=3340 fps_x10=4578
+input p50_us=15 p95_us=350 max_us=5010 fps_x10=118099
+cpu p50_us=6965 p95_us=8665 max_us=15520 fps_x10=1468
+gpu_completion_roundtrip p50_us=7475 p95_us=26200 max_us=69860 fps_x10=951
+last_width=390 last_height=844 retained_staging_bytes=0
