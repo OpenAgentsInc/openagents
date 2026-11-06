@@ -3,7 +3,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {tool_errln("usage: physics-aethyr INPUT OUTPUT");return 2;}
   input:[3120160]u8;n:=fs_read(args_at(args[..],0),input[..]);if n<160 || cast(string)input[0..<8]!="LABIN001" {return 3;}
   count:=cast(int)lab_uget(input[..],8);steps:=cast(int)lab_uget(input[..],16);every:=cast(int)lab_uget(input[..],24);

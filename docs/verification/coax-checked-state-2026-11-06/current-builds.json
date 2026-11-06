@@ -172,7 +172,8 @@
       "local",
       "100 ms",
       "250 ms"
-    ]
+    ],
+    "final_rebase_input_audit": "final-rebase-input-audit.json"
   },
   "orbit_page": {
     "target": "orbitleague",
@@ -196,5 +197,6 @@
         }
       }
     ]
-  }
+  },
+  "qualified_application_base": "a06449b17dc7cc6aaffe72b5735c454afbf90164"
 }

@@ -151,6 +151,30 @@ Failed observations remain reviewable:
 
 Existing drift tolerances and the issue's tick limits remain unchanged.
 
+## Final independent audit and tooling integration
+
+The final rebase includes Physics Lab and its independent audit through
+`a06449b17d`. All 290 measured application source files, native room host inputs
+and compiler implementation inputs remain unchanged; hashes are retained in
+`final-rebase-input-audit.json`. The qualified compiler provenance still verifies.
+The application timing and artifact observations above remain applicable.
+
+The independent compatibility driver's ten compositions pass. A separate release
+regression first reproduced an empty production lookup falling back to the
+candidate commit and comparing it with itself. The release script now passes
+only the production reference; a missing reference reaches no comparison. Both
+the known-reference control and refusal case pass. These drivers now run in the
+regular `compat` test unit. See `production-reference-red.txt`,
+`production-reference-green.txt` and `independent-compat.txt`.
+
+Physics Lab receives six required effect declarations without changing its
+bodies. Its 63 checks pass and its scene authority kills all 116 mutants. The
+nanosecond foreign boundary declares `foreign, clock`; the native system test
+passes with its documented `one "two words"` arguments. The initial invocation
+without those arguments failed only its argv check and is retained separately.
+No pinned external physics code or reference build script was run in this
+integration, and the recorded physics timing results are not replaced.
+
 ## Reproduce focused gates
 
 ```sh

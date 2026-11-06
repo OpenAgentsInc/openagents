@@ -1,0 +1,2 @@
+PASS known production reaches comparison with its own commit
+PASS missing production never compares the candidate with itself

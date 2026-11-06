@@ -65,7 +65,7 @@ lab_capture :: (p:LabSpec,states:[][]u8,path:string)->bool {
   lt_put(o[..],"<text x='24' y='760'>Final recorded poses, including rotation. Wireframe diagnostic; no product renderer or physics runs here.</text></svg>");
   return !o[0].full && fs_write(path,lt_text(o[..]));
 }
-tool_main :: ()->int #export_c {
+tool_main :: ()->int #export_c #effects(all) {
   deadline:=cxproc_now_ms()+840000;args:[1]Args;if !args_load(args[..]) {return 2;}
   if tool_os()!=TOOL_LINUX {tool_errln("physics lab: run on coderos-4080 (reference SDK builds are lab-only Linux tools)");return 2;}
   seedarg:=args_number(args_value(args[..],"--seed","20261106"));if !seedarg.ok || seedarg.value<0 || seedarg.value>4294967295 || floor(seedarg.value)!=seedarg.value {return 2;}seed:=cast(int)seedarg.value;

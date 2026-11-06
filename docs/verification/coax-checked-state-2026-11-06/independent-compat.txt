@@ -1,0 +1,11 @@
+PASS last element of an owned array default
+PASS optional default tag
+PASS enum numeric identity in a saved value
+PASS ABI stride through a view
+PASS ABI stride through a nested view
+PASS baseline suppresses evaluated default equivalence
+PASS baseline refuses a different bad default
+PASS nested optional default payload
+PASS nested appended default remains compatible
+PASS nested append cannot hide a changed existing default
+compat composition audit: 10/10 passed

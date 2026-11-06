@@ -106,7 +106,7 @@ reports="$(mktemp -d)"
 # Check the exact commit serving production. The Coax gate compares retained
 # manifests and remeasures production to suppress only pre-existing faults.
 t=$(now)
-(cd "$tree" && COAX="$tree/coax/bin/coax" coax/web/tool.sh compat-gate "$tree/coax/bin/coax" "${passed_commit:-$full}" "$reports/compat")
+(cd "$tree" && COAX="$tree/coax/bin/coax" coax/web/tool.sh compat-gate "$tree/coax/bin/coax" "$passed_commit" "$reports/compat")
 lap compat "$t"
 
 compiler_env COAX_RELEASE_COMPILER="$tree/coax/bin/coax" "$tree/scripts/coax-release.sh" --check --binary "$tree/coax/bin/coax" > "$reports/metadata" 2>&1 ||

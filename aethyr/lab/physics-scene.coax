@@ -74,13 +74,13 @@ LabBody :: struct {ok:bool;pos:LabVec;rot:LabQuat;vel:LabVec;omega:LabVec;}
 }
 
 LAB_NAMES :: [6]string.["fall-1k","fall-10k","fall-30k","stack","pile","slope"];
-lab_name :: (kind:int)->string {
+lab_name :: (kind:int)->string #effects(all) {
   if kind<0 || kind>=LAB_SCENES {return "unknown";}return LAB_NAMES[kind];
 }
-lab_vec :: (x:f64,y:f64,z:f64)->LabVec {
+lab_vec :: (x:f64,y:f64,z:f64)->LabVec #effects(all) {
   return LabVec.{x=f64(f32(x)),y=f64(f32(y)),z=f64(f32(z))};
 }
-lab_spec :: (kind:int)->LabSpec {
+lab_spec :: (kind:int)->LabSpec #effects(all) {
   if kind<0 || kind>=LAB_SCENES {return LabSpec.{};}
   counts:=[6]int.[1000,10000,30000,32,128,64];count:=counts[kind];
   columns:=[6]int.[32,100,174,1,8,8];row_counts:=[6]int.[32,100,173,1,8,8];
@@ -91,7 +91,7 @@ lab_spec :: (kind:int)->LabSpec {
   if kind==5 {p.normal=lab_vec(0,0.8,0.6);}
   return p;
 }
-lab_body :: (p:LabSpec,seed:int,index:int)->LabBody {
+lab_body :: (p:LabSpec,seed:int,index:int)->LabBody #effects(all) {
   if !p.ok || index<0 || index>=p.count || seed<0 || seed>4294967295 {return LabBody.{};}
   if p.kind<3 {
     x:=(f64(index%p.cols)-f64(p.cols-1)*0.5)*2.5;

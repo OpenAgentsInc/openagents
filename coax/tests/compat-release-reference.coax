@@ -1,0 +1,40 @@
+// Run the release's actual production-reference/control-flow fragment with local effect doubles.
+// Git/compiler/compatibility are intercepted; no gcloud command or product build is executed.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/json/json.coax";
+#load "../web/compat-process.coax";
+crr_find :: (text:string,word:string,start:int)->int {
+  if start<0 {return -1;}
+  for i:start..<text.count-word.count+1 {if text[i..<i+word.count]==word {return i;}}return -1;
+}
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args;if !args_load(args[..]) {return 2;}
+  if args_at(args[..],0)=="compat-gate" {
+    production:=args_at(args[..],2);if !cg_revision(production) {return 2;}
+    print("COMPARISON %\n",production);return 0;
+  }
+  self:[4096]u8;sn:=cxargs_len(0);if sn<1 || sn>self.count {return 2;}for i:0..<sn {self[i]=cast,trunc(u8)cxargs_byte(0,i);}
+  envbytes:[8192]u8;ew:[1]Jo;jo_start(ew[..],envbytes[..]);jo_put(ew[..],"AUDIT_COMPAT_EXEC=");jo_put(ew[..],cast(string)self[0..<sn]);if ew[0].bad {return 2;}
+  source:[65536]u8;n:=fs_read("coax/web/release.sh",source[..]);if n<1 {return 2;}text:=cast(string)source[0..<n];
+  first:=crr_find(text,"passed=\"$(live)\"",0);last:=crr_find(text,"lap compat \"$t\"",first);
+  if first<0 || last<0 {tool_errln("release reference audit: source fragment missing");return 2;}last+=15;
+  // These doubles cover effects only. Baseline selection and its guard come from the actual script.
+  prefix:="set -eu\nfull=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; commit=aaaaaaaaaa; ref=origin/main; prod=false; repo=.\nlive() { printf '%s' \"${CASE_PRODUCTION}\"; }\nnow() { echo 0; }\nlap() { :; }\ncompiler() { :; }\ngit() { if [ \"${3-}\" = worktree ] && [ \"${4-}\" = add ]; then mkdir -p \"$7/coax/web\"; ln -s \"$AUDIT_COMPAT_EXEC\" \"$7/coax/web/tool.sh\"; fi; }\ntrap 'if [ -n \"${tree:-}\" ]; then rm -rf \"${tree%/release}\"; fi; if [ -n \"${reports:-}\" ]; then rm -rf \"$reports\"; fi' EXIT\n";
+  program:[32768]u8;writer:[1]Jo;jo_start(writer[..],program[..]);jo_put(writer[..],prefix);jo_put(writer[..],text[first..<last]);jo_put(writer[..],"\n");if writer[0].bad {return 2;}
+  values:=[2]string.["CASE_PRODUCTION=bbbbbbbbbb stamp","CASE_PRODUCTION="];bad:=0;
+  for entry,i:values {
+    h:=proc_new();ok:=h>=0 && proc_arg(h,"/bin/bash") && proc_arg(h,"-c") && proc_arg(h,jo_text(writer[..])) && proc_env(h,entry) && proc_env(h,jo_text(ew[..]));
+    if !ok || proc_start(h)!=0 {if h>=0 {gone:=proc_release(h);}return 2;}
+    out:[65536]u8;used:=0;line:[8192]u8;timed_out:=false;deadline:=proc_now_ms()+10000;
+    while true {k:=proc_line(h,proc_left(deadline,proc_now_ms()),line[..]);if k==PROC_EOF {break;}if k<0 || used+k+1>out.count {timed_out=true;break;}for j:0..<k {out[used]=line[j];used+=1;}out[used]=10;used+=1;}
+    status:=proc_wait(h,proc_left(deadline,proc_now_ms()));errors:[8192]u8;error:=proc_stderr(h,errors[..]);gone:=proc_release(h);
+    called:=crr_find(cast(string)out[0..<used],"COMPARISON ",0)>=0;
+    pass:= !timed_out && (ifx i==0 then status==0 && called && crr_find(cast(string)out[0..<used],"COMPARISON bbbbbbbbbb",0)>=0 else status!=0 && !called);
+    print("% %\n",ifx pass then "PASS" else "FAIL",ifx i==0 then "known production reaches comparison with its own commit" else "missing production never compares the candidate with itself");
+    if !pass {bad+=1;tool_errln(cast(string)out[0..<used]);tool_errln(error);}
+  }
+  return ifx bad==0 then 0 else 1;
+}
