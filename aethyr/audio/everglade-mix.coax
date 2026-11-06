@@ -6,29 +6,25 @@
 //   coax/bin/coax test aethyr/audio/everglade-mix.coax --library
 // It loads no points.coax, so Audio Lab can load it beside projects.coax.
 #load "sfx.coax";
+#load "attenuation.coax";
 #load "mix.coax";
 #load "everglade-bank.coax";
 
 EGM_REFERENCE :: 5.0;        // metres: a sound plays at its level this near (space.coax's AuRoom)
 EGM_CUTOFF :: 85.0;          // metres: past this, not at all
-EGM_BRIGHT :: 16000.0;       // Hz: the lowpass corner at the reference distance
-EGM_DULLEST :: 200.0;
-EGM_SPEED :: 343.0;          // metres a second
+EGM_BRIGHT :: AU_BRIGHT;       // Hz: the lowpass corner at the reference distance
+EGM_DULLEST :: AU_DULLEST;
+EGM_SPEED :: AU_SPEED_OF_SOUND;          // metres a second
 
 // Where a voice plays: as space.coax's AuPlace.
 EgmPlace :: struct { gain: f32 = 1; pan: f32; delay: f32; lowpass: f32; distance: f32; }
 
 // A source x metres right and z ahead of a listener on a flat field: space.coax's law (au_place).
 egm_flat :: (x: f32, z: f32) -> EgmPlace {
-  d := sqrt(x * x + z * z);
-  out := EgmPlace.{gain = 0, distance = d};
-  if d >= EGM_CUTOFF { return out; }
-  out.gain = 1.0 / (ifx d / EGM_REFERENCE > 1 then d / EGM_REFERENCE else 1.0f32);
-  fade := f32(EGM_CUTOFF) * 0.8;
-  if d > fade { out.gain *= (f32(EGM_CUTOFF) - d) / (f32(EGM_CUTOFF) - fade); }
-  if d > 0.25 { out.pan = x / d; }
-  out.delay = d / f32(EGM_SPEED);
-  if d > EGM_REFERENCE { l := f32(EGM_BRIGHT) * f32(EGM_REFERENCE) / d; out.lowpass = ifx l > EGM_DULLEST then l else f32(EGM_DULLEST); }
+  law:=au_distance(EGM_REFERENCE,EGM_CUTOFF,EGM_BRIGHT,sqrt(x*x+z*z));
+  if !law.ok {return EgmPlace.{gain=0};}
+  out:=EgmPlace.{gain=law.gain,distance=law.distance,delay=law.delay,lowpass=law.lowpass};
+  if law.gain>0 && law.distance>0.25 {out.pan=x/law.distance;}
   return out;
 }
 EGM_QUIET :: 0.004;          // a voice below this gain isn't played

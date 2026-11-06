@@ -431,6 +431,16 @@ halves gives the same things as the whole.
 - **The document's seed and version.** A realm document records the seed and
   the generator version its layers use. Today they are arguments.
 
+## Shared vegetation rendering
+
+[`render/vegetation.coax`](../render/vegetation.coax) owns the current
+world-space gusts, wind phase, blade bending, canopy sway and shading,
+distance fades, path masks and mover parting. The compatibility layer
+`verse/style.coax` loads it for existing shaders. Noise and clouds come from
+[`render/sky.coax`](../render/sky.coax). This is render-side integration;
+it does not migrate generation, keep-outs or streamed-cell ownership.
+The vegetation module's 92 root mutants and the sky module's 54 are killed.
+
 ## What exists today
 
 - [aethyr/terrain.coax](../../aethyr/terrain.coax) and

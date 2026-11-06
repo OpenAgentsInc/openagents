@@ -79,6 +79,16 @@ rendered stream stays the same.
 
 ### Sound in space
 
+The distance law is now shared in
+[`audio/attenuation.coax`](../audio/attenuation.coax): gain, last-fifth fade,
+propagation delay and lowpass. `audio/space.coax` adds camera-space pan;
+`audio/everglade-mix.coax` adds its flat-field pan. Both call the same law,
+so the world and Audio Lab no longer duplicate attenuation arithmetic.
+Malformed parameters or listener/source coordinates produce silence with
+finite zero diagnostics. This change does not add a device clock or expand
+the live-render qualification described below.
+
+
 A sound source has a world position. The listener is the camera's lens from
 [chapter 2](ch002-spaces-and-units.md). For each source, the method uses the
 view-space position `v`:

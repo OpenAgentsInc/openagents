@@ -1,8 +1,8 @@
 # Aethyr renderer
 
-Chapter 11 is partly implemented and is being qualified. Its status stays partial
-until the actual producers, CPU reference and both GPU hosts pass their
-declared checks. The running record is
+Chapter 11 is implemented for its shared Grid CPU/WebGPU/Vulkan teaching
+profile. Broader producer, host and catalog qualification remains separate;
+that teaching profile does not qualify every realm. The running record is
 [aethyr-book-implementation-2026-11-01.json](../../docs/verification/aethyr-book-implementation-2026-11-01.json).
 
 The current shared catalog contains sixteen historical manifest profiles, the
@@ -21,6 +21,8 @@ Its development route is `/render-fixtures/galaxy/`.
 | `build-policy.coax`, `interface.coax` | Compiler reflection and the catalog's vertex/fragment interfaces, including vertex-only casters |
 | `build.coax`, `package.coax` | Content-addressed shader packages, dependency fences, runtime catalog/device admission and fetched-byte hashes |
 | `noise.coax`, `footprint.coax`, `sampling-core.coax`, `sampling.coax` | Portable integer noise, fine derivative footprints and the shared eight-tap texture filter |
+| `sky.coax`, `vegetation.coax` | Sky, halo, clouds, world-space gusts and wind, blade and canopy response, masks and distance fades; adopted through the existing style bridge |
+| `shadow-filter.coax`, `post.coax` | Shadow sampling, exposure, saturation, lift, bloom and light shafts; these numerical functions do not own GPU passes |
 | `texture-codec.coax` | Physical texel decoding; sRGB RGB becomes linear before filtering, while alpha stays linear |
 | `reference-quad.coax`, `reference-ir.coax`, `reference-io.coax` | Four helper lanes, checked tree-v2/v3 execution, resource views and stage word layouts |
 | `reference-raster.coax`, `reference-depth.coax`, `reference-pipeline.coax` | Clipping, interpolation, coverage, depth bias, actual stage execution, blending and target rounding |
@@ -31,6 +33,10 @@ Its development route is `/render-fixtures/galaxy/`.
 The native and browser adapters report measurements and execute admitted
 operations. They use the compiled resource-origin table rather than guessing a
 binding from its name or slot. Published scene draw records remain four words.
+
+The [shared rendering and audio integration record](../../docs/verification/aethyr-shared-render-audio-2026-11-06.md)
+maps these functions to their current consumers and separates CPU checks,
+shader emission and actual host observations.
 
 ## Build a package
 

@@ -93,7 +93,7 @@ MATERIAL_ALBEDO :: 1;      // an albedo channel outside 0 to 1
 MATERIAL_LAYER :: 2;       // a texture layer the realm doesn't have
 MATERIAL_STYLE :: 3;       // a style the realm doesn't draw
 MATERIAL_OUTLINE :: 4;     // an outline outside 0 to 1
-MATERIAL_EMISSION :: 5;    // an emission below 0
+MATERIAL_EMISSION :: 5;    // negative or nonfinite emission
 MATERIAL_TABLE :: 6;       // no materials, or more than MATERIAL_MAX
 
 // Why one material can't be drawn by a realm with `layers` texture layers that draws the
@@ -104,7 +104,7 @@ material_check :: (m: Material, layers: int, styles: int) -> int {
   if m.layer < MATERIAL_UNTEXTURED || m.layer >= layers { return MATERIAL_LAYER; }
   if m.style < 0 || m.style >= MATERIAL_STYLES || ((styles >> m.style) & 1) == 0 { return MATERIAL_STYLE; }
   if !(m.outline >= 0 && m.outline <= 1) { return MATERIAL_OUTLINE; }
-  if !(m.er >= 0 && m.eg >= 0 && m.eb >= 0) { return MATERIAL_EMISSION; }
+  if !(m.er >= 0 && m.er <= f32_from_bits(0x7f7fffff) && m.eg >= 0 && m.eg <= f32_from_bits(0x7f7fffff) && m.eb >= 0 && m.eb <= f32_from_bits(0x7f7fffff)) { return MATERIAL_EMISSION; }
   return MATERIAL_OK;
 }
 
@@ -251,6 +251,10 @@ material_banded :: (a: MatRgb, dark: MatRgb, bright: MatRgb, t: MatRgb, cool: f3
 }
 
 // ---- the material record and its table
+#test "material admission refuses nonfinite emission in every channel before publication" {
+ for lane:0..<3 {for kind:0..<3 {zero:=0.0f32;bad:=ifx kind==0 then 1.0f32/zero else ifx kind==1 then -1.0f32/zero else zero/zero;m:=material_test_ok();if lane==0 {m.er=bad;}else if lane==1 {m.eg=bad;}else {m.eb=bad;}#assert material_check(m,4,2)==MATERIAL_EMISSION;}}
+ for lane:0..<3 {m:=material_test_ok();if lane==0 {m.er=f32_from_bits(0x7f7fffff);}else if lane==1 {m.eg=f32_from_bits(0x7f7fffff);}else {m.eb=f32_from_bits(0x7f7fffff);}#assert material_check(m,4,2)==MATERIAL_OK;}
+}
 material_test_ok :: () -> Material { return Material.{r = 0.5, g = 0.4, b = 0.25, layer = 2, style = MATERIAL_PAINTERLY, outline = 1}; }
 #test "a material in range is drawn; each range refuses with its own reason, the edges admitted" {
   painterly := 1 << MATERIAL_PAINTERLY;

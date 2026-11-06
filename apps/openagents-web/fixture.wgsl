@@ -1825,7 +1825,7 @@ fn coax_p_verse_style_shaft_tap(p_i: f32, p_decay: f32) -> f32 {
 fn coax_p_verse_style_shaft_total(p_n: f32, p_decay: f32) -> f32 {
   var l_n: f32 = p_n;
   var l_decay: f32 = p_decay;
-  if ((abs((0x1.000000p0f - l_decay)) < 0x1.0c6f7ap-20f))
+  if ((abs((0x1.000000p0f - l_decay)) < 0x1.000000p-20f))
   {
     return l_n;
   }
@@ -2477,8 +2477,6 @@ fn coax_p_verse_style_shadow_tap(p_k: f32, p_on_phone: f32, p_which: f32) -> f32
   {
     if ((l_k < 0x1.000000p-1f))
     {
-      l_x = 0.0f;
-      l_y = 0.0f;
     }
     else
     {

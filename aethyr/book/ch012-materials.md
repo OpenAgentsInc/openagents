@@ -104,7 +104,7 @@ MATERIAL_ALBEDO :: 1;      // an albedo channel outside 0 to 1
 MATERIAL_LAYER :: 2;       // a texture layer the realm doesn't have
 MATERIAL_STYLE :: 3;       // a style the realm doesn't draw
 MATERIAL_OUTLINE :: 4;     // an outline outside 0 to 1
-MATERIAL_EMISSION :: 5;    // an emission below 0
+MATERIAL_EMISSION :: 5;    // negative or nonfinite emission
 MATERIAL_TABLE :: 6;       // no materials, or more than MATERIAL_MAX
 
 // Why one material can't be drawn by a realm with `layers` texture layers that draws the
@@ -115,7 +115,7 @@ material_check :: (m: Material, layers: int, styles: int) -> int {
   if m.layer < MATERIAL_UNTEXTURED || m.layer >= layers { return MATERIAL_LAYER; }
   if m.style < 0 || m.style >= MATERIAL_STYLES || ((styles >> m.style) & 1) == 0 { return MATERIAL_STYLE; }
   if !(m.outline >= 0 && m.outline <= 1) { return MATERIAL_OUTLINE; }
-  if !(m.er >= 0 && m.eg >= 0 && m.eb >= 0) { return MATERIAL_EMISSION; }
+  if !(m.er >= 0 && m.er <= f32_from_bits(0x7f7fffff) && m.eg >= 0 && m.eg <= f32_from_bits(0x7f7fffff) && m.eb >= 0 && m.eb <= f32_from_bits(0x7f7fffff)) { return MATERIAL_EMISSION; }
   return MATERIAL_OK;
 }
 
@@ -306,7 +306,7 @@ coax/bin/coax mutate aethyr/render/material.coax
 coax/bin/coax test verse/style.coax
 ```
 
-`aethyr/render/material.coax` has 17 checks. The nine shading checks moved
+`aethyr/render/material.coax` has 18 checks. The nine shading checks moved
 with their functions from `verse/style.coax`: the band edges, bands that
 never step back as the light grows, the wrap, the characters' two bands, the
 shadow band under the tinted ambient, the cool shadow that keeps its value,
@@ -314,7 +314,8 @@ the dab, and the rim's angles and its width on a figure. The new checks
 cover:
 
 - each range in the record, at and just past its edges, and the order of
-  the refusals;
+  the refusals; emission rejects NaN and both infinities in every channel
+  while admitting the largest finite f32;
 - a table admitted whole, refused at its first or a later material, and
   refused itself when empty or past 256;
 - the ink rule and the reasons' names;
@@ -323,7 +324,7 @@ cover:
 - `st_min` and `st_max` on two zeros of opposite sign, which tells the
   comparison apart from its `<=` mutant.
 
-`coax mutate` kills all 140 mutants. A golden walk on Linux hardware
+`coax mutate` kills all 149 root mutants. A golden walk on Linux hardware
 (`coax/web/golden-check.sh --commit`, headless Chrome with the GPU's WebGPU
 adapter) checks the pages the move can reach against their goldens.
 
@@ -334,8 +335,9 @@ adapter) checks the pages the move can reach against their goldens.
   realm declaring its table, with a material ID per instance read by the
   scene pass, is the next step.
 - **Presets and outlines.** The style presets (`verse/style-preset.coax`),
-  the outline pass (`verse/look.coax`), the flat and anime functions and the
-  sky, cloud, grass and foliage functions stay in `verse/style.coax`.
+  the outline pass (`verse/look.coax`), the flat and anime functions stay in `verse/style.coax`. Shared sky,
+  clouds, grass, canopies and wind now live in `aethyr/render/sky.coax`
+  and `aethyr/render/vegetation.coax`, loaded through that compatibility layer.
 - **Texture layers.** [verse/gpu/layers.coax](../../verse/gpu/layers.coax)
   decodes and mipmaps texture layers into the layout both GPU hosts upload.
   Admission checks a layer index against the realm's count; moving the

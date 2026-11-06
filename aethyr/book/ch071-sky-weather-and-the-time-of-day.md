@@ -9,7 +9,8 @@
 > and the space realms' starfield in [`verse/stars.coax`](../../verse/stars.coax).
 > This chapter plans one realm environment clock that drives the sky, the
 > weather and [chapter 13](ch013-light-and-shadow.md)'s lighting record.
-> Nothing in `aethyr/` runs yet.
+> Shared sky and cloud rendering lives in `aethyr/render/sky.coax`;
+> this chapter's environment clock and unified weather schedule remain unbuilt.
 
 The time of day and the weather change how every surface looks and some of
 how the world behaves: who is outdoors, how high the river runs, how far

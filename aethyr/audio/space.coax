@@ -5,8 +5,8 @@
 // sqrt; a replay never reads it.
 //   coax/bin/coax test aethyr/audio/space.coax --library
 #load "../points.coax";
+#load "attenuation.coax";
 
-AU_SPEED_OF_SOUND :: 343.0;   // metres a second, in air at 20 °C
 
 // How a world sounds: the distance a source keeps its full gain to, and the distance it
 // falls silent at. The last fifth before the cutoff fades to zero, so a source walking
@@ -14,8 +14,6 @@ AU_SPEED_OF_SOUND :: 343.0;   // metres a second, in air at 20 °C
 // at the reference distance, in hertz: past it the corner falls as the distance grows
 // (bright / (d / reference)), so a far source sounds dull (0: no lowpass).
 AuRoom :: struct { reference: f32 = 4; cutoff: f32 = 90; bright: f32 = AU_BRIGHT; }
-AU_BRIGHT :: 16000.0;   // Hz: the corner at the reference distance, above what a voice carries
-AU_DULLEST :: 200.0;    // Hz: the lowest corner
 
 // Where a sound plays: its gain (0..1), its pan (-1 left .. 1 right), how many seconds
 // after its event it reaches the listener, and its lowpass corner in hertz (0 at or
@@ -24,21 +22,20 @@ AuPlace :: struct { gain: f32; pan: f32; delay: f32; distance: f32; lowpass: f32
 
 // The one-pole lowpass's coefficient for a corner of `hz` at `rate` samples a second:
 // y += c * (x - y), c = 1 - e^(-2 pi hz / rate). It falls with the corner, so with the
-// distance. 1 (no filter) for a corner of 0.
+// distance. 1 (no filter) for a corner of 0; 0 for an invalid sample clock.
 au_lowpass_coefficient :: (hz: f32, rate: f32) -> f32 {
-  if hz <= 0 || rate <= 0 { return 1; }
+  if rate <= 0 { return 0; }
+  if hz <= 0 { return 1; }
   return 1 - exp(-2 * f32(PI) * hz / rate);
 }
 
 au_place :: (room: AuRoom, shot: Shot, at: Point) -> AuPlace {
+  if !finite3(shot.eye) || !finite3(shot.at) || !finite3(at) { return AuPlace.{}; }
   v := sub(at, shot.eye);
-  d := length(v);
-  out := AuPlace.{distance = d};
-  if !finite(d) || d >= room.cutoff { return out; }
-  ref := hi(room.reference, 0.01);
-  out.gain = 1.0 / hi(1.0, d / ref);
-  fade := room.cutoff * 0.8;
-  if d > fade { out.gain *= (room.cutoff - d) / (room.cutoff - fade); }
+  law := au_distance(room.reference, room.cutoff, room.bright, length(v));
+  if !law.ok { return AuPlace.{}; }
+  out := AuPlace.{gain=law.gain,distance=law.distance,delay=law.delay,lowpass=law.lowpass};
+  if law.gain==0 { return out; }
   // The angle in the view's x–z plane: the sine of the source's bearing from straight
   // ahead, so a source on the right axis pans fully right and one ahead or behind is
   // centred. A source at the listener has no bearing and plays centred.
@@ -48,12 +45,24 @@ au_place :: (room: AuRoom, shot: Shot, at: Point) -> AuPlace {
   z := dot(v, unit_or(v3(forward.x, 0, forward.z), v3(0, 0, 1)));
   flat := sqrt(x * x + z * z);
   if flat > 0.25 { out.pan = clamp(x / flat, -1, 1); }
-  out.delay = d / f32(AU_SPEED_OF_SOUND);
-  if room.bright > 0 && d > ref { out.lowpass = hi(room.bright * ref / d, f32(AU_DULLEST)); }
   return out;
 }
 
 // ---- Checks ----
+#test "audio spatial thresholds and invalid sample clocks have explicit boundary behavior" {
+ shot:=Shot.{eye=v3(0,0,0),at=v3(0,0,1)};
+ #assert au_place(AuRoom.{},shot,v3(-0.25,0,0)).pan==0 && au_place(AuRoom.{},shot,v3(-0.25001,0,0)).pan==1;
+ #assert !au_near(0.0001,0) && au_near(0,0);
+ #assert au_lowpass_coefficient(1000,0)==0 && au_lowpass_coefficient(1000,-1)==0 && au_lowpass_coefficient(0,48000)==1;
+}
+#test "spatial audio refuses malformed room and listener inputs without publishing nonfinite values" {
+ room:=AuRoom.{};shot:=Shot.{eye=v3(0,0,0),at=v3(0,0,1)};
+ for lane:0..<12 {for kind:0..<3 {zero:=0.0f32;bad:=ifx kind==0 then 1.0f32/zero else ifx kind==1 then -1.0f32/zero else zero/zero;r:=room;s:=shot;p:=v3(1,2,3);
+  if lane==0 {r.reference=bad;}else if lane==1 {r.cutoff=bad;}else if lane==2 {r.bright=bad;}else if lane==3 {s.eye.x=bad;}else if lane==4 {s.eye.y=bad;}else if lane==5 {s.eye.z=bad;}else if lane==6 {s.at.x=bad;}else if lane==7 {s.at.y=bad;}else if lane==8 {s.at.z=bad;}else if lane==9 {p.x=bad;}else if lane==10 {p.y=bad;}else {p.z=bad;}
+  a:=au_place(r,s,p);#assert a.gain==0 && a.pan==0 && a.delay==0 && a.distance==0 && a.lowpass==0;
+ }}
+ for lane:0..<3 {r:=room;if lane==0 {r.reference=0;}else if lane==1 {r.cutoff=0;}else {r.bright= -1;}#assert au_place(r,shot,v3(0,0,1)).gain==0;}
+}
 
 au_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0001; }
 

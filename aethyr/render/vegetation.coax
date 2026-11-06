@@ -1,0 +1,143 @@
+// Shared grass and canopy response: world-space gusts, wind, bending, masks and density.
+#module "aethyr.render.vegetation";
+#load "sky.coax";
+#test "vegetation preserves world-space advection and nonzero wind phase and gust" {
+ #assert abs(verse_style_gust(5,7,1,1,2,3,0.25)-(2*verse_style_noise(0.5,0.25)-1))<0.000001;
+ #assert abs(verse_style_wind(0,0.5,1,0.3,12,3)+0.12)<0.000001;
+ #assert abs(verse_style_segment(2,6,2,3,6,6)-2.4)<0.000001;
+ #assert abs(verse_style_canopy_axis(7,1,3)-2.0f32/3)<0.000001;
+ #assert verse_style_near_reach(0.5)==7 && abs(verse_style_near_width(3.5,7)-1.7)<0.000001;
+ #assert abs(verse_style_tip(0.4,0,0.15)-0.478)<0.000001 && abs(verse_style_tip(0.4,0.5,0.15)-0.46)<0.000001 && verse_style_tip(0.4,1.5,0.15)==0.4;
+ #assert verse_style_jitter(0.5,0.5,1,0.04)==0.5 && abs(verse_style_jitter(0.5,1.5,1,0.04)-0.48)<0.000001;
+}
+// ---- 8. Grass and wind (art-styles.md 8): blades instanced from a hash of their cell, bent by one
+// wind every realm and the foliage's sway share.
+// The gust at (x, z) metres: value noise at `scale` (1/25 per metre) moving with the wave, -1 to 1.
+verse_style_gust :: (x:f32,z:f32,t:f32,wx:f32,wz:f32,speed:f32,scale:f32)->f32 #export_c #effects(all) {
+ return 2.0f32*verse_style_noise((x-wx*speed*t)*scale,(z-wz*speed*t)*scale)-1.0f32;
+}
+// The wind's bend (radians) where the wave's phase coordinate (metres along the wind) is `along`:
+// A (0.6 sin(k along - w t) + 0.4 gust), wavelength 12 m, moving 3 m/s, A 0.30 rad.
+verse_style_wind :: (along:f32,gust:f32,t:f32,amp:f32,wavelength:f32,speed:f32)->f32 #export_c #effects(all) {
+ k:=6.2831853f32/st_max(wavelength,0.001f32);
+ return amp*(0.6f32*sin(k*along-k*speed*t)+0.4f32*gust);
+}
+// How far a point `share` of the way up a blade (or a canopy over its tree's height) moves for a bend
+// theta: with the square of its height, so the base stays put.
+verse_style_bend :: (theta:f32,height:f32,share:f32)->f32 #export_c #effects(all) {return sin(theta)*height*share*share;}
+// The bent blade's normal tilts toward the light by its bend, up to `most` (20 degrees) at the full
+// bend: the bands that roll across a field. Signed: a blade bent away from the light darkens.
+verse_style_grass_tilt :: (theta:f32,amp:f32,tilt_most:f32)->f32 #export_c #effects(all) {return tilt_most*st_max(-1.0f32,st_min(1.0f32,theta/st_max(amp,0.0001f32)));}
+// A blade's height from its hash h (0 to 1): 0.35 to 0.60 m.
+verse_style_blade_height :: (h:f32,low:f32,high:f32)->f32 #export_c #effects(all) {return low+(high-low)*st_sat(h);}
+// How much of a blade stands at distance d from the eye: all of it to 6 m inside the radius (32 m,
+// 18 on a on_phone), shrinking to nothing at the radius, so the field has no edge.
+verse_style_grass_fade :: (d:f32,radius:f32,fade:f32)->f32 #export_c #effects(all) {return 1.0f32-verse_style_soft_step(radius-fade*0.5f32,fade*0.5f32,d);}
+// How many blades the realm draws in the half disc ahead of the eye: a square 2 radius across and
+// one radius deep, at the density (24 a square metre, 8 on a on_phone).
+verse_style_grass_blades :: (radius:f32,density:f32)->f32 #export_c #effects(all) {return 2.0f32*radius*radius*density;}
+// The mask: a blade's share of its height by its distance past a masked shape's edge (a path, a
+// plot, a floor): none on it, all of it 0.25 m clear of it.
+verse_style_grass_clear :: (past:f32)->f32 #export_c #effects(all) {return verse_style_soft_step(0.125f32,0.125f32,past);}
+// The distance from (x, z) to the segment a..b: a capsule's mask is this less its radius.
+verse_style_segment :: (x:f32,z:f32,ax:f32,az:f32,bx:f32,bz:f32)->f32 #export_c #effects(all) {
+ ux:=bx-ax; uz:=bz-az; px:=x-ax; pz:=z-az;
+ h:=st_sat((px*ux+pz*uz)/st_max(ux*ux+uz*uz,0.000001f32));
+ dx:=px-ux*h; dz:=pz-uz*h;
+ return sqrt(dx*dx+dz*dz);
+}
+// A mover parts the grass: a blade within `radius` (0.7 m) leans away, fully at the mover, by this share.
+verse_style_part :: (d:f32,radius:f32)->f32 #export_c #effects(all) {return st_sat(1.0f32-d/st_max(radius,0.001f32));}
+// One channel of a blade's tip: the ground's colour lifted 15% and warmed (the brush stroke's lifted
+// end), red and green up, blue held.
+verse_style_tip :: (c:f32,ch:f32,lift:f32)->f32 #export_c #effects(all) {
+ if ch<0.5f32 {return c*(1.0f32+lift*1.3f32);} if ch<1.5f32 {return c*(1.0f32+lift);} return c;
+}
+// One channel's hue jitter for a blade with hash h: red and blue apart by up to `jitter` (4%), green held.
+verse_style_jitter :: (c:f32,ch:f32,h:f32,jitter:f32)->f32 #export_c #effects(all) {
+ j:=(h*2.0f32-1.0f32)*jitter;
+ if ch<0.5f32 {return c*(1.0f32+j);} if ch<1.5f32 {return c;} return c*(1.0f32-j);
+}
+
+// ---- 7. Foliage: blob canopies (art-styles.md 7). A canopy shades as one soft blob round its centre,
+// not as its leaf cards: its normal leans 0.85 of the way to the blob's.
+// One channel of the blob's direction at a canopy point p with centre c and half size `half` on that
+// which: (p - c) / half^2, an ellipsoid's gradient (a sphere's when the three half sizes match), so a
+// pine's tall crown rounds over its top and sides alike. The three are normalized together.
+verse_style_canopy_axis :: (p:f32,c:f32,half:f32)->f32 #export_c #effects(all) {h:=st_max(half,0.001f32);return (p-c)/(h*h);}
+// One channel of the canopy normal before normalizing: the mesh's normal mixed `k` (0.85) toward the blob's.
+verse_style_canopy_normal :: (mesh_n:f32,blob_n:f32,k:f32)->f32 #export_c #effects(all) {return mesh_n+(blob_n-mesh_n)*k;}
+// How far a canopy point `share` of its tree's height up (from the trunk's base) moves in the wind:
+// `reach` (0.05 m) times its share times the wind's bend over its amplitude, so the canopy breathes
+// with the grass and the trunk stays still.
+verse_style_canopy_sway :: (theta:f32,amp:f32,reach:f32,share:f32)->f32 #export_c #effects(all) {
+ return reach*st_sat(share)*st_max(-1.0f32,st_min(1.0f32,theta/st_max(amp,0.0001f32)));
+}
+// Leafy gaps: whether the canopy is open at a point whose leaf noise is n (0 to 1): open where the noise
+// is under `gap` (the preset's 0.36), so the sky shows through in holes and the light shafts streak.
+verse_style_canopy_open :: (n:f32,gap:f32)->f32 #export_c #effects(all) {return ifx n<gap then 1.0f32 else 0.0f32;}
+// The near ring (another.jpg's forest floor): a square 2 reach across round the eye where more
+// blades grow (the preset's grass_near a m2, on top of the far field's), and the blades nearer
+// than reach widen toward the eye, 2.4 times at it, so the ground under you reads as thick grass.
+verse_style_near_reach :: (on_phone:f32)->f32 #export_c #effects(all) {return ifx on_phone>0.5f32 then 6.0f32 else 7.0f32;}
+verse_style_near_blades :: (reach:f32,density:f32)->f32 #export_c #effects(all) {return 4.0f32*reach*reach*density;}
+verse_style_near_width :: (d:f32,reach:f32)->f32 #export_c #effects(all) {return 1.0f32+1.4f32*(1.0f32-st_sat(d/st_max(reach,0.001f32)));}
+
+#test "the near ring: 7 m (6 on a phone), 4 r2 blades a density, 2.4 times as wide at the eye and 1 at the reach" {
+ #assert verse_style_near_reach(0.0f32)==7.0f32 && verse_style_near_reach(1.0f32)==6.0f32;
+ #assert verse_style_near_blades(7.0f32,32.0f32)==6272.0f32;
+ #assert abs(verse_style_near_width(0.0f32,7.0f32)-2.4f32)<0.0001f32 && verse_style_near_width(7.0f32,7.0f32)==1.0f32 && verse_style_near_width(20.0f32,7.0f32)==1.0f32;
+}
+
+#test "wind: 0.30 rad, a 12 m wave at 3 m/s with a gust, the base still and the tip bent with height squared" {
+ // the wave alone (no gust): its crest 3 m along at t 0, there again 4 s later 12 m on
+ #assert abs(verse_style_wind(3.0f32,0.0f32,0.0f32,0.30f32,12.0f32,3.0f32)-0.18f32)<0.0001f32;
+ #assert abs(verse_style_wind(15.0f32,0.0f32,4.0f32,0.30f32,12.0f32,3.0f32)-0.18f32)<0.001f32;
+ #assert abs(verse_style_wind(3.0f32,0.0f32,1.0f32,0.30f32,12.0f32,3.0f32)-0.0f32)<0.001f32;
+ // never past A
+ for i:0..<100 {g:=cast(f32)i*0.02f32-1.0f32; #assert abs(verse_style_wind(cast(f32)i*0.37f32,g,1.3f32,0.30f32,12.0f32,3.0f32))<=0.30001f32;}
+ // the gust stays in -1..1 and moves with the wave
+ for i:0..<100 {x:=cast(f32)i*0.9f32; g:=verse_style_gust(x,2.0f32,0.5f32,0.8f32,0.6f32,3.0f32,0.04f32); #assert g>=-1.0f32 && g<=1.0f32;}
+ #assert abs(verse_style_gust(10.0f32,5.0f32,0.0f32,0.8f32,0.6f32,3.0f32,0.04f32)-verse_style_gust(10.0f32+2.4f32,5.0f32+1.8f32,1.0f32,0.8f32,0.6f32,3.0f32,0.04f32))<0.0001f32;
+ #assert verse_style_bend(0.3f32,0.5f32,0.0f32)==0.0f32;
+ #assert abs(verse_style_bend(0.3f32,0.5f32,1.0f32)-sin(0.3f32)*0.5f32)<0.00001f32;
+ #assert abs(verse_style_bend(0.3f32,0.5f32,0.5f32)-sin(0.3f32)*0.5f32*0.25f32)<0.00001f32;
+ // the normal tilts toward the light by up to 20 degrees at the full bend, away when bent back
+ #assert abs(verse_style_grass_tilt(0.30f32,0.30f32,0.349066f32)-0.349066f32)<0.0001f32;
+ #assert abs(verse_style_grass_tilt(-0.15f32,0.30f32,0.349066f32)+0.174533f32)<0.0001f32;
+ #assert verse_style_grass_tilt(0.9f32,0.30f32,0.349066f32)==0.349066f32;
+}
+
+#test "blades: 0.35 to 0.60 m, 24 a square metre to 32 m (8 to 18 on a phone), shrinking over the last 6 m" {
+ #assert verse_style_blade_height(0.0f32,0.35f32,0.60f32)==0.35f32 && verse_style_blade_height(1.0f32,0.35f32,0.60f32)==0.60f32;
+ #assert verse_style_grass_fade(10.0f32,32.0f32,6.0f32)==1.0f32 && verse_style_grass_fade(26.0f32,32.0f32,6.0f32)==1.0f32;
+ #assert abs(verse_style_grass_fade(29.0f32,32.0f32,6.0f32)-0.5f32)<0.0001f32 && verse_style_grass_fade(32.0f32,32.0f32,6.0f32)==0.0f32;
+ #assert verse_style_grass_fade(12.0f32,18.0f32,6.0f32)==1.0f32 && verse_style_grass_fade(18.0f32,18.0f32,6.0f32)==0.0f32;
+ #assert verse_style_grass_blades(32.0f32,24.0f32)==49152.0f32 && verse_style_grass_blades(18.0f32,8.0f32)==5184.0f32;
+}
+
+#test "no blade on a masked path; all of them 0.25 m clear; movers part them within 0.7 m" {
+ #assert verse_style_grass_clear(-0.5f32)==0.0f32 && verse_style_grass_clear(0.0f32)==0.0f32 && verse_style_grass_clear(0.25f32)==1.0f32;
+ #assert abs(verse_style_segment(0.0f32,3.0f32,-2.0f32,0.0f32,2.0f32,0.0f32)-3.0f32)<0.0001f32;
+ #assert abs(verse_style_segment(5.0f32,0.0f32,-2.0f32,0.0f32,2.0f32,0.0f32)-3.0f32)<0.0001f32;
+ #assert verse_style_part(0.0f32,0.7f32)==1.0f32 && verse_style_part(0.7f32,0.7f32)==0.0f32 && abs(verse_style_part(0.35f32,0.7f32)-0.5f32)<0.0001f32;
+}
+
+#test "a blade's tip is 15% lighter and warmer, and its hue jitters 4% at most" {
+ #assert abs(verse_style_tip(0.4f32,1.0f32,0.15f32)-0.46f32)<0.0001f32 && verse_style_tip(0.1f32,2.0f32,0.15f32)==0.1f32;
+ #assert verse_style_tip(0.3f32,0.0f32,0.15f32)/0.3f32>verse_style_tip(0.4f32,1.0f32,0.15f32)/0.4f32;
+ #assert abs(verse_style_jitter(0.5f32,0.0f32,1.0f32,0.04f32)-0.52f32)<0.0001f32 && abs(verse_style_jitter(0.5f32,2.0f32,1.0f32,0.04f32)-0.48f32)<0.0001f32;
+ #assert verse_style_jitter(0.5f32,1.0f32,0.3f32,0.04f32)==0.5f32 && verse_style_jitter(0.5f32,0.0f32,0.5f32,0.04f32)==0.5f32;
+}
+
+#test "canopies: normals 0.85 to the blob, an ellipsoid for a pine, 0.05 m of sway at the top, 0.36 open" {
+ // a sphere's blob direction is p - c over the radius squared; an ellipsoid's leans to its short axes
+ #assert abs(verse_style_canopy_axis(3.0f32,1.0f32,2.0f32)-0.5f32)<0.00001f32;
+ #assert verse_style_canopy_axis(1.0f32,0.0f32,1.0f32)>verse_style_canopy_axis(1.0f32,0.0f32,3.0f32);
+ #assert abs(verse_style_canopy_normal(0.0f32,1.0f32,0.85f32)-0.85f32)<0.00001f32 && verse_style_canopy_normal(0.4f32,0.4f32,0.85f32)==0.4f32;
+ #assert verse_style_canopy_sway(0.3f32,0.3f32,0.05f32,0.0f32)==0.0f32;
+ #assert abs(verse_style_canopy_sway(0.3f32,0.3f32,0.05f32,1.0f32)-0.05f32)<0.00001f32;
+ #assert abs(verse_style_canopy_sway(-0.15f32,0.3f32,0.05f32,0.5f32)+0.0125f32)<0.00001f32;
+ #assert verse_style_canopy_sway(0.9f32,0.3f32,0.05f32,2.0f32)==0.05f32;
+ #assert verse_style_canopy_open(0.1f32,0.3f32)==1.0f32 && verse_style_canopy_open(0.3f32,0.3f32)==0.0f32 && verse_style_canopy_open(0.5f32,0.0f32)==0.0f32;
+}

@@ -41,6 +41,8 @@ headless captures. Reference engines stay in its ignored lab cache.
 | `budget.coax` | Frame budgets: what one frame may use (steps, vertices, draw records, bytes), taken whole or refused and counted; every realm declares one and its check fails on any frame past it |
 | `assets.coax` | Asset identity: an asset is the SHA-256 of its bytes; a registry admits a pack whole or refuses it (an entry that doesn't hash to its table's id, new bytes past the declared limit, no free slot), shares bytes already held and frees them with their last use |
 | `render/frame.coax` | [Bounded CPU frame/pass/binding admission](render/README.md): resource slot/generation/epoch checks, atomic reservation/refusal and cleanup; adopted only at the Grid's native matrix-output boundary so far |
+| `render/sky.coax`, `render/vegetation.coax` | Shared sky/cloud fields and world-space wind, grass, canopy, mask and fade functions; existing shaders consume them through `verse/style.coax` |
+| `render/shadow-filter.coax`, `render/post.coax` | Shared shadow sampling, exposure, saturation, black lift, bloom and light shafts; pass orchestration remains with each renderer |
 | `replay.coax` | Recording and replay: one envelope for every accepted external event, a gate that refuses duplicate, stale and unknown events, a digest every step, and replays that make no remote calls |
 | `rand.coax` | Random streams: a draw is a pure function of seed, stream and counter |
 | `scatter.coax` | Scatter from a seed: things on a jittered grid of world cells, each cell's draws keyed by its layer, version and grid coordinates, kept clear of keep-outs (book chapter 80) |
@@ -64,6 +66,7 @@ target ([book chapters 65–68](book/ch065-sound-from-numbers.md)).
 | `audio/synth.coax` | Oscillators (saw, square, sine), seeded noise, ADSR envelopes, decays, a one-pole filter, constant-power pan, soft saturation, Schroeder reverb lines |
 | `audio/score.coax` | The beat grid, keys and triads, patterns and the sequencer, stereo buses with a reverb send, gain automation and the master |
 | `audio/wav.coax` | 16-bit PCM WAV bytes and the FNV-1a hash of rendered samples |
+| `audio/attenuation.coax`, `audio/space.coax` | One checked distance law for world effects and Audio Lab: gain, range fade, propagation delay and lowpass; the camera adapter adds pan |
 | `audio/epic.coax` | The `promo-epic` score: 120 BPM in D minor, its section times as typed seconds |
 | `tools/score.coax` | Renders a score to a WAV file (it never plays one) |
 

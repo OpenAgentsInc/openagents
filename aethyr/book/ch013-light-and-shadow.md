@@ -6,8 +6,9 @@
 > [aethyr/render/light.coax](../render/light.coax), with every realm's WGSL
 > byte-identical. The module adds the key light from the clock, the shadow
 > map's space with its snapped middle, and a bounded list of local lights.
-> Realms still build their light in their own shaders; the shadow pass, tone
-> mapping and the filter's tap positions stay where they are (see
+> Shared postprocessing and shadow taps now live in `aethyr/render/post.coax`
+> and `aethyr/render/shadow-filter.coax`. Realms still build their light
+> and execute shadow passes in their own shaders (see
 > [Still to do](#still-to-do)).
 
 Light is where realms look most different and are most alike underneath:
@@ -277,12 +278,17 @@ the haze. The new checks cover:
 - local lights: the falloff, the list's limit, each malformed light, and a
   light reaching through all three axes.
 
-`coax mutate --root-only` kills all 160 mutants. Two places stay in
-`verse/style.coax` because they can't pass this gate unchanged:
-`verse_style_shadow_tap` writes 0 to taps that are already 0, and
-`verse_style_shadow_radius` adds `0 * on_phone`. Both are mutants that no
-check can tell apart. Removing the redundant code would change every
-realm's WGSL, so it waits for a change that regenerates them.
+The earlier light module receipt kills 160 root mutants. The shared
+`shadow-filter.coax` now has its own 50-mutant gate, all killed. It removes
+the two redundant writes of zero from the central desktop tap and the
+redundant `0 * on_phone` radius expression. The filter's positions and radius
+remain unchanged for valid inputs.
+
+`post.coax` owns exposure, saturation, black lift, bloom and light shafts;
+its 40 root mutants are killed. Its near-unity shaft-sum branch uses an exact
+binary threshold of 2^-20, with a 1,000-tap iterative reference at the edge.
+The four affected shader files are regenerated. These CPU gates do not by
+themselves qualify every backend's rendered image.
 
 ## Still to do
 
@@ -293,9 +299,11 @@ realm's WGSL, so it waits for a change that regenerates them.
   read by every material, replaces those copies.
 - **The shadow pass.** Drawing the shadow map first in the scene pass, with
   its snapped projection and filter taps, is `aethyr/render/shadow.coax`.
-  The tap positions and radius move with it.
-- **Tone mapping and encoding.** `verse_style_tone` and the Metal path's
-  `verse/light.coax` stay in `verse/`.
+  Tap positions and radius are already shared in `shadow-filter.coax`;
+  full pass ownership remains.
+- **Encoding and native profile.** Tone, bloom and light-shaft arithmetic
+  are shared in `post.coax` through `verse/style.coax`. The separate Metal
+  profile in `verse/light.coax` and its display encoding still remain.
 - **Local lights in a realm.** No realm draws from the bounded list yet;
   the Haunted House uses the same falloff in its own shader. Counting them
   against [chapter 16](ch016-budgets-that-refuse.md)'s budgets is still to

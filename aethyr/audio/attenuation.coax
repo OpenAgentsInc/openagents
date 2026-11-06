@@ -1,0 +1,35 @@
+// Shared metre-based attenuation, propagation and air absorption. No camera or host dependency.
+AU_SPEED_OF_SOUND :: 343.0;
+AU_BRIGHT :: 16000.0;
+AU_DULLEST :: 200.0;
+AuDistance :: struct {ok:bool;gain:f32;distance:f32;delay:f32;lowpass:f32;}
+au_number :: (v:f32)->bool {return v>= -f32_from_bits(0x7f7fffff) && v<=f32_from_bits(0x7f7fffff);}
+#test "audio distance law matches hand calculated near far fade and propagation values" {
+ a:=au_distance(5,100,16000,10);#assert a.ok && a.gain==0.5 && a.lowpass==8000 && abs(a.delay-10.0f32/343)<0.000001;
+ #assert au_distance(5,100,16000,5).gain==1 && au_distance(5,100,16000,5).lowpass==0;
+ #assert abs(au_distance(5,100,16000,90).gain-5.0f32/90*0.5)<0.000001;
+ #assert au_distance(5,100,16000,100).gain==0 && au_distance(5,10000,16000,5000).lowpass==200;
+ #assert au_distance(5,1000,0,343).delay==1 && au_distance(5,1000,0,343).lowpass==0;
+}
+#test "audio distance refuses every nonfinite lane and invalid sign without partial output" {
+ for lane:0..<4 {for kind:0..<3 {v:=[4]f32.[5,100,16000,10];zero:=0.0f32;v[lane]=ifx kind==0 then zero/zero else ifx kind==1 then 1.0f32/zero else -1.0f32/zero;a:=au_distance(v[0],v[1],v[2],v[3]);#assert !a.ok && a.gain==0 && a.distance==0 && a.delay==0 && a.lowpass==0;}}
+ #assert !au_distance(0,100,16000,1).ok && !au_distance(5,0,16000,1).ok && !au_distance(5,100,-1,1).ok && !au_distance(5,100,16000,-1).ok;
+ #assert au_distance(0.001,1,0,0).ok && au_distance(5,1,0,0).ok;
+}
+au_distance :: (reference:f32,cutoff:f32,bright:f32,d:f32)->AuDistance {
+ if !au_number(reference) || !au_number(cutoff) || !au_number(bright) || !au_number(d) || reference<=0 || cutoff<=0 || bright<0 || d<0 {return AuDistance.{};}
+ out:=AuDistance.{ok=true,distance=d};if d>=cutoff {return out;}ref:=au_distance_max(reference,0.01);ratio:=d/ref;out.gain=1/au_distance_max(ratio,1);out.gain*=au_distance_min(1,(1-d/cutoff)*5);out.delay=d/f32(AU_SPEED_OF_SOUND);if bright>0 && d>ref {corner:=bright*(ref/d);out.lowpass=au_distance_max(corner,AU_DULLEST);}return out;
+}
+
+au_distance_max :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
+au_distance_min :: (a:f32,b:f32)->f32 {return ifx a<b then a else b;}
+#test "audio finite and clamp helpers keep representable endpoints and signed zero order" {
+ #assert au_number(f32_from_bits(0x7f7fffff)) && au_number(f32_from_bits(0xff7fffff));
+ zero:=0.0f32;#assert !au_number(1.0f32/zero) && !au_number(-1.0f32/zero) && !au_number(zero/zero);
+ #assert f32_bits(au_distance_max(-0.0f32,0.0f32))==0 && f32_bits(au_distance_max(0.0f32,-0.0f32))==0x80000000;
+ #assert f32_bits(au_distance_min(-0.0f32,0.0f32))==0 && f32_bits(au_distance_min(0.0f32,-0.0f32))==0x80000000;
+ #assert au_distance_max(1,2)==2 && au_distance_max(2,1)==2 && au_distance_min(1,2)==1 && au_distance_min(2,1)==1;
+ #assert au_distance(5,100,16000,100).delay==0;
+ #assert au_distance(0.001,1,0,0.005).gain==1;
+ #assert au_distance(5,f32_from_bits(1),0,0).gain==1;
+}
