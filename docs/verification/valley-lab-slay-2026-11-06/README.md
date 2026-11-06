@@ -259,8 +259,12 @@ Seven face patches at frame 1125 (sRGB, Unreal / before / now):
 The summed absolute error falls from 831 to 373. Still open:
 
 - The hand and the wrist bracer next to the orb clip to white. Unreal
-  ray-traces this light's shadows; ours casts none, so fingers and the bracer
-  facing the panel take its full ~200x-key light.
+  ray-traces this light's shadows. Ours now shadows it with 20 capsules on the
+  orb hand (forearm, palm spans, finger and thumb segments) that Echo's bone
+  store carries each frame after the palette and morph weights. Fully white
+  pixels on the fingers fall from 3,127 to 2,190 (Unreal 586, partly spread by
+  its depth of field); the bracer is unchanged at 1,480 (Unreal 149) because
+  the palm does not stand between it and the light.
 - The orb side reads slightly green-cyan (G about 15 levels high).
 - Hair is near black where Unreal shows lit brown strands (strand multiple
   scattering is not ported). The temple background and the cool sky cubemap

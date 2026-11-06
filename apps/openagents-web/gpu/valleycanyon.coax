@@ -189,6 +189,30 @@ cv_skin_light :: (base:V3,f0:V3,rough:f32,n:V3,g:V3,l:V3,v:V3,spec_scale:f32,siz
 cv_rect_delta :: (u:[]f32,world:V3)->V3 {return v3(u[83]-world.x,u[87]-world.y,u[91]-world.z);}
 // The kick is static in shot space; the face view turns the whole rig by the yaw in u[119].
 cv_kick_dir :: (u:[]f32)->V3 {c:=cos(u[119]);s:=sin(u[119]);return v3(c*SLAY_KICK_X+s*SLAY_KICK_Z,SLAY_KICK_Y,-s*SLAY_KICK_X+c*SLAY_KICK_Z);}
+// Closest distance between segments p0-p1 and q0-q1 (Ericson, Real-Time Collision Detection 5.1.9).
+cv_segment_gap :: (p0:V3,p1:V3,q0:V3,q1:V3)->f32 {
+ d1:=cv_sub(p1,p0);d2:=cv_sub(q1,q0);r:=cv_sub(p0,q0);a:=fmax(wg_dot3(d1,d1),0.00000001f32);e:=fmax(wg_dot3(d2,d2),0.00000001f32);f:=wg_dot3(d2,r);c:=wg_dot3(d1,r);b:=wg_dot3(d1,d2);denom:=a*e-b*b;
+ sa:=ifx denom>0.0000000001 then clampf((b*f-c*e)/denom,0.0f32,1.0f32) else 0.0f32;t:=(b*sa+f)/e;
+ if t<0 {t=0;sa=clampf(-c/a,0.0f32,1.0f32);} else if t>1 {t=1;sa=clampf((b-c)/a,0.0f32,1.0f32);}
+ return wg_length3(cv_sub(cv_add(p0,cv_scale(d1,sa)),cv_add(q0,cv_scale(d2,t))));
+}
+// How much of the orb light reaches p past the orb hand's capsules. A capsule the point lies on
+// (within 1.6 radii of its axis) is skipped so a finger does not shadow its own skin.
+cv_hand_visibility :: (p:V3,light:V3,u:[]f32,bones:[]f32)->f32 {
+ visible:f32=1;
+ for k:0..<SLAY_HAND_CAPSULES {at:=SLAY_HAND_CAPSULE_WORD+k*8;r:=bones[at+3];
+  if r>0 {a:=cv_add(cv_at(u,104),cv_echo_direction(v3(bones[at],bones[at+1],bones[at+2]),u));b:=cv_add(cv_at(u,104),cv_echo_direction(v3(bones[at+4],bones[at+5],bones[at+6]),u));
+   if cv_segment_gap(p,p,a,b)>r*1.6 {visible=visible*clampf((cv_segment_gap(p,light,a,b)-r*0.8)/(r*0.5),0.0f32,1.0f32);}}
+ }
+ return visible;
+}
+#test "Hand capsules shadow the orb light across them and never a point on their own skin" {
+ u:[128]f32;u[108]=1;bones:[SLAY_HAND_CAPSULE_WORD+SLAY_HAND_CAPSULES*8]f32;at:=SLAY_HAND_CAPSULE_WORD;bones[at]= -0.1;bones[at+4]=0.1;bones[at+3]=0.02;
+ #assert cv_hand_visibility(v3(0,-0.2,0),v3(0,0.2,0),u[..],bones[..])==0;
+ #assert cv_hand_visibility(v3(0.5,-0.2,0),v3(0.5,0.2,0),u[..],bones[..])==1;
+ #assert cv_hand_visibility(v3(0,-0.021,0),v3(0,0.2,0),u[..],bones[..])==1;
+ #assert abs(cv_segment_gap(v3(0,0,0),v3(1,0,0),v3(0.5,1,0),v3(0.5,2,0))-1)<0.00001;
+}
 cv_oct_decode :: (x:f32,y:f32)->V3 {n:=v3(x,y,1-abs(x)-abs(y));t:=fmax(-n.z,0.0f32);return wg_normalize3(v3(n.x+(ifx n.x>=0 then -t else t),n.y+(ifx n.y>=0 then -t else t),n.z));}
 cv_rect_power :: (u:[]f32,rect:V3)->f32 {d2:=wg_dot3(rect,rect);aim:=cv_oct_decode(u[11],u[127]);return slay_candela_scale(d2,u[107])*slay_rect_emission(-wg_dot3(aim,rect)/sqrt(fmax(d2,0.000001f32)));}
 #test "Octahedral aim round-trips every octant and the rect light is dark behind its panel" {
@@ -198,14 +222,14 @@ cv_rect_power :: (u:[]f32,rect:V3)->f32 {d2:=wg_dot3(rect,rect);aim:=cv_oct_deco
 }
 cv_slay_light :: (skin:bool,base:V3,f0:V3,metal:f32,rough:f32,n:V3,g:V3,l:V3,v:V3,spec_scale:f32,size:f32)->V3 {if skin {return cv_skin_light(base,f0,rough,n,g,l,v,spec_scale,size);}return cv_area_light(base,f0,metal,rough,n,l,v,spec_scale,size);}
 
-vc_scene_fs :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices:[]u32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
+vc_scene_fs :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices:[]u32,bones:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
   if u[112]>0.5 && abs(1-s.pos.y/u[1]*2)>u[0]/u[1]/u[113] {gpu_discard();}
   dx:=v2(gpu_dpdx_fine(s.uv.x),gpu_dpdx_fine(s.uv.y));dy:=v2(gpu_dpdy_fine(s.uv.x),gpu_dpdy_fine(s.uv.y));
-  return cv_scene_shade(s,u,sheets,sheet,vertices,shadow_map,shadow_cmp,dx,dy);
+  return cv_scene_shade(s,u,sheets,sheet,vertices,bones,shadow_map,shadow_cmp,dx,dy);
 }
 #test "Walking Valley and Slay retain their own source head material profiles" {a:=v3(0.2,0.1,0.05);v:=cv_profile_head_colour(a,true);s:=cv_profile_head_colour(a,false);#assert v.x==cv_echo_head_colour(a).x && s.x==cv_echo_slay_head_colour(a).x && v.x!=s.x;}
 cv_profile_head_colour :: (a:V3,valley:bool)->V3 {return ifx valley then cv_echo_head_colour(a) else cv_echo_slay_head_colour(a);}
-cv_scene_shade :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices:[]u32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,dx:V2,dy:V2)->V4 {
+cv_scene_shade :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices:[]u32,bones:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,dx:V2,dy:V2)->V4 {
   if s.material==29 {return cv_orb_shade(s,u,vertices);}
   n:=wg_normalize3(s.normal);albedo:=v3(1,1,1);rough:f32=0.65;metal:f32=0;skin_f0:f32=0.04;
 
@@ -237,7 +261,7 @@ cv_scene_shade :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,verti
    colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,cv_at(u,97),v,1,SLAY_SOFT_SIZE),u[115]*SLAY_WRAP_FALLOFF),v3(1,0.40197778,0.20155625)));
    colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,cv_at(u,28),v,SLAY_SOFT_SPECULAR,SLAY_SOFT_SIZE),u[31]*SLAY_FILL_FALLOFF),cv_at(u,124)));
    colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,cv_kick_dir(u),v,SLAY_SOFT_SPECULAR,SLAY_SOFT_SIZE),SLAY_KICK_POWER*SLAY_KICK_FALLOFF),v3(SLAY_KICK_R,SLAY_KICK_G,SLAY_KICK_B)));
-   colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,wg_normalize3(rect),v,1,0),cv_rect_power(u,rect)),v3(u[23],u[27],u[95])));
+   colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,wg_normalize3(rect),v,1,0),cv_rect_power(u,rect)*cv_hand_visibility(s.world,cv_add(s.world,rect),u,bones)),v3(u[23],u[27],u[95])));
   }
   if (s.material==26 || s.material==27) && u[114]>=0 {
    t:=wg_normalize3(v3(s.tangent.x,s.tangent.y,s.tangent.z));seed:=s.uv.y;

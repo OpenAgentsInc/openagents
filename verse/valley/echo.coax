@@ -2,12 +2,13 @@
 #load "echo-rig-policy.coax";
 #load "../../aethyr/anim/pose.coax";
 #load "../../aethyr/anim/face.coax";
+#load "slay-lights.coax";
 // Platform upload scratch is outside the persistent simulation state.
 EchoCatalogScratch :: struct {bytes:[ECHO_CATALOG_CAP]u8;}
 Echo :: struct {
  data:[ECHO_RIG_CAP]u8;face_data:[FACE_RUNTIME_CAP]u8;bytes:int;rig_at:int;rig_bytes:int;face_bytes:int;face:[1]FacePlayback;ready:bool;joints:int;tracks:int;
  parent:[ECHO_JOINTS]int;bind:[ECHO_JOINTS*12]f32;rest:[ECHO_JOINTS]SkinLocal;
- body:[ECHO_JOINTS]SkinLocal;pose:[ECHO_JOINTS]SkinLocal;from:[ECHO_JOINTS]SkinLocal;gq:[ECHO_JOINTS]Quat;gt:[ECHO_JOINTS]Point;palette:[ECHO_JOINTS*12+256]f32;
+ body:[ECHO_JOINTS]SkinLocal;pose:[ECHO_JOINTS]SkinLocal;from:[ECHO_JOINTS]SkinLocal;gq:[ECHO_JOINTS]Quat;gt:[ECHO_JOINTS]Point;palette:[ECHO_JOINTS*12+256+ECHO_CAPSULES*8]f32;
  drive_inputs:bool;input_on:bool;run_requested:bool;blending:bool;clip:int= -1;time:f32;age:f32;moving:bool;grounded:bool=true;revision:int;
 }
 echo_pose_at :: (b:[]u8,at:int)->SkinLocal {return SkinLocal.{t=scan_point(b,at),q=Quat.{x=f32_from_bits(scan_u32(b,at+12)),y=f32_from_bits(scan_u32(b,at+16)),z=f32_from_bits(scan_u32(b,at+20)),w=f32_from_bits(scan_u32(b,at+24))}};}
@@ -54,7 +55,22 @@ echo_present :: (s:[]Echo) {
  for k:0..<s[0].joints {s[0].pose[k]=s[0].body[k];}
  if s[0].face_bytes>0 {face_layer(s[0].face[..],echo_face_bytes(s),s[0].pose[..]);}
  for k:0..<s[0].joints {pose_chain(s[0].gq[..],s[0].gt[..],s[0].parent[k],k,s[0].pose[k]);pose_palette(s[0].gq[k],s[0].gt[k],s[0].bind[..],k,s[0].palette[..]);}
- for k:0..<256 {s[0].palette[ECHO_JOINTS*12+k]=ifx s[0].face[0].enabled then s[0].face[0].weights[k] else 0.0f32;}s[0].revision+=1;
+ for k:0..<256 {s[0].palette[ECHO_JOINTS*12+k]=ifx s[0].face[0].enabled then s[0].face[0].weights[k] else 0.0f32;}echo_capsules(s);s[0].revision+=1;
+}
+// Capsules for the orb hand (left), after the palette and morph weights: model-space ends and a
+// radius in metres, 8 floats each, so the shader can shadow the orb's light with the hand.
+// Joint ids are Echo's source skin order; a rig without them leaves every radius 0.
+ECHO_CAPSULES :: SLAY_HAND_CAPSULES;
+ECHO_CAPSULE_WORD :: ECHO_JOINTS*12+256;
+ECHO_CAPSULE_JOINTS :: [20]int.[9,10,10,10,10,12,13,14,16,17,18,24,25,26,20,21,22,27,28,29];
+ECHO_CAPSULE_ENDS :: [20]int.[10,12,16,24,20,13,14,-1,17,18,-1,25,26,-1,21,22,-1,28,29,-1];
+ECHO_CAPSULE_RADII :: [20]f32.[0.032,0.018,0.018,0.017,0.015,0.0095,0.0085,0.008,0.0095,0.0085,0.008,0.009,0.008,0.0075,0.008,0.0075,0.007,0.012,0.0105,0.0095];
+echo_capsules :: (s:[]Echo) {
+ for k:0..<ECHO_CAPSULES {at:=ECHO_CAPSULE_WORD+k*8;for w:0..<8 {s[0].palette[at+w]=0;}
+  a:=ECHO_CAPSULE_JOINTS[k];e:=ECHO_CAPSULE_ENDS[k];parent:=ifx a<s[0].joints then s[0].parent[a] else -1;if s[0].joints<30 || parent<0 {continue;}
+  p:=s[0].gt[a];q:=ifx e>=0 then s[0].gt[e] else add(p,times(sub(p,s[0].gt[parent]),0.8));
+  s[0].palette[at]=p.x;s[0].palette[at+1]=p.y;s[0].palette[at+2]=p.z;s[0].palette[at+4]=q.x;s[0].palette[at+5]=q.y;s[0].palette[at+6]=q.z;s[0].palette[at+3]=ECHO_CAPSULE_RADII[k];
+ }
 }
 echo_face_clock :: (s:[]Echo,dt:f32) {if s[0].face_bytes>0 {face_tick(s[0].face[..],echo_face_bytes(s),dt);}echo_present(s);}
 echo_face_start :: (s:[]Echo,clip:int,first:int,last:int,looping:bool)->bool {if !s[0].ready || s[0].face_bytes==0 {return false;}return face_begin(s[0].face[..],echo_face_bytes(s),clip,first,last,looping);}
@@ -66,4 +82,12 @@ echo_face_start :: (s:[]Echo,clip:int,first:int,last:int,looping:bool)->bool {if
  s:[1]Echo;n:=echo_rig_fixture(s[0].data[..],1);#assert echo_admit(s[..],n);echo_advance(s[..],0,1.47,true,0);#assert s[0].clip==5;echo_advance(s[..],0,0,true,0);#assert s[0].clip==6;
  echo_advance(s[..],0,4.27,true,0);#assert s[0].clip==7;echo_advance(s[..],0,4.27,false,0);#assert s[0].clip==3;echo_advance(s[..],0,0,true,0);#assert s[0].clip==4;
  #assert echo_start_clip(false,-1.57)==10 && echo_start_clip(false,1.57)==11 && echo_start_clip(true,-3)==16 && echo_start_clip(true,3)==17;
+}
+#test "Orb-hand capsules follow the posed joints, extend fingertips and stay empty without the source rig" #steps 1000000000 {
+ #assert ECHO_CAPSULE_WORD==SLAY_HAND_CAPSULE_WORD;
+ s:[1]Echo;s[0].joints=30;for k:0..<30 {s[0].parent[k]=k-1;s[0].gt[k]=v3(cast(f32)k,0,0);}
+ echo_capsules(s[..]);at:=ECHO_CAPSULE_WORD;
+ #assert s[0].palette[at]==9 && s[0].palette[at+4]==10 && s[0].palette[at+3]==0.032f32;
+ tip:=ECHO_CAPSULE_WORD+7*8;#assert s[0].palette[tip]==14 && abs(s[0].palette[tip+4]-14.8)<0.00001 && s[0].palette[tip+3]==0.008f32;
+ s[0].joints=1;echo_capsules(s[..]);for k:0..<ECHO_CAPSULES*8 {#assert s[0].palette[ECHO_CAPSULE_WORD+k]==0;}
 }

@@ -57,3 +57,7 @@ slay_oct_y :: (x:f32,y:f32,z:f32)->f32 {a:=abs(x)+abs(y)+abs(z);ox:=x/a;oy:=y/a;
  #assert slay_rect_emission(1)==1 && slay_rect_emission(0.5)==0 && slay_rect_emission(-1)==0 && slay_rect_emission(0.7)==0.7;
  #assert abs(cos(52.285717f32*3.14159265f32/180)-SLAY_RECT_BARN_COS)<0.000001;
 }
+// The orb hand's capsules follow the skinning palette and morph weights in Echo's bone store
+// (verse/valley/echo.coax): 20 of them, 8 floats each, model-space ends and a radius.
+SLAY_HAND_CAPSULES :: 20;
+SLAY_HAND_CAPSULE_WORD :: 4264;
